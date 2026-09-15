@@ -1,6 +1,7 @@
 mod anchor;
 mod chrome;
 mod document;
+mod icon;
 mod interaction;
 mod launch;
 mod lifecycle;

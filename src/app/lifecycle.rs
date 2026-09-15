@@ -19,17 +19,17 @@ impl ApplicationHandler<Event> for App {
 			return;
 		}
 		let result = (|| -> Result<()> {
-			let window = Arc::new(
-				event_loop.create_window(
-					Window::default_attributes()
-						.with_title("Markview")
-						.with_inner_size(LogicalSize::new(
-							self.args.width,
-							self.args.height,
-						))
-						.with_min_inner_size(LogicalSize::new(500, 300)),
-				)?,
-			);
+			let mut attributes = Window::default_attributes()
+				.with_title("Markview")
+				.with_inner_size(LogicalSize::new(
+					self.args.width,
+					self.args.height,
+				))
+				.with_min_inner_size(LogicalSize::new(500, 300));
+			if let Some(icon) = super::icon::window_icon() {
+				attributes = attributes.with_window_icon(Some(icon));
+			}
+			let window = Arc::new(event_loop.create_window(attributes)?);
 			if self.args.mode == Mode::Window
 				&& self.args.theme.is_none()
 				&& self.args.style.is_none()

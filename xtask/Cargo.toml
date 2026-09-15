@@ -1,0 +1,16 @@
+[package]
+name = "xtask"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish = false
+
+[dependencies]
+anyhow.workspace = true
+ico = "0.5"
+resvg = "0.45"
+tiny-skia.workspace = true
+
+[lints]
+workspace = true
