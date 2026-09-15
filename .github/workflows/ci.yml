@@ -46,9 +46,11 @@ jobs:
           ./actionlint -color .github/workflows/ci.yml \
             .github/workflows/packaging.yml
       - name: Generated release files match the configuration
+        # `cargo install cargo-dist` installs the bare `dist` binary, which
+        # cargo will not resolve as a subcommand.
         run: |
-          cargo dist generate --check
-          cargo dist plan
+          dist generate --check
+          dist plan
       - name: Committed icons match the source SVG
         run: cargo run -p xtask -- icons --check
       - name: Packaging scripts are sound
