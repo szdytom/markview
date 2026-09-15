@@ -58,5 +58,5 @@ Description: Native, read-only Markdown reader
  process. It is read-only and watches the open document for changes.
 EOF
 
-fakeroot dpkg-deb --build --root-owner-group "$pkg" \
+dpkg-deb --build --root-owner-group "$pkg" \
 	"$outdir/markview_${version}_${arch}.deb"

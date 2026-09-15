@@ -78,7 +78,7 @@ jobs:
           gh run download "$DIST_RUN" \
             --pattern artifacts-build-local-x86_64-unknown-linux-gnu \
             --dir dist
-          tar -xzf dist/*.tar.gz -C dist
+          tar -xzf dist/*.tar.gz -C dist --strip-components=1
       - name: Validate the archive
         run: |
           test "$(./dist/markview --help | head -1 | cut -d' ' -f1)" = "Markview" || {
@@ -142,7 +142,7 @@ jobs:
           gh run download "$DIST_RUN" \
             --pattern artifacts-build-local-aarch64-apple-darwin \
             --dir dist
-          tar -xzf dist/*.tar.gz -C dist
+          tar -xzf dist/*.tar.gz -C dist --strip-components=1
       - name: Build the application bundle
         run: |
           scripts/package_macos_app.sh ./dist \

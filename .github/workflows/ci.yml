@@ -75,12 +75,12 @@ jobs:
       - name: Build the local archive
         run: |
           cargo install cargo-dist --version 0.32.0 --locked
-          dist build --artifacts=local
+          dist build --artifacts=local --target x86_64-unknown-linux-gnu
       - name: Extract the archive
         run: |
           mkdir -p dist
           tar -xzf target/distrib/markview-x86_64-unknown-linux-gnu.tar.gz \
-            -C dist
+            -C dist --strip-components=1
           ./dist/markview --help | head -1
       - name: Generate third-party notices
         run: |
@@ -92,7 +92,7 @@ jobs:
         run: |
           version=$(sed -n 's/^version = "\(.*\)"/\1/p' Cargo.toml | head -1)
           mkdir -p out
-          cp target/distrib/markview-x86_64-unknown-linux-gnu.tar.gz.sha256 out/
+          cp target/distrib/markview-x86_64-unknown-linux-gnu.tar.gz* out/
           scripts/package_deb.sh ./dist/markview "$version" amd64 out
           scripts/package_appimage.sh ./dist/markview "$version" out
           (cd out && sha256sum ./* >SHA256SUMS)
@@ -114,7 +114,7 @@ jobs:
         shell: bash
         run: |
           cargo install cargo-dist --version 0.32.0 --locked
-          dist build --artifacts=local
+          dist build --artifacts=local --target x86_64-pc-windows-msvc
       - name: Inspect the MSI
         shell: pwsh
         run: |
@@ -143,19 +143,19 @@ jobs:
       - name: Build the archive
         run: |
           cargo install cargo-dist --version 0.32.0 --locked
-          dist build --artifacts=local
+          dist build --artifacts=local --target aarch64-apple-darwin
       - name: Extract the archive
         run: |
           mkdir -p dist
-          tar -xzf target/distrib/markview-aarch64-apple-darwin.tar.gz -C dist
+          tar -xzf target/distrib/markview-aarch64-apple-darwin.tar.gz -C dist --strip-components=1
           ./dist/markview --help | head -1
       - name: Build the application bundle
         run: |
           version=$(sed -n 's/^version = "\(.*\)"/\1/p' Cargo.toml | head -1)
           mkdir -p out
-          cp target/distrib/markview-aarch64-apple-darwin.tar.gz.sha256 out/
+          cp target/distrib/markview-aarch64-apple-darwin.tar.gz* out/
           scripts/package_macos_app.sh ./dist "$version" out
-          shasum -a 256 out/* >out/SHA256SUMS
+          (cd out && shasum -a 256 ./* >SHA256SUMS)
       - name: Upload the packages
         uses: actions/upload-artifact@v7
         with:
@@ -170,5 +170,5 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Fail unless every job succeeded
-        if: contains(needs.*.result, 'failure') || contains(needs.*.result, 'cancelled')
+        if: contains(needs.*.result, 'failure') || contains(needs.*.result, 'cancelled') || contains(needs.*.result, 'skipped')
         run: exit 1

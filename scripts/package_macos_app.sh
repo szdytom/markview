@@ -19,17 +19,22 @@ outdir=$(realpath "$outdir")
 work=$(mktemp -d)
 trap 'rm -rf "$work"' EXIT
 app=$work/Markview.app
+mkdir -p "$app/Contents/MacOS" "$app/Contents/Resources"
 
-install -Dm755 "$extracted/markview" "$app/Contents/MacOS/markview"
-install -Dm644 "$root/assets/icons/markview.icns" \
+install -m755 "$extracted/markview" "$app/Contents/MacOS/markview"
+install -m644 "$root/assets/icons/markview.icns" \
 	"$app/Contents/Resources/markview.icns"
 sed "s/@VERSION@/$version/g" "$root/packaging/info.plist.in" \
 	>"$app/Contents/Info.plist"
-install -Dm644 "$root/LICENSE" "$app/Contents/Resources/LICENSE"
-install -Dm644 "$root/THIRD_PARTY.md" \
+install -m644 "$root/LICENSE" "$app/Contents/Resources/LICENSE"
+install -m644 "$root/THIRD_PARTY.md" \
 	"$app/Contents/Resources/THIRD_PARTY.md"
-install -Dm644 "$root/licenses/KaTeX-OFL.txt" \
+install -m644 "$root/licenses/KaTeX-OFL.txt" \
 	"$app/Contents/Resources/KaTeX-OFL.txt"
+
+if [[ -n "${MARKVIEW_NOTICES:-}" ]]; then
+	install -m644 "$MARKVIEW_NOTICES" "$app/Contents/Resources/third-party-notices.html"
+fi
 
 # Ad-hoc signing keeps the bundle internally consistent for local execution.
 codesign --force --deep --sign - "$app"
