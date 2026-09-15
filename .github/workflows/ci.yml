@@ -32,6 +32,8 @@ jobs:
       - name: Install packaging tools
         run: |
           cargo install cargo-dist --version 0.32.0 --locked
+          # `cargo install` lands in ~/.cargo/bin, which later steps need on PATH.
+          echo "$HOME/.cargo/bin" >>"$GITHUB_PATH"
           sudo apt-get update
           sudo apt-get install -y shellcheck
       - name: Lint the workflows we own
