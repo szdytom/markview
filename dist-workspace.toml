@@ -9,7 +9,8 @@ members = ["cargo:."]
 # `dist generate` after editing this file, and never hand-edit them.
 #
 # Linux archives are built on Ubuntu 22.04 and must not require a newer glibc
-# than 2.35. `min-glibc-version` is the enforced guard for that contract.
+# than 2.35. `min-glibc-version` tells installers the requirement;
+# `scripts/verify_linux_packages.sh` checks the binary symbol versions.
 [dist]
 cargo-dist-version = "0.32.0"
 ci = "github"

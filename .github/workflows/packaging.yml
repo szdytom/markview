@@ -12,6 +12,9 @@ permissions:
   contents: read
 
 jobs:
+  checks:
+    uses: ./.github/workflows/checks.yml
+
   linux-extra:
     runs-on: ubuntu-22.04
     steps:

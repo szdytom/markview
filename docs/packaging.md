@@ -58,8 +58,8 @@ each package comes back as a workflow artifact you can download from the run.
 | `markview-windows-packages` | MSI, portable zip, checksums | windows-2022 |
 | `markview-macos-packages` | `.app.zip`, portable archive, checksums | macos-latest |
 
-Each platform builds its own archive, because a workflow run can only download
-artifacts from its own run. The Linux job uses `ubuntu-22.04` for the same
+Each platform builds its own archive; release packaging reuses the archives
+from the same workflow run. The Linux job uses `ubuntu-22.04` for the same
 reason releases do: the archive must stay usable on glibc 2.35.
 
 The workflow ends in a single `ci` job that fails unless every other job
@@ -68,10 +68,12 @@ succeeded. Point branch protection at `ci` rather than at the matrix jobs.
 ## Validate packaging before a release
 
 Pull requests run the complete `Release` build with `pr-run-mode = "upload"`.
-This exercises local archives/MSI, global installers, and the reusable
+This exercises the same three-platform tests, formatting, and clippy checks as
+CI, plus local archives/MSI, global installers, and the reusable
 `Packaging` workflow without creating a tag or publishing a release.
 Download the `artifacts-*` workflow artifacts to inspect the outputs.
 
+The Windows checks extract both MSI and ZIP packages and run their executables.
 The Linux checks extract both the Debian package and AppImage and run their
 executables. The macOS check unpacks the application archive, validates its
 plist and signature, and runs the bundled executable. Every push also builds
@@ -82,9 +84,9 @@ these packages in `CI`.
 A binary inherits the glibc symbol versions of the machine that linked it. The
 rolling-release host used for development produces binaries that require
 glibc 2.43 or newer, which most distributions cannot satisfy. Linux release
-archives are therefore built on `ubuntu-22.04`, and
-`dist.min-glibc-version.x86_64-unknown-linux-gnu = "2.35"` makes dist fail the
-build if a future dependency raises that floor.
+archives are therefore built on `ubuntu-22.04`, and the package checks reject binaries that reference newer glibc symbols.
+`dist.min-glibc-version.x86_64-unknown-linux-gnu = "2.35"` declares that
+requirement to the generated installers.
 
 ## Cut a release
 
