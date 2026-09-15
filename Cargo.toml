@@ -121,6 +121,9 @@ lto = "thin"
 codegen-units = 1
 strip = true
 
+[profile.dist]
+inherits = "release"
+
 [[bin]]
 name = "markview"
 path = "src/main.rs"
