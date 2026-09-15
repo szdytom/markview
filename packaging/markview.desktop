@@ -1,0 +1,13 @@
+[Desktop Entry]
+Type=Application
+Version=1.0
+Name=Markview
+Comment=Read Markdown with native typography
+Exec=markview %f
+TryExec=markview
+Terminal=false
+Categories=Office;Viewer;
+MimeType=text/markdown;text/x-markdown;
+Keywords=markdown;reader;documentation;
+StartupNotify=true
+Icon=markview

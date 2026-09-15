@@ -17,5 +17,9 @@ The root [README](../README.md) is the user-facing entry point: installation, re
 - [Development guide](development.md) is the how-to page for building, testing, changing behavior, and adding a new document node.
 - [Stylesheet guide](stylesheets.md) is the how-to/reference page for authoring and installing MVSS themes.
 
+## Ship the implementation
+
+- [Packaging and releases](packaging.md) is the maintainer page for release assets, the cargo-dist configuration, and per-platform runtime requirements.
+
 When a fact belongs to more than one page, keep the detailed explanation in the page that owns the concept and link to it elsewhere. In particular, keep commands and procedures out of architecture documentation.
 

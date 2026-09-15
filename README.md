@@ -4,9 +4,33 @@ Markview is a native, read-only Markdown reader for people who want a calm readi
 
 Markview is a fast, native Markdown reader with multi-threaded processing, GPU-accelerated rendering, and low memory usage, bringing publication-quality typography to your documents.
 
+## Install
+
+Download the latest build from [Releases](https://github.com/szdytom/markview/releases):
+a `.deb`, an AppImage, or a `.tar.gz` archive on Linux; an `.msi` or `.zip` on
+Windows; a zipped `.app` bundle on macOS. On Linux and macOS the install script
+does the same thing:
+
+```sh
+curl --proto '=https' --tlsv1.2 -LsSf \
+  https://github.com/szdytom/markview/releases/latest/download/markview-installer.sh | sh
+```
+
+Linux builds need glibc 2.35 or newer, `libfontconfig1`, a working Vulkan
+driver, and a desktop portal for file dialogs. The macOS bundle is unsigned, so
+clear the quarantine flag once after downloading it:
+
+```sh
+xattr -d com.apple.quarantine /Applications/Markview.app
+```
+
+Per-platform details and the exact artifact list are in
+[the packaging guide](docs/packaging.md).
+
 ## Try it
 
-Markview requires Rust 1.88 or newer, system fonts, and a working Vulkan, OpenGL, Metal, or Direct3D 12 driver.
+Building from source requires Rust 1.88 or newer, system fonts, and a working
+Vulkan, OpenGL, Metal, or Direct3D 12 driver.
 
 ```sh
 cargo run --release -- examples/welcome.md

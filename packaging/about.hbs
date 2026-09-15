@@ -1,0 +1,39 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Markview — third-party notices</title>
+<style>
+body { font: 15px/1.6 system-ui, sans-serif; max-width: 60rem; margin: 2rem auto; padding: 0 1rem; color: #1a1a1a; }
+pre { white-space: pre-wrap; background: #f6f6f4; padding: 1rem; border-radius: 4px; }
+code { font-family: ui-monospace, monospace; }
+h2 { margin-top: 2.5rem; }
+li { margin: 0.15rem 0; }
+</style>
+</head>
+<body>
+<h1>Third-party notices</h1>
+<p>Markview is distributed with the open-source components listed below. Each
+entry names the license declared by the component and reproduces its license
+text. This file is generated from <code>Cargo.lock</code> by
+<code>cargo about generate packaging/about.hbs</code>.</p>
+
+<h2>Overview</h2>
+<ul>
+{{#each overview}}
+	<li><a href="#{{id}}">{{name}}</a> — {{count}}</li>
+{{/each}}
+</ul>
+
+{{#each licenses}}
+<h2 id="{{id}}">{{name}}</h2>
+<p>Used by:</p>
+<ul>
+{{#each used_by}}
+	<li>{{crate.name}} {{crate.version}}</li>
+{{/each}}
+</ul>
+<pre>{{text}}</pre>
+{{/each}}
+</body>
+</html>

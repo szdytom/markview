@@ -1,0 +1,39 @@
+[workspace]
+members = ["cargo:."]
+
+# Release packaging for Markview.
+#
+# This is the source of truth for archive and installer generation. The
+# generated files (`.github/workflows/release.yml`, `wix/main.wxs`, and the
+# `[package.metadata.wix]` table) are managed by dist; run
+# `cargo dist generate` after editing this file, and never hand-edit them.
+#
+# Linux archives are built on Ubuntu 22.04 and must not require a newer glibc
+# than 2.35. `min-glibc-version` is the enforced guard for that contract.
+[dist]
+cargo-dist-version = "0.32.0"
+ci = "github"
+targets = [
+    "x86_64-pc-windows-msvc",
+    "x86_64-unknown-linux-gnu",
+    "aarch64-apple-darwin",
+]
+installers = ["shell", "powershell", "msi"]
+unix-archive = ".tar.gz"
+windows-archive = ".zip"
+checksum = "sha256"
+source-tarball = true
+pr-run-mode = "plan"
+include = ["THIRD_PARTY.md", "licenses/"]
+
+[dist.min-glibc-version]
+x86_64-unknown-linux-gnu = "2.35"
+
+# Build-only system libraries for the Linux archive.
+[dist.dependencies.apt]
+libfontconfig1-dev = "*"
+libxkbcommon-dev = "*"
+libwayland-dev = "*"
+
+[dist.github-custom-runners]
+x86_64-unknown-linux-gnu = "ubuntu-22.04"

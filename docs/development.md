@@ -13,6 +13,13 @@ cargo clippy --workspace --all-targets --locked -- -D warnings
 cargo build --release --locked
 ```
 
+Release archives, installers, and the platform icons are maintained separately;
+see the [packaging guide](packaging.md). After changing `assets/markview-icon-color.svg`:
+
+```sh
+cargo run -p xtask -- icons
+```
+
 For visual or timing changes, also use the real pipelines:
 
 ```sh

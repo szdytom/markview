@@ -22,3 +22,24 @@ jobs:
       - run: cargo test --workspace --locked --all-targets
       - run: cargo fmt --all --check
       - run: cargo clippy --workspace --locked --all-targets -- -D warnings
+
+  packaging:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - uses: rhysd/actionlint@v1
+      - name: Install packaging tools
+        run: |
+          cargo install cargo-dist --version 0.32.0 --locked
+          sudo apt-get update
+          sudo apt-get install -y shellcheck
+      - name: Generated release files match the configuration
+        run: |
+          cargo dist generate --check
+          cargo dist plan
+      - name: Committed icons match the source SVG
+        run: cargo run -p xtask -- icons --check
+      - name: Packaging scripts are sound
+        run: shellcheck scripts/package_*.sh

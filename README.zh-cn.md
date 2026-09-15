@@ -4,9 +4,28 @@ Markview 是一个原生、只读的 Markdown 阅读器，面向希望专注阅�
 
 Markview 采用多线程处理和 GPU 加速渲染，兼顾较低的内存占用与出色的速度，同时为你的文档带来出版级的排版质量。中文文档的排版与优化也被作为第一优先级支持。
 
+## 安装
+
+从 [Releases](https://github.com/szdytom/markview/releases) 下载最新版本：Linux
+提供 `.deb`、AppImage 与 `.tar.gz` 归档，Windows 提供 `.msi` 与 `.zip`，macOS
+提供打包好的 `.app`（zip）。Linux 与 macOS 也可以用安装脚本：
+
+```sh
+curl --proto '=https' --tlsv1.2 -LsSf \
+  https://github.com/szdytom/markview/releases/latest/download/markview-installer.sh | sh
+```
+
+Linux 版本需要 glibc 2.35 或更新、`libfontconfig1`、可用的 Vulkan 驱动，以及用于文件对话框的桌面 portal。macOS 的 `.app` 未签名，下载后需要清除一次隔离标记：
+
+```sh
+xattr -d com.apple.quarantine /Applications/Markview.app
+```
+
+各平台的具体要求与完整产物列表见 [打包说明](docs/packaging.md)。
+
 ## 开始使用
 
-Markview 需要 Rust 1.88 或更新版本、系统字体，以及可用的 Vulkan、OpenGL、Metal 或 Direct3D 12 驱动。
+从源码构建需要 Rust 1.88 或更新版本、系统字体，以及可用的 Vulkan、OpenGL、Metal 或 Direct3D 12 驱动。
 
 ```sh
 cargo run --release -- examples/welcome.md
