@@ -67,3 +67,16 @@ jobs:
           name: artifacts-extra-macos
           path: out/*
           if-no-files-found: error
+
+
+  windows-installers:
+    runs-on: windows-2022
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/download-artifact@v8
+        with:
+          name: artifacts-build-local-x86_64-pc-windows-msvc
+          path: dist
+      - name: Verify the MSI and portable archive
+        shell: pwsh
+        run: ./scripts/verify_windows_packages.ps1 dist

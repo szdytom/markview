@@ -114,14 +114,9 @@ jobs:
         shell: bash
         run: |
           dist build --artifacts=local --target x86_64-pc-windows-msvc
-      - name: Inspect the MSI
+      - name: Verify the MSI and portable archive
         shell: pwsh
-        run: |
-          $msi = Get-ChildItem target/distrib/*.msi
-          if (-not $msi) { throw "no MSI was produced" }
-          $msi | ForEach-Object { Write-Host $_.FullName $_.Length }
-          $zip = Get-ChildItem target/distrib/*.zip
-          if (-not $zip) { throw "no portable archive was produced" }
+        run: ./scripts/verify_windows_packages.ps1 target/distrib
       - name: Upload the packages
         uses: actions/upload-artifact@v7
         with:

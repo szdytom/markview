@@ -12,7 +12,8 @@ test -s "$work/deb/usr/share/icons/hicolor/512x512/apps/markview.png"
 test -s "$work/deb/usr/share/doc/markview/THIRD_PARTY.md"
 
 cd "$work"
-"$outdir"/*.AppImage --appimage-extract >/dev/null
+images=("$outdir"/*.AppImage)
+"${images[0]}" --appimage-extract >/dev/null
 ./squashfs-root/AppRun --help
 test -s squashfs-root/markview.png
 test -s squashfs-root/usr/share/doc/markview/THIRD_PARTY.md
