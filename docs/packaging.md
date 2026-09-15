@@ -46,6 +46,32 @@ they drift.
 `.github/workflows/packaging.yml` is *not* generated. It chains off the
 `Release` workflow and adds the assets cargo-dist does not produce.
 
+## Validate packaging before a release
+
+Packaging reads the archives from the `Release` run's own workflow artifacts
+rather than from the published release, so a run can be packaged before any
+release exists. Two ways in:
+
+- Run `Release` in `pr-run-mode = "upload"` on a branch, then package that run
+  by hand. `cargo-dist` builds every archive, publishes nothing, and the
+  packaging workflow is skipped because the run has no version tag.
+- Use the `Packaging` workflow's manual dispatch:
+
+  ```sh
+  gh workflow run Packaging \
+    --ref BRANCH -f dist_run=RUN_ID -f ref=BRANCH -f publish=false
+  ```
+
+  `dist_run` is the id of a `Release` workflow run and `ref` is what it built.
+  With `publish=false` nothing is uploaded to a release; the `.deb`, the
+  AppImage, and the macOS bundle come back as the `markview-linux-packages`
+  and `markview-macos-app` artifacts. `publish=true` requires the release for
+  that tag to already exist.
+
+The automatic path validates that the tag matches the manifest version before
+attaching anything, so a mistyped tag fails instead of producing a release
+whose assets disagree with its name.
+
 ## Why Linux archives build on Ubuntu 22.04
 
 A binary inherits the glibc symbol versions of the machine that linked it. The
