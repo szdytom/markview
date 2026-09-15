@@ -46,6 +46,25 @@ they drift.
 `.github/workflows/packaging.yml` is *not* generated. It chains off the
 `Release` workflow and adds the assets cargo-dist does not produce.
 
+## Every push builds every package
+
+The `CI` workflow builds the complete package set on every push and pull
+request, after `check` passes on all three platforms. Nothing is published:
+each package comes back as a workflow artifact you can download from the run.
+
+| Artifact | Contents | Runner |
+| --- | --- | --- |
+| `markview-linux-packages` | Debian package, AppImage, archive checksum | ubuntu-22.04 |
+| `markview-windows-packages` | MSI, portable zip, checksums | windows-2022 |
+| `markview-macos-packages` | `.app.zip`, archive checksum | macos-latest |
+
+Each platform builds its own archive, because a workflow run can only download
+artifacts from its own run. The Linux job uses `ubuntu-22.04` for the same
+reason releases do: the archive must stay usable on glibc 2.35.
+
+The workflow ends in a single `ci` job that fails unless every other job
+succeeded. Point branch protection at `ci` rather than at the matrix jobs.
+
 ## Validate packaging before a release
 
 Packaging reads the archives from the `Release` run's own workflow artifacts
