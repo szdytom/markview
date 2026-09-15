@@ -54,7 +54,7 @@ jobs:
       # A manual dry run must not touch a release.
       PUBLISH: ${{ github.event_name == 'workflow_run' || inputs.publish }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
         with:
           ref: ${{ github.event.workflow_run.head_sha || github.event.inputs.ref }}
       - id: version
@@ -87,7 +87,7 @@ jobs:
           }
       - name: Generate third-party notices
         run: |
-          cargo install cargo-about --version 0.9.2 --locked
+          cargo install cargo-about --version 0.9.2 --locked --features cli
           cargo about generate packaging/about.hbs \
             -o "$RUNNER_TEMP/third-party-notices.html"
       - name: Build the Debian package
@@ -106,7 +106,7 @@ jobs:
         run: gh release upload "$REF" out/* --clobber
       - name: Keep the packages
         if: env.PUBLISH != 'true'
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: markview-linux-packages
           path: out/*
@@ -124,7 +124,7 @@ jobs:
       REF: ${{ github.event.workflow_run.head_branch || github.event.inputs.ref }}
       PUBLISH: ${{ github.event_name == 'workflow_run' || inputs.publish }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
         with:
           ref: ${{ github.event.workflow_run.head_sha || github.event.inputs.ref }}
       - name: Read the workspace version
@@ -153,7 +153,7 @@ jobs:
         run: gh release upload "$REF" out/* --clobber
       - name: Keep the bundle
         if: env.PUBLISH != 'true'
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: markview-macos-app
           path: out/*

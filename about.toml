@@ -1,0 +1,25 @@
+# Configuration for `cargo about`, which generates the third-party notices
+# shipped with release artifacts.
+#
+# The accepted list covers every license identifier in the dependency tree.
+# Anything outside it fails the release build instead of silently shipping an
+# unreviewed license, which is the point of listing them rather than using a
+# wildcard. Add an identifier here only after confirming it is permissive.
+accepted = [
+	"0BSD",
+	"Apache-2.0",
+	"BSD-2-Clause",
+	"BSD-3-Clause",
+	"BSL-1.0",
+	"CC0-1.0",
+	"CDLA-Permissive-2.0",
+	"ISC",
+	"MIT",
+	"Unicode-3.0",
+	"Unicode-DFS-2016",
+	"Unlicense",
+	"Zlib",
+]
+
+# Workspace members are not dependencies of the shipped binary.
+private = { ignore = true }
