@@ -13,13 +13,14 @@ try {
     if ($process.ExitCode -ne 0) { throw "portable executable failed: $($process.ExitCode)" }
 
     $msi = Get-Item "$out/markview-x86_64-pc-windows-msvc.msi"
-    $log = "$work/msi.log"
-    $process = Start-Process msiexec.exe -ArgumentList "/a `"$($msi.FullName)`" /qn TARGETDIR=`"$work/installed`" /L*v `"$log`"" -Wait -PassThru
+    $log = Join-Path $work "msi.log"
+    $installDir = Join-Path $work "installed"
+    $process = Start-Process msiexec.exe -ArgumentList "/a `"$($msi.FullName)`" /qn TARGETDIR=`"$installDir`" /L*v `"$log`"" -Wait -PassThru
     if ($process.ExitCode -ne 0) {
         Get-Content $log
         throw "MSI extraction failed: $($process.ExitCode)"
     }
-    $installed = Get-ChildItem "$work/installed" -Recurse -Filter markview.exe
+    $installed = Get-ChildItem "$installDir" -Recurse -Filter markview.exe
     if ($installed.Count -ne 1) { throw "expected one MSI executable" }
     $process = Start-Process $installed.FullName -ArgumentList "--help" -Wait -PassThru
     if ($process.ExitCode -ne 0) { throw "MSI executable failed: $($process.ExitCode)" }
