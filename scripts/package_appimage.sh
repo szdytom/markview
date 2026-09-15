@@ -40,6 +40,13 @@ exec "$here/usr/bin/markview" "$@"
 EOF
 chmod 755 "$appdir/AppRun"
 
+docs=$appdir/usr/share/doc/markview
+mkdir -p "$docs"
+install -m644 "$root/LICENSE" "$root/THIRD_PARTY.md" "$root/licenses/KaTeX-OFL.txt" "$docs/"
+if [[ -n "${MARKVIEW_NOTICES:-}" ]]; then
+	install -m644 "$MARKVIEW_NOTICES" "$docs/third-party-notices.html"
+fi
+
 tool=${APPIMAGETOOL:-$work/appimagetool}
 if [[ -z "${APPIMAGETOOL:-}" ]]; then
 	url=https://github.com/AppImage/appimagetool/releases/download/continuous/appimagetool-x86_64.AppImage

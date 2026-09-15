@@ -6,7 +6,7 @@ members = ["cargo:."]
 # This is the source of truth for archive and installer generation. The
 # generated files (`.github/workflows/release.yml`, `wix/main.wxs`, and the
 # `[package.metadata.wix]` table) are managed by dist; run
-# `cargo dist generate` after editing this file, and never hand-edit them.
+# `dist generate` after editing this file, and never hand-edit them.
 #
 # Linux archives are built on Ubuntu 22.04 and must not require a newer glibc
 # than 2.35. `min-glibc-version` is the enforced guard for that contract.
@@ -23,7 +23,8 @@ unix-archive = ".tar.gz"
 windows-archive = ".zip"
 checksum = "sha256"
 source-tarball = true
-pr-run-mode = "plan"
+pr-run-mode = "upload"
+global-artifacts-jobs = ["./packaging"]
 include = ["THIRD_PARTY.md", "licenses/"]
 
 [dist.min-glibc-version]

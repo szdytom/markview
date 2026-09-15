@@ -1,0 +1,11 @@
+name: Install dist
+description: Install the pinned prebuilt cargo-dist binary
+runs:
+  using: composite
+  steps:
+    - if: runner.os != 'Windows'
+      shell: bash
+      run: curl --proto '=https' --tlsv1.2 -LsSf https://github.com/axodotdev/cargo-dist/releases/download/v0.32.0/cargo-dist-installer.sh | sh
+    - if: runner.os == 'Windows'
+      shell: pwsh
+      run: irm https://github.com/axodotdev/cargo-dist/releases/download/v0.32.0/cargo-dist-installer.ps1 | iex

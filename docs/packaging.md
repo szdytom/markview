@@ -19,9 +19,8 @@ each platform. The build procedure a contributor runs day to day is in the
 | All | `markview-installer.sh`, `markview-installer.ps1` | cargo-dist |
 | All | `<asset>.sha256`, `source.tar.gz` | cargo-dist |
 
-Every archive carries `LICENSE`, `README.md`, `THIRD_PARTY.md`, and
-`licenses/KaTeX-OFL.txt`. The Debian package and the macOS bundle additionally
-carry `third-party-notices.html`, which lists the complete dependency tree and
+Every portable archive carries `LICENSE`, `README.md`, `THIRD_PARTY.md`, and
+`licenses/KaTeX-OFL.txt`. The Linux packages additionally carry `third-party-notices.html`, which lists the complete dependency tree and
 reproduces each dependency license; see
 [third-party components](../THIRD_PARTY.md).
 
@@ -32,19 +31,20 @@ take the `.zip` or the notices file from the release page.
 ## Configuration ownership
 
 `dist-workspace.toml` is the source of truth for archives and installers.
-`cargo dist init` generates the rest, and those files are managed by dist:
+`dist init` generates the rest, and those files are managed by dist:
 
 - `.github/workflows/release.yml`
 - `wix/main.wxs`
 - the `[package.metadata.wix]` table in `Cargo.toml`, which holds the stable
   upgrade and install-path GUIDs Windows needs to upgrade in place
 
-Run `cargo dist generate` after editing `dist-workspace.toml`, and never
-hand-edit the generated files. `cargo dist generate --check` in CI fails when
+Run `dist generate` after editing `dist-workspace.toml`, and never
+hand-edit the generated files. `dist generate --check` in CI fails when
 they drift.
 
-`.github/workflows/packaging.yml` is *not* generated. It chains off the
-`Release` workflow and adds the assets cargo-dist does not produce.
+`.github/workflows/packaging.yml` is *not* generated. It runs as a reusable workflow inside
+`Release`, after local archives are built and before the release is published.
+Its failure blocks publication; all assets are uploaded together.
 
 ## Every push builds every package
 
@@ -54,9 +54,9 @@ each package comes back as a workflow artifact you can download from the run.
 
 | Artifact | Contents | Runner |
 | --- | --- | --- |
-| `markview-linux-packages` | Debian package, AppImage, archive checksum | ubuntu-22.04 |
+| `markview-linux-packages` | Debian package, AppImage, portable archive, checksums | ubuntu-22.04 |
 | `markview-windows-packages` | MSI, portable zip, checksums | windows-2022 |
-| `markview-macos-packages` | `.app.zip`, archive checksum | macos-latest |
+| `markview-macos-packages` | `.app.zip`, portable archive, checksums | macos-latest |
 
 Each platform builds its own archive, because a workflow run can only download
 artifacts from its own run. The Linux job uses `ubuntu-22.04` for the same
@@ -67,29 +67,15 @@ succeeded. Point branch protection at `ci` rather than at the matrix jobs.
 
 ## Validate packaging before a release
 
-Packaging reads the archives from the `Release` run's own workflow artifacts
-rather than from the published release, so a run can be packaged before any
-release exists. Two ways in:
+Pull requests run the complete `Release` build with `pr-run-mode = "upload"`.
+This exercises local archives/MSI, global installers, and the reusable
+`Packaging` workflow without creating a tag or publishing a release.
+Download the `artifacts-*` workflow artifacts to inspect the outputs.
 
-- Run `Release` in `pr-run-mode = "upload"` on a branch, then package that run
-  by hand. `cargo-dist` builds every archive, publishes nothing, and the
-  packaging workflow is skipped because the run has no version tag.
-- Use the `Packaging` workflow's manual dispatch:
-
-  ```sh
-  gh workflow run Packaging \
-    --ref BRANCH -f dist_run=RUN_ID -f ref=BRANCH -f publish=false
-  ```
-
-  `dist_run` is the id of a `Release` workflow run and `ref` is what it built.
-  With `publish=false` nothing is uploaded to a release; the `.deb`, the
-  AppImage, and the macOS bundle come back as the `markview-linux-packages`
-  and `markview-macos-app` artifacts. `publish=true` requires the release for
-  that tag to already exist.
-
-The automatic path validates that the tag matches the manifest version before
-attaching anything, so a mistyped tag fails instead of producing a release
-whose assets disagree with its name.
+The Linux checks extract both the Debian package and AppImage and run their
+executables. The macOS check unpacks the application archive, validates its
+plist and signature, and runs the bundled executable. Every push also builds
+these packages in `CI`.
 
 ## Why Linux archives build on Ubuntu 22.04
 
@@ -110,10 +96,10 @@ build if a future dependency raises that floor.
    git push origin v0.2.0
    ```
 
-3. The `Release` workflow builds every archive, creates the GitHub release,
-   and uploads the assets.
-4. The `Packaging` workflow then attaches the `.deb`, the AppImage, and the
-   macOS `.app.zip`.
+3. The `Release` workflow builds archives, installers, and the supplementary
+   packages, then verifies them.
+4. Only after those jobs succeed does it create the GitHub release and upload
+   all assets together.
 5. Verify the release page against the artifact matrix above, and that each
    `.sha256` matches its asset.
 
@@ -123,7 +109,7 @@ mismatch during the plan step, before anything is built.
 To build the archives locally without publishing:
 
 ```sh
-cargo dist build --artifacts=local
+dist build --artifacts=local --target x86_64-unknown-linux-gnu
 ```
 
 `dist` can only build targets the host can link for. Windows archives and MSIs
