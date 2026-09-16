@@ -98,7 +98,7 @@ comparable to the performance-profile reference above:
 Both large fixtures' cached timings and RSS stayed within the 5% regression
 threshold; tracked GPU capacities were unchanged. Sixteen baseline/candidate
 PNG pairs were byte-identical across six fixtures and two examples, at the top
-at scale 1 and scrolled 1800 px at scale 2. Workspace tests, the three GPU tests,
+at scale 1 and scrolled 1800 px at scale 2. Workspace tests, the GPU tests,
 native-window opening, and watch smoke checks passed. Raw measurements, binary
 hashes, environment metadata, and verification notes are under
 `artifacts/open-optimization/` (ignored by Git).
@@ -211,6 +211,41 @@ were 0.8318 → 1.0127 ms. Ordinary passed all thresholds in this follow-up;
 image first-open/full-layout thresholds passed, but image cached P95 was
 1.306 → 1.599 ms. The inconsistent image/ordinary tail results do not establish
 a cause; they remain recorded rather than treated as an all-metrics pass.
+
+## Security-hardening change
+
+The shared `Limits` budgets, relative-only image paths, the single link policy,
+and the remote-image cap were compared against the preserved release binary of
+`18158e1` on the same Intel Arc/Vulkan host, with the `performance` power
+profile and default affinity. The change is deliberately budget-only: the
+defaults are set so no ordinary document reaches them.
+
+Twenty-six offscreen PNG pairs were byte-identical: every 10 KiB fixture at
+default, dark, scale 2 and scrolled 1800 px, plus `welcome.md` and the image
+example. No accepted document renders differently.
+
+Four independent acceptance runs on the six standard fixtures — 5, 5, 5 and 15
+process groups, 100 full and 100 cached iterations each — passed 43 or 44 of 48
+metrics every time. Every flagged metric was a tail: full-pipeline P95 or
+cached-refresh P95. The flagged set barely overlapped between runs, and one run
+reported long-code-10k cached-refresh P95 at −48% while another reported
+code-10k at +38%; a security change cannot produce either. First open,
+full-pipeline P50, cached-refresh P50, RSS, peak RSS and tracked GPU bytes
+passed in every run, with cached-refresh P50 within 0.4% of the baseline. This
+is the unresolved small-file tail noise recorded above, now reproduced four
+times, and no code path in the change is on the cached-refresh path. An earlier
+45-group analysis of the immediately preceding build reached the same
+conclusion.
+
+One run was discarded: it was started while GPU tests and offscreen renders were
+running on the same host, and it flagged a different set of tails again. Tail
+comparisons require an idle machine.
+
+The native watch smoke test measured 34.90 ms P50 and 59.78 ms P95 against
+35.28 ms and 61.18 ms for the baseline. All ignored GPU tests pass, including a
+new frame that renders the remote-image notice strip and the local-file
+confirmation in both themes. Raw reports are under
+`artifacts/security-hardening/` (ignored by Git).
 
 ## What can change the result
 

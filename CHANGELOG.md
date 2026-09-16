@@ -13,6 +13,33 @@ at the same level, without `[brackets]`.
 
 ## Unreleased
 
+### Security
+
+- A Markdown file of deeply nested emphasis no longer aborts the process: every
+  recursion and work allowance now comes from one shared `Limits` value, and
+  pathological code blocks, formulas, tables, and paragraphs degrade instead of
+  hanging.
+- Image sources are relative to the document only. Absolute paths and `file:`
+  URLs are refused, while `../` continues to work.
+- Local links follow one policy. Markdown opens in the app, a reviewed inert
+  allowlist (text, images, fixed-layout documents, audio, video) and directories
+  go to the operating system, and everything else — including `.html` and every
+  executable, script, or installer type — asks for confirmation first, defaulting
+  to revealing the file in the file manager.
+- Remote images are capped at 128 distinct sources per document revision, with a
+  notice strip offering Dismiss and Load all. Both answers apply to the tab and
+  revision they were chosen in, so opening another document shows its own notice
+  and starts capped again.
+  Loopback, private, and link-local addresses are refused after resolution and
+  before connecting, and the resolved address is pinned so a rebind cannot
+  bypass the check.
+
+### Documentation
+
+- `docs/security.md` is revision 3: the implemented decisions, the shared
+  `Limits` defaults, and the risks that remain accepted are recorded, and the
+  open verification work is separated from it.
+
 ## 0.1.0 - 2026-09-16
 
 An early development release. Expect breaking changes.
