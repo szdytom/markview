@@ -13,6 +13,11 @@ at the same level, without `[brackets]`.
 
 ## Unreleased
 
+## 0.1.1 - 2026-09-16
+
+A security release. Untrusted documents can no longer abort the process, read
+arbitrary local images, or reach the local network.
+
 ### Security
 
 - A Markdown file of deeply nested emphasis no longer aborts the process: every
@@ -36,6 +41,8 @@ at the same level, without `[brackets]`.
 
 ### Fixed
 
+- Pasting Markdown whose first sentence ends in a multi-byte terminator, such as
+  the CJK `。`, no longer panics: the tab title is cut on a character boundary.
 - A failed or pending image typesets its placeholder through the paragraph
   engine, so the message wraps, justifies, and hyphenates like body text and
   fills the image box before its last line is elided. Previously the whole

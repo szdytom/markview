@@ -1869,7 +1869,7 @@ checksum = "112b39cec0b298b6c1999fee3e31427f74f676e4cb9879ed1a121b43661a4154"
 
 [[package]]
 name = "markview"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "anyhow",
  "arboard",
@@ -1899,7 +1899,7 @@ dependencies = [
 
 [[package]]
 name = "markview-core"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "anyhow",
  "comrak",
@@ -1921,7 +1921,7 @@ dependencies = [
 
 [[package]]
 name = "markview-render"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "anyhow",
  "bytemuck",
@@ -5104,7 +5104,7 @@ checksum = "ec7a2a501ed189703dba8b08142f057e887dfc4b2cc4db2d343ac6376ba3e0b9"
 
 [[package]]
 name = "xtask"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "anyhow",
  "ico",
