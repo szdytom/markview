@@ -421,31 +421,30 @@ mod tests {
 	#[test]
 	fn a_long_path_loses_its_front_and_keeps_the_file_name() {
 		let mut shaper = TextShaper::new();
-		let path = PathBuf::from(
-			"/home/someone/Downloads/archive/nested/payload.desktop",
-		);
+		// Built by joining so every separator is the platform's own.
+		let path: PathBuf =
+			["home", "someone", "Downloads", "archive", "nested"]
+				.iter()
+				.collect::<PathBuf>()
+				.join("payload.desktop");
 		// Plenty of room: nothing is removed.
 		assert_eq!(
 			visible_path(&mut shaper, &path, None, 5000.0),
-			"/home/someone/Downloads/archive/nested/payload.desktop"
+			path.display().to_string()
 		);
 		// Narrow: the file name and its nearest directory survive, and the
-		// marker can never be mistaken for a parent directory.
-		let short = visible_path(&mut shaper, &path, None, 150.0);
-		assert!(
-			short
-				.starts_with(&format!("{MARKER}{}", std::path::MAIN_SEPARATOR)),
-			"{short}"
-		);
-		assert!(short.ends_with("payload.desktop"), "{short}");
-		assert!(!short.contains('\u{2026}'), "{short}");
+		// marker can never be mistaken for a parent directory. The limit is
+		// measured, so the test does not depend on a font's exact metrics.
+		let sep = std::path::MAIN_SEPARATOR;
+		let expected = format!("{MARKER}{sep}nested{sep}payload.desktop");
+		let max = shaper.text_width(&expected, PATH_SIZE) + 1.0;
+		assert_eq!(visible_path(&mut shaper, &path, None, max), expected);
 		// A file name too long to fit loses its own front, not its extension.
-		let name = PathBuf::from(
-			"/tmp/a-file-name-longer-than-the-whole-panel-aaaa.pdf",
-		);
-		let tiny = visible_path(&mut shaper, &name, None, 60.0);
-		assert!(tiny.ends_with(".pdf"), "{tiny}");
-		assert!(tiny.contains(MARKER), "{tiny}");
+		let name =
+			PathBuf::from("a-file-name-longer-than-the-whole-panel-x.pdf");
+		let expected = format!("{MARKER}.pdf");
+		let max = shaper.text_width(&expected, PATH_SIZE) + 1.0;
+		assert_eq!(visible_path(&mut shaper, &name, None, max), expected);
 		// The home directory is one glyph, so more of the tail fits.
 		if let Some(home) = home_dir() {
 			let under = home.join("Downloads/payload.desktop");

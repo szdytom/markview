@@ -109,6 +109,16 @@ mod tests {
 		std::fs::canonicalize(path).unwrap_or_else(|_| path.to_path_buf())
 	}
 
+	/// Writes `docs`/`name` and returns the canonical path the resolution must
+	/// produce. The file exists first because `tempfile` hands out a path the
+	/// OS may spell differently from its canonical form, and a missing file
+	/// cannot be canonicalized at all.
+	fn write(docs: &Path, name: &str) -> PathBuf {
+		let path = docs.join(name);
+		std::fs::write(&path, b"x").unwrap();
+		std::fs::canonicalize(&path).unwrap()
+	}
+
 	#[test]
 	fn only_three_remote_schemes_are_allowed() {
 		for link in [
@@ -131,8 +141,13 @@ mod tests {
 			assert_eq!(resolve(link, None), None, "{link}");
 		}
 		// A file URL is a local path, so it goes through the same classes.
+		// The URL is built from a path so it carries a Windows drive, which
+		// `to_file_path` requires.
+		let missing =
+			std::env::temp_dir().join("markview-no-such-file.unknown");
+		let url = url::Url::from_file_path(&missing).unwrap();
 		assert!(matches!(
-			resolve("file:///nonexistent/x", None),
+			resolve(url.as_str(), None),
 			Some(Target::Confirm(_))
 		));
 	}
@@ -142,38 +157,29 @@ mod tests {
 		let dir = tempfile::tempdir().unwrap();
 		let docs = dir.path().join("docs");
 		std::fs::create_dir_all(&docs).unwrap();
-		let write = |name: &str| -> PathBuf {
-			let path = docs.join(name);
-			std::fs::write(&path, b"x").unwrap();
-			real(&path)
-		};
-		let markdown = |name: &str| {
-			let path = docs.join(name);
-			std::fs::canonicalize(path).unwrap()
-		};
-		std::fs::write(docs.join("note.md"), b"x").unwrap();
+		let path = write(&docs, "note.md");
 		assert_eq!(
 			resolve("note.md", Some(&docs)),
-			Some(Target::Markdown(markdown("note.md")))
+			Some(Target::Markdown(path))
 		);
 		for name in ["a.txt", "a.pdf", "a.png", "a.svg", "a.epub", "a.mp3"] {
+			let path = write(&docs, name);
 			assert_eq!(
 				resolve(name, Some(&docs)),
-				Some(Target::OsDirect(write(name))),
+				Some(Target::OsDirect(path)),
 				"{name}"
 			);
 		}
 		for name in ["a.html", "a.ps", "a.eps", "a.swf", "a.zip", "a.ps1"] {
+			let path = write(&docs, name);
 			assert_eq!(
 				resolve(name, Some(&docs)),
-				Some(Target::Confirm(write(name))),
+				Some(Target::Confirm(path)),
 				"{name}"
 			);
 		}
-		assert_eq!(
-			resolve("noext", Some(&docs)),
-			Some(Target::Confirm(write("noext")))
-		);
+		let path = write(&docs, "noext");
+		assert_eq!(resolve("noext", Some(&docs)), Some(Target::Confirm(path)));
 	}
 
 	#[test]
