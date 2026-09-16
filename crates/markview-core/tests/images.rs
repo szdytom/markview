@@ -259,6 +259,96 @@ fn placeholder_text_and_elided_errors_have_character_hit_geometry() {
 }
 
 #[test]
+fn placeholder_wraps_and_justifies_its_reason_into_the_box() {
+	const REASON: &str = "Image host resolves to a local or private address";
+	for (width, wrapped) in [(160., true), (60., false)] {
+		let doc = document::parse(format!(
+			"<img src='test.png' width='{width}' alt=''>"
+		));
+		let mut images = resources();
+		let failed = images.entries.get_mut("test.png").unwrap();
+		failed.error = Some(REASON.into());
+		// A source that never decoded has no intrinsic size, like a real failure.
+		failed.size = None;
+		let mut options =
+			styled("[[rule]]\nwhen=['img','caption']\nsource='none'", 500.);
+		let snapshot =
+			LayoutEngine::new().layout_with_images(&doc, &options, &images);
+		let image = rects(&snapshot)[0];
+		let clusters = &snapshot.blocks[0].layout.text[0].clusters;
+		let baselines: std::collections::HashSet<i32> = clusters
+			.iter()
+			.map(|c| (c.rect.y + c.rect.h).round() as i32)
+			.collect();
+		assert_eq!(baselines.len() > 1, wrapped, "width {width}");
+		assert!(
+			clusters
+				.iter()
+				.all(|c| c.rect.y + c.rect.h <= image.y + image.h + 0.5
+					&& c.rect.x >= image.x
+					&& c.rect.x + c.rect.w <= image.x + image.w + 0.5),
+			"placeholder text left its box at width {width}"
+		);
+		assert_eq!(
+			snapshot.extract_text(snapshot.select_all(7).unwrap(), 7),
+			REASON
+		);
+		if wrapped {
+			// The placeholder goes through the paragraph engine, so it is
+			// justified like body text: every line but the last reaches the
+			// measure, and turning justification off leaves a ragged edge.
+			let reach = |snapshot: &LayoutSnapshot| {
+				let clusters = &snapshot.blocks[0].layout.text[0].clusters;
+				let top =
+					clusters.iter().map(|c| c.rect.y).fold(f32::MAX, f32::min);
+				clusters
+					.iter()
+					.filter(|c| c.rect.y < top + 1.)
+					.map(|c| c.rect.x + c.rect.w)
+					.fold(0., f32::max)
+			};
+			options.justify = false;
+			let ragged =
+				LayoutEngine::new().layout_with_images(&doc, &options, &images);
+			assert!(
+				(reach(&snapshot) - (image.x + image.w - 6.)).abs() < 1.,
+				"justified line left the measure at width {width}"
+			);
+			assert!(reach(&snapshot) > reach(&ragged) + 2.);
+		}
+	}
+}
+
+#[test]
+fn placeholder_hyphenates_like_body_text() {
+	// `hyphenation` cannot fit the 48px measure whole, so only the shared
+	// paragraph engine's hyphenation can keep it inside the box.
+	let doc =
+		document::parse("<img src='test.png' width='60' height='96' alt=''>");
+	let mut images = resources();
+	let failed = images.entries.get_mut("test.png").unwrap();
+	failed.error = Some("hyphenation".into());
+	failed.size = None;
+	let options =
+		styled("[[rule]]\nwhen=['img','caption']\nsource='none'", 500.);
+	let snapshot =
+		LayoutEngine::new().layout_with_images(&doc, &options, &images);
+	let image = rects(&snapshot)[0];
+	let clusters = &snapshot.blocks[0].layout.text[0].clusters;
+	let baselines: std::collections::HashSet<i32> = clusters
+		.iter()
+		.map(|c| (c.rect.y + c.rect.h).round() as i32)
+		.collect();
+	assert!(baselines.len() > 1, "the placeholder did not hyphenate");
+	assert!(clusters.iter().all(|c| c.rect.x >= image.x
+		&& c.rect.x + c.rect.w <= image.x + image.w + 0.5));
+	assert_eq!(
+		snapshot.extract_text(snapshot.select_all(7).unwrap(), 7),
+		"hyphenation"
+	);
+}
+
+#[test]
 fn placeholder_updates_preserve_surrounding_text_selection_but_clear_changed_text()
  {
 	use markview_core::text::{Affinity, TextPosition, TextSelection};

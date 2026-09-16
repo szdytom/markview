@@ -34,6 +34,13 @@ at the same level, without `[brackets]`.
   before connecting, and the resolved address is pinned so a rebind cannot
   bypass the check.
 
+### Fixed
+
+- A failed or pending image typesets its placeholder through the paragraph
+  engine, so the message wraps, justifies, and hyphenates like body text and
+  fills the image box before its last line is elided. Previously the whole
+  message was shortened to one line, so a box of any size rarely showed it.
+
 ### Documentation
 
 - `docs/security.md` is revision 3: the implemented decisions, the shared

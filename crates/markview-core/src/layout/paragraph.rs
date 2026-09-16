@@ -1,5 +1,5 @@
 use super::inline::is_cjk;
-use super::{BlockContext, LayoutOptions};
+use super::{BlockContext, LayoutOptions, fitted_range};
 use crate::{
 	document::{CellAlign, Inline, InlineKind, TextStyle},
 	linebreak::{self},
@@ -23,6 +23,34 @@ impl BlockContext<'_> {
 		align: CellAlign,
 		justify: bool,
 		indent: bool,
+		opts: &LayoutOptions,
+		out: &mut BlockLayout,
+	) -> f32 {
+		self.paragraph_bounded(
+			rich, x, y, width, size, sans, align, justify, indent, None, opts,
+			out,
+		)
+	}
+
+	/// A paragraph that draws at most `max_lines` lines. When the text continues
+	/// past the bound, the last line is elided, so an image placeholder keeps its
+	/// reason inside the image box instead of spilling out of it.
+	#[expect(
+		clippy::too_many_arguments,
+		reason = "Text style and block geometry are independent layout inputs"
+	)]
+	pub(super) fn paragraph_bounded(
+		&mut self,
+		rich: &[Inline],
+		x: f32,
+		y: f32,
+		width: f32,
+		size: f32,
+		sans: bool,
+		align: CellAlign,
+		justify: bool,
+		indent: bool,
+		max_lines: Option<usize>,
 		opts: &LayoutOptions,
 		out: &mut BlockLayout,
 	) -> f32 {
@@ -84,9 +112,11 @@ impl BlockContext<'_> {
 		};
 		let mut lines: std::collections::VecDeque<_> = solution.lines.into();
 		let mut first_line = true;
+		let mut drawn = 0;
 		while let Some(mut line) = lines.pop_front() {
 			if line.units.is_empty() {
 				y_cursor += size * self.shaper.appearance.line_height;
+				drawn += 1;
 				continue;
 			}
 			// Only the line that opens the paragraph is narrowed by the indent;
@@ -97,8 +127,8 @@ impl BlockContext<'_> {
 				(x, width)
 			};
 			first_line = false;
-			let range = units[line.units.start].source.start
-				..units[line.units.end - 1].source.end;
+			let line_start = units[line.units.start].source.start;
+			let range = line_start..units[line.units.end - 1].source.end;
 			let mut clusters =
 				self.line_clusters(&p, range, line.hyphen, size, sans, width);
 			let mut natural: f32 = clusters.iter().map(|c| c.width).sum();
@@ -166,6 +196,33 @@ impl BlockContext<'_> {
 						l
 					})
 					.collect();
+			}
+			if let Some(max_lines) = max_lines
+				&& drawn + 1 == max_lines
+				&& !line.last
+			{
+				// Out of lines: one elided line stands in for the remainder, so
+				// the reader still sees how the message starts and ends.
+				let full = line_start..p.text.len();
+				let shown = self.shaper.fit(
+					&p.text[full.clone()],
+					size / self.shaper.appearance.size,
+					width,
+				);
+				clusters = self.shaper.shape(&shown, &[], size, sans);
+				for c in &mut clusters {
+					let elided = fitted_range(
+						&p.text[full.clone()],
+						&shown,
+						c.range.clone(),
+					);
+					c.range =
+						full.start + elided.start..full.start + elided.end;
+				}
+				natural = clusters.iter().map(|c| c.width).sum();
+				line.last = true;
+				line.hyphen = false;
+				lines.clear();
 			}
 			let ascent =
 				clusters.iter().map(|c| c.ascent).fold(size * 0.8, f32::max);
@@ -241,7 +298,7 @@ impl BlockContext<'_> {
 						out.links.push(LinkRect { command, rect, url });
 					}
 					for mut cluster in
-						self.draw_image(image, rect, size, width, out)
+						self.draw_image(image, rect, size, width, opts, out)
 					{
 						cluster.range.start += range.start;
 						cluster.range.end += range.start;
@@ -371,6 +428,7 @@ impl BlockContext<'_> {
 			}
 			out.width = out.width.max(line_x + actual.min(line_width));
 			y_cursor += height;
+			drawn += 1;
 		}
 		if only_images && p.images.len() == 1 {
 			let image = p.images.values().next().unwrap();

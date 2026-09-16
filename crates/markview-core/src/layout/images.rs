@@ -1,9 +1,11 @@
-use super::{BlockContext, fitted_range};
+use super::{BlockContext, LayoutOptions};
 use crate::{
+	document::{CellAlign, Inline, InlineKind, TextStyle},
 	scene::{BlockLayout, Draw, Paint, Rect},
 	style::{ColorField, Condition},
 	text::TextCluster,
 };
+
 impl BlockContext<'_> {
 	/// The image box scaled into the paragraph measure, like `max-width: 100%`.
 	pub(super) fn image_size(
@@ -58,6 +60,7 @@ impl BlockContext<'_> {
 		rect: Rect,
 		size: f32,
 		available: f32,
+		opts: &LayoutOptions,
 		out: &mut BlockLayout,
 	) -> Vec<TextCluster> {
 		let mut text_clusters = Vec::new();
@@ -102,32 +105,54 @@ impl BlockContext<'_> {
 			self.shaper.appearance =
 				self.shaper.stylesheet.text(&image, Condition::Placeholder);
 			let label_size = base * self.shaper.appearance.size;
-			let label = self.shaper.fit(&text, base, (rect.w - 12.).max(0.));
-			if rect.h >= label_size + 12. && rect.w > 12. {
-				let baseline = rect.y + 6. + label_size;
-				let mut cursor = rect.x + 6.;
-				let command = out.draws.len();
-				for c in self.shaper.shape(&label, &[], label_size, true) {
-					text_clusters.push(TextCluster {
-						range: fitted_range(&text, &label, c.range),
-						rect: Rect {
-							x: cursor,
-							y: baseline - c.ascent,
-							w: c.width.max(1.),
-							h: c.ascent + c.descent,
-						},
-						rtl: c.rtl,
-						command,
-					});
-					cursor += c.width;
+			let pad = 6.;
+			let width = (rect.w - 2. * pad).max(0.);
+			let height = (rect.h - 2. * pad).max(0.);
+			let step = label_size * self.shaper.appearance.line_height;
+			let lines = if step > 0. && width > 0. {
+				(height / step).floor() as usize
+			} else {
+				0
+			};
+			// The placeholder is typeset by the paragraph engine, so it wraps,
+			// justifies and hyphenates like body text; `lines` bounds it to the
+			// image box and the last line carries the ellipsis.
+			if lines > 0 {
+				let mut decoration = BlockLayout::default();
+				self.paragraph_bounded(
+					&[Inline {
+						kind: InlineKind::Text(text),
+						style: TextStyle::default(),
+						source: 0..0,
+					}],
+					rect.x + pad,
+					rect.y + pad,
+					width,
+					label_size,
+					false,
+					CellAlign::Left,
+					opts.justify,
+					false,
+					Some(lines),
+					opts,
+					&mut decoration,
+				);
+				let offset = out.draws.len();
+				for node in decoration.text {
+					for mut cluster in node.clusters {
+						cluster.command += offset;
+						text_clusters.push(cluster);
+					}
 				}
-				out.draws.extend(self.shaper.label(
-					&label,
-					base,
-					rect.x + 6.,
-					rect.y + 6. + label_size,
-					Paint::Styled(Condition::Placeholder, ColorField::Color),
+				out.draws.extend(decoration.draws);
+				out.overflow.extend(decoration.overflow.into_iter().map(
+					|mut o| {
+						o.commands.start += offset;
+						o.commands.end += offset;
+						o
+					},
 				));
+				out.degraded += decoration.degraded;
 			}
 			self.shaper.appearance = old;
 		}
