@@ -39,7 +39,13 @@ impl Highlighter {
 	pub(crate) fn highlight(
 		&mut self,
 		line: &str,
+		max_bytes: usize,
 	) -> Vec<(Range<usize>, Option<Color>)> {
+		// Regex backtracking is the risk here, and it grows with the input, so
+		// an over-long line keeps its text and loses only its colors.
+		if line.len() > max_bytes {
+			return vec![(0..line.len(), None)];
+		}
 		let Some(highlighter) = &mut self.inner else {
 			return vec![(0..line.len(), None)];
 		};
@@ -69,7 +75,10 @@ pub(crate) fn highlight_block(
 	language: &str,
 	theme: Option<&str>,
 	lines: impl Iterator<Item = String>,
+	max_line_bytes: usize,
 ) -> HighlightedLines {
 	let mut highlighter = Highlighter::new(language, theme);
-	lines.map(|line| highlighter.highlight(&line)).collect()
+	lines
+		.map(|line| highlighter.highlight(&line, max_line_bytes))
+		.collect()
 }

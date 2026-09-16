@@ -156,6 +156,7 @@ fn identical_content_with_a_new_version_keeps_the_selection() {
 			layout: layout.clone(),
 			content_version: 1,
 			complete: true,
+			remote_deferred: 0,
 		},
 		300.0,
 	));
@@ -166,6 +167,7 @@ fn identical_content_with_a_new_version_keeps_the_selection() {
 			layout,
 			content_version: 2,
 			complete: true,
+			remote_deferred: 0,
 		},
 		300.0,
 	));
@@ -245,6 +247,7 @@ fn heading_anchors_queue_until_their_heading_is_laid_out() {
 			layout: layout.clone(),
 			content_version: 1,
 			complete: true,
+			remote_deferred: 0,
 		},
 		300.,
 	);
@@ -267,6 +270,7 @@ fn heading_anchors_queue_until_their_heading_is_laid_out() {
 			layout: prefix,
 			content_version: 2,
 			complete: false,
+			remote_deferred: 0,
 		},
 		300.,
 	);
@@ -291,6 +295,7 @@ fn partial_reload_waits_for_anchor_and_keeps_the_old_snapshot() {
 			layout: full.clone(),
 			content_version: 1,
 			complete: true,
+			remote_deferred: 0,
 		},
 		600.,
 	);
@@ -303,6 +308,7 @@ fn partial_reload_waits_for_anchor_and_keeps_the_old_snapshot() {
 		layout: partial,
 		content_version: 2,
 		complete: false,
+		remote_deferred: 0,
 	};
 	assert!(!session.can_display(&reader, 600.));
 	assert_eq!(session.snapshot.blocks.len(), 100);
@@ -334,6 +340,7 @@ fn completing_a_prefix_preserves_scroll_and_selection_and_finishes_counts() {
 			layout: prefix.unwrap(),
 			content_version: 1,
 			complete: false,
+			remote_deferred: 0,
 		},
 		100.,
 	);
@@ -345,6 +352,7 @@ fn completing_a_prefix_preserves_scroll_and_selection_and_finishes_counts() {
 		layout,
 		content_version: 1,
 		complete: true,
+		remote_deferred: 0,
 	};
 	assert!(session.extends_prefix(&reader));
 	let rebased = session
@@ -369,10 +377,42 @@ fn text_and_layout_are_accepted_together_and_reflow_is_not_new_content() {
 		layout: engine.layout(&document, &LayoutOptions::default()),
 		content_version: 1,
 		complete: true,
+		remote_deferred: 0,
 	};
 	assert!(session.accept(reader.clone(), 300.0));
 	assert_eq!(session.counts, TextCounts { chars: 5, words: 1 });
 	assert!(!session.accept(reader, 300.0));
 	assert_eq!(session.counts, TextCounts { chars: 5, words: 1 });
 	assert!(Arc::ptr_eq(session.document.as_ref().unwrap(), &document));
+}
+
+#[test]
+fn the_remote_notice_is_per_session_and_per_content() {
+	// Every freshly opened tab starts at revision 1, so a shared "dismissed"
+	// flag keyed by revision once hid the notice in every new document.
+	let mut a = ReaderSession {
+		remote_deferred: 12,
+		..Default::default()
+	};
+	assert_eq!(a.remote_notice(), Some(12));
+	a.remote_notice_dismissed = true;
+	assert_eq!(a.remote_notice(), None);
+	// Another tab is unaffected by what this one answered.
+	let b = ReaderSession {
+		remote_deferred: 3,
+		..Default::default()
+	};
+	assert_eq!(b.remote_notice(), Some(3));
+	// So is this one after its content changes.
+	let mut c = ReaderSession {
+		remote_deferred: 5,
+		remote_notice_dismissed: true,
+		..Default::default()
+	};
+	assert_eq!(c.remote_notice(), None);
+	c.remote_notice_dismissed = false;
+	assert_eq!(c.remote_notice(), Some(5));
+	// Nothing deferred means no notice, whatever was answered before.
+	c.remote_deferred = 0;
+	assert_eq!(c.remote_notice(), None);
 }

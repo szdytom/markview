@@ -72,6 +72,7 @@ impl ReaderSettings {
 			greedy,
 			stylesheet: self.stylesheet.clone(),
 			codeblock_theme_override: self.codeblock_theme_override.clone(),
+			limits: markview_core::limits::Limits::default(),
 		}
 	}
 	pub fn validate(&self) -> Result<()> {

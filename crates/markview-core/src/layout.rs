@@ -77,6 +77,8 @@ pub struct LayoutOptions {
 	pub greedy: bool,
 	pub codeblock_theme_override: Option<String>,
 	pub stylesheet: Arc<crate::style::Stylesheet>,
+	/// Depth and work budgets; see [`crate::limits::Limits`].
+	pub limits: crate::limits::Limits,
 }
 impl Default for LayoutOptions {
 	fn default() -> Self {
@@ -89,6 +91,7 @@ impl Default for LayoutOptions {
 			greedy: false,
 			codeblock_theme_override: None,
 			stylesheet: crate::style::Stylesheet::bundled(false),
+			limits: crate::limits::Limits::default(),
 		}
 	}
 }
@@ -103,6 +106,7 @@ impl PartialEq for LayoutOptions {
 			&& self.greedy == other.greedy
 			&& self.codeblock_theme_override == other.codeblock_theme_override
 			&& self.stylesheet.layout_key() == other.stylesheet.layout_key()
+			&& self.limits == other.limits
 	}
 }
 
@@ -194,6 +198,7 @@ impl LayoutEngine {
 		mut progress: impl FnMut(&LayoutSnapshot) -> bool,
 	) -> Option<LayoutSnapshot> {
 		self.shaper.set_stylesheet(options.stylesheet.clone());
+		self.math.set_limits(options.limits);
 		self.poll_highlights();
 		let mut result = LayoutSnapshot {
 			images: images.clone(),

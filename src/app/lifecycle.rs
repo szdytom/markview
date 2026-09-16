@@ -86,6 +86,9 @@ impl ApplicationHandler<Event> for App {
 				if self.readers.session.path.as_ref() == Some(&path) =>
 			{
 				self.readers.session.content_version += 1;
+				// New content asks again before fetching every remote image.
+				self.readers.session.load_all_images = false;
+				self.readers.session.remote_notice_dismissed = false;
 				self.request(true)
 			}
 			Event::Ready(mut update)

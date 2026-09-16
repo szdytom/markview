@@ -20,6 +20,8 @@ pub struct ReaderSnapshot {
 	pub layout: LayoutSnapshot,
 	pub content_version: u64,
 	pub complete: bool,
+	/// Remote image sources the per-revision cap left unrequested.
+	pub remote_deferred: usize,
 }
 #[derive(Clone)]
 pub struct Request {
@@ -30,6 +32,8 @@ pub struct Request {
 	pub requested: Instant,
 	/// Initial viewport bottom plus prefetch, in document coordinates.
 	pub coverage: f32,
+	/// This tab's reader lifted the remote-image cap for this revision.
+	pub load_all_images: bool,
 }
 #[derive(Clone)]
 pub struct Update {
@@ -210,6 +214,7 @@ impl Worker {
 								&document,
 								&request.path,
 								request.content_version,
+								request.load_all_images,
 							);
 							let mut publication =
 								PrefixPublication::new(document.source.len());
@@ -245,6 +250,8 @@ impl Worker {
 													content_version: request
 														.content_version,
 													complete: false,
+													remote_deferred: images
+														.deferred_remote(),
 												}));
 											done(partial);
 										}
@@ -259,6 +266,7 @@ impl Worker {
 								layout,
 								content_version: request.content_version,
 								complete: true,
+								remote_deferred: images.deferred_remote(),
 							})
 						})());
 					if current.load(Ordering::Relaxed) == request.version {
@@ -361,6 +369,7 @@ mod tests {
 			options: LayoutOptions::default(),
 			requested: Instant::now(),
 			coverage: 600.,
+			load_all_images: false,
 		};
 		worker.submit(request.clone());
 		let first = rx
@@ -421,6 +430,7 @@ mod tests {
 			options: LayoutOptions::default(),
 			requested: Instant::now(),
 			coverage: 600.,
+			load_all_images: false,
 		});
 		let first = rx
 			.recv_timeout(Duration::from_secs(10))
@@ -466,6 +476,7 @@ mod tests {
 				},
 				requested: Instant::now(),
 				coverage: f32::INFINITY,
+				load_all_images: false,
 			});
 		}
 		loop {
@@ -500,6 +511,7 @@ mod reflow_tests {
 				options: LayoutOptions::default(),
 				requested: Instant::now(),
 				coverage: f32::INFINITY,
+				load_all_images: false,
 			})
 		};
 		submit(1, 1);

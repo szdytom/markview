@@ -60,7 +60,7 @@ pub(super) fn run() -> Result<()> {
 		engine.validate_stylesheet(&args.options.stylesheet)?;
 		let doc = document::parse(read_document(path)?);
 		let mut images = crate::images::Images::new(args.offline);
-		images.prepare(&doc, path, 1);
+		images.prepare(&doc, path, 1, false);
 		images.wait();
 		let mut snapshot =
 			engine.layout_with_images(&doc, &args.options, &images.snapshot);

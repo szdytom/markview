@@ -1,4 +1,4 @@
-use super::{App, BOTTOM, TOP};
+use super::{App, BOTTOM};
 use crate::layout::{Rect, Scrollbar};
 use crate::state::scroll_limit;
 impl App {
@@ -12,11 +12,12 @@ impl App {
 		let (width, height, _) = self.dimensions();
 		let metrics = self.preferences.values.stylesheet.scrollbar_metrics();
 		let band = metrics.band();
+		let top = self.content_top();
 		let track = Rect {
 			x: width - band - 2.0,
-			y: TOP,
+			y: top,
 			w: band,
-			h: (height - TOP - BOTTOM).max(0.0),
+			h: (height - top - BOTTOM).max(0.0),
 		};
 		let viewport = self.viewport();
 		// The bar spans the scrollable range, including the blank kept below

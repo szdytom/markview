@@ -1,4 +1,4 @@
-use crate::document;
+use crate::{link, state};
 use std::{
 	path::PathBuf,
 	time::{Duration, Instant},
@@ -49,7 +49,9 @@ impl App {
 		let holding = self.interaction.pointer_down.is_some()
 			|| self.interaction.scrollbar.is_some()
 			|| self.tab_strip.drag.is_some();
-		let idle = !self.interaction.panel_open && !holding;
+		let idle = !self.interaction.panel_open
+			&& self.interaction.modal.is_none()
+			&& !holding;
 		let hover = if idle {
 			self.link_at(self.interaction.cursor.0, self.interaction.cursor.1)
 		} else {
@@ -128,21 +130,14 @@ impl App {
 			}
 			return;
 		}
-		if document::openable_link(url) {
-			self.error = false;
-			self.status = match open::that_detached(url) {
-				Ok(()) => format!("Opened {url}"),
-				Err(error) => {
-					self.error = true;
-					format!("Cannot open {url}: {error}")
-				}
-			};
-			self.status_until = Some(Instant::now() + Duration::from_secs(4));
-		} else if let Some(path) = self.local_link_path(url) {
-			if path
-				.extension()
-				.is_some_and(|ext| ext.eq_ignore_ascii_case("md"))
-			{
+		let directory = self
+			.readers
+			.session
+			.path
+			.as_deref()
+			.and_then(std::path::Path::parent);
+		match crate::link::resolve(url, directory) {
+			Some(link::Target::Markdown(path)) => {
 				if background {
 					if let Some(index) = self.readers.find(&path) {
 						self.readers.queue_anchor(index, fragment);
@@ -159,59 +154,50 @@ impl App {
 						self.goto_anchor(fragment);
 					}
 				}
-				return;
 			}
-			self.error = false;
-			self.status = match open::that_detached(&path) {
-				Ok(()) => format!("Opened {}", path.display()),
-				Err(error) => {
-					self.error = true;
-					format!("Cannot open {}: {error}", path.display())
-				}
-			};
-			self.status_until = Some(Instant::now() + Duration::from_secs(4));
-		} else {
-			self.error = true;
-			self.status = format!("Not opened: {url}");
-			self.status_until = Some(Instant::now() + Duration::from_secs(4));
+			Some(link::Target::Remote(link)) => self.launch(&link),
+			Some(link::Target::OsDirect(path)) => {
+				self.launch(&path.display().to_string())
+			}
+			Some(link::Target::Confirm(path)) => {
+				let dir = path
+					.parent()
+					.filter(|p| !p.as_os_str().is_empty())
+					.map_or_else(|| PathBuf::from("."), PathBuf::from);
+				self.interaction.modal = Some(state::Modal::OpenLocal {
+					path,
+					dir,
+					document_dir: directory.map(std::path::Path::to_path_buf),
+				});
+				// "Open folder" is the default, and Enter activates it.
+				self.interaction.focus = Some(state::Command::ModalOpenFolder);
+				self.refresh_hover();
+				self.redraw();
+			}
+			None => {
+				self.error = true;
+				self.status = format!("Not opened: {url}");
+				self.status_until =
+					Some(Instant::now() + Duration::from_secs(4));
+				self.redraw();
+			}
 		}
+	}
+
+	/// Hands an already-approved target to the operating system.
+	pub(super) fn launch(&mut self, target: &str) {
+		self.error = false;
+		self.status = match open::that_detached(target) {
+			Ok(()) => format!("Opened {target}"),
+			Err(error) => {
+				self.error = true;
+				format!("Cannot open {target}: {error}")
+			}
+		};
+		self.status_until = Some(Instant::now() + Duration::from_secs(4));
 		self.redraw();
 	}
 
-	pub(super) fn local_link_path(&self, link: &str) -> Option<PathBuf> {
-		let path = if let Ok(url) = url::Url::parse(link) {
-			if url.scheme().eq_ignore_ascii_case("file") {
-				url.to_file_path().ok()?
-			} else {
-				return None;
-			}
-		} else {
-			if link.contains("://") || link.starts_with('#') {
-				return None;
-			}
-			let link = link.split(['#', '?']).next()?;
-			if link.is_empty() {
-				return None;
-			}
-			PathBuf::from(
-				percent_encoding::percent_decode_str(link)
-					.decode_utf8_lossy()
-					.into_owned(),
-			)
-		};
-		let path = if path.is_absolute() {
-			path
-		} else {
-			self.readers
-				.session
-				.path
-				.as_deref()
-				.and_then(std::path::Path::parent)
-				.unwrap_or_else(|| std::path::Path::new("."))
-				.join(path)
-		};
-		Some(std::fs::canonicalize(&path).unwrap_or(path))
-	}
 	pub(super) fn horizontal_by(&mut self, dx: f32) {
 		let (cx, cy) = self.view_geometry().document_point(
 			self.interaction.cursor.0,

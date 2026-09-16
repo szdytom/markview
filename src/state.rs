@@ -36,6 +36,29 @@ pub(crate) enum Command {
 	StylesFolder,
 	SelectTab(usize),
 	CloseTab(usize),
+	/// Dismiss the local-file confirmation without opening anything.
+	ModalDismiss,
+	/// Open the directory containing the file the confirmation names.
+	ModalOpenFolder,
+	/// Hand the confirmed local file to the operating system.
+	ModalConfirm,
+	/// Hide the remote-image banner, keeping the current fetch limit.
+	RemoteDismiss,
+	/// Lift the remote-image limit for the current document revision.
+	RemoteLoadAll,
+}
+
+/// A blocking question awaiting the reader's answer.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(crate) enum Modal {
+	/// A local file whose type is not on the inert allowlist.
+	OpenLocal {
+		path: PathBuf,
+		/// The file's directory, for the "open folder" action.
+		dir: PathBuf,
+		/// The open document's directory, for a shorter relative display.
+		document_dir: Option<PathBuf>,
+	},
 }
 
 #[derive(Default, Clone)]
@@ -59,6 +82,23 @@ pub(crate) struct ReaderSession {
 	pub(crate) select_all_pending: bool,
 	pub(crate) displayed_version: u64,
 	pub(crate) snapshot_complete: bool,
+	/// Remote image sources the loader left unrequested past the cap.
+	pub(crate) remote_deferred: usize,
+	/// Whether this tab's reader lifted the remote-image cap for this content.
+	/// It lives with the session, so it is per tab and per revision.
+	pub(crate) load_all_images: bool,
+	/// Whether this tab's reader hid the remote-image notice for this content.
+	/// It must live with the session too: every freshly opened tab starts at
+	/// revision 1, so a shared flag would suppress the notice in new documents.
+	pub(crate) remote_notice_dismissed: bool,
+}
+
+impl ReaderSession {
+	/// The deferred count while the notice strip is worth showing.
+	pub(crate) fn remote_notice(&self) -> Option<usize> {
+		(self.remote_deferred > 0 && !self.remote_notice_dismissed)
+			.then_some(self.remote_deferred)
+	}
 }
 
 pub(crate) struct ReaderTab {
@@ -96,6 +136,8 @@ pub(crate) struct InteractionState {
 	pub(crate) pressed: Option<Command>,
 	pub(crate) scrollbar: Option<ScrollbarDrag>,
 	pub(crate) last_click: Option<(Instant, (f32, f32), u8)>,
+	/// A pending local-file confirmation; while it is set it owns input.
+	pub(crate) modal: Option<Modal>,
 }
 
 /// Which scrollbar a press grabbed.
@@ -447,6 +489,7 @@ impl ReaderSession {
 		self.snapshot = reader.layout;
 		self.layout_pending = !reader.complete;
 		self.snapshot_complete = reader.complete;
+		self.remote_deferred = reader.remote_deferred;
 		self.resolve_scroll(viewport);
 		self.accepted_revision = reader.content_version;
 		self.follow_update = false;

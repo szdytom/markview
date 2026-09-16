@@ -96,6 +96,13 @@ impl Highlights {
 			!self.highlight_cache.contains_key(key)
 				&& !self.highlight_inflight.contains(key)
 		});
+		// Highlighting is cosmetic, so work past the byte budget is simply not
+		// done: the code keeps its text and is laid out uncolored.
+		let mut bytes = 0;
+		jobs.retain(|(_, _, text, _)| {
+			bytes += text.len();
+			bytes <= options.limits.highlight_bytes
+		});
 		if jobs.is_empty() {
 			return;
 		}
@@ -107,6 +114,7 @@ impl Highlights {
 			.min(jobs.len())
 			.min(if jobs.len() < 4 { 1 } else { 4 });
 		let tx = self.highlight_tx.clone();
+		let max_line_bytes = options.limits.highlight_line_bytes;
 		thread::spawn(move || {
 			let next = AtomicUsize::new(0);
 			thread::scope(|scope| {
@@ -132,6 +140,7 @@ impl Highlights {
 								language,
 								theme.as_deref(),
 								lines,
+								max_line_bytes,
 							);
 							let _ = tx.send((*key, Arc::new(highlighted)));
 						}

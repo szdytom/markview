@@ -67,6 +67,9 @@ impl Tabs {
 		}
 		self.session.path = Some(path);
 		self.session.content_version += 1;
+		// A different document starts capped again.
+		self.session.load_all_images = false;
+		self.session.remote_notice_dismissed = false;
 		self.session.scroll = 0.0;
 		self.session.pending_anchor = None;
 		self.session.horizontal.clear();
@@ -83,6 +86,8 @@ impl Tabs {
 		let mut tab = ReaderTab::new(path.clone());
 		tab.session.path = Some(path);
 		tab.session.content_version = 1;
+		tab.session.load_all_images = false;
+		tab.session.remote_notice_dismissed = false;
 		tab.session.pending_anchor = anchor;
 		self.entries.push(tab);
 		true
@@ -158,6 +163,7 @@ impl Tabs {
 			options,
 			requested: Instant::now(),
 			coverage: f32::INFINITY,
+			load_all_images: self.session.load_all_images,
 		})
 	}
 	pub(super) fn release_inactive(&mut self, now: Instant) {

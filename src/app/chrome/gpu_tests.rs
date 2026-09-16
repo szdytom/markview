@@ -1,4 +1,4 @@
-use crate::state::Command;
+use crate::state::{Command, Modal};
 use crate::{
 	document,
 	layout::LayoutEngine,
@@ -6,6 +6,7 @@ use crate::{
 };
 use anyhow::Result;
 use std::collections::HashMap;
+use std::path::PathBuf;
 
 use super::*;
 #[test]
@@ -146,6 +147,166 @@ fn settings_and_selection_frame() -> Result<()> {
 			renderer.save_png(
 				&target,
 				&output.with_file_name(format!("styles-{filename}")),
+			)?;
+		}
+	}
+	Ok(())
+}
+
+#[test]
+#[ignore = "requires a GPU; writes artifacts/notice-*.png and artifacts/confirm-modal*.png"]
+fn notice_strip_and_confirmation_frames() -> Result<()> {
+	let (width, height) = (800.0_f32, 600.0_f32);
+	let directory =
+		std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("artifacts");
+	std::fs::create_dir_all(&directory)?;
+	let mut renderer = pollster::block_on(Renderer::new(None))?;
+	for (theme, dark) in [(Theme::Light, false), (Theme::Dark, true)] {
+		let settings = ReaderSettings {
+			theme,
+			stylesheet: markview_core::style::Stylesheet::bundled(dark),
+			..Default::default()
+		};
+		renderer.set_stylesheet(settings.stylesheet.clone());
+		let document = document::parse(
+			"# Remote images\n\nThe loader requested a bounded number of these.\n\n![one](https://example.com/one.png)\n\nText continues below the notice strip.\n",
+		);
+		let snapshot = LayoutEngine::new().layout_with_images(
+			&document,
+			&settings.layout_options(width, false),
+			&Default::default(),
+		);
+		let mut ui = TextShaper::new();
+		ui.set_stylesheet(settings.stylesheet.clone());
+		let toolbar = |ui: &mut TextShaper| -> Vec<Draw> {
+			vec![
+				Draw::Rect(
+					Rect {
+						x: 0.0,
+						y: 0.0,
+						w: width,
+						h: TOP,
+					},
+					Paint::Styled(Condition::Toolbar, C::Background),
+				),
+				Draw::Rect(
+					Rect {
+						x: 0.0,
+						y: TOP - 1.0,
+						w: width,
+						h: 1.0,
+					},
+					Paint::Styled(Condition::Toolbar, C::BorderColor),
+				),
+				Draw::Rect(
+					Rect {
+						x: 0.0,
+						y: height - BOTTOM,
+						w: width,
+						h: BOTTOM,
+					},
+					Paint::Styled(Condition::Toolbar, C::Background),
+				),
+				Draw::Rect(
+					Rect {
+						x: 0.0,
+						y: height - BOTTOM,
+						w: width,
+						h: 1.0,
+					},
+					Paint::Styled(Condition::Toolbar, C::BorderColor),
+				),
+			]
+			.into_iter()
+			.chain(draw_footer(ui, None, None, None, "", width, height))
+			.collect()
+		};
+		let horizontal = HashMap::new();
+		let view = |top: f32| View {
+			width: (width * 1.25) as u32,
+			height: (height * 1.25) as u32,
+			scale: 1.25,
+			left: 20.0,
+			top,
+			bottom: BOTTOM + 10.0,
+			scroll: 0.0,
+			theme,
+			horizontal: &horizontal,
+			selection: None,
+			revision: 1,
+			hovered_link: None,
+			hovered_overflow: None,
+			held_overflow: None,
+		};
+		let target =
+			renderer.offscreen((width * 1.25) as u32, (height * 1.25) as u32);
+		let suffix = if dark { "dark" } else { "light" };
+		// The notice strip reserves its own band above the document.
+		let mut overlay = toolbar(&mut ui);
+		overlay.extend(draw_banner(&mut ui, width, 37));
+		let submission = renderer.render(
+			&snapshot,
+			&view(content_top(true) + 10.0),
+			&overlay,
+			&target.create_view(&Default::default()),
+		)?;
+		renderer.wait(Some(submission))?;
+		renderer.save_png(
+			&target,
+			&directory.join(format!("notice-strip-{suffix}.png")),
+		)?;
+		// The confirmation owns the frame; "Open folder" is focused. The target
+		// sits under the open document, so the short relative form is shown.
+		let root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("artifacts");
+		let targets = root.join("manual-test/targets");
+		let relative = InteractionState {
+			modal: Some(Modal::OpenLocal {
+				path: targets.join("payload.desktop"),
+				dir: targets.clone(),
+				document_dir: Some(root.join("manual-test")),
+			}),
+			focus: Some(Command::ModalOpenFolder),
+			cursor: (620.0, 300.0),
+			..Default::default()
+		};
+		for (interaction, name) in [
+			(&relative, "confirm-modal"),
+			// A far target has no short relative form; its front is elided.
+			(
+				&InteractionState {
+					modal: Some(Modal::OpenLocal {
+						path: PathBuf::from(
+							"/srv/data/archive/2026/exports/nightly/release-candidates/marketing/payload.desktop",
+						),
+						dir: PathBuf::from(
+							"/srv/data/archive/2026/exports/nightly",
+						),
+						document_dir: Some(root.join("manual-test")),
+					}),
+					focus: Some(Command::ModalOpenFolder),
+					cursor: (620.0, 300.0),
+					..Default::default()
+				},
+				"confirm-modal-long",
+			),
+		] {
+			let mut overlay = toolbar(&mut ui);
+			overlay.extend(modal::draw_modal(
+				&mut ui,
+				interaction,
+				width,
+				height,
+			));
+			let submission = renderer.render(
+				&snapshot,
+				&view(TOP + 10.0),
+				&overlay,
+				&target.create_view(&Default::default()),
+			)?;
+			renderer.wait(Some(submission))?;
+			renderer.save_png(
+				&target,
+				&directory.join(format!("{name}-{suffix}.png")),
 			)?;
 		}
 	}

@@ -2,9 +2,20 @@
 use super::{App, Button, chrome::Chrome};
 use crate::layout::Draw;
 impl App {
+	/// The remote-image deferral count while its banner is worth showing.
+	pub(super) fn remote_notice(&self) -> Option<usize> {
+		self.readers.session.remote_notice()
+	}
+
+	/// Top of the document area, below the toolbar and any notice strip.
+	pub(super) fn content_top(&self) -> f32 {
+		super::chrome::content_top(self.remote_notice().is_some())
+	}
+
 	fn chrome(&mut self) -> Chrome<'_> {
 		let (width, height, _) = self.dimensions();
 		let scrollbar = self.document_scrollbar();
+		let remote_notice = self.remote_notice();
 		Chrome {
 			ui: &mut self.ui,
 			session: &self.readers.session,
@@ -27,6 +38,7 @@ impl App {
 			status: &self.status,
 			status_until: self.status_until,
 			error: self.error,
+			remote_notice,
 		}
 	}
 	pub(super) fn buttons(&mut self) -> Vec<Button> {

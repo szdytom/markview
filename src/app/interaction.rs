@@ -1,7 +1,7 @@
 //! Commands, selection gestures and clipboard actions.
 use crate::cli::Mode;
 use crate::settings::{ReaderSettings, Setting};
-use crate::state::{Command, ScrollbarAxis, ScrollbarDrag};
+use crate::state::{Command, Modal, ScrollbarAxis, ScrollbarDrag};
 use markview_core::text::TextPosition;
 use std::time::{Duration, Instant};
 
@@ -36,6 +36,45 @@ impl App {
 		match action {
 			Command::SelectTab(index) => {
 				self.select_tab(index);
+				return;
+			}
+			Command::ModalDismiss => {
+				self.interaction.modal = None;
+				self.interaction.focus = None;
+				self.refresh_hover();
+				self.redraw();
+				return;
+			}
+			Command::ModalOpenFolder => {
+				if let Some(Modal::OpenLocal { dir, .. }) =
+					self.interaction.modal.clone()
+				{
+					self.interaction.modal = None;
+					self.interaction.focus = None;
+					self.launch(&dir.display().to_string());
+				}
+				return;
+			}
+			Command::ModalConfirm => {
+				if let Some(Modal::OpenLocal { path, .. }) =
+					self.interaction.modal.clone()
+				{
+					self.interaction.modal = None;
+					self.interaction.focus = None;
+					self.launch(&path.display().to_string());
+				}
+				return;
+			}
+			Command::RemoteDismiss => {
+				// Both answers belong to this tab and this content revision.
+				self.readers.session.remote_notice_dismissed = true;
+				self.redraw();
+				return;
+			}
+			Command::RemoteLoadAll => {
+				self.readers.session.remote_notice_dismissed = true;
+				self.readers.session.load_all_images = true;
+				self.request(false);
 				return;
 			}
 			Command::CloseTab(index) => {

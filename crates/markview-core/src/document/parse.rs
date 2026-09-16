@@ -22,6 +22,7 @@ struct Reader<'s> {
 	footnotes: HashMap<String, u32>,
 	/// Heading anchors already used by this document, in reading order.
 	anchors: Anchors,
+	limits: crate::limits::Limits,
 }
 
 impl Reader<'_> {
@@ -56,7 +57,22 @@ impl Reader<'_> {
 		node: &'a AstNode<'a>,
 		style: &TextStyle,
 		out: &mut RichText,
+		depth: usize,
 	) {
+		// Comrak builds the AST iteratively but produces recursion as deep as
+		// the input demands; past the budget the remaining text is kept flat
+		// instead of descending.
+		if depth >= self.limits.inline_depth {
+			let text = self.flattened(node);
+			if !text.is_empty() {
+				out.push(Inline {
+					kind: InlineKind::Text(text),
+					style: style.clone(),
+					source: self.range(node),
+				});
+			}
+			return;
+		}
 		// Raw HTML tags are siblings, so a supported tag opens a style scope
 		// that the matching closing tag ends; unsupported markup stays source.
 		let mut style = style.clone();
@@ -127,7 +143,12 @@ impl Reader<'_> {
 				}
 				NodeValue::Image(link) => {
 					let mut alt = Vec::new();
-					self.inlines(child, &TextStyle::default(), &mut alt);
+					self.inlines(
+						child,
+						&TextStyle::default(),
+						&mut alt,
+						depth + 1,
+					);
 					let alt = plain_text(&alt);
 					Some(InlineKind::Image(crate::image::ImageSpec {
 						src: link.url.clone(),
@@ -146,14 +167,31 @@ impl Reader<'_> {
 					source: self.range(child),
 				});
 			} else {
-				self.inlines(child, &child_style, out);
+				self.inlines(child, &child_style, out, depth + 1);
 			}
 		}
 	}
 
+	/// The readable text of a subtree, collected without recursion.
+	fn flattened<'a>(&self, node: &'a AstNode<'a>) -> String {
+		let mut text = String::new();
+		for descendant in node.descendants() {
+			match &descendant.data.borrow().value {
+				NodeValue::Text(t) => text.push_str(t),
+				NodeValue::Raw(t) => text.push_str(t),
+				NodeValue::Code(c) => text.push_str(&c.literal),
+				NodeValue::Math(m) => text.push_str(&m.literal),
+				NodeValue::SoftBreak => text.push(' '),
+				NodeValue::LineBreak => text.push('\n'),
+				_ => {}
+			}
+		}
+		text
+	}
+
 	fn rich<'a>(&self, node: &'a AstNode<'a>) -> RichText {
 		let mut text = Vec::new();
-		self.inlines(node, &TextStyle::default(), &mut text);
+		self.inlines(node, &TextStyle::default(), &mut text, 0);
 		merge_text(text)
 	}
 
@@ -166,7 +204,7 @@ impl Reader<'_> {
 		for child in node.children() {
 			let source = self.range(child);
 			let data = child.data.borrow();
-			let kind = if depth >= 64 {
+			let kind = if depth >= self.limits.block_depth {
 				BlockKind::Code {
 					language: "nested Markdown".into(),
 					text: self.source[source.clone()].to_string(),
@@ -325,6 +363,7 @@ pub fn parse(source: impl Into<Arc<str>>) -> Document {
 			})
 			.collect(),
 		anchors: Anchors::default(),
+		limits: crate::limits::Limits::default(),
 	};
 	let blocks = reader.blocks(root, 0);
 	let mut hasher = DefaultHasher::new();

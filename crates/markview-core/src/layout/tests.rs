@@ -3,6 +3,35 @@ use crate::document;
 use crate::document::{Inline, InlineKind, TextStyle};
 
 #[test]
+fn tables_are_truncated_to_the_configured_limits() {
+	let mut source =
+		String::from("| a | b | c | d | e | f |\n|---|---|---|---|---|---|\n");
+	for i in 0..20 {
+		source.push_str(&format!("| {i} | x | x | x | x | x |\n"));
+	}
+	let doc = document::parse(source);
+	let small = LayoutOptions {
+		limits: crate::limits::Limits {
+			table_columns: 2,
+			table_rows: 3,
+			table_cells: 4,
+			..Default::default()
+		},
+		..Default::default()
+	};
+	let truncated = LayoutEngine::new().layout(&doc, &small);
+	let full = LayoutEngine::new().layout(&doc, &LayoutOptions::default());
+	assert!(truncated.height.is_finite());
+	assert!(truncated.height > 0.0);
+	assert!(
+		truncated.height < full.height,
+		"truncated {} vs full {}",
+		truncated.height,
+		full.height
+	);
+}
+
+#[test]
 fn progressive_prefixes_share_final_geometry_and_can_be_cancelled() {
 	let doc = document::parse(
 		"A paragraph with **bold**, 中文 and $x^2$.\n\n".repeat(40),

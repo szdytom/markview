@@ -24,6 +24,10 @@ use std::{
 	time::{Duration, Instant, SystemTime},
 };
 const CPU_BUDGET: usize = 256 * 1024 * 1024;
+/// Distinct remote sources one document may fetch per revision. Past this the
+/// remainder wait as placeholders until the reader chooses to load them.
+const MAX_REMOTE_SOURCES: usize = 128;
+const REMOTE_LIMIT: &str = "Remote image limit reached (Load all)";
 static VERSION: AtomicU64 = AtomicU64::new(1);
 
 struct Job {
@@ -71,37 +75,15 @@ impl Images {
 			thread::Builder::new()
 				.name(format!("markview-image-{i}"))
 				.spawn(move || {
-					let client = reqwest::blocking::Client::builder()
-						.timeout(Duration::from_secs(15))
-						.connect_timeout(Duration::from_secs(5))
-						.referer(false)
-						.redirect(reqwest::redirect::Policy::custom(
-							|attempt| {
-								if attempt.previous().len() >= 5 {
-									attempt.error("Too many redirects")
-								} else if !matches!(
-									attempt.url().scheme(),
-									"http" | "https"
-								) {
-									attempt.error("Unsupported redirect scheme")
-								} else {
-									attempt.follow()
-								}
-							},
-						))
-						.build();
 					loop {
 						let Ok(job) = rx.lock().unwrap().recv() else {
 							break;
 						};
 						// A malformed file must not take the reader down with it.
 						let result = std::panic::catch_unwind(
-							std::panic::AssertUnwindSafe(|| match &client {
-								Ok(client) => fetch(&job.source, client)
-									.and_then(|b| decode(&b, job.target)),
-								Err(e) => {
-									Err(anyhow::anyhow!("Image client: {e}"))
-								}
+							std::panic::AssertUnwindSafe(|| {
+								fetch(&job.source)
+									.and_then(|b| decode(&b, job.target))
 							}),
 						)
 						.unwrap_or_else(|_| {
@@ -135,7 +117,15 @@ impl Images {
 		}
 	}
 
-	pub fn prepare(&mut self, doc: &Document, path: &Path, revision: u64) {
+	/// `load_all` comes from the tab that asked for this layout, so lifting the
+	/// remote cap never leaks into another document or another revision.
+	pub fn prepare(
+		&mut self,
+		doc: &Document,
+		path: &Path,
+		revision: u64,
+		load_all: bool,
+	) {
 		if self.document != path {
 			self.entries.clear();
 			self.snapshot = Default::default();
@@ -144,11 +134,24 @@ impl Images {
 		}
 		let reload = self.revision != revision;
 		self.revision = revision;
+		if load_all {
+			// Clear a cap error recorded by an earlier pass of this revision,
+			// so the deferred images are scheduled now.
+			for e in self.entries.values_mut() {
+				if e.info.error.as_deref() == Some(REMOTE_LIMIT) {
+					e.info.error = None;
+					e.info.size = None;
+				}
+			}
+		}
 		let mut specs = Vec::new();
 		for b in &doc.blocks {
 			b.images(&mut specs);
 		}
 		let mut wanted = HashSet::new();
+		// Distinct remote sources past the cap stay placeholders; in document
+		// order, so the same document always defers the same images.
+		let mut remote_seen = 0usize;
 		let retained_pixels: HashMap<_, _> = {
 			let pixels = self.snapshot.pixels.decoded.lock().unwrap();
 			self.entries
@@ -168,7 +171,13 @@ impl Images {
 		for spec in specs {
 			match source(&spec.src, path, self.offline) {
 				Ok(source) => {
-					wanted.insert(source.clone());
+					let first = wanted.insert(source.clone());
+					let remote = matches!(source, Source::Http(_));
+					if remote && first {
+						remote_seen += 1;
+					}
+					let capped =
+						remote && !load_all && remote_seen > MAX_REMOTE_SOURCES;
 					let e = self.entries.entry(source.clone()).or_insert_with(
 						|| Entry {
 							ticket: 0,
@@ -185,6 +194,10 @@ impl Images {
 					}
 					if reload && e.info.error.is_some() {
 						e.info.error = None;
+						e.info.size = None;
+					}
+					if capped {
+						e.info.error = Some(REMOTE_LIMIT.into());
 						e.info.size = None;
 					}
 					self.snapshot
@@ -337,5 +350,13 @@ impl Images {
 			self.poll();
 			thread::sleep(Duration::from_millis(5));
 		}
+	}
+
+	/// Remote sources the per-revision cap left unrequested.
+	pub fn deferred_remote(&self) -> usize {
+		self.entries
+			.values()
+			.filter(|e| e.info.error.as_deref() == Some(REMOTE_LIMIT))
+			.count()
 	}
 }

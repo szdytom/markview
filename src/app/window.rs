@@ -85,7 +85,9 @@ impl App {
 				button: MouseButton::Middle,
 				state: ElementState::Pressed,
 				..
-			} if !self.interaction.panel_open => {
+			} if !self.interaction.panel_open
+				&& self.interaction.modal.is_none() =>
+			{
 				if let Some(index) = self.tab_at_cursor() {
 					self.action(Command::CloseTab(index));
 				} else if let Some(link) = self.link_at(
@@ -105,6 +107,22 @@ impl App {
 				// A new press always ends a drag left over from a release the
 				// platform swallowed outside the window.
 				self.interaction.scrollbar = None;
+				// A confirmation owns input: only its buttons answer.
+				if self.interaction.modal.is_some() {
+					self.interaction.reset_clicks();
+					let (x, y) = self.interaction.cursor;
+					if let Some(button) = self
+						.buttons()
+						.into_iter()
+						.find(|b| b.rect.contains(x, y))
+					{
+						self.interaction.focus = Some(button.action);
+						self.interaction.pressed = Some(button.action);
+						self.action(button.action);
+					}
+					self.redraw();
+					return;
+				}
 				if let Some(index) = (!self.interaction.panel_open)
 					.then(|| self.tab_close_at_cursor())
 					.flatten()
@@ -139,7 +157,8 @@ impl App {
 					self.interaction.focus = None;
 					if self.begin_scrollbar_drag() {
 						self.redraw();
-					} else if self.interaction.cursor.1 >= TOP + 10.0
+					} else if self.interaction.cursor.1
+						>= self.content_top() + 10.0
 						&& self.interaction.cursor.1
 							< self.dimensions().1 - BOTTOM - 10.0
 					{
@@ -201,6 +220,10 @@ impl App {
 				self.tab_strip.cancel_drag();
 				self.interaction.pressed = None;
 				self.interaction.scrollbar = None;
+				if self.interaction.modal.is_some() {
+					self.redraw();
+					return;
+				}
 				let link = self.link_at(
 					self.interaction.cursor.0,
 					self.interaction.cursor.1,
@@ -224,7 +247,9 @@ impl App {
 				self.redraw();
 			}
 			WindowEvent::MouseWheel { delta, .. } => {
-				if self.interaction.panel_open {
+				if self.interaction.panel_open
+					|| self.interaction.modal.is_some()
+				{
 					return;
 				}
 				let (dx, dy) = match delta {
@@ -263,6 +288,18 @@ impl App {
 			{
 				let command = self.interaction.modifiers.control_key()
 					|| self.interaction.modifiers.super_key();
+				// A confirmation answers to Tab, Enter and Escape only.
+				if self.interaction.modal.is_some()
+					&& (command
+						|| !matches!(
+							event.logical_key,
+							Key::Named(
+								NamedKey::Tab
+									| NamedKey::Enter | NamedKey::Escape
+							)
+						)) {
+					return;
+				}
 				if command {
 					if let Key::Character(c) = &event.logical_key {
 						match c.to_lowercase().as_str() {
@@ -378,6 +415,7 @@ impl App {
 						Key::Named(NamedKey::Escape) => {
 							self.tab_strip.cancel_drag();
 							self.interaction.focus = None;
+							self.interaction.modal = None;
 							self.interaction.panel_open = false;
 							self.interaction.styles_open = false;
 							self.interaction.selection = None;

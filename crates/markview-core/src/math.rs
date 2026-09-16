@@ -1,3 +1,4 @@
+use crate::limits::Limits;
 use ratex_types::{DisplayList, MathStyle};
 use std::{collections::HashMap, sync::Arc};
 
@@ -13,9 +14,19 @@ pub struct MathBox {
 #[derive(Default)]
 pub struct MathEngine {
 	cache: HashMap<(String, bool, u32), Result<Arc<MathBox>, String>>,
+	limits: Limits,
+	/// Formula bytes laid out since `set_limits`, which resets per pass.
+	used: usize,
 }
 
 impl MathEngine {
+	/// Applies the pass budgets. A new pass starts with a fresh allowance, so
+	/// a resize can still lay out formulas the previous pass refused.
+	pub fn set_limits(&mut self, limits: Limits) {
+		self.limits = limits;
+		self.used = 0;
+	}
+
 	pub fn layout(
 		&mut self,
 		latex: &str,
@@ -30,8 +41,14 @@ impl MathEngine {
 		if self.cache.len() >= 256 {
 			self.cache.clear();
 		}
-		let result = if latex.len() > 16_384 {
-			Err("Formula exceeds 16 KiB".into())
+		let over_budget =
+			self.used.saturating_add(latex.len()) > self.limits.math_bytes;
+		let over_limit =
+			over_budget || latex.len() > self.limits.math_formula_bytes;
+		let result = if latex.len() > self.limits.math_formula_bytes {
+			Err("Formula exceeds the size budget".into())
+		} else if over_budget {
+			Err("Document formula budget exceeded".into())
 		} else {
 			std::panic::catch_unwind(|| {
 				let ast =
@@ -65,7 +82,18 @@ impl MathEngine {
 			})
 			.unwrap_or_else(|_| Err("Formula could not be laid out".into()))
 		};
-		self.cache.insert(key, result.clone());
+		match &result {
+			Ok(_) => {
+				self.used = self.used.saturating_add(latex.len());
+				self.cache.insert(key, result.clone());
+			}
+			// A pass budget must not stick in the cache: the next pass gets a
+			// fresh allowance.
+			Err(_) if over_limit => {}
+			Err(_) => {
+				self.cache.insert(key, result.clone());
+			}
+		}
 		result
 	}
 }
@@ -84,5 +112,31 @@ mod tests {
 			&m,
 			&e.layout(r"\frac{x_1}{\sqrt{y}}", false, 18.0).unwrap()
 		));
+	}
+	#[test]
+	fn large_formulas_fit_the_default_budget() {
+		let mut e = MathEngine::default();
+		let latex =
+			format!(r"\frac{{x_1}}{{\sqrt{{y}}}}{}", " + z".repeat(2_500));
+		assert!(latex.len() > 10_000);
+		assert!(e.layout(&latex, false, 18.0).is_ok());
+	}
+	#[test]
+	fn formula_budgets_reject_without_sticking_in_the_cache() {
+		let mut e = MathEngine::default();
+		e.set_limits(Limits {
+			math_formula_bytes: 2,
+			..Default::default()
+		});
+		assert!(e.layout("xxxx", false, 18.0).is_err());
+		e.set_limits(Limits {
+			math_bytes: 0,
+			..Default::default()
+		});
+		assert!(e.layout("x", false, 18.0).is_err());
+		// A new pass gets a fresh allowance, so a resize can still succeed.
+		e.set_limits(Limits::default());
+		assert!(e.layout("x", false, 18.0).is_ok());
+		assert!(e.layout("xxxx", false, 18.0).is_ok());
 	}
 }

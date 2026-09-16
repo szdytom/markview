@@ -162,7 +162,7 @@ impl App {
 			height,
 			left: ((width - self.readers.session.snapshot.width) / 2.0)
 				.max(20.0),
-			top: TOP + 10.0,
+			top: self.content_top() + 10.0,
 			bottom: BOTTOM + 10.0,
 			scroll: self.readers.session.scroll,
 		}

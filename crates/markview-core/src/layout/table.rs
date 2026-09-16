@@ -19,10 +19,16 @@ impl BlockContext<'_> {
 		opts: &LayoutOptions,
 		out: &mut BlockLayout,
 	) -> f32 {
-		let n = align.len();
+		let n = align.len().min(opts.limits.table_columns);
 		if n == 0 {
 			return 0.;
 		}
+		// Both loops walk the same truncated grid: columns are capped first,
+		// then rows are capped so the cell total stays bounded too.
+		let rows = &rows[..rows
+			.len()
+			.min(opts.limits.table_rows)
+			.min((opts.limits.table_cells / n).max(1))];
 		let table_appearance = self.shaper.appearance.clone();
 		let mut minima = vec![48_f32; n];
 		let mut preferred = vec![48_f32; n];

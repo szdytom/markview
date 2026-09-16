@@ -25,6 +25,50 @@ fn switching_restores_sessions_and_requests_remain_globally_ordered() {
 }
 
 #[test]
+fn lifting_the_image_cap_is_per_tab_and_per_revision() {
+	let mut tabs = Tabs::default();
+	let now = Instant::now();
+	tabs.open(PathBuf::from("a.md"), now);
+	assert!(
+		!tabs
+			.request(LayoutOptions::default(), false)
+			.unwrap()
+			.load_all_images
+	);
+	// The reader lifts the cap while reading `a.md`.
+	tabs.session.load_all_images = true;
+	assert!(
+		tabs.request(LayoutOptions::default(), false)
+			.unwrap()
+			.load_all_images
+	);
+	// A newly opened document starts capped, whatever `a.md` asked for.
+	tabs.open(PathBuf::from("b.md"), now);
+	assert!(
+		!tabs
+			.request(LayoutOptions::default(), false)
+			.unwrap()
+			.load_all_images
+	);
+	// Switching back keeps each tab's own answer.
+	assert!(tabs.select(0, now));
+	assert!(
+		tabs.request(LayoutOptions::default(), false)
+			.unwrap()
+			.load_all_images
+	);
+	// New content in `a.md` asks again.
+	tabs.session.content_version += 1;
+	tabs.session.load_all_images = false;
+	assert!(
+		!tabs
+			.request(LayoutOptions::default(), false)
+			.unwrap()
+			.load_all_images
+	);
+}
+
+#[test]
 fn closing_tabs_preserves_active_state_and_releases_only_inactive_documents() {
 	let mut tabs = Tabs::default();
 	let now = Instant::now();

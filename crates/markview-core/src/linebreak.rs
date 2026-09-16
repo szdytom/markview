@@ -1,5 +1,6 @@
 //! Bounded Knuth–Plass: boxes, stretchable glue, penalties and fitness classes.
 //! Widths are shaped advances, never estimates from Unicode character counts.
+use crate::limits::Limits;
 use std::ops::Range;
 
 #[derive(Clone, Copy, Debug)]
@@ -47,7 +48,6 @@ pub struct Solution {
 	pub evaluations: usize,
 }
 
-const BUDGET: usize = 250_000;
 const INF: f64 = f64::INFINITY;
 
 #[derive(Clone, Copy)]
@@ -162,6 +162,7 @@ fn optimize(
 	justified: bool,
 	emergency: bool,
 	budget: &mut usize,
+	limit: usize,
 ) -> Option<Solution> {
 	let p = Prefix::new(units);
 	let mut points = vec![0];
@@ -183,7 +184,7 @@ fn optimize(
 		let last = end == units.len() || br.forced;
 		for i in (earliest..j).rev() {
 			*budget += 1;
-			if *budget > BUDGET {
+			if *budget > limit {
 				return None;
 			}
 			let (range, natural, stretch, shrink) =
@@ -285,15 +286,20 @@ fn optimize(
 }
 
 /// Greedy fallback observes legal boundaries; an unbreakable box may overflow.
-pub fn greedy(units: &[Unit], target: f32) -> Solution {
-	greedy_with_first(units, target, target)
+pub fn greedy(units: &[Unit], target: f32, limits: &Limits) -> Solution {
+	greedy_with_first(units, target, target, limits.linebreak_evaluations)
 }
 
 /// Greedy fallback whose first line may have a shorter target, for indents.
+///
+/// `max_evaluations` bounds the candidate scan. Once it is spent, the scan
+/// stops at the best candidate found so far, or advances one unit when there
+/// was none, so the loop always terminates and never loses content.
 pub fn greedy_with_first(
 	units: &[Unit],
 	target: f32,
 	first_target: f32,
+	max_evaluations: usize,
 ) -> Solution {
 	let p = Prefix::new(units);
 	let mut result = Solution {
@@ -305,11 +311,19 @@ pub fn greedy_with_first(
 		let line_target =
 			if start == 0 { first_target } else { target }.max(1.0);
 		let mut best = None;
-		for end in start + 1..=units.len() {
+		let mut end = start + 1;
+		while end <= units.len() {
+			// The budget stops the scan even when no legal break was found, so
+			// a paragraph with few break opportunities cannot cost O(n²).
+			if result.evaluations >= max_evaluations {
+				break;
+			}
+			result.evaluations += 1;
 			let br = units[end - 1]
 				.after
 				.or_else(|| (end == units.len()).then_some(Break::FORCED));
 			let Some(br) = br else {
+				end += 1;
 				continue;
 			};
 			let (range, width, _, _) = p.metrics(units, start, end);
@@ -331,16 +345,36 @@ pub fn greedy_with_first(
 			if last || width > line_target {
 				break;
 			}
+			end += 1;
 		}
-		let (end, line) = best.expect("end of paragraph is a breakpoint");
+		let (end, line) = best.unwrap_or_else(|| {
+			// The budget ran out before a legal break; take one unit so the
+			// outer loop always advances.
+			let (range, width, _, _) = p.metrics(units, start, start + 1);
+			(
+				start + 1,
+				Line {
+					units: range,
+					width,
+					ratio: 0.0,
+					hyphen: false,
+					last: start + 1 == units.len(),
+				},
+			)
+		});
 		result.lines.push(line);
 		start = end;
 	}
 	result
 }
 
-pub fn break_lines(units: &[Unit], target: f32, justified: bool) -> Solution {
-	break_lines_with_first(units, target, target, justified)
+pub fn break_lines(
+	units: &[Unit],
+	target: f32,
+	justified: bool,
+	limits: &Limits,
+) -> Solution {
+	break_lines_with_first(units, target, target, justified, limits)
 }
 
 /// Bounded Knuth–Plass where the line opening the paragraph may be indented,
@@ -350,26 +384,41 @@ pub fn break_lines_with_first(
 	target: f32,
 	first_target: f32,
 	justified: bool,
+	limits: &Limits,
 ) -> Solution {
 	if units.is_empty() {
 		return Solution::default();
 	}
 	let target = target.max(1.0);
 	let first_target = first_target.max(1.0);
+	let limit = limits.linebreak_evaluations;
 	let mut budget = 0;
-	if let Some(s) =
-		optimize(units, target, first_target, justified, false, &mut budget)
-	{
+	if let Some(s) = optimize(
+		units,
+		target,
+		first_target,
+		justified,
+		false,
+		&mut budget,
+		limit,
+	) {
 		return s;
 	}
-	if budget <= BUDGET
-		&& let Some(s) =
-			optimize(units, target, first_target, justified, true, &mut budget)
-	{
+	if budget <= limit
+		&& let Some(s) = optimize(
+			units,
+			target,
+			first_target,
+			justified,
+			true,
+			&mut budget,
+			limit,
+		) {
 		return s;
 	}
-	let mut s = greedy_with_first(units, target, first_target);
-	s.evaluations = budget;
+	let spent = budget;
+	let mut s = greedy_with_first(units, target, first_target, limit);
+	s.evaluations += spent;
 	s
 }
 
@@ -403,7 +452,7 @@ mod tests {
 	fn forced_breaks_are_not_skipped() {
 		let mut u = words(&[12.0; 8]);
 		u[3].after = Some(Break::FORCED);
-		let s = break_lines(&u, 100.0, true);
+		let s = break_lines(&u, 100.0, true, &Limits::default());
 		assert_eq!(s.lines[0].units, 0..3);
 		assert_eq!(s.lines.len(), 2);
 		assert!(s.lines.iter().all(|l| l.last && l.ratio == 0.0));
@@ -437,14 +486,14 @@ mod tests {
 			}
 			best = best.min(cost);
 		}
-		let actual = break_lines(&u, target, false);
+		let actual = break_lines(&u, target, false, &Limits::default());
 		assert!(!actual.degraded);
 		assert!((actual.demerits - best).abs() < 0.001);
 	}
 	#[test]
 	fn unbreakable_box_overflows_without_losing_content() {
 		let u = words(&[500.0, 10.0]);
-		let s = break_lines(&u, 50.0, true);
+		let s = break_lines(&u, 50.0, true, &Limits::default());
 		assert!(s.degraded);
 		assert_eq!(s.lines[0].units, 0..1);
 		assert_eq!(s.lines[1].units, 2..3);
@@ -452,14 +501,16 @@ mod tests {
 	#[test]
 	fn first_line_target_narrows_only_the_opening_line() {
 		let u = words(&[12.0; 6]);
-		let indented = break_lines_with_first(&u, 40.0, 20.0, false);
+		let indented =
+			break_lines_with_first(&u, 40.0, 20.0, false, &Limits::default());
 		assert!(!indented.degraded);
 		// The full measure fits two words per line; the indented first line
 		// fits only one, and the remaining lines recover the full measure.
 		assert_eq!(indented.lines[0].units, 0..1);
 		assert_eq!(indented.lines.len(), 4);
-		let equal = break_lines_with_first(&u, 40.0, 40.0, false);
-		let baseline = break_lines(&u, 40.0, false);
+		let equal =
+			break_lines_with_first(&u, 40.0, 40.0, false, &Limits::default());
+		let baseline = break_lines(&u, 40.0, false, &Limits::default());
 		assert_eq!(equal.lines.len(), baseline.lines.len());
 		assert!(
 			equal
@@ -468,7 +519,39 @@ mod tests {
 				.zip(&baseline.lines)
 				.all(|(a, b)| a.units == b.units)
 		);
-		let greedy = greedy_with_first(&u, 40.0, 20.0);
+		let greedy = greedy_with_first(
+			&u,
+			40.0,
+			20.0,
+			Limits::default().linebreak_evaluations,
+		);
 		assert_eq!(greedy.lines[0].units, 0..1);
+	}
+	#[test]
+	fn greedy_budget_terminates_and_covers_every_unit() {
+		// One unbreakable run: without a budget the scan is quadratic.
+		let mut u = words(&[7.0; 400]);
+		for unit in &mut u {
+			unit.after = None;
+		}
+		u.last_mut().unwrap().after = Some(Break::FORCED);
+		let budget = 64;
+		let s = greedy_with_first(&u, 40.0, 40.0, budget);
+		assert_eq!(s.evaluations, budget);
+		// The lines are ordered, never go backwards, and reach the end.
+		let mut next = 0;
+		for line in &s.lines {
+			assert!(line.units.start <= line.units.end);
+			assert!(line.units.start >= next);
+			next = line.units.end;
+		}
+		assert_eq!(s.lines.last().unwrap().units.end, u.len());
+	}
+	#[test]
+	fn a_zero_budget_still_produces_lines() {
+		let u = words(&[9.0; 5]);
+		let s = greedy_with_first(&u, 40.0, 40.0, 0);
+		assert_eq!(s.evaluations, 0);
+		assert_eq!(s.lines.last().unwrap().units.end, u.len());
 	}
 }

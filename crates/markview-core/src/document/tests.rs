@@ -79,16 +79,16 @@ fn unsupported_html_keeps_the_source() {
 	assert!(plain_text(p).contains("<span>s</span>"));
 }
 #[test]
-fn only_safe_link_schemes_are_openable() {
-	assert!(openable_link("https://example.com/a?b=c#d"));
-	assert!(openable_link("HTTP://example.com"));
-	assert!(openable_link("mailto:reader@example.com"));
-	assert!(!openable_link("javascript:alert(1)"));
-	assert!(!openable_link("file:///etc/passwd"));
-	assert!(!openable_link("ftp://example.com"));
-	assert!(!openable_link("other.md"));
-	assert!(!openable_link("//example.com"));
-	assert!(!openable_link("#section"));
+fn deeply_nested_emphasis_is_bounded_and_keeps_the_text() {
+	// Regression for a 12 KB document that used to abort the process: comrak
+	// builds this AST iteratively, but Markview used to walk it recursively.
+	let n = 6000;
+	let doc = parse(format!("{}a{}", "*".repeat(n), "*".repeat(n)));
+	assert_eq!(doc.blocks.len(), 1);
+	let BlockKind::Paragraph(text) = &doc.blocks[0].kind else {
+		panic!("expected a paragraph")
+	};
+	assert_eq!(plain_text(text), "a");
 }
 #[test]
 fn heading_slugs_follow_the_github_rules() {

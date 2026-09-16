@@ -48,13 +48,19 @@ impl BlockContext<'_> {
 		let solution =
 			crate::profile::span(crate::profile::Stage::LineBreak, || {
 				if opts.greedy {
-					linebreak::greedy_with_first(&units, width, first_width)
+					linebreak::greedy_with_first(
+						&units,
+						width,
+						first_width,
+						opts.limits.linebreak_evaluations,
+					)
 				} else {
 					linebreak::break_lines_with_first(
 						&units,
 						width,
 						first_width,
 						justify,
+						&opts.limits,
 					)
 				}
 			});
@@ -142,9 +148,14 @@ impl BlockContext<'_> {
 				);
 				natural = clusters.iter().map(|c| c.width).sum();
 				let tail = if opts.greedy {
-					linebreak::greedy(&units[end..], width)
+					linebreak::greedy(&units[end..], width, &opts.limits)
 				} else {
-					linebreak::break_lines(&units[end..], width, justify)
+					linebreak::break_lines(
+						&units[end..],
+						width,
+						justify,
+						&opts.limits,
+					)
 				};
 				lines = tail
 					.lines

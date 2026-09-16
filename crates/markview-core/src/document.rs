@@ -177,18 +177,6 @@ impl Block {
 	}
 }
 
-/// Only schemes the operating system can safely hand to a browser or mail
-/// client are ever opened; `file:`, `javascript:` and local paths are not.
-pub fn openable_link(url: &str) -> bool {
-	let Some((scheme, _)) = url.split_once(':') else {
-		return false;
-	};
-	matches!(
-		scheme.to_ascii_lowercase().as_str(),
-		"http" | "https" | "mailto"
-	)
-}
-
 fn semantic_key(kind: &BlockKind) -> u64 {
 	let mut hash = DefaultHasher::new();
 	std::mem::discriminant(kind).hash(&mut hash);

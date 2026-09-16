@@ -4,6 +4,7 @@ mod highlight;
 mod html;
 pub mod image;
 pub mod layout;
+pub mod limits;
 pub mod linebreak;
 pub mod math;
 pub mod profile;

@@ -8,7 +8,7 @@ use anyhow::Result;
 use std::time::Instant;
 use winit::event_loop::ActiveEventLoop;
 
-use super::{App, BOTTOM, Event, TOP};
+use super::{App, BOTTOM, Event};
 impl App {
 	pub(super) fn render(
 		&mut self,
@@ -32,7 +32,7 @@ impl App {
 			scroll: self.readers.session.scroll,
 			left: ((width - self.readers.session.snapshot.width) / 2.0)
 				.max(20.0),
-			top: TOP + 10.0,
+			top: self.content_top() + 10.0,
 			bottom: BOTTOM + 10.0,
 			theme: self.preferences.values.theme,
 			horizontal: &self.readers.session.horizontal,
@@ -51,7 +51,8 @@ impl App {
 			return Ok(());
 		};
 		renderer.set_pointer(
-			(!self.interaction.panel_open).then_some(self.interaction.cursor),
+			(!self.interaction.panel_open && self.interaction.modal.is_none())
+				.then_some(self.interaction.cursor),
 		);
 		let (frame, suboptimal) = match renderer.acquire(window.clone())? {
 			crate::render::FrameStatus::Ready(frame, suboptimal) => {
