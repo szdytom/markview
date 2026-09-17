@@ -19,6 +19,7 @@ at the same level, without `[brackets]`.
   note's number moves back to the citation it was opened from.
 - MVSS adds a `footnote_ref` condition styling footnote references and the
   note's number.
+- Math accepts LaTeX `\(...\)` and `\[...\]` delimiters alongside dollar signs.
 
 ## 0.1.1 - 2026-09-16
 

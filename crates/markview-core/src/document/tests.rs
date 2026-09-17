@@ -158,6 +158,21 @@ fn incomplete_fence_and_math_do_not_drop_text() {
 	);
 }
 #[test]
+fn latex_delimiters_produce_math() {
+	let d = parse("Inline \\(a+b\\) and display \\[c+d\\].\n");
+	let BlockKind::Paragraph(p) = &d.blocks[0].kind else {
+		panic!()
+	};
+	assert!(p.iter().any(|s| matches!(
+		&s.kind,
+		InlineKind::Math { latex, display: false } if latex == "a+b"
+	)));
+	assert!(p.iter().any(|s| matches!(
+		&s.kind,
+		InlineKind::Math { latex, display: true } if latex == "c+d"
+	)));
+}
+#[test]
 fn cjk_friendly_emphasis_closes_next_to_cjk_text() {
 	let d = parse("**この文は重要です。**但这句话并不重要。\n");
 	let BlockKind::Paragraph(p) = &d.blocks[0].kind else {
