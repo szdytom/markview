@@ -416,3 +416,20 @@ fn the_remote_notice_is_per_session_and_per_content() {
 	c.remote_deferred = 0;
 	assert_eq!(c.remote_notice(), None);
 }
+
+#[test]
+fn a_footnote_returns_to_the_reference_it_was_opened_from() {
+	let mut session = ReaderSession {
+		jump_origin: Some(("fn:2".into(), 640.)),
+		..Default::default()
+	};
+	assert_eq!(session.footnote_return("2"), Some(640.));
+	// Another note, and a heading jump, have no reference to return to.
+	assert_eq!(session.footnote_return("1"), None);
+	session.jump_origin = Some(("details".into(), 120.));
+	assert_eq!(session.footnote_return("2"), None);
+	// Releasing the heavy layout drops the origin with it.
+	session.jump_origin = Some(("fn:2".into(), 640.));
+	session.release_heavy();
+	assert_eq!(session.footnote_return("2"), None);
+}

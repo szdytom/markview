@@ -79,6 +79,9 @@ pub(crate) struct ReaderSession {
 	pub(crate) pending_scroll: Option<f32>,
 	/// A heading anchor waiting for its heading to be laid out.
 	pub(crate) pending_anchor: Option<String>,
+	/// The internal fragment the reader last jumped to, with the scroll offset
+	/// it left, so a footnote's number can return to its reference.
+	pub(crate) jump_origin: Option<(String, f32)>,
 	pub(crate) select_all_pending: bool,
 	pub(crate) displayed_version: u64,
 	pub(crate) snapshot_complete: bool,
@@ -98,6 +101,13 @@ impl ReaderSession {
 	pub(crate) fn remote_notice(&self) -> Option<usize> {
 		(self.remote_deferred > 0 && !self.remote_notice_dismissed)
 			.then_some(self.remote_deferred)
+	}
+
+	/// The scroll offset a footnote's number returns to, when the reader
+	/// jumped there from one of its references.
+	pub(crate) fn footnote_return(&self, label: &str) -> Option<f32> {
+		let (fragment, scroll) = self.jump_origin.as_ref()?;
+		(document::footnote::label(fragment) == Some(label)).then_some(*scroll)
 	}
 }
 
@@ -409,6 +419,7 @@ impl ReaderSession {
 		self.document = None;
 		self.requested_options = None;
 		self.pending_anchor = None;
+		self.jump_origin = None;
 	}
 
 	/// Scrolls to a queued heading anchor against the current snapshot.

@@ -52,6 +52,7 @@ pub enum Condition {
 	Link,
 	Del,
 	Sup,
+	FootnoteRef,
 	Code,
 	Error,
 	Hover,
@@ -95,6 +96,7 @@ impl Condition {
 		(Self::Link, "link"),
 		(Self::Del, "del"),
 		(Self::Sup, "sup"),
+		(Self::FootnoteRef, "footnote_ref"),
 		(Self::Code, "code"),
 		(Self::Error, "error"),
 		(Self::Hover, "hover"),
@@ -136,7 +138,9 @@ impl Condition {
 			TaskMarker => chain_of(&[Body, ListItem, TaskMarker]),
 			Caption | Placeholder => chain_of(&[Body, Image, self]),
 			Math => chain_of(&[Body, Math]),
-			Em | Strong | Link | Del | Sup | Code => chain_of(&[Body, self]),
+			Em | Strong | Link | Del | Sup | FootnoteRef | Code => {
+				chain_of(&[Body, self])
+			}
 			Error => chain_of(&[Body, Math, Error]),
 			Hover => chain_of(&[Body, Link, Hover]),
 			Selection | Scrollbar => chain_of(&[self]),
@@ -159,8 +163,8 @@ impl Condition {
 			Self::Em
 				| Self::Strong
 				| Self::Link | Self::Del
-				| Self::Sup | Self::Code
-				| Self::Math
+				| Self::Sup | Self::FootnoteRef
+				| Self::Code | Self::Math
 		)
 	}
 	/// The conditions whose rules own this element's box: the element itself
@@ -236,6 +240,7 @@ impl ConditionSet {
 			| Condition::Link.bit()
 			| Condition::Del.bit()
 			| Condition::Sup.bit()
+			| Condition::FootnoteRef.bit()
 			| Condition::Code.bit()
 			| Condition::Math.bit();
 		self.0 & INLINE != 0

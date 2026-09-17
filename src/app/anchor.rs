@@ -1,10 +1,14 @@
-//! Fragment links: heading anchors inside the reader and across documents.
+//! Fragment links: heading anchors and footnotes inside the reader and across
+//! documents.
 //!
 //! A link may name a heading with a fragment. `#section` moves inside the
 //! current document; `other.md#section` opens that document and then moves.
 //! Because layout is progressive, the target heading may not exist yet, so the
-//! fragment is queued on the session until its heading is laid out.
+//! fragment is queued on the session until its heading is laid out. Footnote
+//! references and a note's number use the same fragments; the number's
+//! `fnback:` fragment is answered here from where the reader jumped from.
 use super::App;
+use markview_core::document::footnote;
 use std::time::{Duration, Instant};
 
 /// A link's document part, without its fragment.
@@ -25,11 +29,50 @@ pub(super) fn link_fragment(link: &str) -> Option<String> {
 	)
 }
 
+/// Whether a link is a footnote jump, which has no external target to show.
+pub(super) fn footnote_link(link: &str) -> bool {
+	link_target(link).is_empty()
+		&& link_fragment(link).is_some_and(|fragment| {
+			footnote::label(&fragment).is_some()
+				|| footnote::back_label(&fragment).is_some()
+		})
+}
+
 impl App {
-	/// Queues a heading anchor and applies it as soon as it is laid out.
+	/// Queues an anchor and applies it as soon as it is laid out.
 	pub(super) fn goto_anchor(&mut self, anchor: String) {
+		// Remember where the reader was, so a footnote's number can return.
+		self.readers.session.jump_origin =
+			Some((anchor.clone(), self.readers.session.scroll));
 		self.readers.session.pending_anchor = Some(anchor);
 		self.apply_anchor();
+	}
+
+	/// Returns a footnote's number to the reference that opened it, or to the
+	/// first reference when the note was reached by scrolling.
+	pub(super) fn return_from_footnote(&mut self, label: &str) {
+		if let Some(scroll) = self.readers.session.footnote_return(label) {
+			self.readers.session.pending_anchor = None;
+			self.readers.session.pending_scroll = None;
+			self.readers.session.follow_update = false;
+			self.readers.session.scroll = scroll.clamp(
+				0.0,
+				crate::state::scroll_limit(
+					self.readers.session.snapshot.height,
+					self.viewport(),
+				),
+			);
+			self.error = false;
+			self.status.clear();
+			self.status_until = None;
+			self.worker
+				.prioritize(self.readers.session.coverage(self.viewport()));
+			self.refresh_hover();
+			self.redraw();
+			return;
+		}
+		// No reference to return to: fall back to the first one.
+		self.goto_anchor(footnote::reference(label));
 	}
 
 	/// Applies a queued anchor, reporting a heading the finished layout lacks.

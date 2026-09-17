@@ -1,4 +1,5 @@
 //! Semantic Markdown nodes and stable reading identities.
+pub mod footnote;
 mod heading;
 mod parse;
 pub(crate) use heading::Anchors;
@@ -19,6 +20,9 @@ pub struct TextStyle {
 	pub code: bool,
 	pub math_error: bool,
 	pub superscript: bool,
+	/// A footnote reference: clickable, but styled by `footnote_ref` rather
+	/// than by the link color.
+	pub footnote_ref: bool,
 	pub link: Option<String>,
 	pub color: Option<crate::style::Color>,
 }
@@ -29,9 +33,10 @@ impl TextStyle {
 		[
 			self.italic.then_some(C::Em),
 			self.bold.then_some(C::Strong),
-			self.link.as_ref().map(|_| C::Link),
+			(self.link.is_some() && !self.footnote_ref).then_some(C::Link),
 			self.strike.then_some(C::Del),
 			self.superscript.then_some(C::Sup),
+			self.footnote_ref.then_some(C::FootnoteRef),
 			self.code.then_some(C::Code),
 			self.math_error.then_some(C::Math),
 			self.math_error.then_some(C::Error),
@@ -45,7 +50,12 @@ impl TextStyle {
 pub enum InlineKind {
 	Text(String),
 	Image(crate::image::ImageSpec),
-	Math { latex: String, display: bool },
+	Math {
+		latex: String,
+		display: bool,
+	},
+	/// A footnote reference, drawn `[n]` and jumping to footnote `n`.
+	FootnoteRef(u32),
 }
 
 #[derive(Clone, Debug, Hash, PartialEq, Eq)]
@@ -127,13 +137,18 @@ pub fn fingerprint(value: &impl Hash) -> u64 {
 }
 
 pub fn plain_text(text: &RichText) -> String {
-	text.iter()
-		.map(|s| match &s.kind {
-			InlineKind::Text(t) => t.as_str(),
-			InlineKind::Image(image) => image.alt.as_str(),
-			InlineKind::Math { latex, .. } => latex.as_str(),
-		})
-		.collect()
+	let mut out = String::new();
+	for span in text {
+		match &span.kind {
+			InlineKind::Text(t) => out.push_str(t),
+			InlineKind::Image(image) => out.push_str(&image.alt),
+			InlineKind::Math { latex, .. } => out.push_str(latex),
+			InlineKind::FootnoteRef(n) => {
+				out.push_str(&format!("[{n}]"));
+			}
+		}
+	}
+	out
 }
 
 impl Block {

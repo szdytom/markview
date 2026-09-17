@@ -469,6 +469,19 @@ impl TextShaper {
 		baseline: f32,
 		paint: Paint,
 	) -> Vec<Draw> {
+		self.label_measured(text, size, x, baseline, paint).0
+	}
+
+	/// A label together with the advance width it occupies, so a caller that
+	/// needs both does not shape the text twice.
+	pub fn label_measured(
+		&mut self,
+		text: &str,
+		size: f32,
+		x: f32,
+		baseline: f32,
+		paint: Paint,
+	) -> (Vec<Draw>, f32) {
 		let old = self.appearance.clone();
 		let condition = match paint {
 			Paint::Styled(c, _) => c,
@@ -512,7 +525,7 @@ impl TextShaper {
 		appearance: &TextAppearance,
 		paint: Paint,
 		background: Option<Paint>,
-	) -> Vec<Draw> {
+	) -> (Vec<Draw>, f32) {
 		let old = self.appearance.clone();
 		self.appearance = appearance.clone();
 		let decoration = appearance.decoration.clone();
@@ -558,7 +571,7 @@ impl TextShaper {
 				paint,
 			));
 		}
-		draws
+		(draws, cursor - x)
 	}
 
 	/// Advance width of a UI label at `size`.

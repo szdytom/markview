@@ -72,6 +72,7 @@ impl Tabs {
 		self.session.remote_notice_dismissed = false;
 		self.session.scroll = 0.0;
 		self.session.pending_anchor = None;
+		self.session.jump_origin = None;
 		self.session.horizontal.clear();
 	}
 	/// Queue a tab for first use without disturbing the active reader or worker.

@@ -13,6 +13,13 @@ at the same level, without `[brackets]`.
 
 ## Unreleased
 
+### Added
+
+- Footnote references are clickable: a reference moves to its note, and the
+  note's number moves back to the citation it was opened from.
+- MVSS adds a `footnote_ref` condition styling footnote references and the
+  note's number.
+
 ## 0.1.1 - 2026-09-16
 
 A security release. Untrusted documents can no longer abort the process, read

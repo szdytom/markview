@@ -7,6 +7,9 @@ pub(super) struct Prepared {
 	pub(super) text: String,
 	pub(super) spans: Vec<Span>,
 	pub(super) math: BTreeMap<usize, Arc<MathBox>>,
+	/// Footnote references by their text offset, for the anchors their
+	/// numbers return to.
+	pub(super) notes: BTreeMap<usize, u32>,
 }
 
 impl Prepared {

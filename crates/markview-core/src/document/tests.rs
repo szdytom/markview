@@ -180,8 +180,22 @@ fn resolved_references_invalidate_semantics_and_footnotes_use_numbers() {
 	assert_eq!(a.blocks[0].id, b.blocks[0].id);
 	assert_ne!(a.blocks[0].content_key, b.blocks[0].content_key);
 	let d = parse("See [^name].\n\n[^name]: The footnote.\n");
+	let BlockKind::Paragraph(p) = &d.blocks[0].kind else {
+		panic!()
+	};
+	assert!(plain_text(p).contains("[1]"));
+	// The reference is a footnote jump, not a link, so it keeps its own look.
+	let reference = p
+		.iter()
+		.find(|i| matches!(i.kind, InlineKind::FootnoteRef(1)))
+		.expect("footnote reference");
+	assert_eq!(reference.style.link.as_deref(), Some("#fn:1"));
+	assert!(reference.style.footnote_ref && reference.style.superscript);
 	assert!(
-		matches!(&d.blocks[0].kind, BlockKind::Paragraph(p) if plain_text(p).contains("[1]"))
+		!reference
+			.style
+			.conditions()
+			.any(|c| c == crate::style::Condition::Link)
 	);
 	assert!(d.blocks.iter().any(
 		|b| matches!(&b.kind, BlockKind::Footnote { label, .. } if label == "1")

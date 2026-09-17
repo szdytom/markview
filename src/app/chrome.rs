@@ -152,6 +152,8 @@ pub(super) struct Chrome<'a> {
 	pub(super) status: &'a str,
 	pub(super) status_until: Option<Instant>,
 	pub(super) error: bool,
+	/// The footer's hover hint: a link target, or an image title.
+	pub(super) hover_hint: Option<&'a str>,
 	/// Number of remote image sources the loader deferred, if any.
 	pub(super) remote_notice: Option<usize>,
 }
@@ -239,11 +241,7 @@ impl Chrome<'_> {
 			{
 				self.status
 			} else {
-				self.interaction
-					.hover_image
-					.as_deref()
-					.or(self.interaction.hover.as_deref())
-					.unwrap_or("")
+				self.hover_hint.unwrap_or("")
 			},
 			width,
 			height,

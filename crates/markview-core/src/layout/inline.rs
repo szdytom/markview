@@ -22,6 +22,7 @@ impl BlockContext<'_> {
 			text: String::new(),
 			spans: Vec::new(),
 			math: BTreeMap::new(),
+			notes: BTreeMap::new(),
 		};
 		for inline in rich {
 			let start = p.text.len();
@@ -34,6 +35,9 @@ impl BlockContext<'_> {
 				),
 				InlineKind::Text(t) => p.reading.push_str(t),
 				InlineKind::Math { latex, .. } => p.reading.push_str(latex),
+				InlineKind::FootnoteRef(n) => {
+					p.reading.push_str(&format!("[{n}]"));
+				}
 			}
 			let mut style = inline.style.clone();
 			match &inline.kind {
@@ -42,6 +46,10 @@ impl BlockContext<'_> {
 					p.text.push('\u{fffc}');
 				}
 				InlineKind::Text(t) => p.text.push_str(t),
+				InlineKind::FootnoteRef(n) => {
+					p.notes.insert(start, *n);
+					p.text.push_str(&format!("[{n}]"));
+				}
 				InlineKind::Math { latex, display } => {
 					let laid_out = crate::profile::span(
 						crate::profile::Stage::Math,

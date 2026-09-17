@@ -71,11 +71,13 @@ A condition is one fact about a rendered run: the blocks that contain it, the pa
 | --- | --- |
 | Blocks | `body`, `p`, `h1`–`h6`, `blockquote`, `list`, `enum`, `list_item`, `footnote`, `code_block`, `table`, `hr` |
 | Block parts | `label`, `cell`, `header`, `marker`, `task_marker`, `caption`, `placeholder` |
-| Inline | `em`, `strong`, `link`, `del`, `sup`, `code`, `math` |
+| Inline | `em`, `strong`, `link`, `del`, `sup`, `footnote_ref`, `code`, `math` |
 | State | `hover`, `error` |
 | Surfaces and UI | `img`, `selection`, `scrollbar`, `ui`, `toolbar`, `statusbar`, `panel`, `button` |
 
 A rule applies to a run when **every** condition it names holds for that run. The order inside `when` is not part of the rule's identity, so `["strong", "code"]` and `["code", "strong"]` are the same rule, and a file that declares both is rejected as a duplicate. There are no selectors, variables, `inherit`, `unset`, imports, scripts, or remote resources.
+
+Footnote links are clicks that move inside the document: a reference jumps to its note, and the note's number jumps back to the citation it was opened from. They carry `footnote_ref` instead of `link`, so a theme can mark them without recoloring every hyperlink; `["footnote_ref", "hover"]` styles the link under the pointer.
 
 ## Composition
 

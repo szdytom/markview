@@ -1,8 +1,10 @@
 use super::{BlockContext, LayoutOptions};
 use crate::text::{TextCluster, TextNode};
 use crate::{
-	document::{Block, BlockKind, CellAlign, Inline, InlineKind, RichText},
-	scene::{BlockLayout, Draw, HeadingAnchor, Paint, Rect},
+	document::{
+		Block, BlockKind, CellAlign, Inline, InlineKind, RichText, footnote,
+	},
+	scene::{BlockLayout, Draw, HeadingAnchor, LinkRect, Paint, Rect},
 	style::{ColorField, Condition},
 };
 
@@ -13,7 +15,9 @@ fn starts_with_text(rich: &[Inline]) -> bool {
 	for inline in rich {
 		match &inline.kind {
 			InlineKind::Text(text) if text.trim().is_empty() => {}
-			InlineKind::Text(_) | InlineKind::Math { display: false, .. } => {
+			InlineKind::Text(_)
+			| InlineKind::Math { display: false, .. }
+			| InlineKind::FootnoteRef(_) => {
 				return true;
 			}
 			InlineKind::Image(_) | InlineKind::Math { display: true, .. } => {
@@ -230,6 +234,13 @@ impl BlockContext<'_> {
 				y: y + before,
 			});
 		}
+		if let BlockKind::Footnote { label, .. } = &block.kind {
+			// A footnote reference lands on the top of the note's box.
+			out.anchors.push(HeadingAnchor {
+				anchor: footnote::anchor(label),
+				y: y + before,
+			});
+		}
 		self.shaper.appearance = previous;
 		let total = before + box_height + after;
 		out.height = out.height.max(y + total);
@@ -415,19 +426,23 @@ impl BlockContext<'_> {
 							Paint::Cascade(task.chain, ColorField::Background),
 						));
 						if checked {
-							out.draws.extend(self.shaper.label_with(
-								"✓",
-								opts.font_size * 0.7,
-								r.x,
-								r.y + r.h,
-								&task,
-								task.paint,
-								Some(Paint::Scoped(
-									task.chain,
-									Condition::TaskMarker,
-									ColorField::Background,
-								)),
-							));
+							out.draws.extend(
+								self.shaper
+									.label_with(
+										"✓",
+										opts.font_size * 0.7,
+										r.x,
+										r.y + r.h,
+										&task,
+										task.paint,
+										Some(Paint::Scoped(
+											task.chain,
+											Condition::TaskMarker,
+											ColorField::Background,
+										)),
+									)
+									.0,
+							);
 						}
 					} else {
 						let marker = start.map_or_else(
@@ -437,19 +452,23 @@ impl BlockContext<'_> {
 						let bullet = opts
 							.stylesheet
 							.text(&self.shaper.appearance, Condition::Marker);
-						out.draws.extend(self.shaper.label_with(
-							&marker,
-							opts.font_size,
-							item_x + 2.0,
-							top + size * 1.15,
-							&bullet,
-							bullet.paint,
-							Some(Paint::Scoped(
-								bullet.chain,
-								Condition::Marker,
-								ColorField::Background,
-							)),
-						));
+						out.draws.extend(
+							self.shaper
+								.label_with(
+									&marker,
+									opts.font_size,
+									item_x + 2.0,
+									top + size * 1.15,
+									&bullet,
+									bullet.paint,
+									Some(Paint::Scoped(
+										bullet.chain,
+										Condition::Marker,
+										ColorField::Background,
+									)),
+								)
+								.0,
+						);
 					}
 					top += self
 						.children(
@@ -488,13 +507,29 @@ impl BlockContext<'_> {
 				self.table(align, rows, x, y, width, opts, out)
 			}
 			BlockKind::Footnote { label, blocks } => {
-				out.draws.extend(self.shaper.label(
-					&format!("[{label}]"),
-					size * 0.75,
+				let text = format!("[{label}]");
+				let label_size = size * 0.75;
+				let command = out.draws.len();
+				let (draws, label_width) = self.shaper.label_measured(
+					&text,
+					label_size,
 					x,
 					y + size,
-					Paint::Styled(Condition::Footnote, ColorField::Color),
-				));
+					Paint::Styled(Condition::FootnoteRef, ColorField::Color),
+				);
+				out.draws.extend(draws);
+				// The number is the way back to the reference that opened the
+				// note, so it is a link with the note's own label.
+				out.links.push(LinkRect {
+					command,
+					rect: Rect {
+						x,
+						y: y + size - label_size,
+						w: label_width.max(1.0),
+						h: label_size * 1.4,
+					},
+					url: footnote::back_url(label),
+				});
 				// The label leads the block, so its paragraphs stay flush.
 				let body_opts = LayoutOptions {
 					paragraph_indent: 0.0,

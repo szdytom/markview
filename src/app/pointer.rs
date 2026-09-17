@@ -1,4 +1,5 @@
 use crate::{link, state};
+use markview_core::document::footnote;
 use std::{
 	path::PathBuf,
 	time::{Duration, Instant},
@@ -126,7 +127,11 @@ impl App {
 		if anchor::link_target(url).is_empty() {
 			// A bare fragment addresses the current document.
 			if let Some(fragment) = fragment {
-				self.goto_anchor(fragment);
+				if let Some(label) = footnote::back_label(&fragment) {
+					self.return_from_footnote(label);
+				} else {
+					self.goto_anchor(fragment);
+				}
 			}
 			return;
 		}

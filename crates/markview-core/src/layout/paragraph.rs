@@ -3,7 +3,7 @@ use super::{BlockContext, LayoutOptions, fitted_range};
 use crate::{
 	document::{CellAlign, Inline, InlineKind, TextStyle},
 	linebreak::{self},
-	scene::{BlockLayout, Draw, LinkRect, Overflow, Rect},
+	scene::{BlockLayout, Draw, HeadingAnchor, LinkRect, Overflow, Rect},
 	style::{ColorField, Condition, Decoration},
 	text::{TextCluster, TextNode},
 };
@@ -271,6 +271,18 @@ impl BlockContext<'_> {
 			let mut link: Option<(String, f32)> = None;
 			for (c, flex) in clusters.into_iter().zip(flexibility) {
 				let range = p.reading_range(c.range.clone());
+				// A footnote reference registers the anchor its number returns
+				// to when the reader reached the footnote by scrolling. The
+				// first one in reading order wins, because that is what
+				// `anchor_y` finds first.
+				if let Some(&number) = p.notes.get(&c.range.start) {
+					out.anchors.push(HeadingAnchor {
+						anchor: crate::document::footnote::reference(
+							&number.to_string(),
+						),
+						y: y_cursor,
+					});
+				}
 				if let Some(image) = p.images.get(&c.range.start) {
 					let rect = Rect {
 						x: cursor,

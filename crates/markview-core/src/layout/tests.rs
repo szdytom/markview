@@ -126,6 +126,77 @@ fn heading_anchors_resolve_to_layout_positions() {
 	assert_eq!(again.anchor_y("nested"), Some(nested));
 }
 #[test]
+fn footnote_links_reach_the_note_and_its_number_returns() {
+	let mut engine = LayoutEngine::new();
+	let opts = LayoutOptions {
+		width: 400.0,
+		..Default::default()
+	};
+	let doc = document::parse(
+		"First[^a], again[^a], and another[^b].\n\n\
+		 [^a]: Alpha note.\n\n\
+		 [^b]: Beta note.\n",
+	);
+	let snapshot = engine.layout(&doc, &opts);
+	let first_ref = snapshot.anchor_y("fnref:1").unwrap();
+	let note = snapshot.anchor_y("fn:1").unwrap();
+	let second_note = snapshot.anchor_y("fn:2").unwrap();
+	// The fallback return goes to the first reference, and the notes follow
+	// the paragraph that cites them.
+	assert!(first_ref < note && note < second_note);
+	let links: Vec<&str> = snapshot
+		.blocks
+		.iter()
+		.flat_map(|b| b.layout.links.iter().map(|l| l.url.as_str()))
+		.collect();
+	assert_eq!(links.iter().filter(|u| **u == "#fn:1").count(), 2);
+	assert!(links.contains(&"#fn:2"));
+	assert!(links.contains(&"#fnback:1"));
+	assert!(links.contains(&"#fnback:2"));
+	// Both the reference and the note's number are hit-testable.
+	let empty = HashMap::new();
+	let hit = |url: &str| {
+		snapshot.blocks.iter().enumerate().find_map(|(bi, b)| {
+			let link = b.layout.links.iter().find(|l| l.url == url)?;
+			let (offset, _) = b.layout.command_view(link.command, bi, &empty);
+			Some((
+				link.rect.x - offset + link.rect.w * 0.5,
+				b.y + link.rect.y + link.rect.h * 0.5,
+			))
+		})
+	};
+	let (x, y) = hit("#fn:1").unwrap();
+	assert_eq!(snapshot.link_at(x, y, &empty), Some("#fn:1"));
+	let (x, y) = hit("#fnback:1").unwrap();
+	assert_eq!(snapshot.link_at(x, y, &empty), Some("#fnback:1"));
+}
+#[test]
+fn a_footnote_body_keeps_the_full_column() {
+	let mut engine = LayoutEngine::new();
+	let doc = document::parse(
+		"Text[^a].\n\n[^a]: A note whose body is long enough to wrap across \
+		 the full width of the reading column instead of one word per line.\n",
+	);
+	let snapshot = engine.layout(
+		&doc,
+		&LayoutOptions {
+			width: 400.0,
+			..Default::default()
+		},
+	);
+	// The note's label is only a few pixels wide, so measuring the label must
+	// not narrow the body that follows it.
+	let right = snapshot.blocks[1]
+		.layout
+		.text
+		.iter()
+		.flat_map(|node| &node.clusters)
+		.map(|c| c.rect.x + c.rect.w)
+		.fold(0.0, f32::max);
+	assert!(right > 300.0, "the note body only reached x={right}");
+	assert_eq!(snapshot.degraded, 0);
+}
+#[test]
 fn wrapped_links_produce_one_rect_per_line() {
 	let d = document::parse(
 		"[an intentionally long linked phrase that wraps](https://example.com)\n",

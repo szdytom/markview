@@ -122,8 +122,11 @@ impl Reader<'_> {
 					display: m.display_math,
 				}),
 				NodeValue::FootnoteReference(f) => {
+					let label = f.ix.to_string();
 					child_style.superscript = true;
-					Some(InlineKind::Text(format!("[{}]", f.ix)))
+					child_style.footnote_ref = true;
+					child_style.link = Some(super::footnote::url(&label));
+					Some(InlineKind::FootnoteRef(f.ix))
 				}
 				NodeValue::Strong => {
 					child_style.bold = true;

@@ -1,4 +1,4 @@
-use super::{link_fragment, link_target};
+use super::{footnote_link, link_fragment, link_target};
 
 #[test]
 fn a_link_splits_into_its_document_and_decoded_fragment() {
@@ -18,4 +18,13 @@ fn a_link_splits_into_its_document_and_decoded_fragment() {
 		link_fragment("file:///tmp/a.md#getting-started"),
 		Some("getting-started".into())
 	);
+}
+
+#[test]
+fn only_footnote_jumps_are_hidden_from_the_footer() {
+	assert!(footnote_link("#fn:1"));
+	assert!(footnote_link("#fnback:1"));
+	assert!(!footnote_link("#section"));
+	assert!(!footnote_link("https://example.com#fn:1"));
+	assert!(!footnote_link("other.md#fn:1"));
 }

@@ -38,19 +38,23 @@ impl BlockContext<'_> {
 			cursor += rule.space_before.unwrap_or(0.) * opts.font_size;
 			let label_size = opts.font_size * label.size;
 			let label_height = label_size * label.line_height;
-			out.draws.extend(self.shaper.label_with(
-				language,
-				opts.font_size,
-				x,
-				cursor + label_size,
-				&label,
-				label.paint,
-				Some(Paint::Scoped(
-					label.chain,
-					Condition::Label,
-					ColorField::Background,
-				)),
-			));
+			out.draws.extend(
+				self.shaper
+					.label_with(
+						language,
+						opts.font_size,
+						x,
+						cursor + label_size,
+						&label,
+						label.paint,
+						Some(Paint::Scoped(
+							label.chain,
+							Condition::Label,
+							ColorField::Background,
+						)),
+					)
+					.0,
+			);
 			cursor +=
 				label_height + rule.space_after.unwrap_or(0.) * opts.font_size;
 		}

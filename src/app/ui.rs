@@ -16,6 +16,15 @@ impl App {
 		let (width, height, _) = self.dimensions();
 		let scrollbar = self.document_scrollbar();
 		let remote_notice = self.remote_notice();
+		// An internal footnote jump has no external target to name, so the
+		// footer stays empty while the pointer is over one.
+		let hover_hint =
+			self.interaction.hover_image.as_deref().or_else(|| {
+				self.interaction
+					.hover
+					.as_deref()
+					.filter(|url| !super::anchor::footnote_link(url))
+			});
 		Chrome {
 			ui: &mut self.ui,
 			session: &self.readers.session,
@@ -38,6 +47,7 @@ impl App {
 			status: &self.status,
 			status_until: self.status_until,
 			error: self.error,
+			hover_hint,
 			remote_notice,
 		}
 	}
