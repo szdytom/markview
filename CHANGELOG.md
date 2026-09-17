@@ -21,6 +21,11 @@ at the same level, without `[brackets]`.
   note's number.
 - Math accepts LaTeX `\(...\)` and `\[...\]` delimiters alongside dollar signs.
 
+### Changed
+
+- Packaging builds run only when a packaging input changes, in a `Packages`
+  workflow that no longer gates merges.
+
 ### Fixed
 
 - A tab-indented fenced code block inside a list no longer gains a leading space.

@@ -46,11 +46,16 @@ they drift.
 `Release`, after local archives are built and before the release is published.
 Its failure blocks publication; all assets are uploaded together.
 
-## Every push builds every package
+## Packaging inputs build every package
 
-The `CI` workflow builds the complete package set on every push and pull
-request, after `check` passes on all three platforms. Nothing is published:
+The `Packages` workflow builds the complete package set whenever a file it
+depends on changes, on any branch and on pull requests. Nothing is published:
 each package comes back as a workflow artifact you can download from the run.
+The filter covers `Cargo.toml`, `Cargo.lock`, `dist-workspace.toml`, `.github/`,
+`scripts/package_*.sh`, `scripts/verify_*`, `packaging/`, `wix/`, `assets/`, and
+`xtask/`. A `src/`-only change is verified by `CI` instead, because it cannot
+change how a package is assembled. Run `Packages` manually from the Actions tab
+to rebuild the set without touching a packaging input.
 
 | Artifact | Contents | Runner |
 | --- | --- | --- |
@@ -62,8 +67,11 @@ Each platform builds its own archive; release packaging reuses the archives
 from the same workflow run. The Linux job uses `ubuntu-22.04` for the same
 reason releases do: the archive must stay usable on glibc 2.35.
 
-The workflow ends in a single `ci` job that fails unless every other job
-succeeded. Point branch protection at `ci` rather than at the matrix jobs.
+The workflow ends in a single `ci` job that fails unless `check` and the
+packaging lint succeeded. Point branch protection at `ci` rather than at the
+matrix jobs. `Packages` is deliberately *not* required: a workflow that path
+filtering skipped reports no status at all, so requiring it would block every
+pull request that touches no packaging input.
 
 ## Validate packaging before a release
 
@@ -76,8 +84,8 @@ Download the `artifacts-*` workflow artifacts to inspect the outputs.
 The Windows checks extract both MSI and ZIP packages and run their executables.
 The Linux checks extract both the Debian package and AppImage and run their
 executables. The macOS check unpacks the application archive, validates its
-plist and signature, and runs the bundled executable. Every push also builds
-these packages in `CI`.
+plist and signature, and runs the bundled executable. The `Packages` workflow
+also builds these packages whenever a packaging input changes.
 
 ## Why Linux archives build on Ubuntu 22.04
 
