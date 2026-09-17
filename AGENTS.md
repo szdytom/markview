@@ -35,6 +35,14 @@ When merging and handling pull requests, keep the commit history clean and linea
 
 Format and lint before committing.
 
+## Changelog
+
+Update the [changelog](CHANGELOG.md) as you go. Never be too detailed. Fit every item in 1-2 lines.
+
 ## Runtime Specific Instructions
 
 Some agent harness hides the GPU inside the sandbox. Request a out-of-sandbox command to run related tests.
+
+## Performance Measurement
+
+Build and backup a binary of the current state of the code before making changes. This makes it easy to compare performance before and after changes later. You can safely delete the backup binary after committing the changes.
