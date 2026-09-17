@@ -158,6 +158,22 @@ fn incomplete_fence_and_math_do_not_drop_text() {
 	);
 }
 #[test]
+fn tab_indented_fence_in_a_list_keeps_its_columns() {
+	// A list marker consumes two columns of the leading tab, so the fence's
+	// indentation is a column count; measuring it in bytes left the rest of
+	// the tab behind as a leading space in the code block.
+	let d = parse(
+		"- item:\n\n\t```text\n\t<type>: <short, lowercase summary>\n\t```\n",
+	);
+	let BlockKind::List { items, .. } = &d.blocks[0].kind else {
+		panic!("expected a list")
+	};
+	let BlockKind::Code { text, .. } = &items[0].blocks[1].kind else {
+		panic!("expected a code block")
+	};
+	assert_eq!(text, "<type>: <short, lowercase summary>\n");
+}
+#[test]
 fn latex_delimiters_produce_math() {
 	let d = parse("Inline \\(a+b\\) and display \\[c+d\\].\n");
 	let BlockKind::Paragraph(p) = &d.blocks[0].kind else {

@@ -21,6 +21,10 @@ at the same level, without `[brackets]`.
   note's number.
 - Math accepts LaTeX `\(...\)` and `\[...\]` delimiters alongside dollar signs.
 
+### Fixed
+
+- A tab-indented fenced code block inside a list no longer gains a leading space.
+
 ## 0.1.1 - 2026-09-16
 
 A security release. Untrusted documents can no longer abort the process, read
