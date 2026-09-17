@@ -663,12 +663,35 @@ impl TextShaper {
 		paint: Paint,
 		background: Option<Paint>,
 	) -> (Vec<Draw>, f32) {
+		let (draws, _, width) = self
+			.label_runs(text, size, x, baseline, appearance, paint, background);
+		(draws, width)
+	}
+
+	/// The same label, with the byte range of `text` each glyph draw came from.
+	/// A PDF export needs that mapping to name the characters it embeds; the
+	/// returned ranges are parallel to the `Draw::Glyph` items in order.
+	#[expect(
+		clippy::too_many_arguments,
+		reason = "Label text, geometry, appearance and paints are independent inputs"
+	)]
+	pub fn label_runs(
+		&mut self,
+		text: &str,
+		size: f32,
+		x: f32,
+		baseline: f32,
+		appearance: &TextAppearance,
+		paint: Paint,
+		background: Option<Paint>,
+	) -> (Vec<Draw>, Vec<Range<usize>>, f32) {
 		let old = self.appearance.clone();
 		self.appearance = appearance.clone();
 		let decoration = appearance.decoration.clone();
 		let clusters = self.shape(text, &[], size * appearance.size, true);
 		self.appearance = old;
 		let mut draws = Vec::new();
+		let mut ranges = Vec::new();
 		let mut cursor = x;
 		if let Some(background) = background {
 			let width = clusters.iter().map(|c| c.width).sum();
@@ -690,6 +713,7 @@ impl TextShaper {
 				g.y += baseline;
 				g.paint = paint;
 				draws.push(Draw::Glyph(g));
+				ranges.push(c.range.clone());
 			}
 			cursor += c.width;
 		}
@@ -708,7 +732,7 @@ impl TextShaper {
 				paint,
 			));
 		}
-		(draws, cursor - x)
+		(draws, ranges, cursor - x)
 	}
 
 	/// Advance width of a UI label at `size`.

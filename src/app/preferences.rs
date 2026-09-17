@@ -38,7 +38,7 @@ impl Preferences {
 		let mut settings = settings_store.settings();
 		// A diagnostic image cannot be scrolled sideways, so its code blocks
 		// wrap by default.
-		if args.mode.exports_image() {
+		if args.mode.wraps_code_blocks() {
 			settings.codeblock_wrap = true;
 		}
 		let explicit = ReaderSettings {

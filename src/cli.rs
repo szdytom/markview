@@ -10,13 +10,36 @@ pub(crate) enum Mode {
 	Bench,
 	Latency,
 	Smoke,
+	Pdf,
 }
 impl Mode {
-	/// A static image cannot be scrolled sideways, so code blocks wrap by
-	/// default whenever a mode writes one.
-	pub(crate) fn exports_image(&self) -> bool {
-		matches!(self, Self::Render | Self::Smoke)
+	/// A static image or a sheet of paper cannot be scrolled sideways, so code
+	/// blocks wrap by default whenever a mode writes one.
+	pub(crate) fn wraps_code_blocks(&self) -> bool {
+		matches!(self, Self::Render | Self::Smoke | Self::Pdf)
 	}
+}
+
+/// The document metadata the command line writes into the PDF.
+#[derive(Default)]
+pub(crate) struct MetadataOverrides {
+	pub(crate) title: Option<String>,
+	pub(crate) authors: Vec<String>,
+	pub(crate) subject: Option<String>,
+	pub(crate) keywords: Vec<String>,
+	pub(crate) language: Option<String>,
+	pub(crate) creator: Option<String>,
+}
+
+/// The `[page]` fields the command line overrides on top of the stylesheet.
+#[derive(Default)]
+pub(crate) struct PageOverrides {
+	pub(crate) paper: Option<String>,
+	pub(crate) landscape: bool,
+	pub(crate) margin: Option<[f32; 4]>,
+	/// Header and footer slots, left to centre to right.
+	pub(crate) header: [Option<String>; 3],
+	pub(crate) footer: [Option<String>; 3],
 }
 pub(crate) struct LaunchOptions {
 	pub(crate) offline: bool,
@@ -34,6 +57,9 @@ pub(crate) struct LaunchOptions {
 	pub(crate) iterations: usize,
 	pub(crate) options: LayoutOptions,
 	pub(crate) overrides: Vec<Setting>,
+	pub(crate) page: PageOverrides,
+	pub(crate) metadata: MetadataOverrides,
+	pub(crate) links: bool,
 }
 impl Default for LaunchOptions {
 	fn default() -> Self {
@@ -53,12 +79,30 @@ impl Default for LaunchOptions {
 			iterations: 100,
 			options: LayoutOptions::default(),
 			overrides: Vec::new(),
+			page: PageOverrides::default(),
+			metadata: MetadataOverrides::default(),
+			links: true,
 		}
 	}
 }
 
 pub(crate) fn arguments() -> Result<Option<LaunchOptions>> {
 	parse_arguments(std::env::args_os().skip(1))
+}
+
+/// Whether `value` reads as an RFC 3066 language tag: letters, digits, and
+/// hyphens, starting and ending with an alphanumeric subtag.
+fn is_language_tag(value: &str) -> bool {
+	!value.is_empty()
+		&& value.len() <= 64
+		&& !value.starts_with('-')
+		&& !value.ends_with('-')
+		&& !value.contains("--")
+		&& value.chars().all(|c| c.is_ascii_alphanumeric() || c == '-')
+		&& value
+			.chars()
+			.next()
+			.is_some_and(|c| c.is_ascii_alphabetic())
 }
 fn parse_arguments(
 	args: impl IntoIterator<Item = std::ffi::OsString>,
@@ -106,7 +150,7 @@ fn parse_arguments(
 		match text.as_ref() {
 			"-h" | "--help" => {
 				crate::logging::report(format_args!(
-					"Markview — native Markdown reading\n\nmarkview [FILE] [--style ID ...]\nmarkview ss install FILE.mvss.toml [--force]\nmarkview --render FILE --output preview.png [--dark] [--scale 2]\nmarkview --bench FILE [--iterations 100] [--output metrics.json]\nmarkview --bench-latency FILE [--iterations 100] [--output latency.json]\nmarkview --smoke-test FILE [--output window.png]\n\nOptions: --width N --height N --column N --font-size N --scroll N\n         --paragraph-indent N --cjk-type SC|TC|JP|none --scale N\n         --style ID --dark --light --left --no-hyphens --greedy --offline\n\nImages: local files, file:, http(s): and data: URIs; bitmap and SVG.\n        An image alone in its block is centered, otherwise it is inline.\n        Animated images show their first frame; --offline blocks the network.\n\nKeyboard: Ctrl+O open · Ctrl+T styles · Ctrl+ +/- font size\n          Ctrl+[ / ] column width · Ctrl+L alignment · Ctrl+H hyphenation\n          arrows / PageUp / PageDown / Home / End scroll\n          drag the scrollbar · Shift+wheel scroll wide blocks · Tab/Enter toolbar\n          click web/mail/local links; local .md links open in a new tab\n          click a footnote reference to reach its note and its number to return\n          drag / Shift+click select · Ctrl+A all · Ctrl+C copy · Ctrl+, settings\n\n--render and --bench use the real GPU pipeline offscreen.\n--greedy is a typography comparison mode."
+					"Markview — native Markdown reading\n\nmarkview [FILE] [--style ID ...]\nmarkview ss install FILE.mvss.toml [--force]\nmarkview --render FILE --output preview.png [--dark] [--scale 2]\nmarkview --pdf FILE --output out.pdf [--paper a4] [--landscape]\nmarkview --bench FILE [--iterations 100] [--output metrics.json]\nmarkview --bench-latency FILE [--iterations 100] [--output latency.json]\nmarkview --smoke-test FILE [--output window.png]\n\nOptions: --width N --height N --column N --font-size N --scroll N\n         --paragraph-indent N --cjk-type SC|TC|JP|none --scale N\n         --style ID --dark --light --left --no-hyphens --greedy --offline\n\nPDF: --paper a4|a5|letter|legal|WIDTHxHEIGHT --landscape --margin MM[,MM...]\n     --header TEXT --header-left/right TEXT --footer TEXT --footer-left/right TEXT\n     --no-links; the slots take {{page}} {{pages}} {{title}} and {{path}}. The export\n     always starts from the bundled print stylesheet, and --style layers on it.\n\nMetadata: --title TEXT --author NAME (repeatable) --subject TEXT\n          --keywords A,B --language TAG --creator TEXT\n          A title defaults to the first heading, then the file name;\n          Producer stays Markview <version>, and no creation date is\n          ever written.\n\nImages: local files, file:, http(s): and data: URIs; bitmap and SVG.\n        An image alone in its block is centered, otherwise it is inline.\n        Animated images show their first frame; --offline blocks the network.\n\nKeyboard: Ctrl+O open · Ctrl+T styles · Ctrl+ +/- font size\n          Ctrl+[ / ] column width · Ctrl+L alignment · Ctrl+H hyphenation\n          arrows / PageUp / PageDown / Home / End scroll\n          drag the scrollbar · Shift+wheel scroll wide blocks · Tab/Enter toolbar\n          click web/mail/local links; local .md links open in a new tab\n          click a footnote reference to reach its note and its number to return\n          drag / Shift+click select · Ctrl+A all · Ctrl+C copy · Ctrl+, settings\n\n--render and --bench use the real GPU pipeline offscreen.\n--greedy is a typography comparison mode."
 				));
 				return Ok(None);
 			}
@@ -133,9 +177,129 @@ fn parse_arguments(
 			}
 			"--dark" => out.theme = Some(Theme::Dark),
 			"--light" => out.theme = Some(Theme::Light),
+			"--pdf" => out.mode = Mode::Pdf,
+			"--landscape" => out.page.landscape = true,
+			"--no-links" => out.links = false,
+			"--paper" => {
+				let value = args
+					.next()
+					.context("--paper requires a size")?
+					.to_string_lossy()
+					.into_owned();
+				if markview_core::style::parse_paper_size(&value).is_none() {
+					bail!(
+						"Invalid paper {value:?}; use a4, a5, letter, legal or WIDTHxHEIGHT in millimetres"
+					);
+				}
+				out.page.paper = Some(value);
+			}
+			"--margin" => {
+				let value = args
+					.next()
+					.context("--margin requires millimetres")?
+					.to_string_lossy()
+					.into_owned();
+				let numbers: Vec<f32> = value
+					.split([',', ' ', '\t'])
+					.filter(|part| !part.is_empty())
+					.map(|part| part.parse::<f32>())
+					.collect::<Result<_, _>>()
+					.context("Invalid margin")?;
+				let margin = match numbers.as_slice() {
+					[all] => [*all; 4],
+					[vertical, horizontal] => {
+						[*vertical, *horizontal, *vertical, *horizontal]
+					}
+					[top, right, bottom, left] => {
+						[*top, *right, *bottom, *left]
+					}
+					_ => bail!(
+						"--margin takes 1, 2 or 4 millimetres: --margin 20,25"
+					),
+				};
+				if margin
+					.iter()
+					.any(|value| !value.is_finite() || *value < 0.0)
+				{
+					bail!("Invalid margin");
+				}
+				out.page.margin = Some(margin);
+			}
+			"--header" | "--header-left" | "--header-right" | "--footer"
+			| "--footer-left" | "--footer-right" => {
+				let value = args
+					.next()
+					.with_context(|| format!("{text} requires text"))?
+					.to_string_lossy()
+					.into_owned();
+				if !markview_core::paginate::template_is_valid(&value) {
+					bail!(
+						"{text}: unknown placeholder; use {{page}}, {{pages}}, {{title}} or {{path}}"
+					);
+				}
+				let (header, slot) = match text.as_ref() {
+					"--header" => (true, 1),
+					"--header-left" => (true, 0),
+					"--header-right" => (true, 2),
+					"--footer" => (false, 1),
+					"--footer-left" => (false, 0),
+					_ => (false, 2),
+				};
+				if header {
+					out.page.header[slot] = Some(value);
+				} else {
+					out.page.footer[slot] = Some(value);
+				}
+			}
 			"--left" => out.options.justify = false,
 			"--no-hyphens" => out.options.hyphenate = false,
 			"--greedy" => out.options.greedy = true,
+			"--title" | "--subject" | "--language" | "--creator" => {
+				let value = args
+					.next()
+					.with_context(|| format!("{text} requires text"))?
+					.to_string_lossy()
+					.into_owned();
+				match text.as_ref() {
+					"--title" => out.metadata.title = Some(value),
+					"--subject" => out.metadata.subject = Some(value),
+					"--language" => {
+						if !is_language_tag(&value) {
+							bail!(
+								"Invalid language {value:?}; use an RFC 3066 tag such as en, zh-CN or ja"
+							);
+						}
+						out.metadata.language = Some(value);
+					}
+					_ => out.metadata.creator = Some(value),
+				}
+			}
+			// An author is one person, so a repeated flag writes a list; a
+			// keyword list reads better comma-separated inside one flag.
+			"--author" => {
+				let value = args
+					.next()
+					.context("--author requires a name")?
+					.to_string_lossy()
+					.into_owned();
+				if !value.trim().is_empty() {
+					out.metadata.authors.push(value);
+				}
+			}
+			"--keywords" => {
+				let value = args
+					.next()
+					.context("--keywords requires a list")?
+					.to_string_lossy()
+					.into_owned();
+				out.metadata.keywords.extend(
+					value
+						.split(',')
+						.map(|word| word.trim())
+						.filter(|word| !word.is_empty())
+						.map(str::to_owned),
+				);
+			}
 			"--cjk-type" => {
 				let value =
 					args.next().context("--cjk-type requires a name")?;
@@ -208,6 +372,16 @@ fn parse_arguments(
 	if out.mode == Mode::Render && out.output.is_none() {
 		bail!("--render requires --output preview.png");
 	}
+	if out.mode == Mode::Pdf {
+		if out.output.is_none() {
+			bail!("--pdf requires --output out.pdf");
+		}
+		if out.theme.is_some() {
+			bail!(
+				"--pdf prints the sheet of paper, not the window; use --style to change its colors"
+			);
+		}
+	}
 	Ok(Some(out))
 }
 
@@ -241,10 +415,144 @@ mod tests {
 	}
 	#[test]
 	fn only_image_export_modes_wrap_code_blocks_by_default() {
-		assert!(Mode::Render.exports_image());
-		assert!(Mode::Smoke.exports_image());
-		assert!(!Mode::Window.exports_image());
-		assert!(!Mode::Bench.exports_image());
+		assert!(Mode::Render.wraps_code_blocks());
+		assert!(Mode::Smoke.wraps_code_blocks());
+		assert!(Mode::Pdf.wraps_code_blocks());
+		assert!(!Mode::Window.wraps_code_blocks());
+		assert!(!Mode::Bench.wraps_code_blocks());
+	}
+	#[test]
+	fn pdf_mode_takes_a_page_a_path_and_furniture_text() {
+		let args = parse_arguments(
+			[
+				"--pdf",
+				"sample.md",
+				"--output",
+				"sample.pdf",
+				"--paper",
+				"letter",
+				"--landscape",
+				"--margin",
+				"10,15",
+				"--header-left",
+				"Draft",
+				"--footer",
+				"{page}/{pages}",
+				"--no-links",
+			]
+			.map(Into::into),
+		)
+		.unwrap()
+		.unwrap();
+		assert!(args.mode == Mode::Pdf);
+		assert_eq!(args.page.paper.as_deref(), Some("letter"));
+		assert!(args.page.landscape);
+		assert_eq!(args.page.margin, Some([10.0, 15.0, 10.0, 15.0]));
+		assert_eq!(args.page.header[0].as_deref(), Some("Draft"));
+		assert_eq!(args.page.header[1], None);
+		assert_eq!(args.page.footer[1].as_deref(), Some("{page}/{pages}"));
+		assert!(!args.links);
+
+		// `--header` fills the centre slot.
+		let args = parse_arguments(
+			["--pdf", "a.md", "-o", "a.pdf", "--header", "{title}"]
+				.map(Into::into),
+		)
+		.unwrap()
+		.unwrap();
+		assert_eq!(args.page.header[1].as_deref(), Some("{title}"));
+	}
+	#[test]
+	fn pdf_metadata_flags_take_lists_and_reject_bad_tags() {
+		let args = parse_arguments(
+			[
+				"--pdf",
+				"a.md",
+				"-o",
+				"a.pdf",
+				"--title",
+				"A paper",
+				"--author",
+				"Ada",
+				"--author",
+				"Grace",
+				"--subject",
+				"Testing",
+				"--keywords",
+				"markdown, typography",
+				"--language",
+				"zh-CN",
+				"--creator",
+				"Editor",
+			]
+			.map(Into::into),
+		)
+		.unwrap()
+		.unwrap();
+		assert_eq!(args.metadata.title.as_deref(), Some("A paper"));
+		assert_eq!(args.metadata.authors, ["Ada", "Grace"]);
+		assert_eq!(args.metadata.subject.as_deref(), Some("Testing"));
+		assert_eq!(args.metadata.keywords, ["markdown", "typography"]);
+		assert_eq!(args.metadata.language.as_deref(), Some("zh-CN"));
+		assert_eq!(args.metadata.creator.as_deref(), Some("Editor"));
+
+		// A missing value is an error, not an empty field.
+		for bad in [
+			&["--pdf", "a.md", "-o", "a.pdf", "--title"][..],
+			&["--pdf", "a.md", "-o", "a.pdf", "--author"],
+			&["--pdf", "a.md", "-o", "a.pdf", "--keywords"],
+			&["--pdf", "a.md", "-o", "a.pdf", "--language"],
+			&["--pdf", "a.md", "-o", "a.pdf", "--language", "-x"],
+			&["--pdf", "a.md", "-o", "a.pdf", "--language", "zh--CN"],
+		] {
+			assert!(
+				parse_arguments(bad.iter().map(Into::into)).is_err(),
+				"{bad:?}"
+			);
+		}
+		// Empty entries add nothing rather than empty metadata.
+		let args = parse_arguments(
+			[
+				"--pdf",
+				"a.md",
+				"-o",
+				"a.pdf",
+				"--author",
+				" ",
+				"--keywords",
+				"a,,b",
+			]
+			.map(Into::into),
+		)
+		.unwrap()
+		.unwrap();
+		assert!(args.metadata.authors.is_empty());
+		assert_eq!(args.metadata.keywords, ["a", "b"]);
+	}
+	#[test]
+	fn pdf_mode_needs_an_output_and_rejects_reader_theme_flags() {
+		assert!(
+			parse_arguments(["--pdf", "sample.md"].map(Into::into)).is_err()
+		);
+		assert!(
+			parse_arguments(
+				["--pdf", "sample.md", "-o", "a.pdf", "--dark"].map(Into::into)
+			)
+			.is_err()
+		);
+		for bad in [
+			["--pdf", "a.md", "-o", "a.pdf", "--paper", "tabloidish"],
+			["--pdf", "a.md", "-o", "a.pdf", "--paper", "0x0"],
+			["--pdf", "a.md", "-o", "a.pdf", "--margin", "1,2,3"],
+			["--pdf", "a.md", "-o", "a.pdf", "--margin", "-1"],
+			["--pdf", "a.md", "-o", "a.pdf", "--footer", "{date}"],
+			["--pdf", "a.md", "-o", "a.pdf", "--header", "{page"],
+		] {
+			assert!(
+				parse_arguments(bad.iter().map(Into::into)).is_err(),
+				"{bad:?}"
+			);
+		}
 	}
 	#[test]
 	fn explicit_settings_and_headless_mode_are_distinct() {
@@ -294,7 +602,7 @@ mod tests {
 		.unwrap();
 		assert!(args.mode == Mode::Latency);
 		assert_eq!(args.iterations, 7);
-		assert!(!args.mode.exports_image());
+		assert!(!args.mode.wraps_code_blocks());
 		assert!(parse_arguments(["--bench-latency"].map(Into::into)).is_err());
 	}
 }

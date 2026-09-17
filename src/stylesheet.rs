@@ -35,10 +35,10 @@ pub fn validate_id(id: &str) -> Result<()> {
 		|| id.contains(['/', '\\', ':'])
 		|| id.chars().any(char::is_control)
 		|| id.ends_with(['.', ' '])
-		|| (["light", "dark"]
+		|| (["light", "dark", "print"]
 			.iter()
 			.any(|reserved| id.eq_ignore_ascii_case(reserved))
-			&& !matches!(id, "light" | "dark"))
+			&& !matches!(id, "light" | "dark" | "print"))
 	{
 		bail!("Invalid stylesheet ID {id:?}");
 	}
@@ -71,12 +71,39 @@ pub fn load_with_cjk_type(
 	dir: Option<&Path>,
 	cjk_type: CjkType,
 ) -> Result<Arc<Stylesheet>> {
-	let mut sheet = (*Stylesheet::bundled(false)).clone();
+	load_over(ids, dir, cjk_type, Stylesheet::bundled(false))
+}
+
+/// The stylesheet a PDF export starts from: the bundled print sheet, with any
+/// named styles layered on top. The reader's theme never applies to paper.
+pub fn load_for_pdf(
+	ids: Option<&[String]>,
+	dir: Option<&Path>,
+	cjk_type: CjkType,
+) -> Result<Arc<Stylesheet>> {
+	match ids {
+		Some(ids) => load_over(ids, dir, cjk_type, Stylesheet::bundled_print()),
+		None => {
+			let mut sheet = (*Stylesheet::bundled_print()).clone();
+			sheet.set_cjk_type(cjk_type);
+			Ok(Arc::new(sheet))
+		}
+	}
+}
+
+fn load_over(
+	ids: &[String],
+	dir: Option<&Path>,
+	cjk_type: CjkType,
+	base: Arc<Stylesheet>,
+) -> Result<Arc<Stylesheet>> {
+	let mut sheet = (*base).clone();
 	for id in ids.iter().rev() {
 		validate_id(id)?;
 		match id.as_str() {
 			"light" => sheet.merge(&Stylesheet::bundled(false)),
 			"dark" => sheet.merge(&Stylesheet::bundled_rules(true)),
+			"print" => sheet.merge(&Stylesheet::bundled_print()),
 			_ => {
 				let path = dir
 					.context("No user stylesheet directory")?

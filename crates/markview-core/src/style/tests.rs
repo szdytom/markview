@@ -430,3 +430,95 @@ fn the_cjk_convention_is_layout_relevant() {
 	s.set_cjk_type(CjkType::Jp);
 	assert_ne!(sc, s.layout_key());
 }
+
+#[test]
+fn the_print_stylesheet_parses_and_names_its_paper() {
+	let print = Stylesheet::bundled_print();
+	assert_eq!(print.meta.name.as_deref(), Some("Print"));
+	let page = print.page();
+	assert_eq!(page.paper_mm(), Some((210.0, 297.0)));
+	assert_eq!(page.margin_mm(), Some([22.0, 20.0, 22.0, 20.0]));
+	assert_eq!(page.slots(true), ["", "", ""]);
+	assert_eq!(page.slots(false), ["", "{page} / {pages}", ""]);
+	// The paper is white and the body is opaque, so a page renders the same
+	// whatever the reader's theme is.
+	assert_eq!(
+		print.rule(Condition::Page).background.unwrap().rgba()[3],
+		1.0
+	);
+}
+
+#[test]
+fn the_page_table_overlays_field_by_field_and_validates_placeholders() {
+	let mut base = (*Stylesheet::bundled_print()).clone();
+	base.merge(
+		&Stylesheet::parse(
+			"format_version=2\nversion=1\n[page]\nlandscape=true\nfooter_left=\"h\"",
+		)
+		.unwrap(),
+	);
+	let page = base.page();
+	assert_eq!(page.landscape, Some(true));
+	assert_eq!(page.footer_left.as_deref(), Some("h"));
+	// Untouched fields keep the print sheet's values.
+	assert_eq!(page.margin_mm(), Some([22.0, 20.0, 22.0, 20.0]));
+	assert_eq!(page.slots(false), ["h", "{page} / {pages}", ""]);
+	for bad in [
+		"format_version=2\nversion=1\n[page]\nsize=\"tabloidish\"",
+		"format_version=2\nversion=1\n[page]\nsize=\"nonsense\"",
+		"format_version=2\nversion=1\n[page]\nmargin=[1,2,3]",
+		"format_version=2\nversion=1\n[page]\nmargin=[-4]",
+		"format_version=2\nversion=1\n[page]\nfooter_center=\"{date}\"",
+		"format_version=2\nversion=1\n[page]\nheader_left=\"{page\"",
+	] {
+		assert!(Stylesheet::parse(bad).is_err(), "{bad}");
+	}
+	assert!(
+		Stylesheet::parse(
+			"format_version=2\nversion=1\n[page]\nsize=\"letter\"\nmargin=[10,12]"
+		)
+		.is_ok()
+	);
+}
+
+#[test]
+fn page_furniture_rules_accept_only_text_fields() {
+	assert!(
+		Stylesheet::parse(
+			"format_version=2\nversion=1\n[[rule]]\nwhen=['page']\nbackground='#FFFFFF'\n[[rule]]\nwhen=['page_number']\nsize=0.5\ncolor='#000000'"
+		)
+		.is_ok()
+	);
+	for bad in [
+		"format_version=2\nversion=1\n[[rule]]\nwhen=['page']\ncolor='#000000'",
+		"format_version=2\nversion=1\n[[rule]]\nwhen=['page_footer']\nbackground='#000000'",
+	] {
+		assert!(Stylesheet::parse(bad).is_err(), "{bad}");
+	}
+}
+
+#[test]
+fn the_print_sheet_survives_a_merge_over_the_reader_sheet() {
+	// `--render --style print` merges the print sheet over the reader's light
+	// sheet, while the PDF starts from the print sheet alone. The two must set
+	// the same fields, or the two pipelines would disagree about one document.
+	let print = Stylesheet::bundled_print();
+	let mut over = (*Stylesheet::bundled(false)).clone();
+	over.merge(&print);
+	for (key, rule) in &print.rules {
+		assert_eq!(&over.rules[key], rule, "[{}]", key.display());
+	}
+	assert_eq!(over.page, print.page);
+	// Light may hold on to reader-only conditions; no export draws those.
+	for key in over
+		.rules
+		.keys()
+		.filter(|key| !print.rules.contains_key(*key))
+	{
+		let reader_only = key.ui()
+			|| key.contains(Condition::Selection)
+			|| key.contains(Condition::Scrollbar)
+			|| key.contains(Condition::Hover);
+		assert!(reader_only, "[{}] reaches the export", key.display());
+	}
+}

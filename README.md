@@ -34,7 +34,7 @@ Per-platform details and the exact artifact list are in
 
 ## Try it
 
-Building from source requires Rust 1.88 or newer, system fonts, and a working
+Building from source requires Rust 1.92 or newer, system fonts, and a working
 Vulkan, OpenGL, Metal, or Direct3D 12 driver.
 
 ```sh
@@ -49,6 +49,41 @@ On Debian or Ubuntu, the native build commonly needs:
 ```sh
 sudo apt-get install libfontconfig1-dev libxkbcommon-dev libwayland-dev fonts-noto-core fonts-noto-cjk
 ```
+
+## Export to PDF
+
+Markview prints to paper without a browser or a print dialog. The export lays
+the document out again at the page's text measure, breaks it into pages, and
+writes vector text with subset fonts, so the result is small, sharp and
+searchable:
+
+```sh
+markview --pdf document.md --output document.pdf
+markview --pdf document.md -o paper.pdf --paper letter --margin 20,25
+markview --pdf document.md -o paper.pdf --footer "{title} — {page}/{pages}"
+```
+
+The bundled `print` stylesheet supplies the paper: A4 with 20 mm side margins,
+black on white, and a centred page number. `--paper` takes `a3`, `a4`, `a5`,
+`a6`, `b5`, `letter`, `legal`, `tabloid`, or `WIDTHxHEIGHT` in millimetres;
+`--margin` takes one, two, or four millimetres; `--landscape` swaps the sides.
+The six header and footer slots are set with `--header`, `--footer` and the
+`-left`/`-right` variants, and their templates may use `{page}`, `{pages}`,
+`{title}`, and `{path}`. `--style` layers an installed stylesheet on top of
+`print`, whose `[page]` table holds the same settings.
+
+Text at least two lines long keeps two lines on each side of a page break, a
+heading travels with the block it introduces, code blocks wrap, and a table too
+wide for the page is scaled down with a warning on stderr. Web and mail links
+become clickable annotations, and a `#heading` link becomes an internal jump.
+
+The PDF information dictionary takes `--title`, `--author` (repeat it for
+several authors), `--subject`, `--keywords`, `--language`, and `--creator`.
+A title defaults to the document's first heading and then to its file name, and
+`{title}` in page furniture shows the same value. Nothing else is invented: a
+document without those flags exports without those entries, and no creation or
+modification date is ever written, which is what keeps two exports of one
+document byte for byte identical.
 
 ## Reading
 
@@ -71,7 +106,7 @@ macOS uses Command in place of Ctrl. The default reading column is 760 logical p
 
 Markview supports CommonMark headings, paragraphs, quotes, lists, emphasis (including CJK-friendly emphasis that closes next to CJK text), code blocks, GFM tables and task lists, footnotes, GitHub-style alerts, links, raw HTML equivalents, inline and display math, and local or remote images. Images can be PNG, JPEG, GIF, WebP, BMP, ICO, or SVG; animated images show their first frame.
 
-The reader is intentionally read-only. It does not edit or save Markdown, provide a table of contents or search, print, or provide a multi-document workspace beyond tabs opened from Markdown links. Links address headings by their GitHub slug; raw HTML `id` attributes are not interpreted, so an explicit anchor is not a link target. See the [documentation map](docs/README.md) for behavior and implementation boundaries.
+The reader is intentionally read-only. It does not edit or save Markdown, provide a table of contents or search, or provide a multi-document workspace beyond tabs opened from Markdown links; printing means the `--pdf` export, not a print dialog. Links address headings by their GitHub slug; raw HTML `id` attributes are not interpreted, so an explicit anchor is not a link target. See the [documentation map](docs/README.md) for behavior and implementation boundaries.
 
 ## Customize
 

@@ -56,6 +56,12 @@ pub enum Condition {
 	Code,
 	Error,
 	Hover,
+	/// The sheet of paper: only its background is significant.
+	Page,
+	/// Page furniture, drawn in the margins by the PDF export.
+	PageHeader,
+	PageFooter,
+	PageNumber,
 }
 impl Condition {
 	pub const ALL: &'static [(Self, &'static str)] = &[
@@ -100,6 +106,10 @@ impl Condition {
 		(Self::Code, "code"),
 		(Self::Error, "error"),
 		(Self::Hover, "hover"),
+		(Self::Page, "page"),
+		(Self::PageHeader, "page_header"),
+		(Self::PageFooter, "page_footer"),
+		(Self::PageNumber, "page_number"),
 	];
 	pub fn name(self) -> &'static str {
 		Self::ALL.iter().find(|(r, _)| *r == self).unwrap().1
@@ -143,7 +153,10 @@ impl Condition {
 			}
 			Error => chain_of(&[Body, Math, Error]),
 			Hover => chain_of(&[Body, Link, Hover]),
-			Selection | Scrollbar => chain_of(&[self]),
+			// Page furniture is set in the document's own fonts unless the
+			// stylesheet says otherwise, so it inherits from the body.
+			PageHeader | PageFooter | PageNumber => chain_of(&[Body, self]),
+			Page | Selection | Scrollbar => chain_of(&[self]),
 		}
 	}
 	pub fn ui(self) -> bool {
@@ -647,5 +660,170 @@ impl Rule {
 			ColorField::DisabledColor => self.disabled_color,
 			ColorField::FocusColor => self.focus_color,
 		}
+	}
+}
+
+/// Named paper sizes, in millimetres. An explicit `"WIDTHxHEIGHT"` (also mm)
+/// is accepted wherever a name is.
+pub fn parse_paper_size(name: &str) -> Option<(f32, f32)> {
+	let named = match name.trim().to_ascii_lowercase().as_str() {
+		"a3" => (297.0, 420.0),
+		"a4" => (210.0, 297.0),
+		"a5" => (148.0, 210.0),
+		"a6" => (105.0, 148.0),
+		"b5" => (176.0, 250.0),
+		"letter" => (215.9, 279.4),
+		"legal" => (215.9, 355.6),
+		"tabloid" => (279.4, 431.8),
+		_ => {
+			let (width, height) = name.trim().split_once(['x', 'X', '*'])?;
+			let width: f32 = width.trim().parse().ok()?;
+			let height: f32 = height.trim().parse().ok()?;
+			if !(width.is_finite() && height.is_finite())
+				|| width < 20.0
+				|| height < 20.0
+				|| width > 2000.0
+				|| height > 2000.0
+			{
+				return None;
+			}
+			return Some((width, height));
+		}
+	};
+	Some(named)
+}
+
+/// The `[page]` table: paper, margins and page furniture. Lengths are
+/// millimetres; the PDF layer converts them to points.
+///
+/// Every slot is a template. `{page}`, `{pages}`, `{title}` and `{path}` are
+/// the supported placeholders; a slot holding a page number is styled by the
+/// `page_number` condition and the rest by `page_header` or `page_footer`.
+#[derive(Clone, Debug, Default, PartialEq, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct PageStyle {
+	pub size: Option<String>,
+	pub landscape: Option<bool>,
+	/// Top, right, bottom, left, in millimetres: one value for all sides, two
+	/// for top/bottom and left/right, or four in that order.
+	pub margin: Option<Vec<f32>>,
+	pub header_left: Option<String>,
+	pub header_center: Option<String>,
+	pub header_right: Option<String>,
+	pub footer_left: Option<String>,
+	pub footer_center: Option<String>,
+	pub footer_right: Option<String>,
+}
+
+impl PageStyle {
+	/// The margin a stylesheet that says nothing about margins gets.
+	pub const DEFAULT_MARGIN_MM: [f32; 4] = [22.0, 20.0, 22.0, 20.0];
+	/// The footer a stylesheet that says nothing about furniture gets.
+	pub const DEFAULT_FOOTER_CENTER: &'static str = "{page} / {pages}";
+
+	/// The paper in millimetres, after landscape is applied.
+	pub fn paper_mm(&self) -> Option<(f32, f32)> {
+		let (width, height) =
+			parse_paper_size(self.size.as_deref().unwrap_or("a4"))?;
+		Some(if self.landscape.unwrap_or(false) {
+			(height, width)
+		} else {
+			(width, height)
+		})
+	}
+
+	/// The margins in millimetres, in the canonical top/right/bottom/left
+	/// order.
+	pub fn margin_mm(&self) -> Option<[f32; 4]> {
+		let values = self.margin.as_ref()?;
+		let list: [f32; 4] = match values.as_slice() {
+			[] => Self::DEFAULT_MARGIN_MM,
+			[all] => [*all; 4],
+			[vertical, horizontal] => {
+				[*vertical, *horizontal, *vertical, *horizontal]
+			}
+			[top, right, bottom, left] => [*top, *right, *bottom, *left],
+			_ => return None,
+		};
+		list.iter()
+			.all(|v| v.is_finite() && *v >= 0.0)
+			.then_some(list)
+	}
+
+	/// The header or footer slots, left to right. A stylesheet with no
+	/// furniture at all still gets the default page number.
+	pub fn slots(&self, header: bool) -> [String; 3] {
+		let (left, center, right) = if header {
+			(&self.header_left, &self.header_center, &self.header_right)
+		} else {
+			(&self.footer_left, &self.footer_center, &self.footer_right)
+		};
+		let empty = self.header_left.is_none()
+			&& self.header_center.is_none()
+			&& self.header_right.is_none()
+			&& self.footer_left.is_none()
+			&& self.footer_center.is_none()
+			&& self.footer_right.is_none();
+		let center = match center {
+			Some(text) => text.clone(),
+			None if !header && empty => Self::DEFAULT_FOOTER_CENTER.into(),
+			None => String::new(),
+		};
+		[
+			left.clone().unwrap_or_default(),
+			center,
+			right.clone().unwrap_or_default(),
+		]
+	}
+
+	pub fn overlay(&mut self, higher: &Self) {
+		macro_rules! merge { ($($f:ident),*) => { $(if higher.$f.is_some(){self.$f=higher.$f.clone();})* }; }
+		merge!(
+			size,
+			landscape,
+			margin,
+			header_left,
+			header_center,
+			header_right,
+			footer_left,
+			footer_center,
+			footer_right
+		);
+	}
+
+	/// Rejects a table the PDF layer could not honour, so a broken stylesheet
+	/// fails at parse time rather than at export time.
+	pub fn validate(&self) -> anyhow::Result<()> {
+		if self.size.is_some() && self.paper_mm().is_none() {
+			anyhow::bail!(
+				"page.size: expected a paper name (a4, a5, letter, legal) or WIDTHxHEIGHT in millimetres"
+			);
+		}
+		if self.margin.is_some() && self.margin_mm().is_none() {
+			anyhow::bail!(
+				"page.margin: expected 1, 2 or 4 nonnegative numbers in millimetres"
+			);
+		}
+		for (slot, text) in self.slot_templates() {
+			if !crate::paginate::template_is_valid(text) {
+				anyhow::bail!(
+					"page.{slot}: unknown placeholder; use {{page}}, {{pages}}, {{title}} or {{path}}"
+				);
+			}
+		}
+		Ok(())
+	}
+
+	fn slot_templates(&self) -> impl Iterator<Item = (&'static str, &String)> {
+		[
+			("header_left", &self.header_left),
+			("header_center", &self.header_center),
+			("header_right", &self.header_right),
+			("footer_left", &self.footer_left),
+			("footer_center", &self.footer_center),
+			("footer_right", &self.footer_right),
+		]
+		.into_iter()
+		.filter_map(|(name, value)| Some((name, value.as_ref()?)))
 	}
 }

@@ -7,6 +7,9 @@ source and original license texts are available in Cargo's registry packages.
 | --- | --- | --- |
 | winit, wgpu | Native windows and GPU rendering | Apache-2.0 OR MIT |
 | Comrak | CommonMark and GFM parser | BSD-2-Clause |
+| krilla / pdf-writer | PDF content, font subsetting and serialization | MIT OR Apache-2.0 |
+| Skrifa / read-fonts | OpenType tables and variable-font instances | Apache-2.0 OR MIT |
+| subsetter | Font subsetting for embedded text | MIT OR Apache-2.0 |
 | Parley / Fontique | Shaping, font matching and Unicode analysis | Apache-2.0 OR MIT |
 | ICU4X | Unicode segmentation | Unicode-3.0 |
 | hypher | English hyphenation patterns | MIT OR Apache-2.0 |

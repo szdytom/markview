@@ -74,6 +74,9 @@ A condition is one fact about a rendered run: the blocks that contain it, the pa
 | Inline | `em`, `strong`, `link`, `del`, `sup`, `footnote_ref`, `code`, `math` |
 | State | `hover`, `error` |
 | Surfaces and UI | `img`, `selection`, `scrollbar`, `ui`, `toolbar`, `statusbar`, `panel`, `button` |
+| Paper | `page`, `page_header`, `page_footer`, `page_number` |
+
+`page` paints the exported sheet; the other three style page furniture. They never apply to the reader window, and a theme that ignores them still exports: the PDF falls back to the body appearance.
 
 A rule applies to a run when **every** condition it names holds for that run. The order inside `when` is not part of the rule's identity, so `["strong", "code"]` and `["code", "strong"]` are the same rule, and a file that declares both is rejected as a duplicate. There are no selectors, variables, `inherit`, `unset`, imports, scripts, or remote resources.
 
@@ -111,9 +114,30 @@ A block's own box is the exception. Its background, border, padding, spacing, an
 
 Text conditions accept `color`, `font`, `weight`, `size`, `decoration`, and `background`. Block conditions additionally accept `line_height`, `space_before`, `space_after`, and the container fields `padding`, `border_color`, `border_width`, and `radius`. Parts that are not containers—`label`, `marker`, `task_marker`, `caption`, and `placeholder`—reject container geometry. `indent` styles `list` and `enum`; `align` and `source` belong to image conditions; `show` belongs to `error`.
 
+`page` accepts only `background`. The furniture conditions accept the text fields, so a page number can be smaller or greyer than the header text beside it.
+
 Special properties include `theme` on `["code_block"]` alone, scrollbar colors and thicknesses on `["scrollbar"]`, `muted`/`accent`/`error`/`shadow`/`scrim` on `["ui"]`, and `hover_background`/`active_background`/`disabled_color`/`focus_color` on `["ui", "button"]`. The UI theme controls appearance, not widget layout or dimensions.
 
 Colors are sRGB `#RRGGBB` or `#RRGGBBAA`; `body.background` must be opaque. Sizes and spacing are positive or non-negative finite values. `size` is relative to the reader's base size, `line_height` is a multiple of the condition's size, and spacing/padding use base-size units. Border width and radius use logical pixels. Unknown conditions, fields, types, and enum values are errors.
+
+## Paper
+
+The PDF export always starts from the bundled `print` stylesheet, and `--style` layers a named style on top of it. A style may also set the `[page]` table, which is the only table besides `fontdef`, `meta`, and `rule`:
+
+```toml
+[page]
+size = "a4"                  # a3, a4, a5, a6, b5, letter, legal, tabloid, or WIDTHxHEIGHT in mm
+landscape = false
+margin = [22, 20, 22, 20]    # millimetres: one value, two (vertical, horizontal), or four (top, right, bottom, left)
+header_left = "{title}"      # six slots; an empty string hides the slot
+header_center = ""
+header_right = ""
+footer_left = ""
+footer_center = "{page} / {pages}"
+footer_right = ""
+```
+
+Slots are templates. `{page}`, `{pages}`, `{title}`, and `{path}` are the supported placeholders; any other name is rejected at parse time, and there is deliberately no date, so the same document always exports the same bytes. A slot holding a page number is styled by `page_number` and the rest by `page_header` or `page_footer`. `--paper`, `--landscape`, `--margin`, `--header*`, and `--footer*` override these fields for one run.
 
 ## Cascade and inheritance
 

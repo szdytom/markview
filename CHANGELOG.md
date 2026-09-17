@@ -15,6 +15,20 @@ at the same level, without `[brackets]`.
 
 ### Added
 
+- `--pdf FILE --output out.pdf` exports the document to paper: vector text with
+  subset fonts, page breaking with widow and orphan control, page furniture, and
+  link annotations.
+- `--paper`, `--landscape`, `--margin`, `--header*`, and `--footer*` configure
+  the page; a bundled `print` stylesheet supplies the defaults, and `--style`
+  layers on top of it.
+- `--title`, `--author`, `--subject`, `--keywords`, `--language`, and
+  `--creator` fill the PDF information dictionary; a title defaults to the
+  document's first heading, and unset fields stay out.
+- MVSS adds a `[page]` table for paper, margins, and the header and footer
+  slots, plus the `page`, `page_header`, `page_footer`, and `page_number`
+  conditions.
+- `scripts/compare_pdf_render.py` holds the PDF export and the GPU render of
+  one document to the same content bands, alignment and profile overlap.
 - Footnote references are clickable: a reference moves to its note, and the
   note's number moves back to the citation it was opened from.
 - Consecutive footnote references share one bracket pair, as in `[1,2]`, and
@@ -40,6 +54,7 @@ at the same level, without `[brackets]`.
 
 ### Changed
 
+- The minimum supported Rust version is 1.92, which the PDF backend requires.
 - System fonts are discovered once per process, and the scan runs on the worker
   while the window and renderer initialize, cutting the native first readable
   frame by about 12–14 ms.

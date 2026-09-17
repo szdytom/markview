@@ -48,16 +48,29 @@ pub(super) fn run() -> Result<()> {
 	// stylesheet has no `[cjk]` font definition at all, and every CJK cluster
 	// would be drawn in whatever face the system happens to offer.
 	let cjk_type = args.cjk_type.unwrap_or(CjkType::Sc);
-	// A rendered page cannot be scrolled sideways, so image exports wrap code
-	// blocks by default; the interactive reader keeps its saved preference.
-	if args.mode.exports_image() {
+	// A rendered page cannot be scrolled sideways, so image and PDF exports
+	// wrap code blocks by default; the reader keeps its saved preference.
+	if args.mode.wraps_code_blocks() {
 		args.options.codeblock_wrap = true;
 	}
-	args.options.stylesheet = crate::stylesheet::load_for_run(
-		ids.as_deref(),
-		crate::stylesheet::directory().as_deref(),
-		cjk_type,
-	)?;
+	args.options.stylesheet = if args.mode == Mode::Pdf {
+		// A PDF always starts from the bundled print sheet, whatever the
+		// reader's theme is; --style layers a named sheet on top of it.
+		crate::stylesheet::load_for_pdf(
+			ids.as_deref(),
+			crate::stylesheet::directory().as_deref(),
+			cjk_type,
+		)?
+	} else {
+		crate::stylesheet::load_for_run(
+			ids.as_deref(),
+			crate::stylesheet::directory().as_deref(),
+			cjk_type,
+		)?
+	};
+	if args.mode == Mode::Pdf {
+		return crate::pdf::run(args.path.as_ref().unwrap(), &args);
+	}
 	if args.mode == Mode::Render
 		|| args.mode == Mode::Bench
 		|| args.mode == Mode::Latency

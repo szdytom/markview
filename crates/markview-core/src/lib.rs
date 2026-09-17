@@ -8,6 +8,7 @@ pub mod limits;
 pub mod linebreak;
 pub mod math;
 mod microtype;
+pub mod paginate;
 pub mod profile;
 pub mod scene;
 pub mod shaping;

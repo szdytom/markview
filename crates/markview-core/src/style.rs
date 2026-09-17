@@ -13,8 +13,9 @@ use std::{
 };
 pub use types::{
 	CaptionSource, CjkType, Color, ColorField, Condition, ConditionSet,
-	Decoration, Font, FontDefType, FontDefinition, MAX_CHAIN, Padding, Rule,
-	TextAlign, Variant, chain_of, chain_push, chain_set,
+	Decoration, Font, FontDefType, FontDefinition, MAX_CHAIN, Padding,
+	PageStyle, Rule, TextAlign, Variant, chain_of, chain_push, chain_set,
+	parse_paper_size,
 };
 
 #[derive(Clone, Debug, Default, PartialEq, Deserialize)]
@@ -34,7 +35,8 @@ pub struct Stylesheet {
 	pub meta: Metadata,
 	/// Rules keyed by the canonical condition set they require.
 	pub rules: BTreeMap<ConditionSet, Rule>,
-	/// Rule keys grouped by condition, most specific first.
+	/// Paper, margins and page furniture for the PDF export.
+	pub page: PageStyle,
 	/// Rule keys grouped by condition, most specific first.
 	rule_index: Vec<Vec<ConditionSet>>,
 }
@@ -237,6 +239,7 @@ impl Stylesheet {
 			self.rules.entry(*conditions).or_default().overlay(v);
 		}
 		self.reindex();
+		self.page.overlay(&higher.page);
 	}
 	pub(super) fn resolve_fontdefs(&mut self) {
 		let mut resolved = BTreeMap::new();
@@ -264,6 +267,10 @@ impl Stylesheet {
 	/// definitions with, and so which one judges its punctuation.
 	pub fn cjk_type(&self) -> CjkType {
 		self.cjk_type
+	}
+	/// Paper, margins and page furniture for the PDF export.
+	pub fn page(&self) -> &PageStyle {
+		&self.page
 	}
 	pub fn set_cjk_type(&mut self, cjk_type: CjkType) {
 		self.cjk_type = cjk_type;
@@ -302,6 +309,19 @@ impl Stylesheet {
 			)
 		})
 		.clone()
+	}
+	/// The bundled print stylesheet: white paper, page furniture, and no
+	/// reader chrome. It is the base every PDF export starts from.
+	pub fn bundled_print() -> Arc<Self> {
+		static PRINT: OnceLock<Arc<Stylesheet>> = OnceLock::new();
+		PRINT
+			.get_or_init(|| {
+				Arc::new(
+					Self::parse(include_str!("../styles/print.mvss.toml"))
+						.expect("bundled print stylesheet"),
+				)
+			})
+			.clone()
 	}
 	pub fn bundled(dark: bool) -> Arc<Self> {
 		static LIGHT: OnceLock<Arc<Stylesheet>> = OnceLock::new();

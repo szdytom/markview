@@ -1,0 +1,25 @@
+[package]
+name = "markview-pdf"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish = false
+
+[dependencies]
+krilla.workspace = true
+skrifa.workspace = true
+swash.workspace = true
+parley.workspace = true
+ratex-font.workspace = true
+ratex-katex-fonts.workspace = true
+ratex-types.workspace = true
+anyhow.workspace = true
+log.workspace = true
+markview-core = { path = "../markview-core" }
+
+[dev-dependencies]
+lopdf = { version = "0.45", default-features = false }
+
+[lints]
+workspace = true

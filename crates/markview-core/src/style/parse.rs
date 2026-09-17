@@ -4,8 +4,8 @@ use serde::Deserialize;
 use std::collections::BTreeMap;
 
 use super::{
-	CjkType, Condition, ConditionSet, FontDefinition, Metadata, Rule,
-	Stylesheet,
+	CjkType, Condition, ConditionSet, FontDefinition, Metadata, PageStyle,
+	Rule, Stylesheet,
 };
 impl Stylesheet {
 	pub fn parse(source: &str) -> Result<Self> {
@@ -25,12 +25,14 @@ impl Stylesheet {
 			.context("version: expected a nonnegative integer")?;
 		let fontdefs = parse_fontdefs(&mut doc)?;
 		let meta = parse_meta(&mut doc)?;
+		let page = parse_page(&mut doc)?;
 		let mut out = Self {
 			version,
 			fontdefs: BTreeMap::new(),
 			fontdef_variants: fontdefs,
 			cjk_type: CjkType::None,
 			meta,
+			page,
 			..Self::default()
 		};
 		out.resolve_fontdefs();
@@ -125,6 +127,25 @@ fn parse_meta(doc: &mut toml_edit::DocumentMut) -> Result<Metadata> {
 	Ok(toml_edit::de::from_str::<M>(&d.to_string())
 		.context("meta")?
 		.meta)
+}
+
+/// The `[page]` table. Unlike rules it holds no cascade: a merged stylesheet
+/// overlays it field by field.
+fn parse_page(doc: &mut toml_edit::DocumentMut) -> Result<PageStyle> {
+	let Some(item) = doc.remove("page") else {
+		return Ok(PageStyle::default());
+	};
+	let mut d = toml_edit::DocumentMut::new();
+	d["page"] = item;
+	#[derive(Deserialize)]
+	struct P {
+		page: PageStyle,
+	}
+	let page = toml_edit::de::from_str::<P>(&d.to_string())
+		.context("page")?
+		.page;
+	page.validate().context("page")?;
+	Ok(page)
 }
 
 /// Split one `[[rule]]` table into its condition set and style fields.
@@ -263,6 +284,14 @@ fn validate_field(conditions: ConditionSet, key: &str) -> Result<()> {
 		)
 	} else if has(K::Math) && !has(K::Error) {
 		matches!(key, "color" | "size")
+	} else if has(K::Page)
+		&& !has(K::PageHeader)
+		&& !has(K::PageFooter)
+		&& !has(K::PageNumber)
+	{
+		key == "background"
+	} else if has(K::PageHeader) || has(K::PageFooter) || has(K::PageNumber) {
+		matches!(key, "color" | "font" | "weight" | "size" | "decoration")
 	} else if has(K::Error) {
 		matches!(
 			key,

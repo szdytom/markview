@@ -14,12 +14,16 @@ markview-core: semantic document → immutable layout snapshot
         │
         ├── markview-render: snapshot → GPU frame
         │
+        ├── markview-pdf: snapshot + pages → PDF content streams
+        │
         └── markview application: files, settings, input, and lifecycle
 ```
 
 `markview-core` is window- and GPU-independent. It parses Markdown and the supported raw HTML subset, represents semantic blocks and inline content, shapes text, lays out paragraphs, measures math and images, and exposes reading text, selection geometry, links, and draw instructions.
 
 `markview-render` consumes those instructions. It owns the wgpu device and surface, glyph and image resources, clipping, colors that can be changed without reflow, and headless output. It does not contain a second document layout engine.
+
+`markview-pdf` consumes the same snapshot for paper. It re-lays the document at the page's text measure, breaks the column into pages, and writes vector content through `krilla`: text as glyph runs with subset fonts and a character map, math, rules, boxes, images, and link annotations. It owns no window, no GPU, and no source parsing.
 
 The root package owns effects that must touch the operating system: launching, file and settings I/O, file watching, image loading, clipboard access, platform link opening, window events, and background work. The UI translates gestures into commands; it does not define document semantics.
 
@@ -80,6 +84,8 @@ Justification and line breaking share one microtypographic model, in `microtype`
 
 East Asian punctuation gives back the blank half of its em box at a line start or end, and Han text is spaced a quarter em from Latin, both following the W3C Requirements for Chinese Text Layout. Which half a mark gives up depends on the reader's `cjk-type`, since the mainland, Taiwanese and Japanese conventions place the comma-like marks differently. A closing mark also hangs part of its advance into the end margin, which is what makes a justified line read as flush, and a CJK quotation mark may take the line edge its convention asks for even though UAX #14 forbids a break on either side of one. Because the same numbers drive measurement and painting, a drawn line is the line the optimizer chose.
 
+Page breaking is the one layout step that exists only for paper. `markview-core::paginate` collects each block's drawn lines into bands, records the space each band needs together with the lines widow and orphan control refuses to separate from it, and distributes the bands over fixed-height regions, following the model Typst uses for flow layout. A block owns its whole vertical extent, so a fragment that opens a page starts at the block's top edge while a continuation starts at its first line. The reader never runs this pass.
+
 Math is laid out as an atomic display list and images as atomic inline boxes. This keeps their baseline and height in the line model. Images do not create a float band: text never wraps around their sides. An image-only paragraph is centered and may receive a caption; mixed content remains an inline paragraph.
 
 Painting is consequently a projection of an already-decided layout. Scrolling and selection only change which geometry is visible and which overlays are painted. Theme colors can often be late-bound; font, width, spacing, and other geometry changes require reflow.
@@ -111,6 +117,8 @@ components; helpers receive borrowed inputs instead of an application-wide conte
 | Application chrome | Borrowed display state | Controls, footer, tabs and styles produce geometry without window, worker or configuration I/O access. Selection-count caching remains in the application adapter. |
 | Image scheduler | Versioned entries, jobs and published snapshot | Source reads, bounded decoding and allocation-aware pixel eviction are separate modules. |
 | `LayoutEngine` | Document block cache, shaping/math resources, highlight owner | Snapshot assembly and invalidation stay at this entry point; immutable stylesheet identity is computed once per document pass. |
+| `paginate` | Band segmentation, page distribution, page furniture | Pure geometry over a settled snapshot: no fonts, no I/O, and no effect on the reader's layout. |
+| PDF painter | Font subsets, glyph runs, page content, annotations | One export owns its krilla document; nothing it embeds outlives the call. |
 | Block layout context | Borrowed shaper, math engine, image snapshot and completed highlights | Inline preparation, paragraphs, code, images, tables and containers cannot start jobs or invalidate document caches. |
 | Renderer `Gpu` | Device, queue, surface and device-loss state | Owns acquisition, resize/recovery, completion and offscreen readback. |
 | Renderer raster cache | Atlas, raster keys, scaler and math fonts | Glyph/path preparation borrows the queue; paths write to the shared geometry buffer. |

@@ -22,8 +22,11 @@ pub(crate) fn report(arguments: std::fmt::Arguments<'_>) {
 /// Install the logger once, after the command line fixed the mode.
 pub(crate) fn init(mode: &Mode) {
 	// Targets match by prefix, so `markview` also covers `markview_core`.
+	// Targets match by prefix, so `markview` also covers `markview_core`; the
+	// PDF crate's target is its own module path, not a `markview` child.
 	let default = match mode {
 		Mode::Window => "warn",
+		Mode::Pdf => "warn,markview=debug,markview_pdf=debug",
 		Mode::Render | Mode::Bench | Mode::Latency | Mode::Smoke => {
 			"warn,markview=debug"
 		}

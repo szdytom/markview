@@ -350,6 +350,7 @@ impl LayoutEngine {
 		}
 		changed
 	}
+
 	pub fn label(
 		&mut self,
 		text: &str,

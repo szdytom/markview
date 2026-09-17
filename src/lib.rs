@@ -1,5 +1,5 @@
 //! Desktop application and platform services.
-pub use markview_core::{document, layout, profile};
+pub use markview_core::{document, layout, paginate, profile};
 pub use markview_render as render;
 pub mod app;
 mod benchmark;
@@ -10,6 +10,7 @@ mod latency;
 mod link;
 mod logging;
 mod paste;
+mod pdf;
 mod platform;
 mod settings;
 mod state;

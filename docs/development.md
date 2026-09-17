@@ -24,11 +24,37 @@ For visual or timing changes, also use the real pipelines:
 
 ```sh
 target/release/markview --render examples/welcome.md --output artifacts/welcome.png
+target/release/markview --pdf examples/welcome.md --output artifacts/welcome.pdf
 target/release/markview --smoke-test examples/welcome.md --output artifacts/window.png
 target/release/markview --bench tests/fixtures/ordinary-10k.md --output artifacts/ordinary.json
 target/release/markview --bench-latency tests/fixtures/ordinary-10k.md --output artifacts/latency.json
 python3 scripts/smoke_watch.py target/release/markview
 ```
+
+`--pdf` writes the paper edition: the document is laid out again at the page's
+text measure, broken into pages, and written as vector text with subset fonts.
+Check an export in a viewer (`pdftotext`, `pdfinfo`, `qpdf --qdf`) for page
+count, page furniture, link annotations, text selection and embedded fonts.
+A block that had to shrink to fit the page, or a band taller than the page, is
+reported on stderr. The export never depends on the GPU, so it runs headless.
+
+The GPU renderer and the PDF writer share the layout and the `print` sheet, so
+the same document at the same measure must place the same content in the same
+place. `scripts/compare_pdf_render.py` holds them to that: it exports one
+fixture both ways, rasterizes the PDF page with Ghostscript, and reports each
+content band's best alignment, profile overlap, ink ratio and a windowed SSIM,
+then fails on a shift, a missing band, or a low overlap. It needs python3 with
+numpy and Pillow, plus `gs`:
+
+```sh
+python3 scripts/compare_pdf_render.py examples/welcome.md --out /tmp/pdf-cmp
+```
+
+At the default two device pixels per layout pixel the two images overlap by
+86–97% per band with no shift; the remaining difference is glyph rasterization
+weight, because the GPU bakes subpixel coverage into bitmaps while Ghostscript
+antialiases vector outlines. `--out` keeps a side-by-side image and a diff heat
+map for eyeballing.
 
 `--bench-latency` measures the two latency targets and the reload memory trend
 through the real layout worker and prefix publication: process entry to the

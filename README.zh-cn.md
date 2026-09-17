@@ -25,7 +25,7 @@ xattr -d com.apple.quarantine /Applications/Markview.app
 
 ## 开始使用
 
-从源码构建需要 Rust 1.88 或更新版本、系统字体，以及可用的 Vulkan、OpenGL、Metal 或 Direct3D 12 驱动。
+从源码构建需要 Rust 1.92 或更新版本、系统字体，以及可用的 Vulkan、OpenGL、Metal 或 Direct3D 12 驱动。
 
 ```sh
 cargo run --release -- examples/welcome.md
@@ -39,6 +39,22 @@ Debian/Ubuntu 通常需要：
 ```sh
 sudo apt-get install libfontconfig1-dev libxkbcommon-dev libwayland-dev fonts-noto-core fonts-noto-cjk
 ```
+
+## 导出 PDF
+
+Markview 不需要浏览器或打印对话框就能把文档排到纸上。导出会按版面宽度重新排版、自动分页，并以矢量文字加子集字体写出，体积小、清晰、可搜索：
+
+```sh
+markview --pdf document.md --output document.pdf
+markview --pdf document.md -o paper.pdf --paper letter --margin 20,25
+markview --pdf document.md -o paper.pdf --footer "{title} — {page}/{pages}"
+```
+
+内置的 `print` 样式表决定纸张：A4、左右 20mm 页边距、白底黑字、页脚居中页码。`--paper` 接受 `a3`、`a4`、`a5`、`a6`、`b5`、`letter`、`legal`、`tabloid` 或毫米制的 `宽x高`；`--margin` 接受 1、2 或 4 个毫米值；`--landscape` 交换长短边。页眉页脚共六个槽位，用 `--header`、`--footer` 及 `-left`/`-right` 变体设置，模板中可用 `{page}`、`{pages}`、`{title}`、`{path}`。`--style` 会在 `print` 之上叠加已安装的样式表，页码位置与格式由其中的 `[page]` 表配置。
+
+跨页时每段两边各留两行，标题与随后的内容一起移动，代码块自动换行，过宽的表格会缩小并在 stderr 给出警告。网页和邮件链接变成可点击注释，`#标题` 链接变成文档内跳转。
+
+PDF 信息字典可用 `--title`、`--author`（可重复以写多位作者）、`--subject`、`--keywords`、`--language`、`--creator` 指定。标题默认取文档的第一个标题，其次是文件名；页眉页脚里的 `{title}` 与之相同。其余字段不会被凭空写入：没有对应参数就不写该条目，也从不写入创建或修改时间，因此同一文档每次导出的字节完全一致。
 
 ## 阅读操作
 
@@ -57,7 +73,7 @@ macOS 使用 Command 代替 Ctrl。默认阅读栏宽度为 760 逻辑像素，�
 
 支持 CommonMark 标题、段落、引用、列表、强调（包括紧邻中日韩文字也能正确闭合的 CJK 友好强调）、代码块，GFM 表格和任务列表，脚注、GitHub 风格提示块、链接、受支持的原始 HTML、行内和块级数学公式，以及本地或远程图片。图片支持 PNG、JPEG、GIF、WebP、BMP、ICO 和 SVG；动图只显示第一帧。
 
-阅读器有意保持只读：不能编辑或保存 Markdown，不提供目录或搜索，不支持打印或多文档工作区。标题锚点使用 GitHub 的 slug 规则；原始 HTML 的 `id` 属性不会被解析，因此不能作为链接目标。完整边界见[文档地图](docs/README.md)。
+阅读器有意保持只读：不能编辑或保存 Markdown，不提供目录或搜索，也不提供多文档工作区；打印指的是 `--pdf` 导出，而不是打印对话框。标题锚点使用 GitHub 的 slug 规则；原始 HTML 的 `id` 属性不会被解析，因此不能作为链接目标。完整边界见[文档地图](docs/README.md)。
 
 ## 自定义样式
 
