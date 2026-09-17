@@ -23,17 +23,19 @@ Markview is a native Markdown reader. It renders Markdown end-to-end, directly f
 
 ## Git
 
-Use the Conventional Commits style used by this repository:
+- Use the Conventional Commits style used by this repository:
 
-```text
-<type>: <short, lowercase summary>
-```
+	```text
+	<type>: <short, lowercase summary>
+	```
 
-Preferred types are `feat`, `fix`, `perf`, `refactor`, `docs`, `test`, `build`, and `chore`. Keep the type lowercase, write the summary in the imperative mood, describe one focused change, and omit a trailing period.
+	Preferred types are `feat`, `fix`, `perf`, `refactor`, `docs`, `test`, `build`, and `chore`. Keep the type lowercase, write the summary in the imperative mood, describe one focused change, and omit a trailing period.
 
-When merging and handling pull requests, keep the commit history clean and linear.
+- When merging and handling pull requests, keep the commit history clean and linear.
 
-Format and lint before committing.
+- Format and lint before committing.
+
+- Do not commit unless the user explicitly requested it.
 
 ## Changelog
 
