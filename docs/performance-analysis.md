@@ -7,18 +7,19 @@ repeatable commands and the environment they were taken in are below.
 
 | Metric | Target | Current |
 | --- | --- | --- |
-| First readable frame | 50 ms for 10 KiB, 100 ms for 100 KiB, size-independent upper bound | **~101 ms for 10 KiB, ~104 ms for 100 KiB, ~189 ms for 1 MiB** (native); a fixed ~100 ms prologue dominates |
+| First readable frame | 50 ms for 10 KiB, 100 ms for 100 KiB, size-independent upper bound | **~82 ms for 10 KiB, ~79 ms for 100 KiB** (native); a fixed ~80 ms prologue dominates, and past ~500 KiB the whole-file parse adds ~100 ms/MiB |
 | Edit → updated frame | < 50 ms, size-independent | ~41–43 ms up to ~400 KiB, but ~30 ms of that is the watch debounce; **~144 ms at 1 MiB** because the whole file is re-parsed |
 | Edit → complete re-layout | bounded, no size dependence | **O(document) beyond 256 unique blocks**: 39 ms / 100 KiB, 308 ms / 400 KiB, ~70 ms and never any reuse for >256 code blocks |
 | RSS | 10 KiB < 80 MiB, 100 KiB < 100 MiB, linear | **43.9 MiB / 64.0 MiB**, roughly linear in glyphs; no leak found (plateaus) |
 
 Two facts explain most of the result:
 
-1. **A ~100 ms fixed prologue runs before anything is on screen.** It is two
-   full system-font scans, renderer initialization, window creation and
-   compositor handoff. Document content is almost free for the first frame
-   (layout to the viewport is 5–11 ms), except that the whole file is parsed
-   first, which adds ~100 ms per MiB.
+1. **A ~80 ms fixed prologue runs before anything is on screen.** It is the
+   system font scan (shared across every shaper and overlapped with renderer
+   initialization), renderer initialization, window creation and compositor
+   handoff. Document content is almost free for the first frame (layout to the
+   viewport is 5–11 ms), except that the whole file is parsed first, which adds
+   ~100 ms per MiB.
 2. **The layout block cache is capped at 256 entries and indexed by content.**
    The repository fixtures repeat a few paragraph bodies, so a handful of cache
    entries cover every block and the measured edit cost looks tiny (3 ms). Give
@@ -69,16 +70,20 @@ analysis (`src/app/painting.rs`), and `scripts/smoke_watch.py` now accepts
 
 ## Metric 1: first readable frame
 
-Native `--smoke-test`, process entry to the first readable GPU frame:
+Native `--smoke-test`, process entry to the first readable GPU frame, native
+DPR 2, seven alternating samples per side:
 
-| Fixture | Bytes | Blocks | First frame (ms) |
-| --- | ---: | ---: | ---: |
-| ordinary-10k | 10 KiB | 59 | 101 |
-| unique-100k | 100 KiB | 438 | 104 |
-| unique-400k | 400 KiB | 1747 | 95 |
-| text-cjk-1000k | 1 MiB | 5871 | 189 |
+| Fixture | Bytes | Blocks | Before (ms) | After font sharing (ms) |
+| --- | ---: | ---: | ---: | ---: |
+| ordinary-10k | 10 KiB | 59 | 94.2 | **82.3** |
+| unique-100k | 100 KiB | 438 | 93.7 | **79.3** |
 
-Offscreen, with the stage split:
+Sharing the font collection removed about 12–14 ms, because the main thread no
+longer scans the system fonts before the window is created and the worker no
+longer scans a second time. The remaining prologue is the renderer, window and
+compositor cost.
+
+Offscreen, before the sharing change, with the stage split:
 
 | Fixture | Bytes | Init (ms) | Parse (ms) | First-prefix layout (ms) | First frame (ms) |
 | --- | ---: | ---: | ---: | ---: | ---: |
@@ -90,6 +95,11 @@ Offscreen, with the stage split:
 | unique-400k | 400 KiB | 22.5 | 1.9 | 6.0 | 57.4 |
 | text-cjk-1000k | 1 MiB | 22.6 | 103.9 | 11.2 | 170.6 |
 
+The offscreen harness spawns the worker after the renderer, so it used to pay
+the worker's scan serially. With the shared collection and the worker started
+first, as the window does, its first frame fell to 51.0 ms (ordinary-10k),
+38.6 ms (unique-100k) and 156.2 ms (text-cjk-1000k).
+
 The document-dependent part of the first frame is small and bounded: the worker
 publishes a prefix covering the viewport (plus half a viewport) after laying out
 ~11–16 blocks in 5–11 ms, and rendering is viewport-culled
@@ -97,23 +107,23 @@ publishes a prefix covering the viewport (plus half a viewport) after laying out
 the fixed prologue, and the "size-independent upper bound" only breaks once the
 whole-file parse adds up, at roughly 100 ms per MiB.
 
-### Where the ~100 ms goes
+### Where the fixed prologue goes
 
 | Stage | Evidence | Cost | Size-dependent |
 | --- | --- | ---: | --- |
-| Process entry → app entry, dominated by **UI `TextShaper::new()` = full fontconfig scan** | `src/app.rs:96`, `crates/markview-core/src/shaping.rs:181` | ~25 ms (22.5 ms scan) | no |
-| Worker `LayoutEngine::new()` = **second full font scan**, before it accepts the first request | `src/worker.rs:128` → `crates/markview-core/src/layout.rs:177` | ~20–30 ms | no |
+| System font discovery, shared and started on the worker thread so it overlaps the renderer | `crates/markview-core/src/shaping.rs` `system_fonts`, `src/worker.rs` `warm_system_fonts` | ~20 ms, off the main thread | no |
 | `Renderer::new`: instance, adapter, device, shader module, **two** pipelines, 4 MiB mask atlas, buffers | `src/app/painting.rs:126`, `crates/markview-render/src/gpu.rs:61`, `pipeline.rs:2`, `raster.rs:83` | ~30 ms | no |
 | Window creation, chrome overlay shaping, acquire/present, DPR-2 compositor handoff | `src/app/lifecycle.rs:33`, `src/app/painting.rs:25`, `frame.rs:186` | ~20–30 ms | no |
 | Whole-file parse before the first prefix | `src/worker.rs:187`, `crates/markview-core/src/document/parse.rs:348` | 0.2 ms / 2.7 ms / 104 ms (10 KiB / 100 KiB / 1 MiB) | **yes** |
 | Layout to coverage | `crates/markview-core/src/layout.rs:266` | 5–11 ms | viewport-bounded |
 
-The two font scans are redundant and run once each: `FontContext::new()` builds
-a fontique collection with system fonts, which enumerates every installed family
-(~1287 here) and runs several generic-family sorts. The UI copy is needed only
-when the first overlay is drawn; the worker copy is needed before block 0.
+`FontContext::new()` builds a fontique collection with system fonts, which
+enumerates every installed family (~1287 here). It used to run twice, once in
+`App::new` on the main thread and once in the worker; now it runs once on the
+worker and every other shaper clones the `Arc`-backed collection. The UI shaper
+is created on the first overlay, which is already past the window, and
 `Renderer.fallback` (`crates/markview-render/src/lib.rs:80`) stays `None` on a
-normal launch, so there is no third scan.
+normal launch, so no third scan is possible.
 
 Three whole-document passes precede the first laid-out block: `document::parse`,
 `Images::prepare` (`src/worker.rs:213`) and `highlights.prepare`
@@ -311,10 +321,12 @@ chance of an output or behavior change.
 
 ### First frame
 
-1. **One font context per process** — drop the second full scan (UI or worker).
-   Make `App.ui` lazy (it is first used when the first overlay is drawn) or hand
-   the worker's ready `TextShaper` back through the event proxy. ~20–30 ms,
-   low risk. (`src/app.rs:96`, `src/worker.rs:128`, `layout.rs:177`.)
+1. **One font context per process — implemented.** `TextShaper` builds the
+   process-wide system font collection on first use, every other shaper clones
+   it, and the worker starts the scan while the window and renderer initialize.
+   Native first frame fell 94.2 → 82.3 ms (10 KiB) and 93.7 → 79.3 ms (100 KiB);
+   the offscreen harness fell 71.6 → 51.0 ms. (`shaping.rs` `system_fonts`,
+   `TextShaper::warm_system_fonts`, `src/worker.rs`.)
 2. **Partial font discovery** — build the collection with system fonts disabled
    and register the families the stylesheet actually names, instead of
    enumerating all ~1287 families. ~15–20 ms, medium risk (unlisted scripts lose

@@ -40,6 +40,9 @@ at the same level, without `[brackets]`.
 
 ### Changed
 
+- System fonts are discovered once per process, and the scan runs on the worker
+  while the window and renderer initialize, cutting the native first readable
+  frame by about 12–14 ms.
 - Justification spends word spaces and letter spacing first, then shares the
   remaining slack evenly, so a CJK line closes to the full measure instead of
   stretching one gap. Word spacing now follows Typst's two-thirds to

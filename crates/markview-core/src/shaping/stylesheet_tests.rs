@@ -1,7 +1,7 @@
 use super::*;
 fn shaper() -> TextShaper {
 	let mut s = TextShaper::new();
-	s.fonts.collection = parley::fontique::Collection::new(
+	s.font_context().collection = parley::fontique::Collection::new(
 		parley::fontique::CollectionOptions {
 			system_fonts: false,
 			..Default::default()
@@ -12,7 +12,7 @@ fn shaper() -> TextShaper {
 		("Fallback", "KaTeX_AMS-Regular.ttf"),
 	] {
 		let data = ratex_katex_fonts::ttf_bytes(file).unwrap().into_owned();
-		s.fonts.collection.register_fonts(
+		s.font_context().collection.register_fonts(
 			data.into(),
 			Some(parley::fontique::FontInfoOverride {
 				family_name: Some(family),
@@ -360,7 +360,7 @@ fn a_selected_cjk_variant_supplies_the_configured_face() {
 		),
 	];
 	let mut s = TextShaper::new();
-	s.fonts.collection = parley::fontique::Collection::new(
+	s.font_context().collection = parley::fontique::Collection::new(
 		parley::fontique::CollectionOptions {
 			system_fonts: false,
 			..Default::default()
@@ -368,7 +368,7 @@ fn a_selected_cjk_variant_supplies_the_configured_face() {
 	);
 	for (_, family, file) in variants {
 		let data = ratex_katex_fonts::ttf_bytes(file).unwrap().into_owned();
-		s.fonts.collection.register_fonts(
+		s.font_context().collection.register_fonts(
 			data.into(),
 			Some(parley::fontique::FontInfoOverride {
 				family_name: Some(family),

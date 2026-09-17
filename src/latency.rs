@@ -447,6 +447,13 @@ pub fn run(
 	offline: bool,
 ) -> Result<()> {
 	let process_start = crate::process_started();
+	// The worker starts before the renderer, as it does in the window: its
+	// font discovery then overlaps renderer initialization instead of
+	// following it, and the measured first frame matches the reader.
+	let (tx, rx) = mpsc::channel::<Update>();
+	let worker = Worker::with_images(offline, move |update| {
+		let _ = tx.send(update);
+	});
 	let mut renderer = pollster::block_on(Renderer::new(None))?;
 	renderer.set_stylesheet(options.stylesheet.clone());
 	let after_init = memory();
@@ -467,10 +474,6 @@ pub fn run(
 	// same base directory, and the fixture itself is never touched.
 	let work = bench_copy(path, &source)?;
 
-	let (tx, rx) = mpsc::channel::<Update>();
-	let worker = Worker::with_images(offline, move |update| {
-		let _ = tx.send(update);
-	});
 	let mut bench = Bench {
 		renderer,
 		texture,

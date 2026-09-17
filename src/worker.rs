@@ -125,6 +125,10 @@ impl Worker {
 			.name("markview-layout".into())
 			.stack_size(8 * 1024 * 1024)
 			.spawn(move || {
+				// Discover system fonts here, while the window and renderer
+				// initialize on the main thread; every later shaper clones the
+				// resulting collection instead of scanning again.
+				crate::layout::TextShaper::warm_system_fonts();
 				let mut engine = LayoutEngine::new();
 				let mut images = crate::images::Images::new(offline);
 				let mut last: Option<Request> = None;

@@ -80,7 +80,10 @@ pub(crate) struct Cluster {
 }
 /// Reusable shaping context for UI labels and document text.
 pub struct TextShaper {
-	fonts: FontContext,
+	/// Built on first use. Discovering system fonts is the expensive part of
+	/// construction, and the first overlay or laid-out block is the first place
+	/// fonts are needed, so an unused shaper should not trigger the scan.
+	fonts: Option<FontContext>,
 	context: LayoutContext<usize>,
 	pub stylesheet: Arc<Stylesheet>,
 	pub appearance: TextAppearance,
@@ -168,22 +171,52 @@ fn test_fonts() -> FontContext {
 		std::sync::OnceLock::new();
 	FontContext {
 		collection: COLLECTION.get_or_init(collection).clone(),
-		..Default::default()
+		source_cache: parley::fontique::SourceCache::default(),
 	}
+}
+
+/// The process-wide system font collection.
+///
+/// Discovering system fonts enumerates every installed family, which costs
+/// roughly twenty milliseconds on a desktop. Building it once and cloning the
+/// `Arc`-backed collection into the UI shaper, the layout worker and any
+/// renderer fallback keeps a process to a single scan, and the shared store
+/// keeps lazily registered generics and fallbacks visible to every clone.
+#[cfg(not(test))]
+fn system_fonts() -> FontContext {
+	static COLLECTION: std::sync::OnceLock<parley::fontique::Collection> =
+		std::sync::OnceLock::new();
+	FontContext {
+		collection: COLLECTION
+			.get_or_init(|| {
+				parley::fontique::Collection::new(
+					parley::fontique::CollectionOptions {
+						shared: true,
+						system_fonts: true,
+					},
+				)
+			})
+			.clone(),
+		source_cache: parley::fontique::SourceCache::default(),
+	}
+}
+
+/// The font context a shaper builds when it first needs fonts.
+#[cfg(test)]
+fn default_fonts() -> FontContext {
+	test_fonts()
+}
+#[cfg(not(test))]
+fn default_fonts() -> FontContext {
+	system_fonts()
 }
 impl TextShaper {
 	pub fn new() -> Self {
-		// Layout tests assert exact geometry, which is only reproducible when
-		// the faces are fixed rather than discovered on the host.
-		#[cfg(test)]
-		let fonts = test_fonts();
-		#[cfg(not(test))]
-		let fonts = FontContext::new();
 		let stylesheet = Stylesheet::bundled(false);
 		let appearance =
 			stylesheet.text(&TextAppearance::default(), Condition::Body);
 		Self {
-			fonts,
+			fonts: None,
 			context: LayoutContext::new(),
 			stylesheet,
 			appearance,
@@ -192,6 +225,22 @@ impl TextShaper {
 			warned_fallbacks: HashSet::new(),
 		}
 	}
+
+	/// Builds the shared system font collection now.
+	///
+	/// The first shaper that needs fonts builds it. Starting that work early,
+	/// on a thread that runs while the renderer initializes, keeps the
+	/// discovery scan off the first frame's critical path.
+	pub fn warm_system_fonts() {
+		let _ = default_fonts();
+	}
+
+	/// The font context, built on first use. Test helpers swap its collection.
+	#[cfg(test)]
+	pub(crate) fn font_context(&mut self) -> &mut FontContext {
+		self.fonts.get_or_insert_with(default_fonts)
+	}
+
 	pub fn set_stylesheet(&mut self, stylesheet: Arc<Stylesheet>) {
 		self.faces.clear();
 		self.font_sets.clear();
@@ -220,6 +269,9 @@ impl TextShaper {
 	fn resolve_fonts(&mut self, appearance: &TextAppearance) -> usize {
 		let key = (appearance.font.clone(), appearance.weight);
 		if !self.faces.contains_key(&key) {
+			// The first appearance builds the process-wide font collection;
+			// later shapers only clone it.
+			let fonts = self.fonts.get_or_insert_with(default_fonts);
 			let mut faces = Vec::new();
 			for candidate in &appearance.font {
 				let style = match candidate.variant {
@@ -245,16 +297,14 @@ impl TextShaper {
 								_ => None,
 							};
 							if let Some(generic) = generic {
-								let ids: Vec<_> = self
-									.fonts
+								let ids: Vec<_> = fonts
 									.collection
 									.generic_families(generic)
 									.collect();
-								ids.into_iter().find_map(|id| {
-									self.fonts.collection.family(id)
-								})
+								ids.into_iter()
+									.find_map(|id| fonts.collection.family(id))
 							} else {
-								self.fonts.collection.family_by_name(name)
+								fonts.collection.family_by_name(name)
 							}
 						})
 						.into_iter()
@@ -266,7 +316,7 @@ impl TextShaper {
 					if self.stylesheet.has_fontdef_variant(&candidate.family) {
 						Vec::new()
 					} else {
-						self.fonts
+						fonts
 							.collection
 							.family_by_name(&candidate.family)
 							.into_iter()
@@ -304,8 +354,7 @@ impl TextShaper {
 					if !exact_style || !exact_weight {
 						continue;
 					}
-					if let Some(data) =
-						info.load(Some(&mut self.fonts.source_cache))
+					if let Some(data) = info.load(Some(&mut fonts.source_cache))
 					{
 						faces.push(Face {
 							family: family.name().into(),
@@ -461,9 +510,8 @@ impl TextShaper {
 				}
 			}
 		});
-		let mut builder =
-			self.context
-				.ranged_builder(&mut self.fonts, text, 1.0, false);
+		let fonts = self.fonts.get_or_insert_with(default_fonts);
+		let mut builder = self.context.ranged_builder(fonts, text, 1.0, false);
 		builder.push_default(StyleProperty::FontSize(size));
 		builder.push_default(StyleProperty::FontFamily("sans-serif".into()));
 		builder.push_default(StyleProperty::FontWeight(FontWeight::NORMAL));
