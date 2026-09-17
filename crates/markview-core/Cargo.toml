@@ -22,6 +22,7 @@ ratex-types.workspace = true
 
 serde.workspace = true
 anyhow.workspace = true
+log.workspace = true
 toml_edit = { version = "0.25", features = ["serde"] }
 swash.workspace = true
 

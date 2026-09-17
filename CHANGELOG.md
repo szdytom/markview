@@ -42,6 +42,9 @@ at the same level, without `[brackets]`.
   trailing spaces does not.
 - Packaging builds run only when a packaging input changes, in a `Packages`
   workflow that no longer gates merges.
+- Diagnostics go through `log` and `env_logger` as `LEVEL message` lines. The
+  window logs at `warn` and the diagnostic modes at `debug`; `RUST_LOG` overrides
+  both.
 
 ### Fixed
 

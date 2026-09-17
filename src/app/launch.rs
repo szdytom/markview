@@ -7,6 +7,7 @@ use crate::{
 	render::{Renderer, Theme, View},
 };
 use anyhow::{Result, bail};
+use log::{info, warn};
 use markview_core::style::CjkType;
 use std::collections::HashMap;
 use winit::event_loop::{ControlFlow, EventLoop};
@@ -17,6 +18,7 @@ pub(super) fn run() -> Result<()> {
 	let Some(mut args) = arguments()? else {
 		return Ok(());
 	};
+	crate::logging::init(&args.mode);
 	if let Some((source, force)) = &args.install {
 		let dir = crate::stylesheet::directory()
 			.ok_or_else(|| anyhow::anyhow!("No user stylesheet directory"))?;
@@ -73,9 +75,9 @@ pub(super) fn run() -> Result<()> {
 		images.wait();
 		let mut snapshot =
 			engine.layout_with_images(&doc, &args.options, &images.snapshot);
-		for info in images.snapshot.entries.values() {
-			if let Some(error) = &info.error {
-				eprintln!("Image: {error}");
+		for entry in images.snapshot.entries.values() {
+			if let Some(error) = &entry.error {
+				warn!("Image: {error}");
 			}
 		}
 		let target = renderer.offscreen(args.width, args.height);
@@ -128,7 +130,7 @@ pub(super) fn run() -> Result<()> {
 			std::fs::create_dir_all(parent)?;
 		}
 		renderer.save_png(&target, output)?;
-		eprintln!(
+		info!(
 			"Rendered {} blocks, {:.0}px tall, {} degraded paragraphs, {} formula errors; {}",
 			snapshot.blocks.len(),
 			snapshot.height,
@@ -144,7 +146,7 @@ pub(super) fn run() -> Result<()> {
 	event_loop.run_app(&mut app)?;
 	app.flush_settings();
 	if let Some(warning) = &app.preferences.settings_warning {
-		eprintln!("{warning}");
+		warn!("{warning}");
 	}
 	if let Some(error) = app.fatal {
 		bail!("{error}");

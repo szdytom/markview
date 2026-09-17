@@ -7,6 +7,7 @@ mod cli;
 mod file;
 mod images;
 mod link;
+mod logging;
 mod paste;
 mod platform;
 mod settings;

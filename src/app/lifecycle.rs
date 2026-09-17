@@ -1,5 +1,6 @@
 use crate::cli::Mode;
 use anyhow::Result;
+use log::{debug, info};
 use std::{
 	sync::Arc,
 	time::{Duration, Instant},
@@ -40,7 +41,7 @@ impl ApplicationHandler<Event> for App {
 			}
 			let size = window.inner_size();
 			let scale = window.scale_factor();
-			eprintln!(
+			info!(
 				"Display scale (DPR): {scale:.3}; framebuffer: {}×{} physical px; window: {:.1}×{:.1} logical px",
 				size.width,
 				size.height,
@@ -174,7 +175,7 @@ impl ApplicationHandler<Event> for App {
 							));
 						}
 						if complete {
-							eprintln!(
+							debug!(
 								"full layout complete: {:.2} ms; {} blocks",
 								update.requested.elapsed().as_secs_f64()
 									* 1000.,

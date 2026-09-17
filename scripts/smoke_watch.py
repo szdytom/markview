@@ -26,14 +26,16 @@ def main():
         path = Path(tmp) / "document.md"
         text = "# Live reading\n\n中文段落与 $x^2+y^2$。\n\n"
         path.write_text(text, encoding="utf-8")
+        env = {**os.environ, "RUST_LOG": "markview=debug"}
         process = subprocess.Popen(
             [str(Path(args.binary).resolve()), str(path)],
             stdout=subprocess.DEVNULL, stderr=subprocess.PIPE, text=True,
+            env=env,
         )
 
         def collect():
             for line in process.stderr:
-                if line.startswith("open→GPU complete:"):
+                if "open→GPU complete:" in line:
                     frames.put((time.perf_counter(), line.strip()))
                 elif "Error:" in line or "failed" in line.lower():
                     errors.append(line.strip())

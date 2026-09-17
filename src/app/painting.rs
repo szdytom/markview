@@ -5,6 +5,7 @@ use crate::{
 	render::{Renderer, View},
 };
 use anyhow::Result;
+use log::{debug, info};
 use std::time::Instant;
 use winit::event_loop::ActiveEventLoop;
 
@@ -78,7 +79,7 @@ impl App {
 		}
 		if let Some(update) = self.first_frame.take() {
 			renderer.wait(Some(submission.clone()))?;
-			eprintln!(
+			debug!(
 				"open→GPU complete: {:.2} ms (read {:.2}, parse {:.2}, layout {:.2}); reused {} blocks; {}",
 				update.requested.elapsed().as_secs_f64() * 1000.0,
 				update.read_ms,
@@ -88,7 +89,7 @@ impl App {
 				renderer.adapter_name
 			);
 			if self.args.mode == Mode::Smoke {
-				eprintln!(
+				info!(
 					"process app entry→readable GPU frame: {:.2} ms; memory {}",
 					self.started.elapsed().as_secs_f64() * 1000.0,
 					serde_json::to_string(&benchmark::memory())?

@@ -1,5 +1,6 @@
 use crate::cli::Mode;
 use crate::state::{Command, Grain};
+use log::{error, info};
 use std::time::{Duration, Instant};
 use winit::{
 	dpi::PhysicalSize,
@@ -35,7 +36,7 @@ impl App {
 			}
 			WindowEvent::ScaleFactorChanged { scale_factor, .. } => {
 				self.tab_strip.reveal_active = true;
-				eprintln!("Display scale (DPR) changed: {scale_factor:.3}");
+				info!("Display scale (DPR) changed: {scale_factor:.3}");
 				if let Some(r) = &mut self.renderer {
 					r.clear_raster_cache();
 				}
@@ -433,7 +434,7 @@ impl App {
 				if let Err(e) = self.render(event_loop) {
 					self.error = true;
 					self.status = format!("Rendering failed: {e:#}");
-					eprintln!("{}", self.status);
+					error!("{}", self.status);
 					if self.args.mode == Mode::Smoke {
 						self.fatal = Some(self.status.clone());
 						event_loop.exit();

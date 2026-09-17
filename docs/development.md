@@ -50,13 +50,21 @@ and shaping. These are inclusive diagnostic spans, not additive pipeline stages.
 Render this fixture in both themes as well as measuring it. Default Emoji
 candidates explicitly use weight 400 because many Emoji fonts have no bold face.
 
-When no configured face covers a cluster/word, stderr reports its Unicode codes,
-requested candidates and available exact faces before handing it to Parley.
-Normal selection of a later configured candidate is silent. Warnings are limited
-to one per candidate set (including requested weight), at most 64 per text shaper,
-and survive reflow/stylesheet resets. Internal object placeholders are excluded.
-To exercise warnings, use a temporary custom style with unavailable font families
-or an Emoji candidate inheriting weight 700; verify repeated reflows stay quiet.
+When no configured face covers a cluster/word, a `WARN` line on stderr reports its
+Unicode codes, requested candidates and available exact faces before handing it to
+Parley. Normal selection of a later configured candidate is silent. Warnings are
+limited to one per candidate set (including requested weight), at most 64 per text
+shaper, and survive reflow/stylesheet resets. Internal object placeholders are
+excluded. To exercise warnings, use a temporary custom style with unavailable font
+families or an Emoji candidate inheriting weight 700; verify repeated reflows stay
+quiet.
+
+The reader and the core crate log through the `log` facade, and the binary writes
+`LEVEL message` lines to stderr. A plain window run defaults to `warn`, so the
+lifecycle and timing lines stay quiet; `--render`, `--bench` and `--smoke-test`
+default their own targets to `debug` so the diagnostics below are visible. Set
+`RUST_LOG` to override either, for example `RUST_LOG=info` for the display metrics
+or `RUST_LOG=debug` to include dependency logs.
 
 The render and benchmark modes use the GPU offscreen and do not load personal settings. The watch smoke test writes only temporary documents and closes the window it starts.
 

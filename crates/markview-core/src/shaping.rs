@@ -5,12 +5,12 @@ use crate::{
 	scene::{Draw, Glyph, Paint},
 };
 use anyhow::Result;
+use log::warn;
 use parley::{
 	FontContext, FontStyle, FontWeight, LayoutContext, StyleProperty,
 };
 use std::{
 	collections::{HashMap, HashSet},
-	io::Write,
 	ops::Range,
 	sync::Arc,
 };
@@ -289,7 +289,7 @@ impl TextShaper {
 			.collect::<Vec<_>>()
 			.join(", ");
 		Some(format!(
-			"markview: warning: font fallback to Parley/system for [{codes}]: no configured face covers the entire cluster/word. Requested: [{}]. Available exact faces: [{}]. Check installed fonts and candidate weight/variant (Emoji fonts commonly require weight = 400).{}",
+			"font fallback to Parley/system for [{codes}]: no configured face covers the entire cluster/word. Requested: [{}]. Available exact faces: [{}]. Check installed fonts and candidate weight/variant (Emoji fonts commonly require weight = 400).{}",
 			requested,
 			resolved,
 			if self.warned_fallbacks.len() == LIMIT {
@@ -357,7 +357,7 @@ impl TextShaper {
 						&& let Some(warning) =
 							self.fallback_warning(fonts, part)
 					{
-						let _ = writeln!(std::io::stderr().lock(), "{warning}");
+						warn!("{warning}");
 					}
 					let identity = |choice: FaceChoice| {
 						choice.map(|(set, index)| {

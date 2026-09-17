@@ -54,6 +54,8 @@ arboard = { version = "3.6", default-features = false, features = ["wayland-data
 unicode-segmentation = "1.13"
 tempfile = "3"
 anyhow = "1"
+env_logger = { version = "0.11", default-features = false }
+log = "0.4"
 bytemuck = { version = "1", features = ["derive"] }
 comrak = { version = "0.55", default-features = false }
 syntect = { version = "5.3", default-features = false, features = ["parsing", "regex-fancy"] }
@@ -91,6 +93,8 @@ arboard.workspace = true
 markview-core = { path = "crates/markview-core" }
 markview-render = { path = "crates/markview-render" }
 anyhow.workspace = true
+env_logger.workspace = true
+log.workspace = true
 notify.workspace = true
 open.workspace = true
 pollster.workspace = true
