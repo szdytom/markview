@@ -223,6 +223,6 @@ pub fn run(
 		fs::write(path, &json)
 			.with_context(|| format!("Write {}", path.display()))?;
 	}
-	println!("{json}");
+	crate::logging::report(format_args!("{json}"));
 	Ok(())
 }

@@ -17,6 +17,7 @@ source and original license texts are available in Cargo's registry packages.
 | open | Opening links with the system browser | MIT |
 | rfd | Native file dialogs | MIT |
 | arboard / wl-clipboard-rs | Platform clipboard integration | MIT OR Apache-2.0 |
+| windows-sys | Attaching to the console that launched the reader | MIT OR Apache-2.0 |
 | unicode-segmentation | Grapheme boundaries for reading selections | MIT OR Apache-2.0 |
 | tempfile | Atomic settings replacement and tests | MIT OR Apache-2.0 |
 

@@ -57,6 +57,10 @@ at the same level, without `[brackets]`.
 - The diagnostic renders and benchmarks set CJK text in the configured face
   again: they never selected a `[cjk]` variant, so every Han cluster was drawn
   in a system fallback face. `--cjk-type` now names one on the command line.
+- The Windows reader is linked for the Windows subsystem, so opening it no
+  longer puts a console window on screen. A run with a command line attaches to
+  the console it was launched from, and output with nowhere to go is dropped
+  instead of panicking.
 
 ## 0.1.1 - 2026-09-16
 

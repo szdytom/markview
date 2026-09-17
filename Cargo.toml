@@ -47,7 +47,9 @@ homepage = "https://github.com/szdytom/markview"
 documentation = "https://github.com/szdytom/markview/tree/main/docs"
 
 [workspace.lints.rust]
-unsafe_code = "forbid"
+# `deny`, not `forbid`: `src/platform.rs` needs one `AttachConsole` call, and a
+# `forbid` cannot be lifted by a local `#[allow]`.
+unsafe_code = "deny"
 
 [workspace.dependencies]
 arboard = { version = "3.6", default-features = false, features = ["wayland-data-control"] }
@@ -109,6 +111,7 @@ tempfile.workspace = true
 [target.'cfg(target_os = "windows")'.dependencies]
 wgpu = { workspace = true, features = ["dx12"] }
 ico = "0.5"
+windows-sys = { version = "0.61", features = ["Win32_System_Console"] }
 
 [target.'cfg(target_os = "windows")'.build-dependencies]
 winresource = { version = "0.1", default-features = false }

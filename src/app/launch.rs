@@ -15,6 +15,11 @@ use winit::event_loop::{ControlFlow, EventLoop};
 use super::{App, Event};
 
 pub(super) fn run() -> Result<()> {
+	// Only a run with a command line reports on the console it came from. The
+	// reader window keeps no console, so closing a shell cannot end it.
+	if std::env::args_os().len() > 1 {
+		crate::platform::attach_parent_console();
+	}
 	let Some(mut args) = arguments()? else {
 		return Ok(());
 	};
@@ -23,7 +28,10 @@ pub(super) fn run() -> Result<()> {
 		let dir = crate::stylesheet::directory()
 			.ok_or_else(|| anyhow::anyhow!("No user stylesheet directory"))?;
 		let (id, path) = crate::stylesheet::install(source, &dir, *force)?;
-		println!("Installed {id}: {}", path.display());
+		crate::logging::report(format_args!(
+			"Installed {id}: {}",
+			path.display()
+		));
 		return Ok(());
 	}
 	let ids = args.style.clone().or_else(|| {
