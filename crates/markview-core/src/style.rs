@@ -316,10 +316,20 @@ impl Stylesheet {
 		} else {
 			LIGHT
 				.get_or_init(|| {
-					Arc::new(
+					let sheet =
 						Self::parse(include_str!("../styles/light.mvss.toml"))
-							.expect("bundled light stylesheet"),
-					)
+							.expect("bundled light stylesheet");
+					// Unit tests pin the faces they shape with, so they also
+					// select the CJK definition the reader uses by default.
+					// Otherwise `[cjk]` faces are dropped and CJK falls back
+					// to whatever the host happens to provide.
+					#[cfg(test)]
+					let sheet = {
+						let mut sheet = sheet;
+						sheet.set_cjk_type(CjkType::Sc);
+						sheet
+					};
+					Arc::new(sheet)
 				})
 				.clone()
 		}

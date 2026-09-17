@@ -1427,7 +1427,9 @@ fn typst_a_closing_mark_hangs_into_the_end_margin() {
 	// of stopping a notch short of the margin.
 	let text = "The first clause ends here, and the second clause carries on for a \
 		while, then the third and final clause closes the sentence.\n";
-	let width = 200.0;
+	// Wide enough that the first line reaches its first comma under the pinned
+	// test face, so the closing mark is what hangs.
+	let width = 220.0;
 	let doc = document::parse(text);
 	let snapshot = LayoutEngine::new().layout(
 		&doc,

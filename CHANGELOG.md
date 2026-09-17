@@ -51,6 +51,8 @@ at the same level, without `[brackets]`.
 - Diagnostics go through `log` and `env_logger` as `LEVEL message` lines. The
   window logs at `warn` and the diagnostic modes at `debug`; `RUST_LOG` overrides
   both.
+- Layout tests shape with pinned Noto subsets instead of host fonts, so the
+  suite no longer passes on macOS and fails on Linux or Windows.
 
 ### Fixed
 

@@ -1,2 +1,6 @@
 # Keep benchmark fixture byte sizes stable on every platform.
 /tests/fixtures/*.md text eol=lf
+
+# Pinned test fonts must survive a checkout byte for byte.
+*.otf binary
+*.ttf binary
