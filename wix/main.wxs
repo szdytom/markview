@@ -78,8 +78,14 @@
             SummaryCodepage='1252'
             />
 
+        <!--
+          `Package Id='*'` gives every build its own product code, so a rebuild
+          of an installed version has to be upgraded like any other; without
+          `AllowSameVersionUpgrades` both products would stay registered.
+        -->
         <MajorUpgrade
             Schedule='afterInstallInitialize'
+            AllowSameVersionUpgrades='yes'
             DowngradeErrorMessage='A newer version of [ProductName] is already installed. Setup will now exit.'/>
 
         <Media Id='1' Cabinet='media1.cab' EmbedCab='yes' DiskPrompt='CD-ROM #1'/>
@@ -129,6 +135,137 @@
                                 KeyPath='yes'/>
                         </Component>
                     </Directory>
+                    <!--
+                      The Markdown file association. Windows 10 and 11 keep the
+                      user's own handler choice in UserChoice, which only the
+                      user can set, so these entries register Markview as a
+                      handler instead: the machine-wide default below is what
+                      `assoc` and non-shell consumers read, and the ProgId plus
+                      the Open with entries put Markview in the chooser the
+                      shell shows for a file that has no choice yet.
+                    -->
+                    <Component Id='MarkdownAssociation' Guid='529292DB-B72E-49E7-9A12-CB72C873514D'>
+                        <RegistryValue
+                            Id='MarkdownExtension'
+                            Root='HKCR'
+                            Key='.md'
+                            Type='string'
+                            Value='Markview.md'
+                            KeyPath='yes'/>
+                        <RegistryValue
+                            Root='HKCR'
+                            Key='.markdown'
+                            Type='string'
+                            Value='Markview.md'/>
+                        <RegistryValue
+                            Root='HKCR'
+                            Key='.mdown'
+                            Type='string'
+                            Value='Markview.md'/>
+                        <RegistryValue
+                            Root='HKCR'
+                            Key='.md\OpenWithProgids'
+                            Name='Markview.md'
+                            Type='binary'
+                            Value=''/>
+                        <RegistryValue
+                            Root='HKCR'
+                            Key='.markdown\OpenWithProgids'
+                            Name='Markview.md'
+                            Type='binary'
+                            Value=''/>
+                        <RegistryValue
+                            Root='HKCR'
+                            Key='.mdown\OpenWithProgids'
+                            Name='Markview.md'
+                            Type='binary'
+                            Value=''/>
+                        <RegistryValue
+                            Root='HKCR'
+                            Key='Markview.md'
+                            Type='string'
+                            Value='Markdown document'/>
+                        <RegistryValue
+                            Root='HKCR'
+                            Key='Markview.md\DefaultIcon'
+                            Type='string'
+                            Value='[Bin]markview.exe,0'/>
+                        <RegistryValue
+                            Root='HKCR'
+                            Key='Markview.md\shell\open\command'
+                            Type='string'
+                            Value='&quot;[Bin]markview.exe&quot; &quot;%1&quot;'/>
+                        <RegistryValue
+                            Root='HKCR'
+                            Key='Applications\markview.exe\SupportedTypes'
+                            Name='.md'
+                            Type='string'
+                            Value=''/>
+                        <RegistryValue
+                            Root='HKCR'
+                            Key='Applications\markview.exe\SupportedTypes'
+                            Name='.markdown'
+                            Type='string'
+                            Value=''/>
+                        <RegistryValue
+                            Root='HKCR'
+                            Key='Applications\markview.exe\SupportedTypes'
+                            Name='.mdown'
+                            Type='string'
+                            Value=''/>
+                        <RegistryValue
+                            Root='HKCR'
+                            Key='Applications\markview.exe\shell\open\command'
+                            Type='string'
+                            Value='&quot;[Bin]markview.exe&quot; &quot;%1&quot;'/>
+                        <!--
+                          Windows asks the user to confirm a default, so also
+                          advertise Markview under Settings > Apps > Default
+                          apps, where every extension it handles can be pointed
+                          at it in one place.
+                        -->
+                        <RegistryValue
+                            Root='HKLM'
+                            Key='SOFTWARE\RegisteredApplications'
+                            Name='markview'
+                            Type='string'
+                            Value='SOFTWARE\markview\Capabilities'/>
+                        <RegistryValue
+                            Root='HKLM'
+                            Key='SOFTWARE\markview\Capabilities'
+                            Type='string'
+                            Value='Markview'/>
+                        <RegistryValue
+                            Root='HKLM'
+                            Key='SOFTWARE\markview\Capabilities'
+                            Name='ApplicationName'
+                            Type='string'
+                            Value='Markview'/>
+                        <RegistryValue
+                            Root='HKLM'
+                            Key='SOFTWARE\markview\Capabilities'
+                            Name='ApplicationDescription'
+                            Type='string'
+                            Value='A native, read-only Markdown reader'/>
+                        <RegistryValue
+                            Root='HKLM'
+                            Key='SOFTWARE\markview\Capabilities\FileAssociations'
+                            Name='.md'
+                            Type='string'
+                            Value='Markview.md'/>
+                        <RegistryValue
+                            Root='HKLM'
+                            Key='SOFTWARE\markview\Capabilities\FileAssociations'
+                            Name='.markdown'
+                            Type='string'
+                            Value='Markview.md'/>
+                        <RegistryValue
+                            Root='HKLM'
+                            Key='SOFTWARE\markview\Capabilities\FileAssociations'
+                            Name='.mdown'
+                            Type='string'
+                            Value='Markview.md'/>
+                    </Component>
                 </Directory>
             </Directory>
         </Directory>
@@ -150,6 +287,7 @@
             <!--<ComponentRef Id='License'/>-->
 
             <ComponentRef Id='binary0'/>
+            <ComponentRef Id='MarkdownAssociation'/>
 
             <Feature
                 Id='Environment'

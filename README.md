@@ -24,6 +24,11 @@ clear the quarantine flag once after downloading it:
 xattr -d com.apple.quarantine /Applications/Markview.app
 ```
 
+The Windows MSI adds Markview to the **Open with** list for `.md`, `.markdown`,
+and `.mdown` and lists it under **Default apps**. Windows 10 and 11 still ask
+the user to confirm the handoff, so the first one of those files is a choice,
+not something an installer can make on the user's behalf.
+
 Per-platform details and the exact artifact list are in
 [the packaging guide](docs/packaging.md).
 

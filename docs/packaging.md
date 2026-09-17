@@ -83,7 +83,8 @@ Download the `artifacts-*` workflow artifacts to inspect the outputs.
 
 The Windows checks extract both MSI and ZIP packages, run their executables, and
 confirm they are Windows-subsystem images, so opening the reader creates no
-console window.
+console window. They also install the MSI for real, check that the three
+Markdown extensions now resolve to Markview, and remove the product again.
 The Linux checks extract both the Debian package and AppImage and run their
 executables. The macOS check unpacks the application archive, validates its
 plist and signature, and runs the bundled executable. The `Packages` workflow

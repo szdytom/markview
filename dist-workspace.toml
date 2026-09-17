@@ -4,9 +4,15 @@ members = ["cargo:."]
 # Release packaging for Markview.
 #
 # This is the source of truth for archive and installer generation. The
-# generated files (`.github/workflows/release.yml`, `wix/main.wxs`, and the
-# `[package.metadata.wix]` table) are managed by dist; run
+# generated files (`.github/workflows/release.yml`, the `wix/main.wxs` parts
+# dist owns, and the `[package.metadata.wix]` table) are managed by dist; run
 # `dist generate` after editing this file, and never hand-edit them.
+#
+# `allow-dirty = ["msi"]` exempts `wix/main.wxs` from generation and from the
+# up-to-date check, because the Markdown file association the MSI registers
+# needs WiX elements the template has no knob for. That file is maintained by
+# hand: keep the `$(var.*)` references and the product/path GUIDs that dist
+# stamps in, and re-check it after any change that would regenerate it.
 #
 # Linux archives are built on Ubuntu 22.04 and must not require a newer glibc
 # than 2.35. `min-glibc-version` tells installers the requirement;
@@ -14,6 +20,7 @@ members = ["cargo:."]
 [dist]
 cargo-dist-version = "0.32.0"
 ci = "github"
+allow-dirty = ["msi"]
 targets = [
     "x86_64-pc-windows-msvc",
     "x86_64-unknown-linux-gnu",

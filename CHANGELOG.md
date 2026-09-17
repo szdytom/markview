@@ -27,6 +27,9 @@ at the same level, without `[brackets]`.
   `--render` and `--smoke-test` image exports enable it by default.
 - A CJK curly quote may start or end a line, as the full-width brackets already
   could, so a quoted phrase no longer glues a CJK run together.
+- The Windows MSI registers Markview for `.md`, `.markdown`, and `.mdown`, so
+  the reader joins **Open with** and **Default apps**; Windows 10 and 11 still
+  ask the user to confirm the handoff once.
 
 ### Changed
 
@@ -61,6 +64,9 @@ at the same level, without `[brackets]`.
   longer puts a console window on screen. A run with a command line attaches to
   the console it was launched from, and output with nowhere to go is dropped
   instead of panicking.
+- Installing the Windows MSI over an already installed copy of the same version
+  replaces it instead of leaving both registered, which a rebuild of a released
+  version used to produce.
 
 ## 0.1.1 - 2026-09-16
 

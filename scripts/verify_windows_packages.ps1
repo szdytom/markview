@@ -14,6 +14,12 @@ function Get-PeSubsystem([string]$Path) {
     [BitConverter]::ToUInt16($bytes, $pe + 0x5C)
 }
 
+function Remove-InstalledProduct {
+    Get-ItemProperty "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\*" -ErrorAction SilentlyContinue |
+        Where-Object { $_.DisplayName -eq "markview" } |
+        ForEach-Object { Start-Process msiexec.exe -ArgumentList "/x $($_.PSChildName) /qn /norestart" -Wait | Out-Null }
+}
+
 $work = Join-Path $env:RUNNER_TEMP ([guid]::NewGuid().ToString())
 New-Item -ItemType Directory -Path $work | Out-Null
 try {
@@ -38,6 +44,24 @@ try {
     if ((Get-PeSubsystem $installed.FullName) -ne 2) { throw "MSI executable is not a Windows-subsystem image" }
     $process = Start-Process $installed.FullName -ArgumentList "--help" -Wait -PassThru
     if ($process.ExitCode -ne 0) { throw "MSI executable failed: $($process.ExitCode)" }
+
+    # An administrative install unpacks files and writes no registry, so the
+    # Markdown association the MSI registers needs a real install. This is a
+    # per-machine change: the runner is disposable, and the finally block puts
+    # the machine back the way it was.
+    try {
+        Remove-InstalledProduct
+        $process = Start-Process msiexec.exe -ArgumentList "/i `"$($msi.FullName)`" /qn /norestart" -Wait -PassThru
+        if ($process.ExitCode -ne 0) { throw "MSI install failed: $($process.ExitCode)" }
+        foreach ($extension in ".md", ".markdown", ".mdown") {
+            $association = cmd /c "assoc $extension 2>&1"
+            if ($association -notmatch "=Markview") { throw "MSI did not associate $extension`: $association" }
+        }
+        $registered = (Get-ItemProperty "HKLM:\SOFTWARE\RegisteredApplications" -ErrorAction SilentlyContinue).markview
+        if ($registered -ne "SOFTWARE\markview\Capabilities") { throw "MSI did not register default-app capabilities: $registered" }
+    } finally {
+        Remove-InstalledProduct
+    }
 } finally {
     Remove-Item $work -Recurse -Force
 }
