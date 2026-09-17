@@ -1,6 +1,7 @@
 //! Reader preferences, isolated from launch flags and document state.
 use crate::{layout::LayoutOptions, render::Theme};
 use anyhow::{Result, bail};
+use markview_core::JustificationLimits;
 use markview_core::style::CjkType;
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
@@ -17,6 +18,8 @@ pub struct ReaderSettings {
 	pub width: f32,
 	pub justify: bool,
 	pub hyphenate: bool,
+	/// How far word spacing and letter spacing may move while justifying.
+	pub justification: JustificationLimits,
 	/// Indent in multiples of the text size: the opening line of prose
 	/// paragraphs, and the whole of a list, markers included. Zero disables it.
 	pub paragraph_indent: f32,
@@ -34,6 +37,7 @@ impl Default for ReaderSettings {
 			width: 760.0,
 			justify: true,
 			hyphenate: true,
+			justification: JustificationLimits::default(),
 			paragraph_indent: 0.0,
 			cjk_type: default_cjk_type(),
 			codeblock_theme_override: None,
@@ -58,6 +62,21 @@ pub enum Setting {
 	CjkType,
 }
 impl ReaderSettings {
+	/// The stylesheet with this reader's CJK variant applied.
+	///
+	/// The variant picks which `[cjk]` font definition exists at all, so a
+	/// stylesheet that has not been told about it would set Han text in a
+	/// system fallback face. Applying it here rather than at each call site
+	/// keeps the two from drifting apart.
+	fn styled(&self) -> std::sync::Arc<markview_core::style::Stylesheet> {
+		if self.stylesheet.cjk_type() == self.cjk_type {
+			return self.stylesheet.clone();
+		}
+		let mut sheet = (*self.stylesheet).clone();
+		sheet.set_cjk_type(self.cjk_type);
+		std::sync::Arc::new(sheet)
+	}
+
 	pub fn layout_options(
 		&self,
 		viewport_width: f32,
@@ -68,9 +87,10 @@ impl ReaderSettings {
 			font_size: self.font_size,
 			justify: self.justify,
 			hyphenate: self.hyphenate,
+			justification: self.justification,
 			paragraph_indent: self.paragraph_indent,
 			greedy,
-			stylesheet: self.stylesheet.clone(),
+			stylesheet: self.styled(),
 			codeblock_theme_override: self.codeblock_theme_override.clone(),
 			limits: markview_core::limits::Limits::default(),
 		}
@@ -89,6 +109,9 @@ impl ReaderSettings {
 			|| !(0.0..=4.0).contains(&self.paragraph_indent)
 		{
 			bail!("Reader settings are out of range");
+		}
+		if !self.justification.is_valid() {
+			bail!("Justification limits are out of range");
 		}
 		Ok(())
 	}

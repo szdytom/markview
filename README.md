@@ -51,6 +51,9 @@ sudo apt-get install libfontconfig1-dev libxkbcommon-dev libwayland-dev fonts-no
 - `Ctrl+V` opens clipboard text that looks like Markdown in a new tab. The tab title comes from its first heading or sentence.
 - `Ctrl++` / `Ctrl+-` changes the type size. `Ctrl+[` / `Ctrl+]` changes the reading column.
 - Paragraph indent is off by default. Choose it under **Settings**, or set `paragraph_indent` in `settings.toml`; prose paragraphs indent their opening line, while lists indent as a whole, markers included. Table cells and footnotes stay flush.
+- Justification starts from Typst's limits: a word space may shrink to two thirds and grow to one and a half of its own width, and letter spacing may move by a hundredth of an em. Change them under `[justification]` in `settings.toml`, where `spacing_min` and `spacing_max` are fractions of a space and `tracking_min` and `tracking_max` are in em. Setting both tracking bounds to `0.0` turns character-level justification off.
+- The `cjk-type` setting (`SC`, `TC`, `JP`, or `none`) also picks the CJK punctuation convention: a comma-like mark gives back its blank half at a line end on the mainland and in Japan, and is centered in Taiwan.
+- A hard break (two spaces at the end of a line) leaves its line at its natural width. An explicit `<br>` asks for the line it ends to be set flush like any other.
 - Scroll with the wheel, arrow keys, Page Up/Down, Space, Home, End, or the scrollbar.
 - Drag to select and use `Ctrl+C` to copy. `Ctrl+A` selects the document.
 - Click a link to open web, mail, and local file links with the operating system's default handler. Links to other `.md` files open in a new tab; middle-click opens them in the background without switching away. Repeated middle-clicks reuse the existing tab. A `#heading` fragment moves to that heading, in the current document or in the `.md` file it names.

@@ -1,8 +1,8 @@
-use super::inline::is_cjk;
 use super::{BlockContext, LayoutOptions, fitted_range};
 use crate::{
 	document::{CellAlign, Inline, InlineKind, TextStyle},
 	linebreak::{self},
+	microtype,
 	scene::{BlockLayout, Draw, HeadingAnchor, LinkRect, Overflow, Rect},
 	style::{ColorField, Condition, Decoration},
 	text::{TextCluster, TextNode},
@@ -71,7 +71,14 @@ impl BlockContext<'_> {
 		};
 		let first_width = (width - indent).max(1.0);
 		let units = crate::profile::span(crate::profile::Stage::Units, || {
-			self.units(&p, size, sans, opts.hyphenate && !sans, width)
+			self.units(
+				&p,
+				size,
+				sans,
+				opts.hyphenate && !sans,
+				width,
+				opts.typography(),
+			)
 		});
 		let solution =
 			crate::profile::span(crate::profile::Stage::LineBreak, || {
@@ -87,6 +94,7 @@ impl BlockContext<'_> {
 						&units,
 						width,
 						first_width,
+						size,
 						justify,
 						&opts.limits,
 					)
@@ -129,23 +137,36 @@ impl BlockContext<'_> {
 			first_line = false;
 			let line_start = units[line.units.start].source.start;
 			let range = line_start..units[line.units.end - 1].source.end;
-			let mut clusters =
-				self.line_clusters(&p, range, line.hyphen, size, sans, width);
+			let mut clusters = self.line_clusters(
+				&p,
+				range,
+				line.hyphen,
+				size,
+				sans,
+				width,
+				opts.typography(),
+			);
+			let mut fits =
+				microtype::fit(&clusters, &p.text, size, opts.typography());
+			let mut overhang =
+				microtype::overhang(&clusters, &p.text, &p.spans);
 			let mut natural: f32 = clusters.iter().map(|c| c.width).sum();
 			// Boundary reshaping (ligatures, kerning, inserted hyphens) can alter
 			// the measured advance. Move to an earlier legal break and reoptimize
 			// the remaining paragraph, rather than horizontally scrolling ordinary text.
 			loop {
-				let shrink: f32 = if justify && !line.last {
-					clusters
-						.iter()
-						.filter(|c| p.text.get(c.range.clone()) == Some(" "))
-						.map(|c| c.width * 0.3)
-						.sum()
+				// A closing mark hangs into the end margin, so the line has
+				// that much more room to reach.
+				let target = line_width + overhang;
+				// The same rule the line was solved under: an overfull line is
+				// compressed whatever its place in the paragraph.
+				let shrink: f32 = if natural > target || (justify && !line.last)
+				{
+					fits.iter().map(|f| f.shrink).sum()
 				} else {
 					0.0
 				};
-				if natural - shrink <= line_width + 0.1 {
+				if natural - shrink <= target + 0.1 {
 					break;
 				}
 				let Some(end) = (line.units.start + 1..line.units.end)
@@ -165,7 +186,7 @@ impl BlockContext<'_> {
 					break;
 				}
 				line.hyphen = br.hyphen_width > 0.0;
-				line.last = br.forced;
+				line.last = br.forced && !br.justify;
 				let range = units[line.units.start].source.start
 					..units[line.units.end - 1].source.end;
 				clusters = self.line_clusters(
@@ -175,7 +196,11 @@ impl BlockContext<'_> {
 					size,
 					sans,
 					width,
+					opts.typography(),
 				);
+				fits =
+					microtype::fit(&clusters, &p.text, size, opts.typography());
+				overhang = microtype::overhang(&clusters, &p.text, &p.spans);
 				natural = clusters.iter().map(|c| c.width).sum();
 				let tail = if opts.greedy {
 					linebreak::greedy(&units[end..], width, &opts.limits)
@@ -183,6 +208,7 @@ impl BlockContext<'_> {
 					linebreak::break_lines(
 						&units[end..],
 						width,
+						size,
 						justify,
 						&opts.limits,
 					)
@@ -220,6 +246,9 @@ impl BlockContext<'_> {
 						full.start + elided.start..full.start + elided.end;
 				}
 				natural = clusters.iter().map(|c| c.width).sum();
+				fits =
+					microtype::fit(&clusters, &p.text, size, opts.typography());
+				overhang = microtype::overhang(&clusters, &p.text, &p.spans);
 				line.last = true;
 				line.hyphen = false;
 				lines.clear();
@@ -234,42 +263,38 @@ impl BlockContext<'_> {
 				.max(ascent + descent + size * 0.18);
 			let baseline =
 				y_cursor + (height - ascent - descent) * 0.5 + ascent;
-			let mut flexibility = Vec::new();
-			for (i, c) in clusters.iter().enumerate() {
-				let text = p.text.get(c.range.clone()).unwrap_or("-");
-				let value = if i + 1 == clusters.len() {
-					0.0
-				} else if text == " " {
-					if natural <= line_width {
-						c.width * 0.65
-					} else {
-						c.width * 0.3
-					}
-				} else if natural <= line_width
-					&& text.chars().next().is_some_and(is_cjk)
-				{
-					size * 0.08
-				} else {
-					0.0
-				};
-				flexibility.push(value);
-			}
-			let total: f32 = flexibility.iter().sum();
-			let ratio = if justify && !line.last && total > 0.0 {
-				((line_width - natural) / total).clamp(-1.0, 3.0)
+			// Justification spends the word spaces and the tracking first, then
+			// shares whatever is left over between the clusters that can take
+			// it. Solving it here from the same totals the break search used
+			// keeps the drawn line the width that was chosen for it.
+			let stretch: f32 = fits.iter().map(|f| f.stretch).sum();
+			let shrink: f32 = fits.iter().map(|f| f.shrink).sum();
+			let shares = fits.iter().filter(|f| f.share).count();
+			// A closing mark hangs into the end margin, so the line is solved
+			// against the measure plus that much.
+			let target = line_width + overhang;
+			// An overfull line is compressed wherever it sits in the
+			// paragraph; only stretching is limited to justified lines.
+			let solve = if natural > target || (justify && !line.last) {
+				microtype::solve(natural, target, stretch, shrink, shares)
 			} else {
-				0.0
+				microtype::Justify::default()
 			};
-			let actual = natural + ratio * total;
+			let solve = microtype::Justify {
+				ratio: solve.ratio.clamp(-1.0, 1.0),
+				extra: solve.extra,
+			};
+			let actual =
+				natural + microtype::gained(stretch, shrink, shares, solve);
 			let offset = match align {
 				CellAlign::Left => 0.0,
-				CellAlign::Center => ((line_width - actual) * 0.5).max(0.0),
-				CellAlign::Right => (line_width - actual).max(0.0),
+				CellAlign::Center => ((target - actual) * 0.5).max(0.0),
+				CellAlign::Right => (target - actual).max(0.0),
 			};
 			let start_draw = out.draws.len();
 			let mut cursor = line_x + offset;
 			let mut link: Option<(String, f32)> = None;
-			for (c, flex) in clusters.into_iter().zip(flexibility) {
+			for (c, fit) in clusters.into_iter().zip(fits) {
 				let range = p.reading_range(c.range.clone());
 				// A footnote reference registers the anchor its number returns
 				// to when the reader reached the footnote by scrolling. The
@@ -321,7 +346,13 @@ impl BlockContext<'_> {
 				}
 				// The cluster's real advance: justification stretches spaces and
 				// CJK glue, and backgrounds and decorations must cover it too.
-				let advance = c.width + flex * ratio;
+				let advance = if solve.ratio < 0.0 {
+					c.width + fit.shrink * solve.ratio
+				} else {
+					c.width
+						+ fit.stretch * solve.ratio
+						+ if fit.share { solve.extra } else { 0.0 }
+				};
 				if !range.is_empty() {
 					out.text[node].push(TextCluster {
 						range,
@@ -423,7 +454,7 @@ impl BlockContext<'_> {
 					url,
 				});
 			}
-			if actual > line_width + 0.5 {
+			if actual > target + 0.5 {
 				let gutter = opts.stylesheet.scrollbar_gutter();
 				out.overflow.push(Overflow {
 					rect: Rect {

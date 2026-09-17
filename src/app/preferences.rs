@@ -49,6 +49,7 @@ impl Preferences {
 			width: args.options.width,
 			justify: args.options.justify,
 			hyphenate: args.options.hyphenate,
+			justification: settings.justification,
 			paragraph_indent: args.options.paragraph_indent,
 			cjk_type: settings.cjk_type,
 			codeblock_theme_override: settings.codeblock_theme_override.clone(),

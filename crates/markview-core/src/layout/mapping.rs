@@ -1,5 +1,9 @@
 use crate::{math::MathBox, shaping::Span};
-use std::{collections::BTreeMap, ops::Range, sync::Arc};
+use std::{
+	collections::{BTreeMap, BTreeSet},
+	ops::Range,
+	sync::Arc,
+};
 pub(super) struct Prepared {
 	pub(super) images: BTreeMap<usize, crate::image::ImageSpec>,
 	pub(super) reading: String,
@@ -10,6 +14,8 @@ pub(super) struct Prepared {
 	/// Footnote references by their text offset, for the anchors their
 	/// numbers return to.
 	pub(super) notes: BTreeMap<usize, u32>,
+	/// The text offsets of the forced breaks that asked to be justified.
+	pub(super) breaks: BTreeSet<usize>,
 }
 
 impl Prepared {

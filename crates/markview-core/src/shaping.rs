@@ -70,6 +70,9 @@ pub(crate) struct Cluster {
 	pub(crate) rtl: bool,
 	pub(crate) range: Range<usize>,
 	pub(crate) width: f32,
+	/// Which sides face Latin across a mixed CJK and Latin gap, which
+	/// [`crate::microtype::space_mixed_scripts`] fills in.
+	pub(crate) mixed: (bool, bool),
 	pub(crate) ascent: f32,
 	pub(crate) descent: f32,
 	pub(crate) glyphs: Vec<Glyph>,
@@ -448,6 +451,7 @@ impl TextShaper {
 						rtl: c.is_rtl(),
 						range: c.text_range(),
 						width: c.advance(),
+						mixed: (false, false),
 						ascent: run.metrics().ascent,
 						descent: run.metrics().descent,
 						glyphs,

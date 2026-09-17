@@ -418,3 +418,15 @@ fn theme_belongs_to_the_plain_code_block_condition() {
 		assert!(Stylesheet::parse(bad).is_err(), "{bad}");
 	}
 }
+
+#[test]
+fn the_cjk_convention_is_layout_relevant() {
+	// Each convention resolves `serif[cjk]` to a different family, so a change
+	// of convention has to reflow: the old geometry was measured with the old
+	// face.
+	let mut s = (*Stylesheet::bundled(false)).clone();
+	s.set_cjk_type(CjkType::Sc);
+	let sc = s.layout_key();
+	s.set_cjk_type(CjkType::Jp);
+	assert_ne!(sc, s.layout_key());
+}

@@ -260,6 +260,11 @@ impl Stylesheet {
 		}
 		self.fontdefs = resolved;
 	}
+	/// Which CJK convention this stylesheet resolved its `[cjk]` font
+	/// definitions with, and so which one judges its punctuation.
+	pub fn cjk_type(&self) -> CjkType {
+		self.cjk_type
+	}
 	pub fn set_cjk_type(&mut self, cjk_type: CjkType) {
 		self.cjk_type = cjk_type;
 		self.resolve_fontdefs();
@@ -358,7 +363,7 @@ impl Stylesheet {
 	}
 	/// Colors are resolved by the renderer; only geometry-affecting declarations invalidate layout.
 	pub fn layout_key(&self) -> u64 {
-		let mut s = String::new();
+		let mut s = format!("{:?}", self.cjk_type);
 		for (conditions, rule) in &self.rules {
 			if !rule.layout_relevant() {
 				continue;

@@ -8,12 +8,16 @@ pub struct Break {
 	pub penalty: f64,
 	pub hyphen_width: f32,
 	pub forced: bool,
+	/// Whether the line ending here is still set flush. Only a break the
+	/// author asked for does that.
+	pub justify: bool,
 }
 impl Break {
 	pub const NORMAL: Self = Self {
 		penalty: 0.0,
 		hyphen_width: 0.0,
 		forced: false,
+		justify: false,
 	};
 	pub const FORCED: Self = Self {
 		forced: true,
@@ -27,6 +31,8 @@ pub struct Unit {
 	pub width: f32,
 	pub stretch: f32,
 	pub shrink: f32,
+	/// Whether the line's leftover slack may be shared out over this unit.
+	pub justifiable: bool,
 	pub discard: bool,
 	pub after: Option<Break>,
 }
@@ -50,6 +56,11 @@ pub struct Solution {
 
 const INF: f64 = f64::INFINITY;
 
+/// Demerits for a last line holding a single unbreakable chunk, which strands
+/// one word on a line of its own. Weighed against the hyphen penalty, which is
+/// the other thing the break search trades against even spacing.
+const RUNT_DEMERITS: f64 = 1800.0;
+
 #[derive(Clone, Copy)]
 struct State {
 	cost: f64,
@@ -64,6 +75,7 @@ struct Prefix {
 	width: Vec<f32>,
 	stretch: Vec<f32>,
 	shrink: Vec<f32>,
+	justifiables: Vec<usize>,
 }
 impl Prefix {
 	fn new(units: &[Unit]) -> Self {
@@ -71,11 +83,14 @@ impl Prefix {
 			width: vec![0.0],
 			stretch: vec![0.0],
 			shrink: vec![0.0],
+			justifiables: vec![0],
 		};
 		for u in units {
 			p.width.push(p.width.last().unwrap() + u.width);
 			p.stretch.push(p.stretch.last().unwrap() + u.stretch);
 			p.shrink.push(p.shrink.last().unwrap() + u.shrink);
+			p.justifiables
+				.push(p.justifiables.last().unwrap() + u.justifiable as usize);
 		}
 		p
 	}
@@ -84,7 +99,7 @@ impl Prefix {
 		units: &[Unit],
 		mut start: usize,
 		mut end: usize,
-	) -> (Range<usize>, f32, f32, f32) {
+	) -> (Range<usize>, f32, f32, f32, usize) {
 		while start < end && units[start].discard {
 			start += 1;
 		}
@@ -93,25 +108,35 @@ impl Prefix {
 		}
 		let mut stretch = self.stretch[end] - self.stretch[start];
 		let mut shrink = self.shrink[end] - self.shrink[start];
+		let mut justifiables =
+			self.justifiables[end] - self.justifiables[start];
 		// Inter-character glue belongs between characters, not after the line.
 		if end > start && !units[end - 1].discard {
 			stretch -= units[end - 1].stretch;
 			shrink -= units[end - 1].shrink;
+			justifiables -= units[end - 1].justifiable as usize;
 		}
 		(
 			start..end,
 			self.width[end] - self.width[start],
 			stretch.max(0.0),
 			shrink.max(0.0),
+			justifiables,
 		)
 	}
 }
 
+#[expect(
+	clippy::too_many_arguments,
+	reason = "Line metrics and break context are independent inputs"
+)]
 fn line_score(
 	width: f32,
 	stretch: f32,
 	shrink: f32,
+	justifiables: usize,
 	target: f32,
+	size: f32,
 	last: bool,
 	justified: bool,
 	emergency: bool,
@@ -127,19 +152,24 @@ fn line_score(
 		let r = delta / target.max(1.0);
 		return Some((0.0, 1, (10.0 + 100.0 * (r as f64).powi(2)).powi(2)));
 	}
-	let available = if delta < 0.0 {
-		shrink
-	} else {
-		stretch + if emergency { target * 0.15 } else { 0.0 }
-	};
-	let ratio = if delta.abs() < 0.01 {
-		0.0
-	} else if available > 0.0 {
-		delta / available
-	} else {
+	if delta < -0.01 && shrink <= 0.0 {
 		return None;
+	}
+	let stretch = stretch + if emergency { target * 0.15 } else { 0.0 };
+	let solve =
+		crate::microtype::solve(width, target, stretch, shrink, justifiables);
+	if solve.ratio < -1.0 {
+		return None;
+	}
+	// Past its natural stretchability an underfull line hands the leftover
+	// slack to the justifiable clusters. Normalizing that per-cluster share by
+	// half an em keeps its cost on the same scale as an ordinary ratio.
+	let ratio = if solve.extra > 0.0 {
+		1.0 + solve.extra / (size * 0.5)
+	} else {
+		solve.ratio
 	};
-	if !(-1.0..=3.0).contains(&ratio) {
+	if ratio > 16.0 {
 		return None;
 	}
 	let fitness = if ratio < -0.5 {
@@ -155,10 +185,15 @@ fn line_score(
 	Some((ratio, fitness, (10.0 + badness).powi(2)))
 }
 
+#[expect(
+	clippy::too_many_arguments,
+	reason = "Line metrics and break context are independent inputs"
+)]
 fn optimize(
 	units: &[Unit],
 	target: f32,
 	first_target: f32,
+	size: f32,
 	justified: bool,
 	emergency: bool,
 	budget: &mut usize,
@@ -181,13 +216,13 @@ fn optimize(
 	for j in 1..points.len() {
 		let end = points[j];
 		let br = units[end - 1].after.unwrap_or(Break::FORCED);
-		let last = end == units.len() || br.forced;
+		let last = end == units.len() || (br.forced && !br.justify);
 		for i in (earliest..j).rev() {
 			*budget += 1;
 			if *budget > limit {
 				return None;
 			}
-			let (range, natural, stretch, shrink) =
+			let (range, natural, stretch, shrink, justifiables) =
 				p.metrics(units, points[i], end);
 			// Only the line opening the paragraph sees the first-line indent.
 			let line_target =
@@ -203,18 +238,25 @@ fn optimize(
 				width,
 				stretch,
 				shrink,
+				justifiables,
 				line_target,
+				size,
 				last,
 				justified,
 				emergency,
 			) else {
 				continue;
 			};
-			let penalty = if br.penalty >= 0.0 {
+			let mut penalty = if br.penalty >= 0.0 {
 				br.penalty.powi(2)
 			} else {
 				-br.penalty.powi(2)
 			};
+			// A last line holding one unbreakable chunk strands a lone word on
+			// a line of its own, so reflow the lines above to avoid it.
+			if last && j == i + 1 {
+				penalty += RUNT_DEMERITS;
+			}
 			let flagged = br.hyphen_width > 0.0;
 			let previous_flagged = points[i] > 0
 				&& units[points[i] - 1]
@@ -257,8 +299,8 @@ fn optimize(
 	while j > 0 {
 		let (i, previous_f) = states[j][f].previous;
 		let br = units[points[j] - 1].after.unwrap_or(Break::FORCED);
-		let last = points[j] == units.len() || br.forced;
-		let (range, width, stretch, shrink) =
+		let last = points[j] == units.len() || (br.forced && !br.justify);
+		let (range, width, stretch, shrink, justifiables) =
 			p.metrics(units, points[i], points[j]);
 		let hyphen = !last && br.hyphen_width > 0.0;
 		let width = width + if hyphen { br.hyphen_width } else { 0.0 };
@@ -267,7 +309,9 @@ fn optimize(
 			width,
 			stretch,
 			shrink,
+			justifiables,
 			line_target,
+			size,
 			last,
 			justified,
 			emergency,
@@ -326,7 +370,7 @@ pub fn greedy_with_first(
 				end += 1;
 				continue;
 			};
-			let (range, width, _, _) = p.metrics(units, start, end);
+			let (range, width, ..) = p.metrics(units, start, end);
 			let last = br.forced || end == units.len();
 			let width = width + if last { 0.0 } else { br.hyphen_width };
 			if width > line_target && best.is_some() {
@@ -350,7 +394,7 @@ pub fn greedy_with_first(
 		let (end, line) = best.unwrap_or_else(|| {
 			// The budget ran out before a legal break; take one unit so the
 			// outer loop always advances.
-			let (range, width, _, _) = p.metrics(units, start, start + 1);
+			let (range, width, ..) = p.metrics(units, start, start + 1);
 			(
 				start + 1,
 				Line {
@@ -371,10 +415,11 @@ pub fn greedy_with_first(
 pub fn break_lines(
 	units: &[Unit],
 	target: f32,
+	size: f32,
 	justified: bool,
 	limits: &Limits,
 ) -> Solution {
-	break_lines_with_first(units, target, target, justified, limits)
+	break_lines_with_first(units, target, target, size, justified, limits)
 }
 
 /// Bounded Knuth–Plass where the line opening the paragraph may be indented,
@@ -383,6 +428,7 @@ pub fn break_lines_with_first(
 	units: &[Unit],
 	target: f32,
 	first_target: f32,
+	size: f32,
 	justified: bool,
 	limits: &Limits,
 ) -> Solution {
@@ -397,6 +443,7 @@ pub fn break_lines_with_first(
 		units,
 		target,
 		first_target,
+		size,
 		justified,
 		false,
 		&mut budget,
@@ -409,6 +456,7 @@ pub fn break_lines_with_first(
 			units,
 			target,
 			first_target,
+			size,
 			justified,
 			true,
 			&mut budget,
@@ -433,6 +481,7 @@ mod tests {
 				width,
 				stretch: 0.0,
 				shrink: 0.0,
+				justifiable: false,
 				discard: false,
 				after: None,
 			});
@@ -441,6 +490,7 @@ mod tests {
 				width: 3.0,
 				stretch: 2.0,
 				shrink: 1.0,
+				justifiable: true,
 				discard: true,
 				after: Some(Break::NORMAL),
 			});
@@ -452,7 +502,7 @@ mod tests {
 	fn forced_breaks_are_not_skipped() {
 		let mut u = words(&[12.0; 8]);
 		u[3].after = Some(Break::FORCED);
-		let s = break_lines(&u, 100.0, true, &Limits::default());
+		let s = break_lines(&u, 100.0, 10.0, true, &Limits::default());
 		assert_eq!(s.lines[0].units, 0..3);
 		assert_eq!(s.lines.len(), 2);
 		assert!(s.lines.iter().all(|l| l.last && l.ratio == 0.0));
@@ -471,12 +521,15 @@ mod tests {
 					continue;
 				}
 				let end = (word + 1) * 2;
-				let (_, w, stretch, shrink) = p.metrics(&u, start, end);
+				let (_, w, stretch, shrink, justifiables) =
+					p.metrics(&u, start, end);
 				cost += line_score(
 					w,
 					stretch,
 					shrink,
+					justifiables,
 					target,
+					10.0,
 					word == 5,
 					false,
 					false,
@@ -486,14 +539,14 @@ mod tests {
 			}
 			best = best.min(cost);
 		}
-		let actual = break_lines(&u, target, false, &Limits::default());
+		let actual = break_lines(&u, target, 10.0, false, &Limits::default());
 		assert!(!actual.degraded);
 		assert!((actual.demerits - best).abs() < 0.001);
 	}
 	#[test]
 	fn unbreakable_box_overflows_without_losing_content() {
 		let u = words(&[500.0, 10.0]);
-		let s = break_lines(&u, 50.0, true, &Limits::default());
+		let s = break_lines(&u, 50.0, 10.0, true, &Limits::default());
 		assert!(s.degraded);
 		assert_eq!(s.lines[0].units, 0..1);
 		assert_eq!(s.lines[1].units, 2..3);
@@ -501,16 +554,28 @@ mod tests {
 	#[test]
 	fn first_line_target_narrows_only_the_opening_line() {
 		let u = words(&[12.0; 6]);
-		let indented =
-			break_lines_with_first(&u, 40.0, 20.0, false, &Limits::default());
+		let indented = break_lines_with_first(
+			&u,
+			40.0,
+			20.0,
+			10.0,
+			false,
+			&Limits::default(),
+		);
 		assert!(!indented.degraded);
 		// The full measure fits two words per line; the indented first line
 		// fits only one, and the remaining lines recover the full measure.
 		assert_eq!(indented.lines[0].units, 0..1);
 		assert_eq!(indented.lines.len(), 4);
-		let equal =
-			break_lines_with_first(&u, 40.0, 40.0, false, &Limits::default());
-		let baseline = break_lines(&u, 40.0, false, &Limits::default());
+		let equal = break_lines_with_first(
+			&u,
+			40.0,
+			40.0,
+			10.0,
+			false,
+			&Limits::default(),
+		);
+		let baseline = break_lines(&u, 40.0, 10.0, false, &Limits::default());
 		assert_eq!(equal.lines.len(), baseline.lines.len());
 		assert!(
 			equal
@@ -526,6 +591,18 @@ mod tests {
 			Limits::default().linebreak_evaluations,
 		);
 		assert_eq!(greedy.lines[0].units, 0..1);
+	}
+	#[test]
+	fn a_runt_last_line_is_reflowed_away() {
+		// Three 30 wide words and two 3 wide spaces fill the measure exactly,
+		// so the greedy shape of seven words would strand the last one alone.
+		let u = words(&[30.0; 7]);
+		let s = break_lines(&u, 100.0, 10.0, false, &Limits::default());
+		assert_eq!(s.lines.len(), 3);
+		// Trading a slightly underfull line above for a two word last line
+		// costs less than the runt penalty, so both words stay on the last line.
+		let last = s.lines.last().unwrap();
+		assert_eq!(last.units.len(), 3, "{:?}", s.lines);
 	}
 	#[test]
 	fn greedy_budget_terminates_and_covers_every_unit() {

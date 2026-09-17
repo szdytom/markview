@@ -2,12 +2,27 @@ use super::{BlockContext, Prepared};
 use crate::{
 	document::{Inline, InlineKind},
 	linebreak::{Break, Unit},
+	microtype,
 	scene::BlockLayout,
 	shaping::{Cluster, Span},
 	style::Condition,
 };
-use std::collections::HashSet;
-use std::{collections::BTreeMap, ops::Range};
+use std::collections::{BTreeMap, HashMap, HashSet};
+use std::ops::Range;
+
+/// Demerits for breaking a word with a hyphen, before the distance from the
+/// word's edges is taken into account.
+const HYPHEN_PENALTY: f64 = 50.0;
+
+/// Demerits for a hyphenation break, graded by how close it lands to either
+/// edge of the word. A hyphen a character or two from the start or end reads as
+/// a mistake rather than a convenience, so it should be worth avoiding even
+/// when the line it produces is otherwise better.
+pub(super) fn hyphen_penalty(before: usize, after: usize) -> f64 {
+	const EDGE: usize = 5;
+	let steps = EDGE.saturating_sub(before) + EDGE.saturating_sub(after);
+	HYPHEN_PENALTY * (1.0 + 0.15 * steps as f64)
+}
 impl BlockContext<'_> {
 	pub(super) fn prepare(
 		&mut self,
@@ -23,6 +38,7 @@ impl BlockContext<'_> {
 			spans: Vec::new(),
 			math: BTreeMap::new(),
 			notes: BTreeMap::new(),
+			breaks: std::collections::BTreeSet::new(),
 		};
 		for inline in rich {
 			let start = p.text.len();
@@ -38,6 +54,7 @@ impl BlockContext<'_> {
 				InlineKind::FootnoteRef(n) => {
 					p.reading.push_str(&format!("[{n}]"));
 				}
+				InlineKind::LineBreak { .. } => p.reading.push('\n'),
 			}
 			let mut style = inline.style.clone();
 			match &inline.kind {
@@ -49,6 +66,12 @@ impl BlockContext<'_> {
 				InlineKind::FootnoteRef(n) => {
 					p.notes.insert(start, *n);
 					p.text.push_str(&format!("[{n}]"));
+				}
+				InlineKind::LineBreak { justify } => {
+					if *justify {
+						p.breaks.insert(start);
+					}
+					p.text.push('\n');
 				}
 				InlineKind::Math { latex, display } => {
 					let laid_out = crate::profile::span(
@@ -122,6 +145,7 @@ impl BlockContext<'_> {
 		sans: bool,
 		hyphenate: bool,
 		available: f32,
+		typo: microtype::Typography,
 	) -> Vec<Unit> {
 		let mut clusters =
 			crate::profile::span(crate::profile::Stage::ShapeClusters, || {
@@ -131,7 +155,9 @@ impl BlockContext<'_> {
 		let segmenter =
 			icu_segmenter::LineSegmenter::new_auto(Default::default());
 		let breaks: HashSet<usize> = segmenter.segment_str(&p.text).collect();
-		let mut hyphens = HashSet::new();
+		// Where a word may be split, and how many characters would be left on
+		// either side, which decides how much the break costs.
+		let mut hyphens: HashMap<usize, (usize, usize)> = HashMap::new();
 		if hyphenate {
 			let mut word_start = None;
 			for (i, c) in p
@@ -142,6 +168,7 @@ impl BlockContext<'_> {
 				if c.is_ascii_alphabetic() {
 					word_start.get_or_insert(i);
 				} else if let Some(start) = word_start.take() {
+					// The run is ASCII, so byte and character counts agree.
 					let word = &p.text[start..i];
 					if word.len() >= 6
 						&& !p.spans.iter().any(|s| {
@@ -154,7 +181,10 @@ impl BlockContext<'_> {
 						{
 							offset += syllable.len();
 							if offset - start >= 2 && i - offset >= 3 {
-								hyphens.insert(offset);
+								hyphens.insert(
+									offset,
+									(offset - start, i - offset),
+								);
 							}
 						}
 					}
@@ -167,26 +197,38 @@ impl BlockContext<'_> {
 			.iter()
 			.map(|c| c.width)
 			.sum();
+		microtype::space_mixed_scripts(&mut clusters, &p.text, &p.spans, size);
 		let mut units = Vec::new();
 		for (i, c) in clusters.iter().enumerate() {
 			let t = &p.text[c.range.clone()];
-			let whitespace = t
-				.chars()
-				.all(|c| c == ' ' || c == '\t' || c == '\n' || c == '\r');
+			let whitespace = microtype::is_space(t);
 			let hard = t.contains('\n');
 			let soft_hyphen = t == "\u{ad}";
 			let math = p.math.get(&c.range.start);
-			let cjk = t.chars().next().is_some_and(is_cjk);
 			let next = clusters.get(i + 1);
-			let legal = breaks.contains(&c.range.end)
-				&& !next.is_some_and(|c| c.continuation);
+			let legal = (breaks.contains(&c.range.end)
+				&& !next.is_some_and(|c| c.continuation))
+				|| microtype::quote_edge_break(&clusters, &p.text, i);
 			let after = if hard {
-				Some(Break::FORCED)
-			} else if soft_hyphen || hyphens.contains(&c.range.end) {
+				// A break the author asked to justify still ends a line, but
+				// the line it ends is set flush like any other.
 				Some(Break {
-					penalty: 50.0,
+					justify: p.breaks.contains(&c.range.start),
+					..Break::FORCED
+				})
+			} else if soft_hyphen {
+				// The document asked for this break, so it carries only the
+				// base cost of a hyphen.
+				Some(Break {
+					penalty: HYPHEN_PENALTY,
 					hyphen_width,
-					forced: false,
+					..Break::NORMAL
+				})
+			} else if let Some(&(before, after)) = hyphens.get(&c.range.end) {
+				Some(Break {
+					penalty: hyphen_penalty(before, after),
+					hyphen_width,
+					..Break::NORMAL
 				})
 			} else if legal {
 				Some(Break::NORMAL)
@@ -200,21 +242,22 @@ impl BlockContext<'_> {
 			} else {
 				math.map_or(c.width, |m| m.width)
 			};
+			// Measure the advance the line really draws, which is zero for a
+			// soft hyphen and the box's own width for an image or formula.
+			let (adjust, justifiable) = microtype::adjust(
+				t,
+				width,
+				size,
+				c.mixed,
+				c.glyphs.len(),
+				typo,
+			);
 			units.push(Unit {
 				source: c.range.clone(),
 				width,
-				stretch: if whitespace && !hard {
-					width * 0.65
-				} else if cjk {
-					size * 0.08
-				} else {
-					0.0
-				},
-				shrink: if whitespace && !hard {
-					width * 0.3
-				} else {
-					0.0
-				},
+				stretch: adjust.stretch(),
+				shrink: adjust.shrink(),
+				justifiable,
 				discard: whitespace,
 				after,
 			});
@@ -222,6 +265,10 @@ impl BlockContext<'_> {
 		units
 	}
 
+	#[expect(
+		clippy::too_many_arguments,
+		reason = "Text style and block geometry are independent layout inputs"
+	)]
 	pub(super) fn line_clusters(
 		&mut self,
 		p: &Prepared,
@@ -230,12 +277,19 @@ impl BlockContext<'_> {
 		size: f32,
 		sans: bool,
 		available: f32,
+		typo: microtype::Typography,
 	) -> Vec<Cluster> {
 		crate::profile::span(crate::profile::Stage::LineClusters, || {
-			self.line_clusters_inner(p, range, hyphen, size, sans, available)
+			self.line_clusters_inner(
+				p, range, hyphen, size, sans, available, typo,
+			)
 		})
 	}
 
+	#[expect(
+		clippy::too_many_arguments,
+		reason = "Text style and block geometry are independent layout inputs"
+	)]
 	fn line_clusters_inner(
 		&mut self,
 		p: &Prepared,
@@ -244,6 +298,7 @@ impl BlockContext<'_> {
 		size: f32,
 		sans: bool,
 		available: f32,
+		typo: microtype::Typography,
 	) -> Vec<Cluster> {
 		let mut text = p.text[range.clone()].to_string();
 		if hyphen {
@@ -289,9 +344,11 @@ impl BlockContext<'_> {
 				c.glyphs.clear();
 			}
 		}
+		// Mixed CJK and Latin spacing needs both neighbours, so a gap that a
+		// line break separates is never inserted, and the punctuation at the
+		// two ends of this line is compressed against the measure.
+		microtype::space_mixed_scripts(&mut clusters, &p.text, &p.spans, size);
+		microtype::compress_line_edges(&mut clusters, &p.text, size, typo.cjk);
 		clusters
 	}
-}
-pub(super) fn is_cjk(c: char) -> bool {
-	matches!(c as u32, 0x2e80..=0x9fff | 0xf900..=0xfaff | 0x20000..=0x3134f)
 }

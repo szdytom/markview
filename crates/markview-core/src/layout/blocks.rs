@@ -20,6 +20,8 @@ fn starts_with_text(rich: &[Inline]) -> bool {
 			| InlineKind::FootnoteRef(_) => {
 				return true;
 			}
+			// A break on its own does not make a paragraph start with text.
+			InlineKind::LineBreak { .. } => {}
 			InlineKind::Image(_) | InlineKind::Math { display: true, .. } => {
 				return false;
 			}

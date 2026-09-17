@@ -83,7 +83,9 @@ impl Reader<'_> {
 			let kind = match &value.value {
 				NodeValue::Text(t) => Some(InlineKind::Text(t.to_string())),
 				NodeValue::SoftBreak => Some(InlineKind::Text(" ".into())),
-				NodeValue::LineBreak => Some(InlineKind::Text("\n".into())),
+				NodeValue::LineBreak => {
+					Some(InlineKind::LineBreak { justify: false })
+				}
 				NodeValue::Code(c) => {
 					child_style.code = true;
 					Some(InlineKind::Text(c.literal.clone()))
@@ -97,7 +99,9 @@ impl Reader<'_> {
 						Some(InlineKind::Image(image))
 					}
 					html::Inline::Ignore => continue,
-					html::Inline::Break => Some(InlineKind::Text("\n".into())),
+					html::Inline::Break => {
+						Some(InlineKind::LineBreak { justify: true })
+					}
 					html::Inline::Open { name, patch } => {
 						scopes.push((name, style.clone()));
 						apply_patch(&patch, &mut style);

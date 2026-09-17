@@ -56,6 +56,11 @@ pub enum InlineKind {
 	},
 	/// A footnote reference, drawn `[n]` and jumping to footnote `n`.
 	FootnoteRef(u32),
+	/// A forced line break. `justify` is set for an explicit HTML `<br>`, which
+	/// asks for the line it ends to be set flush like any other.
+	LineBreak {
+		justify: bool,
+	},
 }
 
 #[derive(Clone, Debug, Hash, PartialEq, Eq)]
@@ -146,6 +151,7 @@ pub fn plain_text(text: &RichText) -> String {
 			InlineKind::FootnoteRef(n) => {
 				out.push_str(&format!("[{n}]"));
 			}
+			InlineKind::LineBreak { .. } => out.push('\n'),
 		}
 	}
 	out

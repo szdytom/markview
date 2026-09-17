@@ -71,6 +71,8 @@ pub struct LayoutOptions {
 	pub font_size: f32,
 	pub justify: bool,
 	pub hyphenate: bool,
+	/// How far word spacing and letter spacing may move while justifying.
+	pub justification: crate::JustificationLimits,
 	/// Indent in multiples of the text size: the opening line of prose
 	/// paragraphs, and the whole of a list, markers included. Zero disables it.
 	pub paragraph_indent: f32,
@@ -87,6 +89,7 @@ impl Default for LayoutOptions {
 			font_size: 18.0,
 			justify: true,
 			hyphenate: true,
+			justification: crate::JustificationLimits::default(),
 			paragraph_indent: 0.0,
 			greedy: false,
 			codeblock_theme_override: None,
@@ -102,6 +105,7 @@ impl PartialEq for LayoutOptions {
 			&& self.font_size == other.font_size
 			&& self.justify == other.justify
 			&& self.hyphenate == other.hyphenate
+			&& self.justification == other.justification
 			&& self.paragraph_indent == other.paragraph_indent
 			&& self.greedy == other.greedy
 			&& self.codeblock_theme_override == other.codeblock_theme_override
@@ -111,6 +115,16 @@ impl PartialEq for LayoutOptions {
 }
 
 impl LayoutOptions {
+	/// The typographic choices the microtype passes work from. The CJK
+	/// convention comes from the stylesheet, which is also what selects the
+	/// `[cjk]` font definition, so the two can never disagree.
+	pub(crate) fn typography(&self) -> crate::microtype::Typography {
+		crate::microtype::Typography {
+			limits: self.justification,
+			cjk: self.stylesheet.cjk_type(),
+		}
+	}
+
 	/// The indent in logical pixels for content set at `size`, capped so a
 	/// character still fits in `width`.
 	pub(crate) fn indent(&self, size: f32, width: f32) -> f32 {
@@ -139,6 +153,7 @@ struct CacheKey {
 	size: u32,
 	justify: bool,
 	hyphenate: bool,
+	justification: [u32; 4],
 	paragraph_indent: u32,
 	greedy: bool,
 	codeblock_theme_override: Option<String>,
@@ -257,6 +272,7 @@ impl LayoutEngine {
 				size: options.font_size.to_bits(),
 				justify: options.justify,
 				hyphenate: options.hyphenate,
+				justification: options.justification.bits(),
 				paragraph_indent: options.paragraph_indent.to_bits(),
 				greedy: options.greedy,
 				codeblock_theme_override: options

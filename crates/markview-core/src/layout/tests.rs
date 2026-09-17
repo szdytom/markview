@@ -307,7 +307,7 @@ fn cjk_boundaries_and_hyphenation() {
 		highlight_cache: e.highlights.results(),
 	};
 	let p = context.prepare(&rich, 18.0, &mut out);
-	let units = context.units(&p, 18.0, false, true, 760.0);
+	let units = context.units(&p, 18.0, false, true, 760.0, Default::default());
 	for u in &units {
 		if u.after.is_some() && u.source.end < p.text.len() {
 			assert!(
@@ -654,4 +654,671 @@ fn inline_code_chip_covers_justified_spaces() {
 			}
 		}
 	}
+}
+
+/// The drawn clusters of the first block, grouped into lines by their vertical
+/// position and ordered left to right.
+fn drawn_lines(snapshot: &LayoutSnapshot) -> Vec<Vec<(String, Rect)>> {
+	let mut rows: Vec<Vec<(String, Rect)>> = Vec::new();
+	for node in &snapshot.blocks[0].layout.text {
+		for cluster in &node.clusters {
+			let text = node.text[cluster.range.clone()].to_string();
+			let row = rows.iter_mut().find(|row| {
+				row.first()
+					.is_some_and(|(_, r)| (r.y - cluster.rect.y).abs() < 0.5)
+			});
+			match row {
+				Some(row) => row.push((text, cluster.rect)),
+				None => rows.push(vec![(text, cluster.rect)]),
+			}
+		}
+	}
+	for row in &mut rows {
+		row.sort_by(|a, b| a.1.x.total_cmp(&b.1.x));
+	}
+	rows
+}
+
+#[test]
+fn cjk_punctuation_gives_back_its_blank_half_at_a_line_edge() {
+	// The full stop closes a wrapped line and the paragraph, and also appears
+	// mid-line, so the two can be compared directly.
+	// One line, so the first full stop sits inside it and the second one closes
+	// it, and the two can be compared directly.
+	let source = "甲。乙丙丁戊。\n";
+	let doc = document::parse(source);
+	let opts = LayoutOptions {
+		width: 400.0,
+		justify: false,
+		..Default::default()
+	};
+	let snapshot = LayoutEngine::new().layout(&doc, &opts);
+	let rows = drawn_lines(&snapshot);
+	let mut edge = Vec::new();
+	let mut middle = Vec::new();
+	for row in &rows {
+		for (i, (text, rect)) in row.iter().enumerate() {
+			if text == "。" {
+				if i + 1 == row.len() {
+					edge.push(rect.w);
+				} else {
+					middle.push(rect.w);
+				}
+			}
+		}
+	}
+	assert_eq!(rows.len(), 1, "{rows:?}");
+	assert_eq!(edge.len(), 1, "{rows:?}");
+	assert_eq!(middle.len(), 1, "{rows:?}");
+	assert!(
+		(edge[0] * 2.0 - middle[0]).abs() < 0.01,
+		"edge {} against the full {}",
+		edge[0],
+		middle[0]
+	);
+}
+
+#[test]
+fn han_next_to_latin_gains_a_quarter_em() {
+	let size = 18.0;
+	let doc = document::parse("汉字abc汉字\n");
+	let opts = LayoutOptions {
+		width: 400.0,
+		font_size: size,
+		justify: false,
+		..Default::default()
+	};
+	let snapshot = LayoutEngine::new().layout(&doc, &opts);
+	let rows = drawn_lines(&snapshot);
+	let line: &Vec<(String, f32)> = &rows[0]
+		.iter()
+		.map(|(text, rect)| (text.clone(), rect.w))
+		.collect();
+	let text: String = line.iter().map(|(t, _)| t.as_str()).collect();
+	assert_eq!(text, "汉字abc汉字");
+	let plain = line[0].1;
+	let gap = size * 0.25;
+	// Only the two clusters that face a Latin letter widen.
+	assert!((line[1].1 - plain - gap).abs() < 0.01, "{line:?}");
+	assert!((line[5].1 - plain - gap).abs() < 0.01, "{line:?}");
+	assert!((line[6].1 - plain).abs() < 0.01, "{line:?}");
+}
+
+#[test]
+fn a_justified_cjk_line_reaches_the_measure() {
+	let doc = document::parse(
+		"这是一段用于测试中文排版效果的文字，它应当填满整行并且每个字之间的\
+		间距都保持均匀，标点也应当正确处理。\n",
+	);
+	let width = 300.0;
+	let opts = LayoutOptions {
+		width,
+		..Default::default()
+	};
+	let snapshot = LayoutEngine::new().layout(&doc, &opts);
+	let rows = drawn_lines(&snapshot);
+	assert!(rows.len() > 2, "{rows:?}");
+	// Only the paragraph's last line is allowed to fall short.
+	for row in &rows[..rows.len() - 1] {
+		let (_, last) = row.last().unwrap();
+		let right = last.x + last.w;
+		assert!((right - width).abs() < 1.0, "{right} in {row:?}");
+	}
+	assert!(snapshot.blocks[0].layout.overflow.is_empty());
+}
+
+#[test]
+fn a_line_opening_punctuation_hangs_left() {
+	let doc = document::parse(
+		"（中文）测试行首右对齐标点的悬挂效果，再补一些字凑长度让它换行。\n",
+	);
+	let opts = LayoutOptions {
+		width: 200.0,
+		..Default::default()
+	};
+	let snapshot = LayoutEngine::new().layout(&doc, &opts);
+	let block = &snapshot.blocks[0].layout;
+	let hang = block.draws.iter().find_map(|draw| match draw {
+		crate::scene::Draw::Glyph(g) if g.x < -0.01 => Some(g.x),
+		_ => None,
+	});
+	assert!(hang.is_some_and(|x| x < -1.0), "nothing hangs: {hang:?}");
+	assert!(block.overflow.is_empty());
+}
+
+/// Lay out one paragraph and return its drawn lines.
+fn lines_of(
+	source: &str,
+	width: f32,
+	justify: bool,
+) -> Vec<Vec<(String, Rect)>> {
+	let doc = document::parse(source);
+	let opts = LayoutOptions {
+		width,
+		justify,
+		..Default::default()
+	};
+	drawn_lines(&LayoutEngine::new().layout(&doc, &opts))
+}
+
+/// The widths of the first line, in order.
+fn widths_of(source: &str, width: f32, justify: bool) -> Vec<f32> {
+	lines_of(source, width, justify)[0]
+		.iter()
+		.map(|(_, rect)| rect.w)
+		.collect()
+}
+
+/// The right edge of a line.
+fn right_of(line: &[(String, Rect)]) -> f32 {
+	let (_, rect) = line.last().unwrap();
+	rect.x + rect.w
+}
+
+// The cases below are borrowed from Typst's inline layout suite, where each one
+// is a reference image. Here each asserts a geometric invariant instead, so it
+// holds whatever font the machine happens to provide.
+
+#[test]
+fn typst_cjk_latin_spacing_covers_digits_and_skips_punctuation() {
+	// `tests/suite/layout/inline/cjk.typ`, `text-cjk-latin-spacing`: the gap
+	// separates Han from Latin letters and digits, and never from CJK
+	// punctuation.
+	let gap = LayoutOptions::default().font_size * 0.25;
+	let plain = widths_of("中中\n", 4000.0, false)[0];
+	let digit = widths_of("中1\n", 4000.0, false)[0];
+	let comma = widths_of("中，\n", 4000.0, false)[0];
+	assert!((digit - plain - gap).abs() < 0.01, "{plain} {digit}");
+	assert!((comma - plain).abs() < 0.01, "{plain} {comma}");
+
+	// `中12文1中，文`: the Han inside the digits faces one on each side.
+	let line = widths_of("中12文1中，文\n", 4000.0, false);
+	assert_eq!(line.len(), 8, "{line:?}");
+	let last = line[7];
+	assert!((line[0] - line[5]).abs() < 0.01, "{line:?}");
+	assert!((line[3] - last - 2.0 * gap).abs() < 0.01, "{line:?}");
+	assert!((line[5] - last - gap).abs() < 0.01, "{line:?}");
+}
+
+#[test]
+fn typst_cjk_latin_spacing_stops_at_a_line_break() {
+	// `cjk.typ`, `issue-2538-cjk-latin-spacing-before-linebreak`: a break
+	// between the two scripts drops the gap, so neither line gains a stray
+	// quarter em at its edge.
+	let gap = LayoutOptions::default().font_size * 0.25;
+	let base = widths_of("甲国\n", 4000.0, false)[1];
+	// Two trailing spaces are a Markdown hard break.
+	let rows = lines_of("甲国  \nT国\n", 400.0, false);
+	assert_eq!(rows.len(), 2, "{rows:?}");
+	assert!((rows[0][1].1.w - base).abs() < 0.01, "{rows:?}");
+	assert!((rows[1][1].1.w - base - gap).abs() < 0.01, "{rows:?}");
+}
+
+#[test]
+fn typst_adjacent_closing_marks_hug_the_line_edges() {
+	// `cjk.typ`, `cjk-punctuation-adjustment-2`: a mark that carries its ink on
+	// one side gives back the blank half at a line edge, and only there.
+	let padded = widths_of("中《书名〈章节〉》中\n", 4000.0, false);
+	let bare = widths_of("《书名〈章节〉》\n", 4000.0, false);
+	assert_eq!(bare.len(), 8, "{bare:?}");
+	assert_eq!(padded.len(), 10, "{padded:?}");
+	assert!(
+		(bare[0] * 2.0 - padded[1]).abs() < 0.01,
+		"{bare:?} {padded:?}"
+	);
+	assert!(
+		(bare[7] * 2.0 - padded[8]).abs() < 0.01,
+		"{bare:?} {padded:?}"
+	);
+	assert!((bare[3] - padded[4]).abs() < 0.01, "{bare:?} {padded:?}");
+	assert!((bare[6] - padded[7]).abs() < 0.01, "{bare:?} {padded:?}");
+}
+
+#[test]
+fn typst_punctuation_shrinkability_makes_a_line_fit() {
+	// `justify.typ`, `justify-punctuation-adjustment`: a run of closing marks
+	// can tighten enough to keep a line that would otherwise break earlier.
+	let natural = widths_of("中，，，文\n", 4000.0, false);
+	let (han, mark) = (natural[0], natural[1]);
+	// Just short of the four opening clusters, past what the trailing mark's own
+	// half can give back.
+	let target = han + 3.0 * mark - 0.9 * mark;
+	let rows = lines_of("中，，，文\n", target, true);
+	assert_eq!(rows.len(), 2, "{rows:?}");
+	assert_eq!(rows[0].len(), 4, "{rows:?}");
+	assert!((right_of(&rows[0]) - target).abs() < 0.5, "{rows:?}");
+	assert!(rows[0][1].1.w < mark, "nothing compressed: {rows:?}");
+}
+
+#[test]
+fn typst_a_hard_break_line_is_not_justified() {
+	// `justify.typ`, `justify-manual-linebreak`: a line that ends on a hard
+	// break keeps its natural width, and is not stretched to the measure.
+	let width = 100.0;
+	let hard = lines_of("A B C  \nD E F  \nG\n", width, true);
+	assert_eq!(hard.len(), 3, "{hard:?}");
+	// The same words without hard breaks wrap, and the full line does fill.
+	let free = lines_of("A B C D E F G\n", width, true);
+	assert!(free.len() > 1, "{free:?}");
+	let justified = right_of(&free[0]);
+	assert!((justified - width).abs() < 1.0, "{free:?}");
+	for row in &hard[..2] {
+		assert!(right_of(row) < justified - 20.0, "{row:?}");
+	}
+}
+
+#[test]
+fn typst_cjk_gaps_are_stretched_evenly() {
+	// `justify.typ`, `issue-6062-justify-cjk-latin-spacing`: an underfull line
+	// is closed by sharing the slack, so every CJK cluster that shares ends up
+	// with the same advance rather than one gap taking it all.
+	let width = 130.0;
+	let rows = lines_of("ああああああああああああ\n", width, true);
+	assert!(rows.len() > 1, "{rows:?}");
+	for row in &rows[..rows.len() - 1] {
+		assert!((right_of(row) - width).abs() < 1.0, "{row:?}");
+		let shared: Vec<f32> = row[..row.len() - 1]
+			.iter()
+			.map(|(_, rect)| rect.w)
+			.collect();
+		let first = shared[0];
+		for advance in &shared {
+			assert!((advance - first).abs() < 0.01, "{row:?}");
+		}
+	}
+
+	// The same holds for the mixed line of the issue once the quarter em that
+	// separates a kana from a Latin letter is set aside, so the gap is stretched
+	// together with the text around it rather than on its own.
+	let gap = LayoutOptions::default().font_size * 0.25;
+	let rows = lines_of("ああaa aaああ ああaa aaああ\n", 150.0, true);
+	assert!(rows.len() > 1, "{rows:?}");
+	for row in &rows[..rows.len() - 1] {
+		let texts: Vec<&str> =
+			row.iter().map(|(text, _)| text.as_str()).collect();
+		let mut base: Option<f32> = None;
+		for (i, (text, rect)) in row.iter().enumerate() {
+			if i + 1 == row.len()
+				|| !text.chars().all(crate::microtype::is_han_kana)
+			{
+				continue;
+			}
+			let word_spaced = |t: Option<&str>| {
+				t.and_then(|t| t.chars().next())
+					.is_some_and(crate::microtype::is_word_spaced)
+			};
+			let facing = word_spaced(i.checked_sub(1).map(|i| texts[i])) as u8
+				+ word_spaced(texts.get(i + 1).copied()) as u8;
+			let advance = rect.w - gap * facing as f32;
+			match base {
+				Some(base) => assert!((advance - base).abs() < 0.01, "{row:?}"),
+				None => base = Some(advance),
+			}
+		}
+	}
+}
+
+#[test]
+fn typst_chinese_prose_justifies_by_sharing_the_slack_evenly() {
+	// `justify.typ`, `justify-chinese`. Real prose from Wikipedia, including
+	// enumeration commas and a closing full stop.
+	let width = 240.0;
+	let source = "中文维基百科使用汉字书写，汉字是汉族或华人的共同文字，是中国大陆、\
+		新加坡、马来西亚、台湾、香港、澳门的唯一官方文字或官方文字之一。\n";
+	let rows = lines_of(source, width, true);
+	assert!(rows.len() > 2, "{rows:?}");
+	for row in &rows[..rows.len() - 1] {
+		assert!((right_of(row) - width).abs() < 1.0, "{row:?}");
+		assert!(row[0].1.x.abs() < 0.01, "leading space: {row:?}");
+		// Every Han inside the line is set to the same measure; the cluster that
+		// closes the line carries no share.
+		let han: Vec<f32> = row[..row.len() - 1]
+			.iter()
+			.filter(|(text, _)| text.chars().all(crate::microtype::is_han_kana))
+			.map(|(_, rect)| rect.w)
+			.collect();
+		if let Some(first) = han.first() {
+			for advance in &han {
+				assert!((advance - first).abs() < 0.01, "{row:?}");
+			}
+		}
+	}
+}
+
+#[test]
+fn typst_japanese_prose_justifies_without_overflow() {
+	// `justify.typ`, `justify-japanese`. Japanese mixes scripts inside a line,
+	// so Typst settles for "at least a bit sensible" here and so does this.
+	let width = 240.0;
+	let source = "ウィキペディア（英: Wikipedia）は、世界中のボランティアの共同作業に\
+		よって執筆及び作成されるフリーの多言語インターネット百科事典である。\n";
+	let doc = document::parse(source);
+	let opts = LayoutOptions {
+		width,
+		..Default::default()
+	};
+	let snapshot = LayoutEngine::new().layout(&doc, &opts);
+	assert_eq!(snapshot.degraded, 0);
+	assert!(snapshot.blocks.iter().all(|b| b.layout.overflow.is_empty()));
+	let rows = drawn_lines(&snapshot);
+	assert!(rows.len() > 2, "{rows:?}");
+	for row in &rows[..rows.len() - 1] {
+		// A justified line reaches the measure, though a closing mark may hang
+		// past it by part of its own advance.
+		let right = right_of(row);
+		let mark = row.last().unwrap().1.w;
+		assert!(
+			right >= width - 1.0 && right <= width + mark,
+			"{right} in {row:?}"
+		);
+		assert!(row[0].1.x.abs() < 0.01, "leading space: {row:?}");
+	}
+}
+
+#[test]
+fn typst_hyphenation_can_be_turned_off_for_a_passage() {
+	// `hyphenate.typ`, `hyphenate-off-temporarily` and `hyphenate-punctuation`:
+	// a word is handed to the hyphenator as a word, and a passage that should
+	// not hyphenate — inline code or a link — is left whole. Typst reads the
+	// same behaviour off a reference image; here the hyphenation points are read
+	// straight out of the measured units.
+	let points = |styled: Option<TextStyle>| {
+		let mut e = LayoutEngine::new();
+		let mut out = BlockLayout::default();
+		let style = styled.unwrap_or_default();
+		let rich = vec![
+			Inline {
+				kind: InlineKind::Text("networks".into()),
+				style,
+				source: 0..0,
+			},
+			Inline {
+				kind: InlineKind::Text(" networks,".into()),
+				style: TextStyle::default(),
+				source: 0..0,
+			},
+		];
+		let images = Default::default();
+		let mut context = BlockContext {
+			shaper: &mut e.shaper,
+			math: &mut e.math,
+			images: &images,
+			highlight_cache: e.highlights.results(),
+		};
+		let p = context.prepare(&rich, 18.0, &mut out);
+		let units =
+			context.units(&p, 18.0, false, true, 760.0, Default::default());
+		let mut points = Vec::new();
+		for unit in &units {
+			if unit.after.is_some_and(|b| b.hyphen_width > 0.0) {
+				points.push(unit.source.end);
+			}
+		}
+		(p.text.clone(), points)
+	};
+
+	// A plain word hyphenates, and only ever between two letters.
+	let (text, plain) = points(None);
+	assert!(!plain.is_empty(), "no hyphenation point in {text:?}");
+	for end in &plain {
+		let before = text[..*end].chars().next_back();
+		let after = text[*end..].chars().next();
+		assert!(before.is_some_and(|c| c.is_ascii_alphabetic()), "{text:?}");
+		assert!(after.is_some_and(|c| c.is_ascii_alphabetic()), "{text:?}");
+	}
+
+	// The same word set as a link, or as inline code, keeps its hyphenation.
+	for style in [
+		TextStyle {
+			link: Some("http://example.com".into()),
+			..Default::default()
+		},
+		TextStyle {
+			code: true,
+			..Default::default()
+		},
+	] {
+		let (text, styled) = points(Some(style));
+		assert!(
+			styled.iter().all(|end| *end >= 8),
+			"{text:?} hyphenated a styled word: {styled:?}"
+		);
+		// The plain word after it still hyphenates.
+		assert!(styled.iter().any(|end| *end >= 8), "{text:?} {styled:?}");
+	}
+}
+
+#[test]
+fn typst_curly_quotes_break_like_cjk_brackets() {
+	// `inline/cjk.typ` and Typst's custom ICU segmenter: a CJK run must be able
+	// to break before an opening curly quote and after a closing one, or a
+	// quoted phrase glues the text around it together. The full-width CJK
+	// brackets already behave that way, so the two must agree.
+	let points = |text: &str| -> Vec<usize> {
+		let mut e = LayoutEngine::new();
+		let mut out = BlockLayout::default();
+		let rich = vec![Inline {
+			kind: InlineKind::Text(text.into()),
+			style: TextStyle::default(),
+			source: 0..0,
+		}];
+		let images = Default::default();
+		let mut context = BlockContext {
+			shaper: &mut e.shaper,
+			math: &mut e.math,
+			images: &images,
+			highlight_cache: e.highlights.results(),
+		};
+		let p = context.prepare(&rich, 18.0, &mut out);
+		context
+			.units(&p, 18.0, false, false, 760.0, Default::default())
+			.iter()
+			.filter(|u| u.after.is_some())
+			.map(|u| u.source.end)
+			.collect()
+	};
+
+	let curly = "中文“引号”测试";
+	let bracket = "中文「引号」测试";
+	let after = |text: &str, c: char| text.find(c).unwrap();
+	let curly_points = points(curly);
+	assert!(
+		curly_points.contains(&after(curly, '“')),
+		"no break before the opening quote: {curly_points:?}"
+	);
+	assert!(
+		curly_points.contains(&(after(curly, '”') + '”'.len_utf8())),
+		"no break after the closing quote: {curly_points:?}"
+	);
+	// The quote still clings to the phrase it belongs to.
+	assert!(!curly_points.contains(&(after(curly, '“') + '“'.len_utf8())));
+	assert!(!curly_points.contains(&after(curly, '”')));
+
+	// The native brackets reach the same shape from ICU alone, so the override
+	// leaves no gap between the two conventions.
+	assert_eq!(
+		curly_points.len(),
+		points(bracket).len(),
+		"{curly_points:?}"
+	);
+}
+
+#[test]
+fn the_cjk_convention_decides_punctuation_at_a_line_end() {
+	// A comma-like mark is left aligned on the mainland and in Japan, so it
+	// gives back its blank right half at a line end, and centered in Taiwan,
+	// where it does not.
+	use crate::style::CjkType;
+	// The convention travels inside the stylesheet, which is also what selects
+	// the `[cjk]` font definition, so this is the path the reader uses.
+	let width = |cjk| {
+		let mut sheet = (*crate::style::Stylesheet::bundled(false)).clone();
+		sheet.set_cjk_type(cjk);
+		let doc = document::parse("甲，\n");
+		let opts = LayoutOptions {
+			width: 400.0,
+			justify: false,
+			stylesheet: std::sync::Arc::new(sheet),
+			..Default::default()
+		};
+		let snapshot = LayoutEngine::new().layout(&doc, &opts);
+		let rows = drawn_lines(&snapshot);
+		rows[0].last().unwrap().1.w
+	};
+	let mainland = width(CjkType::Sc);
+	let japan = width(CjkType::Jp);
+	let taiwan = width(CjkType::Tc);
+	assert!(
+		(mainland * 2.0 - taiwan).abs() < 0.01,
+		"{mainland} {taiwan}"
+	);
+	assert!((mainland - japan).abs() < 0.01, "{mainland} {japan}");
+	// Turning the CJK font variant off keeps the common convention.
+	assert!((width(CjkType::None) - mainland).abs() < 0.01);
+}
+
+#[test]
+fn a_hyphen_near_a_word_edge_costs_more_than_one_in_the_middle() {
+	// The penalty is graded by the distance from either edge, so a break that
+	// leaves a stub is worth avoiding even at a slightly better ratio.
+	assert_eq!(inline::hyphen_penalty(5, 5), 50.0);
+	assert_eq!(inline::hyphen_penalty(2, 3), 87.5);
+	assert_eq!(inline::hyphen_penalty(2, 5), 72.5);
+	assert!(inline::hyphen_penalty(1, 1) > inline::hyphen_penalty(2, 3));
+	assert!(inline::hyphen_penalty(2, 3) > inline::hyphen_penalty(5, 5));
+
+	// And it reaches the break search. `hy-phen-ation` offers a point three
+	// characters in and one in the middle, which must cost less.
+	let mut e = LayoutEngine::new();
+	let mut out = BlockLayout::default();
+	let rich = vec![Inline {
+		kind: InlineKind::Text("hyphenation".into()),
+		style: TextStyle::default(),
+		source: 0..0,
+	}];
+	let images = Default::default();
+	let mut context = BlockContext {
+		shaper: &mut e.shaper,
+		math: &mut e.math,
+		images: &images,
+		highlight_cache: e.highlights.results(),
+	};
+	let p = context.prepare(&rich, 18.0, &mut out);
+	let found: Vec<(usize, f64)> = context
+		.units(&p, 18.0, false, true, 760.0, Default::default())
+		.iter()
+		.filter_map(|u| {
+			u.after
+				.filter(|b| b.hyphen_width > 0.0)
+				.map(|b| (u.source.end, b.penalty))
+		})
+		.collect();
+	assert!(found.len() >= 2, "{found:?}");
+	let cheapest = found.iter().min_by(|a, b| a.1.total_cmp(&b.1)).unwrap();
+	let dearest = found.iter().max_by(|a, b| a.1.total_cmp(&b.1)).unwrap();
+	assert!(dearest.1 > cheapest.1, "{found:?}");
+	// The cheapest break is the one in the middle of the word.
+	assert_eq!(cheapest.0, "hyphen".len());
+}
+
+#[test]
+fn typst_the_last_line_can_be_shrunk() {
+	// `justify.typ`, `justify-shrink-last-line`: a closing line that slightly
+	// overflows gives back spacing and stays on one line, even though it is not
+	// stretched the way the justified lines above it are. The text ends on a
+	// letter so that nothing hangs into the margin here.
+	let text = "A short line of text here\n";
+	let natural = {
+		let doc = document::parse(text);
+		let opts = LayoutOptions {
+			width: 4000.0,
+			justify: false,
+			..Default::default()
+		};
+		let rows = drawn_lines(&LayoutEngine::new().layout(&doc, &opts));
+		right_of(&rows[0])
+	};
+	// Less than a pixel of overflow would go unnoticed, so take a full one.
+	let width = natural - 0.9;
+	assert!(natural > width + 0.5);
+	let doc = document::parse(text);
+	let snapshot = LayoutEngine::new().layout(
+		&doc,
+		&LayoutOptions {
+			width,
+			..Default::default()
+		},
+	);
+	let rows = drawn_lines(&snapshot);
+	assert_eq!(rows.len(), 1, "{rows:?}");
+	assert!(snapshot.blocks.iter().all(|b| b.layout.overflow.is_empty()));
+	assert!((right_of(&rows[0]) - width).abs() < 0.01, "{rows:?}");
+}
+
+#[test]
+fn typst_a_closing_mark_hangs_into_the_end_margin() {
+	// `overhang.typ`: the last glyph of a line gives back the blank side of its
+	// own advance, which is what makes a justified line read as flush instead
+	// of stopping a notch short of the margin.
+	let text = "The first clause ends here, and the second clause carries on for a \
+		while, then the third and final clause closes the sentence.\n";
+	let width = 200.0;
+	let doc = document::parse(text);
+	let snapshot = LayoutEngine::new().layout(
+		&doc,
+		&LayoutOptions {
+			width,
+			..Default::default()
+		},
+	);
+	let rows = drawn_lines(&snapshot);
+	assert!(rows.len() > 1, "{rows:?}");
+	// The comma's own advance, measured where nothing is tight. The drawn mark
+	// may be compressed with the rest of the line, so it is not the reference.
+	let wide = {
+		let doc = document::parse(text);
+		let opts = LayoutOptions {
+			width: 4000.0,
+			justify: false,
+			..Default::default()
+		};
+		drawn_lines(&LayoutEngine::new().layout(&doc, &opts))
+	};
+	let mark = wide[0]
+		.iter()
+		.find(|(text, _)| text == ",")
+		.map(|(_, rect)| rect.w)
+		.expect("no comma");
+	// The first line closes on that comma, so it reaches past the measure by
+	// the blank the mark carries on its right.
+	assert_eq!(rows[0].last().unwrap().0, ",");
+	assert!(
+		(right_of(&rows[0]) - width - 0.8 * mark).abs() < 0.01,
+		"right {} width {width} mark {mark}",
+		right_of(&rows[0])
+	);
+	// A line that ends on a letter stays inside it.
+	assert!(right_of(&rows[1]) < width + 0.01, "{:?}", rows[1]);
+	assert!(snapshot.blocks.iter().all(|b| b.layout.overflow.is_empty()));
+}
+
+#[test]
+fn an_explicit_html_break_justifies_the_line_it_ends() {
+	// Typst has both a plain manual break and `linebreak(justify: true)`: an
+	// author who asks for a break may still want the line flush. Markdown's own
+	// hard break says the opposite, so the two are told apart — `<br>` is the
+	// explicit request, two trailing spaces are not.
+	let width = 100.0;
+	let plain = lines_of("A B C D  \nE F G H  \nI\n", width, true);
+	let explicit = lines_of("A B C D<br>E F G H<br>I\n", width, true);
+	assert_eq!(plain.len(), 3, "{plain:?}");
+	assert_eq!(explicit.len(), 3, "{explicit:?}");
+	for row in &plain[..2] {
+		assert!(right_of(row) < width - 20.0, "{row:?}");
+	}
+	for row in &explicit[..2] {
+		assert!((right_of(row) - width).abs() < 1.0, "{row:?}");
+	}
+	// The closing line is the end of the paragraph, so it stays as it is.
+	assert!(right_of(&explicit[2]) < width - 20.0, "{explicit:?}");
 }

@@ -61,7 +61,14 @@ impl BlockContext<'_> {
 			let size = opts.font_size * self.shaper.appearance.size;
 			for (col, cell) in row.iter().enumerate().take(n) {
 				let p = self.prepare(cell, size, out);
-				let units = self.units(&p, size, false, false, width);
+				let units = self.units(
+					&p,
+					size,
+					false,
+					false,
+					width,
+					opts.typography(),
+				);
 				let inset = pad[1] + pad[3];
 				preferred[col] = preferred[col]
 					.max(units.iter().map(|u| u.width).sum::<f32>() + inset);

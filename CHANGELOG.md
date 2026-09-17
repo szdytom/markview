@@ -20,9 +20,26 @@ at the same level, without `[brackets]`.
 - MVSS adds a `footnote_ref` condition styling footnote references and the
   note's number.
 - Math accepts LaTeX `\(...\)` and `\[...\]` delimiters alongside dollar signs.
+- `settings.toml` takes a `[justification]` table bounding word spacing and
+  letter spacing, so character-level justification can be tuned or turned off.
+- A CJK curly quote may start or end a line, as the full-width brackets already
+  could, so a quoted phrase no longer glues a CJK run together.
 
 ### Changed
 
+- Justification spends word spaces and letter spacing first, then shares the
+  remaining slack evenly, so a CJK line closes to the full measure instead of
+  stretching one gap. Word spacing now follows Typst's two-thirds to
+  three-halves limits.
+- CJK punctuation gives back the blank half of its em box at a line start or
+  end, following the convention the `cjk-type` setting names, and Han text
+  gains a quarter em against Latin.
+- A closing mark hangs part of its advance into the end margin, a hyphen is
+  cheaper in the middle of a word than near either edge, and a last line that
+  slightly overflows is compressed instead of wrapped.
+- A paragraph is reflowed to avoid stranding a single word on its last line.
+- An explicit `<br>` justifies the line it ends, while a hard break of two
+  trailing spaces does not.
 - Packaging builds run only when a packaging input changes, in a `Packages`
   workflow that no longer gates merges.
 

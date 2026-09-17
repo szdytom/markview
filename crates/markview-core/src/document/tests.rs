@@ -232,3 +232,28 @@ fn resolved_references_invalidate_semantics_and_footnotes_use_numbers() {
 		|b| matches!(&b.kind, BlockKind::Footnote { label, .. } if label == "1")
 	));
 }
+
+#[test]
+fn a_line_break_survives_as_a_break_not_as_text() {
+	// A hard break and an explicit `<br>` both read as one line break, so
+	// copying a document keeps the line the author wrote.
+	use crate::document::plain_text;
+	let doc = parse("one  \ntwo<br>three\n");
+	let BlockKind::Paragraph(rich) = &doc.blocks[0].kind else {
+		panic!("not a paragraph");
+	};
+	assert_eq!(plain_text(rich), "one\ntwo\nthree");
+	// Breaking is not the same as writing the character.
+	assert!(
+		rich.iter().any(|i| matches!(
+			&i.kind,
+			InlineKind::LineBreak { justify: false }
+		))
+	);
+	assert!(
+		rich.iter().any(|i| matches!(
+			&i.kind,
+			InlineKind::LineBreak { justify: true }
+		))
+	);
+}

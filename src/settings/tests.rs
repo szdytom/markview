@@ -193,3 +193,63 @@ fn corrupt_configuration_is_preserved_and_defaults_recover() {
 	);
 	assert!(SettingsStore::load(Some(path)).1.is_none());
 }
+
+#[test]
+fn justification_limits_round_trip_layout_and_bound() {
+	let dir = tempfile::tempdir().unwrap();
+	let path = dir.path().join("settings.toml");
+	fs::write(
+		&path,
+		"[justification]\nspacing_min = 0.5\nspacing_max = 2.0\ntracking_min = 0.0\ntracking_max = 0.0\n",
+	)
+	.unwrap();
+	let (store, warning) = SettingsStore::load(Some(path.clone()));
+	assert!(warning.is_none());
+	let limits = store.settings().justification;
+	assert_eq!(limits.spacing_min, 0.5);
+	assert_eq!(limits.spacing_max, 2.0);
+	assert_eq!(limits.tracking_max, 0.0);
+	// The file reaches layout, and the CJK convention with it, which travels
+	// inside the stylesheet because that is what picks the `[cjk]` font.
+	let options = store.settings().layout_options(900.0, false);
+	assert_eq!(options.justification, limits);
+	assert_eq!(options.stylesheet.cjk_type(), store.settings().cjk_type);
+
+	// A partial table keeps the defaults for what it leaves out.
+	fs::write(&path, "[justification]\nspacing_max = 2.0\n").unwrap();
+	let (store, warning) = SettingsStore::load(Some(path));
+	assert!(warning.is_none());
+	let limits = store.settings().justification;
+	assert_eq!(limits.spacing_max, 2.0);
+
+	for invalid in [
+		JustificationLimits {
+			spacing_min: 0.0,
+			..Default::default()
+		},
+		JustificationLimits {
+			spacing_min: 2.0,
+			spacing_max: 1.0,
+			..Default::default()
+		},
+		JustificationLimits {
+			tracking_min: 0.5,
+			..Default::default()
+		},
+		JustificationLimits {
+			tracking_max: -0.5,
+			..Default::default()
+		},
+		JustificationLimits {
+			spacing_max: f32::NAN,
+			..Default::default()
+		},
+	] {
+		assert!(!invalid.is_valid(), "{invalid:?}");
+		let settings = ReaderSettings {
+			justification: invalid,
+			..Default::default()
+		};
+		assert!(settings.validate().is_err(), "{invalid:?}");
+	}
+}
