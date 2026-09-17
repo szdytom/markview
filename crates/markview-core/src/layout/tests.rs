@@ -389,6 +389,35 @@ fn wide_blocks_are_scrollable_and_formulas_grow_line_height() {
 	assert_eq!(math.math_errors, 0);
 }
 #[test]
+fn code_blocks_hard_wrap_at_the_column_when_asked() {
+	let mut e = LayoutEngine::new();
+	let d = document::parse(
+		"```\n01234567890123456789012345678901234567890123456789012345678901234567890\n```\n",
+	);
+	let base = LayoutOptions {
+		width: 260.0,
+		..Default::default()
+	};
+	let unwrapped = e.layout(&d, &base);
+	assert!(!unwrapped.blocks[0].layout.overflow.is_empty());
+	let wrapped = e.layout(
+		&d,
+		&LayoutOptions {
+			codeblock_wrap: true,
+			..base
+		},
+	);
+	let block = &wrapped.blocks[0].layout;
+	assert!(block.overflow.is_empty());
+	let clusters = &block.text[0].clusters;
+	let mut rows: Vec<f32> = clusters.iter().map(|c| c.rect.y).collect();
+	rows.sort_by(f32::total_cmp);
+	rows.dedup_by(|a, b| (*a - *b).abs() < 0.5);
+	assert!(rows.len() > 1, "code did not wrap: {rows:?}");
+	assert!(clusters.iter().all(|c| c.rect.x + c.rect.w <= 260.01));
+	assert!(wrapped.height > unwrapped.height);
+}
+#[test]
 fn overflowing_blocks_reserve_the_configured_scrollbar_gutter() {
 	let mut e = LayoutEngine::new();
 	let d = document::parse(

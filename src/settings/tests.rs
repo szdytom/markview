@@ -177,6 +177,35 @@ fn paragraph_indent_round_trips_layout_and_bounds() {
 }
 
 #[test]
+fn codeblock_wrap_round_trips_settings_and_layout() {
+	let dir = tempfile::tempdir().unwrap();
+	let path = dir.path().join("settings.toml");
+	fs::write(&path, "codeblock-wrap = true\n").unwrap();
+	let (mut store, warning) = SettingsStore::load(Some(path.clone()));
+	assert!(warning.is_none());
+	assert!(store.settings().codeblock_wrap);
+	assert!(store.settings().layout_options(900.0, false).codeblock_wrap);
+	let mut ui = store.settings();
+	ui.codeblock_wrap = false;
+	store.changed(&ui, Some(Setting::CodeblockWrap));
+	store.flush().unwrap();
+	assert!(
+		fs::read_to_string(&path)
+			.unwrap()
+			.contains("codeblock-wrap")
+	);
+	let (loaded, warning) = SettingsStore::load(Some(path));
+	assert!(warning.is_none());
+	assert!(!loaded.settings().codeblock_wrap);
+	assert!(
+		!loaded
+			.settings()
+			.layout_options(900.0, false)
+			.codeblock_wrap
+	);
+}
+
+#[test]
 fn corrupt_configuration_is_preserved_and_defaults_recover() {
 	let dir = tempfile::tempdir().unwrap();
 	let path = dir.path().join("settings.json");

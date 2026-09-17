@@ -98,11 +98,21 @@ impl BlockContext<'_> {
 				.fold(size * 0.2, f32::max);
 			let line_height = (size * self.shaper.appearance.line_height)
 				.max(line_ascent + line_descent);
-			let baseline = cursor
-				+ (line_height - line_ascent - line_descent) * 0.5
-				+ line_ascent;
+			let baseline_at = |top: f32| {
+				top + (line_height - line_ascent - line_descent) * 0.5
+					+ line_ascent
+			};
 			let mut left = x;
+			let mut baseline = baseline_at(cursor);
 			for c in clusters {
+				// Clusters wider than the whole column stay on their own line
+				// rather than wrapping forever.
+				if opts.codeblock_wrap && left > x && left + c.width > x + width
+				{
+					cursor += line_height;
+					left = x;
+					baseline = baseline_at(cursor);
+				}
 				let color = highlighted[line_index]
 					.iter()
 					.find(|(range, _)| {

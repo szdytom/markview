@@ -25,6 +25,8 @@ pub struct ReaderSettings {
 	pub paragraph_indent: f32,
 	pub cjk_type: CjkType,
 	pub codeblock_theme_override: Option<String>,
+	/// Hard-wrap code block lines at the reading column instead of scrolling.
+	pub codeblock_wrap: bool,
 }
 impl Default for ReaderSettings {
 	fn default() -> Self {
@@ -41,6 +43,7 @@ impl Default for ReaderSettings {
 			paragraph_indent: 0.0,
 			cjk_type: default_cjk_type(),
 			codeblock_theme_override: None,
+			codeblock_wrap: false,
 		}
 	}
 }
@@ -60,6 +63,7 @@ pub enum Setting {
 	Hyphenate,
 	ParagraphIndent,
 	CjkType,
+	CodeblockWrap,
 }
 impl ReaderSettings {
 	/// The stylesheet with this reader's CJK variant applied.
@@ -92,6 +96,7 @@ impl ReaderSettings {
 			greedy,
 			stylesheet: self.styled(),
 			codeblock_theme_override: self.codeblock_theme_override.clone(),
+			codeblock_wrap: self.codeblock_wrap,
 			limits: markview_core::limits::Limits::default(),
 		}
 	}
@@ -129,6 +134,9 @@ impl ReaderSettings {
 				self.paragraph_indent = other.paragraph_indent
 			}
 			Setting::CjkType => self.cjk_type = other.cjk_type,
+			Setting::CodeblockWrap => {
+				self.codeblock_wrap = other.codeblock_wrap
+			}
 		}
 	}
 }

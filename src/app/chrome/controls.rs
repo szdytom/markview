@@ -19,7 +19,7 @@ pub(in crate::app) fn panel_rect(width: f32, height: f32) -> Rect {
 }
 fn row_geometry(rect: Rect) -> (f32, f32) {
 	let top = if rect.h < 360.0 { 60.0 } else { 94.0 };
-	(top, (rect.h - top - 48.0) / 7.0)
+	(top, (rect.h - top - 48.0) / 8.0)
 }
 pub(super) fn controls(
 	shaper: &mut TextShaper,
@@ -60,6 +60,10 @@ pub(super) fn controls(
 			vec![(
 				if settings.hyphenate { "On" } else { "Off" },
 				Command::Hyphens,
+			)],
+			vec![(
+				if settings.codeblock_wrap { "On" } else { "Off" },
+				Command::CodeWrap,
 			)],
 			vec![
 				("Off", Command::Indent(0)),
@@ -280,6 +284,7 @@ pub(super) fn draw_controls(
 			format!("Column width · {:.1} px", settings.width),
 			"Alignment".into(),
 			"English hyphenation".into(),
+			"Code block wrapping".into(),
 			format!(
 				"Paragraph indent · {}",
 				if settings.paragraph_indent > 0.0 {
@@ -382,6 +387,28 @@ mod tests {
 				.expect("indent preset");
 			assert_eq!(button.label, label);
 		}
+	}
+	#[test]
+	fn panel_toggles_codeblock_wrapping() {
+		let mut shaper = TextShaper::new();
+		let mut label = |wrap| {
+			controls(
+				&mut shaper,
+				&ReaderSettings {
+					codeblock_wrap: wrap,
+					..Default::default()
+				},
+				true,
+				1200.0,
+				800.0,
+			)
+			.into_iter()
+			.find(|b| b.action == Command::CodeWrap)
+			.expect("wrap toggle")
+			.label
+		};
+		assert_eq!(label(false), "Off");
+		assert_eq!(label(true), "On");
 	}
 	#[test]
 	fn controls_fit_minimum_window_and_panel_focus_has_no_document_actions() {

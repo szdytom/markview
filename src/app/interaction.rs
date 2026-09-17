@@ -243,6 +243,10 @@ impl App {
 				self.preferences.values.hyphenate =
 					!self.preferences.values.hyphenate
 			}
+			Command::CodeWrap => {
+				self.preferences.values.codeblock_wrap =
+					!self.preferences.values.codeblock_wrap
+			}
 			Command::Indent(em) => {
 				self.preferences.values.paragraph_indent = f32::from(em)
 			}
@@ -259,6 +263,7 @@ impl App {
 			Command::Narrower | Command::Wider => Some(Setting::Width),
 			Command::Align => Some(Setting::Justify),
 			Command::Hyphens => Some(Setting::Hyphenate),
+			Command::CodeWrap => Some(Setting::CodeblockWrap),
 			Command::Indent(_) => Some(Setting::ParagraphIndent),
 			Command::CjkType(_) => Some(Setting::CjkType),
 			_ => None,

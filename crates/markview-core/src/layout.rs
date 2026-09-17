@@ -78,6 +78,8 @@ pub struct LayoutOptions {
 	pub paragraph_indent: f32,
 	pub greedy: bool,
 	pub codeblock_theme_override: Option<String>,
+	/// Hard-wrap code block lines at the reading column instead of scrolling.
+	pub codeblock_wrap: bool,
 	pub stylesheet: Arc<crate::style::Stylesheet>,
 	/// Depth and work budgets; see [`crate::limits::Limits`].
 	pub limits: crate::limits::Limits,
@@ -93,6 +95,7 @@ impl Default for LayoutOptions {
 			paragraph_indent: 0.0,
 			greedy: false,
 			codeblock_theme_override: None,
+			codeblock_wrap: false,
 			stylesheet: crate::style::Stylesheet::bundled(false),
 			limits: crate::limits::Limits::default(),
 		}
@@ -109,6 +112,7 @@ impl PartialEq for LayoutOptions {
 			&& self.paragraph_indent == other.paragraph_indent
 			&& self.greedy == other.greedy
 			&& self.codeblock_theme_override == other.codeblock_theme_override
+			&& self.codeblock_wrap == other.codeblock_wrap
 			&& self.stylesheet.layout_key() == other.stylesheet.layout_key()
 			&& self.limits == other.limits
 	}
@@ -157,6 +161,7 @@ struct CacheKey {
 	paragraph_indent: u32,
 	greedy: bool,
 	codeblock_theme_override: Option<String>,
+	codeblock_wrap: bool,
 	codeblock_theme: Option<String>,
 	highlight_generation: u64,
 	style: u64,
@@ -278,6 +283,7 @@ impl LayoutEngine {
 				codeblock_theme_override: options
 					.codeblock_theme_override
 					.clone(),
+				codeblock_wrap: options.codeblock_wrap,
 				codeblock_theme: codeblock_theme.clone(),
 				highlight_generation: self.highlights.generation(),
 				style: style_key,

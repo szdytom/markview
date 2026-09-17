@@ -34,6 +34,8 @@ struct Config {
 		skip_serializing_if = "Option::is_none"
 	)]
 	codeblock_theme_override: Option<String>,
+	#[serde(rename = "codeblock-wrap")]
+	codeblock_wrap: bool,
 }
 impl Default for Config {
 	fn default() -> Self {
@@ -51,6 +53,7 @@ impl Default for Config {
 			paragraph_indent: settings.paragraph_indent,
 			cjk_type: Some(settings.cjk_type),
 			codeblock_theme_override: None,
+			codeblock_wrap: settings.codeblock_wrap,
 		}
 	}
 }
@@ -91,6 +94,7 @@ impl Config {
 			paragraph_indent: self.paragraph_indent,
 			cjk_type: self.cjk_type.unwrap_or_else(default_cjk_type),
 			codeblock_theme_override: self.codeblock_theme_override.clone(),
+			codeblock_wrap: self.codeblock_wrap,
 			..Default::default()
 		}
 	}
@@ -280,6 +284,7 @@ impl SettingsStore {
 					Setting::Hyphenate,
 					Setting::ParagraphIndent,
 					Setting::CjkType,
+					Setting::CodeblockWrap,
 				];
 				self.saved = effective.clone();
 				self.saved.style = None;
@@ -328,6 +333,7 @@ impl SettingsStore {
 				.saved
 				.codeblock_theme_override
 				.clone(),
+			codeblock_wrap: self.saved.codeblock_wrap,
 		};
 		let values = toml_edit::ser::to_document(&config)?;
 		let mut document = self

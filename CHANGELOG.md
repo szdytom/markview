@@ -22,6 +22,8 @@ at the same level, without `[brackets]`.
 - Math accepts LaTeX `\(...\)` and `\[...\]` delimiters alongside dollar signs.
 - `settings.toml` takes a `[justification]` table bounding word spacing and
   letter spacing, so character-level justification can be tuned or turned off.
+- `settings.toml` takes a `codeblock-wrap` boolean, also exposed under
+  **Settings**, that hard-wraps code block lines at the reading column.
 - A CJK curly quote may start or end a line, as the full-width brackets already
   could, so a quoted phrase no longer glues a CJK run together.
 

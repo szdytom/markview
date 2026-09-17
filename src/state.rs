@@ -20,6 +20,7 @@ pub(crate) enum Command {
 	Wider,
 	Align,
 	Hyphens,
+	CodeWrap,
 	/// First-line paragraph indent in whole em units.
 	Indent(u8),
 	CjkType(markview_core::style::CjkType),

@@ -49,7 +49,7 @@ sudo apt-get install libfontconfig1-dev libxkbcommon-dev libwayland-dev fonts-no
 - 拖动选择文本，使用 `Ctrl+C` 复制；`Ctrl+A` 全选。
 - 点击链接时，`http`、`https`、`mailto` 与本地文件交给系统默认程序打开；指向其他 `.md` 文件的链接会在新标签页中打开，中键在后台打开而不切换当前标签页。链接中的 `#标题锚点` 会定位到对应标题，无论它在当前文档还是刚打开的 `.md` 文件中。
 - 使用 `Ctrl+W`、标签页上的 × 按钮或鼠标中键关闭标签页。
-- 将光标移到宽代码块、表格或公式上，可横向滚动。
+- 将光标移到宽代码块、表格或公式上，可横向滚动。在**设置**中开启**代码块自动折行**，或在 `settings.toml` 中设置 `codeblock-wrap`，可改为在阅读栏宽度处对代码行硬折行。
 
 macOS 使用 Command 代替 Ctrl。默认阅读栏宽度为 760 逻辑像素，默认字号为 18 逻辑像素。
 

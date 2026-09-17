@@ -53,6 +53,7 @@ impl Preferences {
 			paragraph_indent: args.options.paragraph_indent,
 			cjk_type: args.cjk_type.unwrap_or(settings.cjk_type),
 			codeblock_theme_override: settings.codeblock_theme_override.clone(),
+			codeblock_wrap: settings.codeblock_wrap,
 		};
 		for field in &args.overrides {
 			settings.copy_field(&explicit, *field);

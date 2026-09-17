@@ -58,7 +58,7 @@ sudo apt-get install libfontconfig1-dev libxkbcommon-dev libwayland-dev fonts-no
 - Drag to select and use `Ctrl+C` to copy. `Ctrl+A` selects the document.
 - Click a link to open web, mail, and local file links with the operating system's default handler. Links to other `.md` files open in a new tab; middle-click opens them in the background without switching away. Repeated middle-clicks reuse the existing tab. A `#heading` fragment moves to that heading, in the current document or in the `.md` file it names.
 - Drag a tab horizontally to reorder it. Tabs shrink to keep at least the first two characters visible; when they overflow, scroll over the tab bar with the mouse wheel or trackpad. Dragging near either edge scrolls the strip automatically. Close a tab with `Ctrl+W`, its × button, or the middle mouse button.
-- Hover over a wide code block, table, or formula to scroll it horizontally.
+- Hover over a wide code block, table, or formula to scroll it horizontally. Turn on **Code block wrapping** under **Settings**, or set `codeblock-wrap` in `settings.toml`, to hard-wrap code lines at the reading column instead.
 
 macOS uses Command in place of Ctrl. The default reading column is 760 logical pixels and the default text size is 18 logical pixels.
 
