@@ -32,6 +32,11 @@ at the same level, without `[brackets]`.
 - The Windows MSI registers Markview for `.md`, `.markdown`, and `.mdown`, so
   the reader joins **Open with** and **Default apps**; Windows 10 and 11 still
   ask the user to confirm the handoff once.
+- `--bench-latency` measures process-entry first-frame latency, edit-to-refresh
+  latency after a small on-disk edit, and the RSS trend across reloads.
+- The latency and memory analysis documents the three targets, the responsible
+  code, and ranked optimization points; stress fixtures and aggregation scripts
+  make its scaling results repeatable.
 
 ### Changed
 

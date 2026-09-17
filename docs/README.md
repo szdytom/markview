@@ -10,6 +10,7 @@ The root [README](../README.md) is the user-facing entry point: installation, re
 
 - [Architecture](architecture.md) explains ownership, snapshots, versions, layout, interaction, and resource boundaries. It focuses on what the system guarantees and why.
 - [Performance model](performance.md) explains the measured terms, current baselines, and the limits of those numbers.
+- [Latency and memory analysis](performance-analysis.md) is the diagnostic page: first-frame, edit-latency and memory measurements against explicit targets, with the responsible code and ranked optimization points.
 - [Security and threat model](security.md) explains which parts of the system an untrusted document can reach, what has already been shown to break, and which risks are knowingly accepted.
 
 ## Change the implementation

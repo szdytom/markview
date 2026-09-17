@@ -58,7 +58,10 @@ pub(super) fn run() -> Result<()> {
 		crate::stylesheet::directory().as_deref(),
 		cjk_type,
 	)?;
-	if args.mode == Mode::Render || args.mode == Mode::Bench {
+	if args.mode == Mode::Render
+		|| args.mode == Mode::Bench
+		|| args.mode == Mode::Latency
+	{
 		args.options.width = args
 			.options
 			.width
@@ -67,6 +70,19 @@ pub(super) fn run() -> Result<()> {
 		let path = args.path.as_ref().unwrap();
 		if args.mode == Mode::Bench {
 			return benchmark::run(
+				path,
+				args.output.as_deref(),
+				args.width,
+				args.height,
+				args.scale,
+				args.theme.unwrap_or_default(),
+				args.iterations,
+				args.options,
+				args.offline,
+			);
+		}
+		if args.mode == Mode::Latency {
+			return crate::latency::run(
 				path,
 				args.output.as_deref(),
 				args.width,

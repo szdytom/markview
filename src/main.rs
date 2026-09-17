@@ -5,5 +5,6 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 fn main() -> anyhow::Result<()> {
+	markview::mark_process_start();
 	markview::app::run()
 }

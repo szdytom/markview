@@ -24,7 +24,9 @@ pub(crate) fn init(mode: &Mode) {
 	// Targets match by prefix, so `markview` also covers `markview_core`.
 	let default = match mode {
 		Mode::Window => "warn",
-		Mode::Render | Mode::Bench | Mode::Smoke => "warn,markview=debug",
+		Mode::Render | Mode::Bench | Mode::Latency | Mode::Smoke => {
+			"warn,markview=debug"
+		}
 	};
 	Builder::from_env(Env::default().default_filter_or(default))
 		.format(|buffer, record| {

@@ -26,8 +26,20 @@ For visual or timing changes, also use the real pipelines:
 target/release/markview --render examples/welcome.md --output artifacts/welcome.png
 target/release/markview --smoke-test examples/welcome.md --output artifacts/window.png
 target/release/markview --bench tests/fixtures/ordinary-10k.md --output artifacts/ordinary.json
+target/release/markview --bench-latency tests/fixtures/ordinary-10k.md --output artifacts/latency.json
 python3 scripts/smoke_watch.py target/release/markview
 ```
+
+`--bench-latency` measures the two latency targets and the reload memory trend
+through the real layout worker and prefix publication: process entry to the
+first readable GPU frame, a small on-disk edit to the first refreshed frame and
+to the complete re-layout, and per-edit RSS. Aggregate independent processes
+with `python3 scripts/bench_latency.py`. The shipped large fixtures repeat
+paragraph bodies, which the content-keyed block cache hides; generate
+unique-content and cache-stressing fixtures with
+`python3 scripts/generate_stress_fixtures.py` before drawing scaling
+conclusions. The [latency and memory analysis](performance-analysis.md) records
+the baseline those commands produced.
 
 `scripts/generate_large_fixture.py` writes 100 KiB `math-cjk-100k.md` and
 `text-cjk-100k.md` fixtures for large-document timing. Set `MARKVIEW_PROFILE=1`
@@ -69,11 +81,12 @@ or `RUST_LOG=debug` to include dependency logs.
 The render and benchmark modes use the GPU offscreen and do not load personal settings. The watch smoke test writes only temporary documents and closes the window it starts.
 
 Window layout publishes a readable prefix before completion. Native `--smoke-test`
-logs `process app entry→readable GPU frame` for that first frame and
-`full layout complete` separately, then waits for the complete snapshot to render
-before exiting. Its PNG captures the first readable frame. Offscreen `--bench`
-and `--render` continue to use complete geometry; their timings must not be
-reported as progressive window first-frame timings.
+logs `process entry→readable GPU frame` (true process entry) and
+`process app entry→readable GPU frame` (after command-line and stylesheet setup)
+for that first frame and `full layout complete` separately, then waits for the
+complete snapshot to render before exiting. Its PNG captures the first readable
+frame. Offscreen `--bench` and `--render` continue to use complete geometry;
+their timings must not be reported as progressive window first-frame timings.
 
 Ignored GPU tests are useful for settings, selection, and image-frame regressions:
 

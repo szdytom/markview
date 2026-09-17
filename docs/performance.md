@@ -2,6 +2,8 @@
 
 This page explains what Markview measures and how to interpret the current baseline. It is not a change log and does not define a performance guarantee.
 
+The [latency and memory analysis](performance-analysis.md) is the companion diagnostic page: it measures the reader against explicit first-frame, edit-latency and memory targets, locates the responsible code, and ranks the optimization points. The fixtures shipped here repeat paragraph bodies, so the content-keyed block cache hides its own cap; that page adds unique-content stress fixtures.
+
 ## What the timings mean
 
 - **Initialization** covers device, pipeline, font, and renderer setup before a document is opened.

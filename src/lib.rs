@@ -6,6 +6,7 @@ mod benchmark;
 mod cli;
 mod file;
 mod images;
+mod latency;
 mod link;
 mod logging;
 mod paste;
@@ -15,3 +16,18 @@ mod state;
 mod stylesheet;
 mod watch;
 mod worker;
+
+use std::time::Instant;
+
+static PROCESS_START: std::sync::OnceLock<Instant> = std::sync::OnceLock::new();
+
+/// Marks process entry, so diagnostic modes can report true end-to-end latency
+/// including dynamic linking, font discovery and GPU initialization.
+pub fn mark_process_start() {
+	let _ = PROCESS_START.set(Instant::now());
+}
+
+/// The instant the process started, or the first call if `main` did not mark it.
+pub fn process_started() -> Instant {
+	*PROCESS_START.get_or_init(Instant::now)
+}

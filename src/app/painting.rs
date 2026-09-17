@@ -90,6 +90,10 @@ impl App {
 			);
 			if self.args.mode == Mode::Smoke {
 				info!(
+					"process entry→readable GPU frame: {:.2} ms",
+					crate::process_started().elapsed().as_secs_f64() * 1000.0,
+				);
+				info!(
 					"process app entry→readable GPU frame: {:.2} ms; memory {}",
 					self.started.elapsed().as_secs_f64() * 1000.0,
 					serde_json::to_string(&benchmark::memory())?
