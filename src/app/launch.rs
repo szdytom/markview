@@ -117,6 +117,15 @@ pub(super) fn run() -> Result<()> {
 		images.wait();
 		let mut snapshot =
 			engine.layout_with_images(&doc, &args.options, &images.snapshot);
+		// A static image cannot wait for a later frame, so it settles the
+		// cosmetic highlighting pass before drawing.
+		if engine.wait_highlights() {
+			snapshot = engine.layout_with_images(
+				&doc,
+				&args.options,
+				&images.snapshot,
+			);
+		}
 		for entry in images.snapshot.entries.values() {
 			if let Some(error) = &entry.error {
 				warn!("Image: {error}");

@@ -81,6 +81,12 @@ pub fn run(path: &Path, args: &LaunchOptions) -> Result<()> {
 	engine.validate_stylesheet(&options.stylesheet)?;
 	let mut snapshot =
 		engine.layout_with_images(&document, &options, &images.snapshot);
+	// Syntax highlighting arrives from a worker, and this run has no event
+	// loop to lay out again when it does, so wait for it and keep the colors.
+	if engine.wait_highlights() {
+		snapshot =
+			engine.layout_with_images(&document, &options, &images.snapshot);
+	}
 	// Settling image sizes changes only the blocks that hold them.
 	if snapshot.images.entries != images.snapshot.entries {
 		snapshot =

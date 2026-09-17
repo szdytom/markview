@@ -52,6 +52,11 @@ at the same level, without `[brackets]`.
   code, and ranked optimization points; stress fixtures and aggregation scripts
   make its scaling results repeatable.
 
+### Fixed
+
+- `--render` and `--pdf` wait for the syntax highlighting pass, so exported
+  code keeps its colors instead of only the text.
+
 ### Changed
 
 - The minimum supported Rust version is 1.92, which the PDF backend requires.

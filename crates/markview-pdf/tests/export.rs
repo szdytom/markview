@@ -55,7 +55,13 @@ fn export_at(
 		stylesheet: sheet.clone(),
 		..Default::default()
 	};
-	let snapshot = LayoutEngine::new().layout(&document, &options);
+	// Mirrors the export path: the highlighting pass is asynchronous, so wait
+	// for it and lay out again, or the code would be drawn uncolored.
+	let mut engine = LayoutEngine::new();
+	let mut snapshot = engine.layout(&document, &options);
+	if engine.wait_highlights() {
+		snapshot = engine.layout(&document, &options);
+	}
 	let pagination = paginate(&document, &snapshot, &geometry);
 	let bytes = markview_pdf::export(Export {
 		snapshot: &snapshot,
@@ -295,6 +301,65 @@ fn a_page_break_never_repeats_the_lines_that_moved_on() {
 		}
 	}
 	assert_eq!(seen.len(), 240, "every token is exported exactly once");
+}
+
+/// The fill color and baseline of every text run a page shows.
+fn text_runs(exported: &Exported, page: u32) -> Vec<([f32; 3], f32)> {
+	let page = exported.pdf.get_pages()[&page];
+	let content = exported.pdf.get_page_content(page);
+	// `Tm[...]TJ` glues operators to their operands, so make room around the
+	// array brackets before tokenizing.
+	let text = String::from_utf8_lossy(&content)
+		.replace('[', " [ ")
+		.replace(']', " ] ");
+	let tokens: Vec<&str> = text.split_whitespace().collect();
+	let mut out = Vec::new();
+	let mut fill = [0.0_f32; 3];
+	let mut baseline = 0.0_f32;
+	for (index, token) in tokens.iter().enumerate() {
+		if *token == "rg" && index >= 3 {
+			if let (Ok(r), Ok(g), Ok(b)) = (
+				tokens[index - 3].parse::<f32>(),
+				tokens[index - 2].parse::<f32>(),
+				tokens[index - 1].parse::<f32>(),
+			) {
+				fill = [r, g, b];
+			}
+		} else if *token == "Tm" && index >= 1 {
+			if let Ok(y) = tokens[index - 1].parse::<f32>() {
+				baseline = y;
+			}
+		} else if token.ends_with("Tj") || token.ends_with("TJ") {
+			out.push((fill, baseline));
+		}
+	}
+	out
+}
+
+#[test]
+fn a_highlighted_line_keeps_every_token_color() {
+	// A line of code is one text node with one face and one size, so only the
+	// paint tells the tokens apart: a run that ignored it would show the whole
+	// line in whatever color its first token had.
+	let source = "```rust\nfn main() { let x = \"text\"; /* note */ }\n```\n";
+	let exported = export(source, print(), false);
+	let mut lines: std::collections::BTreeMap<
+		i64,
+		std::collections::BTreeSet<[u32; 3]>,
+	> = std::collections::BTreeMap::new();
+	for (fill, baseline) in text_runs(&exported, 1) {
+		let line = (baseline * 4.0).round() as i64;
+		lines.entry(line).or_default().insert([
+			fill[0].to_bits(),
+			fill[1].to_bits(),
+			fill[2].to_bits(),
+		]);
+	}
+	let colors = lines.values().map(|line| line.len()).max().unwrap_or(0);
+	assert!(
+		colors >= 4,
+		"one highlighted line keeps its token colors, saw {colors}: {lines:?}"
+	);
 }
 
 #[test]

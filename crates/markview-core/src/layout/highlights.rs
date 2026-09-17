@@ -5,6 +5,7 @@ use crate::{
 	style::Condition,
 };
 use std::ops::Range;
+use std::time::{Duration, Instant};
 use std::{
 	collections::{HashMap, HashSet},
 	sync::{
@@ -153,11 +154,7 @@ impl Highlights {
 	pub(super) fn poll(&mut self) -> bool {
 		let mut changed = false;
 		while let Ok((key, highlighted)) = self.highlight_rx.try_recv() {
-			self.highlight_inflight.remove(&key);
-			if self.highlight_cache.len() >= 256 {
-				self.highlight_cache.clear();
-			}
-			self.highlight_cache.insert(key, highlighted);
+			self.store(key, highlighted);
 			changed = true;
 		}
 		if changed {
@@ -166,4 +163,52 @@ impl Highlights {
 		}
 		changed
 	}
+
+	/// Waits for every started job, so a caller without an event loop draws the
+	/// colored layout on its first and only pass. A job that never reports is
+	/// given up on after [`HIGHLIGHT_WAIT`], because an export must not hang.
+	pub(super) fn settle(&mut self) -> bool {
+		let mut changed = self.poll();
+		let deadline = Instant::now() + HIGHLIGHT_WAIT;
+		while !self.highlight_inflight.is_empty() {
+			let Some(remaining) =
+				deadline.checked_duration_since(Instant::now())
+			else {
+				log::warn!(
+					"Highlights: {} job(s) did not report; the export stays uncolored",
+					self.highlight_inflight.len()
+				);
+				self.highlight_inflight.clear();
+				break;
+			};
+			let wait = remaining.min(Duration::from_millis(50));
+			match self.highlight_rx.recv_timeout(wait) {
+				Ok((key, highlighted)) => {
+					self.store(key, highlighted);
+					changed = true;
+				}
+				Err(mpsc::RecvTimeoutError::Timeout) => {}
+				Err(mpsc::RecvTimeoutError::Disconnected) => {
+					self.highlight_inflight.clear();
+					break;
+				}
+			}
+		}
+		if changed {
+			self.highlight_generation =
+				self.highlight_generation.wrapping_add(1);
+		}
+		changed
+	}
+
+	fn store(&mut self, key: u64, highlighted: HighlightResult) {
+		self.highlight_inflight.remove(&key);
+		if self.highlight_cache.len() >= 256 {
+			self.highlight_cache.clear();
+		}
+		self.highlight_cache.insert(key, highlighted);
+	}
 }
+
+/// How long an export waits for the cosmetic highlighting pass.
+const HIGHLIGHT_WAIT: Duration = Duration::from_secs(30);

@@ -351,6 +351,18 @@ impl LayoutEngine {
 		changed
 	}
 
+	/// Waits for the background syntax highlighting, then reports whether it
+	/// changed the pass.
+	///
+	/// An export has no event loop to lay out again when a job reports, so it
+	/// settles the pass before drawing; the reader keeps polling instead.
+	pub fn wait_highlights(&mut self) -> bool {
+		let changed = self.highlights.settle();
+		if changed {
+			self.cache.clear();
+		}
+		changed
+	}
 	pub fn label(
 		&mut self,
 		text: &str,
