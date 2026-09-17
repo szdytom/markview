@@ -1,6 +1,6 @@
 use super::{BlockContext, Prepared};
 use crate::{
-	document::{Inline, InlineKind},
+	document::{Inline, InlineKind, TextStyle},
 	linebreak::{Break, Unit},
 	microtype,
 	scene::BlockLayout,
@@ -40,9 +40,28 @@ impl BlockContext<'_> {
 			notes: BTreeMap::new(),
 			breaks: std::collections::BTreeSet::new(),
 		};
-		for inline in rich {
+		let mut i = 0;
+		while i < rich.len() {
+			let inline = &rich[i];
 			let start = p.text.len();
 			let reading_start = p.reading.len();
+			// Consecutive references share one bracket pair and one comma, so
+			// only their numbers stay clickable.
+			let run = if matches!(inline.kind, InlineKind::FootnoteRef(_)) {
+				footnote_run(rich, i)
+			} else {
+				i + 1
+			};
+			if run > i + 1 {
+				footnote_group(&mut p, &rich[i..run]);
+				p.mapping.push((
+					start..p.text.len(),
+					reading_start..p.reading.len(),
+					false,
+				));
+				i = run;
+				continue;
+			}
 			match &inline.kind {
 				InlineKind::Image(image) => p.reading.push_str(
 					&self
@@ -64,8 +83,14 @@ impl BlockContext<'_> {
 				}
 				InlineKind::Text(t) => p.text.push_str(t),
 				InlineKind::FootnoteRef(n) => {
-					p.notes.insert(start, *n);
-					p.text.push_str(&format!("[{n}]"));
+					let label = n.to_string();
+					// The whole label is one link; `notes` carries only the
+					// number's own range, which registers the return anchor.
+					let at = start + 1;
+					p.notes.insert(at, (*n, at + label.len()));
+					p.text.push('[');
+					p.text.push_str(&label);
+					p.text.push(']');
 				}
 				InlineKind::LineBreak { justify } => {
 					if *justify {
@@ -134,6 +159,7 @@ impl BlockContext<'_> {
 				range: start..p.text.len(),
 				style,
 			});
+			i += 1;
 		}
 		p
 	}
@@ -351,4 +377,80 @@ impl BlockContext<'_> {
 		microtype::compress_line_edges(&mut clusters, &p.text, size, typo.cjk);
 		clusters
 	}
+}
+
+/// The end of the footnote-reference run that starts at `start`: adjacent
+/// references sharing one style, with any whitespace between them included
+/// because it reads as part of the same citation group.
+fn footnote_run(rich: &[Inline], start: usize) -> usize {
+	let style = &rich[start].style;
+	let mut end = start + 1;
+	loop {
+		match rich.get(end) {
+			Some(next) if matches!(&next.kind, InlineKind::FootnoteRef(_)) => {
+				if !same_note_style(style, &next.style) {
+					break;
+				}
+				end += 1;
+			}
+			Some(next) if matches!(&next.kind, InlineKind::Text(t) if t.trim().is_empty()) =>
+			{
+				let Some(after) = rich.get(end + 1) else {
+					break;
+				};
+				if !matches!(&after.kind, InlineKind::FootnoteRef(_))
+					|| !same_note_style(style, &after.style)
+				{
+					break;
+				}
+				end += 2;
+			}
+			_ => break,
+		}
+	}
+	end
+}
+
+/// Whether two references read alike apart from the note they point at, which
+/// is what lets them share one bracket pair.
+fn same_note_style(a: &TextStyle, b: &TextStyle) -> bool {
+	let clear = |s: &TextStyle| TextStyle {
+		link: None,
+		..s.clone()
+	};
+	clear(a) == clear(b)
+}
+
+/// Draw a run of references as one `[1,2]` group: every number is its own link,
+/// and the brackets and commas are not. The whole group shares one appearance,
+/// so it takes a single span; `notes` gives each number's digit range.
+fn footnote_group(p: &mut Prepared, run: &[Inline]) {
+	let start = p.text.len();
+	p.text.push('[');
+	p.reading.push('[');
+	let mut first = true;
+	for number in run.iter().filter_map(|inline| match &inline.kind {
+		InlineKind::FootnoteRef(number) => Some(*number),
+		_ => None,
+	}) {
+		if !first {
+			p.text.push(',');
+			p.reading.push(',');
+		}
+		first = false;
+		let label = number.to_string();
+		let at = p.text.len();
+		p.notes.insert(at, (number, at + label.len()));
+		p.text.push_str(&label);
+		p.reading.push_str(&label);
+	}
+	p.text.push(']');
+	p.reading.push(']');
+	p.spans.push(Span {
+		range: start..p.text.len(),
+		style: TextStyle {
+			link: None,
+			..run[0].style.clone()
+		},
+	});
 }

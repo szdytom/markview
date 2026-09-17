@@ -17,6 +17,8 @@ at the same level, without `[brackets]`.
 
 - Footnote references are clickable: a reference moves to its note, and the
   note's number moves back to the citation it was opened from.
+- Consecutive footnote references share one bracket pair, as in `[1,2]`, and
+  only the numbers stay click targets.
 - MVSS adds a `footnote_ref` condition styling footnote references and the
   note's number.
 - Math accepts LaTeX `\(...\)` and `\[...\]` delimiters alongside dollar signs.

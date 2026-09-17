@@ -297,10 +297,11 @@ impl BlockContext<'_> {
 			for (c, fit) in clusters.into_iter().zip(fits) {
 				let range = p.reading_range(c.range.clone());
 				// A footnote reference registers the anchor its number returns
-				// to when the reader reached the footnote by scrolling. The
-				// first one in reading order wins, because that is what
-				// `anchor_y` finds first.
-				if let Some(&number) = p.notes.get(&c.range.start) {
+				// to when the reader reached the footnote by scrolling. Only
+				// its first digit does, and the first one in reading order
+				// wins, because that is what `anchor_y` finds first.
+				let note = p.note_at(c.range.start);
+				if let Some((number, true)) = note {
 					out.anchors.push(HeadingAnchor {
 						anchor: crate::document::footnote::reference(
 							&number.to_string(),
@@ -380,7 +381,15 @@ impl BlockContext<'_> {
 					.iter()
 					.find(|s| s.range.contains(&c.range.start))
 					.map(|s| &s.style);
-				let url = style.and_then(|s| s.link.as_deref());
+				// A lone reference carries its link in the style; every number
+				// of a merged group shares the group's style, so it resolves
+				// through `notes` instead.
+				let note_url = note.map(|(number, _)| {
+					crate::document::footnote::url(&number.to_string())
+				});
+				let url = style
+					.and_then(|s| s.link.as_deref())
+					.or(note_url.as_deref());
 				// A link wraps as one run per line, so hit testing stays tight.
 				if link.as_ref().map(|(u, _)| u.as_str()) != url {
 					if let Some((url, x0)) = link.take() {

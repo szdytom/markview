@@ -171,6 +171,155 @@ fn footnote_links_reach_the_note_and_its_number_returns() {
 	assert_eq!(snapshot.link_at(x, y, &empty), Some("#fnback:1"));
 }
 #[test]
+fn consecutive_footnote_references_merge_into_one_clickable_group() {
+	let doc = document::parse(
+		"Text[^a][^b].\n\n\
+		 [^a]: Alpha note.\n\n\
+		 [^b]: Beta note.\n",
+	);
+	let mut engine = LayoutEngine::new();
+	let snapshot = engine.layout(
+		&doc,
+		&LayoutOptions {
+			width: 400.0,
+			..Default::default()
+		},
+	);
+	let block = &snapshot.blocks[0];
+	assert!(block.layout.text[0].text.contains("[1,2]"));
+	let links: Vec<&str> =
+		block.layout.links.iter().map(|l| l.url.as_str()).collect();
+	assert_eq!(links, ["#fn:1", "#fn:2"]);
+	// Both numbers register the anchor a scrolled-to note returns to.
+	assert!(snapshot.anchor_y("fnref:1").is_some());
+	assert!(snapshot.anchor_y("fnref:2").is_some());
+	// Only the numbers are hit targets; the brackets and comma are not.
+	let reading = &block.layout.text[0].text;
+	let clusters = &block.layout.text[0].clusters;
+	let point = |glyph: &str| {
+		let c = clusters
+			.iter()
+			.find(|c| &reading[c.range.clone()] == glyph)
+			.unwrap_or_else(|| panic!("no {glyph} cluster"));
+		(
+			c.rect.x + c.rect.w * 0.5,
+			block.y + c.rect.y + c.rect.h * 0.5,
+		)
+	};
+	let empty = HashMap::new();
+	let hit = |glyph: &str| {
+		let (x, y) = point(glyph);
+		snapshot.link_at(x, y, &empty)
+	};
+	assert_eq!(hit("["), None);
+	assert_eq!(hit("1"), Some("#fn:1"));
+	assert_eq!(hit(","), None);
+	assert_eq!(hit("2"), Some("#fn:2"));
+	assert_eq!(hit("]"), None);
+}
+#[test]
+fn whitespace_between_footnote_references_still_merges() {
+	let doc = document::parse(
+		"Text[^a] [^b].\n\n\
+		 [^a]: Alpha note.\n\n\
+		 [^b]: Beta note.\n",
+	);
+	let mut engine = LayoutEngine::new();
+	let snapshot = engine.layout(
+		&doc,
+		&LayoutOptions {
+			width: 400.0,
+			..Default::default()
+		},
+	);
+	// The space between the two references becomes the comma.
+	assert!(snapshot.blocks[0].layout.text[0].text.contains("[1,2]"));
+}
+#[test]
+fn every_digit_of_a_grouped_number_is_clickable() {
+	let mut source = String::from("Notes");
+	for n in 1..=9 {
+		source.push_str(&format!(" [^{n}],"));
+	}
+	source.push_str(" [^10][^11].\n\n");
+	for n in 1..=11 {
+		source.push_str(&format!("[^{n}]: Note {n}.\n\n"));
+	}
+	let doc = document::parse(source);
+	let mut engine = LayoutEngine::new();
+	let snapshot = engine.layout(
+		&doc,
+		&LayoutOptions {
+			width: 760.0,
+			..Default::default()
+		},
+	);
+	let block = &snapshot.blocks[0];
+	let reading = &block.layout.text[0].text;
+	let group = reading.find("[10,11]").expect("the merged group");
+	let empty = HashMap::new();
+	let hit = |offset: usize| {
+		let c = block.layout.text[0]
+			.clusters
+			.iter()
+			.find(|c| c.range.start == offset)
+			.unwrap_or_else(|| panic!("no cluster at {offset}"));
+		snapshot.link_at(
+			c.rect.x + c.rect.w * 0.5,
+			block.y + c.rect.y + c.rect.h * 0.5,
+			&empty,
+		)
+	};
+	// Both digits of each number are hit targets, not just the first.
+	assert_eq!(hit(group + 1), Some("#fn:10"));
+	assert_eq!(hit(group + 2), Some("#fn:10"));
+	assert_eq!(hit(group + 4), Some("#fn:11"));
+	assert_eq!(hit(group + 5), Some("#fn:11"));
+	assert_eq!(hit(group), None);
+	assert_eq!(hit(group + 3), None);
+	assert_eq!(hit(group + 6), None);
+	// A number returns to its reference once, from its first digit.
+	let anchors = |label: &str| {
+		block
+			.layout
+			.anchors
+			.iter()
+			.filter(|a| a.anchor == label)
+			.count()
+	};
+	assert_eq!(anchors("fnref:10"), 1);
+	assert_eq!(anchors("fnref:11"), 1);
+}
+#[test]
+fn a_lone_footnote_reference_stays_whole_clickable() {
+	let doc = document::parse("Text[^a].\n\n[^a]: A note.\n");
+	let mut engine = LayoutEngine::new();
+	let snapshot = engine.layout(
+		&doc,
+		&LayoutOptions {
+			width: 400.0,
+			..Default::default()
+		},
+	);
+	let block = &snapshot.blocks[0];
+	assert!(block.layout.text[0].text.contains("[1]"));
+	let link = &block.layout.links[0];
+	let reading = &block.layout.text[0].text;
+	let bracket = block.layout.text[0]
+		.clusters
+		.iter()
+		.find(|c| &reading[c.range.clone()] == "[")
+		.expect("the opening bracket");
+	// A single reference keeps its bracket pair in the hit target.
+	assert!(link.rect.x <= bracket.rect.x);
+	let y = block.y + link.rect.y + link.rect.h * 0.5;
+	let empty = HashMap::new();
+	assert_eq!(
+		snapshot.link_at(bracket.rect.x + 1.0, y, &empty),
+		Some("#fn:1")
+	);
+}
+#[test]
 fn a_footnote_body_keeps_the_full_column() {
 	let mut engine = LayoutEngine::new();
 	let doc = document::parse(

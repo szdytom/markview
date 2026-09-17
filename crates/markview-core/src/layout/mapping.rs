@@ -11,14 +11,23 @@ pub(super) struct Prepared {
 	pub(super) text: String,
 	pub(super) spans: Vec<Span>,
 	pub(super) math: BTreeMap<usize, Arc<MathBox>>,
-	/// Footnote references by their text offset, for the anchors their
-	/// numbers return to.
-	pub(super) notes: BTreeMap<usize, u32>,
+	/// Footnote references by the offset of their first digit, each with the
+	/// offset just past its last one, so a link covers every digit.
+	pub(super) notes: BTreeMap<usize, (u32, usize)>,
 	/// The text offsets of the forced breaks that asked to be justified.
 	pub(super) breaks: BTreeSet<usize>,
 }
 
 impl Prepared {
+	/// The reference whose digits cover `offset`, and whether `offset` is their
+	/// first one. Only the first digit registers the return anchor; every digit
+	/// stays part of the link.
+	pub(super) fn note_at(&self, offset: usize) -> Option<(u32, bool)> {
+		let (&start, &(number, end)) =
+			self.notes.range(..=offset).next_back()?;
+		(offset < end).then_some((number, offset == start))
+	}
+
 	pub(super) fn reading_range(&self, range: Range<usize>) -> Range<usize> {
 		let Some((visual, logical, atomic)) = self
 			.mapping
