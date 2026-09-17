@@ -10,6 +10,13 @@ pub(crate) enum Mode {
 	Bench,
 	Smoke,
 }
+impl Mode {
+	/// A static image cannot be scrolled sideways, so code blocks wrap by
+	/// default whenever a mode writes one.
+	pub(crate) fn exports_image(&self) -> bool {
+		matches!(self, Self::Render | Self::Smoke)
+	}
+}
 pub(crate) struct LaunchOptions {
 	pub(crate) offline: bool,
 	pub(crate) mode: Mode,
@@ -229,6 +236,13 @@ mod tests {
 			.is_err()
 		);
 		assert!(parse_arguments(["--cjk-type"].map(Into::into)).is_err());
+	}
+	#[test]
+	fn only_image_export_modes_wrap_code_blocks_by_default() {
+		assert!(Mode::Render.exports_image());
+		assert!(Mode::Smoke.exports_image());
+		assert!(!Mode::Window.exports_image());
+		assert!(!Mode::Bench.exports_image());
 	}
 	#[test]
 	fn explicit_settings_and_headless_mode_are_distinct() {

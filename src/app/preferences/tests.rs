@@ -6,6 +6,23 @@ use crate::{
 use std::sync::Arc;
 
 #[test]
+fn image_export_wraps_code_blocks_by_default() {
+	let args = LaunchOptions {
+		mode: Mode::Smoke,
+		..Default::default()
+	};
+	let mut ui = TextShaper::new();
+	let preferences = Preferences::new(&args, &mut ui);
+	assert!(preferences.values.codeblock_wrap);
+	assert!(
+		preferences
+			.values
+			.layout_options(900.0, false)
+			.codeblock_wrap
+	);
+}
+
+#[test]
 fn invalid_stylesheet_update_preserves_effective_sheet_and_ui() {
 	let args = LaunchOptions {
 		mode: Mode::Smoke,

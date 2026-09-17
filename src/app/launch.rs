@@ -40,6 +40,11 @@ pub(super) fn run() -> Result<()> {
 	// stylesheet has no `[cjk]` font definition at all, and every CJK cluster
 	// would be drawn in whatever face the system happens to offer.
 	let cjk_type = args.cjk_type.unwrap_or(CjkType::Sc);
+	// A rendered page cannot be scrolled sideways, so image exports wrap code
+	// blocks by default; the interactive reader keeps its saved preference.
+	if args.mode.exports_image() {
+		args.options.codeblock_wrap = true;
+	}
 	args.options.stylesheet = crate::stylesheet::load_for_run(
 		ids.as_deref(),
 		crate::stylesheet::directory().as_deref(),
