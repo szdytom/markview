@@ -135,7 +135,7 @@ inherits = "release"
 name = "markview"
 path = "src/main.rs"
 
-# Temporary until the fix lands upstream; see
-# `fence_offset` in comrak's block prefix parsers.
+# Temporary until a release carries the fix; see `fence_offset` in comrak's
+# block prefix parsers (upstream PR #836).
 [patch.crates-io]
-comrak = { git = "https://github.com/szdytom/comrak", rev = "cdfc805002fa10e98476dbe630c372e854be1e91" }
+comrak = { git = "https://github.com/kivikakk/comrak", rev = "cf8955abe961454dff39cfb64952e1933645d870" }

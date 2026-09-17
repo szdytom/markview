@@ -572,7 +572,7 @@ dependencies = [
 [[package]]
 name = "comrak"
 version = "0.55.0"
-source = "git+https://github.com/szdytom/comrak?rev=cdfc805002fa10e98476dbe630c372e854be1e91#cdfc805002fa10e98476dbe630c372e854be1e91"
+source = "git+https://github.com/kivikakk/comrak?rev=cf8955abe961454dff39cfb64952e1933645d870#cf8955abe961454dff39cfb64952e1933645d870"
 dependencies = [
  "caseless",
  "entities",

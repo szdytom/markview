@@ -53,6 +53,8 @@ at the same level, without `[brackets]`.
   both.
 - Layout tests shape with pinned Noto subsets instead of host fonts, so the
   suite no longer passes on macOS and fails on Linux or Windows.
+- The `comrak` patch points at upstream again, which now carries the fenced
+  block offset fix the personal fork had supplied.
 
 ### Fixed
 
