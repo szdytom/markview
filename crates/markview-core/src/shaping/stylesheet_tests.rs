@@ -339,27 +339,65 @@ fn shaping_warns_only_when_configured_candidates_are_exhausted() {
 fn a_selected_cjk_variant_supplies_the_configured_face() {
 	// The bundled stylesheet defines `serif[cjk]` once per convention, and
 	// `resolve_fontdefs` keeps only the selected one. A reader who picks SC, TC
-	// or JP therefore gets their configured CJK family.
-	let resolve = |cjk| {
+	// or JP therefore gets their configured CJK family. The families are
+	// registered fixtures, so the test does not depend on which fonts a machine
+	// happens to have installed.
+	let variants = [
+		(
+			crate::style::CjkType::Sc,
+			"Noto Serif CJK SC",
+			"KaTeX_Main-Regular.ttf",
+		),
+		(
+			crate::style::CjkType::Tc,
+			"Noto Serif CJK TC",
+			"KaTeX_SansSerif-Regular.ttf",
+		),
+		(
+			crate::style::CjkType::Jp,
+			"Noto Serif CJK JP",
+			"KaTeX_Typewriter-Regular.ttf",
+		),
+	];
+	let mut s = TextShaper::new();
+	s.fonts.collection = parley::fontique::Collection::new(
+		parley::fontique::CollectionOptions {
+			system_fonts: false,
+			..Default::default()
+		},
+	);
+	for (_, family, file) in variants {
+		let data = ratex_katex_fonts::ttf_bytes(file).unwrap().into_owned();
+		s.fonts.collection.register_fonts(
+			data.into(),
+			Some(parley::fontique::FontInfoOverride {
+				family_name: Some(family),
+				..Default::default()
+			}),
+		);
+	}
+	for (cjk, family, _) in variants {
 		let mut sheet = (*Stylesheet::bundled(false)).clone();
 		sheet.set_cjk_type(cjk);
-		let mut s = TextShaper::new();
 		s.set_stylesheet(Arc::new(sheet));
 		let appearance = s.appearance.clone();
-		s.choose_font("中", &appearance).map(|face| face.family)
-	};
-	for cjk in [
-		crate::style::CjkType::Sc,
-		crate::style::CjkType::Tc,
-		crate::style::CjkType::Jp,
-	] {
-		assert!(
-			resolve(cjk).is_some(),
-			"{cjk:?} resolved no configured face"
+		let index = s.resolve_fonts(&appearance);
+		assert_eq!(
+			s.font_sets[index]
+				.faces
+				.first()
+				.map(|face| face.family.as_str()),
+			Some(family),
+			"{cjk:?} did not resolve its configured face"
 		);
 	}
 	// Turning the variant off is deliberate rather than a gap: no configured
 	// face covers CJK, so the shaper reports that and the system fallback in
 	// layout takes over. The desktop reader selects a variant by default.
-	assert_eq!(resolve(crate::style::CjkType::None), None);
+	let mut sheet = (*Stylesheet::bundled(false)).clone();
+	sheet.set_cjk_type(crate::style::CjkType::None);
+	s.set_stylesheet(Arc::new(sheet));
+	let appearance = s.appearance.clone();
+	let index = s.resolve_fonts(&appearance);
+	assert!(s.font_sets[index].faces.is_empty());
 }
