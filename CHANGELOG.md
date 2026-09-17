@@ -52,6 +52,8 @@ at the same level, without `[brackets]`.
 ### Fixed
 
 - A tab-indented fenced code block inside a list no longer gains a leading space.
+- A footnote's number is set at the note body's size and baseline in a column
+  shared by every note, instead of floating above the text as a superscript.
 - The diagnostic renders and benchmarks set CJK text in the configured face
   again: they never selected a `[cjk]` variant, so every Han cluster was drawn
   in a system fallback face. `--cjk-type` now names one on the command line.

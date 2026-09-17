@@ -508,17 +508,62 @@ impl BlockContext<'_> {
 			BlockKind::Table { align, rows } => {
 				self.table(align, rows, x, y, width, opts, out)
 			}
-			BlockKind::Footnote { label, blocks } => {
+			BlockKind::Footnote {
+				label,
+				column,
+				blocks,
+			} => {
 				let text = format!("[{label}]");
-				let label_size = size * 0.75;
-				let command = out.draws.len();
-				let (draws, label_width) = self.shaper.label_measured(
+				let paint =
+					Paint::Styled(Condition::FootnoteRef, ColorField::Color);
+				// Every note reserves the same marker column, so their bodies
+				// start at one x even when the numbers differ in width. The
+				// number itself is shaped at the origin and moved onto the
+				// body's first baseline below.
+				let (mut draws, label_width) = self.shaper.label_measured(
 					&text,
-					label_size,
+					opts.font_size,
 					x,
-					y + size,
-					Paint::Styled(Condition::FootnoteRef, ColorField::Color),
+					0.0,
+					paint,
 				);
+				let reserved = format!("[{}]", "0".repeat(*column as usize));
+				let (_, column_width) = self.shaper.label_measured(
+					&reserved,
+					opts.font_size,
+					x,
+					0.0,
+					paint,
+				);
+				// The label leads the block, so its paragraphs stay flush.
+				let body_opts = LayoutOptions {
+					paragraph_indent: 0.0,
+					..opts.clone()
+				};
+				let body_x = x + column_width.max(label_width) + size * 0.5;
+				let body_start = out.draws.len();
+				let body = self.children(
+					blocks,
+					body_x,
+					y,
+					width - (body_x - x),
+					&body_opts,
+					size * 0.5,
+					out,
+				);
+				// The note opens with text on almost every document, and its
+				// first glyph carries the baseline the number shares.
+				let baseline = out.draws[body_start..]
+					.iter()
+					.find_map(|d| match d {
+						Draw::Glyph(g) => Some(g.y),
+						_ => None,
+					})
+					.unwrap_or(y + size * 1.15);
+				for draw in &mut draws {
+					draw.translate(0.0, baseline);
+				}
+				let command = out.draws.len();
 				out.draws.extend(draws);
 				// The number is the way back to the reference that opened the
 				// note, so it is a link with the note's own label.
@@ -526,26 +571,13 @@ impl BlockContext<'_> {
 					command,
 					rect: Rect {
 						x,
-						y: y + size - label_size,
+						y: baseline - size,
 						w: label_width.max(1.0),
-						h: label_size * 1.4,
+						h: size * 1.4,
 					},
 					url: footnote::back_url(label),
 				});
-				// The label leads the block, so its paragraphs stay flush.
-				let body_opts = LayoutOptions {
-					paragraph_indent: 0.0,
-					..opts.clone()
-				};
-				self.children(
-					blocks,
-					x + 36.0,
-					y,
-					width - 36.0,
-					&body_opts,
-					size * 0.5,
-					out,
-				)
+				body
 			}
 		};
 		out.height = out.height.max(y + height);

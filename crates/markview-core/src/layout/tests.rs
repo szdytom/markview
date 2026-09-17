@@ -197,6 +197,38 @@ fn a_footnote_body_keeps_the_full_column() {
 	assert_eq!(snapshot.degraded, 0);
 }
 #[test]
+fn a_footnote_number_is_set_like_the_note_body() {
+	let mut engine = LayoutEngine::new();
+	let doc = document::parse("Text[^a].\n\n[^a]: 字体由系统提供。\n");
+	let snapshot = engine.layout(
+		&doc,
+		&LayoutOptions {
+			width: 400.0,
+			..Default::default()
+		},
+	);
+	let glyphs = &snapshot.blocks[1].layout.draws;
+	let body = glyphs
+		.iter()
+		.find_map(|d| match d {
+			Draw::Glyph(g) => Some(g),
+			_ => None,
+		})
+		.expect("the note body");
+	// The number is drawn after the body it leads, but hangs to its left.
+	let number = glyphs
+		.iter()
+		.find_map(|d| match d {
+			Draw::Glyph(g) if g.x < body.x => Some(g),
+			_ => None,
+		})
+		.expect("the note's number");
+	// It is set at the body's own size and shares the body's first baseline;
+	// only an in-text reference is a superscript.
+	assert_eq!(number.size, body.size);
+	assert!((number.y - body.y).abs() < 0.01);
+}
+#[test]
 fn wrapped_links_produce_one_rect_per_line() {
 	let d = document::parse(
 		"[an intentionally long linked phrase that wraps](https://example.com)\n",
@@ -1350,4 +1382,46 @@ fn an_explicit_html_break_justifies_the_line_it_ends() {
 	}
 	// The closing line is the end of the paragraph, so it stays as it is.
 	assert!(right_of(&explicit[2]) < width - 20.0, "{explicit:?}");
+}
+
+#[test]
+fn footnote_bodies_share_the_same_left_edge() {
+	let fixture = include_str!("../../../../tests/fixtures/footnote.md");
+	// Ten notes make one- and two-digit numbers, whose glyphs differ in
+	// width; every body should still start at the same x.
+	let mut many = String::from("Notes[^1]");
+	for n in 2..=10 {
+		many.push_str(&format!(" [^{n}]"));
+	}
+	for n in 1..=10 {
+		many.push_str(&format!("\n\n[^{n}]: Note {n}.\n"));
+	}
+	let cases: [(&str, usize); 2] = [(fixture, 4), (many.as_str(), 10)];
+	for (source, notes) in cases {
+		let doc = document::parse(source);
+		let mut engine = LayoutEngine::new();
+		let snapshot = engine.layout(
+			&doc,
+			&LayoutOptions {
+				width: 400.0,
+				..Default::default()
+			},
+		);
+		let left = |block: usize| {
+			snapshot.blocks[block]
+				.layout
+				.text
+				.first()
+				.and_then(|n| n.clusters.first())
+				.map(|c| c.rect.x)
+				.expect("a note body")
+		};
+		for block in 2..=notes {
+			assert!(
+				(left(block) - left(1)).abs() < 0.01,
+				"note {block} starts at {}",
+				left(block)
+			);
+		}
+	}
 }

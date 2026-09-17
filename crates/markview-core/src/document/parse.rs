@@ -20,6 +20,9 @@ struct Reader<'s> {
 	source: &'s str,
 	lines: Vec<usize>,
 	footnotes: HashMap<String, u32>,
+	/// Digit columns every note reserves for its number; see
+	/// [`BlockKind::Footnote`].
+	footnote_column: u32,
 	/// Heading anchors already used by this document, in reading order.
 	anchors: Anchors,
 	limits: crate::limits::Limits,
@@ -316,6 +319,7 @@ impl Reader<'_> {
 							.footnotes
 							.get(&f.name)
 							.map_or_else(|| f.name.clone(), u32::to_string),
+						column: self.footnote_column,
 						blocks: self.blocks(child, depth + 1),
 					},
 					_ => {
@@ -360,16 +364,25 @@ pub fn parse(source: impl Into<Arc<str>>) -> Document {
 	let root = parse_document(&arena, &source, &options);
 	let mut lines = vec![0];
 	lines.extend(source.match_indices('\n').map(|(i, _)| i + 1));
+	let footnotes: HashMap<String, u32> = root
+		.descendants()
+		.filter_map(|n| match &n.data.borrow().value {
+			NodeValue::FootnoteReference(f) => Some((f.name.clone(), f.ix)),
+			_ => None,
+		})
+		.collect();
+	let footnote_column = footnotes
+		.values()
+		.copied()
+		.max()
+		.unwrap_or(1)
+		.to_string()
+		.len() as u32;
 	let mut reader = Reader {
 		source: &source,
 		lines,
-		footnotes: root
-			.descendants()
-			.filter_map(|n| match &n.data.borrow().value {
-				NodeValue::FootnoteReference(f) => Some((f.name.clone(), f.ix)),
-				_ => None,
-			})
-			.collect(),
+		footnotes,
+		footnote_column,
 		anchors: Anchors::default(),
 		limits: crate::limits::Limits::default(),
 	};

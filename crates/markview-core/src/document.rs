@@ -113,6 +113,9 @@ pub enum BlockKind {
 	},
 	Footnote {
 		label: String,
+		/// Digits the widest number in the document occupies. Every note
+		/// reserves this column, so their bodies start at one x.
+		column: u32,
 		blocks: Vec<Block>,
 	},
 	Rule,
@@ -215,13 +218,15 @@ fn semantic_key(kind: &BlockKind) -> u64 {
 		} => (level, rich(text), anchor).hash(&mut hash),
 		BlockKind::Code { language, text } => (language, text).hash(&mut hash),
 		BlockKind::Quote { label: _, blocks }
-		| BlockKind::Footnote { label: _, blocks } => {
+		| BlockKind::Footnote {
+			label: _, blocks, ..
+		} => {
 			// The variants' labels have different types, so hash them separately.
 			if let BlockKind::Quote { label, .. } = kind {
 				label.hash(&mut hash);
 			}
-			if let BlockKind::Footnote { label, .. } = kind {
-				label.hash(&mut hash);
+			if let BlockKind::Footnote { label, column, .. } = kind {
+				(label, column).hash(&mut hash);
 			}
 			children(blocks).hash(&mut hash);
 		}
