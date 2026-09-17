@@ -81,7 +81,9 @@ CI, plus local archives/MSI, global installers, and the reusable
 `Packaging` workflow without creating a tag or publishing a release.
 Download the `artifacts-*` workflow artifacts to inspect the outputs.
 
-The Windows checks extract both MSI and ZIP packages and run their executables.
+The Windows checks extract both MSI and ZIP packages, run their executables, and
+confirm they are Windows-subsystem images, so opening the reader creates no
+console window.
 The Linux checks extract both the Debian package and AppImage and run their
 executables. The macOS check unpacks the application archive, validates its
 plist and signature, and runs the bundled executable. The `Packages` workflow
