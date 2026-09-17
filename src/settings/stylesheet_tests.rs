@@ -47,3 +47,20 @@ fn empty_style_overrides_legacy_theme_and_survives_save() {
 		Some(vec![])
 	);
 }
+
+#[test]
+fn a_run_selects_a_cjk_variant_whatever_styles_it_loads() {
+	// A variant has to be selected for the `[cjk]` font definitions to exist at
+	// all: leaving it unselected made every diagnostic render draw CJK text in
+	// a system fallback face instead of the configured one.
+	for cjk in [CjkType::Sc, CjkType::Tc, CjkType::Jp] {
+		let sheet = crate::stylesheet::load_for_run(None, None, cjk).unwrap();
+		assert_eq!(sheet.cjk_type(), cjk);
+		assert!(sheet.fontdefs.contains_key("serif[cjk]"), "{cjk:?}");
+	}
+	// Loading without a variant stays available, and stays unselected.
+	let bare = crate::stylesheet::load_with_cjk_type(&[], None, CjkType::None)
+		.unwrap();
+	assert_eq!(bare.cjk_type(), CjkType::None);
+	assert!(!bare.fontdefs.contains_key("serif[cjk]"));
+}

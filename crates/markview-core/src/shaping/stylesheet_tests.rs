@@ -334,3 +334,32 @@ fn shaping_warns_only_when_configured_candidates_are_exhausted() {
 	s.shape("\u{10ffff}", &[], 18., false);
 	assert_eq!(s.warned_fallbacks.len(), 1);
 }
+
+#[test]
+fn a_selected_cjk_variant_supplies_the_configured_face() {
+	// The bundled stylesheet defines `serif[cjk]` once per convention, and
+	// `resolve_fontdefs` keeps only the selected one. A reader who picks SC, TC
+	// or JP therefore gets their configured CJK family.
+	let resolve = |cjk| {
+		let mut sheet = (*Stylesheet::bundled(false)).clone();
+		sheet.set_cjk_type(cjk);
+		let mut s = TextShaper::new();
+		s.set_stylesheet(Arc::new(sheet));
+		let appearance = s.appearance.clone();
+		s.choose_font("中", &appearance).map(|face| face.family)
+	};
+	for cjk in [
+		crate::style::CjkType::Sc,
+		crate::style::CjkType::Tc,
+		crate::style::CjkType::Jp,
+	] {
+		assert!(
+			resolve(cjk).is_some(),
+			"{cjk:?} resolved no configured face"
+		);
+	}
+	// Turning the variant off is deliberate rather than a gap: no configured
+	// face covers CJK, so the shaper reports that and the system fallback in
+	// layout takes over. The desktop reader selects a variant by default.
+	assert_eq!(resolve(crate::style::CjkType::None), None);
+}

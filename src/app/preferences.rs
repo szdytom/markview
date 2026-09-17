@@ -51,7 +51,7 @@ impl Preferences {
 			hyphenate: args.options.hyphenate,
 			justification: settings.justification,
 			paragraph_indent: args.options.paragraph_indent,
-			cjk_type: settings.cjk_type,
+			cjk_type: args.cjk_type.unwrap_or(settings.cjk_type),
 			codeblock_theme_override: settings.codeblock_theme_override.clone(),
 		};
 		for field in &args.overrides {

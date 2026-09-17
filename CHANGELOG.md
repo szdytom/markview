@@ -46,6 +46,9 @@ at the same level, without `[brackets]`.
 ### Fixed
 
 - A tab-indented fenced code block inside a list no longer gains a leading space.
+- The diagnostic renders and benchmarks set CJK text in the configured face
+  again: they never selected a `[cjk]` variant, so every Han cluster was drawn
+  in a system fallback face. `--cjk-type` now names one on the command line.
 
 ## 0.1.1 - 2026-09-16
 

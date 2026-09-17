@@ -7,6 +7,7 @@ use crate::{
 	render::{Renderer, Theme, View},
 };
 use anyhow::{Result, bail};
+use markview_core::style::CjkType;
 use std::collections::HashMap;
 use winit::event_loop::{ControlFlow, EventLoop};
 
@@ -28,12 +29,20 @@ pub(super) fn run() -> Result<()> {
 			vec![if t == Theme::Dark { "dark" } else { "light" }.into()]
 		})
 	});
-	if let Some(ids) = &ids {
-		args.options.stylesheet = crate::stylesheet::load(
-			ids,
-			crate::stylesheet::directory().as_deref(),
-		)?;
-	}
+	// The diagnostic entry points lay out from the command line, so they have to
+	// pick the CJK variant up themselves; otherwise CJK text is drawn in a
+	// system fallback face rather than the one the reader configured.
+	// This path lays out from the command line rather than from a running
+	// window, so it takes the CJK variant from the flag and defaults to the
+	// mainland convention. A variant always has to be selected: without one the
+	// stylesheet has no `[cjk]` font definition at all, and every CJK cluster
+	// would be drawn in whatever face the system happens to offer.
+	let cjk_type = args.cjk_type.unwrap_or(CjkType::Sc);
+	args.options.stylesheet = crate::stylesheet::load_for_run(
+		ids.as_deref(),
+		crate::stylesheet::directory().as_deref(),
+		cjk_type,
+	)?;
 	if args.mode == Mode::Render || args.mode == Mode::Bench {
 		args.options.width = args
 			.options

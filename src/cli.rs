@@ -21,6 +21,7 @@ pub(crate) struct LaunchOptions {
 	pub(crate) scroll: f32,
 	pub(crate) theme: Option<Theme>,
 	pub(crate) style: Option<Vec<String>>,
+	pub(crate) cjk_type: Option<markview_core::style::CjkType>,
 	pub(crate) install: Option<(PathBuf, bool)>,
 	pub(crate) iterations: usize,
 	pub(crate) options: LayoutOptions,
@@ -39,6 +40,7 @@ impl Default for LaunchOptions {
 			scroll: 0.0,
 			theme: None,
 			style: None,
+			cjk_type: None,
 			install: None,
 			iterations: 100,
 			options: LayoutOptions::default(),
@@ -90,12 +92,13 @@ fn parse_arguments(
 			"--paragraph-indent" => {
 				out.overrides.push(Setting::ParagraphIndent)
 			}
+			"--cjk-type" => out.overrides.push(Setting::CjkType),
 			_ => {}
 		}
 		match text.as_ref() {
 			"-h" | "--help" => {
 				println!(
-					"Markview — native Markdown reading\n\nmarkview [FILE] [--style ID ...]\nmarkview ss install FILE.mvss.toml [--force]\nmarkview --render FILE --output preview.png [--dark] [--scale 2]\nmarkview --bench FILE [--iterations 100] [--output metrics.json]\nmarkview --smoke-test FILE [--output window.png]\n\nOptions: --width N --height N --column N --font-size N --scroll N\n         --paragraph-indent N --scale N --style ID --dark --light --left\n         --no-hyphens --greedy --offline\n\nImages: local files, file:, http(s): and data: URIs; bitmap and SVG.\n        An image alone in its block is centered, otherwise it is inline.\n        Animated images show their first frame; --offline blocks the network.\n\nKeyboard: Ctrl+O open · Ctrl+T styles · Ctrl+ +/- font size\n          Ctrl+[ / ] column width · Ctrl+L alignment · Ctrl+H hyphenation\n          arrows / PageUp / PageDown / Home / End scroll\n          drag the scrollbar · Shift+wheel scroll wide blocks · Tab/Enter toolbar\n          click web/mail/local links; local .md links open in a new tab\n          click a footnote reference to reach its note and its number to return\n          drag / Shift+click select · Ctrl+A all · Ctrl+C copy · Ctrl+, settings\n\n--render and --bench use the real GPU pipeline offscreen.\n--greedy is a typography comparison mode."
+					"Markview — native Markdown reading\n\nmarkview [FILE] [--style ID ...]\nmarkview ss install FILE.mvss.toml [--force]\nmarkview --render FILE --output preview.png [--dark] [--scale 2]\nmarkview --bench FILE [--iterations 100] [--output metrics.json]\nmarkview --smoke-test FILE [--output window.png]\n\nOptions: --width N --height N --column N --font-size N --scroll N\n         --paragraph-indent N --cjk-type SC|TC|JP|none --scale N\n         --style ID --dark --light --left --no-hyphens --greedy --offline\n\nImages: local files, file:, http(s): and data: URIs; bitmap and SVG.\n        An image alone in its block is centered, otherwise it is inline.\n        Animated images show their first frame; --offline blocks the network.\n\nKeyboard: Ctrl+O open · Ctrl+T styles · Ctrl+ +/- font size\n          Ctrl+[ / ] column width · Ctrl+L alignment · Ctrl+H hyphenation\n          arrows / PageUp / PageDown / Home / End scroll\n          drag the scrollbar · Shift+wheel scroll wide blocks · Tab/Enter toolbar\n          click web/mail/local links; local .md links open in a new tab\n          click a footnote reference to reach its note and its number to return\n          drag / Shift+click select · Ctrl+A all · Ctrl+C copy · Ctrl+, settings\n\n--render and --bench use the real GPU pipeline offscreen.\n--greedy is a typography comparison mode."
 				);
 				return Ok(None);
 			}
@@ -124,6 +127,19 @@ fn parse_arguments(
 			"--left" => out.options.justify = false,
 			"--no-hyphens" => out.options.hyphenate = false,
 			"--greedy" => out.options.greedy = true,
+			"--cjk-type" => {
+				let value =
+					args.next().context("--cjk-type requires a name")?;
+				let name = value.to_string_lossy();
+				out.cjk_type = Some(
+					markview_core::style::CjkType::from_name(&name)
+						.with_context(|| {
+							format!(
+								"Invalid CJK type {name}; use SC, TC, JP or none"
+							)
+						})?,
+				);
+			}
 			"--width" | "--height" | "--column" | "--font-size" | "--scale"
 			| "--scroll" | "--iterations" | "--paragraph-indent" => {
 				let value = args
@@ -189,6 +205,31 @@ fn parse_arguments(
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use markview_core::style::CjkType;
+	#[test]
+	fn cjk_type_is_parsed_case_insensitively_and_overrides_the_file() {
+		for (name, expected) in [
+			("SC", CjkType::Sc),
+			("tc", CjkType::Tc),
+			("Jp", CjkType::Jp),
+			("none", CjkType::None),
+		] {
+			let args = parse_arguments(
+				["--cjk-type", name, "sample.md"].map(Into::into),
+			)
+			.unwrap()
+			.unwrap();
+			assert_eq!(args.cjk_type, Some(expected), "{name}");
+			assert_eq!(args.overrides, vec![Setting::CjkType], "{name}");
+		}
+		assert!(
+			parse_arguments(
+				["--cjk-type", "klingon", "sample.md"].map(Into::into)
+			)
+			.is_err()
+		);
+		assert!(parse_arguments(["--cjk-type"].map(Into::into)).is_err());
+	}
 	#[test]
 	fn explicit_settings_and_headless_mode_are_distinct() {
 		let args = parse_arguments(

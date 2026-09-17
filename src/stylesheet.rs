@@ -44,8 +44,27 @@ pub fn validate_id(id: &str) -> Result<()> {
 	}
 	Ok(())
 }
-pub fn load(ids: &[String], dir: Option<&Path>) -> Result<Arc<Stylesheet>> {
-	load_with_cjk_type(ids, dir, CjkType::None)
+/// The stylesheet a run starts from: the bundled one when no styles are named,
+/// otherwise the named ones, with the reader's CJK variant applied either way.
+///
+/// Loading a stylesheet without a variant leaves it unselected, and an
+/// unselected variant has no `[cjk]` font definition at all, so every CJK
+/// cluster loses its configured face to a system fallback. The window path
+/// applies the variant through the settings store; this is the same step for
+/// the paths that lay out straight from the command line.
+pub fn load_for_run(
+	ids: Option<&[String]>,
+	dir: Option<&Path>,
+	cjk_type: CjkType,
+) -> Result<Arc<Stylesheet>> {
+	match ids {
+		Some(ids) => load_with_cjk_type(ids, dir, cjk_type),
+		None => {
+			let mut sheet = (*Stylesheet::bundled(false)).clone();
+			sheet.set_cjk_type(cjk_type);
+			Ok(Arc::new(sheet))
+		}
+	}
 }
 pub fn load_with_cjk_type(
 	ids: &[String],
@@ -206,6 +225,10 @@ pub fn install(
 #[cfg(test)]
 mod tests {
 	use super::*;
+	/// Load named styles without caring about the CJK variant.
+	fn load(ids: &[String], dir: Option<&Path>) -> Result<Arc<Stylesheet>> {
+		load_with_cjk_type(ids, dir, CjkType::Sc)
+	}
 	#[test]
 	fn install_is_validated_atomic_and_not_enabled() {
 		let tmp = tempfile::tempdir().unwrap();
@@ -259,6 +282,10 @@ mod tests {
 #[cfg(test)]
 mod cascade_tests {
 	use super::*;
+	/// Load named styles without caring about the CJK variant.
+	fn load(ids: &[String], dir: Option<&Path>) -> Result<Arc<Stylesheet>> {
+		load_with_cjk_type(ids, dir, CjkType::Sc)
+	}
 	#[test]
 	fn bundled_dark_only_overrides_its_explicit_fields() {
 		let tmp = tempfile::tempdir().unwrap();

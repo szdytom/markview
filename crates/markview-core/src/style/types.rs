@@ -436,6 +436,20 @@ pub enum CjkType {
 	#[serde(rename = "none")]
 	None,
 }
+impl CjkType {
+	/// The spelling a setting or a command line accepts, shared with the
+	/// `serde` names so a settings file and a flag agree.
+	pub fn from_name(name: &str) -> Option<Self> {
+		match name.to_ascii_lowercase().as_str() {
+			"sc" => Some(Self::Sc),
+			"tc" => Some(Self::Tc),
+			"jp" => Some(Self::Jp),
+			"none" => Some(Self::None),
+			_ => None,
+		}
+	}
+}
+
 #[derive(
 	Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Deserialize,
 )]
