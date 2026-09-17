@@ -468,3 +468,46 @@ fn a_document_with_cjk_text_embeds_a_font_that_names_it() {
 	assert!(text.contains("English"), "{text}");
 	assert!(text.contains("中文"), "{text}");
 }
+
+#[test]
+fn percent_encoded_heading_links_keep_their_destinations() {
+	let exported = export(
+		"# 中文\n\n[encoded](#%E4%B8%AD%E6%96%87) [plain](#中文) [missing](#absent)",
+		print(),
+		true,
+	);
+	let first = exported.pdf.get_pages()[&1];
+	let annotations = exported.pdf.get_page_annotations(first).unwrap();
+	assert_eq!(annotations.len(), 2);
+	assert!(annotations.iter().all(|annotation| annotation.has(b"Dest")));
+}
+
+#[test]
+fn link_hitboxes_stay_inside_the_printed_text_area() {
+	let source =
+		format!("[`{}`](https://example.com/)", "1234567890".repeat(80));
+	let exported = export(&source, print(), true);
+	let [left, top, width, height] = exported.geometry.text_pt();
+	let first = exported.pdf.get_pages()[&1];
+	let annotations = exported.pdf.get_page_annotations(first).unwrap();
+	assert!(!annotations.is_empty());
+	for annotation in annotations {
+		let rect: Vec<f32> = annotation
+			.get(b"Rect")
+			.unwrap()
+			.as_array()
+			.unwrap()
+			.iter()
+			.map(|value| value.as_float().unwrap())
+			.collect();
+		assert!(
+			rect[0] >= left - 0.01 && rect[2] <= left + width + 0.01,
+			"{rect:?}"
+		);
+		assert!(
+			rect[1] >= exported.geometry.height_pt - top - height - 0.01
+				&& rect[3] <= exported.geometry.height_pt - top + 0.01,
+			"{rect:?}"
+		);
+	}
+}

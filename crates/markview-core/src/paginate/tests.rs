@@ -247,7 +247,7 @@ fn an_image_taller_than_the_page_is_scaled_to_fit() {
 	let item = &items[0].1;
 	assert!(item.scale < 1.0, "{:?}", item.scale);
 	assert!(item.first && item.last);
-	assert!((item.bottom - item.top) * item.scale <= 300.5);
+	assert_fragments_are_sound(&pagination, &geometry);
 }
 
 #[test]
@@ -357,4 +357,47 @@ fn furniture_draws_the_page_number_centred_in_the_margin() {
 	let empty =
 		page_furniture(&plain, &mut shaper, &geometry, 18.0, 3, 9, &text);
 	assert!(empty.is_empty());
+}
+
+#[test]
+fn widow_reservations_include_the_gaps_between_bands() {
+	let bands = [
+		Band {
+			top: 0.0,
+			bottom: 10.0,
+		},
+		Band {
+			top: 20.0,
+			bottom: 30.0,
+		},
+		Band {
+			top: 40.0,
+			bottom: 50.0,
+		},
+		Band {
+			top: 60.0,
+			bottom: 70.0,
+		},
+	];
+	assert_eq!(needs(&bands), vec![30.0, 10.0, 30.0, 10.0]);
+	assert_eq!(needs(&bands[..3]), vec![50.0, 30.0, 10.0]);
+}
+
+#[test]
+fn a_wrapped_heading_and_its_body_fit_without_an_extra_break() {
+	let (document, snapshot) = layout(
+		"## A heading with enough words to wrap onto multiple lines\n\nBody.",
+		200.0,
+	);
+	let heading = &snapshot.blocks[0].layout;
+	assert!(bands(heading).len() > 1);
+	let height: f32 = snapshot
+		.blocks
+		.iter()
+		.map(|block| block.layout.height)
+		.sum();
+	let geometry = geometry(height + 1.0);
+	let pagination = paginate(&document, &snapshot, &geometry);
+	assert_eq!(pagination.pages.len(), 1, "{pagination:?}");
+	assert_fragments_are_sound(&pagination, &geometry);
 }

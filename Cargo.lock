@@ -2147,6 +2147,7 @@ dependencies = [
  "lopdf",
  "markview-core",
  "parley",
+ "percent-encoding",
  "ratex-font",
  "ratex-katex-fonts",
  "ratex-types",

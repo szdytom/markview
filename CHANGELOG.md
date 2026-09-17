@@ -54,6 +54,11 @@ at the same level, without `[brackets]`.
 
 ### Fixed
 
+- PDF pagination preserves multiline headings, includes line gaps in widow control,
+  and fits tall images together with their leading space.
+- PDF links resolve percent-encoded anchors and keep their hitboxes inside the
+  printed text area.
+
 - `--render` and `--pdf` wait for the syntax highlighting pass, so exported
   code keeps its colors instead of only the text.
 

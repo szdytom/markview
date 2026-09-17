@@ -87,11 +87,6 @@ pub fn run(path: &Path, args: &LaunchOptions) -> Result<()> {
 		snapshot =
 			engine.layout_with_images(&document, &options, &images.snapshot);
 	}
-	// Settling image sizes changes only the blocks that hold them.
-	if snapshot.images.entries != images.snapshot.entries {
-		snapshot =
-			engine.layout_with_images(&document, &options, &images.snapshot);
-	}
 	let pagination = paginate(&document, &snapshot, &geometry);
 	let metadata = metadata_of(&args.metadata, &document, path);
 	let bytes = markview_pdf::export(Export {

@@ -23,7 +23,9 @@ pub fn annotation(
 		// An anchor is a layout pixel offset inside the text area; a
 		// destination is a page point, so it needs both the top margin and the
 		// pixel-to-point conversion.
-		let (page, y) = pagination.anchors.get(anchor)?;
+		let anchor =
+			percent_encoding::percent_decode_str(anchor).decode_utf8_lossy();
+		let (page, y) = pagination.anchors.get(anchor.as_ref())?;
 		let [left, top, _, _] = geometry.text_pt();
 		Target::Destination(Destination::Xyz(XyzDestination::new(
 			*page,

@@ -218,18 +218,13 @@ fn needs(bands: &[Band]) -> Vec<f32> {
 	let count = bands.len();
 	(0..count)
 		.map(|index| {
-			let height = |at: usize| bands[at].height();
-			match (count, index) {
-				(0, _) => 0.0,
-				(1, 0) => height(0),
-				(2, 0) => height(0) + height(1),
-				(3, 0) => height(0) + height(1) + height(2),
-				(_, 0) => height(0) + height(1),
-				(_, at) if at + 2 == count => {
-					height(count - 2) + height(count - 1)
-				}
-				(_, at) => height(at),
-			}
+			let last = match (count, index) {
+				(3, 0) => 2,
+				(_, 0) if count > 1 => 1,
+				(_, at) if at + 2 == count => count - 1,
+				(_, at) => at,
+			};
+			bands[last].bottom - bands[index].top
 		})
 		.collect()
 }
@@ -284,9 +279,9 @@ fn prepare(
 	// A lone image taller than the page is scaled down instead of losing its
 	// bottom half. Its caption, if any, follows at the same scale.
 	if only_image(block)
-		&& bands.first().is_some_and(|band| band.height() > content.1)
+		&& bands.first().is_some_and(|band| band.bottom > content.1)
 	{
-		scale = scale.min(content.1 / bands[0].height());
+		scale = scale.min(content.1 / bands[0].bottom);
 	}
 	if scale < MIN_SCALE {
 		scale = MIN_SCALE;
@@ -375,17 +370,13 @@ pub fn paginate(
 			let needed = block_prepared.need[band] * block_prepared.scale;
 			// A heading and the block it introduces travel together, so a
 			// section never opens with a heading alone at the foot of a page.
-			// The group is what the two blocks occupy together: the heading's
-			// own extent, its trailing gap, then the next block's leading gap
-			// and first need.
+			// Reserve only the heading's remaining extent, including its gaps;
+			// counting already placed lines again can split a fitting heading.
 			let followed = if block_prepared.keep_with_next {
-				let heading = block_prepared.lead
-					+ block_prepared
-						.bands
-						.iter()
-						.map(|band| band.height())
-						.sum::<f32>() + block_prepared.trail;
-				heading * block_prepared.scale
+				let remaining = block_prepared.bands.last().unwrap().bottom
+					- block_prepared.bands[band].top
+					+ block_prepared.trail;
+				remaining * block_prepared.scale
 					+ prepared.get(block + 1).map_or(0.0, |next| {
 						(next.lead + next.need.first().copied().unwrap_or(0.0))
 							* next.scale
@@ -393,10 +384,7 @@ pub fn paginate(
 			} else {
 				0.0
 			};
-			// `y` already sits below the heading's leading gap, which the
-			// group's own extent counts.
-			let overflows = y + needed > content.1 + 0.5
-				|| (followed > 0.0 && y - lead + followed > content.1 + 0.5);
+			let overflows = y + needed.max(followed) > content.1 + 0.5;
 			if overflows && !current.is_empty() {
 				pages.push(std::mem::take(&mut current));
 				used = 0.0;

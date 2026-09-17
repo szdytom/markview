@@ -326,29 +326,18 @@ impl Painter<'_> {
 		let mut index = 0;
 		while index < draws.len() {
 			match &draws[index] {
-				Draw::Clipped { rect, draws: inner } => {
-					if let Some(path) = frame.rect(*rect).and_then(rect_path) {
-						surface.push_clip_path(&path, &FillRule::NonZero);
-						for draw in inner {
-							self.draw(surface, draw, frame, item, None);
-						}
-						surface.pop();
-					}
-					index += 1;
-				}
 				Draw::Glyph(_) => {
 					index = self.text_run(
 						surface, layout, &clusters, index, frame, item,
 					);
 				}
 				_ => {
-					let cluster = clusters[index].clone();
 					self.draw(
 						surface,
 						&draws[index],
 						frame,
 						item,
-						Some(&cluster),
+						Some(&clusters[index]),
 					);
 					index += 1;
 				}
@@ -805,6 +794,16 @@ impl Painter<'_> {
 				..rect
 			};
 			let Some(page_rect) = frame.rect(clipped) else {
+				continue;
+			};
+			// Annotations do not inherit the content stream's clip path.
+			let [left, top, width, height] = self.geometry.text_pt();
+			let Some(page_rect) = Rect::from_ltrb(
+				page_rect.left().max(left),
+				page_rect.top().max(top),
+				page_rect.right().min(left + width),
+				page_rect.bottom().min(top + height),
+			) else {
 				continue;
 			};
 			if let Some(annotation) = link::annotation(
