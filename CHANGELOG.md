@@ -54,6 +54,11 @@ at the same level, without `[brackets]`.
 
 ### Fixed
 
+- Compressing a line now moves the glyph with the blank half it spends, so an
+  opening CJK bracket no longer overlaps the character after it.
+- A quote break keeps the neighbouring prohibition, so a closing quote no longer
+  hands a full stop to the next line and an opening quote no longer strands an
+  opening bracket on the last.
 - A tab-indented fenced code block inside a list no longer gains a leading space.
 - A footnote's number is set at the note body's size and baseline in a column
   shared by every note, instead of floating above the text as a superscript.

@@ -162,7 +162,7 @@ impl BlockContext<'_> {
 				// compressed whatever its place in the paragraph.
 				let shrink: f32 = if natural > target || (justify && !line.last)
 				{
-					fits.iter().map(|f| f.shrink).sum()
+					fits.iter().map(|f| f.shrink()).sum()
 				} else {
 					0.0
 				};
@@ -268,7 +268,7 @@ impl BlockContext<'_> {
 			// it. Solving it here from the same totals the break search used
 			// keeps the drawn line the width that was chosen for it.
 			let stretch: f32 = fits.iter().map(|f| f.stretch).sum();
-			let shrink: f32 = fits.iter().map(|f| f.shrink).sum();
+			let shrink: f32 = fits.iter().map(|f| f.shrink()).sum();
 			let shares = fits.iter().filter(|f| f.share).count();
 			// A closing mark hangs into the end margin, so the line is solved
 			// against the measure plus that much.
@@ -346,8 +346,16 @@ impl BlockContext<'_> {
 				}
 				// The cluster's real advance: justification stretches spaces and
 				// CJK glue, and backgrounds and decorations must cover it too.
+				// Compression moves the ink with the blank half it spends on the
+				// left, so an opening mark is pulled against what precedes it
+				// instead of being overlapped by what follows.
+				let pulled = if solve.ratio < 0.0 {
+					fit.shrink.0 * -solve.ratio
+				} else {
+					0.0
+				};
 				let advance = if solve.ratio < 0.0 {
-					c.width + fit.shrink * solve.ratio
+					c.width - fit.shrink() * -solve.ratio
 				} else {
 					c.width
 						+ fit.stretch * solve.ratio
@@ -420,7 +428,7 @@ impl BlockContext<'_> {
 					});
 				} else {
 					for mut g in c.glyphs {
-						g.x += cursor;
+						g.x += cursor - pulled;
 						g.y += baseline;
 						out.draws.push(Draw::Glyph(g));
 					}

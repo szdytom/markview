@@ -208,7 +208,7 @@ impl BlockContext<'_> {
 			let next = clusters.get(i + 1);
 			let legal = (breaks.contains(&c.range.end)
 				&& !next.is_some_and(|c| c.continuation))
-				|| microtype::quote_edge_break(&clusters, &p.text, i);
+				|| microtype::quote_edge_break(&clusters, &p.text, i, size);
 			let after = if hard {
 				// A break the author asked to justify still ends a line, but
 				// the line it ends is set flush like any other.

@@ -152,10 +152,18 @@ pub(crate) enum CjkPunct {
 pub(crate) struct Fit {
 	/// The advance this cluster may gain inside the line.
 	pub(crate) stretch: f32,
-	/// The advance this cluster may lose.
-	pub(crate) shrink: f32,
+	/// How much of the advance this cluster may lose on each side. The sides
+	/// stay apart because compression has to move the glyphs with the blank
+	/// half it consumes, not just shorten the advance after them.
+	pub(crate) shrink: (f32, f32),
 	/// Whether this cluster takes a share of the leftover slack.
 	pub(crate) share: bool,
+}
+impl Fit {
+	/// The advance this cluster may lose.
+	pub(crate) fn shrink(self) -> f32 {
+		self.shrink.0 + self.shrink.1
+	}
 }
 
 /// How a line is closed to its full measure.
@@ -241,7 +249,7 @@ pub(crate) fn fit(
 		let last = i + 1 == clusters.len();
 		fits.push(Fit {
 			stretch: if last { 0.0 } else { adjust.stretch() },
-			shrink: adjust.shrink(),
+			shrink: adjust.shrink,
 			share: !last && justifiable,
 		});
 	}
@@ -584,25 +592,54 @@ pub(crate) fn overhang(
 /// with no break at all. Typst gets the same result by reloading ICU with
 /// U+201C and U+201D reclassified from `QU` to `OP` and `CP`, which is exactly
 /// what the full-width CJK brackets already are.
+///
+/// Unlike Typst, the override keeps the neighbouring prohibition: a break is
+/// only offered when the character on the far side may really sit at that line
+/// edge, so a closing quote never strands a full stop and an opening quote never
+/// strands an opening bracket.
 pub(crate) fn quote_edge_break(
 	clusters: &[Cluster],
 	text: &str,
 	i: usize,
+	size: f32,
 ) -> bool {
 	if clusters
 		.get(i + 1)
 		.is_some_and(|c| matches!(first_char(text, c), '“' | '‘'))
 	{
-		return clusters
-			.get(i + 2)
-			.is_some_and(|c| is_han_kana(first_char(text, c)));
+		return !forbids_line_end(first_char(text, &clusters[i]), size)
+			&& clusters
+				.get(i + 2)
+				.is_some_and(|c| is_han_kana(first_char(text, c)));
 	}
 	if matches!(first_char(text, &clusters[i]), '”' | '’') {
 		return i
 			.checked_sub(1)
-			.is_some_and(|j| is_han_kana(first_char(text, &clusters[j])));
+			.is_some_and(|j| is_han_kana(first_char(text, &clusters[j])))
+			&& clusters.get(i + 1).is_some_and(|c| {
+				!forbids_line_start(first_char(text, c), size)
+			});
 	}
 	false
+}
+
+/// Whether `c` may not open a line, because it is a closing mark that hugs the
+/// line end instead.
+///
+/// The mainland convention decides this whatever the reader picked: the marks it
+/// aligns left are the same ones the others center, and it is the only one that
+/// also shortens `？` and `！`.
+fn forbids_line_start(c: char, size: f32) -> bool {
+	matches!(
+		cjk_punct(c, size, size, CjkPunctStyle::Gb),
+		Some(CjkPunct::Left | CjkPunct::Center)
+	)
+}
+
+/// Whether `c` may not close a line, because it is an opening mark that belongs
+/// at the line start.
+fn forbids_line_end(c: char, size: f32) -> bool {
+	cjk_punct(c, size, size, CjkPunctStyle::Gb) == Some(CjkPunct::Right)
 }
 
 /// The first character `cluster` covers.
@@ -884,5 +921,40 @@ mod tests {
 		assert!(fits[1].share);
 		assert!(fits[2].share);
 		assert!(!fits[0].share);
+	}
+
+	#[test]
+	fn a_fit_keeps_the_two_sides_of_its_shrinkability() {
+		// An opening bracket gives up its blank left half, a closing mark its
+		// right one, and a centered mark a quarter em on either side. The
+		// sides have to survive `fit` so that compression can move the glyphs
+		// with the blank they spend.
+		let (text, clusters) = per_char("（中，", 18.0);
+		let fits = fit(&clusters, &text, 18.0, typo(CjkType::Sc));
+		assert_eq!(fits[0].shrink, (9.0, 0.0));
+		assert_eq!(fits[0].shrink(), 9.0);
+		assert_eq!(fits[2].shrink, (0.0, 9.0));
+		assert_eq!(fits[2].shrink(), 9.0);
+
+		let (text, clusters) = per_char("・", 18.0);
+		let fits = fit(&clusters, &text, 18.0, typo(CjkType::Sc));
+		assert_eq!(fits[0].shrink, (4.5, 4.5));
+	}
+
+	#[test]
+	fn a_quote_break_respects_the_neighbouring_prohibition() {
+		// A closing quote may open a break, unless a full stop would then begin
+		// the next line.
+		let (text, clusters) = per_char("子”。", 18.0);
+		assert!(!quote_edge_break(&clusters, &text, 1, 18.0));
+		let (text, clusters) = per_char("子”测", 18.0);
+		assert!(quote_edge_break(&clusters, &text, 1, 18.0));
+
+		// An opening quote may open a break, unless an opening bracket would
+		// then be stranded at the end of the line.
+		let (text, clusters) = per_char("（“测", 18.0);
+		assert!(!quote_edge_break(&clusters, &text, 0, 18.0));
+		let (text, clusters) = per_char("文“测", 18.0);
+		assert!(quote_edge_break(&clusters, &text, 0, 18.0));
 	}
 }

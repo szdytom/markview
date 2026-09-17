@@ -847,6 +847,61 @@ fn a_line_opening_punctuation_hangs_left() {
 	assert!(block.overflow.is_empty());
 }
 
+#[test]
+fn compression_moves_the_ink_with_the_blank_it_spends() {
+	// A left-side blank — the quarter em before a Han character after Latin, or
+	// the blank left half of an opening bracket — has to leave with the glyph
+	// when the line is compressed. Shortening only the advance would drag the
+	// following character under the box that was just emptied.
+	for text in ["abc汉字\n", "abc（中\n"] {
+		let wide = lines_of(text, 4000.0, false);
+		let total = right_of(&wide[0]);
+		let tight = |row: &[(String, Rect)]| {
+			row.iter()
+				.position(|(t, _)| t == "汉" || t == "（")
+				.unwrap_or_else(|| panic!("{text:?}: {row:?}"))
+		};
+		let doc = document::parse(text);
+		let snapshot = LayoutEngine::new().layout(
+			&doc,
+			&LayoutOptions {
+				width: total - 1.0,
+				font_size: 18.0,
+				..Default::default()
+			},
+		);
+		let rows = drawn_lines(&snapshot);
+		assert_eq!(rows.len(), 1, "{text:?}: {rows:?}");
+		let glyphs: Vec<f32> = snapshot.blocks[0]
+			.layout
+			.draws
+			.iter()
+			.filter_map(|draw| match draw {
+				crate::scene::Draw::Glyph(g) => Some(g.x),
+				_ => None,
+			})
+			.collect();
+		// Every cluster holds one glyph, drawn left to right.
+		assert_eq!(rows[0].len(), glyphs.len(), "{text:?}");
+		let at = tight(&rows[0]);
+		let (_, rect) = &rows[0][at];
+		// The mark fills its em box from the pen to the right edge, so the box
+		// must end by the time the next cluster starts.
+		assert!(
+			glyphs[at] + 18.0 <= rect.x + rect.w + 0.01,
+			"{text:?}: the box runs into what follows: {} against {}",
+			glyphs[at] + 18.0,
+			rect.x + rect.w
+		);
+		// The blank really was spent, not just nudged.
+		let uncompressed = wide[0][tight(&wide[0])].1.w;
+		assert!(
+			rect.w < uncompressed - 0.1,
+			"{text:?}: {rect:?} was not compressed from {uncompressed}"
+		);
+	}
+}
+
 /// Lay out one paragraph and return its drawn lines.
 fn lines_of(
 	source: &str,
@@ -1202,6 +1257,55 @@ fn typst_curly_quotes_break_like_cjk_brackets() {
 		points(bracket).len(),
 		"{curly_points:?}"
 	);
+}
+
+#[test]
+fn a_quote_break_keeps_the_punctuation_prohibition() {
+	// Relaxing the quotation-mark rule must not let a break through that the
+	// surrounding punctuation forbids on its own.
+	let firsts = |source: &str, width: f32| -> Vec<char> {
+		lines_of(source, width, false)
+			.iter()
+			.filter_map(|row| {
+				row.iter()
+					.map(|(t, _)| t.as_str())
+					.collect::<String>()
+					.chars()
+					.next()
+			})
+			.collect()
+	};
+	let lasts = |source: &str, width: f32| -> Vec<char> {
+		lines_of(source, width, false)
+			.iter()
+			.filter_map(|row| {
+				row.iter()
+					.map(|(t, _)| t.as_str())
+					.collect::<String>()
+					.chars()
+					.next_back()
+			})
+			.collect()
+	};
+	// A closing quote may not hand a full stop — or a closing bracket — to the
+	// next line.
+	let text = "这是一个“中文的测试例子”。这是中文。这是中文。\n";
+	let starts = firsts(text, 213.0);
+	assert!(
+		!starts.iter().any(|c| matches!(c, '。' | '，' | '）' | '”')),
+		"{starts:?}"
+	);
+	// An opening quote may not strand the opening bracket before it.
+	let text = "中文（“引言”）测试文字，补充足够的字符以便换行处理。\n";
+	for width in [60.0, 108.0, 144.0] {
+		let ends = lasts(text, width);
+		assert!(!ends.iter().any(|c| matches!(c, '（' | '“')), "{ends:?}");
+		let starts = firsts(text, width);
+		assert!(
+			!starts.iter().any(|c| matches!(c, '）' | '，' | '。' | '”')),
+			"{starts:?}"
+		);
+	}
 }
 
 #[test]
