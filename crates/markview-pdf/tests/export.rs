@@ -2,6 +2,7 @@
 //! reader rather than with the writer's own bookkeeping.
 use markview_core::{
 	document,
+	fonts::FontConfig,
 	image::ImageSnapshot,
 	layout::{LayoutEngine, LayoutOptions},
 	paginate::{PT_PER_PX, PageGeometry, paginate},
@@ -16,6 +17,17 @@ struct Exported {
 	pdf: lopdf::Document,
 	geometry: PageGeometry,
 	anchors: std::collections::HashMap<String, (usize, f32)>,
+}
+
+/// The committed subset faces, so an export is the same on every platform.
+fn fonts() -> FontConfig {
+	FontConfig {
+		ignore_system_fonts: true,
+		directories: vec![
+			std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+				.join("../markview-core/tests/fonts"),
+		],
+	}
 }
 
 fn export(source: &str, sheet: Arc<Stylesheet>, links: bool) -> Exported {
@@ -53,6 +65,7 @@ fn export_at(
 		width: geometry.text_px().0,
 		codeblock_wrap: true,
 		stylesheet: sheet.clone(),
+		fonts: fonts(),
 		..Default::default()
 	};
 	// Mirrors the export path: the highlighting pass is asynchronous, so wait
@@ -73,6 +86,7 @@ fn export_at(
 		path: "test.md".into(),
 		body_size_px: options.font_size,
 		links,
+		fonts: fonts(),
 	})
 	.unwrap();
 	let pdf = lopdf::Document::load_mem(&bytes).expect("the export parses");
@@ -86,7 +100,11 @@ fn export_at(
 }
 
 fn print() -> Arc<Stylesheet> {
-	Stylesheet::bundled_print()
+	let mut sheet = (*Stylesheet::bundled_print()).clone();
+	// The pinned subsets name their Han faces under the `SC` definitions, so
+	// the tests select the convention those faces carry.
+	sheet.set_cjk_type(CjkType::Sc);
+	Arc::new(sheet)
 }
 
 /// A body of prose long enough to fill more than one A4 page.
@@ -132,7 +150,9 @@ fn pages_carry_selectable_text_and_embedded_subset_fonts() {
 #[test]
 fn a_bullet_list_keeps_its_items_and_drops_the_bullet() {
 	// A bullet is a filled path, not a character, so the page carries the item
-	// text without a marker glyph.
+	// text without a marker glyph. The pinned serif substitutes an `fi`
+	// ligature, so the item also guards that a ligature keeps every character
+	// in its map.
 	let exported = export("- first item\n- second item\n", print(), false);
 	let text = exported.pdf.extract_text(&[1]).unwrap();
 	assert!(
@@ -140,6 +160,7 @@ fn a_bullet_list_keeps_its_items_and_drops_the_bullet() {
 		"{text}"
 	);
 	assert!(!text.contains('\u{2022}'), "{text}");
+	assert!(!text.contains('\u{fffd}'), "{text}");
 }
 
 #[test]
@@ -158,6 +179,10 @@ fn an_ordered_list_embeds_its_numbering_format() {
 	let text = exported.pdf.extract_text(&[1]).unwrap();
 	assert!(text.contains("a)"), "{text}");
 	assert!(text.contains("b)"), "{text}");
+	// Every marker glyph keeps its own character map entry, so the number
+	// copies as its own word instead of trailing an unmapped glyph.
+	assert!(text.contains("a) "), "{text}");
+	assert!(!text.contains('\u{fffd}'), "{text}");
 	assert!(
 		text.contains("first item") && text.contains("second item"),
 		"{text}"
@@ -301,6 +326,7 @@ fn a_page_break_never_repeats_the_lines_that_moved_on() {
 			width: geometry.text_px().0,
 			codeblock_wrap: true,
 			stylesheet: sheet.clone(),
+			fonts: fonts(),
 			..Default::default()
 		},
 	);

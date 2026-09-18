@@ -18,7 +18,7 @@ fn position_in(block: usize, offset: usize) -> TextPosition {
 fn snapshot_of(source: &str) -> LayoutSnapshot {
 	let document = Arc::new(document::parse(source));
 	crate::layout::LayoutEngine::new()
-		.layout(&document, &LayoutOptions::default())
+		.layout(&document, &crate::test_support::options())
 }
 #[test]
 fn click_opens_only_on_release_and_drag_never_opens_link() {
@@ -149,7 +149,7 @@ fn identical_content_with_a_new_version_keeps_the_selection() {
 	let document = Arc::new(document::parse("Hello"));
 	let mut engine = crate::layout::LayoutEngine::new();
 	let mut session = ReaderSession::default();
-	let layout = engine.layout(&document, &LayoutOptions::default());
+	let layout = engine.layout(&document, &crate::test_support::options());
 	assert!(session.accept(
 		crate::worker::ReaderSnapshot {
 			document: document.clone(),
@@ -236,7 +236,7 @@ fn scrolling_past_the_end_keeps_two_thirds_of_a_page_blank() {
 #[test]
 fn heading_anchors_queue_until_their_heading_is_laid_out() {
 	let mut engine = crate::layout::LayoutEngine::new();
-	let options = LayoutOptions::default();
+	let options = crate::test_support::options();
 	let document = Arc::new(document::parse(
 		"# Intro\n\nParagraph.\n\n# Details\n\nMore.\n",
 	));
@@ -289,7 +289,7 @@ fn heading_anchors_queue_until_their_heading_is_laid_out() {
 #[test]
 fn partial_reload_waits_for_anchor_and_keeps_the_old_snapshot() {
 	let mut engine = crate::layout::LayoutEngine::new();
-	let options = LayoutOptions::default();
+	let options = crate::test_support::options();
 	let document = Arc::new(document::parse("Paragraph.\n\n".repeat(100)));
 	let full = engine.layout(&document, &options);
 	let mut session = ReaderSession::default();
@@ -328,7 +328,7 @@ fn completing_a_prefix_preserves_scroll_and_selection_and_finishes_counts() {
 	let layout = engine
 		.layout_progressive(
 			&document,
-			&LayoutOptions::default(),
+			&crate::test_support::options(),
 			&Default::default(),
 			|p| {
 				if p.blocks.len() == 10 {
@@ -383,7 +383,7 @@ fn text_and_layout_are_accepted_together_and_reflow_is_not_new_content() {
 	let mut session = ReaderSession::default();
 	let reader = crate::worker::ReaderSnapshot {
 		document: document.clone(),
-		layout: engine.layout(&document, &LayoutOptions::default()),
+		layout: engine.layout(&document, &crate::test_support::options()),
 		content_version: 1,
 		complete: true,
 		remote_deferred: 0,

@@ -15,6 +15,8 @@ mod platform;
 mod settings;
 mod state;
 mod stylesheet;
+#[cfg(test)]
+mod test_support;
 mod watch;
 mod worker;
 

@@ -179,6 +179,7 @@ fn gpu_frame_draws_decoded_images() -> Result<()> {
 		&doc,
 		&LayoutOptions {
 			width: 400.,
+			fonts: crate::test_support::fonts(),
 			..Default::default()
 		},
 		&images.snapshot,
@@ -223,6 +224,7 @@ fn gpu_frame_draws_decoded_images() -> Result<()> {
 		&doc,
 		&LayoutOptions {
 			width: 400.,
+			fonts: crate::test_support::fonts(),
 			..Default::default()
 		},
 		&images.snapshot,

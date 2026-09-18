@@ -376,7 +376,7 @@ mod tests {
 	use std::path::PathBuf;
 	#[test]
 	fn modal_offers_all_three_answers_inside_its_panel() {
-		let mut shaper = TextShaper::new();
+		let mut shaper = crate::test_support::shaper();
 		let interaction = InteractionState {
 			modal: Some(Modal::OpenLocal {
 				path: PathBuf::from("/tmp/archive/untrusted.pdf"),
@@ -411,7 +411,7 @@ mod tests {
 	}
 	#[test]
 	fn an_empty_interaction_has_no_modal_buttons() {
-		let mut shaper = TextShaper::new();
+		let mut shaper = crate::test_support::shaper();
 		let interaction = InteractionState::default();
 		assert!(
 			modal_buttons(&mut shaper, &interaction, 800.0, 600.0).is_empty()
@@ -420,7 +420,7 @@ mod tests {
 	}
 	#[test]
 	fn a_long_path_loses_its_front_and_keeps_the_file_name() {
-		let mut shaper = TextShaper::new();
+		let mut shaper = crate::test_support::shaper();
 		// Built by joining so every separator is the platform's own.
 		let path: PathBuf =
 			["home", "someone", "Downloads", "archive", "nested"]
@@ -456,7 +456,7 @@ mod tests {
 	}
 	#[test]
 	fn a_shorter_path_relative_to_the_document_wins() {
-		let mut shaper = TextShaper::new();
+		let mut shaper = crate::test_support::shaper();
 		let document_dir =
 			PathBuf::from("/home/someone/Documents/notes/reading");
 		let sibling = document_dir.join("targets/payload.desktop");

@@ -3,7 +3,7 @@ use crate::app::tab_metrics::TabMetrics;
 
 #[test]
 fn compact_labels_keep_two_whole_graphemes_and_fit_the_measured_space() {
-	let mut ui = TextShaper::new();
+	let mut ui = crate::test_support::shaper();
 	ui.appearance = crate::app::tab_metrics::tab_appearance(&ui);
 	for name in ["中文文档.md", "e\u{301}日笔记.md", "👩‍💻🙂notes.md", "a.md"]
 	{
@@ -17,7 +17,7 @@ fn compact_labels_keep_two_whole_graphemes_and_fit_the_measured_space() {
 
 #[test]
 fn measured_tabs_fit_minimum_window_and_styles_invalidate_widths() {
-	let mut ui = TextShaper::new();
+	let mut ui = crate::test_support::shaper();
 	let mut metrics = TabMetrics::default();
 	let tabs: Vec<_> = (0..30)
 		.map(|i| ReaderTab::new(format!("中文文档{i}.md").into()))

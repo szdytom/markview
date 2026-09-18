@@ -32,8 +32,14 @@ fn settings_and_selection_frame() -> Result<()> {
 		let document = document::parse(
 			"# Reading selections\n\nSelect **English**, 中文 and $x^2$ across lines.\n\n```rust\n\tlet answer = 42;\n```\n\n| A | B |\n|---|---|\n| one | two |\n",
 		);
-		let snapshot = LayoutEngine::new()
-			.layout(&document, &settings.layout_options(width, false));
+		let snapshot = LayoutEngine::new().layout(
+			&document,
+			&settings.layout_options(
+				width,
+				false,
+				&crate::test_support::fonts(),
+			),
+		);
 		let interaction = InteractionState {
 			panel_open,
 			focus: Some(if panel_open {
@@ -67,7 +73,7 @@ fn settings_and_selection_frame() -> Result<()> {
 			),
 		];
 		overlay.extend(draw_footer(
-			&mut TextShaper::new(),
+			&mut crate::test_support::shaper(),
 			Some(counts),
 			Some(counts),
 			None,
@@ -76,7 +82,7 @@ fn settings_and_selection_frame() -> Result<()> {
 			height,
 		));
 		overlay.extend(draw_controls(
-			&mut TextShaper::new(),
+			&mut crate::test_support::shaper(),
 			&settings,
 			&interaction,
 			width,
@@ -129,7 +135,7 @@ fn settings_and_selection_frame() -> Result<()> {
 				error: Some("em.font: must not be empty".into()),
 			});
 			let overlay = draw_styles(
-				&mut TextShaper::new(),
+				&mut crate::test_support::shaper(),
 				&settings,
 				&interaction,
 				&entries,
@@ -173,10 +179,14 @@ fn notice_strip_and_confirmation_frames() -> Result<()> {
 		);
 		let snapshot = LayoutEngine::new().layout_with_images(
 			&document,
-			&settings.layout_options(width, false),
+			&settings.layout_options(
+				width,
+				false,
+				&crate::test_support::fonts(),
+			),
 			&Default::default(),
 		);
-		let mut ui = TextShaper::new();
+		let mut ui = crate::test_support::shaper();
 		ui.set_stylesheet(settings.stylesheet.clone());
 		let toolbar = |ui: &mut TextShaper| -> Vec<Draw> {
 			vec![
@@ -336,7 +346,7 @@ fn tab_strip_frames_clip_overflow_at_fractional_dpi() -> Result<()> {
 			..Default::default()
 		};
 		renderer.set_stylesheet(settings.stylesheet.clone());
-		let mut ui = TextShaper::new();
+		let mut ui = crate::test_support::shaper();
 		ui.set_stylesheet(settings.stylesheet.clone());
 		let entries: Vec<_> = (0..count)
 			.map(|i| {

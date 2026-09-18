@@ -85,6 +85,7 @@ impl ReaderSettings {
 		&self,
 		viewport_width: f32,
 		greedy: bool,
+		fonts: &markview_core::fonts::FontConfig,
 	) -> LayoutOptions {
 		LayoutOptions {
 			width: self.width.min(viewport_width - 40.0).max(80.0),
@@ -95,6 +96,7 @@ impl ReaderSettings {
 			paragraph_indent: self.paragraph_indent,
 			greedy,
 			stylesheet: self.styled(),
+			fonts: fonts.clone(),
 			codeblock_theme_override: self.codeblock_theme_override.clone(),
 			codeblock_wrap: self.codeblock_wrap,
 			limits: markview_core::limits::Limits::default(),

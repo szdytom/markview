@@ -1,8 +1,5 @@
 use super::Preferences;
-use crate::{
-	cli::{LaunchOptions, Mode},
-	layout::TextShaper,
-};
+use crate::cli::{LaunchOptions, Mode};
 use std::sync::Arc;
 
 #[test]
@@ -11,13 +8,13 @@ fn image_export_wraps_code_blocks_by_default() {
 		mode: Mode::Smoke,
 		..Default::default()
 	};
-	let mut ui = TextShaper::new();
+	let mut ui = crate::test_support::shaper();
 	let preferences = Preferences::new(&args, &mut ui);
 	assert!(preferences.values.codeblock_wrap);
 	assert!(
 		preferences
 			.values
-			.layout_options(900.0, false)
+			.layout_options(900.0, false, &crate::test_support::fonts())
 			.codeblock_wrap
 	);
 }
@@ -28,7 +25,7 @@ fn invalid_stylesheet_update_preserves_effective_sheet_and_ui() {
 		mode: Mode::Smoke,
 		..Default::default()
 	};
-	let mut ui = TextShaper::new();
+	let mut ui = crate::test_support::shaper();
 	let mut preferences = Preferences::new(&args, &mut ui);
 	let before = preferences.values.stylesheet.clone();
 	let width = ui.text_width("Reader settings", 14.0);

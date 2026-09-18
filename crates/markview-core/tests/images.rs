@@ -17,6 +17,17 @@ fn resources() -> ImageSnapshot {
 	images
 }
 
+/// The committed subset faces, so geometry never depends on the host's fonts.
+fn fonts() -> markview_core::fonts::FontConfig {
+	markview_core::fonts::FontConfig {
+		ignore_system_fonts: true,
+		directories: vec![
+			std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+				.join("tests/fonts"),
+		],
+	}
+}
+
 fn styled(rules: &str, width: f32) -> LayoutOptions {
 	let mut sheet = (*markview_core::style::Stylesheet::bundled(false)).clone();
 	sheet.merge(
@@ -28,6 +39,7 @@ fn styled(rules: &str, width: f32) -> LayoutOptions {
 	LayoutOptions {
 		width,
 		stylesheet: std::sync::Arc::new(sheet),
+		fonts: fonts(),
 		..Default::default()
 	}
 }
@@ -450,6 +462,7 @@ fn single_image_centers_and_shrinks_without_changing_copy() {
 			&doc,
 			&LayoutOptions {
 				width,
+				fonts: fonts(),
 				..Default::default()
 			},
 			&resources(),
@@ -471,6 +484,7 @@ fn inline_images_share_their_line_and_never_wrap_text_beside_them() {
 			&document::parse("前文 ![alt](test.png) 后文"),
 			&LayoutOptions {
 				width,
+				fonts: fonts(),
 				..Default::default()
 			},
 			&resources(),
@@ -501,6 +515,7 @@ fn image_titles_are_hit_testable_inside_their_box() {
 		&document::parse("![alt](test.png \"标题\")"),
 		&LayoutOptions {
 			width: 400.,
+			fonts: fonts(),
 			..Default::default()
 		},
 		&resources(),
@@ -542,6 +557,7 @@ fn narrow_columns_multiple_images_math_and_containers_do_not_overlap() {
 					&LayoutOptions {
 						width,
 						greedy,
+						fonts: fonts(),
 						..Default::default()
 					},
 					&resources(),
@@ -565,7 +581,10 @@ fn loading_failure_and_success_keep_logical_selection_and_targeted_cache() {
 		"![alt](test.png) surrounding text\n\nunchanged paragraph",
 	);
 	let mut e = LayoutEngine::new();
-	let options = LayoutOptions::default();
+	let options = LayoutOptions {
+		fonts: fonts(),
+		..Default::default()
+	};
 	let pending = e.layout(&doc, &options);
 	let selection = pending.select_all(7).unwrap();
 	let mut images = resources();

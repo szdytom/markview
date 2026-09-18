@@ -1,4 +1,5 @@
 //! Shared font shaping for document text, labels and renderer fallbacks.
+use crate::fonts::FontConfig;
 use crate::style::{Condition, Font, Stylesheet, TextAppearance, Variant};
 use crate::{
 	document::TextStyle,
@@ -120,6 +121,8 @@ pub struct TextShaper {
 	/// construction, and the first overlay or laid-out block is the first place
 	/// fonts are needed, so an unused shaper should not trigger the scan.
 	fonts: Option<FontContext>,
+	/// Which faces the shaper may use, replaced through [`Self::set_fonts`].
+	font_config: FontConfig,
 	context: LayoutContext<usize>,
 	pub stylesheet: Arc<Stylesheet>,
 	pub appearance: TextAppearance,
@@ -211,48 +214,32 @@ fn test_fonts() -> FontContext {
 	}
 }
 
-/// The process-wide system font collection.
-///
-/// Discovering system fonts enumerates every installed family, which costs
-/// roughly twenty milliseconds on a desktop. Building it once and cloning the
-/// `Arc`-backed collection into the UI shaper, the layout worker and any
-/// renderer fallback keeps a process to a single scan, and the shared store
-/// keeps lazily registered generics and fallbacks visible to every clone.
-#[cfg(not(test))]
-fn system_fonts() -> FontContext {
-	static COLLECTION: std::sync::OnceLock<parley::fontique::Collection> =
-		std::sync::OnceLock::new();
-	FontContext {
-		collection: COLLECTION
-			.get_or_init(|| {
-				parley::fontique::Collection::new(
-					parley::fontique::CollectionOptions {
-						shared: true,
-						system_fonts: true,
-					},
-				)
-			})
-			.clone(),
-		source_cache: parley::fontique::SourceCache::default(),
-	}
-}
-
 /// The font context a shaper builds when it first needs fonts.
+///
+/// Unit tests always shape with the pinned faces, whatever configuration the
+/// caller asked for, so their geometry never depends on the host.
 #[cfg(test)]
-fn default_fonts() -> FontContext {
+fn default_fonts(_config: &FontConfig) -> FontContext {
 	test_fonts()
 }
 #[cfg(not(test))]
-fn default_fonts() -> FontContext {
-	system_fonts()
+fn default_fonts(config: &FontConfig) -> FontContext {
+	crate::fonts::context(config)
 }
 impl TextShaper {
 	pub fn new() -> Self {
+		Self::with_fonts(FontConfig::default())
+	}
+
+	/// A shaper limited to the faces `config` names, for a caller that must
+	/// not depend on the host's installed fonts.
+	pub fn with_fonts(config: FontConfig) -> Self {
 		let stylesheet = Stylesheet::bundled(false);
 		let appearance =
 			stylesheet.text(&TextAppearance::default(), Condition::Body);
 		Self {
 			fonts: None,
+			font_config: config,
 			context: LayoutContext::new(),
 			stylesheet,
 			appearance,
@@ -262,19 +249,32 @@ impl TextShaper {
 		}
 	}
 
-	/// Builds the shared system font collection now.
+	/// Replaces the font sources, dropping every face resolved from the old
+	/// ones. The collection itself is shared per configuration, so two shapers
+	/// that ask for the same faces scan the disk once.
+	pub fn set_fonts(&mut self, config: &FontConfig) {
+		if self.font_config != *config {
+			self.font_config = config.clone();
+			self.fonts = None;
+			self.faces.clear();
+			self.font_sets.clear();
+		}
+	}
+
+	/// Builds the configured font collection now.
 	///
 	/// The first shaper that needs fonts builds it. Starting that work early,
 	/// on a thread that runs while the renderer initializes, keeps the
 	/// discovery scan off the first frame's critical path.
-	pub fn warm_system_fonts() {
-		let _ = default_fonts();
+	pub fn warm_fonts(config: &FontConfig) {
+		let _ = default_fonts(config);
 	}
 
 	/// The font context, built on first use. Test helpers swap its collection.
 	#[cfg(test)]
 	pub(crate) fn font_context(&mut self) -> &mut FontContext {
-		self.fonts.get_or_insert_with(default_fonts)
+		let config = self.font_config.clone();
+		self.fonts.get_or_insert_with(|| default_fonts(&config))
 	}
 
 	pub fn set_stylesheet(&mut self, stylesheet: Arc<Stylesheet>) {
@@ -305,9 +305,11 @@ impl TextShaper {
 	fn resolve_fonts(&mut self, appearance: &TextAppearance) -> usize {
 		let key = (appearance.font.clone(), appearance.weight);
 		if !self.faces.contains_key(&key) {
-			// The first appearance builds the process-wide font collection;
-			// later shapers only clone it.
-			let fonts = self.fonts.get_or_insert_with(default_fonts);
+			// The first appearance builds the configured collection; later
+			// shapers with the same configuration only clone it.
+			let config = self.font_config.clone();
+			let fonts =
+				self.fonts.get_or_insert_with(|| default_fonts(&config));
 			let mut faces = Vec::new();
 			for candidate in &appearance.font {
 				let style = match candidate.variant {
@@ -556,7 +558,8 @@ impl TextShaper {
 				}
 			}
 		});
-		let fonts = self.fonts.get_or_insert_with(default_fonts);
+		let config = self.font_config.clone();
+		let fonts = self.fonts.get_or_insert_with(|| default_fonts(&config));
 		let mut builder = self.context.ranged_builder(fonts, text, 1.0, false);
 		builder.push_default(StyleProperty::FontSize(size));
 		builder.push_default(StyleProperty::FontFamily("sans-serif".into()));
@@ -616,9 +619,10 @@ impl TextShaper {
 					})
 					.is_ok_and(|i| choices[i].2)
 		};
-		let mut clusters = Vec::new();
+		let mut clusters: Vec<Cluster> = Vec::new();
 		for line in layout.lines() {
 			for run in line.runs() {
+				let run_start = clusters.len();
 				let coords: Arc<[i16]> = run.normalized_coords().into();
 				for c in run.visual_clusters() {
 					let range = c.text_range();
@@ -658,6 +662,22 @@ impl TextShaper {
 						glyphs,
 						continuation: c.is_ligature_continuation(),
 					});
+				}
+				// A ligature is one glyph for several characters: `parley`
+				// gives the glyph to the first cluster and leaves the rest as
+				// continuations. The glyph stands for all of them, so the
+				// cluster that carries it takes their range; a PDF otherwise
+				// maps the `fi` ligature to `f` alone and drops the `i`.
+				let mut ligature: Option<usize> = None;
+				for index in run_start..clusters.len() {
+					if clusters[index].continuation {
+						if let Some(start) = ligature {
+							let end = clusters[index].range.end;
+							clusters[start].range.end = end;
+						}
+					} else {
+						ligature = Some(index);
+					}
 				}
 			}
 		}

@@ -451,9 +451,10 @@ pub fn run(
 	// font discovery then overlaps renderer initialization instead of
 	// following it, and the measured first frame matches the reader.
 	let (tx, rx) = mpsc::channel::<Update>();
-	let worker = Worker::with_images(offline, move |update| {
-		let _ = tx.send(update);
-	});
+	let worker =
+		Worker::with_images(offline, options.fonts.clone(), move |update| {
+			let _ = tx.send(update);
+		});
 	let mut renderer = pollster::block_on(Renderer::new(None))?;
 	renderer.set_stylesheet(options.stylesheet.clone());
 	let after_init = memory();

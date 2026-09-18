@@ -372,7 +372,7 @@ mod tests {
 	use crate::app::TOP;
 	#[test]
 	fn panel_exposes_first_line_indent_presets() {
-		let mut shaper = TextShaper::new();
+		let mut shaper = crate::test_support::shaper();
 		let buttons = controls(
 			&mut shaper,
 			&ReaderSettings::default(),
@@ -390,7 +390,7 @@ mod tests {
 	}
 	#[test]
 	fn panel_toggles_codeblock_wrapping() {
-		let mut shaper = TextShaper::new();
+		let mut shaper = crate::test_support::shaper();
 		let mut label = |wrap| {
 			controls(
 				&mut shaper,
@@ -414,7 +414,7 @@ mod tests {
 	fn controls_fit_minimum_window_and_panel_focus_has_no_document_actions() {
 		for (width, height) in [(500.0, 300.0), (820.0, 600.0), (1200.0, 800.0)]
 		{
-			let mut shaper = TextShaper::new();
+			let mut shaper = crate::test_support::shaper();
 			let panel = panel_rect(width, height);
 			for button in controls(
 				&mut shaper,

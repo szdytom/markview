@@ -113,10 +113,11 @@ pub struct Worker {
 impl Worker {
 	#[cfg(test)]
 	pub fn new(done: impl Fn(Update) + Send + 'static) -> Self {
-		Self::with_images(true, done)
+		Self::with_images(true, crate::test_support::fonts(), done)
 	}
 	pub fn with_images(
 		offline: bool,
+		fonts: markview_core::fonts::FontConfig,
 		done: impl Fn(Update) + Send + 'static,
 	) -> Self {
 		let inbox = Arc::new((
@@ -136,10 +137,10 @@ impl Worker {
 			.name("markview-layout".into())
 			.stack_size(8 * 1024 * 1024)
 			.spawn(move || {
-				// Discover system fonts here, while the window and renderer
-				// initialize on the main thread; every later shaper clones the
-				// resulting collection instead of scanning again.
-				crate::layout::TextShaper::warm_system_fonts();
+				// Discover the configured fonts here, while the window and
+				// renderer initialize on the main thread; every later shaper
+				// clones the resulting collection instead of scanning again.
+				crate::layout::TextShaper::warm_fonts(&fonts);
 				let mut engine = LayoutEngine::new();
 				let mut images = crate::images::Images::new(offline);
 				let mut last: Option<Request> = None;
@@ -557,7 +558,7 @@ mod tests {
 			version: 1,
 			content_version: 1,
 			path: path.clone(),
-			options: LayoutOptions::default(),
+			options: crate::test_support::options(),
 			requested: Instant::now(),
 			coverage: 600.,
 			load_all_images: false,
@@ -618,7 +619,7 @@ mod tests {
 			version: 1,
 			content_version: 1,
 			path,
-			options: LayoutOptions::default(),
+			options: crate::test_support::options(),
 			requested: Instant::now(),
 			coverage: 600.,
 			load_all_images: false,
@@ -663,6 +664,7 @@ mod tests {
 				path: path.clone(),
 				options: LayoutOptions {
 					width: 250.0 + version as f32,
+					fonts: crate::test_support::fonts(),
 					..Default::default()
 				},
 				requested: Instant::now(),
@@ -699,7 +701,7 @@ mod reflow_tests {
 				version,
 				content_version,
 				path: path.clone(),
-				options: LayoutOptions::default(),
+				options: crate::test_support::options(),
 				requested: Instant::now(),
 				coverage: f32::INFINITY,
 				load_all_images: false,
@@ -758,7 +760,7 @@ mod reflow_tests {
 			version,
 			content_version: 1,
 			path: path.clone(),
-			options: LayoutOptions::default(),
+			options: crate::test_support::options(),
 			requested: Instant::now(),
 			coverage: f32::INFINITY,
 			load_all_images: false,
@@ -811,7 +813,7 @@ mod reflow_tests {
 				version,
 				content_version: 1,
 				path: path.clone(),
-				options: LayoutOptions::default(),
+				options: crate::test_support::options(),
 				requested: Instant::now(),
 				coverage: f32::INFINITY,
 				load_all_images: false,

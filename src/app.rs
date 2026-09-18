@@ -90,10 +90,14 @@ impl App {
 		proxy: EventLoopProxy<Event>,
 	) -> Self {
 		let done = proxy.clone();
-		let worker = Worker::with_images(args.offline, move |update| {
-			let _ = done.send_event(Event::Ready(Box::new(update)));
-		});
-		let mut ui = TextShaper::new();
+		let worker = Worker::with_images(
+			args.offline,
+			args.options.fonts.clone(),
+			move |update| {
+				let _ = done.send_event(Event::Ready(Box::new(update)));
+			},
+		);
+		let mut ui = TextShaper::with_fonts(args.options.fonts.clone());
 		let preferences = preferences::Preferences::new(&args, &mut ui);
 		let settings_watch = preferences.path().map(|path| {
 			let proxy = proxy.clone();
@@ -176,8 +180,10 @@ impl App {
 		}
 	}
 	pub(super) fn options(&self) -> LayoutOptions {
-		self.preferences
-			.values
-			.layout_options(self.dimensions().0, self.args.options.greedy)
+		self.preferences.values.layout_options(
+			self.dimensions().0,
+			self.args.options.greedy,
+			&self.args.options.fonts,
+		)
 	}
 }

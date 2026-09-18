@@ -5,6 +5,7 @@ mod paint;
 mod text;
 use anyhow::Result;
 use markview_core::{
+	fonts::FontConfig,
 	image::ImageSnapshot,
 	layout::LayoutSnapshot,
 	paginate::{PageGeometry, Pagination},
@@ -41,6 +42,10 @@ pub struct Export<'a> {
 	/// Body text size in layout pixels, which page furniture sizes against.
 	pub body_size_px: f32,
 	pub links: bool,
+	/// The faces page furniture and formula fallbacks shape with. It must
+	/// match the one the document was laid out with, or the two disagree
+	/// about which glyph a character is.
+	pub fonts: FontConfig,
 }
 
 pub fn export(input: Export<'_>) -> Result<Vec<u8>> {

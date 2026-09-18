@@ -35,6 +35,9 @@ at the same level, without `[brackets]`.
 - MVSS takes `border_width`, `radius`, and `accent` on `task_marker`, so a
   theme can thicken, round and fill a task checkbox; a completed box fills with
   `accent` and draws its check in `color`. The bundled styles do.
+- `--fonts DIR` (repeatable) adds a directory of font files, and
+  `--ignore-system-fonts` shapes with those directories alone, so an export no
+  longer depends on the fonts the machine happens to have installed.
 
 ### Changed
 
@@ -56,6 +59,12 @@ at the same level, without `[brackets]`.
   the comment color, because syntect was handed lines without their terminator.
 - PDF export drew the CJK and emoji inside a formula's `\text{…}` group with
   the document's fonts instead of dropping them.
+- A PDF's text map names every character of a ligature: an `fi` ligature used
+  to extract as `f`, losing the `i` from copied or searched text.
+- A PDF names every glyph of an ordered-list number, which used to leave a
+  replacement character after the number when the text was copied.
+- `--pdf --watch` recognizes equivalent spellings of one path, including a
+  `..` over a symlinked directory such as macOS's `/var`.
 
 ## 0.1.2 - 2026-09-18
 

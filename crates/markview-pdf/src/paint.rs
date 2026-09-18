@@ -124,7 +124,7 @@ pub fn render(input: &Export<'_>) -> Result<Vec<u8>> {
 		pagination: input.pagination,
 		fonts: Fonts::default(),
 		math_fonts: HashMap::new(),
-		shaper: TextShaper::new(),
+		shaper: TextShaper::with_fonts(input.fonts.clone()),
 		body_pt: input.body_size_px * PT_PER_PX,
 		links: input.links,
 		title: input.metadata.title.clone(),

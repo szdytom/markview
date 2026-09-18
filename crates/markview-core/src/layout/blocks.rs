@@ -663,40 +663,71 @@ impl BlockContext<'_> {
 					if numbered {
 						let label = numbering
 							.number(enum_depth, (start.unwrap() + i) as u64);
-						let (mut draws, width) = self.shaper.label_with(
-							&label,
-							opts.font_size,
-							item_x,
-							top + size * 1.15,
-							&bullet,
-							bullet.paint,
-							Some(Paint::Scoped(
-								bullet.chain,
-								Condition::Marker,
-								ColorField::Background,
-							)),
-						);
+						let (mut draws, ranges, width) =
+							self.shaper.label_runs(
+								&label,
+								opts.font_size,
+								item_x,
+								top + size * 1.15,
+								&bullet,
+								bullet.paint,
+								Some(Paint::Scoped(
+									bullet.chain,
+									Condition::Marker,
+									ColorField::Background,
+								)),
+							);
 						// Shaping starts at the column's left edge; alignment
 						// moves the finished label without reshaping it.
 						let dx = marker_offset(number_align, column, width);
 						for draw in &mut draws {
 							draw.translate(dx, 0.);
 						}
+						// The number copies as its own word before the item,
+						// so the trailing space rides on its last glyph. Each
+						// glyph keeps its own range, which is what lets a PDF
+						// name every character instead of one span that leaves
+						// the later glyphs unnamed.
+						let text = format!("{label} ");
+						let mut node = TextNode::new(text.clone(), "\n");
+						let height = size * self.shaper.appearance.line_height;
 						let command = out.draws.len();
+						let glyphs: Vec<f32> = draws
+							.iter()
+							.filter_map(|draw| match draw {
+								Draw::Glyph(glyph) => Some(glyph.x),
+								_ => None,
+							})
+							.collect();
+						let mut ranges = ranges.into_iter();
+						let mut glyph = 0;
+						for (offset, draw) in draws.iter().enumerate() {
+							if !matches!(draw, Draw::Glyph(_)) {
+								continue;
+							}
+							let mut range = ranges.next().unwrap_or(0..0);
+							if glyph + 1 == glyphs.len() {
+								range.end = text.len();
+							}
+							let x = glyphs[glyph];
+							let end = glyphs
+								.get(glyph + 1)
+								.copied()
+								.unwrap_or(item_x + dx + width);
+							node.push(TextCluster {
+								range,
+								rect: Rect {
+									x,
+									y: top,
+									w: (end - x).max(1.0),
+									h: height,
+								},
+								rtl: false,
+								command: command + offset,
+							});
+							glyph += 1;
+						}
 						out.draws.extend(draws);
-						// The number copies as its own word before the item.
-						let mut node = TextNode::new(format!("{label} "), "\n");
-						node.push(TextCluster {
-							range: 0..node.text.len(),
-							rect: Rect {
-								x: item_x + dx,
-								y: top,
-								w: width,
-								h: size * self.shaper.appearance.line_height,
-							},
-							rtl: false,
-							command,
-						});
 						out.text.push(node);
 					}
 					let first_child = out.text.len();

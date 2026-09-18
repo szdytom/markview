@@ -16,9 +16,11 @@ jobs:
         with:
           components: rustfmt, clippy
       - uses: Swatinem/rust-cache@v2
-      - name: Linux fonts and native development libraries
+      # Tests shape with the committed subsets, not the host's fonts, so only
+      # the native development libraries are installed.
+      - name: Linux native development libraries
         if: runner.os == 'Linux'
-        run: sudo apt-get update && sudo apt-get install -y libfontconfig1-dev libxkbcommon-dev libwayland-dev fonts-noto-core fonts-noto-cjk
+        run: sudo apt-get update && sudo apt-get install -y libfontconfig1-dev libxkbcommon-dev libwayland-dev
       - run: cargo check --workspace --locked --all-targets
       - run: cargo test --workspace --locked --all-targets
       - run: cargo fmt --all --check

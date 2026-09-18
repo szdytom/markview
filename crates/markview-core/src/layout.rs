@@ -98,6 +98,8 @@ pub struct LayoutOptions {
 	/// Hard-wrap code block lines at the reading column instead of scrolling.
 	pub codeblock_wrap: bool,
 	pub stylesheet: Arc<crate::style::Stylesheet>,
+	/// Which faces the shaper may use. The default is the host's own fonts.
+	pub fonts: crate::fonts::FontConfig,
 	/// Depth and work budgets; see [`crate::limits::Limits`].
 	pub limits: crate::limits::Limits,
 }
@@ -114,6 +116,7 @@ impl Default for LayoutOptions {
 			codeblock_theme_override: None,
 			codeblock_wrap: false,
 			stylesheet: crate::style::Stylesheet::bundled(false),
+			fonts: crate::fonts::FontConfig::default(),
 			limits: crate::limits::Limits::default(),
 		}
 	}
@@ -131,6 +134,7 @@ impl PartialEq for LayoutOptions {
 			&& self.codeblock_theme_override == other.codeblock_theme_override
 			&& self.codeblock_wrap == other.codeblock_wrap
 			&& self.stylesheet.layout_key() == other.stylesheet.layout_key()
+			&& self.fonts == other.fonts
 			&& self.limits == other.limits
 	}
 }
@@ -257,6 +261,7 @@ impl LayoutEngine {
 		mut progress: impl FnMut(&LayoutSnapshot) -> bool,
 	) -> Option<LayoutSnapshot> {
 		self.shaper.set_stylesheet(options.stylesheet.clone());
+		self.shaper.set_fonts(&options.fonts);
 		self.math.set_limits(options.limits);
 		self.poll_highlights();
 		let mut result = LayoutSnapshot {
@@ -283,11 +288,17 @@ impl LayoutEngine {
 		result.height =
 			padding[0] + body.space_before.unwrap_or(0.) * options.font_size;
 		// The stylesheet is immutable for this pass. Its identity belongs to
-		// the document request, not to each block's cache lookup.
+		// the document request, not to each block's cache lookup. The fonts
+		// are part of it: geometry measured with other faces is stale.
 		let style_key = document
 			.blocks
 			.first()
-			.map(|_| options.stylesheet.layout_key())
+			.map(|_| {
+				crate::document::fingerprint(&(
+					options.stylesheet.layout_key(),
+					&options.fonts,
+				))
+			})
 			.unwrap_or_default();
 		self.pass = self.pass.wrapping_add(1);
 		let pass = self.pass;

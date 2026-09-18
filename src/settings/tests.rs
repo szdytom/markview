@@ -163,7 +163,7 @@ fn paragraph_indent_round_trips_layout_and_bounds() {
 	assert_eq!(
 		loaded
 			.settings()
-			.layout_options(900.0, false)
+			.layout_options(900.0, false, &crate::test_support::fonts())
 			.paragraph_indent,
 		1.5
 	);
@@ -184,7 +184,12 @@ fn codeblock_wrap_round_trips_settings_and_layout() {
 	let (mut store, warning) = SettingsStore::load(Some(path.clone()));
 	assert!(warning.is_none());
 	assert!(store.settings().codeblock_wrap);
-	assert!(store.settings().layout_options(900.0, false).codeblock_wrap);
+	assert!(
+		store
+			.settings()
+			.layout_options(900.0, false, &crate::test_support::fonts())
+			.codeblock_wrap
+	);
 	let mut ui = store.settings();
 	ui.codeblock_wrap = false;
 	store.changed(&ui, Some(Setting::CodeblockWrap));
@@ -200,7 +205,7 @@ fn codeblock_wrap_round_trips_settings_and_layout() {
 	assert!(
 		!loaded
 			.settings()
-			.layout_options(900.0, false)
+			.layout_options(900.0, false, &crate::test_support::fonts())
 			.codeblock_wrap
 	);
 }
@@ -240,7 +245,11 @@ fn justification_limits_round_trip_layout_and_bound() {
 	assert_eq!(limits.tracking_max, 0.0);
 	// The file reaches layout, and the CJK convention with it, which travels
 	// inside the stylesheet because that is what picks the `[cjk]` font.
-	let options = store.settings().layout_options(900.0, false);
+	let options = store.settings().layout_options(
+		900.0,
+		false,
+		&crate::test_support::fonts(),
+	);
 	assert_eq!(options.justification, limits);
 	assert_eq!(options.stylesheet.cjk_type(), store.settings().cjk_type);
 

@@ -249,6 +249,7 @@ impl Exporter {
 			path: self.path.display().to_string(),
 			body_size_px: self.options.font_size,
 			links: self.links,
+			fonts: self.options.fonts.clone(),
 		})?;
 		write_pdf(&self.output, &bytes)?;
 		// Only now is this build on the disk.
@@ -368,6 +369,7 @@ mod tests {
 			output: Some(output.into()),
 			options: LayoutOptions {
 				stylesheet: Stylesheet::bundled_print(),
+				fonts: crate::test_support::fonts(),
 				..Default::default()
 			},
 			..Default::default()

@@ -3,9 +3,10 @@
 
 The layout tests assert exact geometry, so they must not shape with whatever
 fonts the machine happens to have installed: the same test then passes on
-macOS and fails on Linux or Windows. The tests instead register these subsets
-with system fonts disabled, and the stylesheet finds them by the family names
-its `lookfor` lists already ask for.
+macOS and fails on Linux or Windows. The unit tests register these subsets
+with system fonts disabled, and the integration tests point their font
+configuration at this directory. Either way the stylesheet finds the subsets
+by the family names its `lookfor` lists already ask for.
 
 Run this from the repository root with `fontTools` (and a Noto installation):
 
@@ -60,8 +61,9 @@ def test_text():
     add a glyph, never drop one.
     """
     sources = (
-        glob.glob("crates/markview-core/src/**/*.rs", recursive=True)
+        glob.glob("crates/**/*.rs", recursive=True)
         + glob.glob("src/**/*.rs", recursive=True)
+        + glob.glob("tests/**/*.rs", recursive=True)
         + glob.glob("tests/fixtures/*.md")
     )
     chars = {chr(c) for c in range(0x20, 0x7F)} | {"\t", "\n"}

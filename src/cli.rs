@@ -152,7 +152,7 @@ fn parse_arguments(
 		match text.as_ref() {
 			"-h" | "--help" => {
 				crate::logging::report(format_args!(
-					"Markview — native Markdown reading\n\nmarkview [FILE] [--style ID ...]\nmarkview ss install FILE.mvss.toml [--force]\nmarkview --render FILE --output preview.png [--dark] [--scale 2]\nmarkview --pdf FILE --output out.pdf [--paper a4] [--landscape] [--watch]\nmarkview --bench FILE [--iterations 100] [--output metrics.json]\nmarkview --bench-latency FILE [--iterations 100] [--output latency.json]\nmarkview --smoke-test FILE [--output window.png]\n\nOptions: --width N --height N --column N --font-size N --scroll N\n         --paragraph-indent N --cjk-type SC|TC|JP|none --scale N\n         --style ID --dark --light --left --no-hyphens --greedy --offline\n\nPDF: --paper a4|a5|letter|legal|WIDTHxHEIGHT --landscape --margin MM[,MM...]\n     --header TEXT --header-left/right TEXT --footer TEXT --footer-left/right TEXT\n     --no-links --watch; --watch re-exports whenever the document or one of its\n     local images changes, until you stop it. The slots take {{page}} {{pages}}\n     {{title}} and {{path}}. The export always starts from the bundled print\n     stylesheet, and --style layers on it.\n\nMetadata: --title TEXT --author NAME (repeatable) --subject TEXT\n          --keywords A,B --language TAG --creator TEXT\n          A title defaults to the first heading, then the file name;\n          Producer stays Markview <version>, and no creation date is\n          ever written.\n\nImages: local files, file:, http(s): and data: URIs; bitmap and SVG.\n        An image alone in its block is centered, otherwise it is inline.\n        Animated images show their first frame; --offline blocks the network.\n\nKeyboard: Ctrl+O open · Ctrl+T styles · Ctrl+ +/- font size\n          Ctrl+[ / ] column width · Ctrl+L alignment · Ctrl+H hyphenation\n          arrows / PageUp / PageDown / Home / End scroll\n          drag the scrollbar · Shift+wheel scroll wide blocks · Tab/Enter toolbar\n          click web/mail/local links; local .md links open in a new tab\n          click a footnote reference to reach its note and its number to return\n          drag / Shift+click select · Ctrl+A all · Ctrl+C copy · Ctrl+, settings\n\n--render and --bench use the real GPU pipeline offscreen.\n--greedy is a typography comparison mode."
+					"Markview — native Markdown reading\n\nmarkview [FILE] [--style ID ...]\nmarkview ss install FILE.mvss.toml [--force]\nmarkview --render FILE --output preview.png [--dark] [--scale 2]\nmarkview --pdf FILE --output out.pdf [--paper a4] [--landscape] [--watch]\nmarkview --bench FILE [--iterations 100] [--output metrics.json]\nmarkview --bench-latency FILE [--iterations 100] [--output latency.json]\nmarkview --smoke-test FILE [--output window.png]\n\nOptions: --width N --height N --column N --font-size N --scroll N\n         --paragraph-indent N --cjk-type SC|TC|JP|none --scale N\n         --style ID --dark --light --left --no-hyphens --greedy --offline\n\nFonts: --fonts DIR adds a directory of font files and may be repeated.\n       --ignore-system-fonts shapes with those directories alone, so the\n       fonts installed on the machine cannot change the result.\n\nPDF: --paper a4|a5|letter|legal|WIDTHxHEIGHT --landscape --margin MM[,MM...]\n     --header TEXT --header-left/right TEXT --footer TEXT --footer-left/right TEXT\n     --no-links --watch; --watch re-exports whenever the document or one of its\n     local images changes, until you stop it. The slots take {{page}} {{pages}}\n     {{title}} and {{path}}. The export always starts from the bundled print\n     stylesheet, and --style layers on it.\n\nMetadata: --title TEXT --author NAME (repeatable) --subject TEXT\n          --keywords A,B --language TAG --creator TEXT\n          A title defaults to the first heading, then the file name;\n          Producer stays Markview <version>, and no creation date is\n          ever written.\n\nImages: local files, file:, http(s): and data: URIs; bitmap and SVG.\n        An image alone in its block is centered, otherwise it is inline.\n        Animated images show their first frame; --offline blocks the network.\n\nKeyboard: Ctrl+O open · Ctrl+T styles · Ctrl+ +/- font size\n          Ctrl+[ / ] column width · Ctrl+L alignment · Ctrl+H hyphenation\n          arrows / PageUp / PageDown / Home / End scroll\n          drag the scrollbar · Shift+wheel scroll wide blocks · Tab/Enter toolbar\n          click web/mail/local links; local .md links open in a new tab\n          click a footnote reference to reach its note and its number to return\n          drag / Shift+click select · Ctrl+A all · Ctrl+C copy · Ctrl+, settings\n\n--render and --bench use the real GPU pipeline offscreen.\n--greedy is a typography comparison mode."
 				));
 				return Ok(None);
 			}
@@ -316,6 +316,21 @@ fn parse_arguments(
 						})?,
 				);
 			}
+			"--fonts" => {
+				let value =
+					args.next().context("--fonts requires a directory")?;
+				let directory = PathBuf::from(value);
+				if !directory.is_dir() {
+					bail!(
+						"--fonts: {} is not a directory",
+						directory.display()
+					);
+				}
+				out.options.fonts.directories.push(directory);
+			}
+			"--ignore-system-fonts" => {
+				out.options.fonts.ignore_system_fonts = true
+			}
 			"--width" | "--height" | "--column" | "--font-size" | "--scale"
 			| "--scroll" | "--iterations" | "--paragraph-indent" => {
 				let value = args
@@ -411,26 +426,37 @@ fn same_target(a: &std::path::Path, b: &std::path::Path) -> bool {
 /// normal case for an output, is resolved through its nearest existing
 /// ancestor; a tail that is missing anywhere is folded lexically.
 fn resolved(path: &std::path::Path) -> std::path::PathBuf {
+	use std::path::Component;
 	let absolute = if path.is_absolute() {
 		path.to_owned()
 	} else {
 		std::env::current_dir().unwrap_or_default().join(path)
 	};
-	let mut tail = Vec::new();
+	// Fold the tail into the nearest ancestor the filesystem can resolve. A
+	// `..` must not stop the search: macOS spells its temporary directory
+	// through the `/var` symlink, so canonicalizing the prefix even when the
+	// missing tail steps back is what makes `/var/...` and `/private/var/...`
+	// one path.
+	let mut tail: Vec<Component> = Vec::new();
 	let mut at = absolute.as_path();
 	loop {
 		if let Ok(real) = std::fs::canonicalize(at) {
 			let mut out = real;
-			out.extend(tail.iter().rev());
+			for part in tail.iter().rev() {
+				match part {
+					Component::CurDir => {}
+					Component::ParentDir => {
+						out.pop();
+					}
+					other => out.push(other.as_os_str()),
+				}
+			}
 			return normalize(&out);
 		}
-		let Some(name) = at.file_name() else {
-			return normalize(&absolute);
-		};
-		tail.push(name.to_owned());
-		match at.parent() {
-			Some(parent) if !parent.as_os_str().is_empty() => {
-				at = parent;
+		match at.components().next_back() {
+			Some(part @ (Component::ParentDir | Component::Normal(_))) => {
+				tail.push(part);
+				at = at.parent().unwrap_or(std::path::Path::new(""));
 			}
 			_ => return normalize(&absolute),
 		}
@@ -480,6 +506,42 @@ mod tests {
 			.is_err()
 		);
 		assert!(parse_arguments(["--cjk-type"].map(Into::into)).is_err());
+	}
+	#[test]
+	fn font_flags_choose_which_faces_are_loaded() {
+		let first = tempfile::tempdir().unwrap();
+		let second = tempfile::tempdir().unwrap();
+		let args = parse_arguments(
+			[
+				"--pdf",
+				"a.md",
+				"-o",
+				"a.pdf",
+				"--fonts",
+				first.path().to_str().unwrap(),
+				"--fonts",
+				second.path().to_str().unwrap(),
+				"--ignore-system-fonts",
+			]
+			.map(Into::into),
+		)
+		.unwrap()
+		.unwrap();
+		assert!(args.options.fonts.ignore_system_fonts);
+		assert_eq!(
+			args.options.fonts.directories,
+			vec![first.path().to_path_buf(), second.path().to_path_buf()]
+		);
+		// These choose faces, they do not override a reader setting.
+		assert!(args.overrides.is_empty());
+		// A directory that does not exist can never supply a face.
+		assert!(
+			parse_arguments(
+				["--fonts", "does-not-exist-anywhere"].map(Into::into)
+			)
+			.is_err()
+		);
+		assert!(parse_arguments(["--fonts"].map(Into::into)).is_err());
 	}
 	#[test]
 	fn only_image_export_modes_wrap_code_blocks_by_default() {
@@ -677,6 +739,10 @@ mod tests {
 			let link = dir.path().join("link");
 			std::os::unix::fs::symlink(dir.path(), &link).unwrap();
 			assert!(same_target(&file, &link.join("a.md")));
+			// A `..` in the missing tail must not stop the prefix from being
+			// canonicalized, or a symlinked ancestor such as macOS's `/var`
+			// leaves the two spellings on different paths.
+			assert!(same_target(&file, &link.join("sub/../a.md")));
 		}
 	}
 	#[test]

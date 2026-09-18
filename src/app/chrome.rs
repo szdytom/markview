@@ -360,7 +360,7 @@ mod tests {
 	}
 	#[test]
 	fn banner_buttons_fit_between_the_toolbar_and_the_document() {
-		let mut shaper = TextShaper::new();
+		let mut shaper = crate::test_support::shaper();
 		for width in [420.0, 500.0, 1200.0] {
 			let buttons = banner_buttons(&mut shaper, width);
 			assert_eq!(buttons.len(), 2);

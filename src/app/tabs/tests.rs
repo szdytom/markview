@@ -1,5 +1,4 @@
 use super::Tabs;
-use crate::layout::LayoutOptions;
 use std::{
 	path::PathBuf,
 	sync::Arc,
@@ -11,15 +10,15 @@ fn switching_restores_sessions_and_requests_remain_globally_ordered() {
 	let mut tabs = Tabs::default();
 	let now = Instant::now();
 	tabs.open(PathBuf::from("a.md"), now);
-	let first = tabs.request(LayoutOptions::default(), true).unwrap();
+	let first = tabs.request(crate::test_support::options(), true).unwrap();
 	tabs.session.scroll = 123.0;
 	tabs.open(PathBuf::from("b.md"), now);
-	let second = tabs.request(LayoutOptions::default(), false).unwrap();
+	let second = tabs.request(crate::test_support::options(), false).unwrap();
 	assert!(second.version > first.version);
 	assert!(tabs.select(0, now));
 	assert_eq!(tabs.session.scroll, 123.0);
 	assert!(tabs.session.follow_update);
-	let third = tabs.request(LayoutOptions::default(), false).unwrap();
+	let third = tabs.request(crate::test_support::options(), false).unwrap();
 	assert!(third.version > second.version);
 	assert_eq!(third.content_version, first.content_version);
 }
@@ -31,14 +30,14 @@ fn lifting_the_image_cap_is_per_tab_and_per_revision() {
 	tabs.open(PathBuf::from("a.md"), now);
 	assert!(
 		!tabs
-			.request(LayoutOptions::default(), false)
+			.request(crate::test_support::options(), false)
 			.unwrap()
 			.load_all_images
 	);
 	// The reader lifts the cap while reading `a.md`.
 	tabs.session.load_all_images = true;
 	assert!(
-		tabs.request(LayoutOptions::default(), false)
+		tabs.request(crate::test_support::options(), false)
 			.unwrap()
 			.load_all_images
 	);
@@ -46,14 +45,14 @@ fn lifting_the_image_cap_is_per_tab_and_per_revision() {
 	tabs.open(PathBuf::from("b.md"), now);
 	assert!(
 		!tabs
-			.request(LayoutOptions::default(), false)
+			.request(crate::test_support::options(), false)
 			.unwrap()
 			.load_all_images
 	);
 	// Switching back keeps each tab's own answer.
 	assert!(tabs.select(0, now));
 	assert!(
-		tabs.request(LayoutOptions::default(), false)
+		tabs.request(crate::test_support::options(), false)
 			.unwrap()
 			.load_all_images
 	);
@@ -62,7 +61,7 @@ fn lifting_the_image_cap_is_per_tab_and_per_revision() {
 	tabs.session.load_all_images = false;
 	assert!(
 		!tabs
-			.request(LayoutOptions::default(), false)
+			.request(crate::test_support::options(), false)
 			.unwrap()
 			.load_all_images
 	);
@@ -84,7 +83,10 @@ fn closing_tabs_preserves_active_state_and_releases_only_inactive_documents() {
 	assert_eq!(tabs.session.path, Some(PathBuf::from("b.md")));
 	assert!(matches!(tabs.close(0, now), super::Closed::Active));
 	assert!(tabs.session.path.is_none());
-	assert!(tabs.request(LayoutOptions::default(), false).is_none());
+	assert!(
+		tabs.request(crate::test_support::options(), false)
+			.is_none()
+	);
 }
 
 #[test]
@@ -117,8 +119,9 @@ fn reordering_preserves_every_session_and_the_active_request() {
 					tabs.session.scroll = 10.0 * i as f32;
 				}
 				tabs.select(active, now);
-				let request =
-					tabs.request(LayoutOptions::default(), false).unwrap();
+				let request = tabs
+					.request(crate::test_support::options(), false)
+					.unwrap();
 				assert_eq!(tabs.move_tab(from, to), from != to);
 				let mut order = vec![0, 1, 2, 3];
 				let moved = order.remove(from);
@@ -153,7 +156,7 @@ fn background_open_preserves_active_reading_and_deduplicates_tabs() {
 	let document = tabs.session.document.clone().unwrap();
 	tabs.session.scroll = 123.0;
 	tabs.session.horizontal.insert((0, 0), 42.0);
-	let request = tabs.request(LayoutOptions::default(), true).unwrap();
+	let request = tabs.request(crate::test_support::options(), true).unwrap();
 	assert!(tabs.open_background(PathBuf::from("b.md"), Some("intro".into())));
 	assert!(tabs.open_background(PathBuf::from("c.md"), None));
 	assert!(!tabs.open_background(PathBuf::from("b.md"), None));
@@ -173,7 +176,7 @@ fn background_open_preserves_active_reading_and_deduplicates_tabs() {
 	assert_eq!(tabs.session.path, Some(PathBuf::from("b.md")));
 	assert!(tabs.session.document.is_none());
 	assert_eq!(tabs.session.pending_anchor.as_deref(), Some("intro"));
-	let next = tabs.request(LayoutOptions::default(), false).unwrap();
+	let next = tabs.request(crate::test_support::options(), false).unwrap();
 	assert_eq!(next.version, request.version + 1);
 	assert_eq!(next.path, PathBuf::from("b.md"));
 	assert!(tabs.select(0, now));
@@ -194,7 +197,9 @@ fn background_tabs_can_be_reordered_closed_or_activated_by_closing_current() {
 	assert_eq!(tabs.session.path, Some(PathBuf::from("c.md")));
 	assert!(tabs.session.document.is_none());
 	assert_eq!(
-		tabs.request(LayoutOptions::default(), false).unwrap().path,
+		tabs.request(crate::test_support::options(), false)
+			.unwrap()
+			.path,
 		PathBuf::from("c.md")
 	);
 }
