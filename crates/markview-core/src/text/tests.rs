@@ -43,7 +43,7 @@ fn copies_reading_text_code_tables_and_atomic_math() {
 	let text = snapshot.extract_text(snapshot.select_all(9).unwrap(), 9);
 	assert_eq!(
 		text,
-		"Title\n\nA bold link x^2.\n\n\tlet x = 1;\n\n\n\nA\tB\n中\t文\n• one\n[x] two"
+		"Title\n\nA bold link x^2.\n\n\tlet x = 1;\n\n\n\nA\tB\n中\t文\none\ntwo"
 	);
 	assert!(
 		snapshot

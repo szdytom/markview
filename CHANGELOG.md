@@ -24,6 +24,14 @@ at the same level, without `[brackets]`.
   parse, block layout and decoded images; an unchanged save is skipped.
 - An MVSS `fontdef` takes `emoji = true`, which marks the family as the face for
   Emoji text; the bundled reader and print styles use it.
+- MVSS takes `align` and `shape` on list markers: `align` places a bullet,
+  number or checkbox left, centered or right in its column, and `shape` draws a
+  bullet as a disc, square, triangle or diamond.
+
+### Changed
+
+- Bullets and task checkboxes are drawn shapes rather than text, so they are no
+  longer selectable or copied; the bundled styles center them in their column.
 
 ### Fixed
 

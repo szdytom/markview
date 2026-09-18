@@ -175,20 +175,18 @@ fn list_items_keep_the_paragraph_space_between_them() {
 	let opts = LayoutOptions::default();
 	let doc = document::parse("- First item\n- Second item\n");
 	let snapshot = LayoutEngine::new().layout(&doc, &opts);
-	let clusters: Vec<Rect> = snapshot.blocks[0]
+	// A bullet is a drawn shape, so each item contributes one text node at the
+	// indented margin.
+	let items: Vec<Rect> = snapshot.blocks[0]
 		.layout
 		.text
 		.iter()
-		.flat_map(|node| node.clusters.iter().map(|c| c.rect))
+		.map(|node| node.clusters[0].rect)
 		.collect();
-	// The marker sits at the list's own margin; the item text is indented.
-	let left = clusters.iter().map(|r| r.x).fold(f32::INFINITY, f32::min);
-	let markers: Vec<Rect> =
-		clusters.into_iter().filter(|r| r.x < left + 0.5).collect();
-	assert_eq!(markers.len(), 2);
-	let gap = markers[1].y - markers[0].y;
+	assert_eq!(items.len(), 2);
+	let gap = items[1].y - items[0].y;
 	assert!(
-		gap > markers[0].h + opts.font_size * 0.5,
+		gap > items[0].h + opts.font_size * 0.5,
 		"the items are {gap} apart"
 	);
 }
@@ -785,14 +783,17 @@ fn indent_applies_to_text_leading_paragraphs_and_whole_lists() {
 	assert_eq!(math_x(&plain, 5), math_x(&two, 5));
 	// A quoted paragraph is still prose and gains the indent.
 	assert!(first_x(&two, 2, 0) > first_x(&plain, 2, 0));
-	// A list indents as a whole: marker and item text move together, and the
-	// item's opening and wrapped lines share one margin.
+	// A list indents as a whole: the leading marker and the item text move
+	// together, and the item's opening and wrapped lines share one margin.
 	for block in [3, 4] {
+		let last = |s: &LayoutSnapshot| s.blocks[block].layout.text.len() - 1;
 		let marker = |s: &LayoutSnapshot| first_x(s, block, 0);
-		let text = |s: &LayoutSnapshot| first_x(s, block, 1);
+		let text = |s: &LayoutSnapshot| first_x(s, block, last(s));
 		assert!((marker(&two) - marker(&plain) - d2).abs() < 0.6);
 		assert!((text(&two) - text(&plain) - d2).abs() < 0.6);
-		assert!((second_line_x(&two, block, 1) - text(&two)).abs() < 0.6);
+		assert!(
+			(second_line_x(&two, block, last(&two)) - text(&two)).abs() < 0.6
+		);
 	}
 	// A footnote stays flush behind its own label.
 	assert_eq!(first_x(&plain, 7, 0), first_x(&two, 7, 0));
@@ -834,8 +835,11 @@ fn a_theme_can_inset_bullet_and_ordered_lists_separately() {
 				..Default::default()
 			},
 		);
-		let x =
-			|block: usize| s.blocks[block].layout.text[0].clusters[0].rect.x;
+		let x = |block: usize| {
+			s.blocks[block].layout.text.last().unwrap().clusters[0]
+				.rect
+				.x
+		};
 		(x(0), x(1))
 	}
 	let base = Arc::new(
@@ -865,6 +869,114 @@ fn a_theme_can_inset_bullet_and_ordered_lists_separately() {
 	let (both_bullet, both_ordered) = markers(&theme, 2.0);
 	assert!((both_bullet - flat_bullet - 2.5 * 18.0).abs() < 0.6);
 	assert!((both_ordered - flat_ordered - 3.5 * 18.0).abs() < 0.6);
+}
+
+#[test]
+fn a_theme_aligns_list_markers_in_their_column() {
+	fn marker_x(sheet: &crate::style::Stylesheet, task: bool) -> f32 {
+		let doc = document::parse(if task {
+			"- [x] task item\n"
+		} else {
+			"- bullet item\n"
+		});
+		let snapshot = LayoutEngine::new().layout(
+			&doc,
+			&LayoutOptions {
+				width: 400.0,
+				stylesheet: Arc::new(sheet.clone()),
+				..Default::default()
+			},
+		);
+		snapshot.blocks[0]
+			.layout
+			.draws
+			.iter()
+			.find_map(|draw| match draw {
+				// A task reserves a checkbox; other lists draw a polygon.
+				Draw::Rect(r, _) if task => Some(r.x),
+				Draw::Polygon { center, .. } if !task => Some(center[0]),
+				_ => None,
+			})
+			.expect("marker geometry")
+	}
+	let aligned = |condition: &str, align: &str| {
+		let mut sheet = (*crate::style::Stylesheet::bundled(false)).clone();
+		sheet.merge(
+			&crate::style::Stylesheet::parse(&format!(
+				"format_version=2\nversion=1\n[[rule]]\nwhen=['{condition}']\nalign=\"{align}\""
+			))
+			.unwrap(),
+		);
+		sheet
+	};
+	for (condition, task) in [("marker", false), ("task_marker", true)] {
+		let default = marker_x(&crate::style::Stylesheet::bundled(false), task);
+		let left = marker_x(&aligned(condition, "left"), task);
+		let center = marker_x(&aligned(condition, "center"), task);
+		let right = marker_x(&aligned(condition, "right"), task);
+		assert!(
+			left < center && center < right,
+			"{condition}: {left} {center} {right}"
+		);
+		assert!(
+			(default - center).abs() < 0.01,
+			"{condition} should default to centered, got {default} vs {center}"
+		);
+	}
+}
+
+#[test]
+fn a_bullet_is_drawn_and_never_copied() {
+	let snapshot = LayoutEngine::new().layout(
+		&document::parse("- one\n- [x] two\n"),
+		&LayoutOptions::default(),
+	);
+	let layout = &snapshot.blocks[0].layout;
+	// Bullets and checkboxes are geometry, not reading text.
+	assert!(
+		layout
+			.draws
+			.iter()
+			.any(|d| matches!(d, Draw::Polygon { .. }))
+	);
+	assert!(layout.text.iter().all(|node| !node.text.contains('•')));
+	assert!(layout.text.iter().all(|node| !node.text.contains("[x]")));
+	let text = snapshot.extract_text(snapshot.select_all(1).unwrap(), 1);
+	assert_eq!(text, "one\ntwo");
+}
+
+#[test]
+fn a_theme_picks_the_bullet_shape() {
+	let vertices = |shape: &str| {
+		let mut sheet = (*crate::style::Stylesheet::bundled(false)).clone();
+		sheet.merge(
+			&crate::style::Stylesheet::parse(&format!(
+				"format_version=2\nversion=1\n[[rule]]\nwhen=['marker']\nshape=\"{shape}\""
+			))
+			.unwrap(),
+		);
+		let snapshot = LayoutEngine::new().layout(
+			&document::parse("- item\n"),
+			&LayoutOptions {
+				width: 400.0,
+				stylesheet: Arc::new(sheet),
+				..Default::default()
+			},
+		);
+		snapshot.blocks[0]
+			.layout
+			.draws
+			.iter()
+			.find_map(|draw| match draw {
+				Draw::Polygon { points, .. } => Some(points.len()),
+				_ => None,
+			})
+			.expect("bullet polygon")
+	};
+	assert_eq!(vertices("disc"), 64);
+	assert_eq!(vertices("square"), 4);
+	assert_eq!(vertices("triangle"), 3);
+	assert_eq!(vertices("diamond"), 4);
 }
 
 #[test]

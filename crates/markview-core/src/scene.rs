@@ -105,6 +105,13 @@ pub enum Draw {
 		x: f32,
 		y: f32,
 	},
+	/// A filled convex polygon, such as a list bullet. `points` are relative
+	/// to `center`, so moving the shape never rebuilds them.
+	Polygon {
+		center: [f32; 2],
+		points: Arc<[[f32; 2]]>,
+		paint: Paint,
+	},
 }
 impl Draw {
 	pub fn translate(&mut self, x: f32, y: f32) {
@@ -129,6 +136,10 @@ impl Draw {
 			Self::Math { x: gx, y: gy, .. } => {
 				*gx += x;
 				*gy += y;
+			}
+			Self::Polygon { center, .. } => {
+				center[0] += x;
+				center[1] += y;
 			}
 		}
 	}

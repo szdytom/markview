@@ -546,6 +546,27 @@ impl Painter<'_> {
 			Draw::Math { math, paint, x, y } => {
 				self.math(surface, math, *paint, frame, *x, *y);
 			}
+			Draw::Polygon {
+				center,
+				points,
+				paint,
+			} => {
+				let mut builder = PathBuilder::new();
+				for (i, point) in points.iter().enumerate() {
+					let x = frame.x(center[0] + point[0]);
+					let y = frame.y(center[1] + point[1]);
+					if i == 0 {
+						builder.move_to(x, y);
+					} else {
+						builder.line_to(x, y);
+					}
+				}
+				builder.close();
+				if let Some(path) = builder.finish() {
+					surface.set_fill(Some(self.fill(*paint)));
+					surface.draw_path(&path);
+				}
+			}
 		}
 	}
 
@@ -961,6 +982,17 @@ fn visible(cluster: Option<&Cluster>, draw: &Draw, item: &PageItem) -> bool {
 			))
 		}
 		Draw::Rect(rect, _) => (rect.y, rect.y + rect.h),
+		Draw::Polygon { center, points, .. } => {
+			let top = points
+				.iter()
+				.map(|point| point[1])
+				.fold(f32::INFINITY, f32::min);
+			let bottom = points
+				.iter()
+				.map(|point| point[1])
+				.fold(f32::NEG_INFINITY, f32::max);
+			(center[1] + top, center[1] + bottom)
+		}
 		Draw::Image { rect, .. } => (rect.y, rect.y + rect.h),
 		Draw::Math { math, y, .. } => (*y, *y + math.ascent + math.descent),
 		// A container spans its whole block; each fragment clips its own part.

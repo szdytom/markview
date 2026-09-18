@@ -91,9 +91,9 @@ impl Renderer {
 					| Draw::Glyph(_)
 					| Draw::Image { .. }
 					| Draw::Math { .. } => foreground.push((draw, dx, dy, clip, hovered)),
-					Draw::Rect(..) | Draw::Box { .. } => {
-						backgrounds.push((draw, dx, dy, clip, hovered))
-					}
+					Draw::Rect(..)
+					| Draw::Box { .. }
+					| Draw::Polygon { .. } => backgrounds.push((draw, dx, dy, clip, hovered)),
 				}
 			}
 			for (oi, o) in block.layout.overflow.iter().enumerate() {

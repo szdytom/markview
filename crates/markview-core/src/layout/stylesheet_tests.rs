@@ -166,7 +166,7 @@ fn code_labels_and_list_markers_keep_their_own_size() {
 		Condition::Marker,
 	);
 	let expected = options.font_size * marker.size.unwrap();
-	let glyphs = sizes("- item\n");
+	let glyphs = sizes("1. item\n");
 	assert!(
 		glyphs.iter().any(|s| (s - expected).abs() < 0.01),
 		"marker size {expected} missing from {glyphs:?}"

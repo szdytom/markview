@@ -13,9 +13,9 @@ use std::{
 };
 pub use types::{
 	CaptionSource, CjkType, Color, ColorField, Condition, ConditionSet,
-	Decoration, Font, FontDefType, FontDefinition, MAX_CHAIN, Padding,
-	PageStyle, Rule, SYNTHETIC_ITALIC_ANGLE_DEG, TextAlign, Variant, chain_of,
-	chain_push, chain_set, parse_paper_size,
+	Decoration, Font, FontDefType, FontDefinition, MAX_CHAIN, MarkerShape,
+	Padding, PageStyle, Rule, SYNTHETIC_ITALIC_ANGLE_DEG, TextAlign, Variant,
+	chain_of, chain_push, chain_set, parse_paper_size,
 };
 
 #[derive(Clone, Debug, Default, PartialEq, Deserialize)]
@@ -230,6 +230,21 @@ impl Stylesheet {
 		};
 		self.rule(condition).indent.unwrap_or(0.0).max(0.0)
 	}
+	/// Where a marker sits inside the column reserved for it. Bullets and
+	/// numbers share one condition and task checkboxes another, so a theme can
+	/// align the two independently.
+	pub fn marker_align(&self, task: bool) -> TextAlign {
+		let condition = if task {
+			Condition::TaskMarker
+		} else {
+			Condition::Marker
+		};
+		self.rule(condition).align.unwrap_or(TextAlign::Left)
+	}
+	/// The graphic a bullet marker draws. Ordered numbers ignore it.
+	pub fn marker_shape(&self) -> MarkerShape {
+		self.rule(Condition::Marker).shape.unwrap_or_default()
+	}
 	pub fn merge(&mut self, higher: &Self) {
 		for (key, def) in &higher.fontdef_variants {
 			self.fontdef_variants.insert(key.clone(), def.clone());
@@ -415,7 +430,10 @@ impl Stylesheet {
 				rule.padding,
 				rule.border_width,
 			));
-			s.push_str(&format!("{:?}{:?}", rule.radius, rule.gutter));
+			s.push_str(&format!(
+				"{:?}{:?}{:?}",
+				rule.radius, rule.gutter, rule.shape
+			));
 		}
 		crate::document::fingerprint(&s)
 	}

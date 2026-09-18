@@ -210,6 +210,53 @@ fn list_indents_are_theme_controlled_per_list_role() {
 	}
 }
 #[test]
+fn marker_alignment_is_theme_controlled_per_marker_role() {
+	let sheet = Stylesheet::parse(
+		"format_version=2\nversion=1\n[[rule]]\nwhen=['marker']\nalign='right'\n[[rule]]\nwhen=['task_marker']\nalign='left'",
+	)
+	.unwrap();
+	assert_eq!(sheet.marker_align(false), TextAlign::Right);
+	assert_eq!(sheet.marker_align(true), TextAlign::Left);
+	// A sheet that says nothing keeps the historical left alignment, while the
+	// bundled themes center markers in their column.
+	let bare = Stylesheet::parse("format_version=2\nversion=1").unwrap();
+	assert_eq!(bare.marker_align(false), TextAlign::Left);
+	for dark in [false, true] {
+		let bundled = Stylesheet::bundled(dark);
+		assert_eq!(bundled.marker_align(false), TextAlign::Center);
+		assert_eq!(bundled.marker_align(true), TextAlign::Center);
+	}
+	assert_eq!(
+		Stylesheet::bundled_print().marker_align(false),
+		TextAlign::Center
+	);
+	for bad in [
+		"format_version=2\nversion=1\n[[rule]]\nwhen=['p']\nalign='center'",
+		"format_version=2\nversion=1\n[[rule]]\nwhen=['marker']\nalign='middle'",
+	] {
+		assert!(Stylesheet::parse(bad).is_err(), "{bad}");
+	}
+}
+#[test]
+fn marker_shape_is_theme_controlled() {
+	let sheet = Stylesheet::parse(
+		"format_version=2\nversion=1\n[[rule]]\nwhen=['marker']\nshape='triangle'",
+	)
+	.unwrap();
+	assert_eq!(sheet.marker_shape(), MarkerShape::Triangle);
+	assert_eq!(Stylesheet::bundled(false).marker_shape(), MarkerShape::Disc);
+	assert_eq!(
+		Stylesheet::bundled_print().marker_shape(),
+		MarkerShape::Disc
+	);
+	for bad in [
+		"format_version=2\nversion=1\n[[rule]]\nwhen=['task_marker']\nshape='square'",
+		"format_version=2\nversion=1\n[[rule]]\nwhen=['marker']\nshape='star'",
+	] {
+		assert!(Stylesheet::parse(bad).is_err(), "{bad}");
+	}
+}
+#[test]
 fn conditions_compose_without_new_vocabulary() {
 	let mut sheet = (*Stylesheet::bundled(false)).clone();
 	sheet.merge(

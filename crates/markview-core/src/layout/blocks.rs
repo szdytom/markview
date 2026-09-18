@@ -5,8 +5,56 @@ use crate::{
 		Block, BlockKind, CellAlign, Inline, InlineKind, RichText, footnote,
 	},
 	scene::{BlockLayout, Draw, HeadingAnchor, LinkRect, Paint, Rect},
-	style::{ColorField, Condition, TextAppearance},
+	style::{ColorField, Condition, MarkerShape, TextAlign, TextAppearance},
 };
+use std::sync::Arc;
+
+/// The diameter of a bullet shape, in multiples of the marker's own size. The
+/// bundled marker size therefore draws a bullet about a third of an em.
+const BULLET_SIDE: f32 = 0.36;
+
+/// The x a marker of `width` takes inside its reserved column, which runs from
+/// the item's left edge to where its text begins.
+fn marker_offset(align: TextAlign, column: f32, width: f32) -> f32 {
+	// A left- or right-aligned marker keeps a hair of space at the edge.
+	const INSET: f32 = 2.0;
+	let free = (column - width).max(0.0);
+	match align {
+		TextAlign::Left => INSET,
+		TextAlign::Center => free / 2.0,
+		TextAlign::Right => (free - INSET).max(INSET),
+	}
+}
+
+/// A bullet's vertices, relative to its center, fitting a square `side` wide.
+fn marker_points(shape: MarkerShape, side: f32) -> Arc<[[f32; 2]]> {
+	let radius = side / 2.;
+	let corner = |degrees: f32| {
+		let angle = degrees.to_radians();
+		[angle.cos() * radius, angle.sin() * radius]
+	};
+	let points = match shape {
+		// Enough segments that the antialiased outline reads as a circle.
+		MarkerShape::Disc => {
+			(0..64).map(|i| corner(i as f32 * 360. / 64.)).collect()
+		}
+		MarkerShape::Square => {
+			vec![
+				[-radius, -radius],
+				[radius, -radius],
+				[radius, radius],
+				[-radius, radius],
+			]
+		}
+		MarkerShape::Triangle => {
+			vec![[0., -radius], [radius, radius], [-radius, radius]]
+		}
+		MarkerShape::Diamond => {
+			vec![[0., -radius], [radius, 0.], [0., radius], [-radius, 0.]]
+		}
+	};
+	Arc::from(points)
+}
 
 /// The element a block's box belongs to.
 fn block_role(block: &Block) -> Condition {
@@ -400,6 +448,12 @@ impl BlockContext<'_> {
 					.as_ref()
 					.map(|p| p.sides().map(|v| v * opts.font_size))
 					.unwrap_or([0.; 4]);
+				// Every item in the list draws the same bullet graphic.
+				let bullet =
+					opts.stylesheet.text(&item_appearance, Condition::Marker);
+				let bullet_side = opts.font_size * bullet.size * BULLET_SIDE;
+				let bullet_points =
+					marker_points(opts.stylesheet.marker_shape(), bullet_side);
 				for (i, item) in items.iter().enumerate() {
 					self.shaper.appearance = item_appearance.clone();
 					top +=
@@ -411,27 +465,25 @@ impl BlockContext<'_> {
 					let item_x = x + padding[3];
 					let item_width = (width - padding[1] - padding[3]).max(1.);
 
-					let marker = match item.checked {
-						Some(true) => "[x] ".into(),
-						Some(false) => "[ ] ".into(),
-						None => start.map_or_else(
-							|| "• ".into(),
-							|n| format!("{}. ", n + i),
-						),
-					};
-					let mut node = TextNode::new(marker.clone(), "\n");
-					node.push(TextCluster {
-						range: 0..marker.len(),
-						rect: Rect {
-							x,
-							y: top,
-							w: 25.0,
-							h: size * self.shaper.appearance.line_height,
-						},
-						rtl: false,
-						command: out.draws.len(),
-					});
-					out.text.push(node);
+					// Only an ordered number is reading text. Bullets and task
+					// checkboxes are drawn, so nothing about them is selectable.
+					let numbered = item.checked.is_none() && start.is_some();
+					if numbered {
+						let marker = format!("{}. ", start.unwrap() + i);
+						let mut node = TextNode::new(marker.clone(), "\n");
+						node.push(TextCluster {
+							range: 0..marker.len(),
+							rect: Rect {
+								x,
+								y: top,
+								w: 25.0,
+								h: size * self.shaper.appearance.line_height,
+							},
+							rtl: false,
+							command: out.draws.len(),
+						});
+						out.text.push(node);
+					}
 					let first_child = out.text.len();
 					let indent = if start.is_some_and(|n| n + i >= 100) {
 						48.0
@@ -444,11 +496,17 @@ impl BlockContext<'_> {
 							Condition::TaskMarker,
 						);
 						let marker_size = opts.font_size * task.size;
+						let box_size = marker_size * 0.7;
 						let r = Rect {
-							x: item_x + 2.,
+							x: item_x
+								+ marker_offset(
+									opts.stylesheet.marker_align(true),
+									indent,
+									box_size,
+								),
 							y: top + size * 0.5,
-							w: marker_size * 0.7,
-							h: marker_size * 0.7,
+							w: box_size,
+							h: box_size,
 						};
 						out.draws.push(Draw::Rect(
 							r,
@@ -482,31 +540,50 @@ impl BlockContext<'_> {
 									.0,
 							);
 						}
-					} else {
-						let marker = start.map_or_else(
-							|| "•".to_string(),
-							|n| format!("{}.", n + i),
-						);
+					} else if let Some(number) = *start {
+						let marker = format!("{}.", number + i);
 						let bullet = opts
 							.stylesheet
 							.text(&self.shaper.appearance, Condition::Marker);
-						out.draws.extend(
-							self.shaper
-								.label_with(
-									&marker,
-									opts.font_size,
-									item_x + 2.0,
-									top + size * 1.15,
-									&bullet,
-									bullet.paint,
-									Some(Paint::Scoped(
-										bullet.chain,
-										Condition::Marker,
-										ColorField::Background,
-									)),
-								)
-								.0,
+						let (mut draws, width) = self.shaper.label_with(
+							&marker,
+							opts.font_size,
+							item_x,
+							top + size * 1.15,
+							&bullet,
+							bullet.paint,
+							Some(Paint::Scoped(
+								bullet.chain,
+								Condition::Marker,
+								ColorField::Background,
+							)),
 						);
+						// Shaping starts at the column's left edge; alignment
+						// moves the finished label without reshaping it.
+						let dx = marker_offset(
+							opts.stylesheet.marker_align(false),
+							indent,
+							width,
+						);
+						for draw in &mut draws {
+							draw.translate(dx, 0.);
+						}
+						out.draws.extend(draws);
+					} else {
+						let left = item_x
+							+ marker_offset(
+								opts.stylesheet.marker_align(false),
+								indent,
+								bullet_side,
+							);
+						out.draws.push(Draw::Polygon {
+							center: [
+								left + bullet_side / 2.,
+								top + size * 0.88,
+							],
+							points: bullet_points.clone(),
+							paint: bullet.paint,
+						});
 					}
 					top += self
 						.children(
@@ -535,7 +612,9 @@ impl BlockContext<'_> {
 					};
 					top += item_rule.space_after.unwrap_or(0.) * opts.font_size;
 					if let Some(node) = out.text.get_mut(first_child) {
-						node.separator = "";
+						// A number shares its line with the item text; an item
+						// without one starts its own line.
+						node.separator = if numbered { "" } else { "\n" };
 					}
 				}
 				self.shaper.appearance = list_appearance;

@@ -90,83 +90,179 @@ impl RasterCache {
 			for tx in (0..w).step_by(512) {
 				let (w, h) = ((w - tx).min(512), (h - ty).min(512));
 				let (ox, oy) = (px + tx as i32, py + ty as i32);
-				let key = RasterKey::Path {
-					path: fingerprint(&bits),
-					size: scale.to_bits(),
-					tx: ox,
-					ty: oy,
-					w,
-					h,
+				let Some(e) =
+					self.raster(queue, &bits, &path, fill, scale, ox, oy, w, h)
+				else {
+					continue;
 				};
-				let entry = if let Some(e) = self.cache.get(&key) {
-					Some(*e)
-				} else {
-					let Some(mut pixmap) = tiny_skia::Pixmap::new(w, h) else {
-						continue;
-					};
-					let transform = tiny_skia::Transform::from_row(
-						scale, 0.0, 0.0, scale, -ox as f32, -oy as f32,
-					);
-					let mut paint = tiny_skia::Paint::default();
-					paint.set_color_rgba8(255, 255, 255, 255);
-					if fill {
-						pixmap.fill_path(
-							&path,
-							&paint,
-							tiny_skia::FillRule::Winding,
-							transform,
-							None,
-						);
-					} else {
-						pixmap.stroke_path(
-							&path,
-							&paint,
-							&tiny_skia::Stroke {
-								width: 0.04,
-								..Default::default()
-							},
-							transform,
-							None,
-						);
-					}
-					let mask: Vec<u8> = pixmap
-						.data()
-						.as_chunks::<4>()
-						.0
-						.iter()
-						.map(|p| p[3])
-						.collect();
-					self.insert(
-						queue,
-						key,
-						Entry {
-							w,
-							h,
-							..Default::default()
-						},
-						&mask,
-					)
-				};
-				if let Some(e) = entry {
-					geometry.quad(
-						Rect {
-							x: x + ox as f32 / view.scale,
-							y: y + oy as f32 / view.scale,
-							w: w as f32 / view.scale,
-							h: h as f32 / view.scale,
-						},
-						Rect {
-							x: e.x as f32,
-							y: e.y as f32,
-							w: w as f32,
-							h: h as f32,
-						},
-						color,
-						clip,
-						view,
-					);
-				}
+				geometry.quad(
+					Rect {
+						x: x + ox as f32 / view.scale,
+						y: y + oy as f32 / view.scale,
+						w: w as f32 / view.scale,
+						h: h as f32 / view.scale,
+					},
+					Rect {
+						x: e.x as f32,
+						y: e.y as f32,
+						w: w as f32,
+						h: h as f32,
+					},
+					color,
+					clip,
+					view,
+				);
 			}
 		}
+	}
+
+	/// A filled polygon, such as a list marker, through the same antialiased
+	/// vector rasterizer the formula paths use. The shape is snapped to the
+	/// device grid and its coverage is cached in its own frame, so scrolling
+	/// reuses one raster instead of filling the atlas with position variants.
+	#[expect(clippy::too_many_arguments, reason = "Vector path drawing state")]
+	pub(crate) fn polygon(
+		&mut self,
+		queue: &wgpu::Queue,
+		geometry: &mut crate::geometry::Geometry,
+		center: [f32; 2],
+		points: &[[f32; 2]],
+		color: [f32; 4],
+		clip: Rect,
+		view: &View<'_>,
+	) {
+		let mut b = tiny_skia::PathBuilder::new();
+		// A leading `2` keeps a polygon key apart from a `fill`-first formula
+		// path, whose commands start with 0..=4.
+		let mut bits = vec![2u64];
+		for (i, point) in points.iter().enumerate() {
+			if i == 0 {
+				b.move_to(point[0], point[1]);
+			} else {
+				b.line_to(point[0], point[1]);
+			}
+			bits.extend([
+				u64::from(point[0].to_bits()),
+				u64::from(point[1].to_bits()),
+			]);
+		}
+		b.close();
+		let Some(path) = b.finish() else {
+			return;
+		};
+		let scale = view.scale;
+		let bounds = path.bounds();
+		// One bitmap covering the whole shape, in the shape's own frame. The
+		// quad below does any clipping, so the raster is position independent.
+		let left = (bounds.x() * scale).floor() - 1.0;
+		let top = (bounds.y() * scale).floor() - 1.0;
+		let w = (bounds.width() * scale).ceil() as u32 + 2;
+		let h = (bounds.height() * scale).ceil() as u32 + 2;
+		let Some(e) = self.raster(
+			queue,
+			&bits,
+			&path,
+			true,
+			scale,
+			left as i32,
+			top as i32,
+			w,
+			h,
+		) else {
+			return;
+		};
+		let device = [
+			(center[0] * scale).round() + left,
+			(center[1] * scale).round() + top,
+		];
+		geometry.quad(
+			Rect {
+				x: device[0] / scale,
+				y: device[1] / scale,
+				w: w as f32 / scale,
+				h: h as f32 / scale,
+			},
+			Rect {
+				x: e.x as f32,
+				y: e.y as f32,
+				w: w as f32,
+				h: h as f32,
+			},
+			color,
+			clip,
+			view,
+		);
+	}
+
+	/// Rasterizes one vector path into the coverage atlas, keyed by the path,
+	/// its scale and the device-grid tile it covers. `tx`/`ty` are the bitmap's
+	/// origin, so a position-independent shape passes its own frame here.
+	#[expect(clippy::too_many_arguments, reason = "Vector path drawing state")]
+	fn raster(
+		&mut self,
+		queue: &wgpu::Queue,
+		bits: &[u64],
+		path: &tiny_skia::Path,
+		fill: bool,
+		scale: f32,
+		tx: i32,
+		ty: i32,
+		w: u32,
+		h: u32,
+	) -> Option<Entry> {
+		let key = RasterKey::Path {
+			path: fingerprint(&bits),
+			size: scale.to_bits(),
+			tx,
+			ty,
+			w,
+			h,
+		};
+		if let Some(entry) = self.cache.get(&key) {
+			return Some(*entry);
+		}
+		let mut pixmap = tiny_skia::Pixmap::new(w, h)?;
+		let transform = tiny_skia::Transform::from_row(
+			scale, 0.0, 0.0, scale, -tx as f32, -ty as f32,
+		);
+		let mut paint = tiny_skia::Paint::default();
+		paint.set_color_rgba8(255, 255, 255, 255);
+		if fill {
+			pixmap.fill_path(
+				path,
+				&paint,
+				tiny_skia::FillRule::Winding,
+				transform,
+				None,
+			);
+		} else {
+			pixmap.stroke_path(
+				path,
+				&paint,
+				&tiny_skia::Stroke {
+					width: 0.04,
+					..Default::default()
+				},
+				transform,
+				None,
+			);
+		}
+		let mask: Vec<u8> = pixmap
+			.data()
+			.as_chunks::<4>()
+			.0
+			.iter()
+			.map(|p| p[3])
+			.collect();
+		self.insert(
+			queue,
+			key,
+			Entry {
+				w,
+				h,
+				..Default::default()
+			},
+			&mask,
+		)
 	}
 }

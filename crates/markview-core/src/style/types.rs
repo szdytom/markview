@@ -554,12 +554,25 @@ impl From<TextAlign> for crate::document::CellAlign {
 	}
 }
 
+/// The graphic a bullet marker draws. Ordered numbers stay text.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum MarkerShape {
+	#[default]
+	Disc,
+	Square,
+	Triangle,
+	Diamond,
+}
+
 #[derive(Clone, Debug, Default, PartialEq, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Rule {
 	pub show: Option<bool>,
 	pub source: Option<CaptionSource>,
 	pub align: Option<TextAlign>,
+	/// The graphic a bullet marker draws instead of a text glyph.
+	pub shape: Option<MarkerShape>,
 	pub color: Option<Color>,
 	pub background: Option<Color>,
 	pub border_color: Option<Color>,
@@ -601,6 +614,7 @@ impl Rule {
 		self.show.is_some()
 			|| self.source.is_some()
 			|| self.align.is_some()
+			|| self.shape.is_some()
 			|| self.font.is_some()
 			|| self.weight.is_some()
 			|| self.size.is_some()
@@ -620,6 +634,7 @@ impl Rule {
 			show,
 			source,
 			align,
+			shape,
 			color,
 			background,
 			border_color,

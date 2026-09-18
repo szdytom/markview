@@ -214,6 +214,31 @@ impl Renderer {
 					}
 				}
 			}
+			Draw::Polygon {
+				center,
+				points,
+				paint,
+			} => {
+				let color = self.color(
+					if hovered {
+						Self::hover_paint(*paint)
+					} else {
+						*paint
+					},
+					view.theme,
+				);
+				// The rasterizer snaps the shape to the device grid; it owns
+				// that so its coverage atlas stays cacheable across scrolls.
+				self.raster.polygon(
+					&self.gpu.queue,
+					&mut self.geometry,
+					[center[0] + dx, center[1] + dy],
+					points,
+					color,
+					clip,
+					view,
+				);
+			}
 			Draw::Math { math, x, y, paint } => {
 				let (x, y) = (x + dx, y + dy);
 				if intersect(

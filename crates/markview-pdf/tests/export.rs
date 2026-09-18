@@ -130,6 +130,19 @@ fn pages_carry_selectable_text_and_embedded_subset_fonts() {
 }
 
 #[test]
+fn a_bullet_list_keeps_its_items_and_drops_the_bullet() {
+	// A bullet is a filled path, not a character, so the page carries the item
+	// text without a marker glyph.
+	let exported = export("- first item\n- second item\n", print(), false);
+	let text = exported.pdf.extract_text(&[1]).unwrap();
+	assert!(
+		text.contains("first item") && text.contains("second item"),
+		"{text}"
+	);
+	assert!(!text.contains('\u{2022}'), "{text}");
+}
+
+#[test]
 fn links_become_annotations_and_headings_become_destinations() {
 	let source = "# Top\n\n[web](https://example.com/) and [jump](#later).\n\n\
 	              ## Later\n\nBack to [top](#top).\n";

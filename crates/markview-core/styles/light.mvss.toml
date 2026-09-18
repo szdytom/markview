@@ -189,12 +189,14 @@ space_after = 0.8
 when = ["marker"]
 color = "#69747E"
 size = 0.9
+align = "center"
 
 [[rule]]
 when = ["task_marker"]
 color = "#315D86"
 background = "#FAFAF8"
 border_color = "#315D86"
+align = "center"
 
 [[rule]]
 when = ["footnote"]

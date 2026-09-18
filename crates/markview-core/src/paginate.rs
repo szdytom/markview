@@ -182,6 +182,15 @@ fn bands(layout: &BlockLayout) -> Vec<Band> {
 				Some((glyph.y - glyph.size * 0.9, glyph.y + glyph.size * 0.25))
 			}
 			Draw::Rect(rect, _) => Some((rect.y, rect.y + rect.h)),
+			Draw::Polygon { center, points, .. } => {
+				let top =
+					points.iter().map(|p| p[1]).fold(f32::INFINITY, f32::min);
+				let bottom = points
+					.iter()
+					.map(|p| p[1])
+					.fold(f32::NEG_INFINITY, f32::max);
+				Some((center[1] + top, center[1] + bottom))
+			}
 			Draw::Image { rect, .. } => Some((rect.y, rect.y + rect.h)),
 			Draw::Math { math, y, .. } => {
 				Some((*y, *y + math.ascent + math.descent))
