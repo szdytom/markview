@@ -417,6 +417,9 @@ pub enum Variant {
 	Italic,
 	Oblique,
 }
+/// The slant Markview shears a face with when it has no italic or oblique of
+/// its own. 14 degrees is the angle the CSS font matching algorithm uses.
+pub const SYNTHETIC_ITALIC_ANGLE_DEG: f32 = 14.0;
 #[derive(Clone, Debug, PartialEq, Eq, Hash, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Font {
@@ -424,6 +427,11 @@ pub struct Font {
 	#[serde(default)]
 	pub variant: Variant,
 	pub weight: Option<u16>,
+	/// Shear the face when it carries no italic or oblique of its own. CJK
+	/// families usually ship a single upright face, so their emphasis has to
+	/// be faked.
+	#[serde(default)]
+	pub synthetic_italic: bool,
 }
 #[derive(
 	Clone,

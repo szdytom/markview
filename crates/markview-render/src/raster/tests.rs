@@ -119,6 +119,7 @@ fn color_glyphs_preserve_rgb_and_share_paint_order() {
 		size: 2.,
 		x: 2.,
 		y: 2.,
+		synthetic_italic: false,
 		paint: Paint::Text,
 	};
 	// Inject a synthetic RGBA glyph so this test needs no installed Emoji font.
@@ -130,6 +131,7 @@ fn color_glyphs_preserve_rgb_and_share_paint_order() {
 			size: 8,
 			phase: 0,
 			coords: fingerprint(&glyph.coords),
+			synthetic: false,
 		},
 		entry,
 	);

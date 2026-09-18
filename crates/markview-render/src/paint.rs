@@ -266,6 +266,7 @@ impl Renderer {
 										size: size * *scale as f32,
 										x: x + *gx as f32 * size,
 										y: y + *gy as f32 * size,
+										synthetic_italic: false,
 										paint: Paint::Text,
 									};
 									self.glyph_quad(

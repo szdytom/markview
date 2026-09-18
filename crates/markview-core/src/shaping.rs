@@ -21,6 +21,8 @@ struct Face {
 	font: parley::FontData,
 	style: FontStyle,
 	weight: u16,
+	/// The family has no italic of its own, so the renderer shears this face.
+	synthetic_italic: bool,
 }
 
 #[derive(Default)]
@@ -351,7 +353,12 @@ impl TextShaper {
 					let exact_weight = info.weight()
 						== FontWeight::new(weight as f32)
 						|| axis(b"wght", weight as f32);
-					if !exact_style || !exact_weight {
+					// A candidate may shear an upright face when the family
+					// has no italic or oblique of its own.
+					let synthetic = !exact_style
+						&& candidate.synthetic_italic
+						&& info.style() == FontStyle::Normal;
+					if (!exact_style && !synthetic) || !exact_weight {
 						continue;
 					}
 					if let Some(data) = info.load(Some(&mut fonts.source_cache))
@@ -359,16 +366,18 @@ impl TextShaper {
 						faces.push(Face {
 							family: family.name().into(),
 							font: parley::FontData::new(data, info.index()),
-							style: if matches!(
-								info.style(),
-								FontStyle::Oblique(_)
-							) && candidate.variant == Variant::Oblique
+							style: if synthetic
+								|| (matches!(
+									info.style(),
+									FontStyle::Oblique(_)
+								) && candidate.variant == Variant::Oblique)
 							{
 								info.style()
 							} else {
 								style
 							},
 							weight,
+							synthetic_italic: synthetic,
 						});
 					}
 				}
@@ -457,7 +466,7 @@ impl TextShaper {
 					.collect();
 				(base_fonts, span_fonts)
 			});
-		let mut choices: Vec<(Range<usize>, FaceChoice)> = Vec::new();
+		let mut choices: Vec<(Range<usize>, FaceChoice, bool)> = Vec::new();
 		crate::profile::span(crate::profile::Stage::FontChoose, || {
 			// Resolve whole joining-script words together; elsewhere resolve grapheme clusters.
 			// All ranges are subsequently shaped in one paragraph, preserving bidi and context.
@@ -496,17 +505,20 @@ impl TextShaper {
 					let identity = |choice: FaceChoice| {
 						choice.map(|(set, index)| {
 							let f = &self.font_sets[set].faces[index];
-							(&f.family, f.style, f.weight)
+							(&f.family, f.style, f.weight, f.synthetic_italic)
 						})
 					};
-					if let Some((range, previous)) = choices.last_mut()
+					let synthetic = face.is_some_and(|(set, index)| {
+						self.font_sets[set].faces[index].synthetic_italic
+					});
+					if let Some((range, previous, _)) = choices.last_mut()
 						&& range.end == pos
 						&& identity(face) == identity(*previous)
 					{
 						range.end = pos + part.len();
 						continue;
 					}
-					choices.push((pos..pos + part.len(), face));
+					choices.push((pos..pos + part.len(), face, synthetic));
 				}
 			}
 		});
@@ -517,7 +529,9 @@ impl TextShaper {
 		builder.push_default(StyleProperty::FontWeight(FontWeight::NORMAL));
 		builder.push_default(StyleProperty::FontStyle(FontStyle::Normal));
 		builder.push_default(StyleProperty::Brush(usize::MAX));
-		for (range, face) in &choices {
+		let mut has_synthetic = false;
+		for (range, face, synthetic) in &choices {
+			has_synthetic |= *synthetic;
 			if let Some((set, index)) = face {
 				let face = &self.font_sets[*set].faces[*index];
 				builder.push(
@@ -551,11 +565,30 @@ impl TextShaper {
 				builder.build(text)
 			});
 		layout.break_all_lines(None);
+		// A cluster keeps the choice its first byte resolved to, which is the
+		// face the shaper used for the whole cluster. Documents without a
+		// synthetic candidate skip the lookup entirely.
+		let synthetic_at = |pos: usize| {
+			has_synthetic
+				&& choices
+					.binary_search_by(|(range, _, _)| {
+						if range.end <= pos {
+							std::cmp::Ordering::Less
+						} else if range.start > pos {
+							std::cmp::Ordering::Greater
+						} else {
+							std::cmp::Ordering::Equal
+						}
+					})
+					.is_ok_and(|i| choices[i].2)
+		};
 		let mut clusters = Vec::new();
 		for line in layout.lines() {
 			for run in line.runs() {
 				let coords: Arc<[i16]> = run.normalized_coords().into();
 				for c in run.visual_clusters() {
+					let range = c.text_range();
+					let synthetic_italic = synthetic_at(range.start);
 					let mut x = 0.0;
 					let mut glyphs = Vec::new();
 					for g in c.glyphs() {
@@ -573,6 +606,7 @@ impl TextShaper {
 							size: run.font_size(),
 							x: x + g.x,
 							y: g.y - rise,
+							synthetic_italic,
 							paint: appearances
 								.get(index)
 								.unwrap_or(&base)
@@ -582,7 +616,7 @@ impl TextShaper {
 					}
 					clusters.push(Cluster {
 						rtl: c.is_rtl(),
-						range: c.text_range(),
+						range,
 						width: c.advance(),
 						mixed: (false, false),
 						ascent: run.metrics().ascent,

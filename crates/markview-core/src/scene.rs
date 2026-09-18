@@ -46,6 +46,8 @@ pub struct Glyph {
 	pub size: f32,
 	pub x: f32,
 	pub y: f32,
+	/// The face carries no italic, so the renderer shears the outline.
+	pub synthetic_italic: bool,
 	pub paint: Paint,
 }
 

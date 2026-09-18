@@ -14,8 +14,8 @@ use std::{
 pub use types::{
 	CaptionSource, CjkType, Color, ColorField, Condition, ConditionSet,
 	Decoration, Font, FontDefType, FontDefinition, MAX_CHAIN, Padding,
-	PageStyle, Rule, TextAlign, Variant, chain_of, chain_push, chain_set,
-	parse_paper_size,
+	PageStyle, Rule, SYNTHETIC_ITALIC_ANGLE_DEG, TextAlign, Variant, chain_of,
+	chain_push, chain_set, parse_paper_size,
 };
 
 #[derive(Clone, Debug, Default, PartialEq, Deserialize)]
@@ -504,6 +504,7 @@ impl Default for TextAppearance {
 				family: "serif".into(),
 				variant: Variant::Normal,
 				weight: None,
+				synthetic_italic: false,
 			}],
 			weight: 400,
 			size: 1.,

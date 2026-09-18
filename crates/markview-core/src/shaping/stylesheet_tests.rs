@@ -107,21 +107,25 @@ fn unavailable_variant_weight_and_family_are_skipped() {
 				family: "Missing".into(),
 				variant: Variant::Normal,
 				weight: None,
+				synthetic_italic: false,
 			},
 			Font {
 				family: "Fallback".into(),
 				variant: Variant::Italic,
 				weight: None,
+				synthetic_italic: false,
 			},
 			Font {
 				family: "Primary".into(),
 				variant: Variant::Italic,
 				weight: Some(700),
+				synthetic_italic: false,
 			},
 			Font {
 				family: "Primary".into(),
 				variant: Variant::Italic,
 				weight: Some(400),
+				synthetic_italic: false,
 			},
 		],
 		..Default::default()
@@ -153,6 +157,7 @@ fn font_choices_are_scoped_and_invalidated_with_stylesheet() {
 		family: "Fallback".into(),
 		variant: Variant::Normal,
 		weight: None,
+		synthetic_italic: false,
 	}];
 	assert_ne!(index, s.resolve_fonts(&other));
 	let mut style = (*s.stylesheet).clone();
@@ -263,11 +268,13 @@ fn explicit_regular_fallback_survives_bold_and_missing_primary() {
 				family: "Missing".into(),
 				variant: Variant::Normal,
 				weight: None,
+				synthetic_italic: false,
 			},
 			Font {
 				family: "Fallback".into(),
 				variant: Variant::Normal,
 				weight: None,
+				synthetic_italic: false,
 			},
 		],
 		..Default::default()
@@ -302,6 +309,7 @@ fn fallback_warnings_are_bounded_and_allow_new_candidate_sets() {
 				family: format!("Missing{i}"),
 				variant: Variant::Normal,
 				weight: None,
+				synthetic_italic: false,
 			}],
 			..Default::default()
 		};
@@ -326,6 +334,7 @@ fn shaping_warns_only_when_configured_candidates_are_exhausted() {
 		family: "Fallback".into(),
 		variant: Variant::Normal,
 		weight: Some(400),
+		synthetic_italic: false,
 	}];
 	s.shape("A", &[], 18., false);
 	assert!(s.warned_fallbacks.is_empty());
@@ -400,4 +409,51 @@ fn a_selected_cjk_variant_supplies_the_configured_face() {
 	let appearance = s.appearance.clone();
 	let index = s.resolve_fonts(&appearance);
 	assert!(s.font_sets[index].faces.is_empty());
+}
+
+#[test]
+fn a_synthetic_italic_candidate_keeps_an_upright_face() {
+	let mut s = shaper();
+	let appearance = |synthetic_italic| TextAppearance {
+		font: vec![Font {
+			family: "Fallback".into(),
+			variant: Variant::Italic,
+			weight: None,
+			synthetic_italic,
+		}],
+		..Default::default()
+	};
+	// The fixture family ships one upright face. Without the opt-in the
+	// candidate is skipped, as before; with it the shaper keeps the face and
+	// records that the renderer must shear its outline.
+	assert!(s.choose_font("A", &appearance(false)).is_none());
+	let face = s.choose_font("A", &appearance(true)).unwrap();
+	assert_eq!(face.family, "Fallback");
+	assert_eq!(face.style, FontStyle::Normal);
+	assert!(face.synthetic_italic);
+	s.appearance.font = appearance(true).font;
+	let clusters = s.shape("A", &[], 18., false);
+	let glyphs: Vec<_> = clusters.iter().flat_map(|c| &c.glyphs).collect();
+	assert!(!glyphs.is_empty());
+	assert!(glyphs.iter().all(|g| g.synthetic_italic));
+}
+
+#[test]
+fn bundled_emphasis_shears_cjk_but_keeps_a_real_latin_italic() {
+	let mut s = TextShaper::new();
+	let appearance = s.stylesheet.inline(
+		&s.appearance,
+		&TextStyle {
+			italic: true,
+			..Default::default()
+		},
+	);
+	// A CJK family has no italic, so the bundled `em` rule opts into shear.
+	let han = s.choose_font("中", &appearance).unwrap();
+	assert_eq!(han.family, "Noto Serif CJK SC");
+	assert!(han.synthetic_italic);
+	// The Latin family does have one, so no shear is invented.
+	let latin = s.choose_font("a", &appearance).unwrap();
+	assert!(!latin.synthetic_italic);
+	assert_eq!(latin.style, FontStyle::Italic);
 }

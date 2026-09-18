@@ -120,7 +120,8 @@ font = [{ family = "sans-serif" }, { family = "sans-serif[cjk]" }, { family = "e
 when = ["em"]
 font = [
 	{ family = "serif", variant = "italic" },
-	{ family = "serif[cjk]", variant = "italic" },
+	# CJK families usually ship no italic, so their Han text is sheared.
+	{ family = "serif[cjk]", variant = "italic", synthetic_italic = true },
 	{ family = "emoji", weight = 400 },
 ]
 

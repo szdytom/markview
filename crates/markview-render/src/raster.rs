@@ -1,11 +1,13 @@
 //! Bounded glyph/path atlas and reusable rasterization resources.
-use markview_core::{document::fingerprint, scene::Glyph};
+use markview_core::{
+	document::fingerprint, scene::Glyph, style::SYNTHETIC_ITALIC_ANGLE_DEG,
+};
 use parley::FontData;
 use std::collections::HashMap;
 use swash::{
 	FontRef,
 	scale::{Render, ScaleContext, Source},
-	zeno::{Format, Vector},
+	zeno::{Angle, Format, Transform, Vector},
 };
 pub(super) const ATLAS_SIZE: u32 = 2048;
 mod color;
@@ -42,6 +44,7 @@ enum RasterKey {
 		size: u32,
 		phase: u8,
 		coords: u64,
+		synthetic: bool,
 	},
 	Path {
 		path: u64,
@@ -245,6 +248,7 @@ impl RasterCache {
 			size,
 			phase,
 			coords: fingerprint(&g.coords),
+			synthetic: g.synthetic_italic,
 		};
 		if let Some(entry) = self.cache.get(&key) {
 			return Some(*entry);
@@ -258,14 +262,22 @@ impl RasterCache {
 			.hint(true)
 			.normalized_coords(g.coords.iter())
 			.build();
-		let image = Render::new(&[
+		let mut render = Render::new(&[
 			Source::ColorOutline(0),
 			Source::ColorBitmap(swash::scale::StrikeWith::BestFit),
 			Source::Outline,
-		])
-		.format(Format::Alpha)
-		.offset(Vector::new(phase as f32 / 4.0, 0.0))
-		.render(&mut scaler, g.id);
+		]);
+		render
+			.format(Format::Alpha)
+			.offset(Vector::new(phase as f32 / 4.0, 0.0));
+		if g.synthetic_italic {
+			// Shear about the baseline in font units, where y grows upward.
+			render.transform(Some(Transform::skew(
+				Angle::from_degrees(SYNTHETIC_ITALIC_ANGLE_DEG),
+				Angle::from_degrees(0.0),
+			)));
+		}
+		let image = render.render(&mut scaler, g.id);
 		let Some(mut image) = image else {
 			let e = Entry::default();
 			self.cache.insert(key, e);

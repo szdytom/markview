@@ -63,6 +63,13 @@ impl Stylesheet {
 								"rule [{name}].font[{i}]: invalid family or weight"
 							);
 						}
+						if font.synthetic_italic
+							&& font.variant == super::Variant::Normal
+						{
+							bail!(
+								"rule [{name}].font[{i}].synthetic_italic: requires variant italic or oblique"
+							);
+						}
 					}
 				}
 				if conditions == ConditionSet::of(Condition::Body)

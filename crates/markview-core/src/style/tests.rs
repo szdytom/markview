@@ -159,6 +159,22 @@ fn cascade_arrays_and_font_defaults() {
 	assert_eq!(low.rule(Condition::Em).font.as_ref().unwrap().len(), 1);
 }
 #[test]
+fn synthetic_italic_requires_a_slanted_variant() {
+	let ok = Stylesheet::parse(
+		"format_version=2\nversion=1\n[[rule]]\nwhen=['em']\nfont=[{family='serif[cjk]',variant='italic',synthetic_italic=true}]",
+	)
+	.unwrap();
+	assert!(ok.rule(Condition::Em).font.as_ref().unwrap()[0].synthetic_italic);
+	// The flag only makes sense for a slanted request; a plain candidate that
+	// set it would silently do nothing.
+	for bad in [
+		"format_version=2\nversion=1\n[[rule]]\nwhen=['em']\nfont=[{family='serif',synthetic_italic=true}]",
+		"format_version=2\nversion=1\n[[rule]]\nwhen=['em']\nfont=[{family='serif',variant='normal',synthetic_italic=true}]",
+	] {
+		assert!(Stylesheet::parse(bad).is_err(), "{bad}");
+	}
+}
+#[test]
 fn list_indents_are_theme_controlled_per_list_role() {
 	let sheet = Stylesheet::parse(
 		"format_version=2\nversion=1\n[[rule]]\nwhen=['list']\nindent=0.25\n[[rule]]\nwhen=['enum']\nindent=0.75",

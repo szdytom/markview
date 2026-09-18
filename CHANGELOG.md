@@ -15,6 +15,10 @@ at the same level, without `[brackets]`.
 
 ### Added
 
+- An MVSS font candidate takes `synthetic_italic = true`, which shears an
+  upright face by 14° when the family has no italic of its own. The bundled
+  styles use it for CJK emphasis, so Chinese and Japanese text now slants
+  instead of falling back.
 - `--pdf … --watch` re-exports whenever the document or a local image it
   references changes, until the session is stopped. Rebuilds reuse the previous
   parse, block layout and decoded images; an unchanged save is skipped.

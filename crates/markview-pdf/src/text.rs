@@ -6,11 +6,12 @@
 //! makes the text in the PDF searchable and copyable.
 use krilla::{
 	Data,
-	geom::Point,
+	geom::{Point, Transform},
 	surface::Surface,
 	text::{Font, GlyphId, KrillaGlyph, Tag},
 };
 use markview_core::layout::Glyph;
+use markview_core::style::SYNTHETIC_ITALIC_ANGLE_DEG;
 use parley::FontData;
 use skrifa::MetadataProvider;
 use std::{collections::HashMap, ops::Range};
@@ -25,6 +26,8 @@ pub struct RunGlyph {
 	/// The byte range of the text this glyph came from; empty when the glyph
 	/// has no reading text of its own, as a code block's language label does.
 	pub range: Range<usize>,
+	/// The face carries no italic, so the run is sheared about its baseline.
+	pub synthetic_italic: bool,
 }
 
 /// Font instances, embedded once per export.
@@ -155,6 +158,10 @@ pub fn emit(
 			None,
 		));
 	}
+	let shear = first.synthetic_italic.then(|| synthetic_shear(first.y));
+	if let Some(transform) = &shear {
+		surface.push_transform(transform);
+	}
 	surface.draw_glyphs(
 		Point::from_xy(first.x, first.y),
 		&out,
@@ -163,6 +170,17 @@ pub fn emit(
 		size,
 		false,
 	);
+	if shear.is_some() {
+		surface.pop();
+	}
+}
+
+/// The shear a synthetic italic run needs, about its baseline. Page coordinates
+/// grow downward, so the top of a glyph leans right when `kx` is negative, and
+/// carrying the baseline into `tx` keeps the pen advancing horizontally.
+fn synthetic_shear(baseline: f32) -> Transform {
+	let slant = SYNTHETIC_ITALIC_ANGLE_DEG.to_radians().tan();
+	Transform::from_row(1.0, 0.0, -slant, 1.0, slant * baseline, 0.0)
 }
 
 /// The face's own advance for one glyph, at the given size.
@@ -187,11 +205,12 @@ pub fn same_face(a: &Glyph, b: &Glyph) -> bool {
 		&& a.size == b.size
 		&& a.coords == b.coords
 		&& a.paint == b.paint
+		&& a.synthetic_italic == b.synthetic_italic
 }
 
 #[cfg(test)]
 mod tests {
-	use super::design_value;
+	use super::{SYNTHETIC_ITALIC_ANGLE_DEG, design_value, synthetic_shear};
 
 	#[test]
 	fn normalized_coordinates_become_design_settings() {
@@ -206,5 +225,16 @@ mod tests {
 		// coordinate cannot escape the axis.
 		assert_eq!(design_value(200.0, 400.0, 400.0, -1.0), 200.0);
 		assert_eq!(design_value(100.0, 400.0, 900.0, 4.0), 900.0);
+	}
+
+	#[test]
+	fn a_synthetic_shear_leans_the_top_of_a_glyph_to_the_right() {
+		// Page y grows downward, so above the baseline is a smaller y and a
+		// negative `kx` moves it right. The baseline itself must not move.
+		let transform = synthetic_shear(100.0);
+		let slant = SYNTHETIC_ITALIC_ANGLE_DEG.to_radians().tan();
+		assert!((transform.kx() + slant).abs() < 1e-6);
+		assert!(transform.kx() < 0.0);
+		assert!((transform.tx() + transform.kx() * 100.0).abs() < 1e-6);
 	}
 }

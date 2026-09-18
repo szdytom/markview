@@ -5,7 +5,7 @@ use markview_core::{
 	image::ImageSnapshot,
 	layout::{LayoutEngine, LayoutOptions},
 	paginate::{PT_PER_PX, PageGeometry, paginate},
-	style::Stylesheet,
+	style::{CjkType, SYNTHETIC_ITALIC_ANGLE_DEG, Stylesheet},
 };
 use markview_pdf::{Export, Metadata};
 use std::sync::Arc;
@@ -467,6 +467,45 @@ fn a_document_with_cjk_text_embeds_a_font_that_names_it() {
 	let text = exported.pdf.extract_text(&[1]).unwrap();
 	assert!(text.contains("English"), "{text}");
 	assert!(text.contains("中文"), "{text}");
+}
+
+/// The horizontal skew of every `cm` a page's content stream sets.
+fn cm_skews(content: &str) -> Vec<f32> {
+	let tokens: Vec<&str> = content.split_whitespace().collect();
+	let mut out = Vec::new();
+	for (index, token) in tokens.iter().enumerate() {
+		if *token == "cm"
+			&& index >= 6
+			&& let Ok(kx) = tokens[index - 4].parse::<f32>()
+		{
+			out.push(kx);
+		}
+	}
+	out
+}
+
+#[test]
+fn cjk_emphasis_is_sheared_in_the_export() {
+	// The bundled print styles opts `serif[cjk]` into a synthetic italic, and
+	// the CJK convention has to be selected for that definition to resolve.
+	let mut sheet = (*print()).clone();
+	sheet.set_cjk_type(CjkType::Sc);
+	let exported = export("A *中文强调* tail.\n", Arc::new(sheet), false);
+	let page = exported.pdf.get_pages()[&1];
+	let content = String::from_utf8_lossy(&exported.pdf.get_page_content(page))
+		.into_owned();
+	let shear = -SYNTHETIC_ITALIC_ANGLE_DEG.to_radians().tan();
+	let skews = cm_skews(&content);
+	assert!(
+		skews.iter().any(|kx| (kx - shear).abs() < 1e-3),
+		"no synthetic shear in {skews:?}"
+	);
+	// Latin emphasis uses the family's real italic face, so no shear is added.
+	let latin = export("*Latin*\n", print(), false);
+	let page = latin.pdf.get_pages()[&1];
+	let content =
+		String::from_utf8_lossy(&latin.pdf.get_page_content(page)).into_owned();
+	assert!(cm_skews(&content).iter().all(|kx| kx.abs() < 1e-6));
 }
 
 #[test]
