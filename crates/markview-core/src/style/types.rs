@@ -594,6 +594,9 @@ pub struct Rule {
 	/// The graphic, or depth-cycled graphics, a bullet marker draws instead
 	/// of a text glyph.
 	pub shape: Option<MarkerShapes>,
+	/// How an ordered list writes its numbers. Only the `enum` condition
+	/// reads it.
+	pub numbering: Option<super::NumberingPattern>,
 	pub color: Option<Color>,
 	pub background: Option<Color>,
 	pub border_color: Option<Color>,
@@ -636,6 +639,7 @@ impl Rule {
 			|| self.source.is_some()
 			|| self.align.is_some()
 			|| self.shape.is_some()
+			|| self.numbering.is_some()
 			|| self.font.is_some()
 			|| self.weight.is_some()
 			|| self.size.is_some()
@@ -656,6 +660,7 @@ impl Rule {
 			source,
 			align,
 			shape,
+			numbering,
 			color,
 			background,
 			border_color,

@@ -284,6 +284,124 @@ fn marker_shape_is_theme_controlled() {
 	}
 }
 #[test]
+fn ordered_lists_take_a_theme_numbering_pattern() {
+	// A sheet that says nothing numbers items "1.", "2.", ...
+	let bare = Stylesheet::parse("format_version=2\nversion=1").unwrap();
+	assert_eq!(bare.enum_numbering().number(0, 3), "3.");
+	// One counting symbol repeats at every nesting depth.
+	let alpha = Stylesheet::parse(
+		"format_version=2\nversion=1\n[[rule]]\nwhen=['enum']\nnumbering='a)'",
+	)
+	.unwrap();
+	assert_eq!(alpha.enum_numbering().number(0, 3), "c)");
+	assert_eq!(alpha.enum_numbering().number(2, 3), "c)");
+	// Each level takes its own counting symbol, and the last one repeats.
+	let nested = Stylesheet::parse(
+		"format_version=2\nversion=1\n[[rule]]\nwhen=['enum']\nnumbering='(1.a.*)'",
+	)
+	.unwrap();
+	assert_eq!(nested.enum_numbering().number(0, 3), "(3)");
+	assert_eq!(nested.enum_numbering().number(1, 3), "(c)");
+	assert_eq!(nested.enum_numbering().number(2, 3), "(‡)");
+	assert_eq!(nested.enum_numbering().number(3, 3), "(‡)");
+	// The same notation reaches the numeral systems Typst knows.
+	let roman = Stylesheet::parse(
+		"format_version=2\nversion=1\n[[rule]]\nwhen=['enum']\nnumbering='I.'",
+	)
+	.unwrap();
+	assert_eq!(roman.enum_numbering().number(0, 4), "IV.");
+	let circled = Stylesheet::parse(
+		"format_version=2\nversion=1\n[[rule]]\nwhen=['enum']\nnumbering='①'",
+	)
+	.unwrap();
+	assert_eq!(circled.enum_numbering().number(0, 50), "㊿");
+	// A system that cannot write the number falls back to decimal.
+	assert_eq!(circled.enum_numbering().number(0, 51), "51");
+	assert_eq!(alpha.enum_numbering().number(0, 0), "0)");
+	for bad in [
+		"format_version=2\nversion=1\n[[rule]]\nwhen=['enum']\nnumbering=''",
+		"format_version=2\nversion=1\n[[rule]]\nwhen=['enum']\nnumbering='(())'",
+		"format_version=2\nversion=1\n[[rule]]\nwhen=['marker']\nnumbering='1.'",
+		"format_version=2\nversion=1\n[[rule]]\nwhen=['enum','marker']\nnumbering='1.'",
+	] {
+		assert!(Stylesheet::parse(bad).is_err(), "{bad}");
+	}
+}
+#[test]
+fn a_numbering_that_grows_with_the_number_stops_at_a_marker() {
+	// `999999999.` is a valid Markdown list start, and `*` repeats a symbol
+	// every six items, so the marker must fall back to decimal rather than
+	// spell out a label hundreds of megabytes long.
+	let symbols = Stylesheet::parse(
+		"format_version=2\nversion=1\n[[rule]]\nwhen=['enum']\nnumbering='*'",
+	)
+	.unwrap();
+	assert_eq!(symbols.enum_numbering().number(0, 7), "**");
+	assert_eq!(symbols.enum_numbering().number(0, 999_999_999), "999999999");
+	// Additive systems repeat their largest numeral, so Hebrew and Roman grow
+	// the same way and must stop at the same bound.
+	let hebrew = Stylesheet::parse(
+		"format_version=2\nversion=1\n[[rule]]\nwhen=['enum']\nnumbering='א'",
+	)
+	.unwrap();
+	assert_eq!(hebrew.enum_numbering().number(0, 3), "ג");
+	let roman = Stylesheet::parse(
+		"format_version=2\nversion=1\n[[rule]]\nwhen=['enum']\nnumbering='i.'",
+	)
+	.unwrap();
+	assert_eq!(roman.enum_numbering().number(0, 4), "iv.");
+	assert_eq!(roman.enum_numbering().number(0, 999_999_999), "999999999.");
+	for sheet in [&symbols, &hebrew, &roman] {
+		assert!(
+			sheet.enum_numbering().number(0, u64::MAX).len() <= 24,
+			"a numeral cannot outgrow a marker"
+		);
+	}
+}
+#[test]
+fn ordered_numbers_align_independently_of_bullets() {
+	let sheet = Stylesheet::parse(
+		"format_version=2\nversion=1\n[[rule]]\nwhen=['marker']\nalign='center'\n[[rule]]\nwhen=['enum']\nalign='right'",
+	)
+	.unwrap();
+	assert_eq!(sheet.enum_align(), TextAlign::Right);
+	assert_eq!(sheet.marker_align(false), TextAlign::Center);
+	// Without an `enum` alignment the number follows the shared marker one.
+	let shared = Stylesheet::parse(
+		"format_version=2\nversion=1\n[[rule]]\nwhen=['marker']\nalign='center'",
+	)
+	.unwrap();
+	assert_eq!(shared.enum_align(), TextAlign::Center);
+	assert_eq!(
+		Stylesheet::parse("format_version=2\nversion=1")
+			.unwrap()
+			.enum_align(),
+		TextAlign::Left
+	);
+	for dark in [false, true] {
+		assert_eq!(Stylesheet::bundled(dark).enum_align(), TextAlign::Center);
+	}
+	assert_eq!(Stylesheet::bundled_print().enum_align(), TextAlign::Center);
+	for bad in [
+		"format_version=2\nversion=1\n[[rule]]\nwhen=['enum']\nalign='middle'",
+		"format_version=2\nversion=1\n[[rule]]\nwhen=['p']\nalign='center'",
+	] {
+		assert!(Stylesheet::parse(bad).is_err(), "{bad}");
+	}
+}
+#[test]
+fn a_numbering_pattern_changes_layout_identity() {
+	let mut sheet = (*Stylesheet::bundled(false)).clone();
+	let key = sheet.layout_key();
+	sheet.merge(
+		&Stylesheet::parse(
+			"format_version=2\nversion=2\n[[rule]]\nwhen=['enum']\nnumbering='a)'",
+		)
+		.unwrap(),
+	);
+	assert_ne!(key, sheet.layout_key());
+}
+#[test]
 fn conditions_compose_without_new_vocabulary() {
 	let mut sheet = (*Stylesheet::bundled(false)).clone();
 	sheet.merge(

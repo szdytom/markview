@@ -112,9 +112,9 @@ A block's own box is the exception. Its background, border, padding, spacing, an
 
 ## Fields
 
-Text conditions accept `color`, `font`, `weight`, `size`, `decoration`, and `background`. Block conditions additionally accept `line_height`, `space_before`, `space_after`, and the container fields `padding`, `border_color`, `border_width`, and `radius`. Parts that are not containers—`label`, `marker`, `task_marker`, `caption`, and `placeholder`—reject container geometry. `indent` styles `list` and `enum`; `align` places an image and also positions a `marker` or `task_marker` in its column; `shape` picks a bullet's graphic; `source` belongs to image conditions; `show` belongs to `error`.
+Text conditions accept `color`, `font`, `weight`, `size`, `decoration`, and `background`. Block conditions additionally accept `line_height`, `space_before`, `space_after`, and the container fields `padding`, `border_color`, `border_width`, and `radius`. Parts that are not containers—`label`, `marker`, `task_marker`, `caption`, and `placeholder`—reject container geometry. `indent` styles `list` and `enum`; `align` places an image, positions a `marker` or `task_marker` in its column, and places an ordered list's numbers; `numbering` formats those numbers; `shape` picks a bullet's graphic; `source` belongs to image conditions; `show` belongs to `error`.
 
-A list marker reserves a column before its item text. `marker` covers bullets and numbers, `task_marker` covers checkboxes, and each takes `align = "left"`, `"center"`, or `"right"` to place the marker in that column; the bundled styles center it. A bullet is drawn rather than typed—`shape` is `disc`, `square`, `triangle`, `diamond`, `plus`, or `minus`—so bullets and checkboxes are never part of copied text, while ordered numbers stay text.
+A list marker reserves a column before its item text. `marker` covers bullets, `task_marker` covers checkboxes, and `enum` covers ordered numbers, so each kind can be placed on its own with `align = "left"`, `"center"`, or `"right"`; the bundled styles center all three. A number without an `enum` alignment follows the `marker` one. A bullet is drawn rather than typed—`shape` is `disc`, `square`, `triangle`, `diamond`, `plus`, or `minus`—so bullets and checkboxes are never part of copied text, while ordered numbers stay text, written and copied exactly as the numbering pattern spells them.
 
 `shape` also takes a list, one entry per bullet nesting level and then repeating: `shape = ["plus", "minus"]` draws a plus on the first level and a minus on the second, and a plus again on the third. Ordered levels do not advance the cycle.
 
@@ -123,7 +123,16 @@ A list marker reserves a column before its item text. `marker` covers bullets an
 when = ["marker"]
 align = "center"
 shape = ["plus", "minus"]
+
+[[rule]]
+when = ["enum"]
+align = "right"
+numbering = "1.a."
 ```
+
+`numbering` is a pattern in Typst's notation: literal prefixes, one or more counting symbols, and one suffix. A counting symbol is the character a numeral system uses for one—`1`, `a`/`A`, `i`/`I`, `α`/`Α`, `א`, `一`/`壹`, `あ`/`ア`, `가`/`ㄱ`, `١`/`۱`/`१`/`১`/`ক`, `①` (up to fifty), `⓵` (up to ten), or `*` for note symbols—and everything else prints as it stands. The number of counting symbols is the number of nesting levels the pattern addresses, and the last one repeats for deeper lists, so `1.a.` numbers the first level `1.`, the second `a.`, and the third `a.` again. A system that cannot write a number—an alphabetic zero, a circled number past its range—falls back to decimal. The default is `1.`.
+
+The column grows to the widest number a list actually renders, so a wide format such as `I.` or `一、` never runs into the item text.
 
 `page` accepts only `background`. The furniture conditions accept the text fields, so a page number can be smaller or greyer than the header text beside it.
 

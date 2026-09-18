@@ -143,6 +143,28 @@ fn a_bullet_list_keeps_its_items_and_drops_the_bullet() {
 }
 
 #[test]
+fn an_ordered_list_embeds_its_numbering_format() {
+	// A number stays text, so the page carries what the theme's pattern
+	// spells, not a fixed "1.".
+	let mut sheet = (*print()).clone();
+	sheet.merge(
+		&Stylesheet::parse(
+			"format_version=2\nversion=1\n[[rule]]\nwhen=['enum']\nnumbering='a)'",
+		)
+		.unwrap(),
+	);
+	let exported =
+		export("1. first item\n2. second item\n", Arc::new(sheet), false);
+	let text = exported.pdf.extract_text(&[1]).unwrap();
+	assert!(text.contains("a)"), "{text}");
+	assert!(text.contains("b)"), "{text}");
+	assert!(
+		text.contains("first item") && text.contains("second item"),
+		"{text}"
+	);
+}
+
+#[test]
 fn links_become_annotations_and_headings_become_destinations() {
 	let source = "# Top\n\n[web](https://example.com/) and [jump](#later).\n\n\
 	              ## Later\n\nBack to [top](#top).\n";

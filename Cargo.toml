@@ -61,6 +61,7 @@ anyhow = "1"
 env_logger = { version = "0.11", default-features = false }
 log = "0.4"
 bytemuck = { version = "1", features = ["derive"] }
+codex = { version = "0.3", default-features = false, features = ["numeral-systems"] }
 comrak = { version = "0.55", default-features = false }
 syntect = { version = "5.3", default-features = false, features = ["parsing", "regex-fancy"] }
 two-face = { version = "0.5.1", default-features = false, features = ["syntect-fancy"] }

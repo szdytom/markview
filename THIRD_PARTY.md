@@ -7,6 +7,7 @@ source and original license texts are available in Cargo's registry packages.
 | --- | --- | --- |
 | winit, wgpu | Native windows and GPU rendering | Apache-2.0 OR MIT |
 | Comrak | CommonMark and GFM parser | BSD-2-Clause |
+| codex / chinese-number | Numbering patterns and numeral systems for ordered lists | Apache-2.0 (codex), MIT (chinese-number) |
 | krilla / pdf-writer | PDF content, font subsetting and serialization | MIT OR Apache-2.0 |
 | Skrifa / read-fonts | OpenType tables and variable-font instances | Apache-2.0 OR MIT |
 | subsetter | Font subsetting for embedded text | MIT OR Apache-2.0 |

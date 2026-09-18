@@ -325,8 +325,13 @@ fn validate_field(conditions: ConditionSet, key: &str) -> Result<()> {
 				conditions.has_block() || has(K::Caption)
 			}
 			"indent" => has(K::List) || has(K::Enum),
-			"align" => has(K::Marker) || has(K::TaskMarker),
+			"align" => {
+				has(K::Marker)
+					|| has(K::TaskMarker)
+					|| conditions == ConditionSet::of(K::Enum)
+			}
 			"shape" => has(K::Marker),
+			"numbering" => conditions == ConditionSet::of(K::Enum),
 			"padding" | "border_width" | "radius" => conditions.container(),
 			"border_color" => {
 				conditions.container() || conditions.ui() || has(K::TaskMarker)

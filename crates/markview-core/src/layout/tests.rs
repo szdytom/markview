@@ -552,6 +552,7 @@ fn cjk_boundaries_and_hyphenation() {
 		images: &images,
 		highlight_cache: e.highlights.results(),
 		marker_depth: 0,
+		enum_depth: 0,
 	};
 	let p = context.prepare(&rich, 18.0, &mut out);
 	let units = context.units(&p, 18.0, false, true, 760.0, Default::default());
@@ -1026,6 +1027,143 @@ fn a_shape_cycle_follows_the_bullet_nesting_depth() {
 	assert_eq!(shapes("- one\n  - two\n    - three\n"), [12, 4, 12]);
 	// An ordered level is transparent to the cycle.
 	assert_eq!(shapes("- one\n  1. two\n     - three\n"), [12, 4]);
+}
+
+/// The bundled stylesheet with one `enum` rule merged on top.
+fn ordered_sheet(rule: &str) -> Arc<crate::style::Stylesheet> {
+	let mut sheet = (*crate::style::Stylesheet::bundled(false)).clone();
+	sheet.merge(
+		&crate::style::Stylesheet::parse(&format!(
+			"format_version=2\nversion=1\n[[rule]]\nwhen=['enum']\n{rule}"
+		))
+		.unwrap(),
+	);
+	Arc::new(sheet)
+}
+
+#[test]
+fn a_theme_numbers_ordered_lists() {
+	let snapshot = LayoutEngine::new().layout(
+		&document::parse("1. one\n2. two\n"),
+		&LayoutOptions {
+			width: 400.0,
+			stylesheet: ordered_sheet("numbering=\"a)\""),
+			..Default::default()
+		},
+	);
+	// A formatted number is reading text, so it copies as the theme writes it.
+	assert_eq!(
+		snapshot.extract_text(snapshot.select_all(1).unwrap(), 1),
+		"a) one\nb) two"
+	);
+}
+
+#[test]
+fn a_numbering_pattern_gives_each_nesting_level_its_symbol() {
+	let snapshot = LayoutEngine::new().layout(
+		&document::parse("1. outer\n   1. inner\n"),
+		&LayoutOptions {
+			width: 400.0,
+			stylesheet: ordered_sheet("numbering=\"1.a.\""),
+			..Default::default()
+		},
+	);
+	assert_eq!(
+		snapshot.extract_text(snapshot.select_all(1).unwrap(), 1),
+		"1. outer\na. inner"
+	);
+}
+
+#[test]
+fn a_theme_aligns_ordered_numbers_in_their_column() {
+	fn number_x(rule: &str) -> f32 {
+		let snapshot = LayoutEngine::new().layout(
+			&document::parse("1. ordered item\n"),
+			&LayoutOptions {
+				width: 400.0,
+				stylesheet: ordered_sheet(rule),
+				..Default::default()
+			},
+		);
+		// The number draws before the item text, so it owns the first glyph.
+		snapshot.blocks[0]
+			.layout
+			.draws
+			.iter()
+			.find_map(|draw| match draw {
+				Draw::Glyph(glyph) => Some(glyph.x),
+				_ => None,
+			})
+			.expect("number glyphs")
+	}
+	let left = number_x("align=\"left\"");
+	let center = number_x("align=\"center\"");
+	let right = number_x("align=\"right\"");
+	assert!(left < center && center < right, "{left} {center} {right}");
+	// A number without an `enum` alignment follows `marker`'s, which the
+	// bundled styles center.
+	assert!((number_x("numbering=\"1.\"") - center).abs() < 0.01);
+}
+
+#[test]
+fn a_wide_numbering_format_widens_the_marker_column() {
+	// The reserve is in logical pixels, so a large reader size is exactly when
+	// a fixed column would let a number run into its item text.
+	let layout = |numbering: &str| {
+		let source: String = (1..=8).map(|n| format!("{n}. item\n")).collect();
+		LayoutEngine::new().layout(
+			&document::parse(source.as_str()),
+			&LayoutOptions {
+				width: 400.0,
+				font_size: 30.0,
+				stylesheet: ordered_sheet(&format!(
+					"numbering=\"{numbering}\""
+				)),
+				..Default::default()
+			},
+		)
+	};
+	let text_x = |snapshot: &LayoutSnapshot| {
+		snapshot.blocks[0].layout.text[1].clusters[0].rect.x
+	};
+	let decimal = layout("1.");
+	let roman = layout("I.");
+	assert!(
+		text_x(&roman) > text_x(&decimal),
+		"roman numbers need more room: {} vs {}",
+		text_x(&decimal),
+		text_x(&roman)
+	);
+	// Every number stays clear of the text that follows it.
+	for snapshot in [&decimal, &roman] {
+		for pair in snapshot.blocks[0].layout.text.chunks(2) {
+			let (label, text) =
+				(pair[0].clusters[0].rect, pair[1].clusters[0].rect);
+			assert!(
+				label.x + label.w <= text.x + 0.01,
+				"the number {label:?} overlaps the text {text:?}"
+			);
+		}
+	}
+}
+
+#[test]
+fn a_huge_list_start_cannot_expand_a_symbolic_numbering() {
+	// `999999999.` is a valid list start and `*` repeats a symbol every six
+	// items, so the marker falls back to decimal instead of building a label
+	// hundreds of megabytes long.
+	let snapshot = LayoutEngine::new().layout(
+		&document::parse("999999999. item\n"),
+		&LayoutOptions {
+			width: 400.0,
+			stylesheet: ordered_sheet("numbering=\"*\""),
+			..Default::default()
+		},
+	);
+	assert_eq!(
+		snapshot.extract_text(snapshot.select_all(1).unwrap(), 1),
+		"999999999 item"
+	);
 }
 
 #[test]
@@ -1580,6 +1718,7 @@ fn typst_hyphenation_can_be_turned_off_for_a_passage() {
 			images: &images,
 			highlight_cache: e.highlights.results(),
 			marker_depth: 0,
+			enum_depth: 0,
 		};
 		let p = context.prepare(&rich, 18.0, &mut out);
 		let units =
@@ -1645,6 +1784,7 @@ fn typst_curly_quotes_break_like_cjk_brackets() {
 			images: &images,
 			highlight_cache: e.highlights.results(),
 			marker_depth: 0,
+			enum_depth: 0,
 		};
 		let p = context.prepare(&rich, 18.0, &mut out);
 		context
@@ -1789,6 +1929,7 @@ fn a_hyphen_near_a_word_edge_costs_more_than_one_in_the_middle() {
 		images: &images,
 		highlight_cache: e.highlights.results(),
 		marker_depth: 0,
+		enum_depth: 0,
 	};
 	let p = context.prepare(&rich, 18.0, &mut out);
 	let found: Vec<(usize, f64)> = context

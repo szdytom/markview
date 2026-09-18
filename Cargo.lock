@@ -590,6 +590,24 @@ dependencies = [
 ]
 
 [[package]]
+name = "chinese-number"
+version = "0.7.8"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "3e964125508474a83c95eb935697abbeb446ff4e9d62c71ce880e3986d1c606b"
+dependencies = [
+ "chinese-variant",
+ "enum-ordinalize",
+ "num-bigint",
+ "num-traits",
+]
+
+[[package]]
+name = "chinese-variant"
+version = "1.1.6"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "0d1275808335c5583ea45a4141d631dafcb36b79fa8a5e10b00e356b6af3e08a"
+
+[[package]]
 name = "cipher"
 version = "0.5.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -615,6 +633,15 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "af491d569909a7e4dee0ad7db7f5341fef5c614d5b8ec8cf765732aba3cff681"
 dependencies = [
  "unicode-width",
+]
+
+[[package]]
+name = "codex"
+version = "0.3.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "0732ab1a27b4ea05e6f9f60a5122c9924dd5123defde0d8e907f58cf643d40e6"
+dependencies = [
+ "chinese-number",
 ]
 
 [[package]]
@@ -881,6 +908,26 @@ name = "entities"
 version = "1.0.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "b5320ae4c3782150d900b79807611a59a99fc9a1d61d686faafc24b93fc8d7ca"
+
+[[package]]
+name = "enum-ordinalize"
+version = "4.4.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "89dd01549b09589510cf0647475075d12071456586d70f5c75c98ae2a5537677"
+dependencies = [
+ "enum-ordinalize-derive",
+]
+
+[[package]]
+name = "enum-ordinalize-derive"
+version = "4.4.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "a65863d15a4ce2888bd2f0f543cc963d3879c3a022c8ee43f6141d479a3ac815"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn 3.0.5",
+]
 
 [[package]]
 name = "enumflags2"
@@ -2119,6 +2166,7 @@ name = "markview-core"
 version = "0.1.2"
 dependencies = [
  "anyhow",
+ "codex",
  "comrak",
  "html-escape",
  "hypher",
@@ -2384,6 +2432,25 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "42b8cfee0e339a0337359f3c88165702ac6e600dc01c0cc9579a92d62b08477a"
 dependencies = [
  "bitflags 2.13.1",
+]
+
+[[package]]
+name = "num-bigint"
+version = "0.4.8"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "c89e69e7e0f03bea5ef08013795c25018e101932225a656383bd384495ecc367"
+dependencies = [
+ "num-integer",
+ "num-traits",
+]
+
+[[package]]
+name = "num-integer"
+version = "0.1.47"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "7ce2d95d4b3734dc35aa2f45e1aa22cd416814592a4f9d9205e11affd5b8e10b"
+dependencies = [
+ "num-traits",
 ]
 
 [[package]]

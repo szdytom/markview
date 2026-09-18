@@ -28,6 +28,10 @@ at the same level, without `[brackets]`.
   number or checkbox left, centered or right in its column, and `shape` draws a
   bullet as a disc, square, triangle, diamond, plus or minus. A `shape` list is
   cycled by bullet nesting depth; ordered levels do not advance it.
+- MVSS takes `numbering` and `align` on `enum`, so a theme can format ordered
+  numbers (`a)`, `I.`, `一、`, `①`) with Typst's numbering patterns and place
+  them independently of bullets. The marker column grows to the widest number
+  a list renders.
 
 ### Changed
 

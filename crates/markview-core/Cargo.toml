@@ -8,6 +8,7 @@ publish = false
 
 [dependencies]
 html-escape = "0.2"
+codex.workspace = true
 unicode-segmentation.workspace = true
 comrak.workspace = true
 syntect.workspace = true

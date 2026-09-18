@@ -1,4 +1,5 @@
 //! Stylesheet cascading and resolved semantic appearance.
+mod numbering;
 mod parse;
 mod types;
 use crate::{
@@ -6,10 +7,11 @@ use crate::{
 	scene::{Paint, SCROLLBAR_GUTTER, ScrollbarMetrics},
 };
 use anyhow::{Context, Result, bail};
+pub use numbering::NumberingPattern;
 use serde::Deserialize;
 use std::{
 	collections::BTreeMap,
-	sync::{Arc, OnceLock},
+	sync::{Arc, LazyLock, OnceLock},
 };
 pub use types::{
 	CaptionSource, CjkType, Color, ColorField, Condition, ConditionSet,
@@ -230,9 +232,9 @@ impl Stylesheet {
 		};
 		self.rule(condition).indent.unwrap_or(0.0).max(0.0)
 	}
-	/// Where a marker sits inside the column reserved for it. Bullets and
-	/// numbers share one condition and task checkboxes another, so a theme can
-	/// align the two independently.
+	/// Where a marker sits inside the column reserved for it. Bullets go
+	/// through `marker` and task checkboxes through `task_marker`, and an
+	/// ordered number through `enum`.
 	pub fn marker_align(&self, task: bool) -> TextAlign {
 		let condition = if task {
 			Condition::TaskMarker
@@ -240,6 +242,15 @@ impl Stylesheet {
 			Condition::Marker
 		};
 		self.rule(condition).align.unwrap_or(TextAlign::Left)
+	}
+	/// Where an ordered number sits in its column. `enum` owns the number's
+	/// place, so it can differ from the bullets around it; without an `enum`
+	/// alignment the number follows the shared `marker` one.
+	pub fn enum_align(&self) -> TextAlign {
+		self.rule(Condition::Enum)
+			.align
+			.or(self.rule(Condition::Marker).align)
+			.unwrap_or(TextAlign::Left)
 	}
 	/// The bullet graphics, in nesting order and cycled by depth. Ordered
 	/// numbers ignore them.
@@ -249,6 +260,18 @@ impl Stylesheet {
 			Some(shapes) if !shapes.cycle().is_empty() => shapes.cycle(),
 			_ => &DEFAULT,
 		}
+	}
+	/// How an ordered list writes its numbers.
+	pub fn enum_numbering(&self) -> &NumberingPattern {
+		static DEFAULT: LazyLock<NumberingPattern> = LazyLock::new(|| {
+			numbering::DEFAULT_NUMBERING
+				.parse()
+				.expect("the default numbering pattern is valid")
+		});
+		self.rule(Condition::Enum)
+			.numbering
+			.as_ref()
+			.unwrap_or(&DEFAULT)
 	}
 	pub fn merge(&mut self, higher: &Self) {
 		for (key, def) in &higher.fontdef_variants {
@@ -436,8 +459,8 @@ impl Stylesheet {
 				rule.border_width,
 			));
 			s.push_str(&format!(
-				"{:?}{:?}{:?}",
-				rule.radius, rule.gutter, rule.shape
+				"{:?}{:?}{:?}{:?}",
+				rule.radius, rule.gutter, rule.shape, rule.numbering
 			));
 		}
 		crate::document::fingerprint(&s)

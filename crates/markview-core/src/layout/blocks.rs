@@ -13,6 +13,15 @@ use std::sync::Arc;
 /// bundled marker size therefore draws a bullet about a third of an em.
 const BULLET_SIDE: f32 = 0.36;
 
+/// The column a list reserves before its item text, in logical pixels. An
+/// ordered list widens it to fit the widest number its numbering pattern and
+/// range produce, so a longer format never runs into the text.
+const MARKER_COLUMN: f32 = 30.0;
+
+/// The space a widened column leaves between a number and the text that
+/// follows it, in multiples of the marker's own size.
+const MARKER_GAP: f32 = 0.35;
+
 /// The x a marker of `width` takes inside its reserved column, which runs from
 /// the item's left edge to where its text begins.
 fn marker_offset(align: TextAlign, column: f32, width: f32) -> f32 {
@@ -484,9 +493,39 @@ impl BlockContext<'_> {
 					shapes[self.marker_depth % shapes.len()],
 					bullet_side,
 				);
-				// A nested list inside an item is one bullet level deeper.
+				// A nested list inside an item is one bullet level deeper, and
+				// one ordered level takes the next counting symbol. This list's
+				// own items number at the depth it was entered at.
+				let enum_depth = self.enum_depth;
 				if start.is_none() {
 					self.marker_depth += 1;
+				} else {
+					self.enum_depth += 1;
+				}
+				let numbering = opts.stylesheet.enum_numbering();
+				let number_align = opts.stylesheet.enum_align();
+				// One column holds every marker of the list, so the item text
+				// starts at one x. An ordered list widens it to its own numbers.
+				let mut column = MARKER_COLUMN;
+				if let Some(start) = *start {
+					let gap = MARKER_GAP * opts.font_size * bullet.size;
+					for (i, item) in items.iter().enumerate() {
+						if item.checked.is_some() {
+							continue;
+						}
+						let label =
+							numbering.number(enum_depth, (start + i) as u64);
+						let (_, width) = self.shaper.label_with(
+							&label,
+							opts.font_size,
+							0.,
+							0.,
+							&bullet,
+							bullet.paint,
+							None,
+						);
+						column = column.max(width + gap);
+					}
 				}
 				for (i, item) in items.iter().enumerate() {
 					self.shaper.appearance = item_appearance.clone();
@@ -503,27 +542,45 @@ impl BlockContext<'_> {
 					// checkboxes are drawn, so nothing about them is selectable.
 					let numbered = item.checked.is_none() && start.is_some();
 					if numbered {
-						let marker = format!("{}. ", start.unwrap() + i);
-						let mut node = TextNode::new(marker.clone(), "\n");
+						let label = numbering
+							.number(enum_depth, (start.unwrap() + i) as u64);
+						let (mut draws, width) = self.shaper.label_with(
+							&label,
+							opts.font_size,
+							item_x,
+							top + size * 1.15,
+							&bullet,
+							bullet.paint,
+							Some(Paint::Scoped(
+								bullet.chain,
+								Condition::Marker,
+								ColorField::Background,
+							)),
+						);
+						// Shaping starts at the column's left edge; alignment
+						// moves the finished label without reshaping it.
+						let dx = marker_offset(number_align, column, width);
+						for draw in &mut draws {
+							draw.translate(dx, 0.);
+						}
+						let command = out.draws.len();
+						out.draws.extend(draws);
+						// The number copies as its own word before the item.
+						let mut node = TextNode::new(format!("{label} "), "\n");
 						node.push(TextCluster {
-							range: 0..marker.len(),
+							range: 0..node.text.len(),
 							rect: Rect {
-								x,
+								x: item_x + dx,
 								y: top,
-								w: 25.0,
+								w: width,
 								h: size * self.shaper.appearance.line_height,
 							},
 							rtl: false,
-							command: out.draws.len(),
+							command,
 						});
 						out.text.push(node);
 					}
 					let first_child = out.text.len();
-					let indent = if start.is_some_and(|n| n + i >= 100) {
-						48.0
-					} else {
-						30.0
-					};
 					if let Some(checked) = item.checked {
 						let task = opts.stylesheet.text(
 							&self.shaper.appearance,
@@ -535,7 +592,7 @@ impl BlockContext<'_> {
 							x: item_x
 								+ marker_offset(
 									opts.stylesheet.marker_align(true),
-									indent,
+									column,
 									box_size,
 								),
 							y: top + size * 0.5,
@@ -574,40 +631,11 @@ impl BlockContext<'_> {
 									.0,
 							);
 						}
-					} else if let Some(number) = *start {
-						let marker = format!("{}.", number + i);
-						let bullet = opts
-							.stylesheet
-							.text(&self.shaper.appearance, Condition::Marker);
-						let (mut draws, width) = self.shaper.label_with(
-							&marker,
-							opts.font_size,
-							item_x,
-							top + size * 1.15,
-							&bullet,
-							bullet.paint,
-							Some(Paint::Scoped(
-								bullet.chain,
-								Condition::Marker,
-								ColorField::Background,
-							)),
-						);
-						// Shaping starts at the column's left edge; alignment
-						// moves the finished label without reshaping it.
-						let dx = marker_offset(
-							opts.stylesheet.marker_align(false),
-							indent,
-							width,
-						);
-						for draw in &mut draws {
-							draw.translate(dx, 0.);
-						}
-						out.draws.extend(draws);
-					} else {
+					} else if !numbered {
 						let left = item_x
 							+ marker_offset(
 								opts.stylesheet.marker_align(false),
-								indent,
+								column,
 								bullet_side,
 							);
 						out.draws.push(Draw::Polygon {
@@ -622,9 +650,9 @@ impl BlockContext<'_> {
 					top += self
 						.children(
 							&item.blocks,
-							item_x + indent,
+							item_x + column,
 							top,
-							(item_width - indent).max(1.),
+							(item_width - column).max(1.),
 							&item_opts,
 							size * 0.6,
 							out,
@@ -653,6 +681,8 @@ impl BlockContext<'_> {
 				}
 				if start.is_none() {
 					self.marker_depth -= 1;
+				} else {
+					self.enum_depth -= 1;
 				}
 				self.shaper.appearance = list_appearance;
 				top - y
