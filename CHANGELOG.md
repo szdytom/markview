@@ -13,6 +13,10 @@ at the same level, without `[brackets]`.
 
 ## Unreleased
 
+## 0.1.2 - 2026-09-18
+
+Paper export, faster first frames, and a smaller idle footprint.
+
 ### Added
 
 - `--pdf FILE --output out.pdf` exports the document to paper: vector text with
@@ -68,12 +72,29 @@ at the same level, without `[brackets]`.
   update, so a second document with identical content still fills its footer.
 - Closing the last tab releases the worker's parsed document, decoded images and
   layout caches, so an idle reader keeps nothing from the document it closed.
-
 - `--render` and `--pdf` wait for the syntax highlighting pass, so exported
   code keeps its colors instead of only the text.
 - The window sets its Wayland application ID, so a desktop with
   `markview.desktop` installed shows the Markview icon and groups the window
   with it instead of falling back to a placeholder.
+- Compressing a line now moves the glyph with the blank half it spends, so an
+  opening CJK bracket no longer overlaps the character after it.
+- A quote break keeps the neighbouring prohibition, so a closing quote no longer
+  hands a full stop to the next line and an opening quote no longer strands an
+  opening bracket on the last.
+- A tab-indented fenced code block inside a list no longer gains a leading space.
+- A footnote's number is set at the note body's size and baseline in a column
+  shared by every note, instead of floating above the text as a superscript.
+- The diagnostic renders and benchmarks set CJK text in the configured face
+  again: they never selected a `[cjk]` variant, so every Han cluster was drawn
+  in a system fallback face. `--cjk-type` now names one on the command line.
+- The Windows reader is linked for the Windows subsystem, so opening it no
+  longer puts a console window on screen. A run with a command line attaches to
+  the console it was launched from, and output with nowhere to go is dropped
+  instead of panicking.
+- Installing the Windows MSI over an already installed copy of the same version
+  replaces it instead of leaving both registered, which a rebuild of a released
+  version used to produce.
 
 ### Changed
 
@@ -120,27 +141,6 @@ at the same level, without `[brackets]`.
   suite no longer passes on macOS and fails on Linux or Windows.
 - The `comrak` patch points at upstream again, which now carries the fenced
   block offset fix the personal fork had supplied.
-
-### Fixed
-
-- Compressing a line now moves the glyph with the blank half it spends, so an
-  opening CJK bracket no longer overlaps the character after it.
-- A quote break keeps the neighbouring prohibition, so a closing quote no longer
-  hands a full stop to the next line and an opening quote no longer strands an
-  opening bracket on the last.
-- A tab-indented fenced code block inside a list no longer gains a leading space.
-- A footnote's number is set at the note body's size and baseline in a column
-  shared by every note, instead of floating above the text as a superscript.
-- The diagnostic renders and benchmarks set CJK text in the configured face
-  again: they never selected a `[cjk]` variant, so every Han cluster was drawn
-  in a system fallback face. `--cjk-type` now names one on the command line.
-- The Windows reader is linked for the Windows subsystem, so opening it no
-  longer puts a console window on screen. A run with a command line attaches to
-  the console it was launched from, and output with nowhere to go is dropped
-  instead of panicking.
-- Installing the Windows MSI over an already installed copy of the same version
-  replaces it instead of leaving both registered, which a rebuild of a released
-  version used to produce.
 
 ## 0.1.1 - 2026-09-16
 
