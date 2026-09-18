@@ -126,6 +126,73 @@ fn heading_anchors_resolve_to_layout_positions() {
 	assert_eq!(again.anchor_y("nested"), Some(nested));
 }
 #[test]
+fn a_quote_bar_is_centered_on_the_text_it_frames() {
+	// The quote bar runs down the box's left edge, so a box that kept the
+	// outer spacing of its children would hang past the text on one side and
+	// stop short on the other.
+	for source in [
+		"> Quoted paragraph text.\n",
+		"> ## Quoted heading\n>\n> Quoted paragraph text.\n",
+	] {
+		let doc = document::parse(source);
+		let snapshot =
+			LayoutEngine::new().layout(&doc, &LayoutOptions::default());
+		let quote = &snapshot.blocks[0];
+		let rect = quote
+			.layout
+			.draws
+			.iter()
+			.find_map(|d| match d {
+				Draw::Box {
+					rect,
+					condition: Condition::Blockquote,
+					..
+				} => Some(*rect),
+				_ => None,
+			})
+			.expect("blockquote box");
+		let (top, bottom) = quote
+			.layout
+			.text
+			.iter()
+			.flat_map(|node| &node.clusters)
+			.fold((f32::INFINITY, f32::NEG_INFINITY), |(top, bottom), c| {
+				(c.rect.y.min(top), (c.rect.y + c.rect.h).max(bottom))
+			});
+		let (above, below) = (top - rect.y, rect.y + rect.h - bottom);
+		assert!(
+			(above - below).abs() < 0.5,
+			"{source:?}: the quote bar sits {above} above the text and \
+			 {below} below it"
+		);
+	}
+}
+#[test]
+fn list_items_keep_the_paragraph_space_between_them() {
+	// An item's own box carries no spacing in the bundled themes, so the
+	// paragraph's trailing space is what separates one item from the next. A
+	// quote hugs its content; a list item must not.
+	let opts = LayoutOptions::default();
+	let doc = document::parse("- First item\n- Second item\n");
+	let snapshot = LayoutEngine::new().layout(&doc, &opts);
+	let clusters: Vec<Rect> = snapshot.blocks[0]
+		.layout
+		.text
+		.iter()
+		.flat_map(|node| node.clusters.iter().map(|c| c.rect))
+		.collect();
+	// The marker sits at the list's own margin; the item text is indented.
+	let left = clusters.iter().map(|r| r.x).fold(f32::INFINITY, f32::min);
+	let markers: Vec<Rect> =
+		clusters.into_iter().filter(|r| r.x < left + 0.5).collect();
+	assert_eq!(markers.len(), 2);
+	let gap = markers[1].y - markers[0].y;
+	assert!(
+		gap > markers[0].h + opts.font_size * 0.5,
+		"the items are {gap} apart"
+	);
+}
+#[test]
 fn footnote_links_reach_the_note_and_its_number_returns() {
 	let mut engine = LayoutEngine::new();
 	let opts = LayoutOptions {

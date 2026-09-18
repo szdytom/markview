@@ -21,6 +21,9 @@ at the same level, without `[brackets]`.
 
 ### Fixed
 
+- A blockquote's bar is centered on the text it frames: the quote's box no
+  longer absorbs the outer spacing of its first and last child, which left the
+  bar hanging far below a quote.
 - Syntax colors no longer leak: a code comment painted every line after it in
   the comment color, because syntect was handed lines without their terminator.
 - PDF export drew the CJK and emoji inside a formula's `\text{…}` group with

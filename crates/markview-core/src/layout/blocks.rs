@@ -5,8 +5,44 @@ use crate::{
 		Block, BlockKind, CellAlign, Inline, InlineKind, RichText, footnote,
 	},
 	scene::{BlockLayout, Draw, HeadingAnchor, LinkRect, Paint, Rect},
-	style::{ColorField, Condition},
+	style::{ColorField, Condition, TextAppearance},
 };
+
+/// The element a block's box belongs to.
+fn block_role(block: &Block) -> Condition {
+	match &block.kind {
+		BlockKind::Paragraph(_) => Condition::P,
+		BlockKind::Heading { level, .. } => Condition::heading(*level),
+		BlockKind::Code { .. } => Condition::CodeBlock,
+		BlockKind::Quote { .. } => Condition::Blockquote,
+		BlockKind::List { start, .. } => {
+			if start.is_some() {
+				Condition::Enum
+			} else {
+				Condition::List
+			}
+		}
+		BlockKind::Table { .. } => Condition::Table,
+		BlockKind::Footnote { .. } => Condition::Footnote,
+		BlockKind::Rule => Condition::Hr,
+	}
+}
+
+/// The spacing a block reserves outside its box, given the appearance its
+/// parent established.
+fn outer_spacing(
+	block: &Block,
+	parent: &TextAppearance,
+	opts: &LayoutOptions,
+) -> (f32, f32) {
+	let role = block_role(block);
+	let appearance = opts.stylesheet.text(parent, role);
+	let rule = opts.stylesheet.element_rule(appearance.chain, role);
+	(
+		rule.space_before.unwrap_or(0.) * opts.font_size,
+		rule.space_after.unwrap_or(0.) * opts.font_size,
+	)
+}
 
 /// A paragraph earns a first-line indent only when its first visible content is
 /// text. A leading image or display formula is a centered figure or block, so
@@ -155,6 +191,30 @@ impl BlockContext<'_> {
 		cursor - y
 	}
 
+	/// Lay out children that a box with visible edges frames. The opening space
+	/// of the first child and the closing space of the last one are outer
+	/// spacing, so they stay outside the box: keeping them would leave its
+	/// padding and border lopsided around the content.
+	pub(super) fn framed_children(
+		&mut self,
+		blocks: &[Block],
+		x: f32,
+		y: f32,
+		width: f32,
+		opts: &LayoutOptions,
+		out: &mut BlockLayout,
+	) -> f32 {
+		let parent = self.shaper.appearance.clone();
+		let (lead, trail) = match (blocks.first(), blocks.last()) {
+			(Some(first), Some(last)) => (
+				outer_spacing(first, &parent, opts).0,
+				outer_spacing(last, &parent, opts).1,
+			),
+			_ => (0., 0.),
+		};
+		self.children(blocks, x, y - lead, width, opts, 0., out) - lead - trail
+	}
+
 	pub(super) fn block(
 		&mut self,
 		block: &Block,
@@ -164,22 +224,7 @@ impl BlockContext<'_> {
 		opts: &LayoutOptions,
 		out: &mut BlockLayout,
 	) -> f32 {
-		let role = match &block.kind {
-			BlockKind::Paragraph(_) => Condition::P,
-			BlockKind::Heading { level, .. } => Condition::heading(*level),
-			BlockKind::Code { .. } => Condition::CodeBlock,
-			BlockKind::Quote { .. } => Condition::Blockquote,
-			BlockKind::List { start, .. } => {
-				if start.is_some() {
-					Condition::Enum
-				} else {
-					Condition::List
-				}
-			}
-			BlockKind::Table { .. } => Condition::Table,
-			BlockKind::Footnote { .. } => Condition::Footnote,
-			BlockKind::Rule => Condition::Hr,
-		};
+		let role = block_role(block);
 		let previous = self.shaper.appearance.clone();
 		let appearance = opts.stylesheet.text(&previous, role);
 		let chain = appearance.chain;
@@ -321,16 +366,7 @@ impl BlockContext<'_> {
 					));
 					top += size * self.shaper.appearance.line_height;
 				}
-				top - y
-					+ self.children(
-						blocks,
-						x,
-						top,
-						width,
-						opts,
-						size * 0.6,
-						out,
-					)
+				top - y + self.framed_children(blocks, x, top, width, opts, out)
 			}
 			BlockKind::List {
 				start,
