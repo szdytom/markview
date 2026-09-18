@@ -43,6 +43,10 @@ at the same level, without `[brackets]`.
 
 - Bullets and task checkboxes are drawn shapes rather than text, so they are no
   longer selectable or copied; the bundled styles center them in their column.
+- Inline code breaks between any two characters inside a run, free at a word
+  edge and at a small penalty inside a word, so a long identifier wraps instead
+  of overflowing its block. The run's edges keep ordinary break rules, so a
+  following comma or closing bracket never starts a line.
 
 ### Fixed
 

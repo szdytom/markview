@@ -14,6 +14,15 @@ use std::ops::Range;
 /// word's edges is taken into account.
 const HYPHEN_PENALTY: f64 = 50.0;
 
+/// Demerits for splitting a word inside inline code, such as breaking
+/// `identifier` between two letters. Code is set exactly as written, so it has
+/// no hyphenation dictionary and often no word spaces to break at; every
+/// boundary inside the run is offered instead. A break that separates tokens —
+/// where a text editor's whole-word selection stops, as in `foo|=|bar()` — is
+/// free; only a break that splits a word carries this cost, small enough that an
+/// ordinary word space or a hyphenation point still wins when one is available.
+pub(super) const CODE_BREAK_PENALTY: f64 = 10.0;
+
 /// Demerits for a hyphenation break, graded by how close it lands to either
 /// edge of the word. A hyphen a character or two from the start or end reads as
 /// a mistake rather than a convenience, so it should be worth avoiding even
@@ -224,6 +233,7 @@ impl BlockContext<'_> {
 			.map(|c| c.width)
 			.sum();
 		microtype::space_mixed_scripts(&mut clusters, &p.text, &p.spans, size);
+		let code = code_clusters(&clusters, &p.spans);
 		let mut units = Vec::new();
 		for (i, c) in clusters.iter().enumerate() {
 			let t = &p.text[c.range.clone()];
@@ -232,9 +242,16 @@ impl BlockContext<'_> {
 			let soft_hyphen = t == "\u{ad}";
 			let math = p.math.get(&c.range.start);
 			let next = clusters.get(i + 1);
-			let legal = (breaks.contains(&c.range.end)
-				&& !next.is_some_and(|c| c.continuation))
+			// A continuation carries no glyph of its own, so a break before it
+			// would split one grapheme cluster.
+			let attachable = !next.is_some_and(|c| c.continuation);
+			let legal = (breaks.contains(&c.range.end) && attachable)
 				|| microtype::quote_edge_break(&clusters, &p.text, i, size);
+			// Only a boundary between two code characters belongs to the code
+			// run. Its edges belong to the surrounding text, so the segmenter's
+			// rules still decide them and a following comma or closing bracket
+			// is never left to start the next line.
+			let in_code = code[i] && code.get(i + 1).copied().unwrap_or(false);
 			let after = if hard {
 				// A break the author asked to justify still ends a line, but
 				// the line it ends is set flush like any other.
@@ -258,6 +275,19 @@ impl BlockContext<'_> {
 				})
 			} else if legal {
 				Some(Break::NORMAL)
+			} else if attachable && in_code {
+				// Inline code has its own breaking rule: a boundary between two
+				// code characters is always legal. A token edge is free, the
+				// way a whole-word selection stops there; a split inside a word
+				// carries a small penalty that still prefers a real word space.
+				Some(if splits_word(&p.text, c.range.end) {
+					Break {
+						penalty: CODE_BREAK_PENALTY,
+						..Break::NORMAL
+					}
+				} else {
+					Break::NORMAL
+				})
 			} else {
 				None
 			};
@@ -377,6 +407,38 @@ impl BlockContext<'_> {
 		microtype::compress_line_edges(&mut clusters, &p.text, size, typo.cjk);
 		clusters
 	}
+}
+
+/// Whether each cluster belongs to an inline code run, found by walking the
+/// spans alongside the clusters, both of which are in reading order.
+fn code_clusters(clusters: &[Cluster], spans: &[Span]) -> Vec<bool> {
+	let mut code = Vec::with_capacity(clusters.len());
+	let mut cursor = 0;
+	for cluster in clusters {
+		while cursor < spans.len()
+			&& spans[cursor].range.end <= cluster.range.start
+		{
+			cursor += 1;
+		}
+		code.push(spans.get(cursor).is_some_and(|span| {
+			span.style.code && span.range.contains(&cluster.range.start)
+		}));
+	}
+	code
+}
+
+/// Whether the boundary at `at` falls inside a word, which is a split of an
+/// identifier or a number rather than an edge between tokens.
+fn splits_word(text: &str, at: usize) -> bool {
+	let before = text[..at].chars().next_back();
+	let after = text[at..].chars().next();
+	before.is_some_and(is_word_char) && after.is_some_and(is_word_char)
+}
+
+/// Whether `c` is part of a word, matching the characters an editor's
+/// double-click selection spans: letters, digits and underscore.
+fn is_word_char(c: char) -> bool {
+	c.is_alphanumeric() || c == '_'
 }
 
 /// The end of the footnote-reference run that starts at `start`: adjacent

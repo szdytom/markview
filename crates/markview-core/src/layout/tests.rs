@@ -1948,6 +1948,163 @@ fn typst_hyphenation_can_be_turned_off_for_a_passage() {
 }
 
 #[test]
+fn a_long_inline_code_run_wraps_instead_of_overflowing() {
+	// A code run with no spaces is otherwise one unbreakable box, so it would
+	// run past the measure and force the block to scroll. Its own break rule
+	// lets it wrap at a character instead.
+	let doc = document::parse(
+		"Take `a_very_long_identifier_without_any_spaces_at_all` here.\n",
+	);
+	let snapshot = LayoutEngine::new().layout(
+		&doc,
+		&LayoutOptions {
+			width: 320.0,
+			..Default::default()
+		},
+	);
+	let block = &snapshot.blocks[0].layout;
+	assert_eq!(snapshot.degraded, 0);
+	assert!(
+		block.overflow.is_empty(),
+		"inline code overflowed: {:?}",
+		block.overflow
+	);
+	let rows = drawn_lines(&snapshot);
+	assert!(rows.len() > 1, "the code run did not wrap: {rows:?}");
+	// A break inside code is not a hyphenation, so no hyphen is drawn.
+	assert!(
+		rows.iter().flatten().all(|(text, _)| !text.contains('-')),
+		"{rows:?}"
+	);
+}
+
+#[test]
+fn inline_code_breaks_for_free_at_word_edges_and_cheaply_inside_a_word() {
+	// Every boundary between two code characters is a break, and none draws a
+	// hyphen. Word edges — `foo|=|bar()|+|quz(1,|2)` — are where a whole-word
+	// selection stops, so they are free; splitting an identifier or a number
+	// still costs a little, which keeps a real word space ahead of it.
+	let doc = document::parse(
+		"Plain `foo=bar()+quz(1,2)` and `code_span`, `baz`) end.\n",
+	);
+	let rich = match &doc.blocks[0].kind {
+		document::BlockKind::Paragraph(rich) => rich,
+		other => panic!("expected a paragraph, found {other:?}"),
+	};
+	let mut e = LayoutEngine::new();
+	let mut out = BlockLayout::default();
+	let images = Default::default();
+	let mut context = BlockContext {
+		shaper: &mut e.shaper,
+		math: &mut e.math,
+		images: &images,
+		highlight_cache: e.highlights.results(),
+		marker_depth: 0,
+		enum_depth: 0,
+	};
+	let p = context.prepare(rich, 18.0, &mut out);
+	let breaks: Vec<(usize, f64, f32)> = context
+		.units(&p, 18.0, false, true, 760.0, Default::default())
+		.iter()
+		.filter_map(|u| {
+			u.after.map(|b| (u.source.end, b.penalty, b.hyphen_width))
+		})
+		.collect();
+	let penalty = |text: &str, start: usize, offset: usize| {
+		let end = start + offset;
+		let found =
+			breaks
+				.iter()
+				.find(|(at, ..)| *at == end)
+				.unwrap_or_else(|| {
+					panic!("no break at {text:?}+{offset}: {breaks:?}")
+				});
+		assert_eq!(found.2, 0.0, "a code break draws no hyphen: {breaks:?}");
+		found.1
+	};
+
+	let code = "foo=bar()+quz(1,2)";
+	let start = p.text.find(code).expect("the code text");
+	for offset in 1..code.len() {
+		penalty(code, start, offset);
+	}
+	for offset in [3, 4, 9, 10, 16] {
+		assert_eq!(penalty(code, start, offset), 0.0, "free edge in {code:?}");
+	}
+	for offset in [1, 2, 5, 6, 11, 12] {
+		assert_eq!(
+			penalty(code, start, offset),
+			inline::CODE_BREAK_PENALTY,
+			"split inside a word in {code:?}"
+		);
+	}
+
+	// An identifier has no free edge, so every split of it carries the cost.
+	let word = "code_span";
+	let start = p.text.find(word).expect("the code text");
+	for offset in 1..word.len() {
+		assert_eq!(
+			penalty(word, start, offset),
+			inline::CODE_BREAK_PENALTY,
+			"{word:?}"
+		);
+	}
+
+	// The run's trailing edge is the surrounding text's to decide: a comma or a
+	// closing bracket after code keeps the segmenter's prohibition, so it can
+	// never be detached onto a line of its own.
+	for edge in [word, "baz"] {
+		let start = p.text.find(edge).expect("the code text");
+		let end = start + edge.len();
+		assert!(
+			breaks.iter().all(|(at, ..)| *at != end),
+			"a break detached {:?}: {breaks:?}",
+			&p.text[end..]
+		);
+	}
+
+	// The plain words keep their ordinary free breaks, and a hyphen still costs
+	// more than a code break.
+	assert!(
+		breaks.iter().any(|(_, penalty, _)| *penalty == 0.0),
+		"{breaks:?}"
+	);
+	assert!(inline::CODE_BREAK_PENALTY < inline::hyphen_penalty(5, 5));
+}
+
+#[test]
+fn code_never_detaches_following_punctuation() {
+	// A code run's trailing edge belongs to the surrounding text, so a comma or
+	// a closing bracket after code keeps the segmenter's prohibition and never
+	// starts a line, whatever width the column has. Greedy breaking takes the
+	// farthest break that fits, so it would detach the mark if one were offered.
+	let doc = document::parse(
+		"A sentence with `some_identifier`, then `baz`) and more words.\n",
+	);
+	for greedy in [false, true] {
+		for width in (120..=760).step_by(4) {
+			let width = width as f32;
+			let snapshot = LayoutEngine::new().layout(
+				&doc,
+				&LayoutOptions {
+					width,
+					greedy,
+					..Default::default()
+				},
+			);
+			for row in drawn_lines(&snapshot) {
+				let first =
+					row.first().map(|(text, _)| text.as_str()).unwrap_or("");
+				assert!(
+					!first.starts_with(',') && !first.starts_with(')'),
+					"greedy={greedy} width={width}: {row:?}"
+				);
+			}
+		}
+	}
+}
+
+#[test]
 fn typst_curly_quotes_break_like_cjk_brackets() {
 	// `inline/cjk.typ` and Typst's custom ICU segmenter: a CJK run must be able
 	// to break before an opening curly quote and after a closing one, or a
