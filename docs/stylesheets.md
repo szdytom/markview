@@ -172,6 +172,23 @@ font = [
 
 The flag applies only to `variant = "italic"` or `"oblique"`; a real italic or oblique face is still preferred when one exists. CJK variants may be defined with `type = "SC"`, `"TC"`, or `"JP"`. A user may override a definition with `[[fontdef-override]]`, but stylesheet files cannot bundle font files or download them.
 
+An Emoji definition sets `emoji = true`, which makes the family the face for Emoji text rather than one candidate among the reading fonts:
+
+```toml
+[[fontdef]]
+id = "emoji"
+emoji = true
+lookfor = ["Noto Color Emoji", "Apple Color Emoji", "Segoe UI Emoji"]
+
+[[rule]]
+when = ["body"]
+font = [{ family = "serif" }, { family = "emoji", weight = 400 }]
+```
+
+A grapheme cluster that Unicode presents as Emoji—a character with `Emoji_Presentation`, or any cluster carrying a `U+FE0F` selector—takes the Emoji face even when an earlier text candidate also covers it, which keeps check marks and warning signs colored instead of taking a symbol glyph from the CJK or symbol family that happens to hold one. A `U+FE0E` selector asks for the text presentation again. A text cluster never takes the Emoji face until the other candidates are exhausted, wherever the definition sits in the rule's list. Many Emoji families ship only a regular face, so an Emoji candidate is usually written with `weight = 400`.
+
+Redefining a bundled `fontdef` id replaces its whole definition, so a style that redefines `emoji` repeats the flag; `[[fontdef-override]]` changes only the family names and keeps it.
+
 ## Images and captions
 
 ```toml

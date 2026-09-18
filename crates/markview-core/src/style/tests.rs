@@ -44,6 +44,13 @@ fn bundled_emoji_keeps_regular_face_in_headings_and_emphasis() {
 	}
 }
 #[test]
+fn bundled_emoji_definition_is_marked_as_the_emoji_face() {
+	for dark in [false, true] {
+		assert!(Stylesheet::bundled(dark).fontdefs["emoji"].emoji);
+	}
+	assert!(Stylesheet::bundled_print().fontdefs["emoji"].emoji);
+}
+#[test]
 fn strict_schema() {
 	for bad in [
 		"[body]\ncolor='#ffffff'",

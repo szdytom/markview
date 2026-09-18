@@ -23,6 +23,8 @@ struct Face {
 	weight: u16,
 	/// The family has no italic of its own, so the renderer shears this face.
 	synthetic_italic: bool,
+	/// The candidate's font definition names the Emoji face.
+	emoji: bool,
 }
 
 #[derive(Default)]
@@ -39,20 +41,7 @@ impl FontSet {
 		if let Some(choice) = self.choices.get(text) {
 			return *choice;
 		}
-		let choice = self.faces.iter().position(|face| {
-			swash::FontRef::from_index(
-				face.font.data.data(),
-				face.font.index as usize,
-			)
-			.is_some_and(|font| {
-				let charmap = font.charmap();
-				text.chars().all(|c| {
-					c.is_control()
-						|| matches!(c as u32,0x200c..=0x200f|0xfe00..=0xfe0f|0xe0100..=0xe01ef)
-						|| charmap.map(c) != 0
-				})
-			})
-		});
+		let choice = self.select(text);
 		// Bound retained text even for documents containing unique joining words.
 		// Cache misses (including unsupported clusters) preserve the same scan.
 		if text.len() <= 128 && self.choices.len() < 4096 {
@@ -60,6 +49,51 @@ impl FontSet {
 		}
 		choice
 	}
+	/// The first face covering `text`, taking the group the cluster asks for
+	/// first and the other one only as a fallback, so a missing Emoji face
+	/// never costs a glyph.
+	fn select(&self, text: &str) -> Option<usize> {
+		let group = |emoji: bool| {
+			self.faces
+				.iter()
+				.position(|face| face.emoji == emoji && covers(face, text))
+		};
+		if prefers_emoji(text) {
+			group(true).or_else(|| group(false))
+		} else {
+			group(false).or_else(|| group(true))
+		}
+	}
+}
+/// Whether `face` maps every character of `text`, ignoring the ones that only
+/// modulate a neighbor.
+fn covers(face: &Face, text: &str) -> bool {
+	swash::FontRef::from_index(face.font.data.data(), face.font.index as usize)
+		.is_some_and(|font| {
+			let charmap = font.charmap();
+			text.chars().all(|c| {
+				c.is_control()
+					|| matches!(c as u32,0x200c..=0x200f|0xfe00..=0xfe0f|0xe0100..=0xe01ef)
+					|| charmap.map(c) != 0
+			})
+		})
+}
+/// Whether a grapheme cluster asks for emoji presentation.
+///
+/// Unicode gives every Emoji character a default presentation, and a variation
+/// selector may override it. A keycap or flag carries no `Emoji_Presentation`
+/// character of its own, so the selector decides on its own.
+fn prefers_emoji(cluster: &str) -> bool {
+	// U+FE0E VARIATION SELECTOR-15 asks for the text presentation.
+	if cluster.contains('\u{fe0e}') {
+		return false;
+	}
+	// U+FE0F VARIATION SELECTOR-16 asks for the emoji presentation.
+	cluster.contains('\u{fe0f}') || cluster.chars().any(is_emoji_presentation)
+}
+fn is_emoji_presentation(c: char) -> bool {
+	use icu_properties::{CodePointSetDataBorrowed, props::EmojiPresentation};
+	CodePointSetDataBorrowed::new::<EmojiPresentation>().contains(c)
 }
 
 #[derive(Clone)]
@@ -282,9 +316,8 @@ impl TextShaper {
 					Variant::Oblique => FontStyle::Oblique(None),
 				};
 				let weight = candidate.weight.unwrap_or(appearance.weight);
-				let families: Vec<_> = if let Some(def) =
-					self.stylesheet.fontdefs.get(&candidate.family)
-				{
+				let def = self.stylesheet.fontdefs.get(&candidate.family);
+				let families: Vec<_> = if let Some(def) = def {
 					def.lookfor
 						.iter()
 						.find_map(|name| {
@@ -378,6 +411,7 @@ impl TextShaper {
 							},
 							weight,
 							synthetic_italic: synthetic,
+							emoji: def.is_some_and(|def| def.emoji),
 						});
 					}
 				}

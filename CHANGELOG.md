@@ -22,9 +22,14 @@ at the same level, without `[brackets]`.
 - `--pdf … --watch` re-exports whenever the document or a local image it
   references changes, until the session is stopped. Rebuilds reuse the previous
   parse, block layout and decoded images; an unchanged save is skipped.
+- An MVSS `fontdef` takes `emoji = true`, which marks the family as the face for
+  Emoji text; the bundled reader and print styles use it.
 
 ### Fixed
 
+- Emoji style is uniform again: a text family that happens to hold an Emoji
+  symbol—Noto Sans CJK covering `⚠️`, say—no longer beats the configured Emoji
+  face, which used to mix monochrome and color Emoji in one document.
 - A blockquote's bar is centered on the text it frames: the quote's box no
   longer absorbs the outer spacing of its first and last child, which left the
   bar hanging far below a quote.

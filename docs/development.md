@@ -116,6 +116,15 @@ and shaping. These are inclusive diagnostic spans, not additive pipeline stages.
 Render this fixture in both themes as well as measuring it. Default Emoji
 candidates explicitly use weight 400 because many Emoji fonts have no bold face.
 
+The bundled Emoji definitions set `emoji = true`, so a cluster Unicode presents
+as Emoji (`Emoji_Presentation`, or a `U+FE0F` selector) takes that face even when
+a text candidate covers it too. The pinned test fonts reproduce the case: the
+Noto Serif and Noto Sans CJK subsets both hold U+26A0, so `⚠️` must resolve to
+Noto Color Emoji while `⚠` stays with the CJK face. `U+FE0E` keeps the text
+presentation. The classification follows Unicode defaults, so bare warning
+signs, hearts, © and ™ stay with the reading font; if no text candidate covers
+one of those, the Emoji face is still the last resort.
+
 When no configured face covers a cluster/word, a `WARN` line on stderr reports its
 Unicode codes, requested candidates and available exact faces before handing it to
 Parley. Normal selection of a later configured candidate is silent. Warnings are

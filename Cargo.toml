@@ -65,6 +65,7 @@ comrak = { version = "0.55", default-features = false }
 syntect = { version = "5.3", default-features = false, features = ["parsing", "regex-fancy"] }
 two-face = { version = "0.5.1", default-features = false, features = ["syntect-fancy"] }
 hypher = { version = "0.1.7", default-features = false, features = ["english", "alloc"] }
+icu_properties = "2.3"
 icu_segmenter = "2.3"
 krilla = { version = "0.8", default-features = false, features = ["raster-images"] }
 notify = "8.2"

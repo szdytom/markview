@@ -457,3 +457,77 @@ fn bundled_emphasis_shears_cjk_but_keeps_a_real_latin_italic() {
 	assert!(!latin.synthetic_italic);
 	assert_eq!(latin.style, FontStyle::Italic);
 }
+
+#[test]
+fn emoji_presentation_follows_the_unicode_defaults() {
+	for emoji in [
+		"\u{2705}",  // WHITE HEAVY CHECK MARK, `Emoji_Presentation=Yes`
+		"\u{274c}",  // CROSS MARK
+		"\u{2b50}",  // WHITE MEDIUM STAR
+		"\u{1f600}", // GRINNING FACE
+		"\u{1f469}\u{200d}\u{1f4bb}", // WOMAN TECHNOLOGIST
+		"\u{1f1e8}\u{1f1f3}", // REGIONAL INDICATOR pair
+		"1\u{fe0f}\u{20e3}", // KEYCAP: the selector decides
+		"\u{26a0}\u{fe0f}", // WARNING SIGN with VS16
+		"\u{a9}\u{fe0f}", // COPYRIGHT SIGN with VS16
+	] {
+		assert!(prefers_emoji(emoji), "{emoji:?}");
+	}
+	for text in [
+		"\u{26a0}", // WARNING SIGN defaults to text presentation
+		"\u{2764}", // HEAVY BLACK HEART
+		"\u{2714}", // HEAVY CHECK MARK
+		"\u{a9}",   // COPYRIGHT SIGN
+		"\u{2122}", // TRADE MARK SIGN
+		"\u{27a1}", // BLACK RIGHTWARDS ARROW
+		"1",        // Keycap bases and components are not Emoji by default
+		"1\u{20e3}",
+		"#",
+		"a",
+		"中",
+		"\u{2705}\u{fe0e}", // A VS15 overrides the default
+	] {
+		assert!(!prefers_emoji(text), "{text:?}");
+	}
+}
+
+#[test]
+fn the_marked_emoji_face_wins_only_for_emoji_clusters() {
+	let mut s = TextShaper::new();
+	let mut sheet = (*Stylesheet::bundled(false)).clone();
+	// The marked face comes first, so only the Emoji group can explain a
+	// text cluster that still takes a later candidate.
+	sheet.merge(
+		&Stylesheet::parse(concat!(
+			"format_version=2\nversion=1\n",
+			"[[fontdef]]\nid='first'\nemoji=true\nlookfor=['Noto Color Emoji']\n",
+			"[[rule]]\nwhen=['body']\n",
+			"font=[{family='first',weight=400},{family='serif'},{family='serif[cjk]'}]",
+		))
+		.unwrap(),
+	);
+	s.set_stylesheet(Arc::new(sheet));
+	let appearance = s.appearance.clone();
+	let family = |s: &mut TextShaper, text: &str| {
+		s.choose_font(text, &appearance).unwrap().family
+	};
+	assert_eq!(family(&mut s, "1"), "Noto Serif");
+	assert_eq!(family(&mut s, "\u{26a0}"), "Noto Serif CJK SC");
+	assert_eq!(family(&mut s, "\u{2705}"), "Noto Color Emoji");
+	assert_eq!(family(&mut s, "\u{26a0}\u{fe0f}"), "Noto Color Emoji");
+}
+
+#[test]
+fn the_bundled_emoji_face_beats_a_text_candidate_covering_the_cluster() {
+	let mut s = TextShaper::new();
+	let appearance = s.appearance.clone();
+	let family = |s: &mut TextShaper, text: &str| {
+		s.choose_font(text, &appearance).unwrap().family
+	};
+	// The bundled body list names the Emoji face last, and the pinned Noto
+	// Serif CJK face covers U+26A0 by itself, so only the Emoji group can
+	// explain the styled variant.
+	assert_eq!(family(&mut s, "\u{26a0}"), "Noto Serif CJK SC");
+	assert_eq!(family(&mut s, "\u{26a0}\u{fe0e}"), "Noto Serif CJK SC");
+	assert_eq!(family(&mut s, "\u{26a0}\u{fe0f}"), "Noto Color Emoji");
+}

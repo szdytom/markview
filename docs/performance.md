@@ -280,6 +280,26 @@ image first-open/full-layout thresholds passed, but image cached P95 was
 1.306 → 1.599 ms. The inconsistent image/ordinary tail results do not establish
 a cause; they remain recorded rather than treated as an all-metrics pass.
 
+## Emoji face selection
+
+A cluster that Unicode presents as Emoji now takes the definition marked
+`emoji = true` ahead of the reading fonts, so a text family that happens to hold
+an Emoji symbol (Noto Sans CJK holding `⚠`) no longer mixes monochrome and color
+Emoji. The choice costs no layout work: on the same Intel Arc/Vulkan host, five
+alternating release process pairs against `d258065`, with 30 full and 30 cached
+iterations each, left the first-open `layout_ms` median unchanged (8.39 → 8.41 ms
+and 8.25 → 8.22 ms in two runs) and moved full P50 by -1.81 % and -0.32 %. The
+first-open GPU stage rose by about 1.2 ms in both runs, consistent with the
+fixture rasterizing more color glyphs now that `⚠️` takes the color face, and
+RSS fell about 3.4 %.
+
+First-open total (+7.2 % and +7.5 %) and full P95 tripped the 5 % threshold in
+one or both runs, and cached P95 in both. A same-binary noise-floor pair tripped
+the same P95 metrics (+35.5 % and +52.4 %) and showed a 1.9 % first-open gap, so
+those tails are not attributable to this change. Raw reports and metadata are in
+`artifacts/emoji-order-repro/`; their `content_hash` matches the pre-change
+reports because the document text is unchanged.
+
 ## Security-hardening change
 
 The shared `Limits` budgets, relative-only image paths, the single link policy,

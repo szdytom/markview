@@ -488,6 +488,10 @@ pub struct FontDefinition {
 	pub id: String,
 	#[serde(default)]
 	pub r#type: Option<FontDefType>,
+	/// The family is the Emoji face. A cluster that asks for emoji presentation
+	/// prefers it over the text candidates, however the rule orders them.
+	#[serde(default)]
+	pub emoji: bool,
 	pub lookfor: Vec<String>,
 }
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Deserialize)]

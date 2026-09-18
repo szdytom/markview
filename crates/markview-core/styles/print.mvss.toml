@@ -50,6 +50,7 @@ lookfor = ["Noto Sans Mono CJK SC", "Source Han Mono", "Source Code Pro", "monos
 
 [[fontdef]]
 id = "emoji"
+emoji = true
 lookfor = ["Noto Color Emoji", "Apple Color Emoji", "Segoe UI Emoji", "Twemoji Mozilla", "EmojiOne Color", "JoyPixels", "Twitter Color Emoji", "EmojiSymbols"]
 
 [meta]
