@@ -13,6 +13,11 @@ at the same level, without `[brackets]`.
 
 ## Unreleased
 
+## 0.1.3 - 2026-09-18
+
+Themeable list markers and code chips, a watching PDF export, and exports that
+pin their own fonts.
+
 ### Added
 
 - An MVSS font candidate takes `synthetic_italic = true`, which shears an
