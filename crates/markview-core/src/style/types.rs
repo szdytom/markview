@@ -567,14 +567,33 @@ pub enum MarkerShape {
 	Minus,
 }
 
+/// The graphic a bullet marker draws: one shape, or a cycle indexed by the
+/// bullet's nesting depth. `shape = ["plus", "minus"]` gives the first level a
+/// plus and the second a minus, then repeats.
+#[derive(Clone, Debug, PartialEq, Eq, Deserialize)]
+#[serde(untagged)]
+pub enum MarkerShapes {
+	One(MarkerShape),
+	Many(Vec<MarkerShape>),
+}
+impl MarkerShapes {
+	pub fn cycle(&self) -> &[MarkerShape] {
+		match self {
+			Self::One(shape) => std::slice::from_ref(shape),
+			Self::Many(shapes) => shapes,
+		}
+	}
+}
+
 #[derive(Clone, Debug, Default, PartialEq, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Rule {
 	pub show: Option<bool>,
 	pub source: Option<CaptionSource>,
 	pub align: Option<TextAlign>,
-	/// The graphic a bullet marker draws instead of a text glyph.
-	pub shape: Option<MarkerShape>,
+	/// The graphic, or depth-cycled graphics, a bullet marker draws instead
+	/// of a text glyph.
+	pub shape: Option<MarkerShapes>,
 	pub color: Option<Color>,
 	pub background: Option<Color>,
 	pub border_color: Option<Color>,

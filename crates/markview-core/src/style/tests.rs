@@ -239,14 +239,24 @@ fn marker_alignment_is_theme_controlled_per_marker_role() {
 }
 #[test]
 fn marker_shape_is_theme_controlled() {
-	let sheet = Stylesheet::parse(
+	let one = Stylesheet::parse(
 		"format_version=2\nversion=1\n[[rule]]\nwhen=['marker']\nshape='triangle'",
 	)
 	.unwrap();
-	assert_eq!(sheet.marker_shape(), MarkerShape::Triangle);
+	assert_eq!(one.marker_shapes(), [MarkerShape::Triangle].as_slice());
+	// A list cycles by nesting depth.
+	let cycle = Stylesheet::parse(
+		"format_version=2\nversion=1\n[[rule]]\nwhen=['marker']\nshape=['plus','minus']",
+	)
+	.unwrap();
+	assert_eq!(
+		cycle.marker_shapes(),
+		[MarkerShape::Plus, MarkerShape::Minus].as_slice()
+	);
 	for (name, shape) in [
 		("disc", MarkerShape::Disc),
 		("square", MarkerShape::Square),
+		("triangle", MarkerShape::Triangle),
 		("diamond", MarkerShape::Diamond),
 		("plus", MarkerShape::Plus),
 		("minus", MarkerShape::Minus),
@@ -255,16 +265,20 @@ fn marker_shape_is_theme_controlled() {
 			"format_version=2\nversion=1\n[[rule]]\nwhen=['marker']\nshape='{name}'"
 		))
 		.unwrap();
-		assert_eq!(sheet.marker_shape(), shape, "{name}");
+		assert_eq!(sheet.marker_shapes(), [shape].as_slice(), "{name}");
 	}
-	assert_eq!(Stylesheet::bundled(false).marker_shape(), MarkerShape::Disc);
 	assert_eq!(
-		Stylesheet::bundled_print().marker_shape(),
-		MarkerShape::Disc
+		Stylesheet::bundled(false).marker_shapes(),
+		[MarkerShape::Disc].as_slice()
+	);
+	assert_eq!(
+		Stylesheet::bundled_print().marker_shapes(),
+		[MarkerShape::Disc].as_slice()
 	);
 	for bad in [
 		"format_version=2\nversion=1\n[[rule]]\nwhen=['task_marker']\nshape='square'",
 		"format_version=2\nversion=1\n[[rule]]\nwhen=['marker']\nshape='star'",
+		"format_version=2\nversion=1\n[[rule]]\nwhen=['marker']\nshape=[]",
 	] {
 		assert!(Stylesheet::parse(bad).is_err(), "{bad}");
 	}

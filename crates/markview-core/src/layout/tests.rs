@@ -551,6 +551,7 @@ fn cjk_boundaries_and_hyphenation() {
 		math: &mut e.math,
 		images: &images,
 		highlight_cache: e.highlights.results(),
+		marker_depth: 0,
 	};
 	let p = context.prepare(&rich, 18.0, &mut out);
 	let units = context.units(&p, 18.0, false, true, 760.0, Default::default());
@@ -987,6 +988,44 @@ fn a_theme_picks_the_bullet_shape() {
 	assert_eq!(shape_of("plus").0, 12);
 	let (_, width, height) = shape_of("minus");
 	assert!(height < width / 2., "a dash is flat: {width} x {height}");
+}
+
+#[test]
+fn a_shape_cycle_follows_the_bullet_nesting_depth() {
+	let sheet = {
+		let mut sheet = (*crate::style::Stylesheet::bundled(false)).clone();
+		sheet.merge(
+			&crate::style::Stylesheet::parse(
+				"format_version=2\nversion=1\n[[rule]]\nwhen=['marker']\nshape=['plus','minus']",
+			)
+			.unwrap(),
+		);
+		Arc::new(sheet)
+	};
+	// One vertex count per bullet, in reading order.
+	let shapes = |source: &str| -> Vec<usize> {
+		let snapshot = LayoutEngine::new().layout(
+			&document::parse(source),
+			&LayoutOptions {
+				width: 400.0,
+				stylesheet: sheet.clone(),
+				..Default::default()
+			},
+		);
+		snapshot
+			.blocks
+			.iter()
+			.flat_map(|b| b.layout.draws.iter())
+			.filter_map(|draw| match draw {
+				Draw::Polygon { points, .. } => Some(points.len()),
+				_ => None,
+			})
+			.collect()
+	};
+	// Three bullet levels cycle plus, minus, plus.
+	assert_eq!(shapes("- one\n  - two\n    - three\n"), [12, 4, 12]);
+	// An ordered level is transparent to the cycle.
+	assert_eq!(shapes("- one\n  1. two\n     - three\n"), [12, 4]);
 }
 
 #[test]
@@ -1540,6 +1579,7 @@ fn typst_hyphenation_can_be_turned_off_for_a_passage() {
 			math: &mut e.math,
 			images: &images,
 			highlight_cache: e.highlights.results(),
+			marker_depth: 0,
 		};
 		let p = context.prepare(&rich, 18.0, &mut out);
 		let units =
@@ -1604,6 +1644,7 @@ fn typst_curly_quotes_break_like_cjk_brackets() {
 			math: &mut e.math,
 			images: &images,
 			highlight_cache: e.highlights.results(),
+			marker_depth: 0,
 		};
 		let p = context.prepare(&rich, 18.0, &mut out);
 		context
@@ -1747,6 +1788,7 @@ fn a_hyphen_near_a_word_edge_costs_more_than_one_in_the_middle() {
 		math: &mut e.math,
 		images: &images,
 		highlight_cache: e.highlights.results(),
+		marker_depth: 0,
 	};
 	let p = context.prepare(&rich, 18.0, &mut out);
 	let found: Vec<(usize, f64)> = context

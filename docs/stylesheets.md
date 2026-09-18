@@ -116,11 +116,13 @@ Text conditions accept `color`, `font`, `weight`, `size`, `decoration`, and `bac
 
 A list marker reserves a column before its item text. `marker` covers bullets and numbers, `task_marker` covers checkboxes, and each takes `align = "left"`, `"center"`, or `"right"` to place the marker in that column; the bundled styles center it. A bullet is drawn rather than typed—`shape` is `disc`, `square`, `triangle`, `diamond`, `plus`, or `minus`—so bullets and checkboxes are never part of copied text, while ordered numbers stay text.
 
+`shape` also takes a list, one entry per bullet nesting level and then repeating: `shape = ["plus", "minus"]` draws a plus on the first level and a minus on the second, and a plus again on the third. Ordered levels do not advance the cycle.
+
 ```toml
 [[rule]]
 when = ["marker"]
 align = "center"
-shape = "disc"
+shape = ["plus", "minus"]
 ```
 
 `page` accepts only `background`. The furniture conditions accept the text fields, so a page number can be smaller or greyer than the header text beside it.

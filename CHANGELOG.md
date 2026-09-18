@@ -26,7 +26,8 @@ at the same level, without `[brackets]`.
   Emoji text; the bundled reader and print styles use it.
 - MVSS takes `align` and `shape` on list markers: `align` places a bullet,
   number or checkbox left, centered or right in its column, and `shape` draws a
-  bullet as a disc, square, triangle, diamond, plus or minus.
+  bullet as a disc, square, triangle, diamond, plus or minus. A `shape` list is
+  cycled by bullet nesting depth; ordered levels do not advance it.
 
 ### Changed
 

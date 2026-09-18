@@ -158,6 +158,9 @@ struct BlockContext<'a> {
 	math: &'a mut MathEngine,
 	images: &'a crate::image::ImageSnapshot,
 	highlight_cache: &'a HashMap<u64, highlights::HighlightResult>,
+	/// How many unordered lists enclose the block being laid out. Ordered
+	/// levels do not count, so they never advance a marker's shape cycle.
+	marker_depth: usize,
 }
 pub struct LayoutEngine {
 	shaper: TextShaper,
@@ -341,6 +344,7 @@ impl LayoutEngine {
 							math: &mut self.math,
 							images,
 							highlight_cache: self.highlights.results(),
+							marker_depth: 0,
 						}
 						.block(
 							block,

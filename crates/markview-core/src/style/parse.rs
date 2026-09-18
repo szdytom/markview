@@ -52,6 +52,13 @@ impl Stylesheet {
 				if rule.font.as_ref().is_some_and(Vec::is_empty) {
 					bail!("rule [{name}].font: must not be empty");
 				}
+				if rule
+					.shape
+					.as_ref()
+					.is_some_and(|shapes| shapes.cycle().is_empty())
+				{
+					bail!("rule [{name}].shape: must not be empty");
+				}
 				if let Some(fonts) = &rule.font {
 					for (i, font) in fonts.iter().enumerate() {
 						if font.family.trim().is_empty()

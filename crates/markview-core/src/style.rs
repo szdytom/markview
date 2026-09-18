@@ -14,8 +14,8 @@ use std::{
 pub use types::{
 	CaptionSource, CjkType, Color, ColorField, Condition, ConditionSet,
 	Decoration, Font, FontDefType, FontDefinition, MAX_CHAIN, MarkerShape,
-	Padding, PageStyle, Rule, SYNTHETIC_ITALIC_ANGLE_DEG, TextAlign, Variant,
-	chain_of, chain_push, chain_set, parse_paper_size,
+	MarkerShapes, Padding, PageStyle, Rule, SYNTHETIC_ITALIC_ANGLE_DEG,
+	TextAlign, Variant, chain_of, chain_push, chain_set, parse_paper_size,
 };
 
 #[derive(Clone, Debug, Default, PartialEq, Deserialize)]
@@ -241,9 +241,14 @@ impl Stylesheet {
 		};
 		self.rule(condition).align.unwrap_or(TextAlign::Left)
 	}
-	/// The graphic a bullet marker draws. Ordered numbers ignore it.
-	pub fn marker_shape(&self) -> MarkerShape {
-		self.rule(Condition::Marker).shape.unwrap_or_default()
+	/// The bullet graphics, in nesting order and cycled by depth. Ordered
+	/// numbers ignore them.
+	pub fn marker_shapes(&self) -> &[MarkerShape] {
+		static DEFAULT: [MarkerShape; 1] = [MarkerShape::Disc];
+		match &self.rule(Condition::Marker).shape {
+			Some(shapes) if !shapes.cycle().is_empty() => shapes.cycle(),
+			_ => &DEFAULT,
+		}
 	}
 	pub fn merge(&mut self, higher: &Self) {
 		for (key, def) in &higher.fontdef_variants {

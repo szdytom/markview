@@ -474,12 +474,20 @@ impl BlockContext<'_> {
 					.as_ref()
 					.map(|p| p.sides().map(|v| v * opts.font_size))
 					.unwrap_or([0.; 4]);
-				// Every item in the list draws the same bullet graphic.
+				// Every item in the list draws the same bullet graphic. Its
+				// shape is the cycle entry for this list's nesting depth.
 				let bullet =
 					opts.stylesheet.text(&item_appearance, Condition::Marker);
 				let bullet_side = opts.font_size * bullet.size * BULLET_SIDE;
-				let bullet_points =
-					marker_points(opts.stylesheet.marker_shape(), bullet_side);
+				let shapes = opts.stylesheet.marker_shapes();
+				let bullet_points = marker_points(
+					shapes[self.marker_depth % shapes.len()],
+					bullet_side,
+				);
+				// A nested list inside an item is one bullet level deeper.
+				if start.is_none() {
+					self.marker_depth += 1;
+				}
 				for (i, item) in items.iter().enumerate() {
 					self.shaper.appearance = item_appearance.clone();
 					top +=
@@ -642,6 +650,9 @@ impl BlockContext<'_> {
 						// without one starts its own line.
 						node.separator = if numbered { "" } else { "\n" };
 					}
+				}
+				if start.is_none() {
+					self.marker_depth -= 1;
 				}
 				self.shaper.appearance = list_appearance;
 				top - y
