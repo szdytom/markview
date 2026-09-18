@@ -13,6 +13,10 @@ use std::{
 	thread,
 	time::{Duration, Instant},
 };
+/// How much of a fresh document the opening viewport is parsed from before the
+/// complete parse runs.
+const PREFIX_BYTES: usize = 64 * 1024;
+
 /// Text and geometry are accepted together by the UI.
 #[derive(Clone, Debug)]
 pub struct ReaderSnapshot {
@@ -44,11 +48,17 @@ pub struct Update {
 	pub read_ms: f64,
 	pub parse_ms: f64,
 	pub layout_ms: f64,
+	/// Reading counts for a complete snapshot whose content changed, so the
+	/// event loop does not have to segment the whole document to draw the
+	/// footer.
+	pub counts: Option<markview_core::text::TextCounts>,
 }
 
 struct Inbox {
 	pending: Option<Request>,
 	stopped: bool,
+	/// Set when the last tab closes: drop the parsed document and its caches.
+	release: bool,
 }
 
 /// Publication decisions use elapsed layout time, so small but expensive
@@ -113,6 +123,7 @@ impl Worker {
 			Mutex::new(Inbox {
 				pending: None,
 				stopped: false,
+				release: false,
 			}),
 			Condvar::new(),
 		));
@@ -133,6 +144,12 @@ impl Worker {
 				let mut images = crate::images::Images::new(offline);
 				let mut last: Option<Request> = None;
 				let mut completed_version = 0;
+				// Reads counts for the last content identity, reused by every
+				// later update that carries the same content.
+				let mut counted: Option<(
+					u64,
+					markview_core::text::TextCounts,
+				)> = None;
 				let mut cached: Option<(
 					PathBuf,
 					u64,
@@ -142,7 +159,9 @@ impl Worker {
 					let request = {
 						let (lock, wake) = &*thread_inbox;
 						let mut inbox = lock.lock().unwrap();
-						while inbox.pending.is_none() && !inbox.stopped {
+						while inbox.pending.is_none()
+							&& !inbox.stopped && !inbox.release
+						{
 							inbox = wake
 								.wait_timeout(
 									inbox,
@@ -162,6 +181,14 @@ impl Worker {
 						if inbox.stopped {
 							break;
 						}
+						if std::mem::take(&mut inbox.release) {
+							cached = None;
+							last = None;
+							counted = None;
+							engine.release_document();
+							images.release();
+							continue;
+						}
 						inbox.pending.take().unwrap()
 					};
 					last = Some(request.clone());
@@ -173,6 +200,7 @@ impl Worker {
 						read_ms: 0.0,
 						parse_ms: 0.0,
 						layout_ms: 0.0,
+						counts: None,
 					};
 					update.result =
 						Some((|| -> Result<ReaderSnapshot, String> {
@@ -188,7 +216,116 @@ impl Worker {
 								update.read_ms =
 									start.elapsed().as_secs_f64() * 1000.0;
 								let start = Instant::now();
-								let doc = Arc::new(document::parse(text));
+								let source: Arc<str> = text.into();
+								// A small edit to the document already held
+								// re-parses only the block it changed.
+								let previous = cached
+									.as_ref()
+									.filter(|(path, ..)| path == &request.path)
+									.map(|(_, _, doc)| doc.clone());
+								let doc = match previous {
+									Some(previous) => {
+										match document::parse_incremental(
+											&previous,
+											source.clone(),
+										) {
+											Some(incremental) => {
+												Arc::new(incremental)
+											}
+											None => Arc::new(document::parse(
+												source.clone(),
+											)),
+										}
+									}
+									None => {
+										// A fresh document that is large
+										// enough to pay for it shows its
+										// opening viewport from a bounded
+										// parse instead of waiting for the
+										// whole file.
+										let prefix_start = Instant::now();
+										if current.load(Ordering::Relaxed)
+											== request.version && let Some(
+											prefix,
+										) =
+											document::parse_prefix(
+												&source,
+												PREFIX_BYTES,
+											) {
+											let prefix_parse = prefix_start
+												.elapsed()
+												.as_secs_f64()
+												* 1000.0;
+											engine
+												.validate_stylesheet(
+													&request.options.stylesheet,
+												)
+												.map_err(|e| {
+													format!("Fonts: {e:#}")
+												})?;
+											images.prepare(
+												&prefix,
+												&request.path,
+												request.content_version,
+												request.load_all_images,
+											);
+											// Stop at the viewport rather
+											// than laying out the whole
+											// prefix, so the cost follows
+											// the viewport, not the bound.
+											let layout_start = Instant::now();
+											let wanted = f32::from_bits(
+												target.load(Ordering::Relaxed),
+											);
+											let mut shown = None;
+											engine.layout_progressive(
+												&prefix,
+												&request.options,
+												&images.snapshot,
+												|snapshot| {
+													if !snapshot
+														.blocks
+														.is_empty() && snapshot
+														.height
+														>= wanted
+													{
+														shown = Some(
+															snapshot.clone(),
+														);
+														return false;
+													}
+													true
+												},
+											);
+											if let Some(layout) = shown {
+												let mut partial =
+													update.clone();
+												partial.parse_ms = prefix_parse;
+												partial.layout_ms = layout_start
+													.elapsed()
+													.as_secs_f64()
+													* 1000.0;
+												partial.result =
+													Some(Ok(ReaderSnapshot {
+														document: Arc::new(
+															prefix,
+														),
+														layout,
+														content_version:
+															request
+																.content_version,
+														complete: false,
+														remote_deferred: images
+															.deferred_remote(),
+													}));
+												done(partial);
+											}
+										}
+										Arc::new(document::parse(
+											source.clone(),
+										))
+									}
+								};
 								update.parse_ms =
 									start.elapsed().as_secs_f64() * 1000.0;
 								if cached.as_ref().is_some_and(
@@ -277,6 +414,55 @@ impl Worker {
 						if update.result.as_ref().is_some_and(|r| r.is_ok()) {
 							completed_version = request.version;
 						}
+						// Counting the reading text is expensive, so it happens
+						// here, after any prefix has been published, and never
+						// while a newer edit is already waiting for the worker.
+						// The result is cached by content identity and attached
+						// to every later complete update for it, so whichever
+						// session receives that update gets the counts.
+						let next = match &update.result {
+							Some(Ok(reader)) if reader.complete => {
+								match counted {
+									Some((id, counts))
+										if id == reader.document.content_id =>
+									{
+										Some(counts)
+									}
+									_ => {
+										let pending = {
+											let (lock, _) = &*thread_inbox;
+											lock.lock()
+												.unwrap()
+												.pending
+												.is_some()
+										};
+										(!pending).then(|| {
+											let counts = reader
+												.layout
+												.select_all(
+													reader.content_version,
+												)
+												.map(|selection| {
+													markview_core::text::TextCounts::of(
+														&reader.layout.extract_text(
+															selection,
+															reader.content_version,
+														),
+													)
+												})
+												.unwrap_or_default();
+											counted = Some((
+												reader.document.content_id,
+												counts,
+											));
+											counts
+										})
+									}
+								}
+							}
+							_ => None,
+						};
+						update.counts = next;
 						done(update);
 					}
 				}
@@ -304,6 +490,14 @@ impl Worker {
 		self.version.store(0, Ordering::Relaxed);
 		let (lock, _) = &*self.inbox;
 		lock.lock().unwrap().pending = None;
+	}
+	/// Drops the document the worker keeps for the reader that just closed, so
+	/// an empty reader holds no text, geometry or decoded images.
+	pub fn release(&self) {
+		self.cancel();
+		let (lock, wake) = &*self.inbox;
+		lock.lock().unwrap().release = true;
+		wake.notify_one();
 	}
 }
 impl Drop for Worker {
@@ -556,5 +750,90 @@ mod reflow_tests {
 			}
 		}
 		assert_eq!(&*first.document.source, "First");
+	}
+
+	#[test]
+	fn release_drops_the_retained_document() {
+		let dir = tempfile::tempdir().unwrap();
+		let path = dir.path().join("read.md");
+		fs::write(&path, "First").unwrap();
+		let (tx, rx) = mpsc::channel();
+		let worker = Worker::new(move |u| {
+			let _ = tx.send(u);
+		});
+		let request = |version| Request {
+			version,
+			content_version: 1,
+			path: path.clone(),
+			options: LayoutOptions::default(),
+			requested: Instant::now(),
+			coverage: f32::INFINITY,
+			load_all_images: false,
+		};
+		worker.submit(request(1));
+		let first = rx
+			.recv_timeout(Duration::from_secs(5))
+			.unwrap()
+			.result
+			.unwrap()
+			.unwrap();
+		assert_eq!(&*first.document.source, "First");
+		// The same content version reuses the retained parse.
+		fs::write(&path, "Second").unwrap();
+		worker.submit(request(2));
+		let reused = rx
+			.recv_timeout(Duration::from_secs(5))
+			.unwrap()
+			.result
+			.unwrap()
+			.unwrap();
+		assert_eq!(&*reused.document.source, "First");
+		// Once nothing holds the document, the worker reads it again.
+		worker.release();
+		worker.submit(request(3));
+		let reread = rx
+			.recv_timeout(Duration::from_secs(5))
+			.unwrap()
+			.result
+			.unwrap()
+			.unwrap();
+		assert_eq!(&*reread.document.source, "Second");
+	}
+
+	#[test]
+	fn complete_updates_carry_counts_to_each_document() {
+		let dir = tempfile::tempdir().unwrap();
+		let first = dir.path().join("a.md");
+		let second = dir.path().join("b.md");
+		// Identical content in two files: the second open shares the cached
+		// content identity, but its own session still needs the counts.
+		fs::write(&first, "Some words to count.\n").unwrap();
+		fs::write(&second, "Some words to count.\n").unwrap();
+		let (tx, rx) = mpsc::channel();
+		let worker = Worker::new(move |u| {
+			let _ = tx.send(u);
+		});
+		let submit = |version, path: &PathBuf| {
+			worker.submit(Request {
+				version,
+				content_version: 1,
+				path: path.clone(),
+				options: LayoutOptions::default(),
+				requested: Instant::now(),
+				coverage: f32::INFINITY,
+				load_all_images: false,
+			})
+		};
+		submit(1, &first);
+		let counts = rx
+			.recv_timeout(Duration::from_secs(5))
+			.unwrap()
+			.counts
+			.expect("counts for the first document");
+		assert!(counts.chars > 0 && counts.words > 0);
+		submit(2, &second);
+		let update = rx.recv_timeout(Duration::from_secs(5)).unwrap();
+		assert!(update.result.unwrap().is_ok());
+		assert_eq!(update.counts, Some(counts));
 	}
 }

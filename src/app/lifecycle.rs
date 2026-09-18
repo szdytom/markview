@@ -97,6 +97,7 @@ impl ApplicationHandler<Event> for App {
 					&& self.readers.session.path.as_ref()
 						== Some(&update.path) =>
 			{
+				let counts = update.counts;
 				match update.result.take() {
 					Some(Ok(reader)) => {
 						if !reader.complete
@@ -132,8 +133,11 @@ impl ApplicationHandler<Event> for App {
 									reader.content_version,
 								)
 							});
-						if self.readers.session.accept(reader, self.viewport())
-						{
+						if self.readers.session.accept(
+							reader,
+							self.viewport(),
+							counts,
+						) {
 							self.interaction.clear_selection();
 						} else {
 							if reading_changed {

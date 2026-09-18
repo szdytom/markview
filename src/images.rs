@@ -359,4 +359,12 @@ impl Images {
 			.filter(|e| e.info.error.as_deref() == Some(REMOTE_LIMIT))
 			.count()
 	}
+
+	/// Drops every decoded result of the closed document. `generation` moves so
+	/// a load already in flight for it cannot reappear as a current entry.
+	pub fn release(&mut self) {
+		self.entries.clear();
+		self.snapshot = Default::default();
+		self.generation += 1;
+	}
 }

@@ -88,16 +88,23 @@ impl App {
 			tabs::Closed::Active => {}
 		}
 		self.watch = None;
-		self.worker.cancel();
+		if self.readers.entries().is_empty() {
+			// No tab is left, so the worker can drop the document it kept for
+			// the closed one instead of holding it until the next open.
+			self.worker.release();
+			if let Some(window) = &self.window {
+				window.set_title("Markview");
+			}
+		} else {
+			self.worker.cancel();
+		}
 		self.interaction.clear_selection();
 		self.error = false;
 		self.status.clear();
 		self.status_until = None;
-		if self.readers.entries().is_empty() {
-			if let Some(window) = &self.window {
-				window.set_title("Markview");
-			}
-		} else if self.readers.session.path.is_some() {
+		if !self.readers.entries().is_empty()
+			&& self.readers.session.path.is_some()
+		{
 			self.observe_document();
 			if self.readers.session.document.is_none()
 				|| self.readers.session.layout_pending

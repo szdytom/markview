@@ -452,26 +452,14 @@ impl ReaderSession {
 		&mut self,
 		reader: crate::worker::ReaderSnapshot,
 		viewport: f32,
+		counts: Option<TextCounts>,
 	) -> bool {
 		// A metadata-only change re-reads identical bytes; only a real content
-		// change may invalidate reading positions.
+		// change may invalidate reading positions. The reading counts arrive
+		// with the update, computed off the event loop.
 		let changed = reader.document.content_id != self.accepted_content_id;
-		if reader.complete
-			&& (changed
-				|| self.layout_pending
-				|| !self.snapshot.same_reading_text(&reader.layout))
-		{
-			self.counts = reader
-				.layout
-				.select_all(reader.content_version)
-				.map(|selection| {
-					TextCounts::of(
-						&reader
-							.layout
-							.extract_text(selection, reader.content_version),
-					)
-				})
-				.unwrap_or_default();
+		if let Some(counts) = counts {
+			self.counts = counts;
 		}
 		let extending = self.extends_prefix(&reader);
 		self.scroll = if extending {

@@ -159,6 +159,7 @@ fn identical_content_with_a_new_version_keeps_the_selection() {
 			remote_deferred: 0,
 		},
 		300.0,
+		None,
 	));
 	// A file event re-reads the same bytes: a new revision, same content.
 	assert!(!session.accept(
@@ -170,6 +171,7 @@ fn identical_content_with_a_new_version_keeps_the_selection() {
 			remote_deferred: 0,
 		},
 		300.0,
+		None,
 	));
 	assert_eq!(session.accepted_revision, 2);
 }
@@ -250,6 +252,7 @@ fn heading_anchors_queue_until_their_heading_is_laid_out() {
 			remote_deferred: 0,
 		},
 		300.,
+		None,
 	);
 	session.pending_anchor = Some("details".into());
 	assert_eq!(session.resolve_anchor(300.), Some(Ok(())));
@@ -273,6 +276,7 @@ fn heading_anchors_queue_until_their_heading_is_laid_out() {
 			remote_deferred: 0,
 		},
 		300.,
+		None,
 	);
 	session.pending_anchor = Some("details".into());
 	assert_eq!(session.resolve_anchor(300.), None);
@@ -298,6 +302,7 @@ fn partial_reload_waits_for_anchor_and_keeps_the_old_snapshot() {
 			remote_deferred: 0,
 		},
 		600.,
+		None,
 	);
 	session.scroll = 1800.;
 	let mut partial = full.clone();
@@ -343,6 +348,7 @@ fn completing_a_prefix_preserves_scroll_and_selection_and_finishes_counts() {
 			remote_deferred: 0,
 		},
 		100.,
+		None,
 	);
 	session.scroll_by(100., 100.);
 	let selection = session.snapshot.select_all(1).unwrap();
@@ -361,7 +367,10 @@ fn completing_a_prefix_preserves_scroll_and_selection_and_finishes_counts() {
 		.unwrap();
 	assert_eq!(reader.layout.extract_text(rebased, 1), text);
 	assert_eq!(session.counts, TextCounts::default());
-	session.accept(reader, 100.);
+	let full = reader.layout.select_all(1).unwrap();
+	let counts = TextCounts::of(&reader.layout.extract_text(full, 1));
+	session.accept(reader, 100., Some(counts));
+	assert_eq!(session.counts, counts);
 	assert_eq!(session.scroll, 100.);
 	assert!(session.snapshot_complete);
 	assert!(!session.layout_pending);
@@ -379,10 +388,12 @@ fn text_and_layout_are_accepted_together_and_reflow_is_not_new_content() {
 		complete: true,
 		remote_deferred: 0,
 	};
-	assert!(session.accept(reader.clone(), 300.0));
-	assert_eq!(session.counts, TextCounts { chars: 5, words: 1 });
-	assert!(!session.accept(reader, 300.0));
-	assert_eq!(session.counts, TextCounts { chars: 5, words: 1 });
+	let counts = TextCounts { chars: 5, words: 1 };
+	assert!(session.accept(reader.clone(), 300.0, Some(counts)));
+	assert_eq!(session.counts, counts);
+	// A reflow of the same content arrives without counts and keeps them.
+	assert!(!session.accept(reader, 300.0, None));
+	assert_eq!(session.counts, counts);
 	assert!(Arc::ptr_eq(session.document.as_ref().unwrap(), &document));
 }
 

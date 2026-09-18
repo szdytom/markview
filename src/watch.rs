@@ -14,8 +14,11 @@ use std::{
 	time::{Duration, Instant, SystemTime},
 };
 
-pub const QUIET: Duration = Duration::from_millis(30);
-pub const MAX_WAIT: Duration = Duration::from_millis(100);
+/// A save is usually one event, so the quiet window only has to outlast the
+/// event burst of a single write. The ceiling keeps a stream of writes from
+/// postponing the reload forever.
+pub const QUIET: Duration = Duration::from_millis(10);
+pub const MAX_WAIT: Duration = Duration::from_millis(40);
 
 #[derive(Default)]
 pub struct Debounce {
