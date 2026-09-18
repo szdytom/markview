@@ -3,3 +3,15 @@
 *.profraw
 __pycache__/
 *.pyc
+
+# Editor
+.vscode/
+.zed/
+*.swp
+
+# Agentic Tools
+.codex
+.claude
+CLAUDE.md
+AGENTS.local.md
+.dsh
