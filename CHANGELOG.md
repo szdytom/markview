@@ -32,6 +32,9 @@ at the same level, without `[brackets]`.
   numbers (`a)`, `I.`, `一、`, `①`) with Typst's numbering patterns and place
   them independently of bullets. The marker column grows to the widest number
   a list renders.
+- MVSS takes `border_width`, `radius`, and `accent` on `task_marker`, so a
+  theme can thicken, round and fill a task checkbox; a completed box fills with
+  `accent` and draws its check in `color`. The bundled styles do.
 
 ### Changed
 
@@ -40,6 +43,9 @@ at the same level, without `[brackets]`.
 
 ### Fixed
 
+- A task checkbox is drawn as an antialiased box with its check centered
+  inside, like a list marker. The interior used to resolve transparent and the
+  check used to sit outside the box, so a pending task read as a solid square.
 - Emoji style is uniform again: a text family that happens to hold an Emoji
   symbol—Noto Sans CJK covering `⚠️`, say—no longer beats the configured Emoji
   face, which used to mix monochrome and color Emoji in one document.

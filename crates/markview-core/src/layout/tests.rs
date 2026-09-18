@@ -889,17 +889,22 @@ fn a_theme_aligns_list_markers_in_their_column() {
 				..Default::default()
 			},
 		);
+		// Every marker is drawn as a polygon; its leftmost vertex is the
+		// marker's left edge.
 		snapshot.blocks[0]
 			.layout
 			.draws
 			.iter()
-			.find_map(|draw| match draw {
-				// A task reserves a checkbox; other lists draw a polygon.
-				Draw::Rect(r, _) if task => Some(r.x),
-				Draw::Polygon { center, .. } if !task => Some(center[0]),
+			.filter_map(|draw| match draw {
+				Draw::Polygon { center, points, .. } => Some(
+					points
+						.iter()
+						.map(|p| center[0] + p[0])
+						.fold(f32::INFINITY, f32::min),
+				),
 				_ => None,
 			})
-			.expect("marker geometry")
+			.fold(f32::INFINITY, f32::min)
 	}
 	let aligned = |condition: &str, align: &str| {
 		let mut sheet = (*crate::style::Stylesheet::bundled(false)).clone();
@@ -945,6 +950,185 @@ fn a_bullet_is_drawn_and_never_copied() {
 	assert!(layout.text.iter().all(|node| !node.text.contains("[x]")));
 	let text = snapshot.extract_text(snapshot.select_all(1).unwrap(), 1);
 	assert_eq!(text, "one\ntwo");
+}
+
+#[test]
+fn a_task_checkbox_is_a_drawn_box_a_theme_styles() {
+	let mut sheet = (*crate::style::Stylesheet::bundled(false)).clone();
+	sheet.merge(
+		&crate::style::Stylesheet::parse(
+			"format_version=2\nversion=1\n[[rule]]\nwhen=['task_marker']\nsize=1.5\nborder_width=3.0\nradius=5.0\ncolor=\"#FFFFFF\"\nbackground=\"#FFFFFF\"\naccent=\"#C0392B\"\nborder_color=\"#123456\"",
+		)
+		.unwrap(),
+	);
+	let snapshot = LayoutEngine::new().layout(
+		&document::parse("- [x] done\n- [ ] todo\n"),
+		&LayoutOptions {
+			width: 400.0,
+			stylesheet: Arc::new(sheet.clone()),
+			..Default::default()
+		},
+	);
+	use crate::style::ColorField;
+	let span = |points: &[[f32; 2]], axis: usize| {
+		let (lo, hi) = points
+			.iter()
+			.fold((f32::INFINITY, f32::NEG_INFINITY), |(lo, hi), p| {
+				(lo.min(p[axis]), hi.max(p[axis]))
+			});
+		hi - lo
+	};
+	let mut surface = 0;
+	let mut accents = 0;
+	let mut rings = 0;
+	let mut checks = 0;
+	let mut box_geometry = None;
+	for draw in &snapshot.blocks[0].layout.draws {
+		let Draw::Polygon {
+			center,
+			points,
+			paint,
+		} = draw
+		else {
+			continue;
+		};
+		match paint {
+			// Every box keeps the surface fill; a completed one adds the
+			// accent over it.
+			Paint::Scoped(_, _, ColorField::Background) => {
+				surface += 1;
+				assert_eq!(
+					sheet.paint(*paint),
+					crate::style::Color(0xFFFFFFFF).rgba()
+				);
+			}
+			Paint::Scoped(_, _, ColorField::Accent) => {
+				accents += 1;
+				box_geometry = Some((*center, points.clone()));
+				assert_eq!(
+					sheet.paint(*paint),
+					crate::style::Color(0xC0392BFF).rgba()
+				);
+			}
+			Paint::Scoped(_, _, ColorField::BorderColor) => {
+				rings += 1;
+				assert_eq!(
+					sheet.paint(*paint),
+					crate::style::Color(0x123456FF).rgba()
+				);
+				// The ring is the outer contour plus the inner one cut into
+				// it, so both halves are present.
+				assert_eq!(points.len() % 2, 0);
+			}
+			Paint::Cascade(..) => {
+				checks += 1;
+				assert_eq!(points.len(), 6);
+				assert_eq!(
+					sheet.paint(*paint),
+					crate::style::Color(0xFFFFFFFF).rgba()
+				);
+			}
+			other => panic!("unexpected checkbox paint {other:?}"),
+		}
+	}
+	assert_eq!((surface, accents, rings, checks), (2, 1, 2, 1));
+	// The theme sets the box's side; the check is centered and stays inside.
+	let (center, points) = box_geometry.expect("a filled completed box");
+	let side = 18.0 * 1.5 * 0.72;
+	assert!(
+		(span(&points, 0) - side).abs() < 0.5,
+		"{}",
+		span(&points, 0)
+	);
+	assert!((span(&points, 1) - side).abs() < 0.5);
+	let check = snapshot.blocks[0]
+		.layout
+		.draws
+		.iter()
+		.find_map(|draw| match draw {
+			Draw::Polygon { center, points, .. } if points.len() == 6 => {
+				Some((*center, points.clone()))
+			}
+			_ => None,
+		})
+		.expect("a check");
+	assert!((check.0[0] - center[0]).abs() < 0.01);
+	assert!((check.0[1] - center[1]).abs() < 0.01);
+	for point in check.1.iter() {
+		assert!(point[0].abs() <= side * 0.5 && point[1].abs() <= side * 0.5);
+	}
+}
+
+#[test]
+fn a_checkbox_outline_is_hollow() {
+	// A pending checkbox draws only its outline, so the ring must not fill
+	// its own middle.
+	let (side, border) = (13.0, 1.5);
+	let ring = super::blocks::rounded_square_ring(side, 2.5, border);
+	let contains = |p: [f32; 2]| {
+		let mut inside = false;
+		let mut j = ring.len() - 1;
+		for i in 0..ring.len() {
+			let (a, b) = (ring[i], ring[j]);
+			if (a[1] > p[1]) != (b[1] > p[1])
+				&& p[0] < (b[0] - a[0]) * (p[1] - a[1]) / (b[1] - a[1]) + a[0]
+			{
+				inside = !inside;
+			}
+			j = i;
+		}
+		inside
+	};
+	assert!(!contains([0.0, 0.0]), "the middle is hollow");
+	// The middle of the bottom band is ink, and a point past the box is not.
+	assert!(contains([0.0, side * 0.5 - border * 0.5]));
+	assert!(!contains([0.0, side * 0.5 + 1.0]));
+}
+
+#[test]
+fn a_rounded_box_keeps_its_sides_straight() {
+	// Every corner carries both of its endpoints, so the edges between
+	// corners are the axis-aligned sides rather than chords across a missing
+	// arc. Each extreme of the box therefore holds two vertices.
+	let (side, radius) = (13.0, 4.0);
+	let points = super::blocks::rounded_square(side, radius);
+	let half = side / 2.;
+	let at = |value: f32, axis: usize| {
+		points
+			.iter()
+			.filter(|p| (p[axis] - value).abs() < 0.01)
+			.count()
+	};
+	assert_eq!(at(half, 0), 2, "right side");
+	assert_eq!(at(-half, 0), 2, "left side");
+	assert_eq!(at(half, 1), 2, "bottom side");
+	assert_eq!(at(-half, 1), 2, "top side");
+}
+
+#[test]
+fn a_check_is_the_same_shape_at_any_box_size() {
+	// The check is vector geometry, so it scales with its box instead of
+	// depending on whether a font happens to carry a check glyph.
+	let bounds = |side: f32| {
+		let points = super::blocks::check_points(side);
+		let span = |axis: usize| {
+			let (lo, hi) = points
+				.iter()
+				.fold((f32::INFINITY, f32::NEG_INFINITY), |(lo, hi), p| {
+					(lo.min(p[axis]), hi.max(p[axis]))
+				});
+			(lo, hi - lo)
+		};
+		(span(0), span(1))
+	};
+	let (x, y) = bounds(13.0);
+	// The mark stays inside its box and does not share the box's proportions.
+	assert!(x.0 > -6.5 && x.0 + x.1 < 6.5);
+	assert!(y.0 > -6.5 && y.0 + y.1 < 6.5);
+	assert!(x.1 > y.1, "a check is wider than it is tall");
+	let (big_x, big_y) = bounds(26.0);
+	assert!((big_x.1 - x.1 * 2.0).abs() < 0.01);
+	assert!((big_y.1 - y.1 * 2.0).abs() < 0.01);
 }
 
 #[test]

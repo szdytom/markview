@@ -284,6 +284,33 @@ fn marker_shape_is_theme_controlled() {
 	}
 }
 #[test]
+fn a_task_checkbox_takes_box_geometry_from_the_theme() {
+	let sheet = Stylesheet::parse(
+		"format_version=2\nversion=1\n[[rule]]\nwhen=['task_marker']\nborder_width=2.0\nradius=3.0\naccent='#C0392B'",
+	)
+	.unwrap();
+	let chain = chain_of(&[Condition::ListItem, Condition::TaskMarker]);
+	let rule = sheet.element_rule(chain, Condition::TaskMarker);
+	assert_eq!(rule.border_width, Some(2.0));
+	assert_eq!(rule.radius, Some(3.0));
+	assert_eq!(rule.accent, Some(crate::style::Color(0xC0392BFF)));
+	assert_eq!(
+		sheet.paint(crate::scene::Paint::Scoped(
+			chain,
+			Condition::TaskMarker,
+			crate::style::ColorField::Accent,
+		)),
+		crate::style::Color(0xC0392BFF).rgba()
+	);
+	// A checkbox is not a container: it still reserves no padding.
+	assert!(
+		Stylesheet::parse(
+			"format_version=2\nversion=1\n[[rule]]\nwhen=['task_marker']\npadding=1.0",
+		)
+		.is_err()
+	);
+}
+#[test]
 fn ordered_lists_take_a_theme_numbering_pattern() {
 	// A sheet that says nothing numbers items "1.", "2.", ...
 	let bare = Stylesheet::parse("format_version=2\nversion=1").unwrap();

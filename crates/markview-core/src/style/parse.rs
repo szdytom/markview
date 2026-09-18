@@ -332,11 +332,18 @@ fn validate_field(conditions: ConditionSet, key: &str) -> Result<()> {
 			}
 			"shape" => has(K::Marker),
 			"numbering" => conditions == ConditionSet::of(K::Enum),
-			"padding" | "border_width" | "radius" => conditions.container(),
+			"padding" => conditions.container(),
+			// A task checkbox is a small box, so a theme may round it and set
+			// its outline width, but it still reserves no padding.
+			"border_width" | "radius" => {
+				conditions.container() || has(K::TaskMarker)
+			}
 			"border_color" => {
 				conditions.container() || conditions.ui() || has(K::TaskMarker)
 			}
-			"muted" | "accent" | "error" => conditions.ui(),
+			"muted" | "error" => conditions.ui(),
+			// A task marker's accent fills a completed checkbox.
+			"accent" => conditions.ui() || has(K::TaskMarker),
 			"shadow" | "scrim" => has(K::Ui),
 			"hover_background" | "active_background" | "disabled_color"
 			| "focus_color" => has(K::Button),

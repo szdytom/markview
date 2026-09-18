@@ -22,6 +22,16 @@ const MARKER_COLUMN: f32 = 30.0;
 /// follows it, in multiples of the marker's own size.
 const MARKER_GAP: f32 = 0.35;
 
+/// The side of a task checkbox, in multiples of the task marker's size.
+const TASK_BOX: f32 = 0.72;
+
+/// The outline a task checkbox draws without its own `border_width`, in
+/// logical pixels.
+const TASK_BORDER: f32 = 1.0;
+
+/// The segments that approximate each corner of a task checkbox.
+const TASK_CORNERS: usize = 4;
+
 /// The x a marker of `width` takes inside its reserved column, which runs from
 /// the item's left edge to where its text begins.
 fn marker_offset(align: TextAlign, column: f32, width: f32) -> f32 {
@@ -89,6 +99,93 @@ fn marker_points(shape: MarkerShape, side: f32) -> Arc<[[f32; 2]]> {
 		}
 	};
 	Arc::from(points)
+}
+
+/// A completed task's check, as one filled polygon relative to the box center.
+/// The mark is geometry rather than a glyph, so no font can substitute a
+/// different shape, color, or size.
+pub(super) fn check_points(side: f32) -> Arc<[[f32; 2]]> {
+	// Half the stroke, and the segment ends, in units of the box side.
+	let t = side * 0.075;
+	let at = |x: f32, y: f32| [x * side, y * side];
+	let (start, elbow, end) =
+		(at(-0.26, 0.02), at(-0.06, 0.22), at(0.28, -0.24));
+	let unit = |v: [f32; 2]| {
+		let len = (v[0] * v[0] + v[1] * v[1]).sqrt();
+		[v[0] / len, v[1] / len]
+	};
+	let normal = |v: [f32; 2]| [-v[1], v[0]];
+	let first = unit([elbow[0] - start[0], elbow[1] - start[1]]);
+	let second = unit([end[0] - elbow[0], end[1] - elbow[1]]);
+	let (n1, n2) = (normal(first), normal(second));
+	let along =
+		|p: [f32; 2], n: [f32; 2], d: f32| [p[0] + n[0] * d, p[1] + n[1] * d];
+	// Both joints land on the bisector; a sharp turn would spike, so the
+	// miter is bounded.
+	let bisector = unit([n1[0] + n2[0], n1[1] + n2[1]]);
+	let cos = (n1[0] * bisector[0] + n1[1] * bisector[1]).max(0.5);
+	let miter = (t / cos).min(3.0 * t);
+	let outer = along(elbow, bisector, miter);
+	let inner = along(elbow, bisector, -miter);
+	Arc::from([
+		along(start, n1, t),
+		outer,
+		along(end, n2, t),
+		along(end, n2, -t),
+		inner,
+		along(start, n1, -t),
+	])
+}
+
+/// A rounded square centered on the origin, traced clockwise. `TASK_CORNERS`
+/// segments approximate each corner, which is enough at a checkbox's size and
+/// keeps every box in a list on one cached raster. Both endpoints of every
+/// quarter-circle are present, so each side stays axis-aligned.
+pub(super) fn rounded_square(side: f32, radius: f32) -> Vec<[f32; 2]> {
+	let half = side / 2.;
+	let corner = radius.clamp(0., half);
+	if corner < 0.5 {
+		return vec![
+			[-half, -half],
+			[half, -half],
+			[half, half],
+			[-half, half],
+		];
+	}
+	let center = half - corner;
+	let mut points = Vec::with_capacity(4 * (TASK_CORNERS + 1));
+	for (cx, cy, start) in [
+		(center, -center, -90.0),
+		(center, center, 0.0),
+		(-center, center, 90.0),
+		(-center, -center, 180.0),
+	] {
+		for i in 0..=TASK_CORNERS {
+			let angle =
+				(start + 90.0 * i as f32 / TASK_CORNERS as f32).to_radians();
+			points.push([cx + corner * angle.cos(), cy + corner * angle.sin()]);
+		}
+	}
+	points
+}
+
+/// A checkbox outline: the outer contour with the inner one cut into it and
+/// wound the other way, so the box stays hollow when a theme sets no fill.
+pub(super) fn rounded_square_ring(
+	side: f32,
+	radius: f32,
+	border: f32,
+) -> Vec<[f32; 2]> {
+	let inner_side = (side - 2.0 * border).max(0.0);
+	let inner_radius = (radius - border).max(0.0);
+	let mut points = rounded_square(side, radius);
+	// Close the outer loop before cutting, so the cut is one radial slit
+	// rather than a detour across an edge.
+	points.push(points[0]);
+	let inner = rounded_square(inner_side, inner_radius);
+	points.push(inner[0]);
+	points.extend(inner.iter().rev());
+	points
 }
 
 /// The element a block's box belongs to.
@@ -493,6 +590,28 @@ impl BlockContext<'_> {
 					shapes[self.marker_depth % shapes.len()],
 					bullet_side,
 				);
+				let task = opts
+					.stylesheet
+					.text(&item_appearance, Condition::TaskMarker);
+				let task_rule = opts
+					.stylesheet
+					.element_rule(task.chain, Condition::TaskMarker);
+				let task_side = opts.font_size * task.size * TASK_BOX;
+				let task_align = opts.stylesheet.marker_align(true);
+				let task_border = task_rule.border_width.unwrap_or(TASK_BORDER);
+				let task_radius = task_rule.radius.unwrap_or(0.);
+				// Every checkbox in the list shares one shape, so each of its
+				// polygons is built once and drawn like a list marker: through
+				// the antialiased vector rasterizer, cached for the document.
+				let task_fill: Arc<[[f32; 2]]> =
+					Arc::from(rounded_square(task_side, task_radius));
+				let task_ring: Arc<[[f32; 2]]> = Arc::from(
+					rounded_square_ring(task_side, task_radius, task_border),
+				);
+				let task_check = items
+					.iter()
+					.any(|item| item.checked == Some(true))
+					.then(|| check_points(task_side));
 				// A nested list inside an item is one bullet level deeper, and
 				// one ordered level takes the next counting symbol. This list's
 				// own items number at the depth it was entered at.
@@ -582,54 +701,50 @@ impl BlockContext<'_> {
 					}
 					let first_child = out.text.len();
 					if let Some(checked) = item.checked {
-						let task = opts.stylesheet.text(
-							&self.shaper.appearance,
-							Condition::TaskMarker,
-						);
-						let marker_size = opts.font_size * task.size;
-						let box_size = marker_size * 0.7;
-						let r = Rect {
-							x: item_x
-								+ marker_offset(
-									opts.stylesheet.marker_align(true),
-									column,
-									box_size,
-								),
-							y: top + size * 0.5,
-							w: box_size,
-							h: box_size,
+						// The box centers on the item's first line, whose
+						// height the line-height sets.
+						let line_height =
+							size * self.shaper.appearance.line_height;
+						let center = [
+							item_x
+								+ marker_offset(task_align, column, task_side)
+								+ task_side * 0.5,
+							top + line_height * 0.5,
+						];
+						// The box keeps the surface fill; a completed one
+						// paints the accent over it and draws its check in
+						// `color`, so a theme without an accent still shows a
+						// filled box behind the mark.
+						let fill = |field| Draw::Polygon {
+							center,
+							points: task_fill.clone(),
+							paint: Paint::Scoped(
+								task.chain,
+								Condition::TaskMarker,
+								field,
+							),
 						};
-						out.draws.push(Draw::Rect(
-							r,
-							Paint::Cascade(task.chain, ColorField::BorderColor),
-						));
-						out.draws.push(Draw::Rect(
-							Rect {
-								x: r.x + 1.,
-								y: r.y + 1.,
-								w: (r.w - 2.).max(0.),
-								h: (r.h - 2.).max(0.),
-							},
-							Paint::Cascade(task.chain, ColorField::Background),
-						));
+						out.draws.push(fill(ColorField::Background));
 						if checked {
-							out.draws.extend(
-								self.shaper
-									.label_with(
-										"✓",
-										opts.font_size * 0.7,
-										r.x,
-										r.y + r.h,
-										&task,
-										task.paint,
-										Some(Paint::Scoped(
-											task.chain,
-											Condition::TaskMarker,
-											ColorField::Background,
-										)),
-									)
-									.0,
-							);
+							out.draws.push(fill(ColorField::Accent));
+						}
+						if task_border > 0.0 {
+							out.draws.push(Draw::Polygon {
+								center,
+								points: task_ring.clone(),
+								paint: Paint::Scoped(
+									task.chain,
+									Condition::TaskMarker,
+									ColorField::BorderColor,
+								),
+							});
+						}
+						if checked && let Some(points) = &task_check {
+							out.draws.push(Draw::Polygon {
+								center,
+								points: points.clone(),
+								paint: task.paint,
+							});
 						}
 					} else if !numbered {
 						let left = item_x

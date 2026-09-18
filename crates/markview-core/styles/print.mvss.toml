@@ -207,9 +207,12 @@ align = "center"
 
 [[rule]]
 when = ["task_marker"]
-color = "#315D86"
+color = "#FFFFFF"
 background = "#FFFFFF"
-border_color = "#5A5A5A"
+accent = "#315D86"
+border_color = "#315D86"
+border_width = 1.2
+radius = 2.5
 align = "center"
 
 [[rule]]
