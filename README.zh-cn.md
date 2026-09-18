@@ -164,6 +164,7 @@ Markview 不需要浏览器或打印对话框就能把文档排到纸上。导�
 markview --pdf document.md --output document.pdf
 markview --pdf document.md -o paper.pdf --paper letter --margin 20,25
 markview --pdf document.md -o paper.pdf --footer "{title} — {page}/{pages}"
+markview --pdf document.md -o document.pdf --watch
 ```
 
 内置的 `print` 样式表决定纸张：A4、左右 20mm 页边距、白底黑字、页脚居中页码。
@@ -171,6 +172,10 @@ markview --pdf document.md -o paper.pdf --footer "{title} — {page}/{pages}"
 `宽x高`；`--margin` 接受 1、2 或 4 个毫米值；`--landscape` 交换长短边。页眉页脚共六
 个槽位，用 `--header`、`--footer` 及 `-left`/`-right` 变体设置，模板中可用 `{page}`、
 `{pages}`、`{title}`、`{path}`。
+
+`--watch` 让命令在首次导出后继续运行：文档或其引用的本地图片一有变化就重建 PDF，按
+Ctrl+C 结束。每次重建都复用未变的解析、块排版与已解码图片，因此内容没变的保存会被跳
+过，小改动只需为改动部分付出代价。
 
 跨页时每段两边各留两行，标题与随后的内容一起移动，代码块自动换行，过宽的表格会缩小
 并在 stderr 给出警告。网页和邮件链接变成可点击注释，`#标题` 链接变成文档内跳转。

@@ -5,7 +5,7 @@ mod incremental;
 mod parse;
 pub(crate) use heading::Anchors;
 pub use heading::heading_slug;
-pub use incremental::{parse_incremental, parse_prefix};
+pub use incremental::{parse_incremental, parse_prefix, reparse};
 pub use parse::parse;
 use std::{
 	collections::hash_map::DefaultHasher,

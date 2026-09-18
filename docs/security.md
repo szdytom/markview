@@ -14,7 +14,7 @@ The three findings that drove revision 2 are resolved.
 
 ## Scope and assumptions
 
-In scope: a user on an unsandboxed desktop opening a Markdown file from an untrusted source, including downloads, mail attachments, extracted archives, generated text, shared folders, a directory watched with `--watch`, and a second Markdown file reached by following a link.
+In scope: a user on an unsandboxed desktop opening a Markdown file from an untrusted source, including downloads, mail attachments, extracted archives, generated text, shared folders, a document watched with `--pdf --watch`, and a second Markdown file reached by following a link.
 
 Out of scope: physical access, kernel and GPU driver defects considered as defects in themselves (they appear only as [T10](#t10-gpu-and-driver-boundary)), social engineering in which the user installs or approves something, and supply-chain compromise of a dependency (tracked as [T4](#t4-memory-corruption-in-a-dependency)). The PDF exporter is in scope for the same parser and image budgets, and out of scope for conformance of the PDF it writes: a viewer's handling of the bytes is the viewer's boundary. Revision 2 claimed that work was handled with `cargo-deny`, `cargo-audit`, and `cargo-vet`; no such configuration exists in the repository today. That claim was wrong, and the gap is real and open.
 
@@ -27,7 +27,8 @@ One structural fact shapes everything below. Markview executes nothing from a do
 the user's own choice and never document-controlled. It runs no window, no GPU,
 and no link handler; it reuses the same parsing, image loading, and `Limits`
 budgets as the reader, so a document cannot make the export reach anywhere the
-reader could not.
+reader could not. `--watch` only rewrites that same user-named path on later
+saves; it adds no destination the document can choose.
 
 Both are now closed to anything a policy has not already named. [T6](#t6-arbitrary-file-opened-by-the-operating-system) routes every document-controlled launch through `src/link.rs`, which is the only allowlist in the program; [T5](#t5-arbitrary-local-file-read) and [T7](#t7-server-side-request-forgery-and-network-beaconing) bound the two image channels. The rest of the system is a pure data-to-geometry pipeline, held to "does not crash, hang, or exhaust memory."
 

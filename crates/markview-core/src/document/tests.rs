@@ -297,6 +297,18 @@ fn assert_edit(before: &str, after: &str) {
 	assert_eq!(got.blocks, expected.blocks, "{before:?} -> {after:?}");
 }
 
+#[test]
+fn reparse_reuses_the_fast_path_and_falls_back_to_a_full_parse() {
+	let previous = parse(PARAGRAPHS);
+	let edited = PARAGRAPHS.replace("beta", "betaX");
+	let got = reparse(&previous, Arc::from(edited.as_str()));
+	assert_eq!(got.blocks, parse(edited.as_str()).blocks);
+	// A list keeps its meaning across blank lines, so the edit takes the full
+	// parse and still matches one.
+	let replaced = reparse(&parse("- one\n- two\n"), Arc::from(PARAGRAPHS));
+	assert_eq!(replaced.blocks, parse(PARAGRAPHS).blocks);
+}
+
 const PARAGRAPHS: &str =
 	"# Title\n\nAlpha beta gamma.\n\nDelta epsilon zeta.\n\nEta theta iota.\n";
 

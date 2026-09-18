@@ -225,17 +225,10 @@ impl Worker {
 									.map(|(_, _, doc)| doc.clone());
 								let doc = match previous {
 									Some(previous) => {
-										match document::parse_incremental(
+										Arc::new(document::reparse(
 											&previous,
 											source.clone(),
-										) {
-											Some(incremental) => {
-												Arc::new(incremental)
-											}
-											None => Arc::new(document::parse(
-												source.clone(),
-											)),
-										}
+										))
 									}
 									None => {
 										// A fresh document that is large

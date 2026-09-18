@@ -91,6 +91,14 @@ pub fn parse_incremental(
 	})
 }
 
+/// The document `source` describes, reusing `previous`'s untouched blocks when
+/// it can and taking a full parse otherwise. A reader and a one-shot export
+/// share one policy here, so neither can drift from the fast path.
+pub fn reparse(previous: &Document, source: Arc<str>) -> Document {
+	parse_incremental(previous, source.clone())
+		.unwrap_or_else(|| super::parse(source))
+}
+
 /// The blocks at the start of `source` that `bytes` reaches, as a document over
 /// the whole source, or `None` when `bytes` already covers it.
 ///

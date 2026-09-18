@@ -13,6 +13,12 @@ at the same level, without `[brackets]`.
 
 ## Unreleased
 
+### Added
+
+- `--pdf … --watch` re-exports whenever the document or a local image it
+  references changes, until the session is stopped. Rebuilds reuse the previous
+  parse, block layout and decoded images; an unchanged save is skipped.
+
 ## 0.1.2 - 2026-09-18
 
 Paper export, faster first frames, and a smaller idle footprint.

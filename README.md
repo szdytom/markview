@@ -191,6 +191,7 @@ vector text with subset fonts, so the result is small, sharp and searchable:
 markview --pdf document.md --output document.pdf
 markview --pdf document.md -o paper.pdf --paper letter --margin 20,25
 markview --pdf document.md -o paper.pdf --footer "{title} — {page}/{pages}"
+markview --pdf document.md -o document.pdf --watch
 ```
 
 The bundled `print` stylesheet supplies the paper: A4 with 20 mm side margins,
@@ -200,6 +201,12 @@ black on white, and a centred page number. `--paper` takes `a3`, `a4`, `a5`,
 The six header and footer slots are set with `--header`, `--footer` and the
 `-left`/`-right` variants, and their templates may use `{page}`, `{pages}`,
 `{title}` and `{path}`.
+
+`--watch` keeps the command running after the first export and rebuilds the PDF
+whenever the document, or a local image it references, changes; Ctrl+C ends the
+session. Every rebuild reuses the unchanged parse, block layout and decoded
+images, so an unchanged save is skipped and a small edit pays only for the part
+that changed.
 
 A paragraph keeps two lines on each side of a page break, a heading travels with
 the block it introduces, code blocks wrap, and a table too wide for the page is

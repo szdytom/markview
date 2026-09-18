@@ -88,7 +88,9 @@ impl FileWatch {
 		.ok();
 		if let Some(w) = &mut watcher
 			&& w.watch(
-				path.parent().unwrap_or(Path::new(".")),
+				path.parent()
+					.filter(|p| !p.as_os_str().is_empty())
+					.unwrap_or(Path::new(".")),
 				if directory {
 					RecursiveMode::Recursive
 				} else {

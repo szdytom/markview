@@ -44,6 +44,9 @@ Check an export in a viewer (`pdftotext`, `pdfinfo`, `qpdf --qdf`) for page
 count, page furniture, link annotations, text selection and embedded fonts.
 A block that had to shrink to fit the page, or a band taller than the page, is
 reported on stderr. The export never depends on the GPU, so it runs headless.
+Add `--watch` to iterate on a document: the session rebuilds the PDF on every
+save, reusing the unchanged parse, layout and images, and logs how many blocks
+each rebuild reused.
 
 The GPU renderer and the PDF writer share the layout and the `print` sheet, so
 the same document at the same measure must place the same content in the same
