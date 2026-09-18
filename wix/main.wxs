@@ -69,7 +69,7 @@
 
         <Package Id='*'
             Keywords='Installer'
-            Description='A native, read-only Markdown reader with optimized paragraph layout'
+            Description='A fast, native Markdown reader with publication-quality typography'
             Manufacturer='szdytom'
             InstallerVersion='450'
             Languages='1033'
@@ -246,7 +246,7 @@
                             Key='SOFTWARE\markview\Capabilities'
                             Name='ApplicationDescription'
                             Type='string'
-                            Value='A native, read-only Markdown reader'/>
+                            Value='A fast, native Markdown reader with publication-quality typography'/>
                         <RegistryValue
                             Root='HKLM'
                             Key='SOFTWARE\markview\Capabilities\FileAssociations'

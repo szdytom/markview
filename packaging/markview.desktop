@@ -2,7 +2,7 @@
 Type=Application
 Version=1.0
 Name=Markview
-Comment=Read Markdown with native typography
+Comment=Fast, native Markdown reading with publication-quality typography
 Exec=markview %f
 TryExec=markview
 Terminal=false

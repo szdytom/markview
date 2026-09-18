@@ -52,10 +52,11 @@ Section: editors
 Priority: optional
 Depends: libc6 (>= 2.35), libfontconfig1, libvulkan1, libx11-6, libxcursor1, libxi6, libxkbcommon0, libwayland-client0, xdg-desktop-portal
 Recommends: fonts-noto-cjk
-Description: Native, read-only Markdown reader
+Description: Fast, native Markdown reader with publication-quality typography
  Markview renders Markdown, math, code, tables, links, and images in a
  native window without a browser, WebView, JavaScript, or an external TeX
- process. It is read-only and watches the open document for changes.
+ process. It typesets whole paragraphs at once, is read-only by design,
+ and watches the open document for changes.
 EOF
 
 dpkg-deb --build --root-owner-group "$pkg" \
