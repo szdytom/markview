@@ -470,6 +470,22 @@ fn a_document_with_cjk_text_embeds_a_font_that_names_it() {
 }
 
 #[test]
+fn cjk_inside_a_formula_falls_back_to_the_document_fonts() {
+	// A `\text{…}` group with CJK names no KaTeX face, so the export must
+	// shape it with the document's fonts instead of dropping the characters.
+	let source = "$$\\text{车到达 } a_i \\text{ 的时间} \\le v_i$$\n";
+	let exported = export(source, print(), true);
+	let text = exported.pdf.extract_text(&[1]).unwrap();
+	// Each character is its own text object, so the reader may interleave
+	// spaces and form feeds; only the ideographs are under test.
+	let cjk: String = text
+		.chars()
+		.filter(|c| ('\u{4e00}'..='\u{9fff}').contains(c))
+		.collect();
+	assert_eq!(cjk, "车到达的时间", "extracted {text:?}");
+}
+
+#[test]
 fn percent_encoded_heading_links_keep_their_destinations() {
 	let exported = export(
 		"# 中文\n\n[encoded](#%E4%B8%AD%E6%96%87) [plain](#中文) [missing](#absent)",

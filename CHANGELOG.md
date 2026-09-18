@@ -19,6 +19,11 @@ at the same level, without `[brackets]`.
   references changes, until the session is stopped. Rebuilds reuse the previous
   parse, block layout and decoded images; an unchanged save is skipped.
 
+### Fixed
+
+- PDF export drew the CJK and emoji inside a formula's `\text{…}` group with
+  the document's fonts instead of dropping them.
+
 ## 0.1.2 - 2026-09-18
 
 Paper export, faster first frames, and a smaller idle footprint.

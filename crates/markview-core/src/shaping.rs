@@ -619,6 +619,21 @@ impl TextShaper {
 		baseline: f32,
 		paint: Paint,
 	) -> (Vec<Draw>, f32) {
+		let (draws, _, width) =
+			self.label_runs_measured(text, size, x, baseline, paint);
+		(draws, width)
+	}
+
+	/// The same label, with the byte range of `text` behind each glyph draw, so
+	/// a caller that embeds the characters can name them.
+	pub fn label_runs_measured(
+		&mut self,
+		text: &str,
+		size: f32,
+		x: f32,
+		baseline: f32,
+		paint: Paint,
+	) -> (Vec<Draw>, Vec<Range<usize>>, f32) {
 		let old = self.appearance.clone();
 		let condition = match paint {
 			Paint::Styled(c, _) => c,
@@ -629,7 +644,7 @@ impl TextShaper {
 			self.stylesheet
 				.text(&TextAppearance::default(), Condition::Ui)
 		} else {
-			old.clone()
+			old
 		};
 		let appearance = self.stylesheet.text(&parent, condition);
 		let paint = if matches!(
@@ -644,7 +659,7 @@ impl TextShaper {
 			condition,
 			crate::style::ColorField::Background,
 		));
-		self.label_with(text, size, x, baseline, &appearance, paint, background)
+		self.label_runs(text, size, x, baseline, &appearance, paint, background)
 	}
 
 	/// Shape a label with an appearance that the caller already resolved, so a

@@ -90,6 +90,7 @@ impl Frame {
 
 /// A KaTeX math face: the same bytes swash maps character codes with, and the
 /// krilla font they are embedded through.
+#[derive(Clone)]
 struct MathFont {
 	data: FontData,
 	font: Font,
@@ -587,9 +588,6 @@ impl Painter<'_> {
 					color,
 				} => {
 					let (color, alpha) = self.math_color(*color, paint);
-					let Some(math_font) = self.math_font(font) else {
-						continue;
-					};
 					let character = ratex_font::FontId::parse(font)
 						.map_or_else(
 							|| char::from_u32(*char_code).unwrap_or('\u{fffd}'),
@@ -597,6 +595,20 @@ impl Painter<'_> {
 								ratex_font::katex_ttf_glyph_char(id, *char_code)
 							},
 						);
+					let glyph_size = frame.size(size * *scale as f32);
+					let point = Point::from_xy(
+						frame.x(x + *gx as f32 * size),
+						frame.y(y + *gy as f32 * size),
+					);
+					// A CJK or emoji character inside a formula names a face
+					// the KaTeX bundle does not hold; the document's own fonts
+					// draw it, exactly as the GPU painter falls back.
+					let Some(math_font) = self.math_font(font).cloned() else {
+						self.math_fallback(
+							surface, character, glyph_size, point, color, alpha,
+						);
+						continue;
+					};
 					let Some(id) =
 						FontRef::from_index(math_font.data.data.data(), 0).map(
 							|reference| reference.charmap().map(character),
@@ -607,11 +619,6 @@ impl Painter<'_> {
 					if id == 0 {
 						continue;
 					}
-					let glyph_size = frame.size(size * *scale as f32);
-					let point = Point::from_xy(
-						frame.x(x + *gx as f32 * size),
-						frame.y(y + *gy as f32 * size),
-					);
 					surface.set_fill(Some(Fill {
 						paint: KrillaPaint::from(color),
 						opacity: NormalizedF32::new(alpha)
@@ -759,6 +766,74 @@ impl Painter<'_> {
 					}
 				}
 			}
+		}
+	}
+
+	/// Draws a formula character whose face is not in the KaTeX bundle, such as
+	/// the CJK and emoji a `\text{…}` group can hold, with the document's own
+	/// fonts. The shaped glyphs carry their byte ranges, so the characters stay
+	/// searchable and copyable like the rest of the page's text.
+	fn math_fallback(
+		&mut self,
+		surface: &mut Surface<'_>,
+		text: char,
+		size: f32,
+		point: Point,
+		color: rgb::Color,
+		alpha: f32,
+	) {
+		let text = text.to_string();
+		let (draws, ranges, _) = self.shaper.label_runs_measured(
+			&text,
+			size,
+			point.x,
+			point.y,
+			Paint::Text,
+		);
+		surface.set_fill(Some(Fill {
+			paint: KrillaPaint::from(color),
+			opacity: NormalizedF32::new(alpha).unwrap_or(NormalizedF32::ONE),
+			rule: FillRule::NonZero,
+		}));
+		let mut ranges = ranges.iter();
+		let mut index = 0;
+		while index < draws.len() {
+			let Draw::Glyph(first) = &draws[index] else {
+				index += 1;
+				continue;
+			};
+			let mut end = index + 1;
+			while end < draws.len() {
+				let Draw::Glyph(next) = &draws[end] else {
+					break;
+				};
+				if !text::same_face(first, next) {
+					break;
+				}
+				end += 1;
+			}
+			let run: Vec<RunGlyph> = draws[index..end]
+				.iter()
+				.filter_map(|draw| match draw {
+					Draw::Glyph(glyph) => Some(RunGlyph {
+						id: glyph.id,
+						x: glyph.x,
+						y: glyph.y,
+						range: ranges.next().cloned().unwrap_or(0..0),
+					}),
+					_ => None,
+				})
+				.collect();
+			text::emit(
+				surface,
+				&mut self.fonts,
+				&first.font,
+				&first.coords,
+				first.size,
+				&text,
+				&run,
+			);
+			index = end;
 		}
 	}
 
