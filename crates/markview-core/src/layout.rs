@@ -46,11 +46,22 @@ fn fitted_range(full: &str, shown: &str, range: Range<usize>) -> Range<usize> {
 	start..end
 }
 
-fn image_key(block: &Block, images: &crate::image::ImageSnapshot) -> u64 {
+/// Everything outside a block's own content that its geometry depends on:
+/// which images are decoded, and which of its code blocks already carry syntax
+/// colors. Both arrive asynchronously, so a change to either must invalidate
+/// exactly the blocks that use it rather than the whole layout cache.
+fn external_key(
+	block: &Block,
+	images: &crate::image::ImageSnapshot,
+	highlights: &highlights::Highlights,
+	theme: Option<&str>,
+) -> u64 {
 	let mut specs = Vec::new();
 	block.images(&mut specs);
-	crate::document::fingerprint(
-		&specs
+	let mut code = Vec::new();
+	block.code_blocks(&mut code);
+	crate::document::fingerprint(&(
+		specs
 			.iter()
 			.map(|s| {
 				(
@@ -62,7 +73,13 @@ fn image_key(block: &Block, images: &crate::image::ImageSnapshot) -> u64 {
 				)
 			})
 			.collect::<Vec<_>>(),
-	)
+		code.iter()
+			.map(|(language, text)| {
+				let key = highlights::key(language, text, theme);
+				(key, highlights.results().contains_key(&key))
+			})
+			.collect::<Vec<_>>(),
+	))
 }
 
 #[derive(Clone, Debug)]
@@ -145,13 +162,22 @@ struct BlockContext<'a> {
 pub struct LayoutEngine {
 	shaper: TextShaper,
 	math: MathEngine,
-	cache: HashMap<CacheKey, Arc<BlockLayout>>,
+	cache: HashMap<CacheKey, CacheEntry>,
+	/// Increases once per pass; an entry's stamp says which pass last used it.
+	pass: u64,
 	highlights: highlights::Highlights,
+}
+
+/// A cached block geometry. The `Arc` is shared with the snapshot that
+/// published it, so retaining every entry costs one pointer, not a copy.
+struct CacheEntry {
+	layout: Arc<BlockLayout>,
+	pass: u64,
 }
 
 #[derive(Hash, PartialEq, Eq)]
 struct CacheKey {
-	images: u64,
+	external: u64,
 	content: u64,
 	width: u32,
 	size: u32,
@@ -160,10 +186,10 @@ struct CacheKey {
 	justification: [u32; 4],
 	paragraph_indent: u32,
 	greedy: bool,
-	codeblock_theme_override: Option<String>,
 	codeblock_wrap: bool,
-	codeblock_theme: Option<String>,
-	highlight_generation: u64,
+	/// Fingerprint of the resolved syntax theme, which is the same for every
+	/// block of a pass.
+	codeblock_theme: u64,
 	style: u64,
 }
 impl Default for LayoutEngine {
@@ -177,11 +203,18 @@ impl LayoutEngine {
 			shaper: TextShaper::new(),
 			math: MathEngine::default(),
 			cache: HashMap::new(),
+			pass: 0,
 			highlights: highlights::Highlights::new(),
 		}
 	}
 	pub fn clear_document_cache(&mut self) {
 		self.cache.clear();
+	}
+	/// Drops geometry and syntax colors for a document that is no longer open,
+	/// so an idle reader keeps nothing from it.
+	pub fn release_document(&mut self) {
+		self.cache.clear();
+		self.highlights.clear();
 	}
 	pub fn validate_stylesheet(
 		&mut self,
@@ -239,6 +272,8 @@ impl LayoutEngine {
 			options.codeblock_theme_override.clone().or_else(|| {
 				options.stylesheet.rule(Condition::CodeBlock).theme.clone()
 			});
+		let codeblock_theme_key =
+			crate::document::fingerprint(&codeblock_theme);
 		result.height =
 			padding[0] + body.space_before.unwrap_or(0.) * options.font_size;
 		// The stylesheet is immutable for this pass. Its identity belongs to
@@ -248,7 +283,8 @@ impl LayoutEngine {
 			.first()
 			.map(|_| options.stylesheet.layout_key())
 			.unwrap_or_default();
-		let previous = std::mem::take(&mut self.cache);
+		self.pass = self.pass.wrapping_add(1);
+		let pass = self.pass;
 		result.document_box = Some(Draw::Box {
 			rect: Rect {
 				x: 0.,
@@ -262,7 +298,6 @@ impl LayoutEngine {
 			border: body.border_width.unwrap_or(0.),
 			left_only: false,
 		});
-		let mut cached_draws = 0;
 		for block in &document.blocks {
 			if let Some(Draw::Box { rect, .. }) = &mut result.document_box {
 				rect.h = result.height;
@@ -271,7 +306,12 @@ impl LayoutEngine {
 				return None;
 			}
 			let key = CacheKey {
-				images: image_key(block, images),
+				external: external_key(
+					block,
+					images,
+					&self.highlights,
+					codeblock_theme.as_deref(),
+				),
 				content: block.content_key,
 				width: options.width.to_bits(),
 				size: options.font_size.to_bits(),
@@ -280,36 +320,47 @@ impl LayoutEngine {
 				justification: options.justification.bits(),
 				paragraph_indent: options.paragraph_indent.to_bits(),
 				greedy: options.greedy,
-				codeblock_theme_override: options
-					.codeblock_theme_override
-					.clone(),
 				codeblock_wrap: options.codeblock_wrap,
-				codeblock_theme: codeblock_theme.clone(),
-				highlight_generation: self.highlights.generation(),
+				codeblock_theme: codeblock_theme_key,
 				style: style_key,
 			};
-			let layout = if let Some(cached) = previous.get(&key) {
+			let cached = self.cache.get_mut(&key).map(|entry| {
+				entry.pass = pass;
+				entry.layout.clone()
+			});
+			let layout = if let Some(cached) = cached {
 				result.reused += 1;
-				cached.clone()
+				cached
 			} else {
-				crate::profile::measure(crate::profile::Stage::Blocks, || {
-					let mut out = BlockLayout::default();
-					BlockContext {
-						shaper: &mut self.shaper,
-						math: &mut self.math,
-						images,
-						highlight_cache: self.highlights.results(),
-					}
-					.block(
-						block,
-						padding[3],
-						0.0,
-						content_width,
-						options,
-						&mut out,
-					);
-					Arc::new(out)
-				})
+				let layout = crate::profile::measure(
+					crate::profile::Stage::Blocks,
+					|| {
+						let mut out = BlockLayout::default();
+						BlockContext {
+							shaper: &mut self.shaper,
+							math: &mut self.math,
+							images,
+							highlight_cache: self.highlights.results(),
+						}
+						.block(
+							block,
+							padding[3],
+							0.0,
+							content_width,
+							options,
+							&mut out,
+						);
+						Arc::new(out)
+					},
+				);
+				self.cache.insert(
+					key,
+					CacheEntry {
+						layout: layout.clone(),
+						pass,
+					},
+				);
+				layout
 			};
 			result.blocks.push(PlacedBlock {
 				id: block.id,
@@ -320,11 +371,11 @@ impl LayoutEngine {
 			result.height += layout.height;
 			result.degraded += layout.degraded;
 			result.math_errors += layout.math_errors;
-			cached_draws += layout.draws.len();
-			if cached_draws < 100_000 && self.cache.len() < 256 {
-				self.cache.insert(key, layout);
-			}
 		}
+		// A complete pass visited every block, so an entry it did not touch
+		// belongs to a superseded document, option set, or highlight state.
+		// Dropping those keeps the cache at one document's worth of geometry.
+		self.cache.retain(|_, entry| entry.pass == pass);
 		result.height +=
 			padding[2] + body.space_after.unwrap_or(0.) * options.font_size;
 		result.document_box = Some(Draw::Box {
@@ -343,12 +394,11 @@ impl LayoutEngine {
 		Some(result)
 	}
 
+	/// Reports whether syntax colors arrived since the last pass. Arrived
+	/// colors change the affected blocks' `external` key, so the cache
+	/// invalidates them on the next lookup and leaves the rest alone.
 	pub fn poll_highlights(&mut self) -> bool {
-		let changed = self.highlights.poll();
-		if changed {
-			self.cache.clear();
-		}
-		changed
+		self.highlights.poll()
 	}
 
 	/// Waits for the background syntax highlighting, then reports whether it
@@ -357,11 +407,7 @@ impl LayoutEngine {
 	/// An export has no event loop to lay out again when a job reports, so it
 	/// settles the pass before drawing; the reader keeps polling instead.
 	pub fn wait_highlights(&mut self) -> bool {
-		let changed = self.highlights.settle();
-		if changed {
-			self.cache.clear();
-		}
-		changed
+		self.highlights.settle()
 	}
 	pub fn label(
 		&mut self,

@@ -65,8 +65,7 @@ impl BlockContext<'_> {
 			.rule(Condition::CodeBlock)
 			.theme
 			.as_deref());
-		let highlight_key =
-			crate::document::fingerprint(&(language, text, theme));
+		let highlight_key = super::highlights::key(language, text, theme);
 		let highlighted = self
 			.highlight_cache
 			.get(&highlight_key)

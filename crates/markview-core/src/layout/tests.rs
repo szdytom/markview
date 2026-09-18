@@ -1680,3 +1680,42 @@ fn footnote_bodies_share_the_same_left_edge() {
 		}
 	}
 }
+
+#[test]
+fn a_localized_edit_reuses_every_unchanged_block() {
+	// More than the old 256-entry cap, with distinct content throughout, so a
+	// retained cache is the only thing that can reuse them.
+	let mut source = String::new();
+	for i in 0..300 {
+		source.push_str(&format!(
+			"Paragraph number {i} with distinct words.\n\n"
+		));
+	}
+	let opts = LayoutOptions::default();
+	let mut engine = LayoutEngine::new();
+	let before = engine.layout(&document::parse(source.clone()), &opts);
+	assert_eq!(before.blocks.len(), 300);
+	assert_eq!(before.reused, 0);
+	let edited =
+		document::parse(source.replace("number 150 ", "number 150 edited "));
+	let after = engine.layout(&edited, &opts);
+	assert_eq!(after.reused, before.blocks.len() - 1);
+}
+
+#[test]
+fn syntax_colors_settle_without_thrashing_the_block_cache() {
+	// One entry per code block, past the 256-entry point where the highlight
+	// cache used to clear itself and re-enqueue all of them forever.
+	let mut source = String::new();
+	for i in 0..300 {
+		source.push_str(&format!("```rust\nlet value_{i} = {i};\n```\n\n"));
+	}
+	let doc = document::parse(source);
+	let opts = LayoutOptions::default();
+	let mut engine = LayoutEngine::new();
+	assert_eq!(engine.layout(&doc, &opts).reused, 0);
+	assert!(engine.wait_highlights(), "highlight jobs must report");
+	// Each block gains its colors once, then keeps them across passes.
+	assert_eq!(engine.layout(&doc, &opts).reused, 0);
+	assert_eq!(engine.layout(&doc, &opts).reused, doc.blocks.len());
+}

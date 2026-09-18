@@ -125,6 +125,18 @@ fn headings_carry_anchors_and_repeats_get_suffixes() {
 		panic!()
 	};
 	assert_eq!(anchor, "nested-heading");
+	// Suffixes keep counting past a repeated base, and a heading whose own slug
+	// already ends in a number does not steal the next suffix.
+	let doc = parse("# Same\n\n# Same\n\n# Same\n\n# Same-1\n");
+	let anchors: Vec<&str> = doc
+		.blocks
+		.iter()
+		.map(|b| match &b.kind {
+			BlockKind::Heading { anchor, .. } => anchor.as_str(),
+			_ => panic!("expected a top-level heading"),
+		})
+		.collect();
+	assert_eq!(anchors, ["same", "same-1", "same-2", "same-1-1"]);
 }
 
 #[test]
@@ -255,5 +267,311 @@ fn a_line_break_survives_as_a_break_not_as_text() {
 			&i.kind,
 			InlineKind::LineBreak { justify: true }
 		))
+	);
+}
+
+/// An edit the incremental path must handle: the result has to equal a full
+/// parse block for block, source range for source range.
+fn assert_incremental(before: &str, after: &str) {
+	let previous = parse(before);
+	let got = parse_incremental(&previous, Arc::from(after))
+		.unwrap_or_else(|| panic!("no fast path for {before:?} -> {after:?}"));
+	let expected = parse(after);
+	assert_eq!(
+		got.content_id, expected.content_id,
+		"{before:?} -> {after:?}"
+	);
+	assert_eq!(got.blocks, expected.blocks, "{before:?} -> {after:?}");
+}
+
+/// Every edit, whether or not it takes the fast path, must be correct.
+fn assert_edit(before: &str, after: &str) {
+	let previous = parse(before);
+	let got = parse_incremental(&previous, Arc::from(after))
+		.unwrap_or_else(|| parse(after));
+	let expected = parse(after);
+	assert_eq!(
+		got.content_id, expected.content_id,
+		"{before:?} -> {after:?}"
+	);
+	assert_eq!(got.blocks, expected.blocks, "{before:?} -> {after:?}");
+}
+
+const PARAGRAPHS: &str =
+	"# Title\n\nAlpha beta gamma.\n\nDelta epsilon zeta.\n\nEta theta iota.\n";
+
+#[test]
+fn incremental_parse_matches_a_full_parse_for_plain_edits() {
+	assert_incremental(PARAGRAPHS, &PARAGRAPHS.replace("beta", "betaX"));
+	assert_incremental(PARAGRAPHS, &PARAGRAPHS.replace("epsilon ", ""));
+	assert_incremental(PARAGRAPHS, &PARAGRAPHS.replace("# Title", "# Titles"));
+	assert_incremental(PARAGRAPHS, &PARAGRAPHS.replace("iota.", "iota!"));
+	// A new line inside a paragraph, and a new paragraph at the end.
+	assert_incremental(
+		PARAGRAPHS,
+		&PARAGRAPHS.replace("gamma.", "gamma.\nMore."),
+	);
+	assert_incremental(PARAGRAPHS, &format!("{PARAGRAPHS}\nKappa lambda.\n"));
+	// Insertion at the very front.
+	assert_incremental(PARAGRAPHS, &format!("Start. {PARAGRAPHS}"));
+	// An appended line joins the last paragraph rather than starting one.
+	assert_edit(
+		PARAGRAPHS,
+		&PARAGRAPHS.replace("iota.\n", "iota.\nKappa.\n"),
+	);
+}
+
+#[test]
+fn incremental_parse_keeps_heading_anchors_unique() {
+	let before = "# Same\n\nOne.\n\n# Same\n\nTwo.\n";
+	assert_incremental(before, "# Same\n\nOne.\n\n# Same\n\nTwo!\n");
+	// A new copy of a heading renumbers the ones after it.
+	assert_incremental(before, "# Same\n\nOne.\n\n# Same\n\nTwo.\n\n# Same\n");
+	// Renaming a heading frees its slug for a later one.
+	assert_incremental(before, "# Renamed\n\nOne.\n\n# Same\n\nTwo.\n");
+}
+
+#[test]
+fn incremental_parse_handles_repeated_edits() {
+	let mut source = String::from(PARAGRAPHS);
+	for step in 0..8 {
+		let next = source.replace("Alpha", &format!("Alpha{step} "));
+		assert_edit(&source, &next);
+		source = next;
+	}
+}
+
+#[test]
+fn block_constructs_fall_back_to_a_full_parse() {
+	let plain = "# Title\n\nAlpha.\n\nBeta.\n";
+	for after in [
+		"- item\n\nAlpha.\n\nBeta.\n",
+		"> quote\n\nAlpha.\n\nBeta.\n",
+		"```rust\nlet x = 1;\n```\n\nAlpha.\n",
+		"    indented code\n\nAlpha.\n",
+		"<div>raw</div>\n\nAlpha.\n",
+		"| A | B |\n|:-|--:|\n| 1 | 2 |\n\nAlpha.\n",
+		"[id]: https://example.com\n\nAlpha.\n",
+		"Alpha[^note].\n\n[^note]: Note.\n",
+	] {
+		assert!(
+			parse_incremental(&parse(plain), Arc::from(after)).is_none(),
+			"expected a fallback for {after:?}"
+		);
+		assert_edit(plain, after);
+	}
+	// A document that only becomes plain still falls back the first time.
+	assert!(parse_incremental(&parse("- item\n"), Arc::from(plain)).is_none());
+}
+
+#[test]
+fn incremental_parse_matches_a_full_parse_under_random_edits() {
+	for seed in [
+		0x2545_f491_4f6c_dd1du64,
+		0x9e37_79b9_7f4a_7c15,
+		0xdead_beef_cafe_f00d,
+	] {
+		// A deterministic xorshift keeps the corpus reproducible.
+		let mut state = seed;
+		let mut next = move || {
+			state ^= state << 13;
+			state ^= state >> 7;
+			state ^= state << 17;
+			state
+		};
+		let words =
+			["alpha", "beta", "gamma", "中文", "delta", "epsilon", "zeta"];
+		let mut source = String::from("# Title\n\n");
+		for _ in 0..10 {
+			if next() % 4 == 0 {
+				source.push_str("## Same\n\n");
+			}
+			source.push_str(words[(next() % 7) as usize]);
+			source.push(' ');
+			source.push_str(words[(next() % 7) as usize]);
+			source.push_str(".\n\n");
+		}
+		let inserts = ["x", "新增", "\n", "\n\n", "# ", " ", "😀"];
+		let mut fast = 0;
+		let mut edits = 0;
+		for _ in 0..400 {
+			let mut after = source.clone();
+			let bounds: Vec<usize> = after
+				.char_indices()
+				.map(|(i, _)| i)
+				.chain(std::iter::once(after.len()))
+				.collect();
+			let at = bounds[(next() as usize) % bounds.len()];
+			if next() % 3 != 0 {
+				after
+					.insert_str(at, inserts[(next() as usize) % inserts.len()]);
+			} else {
+				let count = after.chars().count();
+				if count == 0 {
+					continue;
+				}
+				let which = (next() as usize) % count;
+				let start = after.char_indices().nth(which).unwrap().0;
+				let end =
+					start + after[start..].chars().next().unwrap().len_utf8();
+				after.replace_range(start..end, "");
+			}
+			edits += 1;
+			if parse_incremental(
+				&parse(source.as_str()),
+				Arc::from(after.as_str()),
+			)
+			.is_some()
+			{
+				fast += 1;
+			}
+			assert_edit(&source, &after);
+			source = after;
+		}
+		assert!(
+			fast * 2 > edits,
+			"seed {seed:#x}: the fast path only handled {fast}/{edits} edits"
+		);
+	}
+}
+
+#[test]
+fn incremental_parse_keeps_utf8_boundaries() {
+	// A byte-wise common prefix can end inside a multi-byte character.
+	assert_edit("Café au lait.\n\nSecond.\n", "Cafè au lait.\n\nSecond.\n");
+	assert_edit("Café au lait.\n\nSecond.\n", "Café.\n\nSecond.\n");
+	assert_edit("One 😀 emoji.\n\nTwo.\n", "One 😀😀 emoji.\n\nTwo.\n");
+	assert_edit("One 😀 emoji.\n\nTwo.\n", "One emoji.\n\nTwo.\n");
+}
+
+#[test]
+fn incremental_parse_handles_line_endings_and_single_blocks() {
+	// CRLF sources: a blank line is still a group boundary.
+	assert_edit("One.\r\n\r\nTwo.\r\n", "One!\r\n\r\nTwo.\r\n");
+	assert_edit("One.\r\n\r\nTwo.\r\n", "One.\r\n\r\nTwo!\r\n");
+	assert_edit("One.\r\n", "One.\r\n\r\nTwo.\r\n");
+	// A document with a single block has no neighbour to lean on.
+	assert_edit("Only one paragraph.\n", "Only one paragraph!\n");
+	assert_edit("Only one paragraph.\n", "Only one paragraph.\nMore.\n");
+	assert_incremental("Only one paragraph.\n", "Only one paragraph!\n");
+}
+
+#[test]
+fn prefix_parse_matches_the_start_of_a_full_parse() {
+	let source: Arc<str> = Arc::from(PARAGRAPHS);
+	let full = parse(source.as_ref());
+	let prefix = parse_prefix(&source, 20).expect("a prefix");
+	assert!(
+		!prefix.blocks.is_empty() && prefix.blocks.len() < full.blocks.len()
+	);
+	assert_eq!(prefix.blocks, full.blocks[..prefix.blocks.len()]);
+	assert_eq!(&*prefix.source, &*source);
+	assert_eq!(prefix.content_id, content_identity(&prefix.blocks));
+	// A cut inside the first heading still yields that heading alone.
+	assert_eq!(parse_prefix(&source, 7).unwrap().blocks, full.blocks[..1]);
+	// The whole source is not a prefix.
+	assert!(parse_prefix(&source, source.len()).is_none());
+	assert!(parse_prefix(&source, 0).is_none());
+}
+
+/// A cut between blocks: the prefix is exactly the start of the full parse, so
+/// a reference or note in it resolves the way the full parse resolves it.
+fn assert_prefix_matches(source: &str, bytes: usize) {
+	let source: Arc<str> = Arc::from(source);
+	let full = parse(source.as_ref());
+	let prefix = parse_prefix(&source, bytes).expect("a prefix");
+	assert!(
+		!prefix.blocks.is_empty() && prefix.blocks.len() < full.blocks.len()
+	);
+	assert_eq!(prefix.blocks, full.blocks[..prefix.blocks.len()]);
+}
+
+#[test]
+fn prefix_parse_resolves_definitions_that_follow_the_cut() {
+	assert_prefix_matches("See [the note][n].\n\nMore.\n\n[n]: https://x\n", 8);
+	assert_prefix_matches("See[^n].\n\nMore.\n\n[^n]: Note.\n", 4);
+	// Definitions in either order still number the references they appear in.
+	assert_prefix_matches(
+		"A[^a] and B[^b].\n\nMore.\n\n[^b]: B.\n[^a]: A.\n",
+		6,
+	);
+	// A `[x]: ...` line inside a fence is text, not a definition.
+	assert_prefix_matches("See [x].\n\n```\n[x]: https://x\n```\n", 8);
+	// An open fence at the cut swallows anything appended, so the bare prefix
+	// is parsed; its paragraph still matches the full parse.
+	let fenced: Arc<str> = Arc::from("Text.\n\n```\ncode\n\nmore\n");
+	let full = parse(fenced.as_ref());
+	let prefix = parse_prefix(&fenced, 12).expect("a prefix");
+	assert_eq!(prefix.blocks[0], full.blocks[0]);
+	assert!(matches!(prefix.blocks[1].kind, BlockKind::Code { .. }));
+}
+
+#[test]
+fn prefix_parse_accepts_containers_and_cuts_them_at_a_boundary() {
+	let source: Arc<str> = Arc::from(
+		"# T\n\n- a\n- b\n\n```rust\nfn main() {}\n\nmore();\n```\n\nEnd.\n",
+	);
+	let full = parse(source.as_ref());
+	// A cut inside the list group still yields the whole list.
+	let prefix = parse_prefix(&source, 12).expect("a prefix");
+	assert_eq!(prefix.blocks, full.blocks[..prefix.blocks.len()]);
+	assert!(matches!(prefix.blocks[1].kind, BlockKind::List { .. }));
+	// A cut inside the fence yields the part of the code block that exists.
+	let prefix = parse_prefix(&source, 30).expect("a prefix");
+	assert_eq!(prefix.blocks[..2], full.blocks[..2]);
+	assert!(matches!(prefix.blocks[2].kind, BlockKind::Code { .. }));
+}
+
+#[test]
+fn incremental_parse_rejects_a_bare_list_marker() {
+	// `-` alone opens an empty list item, so the document is not a run of leaf
+	// blocks and an edit must not splice the list away.
+	let before = "-\nFirst\n\n  Two\n\nEnd\n";
+	assert!(
+		parse_incremental(
+			&parse(before),
+			Arc::from(before.replace("Two", "TWO"))
+		)
+		.is_none()
+	);
+	assert_edit(before, &before.replace("Two", "TWO"));
+	// The same for an ordered marker with an empty item.
+	let ordered = "1.\nFirst\n\nTwo\n\nEnd\n";
+	assert!(
+		parse_incremental(
+			&parse(ordered),
+			Arc::from(ordered.replace("Two", "TWO"))
+		)
+		.is_none()
+	);
+	assert_edit(ordered, &ordered.replace("Two", "TWO"));
+	// A marker with content is rejected the same way as before.
+	let listed = "- item\n\nText.\n";
+	assert!(
+		parse_incremental(
+			&parse(listed),
+			Arc::from(listed.replace("Text", "TEXT"))
+		)
+		.is_none()
+	);
+}
+
+#[test]
+fn incremental_parse_keeps_unicode_space_lines_in_their_paragraph() {
+	// NBSP and other Unicode spaces are content, not blank lines, so the group
+	// must not be cut through the paragraph that holds them.
+	assert_incremental(
+		"One\n\u{a0}\nTwo\n\nEnd\n",
+		"One\n\u{a0}\nTWO\n\nEnd\n",
+	);
+	assert_incremental(
+		"One\n\u{3000}\nTwo\n\nEnd\n",
+		"One\n\u{3000}\nTwo!\n\nEnd\n",
+	);
+	// Markdown's own blank lines are still boundaries: the same edit in the
+	// second paragraph re-parses only that paragraph's group.
+	assert_incremental(
+		"One\n\u{a0}\nTwo\n\nThree\n\nEnd\n",
+		"One\n\u{a0}\nTwo\n\nTHREE\n\nEnd\n",
 	);
 }

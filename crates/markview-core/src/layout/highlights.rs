@@ -25,7 +25,6 @@ pub(super) struct Highlights {
 	highlight_tx: mpsc::Sender<HighlightMessage>,
 	highlight_rx: mpsc::Receiver<HighlightMessage>,
 	highlight_inflight: HashSet<u64>,
-	highlight_generation: u64,
 }
 impl Highlights {
 	pub(super) fn new() -> Self {
@@ -35,75 +34,46 @@ impl Highlights {
 			highlight_tx,
 			highlight_rx,
 			highlight_inflight: HashSet::new(),
-			highlight_generation: 0,
 		}
-	}
-	pub(super) fn generation(&self) -> u64 {
-		self.highlight_generation
 	}
 	pub(super) fn results(&self) -> &HashMap<u64, HighlightResult> {
 		&self.highlight_cache
+	}
+	/// Drops every colored result, used when no document is open.
+	pub(super) fn clear(&mut self) {
+		self.highlight_cache.clear();
 	}
 	pub(super) fn prepare(
 		&mut self,
 		blocks: &[Block],
 		options: &LayoutOptions,
 	) {
-		let theme = options
-			.codeblock_theme_override
-			.as_deref()
-			.or(options
-				.stylesheet
-				.rule(Condition::CodeBlock)
-				.theme
-				.as_deref())
-			.map(str::to_owned);
-		let mut jobs = Vec::new();
-		fn collect(
-			blocks: &[Block],
-			theme: Option<&str>,
-			jobs: &mut Vec<(u64, String, String, Option<String>)>,
-		) {
-			for block in blocks {
-				match &block.kind {
-					BlockKind::Code { language, text } => {
-						let key = crate::document::fingerprint(&(
-							language, text, theme,
-						));
-						jobs.push((
-							key,
-							language.clone(),
-							text.clone(),
-							theme.map(str::to_owned),
-						));
-					}
-					BlockKind::Quote { blocks, .. } => {
-						collect(blocks, theme, jobs)
-					}
-					BlockKind::List { items, .. } => {
-						for item in items {
-							collect(&item.blocks, theme, jobs);
-						}
-					}
-					BlockKind::Footnote { blocks, .. } => {
-						collect(blocks, theme, jobs)
-					}
-					_ => {}
-				}
-			}
-		}
-		collect(blocks, theme.as_deref(), &mut jobs);
-		jobs.retain(|(key, ..)| {
-			!self.highlight_cache.contains_key(key)
-				&& !self.highlight_inflight.contains(key)
-		});
+		let theme = resolved_theme(options);
+		// Every code block of the current document, cached or not. Retaining on
+		// this set bounds the cache to the document in hand, so the results of
+		// a code block that left the document cannot pile up.
+		let mut candidates: Vec<(u64, &str, &str)> = Vec::new();
+		collect(blocks, theme.as_deref(), &mut candidates);
+		let current: HashSet<u64> =
+			candidates.iter().map(|(key, ..)| *key).collect();
+		self.highlight_cache.retain(|key, _| current.contains(key));
 		// Highlighting is cosmetic, so work past the byte budget is simply not
 		// done: the code keeps its text and is laid out uncolored.
 		let mut bytes = 0;
-		jobs.retain(|(_, _, text, _)| {
-			bytes += text.len();
-			bytes <= options.limits.highlight_bytes
-		});
+		let jobs: Vec<(u64, String, String, Option<Arc<str>>)> = candidates
+			.into_iter()
+			.filter(|(key, ..)| {
+				!self.highlight_cache.contains_key(key)
+					&& !self.highlight_inflight.contains(key)
+			})
+			.filter(|(_, _, text)| {
+				bytes += text.len();
+				bytes <= options.limits.highlight_bytes
+			})
+			.map(|(key, language, text)| {
+				(key, language.to_owned(), text.to_owned(), theme.clone())
+			})
+			.collect();
 		if jobs.is_empty() {
 			return;
 		}
@@ -157,10 +127,6 @@ impl Highlights {
 			self.store(key, highlighted);
 			changed = true;
 		}
-		if changed {
-			self.highlight_generation =
-				self.highlight_generation.wrapping_add(1);
-		}
 		changed
 	}
 
@@ -194,19 +160,54 @@ impl Highlights {
 				}
 			}
 		}
-		if changed {
-			self.highlight_generation =
-				self.highlight_generation.wrapping_add(1);
-		}
 		changed
 	}
 
 	fn store(&mut self, key: u64, highlighted: HighlightResult) {
 		self.highlight_inflight.remove(&key);
-		if self.highlight_cache.len() >= 256 {
-			self.highlight_cache.clear();
-		}
 		self.highlight_cache.insert(key, highlighted);
+	}
+}
+
+/// The syntax theme in force, resolved from `options` exactly as the code
+/// layout resolves it.
+fn resolved_theme(options: &LayoutOptions) -> Option<Arc<str>> {
+	options
+		.codeblock_theme_override
+		.as_deref()
+		.or(options
+			.stylesheet
+			.rule(Condition::CodeBlock)
+			.theme
+			.as_deref())
+		.map(Arc::from)
+}
+
+/// Identity of one code block's coloring. It is a pure function of the source
+/// and theme, so it doubles as the block cache's highlight token.
+pub(super) fn key(language: &str, text: &str, theme: Option<&str>) -> u64 {
+	crate::document::fingerprint(&(language, text, theme))
+}
+
+fn collect<'a>(
+	blocks: &'a [Block],
+	theme: Option<&str>,
+	out: &mut Vec<(u64, &'a str, &'a str)>,
+) {
+	for block in blocks {
+		match &block.kind {
+			BlockKind::Code { language, text } => {
+				out.push((key(language, text, theme), language, text));
+			}
+			BlockKind::Quote { blocks, .. }
+			| BlockKind::Footnote { blocks, .. } => collect(blocks, theme, out),
+			BlockKind::List { items, .. } => {
+				for item in items {
+					collect(&item.blocks, theme, out);
+				}
+			}
+			_ => {}
+		}
 	}
 }
 

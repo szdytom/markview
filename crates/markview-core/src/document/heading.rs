@@ -5,26 +5,33 @@
 //! dropped, ASCII spaces replaced by hyphens, and a repeated heading suffixed
 //! `-1`, `-2`, and so on in document order.
 
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 
 /// Per-document anchor uniqueness, assigned in reading order.
 #[derive(Default)]
 pub(crate) struct Anchors {
 	used: HashSet<String>,
+	/// The next suffix to try for a base slug. A document may repeat one
+	/// heading many times, and without this the suffix scan would restart at
+	/// one every time, making anchor assignment quadratic.
+	next: HashMap<String, u32>,
 }
 
 impl Anchors {
 	/// The anchor for one heading.
 	pub(crate) fn unique(&mut self, text: &str) -> String {
 		let base = heading_slug(text);
-		let mut anchor = base.clone();
-		let mut suffix = 1;
-		while self.used.contains(&anchor) {
-			anchor = format!("{base}-{suffix}");
-			suffix += 1;
+		if self.used.insert(base.clone()) {
+			return base;
 		}
-		self.used.insert(anchor.clone());
-		anchor
+		let next = self.next.entry(base.clone()).or_insert(1);
+		loop {
+			let anchor = format!("{base}-{next}");
+			*next += 1;
+			if self.used.insert(anchor.clone()) {
+				return anchor;
+			}
+		}
 	}
 }
 

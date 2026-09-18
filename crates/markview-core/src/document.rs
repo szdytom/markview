@@ -1,9 +1,11 @@
 //! Semantic Markdown nodes and stable reading identities.
 pub mod footnote;
 mod heading;
+mod incremental;
 mod parse;
 pub(crate) use heading::Anchors;
 pub use heading::heading_slug;
+pub use incremental::{parse_incremental, parse_prefix};
 pub use parse::parse;
 use std::{
 	collections::hash_map::DefaultHasher,
@@ -144,6 +146,15 @@ pub fn fingerprint(value: &impl Hash) -> u64 {
 	h.finish()
 }
 
+/// Semantic identity of a block list: equal ids mean equal reading text.
+pub(super) fn content_identity(blocks: &[Block]) -> u64 {
+	let mut hasher = DefaultHasher::new();
+	for block in blocks {
+		block.content_key.hash(&mut hasher);
+	}
+	hasher.finish()
+}
+
 pub fn plain_text(text: &RichText) -> String {
 	let mut out = String::new();
 	for span in text {
@@ -193,6 +204,31 @@ impl Block {
 				for row in rows {
 					for cell in row {
 						rich(cell, out);
+					}
+				}
+			}
+			_ => {}
+		}
+	}
+
+	/// The `(language, text)` of every code block in this block's subtree, in
+	/// document order, so a caller can tell which syntax colors the geometry
+	/// depends on without laying the block out again.
+	pub fn code_blocks<'a>(&'a self, out: &mut Vec<(&'a str, &'a str)>) {
+		match &self.kind {
+			BlockKind::Code { language, text } => {
+				out.push((language, text));
+			}
+			BlockKind::Quote { blocks, .. }
+			| BlockKind::Footnote { blocks, .. } => {
+				for b in blocks {
+					b.code_blocks(out);
+				}
+			}
+			BlockKind::List { items, .. } => {
+				for item in items {
+					for b in &item.blocks {
+						b.code_blocks(out);
 					}
 				}
 			}

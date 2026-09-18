@@ -5,16 +5,12 @@ use comrak::{
 	nodes::{AstNode, ListType, NodeValue, TableAlignment},
 	parse_document,
 };
-use std::{
-	collections::{HashMap, hash_map::DefaultHasher},
-	hash::{Hash, Hasher},
-	ops::Range,
-	sync::Arc,
-};
+use std::{collections::HashMap, ops::Range, sync::Arc};
 
 use super::{
 	Anchors, Block, BlockKind, CellAlign, Document, Inline, InlineKind,
-	ListItem, RichText, TextStyle, fingerprint, plain_text, semantic_key,
+	ListItem, RichText, TextStyle, content_identity, fingerprint, plain_text,
+	semantic_key,
 };
 struct Reader<'s> {
 	source: &'s str,
@@ -387,14 +383,10 @@ pub fn parse(source: impl Into<Arc<str>>) -> Document {
 		limits: crate::limits::Limits::default(),
 	};
 	let blocks = reader.blocks(root, 0);
-	let mut hasher = DefaultHasher::new();
-	for block in &blocks {
-		block.content_key.hash(&mut hasher);
-	}
 	Document {
 		source,
+		content_id: content_identity(&blocks),
 		blocks,
-		content_id: hasher.finish(),
 	}
 }
 
