@@ -1416,6 +1416,84 @@ fn inline_code_chip_covers_justified_spaces() {
 	}
 }
 
+#[test]
+fn an_inline_code_chip_pads_its_text_and_pushes_its_neighbours() {
+	// `padding` on `code` insets the run's glyphs inside a wider chip, moves
+	// the text after the chip along with it, and makes the chip taller, so a
+	// code run beside CJK no longer reads cramped.
+	let layout = |padding: &str| -> (Rect, Rect, f32, f32, Rect) {
+		let mut sheet = (*crate::style::Stylesheet::bundled(false)).clone();
+		sheet.merge(&crate::style::Stylesheet::parse(padding).unwrap());
+		let doc = document::parse("x `code` y\n");
+		let snapshot = LayoutEngine::new().layout(
+			&doc,
+			&LayoutOptions {
+				width: 2000.0,
+				stylesheet: Arc::new(sheet),
+				..Default::default()
+			},
+		);
+		let block = &snapshot.blocks[0].layout;
+		let node = &block.text[0];
+		let cluster = |start: usize| {
+			node.clusters
+				.iter()
+				.find(|c| c.range.start == start)
+				.unwrap_or_else(|| panic!("no cluster at {start}"))
+		};
+		let first = cluster(2);
+		// The chip is pushed just before the glyphs of the code's first cluster.
+		let chip = match &block.draws[first.command] {
+			Draw::Rect(rect, _) => *rect,
+			other => panic!("expected the chip, found {other:?}"),
+		};
+		let glyph = match &block.draws[first.command + 1] {
+			Draw::Glyph(glyph) => glyph.x,
+			other => panic!("expected a glyph, found {other:?}"),
+		};
+		(first.rect, cluster(5).rect, glyph, cluster(7).rect.x, chip)
+	};
+
+	// The bundled styles pad the chip, so the baseline zeroes it again.
+	let bare = layout(
+		"format_version=2\nversion=1\n[[rule]]\nwhen=['code']\npadding=[0.0,0.0,0.0,0.0]",
+	);
+	let (first, last, glyph, after, chip) = layout(
+		"format_version=2\nversion=1\n[[rule]]\nwhen=['code']\npadding=[0.1,0.3,0.1,0.3]",
+	);
+	let side = 0.3 * 18.0;
+	// The chip keeps its left edge, widens by one side's padding, insets its
+	// glyphs, and carries the following space and word along with it.
+	assert!((chip.x - first.x).abs() < 0.01, "{chip:?} {first:?}");
+	assert!((chip.w - first.w).abs() < 0.01, "{chip:?} {first:?}");
+	assert!(
+		(first.w - (bare.0.w + side)).abs() < 0.01,
+		"{first:?} {:?} side={side}",
+		bare.0
+	);
+	assert!(
+		(last.w - (bare.1.w + side)).abs() < 0.01,
+		"{last:?} {:?}",
+		bare.1
+	);
+	assert!(
+		(glyph - (bare.2 + side)).abs() < 0.01,
+		"{glyph} {} {side}",
+		bare.2
+	);
+	assert!(
+		(after - (bare.3 + 2.0 * side)).abs() < 0.01,
+		"{after} {} {side}",
+		bare.3
+	);
+	// Both vertical sides pad the chip without changing the line height.
+	assert!(
+		(chip.h - (bare.4.h + 2.0 * 0.1 * 18.0)).abs() < 0.01,
+		"{chip:?} {:?}",
+		bare.4
+	);
+}
+
 /// The drawn clusters of the first block, grouped into lines by their vertical
 /// position and ordered left to right.
 fn drawn_lines(snapshot: &LayoutSnapshot) -> Vec<Vec<(String, Rect)>> {

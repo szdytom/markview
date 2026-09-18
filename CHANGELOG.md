@@ -38,6 +38,10 @@ at the same level, without `[brackets]`.
 - `--fonts DIR` (repeatable) adds a directory of font files, and
   `--ignore-system-fonts` shapes with those directories alone, so an export no
   longer depends on the fonts the machine happens to have installed.
+- MVSS takes `padding` on `["code"]`, which insets an inline code chip: the
+  horizontal sides widen the run and push its neighbours, and the vertical
+  sides make the chip taller. The bundled styles pad code, which used to touch
+  the text around it.
 
 ### Changed
 

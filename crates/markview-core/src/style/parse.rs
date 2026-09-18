@@ -332,7 +332,8 @@ fn validate_field(conditions: ConditionSet, key: &str) -> Result<()> {
 			}
 			"shape" => has(K::Marker),
 			"numbering" => conditions == ConditionSet::of(K::Enum),
-			"padding" => conditions.container(),
+			// A container pads its content; an inline code run pads its chip.
+			"padding" => conditions.container() || has(K::Code),
 			// A task checkbox is a small box, so a theme may round it and set
 			// its outline width, but it still reserves no padding.
 			"border_width" | "radius" => {

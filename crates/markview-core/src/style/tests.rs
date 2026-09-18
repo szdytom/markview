@@ -311,6 +311,30 @@ fn a_task_checkbox_takes_box_geometry_from_the_theme() {
 	);
 }
 #[test]
+fn only_code_and_containers_take_padding() {
+	// A code chip is the one inline run with a box of its own, so `padding`
+	// names it; another inline run has no box to pad.
+	let sheet = Stylesheet::parse(
+		"format_version=2\nversion=1\n[[rule]]\nwhen=['code']\npadding=[0.1,0.2,0.1,0.2]",
+	)
+	.unwrap();
+	let chain = chain_of(&[Condition::Body, Condition::P, Condition::Code]);
+	assert_eq!(
+		sheet
+			.element_rule(chain, Condition::Code)
+			.padding
+			.unwrap()
+			.sides(),
+		[0.1, 0.2, 0.1, 0.2]
+	);
+	assert!(
+		Stylesheet::parse(
+			"format_version=2\nversion=1\n[[rule]]\nwhen=['em']\npadding=0.2",
+		)
+		.is_err()
+	);
+}
+#[test]
 fn ordered_lists_take_a_theme_numbering_pattern() {
 	// A sheet that says nothing numbers items "1.", "2.", ...
 	let bare = Stylesheet::parse("format_version=2\nversion=1").unwrap();

@@ -150,6 +150,7 @@ size = 0.7
 when = ["code"]
 font = [{ family = "monospace" }, { family = "monospace[cjk]" }, { family = "emoji", weight = 400 }]
 size = 0.9
+padding = [0.15, 0.3, 0.15, 0.3]
 background = "#EFF1F3"
 
 [[rule]]

@@ -10,6 +10,9 @@ pub(super) struct Prepared {
 	pub(super) mapping: Vec<(Range<usize>, Range<usize>, bool)>,
 	pub(super) text: String,
 	pub(super) spans: Vec<Span>,
+	/// The inline code chip padding for each span, in logical pixels, in the
+	/// canonical top, right, bottom, left order.
+	pub(super) padding: Vec<[f32; 4]>,
 	pub(super) math: BTreeMap<usize, Arc<MathBox>>,
 	/// Footnote references by the offset of their first digit, each with the
 	/// offset just past its last one, so a link covers every digit.

@@ -45,6 +45,7 @@ impl BlockContext<'_> {
 			mapping: Vec::new(),
 			text: String::new(),
 			spans: Vec::new(),
+			padding: Vec::new(),
 			math: BTreeMap::new(),
 			notes: BTreeMap::new(),
 			breaks: std::collections::BTreeSet::new(),
@@ -63,6 +64,8 @@ impl BlockContext<'_> {
 			};
 			if run > i + 1 {
 				footnote_group(&mut p, &rich[i..run]);
+				// A footnote reference is never code, so its chip is unpadded.
+				p.padding.push([0.0; 4]);
 				p.mapping.push((
 					start..p.text.len(),
 					reading_start..p.reading.len(),
@@ -164,13 +167,34 @@ impl BlockContext<'_> {
 					InlineKind::Math { .. } | InlineKind::Image(_)
 				),
 			));
+			let padding = self.code_padding(&style, size);
 			p.spans.push(Span {
 				range: start..p.text.len(),
 				style,
 			});
+			p.padding.push(padding);
 			i += 1;
 		}
 		p
+	}
+
+	/// The padding an inline code chip adds around its run, in logical pixels
+	/// in the canonical top, right, bottom, left order. Only rules that name
+	/// `code` apply, so a containing block's own padding never reaches a chip.
+	fn code_padding(&self, style: &TextStyle, size: f32) -> [f32; 4] {
+		if !style.code {
+			return [0.0; 4];
+		}
+		let mut chain = self.shaper.appearance.chain;
+		for condition in style.conditions() {
+			chain = crate::style::chain_push(chain, condition);
+		}
+		self.shaper
+			.stylesheet
+			.element_rule(chain, Condition::Code)
+			.padding
+			.as_ref()
+			.map_or([0.0; 4], |padding| padding.sides().map(|v| v * size))
 	}
 
 	pub(super) fn units(
@@ -234,6 +258,7 @@ impl BlockContext<'_> {
 			.sum();
 		microtype::space_mixed_scripts(&mut clusters, &p.text, &p.spans, size);
 		let code = code_clusters(&clusters, &p.spans);
+		let chip = chip_padding(&clusters, &p.spans, &p.padding);
 		let mut units = Vec::new();
 		for (i, c) in clusters.iter().enumerate() {
 			let t = &p.text[c.range.clone()];
@@ -308,9 +333,12 @@ impl BlockContext<'_> {
 				c.glyphs.len(),
 				typo,
 			);
+			// A code chip's horizontal padding is part of the advance the line
+			// breaks against, but it is rigid, so `adjust` sees only the glyphs.
+			let pad = chip[i];
 			units.push(Unit {
 				source: c.range.clone(),
-				width,
+				width: width + pad[1] + pad[3],
 				stretch: adjust.stretch(),
 				shrink: adjust.shrink(),
 				justifiable,
@@ -405,6 +433,21 @@ impl BlockContext<'_> {
 		// two ends of this line is compressed against the measure.
 		microtype::space_mixed_scripts(&mut clusters, &p.text, &p.spans, size);
 		microtype::compress_line_edges(&mut clusters, &p.text, size, typo.cjk);
+		// The chip's horizontal padding widens the run and insets its glyphs,
+		// and its vertical padding makes every cluster of the run as tall as
+		// the chip, so the background stays one rectangle.
+		let chip = chip_padding(&clusters, &p.spans, &p.padding);
+		for (c, pad) in clusters.iter_mut().zip(chip) {
+			if pad == [0.0; 4] {
+				continue;
+			}
+			c.width += pad[1] + pad[3];
+			c.ascent += pad[0];
+			c.descent += pad[2];
+			for glyph in &mut c.glyphs {
+				glyph.x += pad[3];
+			}
+		}
 		clusters
 	}
 }
@@ -425,6 +468,48 @@ fn code_clusters(clusters: &[Cluster], spans: &[Span]) -> Vec<bool> {
 		}));
 	}
 	code
+}
+
+/// The chip padding of each cluster, in the canonical top, right, bottom, left
+/// order. The run's left and right padding lands only on the cluster holding
+/// that edge, so a run broken across lines keeps a flush fragment; the vertical
+/// padding lands on every cluster, so the chip stays one rectangle.
+fn chip_padding(
+	clusters: &[Cluster],
+	spans: &[Span],
+	padding: &[[f32; 4]],
+) -> Vec<[f32; 4]> {
+	let mut chip = vec![[0.0; 4]; clusters.len()];
+	let mut cursor = 0;
+	for (i, cluster) in clusters.iter().enumerate() {
+		while cursor < spans.len()
+			&& spans[cursor].range.end <= cluster.range.start
+		{
+			cursor += 1;
+		}
+		let (Some(span), Some(pad)) = (spans.get(cursor), padding.get(cursor))
+		else {
+			continue;
+		};
+		if !span.style.code || !span.range.contains(&cluster.range.start) {
+			continue;
+		}
+		chip[i] = [
+			pad[0],
+			if cluster.range.end >= span.range.end {
+				pad[1]
+			} else {
+				0.0
+			},
+			pad[2],
+			if cluster.range.start == span.range.start {
+				pad[3]
+			} else {
+				0.0
+			},
+		];
+	}
+	chip
 }
 
 /// Whether the boundary at `at` falls inside a word, which is a split of an
