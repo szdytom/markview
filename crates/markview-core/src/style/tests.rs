@@ -244,6 +244,19 @@ fn marker_shape_is_theme_controlled() {
 	)
 	.unwrap();
 	assert_eq!(sheet.marker_shape(), MarkerShape::Triangle);
+	for (name, shape) in [
+		("disc", MarkerShape::Disc),
+		("square", MarkerShape::Square),
+		("diamond", MarkerShape::Diamond),
+		("plus", MarkerShape::Plus),
+		("minus", MarkerShape::Minus),
+	] {
+		let sheet = Stylesheet::parse(&format!(
+			"format_version=2\nversion=1\n[[rule]]\nwhen=['marker']\nshape='{name}'"
+		))
+		.unwrap();
+		assert_eq!(sheet.marker_shape(), shape, "{name}");
+	}
 	assert_eq!(Stylesheet::bundled(false).marker_shape(), MarkerShape::Disc);
 	assert_eq!(
 		Stylesheet::bundled_print().marker_shape(),

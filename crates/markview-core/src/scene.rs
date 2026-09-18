@@ -105,8 +105,8 @@ pub enum Draw {
 		x: f32,
 		y: f32,
 	},
-	/// A filled convex polygon, such as a list bullet. `points` are relative
-	/// to `center`, so moving the shape never rebuilds them.
+	/// A filled polygon, such as a list bullet. `points` are relative to
+	/// `center`, so moving the shape never rebuilds them.
 	Polygon {
 		center: [f32; 2],
 		points: Arc<[[f32; 2]]>,

@@ -29,6 +29,8 @@ fn marker_offset(align: TextAlign, column: f32, width: f32) -> f32 {
 /// A bullet's vertices, relative to its center, fitting a square `side` wide.
 fn marker_points(shape: MarkerShape, side: f32) -> Arc<[[f32; 2]]> {
 	let radius = side / 2.;
+	// The stroke of a plus or a minus, about a third of the shape's width.
+	let arm = radius / 3.;
 	let corner = |degrees: f32| {
 		let angle = degrees.to_radians();
 		[angle.cos() * radius, angle.sin() * radius]
@@ -51,6 +53,30 @@ fn marker_points(shape: MarkerShape, side: f32) -> Arc<[[f32; 2]]> {
 		}
 		MarkerShape::Diamond => {
 			vec![[0., -radius], [radius, 0.], [0., radius], [-radius, 0.]]
+		}
+		MarkerShape::Plus => {
+			vec![
+				[-arm, -radius],
+				[arm, -radius],
+				[arm, -arm],
+				[radius, -arm],
+				[radius, arm],
+				[arm, arm],
+				[arm, radius],
+				[-arm, radius],
+				[-arm, arm],
+				[-radius, arm],
+				[-radius, -arm],
+				[-arm, -arm],
+			]
+		}
+		MarkerShape::Minus => {
+			vec![
+				[-radius, -arm],
+				[radius, -arm],
+				[radius, arm],
+				[-radius, arm],
+			]
 		}
 	};
 	Arc::from(points)

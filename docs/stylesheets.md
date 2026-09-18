@@ -114,7 +114,7 @@ A block's own box is the exception. Its background, border, padding, spacing, an
 
 Text conditions accept `color`, `font`, `weight`, `size`, `decoration`, and `background`. Block conditions additionally accept `line_height`, `space_before`, `space_after`, and the container fields `padding`, `border_color`, `border_width`, and `radius`. Parts that are not containers—`label`, `marker`, `task_marker`, `caption`, and `placeholder`—reject container geometry. `indent` styles `list` and `enum`; `align` places an image and also positions a `marker` or `task_marker` in its column; `shape` picks a bullet's graphic; `source` belongs to image conditions; `show` belongs to `error`.
 
-A list marker reserves a column before its item text. `marker` covers bullets and numbers, `task_marker` covers checkboxes, and each takes `align = "left"`, `"center"`, or `"right"` to place the marker in that column; the bundled styles center it. A bullet is drawn rather than typed—`shape` is `disc`, `square`, `triangle`, or `diamond`—so bullets and checkboxes are never part of copied text, while ordered numbers stay text.
+A list marker reserves a column before its item text. `marker` covers bullets and numbers, `task_marker` covers checkboxes, and each takes `align = "left"`, `"center"`, or `"right"` to place the marker in that column; the bundled styles center it. A bullet is drawn rather than typed—`shape` is `disc`, `square`, `triangle`, `diamond`, `plus`, or `minus`—so bullets and checkboxes are never part of copied text, while ordered numbers stay text.
 
 ```toml
 [[rule]]

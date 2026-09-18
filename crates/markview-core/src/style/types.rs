@@ -563,6 +563,8 @@ pub enum MarkerShape {
 	Square,
 	Triangle,
 	Diamond,
+	Plus,
+	Minus,
 }
 
 #[derive(Clone, Debug, Default, PartialEq, Deserialize)]

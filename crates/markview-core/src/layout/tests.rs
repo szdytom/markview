@@ -947,7 +947,8 @@ fn a_bullet_is_drawn_and_never_copied() {
 
 #[test]
 fn a_theme_picks_the_bullet_shape() {
-	let vertices = |shape: &str| {
+	// The bullet's own vertices and bounding box, in marker-local units.
+	let shape_of = |shape: &str| -> (usize, f32, f32) {
 		let mut sheet = (*crate::style::Stylesheet::bundled(false)).clone();
 		sheet.merge(
 			&crate::style::Stylesheet::parse(&format!(
@@ -968,15 +969,24 @@ fn a_theme_picks_the_bullet_shape() {
 			.draws
 			.iter()
 			.find_map(|draw| match draw {
-				Draw::Polygon { points, .. } => Some(points.len()),
+				Draw::Polygon { points, .. } => {
+					let span = |axis: usize| {
+						points.iter().map(|p| p[axis].abs()).fold(0.0, f32::max)
+							* 2.0
+					};
+					Some((points.len(), span(0), span(1)))
+				}
 				_ => None,
 			})
 			.expect("bullet polygon")
 	};
-	assert_eq!(vertices("disc"), 64);
-	assert_eq!(vertices("square"), 4);
-	assert_eq!(vertices("triangle"), 3);
-	assert_eq!(vertices("diamond"), 4);
+	assert_eq!(shape_of("disc").0, 64);
+	assert_eq!(shape_of("square").0, 4);
+	assert_eq!(shape_of("triangle").0, 3);
+	assert_eq!(shape_of("diamond").0, 4);
+	assert_eq!(shape_of("plus").0, 12);
+	let (_, width, height) = shape_of("minus");
+	assert!(height < width / 2., "a dash is flat: {width} x {height}");
 }
 
 #[test]
