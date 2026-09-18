@@ -33,6 +33,8 @@ The separation matters because the same core layout is used by the interactive w
 
 Parsing produces a `Document` made of blocks and rich inline content. A block keeps its source range for diagnostics and a semantic identity for cache reuse. Source positions are not used as identity: inserting text above a block must not make every later block appear to be a different kind of content.
 
+A reload re-parses the whole file, but a small edit to a document whose top-level blocks are plain leaves separated by blank lines re-parses only the block the edit fell in and reuses the rest, shifting the source ranges of the blocks after it. Documents with containers, code, tables or reference definitions take the full parse, because those can span a blank line or carry meaning outside their own block.
+
 Layout produces an immutable `LayoutSnapshot`. A snapshot contains final geometry, logical reading text, text clusters, link hit regions, overflow information, and drawing instructions. The renderer and interaction code can therefore read the same result without mutating the layout engine or rebuilding text for copying.
 
 The reading index is deliberately separate from glyphs. Grapheme boundaries, shaping clusters, formula ranges, image fallback text, and code whitespace all need a stable logical mapping even when visual layout inserts hyphens, expands tabs, or replaces an unavailable asset with a placeholder. Selection and copying operate on that logical mapping, so reflow changes rectangles but not the meaning of a selection.

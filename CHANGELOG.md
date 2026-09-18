@@ -58,6 +58,16 @@ at the same level, without `[brackets]`.
   and fits tall images together with their leading space.
 - PDF links resolve percent-encoded anchors and keep their hitboxes inside the
   printed text area.
+- Heading anchors count suffixes in constant time, so a document that repeats a
+  heading no longer parses quadratically (a 1 MiB repeated-heading file parses
+  about 3.5× faster).
+- A small edit no longer drops part of a list or paragraph: the incremental
+  parser recognizes empty list items and Markdown's own blank-line rules
+  (Unicode spaces are content, not blank lines).
+- Reading counts are cached per content identity and sent with every complete
+  update, so a second document with identical content still fills its footer.
+- Closing the last tab releases the worker's parsed document, decoded images and
+  layout caches, so an idle reader keeps nothing from the document it closed.
 
 - `--render` and `--pdf` wait for the syntax highlighting pass, so exported
   code keeps its colors instead of only the text.
@@ -65,6 +75,23 @@ at the same level, without `[brackets]`.
 ### Changed
 
 - The minimum supported Rust version is 1.92, which the PDF backend requires.
+- Opening a large file paints its first viewport from a bounded prefix parse
+  instead of waiting for the whole file: a 4 MiB document shows its first
+  readable frame in ~75 ms instead of ~175 ms, and reference definitions or
+  footnotes later in the file still resolve in that first frame.
+- A small edit re-parses only the block it changed, when the document is plain
+  text, and reuses every other block. The reader's reading counts are computed
+  on the layout worker rather than the event loop; together these cut a 1 MiB
+  edit's time to the refreshed frame by about a third.
+- The block cache survives passes and invalidates per block: a localized edit
+  re-lays out only the changed block instead of the whole document, and the
+  256-entry/100k-draw cap is gone.
+- Syntax colors invalidate only the code blocks that gained them, instead of
+  clearing the whole layout cache, and the highlight cache no longer clears
+  itself at 256 entries. Both remove a permanent re-layout for code-heavy
+  documents.
+- The file-watch quiet window is 10 ms (was 30 ms) with a 40 ms ceiling, so an
+  edit reaches the screen sooner while a save burst is still coalesced.
 - System fonts are discovered once per process, and the scan runs on the worker
   while the window and renderer initialize, cutting the native first readable
   frame by about 12–14 ms.

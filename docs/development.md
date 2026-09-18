@@ -61,10 +61,12 @@ through the real layout worker and prefix publication: process entry to the
 first readable GPU frame, a small on-disk edit to the first refreshed frame and
 to the complete re-layout, and per-edit RSS. Aggregate independent processes
 with `python3 scripts/bench_latency.py`. The shipped large fixtures repeat
-paragraph bodies, which the content-keyed block cache hides; generate
+paragraph bodies, which flatters any content-keyed cache; generate
 unique-content and cache-stressing fixtures with
 `python3 scripts/generate_stress_fixtures.py` before drawing scaling
-conclusions. The [latency and memory analysis](performance-analysis.md) records
+conclusions. First-frame samples are noisy across processes, so alternate the
+baseline and candidate binaries rather than running one set after the other.
+The [latency and memory analysis](performance-analysis.md) records
 the baseline those commands produced.
 
 `scripts/generate_large_fixture.py` writes 100 KiB `math-cjk-100k.md` and

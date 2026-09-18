@@ -7,7 +7,7 @@ distribution is only as wide as one process's iterations. This driver runs the
 binary several times per fixture and reports the median (and worst) across
 processes, which is what a comparison against a target should use.
 
-Edit latency starts after the edited bytes are written, so the reader's 30 ms
+Edit latency starts after the edited bytes are written, so the reader's 10 ms
 file-watch debounce is not included; add it when comparing against an
 end-to-end target.
 """
@@ -125,7 +125,7 @@ def main():
     (output / "latency.json").write_text(json.dumps(summary, indent=2) + "\n")
     lines = ["# Latency benchmark", "",
              "Medians across independent processes; edit timing starts after "
-             "the write returns (the 30 ms watch debounce is excluded).", "",
+             "the write returns (the 10 ms watch debounce is excluded).", "",
              "| Fixture | Bytes | Blocks | First frame | Init | Edit top P50 "
              "| Edit top P95 | Edit complete | Edit far P50 | RSS | Peak RSS "
              "| RSS slope/edit |", "|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|"]
