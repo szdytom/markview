@@ -4,7 +4,10 @@ Markview's documentation is deliberately split by reader intent. Each page has o
 
 ## Start with the product
 
-The root [README](../README.md) is the user-facing entry point: installation, reading controls, supported content, limitations, and a short customization example.
+The root [README](../README.md) is the user-facing entry point: screenshots, a
+summary of the measured performance, installation, reading controls, supported
+content, limitations, and a short customization example. The `docs/screenshots`
+images it embeds are reproduced by `scripts/capture_screenshots.sh`.
 
 ## Understand the implementation
 

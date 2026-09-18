@@ -13,6 +13,13 @@ cargo clippy --workspace --all-targets --locked -- -D warnings
 cargo build --release --locked
 ```
 
+Debian and Ubuntu additionally need the native development packages, and a set
+of fonts that covers Latin and CJK:
+
+```sh
+sudo apt-get install libfontconfig1-dev libxkbcommon-dev libwayland-dev fonts-noto-core fonts-noto-cjk
+```
+
 Release archives, installers, and the platform icons are maintained separately;
 see the [packaging guide](packaging.md). After changing `assets/markview-icon-color.svg`:
 
@@ -68,6 +75,22 @@ conclusions. First-frame samples are noisy across processes, so alternate the
 baseline and candidate binaries rather than running one set after the other.
 The [latency and memory analysis](performance-analysis.md) records
 the baseline those commands produced.
+
+The README screenshots are reproducible on a KDE/Wayland desktop. They show the
+real window, so the capture asks Spectacle for the active window and then crops
+it to the window frame:
+
+```sh
+scripts/capture_screenshots.sh                 # every image
+scripts/capture_screenshots.sh en-typography   # one image
+```
+
+Their sources are under `docs/screenshots/source/`. The latency and memory
+figure is drawn from the baselines in [the performance model](performance.md):
+
+```sh
+python3 scripts/generate_readme_charts.py
+```
 
 `scripts/generate_large_fixture.py` writes 100 KiB `math-cjk-100k.md` and
 `text-cjk-100k.md` fixtures for large-document timing. Set `MARKVIEW_PROFILE=1`
