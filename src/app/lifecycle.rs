@@ -5,6 +5,8 @@ use std::{
 	sync::Arc,
 	time::{Duration, Instant},
 };
+#[cfg(target_os = "linux")]
+use winit::platform::wayland::WindowAttributesExtWayland;
 use winit::{
 	application::ApplicationHandler,
 	dpi::LogicalSize,
@@ -27,6 +29,13 @@ impl ApplicationHandler<Event> for App {
 					self.args.height,
 				))
 				.with_min_inner_size(LogicalSize::new(500, 300));
+			// The Wayland application ID. Desktops match it against the
+			// installed `markview.desktop` to find the window icon, and the
+			// X11 backend reads the same name for `WM_CLASS`.
+			#[cfg(target_os = "linux")]
+			{
+				attributes = attributes.with_name("markview", "markview");
+			}
 			if let Some(icon) = super::icon::window_icon() {
 				attributes = attributes.with_window_icon(Some(icon));
 			}

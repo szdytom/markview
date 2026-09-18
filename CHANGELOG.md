@@ -71,6 +71,9 @@ at the same level, without `[brackets]`.
 
 - `--render` and `--pdf` wait for the syntax highlighting pass, so exported
   code keeps its colors instead of only the text.
+- The window sets its Wayland application ID, so a desktop with
+  `markview.desktop` installed shows the Markview icon and groups the window
+  with it instead of falling back to a placeholder.
 
 ### Changed
 
