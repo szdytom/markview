@@ -21,6 +21,8 @@ at the same level, without `[brackets]`.
 
 ### Fixed
 
+- Syntax colors no longer leak: a code comment painted every line after it in
+  the comment color, because syntect was handed lines without their terminator.
 - PDF export drew the CJK and emoji inside a formula's `\text{…}` group with
   the document's fonts instead of dropping them.
 

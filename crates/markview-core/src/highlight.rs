@@ -49,9 +49,20 @@ impl Highlighter {
 		let Some(highlighter) = &mut self.inner else {
 			return vec![(0..line.len(), None)];
 		};
+		// A line comment's scope pops at the line terminator, so syntect must
+		// see one: without it, the comment swallows every following line.
+		let terminated = line.ends_with('\n');
+		let buffer;
+		let line = if terminated {
+			line
+		} else {
+			buffer = format!("{line}\n");
+			&buffer
+		};
 		let Ok(regions) = highlighter.highlight_line(line, syntax_set()) else {
 			return vec![(0..line.len(), None)];
 		};
+		let end = line.len() - usize::from(!terminated);
 		regions
 			.into_iter()
 			.scan(0, |offset, (style, text)| {
@@ -67,6 +78,8 @@ impl Highlighter {
 					)),
 				))
 			})
+			.take_while(|(range, _)| range.start < end)
+			.map(|(range, color)| (range.start..range.end.min(end), color))
 			.collect()
 	}
 }

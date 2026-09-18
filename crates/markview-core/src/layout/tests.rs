@@ -889,6 +889,48 @@ fn drawn_lines(snapshot: &LayoutSnapshot) -> Vec<Vec<(String, Rect)>> {
 	rows
 }
 
+/// The distinct syntax colors of each code line, in source order.
+fn code_line_colors(snapshot: &LayoutSnapshot) -> Vec<Vec<u32>> {
+	let mut rows: Vec<(f32, Vec<u32>)> = Vec::new();
+	for draw in &snapshot.blocks[0].layout.draws {
+		let Draw::Glyph(glyph) = draw else {
+			continue;
+		};
+		let Paint::Color(color) = glyph.paint else {
+			continue;
+		};
+		match rows.iter_mut().find(|(y, _)| (y - glyph.y).abs() < 0.5) {
+			Some((_, colors)) => colors.push(color.0),
+			None => rows.push((glyph.y, vec![color.0])),
+		}
+	}
+	rows.into_iter()
+		.map(|(_, mut colors)| {
+			colors.sort_unstable();
+			colors.dedup();
+			colors
+		})
+		.collect()
+}
+
+#[test]
+fn a_code_comment_does_not_color_the_lines_after_it() {
+	// `syntect` pops a comment scope at the line terminator, so handing it a
+	// bare line leaks that comment into every following line of the block.
+	let doc =
+		document::parse("```python\nalpha = 1\n# a note\nbeta = 2\n```\n");
+	let opts = LayoutOptions::default();
+	let mut engine = LayoutEngine::new();
+	engine.layout(&doc, &opts);
+	assert!(engine.wait_highlights(), "highlight jobs must report");
+	let lines = code_line_colors(&engine.layout(&doc, &opts));
+	assert_eq!(lines.len(), 3, "one entry per code line: {lines:?}");
+	assert_eq!(
+		lines[2], lines[0],
+		"the line after a comment lost its colors: {lines:?}"
+	);
+}
+
 #[test]
 fn cjk_punctuation_gives_back_its_blank_half_at_a_line_edge() {
 	// The full stop closes a wrapped line and the paragraph, and also appears
