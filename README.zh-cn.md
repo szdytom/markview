@@ -129,6 +129,8 @@ Windows 的 MSI 会把 Markview 加入 `.md`、`.markdown`、`.mdown` 的**打�
 
 表格保留对齐方式，代码块带语法高亮，脚注有编号且可以点击跳转，GitHub 提示块保留原有语义；图片（PNG、JPEG、GIF、WebP、BMP、ICO、SVG，动图只显示第一帧）可以行内排布或居中。信息串为 `mermaid` 的围栏代码块会渲染成图表：流程图、时序图等类型都由 Rust 在本地排版与光栅化，不需要浏览器、网络或外部进程。指向其他 Markdown 文件的链接会在新标签页中打开，一个目录的文档因此像一份文档。所有内容都能选中和复制，过宽的块可以单独横向滚动。
 
+网络图片（`http:`、`https:`）会缓存在磁盘上。服务器标记为可缓存的内容在过期前直接复用，过期后用条件请求重新验证而不是重新下载；`--offline` 直接使用缓存，不访问网络。缓存位于 `settings.toml` 旁边（Linux 上为 `~/.config/markview/cache/images`），上限 128 MiB，超出后先删除最近最少使用的条目；手动删除该目录即可清空缓存。
+
 <p align="center">
   <img src="docs/screenshots/zh-structure.png" alt="暗色主题下的表格、列表与代码" width="820">
 </p>

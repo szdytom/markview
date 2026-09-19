@@ -13,6 +13,10 @@ at the same level, without `[brackets]`.
 
 ## Unreleased
 
+- Cache network images on disk beneath the configuration directory: honor
+  `Cache-Control`/`Expires`, revalidate stale entries, hold at most 128 MiB with
+  LRU eviction, and serve a cached body under `--offline`.
+
 - Render a raw `<details>` block as a collapsible element: clicking its summary
   toggles a Markdown body (nesting and `open` supported), `details` and `summary`
   join the MVSS vocabulary, and both exports show every body expanded.

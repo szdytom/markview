@@ -10,7 +10,7 @@ The three findings that drove revision 2 are resolved.
 
 1. **The remotely triggerable abort is fixed.** `Reader::inlines` now draws a depth budget from a shared [`Limits`](#limits) value, exactly as `Reader::blocks` already did, and the 12 KB trigger is a regression test. The same edit removed the structural cause: no recursion or allowance in the pipeline is a locally invented constant any more.
 2. **The image-path decision is a policy, not a boundary.** Absolute paths and `file:` URLs are refused; relative paths, including `../`, are allowed. Markview deliberately does not confine image paths to the document directory, because `..` is an ordinary way to reference a neighbouring directory and a local read has no exfiltration channel. The residual — a symlink inside the document directory still resolves anywhere — is recorded under [T8](#t8-symlink-and-time-of-checktime-of-use-races).
-3. **Remote image loading is bounded and cannot reach the local network.** A document may fetch at most 128 distinct remote sources per revision; the remainder wait behind a notice strip the reader can act on. Every host is resolved first, private, loopback and link-local addresses are refused, and the surviving address is pinned so a rebind cannot slip past the check.
+3. **Remote image loading is bounded and cannot reach the local network.** A document may fetch at most 128 distinct remote sources per revision; the remainder wait behind a notice strip the reader can act on. Every host is resolved first, private, loopback and link-local addresses are refused, and the surviving address is pinned so a rebind cannot slip past the check. A fetched body is kept in a bounded on-disk cache beside the user configuration, so later opens and `--offline` need no request; the cache adds no second client and no way around the address policy.
 
 ## Scope and assumptions
 
@@ -156,13 +156,14 @@ The residual is the one revision 2 already named: user confirmation is the least
 
 1. **A per-revision cap.** At most `MAX_REMOTE_SOURCES` (128) distinct remote sources are requested. The remainder are not requested at all; they render as placeholders with the reason.
 2. **A notice strip.** When anything is deferred, a strip below the tab bar reports it and offers **Dismiss** and **Load all**. Both answers are per tab and per content revision: Load all lifts the cap for the tab that asked, never for another document, and a reload asks again. The strip is informational, not a dialog.
-3. **A private-address policy.** `pinned_client` resolves the host itself, refuses any address that is loopback, private, link-local, carrier-grade NAT, unspecified, documentation, multicast, or broadcast, and then pins the surviving addresses with `resolve_to_addrs`, so the client cannot re-resolve behind the check. Redirects are followed manually, at most five hops, and every hop repeats the resolution and the check before a connection is made.
+3. **A private-address policy.** `pinned_client` in `src/images/net.rs` resolves the host itself, refuses any address that is loopback, private, link-local, carrier-grade NAT, unspecified, documentation, multicast, or broadcast, and then pins the surviving addresses with `resolve_to_addrs`, so the client cannot re-resolve behind the check. Redirects are followed manually, at most five hops, and every hop repeats the resolution and the check before a connection is made. It is the only HTTP client in the program.
 
 Consequences that remain:
 
-- A beacon still tells an attacker when a document was opened, and a unique URL per copy identifies which copy — up to the cap, and only after the reader has been shown the notice.
+- A beacon still tells an attacker when a document was opened, and a unique URL per copy identifies which copy — up to the cap, and only after the reader has been shown the notice. A cached body is not fetched again, so a later open of the same document may disclose nothing at all.
 - SSRF against internal services is blocked by the address policy unless the reader explicitly lifts the cap, and even then the policy still applies.
 - Long background activity is bounded by the cap and the per-request timeouts (15 s total, 5 s to connect).
+- A fetched body outlives the document in the image cache, whose header records the URL. That is an on-disk record of what the reader fetched, readable by anything that can read the user's files; it holds only bytes the reader's own documents caused to be fetched, is bounded at 128 MiB, and is deleted by removing the cache directory.
 
 The unconditional private-address refusal breaks the legitimate case of a local document referencing a localhost service. Since Markview cannot tell whether a document is trustworthy, that case is refused and explained in the placeholder text. See [Accepted and residual risks](#accepted-and-residual-risks).
 
@@ -215,12 +216,12 @@ The values are compile-time defaults and are not exposed to `settings.toml` or t
 | I6 | Rendering the same input is deterministic across runs and processes | Satisfied for image selection: `Prepared::images` is a `BTreeMap`, so the sole-image caption path is deterministic |
 | I7 | Every output geometry value is finite and bounded in magnitude | Unverified; the stylesheet validates only finiteness and sign, so a finite but absurd size such as `1e30` passes |
 | I8 | The only URL Markview opens comes from a single scheme allowlist, with no second path | Satisfied: `src/link.rs` is the only policy, and `openable_link` no longer exists as a second one |
-| I9 | The number of remote requests and total bytes triggered by one document is bounded | Satisfied: 128 distinct sources per revision, 32 MiB per body, and a private-address policy on every hop |
+| I9 | The number of remote requests and total bytes triggered by one document is bounded | Satisfied: 128 distinct sources per revision, 32 MiB per body, a private-address policy on every hop, and a 128 MiB disk cache with LRU eviction |
 | I10 | Any path handed to the OS has had its executability judged for that platform and confirmed by the user | Partially: the inert allowlist is judged, everything else reaches the confirmation |
 
 ## Existing defenses
 
-Worth keeping: `unsafe_code` forbidden workspace-wide; ratex pinned to an exact version; per-image pixel, byte, and cache bounds; the `--offline` switch; the `data:image/` prefix check; the SVG image-href resolver disabled; the texture-dimension clamp for raster images; the single link policy in `src/link.rs`; the address pinning in `src/images/source.rs`; the per-revision remote cap; and the shared `Limits` value with its tests.
+Worth keeping: `unsafe_code` forbidden workspace-wide; ratex pinned to an exact version; per-image pixel, byte, and cache bounds; the `--offline` switch; the `data:image/` prefix check; the SVG image-href resolver disabled; the texture-dimension clamp for raster images; the single link policy in `src/link.rs`; the single pinned HTTP client in `src/images/net.rs`; the bounded image cache in `src/images/cache.rs`; the per-revision remote cap; and the shared `Limits` value with its tests.
 
 ## Policy decisions
 
@@ -262,17 +263,19 @@ The confirmation must be blocking, default to the safe action, offer no "remembe
 
 Decision: remote images remain enabled by default, with a per-revision cap, a notice strip, and an unconditional private-address policy.
 
-Implementation: `src/images.rs` (cap, notice state) and `src/images/source.rs` (resolution and pinning); the strip is drawn from `src/app/chrome.rs`.
+Implementation: `src/images.rs` (cap, notice state), `src/images/net.rs` (resolution and pinning) and `src/images/cache.rs` (bounded disk cache); the strip is drawn from `src/app/chrome.rs`.
 
 1. At most 128 distinct remote sources are requested per document revision. The remainder render as placeholders naming the reason, so a headless `--render` or `--smoke-test` run cannot block on them.
 2. The notice strip appears below the tab bar and offers Dismiss and Load all. Both answers belong to the tab and content revision they were chosen in: opening another document shows its own notice and starts capped again, and so does a reload. The exemption travels with the layout request instead of a shared flag, so it cannot leak into the next document laid out.
 3. Loopback, private, link-local, carrier-grade NAT, unspecified, documentation, multicast, and broadcast addresses are refused on the initial URL and on every redirect hop, after resolution and before connecting.
+4. A fetched body is stored under `cache/images` beside `settings.toml`, keyed by a hash of its absolute URL, bounded at 128 MiB with least-recently-used eviction, and installed by rename so a partial body is never served. A fresh entry needs no request; a stale one revalidates with the stored `ETag`/`Last-Modified`. `--offline` never calls the client but serves a cached body whether or not it is fresh, deliberately overriding `no-cache` and `must-revalidate` because there is no network to revalidate against.
 
 ## Accepted and residual risks
 
 | Risk | Why accepted |
 | --- | --- |
 | A4 under T7: remote images are fetched by default, so opening a document discloses the reader's address | Product decision; now bounded to 128 requests per revision, shown in a notice strip, and still disableable with `--offline` |
+| T7: a fetched image is cached on disk with its absolute URL | The cache sits under the user's configuration directory, is bounded at 128 MiB with LRU eviction, holds only what the reader's own documents fetched, and is deleted by removing the directory |
 | T6: executable types are confirmed rather than refused | Product decision. A mis-click on a confirmed `.desktop` file is still code execution; "Open folder" is the default so the safe answer is also the easiest |
 | T6: `.svg` is allowlisted and a browser may execute script when it opens a `file://` SVG as a top-level document | Product decision; `.svg` is a common image and the risk is milder than `.html`, which is not allowlisted |
 | T6: `.txt` and the document/audio/video allowlist are handed to the OS without a prompt | The handlers are viewers; the risk is the same class as an image decoder bug, which is already accepted under T4 |

@@ -2,16 +2,18 @@
 mod cache;
 mod decode;
 mod diagram;
+mod net;
+mod pixels;
 mod source;
 #[cfg(test)]
 mod tests;
 use anyhow::Result;
-use cache::cache_pixels;
 use decode::{Decoded, decode};
 use markview_core::{
 	document::Document,
 	image::{ImageInfo, ImageSnapshot},
 };
+use pixels::cache_pixels;
 use source::{Source, fetch, source, stamp};
 use std::{
 	collections::{HashMap, HashSet},
@@ -61,18 +63,30 @@ pub struct Images {
 	generation: u64,
 	document: PathBuf,
 	revision: u64,
-	offline: bool,
 	poll_at: Instant,
 }
 
 impl Images {
 	pub fn new(offline: bool) -> Self {
+		Self::build(offline, cache::directory())
+	}
+
+	/// A scheduler with an explicit cache directory, for tests. `None` keeps
+	/// every fetch off the user's disk.
+	#[cfg(test)]
+	pub(super) fn with_cache(offline: bool, root: Option<PathBuf>) -> Self {
+		Self::build(offline, root)
+	}
+
+	fn build(offline: bool, cache_root: Option<PathBuf>) -> Self {
 		let (tx, rx) = mpsc::channel::<Job>();
 		let rx = Arc::new(Mutex::new(rx));
 		let (done, recv) = mpsc::channel();
+		let cache = cache_root.map(cache::Cache::new);
 		for i in 0..4 {
 			let rx = rx.clone();
 			let done = done.clone();
+			let cache = cache.clone();
 			thread::Builder::new()
 				.name(format!("markview-image-{i}"))
 				.spawn(move || {
@@ -83,7 +97,7 @@ impl Images {
 						// A malformed file must not take the reader down with it.
 						let result = std::panic::catch_unwind(
 							std::panic::AssertUnwindSafe(|| {
-								fetch(&job.source)
+								fetch(&job.source, offline, cache.as_ref())
 									.and_then(|b| decode(&b, job.target))
 							}),
 						)
@@ -113,7 +127,6 @@ impl Images {
 			generation: 0,
 			document: PathBuf::new(),
 			revision: 0,
-			offline,
 			poll_at: Instant::now(),
 		}
 	}
@@ -170,7 +183,7 @@ impl Images {
 		}
 		self.snapshot.entries.clear();
 		for spec in specs {
-			match source(&spec.src, path, self.offline) {
+			match source(&spec.src, path) {
 				Ok(source) => {
 					let first = wanted.insert(source.clone());
 					let remote = matches!(source, Source::Http(_));

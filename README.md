@@ -172,6 +172,13 @@ Markdown files open in new tabs, so a folder of documents behaves like one.
 Everything can be selected and copied, and any block too wide for the column
 scrolls on its own.
 
+Network images (`http:` and `https:`) are cached on disk between runs. A body
+the server marks cacheable is reused until it goes stale, then revalidated with
+a conditional request rather than downloaded again; `--offline` serves a cached
+body without touching the network. The cache lives beside `settings.toml` (on
+Linux, `~/.config/markview/cache/images`), holds at most 128 MiB with the least
+recently used entries dropped first, and is cleared by deleting that directory.
+
 <p align="center">
   <img src="docs/screenshots/en-structure.png" alt="Tables, lists and code in the dark theme" width="820">
 </p>

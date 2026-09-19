@@ -348,3 +348,5 @@ resource totals include the color atlas. This avoids losing interior details
 Font discovery and glyph coverage, language shaping, DPI, GPU backend, driver state, image dimensions, long unbreakable runs, and table or formula complexity all affect memory and time. The ordinary-document memory target is an optimization target, not a hard limit for arbitrary input.
 
 Windows and macOS compile checks do not establish native runtime or performance behavior. When a performance-sensitive change is made, compare like-for-like fixtures and report the machine, backend, fonts, build profile, and whether the cache was warm.
+
+Remote-image timing also depends on the on-disk image cache: a fresh entry avoids the request entirely, a stale one pays a conditional round trip, and only a miss downloads a body. The fixtures here reference local files, so their numbers are unaffected by cache state.

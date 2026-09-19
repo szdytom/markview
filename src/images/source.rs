@@ -4,13 +4,10 @@ use base64::Engine;
 use std::{
 	fs,
 	io::Read,
-	net::{IpAddr, SocketAddr, ToSocketAddrs},
 	path::{Path, PathBuf},
-	time::{Duration, SystemTime},
+	time::SystemTime,
 };
-const MAX_BYTES: usize = 32 * 1024 * 1024;
-/// Redirect hops followed before a request is abandoned.
-const MAX_REDIRECTS: usize = 5;
+pub(super) const MAX_BYTES: usize = 32 * 1024 * 1024;
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub(super) enum Source {
@@ -21,11 +18,7 @@ pub(super) enum Source {
 	Diagram(String),
 }
 
-pub(super) fn source(
-	src: &str,
-	document: &Path,
-	offline: bool,
-) -> Result<Source> {
+pub(super) fn source(src: &str, document: &Path) -> Result<Source> {
 	if src.is_empty() {
 		bail!("Missing image source");
 	}
@@ -34,10 +27,10 @@ pub(super) fn source(
 	}
 	if let Ok(url) = url::Url::parse(src) {
 		return match url.scheme() {
-			"http" | "https" if !offline => Ok(Source::Http(url.to_string())),
-			"http" | "https" => {
-				anyhow::bail!("Network images disabled (--offline)")
-			}
+			// A document-controlled URL is fetched only through the pinned
+			// client in `net`. `--offline` is applied there rather than here,
+			// so an already cached body can still be served.
+			"http" | "https" => Ok(Source::Http(url.to_string())),
 			"data" => Ok(Source::Data(src.to_owned())),
 			_ => anyhow::bail!("Unsupported image URL scheme"),
 		};
@@ -68,44 +61,7 @@ pub(super) fn rooted(path: &Path) -> bool {
 	)
 }
 
-/// Whether a document may reach this address.
-///
-/// Loopback, link-local, and private ranges are refused so a document cannot
-/// use the reader as a request proxy against local services. The check runs on
-/// every resolved address, and the chosen address is then pinned, so a rebind
-/// between resolution and connection cannot slip a private address through.
-pub(super) fn permitted(ip: IpAddr) -> bool {
-	if let IpAddr::V6(v6) = ip
-		&& let Some(v4) = v6.to_ipv4_mapped()
-	{
-		return permitted(IpAddr::V4(v4));
-	}
-	match ip {
-		IpAddr::V4(v4) => {
-			let o = v4.octets();
-			!(v4.is_private()
-				|| v4.is_loopback()
-				|| v4.is_link_local()
-				|| v4.is_broadcast()
-				|| v4.is_unspecified()
-				|| v4.is_documentation()
-				|| v4.is_multicast()
-				|| o[0] == 0
-				|| o[0] >= 240
-				// Carrier-grade NAT, 100.64.0.0/10.
-				|| (o[0] == 100 && (64..=127).contains(&o[1])))
-		}
-		IpAddr::V6(v6) => {
-			!(v6.is_loopback()
-				|| v6.is_unspecified()
-				|| v6.is_unique_local()
-				|| v6.is_unicast_link_local()
-				|| v6.is_multicast())
-		}
-	}
-}
-
-fn bounded(mut reader: impl Read) -> Result<Vec<u8>> {
+pub(super) fn bounded(mut reader: impl Read) -> Result<Vec<u8>> {
 	let mut bytes = Vec::new();
 	reader
 		.by_ref()
@@ -117,69 +73,13 @@ fn bounded(mut reader: impl Read) -> Result<Vec<u8>> {
 	Ok(bytes)
 }
 
-/// Builds a client whose connection can only go to a public address of `url`.
-///
-/// Resolution happens here rather than inside the client so the addresses are
-/// inspected first and then pinned; the client cannot re-resolve behind us.
-fn pinned_client(url: &url::Url) -> Result<reqwest::blocking::Client> {
-	if !matches!(url.scheme(), "http" | "https") {
-		bail!("Unsupported image URL scheme");
-	}
-	// `Url::host_str` keeps the brackets of an IPv6 literal, which does not
-	// resolve; the address itself is what a lookup and a pin need.
-	let host = match url.host() {
-		Some(url::Host::Domain(domain)) => domain.to_owned(),
-		Some(url::Host::Ipv4(addr)) => addr.to_string(),
-		Some(url::Host::Ipv6(addr)) => addr.to_string(),
-		None => bail!("Image URL has no host"),
-	};
-	let port = url
-		.port_or_known_default()
-		.context("Image URL has no port")?;
-	let addrs: Vec<SocketAddr> = (host.as_str(), port)
-		.to_socket_addrs()
-		.context("Cannot resolve image host")?
-		.collect();
-	if addrs.is_empty() {
-		bail!("Image host has no address");
-	}
-	for addr in &addrs {
-		if !permitted(addr.ip()) {
-			bail!("Image host resolves to a local or private address");
-		}
-	}
-	reqwest::blocking::Client::builder()
-		.timeout(Duration::from_secs(15))
-		.connect_timeout(Duration::from_secs(5))
-		.referer(false)
-		.redirect(reqwest::redirect::Policy::none())
-		.resolve_to_addrs(&host, &addrs)
-		.build()
-		.context("Image client")
-}
-
-/// Fetches over HTTP(S), validating and re-pinning every redirect hop.
-fn http_get(url: &str) -> Result<Vec<u8>> {
-	let mut current = url::Url::parse(url).context("Invalid image URL")?;
-	for _ in 0..=MAX_REDIRECTS {
-		let client = pinned_client(&current)?;
-		let response = client.get(current.clone()).send()?;
-		if response.status().is_redirection() {
-			let location = response
-				.headers()
-				.get(reqwest::header::LOCATION)
-				.and_then(|value| value.to_str().ok())
-				.context("Redirect without a location")?;
-			current =
-				current.join(location).context("Invalid redirect target")?;
-			continue;
-		}
-		return bounded(response.error_for_status()?);
-	}
-	bail!("Image redirects to too many locations")
-}
-
-pub(super) fn fetch(source: &Source) -> Result<Vec<u8>> {
+/// Reads a source. A remote source goes through the shared pinned client and
+/// the disk cache, so `--offline` is decided here rather than at resolution.
+pub(super) fn fetch(
+	source: &Source,
+	offline: bool,
+	cache: Option<&super::cache::Cache>,
+) -> Result<Vec<u8>> {
 	match source {
 		Source::File(path) => {
 			let file = fs::File::open(path).context("Cannot open image")?;
@@ -188,7 +88,7 @@ pub(super) fn fetch(source: &Source) -> Result<Vec<u8>> {
 			}
 			bounded(file)
 		}
-		Source::Http(url) => http_get(url),
+		Source::Http(url) => super::cache::fetch_http(url, offline, cache),
 		// The rendered SVG feeds the same rasterizer as an SVG file.
 		Source::Diagram(code) => {
 			Ok(super::diagram::svg(code)?.as_bytes().to_vec())
