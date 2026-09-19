@@ -186,6 +186,72 @@ fn tab_indented_fence_in_a_list_keeps_its_columns() {
 	assert_eq!(text, "<type>: <short, lowercase summary>\n");
 }
 #[test]
+fn mermaid_fences_become_diagram_images_for_both_fence_styles() {
+	// The info string's first word selects the language; the rest is ignored,
+	// so `mermaid title="x"` is still a diagram.
+	let d = parse(
+		"```mermaid title=\"x\"\ngraph TD\n A-->B\n```\n\n~~~mermaid\nsequenceDiagram\n~~~\n",
+	);
+	assert_eq!(d.blocks.len(), 2);
+	for block in &d.blocks {
+		let BlockKind::Paragraph(text) = &block.kind else {
+			panic!("expected a diagram paragraph")
+		};
+		let [
+			Inline {
+				kind: InlineKind::Image(image),
+				..
+			},
+		] = text.as_slice()
+		else {
+			panic!("expected one image")
+		};
+		assert!(image.src.starts_with(crate::image::MERMAID_SCHEME));
+	}
+	let BlockKind::Paragraph(first) = &d.blocks[0].kind else {
+		panic!()
+	};
+	let InlineKind::Image(image) = &first[0].kind else {
+		panic!()
+	};
+	assert!(image.src.contains("A-->B"));
+}
+
+#[test]
+fn fences_that_merely_mention_mermaid_stay_code() {
+	let d = parse("```mermaidish\nnot a diagram\n```\n");
+	let BlockKind::Code { language, text } = &d.blocks[0].kind else {
+		panic!("expected a code block")
+	};
+	assert_eq!(language, "mermaidish");
+	assert_eq!(text, "not a diagram\n");
+}
+
+#[test]
+fn a_diagram_reads_as_its_source_without_a_caption() {
+	use crate::style::CaptionSource;
+	let d = parse("```mermaid\ngraph TD\n A-->B\n```\n");
+	let BlockKind::Paragraph(p) = &d.blocks[0].kind else {
+		panic!("expected a diagram paragraph")
+	};
+	let InlineKind::Image(image) = &p[0].kind else {
+		panic!("expected one image")
+	};
+	// The fence source is semantic reading text, so selecting or copying the
+	// diagram keeps it even though the image draws no caption.
+	assert_eq!(image.reading.as_deref(), Some("graph TD\n A-->B\n"));
+	assert_eq!(plain_text(p), "graph TD\n A-->B\n");
+	assert!(image.alt.is_empty() && image.title.is_empty());
+	for source in [
+		CaptionSource::Alt,
+		CaptionSource::Title,
+		CaptionSource::TitleOrAlt,
+	] {
+		assert_eq!(source.text(image), None, "{source:?}");
+	}
+}
+
+#[test]
 fn latex_delimiters_produce_math() {
 	let d = parse("Inline \\(a+b\\) and display \\[c+d\\].\n");
 	let BlockKind::Paragraph(p) = &d.blocks[0].kind else {

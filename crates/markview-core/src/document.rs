@@ -160,7 +160,9 @@ pub fn plain_text(text: &RichText) -> String {
 	for span in text {
 		match &span.kind {
 			InlineKind::Text(t) => out.push_str(t),
-			InlineKind::Image(image) => out.push_str(&image.alt),
+			InlineKind::Image(image) => {
+				out.push_str(image.reading.as_deref().unwrap_or(&image.alt));
+			}
 			InlineKind::Math { latex, .. } => out.push_str(latex),
 			InlineKind::FootnoteRef(n) => {
 				out.push_str(&format!("[{n}]"));

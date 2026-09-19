@@ -17,6 +17,7 @@ source and original license texts are available in Cargo's registry packages.
 | RaTeX | LaTeX mathematics parsing and layout | MIT |
 | Swash | Glyph rasterization | Apache-2.0 OR MIT |
 | tiny-skia | Mathematical path rasterization | BSD-3-Clause |
+| mermaid-rs-renderer | Mermaid diagram parsing, layout and SVG output | MIT |
 | notify | Filesystem observation | CC0-1.0 |
 | open | Opening links with the system browser | MIT |
 | rfd | Native file dialogs | MIT |

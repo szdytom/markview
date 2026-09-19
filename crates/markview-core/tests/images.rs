@@ -96,12 +96,63 @@ fn caption_wraps_and_toggling_it_keeps_reading_positions() {
 }
 
 #[test]
+fn a_diagram_stays_selectable_and_copyable_while_drawing_no_caption() {
+	let doc = document::parse("```mermaid\ngraph TD\n A-->B\n```\n");
+	let mut specs = Vec::new();
+	for block in &doc.blocks {
+		block.images(&mut specs);
+	}
+	let src = specs[0].src.clone();
+	let mut engine = LayoutEngine::new();
+	// The caption asks for `alt`, which a diagram keeps empty.
+	let options =
+		styled("[[rule]]\nwhen=['img','caption']\nsource='alt'", 400.);
+	let mut resources = ImageSnapshot::default();
+	resources.entries.insert(
+		src.clone(),
+		ImageInfo {
+			version: 1,
+			size: Some((120, 60)),
+			error: None,
+		},
+	);
+	let shown = engine.layout_with_images(&doc, &options, &resources);
+	assert_eq!(
+		shown.extract_text(shown.select_all(1).unwrap(), 1),
+		"graph TD\n A-->B\n"
+	);
+	// A diagram that is still loading or has failed reads as its source too,
+	// so a placeholder message never replaces it in a selection.
+	for info in [
+		ImageInfo {
+			version: 1,
+			size: None,
+			error: None,
+		},
+		ImageInfo {
+			version: 2,
+			size: None,
+			error: Some("Mermaid: broken".into()),
+		},
+	] {
+		let mut resources = ImageSnapshot::default();
+		resources.entries.insert(src.clone(), info);
+		let snapshot = engine.layout_with_images(&doc, &options, &resources);
+		assert_eq!(
+			snapshot.extract_text(snapshot.select_all(1).unwrap(), 1),
+			"graph TD\n A-->B\n"
+		);
+	}
+}
+
+#[test]
 fn caption_sources_and_image_fields_are_strict_and_cascade() {
 	use markview_core::style::{CaptionSource, Stylesheet};
 	let mut spec = markview_core::image::ImageSpec {
 		src: "test.png".into(),
 		alt: "alt".into(),
 		title: "title".into(),
+		reading: None,
 		width: None,
 		height: None,
 	};

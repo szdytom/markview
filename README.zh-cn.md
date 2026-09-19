@@ -127,7 +127,7 @@ Windows 的 MSI 会把 Markview 加入 `.md`、`.markdown`、`.mdown` 的**打�
 
 ## 不止正文
 
-表格保留对齐方式，代码块带语法高亮，脚注有编号且可以点击跳转，GitHub 提示块保留原有语义；图片（PNG、JPEG、GIF、WebP、BMP、ICO、SVG，动图只显示第一帧）可以行内排布或居中。指向其他 Markdown 文件的链接会在新标签页中打开，一个目录的文档因此像一份文档。所有内容都能选中和复制，过宽的块可以单独横向滚动。
+表格保留对齐方式，代码块带语法高亮，脚注有编号且可以点击跳转，GitHub 提示块保留原有语义；图片（PNG、JPEG、GIF、WebP、BMP、ICO、SVG，动图只显示第一帧）可以行内排布或居中。信息串为 `mermaid` 的围栏代码块会渲染成图表：流程图、时序图等类型都由 Rust 在本地排版与光栅化，不需要浏览器、网络或外部进程。指向其他 Markdown 文件的链接会在新标签页中打开，一个目录的文档因此像一份文档。所有内容都能选中和复制，过宽的块可以单独横向滚动。
 
 <p align="center">
   <img src="docs/screenshots/zh-structure.png" alt="暗色主题下的表格、列表与代码" width="820">

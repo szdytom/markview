@@ -1,6 +1,7 @@
 //! Bounded image scheduling and versioned snapshot publication.
 mod cache;
 mod decode;
+mod diagram;
 mod source;
 #[cfg(test)]
 mod tests;

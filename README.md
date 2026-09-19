@@ -165,9 +165,12 @@ accents, operators and the whole Greek alphabet work in either position.
 Tables keep their alignment, fenced code is highlighted, footnotes are numbered
 and clickable, GitHub alerts keep their meaning, and images — PNG, JPEG, GIF,
 WebP, BMP, ICO or SVG, with an animated image showing its first frame — sit
-inline or centred. Links to other Markdown files open in new tabs, so a folder of
-documents behaves like one. Everything can be selected and copied, and any block
-too wide for the column scrolls on its own.
+inline or centred. A `mermaid` fenced block becomes a diagram: flowcharts,
+sequence diagrams and the other supported types are laid out and rasterized in
+Rust, so they need no browser, network or external process. Links to other
+Markdown files open in new tabs, so a folder of documents behaves like one.
+Everything can be selected and copied, and any block too wide for the column
+scrolls on its own.
 
 <p align="center">
   <img src="docs/screenshots/en-structure.png" alt="Tables, lists and code in the dark theme" width="820">

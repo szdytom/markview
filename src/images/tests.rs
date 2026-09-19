@@ -37,6 +37,21 @@ fn images(offline: bool) -> Images {
 	Images::new(offline)
 }
 
+/// Renders one Mermaid fence through the image scheduler and returns the
+/// scheduler with the fence's image source key.
+fn fence_images(code: &str) -> (Images, String) {
+	let doc = crate::document::parse(format!("```mermaid\n{code}\n```\n"));
+	let mut specs = Vec::new();
+	for block in &doc.blocks {
+		block.images(&mut specs);
+	}
+	let src = specs[0].src.clone();
+	let mut images = images(true);
+	images.prepare(&doc, Path::new("note.md"), 1, false);
+	images.wait();
+	(images, src)
+}
+
 #[test]
 fn sources_cover_local_network_and_inline_images() {
 	let dir = tempfile::tempdir().unwrap();
@@ -138,6 +153,165 @@ fn bitmap_and_animation_formats_use_their_first_frame() {
 	let decoded = decode(&gif, None).unwrap();
 	assert_eq!(decoded.intrinsic, (4, 4));
 	assert_eq!(&decoded.pixels.rgba[..4], &[1, 0, 0, 255]);
+}
+
+#[test]
+fn mermaid_fences_render_through_the_image_scheduler() {
+	// `--offline` still renders diagrams: they are local computation.
+	let source = "```mermaid\ngraph TD\n A[Start] --> B[End]\n```\n";
+	let doc = crate::document::parse(source);
+	let mut specs = Vec::new();
+	for block in &doc.blocks {
+		block.images(&mut specs);
+	}
+	let src = specs[0].src.clone();
+	assert!(src.starts_with(markview_core::image::MERMAID_SCHEME));
+	let mut images = images(true);
+	images.prepare(&doc, Path::new("note.md"), 1, false);
+	images.wait();
+	let entry = &images.snapshot.entries[&src];
+	assert!(entry.error.is_none());
+	let (width, height) = entry.size.expect("diagram size");
+	assert!(width > 0 && height > 0);
+	let pixels = images.snapshot.pixels.decoded.lock().unwrap();
+	let pixels = &pixels[&src];
+	assert!(pixels.rgba.chunks(4).any(|p| p[3] > 0), "blank diagram");
+}
+
+#[test]
+fn broken_mermaid_diagram_becomes_an_error_placeholder() {
+	// An unclosed subgraph is invalid; it must not panic or blank the reader.
+	let source = "```mermaid\nflowchart LR\n subgraph S\n  A-->B\n```\n";
+	let doc = crate::document::parse(source);
+	let mut specs = Vec::new();
+	for block in &doc.blocks {
+		block.images(&mut specs);
+	}
+	let src = specs[0].src.clone();
+	let mut images = images(false);
+	images.prepare(&doc, Path::new("note.md"), 1, false);
+	images.wait();
+	let entry = &images.snapshot.entries[&src];
+	assert!(entry.error.is_some());
+	assert_eq!(entry.size, None);
+	assert!(
+		!images
+			.snapshot
+			.pixels
+			.decoded
+			.lock()
+			.unwrap()
+			.contains_key(&src)
+	);
+}
+
+#[test]
+fn diagram_graph_budget_accepts_the_limit_and_rejects_one_more() {
+	assert!(diagram::within_graph_budget(diagram::MAX_GRAPH_ELEMENTS));
+	assert!(!diagram::within_graph_budget(
+		diagram::MAX_GRAPH_ELEMENTS + 1
+	));
+}
+
+#[test]
+fn diagram_nesting_budget_accepts_the_limit_and_rejects_one_more() {
+	let nested = |groups: usize| {
+		format!("A[\"$${}x{}$$\"]", "^{".repeat(groups), "}".repeat(groups))
+	};
+	assert!(diagram::within_nesting_budget(&nested(
+		diagram::MAX_LABEL_NESTING
+	)));
+	assert!(!diagram::within_nesting_budget(&nested(
+		diagram::MAX_LABEL_NESTING + 1
+	)));
+}
+
+#[test]
+fn pathological_mermaid_label_nesting_becomes_an_error_placeholder() {
+	// The reproduction from the review: one node whose quoted label nests
+	// 2,600 `^{` groups inside `$$` math. At 7,823 bytes it passes the source
+	// and graph budgets, but the text normalizer recurses once per group and
+	// overflows a worker's default stack in a debug build. A stack overflow
+	// aborts the process, so the nesting bound must reject it before layout.
+	// Completing this test at all is the no-abort assertion.
+	let code = format!(
+		"flowchart TD\nA[\"$${}x{}$$\"]",
+		"^{".repeat(2600),
+		"}".repeat(2600)
+	);
+	assert!(
+		code.len() < diagram::MAX_SOURCE_BYTES,
+		"the reproduction must pass the source cap: {} bytes",
+		code.len()
+	);
+	let (images, src) = fence_images(&code);
+	let entry = &images.snapshot.entries[&src];
+	assert!(
+		entry.error.as_deref().is_some_and(|e| e.contains("nest")),
+		"{entry:?}"
+	);
+	assert_eq!(entry.size, None);
+	assert!(
+		!images
+			.snapshot
+			.pixels
+			.decoded
+			.lock()
+			.unwrap()
+			.contains_key(&src)
+	);
+}
+
+#[test]
+fn pathological_mermaid_chain_becomes_an_error_placeholder() {
+	// The reproduction from the review: a 20,000-edge chain, about 298 KiB.
+	// The layout's recursive traversal overflows a default worker stack on
+	// this, and a stack overflow aborts the process, so the bound must reject
+	// the source before the renderer is called.
+	let mut code = String::from("flowchart TD\n");
+	for i in 0..20_000 {
+		code.push_str(&format!("N{i}-->N{}\n", i + 1));
+	}
+	let (images, src) = fence_images(&code);
+	let entry = &images.snapshot.entries[&src];
+	assert!(
+		entry
+			.error
+			.as_deref()
+			.is_some_and(|e| e.contains("exceeds")),
+		"{entry:?}"
+	);
+	assert_eq!(entry.size, None);
+	assert!(
+		!images
+			.snapshot
+			.pixels
+			.decoded
+			.lock()
+			.unwrap()
+			.contains_key(&src)
+	);
+}
+
+#[test]
+fn mermaid_chain_just_under_the_graph_budget_renders() {
+	// Every edge adds one node and one edge, so a path of `n` edges spends
+	// `2n + 1` of the budget. This one stays just inside it.
+	let edges = diagram::MAX_GRAPH_ELEMENTS / 2 - 1;
+	let mut code = String::from("flowchart TD\n");
+	for i in 0..edges {
+		code.push_str(&format!("N{i}-->N{}\n", i + 1));
+	}
+	let (images, src) = fence_images(&code);
+	let entry = &images.snapshot.entries[&src];
+	assert!(entry.error.is_none(), "{entry:?}");
+	let (width, height) = entry.size.expect("diagram size");
+	assert!(width > 0 && height > 0);
+	let pixels = images.snapshot.pixels.decoded.lock().unwrap();
+	assert!(
+		pixels[&src].rgba.chunks(4).any(|p| p[3] > 0),
+		"blank diagram"
+	);
 }
 
 #[test]

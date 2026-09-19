@@ -160,6 +160,7 @@ impl Reader<'_> {
 						src: link.url.clone(),
 						alt,
 						title: link.title.clone(),
+						reading: None,
 						width: None,
 						height: None,
 					}))
@@ -228,6 +229,28 @@ impl Reader<'_> {
 							text,
 							anchor,
 						}
+					}
+					// The info string's first word is the language; trailing
+					// words are metadata, so `mermaid title="x"` still renders.
+					NodeValue::CodeBlock(c)
+						if c.info.split_whitespace().next()
+							== Some("mermaid") =>
+					{
+						BlockKind::Paragraph(vec![Inline {
+							kind: InlineKind::Image(crate::image::ImageSpec {
+								src: crate::image::mermaid_source(&c.literal),
+								alt: String::new(),
+								title: String::new(),
+								// The fence source stays selectable and
+								// copyable; keeping `alt` empty draws no
+								// caption for the diagram.
+								reading: Some(c.literal.clone()),
+								width: None,
+								height: None,
+							}),
+							style: TextStyle::default(),
+							source: source.clone(),
+						}])
 					}
 					NodeValue::CodeBlock(c) if c.info.trim() == "math" => {
 						BlockKind::Paragraph(vec![Inline {

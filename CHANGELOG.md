@@ -13,6 +13,18 @@ at the same level, without `[brackets]`.
 
 ## Unreleased
 
+- Render a `mermaid` fenced block as a diagram: the library runs on the image
+  workers, its SVG and pixels are cached per source, and the result appears in
+  the window, `--render`, `--pdf` and `--smoke-test`, while a broken diagram
+  keeps the image placeholder and `--offline` still renders local diagrams.
+
+- Reject pathologically nested Mermaid labels and render the diagram on a
+  stack sized for the worst case the source cap allows, so a fence that passes
+  the size bounds can no longer abort the reader.
+
+- Read a Mermaid diagram as its fence source, so selecting and copying it
+  still yields the source while the diagram itself draws no caption.
+
 - Hold a wheel gesture to the axis its first few moments chose, separated by
   the boundary the platform reports or by a pause where it reports none and
   inheriting nothing from the gesture before it, so a diagonal trackpad gesture

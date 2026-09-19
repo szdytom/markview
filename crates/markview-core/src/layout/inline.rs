@@ -75,11 +75,16 @@ impl BlockContext<'_> {
 				continue;
 			}
 			match &inline.kind {
-				InlineKind::Image(image) => p.reading.push_str(
-					&self
-						.image_placeholder(image)
-						.unwrap_or_else(|| image.alt.clone()),
-				),
+				InlineKind::Image(image) => match &image.reading {
+					// A diagram reads as its source, which is semantic text
+					// rather than the caption `alt` would draw.
+					Some(reading) => p.reading.push_str(reading),
+					None => p.reading.push_str(
+						&self
+							.image_placeholder(image)
+							.unwrap_or_else(|| image.alt.clone()),
+					),
+				},
 				InlineKind::Text(t) => p.reading.push_str(t),
 				InlineKind::Math { latex, .. } => p.reading.push_str(latex),
 				InlineKind::FootnoteRef(n) => {

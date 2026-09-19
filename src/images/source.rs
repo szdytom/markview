@@ -17,6 +17,8 @@ pub(super) enum Source {
 	File(PathBuf),
 	Http(String),
 	Data(String),
+	/// Mermaid diagram source, rendered locally instead of fetched.
+	Diagram(String),
 }
 
 pub(super) fn source(
@@ -26,6 +28,9 @@ pub(super) fn source(
 ) -> Result<Source> {
 	if src.is_empty() {
 		bail!("Missing image source");
+	}
+	if let Some(code) = src.strip_prefix(markview_core::image::MERMAID_SCHEME) {
+		return Ok(Source::Diagram(code.to_owned()));
 	}
 	if let Ok(url) = url::Url::parse(src) {
 		return match url.scheme() {
@@ -184,6 +189,10 @@ pub(super) fn fetch(source: &Source) -> Result<Vec<u8>> {
 			bounded(file)
 		}
 		Source::Http(url) => http_get(url),
+		// The rendered SVG feeds the same rasterizer as an SVG file.
+		Source::Diagram(code) => {
+			Ok(super::diagram::svg(code)?.as_bytes().to_vec())
+		}
 		Source::Data(uri) => {
 			let (header, data) =
 				uri.split_once(',').context("Invalid data URI")?;

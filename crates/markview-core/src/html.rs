@@ -211,6 +211,7 @@ fn classify(fragment: &str) -> Tag {
 			src: attribute(attrs, "src").unwrap_or_default(),
 			alt: attribute(attrs, "alt").unwrap_or_default(),
 			title: attribute(attrs, "title").unwrap_or_default(),
+			reading: None,
 			width: dimension("width"),
 			height: dimension("height"),
 		});

@@ -324,8 +324,13 @@ impl BlockContext<'_> {
 						h: c.ascent,
 					};
 					let command = out.draws.len();
+					// The box itself is selectable whenever the image draws,
+					// and a placeholder does not take that away from an image
+					// whose reading text is its own source, so dragging the
+					// figure copies the diagram rather than a status message.
 					if !range.is_empty()
-						&& self.image_placeholder(image).is_none()
+						&& (self.image_placeholder(image).is_none()
+							|| image.reading.is_some())
 					{
 						out.text[node].push(TextCluster {
 							range: range.clone(),

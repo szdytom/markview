@@ -78,6 +78,8 @@ publication and cancellation until that block finishes.
 
 Images follow the same model. Loading and decoding happen outside layout. A decoded image changes the version of the affected source, causing only dependent blocks to reflow; the document's semantic reading identity, selection, and reading position remain stable.
 
+A Mermaid fence is one more source on that path rather than a second pipeline. Parsing turns it into an image whose source carries the diagram text, an image worker renders that text to SVG once per source, and the existing SVG rasterizer decodes it like any other vector image. Layout only ever sees a placeholder or a decoded box, so a malformed diagram becomes the ordinary image error and a document with many diagrams still publishes geometry without waiting for them.
+
 ## Why layout is separate from painting
 
 Paragraphs are shaped before painting because line breaking needs real glyph advances, language-aware break opportunities, hyphenation, inline formulas, and atomic image boxes. Inline code adds its own rule on top: since it carries no hyphenation dictionary, every character boundary inside a code run is offered as a break — free at a word edge, and at a small penalty inside a word — so a long identifier wraps rather than overflowing. Markview uses a bounded Knuth–Plass-style optimizer for ordinary paragraphs and falls back to legal greedy breaks when a paragraph exceeds the candidate budget or has no valid optimized solution. The fallback protects responsiveness without making invalid breaks.

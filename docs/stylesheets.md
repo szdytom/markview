@@ -303,7 +303,7 @@ size = 0.8
 color = "#69747E"
 ```
 
-`align` affects image-only paragraphs. Images mixed with text remain inline and never create text wrapping on their sides. A single image paragraph may show a caption, using `title_or_alt`, `title`, `alt`, or `none`; multiple-image and mixed paragraphs do not show captions. `["img", "placeholder"]` styles loading and error text.
+`align` affects image-only paragraphs. Images mixed with text remain inline and never create text wrapping on their sides. A single image paragraph may show a caption, using `title_or_alt`, `title`, `alt`, or `none`; multiple-image and mixed paragraphs do not show captions. `["img", "placeholder"]` styles loading and error text. A `mermaid` fence becomes an image with an empty `title` and `alt`, so `img` rules style the diagram and no caption appears by default.
 
 ## Live updates and safe authoring
 

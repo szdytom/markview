@@ -31,6 +31,7 @@ For visual or timing changes, also use the real pipelines:
 
 ```sh
 target/release/markview --render examples/welcome.md --output artifacts/welcome.png
+target/release/markview --render examples/mermaid.md --output artifacts/mermaid.png
 target/release/markview --pdf examples/welcome.md --output artifacts/welcome.pdf
 target/release/markview --smoke-test examples/welcome.md --output artifacts/window.png
 target/release/markview --bench tests/fixtures/ordinary-10k.md --output artifacts/ordinary.json
