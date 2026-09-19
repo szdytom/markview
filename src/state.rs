@@ -24,6 +24,32 @@ pub(crate) enum Command {
 	/// First-line paragraph indent in whole em units.
 	Indent(u8),
 	CjkType(markview_core::style::CjkType),
+	/// Open or close the export panel.
+	Export,
+	ExportFormat(crate::settings::ExportFormat),
+	/// Step the export's text size by whole pixels.
+	ExportSize(i8),
+	/// First-line indent preset, in em units.
+	ExportIndent(u8),
+	/// Paper preset index.
+	ExportPaper(u8),
+	/// Paper orientation; `true` is landscape.
+	ExportOrientation(bool),
+	/// Margin preset index.
+	ExportMargin(u8),
+	/// PNG scale preset index.
+	ExportScale(u8),
+	/// Export once, then keep re-exporting whenever the document changes.
+	ExportAndWatch,
+	/// Show the export's stylesheet chooser in place of the export panel.
+	ExportStyles,
+	ExportStyleToggle(usize),
+	ExportStyleUp(usize),
+	ExportStyleDown(usize),
+	ExportStylePrev,
+	ExportStyleNext,
+	/// Write the document with the current export settings.
+	ExportRun,
 	Settings,
 	Reset,
 	OpenConfig,
@@ -133,6 +159,10 @@ pub(crate) struct InteractionState {
 	pub(crate) selection_counts: Option<(TextSelection, TextCounts)>,
 	pub(crate) panel_open: bool,
 	pub(crate) styles_open: bool,
+	/// The export page of the panel. It implies `panel_open`.
+	pub(crate) export_open: bool,
+	/// The export's stylesheet chooser, drawn in place of the export panel.
+	pub(crate) export_styles_open: bool,
 	pub(crate) selection: Option<TextSelection>,
 	pub(crate) pointer_down: Option<Drag>,
 	pub(crate) dragged: bool,

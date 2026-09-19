@@ -65,6 +65,83 @@ pub enum Setting {
 	CjkType,
 	CodeblockWrap,
 }
+
+/// Which document an export writes to disk.
+#[derive(
+	Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize,
+)]
+#[serde(rename_all = "lowercase")]
+pub enum ExportFormat {
+	#[default]
+	Pdf,
+	Png,
+}
+
+/// The reader's export preferences.
+///
+/// They are deliberately separate from [`ReaderSettings`]: an export lays the
+/// document out again at its own size and paper, so changing a field here never
+/// reflows the window.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(default, deny_unknown_fields)]
+pub struct ExportSettings {
+	pub format: ExportFormat,
+	/// Body text size in layout pixels, the same unit the reader uses.
+	pub font_size: f32,
+	/// First-line indent in multiples of the text size.
+	pub paragraph_indent: f32,
+	/// A named paper size, or `WIDTHxHEIGHT` in millimetres.
+	pub paper: String,
+	pub landscape: bool,
+	/// Top, right, bottom, left, in millimetres.
+	pub margin: [f32; 4],
+	/// PNG device pixels per layout pixel.
+	pub scale: f32,
+	/// Stylesheets layered on the bundled print sheet, highest priority first.
+	/// The default names the sheet itself.
+	pub style: Vec<String>,
+}
+impl Default for ExportSettings {
+	fn default() -> Self {
+		Self {
+			format: ExportFormat::Pdf,
+			font_size: Self::DEFAULT_FONT_SIZE_PX,
+			paragraph_indent: 0.0,
+			paper: "a4".into(),
+			landscape: false,
+			margin: markview_core::style::PageStyle::DEFAULT_MARGIN_MM,
+			scale: 2.0,
+			style: vec!["print".into()],
+		}
+	}
+}
+impl ExportSettings {
+	/// The body size an export defaults to: 12 pt on paper. A layout pixel is a
+	/// ninety-sixth of an inch and a PDF point a seventy-second, so the two
+	/// differ by [`markview_core::paginate::PT_PER_PX`].
+	pub const DEFAULT_FONT_SIZE_PX: f32 = 16.0;
+
+	pub fn validate(&self) -> Result<()> {
+		if !self.font_size.is_finite()
+			|| !(10.0..=40.0).contains(&self.font_size)
+			|| !self.paragraph_indent.is_finite()
+			|| !(0.0..=4.0).contains(&self.paragraph_indent)
+			|| !self.scale.is_finite()
+			|| !(0.5..=4.0).contains(&self.scale)
+			|| self.margin.iter().any(|v| !v.is_finite() || *v < 0.0)
+		{
+			bail!("Export settings are out of range");
+		}
+		if markview_core::style::parse_paper_size(&self.paper).is_none() {
+			bail!("Export paper {:?} is not a size", self.paper);
+		}
+		for id in &self.style {
+			crate::stylesheet::validate_id(id)?;
+		}
+		Ok(())
+	}
+}
+
 impl ReaderSettings {
 	/// The stylesheet with this reader's CJK variant applied.
 	///

@@ -94,7 +94,7 @@ Painting is consequently a projection of an already-decided layout. Scrolling an
 
 ## Interaction and platform effects
 
-The application owns focus, hover, selection gestures, scrolling, scrollbar grabs, and modal input: the settings panel and the local-file confirmation. Core owns hit testing and selection geometry so those operations remain testable without a window or GPU.
+The application owns focus, hover, selection gestures, scrolling, scrollbar grabs, and modal input: the settings, stylesheet and export panels and the local-file confirmation. Core owns hit testing and selection geometry so those operations remain testable without a window or GPU.
 
 Links are activated only on a matching, non-drag release. `src/link.rs` is the single policy for what a document-controlled link may do: Markdown opens as a reader tab, an inert allowlist of files and any directory goes to the system handler, and everything else is shown in a confirmation first, whose default action opens the containing folder. [Security and threat model](security.md#t6-local-links) owns the allowlist and its residual risks. A document that names more remote images than the per-revision cap allows shows a notice strip below the tab bar with Dismiss and Load all; the strip reserves its own band rather than covering text. A heading fragment moves the reader to that heading: `#anchor` inside the current document, or `file.md#anchor` after the target tab opens. Anchors are the GitHub slugs of heading text, and a link that uses a different slug rule is reported as a missing heading rather than guessed at. Markdown is never opened for writing. Clipboard output is reading text: code preserves meaningful whitespace, tables use tabs, formulas contribute LaTeX, and Markdown markers are omitted.
 
@@ -114,7 +114,8 @@ components; helpers receive borrowed inputs instead of an application-wide conte
 | Component | Owns | Boundary |
 | --- | --- | --- |
 | Application `Tabs` | Active session, inactive tabs, request serial | Tab transitions return to the window adapter for watching, redraws and requests. |
-| Application `Preferences` | Effective settings, persistence store, stylesheet catalog, save deadline | Stylesheet validation finishes before the effective sheet and UI appearance change. The application applies successful changes to the renderer. |
+| Application `Preferences` | Effective settings, persistence store, stylesheet catalog, save deadline | Stylesheet validation finishes before the effective sheet and UI appearance change. The application applies successful changes to the renderer. Export preferences live beside the reader's, never inside them. |
+| Application export | One export's settings, its background job, the PNG strip loop and the watch target | Reads and lays the document out itself at the export's own options, so it never requests a reader layout; only PNG strips touch the shared GPU device, one per frame, with the export's own stylesheet. |
 | Application tab strip | Scroll offset, drag gesture and cached filename widths | Pure strip geometry drives both painting and hit testing. Reordering moves sessions without submitting layout requests; clipped draw groups contain overflow. |
 | Application chrome | Borrowed display state and compiled icon buffers | Controls, footer, tabs and styles produce geometry without window, worker or configuration I/O access. Selection-count caching remains in the application adapter; icons stay editable SVG files that the `markview-icon` macro parses into vector buffers at compile time, so no SVG parser reaches the binary. |
 | Image scheduler | Versioned entries, jobs and published snapshot | Source reads, bounded decoding and allocation-aware pixel eviction are separate modules. |

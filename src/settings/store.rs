@@ -1,5 +1,7 @@
 //! Transactional configuration reads, merging and durable writes.
-use super::{FontDefOverride, ReaderSettings, Setting, default_cjk_type};
+use super::{
+	ExportSettings, FontDefOverride, ReaderSettings, Setting, default_cjk_type,
+};
 use crate::render::Theme;
 use anyhow::{Context, Result, bail};
 use markview_core::JustificationLimits;
@@ -36,6 +38,8 @@ struct Config {
 	codeblock_theme_override: Option<String>,
 	#[serde(rename = "codeblock-wrap")]
 	codeblock_wrap: bool,
+	/// The reader's export preferences, kept apart from the reading view.
+	export: ExportSettings,
 }
 impl Default for Config {
 	fn default() -> Self {
@@ -54,6 +58,7 @@ impl Default for Config {
 			cjk_type: Some(settings.cjk_type),
 			codeblock_theme_override: None,
 			codeblock_wrap: settings.codeblock_wrap,
+			export: ExportSettings::default(),
 		}
 	}
 }
@@ -103,6 +108,10 @@ impl Config {
 pub struct SettingsStore {
 	path: Option<PathBuf>,
 	saved: ReaderSettings,
+	/// The export preferences, whole-value like the reader settings but written
+	/// through their own accessor so the two can never be confused.
+	saved_export: ExportSettings,
+	pending_export: bool,
 	invalid: Option<Vec<u8>>,
 	dirty: bool,
 	pending: Vec<Setting>,
@@ -113,6 +122,8 @@ impl SettingsStore {
 		let mut store = Self {
 			path,
 			saved: ReaderSettings::default(),
+			saved_export: ExportSettings::default(),
+			pending_export: false,
 			invalid: None,
 			dirty: false,
 			pending: Vec::new(),
@@ -145,6 +156,16 @@ impl SettingsStore {
 								store.saved = ReaderSettings::default();
 
 								store.invalid = Some(bytes);
+							}
+							// A bad `[export]` table never discards the reading
+							// settings around it; only the export falls back.
+							match config.export.validate() {
+								Ok(()) => store.saved_export = config.export,
+								Err(error) => {
+									warning = Some(format!(
+										"Export settings: {error}; using defaults"
+									));
+								}
 							}
 						}
 						Err(error) => {
@@ -192,10 +213,20 @@ impl SettingsStore {
 		saved
 			.validate()
 			.context("Invalid settings; keeping current values")?;
+		config
+			.export
+			.validate()
+			.context("Invalid export settings; keeping current values")?;
+		let saved_export = if self.pending_export {
+			self.saved_export.clone()
+		} else {
+			config.export
+		};
 		let mut next = Self {
 			path: self.path.clone(),
 			saved,
-
+			saved_export,
+			pending_export: self.pending_export,
 			invalid: None,
 			dirty: self.dirty,
 			pending: self.pending.clone(),
@@ -225,6 +256,7 @@ impl SettingsStore {
 				let saved = config.reader_settings();
 				saved.validate()?;
 				self.saved = saved;
+				self.saved_export = config.export;
 			}
 			self.dirty = true;
 			self.flush()?;
@@ -233,6 +265,16 @@ impl SettingsStore {
 	}
 	pub fn settings(&self) -> ReaderSettings {
 		self.saved.clone()
+	}
+	pub fn export(&self) -> ExportSettings {
+		self.saved_export.clone()
+	}
+	/// Replaces the export preferences. It never touches the reading settings,
+	/// so the window cannot reflow because of an export change.
+	pub fn set_export(&mut self, export: ExportSettings) {
+		self.saved_export = export;
+		self.pending_export = true;
+		self.dirty = true;
 	}
 	/// The saved theme, or `None` while the reader still follows the system.
 	pub fn theme_preference(&self) -> Option<Theme> {
@@ -317,6 +359,7 @@ impl SettingsStore {
 			self.invalid = None;
 		}
 		self.saved.validate()?;
+		self.saved_export.validate()?;
 		let config = Config {
 			version: 1,
 			theme: None,
@@ -334,8 +377,20 @@ impl SettingsStore {
 				.codeblock_theme_override
 				.clone(),
 			codeblock_wrap: self.saved.codeblock_wrap,
+			export: self.saved_export.clone(),
 		};
-		let values = toml_edit::ser::to_document(&config)?;
+		let mut values = toml_edit::ser::to_document(&config)?;
+		// `[export]` reads as its own section; the serializer would otherwise
+		// write one long inline table.
+		if let Some(item) = values.remove("export") {
+			let item = match item {
+				toml_edit::Item::Value(toml_edit::Value::InlineTable(
+					inline,
+				)) => toml_edit::Item::Table(inline.into_table()),
+				other => other,
+			};
+			values.insert("export", item);
+		}
 		let mut document = self
 			.source
 			.as_ref()
@@ -393,6 +448,7 @@ impl SettingsStore {
 		}
 		self.dirty = false;
 		self.pending.clear();
+		self.pending_export = false;
 		self.source = Some(bytes);
 		Ok(())
 	}

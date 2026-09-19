@@ -33,6 +33,7 @@ impl App {
 			tab_strip: &self.tab_strip,
 			tab_widths: &self.tab_metrics.widths,
 			settings: &self.preferences.values,
+			export: &self.preferences.export,
 			interaction: &self.interaction,
 			style_entries: &self.preferences.style_entries,
 			style_page: self.preferences.style_page,
@@ -49,6 +50,7 @@ impl App {
 			error: self.error,
 			hover_hint,
 			remote_notice,
+			watching: self.watch_export.is_some(),
 		}
 	}
 	pub(super) fn buttons(&mut self) -> Vec<Button> {

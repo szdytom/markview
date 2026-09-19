@@ -1,6 +1,7 @@
 use crate::{Renderer, View};
 use anyhow::{Result, bail};
 use markview_core::scene::{Draw, LayoutSnapshot, Paint, Rect};
+use std::sync::Arc;
 impl Renderer {
 	pub(super) fn prepare(
 		&mut self,
@@ -183,6 +184,22 @@ impl Renderer {
 		}
 		// Publish atomically; the loader must never observe a half-painted frame.
 		self.images.publish();
+	}
+	/// Renders one frame with a stylesheet of its own, leaving the renderer's
+	/// colors exactly as they were. The PNG export uses this so its strips can
+	/// never tint the reading view.
+	pub fn render_with_stylesheet(
+		&mut self,
+		snapshot: &LayoutSnapshot,
+		view: &View<'_>,
+		overlay: &[Draw],
+		target: &wgpu::TextureView,
+		stylesheet: Arc<markview_core::style::Stylesheet>,
+	) -> Result<wgpu::SubmissionIndex> {
+		let previous = self.stylesheet.replace(stylesheet);
+		let result = self.render(snapshot, view, overlay, target);
+		self.stylesheet = previous;
+		result
 	}
 	pub fn render(
 		&mut self,

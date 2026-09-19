@@ -332,6 +332,7 @@ impl App {
 								self.action(Command::Open)
 							}
 							"t" => self.action(Command::Styles),
+							"e" => self.action(Command::Export),
 							"-" => self.action(Command::Smaller),
 							"+" | "=" => self.action(Command::Larger),
 							"[" => self.action(Command::Narrower),
@@ -419,6 +420,8 @@ impl App {
 							self.interaction.modal = None;
 							self.interaction.panel_open = false;
 							self.interaction.styles_open = false;
+							self.interaction.export_open = false;
+							self.interaction.export_styles_open = false;
 							self.interaction.selection = None;
 							self.interaction.pointer_down = None;
 							self.interaction.drag_at = None;

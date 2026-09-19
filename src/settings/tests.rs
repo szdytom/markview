@@ -291,3 +291,75 @@ fn justification_limits_round_trip_layout_and_bound() {
 		assert!(settings.validate().is_err(), "{invalid:?}");
 	}
 }
+
+#[test]
+fn export_settings_round_trip_and_leave_the_reader_alone() {
+	let dir = tempfile::tempdir().unwrap();
+	let path = dir.path().join("settings.toml");
+	fs::write(&path, "font_size = 20.0\n").unwrap();
+	let (mut store, warning) = SettingsStore::load(Some(path.clone()));
+	assert!(warning.is_none());
+	assert_eq!(store.export(), ExportSettings::default());
+	let export = ExportSettings {
+		format: ExportFormat::Png,
+		font_size: 24.0,
+		paper: "letter".into(),
+		scale: 1.0,
+		style: vec!["print".into(), "dark".into()],
+		..Default::default()
+	};
+	store.set_export(export.clone());
+	store.flush().unwrap();
+	let text = fs::read_to_string(&path).unwrap();
+	assert!(text.contains("[export]"), "{text}");
+	assert!(text.contains("style = [\"print\", \"dark\"]"), "{text}");
+	let (loaded, warning) = SettingsStore::load(Some(path));
+	assert!(warning.is_none());
+	assert_eq!(loaded.export(), export);
+	// The reading view kept its own size.
+	assert_eq!(loaded.settings().font_size, 20.0);
+}
+
+#[test]
+fn a_bad_export_table_only_resets_the_export() {
+	let dir = tempfile::tempdir().unwrap();
+	let path = dir.path().join("settings.toml");
+	fs::write(&path, "font_size = 21.0\n[export]\nfont_size = 99.0\n").unwrap();
+	let (mut store, warning) = SettingsStore::load(Some(path.clone()));
+	assert_eq!(store.settings().font_size, 21.0);
+	assert_eq!(store.export(), ExportSettings::default());
+	assert!(
+		warning.expect("export warning").contains("Export settings"),
+		"expected an export warning"
+	);
+	// A live reload keeps the last good values when the table is invalid.
+	fs::write(&path, "font_size = 21.0\n[export]\npaper = 'nonsense'\n")
+		.unwrap();
+	assert!(store.reload().is_err());
+	assert_eq!(store.settings().font_size, 21.0);
+}
+
+#[test]
+fn a_pending_export_edit_survives_an_external_reload() {
+	let dir = tempfile::tempdir().unwrap();
+	let path = dir.path().join("settings.toml");
+	fs::write(&path, "font_size = 20.0\n").unwrap();
+	let (mut store, _) = SettingsStore::load(Some(path.clone()));
+	let export = ExportSettings {
+		scale: 1.0,
+		..Default::default()
+	};
+	store.set_export(export.clone());
+	// An external writer changes an unrelated reader field.
+	fs::write(&path, "font_size = 22.0\n").unwrap();
+	assert!(store.reload().unwrap());
+	assert_eq!(store.settings().font_size, 22.0);
+	assert_eq!(store.export(), export);
+}
+
+#[test]
+fn an_export_defaults_to_twelve_point_body_text() {
+	let export = ExportSettings::default();
+	assert_eq!(export.format, ExportFormat::Pdf);
+	assert_eq!(export.font_size * markview_core::paginate::PT_PER_PX, 12.0);
+}

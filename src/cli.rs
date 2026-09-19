@@ -1,5 +1,9 @@
 //! Launch parsing; deterministic diagnostic modes do not load user settings.
-use crate::{layout::LayoutOptions, render::Theme, settings::Setting};
+use crate::{
+	layout::LayoutOptions,
+	render::Theme,
+	settings::{ExportSettings, Setting},
+};
 use anyhow::{Context, Result, bail};
 use std::path::PathBuf;
 #[derive(Default, PartialEq, Eq)]
@@ -167,7 +171,7 @@ fn parse_arguments(
 		match text.as_ref() {
 			"-h" | "--help" => {
 				crate::logging::report(format_args!(
-					"Markview — native Markdown reading\n\nmarkview [FILE] [--style ID ...]\nmarkview ss install FILE.mvss.toml [--force]\nmarkview ss validate FILE.mvss.toml\nmarkview --render FILE --output preview.png [--dark] [--scale 2]\nmarkview --pdf FILE --output out.pdf [--paper a4] [--landscape] [--watch]\nmarkview --bench FILE [--iterations 100] [--output metrics.json]\nmarkview --bench-latency FILE [--iterations 100] [--output latency.json]\nmarkview --smoke-test FILE [--output window.png]\n\nOptions: --width N --height N --column N --font-size N --scroll N\n         --paragraph-indent N --cjk-type SC|TC|JP|none --scale N\n         --style ID --dark --light --left --no-hyphens --greedy --offline\n\nFonts: --fonts DIR adds a directory of font files and may be repeated.\n       --ignore-system-fonts shapes with those directories alone, so the\n       fonts installed on the machine cannot change the result.\n\nPDF: --paper a4|a5|letter|legal|WIDTHxHEIGHT --landscape --margin MM[,MM...]\n     --header TEXT --header-left/right TEXT --footer TEXT --footer-left/right TEXT\n     --no-links --watch; --watch re-exports whenever the document or one of its\n     local images changes, until you stop it. The slots take {{page}} {{pages}}\n     {{title}} and {{path}}. The export always starts from the bundled print\n     stylesheet, and --style layers on it.\n\nMetadata: --title TEXT --author NAME (repeatable) --subject TEXT\n          --keywords A,B --language TAG --creator TEXT\n          A title defaults to the first heading, then the file name;\n          Producer stays Markview <version>, and no creation date is\n          ever written.\n\nImages: local files, file:, http(s): and data: URIs; bitmap and SVG.\n        An image alone in its block is centered, otherwise it is inline.\n        Animated images show their first frame; --offline blocks the network.\n\nKeyboard: Ctrl+O open · Ctrl+T styles · Ctrl+ +/- font size\n          Ctrl+[ / ] column width · Ctrl+L alignment · Ctrl+H hyphenation\n          arrows / PageUp / PageDown / Home / End scroll\n          drag the scrollbar · Shift+wheel scroll wide blocks · Tab/Enter toolbar\n          click web/mail/local links; local .md links open in a new tab\n          click a footnote reference to reach its note and its number to return\n          drag / Shift+click select · Ctrl+A all · Ctrl+C copy · Ctrl+, settings\n\n--render and --bench use the real GPU pipeline offscreen.\n--greedy is a typography comparison mode."
+					"Markview — native Markdown reading\n\nmarkview [FILE] [--style ID ...]\nmarkview ss install FILE.mvss.toml [--force]\nmarkview ss validate FILE.mvss.toml\nmarkview --render FILE --output preview.png [--dark] [--scale 2]\nmarkview --pdf FILE --output out.pdf [--paper a4] [--landscape] [--watch]\nmarkview --bench FILE [--iterations 100] [--output metrics.json]\nmarkview --bench-latency FILE [--iterations 100] [--output latency.json]\nmarkview --smoke-test FILE [--output window.png]\n\nOptions: --width N --height N --column N --font-size N --scroll N\n         --paragraph-indent N --cjk-type SC|TC|JP|none --scale N\n         --style ID --dark --light --left --no-hyphens --greedy --offline\n\nFonts: --fonts DIR adds a directory of font files and may be repeated.\n       --ignore-system-fonts shapes with those directories alone, so the\n       fonts installed on the machine cannot change the result.\n\nPDF: --paper a4|a5|letter|legal|WIDTHxHEIGHT --landscape --margin MM[,MM...]\n     --header TEXT --header-left/right TEXT --footer TEXT --footer-left/right TEXT\n     --no-links --watch; --watch re-exports whenever the document or one of its\n     local images changes, until you stop it. The slots take {{page}} {{pages}}\n     {{title}} and {{path}}. The export always starts from the bundled print\n     stylesheet, and --style layers on it. Body text is 12 pt unless\n     --font-size says otherwise.\n\nMetadata: --title TEXT --author NAME (repeatable) --subject TEXT\n          --keywords A,B --language TAG --creator TEXT\n          A title defaults to the first heading, then the file name;\n          Producer stays Markview <version>, and no creation date is\n          ever written.\n\nImages: local files, file:, http(s): and data: URIs; bitmap and SVG.\n        An image alone in its block is centered, otherwise it is inline.\n        Animated images show their first frame; --offline blocks the network.\n\nKeyboard: Ctrl+O open · Ctrl+T styles · Ctrl+E export · Ctrl+ +/- font size\n          Ctrl+[ / ] column width · Ctrl+L alignment · Ctrl+H hyphenation\n          arrows / PageUp / PageDown / Home / End scroll\n          drag the scrollbar · Shift+wheel scroll wide blocks · Tab/Enter toolbar\n          click web/mail/local links; local .md links open in a new tab\n          click a footnote reference to reach its note and its number to return\n          drag / Shift+click select · Ctrl+A all · Ctrl+C copy · Ctrl+, settings\n\n--render and --bench use the real GPU pipeline offscreen.\n--greedy is a typography comparison mode."
 				));
 				return Ok(None);
 			}
@@ -399,6 +403,11 @@ fn parse_arguments(
 	if out.style.is_some() && out.theme.is_some() {
 		bail!("--style conflicts with --light and --dark");
 	}
+	// Paper is set at 12 pt unless the command line names a size; the reader
+	// and the other diagnostic modes keep their own default.
+	if out.mode == Mode::Pdf && !out.overrides.contains(&Setting::FontSize) {
+		out.options.font_size = ExportSettings::DEFAULT_FONT_SIZE_PX;
+	}
 	if out.mode != Mode::Window && out.path.is_none() {
 		bail!("This mode requires a Markdown file");
 	}
@@ -606,6 +615,35 @@ mod tests {
 		.unwrap()
 		.unwrap();
 		assert_eq!(args.page.header[1].as_deref(), Some("{title}"));
+	}
+	#[test]
+	fn paper_defaults_to_twelve_point_body_text() {
+		let args =
+			parse_arguments(["--pdf", "a.md", "-o", "a.pdf"].map(Into::into))
+				.unwrap()
+				.unwrap();
+		assert_eq!(
+			args.options.font_size,
+			ExportSettings::DEFAULT_FONT_SIZE_PX
+		);
+		assert_eq!(
+			args.options.font_size * markview_core::paginate::PT_PER_PX,
+			12.0
+		);
+		// An explicit size wins, and the other modes keep their own default.
+		let explicit = parse_arguments(
+			["--pdf", "a.md", "-o", "a.pdf", "--font-size", "20"]
+				.map(Into::into),
+		)
+		.unwrap()
+		.unwrap();
+		assert_eq!(explicit.options.font_size, 20.0);
+		let render = parse_arguments(
+			["--render", "a.md", "-o", "a.png"].map(Into::into),
+		)
+		.unwrap()
+		.unwrap();
+		assert_eq!(render.options.font_size, 18.0);
 	}
 	#[test]
 	fn pdf_metadata_flags_take_lists_and_reject_bad_tags() {

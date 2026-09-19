@@ -6,7 +6,7 @@ mod images;
 mod paint;
 mod pipeline;
 mod raster;
-use anyhow::Result;
+use anyhow::{Context, Result};
 use markview_core::{
 	scene::{Paint, Rect},
 	shaping::TextShaper,
@@ -80,6 +80,13 @@ pub struct Renderer {
 	fallback: Option<TextShaper>,
 	pub adapter_name: String,
 }
+
+/// A rendered texture read back as tightly packed, non-premultiplied sRGB RGBA8.
+pub struct Readback {
+	pub width: u32,
+	pub height: u32,
+	pub rgba: Vec<u8>,
+}
 pub enum FrameStatus {
 	Ready(wgpu::SurfaceTexture, bool),
 	Retry(Duration),
@@ -151,12 +158,31 @@ impl Renderer {
 	pub fn offscreen(&self, width: u32, height: u32) -> wgpu::Texture {
 		self.gpu.offscreen(width, height)
 	}
+	/// The largest square offscreen texture the adapter accepts. A document
+	/// taller than this is exported in several tiles.
+	pub fn max_texture_dimension_2d(&self) -> u32 {
+		self.gpu.device.limits().max_texture_dimension_2d
+	}
+	pub fn read_pixels(&self, texture: &wgpu::Texture) -> Result<Readback> {
+		let (width, height, rgba) = self.gpu.read_pixels(texture)?;
+		Ok(Readback {
+			width,
+			height,
+			rgba,
+		})
+	}
 	pub fn save_png(
 		&self,
 		texture: &wgpu::Texture,
 		path: &std::path::Path,
 	) -> Result<()> {
-		self.gpu.save_png(texture, path)
+		let readback = self.read_pixels(texture)?;
+		let size = tiny_skia::IntSize::from_wh(readback.width, readback.height)
+			.context("Screenshot dimensions too large")?;
+		let pixmap = tiny_skia::Pixmap::from_vec(readback.rgba, size)
+			.context("Screenshot dimensions too large")?;
+		pixmap.save_png(path)?;
+		Ok(())
 	}
 	pub fn gpu_bytes(&self) -> u64 {
 		(raster::ATLAS_SIZE * raster::ATLAS_SIZE) as u64

@@ -4,6 +4,7 @@ pub use markview_render as render;
 pub mod app;
 mod benchmark;
 mod cli;
+mod export;
 mod file;
 mod images;
 mod latency;

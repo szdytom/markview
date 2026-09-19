@@ -3,7 +3,7 @@ use crate::{
 	cli::{LaunchOptions, Mode},
 	layout::TextShaper,
 	render::Theme,
-	settings::{ReaderSettings, Setting, SettingsStore},
+	settings::{ExportSettings, ReaderSettings, Setting, SettingsStore},
 };
 use std::{
 	path::Path,
@@ -13,6 +13,9 @@ use std::{
 
 pub(super) struct Preferences {
 	pub(super) values: ReaderSettings,
+	/// The export panel's own settings. They are never part of `values`, so
+	/// changing one cannot reflow the document.
+	pub(super) export: ExportSettings,
 	store: SettingsStore,
 	pub(super) style_entries: Vec<crate::stylesheet::Entry>,
 	pub(super) style_page: usize,
@@ -103,8 +106,10 @@ impl Preferences {
 			&markview_core::style::TextAppearance::default(),
 			markview_core::style::Condition::Ui,
 		);
+		let export = settings_store.export();
 		Self {
 			values: settings,
+			export,
 			store: settings_store,
 			style_entries,
 			style_page: 0,
@@ -191,6 +196,15 @@ impl Preferences {
 	pub(super) fn stored_settings(&self) -> ReaderSettings {
 		self.store.settings()
 	}
+	/// Applies and schedules one export-panel change.
+	pub(super) fn set_export(&mut self, export: ExportSettings) {
+		self.export = export.clone();
+		self.store.set_export(export);
+		self.schedule_save();
+	}
+	pub(super) fn stored_export(&self) -> ExportSettings {
+		self.store.export()
+	}
 	pub(super) fn follow_system(&mut self) {
 		self.store.follow_system();
 	}
@@ -208,6 +222,7 @@ impl Preferences {
 		match self.store.reload() {
 			Ok(_) => {
 				self.settings_warning = None;
+				self.export = self.store.export();
 				if self.store.has_pending_changes() {
 					self.save_at =
 						Some(Instant::now() + Duration::from_millis(250));

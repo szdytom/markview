@@ -19,7 +19,7 @@
 <p align="center">
   <a href="#安装">安装</a> ·
   <a href="#阅读操作">阅读操作</a> ·
-  <a href="#导出-pdf">导出 PDF</a> ·
+  <a href="#导出">导出</a> ·
   <a href="#样式表">样式表</a> ·
   <a href="#文档导航">文档导航</a>
 </p>
@@ -122,6 +122,7 @@ Windows 的 MSI 会把 Markview 加入 `.md`、`.markdown`、`.mdown` 的**打�
 |:--|:--|
 | `Ctrl+O` | 打开文件 |
 | `Ctrl+T` | 选择样式表 |
+| `Ctrl+E` | 导出文档 |
 | `Ctrl+,` | 打开设置 |
 | `Ctrl++` / `Ctrl+-` | 放大 / 缩小字号 |
 | `Ctrl+[` / `Ctrl+]` | 收窄 / 加宽阅读栏 |
@@ -152,13 +153,19 @@ macOS 使用 Command 代替 Ctrl。默认阅读栏宽度为 760 逻辑像素，�
   同样两端对齐。
 
 Markview 有意保持只读：不能编辑或保存 Markdown，也没有目录、搜索，或超出 Markdown
-链接所开标签页之外的多文档工作区；打印指的是 `--pdf` 导出，而不是打印对话框。标题
+链接所开标签页之外的多文档工作区；打印指的是导出面板或 `--pdf`，而不是系统打印对话框。标题
 锚点使用 GitHub 的 slug 规则；原始 HTML 的 `id` 属性不会被解析，因此不能作为链接目标。
 
-## 导出 PDF
+## 导出
 
-Markview 不需要浏览器或打印对话框就能把文档排到纸上。导出会按版面宽度重新排版、自动
-分页，并以矢量文字加子集字体写出，体积小、清晰、可搜索：
+Markview 不需要浏览器或打印对话框就能导出文档。在阅读器里按 `Ctrl+E` 或点工具栏的导
+出按钮会打开导出面板：可写出 PDF 或整篇文档的一张 PNG，写好后交给系统打开；旁边的
+“Export and Watch…” 则会在文档每次保存时重新导出到同一个文件。面板有自己的字号（默认
+12pt）、首行缩进、纸张、方向、页边距、PNG 倍率与样式表序列——以内置 `print` 为底，再
+叠加面板里选中的样式表——全部保存在 `settings.toml` 的 `[export]` 段里，改动它们不会
+让阅读视图重排。
+
+同样的导出也有命令行形式，适合脚本与批处理：
 
 ```sh
 markview --pdf document.md --output document.pdf
@@ -167,11 +174,11 @@ markview --pdf document.md -o paper.pdf --footer "{title} — {page}/{pages}"
 markview --pdf document.md -o document.pdf --watch
 ```
 
-内置的 `print` 样式表决定纸张：A4、左右 20mm 页边距、白底黑字、页脚居中页码。
-`--paper` 接受 `a3`、`a4`、`a5`、`a6`、`b5`、`letter`、`legal`、`tabloid` 或毫米制的
-`宽x高`；`--margin` 接受 1、2 或 4 个毫米值；`--landscape` 交换长短边。页眉页脚共六
-个槽位，用 `--header`、`--footer` 及 `-left`/`-right` 变体设置，模板中可用 `{page}`、
-`{pages}`、`{title}`、`{path}`。
+内置的 `print` 样式表决定纸张：A4、左右 20mm 页边距、白底黑字、页脚居中页码。正文默认
+12pt，除非用 `--font-size` 另行指定。`--paper` 接受 `a3`、`a4`、`a5`、`a6`、`b5`、
+`letter`、`legal`、`tabloid` 或毫米制的`宽x高`；`--margin` 接受 1、2 或 4 个毫米值；
+`--landscape` 交换长短边。页眉页脚共六个槽位，用 `--header`、`--footer` 及
+`-left`/`-right` 变体设置，模板中可用 `{page}`、`{pages}`、`{title}`、`{path}`。
 
 `--watch` 让命令在首次导出后继续运行：文档或其引用的本地图片一有变化就重建 PDF，按
 Ctrl+C 结束。每次重建都复用未变的解析、块排版与已解码图片，因此内容没变的保存会被跳

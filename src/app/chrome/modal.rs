@@ -202,6 +202,7 @@ pub(in crate::app) fn modal_buttons(
 		Button {
 			label: "Open folder",
 			icon: None,
+			active: false,
 			action: Command::ModalOpenFolder,
 			rect: Rect {
 				x: rect.x + rect.w - 20.0 - folder,
@@ -213,6 +214,7 @@ pub(in crate::app) fn modal_buttons(
 		Button {
 			label: "Open anyway",
 			icon: None,
+			active: false,
 			action: Command::ModalConfirm,
 			rect: Rect {
 				x: rect.x + rect.w - 28.0 - folder - anyway,
@@ -224,6 +226,7 @@ pub(in crate::app) fn modal_buttons(
 		Button {
 			label: "Close",
 			icon: Some(icons::CLOSE),
+			active: false,
 			action: Command::ModalDismiss,
 			rect: Rect {
 				x: rect.x + rect.w - 20.0 - close,

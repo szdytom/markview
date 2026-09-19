@@ -33,6 +33,10 @@ fn sanitize_filename(title: &str) -> String {
 
 impl App {
 	pub(super) fn action(&mut self, action: Command) {
+		// Export-panel changes own their settings and never reflow the reader.
+		if self.export_command(action) {
+			return;
+		}
 		match action {
 			Command::SelectTab(index) => {
 				self.select_tab(index);
@@ -85,6 +89,8 @@ impl App {
 				self.tab_strip.cancel_drag();
 				self.interaction.panel_open = true;
 				self.interaction.styles_open = !self.interaction.styles_open;
+				self.interaction.export_open = false;
+				self.interaction.export_styles_open = false;
 				self.preferences.style_entries = crate::stylesheet::catalog(
 					crate::stylesheet::directory().as_deref(),
 					self.preferences.values.style.as_deref(),
@@ -94,6 +100,59 @@ impl App {
 				self.redraw();
 				return;
 			}
+			Command::ExportStyles => {
+				self.tab_strip.cancel_drag();
+				let open = !self.interaction.export_styles_open;
+				self.interaction.panel_open = true;
+				// Closing the chooser returns to the export panel, not to the
+				// document.
+				self.interaction.export_open = true;
+				self.interaction.export_styles_open = open;
+				self.interaction.styles_open = false;
+				self.preferences.style_entries = crate::stylesheet::catalog(
+					crate::stylesheet::directory().as_deref(),
+					Some(&self.preferences.export.style),
+				);
+				self.preferences.style_page = 0;
+				self.interaction.focus = None;
+				self.redraw();
+				return;
+			}
+			Command::Export => {
+				self.tab_strip.cancel_drag();
+				let open = !self.interaction.export_open;
+				if open && self.readers.session.path.is_none() {
+					self.notify("Open a document first", true, 4);
+					return;
+				}
+				self.interaction.panel_open = open;
+				self.interaction.export_open = open;
+				self.interaction.export_styles_open = false;
+				self.interaction.styles_open = false;
+				self.interaction.pointer_down = None;
+				self.interaction.drag_at = None;
+				self.interaction.scrollbar = None;
+				self.interaction.focus = open.then_some(Command::ExportRun);
+				self.refresh_hover();
+				self.redraw();
+				return;
+			}
+			Command::ExportRun => {
+				self.start_export(false);
+				return;
+			}
+			Command::ExportAndWatch => {
+				self.start_export(true);
+				return;
+			}
+			// Applied by `export_command` before this match.
+			Command::ExportFormat(_)
+			| Command::ExportSize(_)
+			| Command::ExportIndent(_)
+			| Command::ExportPaper(_)
+			| Command::ExportOrientation(_)
+			| Command::ExportMargin(_)
+			| Command::ExportScale(_) => return,
 			Command::StylesFolder => {
 				let result = crate::stylesheet::directory()
 					.ok_or_else(|| anyhow::anyhow!("No stylesheet directory"))
@@ -158,6 +217,57 @@ impl App {
 				self.redraw();
 				return;
 			}
+			Command::ExportStylePrev => {
+				self.preferences.style_page =
+					self.preferences.style_page.saturating_sub(1);
+				self.redraw();
+				return;
+			}
+			Command::ExportStyleNext => {
+				self.preferences.style_page += 1;
+				self.redraw();
+				return;
+			}
+			Command::ExportStyleToggle(index)
+			| Command::ExportStyleUp(index)
+			| Command::ExportStyleDown(index) => {
+				let Some(entry) = self.preferences.style_entries.get(index)
+				else {
+					return;
+				};
+				// An export style list never touches the reading view's own
+				// styles, so this only persists and repaints the panel.
+				let mut ids = self.preferences.export.style.clone();
+				let position = ids.iter().position(|id| id == &entry.id);
+				match action {
+					Command::ExportStyleToggle(_) => {
+						if position.is_some() {
+							ids.retain(|id| id != &entry.id);
+						} else if entry.error.is_none() {
+							ids.insert(0, entry.id.clone());
+						} else {
+							return;
+						}
+					}
+					Command::ExportStyleUp(_) => {
+						if let Some(i) = position.filter(|i| *i > 0) {
+							ids.swap(i, i - 1);
+						}
+					}
+					Command::ExportStyleDown(_) => {
+						if let Some(i) = position.filter(|i| i + 1 < ids.len())
+						{
+							ids.swap(i, i + 1);
+						}
+					}
+					_ => {}
+				}
+				let mut export = self.preferences.export.clone();
+				export.style = ids;
+				self.preferences.set_export(export);
+				self.redraw();
+				return;
+			}
 			Command::OpenConfig => {
 				let result = self.preferences.ensure_file().and_then(|()| {
 					open::that_detached(self.preferences.path().unwrap())
@@ -183,6 +293,8 @@ impl App {
 				self.tab_strip.cancel_drag();
 				self.interaction.panel_open = !self.interaction.panel_open;
 				self.interaction.styles_open = false;
+				self.interaction.export_open = false;
+				self.interaction.export_styles_open = false;
 				self.interaction.pointer_down = None;
 				self.interaction.drag_at = None;
 				self.interaction.scrollbar = None;
@@ -472,6 +584,7 @@ impl App {
 		let previous = self.preferences.values.clone();
 		let options = self.options();
 		self.preferences.values = self.preferences.stored_settings();
+		self.preferences.export = self.preferences.stored_export();
 		self.preferences.values.stylesheet = previous.stylesheet.clone();
 		if self.preferences.theme_preference().is_none() {
 			self.preferences.values.theme = self

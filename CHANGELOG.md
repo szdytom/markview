@@ -20,11 +20,23 @@ at the same level, without `[brackets]`.
 - The `markview-icon` `icon!` macro parses an SVG at compile time into a
   unit-box vector buffer, so the reader keeps its UI icons as editable files
   with no SVG parser in the binary.
+- The reader exports the open document to PDF or a whole-document PNG from a
+  toolbar button or `Ctrl+E`, with its own text size, indent, paper, margins,
+  stylesheet sequence and PNG scale under `[export]` in `settings.toml`,
+  independent of the reading view.
+- The export panel's `Export and Watch…` action keeps rewriting the same file
+  whenever the document is saved.
 
 ### Changed
 
 - The toolbar's Open and Settings buttons, and every panel's close button, are
   vector icons drawn from those buffers instead of text labels.
+- The reader's export opens the written file with the operating system, and the
+  export icon points out of its tray instead of into it.
+- The export panel refuses to open without a document, and its header names the
+  document and the resulting measure instead of repeating the rows.
+- PDF export is set at 12 pt body text by default, on the command line and in
+  the reader's export panel.
 
 ## 0.1.3 - 2026-09-18
 

@@ -42,6 +42,11 @@ LEFT_INSET = 16
 TOP_INSET = 24
 BOTTOM_INSET = 24
 
+# Both exports pin one type size: `--pdf` now defaults to 12 pt body text while
+# `--render` uses the reader's 18 px, so leaving either implicit would compare
+# two different measures.
+FONT_SIZE_PX = 18
+
 
 def run(command: list[str]) -> None:
     result = subprocess.run(command, capture_output=True, text=True)
@@ -64,6 +69,7 @@ def export(binary: Path, fixture: Path, out: Path, page: tuple[int, int],
         str(binary), "--pdf", str(fixture), "--output", str(pdf),
         "--paper", f"{millimetres(width):.5f}x{millimetres(height):.5f}",
         "--margin", "0", "--footer", "", "--style", "print",
+        "--font-size", str(FONT_SIZE_PX),
     ])
     # The renderer clamps the measure to `width / scale - 32` and shows
     # `height / scale - top - bottom` logical pixels.
@@ -73,6 +79,7 @@ def export(binary: Path, fixture: Path, out: Path, page: tuple[int, int],
         "--width", str(round((width + 32) * scale)),
         "--height", str(round((height + BOTTOM_INSET + 24) * scale)),
         "--column", str(width), "--scale", str(scale),
+        "--font-size", str(FONT_SIZE_PX),
     ])
     return pdf, png
 

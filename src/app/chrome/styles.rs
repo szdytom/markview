@@ -3,29 +3,91 @@ use super::controls::{ICON_BUTTON, button_icon, panel_rect};
 use super::icons;
 use crate::{
 	layout::{Draw, Paint, Rect, TextShaper},
-	settings::ReaderSettings,
 	state::{Command, InteractionState},
 };
 use markview_core::style::{ColorField as C, Condition, TextAppearance};
+
+/// Which list a stylesheet page edits: the reader's effective styles, or the
+/// sequence one export layers on the print sheet.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(super) enum StylesTarget {
+	Reader,
+	Export,
+}
+
+impl StylesTarget {
+	fn toggle(self, index: usize) -> Command {
+		match self {
+			Self::Reader => Command::StyleToggle(index),
+			Self::Export => Command::ExportStyleToggle(index),
+		}
+	}
+	fn up(self, index: usize) -> Command {
+		match self {
+			Self::Reader => Command::StyleUp(index),
+			Self::Export => Command::ExportStyleUp(index),
+		}
+	}
+	fn down(self, index: usize) -> Command {
+		match self {
+			Self::Reader => Command::StyleDown(index),
+			Self::Export => Command::ExportStyleDown(index),
+		}
+	}
+	/// The page's Back button returns to the panel that opened it.
+	fn back(self) -> Command {
+		match self {
+			Self::Reader => Command::Styles,
+			Self::Export => Command::ExportStyles,
+		}
+	}
+	fn prev(self) -> Command {
+		match self {
+			Self::Reader => Command::StylePrev,
+			Self::Export => Command::ExportStylePrev,
+		}
+	}
+	fn next(self) -> Command {
+		match self {
+			Self::Reader => Command::StyleNext,
+			Self::Export => Command::ExportStyleNext,
+		}
+	}
+	/// Only the reader can follow the system theme.
+	fn system(self) -> Option<Command> {
+		(self == Self::Reader).then_some(Command::SystemTheme)
+	}
+	fn summary(self, selected: Option<&[String]>) -> &'static str {
+		match self {
+			Self::Reader if selected.is_none() => {
+				"Stylesheets · following system"
+			}
+			Self::Reader => "Stylesheets · highest priority first",
+			Self::Export => "Styles · layered over the print sheet",
+		}
+	}
+}
+
 fn style_rows(rect: Rect) -> usize {
 	((rect.h - 142.) / 60.).floor().max(1.) as usize
 }
+
 fn style_order(
-	settings: &ReaderSettings,
+	selected: Option<&[String]>,
 	entries: &[crate::stylesheet::Entry],
 ) -> Vec<usize> {
 	let mut indices: Vec<_> = (0..entries.len()).collect();
 	indices.sort_by_key(|i| {
-		settings
-			.style
-			.as_ref()
+		selected
 			.and_then(|ids| ids.iter().position(|id| id == &entries[*i].id))
 			.unwrap_or(usize::MAX)
 	});
 	indices
 }
+
 pub(super) fn style_controls(
-	settings: &ReaderSettings,
+	target: StylesTarget,
+	selected: Option<&[String]>,
 	entries: &[crate::stylesheet::Entry],
 	page: usize,
 	width: f32,
@@ -33,12 +95,11 @@ pub(super) fn style_controls(
 ) -> Vec<Button> {
 	let r = panel_rect(width, height);
 	let rows = style_rows(r);
-	let order = style_order(settings, entries);
+	let order = style_order(selected, entries);
 	let page = page.min(order.len().saturating_sub(1) / rows);
 	let mut out = vec![];
-	for (label, icon, action, x, w) in [
-		("Back", None, Command::Styles, 20., 58.),
-		("System", None, Command::SystemTheme, 86., 74.),
+	let mut headers = vec![
+		("Back", None, target.back(), 20., 58.),
 		(
 			"Close",
 			Some(icons::CLOSE),
@@ -47,10 +108,15 @@ pub(super) fn style_controls(
 			ICON_BUTTON,
 		),
 		("Open styles folder", None, Command::StylesFolder, 20., 146.),
-	] {
+	];
+	if let Some(system) = target.system() {
+		headers.push(("System", None, system, 86., 74.));
+	}
+	for (label, icon, action, x, w) in headers {
 		out.push(Button {
 			label,
 			icon,
+			active: false,
 			action,
 			rect: Rect {
 				x: r.x + x,
@@ -68,7 +134,8 @@ pub(super) fn style_controls(
 		out.push(Button {
 			label: "Previous",
 			icon: None,
-			action: Command::StylePrev,
+			active: false,
+			action: target.prev(),
 			rect: Rect {
 				x: r.x + r.w - 190.,
 				y: r.y + r.h - 38.,
@@ -81,7 +148,8 @@ pub(super) fn style_controls(
 		out.push(Button {
 			label: "Next",
 			icon: None,
-			action: Command::StyleNext,
+			active: false,
+			action: target.next(),
 			rect: Rect {
 				x: r.x + r.w - 100.,
 				y: r.y + r.h - 38.,
@@ -94,16 +162,15 @@ pub(super) fn style_controls(
 		order.into_iter().skip(page * rows).take(rows).enumerate()
 	{
 		let e = &entries[index];
-		let pos = settings
-			.style
-			.as_ref()
-			.and_then(|ids| ids.iter().position(|id| id == &e.id));
+		let pos =
+			selected.and_then(|ids| ids.iter().position(|id| id == &e.id));
 		let y = r.y + 84. + row as f32 * 60.;
 		if e.error.is_none() || pos.is_some() {
 			out.push(Button {
 				label: if pos.is_some() { "Disable" } else { "Enable" },
 				icon: None,
-				action: Command::StyleToggle(index),
+				active: false,
+				action: target.toggle(index),
 				rect: Rect {
 					x: r.x + r.w - 180.,
 					y,
@@ -117,7 +184,8 @@ pub(super) fn style_controls(
 				out.push(Button {
 					label: "↑",
 					icon: None,
-					action: Command::StyleUp(index),
+					active: false,
+					action: target.up(index),
 					rect: Rect {
 						x: r.x + r.w - 96.,
 						y,
@@ -126,15 +194,12 @@ pub(super) fn style_controls(
 					},
 				});
 			}
-			if settings
-				.style
-				.as_ref()
-				.is_some_and(|ids| pos + 1 < ids.len())
-			{
+			if selected.is_some_and(|ids| pos + 1 < ids.len()) {
 				out.push(Button {
 					label: "↓",
 					icon: None,
-					action: Command::StyleDown(index),
+					active: false,
+					action: target.down(index),
 					rect: Rect {
 						x: r.x + r.w - 58.,
 						y,
@@ -147,9 +212,12 @@ pub(super) fn style_controls(
 	}
 	out
 }
+
+#[expect(clippy::too_many_arguments, reason = "one page's explicit inputs")]
 pub(super) fn draw_styles(
 	shaper: &mut TextShaper,
-	settings: &ReaderSettings,
+	target: StylesTarget,
+	selected: Option<&[String]>,
 	interaction: &InteractionState,
 	entries: &[crate::stylesheet::Entry],
 	page: usize,
@@ -164,7 +232,7 @@ pub(super) fn draw_styles(
 	);
 	let r = panel_rect(width, height);
 	let rows = style_rows(r);
-	let order = style_order(settings, entries);
+	let order = style_order(selected, entries);
 	let page = page.min(order.len().saturating_sub(1) / rows);
 	let mut out = vec![
 		Draw::Rect(
@@ -185,13 +253,8 @@ pub(super) fn draw_styles(
 			left_only: false,
 		},
 	];
-	let summary = if settings.style.is_none() {
-		"Stylesheets · following system"
-	} else {
-		"Stylesheets · highest priority first"
-	};
 	out.extend(shaper.label(
-		summary,
+		target.summary(selected),
 		13.,
 		r.x + 20.,
 		r.y + 66.,
@@ -201,10 +264,8 @@ pub(super) fn draw_styles(
 		order.into_iter().skip(page * rows).take(rows).enumerate()
 	{
 		let e = &entries[index];
-		let pos = settings
-			.style
-			.as_ref()
-			.and_then(|ids| ids.iter().position(|id| id == &e.id));
+		let pos =
+			selected.and_then(|ids| ids.iter().position(|id| id == &e.id));
 		let y = r.y + 84. + row as f32 * 60.;
 		let title = format!(
 			"{}{} ({})",
@@ -256,7 +317,7 @@ pub(super) fn draw_styles(
 			),
 		));
 	}
-	for b in style_controls(settings, entries, page, width, height) {
+	for b in style_controls(target, selected, entries, page, width, height) {
 		out.push(Draw::Box {
 			rect: b.rect,
 			chain: Condition::Button.chain(),
@@ -337,18 +398,26 @@ mod stylesheet_tests {
 				error: Some("Invalid".into()),
 			},
 		];
-		let settings = ReaderSettings {
-			style: Some(vec!["a".into()]),
-			..Default::default()
-		};
-		for (w, h) in [(500., 300.), (820., 600.)] {
-			let panel = panel_rect(w, h);
-			let buttons = style_controls(&settings, &entries, 0, w, h);
-			assert!(buttons.iter().all(|b| panel.contains(b.rect.x, b.rect.y)
-				&& panel.contains(b.rect.x + b.rect.w, b.rect.y + b.rect.h)));
-			assert!(
-				!buttons.iter().any(|b| b.action == Command::StyleToggle(1))
-			);
+		let selected = vec!["a".to_string()];
+		for target in [StylesTarget::Reader, StylesTarget::Export] {
+			for (w, h) in [(500., 300.), (820., 600.)] {
+				let panel = panel_rect(w, h);
+				let buttons =
+					style_controls(target, Some(&selected), &entries, 0, w, h);
+				assert!(buttons.iter().all(|b| {
+					panel.contains(b.rect.x, b.rect.y)
+						&& panel
+							.contains(b.rect.x + b.rect.w, b.rect.y + b.rect.h)
+				}));
+				assert!(!buttons.iter().any(|b| matches!(
+					b.action,
+					Command::StyleToggle(1) | Command::ExportStyleToggle(1)
+				)));
+				// Only the reader page offers the system theme.
+				let system =
+					buttons.iter().any(|b| b.action == Command::SystemTheme);
+				assert_eq!(system, target == StylesTarget::Reader);
+			}
 		}
 	}
 }

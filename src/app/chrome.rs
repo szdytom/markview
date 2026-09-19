@@ -1,5 +1,6 @@
 //! Reader chrome built from borrowed display state, with no window or worker access.
 mod controls;
+mod export;
 mod footer;
 #[cfg(test)]
 mod gpu_tests;
@@ -10,7 +11,7 @@ mod tabs;
 use super::{BOTTOM, Button, TOP};
 use crate::{
 	layout::{Draw, Paint, Rect, Scrollbar, TextShaper},
-	settings::ReaderSettings,
+	settings::{ExportSettings, ReaderSettings},
 	state::{
 		Command, InteractionState, ReaderSession, ReaderTab, ScrollbarAxis,
 	},
@@ -20,7 +21,7 @@ use controls::{controls, draw_controls, toolbar_controls};
 use footer::draw_footer;
 use markview_core::style::{ColorField as C, Condition, TextAppearance};
 use std::time::Instant;
-use styles::{draw_styles, style_controls};
+use styles::{StylesTarget, draw_styles, style_controls};
 
 /// Height of the remote-image notice strip below the tab bar.
 pub(super) const BANNER: f32 = 34.0;
@@ -56,6 +57,7 @@ fn banner_buttons(shaper: &mut TextShaper, width: f32) -> Vec<Button> {
 		Button {
 			label: "Dismiss",
 			icon: None,
+			active: false,
 			action: Command::RemoteDismiss,
 			rect: Rect {
 				x: width - 16.0 - dismiss - load - 8.0,
@@ -67,6 +69,7 @@ fn banner_buttons(shaper: &mut TextShaper, width: f32) -> Vec<Button> {
 		Button {
 			label: "Load all",
 			icon: None,
+			active: false,
 			action: Command::RemoteLoadAll,
 			rect: Rect {
 				x: width - 16.0 - load,
@@ -145,6 +148,8 @@ pub(super) struct Chrome<'a> {
 	pub(super) tab_strip: &'a super::tab_strip::TabStrip,
 	pub(super) tab_widths: &'a [(f32, f32)],
 	pub(super) settings: &'a ReaderSettings,
+	/// The export panel's own settings, drawn but never applied to the reader.
+	pub(super) export: &'a ExportSettings,
 	pub(super) interaction: &'a InteractionState,
 	pub(super) style_entries: &'a [crate::stylesheet::Entry],
 	pub(super) style_page: usize,
@@ -159,15 +164,29 @@ pub(super) struct Chrome<'a> {
 	pub(super) hover_hint: Option<&'a str>,
 	/// Number of remote image sources the loader deferred, if any.
 	pub(super) remote_notice: Option<usize>,
+	/// Whether an export is rewriting its file on every document change.
+	pub(super) watching: bool,
 }
 impl Chrome<'_> {
 	pub(super) fn buttons(&mut self) -> Vec<Button> {
 		let (width, height, _) = (self.width, self.height, 1.0);
 		if self.interaction.modal.is_some() {
 			modal::modal_buttons(self.ui, self.interaction, width, height)
+		} else if self.interaction.export_styles_open {
+			style_controls(
+				StylesTarget::Export,
+				Some(&self.export.style),
+				self.style_entries,
+				self.style_page,
+				width,
+				height,
+			)
+		} else if self.interaction.export_open {
+			export::export_controls(self.ui, self.export, width, height)
 		} else if self.interaction.styles_open {
 			style_controls(
-				self.settings,
+				StylesTarget::Reader,
+				self.settings.style.as_deref(),
 				self.style_entries,
 				self.style_page,
 				width,
@@ -309,10 +328,39 @@ impl Chrome<'_> {
 				),
 			));
 		}
-		if self.interaction.styles_open {
+		if self.interaction.export_styles_open {
 			out.extend(draw_styles(
 				self.ui,
-				self.settings,
+				StylesTarget::Export,
+				Some(&self.export.style),
+				self.interaction,
+				self.style_entries,
+				self.style_page,
+				width,
+				height,
+			));
+		} else if self.interaction.export_open {
+			let document = self
+				.session
+				.path
+				.as_deref()
+				.and_then(|path| path.file_name())
+				.map(|name| name.to_string_lossy().into_owned())
+				.unwrap_or_else(|| "Untitled".into());
+			out.extend(export::draw_export(
+				self.ui,
+				self.export,
+				self.interaction,
+				&document,
+				self.watching,
+				width,
+				height,
+			));
+		} else if self.interaction.styles_open {
+			out.extend(draw_styles(
+				self.ui,
+				StylesTarget::Reader,
+				self.settings.style.as_deref(),
 				self.interaction,
 				self.style_entries,
 				self.style_page,

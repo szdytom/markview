@@ -136,7 +136,8 @@ fn settings_and_selection_frame() -> Result<()> {
 			});
 			let overlay = draw_styles(
 				&mut crate::test_support::shaper(),
-				&settings,
+				super::styles::StylesTarget::Reader,
+				settings.style.as_deref(),
 				&interaction,
 				&entries,
 				0,
@@ -559,4 +560,173 @@ fn coverage_centroid(
 		}
 	}
 	(sx / weight, sy / weight)
+}
+
+#[test]
+#[ignore = "requires a GPU; writes artifacts/export-whole.png"]
+fn a_whole_document_png_export_stitches_its_tiles() -> Result<()> {
+	let settings = crate::settings::ExportSettings {
+		format: crate::settings::ExportFormat::Png,
+		scale: 1.0,
+		..Default::default()
+	};
+	let geometry = crate::export::geometry(&settings)?;
+	let mut renderer = pollster::block_on(Renderer::new(None))?;
+	let sheet = markview_core::style::Stylesheet::bundled_print();
+	renderer.set_stylesheet(sheet.clone());
+	let document = document::parse(
+		"# Exporting\n\nA paragraph with 中文 and **bold** text.\n\n- one\n- two\n\n"
+			.repeat(30),
+	);
+	let options = crate::layout::LayoutOptions {
+		width: geometry.text_px().0,
+		stylesheet: sheet.clone(),
+		fonts: crate::test_support::fonts(),
+		..Default::default()
+	};
+	let snapshot = LayoutEngine::new().layout(&document, &options);
+	assert!(
+		snapshot.height > 1024.0,
+		"the document must need several tiles"
+	);
+	// A small texture limit forces the strip plan the export uses; it must
+	// still clear the page's own width.
+	let plan =
+		crate::export::plan(&geometry, snapshot.height, settings.scale, 1024)?;
+	assert!(plan.tiles.len() > 1, "{plan:?}");
+	let stylesheet = std::sync::Arc::new(sheet);
+	let mut rgba =
+		vec![0; plan.width_px as usize * plan.height_px as usize * 4];
+	for tile in plan.tiles.iter().copied() {
+		crate::app::export::draw_tile(
+			&mut renderer,
+			&snapshot,
+			&plan,
+			&stylesheet,
+			tile,
+			settings.scale,
+			geometry.margin_pt[3] / markview_core::paginate::PT_PER_PX,
+			Theme::Light,
+			&mut rgba,
+		)?;
+	}
+	let output = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+		.join("artifacts/export-whole.png");
+	std::fs::create_dir_all(output.parent().unwrap())?;
+	crate::app::export::write_png(
+		&output,
+		&rgba,
+		plan.width_px,
+		plan.height_px,
+	)?;
+	let image = image::open(&output)?.to_rgba8();
+	assert_eq!(image.dimensions(), (plan.width_px, plan.height_px));
+	// The top margin is the sheet's own background, opaque.
+	assert_eq!(image.get_pixel(0, 0).0, [255, 255, 255, 255]);
+	Ok(())
+}
+
+#[test]
+#[ignore = "requires a GPU; writes artifacts/export-panel*.png"]
+fn export_panel_frames() -> Result<()> {
+	use super::export::draw_export;
+	let (width, height) = (1000.0_f32, 700.0_f32);
+	let directory =
+		std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("artifacts");
+	std::fs::create_dir_all(&directory)?;
+	let mut renderer = pollster::block_on(Renderer::new(None))?;
+	for (settings, dark, name) in [
+		(
+			crate::settings::ExportSettings::default(),
+			false,
+			"export-panel.png",
+		),
+		(
+			crate::settings::ExportSettings {
+				format: crate::settings::ExportFormat::Png,
+				paragraph_indent: 2.0,
+				..Default::default()
+			},
+			true,
+			"export-panel-png.png",
+		),
+	] {
+		let theme = if dark { Theme::Dark } else { Theme::Light };
+		let sheet = markview_core::style::Stylesheet::bundled(dark);
+		renderer.set_stylesheet(sheet.clone());
+		let document = document::parse(
+			"# Exporting\n\nA paragraph behind the panel.\n\n- one\n- two\n",
+		);
+		let snapshot = LayoutEngine::new().layout(
+			&document,
+			&crate::layout::LayoutOptions {
+				width: 600.0,
+				stylesheet: sheet,
+				fonts: crate::test_support::fonts(),
+				..Default::default()
+			},
+		);
+		let mut ui = crate::test_support::shaper();
+		ui.set_stylesheet(markview_core::style::Stylesheet::bundled(dark));
+		let mut overlay = vec![
+			Draw::Rect(
+				Rect {
+					x: 0.0,
+					y: 0.0,
+					w: width,
+					h: TOP,
+				},
+				Paint::Background,
+			),
+			Draw::Rect(
+				Rect {
+					x: 0.0,
+					y: TOP - 1.0,
+					w: width,
+					h: 1.0,
+				},
+				Paint::Border,
+			),
+		];
+		overlay.extend(draw_export(
+			&mut ui,
+			&settings,
+			&InteractionState {
+				panel_open: true,
+				export_open: true,
+				focus: Some(Command::ExportRun),
+				..Default::default()
+			},
+			"document.md",
+			false,
+			width,
+			height,
+		));
+		let view = View {
+			selection: None,
+			revision: 0,
+			width: width as u32,
+			height: height as u32,
+			scale: 1.0,
+			scroll: 0.0,
+			left: 200.0,
+			top: TOP + 10.0,
+			bottom: 10.0,
+			theme,
+			horizontal: &HashMap::new(),
+			hovered_link: None,
+			hovered_overflow: None,
+			held_overflow: None,
+		};
+		let target = renderer.offscreen(width as u32, height as u32);
+		let submission = renderer.render(
+			&snapshot,
+			&view,
+			&overlay,
+			&target.create_view(&Default::default()),
+		)?;
+		renderer.wait(Some(submission))?;
+		renderer.save_png(&target, &directory.join(name))?;
+	}
+	Ok(())
 }

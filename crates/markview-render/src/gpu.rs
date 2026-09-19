@@ -172,11 +172,11 @@ impl Gpu {
 			view_formats: &[],
 		})
 	}
-	pub fn save_png(
+	/// Reads a texture back as tightly packed, non-premultiplied sRGB RGBA8.
+	pub(super) fn read_pixels(
 		&self,
 		texture: &wgpu::Texture,
-		path: &std::path::Path,
-	) -> Result<()> {
+	) -> Result<(u32, u32, Vec<u8>)> {
 		let w = texture.width();
 		let h = texture.height();
 		let pitch = (w * 4).div_ceil(256) * 256;
@@ -208,11 +208,10 @@ impl Gpu {
 		self.wait(None)?;
 		rx.recv()??;
 		let mapped = buffer.slice(..).get_mapped_range();
-		let mut pixmap = tiny_skia::Pixmap::new(w, h)
-			.context("Screenshot dimensions too large")?;
+		let mut rgba = vec![0u8; (w as usize) * (h as usize) * 4];
 		for (src, dst) in mapped
 			.chunks_exact(pitch as usize)
-			.zip(pixmap.data_mut().chunks_exact_mut(w as usize * 4))
+			.zip(rgba.chunks_exact_mut(w as usize * 4))
 		{
 			dst.copy_from_slice(&src[..w as usize * 4]);
 		}
@@ -221,13 +220,12 @@ impl Gpu {
 			wgpu::TextureFormat::Bgra8UnormSrgb
 				| wgpu::TextureFormat::Bgra8Unorm
 		) {
-			for p in pixmap.data_mut().as_chunks_mut::<4>().0 {
+			for p in rgba.as_chunks_mut::<4>().0 {
 				p.swap(0, 2);
 			}
 		}
-		pixmap.save_png(path)?;
 		drop(mapped);
 		buffer.unmap();
-		Ok(())
+		Ok((w, h, rgba))
 	}
 }

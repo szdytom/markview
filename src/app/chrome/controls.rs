@@ -44,6 +44,7 @@ pub(super) fn controls(
 		let mut buttons = vec![Button {
 			label: "Close",
 			icon: Some(icons::CLOSE),
+			active: false,
 			action: Command::Settings,
 			rect: Rect {
 				x: rect.x + rect.w - 20.0 - close_width,
@@ -98,6 +99,7 @@ pub(super) fn controls(
 				buttons.push(Button {
 					label,
 					icon: None,
+					active: false,
 					action,
 					rect: Rect {
 						x: rect.x + rect.w - 20.0 - 168.0
@@ -129,6 +131,7 @@ pub(super) fn controls(
 			buttons.push(Button {
 				label,
 				icon: None,
+				active: false,
 				action,
 				rect: Rect {
 					x: rect.x + x,
@@ -143,7 +146,11 @@ pub(super) fn controls(
 	toolbar_controls(width)
 }
 
-fn button_width(shaper: &mut TextShaper, label: &str, size: f32) -> f32 {
+pub(super) fn button_width(
+	shaper: &mut TextShaper,
+	label: &str,
+	size: f32,
+) -> f32 {
 	const HORIZONTAL_PADDING: f32 = 18.0;
 	let old_appearance = shaper.appearance.clone();
 	shaper.appearance = shaper
@@ -168,8 +175,9 @@ pub(super) fn button_icon(button: &Button) -> Option<Draw> {
 }
 
 pub(super) fn toolbar_controls(width: f32) -> Vec<Button> {
-	let entries: [(&[IconPath], &str, Command); 2] = [
+	let entries: [(&[IconPath], &str, Command); 3] = [
 		(icons::OPEN, "Open", Command::Open),
+		(icons::EXPORT, "Export", Command::Export),
 		(icons::SETTINGS, "Settings", Command::Settings),
 	];
 	let mut x = toolbar_right_edge(width);
@@ -187,6 +195,7 @@ pub(super) fn toolbar_controls(width: f32) -> Vec<Button> {
 				rect,
 				label,
 				icon: Some(icon),
+				active: false,
 				action,
 			}
 		})
@@ -194,7 +203,74 @@ pub(super) fn toolbar_controls(width: f32) -> Vec<Button> {
 }
 
 pub(super) fn toolbar_right_edge(width: f32) -> f32 {
-	width - 2.0 * ICON_BUTTON - GAP - 16.0
+	width - 3.0 * ICON_BUTTON - 2.0 * GAP - 16.0
+}
+
+/// One button's frame, state fill, icon or label. Panels tint every button so
+/// it reads as a control; the bare toolbar leaves them transparent.
+pub(super) fn draw_button(
+	shaper: &mut TextShaper,
+	interaction: &InteractionState,
+	b: &Button,
+	panel: bool,
+) -> Vec<Draw> {
+	let mut out = vec![Draw::Box {
+		rect: b.rect,
+		chain: Condition::Button.chain(),
+		condition: Condition::Button,
+		radius: 0.,
+		border: 1.,
+		left_only: false,
+	}];
+	if interaction.focus == Some(b.action) {
+		out.push(Draw::Rect(
+			b.rect,
+			Paint::Styled(Condition::Button, C::FocusColor),
+		));
+		out.push(Draw::Rect(
+			Rect {
+				x: b.rect.x + 1.0,
+				y: b.rect.y + 1.0,
+				w: b.rect.w - 2.0,
+				h: b.rect.h - 2.0,
+			},
+			Paint::Styled(
+				Condition::Button,
+				if interaction.pressed == Some(b.action) {
+					C::ActiveBackground
+				} else {
+					C::Background
+				},
+			),
+		));
+	} else if b.rect.contains(interaction.cursor.0, interaction.cursor.1) {
+		out.push(Draw::Rect(
+			b.rect,
+			Paint::Styled(Condition::Button, C::HoverBackground),
+		));
+	} else if panel {
+		out.push(Draw::Rect(
+			b.rect,
+			Paint::Styled(Condition::Button, C::Background),
+		));
+	}
+	if let Some(icon) = button_icon(b) {
+		out.push(icon);
+	} else {
+		// An active choice keeps its row's place and gains the marker.
+		let marked = b.active.then(|| format!("• {}", b.label));
+		let text = marked.as_deref().unwrap_or(b.label);
+		let label_x =
+			b.rect.x + (b.rect.w - shaper.text_width(text, 13.0)) / 2.0;
+		out.extend(shaper.label(
+			text,
+			13.0,
+			label_x,
+			b.rect.y + b.rect.h / 2.0 + 5.0,
+			Paint::Styled(Condition::Button, C::Color),
+		));
+	}
+	out
 }
 
 pub(super) fn draw_controls(
@@ -313,59 +389,12 @@ pub(super) fn draw_controls(
 		toolbar_controls(width)
 	};
 	for b in buttons {
-		out.push(Draw::Box {
-			rect: b.rect,
-			chain: Condition::Button.chain(),
-			condition: Condition::Button,
-			radius: 0.,
-			border: 1.,
-			left_only: false,
-		});
-		if interaction.focus == Some(b.action) {
-			out.push(Draw::Rect(
-				b.rect,
-				Paint::Styled(Condition::Button, C::FocusColor),
-			));
-			out.push(Draw::Rect(
-				Rect {
-					x: b.rect.x + 1.0,
-					y: b.rect.y + 1.0,
-					w: b.rect.w - 2.0,
-					h: b.rect.h - 2.0,
-				},
-				Paint::Styled(
-					Condition::Button,
-					if interaction.pressed == Some(b.action) {
-						C::ActiveBackground
-					} else {
-						C::Background
-					},
-				),
-			));
-		} else if b.rect.contains(interaction.cursor.0, interaction.cursor.1) {
-			out.push(Draw::Rect(
-				b.rect,
-				Paint::Styled(Condition::Button, C::HoverBackground),
-			));
-		} else if interaction.panel_open {
-			out.push(Draw::Rect(
-				b.rect,
-				Paint::Styled(Condition::Button, C::Background),
-			));
-		}
-		if let Some(icon) = button_icon(&b) {
-			out.push(icon);
-		} else {
-			let label_x =
-				b.rect.x + (b.rect.w - shaper.text_width(b.label, 13.0)) / 2.0;
-			out.extend(shaper.label(
-				b.label,
-				13.0,
-				label_x,
-				b.rect.y + b.rect.h / 2.0 + 5.0,
-				Paint::Styled(Condition::Button, C::Color),
-			));
-		}
+		out.extend(draw_button(
+			shaper,
+			interaction,
+			&b,
+			interaction.panel_open,
+		));
 	}
 	out
 }
@@ -451,9 +480,10 @@ mod tests {
 			);
 			assert_eq!(
 				toolbar.iter().map(|b| b.action).collect::<Vec<_>>(),
-				vec![Command::Open, Command::Settings]
+				vec![Command::Open, Command::Export, Command::Settings]
 			);
-			assert_eq!(toolbar[1].rect.x + toolbar[1].rect.w, width - 16.0);
+			let last = toolbar.last().expect("a toolbar button");
+			assert_eq!(last.rect.x + last.rect.w, width - 16.0);
 			assert!(toolbar.iter().all(|b| b.rect.y + b.rect.h < TOP));
 		}
 	}
@@ -502,7 +532,8 @@ mod tests {
 	/// coordinate by the drawn size without clamping.
 	#[test]
 	fn compiled_icons_stay_inside_the_unit_box() {
-		for icon in [icons::OPEN, icons::SETTINGS, icons::CLOSE] {
+		for icon in [icons::OPEN, icons::EXPORT, icons::SETTINGS, icons::CLOSE]
+		{
 			assert!(!icon.is_empty());
 			for figure in icon {
 				assert!(!figure.commands.is_empty());

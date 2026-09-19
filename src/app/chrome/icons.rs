@@ -5,6 +5,8 @@
 use markview_core::scene::IconPath;
 
 pub(super) const OPEN: &[IconPath] = markview_icon::icon!("assets/ui/open.svg");
+pub(super) const EXPORT: &[IconPath] =
+	markview_icon::icon!("assets/ui/export.svg");
 pub(super) const SETTINGS: &[IconPath] =
 	markview_icon::icon!("assets/ui/settings.svg");
 pub(super) const CLOSE: &[IconPath] =

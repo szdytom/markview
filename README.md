@@ -19,7 +19,7 @@
 <p align="center">
   <a href="#install">Install</a> ·
   <a href="#reading">Reading</a> ·
-  <a href="#export-to-pdf">Export to PDF</a> ·
+  <a href="#export">Export</a> ·
   <a href="#stylesheets">Stylesheets</a> ·
   <a href="#documentation">Documentation</a>
 </p>
@@ -138,6 +138,7 @@ Per-platform details and the exact artifact list are in the
 |:--|:--|
 | `Ctrl+O` | Open a file |
 | `Ctrl+T` | Choose a stylesheet |
+| `Ctrl+E` | Export the document |
 | `Ctrl+,` | Open settings |
 | `Ctrl++` / `Ctrl+-` | Larger or smaller type |
 | `Ctrl+[` / `Ctrl+]` | Narrower or wider reading column |
@@ -177,15 +178,25 @@ pixels and the type to 18.
 
 Markview is deliberately read-only: it does not edit or save Markdown, and it has
 no table of contents, search, or multi-document workspace beyond the tabs opened
-from Markdown links. Printing means the `--pdf` export, not a print dialog. Links
+from Markdown links. Printing means the export panel or `--pdf`, not a system
+print dialog. Links
 address headings by their GitHub slug; raw HTML `id` attributes are not
 interpreted, so an explicit anchor is not a link target.
 
-## Export to PDF
+## Export
 
-Markview prints to paper without a browser or a print dialog. The export lays the
-document out again at the page's text measure, breaks it into pages, and writes
-vector text with subset fonts, so the result is small, sharp and searchable:
+Markview exports without a browser or a print dialog. In the reader, `Ctrl+E` or
+the toolbar's export button opens an export panel: it writes the document to
+PDF, or to one PNG of the whole document, and opens the result with the
+operating system. **Export and Watch…**, beside it, keeps rewriting the same
+file whenever the document is saved. The panel carries its own text size
+(12 pt by default), first-line
+indent, paper, orientation, margins, PNG scale and stylesheet sequence — the
+bundled `print` sheet is layered with whatever the panel selects — all kept
+under `[export]` in `settings.toml`. Changing them never reflows the reading
+view.
+
+The same exports are on the command line, for scripts and batch runs:
 
 ```sh
 markview --pdf document.md --output document.pdf
@@ -195,9 +206,10 @@ markview --pdf document.md -o document.pdf --watch
 ```
 
 The bundled `print` stylesheet supplies the paper: A4 with 20 mm side margins,
-black on white, and a centred page number. `--paper` takes `a3`, `a4`, `a5`,
-`a6`, `b5`, `letter`, `legal`, `tabloid`, or `WIDTHxHEIGHT` in millimetres;
-`--margin` takes one, two, or four millimetres; `--landscape` swaps the sides.
+black on white, and a centred page number. Body text is 12 pt unless
+`--font-size` says otherwise. `--paper` takes `a3`, `a4`, `a5`, `a6`, `b5`,
+`letter`, `legal`, `tabloid`, or `WIDTHxHEIGHT` in millimetres; `--margin` takes
+one, two, or four millimetres; `--landscape` swaps the sides.
 The six header and footer slots are set with `--header`, `--footer` and the
 `-left`/`-right` variants, and their templates may use `{page}`, `{pages}`,
 `{title}` and `{path}`.

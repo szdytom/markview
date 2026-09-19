@@ -99,7 +99,9 @@ impl ApplicationHandler<Event> for App {
 				// New content asks again before fetching every remote image.
 				self.readers.session.load_all_images = false;
 				self.readers.session.remote_notice_dismissed = false;
-				self.request(true)
+				self.request(true);
+				// A watched export rebuilds from the same save.
+				self.schedule_watch_export(&path);
 			}
 			Event::Ready(mut update)
 				if update.version == self.readers.session.version
@@ -216,6 +218,9 @@ impl ApplicationHandler<Event> for App {
 				}
 				self.redraw();
 			}
+			Event::Exported(outcome) => {
+				self.export_finished(*outcome);
+			}
 			Event::DeviceLost => {
 				if let Err(e) = self.gpu() {
 					self.fatal = Some(format!("GPU recovery failed: {e:#}"));
@@ -239,6 +244,9 @@ impl ApplicationHandler<Event> for App {
 		let now = Instant::now();
 		self.auto_scroll_tabs(now);
 		self.readers.release_inactive(now);
+		// One PNG strip per frame keeps the window responsive and the status
+		// line counting; the draw requests the next frame while work remains.
+		self.advance_png_export();
 		if self.status_until.is_some_and(|until| until <= now) {
 			self.status_until = None;
 			self.status.clear();
@@ -273,6 +281,10 @@ impl ApplicationHandler<Event> for App {
 			self.retry_at = None;
 			self.redraw();
 		}
+		if self.watch_at.is_some_and(|d| d <= now) {
+			self.watch_at = None;
+			self.start_watch_export();
+		}
 		if self.args.mode == Mode::Smoke
 			&& self.started.elapsed() > Duration::from_secs(30)
 		{
@@ -284,6 +296,7 @@ impl ApplicationHandler<Event> for App {
 			.reflow_at
 			.into_iter()
 			.chain(self.retry_at)
+			.chain(self.watch_at)
 			.chain(self.status_until)
 			.chain(self.preferences.save_deadline())
 			.chain(self.interaction.drag_at)

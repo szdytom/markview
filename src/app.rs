@@ -1,6 +1,7 @@
 mod anchor;
 mod chrome;
 mod document;
+mod export;
 mod icon;
 mod interaction;
 mod launch;
@@ -41,6 +42,32 @@ enum Event {
 	StylesChanged,
 	Open(Option<PathBuf>),
 	DeviceLost,
+	Exported(Box<ExportOutcome>),
+}
+
+/// What one export produced, or why it produced nothing.
+enum ExportOutcome {
+	/// A PDF is on the disk.
+	Written {
+		path: PathBuf,
+		detail: String,
+	},
+	/// A PNG layout is ready for the main thread to draw and write.
+	PngReady {
+		snapshot: crate::layout::LayoutSnapshot,
+		path: PathBuf,
+		/// What the strips render with; the shared renderer borrows it and
+		/// then takes the reading view's sheet back.
+		stylesheet: Arc<markview_core::style::Stylesheet>,
+	},
+	Failed(String),
+	Cancelled,
+}
+
+/// One live export: the document it follows and the file it rewrites.
+pub(super) struct WatchExport {
+	pub(super) source: PathBuf,
+	pub(super) output: PathBuf,
 }
 struct Button {
 	rect: Rect,
@@ -48,6 +75,9 @@ struct Button {
 	label: &'static str,
 	/// Drawn centered in place of the label when set.
 	icon: Option<&'static [markview_core::scene::IconPath]>,
+	/// Whether this button is the current choice in its row. The draw marks it
+	/// and a press still sets the choice it names.
+	active: bool,
 	action: Command,
 }
 
@@ -86,6 +116,18 @@ struct App {
 	first_frame: Option<Update>,
 	started: Instant,
 	fatal: Option<String>,
+	/// An export is being prepared or written; one at a time.
+	export_running: bool,
+	/// A PNG layout waiting to be drawn, one strip per frame.
+	png_export: Option<export::PngExport>,
+	/// The file a live export keeps rewriting, while the watch toggle is on.
+	watch_export: Option<WatchExport>,
+	/// When a watched document change is due to become a rebuild.
+	watch_at: Option<Instant>,
+	/// The export in flight is a watch rebuild, which does not reopen the file.
+	export_rebuild: bool,
+	/// The export in flight was asked to keep watching its file.
+	export_watch_request: bool,
 }
 impl App {
 	pub(super) fn new(
@@ -142,6 +184,12 @@ impl App {
 			first_frame: None,
 			started: Instant::now(),
 			fatal: None,
+			export_running: false,
+			png_export: None,
+			watch_export: None,
+			watch_at: None,
+			export_rebuild: false,
+			export_watch_request: false,
 		}
 	}
 	fn reload_styles(&mut self) {

@@ -21,7 +21,6 @@ use log::{info, warn};
 use markview_core::style::{PageStyle, Stylesheet};
 use markview_pdf::Export;
 use std::{
-	fs,
 	path::{Path, PathBuf},
 	sync::{Arc, mpsc},
 	time::{Duration, Instant},
@@ -68,11 +67,11 @@ fn slot_of(page: &mut PageStyle, header: bool, slot: usize, value: String) {
 }
 
 pub fn run(path: &Path, args: &LaunchOptions) -> Result<()> {
-	let mut exporter = Exporter::new(path, args)?;
 	if !args.watch {
-		exporter.export(false)?;
+		export_once(path, args)?;
 		return Ok(());
 	}
+	let mut exporter = Exporter::new(path, args)?;
 	// Register the watcher before the first build reads the source: a save that
 	// lands while that build lays out or waits for images must schedule the
 	// next one, and the watcher's own baseline stamp would absorb it.
@@ -88,6 +87,19 @@ pub fn run(path: &Path, args: &LaunchOptions) -> Result<()> {
 		path.display()
 	);
 	watch(&mut exporter, rx)
+}
+
+/// Exports the document once and writes it beside `output`.
+///
+/// The reader's export panel builds a [`LaunchOptions`] and calls this, so the
+/// window and `--pdf` cannot drift apart.
+pub(crate) fn export_once(
+	path: &Path,
+	args: &LaunchOptions,
+) -> Result<ExportStats> {
+	Exporter::new(path, args)?
+		.export(false)?
+		.context("the export produced no output")
 }
 
 /// Rebuilds the PDF whenever the document changes, and whenever a local image
@@ -119,10 +131,10 @@ fn rebuild(exporter: &mut Exporter, force: bool) {
 
 /// What one build wrote, and how much of it came from the previous one.
 #[derive(Debug)]
-struct ExportStats {
-	pages: usize,
+pub(crate) struct ExportStats {
+	pub(crate) pages: usize,
 	blocks: usize,
-	bytes: usize,
+	pub(crate) bytes: usize,
 	reused: usize,
 	degraded: usize,
 	math_errors: usize,
@@ -289,27 +301,9 @@ impl Exporter {
 }
 
 /// Writes `bytes` beside `output` and renames them into place, so a viewer that
-/// reopens the PDF never sees a file that is still being written. The temporary
-/// name carries the process id, so two runs cannot share one.
+/// reopens the PDF never sees a file that is still being written.
 fn write_pdf(output: &Path, bytes: &[u8]) -> Result<()> {
-	let parent = output
-		.parent()
-		.filter(|parent| !parent.as_os_str().is_empty())
-		.unwrap_or(Path::new("."));
-	fs::create_dir_all(parent)?;
-	let name = output
-		.file_name()
-		.map(|name| name.to_string_lossy().into_owned())
-		.unwrap_or_default();
-	let temp = parent.join(format!(".{name}.{}.tmp", std::process::id()));
-	fs::write(&temp, bytes)
-		.with_context(|| format!("Cannot write {}", temp.display()))?;
-	if let Err(error) = fs::rename(&temp, output) {
-		let _ = fs::remove_file(&temp);
-		return Err(error)
-			.with_context(|| format!("Cannot replace {}", output.display()));
-	}
-	Ok(())
+	crate::export::write_atomic(output, bytes)
 }
 
 /// What the information dictionary holds: the flags win, then the document's
@@ -361,6 +355,7 @@ mod tests {
 	use super::*;
 	use crate::cli::Mode;
 	use markview_core::style::Stylesheet;
+	use std::fs;
 
 	fn options(path: &Path, output: &Path) -> LaunchOptions {
 		LaunchOptions {
