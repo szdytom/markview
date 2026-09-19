@@ -1,4 +1,5 @@
 use super::*;
+use crate::app::chrome::panel_rect;
 
 fn settings(format: ExportFormat) -> ExportSettings {
 	ExportSettings {

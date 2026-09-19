@@ -26,6 +26,7 @@ impl App {
 					r.resize(width, height);
 				}
 				if width > 0 && height > 0 {
+					self.reveal_panel_focus();
 					self.worker.prioritize(
 						self.readers.session.coverage(self.viewport()),
 					);
@@ -54,13 +55,16 @@ impl App {
 			WindowEvent::CursorMoved { position, .. } => {
 				let scale = self.dimensions().2;
 				let old = self.interaction.cursor;
+				let was_button = self.button_at_cursor();
 				self.interaction.cursor =
 					(position.x as f32 / scale, position.y as f32 / scale);
 				self.move_tab_drag();
 				self.drag_scrollbar();
+				self.drag_panel();
 				self.update_drag();
 				self.refresh_hover();
 				if self.interaction.panel_open
+					|| was_button || self.button_at_cursor()
 					|| old.1 < TOP || self.interaction.cursor.1 < TOP
 					|| old.0 >= self.dimensions().0 - 16.
 					|| self.interaction.cursor.0 >= self.dimensions().0 - 16.
@@ -69,6 +73,13 @@ impl App {
 				}
 			}
 			WindowEvent::CursorLeft { .. } => {
+				if self.tab_strip.drag.is_none()
+					&& self.interaction.scrollbar.is_none()
+					&& self.interaction.panel_grab.is_none()
+				{
+					self.interaction.cursor =
+						(f32::NEG_INFINITY, f32::NEG_INFINITY);
+				}
 				// A scrollbar drag survives leaving the window: the implicit
 				// pointer grab still reports motion and the release, so the
 				// thumb keeps following the pointer past the edges. The text
@@ -104,10 +115,13 @@ impl App {
 				..
 			} => {
 				self.tab_strip.cancel_drag();
+				self.interaction.focus_visible = false;
+				self.interaction.pressed = None;
 				self.readers.session.select_all_pending = false;
 				// A new press always ends a drag left over from a release the
 				// platform swallowed outside the window.
 				self.interaction.scrollbar = None;
+				self.interaction.panel_grab = None;
 				// A confirmation owns input: only its buttons answer.
 				if self.interaction.modal.is_some() {
 					self.interaction.reset_clicks();
@@ -119,7 +133,6 @@ impl App {
 					{
 						self.interaction.focus = Some(button.action);
 						self.interaction.pressed = Some(button.action);
-						self.action(button.action);
 					}
 					self.redraw();
 					return;
@@ -148,8 +161,12 @@ impl App {
 					self.interaction.reset_clicks();
 					self.interaction.focus = Some(button.action);
 					self.interaction.pressed = Some(button.action);
-					self.action(button.action);
+					self.redraw();
 				} else if self.interaction.panel_open {
+					if self.begin_panel_drag() {
+						self.redraw();
+						return;
+					}
 					self.interaction.reset_clicks();
 					if !self.pointer_in_panel() {
 						self.action(Command::Settings);
@@ -219,8 +236,28 @@ impl App {
 				..
 			} => {
 				self.tab_strip.cancel_drag();
-				self.interaction.pressed = None;
+				let was_pressed = self.interaction.pressed.is_some();
+				let hovered = self
+					.buttons()
+					.into_iter()
+					.find(|b| {
+						b.rect.contains(
+							self.interaction.cursor.0,
+							self.interaction.cursor.1,
+						)
+					})
+					.map(|b| b.action);
+				let action = self.interaction.release_button(hovered);
 				self.interaction.scrollbar = None;
+				self.interaction.panel_grab = None;
+				if was_pressed {
+					if let Some(action) = action {
+						self.action(action);
+					}
+					self.refresh_hover();
+					self.redraw();
+					return;
+				}
 				if self.interaction.modal.is_some() {
 					self.redraw();
 					return;
@@ -238,19 +275,19 @@ impl App {
 				self.redraw();
 			}
 			WindowEvent::Focused(false) => {
+				self.interaction.focus_visible = false;
 				self.tab_strip.cancel_drag();
 				self.interaction.pressed = None;
 				self.interaction.pointer_down = None;
 				self.interaction.drag_at = None;
 				self.interaction.scrollbar = None;
+				self.interaction.panel_grab = None;
 				self.interaction.modifiers = Default::default();
 				self.refresh_hover();
 				self.redraw();
 			}
 			WindowEvent::MouseWheel { delta, .. } => {
-				if self.interaction.panel_open
-					|| self.interaction.modal.is_some()
-				{
+				if self.interaction.modal.is_some() {
 					return;
 				}
 				let (dx, dy) = match delta {
@@ -260,6 +297,12 @@ impl App {
 						p.y as f32 / self.dimensions().2,
 					),
 				};
+				if self.interaction.panel_open {
+					if self.pointer_in_panel() {
+						self.scroll_panel(-dy);
+					}
+					return;
+				}
 				if self.scroll_tabs(if dx.abs() > dy.abs() { -dx } else { -dy })
 				{
 					return;
@@ -287,6 +330,7 @@ impl App {
 			WindowEvent::KeyboardInput { event, .. }
 				if event.state == ElementState::Pressed =>
 			{
+				self.interaction.focus_visible = true;
 				let command = self.interaction.modifiers.control_key()
 					|| self.interaction.modifiers.super_key();
 				// A confirmation answers to Tab, Enter and Escape only.
@@ -376,7 +420,7 @@ impl App {
 							self.horizontal_by(42.0)
 						}
 						Key::Named(NamedKey::Tab) => {
-							let buttons = self.buttons();
+							let buttons = self.focus_buttons();
 							let current = buttons.iter().position(|b| {
 								Some(b.action) == self.interaction.focus
 							});
@@ -402,6 +446,7 @@ impl App {
 							};
 							self.interaction.focus =
 								Some(buttons[index].action);
+							self.reveal_panel_focus();
 							self.redraw();
 						}
 						Key::Named(NamedKey::Enter) => {
@@ -416,6 +461,7 @@ impl App {
 						}
 						Key::Named(NamedKey::Escape) => {
 							self.tab_strip.cancel_drag();
+							self.interaction.pressed = None;
 							self.interaction.focus = None;
 							self.interaction.modal = None;
 							self.interaction.panel_open = false;
@@ -426,6 +472,7 @@ impl App {
 							self.interaction.pointer_down = None;
 							self.interaction.drag_at = None;
 							self.interaction.scrollbar = None;
+							self.interaction.panel_grab = None;
 							self.refresh_hover();
 							self.redraw();
 						}

@@ -1,4 +1,5 @@
 //! Reader chrome built from borrowed display state, with no window or worker access.
+pub(super) mod components;
 mod controls;
 mod export;
 mod footer;
@@ -16,11 +17,12 @@ use crate::{
 		Command, InteractionState, ReaderSession, ReaderTab, ScrollbarAxis,
 	},
 };
-pub(super) use controls::panel_rect;
-use controls::{controls, draw_controls, toolbar_controls};
+pub(super) use components::panel_rect;
+use controls::{draw_controls, toolbar_controls};
 use footer::draw_footer;
 use markview_core::style::{ColorField as C, Condition, TextAppearance};
 use std::time::Instant;
+pub(super) use styles::styles_rect;
 use styles::{StylesTarget, draw_styles, style_controls};
 
 /// Height of the remote-image notice strip below the tab bar.
@@ -49,8 +51,8 @@ fn ui_appearance(shaper: &TextShaper) -> TextAppearance {
 fn banner_buttons(shaper: &mut TextShaper, width: f32) -> Vec<Button> {
 	let old = shaper.appearance.clone();
 	shaper.appearance = ui_appearance(shaper);
-	let dismiss = shaper.text_width("Dismiss", 12.0) + 22.0;
-	let load = shaper.text_width("Load all", 12.0) + 22.0;
+	let dismiss = shaper.text_width("Dismiss", 13.0) + 22.0;
+	let load = shaper.text_width("Load all", 13.0) + 22.0;
 	shaper.appearance = old;
 	let y = TOP + (BANNER - 22.0) / 2.0;
 	vec![
@@ -58,6 +60,8 @@ fn banner_buttons(shaper: &mut TextShaper, width: f32) -> Vec<Button> {
 			label: "Dismiss",
 			icon: None,
 			active: false,
+			kind: Default::default(),
+			enabled: true,
 			action: Command::RemoteDismiss,
 			rect: Rect {
 				x: width - 16.0 - dismiss - load - 8.0,
@@ -70,6 +74,8 @@ fn banner_buttons(shaper: &mut TextShaper, width: f32) -> Vec<Button> {
 			label: "Load all",
 			icon: None,
 			active: false,
+			kind: Default::default(),
+			enabled: true,
 			action: Command::RemoteLoadAll,
 			rect: Rect {
 				x: width - 16.0 - load,
@@ -85,6 +91,7 @@ fn draw_banner(
 	shaper: &mut TextShaper,
 	width: f32,
 	deferred: usize,
+	interaction: &InteractionState,
 ) -> Vec<Draw> {
 	let rect = banner_rect(width);
 	shaper.appearance = shaper
@@ -105,9 +112,7 @@ fn draw_banner(
 	let buttons = banner_buttons(shaper, width);
 	let available = buttons.first().map_or(width - 32.0, |b| b.rect.x - 16.0);
 	let label = shaper.fit(
-		&format!(
-			"Too many remote images were requested; {deferred} were not loaded."
-		),
+		&format!("{deferred} remote images were not loaded."),
 		12.0,
 		available,
 	);
@@ -118,26 +123,28 @@ fn draw_banner(
 		TOP + BANNER / 2.0 + 5.0,
 		Paint::Styled(Condition::Statusbar, C::Color),
 	));
-	for button in buttons {
-		out.push(Draw::Box {
-			rect: button.rect,
-			chain: Condition::Button.chain(),
-			condition: Condition::Button,
-			radius: 0.,
-			border: 1.,
-			left_only: false,
-		});
-		let label_x = button.rect.x
-			+ (button.rect.w - shaper.text_width(button.label, 12.0)) / 2.0;
-		out.extend(shaper.label(
-			button.label,
-			12.0,
-			label_x,
-			button.rect.y + button.rect.h / 2.0 + 4.5,
-			Paint::Styled(Condition::Button, C::Color),
-		));
+	for mut button in buttons {
+		if button.action == Command::RemoteLoadAll {
+			button.kind = components::ButtonKind::Primary;
+		}
+		out.extend(components::draw_button(shaper, interaction, &button, true));
 	}
 	out
+}
+
+fn empty_button(width: f32, height: f32) -> Button {
+	let mut b = components::button(
+		"Open file…",
+		Command::Open,
+		Rect {
+			x: ((width - 400.0) / 2.0).max(24.0),
+			y: (height * 0.4).max(110.0) + 64.0,
+			w: 128.0,
+			h: 32.0,
+		},
+	);
+	b.kind = components::ButtonKind::Primary;
+	b
 }
 
 pub(super) struct Chrome<'a> {
@@ -168,6 +175,34 @@ pub(super) struct Chrome<'a> {
 	pub(super) watching: bool,
 }
 impl Chrome<'_> {
+	pub(super) fn form(&mut self) -> Option<components::Form> {
+		if !self.interaction.panel_open
+			|| self.interaction.modal.is_some()
+			|| self.interaction.styles_open
+			|| self.interaction.export_styles_open
+		{
+			return None;
+		}
+		Some(if self.interaction.export_open {
+			export::form(
+				self.ui,
+				self.export,
+				self.interaction.export_scroll,
+				self.width,
+				self.height,
+			)
+		} else {
+			controls::form(
+				self.ui,
+				self.settings,
+				self.interaction.settings_scroll,
+				self.width,
+				self.height,
+			)
+			.preview(self.interaction.settings_preview)
+		})
+	}
+
 	pub(super) fn buttons(&mut self) -> Vec<Button> {
 		let (width, height, _) = (self.width, self.height, 1.0);
 		if self.interaction.modal.is_some() {
@@ -182,7 +217,14 @@ impl Chrome<'_> {
 				height,
 			)
 		} else if self.interaction.export_open {
-			export::export_controls(self.ui, self.export, width, height)
+			export::form(
+				self.ui,
+				self.export,
+				self.interaction.export_scroll,
+				width,
+				height,
+			)
+			.visible_buttons()
 		} else if self.interaction.styles_open {
 			style_controls(
 				StylesTarget::Reader,
@@ -193,15 +235,24 @@ impl Chrome<'_> {
 				height,
 			)
 		} else if self.interaction.panel_open {
-			controls(
+			controls::form(
 				self.ui,
 				self.settings,
-				self.interaction.panel_open,
+				self.interaction.settings_scroll,
 				width,
 				height,
 			)
+			.preview(self.interaction.settings_preview)
+			.visible_buttons()
 		} else {
 			let mut buttons = toolbar_controls(width);
+			if self.session.path.is_none()
+				&& self.session.snapshot.blocks.is_empty()
+			{
+				// One `Open` command owns keyboard focus; both regions answer the pointer.
+				buttons.push(empty_button(width, height));
+			}
+
 			if self.remote_notice.is_some() {
 				buttons.extend(banner_buttons(self.ui, width));
 			}
@@ -240,8 +291,9 @@ impl Chrome<'_> {
 			),
 		];
 		out.extend(self.tab_bar().draw_tabs());
+		out.extend(controls::draw_toolbar(self.ui, self.interaction, width));
 		if let Some(deferred) = self.remote_notice {
-			out.extend(draw_banner(self.ui, width, deferred));
+			out.extend(draw_banner(self.ui, width, deferred, self.interaction));
 		}
 		let warning = if self.error
 			&& self
@@ -269,40 +321,57 @@ impl Chrome<'_> {
 			height,
 		));
 		if self.session.snapshot.blocks.is_empty() {
-			let x = ((width - 440.0) / 2.0).max(24.0);
-			let y = (height * 0.4).max(110.0);
-			let title = if self.session.path.is_none() {
-				"Open a Markdown file"
+			let button = empty_button(width, height);
+			let y = button.rect.y - 64.0;
+			let (title, detail) = if self.session.path.is_none() {
+				(
+					"Open a Markdown file",
+					"Open a Markdown file, or drop one into this window.",
+				)
 			} else if self.error {
-				"Unable to read this file"
+				(
+					"Unable to read this file",
+					"Check the file path and access permissions.",
+				)
 			} else if self.session.layout_pending
 				|| self.session.document.is_none()
 			{
-				"Opening document…"
+				("Opening document…", "Preparing the first page…")
 			} else {
-				"The document is empty"
+				(
+					"The document is empty",
+					"Content will appear here when the file changes.",
+				)
 			};
+			self.ui.appearance = ui_appearance(self.ui);
+			self.ui.appearance.weight = 600;
 			out.extend(self.ui.label(
 				title,
 				26.0,
-				x,
+				button.rect.x,
 				y,
 				Paint::Styled(Condition::Ui, C::Color),
 			));
+			self.ui.appearance = ui_appearance(self.ui);
+			let detail =
+				self.ui.fit(detail, 13.0, width - button.rect.x - 24.0);
 			out.extend(self.ui.label(
-				if self.session.path.is_some()
-					&& !self.error && self.session.layout_pending
-				{
-					"Preparing the first page…"
-				} else {
-					"Drop a file here or press Ctrl+O."
-				},
-				15.0,
-				x,
-				y + 38.0,
+				&detail,
+				13.0,
+				button.rect.x,
+				y + 32.0,
 				Paint::Styled(Condition::Ui, C::Muted),
 			));
+			if self.session.path.is_none() {
+				out.extend(components::draw_button(
+					self.ui,
+					self.interaction,
+					&button,
+					true,
+				));
+			}
 		}
+
 		if let Some(bar) = self.scrollbar {
 			let held = self
 				.interaction
@@ -367,7 +436,7 @@ impl Chrome<'_> {
 				width,
 				height,
 			));
-		} else {
+		} else if self.interaction.panel_open {
 			out.extend(draw_controls(
 				self.ui,
 				self.settings,

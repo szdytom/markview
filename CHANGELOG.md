@@ -15,6 +15,10 @@ at the same level, without `[brackets]`.
 
 ### Added
 
+- Benchmark reports separate GPU preparation/submission from blocking completion
+  to diagnose tail latency without changing the end-to-end timing scope.
+
+- Settings offer an eye button that fades the panel for live document previews.
 - `markview ss validate FILE.mvss.toml` parses a stylesheet in place and
   reports its version and rule count, so a draft can be checked before install.
 - The `markview-icon` `icon!` macro parses an SVG at compile time into a
@@ -35,6 +39,10 @@ at the same level, without `[brackets]`.
 
 ### Changed
 
+- Stylesheet panels use a matching vector arrow for the Back action.
+- Redesigned reader chrome with flat, square controls and coordinated light/dark themes;
+  shared, grouped settings and export panels scroll without shrinking their controls.
+
 - The toolbar's Open and Settings buttons, and every panel's close button, are
   vector icons drawn from those buffers instead of text labels.
 - The reader's export opens the written file with the operating system, and the
@@ -43,6 +51,12 @@ at the same level, without `[brackets]`.
   document and the resulting measure instead of repeating the rows.
 - PDF export is set at 12 pt body text by default, on the command line and in
   the reader's export panel.
+
+### Fixed
+
+- Keep all three toolbar buttons visible while a panel or confirmation is open.
+- Buttons now show distinct hover and pressed fills, including selected choices;
+  keyboard-only focus replaces the border without stacking extra outlines.
 
 ## 0.1.3 - 2026-09-18
 

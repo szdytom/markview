@@ -154,11 +154,29 @@ their timings must not be reported as progressive window first-frame timings.
 Ignored GPU tests are useful for settings, selection, and image-frame regressions:
 
 ```sh
+cargo test --workspace --locked button_feedback_frames -- --ignored
+cargo test --workspace --locked redesigned_chrome_frames -- --ignored
 cargo test --workspace --locked settings_and_selection_frame -- --ignored
 cargo test --workspace --locked tab_strip_frames_clip_overflow_at_fractional_dpi -- --ignored
 cargo test --workspace --locked gpu_frame_draws_decoded_images -- --ignored
 cargo test --workspace --locked color_glyphs_preserve_rgb_and_share_paint_order -- --ignored
 ```
+
+The redesigned chrome matrix writes `artifacts/ui-redesign/` frames for both
+palettes, 500×300, 820×600 and 1200×800 windows, and 1×, 1.25× and 2× form
+rendering. Inspect the settings and export clips, fixed footers, focus outlines,
+stylesheet list, empty/loading/error states, image notice and confirmation.
+Button state sheets in `artifacts/ui-feedback/` compare resting, hover, pressed,
+keyboard focus and disabled states at the same scales. Pointer activation occurs
+on a matching release; keyboard navigation alone displays the focus outline.
+Shared form geometry supplies unclipped controls for keyboard navigation and
+clipped controls for pointer input; Tab reveals the focused control. Closing a
+panel resets its position on the next open, while a stylesheet round trip keeps
+the parent form's scroll position. Settings' eye control fades the form to 25%
+opacity without dimming the document; its exit icon stays opaque. Preview is
+transient and resets when settings reopen. The toolbar remains drawn behind
+all panels. UI colors remain MVSS rules under `ui`;
+document and print typography are independent.
 
 ## Choose the layer
 
@@ -232,6 +250,18 @@ and individual stage medians remain diagnostic alongside raw samples because
 very small stage durations are sensitive to timer and scheduling noise. Missing
 memory measurements are reported as unavailable, not a pass. Repeat an unstable
 comparison and investigate outliers rather than changing the threshold.
+The benchmark also separates `gpu_prepare_and_submit_ms` from `gpu_wait_ms`;
+the latter includes blocking driver completion and host scheduling, not just
+GPU execution. Both remain included in the original end-to-end timing.
+
+For unexplained P95 failures, first run an A/A control by supplying the same
+preserved binary as both sides. A failed A/A gate demonstrates measurement
+variability, not a code regression. On hybrid CPUs, compare both versions with
+the same affinity (for example, `taskset -c CPU_LIST python3 scripts/compare_performance.py …`
+on Linux, after identifying the local core topology). Use `--iterations 500`
+or more to increase tail samples. Preserve these runs separately when affinity
+or iteration counts differ; do not merge incompatible experiments or relax the
+5% gate. A controlled pass does not erase an earlier failed measurement.
 
 Keep visual checks alongside timing checks. Compare deterministic offscreen
 exports with the preserved binary, then run the ignored GPU tests and native

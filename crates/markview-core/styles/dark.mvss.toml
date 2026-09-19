@@ -85,21 +85,31 @@ thumb_hover = "#8FB9DD"
 
 [[rule]]
 when = ["ui"]
-color = "#DDE2E7"
-background = "#20252B"
-muted = "#98A5B1"
-accent = "#8FB9DD"
-border_color = "#414C58"
-error = "#F39A9A"
+color = "#E8EBF0"
+background = "#191C22"
+muted = "#A1AAB8"
+accent = "#8BAAFF"
+border_color = "#3B424E"
+error = "#FF9CA8"
+shadow = "#00000000"
+scrim = "#10192352"
 
 [[rule]]
 when = ["ui", "panel"]
-background = "#252E38F0"
+background = "#22262E"
+
+[[rule]]
+when = ["ui", "toolbar"]
+background = "#191C22"
+
+[[rule]]
+when = ["ui", "statusbar"]
+background = "#191C22"
 
 [[rule]]
 when = ["ui", "button"]
-background = "#2A3139"
-hover_background = "#35414F"
-active_background = "#414C58"
-disabled_color = "#98A5B1"
-focus_color = "#8FB9DD"
+background = "#22262E"
+hover_background = "#343E4D"
+active_background = "#354668"
+disabled_color = "#A1AAB8"
+focus_color = "#8BAAFF"

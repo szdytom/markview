@@ -1,5 +1,8 @@
 //! Adapt application state to borrowed chrome inputs.
-use super::{App, Button, chrome::Chrome};
+use super::{
+	App, Button,
+	chrome::{self, Chrome},
+};
 use crate::layout::Draw;
 impl App {
 	/// The remote-image deferral count while its banner is worth showing.
@@ -53,11 +56,85 @@ impl App {
 			watching: self.watch_export.is_some(),
 		}
 	}
+	pub(super) fn panel_form(&mut self) -> Option<chrome::components::Form> {
+		self.chrome().form()
+	}
+	pub(super) fn focus_buttons(&mut self) -> Vec<Button> {
+		if let Some(form) = self.panel_form() {
+			form.buttons.into_iter().filter(|b| b.enabled).collect()
+		} else {
+			let mut buttons: Vec<Button> = Vec::new();
+			for button in self.buttons() {
+				if !buttons.iter().any(|b| b.action == button.action) {
+					buttons.push(button);
+				}
+			}
+			buttons
+		}
+	}
+	pub(super) fn set_panel_scroll(&mut self, scroll: f32) {
+		if self.interaction.export_open {
+			self.interaction.export_scroll = scroll;
+		} else {
+			self.interaction.settings_scroll = scroll;
+		}
+	}
+	pub(super) fn scroll_panel(&mut self, delta: f32) {
+		if let Some(form) = self.panel_form() {
+			self.set_panel_scroll(
+				(form.scroll + delta).clamp(0.0, form.max_scroll),
+			);
+			self.interaction.pressed = None;
+			self.redraw();
+		}
+	}
+	pub(super) fn reveal_panel_focus(&mut self) {
+		if let Some(form) = self.panel_form() {
+			let scroll = self
+				.interaction
+				.focus
+				.map_or(form.scroll, |action| form.reveal(action));
+			self.set_panel_scroll(scroll);
+		}
+	}
+	pub(super) fn begin_panel_drag(&mut self) -> bool {
+		let Some(bar) =
+			self.panel_form().and_then(|form| form.scrollbar(&self.ui))
+		else {
+			return false;
+		};
+		let (x, y) = self.interaction.cursor;
+		if !bar.hit(x, y) {
+			return false;
+		}
+		let grab = if bar.on_thumb(x, y) {
+			bar.grab(x, y)
+		} else {
+			self.set_panel_scroll(bar.scroll_for(x, y, 0.0));
+			0.0
+		};
+		self.interaction.panel_grab = Some(grab);
+		true
+	}
+	pub(super) fn drag_panel(&mut self) {
+		if let Some(grab) = self.interaction.panel_grab
+			&& let Some(bar) =
+				self.panel_form().and_then(|form| form.scrollbar(&self.ui))
+		{
+			let (x, y) = self.interaction.cursor;
+			self.set_panel_scroll(bar.scroll_for(x, y, grab));
+			self.redraw();
+		}
+	}
+
 	pub(super) fn buttons(&mut self) -> Vec<Button> {
 		self.chrome().buttons()
 	}
 	pub(super) fn overlay(&mut self) -> Vec<Draw> {
 		self.normalize_tab_scroll();
+		if let Some(form) = self.panel_form() {
+			self.set_panel_scroll(form.scroll);
+		}
 		let session = &self.readers.session;
 		let selection = self.interaction.selection.filter(|s| {
 			!s.is_empty()

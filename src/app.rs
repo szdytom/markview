@@ -69,14 +69,16 @@ pub(super) struct WatchExport {
 	pub(super) source: PathBuf,
 	pub(super) output: PathBuf,
 }
+#[derive(Clone)]
 struct Button {
+	kind: chrome::components::ButtonKind,
+	enabled: bool,
 	rect: Rect,
 	/// Names the button; drawn only when it has no icon.
 	label: &'static str,
 	/// Drawn centered in place of the label when set.
 	icon: Option<&'static [markview_core::scene::IconPath]>,
-	/// Whether this button is the current choice in its row. The draw marks it
-	/// and a press still sets the choice it names.
+	/// Whether this button is the current choice in its row.
 	active: bool,
 	action: Command,
 }

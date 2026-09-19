@@ -42,6 +42,7 @@ fn settings_and_selection_frame() -> Result<()> {
 		);
 		let interaction = InteractionState {
 			panel_open,
+			focus_visible: true,
 			focus: Some(if panel_open {
 				Command::Larger
 			} else {
@@ -254,7 +255,12 @@ fn notice_strip_and_confirmation_frames() -> Result<()> {
 		let suffix = if dark { "dark" } else { "light" };
 		// The notice strip reserves its own band above the document.
 		let mut overlay = toolbar(&mut ui);
-		overlay.extend(draw_banner(&mut ui, width, 37));
+		overlay.extend(draw_banner(
+			&mut ui,
+			width,
+			37,
+			&InteractionState::default(),
+		));
 		let submission = renderer.render(
 			&snapshot,
 			&view(content_top(true) + 10.0),
@@ -276,6 +282,7 @@ fn notice_strip_and_confirmation_frames() -> Result<()> {
 				dir: targets.clone(),
 				document_dir: Some(root.join("manual-test")),
 			}),
+			focus_visible: true,
 			focus: Some(Command::ModalOpenFolder),
 			cursor: (620.0, 300.0),
 			..Default::default()
@@ -294,6 +301,7 @@ fn notice_strip_and_confirmation_frames() -> Result<()> {
 						),
 						document_dir: Some(root.join("manual-test")),
 					}),
+					focus_visible: true,
 					focus: Some(Command::ModalOpenFolder),
 					cursor: (620.0, 300.0),
 					..Default::default()
@@ -694,6 +702,7 @@ fn export_panel_frames() -> Result<()> {
 			&InteractionState {
 				panel_open: true,
 				export_open: true,
+				focus_visible: true,
 				focus: Some(Command::ExportRun),
 				..Default::default()
 			},
@@ -727,6 +736,324 @@ fn export_panel_frames() -> Result<()> {
 		)?;
 		renderer.wait(Some(submission))?;
 		renderer.save_png(&target, &directory.join(name))?;
+	}
+	Ok(())
+}
+
+#[test]
+#[ignore = "requires a GPU; writes artifacts/ui-redesign/*.png"]
+fn redesigned_chrome_frames() -> Result<()> {
+	use crate::app::{tab_metrics::TabMetrics, tab_strip::TabStrip};
+	let output =
+		PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("artifacts/ui-redesign");
+	std::fs::create_dir_all(&output)?;
+	let mut renderer = pollster::block_on(Renderer::new(None))?;
+	let fonts = crate::test_support::fonts();
+	let document = document::parse(
+		"# Reading, without distractions\n\nA native home for **Markdown**, 中文 and $x^2$.\n\n## A clear view\n\n- Publication-quality typography\n- Fast, lightweight reading\n\n```rust\nlet reader = Markview::open(\"notes.md\");\n```\n",
+	);
+	let tabs = vec![
+		ReaderTab::new("Typography 排版.md".into()),
+		ReaderTab::new("A very long document filename for clipping.md".into()),
+	];
+	let strip = TabStrip::default();
+	for dark in [false, true] {
+		let sheet = markview_core::style::Stylesheet::bundled(dark);
+		let settings = ReaderSettings {
+			stylesheet: sheet.clone(),
+			theme: if dark { Theme::Dark } else { Theme::Light },
+			..Default::default()
+		};
+		let mut ui = crate::test_support::shaper();
+		ui.set_stylesheet(sheet.clone());
+		renderer.set_stylesheet(sheet);
+		let mut metrics = TabMetrics::default();
+		metrics.sync(&mut ui, &tabs);
+		let entries = crate::stylesheet::catalog(None, None);
+		for (width, height) in [(500.0, 300.0), (820.0, 600.0), (1200.0, 800.0)]
+		{
+			let snapshot = LayoutEngine::new().layout(
+				&document,
+				&settings.layout_options(width, false, &fonts),
+			);
+			let session = ReaderSession {
+				path: Some("Typography 排版.md".into()),
+				snapshot,
+				document: Some(std::sync::Arc::new(document.clone())),
+				..Default::default()
+			};
+			for scale in [1.0, 1.25, 2.0] {
+				for page in [
+					"reader",
+					"preview",
+					"settings",
+					"export",
+					"styles",
+					"empty",
+					"error",
+					"loading",
+					"notice",
+					"confirmation",
+				] {
+					// Full DPI coverage for the forms; one scale suffices for the other states.
+					if scale != 1.25 && !matches!(page, "settings" | "export") {
+						continue;
+					}
+					let mut interaction = InteractionState {
+						panel_open: matches!(
+							page,
+							"settings" | "preview" | "export" | "styles"
+						),
+						settings_preview: page == "preview",
+						export_open: page == "export",
+						styles_open: page == "styles",
+						focus_visible: true,
+						focus: Some(if page == "export" {
+							Command::ExportRun
+						} else {
+							Command::Larger
+						}),
+						..Default::default()
+					};
+					if page == "confirmation" {
+						interaction.modal = Some(Modal::OpenLocal {
+							path: "/tmp/example.desktop".into(),
+							dir: "/tmp".into(),
+							document_dir: None,
+						});
+						interaction.focus = Some(Command::ModalOpenFolder);
+					}
+					let empty = ReaderSession {
+						path: (page != "empty").then(|| "Missing.md".into()),
+						layout_pending: page == "loading",
+						..Default::default()
+					};
+					let session =
+						if matches!(page, "empty" | "error" | "loading") {
+							&empty
+						} else {
+							&session
+						};
+					let export = ExportSettings {
+						format: crate::settings::ExportFormat::Png,
+						..Default::default()
+					};
+					if page == "settings" {
+						let form = controls::form(
+							&mut ui, &settings, 0.0, width, height,
+						);
+						interaction.settings_scroll =
+							form.reveal(Command::Larger);
+					}
+					let mut chrome = Chrome {
+						ui: &mut ui,
+						session,
+						tabs: &tabs,
+						active_tab: 0,
+						tab_strip: &strip,
+						tab_widths: &metrics.widths,
+						settings: &settings,
+						export: &export,
+						interaction: &interaction,
+						style_entries: &entries,
+						style_page: 0,
+						width,
+						height,
+						scrollbar: None,
+						warning: None,
+						status: "File not found",
+						status_until: None,
+						error: page == "error",
+						hover_hint: None,
+						remote_notice: (page == "notice").then_some(37),
+						watching: false,
+					};
+					let overlay = chrome.overlay();
+					assert_eq!(
+						overlay
+							.iter()
+							.filter(|draw| matches!(draw,
+                        Draw::Icon { y, .. } if *y == 10.0))
+							.count(),
+						3,
+						"toolbar must stay visible on {page}"
+					);
+					let horizontal = HashMap::new();
+					let view = View {
+						width: (width * scale) as u32,
+						height: (height * scale) as u32,
+						scale,
+						left: 24.0,
+						top: content_top(page == "notice") + 16.0,
+						bottom: BOTTOM + 10.0,
+						scroll: 0.0,
+						theme: settings.theme,
+						horizontal: &horizontal,
+						selection: None,
+						revision: 1,
+						hovered_link: None,
+						hovered_overflow: None,
+						held_overflow: None,
+					};
+					let target = renderer.offscreen(view.width, view.height);
+					let submission = renderer.render(
+						&session.snapshot,
+						&view,
+						&overlay,
+						&target.create_view(&Default::default()),
+					)?;
+					renderer.wait(Some(submission))?;
+					renderer.save_png(
+						&target,
+						&output.join(format!(
+							"{page}-{}-{width}-{scale}.png",
+							if dark { "dark" } else { "light" }
+						)),
+					)?;
+				}
+			}
+		}
+	}
+	Ok(())
+}
+
+#[test]
+#[ignore = "requires a GPU; writes artifacts/ui-feedback/button-states-*.png"]
+fn button_feedback_frames() -> Result<()> {
+	use super::components::{ButtonKind, appearance, button, draw_button};
+	let directory =
+		PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("artifacts/ui-feedback");
+	std::fs::create_dir_all(&directory)?;
+	let mut renderer = pollster::block_on(Renderer::new(None))?;
+	for dark in [false, true] {
+		let theme = if dark { Theme::Dark } else { Theme::Light };
+		let sheet = markview_core::style::Stylesheet::bundled(dark);
+		renderer.set_stylesheet(sheet.clone());
+		let mut ui = crate::test_support::shaper();
+		ui.set_stylesheet(sheet);
+		appearance(&mut ui);
+		for scale in [1.0, 1.25, 2.0] {
+			let mut draws = vec![Draw::Rect(
+				Rect {
+					x: 0.0,
+					y: 0.0,
+					w: 940.0,
+					h: 380.0,
+				},
+				Paint::Styled(Condition::Panel, C::Background),
+			)];
+			draws.extend(ui.label(
+				"Button interaction states",
+				20.0,
+				24.0,
+				36.0,
+				Paint::Styled(Condition::Ui, C::Color),
+			));
+			for (column, title) in [
+				"Rest / clicked",
+				"Hover",
+				"Pressed",
+				"Keyboard focus",
+				"Disabled",
+			]
+			.into_iter()
+			.enumerate()
+			{
+				let x = 190.0 + column as f32 * 146.0;
+				draws.extend(ui.label(
+					title,
+					12.0,
+					x,
+					75.0,
+					Paint::Styled(Condition::Ui, C::Muted),
+				));
+				for (row, (title, kind, selected, icon)) in [
+					("Regular", ButtonKind::Standard, false, false),
+					("Selected", ButtonKind::Standard, true, false),
+					("Primary", ButtonKind::Primary, false, false),
+					("Quiet", ButtonKind::Quiet, false, false),
+					("Icon", ButtonKind::Quiet, false, true),
+				]
+				.into_iter()
+				.enumerate()
+				{
+					let y = 100.0 + row as f32 * 52.0;
+					if column == 0 {
+						draws.extend(ui.label(
+							title,
+							13.0,
+							24.0,
+							y + 21.0,
+							Paint::Styled(Condition::Ui, C::Color),
+						));
+					}
+					let mut b = button(
+						if selected {
+							"On"
+						} else if kind == ButtonKind::Primary {
+							"Export…"
+						} else {
+							"Open…"
+						},
+						Command::Open,
+						Rect {
+							x,
+							y,
+							w: if icon { 32.0 } else { 126.0 },
+							h: 32.0,
+						},
+					);
+					b.kind = kind;
+					b.active = selected;
+					b.enabled = column != 4;
+					b.icon = icon.then_some(super::icons::OPEN);
+					let interaction = InteractionState {
+						cursor: if matches!(column, 1 | 2 | 4) {
+							(x + 5.0, y + 5.0)
+						} else {
+							(0.0, 0.0)
+						},
+						focus: Some(b.action),
+						focus_visible: column == 3,
+						pressed: (column == 2).then_some(b.action),
+						..Default::default()
+					};
+					draws.extend(draw_button(&mut ui, &interaction, &b, true));
+				}
+			}
+			let horizontal = HashMap::new();
+			let view = View {
+				width: (940.0 * scale) as u32,
+				height: (380.0 * scale) as u32,
+				scale,
+				left: 0.0,
+				top: 0.0,
+				bottom: 0.0,
+				scroll: 0.0,
+				theme,
+				horizontal: &horizontal,
+				selection: None,
+				revision: 0,
+				hovered_link: None,
+				hovered_overflow: None,
+				held_overflow: None,
+			};
+			let target = renderer.offscreen(view.width, view.height);
+			let submission = renderer.render(
+				&Default::default(),
+				&view,
+				&draws,
+				&target.create_view(&Default::default()),
+			)?;
+			renderer.wait(Some(submission))?;
+			renderer.save_png(
+				&target,
+				&directory.join(format!(
+					"button-states-{}-{scale}.png",
+					if dark { "dark" } else { "light" }
+				)),
+			)?;
+		}
 	}
 	Ok(())
 }

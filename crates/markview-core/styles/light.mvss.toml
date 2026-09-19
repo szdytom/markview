@@ -272,24 +272,32 @@ gutter = 8.0
 
 [[rule]]
 when = ["ui"]
-color = "#262B30"
-background = "#FAFAF8"
+color = "#20252D"
+background = "#F4F5F7"
 font = [{ family = "sans-serif" }, { family = "sans-serif[cjk]" }, { family = "emoji", weight = 400 }]
-muted = "#69747E"
-accent = "#315D86"
-border_color = "#D8DEE3"
-error = "#A13F3F"
-shadow = "#1019232E"
-scrim = "#1019233D"
+muted = "#626C79"
+accent = "#2856D8"
+border_color = "#D5DAE1"
+error = "#AB303D"
+shadow = "#00000000"
+scrim = "#10192352"
 
 [[rule]]
 when = ["ui", "panel"]
-background = "#F3F6F9F0"
+background = "#FFFFFF"
+
+[[rule]]
+when = ["ui", "toolbar"]
+background = "#F4F5F7"
+
+[[rule]]
+when = ["ui", "statusbar"]
+background = "#F4F5F7"
 
 [[rule]]
 when = ["ui", "button"]
-background = "#EFF1F3"
-hover_background = "#E0E7EF"
-active_background = "#D3DDE8"
-disabled_color = "#69747E"
-focus_color = "#315D86"
+background = "#FFFFFF"
+hover_background = "#E2E8F1"
+active_background = "#DFE7FA"
+disabled_color = "#626C79"
+focus_color = "#2856D8"

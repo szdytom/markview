@@ -14,7 +14,15 @@ binary=${MARKVIEW:-$root/target/release/markview}
 source_dir=$root/docs/screenshots/source
 output_dir=$root/docs/screenshots
 work=$(mktemp -d)
-trap 'rm -rf "$work"; pkill -x markview 2>/dev/null || true' EXIT
+reader_pid=
+stop_reader() {
+    if [ -n "$reader_pid" ]; then
+        kill "$reader_pid" 2>/dev/null || true
+        wait "$reader_pid" 2>/dev/null || true
+        reader_pid=
+    fi
+}
+trap 'stop_reader; rm -rf "$work"' EXIT
 
 readonly width=1280
 readonly height=840
@@ -30,17 +38,18 @@ shot() {
 	local name=$1 source=$2
 	shift 2
 	echo "capturing $name from $source"
-	pkill -x markview 2>/dev/null || true
+	stop_reader
 	sleep 0.5
 	RUST_LOG=info "$binary" --width "$width" --height "$height" "$@" \
 		"$source_dir/$source" >"$work/$name.log" 2>&1 &
+	reader_pid=$!
 	for _ in $(seq 1 60); do
 		grep -q 'framebuffer' "$work/$name.log" && break
 		sleep 0.25
 	done
 	sleep 2.5
 	spectacle -b -n -a -o "$work/$name.png" >/dev/null
-	pkill -x markview 2>/dev/null || true
+	stop_reader
 	# The heredoc body is flush left so that Python keeps its indentation.
 	python3 - "$work/$name.png" "$output_dir/$name.png" "$((width * 2 + 4))" <<'PY'
 import sys

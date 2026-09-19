@@ -121,6 +121,9 @@ impl App {
 			Command::Export => {
 				self.tab_strip.cancel_drag();
 				let open = !self.interaction.export_open;
+				if open {
+					self.interaction.export_scroll = 0.0;
+				}
 				if open && self.readers.session.path.is_none() {
 					self.notify("Open a document first", true, 4);
 					return;
@@ -132,6 +135,7 @@ impl App {
 				self.interaction.pointer_down = None;
 				self.interaction.drag_at = None;
 				self.interaction.scrollbar = None;
+				self.interaction.panel_grab = None;
 				self.interaction.focus = open.then_some(Command::ExportRun);
 				self.refresh_hover();
 				self.redraw();
@@ -289,15 +293,26 @@ impl App {
 				self.preferences.schedule_save();
 				return;
 			}
+			Command::SettingsPreview => {
+				self.interaction.settings_preview =
+					!self.interaction.settings_preview;
+				self.redraw();
+				return;
+			}
 			Command::Settings => {
 				self.tab_strip.cancel_drag();
 				self.interaction.panel_open = !self.interaction.panel_open;
+				if self.interaction.panel_open {
+					self.interaction.settings_scroll = 0.0;
+					self.interaction.settings_preview = false;
+				}
 				self.interaction.styles_open = false;
 				self.interaction.export_open = false;
 				self.interaction.export_styles_open = false;
 				self.interaction.pointer_down = None;
 				self.interaction.drag_at = None;
 				self.interaction.scrollbar = None;
+				self.interaction.panel_grab = None;
 				self.interaction.focus =
 					self.interaction.panel_open.then_some(Command::Styles);
 				self.refresh_hover();

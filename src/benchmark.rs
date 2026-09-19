@@ -16,6 +16,8 @@ pub struct Timing {
 	pub parse_ms: f64,
 	pub layout_ms: f64,
 	pub gpu_prepare_and_complete_ms: f64,
+	pub gpu_prepare_and_submit_ms: f64,
+	pub gpu_wait_ms: f64,
 	pub total_ms: f64,
 }
 #[derive(Serialize)]
@@ -143,9 +145,14 @@ pub fn run(
 		latest = engine.layout_with_images(&doc, &options, &images.snapshot);
 		let mut layout_ms = t.elapsed().as_secs_f64() * 1000.0;
 		let t = Instant::now();
+		let gpu_start = t;
 		let submission = renderer.render(&latest, &view, &[], &target)?;
+		let mut gpu_prepare_and_submit_ms = t.elapsed().as_secs_f64() * 1000.;
+		let t = Instant::now();
 		renderer.wait(Some(submission))?;
-		let mut gpu_prepare_and_complete_ms = t.elapsed().as_secs_f64() * 1000.;
+		let mut gpu_wait_ms = t.elapsed().as_secs_f64() * 1000.;
+		let mut gpu_prepare_and_complete_ms =
+			gpu_start.elapsed().as_secs_f64() * 1000.;
 		let t = Instant::now();
 		images.wait();
 		image_prepare_ms += t.elapsed().as_secs_f64() * 1000.;
@@ -155,9 +162,14 @@ pub fn run(
 				engine.layout_with_images(&doc, &options, &images.snapshot);
 			layout_ms += t.elapsed().as_secs_f64() * 1000.;
 			let t = Instant::now();
+			let gpu_start = t;
 			let submission = renderer.render(&latest, &view, &[], &target)?;
+			gpu_prepare_and_submit_ms += t.elapsed().as_secs_f64() * 1000.;
+			let t = Instant::now();
 			renderer.wait(Some(submission))?;
-			gpu_prepare_and_complete_ms += t.elapsed().as_secs_f64() * 1000.;
+			gpu_wait_ms += t.elapsed().as_secs_f64() * 1000.;
+			gpu_prepare_and_complete_ms +=
+				gpu_start.elapsed().as_secs_f64() * 1000.;
 		}
 		Ok(Timing {
 			image_prepare_ms,
@@ -165,6 +177,8 @@ pub fn run(
 			parse_ms,
 			layout_ms,
 			gpu_prepare_and_complete_ms,
+			gpu_prepare_and_submit_ms,
+			gpu_wait_ms,
 			total_ms: start.elapsed().as_secs_f64() * 1000.0,
 		})
 	};
@@ -225,4 +239,51 @@ pub fn run(
 	}
 	crate::logging::report(format_args!("{json}"));
 	Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+	use super::*;
+
+	#[test]
+	#[ignore = "requires a GPU"]
+	fn report_separates_submission_from_completed_gpu_wait() -> Result<()> {
+		let dir = tempfile::tempdir()?;
+		let input = dir.path().join("sample.md");
+		let output = dir.path().join("timing.json");
+		fs::write(
+			&input,
+			"# Timing\n\nA paragraph with **bold** text and $x^2$.",
+		)?;
+		run(
+			&input,
+			Some(&output),
+			800,
+			600,
+			1.0,
+			Theme::Light,
+			3,
+			LayoutOptions {
+				fonts: crate::test_support::fonts(),
+				..Default::default()
+			},
+			true,
+		)?;
+		let report: serde_json::Value =
+			serde_json::from_slice(&fs::read(output)?)?;
+		assert_eq!(report["cached_samples"].as_array().unwrap().len(), 3);
+		for timing in std::iter::once(&report["first_open"])
+			.chain(report["full_layout_samples"].as_array().unwrap())
+			.chain(report["cached_samples"].as_array().unwrap())
+		{
+			let combined =
+				timing["gpu_prepare_and_complete_ms"].as_f64().unwrap();
+			let submit = timing["gpu_prepare_and_submit_ms"].as_f64().unwrap();
+			let wait = timing["gpu_wait_ms"].as_f64().unwrap();
+			assert!(submit > 0.0 && wait > 0.0);
+			assert!(combined >= submit + wait);
+			assert!(timing["total_ms"].as_f64().unwrap() >= combined);
+		}
+		Ok(())
+	}
 }

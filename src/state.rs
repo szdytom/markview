@@ -51,6 +51,7 @@ pub(crate) enum Command {
 	/// Write the document with the current export settings.
 	ExportRun,
 	Settings,
+	SettingsPreview,
 	Reset,
 	OpenConfig,
 	SystemTheme,
@@ -158,6 +159,11 @@ impl ReaderTab {
 pub(crate) struct InteractionState {
 	pub(crate) selection_counts: Option<(TextSelection, TextCounts)>,
 	pub(crate) panel_open: bool,
+	pub(crate) settings_scroll: f32,
+	pub(crate) settings_preview: bool,
+	pub(crate) export_scroll: f32,
+	/// Offset from the centre of the panel scrollbar thumb while dragging.
+	pub(crate) panel_grab: Option<f32>,
 	pub(crate) styles_open: bool,
 	/// The export page of the panel. It implies `panel_open`.
 	pub(crate) export_open: bool,
@@ -174,6 +180,8 @@ pub(crate) struct InteractionState {
 	/// The wide block whose horizontal scrollbar the pointer is over.
 	pub(crate) hover_overflow: Option<(usize, usize)>,
 	pub(crate) focus: Option<Command>,
+	/// Keyboard navigation shows a focus outline; pointer activation does not.
+	pub(crate) focus_visible: bool,
 	pub(crate) pressed: Option<Command>,
 	pub(crate) scrollbar: Option<ScrollbarDrag>,
 	pub(crate) last_click: Option<(Instant, (f32, f32), u8)>,
@@ -240,6 +248,16 @@ fn extend(
 }
 
 impl InteractionState {
+	/// Activate only when the release still targets the pressed control.
+	pub(crate) fn release_button(
+		&mut self,
+		hovered: Option<Command>,
+	) -> Option<Command> {
+		self.pressed
+			.take()
+			.filter(|command| Some(*command) == hovered)
+	}
+
 	pub(crate) fn reset_clicks(&mut self) {
 		self.last_click = None;
 	}

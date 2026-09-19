@@ -53,14 +53,6 @@ impl TabBar<'_> {
 				continue;
 			}
 			let active = index == self.active_tab;
-			out.push(Draw::Box {
-				rect,
-				chain: Condition::Toolbar.chain(),
-				condition: Condition::Toolbar,
-				radius: 0.0,
-				border: 1.0,
-				left_only: false,
-			});
 			let fill = if active {
 				C::ActiveBackground
 			} else if rect.contains(self.cursor.0, self.cursor.1) {
@@ -68,7 +60,40 @@ impl TabBar<'_> {
 			} else {
 				C::Background
 			};
-			out.push(Draw::Rect(rect, Paint::Styled(Condition::Toolbar, fill)));
+			out.push(Draw::Rect(
+				rect,
+				Paint::Styled(
+					if active {
+						Condition::Panel
+					} else if fill == C::HoverBackground {
+						Condition::Button
+					} else {
+						Condition::Toolbar
+					},
+					if active { C::Background } else { fill },
+				),
+			));
+			if active {
+				out.push(Draw::Rect(
+					Rect {
+						y: rect.y + rect.h - 2.0,
+						h: 2.0,
+						..rect
+					},
+					Paint::Styled(Condition::Toolbar, C::Accent),
+				));
+			} else {
+				out.push(Draw::Rect(
+					Rect {
+						x: rect.x + rect.w - 1.0,
+						y: rect.y + 8.0,
+						w: 1.0,
+						h: rect.h - 16.0,
+					},
+					Paint::Styled(Condition::Toolbar, C::BorderColor),
+				));
+			}
+
 			let name = self.tabs[index]
 				.path
 				.file_name()
@@ -85,13 +110,13 @@ impl TabBar<'_> {
 					if active { C::Color } else { C::Muted },
 				),
 			));
-			out.extend(self.ui.label(
-				"×",
-				16.0,
-				rect.x + rect.w - 19.0,
-				rect.y + 21.0,
-				Paint::Styled(Condition::Toolbar, C::Muted),
-			));
+			out.push(Draw::Icon {
+				paths: super::icons::CLOSE,
+				paint: Paint::Styled(Condition::Toolbar, C::Muted),
+				x: rect.x + rect.w - 22.0,
+				y: rect.y + (rect.h - 16.0) / 2.0,
+				size: 16.0,
+			});
 		}
 		self.ui.appearance = old;
 		let mut draws = vec![Draw::Clipped {

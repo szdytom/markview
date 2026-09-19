@@ -444,3 +444,19 @@ fn a_footnote_returns_to_the_reference_it_was_opened_from() {
 	session.release_heavy();
 	assert_eq!(session.footnote_return("2"), None);
 }
+
+#[test]
+fn buttons_activate_once_on_matching_release_and_cancel_outside() {
+	for hovered in [Some(Command::Hyphens), Some(Command::CodeWrap), None] {
+		let mut interaction = InteractionState {
+			pressed: Some(Command::Hyphens),
+			..Default::default()
+		};
+		assert_eq!(
+			interaction.release_button(hovered),
+			(hovered == Some(Command::Hyphens)).then_some(Command::Hyphens)
+		);
+		assert!(interaction.pressed.is_none());
+		assert_eq!(interaction.release_button(Some(Command::Hyphens)), None);
+	}
+}

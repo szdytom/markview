@@ -1,6 +1,6 @@
 //! The confirmation for a local file whose type is not known to be inert.
 use super::super::Button;
-use super::controls::{ICON_BUTTON, button_icon};
+use super::controls::{ICON_BUTTON, draw_button};
 use super::icons;
 use crate::{
 	layout::{Draw, Paint, Rect, TextShaper},
@@ -203,6 +203,8 @@ pub(in crate::app) fn modal_buttons(
 			label: "Open folder",
 			icon: None,
 			active: false,
+			kind: Default::default(),
+			enabled: true,
 			action: Command::ModalOpenFolder,
 			rect: Rect {
 				x: rect.x + rect.w - 20.0 - folder,
@@ -215,6 +217,8 @@ pub(in crate::app) fn modal_buttons(
 			label: "Open anyway",
 			icon: None,
 			active: false,
+			kind: Default::default(),
+			enabled: true,
 			action: Command::ModalConfirm,
 			rect: Rect {
 				x: rect.x + rect.w - 28.0 - folder - anyway,
@@ -227,6 +231,8 @@ pub(in crate::app) fn modal_buttons(
 			label: "Close",
 			icon: Some(icons::CLOSE),
 			active: false,
+			kind: Default::default(),
+			enabled: true,
 			action: Command::ModalDismiss,
 			rect: Rect {
 				x: rect.x + rect.w - 20.0 - close,
@@ -255,34 +261,7 @@ pub(in crate::app) fn draw_modal(
 	let text = Paint::Styled(Condition::Panel, C::Color);
 	let muted = Paint::Styled(Condition::Panel, C::Muted);
 	let x = rect.x + 20.0;
-	let mut out = vec![
-		Draw::Rect(
-			Rect {
-				x: 0.0,
-				y: 0.0,
-				w: width,
-				h: height,
-			},
-			Paint::Scrim,
-		),
-		Draw::Rect(
-			Rect {
-				x: rect.x - 5.0,
-				y: rect.y + 6.0,
-				w: rect.w + 10.0,
-				h: rect.h + 4.0,
-			},
-			Paint::Shadow,
-		),
-		Draw::Box {
-			rect,
-			chain: Condition::Panel.chain(),
-			condition: Condition::Panel,
-			radius: 0.,
-			border: 1.,
-			left_only: false,
-		},
-	];
+	let mut out = super::components::frame(rect, width, height);
 	out.extend(shaper.label("Open this file?", 20.0, x, rect.y + 36.0, text));
 	// The canonical path, not the link label, which the document controls.
 	let close = ICON_BUTTON;
@@ -306,8 +285,8 @@ pub(in crate::app) fn draw_modal(
 		muted,
 	));
 	for (i, line) in [
-		"Markview will hand this file to the system default application.",
-		"That application may execute code, so continue only if you trust the file.",
+		"Open this file with the system default application.",
+		"Only continue if you trust this file; it may run code.",
 	]
 	.into_iter()
 	.enumerate()
@@ -320,64 +299,11 @@ pub(in crate::app) fn draw_modal(
 			muted,
 		));
 	}
-	for button in modal_buttons(shaper, interaction, width, height) {
-		out.push(Draw::Box {
-			rect: button.rect,
-			chain: Condition::Button.chain(),
-			condition: Condition::Button,
-			radius: 0.,
-			border: 1.,
-			left_only: false,
-		});
-		// The same focus ring, hover fill and press fill as the settings panel.
-		if interaction.focus == Some(button.action) {
-			out.push(Draw::Rect(
-				button.rect,
-				Paint::Styled(Condition::Button, C::FocusColor),
-			));
-			out.push(Draw::Rect(
-				Rect {
-					x: button.rect.x + 1.0,
-					y: button.rect.y + 1.0,
-					w: (button.rect.w - 2.0).max(0.0),
-					h: (button.rect.h - 2.0).max(0.0),
-				},
-				Paint::Styled(
-					Condition::Button,
-					if interaction.pressed == Some(button.action) {
-						C::ActiveBackground
-					} else {
-						C::Background
-					},
-				),
-			));
-		} else if button
-			.rect
-			.contains(interaction.cursor.0, interaction.cursor.1)
-		{
-			out.push(Draw::Rect(
-				button.rect,
-				Paint::Styled(Condition::Button, C::HoverBackground),
-			));
-		} else {
-			out.push(Draw::Rect(
-				button.rect,
-				Paint::Styled(Condition::Button, C::Background),
-			));
+	for mut button in modal_buttons(shaper, interaction, width, height) {
+		if button.action == Command::ModalOpenFolder {
+			button.kind = super::components::ButtonKind::Primary;
 		}
-		if let Some(icon) = button_icon(&button) {
-			out.push(icon);
-		} else {
-			let label_x = button.rect.x
-				+ (button.rect.w - shaper.text_width(button.label, 13.0)) / 2.0;
-			out.extend(shaper.label(
-				button.label,
-				13.0,
-				label_x,
-				button.rect.y + button.rect.h / 2.0 + 5.0,
-				Paint::Styled(Condition::Button, C::Color),
-			));
-		}
+		out.extend(draw_button(shaper, interaction, &button, true));
 	}
 	out
 }
