@@ -13,6 +13,10 @@ at the same level, without `[brackets]`.
 
 ## Unreleased
 
+## 0.1.4 - 2026-09-19
+
+This release adds stylesheet discovery and validation, expands theme and typography support, and improves reader previews.
+
 ### Fixed
 
 - Avoid spurious font fallback warnings from UI headings requesting unavailable weight 600 faces.
