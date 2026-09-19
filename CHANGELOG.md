@@ -13,6 +13,9 @@ at the same level, without `[brackets]`.
 
 ## Unreleased
 
+- Reuse the PDF writer's font and stylesheet caches across a watch session's
+  rebuilds instead of rebuilding them on every export.
+
 - Export PDFs about 40% faster: transparent fills are no longer written, an
   inline run's background is one rectangle instead of one per cluster, and a
   formula's glyphs leave as runs rather than one text object each.

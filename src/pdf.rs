@@ -19,7 +19,7 @@ use crate::{
 use anyhow::{Context, Result};
 use log::{info, warn};
 use markview_core::style::{PageStyle, Stylesheet};
-use markview_pdf::Export;
+use markview_pdf::{Export, Renderer};
 use std::{
 	path::{Path, PathBuf},
 	sync::{Arc, mpsc},
@@ -154,6 +154,9 @@ struct Exporter {
 	links: bool,
 	engine: LayoutEngine,
 	images: Images,
+	/// The PDF writer's own caches, which survive every rebuild: the faces it
+	/// has resolved and embedded, and the stylesheet it resolved them against.
+	renderer: Renderer,
 	source: Option<Arc<str>>,
 	/// Set until a build reaches the disk. A failed build, including a forced
 	/// one, leaves it set, so the next save of the same content retries instead
@@ -189,6 +192,7 @@ impl Exporter {
 			links: args.links,
 			engine,
 			images: Images::new(args.offline),
+			renderer: Renderer::default(),
 			source: None,
 			dirty: true,
 			document: None,
@@ -251,7 +255,7 @@ impl Exporter {
 		}
 		let pagination = paginate(&document, &snapshot, &self.geometry);
 		let metadata = metadata_of(&self.metadata, &document, &self.path);
-		let bytes = markview_pdf::export(Export {
+		let bytes = self.renderer.export(&Export {
 			snapshot: &snapshot,
 			images: &self.images.snapshot,
 			stylesheet: &self.options.stylesheet,

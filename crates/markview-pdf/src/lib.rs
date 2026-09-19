@@ -11,6 +11,7 @@ use markview_core::{
 	paginate::{PageGeometry, Pagination},
 	style::Stylesheet,
 };
+pub use paint::Renderer;
 
 /// The document metadata written into the PDF information dictionary. A field
 /// left unset is not written at all, and a creation date never is, so the same
@@ -48,6 +49,8 @@ pub struct Export<'a> {
 	pub fonts: FontConfig,
 }
 
+/// Exports one document with a fresh [`Renderer`], for a process that will not
+/// export again. A caller that exports repeatedly keeps its own `Renderer`.
 pub fn export(input: Export<'_>) -> Result<Vec<u8>> {
-	paint::render(&input)
+	Renderer::default().export(&input)
 }

@@ -146,9 +146,9 @@ struct Painter<'a> {
 	images: Images<'a>,
 	geometry: &'a PageGeometry,
 	pagination: &'a Pagination,
-	fonts: Fonts,
-	math_fonts: HashMap<String, MathFont>,
-	shaper: TextShaper,
+	fonts: &'a mut Fonts,
+	math_fonts: &'a mut HashMap<String, MathFont>,
+	shaper: &'a mut TextShaper,
 	/// Body text size in points, which page furniture sizes against.
 	body_pt: f32,
 	links: bool,
@@ -157,46 +157,68 @@ struct Painter<'a> {
 	path: String,
 }
 
-pub fn render(input: &Export<'_>) -> Result<Vec<u8>> {
-	let mut document = Document::new();
-	document.set_metadata(information(&input.metadata));
-	let mut painter = Painter {
-		stylesheet: input.stylesheet,
-		snapshot: input.snapshot,
-		images: Images::new(input.images),
-		geometry: input.geometry,
-		pagination: input.pagination,
-		fonts: Fonts::default(),
-		math_fonts: HashMap::new(),
-		shaper: TextShaper::with_fonts(input.fonts.clone()),
-		body_pt: input.body_size_px * PT_PER_PX,
-		links: input.links,
-		title: input.metadata.title.clone(),
-		path: input.path.clone(),
-	};
-	painter
-		.shaper
-		.set_stylesheet(Arc::new(input.stylesheet.clone()));
-	for (index, items) in input.pagination.pages.iter().enumerate() {
-		let size =
-			Size::from_wh(input.geometry.width_pt, input.geometry.height_pt)
-				.context("page size")?;
-		let mut page = document.start_page_with(PageSettings::new(size));
-		{
-			let mut surface = page.surface();
-			painter.page(&mut surface, index, items);
+/// One export's worth of drawing state that outlives it.
+///
+/// A process that exports once pays for resolving the shaper's faces and for
+/// embedding every face it draws; a watch session exports the same document
+/// over and over, so it keeps that work here instead. The stylesheet the
+/// caches were built against is kept as well, and a changed one rebuilds them,
+/// so a new theme can never draw through the old faces.
+#[derive(Default)]
+pub struct Renderer {
+	fonts: Fonts,
+	math_fonts: HashMap<String, MathFont>,
+	shaper: TextShaper,
+	stylesheet: Option<Arc<Stylesheet>>,
+}
+
+impl Renderer {
+	pub fn export(&mut self, input: &Export<'_>) -> Result<Vec<u8>> {
+		self.shaper.set_fonts(&input.fonts);
+		if self.stylesheet.as_deref() != Some(input.stylesheet) {
+			let stylesheet = Arc::new(input.stylesheet.clone());
+			self.shaper.set_stylesheet(stylesheet.clone());
+			self.stylesheet = Some(stylesheet);
 		}
-		if painter.links {
-			for item in items {
-				for annotation in painter.annotations(item) {
-					page.add_annotation(annotation);
+		let mut document = Document::new();
+		document.set_metadata(information(&input.metadata));
+		let mut painter = Painter {
+			stylesheet: input.stylesheet,
+			snapshot: input.snapshot,
+			images: Images::new(input.images),
+			geometry: input.geometry,
+			pagination: input.pagination,
+			fonts: &mut self.fonts,
+			math_fonts: &mut self.math_fonts,
+			shaper: &mut self.shaper,
+			body_pt: input.body_size_px * PT_PER_PX,
+			links: input.links,
+			title: input.metadata.title.clone(),
+			path: input.path.clone(),
+		};
+		for (index, items) in input.pagination.pages.iter().enumerate() {
+			let size = Size::from_wh(
+				input.geometry.width_pt,
+				input.geometry.height_pt,
+			)
+			.context("page size")?;
+			let mut page = document.start_page_with(PageSettings::new(size));
+			{
+				let mut surface = page.surface();
+				painter.page(&mut surface, index, items);
+			}
+			if painter.links {
+				for item in items {
+					for annotation in painter.annotations(item) {
+						page.add_annotation(annotation);
+					}
 				}
 			}
 		}
+		document
+			.finish()
+			.map_err(|error| anyhow::anyhow!("PDF: {error}"))
 	}
-	document
-		.finish()
-		.map_err(|error| anyhow::anyhow!("PDF: {error}"))
 }
 
 impl Painter<'_> {
@@ -303,7 +325,7 @@ impl Painter<'_> {
 		};
 		let pieces = page_furniture(
 			self.stylesheet,
-			&mut self.shaper,
+			self.shaper,
 			self.geometry,
 			self.body_pt,
 			index + 1,
@@ -348,7 +370,7 @@ impl Painter<'_> {
 						surface.set_fill(Some(self.fill(first.paint)));
 						text::emit(
 							surface,
-							&mut self.fonts,
+							self.fonts,
 							&first.font,
 							&first.coords,
 							first.size,
@@ -472,7 +494,7 @@ impl Painter<'_> {
 		surface.set_fill(Some(self.fill(first.paint)));
 		text::emit(
 			surface,
-			&mut self.fonts,
+			self.fonts,
 			&first.font,
 			&first.coords,
 			frame.size(first.size),
@@ -965,7 +987,7 @@ impl Painter<'_> {
 				.collect();
 			text::emit(
 				surface,
-				&mut self.fonts,
+				self.fonts,
 				&first.font,
 				&first.coords,
 				first.size,

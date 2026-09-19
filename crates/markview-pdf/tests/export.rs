@@ -4,11 +4,11 @@ use markview_core::{
 	document,
 	fonts::FontConfig,
 	image::ImageSnapshot,
-	layout::{LayoutEngine, LayoutOptions},
-	paginate::{PT_PER_PX, PageGeometry, paginate},
+	layout::{LayoutEngine, LayoutOptions, LayoutSnapshot},
+	paginate::{PT_PER_PX, PageGeometry, Pagination, paginate},
 	style::{CjkType, SYNTHETIC_ITALIC_ANGLE_DEG, Stylesheet},
 };
-use markview_pdf::{Export, Metadata};
+use markview_pdf::{Export, Metadata, Renderer};
 use std::sync::Arc;
 
 struct Exported {
@@ -17,6 +17,16 @@ struct Exported {
 	pdf: lopdf::Document,
 	geometry: PageGeometry,
 	anchors: std::collections::HashMap<String, (usize, f32)>,
+}
+
+/// One document's laid-out inputs, kept so a test can export them more than
+/// once, with and without a reused renderer.
+struct Inputs {
+	sheet: Arc<Stylesheet>,
+	snapshot: LayoutSnapshot,
+	geometry: PageGeometry,
+	pagination: Pagination,
+	body_size_px: f32,
 }
 
 /// The committed subset faces, so an export is the same on every platform.
@@ -60,6 +70,24 @@ fn export_at(
 	metadata: Metadata,
 	geometry: PageGeometry,
 ) -> Exported {
+	let inputs = inputs(source, sheet, geometry);
+	let bytes = render(&inputs, links, metadata, None);
+	let pdf = lopdf::Document::load_mem(&bytes).expect("the export parses");
+	Exported {
+		bytes,
+		pages: inputs.pagination.pages.len(),
+		pdf,
+		geometry: inputs.geometry,
+		anchors: inputs.pagination.anchors,
+	}
+}
+
+/// Lays the source out once, so a test can export the same inputs repeatedly.
+fn inputs(
+	source: &str,
+	sheet: Arc<Stylesheet>,
+	geometry: PageGeometry,
+) -> Inputs {
 	let document = document::parse(source.to_owned());
 	let options = LayoutOptions {
 		width: geometry.text_px().0,
@@ -76,27 +104,39 @@ fn export_at(
 		snapshot = engine.layout(&document, &options);
 	}
 	let pagination = paginate(&document, &snapshot, &geometry);
-	let bytes = markview_pdf::export(Export {
-		snapshot: &snapshot,
+	Inputs {
+		sheet,
+		snapshot,
+		geometry,
+		pagination,
+		body_size_px: options.font_size,
+	}
+}
+
+/// Renders prepared inputs, through `renderer` when one is given.
+fn render(
+	inputs: &Inputs,
+	links: bool,
+	metadata: Metadata,
+	renderer: Option<&mut Renderer>,
+) -> Vec<u8> {
+	let export = Export {
+		snapshot: &inputs.snapshot,
 		images: &ImageSnapshot::default(),
-		stylesheet: &sheet,
-		geometry: &geometry,
-		pagination: &pagination,
+		stylesheet: &inputs.sheet,
+		geometry: &inputs.geometry,
+		pagination: &inputs.pagination,
 		metadata,
 		path: "test.md".into(),
-		body_size_px: options.font_size,
+		body_size_px: inputs.body_size_px,
 		links,
 		fonts: fonts(),
-	})
-	.unwrap();
-	let pdf = lopdf::Document::load_mem(&bytes).expect("the export parses");
-	Exported {
-		bytes,
-		pages: pagination.pages.len(),
-		pdf,
-		geometry,
-		anchors: pagination.anchors,
+	};
+	match renderer {
+		Some(renderer) => renderer.export(&export),
+		None => markview_pdf::export(export),
 	}
+	.unwrap()
 }
 
 fn print() -> Arc<Stylesheet> {
@@ -221,6 +261,54 @@ fn the_same_document_exports_identical_bytes() {
 	let first = export(&source, print(), true);
 	let second = export(&source, print(), true);
 	assert_eq!(first.bytes, second.bytes);
+}
+
+#[test]
+fn a_reused_renderer_matches_a_fresh_export_and_rebuilds_on_a_new_stylesheet() {
+	// The second stylesheet resolves `sans-serif`, which page furniture uses,
+	// to a different face. A renderer that kept the first stylesheet's
+	// resolved faces would draw the second document with the first font.
+	let plain = print();
+	let mut defined = (*plain).clone();
+	defined.merge(
+		&Stylesheet::parse(
+			"format_version=2\nversion=1\n\
+			 [[fontdef]]\nid='sans-serif'\nlookfor=['Noto Sans Mono']",
+		)
+		.unwrap(),
+	);
+	let defined = Arc::new(defined);
+
+	// A formula and CJK exercise the caches that only a document fills: the
+	// KaTeX faces and the document fonts a formula falls back to.
+	let source =
+		"# Title\n\n中文 body text with $a_i + \\frac{1}{2}$ inside.\n";
+	let geometry = PageGeometry::from_style(plain.page()).unwrap();
+	let first = inputs(source, plain, geometry);
+	let second = inputs(source, defined, geometry);
+	let fresh_first = render(&first, false, Metadata::default(), None);
+	let fresh_second = render(&second, false, Metadata::default(), None);
+	// A plain `assert!` keeps a failed comparison from dumping two PDFs.
+	assert!(
+		fresh_first != fresh_second,
+		"the two stylesheets must not export alike"
+	);
+
+	let mut renderer = Renderer::default();
+	for _ in 0..2 {
+		let reused_first =
+			render(&first, false, Metadata::default(), Some(&mut renderer));
+		assert!(
+			reused_first == fresh_first,
+			"a reused renderer changed the first export"
+		);
+		let reused_second =
+			render(&second, false, Metadata::default(), Some(&mut renderer));
+		assert!(
+			reused_second == fresh_second,
+			"a reused renderer kept the old stylesheet"
+		);
+	}
 }
 
 #[test]
