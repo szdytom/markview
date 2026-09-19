@@ -151,3 +151,132 @@ fn malformed_markup_is_readable_and_never_panics() {
 		}
 	);
 }
+
+#[test]
+fn details_close_matches_nested_elements() {
+	let Details::Inline { body, rest, .. } = details(
+		"<details><summary>Outer</summary>\
+		 A<details><summary>Inner</summary>B</details>C</details>",
+	) else {
+		panic!("expected a complete element")
+	};
+	assert_eq!(body, "A<details><summary>Inner</summary>B</details>C");
+	assert!(rest.is_empty());
+}
+
+#[test]
+fn details_keeps_adjacent_elements_in_one_block() {
+	let Details::Inline { body, rest, .. } =
+		details("<details>A</details>\n<details>B</details>")
+	else {
+		panic!("expected a complete element")
+	};
+	assert_eq!(body, "A");
+	assert_eq!(rest, "\n<details>B</details>");
+}
+
+#[test]
+fn self_closing_details_do_not_nest() {
+	let Details::Inline { body, .. } =
+		details("<details><summary>S</summary>a<details/>b</details>")
+	else {
+		panic!("expected a complete element")
+	};
+	assert_eq!(body, "a<details/>b");
+}
+
+#[test]
+fn odd_details_openers_never_panic() {
+	for source in [
+		"<details class=\"x\"/>",
+		"<details/>",
+		"<details open/>",
+		"<details =\"x\"/>",
+		"<details a=b/>",
+		"<details open",
+		"<details '>",
+		"<details>",
+		"<details><summary>",
+		"<details></details></details>",
+	] {
+		let _ = details(source);
+		let _ = block(source);
+	}
+	// The inline path reads attributes too, and a self-closing tag can leave
+	// nothing after its value.
+	for source in [
+		"<img class=\"x\"/>",
+		"<img src/>",
+		"<a class=\"x\"/>",
+		"<a href/>",
+		"<b class=x/>",
+	] {
+		for (start, len) in tags(source) {
+			let _ = inline(&source[start..start + len]);
+		}
+	}
+}
+
+#[test]
+fn close_tag_counts_tags_that_share_a_block() {
+	let source = "</details>\n</details>\n";
+	// The first close leaves one element open; the second one closes it.
+	let (depth, close) = close_tag(source, 2);
+	assert_eq!(depth, 0);
+	let close = close.expect("the outer close");
+	assert_eq!(close.start, source.rfind("</details>").unwrap());
+	assert_eq!(&source[close], "</details>");
+	// Starting one element lower, the first tag is the match.
+	let (depth, close) = close_tag(source, 1);
+	assert_eq!(depth, 0);
+	assert_eq!(close.map(|range| range.start), Some(0));
+	// An unbalanced block reports what is still open and no match.
+	assert_eq!(close_tag("</details>\n", 2).0, 1);
+	assert!(close_tag("<details>\n", 1).1.is_none());
+}
+
+#[test]
+fn an_open_element_reports_nested_openers() {
+	// The opening block leaves the inner element open too, so the closing scan
+	// must start one level deeper.
+	let Details::Open { depth, lead, .. } = details(
+		"<details>\n<summary>Outer</summary>\n<details>\n<summary>Inner</summary>",
+	) else {
+		panic!("expected an open element")
+	};
+	assert_eq!(depth, 2);
+	assert!(lead.contains("<details>"));
+	// A plain opener leaves only itself open.
+	let Details::Open { depth, .. } =
+		details("<details>\n<summary>Only</summary>")
+	else {
+		panic!("expected an open element")
+	};
+	assert_eq!(depth, 1);
+}
+
+#[test]
+fn a_summary_belongs_to_the_element_that_declares_it() {
+	// The first element is complete and has no summary; the second element's
+	// summary must not be adopted by it.
+	let Details::Inline {
+		summary,
+		body,
+		rest,
+		..
+	} = details("<details>A</details>\n<details><summary>B</summary>C</details>")
+	else {
+		panic!("expected a complete element")
+	};
+	assert_eq!(summary, None);
+	assert_eq!(body, "A");
+	assert_eq!(rest, "\n<details><summary>B</summary>C</details>");
+	// A nested element's summary belongs to the nested element.
+	let Details::Inline { summary, body, .. } =
+		details("<details><details><summary>I</summary>B</details>C</details>")
+	else {
+		panic!("expected a complete element")
+	};
+	assert_eq!(summary, None);
+	assert_eq!(body, "<details><summary>I</summary>B</details>C");
+}

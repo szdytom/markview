@@ -32,6 +32,31 @@ const TASK_BORDER: f32 = 1.0;
 /// The segments that approximate each corner of a task checkbox.
 const TASK_CORNERS: usize = 4;
 
+/// The column a `<details>` summary reserves before its text, in multiples of
+/// the summary's own size.
+const DETAILS_COLUMN: f32 = 1.3;
+
+/// The side of the disclosure triangle, in multiples of the summary's size.
+const DETAILS_MARKER: f32 = 0.42;
+
+/// The space the marker keeps from the element's left edge, in logical pixels.
+const DETAILS_INSET: f32 = 2.0;
+
+/// The gap between a summary line and its body, in multiples of the summary's
+/// size.
+const DETAILS_GAP: f32 = 0.45;
+
+/// A disclosure triangle relative to its center: pointing right while the body
+/// is collapsed and down while it is expanded.
+fn disclosure_points(expanded: bool, side: f32) -> Arc<[[f32; 2]]> {
+	let r = side / 2.;
+	Arc::from(if expanded {
+		vec![[-r, -r], [r, -r], [0., r]]
+	} else {
+		vec![[-r, -r], [r, 0.], [-r, r]]
+	})
+}
+
 /// The x a marker of `width` takes inside its reserved column, which runs from
 /// the item's left edge to where its text begins.
 fn marker_offset(align: TextAlign, column: f32, width: f32) -> f32 {
@@ -204,6 +229,7 @@ fn block_role(block: &Block) -> Condition {
 		}
 		BlockKind::Table { .. } => Condition::Table,
 		BlockKind::Footnote { .. } => Condition::Footnote,
+		BlockKind::Details { .. } => Condition::Details,
 		BlockKind::Rule => Condition::Hr,
 	}
 }
@@ -906,6 +932,85 @@ impl BlockContext<'_> {
 					url: footnote::back_url(label),
 				});
 				body
+			}
+			BlockKind::Details {
+				open,
+				summary,
+				blocks,
+				..
+			} => {
+				let expanded = opts.details_expanded(block.id, *open);
+				let parent = self.shaper.appearance.clone();
+				self.shaper.appearance =
+					opts.stylesheet.text(&parent, Condition::Summary);
+				let size = opts.font_size * self.shaper.appearance.size;
+				let line = size * self.shaper.appearance.line_height;
+				let paint = self.shaper.appearance.paint;
+				let side = size * DETAILS_MARKER;
+				let column = size * DETAILS_COLUMN;
+				// The marker is geometry rather than a glyph, so no font can
+				// change its shape.
+				let marker = out.draws.len();
+				out.draws.push(Draw::Polygon {
+					center: [x + DETAILS_INSET + side * 0.5, y + line * 0.5],
+					points: disclosure_points(expanded, side),
+					paint,
+				});
+				let mut height = self
+					.rich(
+						summary,
+						x + column,
+						y,
+						(width - column).max(1.0),
+						size,
+						false,
+						CellAlign::Left,
+						false,
+						false,
+						opts,
+						out,
+					)
+					.max(line);
+				let summary_height = height;
+				// The body is the element's ordinary content, so it must not
+				// inherit the summary's weight, color or condition chain.
+				self.shaper.appearance = parent;
+				// The whole summary line toggles the element. It is hit like a
+				// link, so a non-drag release and the hover state are enough.
+				// The range is registered before the body, and it ends at the
+				// first body command, so its command order matches its rects
+				// and pointing into the content never highlights the summary.
+				if !opts.force_open {
+					out.links.push(LinkRect {
+						command: marker,
+						rect: Rect {
+							x,
+							y,
+							w: width,
+							h: summary_height,
+						},
+						url: crate::document::details_url(block.id),
+					});
+					if expanded {
+						out.links.push(LinkRect {
+							command: out.draws.len(),
+							rect: Rect::default(),
+							url: String::new(),
+						});
+					}
+				}
+				if expanded {
+					height += size * DETAILS_GAP;
+					height += self.framed_children(
+						blocks,
+						x,
+						y + height,
+						width,
+						opts,
+						out,
+					);
+				}
+				height
 			}
 		};
 		out.height = out.height.max(y + height);

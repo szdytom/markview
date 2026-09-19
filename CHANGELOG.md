@@ -13,6 +13,16 @@ at the same level, without `[brackets]`.
 
 ## Unreleased
 
+- Render a raw `<details>` block as a collapsible element: clicking its summary
+  toggles a Markdown body (nesting and `open` supported), `details` and `summary`
+  join the MVSS vocabulary, and both exports show every body expanded.
+
+- Fix `<details>` parsing and interaction edge cases: tags that share a block
+  and elements nested in the opening block still match, a summary stays with its
+  own element, a quoted body is not quoted twice, references and footnotes
+  defined outside the element resolve, identical elements toggle independently,
+  and adjacent elements keep their content and nesting budget.
+
 - Render a `mermaid` fenced block as a diagram: the library runs on the image
   workers, its SVG and pixels are cached per source, and the result appears in
   the window, `--render`, `--pdf` and `--smoke-test`, while a broken diagram

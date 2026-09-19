@@ -134,6 +134,11 @@ impl App {
 		}
 	}
 	pub(super) fn open_link(&mut self, url: &str, background: bool) {
+		// A `<details>` summary is hit like a link but toggles its element.
+		if let Some(id) = markview_core::document::details_id(url) {
+			self.toggle_details(id);
+			return;
+		}
 		let fragment = anchor::link_fragment(url);
 		if anchor::link_target(url).is_empty() {
 			// A bare fragment addresses the current document.
@@ -198,6 +203,30 @@ impl App {
 				self.redraw();
 			}
 		}
+	}
+
+	/// Toggles one `<details>` and reflows. The open set is layout input, so
+	/// the worker re-lays out the toggled block and reuses every other one.
+	pub(super) fn toggle_details(&mut self, id: u64) {
+		let declared = self
+			.readers
+			.session
+			.document
+			.as_ref()
+			.and_then(|document| document.details_declared(id))
+			.unwrap_or(false);
+		let expanded = self
+			.readers
+			.session
+			.details_open
+			.get(&id)
+			.copied()
+			.unwrap_or(declared);
+		std::sync::Arc::make_mut(&mut self.readers.session.details_open)
+			.insert(id, !expanded);
+		self.request(false);
+		self.refresh_hover();
+		self.redraw();
 	}
 
 	/// Hands an already-approved target to the operating system.

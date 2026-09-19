@@ -161,7 +161,7 @@ fn prefix_blocks(source: &str, end: usize) -> Vec<Block> {
 /// inside code is text the full parse would not resolve either. A definition
 /// whose destination is on the next line, or a footnote body, is not needed:
 /// the reference only needs its target and its number.
-fn definitions(source: &str) -> String {
+pub(super) fn definitions(source: &str) -> String {
 	let mut out = String::new();
 	let mut fence = None;
 	for line in source.lines() {
@@ -199,7 +199,7 @@ fn definitions(source: &str) -> String {
 
 /// Whether no reference definition or footnote needs source the cut would
 /// leave behind.
-fn definition_free(source: &str) -> bool {
+pub(super) fn definition_free(source: &str) -> bool {
 	!source.contains("]:") && !source.contains("[^")
 }
 
@@ -319,6 +319,14 @@ fn shift(block: &mut Block, delta: isize) {
 				shift(block, delta);
 			}
 		}
+		BlockKind::Details {
+			summary, blocks, ..
+		} => {
+			shift_rich(summary, delta);
+			for block in blocks {
+				shift(block, delta);
+			}
+		}
 		BlockKind::List { items, .. } => {
 			for item in items {
 				for block in &mut item.blocks {
@@ -352,6 +360,7 @@ fn relabel_headings(blocks: &mut [Block]) {
 				}
 				BlockKind::Quote { blocks, .. }
 				| BlockKind::Footnote { blocks, .. } => walk(blocks, anchors),
+				BlockKind::Details { blocks, .. } => walk(blocks, anchors),
 				BlockKind::List { items, .. } => {
 					for item in items {
 						walk(&mut item.blocks, anchors);

@@ -37,6 +37,21 @@ when = ["blockquote"]
 border_color = "#275D91"
 
 [[rule]]
+when = ["details"]
+background = "#EDF1F6"
+border_color = "#D5DDE7"
+padding = [0.35, 0.6, 0.45, 0.6]
+radius = 4.0
+
+[[rule]]
+when = ["summary"]
+color = "#283343"
+
+[[rule]]
+when = ["summary", "hover"]
+color = "#17436C"
+
+[[rule]]
 when = ["marker"]
 color = "#5D6C80"
 

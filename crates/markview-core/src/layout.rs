@@ -20,7 +20,7 @@ pub use crate::scene::{
 };
 pub use crate::shaping::TextShaper;
 use crate::{
-	document::{Block, Document},
+	document::{Block, BlockKind, Document},
 	math::MathEngine,
 	style::Condition,
 };
@@ -55,11 +55,17 @@ fn external_key(
 	images: &crate::image::ImageSnapshot,
 	highlights: &highlights::Highlights,
 	theme: Option<&str>,
+	options: &LayoutOptions,
 ) -> u64 {
 	let mut specs = Vec::new();
 	block.images(&mut specs);
 	let mut code = Vec::new();
 	block.code_blocks(&mut code);
+	// A `<details>` body is part of its container's geometry, so the resolved
+	// state of every disclosure in the subtree is an external input: toggling
+	// a nested element must invalidate each ancestor that frames it.
+	let mut disclosures = Vec::new();
+	disclosure_states(block, options, &mut disclosures);
 	crate::document::fingerprint(&(
 		specs
 			.iter()
@@ -79,7 +85,43 @@ fn external_key(
 				(key, highlights.results().contains_key(&key))
 			})
 			.collect::<Vec<_>>(),
+		disclosures,
 	))
+}
+
+/// Appends the identity and resolved collapse state of every `<details>` in
+/// `block`'s subtree, in reading order. The tree is enough; no laid-out child
+/// is consulted, so the key is available before the block is measured. The
+/// identity is part of the key because the placed geometry binds each
+/// summary's hit URL to its own block id: two distinct elements must never
+/// share geometry whose links point at one of them.
+fn disclosure_states(
+	block: &Block,
+	options: &LayoutOptions,
+	out: &mut Vec<(u64, bool)>,
+) {
+	match &block.kind {
+		BlockKind::Details { open, blocks, .. } => {
+			out.push((block.id, options.details_expanded(block.id, *open)));
+			for block in blocks {
+				disclosure_states(block, options, out);
+			}
+		}
+		BlockKind::Quote { blocks, .. }
+		| BlockKind::Footnote { blocks, .. } => {
+			for block in blocks {
+				disclosure_states(block, options, out);
+			}
+		}
+		BlockKind::List { items, .. } => {
+			for item in items {
+				for block in &item.blocks {
+					disclosure_states(block, options, out);
+				}
+			}
+		}
+		_ => {}
+	}
 }
 
 #[derive(Clone, Debug)]
@@ -97,6 +139,13 @@ pub struct LayoutOptions {
 	pub codeblock_theme_override: Option<String>,
 	/// Hard-wrap code block lines at the reading column instead of scrolling.
 	pub codeblock_wrap: bool,
+	/// Reader-chosen collapse state of each `<details>`, keyed by the block's
+	/// semantic id. A block absent from the map uses the state its source
+	/// declared, so a fresh document starts there.
+	pub details_open: Arc<std::collections::BTreeMap<u64, bool>>,
+	/// Render every `<details>` expanded regardless of the map. Exports set
+	/// this: a printed page has no pointer to open a collapsed body with.
+	pub force_open: bool,
 	pub stylesheet: Arc<crate::style::Stylesheet>,
 	/// Which faces the shaper may use. The default is the host's own fonts.
 	pub fonts: crate::fonts::FontConfig,
@@ -115,6 +164,8 @@ impl Default for LayoutOptions {
 			greedy: false,
 			codeblock_theme_override: None,
 			codeblock_wrap: false,
+			details_open: Arc::default(),
+			force_open: false,
 			stylesheet: crate::style::Stylesheet::bundled(false),
 			fonts: crate::fonts::FontConfig::default(),
 			limits: crate::limits::Limits::default(),
@@ -133,6 +184,8 @@ impl PartialEq for LayoutOptions {
 			&& self.greedy == other.greedy
 			&& self.codeblock_theme_override == other.codeblock_theme_override
 			&& self.codeblock_wrap == other.codeblock_wrap
+			&& self.details_open == other.details_open
+			&& self.force_open == other.force_open
 			&& self.stylesheet.layout_key() == other.stylesheet.layout_key()
 			&& self.fonts == other.fonts
 			&& self.limits == other.limits
@@ -154,6 +207,14 @@ impl LayoutOptions {
 	/// character still fits in `width`.
 	pub(crate) fn indent(&self, size: f32, width: f32) -> f32 {
 		(self.paragraph_indent.max(0.0) * size).min((width - size).max(0.0))
+	}
+
+	/// Whether one `<details>` block shows its body: the reader's choice when
+	/// they made one, the source declaration otherwise, and always when an
+	/// export forces every block open.
+	pub fn details_expanded(&self, id: u64, declared: bool) -> bool {
+		self.force_open
+			|| self.details_open.get(&id).copied().unwrap_or(declared)
 	}
 }
 
@@ -328,6 +389,7 @@ impl LayoutEngine {
 					images,
 					&self.highlights,
 					codeblock_theme.as_deref(),
+					options,
 				),
 				content: block.content_key,
 				width: options.width.to_bits(),

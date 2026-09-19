@@ -180,6 +180,10 @@ impl App {
 						&& self.interaction.cursor.1
 							< self.dimensions().1 - BOTTOM - 10.0
 					{
+						let link = self.link_at(
+							self.interaction.cursor.0,
+							self.interaction.cursor.1,
+						);
 						if let Some(position) = self.text_at_cursor() {
 							let click_count =
 								if self.interaction.modifiers.shift_key() {
@@ -188,10 +192,6 @@ impl App {
 								} else {
 									self.interaction.click_count(Instant::now())
 								};
-							let link = self.link_at(
-								self.interaction.cursor.0,
-								self.interaction.cursor.1,
-							);
 							match click_count {
 								2 => {
 									let selection = self
@@ -225,6 +225,10 @@ impl App {
 									.interaction
 									.begin_selection(position, link),
 							}
+						} else if let Some(link) = link {
+							// A summary line's marker carries no text, but the
+							// whole line is still its control.
+							self.interaction.begin_link_press(link);
 						}
 						self.redraw();
 					}

@@ -244,10 +244,12 @@ impl App {
 		}
 	}
 	pub(super) fn options(&self) -> LayoutOptions {
-		self.preferences.values.layout_options(
+		let mut options = self.preferences.values.layout_options(
 			self.dimensions().0,
 			self.args.options.greedy,
 			&self.args.options.fonts,
-		)
+		);
+		options.details_open = self.readers.session.details_open.clone();
+		options
 	}
 }

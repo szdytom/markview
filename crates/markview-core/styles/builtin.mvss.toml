@@ -177,6 +177,17 @@ border_width = 3.0
 padding = [0.22, 0.22, 0.22, 1.1]
 space_after = 0.8
 
+# A `<details>` frame and its summary weight are theme-neutral, so they live in
+# the shared fallback; each reader theme supplies its own surface colors.
+[[rule]]
+when = ["details"]
+padding = [0.3, 0.5, 0.4, 0.5]
+space_after = 0.8
+
+[[rule]]
+when = ["summary"]
+weight = 600
+
 [[rule]]
 when = ["list"]
 indent = 0.5

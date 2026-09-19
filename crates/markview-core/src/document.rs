@@ -120,6 +120,17 @@ pub enum BlockKind {
 		column: u32,
 		blocks: Vec<Block>,
 	},
+	/// A raw-HTML `<details>` element: a collapsible container whose summary
+	/// line toggles its content. `open` is the state the source declared; the
+	/// reader's own choice lives in the layout options. `ordinal` counts the
+	/// element among the document's `<details>`, so two identical elements
+	/// still toggle independently.
+	Details {
+		open: bool,
+		ordinal: u32,
+		summary: RichText,
+		blocks: Vec<Block>,
+	},
 	Rule,
 }
 
@@ -138,6 +149,13 @@ pub struct Document {
 	pub blocks: Vec<Block>,
 	/// Semantic identity of the reading text; equal ids mean equal positions.
 	pub content_id: u64,
+}
+
+impl Document {
+	/// The state a `<details>` element with `id` declared in its source.
+	pub fn details_declared(&self, id: u64) -> Option<bool> {
+		self.blocks.iter().find_map(|b| b.details_declared(id))
+	}
 }
 
 pub fn fingerprint(value: &impl Hash) -> u64 {
@@ -173,6 +191,20 @@ pub fn plain_text(text: &RichText) -> String {
 	out
 }
 
+/// Scheme of the pseudo URL a `<details>` summary's hit region carries.
+pub const DETAILS_SCHEME: &str = "details:";
+
+/// The pseudo URL that makes a summary line behave like a link, so the
+/// existing non-drag release and hover state can drive the toggle.
+pub fn details_url(id: u64) -> String {
+	format!("{DETAILS_SCHEME}{id}")
+}
+
+/// The block id a summary pseudo URL addresses.
+pub fn details_id(url: &str) -> Option<u64> {
+	url.strip_prefix(DETAILS_SCHEME)?.parse().ok()
+}
+
 impl Block {
 	pub fn images<'a>(&'a self, out: &mut Vec<&'a crate::image::ImageSpec>) {
 		fn rich<'a>(
@@ -191,6 +223,14 @@ impl Block {
 			}
 			BlockKind::Quote { blocks, .. }
 			| BlockKind::Footnote { blocks, .. } => {
+				for b in blocks {
+					b.images(out);
+				}
+			}
+			BlockKind::Details {
+				summary, blocks, ..
+			} => {
+				rich(summary, out);
 				for b in blocks {
 					b.images(out);
 				}
@@ -227,6 +267,11 @@ impl Block {
 					b.code_blocks(out);
 				}
 			}
+			BlockKind::Details { blocks, .. } => {
+				for b in blocks {
+					b.code_blocks(out);
+				}
+			}
 			BlockKind::List { items, .. } => {
 				for item in items {
 					for b in &item.blocks {
@@ -235,6 +280,27 @@ impl Block {
 				}
 			}
 			_ => {}
+		}
+	}
+
+	/// The state a `<details>` element with `id` declared in its source,
+	/// searching the containers it may be nested in.
+	pub fn details_declared(&self, id: u64) -> Option<bool> {
+		match &self.kind {
+			BlockKind::Details { open, blocks, .. } => {
+				if self.id == id {
+					return Some(*open);
+				}
+				blocks.iter().find_map(|b| b.details_declared(id))
+			}
+			BlockKind::Quote { blocks, .. }
+			| BlockKind::Footnote { blocks, .. } => {
+				blocks.iter().find_map(|b| b.details_declared(id))
+			}
+			BlockKind::List { items, .. } => items.iter().find_map(|item| {
+				item.blocks.iter().find_map(|b| b.details_declared(id))
+			}),
+			_ => None,
 		}
 	}
 }
@@ -277,6 +343,14 @@ fn semantic_key(kind: &BlockKind) -> u64 {
 			for item in items {
 				(item.checked, children(&item.blocks)).hash(&mut hash);
 			}
+		}
+		BlockKind::Details {
+			open,
+			ordinal: _,
+			summary,
+			blocks,
+		} => {
+			(open, rich(summary), children(blocks)).hash(&mut hash);
 		}
 		BlockKind::Table { align, rows } => {
 			align.hash(&mut hash);

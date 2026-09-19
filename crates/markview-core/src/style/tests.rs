@@ -823,3 +823,38 @@ fn targets_are_an_optional_nonempty_set_of_known_destinations() {
 		);
 	}
 }
+
+#[test]
+fn details_and_summary_conditions_are_styleable() {
+	let sheet = Stylesheet::parse(
+		"format_version=2\nversion=1\n\
+		 [[rule]]\nwhen=['details']\nbackground='#f0f0f0'\npadding=0.5\nborder_width=1.0\nradius=4.0\nspace_before=0.4\nspace_after=0.4\n\
+		 [[rule]]\nwhen=['summary']\ncolor='#333333'\nweight=600\nsize=0.95\n\
+		 [[rule]]\nwhen=['summary','hover']\ncolor='#000000'",
+	)
+	.unwrap();
+	let details = sheet.text(&TextAppearance::default(), Condition::Details);
+	let summary = sheet.text(&details, Condition::Summary);
+	assert!(chain_set(summary.chain).contains(Condition::Summary));
+	assert!(chain_set(summary.chain).contains(Condition::Details));
+	let rule = sheet.element_rule(details.chain, Condition::Details);
+	assert_eq!(rule.padding, Some(Padding::All(0.5)));
+	assert_eq!(rule.radius, Some(4.0));
+	assert_eq!(rule.border_width, Some(1.0));
+	assert_eq!(summary.weight, 600);
+	assert_eq!(summary.size, 0.95);
+	assert_eq!(
+		sheet.resolve(summary.chain, ColorField::Color),
+		Color(0x333333ff).rgba()
+	);
+	// Unknown or container-only fields stay errors under both conditions.
+	for bad in [
+		"format_version=2\nversion=1\n[[rule]]\nwhen=['details']\ntrack='#000000'",
+		"format_version=2\nversion=1\n[[rule]]\nwhen=['details']\nshape='disc'",
+		"format_version=2\nversion=1\n[[rule]]\nwhen=['summary']\npadding=1.0",
+		"format_version=2\nversion=1\n[[rule]]\nwhen=['summary']\ntrack='#000000'",
+		"format_version=2\nversion=1\n[[rule]]\nwhen=['summary']\nnumbering='1.'",
+	] {
+		assert!(Stylesheet::parse(bad).is_err(), "{bad}");
+	}
+}

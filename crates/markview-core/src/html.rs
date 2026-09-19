@@ -64,6 +64,229 @@ pub enum Block {
 	Unsupported,
 }
 
+/// A `<details>` element found in a raw HTML block.
+///
+/// Comrak ends a type-6 HTML block at a blank line, so the common multi-block
+/// form arrives as an opening block followed by ordinary Markdown blocks. The
+/// caller decides how much of that sequence the element owns.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum Details {
+	/// The block opens an element whose content continues in later blocks.
+	Open {
+		/// The source declared the element initially expanded.
+		open: bool,
+		/// The raw inner text of the `<summary>` element, if this block has one.
+		summary: Option<String>,
+		/// Raw text after the summary, which becomes the first body content.
+		lead: String,
+		/// How many elements the block itself leaves open, counting nested
+		/// openers the closing scan must still match.
+		depth: usize,
+	},
+	/// The block contains a complete `<details>...</details>` element.
+	Inline {
+		open: bool,
+		summary: Option<String>,
+		body: String,
+		/// Raw source after the matching close tag. Comrak can keep adjacent
+		/// elements in one block, so the caller parses this as further blocks
+		/// rather than dropping them.
+		rest: String,
+	},
+	/// A block that is nothing but a closing `</details>`.
+	Close,
+	/// Not a `<details>` element; keep the existing block fallback.
+	No,
+}
+
+/// Classify one raw HTML block as part of a `<details>` element.
+pub fn details(source: &str) -> Details {
+	let text = source.trim();
+	let Some(len) = tag_len(text) else {
+		return Details::No;
+	};
+	let Some((name, attrs, closing)) = tag_parts(&text[..len]) else {
+		return Details::No;
+	};
+	if closing {
+		return if name == "details" && text[len..].trim().is_empty() {
+			Details::Close
+		} else {
+			Details::No
+		};
+	}
+	if name != "details" {
+		return Details::No;
+	}
+	let open = has_attribute(attrs, "open");
+	let rest = &text[len..];
+	let (summary, lead) = match summary_at(rest) {
+		Some((inner, after)) => (Some(inner.to_string()), after),
+		None => (None, rest),
+	};
+	// The element itself is open; nested openers in the lead are already open
+	// too, so the closing scan must start from that depth.
+	let (depth, close) = close_tag(lead, 1);
+	match close {
+		Some(close) => Details::Inline {
+			open,
+			summary,
+			body: lead[..close.start].to_string(),
+			rest: lead[close.end..].to_string(),
+		},
+		None => Details::Open {
+			open,
+			summary,
+			lead: lead.to_string(),
+			depth,
+		},
+	}
+}
+
+/// The name, remaining attributes and closing flag of one `<...>` tag.
+fn tag_parts(tag: &str) -> Option<(String, &str, bool)> {
+	let body = tag.strip_prefix('<')?.strip_suffix('>')?.trim();
+	let closing = body.starts_with('/');
+	let body = if closing {
+		body[1..].trim_start()
+	} else {
+		body
+	};
+	let name = tag_name(body);
+	if name.is_empty() {
+		return None;
+	}
+	Some((name.to_ascii_lowercase(), &body[name.len()..], closing))
+}
+
+/// Every `<...>` tag in `source`, as `(start, length)`.
+fn tags(source: &str) -> impl Iterator<Item = (usize, usize)> + '_ {
+	let mut at = 0;
+	std::iter::from_fn(move || {
+		while at < source.len() {
+			let open = source[at..].find('<')? + at;
+			match tag_len(&source[open..]) {
+				Some(len) => {
+					at = open + len;
+					return Some((open, len));
+				}
+				None => at = open + 1,
+			}
+		}
+		None
+	})
+}
+
+/// The inner text of the element's own first `<summary>` and what follows it.
+///
+/// Only a direct child counts: a `<summary>` inside a nested element, or one
+/// that appears after this element's closing tag, belongs to another element
+/// and must not be adopted.
+fn summary_at(source: &str) -> Option<(&str, &str)> {
+	let mut depth = 0;
+	let mut inner = None;
+	for (start, len) in tags(source) {
+		let Some((name, attrs, closing)) =
+			tag_parts(&source[start..start + len])
+		else {
+			continue;
+		};
+		if name == "details" && !attrs.trim_end().ends_with('/') {
+			if closing {
+				if depth == 0 {
+					// The element closed without declaring a summary.
+					return None;
+				}
+				depth -= 1;
+			} else {
+				depth += 1;
+			}
+			continue;
+		}
+		if depth > 0 {
+			continue;
+		}
+		if name == "summary" && !closing {
+			inner = inner.or(Some(start + len));
+		} else if name == "summary" && closing && inner.is_some() {
+			let inner = inner.unwrap();
+			return Some((&source[inner..start], &source[start + len..]));
+		}
+	}
+	None
+}
+
+/// Scans one raw HTML block for the `</details>` tag that closes the element
+/// opened before it. `depth` is how many elements are already open, so tags
+/// that share a block are counted individually. Returns the depth left open
+/// and, when the element closes inside the block, the closing tag's range.
+pub fn close_tag(
+	source: &str,
+	mut depth: usize,
+) -> (usize, Option<std::ops::Range<usize>>) {
+	for (start, len) in tags(source) {
+		let Some((name, attrs, closing)) =
+			tag_parts(&source[start..start + len])
+		else {
+			continue;
+		};
+		if name != "details" || attrs.trim_end().ends_with('/') {
+			continue;
+		}
+		if closing {
+			depth -= 1;
+			if depth == 0 {
+				return (depth, Some(start..start + len));
+			}
+		} else {
+			depth += 1;
+		}
+	}
+	(depth, None)
+}
+
+/// Whether an attribute is present, with or without a value. `open` is the one
+/// attribute `<details>` interprets, and it may be bare.
+fn has_attribute(attrs: &str, name: &str) -> bool {
+	let mut rest = attrs;
+	loop {
+		// A trailing `/` of a self-closing tag is a separator, so trimming it
+		// can leave nothing to read.
+		rest = rest.trim_start().trim_start_matches('/');
+		if rest.is_empty() {
+			return false;
+		}
+		let end = rest
+			.find(|c: char| c.is_whitespace() || c == '=')
+			.unwrap_or(rest.len());
+		if end == 0 {
+			rest = &rest[1..];
+			continue;
+		}
+		if rest[..end].eq_ignore_ascii_case(name) {
+			return true;
+		}
+		rest = rest[end..].trim_start();
+		let Some(value) = rest.strip_prefix('=') else {
+			continue;
+		};
+		rest = value.trim_start();
+		rest = match rest.chars().next() {
+			Some(quote @ ('"' | '\'')) => {
+				let body = &rest[1..];
+				match body.find(quote) {
+					Some(end) => &body[end + 1..],
+					None => "",
+				}
+			}
+			_ => {
+				let end = rest.find(char::is_whitespace).unwrap_or(rest.len());
+				&rest[end..]
+			}
+		};
+	}
+}
+
 #[derive(Clone, Debug, PartialEq, Eq)]
 enum Tag {
 	Image(crate::image::ImageSpec),
@@ -268,8 +491,13 @@ fn tag_name(body: &str) -> &str {
 /// Read one attribute value; `class`, `style` and the rest are simply ignored.
 fn attribute(attrs: &str, name: &str) -> Option<String> {
 	let mut rest = attrs;
-	while !rest.is_empty() {
+	loop {
+		// A trailing `/` of a self-closing tag is a separator, so trimming it
+		// can leave nothing to read.
 		rest = rest.trim_start().trim_start_matches('/');
+		if rest.is_empty() {
+			return None;
+		}
 		let end = rest
 			.find(|c: char| c.is_whitespace() || c == '=')
 			.unwrap_or(rest.len());
@@ -301,7 +529,6 @@ fn attribute(attrs: &str, name: &str) -> Option<String> {
 			return Some(html_escape::decode_html_entities(value).into_owned());
 		}
 	}
-	None
 }
 fn tokenize(source: &str) -> Vec<Token> {
 	let mut tokens = Vec::new();

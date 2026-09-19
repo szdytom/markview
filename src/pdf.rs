@@ -174,10 +174,12 @@ impl Exporter {
 			.context("--pdf requires --output out.pdf")?;
 		let stylesheet = styled(args.options.stylesheet.clone(), &args.page);
 		let geometry = PageGeometry::from_style(stylesheet.page())?;
-		// The page's text measure replaces the reader's reading column.
+		// The page's text measure replaces the reader's reading column, and a
+		// printed sheet shows every `<details>` body.
 		let options = LayoutOptions {
 			width: geometry.text_px().0,
 			codeblock_wrap: true,
+			force_open: true,
 			stylesheet,
 			..args.options.clone()
 		};

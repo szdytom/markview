@@ -200,7 +200,8 @@ fn collect<'a>(
 				out.push((key(language, text, theme), language, text));
 			}
 			BlockKind::Quote { blocks, .. }
-			| BlockKind::Footnote { blocks, .. } => collect(blocks, theme, out),
+			| BlockKind::Footnote { blocks, .. }
+			| BlockKind::Details { blocks, .. } => collect(blocks, theme, out),
 			BlockKind::List { items, .. } => {
 				for item in items {
 					collect(&item.blocks, theme, out);

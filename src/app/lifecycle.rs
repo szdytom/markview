@@ -93,9 +93,11 @@ impl ApplicationHandler<Event> for App {
 				if self.readers.session.path.as_ref() == Some(&path) =>
 			{
 				self.readers.session.content_version += 1;
-				// New content asks again before fetching every remote image.
+				// New content asks again before fetching every remote image,
+				// and `<details>` start from what the new source declares.
 				self.readers.session.load_all_images = false;
 				self.readers.session.remote_notice_dismissed = false;
+				self.readers.session.details_open = Default::default();
 				self.request(true);
 				// A watched export rebuilds from the same save.
 				self.schedule_watch_export(&path);

@@ -653,3 +653,575 @@ fn incremental_parse_keeps_unicode_space_lines_in_their_paragraph() {
 		"One\n\u{a0}\nTwo\n\nTHREE\n\nEnd\n",
 	);
 }
+
+/// The summary rich text and body blocks of the only `<details>` in `doc`.
+fn details(document: &Document) -> (bool, String, &[Block]) {
+	let BlockKind::Details {
+		open,
+		summary,
+		blocks,
+		..
+	} = &document.blocks[0].kind
+	else {
+		panic!("expected a details block")
+	};
+	(*open, plain_text(summary), blocks)
+}
+
+#[test]
+fn details_inline_form() {
+	let doc = parse("<details><summary>Title</summary>Body</details>\n");
+	assert_eq!(doc.blocks.len(), 1);
+	let (open, summary, blocks) = details(&doc);
+	assert!(!open);
+	assert_eq!(summary, "Title");
+	assert_eq!(blocks.len(), 1);
+	let BlockKind::Paragraph(body) = &blocks[0].kind else {
+		panic!("expected a paragraph body")
+	};
+	assert_eq!(plain_text(body), "Body");
+}
+
+#[test]
+fn details_multiblock_body_is_markdown() {
+	let doc = parse(
+		"<details>\n<summary>More</summary>\n\nMarkdown **body** with a list:\n\n- one\n- two\n\n</details>\n",
+	);
+	assert_eq!(doc.blocks.len(), 1);
+	let (open, summary, blocks) = details(&doc);
+	assert!(!open);
+	assert_eq!(summary, "More");
+	assert!(matches!(&blocks[0].kind, BlockKind::Paragraph(p)
+			if p.iter().any(|i| i.style.bold)));
+	assert!(
+		matches!(&blocks[1].kind, BlockKind::List { items, .. } if items.len() == 2)
+	);
+}
+
+#[test]
+fn details_open_attribute_starts_expanded() {
+	let doc = parse(
+		"<details open>\n<summary>More</summary>\n\nBody\n\n</details>\n",
+	);
+	let (open, summary, blocks) = details(&doc);
+	assert!(open);
+	assert_eq!(summary, "More");
+	assert_eq!(blocks.len(), 1);
+}
+
+#[test]
+fn details_nest() {
+	let doc = parse(
+		"<details>\n<summary>Outer</summary>\n\n<details>\n<summary>Inner</summary>\n\nDeep\n\n</details>\n\n</details>\n",
+	);
+	assert_eq!(doc.blocks.len(), 1);
+	let (_, summary, blocks) = details(&doc);
+	assert_eq!(summary, "Outer");
+	assert_eq!(blocks.len(), 1);
+	let BlockKind::Details {
+		summary,
+		blocks,
+		open,
+		..
+	} = &blocks[0].kind
+	else {
+		panic!("expected a nested details block")
+	};
+	assert!(!open);
+	assert_eq!(plain_text(summary), "Inner");
+	assert_eq!(blocks.len(), 1);
+	let BlockKind::Paragraph(deep) = &blocks[0].kind else {
+		panic!("expected the nested body")
+	};
+	assert_eq!(plain_text(deep), "Deep");
+}
+
+#[test]
+fn nested_openers_in_the_opening_block_still_nest() {
+	// Outer and inner open before the first blank line, so the closing scan
+	// must start at the depth the opening block already left; otherwise the
+	// outer element ends at the inner closing tag.
+	let doc = parse(
+		"<details>\n<summary>Outer</summary>\n<details>\n<summary>Inner</summary>\n\nDeep\n\n</details>\n</details>\n",
+	);
+	assert_eq!(doc.blocks.len(), 1);
+	let (_, summary, blocks) = details(&doc);
+	assert_eq!(summary, "Outer");
+	assert_eq!(blocks.len(), 1);
+	let BlockKind::Details {
+		summary, blocks, ..
+	} = &blocks[0].kind
+	else {
+		panic!("expected the nested details")
+	};
+	assert_eq!(plain_text(summary), "Inner");
+	let BlockKind::Paragraph(deep) = &blocks[0].kind else {
+		panic!("expected the nested body")
+	};
+	assert_eq!(plain_text(deep), "Deep");
+}
+
+#[test]
+fn a_quoted_details_body_is_not_quoted_again() {
+	// Comrak strips the enclosing `>` markers from the opener and the closing
+	// tag, so the raw body between them must lose the same markers; otherwise
+	// the body becomes a quote inside the disclosure.
+	let doc = parse(
+		"> <details>\n> <summary>More</summary>\n>\n> Body\n>\n> </details>\n",
+	);
+	assert_eq!(doc.blocks.len(), 1);
+	let BlockKind::Quote { blocks, .. } = &doc.blocks[0].kind else {
+		panic!("expected the enclosing quote")
+	};
+	assert_eq!(blocks.len(), 1);
+	let BlockKind::Details {
+		summary, blocks, ..
+	} = &blocks[0].kind
+	else {
+		panic!("expected the details element")
+	};
+	assert_eq!(plain_text(summary), "More");
+	assert_eq!(blocks.len(), 1);
+	let BlockKind::Paragraph(body) = &blocks[0].kind else {
+		panic!("expected a direct paragraph body")
+	};
+	assert_eq!(plain_text(body), "Body");
+	// A quote written inside the body is still a quote.
+	let doc = parse(
+		"> <details>\n> <summary>More</summary>\n>\n> > Quoted\n>\n> </details>\n",
+	);
+	let BlockKind::Quote { blocks, .. } = &doc.blocks[0].kind else {
+		panic!("expected the enclosing quote")
+	};
+	let BlockKind::Details { blocks, .. } = &blocks[0].kind else {
+		panic!("expected the details element")
+	};
+	let BlockKind::Quote { blocks, .. } = &blocks[0].kind else {
+		panic!("expected the quote inside the body")
+	};
+	let BlockKind::Paragraph(quoted) = &blocks[0].kind else {
+		panic!("expected the quoted paragraph")
+	};
+	assert_eq!(plain_text(quoted), "Quoted");
+}
+
+#[test]
+fn a_details_body_resolves_document_wide_references() {
+	// The definition follows the closing tag, so a snippet parsed on its own
+	// would leave the reference as literal text.
+	let doc = parse(
+		"<details>\n<summary>Link</summary>\n\n[link][ref] and ![img][ref]\n\n</details>\n\n[ref]: https://example.com \"Title\"\n",
+	);
+	let (_, summary, blocks) = details(&doc);
+	assert_eq!(summary, "Link");
+	let BlockKind::Paragraph(body) = &blocks[0].kind else {
+		panic!("expected the body paragraph")
+	};
+	let link = body
+		.iter()
+		.find(|inline| inline.style.link.is_some())
+		.expect("the reference link");
+	assert_eq!(link.style.link.as_deref(), Some("https://example.com"));
+	let image = body
+		.iter()
+		.find_map(|inline| match &inline.kind {
+			InlineKind::Image(image) => Some(image),
+			_ => None,
+		})
+		.expect("the reference image");
+	assert_eq!(image.src, "https://example.com");
+	assert_eq!(image.alt, "img");
+}
+
+#[test]
+fn a_details_body_resolves_document_wide_footnotes() {
+	// A note defined after the closing tag must still number the body's
+	// reference, and the note block keeps the same number.
+	let doc = parse(
+		"<details>\n<summary>Note</summary>\n\nBody[^n]\n\n</details>\n\n[^n]: The note.\n",
+	);
+	let (_, _, blocks) = details(&doc);
+	let BlockKind::Paragraph(body) = &blocks[0].kind else {
+		panic!("expected the body paragraph")
+	};
+	assert!(
+		body.iter()
+			.any(|inline| matches!(inline.kind, InlineKind::FootnoteRef(1)))
+	);
+	let BlockKind::Footnote { label, .. } = &doc.blocks[1].kind else {
+		panic!("expected the note")
+	};
+	assert_eq!(label, "1");
+	// The body's note keeps the number the whole document gave it, not the
+	// first number the snippet alone would assign.
+	let doc = parse(
+		"First[^a]\n\n<details>\n<summary>Note</summary>\n\nBody[^b]\n\n</details>\n\n[^a]: A.\n[^b]: B.\n",
+	);
+	let BlockKind::Details { blocks, .. } = &doc.blocks[1].kind else {
+		panic!("expected the details element")
+	};
+	let BlockKind::Paragraph(body) = &blocks[0].kind else {
+		panic!("expected the body paragraph")
+	};
+	assert!(
+		body.iter()
+			.any(|inline| matches!(inline.kind, InlineKind::FootnoteRef(2)))
+	);
+	let BlockKind::Footnote { label, .. } = &doc.blocks[3].kind else {
+		panic!("expected the second note")
+	};
+	assert_eq!(label, "2");
+	// A note the body declares stays inside the disclosure, and a reference
+	// outside it resolves to that note.
+	let doc = parse(
+		"Outside[^n]\n\n<details>\n<summary>Note</summary>\n\n[^n]: Declared in the body.\n\n</details>\n",
+	);
+	let BlockKind::Paragraph(outside) = &doc.blocks[0].kind else {
+		panic!("expected the outside paragraph")
+	};
+	assert!(
+		outside
+			.iter()
+			.any(|inline| matches!(inline.kind, InlineKind::FootnoteRef(1)))
+	);
+	let BlockKind::Details { blocks, .. } = &doc.blocks[1].kind else {
+		panic!("expected the details element")
+	};
+	let BlockKind::Footnote { label, .. } = &blocks[0].kind else {
+		panic!("expected the declared note")
+	};
+	assert_eq!(label, "1");
+}
+
+#[test]
+fn unmatched_details_keeps_the_html_source() {
+	let doc = parse("<details>\n<summary>More</summary>\n\nBody\n");
+	let BlockKind::Code { language, text } = &doc.blocks[0].kind else {
+		panic!("expected the literal fallback")
+	};
+	assert_eq!(language, "HTML source");
+	assert!(text.contains("<summary>More</summary>"));
+	assert_eq!(doc.blocks.len(), 2);
+	let BlockKind::Paragraph(body) = &doc.blocks[1].kind else {
+		panic!("expected the body paragraph")
+	};
+	assert_eq!(plain_text(body), "Body");
+}
+
+#[test]
+fn stray_details_close_keeps_the_html_source() {
+	let doc = parse("</details>\n");
+	let BlockKind::Code { language, text } = &doc.blocks[0].kind else {
+		panic!("expected the literal fallback")
+	};
+	assert_eq!(language, "HTML source");
+	assert!(text.contains("</details>"));
+}
+
+#[test]
+fn details_id_is_stable_and_unique_per_element() {
+	let source = "<details>\n<summary>One</summary>\n\nA\n\n</details>\n\n<details>\n<summary>Two</summary>\n\nB\n\n</details>\n";
+	let doc = parse(source);
+	assert_eq!(doc.blocks.len(), 2);
+	let first = doc.blocks[0].id;
+	let second = doc.blocks[1].id;
+	assert_ne!(first, second);
+	// Re-parsing identical text keeps the identity, which the cache needs.
+	let again = parse(source);
+	assert_eq!(again.blocks[0].id, first);
+	assert_eq!(again.blocks[1].id, second);
+	assert_eq!(again.details_declared(first), Some(false));
+	assert_eq!(again.details_declared(second), Some(false));
+	assert_eq!(again.details_declared(first + 1), None);
+}
+
+#[test]
+fn identical_details_get_independent_identities() {
+	let source = "<details>\n<summary>Same</summary>\n\nBody\n\n</details>\n\n<details>\n<summary>Same</summary>\n\nBody\n\n</details>\n";
+	let doc = parse(source);
+	assert_eq!(doc.blocks.len(), 2);
+	assert_ne!(doc.blocks[0].id, doc.blocks[1].id);
+	// Identical reading content still shares its semantic layout identity.
+	assert_eq!(doc.blocks[0].content_key, doc.blocks[1].content_key);
+	let again = parse(source);
+	assert_eq!(again.blocks[0].id, doc.blocks[0].id);
+	assert_eq!(again.blocks[1].id, doc.blocks[1].id);
+}
+
+#[test]
+fn details_keeps_adjacent_elements_in_one_block() {
+	let doc = parse(
+		"<details><summary>One</summary>A</details>\n<details><summary>Two</summary>B</details>\n",
+	);
+	assert_eq!(doc.blocks.len(), 2);
+	let (_, first, _) = details(&doc);
+	assert_eq!(first, "One");
+	// The second element is parsed from the remainder of the same block.
+	let BlockKind::Details {
+		summary, blocks, ..
+	} = &doc.blocks[1].kind
+	else {
+		panic!("expected the second details block")
+	};
+	assert_eq!(plain_text(summary), "Two");
+	let BlockKind::Paragraph(body) = &blocks[0].kind else {
+		panic!("expected the second body")
+	};
+	assert_eq!(plain_text(body), "B");
+}
+
+#[test]
+fn an_inline_nested_details_keeps_the_outer_remainder() {
+	let doc = parse(
+		"<details>\n<summary>Outer</summary>\n<details><summary>Inner</summary>Deep</details>\nTail\n</details>\n",
+	);
+	assert_eq!(doc.blocks.len(), 1);
+	let (_, summary, blocks) = details(&doc);
+	assert_eq!(summary, "Outer");
+	assert_eq!(blocks.len(), 2);
+	let BlockKind::Details { summary, .. } = &blocks[0].kind else {
+		panic!("expected the nested details")
+	};
+	assert_eq!(plain_text(summary), "Inner");
+	let BlockKind::Paragraph(tail) = &blocks[1].kind else {
+		panic!("expected the text after the nested element")
+	};
+	assert_eq!(plain_text(tail), "Tail");
+}
+
+/// Every reading text of a block list, in document order, so a test can tell
+/// whether an element's content survived parsing.
+fn all_text(blocks: &[Block]) -> String {
+	let mut out = String::new();
+	for block in blocks {
+		match &block.kind {
+			BlockKind::Details {
+				summary, blocks, ..
+			} => {
+				out.push_str(&plain_text(summary));
+				out.push(' ');
+				out.push_str(&all_text(blocks));
+			}
+			BlockKind::Paragraph(text) | BlockKind::Heading { text, .. } => {
+				out.push_str(&plain_text(text));
+				out.push(' ');
+			}
+			BlockKind::Quote { blocks, .. }
+			| BlockKind::Footnote { blocks, .. } => {
+				out.push_str(&all_text(blocks));
+			}
+			BlockKind::List { items, .. } => {
+				for item in items {
+					out.push_str(&all_text(&item.blocks));
+				}
+			}
+			_ => {}
+		}
+	}
+	out
+}
+
+#[test]
+fn nested_details_render_when_their_closing_tags_share_a_block() {
+	// Comrak groups consecutive `</details>` lines into one HTML block; the
+	// tag scan must still tell which opener each close belongs to.
+	let doc = parse(
+		"<details>\n<summary>Outer</summary>\n\n<details>\n<summary>Inner</summary>\n\nDeep\n\n</details>\n</details>\n",
+	);
+	assert_eq!(doc.blocks.len(), 1);
+	let (_, summary, blocks) = details(&doc);
+	assert_eq!(summary, "Outer");
+	assert_eq!(blocks.len(), 1);
+	let BlockKind::Details {
+		summary, blocks, ..
+	} = &blocks[0].kind
+	else {
+		panic!("expected the nested details")
+	};
+	assert_eq!(plain_text(summary), "Inner");
+	let BlockKind::Paragraph(deep) = &blocks[0].kind else {
+		panic!("expected the nested body")
+	};
+	assert_eq!(plain_text(deep), "Deep");
+}
+
+#[test]
+fn an_inline_element_sharing_the_outer_close_block_still_nests() {
+	// The nested element and the outer closing tag arrive in one HTML block,
+	// so the outer body must end at the outer tag, not swallow the inner one.
+	let doc = parse(
+		"<details>\n<summary>Outer</summary>\n\n<details><summary>Inner</summary>Deep</details>\n</details>\n",
+	);
+	assert_eq!(doc.blocks.len(), 1);
+	let (_, summary, blocks) = details(&doc);
+	assert_eq!(summary, "Outer");
+	assert_eq!(blocks.len(), 1);
+	let BlockKind::Details {
+		summary, blocks, ..
+	} = &blocks[0].kind
+	else {
+		panic!("expected the nested details")
+	};
+	assert_eq!(plain_text(summary), "Inner");
+	let BlockKind::Paragraph(deep) = &blocks[0].kind else {
+		panic!("expected the nested body")
+	};
+	assert_eq!(plain_text(deep), "Deep");
+}
+
+#[test]
+fn content_after_a_closing_tag_is_kept() {
+	// The closing tag shares its block with trailing text, which is a sibling
+	// of the element and must not be dropped with the block.
+	let doc = parse(
+		"<details>\n<summary>Outer</summary>\n\nBody\n\n</details> trailing\n",
+	);
+	assert_eq!(doc.blocks.len(), 2);
+	let (_, summary, blocks) = details(&doc);
+	assert_eq!(summary, "Outer");
+	let BlockKind::Paragraph(body) = &blocks[0].kind else {
+		panic!("expected the body")
+	};
+	assert_eq!(plain_text(body), "Body");
+	let BlockKind::Paragraph(tail) = &doc.blocks[1].kind else {
+		panic!("expected the trailing text")
+	};
+	assert_eq!(plain_text(tail), "trailing");
+}
+
+#[test]
+fn a_summary_belongs_to_its_own_details_element() {
+	// The first element is complete and has no summary; the second element's
+	// summary must not be adopted by it, and `A` must survive.
+	let doc = parse(
+		"<details>A</details>\n<details><summary>B</summary>C</details>\n",
+	);
+	assert_eq!(doc.blocks.len(), 2);
+	let (_, summary, blocks) = details(&doc);
+	assert_eq!(summary, "");
+	let BlockKind::Paragraph(a) = &blocks[0].kind else {
+		panic!("expected the first body")
+	};
+	assert_eq!(plain_text(a), "A");
+	let BlockKind::Details {
+		summary, blocks, ..
+	} = &doc.blocks[1].kind
+	else {
+		panic!("expected the second details")
+	};
+	assert_eq!(plain_text(summary), "B");
+	let BlockKind::Paragraph(c) = &blocks[0].kind else {
+		panic!("expected the second body")
+	};
+	assert_eq!(plain_text(c), "C");
+}
+
+#[test]
+fn a_nested_summary_is_not_the_outer_summary() {
+	let doc = parse(
+		"<details><details><summary>Inner</summary>Deep</details>Tail</details>\n",
+	);
+	let (_, summary, blocks) = details(&doc);
+	assert_eq!(summary, "");
+	assert_eq!(blocks.len(), 2);
+	let BlockKind::Details {
+		summary,
+		blocks: inner,
+		..
+	} = &blocks[0].kind
+	else {
+		panic!("expected the nested details")
+	};
+	assert_eq!(plain_text(summary), "Inner");
+	let BlockKind::Paragraph(deep) = &inner[0].kind else {
+		panic!("expected the nested body")
+	};
+	assert_eq!(plain_text(deep), "Deep");
+	let BlockKind::Paragraph(tail) = &blocks[1].kind else {
+		panic!("expected the tail")
+	};
+	assert_eq!(plain_text(tail), "Tail");
+}
+
+#[test]
+fn nested_and_adjacent_details_never_merge_or_drop_content() {
+	for (source, fragments) in [
+		(
+			"<details><summary>O</summary>A<details><summary>I</summary>B</details>C</details>\n",
+			vec!["O", "A", "I", "B", "C"],
+		),
+		(
+			"<details>\n<summary>O</summary>\n\n<details>\n<summary>I</summary>\n\nB\n\n</details>\n</details>\n",
+			vec!["O", "I", "B"],
+		),
+		(
+			"<details>A</details>\n<details><summary>B</summary>C</details>\n",
+			vec!["A", "B", "C"],
+		),
+		(
+			"<details>\n<summary>O</summary>\n\nBody\n\n</details> tail\n",
+			vec!["O", "Body", "tail"],
+		),
+		(
+			"<details>\n<summary>O</summary>\n\n<details><summary>I</summary>B</details>C\n\n</details>\n",
+			vec!["O", "I", "B", "C"],
+		),
+		(
+			"<details>\n<summary>O</summary>\nLead\n\nBody\n\n</details>\n",
+			vec!["O", "Lead", "Body"],
+		),
+		(
+			"<details>\n<summary>A</summary>\n\n<details>\n<summary>B</summary>\n\n<details>\n<summary>C</summary>\n\nDeep\n\n</details>\n</details>\n</details>\n",
+			vec!["A", "B", "C", "Deep"],
+		),
+	] {
+		let doc = parse(source);
+		let text = all_text(&doc.blocks);
+		for fragment in fragments {
+			assert!(
+				text.contains(fragment),
+				"{source:?}: {fragment:?} missing from {text:?}"
+			);
+		}
+		// No element fell back to literal HTML source.
+		assert!(
+			!has_html_source(&doc.blocks),
+			"{source:?}: literal HTML remained"
+		);
+	}
+}
+
+/// Whether any block in the tree is the literal raw-HTML fallback.
+fn has_html_source(blocks: &[Block]) -> bool {
+	blocks.iter().any(|block| match &block.kind {
+		BlockKind::Code { language, .. } => language == "HTML source",
+		BlockKind::Details { blocks, .. }
+		| BlockKind::Quote { blocks, .. }
+		| BlockKind::Footnote { blocks, .. } => has_html_source(blocks),
+		BlockKind::List { items, .. } => {
+			items.iter().any(|item| has_html_source(&item.blocks))
+		}
+		_ => false,
+	})
+}
+
+#[test]
+fn many_adjacent_details_do_not_reach_the_nesting_limit() {
+	// Adjacent elements are siblings, so a long run must not charge each one
+	// the nesting budget; the default limit is 256.
+	let count = 400;
+	let mut source = String::new();
+	for i in 0..count {
+		source.push_str(&format!(
+			"<details><summary>S{i}</summary>B{i}</details>\n"
+		));
+	}
+	let doc = parse(source.as_str());
+	assert_eq!(doc.blocks.len(), count);
+	for (i, block) in doc.blocks.iter().enumerate() {
+		let BlockKind::Details { summary, .. } = &block.kind else {
+			panic!("element {i} rendered as {:?}", block.kind)
+		};
+		assert_eq!(plain_text(summary), format!("S{i}"));
+	}
+}

@@ -21,6 +21,7 @@ pub enum Condition {
 	Enum,
 	Table,
 	Footnote,
+	Details,
 	CodeBlock,
 	ListItem,
 	Hr,
@@ -42,6 +43,7 @@ pub enum Condition {
 	TaskMarker,
 	Caption,
 	Placeholder,
+	Summary,
 	Toolbar,
 	Statusbar,
 	Panel,
@@ -71,6 +73,7 @@ impl Condition {
 		(Self::Enum, "enum"),
 		(Self::Table, "table"),
 		(Self::Footnote, "footnote"),
+		(Self::Details, "details"),
 		(Self::CodeBlock, "code_block"),
 		(Self::ListItem, "list_item"),
 		(Self::Hr, "hr"),
@@ -92,6 +95,7 @@ impl Condition {
 		(Self::TaskMarker, "task_marker"),
 		(Self::Caption, "caption"),
 		(Self::Placeholder, "placeholder"),
+		(Self::Summary, "summary"),
 		(Self::Toolbar, "toolbar"),
 		(Self::Statusbar, "statusbar"),
 		(Self::Panel, "panel"),
@@ -134,6 +138,8 @@ impl Condition {
 			ListItem => chain_of(&[Body, ListItem]),
 			Table => chain_of(&[Body, Table]),
 			Footnote => chain_of(&[Body, Footnote]),
+			Details => chain_of(&[Body, Details]),
+			Summary => chain_of(&[Body, Details, Summary]),
 			CodeBlock => chain_of(&[Body, CodeBlock]),
 			Hr => chain_of(&[Body, Hr]),
 			P => chain_of(&[Body, P]),
@@ -206,6 +212,7 @@ impl Condition {
 				| Self::List | Self::Enum
 				| Self::ListItem
 				| Self::Footnote
+				| Self::Details
 				| Self::CodeBlock
 				| Self::Table
 				| Self::Cell

@@ -59,6 +59,7 @@ pub(crate) fn layout_options(
 		font_size: settings.font_size,
 		paragraph_indent: settings.paragraph_indent,
 		codeblock_wrap: true,
+		force_open: true,
 		stylesheet,
 		fonts,
 		..Default::default()

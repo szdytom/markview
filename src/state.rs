@@ -5,7 +5,7 @@ use crate::{
 };
 use markview_core::text::{TextCounts, TextSelection};
 use std::{
-	collections::HashMap,
+	collections::{BTreeMap, HashMap},
 	path::PathBuf,
 	sync::Arc,
 	time::{Duration, Instant},
@@ -100,6 +100,9 @@ pub(crate) struct ReaderSession {
 	pub(crate) content_version: u64,
 	pub(crate) document: Option<Arc<document::Document>>,
 	pub(crate) requested_options: Option<LayoutOptions>,
+	/// Reader-chosen `<details>` collapse state, keyed by block id, overriding
+	/// what the source declared. It is layout input, and a reload drops it.
+	pub(crate) details_open: Arc<BTreeMap<u64, bool>>,
 	pub(crate) scroll: f32,
 	pub(crate) horizontal: HashMap<(usize, usize), f32>,
 	pub(crate) follow_update: bool,
@@ -435,6 +438,18 @@ impl InteractionState {
 		self.dragged = false;
 		self.focus = None;
 		true
+	}
+	/// Starts a press that has no text under it, so only a link-like target
+	/// can activate on release. A `<details>` marker is such a target.
+	pub(crate) fn begin_link_press(&mut self, link: String) {
+		self.pointer_down = Some(Drag {
+			start: self.cursor,
+			link: Some(link),
+			grain: Grain::Char,
+			base: None,
+		});
+		self.dragged = false;
+		self.focus = None;
 	}
 	pub(crate) fn move_selection(
 		&mut self,

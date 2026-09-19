@@ -33,6 +33,25 @@ fn reading_time(words: usize) -> usize {
 
 A compact formula: $e^{i\pi}+1=0$. A note for later.[^note]
 
+<details>
+<summary>More on this example / 展开更多</summary>
+
+A collapsible element keeps a long aside out of the way, and its body is
+ordinary Markdown: **emphasis**, `inline_code()`, and lists all work.
+
+- first
+- second
+
+</details>
+
+<details open>
+<summary>An open element starts expanded</summary>
+
+The reader can collapse it again. The choice survives a font-size or column
+change, and a reload starts from the source again.
+
+</details>
+
 ---
 
 ![A deliberately unavailable image](theme-preview-missing.png "Image caption / 图注")

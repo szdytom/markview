@@ -144,3 +144,63 @@ fn a_page_wider_than_the_gpu_limit_is_refused() {
 		.to_string();
 	assert!(error.contains("wide"), "{error}");
 }
+
+#[test]
+fn an_export_shows_every_details_body() {
+	let dir = tempfile::tempdir().unwrap();
+	let path = dir.path().join("doc.md");
+	std::fs::write(
+		&path,
+		"<details>\n<summary>More</summary>\n\nHidden body.\n\n</details>\n",
+	)
+	.unwrap();
+	let sheet = export_stylesheet(&[], CjkType::Sc, &[]).unwrap();
+	let options = layout_options(
+		&settings(ExportFormat::Png),
+		400.0,
+		sheet,
+		crate::test_support::fonts(),
+	);
+	assert!(options.force_open);
+	let snapshot = png_snapshot(&path, options, true).unwrap();
+	let text = snapshot
+		.select_all(1)
+		.map(|selection| snapshot.extract_text(selection, 1))
+		.unwrap_or_default();
+	assert!(text.contains("Hidden body"), "{text}");
+	// A printed page has no pointer, so no summary hit region is drawn.
+	assert!(
+		snapshot
+			.blocks
+			.iter()
+			.all(|block| block.layout.links.is_empty())
+	);
+}
+
+#[test]
+fn a_pdf_shows_every_details_body() {
+	let dir = tempfile::tempdir().unwrap();
+	let path = dir.path().join("doc.md");
+	let output = dir.path().join("doc.pdf");
+	let mut source = String::from("<details>\n<summary>Long</summary>\n\n");
+	for i in 0..120 {
+		source.push_str(&format!("Paragraph {i} of the collapsed body.\n\n"));
+	}
+	source.push_str("</details>\n");
+	std::fs::write(&path, source).unwrap();
+	let args = pdf_launch(
+		path.clone(),
+		output.clone(),
+		&ExportSettings::default(),
+		crate::test_support::fonts(),
+		CjkType::Sc,
+		&[],
+		false,
+	)
+	.unwrap();
+	assert!(args.options.force_open);
+	let stats = crate::pdf::export_once(&path, &args).unwrap();
+	// A collapsed body would need exactly one page.
+	assert!(stats.pages > 1, "{} pages", stats.pages);
+	assert!(std::fs::read(&output).unwrap().starts_with(b"%PDF"));
+}

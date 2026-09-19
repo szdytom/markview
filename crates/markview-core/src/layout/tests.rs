@@ -2580,3 +2580,343 @@ fn syntax_colors_settle_without_thrashing_the_block_cache() {
 	assert_eq!(engine.layout(&doc, &opts).reused, 0);
 	assert_eq!(engine.layout(&doc, &opts).reused, doc.blocks.len());
 }
+
+/// Layout options that force the `<details>` block with `id` to `open`.
+fn with_details(
+	mut options: LayoutOptions,
+	id: u64,
+	open: bool,
+) -> LayoutOptions {
+	let mut map = std::collections::BTreeMap::new();
+	map.insert(id, open);
+	options.details_open = Arc::new(map);
+	options
+}
+
+/// Every reading text node of a snapshot, in document order.
+fn reading_text(snapshot: &LayoutSnapshot) -> String {
+	let Some(selection) = snapshot.select_all(1) else {
+		return String::new();
+	};
+	snapshot.extract_text(selection, 1)
+}
+
+const DETAILS_DOC: &str = "<details>\n<summary>More</summary>\n\nHidden **body** text here.\n\n</details>\n\nAfter.\n";
+
+#[test]
+fn collapsed_details_lays_out_no_body() {
+	let doc = document::parse(DETAILS_DOC);
+	let id = doc.blocks[0].id;
+	let mut engine = LayoutEngine::new();
+	let collapsed = engine.layout(&doc, &LayoutOptions::default());
+	assert!(reading_text(&collapsed).contains("More"));
+	assert!(!reading_text(&collapsed).contains("Hidden"));
+	assert!(
+		collapsed.blocks[0]
+			.layout
+			.text
+			.iter()
+			.all(|node| !node.text.contains("Hidden"))
+	);
+	let expanded =
+		engine.layout(&doc, &with_details(LayoutOptions::default(), id, true));
+	assert!(reading_text(&expanded).contains("Hidden"));
+	assert!(expanded.height > collapsed.height);
+}
+
+#[test]
+fn details_toggle_is_stable_and_reuses_other_blocks() {
+	let doc = document::parse(DETAILS_DOC);
+	let id = doc.blocks[0].id;
+	let closed = LayoutOptions::default();
+	let mut engine = LayoutEngine::new();
+	let collapsed = engine.layout(&doc, &closed);
+	let expanded = engine.layout(&doc, &with_details(closed.clone(), id, true));
+	// Only the toggled block is re-laid out; the block after it is reused.
+	assert_eq!(expanded.reused, 1);
+	let again = engine.layout(&doc, &closed);
+	assert_eq!(again.height, collapsed.height);
+	assert_eq!(reading_text(&again), reading_text(&collapsed));
+	let reopened = engine.layout(&doc, &with_details(closed, id, true));
+	assert_eq!(reopened.height, expanded.height);
+}
+
+#[test]
+fn details_summary_is_hit_testable_but_the_body_is_not() {
+	let doc = document::parse(DETAILS_DOC);
+	let id = doc.blocks[0].id;
+	let url = document::details_url(id);
+	let none = HashMap::new();
+	let mut engine = LayoutEngine::new();
+	let collapsed = engine.layout(&doc, &LayoutOptions::default());
+	let block = &collapsed.blocks[0];
+	assert_eq!(collapsed.blocks[0].layout.links.len(), 1);
+	let hit = block.layout.links[0].rect;
+	assert_eq!(
+		collapsed.link_at(hit.x + 1.0, block.y + hit.y + 1.0, &none),
+		Some(url.as_str())
+	);
+	// A collapsed element is only its summary line, so nothing below it hits.
+	assert_eq!(
+		collapsed.link_at(100.0, block.y + block.layout.height + 4.0, &none),
+		None
+	);
+	let expanded =
+		engine.layout(&doc, &with_details(LayoutOptions::default(), id, true));
+	let block = &expanded.blocks[0];
+	let hit = block.layout.links[0].rect;
+	assert_eq!(
+		expanded.link_at(hit.x + 1.0, block.y + hit.y + 1.0, &none),
+		Some(url.as_str())
+	);
+	assert_eq!(
+		expanded.link_at(100.0, block.y + block.layout.height - 2.0, &none),
+		None
+	);
+}
+
+#[test]
+fn anchors_after_a_collapsed_details_resolve() {
+	let doc = document::parse(
+		"<details>\n<summary>More</summary>\n\nHidden body.\n\n</details>\n\n# Later\n",
+	);
+	let id = doc.blocks[0].id;
+	let mut engine = LayoutEngine::new();
+	let collapsed = engine.layout(&doc, &LayoutOptions::default());
+	assert_eq!(collapsed.blocks.len(), 2);
+	let at = collapsed.anchor_y("later").expect("the heading follows");
+	assert!(at >= collapsed.blocks[1].y);
+	let expanded =
+		engine.layout(&doc, &with_details(LayoutOptions::default(), id, true));
+	assert!(expanded.anchor_y("later").unwrap() > at);
+	// The heading sits inside the body it is nested in, not after it.
+	assert!(collapsed.blocks.iter().all(|block| {
+		block.layout.anchors.iter().all(|a| a.anchor != "nested")
+	}));
+}
+
+#[test]
+fn a_details_open_attribute_starts_expanded() {
+	let doc = document::parse(
+		"<details open>\n<summary>More</summary>\n\nShown body.\n\n</details>\n",
+	);
+	let id = doc.blocks[0].id;
+	let mut engine = LayoutEngine::new();
+	let snapshot = engine.layout(&doc, &LayoutOptions::default());
+	assert!(reading_text(&snapshot).contains("Shown body"));
+	// The reader can override the source and collapse it again.
+	let collapsed =
+		engine.layout(&doc, &with_details(LayoutOptions::default(), id, false));
+	assert!(!reading_text(&collapsed).contains("Shown body"));
+	assert!(collapsed.height < snapshot.height);
+}
+
+#[test]
+fn nested_details_toggle_invalidates_its_container() {
+	let doc = document::parse(
+		"<details open>\n<summary>Outer</summary>\n\n<details><summary>Inner</summary>Deep</details>\n\n</details>\n\nAfter.\n",
+	);
+	let document::BlockKind::Details { blocks, .. } = &doc.blocks[0].kind
+	else {
+		panic!("expected the outer details")
+	};
+	let inner = blocks[0].id;
+	let mut engine = LayoutEngine::new();
+	let collapsed = engine.layout(&doc, &LayoutOptions::default());
+	assert!(!reading_text(&collapsed).contains("Deep"));
+	let expanded = engine
+		.layout(&doc, &with_details(LayoutOptions::default(), inner, true));
+	assert!(reading_text(&expanded).contains("Deep"));
+	assert!(expanded.height > collapsed.height);
+	// The container that frames the toggled element is laid out again; only
+	// the trailing block is reused.
+	assert_eq!(expanded.reused, 1);
+}
+
+#[test]
+fn identical_details_toggle_independently() {
+	let source = "<details>\n<summary>Same</summary>\n\nBody\n\n</details>\n\n<details>\n<summary>Same</summary>\n\nBody\n\n</details>\n";
+	let doc = document::parse(source);
+	let first = doc.blocks[0].id;
+	let second = doc.blocks[1].id;
+	assert_ne!(first, second);
+	let mut engine = LayoutEngine::new();
+	let one = engine
+		.layout(&doc, &with_details(LayoutOptions::default(), first, true));
+	assert_eq!(reading_text(&one).matches("Body").count(), 1);
+	// Matching states no longer share geometry: each element's identity is
+	// part of the key, because the placed links bind a summary to its own id.
+	let both = LayoutOptions {
+		details_open: Arc::new(
+			[(first, true), (second, true)].into_iter().collect(),
+		),
+		..Default::default()
+	};
+	let same = engine.layout(&doc, &both);
+	assert_eq!(reading_text(&same).matches("Body").count(), 2);
+	assert_eq!(same.reused, 1);
+	// A second pass with the same states reuses both, now that each has its
+	// own entry.
+	assert_eq!(engine.layout(&doc, &both).reused, 2);
+}
+
+#[test]
+fn identical_details_links_point_at_the_element_that_was_hit() {
+	let source = "<details>\n<summary>Same</summary>\n\nBody\n\n</details>\n\n<details>\n<summary>Same</summary>\n\nBody\n\n</details>\n";
+	let doc = document::parse(source);
+	let mut engine = LayoutEngine::new();
+	let options = LayoutOptions {
+		details_open: Arc::new(
+			[(doc.blocks[0].id, true), (doc.blocks[1].id, true)]
+				.into_iter()
+				.collect(),
+		),
+		..Default::default()
+	};
+	let snapshot = engine.layout(&doc, &options);
+	let empty = HashMap::new();
+	for (i, block) in snapshot.blocks.iter().enumerate() {
+		let link = block
+			.layout
+			.links
+			.iter()
+			.find(|link| link.url.starts_with(document::DETAILS_SCHEME))
+			.unwrap_or_else(|| panic!("block {i} has no summary link"));
+		assert_eq!(document::details_id(&link.url), Some(doc.blocks[i].id));
+		let rect = link.rect;
+		let hit = snapshot.link_at(
+			rect.x + rect.w * 0.5,
+			block.y + rect.y + rect.h * 0.5,
+			&empty,
+		);
+		assert_eq!(
+			hit.and_then(document::details_id),
+			Some(doc.blocks[i].id),
+			"clicking block {i} must toggle block {i}"
+		);
+	}
+}
+
+#[test]
+fn identical_nested_details_bind_their_own_summaries() {
+	let source = "<details open>\n<summary>Outer</summary>\n\n<details open><summary>Inner</summary>Deep</details>\n\n</details>\n\n<details open>\n<summary>Outer</summary>\n\n<details open><summary>Inner</summary>Deep</details>\n\n</details>\n";
+	let doc = document::parse(source);
+	let nested = |i: usize| {
+		let document::BlockKind::Details { blocks, .. } = &doc.blocks[i].kind
+		else {
+			panic!("expected an outer details")
+		};
+		blocks[0].id
+	};
+	let snapshot = LayoutEngine::new().layout(&doc, &LayoutOptions::default());
+	for i in [0, 1] {
+		let urls: Vec<&str> = snapshot.blocks[i]
+			.layout
+			.links
+			.iter()
+			.map(|link| link.url.as_str())
+			.collect();
+		let own = document::details_url(doc.blocks[i].id);
+		let inner = document::details_url(nested(i));
+		let other = document::details_url(nested(1 - i));
+		assert!(urls.contains(&own.as_str()), "{urls:?}");
+		assert!(urls.contains(&inner.as_str()), "{urls:?}");
+		assert!(!urls.contains(&other.as_str()), "{urls:?}");
+	}
+}
+
+#[test]
+fn a_details_body_does_not_inherit_the_summary_appearance() {
+	let mut sheet = (*crate::style::Stylesheet::bundled(false)).clone();
+	sheet.merge(
+		&crate::style::Stylesheet::parse(
+			"format_version=2\nversion=1\n[[rule]]\nwhen=['summary']\nsize=2.0",
+		)
+		.unwrap(),
+	);
+	let options = LayoutOptions {
+		stylesheet: Arc::new(sheet),
+		..Default::default()
+	};
+	let doc = document::parse(
+		"<details open>\n<summary>Head</summary>\n\nBody text.\n\n</details>\n",
+	);
+	let snapshot = LayoutEngine::new().layout(&doc, &options);
+	let sizes: Vec<f32> = snapshot.blocks[0]
+		.layout
+		.draws
+		.iter()
+		.filter_map(|draw| match draw {
+			Draw::Glyph(glyph) => Some(glyph.size),
+			_ => None,
+		})
+		.collect();
+	assert!(sizes.contains(&36.0), "summary size missing: {sizes:?}");
+	assert!(sizes.contains(&18.0), "body size missing: {sizes:?}");
+}
+
+#[test]
+fn disclosure_hover_ranges_are_ordered_and_bounded() {
+	/// The draw commands the renderer marks hovered for `url`.
+	fn hovered(layout: &BlockLayout, url: &str) -> Vec<usize> {
+		(0..layout.draws.len())
+			.filter(|&i| {
+				layout.links.iter().enumerate().any(|(n, link)| {
+					link.url == url
+						&& link.command <= i
+						&& layout
+							.links
+							.get(n + 1)
+							.map_or(i < layout.draws.len(), |next| {
+								i < next.command
+							})
+				})
+			})
+			.collect()
+	}
+	let doc = document::parse(
+		"<details open>\n<summary>Summary</summary>\n\nBody [link](https://example.com/b).\n\n</details>\n",
+	);
+	let id = doc.blocks[0].id;
+	let snapshot = LayoutEngine::new()
+		.layout(&doc, &with_details(LayoutOptions::default(), id, true));
+	let block = &snapshot.blocks[0];
+	// Every range ends where the next link's command begins, so no range is
+	// inverted.
+	assert!(
+		block
+			.layout
+			.links
+			.windows(2)
+			.all(|w| w[0].command <= w[1].command),
+		"{:?}",
+		block.layout.links
+	);
+	let summary = hovered(&block.layout, &document::details_url(id));
+	let body = hovered(&block.layout, "https://example.com/b");
+	assert!(!summary.is_empty());
+	assert!(!body.is_empty(), "the body link never highlights");
+	// The summary range stops at the first body command, so pointing into the
+	// content cannot highlight it.
+	assert!(summary.iter().all(|i| *i < block.layout.links[1].command));
+	assert!(summary.iter().all(|i| !body.contains(i)));
+}
+
+#[test]
+fn a_details_body_reference_link_lays_out_as_a_link() {
+	// The definition follows the element, so the body only becomes a link when
+	// its parse carried the document's reference context.
+	let doc = document::parse(
+		"<details open>\n<summary>Summary</summary>\n\nBody [link][ref].\n\n</details>\n\n[ref]: https://example.com/b\n",
+	);
+	let id = doc.blocks[0].id;
+	let snapshot = LayoutEngine::new()
+		.layout(&doc, &with_details(LayoutOptions::default(), id, true));
+	let urls: Vec<&str> = snapshot.blocks[0]
+		.layout
+		.links
+		.iter()
+		.map(|link| link.url.as_str())
+		.collect();
+	assert!(urls.contains(&"https://example.com/b"), "{urls:?}");
+}

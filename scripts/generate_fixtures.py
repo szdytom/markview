@@ -78,3 +78,33 @@ long_text = "# Long code block\n\n" + long_prefix + long_body + long_suffix
 long_data = long_text.encode()
 assert len(long_data) == 10240
 (ROOT / "long-code-10k.md").write_bytes(long_data)
+
+
+def details_fixture(name: str) -> None:
+    """A 10 KiB document of collapsible elements, half of them open."""
+    text = "# Details benchmark\n\n"
+    body = (
+        "Native collapsible sections keep a long aside out of the reading flow "
+        "while their bodies stay ordinary Markdown. 折叠正文仍然参与排版与选择。\n\n"
+        "- first item\n- second item\n\n"
+    )
+    i = 0
+    while True:
+        attribute = " open" if i % 2 else ""
+        block = (
+            f"<details{attribute}>\n<summary>Section {i}</summary>\n\n"
+            + body
+            + "</details>\n\n"
+        )
+        if len((text + block).encode()) > 10240:
+            break
+        text += block
+        i += 1
+    remaining = 10240 - len(text.encode())
+    text += ("Closing prose keeps the final line readable. " * 300)[:remaining]
+    data = text.encode()
+    assert len(data) == 10240
+    (ROOT / name).write_bytes(data)
+
+
+details_fixture("details-10k.md")

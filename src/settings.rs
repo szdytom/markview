@@ -176,6 +176,8 @@ impl ReaderSettings {
 			fonts: fonts.clone(),
 			codeblock_theme_override: self.codeblock_theme_override.clone(),
 			codeblock_wrap: self.codeblock_wrap,
+			details_open: Default::default(),
+			force_open: false,
 			limits: markview_core::limits::Limits::default(),
 		}
 	}

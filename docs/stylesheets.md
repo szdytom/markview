@@ -124,8 +124,8 @@ A condition is one fact about a rendered run: the blocks that contain it, the pa
 
 | Area | Conditions |
 | --- | --- |
-| Blocks | `body`, `p`, `h1`–`h6`, `blockquote`, `list`, `enum`, `list_item`, `footnote`, `code_block`, `table`, `hr` |
-| Block parts | `label`, `cell`, `header`, `marker`, `task_marker`, `caption`, `placeholder` |
+| Blocks | `body`, `p`, `h1`–`h6`, `blockquote`, `list`, `enum`, `list_item`, `footnote`, `details`, `code_block`, `table`, `hr` |
+| Block parts | `label`, `cell`, `header`, `marker`, `task_marker`, `caption`, `placeholder`, `summary` |
 | Inline | `em`, `strong`, `link`, `del`, `sup`, `footnote_ref`, `code`, `math` |
 | State | `hover`, `error` |
 | Surfaces and UI | `img`, `selection`, `scrollbar`, `ui`, `toolbar`, `statusbar`, `panel`, `button` |
@@ -167,7 +167,7 @@ A block's own box is the exception. Its background, border, padding, spacing, an
 
 ## Fields
 
-Text conditions accept `color`, `font`, `weight`, `size`, `decoration`, and `background`. `padding` on `code` insets its chip: the left and right sides widen the run and push its neighbours along, and the top and bottom sides make the chip taller without changing the line height, so code beside CJK or punctuation is not cramped. Block conditions additionally accept `line_height`, `space_before`, `space_after`, and the container fields `padding`, `border_color`, `border_width`, and `radius`. Parts that are not containers—`label`, `marker`, `caption`, and `placeholder`—reject container geometry. A `task_marker` is a drawn box rather than a text part, so it also takes `background`, `accent`, `border_color`, `border_width`, and `radius`. `indent` styles `list` and `enum`; `align` places an image, positions a `marker` or `task_marker` in its column, and places an ordered list's numbers; `numbering` formats those numbers; `shape` picks a bullet's graphic; `source` belongs to image conditions; `show` belongs to `error`.
+Text conditions accept `color`, `font`, `weight`, `size`, `decoration`, and `background`. `padding` on `code` insets its chip: the left and right sides widen the run and push its neighbours along, and the top and bottom sides make the chip taller without changing the line height, so code beside CJK or punctuation is not cramped. Block conditions additionally accept `line_height`, `space_before`, `space_after`, and the container fields `padding`, `border_color`, `border_width`, and `radius`. Parts that are not containers—`label`, `marker`, `caption`, `placeholder`, and `summary`—reject container geometry. A `task_marker` is a drawn box rather than a text part, so it also takes `background`, `accent`, `border_color`, `border_width`, and `radius`. `indent` styles `list` and `enum`; `align` places an image, positions a `marker` or `task_marker` in its column, and places an ordered list's numbers; `numbering` formats those numbers; `shape` picks a bullet's graphic; `source` belongs to image conditions; `show` belongs to `error`.
 
 A list marker reserves a column before its item text. `marker` covers bullets, `task_marker` covers checkboxes, and `enum` covers ordered numbers, so each kind can be placed on its own with `align = "left"`, `"center"`, or `"right"`; the bundled styles center all three. A number without an `enum` alignment follows the `marker` one. A bullet is drawn rather than typed—`shape` is `disc`, `square`, `triangle`, `diamond`, `plus`, or `minus`—so bullets and checkboxes are never part of copied text, while ordered numbers stay text, written and copied exactly as the numbering pattern spells them. A checkbox is a rounded box centered on its item's first line: `background` fills a pending box, `accent` fills a completed one, `border_color` and `border_width` draw its outline, `radius` rounds it, and `color` draws the check. Box and mark are both vector geometry, so no font can substitute a different shape or size.
 
@@ -188,6 +188,8 @@ numbering = "1.a."
 `numbering` is a pattern in Typst's notation: literal prefixes, one or more counting symbols, and one suffix. A counting symbol is the character a numeral system uses for one—`1`, `a`/`A`, `i`/`I`, `α`/`Α`, `א`, `一`/`壹`, `あ`/`ア`, `가`/`ㄱ`, `١`/`۱`/`१`/`১`/`ক`, `①` (up to fifty), `⓵` (up to ten), or `*` for note symbols—and everything else prints as it stands. The number of counting symbols is the number of nesting levels the pattern addresses, and the last one repeats for deeper lists, so `1.a.` numbers the first level `1.`, the second `a.`, and the third `a.` again. A system that cannot write a number—an alphabetic zero, a circled number past its range—falls back to decimal. The default is `1.`.
 
 The column grows to the widest number a list actually renders, so a wide format such as `I.` or `一、` never runs into the item text.
+
+A raw `<details>` block becomes a collapsible element: `summary` is its heading line and the body keeps ordinary Markdown. The source's `open` attribute sets the initial state, and the reader's own choice of state lives in interaction state rather than the document, so it survives a reflow and a reload starts from the source again. `details` owns the container surface and `summary` the line. The disclosure marker is vector geometry drawn in the summary's `color`, so no font changes it and `["summary", "hover"]` colors both the line and the marker under the pointer. Both exports show every body expanded.
 
 `page` accepts only `background`. The furniture conditions accept the text fields, so a page number can be smaller or greyer than the header text beside it.
 
