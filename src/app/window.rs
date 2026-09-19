@@ -1,5 +1,5 @@
 use crate::cli::Mode;
-use crate::state::{Command, Grain};
+use crate::state::{Command, Grain, WheelAxis, WheelStep};
 use log::{error, info};
 use std::time::{Duration, Instant};
 use winit::{
@@ -286,7 +286,7 @@ impl App {
 				self.refresh_hover();
 				self.redraw();
 			}
-			WindowEvent::MouseWheel { delta, .. } => {
+			WindowEvent::MouseWheel { delta, phase, .. } => {
 				if self.interaction.modal.is_some() {
 					return;
 				}
@@ -315,16 +315,32 @@ impl App {
 					} else {
 						Command::Smaller
 					});
-				} else if self.interaction.modifiers.shift_key()
-					|| dx.abs() > dy.abs()
-				{
-					self.horizontal_by(if dx.abs() > dy.abs() {
-						-dx
-					} else {
-						-dy
-					});
 				} else {
-					self.scroll_by(-dy);
+					let now = Instant::now();
+					let shift = self.interaction.modifiers.shift_key();
+					match self.interaction.wheel.feed(dx, dy, now, shift, phase)
+					{
+						// Nothing to move: the direction is not decided yet,
+						// or the event carried no motion.
+						WheelStep::Pending => {}
+						WheelStep::Travel(WheelAxis::Vertical, _, dy) => {
+							self.scroll_by(-dy);
+						}
+						WheelStep::Travel(WheelAxis::Horizontal, dx, dy) => {
+							// A sideways gesture pans the block under the
+							// pointer; Shift+wheel asks for sideways motion
+							// with a mostly vertical wheel. With no block to
+							// pan, the vertical motion the gesture carries
+							// still scrolls the page rather than being
+							// dropped; a purely sideways gesture has neither a
+							// target nor vertical motion to apply.
+							let pan =
+								if dx.abs() >= dy.abs() { -dx } else { -dy };
+							if !self.horizontal_by(pan) {
+								self.scroll_by(-dy);
+							}
+						}
+					}
 				}
 			}
 			WindowEvent::KeyboardInput { event, .. }
@@ -414,10 +430,10 @@ impl App {
 							self.scroll_by(f32::INFINITY)
 						}
 						Key::Named(NamedKey::ArrowLeft) => {
-							self.horizontal_by(-42.0)
+							self.horizontal_by(-42.0);
 						}
 						Key::Named(NamedKey::ArrowRight) => {
-							self.horizontal_by(42.0)
+							self.horizontal_by(42.0);
 						}
 						Key::Named(NamedKey::Tab) => {
 							let buttons = self.focus_buttons();

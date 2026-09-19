@@ -214,7 +214,9 @@ impl App {
 		self.redraw();
 	}
 
-	pub(super) fn horizontal_by(&mut self, dx: f32) {
+	/// Pans the wide block under the pointer. `false` means no block was
+	/// there, so the caller can scroll the page instead of dropping the event.
+	pub(super) fn horizontal_by(&mut self, dx: f32) -> bool {
 		let (cx, cy) = self.view_geometry().document_point(
 			self.interaction.cursor.0,
 			self.interaction.cursor.1,
@@ -232,9 +234,10 @@ impl App {
 						.clamp(0.0, (o.content_width - o.rect.w).max(0.0));
 					self.refresh_hover();
 					self.redraw();
-					return;
+					return true;
 				}
 			}
 		}
+		false
 	}
 }

@@ -1,5 +1,6 @@
 use super::*;
 use markview_core::text::{Affinity, TextPosition};
+use winit::event::TouchPhase;
 fn position(offset: usize) -> TextPosition {
 	TextPosition {
 		revision: 1,
@@ -459,4 +460,256 @@ fn buttons_activate_once_on_matching_release_and_cancel_outside() {
 		assert!(interaction.pressed.is_none());
 		assert_eq!(interaction.release_button(Some(Command::Hyphens)), None);
 	}
+}
+
+#[test]
+fn a_diagonal_first_event_cannot_steal_the_gesture() {
+	let mut wheel = WheelGesture::default();
+	let start = Instant::now();
+	// The first event leans sideways, but only by a pixel: it is held.
+	assert_eq!(
+		wheel.feed(2.0, 1.0, start, false, TouchPhase::Moved),
+		WheelStep::Pending
+	);
+	// The gesture turns out to be vertical, and nothing it travelled is lost.
+	assert_eq!(
+		wheel.feed(
+			1.0,
+			9.0,
+			start + Duration::from_millis(8),
+			false,
+			TouchPhase::Moved
+		),
+		WheelStep::Travel(WheelAxis::Vertical, 3.0, 10.0)
+	);
+}
+
+#[test]
+fn a_gesture_keeps_the_axis_it_started_with() {
+	let mut wheel = WheelGesture::default();
+	let start = Instant::now();
+	assert_eq!(
+		wheel.feed(12.0, 1.0, start, false, TouchPhase::Moved),
+		WheelStep::Travel(WheelAxis::Horizontal, 12.0, 1.0)
+	);
+	// A later event that leans vertically does not flip the pan mid-gesture.
+	assert_eq!(
+		wheel.feed(
+			2.0,
+			20.0,
+			start + Duration::from_millis(8),
+			false,
+			TouchPhase::Moved
+		),
+		WheelStep::Travel(WheelAxis::Horizontal, 2.0, 20.0)
+	);
+}
+
+#[test]
+fn a_pause_between_events_starts_a_new_gesture() {
+	let mut wheel = WheelGesture::default();
+	let start = Instant::now();
+	assert_eq!(
+		wheel.feed(12.0, 1.0, start, false, TouchPhase::Moved),
+		WheelStep::Travel(WheelAxis::Horizontal, 12.0, 1.0)
+	);
+	assert_eq!(
+		wheel.feed(
+			1.0,
+			12.0,
+			start + Duration::from_millis(200),
+			false,
+			TouchPhase::Moved
+		),
+		WheelStep::Travel(WheelAxis::Vertical, 1.0, 12.0)
+	);
+}
+
+#[test]
+fn shift_wheel_is_sideways_without_waiting() {
+	let mut wheel = WheelGesture::default();
+	let start = Instant::now();
+	// A wheel has no horizontal delta at all; Shift turns the vertical one
+	// into a pan, so the page must not wait for a direction to emerge.
+	assert_eq!(
+		wheel.feed(0.0, 42.0, start, true, TouchPhase::Moved),
+		WheelStep::Travel(WheelAxis::Horizontal, 0.0, 42.0)
+	);
+}
+
+#[test]
+fn motion_below_the_decision_threshold_is_held_then_applied() {
+	let mut wheel = WheelGesture::default();
+	let start = Instant::now();
+	assert_eq!(
+		wheel.feed(1.0, 1.0, start, false, TouchPhase::Moved),
+		WheelStep::Pending
+	);
+	// The deciding event reports both events, so a slow start scrolls too.
+	assert_eq!(
+		wheel.feed(
+			5.0,
+			0.0,
+			start + Duration::from_millis(8),
+			false,
+			TouchPhase::Moved
+		),
+		WheelStep::Travel(WheelAxis::Horizontal, 6.0, 1.0)
+	);
+}
+
+#[test]
+fn a_reported_gesture_boundary_separates_two_quick_gestures() {
+	let mut wheel = WheelGesture::default();
+	let start = Instant::now();
+	// A sideways pan over a wide formula...
+	assert_eq!(
+		wheel.feed(14.0, 1.0, start, false, TouchPhase::Moved),
+		WheelStep::Travel(WheelAxis::Horizontal, 14.0, 1.0)
+	);
+	// ...ends, and the very next gesture scrolls the page, well inside the
+	// pause that would otherwise carry the axis over.
+	let ends = start + Duration::from_millis(8);
+	assert_eq!(
+		wheel.feed(0.0, 0.0, ends, false, TouchPhase::Ended),
+		WheelStep::Pending
+	);
+	assert_eq!(
+		wheel.feed(
+			1.0,
+			14.0,
+			ends + Duration::from_millis(8),
+			false,
+			TouchPhase::Started
+		),
+		WheelStep::Travel(WheelAxis::Vertical, 1.0, 14.0)
+	);
+}
+
+#[test]
+fn a_boundary_event_still_moves_with_the_gesture_it_ends() {
+	let mut wheel = WheelGesture::default();
+	let start = Instant::now();
+	assert_eq!(
+		wheel.feed(2.0, 1.0, start, false, TouchPhase::Moved),
+		WheelStep::Pending
+	);
+	// The last event of a gesture carries its remaining motion.
+	assert_eq!(
+		wheel.feed(
+			0.0,
+			9.0,
+			start + Duration::from_millis(8),
+			false,
+			TouchPhase::Ended
+		),
+		WheelStep::Travel(WheelAxis::Vertical, 2.0, 10.0)
+	);
+	// The axis did not survive the boundary.
+	assert_eq!(
+		wheel.feed(
+			12.0,
+			1.0,
+			start + Duration::from_millis(16),
+			false,
+			TouchPhase::Moved
+		),
+		WheelStep::Travel(WheelAxis::Horizontal, 12.0, 1.0)
+	);
+}
+
+#[test]
+fn held_motion_does_not_survive_a_reported_boundary() {
+	let mut wheel = WheelGesture::default();
+	let start = Instant::now();
+	// A gesture that never travels far enough to have a direction...
+	assert_eq!(
+		wheel.feed(2.0, 1.0, start, false, TouchPhase::Moved),
+		WheelStep::Pending
+	);
+	// ...ends, and leaves nothing for the next gesture to inherit.
+	assert_eq!(
+		wheel.feed(
+			0.0,
+			0.0,
+			start + Duration::from_millis(8),
+			false,
+			TouchPhase::Ended
+		),
+		WheelStep::Pending
+	);
+	// Five pixels of a new gesture are still five pixels, not seven.
+	assert_eq!(
+		wheel.feed(
+			5.0,
+			0.0,
+			start + Duration::from_millis(16),
+			false,
+			TouchPhase::Started
+		),
+		WheelStep::Pending
+	);
+	assert_eq!(
+		wheel.feed(
+			1.0,
+			0.0,
+			start + Duration::from_millis(24),
+			false,
+			TouchPhase::Moved
+		),
+		WheelStep::Travel(WheelAxis::Horizontal, 6.0, 0.0)
+	);
+}
+
+#[test]
+fn held_motion_does_not_survive_a_pause_without_reported_boundaries() {
+	let mut wheel = WheelGesture::default();
+	let start = Instant::now();
+	assert_eq!(
+		wheel.feed(2.0, 1.0, start, false, TouchPhase::Moved),
+		WheelStep::Pending
+	);
+	// With no boundary reported, the pause is the boundary.
+	assert_eq!(
+		wheel.feed(
+			4.0,
+			0.0,
+			start + Duration::from_millis(200),
+			false,
+			TouchPhase::Moved
+		),
+		WheelStep::Pending
+	);
+	assert_eq!(
+		wheel.feed(
+			2.0,
+			0.0,
+			start + Duration::from_millis(208),
+			false,
+			TouchPhase::Moved
+		),
+		WheelStep::Travel(WheelAxis::Horizontal, 6.0, 0.0)
+	);
+}
+
+#[test]
+fn a_reported_gesture_is_not_cut_in_half_by_a_slow_moment() {
+	let mut wheel = WheelGesture::default();
+	let start = Instant::now();
+	assert_eq!(
+		wheel.feed(4.0, 1.0, start, false, TouchPhase::Started),
+		WheelStep::Pending
+	);
+	// The fingers never lifted, so a slow moment is not a new gesture and its
+	// motion still accumulates.
+	assert_eq!(
+		wheel.feed(
+			2.0,
+			0.0,
+			start + Duration::from_millis(400),
+			false,
+			TouchPhase::Moved
+		),
+		WheelStep::Travel(WheelAxis::Horizontal, 6.0, 1.0)
+	);
 }

@@ -10,7 +10,7 @@ use std::{
 	sync::Arc,
 	time::{Duration, Instant},
 };
-use winit::keyboard::ModifiersState;
+use winit::{event::TouchPhase, keyboard::ModifiersState};
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum Command {
 	Open,
@@ -187,6 +187,117 @@ pub(crate) struct InteractionState {
 	pub(crate) last_click: Option<(Instant, (f32, f32), u8)>,
 	/// A pending local-file confirmation; while it is set it owns input.
 	pub(crate) modal: Option<Modal>,
+	/// The axis of the wheel gesture in flight.
+	pub(crate) wheel: WheelGesture,
+}
+
+/// Which way a wheel gesture travels.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum WheelAxis {
+	/// Pan the wide block under the pointer sideways.
+	Horizontal,
+	/// Scroll the document.
+	Vertical,
+}
+
+/// What to do with one wheel event.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub(crate) enum WheelStep {
+	/// Nothing to apply yet: either the gesture has not travelled far enough
+	/// to have a direction, in which case the motion is held and arrives with
+	/// the deciding event, or the event carried no motion at all.
+	Pending,
+	/// Travel this far on this axis. Both components are reported so that a
+	/// horizontal gesture with no block under the pointer can still scroll.
+	Travel(WheelAxis, f32, f32),
+}
+
+/// How far a gesture travels before its direction is decided.
+const WHEEL_DECISION: f32 = 6.0;
+/// A pause this long starts a new gesture on platforms that never report one.
+const WHEEL_GAP: Duration = Duration::from_millis(150);
+
+/// Decides a wheel gesture's axis once, from its first few moments, and holds
+/// it until the gesture ends, and inherits nothing from the one before it.
+///
+/// Deciding per event instead makes a diagonal gesture stutter: the events that
+/// lean sideways pan the block under the pointer, and when no block is there
+/// they do nothing at all, so the page stops following the hand. A reported
+/// boundary separates gestures where the platform reports one, and the pause
+/// between events is the fallback for the platforms that never do.
+#[derive(Debug, Default)]
+pub(crate) struct WheelGesture {
+	axis: Option<WheelAxis>,
+	/// Motion held back until the direction is unambiguous.
+	held: (f32, f32),
+	last: Option<Instant>,
+	/// True while the platform's own gesture is in flight. A pause inside one
+	/// is a slow moment, not a boundary; where no gesture is reported, the
+	/// pause is the only boundary there is.
+	reported: bool,
+}
+
+impl WheelGesture {
+	/// Feeds one wheel delta in logical pixels. `horizontal_only` is the
+	/// explicit sideways request of Shift+wheel, which skips the wait.
+	pub(crate) fn feed(
+		&mut self,
+		dx: f32,
+		dy: f32,
+		now: Instant,
+		horizontal_only: bool,
+		phase: TouchPhase,
+	) -> WheelStep {
+		let starts = matches!(phase, TouchPhase::Started);
+		let ends = matches!(phase, TouchPhase::Ended | TouchPhase::Cancelled);
+		// A reported start, or a pause outside a reported gesture, begins a new
+		// gesture. Two gestures can follow each other faster than the pause,
+		// and then only the reported boundary tells them apart.
+		if starts
+			|| (!self.reported
+				&& self
+					.last
+					.is_some_and(|last| now.duration_since(last) > WHEEL_GAP))
+		{
+			self.axis = None;
+			// Motion the finished gesture never travelled to is its own; the
+			// next gesture decides what to do from its own first moments.
+			self.held = (0.0, 0.0);
+		}
+		// A start without its end, as when a gesture is cut off by the window
+		// losing focus, must not turn every later pause into a slow moment.
+		self.reported = (self.reported || starts) && !ends;
+		self.last = Some(now);
+		if horizontal_only {
+			self.axis = Some(WheelAxis::Horizontal);
+			self.held = (0.0, 0.0);
+		}
+		self.held.0 += dx;
+		self.held.1 += dy;
+		let axis = match self.axis {
+			Some(axis) => axis,
+			None => {
+				if self.held.0.abs().max(self.held.1.abs()) < WHEEL_DECISION {
+					if ends {
+						self.held = (0.0, 0.0);
+					}
+					return WheelStep::Pending;
+				}
+				if self.held.0.abs() > self.held.1.abs() {
+					WheelAxis::Horizontal
+				} else {
+					WheelAxis::Vertical
+				}
+			}
+		};
+		let (held_x, held_y) = std::mem::take(&mut self.held);
+		// The event that ends a gesture still belongs to it.
+		self.axis = (!ends).then_some(axis);
+		if held_x == 0.0 && held_y == 0.0 {
+			return WheelStep::Pending;
+		}
+		WheelStep::Travel(axis, held_x, held_y)
+	}
 }
 
 /// Which scrollbar a press grabbed.
