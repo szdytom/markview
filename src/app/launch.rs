@@ -24,6 +24,19 @@ pub(super) fn run() -> Result<()> {
 		return Ok(());
 	};
 	crate::logging::init(&args.mode);
+	if args.list_stylesheets {
+		let directory = crate::stylesheet::directory();
+		for entry in crate::stylesheet::catalog(directory.as_deref(), None) {
+			let status = entry
+				.error
+				.map_or_else(|| entry.name, |error| format!("ERROR: {error}"));
+			crate::logging::report(format_args!(
+				"{}\t{}\t{}\n",
+				entry.id, status, entry.source
+			));
+		}
+		return Ok(());
+	}
 	if let Some(source) = &args.validate {
 		let sheet = crate::stylesheet::validate(source)?;
 		crate::logging::report(format_args!(

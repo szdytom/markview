@@ -27,9 +27,11 @@ pub(crate) fn init(mode: &Mode) {
 	let default = match mode {
 		Mode::Window => "warn",
 		Mode::Pdf => "warn,markview=debug,markview_pdf=debug",
-		Mode::Render | Mode::Bench | Mode::Latency | Mode::Smoke => {
-			"warn,markview=debug"
-		}
+		Mode::Render
+		| Mode::Bench
+		| Mode::Latency
+		| Mode::Smoke
+		| Mode::StylesheetList => "warn,markview=debug",
 	};
 	Builder::from_env(Env::default().default_filter_or(default))
 		.format(|buffer, record| {

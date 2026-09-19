@@ -15,6 +15,7 @@ pub(crate) enum Mode {
 	Latency,
 	Smoke,
 	Pdf,
+	StylesheetList,
 }
 impl Mode {
 	/// A static image or a sheet of paper cannot be scrolled sideways, so code
@@ -59,6 +60,7 @@ pub(crate) struct LaunchOptions {
 	pub(crate) cjk_type: Option<markview_core::style::CjkType>,
 	pub(crate) install: Option<(PathBuf, bool)>,
 	pub(crate) validate: Option<PathBuf>,
+	pub(crate) list_stylesheets: bool,
 	pub(crate) iterations: usize,
 	pub(crate) options: LayoutOptions,
 	pub(crate) overrides: Vec<Setting>,
@@ -83,6 +85,7 @@ impl Default for LaunchOptions {
 			cjk_type: None,
 			install: None,
 			validate: None,
+			list_stylesheets: false,
 			iterations: 100,
 			options: LayoutOptions::default(),
 			overrides: Vec::new(),
@@ -120,6 +123,13 @@ fn parse_arguments(
 	if args.peek().is_some_and(|a| a == "ss") {
 		args.next();
 		match args.next().as_deref() {
+			Some(sub) if sub == "list" => {
+				if args.next().is_some() {
+					bail!("ss list does not take arguments");
+				}
+				out.mode = Mode::StylesheetList;
+				out.list_stylesheets = true;
+			}
 			Some(sub) if sub == "install" => {
 				let mut path = None;
 				let mut force = false;
@@ -147,7 +157,7 @@ fn parse_arguments(
 				);
 			}
 			_ => bail!(
-				"Usage: markview ss install FILE.mvss.toml [--force]\n       markview ss validate FILE.mvss.toml"
+				"Usage: markview ss list\n       markview ss install FILE.mvss.toml [--force]\n       markview ss validate FILE.mvss.toml"
 			),
 		}
 		return Ok(Some(out));
@@ -170,6 +180,7 @@ fn parse_arguments(
 		}
 		match text.as_ref() {
 			"-h" | "--help" => {
+				crate::logging::report(format_args!("markview ss list\n"));
 				crate::logging::report(format_args!(
 					"Markview — native Markdown reading\n\nmarkview [FILE] [--style ID ...]\nmarkview ss install FILE.mvss.toml [--force]\nmarkview ss validate FILE.mvss.toml\nmarkview --render FILE --output preview.png [--dark] [--scale 2]\nmarkview --pdf FILE --output out.pdf [--paper a4] [--landscape] [--watch]\nmarkview --bench FILE [--iterations 100] [--output metrics.json]\nmarkview --bench-latency FILE [--iterations 100] [--output latency.json]\nmarkview --smoke-test FILE [--output window.png]\n\nOptions: --width N --height N --column N --font-size N --scroll N\n         --paragraph-indent N --cjk-type SC|TC|JP|none --scale N\n         --style ID --dark --light --left --no-hyphens --greedy --offline\n\nFonts: --fonts DIR adds a directory of font files and may be repeated.\n       --ignore-system-fonts shapes with those directories alone, so the\n       fonts installed on the machine cannot change the result.\n\nPDF: --paper a4|a5|letter|legal|WIDTHxHEIGHT --landscape --margin MM[,MM...]\n     --header TEXT --header-left/right TEXT --footer TEXT --footer-left/right TEXT\n     --no-links --watch; --watch re-exports whenever the document or one of its\n     local images changes, until you stop it. The slots take {{page}} {{pages}}\n     {{title}} and {{path}}. The export always starts from the bundled print\n     stylesheet, and --style layers on it. Body text is 12 pt unless\n     --font-size says otherwise.\n\nMetadata: --title TEXT --author NAME (repeatable) --subject TEXT\n          --keywords A,B --language TAG --creator TEXT\n          A title defaults to the first heading, then the file name;\n          Producer stays Markview <version>, and no creation date is\n          ever written.\n\nImages: local files, file:, http(s): and data: URIs; bitmap and SVG.\n        An image alone in its block is centered, otherwise it is inline.\n        Animated images show their first frame; --offline blocks the network.\n\nKeyboard: Ctrl+O open · Ctrl+T styles · Ctrl+E export · Ctrl+ +/- font size\n          Ctrl+[ / ] column width · Ctrl+L alignment · Ctrl+H hyphenation\n          arrows / PageUp / PageDown / Home / End scroll\n          drag the scrollbar · Shift+wheel scroll wide blocks · Tab/Enter toolbar\n          click web/mail/local links; local .md links open in a new tab\n          click a footnote reference to reach its note and its number to return\n          drag / Shift+click select · Ctrl+A all · Ctrl+C copy · Ctrl+, settings\n\n--render and --bench use the real GPU pipeline offscreen.\n--greedy is a typography comparison mode."
 				));
@@ -408,7 +419,10 @@ fn parse_arguments(
 	if out.mode == Mode::Pdf && !out.overrides.contains(&Setting::FontSize) {
 		out.options.font_size = ExportSettings::DEFAULT_FONT_SIZE_PX;
 	}
-	if out.mode != Mode::Window && out.path.is_none() {
+	if out.mode != Mode::Window
+		&& out.mode != Mode::StylesheetList
+		&& out.path.is_none()
+	{
 		bail!("This mode requires a Markdown file");
 	}
 	if out.mode == Mode::Render && out.output.is_none() {
@@ -856,6 +870,15 @@ mod stylesheet_tests {
 	use super::*;
 	#[test]
 	fn stylesheet_arguments_are_ordered_and_install_is_independent() {
+		let args = parse_arguments(["ss", "list"].map(Into::into))
+			.unwrap()
+			.unwrap();
+		assert!(matches!(args.mode, Mode::StylesheetList));
+		assert!(args.list_stylesheets);
+		assert!(
+			parse_arguments(["ss", "list", "extra"].map(Into::into)).is_err()
+		);
+
 		let args = parse_arguments(
 			[
 				"--render",

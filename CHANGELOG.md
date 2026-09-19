@@ -19,6 +19,8 @@ at the same level, without `[brackets]`.
 
 ### Added
 
+- `markview ss list` lists bundled and installed stylesheets.
+
 - Optional CJK Medium UI overlay and GPU weight comparisons, with documented exact-weight fallback behavior.
 
 - Monochrome, Qi Baishi, Van Gogh and Mondrian PDF themes, plus `theme = "none"` for uncolored code.

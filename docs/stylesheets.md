@@ -5,6 +5,7 @@ Markview stylesheets are UTF-8 TOML files with the `.mvss.toml` suffix. They def
 ## Install and select a style
 
 ```sh
+markview ss list
 markview ss validate paper.mvss.toml
 markview ss install paper.mvss.toml
 markview document.md --style paper
