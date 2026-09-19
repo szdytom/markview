@@ -13,6 +13,8 @@ at the same level, without `[brackets]`.
 
 ## Unreleased
 
+- Remove soft line breaks from Chinese Markdown prose to avoid inserting spaces.
+
 ## 0.1.4 - 2026-09-19
 
 This release adds stylesheet discovery and validation, expands theme and typography support, and improves reader previews.
