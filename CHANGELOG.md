@@ -17,6 +17,14 @@ at the same level, without `[brackets]`.
 
 - `markview ss validate FILE.mvss.toml` parses a stylesheet in place and
   reports its version and rule count, so a draft can be checked before install.
+- The `markview-icon` `icon!` macro parses an SVG at compile time into a
+  unit-box vector buffer, so the reader keeps its UI icons as editable files
+  with no SVG parser in the binary.
+
+### Changed
+
+- The toolbar's Open and Settings buttons, and every panel's close button, are
+  vector icons drawn from those buffers instead of text labels.
 
 ## 0.1.3 - 2026-09-18
 

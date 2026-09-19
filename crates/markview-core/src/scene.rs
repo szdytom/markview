@@ -1,6 +1,7 @@
 //! Immutable drawing and hit-test geometry shared by layout and rendering.
 use crate::{math::MathBox, text::TextNode};
 use parley::FontData;
+pub use ratex_types::PathCommand;
 use std::{collections::HashMap, ops::Range, sync::Arc};
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash)]
 pub enum Paint {
@@ -74,6 +75,21 @@ impl Rect {
 	}
 }
 
+/// One figure of a vector icon, in a unit box.
+///
+/// The box spans `0..=1` on both axes, with the origin at the top-left and `y`
+/// growing downward like SVG. The drawn size is applied when the icon is
+/// painted, so the same buffer serves every scale.
+#[derive(Clone, Copy, Debug)]
+pub struct IconPath {
+	/// Flattened outlines, already transformed into the unit box.
+	pub commands: &'static [PathCommand],
+	/// Fill the outline instead of stroking it.
+	pub fill: bool,
+	/// Stroke width in unit-box units; ignored when `fill`.
+	pub stroke_width: f32,
+}
+
 #[derive(Clone, Debug)]
 pub enum Draw {
 	/// A group clipped to a local rectangle.
@@ -112,6 +128,15 @@ pub enum Draw {
 		points: Arc<[[f32; 2]]>,
 		paint: Paint,
 	},
+	/// A vector icon drawn into a square box whose top-left corner is `(x, y)`
+	/// and whose side is `size`. Figures are stroked round-capped.
+	Icon {
+		paths: &'static [IconPath],
+		paint: Paint,
+		x: f32,
+		y: f32,
+		size: f32,
+	},
 }
 impl Draw {
 	pub fn translate(&mut self, x: f32, y: f32) {
@@ -140,6 +165,10 @@ impl Draw {
 			Self::Polygon { center, .. } => {
 				center[0] += x;
 				center[1] += y;
+			}
+			Self::Icon { x: ix, y: iy, .. } => {
+				*ix += x;
+				*iy += y;
 			}
 		}
 	}

@@ -2139,6 +2139,7 @@ dependencies = [
  "image",
  "log",
  "markview-core",
+ "markview-icon",
  "markview-pdf",
  "markview-render",
  "notify",
@@ -2184,6 +2185,15 @@ dependencies = [
  "toml_edit",
  "two-face",
  "unicode-segmentation",
+]
+
+[[package]]
+name = "markview-icon"
+version = "0.1.3"
+dependencies = [
+ "quote",
+ "syn 2.0.119",
+ "usvg",
 ]
 
 [[package]]

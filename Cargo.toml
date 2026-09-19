@@ -30,6 +30,7 @@ eula = false
 [workspace]
 members = [
 	"crates/markview-core",
+	"crates/markview-icon",
 	"crates/markview-pdf",
 	"crates/markview-render",
 	"xtask",
@@ -99,6 +100,7 @@ base64 = "0.22"
 toml_edit = { version = "0.25", features = ["serde"] }
 arboard.workspace = true
 markview-core = { path = "crates/markview-core" }
+markview-icon = { path = "crates/markview-icon" }
 markview-pdf = { path = "crates/markview-pdf" }
 markview-render = { path = "crates/markview-render" }
 anyhow.workspace = true

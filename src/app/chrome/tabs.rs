@@ -15,7 +15,7 @@ pub(in crate::app) struct TabBar<'a> {
 }
 impl TabBar<'_> {
 	pub(in crate::app) fn layout(&mut self) -> TabLayout {
-		let right = toolbar_right_edge(self.ui, self.width) - 4.0;
+		let right = toolbar_right_edge(self.width) - 4.0;
 		TabLayout::new(
 			Rect {
 				x: 10.0,

@@ -24,6 +24,8 @@ source and original license texts are available in Cargo's registry packages.
 | windows-sys | Attaching to the console that launched the reader | MIT OR Apache-2.0 |
 | unicode-segmentation | Grapheme boundaries for reading selections | MIT OR Apache-2.0 |
 | tempfile | Atomic settings replacement and tests | MIT OR Apache-2.0 |
+| usvg | Compile-time parsing of the SVG icon sources | Apache-2.0 OR MIT |
+| Lucide | Geometry of the `open` and `close` icons in `assets/ui` | ISC |
 
 KaTeX mathematical fonts are embedded by `ratex-katex-fonts`. Their SIL Open
 Font License is reproduced in `licenses/KaTeX-OFL.txt`; keep that file with
@@ -31,7 +33,8 @@ redistributed binaries. Markview does not bundle the JavaScript KaTeX runtime.
 Body/UI fonts are discovered from the operating system and are not distributed
 with this repository. Unit tests shape with the pinned Noto subsets under
 `crates/markview-core/tests/fonts`; their SIL Open Font License is reproduced in
-`licenses/Noto-OFL.txt`.
+`licenses/Noto-OFL.txt`. The Lucide icon geometry under `assets/ui` is ISC
+licensed; its license is reproduced in `licenses/Lucide-ISC.txt`.
 
 Before packaging a release, include notices for the complete dependency tree,
 not only this architectural summary. `cargo metadata --locked` records that

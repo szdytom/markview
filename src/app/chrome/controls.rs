@@ -1,12 +1,21 @@
 use super::super::Button;
+use super::icons;
 use crate::{
 	layout::{Draw, Paint, Rect, TextShaper},
 	settings::ReaderSettings,
 	state::{Command, InteractionState},
 };
-use markview_core::style::{
-	CjkType, ColorField as C, Condition, TextAppearance,
+use markview_core::{
+	scene::IconPath,
+	style::{CjkType, ColorField as C, Condition, TextAppearance},
 };
+/// Side of a square icon button.
+pub(super) const ICON_BUTTON: f32 = 28.0;
+/// Side of the icon drawn inside a button. The sources are 24-unit designs,
+/// so a 20 px box keeps their optical padding.
+const ICON_SIZE: f32 = 20.0;
+/// Gap between adjacent toolbar buttons.
+const GAP: f32 = 4.0;
 pub(in crate::app) fn panel_rect(width: f32, height: f32) -> Rect {
 	let w = 540.0_f32.min((width - 32.0).max(0.0));
 	let h = 480.0_f32.min((height - 32.0).max(0.0));
@@ -31,9 +40,10 @@ pub(super) fn controls(
 	if panel_open {
 		let rect = panel_rect(width, height);
 		let (top, row) = row_geometry(rect);
-		let close_width = button_width(shaper, "Close", 13.0);
+		let close_width = ICON_BUTTON;
 		let mut buttons = vec![Button {
 			label: "Close",
+			icon: Some(icons::CLOSE),
 			action: Command::Settings,
 			rect: Rect {
 				x: rect.x + rect.w - 20.0 - close_width,
@@ -87,6 +97,7 @@ pub(super) fn controls(
 			for (j, (label, action)) in entries.into_iter().enumerate() {
 				buttons.push(Button {
 					label,
+					icon: None,
 					action,
 					rect: Rect {
 						x: rect.x + rect.w - 20.0 - 168.0
@@ -117,6 +128,7 @@ pub(super) fn controls(
 		] {
 			buttons.push(Button {
 				label,
+				icon: None,
 				action,
 				rect: Rect {
 					x: rect.x + x,
@@ -128,7 +140,7 @@ pub(super) fn controls(
 		}
 		return buttons;
 	}
-	toolbar_controls(shaper, width)
+	toolbar_controls(width)
 }
 
 fn button_width(shaper: &mut TextShaper, label: &str, size: f32) -> f32 {
@@ -142,60 +154,47 @@ fn button_width(shaper: &mut TextShaper, label: &str, size: f32) -> f32 {
 	width
 }
 
-pub(super) fn toolbar_controls(
-	shaper: &mut TextShaper,
-	width: f32,
-) -> Vec<Button> {
-	const TEXT_SIZE: f32 = 13.0;
-	const HORIZONTAL_PADDING: f32 = 18.0;
-	const GAP: f32 = 4.0;
-	let entries = [("Open", Command::Open), ("Settings", Command::Settings)];
-	let old_appearance = shaper.appearance.clone();
-	shaper.appearance = shaper
-		.stylesheet
-		.text(&TextAppearance::default(), Condition::Ui);
-	let widths: Vec<f32> = entries
-		.iter()
-		.map(|(label, _)| {
-			shaper.text_width(label, TEXT_SIZE) + HORIZONTAL_PADDING
-		})
-		.collect();
-	shaper.appearance = old_appearance;
-	let mut x = toolbar_right_edge(shaper, width);
+/// The icon a button draws centered in its rectangle, or `None` when the
+/// button shows its label instead.
+pub(super) fn button_icon(button: &Button) -> Option<Draw> {
+	let paths = button.icon?;
+	Some(Draw::Icon {
+		paths,
+		paint: Paint::Styled(Condition::Button, C::Color),
+		x: button.rect.x + (button.rect.w - ICON_SIZE) / 2.0,
+		y: button.rect.y + (button.rect.h - ICON_SIZE) / 2.0,
+		size: ICON_SIZE,
+	})
+}
+
+pub(super) fn toolbar_controls(width: f32) -> Vec<Button> {
+	let entries: [(&[IconPath], &str, Command); 2] = [
+		(icons::OPEN, "Open", Command::Open),
+		(icons::SETTINGS, "Settings", Command::Settings),
+	];
+	let mut x = toolbar_right_edge(width);
 	entries
 		.into_iter()
-		.zip(widths)
-		.map(|((label, action), w)| {
+		.map(|(icon, label, action)| {
 			let rect = Rect {
 				x,
 				y: 6.0,
-				w,
+				w: ICON_BUTTON,
 				h: 28.0,
 			};
-			x += w + GAP;
+			x += ICON_BUTTON + GAP;
 			Button {
 				rect,
 				label,
+				icon: Some(icon),
 				action,
 			}
 		})
 		.collect()
 }
 
-pub(super) fn toolbar_right_edge(shaper: &mut TextShaper, width: f32) -> f32 {
-	const TEXT_SIZE: f32 = 13.0;
-	const HORIZONTAL_PADDING: f32 = 18.0;
-	const GAP: f32 = 4.0;
-	let old_appearance = shaper.appearance.clone();
-	shaper.appearance = shaper
-		.stylesheet
-		.text(&TextAppearance::default(), Condition::Ui);
-	let button_widths = ["Open", "Settings"]
-		.into_iter()
-		.map(|label| shaper.text_width(label, TEXT_SIZE) + HORIZONTAL_PADDING)
-		.collect::<Vec<_>>();
-	shaper.appearance = old_appearance;
-	width - button_widths.iter().sum::<f32>() - GAP - 16.0
+pub(super) fn toolbar_right_edge(width: f32) -> f32 {
+	width - 2.0 * ICON_BUTTON - GAP - 16.0
 }
 
 pub(super) fn draw_controls(
@@ -311,7 +310,7 @@ pub(super) fn draw_controls(
 	let buttons = if interaction.panel_open {
 		controls(shaper, settings, true, width, height)
 	} else {
-		toolbar_controls(shaper, width)
+		toolbar_controls(width)
 	};
 	for b in buttons {
 		out.push(Draw::Box {
@@ -354,15 +353,19 @@ pub(super) fn draw_controls(
 				Paint::Styled(Condition::Button, C::Background),
 			));
 		}
-		let label_x =
-			b.rect.x + (b.rect.w - shaper.text_width(b.label, 13.0)) / 2.0;
-		out.extend(shaper.label(
-			b.label,
-			13.0,
-			label_x,
-			b.rect.y + b.rect.h / 2.0 + 5.0,
-			Paint::Styled(Condition::Button, C::Color),
-		));
+		if let Some(icon) = button_icon(&b) {
+			out.push(icon);
+		} else {
+			let label_x =
+				b.rect.x + (b.rect.w - shaper.text_width(b.label, 13.0)) / 2.0;
+			out.extend(shaper.label(
+				b.label,
+				13.0,
+				label_x,
+				b.rect.y + b.rect.h / 2.0 + 5.0,
+				Paint::Styled(Condition::Button, C::Color),
+			));
+		}
 	}
 	out
 }
@@ -453,5 +456,87 @@ mod tests {
 			assert_eq!(toolbar[1].rect.x + toolbar[1].rect.w, width - 16.0);
 			assert!(toolbar.iter().all(|b| b.rect.y + b.rect.h < TOP));
 		}
+	}
+	#[test]
+	fn the_toolbar_and_panel_close_buttons_carry_icons() {
+		let mut shaper = crate::test_support::shaper();
+		let toolbar = controls(
+			&mut shaper,
+			&ReaderSettings::default(),
+			false,
+			1200.0,
+			800.0,
+		);
+		assert!(toolbar.iter().all(|button| button.icon.is_some()));
+		let panel = controls(
+			&mut shaper,
+			&ReaderSettings::default(),
+			true,
+			1200.0,
+			800.0,
+		);
+		let close = panel
+			.iter()
+			.find(|button| button.action == Command::Settings)
+			.expect("panel close");
+		assert_eq!(close.label, "Close");
+		assert!(close.icon.is_some());
+		let mut icons = 0;
+		for draw in draw_controls(
+			&mut shaper,
+			&ReaderSettings::default(),
+			&InteractionState {
+				panel_open: true,
+				..Default::default()
+			},
+			1200.0,
+			800.0,
+		) {
+			if matches!(draw, Draw::Icon { .. }) {
+				icons += 1;
+			}
+		}
+		assert_eq!(icons, 1, "the panel draws only its close icon");
+	}
+	/// The compiled buffers promise a unit box, and the renderer scales every
+	/// coordinate by the drawn size without clamping.
+	#[test]
+	fn compiled_icons_stay_inside_the_unit_box() {
+		for icon in [icons::OPEN, icons::SETTINGS, icons::CLOSE] {
+			assert!(!icon.is_empty());
+			for figure in icon {
+				assert!(!figure.commands.is_empty());
+				assert!(figure.fill || figure.stroke_width > 0.0);
+				for (x, y) in coordinates(figure.commands) {
+					assert!(
+						(0.0..=1.0).contains(&x) && (0.0..=1.0).contains(&y),
+						"icon left the unit box at {x}, {y}"
+					);
+				}
+			}
+		}
+	}
+	fn coordinates(
+		commands: &[markview_core::scene::PathCommand],
+	) -> Vec<(f64, f64)> {
+		use markview_core::scene::PathCommand as P;
+		commands
+			.iter()
+			.flat_map(|command| match *command {
+				P::MoveTo { x, y } | P::LineTo { x, y } => vec![(x, y)],
+				P::QuadTo { x1, y1, x, y } => vec![(x1, y1), (x, y)],
+				P::CubicTo {
+					x1,
+					y1,
+					x2,
+					y2,
+					x,
+					y,
+				} => {
+					vec![(x1, y1), (x2, y2), (x, y)]
+				}
+				P::Close => Vec::new(),
+			})
+			.collect()
 	}
 }

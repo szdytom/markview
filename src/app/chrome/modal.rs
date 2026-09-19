@@ -1,5 +1,7 @@
 //! The confirmation for a local file whose type is not known to be inert.
 use super::super::Button;
+use super::controls::{ICON_BUTTON, button_icon};
+use super::icons;
 use crate::{
 	layout::{Draw, Paint, Rect, TextShaper},
 	state::{Command, InteractionState, Modal},
@@ -181,7 +183,7 @@ fn button_width(shaper: &mut TextShaper, label: &str) -> f32 {
 }
 
 /// The modal's controls: "Open folder" is the default, "Open anyway" is the
-/// deliberate action, and "Close" dismisses without doing anything.
+/// deliberate action, and a close icon dismisses without doing anything.
 pub(in crate::app) fn modal_buttons(
 	shaper: &mut TextShaper,
 	interaction: &InteractionState,
@@ -192,13 +194,14 @@ pub(in crate::app) fn modal_buttons(
 		return Vec::new();
 	}
 	let rect = modal_rect(width, height);
-	let close = button_width(shaper, "Close");
+	let close = ICON_BUTTON;
 	let folder = button_width(shaper, "Open folder");
 	let anyway = button_width(shaper, "Open anyway");
 	let row = rect.y + rect.h - 46.0;
 	vec![
 		Button {
 			label: "Open folder",
+			icon: None,
 			action: Command::ModalOpenFolder,
 			rect: Rect {
 				x: rect.x + rect.w - 20.0 - folder,
@@ -209,6 +212,7 @@ pub(in crate::app) fn modal_buttons(
 		},
 		Button {
 			label: "Open anyway",
+			icon: None,
 			action: Command::ModalConfirm,
 			rect: Rect {
 				x: rect.x + rect.w - 28.0 - folder - anyway,
@@ -219,6 +223,7 @@ pub(in crate::app) fn modal_buttons(
 		},
 		Button {
 			label: "Close",
+			icon: Some(icons::CLOSE),
 			action: Command::ModalDismiss,
 			rect: Rect {
 				x: rect.x + rect.w - 20.0 - close,
@@ -277,7 +282,7 @@ pub(in crate::app) fn draw_modal(
 	];
 	out.extend(shaper.label("Open this file?", 20.0, x, rect.y + 36.0, text));
 	// The canonical path, not the link label, which the document controls.
-	let close = button_width(shaper, "Close");
+	let close = ICON_BUTTON;
 	let shown = visible_path(
 		shaper,
 		path,
@@ -357,15 +362,19 @@ pub(in crate::app) fn draw_modal(
 				Paint::Styled(Condition::Button, C::Background),
 			));
 		}
-		let label_x = button.rect.x
-			+ (button.rect.w - shaper.text_width(button.label, 13.0)) / 2.0;
-		out.extend(shaper.label(
-			button.label,
-			13.0,
-			label_x,
-			button.rect.y + button.rect.h / 2.0 + 5.0,
-			Paint::Styled(Condition::Button, C::Color),
-		));
+		if let Some(icon) = button_icon(&button) {
+			out.push(icon);
+		} else {
+			let label_x = button.rect.x
+				+ (button.rect.w - shaper.text_width(button.label, 13.0)) / 2.0;
+			out.extend(shaper.label(
+				button.label,
+				13.0,
+				label_x,
+				button.rect.y + button.rect.h / 2.0 + 5.0,
+				Paint::Styled(Condition::Button, C::Color),
+			));
+		}
 	}
 	out
 }

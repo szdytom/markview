@@ -432,6 +432,8 @@ impl Painter<'_> {
 				}
 			}
 			Draw::Glyph(_) => {}
+			// Icons belong to the reader's chrome, which paper never paints.
+			Draw::Icon { .. } => {}
 			Draw::Rect(rect, paint) => {
 				if let Some(rect) = frame.rect(*rect) {
 					self.solid(surface, rect, *paint);
@@ -995,6 +997,7 @@ fn visible(cluster: Option<&Cluster>, draw: &Draw, item: &PageItem) -> bool {
 		}
 		Draw::Image { rect, .. } => (rect.y, rect.y + rect.h),
 		Draw::Math { math, y, .. } => (*y, *y + math.ascent + math.descent),
+		Draw::Icon { y, size, .. } => (*y, *y + *size),
 		// A container spans its whole block; each fragment clips its own part.
 		Draw::Box { .. } | Draw::Clipped { .. } => return true,
 	};

@@ -195,6 +195,7 @@ fn bands(layout: &BlockLayout) -> Vec<Band> {
 			Draw::Math { math, y, .. } => {
 				Some((*y, *y + math.ascent + math.descent))
 			}
+			Draw::Icon { y, size, .. } => Some((*y, *y + *size)),
 		}
 	};
 	for node in &layout.text {

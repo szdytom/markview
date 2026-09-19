@@ -455,3 +455,108 @@ fn tab_strip_frames_clip_overflow_at_fractional_dpi() -> Result<()> {
 	}
 	Ok(())
 }
+
+/// A vector icon keeps its optical centre inside its button at any device
+/// phase. The icon bakes its subpixel position into the raster, so it must
+/// stay centred on a button that sits on a half device pixel instead of
+/// snapping to the grid, which leaves it visibly off centre at 125% DPI.
+///
+/// The Settings icon is the probe because it is symmetric: a correctly placed
+/// raster puts its coverage centroid on the box centre.
+#[test]
+#[ignore = "requires a GPU; writes artifacts/icon-centre-*.png"]
+fn icons_keep_their_optical_centre_at_fractional_dpi() -> Result<()> {
+	const SCALE: f32 = 1.25;
+	const HEIGHT: f32 = 300.0;
+	let settings = ReaderSettings {
+		stylesheet: markview_core::style::Stylesheet::bundled(false),
+		..Default::default()
+	};
+	let horizontal = HashMap::new();
+	let mut renderer = pollster::block_on(Renderer::new(None))?;
+	renderer.set_stylesheet(settings.stylesheet.clone());
+	// `800.4` puts the buttons half a device pixel right of `800`, the worst
+	// case for an icon that snaps to the grid.
+	for width in [800.0_f32, 800.4] {
+		let mut ui = crate::test_support::shaper();
+		ui.set_stylesheet(settings.stylesheet.clone());
+		let view = View {
+			width: (width * SCALE) as u32,
+			height: (HEIGHT * SCALE) as u32,
+			scale: SCALE,
+			left: 20.0,
+			top: TOP + 10.0,
+			bottom: BOTTOM + 10.0,
+			scroll: 0.0,
+			theme: Theme::Light,
+			horizontal: &horizontal,
+			selection: None,
+			revision: 0,
+			hovered_link: None,
+			hovered_overflow: None,
+			held_overflow: None,
+		};
+		let overlay = draw_controls(
+			&mut ui,
+			&settings,
+			&InteractionState::default(),
+			width,
+			HEIGHT,
+		);
+		let target = renderer.offscreen(view.width, view.height);
+		let submission = renderer.render(
+			&Default::default(),
+			&view,
+			&overlay,
+			&target.create_view(&Default::default()),
+		)?;
+		renderer.wait(Some(submission))?;
+		let output = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+			.join("artifacts")
+			.join(format!("icon-centre-{width}.png"));
+		std::fs::create_dir_all(output.parent().unwrap())?;
+		renderer.save_png(&target, &output)?;
+		let image = image::open(output)?.to_rgba8();
+		// Both buttons center their 20 px icon box four pixels inside their
+		// rectangle; Settings is the second button, so it sits at `width - 40`.
+		let left = (width - 40.0) * SCALE;
+		let top = 10.0 * SCALE;
+		let centre = [left + 10.0 * SCALE, top + 10.0 * SCALE];
+		let (x, y) = coverage_centroid(&image, left, top, 20.0 * SCALE);
+		let offset = [x - f64::from(centre[0]), y - f64::from(centre[1])];
+		assert!(
+			offset[0].abs() < 0.25 && offset[1].abs() < 0.25,
+			"the icon is off centre at {width}: {:+.3}, {:+.3} px",
+			offset[0],
+			offset[1]
+		);
+	}
+	Ok(())
+}
+
+/// The coverage centroid of whatever is drawn inside a square region, in
+/// device pixels. The button fill is sampled at the region's corner.
+fn coverage_centroid(
+	image: &image::RgbaImage,
+	x: f32,
+	y: f32,
+	side: f32,
+) -> (f64, f64) {
+	let (x0, y0) = (x.floor() as u32, y.floor() as u32);
+	let (x1, y1) = ((x + side).ceil() as u32, (y + side).ceil() as u32);
+	let fill = image.get_pixel(x0 + 1, y0 + 1).0;
+	let (mut weight, mut sx, mut sy) = (0.0, 0.0, 0.0);
+	for py in y0..y1 {
+		for px in x0..x1 {
+			let pixel = image.get_pixel(px, py).0;
+			let delta: f64 =
+				(0..3).map(|i| f64::from(pixel[i].abs_diff(fill[i]))).sum();
+			if delta > 8.0 {
+				weight += delta;
+				sx += delta * (f64::from(px) + 0.5);
+				sy += delta * (f64::from(py) + 0.5);
+			}
+		}
+	}
+	(sx / weight, sy / weight)
+}

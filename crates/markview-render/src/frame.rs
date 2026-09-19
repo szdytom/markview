@@ -90,6 +90,7 @@ impl Renderer {
 					| Draw::Clipped { .. }
 					| Draw::Glyph(_)
 					| Draw::Image { .. }
+					| Draw::Icon { .. }
 					| Draw::Math { .. } => foreground.push((draw, dx, dy, clip, hovered)),
 					Draw::Rect(..)
 					| Draw::Box { .. }

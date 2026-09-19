@@ -239,6 +239,37 @@ impl Renderer {
 					view,
 				);
 			}
+			Draw::Icon {
+				paths,
+				paint,
+				x,
+				y,
+				size,
+			} => {
+				let color = self.color(
+					if hovered {
+						Self::hover_paint(*paint)
+					} else {
+						*paint
+					},
+					view.theme,
+				);
+				for path in *paths {
+					self.raster.icon(
+						&self.gpu.queue,
+						&mut self.geometry,
+						path.commands,
+						path.fill,
+						path.stroke_width,
+						x + dx,
+						y + dy,
+						*size,
+						color,
+						clip,
+						view,
+					);
+				}
+			}
 			Draw::Math { math, x, y, paint } => {
 				let (x, y) = (x + dx, y + dy);
 				if intersect(

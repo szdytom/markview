@@ -44,7 +44,10 @@ enum Event {
 }
 struct Button {
 	rect: Rect,
+	/// Names the button; drawn only when it has no icon.
 	label: &'static str,
+	/// Drawn centered in place of the label when set.
+	icon: Option<&'static [markview_core::scene::IconPath]>,
 	action: Command,
 }
 

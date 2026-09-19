@@ -3,6 +3,7 @@ mod controls;
 mod footer;
 #[cfg(test)]
 mod gpu_tests;
+mod icons;
 mod modal;
 mod styles;
 mod tabs;
@@ -54,6 +55,7 @@ fn banner_buttons(shaper: &mut TextShaper, width: f32) -> Vec<Button> {
 	vec![
 		Button {
 			label: "Dismiss",
+			icon: None,
 			action: Command::RemoteDismiss,
 			rect: Rect {
 				x: width - 16.0 - dismiss - load - 8.0,
@@ -64,6 +66,7 @@ fn banner_buttons(shaper: &mut TextShaper, width: f32) -> Vec<Button> {
 		},
 		Button {
 			label: "Load all",
+			icon: None,
 			action: Command::RemoteLoadAll,
 			rect: Rect {
 				x: width - 16.0 - load,
@@ -179,7 +182,7 @@ impl Chrome<'_> {
 				height,
 			)
 		} else {
-			let mut buttons = toolbar_controls(self.ui, width);
+			let mut buttons = toolbar_controls(width);
 			if self.remote_notice.is_some() {
 				buttons.extend(banner_buttons(self.ui, width));
 			}

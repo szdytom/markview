@@ -2,23 +2,20 @@ use super::{Entry, RasterCache, RasterKey};
 use crate::{View, intersect};
 use markview_core::{document::fingerprint, scene::Rect};
 use ratex_types::PathCommand;
+/// The number of device-grid phases an icon raster bakes in. Four steps bound
+/// the cache to a handful of bitmaps per icon while leaving the placement
+/// error inside 1/8 device pixel.
+const ICON_PHASES: f32 = 4.0;
 impl RasterCache {
-	#[expect(clippy::too_many_arguments, reason = "Vector path drawing state")]
-	pub(crate) fn path(
-		&mut self,
-		queue: &wgpu::Queue,
-		geometry: &mut crate::geometry::Geometry,
+	/// Encodes `commands` into the raster key and builds their tiny-skia path.
+	///
+	/// Every caller pushes its own leading marker first, so an entry can never
+	/// be mistaken for another kind of shape.
+	fn outline(
 		commands: &[PathCommand],
-		fill: bool,
-		x: f32,
-		y: f32,
-		size: f32,
-		color: [f32; 4],
-		clip: Rect,
-		view: &View<'_>,
-	) {
+		bits: &mut Vec<u64>,
+	) -> Option<tiny_skia::Path> {
 		let mut b = tiny_skia::PathBuilder::new();
-		let mut bits = vec![u64::from(fill)];
 		for command in commands {
 			match *command {
 				PathCommand::MoveTo { x, y } => {
@@ -67,7 +64,29 @@ impl RasterCache {
 				}
 			}
 		}
-		let Some(path) = b.finish() else {
+		b.finish()
+	}
+
+	/// A formula path. Its device position follows the formula's baseline
+	/// fractionally, so it is tiled and keyed by the tile it covers.
+	#[expect(clippy::too_many_arguments, reason = "Vector path drawing state")]
+	pub(crate) fn path(
+		&mut self,
+		queue: &wgpu::Queue,
+		geometry: &mut crate::geometry::Geometry,
+		commands: &[PathCommand],
+		fill: bool,
+		x: f32,
+		y: f32,
+		size: f32,
+		color: [f32; 4],
+		clip: Rect,
+		view: &View<'_>,
+	) {
+		// Formula strokes have always been this wide, in path units.
+		const STROKE_WIDTH: f32 = 0.04;
+		let mut bits = vec![u64::from(fill)];
+		let Some(path) = Self::outline(commands, &mut bits) else {
 			return;
 		};
 		let bounds = path.bounds();
@@ -90,9 +109,20 @@ impl RasterCache {
 			for tx in (0..w).step_by(512) {
 				let (w, h) = ((w - tx).min(512), (h - ty).min(512));
 				let (ox, oy) = (px + tx as i32, py + ty as i32);
-				let Some(e) =
-					self.raster(queue, &bits, &path, fill, scale, ox, oy, w, h)
-				else {
+				let Some(e) = self.raster(
+					queue,
+					&bits,
+					&path,
+					fill,
+					STROKE_WIDTH,
+					false,
+					scale,
+					[-(ox as f32), -(oy as f32)],
+					ox,
+					oy,
+					w,
+					h,
+				) else {
 					continue;
 				};
 				geometry.quad(
@@ -163,7 +193,10 @@ impl RasterCache {
 			&bits,
 			&path,
 			true,
+			0.0,
+			false,
 			scale,
+			[-left, -top],
 			left as i32,
 			top as i32,
 			w,
@@ -194,9 +227,95 @@ impl RasterCache {
 		);
 	}
 
+	/// A UI icon figure, in its unit box.
+	///
+	/// The figure's subpixel device position is baked into the bitmap rather
+	/// than snapped away, like a glyph's horizontal phase: the quad then
+	/// starts on a whole device pixel, so the atlas's linear filter samples
+	/// each texel exactly, while the icon keeps the button's optical centre.
+	#[expect(clippy::too_many_arguments, reason = "Vector path drawing state")]
+	pub(crate) fn icon(
+		&mut self,
+		queue: &wgpu::Queue,
+		geometry: &mut crate::geometry::Geometry,
+		commands: &[PathCommand],
+		fill: bool,
+		stroke_width: f32,
+		x: f32,
+		y: f32,
+		size: f32,
+		color: [f32; 4],
+		clip: Rect,
+		view: &View<'_>,
+	) {
+		// A leading `3` keeps an icon key apart from a formula path (`fill`
+		// first) and a polygon (`2` first); the stroke state follows.
+		let mut bits =
+			vec![3u64, u64::from(stroke_width.to_bits()), u64::from(!fill)];
+		let Some(path) = Self::outline(commands, &mut bits) else {
+			return;
+		};
+		// The commands are in the icon's unit box, so the bitmap rasterizes
+		// at the icon's device size, while the quad below is placed in
+		// logical pixels, which the geometry expands by the DPI scale.
+		let dpi = view.scale;
+		let scale = size * dpi;
+		let bounds = path.bounds();
+		// A stroke paints half its width outside the outline, and round caps
+		// and joins stay inside that ring.
+		let margin = if fill { 0.0 } else { stroke_width * 0.5 };
+		let origin = [
+			(x * dpi * ICON_PHASES).round() / ICON_PHASES,
+			(y * dpi * ICON_PHASES).round() / ICON_PHASES,
+		];
+		bits.push(u64::from(origin[0].to_bits()));
+		bits.push(u64::from(origin[1].to_bits()));
+		let left = (origin[0] + (bounds.x() - margin) * scale).floor() - 1.0;
+		let top = (origin[1] + (bounds.y() - margin) * scale).floor() - 1.0;
+		let right = origin[0] + (bounds.x() + bounds.width() + margin) * scale;
+		let bottom =
+			origin[1] + (bounds.y() + bounds.height() + margin) * scale;
+		let w = (right.ceil() - left) as u32 + 1;
+		let h = (bottom.ceil() - top) as u32 + 1;
+		let Some(e) = self.raster(
+			queue,
+			&bits,
+			&path,
+			fill,
+			stroke_width,
+			true,
+			scale,
+			[origin[0] - left, origin[1] - top],
+			left as i32,
+			top as i32,
+			w,
+			h,
+		) else {
+			return;
+		};
+		geometry.quad(
+			Rect {
+				x: left / dpi,
+				y: top / dpi,
+				w: w as f32 / dpi,
+				h: h as f32 / dpi,
+			},
+			Rect {
+				x: e.x as f32,
+				y: e.y as f32,
+				w: w as f32,
+				h: h as f32,
+			},
+			color,
+			clip,
+			view,
+		);
+	}
+
 	/// Rasterizes one vector path into the coverage atlas, keyed by the path,
-	/// its scale and the device-grid tile it covers. `tx`/`ty` are the bitmap's
-	/// origin, so a position-independent shape passes its own frame here.
+	/// its scale and the device-grid tile it covers. `tx`/`ty` identify the
+	/// bitmap's origin; `offset` is the translation from path units to that
+	/// bitmap, so a shape that bakes in a subpixel phase passes it here.
 	#[expect(clippy::too_many_arguments, reason = "Vector path drawing state")]
 	fn raster(
 		&mut self,
@@ -204,7 +323,10 @@ impl RasterCache {
 		bits: &[u64],
 		path: &tiny_skia::Path,
 		fill: bool,
+		stroke_width: f32,
+		round: bool,
 		scale: f32,
+		offset: [f32; 2],
 		tx: i32,
 		ty: i32,
 		w: u32,
@@ -223,7 +345,7 @@ impl RasterCache {
 		}
 		let mut pixmap = tiny_skia::Pixmap::new(w, h)?;
 		let transform = tiny_skia::Transform::from_row(
-			scale, 0.0, 0.0, scale, -tx as f32, -ty as f32,
+			scale, 0.0, 0.0, scale, offset[0], offset[1],
 		);
 		let mut paint = tiny_skia::Paint::default();
 		paint.set_color_rgba8(255, 255, 255, 255);
@@ -240,7 +362,17 @@ impl RasterCache {
 				path,
 				&paint,
 				&tiny_skia::Stroke {
-					width: 0.04,
+					width: stroke_width,
+					line_cap: if round {
+						tiny_skia::LineCap::Round
+					} else {
+						tiny_skia::LineCap::Butt
+					},
+					line_join: if round {
+						tiny_skia::LineJoin::Round
+					} else {
+						tiny_skia::LineJoin::Miter
+					},
 					..Default::default()
 				},
 				transform,

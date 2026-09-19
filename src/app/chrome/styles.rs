@@ -1,5 +1,6 @@
 use super::super::Button;
-use super::controls::panel_rect;
+use super::controls::{ICON_BUTTON, button_icon, panel_rect};
+use super::icons;
 use crate::{
 	layout::{Draw, Paint, Rect, TextShaper},
 	settings::ReaderSettings,
@@ -35,14 +36,21 @@ pub(super) fn style_controls(
 	let order = style_order(settings, entries);
 	let page = page.min(order.len().saturating_sub(1) / rows);
 	let mut out = vec![];
-	for (label, action, x, w) in [
-		("Back", Command::Styles, 20., 58.),
-		("System", Command::SystemTheme, 86., 74.),
-		("Close", Command::Settings, r.w - 78., 58.),
-		("Open styles folder", Command::StylesFolder, 20., 146.),
+	for (label, icon, action, x, w) in [
+		("Back", None, Command::Styles, 20., 58.),
+		("System", None, Command::SystemTheme, 86., 74.),
+		(
+			"Close",
+			Some(icons::CLOSE),
+			Command::Settings,
+			r.w - 20. - ICON_BUTTON,
+			ICON_BUTTON,
+		),
+		("Open styles folder", None, Command::StylesFolder, 20., 146.),
 	] {
 		out.push(Button {
 			label,
+			icon,
 			action,
 			rect: Rect {
 				x: r.x + x,
@@ -59,6 +67,7 @@ pub(super) fn style_controls(
 	if page > 0 {
 		out.push(Button {
 			label: "Previous",
+			icon: None,
 			action: Command::StylePrev,
 			rect: Rect {
 				x: r.x + r.w - 190.,
@@ -71,6 +80,7 @@ pub(super) fn style_controls(
 	if (page + 1) * rows < order.len() {
 		out.push(Button {
 			label: "Next",
+			icon: None,
 			action: Command::StyleNext,
 			rect: Rect {
 				x: r.x + r.w - 100.,
@@ -92,6 +102,7 @@ pub(super) fn style_controls(
 		if e.error.is_none() || pos.is_some() {
 			out.push(Button {
 				label: if pos.is_some() { "Disable" } else { "Enable" },
+				icon: None,
 				action: Command::StyleToggle(index),
 				rect: Rect {
 					x: r.x + r.w - 180.,
@@ -105,6 +116,7 @@ pub(super) fn style_controls(
 			if pos > 0 {
 				out.push(Button {
 					label: "↑",
+					icon: None,
 					action: Command::StyleUp(index),
 					rect: Rect {
 						x: r.x + r.w - 96.,
@@ -121,6 +133,7 @@ pub(super) fn style_controls(
 			{
 				out.push(Button {
 					label: "↓",
+					icon: None,
 					action: Command::StyleDown(index),
 					rect: Rect {
 						x: r.x + r.w - 58.,
@@ -288,15 +301,19 @@ pub(super) fn draw_styles(
 				));
 			}
 		}
-		let label_x =
-			b.rect.x + (b.rect.w - shaper.text_width(b.label, 12.)) / 2.0;
-		out.extend(shaper.label(
-			b.label,
-			12.,
-			label_x,
-			b.rect.y + 18.,
-			Paint::Styled(Condition::Button, C::Color),
-		));
+		if let Some(icon) = button_icon(&b) {
+			out.push(icon);
+		} else {
+			let label_x =
+				b.rect.x + (b.rect.w - shaper.text_width(b.label, 12.)) / 2.0;
+			out.extend(shaper.label(
+				b.label,
+				12.,
+				label_x,
+				b.rect.y + 18.,
+				Paint::Styled(Condition::Button, C::Color),
+			));
+		}
 	}
 	out
 }

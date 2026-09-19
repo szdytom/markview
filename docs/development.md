@@ -168,6 +168,13 @@ cargo test --workspace --locked color_glyphs_preserve_rgb_and_share_paint_order 
 
 Keep core free of window, GPU, clipboard, filesystem, and configuration dependencies. Prefer immutable snapshots and explicit version tags at asynchronous boundaries. Reuse the retained `Document` when only layout settings change.
 
+## Add a UI icon
+
+1. Put a square, geometry-only SVG in `assets/ui`. Its colors are ignored: the button's theme color paints it, stroked figures are drawn round-capped, and a filled figure must set `fill` on the element. Keep `width`, `height` and `viewBox` consistent so the stroke weight normalizes correctly.
+2. Add a constant to `src/app/chrome/icons.rs`, such as `pub(super) const SAVE: &[IconPath] = markview_icon::icon!("assets/ui/save.svg");`. The macro parses the file at compile time into a unit-box buffer and registers it for rebuild tracking, so no SVG parser reaches the binary.
+3. Set `icon: Some(...)` on the button's `Button` literal. The chrome centers it with `button_icon` in place of the label.
+4. Keep the button's `label` even when it draws an icon; tests and hit testing use it as the button's name.
+
 ## Add a document node
 
 Use this sequence when adding a Markdown or HTML construct:
