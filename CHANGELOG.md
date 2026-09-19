@@ -15,6 +15,9 @@ at the same level, without `[brackets]`.
 
 - Remove soft line breaks from Chinese Markdown prose to avoid inserting spaces.
 
+- Measure each reader's resident memory and record readers that fail to render a
+  fixture, instead of timing their compile-error window.
+
 ## 0.1.4 - 2026-09-19
 
 This release adds stylesheet discovery and validation, expands theme and typography support, and improves reader previews.

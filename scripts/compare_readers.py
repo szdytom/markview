@@ -15,18 +15,23 @@ through Vulkan, which needs DRI3 to present, and neither server provides it to
 clients. The applications therefore run on a real X server, and only the top of
 each window is read, which is the region a reader sees first.
 
-The applications are Markview, MarkText and VS Code. MarkText renders the document
-in its window; VS Code is asked for its Markdown preview, because its editor shows
-the source rather than the document.
+The applications are Markview, MarkText, SuperGoodViewer and VS Code. MarkText
+and SuperGoodViewer render the document in their window; VS Code is asked for
+its Markdown preview, because its editor shows the source rather than the
+document. Every application is also weighed once its document has settled: the
+resident memory of all of its processes together, because an Electron reader is
+several processes and the number a person would read off a monitor is their sum.
 
 Usage: scripts/compare_readers.py [--task open,edit] [--runs 3]
                                   [--fixtures 10k,100k]
-                                  [--apps markview,marktext,vscode] [--json FILE]
+                                  [--apps markview,marktext,supergoodviewer,vscode]
+                                  [--json FILE]
 """
 import argparse
 import json
 import os
 import pathlib
+import re
 import shutil
 import signal
 import statistics
@@ -42,6 +47,10 @@ import comparison_fixtures
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 BINARY = ROOT / "target/release/markview"
+# SuperGoodViewer ships prebuilt Linux archives; unpack one here and point
+# `SUPERGOODVIEWER` at its executable to include it in a comparison.
+SGV = pathlib.Path(os.environ.get("SUPERGOODVIEWER",
+                                  ROOT / "artifacts/supergoodviewer/sogoodviewer"))
 WINDOW_ROWS = 400          # physical rows of the window that are captured
 STRIDE = 8                 # analysis downsample factor
 SETTLE_QUIET = 1.5         # long enough to outlast a second rendering pass
@@ -84,9 +93,23 @@ def window_title(display, window):
         return None
 
 
+def process_field(entry, index):
+    """One numeric field of a `/proc` status line, or `None` when unreadable.
+
+    The fields after the process name are `state`, `ppid`, `pgrp` and `session`,
+    which is how a process is placed in the group or session it belongs to.
+    """
+    try:
+        fields = (entry / "stat").read_bytes().decode(errors="replace")
+        return int(fields[fields.rindex(")") + 2:].split()[index])
+    except (OSError, ValueError, IndexError):
+        return None
+
+
 def sweep(work):
     """Kill anything still running out of this run's private directories."""
     ours = str(work).encode()
+    own_session = os.getsid(0)
     for entry in pathlib.Path("/proc").iterdir():
         if not entry.name.isdigit() or entry.name == str(os.getpid()):
             continue
@@ -94,11 +117,39 @@ def sweep(work):
             command = (entry / "cmdline").read_bytes()
         except OSError:
             continue
-        if ours in command:
-            try:
-                os.kill(int(entry.name), signal.SIGKILL)
-            except OSError:
-                pass
+        if ours not in command:
+            continue
+        # The path can also appear in the command line of the shell that started
+        # this run, so only ever kill processes in a session of their own. Both
+        # applications are launched with `start_new_session=True`.
+        if process_field(entry, 3) == own_session:
+            continue
+        try:
+            os.kill(int(entry.name), signal.SIGKILL)
+        except OSError:
+            pass
+
+
+def group_rss_kib(pgid):
+    """Resident memory of every process in the application's process group.
+
+    An Electron reader is four to eight processes, so the number a person would
+    read off a system monitor is their sum. Each application is started with
+    `start_new_session=True`, so its group is the process that was launched.
+    """
+    total = 0
+    for entry in pathlib.Path("/proc").iterdir():
+        if not entry.name.isdigit():
+            continue
+        if process_field(entry, 2) != pgid:
+            continue
+        try:
+            for line in (entry / "status").read_text().splitlines():
+                if line.startswith("VmRSS:"):
+                    total += int(line.split()[1])
+        except (OSError, ValueError, IndexError):
+            continue
+    return total
 
 
 def grab(window, rows):
@@ -191,6 +242,9 @@ def launch(app, document, log):
     environment["DISPLAY"] = app["display"]
     for key, value in app.get("env", {}).items():
         environment[key] = str(value).format(work=WORK)
+    for directory in app.get("env_dirs", []):
+        pathlib.Path(str(directory).format(work=WORK)).mkdir(parents=True,
+                                                             exist_ok=True)
     handle = open(log, "wb")
     return subprocess.Popen(app["command"](document), env=environment,
                             stdout=handle, stderr=handle, start_new_session=True)
@@ -228,14 +282,14 @@ def edit_document(path):
 
 def one_run(app, fixture, work, index, tasks):
     document = work / f"doc-{app['name']}-{fixture.stem}-{index}.md"
+    log_path = work / f"log-{app['name']}-{fixture.stem}-{index}.log"
     shutil.copy(fixture, document)
     display = xdisplay.Display(app["display"])
     marks = {"launch": time.perf_counter()}
     print(f"    {app['name']} started", flush=True)
-    application = launch(app, document,
-                         work / f"log-{app['name']}-{fixture.stem}-{index}.log")
+    application = launch(app, document, log_path)
     try:
-        needle = app["title"].format(document=document.name)
+        needle = app["title"].format(document=document.name, stem=document.stem)
         window = find_window(display, needle, time.time() + 40)
         if window is None:
             raise RuntimeError("no window appeared")
@@ -250,6 +304,7 @@ def one_run(app, fixture, work, index, tasks):
               f"{len(frames)} frames in {time.perf_counter() - watch_started:.2f}s"
               + ("  [HIT THE LIMIT: never settled]" if timed_out else ""),
               flush=True)
+        marks["rss_kib"] = group_rss_kib(application.pid)
         if "edit" in tasks:
             time.sleep(0.5)
             marks["edit"] = time.perf_counter()
@@ -271,7 +326,15 @@ def one_run(app, fixture, work, index, tasks):
         Image.fromarray(stack[settled]).resize(
             (stack.shape[2] * 2, stack.shape[1] * 2), Image.NEAREST).save(
             os.environ["MARKVIEW_COMPARE_DUMP"])
-    return analyze(frames, marks, tasks)
+    result = analyze(frames, marks, tasks)
+    # A reader that refuses the document still paints a still, inked window, so
+    # its own log is what says whether the frame is a page or an error message.
+    if pattern := app.get("failure"):
+        match = re.search(pattern, log_path.read_text(errors="replace"))
+        if match:
+            return {"error": f"{app['name']}: {match.group(1).strip()[:160]}",
+                    "rss_mib": result.get("rss_mib")}
+    return result
 
 
 def analyze(frames, marks, tasks):
@@ -283,6 +346,8 @@ def analyze(frames, marks, tasks):
     result = {"frames": len(frames),
               "settled_s": round(times[settled] - marks["launch"], 3),
               "reference_ink": round(ink(stack[settled]), 4)}
+    if "rss_kib" in marks:
+        result["rss_mib"] = round(marks["rss_kib"] / 1024, 1)
     if "open" in tasks:
         before = int(np.searchsorted(times, marks.get("edit", times[-1])))
         moved_before = np.flatnonzero(changed[:max(before - 1, 1)] > 0.5)
@@ -332,17 +397,41 @@ def applications(display):
                 f"--user-data-dir={WORK}/vscode",
                 f"--extensions-dir={WORK}/vscode-ext", str(document)]
 
-    return {
+    def supergoodviewer(document):
+        return [str(SGV), str(document)]
+
+    applications = {
         "markview": {"name": "markview", "command": markview, "display": display,
                      "title": "{document}",
                      "env": {"XDG_CONFIG_HOME": "{work}/config"}},
         "marktext": {"name": "marktext", "command": marktext, "display": display,
                      "title": "{document}",
                      "env": {"XDG_CONFIG_HOME": "{work}/config"}},
+        "supergoodviewer": {"name": "supergoodviewer", "command": supergoodviewer,
+                            "display": display,
+                            "title": "{stem} - SuperGoodViewer",
+                            # Its compiled-document cache lives under `$HOME`, so
+                            # a private `HOME` keeps every run a first open. A
+                            # repeat open of the same file is served from that
+                            # cache instead, which is a different measurement.
+                            "env": {"GDK_BACKEND": "x11", "HOME": "{work}/home"},
+                            "env_dirs": ["{work}/home"],
+                            # Its LaTeX-to-Typst path rejects `\begin{pmatrix}`
+                            # and retries the compile, so the window never
+                            # settles on those fixtures.
+                            "skip": ("math-10k", "math-100k"),
+                            "skip_reason": "does not render this fixture: "
+                                           "Typst compile error, "
+                                           "unknown variable: pmatrix",
+                            "failure": r"compileDocument: FAILED \(([^)]*)\)"},
         "vscode": {"name": "vscode", "command": vscode, "display": display,
                    "title": "Visual Studio Code",
                    "open_preview": "ctrl+shift+v"},
     }
+    if not SGV.exists():
+        applications.pop("supergoodviewer")
+        print(f"skipping supergoodviewer: {SGV} not found", file=sys.stderr)
+    return applications
 
 
 def main():
@@ -350,7 +439,7 @@ def main():
     parser.add_argument("--task", default="open", help="comma-separated: open,edit")
     parser.add_argument("--runs", type=int, default=3)
     parser.add_argument("--fixtures", default="10k")
-    parser.add_argument("--apps", default="markview,marktext")
+    parser.add_argument("--apps", default="markview,marktext,supergoodviewer")
     parser.add_argument("--display", default=":0")
     parser.add_argument("--json", help="write the raw report here")
     parser.add_argument("--save-settled",
@@ -363,7 +452,12 @@ def main():
     WORK.mkdir(parents=True, exist_ok=True)
     fixtures = comparison_fixtures.write(WORK / "fixtures",
                                          tuple(args.fixtures.split(",")))
-    chosen = [applications(args.display)[name] for name in args.apps.split(",")]
+    available = applications(args.display)
+    unknown = [name for name in args.apps.split(",") if name not in available]
+    if unknown:
+        sys.exit(f"unknown app(s) {', '.join(unknown)}; "
+                 f"available: {', '.join(sorted(available))}")
+    chosen = [available[name] for name in args.apps.split(",")]
     sweep(WORK)
     report = {}
     # Interleaved, so every application meets the same machine load.
@@ -372,6 +466,13 @@ def main():
             for fixture in fixtures:
                 key = f"{app['name']}|{fixture.stem}"
                 print(f"run {index + 1}/{args.runs}: {key}", flush=True)
+                # A reader that cannot parse a fixture is recorded, not run: its
+                # window stays in a compile-error state and never settles.
+                if fixture.stem in app.get("skip", ()):
+                    report.setdefault(key, []).append(
+                        {"error": f"{app['name']} {app['skip_reason']}"})
+                    print(f"    skipped: {app['skip_reason']}", flush=True)
+                    continue
                 try:
                     if args.save_settled:
                         pathlib.Path(args.save_settled).mkdir(parents=True,
@@ -387,7 +488,7 @@ def main():
     summary = {}
     for key, results in report.items():
         entry = {"runs": results}
-        for field in ("first_s", "complete_s", "edit_s"):
+        for field in ("first_s", "complete_s", "edit_s", "rss_mib"):
             values = [r[field] for r in results if r.get(field) is not None]
             if values:
                 entry[f"{field}_median"] = round(statistics.median(values), 3)
@@ -395,7 +496,8 @@ def main():
     print()
     for key, entry in sorted(summary.items()):
         fields = " ".join(f"{name}={entry.get(name + '_median')}"
-                          for name in ("first_s", "complete_s", "edit_s")
+                          for name in ("first_s", "complete_s", "edit_s",
+                                       "rss_mib")
                           if entry.get(name + "_median") is not None)
         print(f"{key:20} {fields}")
     if args.json:
