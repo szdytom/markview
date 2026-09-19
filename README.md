@@ -117,12 +117,26 @@ what each number does and does not cover.
 
 Opening a file, median of three runs in seconds, window included:
 
-| Document | Markview | MarkText |
-|:--|--:|--:|
-| 10 KiB of prose | 0.09 | 0.97 |
-| 100 KiB of prose | 0.10 | 0.99 |
-| 10 KiB, 108 display formulas | 0.11 | 1.24 |
-| 100 KiB, 1092 display formulas | 0.09 | 2.94 |
+| Document | Markview | SuperGoodViewer | MarkText |
+|:--|--:|--:|--:|
+| 10 KiB of prose | 0.12 | 0.61 | 1.13 |
+| 100 KiB of prose | 0.12 | 0.94 | 1.12 |
+| 10 KiB, 108 display formulas | 0.12 | failed to render¹ | 1.39 |
+| 100 KiB, 1092 display formulas | 0.11 | failed to render¹ | 3.24 |
+
+Resident memory once the document is on screen, in MiB, every process of each
+reader counted:
+
+| Document | Markview | SuperGoodViewer | MarkText |
+|:--|--:|--:|--:|
+| 10 KiB of prose | 46 | 296 | 696 |
+| 100 KiB of prose | 46 | 347 | 706 |
+| 10 KiB, 108 display formulas | 48 | — | 753 |
+| 100 KiB, 1092 display formulas | 50 | — | 1143 |
+
+¹ SuperGoodViewer's LaTeX path rejects the matrix in this fixture
+(`unknown variable: pmatrix`) and its window stays on a compile-error notice, so
+it is recorded rather than timed.
 
 One document to one PDF, median of three runs in seconds:
 

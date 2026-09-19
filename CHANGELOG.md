@@ -15,6 +15,9 @@ at the same level, without `[brackets]`.
 
 - Remove soft line breaks from Chinese Markdown prose to avoid inserting spaces.
 
+- Compare readers against SuperGoodViewer in the README tables, adding its open
+  time and a resident-memory table for all three readers.
+
 - Measure each reader's resident memory and record readers that fail to render a
   fixture, instead of timing their compile-error window.
 
