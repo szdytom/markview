@@ -54,6 +54,7 @@ pub(crate) struct LaunchOptions {
 	pub(crate) style: Option<Vec<String>>,
 	pub(crate) cjk_type: Option<markview_core::style::CjkType>,
 	pub(crate) install: Option<(PathBuf, bool)>,
+	pub(crate) validate: Option<PathBuf>,
 	pub(crate) iterations: usize,
 	pub(crate) options: LayoutOptions,
 	pub(crate) overrides: Vec<Setting>,
@@ -77,6 +78,7 @@ impl Default for LaunchOptions {
 			style: None,
 			cjk_type: None,
 			install: None,
+			validate: None,
 			iterations: 100,
 			options: LayoutOptions::default(),
 			overrides: Vec::new(),
@@ -113,24 +115,37 @@ fn parse_arguments(
 	let mut args = args.into_iter().peekable();
 	if args.peek().is_some_and(|a| a == "ss") {
 		args.next();
-		if args.next().as_deref() != Some(std::ffi::OsStr::new("install")) {
-			bail!("Usage: markview ss install FILE.mvss.toml [--force]");
-		}
-		let mut path = None;
-		let mut force = false;
-		for arg in args {
-			if arg == "--force" {
-				force = true;
-			} else if path.is_none() {
-				path = Some(PathBuf::from(arg));
-			} else {
-				bail!("Install one stylesheet at a time");
+		match args.next().as_deref() {
+			Some(sub) if sub == "install" => {
+				let mut path = None;
+				let mut force = false;
+				for arg in args {
+					if arg == "--force" {
+						force = true;
+					} else if path.is_none() {
+						path = Some(PathBuf::from(arg));
+					} else {
+						bail!("Install one stylesheet at a time");
+					}
+				}
+				out.install = Some((
+					path.context("ss install requires a stylesheet path")?,
+					force,
+				));
 			}
+			Some(sub) if sub == "validate" => {
+				let path = args.next().map(PathBuf::from);
+				if args.next().is_some() {
+					bail!("Validate one stylesheet at a time");
+				}
+				out.validate = Some(
+					path.context("ss validate requires a stylesheet path")?,
+				);
+			}
+			_ => bail!(
+				"Usage: markview ss install FILE.mvss.toml [--force]\n       markview ss validate FILE.mvss.toml"
+			),
 		}
-		out.install = Some((
-			path.context("ss install requires a stylesheet path")?,
-			force,
-		));
 		return Ok(Some(out));
 	}
 	while let Some(arg) = args.next() {
@@ -152,7 +167,7 @@ fn parse_arguments(
 		match text.as_ref() {
 			"-h" | "--help" => {
 				crate::logging::report(format_args!(
-					"Markview — native Markdown reading\n\nmarkview [FILE] [--style ID ...]\nmarkview ss install FILE.mvss.toml [--force]\nmarkview --render FILE --output preview.png [--dark] [--scale 2]\nmarkview --pdf FILE --output out.pdf [--paper a4] [--landscape] [--watch]\nmarkview --bench FILE [--iterations 100] [--output metrics.json]\nmarkview --bench-latency FILE [--iterations 100] [--output latency.json]\nmarkview --smoke-test FILE [--output window.png]\n\nOptions: --width N --height N --column N --font-size N --scroll N\n         --paragraph-indent N --cjk-type SC|TC|JP|none --scale N\n         --style ID --dark --light --left --no-hyphens --greedy --offline\n\nFonts: --fonts DIR adds a directory of font files and may be repeated.\n       --ignore-system-fonts shapes with those directories alone, so the\n       fonts installed on the machine cannot change the result.\n\nPDF: --paper a4|a5|letter|legal|WIDTHxHEIGHT --landscape --margin MM[,MM...]\n     --header TEXT --header-left/right TEXT --footer TEXT --footer-left/right TEXT\n     --no-links --watch; --watch re-exports whenever the document or one of its\n     local images changes, until you stop it. The slots take {{page}} {{pages}}\n     {{title}} and {{path}}. The export always starts from the bundled print\n     stylesheet, and --style layers on it.\n\nMetadata: --title TEXT --author NAME (repeatable) --subject TEXT\n          --keywords A,B --language TAG --creator TEXT\n          A title defaults to the first heading, then the file name;\n          Producer stays Markview <version>, and no creation date is\n          ever written.\n\nImages: local files, file:, http(s): and data: URIs; bitmap and SVG.\n        An image alone in its block is centered, otherwise it is inline.\n        Animated images show their first frame; --offline blocks the network.\n\nKeyboard: Ctrl+O open · Ctrl+T styles · Ctrl+ +/- font size\n          Ctrl+[ / ] column width · Ctrl+L alignment · Ctrl+H hyphenation\n          arrows / PageUp / PageDown / Home / End scroll\n          drag the scrollbar · Shift+wheel scroll wide blocks · Tab/Enter toolbar\n          click web/mail/local links; local .md links open in a new tab\n          click a footnote reference to reach its note and its number to return\n          drag / Shift+click select · Ctrl+A all · Ctrl+C copy · Ctrl+, settings\n\n--render and --bench use the real GPU pipeline offscreen.\n--greedy is a typography comparison mode."
+					"Markview — native Markdown reading\n\nmarkview [FILE] [--style ID ...]\nmarkview ss install FILE.mvss.toml [--force]\nmarkview ss validate FILE.mvss.toml\nmarkview --render FILE --output preview.png [--dark] [--scale 2]\nmarkview --pdf FILE --output out.pdf [--paper a4] [--landscape] [--watch]\nmarkview --bench FILE [--iterations 100] [--output metrics.json]\nmarkview --bench-latency FILE [--iterations 100] [--output latency.json]\nmarkview --smoke-test FILE [--output window.png]\n\nOptions: --width N --height N --column N --font-size N --scroll N\n         --paragraph-indent N --cjk-type SC|TC|JP|none --scale N\n         --style ID --dark --light --left --no-hyphens --greedy --offline\n\nFonts: --fonts DIR adds a directory of font files and may be repeated.\n       --ignore-system-fonts shapes with those directories alone, so the\n       fonts installed on the machine cannot change the result.\n\nPDF: --paper a4|a5|letter|legal|WIDTHxHEIGHT --landscape --margin MM[,MM...]\n     --header TEXT --header-left/right TEXT --footer TEXT --footer-left/right TEXT\n     --no-links --watch; --watch re-exports whenever the document or one of its\n     local images changes, until you stop it. The slots take {{page}} {{pages}}\n     {{title}} and {{path}}. The export always starts from the bundled print\n     stylesheet, and --style layers on it.\n\nMetadata: --title TEXT --author NAME (repeatable) --subject TEXT\n          --keywords A,B --language TAG --creator TEXT\n          A title defaults to the first heading, then the file name;\n          Producer stays Markview <version>, and no creation date is\n          ever written.\n\nImages: local files, file:, http(s): and data: URIs; bitmap and SVG.\n        An image alone in its block is centered, otherwise it is inline.\n        Animated images show their first frame; --offline blocks the network.\n\nKeyboard: Ctrl+O open · Ctrl+T styles · Ctrl+ +/- font size\n          Ctrl+[ / ] column width · Ctrl+L alignment · Ctrl+H hyphenation\n          arrows / PageUp / PageDown / Home / End scroll\n          drag the scrollbar · Shift+wheel scroll wide blocks · Tab/Enter toolbar\n          click web/mail/local links; local .md links open in a new tab\n          click a footnote reference to reach its note and its number to return\n          drag / Shift+click select · Ctrl+A all · Ctrl+C copy · Ctrl+, settings\n\n--render and --bench use the real GPU pipeline offscreen.\n--greedy is a typography comparison mode."
 				));
 				return Ok(None);
 			}
@@ -833,5 +848,22 @@ mod stylesheet_tests {
 		.unwrap();
 		assert_eq!(args.install, Some((PathBuf::from("a.mvss.toml"), true)));
 		assert!(args.path.is_none());
+		let args =
+			parse_arguments(["ss", "validate", "a.mvss.toml"].map(Into::into))
+				.unwrap()
+				.unwrap();
+		assert_eq!(args.validate, Some(PathBuf::from("a.mvss.toml")));
+		assert!(args.install.is_none());
+		assert!(args.path.is_none());
+		for bad in [
+			&["ss", "validate"][..],
+			&["ss", "validate", "a.mvss.toml", "b.mvss.toml"],
+			&["ss", "polish", "a.mvss.toml"],
+		] {
+			assert!(
+				parse_arguments(bad.iter().map(Into::into)).is_err(),
+				"{bad:?}"
+			);
+		}
 	}
 }

@@ -13,6 +13,11 @@ at the same level, without `[brackets]`.
 
 ## Unreleased
 
+### Added
+
+- `markview ss validate FILE.mvss.toml` parses a stylesheet in place and
+  reports its version and rule count, so a draft can be checked before install.
+
 ## 0.1.3 - 2026-09-18
 
 Themeable list markers and code chips, a watching PDF export, and exports that

@@ -224,6 +224,7 @@ Use the built-in light and dark styles, or install a `.mvss.toml` stylesheet of
 your own:
 
 ```sh
+markview ss validate paper.mvss.toml
 markview ss install paper.mvss.toml
 markview document.md --style paper
 ```

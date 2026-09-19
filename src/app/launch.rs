@@ -24,6 +24,16 @@ pub(super) fn run() -> Result<()> {
 		return Ok(());
 	};
 	crate::logging::init(&args.mode);
+	if let Some(source) = &args.validate {
+		let sheet = crate::stylesheet::validate(source)?;
+		crate::logging::report(format_args!(
+			"Valid stylesheet: {} (version {}, {} rules)",
+			source.display(),
+			sheet.version,
+			sheet.rules.len()
+		));
+		return Ok(());
+	}
 	if let Some((source, force)) = &args.install {
 		let dir = crate::stylesheet::directory()
 			.ok_or_else(|| anyhow::anyhow!("No user stylesheet directory"))?;

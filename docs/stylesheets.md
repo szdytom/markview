@@ -5,12 +5,13 @@ Markview stylesheets are UTF-8 TOML files with the `.mvss.toml` suffix. They def
 ## Install and select a style
 
 ```sh
+markview ss validate paper.mvss.toml
 markview ss install paper.mvss.toml
 markview document.md --style paper
 markview document.md --style paper --style dark
 ```
 
-Installation validates the complete file and copies it to the user stylesheet directory. It does not install fonts or enable the style. Use `--force` to replace an installed style whose `version` is equal to or lower than the incoming version.
+Installation validates the complete file and copies it to the user stylesheet directory. It does not install fonts or enable the style. Use `--force` to replace an installed style whose `version` is equal to or lower than the incoming version. `ss validate` runs the same parse without copying anything, so a draft can be checked in place before it is installed; it reports the sheet's version and rule count on success.
 
 The directory is next to `settings.toml`:
 

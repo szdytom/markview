@@ -191,6 +191,14 @@ pub fn catalog(dir: Option<&Path>, selected: Option<&[String]>) -> Vec<Entry> {
 	entries
 }
 
+/// Parses a stylesheet file without installing it, so a caller can check a
+/// draft in place and report the sheet's own metadata on success.
+pub fn validate(source: &Path) -> Result<Stylesheet> {
+	let text = fs::read_to_string(source)
+		.with_context(|| format!("Cannot read {}", source.display()))?;
+	Stylesheet::parse(&text).with_context(|| source.display().to_string())
+}
+
 pub fn install(
 	source: &Path,
 	dir: &Path,
@@ -255,6 +263,25 @@ mod tests {
 	/// Load named styles without caring about the CJK variant.
 	fn load(ids: &[String], dir: Option<&Path>) -> Result<Arc<Stylesheet>> {
 		load_with_cjk_type(ids, dir, CjkType::Sc)
+	}
+	#[test]
+	fn validate_reads_a_sheet_without_installing_it() {
+		let tmp = tempfile::tempdir().unwrap();
+		let source = tmp.path().join("a.mvss.toml");
+		fs::write(
+			&source,
+			"format_version=2\nversion=1\n[[rule]]\nwhen=['body']\ncolor='#abcdef'",
+		)
+		.unwrap();
+		let sheet = validate(&source).unwrap();
+		assert_eq!(sheet.version, 1);
+		assert_eq!(sheet.rules.len(), 1);
+		// Nothing is copied, and a file that cannot parse names itself.
+		assert!(!tmp.path().join("styles").exists());
+		fs::write(&source, "version=1\n").unwrap();
+		let error = validate(&source).unwrap_err().to_string();
+		assert!(error.contains("a.mvss.toml"), "{error}");
+		assert!(validate(&tmp.path().join("missing.mvss.toml")).is_err());
 	}
 	#[test]
 	fn install_is_validated_atomic_and_not_enabled() {

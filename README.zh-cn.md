@@ -189,6 +189,7 @@ PDF 信息字典可用 `--title`、`--author`（可重复以写多位作者）�
 使用内置的亮色与暗色样式，或安装自己的 `.mvss.toml` 样式表：
 
 ```sh
+markview ss validate paper.mvss.toml
 markview ss install paper.mvss.toml
 markview document.md --style paper
 ```
