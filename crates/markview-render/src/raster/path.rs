@@ -343,6 +343,9 @@ impl RasterCache {
 		if let Some(entry) = self.cache.get(&key) {
 			return Some(*entry);
 		}
+		if self.prewarm_declines() {
+			return None;
+		}
 		let mut pixmap = tiny_skia::Pixmap::new(w, h)?;
 		let transform = tiny_skia::Transform::from_row(
 			scale, 0.0, 0.0, scale, offset[0], offset[1],

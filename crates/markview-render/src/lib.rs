@@ -11,6 +11,7 @@ use markview_core::{
 	scene::{Paint, Rect},
 	shaping::TextShaper,
 };
+pub use raster::RasterStats;
 use std::{collections::HashMap, sync::Arc, time::Duration};
 use winit::window::Window;
 #[derive(
@@ -35,6 +36,7 @@ impl Theme {
 	}
 }
 
+#[derive(Clone)]
 pub struct View<'a> {
 	pub selection: Option<markview_core::text::TextSelection>,
 	pub revision: u64,
@@ -76,6 +78,10 @@ pub struct Renderer {
 	geometry: geometry::Geometry,
 	pipeline: wgpu::RenderPipeline,
 	pointer: Option<(f32, f32)>,
+	/// While a prewarm pass runs, the frame it builds is thrown away, so it
+	/// must leave the published image demand and every cached texture exactly
+	/// as the frame on screen left them.
+	prewarming: bool,
 	stylesheet: Option<Arc<markview_core::style::Stylesheet>>,
 	fallback: Option<TextShaper>,
 	pub adapter_name: String,
@@ -139,6 +145,7 @@ impl Renderer {
 			adapter_name,
 			images: images::ImageTextures::new(image_pipeline),
 			pointer: None,
+			prewarming: false,
 			stylesheet: None,
 			fallback: None,
 		})
@@ -192,6 +199,36 @@ impl Renderer {
 	}
 	pub fn clear_raster_cache(&mut self) {
 		self.raster.reset_atlas(&self.gpu.queue);
+	}
+	/// Rasterization counters since this renderer was created.
+	pub fn raster_stats(&self) -> RasterStats {
+		self.raster.stats()
+	}
+	/// Rasterizes what the next screenful needs, so scrolling into it does not
+	/// pay for the glyphs inside the frame the reader is waiting for. Returns
+	/// whether the budget ran out first, which means another pass is worth
+	/// scheduling while the reader stays put.
+	pub fn prewarm(
+		&mut self,
+		snapshot: &markview_core::scene::LayoutSnapshot,
+		view: &View<'_>,
+		budget: Duration,
+	) -> bool {
+		// An atlas without room would evict the frame the reader is looking
+		// at, so a prewarm declines rather than forcing that rebuild.
+		if !self.raster.has_room() {
+			return false;
+		}
+		let ahead = View {
+			scroll: view.scroll + view.viewport().clip().h,
+			selection: None,
+			..view.clone()
+		};
+		self.prewarming = true;
+		self.raster.begin_budget(budget);
+		self.prepare(snapshot, &ahead, &[]);
+		self.prewarming = false;
+		self.raster.finish_budget()
 	}
 }
 fn intersect(a: Rect, b: Rect) -> Option<Rect> {

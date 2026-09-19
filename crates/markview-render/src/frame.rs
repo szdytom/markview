@@ -10,7 +10,9 @@ impl Renderer {
 		overlay: &[Draw],
 	) {
 		self.geometry.clear();
-		self.images.begin(&snapshot.images);
+		if !self.prewarming {
+			self.images.begin(&snapshot.images);
+		}
 		let full = Rect {
 			x: 0.0,
 			y: 0.0,
@@ -183,7 +185,11 @@ impl Renderer {
 			self.draw(draw, 0.0, 0.0, full, view, false);
 		}
 		// Publish atomically; the loader must never observe a half-painted frame.
-		self.images.publish();
+		// A prewarm pass has no frame to publish and must not replace the demand
+		// of the one the reader is looking at.
+		if !self.prewarming {
+			self.images.publish();
+		}
 	}
 	/// Renders one frame with a stylesheet of its own, leaving the renderer's
 	/// colors exactly as they were. The PNG export uses this so its strips can

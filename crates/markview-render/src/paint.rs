@@ -108,6 +108,11 @@ impl Renderer {
 			Draw::Image {
 				src, version, rect, ..
 			} => {
+				// A prewarm pass leaves image textures and the texture cache
+				// alone: the frame it prepares is not the one on screen.
+				if self.prewarming {
+					return;
+				}
 				let rect = Rect {
 					x: rect.x + dx,
 					y: rect.y + dy,

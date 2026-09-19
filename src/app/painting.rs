@@ -10,6 +10,17 @@ use std::time::Instant;
 use winit::event_loop::ActiveEventLoop;
 
 use super::{App, BOTTOM, Event};
+/// How long one glyph prewarm pass may spend before yielding to the next
+/// frame. Scroll frames cost about 0.4 ms when their glyphs are cached, so
+/// this hands the reader a much better frame than the 13 ms a screenful of
+/// new CJK glyphs costs when it arrives cold.
+const PREWARM_BUDGET: std::time::Duration = std::time::Duration::from_millis(2);
+/// How long the reader must stay put before the next prewarm pass.
+const PREWARM_INTERVAL: std::time::Duration =
+	std::time::Duration::from_millis(16);
+/// A frame slower than this means the reader is moving through content that
+/// is not prepared yet, so prewarming waits instead of competing with it.
+const PREWARM_QUIET_MS: f64 = 3.0;
 impl App {
 	pub(super) fn render(
 		&mut self,
@@ -22,6 +33,9 @@ impl App {
 		if size.width == 0 || size.height == 0 {
 			return Ok(());
 		}
+		// A pass only survives a frame that completes; an occluded or retried
+		// frame must not leave a deadline that wakes the loop forever.
+		self.prewarm_at = None;
 		let overlay = self.overlay();
 		let (width, _, scale) = self.dimensions();
 		let view = View {
@@ -66,12 +80,16 @@ impl App {
 			crate::render::FrameStatus::Occluded => return Ok(()),
 		};
 		let target = frame.texture.create_view(&Default::default());
+		let rasterized_before = renderer.raster_stats().rasterized;
+		let started = Instant::now();
 		let submission = renderer.render(
 			&self.readers.session.snapshot,
 			&view,
 			&overlay,
 			&target,
 		)?;
+		let prepared_ms = started.elapsed().as_secs_f64() * 1000.0;
+		let rasterized = renderer.raster_stats().rasterized - rasterized_before;
 		window.pre_present_notify();
 		frame.present();
 		if suboptimal {
@@ -123,6 +141,26 @@ impl App {
 		{
 			renderer.wait(Some(submission))?;
 			event_loop.exit();
+		}
+		// Prepare the next screenful while the reader is not moving through
+		// unprepared content, so its glyphs are rasterized before the scroll
+		// frame that needs them rather than inside it.
+		let idle = prepared_ms < PREWARM_QUIET_MS;
+		let more = if idle {
+			renderer.prewarm(
+				&self.readers.session.snapshot,
+				&view,
+				PREWARM_BUDGET,
+			)
+		} else {
+			// A slow frame was slow because it rasterized what the reader had
+			// just scrolled into; the same content is warm now, so come back
+			// once it is done. A slow frame that rasterized nothing will not
+			// get cheaper by waiting, and schedules nothing.
+			rasterized > 0
+		};
+		if more {
+			self.prewarm_at = Some(Instant::now() + PREWARM_INTERVAL);
 		}
 		Ok(())
 	}

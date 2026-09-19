@@ -200,3 +200,208 @@ fn color_glyphs_preserve_rgb_and_share_paint_order() {
 	renderer.clear_raster_cache();
 	assert!(renderer.raster.cache.is_empty());
 }
+
+#[test]
+#[ignore = "requires a GPU"]
+fn prewarm_prepares_the_next_screenful_before_the_frame_needs_it() {
+	use crate::{RasterStats, Renderer, Theme, View};
+	use markview_core::scene::{
+		BlockLayout, Draw, Glyph, LayoutSnapshot, Paint, PlacedBlock,
+	};
+	use std::{collections::HashMap, sync::Arc, time::Duration};
+
+	let mut renderer = pollster::block_on(Renderer::new(None)).unwrap();
+	let font = parley::FontData::new(
+		ratex_katex_fonts::ttf_bytes("KaTeX_Main-Regular.ttf")
+			.unwrap()
+			.into_owned()
+			.into(),
+		0,
+	);
+	let charmap = swash::FontRef::from_index(font.data.data(), 0)
+		.unwrap()
+		.charmap();
+	// One letter per glyph, laid out eight to a row: two screenfuls of
+	// distinct glyphs, the one on screen and the one below it.
+	let screenful = |letters: &str, y: f32| PlacedBlock {
+		id: y as u64,
+		source: 0..0,
+		y,
+		layout: Arc::new(BlockLayout {
+			draws: letters
+				.chars()
+				.enumerate()
+				.map(|(i, ch)| {
+					Draw::Glyph(Glyph {
+						font: font.clone(),
+						coords: Vec::new().into(),
+						id: charmap.map(ch),
+						size: 12.0,
+						x: (i % 8) as f32 * 14.0,
+						y: (i / 8) as f32 * 14.0,
+						synthetic_italic: false,
+						paint: Paint::Text,
+					})
+				})
+				.collect(),
+			height: 60.0,
+			width: 120.0,
+			..Default::default()
+		}),
+	};
+	let snapshot = LayoutSnapshot {
+		blocks: vec![
+			screenful("ABCDEFGHIJKLMNOPQRSTUVWX", 0.0),
+			screenful("abcdefghijklmnopqrstuvwx", 60.0),
+		],
+		height: 120.0,
+		width: 120.0,
+		..Default::default()
+	};
+	let horizontal = HashMap::new();
+	let mut view = View {
+		selection: None,
+		revision: 0,
+		width: 120,
+		height: 60,
+		scale: 1.,
+		scroll: 0.,
+		left: 0.,
+		top: 0.,
+		bottom: 0.,
+		theme: Theme::Light,
+		horizontal: &horizontal,
+		hovered_link: None,
+		hovered_overflow: None,
+		held_overflow: None,
+	};
+	let stats = |r: &Renderer| -> RasterStats { r.raster_stats() };
+	let target = renderer.offscreen(120, 60);
+	let draw = |renderer: &mut Renderer, view: &View<'_>| {
+		let submission = renderer
+			.render(
+				&snapshot,
+				view,
+				&[],
+				&target.create_view(&Default::default()),
+			)
+			.unwrap();
+		renderer.wait(Some(submission)).unwrap();
+	};
+	draw(&mut renderer, &view);
+	let on_screen = stats(&renderer).rasterized;
+	assert!(on_screen > 0, "the first frame rasterized nothing");
+
+	// Prewarming prepares the screenful below.
+	while renderer.prewarm(&snapshot, &view, Duration::from_millis(50)) {}
+	let prepared = stats(&renderer).rasterized;
+	assert!(prepared > on_screen, "prewarming rasterized nothing");
+
+	// Scrolling to it therefore adds no rasterization at all.
+	view.scroll = 60.;
+	draw(&mut renderer, &view);
+	assert_eq!(
+		stats(&renderer).rasterized,
+		prepared,
+		"the scroll frame rasterized glyphs prewarming should have prepared"
+	);
+}
+
+#[test]
+#[ignore = "requires a GPU"]
+fn prewarming_leaves_the_visible_image_demand_alone() {
+	use crate::{Renderer, Theme, View};
+	use markview_core::{
+		image::{ImageInfo, ImagePixels, ImageSnapshot},
+		scene::{BlockLayout, Draw, LayoutSnapshot, PlacedBlock, Rect},
+	};
+	use std::{collections::HashMap, sync::Arc, time::Duration};
+
+	let mut renderer = pollster::block_on(Renderer::new(None)).unwrap();
+	let pixels = Arc::new(ImagePixels::default());
+	let entries = ["on-screen.png", "below.png"]
+		.into_iter()
+		.map(|src| {
+			(
+				src.to_string(),
+				ImageInfo {
+					version: 1,
+					size: Some((40, 40)),
+					error: None,
+				},
+			)
+		})
+		.collect();
+	let image_block = |src: &str, y: f32| PlacedBlock {
+		id: y as u64,
+		source: 0..0,
+		y,
+		layout: Arc::new(BlockLayout {
+			draws: vec![Draw::Image {
+				src: src.into(),
+				version: 1,
+				rect: Rect {
+					x: 0.,
+					y: 0.,
+					w: 40.,
+					h: 40.,
+				},
+				title: String::new(),
+			}],
+			height: 40.,
+			width: 120.,
+			..Default::default()
+		}),
+	};
+	let snapshot = LayoutSnapshot {
+		images: ImageSnapshot {
+			entries,
+			pixels: pixels.clone(),
+		},
+		blocks: vec![
+			image_block("on-screen.png", 0.),
+			image_block("below.png", 60.),
+		],
+		height: 120.,
+		width: 120.,
+		..Default::default()
+	};
+	let horizontal = HashMap::new();
+	let view = View {
+		selection: None,
+		revision: 0,
+		width: 120,
+		height: 60,
+		scale: 1.,
+		scroll: 0.,
+		left: 0.,
+		top: 0.,
+		bottom: 0.,
+		theme: Theme::Light,
+		horizontal: &horizontal,
+		hovered_link: None,
+		hovered_overflow: None,
+		held_overflow: None,
+	};
+	let demanded = |pixels: &ImagePixels| {
+		let mut srcs: Vec<String> =
+			pixels.demand.lock().unwrap().keys().cloned().collect();
+		srcs.sort();
+		srcs
+	};
+	let target = renderer.offscreen(120, 60);
+	let submission = renderer
+		.render(
+			&snapshot,
+			&view,
+			&[],
+			&target.create_view(&Default::default()),
+		)
+		.unwrap();
+	renderer.wait(Some(submission)).unwrap();
+	assert_eq!(demanded(&pixels), ["on-screen.png"]);
+	// A prewarm pass builds the frame below, which must not replace the image
+	// demand of the frame the reader is looking at.
+	while renderer.prewarm(&snapshot, &view, Duration::from_millis(50)) {}
+	assert_eq!(demanded(&pixels), ["on-screen.png"]);
+}

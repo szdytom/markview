@@ -3,7 +3,11 @@ use markview_core::{
 	document::fingerprint, scene::Glyph, style::SYNTHETIC_ITALIC_ANGLE_DEG,
 };
 use parley::FontData;
-use std::collections::HashMap;
+use serde::Serialize;
+use std::{
+	collections::HashMap,
+	time::{Duration, Instant},
+};
 use swash::{
 	FontRef,
 	scale::{Render, ScaleContext, Source},
@@ -67,6 +71,19 @@ pub(super) struct Entry {
 	pub(super) top: f32,
 }
 
+/// What the rasterizer has done so far, for the benchmark report.
+#[derive(Clone, Copy, Debug, Default, Serialize)]
+pub struct RasterStats {
+	/// Glyphs and paths rasterized, whether or not the atlas had room.
+	pub rasterized: u64,
+	/// Atlas evictions; each one rebuilds the current frame.
+	pub resets: u64,
+	/// Entries cached now.
+	pub entries: usize,
+	/// Share of the mask atlas the shelf allocator has consumed.
+	pub fill_percent: u8,
+}
+
 pub(super) struct RasterCache {
 	atlas: wgpu::Texture,
 	bind_group: wgpu::BindGroup,
@@ -76,6 +93,13 @@ pub(super) struct RasterCache {
 	math_fonts: HashMap<String, FontData>,
 	atlas_full: bool,
 	color_atlas: Option<color::ColorAtlas>,
+	rasterized: u64,
+	resets: u64,
+	/// While a prewarm pass is running, the instant past which a new
+	/// rasterization is left for a later frame.
+	budget: Option<Instant>,
+	/// Rasterizations a prewarm pass left undone.
+	skipped: u64,
 }
 impl RasterCache {
 	pub(super) fn new(
@@ -129,12 +153,63 @@ impl RasterCache {
 			math_fonts: HashMap::new(),
 			atlas_full: false,
 			color_atlas: None,
+			rasterized: 0,
+			resets: 0,
+			budget: None,
+			skipped: 0,
 		};
 		cache.reset_atlas(queue);
+		// The first fill is not an eviction.
+		cache.resets = 0;
 		cache
 	}
 	pub(super) fn full(&self) -> bool {
 		self.atlas_full
+	}
+	/// True while new entries still fit without evicting the atlas.
+	pub(super) fn has_room(&self) -> bool {
+		!self.atlas_full && self.shelf.1 + self.shelf.2 < ATLAS_SIZE * 3 / 4
+	}
+	/// Rasterizes only until `budget` elapses, so a pass that prepares a
+	/// screenful the reader has not reached yet cannot spend a whole frame.
+	pub(super) fn begin_budget(&mut self, budget: Duration) {
+		self.budget = Some(Instant::now() + budget);
+		self.skipped = 0;
+	}
+	/// Ends a budgeted pass; `true` means it ran out of time with work left,
+	/// so another pass is worth scheduling. Work it declined for want of
+	/// atlas room reports `false`: that room comes back on its own, and
+	/// asking again every frame would spin the event loop.
+	pub(super) fn finish_budget(&mut self) -> bool {
+		self.budget = None;
+		std::mem::take(&mut self.skipped) > 0
+	}
+	/// True when a budgeted pass must leave this rasterization to a later
+	/// frame, either because its time is up or because the atlas is too full
+	/// to take it without evicting what is on screen. Only a budgeted pass is
+	/// bounded: the frame the reader is waiting for still gets whatever it
+	/// needs, and evicts the atlas if it must.
+	pub(super) fn prewarm_declines(&mut self) -> bool {
+		let Some(deadline) = self.budget else {
+			return false;
+		};
+		if !self.has_room() {
+			return true;
+		}
+		if Instant::now() >= deadline {
+			self.skipped += 1;
+			return true;
+		}
+		false
+	}
+	pub(super) fn stats(&self) -> RasterStats {
+		RasterStats {
+			rasterized: self.rasterized,
+			resets: self.resets,
+			entries: self.cache.len(),
+			fill_percent: ((self.shelf.1 + self.shelf.2) * 100 / ATLAS_SIZE)
+				.min(100) as u8,
+		}
 	}
 	pub(super) fn bind_group(&self) -> &wgpu::BindGroup {
 		&self.bind_group
@@ -154,6 +229,7 @@ impl RasterCache {
 		}
 	}
 	pub(super) fn reset_atlas(&mut self, queue: &wgpu::Queue) {
+		self.resets += 1;
 		self.cache.clear();
 		self.shelf = (2, 0, 2);
 		self.atlas_full = false;
@@ -198,6 +274,7 @@ impl RasterCache {
 		mut entry: Entry,
 		data: &[u8],
 	) -> Option<Entry> {
+		self.rasterized += 1;
 		if entry.w == 0 || entry.h == 0 {
 			self.cache.insert(key, entry);
 			return Some(entry);
@@ -253,6 +330,9 @@ impl RasterCache {
 		if let Some(entry) = self.cache.get(&key) {
 			return Some(*entry);
 		}
+		if self.prewarm_declines() {
+			return None;
+		}
 		let font =
 			FontRef::from_index(g.font.data.data(), g.font.index as usize)?;
 		let mut scaler = self
@@ -296,6 +376,7 @@ impl RasterCache {
 				if matches!(image.source, Source::ColorOutline(_)) {
 					color::unpremultiply(&mut image.data);
 				}
+				self.rasterized += 1;
 				let atlas = self.color_atlas.get_or_insert_with(|| {
 					color::ColorAtlas::new(device, color_pipeline)
 				});

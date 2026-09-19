@@ -115,6 +115,9 @@ struct App {
 	dialog_open: bool,
 	reflow_at: Option<Instant>,
 	retry_at: Option<Instant>,
+	/// When the next glyph prewarm pass is due, while one is still worth
+	/// running. Cleared whenever the reader is scrolling through new content.
+	prewarm_at: Option<Instant>,
 	first_frame: Option<Update>,
 	started: Instant,
 	fatal: Option<String>,
@@ -183,6 +186,7 @@ impl App {
 			dialog_open: false,
 			reflow_at: None,
 			retry_at: None,
+			prewarm_at: None,
 			first_frame: None,
 			started: Instant::now(),
 			fatal: None,

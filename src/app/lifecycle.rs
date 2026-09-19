@@ -278,6 +278,10 @@ impl ApplicationHandler<Event> for App {
 			self.retry_at = None;
 			self.redraw();
 		}
+		if self.prewarm_at.is_some_and(|d| d <= now) {
+			self.prewarm_at = None;
+			self.redraw();
+		}
 		if self.watch_at.is_some_and(|d| d <= now) {
 			self.watch_at = None;
 			self.start_watch_export();
@@ -293,6 +297,7 @@ impl ApplicationHandler<Event> for App {
 			.reflow_at
 			.into_iter()
 			.chain(self.retry_at)
+			.chain(self.prewarm_at)
 			.chain(self.watch_at)
 			.chain(self.status_until)
 			.chain(self.preferences.save_deadline())
