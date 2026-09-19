@@ -1,0 +1,16 @@
+format_version = 2
+version = 1
+targets = ["ui"]
+
+[meta]
+name = "UI CJK Medium"
+description = "Prefer Medium CJK labels, retaining the original weight when Medium is unavailable"
+
+[[rule]]
+when = ["ui"]
+font = [
+    { family = "sans-serif" },
+    { family = "sans-serif[cjk]", weight = 500 },
+    { family = "sans-serif[cjk]" },
+    { family = "emoji", weight = 400 },
+]

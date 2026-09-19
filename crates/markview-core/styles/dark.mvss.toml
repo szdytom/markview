@@ -1,115 +1,114 @@
 format_version = 2
-version = 1
+targets = ["ui"]
+version = 2
 
 [meta]
 name = "Dark"
-description = "Markview's default dark stylesheet"
+description = "Soft slate, silver text and glacier blue"
 
 [[rule]]
 when = ["body"]
-color = "#DDE2E7"
-background = "#20252B"
+color = "#DCE3ED"
+background = "#202630"
 
 [[rule]]
 when = ["link"]
-color = "#8FB9DD"
+color = "#98C5ED"
 
 [[rule]]
 when = ["link", "hover"]
-color = "#B7D8F2"
+color = "#C4E2FA"
 
 [[rule]]
 when = ["code"]
-background = "#2A3139"
+background = "#2B3441"
 
 [[rule]]
 when = ["code_block"]
-background = "#2A3139"
+background = "#2B3441"
 theme = "base16-ocean.dark"
 
 [[rule]]
 when = ["code_block", "label"]
-color = "#98A5B1"
+color = "#A5B3C5"
 
 [[rule]]
 when = ["blockquote"]
-border_color = "#8FB9DD"
+border_color = "#98C5ED"
 
 [[rule]]
 when = ["marker"]
-color = "#98A5B1"
+color = "#A5B3C5"
 
 [[rule]]
 when = ["task_marker"]
-color = "#20252B"
-background = "#20252B"
-accent = "#8FB9DD"
-border_color = "#8FB9DD"
-border_width = 1.5
-radius = 2.5
+color = "#202630"
+background = "#202630"
+accent = "#98C5ED"
+border_color = "#98C5ED"
 
 [[rule]]
 when = ["table", "cell"]
-border_color = "#414C58"
+border_color = "#465366"
 
 [[rule]]
 when = ["table", "header"]
-background = "#2A3139"
+background = "#2B3441"
 
 [[rule]]
 when = ["hr"]
-color = "#414C58"
+color = "#465366"
 
 [[rule]]
 when = ["selection"]
-background = "#8FB9DD47"
+background = "#98C5ED47"
 
 [[rule]]
 when = ["img"]
-border_color = "#414C58"
+border_color = "#465366"
 
 [[rule]]
 when = ["img", "caption"]
-color = "#98A5B1"
+color = "#A5B3C5"
 
 [[rule]]
 when = ["img", "placeholder"]
-color = "#98A5B1"
-background = "#2A3139"
+color = "#A5B3C5"
+background = "#2B3441"
 
 [[rule]]
 when = ["scrollbar"]
-track = "#414C58"
-thumb = "#98A5B1"
-thumb_hover = "#8FB9DD"
+track = "#465366"
+thumb = "#A5B3C5"
+thumb_hover = "#98C5ED"
 
 [[rule]]
 when = ["ui"]
-color = "#E8EBF0"
-background = "#191C22"
-muted = "#A1AAB8"
-accent = "#8BAAFF"
-border_color = "#3B424E"
-error = "#FF9CA8"
+color = "#DCE3ED"
+background = "#1B212A"
+muted = "#A5B3C5"
+accent = "#98C5ED"
+border_color = "#465366"
+error = "#FFA3B0"
 shadow = "#00000000"
-scrim = "#10192352"
+scrim = "#10192370"
 
 [[rule]]
 when = ["ui", "panel"]
-background = "#22262E"
+background = "#252E3A"
 
 [[rule]]
 when = ["ui", "toolbar"]
-background = "#191C22"
+background = "#1B212A"
 
 [[rule]]
 when = ["ui", "statusbar"]
-background = "#191C22"
+background = "#1B212A"
 
 [[rule]]
 when = ["ui", "button"]
-background = "#22262E"
-hover_background = "#343E4D"
-active_background = "#354668"
-disabled_color = "#A1AAB8"
-focus_color = "#8BAAFF"
+background = "#252E3A"
+hover_background = "#354459"
+active_background = "#3E526D"
+disabled_color = "#A5B3C5"
+focus_color = "#98C5ED"

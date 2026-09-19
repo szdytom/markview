@@ -21,9 +21,62 @@ The directory is next to `settings.toml`:
 | macOS | `~/Library/Application Support/markview/styles/` |
 | Windows | `%APPDATA%/markview/styles/` |
 
-The filename without `.mvss.toml` is the style ID. Only the first directory level is scanned. The built-in `light` and `dark` IDs are reserved.
+The filename without `.mvss.toml` is the style ID. Only the first directory level is scanned. The bundled IDs `light`, `dark`, `celadon`, `blueprint`, `rosewood`, `print`, `monochrome`, `qibaishi`, `vangogh`, `mondrian`, and `builtin` are reserved (including case variants).
 
 In the Settings panel, **Styles…** lets you enable, disable, and reorder styles. The leftmost selected style has the highest priority. `--style` replaces the session's selected list and is not saved. It cannot be combined with `--light` or `--dark`.
+
+## Output targets
+
+Declare the destinations at the top level, before any TOML table:
+
+```toml
+format_version = 2
+version = 1
+targets = ["ui", "pdf"]
+```
+
+- `targets = ["ui"]`: reader window and its theme selector.
+- `targets = ["pdf"]`: PDF export and its theme selector.
+- `targets = ["ui", "pdf"]`: both destinations; order does not matter.
+
+Omitting `targets` defaults to `["ui", "pdf"]` for existing files. Empty arrays, duplicates, unknown names and non-array values are rejected. Destinations describe the whole file, not individual rules, and are checked separately on every selected stylesheet before merging. They do not cascade.
+
+Bundled reader themes declare `["ui"]`, bundled paper themes declare `["pdf"]`, and the hidden `builtin` supports both. Selectors hide incompatible themes. A previously selected theme that changes destinations remains visible with an error so it can be removed; invalid reader updates retain the last valid appearance. Explicitly loading an incompatible theme reports its ID and the required destination.
+
+The export panel shares paper layout and stylesheet selection between PDF and PNG, so both use the `pdf` destination. The diagnostic `--render` command can preview either destination, including `--style print`; it does not select a theme for the reader window. `ss validate` reports the declared targets.
+
+## Choose a starting point
+
+| Theme | Direction | Typography and signature |
+| --- | --- | --- |
+| `light` | Graphite on cool white; mineral blue accents | Serif reading text, sans-serif headings, quiet blue-grey chrome |
+| `dark` | Soft slate with glacier blue accents | The same reading rhythm with subdued surfaces and silver text |
+| `celadon` | Porcelain green and botanical ink | Spacious serif headings, diamond bullets, green inset quotations |
+| `blueprint` | Chalk blue on drafting-paper navy | Sans-serif text and headings, square/minus bullets, blue quotation panels |
+| `rosewood` | Plum shadows and rose accents | Literary serif headings, diamond bullets, plum quotation panels |
+
+### PDF themes
+
+All paper themes use `targets = ["pdf"]` and appear in the export selector. They keep white paper and inherit Print's page setup, font fallbacks and 0.75em page furniture. The new themes add a running title and right-aligned page count; `print` retains its centered page count and empty header.
+
+| ID | Direction | Signature |
+| --- | --- | --- |
+| `print` | Neutral paper default | Black text, modest grey surfaces and sans-serif headings |
+| `monochrome` | Minimal black and white | Unfilled quotation and code boxes, greyscale rules and uncolored code |
+| `qibaishi` | Ink and vermilion | Literary serif headings, open quotations and restrained red details |
+| `vangogh` | Indigo and wheat gold | Large serif title, indigo headings and golden quotation panels |
+| `mondrian` | Vivid primary colors | Red title, blue headings and quote bars, yellow table header, black grid |
+
+The three artist themes interpret the supplied CSS references through native MVSS typography and geometry. They do not depend on CSS, downloaded fonts or decorative images. Monochrome controls stylesheet and syntax colors; embedded images and color Emoji retain their original colors.
+
+```sh
+markview --pdf examples/themes.md --style monochrome --output monochrome.pdf
+markview --pdf examples/themes.md --style vangogh --output vangogh.pdf
+```
+
+Their source files live in [`crates/markview-core/styles/`](../crates/markview-core/styles/). Copy a visible theme to a **new filename** to start a standalone palette, or write a small override and layer it above an existing theme.
+
+`builtin.mvss.toml` supplies shared fonts, base typography, geometry, and safe fallback colors. It is always the last, lowest-priority layer, never appears in the UI, and cannot be selected, installed, or replaced. An empty reader style list uses only this fallback. The normal default chooses `light` or `dark`; neither is an implicit parent of another theme. PDF exports put `print` above `builtin` before applying the requested styles.
 
 ## A minimal valid file
 
@@ -39,7 +92,7 @@ description = "Warm reading theme"
 when = ["body"]
 color = "#292524"
 background = "#FAF8F2"
-font = [{ family = "serif" }]
+font = [{ family = "serif" }, { family = "serif[cjk]" }, { family = "emoji", weight = 400 }]
 line_height = 1.65
 
 [[rule]]
@@ -137,13 +190,13 @@ The column grows to the widest number a list actually renders, so a wide format 
 
 `page` accepts only `background`. The furniture conditions accept the text fields, so a page number can be smaller or greyer than the header text beside it.
 
-Special properties include `theme` on `["code_block"]` alone, scrollbar colors and thicknesses on `["scrollbar"]`, `muted`/`accent`/`error`/`shadow`/`scrim` on `["ui"]`, `accent` on `["task_marker"]`, and `hover_background`/`active_background`/`disabled_color`/`focus_color` on `["ui", "button"]`. The UI theme controls appearance, not widget layout or dimensions.
+Special properties include `theme` on `["code_block"]` alone (`theme = "none"` disables syntax colors and uses the code block text color), scrollbar colors and thicknesses on `["scrollbar"]`, `muted`/`accent`/`error`/`shadow`/`scrim` on `["ui"]`, `accent` on `["task_marker"]`, and `hover_background`/`active_background`/`disabled_color`/`focus_color` on `["ui", "button"]`. The UI theme controls appearance, not widget layout or dimensions.
 
 Colors are sRGB `#RRGGBB` or `#RRGGBBAA`; `body.background` must be opaque. Sizes and spacing are positive or non-negative finite values. `size` is relative to the reader's base size, `line_height` is a multiple of the condition's size, block spacing and padding use base-size units, and an inline code chip's padding scales with the text around it. Border width and radius use logical pixels. Unknown conditions, fields, types, and enum values are errors.
 
 ## Paper
 
-The PDF export always starts from the bundled `print` stylesheet, and `--style` layers a named style on top of it. A style may also set the `[page]` table, which is the only table besides `fontdef`, `meta`, and `rule`:
+The PDF export always starts from the bundled `print` stylesheet, and `--style` layers a named style supporting `pdf` on top of it. A style may also set the `[page]` table, which is the only table besides `fontdef`, `meta`, and `rule`:
 
 ```toml
 [page]
@@ -162,7 +215,7 @@ Slots are templates. `{page}`, `{pages}`, `{title}`, and `{path}` are the suppor
 
 ## Cascade and inheritance
 
-Stylesheets are merged from left to right by condition set. A field omitted by a higher-priority style remains from the lower-priority style; arrays replace the entire lower-priority array.
+The leftmost selected stylesheet has the highest priority. Implementation merges from the fallback upward, processing selected styles right to left, by condition set. For `--style personal --style dark`, the effective order is `personal → dark → builtin`. A field omitted by a higher-priority style remains from the lower-priority style; arrays replace the entire lower-priority array.
 
 Text properties inherit from the containing block. Backgrounds, borders, padding, and spacing do not inherit.
 
@@ -210,6 +263,27 @@ A grapheme cluster that Unicode presents as Emoji—a character with `Emoji_Pres
 
 Redefining a bundled `fontdef` id replaces its whole definition, so a style that redefines `emoji` repeats the flag; `[[fontdef-override]]` changes only the family names and keeps it.
 
+## Heavier CJK UI labels
+
+MVSS accepts a per-candidate `weight` from 1 to 1000. It is an **absolute** weight, not an offset from the inherited one. Markview requires an exact static weight or a variable font whose `wght` axis covers the requested value; it does not synthesize bold or round 450 to 500. An unavailable candidate is skipped. A `fontdef` chooses its first installed family before matching weight, so later `lookfor` entries do not rescue a missing Medium face in that family.
+
+Bundled reader and PDF themes now prefer CJK weight 500 throughout, then fall back to the inherited weight when Medium is unavailable. [UI CJK Medium](../examples/ui-cjk-medium.mvss.toml) also provides this behavior as a focused overlay for custom themes. Latin retains its normal UI weight and Emoji stays at 400. Install it and place it before the reader theme:
+
+```sh
+markview ss install examples/ui-cjk-medium.mvss.toml
+markview examples/themes.md --style ui-cjk-medium --style light
+```
+
+The overlay affects UI labels, not document typography. A fixed 500 candidate also replaces an inherited 700 for CJK when Medium exists; use it deliberately if a theme relies on bold UI hierarchy. It is not a general “add 100” setting.
+
+The GPU comparison uses the host's installed fonts and draws 400, 450 with fallback, and 500 with fallback at 12/14/16 logical pixels on light/dark panels and at 1×, 1.25× and 2× scale:
+
+```sh
+cargo test -p markview cjk_ui_weight_comparison -- --ignored --nocapture
+```
+
+Images are written to `artifacts/cjk-weight/`. With the tested static Noto Sans CJK SC faces, 500 improves small-label stroke visibility, while 450 falls back to Regular. Other families and operating systems need their own check; the screenshot's Traditional/Japanese sample still uses the SC font convention for this controlled comparison.
+
 ## Images and captions
 
 ```toml
@@ -235,3 +309,21 @@ color = "#69747E"
 Markview watches installed styles and settings. A valid save applies automatically; an invalid stylesheet leaves the previous effective style active. Color-only changes can repaint cached layout, while font and geometry changes reflow it.
 
 Keep a style focused on visual decisions, name the conditions a run really has rather than trying to imitate CSS, and test it with both Latin and CJK text, formulas, code, tables, links, selections, and missing images. Do not rely on a font that is unavailable on the target machine; provide an ordered fallback list.
+
+## Authoring workflow
+
+1. Declare `targets` for the intended destinations, then choose the reading use case and a small palette: paper, ink, raised surface, muted ink, accent, and border. Coordinate document colors with `ui`, panels, toolbar/statusbar and button states. Keep small labels readable; aim for at least 4.5:1 text contrast.
+2. Change only the properties your theme owns. Shared font definitions and geometry already come from `builtin`; do not copy them wholesale. For a full dark palette, cover code, labels, markers, task boxes, tables, image placeholders, selection and scrollbar as well as body and UI colors. Choose a compatible syntax-highlighting `theme` on `code_block`.
+3. Set typography intentionally: heading scale, spacing, line height and one distinguishing device such as quote treatment or bullet shapes. If changing body font roles, review `em` too: the fallback explicitly uses italic serif candidates. Font arrays replace the complete fallback array; retain CJK and regular-weight Emoji candidates.
+4. Validate and install under a new ID, then open the fixture below. Installed files hot-reload when saved. Increment `version` when distributing an update; `--force` also permits reinstalling an equal or older revision.
+
+```sh
+cargo run -- ss validate path/to/my-theme.mvss.toml
+cargo run -- ss install path/to/my-theme.mvss.toml
+cargo run -- examples/themes.md --style my-theme
+cargo run -- --render examples/themes.md --style my-theme --output /tmp/my-theme.png
+```
+
+Review the same content in every theme at narrow and wide reading measures, including Latin/CJK, italic/bold, code, math, nested lists, tables, captions and unavailable images. In the window also check hover, selection, keyboard focus, settings/export panels and scrolling. A static document render does not exercise those interactive states.
+
+For a repository-bundled theme, add the file to `Stylesheet::named_rules` and its ID to `Stylesheet::READER_THEMES` or `Stylesheet::PDF_THEMES` according to its destination in `crates/markview-core/src/style.rs`; discovery and reserved-ID checks use that registry. Run `cargo fmt --all` and `cargo test --workspace`, then render the fixture. A new theme usually needs no parser or renderer changes. Extend MVSS only for a concrete visual requirement that existing fields cannot express, with parser and rendering tests plus documentation.

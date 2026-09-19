@@ -502,7 +502,7 @@ fn conditions_compose_without_new_vocabulary() {
 	// State is just another condition: hover reaches `["link", "hover"]`.
 	assert_eq!(
 		sheet.paint(Paint::Styled(Condition::Hover, ColorField::Color)),
-		Color(0x1f4568ff).rgba()
+		Color(0x17436cff).rgba()
 	);
 	// The order inside `when` is not part of the rule's identity.
 	let mut a = Stylesheet::parse(
@@ -786,5 +786,40 @@ fn the_print_sheet_survives_a_merge_over_the_reader_sheet() {
 			|| key.contains(Condition::Scrollbar)
 			|| key.contains(Condition::Hover);
 		assert!(reader_only, "[{}] reaches the export", key.display());
+	}
+}
+
+#[test]
+fn targets_are_an_optional_nonempty_set_of_known_destinations() {
+	let prefix = "format_version=2\nversion=1\n";
+	for (declaration, expected) in [
+		("", vec![StyleTarget::Ui, StyleTarget::Pdf]),
+		("targets=['ui']", vec![StyleTarget::Ui]),
+		("targets=['pdf']", vec![StyleTarget::Pdf]),
+		(
+			"targets=['pdf','ui']",
+			vec![StyleTarget::Pdf, StyleTarget::Ui],
+		),
+	] {
+		assert_eq!(
+			Stylesheet::parse(&format!("{prefix}{declaration}"))
+				.unwrap()
+				.targets,
+			expected
+		);
+	}
+	for bad in [
+		"targets=[]",
+		"targets=['ui','ui']",
+		"targets=['both']",
+		"targets=['web']",
+		"targets='ui'",
+		"targets=[1]",
+		"target='ui'",
+	] {
+		assert!(
+			Stylesheet::parse(&format!("{prefix}{bad}")).is_err(),
+			"{bad}"
+		);
 	}
 }

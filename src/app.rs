@@ -204,6 +204,13 @@ impl App {
 				self.request(false);
 			}
 		}
+		if self.interaction.export_styles_open {
+			self.preferences.style_entries = crate::stylesheet::catalog_for(
+				crate::stylesheet::directory().as_deref(),
+				Some(&self.preferences.export.style),
+				markview_core::style::StyleTarget::Pdf,
+			);
+		}
 	}
 	pub(super) fn dimensions(&self) -> (f32, f32, f32) {
 		self.window.as_ref().map_or((1200.0, 800.0, 1.0), |w| {

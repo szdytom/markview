@@ -1,6 +1,6 @@
 //! User stylesheet discovery and atomic installation. Bundled IDs cannot be shadowed.
 use anyhow::{Context, Result, bail};
-use markview_core::style::{CjkType, Stylesheet};
+use markview_core::style::{CjkType, StyleTarget, Stylesheet};
 use std::{
 	fs,
 	io::Write,
@@ -28,6 +28,13 @@ pub fn directory() -> Option<PathBuf> {
 	crate::settings::config_path()
 		.and_then(|p| p.parent().map(|p| p.join("styles")))
 }
+fn reserved(id: &str) -> bool {
+	Stylesheet::READER_THEMES
+		.iter()
+		.chain(Stylesheet::PDF_THEMES)
+		.chain([&"builtin"])
+		.any(|name| id.eq_ignore_ascii_case(name))
+}
 pub fn validate_id(id: &str) -> Result<()> {
 	if id.is_empty()
 		|| id == "."
@@ -35,10 +42,9 @@ pub fn validate_id(id: &str) -> Result<()> {
 		|| id.contains(['/', '\\', ':'])
 		|| id.chars().any(char::is_control)
 		|| id.ends_with(['.', ' '])
-		|| (["light", "dark", "print"]
-			.iter()
-			.any(|reserved| id.eq_ignore_ascii_case(reserved))
-			&& !matches!(id, "light" | "dark" | "print"))
+		|| (reserved(id)
+			&& !Stylesheet::READER_THEMES.contains(&id)
+			&& !Stylesheet::PDF_THEMES.contains(&id))
 	{
 		bail!("Invalid stylesheet ID {id:?}");
 	}
@@ -71,7 +77,13 @@ pub fn load_with_cjk_type(
 	dir: Option<&Path>,
 	cjk_type: CjkType,
 ) -> Result<Arc<Stylesheet>> {
-	load_over(ids, dir, cjk_type, Stylesheet::bundled(false))
+	load_over(
+		ids,
+		dir,
+		cjk_type,
+		Stylesheet::builtin(),
+		Some(StyleTarget::Ui),
+	)
 }
 
 /// The stylesheet a PDF export starts from: the bundled print sheet, with any
@@ -82,7 +94,13 @@ pub fn load_for_pdf(
 	cjk_type: CjkType,
 ) -> Result<Arc<Stylesheet>> {
 	match ids {
-		Some(ids) => load_over(ids, dir, cjk_type, Stylesheet::bundled_print()),
+		Some(ids) => load_over(
+			ids,
+			dir,
+			cjk_type,
+			Stylesheet::bundled_print(),
+			Some(StyleTarget::Pdf),
+		),
 		None => {
 			let mut sheet = (*Stylesheet::bundled_print()).clone();
 			sheet.set_cjk_type(cjk_type);
@@ -91,33 +109,40 @@ pub fn load_for_pdf(
 	}
 }
 
+/// Offscreen diagnostics can preview either kind without selecting it in a UI.
+pub fn load_for_preview(
+	ids: Option<&[String]>,
+	dir: Option<&Path>,
+	cjk_type: CjkType,
+) -> Result<Arc<Stylesheet>> {
+	match ids {
+		Some(ids) => load_over(ids, dir, cjk_type, Stylesheet::builtin(), None),
+		None => load_for_run(None, dir, cjk_type),
+	}
+}
+
 fn load_over(
 	ids: &[String],
 	dir: Option<&Path>,
 	cjk_type: CjkType,
 	base: Arc<Stylesheet>,
+	target: Option<StyleTarget>,
 ) -> Result<Arc<Stylesheet>> {
 	let mut sheet = (*base).clone();
 	for id in ids.iter().rev() {
 		validate_id(id)?;
-		match id.as_str() {
-			"light" => sheet.merge(&Stylesheet::bundled(false)),
-			"dark" => sheet.merge(&Stylesheet::bundled_rules(true)),
-			"print" => sheet.merge(&Stylesheet::bundled_print()),
-			_ => {
-				let path = dir
-					.context("No user stylesheet directory")?
-					.join(format!("{id}{SUFFIX}"));
-				let source = fs::read_to_string(&path).with_context(|| {
-					format!("Cannot read {}", path.display())
-				})?;
-				let next = Stylesheet::parse(&source)
-					.with_context(|| path.display().to_string())?;
-				sheet.merge(&next);
-			}
+		let next = read_rules(id, dir)?;
+		if let Some(target) = target
+			&& !next.targets.contains(&target)
+		{
+			bail!("{id}: targets do not include {}", target.as_str());
 		}
+		sheet.merge(&next);
 	}
 	sheet.set_cjk_type(cjk_type);
+	if let Some(target) = target {
+		sheet.targets = vec![target];
+	}
 	Ok(Arc::new(sheet))
 }
 #[derive(Clone, Debug)]
@@ -127,16 +152,37 @@ pub struct Entry {
 	pub source: String,
 	pub error: Option<String>,
 }
-pub fn scan(dir: Option<&Path>) -> Vec<Entry> {
-	let mut entries = vec![];
-	for id in ["light", "dark"] {
-		entries.push(Entry {
-			id: id.into(),
-			name: if id == "light" { "Light" } else { "Dark" }.into(),
-			source: "Bundled".into(),
-			error: None,
-		});
+fn read_rules(id: &str, dir: Option<&Path>) -> Result<Arc<Stylesheet>> {
+	validate_id(id)?;
+	if let Some(sheet) = Stylesheet::named_rules(id) {
+		return Ok(sheet);
 	}
+	let path = dir
+		.context("No user stylesheet directory")?
+		.join(format!("{id}{SUFFIX}"));
+	let source = fs::read_to_string(&path)
+		.with_context(|| format!("Cannot read {}", path.display()))?;
+	Ok(Arc::new(
+		Stylesheet::parse(&source)
+			.with_context(|| path.display().to_string())?,
+	))
+}
+
+pub fn catalog(dir: Option<&Path>, selected: Option<&[String]>) -> Vec<Entry> {
+	catalog_for(dir, selected, StyleTarget::Ui)
+}
+
+pub fn catalog_for(
+	dir: Option<&Path>,
+	selected: Option<&[String]>,
+	target: StyleTarget,
+) -> Vec<Entry> {
+	let mut ids: Vec<String> = Stylesheet::READER_THEMES
+		.iter()
+		.chain(Stylesheet::PDF_THEMES)
+		.map(|id| (*id).into())
+		.collect();
+	let bundled_count = ids.len();
 	if let Some(dir) = dir
 		&& let Ok(files) = fs::read_dir(dir)
 	{
@@ -145,50 +191,61 @@ pub fn scan(dir: Option<&Path>) -> Vec<Entry> {
 			if !path.is_file() {
 				continue;
 			}
-			let Some(id) = path
+			if let Some(id) = path
 				.file_name()
 				.and_then(|n| n.to_str())
 				.and_then(|n| n.strip_suffix(SUFFIX))
-			else {
-				continue;
-			};
-			if matches!(id, "light" | "dark") {
-				continue;
+				&& !reserved(id)
+			{
+				ids.push(id.into());
 			}
-			let result = validate_id(id)
-				.and_then(|()| Stylesheet::parse(&fs::read_to_string(&path)?));
-			entries.push(Entry {
-				id: id.into(),
-				name: result
-					.as_ref()
-					.ok()
-					.and_then(|s| s.meta.name.clone())
-					.unwrap_or_else(|| id.into()),
-				source: path.display().to_string(),
-				error: result.err().map(|e| format!("{e:#}")),
-			});
 		}
 	}
-	entries[2..].sort_by(|a, b| a.id.cmp(&b.id));
-	entries
-}
-pub fn catalog(dir: Option<&Path>, selected: Option<&[String]>) -> Vec<Entry> {
-	let mut entries = scan(dir);
+	ids[bundled_count..].sort();
 	for id in selected.into_iter().flatten() {
-		if !entries.iter().any(|entry| &entry.id == id) {
-			entries.push(Entry {
-				id: id.clone(),
-				name: id.clone(),
-				source: dir
-					.map(|p| {
-						p.join(format!("{id}{SUFFIX}")).display().to_string()
-					})
-					.unwrap_or_default(),
-				error: Some("Selected stylesheet is missing".into()),
-			});
+		if !id.eq_ignore_ascii_case("builtin") && !ids.contains(id) {
+			ids.push(id.clone());
 		}
 	}
-	entries
+	ids.into_iter()
+		.filter_map(|id| {
+			let result = read_rules(&id, dir);
+			let selected = selected.is_some_and(|ids| ids.contains(&id));
+			let incompatible = result
+				.as_ref()
+				.is_ok_and(|sheet| !sheet.targets.contains(&target));
+			if incompatible && !selected {
+				return None;
+			}
+			let name = result
+				.as_ref()
+				.ok()
+				.and_then(|s| s.meta.name.clone())
+				.unwrap_or_else(|| id.clone());
+			let error = if incompatible {
+				Some(format!(
+					"Stylesheet does not support {} use",
+					target.as_str()
+				))
+			} else {
+				result.err().map(|e| format!("{e:#}"))
+			};
+			let source = if Stylesheet::named_rules(&id).is_some() {
+				"Bundled".into()
+			} else {
+				dir.map(|p| {
+					p.join(format!("{id}{SUFFIX}")).display().to_string()
+				})
+				.unwrap_or_default()
+			};
+			Some(Entry {
+				id,
+				name,
+				source,
+				error,
+			})
+		})
+		.collect()
 }
 
 /// Parses a stylesheet file without installing it, so a caller can check a
@@ -210,7 +267,7 @@ pub fn install(
 		.and_then(|n| n.strip_suffix(SUFFIX))
 		.context("Stylesheet filename must end in .mvss.toml")?;
 	validate_id(id)?;
-	if matches!(id.to_ascii_lowercase().as_str(), "light" | "dark") {
+	if reserved(id) {
 		bail!("{id}: reserved bundled stylesheet ID");
 	}
 	let bytes = fs::read(source)
@@ -305,7 +362,10 @@ mod tests {
 		assert!(install(&source, &dir, true).is_err());
 		assert!(load(&["a".into()], Some(&dir)).is_ok());
 		assert!(load(&["missing".into()], Some(&dir)).is_err());
-		assert_eq!(scan(Some(&dir)).len(), 3);
+		assert_eq!(
+			catalog(Some(&dir), None).len(),
+			Stylesheet::READER_THEMES.len() + 1
+		);
 		fs::write(
 			&source,
 			"format_version=2\nversion=3\n[[rule]]\nwhen=['body']\ncolor='#123456'",
@@ -373,5 +433,215 @@ mod cascade_tests {
 			assert!(validate_id(id).is_err());
 		}
 		assert!(validate_id("纸 与 墨").is_ok());
+	}
+}
+
+#[cfg(test)]
+mod theme_tests {
+	use super::*;
+	use markview_core::style::{Color, Condition};
+
+	#[test]
+	fn fallback_is_hidden_reserved_and_beneath_explicit_rules() {
+		let dir = tempfile::tempdir().unwrap();
+		let source = dir.path().join("builtin.mvss.toml");
+		fs::write(&source, "format_version=2\nversion=1\n").unwrap();
+		assert!(install(&source, dir.path(), true).is_err());
+		assert!(
+			load_with_cjk_type(&["builtin".into()], None, CjkType::Sc).is_err()
+		);
+		assert!(
+			!catalog(Some(dir.path()), Some(&["builtin".into()]))
+				.iter()
+				.any(|e| e.id == "builtin")
+		);
+		let empty = load_with_cjk_type(&[], None, CjkType::Sc).unwrap();
+		assert_eq!(
+			empty.rule(Condition::Body).background,
+			Stylesheet::builtin().rule(Condition::Body).background
+		);
+		fs::write(
+			dir.path().join("custom.mvss.toml"),
+			"format_version=2\nversion=1\n[[rule]]\nwhen=['p']\nspace_after=1.23\n",
+		)
+		.unwrap();
+		for id in ["light", "dark"] {
+			let sheet = load_with_cjk_type(
+				&[id.into(), "custom".into()],
+				Some(dir.path()),
+				CjkType::Sc,
+			)
+			.unwrap();
+			assert_eq!(sheet.rule(Condition::P).space_after, Some(1.23));
+		}
+	}
+
+	#[test]
+	fn every_reader_theme_loads_with_shared_fonts_and_owns_its_palette() {
+		let entries = catalog(None, None);
+		for &id in Stylesheet::READER_THEMES {
+			assert!(entries.iter().any(|e| e.id == id && e.error.is_none()));
+			let sheet =
+				load_with_cjk_type(&[id.into()], None, CjkType::Sc).unwrap();
+			assert!(sheet.fontdefs.contains_key("serif[cjk]"));
+			assert!(sheet.fontdefs["emoji"].emoji);
+			assert!(sheet.rule(Condition::CodeBlock).font.is_some());
+			assert_ne!(sheet.rule(Condition::Body).background, Some(Color(0)));
+			assert!(validate_id(&id.to_uppercase()).is_err());
+		}
+		let print = load_for_pdf(None, None, CjkType::Sc).unwrap();
+		assert_eq!(
+			print.rule(Condition::Body).background,
+			Some(Color(0xffffffff))
+		);
+		assert!(print.fontdefs.contains_key("serif[cjk]"));
+	}
+}
+
+#[cfg(test)]
+mod target_tests {
+	use super::*;
+	use markview_core::style::{Color, Condition};
+
+	fn write_style(dir: &Path, id: &str, targets: &str) {
+		fs::write(
+			dir.join(format!("{id}{SUFFIX}")),
+			format!("format_version=2\nversion=1\n{targets}\n[[rule]]\nwhen=['body']\ncolor='#123456'"),
+		).unwrap();
+	}
+
+	#[test]
+	fn destinations_filter_discovery_and_reject_incompatible_layers() {
+		let dir = tempfile::tempdir().unwrap();
+		for (id, targets) in [
+			("screen", "targets=['ui']"),
+			("paper", "targets=['pdf']"),
+			("shared", "targets=['ui','pdf']"),
+			("legacy", ""),
+		] {
+			write_style(dir.path(), id, targets);
+		}
+		for target in [StyleTarget::Ui, StyleTarget::Pdf] {
+			let entries = catalog_for(Some(dir.path()), None, target);
+			for (id, allowed) in [
+				("screen", target == StyleTarget::Ui),
+				("paper", target == StyleTarget::Pdf),
+				("shared", true),
+				("legacy", true),
+				("print", target == StyleTarget::Pdf),
+				("light", target == StyleTarget::Ui),
+			] {
+				assert_eq!(
+					entries.iter().any(|entry| entry.id == id),
+					allowed,
+					"{target:?}: {id}"
+				);
+				let ids = [id.into()];
+				let result = match target {
+					StyleTarget::Ui => {
+						load_with_cjk_type(&ids, Some(dir.path()), CjkType::Sc)
+					}
+					StyleTarget::Pdf => {
+						load_for_pdf(Some(&ids), Some(dir.path()), CjkType::Sc)
+					}
+				};
+				assert_eq!(result.is_ok(), allowed, "{target:?}: {id}");
+			}
+		}
+		// Every layer is checked, including one beneath a shared override.
+		let ids = ["shared".into(), "screen".into()];
+		let error = load_for_pdf(Some(&ids), Some(dir.path()), CjkType::Sc)
+			.unwrap_err()
+			.to_string();
+		assert!(error.contains("screen") && error.contains("pdf"));
+		let sheet = load_for_pdf(
+			Some(&["shared".into(), "paper".into()]),
+			Some(dir.path()),
+			CjkType::Sc,
+		)
+		.unwrap();
+		assert_eq!(sheet.rule(Condition::Body).color, Some(Color(0x123456ff)));
+	}
+
+	#[test]
+	fn changed_targets_leave_selected_styles_removable_and_previewable() {
+		let dir = tempfile::tempdir().unwrap();
+		write_style(dir.path(), "draft", "targets=['ui']");
+		let ids = ["draft".into()];
+		assert!(
+			catalog(Some(dir.path()), Some(&ids))
+				.iter()
+				.find(|entry| entry.id == "draft")
+				.unwrap()
+				.error
+				.is_none()
+		);
+		write_style(dir.path(), "draft", "targets=['pdf']");
+		assert!(
+			!catalog(Some(dir.path()), None)
+				.iter()
+				.any(|entry| entry.id == "draft")
+		);
+		assert!(
+			catalog(Some(dir.path()), Some(&ids))
+				.iter()
+				.find(|entry| entry.id == "draft")
+				.unwrap()
+				.error
+				.is_some()
+		);
+		assert!(
+			load_with_cjk_type(&ids, Some(dir.path()), CjkType::Sc).is_err()
+		);
+		assert!(
+			load_for_preview(Some(&ids), Some(dir.path()), CjkType::Sc).is_ok()
+		);
+		assert!(
+			load_for_preview(Some(&["print".into()]), None, CjkType::Sc)
+				.is_ok()
+		);
+	}
+}
+
+#[cfg(test)]
+mod paper_theme_tests {
+	use super::*;
+	use markview_core::style::{Color, Condition};
+
+	#[test]
+	fn bundled_paper_themes_are_export_only_and_inherit_readable_furniture() {
+		let paper = catalog_for(None, None, StyleTarget::Pdf);
+		let reader = catalog(None, None);
+		for &id in Stylesheet::PDF_THEMES {
+			assert!(
+				paper
+					.iter()
+					.any(|entry| entry.id == id && entry.error.is_none())
+			);
+			assert!(!reader.iter().any(|entry| entry.id == id));
+			assert!(reserved(id));
+			assert!(validate_id(&id.to_uppercase()).is_err());
+			let sheet =
+				load_for_pdf(Some(&[id.into()]), None, CjkType::Sc).unwrap();
+			assert_eq!(
+				sheet.rule(Condition::Page).background,
+				Some(Color(0xffffffff))
+			);
+			assert!(sheet.fontdefs.contains_key("serif[cjk]"));
+			for role in [
+				Condition::PageHeader,
+				Condition::PageFooter,
+				Condition::PageNumber,
+			] {
+				assert_eq!(sheet.rule(role).size, Some(0.75), "{id}: {role:?}");
+			}
+		}
+		let mono =
+			load_for_pdf(Some(&["monochrome".into()]), None, CjkType::Sc)
+				.unwrap();
+		assert_eq!(
+			mono.rule(Condition::CodeBlock).theme.as_deref(),
+			Some("none")
+		);
 	}
 }

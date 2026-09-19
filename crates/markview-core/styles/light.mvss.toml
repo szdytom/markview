@@ -1,286 +1,97 @@
 format_version = 2
-version = 1
-
-[[fontdef]]
-id = "serif"
-lookfor = ["Georgia", "Times New Roman", "Noto Serif", "DejaVu Serif", "Liberation Serif", "Linux Libertine", "serif"]
-
-[[fontdef]]
-id = "sans-serif"
-lookfor = ["Helvetica", "Arial", "Noto Sans", "DejaVu Sans", "Liberation Sans", "Ubuntu", "sans-serif"]
-
-[[fontdef]]
-id = "serif[cjk]"
-type = "SC"
-lookfor = ["Noto Serif CJK SC", "Source Han Serif SC", "Songti SC", "SimSun", "NSimSun", "STSong", "AR PL UMing CN", "AR PL SungtiL GB", "serif"]
-
-[[fontdef]]
-id = "serif[cjk]"
-type = "TC"
-lookfor = ["Noto Serif CJK TC", "Source Han Serif TC", "Songti TC", "PMingLiU", "AR PL UMing TW", "serif"]
-
-[[fontdef]]
-id = "serif[cjk]"
-type = "JP"
-lookfor = ["Noto Serif CJK JP", "Source Han Serif JP", "Hiragino Mincho ProN", "Hiragino Mincho Pro", "Yu Mincho", "MS PMincho", "MS Mincho", "serif"]
-
-[[fontdef]]
-id = "sans-serif[cjk]"
-type = "SC"
-lookfor = ["PingFang SC", "Microsoft YaHei", "Noto Sans CJK SC", "Source Han Sans CJK SC", "Source Han Sans", "Founder Lan Ting Hei", "WenQuanYi Micro Hei", "Hiragino Sans GB", "Heiti SC", "sans-serif"]
-
-[[fontdef]]
-id = "sans-serif[cjk]"
-type = "TC"
-lookfor = ["Noto Sans CJK TC", "Source Han Sans CJK TC", "PingFang TC", "Microsoft JhengHei", "Heiti TC", "WenQuanYi Micro Hei", "sans-serif"]
-
-[[fontdef]]
-id = "sans-serif[cjk]"
-type = "JP"
-lookfor = ["Noto Sans CJK JP", "Source Han Sans CJK JP", "Hiragino Sans", "Yu Gothic", "Meiryo", "sans-serif"]
-
-[[fontdef]]
-id = "monospace"
-lookfor = ["Fira Code", "Consolas", "Noto Sans Mono", "monospace"]
-
-[[fontdef]]
-id = "monospace[cjk]"
-type = "SC"
-lookfor = ["Noto Sans Mono CJK SC", "Source Han Mono", "Source Code Pro", "monospace"]
-
-[[fontdef]]
-id = "emoji"
-emoji = true
-lookfor = ["Noto Color Emoji", "Apple Color Emoji", "Segoe UI Emoji", "Twemoji Mozilla", "EmojiOne Color", "JoyPixels", "Twitter Color Emoji", "EmojiSymbols"]
+targets = ["ui"]
+version = 2
 
 [meta]
 name = "Light"
-description = "Markview's default light stylesheet"
+description = "Clear daylight, graphite text and mineral blue"
 
 [[rule]]
 when = ["body"]
-color = "#262B30"
-background = "#FAFAF8"
-# Emoji fonts usually have only a regular face, even inside strong text.
-font = [{ family = "serif" }, { family = "serif[cjk]" }, { family = "emoji", weight = 400 }]
-line_height = 1.65
-
-[[rule]]
-when = ["p"]
-space_after = 0.8
-
-[[rule]]
-when = ["h1"]
-size = 1.9
-weight = 700
-space_before = 0.17
-space_after = 0.8
-font = [{ family = "sans-serif" }, { family = "sans-serif[cjk]" }, { family = "emoji", weight = 400 }]
-
-[[rule]]
-when = ["h2"]
-size = 1.5
-weight = 700
-space_before = 0.6
-space_after = 0.8
-font = [{ family = "sans-serif" }, { family = "sans-serif[cjk]" }, { family = "emoji", weight = 400 }]
-
-[[rule]]
-when = ["h3"]
-size = 1.25
-weight = 700
-space_before = 0.6
-space_after = 0.8
-font = [{ family = "sans-serif" }, { family = "sans-serif[cjk]" }, { family = "emoji", weight = 400 }]
-
-[[rule]]
-when = ["h4"]
-size = 1.1
-weight = 700
-space_before = 0.6
-space_after = 0.8
-font = [{ family = "sans-serif" }, { family = "sans-serif[cjk]" }, { family = "emoji", weight = 400 }]
-
-[[rule]]
-when = ["h5"]
-size = 1.0
-weight = 700
-space_before = 0.6
-space_after = 0.8
-font = [{ family = "sans-serif" }, { family = "sans-serif[cjk]" }, { family = "emoji", weight = 400 }]
-
-[[rule]]
-when = ["h6"]
-size = 0.95
-weight = 700
-space_before = 0.6
-space_after = 0.8
-font = [{ family = "sans-serif" }, { family = "sans-serif[cjk]" }, { family = "emoji", weight = 400 }]
-
-[[rule]]
-when = ["em"]
-font = [
-	{ family = "serif", variant = "italic" },
-	# CJK families usually ship no italic, so their Han text is sheared.
-	{ family = "serif[cjk]", variant = "italic", synthetic_italic = true },
-	{ family = "emoji", weight = 400 },
-]
-
-[[rule]]
-when = ["strong"]
-weight = 700
+color = "#283343"
+background = "#F9FAFC"
 
 [[rule]]
 when = ["link"]
-color = "#315D86"
+color = "#275D91"
 
 [[rule]]
 when = ["link", "hover"]
-color = "#1F4568"
-
-[[rule]]
-when = ["del"]
-decoration = ["line-through"]
-
-[[rule]]
-when = ["sup"]
-size = 0.7
+color = "#17436C"
 
 [[rule]]
 when = ["code"]
-font = [{ family = "monospace" }, { family = "monospace[cjk]" }, { family = "emoji", weight = 400 }]
-size = 0.9
-padding = [0.15, 0.3, 0.15, 0.3]
-background = "#EFF1F3"
+background = "#EDF1F6"
 
 [[rule]]
 when = ["code_block"]
+background = "#EDF1F6"
 theme = "InspiredGitHub"
-font = [{ family = "monospace" }, { family = "monospace[cjk]" }, { family = "emoji", weight = 400 }]
-size = 0.9
-line_height = 1.6
-background = "#EFF1F3"
-padding = [0.67, 0.78, 0.67, 0.78]
-space_after = 0.8
 
 [[rule]]
 when = ["code_block", "label"]
-color = "#69747E"
-font = [{ family = "sans-serif" }, { family = "sans-serif[cjk]" }, { family = "emoji", weight = 400 }]
-size = 0.67
+color = "#5D6C80"
 
 [[rule]]
 when = ["blockquote"]
-border_color = "#315D86"
-border_width = 3.0
-padding = [0.22, 0.22, 0.22, 1.1]
-space_after = 0.8
-
-[[rule]]
-when = ["list"]
-indent = 0.5
-space_after = 0.8
-
-[[rule]]
-when = ["enum"]
-indent = 0.5
-space_after = 0.8
+border_color = "#275D91"
 
 [[rule]]
 when = ["marker"]
-color = "#69747E"
-size = 0.9
-align = "center"
+color = "#5D6C80"
 
 [[rule]]
 when = ["task_marker"]
-color = "#FAFAF8"
-background = "#FAFAF8"
-accent = "#315D86"
-border_color = "#315D86"
-border_width = 1.5
-radius = 2.5
-align = "center"
-
-[[rule]]
-when = ["footnote"]
-size = 0.88
-space_after = 0.8
-
-[[rule]]
-when = ["table"]
-size = 0.9
-space_after = 0.8
+color = "#F9FAFC"
+background = "#F9FAFC"
+accent = "#275D91"
+border_color = "#275D91"
 
 [[rule]]
 when = ["table", "cell"]
-border_color = "#D8DEE3"
-border_width = 1.0
-padding = [0.44, 0.67, 0.44, 0.67]
+border_color = "#D5DDE7"
 
 [[rule]]
 when = ["table", "header"]
-weight = 700
-background = "#EFF1F3"
+background = "#EDF1F6"
 
 [[rule]]
 when = ["hr"]
-color = "#D8DEE3"
-border_width = 1.0
-space_before = 0.5
-space_after = 0.8
+color = "#D5DDE7"
 
 [[rule]]
 when = ["selection"]
-background = "#315D8647"
+background = "#275D9147"
 
 [[rule]]
 when = ["img"]
-align = "center"
-padding = 0.0
-border_width = 0.0
-border_color = "#D8DEE3"
-background = "#00000000"
+border_color = "#D5DDE7"
 
 [[rule]]
 when = ["img", "caption"]
-source = "title_or_alt"
-align = "center"
-size = 0.8
-line_height = 1.4
-space_before = 0.25
-space_after = 0.0
-color = "#69747E"
+color = "#5D6C80"
 
 [[rule]]
 when = ["img", "placeholder"]
-size = 0.78
-color = "#69747E"
-background = "#EFF1F3"
-font = [{ family = "sans-serif" }, { family = "sans-serif[cjk]" }, { family = "emoji", weight = 400 }]
+color = "#5D6C80"
+background = "#EDF1F6"
 
 [[rule]]
 when = ["scrollbar"]
-track = "#D8DEE3"
-thumb = "#69747E"
-thumb_hover = "#315D86"
-thickness = 6.0
-thickness_hover = 8.0
-overflow_thickness = 6.0
-overflow_thickness_hover = 8.0
-gutter = 8.0
+track = "#D5DDE7"
+thumb = "#5D6C80"
+thumb_hover = "#275D91"
 
 [[rule]]
 when = ["ui"]
-color = "#20252D"
-background = "#F4F5F7"
-font = [{ family = "sans-serif" }, { family = "sans-serif[cjk]" }, { family = "emoji", weight = 400 }]
-muted = "#626C79"
-accent = "#2856D8"
-border_color = "#D5DAE1"
+color = "#283343"
+background = "#EEF2F7"
+muted = "#5D6C80"
+accent = "#275D91"
+border_color = "#D5DDE7"
 error = "#AB303D"
 shadow = "#00000000"
-scrim = "#10192352"
+scrim = "#10192370"
 
 [[rule]]
 when = ["ui", "panel"]
@@ -288,16 +99,16 @@ background = "#FFFFFF"
 
 [[rule]]
 when = ["ui", "toolbar"]
-background = "#F4F5F7"
+background = "#EEF2F7"
 
 [[rule]]
 when = ["ui", "statusbar"]
-background = "#F4F5F7"
+background = "#EEF2F7"
 
 [[rule]]
 when = ["ui", "button"]
 background = "#FFFFFF"
-hover_background = "#E2E8F1"
-active_background = "#DFE7FA"
-disabled_color = "#626C79"
-focus_color = "#2856D8"
+hover_background = "#DFE8F2"
+active_background = "#D3E2F3"
+disabled_color = "#5D6C80"
+focus_color = "#275D91"

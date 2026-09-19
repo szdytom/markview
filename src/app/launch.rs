@@ -27,10 +27,16 @@ pub(super) fn run() -> Result<()> {
 	if let Some(source) = &args.validate {
 		let sheet = crate::stylesheet::validate(source)?;
 		crate::logging::report(format_args!(
-			"Valid stylesheet: {} (version {}, {} rules)",
+			"Valid stylesheet: {} (version {}, {} rules, targets [{}])",
 			source.display(),
 			sheet.version,
-			sheet.rules.len()
+			sheet.rules.len(),
+			sheet
+				.targets
+				.iter()
+				.map(|target| target.as_str())
+				.collect::<Vec<_>>()
+				.join(", ")
 		));
 		return Ok(());
 	}
@@ -67,6 +73,12 @@ pub(super) fn run() -> Result<()> {
 		// A PDF always starts from the bundled print sheet, whatever the
 		// reader's theme is; --style layers a named sheet on top of it.
 		crate::stylesheet::load_for_pdf(
+			ids.as_deref(),
+			crate::stylesheet::directory().as_deref(),
+			cjk_type,
+		)?
+	} else if args.mode == Mode::Render {
+		crate::stylesheet::load_for_preview(
 			ids.as_deref(),
 			crate::stylesheet::directory().as_deref(),
 			cjk_type,

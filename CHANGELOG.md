@@ -15,6 +15,14 @@ at the same level, without `[brackets]`.
 
 ### Added
 
+- Optional CJK Medium UI overlay and GPU weight comparisons, with documented exact-weight fallback behavior.
+
+- Monochrome, Qi Baishi, Van Gogh and Mondrian PDF themes, plus `theme = "none"` for uncolored code.
+
+- MVSS `targets` declares UI/PDF destinations, filters theme selectors and rejects incompatible use.
+
+- Celadon, Blueprint and Rosewood reader themes, a theme preview fixture, and an MVSS authoring skill.
+
 - Benchmark reports separate GPU preparation/submission from blocking completion
   to diagnose tail latency without changing the end-to-end timing scope.
 
@@ -38,6 +46,13 @@ at the same level, without `[brackets]`.
   Chromium and XeLaTeX, with `scripts/compare_pdf_engines.py`.
 
 ### Changed
+
+- Prefer Medium (500) CJK faces throughout bundled themes, with inherited-weight fallback; refresh README screenshots.
+
+- Enlarge Print page headers, footers and page numbers to 0.75em.
+
+- Refresh Light/Dark palettes and move shared style defaults into the hidden, lowest-priority `builtin` sheet.
+- Reorganize the MVSS guide with theme recipes, cascade rules and a validation workflow.
 
 - Stylesheet panels use a matching vector arrow for the Back action.
 - Redesigned reader chrome with flat, square controls and coordinated light/dark themes;

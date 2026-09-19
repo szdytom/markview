@@ -22,6 +22,9 @@ pub(crate) type HighlightedLines = Vec<Vec<(Range<usize>, Option<Color>)>>;
 
 impl Highlighter {
 	pub(crate) fn new(language: &str, theme: Option<&str>) -> Self {
+		if theme == Some("none") {
+			return Self { inner: None };
+		}
 		let language = language.split(',').next().unwrap_or(language).trim();
 		let syntax = syntax_set()
 			.find_syntax_by_token(language)
@@ -94,4 +97,23 @@ pub(crate) fn highlight_block(
 	lines
 		.map(|line| highlighter.highlight(&line, max_line_bytes))
 		.collect()
+}
+
+#[cfg(test)]
+mod tests {
+	#[test]
+	fn disabling_syntax_colors_preserves_code_text() {
+		let line = "let ink = 42; // black and white";
+		let mut highlighter = super::Highlighter::new("rust", Some("none"));
+		assert_eq!(
+			highlighter.highlight(line, 1024),
+			vec![(0..line.len(), None)]
+		);
+		assert!(
+			super::Highlighter::new("rust", None)
+				.highlight(line, 1024)
+				.iter()
+				.any(|(_, color)| color.is_some())
+		);
+	}
 }

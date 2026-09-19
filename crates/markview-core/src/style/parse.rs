@@ -5,7 +5,7 @@ use std::collections::BTreeMap;
 
 use super::{
 	CjkType, Condition, ConditionSet, FontDefinition, Metadata, PageStyle,
-	Rule, Stylesheet,
+	Rule, StyleTarget, Stylesheet,
 };
 impl Stylesheet {
 	pub fn parse(source: &str) -> Result<Self> {
@@ -23,11 +23,33 @@ impl Stylesheet {
 			.context("version: expected a nonnegative integer")?;
 		let version = u64::try_from(version)
 			.context("version: expected a nonnegative integer")?;
+		let mut targets = vec![StyleTarget::Ui, StyleTarget::Pdf];
+		if let Some(value) = doc.remove("targets") {
+			let values = value
+				.as_array()
+				.context("targets: expected a nonempty array of ui, pdf")?;
+			if values.is_empty() {
+				bail!("targets: must not be empty");
+			}
+			targets.clear();
+			for value in values {
+				let target = match value.as_str() {
+					Some("ui") => StyleTarget::Ui,
+					Some("pdf") => StyleTarget::Pdf,
+					_ => bail!("targets: expected ui or pdf"),
+				};
+				if targets.contains(&target) {
+					bail!("targets: duplicate {}", target.as_str());
+				}
+				targets.push(target);
+			}
+		}
 		let fontdefs = parse_fontdefs(&mut doc)?;
 		let meta = parse_meta(&mut doc)?;
 		let page = parse_page(&mut doc)?;
 		let mut out = Self {
 			version,
+			targets,
 			fontdefs: BTreeMap::new(),
 			fontdef_variants: fontdefs,
 			cjk_type: CjkType::None,

@@ -74,9 +74,6 @@ impl ApplicationHandler<Event> for App {
 	fn user_event(&mut self, event_loop: &ActiveEventLoop, event: Event) {
 		match event {
 			Event::StylesChanged => {
-				self.preferences.style_entries = crate::stylesheet::scan(
-					crate::stylesheet::directory().as_deref(),
-				);
 				self.reload_styles();
 				self.redraw();
 			}

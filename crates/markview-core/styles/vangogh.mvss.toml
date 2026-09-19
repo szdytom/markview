@@ -1,0 +1,134 @@
+format_version = 2
+version = 1
+targets = ["pdf"]
+
+[meta]
+name = "Van Gogh"
+description = "Indigo headings, wheat-gold quotation bars and luminous paper"
+
+[[fontdef]]
+id = "serif"
+lookfor = ["Baskerville", "Libre Baskerville", "Palatino Linotype", "Palatino", "Noto Serif", "Georgia", "serif"]
+
+[page]
+margin = [22, 22, 24, 22]
+header_left = "{title}"
+footer_center = ""
+footer_right = "{page} / {pages}"
+
+[[rule]]
+when = ["body"]
+color = "#272B30"
+line_height = 1.55
+
+[[rule]]
+when = ["h1"]
+font = [{ family = "serif" }, { family = "serif[cjk]", weight = 500 }, { family = "serif[cjk]" }, { family = "emoji", weight = 400 }]
+size = 2.1
+weight = 400
+color = "#244C80"
+space_before = 0.15
+space_after = 0.65
+
+[[rule]]
+when = ["h2"]
+font = [{ family = "serif" }, { family = "serif[cjk]", weight = 500 }, { family = "serif[cjk]" }, { family = "emoji", weight = 400 }]
+size = 1.4
+weight = 700
+color = "#244C80"
+space_before = 0.85
+space_after = 0.45
+
+[[rule]]
+when = ["h3"]
+font = [{ family = "serif" }, { family = "serif[cjk]", weight = 500 }, { family = "serif[cjk]" }, { family = "emoji", weight = 400 }]
+size = 1.12
+weight = 700
+color = "#244C80"
+space_before = 0.85
+space_after = 0.45
+
+[[rule]]
+when = ["link"]
+color = "#244C80"
+decoration = ["underline"]
+
+[[rule]]
+when = ["blockquote"]
+color = "#272B30"
+border_color = "#AF7921"
+border_width = 4.0
+padding = [0.5, 0.8, 0.5, 1.0]
+background = "#F6F0DF"
+
+[[rule]]
+when = ["marker"]
+color = "#AF7921"
+shape = ["disc", "minus"]
+
+[[rule]]
+when = ["task_marker"]
+accent = "#AF7921"
+border_color = "#AF7921"
+color = "#FFFFFF"
+background = "#FFFFFF"
+radius = 0.0
+
+[[rule]]
+when = ["table", "cell"]
+border_color = "#EAD8A6"
+border_width = 0.6
+
+[[rule]]
+when = ["table", "header"]
+color = "#244C80"
+background = "#F6F0DF"
+
+[[rule]]
+when = ["hr"]
+color = "#EAD8A6"
+border_width = 0.7
+
+[[rule]]
+when = ["code"]
+background = "#F4F3EF"
+
+[[rule]]
+when = ["code_block"]
+theme = "InspiredGitHub"
+background = "#F4F3EF"
+border_color = "#EAD8A6"
+border_width = 0.0
+
+[[rule]]
+when = ["code_block", "label"]
+color = "#62615A"
+
+[[rule]]
+when = ["img", "caption"]
+color = "#62615A"
+
+[[rule]]
+when = ["img", "placeholder"]
+color = "#62615A"
+background = "#F3F3F3"
+
+[[rule]]
+when = ["page_header"]
+color = "#62615A"
+
+[[rule]]
+when = ["page_footer"]
+color = "#62615A"
+
+[[rule]]
+when = ["page_number"]
+color = "#244C80"
+
+[[rule]]
+when = ["ui"]
+color = "#272B30"
+muted = "#62615A"
+accent = "#AF7921"
+error = "#A23C35"
+border_color = "#EAD8A6"

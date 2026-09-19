@@ -1,0 +1,134 @@
+format_version = 2
+version = 1
+targets = ["pdf"]
+
+[meta]
+name = "Qi Baishi"
+description = "Ink and vermilion, open white paper and quiet literary headings"
+
+[[fontdef]]
+id = "serif"
+lookfor = ["Iowan Old Style", "Palatino Linotype", "Palatino", "Noto Serif", "Georgia", "serif"]
+
+[page]
+margin = [22, 22, 24, 22]
+header_left = "{title}"
+footer_center = ""
+footer_right = "{page} / {pages}"
+
+[[rule]]
+when = ["body"]
+color = "#2C332E"
+line_height = 1.65
+
+[[rule]]
+when = ["h1"]
+font = [{ family = "serif" }, { family = "serif[cjk]", weight = 500 }, { family = "serif[cjk]" }, { family = "emoji", weight = 400 }]
+size = 2.1
+weight = 400
+color = "#343C35"
+space_before = 0.15
+space_after = 0.65
+
+[[rule]]
+when = ["h2"]
+font = [{ family = "serif" }, { family = "serif[cjk]", weight = 500 }, { family = "serif[cjk]" }, { family = "emoji", weight = 400 }]
+size = 1.4
+weight = 700
+color = "#343C35"
+space_before = 0.85
+space_after = 0.45
+
+[[rule]]
+when = ["h3"]
+font = [{ family = "serif" }, { family = "serif[cjk]", weight = 500 }, { family = "serif[cjk]" }, { family = "emoji", weight = 400 }]
+size = 1.12
+weight = 700
+color = "#343C35"
+space_before = 0.85
+space_after = 0.45
+
+[[rule]]
+when = ["link"]
+color = "#343C35"
+decoration = ["underline"]
+
+[[rule]]
+when = ["blockquote"]
+color = "#2C332E"
+border_color = "#A23C35"
+border_width = 1.2
+padding = [0.5, 0.8, 0.5, 1.0]
+background = "#FFFFFF"
+
+[[rule]]
+when = ["marker"]
+color = "#A23C35"
+shape = ["disc", "minus"]
+
+[[rule]]
+when = ["task_marker"]
+accent = "#A23C35"
+border_color = "#A23C35"
+color = "#FFFFFF"
+background = "#FFFFFF"
+radius = 0.0
+
+[[rule]]
+when = ["table", "cell"]
+border_color = "#DED9C9"
+border_width = 0.6
+
+[[rule]]
+when = ["table", "header"]
+color = "#343C35"
+background = "#F8F7F3"
+
+[[rule]]
+when = ["hr"]
+color = "#DED9C9"
+border_width = 0.7
+
+[[rule]]
+when = ["code"]
+background = "#F4F3EF"
+
+[[rule]]
+when = ["code_block"]
+theme = "none"
+background = "#F4F3EF"
+border_color = "#DED9C9"
+border_width = 0.0
+
+[[rule]]
+when = ["code_block", "label"]
+color = "#555D55"
+
+[[rule]]
+when = ["img", "caption"]
+color = "#555D55"
+
+[[rule]]
+when = ["img", "placeholder"]
+color = "#555D55"
+background = "#F3F3F3"
+
+[[rule]]
+when = ["page_header"]
+color = "#555D55"
+
+[[rule]]
+when = ["page_footer"]
+color = "#555D55"
+
+[[rule]]
+when = ["page_number"]
+color = "#343C35"
+
+[[rule]]
+when = ["ui"]
+color = "#2C332E"
+muted = "#555D55"
+accent = "#A23C35"
+error = "#A23C35"
+border_color = "#DED9C9"

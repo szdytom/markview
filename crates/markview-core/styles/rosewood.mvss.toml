@@ -1,0 +1,144 @@
+format_version = 2
+targets = ["ui"]
+version = 1
+
+[meta]
+name = "Rosewood"
+description = "Plum shadows, rose ink and literary serif headings"
+
+[[rule]]
+when = ["body"]
+line_height = 1.6
+font = [{ family = "serif" }, { family = "serif[cjk]", weight = 500 }, { family = "serif[cjk]" }, { family = "emoji", weight = 400 }]
+color = "#EFE1E6"
+background = "#30242F"
+
+[[rule]]
+when = ["link"]
+color = "#E8ADC2"
+
+[[rule]]
+when = ["link", "hover"]
+color = "#FFD0DF"
+
+[[rule]]
+when = ["code"]
+background = "#3D2F3D"
+
+[[rule]]
+when = ["code_block"]
+background = "#3D2F3D"
+theme = "base16-ocean.dark"
+
+[[rule]]
+when = ["code_block", "label"]
+color = "#C5A9BA"
+
+[[rule]]
+when = ["blockquote"]
+background = "#3D2F3D"
+padding = [0.55, 0.8, 0.55, 1.0]
+border_width = 2.0
+border_color = "#E8ADC2"
+
+[[rule]]
+when = ["marker"]
+shape = ["diamond", "disc"]
+color = "#C5A9BA"
+
+[[rule]]
+when = ["task_marker"]
+color = "#30242F"
+background = "#30242F"
+accent = "#E8ADC2"
+border_color = "#E8ADC2"
+
+[[rule]]
+when = ["table", "cell"]
+border_color = "#654C60"
+
+[[rule]]
+when = ["table", "header"]
+background = "#3D2F3D"
+
+[[rule]]
+when = ["hr"]
+color = "#654C60"
+
+[[rule]]
+when = ["selection"]
+background = "#E8ADC247"
+
+[[rule]]
+when = ["img"]
+border_color = "#654C60"
+
+[[rule]]
+when = ["img", "caption"]
+color = "#C5A9BA"
+
+[[rule]]
+when = ["img", "placeholder"]
+color = "#C5A9BA"
+background = "#3D2F3D"
+
+[[rule]]
+when = ["scrollbar"]
+track = "#654C60"
+thumb = "#C5A9BA"
+thumb_hover = "#E8ADC2"
+
+[[rule]]
+when = ["ui"]
+color = "#EFE1E6"
+background = "#291F29"
+muted = "#C5A9BA"
+accent = "#E8ADC2"
+border_color = "#654C60"
+error = "#FFB39F"
+shadow = "#00000000"
+scrim = "#10192370"
+
+[[rule]]
+when = ["ui", "panel"]
+background = "#382A37"
+
+[[rule]]
+when = ["ui", "toolbar"]
+background = "#291F29"
+
+[[rule]]
+when = ["ui", "statusbar"]
+background = "#291F29"
+
+[[rule]]
+when = ["ui", "button"]
+background = "#382A37"
+hover_background = "#513B4D"
+active_background = "#64455B"
+disabled_color = "#C5A9BA"
+focus_color = "#E8ADC2"
+
+[[rule]]
+when = ["h1"]
+font = [{ family = "serif" }, { family = "serif[cjk]", weight = 500 }, { family = "serif[cjk]" }, { family = "emoji", weight = 400 }]
+size = 2.15
+color = "#EFE1E6"
+space_before = 0.2
+space_after = 0.65
+
+[[rule]]
+when = ["h2"]
+font = [{ family = "serif" }, { family = "serif[cjk]", weight = 500 }, { family = "serif[cjk]" }, { family = "emoji", weight = 400 }]
+size = 1.55
+color = "#E8ADC2"
+space_before = 0.85
+space_after = 0.65
+
+[[rule]]
+when = ["h3"]
+font = [{ family = "serif" }, { family = "serif[cjk]", weight = 500 }, { family = "serif[cjk]" }, { family = "emoji", weight = 400 }]
+size = 1.22
+color = "#EFE1E6"
+space_before = 0.85
+space_after = 0.65

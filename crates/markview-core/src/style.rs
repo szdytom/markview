@@ -20,6 +20,21 @@ pub use types::{
 	TextAlign, Variant, chain_of, chain_push, chain_set, parse_paper_size,
 };
 
+/// A supported stylesheet destination.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum StyleTarget {
+	Ui,
+	Pdf,
+}
+impl StyleTarget {
+	pub fn as_str(self) -> &'static str {
+		match self {
+			Self::Ui => "ui",
+			Self::Pdf => "pdf",
+		}
+	}
+}
+
 #[derive(Clone, Debug, Default, PartialEq, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Metadata {
@@ -31,6 +46,7 @@ pub struct Metadata {
 pub struct Stylesheet {
 	/// Version of the theme represented by this stylesheet.
 	pub version: u64,
+	pub targets: Vec<StyleTarget>,
 	pub fontdefs: BTreeMap<String, FontDefinition>,
 	fontdef_variants: BTreeMap<(String, Option<FontDefType>), FontDefinition>,
 	cjk_type: CjkType,
@@ -339,63 +355,100 @@ impl Stylesheet {
 		}
 		Ok(())
 	}
-	/// Raw bundled declarations, without implicitly merging light into dark.
-	pub fn bundled_rules(dark: bool) -> Arc<Self> {
-		if !dark {
-			return Self::bundled(false);
-		}
-		static DARK: OnceLock<Arc<Stylesheet>> = OnceLock::new();
-		DARK.get_or_init(|| {
+	/// Selectable reader themes. `builtin` is always implicit and never listed.
+	pub const READER_THEMES: &[&str] =
+		&["light", "dark", "celadon", "blueprint", "rosewood"];
+
+	pub const PDF_THEMES: &[&str] =
+		&["print", "monochrome", "qibaishi", "vangogh", "mondrian"];
+
+	/// Shared declarations beneath every reader and export stylesheet.
+	pub fn builtin() -> Arc<Self> {
+		static BASE: OnceLock<Arc<Stylesheet>> = OnceLock::new();
+		BASE.get_or_init(|| {
 			Arc::new(
-				Self::parse(include_str!("../styles/dark.mvss.toml"))
-					.expect("bundled dark stylesheet"),
+				Self::parse(include_str!("../styles/builtin.mvss.toml"))
+					.expect("builtin stylesheet"),
 			)
 		})
 		.clone()
 	}
-	/// The bundled print stylesheet: white paper, page furniture, and no
-	/// reader chrome. It is the base every PDF export starts from.
+
+	/// Raw declarations only; merging these never reintroduces fallback fields.
+	pub fn named_rules(id: &str) -> Option<Arc<Self>> {
+		static SHEETS: OnceLock<Vec<(&str, Arc<Stylesheet>)>> = OnceLock::new();
+		SHEETS
+			.get_or_init(|| {
+				[
+					("light", include_str!("../styles/light.mvss.toml")),
+					("dark", include_str!("../styles/dark.mvss.toml")),
+					("celadon", include_str!("../styles/celadon.mvss.toml")),
+					(
+						"blueprint",
+						include_str!("../styles/blueprint.mvss.toml"),
+					),
+					("rosewood", include_str!("../styles/rosewood.mvss.toml")),
+					("print", include_str!("../styles/print.mvss.toml")),
+					(
+						"monochrome",
+						include_str!("../styles/monochrome.mvss.toml"),
+					),
+					("qibaishi", include_str!("../styles/qibaishi.mvss.toml")),
+					("vangogh", include_str!("../styles/vangogh.mvss.toml")),
+					("mondrian", include_str!("../styles/mondrian.mvss.toml")),
+				]
+				.into_iter()
+				.map(|(id, source)| {
+					(
+						id,
+						Arc::new(
+							Self::parse(source).expect("bundled stylesheet"),
+						),
+					)
+				})
+				.collect()
+			})
+			.iter()
+			.find(|(name, _)| *name == id)
+			.map(|(_, sheet)| sheet.clone())
+	}
+
+	pub fn bundled_rules(dark: bool) -> Arc<Self> {
+		Self::named_rules(if dark { "dark" } else { "light" }).unwrap()
+	}
+
+	/// Paper defaults over the shared fallback, independent of reader themes.
 	pub fn bundled_print() -> Arc<Self> {
 		static PRINT: OnceLock<Arc<Stylesheet>> = OnceLock::new();
 		PRINT
 			.get_or_init(|| {
-				Arc::new(
-					Self::parse(include_str!("../styles/print.mvss.toml"))
-						.expect("bundled print stylesheet"),
-				)
+				let mut sheet = (*Self::builtin()).clone();
+				let rules = Self::named_rules("print").unwrap();
+				sheet.merge(&rules);
+				sheet.meta = rules.meta.clone();
+				sheet.targets = rules.targets.clone();
+				Arc::new(sheet)
 			})
 			.clone()
 	}
+
 	pub fn bundled(dark: bool) -> Arc<Self> {
 		static LIGHT: OnceLock<Arc<Stylesheet>> = OnceLock::new();
 		static DARK: OnceLock<Arc<Stylesheet>> = OnceLock::new();
-		if dark {
-			DARK.get_or_init(|| {
-				let mut s = (*Self::bundled(false)).clone();
-				s.merge(&Self::bundled_rules(true));
-				Arc::new(s)
+		let cache = if dark { &DARK } else { &LIGHT };
+		cache
+			.get_or_init(|| {
+				let mut sheet = (*Self::builtin()).clone();
+				let rules = Self::bundled_rules(dark);
+				sheet.merge(&rules);
+				sheet.meta = rules.meta.clone();
+				sheet.targets = rules.targets.clone();
+				// Tests select the same CJK fallback as the reader's defaults.
+				#[cfg(test)]
+				sheet.set_cjk_type(CjkType::Sc);
+				Arc::new(sheet)
 			})
 			.clone()
-		} else {
-			LIGHT
-				.get_or_init(|| {
-					let sheet =
-						Self::parse(include_str!("../styles/light.mvss.toml"))
-							.expect("bundled light stylesheet");
-					// Unit tests pin the faces they shape with, so they also
-					// select the CJK definition the reader uses by default.
-					// Otherwise `[cjk]` faces are dropped and CJK falls back
-					// to whatever the host happens to provide.
-					#[cfg(test)]
-					let sheet = {
-						let mut sheet = sheet;
-						sheet.set_cjk_type(CjkType::Sc);
-						sheet
-					};
-					Arc::new(sheet)
-				})
-				.clone()
-		}
 	}
 	pub fn paint(&self, paint: Paint) -> [f32; 4] {
 		use ColorField as C;

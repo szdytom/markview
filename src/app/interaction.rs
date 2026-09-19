@@ -109,9 +109,10 @@ impl App {
 				self.interaction.export_open = true;
 				self.interaction.export_styles_open = open;
 				self.interaction.styles_open = false;
-				self.preferences.style_entries = crate::stylesheet::catalog(
+				self.preferences.style_entries = crate::stylesheet::catalog_for(
 					crate::stylesheet::directory().as_deref(),
 					Some(&self.preferences.export.style),
+					markview_core::style::StyleTarget::Pdf,
 				);
 				self.preferences.style_page = 0;
 				self.interaction.focus = None;

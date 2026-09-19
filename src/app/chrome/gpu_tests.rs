@@ -1057,3 +1057,107 @@ fn button_feedback_frames() -> Result<()> {
 	}
 	Ok(())
 }
+
+#[test]
+#[ignore = "requires a GPU and system CJK fonts; writes artifacts/cjk-weight/*.png"]
+fn cjk_ui_weight_comparison() -> Result<()> {
+	use markview_core::style::{CjkType, Stylesheet, TextAppearance};
+	let directory =
+		PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("artifacts/cjk-weight");
+	std::fs::create_dir_all(&directory)?;
+	let mut renderer = pollster::block_on(Renderer::new(None))?;
+	for dark in [false, true] {
+		let mut sheet = (*Stylesheet::bundled(dark)).clone();
+		sheet.set_cjk_type(CjkType::Sc);
+		let sheet = std::sync::Arc::new(sheet);
+		renderer.set_stylesheet(sheet.clone());
+		for scale in [1.0, 1.25, 2.0] {
+			let mut draws = vec![Draw::Rect(
+				Rect {
+					x: 0.0,
+					y: 0.0,
+					w: 1200.0,
+					h: 350.0,
+				},
+				Paint::Styled(Condition::Panel, C::Background),
+			)];
+			for (column, weight) in [400, 450, 500].into_iter().enumerate() {
+				let mut trial = (*sheet).clone();
+				trial.merge(&Stylesheet::parse(&format!(
+					"format_version=2\nversion=1\n[[rule]]\nwhen=['ui']\nfont=[{{family='sans-serif'}},{{family='sans-serif[cjk]',weight={weight}}},{{family='sans-serif[cjk]'}},{{family='emoji',weight=400}}]"
+				))?);
+				// Use installed fonts: pinned test faces intentionally lack Medium.
+				let mut ui = TextShaper::new();
+				ui.set_stylesheet(std::sync::Arc::new(trial));
+				ui.appearance = ui
+					.stylesheet
+					.text(&TextAppearance::default(), Condition::Ui);
+				let x = 24.0 + column as f32 * 400.0;
+				draws.extend(ui.label(
+					&format!("CJK {weight} / Latin 400"),
+					18.0,
+					x,
+					36.0,
+					Paint::Styled(Condition::Ui, C::Color),
+				));
+				for (row, size) in [12.0, 14.0, 16.0].into_iter().enumerate() {
+					let y = 85.0 + row as f32 * 85.0;
+					draws.extend(ui.label(
+						"阅读设置 · 导出文档 · 字体选择",
+						size,
+						x,
+						y,
+						Paint::Styled(Condition::Ui, C::Color),
+					));
+					draws.extend(ui.label(
+						"简体中文 / 日本語 / 繁體中文",
+						size,
+						x,
+						y + 24.0,
+						Paint::Styled(Condition::Ui, C::Muted),
+					));
+					draws.extend(ui.label(
+						"Markdown · 12345 · 保存 PDF",
+						size,
+						x,
+						y + 48.0,
+						Paint::Styled(Condition::Ui, C::Color),
+					));
+				}
+			}
+			let horizontal = HashMap::new();
+			let view = View {
+				width: (1200.0 * scale) as u32,
+				height: (350.0 * scale) as u32,
+				scale,
+				left: 0.0,
+				top: 0.0,
+				bottom: 0.0,
+				scroll: 0.0,
+				theme: if dark { Theme::Dark } else { Theme::Light },
+				horizontal: &horizontal,
+				selection: None,
+				revision: 0,
+				hovered_link: None,
+				hovered_overflow: None,
+				held_overflow: None,
+			};
+			let target = renderer.offscreen(view.width, view.height);
+			let submission = renderer.render(
+				&Default::default(),
+				&view,
+				&draws,
+				&target.create_view(&Default::default()),
+			)?;
+			renderer.wait(Some(submission))?;
+			renderer.save_png(
+				&target,
+				&directory.join(format!(
+					"{}-{scale}.png",
+					if dark { "dark" } else { "light" }
+				)),
+			)?;
+		}
+	}
+	Ok(())
+}

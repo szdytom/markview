@@ -33,7 +33,7 @@ INSET_Y = 24
 FOOT = 48
 FONT_SIZE = 18
 LABEL_FONT = "/usr/share/fonts/TTF/DejaVuSans.ttf"
-INK = (38, 43, 48)
+INK = (40, 51, 67)
 RULE = (226, 226, 222)
 
 # A conventional Markdown preview: the same font, size, measure and paragraph
@@ -41,13 +41,13 @@ RULE = (226, 226, 222)
 # preview ships it, and `hyphens: auto` so the engine is asked for hyphenation
 # rather than silently denied it.
 PAGE = """<!doctype html><meta charset="utf-8"><style>
-html, body {{ margin: 0; padding: 0; background: #FAFAF8 }}
+html, body {{ margin: 0; padding: 0; background: #F9FAFC }}
 body {{
   width: {width}px;
   padding: {top}px {left}px;
   box-sizing: border-box;
   font: {size}px/1.65 Georgia, "Noto Serif", serif;
-  color: #262B30;
+  color: #283343;
   text-align: left;
   hyphens: auto;
   -webkit-hyphens: auto;

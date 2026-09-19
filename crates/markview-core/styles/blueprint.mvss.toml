@@ -1,0 +1,148 @@
+format_version = 2
+targets = ["ui"]
+version = 1
+
+[meta]
+name = "Blueprint"
+description = "Technical notes in chalk blue with measured sans-serif type"
+
+[[rule]]
+when = ["body"]
+line_height = 1.6
+font = [{ family = "sans-serif" }, { family = "sans-serif[cjk]", weight = 500 }, { family = "sans-serif[cjk]" }, { family = "emoji", weight = 400 }]
+color = "#E0EAF6"
+background = "#172B46"
+
+[[rule]]
+when = ["link"]
+color = "#85D8EC"
+
+[[rule]]
+when = ["link", "hover"]
+color = "#C1F1FC"
+
+[[rule]]
+when = ["code"]
+background = "#203C5C"
+
+[[rule]]
+when = ["code_block"]
+background = "#203C5C"
+theme = "base16-ocean.dark"
+
+[[rule]]
+when = ["code_block", "label"]
+color = "#A1B9D4"
+
+[[rule]]
+when = ["blockquote"]
+background = "#203C5C"
+padding = [0.55, 0.8, 0.55, 1.0]
+border_width = 2.0
+border_color = "#85D8EC"
+
+[[rule]]
+when = ["marker"]
+shape = ["square", "minus"]
+color = "#A1B9D4"
+
+[[rule]]
+when = ["task_marker"]
+color = "#172B46"
+background = "#172B46"
+accent = "#85D8EC"
+border_color = "#85D8EC"
+
+[[rule]]
+when = ["table", "cell"]
+border_color = "#426080"
+
+[[rule]]
+when = ["table", "header"]
+background = "#203C5C"
+
+[[rule]]
+when = ["hr"]
+color = "#426080"
+
+[[rule]]
+when = ["selection"]
+background = "#85D8EC47"
+
+[[rule]]
+when = ["img"]
+border_color = "#426080"
+
+[[rule]]
+when = ["img", "caption"]
+color = "#A1B9D4"
+
+[[rule]]
+when = ["img", "placeholder"]
+color = "#A1B9D4"
+background = "#203C5C"
+
+[[rule]]
+when = ["scrollbar"]
+track = "#426080"
+thumb = "#A1B9D4"
+thumb_hover = "#85D8EC"
+
+[[rule]]
+when = ["ui"]
+color = "#E0EAF6"
+background = "#12243C"
+muted = "#A1B9D4"
+accent = "#85D8EC"
+border_color = "#426080"
+error = "#FFB2BB"
+shadow = "#00000000"
+scrim = "#10192370"
+
+[[rule]]
+when = ["ui", "panel"]
+background = "#1D3452"
+
+[[rule]]
+when = ["ui", "toolbar"]
+background = "#12243C"
+
+[[rule]]
+when = ["ui", "statusbar"]
+background = "#12243C"
+
+[[rule]]
+when = ["ui", "button"]
+background = "#1D3452"
+hover_background = "#2D4D70"
+active_background = "#355F83"
+disabled_color = "#A1B9D4"
+focus_color = "#85D8EC"
+
+[[rule]]
+when = ["h1"]
+font = [{ family = "sans-serif" }, { family = "sans-serif[cjk]", weight = 500 }, { family = "sans-serif[cjk]" }, { family = "emoji", weight = 400 }]
+size = 1.85
+color = "#E0EAF6"
+space_before = 0.2
+space_after = 0.65
+
+[[rule]]
+when = ["h2"]
+font = [{ family = "sans-serif" }, { family = "sans-serif[cjk]", weight = 500 }, { family = "sans-serif[cjk]" }, { family = "emoji", weight = 400 }]
+size = 1.55
+color = "#85D8EC"
+space_before = 0.85
+space_after = 0.65
+
+[[rule]]
+when = ["h3"]
+font = [{ family = "sans-serif" }, { family = "sans-serif[cjk]", weight = 500 }, { family = "sans-serif[cjk]" }, { family = "emoji", weight = 400 }]
+size = 1.22
+color = "#E0EAF6"
+space_before = 0.85
+space_after = 0.65
+
+[[rule]]
+when = ["em"]
+font = [{ family = "sans-serif", variant = "italic" }, { family = "sans-serif[cjk]", variant = "italic", synthetic_italic = true, weight = 500 }, { family = "sans-serif[cjk]", variant = "italic", synthetic_italic = true }, { family = "emoji", weight = 400 }]

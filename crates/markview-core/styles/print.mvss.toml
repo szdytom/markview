@@ -1,57 +1,6 @@
 format_version = 2
-version = 1
-
-[[fontdef]]
-id = "serif"
-lookfor = ["Georgia", "Times New Roman", "Noto Serif", "DejaVu Serif", "Liberation Serif", "Linux Libertine", "serif"]
-
-[[fontdef]]
-id = "sans-serif"
-lookfor = ["Helvetica", "Arial", "Noto Sans", "DejaVu Sans", "Liberation Sans", "Ubuntu", "sans-serif"]
-
-[[fontdef]]
-id = "serif[cjk]"
-type = "SC"
-lookfor = ["Noto Serif CJK SC", "Source Han Serif SC", "Songti SC", "SimSun", "NSimSun", "STSong", "AR PL UMing CN", "AR PL SungtiL GB", "serif"]
-
-[[fontdef]]
-id = "serif[cjk]"
-type = "TC"
-lookfor = ["Noto Serif CJK TC", "Source Han Serif TC", "Songti TC", "PMingLiU", "AR PL UMing TW", "serif"]
-
-[[fontdef]]
-id = "serif[cjk]"
-type = "JP"
-lookfor = ["Noto Serif CJK JP", "Source Han Serif JP", "Hiragino Mincho ProN", "Hiragino Mincho Pro", "Yu Mincho", "MS PMincho", "MS Mincho", "serif"]
-
-[[fontdef]]
-id = "sans-serif[cjk]"
-type = "SC"
-lookfor = ["PingFang SC", "Microsoft YaHei", "Noto Sans CJK SC", "Source Han Sans CJK SC", "Source Han Sans", "Founder Lan Ting Hei", "WenQuanYi Micro Hei", "Hiragino Sans GB", "Heiti SC", "sans-serif"]
-
-[[fontdef]]
-id = "sans-serif[cjk]"
-type = "TC"
-lookfor = ["Noto Sans CJK TC", "Source Han Sans CJK TC", "PingFang TC", "Microsoft JhengHei", "Heiti TC", "WenQuanYi Micro Hei", "sans-serif"]
-
-[[fontdef]]
-id = "sans-serif[cjk]"
-type = "JP"
-lookfor = ["Noto Sans CJK JP", "Source Han Sans CJK JP", "Hiragino Sans", "Yu Gothic", "Meiryo", "sans-serif"]
-
-[[fontdef]]
-id = "monospace"
-lookfor = ["Fira Code", "Consolas", "Noto Sans Mono", "monospace"]
-
-[[fontdef]]
-id = "monospace[cjk]"
-type = "SC"
-lookfor = ["Noto Sans Mono CJK SC", "Source Han Mono", "Source Code Pro", "monospace"]
-
-[[fontdef]]
-id = "emoji"
-emoji = true
-lookfor = ["Noto Color Emoji", "Apple Color Emoji", "Segoe UI Emoji", "Twemoji Mozilla", "EmojiOne Color", "JoyPixels", "Twitter Color Emoji", "EmojiSymbols"]
+targets = ["pdf"]
+version = 2
 
 [meta]
 name = "Print"
@@ -78,7 +27,7 @@ background = "#FFFFFF"
 when = ["body"]
 color = "#000000"
 background = "#FFFFFF"
-font = [{ family = "serif" }, { family = "serif[cjk]" }, { family = "emoji", weight = 400 }]
+font = [{ family = "serif" }, { family = "serif[cjk]", weight = 500 }, { family = "serif[cjk]" }, { family = "emoji", weight = 400 }]
 line_height = 1.5
 
 [[rule]]
@@ -91,7 +40,7 @@ size = 1.8
 weight = 700
 space_before = 0.1
 space_after = 0.5
-font = [{ family = "sans-serif" }, { family = "sans-serif[cjk]" }, { family = "emoji", weight = 400 }]
+font = [{ family = "sans-serif" }, { family = "sans-serif[cjk]", weight = 500 }, { family = "sans-serif[cjk]" }, { family = "emoji", weight = 400 }]
 
 [[rule]]
 when = ["h2"]
@@ -99,7 +48,7 @@ size = 1.45
 weight = 700
 space_before = 0.55
 space_after = 0.45
-font = [{ family = "sans-serif" }, { family = "sans-serif[cjk]" }, { family = "emoji", weight = 400 }]
+font = [{ family = "sans-serif" }, { family = "sans-serif[cjk]", weight = 500 }, { family = "sans-serif[cjk]" }, { family = "emoji", weight = 400 }]
 
 [[rule]]
 when = ["h3"]
@@ -107,7 +56,7 @@ size = 1.2
 weight = 700
 space_before = 0.55
 space_after = 0.4
-font = [{ family = "sans-serif" }, { family = "sans-serif[cjk]" }, { family = "emoji", weight = 400 }]
+font = [{ family = "sans-serif" }, { family = "sans-serif[cjk]", weight = 500 }, { family = "sans-serif[cjk]" }, { family = "emoji", weight = 400 }]
 
 [[rule]]
 when = ["h4"]
@@ -115,7 +64,7 @@ size = 1.1
 weight = 700
 space_before = 0.55
 space_after = 0.35
-font = [{ family = "sans-serif" }, { family = "sans-serif[cjk]" }, { family = "emoji", weight = 400 }]
+font = [{ family = "sans-serif" }, { family = "sans-serif[cjk]", weight = 500 }, { family = "sans-serif[cjk]" }, { family = "emoji", weight = 400 }]
 
 [[rule]]
 when = ["h5"]
@@ -123,7 +72,7 @@ size = 1.0
 weight = 700
 space_before = 0.55
 space_after = 0.35
-font = [{ family = "sans-serif" }, { family = "sans-serif[cjk]" }, { family = "emoji", weight = 400 }]
+font = [{ family = "sans-serif" }, { family = "sans-serif[cjk]", weight = 500 }, { family = "sans-serif[cjk]" }, { family = "emoji", weight = 400 }]
 
 [[rule]]
 when = ["h6"]
@@ -131,14 +80,14 @@ size = 0.95
 weight = 700
 space_before = 0.55
 space_after = 0.35
-font = [{ family = "sans-serif" }, { family = "sans-serif[cjk]" }, { family = "emoji", weight = 400 }]
+font = [{ family = "sans-serif" }, { family = "sans-serif[cjk]", weight = 500 }, { family = "sans-serif[cjk]" }, { family = "emoji", weight = 400 }]
 
 [[rule]]
 when = ["em"]
 font = [
 	{ family = "serif", variant = "italic" },
 	# CJK families usually ship no italic, so their Han text is sheared.
-	{ family = "serif[cjk]", variant = "italic", synthetic_italic = true },
+	{ family = "serif[cjk]", variant = "italic", synthetic_italic = true, weight = 500 }, { family = "serif[cjk]", variant = "italic", synthetic_italic = true },
 	{ family = "emoji", weight = 400 },
 ]
 
@@ -162,7 +111,7 @@ size = 0.7
 
 [[rule]]
 when = ["code"]
-font = [{ family = "monospace" }, { family = "monospace[cjk]" }, { family = "emoji", weight = 400 }]
+font = [{ family = "monospace" }, { family = "monospace[cjk]", weight = 500 }, { family = "monospace[cjk]" }, { family = "emoji", weight = 400 }]
 size = 0.9
 padding = [0.15, 0.3, 0.15, 0.3]
 background = "#F0F0F0"
@@ -170,7 +119,7 @@ background = "#F0F0F0"
 [[rule]]
 when = ["code_block"]
 theme = "InspiredGitHub"
-font = [{ family = "monospace" }, { family = "monospace[cjk]" }, { family = "emoji", weight = 400 }]
+font = [{ family = "monospace" }, { family = "monospace[cjk]", weight = 500 }, { family = "monospace[cjk]" }, { family = "emoji", weight = 400 }]
 size = 0.85
 line_height = 1.45
 background = "#F4F4F4"
@@ -180,7 +129,7 @@ space_after = 0.55
 [[rule]]
 when = ["code_block", "label"]
 color = "#5A5A5A"
-font = [{ family = "sans-serif" }, { family = "sans-serif[cjk]" }, { family = "emoji", weight = 400 }]
+font = [{ family = "sans-serif" }, { family = "sans-serif[cjk]", weight = 500 }, { family = "sans-serif[cjk]" }, { family = "emoji", weight = 400 }]
 size = 0.65
 
 [[rule]]
@@ -267,27 +216,27 @@ when = ["img", "placeholder"]
 size = 0.78
 color = "#5A5A5A"
 background = "#F0F0F0"
-font = [{ family = "sans-serif" }, { family = "sans-serif[cjk]" }, { family = "emoji", weight = 400 }]
+font = [{ family = "sans-serif" }, { family = "sans-serif[cjk]", weight = 500 }, { family = "sans-serif[cjk]" }, { family = "emoji", weight = 400 }]
 
 # Page furniture: grey enough to stay out of the reading, centered on the
 # margin it sits in.
 [[rule]]
 when = ["page_header"]
 color = "#5A5A5A"
-size = 0.55
-font = [{ family = "sans-serif" }, { family = "sans-serif[cjk]" }, { family = "emoji", weight = 400 }]
+size = 0.75
+font = [{ family = "sans-serif" }, { family = "sans-serif[cjk]", weight = 500 }, { family = "sans-serif[cjk]" }, { family = "emoji", weight = 400 }]
 
 [[rule]]
 when = ["page_footer"]
 color = "#5A5A5A"
-size = 0.55
-font = [{ family = "sans-serif" }, { family = "sans-serif[cjk]" }, { family = "emoji", weight = 400 }]
+size = 0.75
+font = [{ family = "sans-serif" }, { family = "sans-serif[cjk]", weight = 500 }, { family = "sans-serif[cjk]" }, { family = "emoji", weight = 400 }]
 
 [[rule]]
 when = ["page_number"]
 color = "#000000"
-size = 0.55
-font = [{ family = "sans-serif" }, { family = "sans-serif[cjk]" }, { family = "emoji", weight = 400 }]
+size = 0.75
+font = [{ family = "sans-serif" }, { family = "sans-serif[cjk]", weight = 500 }, { family = "sans-serif[cjk]" }, { family = "emoji", weight = 400 }]
 
 # A document may still draw reader chrome colors (a formula error box, an
 # unavailable image); the print sheet resolves them to grey on white.
@@ -295,7 +244,7 @@ font = [{ family = "sans-serif" }, { family = "sans-serif[cjk]" }, { family = "e
 when = ["ui"]
 color = "#000000"
 background = "#FFFFFF"
-font = [{ family = "sans-serif" }, { family = "sans-serif[cjk]" }, { family = "emoji", weight = 400 }]
+font = [{ family = "sans-serif" }, { family = "sans-serif[cjk]", weight = 500 }, { family = "sans-serif[cjk]" }, { family = "emoji", weight = 400 }]
 muted = "#5A5A5A"
 accent = "#315D86"
 border_color = "#BFBFBF"

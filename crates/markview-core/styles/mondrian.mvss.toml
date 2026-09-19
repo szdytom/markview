@@ -1,0 +1,130 @@
+format_version = 2
+version = 1
+targets = ["pdf"]
+
+[meta]
+name = "Mondrian"
+description = "Primary red, blue and yellow with a crisp black table grid"
+
+[page]
+margin = [22, 22, 24, 22]
+header_left = "{title}"
+footer_center = ""
+footer_right = "{page} / {pages}"
+
+[[rule]]
+when = ["body"]
+color = "#202020"
+line_height = 1.55
+
+[[rule]]
+when = ["h1"]
+font = [{ family = "sans-serif" }, { family = "sans-serif[cjk]", weight = 500 }, { family = "sans-serif[cjk]" }, { family = "emoji", weight = 400 }]
+size = 2.1
+weight = 700
+color = "#C7352C"
+space_before = 0.15
+space_after = 0.65
+
+[[rule]]
+when = ["h2"]
+font = [{ family = "sans-serif" }, { family = "sans-serif[cjk]", weight = 500 }, { family = "sans-serif[cjk]" }, { family = "emoji", weight = 400 }]
+size = 1.4
+weight = 700
+color = "#1647A6"
+space_before = 0.85
+space_after = 0.45
+
+[[rule]]
+when = ["h3"]
+font = [{ family = "sans-serif" }, { family = "sans-serif[cjk]", weight = 500 }, { family = "sans-serif[cjk]" }, { family = "emoji", weight = 400 }]
+size = 1.12
+weight = 700
+color = "#1647A6"
+space_before = 0.85
+space_after = 0.45
+
+[[rule]]
+when = ["link"]
+color = "#1647A6"
+decoration = ["underline"]
+
+[[rule]]
+when = ["blockquote"]
+color = "#202020"
+border_color = "#1647A6"
+border_width = 4.0
+padding = [0.5, 0.8, 0.5, 1.0]
+background = "#F1F4FA"
+
+[[rule]]
+when = ["marker"]
+color = "#C7352C"
+shape = ["square", "minus"]
+
+[[rule]]
+when = ["task_marker"]
+accent = "#C7352C"
+border_color = "#C7352C"
+color = "#FFFFFF"
+background = "#FFFFFF"
+radius = 0.0
+
+[[rule]]
+when = ["table", "cell"]
+border_color = "#232323"
+border_width = 1.1
+
+[[rule]]
+when = ["table", "header"]
+color = "#202020"
+background = "#F1CE46"
+
+[[rule]]
+when = ["hr"]
+color = "#232323"
+border_width = 2.0
+
+[[rule]]
+when = ["code"]
+background = "#F4F3EF"
+
+[[rule]]
+when = ["code_block"]
+theme = "InspiredGitHub"
+background = "#F4F3EF"
+border_color = "#232323"
+border_width = 0.0
+
+[[rule]]
+when = ["code_block", "label"]
+color = "#555555"
+
+[[rule]]
+when = ["img", "caption"]
+color = "#555555"
+
+[[rule]]
+when = ["img", "placeholder"]
+color = "#555555"
+background = "#F3F3F3"
+
+[[rule]]
+when = ["page_header"]
+color = "#555555"
+
+[[rule]]
+when = ["page_footer"]
+color = "#555555"
+
+[[rule]]
+when = ["page_number"]
+color = "#1647A6"
+
+[[rule]]
+when = ["ui"]
+color = "#202020"
+muted = "#555555"
+accent = "#C7352C"
+error = "#A23C35"
+border_color = "#232323"

@@ -531,3 +531,20 @@ fn the_bundled_emoji_face_beats_a_text_candidate_covering_the_cluster() {
 	assert_eq!(family(&mut s, "\u{26a0}\u{fe0e}"), "Noto Serif CJK SC");
 	assert_eq!(family(&mut s, "\u{26a0}\u{fe0f}"), "Noto Color Emoji");
 }
+
+#[test]
+fn unavailable_cjk_medium_keeps_an_explicit_regular_fallback() {
+	let mut shaper = TextShaper::new();
+	let mut sheet = (*Stylesheet::bundled(false)).clone();
+	sheet.set_cjk_type(crate::style::CjkType::Sc);
+	sheet.merge(&Stylesheet::parse("format_version=2\nversion=1\n[[rule]]\nwhen=['ui']\nfont=[{family='sans-serif'},{family='sans-serif[cjk]',weight=500},{family='sans-serif[cjk]'},{family='emoji',weight=400}]").unwrap());
+	shaper.set_stylesheet(Arc::new(sheet));
+	let appearance = shaper
+		.stylesheet
+		.text(&TextAppearance::default(), Condition::Ui);
+	// Pinned CJK faces have 400 and 700, so 500 must not cause system fallback.
+	let cjk = shaper.choose_font("中", &appearance).unwrap();
+	assert_eq!(cjk.weight, 400);
+	assert!(cjk.family.contains("CJK"));
+	assert_eq!(shaper.choose_font("a", &appearance).unwrap().weight, 400);
+}
