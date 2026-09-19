@@ -13,6 +13,21 @@ at the same level, without `[brackets]`.
 
 ## Unreleased
 
+- Hold a wheel gesture to the axis its first few moments chose, separated by
+  the boundary the platform reports or by a pause where it reports none and
+  inheriting nothing from the gesture before it, so a diagonal trackpad gesture
+  no longer stops the page or slips a wide formula away, and a sideways gesture
+  over no wide block still scrolls by the vertical motion it carries.
+
+- Prepare the screenful below in idle frames, leaving the visible frame's image
+  demand alone, so no scroll frame rasterizes a glyph once a document is open:
+  the worst such frame on a 100 KiB CJK document falls from 2.6 ms to 0.6 ms.
+
+- Measure per-frame scroll pacing in `--bench` over a cold, warm and prewarmed
+  pass: prepare and total percentiles, frames over the 120 Hz and 60 Hz
+  budgets, glyphs rasterized in and out of the frame, and atlas pressure,
+  including for a document with no geometry.
+
 - Reuse the PDF writer's font and stylesheet caches across a watch session's
   rebuilds instead of rebuilding them on every export.
 

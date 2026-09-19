@@ -7,7 +7,12 @@ use crate::{
 };
 use anyhow::{Context, Result};
 use serde::Serialize;
-use std::{collections::HashMap, fs, path::Path, time::Instant};
+use std::{
+	collections::HashMap,
+	fs,
+	path::Path,
+	time::{Duration, Instant},
+};
 
 #[derive(Serialize, Clone)]
 pub struct Timing {
@@ -27,8 +32,7 @@ pub struct Distribution {
 	pub p95_ms: f64,
 	pub max_ms: f64,
 }
-fn distribution(samples: &[Timing]) -> Distribution {
-	let mut times: Vec<f64> = samples.iter().map(|t| t.total_ms).collect();
+fn percentiles(mut times: Vec<f64>) -> Distribution {
 	times.sort_by(f64::total_cmp);
 	Distribution {
 		count: times.len(),
@@ -37,6 +41,47 @@ fn distribution(samples: &[Timing]) -> Distribution {
 			[((times.len() as f64 * 0.95).ceil() as usize).saturating_sub(1)],
 		max_ms: *times.last().unwrap(),
 	}
+}
+fn distribution(samples: &[Timing]) -> Distribution {
+	percentiles(samples.iter().map(|t| t.total_ms).collect())
+}
+
+/// What one frame costs while scrolling through the whole document.
+#[derive(Serialize)]
+pub struct ScrollPass {
+	/// Geometry, rasterization and upload; the CPU work before the GPU sees it.
+	pub prepare_ms: Distribution,
+	/// The whole frame, including completed GPU work.
+	pub total_ms: Distribution,
+	/// Frames that miss a 120 Hz and a 60 Hz budget.
+	pub over_8_33_ms: usize,
+	pub over_16_7_ms: usize,
+	/// Glyphs and paths rasterized during the pass, including any a prewarm
+	/// pass prepared before the frame that needed them.
+	pub rasterized: u64,
+	/// Of those, the ones rasterized inside a measured frame. This is the
+	/// work the reader waits for.
+	pub in_frame: u64,
+	pub atlas_resets: u64,
+	/// Atlas pressure at the end of the pass: how full the mask atlas is and
+	/// how many entries it holds. A pass that stops helping is one whose
+	/// document needs more glyphs than the atlas can keep.
+	pub atlas_fill_percent: u8,
+	pub atlas_entries: usize,
+}
+
+/// Scrolling is what a reader does most, so the frame it costs is measured
+/// directly. Each pass walks the whole document a screenful at a time: `cold`
+/// starts with an empty glyph atlas, `warm` reuses what the first pass
+/// rasterized, and `prewarmed` gives the renderer the same budgeted prewarm
+/// pass the window runs while the reader stays put before it moves on.
+/// Compositor presentation is excluded.
+#[derive(Serialize)]
+pub struct ScrollPacing {
+	pub frames: usize,
+	pub cold: ScrollPass,
+	pub warm: ScrollPass,
+	pub prewarmed: ScrollPass,
 }
 
 #[derive(Serialize, Default)]
@@ -76,6 +121,7 @@ struct Report {
 	cached_refreshes: Distribution,
 	full_layout_samples: Vec<Timing>,
 	cached_samples: Vec<Timing>,
+	scroll: ScrollPacing,
 	memory_after_scroll: Memory,
 	tracked_gpu_bytes_excluding_driver: u64,
 	reading_text_index_bytes: usize,
@@ -195,13 +241,65 @@ pub fn run(
 	let cached_samples = (0..iterations)
 		.map(|_| sample(true))
 		.collect::<Result<Vec<_>>>()?;
-	let mut scroll = 0.0;
+	// Scrolling, measured a screenful at a time. The opening screenful is
+	// always measured: a document with no geometry has no height to walk.
+	let step = (height as f32 / scale - 48.0).max(1.0);
+	let mut offsets = vec![0.0];
+	let mut scroll = step;
 	while scroll < latest.height {
-		view.scroll = scroll;
-		let submission = renderer.render(&latest, &view, &[], &target)?;
-		renderer.wait(Some(submission))?;
-		scroll += (height as f32 / scale - 48.0).max(1.0);
+		offsets.push(scroll);
+		scroll += step;
 	}
+	let mut passes = Vec::new();
+	for pass in 0..3 {
+		// The warm pass keeps what the cold one rasterized; the prewarmed
+		// pass starts empty, the way a reader who has just arrived has it.
+		if pass != 1 {
+			renderer.clear_raster_cache();
+		}
+		let before = renderer.raster_stats();
+		let mut in_frame = 0;
+		let (mut prepare, mut total) = (
+			Vec::with_capacity(offsets.len()),
+			Vec::with_capacity(offsets.len()),
+		);
+		for &offset in &offsets {
+			view.scroll = offset;
+			if pass == 2 {
+				// The window spends a slice of each idle frame on the
+				// screenful ahead; here the reader is assumed to stay put
+				// until that work is done.
+				while renderer.prewarm(&latest, &view, Duration::from_millis(2))
+				{
+				}
+			}
+			let frame_before = renderer.raster_stats().rasterized;
+			let start = Instant::now();
+			let submission = renderer.render(&latest, &view, &[], &target)?;
+			in_frame += renderer.raster_stats().rasterized - frame_before;
+			prepare.push(start.elapsed().as_secs_f64() * 1000.0);
+			renderer.wait(Some(submission))?;
+			total.push(start.elapsed().as_secs_f64() * 1000.0);
+		}
+		let after = renderer.raster_stats();
+		passes.push(ScrollPass {
+			prepare_ms: percentiles(prepare),
+			over_8_33_ms: total.iter().filter(|t| **t > 8.33).count(),
+			over_16_7_ms: total.iter().filter(|t| **t > 16.7).count(),
+			total_ms: percentiles(total),
+			rasterized: after.rasterized - before.rasterized,
+			in_frame,
+			atlas_resets: after.resets - before.resets,
+			atlas_fill_percent: after.fill_percent,
+			atlas_entries: after.entries,
+		});
+	}
+	let scroll_pacing = ScrollPacing {
+		frames: offsets.len(),
+		cold: passes.remove(0),
+		warm: passes.remove(0),
+		prewarmed: passes.remove(0),
+	};
 	let text = read_document(path)?;
 	let report = Report {
 		scope: "Release-mode target. Offscreen full layout + completed first-viewport GPU rendering; window/compositor presentation excluded. First open has cold document/glyph/math caches. Reopens clear block layouts but retain text-engine, math and glyph caches. OS file cache is not flushed.",
@@ -219,6 +317,7 @@ pub fn run(
 		cached_refreshes: distribution(&cached_samples),
 		full_layout_samples,
 		cached_samples,
+		scroll: scroll_pacing,
 		memory_after_scroll: memory(),
 		reading_text_index_bytes: latest.text_index_bytes(),
 		tracked_gpu_bytes_excluding_driver: renderer.gpu_bytes()
@@ -284,6 +383,40 @@ mod tests {
 			assert!(combined >= submit + wait);
 			assert!(timing["total_ms"].as_f64().unwrap() >= combined);
 		}
+		Ok(())
+	}
+
+	#[test]
+	#[ignore = "requires a GPU"]
+	fn a_document_with_no_geometry_still_measures_its_opening_frame()
+	-> Result<()> {
+		let dir = tempfile::tempdir()?;
+		let input = dir.path().join("empty.md");
+		let output = dir.path().join("timing.json");
+		fs::write(&input, "")?;
+		run(
+			&input,
+			Some(&output),
+			800,
+			600,
+			1.0,
+			Theme::Light,
+			1,
+			LayoutOptions {
+				fonts: crate::test_support::fonts(),
+				..Default::default()
+			},
+			true,
+		)?;
+		let report: serde_json::Value =
+			serde_json::from_slice(&fs::read(output)?)?;
+		// No height to walk means one sample, not none: an empty vector used
+		// to reach the percentile helper and panic.
+		assert_eq!(report["scroll"]["frames"].as_u64(), Some(1));
+		assert_eq!(
+			report["scroll"]["cold"]["prepare_ms"]["count"].as_u64(),
+			Some(1)
+		);
 		Ok(())
 	}
 }

@@ -12,6 +12,7 @@ The [latency and memory analysis](performance-analysis.md) is the companion diag
 - **Full reflow** measures rebuilding document geometry after content or layout settings change. The block cache is cleared for this measurement, while font and shaping resources remain warm.
 - **Block refresh** measures reusing unchanged blocks after a localized invalidation, such as an image completing or a file update affecting only part of the document.
 - **RSS** is process resident memory after scrolling through the document. It is not GPU memory.
+- **Scroll pacing** is the per-frame cost of moving through the whole document a screenful at a time, in three passes: `cold` starts with an empty glyph atlas, `warm` reuses what the first pass rasterized, and `prewarmed` gives the renderer the budgeted head start the window runs while the reader stays put. Each pass counts frames that miss a 120 Hz (8.33 ms) and a 60 Hz (16.7 ms) budget, and records how many glyphs or paths were rasterized, how many of those fell inside a frame the reader waited for, and how full the atlas ended. Compositor presentation is excluded, so a frame here is what Markview has to produce, not what the display shows.
 - **Tracked GPU resources** are the capacities of resources Markview can account for; they are not a complete driver-memory report.
 
 The benchmark separates a cold first open from repeated warm reflows. A P95 from repeated runs must not be presented as a cold-start P95.
