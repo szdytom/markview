@@ -96,6 +96,50 @@ struct MathFont {
 	font: Font,
 }
 
+/// Formula glyphs that share a face, a size, a colour and a baseline, collected
+/// so they leave as one text object instead of one per glyph. A formula is the
+/// densest text a document holds, and a text object per glyph was the largest
+/// remaining cost of an export.
+#[derive(Default)]
+struct MathRun {
+	name: String,
+	font: Option<MathFont>,
+	size: f32,
+	color: rgb::Color,
+	alpha: f32,
+	baseline: f32,
+	glyphs: Vec<(u32, Point)>,
+}
+
+impl MathRun {
+	/// Appends a glyph when it can share the run, and reports whether it did.
+	fn push(
+		&mut self,
+		name: &str,
+		size: f32,
+		color: rgb::Color,
+		alpha: f32,
+		id: u32,
+		point: Point,
+	) -> bool {
+		if self.glyphs.is_empty() {
+			return false;
+		}
+		let ordered =
+			self.glyphs.last().is_none_or(|(_, last)| point.x >= last.x);
+		let fits = self.name == name
+			&& self.size == size
+			&& self.color == color
+			&& self.alpha == alpha
+			&& self.baseline == point.y
+			&& ordered;
+		if fits {
+			self.glyphs.push((id, point));
+		}
+		fits
+	}
+}
+
 struct Painter<'a> {
 	stylesheet: &'a Stylesheet,
 	snapshot: &'a LayoutSnapshot,
@@ -175,7 +219,21 @@ impl Painter<'_> {
 		)
 	}
 
+	/// Whether a paint resolves to a fully transparent fill.
+	///
+	/// The layout gives every styled inline run a background, and a run whose
+	/// condition defines none resolves to a transparent colour: the paint is how
+	/// a container background is stopped from reaching an inline run. Drawing it
+	/// costs a page-space rectangle and its PDF operators per cluster, and shows
+	/// nothing, so the export skips it.
+	fn invisible(&self, paint: Paint) -> bool {
+		self.stylesheet.paint(paint)[3] == 0.0
+	}
+
 	fn solid(&self, surface: &mut Surface<'_>, rect: Rect, paint: Paint) {
+		if self.invisible(paint) {
+			return;
+		}
 		if let Some(path) = rect_path(rect) {
 			surface.set_fill(Some(self.fill(paint)));
 			surface.draw_path(&path);
@@ -189,6 +247,9 @@ impl Painter<'_> {
 		color: rgb::Color,
 		alpha: f32,
 	) {
+		if alpha <= 0.0 {
+			return;
+		}
 		if let Some(path) = rect_path(rect) {
 			surface.set_fill(Some(Fill {
 				paint: KrillaPaint::from(color),
@@ -348,7 +409,8 @@ impl Painter<'_> {
 	}
 
 	/// Shows one run of glyph draws as a single string. The run ends where the
-	/// face or the text node changes.
+	/// face or the text node changes, or where something visible is painted
+	/// between two glyphs.
 	fn text_run(
 		&mut self,
 		surface: &mut Surface<'_>,
@@ -364,13 +426,23 @@ impl Painter<'_> {
 		let node = clusters[start].node;
 		let mut end = start + 1;
 		while end < layout.draws.len() {
-			let Draw::Glyph(next) = &layout.draws[end] else {
-				break;
-			};
-			if clusters[end].node != node || !text::same_face(first, next) {
-				break;
+			match &layout.draws[end] {
+				Draw::Glyph(next) => {
+					if clusters[end].node != node
+						|| !text::same_face(first, next)
+					{
+						break;
+					}
+					end += 1;
+				}
+				// An inline run's background resolves to a transparent colour
+				// far more often than not, and the layout emits one per cluster.
+				// Such a rectangle draws nothing, so it must not end the run
+				// either: a text object per cluster is what makes the export
+				// slow and the file large.
+				Draw::Rect(_, paint) if self.invisible(*paint) => end += 1,
+				_ => break,
 			}
-			end += 1;
 		}
 		let text = layout
 			.text
@@ -502,15 +574,15 @@ impl Painter<'_> {
 				} else {
 					0.0
 				};
-				surface.set_fill(Some(self.fill(Paint::Scoped(
-					*chain,
-					*condition,
-					ColorField::Background,
-				))));
-				if let Some(path) =
-					rounded_path(box_rect, radius, owns_top, owns_bottom)
-				{
-					surface.draw_path(&path);
+				let background =
+					Paint::Scoped(*chain, *condition, ColorField::Background);
+				if !self.invisible(background) {
+					surface.set_fill(Some(self.fill(background)));
+					if let Some(path) =
+						rounded_path(box_rect, radius, owns_top, owns_bottom)
+					{
+						surface.draw_path(&path);
+					}
 				}
 				if *border <= 0.0 {
 					return;
@@ -602,6 +674,7 @@ impl Painter<'_> {
 		y: f32,
 	) {
 		let size = math.size;
+		let mut run = MathRun::default();
 		for item in &math.display.items {
 			match item {
 				DisplayItem::GlyphPath {
@@ -629,6 +702,7 @@ impl Painter<'_> {
 					// the KaTeX bundle does not hold; the document's own fonts
 					// draw it, exactly as the GPU painter falls back.
 					let Some(math_font) = self.math_font(font).cloned() else {
+						self.flush_math_run(surface, &mut run);
 						self.math_fallback(
 							surface, character, glyph_size, point, color, alpha,
 						);
@@ -644,29 +718,26 @@ impl Painter<'_> {
 					if id == 0 {
 						continue;
 					}
-					surface.set_fill(Some(Fill {
-						paint: KrillaPaint::from(color),
-						opacity: NormalizedF32::new(alpha)
-							.unwrap_or(NormalizedF32::ONE),
-						rule: FillRule::NonZero,
-					}));
-					let glyph = KrillaGlyph::new(
-						GlyphId::new(u32::from(id)),
-						0.0,
-						0.0,
-						0.0,
-						0.0,
-						0..0,
-						None,
-					);
-					surface.draw_glyphs(
-						point,
-						&[glyph],
-						math_font.font.clone(),
-						"",
+					if run.push(
+						font,
 						glyph_size,
-						false,
-					);
+						color,
+						alpha,
+						u32::from(id),
+						point,
+					) {
+						continue;
+					}
+					self.flush_math_run(surface, &mut run);
+					run = MathRun {
+						name: font.clone(),
+						font: Some(math_font),
+						size: glyph_size,
+						color,
+						alpha,
+						baseline: point.y,
+						glyphs: vec![(u32::from(id), point)],
+					};
 				}
 				DisplayItem::Line {
 					x: lx,
@@ -676,6 +747,7 @@ impl Painter<'_> {
 					color,
 					dashed,
 				} => {
+					self.flush_math_run(surface, &mut run);
 					let rect = LocalRect {
 						x: x + *lx as f32 * size,
 						y: y + *ly as f32 * size,
@@ -709,6 +781,7 @@ impl Painter<'_> {
 					height,
 					color,
 				} => {
+					self.flush_math_run(surface, &mut run);
 					let rect = LocalRect {
 						x: x + *rx as f32 * size,
 						y: y + *ry as f32 * size,
@@ -727,6 +800,7 @@ impl Painter<'_> {
 					fill,
 					color,
 				} => {
+					self.flush_math_run(surface, &mut run);
 					let mut builder = PathBuilder::new();
 					// Path commands are em units from the item's own origin,
 					// which is in turn offset inside the formula's box.
@@ -792,6 +866,45 @@ impl Painter<'_> {
 				}
 			}
 		}
+		self.flush_math_run(surface, &mut run);
+	}
+
+	/// Draws the collected formula glyphs as one text object, advancing from the
+	/// positions the formula itself chose.
+	fn flush_math_run(&self, surface: &mut Surface<'_>, run: &mut MathRun) {
+		let Some((_, first)) = run.glyphs.first().copied() else {
+			return;
+		};
+		let Some(font) = run.font.clone() else {
+			return;
+		};
+		let mut glyphs = Vec::with_capacity(run.glyphs.len());
+		for (index, (id, point)) in run.glyphs.iter().enumerate() {
+			// The last glyph has no successor to measure against; only its
+			// width entry in the subset depends on the advance.
+			let advance = run
+				.glyphs
+				.get(index + 1)
+				.map(|(_, next)| (next.x - point.x) / run.size)
+				.unwrap_or(0.0);
+			glyphs.push(KrillaGlyph::new(
+				GlyphId::new(*id),
+				advance,
+				0.0,
+				(first.y - point.y) / run.size,
+				0.0,
+				0..0,
+				None,
+			));
+		}
+		surface.set_fill(Some(Fill {
+			paint: KrillaPaint::from(run.color),
+			opacity: NormalizedF32::new(run.alpha)
+				.unwrap_or(NormalizedF32::ONE),
+			rule: FillRule::NonZero,
+		}));
+		surface.draw_glyphs(first, &glyphs, font.font, "", run.size, false);
+		run.glyphs.clear();
 	}
 
 	/// Draws a formula character whose face is not in the KaTeX bundle, such as

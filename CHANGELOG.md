@@ -13,6 +13,10 @@ at the same level, without `[brackets]`.
 
 ## Unreleased
 
+- Export PDFs about 40% faster: transparent fills are no longer written, an
+  inline run's background is one rectangle instead of one per cluster, and a
+  formula's glyphs leave as runs rather than one text object each.
+
 - Remove soft line breaks from Chinese Markdown prose to avoid inserting spaces.
 
 - Compare readers against SuperGoodViewer in the README tables, adding its open

@@ -3,7 +3,9 @@ use crate::{
 	document::{CellAlign, Inline, InlineKind, TextStyle},
 	linebreak::{self},
 	microtype,
-	scene::{BlockLayout, Draw, HeadingAnchor, LinkRect, Overflow, Rect},
+	scene::{
+		BlockLayout, Draw, HeadingAnchor, LinkRect, Overflow, Paint, Rect,
+	},
 	style::{ColorField, Condition, Decoration},
 	text::{TextCluster, TextNode},
 };
@@ -294,6 +296,11 @@ impl BlockContext<'_> {
 			let start_draw = out.draws.len();
 			let mut cursor = line_x + offset;
 			let mut link: Option<(String, f32)> = None;
+			// Consecutive clusters that share a background paint it as one
+			// rectangle. Pushing one per cluster made the export emit a
+			// rectangle per glyph and, because a rectangle interrupts a run,
+			// a text object per glyph as well.
+			let mut background: Option<(usize, Paint, Rect)> = None;
 			for (c, fit) in clusters.into_iter().zip(fits) {
 				let range = p.reading_range(c.range.clone());
 				// A footnote reference registers the anchor its number returns
@@ -417,16 +424,37 @@ impl BlockContext<'_> {
 							.inline(&self.shaper.appearance, s)
 					})
 					.unwrap_or_else(|| self.shaper.appearance.clone());
-				if let Some(background) = appearance.background {
-					out.draws.push(Draw::Rect(
-						Rect {
-							x: cursor,
-							y: baseline - c.ascent - 1.0,
-							w: advance,
-							h: c.ascent + c.descent + 2.0,
+				if let Some(paint) = appearance.background {
+					let rect = Rect {
+						x: cursor,
+						y: baseline - c.ascent - 1.0,
+						w: advance,
+						h: c.ascent + c.descent + 2.0,
+					};
+					// Clusters of one run share their metrics, so the boxes are
+					// the same height; a run whose boxes differ keeps one
+					// rectangle per cluster rather than growing the union.
+					let joins = background.as_ref().is_some_and(
+						|(_, previous, span)| {
+							*previous == paint
+								&& (span.y - rect.y).abs() < 0.01
+								&& (span.h - rect.h).abs() < 0.01
+								&& rect.x <= span.x + span.w + 0.01
 						},
-						background,
-					));
+					);
+					match background.as_mut() {
+						Some((index, _, span)) if joins => {
+							span.w =
+								(rect.x + rect.w).max(span.x + span.w) - span.x;
+							out.draws[*index] = Draw::Rect(*span, paint);
+						}
+						_ => {
+							background = Some((out.draws.len(), paint, rect));
+							out.draws.push(Draw::Rect(rect, paint));
+						}
+					}
+				} else {
+					background = None;
 				}
 				if let Some(math) = p.math.get(&c.range.start) {
 					out.draws.push(Draw::Math {

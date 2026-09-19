@@ -1386,8 +1386,8 @@ fn inline_code_chip_covers_justified_spaces() {
 			..Default::default()
 		};
 		let snapshot = LayoutEngine::new().layout(&doc, &opts);
-		let mut chips: Vec<(f32, f32, f32)> = snapshot.blocks[0]
-			.layout
+		let block = &snapshot.blocks[0].layout;
+		let mut chips: Vec<(f32, f32, f32)> = block
 			.draws
 			.iter()
 			.filter_map(|d| match d {
@@ -1401,7 +1401,31 @@ fn inline_code_chip_covers_justified_spaces() {
 				_ => None,
 			})
 			.collect();
-		assert!(chips.len() >= 9, "width={width}: {chips:?}");
+		assert!(!chips.is_empty(), "width={width}: {chips:?}");
+		// The run's clusters share one chip, so the stretched space between its
+		// two words is covered rather than left as a hole.
+		let node = &block.text[0];
+		let start = node.text.find("git fetch").expect("the code text");
+		let code = start..start + "git fetch".len();
+		let first = node
+			.clusters
+			.iter()
+			.find(|c| c.range.start == code.start)
+			.unwrap_or_else(|| panic!("width={width}: no cluster at {start}"));
+		let last = node
+			.clusters
+			.iter()
+			.rfind(|c| code.contains(&c.range.start))
+			.unwrap_or_else(|| panic!("width={width}: no code clusters"));
+		let chip = match &block.draws[first.command] {
+			crate::scene::Draw::Rect(rect, _) => *rect,
+			other => panic!("width={width}: expected a chip, found {other:?}"),
+		};
+		let covered = last.rect.x + last.rect.w - first.rect.x;
+		assert!(
+			chip.w >= covered - 0.01,
+			"width={width}: chip {chip:?} leaves the run uncovered ({covered})"
+		);
 		chips.sort_by(|a, b| a.0.total_cmp(&b.0).then(a.1.total_cmp(&b.1)));
 		for pair in chips.windows(2) {
 			let (y0, x0, w0) = pair[0];
@@ -1463,9 +1487,13 @@ fn an_inline_code_chip_pads_its_text_and_pushes_its_neighbours() {
 	);
 	let side = 0.3 * 18.0;
 	// The chip keeps its left edge, widens by one side's padding, insets its
-	// glyphs, and carries the following space and word along with it.
+	// glyphs, and carries the following space and word along with it. It covers
+	// the whole run, so a later cluster's box is inside the same rectangle.
 	assert!((chip.x - first.x).abs() < 0.01, "{chip:?} {first:?}");
-	assert!((chip.w - first.w).abs() < 0.01, "{chip:?} {first:?}");
+	assert!(
+		chip.w >= last.x + last.w - first.x - 0.01,
+		"{chip:?} {first:?} {last:?}"
+	);
 	assert!(
 		(first.w - (bare.0.w + side)).abs() < 0.01,
 		"{first:?} {:?} side={side}",
