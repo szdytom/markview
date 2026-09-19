@@ -269,7 +269,7 @@ pub(super) fn draw_styles(
 	let page = page.min(order.len().saturating_sub(1) / rows);
 	let mut out = super::components::frame(r, width, height);
 	let weight = shaper.appearance.weight;
-	shaper.appearance.weight = 600;
+	shaper.appearance.weight = 700;
 	out.extend(shaper.label(
 		"Stylesheets",
 		20.0,

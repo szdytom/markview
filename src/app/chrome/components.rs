@@ -468,7 +468,7 @@ impl Form {
 			h: 32.0,
 		};
 		let weight = ui.appearance.weight;
-		ui.appearance.weight = 600;
+		ui.appearance.weight = 700;
 		out.extend(label(ui, title, 20.0, text_rect, C::Color));
 		ui.appearance.weight = weight;
 		out.extend(label(
@@ -503,7 +503,7 @@ impl Form {
 				continue;
 			}
 			if let Some(section) = row.section {
-				ui.appearance.weight = 600;
+				ui.appearance.weight = 700;
 				body.extend(label(
 					ui,
 					section,

@@ -344,7 +344,7 @@ impl Chrome<'_> {
 				)
 			};
 			self.ui.appearance = ui_appearance(self.ui);
-			self.ui.appearance.weight = 600;
+			self.ui.appearance.weight = 700;
 			out.extend(self.ui.label(
 				title,
 				26.0,

@@ -13,6 +13,10 @@ at the same level, without `[brackets]`.
 
 ## Unreleased
 
+### Fixed
+
+- Avoid spurious font fallback warnings from UI headings requesting unavailable weight 600 faces.
+
 ### Added
 
 - Optional CJK Medium UI overlay and GPU weight comparisons, with documented exact-weight fallback behavior.
