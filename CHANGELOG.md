@@ -26,6 +26,12 @@ at the same level, without `[brackets]`.
   independent of the reading view.
 - The export panel's `Export and Watch…` action keeps rewriting the same file
   whenever the document is saved.
+- The README sets the same text through a browser engine and through Markview at
+  one measure, and `scripts/render_typography_comparison.py` reproduces the
+  figure.
+- The README also times opening a document against MarkText, with
+  `scripts/compare_readers.py`, and one document to one PDF against Typst,
+  Chromium and XeLaTeX, with `scripts/compare_pdf_engines.py`.
 
 ### Changed
 

@@ -9,6 +9,8 @@ summary of the measured performance, installation, reading controls, supported
 content, limitations, and a short customization example. The `docs/screenshots`
 images it embeds are reproduced by `scripts/capture_screenshots.sh`.
 
+- [Comparison](comparison.md) records how the README's typography figure is produced, and what it does and does not claim.
+
 ## Understand the implementation
 
 - [Architecture](architecture.md) explains ownership, snapshots, versions, layout, interaction, and resource boundaries. It focuses on what the system guarantees and why.

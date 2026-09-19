@@ -18,6 +18,7 @@
 
 <p align="center">
   <a href="#安装">安装</a> ·
+  <a href="#对比">对比</a> ·
   <a href="#阅读操作">阅读操作</a> ·
   <a href="#导出">导出</a> ·
   <a href="#样式表">样式表</a> ·
@@ -31,6 +32,36 @@
 <p align="center">
   <img src="docs/screenshots/zh-typography.png" alt="Markview 排版一篇中文 Markdown 文档" width="820">
 </p>
+
+## 安装
+
+从 [Releases](https://github.com/szdytom/markview/releases) 下载最新版本：
+
+| 平台 | 安装包 |
+|:--|:--|
+| Linux | `.deb`、AppImage、`.tar.gz` |
+| Windows | `.msi`、`.zip` |
+| macOS | 打包好的 `.app`（zip） |
+
+Linux 与 macOS 也可以用安装脚本：
+
+```sh
+curl --proto '=https' --tlsv1.2 -LsSf \
+  https://github.com/szdytom/markview/releases/latest/download/markview-installer.sh | sh
+```
+
+Linux 版本需要 glibc 2.35 或更新、`libfontconfig1`、可用的 Vulkan 驱动，以及用于文件
+对话框的桌面 portal。macOS 的 `.app` 未签名，下载后需要清除一次隔离标记：
+
+```sh
+xattr -d com.apple.quarantine /Applications/Markview.app
+```
+
+Windows 的 MSI 会把 Markview 加入 `.md`、`.markdown`、`.mdown` 的**打开方式**列表，
+并列入**默认应用**。Windows 10 和 11 仍会让用户确认一次，因此这些文件第一次由谁打开
+是用户的选择，安装程序无法代为决定。
+
+各平台的具体要求与完整产物列表见[打包说明](docs/packaging.md)。
 
 ## 为什么选择 Markview
 
@@ -65,6 +96,32 @@ Arc、走 Vulkan、电源模式为 `performance`。CPU、显卡、驱动、字�
 这里的两倍。[性能模型](docs/performance.md)记录了测量方法、完整基线，以及每个数字
 覆盖与不覆盖的范围。
 
+## 对比
+
+<p align="center">
+  <img src="docs/screenshots/en-comparison.png" alt="同一段文字在同一栏宽下：典型 WebView 的右边缘参差，Markview 两端对齐" width="820">
+</p>
+
+按各自方式打开同一个文件，三次运行中位数，单位秒，含窗口创建：
+
+| 文档 | Markview | MarkText |
+|:--|--:|--:|
+| 10 KiB 正文 | 0.09 | 0.97 |
+| 100 KiB 正文 | 0.10 | 0.99 |
+| 10 KiB，108 个行间公式 | 0.11 | 1.24 |
+| 100 KiB，1092 个行间公式 | 0.09 | 2.94 |
+
+同一份文档导出一个 PDF，三次运行中位数，单位秒：
+
+| 引擎 | 10 KiB | 100 KiB |
+|:--|--:|--:|
+| `markview --pdf` | 0.04 | 0.10 |
+| `pandoc --pdf-engine=typst` | 0.48 | 0.72 |
+| `pandoc` → 无头 Chromium | 0.65 | 0.83 |
+| `pandoc --pdf-engine=xelatex` | 1.89 | 2.16 |
+
+一台机器、一天的结果。方法与注意事项见[对比页面](docs/comparison.md)。
+
 ## 数学公式
 
 行内与行间 LaTeX 由 Rust 解析，并与所在段落一起量度：公式与正文共享基线，和文字一起
@@ -85,36 +142,6 @@ Arc、走 Vulkan、电源模式为 `performance`。CPU、显卡、驱动、字�
 <p align="center">
   <img src="docs/screenshots/zh-structure.png" alt="暗色主题下的表格、列表与代码" width="820">
 </p>
-
-## 安装
-
-从 [Releases](https://github.com/szdytom/markview/releases) 下载最新版本：
-
-| 平台 | 安装包 |
-|:--|:--|
-| Linux | `.deb`、AppImage、`.tar.gz` |
-| Windows | `.msi`、`.zip` |
-| macOS | 打包好的 `.app`（zip） |
-
-Linux 与 macOS 也可以用安装脚本：
-
-```sh
-curl --proto '=https' --tlsv1.2 -LsSf \
-  https://github.com/szdytom/markview/releases/latest/download/markview-installer.sh | sh
-```
-
-Linux 版本需要 glibc 2.35 或更新、`libfontconfig1`、可用的 Vulkan 驱动，以及用于文件
-对话框的桌面 portal。macOS 的 `.app` 未签名，下载后需要清除一次隔离标记：
-
-```sh
-xattr -d com.apple.quarantine /Applications/Markview.app
-```
-
-Windows 的 MSI 会把 Markview 加入 `.md`、`.markdown`、`.mdown` 的**打开方式**列表，
-并列入**默认应用**。Windows 10 和 11 仍会让用户确认一次，因此这些文件第一次由谁打开
-是用户的选择，安装程序无法代为决定。
-
-各平台的具体要求与完整产物列表见[打包说明](docs/packaging.md)。
 
 ## 阅读操作
 
@@ -211,6 +238,7 @@ markview document.md --style paper
 | [样式表指南](docs/stylesheets.md) | 编写与安装 MVSS 主题 |
 | [打包说明](docs/packaging.md) | 发布产物与各平台运行要求 |
 | [性能模型](docs/performance.md) | 上文数字是如何测出来的 |
+| [对比](docs/comparison.md) | 上文那张排版对比图是如何生成的 |
 | [架构说明](docs/architecture.md) | 修改代码时应保持的边界 |
 | [安全与威胁模型](docs/security.md) | 不可信文档能够触及的范围 |
 | [开发指南](docs/development.md) | 构建、测试与修改行为 |

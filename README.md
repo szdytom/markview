@@ -18,6 +18,7 @@
 
 <p align="center">
   <a href="#install">Install</a> ·
+  <a href="#how-it-compares">How it compares</a> ·
   <a href="#reading">Reading</a> ·
   <a href="#export">Export</a> ·
   <a href="#stylesheets">Stylesheets</a> ·
@@ -31,6 +32,39 @@
 <p align="center">
   <img src="docs/screenshots/en-typography.png" alt="Markview typesetting an English Markdown document" width="820">
 </p>
+
+## Install
+
+Download the latest build from [Releases](https://github.com/szdytom/markview/releases):
+
+| Platform | Packages |
+|:--|:--|
+| Linux | `.deb`, AppImage, `.tar.gz` |
+| Windows | `.msi`, `.zip` |
+| macOS | zipped `.app` bundle |
+
+On Linux and macOS the install script does the same thing:
+
+```sh
+curl --proto '=https' --tlsv1.2 -LsSf \
+  https://github.com/szdytom/markview/releases/latest/download/markview-installer.sh | sh
+```
+
+Linux builds need glibc 2.35 or newer, `libfontconfig1`, a working Vulkan
+driver, and a desktop portal for file dialogs. The macOS bundle is unsigned, so
+clear the quarantine flag once after downloading it:
+
+```sh
+xattr -d com.apple.quarantine /Applications/Markview.app
+```
+
+The Windows MSI adds Markview to the **Open with** list for `.md`, `.markdown`
+and `.mdown` and lists it under **Default apps**. Windows 10 and 11 still ask the
+user to confirm the handoff, so the first one of those files is a choice, not
+something an installer can make on the user's behalf.
+
+Per-platform details and the exact artifact list are in the
+[packaging guide](docs/packaging.md).
 
 ## Why Markview
 
@@ -75,6 +109,32 @@ the same host at roughly twice the first-frame time under `power-saver`. The
 [performance model](docs/performance.md) has the method, the full baselines, and
 what each number does and does not cover.
 
+## How it compares
+
+<p align="center">
+  <img src="docs/screenshots/en-comparison.png" alt="The same text at the same measure: a typical WebView with a ragged right edge, and Markview justified" width="820">
+</p>
+
+Opening a file, median of three runs in seconds, window included:
+
+| Document | Markview | MarkText |
+|:--|--:|--:|
+| 10 KiB of prose | 0.09 | 0.97 |
+| 100 KiB of prose | 0.10 | 0.99 |
+| 10 KiB, 108 display formulas | 0.11 | 1.24 |
+| 100 KiB, 1092 display formulas | 0.09 | 2.94 |
+
+One document to one PDF, median of three runs in seconds:
+
+| Engine | 10 KiB | 100 KiB |
+|:--|--:|--:|
+| `markview --pdf` | 0.04 | 0.10 |
+| `pandoc --pdf-engine=typst` | 0.48 | 0.72 |
+| `pandoc` → headless Chromium | 0.65 | 0.83 |
+| `pandoc --pdf-engine=xelatex` | 1.89 | 2.16 |
+
+One machine, one day. Method and caveats: [comparison page](docs/comparison.md).
+
 ## Mathematics
 
 Inline and display LaTeX is parsed in Rust and measured with the paragraph it
@@ -98,39 +158,6 @@ too wide for the column scrolls on its own.
 <p align="center">
   <img src="docs/screenshots/en-structure.png" alt="Tables, lists and code in the dark theme" width="820">
 </p>
-
-## Install
-
-Download the latest build from [Releases](https://github.com/szdytom/markview/releases):
-
-| Platform | Packages |
-|:--|:--|
-| Linux | `.deb`, AppImage, `.tar.gz` |
-| Windows | `.msi`, `.zip` |
-| macOS | zipped `.app` bundle |
-
-On Linux and macOS the install script does the same thing:
-
-```sh
-curl --proto '=https' --tlsv1.2 -LsSf \
-  https://github.com/szdytom/markview/releases/latest/download/markview-installer.sh | sh
-```
-
-Linux builds need glibc 2.35 or newer, `libfontconfig1`, a working Vulkan
-driver, and a desktop portal for file dialogs. The macOS bundle is unsigned, so
-clear the quarantine flag once after downloading it:
-
-```sh
-xattr -d com.apple.quarantine /Applications/Markview.app
-```
-
-The Windows MSI adds Markview to the **Open with** list for `.md`, `.markdown`
-and `.mdown` and lists it under **Default apps**. Windows 10 and 11 still ask the
-user to confirm the handoff, so the first one of those files is a choice, not
-something an installer can make on the user's behalf.
-
-Per-platform details and the exact artifact list are in the
-[packaging guide](docs/packaging.md).
 
 ## Reading
 
@@ -252,6 +279,7 @@ conditions a rule may test.
 | [Stylesheet guide](docs/stylesheets.md) | Writing and installing MVSS themes |
 | [Packaging guide](docs/packaging.md) | Release assets and per-platform requirements |
 | [Performance model](docs/performance.md) | How the numbers above are measured |
+| [Comparison](docs/comparison.md) | How the typography figure above is made |
 | [Architecture](docs/architecture.md) | The boundaries the implementation preserves |
 | [Security and threat model](docs/security.md) | What an untrusted document can reach |
 | [Development guide](docs/development.md) | Building, testing and changing behavior |
