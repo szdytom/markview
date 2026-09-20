@@ -404,9 +404,7 @@ impl App {
 								Command::CloseTab(self.readers.active()),
 							),
 							"," => self.action(Command::Settings),
-							"o" if self.interaction.modifiers.shift_key()
-								&& !self.panel_has_focus() =>
-							{
+							"b" if !self.panel_has_focus() => {
 								self.action(Command::Outline)
 							}
 							"o" if !self.panel_has_focus() => {

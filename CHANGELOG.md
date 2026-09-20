@@ -37,7 +37,7 @@ at the same level, without `[brackets]`.
   entry names, so a jump into a collapsed body reaches it instead of reporting
   it missing.
 
-- Add a table-of-contents drawer (`Ctrl+Shift+O`, or the toolbar's outline
+- Add a table-of-contents drawer (`Ctrl+B`, or the toolbar's outline
   button) that lists a document's headings, highlights the reading position, and
   jumps to a heading through the ordinary anchor path; it is an overlay, so the
   document keeps scrolling and selecting behind it, while an open panel or

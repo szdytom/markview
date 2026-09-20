@@ -140,7 +140,7 @@ Windows 的 MSI 会把 Markview 加入 `.md`、`.markdown`、`.mdown` 的**打�
 | 按键 | 操作 |
 |:--|:--|
 | `Ctrl+O` | 打开文件 |
-| `Ctrl+Shift+O` | 打开目录 |
+| `Ctrl+B` | 打开目录 |
 | `Ctrl+T` | 选择样式表 |
 | `Ctrl+E` | 导出文档 |
 | `Ctrl+,` | 打开设置 |
