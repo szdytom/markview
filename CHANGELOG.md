@@ -2,6 +2,14 @@
 
 All notable changes to this project are documented in this file.
 
+For new entries:
+
+- Use dense lists: each item stays on one line.
+- No soft breaks.
+- Entries are grouped under sections such as `Added`, `Changed`, and `Fixed`.
+
+Historical entries keep their existing format.
+
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
@@ -13,100 +21,36 @@ at the same level, without `[brackets]`.
 
 ## Unreleased
 
-- Let a stylesheet draw Mermaid diagrams in its own colors with a `[mermaid]`
-  table: a built-in preset plus any of the renderer's fields, overlaid field by
-  field as `[page]` is. `font_family` names `fontdef` ids the way a rule's
-  `font` does. Diagrams measure and draw with the reader's own faces — the
-  theme's list, then the body's Han faces for a cluster the list cannot draw,
-  downloads and `--fonts` included — so a Chinese label keeps the reader's
-  regional face. The bundled dark reader themes use it now, so they no longer
-  show diagrams on white paper.
+### Added
 
-- Keep a diagram's parsed source across a theme change, so a new `[mermaid]`
-  table redraws the diagrams already on screen without parsing them again.
+- Let a stylesheet draw Mermaid diagrams in its own colors with a `[mermaid]` table: a built-in preset plus any of the renderer's fields, overlaid field by field as `[page]` is. `font_family` names `fontdef` ids the way a rule's `font` does. Diagrams measure and draw with the reader's own faces — the theme's list, then the body's Han faces for a cluster the list cannot draw, downloads and `--fonts` included — so a Chinese label keeps the reader's regional face. The bundled dark reader themes use it now, so they no longer show diagrams on white paper.
+- Add a persisted `scroll-speed` preference (0.5×–2×, in Settings) that scales every wheel notch and arrow step.
+- Add a table-of-contents drawer (`Ctrl+B`, or the toolbar's outline button) that lists a document's headings, highlights the reading position, and jumps to a heading through the ordinary anchor path; it is an overlay, so the document keeps scrolling and selecting behind it, while an open panel or confirmation keeps input precedence over it. A heading near the end scrolls to the top too, using the blank tail the other scroll paths already reach.
+- Let a stylesheet declare font files with `fontdef.urls` and download them from the Styles panel: an explicit, verified, atomically stored action into a user `fonts/` directory, with progress and per-file failures; reading, installing and `ss validate` still fetch nothing, and `--offline` refuses the job.
+- Cache network images on disk beneath the configuration directory: honor `Cache-Control`/`Expires`, revalidate stale entries, hold at most 128 MiB with LRU eviction, and serve a cached body under `--offline`.
+- Render a raw `<details>` block as a collapsible element: clicking its summary toggles a Markdown body (nesting and `open` supported), `details` and `summary` join the MVSS vocabulary, and both exports show every body expanded.
+- Render a `mermaid` fenced block as a diagram: the library runs on the image workers, its SVG and pixels are cached per source, and the result appears in the window, `--render`, `--pdf` and `--smoke-test`, while a broken diagram keeps the image placeholder and `--offline` still renders local diagrams.
+- Measure per-frame scroll pacing in `--bench` over a cold, warm and prewarmed pass: prepare and total percentiles, frames over the 120 Hz and 60 Hz budgets, glyphs rasterized in and out of the frame, and atlas pressure, including for a document with no geometry.
 
-- Honor the system's per-axis lines- and characters-per-notch on Windows, count
-  a Linux wheel detent as the usual three lines instead of one, and add a
-  persisted `scroll-speed` preference (0.5×–2×, in Settings) that scales every
-  wheel notch and arrow step.
+### Changed
 
-- Ease discrete scroll requests and wheel notches for 120–400 ms: Page Up/Down,
-  `Space`, `Home`/`End`, the arrow steps, a click on the scrollbar track and a
-  `#heading` jump, with a reversing wheel taking over from the displayed offset,
-  while a thumb drag stays immediate and ends a running animation.
+- Keep a diagram's parsed source across a theme change, so a new `[mermaid]` table redraws the diagrams already on screen without parsing them again.
+- Honor the system's per-axis lines- and characters-per-notch on Windows and count a Linux wheel detent as the usual three lines instead of one.
+- Ease discrete scroll requests and wheel notches for 120–400 ms: Page Up/Down, `Space`, `Home`/`End`, the arrow steps, a click on the scrollbar track and a `#heading` jump, with a reversing wheel taking over from the displayed offset, while a thumb drag stays immediate and ends a running animation.
+- Expand the `<details>` elements framing a heading a `#anchor` link or outline entry names, so a jump into a collapsed body reaches it instead of reporting it missing.
+- Hold a wheel gesture to the axis its first few moments chose, separated by the boundary the platform reports or by a pause where it reports none and inheriting nothing from the gesture before it, so a diagonal trackpad gesture no longer stops the page or slips a wide formula away, and a sideways gesture over no wide block still scrolls by the vertical motion it carries.
+- Prepare the screenful below in idle frames, leaving the visible frame's image demand alone, so no scroll frame rasterizes a glyph once a document is open: the worst such frame on a 100 KiB CJK document falls from 2.6 ms to 0.6 ms.
+- Reuse the PDF writer's font and stylesheet caches across a watch session's rebuilds instead of rebuilding them on every export.
+- Export PDFs about 40% faster: transparent fills are no longer written, an inline run's background is one rectangle instead of one per cluster, and a formula's glyphs leave as runs rather than one text object each.
+- Compare readers against SuperGoodViewer in the README tables, adding its open time and a resident-memory table for all three readers.
+- Measure each reader's resident memory and record readers that fail to render a fixture, instead of timing their compile-error window.
 
-- Expand the `<details>` elements framing a heading a `#anchor` link or outline
-  entry names, so a jump into a collapsed body reaches it instead of reporting
-  it missing.
+### Fixed
 
-- Add a table-of-contents drawer (`Ctrl+B`, or the toolbar's outline
-  button) that lists a document's headings, highlights the reading position, and
-  jumps to a heading through the ordinary anchor path; it is an overlay, so the
-  document keeps scrolling and selecting behind it, while an open panel or
-  confirmation keeps input precedence over it. A heading near the end scrolls to
-  the top too, using the blank tail the other scroll paths already reach.
-
-- Let a stylesheet declare font files with `fontdef.urls` and download them from
-  the Styles panel: an explicit, verified, atomically stored action into a user
-  `fonts/` directory, with progress and per-file failures; reading, installing
-  and `ss validate` still fetch nothing, and `--offline` refuses the job.
-
-- Cache network images on disk beneath the configuration directory: honor
-  `Cache-Control`/`Expires`, revalidate stale entries, hold at most 128 MiB with
-  LRU eviction, and serve a cached body under `--offline`.
-
-- Render a raw `<details>` block as a collapsible element: clicking its summary
-  toggles a Markdown body (nesting and `open` supported), `details` and `summary`
-  join the MVSS vocabulary, and both exports show every body expanded.
-
-- Fix `<details>` parsing and interaction edge cases: tags that share a block
-  and elements nested in the opening block still match, a summary stays with its
-  own element, a quoted body is not quoted twice, references and footnotes
-  defined outside the element resolve, identical elements toggle independently,
-  and adjacent elements keep their content and nesting budget.
-
-- Render a `mermaid` fenced block as a diagram: the library runs on the image
-  workers, its SVG and pixels are cached per source, and the result appears in
-  the window, `--render`, `--pdf` and `--smoke-test`, while a broken diagram
-  keeps the image placeholder and `--offline` still renders local diagrams.
-
-- Reject pathologically nested Mermaid labels and render the diagram on a
-  stack sized for the worst case the source cap allows, so a fence that passes
-  the size bounds can no longer abort the reader.
-
-- Keep a Mermaid diagram's fence source out of the reading text, so selecting
-  the figure no longer copies the source and a loading or failed diagram copies
-  its placeholder message instead.
-
-- Hold a wheel gesture to the axis its first few moments chose, separated by
-  the boundary the platform reports or by a pause where it reports none and
-  inheriting nothing from the gesture before it, so a diagonal trackpad gesture
-  no longer stops the page or slips a wide formula away, and a sideways gesture
-  over no wide block still scrolls by the vertical motion it carries.
-
-- Prepare the screenful below in idle frames, leaving the visible frame's image
-  demand alone, so no scroll frame rasterizes a glyph once a document is open:
-  the worst such frame on a 100 KiB CJK document falls from 2.6 ms to 0.6 ms.
-
-- Measure per-frame scroll pacing in `--bench` over a cold, warm and prewarmed
-  pass: prepare and total percentiles, frames over the 120 Hz and 60 Hz
-  budgets, glyphs rasterized in and out of the frame, and atlas pressure,
-  including for a document with no geometry.
-
-- Reuse the PDF writer's font and stylesheet caches across a watch session's
-  rebuilds instead of rebuilding them on every export.
-
-- Export PDFs about 40% faster: transparent fills are no longer written, an
-  inline run's background is one rectangle instead of one per cluster, and a
-  formula's glyphs leave as runs rather than one text object each.
-
+- Fix `<details>` parsing and interaction edge cases: tags that share a block and elements nested in the opening block still match, a summary stays with its own element, a quoted body is not quoted twice, references and footnotes defined outside the element resolve, identical elements toggle independently, and adjacent elements keep their content and nesting budget.
+- Reject pathologically nested Mermaid labels and render the diagram on a stack sized for the worst case the source cap allows, so a fence that passes the size bounds can no longer abort the reader.
+- Keep a Mermaid diagram's fence source out of the reading text, so selecting the figure no longer copies the source and a loading or failed diagram copies its placeholder message instead.
 - Remove soft line breaks from Chinese Markdown prose to avoid inserting spaces.
-
-- Compare readers against SuperGoodViewer in the README tables, adding its open
-  time and a resident-memory table for all three readers.
-
-- Measure each reader's resident memory and record readers that fail to render a
-  fixture, instead of timing their compile-error window.
 
 ## 0.1.4 - 2026-09-19
 
