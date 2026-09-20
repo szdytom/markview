@@ -66,8 +66,21 @@ pub(crate) enum Command {
 	StylePrev,
 	StyleNext,
 	StylesFolder,
-	/// Fetch the font files the shown stylesheets declare.
+	/// Show one page of the settings panel.
+	SettingsTab(PanelTab),
+	/// Download every family the Fonts page shows that is not there yet.
 	FontsDownload,
+	/// Download one shown family, named by its position in the shown list.
+	FontsDownloadOne(usize),
+	/// Download one shown family again, even though it is already present.
+	FontsRedownloadOne(usize),
+	/// Stop one shown family's download.
+	FontsCancel(usize),
+	FontsOpenFolder,
+	FontsSourceFilter,
+	FontsStatusFilter,
+	FontsPrev,
+	FontsNext,
 	SelectTab(usize),
 	CloseTab(usize),
 	/// Dismiss the local-file confirmation without opening anything.
@@ -84,6 +97,27 @@ pub(crate) enum Command {
 	Outline,
 	/// Scroll the document to the heading of one outline entry.
 	OutlineGoto(usize),
+}
+
+impl InteractionState {
+	/// Closes every page of the settings panel and the export panel, whatever
+	/// was showing. Whether the panel itself stays open is the caller's
+	/// decision, which is why this does not touch `panel_open`.
+	pub(crate) fn close_pages(&mut self) {
+		self.styles_open = false;
+		self.fonts_open = false;
+		self.export_open = false;
+		self.export_styles_open = false;
+	}
+}
+
+/// Which page of the settings panel is showing.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub(crate) enum PanelTab {
+	#[default]
+	Generic,
+	Styles,
+	Fonts,
 }
 
 /// A blocking question awaiting the reader's answer.
@@ -254,6 +288,10 @@ pub(crate) struct InteractionState {
 	/// Offset from the centre of the panel scrollbar thumb while dragging.
 	pub(crate) panel_grab: Option<f32>,
 	pub(crate) styles_open: bool,
+	/// The Fonts page of the panel. It implies `panel_open`.
+	pub(crate) fonts_open: bool,
+	/// The Fonts page's list offset.
+	pub(crate) fonts_page: usize,
 	/// The export page of the panel. It implies `panel_open`.
 	pub(crate) export_open: bool,
 	/// The export's stylesheet chooser, drawn in place of the export panel.

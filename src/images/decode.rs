@@ -45,7 +45,6 @@ fn ico_png(bytes: &[u8]) -> Option<&[u8]> {
 
 /// System fonts are shared: loading them is expensive and SVGs without text
 /// do not need them at all.
-
 fn svg_fonts(
 	generic_families: &[(String, Vec<String>)],
 ) -> Arc<resvg::usvg::fontdb::Database> {

@@ -2,6 +2,7 @@
 pub(super) mod components;
 mod controls;
 mod export;
+mod fonts;
 mod footer;
 #[cfg(test)]
 mod gpu_tests;
@@ -20,6 +21,7 @@ use crate::{
 };
 pub(super) use components::panel_rect;
 use controls::{draw_controls, toolbar_controls};
+use fonts::{draw_fonts, fonts_controls};
 use footer::draw_footer;
 use markview_core::style::{ColorField as C, Condition, TextAppearance};
 use std::time::Instant;
@@ -161,8 +163,16 @@ pub(super) struct Chrome<'a> {
 	pub(super) interaction: &'a InteractionState,
 	pub(super) style_entries: &'a [crate::stylesheet::Entry],
 	pub(super) style_page: usize,
-	/// The stylesheets' font download, as the Styles panel last left it.
-	pub(super) fonts: &'a crate::fonts::Status,
+	/// Every downloadable family, the positions the filters leave visible,
+	/// and the downloads running right now.
+	pub(super) font_catalog: &'a [crate::fonts::Family],
+	pub(super) fonts_shown: Vec<usize>,
+	pub(super) font_jobs:
+		&'a std::collections::HashMap<String, crate::fonts::Progress>,
+	pub(super) fonts_page: usize,
+	pub(super) fonts_note: Option<&'a str>,
+	pub(super) font_source_filter: Option<&'a str>,
+	pub(super) font_status_filter: Option<crate::fonts::State>,
 	pub(super) width: f32,
 	pub(super) height: f32,
 	pub(super) scrollbar: Option<Scrollbar>,
@@ -182,6 +192,7 @@ impl Chrome<'_> {
 		if !self.interaction.panel_open
 			|| self.interaction.modal.is_some()
 			|| self.interaction.styles_open
+			|| self.interaction.fonts_open
 			|| self.interaction.export_styles_open
 		{
 			return None;
@@ -210,17 +221,19 @@ impl Chrome<'_> {
 		let (width, height, _) = (self.width, self.height, 1.0);
 		if self.interaction.modal.is_some() {
 			modal::modal_buttons(self.ui, self.interaction, width, height)
-		} else if self.interaction.export_styles_open {
+		} else if self.interaction.panel_open
+			&& self.interaction.export_styles_open
+		{
 			style_controls(
 				StylesTarget::Export,
 				Some(&self.export.style),
 				self.style_entries,
-				self.fonts,
 				self.style_page,
+				false,
 				width,
 				height,
 			)
-		} else if self.interaction.export_open {
+		} else if self.interaction.panel_open && self.interaction.export_open {
 			export::form(
 				self.ui,
 				self.export,
@@ -229,26 +242,46 @@ impl Chrome<'_> {
 				height,
 			)
 			.visible_buttons()
-		} else if self.interaction.styles_open {
+		} else if self.interaction.panel_open && self.interaction.fonts_open {
+			fonts_controls(
+				self.font_catalog,
+				&self.fonts_shown,
+				self.font_jobs,
+				self.fonts_page,
+				self.font_source_filter,
+				self.font_status_filter,
+				self.interaction.settings_preview,
+				width,
+				height,
+			)
+		} else if self.interaction.panel_open && self.interaction.styles_open {
 			style_controls(
 				StylesTarget::Reader,
 				self.settings.style.as_deref(),
 				self.style_entries,
-				self.fonts,
 				self.style_page,
+				self.interaction.settings_preview,
 				width,
 				height,
 			)
 		} else if self.interaction.panel_open {
-			controls::form(
+			let form = controls::form(
 				self.ui,
 				self.settings,
 				self.interaction.settings_scroll,
 				width,
 				height,
 			)
+			.without_header()
 			.preview(self.interaction.settings_preview)
-			.visible_buttons()
+			.visible_buttons();
+			let mut buttons = form;
+			buttons.extend(components::settings_header_controls(
+				components::panel_rect(width, height),
+				crate::state::PanelTab::Generic,
+				self.interaction.settings_preview,
+			));
+			buttons
 		} else {
 			let mut buttons =
 				toolbar_controls(width, self.interaction.outline_open);
@@ -419,19 +452,19 @@ impl Chrome<'_> {
 				self.outline_drawer(),
 			));
 		}
-		if self.interaction.export_styles_open {
+		if self.interaction.panel_open && self.interaction.export_styles_open {
 			out.extend(draw_styles(
 				self.ui,
 				StylesTarget::Export,
 				Some(&self.export.style),
 				self.interaction,
 				self.style_entries,
-				self.fonts,
 				self.style_page,
+				false,
 				width,
 				height,
 			));
-		} else if self.interaction.export_open {
+		} else if self.interaction.panel_open && self.interaction.export_open {
 			let document = self
 				.session
 				.path
@@ -448,15 +481,30 @@ impl Chrome<'_> {
 				width,
 				height,
 			));
-		} else if self.interaction.styles_open {
+		} else if self.interaction.panel_open && self.interaction.fonts_open {
+			out.extend(draw_fonts(
+				self.ui,
+				self.interaction,
+				self.font_catalog,
+				&self.fonts_shown,
+				self.font_jobs,
+				self.fonts_page,
+				self.fonts_note,
+				self.font_source_filter,
+				self.font_status_filter,
+				self.interaction.settings_preview,
+				width,
+				height,
+			));
+		} else if self.interaction.panel_open && self.interaction.styles_open {
 			out.extend(draw_styles(
 				self.ui,
 				StylesTarget::Reader,
 				self.settings.style.as_deref(),
 				self.interaction,
 				self.style_entries,
-				self.fonts,
 				self.style_page,
+				self.interaction.settings_preview,
 				width,
 				height,
 			));

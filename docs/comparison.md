@@ -21,7 +21,7 @@ model](performance.md).
 | Paragraph gap | 0.8 em |
 | Density | Two device pixels per logical pixel |
 
-The right panel is `markview --render` on the light stylesheet with the reader's
+The right panel is `markview render` on the light stylesheet with the reader's
 defaults, so justification, whole-paragraph line breaking, hyphenation and the
 bounded word space are all in effect. The left panel is a headless Chromium page
 that pandoc renders the same Markdown into, carrying a conventional
@@ -149,7 +149,7 @@ runs, with a separate cold run recorded in `artifacts/comparison/`.
 
 | Engine | 10 KiB | 100 KiB | Pages | Size | Same bytes twice |
 | --- | --- | --- | --- | --- | --- |
-| `markview --pdf` | 0.042 s | 0.096 s | 4 / 34 | 62 / 307 KiB | yes |
+| `markview pdf` | 0.042 s | 0.096 s | 4 / 34 | 62 / 307 KiB | yes |
 | `pandoc --pdf-engine=typst` | 0.482 s | 0.723 s | 3 / 31 | 28 / 162 KiB | yes |
 | `pandoc` → headless Chromium | 0.646 s | 0.833 s | 4 / 38 | 45 / 172 KiB | no |
 | `pandoc --pdf-engine=xelatex` | 1.890 s | 2.156 s | 4 / 35 | 19 / 99 KiB | no |

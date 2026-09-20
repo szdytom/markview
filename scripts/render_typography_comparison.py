@@ -68,7 +68,7 @@ def markview_panel(binary, work, width, column, scale):
     """Render the reading view and return the image plus its content height."""
     target = work / "markview.png"
     result = subprocess.run(
-        [binary, "--render", str(SOURCE), "--output", str(target),
+        [binary, "render", str(SOURCE), "--output", str(target),
          "--width", str(width * scale), "--height", "6000",
          "--column", str(column), "--font-size", str(FONT_SIZE),
          "--scale", str(scale), "--light"],
@@ -76,7 +76,7 @@ def markview_panel(binary, work, width, column, scale):
     for token in result.stdout.split() + result.stderr.split():
         if token.endswith("px"):
             return Image.open(target).convert("RGB"), int(float(token[:-2]))
-    sys.exit("markview --render did not report the document height")
+    sys.exit("markview render did not report the document height")
 
 
 def webview_panel(work, width, height, scale):

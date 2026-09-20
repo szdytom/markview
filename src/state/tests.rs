@@ -1423,3 +1423,24 @@ fn a_page_away_from_the_settled_end_still_animates() {
 	assert!(session.advance_scroll(start, 600.0));
 	assert!(session.scroll_animating());
 }
+
+/// Every path that dismisses the panel or leaves a page goes through one
+/// helper, so a page added later cannot survive a dismissal.
+#[test]
+fn closing_the_pages_leaves_none_of_them_open() {
+	let mut interaction = InteractionState {
+		panel_open: true,
+		styles_open: true,
+		fonts_open: true,
+		export_open: true,
+		export_styles_open: true,
+		..Default::default()
+	};
+	interaction.close_pages();
+	assert!(!interaction.styles_open);
+	assert!(!interaction.fonts_open);
+	assert!(!interaction.export_open);
+	assert!(!interaction.export_styles_open);
+	// The panel itself is the caller's decision.
+	assert!(interaction.panel_open);
+}

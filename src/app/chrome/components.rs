@@ -3,12 +3,13 @@ use super::icons;
 use crate::{
 	app::Button,
 	layout::{Draw, Paint, Rect, Scrollbar, TextShaper},
-	state::{Command, InteractionState},
+	state::{Command, InteractionState, PanelTab},
 };
 use markview_core::style::{Color, ColorField as C, Condition, TextAppearance};
 
 pub(in crate::app) const CONTROL: f32 = 32.0;
 pub(super) const INSET: f32 = 24.0;
+const TAB_Y: f32 = 48.0;
 const ROW: f32 = 44.0;
 const SECTION: f32 = 32.0;
 
@@ -58,6 +59,140 @@ pub(in crate::app) fn panel_rect(width: f32, height: f32) -> Rect {
 
 pub(super) fn line(rect: Rect, condition: Condition, color: C) -> Draw {
 	Draw::Rect(rect, Paint::Styled(condition, color))
+}
+
+/// The settings panel's three pages, as one row of tabs below its title.
+pub(in crate::app) fn tab_controls(
+	rect: Rect,
+	current: PanelTab,
+) -> Vec<Button> {
+	const TABS: [(&str, PanelTab); 3] = [
+		("Generic", PanelTab::Generic),
+		("Styles", PanelTab::Styles),
+		("Fonts", PanelTab::Fonts),
+	];
+	let mut out = Vec::new();
+	for (index, (label, tab)) in TABS.iter().enumerate() {
+		let mut b = button(
+			label,
+			Command::SettingsTab(*tab),
+			Rect {
+				x: rect.x + INSET + index as f32 * 110.0,
+				y: rect.y + TAB_Y,
+				w: 104.0,
+				h: CONTROL,
+			},
+		);
+		b.kind = ButtonKind::Quiet;
+		b.active = *tab == current;
+		out.push(b);
+	}
+	out
+}
+
+/// Whether a page is previewing the document, and so recedes behind it.
+///
+/// The header is drawn after this, so the exit control stays legible.
+pub(in crate::app) const PREVIEW_OPACITY: f32 = 0.25;
+
+/// Draws the tab row, in the place a page's heading would occupy.
+pub(in crate::app) fn draw_tabs(
+	ui: &mut TextShaper,
+	interaction: &InteractionState,
+	rect: Rect,
+	current: PanelTab,
+) -> Vec<Draw> {
+	let mut out = Vec::new();
+	for b in tab_controls(rect, current) {
+		out.extend(draw_button(ui, interaction, &b, true));
+		if b.active {
+			out.push(line(
+				Rect {
+					x: b.rect.x,
+					y: b.rect.y + b.rect.h - 2.0,
+					w: b.rect.w,
+					h: 2.0,
+				},
+				Condition::Button,
+				C::Accent,
+			));
+		}
+	}
+	out
+}
+
+/// Whether a button belongs to the settings header, which a page draws once
+/// through [`draw_settings_header`] rather than through its control loop.
+pub(in crate::app) fn is_settings_header(action: Command) -> bool {
+	matches!(
+		action,
+		Command::SettingsTab(_) | Command::Settings | Command::SettingsPreview
+	)
+}
+
+pub(in crate::app) fn settings_header_controls(
+	rect: Rect,
+	current: PanelTab,
+	preview: bool,
+) -> Vec<Button> {
+	let mut out = tab_controls(rect, current);
+	let close = button(
+		"Close",
+		Command::Settings,
+		Rect {
+			x: rect.x + rect.w - INSET - CONTROL,
+			y: rect.y + 18.0,
+			w: CONTROL,
+			h: CONTROL,
+		},
+	);
+	let mut eye = button(
+		"Preview document",
+		Command::SettingsPreview,
+		Rect {
+			x: close.rect.x - CONTROL - 8.0,
+			..close.rect
+		},
+	);
+	eye.icon = Some(if preview { icons::EYE_OFF } else { icons::EYE });
+	eye.active = preview;
+	out.extend([eye, {
+		let mut close = close;
+		close.icon = Some(icons::CLOSE);
+		close
+	}]);
+	out
+}
+
+pub(in crate::app) fn draw_settings_header(
+	ui: &mut TextShaper,
+	interaction: &InteractionState,
+	rect: Rect,
+	current: PanelTab,
+	preview: bool,
+) -> Vec<Draw> {
+	appearance(ui);
+	let old_weight = ui.appearance.weight;
+	ui.appearance.weight = 700;
+	let mut out = label(
+		ui,
+		"Settings",
+		20.0,
+		Rect {
+			x: rect.x + INSET,
+			y: rect.y + 16.0,
+			w: rect.w - INSET * 2.0,
+			h: 32.0,
+		},
+		C::Color,
+	);
+	ui.appearance.weight = old_weight;
+	out.extend(draw_tabs(ui, interaction, rect, current));
+	let controls = settings_header_controls(rect, current, preview);
+	for control in controls.iter().filter(|b| b.icon.is_some()) {
+		out.extend(draw_button(ui, interaction, control, true));
+	}
+	out
 }
 
 pub(super) fn frame(rect: Rect, width: f32, height: f32) -> Vec<Draw> {
@@ -258,6 +393,7 @@ impl Row {
 
 /// A form keeps every control for keyboard traversal and clips only pointer input.
 pub(in crate::app) struct Form {
+	header: bool,
 	preview: bool,
 	pub rect: Rect,
 	pub viewport: Rect,
@@ -274,14 +410,16 @@ impl Form {
 		height: f32,
 		scroll: f32,
 		rows: Vec<Row>,
-		close: Command,
+		close: Option<Command>,
+		spacious_header: bool,
 	) -> Self {
 		let rect = panel_rect(width, height);
+		let spacious_header = spacious_header && rect.h >= 300.0;
 		let viewport = Rect {
 			x: rect.x + INSET,
-			y: rect.y + 88.0,
+			y: rect.y + if spacious_header { 120.0 } else { 88.0 },
 			w: rect.w - INSET * 2.0,
-			h: rect.h - 152.0,
+			h: rect.h - if spacious_header { 184.0 } else { 152.0 },
 		};
 		let content = 16.0
 			+ rows.len() as f32 * ROW
@@ -289,18 +427,21 @@ impl Form {
 				* SECTION;
 		let max_scroll = (content - viewport.h).max(0.0);
 		let scroll = scroll.clamp(0.0, max_scroll);
-		let mut close = button(
-			"Close",
-			close,
-			Rect {
-				x: rect.x + rect.w - INSET - CONTROL,
-				y: rect.y + 18.0,
-				w: CONTROL,
-				h: CONTROL,
-			},
-		);
-		close.icon = Some(icons::CLOSE);
-		let mut buttons = vec![close];
+		let body_start = usize::from(close.is_some());
+		let mut buttons = close.map_or_else(Vec::new, |action| {
+			let mut close = button(
+				"Close",
+				action,
+				Rect {
+					x: rect.x + rect.w - INSET - CONTROL,
+					y: rect.y + 18.0,
+					w: CONTROL,
+					h: CONTROL,
+				},
+			);
+			close.icon = Some(icons::CLOSE);
+			vec![close]
+		});
 		let mut y = viewport.y + 8.0 - scroll;
 		let mut placed = Vec::new();
 		for row in rows {
@@ -335,13 +476,14 @@ impl Form {
 		}
 		let body_end = buttons.len();
 		Self {
+			header: true,
 			preview: false,
 			rect,
 			viewport,
 			scroll,
 			max_scroll,
 			buttons,
-			body_start: 1,
+			body_start,
 			body_end,
 			rows: placed,
 		}
@@ -360,6 +502,10 @@ impl Form {
 		self.buttons.insert(self.body_start, eye);
 		self.body_start += 1;
 		self.body_end += 1;
+	}
+	pub(super) fn without_header(mut self) -> Self {
+		self.header = false;
+		self
 	}
 	pub(super) fn preview(mut self, enabled: bool) -> Self {
 		self.preview = enabled;
@@ -406,6 +552,13 @@ impl Form {
 			.iter()
 			.enumerate()
 			.filter_map(|(i, b)| {
+				if !self.header
+					&& matches!(
+						b.action,
+						Command::Settings | Command::SettingsPreview
+					) {
+					return None;
+				}
 				if !b.enabled {
 					return None;
 				}
@@ -469,14 +622,16 @@ impl Form {
 		};
 		let weight = ui.appearance.weight;
 		ui.appearance.weight = 700;
-		out.extend(label(ui, title, 20.0, text_rect, C::Color));
+		if !title.is_empty() {
+			out.extend(label(ui, title, 20.0, text_rect, C::Color));
+		}
 		ui.appearance.weight = weight;
 		out.extend(label(
 			ui,
 			detail,
 			12.0,
 			Rect {
-				y: self.rect.y + 52.0,
+				y: self.viewport.y - 36.0,
 				h: 20.0,
 				w: self.rect.w - 2.0 * INSET,
 				..text_rect
@@ -565,6 +720,13 @@ impl Form {
 		};
 
 		for (i, b) in self.buttons.iter().enumerate() {
+			if !self.header
+				&& matches!(
+					b.action,
+					Command::Settings | Command::SettingsPreview
+				) {
+				continue;
+			}
 			if self.preview && b.action == Command::SettingsPreview {
 				continue;
 			}
@@ -594,10 +756,11 @@ impl Form {
 		if self.preview {
 			fade(&mut out, ui, 0.25);
 			// Keep the exit control legible while the rest of the panel recedes.
-			if let Some(eye) = self
-				.buttons
-				.iter()
-				.find(|b| b.action == Command::SettingsPreview)
+			if self.header
+				&& let Some(eye) = self
+					.buttons
+					.iter()
+					.find(|b| b.action == Command::SettingsPreview)
 			{
 				out.extend(draw_button(ui, interaction, eye, true));
 			}
@@ -608,7 +771,7 @@ impl Form {
 }
 
 /// Forms contain only painted vectors and clipped groups; document assets stay outside.
-fn fade(draws: &mut [Draw], ui: &TextShaper, opacity: f32) {
+pub(in crate::app) fn fade(draws: &mut [Draw], ui: &TextShaper, opacity: f32) {
 	for draw in draws {
 		let paint = match draw {
 			Draw::Clipped { draws, .. } => {

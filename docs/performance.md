@@ -63,7 +63,7 @@ system fonts, 18 px text, a 760 px column, a 1200 × 800 window at DPR 2 on a
 2880 × 1920 display, and the `performance` power profile.
 
 **First readable frame** is the `process entry→readable GPU frame` line that
-`--smoke-test` logs and that the window logs as well: process entry through
+`smoke-test` logs and that the window logs as well: process entry through
 parsing, geometry, glyph preparation and GPU completion of the first readable
 prefix, with window creation and initialization included and compositor
 presentation excluded. Each row is fifteen independent processes:
@@ -83,12 +83,12 @@ is faster than another. `text-cjk-1000k` is `text-cjk-100k` concatenated ten
 times; it is generated for the measurement and is not committed.
 
 **Resident memory** comes from two modes that measure different work. The
-`--bench-latency` column is `memory.after_scroll`, the resident set after
+`latency` column is `memory.after_scroll`, the resident set after
 scrolling through the document, from five processes with twenty edit iterations
-each at scale 1. The `--bench` column is `memory_after_scroll` after full-layout
+each at scale 1. The `bench` column is `memory_after_scroll` after full-layout
 reopens, from five processes with ten iterations each:
 
-| Fixture | `--bench-latency` RSS (MiB) | `--bench` RSS (MiB) | `--bench` first open (ms) |
+| Fixture | `latency` RSS (MiB) | `bench` RSS (MiB) | `bench` first open (ms) |
 | --- | ---: | ---: | ---: |
 | ordinary-10k | 42.2 | 41.6 | 15.6 |
 | math-10k | 44.6 | 44.4 | 18.3 |
@@ -98,13 +98,13 @@ reopens, from five processes with ten iterations each:
 
 The two agree within 1 MiB up to 100 KiB and differ by about 12 MiB on the
 megabyte fixture, where the edit loop retains more than a full-layout pipeline
-does. `--bench` first open is the mean of ten iterations rather than a P95, and
+does. `bench` first open is the mean of ten iterations rather than a P95, and
 it excludes initialization; it is listed for continuity with the older tables,
 not as the interactive figure.
 
 Both memory columns are far below the 2026-09-15 diagnostic, which recorded
 82.4 MiB for `text-cjk-100k` and 79.7 MiB for `math-cjk-100k` through the same
-`--bench` mode on this host. The builds differ, so the two tables must not be
+`bench` mode on this host. The builds differ, so the two tables must not be
 pooled, and this page does not attribute the difference to one change.
 
 The power profile is part of the result rather than a detail: the progressive
@@ -114,9 +114,9 @@ several changes apart, so the comparison sizes the effect instead of isolating
 it; a number reported without its power state is not comparable.
 
 Reproduce the latency column with `RUST_LOG=info target/release/markview
---smoke-test FIXTURE --width 1200 --height 800 --offline`, once per process; the
-two memory columns with `--bench-latency FIXTURE --iterations 20 --offline` and
-`--bench FIXTURE --iterations 10 --offline`. The raw reports and the generated
+smoke-test FIXTURE --width 1200 --height 800 --offline`, once per process; the
+two memory columns with `latency FIXTURE --iterations 20 --offline` and
+`bench FIXTURE --iterations 10 --offline`. The raw reports and the generated
 megabyte fixture are under `artifacts/readme-baseline/` (ignored by Git).
 
 ## Large-document reference

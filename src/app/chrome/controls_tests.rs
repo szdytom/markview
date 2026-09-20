@@ -245,8 +245,7 @@ fn preview_keeps_controls_reachable_and_exit_icon_opaque() {
 		})
 		.collect();
 	assert_eq!(alphas.len(), 2);
-	assert!(alphas[0] < 0.26);
-	assert_eq!(alphas[1], 1.0);
+	assert!(alphas.iter().all(|alpha| *alpha == 1.0));
 	assert!(!draws.iter().any(|draw| matches!(draw, Draw::Box { .. })));
 }
 #[test]

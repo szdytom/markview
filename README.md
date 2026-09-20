@@ -142,7 +142,7 @@ One document to one PDF, median of three runs in seconds:
 
 | Engine | 10 KiB | 100 KiB |
 |:--|--:|--:|
-| `markview --pdf` | 0.04 | 0.10 |
+| `markview pdf` | 0.04 | 0.10 |
 | `pandoc --pdf-engine=typst` | 0.48 | 0.72 |
 | `pandoc` → headless Chromium | 0.65 | 0.83 |
 | `pandoc --pdf-engine=xelatex` | 1.89 | 2.16 |
@@ -241,7 +241,7 @@ pixels and the type to 18.
 
 Markview is deliberately read-only: it does not edit or save Markdown, and it has
 no table of contents, search, or multi-document workspace beyond the tabs opened
-from Markdown links. Printing means the export panel or `--pdf`, not a system
+from Markdown links. Printing means the export panel or `markview pdf`, not a system
 print dialog. Links
 address headings by their GitHub slug; raw HTML `id` attributes are not
 interpreted, so an explicit anchor is not a link target.
@@ -262,10 +262,10 @@ view.
 The same exports are on the command line, for scripts and batch runs:
 
 ```sh
-markview --pdf document.md --output document.pdf
-markview --pdf document.md -o paper.pdf --paper letter --margin 20,25
-markview --pdf document.md -o paper.pdf --footer "{title} — {page}/{pages}"
-markview --pdf document.md -o document.pdf --watch
+markview pdf document.md --output document.pdf
+markview pdf document.md -o paper.pdf --paper letter --margin 20,25
+markview pdf document.md -o paper.pdf --footer "{title} — {page}/{pages}"
+markview pdf document.md -o document.pdf --watch
 ```
 
 The bundled `print` stylesheet supplies the paper: A4 with 20 mm side margins,
@@ -306,6 +306,26 @@ markview document.md --style paper
 
 The [stylesheet guide](docs/stylesheets.md) explains the format and the
 conditions a rule may test.
+
+## Fonts
+
+Markview reads with the fonts the machine already has. A stylesheet may also
+declare downloadable families under `[[font-family]]`, and the builtin sheet
+recommends Noto Serif, Noto Sans and their Simplified Chinese counterparts. The
+reader's **Fonts** page (`Ctrl+,`, then the Fonts tab) lists what the
+stylesheets offer, what each family is, and what is already installed, and
+downloads it one family at a time; the same is on the command line:
+
+```sh
+markview fonts list              # what still needs downloading
+markview fonts download          # everything missing
+markview fonts verify            # check the download directory
+```
+
+Nothing is fetched while reading a document, installing a stylesheet or running
+`ss validate`. Downloaded fonts are a personal resource: exports and the
+reproducible diagnostic modes never see them, so a download cannot change an
+exported file.
 
 ## Documentation
 

@@ -4,8 +4,8 @@ use serde::Deserialize;
 use std::collections::BTreeMap;
 
 use super::{
-	CjkType, Condition, ConditionSet, FontDefinition, MermaidStyle, Metadata,
-	PageStyle, Rule, StyleTarget, Stylesheet, SvgStyle,
+	CjkType, Condition, ConditionSet, FontDefinition, FontFamily, MermaidStyle,
+	Metadata, PageStyle, Rule, StyleTarget, Stylesheet, SvgStyle,
 };
 impl Stylesheet {
 	pub fn parse(source: &str) -> Result<Self> {
@@ -45,6 +45,9 @@ impl Stylesheet {
 			}
 		}
 		let fontdefs = parse_fontdefs(&mut doc)?;
+		let fontdef_ids: Vec<String> =
+			fontdefs.keys().map(|(id, _)| id.clone()).collect();
+		let font_families = parse_font_families(&mut doc, &fontdef_ids)?;
 		let meta = parse_meta(&mut doc)?;
 		let page = parse_page(&mut doc)?;
 		let svg = parse_svg(&mut doc)?;
@@ -54,6 +57,7 @@ impl Stylesheet {
 			targets,
 			fontdefs: BTreeMap::new(),
 			fontdef_variants: fontdefs,
+			font_families,
 			cjk_type: CjkType::None,
 			meta,
 			page,
@@ -165,16 +169,99 @@ fn parse_fontdefs(
 		{
 			bail!("fontdef {:?}: invalid id or lookfor", def.id);
 		}
-		for url in &def.urls {
-			validate_font_url(url)
-				.with_context(|| format!("fontdef {:?}.urls", def.id))?;
-		}
 		let key = (def.id.clone(), def.r#type);
 		if out.insert(key.clone(), def).is_some() {
 			bail!("fontdef {:?} type {:?}: duplicate definition", key.0, key.1);
 		}
 	}
 	Ok(out)
+}
+
+/// The `[[font-family]]` tables: the downloadable families a sheet offers.
+///
+/// A family id shares a namespace with the sheet's `fontdef` ids, because both
+/// are quoted in the reader and on the command line, so one sheet may not use
+/// the same name for both. Downloading is explicit and never happens here.
+fn parse_font_families(
+	doc: &mut toml_edit::DocumentMut,
+	fontdef_ids: &[String],
+) -> Result<Vec<FontFamily>> {
+	let Some(item) = doc.remove("font-family") else {
+		return Ok(Vec::new());
+	};
+	let mut d = toml_edit::DocumentMut::new();
+	d["font-family"] = item;
+	#[derive(Deserialize)]
+	struct D {
+		#[serde(rename = "font-family")]
+		families: Vec<FontFamily>,
+	}
+	let families = toml_edit::de::from_str::<D>(&d.to_string())
+		.context("font-family")?
+		.families;
+	let mut out: Vec<FontFamily> = Vec::with_capacity(families.len());
+	for family in families {
+		validate_font_family(&family, fontdef_ids)?;
+		if out.iter().any(|other| other.id == family.id) {
+			bail!("font-family {:?}: duplicate definition", family.id);
+		}
+		out.push(family);
+	}
+	Ok(out)
+}
+
+fn validate_font_family(
+	family: &FontFamily,
+	fontdef_ids: &[String],
+) -> Result<()> {
+	let context = || format!("font-family {:?}", family.id);
+	if family.id.trim().is_empty()
+		|| family.id.chars().any(char::is_control)
+		|| family.lookfor.is_empty()
+		|| family.lookfor.iter().any(|name| name.trim().is_empty())
+	{
+		bail!("{}: invalid id or lookfor", context());
+	}
+	if fontdef_ids.iter().any(|id| id == &family.id) {
+		bail!("{}: shares its id with a fontdef", context());
+	}
+	if family.source.is_empty() {
+		bail!("{}: needs at least one source", context());
+	}
+	for (source_index, source) in family.source.iter().enumerate() {
+		let source_context = || format!("{}.source[{source_index}]", context());
+		if source.is_empty() {
+			bail!("{}: needs files or archives", source_context());
+		}
+		for file in &source.files {
+			validate_font_url(file.url()).with_context(source_context)?;
+			validate_sha256(file.sha256(), &source_context)?;
+		}
+		for archive in &source.archives {
+			validate_font_url(&archive.url).with_context(source_context)?;
+			validate_sha256(archive.sha256.as_deref(), &source_context)?;
+			if archive.members.is_empty()
+				|| archive.members.iter().any(|member| member.is_empty())
+			{
+				bail!("{}: members must not be empty", source_context());
+			}
+		}
+	}
+	Ok(())
+}
+
+/// A digest, when present, is a whole SHA-256 in hexadecimal.
+fn validate_sha256(
+	sha256: Option<&str>,
+	context: &dyn Fn() -> String,
+) -> Result<()> {
+	if let Some(digest) = sha256
+		&& (digest.len() != 64
+			|| !digest.bytes().all(|byte| byte.is_ascii_hexdigit()))
+	{
+		bail!("{}: expected a 64-digit hex sha256", context());
+	}
+	Ok(())
 }
 
 /// A downloadable font is an absolute `http` or `https` URL, and nothing else:

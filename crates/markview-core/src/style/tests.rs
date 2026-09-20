@@ -291,59 +291,179 @@ fn fontdefs_are_selected_by_cjk_type() {
 	assert!(!sheet.fontdefs.contains_key("cjk"));
 }
 #[test]
-fn fontdef_urls_are_optional_http_urls_that_parse_changes_nothing_else() {
-	// A sheet without `urls` keeps exactly the old definition, empty list and
-	// all, so nothing that did not opt in can start downloading.
-	let plain = Stylesheet::parse(
-		"format_version=2\nversion=1\n[[fontdef]]\nid='reading'\nlookfor=['Noto Serif']",
+fn font_families_parse_metadata_and_mirrors() {
+	let digest =
+		"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
+	let source = format!(
+		"format_version=2\nversion=1\n\
+		 [[font-family]]\n\
+		 id='noto'\n\
+		 lookfor=['Noto Serif SC','Source Han Serif SC']\n\
+		 description='Reading serif'\n\
+		 license='OFL-1.1'\n\
+		 license_url='https://scripts.sil.org/OFL'\n\
+		 homepage='https://example.invalid/noto'\n\
+		 [[font-family.source]]\n\
+		 name='GitHub'\n\
+		 files=['https://example.invalid/a.otf',{{url='https://example.invalid/b.otf',sha256='{digest}'}}]\n\
+		 [[font-family.source]]\n\
+		 archives=[{{url='https://example.invalid/x.tar.gz',members=['**/*.otf']}}]\n\
+		 [[font-family]]\n\
+		 id='plain'\n\
+		 lookfor=['Plain']\n\
+		 [[font-family.source]]\n\
+		 files=['http://example.invalid/plain.ttf']"
+	);
+	let sheet = Stylesheet::parse(&source).unwrap();
+	let ids: Vec<&str> =
+		sheet.font_families.iter().map(|f| f.id.as_str()).collect();
+	assert_eq!(ids, ["noto", "plain"]);
+	let noto = sheet.font_family("noto").unwrap();
+	assert_eq!(noto.display_name(), "Noto Serif SC");
+	assert_eq!(noto.description.as_deref(), Some("Reading serif"));
+	assert_eq!(noto.license.as_deref(), Some("OFL-1.1"));
+	assert_eq!(
+		noto.license_url.as_deref(),
+		Some("https://scripts.sil.org/OFL")
+	);
+	assert_eq!(
+		noto.homepage.as_deref(),
+		Some("https://example.invalid/noto")
+	);
+	assert_eq!(noto.source.len(), 2);
+	assert_eq!(noto.source[0].label(), Some("GitHub"));
+	assert_eq!(noto.source[0].files.len(), 2);
+	assert_eq!(
+		noto.source[0].files[0].url(),
+		"https://example.invalid/a.otf"
+	);
+	assert_eq!(noto.source[0].files[0].sha256(), None);
+	assert_eq!(noto.source[0].files[1].sha256(), Some(digest));
+	assert!(noto.source[1].files.is_empty());
+	assert_eq!(noto.source[1].archives[0].members, ["**/*.otf"]);
+	// A family without metadata still lists under a name, and `http` is
+	// allowed for a mirror that only serves it.
+	let plain = sheet.font_family("plain").unwrap();
+	assert_eq!(plain.display_name(), "Plain");
+	assert_eq!(plain.license, None);
+	assert_eq!(
+		plain.source[0].files[0].url(),
+		"http://example.invalid/plain.ttf"
+	);
+	assert!(sheet.font_family("missing").is_none());
+}
+
+#[test]
+fn font_families_cascade_by_replacing_a_whole_entry() {
+	let mut low = Stylesheet::parse(
+		"format_version=2\nversion=1\n\
+		 [[font-family]]\nid='a'\nlookfor=['A']\ndescription='low'\n\
+		 [[font-family.source]]\nfiles=['https://example.invalid/1.otf','https://example.invalid/2.otf']\n\
+		 [[font-family]]\nid='b'\nlookfor=['B']\n\
+		 [[font-family.source]]\nfiles=['https://example.invalid/b.otf']",
 	)
 	.unwrap();
-	assert!(plain.fontdefs["reading"].urls.is_empty());
-	assert!(plain.font_urls().is_empty());
-
-	let source = "format_version=2\nversion=1\n[[fontdef]]\nid='reading'\nlookfor=['Noto Serif']\nurls=[\n 'https://example.invalid/NotoSerif-Regular.ttf',\n 'http://example.invalid/NotoSerif-Bold.ttf',\n]\n[[fontdef]]\nid='empty'\nlookfor=['Georgia']\nurls=[]";
-	let sheet = Stylesheet::parse(source).unwrap();
+	let high = Stylesheet::parse(
+		"format_version=2\nversion=1\n\
+		 [[font-family]]\nid='a'\nlookfor=['A2']\n\
+		 [[font-family.source]]\nfiles=['https://example.invalid/3.otf']",
+	)
+	.unwrap();
+	low.merge(&high);
 	assert_eq!(
-		sheet.fontdefs["reading"].urls,
+		low.font_families
+			.iter()
+			.map(|f| f.id.as_str())
+			.collect::<Vec<_>>(),
+		["a", "b"]
+	);
+	let a = low.font_family("a").unwrap();
+	assert_eq!(a.lookfor, ["A2"]);
+	// A higher layer replaces the whole entry rather than merging into it.
+	assert_eq!(a.description, None);
+	assert_eq!(a.source[0].files.len(), 1);
+	assert_eq!(low.font_family("b").unwrap().source[0].files.len(), 1);
+}
+
+#[test]
+fn a_font_family_is_validated_where_it_is_declared() {
+	let head = "format_version=2\nversion=1\n";
+	let digest =
+		"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
+	for bad in [
+		// `fontdef` no longer carries download information at all.
+		"[[fontdef]]\nid='a'\nlookfor=['x']\nurls=['https://example.invalid/a.ttf']",
+		"[[fontdef]]\nid='a'\nlookfor=['x']\nurl='https://example.invalid/a.ttf'",
+		// A family needs a name list and at least one source.
+		"[[font-family]]\nid='a'",
+		"[[font-family]]\nid='a'\nlookfor=[]\n[[font-family.source]]\nfiles=['https://example.invalid/a.ttf']",
+		"[[font-family]]\nid='a'\nlookfor=[' ']\n[[font-family.source]]\nfiles=['https://example.invalid/a.ttf']",
+		"[[font-family]]\nid=''\nlookfor=['A']\n[[font-family.source]]\nfiles=['https://example.invalid/a.ttf']",
+		"[[font-family]]\nid='a'\nlookfor=['A']",
+		"[[font-family]]\nid='a'\nlookfor=['A']\n[[font-family.source]]\nname='empty'",
+		// An id is a namespace shared with `fontdef` and unique in one sheet.
+		"[[fontdef]]\nid='same'\nlookfor=['x']\n[[font-family]]\nid='same'\nlookfor=['A']\n[[font-family.source]]\nfiles=['https://example.invalid/a.ttf']",
+		"[[font-family]]\nid='a'\nlookfor=['A']\n[[font-family.source]]\nfiles=['https://example.invalid/a.ttf']\n[[font-family]]\nid='a'\nlookfor=['A']\n[[font-family.source]]\nfiles=['https://example.invalid/b.ttf']",
+		// A URL is absolute http(s) wherever it appears.
+		"[[font-family]]\nid='a'\nlookfor=['A']\n[[font-family.source]]\nfiles=['file:///tmp/a.ttf']",
+		"[[font-family]]\nid='a'\nlookfor=['A']\n[[font-family.source]]\nfiles=['/tmp/a.ttf']",
+		"[[font-family]]\nid='a'\nlookfor=['A']\n[[font-family.source]]\nfiles=['https://']",
+		"[[font-family]]\nid='a'\nlookfor=['A']\n[[font-family.source]]\nfiles=['https:///a.ttf']",
+		"[[font-family]]\nid='a'\nlookfor=['A']\n[[font-family.source]]\nfiles=['https://example.com/a b.ttf']",
+		"[[font-family]]\nid='a'\nlookfor=['A']\n[[font-family.source]]\narchives=[{url='file:///tmp/a.zip',members=['*']}]",
+		// A digest is a whole SHA-256, and members are named.
+		"[[font-family]]\nid='a'\nlookfor=['A']\n[[font-family.source]]\nfiles=[{url='https://example.invalid/a.ttf',sha256='ab'}]\n",
+		"[[font-family]]\nid='a'\nlookfor=['A']\n[[font-family.source]]\narchives=[{url='https://example.invalid/a.zip',members=['*'],sha256='zz'}]\n",
+		"[[font-family]]\nid='a'\nlookfor=['A']\n[[font-family.source]]\narchives=[{url='https://example.invalid/a.zip'}]",
+		"[[font-family]]\nid='a'\nlookfor=['A']\n[[font-family.source]]\narchives=[{url='https://example.invalid/a.zip',members=[]}]",
+		// Unknown fields stay errors inside both tables.
+		"[[font-family]]\nid='a'\nlookfor=['A']\nsubset='SC'\n[[font-family.source]]\nfiles=['https://example.invalid/a.ttf']",
+		"[[font-family]]\nid='a'\nlookfor=['A']\n[[font-family.source]]\nfiles=['https://example.invalid/a.ttf']\nformat='zip'",
+	] {
+		let source = format!("{head}{bad}");
+		assert!(Stylesheet::parse(&source).is_err(), "{bad}");
+	}
+	// The digest passes where it is well formed, upper case included.
+	let source = format!(
+		"{head}[[font-family]]\nid='a'\nlookfor=['A']\n\
+		 [[font-family.source]]\nfiles=[{{url='https://example.invalid/a.ttf',sha256='{digest}'}}]"
+	);
+	assert!(Stylesheet::parse(&source).is_ok());
+}
+
+#[test]
+fn builtin_offers_the_curated_noto_downloads() {
+	let sheet = Stylesheet::builtin();
+	let ids: Vec<&str> =
+		sheet.font_families.iter().map(|f| f.id.as_str()).collect();
+	assert_eq!(
+		ids,
 		[
-			"https://example.invalid/NotoSerif-Regular.ttf",
-			"http://example.invalid/NotoSerif-Bold.ttf",
+			"noto-serif",
+			"noto-sans",
+			"noto-serif-cjk-sc",
+			"noto-sans-cjk-sc"
 		]
 	);
-	assert!(sheet.fontdefs["empty"].urls.is_empty());
-	assert_eq!(sheet.font_urls().len(), 2);
-	// A scheme is case-insensitive, as RFC 3986 says.
-	assert_eq!(
-		Stylesheet::parse(
-			"format_version=2\nversion=1\n[[fontdef]]\nid='a'\nlookfor=['x']\nurls=['HTTPS://example.invalid/A.ttf']"
-		)
-		.unwrap()
-		.font_urls(),
-		["HTTPS://example.invalid/A.ttf"]
-	);
-	// The list is the sheet's whole declaration, whatever the CJK selection.
-	let mut variant = Stylesheet::parse(
-		"format_version=2\nversion=1\n[[fontdef]]\nid='cjk'\ntype='SC'\nlookfor=['SC']\nurls=['https://example.invalid/SC.otf']",
-	)
-	.unwrap();
-	assert_eq!(variant.font_urls(), ["https://example.invalid/SC.otf"]);
-	variant.set_cjk_type(CjkType::None);
-	assert_eq!(variant.font_urls(), ["https://example.invalid/SC.otf"]);
-
-	// Only http(s) is a downloadable font; every other shape is an error, as
-	// is a field the definition does not declare.
-	for bad in [
-		"format_version=2\nversion=1\n[[fontdef]]\nid='a'\nlookfor=['x']\nurls=['file:///tmp/a.ttf']",
-		"format_version=2\nversion=1\n[[fontdef]]\nid='a'\nlookfor=['x']\nurls=['/tmp/a.ttf']",
-		"format_version=2\nversion=1\n[[fontdef]]\nid='a'\nlookfor=['x']\nurls=['https://']",
-		"format_version=2\nversion=1\n[[fontdef]]\nid='a'\nlookfor=['x']\nurls=['https:///a.ttf']",
-		"format_version=2\nversion=1\n[[fontdef]]\nid='a'\nlookfor=['x']\nurls=['https://example.com/a b.ttf']",
-		"format_version=2\nversion=1\n[[fontdef]]\nid='a'\nlookfor=['x']\nurl='https://example.com/a.ttf'",
-		"format_version=2\nversion=1\n[[fontdef]]\nid='a'\nlookfor=['x']\nurls='https://example.com/a.ttf'",
-	] {
-		assert!(Stylesheet::parse(bad).is_err(), "{bad}");
+	for family in &sheet.font_families {
+		assert!(!family.lookfor.is_empty(), "{}", family.id);
+		assert!(family.license.is_some(), "{}", family.id);
+		assert!(family.description.is_some(), "{}", family.id);
+		assert!(family.source.len() >= 2, "{}", family.id);
+		for source in &family.source {
+			assert!(!source.is_empty(), "{}", family.id);
+			for file in &source.files {
+				assert!(file.url().starts_with("https://"), "{}", file.url());
+			}
+		}
+	}
+	// A download entry is not a font definition: the curated ids stay out of
+	// the shaping namespace.
+	for family in &sheet.font_families {
+		assert!(!sheet.fontdefs.contains_key(&family.id), "{}", family.id);
 	}
 }
+
 #[test]
 fn cascade_arrays_and_font_defaults() {
 	let mut low=Stylesheet::parse("format_version=2\nversion=1\n[[rule]]\nwhen=['em']\ncolor='#123456'\nfont=[{family='Noto Serif',variant='italic'},{family='落霞文楷'}]").unwrap();

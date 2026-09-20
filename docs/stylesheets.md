@@ -24,7 +24,7 @@ The directory is next to `settings.toml`:
 
 The filename without `.mvss.toml` is the style ID. Only the first directory level is scanned. The bundled IDs `light`, `dark`, `celadon`, `blueprint`, `rosewood`, `print`, `monochrome`, `qibaishi`, `vangogh`, `mondrian`, and `builtin` are reserved (including case variants).
 
-In the Settings panel, **Styles…** lets you enable, disable, and reorder styles. The leftmost selected style has the highest priority. `--style` replaces the session's selected list and is not saved. It cannot be combined with `--light` or `--dark`.
+In the Settings panel's **Styles** tab (**Ctrl+T**) you can enable, disable, and reorder styles. The leftmost selected style has the highest priority. `--style` replaces the session's selected list and is not saved. It cannot be combined with `--light` or `--dark`.
 
 ## Output targets
 
@@ -44,7 +44,7 @@ Omitting `targets` defaults to `["ui", "pdf"]` for existing files. Empty arrays,
 
 Bundled reader themes declare `["ui"]`, bundled paper themes declare `["pdf"]`, and the hidden `builtin` supports both. Selectors hide incompatible themes. A previously selected theme that changes destinations remains visible with an error so it can be removed; invalid reader updates retain the last valid appearance. Explicitly loading an incompatible theme reports its ID and the required destination.
 
-The export panel shares paper layout and stylesheet selection between PDF and PNG, so both use the `pdf` destination. The diagnostic `--render` command can preview either destination, including `--style print`; it does not select a theme for the reader window. `ss validate` reports the declared targets.
+The export panel shares paper layout and stylesheet selection between PDF and PNG, so both use the `pdf` destination. The diagnostic `render` subcommand can preview either destination, including `--style print`; it does not select a theme for the reader window. `ss validate` reports the declared targets.
 
 ## Choose a starting point
 
@@ -71,8 +71,8 @@ All paper themes use `targets = ["pdf"]` and appear in the export selector. They
 The three artist themes interpret the supplied CSS references through native MVSS typography and geometry. They do not depend on CSS, downloaded fonts or decorative images. Monochrome controls stylesheet and syntax colors; embedded images and color Emoji retain their original colors.
 
 ```sh
-markview --pdf examples/themes.md --style monochrome --output monochrome.pdf
-markview --pdf examples/themes.md --style vangogh --output vangogh.pdf
+markview pdf examples/themes.md --style monochrome --output monochrome.pdf
+markview pdf examples/themes.md --style vangogh --output vangogh.pdf
 ```
 
 Their source files live in [`crates/markview-core/styles/`](../crates/markview-core/styles/). Copy a visible theme to a **new filename** to start a standalone palette, or write a small override and layer it above an existing theme.
@@ -133,7 +133,7 @@ A condition is one fact about a rendered run: the blocks that contain it, the pa
 
 `page` paints the exported sheet; the other three style page furniture. They never apply to the reader window, and a theme that ignores them still exports: the PDF falls back to the body appearance.
 
-A rule applies to a run when **every** condition it names holds for that run. The order inside `when` is not part of the rule's identity, so `["strong", "code"]` and `["code", "strong"]` are the same rule, and a file that declares both is rejected as a duplicate. There are no selectors, variables, `inherit`, `unset`, imports, or scripts. The only remote resource a stylesheet can name is a font file, listed under [`urls`](#downloadable-fonts), and even that is never fetched until the reader presses a button.
+A rule applies to a run when **every** condition it names holds for that run. The order inside `when` is not part of the rule's identity, so `["strong", "code"]` and `["code", "strong"]` are the same rule, and a file that declares both is rejected as a duplicate. There are no selectors, variables, `inherit`, `unset`, imports, or scripts. The only remote resource a stylesheet can name is a font family, declared under [`[[font-family]]`](#downloadable-fonts), and even that is never fetched until the reader asks for it.
 
 Footnote links are clicks that move inside the document: a reference jumps to its note, and the note's number jumps back to the citation it was opened from. They carry `footnote_ref` instead of `link`, so a theme can mark them without recoloring every hyperlink; `["footnote_ref", "hover"]` styles the link under the pointer. Consecutive references share one bracket pair, as in `[1,2]`, and only their numbers stay click targets.
 
@@ -199,7 +199,7 @@ Colors are sRGB `#RRGGBB` or `#RRGGBBAA`; `body.background` must be opaque. Size
 
 ## Paper
 
-The PDF export always starts from the bundled `print` stylesheet, and `--style` layers a named style supporting `pdf` on top of it. A style may also set the `[page]` table, which is the only table besides `fontdef`, `meta`, `mermaid`, and `rule`:
+The PDF export always starts from the bundled `print` stylesheet, and `--style` layers a named style supporting `pdf` on top of it. A style may also set the `[page]` table, which is the only table besides `fontdef`, `font-family`, `meta`, `mermaid`, and `rule`:
 
 ```toml
 [page]
@@ -278,7 +278,7 @@ font = [
 ]
 ```
 
-The flag applies only to `variant = "italic"` or `"oblique"`; a real italic or oblique face is still preferred when one exists. CJK variants may be defined with `type = "SC"`, `"TC"`, or `"JP"`. A user may override a definition with `[[fontdef-override]]`. Stylesheet files never bundle font binaries; they may name files to download, as the next section describes.
+The flag applies only to `variant = "italic"` or `"oblique"`; a real italic or oblique face is still preferred when one exists. CJK variants may be defined with `type = "SC"`, `"TC"`, or `"JP"`. A user may override a definition with `[[fontdef-override]]`. A `fontdef` says what a short name means; it never names a file, and downloadable families live in their own table, described below.
 
 An Emoji definition sets `emoji = true`, which makes the family the face for Emoji text rather than one candidate among the reading fonts:
 
@@ -299,21 +299,44 @@ Redefining a bundled `fontdef` id replaces its whole definition, so a style that
 
 ## Downloadable fonts
 
-A `fontdef` may name the files its family is published as. The reader offers them as an explicit download; nothing is fetched when a document is read, when a style is installed, or when `ss validate` runs.
+`[[font-family]]` describes one concrete family and how to obtain it. Downloading is nothing more than another `--fonts` directory: the faces a rule can reach are the ones the font files themselves declare, so a family id is only a bookkeeping name for the reader and the command line, never a font name.
 
 ```toml
-[[fontdef]]
-id = "reading"
-lookfor = ["Noto Serif", "Georgia"]
-urls = [
-    "https://example.invalid/NotoSerif-Regular.ttf",
-    "https://example.invalid/NotoSerif-Bold.ttf",
+[[font-family]]
+id = "noto-sans-cjk-sc"
+lookfor = ["Noto Sans CJK SC", "Source Han Sans SC", "Noto Sans SC"]
+description = "Simplified Chinese sans-serif, subset OTF"
+license = "OFL-1.1"
+license_url = "https://scripts.sil.org/OFL"
+homepage = "https://github.com/notofonts/noto-cjk"
+```
+
+`lookfor` lists the names the family may report for itself. When any of them is already available—installed on the machine, in a `--fonts` directory, or in the download directory—the family is skipped. A file that holds several faces, such as a TTC or OTC collection, counts for every family it declares. `description`, `license` (an SPDX identifier), `license_url` and `homepage` are optional, and are what the reader shows in its list.
+
+A family is obtained from one or more *sources*, which are mirrors of one another: they are tried in order and the first that succeeds whole is the one used, so they may be laid out differently and even use different container formats.
+
+```toml
+[[font-family.source]]
+name = "GitHub release"
+[[font-family.source.archives]]
+url = "https://github.com/notofonts/noto-cjk/releases/download/Sans2.004/08_NotoSansCJKsc.zip"
+members = ["NotoSansCJKsc-Regular.otf", "NotoSansCJKsc-Bold.otf"]
+
+[[font-family.source]]
+name = "jsDelivr"
+files = [
+	"https://cdn.jsdelivr.net/gh/notofonts/noto-cjk@main/Sans/SubsetOTF/SC/NotoSansSC-Regular.otf",
+	"https://cdn.jsdelivr.net/gh/notofonts/noto-cjk@main/Sans/SubsetOTF/SC/NotoSansSC-Bold.otf",
 ]
 ```
 
-`urls` is optional and accepts an `http` or `https` URL per file; an empty or absent list is exactly the old behavior. The list is per definition, not per variant, and a sheet may declare several files per family. HTTPS is preferred. Plain `http` is accepted for a mirror that only serves it, and the download then has no transport privacy; the [network policy](security.md#t7-network-access) still applies either way.
+`files` downloads each entry as it stands; an entry is a bare URL or a table with a `sha256`. `archives` downloads one container and extracts the members matching its patterns. The container is recognized from its own leading bytes—zip, tar, gzip and zstd—so one mirror may publish a zip while another publishes a tarball without either saying which. A pattern matches `/`-separated member paths: `*` stops at a separator, `**` crosses one, and `?` matches exactly one character. A source must yield at least one member, and every file it yields must parse as a font. Directories, symlinks and hard links are never taken, nothing is written outside the download directory, and one archive may not unpack more than 2 GiB or 4096 members.
 
-The **Styles** panel (Ctrl+T) shows **Download fonts** whenever a catalogued stylesheet declares files, with the count beside it. The button downloads what is missing, one file at a time, and the panel reports the file in flight, files done of the total, and failures with their reason; a failure does not stop the remaining files, and pressing the button again retries. A file already present under the name its URL maps to is skipped, so a complete re-run is a no-op. The stored name is the URL's basename plus a short hash of the URL, so two URLs that end in the same basename never share one file, and a job that stored nothing does not trigger a reflow. Downloading is available in the reader window only.
+A body is verified before it is stored: a font file is capped at 64 MiB, an archive at 2 GiB, a declared `sha256` must match, and the file is renamed into place so a partial transfer is never registered. A digest that does not match fails its source, and the next mirror is tried. A failed source's own files are removed before the next mirror runs, so a mirror never leaves half a family behind. The download directory is reported as large past 1 GiB, but a download is never refused for it.
+
+The stored name is the file's own name at its origin — a URL's last segment, or an archive member's whole path — plus a short hash of the family id and that name. Two mirrors of one family therefore agree on where a file lands, two families never collide, and two members of one archive that share a basename but not a path stay apart. Extensionless members take the extension their outlines imply.
+
+Nothing replaces an installed file until the whole source has been downloaded and verified, so a mirror that fails half way leaves the copies it would have replaced exactly where they were.
 
 Files land in a `fonts/` directory beside `settings.toml`:
 
@@ -323,18 +346,27 @@ Files land in a `fonts/` directory beside `settings.toml`:
 | macOS | `~/Library/Application Support/markview/fonts/` |
 | Windows | `%APPDATA%/markview/fonts/` |
 
-A body is verified as a font and renamed into place, so a failed transfer never registers. One file may be at most 64 MiB and the directory at most 256 MiB; a file counts against the directory budget only once it is complete. After a successful download the directory joins the reader's fonts immediately and the document reflows. Delete a file to fetch it again.
+The reader's **Fonts** page (**Ctrl+,**, then the Fonts tab) lists every family the builtin recommendations and the catalogued stylesheets declare: its name, description, license, size, the stylesheets that declare it, and whether it is installed, on disk, or missing. A family downloads on its own, **Download missing** acts on whatever the filters show, and a running family can be cancelled by itself. **Open fonts folder** opens the directory.
 
-A downloaded font is a personal resource like the fonts installed on the machine, so a run that asks for reproducible output never sees it: the `--render`, `--pdf`, `--bench`, `--latency`, and `--smoke-test` diagnostics ignore the directory, `--ignore-system-fonts` excludes it in the window too, and the reader's own Export panel uses the same `--fonts` set as a CLI export rather than the personal directory. A personal download therefore cannot change an exported file. `--offline` refuses the download and says so.
+`markview fonts` does the same from a shell:
 
-### Recommended Noto files
+```sh
+markview fonts list                 # what still needs downloading
+markview fonts list --all           # every declared family
+markview fonts download             # everything missing
+markview fonts download noto-sans-cjk-sc
+markview fonts download --style paper --dry-run
+markview fonts path                 # print the download directory
+markview fonts verify               # check the directory against the declarations
+```
 
-Noto is the recommended family: it is open, covers Latin and CJK, and publishes stable URLs. [`examples/noto-serif.mvss.toml`](../examples/noto-serif.mvss.toml) declares real files and can be installed as a starting point:
+`list`, `download` and `verify` take `--style ID` to work from one installed stylesheet, or `--file SHEET.mvss.toml` to work from a draft without installing it; either narrows the catalogue to the families that sheet itself declares, while naming nothing includes the builtin recommendations. `download` fetches only what nothing provides yet, `--force` re-downloads what is already there, `--dry-run` reports without fetching, and `--jobs N` (4 by default) bounds the transfers. `--offline` refuses the transfer while leaving `list`, `verify` and `--dry-run` working.
 
-| Role | Files | Size |
-| --- | --- | --- |
-| Latin serif | `NotoSerif-Regular.ttf`, `-Bold.ttf`, `-Italic.ttf` | about 0.6 MiB each |
-| Simplified Chinese serif | `NotoSerifSC-Regular.otf`, `-Bold.otf` (subset OTF) | about 11 MiB each |
+Reading a document, installing a stylesheet and `ss validate` never fetch anything; only the Fonts page and `markview fonts download` do. A downloaded font is a personal resource like the fonts installed on the machine, so a run that asks for reproducible output never sees it: the `render`, `pdf`, `bench`, `latency` and `smoke-test` subcommands ignore the directory, `--ignore-system-fonts` excludes it in the window too, and the reader's own Export panel uses the same `--fonts` set as a command-line export rather than the personal directory. A personal download therefore cannot change an exported file. `--offline` refuses the download and says so.
+
+### Recommended Noto families
+
+The bundled `builtin` stylesheet already declares Noto Serif, Noto Sans, Noto Serif CJK SC and Noto Sans CJK SC, so they need no stylesheet of your own: open the Fonts page, or run `markview fonts download`. Each Latin file is about 0.6 MiB and each Simplified Chinese subset OTF 8 to 12 MiB. The GitHub source is the official release archive, from which only the wanted members are extracted; jsDelivr serves the same faces as single files.
 
 A full Noto CJK collection, rather than the subset faces, is **tens of MiB per file**; choose it only when the subset does not cover the text. Noto is licensed under the SIL Open Font License 1.1; the license ships with the upstream repository and is not bundled here. The reader never bundles font binaries, and the user trusts the URLs a stylesheet names.
 
@@ -396,7 +428,7 @@ Keep a style focused on visual decisions, name the conditions a run really has r
 cargo run -- ss validate path/to/my-theme.mvss.toml
 cargo run -- ss install path/to/my-theme.mvss.toml
 cargo run -- examples/themes.md --style my-theme
-cargo run -- --render examples/themes.md --style my-theme --output /tmp/my-theme.png
+cargo run -- render examples/themes.md --style my-theme --output /tmp/my-theme.png
 ```
 
 Review the same content in every theme at narrow and wide reading measures, including Latin/CJK, italic/bold, code, math, nested lists, tables, captions and unavailable images. In the window also check hover, selection, keyboard focus, settings/export panels and scrolling. A static document render does not exercise those interactive states.

@@ -23,6 +23,10 @@ source and original license texts are available in Cargo's registry packages.
 | rfd | Native file dialogs | MIT |
 | arboard / wl-clipboard-rs | Platform clipboard integration | MIT OR Apache-2.0 |
 | windows-sys | Attaching to the console that launched the reader | MIT OR Apache-2.0 |
+| clap | Command-line parsing and help | MIT OR Apache-2.0 |
+| zip / tar / flate2 / zstd | Reading the archives a font mirror publishes | MIT (zip, zstd), MIT OR Apache-2.0 (tar, flate2) |
+| sha2 | Verifying a declared font digest | MIT OR Apache-2.0 |
+| tokio / tokio-socks | Streaming downloads with a stall timeout, through SOCKS when asked | MIT |
 | unicode-segmentation | Grapheme boundaries for reading selections | MIT OR Apache-2.0 |
 | tempfile | Atomic settings replacement and tests | MIT OR Apache-2.0 |
 | usvg | Compile-time parsing of the SVG icon sources | Apache-2.0 OR MIT |

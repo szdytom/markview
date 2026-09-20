@@ -134,8 +134,14 @@ pub(in crate::app) fn form(
 	width: f32,
 	height: f32,
 ) -> Form {
-	let mut form =
-		Form::new(width, height, scroll, rows(settings), Command::Export);
+	let mut form = Form::new(
+		width,
+		height,
+		scroll,
+		rows(settings),
+		Some(Command::Export),
+		false,
+	);
 	form.footer(
 		ui,
 		&[

@@ -30,16 +30,16 @@ cargo run -p xtask -- icons
 For visual or timing changes, also use the real pipelines:
 
 ```sh
-target/release/markview --render examples/welcome.md --output artifacts/welcome.png
-target/release/markview --render examples/mermaid.md --output artifacts/mermaid.png
-target/release/markview --pdf examples/welcome.md --output artifacts/welcome.pdf
-target/release/markview --smoke-test examples/welcome.md --output artifacts/window.png
-target/release/markview --bench tests/fixtures/ordinary-10k.md --output artifacts/ordinary.json
-target/release/markview --bench-latency tests/fixtures/ordinary-10k.md --output artifacts/latency.json
+target/release/markview render examples/welcome.md --output artifacts/welcome.png
+target/release/markview render examples/mermaid.md --output artifacts/mermaid.png
+target/release/markview pdf examples/welcome.md --output artifacts/welcome.pdf
+target/release/markview smoke-test examples/welcome.md --output artifacts/window.png
+target/release/markview bench tests/fixtures/ordinary-10k.md --output artifacts/ordinary.json
+target/release/markview latency tests/fixtures/ordinary-10k.md --output artifacts/latency.json
 python3 scripts/smoke_watch.py target/release/markview
 ```
 
-`--pdf` writes the paper edition: the document is laid out again at the page's
+the `pdf` subcommand writes the paper edition: the document is laid out again at the page's
 text measure, broken into pages, and written as vector text with subset fonts.
 Check an export in a viewer (`pdftotext`, `pdfinfo`, `qpdf --qdf`) for page
 count, page furniture, link annotations, text selection and embedded fonts.
@@ -67,7 +67,7 @@ weight, because the GPU bakes subpixel coverage into bitmaps while Ghostscript
 antialiases vector outlines. `--out` keeps a side-by-side image and a diff heat
 map for eyeballing.
 
-`--bench-latency` measures the two latency targets and the reload memory trend
+`latency` measures the two latency targets and the reload memory trend
 through the real layout worker and prefix publication: process entry to the
 first readable GPU frame, a small on-disk edit to the first refreshed frame and
 to the complete re-layout, and per-edit RSS. Aggregate independent processes
@@ -98,7 +98,7 @@ python3 scripts/generate_readme_charts.py
 
 `scripts/generate_large_fixture.py` writes 100 KiB `math-cjk-100k.md` and
 `text-cjk-100k.md` fixtures for large-document timing. Set `MARKVIEW_PROFILE=1`
-when running `--bench` to add inclusive per-sub-stage layout timings to the
+when running `bench` to add inclusive per-sub-stage layout timings to the
 report under `profile_ms`; leave it unset for production-comparable numbers,
 because the probes add roughly 5 % to layout.
 
@@ -107,7 +107,7 @@ headings, emphasis and mixed scripts. Include it in cold-process comparisons:
 warm reflows alone hide font fallback initialization costs. For a stage breakdown:
 
 ```sh
-MARKVIEW_PROFILE=1 target/release/markview --bench tests/fixtures/emoji-fallback.md --iterations 3 --output artifacts/emoji-profile.json
+MARKVIEW_PROFILE=1 target/release/markview bench tests/fixtures/emoji-fallback.md --iterations 3 --output artifacts/emoji-profile.json
 ```
 
 `layout.font_resolve_ms` measures configured candidate resolution/loading;
@@ -137,19 +137,19 @@ quiet.
 
 The reader and the core crate log through the `log` facade, and the binary writes
 `LEVEL message` lines to stderr. A plain window run defaults to `warn`, so the
-lifecycle and timing lines stay quiet; `--render`, `--bench` and `--smoke-test`
+lifecycle and timing lines stay quiet; `render`, `bench` and `smoke-test`
 default their own targets to `debug` so the diagnostics below are visible. Set
 `RUST_LOG` to override either, for example `RUST_LOG=info` for the display metrics
 or `RUST_LOG=debug` to include dependency logs.
 
 The render and benchmark modes use the GPU offscreen and do not load personal settings. The watch smoke test writes only temporary documents and closes the window it starts.
 
-Window layout publishes a readable prefix before completion. Native `--smoke-test`
+Window layout publishes a readable prefix before completion. Native `smoke-test`
 logs `process entry→readable GPU frame` (true process entry) and
 `process app entry→readable GPU frame` (after command-line and stylesheet setup)
 for that first frame and `full layout complete` separately, then waits for the
 complete snapshot to render before exiting. Its PNG captures the first readable
-frame. Offscreen `--bench` and `--render` continue to use complete geometry;
+frame. Offscreen `bench` and `render` continue to use complete geometry;
 their timings must not be reported as progressive window first-frame timings.
 
 Ignored GPU tests are useful for settings, selection, and image-frame regressions:

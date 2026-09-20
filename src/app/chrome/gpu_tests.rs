@@ -134,9 +134,7 @@ fn settings_and_selection_frame() -> Result<()> {
 				name: "Invalid stylesheet".into(),
 				source: "/example/styles/invalid.mvss.toml".into(),
 				error: Some("em.font: must not be empty".into()),
-				urls: vec![
-					"https://example.invalid/NotoSerif-Regular.ttf".into(),
-				],
+				font_families: Vec::new(),
 			});
 			let overlay = draw_styles(
 				&mut crate::test_support::shaper(),
@@ -144,8 +142,8 @@ fn settings_and_selection_frame() -> Result<()> {
 				settings.style.as_deref(),
 				&interaction,
 				&entries,
-				&crate::fonts::Status::default(),
 				0,
+				false,
 				width,
 				height,
 			);
@@ -744,6 +742,203 @@ fn export_panel_frames() -> Result<()> {
 	Ok(())
 }
 
+/// Previewing the document must visibly recede every settings page, not only
+/// the Generic one, while the header stays as it was.
+#[test]
+fn previewing_recedes_the_styles_and_fonts_pages() {
+	use crate::app::{tab_metrics::TabMetrics, tab_strip::TabStrip};
+	let mut ui = crate::test_support::shaper();
+	let (width, height) = (820.0, 600.0);
+	let settings = ReaderSettings::default();
+	let export = ExportSettings::default();
+	let entries: Vec<crate::stylesheet::Entry> = Vec::new();
+	let catalog = font_samples();
+	let shown: Vec<usize> = (0..catalog.len()).collect();
+	let jobs = std::collections::HashMap::new();
+	let tabs: Vec<ReaderTab> = Vec::new();
+	let strip = TabStrip::default();
+	let metrics = TabMetrics::default();
+	let session = ReaderSession::default();
+	for page in ["styles", "fonts"] {
+		for preview in [false, true] {
+			let interaction = InteractionState {
+				panel_open: true,
+				styles_open: page == "styles",
+				fonts_open: page == "fonts",
+				settings_preview: preview,
+				..Default::default()
+			};
+			let mut chrome = Chrome {
+				ui: &mut ui,
+				session: &session,
+				tabs: &tabs,
+				active_tab: 0,
+				tab_strip: &strip,
+				tab_widths: &metrics.widths,
+				settings: &settings,
+				export: &export,
+				interaction: &interaction,
+				style_entries: &entries,
+				style_page: 0,
+				font_catalog: &catalog,
+				fonts_shown: shown.clone(),
+				font_jobs: &jobs,
+				fonts_page: 0,
+				fonts_note: None,
+				font_source_filter: None,
+				font_status_filter: None,
+				width,
+				height,
+				scrollbar: None,
+				warning: None,
+				status: "",
+				status_until: None,
+				error: false,
+				hover_hint: None,
+				remote_notice: None,
+				watching: false,
+			};
+			let overlay = chrome.overlay();
+			// Fading resolves each paint to a color, so a translucent draw is
+			// what tells the two states apart.
+			let translucent = overlay
+				.iter()
+				.filter(|draw| {
+					let paint = match draw {
+						Draw::Rect(_, paint)
+						| Draw::Icon { paint, .. }
+						| Draw::Polygon { paint, .. }
+						| Draw::Math { paint, .. } => paint,
+						Draw::Glyph(glyph) => &glyph.paint,
+						_ => return false,
+					};
+					matches!(paint, crate::layout::Paint::Color(color)
+						if color.0 & 255 < 255)
+				})
+				.count();
+			assert_eq!(
+				translucent > 0,
+				preview,
+				"{page}: preview fading is wrong ({translucent} faded draws)"
+			);
+		}
+	}
+}
+
+/// The panel's pages are pages of an open panel: a page flag left behind by a
+/// dismissal must not keep drawing or answering pointers.
+#[test]
+fn a_page_flag_without_the_panel_opens_nothing() {
+	use crate::app::{tab_metrics::TabMetrics, tab_strip::TabStrip};
+	let mut ui = crate::test_support::shaper();
+	let (width, height) = (820.0, 600.0);
+	let settings = ReaderSettings::default();
+	let export = ExportSettings::default();
+	let entries: Vec<crate::stylesheet::Entry> = Vec::new();
+	let tabs = vec![ReaderTab::new("a.md".into())];
+	let strip = TabStrip::default();
+	let metrics = TabMetrics::default();
+	let session = ReaderSession::default();
+	let shown: Vec<usize> = Vec::new();
+	let jobs = std::collections::HashMap::new();
+	for page in ["styles", "fonts", "export"] {
+		let interaction = InteractionState {
+			panel_open: false,
+			styles_open: page == "styles",
+			fonts_open: page == "fonts",
+			export_open: page == "export",
+			..Default::default()
+		};
+		let mut chrome = Chrome {
+			ui: &mut ui,
+			session: &session,
+			tabs: &tabs,
+			active_tab: 0,
+			tab_strip: &strip,
+			tab_widths: &metrics.widths,
+			settings: &settings,
+			export: &export,
+			interaction: &interaction,
+			style_entries: &entries,
+			style_page: 0,
+			font_catalog: &[],
+			fonts_shown: shown.clone(),
+			font_jobs: &jobs,
+			fonts_page: 0,
+			fonts_note: None,
+			font_source_filter: None,
+			font_status_filter: None,
+			width,
+			height,
+			scrollbar: None,
+			warning: None,
+			status: "",
+			status_until: None,
+			error: false,
+			hover_hint: None,
+			remote_notice: None,
+			watching: false,
+		};
+		let buttons = chrome.buttons();
+		assert!(
+			!buttons.iter().any(|b| matches!(
+				b.action,
+				Command::StylesFolder
+					| Command::FontsOpenFolder
+					| Command::FontsDownload
+					| Command::ExportRun
+			)),
+			"{page} stayed active without the panel"
+		);
+		// The toolbar answers instead, so the document is never stranded.
+		assert!(
+			buttons.iter().any(|b| b.action == Command::Open),
+			"{page}: no toolbar"
+		);
+	}
+}
+
+/// A few families for the Fonts page, one in each state.
+fn font_samples() -> Vec<crate::fonts::Family> {
+	use markview_core::style::{FontFamily, FontFile, FontSource};
+	let family = |id: &str, name: &str, license: &str| FontFamily {
+		id: id.into(),
+		lookfor: vec![name.into()],
+		description: Some(format!("{name}, a sample family")),
+		license: Some(license.into()),
+		license_url: None,
+		homepage: None,
+		source: vec![FontSource {
+			name: Some("GitHub release".into()),
+			files: vec![FontFile::Url("https://example.invalid/a.otf".into())],
+			archives: Vec::new(),
+		}],
+	};
+	vec![
+		crate::fonts::Family {
+			family: family("noto-serif", "Noto Serif", "OFL-1.1"),
+			owners: vec!["builtin".into()],
+			state: crate::fonts::State::Downloaded,
+			files: vec!["NotoSerif-Regular-0123456789abcdef.ttf".into()],
+			bytes: 616_196,
+		},
+		crate::fonts::Family {
+			family: family("noto-sans-cjk-sc", "Noto Sans SC", "OFL-1.1"),
+			owners: vec!["builtin".into()],
+			state: crate::fonts::State::Missing,
+			files: Vec::new(),
+			bytes: 0,
+		},
+		crate::fonts::Family {
+			family: family("paper-serif", "Paper Serif", "MIT"),
+			owners: vec!["paper".into(), "dark".into()],
+			state: crate::fonts::State::Provided,
+			files: Vec::new(),
+			bytes: 0,
+		},
+	]
+}
+
 #[test]
 #[ignore = "requires a GPU; writes artifacts/ui-redesign/*.png"]
 fn redesigned_chrome_frames() -> Result<()> {
@@ -793,6 +988,8 @@ fn redesigned_chrome_frames() -> Result<()> {
 					"settings",
 					"export",
 					"styles",
+					"fonts",
+					"fonts-preview",
 					"empty",
 					"error",
 					"loading",
@@ -806,11 +1003,17 @@ fn redesigned_chrome_frames() -> Result<()> {
 					let mut interaction = InteractionState {
 						panel_open: matches!(
 							page,
-							"settings" | "preview" | "export" | "styles"
+							"settings"
+								| "preview" | "export" | "styles"
+								| "fonts" | "fonts-preview"
 						),
-						settings_preview: page == "preview",
+						settings_preview: matches!(
+							page,
+							"preview" | "fonts-preview"
+						),
 						export_open: page == "export",
 						styles_open: page == "styles",
+						fonts_open: matches!(page, "fonts" | "fonts-preview"),
 						focus_visible: true,
 						focus: Some(if page == "export" {
 							Command::ExportRun
@@ -849,7 +1052,24 @@ fn redesigned_chrome_frames() -> Result<()> {
 						interaction.settings_scroll =
 							form.reveal(Command::Larger);
 					}
-					let fonts = crate::fonts::Status::default();
+					let catalog = font_samples();
+					let shown: Vec<usize> = (0..catalog.len()).collect();
+					let mut jobs = std::collections::HashMap::new();
+					if matches!(page, "fonts" | "fonts-preview") {
+						jobs.insert(
+							"noto-sans-cjk-sc".to_string(),
+							crate::fonts::Progress {
+								id: "noto-sans-cjk-sc".into(),
+								phase: crate::fonts::Phase::Downloading,
+								files_done: 1,
+								files_total: 2,
+								bytes_done: 8 * 1024 * 1024,
+								bytes_total: Some(16 * 1024 * 1024),
+								current: Some("NotoSansCJKsc-Bold.otf".into()),
+								note: Some("jsDelivr".into()),
+							},
+						);
+					}
 					let mut chrome = Chrome {
 						ui: &mut ui,
 						session,
@@ -862,7 +1082,13 @@ fn redesigned_chrome_frames() -> Result<()> {
 						interaction: &interaction,
 						style_entries: &entries,
 						style_page: 0,
-						fonts: &fonts,
+						font_catalog: &catalog,
+						fonts_shown: shown,
+						font_jobs: &jobs,
+						fonts_page: 0,
+						fonts_note: None,
+						font_source_filter: None,
+						font_status_filter: None,
 						width,
 						height,
 						scrollbar: None,
@@ -875,13 +1101,20 @@ fn redesigned_chrome_frames() -> Result<()> {
 						watching: false,
 					};
 					let overlay = chrome.overlay();
+					// The toolbar's own icon buttons stay visible behind every
+					// page, so the count follows the toolbar rather than a
+					// number that has to be edited whenever one is added.
+					let expected = controls::toolbar_controls(width, false)
+						.iter()
+						.filter(|button| button.icon.is_some())
+						.count();
 					assert_eq!(
 						overlay
 							.iter()
 							.filter(|draw| matches!(draw,
                         Draw::Icon { y, .. } if *y == 10.0))
 							.count(),
-						3,
+						expected,
 						"toolbar must stay visible on {page}"
 					);
 					let horizontal = HashMap::new();

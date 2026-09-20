@@ -104,9 +104,7 @@ impl App {
 			// export panel has nothing to export either.
 			self.worker.release();
 			self.interaction.panel_open = false;
-			self.interaction.export_open = false;
-			self.interaction.export_styles_open = false;
-			self.interaction.styles_open = false;
+			self.interaction.close_pages();
 			if let Some(window) = &self.window {
 				window.set_title("Markview");
 			}

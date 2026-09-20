@@ -31,7 +31,8 @@ pub(crate) fn init(mode: &Mode) {
 		| Mode::Bench
 		| Mode::Latency
 		| Mode::Smoke
-		| Mode::StylesheetList => "warn,markview=debug",
+		| Mode::StylesheetList
+		| Mode::Fonts => "warn,markview=debug",
 	};
 	Builder::from_env(Env::default().default_filter_or(default))
 		.format(|buffer, record| {

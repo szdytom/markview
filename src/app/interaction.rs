@@ -1,7 +1,7 @@
 //! Commands, selection gestures and clipboard actions.
 use crate::cli::Mode;
 use crate::settings::{ReaderSettings, Setting};
-use crate::state::{Command, Modal, ScrollbarAxis, ScrollbarDrag};
+use crate::state::{Command, Modal, PanelTab, ScrollbarAxis, ScrollbarDrag};
 use markview_core::text::TextPosition;
 use std::time::{Duration, Instant};
 
@@ -103,13 +103,13 @@ impl App {
 				self.readers.session.cancel_scroll_animation();
 				self.tab_strip.cancel_drag();
 				self.interaction.panel_open = true;
-				self.interaction.styles_open = !self.interaction.styles_open;
-				self.interaction.export_open = false;
-				self.interaction.export_styles_open = false;
+				self.interaction.close_pages();
+				self.interaction.styles_open = true;
 				self.preferences.style_entries = crate::stylesheet::catalog(
 					crate::stylesheet::directory().as_deref(),
 					self.preferences.values.style.as_deref(),
 				);
+				self.refresh_font_catalog();
 				self.preferences.style_page = 0;
 				self.interaction.focus = None;
 				self.redraw();
@@ -120,11 +120,11 @@ impl App {
 				self.tab_strip.cancel_drag();
 				let open = !self.interaction.export_styles_open;
 				self.interaction.panel_open = true;
+				self.interaction.close_pages();
 				// Closing the chooser returns to the export panel, not to the
 				// document.
 				self.interaction.export_open = true;
 				self.interaction.export_styles_open = open;
-				self.interaction.styles_open = false;
 				self.preferences.style_entries = crate::stylesheet::catalog_for(
 					crate::stylesheet::directory().as_deref(),
 					Some(&self.preferences.export.style),
@@ -147,9 +147,8 @@ impl App {
 					return;
 				}
 				self.interaction.panel_open = open;
+				self.interaction.close_pages();
 				self.interaction.export_open = open;
-				self.interaction.export_styles_open = false;
-				self.interaction.styles_open = false;
 				self.interaction.pointer_down = None;
 				self.interaction.drag_at = None;
 				self.interaction.scrollbar = None;
@@ -176,7 +175,72 @@ impl App {
 			| Command::ExportMargin(_)
 			| Command::ExportScale(_) => return,
 			Command::FontsDownload => {
-				self.download_fonts();
+				// The button says "Download missing", so it takes exactly the
+				// families nothing provides; an installed family is reached by
+				// its own row instead.
+				let ids = self.shown_font_ids();
+				self.download_fonts(&ids, crate::fonts::Scope::Missing);
+				return;
+			}
+			Command::FontsDownloadOne(index) => {
+				if let Some(id) = self.shown_font_id(index) {
+					self.download_fonts(&[id], crate::fonts::Scope::Named);
+				}
+				return;
+			}
+			Command::FontsRedownloadOne(index) => {
+				if let Some(id) = self.shown_font_id(index) {
+					self.download_fonts(&[id], crate::fonts::Scope::All);
+				}
+				return;
+			}
+			Command::FontsCancel(index) => {
+				if let Some(id) = self.shown_font_id(index) {
+					self.cancel_font(&id);
+				}
+				return;
+			}
+			Command::FontsOpenFolder => {
+				self.open_fonts_folder();
+				return;
+			}
+			Command::FontsSourceFilter => {
+				self.next_font_source();
+				self.redraw();
+				return;
+			}
+			Command::FontsStatusFilter => {
+				self.next_font_status();
+				self.redraw();
+				return;
+			}
+			Command::FontsPrev => {
+				self.interaction.fonts_page =
+					self.interaction.fonts_page.saturating_sub(1);
+				self.redraw();
+				return;
+			}
+			Command::FontsNext => {
+				self.interaction.fonts_page += 1;
+				self.redraw();
+				return;
+			}
+			Command::SettingsTab(tab) => {
+				self.interaction.panel_open = true;
+				self.interaction.close_pages();
+				self.interaction.styles_open = tab == PanelTab::Styles;
+				self.interaction.fonts_open = tab == PanelTab::Fonts;
+				if tab == PanelTab::Styles {
+					self.preferences.style_entries = crate::stylesheet::catalog(
+						crate::stylesheet::directory().as_deref(),
+						self.preferences.values.style.as_deref(),
+					);
+				}
+				if tab != PanelTab::Generic {
+					self.refresh_font_catalog();
+				}
+				self.interaction.focus = None;
+				self.redraw();
 				return;
 			}
 			Command::StylesFolder => {
@@ -329,15 +393,17 @@ impl App {
 					self.interaction.settings_scroll = 0.0;
 					self.interaction.settings_preview = false;
 				}
-				self.interaction.styles_open = false;
-				self.interaction.export_open = false;
-				self.interaction.export_styles_open = false;
+				self.interaction.close_pages();
 				self.interaction.pointer_down = None;
 				self.interaction.drag_at = None;
 				self.interaction.scrollbar = None;
 				self.interaction.panel_grab = None;
-				self.interaction.focus =
-					self.interaction.panel_open.then_some(Command::Styles);
+				// Opening the panel focuses its first tab, which is the page
+				// it opens on; closing it leaves nothing focused.
+				self.interaction.focus = self
+					.interaction
+					.panel_open
+					.then_some(Command::SettingsTab(PanelTab::Generic));
 				self.refresh_hover();
 				self.redraw();
 				return;

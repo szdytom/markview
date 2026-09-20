@@ -54,6 +54,112 @@ id = "emoji"
 emoji = true
 lookfor = ["Noto Color Emoji", "Apple Color Emoji", "Segoe UI Emoji", "Twemoji Mozilla", "EmojiOne Color", "JoyPixels", "Twitter Color Emoji", "EmojiSymbols"]
 
+# The recommended downloads. A family is not a font definition: these only say
+# how to obtain a concrete family, and a name that is already installed means
+# there is nothing to fetch. Nothing here is fetched until the reader asks.
+[[font-family]]
+id = "noto-serif"
+lookfor = ["Noto Serif"]
+description = "Latin reading serif, regular and bold and italic"
+license = "OFL-1.1"
+license_url = "https://scripts.sil.org/OFL"
+homepage = "https://github.com/notofonts/noto-fonts"
+
+[[font-family.source]]
+name = "GitHub release"
+[[font-family.source.archives]]
+url = "https://github.com/notofonts/latin-greek-cyrillic/releases/download/NotoSerif-v2.015/NotoSerif-v2.015.zip"
+members = [
+    "NotoSerif/hinted/ttf/NotoSerif-Regular.ttf",
+    "NotoSerif/hinted/ttf/NotoSerif-Bold.ttf",
+    "NotoSerif/hinted/ttf/NotoSerif-Italic.ttf",
+]
+
+[[font-family.source]]
+name = "jsDelivr"
+files = [
+    "https://cdn.jsdelivr.net/gh/notofonts/noto-fonts@main/hinted/ttf/NotoSerif/NotoSerif-Regular.ttf",
+    "https://cdn.jsdelivr.net/gh/notofonts/noto-fonts@main/hinted/ttf/NotoSerif/NotoSerif-Bold.ttf",
+    "https://cdn.jsdelivr.net/gh/notofonts/noto-fonts@main/hinted/ttf/NotoSerif/NotoSerif-Italic.ttf",
+]
+
+[[font-family]]
+id = "noto-sans"
+lookfor = ["Noto Sans"]
+description = "Latin sans-serif, regular and bold and italic"
+license = "OFL-1.1"
+license_url = "https://scripts.sil.org/OFL"
+homepage = "https://github.com/notofonts/noto-fonts"
+
+[[font-family.source]]
+name = "GitHub release"
+[[font-family.source.archives]]
+url = "https://github.com/notofonts/latin-greek-cyrillic/releases/download/NotoSans-v2.015/NotoSans-v2.015.zip"
+members = [
+    "NotoSans/hinted/ttf/NotoSans-Regular.ttf",
+    "NotoSans/hinted/ttf/NotoSans-Bold.ttf",
+    "NotoSans/hinted/ttf/NotoSans-Italic.ttf",
+]
+
+[[font-family.source]]
+name = "jsDelivr"
+files = [
+    "https://cdn.jsdelivr.net/gh/notofonts/noto-fonts@main/hinted/ttf/NotoSans/NotoSans-Regular.ttf",
+    "https://cdn.jsdelivr.net/gh/notofonts/noto-fonts@main/hinted/ttf/NotoSans/NotoSans-Bold.ttf",
+    "https://cdn.jsdelivr.net/gh/notofonts/noto-fonts@main/hinted/ttf/NotoSans/NotoSans-Italic.ttf",
+]
+
+# The subset faces are named "Noto Serif SC"; the full collections are named
+# "Noto Serif CJK SC". Both are listed so either installed family is
+# recognized. Each of these files is about 8 to 12 MiB.
+[[font-family]]
+id = "noto-serif-cjk-sc"
+lookfor = ["Noto Serif SC", "Noto Serif CJK SC", "Source Han Serif SC"]
+description = "Simplified Chinese reading serif, subset OTF"
+license = "OFL-1.1"
+license_url = "https://scripts.sil.org/OFL"
+homepage = "https://github.com/notofonts/noto-cjk"
+
+[[font-family.source]]
+name = "GitHub release"
+[[font-family.source.archives]]
+url = "https://github.com/notofonts/noto-cjk/releases/download/Serif2.003/14_NotoSerifSC.zip"
+members = [
+    "SubsetOTF/SC/NotoSerifSC-Regular.otf",
+    "SubsetOTF/SC/NotoSerifSC-Bold.otf",
+]
+
+[[font-family.source]]
+name = "jsDelivr"
+files = [
+    "https://cdn.jsdelivr.net/gh/notofonts/noto-cjk@main/Serif/SubsetOTF/SC/NotoSerifSC-Regular.otf",
+    "https://cdn.jsdelivr.net/gh/notofonts/noto-cjk@main/Serif/SubsetOTF/SC/NotoSerifSC-Bold.otf",
+]
+
+[[font-family]]
+id = "noto-sans-cjk-sc"
+lookfor = ["Noto Sans SC", "Noto Sans CJK SC", "Source Han Sans SC"]
+description = "Simplified Chinese sans-serif, subset OTF"
+license = "OFL-1.1"
+license_url = "https://scripts.sil.org/OFL"
+homepage = "https://github.com/notofonts/noto-cjk"
+
+[[font-family.source]]
+name = "GitHub release"
+[[font-family.source.archives]]
+url = "https://github.com/notofonts/noto-cjk/releases/download/Sans2.004/08_NotoSansCJKsc.zip"
+members = [
+    "NotoSansCJKsc-Regular.otf",
+    "NotoSansCJKsc-Bold.otf",
+]
+
+[[font-family.source]]
+name = "jsDelivr"
+files = [
+    "https://cdn.jsdelivr.net/gh/notofonts/noto-cjk@main/Sans/SubsetOTF/SC/NotoSansSC-Regular.otf",
+    "https://cdn.jsdelivr.net/gh/notofonts/noto-cjk@main/Sans/SubsetOTF/SC/NotoSansSC-Bold.otf",
+]
+
 [svg.generic_font_family]
 serif = ["serif"]
 sans-serif = ["sans-serif"]

@@ -110,7 +110,7 @@ Windows 的 MSI 会把 Markview 加入 `.md`、`.markdown`、`.mdown` 的**打�
 
 | 引擎 | 10 KiB | 100 KiB |
 |:--|--:|--:|
-| `markview --pdf` | 0.04 | 0.10 |
+| `markview pdf` | 0.04 | 0.10 |
 | `pandoc --pdf-engine=typst` | 0.48 | 0.72 |
 | `pandoc` → 无头 Chromium | 0.65 | 0.83 |
 | `pandoc --pdf-engine=xelatex` | 1.89 | 2.16 |
@@ -174,10 +174,10 @@ Markview 不需要浏览器或打印对话框就能导出文档。在阅读器�
 同样的导出也有命令行形式，适合脚本与批处理：
 
 ```sh
-markview --pdf document.md --output document.pdf
-markview --pdf document.md -o paper.pdf --paper letter --margin 20,25
-markview --pdf document.md -o paper.pdf --footer "{title} — {page}/{pages}"
-markview --pdf document.md -o document.pdf --watch
+markview pdf document.md --output document.pdf
+markview pdf document.md -o paper.pdf --paper letter --margin 20,25
+markview pdf document.md -o paper.pdf --footer "{title} — {page}/{pages}"
+markview pdf document.md -o document.pdf --watch
 ```
 
 内置的 `print` 样式表决定纸张：A4、左右 20mm 页边距、白底黑字、页脚居中页码。正文默认 12pt，除非用 `--font-size` 另行指定。`--paper` 接受 `a3`、`a4`、`a5`、`a6`、`b5`、`letter`、`legal`、`tabloid` 或毫米制的`宽x高`；`--margin` 接受 1、2 或 4 个毫米值；`--landscape` 交换长短边。页眉页脚共六个槽位，用 `--header`、`--footer` 及 `-left`/`-right` 变体设置，模板中可用 `{page}`、`{pages}`、`{title}`、`{path}`。

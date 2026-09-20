@@ -293,7 +293,7 @@ fn configured_generic_mapping_is_used_for_measurement() {
 	let mapped = DiagramFonts::get_for(
 		&config,
 		&[],
-		&[family.clone()],
+		std::slice::from_ref(&family),
 		&[("serif".into(), vec![family.clone()])],
 	);
 	assert_eq!(

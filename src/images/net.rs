@@ -8,7 +8,9 @@ use super::source::bounded_to;
 use anyhow::{Context, Result, bail};
 use reqwest::header::HeaderMap;
 use std::{
+	io::Write,
 	net::{IpAddr, SocketAddr, ToSocketAddrs},
+	path::Path,
 	time::{Duration, SystemTime, UNIX_EPOCH},
 };
 /// Redirect hops followed before a request is abandoned.
@@ -190,33 +192,46 @@ pub(super) fn permitted(ip: IpAddr) -> bool {
 ///
 /// Resolution happens here rather than inside the client so the addresses are
 /// inspected first and then pinned; the client cannot re-resolve behind us.
-fn pinned_client(url: &url::Url) -> Result<reqwest::blocking::Client> {
-	if !matches!(url.scheme(), "http" | "https") {
-		bail!("Unsupported image URL scheme");
-	}
-	// `Url::host_str` keeps the brackets of an IPv6 literal, which does not
-	// resolve; the address itself is what a lookup and a pin need.
+/// The host and the permitted addresses `url` resolves to.
+///
+/// `Url::host_str` keeps the brackets of an IPv6 literal, which does not
+/// resolve; the address itself is what a lookup and a pin need.
+fn resolved(url: &url::Url, what: &str) -> Result<(String, Vec<SocketAddr>)> {
 	let host = match url.host() {
 		Some(url::Host::Domain(domain)) => domain.to_owned(),
 		Some(url::Host::Ipv4(addr)) => addr.to_string(),
 		Some(url::Host::Ipv6(addr)) => addr.to_string(),
-		None => bail!("Image URL has no host"),
+		None => bail!("{what} URL has no host"),
 	};
 	let port = url
 		.port_or_known_default()
-		.context("Image URL has no port")?;
+		.with_context(|| format!("{what} URL has no port"))?;
 	let addrs: Vec<SocketAddr> = (host.as_str(), port)
 		.to_socket_addrs()
-		.context("Cannot resolve image host")?
+		.with_context(|| format!("Cannot resolve {what} host"))?
 		.collect();
 	if addrs.is_empty() {
-		bail!("Image host has no address");
+		bail!("{what} host has no address");
 	}
 	for addr in &addrs {
 		if !permitted(addr.ip()) {
-			bail!("Image host resolves to a local or private address");
+			bail!("{what} host resolves to a local or private address");
 		}
 	}
+	Ok((host, addrs))
+}
+
+/// Whether `url` may be fetched at all, before any address is resolved.
+fn check_scheme(url: &url::Url, what: &str) -> Result<()> {
+	if !matches!(url.scheme(), "http" | "https") {
+		bail!("Unsupported {what} URL scheme");
+	}
+	Ok(())
+}
+
+fn pinned_client(url: &url::Url) -> Result<reqwest::blocking::Client> {
+	check_scheme(url, "image")?;
+	let (host, addrs) = resolved(url, "Image")?;
 	reqwest::blocking::Client::builder()
 		.timeout(Duration::from_secs(15))
 		.connect_timeout(Duration::from_secs(5))
@@ -238,11 +253,187 @@ pub(super) fn get(url: &str, validators: &Validators) -> Result<Fetched> {
 	get_with(url, validators, super::source::MAX_BYTES as u64, "Image")
 }
 
-/// An unconditional GET for a caller outside the image cache, such as a font
-/// download. The caller chooses the body cap; the address policy and the
-/// redirect handling are exactly those of an image request.
-pub(crate) fn get_body(url: &str, max: u64) -> Result<Vec<u8>> {
-	Ok(get_with(url, &Validators::default(), max, "Font file")?.body)
+/// A transfer that may make no progress at all before it is abandoned.
+///
+/// A whole-request timeout cannot serve a font archive: the same client that
+/// gives an image fifteen seconds would cut a hundred-megabyte transfer off in
+/// the middle. `read_timeout` bounds the silence between bytes instead.
+const STALL_TIMEOUT: Duration = Duration::from_secs(60);
+/// How often a cancelled transfer is noticed, even while it is stalled.
+const CANCEL_POLL: Duration = Duration::from_millis(150);
+
+/// Streams a document-controlled URL into a file.
+///
+/// Only the async client carries a read timeout, so one small runtime drives
+/// this path; the image cache keeps its blocking client and its own limits.
+pub(crate) struct Downloader {
+	runtime: tokio::runtime::Runtime,
+}
+
+impl Downloader {
+	pub(crate) fn new() -> Result<Self> {
+		let runtime = tokio::runtime::Builder::new_multi_thread()
+			.worker_threads(1)
+			.enable_all()
+			.build()
+			.context("Download runtime")?;
+		Ok(Self { runtime })
+	}
+
+	/// Streams `url` into `path`, bounded by `cap` bytes, reporting the bytes
+	/// written so far after every chunk. `cancel` is polled throughout, so a
+	/// stalled transfer still stops promptly.
+	pub(crate) fn fetch(
+		&self,
+		url: &str,
+		path: &Path,
+		cap: u64,
+		progress: &mut dyn FnMut(u64),
+		cancel: &dyn Fn() -> bool,
+	) -> Result<()> {
+		self.runtime
+			.block_on(fetch_into(url, path, cap, progress, cancel))
+	}
+
+	/// How long `url` takes to answer a one-byte range request.
+	pub(crate) fn probe(&self, url: &str) -> Result<Duration> {
+		self.runtime.block_on(probe_once(url))
+	}
+}
+
+/// A client pinned to the addresses `url`'s host resolved to, as
+/// [`pinned_client`] does for the blocking paths.
+fn pinned_async_client(
+	url: &url::Url,
+	read_timeout: Duration,
+	total_timeout: Option<Duration>,
+) -> Result<reqwest::Client> {
+	check_scheme(url, "download")?;
+	let (host, addrs) = resolved(url, "download")?;
+	let mut builder = reqwest::Client::builder()
+		.connect_timeout(Duration::from_secs(5))
+		.read_timeout(read_timeout)
+		.referer(false)
+		.redirect(reqwest::redirect::Policy::none())
+		.resolve_to_addrs(&host, &addrs);
+	if let Some(total) = total_timeout {
+		builder = builder.timeout(total);
+	}
+	builder.build().context("Download client")
+}
+
+/// Follows one redirect hop, or returns the target of the next one.
+fn next_hop(
+	current: &url::Url,
+	response: &reqwest::Response,
+) -> Result<url::Url> {
+	let location = response
+		.headers()
+		.get(reqwest::header::LOCATION)
+		.and_then(|value| value.to_str().ok())
+		.context("Redirect without a location")?;
+	current.join(location).context("Invalid redirect target")
+}
+
+async fn fetch_into(
+	url: &str,
+	path: &Path,
+	cap: u64,
+	progress: &mut dyn FnMut(u64),
+	cancel: &dyn Fn() -> bool,
+) -> Result<()> {
+	let mut current = url::Url::parse(url).context("Invalid download URL")?;
+	for _ in 0..=MAX_REDIRECTS {
+		// A cancelled transfer must not even open a connection, and a server
+		// that accepts one and then stalls before its headers must not hold
+		// the cancellation off until the stall timeout.
+		if cancel() {
+			bail!("Cancelled");
+		}
+		let client = pinned_async_client(&current, STALL_TIMEOUT, None)?;
+		let response = tokio::select! {
+			response = client.get(current.clone()).send() => response?,
+			_ = wait_for_cancel(cancel) => bail!("Cancelled"),
+		};
+		if response.status().is_redirection() {
+			current = next_hop(&current, &response)?;
+			continue;
+		}
+		let response = response.error_for_status()?;
+		let total = response.content_length();
+		if let Some(total) = total
+			&& total > cap
+		{
+			bail!("File exceeds {} MiB", cap / (1024 * 1024));
+		}
+		let body = stream_body(response, path, cap, total, progress);
+		tokio::pin!(body);
+		tokio::select! {
+			result = &mut body => result?,
+			_ = wait_for_cancel(cancel) => bail!("Cancelled"),
+		}
+		return Ok(());
+	}
+	bail!("Redirects to too many locations")
+}
+
+async fn stream_body(
+	mut response: reqwest::Response,
+	path: &Path,
+	cap: u64,
+	total: Option<u64>,
+	progress: &mut dyn FnMut(u64),
+) -> Result<()> {
+	let mut file = std::fs::File::create(path)
+		.with_context(|| format!("Cannot write {}", path.display()))?;
+	let mut written = 0u64;
+	while let Some(chunk) = response.chunk().await? {
+		written = written.saturating_add(chunk.len() as u64);
+		if written > cap {
+			bail!("File exceeds {} MiB", cap / (1024 * 1024));
+		}
+		file.write_all(&chunk)?;
+		progress(written);
+	}
+	file.sync_all()?;
+	// A body shorter than its own announced length is a truncated transfer,
+	// which must not be mistaken for a complete file.
+	if let Some(total) = total
+		&& written != total
+	{
+		bail!("Truncated transfer");
+	}
+	Ok(())
+}
+
+async fn wait_for_cancel(cancel: &dyn Fn() -> bool) {
+	while !cancel() {
+		tokio::time::sleep(CANCEL_POLL).await;
+	}
+}
+
+async fn probe_once(url: &str) -> Result<Duration> {
+	let mut current = url::Url::parse(url).context("Invalid download URL")?;
+	let started = std::time::Instant::now();
+	for _ in 0..=MAX_REDIRECTS {
+		let client = pinned_async_client(
+			&current,
+			Duration::from_secs(5),
+			Some(Duration::from_secs(10)),
+		)?;
+		let response = client
+			.get(current.clone())
+			.header(reqwest::header::RANGE, "bytes=0-0")
+			.send()
+			.await?;
+		if response.status().is_redirection() {
+			current = next_hop(&current, &response)?;
+			continue;
+		}
+		response.error_for_status()?;
+		return Ok(started.elapsed());
+	}
+	bail!("Redirects to too many locations")
 }
 
 fn get_with(

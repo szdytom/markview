@@ -222,21 +222,36 @@ impl ApplicationHandler<Event> for App {
 			Event::Exported(outcome) => {
 				self.export_finished(*outcome);
 			}
-			Event::Fonts(status) => {
-				let finished = self.fonts.running && !status.running;
-				self.fonts = *status;
-				if finished {
-					self.register_fonts();
-					if let Some(failure) = self.fonts.failures.last() {
-						self.notify(
-							&format!(
-								"Font {}: {}",
-								failure.file, failure.reason
-							),
-							true,
-							6,
-						);
-					}
+			Event::Fonts(progress) => {
+				self.font_jobs.insert(progress.id.clone(), *progress);
+				self.redraw();
+			}
+			Event::FontsSettled(summary) => {
+				// Only the families this run owned are retired: another run's
+				// progress must survive this event.
+				for id in &summary.requested {
+					self.font_jobs.remove(id);
+				}
+				self.font_stored = summary.stored;
+				self.register_fonts();
+				// The catalogue's states follow the directory, which the job
+				// may just have changed.
+				self.refresh_font_catalog();
+				self.font_note =
+					match (summary.failed.first(), summary.cancelled.first()) {
+						(Some((id, reason)), _) => {
+							Some(format!("{id}: {reason}"))
+						}
+						(None, Some(id)) => Some(format!("{id}: cancelled")),
+						(None, None) if summary.stored > 0 => Some(format!(
+							"{} files stored, {} MiB",
+							summary.stored,
+							summary.bytes / (1024 * 1024)
+						)),
+						(None, None) => Some("Nothing to download".into()),
+					};
+				if let Some((_, reason)) = summary.failed.first() {
+					self.notify(reason, true, 6);
 				}
 				self.redraw();
 			}

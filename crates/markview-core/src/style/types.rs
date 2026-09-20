@@ -501,13 +501,106 @@ pub struct FontDefinition {
 	#[serde(default)]
 	pub emoji: bool,
 	pub lookfor: Vec<String>,
-	/// Font files this family may be downloaded from, several per family.
-	///
-	/// Absent or empty means the family must come from the host or from
-	/// `--fonts`, which is what every stylesheet did before this field
-	/// existed. Nothing is fetched at parse or install time.
+}
+
+/// One downloadable font family, such as Noto Sans CJK SC with its several
+/// weights and subsets.
+///
+/// A family is independent of a [`FontDefinition`]: the definition says what a
+/// short name like `serif` means, while this says how a concrete family is
+/// obtained. Downloading is therefore nothing more than another `--fonts`
+/// directory, and the names a rule can reach come from the font files
+/// themselves. Nothing is fetched at parse or install time.
+#[derive(Clone, Debug, PartialEq, Eq, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct FontFamily {
+	/// The bookkeeping key: it selects this family on the command line and in
+	/// the reader, and it is never a font name.
+	pub id: String,
+	/// Names the family may already report for itself, used as aliases. When
+	/// any of them is available there is nothing to download.
+	pub lookfor: Vec<String>,
 	#[serde(default)]
-	pub urls: Vec<String>,
+	pub description: Option<String>,
+	/// An SPDX identifier such as `OFL-1.1`.
+	#[serde(default)]
+	pub license: Option<String>,
+	#[serde(default)]
+	pub license_url: Option<String>,
+	#[serde(default)]
+	pub homepage: Option<String>,
+	/// The ways to obtain the family. They are mirrors of one another: tried
+	/// in order, and the first one that succeeds whole is the one used.
+	pub source: Vec<FontSource>,
+}
+impl FontFamily {
+	/// The name a list shows before the family is on disk.
+	pub fn display_name(&self) -> &str {
+		self.lookfor.first().map(String::as_str).unwrap_or(&self.id)
+	}
+}
+
+/// One way to obtain a whole family: some direct files, some archives, or
+/// both.
+#[derive(Clone, Debug, PartialEq, Eq, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct FontSource {
+	/// A label for the reader, such as the mirror's name.
+	#[serde(default)]
+	pub name: Option<String>,
+	#[serde(default)]
+	pub files: Vec<FontFile>,
+	#[serde(default)]
+	pub archives: Vec<FontArchive>,
+}
+impl FontSource {
+	pub fn label(&self) -> Option<&str> {
+		self.name.as_deref()
+	}
+	pub fn is_empty(&self) -> bool {
+		self.files.is_empty() && self.archives.is_empty()
+	}
+}
+
+/// One file a source downloads as it stands.
+#[derive(Clone, Debug, PartialEq, Eq, Deserialize)]
+#[serde(untagged)]
+pub enum FontFile {
+	Url(String),
+	Full {
+		url: String,
+		#[serde(default)]
+		sha256: Option<String>,
+	},
+}
+impl FontFile {
+	pub fn url(&self) -> &str {
+		match self {
+			Self::Url(url) => url,
+			Self::Full { url, .. } => url,
+		}
+	}
+	pub fn sha256(&self) -> Option<&str> {
+		match self {
+			Self::Url(_) => None,
+			Self::Full { sha256, .. } => sha256.as_deref(),
+		}
+	}
+}
+
+/// One archive a source downloads and extracts.
+///
+/// The container is recognized from its leading bytes, so a `.tar.gz` served
+/// under a `.zip` URL still works; `members` selects what to take out, matched
+/// against the member path with `/` as the separator, where `*` stops at a
+/// separator, `**` crosses one, and `?` matches one character.
+#[derive(Clone, Debug, PartialEq, Eq, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct FontArchive {
+	pub url: String,
+	#[serde(default)]
+	pub sha256: Option<String>,
+	pub members: Vec<String>,
 }
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Deserialize)]
 pub enum Decoration {

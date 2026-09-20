@@ -32,9 +32,9 @@ fn every_form_action_is_reachable_without_clicking_through_the_clip() {
 				}
 			};
 			let initial = build(&mut ui, 0.0);
-			// The settings form carries one more preference than the export
-			// form and no longer fits the panel at the default window.
-			assert_eq!(initial.max_scroll > 0.0, height < 800.0 || !exporting);
+			// Both forms fit the default window now that the theme row lives on
+			// the Styles tab; a short window still has to be scrolled.
+			assert_eq!(initial.max_scroll > 0.0, height < 800.0);
 			for button in &initial.buttons {
 				assert_eq!(button.rect.h, CONTROL);
 				let revealed = build(&mut ui, initial.reveal(button.action));

@@ -66,7 +66,7 @@ def export(binary: Path, fixture: Path, out: Path, page: tuple[int, int],
     pdf = out / "compare.pdf"
     png = out / "compare.png"
     run([
-        str(binary), "--pdf", str(fixture), "--output", str(pdf),
+        str(binary), "pdf", str(fixture), "--output", str(pdf),
         "--paper", f"{millimetres(width):.5f}x{millimetres(height):.5f}",
         "--margin", "0", "--footer", "", "--style", "print",
         "--font-size", str(FONT_SIZE_PX),
@@ -74,7 +74,7 @@ def export(binary: Path, fixture: Path, out: Path, page: tuple[int, int],
     # The renderer clamps the measure to `width / scale - 32` and shows
     # `height / scale - top - bottom` logical pixels.
     run([
-        str(binary), "--render", str(fixture), "--output", str(png),
+        str(binary), "render", str(fixture), "--output", str(png),
         "--style", "print",
         "--width", str(round((width + 32) * scale)),
         "--height", str(round((height + BOTTOM_INSET + 24) * scale)),

@@ -27,29 +27,9 @@ fn choices(
 		.collect()
 }
 fn rows(settings: &ReaderSettings) -> Vec<Row> {
-	let styles = settings
-		.style
-		.as_ref()
-		.map(|ids| {
-			if ids.is_empty() {
-				"Light base".into()
-			} else {
-				ids.join(", ")
-			}
-		})
-		.unwrap_or_else(|| "System".into());
+	// Choosing a stylesheet is the Styles tab's own job, so this page offers
+	// no theme row at all.
 	vec![
-		Row::new(
-			format!("Styles · {styles}"),
-			choices(
-				&[
-					("System", Command::SystemTheme),
-					("Styles…", Command::Styles),
-				],
-				settings.style.is_none().then_some(Command::SystemTheme),
-			),
-		)
-		.section("Appearance"),
 		Row::new(
 			"Text size",
 			choices(&[("−", Command::Smaller), ("+", Command::Larger)], None),
@@ -138,8 +118,14 @@ pub(in crate::app) fn form(
 	width: f32,
 	height: f32,
 ) -> Form {
-	let mut form =
-		Form::new(width, height, scroll, rows(settings), Command::Settings);
+	let mut form = Form::new(
+		width,
+		height,
+		scroll,
+		rows(settings),
+		Some(Command::Settings),
+		true,
+	);
 	form.preview_control();
 	form.footer(
 		ui,
@@ -219,16 +205,28 @@ pub(super) fn draw_controls(
 	height: f32,
 ) -> Vec<Draw> {
 	if interaction.panel_open {
-		form(ui, settings, interaction.settings_scroll, width, height)
+		let form =
+			form(ui, settings, interaction.settings_scroll, width, height);
+		let rect = form.rect;
+		let mut out = form
+			.without_header()
 			.preview(interaction.settings_preview)
 			.draw(
 				ui,
 				interaction,
-				"Reading settings",
+				"",
 				"Saved automatically",
 				C::Muted,
 				(width, height),
-			)
+			);
+		out.extend(super::components::draw_settings_header(
+			ui,
+			interaction,
+			rect,
+			crate::state::PanelTab::Generic,
+			interaction.settings_preview,
+		));
+		out
 	} else {
 		draw_toolbar(ui, interaction, width)
 	}

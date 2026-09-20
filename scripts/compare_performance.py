@@ -187,7 +187,7 @@ def main():
             for side in order:
                 output = args.output / f"{name}-{group + 1}-{side}.json"
                 print(f"{name}: group {group + 1}/{args.groups} {side}", flush=True)
-                subprocess.run([str(binaries[side]), "--bench", str(ROOT / fixture), "--offline",
+                subprocess.run([str(binaries[side]), "bench", str(ROOT / fixture), "--offline",
                                 "--iterations", str(args.iterations), "--output", str(output.resolve())],
                                cwd=ROOT, check=True, stdout=subprocess.DEVNULL)
                 sides[side].append(json.loads(output.read_text()))

@@ -28,6 +28,7 @@ impl App {
 					.as_deref()
 					.filter(|url| !super::anchor::footnote_link(url))
 			});
+		let shown = self.shown_fonts();
 		Chrome {
 			ui: &mut self.ui,
 			session: &self.readers.session,
@@ -40,7 +41,13 @@ impl App {
 			interaction: &self.interaction,
 			style_entries: &self.preferences.style_entries,
 			style_page: self.preferences.style_page,
-			fonts: &self.fonts,
+			font_catalog: &self.font_catalog,
+			fonts_shown: shown,
+			font_jobs: &self.font_jobs,
+			fonts_page: self.interaction.fonts_page,
+			fonts_note: self.font_note.as_deref(),
+			font_source_filter: self.font_source_filter.as_deref(),
+			font_status_filter: self.font_status_filter,
 			width,
 			height,
 			scrollbar,
@@ -62,7 +69,17 @@ impl App {
 	}
 	pub(super) fn focus_buttons(&mut self) -> Vec<Button> {
 		if let Some(form) = self.panel_form() {
-			form.buttons.into_iter().filter(|b| b.enabled).collect()
+			// The settings header is not part of the scrolling form, but its
+			// tabs are still reachable by keyboard: they lead the order.
+			let mut buttons: Vec<Button> = self
+				.buttons()
+				.into_iter()
+				.filter(|b| {
+					matches!(b.action, crate::state::Command::SettingsTab(_))
+				})
+				.collect();
+			buttons.extend(form.buttons.into_iter().filter(|b| b.enabled));
+			buttons
 		} else {
 			let mut buttons: Vec<Button> = Vec::new();
 			for button in self.buttons() {

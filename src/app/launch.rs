@@ -24,6 +24,9 @@ pub(super) fn run() -> Result<()> {
 		return Ok(());
 	};
 	crate::logging::init(&args.mode);
+	if let Some(command) = &args.fonts {
+		return super::fonts_command::run(command, args.offline);
+	}
 	if args.list_stylesheets {
 		let directory = crate::stylesheet::directory();
 		for entry in crate::stylesheet::catalog(directory.as_deref(), None) {

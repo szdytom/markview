@@ -15,10 +15,10 @@ use std::{
 };
 pub use types::{
 	CaptionSource, CjkType, Color, ColorField, Condition, ConditionSet,
-	Decoration, Font, FontDefType, FontDefinition, MAX_CHAIN, MarkerShape,
-	MarkerShapes, MermaidStyle, Padding, PageStyle, Rule,
-	SYNTHETIC_ITALIC_ANGLE_DEG, SvgStyle, TextAlign, Variant, chain_of,
-	chain_push, chain_set, parse_paper_size,
+	Decoration, Font, FontArchive, FontDefType, FontDefinition, FontFamily,
+	FontFile, FontSource, MAX_CHAIN, MarkerShape, MarkerShapes, MermaidStyle,
+	Padding, PageStyle, Rule, SYNTHETIC_ITALIC_ANGLE_DEG, SvgStyle, TextAlign,
+	Variant, chain_of, chain_push, chain_set, parse_paper_size,
 };
 
 /// A supported stylesheet destination.
@@ -50,6 +50,9 @@ pub struct Stylesheet {
 	pub targets: Vec<StyleTarget>,
 	pub fontdefs: BTreeMap<String, FontDefinition>,
 	fontdef_variants: BTreeMap<(String, Option<FontDefType>), FontDefinition>,
+	/// Downloadable families in declaration order, each id declared once. A
+	/// higher layer replaces a whole entry rather than merging into it.
+	pub font_families: Vec<FontFamily>,
 	cjk_type: CjkType,
 	pub meta: Metadata,
 	/// Rules keyed by the canonical condition set they require.
@@ -300,6 +303,12 @@ impl Stylesheet {
 			self.fontdef_variants.insert(key.clone(), def.clone());
 		}
 		self.resolve_fontdefs();
+		for family in &higher.font_families {
+			match self.font_families.iter_mut().find(|o| o.id == family.id) {
+				Some(existing) => *existing = family.clone(),
+				None => self.font_families.push(family.clone()),
+			}
+		}
 		for (conditions, v) in &higher.rules {
 			self.rules.entry(*conditions).or_default().overlay(v);
 		}
@@ -348,21 +357,9 @@ impl Stylesheet {
 			.keys()
 			.any(|(candidate, _)| candidate == id)
 	}
-	/// The font file URLs the sheet declares, deduplicated, across every CJK
-	/// variant rather than only the selected one.
-	///
-	/// The list is what a reader offers to download, so it must not depend on
-	/// which variant happens to be selected right now.
-	pub fn font_urls(&self) -> Vec<String> {
-		let mut out: Vec<String> = Vec::new();
-		for def in self.fontdef_variants.values() {
-			for url in &def.urls {
-				if !out.contains(url) {
-					out.push(url.clone());
-				}
-			}
-		}
-		out
+	/// The downloadable family this id names, when any layer declared one.
+	pub fn font_family(&self, id: &str) -> Option<&FontFamily> {
+		self.font_families.iter().find(|family| family.id == id)
 	}
 	pub fn apply_font_overrides(
 		&mut self,

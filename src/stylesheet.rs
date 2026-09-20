@@ -151,8 +151,8 @@ pub struct Entry {
 	pub name: String,
 	pub source: String,
 	pub error: Option<String>,
-	/// Font files the sheet offers to download, in declaration order.
-	pub urls: Vec<String>,
+	/// Font families the sheet offers to download, in declaration order.
+	pub font_families: Vec<markview_core::style::FontFamily>,
 }
 fn read_rules(id: &str, dir: Option<&Path>) -> Result<Arc<Stylesheet>> {
 	validate_id(id)?;
@@ -224,9 +224,9 @@ pub fn catalog_for(
 				.ok()
 				.and_then(|s| s.meta.name.clone())
 				.unwrap_or_else(|| id.clone());
-			let urls = result
+			let font_families = result
 				.as_ref()
-				.map(|sheet| sheet.font_urls())
+				.map(|sheet| sheet.font_families.clone())
 				.unwrap_or_default();
 			let error = if incompatible {
 				Some(format!(
@@ -249,7 +249,7 @@ pub fn catalog_for(
 				name,
 				source,
 				error,
-				urls,
+				font_families,
 			})
 		})
 		.collect()
@@ -348,18 +348,19 @@ mod tests {
 		assert!(validate(&tmp.path().join("missing.mvss.toml")).is_err());
 	}
 	#[test]
-	fn a_sheet_with_font_urls_validates_and_installs_without_fetching() {
+	fn a_sheet_with_font_families_validates_and_installs_without_fetching() {
 		let tmp = tempfile::tempdir().unwrap();
 		let source = tmp.path().join("noto.mvss.toml");
 		fs::write(
 			&source,
-			"format_version=2\nversion=1\n[[fontdef]]\nid='reading'\nlookfor=['Noto Serif']\nurls=['https://example.invalid/NotoSerif-Regular.ttf']\n[[rule]]\nwhen=['body']\nfont=[{family='reading'}]",
+			"format_version=2\nversion=1\n[[font-family]]\nid='reading'\nlookfor=['Noto Serif']\n[[font-family.source]]\nfiles=['https://example.invalid/NotoSerif-Regular.ttf']\n[[rule]]\nwhen=['body']\nfont=[{family='serif'}]",
 		)
 		.unwrap();
 		let sheet = validate(&source).unwrap();
+		assert_eq!(sheet.font_families.len(), 1);
 		assert_eq!(
-			sheet.font_urls(),
-			["https://example.invalid/NotoSerif-Regular.ttf"]
+			sheet.font_families[0].source[0].files[0].url(),
+			"https://example.invalid/NotoSerif-Regular.ttf"
 		);
 		// The URL does not resolve, so a fetch would fail; validating and
 		// installing must stay local. Only the stylesheet is copied.

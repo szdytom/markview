@@ -43,7 +43,7 @@ h1 { font-size: 1.6em }
 
 def engines():
     def markview(fixture, work):
-        return [str(BINARY), "--pdf", str(fixture), "-o", str(work / "out.pdf")]
+        return [str(BINARY), "pdf", str(fixture), "-o", str(work / "out.pdf")]
 
     def xelatex(fixture, work):
         return ["pandoc", str(fixture), "-o", str(work / "out.pdf"),

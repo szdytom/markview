@@ -146,9 +146,7 @@ impl App {
 		// The panel closes so the document and the status line stay visible
 		// while the file is written.
 		self.interaction.panel_open = false;
-		self.interaction.export_open = false;
-		self.interaction.export_styles_open = false;
-		self.interaction.styles_open = false;
+		self.interaction.close_pages();
 		self.interaction.focus = None;
 		self.interaction.pointer_down = None;
 		self.dialog_open = true;

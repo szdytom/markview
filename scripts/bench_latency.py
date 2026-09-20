@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
-"""Aggregate `markview --bench-latency` reports across independent processes.
+"""Aggregate `markview latency` reports across independent processes.
 
-`--bench-latency` is a one-process measurement: the headline first-frame number
+`markview latency` is a one-process measurement: the headline first-frame number
 is a cold-start sample that cannot be repeated inside a process, and the edit
 distribution is only as wide as one process's iterations. This driver runs the
 binary several times per fixture and reports the median (and worst) across
@@ -31,7 +31,7 @@ def parse_report(stdout):
 def run_once(binary, fixture, iterations, offline):
     command = [
         str(binary),
-        "--bench-latency",
+        "latency",
         str(fixture),
         "--iterations",
         str(iterations),

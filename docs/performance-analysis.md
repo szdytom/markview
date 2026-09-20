@@ -49,7 +49,7 @@ processes; edit distributions are medians over 8–50 edits per process.
 
 ```sh
 # First frame, edit-to-frame, edit-to-complete and per-edit RSS, one process:
-target/release/markview --bench-latency FILE [--iterations N]
+target/release/markview latency FILE [--iterations N]
 
 # The same aggregated over independent processes into a table:
 python3 scripts/generate_stress_fixtures.py
@@ -65,16 +65,16 @@ python3 scripts/smoke_watch.py target/release/markview \
   --fixture artifacts/perf-analysis/unique-100k.md --edit top --skip-stream
 ```
 
-`--bench-latency` drives the real `Worker`, progressive prefix publication,
+`latency` drives the real `Worker`, progressive prefix publication,
 block cache, image scheduler and GPU renderer; only the presentation target is
 offscreen, so window creation, chrome shaping and compositor presentation are
-excluded. `--smoke-test` reports the true process-entry first frame since this
+excluded. `smoke-test` reports the true process-entry first frame since this
 analysis (`src/app/painting.rs`), and `scripts/smoke_watch.py` now accepts
 `--fixture`/`--edit` for large-document end-to-end edit timing.
 
 ## Metric 1: first readable frame
 
-Native `--smoke-test`, DPR 2, alternating processes per fixture:
+Native `smoke-test`, DPR 2, alternating processes per fixture:
 
 | Fixture | Bytes | Process entry (ms) | Document open (ms) |
 | --- | ---: | ---: | ---: |
@@ -91,7 +91,7 @@ about what the 100 KiB one does. Eight alternating processes per row. The 10 KiB
 cold start is window-bound and sits at the target — the spread across sessions
 is 70–94 ms depending on host load.
 
-Offscreen `--bench-latency`, median cold first frame:
+Offscreen `latency`, median cold first frame:
 
 | Fixture | Bytes | Init (ms) | Parse (ms) | First-prefix layout (ms) | First frame (ms) |
 | --- | ---: | ---: | ---: | ---: | ---: |
@@ -127,7 +127,7 @@ The tables below are the earlier analysis that introduced the shared font
 collection and progressive publication; they are kept for the reasoning, not as
 current numbers.
 
-Native `--smoke-test`, process entry, before and after sharing the font
+Native `smoke-test`, process entry, before and after sharing the font
 collection:
 
 | Fixture | Bytes | Blocks | Before (ms) | After font sharing (ms) |
@@ -506,9 +506,9 @@ memory slope and a lower high-water.
   `balanced` platform profile was left in place. On this host `power-saver` has
   historically run 1.6–2× slower in every stage, so re-run acceptance with the
   `performance` profile.
-- `--bench`'s `reading_text_index_bytes` samples the cached-refresh snapshot and
+- `bench`'s `reading_text_index_bytes` samples the cached-refresh snapshot and
   is not a retention metric. Do not use it to judge layout memory; read
-  `--bench-latency`'s RSS instead.
+  `latency`'s RSS instead.
 - The offscreen first frame is noisy across processes: on this host three
   processes of the same fixture spread over 10–20 ms, and running all baseline
   processes before all candidate processes biases the comparison with thermal
