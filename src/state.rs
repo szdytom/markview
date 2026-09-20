@@ -11,6 +11,8 @@ use std::{
 	time::{Duration, Instant},
 };
 use winit::{event::TouchPhase, keyboard::ModifiersState};
+
+pub(crate) use markview_core::layout::scroll_limit;
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum Command {
 	Open,
@@ -707,13 +709,6 @@ impl InteractionState {
 	}
 }
 
-/// The furthest a document of `height` scrolls in `viewport`: its last line
-/// can be lifted to one third of a page below the top, leaving the other two
-/// thirds blank, and a document that already ends higher does not scroll.
-pub(crate) fn scroll_limit(height: f32, viewport: f32) -> f32 {
-	(height - viewport / 3.0).max(0.0)
-}
-
 /// The shortest and longest a discrete scroll may take, and the distance at
 /// which it reaches the longest.
 const SCROLL_MIN: Duration = Duration::from_millis(120);
@@ -1030,7 +1025,7 @@ impl ReaderSession {
 			self.pending_scroll = None;
 			self.follow_update = false;
 			self.scroll =
-				y.clamp(0.0, (self.snapshot.height - viewport).max(0.0));
+				y.clamp(0.0, scroll_limit(self.snapshot.height, viewport));
 			return Some(Ok(()));
 		}
 		if self.snapshot_complete {

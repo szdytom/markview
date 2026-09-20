@@ -1,3 +1,4 @@
+use super::scroll_limit;
 use crate::scene::Draw;
 use crate::scene::LayoutSnapshot;
 pub fn anchored_scroll(
@@ -7,8 +8,8 @@ pub fn anchored_scroll(
 	viewport: f32,
 	follow: bool,
 ) -> f32 {
-	let max = (new.height - viewport).max(0.0);
-	if follow && scroll >= (old.height - viewport - 3.0).max(0.0) {
+	let max = scroll_limit(new.height, viewport);
+	if follow && scroll >= scroll_limit(old.height, viewport) - 3.0 {
 		return max;
 	}
 	let index = old

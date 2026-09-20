@@ -41,7 +41,8 @@ at the same level, without `[brackets]`.
   button) that lists a document's headings, highlights the reading position, and
   jumps to a heading through the ordinary anchor path; it is an overlay, so the
   document keeps scrolling and selecting behind it, while an open panel or
-  confirmation keeps input precedence over it.
+  confirmation keeps input precedence over it. A heading near the end scrolls to
+  the top too, using the blank tail the other scroll paths already reach.
 
 - Let a stylesheet declare font files with `fontdef.urls` and download them from
   the Styles panel: an explicit, verified, atomically stored action into a user

@@ -258,7 +258,7 @@ fn heading_anchors_queue_until_their_heading_is_laid_out() {
 	session.pending_anchor = Some("details".into());
 	assert_eq!(session.resolve_anchor(300.), Some(Ok(())));
 	assert_eq!(session.pending_anchor, None);
-	let max = (layout.height - 300.).max(0.);
+	let max = scroll_limit(layout.height, 300.);
 	assert_eq!(session.scroll, details.clamp(0., max));
 	// A heading the finished document lacks is reported once.
 	session.pending_anchor = Some("missing".into());
@@ -336,7 +336,7 @@ fn a_jump_into_a_collapsed_body_expands_its_containers_first() {
 	assert_eq!(session.resolve_anchor(300.), Some(Ok(())));
 	assert_eq!(
 		session.scroll,
-		at.clamp(0.0, (session.snapshot.height - 300.0).max(0.0))
+		at.clamp(0.0, scroll_limit(session.snapshot.height, 300.0))
 	);
 	// An anchor outside every disclosure needs no reflow, and a second jump
 	// into the same body is a no-op now that it is open.
@@ -546,8 +546,53 @@ fn the_outline_caches_per_document_and_its_entries_queue_heading_anchors() {
 	let three = layout.anchor_y("three").unwrap();
 	assert_eq!(
 		session.scroll,
-		three.clamp(0.0, (layout.height - 300.0).max(0.0))
+		three.clamp(0.0, scroll_limit(layout.height, 300.0))
 	);
+}
+
+#[test]
+fn an_outline_jump_into_the_reserved_blank_lifts_the_heading() {
+	let viewport = 300.0;
+	// Several sizes, because where the last heading falls relative to the
+	// viewport depends on how the text breaks; the first that reaches the end
+	// leaves less than one viewport below it.
+	let at = (7..=30).find_map(|size| {
+		let source = format!(
+			"# One\n\n{}\n\n## Last\n\nTail.\n",
+			"Body.\n\n".repeat(size)
+		);
+		let options = crate::layout::LayoutOptions {
+			width: 600.0,
+			..crate::test_support::options()
+		};
+		let document = Arc::new(document::parse(source.as_str()));
+		let layout =
+			crate::layout::LayoutEngine::new().layout(&document, &options);
+		let y = layout.anchor_y("last").unwrap();
+		let height = layout.height;
+		(y > height - viewport && y <= scroll_limit(height, viewport))
+			.then_some((document, layout, y))
+	});
+	let (document, layout, y) =
+		at.expect("a size whose last heading reaches the end of the document");
+	assert!(y > layout.height - viewport);
+	let mut session = ReaderSession::default();
+	session.accept(
+		crate::worker::ReaderSnapshot {
+			document,
+			layout: layout.clone(),
+			content_version: 1,
+			complete: true,
+			remote_deferred: 0,
+		},
+		viewport,
+		None,
+	);
+	session.pending_anchor = Some("last".into());
+	assert_eq!(session.resolve_anchor(viewport), Some(Ok(())));
+	// The heading lands at the top, using the blank every other scroll path
+	// already reaches.
+	assert_eq!(session.scroll, y);
 }
 
 #[test]

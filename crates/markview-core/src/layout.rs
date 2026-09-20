@@ -27,6 +27,19 @@ use crate::{
 pub use anchor::anchored_scroll;
 use mapping::{Prepared, expand_tabs_mapped};
 use std::{collections::HashMap, ops::Range, sync::Arc};
+
+/// The share of a viewport a document may lift its last line by, so the end of
+/// the text never sits flush against the bottom edge. Every limit on the scroll
+/// offset goes through [`scroll_limit`], which applies it, so no path can
+/// refuse to scroll into the blank it reserves.
+const SCROLL_TAIL: f32 = 1.0 / 3.0;
+
+/// The furthest a document of `height` scrolls in `viewport`: its last line can
+/// be lifted to [`SCROLL_TAIL`] of a page below the top, leaving the rest blank,
+/// and a document that already ends higher does not scroll.
+pub fn scroll_limit(height: f32, viewport: f32) -> f32 {
+	(height - viewport * SCROLL_TAIL).max(0.0)
+}
 fn fitted_range(full: &str, shown: &str, range: Range<usize>) -> Range<usize> {
 	let (prefix, full_end, shown_end) = crate::text::changed_span(full, shown);
 	let start = if range.start <= prefix {
