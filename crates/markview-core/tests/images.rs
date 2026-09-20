@@ -97,7 +97,7 @@ fn caption_wraps_and_toggling_it_keeps_reading_positions() {
 }
 
 #[test]
-fn a_diagram_stays_selectable_and_copyable_while_drawing_no_caption() {
+fn a_diagram_copies_its_placeholder_message_not_its_source() {
 	let doc = document::parse("```mermaid\ngraph TD\n A-->B\n```\n");
 	let mut specs = Vec::new();
 	for block in &doc.blocks {
@@ -118,30 +118,35 @@ fn a_diagram_stays_selectable_and_copyable_while_drawing_no_caption() {
 		},
 	);
 	let shown = engine.layout_with_images(&doc, &options, &resources);
-	assert_eq!(
-		shown.extract_text(shown.select_all(1).unwrap(), 1),
-		"graph TD\n A-->B\n"
-	);
-	// A diagram that is still loading or has failed reads as its source too,
-	// so a placeholder message never replaces it in a selection.
-	for info in [
-		ImageInfo {
-			version: 1,
-			size: None,
-			error: None,
-		},
-		ImageInfo {
-			version: 2,
-			size: None,
-			error: Some("Mermaid: broken".into()),
-		},
+	// A drawn diagram contributes no reading text, so its fence source is
+	// never copied by a selection over the figure.
+	assert!(shown.select_all(1).is_none());
+	// While it loads or after it fails, the visible placeholder message is
+	// what the selection yields.
+	for (info, message) in [
+		(
+			ImageInfo {
+				version: 1,
+				size: None,
+				error: None,
+			},
+			"Loading image…",
+		),
+		(
+			ImageInfo {
+				version: 2,
+				size: None,
+				error: Some("Mermaid: broken".into()),
+			},
+			"Mermaid: broken",
+		),
 	] {
 		let mut resources = ImageSnapshot::default();
 		resources.entries.insert(src.clone(), info);
 		let snapshot = engine.layout_with_images(&doc, &options, &resources);
 		assert_eq!(
 			snapshot.extract_text(snapshot.select_all(1).unwrap(), 1),
-			"graph TD\n A-->B\n"
+			message
 		);
 	}
 }
@@ -153,7 +158,6 @@ fn caption_sources_and_image_fields_are_strict_and_cascade() {
 		src: "test.png".into(),
 		alt: "alt".into(),
 		title: "title".into(),
-		reading: None,
 		width: None,
 		height: None,
 	};

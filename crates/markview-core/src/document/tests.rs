@@ -259,7 +259,7 @@ fn fences_that_merely_mention_mermaid_stay_code() {
 }
 
 #[test]
-fn a_diagram_reads_as_its_source_without_a_caption() {
+fn a_diagram_draws_no_caption_and_copies_no_source() {
 	use crate::style::CaptionSource;
 	let d = parse("```mermaid\ngraph TD\n A-->B\n```\n");
 	let BlockKind::Paragraph(p) = &d.blocks[0].kind else {
@@ -268,11 +268,10 @@ fn a_diagram_reads_as_its_source_without_a_caption() {
 	let InlineKind::Image(image) = &p[0].kind else {
 		panic!("expected one image")
 	};
-	// The fence source is semantic reading text, so selecting or copying the
-	// diagram keeps it even though the image draws no caption.
-	assert_eq!(image.reading.as_deref(), Some("graph TD\n A-->B\n"));
-	assert_eq!(plain_text(p), "graph TD\n A-->B\n");
+	// A diagram is an image with an empty `alt`, so the fence source never
+	// becomes reading text and only a placeholder message can be copied.
 	assert!(image.alt.is_empty() && image.title.is_empty());
+	assert_eq!(plain_text(p), "");
 	for source in [
 		CaptionSource::Alt,
 		CaptionSource::Title,

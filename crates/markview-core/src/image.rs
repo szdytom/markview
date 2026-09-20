@@ -14,11 +14,6 @@ pub struct ImageSpec {
 	pub src: String,
 	pub alt: String,
 	pub title: String,
-	/// Semantic reading text in place of the placeholder or `alt` when the
-	/// image reads as something other than its caption. A Mermaid diagram
-	/// carries its source here so selection and copying keep it while `alt`
-	/// and `title` stay empty and draw no caption.
-	pub reading: Option<String>,
 	/// Explicit `width` / `height` attributes; `None` keeps the aspect ratio.
 	pub width: Option<u32>,
 	pub height: Option<u32>,

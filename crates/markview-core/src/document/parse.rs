@@ -165,7 +165,6 @@ impl Reader<'_> {
 						src: link.url.clone(),
 						alt,
 						title: link.title.clone(),
-						reading: None,
 						width: None,
 						height: None,
 					}))
@@ -276,12 +275,11 @@ impl Reader<'_> {
 					BlockKind::Paragraph(vec![Inline {
 						kind: InlineKind::Image(crate::image::ImageSpec {
 							src: crate::image::mermaid_source(&c.literal),
+							// An empty `alt` draws no caption and keeps the
+							// fence source out of the reading text, so only
+							// the placeholder message is selectable.
 							alt: String::new(),
 							title: String::new(),
-							// The fence source stays selectable and
-							// copyable; keeping `alt` empty draws no
-							// caption for the diagram.
-							reading: Some(c.literal.clone()),
 							width: None,
 							height: None,
 						}),

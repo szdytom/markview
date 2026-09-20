@@ -61,8 +61,9 @@ at the same level, without `[brackets]`.
   stack sized for the worst case the source cap allows, so a fence that passes
   the size bounds can no longer abort the reader.
 
-- Read a Mermaid diagram as its fence source, so selecting and copying it
-  still yields the source while the diagram itself draws no caption.
+- Keep a Mermaid diagram's fence source out of the reading text, so selecting
+  the figure no longer copies the source and a loading or failed diagram copies
+  its placeholder message instead.
 
 - Hold a wheel gesture to the axis its first few moments chose, separated by
   the boundary the platform reports or by a pause where it reports none and
