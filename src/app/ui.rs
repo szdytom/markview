@@ -129,9 +129,11 @@ impl App {
 	}
 
 	pub(super) fn buttons(&mut self) -> Vec<Button> {
+		self.ensure_outline();
 		self.chrome().buttons()
 	}
 	pub(super) fn overlay(&mut self) -> Vec<Draw> {
+		self.ensure_outline();
 		self.normalize_tab_scroll();
 		if let Some(form) = self.panel_form() {
 			self.set_panel_scroll(form.scroll);

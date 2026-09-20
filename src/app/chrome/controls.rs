@@ -154,7 +154,7 @@ pub(super) fn controls(
 	if panel_open {
 		form(ui, settings, 0.0, width, height).visible_buttons()
 	} else {
-		toolbar_controls(width)
+		toolbar_controls(width, false)
 	}
 }
 pub(super) fn button_width(
@@ -170,11 +170,12 @@ pub(super) fn button_width(
 	shaper.appearance = old;
 	width
 }
-pub(super) fn toolbar_controls(width: f32) -> Vec<Button> {
+pub(super) fn toolbar_controls(width: f32, outline_open: bool) -> Vec<Button> {
 	[
 		(icons::OPEN, "Open", Command::Open),
 		(icons::EXPORT, "Export", Command::Export),
 		(icons::SETTINGS, "Settings", Command::Settings),
+		(icons::OUTLINE, "Outline", Command::Outline),
 	]
 	.into_iter()
 	.enumerate()
@@ -191,12 +192,13 @@ pub(super) fn toolbar_controls(width: f32) -> Vec<Button> {
 		);
 		b.icon = Some(icon);
 		b.kind = ButtonKind::Quiet;
+		b.active = action == Command::Outline && outline_open;
 		b
 	})
 	.collect()
 }
 pub(super) fn toolbar_right_edge(width: f32) -> f32 {
-	width - 3.0 * ICON_BUTTON - 2.0 * GAP - 16.0
+	width - 4.0 * ICON_BUTTON - 3.0 * GAP - 16.0
 }
 pub(super) fn draw_controls(
 	ui: &mut TextShaper,
@@ -232,7 +234,7 @@ pub(super) fn draw_toolbar(
 	} else {
 		interaction
 	};
-	toolbar_controls(width)
+	toolbar_controls(width, interaction.outline_open)
 		.iter()
 		.flat_map(|b| draw_button(ui, state, b, false))
 		.collect()

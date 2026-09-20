@@ -77,6 +77,17 @@ impl App {
 
 	/// Applies a queued anchor, reporting a heading the finished layout lacks.
 	pub(super) fn apply_anchor(&mut self) {
+		// A heading or footnote inside a collapsed `<details>` is never laid
+		// out, so the jump first expands the disclosures framing it and lets
+		// the next layout resolve the anchor, exactly as clicking each summary
+		// would. Opening them changes the layout options, so the reflow is
+		// requested here and the anchor stays queued until it arrives.
+		if let Some(anchor) = self.readers.session.pending_anchor.clone()
+			&& self.readers.session.open_enclosing_details(&anchor)
+		{
+			self.request(false);
+			return;
+		}
 		let Some(result) = self.readers.session.resolve_anchor(self.viewport())
 		else {
 			return;

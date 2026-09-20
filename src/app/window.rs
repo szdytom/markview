@@ -98,7 +98,8 @@ impl App {
 				state: ElementState::Pressed,
 				..
 			} if !self.interaction.panel_open
-				&& self.interaction.modal.is_none() =>
+				&& self.interaction.modal.is_none()
+				&& !self.pointer_in_outline() =>
 			{
 				if let Some(index) = self.tab_at_cursor() {
 					self.action(Command::CloseTab(index));
@@ -163,6 +164,9 @@ impl App {
 					self.interaction.pressed = Some(button.action);
 					self.redraw();
 				} else if self.interaction.panel_open {
+					// A panel draws over the drawer, so it answers first: its
+					// scrollbar drag and its outside-click dismissal must work
+					// where the two overlap.
 					if self.begin_panel_drag() {
 						self.redraw();
 						return;
@@ -171,6 +175,10 @@ impl App {
 					if !self.pointer_in_panel() {
 						self.action(Command::Settings);
 					}
+				} else if self.pointer_in_outline() {
+					// The drawer owns presses inside it; one between its rows
+					// must not start a document selection underneath.
+					self.interaction.reset_clicks();
 				} else if !self.pointer_in_panel() {
 					self.interaction.focus = None;
 					if self.begin_scrollbar_drag() {
@@ -307,6 +315,10 @@ impl App {
 					}
 					return;
 				}
+				if self.pointer_in_outline() {
+					self.scroll_outline(-dy);
+					return;
+				}
 				if self.scroll_tabs(if dx.abs() > dy.abs() { -dx } else { -dy })
 				{
 					return;
@@ -392,6 +404,11 @@ impl App {
 								Command::CloseTab(self.readers.active()),
 							),
 							"," => self.action(Command::Settings),
+							"o" if self.interaction.modifiers.shift_key()
+								&& !self.panel_has_focus() =>
+							{
+								self.action(Command::Outline)
+							}
 							"o" if !self.panel_has_focus() => {
 								self.action(Command::Open)
 							}
@@ -419,6 +436,16 @@ impl App {
 						return;
 					}
 					match event.logical_key {
+						Key::Named(NamedKey::ArrowDown)
+							if self.interaction.outline_owns_input() =>
+						{
+							self.move_outline(1)
+						}
+						Key::Named(NamedKey::ArrowUp)
+							if self.interaction.outline_owns_input() =>
+						{
+							self.move_outline(-1)
+						}
 						Key::Named(NamedKey::ArrowDown) => self.scroll_by(42.0),
 						Key::Named(NamedKey::ArrowUp) => self.scroll_by(-42.0),
 						Key::Named(NamedKey::PageDown | NamedKey::Space) => {
@@ -440,41 +467,28 @@ impl App {
 							self.horizontal_by(42.0);
 						}
 						Key::Named(NamedKey::Tab) => {
-							let buttons = self.focus_buttons();
-							let current = buttons.iter().position(|b| {
-								Some(b.action) == self.interaction.focus
-							});
-							let index = match current {
-								None => {
-									if self.interaction.modifiers.shift_key() {
-										buttons.len() - 1
-									} else {
-										0
-									}
+							let actions: Vec<Command> = self
+								.focus_buttons()
+								.into_iter()
+								.map(|button| button.action)
+								.collect();
+							let backward =
+								self.interaction.modifiers.shift_key();
+							if let Some(action) =
+								self.interaction.tab_focus(&actions, backward)
+							{
+								if let Command::OutlineGoto(index) = action {
+									self.reveal_outline(index);
 								}
-								Some(i) => {
-									(i + if self
-										.interaction
-										.modifiers
-										.shift_key()
-									{
-										buttons.len() - 1
-									} else {
-										1
-									}) % buttons.len()
-								}
-							};
-							self.interaction.focus =
-								Some(buttons[index].action);
-							self.reveal_panel_focus();
+								self.reveal_panel_focus();
+							}
 							self.redraw();
 						}
 						Key::Named(NamedKey::Enter) => {
-							if let Some(action) = self.interaction.focus
-								&& self
-									.buttons()
-									.iter()
-									.any(|b| b.action == action)
+							let buttons = self.buttons();
+							if let Some(action) = self
+								.interaction
+								.enter_action(buttons.iter().map(|b| b.action))
 							{
 								self.action(action);
 							}
@@ -493,6 +507,7 @@ impl App {
 							self.interaction.drag_at = None;
 							self.interaction.scrollbar = None;
 							self.interaction.panel_grab = None;
+							self.interaction.close_outline();
 							self.refresh_hover();
 							self.redraw();
 						}

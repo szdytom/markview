@@ -188,6 +188,7 @@ recently used entries dropped first, and is cleared by deleting that directory.
 | Keys | Action |
 |:--|:--|
 | `Ctrl+O` | Open a file |
+| `Ctrl+Shift+O` | Open the table of contents |
 | `Ctrl+T` | Choose a stylesheet |
 | `Ctrl+E` | Export the document |
 | `Ctrl+,` | Open settings |

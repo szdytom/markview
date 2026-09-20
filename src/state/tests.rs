@@ -288,6 +288,64 @@ fn heading_anchors_queue_until_their_heading_is_laid_out() {
 }
 
 #[test]
+fn a_jump_into_a_collapsed_body_expands_its_containers_first() {
+	let document = Arc::new(document::parse(
+		"# Intro\n\n<details>\n<summary>More</summary>\n\n## Hidden\n\n</details>\n",
+	));
+	let id = document.blocks[1].id;
+	let collapsed = crate::layout::LayoutEngine::new()
+		.layout(&document, &crate::test_support::options());
+	// A collapsed body registers no anchor: the heading is not laid out.
+	assert!(collapsed.anchor_y("hidden").is_none());
+	let mut session = ReaderSession::default();
+	session.accept(
+		crate::worker::ReaderSnapshot {
+			document: document.clone(),
+			layout: collapsed,
+			content_version: 1,
+			complete: true,
+			remote_deferred: 0,
+		},
+		300.,
+		None,
+	);
+	// The jump opens the enclosing disclosure and reports the change, so the
+	// caller requests the reflow.
+	assert!(session.open_enclosing_details("hidden"));
+	assert_eq!(session.details_open.get(&id), Some(&true));
+	// The reflow lays the heading out, and the queued anchor scrolls to it.
+	let mut options = crate::test_support::options();
+	options.details_open = session.details_open.clone();
+	let expanded =
+		crate::layout::LayoutEngine::new().layout(&document, &options);
+	let at = expanded
+		.anchor_y("hidden")
+		.expect("the opened body lays the heading out");
+	session.accept(
+		crate::worker::ReaderSnapshot {
+			document,
+			layout: expanded,
+			content_version: 1,
+			complete: true,
+			remote_deferred: 0,
+		},
+		300.,
+		None,
+	);
+	session.pending_anchor = Some("hidden".into());
+	assert_eq!(session.resolve_anchor(300.), Some(Ok(())));
+	assert_eq!(
+		session.scroll,
+		at.clamp(0.0, (session.snapshot.height - 300.0).max(0.0))
+	);
+	// An anchor outside every disclosure needs no reflow, and a second jump
+	// into the same body is a no-op now that it is open.
+	assert!(!session.open_enclosing_details("intro"));
+	assert!(!session.open_enclosing_details("hidden"));
+	assert!(!session.open_enclosing_details("missing"));
+}
+
+#[test]
 fn partial_reload_waits_for_anchor_and_keeps_the_old_snapshot() {
 	let mut engine = crate::layout::LayoutEngine::new();
 	let options = crate::test_support::options();
@@ -444,6 +502,285 @@ fn a_footnote_returns_to_the_reference_it_was_opened_from() {
 	session.jump_origin = Some(("fn:2".into(), 640.));
 	session.release_heavy();
 	assert_eq!(session.footnote_return("2"), None);
+}
+
+#[test]
+fn the_outline_caches_per_document_and_its_entries_queue_heading_anchors() {
+	let document =
+		Arc::new(document::parse("# One\n\nBody.\n\n> ## Two\n\n# Three\n"));
+	let layout = crate::layout::LayoutEngine::new()
+		.layout(&document, &crate::test_support::options());
+	let mut session = ReaderSession::default();
+	session.accept(
+		crate::worker::ReaderSnapshot {
+			document,
+			layout: layout.clone(),
+			content_version: 1,
+			complete: true,
+			remote_deferred: 0,
+		},
+		300.,
+		None,
+	);
+	// Nothing walks the document until the drawer asks for the outline.
+	assert!(session.outline.is_none());
+	session.ensure_outline();
+	let anchors: Vec<&str> = session
+		.outline_entries()
+		.iter()
+		.map(|entry| entry.anchor.as_str())
+		.collect();
+	assert_eq!(anchors, ["one", "two", "three"]);
+	// An entry addresses the anchor the link path resolves.
+	assert_eq!(session.outline_anchor(1), Some("two"));
+	let two = layout.anchor_y("two").unwrap();
+	// The reading position selects the last heading at or above the viewport.
+	session.scroll = 0.0;
+	assert_eq!(session.current_outline(), Some(0));
+	session.scroll = two + 1.0;
+	assert_eq!(session.current_outline(), Some(1));
+	// An entry feeds the very anchor path a `#fragment` link uses.
+	let third = session.outline_anchor(2).map(str::to_owned);
+	session.pending_anchor = third;
+	assert_eq!(session.resolve_anchor(300.0), Some(Ok(())));
+	let three = layout.anchor_y("three").unwrap();
+	assert_eq!(
+		session.scroll,
+		three.clamp(0.0, (layout.height - 300.0).max(0.0))
+	);
+}
+
+#[test]
+fn a_footnote_reference_between_headings_keeps_the_later_heading_current() {
+	let document = Arc::new(document::parse(
+		"# One\n\nBody[^a].\n\n# Two\n\n[^a]: Note.\n",
+	));
+	let layout = crate::layout::LayoutEngine::new()
+		.layout(&document, &crate::test_support::options());
+	let mut session = ReaderSession::default();
+	session.accept(
+		crate::worker::ReaderSnapshot {
+			document,
+			layout: layout.clone(),
+			content_version: 1,
+			complete: true,
+			remote_deferred: 0,
+		},
+		300.,
+		None,
+	);
+	session.ensure_outline();
+	assert_eq!(session.outline_entries().len(), 2);
+	// The reference registers `fnref:1` between the two heading anchors; the
+	// scan must not mistake it for an outline entry and stop there.
+	session.scroll = layout.anchor_y("two").unwrap();
+	assert_eq!(session.current_outline(), Some(1));
+}
+
+#[test]
+fn the_outline_toggles_closes_and_moves_its_selection() {
+	let mut interaction = InteractionState::default();
+	assert!(interaction.toggle_outline(3, Some(1)));
+	assert!(interaction.outline_open);
+	assert_eq!(interaction.outline_selection, Some(1));
+	assert!(!interaction.toggle_outline(3, Some(1)));
+	assert!(!interaction.outline_open);
+	assert_eq!(interaction.outline_selection, None);
+	// Escape closes the drawer through the state, not through a panel.
+	interaction.toggle_outline(3, Some(0));
+	interaction.close_outline();
+	assert!(!interaction.outline_open);
+	assert_eq!(interaction.outline_selection, None);
+	// Up/Down move and clamp the keyboard selection.
+	interaction.toggle_outline(3, Some(0));
+	assert!(interaction.move_outline(-1, 3));
+	assert_eq!(interaction.outline_selection, Some(0));
+	assert!(interaction.move_outline(1, 3));
+	assert_eq!(interaction.outline_selection, Some(1));
+	assert!(interaction.move_outline(9, 3));
+	assert_eq!(interaction.outline_selection, Some(2));
+	// A headingless document has nothing to select.
+	assert!(!interaction.move_outline(1, 0));
+	assert_eq!(interaction.outline_selection, None);
+	// The drawer's own wheel scroll stays inside its content.
+	interaction.scroll_outline(40.0, 100.0);
+	assert_eq!(interaction.outline_scroll, 40.0);
+	interaction.scroll_outline(500.0, 100.0);
+	assert_eq!(interaction.outline_scroll, 100.0);
+	interaction.scroll_outline(-500.0, 100.0);
+	assert_eq!(interaction.outline_scroll, 0.0);
+}
+
+#[test]
+fn enter_follows_the_outline_selection_after_a_click_and_a_step() {
+	let mut interaction = InteractionState::default();
+	assert!(interaction.toggle_outline(3, Some(0)));
+	// A press on the first row leaves button focus there, as the pointer path
+	// does, and Enter activates it.
+	interaction.focus = Some(Command::OutlineGoto(0));
+	let visible = || [Command::OutlineGoto(0), Command::OutlineGoto(1)];
+	assert_eq!(
+		interaction.enter_action(visible().into_iter()),
+		Some(Command::OutlineGoto(0))
+	);
+	// Down moves the visible selection, and button focus follows it, so Enter
+	// no longer jumps back to the row that was clicked.
+	assert!(interaction.move_outline(1, 3));
+	assert_eq!(interaction.outline_selection, Some(1));
+	assert_eq!(interaction.focus, Some(Command::OutlineGoto(1)));
+	assert_eq!(
+		interaction.enter_action(visible().into_iter()),
+		Some(Command::OutlineGoto(1))
+	);
+	// With no button focus, the selection is still what Enter activates.
+	interaction.focus = None;
+	assert_eq!(
+		interaction.enter_action(visible().into_iter()),
+		Some(Command::OutlineGoto(1))
+	);
+	// With nothing to select, the drawer leaves the focused button alone.
+	interaction.outline_selection = None;
+	interaction.focus = Some(Command::Outline);
+	assert_eq!(
+		interaction.enter_action([Command::Outline].into_iter()),
+		Some(Command::Outline)
+	);
+}
+
+#[test]
+fn tabbing_through_the_drawer_marks_the_row_focus_lands_on() {
+	let mut interaction = InteractionState::default();
+	assert!(interaction.toggle_outline(3, Some(0)));
+	let buttons = [
+		Command::Outline,
+		Command::OutlineGoto(0),
+		Command::OutlineGoto(1),
+		Command::OutlineGoto(2),
+	];
+	// Tab from the toolbar toggle lands on the first row and marks it.
+	interaction.focus = Some(Command::Outline);
+	assert_eq!(
+		interaction.tab_focus(&buttons, false),
+		Some(Command::OutlineGoto(0))
+	);
+	assert_eq!(interaction.outline_selection, Some(0));
+	// Tabbing onward moves the visible selection with the focused row.
+	assert_eq!(
+		interaction.tab_focus(&buttons, false),
+		Some(Command::OutlineGoto(1))
+	);
+	assert_eq!(interaction.outline_selection, Some(1));
+	assert_eq!(
+		interaction.tab_focus(&buttons, false),
+		Some(Command::OutlineGoto(2))
+	);
+	assert_eq!(interaction.outline_selection, Some(2));
+	// Shift+Tab walks back over the same rows.
+	assert_eq!(
+		interaction.tab_focus(&buttons, true),
+		Some(Command::OutlineGoto(1))
+	);
+	assert_eq!(interaction.outline_selection, Some(1));
+	// Tabbing onto a toolbar button leaves the drawer's selection where it is.
+	assert_eq!(
+		interaction.tab_focus(&buttons, true),
+		Some(Command::OutlineGoto(0))
+	);
+	assert_eq!(
+		interaction.tab_focus(&buttons, true),
+		Some(Command::Outline)
+	);
+	assert_eq!(interaction.outline_selection, Some(0));
+}
+
+#[test]
+fn a_panel_or_a_confirmation_stops_enter_from_reaching_the_outline() {
+	let mut interaction = InteractionState::default();
+	assert!(interaction.toggle_outline(3, Some(2)));
+	// Ctrl+T opens Styles and clears button focus, leaving the selection
+	// behind the panel intact.
+	interaction.focus = None;
+	let visible = || [Command::Styles, Command::Settings];
+	// With only the drawer open, Enter still jumps to its selection.
+	assert_eq!(
+		interaction.enter_action(visible().into_iter()),
+		Some(Command::OutlineGoto(2))
+	);
+	// A panel owns input: Enter without a focused panel button does nothing
+	// instead of scrolling the document behind the panel.
+	interaction.panel_open = true;
+	assert!(!interaction.outline_owns_input());
+	assert_eq!(interaction.enter_action(visible().into_iter()), None);
+	// A visible panel button still answers Enter while the panel is open.
+	interaction.focus = Some(Command::Settings);
+	assert_eq!(
+		interaction.enter_action(visible().into_iter()),
+		Some(Command::Settings)
+	);
+	// A confirmation owns input in the same way.
+	interaction.focus = None;
+	interaction.panel_open = false;
+	interaction.modal = Some(Modal::OpenLocal {
+		path: "local.bin".into(),
+		dir: ".".into(),
+		document_dir: None,
+	});
+	assert_eq!(interaction.enter_action(visible().into_iter()), None);
+	// With both gone, Enter reaches the drawer again.
+	interaction.modal = None;
+	assert_eq!(
+		interaction.enter_action(visible().into_iter()),
+		Some(Command::OutlineGoto(2))
+	);
+}
+
+#[test]
+fn a_long_outline_resolves_the_reading_position_in_one_pass() {
+	let source: String = (0..1000)
+		.map(|i| format!("# Heading {i}\n\nBody {i}.\n\n"))
+		.collect();
+	let document = Arc::new(document::parse(source));
+	let layout = crate::layout::LayoutEngine::new()
+		.layout(&document, &crate::test_support::options());
+	let mut session = ReaderSession::default();
+	session.accept(
+		crate::worker::ReaderSnapshot {
+			document,
+			layout: layout.clone(),
+			content_version: 1,
+			complete: true,
+			remote_deferred: 0,
+		},
+		600.,
+		None,
+	);
+	session.ensure_outline();
+	assert_eq!(session.outline_entries().len(), 1000);
+	// Above the first heading the first section is the reading position.
+	session.scroll = 0.0;
+	assert_eq!(session.current_outline(), Some(0));
+	// In the middle of a section its own heading holds the position.
+	for index in [1_usize, 250, 500, 999] {
+		let anchor = format!("heading-{index}");
+		session.scroll = layout.anchor_y(&anchor).unwrap();
+		assert_eq!(session.current_outline(), Some(index));
+	}
+}
+
+#[test]
+fn a_heading_nested_in_a_container_is_part_of_the_outline() {
+	let document = Arc::new(document::parse("- ### Listed\n\n> ## Quoted\n"));
+	let mut session = ReaderSession {
+		document: Some(document),
+		..Default::default()
+	};
+	session.ensure_outline();
+	let entries: Vec<(&str, u8)> = session
+		.outline_entries()
+		.iter()
+		.map(|entry| (entry.text.as_str(), entry.level))
+		.collect();
+	assert_eq!(entries, [("Listed", 3), ("Quoted", 2)]);
 }
 
 #[test]

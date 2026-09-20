@@ -126,6 +126,21 @@ fn heading_anchors_resolve_to_layout_positions() {
 	assert_eq!(again.anchor_y("nested"), Some(nested));
 }
 #[test]
+fn every_outline_anchor_resolves_like_a_fragment_link() {
+	let doc = document::parse(
+		"# First\n\nBody.\n\n> ## Quoted\n\n- ### Listed\n\n# First\n",
+	);
+	let snapshot = LayoutEngine::new().layout(&doc, &LayoutOptions::default());
+	let mut last = f32::NEG_INFINITY;
+	for entry in doc.outline() {
+		let y = snapshot.anchor_y(&entry.anchor).unwrap_or_else(|| {
+			panic!("unresolved outline anchor {}", entry.anchor)
+		});
+		assert!(y >= last, "outline order is not reading order");
+		last = y;
+	}
+}
+#[test]
 fn a_quote_bar_is_centered_on_the_text_it_frames() {
 	// The quote bar runs down the box's left edge, so a box that kept the
 	// outer spacing of its children would hang past the text on one side and

@@ -31,9 +31,20 @@ pub fn label(fragment: &str) -> Option<&str> {
 	fragment.strip_prefix("fn:")
 }
 
+/// The label a reference anchor names, if it is a footnote reference.
+pub fn reference_label(fragment: &str) -> Option<&str> {
+	fragment.strip_prefix("fnref:")
+}
+
 /// The label a back fragment names, if it is a footnote back fragment.
 pub fn back_label(fragment: &str) -> Option<&str> {
 	fragment.strip_prefix("fnback:")
+}
+
+/// Whether an anchor names a footnote rather than a heading. Layout registers
+/// a definition's `fn:<label>` and a reference's `fnref:<label>`.
+pub fn is_anchor(fragment: &str) -> bool {
+	label(fragment).is_some() || reference_label(fragment).is_some()
 }
 
 #[cfg(test)]
@@ -49,8 +60,14 @@ mod tests {
 		assert_eq!(label("fn:1"), Some("1"));
 		assert_eq!(label("fnref:1"), None);
 		assert_eq!(label("fnback:1"), None);
+		assert_eq!(reference_label("fnref:1"), Some("1"));
+		assert_eq!(reference_label("fn:1"), None);
 		assert_eq!(back_label("fnback:1"), Some("1"));
 		assert_eq!(back_label("fn:1"), None);
 		assert_eq!(label("section"), None);
+		assert!(is_anchor("fn:1"));
+		assert!(is_anchor("fnref:1"));
+		assert!(!is_anchor("fnback:1"));
+		assert!(!is_anchor("section"));
 	}
 }

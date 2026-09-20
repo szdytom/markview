@@ -76,6 +76,10 @@ pub(crate) enum Command {
 	RemoteDismiss,
 	/// Lift the remote-image limit for the current document revision.
 	RemoteLoadAll,
+	/// Open or close the table-of-contents drawer.
+	Outline,
+	/// Scroll the document to the heading of one outline entry.
+	OutlineGoto(usize),
 }
 
 /// A blocking question awaiting the reader's answer.
@@ -101,6 +105,9 @@ pub(crate) struct ReaderSession {
 	pub(crate) version: u64,
 	pub(crate) content_version: u64,
 	pub(crate) document: Option<Arc<document::Document>>,
+	/// The outline built for `accepted_content_id`, cached so a frame or an
+	/// event never walks the document again. It is built on first demand.
+	pub(crate) outline: Option<(u64, Arc<[document::OutlineEntry]>)>,
 	pub(crate) requested_options: Option<LayoutOptions>,
 	/// Reader-chosen `<details>` collapse state, keyed by block id, overriding
 	/// what the source declared. It is layout input, and a reload drops it.
@@ -141,6 +148,76 @@ impl ReaderSession {
 	pub(crate) fn footnote_return(&self, label: &str) -> Option<f32> {
 		let (fragment, scroll) = self.jump_origin.as_ref()?;
 		(document::footnote::label(fragment) == Some(label)).then_some(*scroll)
+	}
+
+	/// The cached outline. Empty until the drawer first asks for it.
+	pub(crate) fn outline_entries(&self) -> &[document::OutlineEntry] {
+		self.outline
+			.as_ref()
+			.map_or(&[], |(_, entries)| entries.as_ref())
+	}
+
+	/// Builds the outline once per accepted document, on first demand.
+	pub(crate) fn ensure_outline(&mut self) {
+		if self
+			.outline
+			.as_ref()
+			.is_some_and(|(id, _)| *id == self.accepted_content_id)
+		{
+			return;
+		}
+		let mut entries = Vec::new();
+		if let Some(document) = &self.document {
+			entries = document.outline();
+		}
+		self.outline = Some((self.accepted_content_id, entries.into()));
+	}
+
+	/// The anchor an outline entry addresses, as a fragment link would name it.
+	pub(crate) fn outline_anchor(&self, index: usize) -> Option<&str> {
+		self.outline_entries()
+			.get(index)
+			.map(|entry| entry.anchor.as_str())
+	}
+
+	/// The outline entry whose heading contains the reading position: the last
+	/// heading at or above the top of the viewport, or the first heading while
+	/// the reader is still above every one of them.
+	///
+	/// Both the outline and the laid-out heading anchors are in reading order,
+	/// so one walk over the snapshot's anchors is enough. A heading this prefix
+	/// has not laid out (or one inside a collapsed `<details>`) cannot match a
+	/// later anchor, so the pointer may pass it.
+	pub(crate) fn current_outline(&self) -> Option<usize> {
+		let outline = self.outline_entries();
+		if outline.is_empty() {
+			return None;
+		}
+		let mut index = 0;
+		let mut current = None;
+		'blocks: for block in &self.snapshot.blocks {
+			for anchor in &block.layout.anchors {
+				// A footnote definition and a reference both register layout
+				// anchors. Neither is in the outline, so treating one as a
+				// heading would advance the scan past every later entry.
+				if document::footnote::is_anchor(&anchor.anchor) {
+					continue;
+				}
+				while index < outline.len()
+					&& outline[index].anchor != anchor.anchor
+				{
+					index += 1;
+				}
+				if index >= outline.len()
+					|| block.y + anchor.y > self.scroll + 0.5
+				{
+					break 'blocks;
+				}
+				current = Some(index);
+				index += 1;
+			}
+		}
+		current.or(Some(0))
 	}
 }
 
@@ -194,6 +271,13 @@ pub(crate) struct InteractionState {
 	pub(crate) modal: Option<Modal>,
 	/// The axis of the wheel gesture in flight.
 	pub(crate) wheel: WheelGesture,
+	/// The outline drawer is open. It is an overlay, not a modal panel: the
+	/// document keeps scrolling and selecting behind it.
+	pub(crate) outline_open: bool,
+	/// The drawer's own list offset.
+	pub(crate) outline_scroll: f32,
+	/// The entry the drawer's keyboard selection is on.
+	pub(crate) outline_selection: Option<usize>,
 }
 
 /// Which way a wheel gesture travels.
@@ -502,6 +586,118 @@ impl InteractionState {
 		self.drag_at = None;
 		self.scrollbar = None;
 	}
+
+	/// Toggles the outline drawer. Opening puts the keyboard selection on the
+	/// heading at the reading position, so Up/Down and Enter work at once.
+	/// Returns whether the drawer is now open.
+	pub(crate) fn toggle_outline(
+		&mut self,
+		entries: usize,
+		current: Option<usize>,
+	) -> bool {
+		self.outline_open = !self.outline_open;
+		if self.outline_open {
+			self.focus = None;
+			self.outline_scroll = 0.0;
+			self.outline_selection =
+				(entries > 0).then_some(current.unwrap_or(0));
+		} else {
+			self.outline_selection = None;
+		}
+		self.outline_open
+	}
+
+	/// Closes the drawer, as Escape and the toolbar toggle do.
+	pub(crate) fn close_outline(&mut self) {
+		self.outline_open = false;
+		self.outline_selection = None;
+	}
+
+	/// Whether the drawer answers input.
+	///
+	/// The drawer is an overlay, not a panel, so it stands down while a panel
+	/// or a confirmation owns input: both draw over it, and the panel's
+	/// scrollbar drag and outside-click dismissal must keep working where they
+	/// overlap it.
+	pub(crate) fn outline_owns_input(&self) -> bool {
+		self.outline_open && !self.panel_open && self.modal.is_none()
+	}
+
+	/// Moves the drawer's selection by `delta` entries, clamped to the
+	/// outline. Returns whether there is an entry to move to.
+	pub(crate) fn move_outline(
+		&mut self,
+		delta: isize,
+		entries: usize,
+	) -> bool {
+		if entries == 0 {
+			self.outline_selection = None;
+			self.focus = None;
+			return false;
+		}
+		let base = self.outline_selection.unwrap_or(0) as isize;
+		let next = (base + delta).clamp(0, entries as isize - 1) as usize;
+		self.outline_selection = Some(next);
+		// The visible selection is what Enter activates, so button focus has
+		// to follow it; a row clicked before the move must not outrank it.
+		self.focus = Some(Command::OutlineGoto(next));
+		true
+	}
+
+	/// The command Enter activates: the focused button while it is still on
+	/// screen, otherwise the drawer's selected entry. Moving the selection
+	/// keeps focus on it, so the focused button and the selection agree. The
+	/// drawer only answers while no panel or confirmation owns input, so Enter
+	/// never reaches the document behind one.
+	pub(crate) fn enter_action(
+		&self,
+		mut visible: impl Iterator<Item = Command>,
+	) -> Option<Command> {
+		if let Some(focus) = self.focus
+			&& visible.any(|action| action == focus)
+		{
+			return Some(focus);
+		}
+		self.outline_owns_input()
+			.then_some(self.outline_selection)
+			.flatten()
+			.map(Command::OutlineGoto)
+	}
+
+	/// Scrolls the drawer's own list by `delta`, clamped to `max`.
+	pub(crate) fn scroll_outline(&mut self, delta: f32, max: f32) {
+		self.outline_scroll =
+			(self.outline_scroll + delta).clamp(0.0, max.max(0.0));
+	}
+
+	/// Advances keyboard focus to the next (or previous) button, wrapping at
+	/// the ends. Returns the focused action, or `None` when there is nothing
+	/// to focus.
+	///
+	/// A row the drawer marks as selected is what Enter activates when no
+	/// button has focus, so focusing an entry row moves the visible selection
+	/// with it; otherwise Tab would leave the marker on another heading.
+	pub(crate) fn tab_focus(
+		&mut self,
+		buttons: &[Command],
+		backward: bool,
+	) -> Option<Command> {
+		let current = buttons.iter().position(|b| Some(*b) == self.focus);
+		let index = match current {
+			Some(i) => {
+				(i + if backward { buttons.len() - 1 } else { 1 })
+					% buttons.len()
+			}
+			None if backward => buttons.len().checked_sub(1)?,
+			None => 0,
+		};
+		let action = *buttons.get(index)?;
+		self.focus = Some(action);
+		if let Command::OutlineGoto(row) = action {
+			self.outline_selection = Some(row);
+		}
+		Some(action)
+	}
 }
 
 /// The furthest a document of `height` scrolls in `viewport`: its last line
@@ -594,9 +790,38 @@ impl ReaderSession {
 		self.snapshot = LayoutSnapshot::default();
 		self.snapshot_complete = false;
 		self.document = None;
+		self.outline = None;
 		self.requested_options = None;
 		self.pending_anchor = None;
 		self.jump_origin = None;
+	}
+
+	/// Expands the `<details>` elements enclosing `anchor` and reports whether
+	/// any changed.
+	///
+	/// A heading or footnote inside a collapsed body is never laid out, so a
+	/// jump to its anchor must open the disclosures framing it, outermost
+	/// first, and wait for the reflow before the anchor can resolve.
+	pub(crate) fn open_enclosing_details(&mut self, anchor: &str) -> bool {
+		let Some(document) = self.document.clone() else {
+			return false;
+		};
+		let closed: Vec<u64> = document
+			.details_enclosing(anchor)
+			.into_iter()
+			.filter(|id| {
+				let declared = document.details_declared(*id).unwrap_or(false);
+				!self.details_open.get(id).copied().unwrap_or(declared)
+			})
+			.collect();
+		if closed.is_empty() {
+			return false;
+		}
+		let open = Arc::make_mut(&mut self.details_open);
+		for id in closed {
+			open.insert(id, true);
+		}
+		true
 	}
 
 	/// Scrolls to a queued heading anchor against the current snapshot.

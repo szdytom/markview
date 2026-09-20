@@ -140,6 +140,37 @@ fn headings_carry_anchors_and_repeats_get_suffixes() {
 }
 
 #[test]
+fn the_outline_lists_every_heading_in_reading_order() {
+	let doc = parse(
+		"# Start\n\n> ## Quoted\n\n- ### Listed\n\nText.\n\n# Start\n\n<div>\n\n</div>\n",
+	);
+	let outline = doc.outline();
+	let seen: Vec<(&str, u8, &str)> = outline
+		.iter()
+		.map(|e| (e.text.as_str(), e.level, e.anchor.as_str()))
+		.collect();
+	assert_eq!(
+		seen,
+		[
+			("Start", 1, "start"),
+			("Quoted", 2, "quoted"),
+			("Listed", 3, "listed"),
+			("Start", 1, "start-1"),
+		]
+	);
+	// A heading nested in a container carries the anchor links resolve.
+	let BlockKind::Quote { blocks, .. } = &doc.blocks[1].kind else {
+		panic!("expected a quote")
+	};
+	let BlockKind::Heading { anchor, .. } = &blocks[0].kind else {
+		panic!("expected a quoted heading")
+	};
+	assert_eq!(outline[1].anchor, *anchor);
+	// A document without headings has an empty outline.
+	assert!(parse("Just a paragraph.\n").outline().is_empty());
+}
+
+#[test]
 fn content_id_tracks_semantics_not_source_spelling() {
 	assert_eq!(
 		parse("Hello **world**\n").content_id,
@@ -933,6 +964,33 @@ fn details_id_is_stable_and_unique_per_element() {
 	assert_eq!(again.details_declared(first), Some(false));
 	assert_eq!(again.details_declared(second), Some(false));
 	assert_eq!(again.details_declared(first + 1), None);
+}
+
+#[test]
+fn details_enclosing_names_the_containers_of_a_hidden_anchor() {
+	let doc = parse(
+		"# Intro\n\n<details>\n<summary>Outer</summary>\n\n<details>\n<summary>Inner</summary>\n\n### Deep\n\n</details>\n\n</details>\n\n# Later\n",
+	);
+	let outer = doc.blocks[1].id;
+	let BlockKind::Details { blocks, .. } = &doc.blocks[1].kind else {
+		panic!("expected the outer details")
+	};
+	let inner = blocks[0].id;
+	// Outermost first, so opening them in order expands the whole path.
+	assert_eq!(doc.details_enclosing("deep"), [outer, inner]);
+	// A heading outside every disclosure names none, and so does a missing one.
+	assert!(doc.details_enclosing("intro").is_empty());
+	assert!(doc.details_enclosing("later").is_empty());
+	assert!(doc.details_enclosing("missing").is_empty());
+}
+
+#[test]
+fn details_enclosing_reaches_a_footnote_definition_in_a_hidden_body() {
+	let doc = parse(
+		"<details>\n<summary>More</summary>\n\nBody[^a].\n\n[^a]: Note.\n\n</details>\n",
+	);
+	// The definition is labelled by its index, as the reference is.
+	assert_eq!(doc.details_enclosing("fn:1"), [doc.blocks[0].id]);
 }
 
 #[test]

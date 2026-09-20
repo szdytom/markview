@@ -6,6 +6,7 @@ mod icon;
 mod interaction;
 mod launch;
 mod lifecycle;
+mod outline;
 mod painting;
 mod pointer;
 mod preferences;

@@ -61,9 +61,13 @@ impl App {
 		let holding = self.interaction.pointer_down.is_some()
 			|| self.interaction.scrollbar.is_some()
 			|| self.tab_strip.drag.is_some();
+		// The drawer covers document content, so it must not inherit the link
+		// or image hover underneath it.
+		let over_outline = self.pointer_in_outline();
 		let idle = !self.interaction.panel_open
 			&& self.interaction.modal.is_none()
-			&& !holding;
+			&& !holding
+			&& !over_outline;
 		let hover = if idle {
 			self.link_at(self.interaction.cursor.0, self.interaction.cursor.1)
 		} else {
@@ -96,7 +100,10 @@ impl App {
 			|| hover.is_some()
 		{
 			CursorIcon::Pointer
-		} else if !self.interaction.panel_open && self.text_under_cursor() {
+		} else if !self.interaction.panel_open
+			&& !over_outline
+			&& self.text_under_cursor()
+		{
 			CursorIcon::Text
 		} else {
 			CursorIcon::Default

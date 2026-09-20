@@ -7,6 +7,7 @@ mod footer;
 mod gpu_tests;
 mod icons;
 mod modal;
+pub(in crate::app) mod outline;
 mod styles;
 mod tabs;
 use super::{BOTTOM, Button, TOP};
@@ -249,7 +250,8 @@ impl Chrome<'_> {
 			.preview(self.interaction.settings_preview)
 			.visible_buttons()
 		} else {
-			let mut buttons = toolbar_controls(width);
+			let mut buttons =
+				toolbar_controls(width, self.interaction.outline_open);
 			if self.session.path.is_none()
 				&& self.session.snapshot.blocks.is_empty()
 			{
@@ -259,6 +261,13 @@ impl Chrome<'_> {
 
 			if self.remote_notice.is_some() {
 				buttons.extend(banner_buttons(self.ui, width));
+			}
+			if self.interaction.outline_open {
+				buttons.extend(outline::buttons(
+					self.outline_drawer(),
+					self.session.outline_entries().len(),
+					self.interaction.outline_scroll,
+				));
 			}
 			buttons
 		}
@@ -401,6 +410,15 @@ impl Chrome<'_> {
 				),
 			));
 		}
+		if self.interaction.outline_open {
+			out.extend(outline::draw(
+				self.ui,
+				self.interaction,
+				self.session.outline_entries(),
+				self.session.current_outline(),
+				self.outline_drawer(),
+			));
+		}
 		if self.interaction.export_styles_open {
 			out.extend(draw_styles(
 				self.ui,
@@ -473,6 +491,15 @@ impl Chrome<'_> {
 			cursor: self.interaction.cursor,
 			width: self.width,
 		}
+	}
+
+	/// The outline drawer's rectangle for this window and notice strip.
+	pub(super) fn outline_drawer(&self) -> Rect {
+		outline::rect(
+			self.width,
+			self.height,
+			content_top(self.remote_notice.is_some()),
+		)
 	}
 }
 

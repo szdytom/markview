@@ -1167,3 +1167,100 @@ fn cjk_ui_weight_comparison() -> Result<()> {
 	}
 	Ok(())
 }
+
+#[test]
+#[ignore = "requires a GPU; writes artifacts/outline-drawer-*.png"]
+fn outline_drawer_frames() -> Result<()> {
+	let directory =
+		std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("artifacts");
+	std::fs::create_dir_all(&directory)?;
+	let mut renderer = pollster::block_on(Renderer::new(None))?;
+	let (width, height) = (820.0_f32, 600.0_f32);
+	let document = document::parse(
+		"# Reading, without distractions\n\nIntroductory text.\n\n## A clear view\n\n> ### Quoted section\n\n#### A deeper entry\n\n## Another section\n\nBody.\n",
+	);
+	for dark in [false, true] {
+		let sheet = markview_core::style::Stylesheet::bundled(dark);
+		let settings = ReaderSettings {
+			stylesheet: sheet.clone(),
+			theme: if dark { Theme::Dark } else { Theme::Light },
+			..Default::default()
+		};
+		renderer.set_stylesheet(sheet.clone());
+		let mut ui = crate::test_support::shaper();
+		ui.set_stylesheet(sheet);
+		let snapshot = LayoutEngine::new().layout(
+			&document,
+			&settings.layout_options(
+				width,
+				false,
+				&crate::test_support::fonts(),
+			),
+		);
+		let interaction = InteractionState {
+			outline_open: true,
+			outline_selection: Some(1),
+			..Default::default()
+		};
+		let mut overlay = vec![
+			Draw::Rect(
+				Rect {
+					x: 0.0,
+					y: 0.0,
+					w: width,
+					h: TOP,
+				},
+				Paint::Background,
+			),
+			Draw::Rect(
+				Rect {
+					x: 0.0,
+					y: TOP - 1.0,
+					w: width,
+					h: 1.0,
+				},
+				Paint::Border,
+			),
+		];
+		overlay.extend(outline::draw(
+			&mut ui,
+			&interaction,
+			&document.outline(),
+			Some(1),
+			outline::rect(width, height, TOP),
+		));
+		let horizontal = HashMap::new();
+		let view = View {
+			selection: None,
+			revision: 0,
+			width: width as u32,
+			height: height as u32,
+			scale: 1.0,
+			scroll: 0.0,
+			left: 110.0,
+			top: TOP + 10.0,
+			bottom: 10.0,
+			theme: settings.theme,
+			horizontal: &horizontal,
+			hovered_link: None,
+			hovered_overflow: None,
+			held_overflow: None,
+		};
+		let target = renderer.offscreen(width as u32, height as u32);
+		let submission = renderer.render(
+			&snapshot,
+			&view,
+			&overlay,
+			&target.create_view(&Default::default()),
+		)?;
+		renderer.wait(Some(submission))?;
+		renderer.save_png(
+			&target,
+			&directory.join(format!(
+				"outline-drawer-{}.png",
+				if dark { "dark" } else { "light" }
+			)),
+		)?;
+	}
+	Ok(())
+}

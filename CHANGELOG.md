@@ -13,6 +13,16 @@ at the same level, without `[brackets]`.
 
 ## Unreleased
 
+- Expand the `<details>` elements framing a heading a `#anchor` link or outline
+  entry names, so a jump into a collapsed body reaches it instead of reporting
+  it missing.
+
+- Add a table-of-contents drawer (`Ctrl+Shift+O`, or the toolbar's outline
+  button) that lists a document's headings, highlights the reading position, and
+  jumps to a heading through the ordinary anchor path; it is an overlay, so the
+  document keeps scrolling and selecting behind it, while an open panel or
+  confirmation keeps input precedence over it.
+
 - Let a stylesheet declare font files with `fontdef.urls` and download them from
   the Styles panel: an explicit, verified, atomically stored action into a user
   `fonts/` directory, with progress and per-file failures; reading, installing

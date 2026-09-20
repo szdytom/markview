@@ -143,6 +143,16 @@ pub struct Block {
 	pub kind: BlockKind,
 }
 
+/// One heading of a document's outline, in reading order.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct OutlineEntry {
+	pub level: u8,
+	/// The heading's plain reading text.
+	pub text: String,
+	/// The GitHub-style fragment a link to this heading resolves.
+	pub anchor: String,
+}
+
 #[derive(Clone, Debug)]
 pub struct Document {
 	pub source: Arc<str>,
@@ -155,6 +165,97 @@ impl Document {
 	/// The state a `<details>` element with `id` declared in its source.
 	pub fn details_declared(&self, id: u64) -> Option<bool> {
 		self.blocks.iter().find_map(|b| b.details_declared(id))
+	}
+
+	/// The `<details>` elements enclosing the block that registers `anchor`,
+	/// outermost first.
+	///
+	/// A heading and a footnote definition both register a layout anchor, and
+	/// either can sit inside a collapsed body that is never laid out. A jump
+	/// to such an anchor must expand the disclosures framing it, outermost
+	/// first, before its target can be found.
+	pub fn details_enclosing(&self, anchor: &str) -> Vec<u64> {
+		fn registers(block: &Block, anchor: &str) -> bool {
+			match &block.kind {
+				BlockKind::Heading { anchor: a, .. } => a == anchor,
+				BlockKind::Footnote { label, .. } => {
+					footnote::anchor(label) == anchor
+				}
+				_ => false,
+			}
+		}
+		fn walk(
+			blocks: &[Block],
+			anchor: &str,
+			open: &mut Vec<u64>,
+			out: &mut Vec<u64>,
+		) -> bool {
+			for block in blocks {
+				if registers(block, anchor) {
+					out.extend_from_slice(open);
+					return true;
+				}
+				let disclosure =
+					matches!(block.kind, BlockKind::Details { .. });
+				if disclosure {
+					open.push(block.id);
+				}
+				let found = match &block.kind {
+					BlockKind::Details { blocks, .. }
+					| BlockKind::Quote { blocks, .. }
+					| BlockKind::Footnote { blocks, .. } => walk(blocks, anchor, open, out),
+					BlockKind::List { items, .. } => items
+						.iter()
+						.any(|item| walk(&item.blocks, anchor, open, out)),
+					_ => false,
+				};
+				if disclosure {
+					open.pop();
+				}
+				if found {
+					return true;
+				}
+			}
+			false
+		}
+		let mut out = Vec::new();
+		walk(&self.blocks, anchor, &mut Vec::new(), &mut out);
+		out
+	}
+
+	/// The document's headings in reading order, with the anchors links use.
+	///
+	/// The walk follows the order anchors are assigned in: containers are
+	/// entered where they appear, so a heading nested in a quote, list,
+	/// footnote or `<details>` sits where its text is read.
+	pub fn outline(&self) -> Vec<OutlineEntry> {
+		fn walk(blocks: &[Block], out: &mut Vec<OutlineEntry>) {
+			for block in blocks {
+				match &block.kind {
+					BlockKind::Heading {
+						level,
+						text,
+						anchor,
+					} => out.push(OutlineEntry {
+						level: *level,
+						text: plain_text(text),
+						anchor: anchor.clone(),
+					}),
+					BlockKind::Quote { blocks, .. }
+					| BlockKind::Footnote { blocks, .. }
+					| BlockKind::Details { blocks, .. } => walk(blocks, out),
+					BlockKind::List { items, .. } => {
+						for item in items {
+							walk(&item.blocks, out);
+						}
+					}
+					_ => {}
+				}
+			}
+		}
+		let mut out = Vec::new();
+		walk(&self.blocks, &mut out);
+		out
 	}
 }
 

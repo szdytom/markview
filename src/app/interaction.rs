@@ -81,6 +81,14 @@ impl App {
 				self.request(false);
 				return;
 			}
+			Command::Outline => {
+				self.toggle_outline();
+				return;
+			}
+			Command::OutlineGoto(index) => {
+				self.goto_outline(index);
+				return;
+			}
 			Command::CloseTab(index) => {
 				self.close_tab(index);
 				return;

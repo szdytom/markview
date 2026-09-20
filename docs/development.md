@@ -158,6 +158,7 @@ Ignored GPU tests are useful for settings, selection, and image-frame regression
 cargo test --workspace --locked button_feedback_frames -- --ignored
 cargo test --workspace --locked redesigned_chrome_frames -- --ignored
 cargo test --workspace --locked settings_and_selection_frame -- --ignored
+cargo test --workspace --locked outline_drawer_frames -- --ignored
 cargo test --workspace --locked tab_strip_frames_clip_overflow_at_fractional_dpi -- --ignored
 cargo test --workspace --locked gpu_frame_draws_decoded_images -- --ignored
 cargo test --workspace --locked color_glyphs_preserve_rgb_and_share_paint_order -- --ignored
