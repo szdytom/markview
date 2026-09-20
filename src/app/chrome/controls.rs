@@ -101,14 +101,6 @@ fn rows(settings: &ReaderSettings) -> Vec<Row> {
 		)
 		.value(format!("{:.2}×", settings.scroll_speed)),
 		Row::new(
-			"Smooth scrolling",
-			vec![action(
-				if settings.smooth_scroll { "On" } else { "Off" },
-				settings.smooth_scroll,
-				Command::SmoothScroll,
-			)],
-		),
-		Row::new(
 			"CJK punctuation",
 			choices(
 				&[

@@ -30,10 +30,10 @@ at the same level, without `[brackets]`.
   persisted `scroll-speed` preference (0.5×–2×, in Settings) that scales every
   wheel notch and arrow step.
 
-- Add an optional smooth scrolling preference, off by default: discrete scroll
-  requests and wheel notches ease for 120–400 ms, with a reversing wheel taking
-  over from the displayed offset, while a thumb drag stays immediate and ends a
-  running animation.
+- Ease discrete scroll requests and wheel notches for 120–400 ms: Page Up/Down,
+  `Space`, `Home`/`End`, the arrow steps, a click on the scrollbar track and a
+  `#heading` jump, with a reversing wheel taking over from the displayed offset,
+  while a thumb drag stays immediate and ends a running animation.
 
 - Expand the `<details>` elements framing a heading a `#anchor` link or outline
   entry names, so a jump into a collapsed body reaches it instead of reporting

@@ -65,9 +65,7 @@ impl App {
 					self.viewport(),
 				),
 			);
-			if self.smooth_scroll()
-				&& (to - self.readers.session.scroll).abs() > 0.5
-			{
+			if (to - self.readers.session.scroll).abs() > 0.5 {
 				self.readers.session.animate_scroll_to(to, Instant::now());
 			} else {
 				self.readers.session.scroll = to;
@@ -108,7 +106,7 @@ impl App {
 				// A resolved anchor lands where it was queued; ease there from
 				// where the reader was rather than snapping.
 				let to = self.readers.session.scroll;
-				if self.smooth_scroll() && (to - before).abs() > 0.5 {
+				if (to - before).abs() > 0.5 {
 					self.readers.session.scroll = before;
 					self.readers.session.animate_scroll_to(to, Instant::now());
 				}

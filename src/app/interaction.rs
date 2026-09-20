@@ -93,14 +93,6 @@ impl App {
 				self.close_tab(index);
 				return;
 			}
-			Command::SmoothScroll => {
-				self.preferences.values.smooth_scroll =
-					!self.preferences.values.smooth_scroll;
-				self.readers.session.cancel_scroll_animation();
-				self.setting_changed(Some(Setting::SmoothScroll));
-				self.redraw();
-				return;
-			}
 			Command::ScrollSpeed(delta) => {
 				self.preferences.values.step_scroll_speed(delta);
 				self.setting_changed(Some(Setting::ScrollSpeed));
@@ -491,13 +483,9 @@ impl App {
 				// A track click eases the thumb to the pointer; a drag that
 				// follows cancels the animation and takes the thumb over.
 				let target = bar.scroll_for(x, y, 0.0);
-				if self.smooth_scroll() {
-					self.readers
-						.session
-						.animate_scroll_to(target, Instant::now());
-				} else {
-					self.readers.session.scroll = target;
-				}
+				self.readers
+					.session
+					.animate_scroll_to(target, Instant::now());
 				0.0
 			};
 			self.interaction.reset_clicks();

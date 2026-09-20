@@ -47,6 +47,11 @@ pub(super) fn wheel_pixels(
 	}
 }
 
+/// Whether a `dy` of input has a finite distance to ease over.
+fn eases(dy: f32) -> bool {
+	dy.is_finite() && dy != 0.0
+}
+
 impl App {
 	pub(super) fn pointer_in_panel(&self) -> bool {
 		let (width, height, _) = self.dimensions();
@@ -68,10 +73,6 @@ impl App {
 	pub(super) fn panel_has_focus(&self) -> bool {
 		self.interaction.panel_open
 	}
-	/// Whether discrete scroll requests ease over time.
-	pub(super) fn smooth_scroll(&self) -> bool {
-		self.preferences.values.smooth_scroll
-	}
 	/// The reader's scroll-speed multiplier over the desktop's own speed.
 	pub(super) fn scroll_speed(&self) -> f32 {
 		self.preferences.values.scroll_speed
@@ -84,56 +85,48 @@ impl App {
 		self.readers.session.scroll_by(dy, self.viewport());
 		self.after_scroll();
 	}
-	/// A discrete scroll step. With the setting on it eases; with it off it is
-	/// exactly the immediate path the reader has always had.
+	/// A discrete scroll step, eased to its destination.
 	pub(super) fn scroll_step(&mut self, dy: f32) {
-		if self.eases(dy) {
+		if eases(dy) {
 			self.readers.session.animate_scroll_by(dy, Instant::now());
 		} else {
 			self.readers.session.scroll_by(dy, self.viewport());
 		}
 		self.after_scroll();
 	}
-	/// A wheel travel. With the setting on a notch eases like an arrow step;
-	/// with it off it is exactly the immediate path the reader has always had.
+	/// A wheel travel, eased like a discrete step.
 	pub(super) fn scroll_wheel(&mut self, dy: f32) {
-		if self.eases(dy) {
+		if eases(dy) {
 			self.readers.session.animate_wheel_by(dy, Instant::now());
 		} else {
 			self.readers.session.scroll_by(dy, self.viewport());
 		}
 		self.after_scroll();
 	}
-	/// Whether a `dy` of input eases rather than moving the offset at once.
-	fn eases(&self, dy: f32) -> bool {
-		self.smooth_scroll() && dy.is_finite() && dy != 0.0
-	}
 	/// Home and End. The top is known before the geometry is, so it eases to
 	/// zero; the end is only a number once the snapshot is complete, and until
 	/// then the existing infinite target waits for the final height.
 	pub(super) fn scroll_bound(&mut self, to_end: bool) {
-		if self.smooth_scroll() {
-			let destination = if to_end {
-				(self.readers.session.snapshot_complete
-					&& !self.readers.session.layout_pending)
-					.then(|| {
-						crate::state::scroll_limit(
-							self.readers.session.snapshot.height,
-							self.viewport(),
-						)
-					})
-			} else {
-				Some(0.0)
-			};
-			if let Some(destination) = destination
-				&& (destination - self.readers.session.scroll).abs() > 0.5
-			{
-				self.readers
-					.session
-					.animate_scroll_to(destination, Instant::now());
-				self.after_scroll();
-				return;
-			}
+		let destination = if to_end {
+			(self.readers.session.snapshot_complete
+				&& !self.readers.session.layout_pending)
+				.then(|| {
+					crate::state::scroll_limit(
+						self.readers.session.snapshot.height,
+						self.viewport(),
+					)
+				})
+		} else {
+			Some(0.0)
+		};
+		if let Some(destination) = destination
+			&& (destination - self.readers.session.scroll).abs() > 0.5
+		{
+			self.readers
+				.session
+				.animate_scroll_to(destination, Instant::now());
+			self.after_scroll();
+			return;
 		}
 		self.scroll_by(if to_end {
 			f32::INFINITY

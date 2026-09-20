@@ -62,7 +62,6 @@ impl Preferences {
 			cjk_type: args.cjk_type.unwrap_or(settings.cjk_type),
 			codeblock_theme_override: settings.codeblock_theme_override.clone(),
 			codeblock_wrap: settings.codeblock_wrap,
-			smooth_scroll: settings.smooth_scroll,
 			scroll_speed: settings.scroll_speed,
 		};
 		for field in &args.overrides {
