@@ -78,6 +78,12 @@ at the same level, without `[brackets]`.
   the figure no longer copies the source and a loading or failed diagram copies
   its placeholder message instead.
 
+- Add paper-edge rules under `page.header` and `page.footer`, with symmetric
+  `rule_width`/`rule_color` fields for PDF and PNG exports.
+
+- Support independent box edges/corners, heading markers, tracking and child-position
+  rules in reader/PDF output, with pagination hints.
+
 - Hold a wheel gesture to the axis its first few moments chose, separated by
   the boundary the platform reports or by a pause where it reports none and
   inheriting nothing from the gesture before it, so a diagonal trackpad gesture

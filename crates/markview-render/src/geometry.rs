@@ -16,6 +16,121 @@ pub(super) struct Geometry {
 	vertex_capacity: usize,
 }
 impl Geometry {
+	pub(super) fn decorated(
+		&mut self,
+		r: Rect,
+		decoration: markview_core::scene::BoxDecoration,
+		background: [f32; 4],
+		border: [f32; 4],
+		clip: Rect,
+		view: &View<'_>,
+	) {
+		let Some(visible) = r.intersect(clip) else {
+			return;
+		};
+		let corners = markview_core::scene::fit_corners(r, decoration.corners);
+		let [t, right, b, l] =
+			markview_core::scene::fit_edges(r, decoration.edges);
+		let inner = Rect {
+			x: r.x + l,
+			y: r.y + t,
+			w: (r.w - l - right).max(0.0),
+			h: (r.h - t - b).max(0.0),
+		};
+		let inner_corners = markview_core::scene::fit_corners(
+			inner,
+			[
+				(corners[0] - t.max(l)).max(0.0),
+				(corners[1] - t.max(right)).max(0.0),
+				(corners[2] - b.max(right)).max(0.0),
+				(corners[3] - b.max(l)).max(0.0),
+			],
+		);
+		let span = |rect: Rect, c: [f32; 4], y: f32| {
+			let inset = |top: f32, bottom: f32| {
+				let (radius, d) = if y - rect.y < top {
+					(top, y - rect.y)
+				} else {
+					(bottom, rect.y + rect.h - y)
+				};
+				if d >= radius {
+					0.0
+				} else {
+					radius
+						- (radius * radius - (radius - d).powi(2))
+							.max(0.0)
+							.sqrt()
+				}
+			};
+			(
+				rect.x + inset(c[0], c[3]),
+				rect.x + rect.w - inset(c[1], c[2]),
+			)
+		};
+		let top_end = r.y + corners[0].max(corners[1]).max(t);
+		let bottom_start = r.y + r.h - corners[2].max(corners[3]).max(b);
+		let mut y = visible.y;
+		while y < visible.y + visible.h {
+			let h = if y >= top_end && y < bottom_start {
+				bottom_start - y
+			} else {
+				1.0 / view.scale
+			}
+			.min(visible.y + visible.h - y);
+			let mid = y + h * 0.5;
+			let (a, z) = span(r, corners, mid);
+			self.solid(
+				Rect {
+					x: a,
+					y,
+					w: (z - a).max(0.0),
+					h,
+				},
+				background,
+				clip,
+				view,
+			);
+			if mid < inner.y || mid >= inner.y + inner.h || inner.w == 0.0 {
+				self.solid(
+					Rect {
+						x: a,
+						y,
+						w: (z - a).max(0.0),
+						h,
+					},
+					border,
+					clip,
+					view,
+				);
+			} else {
+				let (ia, iz) = span(inner, inner_corners, mid);
+				self.solid(
+					Rect {
+						x: a,
+						y,
+						w: (ia - a).max(0.0),
+						h,
+					},
+					border,
+					clip,
+					view,
+				);
+				self.solid(
+					Rect {
+						x: iz,
+						y,
+						w: (z - iz).max(0.0),
+						h,
+					},
+					border,
+					clip,
+					view,
+				);
+			}
+			y += h;
+		}
+	}
+
 	pub(super) fn clear(&mut self) {
 		self.vertices.clear();
 	}

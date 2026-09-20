@@ -29,7 +29,20 @@ impl BlockContext<'_> {
 		let mut line_offset = 0;
 
 		let mut cursor = y;
-		if !language.is_empty() {
+		let label_appearance = opts
+			.stylesheet
+			.text(&self.shaper.appearance, Condition::Label);
+		let show_label = opts
+			.stylesheet
+			.element_rule(label_appearance.chain, Condition::Label)
+			.show
+			.unwrap_or(true);
+		let wrap = opts
+			.stylesheet
+			.element_rule(self.shaper.appearance.chain, Condition::CodeBlock)
+			.wrap
+			.unwrap_or(opts.codeblock_wrap);
+		if !language.is_empty() && show_label {
 			let label = opts
 				.stylesheet
 				.text(&self.shaper.appearance, Condition::Label);
@@ -106,8 +119,7 @@ impl BlockContext<'_> {
 			for c in clusters {
 				// Clusters wider than the whole column stay on their own line
 				// rather than wrapping forever.
-				if opts.codeblock_wrap && left > x && left + c.width > x + width
-				{
+				if wrap && left > x && left + c.width > x + width {
 					cursor += line_height;
 					left = x;
 					baseline = baseline_at(cursor);

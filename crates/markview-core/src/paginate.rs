@@ -284,7 +284,37 @@ fn prepare(
 	content: (f32, f32),
 ) -> Prepared {
 	let bands = bands(layout);
-	let need = needs(&bands);
+	let mut need = needs(&bands);
+	for constraint in &layout.page_constraints {
+		let start = bands.partition_point(|b| b.bottom <= constraint.top);
+		let end = bands.partition_point(|b| b.top < constraint.bottom);
+		let count = end.saturating_sub(start);
+		if count == 0 {
+			continue;
+		}
+		let keep = constraint.keep_together
+			&& constraint.bottom - constraint.top <= content.1;
+		let orphans = usize::from(constraint.orphans.unwrap_or(2));
+		let widows = usize::from(constraint.widows.unwrap_or(2));
+		for index in start..end {
+			let last = if keep
+				|| count < orphans.saturating_add(widows)
+				|| end - index <= widows
+			{
+				end - 1
+			} else if index == start {
+				(start + orphans - 1).min(end - 1)
+			} else {
+				index
+			};
+			if constraint.orphans.is_some() || constraint.widows.is_some() {
+				need[index] = bands[last].bottom - bands[index].top;
+			} else if keep {
+				need[index] =
+					need[index].max(bands[last].bottom - bands[index].top);
+			}
+		}
+	}
 	let mut scale = table_scale(block, layout);
 	// A lone image taller than the page is scaled down instead of losing its
 	// bottom half. Its caption, if any, follows at the same scale.

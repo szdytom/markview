@@ -226,7 +226,7 @@ impl Renderer {
 		};
 		self.prewarming = true;
 		self.raster.begin_budget(budget);
-		self.prepare(snapshot, &ahead, &[]);
+		self.prepare(snapshot, &ahead, &[], &[]);
 		self.prewarming = false;
 		self.raster.finish_budget()
 	}

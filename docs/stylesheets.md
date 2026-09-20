@@ -197,6 +197,50 @@ Special properties include `theme` on `["code_block"]` alone (`theme = "none"` d
 
 Colors are sRGB `#RRGGBB` or `#RRGGBBAA`; `body.background` must be opaque. Sizes and spacing are positive or non-negative finite values. `size` is relative to the reader's base size, `line_height` is a multiple of the condition's size, block spacing and padding use base-size units, and an inline code chip's padding scales with the text around it. Border width and radius use logical pixels. Unknown conditions, fields, types, and enum values are errors.
 
+## Native document decorations
+
+These properties work in both reader and export themes. They are resolved by the shared layout engine, so PDF and GPU output use the same geometry. Existing themes keep their original border behavior when these fields are absent.
+
+| Property | Meaning |
+| --- | --- |
+| `border_edges = [top, right, bottom, left]` | Four nonnegative widths in logical pixels. Overrides `border_width`, draws inward, and reserves space in block/cell layout. Use zero for an absent edge. |
+| `corner_radii = [top_left, top_right, bottom_right, bottom_left]` | Four nonnegative circular radii in logical pixels. Overrides `radius`; adjacent corners scale together to fit the box. |
+| `heading_marker = [width, height, gap]` | A rectangular decoration before `h1`–`h6`, in base-font-size units. Reserves text width and aligns with the first line; a tall marker also reserves height. Zero width or height disables it. |
+| `marker_color` | The heading marker's fill, using the usual hex color syntax. Omitted color is transparent. |
+| `letter_spacing` | Extra advance in em, inherited by text; finite negative values tighten tracking. Applied during shaping, so wrapping, selection and PDF text positions agree. |
+| `orphans`, `widows` | Positive line/band counts required on each side of a page break. The existing default is two. |
+| `keep_together` | Prefer keeping a block on one page. A block taller than the page is allowed to split. |
+| `wrap` | On `code_block`, override the destination's default line wrapping. |
+| `show` | On `code_block` + `label`, show or hide the language label. |
+
+`first_child` and `last_child` describe the immediate block's position among its siblings; on table cells they describe the row's position. They do not describe arbitrary descendants or individual characters. Position is replaced when entering another child container. A one-child container has both conditions. Add a block condition when targeting a particular element:
+
+```toml
+[[rule]]
+when = ["h2"]
+border_edges = [0, 0, 2, 0]
+border_color = "#232323"
+heading_marker = [0.78, 0.78, 0.65]
+marker_color = "#F1CE46"
+
+[[rule]]
+when = ["blockquote", "p", "first_child", "strong"]
+size = 0.825
+letter_spacing = 0.09
+
+[[rule]]
+when = ["table", "cell"]
+border_edges = [0, 0, 1, 0]
+
+[[rule]]
+when = ["table", "cell", "last_child"]
+border_edges = [0, 0, 2, 0]
+```
+
+For horizontal-only tables, assign each shared edge to one row (normally its bottom edge) rather than drawing both adjacent edges. Header and last-row rules can set their own border colors; a one-row table can use a combined `header` + `last_child` rule. PDF fragments retain the top edge/corners only on the opening fragment and the bottom edge/corners only on the closing fragment.
+
+Geometric and tracking changes invalidate affected layout caches. Color changes reuse geometry. Introducing the first positional rule also rebuilds layout to record positions; subsequent color changes to that rule do not. Pagination hints are recorded with the block ranges but used only by the PDF paginator, not by the reading window or continuous PNG export.
+
 ## Paper
 
 The PDF export always starts from the bundled `print` stylesheet, and `--style` layers a named style supporting `pdf` on top of it. A style may also set the `[page]` table, which is the only table besides `fontdef`, `meta`, `mermaid`, and `rule`:
@@ -212,9 +256,21 @@ header_right = ""
 footer_left = ""
 footer_center = "{page} / {pages}"
 footer_right = ""
+
+[page.header]
+rule_width = 3.0           # Stroke thickness in points; zero disables it
+rule_color = "#244C80"     # #RRGGBB or #RRGGBBAA; defaults to black
+
+[page.footer]
+rule_width = 1.5
+rule_color = "#343C35"
 ```
 
 Slots are templates. `{page}`, `{pages}`, `{title}`, and `{path}` are the supported placeholders; any other name is rejected at parse time, and there is deliberately no date, so the same document always exports the same bytes. A slot holding a page number is styled by `page_number` and the rest by `page_header` or `page_footer`. `--paper`, `--landscape`, `--margin`, `--header*`, and `--footer*` override these fields for one run.
+
+The optional header/footer rules are paper decorations, not layout boxes. `rule_width` means thickness in points (CSS pixels × 0.75), not horizontal length; both span the final sheet width at the top/bottom edge of every PDF page. They are painted after the paper background and before content and page furniture, header first and footer second if they overlap. They never reserve space or change line breaks, pagination or margins. A rule thicker than its margin may extend behind content; thickness is clipped to the sheet height. Negative or non-finite widths are rejected. Zero or omitted width draws nothing; color and width cascade independently within each section. Empty strings are not colors or widths. Existing text slots (`header_left`, `footer_center`, etc.) remain under `[page]`.
+
+PNG export produces one continuous image, so header/footer rules appear only at its top/bottom, clipped to the image height, even when rendering uses multiple tiles. Reader windows and diagnostic `--render` views have no sheet decoration.
 
 ## Diagrams
 

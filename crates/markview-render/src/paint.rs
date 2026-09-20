@@ -181,6 +181,7 @@ impl Renderer {
 				radius,
 				border,
 				left_only,
+				decoration,
 			} => {
 				let rect = Rect {
 					x: rect.x + dx,
@@ -195,6 +196,25 @@ impl Renderer {
 					),
 					view.theme,
 				);
+				if let Some(decoration) = decoration {
+					let border_color = self.color(
+						Paint::Scoped(
+							*chain,
+							*condition,
+							markview_core::style::ColorField::BorderColor,
+						),
+						view.theme,
+					);
+					self.geometry.decorated(
+						rect,
+						*decoration,
+						background,
+						border_color,
+						clip,
+						view,
+					);
+					return;
+				}
 				self.geometry.rounded(rect, *radius, background, clip, view);
 				if *border > 0. {
 					let color = self.color(

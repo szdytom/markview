@@ -1,4 +1,139 @@
 use super::*;
+
+#[test]
+fn decorations_preserve_text_and_cascade_without_color_reflow() {
+	let document = crate::document::parse(
+		"# ATTENTION\n\n## Heading\n\n> **First**\n>\n> **Second**\n\n| A | B |\n|---|---|\n| C | D |\n| E | F |\n",
+	);
+	let source = r##"
+format_version = 2
+version = 1
+[[rule]]
+when = ["h1"]
+letter_spacing = -0.025
+[[rule]]
+when = ["h2"]
+heading_marker = [1, 1, 0.5]
+marker_color = "#123456"
+[[rule]]
+when = ["blockquote"]
+size = 1.0
+[[rule]]
+when = ["blockquote", "p", "first_child", "strong"]
+size = 0.8
+[[rule]]
+when = ["table", "cell"]
+border_edges = [0, 0, 1, 0]
+[[rule]]
+when = ["table", "cell", "header"]
+border_edges = [2, 0, 1, 0]
+[[rule]]
+when = ["table", "cell", "last_child"]
+border_edges = [0, 0, 2, 0]
+"##;
+	let options = LayoutOptions {
+		stylesheet: sheet(source),
+		..Default::default()
+	};
+	let mut engine = LayoutEngine::new();
+	let first = engine.layout(&document, &options);
+	let selected = first.extract_text(first.select_all(1).unwrap(), 1);
+	assert!(selected.contains("ATTENTION") && selected.contains("Second"));
+	let mut rules = (*options.stylesheet).clone();
+	rules.merge(
+		&crate::style::Stylesheet::parse(
+			"format_version=2\nversion=1\n[[rule]]\nwhen=['h2']\nmarker_color='#00FF00'",
+		)
+		.unwrap(),
+	);
+	let recolored = engine.layout(
+		&document,
+		&LayoutOptions {
+			stylesheet: Arc::new(rules),
+			..options.clone()
+		},
+	);
+	assert_eq!(recolored.reused, document.blocks.len());
+	assert_eq!(first.height, recolored.height);
+	let mut marker = false;
+	for draw in &first.blocks[1].layout.draws {
+		if let Draw::Rect(
+			rect,
+			Paint::Scoped(
+				_,
+				Condition::H2,
+				crate::style::ColorField::MarkerColor,
+			),
+		) = draw
+		{
+			assert!(rect.w > 0.0 && rect.h > 0.0);
+			marker = true;
+		}
+	}
+	assert!(marker);
+	let table = &first.blocks[3].layout;
+	let edges: Vec<_> = table
+		.draws
+		.iter()
+		.filter_map(|d| match d {
+			Draw::Box {
+				decoration: Some(d),
+				condition: Condition::Cell | Condition::Header,
+				..
+			} => Some(d.edges),
+			_ => None,
+		})
+		.collect();
+	assert_eq!(
+		edges,
+		vec![
+			[2.0, 0.0, 1.0, 0.0],
+			[2.0, 0.0, 1.0, 0.0],
+			[0.0, 0.0, 1.0, 0.0],
+			[0.0, 0.0, 1.0, 0.0],
+			[0.0, 0.0, 2.0, 0.0],
+			[0.0, 0.0, 2.0, 0.0]
+		]
+	);
+	let quote = &first.blocks[2].layout;
+	let letters: Vec<_> = quote
+		.draws
+		.iter()
+		.filter_map(|d| {
+			if let Draw::Glyph(g) = d {
+				Some(g.size)
+			} else {
+				None
+			}
+		})
+		.collect();
+	assert!(letters.iter().any(|s| (*s - 18.0 * 0.8).abs() < 0.01));
+	assert!(letters.iter().any(|s| (*s - 18.0).abs() < 0.01));
+	let untracked =
+		sheet(&source.replace("letter_spacing = -0.025", "letter_spacing = 0"));
+	let normal = engine.layout(
+		&document,
+		&LayoutOptions {
+			stylesheet: untracked,
+			..options
+		},
+	);
+	let right = |s: &LayoutSnapshot| {
+		s.blocks[0]
+			.layout
+			.draws
+			.iter()
+			.filter_map(|d| {
+				if let Draw::Glyph(g) = d {
+					Some(g.x)
+				} else {
+					None
+				}
+			})
+			.fold(0.0_f32, f32::max)
+	};
+	assert!(right(&first) < right(&normal));
+}
 fn sheet(source: &str) -> Arc<crate::style::Stylesheet> {
 	let mut s = (*crate::style::Stylesheet::bundled(false)).clone();
 	s.merge(&crate::style::Stylesheet::parse(source).unwrap());

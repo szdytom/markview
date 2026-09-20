@@ -92,6 +92,7 @@ impl BlockContext<'_> {
 				.min(inset[1])
 				.min(inset[3]),
 			left_only: false,
+			decoration: None,
 		});
 		if let Some(text) = self.image_placeholder(image) {
 			let rect = content;

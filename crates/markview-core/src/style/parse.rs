@@ -275,6 +275,31 @@ fn parse_when(value: &toml_edit::Item) -> Result<ConditionSet> {
 	Ok(conditions)
 }
 fn validate_numbers(name: &str, rule: &Rule) -> Result<()> {
+	for (field, values) in [
+		(
+			"border_edges",
+			rule.border_edges.as_ref().map(|v| v.as_slice()),
+		),
+		(
+			"corner_radii",
+			rule.corner_radii.as_ref().map(|v| v.as_slice()),
+		),
+		(
+			"heading_marker",
+			rule.heading_marker.as_ref().map(|v| v.as_slice()),
+		),
+	] {
+		if values.is_some_and(|v| v.iter().any(|v| !v.is_finite() || *v < 0.0))
+		{
+			bail!("rule [{name}].{field}: expected finite nonnegative values");
+		}
+	}
+	if rule.letter_spacing.is_some_and(|v| !v.is_finite()) {
+		bail!("rule [{name}].letter_spacing: expected a finite number");
+	}
+	if rule.orphans == Some(0) || rule.widows == Some(0) {
+		bail!("rule [{name}]: orphans and widows must be positive integers");
+	}
 	for (field, value, positive) in [
 		("size", rule.size, true),
 		("line_height", rule.line_height, true),
@@ -386,6 +411,16 @@ fn validate_field(conditions: ConditionSet, key: &str) -> Result<()> {
 		)
 	} else {
 		match key {
+			"wrap" => has(K::CodeBlock) && !has(K::Label),
+			"show" => has(K::Label),
+			"letter_spacing" => true,
+			"border_edges" | "corner_radii" => conditions.container(),
+			"heading_marker" | "marker_color" => {
+				[K::H1, K::H2, K::H3, K::H4, K::H5, K::H6]
+					.into_iter()
+					.any(has)
+			}
+			"orphans" | "widows" | "keep_together" => conditions.container(),
 			"color" | "font" | "weight" | "decoration" => true,
 			"size" => !has(K::Body),
 			"background" => true,
