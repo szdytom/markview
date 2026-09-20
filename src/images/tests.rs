@@ -9,7 +9,7 @@ use std::{fs, io::Cursor};
 
 /// Decodes with the system font database, as a standalone image does.
 fn decode(bytes: &[u8], target: Option<(u32, u32)>) -> Result<Decoded> {
-	decode_image(bytes, target, None)
+	decode_image(bytes, target, None, &[])
 }
 
 /// The diagram theme a test that never switches stylesheets renders with.
@@ -275,6 +275,34 @@ fn the_readers_own_faces_measure_a_diagram() {
 }
 
 #[test]
+fn configured_generic_mapping_is_used_for_measurement() {
+	let dir = Path::new(env!("CARGO_MANIFEST_DIR"))
+		.join("crates/markview-core/tests/fonts");
+	let config = FontConfig {
+		ignore_system_fonts: true,
+		directories: vec![dir],
+		revision: 0,
+	};
+	let policy = DiagramFonts::get(&config, &[]);
+	let family = policy
+		.faces()
+		.into_iter()
+		.find(|face| face.family.contains("Sans"))
+		.expect("a sans face in the test collection")
+		.family;
+	let mapped = DiagramFonts::get_for(
+		&config,
+		&[],
+		&[family.clone()],
+		&[("serif".into(), vec![family.clone()])],
+	);
+	assert_eq!(
+		mapped.measure_text_width("Hello", 16.0, "serif"),
+		mapped.measure_text_width("Hello", 16.0, &family)
+	);
+}
+
+#[test]
 fn only_a_diagram_uses_the_readers_faces() {
 	// A standalone SVG's missing glyphs must fall back through the system
 	// resolver, not through an unrelated `[mermaid] font_family`.
@@ -383,7 +411,7 @@ fn a_generic_family_still_draws_in_a_diagram() {
 	] {
 		let fonts = DiagramFonts::get(&config, &[]);
 		let decoded =
-			decode_image(SVG, None, Some((&fonts, "sans-serif"))).unwrap();
+			decode_image(SVG, None, Some((&fonts, "sans-serif")), &[]).unwrap();
 		assert!(
 			decoded.pixels.rgba.chunks(4).any(|pixel| pixel[3] > 0),
 			"no ink for {config:?}"

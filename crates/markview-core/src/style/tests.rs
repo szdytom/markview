@@ -79,6 +79,9 @@ fn strict_schema() {
 		"format_version=2\nversion=1\n[mermaid]\nfont_family='serif'",
 		"format_version=2\nversion=1\n[mermaid]\ngit_colors=['#000000']",
 		"format_version=2\nversion=1\n[mermaid]\npie_opacity=2.0",
+		"format_version=2\nversion=1\n[svg.generic_font_family]\nunknown=['serif']",
+		"format_version=2\nversion=1\n[svg.generic_font_family]\nserif=[]",
+		"format_version=2\nversion=1\n[svg.generic_font_family]\nserif=['a,b']",
 	] {
 		assert!(Stylesheet::parse(bad).is_err(), "{bad}");
 	}
@@ -113,6 +116,28 @@ fn mermaid_table_names_a_preset_and_merges_field_by_field() {
 		.preset(),
 		"DARK"
 	);
+}
+
+#[test]
+fn svg_generic_families_parse_resolve_and_merge_by_name() {
+	let low = Stylesheet::parse(
+		"format_version=2\nversion=1\n[svg.generic_font_family]\nserif=['serif']\nsans-serif=['sans-serif']",
+	)
+	.unwrap();
+	let high = Stylesheet::parse(
+		"format_version=2\nversion=1\n[svg.generic_font_family]\nserif=['sans-serif']",
+	)
+	.unwrap();
+	let mut sheet = low.clone();
+	sheet.merge(&high);
+	assert_eq!(
+		sheet.svg_generic_font_families(),
+		[
+			("sans-serif".into(), vec!["sans-serif".into()]),
+			("serif".into(), vec!["sans-serif".into()])
+		]
+	);
+	assert_ne!(low.diagram_key(), sheet.diagram_key());
 }
 
 #[test]

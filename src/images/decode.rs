@@ -2,8 +2,9 @@
 use anyhow::{Context, Result, bail};
 use image::{AnimationDecoder, ImageDecoder};
 use markview_core::image::Pixels;
-use std::{io::Cursor, sync::Arc};
+use std::{collections::VecDeque, io::Cursor, sync::Arc};
 const MAX_PIXELS: u64 = 16_000_000;
+const SVG_FONT_CACHE_CAP: usize = 4;
 
 fn dimensions(w: u32, h: u32) -> Result<()> {
 	if w == 0 || h == 0 || u64::from(w) * u64::from(h) > MAX_PIXELS {
@@ -44,16 +45,74 @@ fn ico_png(bytes: &[u8]) -> Option<&[u8]> {
 
 /// System fonts are shared: loading them is expensive and SVGs without text
 /// do not need them at all.
-fn svg_fonts() -> Arc<resvg::usvg::fontdb::Database> {
-	static FONTS: std::sync::OnceLock<Arc<resvg::usvg::fontdb::Database>> =
+
+fn svg_fonts(
+	generic_families: &[(String, Vec<String>)],
+) -> Arc<resvg::usvg::fontdb::Database> {
+	type Cache = std::sync::Mutex<
+		VecDeque<(
+			Vec<(String, Vec<String>)>,
+			Arc<resvg::usvg::fontdb::Database>,
+		)>,
+	>;
+	static SYSTEM: std::sync::OnceLock<Arc<resvg::usvg::fontdb::Database>> =
 		std::sync::OnceLock::new();
-	FONTS
-		.get_or_init(|| {
-			let mut db = resvg::usvg::fontdb::Database::new();
-			db.load_system_fonts();
-			Arc::new(db)
-		})
-		.clone()
+	static CACHE: std::sync::OnceLock<Cache> = std::sync::OnceLock::new();
+	let fonts = CACHE.get_or_init(|| std::sync::Mutex::new(VecDeque::new()));
+	let mut fonts = fonts.lock().unwrap();
+	if let Some((_, database)) =
+		fonts.iter().find(|(key, _)| key == generic_families)
+	{
+		return database.clone();
+	}
+	let system = SYSTEM.get_or_init(|| {
+		let mut db = resvg::usvg::fontdb::Database::new();
+		db.load_system_fonts();
+		Arc::new(db)
+	});
+	let mut database = (**system).clone();
+	for (generic, candidates) in generic_families {
+		if let Some(family) = candidates
+			.iter()
+			.find_map(|candidate| resolve_svg_family(&database, candidate))
+		{
+			super::fonts::set_generic(&mut database, generic, family.clone());
+		}
+	}
+	let database = Arc::new(database);
+	fonts.push_back((generic_families.to_vec(), database.clone()));
+	if fonts.len() > SVG_FONT_CACHE_CAP {
+		fonts.pop_front();
+	}
+	database
+}
+
+/// Resolves a configured SVG candidate to the database's canonical family
+/// name, including a candidate that is itself a generic family.
+fn resolve_svg_family(
+	database: &resvg::usvg::fontdb::Database,
+	candidate: &str,
+) -> Option<String> {
+	use resvg::usvg::fontdb::{FaceInfo, Family};
+	let candidate = if candidate.eq_ignore_ascii_case("serif") {
+		database.family_name(&Family::Serif)
+	} else if candidate.eq_ignore_ascii_case("sans-serif") {
+		database.family_name(&Family::SansSerif)
+	} else if candidate.eq_ignore_ascii_case("monospace") {
+		database.family_name(&Family::Monospace)
+	} else if candidate.eq_ignore_ascii_case("cursive") {
+		database.family_name(&Family::Cursive)
+	} else if candidate.eq_ignore_ascii_case("fantasy") {
+		database.family_name(&Family::Fantasy)
+	} else {
+		candidate
+	};
+	database.faces().find_map(|face: &FaceInfo| {
+		face.families
+			.iter()
+			.find(|(name, _)| name.eq_ignore_ascii_case(candidate))
+			.map(|(name, _)| name.clone())
+	})
 }
 
 fn has_svg_text(bytes: &[u8]) -> bool {
@@ -73,6 +132,7 @@ pub(super) fn decode(
 	bytes: &[u8],
 	target: Option<(u32, u32)>,
 	fonts: Option<(&std::sync::Arc<super::fonts::DiagramFonts>, &str)>,
+	generic_families: &[(String, Vec<String>)],
 ) -> Result<Decoded> {
 	let format = image::guess_format(bytes).ok();
 	if format.is_none() {
@@ -81,7 +141,7 @@ pub(super) fn decode(
 		if has_svg_text(bytes) {
 			match fonts {
 				Some((fonts, families)) => fonts.apply(&mut options, families),
-				None => options.fontdb = svg_fonts(),
+				None => options.fontdb = svg_fonts(generic_families),
 			}
 		}
 		let tree = resvg::usvg::Tree::from_data(bytes, &options)
@@ -209,5 +269,12 @@ mod tests {
 		assert!(super::dimensions(0, 10).is_err());
 		assert!(super::dimensions(5000, 4000).is_err());
 		assert!(super::dimensions(4000, 4000).is_ok());
+	}
+
+	#[test]
+	fn generic_svg_candidates_resolve_through_the_database() {
+		let mut database = resvg::usvg::fontdb::Database::new();
+		database.load_system_fonts();
+		assert!(super::resolve_svg_family(&database, "monospace").is_some());
 	}
 }

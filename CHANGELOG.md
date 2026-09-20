@@ -34,6 +34,9 @@ at the same level, without `[brackets]`.
 
 ### Changed
 
+- Prepare Mermaid fonts and SVGs on the image workers, allowing the first layout to publish before a cold font collection is ready.
+- Load restricted SVG fonts only from configured Mermaid, SVG generic, and selected CJK `fontdef` candidates, avoiding full system-font materialization on first open.
+
 - Keep a diagram's parsed source across a theme change, so a new `[mermaid]` table redraws the diagrams already on screen without parsing them again.
 - Honor the system's per-axis lines- and characters-per-notch on Windows and count a Linux wheel detent as the usual three lines instead of one.
 - Ease discrete scroll requests and wheel notches for 120–400 ms: Page Up/Down, `Space`, `Home`/`End`, the arrow steps, a click on the scrollbar track and a `#heading` jump, with a reversing wheel taking over from the displayed offset, while a thumb drag stays immediate and ends a running animation.

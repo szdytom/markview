@@ -357,9 +357,9 @@ struct DiagramInner {
 	families: HashMap<String, Arc<Vec<Arc<Mutex<FaceMetrics>>>>>,
 	/// Every face seen so far, by the key that identifies it.
 	faces: HashMap<(u64, u32), Arc<Mutex<FaceMetrics>>>,
-	/// What the collection-wide scan found for one character. The scan is the
-	/// expensive part and does not depend on the requested family list, so it
-	/// is remembered per character rather than per list.
+	/// Production Mermaid requests opt out of collection-wide fallback scans.
+	restricted: bool,
+	/// What the unrestricted compatibility path found for one character.
 	scanned: HashMap<char, Option<(u64, u32)>>,
 }
 
@@ -398,6 +398,7 @@ impl DiagramFonts {
 				han: han.to_vec(),
 				families: HashMap::new(),
 				faces: HashMap::new(),
+				restricted: false,
 				scanned: HashMap::new(),
 			}),
 		}
@@ -459,6 +460,39 @@ impl DiagramFonts {
 					.map(|family| (name, family))
 			})
 			.collect()
+	}
+
+	/// Resolves a configured family name to a family present in the collection.
+	pub fn resolve_family(&self, name: &str) -> Option<String> {
+		let mut inner = self.inner.lock().unwrap();
+		let name = inner.family_name(name)?;
+		inner
+			.collection
+			.family_by_name(&name)
+			.map(|family| family.name().to_owned())
+	}
+
+	/// Faces for the Mermaid candidates and the reader's selected Han fallback.
+	///
+	/// Resolving a diagram must not materialize every installed family. The
+	/// stylesheet has already declared the only candidates this renderer may
+	/// use, so keep the font database bounded to those families.
+	pub fn faces_for(&self, families: &[String]) -> Vec<DiagramFace> {
+		let mut inner = self.inner.lock().unwrap();
+		inner.restricted = true;
+		let mut names = families.to_vec();
+		names.extend(inner.han.iter().cloned());
+		let mut seen = HashMap::new();
+		let mut out = Vec::new();
+		for name in names {
+			for face in inner.family(&name).iter() {
+				let face = face.lock().unwrap().face.clone();
+				if seen.insert(face.key(), ()).is_none() {
+					out.push(face);
+				}
+			}
+		}
+		out
 	}
 
 	/// Every face of the collection, for a rasterizer's own font database.
@@ -632,7 +666,7 @@ impl DiagramInner {
 	}
 
 	/// The face that draws `ch`: the requested families in order, then the
-	/// stylesheet's Han families, then any face of the collection.
+	/// stylesheet's selected Han families.
 	fn cover(
 		&mut self,
 		families: &str,
@@ -644,6 +678,9 @@ impl DiagramInner {
 			names.iter().find_map(|name| self.covering_face(name, ch))
 		{
 			return Some(face);
+		}
+		if self.restricted {
+			return None;
 		}
 		if let Some(cached) = self.scanned.get(&ch) {
 			return cached.and_then(|key| self.faces.get(&key).cloned());
@@ -826,6 +863,10 @@ mod tests {
 		};
 		let fonts = DiagramFonts::new(&config, &[]);
 		assert!(!fonts.faces().is_empty(), "no faces in the collection");
+		assert_eq!(
+			fonts.resolve_family("noto sans").as_deref(),
+			Some("Noto Sans")
+		);
 		// A family the collection has measures, one it does not declines.
 		let latin = fonts.measure("Noto Sans", "Hello", 16.0).unwrap();
 		assert!(latin > 16.0, "{latin}");
@@ -877,6 +918,20 @@ mod tests {
 			fonts.measure("sans-serif", "Hello", 16.0),
 			fonts.measure(&sans, "Hello", 16.0)
 		);
+	}
+
+	#[test]
+	fn diagram_faces_are_limited_to_requested_families() {
+		let dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fonts");
+		let config = FontConfig {
+			ignore_system_fonts: true,
+			directories: vec![dir],
+			revision: 0,
+		};
+		let fonts = DiagramFonts::new(&config, &[]);
+		let faces = fonts.faces_for(&["Noto Sans".into()]);
+		assert!(!faces.is_empty());
+		assert!(faces.iter().all(|face| face.family == "Noto Sans"));
 	}
 
 	/// A mixed-script label is measured with the face the rasterizer draws it

@@ -17,8 +17,8 @@ pub use types::{
 	CaptionSource, CjkType, Color, ColorField, Condition, ConditionSet,
 	Decoration, Font, FontDefType, FontDefinition, MAX_CHAIN, MarkerShape,
 	MarkerShapes, MermaidStyle, Padding, PageStyle, Rule,
-	SYNTHETIC_ITALIC_ANGLE_DEG, TextAlign, Variant, chain_of, chain_push,
-	chain_set, parse_paper_size,
+	SYNTHETIC_ITALIC_ANGLE_DEG, SvgStyle, TextAlign, Variant, chain_of,
+	chain_push, chain_set, parse_paper_size,
 };
 
 /// A supported stylesheet destination.
@@ -56,6 +56,8 @@ pub struct Stylesheet {
 	pub rules: BTreeMap<ConditionSet, Rule>,
 	/// Paper, margins and page furniture for the PDF export.
 	pub page: PageStyle,
+	/// How generic SVG font requests resolve to configured family candidates.
+	pub svg: SvgStyle,
 	/// How Mermaid diagrams are drawn. Like the page, it holds no cascade: a
 	/// merged stylesheet overlays it field by field.
 	pub mermaid: MermaidStyle,
@@ -303,6 +305,7 @@ impl Stylesheet {
 		}
 		self.reindex();
 		self.page.overlay(&higher.page);
+		self.svg.overlay(&higher.svg);
 		self.mermaid.overlay(&higher.mermaid);
 	}
 	pub(super) fn resolve_fontdefs(&mut self) {
@@ -526,6 +529,25 @@ impl Stylesheet {
 		}
 		out
 	}
+	/// The family candidates configured for SVG generic names, resolving
+	/// `fontdef` ids just like `[mermaid].font_family`.
+	pub fn svg_generic_font_families(&self) -> Vec<(String, Vec<String>)> {
+		self.svg
+			.generic_font_family
+			.iter()
+			.map(|(generic, names)| {
+				let families = names
+					.iter()
+					.flat_map(|name| match self.fontdefs.get(name) {
+						Some(def) => def.lookfor.clone(),
+						None if self.has_fontdef_variant(name) => Vec::new(),
+						None => vec![name.clone()],
+					})
+					.collect();
+				(generic.clone(), families)
+			})
+			.collect()
+	}
 	/// The families this sheet draws Han text with: the body text's own CJK
 	/// candidates, resolved through their definitions. A diagram falls back
 	/// to these for a cluster the theme's own list cannot draw, so its Han
@@ -571,6 +593,7 @@ impl Stylesheet {
 		crate::document::fingerprint(&(
 			format!("{:?}", self.mermaid),
 			self.mermaid_font_families(),
+			self.svg_generic_font_families(),
 			self.cjk_families(),
 		))
 	}

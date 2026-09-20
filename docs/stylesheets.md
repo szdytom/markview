@@ -218,7 +218,16 @@ Slots are templates. `{page}`, `{pages}`, `{title}`, and `{path}` are the suppor
 
 ## Diagrams
 
-A `mermaid` fence renders as an image, and the `[mermaid]` table draws those images in the theme's own palette instead of the renderer's default light one:
+A `mermaid` fence renders as an image, and the `[mermaid]` table draws those images in the theme's own palette instead of the renderer's default light one. SVG text uses the shared generic-family map:
+
+```toml
+[svg.generic_font_family]
+serif = ["serif"]
+sans-serif = ["sans-serif"]
+monospace = ["monospace"]
+```
+
+The keys are SVG generic names. Values are ordered literal family names or `fontdef` ids, and a renderer-generated request such as `font-family="serif"` uses the first available configured candidate. The map applies to Mermaid SVG output as well as other SVG text; omitted keys keep the bundled mapping.
 
 ```toml
 [mermaid]
@@ -232,11 +241,11 @@ line_color = "#A5B3C5"
 
 `theme` names a built-in palette and decides every field the table leaves out, so a theme that only sets `background` keeps the preset's nodes, edges and text; a stylesheet with no table at all keeps the renderer's light default. Every other field is the renderer's, one for one: `font_family`, `font_size`, `background`, `text_color`, `primary_color`, `primary_text_color`, `primary_border_color`, `line_color`, `secondary_color`, `tertiary_color`, `edge_label_background`, `cluster_background`, `cluster_border`, `sequence_actor_fill`, `sequence_actor_border`, `sequence_actor_line`, `sequence_note_fill`, `sequence_note_border`, `sequence_activation_fill`, `sequence_activation_border`, `git_commit_label_color`, `git_commit_label_background`, `git_tag_label_color`, `git_tag_label_background`, `git_tag_label_border`, `pie_title_text_color`, `pie_section_text_color`, `pie_legend_text_color`, `pie_stroke_color`, `pie_outer_stroke_color`, `pie_title_text_size`, `pie_section_text_size`, `pie_legend_text_size`, `pie_stroke_width`, `pie_outer_stroke_width` and `pie_opacity`. The `git_colors`, `git_inv_colors` and `git_branch_label_colors` palettes take eight colors each and `pie_colors` takes twelve; each one replaces a whole derived palette instead of adjusting it.
 
-`font_family` is an array in priority order, and a name that matches a `fontdef` id means that definition's families—exactly as it does in a rule's `font`—so a theme can write `font_family = ["reading", "emoji"]`. Any other name is a literal family, except the generic names (`serif`, `sans-serif`, `monospace` and the rest), which resolve through the reader's font collection. To see which family a diagram really used, put `一` in a label: a sans-serif face ends the stroke as a rectangle, while a serif face adds a small triangle at its right end.
+`font_family` is an array in priority order, and a name that matches a `fontdef` id means that definition's families—exactly as it does in a rule's `font`—so a theme can write `font_family = ["reading", "emoji"]`. Any other name is a literal family. To see which family a diagram really used, put `一` in a label: a sans-serif face ends the stroke as a rectangle, while a serif face adds a small triangle at its right end.
 
-A label is measured and drawn with the same faces: the theme's list draws what it covers, and a cluster it cannot draw falls back to the body text's Han faces—whichever faces its `font` candidates select for the reader's CJK convention—so a Chinese label comes out in the reader's own regional face rather than in whatever the system would fall back to. Latin labels keep the theme's own faces.
+A label is measured and drawn with the same faces: the theme's list draws what it covers, and a cluster it cannot draw falls back to the body text's Han faces—whichever faces its `font` candidates select for the reader's CJK convention—so a Chinese label comes out in the reader's own regional face rather than in whatever the system would fall back to. Latin labels keep the theme's own faces. Mermaid only materializes these configured candidates, the SVG generic candidates, and the selected CJK fallback candidates; it does not load every installed system face.
 
-Colors are `#RRGGBB` or `#RRGGBBAA`, as everywhere else in a stylesheet. Sizes are finite and positive, and `pie_opacity` runs from 0 to 1. Changing this table redraws every diagram: the source is parsed once and kept, so only its layout and drawing run again. The reader uses the selected theme's table, and an export uses the exporting stylesheet's. Diagrams are measured and drawn with the same faces the reader's own text is shaped with, so a definition satisfied by `--fonts` or a downloaded file works in a diagram too. The renderer and the rasterizer resolve faces through one policy: the theme's list first, then the body text's Han faces for a cluster the list cannot draw, then any face of the reader's collection. `--ignore-system-fonts` applies to diagrams as well, so an export with pinned fonts pins its diagrams.
+Colors are `#RRGGBB` or `#RRGGBBAA`, as everywhere else in a stylesheet. Sizes are finite and positive, and `pie_opacity` runs from 0 to 1. Changing this table redraws every diagram: the source is parsed once and kept, so only its layout and drawing run again. The reader uses the selected theme's table, and an export uses the exporting stylesheet's. Diagrams are measured and drawn with the same faces the reader's own text is shaped with, so a definition satisfied by `--fonts` or a downloaded file works in a diagram too. The renderer and the rasterizer resolve faces through one policy: the theme's list first, then the body text's selected Han faces for a cluster the list cannot draw. Mermaid does not materialize other installed faces. `--ignore-system-fonts` applies to diagrams as well, so an export with pinned fonts pins its diagrams.
 
 ## Cascade and inheritance
 

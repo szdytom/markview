@@ -65,6 +65,7 @@ const RENDER_STACK_BYTES: usize = 32 * 1024 * 1024;
 /// change from a repeat without comparing every field.
 pub(super) struct DiagramTheme {
 	render: mermaid_rs_renderer::Theme,
+	generic_font_families: Vec<(String, Vec<String>)>,
 	/// The reader's own faces, for the renderer's measurements.
 	metrics: Option<Arc<dyn mermaid_rs_renderer::TextMetrics>>,
 	fingerprint: u64,
@@ -78,13 +79,35 @@ impl DiagramTheme {
 	pub(super) fn font_family(&self) -> &str {
 		&self.render.font_family
 	}
+	pub(super) fn generic_font_families(&self) -> &[(String, Vec<String>)] {
+		&self.generic_font_families
+	}
+	/// Attach the reader's diagram metrics after the font collection has been
+	/// prepared on an image worker.
+	pub(super) fn with_metrics(
+		&self,
+		metrics: Arc<dyn mermaid_rs_renderer::TextMetrics>,
+	) -> Self {
+		Self {
+			render: self.render.clone(),
+			generic_font_families: self.generic_font_families.clone(),
+			metrics: Some(metrics),
+			fingerprint: self.fingerprint,
+		}
+	}
 }
 
 /// Identity of a resolved theme, which covers every field, including a
 /// `font_family` that a font definition can move without touching the
 /// `[mermaid]` table.
-fn fingerprint(render: &mermaid_rs_renderer::Theme) -> u64 {
-	crate::document::fingerprint(&format!("{render:?}"))
+fn fingerprint(
+	render: &mermaid_rs_renderer::Theme,
+	generic_font_families: &[(String, Vec<String>)],
+) -> u64 {
+	crate::document::fingerprint(&(
+		format!("{render:?}"),
+		generic_font_families,
+	))
 }
 
 /// Resolves the `[mermaid]` table: the named preset, then every field it sets.
@@ -93,6 +116,7 @@ pub(super) fn resolve(
 	metrics: Option<Arc<dyn mermaid_rs_renderer::TextMetrics>>,
 ) -> DiagramTheme {
 	let style = &sheet.mermaid;
+	let generic_font_families = sheet.svg_generic_font_families();
 	let mut render = mermaid_rs_renderer::Theme::from_name(style.preset())
 		.unwrap_or_else(mermaid_rs_renderer::Theme::modern);
 	// A `font_family` whose definitions are all unavailable keeps the preset's
@@ -162,8 +186,9 @@ pub(super) fn resolve(
 		pie_opacity
 	);
 	DiagramTheme {
-		fingerprint: fingerprint(&render),
+		fingerprint: fingerprint(&render, &generic_font_families),
 		render,
+		generic_font_families,
 		metrics,
 	}
 }
@@ -173,11 +198,25 @@ pub(super) fn resolve(
 /// The renderer reads the system's own font database, so a definition only
 /// satisfied by `--fonts` or a downloaded file is not visible here and falls
 /// back like any other unavailable candidate.
+pub(super) fn candidate_families(sheet: &Stylesheet) -> Vec<String> {
+	let configured = sheet.mermaid_font_families();
+	if !configured.is_empty() {
+		return configured.into_iter().map(str::to_owned).collect();
+	}
+	let theme = mermaid_rs_renderer::Theme::from_name(sheet.mermaid.preset())
+		.unwrap_or_else(mermaid_rs_renderer::Theme::modern);
+	theme
+		.font_family
+		.split(',')
+		.map(|family| family.trim().trim_matches(['"', '\'']).to_owned())
+		.filter(|family| !family.is_empty())
+		.collect()
+}
+
 fn font_families(sheet: &Stylesheet) -> String {
-	sheet
-		.mermaid_font_families()
+	candidate_families(sheet)
 		.into_iter()
-		.map(quote)
+		.map(|family| quote(&family))
 		.collect::<Vec<_>>()
 		.join(", ")
 }

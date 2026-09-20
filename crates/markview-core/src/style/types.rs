@@ -6,6 +6,7 @@
 //! Combination is therefore data: `["em", "strong", "code"]` needs no new
 //! vocabulary, and declaration order inside the set is irrelevant.
 use serde::{Deserialize, Serialize};
+use std::collections::BTreeMap;
 
 /// One condition a rendered run can satisfy.
 ///
@@ -758,6 +759,50 @@ pub fn parse_paper_size(name: &str) -> Option<(f32, f32)> {
 		}
 	};
 	Some(named)
+}
+
+/// The `[svg]` table: generic families used by SVG text.
+#[derive(Clone, Debug, Default, PartialEq, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct SvgStyle {
+	pub generic_font_family: BTreeMap<String, Vec<String>>,
+}
+
+impl SvgStyle {
+	const GENERICS: [&'static str; 5] =
+		["serif", "sans-serif", "monospace", "cursive", "fantasy"];
+
+	pub fn overlay(&mut self, higher: &Self) {
+		self.generic_font_family.extend(
+			higher
+				.generic_font_family
+				.iter()
+				.map(|(key, value)| (key.clone(), value.clone())),
+		);
+	}
+
+	pub fn validate(&self) -> anyhow::Result<()> {
+		for (generic, families) in &self.generic_font_family {
+			if !Self::GENERICS.contains(&generic.as_str()) {
+				anyhow::bail!(
+					"svg.generic_font_family: unknown generic {generic:?}"
+				);
+			}
+			if families.is_empty() {
+				anyhow::bail!(
+					"svg.generic_font_family.{generic}: must not be empty"
+				);
+			}
+			for (index, family) in families.iter().enumerate() {
+				if family.trim().is_empty() || family.contains(',') {
+					anyhow::bail!(
+						"svg.generic_font_family.{generic}[{index}]: expected a family name or a fontdef id"
+					);
+				}
+			}
+		}
+		Ok(())
+	}
 }
 
 /// The `[page]` table: paper, margins and page furniture. Lengths are

@@ -5,7 +5,7 @@ use std::collections::BTreeMap;
 
 use super::{
 	CjkType, Condition, ConditionSet, FontDefinition, MermaidStyle, Metadata,
-	PageStyle, Rule, StyleTarget, Stylesheet,
+	PageStyle, Rule, StyleTarget, Stylesheet, SvgStyle,
 };
 impl Stylesheet {
 	pub fn parse(source: &str) -> Result<Self> {
@@ -47,6 +47,7 @@ impl Stylesheet {
 		let fontdefs = parse_fontdefs(&mut doc)?;
 		let meta = parse_meta(&mut doc)?;
 		let page = parse_page(&mut doc)?;
+		let svg = parse_svg(&mut doc)?;
 		let mermaid = parse_mermaid(&mut doc)?;
 		let mut out = Self {
 			version,
@@ -56,6 +57,7 @@ impl Stylesheet {
 			cjk_type: CjkType::None,
 			meta,
 			page,
+			svg,
 			mermaid,
 			..Self::default()
 		};
@@ -119,6 +121,24 @@ impl Stylesheet {
 		out.reindex();
 		Ok(out)
 	}
+}
+
+/// The `[svg]` table: generic family mappings shared by all SVG renderers.
+fn parse_svg(doc: &mut toml_edit::DocumentMut) -> Result<SvgStyle> {
+	let Some(item) = doc.remove("svg") else {
+		return Ok(SvgStyle::default());
+	};
+	let mut d = toml_edit::DocumentMut::new();
+	d["svg"] = item;
+	#[derive(Deserialize)]
+	struct S {
+		svg: SvgStyle,
+	}
+	let svg = toml_edit::de::from_str::<S>(&d.to_string())
+		.context("svg")?
+		.svg;
+	svg.validate().context("svg")?;
+	Ok(svg)
 }
 
 fn parse_fontdefs(

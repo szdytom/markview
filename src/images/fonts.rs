@@ -2,8 +2,8 @@
 //!
 //! A diagram is laid out by the renderer's own measurement and drawn by the
 //! SVG rasterizer, so both stages need the same faces or the labels would not
-//! fit the boxes around them. [`DiagramFonts`] resolves faces through the
-//! shaper's collection, and hands them to the rasterizer's font database.
+//! fit the boxes around them. [`DiagramFonts`] resolves only the MVSS-selected
+//! faces through the shaper's collection, and hands them to the rasterizer.
 use markview_core::fonts::{DiagramFace, DiagramFonts as Policy, FontConfig};
 use std::{
 	collections::HashMap,
@@ -21,22 +21,50 @@ pub(super) struct DiagramFonts {
 	db: Arc<resvg::usvg::fontdb::Database>,
 	/// Where the rasterizer finds a face the policy handed out.
 	ids: HashMap<(u64, u32), resvg::usvg::fontdb::ID>,
+	/// The same generic-to-concrete mapping used by the rasterizer database.
+	generic_families: HashMap<String, String>,
 }
 
 impl DiagramFonts {
 	/// The faces `config` names, with `han` as the fallback families for Han
-	/// text. A configuration and its Han list resolve once.
+	/// text. A configuration, its Han list and its Mermaid candidates resolve
+	/// once.
+	#[cfg(test)]
 	pub(super) fn get(config: &FontConfig, han: &[String]) -> Arc<Self> {
-		type Cache = Mutex<Vec<((FontConfig, Vec<String>), Arc<DiagramFonts>)>>;
+		Self::get_for(config, han, &[], &[])
+	}
+
+	pub(super) fn get_for(
+		config: &FontConfig,
+		han: &[String],
+		families: &[String],
+		generic_families: &[(String, Vec<String>)],
+	) -> Arc<Self> {
+		type Cache = Mutex<
+			Vec<(
+				(
+					FontConfig,
+					Vec<String>,
+					Vec<String>,
+					Vec<(String, Vec<String>)>,
+				),
+				Arc<DiagramFonts>,
+			)>,
+		>;
 		static CACHE: OnceLock<Cache> = OnceLock::new();
 		let cache = CACHE.get_or_init(|| Mutex::new(Vec::new()));
-		let key = (config.clone(), han.to_vec());
+		let key = (
+			config.clone(),
+			han.to_vec(),
+			families.to_vec(),
+			generic_families.to_vec(),
+		);
 		let mut cache = cache.lock().unwrap();
 		if let Some((_, fonts)) = cache.iter().find(|(other, _)| *other == key)
 		{
 			return fonts.clone();
 		}
-		let fonts = Arc::new(Self::new(&key.0, &key.1));
+		let fonts = Arc::new(Self::new(&key.0, &key.1, &key.2, &key.3));
 		cache.push((key, fonts.clone()));
 		if cache.len() > CACHE_CAP {
 			cache.remove(0);
@@ -44,25 +72,55 @@ impl DiagramFonts {
 		fonts
 	}
 
-	fn new(config: &FontConfig, han: &[String]) -> Self {
+	fn new(
+		config: &FontConfig,
+		han: &[String],
+		families: &[String],
+		generic_families: &[(String, Vec<String>)],
+	) -> Self {
 		let policy = Policy::new(config, han);
 		let mut db = resvg::usvg::fontdb::Database::new();
 		let mut ids = HashMap::new();
-		for face in policy.faces() {
+		let mut resolved_generics = HashMap::new();
+		let mut requested = families.to_vec();
+		for (_, candidates) in generic_families {
+			requested.extend(candidates.iter().cloned());
+		}
+		for face in if families.is_empty() {
+			policy.faces()
+		} else {
+			policy.faces_for(&requested)
+		} {
 			let id = push(&mut db, &face);
 			ids.insert(face.key(), id);
 		}
-		// The policy resolves the generic names a font list may carry, so a
-		// rasterizer's `sans-serif` and a measurement's `sans-serif` are the
-		// same face.
-		for (generic, family) in policy.generics() {
-			set_generic(&mut db, generic, family);
+		if generic_families.is_empty() {
+			for (generic, family) in policy.generics() {
+				resolved_generics.insert(generic.to_owned(), family.clone());
+				set_generic(&mut db, generic, family);
+			}
+		} else {
+			for (generic, candidates) in generic_families {
+				if let Some(family) = candidates
+					.iter()
+					.find_map(|name| policy.resolve_family(name))
+				{
+					resolved_generics.insert(generic.clone(), family.clone());
+					set_generic(&mut db, generic, family);
+				}
+			}
 		}
 		Self {
-			key: crate::document::fingerprint(&(config.clone(), han.to_vec())),
+			key: crate::document::fingerprint(&(
+				config.clone(),
+				han.to_vec(),
+				families.to_vec(),
+				generic_families.to_vec(),
+			)),
 			policy,
 			db: Arc::new(db),
 			ids,
+			generic_families: resolved_generics,
 		}
 	}
 
@@ -91,12 +149,6 @@ impl DiagramFonts {
 		self.policy.generics()
 	}
 
-	/// Identity of these faces, so a scheduler can tell a redraw from a
-	/// repeat when the configuration or the Han list changes.
-	pub(super) fn key(&self) -> u64 {
-		self.key
-	}
-
 	/// Gives `options` the faces and the per-character fallback a diagram was
 	/// measured with. `families` is the theme's own font list.
 	pub(super) fn apply(
@@ -106,7 +158,7 @@ impl DiagramFonts {
 	) {
 		options.fontdb = self.db.clone();
 		let fonts = Arc::clone(self);
-		let list = families.to_owned();
+		let list = self.resolve_families(families);
 		options.font_resolver = resvg::usvg::FontResolver {
 			// The default resolves a family against the database above, so a
 			// face the shaper knows is the face the rasterizer draws.
@@ -136,13 +188,30 @@ impl mermaid_rs_renderer::TextMetrics for DiagramFonts {
 		font_size: f32,
 		font_family: &str,
 	) -> Option<f32> {
-		self.policy.measure(font_family, text, font_size)
+		self.policy.measure(
+			&self.resolve_families(font_family),
+			text,
+			font_size,
+		)
+	}
+}
+
+impl DiagramFonts {
+	fn resolve_families(&self, families: &str) -> String {
+		families
+			.split(',')
+			.map(|name| {
+				let name = name.trim().trim_matches(['"', '\'']);
+				self.generic_families.get(name).map_or(name, String::as_str)
+			})
+			.collect::<Vec<_>>()
+			.join(", ")
 	}
 }
 
 /// Teaches the database what a generic name means, so text that names one is
 /// resolved instead of skipped before character fallback ever runs.
-fn set_generic(
+pub(super) fn set_generic(
 	db: &mut resvg::usvg::fontdb::Database,
 	generic: &str,
 	family: String,

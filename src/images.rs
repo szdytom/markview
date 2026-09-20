@@ -47,7 +47,27 @@ struct Job {
 	theme: Arc<diagram::DiagramTheme>,
 	/// The faces the rasterizer draws a diagram with, absent while the
 	/// document holds no diagram to load.
-	diagram: Option<Arc<DiagramFonts>>,
+	diagram: Option<DiagramRequest>,
+}
+
+/// Inputs for preparing the reader's diagram faces. The expensive collection
+/// scan stays on the image worker rather than the layout thread.
+#[derive(Clone)]
+struct DiagramRequest {
+	config: FontConfig,
+	han: Vec<String>,
+	families: Vec<String>,
+	generic_families: Vec<(String, Vec<String>)>,
+}
+impl DiagramRequest {
+	fn key(&self) -> u64 {
+		crate::document::fingerprint(&(
+			self.config.clone(),
+			self.han.clone(),
+			self.families.clone(),
+			self.generic_families.clone(),
+		))
+	}
 }
 struct Finished {
 	ticket: u64,
@@ -70,7 +90,7 @@ struct Entry {
 
 /// The faces a rasterizer resolves `source` with. Only a diagram is measured
 /// and drawn with the reader's own faces; a standalone SVG keeps the system
-/// resolver, so an unrelated `[mermaid] font_family` never changes it.
+/// resolver but uses the stylesheet's `[svg.generic_font_family]` mappings.
 fn rasterizer_fonts<'a>(
 	source: &Source,
 	diagram: Option<&'a Arc<DiagramFonts>>,
@@ -97,11 +117,13 @@ pub struct Images {
 	/// Identity of the theme together with the faces it draws with, so a new
 	/// Han list redraws a diagram whose table did not change.
 	theme_key: u64,
+	/// Identity of the generic SVG mappings used by standalone SVGs.
+	svg_theme_key: u64,
 	fonts: FontConfig,
 	/// The faces a diagram is measured and drawn with. Built only when the
 	/// document holds a diagram, so a document without one never scans the
 	/// reader's font collection.
-	diagram: Option<Arc<DiagramFonts>>,
+	diagram: Option<DiagramRequest>,
 }
 
 impl Images {
@@ -149,11 +171,31 @@ impl Images {
 						// A malformed file must not take the reader down with it.
 						let result = std::panic::catch_unwind(
 							std::panic::AssertUnwindSafe(|| {
+								let diagram =
+									job.diagram.as_ref().map(|request| {
+										DiagramFonts::get_for(
+											&request.config,
+											&request.han,
+											&request.families,
+											&request.generic_families,
+										)
+									});
+								let theme = diagram.as_ref().map_or_else(
+									|| job.theme.clone(),
+									|diagram| {
+										let metrics: Arc<
+											dyn mermaid_rs_renderer::TextMetrics,
+										> = diagram.clone();
+										Arc::new(
+											job.theme.with_metrics(metrics),
+										)
+									},
+								);
 								fetch(
 									&job.source,
 									offline,
 									cache.as_ref(),
-									&job.theme,
+									&theme,
 								)
 								.and_then(|b| {
 									decode(
@@ -161,9 +203,10 @@ impl Images {
 										job.target,
 										rasterizer_fonts(
 											&job.source,
-											job.diagram.as_ref(),
-											&job.theme,
+											diagram.as_ref(),
+											&theme,
 										),
+										theme.generic_font_families(),
 									)
 								})
 							}),
@@ -196,6 +239,7 @@ impl Images {
 			revision: 0,
 			poll_at: Instant::now(),
 			theme_key: 0,
+			svg_theme_key: 0,
 			theme: Arc::new(diagram::resolve(&Stylesheet::default(), None)),
 			diagram: None,
 			fonts,
@@ -237,16 +281,20 @@ impl Images {
 			.into_iter()
 			.map(str::to_owned)
 			.collect();
-		self.diagram =
-			has_diagram.then(|| DiagramFonts::get(&self.fonts, &han));
-		let metrics: Option<Arc<dyn mermaid_rs_renderer::TextMetrics>> =
-			self.diagram.as_ref().map(|diagram| {
-				diagram.clone() as Arc<dyn mermaid_rs_renderer::TextMetrics>
-			});
-		let resolved = diagram::resolve(sheet, metrics);
-		let faces = self.diagram.as_ref().map_or(0, |diagram| diagram.key());
+		let mermaid_families = diagram::candidate_families(sheet);
+		let svg_generic_families = sheet.svg_generic_font_families();
+		self.diagram = has_diagram.then(|| DiagramRequest {
+			config: self.fonts.clone(),
+			han,
+			families: mermaid_families,
+			generic_families: svg_generic_families,
+		});
+		let resolved = diagram::resolve(sheet, None);
+		let faces = self.diagram.as_ref().map_or(0, DiagramRequest::key);
 		let key =
 			crate::document::fingerprint(&(faces, resolved.fingerprint()));
+		self.svg_theme_key =
+			crate::document::fingerprint(&sheet.svg_generic_font_families());
 		if key != self.theme_key {
 			self.theme = Arc::new(resolved);
 			self.theme_key = key;
@@ -359,6 +407,7 @@ impl Images {
 		let demand = self.snapshot.pixels.demand.lock().unwrap().clone();
 		let pixels = self.snapshot.pixels.decoded.lock().unwrap();
 		let theme = self.theme_key;
+		let svg_theme = self.svg_theme_key;
 		let mut running = self.entries.values().filter(|e| e.busy).count();
 		let mut keys: Vec<_> = self.entries.keys().cloned().collect();
 		keys.sort_by_key(|s| {
@@ -387,7 +436,13 @@ impl Images {
 			// size and pixels are already here. Keeping them lets the old
 			// drawing stand until the new one is ready, so nothing reflows
 			// through a placeholder.
-			let stale = matches!(s, Source::Diagram(_)) && e.theme != theme;
+			let source_theme = if matches!(s, Source::Diagram(_)) {
+				theme
+			} else {
+				svg_theme
+			};
+			let stale = source_theme != e.theme
+				&& (matches!(s, Source::Diagram(_)) || e.svg);
 			// A failure the old theme caused — a drawing past the pixel
 			// limit, say — does not survive it, or the working theme that
 			// follows could never bring the diagram back. A job still in
@@ -404,7 +459,7 @@ impl Images {
 			{
 				e.ticket = VERSION.fetch_add(1, Ordering::Relaxed);
 				e.busy = true;
-				e.theme = theme;
+				e.theme = source_theme;
 				running += 1;
 				let _ = self.send.as_ref().unwrap().send(Job {
 					ticket: e.ticket,

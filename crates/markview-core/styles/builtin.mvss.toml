@@ -54,6 +54,13 @@ id = "emoji"
 emoji = true
 lookfor = ["Noto Color Emoji", "Apple Color Emoji", "Segoe UI Emoji", "Twemoji Mozilla", "EmojiOne Color", "JoyPixels", "Twitter Color Emoji", "EmojiSymbols"]
 
+[svg.generic_font_family]
+serif = ["serif"]
+sans-serif = ["sans-serif"]
+monospace = ["monospace"]
+cursive = ["serif"]
+fantasy = ["serif"]
+
 [meta]
 name = "Builtin"
 description = "Shared font, layout and color fallbacks; always last"
