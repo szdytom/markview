@@ -38,6 +38,8 @@ struct Config {
 	codeblock_theme_override: Option<String>,
 	#[serde(rename = "codeblock-wrap")]
 	codeblock_wrap: bool,
+	#[serde(rename = "smooth-scroll")]
+	smooth_scroll: bool,
 	/// The reader's export preferences, kept apart from the reading view.
 	export: ExportSettings,
 }
@@ -58,6 +60,7 @@ impl Default for Config {
 			cjk_type: Some(settings.cjk_type),
 			codeblock_theme_override: None,
 			codeblock_wrap: settings.codeblock_wrap,
+			smooth_scroll: settings.smooth_scroll,
 			export: ExportSettings::default(),
 		}
 	}
@@ -100,6 +103,7 @@ impl Config {
 			cjk_type: self.cjk_type.unwrap_or_else(default_cjk_type),
 			codeblock_theme_override: self.codeblock_theme_override.clone(),
 			codeblock_wrap: self.codeblock_wrap,
+			smooth_scroll: self.smooth_scroll,
 			..Default::default()
 		}
 	}
@@ -327,6 +331,7 @@ impl SettingsStore {
 					Setting::ParagraphIndent,
 					Setting::CjkType,
 					Setting::CodeblockWrap,
+					Setting::SmoothScroll,
 				];
 				self.saved = effective.clone();
 				self.saved.style = None;
@@ -377,6 +382,7 @@ impl SettingsStore {
 				.codeblock_theme_override
 				.clone(),
 			codeblock_wrap: self.saved.codeblock_wrap,
+			smooth_scroll: self.saved.smooth_scroll,
 			export: self.saved_export.clone(),
 		};
 		let mut values = toml_edit::ser::to_document(&config)?;

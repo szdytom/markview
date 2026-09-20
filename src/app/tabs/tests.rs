@@ -203,3 +203,22 @@ fn background_tabs_can_be_reordered_closed_or_activated_by_closing_current() {
 		PathBuf::from("c.md")
 	);
 }
+
+#[test]
+fn switching_or_closing_a_tab_ends_its_scroll_animation() {
+	let mut tabs = Tabs::default();
+	let now = Instant::now();
+	tabs.open(PathBuf::from("a.md"), now);
+	tabs.session.animate_scroll_to(500.0, now);
+	assert!(tabs.session.scroll_animating());
+	// Opening another document leaves the first one's animation behind.
+	tabs.open(PathBuf::from("b.md"), now);
+	assert!(!tabs.session.scroll_animating());
+	tabs.session.animate_scroll_to(500.0, now);
+	assert!(tabs.select(0, now));
+	assert!(!tabs.session.scroll_animating());
+	// Closing the active tab swaps in a session with nothing in flight.
+	tabs.session.animate_scroll_to(500.0, now);
+	tabs.close(0, now);
+	assert!(!tabs.session.scroll_animating());
+}

@@ -98,6 +98,7 @@ impl ApplicationHandler<Event> for App {
 				self.readers.session.load_all_images = false;
 				self.readers.session.remote_notice_dismissed = false;
 				self.readers.session.details_open = Default::default();
+				self.readers.session.cancel_scroll_animation();
 				self.request(true);
 				// A watched export rebuilds from the same save.
 				self.schedule_watch_export(&path);
@@ -206,6 +207,7 @@ impl ApplicationHandler<Event> for App {
 						self.readers.session.pending_scroll = None;
 						self.readers.session.pending_anchor = None;
 						self.readers.session.select_all_pending = false;
+						self.readers.session.cancel_scroll_animation();
 						self.error = true;
 						self.status = error;
 						if self.args.mode == Mode::Smoke {
@@ -260,6 +262,7 @@ impl ApplicationHandler<Event> for App {
 	fn about_to_wait(&mut self, event_loop: &ActiveEventLoop) {
 		let now = Instant::now();
 		self.auto_scroll_tabs(now);
+		self.advance_scroll(now);
 		self.readers.release_inactive(now);
 		// One PNG strip per frame keeps the window responsive and the status
 		// line counting; the draw requests the next frame while work remains.
@@ -322,6 +325,7 @@ impl ApplicationHandler<Event> for App {
 			.chain(self.status_until)
 			.chain(self.preferences.save_deadline())
 			.chain(self.interaction.drag_at)
+			.chain(self.readers.session.scroll_animation_deadline(now))
 			.chain(self.tab_strip.scroll_at)
 			.chain(self.readers.release_deadline())
 			.chain(

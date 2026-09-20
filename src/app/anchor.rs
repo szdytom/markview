@@ -41,6 +41,9 @@ pub(super) fn footnote_link(link: &str) -> bool {
 impl App {
 	/// Queues an anchor and applies it as soon as it is laid out.
 	pub(super) fn goto_anchor(&mut self, anchor: String) {
+		// A jump is direct input, so any easing for the previous destination
+		// ends here.
+		self.readers.session.cancel_scroll_animation();
 		// Remember where the reader was, so a footnote's number can return.
 		self.readers.session.jump_origin =
 			Some((anchor.clone(), self.readers.session.scroll));
@@ -55,13 +58,20 @@ impl App {
 			self.readers.session.pending_anchor = None;
 			self.readers.session.pending_scroll = None;
 			self.readers.session.follow_update = false;
-			self.readers.session.scroll = scroll.clamp(
+			let to = scroll.clamp(
 				0.0,
 				crate::state::scroll_limit(
 					self.readers.session.snapshot.height,
 					self.viewport(),
 				),
 			);
+			if self.smooth_scroll()
+				&& (to - self.readers.session.scroll).abs() > 0.5
+			{
+				self.readers.session.animate_scroll_to(to, Instant::now());
+			} else {
+				self.readers.session.scroll = to;
+			}
 			self.error = false;
 			self.status.clear();
 			self.status_until = None;
@@ -88,12 +98,20 @@ impl App {
 			self.request(false);
 			return;
 		}
+		let before = self.readers.session.scroll;
 		let Some(result) = self.readers.session.resolve_anchor(self.viewport())
 		else {
 			return;
 		};
 		match result {
 			Ok(()) => {
+				// A resolved anchor lands where it was queued; ease there from
+				// where the reader was rather than snapping.
+				let to = self.readers.session.scroll;
+				if self.smooth_scroll() && (to - before).abs() > 0.5 {
+					self.readers.session.scroll = before;
+					self.readers.session.animate_scroll_to(to, Instant::now());
+				}
 				self.error = false;
 				self.status.clear();
 				self.status_until = None;

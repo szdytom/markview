@@ -363,3 +363,34 @@ fn an_export_defaults_to_twelve_point_body_text() {
 	assert_eq!(export.format, ExportFormat::Pdf);
 	assert_eq!(export.font_size * markview_core::paginate::PT_PER_PX, 12.0);
 }
+
+#[test]
+fn smooth_scroll_round_trips_and_defaults_off() {
+	let dir = tempfile::tempdir().unwrap();
+	let path = dir.path().join("settings.toml");
+	let (store, warning) = SettingsStore::load(Some(path.clone()));
+	assert!(warning.is_none());
+	assert!(!store.settings().smooth_scroll);
+	let (mut store, _) = SettingsStore::load(Some(path.clone()));
+	store.changed(
+		&ReaderSettings {
+			smooth_scroll: true,
+			..Default::default()
+		},
+		Some(Setting::SmoothScroll),
+	);
+	store.flush().unwrap();
+	assert!(
+		fs::read_to_string(&path)
+			.unwrap()
+			.contains("smooth-scroll = true")
+	);
+	let (loaded, warning) = SettingsStore::load(Some(path.clone()));
+	assert!(warning.is_none());
+	assert!(loaded.settings().smooth_scroll);
+	// A value that is not a boolean is rejected and the defaults recover.
+	fs::write(&path, "smooth-scroll = 1\n").unwrap();
+	let (loaded, warning) = SettingsStore::load(Some(path));
+	assert!(warning.is_some());
+	assert!(!loaded.settings().smooth_scroll);
+}

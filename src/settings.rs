@@ -27,6 +27,9 @@ pub struct ReaderSettings {
 	pub codeblock_theme_override: Option<String>,
 	/// Hard-wrap code block lines at the reading column instead of scrolling.
 	pub codeblock_wrap: bool,
+	/// Ease discrete scroll requests (keys, scrollbar track, anchors) over
+	/// time instead of applying them at once.
+	pub smooth_scroll: bool,
 }
 impl Default for ReaderSettings {
 	fn default() -> Self {
@@ -44,6 +47,7 @@ impl Default for ReaderSettings {
 			cjk_type: default_cjk_type(),
 			codeblock_theme_override: None,
 			codeblock_wrap: false,
+			smooth_scroll: false,
 		}
 	}
 }
@@ -64,6 +68,7 @@ pub enum Setting {
 	ParagraphIndent,
 	CjkType,
 	CodeblockWrap,
+	SmoothScroll,
 }
 
 /// Which document an export writes to disk.
@@ -218,6 +223,7 @@ impl ReaderSettings {
 			Setting::CodeblockWrap => {
 				self.codeblock_wrap = other.codeblock_wrap
 			}
+			Setting::SmoothScroll => self.smooth_scroll = other.smooth_scroll,
 		}
 	}
 }

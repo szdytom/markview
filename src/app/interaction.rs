@@ -93,7 +93,16 @@ impl App {
 				self.close_tab(index);
 				return;
 			}
+			Command::SmoothScroll => {
+				self.preferences.values.smooth_scroll =
+					!self.preferences.values.smooth_scroll;
+				self.readers.session.cancel_scroll_animation();
+				self.setting_changed(Some(Setting::SmoothScroll));
+				self.redraw();
+				return;
+			}
 			Command::Styles => {
+				self.readers.session.cancel_scroll_animation();
 				self.tab_strip.cancel_drag();
 				self.interaction.panel_open = true;
 				self.interaction.styles_open = !self.interaction.styles_open;
@@ -109,6 +118,7 @@ impl App {
 				return;
 			}
 			Command::ExportStyles => {
+				self.readers.session.cancel_scroll_animation();
 				self.tab_strip.cancel_drag();
 				let open = !self.interaction.export_styles_open;
 				self.interaction.panel_open = true;
@@ -128,6 +138,7 @@ impl App {
 				return;
 			}
 			Command::Export => {
+				self.readers.session.cancel_scroll_animation();
 				self.tab_strip.cancel_drag();
 				let open = !self.interaction.export_open;
 				if open {
@@ -313,6 +324,7 @@ impl App {
 				return;
 			}
 			Command::Settings => {
+				self.readers.session.cancel_scroll_animation();
 				self.tab_strip.cancel_drag();
 				self.interaction.panel_open = !self.interaction.panel_open;
 				if self.interaction.panel_open {
@@ -466,9 +478,20 @@ impl App {
 			&& bar.hit(x, y)
 		{
 			let grab = if bar.on_thumb(x, y) {
+				// A grabbed thumb follows the pointer directly.
+				self.readers.session.cancel_scroll_animation();
 				bar.grab(x, y)
 			} else {
-				self.readers.session.scroll = bar.scroll_for(x, y, 0.0);
+				// A track click eases the thumb to the pointer; a drag that
+				// follows cancels the animation and takes the thumb over.
+				let target = bar.scroll_for(x, y, 0.0);
+				if self.smooth_scroll() {
+					self.readers
+						.session
+						.animate_scroll_to(target, Instant::now());
+				} else {
+					self.readers.session.scroll = target;
+				}
 				0.0
 			};
 			self.interaction.reset_clicks();
@@ -510,6 +533,8 @@ impl App {
 		match drag.target {
 			ScrollbarAxis::Document => {
 				if let Some(bar) = self.document_scrollbar() {
+					// The thumb follows the pointer; nothing eases under a drag.
+					self.readers.session.cancel_scroll_animation();
 					self.readers.session.scroll =
 						bar.scroll_for(x, y, drag.grab);
 					self.redraw();

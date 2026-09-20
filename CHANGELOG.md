@@ -13,6 +13,11 @@ at the same level, without `[brackets]`.
 
 ## Unreleased
 
+- Add an optional smooth scrolling preference, off by default: discrete scroll
+  requests and wheel notches ease for 120–400 ms, with a reversing wheel taking
+  over from the displayed offset, while a thumb drag stays immediate and ends a
+  running animation.
+
 - Expand the `<details>` elements framing a heading a `#anchor` link or outline
   entry names, so a jump into a collapsed body reaches it instead of reporting
   it missing.

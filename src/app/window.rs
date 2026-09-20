@@ -340,7 +340,7 @@ impl App {
 						// or the event carried no motion.
 						WheelStep::Pending => {}
 						WheelStep::Travel(WheelAxis::Vertical, _, dy) => {
-							self.scroll_by(-dy);
+							self.scroll_wheel(-dy);
 						}
 						WheelStep::Travel(WheelAxis::Horizontal, dx, dy) => {
 							// A sideways gesture pans the block under the
@@ -353,7 +353,7 @@ impl App {
 							let pan =
 								if dx.abs() >= dy.abs() { -dx } else { -dy };
 							if !self.horizontal_by(pan) {
-								self.scroll_by(-dy);
+								self.scroll_wheel(-dy);
 							}
 						}
 					}
@@ -446,20 +446,20 @@ impl App {
 						{
 							self.move_outline(-1)
 						}
-						Key::Named(NamedKey::ArrowDown) => self.scroll_by(42.0),
-						Key::Named(NamedKey::ArrowUp) => self.scroll_by(-42.0),
+						Key::Named(NamedKey::ArrowDown) => {
+							self.scroll_step(42.0)
+						}
+						Key::Named(NamedKey::ArrowUp) => {
+							self.scroll_step(-42.0)
+						}
 						Key::Named(NamedKey::PageDown | NamedKey::Space) => {
-							self.scroll_by(self.viewport() * 0.9)
+							self.scroll_step(self.viewport() * 0.9)
 						}
 						Key::Named(NamedKey::PageUp) => {
-							self.scroll_by(-self.viewport() * 0.9)
+							self.scroll_step(-self.viewport() * 0.9)
 						}
-						Key::Named(NamedKey::Home) => {
-							self.scroll_by(f32::NEG_INFINITY)
-						}
-						Key::Named(NamedKey::End) => {
-							self.scroll_by(f32::INFINITY)
-						}
+						Key::Named(NamedKey::Home) => self.scroll_bound(false),
+						Key::Named(NamedKey::End) => self.scroll_bound(true),
 						Key::Named(NamedKey::ArrowLeft) => {
 							self.horizontal_by(-42.0);
 						}

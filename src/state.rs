@@ -21,6 +21,8 @@ pub(crate) enum Command {
 	Align,
 	Hyphens,
 	CodeWrap,
+	/// Ease discrete scroll requests over time.
+	SmoothScroll,
 	/// First-line paragraph indent in whole em units.
 	Indent(u8),
 	CjkType(markview_core::style::CjkType),
@@ -117,6 +119,9 @@ pub(crate) struct ReaderSession {
 	pub(crate) follow_update: bool,
 	pub(crate) layout_pending: bool,
 	pub(crate) pending_scroll: Option<f32>,
+	/// An eased scroll in flight. Its destination is `pending_scroll`, so the
+	/// worker still prioritizes what the animation is heading for.
+	pub(crate) scroll_animation: Option<ScrollAnimation>,
 	/// A heading anchor waiting for its heading to be laid out.
 	pub(crate) pending_anchor: Option<String>,
 	/// The internal fragment the reader last jumped to, with the scroll offset
@@ -707,6 +712,66 @@ pub(crate) fn scroll_limit(height: f32, viewport: f32) -> f32 {
 	(height - viewport / 3.0).max(0.0)
 }
 
+/// The shortest and longest a discrete scroll may take, and the distance at
+/// which it reaches the longest.
+const SCROLL_MIN: Duration = Duration::from_millis(120);
+const SCROLL_MAX: Duration = Duration::from_millis(400);
+const SCROLL_FULL: f32 = 2400.0;
+/// How often a running animation asks the event loop for a frame.
+const SCROLL_FRAME: Duration = Duration::from_millis(8);
+
+/// Ease-out cubic: fast away from the start and settling into the target.
+/// Both ends are exact and the curve is strictly increasing between them.
+pub(crate) fn ease_out_cubic(t: f32) -> f32 {
+	let remaining = 1.0 - t.clamp(0.0, 1.0);
+	1.0 - remaining * remaining * remaining
+}
+
+/// A time-driven scroll from one offset to another.
+///
+/// The offset depends only on elapsed time, so the motion is identical at any
+/// frame rate; the duration grows with the distance between a floor and a
+/// ceiling, which keeps a one-line step responsive and a whole-page jump calm.
+#[derive(Clone, Copy, Debug)]
+pub(crate) struct ScrollAnimation {
+	from: f32,
+	to: f32,
+	started: Instant,
+	duration: Duration,
+}
+
+impl ScrollAnimation {
+	/// Starts a move to `to`, scaling the duration from `from`.
+	pub(crate) fn new(from: f32, to: f32, now: Instant) -> Self {
+		let ratio = ((to - from).abs() / SCROLL_FULL).clamp(0.0, 1.0);
+		// Integer nanoseconds keep both bounds exact at the ends.
+		let span = (SCROLL_MAX - SCROLL_MIN).as_nanos() as f64;
+		let nanos = SCROLL_MIN.as_nanos() as f64 + span * f64::from(ratio);
+		Self {
+			from,
+			to,
+			started: now,
+			duration: Duration::from_nanos(nanos as u64),
+		}
+	}
+
+	/// The eased offset at `now`, clamped to the two ends.
+	pub(crate) fn offset_at(&self, now: Instant) -> f32 {
+		let elapsed = now.saturating_duration_since(self.started).as_secs_f32();
+		let progress = (elapsed / self.duration.as_secs_f32()).clamp(0.0, 1.0);
+		self.from + (self.to - self.from) * ease_out_cubic(progress)
+	}
+
+	/// When the last frame is due.
+	pub(crate) fn end(&self) -> Instant {
+		self.started + self.duration
+	}
+
+	pub(crate) fn finished(&self, now: Instant) -> bool {
+		now >= self.end()
+	}
+}
+
 impl ReaderSession {
 	pub(crate) fn extends_prefix(
 		&self,
@@ -755,6 +820,12 @@ impl ReaderSession {
 			})
 	}
 	pub(crate) fn scroll_by(&mut self, dy: f32, viewport: f32) {
+		// Direct input takes over from the offset on screen, so the running
+		// animation and the destination it owns must go before the target is
+		// measured. A destination a previous direct request left accumulating
+		// is not the animation's, and [`Self::cancel_scroll_animation`] keeps
+		// it, so progressive layout still adds those requests up.
+		self.cancel_scroll_animation();
 		if dy == 0. {
 			self.pending_scroll.get_or_insert(self.scroll);
 			self.resolve_scroll(viewport);
@@ -772,7 +843,124 @@ impl ReaderSession {
 		self.pending_scroll = Some(target);
 		self.resolve_scroll(viewport);
 	}
+
+	/// A discrete scroll request, eased from the offset on screen.
+	///
+	/// It accumulates from the pending destination exactly as [`Self::scroll_by`]
+	/// does, so repeated PageDown presses add up even while the geometry they
+	/// name is still being laid out.
+	pub(crate) fn animate_scroll_by(&mut self, dy: f32, now: Instant) {
+		if dy == 0.0 {
+			return;
+		}
+		let base = self
+			.pending_scroll
+			.filter(|v| v.is_finite())
+			.unwrap_or(self.scroll);
+		self.animate_scroll_to((base + dy).max(0.0), now);
+	}
+
+	/// A wheel travel, eased like a discrete step.
+	///
+	/// A gesture that continues the motion still pending accumulates on its
+	/// destination exactly as [`Self::animate_scroll_by`] does. One that runs
+	/// against it instead takes over from the offset on screen, so reversing
+	/// the wheel answers the hand at once rather than finishing the old
+	/// destination first.
+	pub(crate) fn animate_wheel_by(&mut self, dy: f32, now: Instant) {
+		if dy == 0.0 {
+			return;
+		}
+		let destination = self
+			.pending_scroll
+			.filter(|v| v.is_finite())
+			.unwrap_or(self.scroll);
+		if (destination - self.scroll) * dy < 0.0 {
+			self.pending_scroll = None;
+		}
+		self.animate_scroll_by(dy, now);
+	}
+
+	/// Eases the displayed offset to an absolute `target`, retargeting a
+	/// running animation from where it currently is rather than snapping.
+	pub(crate) fn animate_scroll_to(&mut self, target: f32, now: Instant) {
+		self.pending_anchor = None;
+		self.follow_update = false;
+		self.pending_scroll = Some(target);
+		self.scroll_animation =
+			Some(ScrollAnimation::new(self.scroll, target, now));
+	}
+
+	/// Advances a running animation. The displayed offset is clamped to the
+	/// geometry at hand, so a destination the layout has not reached yet never
+	/// shows blank space; the pending target then resolves as it arrives.
+	/// Returns whether another frame is due.
+	pub(crate) fn advance_scroll(
+		&mut self,
+		now: Instant,
+		viewport: f32,
+	) -> bool {
+		let Some(animation) = self.scroll_animation else {
+			return false;
+		};
+		let ceiling = if self.layout_pending {
+			(self.snapshot.height - viewport).max(0.0)
+		} else {
+			scroll_limit(self.snapshot.height, viewport)
+		};
+		self.scroll = animation.offset_at(now).clamp(0.0, ceiling);
+		// A settled document has nowhere further to go once the clamp is
+		// reached, so an animation heading past it ends there instead of
+		// waiting out its duration.
+		let beyond = animation.to >= ceiling - 0.5;
+		let at_end =
+			!self.layout_pending && beyond && self.scroll >= ceiling - 0.5;
+		if !animation.finished(now) && !at_end {
+			return true;
+		}
+		// A destination the geometry could not reach stays pending, so the
+		// existing resolve applies it once the layout grows.
+		self.scroll_animation = None;
+		self.resolve_scroll(viewport);
+		false
+	}
+
+	/// Ends a running animation where the reader sees it, without moving.
+	///
+	/// The animation mirrors its destination into `pending_scroll` so the
+	/// worker and progressive layout keep chasing it. Dropping the animation
+	/// must drop exactly that mirror, or the cancelled movement would resume
+	/// on the next input or layout; a target a direct input set on top of it
+	/// differs from the destination and is left alone.
+	pub(crate) fn cancel_scroll_animation(&mut self) {
+		let Some(animation) = self.scroll_animation.take() else {
+			return;
+		};
+		if self.pending_scroll == Some(animation.to) {
+			self.pending_scroll = None;
+		}
+	}
+
+	pub(crate) fn scroll_animating(&self) -> bool {
+		self.scroll_animation.is_some()
+	}
+
+	/// When the next animation frame is due, or `None` when nothing is
+	/// running, so the event loop can go back to waiting.
+	pub(crate) fn scroll_animation_deadline(
+		&self,
+		now: Instant,
+	) -> Option<Instant> {
+		self.scroll_animation
+			.as_ref()
+			.map(|animation| (now + SCROLL_FRAME).min(animation.end()))
+	}
+
 	pub(crate) fn resolve_scroll(&mut self, viewport: f32) {
+		// While an animation is in flight it owns the displayed offset.
+		if self.scroll_animation.is_some() {
+			return;
+		}
 		if let Some(target) = self.pending_scroll {
 			let max = (self.snapshot.height - viewport).max(0.0);
 			if !self.layout_pending || target <= max {
@@ -794,6 +982,7 @@ impl ReaderSession {
 		self.requested_options = None;
 		self.pending_anchor = None;
 		self.jump_origin = None;
+		self.scroll_animation = None;
 	}
 
 	/// Expands the `<details>` elements enclosing `anchor` and reports whether

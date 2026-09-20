@@ -1050,3 +1050,331 @@ fn a_reported_gesture_is_not_cut_in_half_by_a_slow_moment() {
 		WheelStep::Travel(WheelAxis::Horizontal, 6.0, 1.0)
 	);
 }
+
+#[test]
+fn the_scroll_curve_is_monotonic_exact_and_not_linear() {
+	// Both ends are exact, and the curve clamps outside them.
+	assert_eq!(ease_out_cubic(0.0), 0.0);
+	assert_eq!(ease_out_cubic(1.0), 1.0);
+	assert_eq!(ease_out_cubic(-1.0), 0.0);
+	assert_eq!(ease_out_cubic(2.0), 1.0);
+	let mut previous = 0.0;
+	for step in 1..=100 {
+		let value = ease_out_cubic(step as f32 / 100.0);
+		assert!(value > previous, "not increasing at {step}");
+		previous = value;
+	}
+	// Ease-out leaves the start faster than a straight line would.
+	assert!(ease_out_cubic(0.5) - 0.5 > 0.1);
+}
+
+#[test]
+fn a_simulated_animation_reaches_its_target_within_its_duration() {
+	let start = Instant::now();
+	let animation = ScrollAnimation::new(0.0, 1000.0, start);
+	assert_eq!(animation.offset_at(start), 0.0);
+	assert_eq!(animation.offset_at(start + animation.duration), 1000.0);
+	assert!(animation.finished(start + animation.duration));
+	let mut previous = 0.0;
+	for frame in 0..=64 {
+		let now = start + animation.duration.mul_f32(frame as f32 / 64.0);
+		let offset = animation.offset_at(now);
+		assert!((0.0..=1000.0).contains(&offset));
+		assert!(offset >= previous);
+		previous = offset;
+	}
+	// The duration grows with the distance between its floor and ceiling.
+	let short = ScrollAnimation::new(0.0, 1.0, start).duration;
+	let long = ScrollAnimation::new(0.0, 100_000.0, start).duration;
+	assert!(short >= SCROLL_MIN);
+	assert!(long <= SCROLL_MAX);
+	assert!(short < long);
+}
+
+#[test]
+fn an_animation_stops_at_the_clamped_document_end() {
+	let mut session = ReaderSession {
+		snapshot_complete: true,
+		..Default::default()
+	};
+	session.snapshot.height = 1000.0;
+	let start = Instant::now();
+	session.animate_scroll_to(99999.0, start);
+	assert!(session.scroll_animating());
+	// One frame past the deadline settles on the clamped limit, not the target.
+	session.advance_scroll(start + Duration::from_secs(1), 600.0);
+	assert_eq!(session.scroll, 800.0);
+	assert!(!session.scroll_animating());
+	assert_eq!(session.pending_scroll, None);
+}
+
+#[test]
+fn a_retarget_continues_from_the_displayed_offset() {
+	let mut session = ReaderSession {
+		snapshot_complete: true,
+		..Default::default()
+	};
+	session.snapshot.height = 5000.0;
+	let start = Instant::now();
+	session.animate_scroll_to(2000.0, start);
+	session.advance_scroll(start + Duration::from_millis(80), 600.0);
+	let mid = session.scroll;
+	assert!(mid > 0.0 && mid < 2000.0, "{mid}");
+	// A second request retargets from where the page is, not from zero.
+	session.animate_scroll_by(400.0, start + Duration::from_millis(80));
+	assert_eq!(session.pending_scroll, Some(2400.0));
+	session.advance_scroll(start + Duration::from_millis(80), 600.0);
+	assert!((session.scroll - mid).abs() < 0.5);
+}
+
+#[test]
+fn a_page_pressed_during_an_animation_still_adds_a_full_page() {
+	let mut session = ReaderSession {
+		snapshot_complete: true,
+		..Default::default()
+	};
+	session.snapshot.height = 5000.0;
+	let page = 540.0;
+	let start = Instant::now();
+	session.animate_scroll_by(page, start);
+	session.advance_scroll(start + Duration::from_millis(40), 600.0);
+	assert!(session.scroll > 0.0 && session.scroll < page);
+	session.animate_scroll_by(page, start + Duration::from_millis(40));
+	assert_eq!(session.pending_scroll, Some(page * 2.0));
+	session.advance_scroll(start + Duration::from_secs(1), 600.0);
+	assert_eq!(session.scroll, page * 2.0);
+	assert!(!session.scroll_animating());
+}
+
+#[test]
+fn an_animation_chases_a_destination_beyond_the_geometry() {
+	let mut session = ReaderSession {
+		layout_pending: true,
+		..Default::default()
+	};
+	session.snapshot.height = 700.0;
+	let start = Instant::now();
+	for _ in 0..3 {
+		session.animate_scroll_by(540.0, start);
+	}
+	// The presses accumulate on the destination, and the worker can see it.
+	assert_eq!(session.pending_scroll, Some(1620.0));
+	assert!(session.coverage(600.0) > 1620.0);
+	// The displayed offset never leaves the geometry that exists.
+	session.advance_scroll(start + Duration::from_secs(1), 600.0);
+	assert_eq!(session.scroll, 100.0);
+	assert_eq!(session.pending_scroll, Some(1620.0));
+	// Once the layout covers the target, it resolves as it always has.
+	session.snapshot.height = 2300.0;
+	session.layout_pending = false;
+	session.resolve_scroll(600.0);
+	assert_eq!(session.scroll, 1620.0);
+	assert_eq!(session.pending_scroll, None);
+}
+
+#[test]
+fn a_direct_scroll_cancels_a_running_animation() {
+	let mut session = ReaderSession {
+		snapshot_complete: true,
+		..Default::default()
+	};
+	session.snapshot.height = 5000.0;
+	let start = Instant::now();
+	session.animate_scroll_to(2000.0, start);
+	session.advance_scroll(start + Duration::from_millis(80), 600.0);
+	let displayed = session.scroll;
+	assert!(displayed > 0.0 && displayed < 2000.0, "{displayed}");
+	assert!(session.scroll_animating());
+	// The immediate path takes over from what the reader sees, not from the
+	// destination the animation was still heading for.
+	session.scroll_by(60.0, 600.0);
+	assert!(!session.scroll_animating());
+	assert_eq!(session.scroll, displayed + 60.0);
+	assert_eq!(session.pending_scroll, None);
+}
+
+#[test]
+fn an_immediate_reversal_never_continues_downward() {
+	let mut session = ReaderSession {
+		snapshot_complete: true,
+		..Default::default()
+	};
+	session.snapshot.height = 5000.0;
+	let start = Instant::now();
+	session.animate_scroll_to(2000.0, start);
+	session.advance_scroll(start + Duration::from_millis(80), 600.0);
+	let displayed = session.scroll;
+	assert!(displayed > 60.0 && displayed < 2000.0, "{displayed}");
+	session.scroll_by(-60.0, 600.0);
+	assert_eq!(session.scroll, displayed - 60.0);
+	assert!(session.scroll < displayed);
+	assert_eq!(session.pending_scroll, None);
+}
+
+#[test]
+fn a_wheel_notch_eases_and_continues_from_the_destination() {
+	let mut session = ReaderSession {
+		snapshot_complete: true,
+		..Default::default()
+	};
+	session.snapshot.height = 5000.0;
+	let start = Instant::now();
+	// The first notch starts an animation from the offset on screen instead
+	// of moving it at once.
+	session.animate_wheel_by(42.0, start);
+	assert_eq!(session.scroll, 0.0);
+	assert!(session.scroll_animating());
+	session.advance_scroll(start + Duration::from_millis(40), 600.0);
+	let displayed = session.scroll;
+	assert!(displayed > 0.0 && displayed < 42.0, "{displayed}");
+	// A second notch in the same direction adds to the destination the first
+	// one named, so a spin still travels its whole distance.
+	session.animate_wheel_by(42.0, start + Duration::from_millis(40));
+	assert_eq!(session.pending_scroll, Some(84.0));
+	session.advance_scroll(start + Duration::from_secs(1), 600.0);
+	assert_eq!(session.scroll, 84.0);
+	assert!(!session.scroll_animating());
+}
+
+#[test]
+fn an_eased_wheel_reversal_takes_over_from_the_screen() {
+	let mut session = ReaderSession {
+		snapshot_complete: true,
+		..Default::default()
+	};
+	session.snapshot.height = 5000.0;
+	let start = Instant::now();
+	session.animate_scroll_to(2000.0, start);
+	session.advance_scroll(start + Duration::from_millis(80), 600.0);
+	let displayed = session.scroll;
+	assert!(displayed > 60.0 && displayed < 2000.0, "{displayed}");
+	// An upward wheel drops the destination the animation was heading for,
+	// so the page never keeps moving down after the hand has reversed.
+	session.animate_wheel_by(-60.0, start + Duration::from_millis(80));
+	assert_eq!(session.pending_scroll, Some(displayed - 60.0));
+	session.advance_scroll(start + Duration::from_millis(80), 600.0);
+	assert_eq!(session.scroll, displayed);
+	session.advance_scroll(start + Duration::from_secs(1), 600.0);
+	assert_eq!(session.scroll, displayed - 60.0);
+}
+
+#[test]
+fn repeated_direct_scrolling_with_incomplete_geometry_accumulates() {
+	let mut session = ReaderSession {
+		layout_pending: true,
+		..Default::default()
+	};
+	session.snapshot.height = 700.0;
+	// Neither request fits the geometry at hand, so both stay pending.
+	session.scroll_by(540.0, 600.0);
+	session.scroll_by(540.0, 600.0);
+	assert_eq!(session.scroll, 0.0);
+	assert_eq!(session.pending_scroll, Some(1080.0));
+	// Once the layout covers the sum, the page lands on it and forgets it.
+	session.snapshot.height = 2300.0;
+	session.layout_pending = false;
+	session.resolve_scroll(600.0);
+	assert_eq!(session.scroll, 1080.0);
+	assert_eq!(session.pending_scroll, None);
+}
+
+#[test]
+fn cancelling_an_animation_forgets_its_destination() {
+	let mut session = ReaderSession {
+		snapshot_complete: true,
+		..Default::default()
+	};
+	session.snapshot.height = 5000.0;
+	let start = Instant::now();
+	session.animate_scroll_to(2000.0, start);
+	session.advance_scroll(start + Duration::from_millis(80), 600.0);
+	let displayed = session.scroll;
+	assert!(displayed > 0.0 && displayed < 2000.0, "{displayed}");
+	// A thumb drag cancels first, then moves the offset directly.
+	session.cancel_scroll_animation();
+	assert!(!session.scroll_animating());
+	assert_eq!(session.scroll, displayed);
+	assert_eq!(session.pending_scroll, None);
+	session.scroll = 900.0;
+	// The next step starts from the dragged position, not from the
+	// destination the cancelled animation named.
+	session.scroll_by(60.0, 600.0);
+	assert_eq!(session.scroll, 960.0);
+}
+
+#[test]
+fn a_cancelled_destination_does_not_come_back_with_the_layout() {
+	let mut session = ReaderSession {
+		layout_pending: true,
+		..Default::default()
+	};
+	session.snapshot.height = 700.0;
+	let start = Instant::now();
+	session.animate_scroll_by(540.0, start);
+	session.advance_scroll(start + Duration::from_millis(40), 600.0);
+	assert_eq!(session.scroll, 100.0);
+	session.cancel_scroll_animation();
+	// The geometry grows past both the displayed offset and the destination.
+	session.snapshot.height = 2300.0;
+	session.layout_pending = false;
+	session.resolve_scroll(600.0);
+	assert_eq!(session.scroll, 100.0);
+	assert_eq!(session.pending_scroll, None);
+}
+
+#[test]
+fn the_immediate_scroll_path_never_starts_an_animation() {
+	let mut session = ReaderSession::default();
+	session.snapshot.height = 2000.0;
+	session.scroll_by(540.0, 600.0);
+	assert_eq!(session.scroll, 540.0);
+	assert_eq!(session.pending_scroll, None);
+	assert!(!session.scroll_animating());
+	assert_eq!(session.scroll_animation_deadline(Instant::now()), None);
+}
+
+#[test]
+fn the_animation_deadline_only_exists_while_one_runs() {
+	let mut session = ReaderSession::default();
+	let now = Instant::now();
+	assert_eq!(session.scroll_animation_deadline(now), None);
+	session.animate_scroll_to(10.0, now);
+	let deadline = session
+		.scroll_animation_deadline(now)
+		.expect("a running animation wakes the loop");
+	assert!(deadline > now && deadline <= now + Duration::from_millis(8));
+	session.cancel_scroll_animation();
+	assert_eq!(session.scroll_animation_deadline(now), None);
+}
+
+#[test]
+fn a_page_toward_a_settled_end_stops_at_once() {
+	let mut session = ReaderSession {
+		snapshot_complete: true,
+		..Default::default()
+	};
+	session.snapshot.height = 1000.0;
+	session.scroll = 800.0;
+	let start = Instant::now();
+	session.animate_scroll_by(540.0, start);
+	assert!(session.scroll_animating());
+	// The first frame already sits on the clamp, so nothing waits out the clock.
+	assert!(!session.advance_scroll(start, 600.0));
+	assert!(!session.scroll_animating());
+	assert_eq!(session.scroll, 800.0);
+	assert_eq!(session.pending_scroll, None);
+}
+
+#[test]
+fn a_page_away_from_the_settled_end_still_animates() {
+	let mut session = ReaderSession {
+		snapshot_complete: true,
+		..Default::default()
+	};
+	session.snapshot.height = 1000.0;
+	session.scroll = 800.0;
+	let start = Instant::now();
+	session.animate_scroll_by(-540.0, start);
+	assert!(session.advance_scroll(start, 600.0));
+	assert!(session.scroll_animating());
+}

@@ -28,8 +28,85 @@ impl App {
 	pub(super) fn panel_has_focus(&self) -> bool {
 		self.interaction.panel_open
 	}
+	/// Whether discrete scroll requests ease over time.
+	pub(super) fn smooth_scroll(&self) -> bool {
+		self.preferences.values.smooth_scroll
+	}
 	pub(super) fn scroll_by(&mut self, dy: f32) {
 		self.readers.session.scroll_by(dy, self.viewport());
+		self.after_scroll();
+	}
+	/// A discrete scroll step. With the setting on it eases; with it off it is
+	/// exactly the immediate path the reader has always had.
+	pub(super) fn scroll_step(&mut self, dy: f32) {
+		if self.eases(dy) {
+			self.readers.session.animate_scroll_by(dy, Instant::now());
+		} else {
+			self.readers.session.scroll_by(dy, self.viewport());
+		}
+		self.after_scroll();
+	}
+	/// A wheel travel. With the setting on a notch eases like an arrow step;
+	/// with it off it is exactly the immediate path the reader has always had.
+	pub(super) fn scroll_wheel(&mut self, dy: f32) {
+		if self.eases(dy) {
+			self.readers.session.animate_wheel_by(dy, Instant::now());
+		} else {
+			self.readers.session.scroll_by(dy, self.viewport());
+		}
+		self.after_scroll();
+	}
+	/// Whether a `dy` of input eases rather than moving the offset at once.
+	fn eases(&self, dy: f32) -> bool {
+		self.smooth_scroll() && dy.is_finite() && dy != 0.0
+	}
+	/// Home and End. The top is known before the geometry is, so it eases to
+	/// zero; the end is only a number once the snapshot is complete, and until
+	/// then the existing infinite target waits for the final height.
+	pub(super) fn scroll_bound(&mut self, to_end: bool) {
+		if self.smooth_scroll() {
+			let destination = if to_end {
+				(self.readers.session.snapshot_complete
+					&& !self.readers.session.layout_pending)
+					.then(|| {
+						crate::state::scroll_limit(
+							self.readers.session.snapshot.height,
+							self.viewport(),
+						)
+					})
+			} else {
+				Some(0.0)
+			};
+			if let Some(destination) = destination
+				&& (destination - self.readers.session.scroll).abs() > 0.5
+			{
+				self.readers
+					.session
+					.animate_scroll_to(destination, Instant::now());
+				self.after_scroll();
+				return;
+			}
+		}
+		self.scroll_by(if to_end {
+			f32::INFINITY
+		} else {
+			f32::NEG_INFINITY
+		});
+	}
+	/// Steps a running scroll animation and asks for the next frame.
+	pub(super) fn advance_scroll(&mut self, now: Instant) {
+		if !self.readers.session.scroll_animating() {
+			return;
+		}
+		if self.readers.session.advance_scroll(now, self.viewport()) {
+			self.worker
+				.prioritize(self.readers.session.coverage(self.viewport()));
+		}
+		self.refresh_hover();
+		self.redraw();
+	}
+	/// Re-prioritizes the worker and repaints after the offset moved.
+	fn after_scroll(&mut self) {
 		self.worker
 			.prioritize(self.readers.session.coverage(self.viewport()));
 		self.refresh_hover();
@@ -141,6 +218,8 @@ impl App {
 		}
 	}
 	pub(super) fn open_link(&mut self, url: &str, background: bool) {
+		// Activating a link is direct input, so nothing keeps easing behind it.
+		self.readers.session.cancel_scroll_animation();
 		// A `<details>` summary is hit like a link but toggles its element.
 		if let Some(id) = markview_core::document::details_id(url) {
 			self.toggle_details(id);

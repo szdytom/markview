@@ -225,6 +225,12 @@ pixels and the type to 18.
   picks the face and the punctuation convention together: a comma-like mark
   gives back its blank half at a line end on the mainland and in Japan, and is
   centred in Taiwan.
+- **Scrolling can be eased.** Turn on **Smooth scrolling** in **Settings**, or set
+  `smooth-scroll` in `settings.toml`, to ease Page Up/Down, `Space`,
+  `Home`/`End`, the arrow steps, the wheel, a click on the scrollbar track and a
+  `#heading` jump over 120–400 ms; a wheel turned against the motion still in
+  flight takes over from where the page is rather than finishing it first. A
+  thumb drag and every other scroll stay immediate. It is off by default.
 - **A hard break stays hard.** Two trailing spaces leave the line at its natural
   width; an explicit `<br>` asks for the line it ends to be set flush.
 

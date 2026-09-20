@@ -51,6 +51,8 @@ impl Tabs {
 		self.entries.iter().position(|tab| tab.path == path)
 	}
 	pub(super) fn open(&mut self, path: PathBuf, now: Instant) {
+		// A switch ends whatever scroll was in flight in the old document.
+		self.session.cancel_scroll_animation();
 		if let Some(current) = self.session.path.clone() {
 			if self.entries.is_empty() {
 				self.entries.push(ReaderTab::new(current));
@@ -109,6 +111,7 @@ impl Tabs {
 		if index >= self.entries.len() || index == self.active {
 			return false;
 		}
+		self.session.cancel_scroll_animation();
 		if self.session.path.is_some() {
 			self.entries[self.active].session =
 				std::mem::take(&mut self.session);
@@ -117,6 +120,7 @@ impl Tabs {
 		self.active = index;
 		self.entries[index].last_active = now;
 		self.session = std::mem::take(&mut self.entries[index].session);
+		self.session.cancel_scroll_animation();
 		if self.session.path.is_none() {
 			self.session.path = Some(self.entries[index].path.clone());
 		}
@@ -142,6 +146,7 @@ impl Tabs {
 			self.active = index.min(self.entries.len() - 1);
 			self.session =
 				std::mem::take(&mut self.entries[self.active].session);
+			self.session.cancel_scroll_animation();
 			self.entries[self.active].last_active = now;
 		}
 		Closed::Active
