@@ -369,15 +369,6 @@ pub(crate) fn is_han_kana(c: char) -> bool {
 	)
 }
 
-/// Whether `text` carries a script a Latin face cannot draw, and so needs the
-/// reader's CJK faces: Han and kana with the punctuation and fullwidth forms
-/// that come with them.
-pub fn needs_cjk_faces(text: &str) -> bool {
-	text.chars().any(|c| {
-		is_han_kana(c) || matches!(c as u32, 0x3000..=0x303f | 0xff00..=0xffef)
-	})
-}
-
 /// Whether `c` belongs to a script written with word spaces. The exact script
 /// does not matter here; what matters is that a mixed CJK and Latin gap belongs
 /// between the two.
@@ -965,21 +956,5 @@ mod tests {
 		assert!(!quote_edge_break(&clusters, &text, 0, 18.0));
 		let (text, clusters) = per_char("文“测", 18.0);
 		assert!(quote_edge_break(&clusters, &text, 0, 18.0));
-	}
-}
-
-#[cfg(test)]
-mod cjk_face_tests {
-	use super::needs_cjk_faces;
-
-	#[test]
-	fn scripts_a_latin_face_cannot_draw_ask_for_a_cjk_face() {
-		for text in ["草稿", "かな", "カナ", "ㄅㄆ", "一", "中文。", "ＡＢ"]
-		{
-			assert!(needs_cjk_faces(text), "{text}");
-		}
-		for text in ["Draft", "Read again", "Ünïcode", "한글", "", "1234"] {
-			assert!(!needs_cjk_faces(text), "{text}");
-		}
 	}
 }

@@ -65,9 +65,8 @@ const RENDER_STACK_BYTES: usize = 32 * 1024 * 1024;
 /// change from a repeat without comparing every field.
 pub(super) struct DiagramTheme {
 	render: mermaid_rs_renderer::Theme,
-	/// The same theme with the reader's Han faces in front, which is what a
-	/// diagram carrying Han text is drawn with.
-	han: mermaid_rs_renderer::Theme,
+	/// The reader's own faces, for the renderer's measurements.
+	metrics: Option<Arc<dyn mermaid_rs_renderer::TextMetrics>>,
 	fingerprint: u64,
 }
 
@@ -75,28 +74,24 @@ impl DiagramTheme {
 	pub(super) fn fingerprint(&self) -> u64 {
 		self.fingerprint
 	}
-	/// The theme for the diagram whose source is `code`.
-	fn for_source(&self, code: &str) -> &mermaid_rs_renderer::Theme {
-		if markview_core::needs_cjk_faces(code) {
-			&self.han
-		} else {
-			&self.render
-		}
+	/// The theme's font list, which a rasterizer needs to draw the same faces.
+	pub(super) fn font_family(&self) -> &str {
+		&self.render.font_family
 	}
 }
 
 /// Identity of a resolved theme, which covers every field, including a
 /// `font_family` that a font definition can move without touching the
-/// `[mermaid]` table. The Han variant is covered with it.
-fn fingerprint(
-	render: &mermaid_rs_renderer::Theme,
-	han: &mermaid_rs_renderer::Theme,
-) -> u64 {
-	crate::document::fingerprint(&(format!("{render:?}"), format!("{han:?}")))
+/// `[mermaid]` table.
+fn fingerprint(render: &mermaid_rs_renderer::Theme) -> u64 {
+	crate::document::fingerprint(&format!("{render:?}"))
 }
 
 /// Resolves the `[mermaid]` table: the named preset, then every field it sets.
-pub(super) fn resolve(sheet: &Stylesheet) -> DiagramTheme {
+pub(super) fn resolve(
+	sheet: &Stylesheet,
+	metrics: Option<Arc<dyn mermaid_rs_renderer::TextMetrics>>,
+) -> DiagramTheme {
 	let style = &sheet.mermaid;
 	let mut render = mermaid_rs_renderer::Theme::from_name(style.preset())
 		.unwrap_or_else(mermaid_rs_renderer::Theme::modern);
@@ -166,43 +161,11 @@ pub(super) fn resolve(sheet: &Stylesheet) -> DiagramTheme {
 		pie_outer_stroke_width,
 		pie_opacity
 	);
-	// The rasterizer resolves one base face per text element and falls back,
-	// with a warning, for every cluster that face cannot draw. Neither the
-	// renderer's presets nor a theme's own list carries a Han face, so a
-	// diagram with Han text leads with the sheet's.
-	let mut han = render.clone();
-	let han_faces = sheet.cjk_families();
-	if !han_faces.is_empty() {
-		han.font_family = han_first(&render.font_family, &han_faces);
-	}
 	DiagramTheme {
-		fingerprint: fingerprint(&render, &han),
+		fingerprint: fingerprint(&render),
 		render,
-		han,
+		metrics,
 	}
-}
-
-/// The renderer's font list with the Han faces `faces` in front of `base`,
-/// without repeating a family the list already names.
-fn han_first(base: &str, faces: &[&str]) -> String {
-	let existing: Vec<&str> = base
-		.split(',')
-		.map(|name| name.trim().trim_matches(['"', '\'']))
-		.collect();
-	let mut out = String::new();
-	for name in faces {
-		if existing.contains(&name.trim()) {
-			continue;
-		}
-		if !out.is_empty() {
-			out.push_str(", ");
-		}
-		out.push_str(&quote(name));
-	}
-	if out.is_empty() {
-		return base.to_owned();
-	}
-	format!("{out}, {base}")
 }
 
 /// The renderer's font list for the sheet's `[mermaid] font_family`.
@@ -366,8 +329,11 @@ fn render_bounded(code: &str, theme: &DiagramTheme) -> Result<String> {
 			 the limit is {MAX_GRAPH_ELEMENTS}"
 		);
 	}
-	let config = mermaid_rs_renderer::LayoutConfig::default();
-	let render = theme.for_source(code);
+	let config = mermaid_rs_renderer::LayoutConfig {
+		metrics: theme.metrics.clone(),
+		..Default::default()
+	};
+	let render = &theme.render;
 	on_render_stack(|| {
 		let layout =
 			mermaid_rs_renderer::compute_layout(graph, render, &config);
@@ -404,11 +370,12 @@ mod tests {
 				"format_version=2\nversion=1\n[mermaid]\n{table}"
 			))
 			.unwrap(),
+			None,
 		)
 	}
 
 	fn default_theme() -> DiagramTheme {
-		resolve(&Stylesheet::default())
+		resolve(&Stylesheet::default(), None)
 	}
 
 	fn dark() -> DiagramTheme {
@@ -464,7 +431,7 @@ mod tests {
 			 [mermaid]\nfont_family=['reading', 'emoji', 'monospace']",
 		)
 		.unwrap();
-		let theme = resolve(&sheet);
+		let theme = resolve(&sheet, None);
 		assert_eq!(
 			theme.render.font_family,
 			"'Noto Serif CJK SC', serif, 'Noto Color Emoji', monospace"
@@ -477,38 +444,7 @@ mod tests {
 			 [mermaid]\nfont_family=['serif[cjk]', 'monospace']",
 		)
 		.unwrap();
-		assert_eq!(resolve(&sheet).render.font_family, "monospace");
-	}
-
-	/// The font list the renderer wrote into the SVG's first text element.
-	fn font_family(svg: &str) -> String {
-		svg.split("font-family=\"")
-			.nth(1)
-			.and_then(|rest| rest.split('"').next())
-			.unwrap_or_default()
-			.to_owned()
-	}
-
-	#[test]
-	fn a_han_label_leads_with_the_readers_han_faces() {
-		let mut sheet = Stylesheet::parse(
-			"format_version=2\nversion=1\n\
-			 [[fontdef]]\nid='han'\ntype='SC'\nlookfor=['Songti SC', 'serif']\n\
-			 [[rule]]\nwhen=['body']\nfont=[{family='han'}]",
-		)
-		.unwrap();
-		sheet.set_cjk_type(markview_core::style::CjkType::Sc);
-		let theme = resolve(&sheet);
-		// Han text leads with the reader's own Han face, which covers Latin
-		// as well; a Latin-only diagram keeps the renderer's preset list. The
-		// renderer strips the list's quotes again before writing the SVG.
-		let han =
-			font_family(&svg("graph TD\n A[草稿]-->B\n", &theme).unwrap());
-		assert!(han.starts_with("Songti SC,"), "{han}");
-		let latin =
-			font_family(&svg("graph TD\n A[Draft]-->B\n", &theme).unwrap());
-		assert!(latin.contains("DejaVu Sans"), "{latin}");
-		assert!(!latin.contains("Songti"), "{latin}");
+		assert_eq!(resolve(&sheet, None).render.font_family, "monospace");
 	}
 
 	#[test]

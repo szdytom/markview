@@ -66,19 +66,24 @@ fn has_svg_text(bytes: &[u8]) -> bool {
 		})
 }
 
+/// Decodes one image. `fonts` is the reader's own face set and the theme's
+/// family list, for an SVG that carries text; `None` resolves fonts the way
+/// an SVG file outside the reader does.
 pub(super) fn decode(
 	bytes: &[u8],
 	target: Option<(u32, u32)>,
+	fonts: Option<(&std::sync::Arc<super::fonts::DiagramFonts>, &str)>,
 ) -> Result<Decoded> {
 	let format = image::guess_format(bytes).ok();
 	if format.is_none() {
 		let mut options = resvg::usvg::Options::default();
 		options.image_href_resolver.resolve_string = Box::new(|_, _| None);
-		options.fontdb = if has_svg_text(bytes) {
-			svg_fonts()
-		} else {
-			Default::default()
-		};
+		if has_svg_text(bytes) {
+			match fonts {
+				Some((fonts, families)) => fonts.apply(&mut options, families),
+				None => options.fontdb = svg_fonts(),
+			}
+		}
 		let tree = resvg::usvg::Tree::from_data(bytes, &options)
 			.context("Unsupported or invalid image/SVG")?;
 		let intrinsic = tree.size().to_int_size();

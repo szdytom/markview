@@ -527,10 +527,10 @@ impl Stylesheet {
 		out
 	}
 	/// The families this sheet draws Han text with: the body text's own CJK
-	/// candidates, resolved through their definitions. A diagram that carries
-	/// Han text leads with these, because the SVG rasterizer resolves one base
-	/// face per text element, and a face without Han glyphs falls back — with
-	/// a warning — for every Han cluster.
+	/// candidates, resolved through their definitions. A diagram falls back
+	/// to these for a cluster the theme's own list cannot draw, so its Han
+	/// text comes from the face the reader selected rather than from whatever
+	/// the system would pick.
 	pub fn cjk_families(&self) -> Vec<&str> {
 		let selected = match self.cjk_type {
 			CjkType::None => return Vec::new(),
@@ -564,9 +564,9 @@ impl Stylesheet {
 	}
 	/// Identity of the diagram theme this sheet resolves to: the `[mermaid]`
 	/// table together with the font definitions its `font_family` names and
-	/// the Han faces a diagram with Han text leads with. Two sheets with the
-	/// same key draw every diagram identically, so a reader can tell a redraw
-	/// from a repeat.
+	/// the Han faces its diagrams fall back to. Two sheets with the same key
+	/// draw every diagram identically, so a reader can tell a redraw from a
+	/// repeat.
 	pub fn diagram_key(&self) -> u64 {
 		crate::document::fingerprint(&(
 			format!("{:?}", self.mermaid),

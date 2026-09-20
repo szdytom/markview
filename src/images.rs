@@ -2,6 +2,7 @@
 mod cache;
 mod decode;
 mod diagram;
+mod fonts;
 mod net;
 mod pixels;
 mod source;
@@ -9,8 +10,10 @@ mod source;
 mod tests;
 use anyhow::Result;
 use decode::{Decoded, decode};
+use fonts::DiagramFonts;
 use markview_core::{
 	document::Document,
+	fonts::FontConfig,
 	image::{ImageInfo, ImageSnapshot},
 	style::Stylesheet,
 };
@@ -42,6 +45,9 @@ struct Job {
 	target: Option<(u32, u32)>,
 	/// The diagram theme this job renders with; other sources ignore it.
 	theme: Arc<diagram::DiagramTheme>,
+	/// The faces the rasterizer draws a diagram with, absent while the
+	/// document holds no diagram to load.
+	diagram: Option<Arc<DiagramFonts>>,
 }
 struct Finished {
 	ticket: u64,
@@ -62,6 +68,22 @@ struct Entry {
 	theme: u64,
 }
 
+/// The faces a rasterizer resolves `source` with. Only a diagram is measured
+/// and drawn with the reader's own faces; a standalone SVG keeps the system
+/// resolver, so an unrelated `[mermaid] font_family` never changes it.
+fn rasterizer_fonts<'a>(
+	source: &Source,
+	diagram: Option<&'a Arc<DiagramFonts>>,
+	theme: &'a diagram::DiagramTheme,
+) -> Option<(&'a Arc<DiagramFonts>, &'a str)> {
+	match (source, diagram) {
+		(Source::Diagram(_), Some(diagram)) => {
+			Some((diagram, theme.font_family()))
+		}
+		_ => None,
+	}
+}
+
 pub struct Images {
 	pub snapshot: ImageSnapshot,
 	entries: HashMap<Source, Entry>,
@@ -72,21 +94,43 @@ pub struct Images {
 	revision: u64,
 	poll_at: Instant,
 	theme: Arc<diagram::DiagramTheme>,
+	/// Identity of the theme together with the faces it draws with, so a new
+	/// Han list redraws a diagram whose table did not change.
+	theme_key: u64,
+	fonts: FontConfig,
+	/// The faces a diagram is measured and drawn with. Built only when the
+	/// document holds a diagram, so a document without one never scans the
+	/// reader's font collection.
+	diagram: Option<Arc<DiagramFonts>>,
 }
 
 impl Images {
-	pub fn new(offline: bool) -> Self {
-		Self::build(offline, cache::directory())
+	pub fn new(offline: bool, fonts: FontConfig) -> Self {
+		Self::build(offline, cache::directory(), fonts)
 	}
 
 	/// A scheduler with an explicit cache directory, for tests. `None` keeps
 	/// every fetch off the user's disk.
 	#[cfg(test)]
 	pub(super) fn with_cache(offline: bool, root: Option<PathBuf>) -> Self {
-		Self::build(offline, root)
+		Self::with_cache_and_fonts(offline, root, FontConfig::default())
 	}
 
-	fn build(offline: bool, cache_root: Option<PathBuf>) -> Self {
+	/// The same, with the faces a diagram is measured and drawn with.
+	#[cfg(test)]
+	pub(super) fn with_cache_and_fonts(
+		offline: bool,
+		root: Option<PathBuf>,
+		fonts: FontConfig,
+	) -> Self {
+		Self::build(offline, root, fonts)
+	}
+
+	fn build(
+		offline: bool,
+		cache_root: Option<PathBuf>,
+		fonts: FontConfig,
+	) -> Self {
 		let (tx, rx) = mpsc::channel::<Job>();
 		let rx = Arc::new(Mutex::new(rx));
 		let (done, recv) = mpsc::channel();
@@ -111,7 +155,17 @@ impl Images {
 									cache.as_ref(),
 									&job.theme,
 								)
-								.and_then(|b| decode(&b, job.target))
+								.and_then(|b| {
+									decode(
+										&b,
+										job.target,
+										rasterizer_fonts(
+											&job.source,
+											job.diagram.as_ref(),
+											&job.theme,
+										),
+									)
+								})
 							}),
 						)
 						.unwrap_or_else(|_| {
@@ -141,17 +195,22 @@ impl Images {
 			document: PathBuf::new(),
 			revision: 0,
 			poll_at: Instant::now(),
-			theme: Arc::new(diagram::resolve(&Stylesheet::default())),
+			theme_key: 0,
+			theme: Arc::new(diagram::resolve(&Stylesheet::default(), None)),
+			diagram: None,
+			fonts,
 		}
 	}
 
 	/// `load_all` comes from the tab that asked for this layout, so lifting the
 	/// remote cap never leaks into another document or another revision.
 	///
-	/// `sheet` is the stylesheet whose `[mermaid]` table draws the diagrams. A
-	/// resolved theme change redraws every diagram from the source it already
-	/// parsed; resolving per request also follows the sheet's font definitions
-	/// and the CJK variant the request selected.
+	/// `sheet` is the stylesheet whose `[mermaid]` table draws the diagrams,
+	/// and `fonts` the faces the request's reader has: a download adds a
+	/// directory and bumps the revision, and the diagrams must follow the same
+	/// faces the body text now uses. A resolved theme change redraws every
+	/// diagram from the source it already parsed; resolving per request also
+	/// follows the sheet's font definitions and the CJK variant it selected.
 	pub fn prepare(
 		&mut self,
 		doc: &Document,
@@ -159,12 +218,40 @@ impl Images {
 		revision: u64,
 		load_all: bool,
 		sheet: &Stylesheet,
+		fonts: &FontConfig,
 	) {
-		let resolved = diagram::resolve(sheet);
-		if resolved.fingerprint() != self.theme.fingerprint() {
-			self.theme = Arc::new(resolved);
+		if self.fonts != *fonts {
+			self.fonts = fonts.clone();
 		}
-		let theme = self.theme.fingerprint();
+		let mut specs = Vec::new();
+		for b in &doc.blocks {
+			b.images(&mut specs);
+		}
+		// A document without a diagram never pays for the reader's font
+		// collection, which a diagram's measurement and drawing need.
+		let has_diagram = specs.iter().any(|spec| {
+			spec.src.starts_with(markview_core::image::MERMAID_SCHEME)
+		});
+		let han: Vec<String> = sheet
+			.cjk_families()
+			.into_iter()
+			.map(str::to_owned)
+			.collect();
+		self.diagram =
+			has_diagram.then(|| DiagramFonts::get(&self.fonts, &han));
+		let metrics: Option<Arc<dyn mermaid_rs_renderer::TextMetrics>> =
+			self.diagram.as_ref().map(|diagram| {
+				diagram.clone() as Arc<dyn mermaid_rs_renderer::TextMetrics>
+			});
+		let resolved = diagram::resolve(sheet, metrics);
+		let faces = self.diagram.as_ref().map_or(0, |diagram| diagram.key());
+		let key =
+			crate::document::fingerprint(&(faces, resolved.fingerprint()));
+		if key != self.theme_key {
+			self.theme = Arc::new(resolved);
+			self.theme_key = key;
+		}
+		let theme = self.theme_key;
 		if self.document != path {
 			self.entries.clear();
 			self.snapshot = Default::default();
@@ -182,10 +269,6 @@ impl Images {
 					e.info.size = None;
 				}
 			}
-		}
-		let mut specs = Vec::new();
-		for b in &doc.blocks {
-			b.images(&mut specs);
 		}
 		let mut wanted = HashSet::new();
 		// Distinct remote sources past the cap stay placeholders; in document
@@ -275,7 +358,7 @@ impl Images {
 	fn schedule(&mut self) {
 		let demand = self.snapshot.pixels.demand.lock().unwrap().clone();
 		let pixels = self.snapshot.pixels.decoded.lock().unwrap();
-		let theme = self.theme.fingerprint();
+		let theme = self.theme_key;
 		let mut running = self.entries.values().filter(|e| e.busy).count();
 		let mut keys: Vec<_> = self.entries.keys().cloned().collect();
 		keys.sort_by_key(|s| {
@@ -329,6 +412,7 @@ impl Images {
 					generation: self.generation,
 					target: if e.svg { target } else { None },
 					theme: self.theme.clone(),
+					diagram: self.diagram.clone(),
 				});
 			}
 		}

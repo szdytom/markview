@@ -193,7 +193,7 @@ impl Exporter {
 			metadata: args.metadata.clone(),
 			links: args.links,
 			engine,
-			images: Images::new(args.offline),
+			images: Images::new(args.offline, args.options.fonts.clone()),
 			renderer: Renderer::default(),
 			source: None,
 			dirty: true,
@@ -239,6 +239,7 @@ impl Exporter {
 			self.revision,
 			false,
 			&self.options.stylesheet,
+			&self.options.fonts,
 		);
 		self.images.wait();
 		for entry in self.images.snapshot.entries.values() {

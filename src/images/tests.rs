@@ -1,12 +1,20 @@
 use super::*;
-use super::{decode::decode, pixels::pixel_bytes, source::fetch};
+use super::{
+	decode::decode as decode_image, pixels::pixel_bytes, source::fetch,
+};
 use base64::Engine;
 use image::{Rgb, RgbImage, Rgba, RgbaImage};
+use mermaid_rs_renderer::TextMetrics as _;
 use std::{fs, io::Cursor};
+
+/// Decodes with the system font database, as a standalone image does.
+fn decode(bytes: &[u8], target: Option<(u32, u32)>) -> Result<Decoded> {
+	decode_image(bytes, target, None)
+}
 
 /// The diagram theme a test that never switches stylesheets renders with.
 fn diagram_theme() -> diagram::DiagramTheme {
-	diagram::resolve(&Stylesheet::default())
+	diagram::resolve(&Stylesheet::default(), None)
 }
 
 fn png(width: u32, height: u32, color: [u8; 4]) -> Vec<u8> {
@@ -59,6 +67,7 @@ fn fence_images(code: &str) -> (Images, String) {
 		1,
 		false,
 		&Stylesheet::default(),
+		&FontConfig::default(),
 	);
 	images.wait();
 	(images, src)
@@ -205,6 +214,7 @@ fn mermaid_fences_render_through_the_image_scheduler() {
 		1,
 		false,
 		&Stylesheet::default(),
+		&FontConfig::default(),
 	);
 	images.wait();
 	let entry = &images.snapshot.entries[&src];
@@ -214,6 +224,230 @@ fn mermaid_fences_render_through_the_image_scheduler() {
 	let pixels = images.snapshot.pixels.decoded.lock().unwrap();
 	let pixels = &pixels[&src];
 	assert!(pixels.rgba.chunks(4).any(|p| p[3] > 0), "blank diagram");
+}
+
+#[test]
+fn the_readers_own_faces_measure_a_diagram() {
+	// The provider resolves through the shaper's collection, so a diagram is
+	// measured with the faces the stylesheet selected, Han text included.
+	let dir = Path::new(env!("CARGO_MANIFEST_DIR"))
+		.join("crates/markview-core/tests/fonts");
+	let config = FontConfig {
+		ignore_system_fonts: true,
+		directories: vec![dir],
+		revision: 0,
+	};
+	let fonts = DiagramFonts::get(&config, &[]);
+	let families: Vec<String> =
+		fonts.faces().into_iter().map(|face| face.family).collect();
+	let family = families
+		.iter()
+		.find(|family| family.contains("Sans"))
+		.expect("a sans face in the test collection");
+	let latin = fonts
+		.measure_text_width("Hello", 16.0, family)
+		.expect("the collection measures Latin");
+	assert!(latin > 16.0, "{family}: {latin}");
+	// A family that draws no Han falls back to the stylesheet's Han faces, and
+	// an unserved family is declined rather than guessed.
+	let han = families
+		.iter()
+		.find(|family| family.contains("CJK"))
+		.expect("a CJK face in the test collection");
+	assert!(fonts.cover(han, '\u{6c49}').is_some());
+	assert!(
+		fonts
+			.measure_text_width("Hello", 16.0, "No Such Family")
+			.is_none()
+	);
+	// A generic resolves to a face rather than being taken as a literal
+	// family, so a theme that names `monospace` still measures.
+	let mono = fonts
+		.generics()
+		.into_iter()
+		.find(|(generic, _)| *generic == "monospace")
+		.map(|(_, family)| family)
+		.expect("a mono face in the test collection");
+	assert_eq!(
+		fonts.measure_text_width("Hello", 16.0, "monospace"),
+		fonts.measure_text_width("Hello", 16.0, &mono)
+	);
+}
+
+#[test]
+fn only_a_diagram_uses_the_readers_faces() {
+	// A standalone SVG's missing glyphs must fall back through the system
+	// resolver, not through an unrelated `[mermaid] font_family`.
+	let theme = diagram_theme();
+	let fonts = DiagramFonts::get(&FontConfig::default(), &[]);
+	for source in [
+		Source::File("a.svg".into()),
+		Source::Http("https://example.com/a.svg".into()),
+		Source::Data("data:image/svg+xml,%3Csvg%3E%3C/svg%3E".into()),
+	] {
+		assert!(
+			rasterizer_fonts(&source, Some(&fonts), &theme).is_none(),
+			"{source:?}"
+		);
+	}
+	let diagram = Source::Diagram("graph TD\n A-->B\n".into());
+	assert!(
+		rasterizer_fonts(&diagram, Some(&fonts), &theme).is_some(),
+		"a diagram kept the system resolver"
+	);
+}
+
+#[test]
+fn diagram_fonts_are_built_only_for_a_diagram() {
+	// A document without a diagram never scans the reader's font collection.
+	let mut plain = images(true);
+	plain.prepare(
+		&crate::document::parse("plain **text** and ![a](a.svg)"),
+		Path::new("note.md"),
+		1,
+		false,
+		&Stylesheet::default(),
+		&FontConfig::default(),
+	);
+	assert!(plain.diagram.is_none(), "an SVG loaded the diagram faces");
+	// A document with a diagram builds them.
+	let mut diagram = images(true);
+	diagram.prepare(
+		&crate::document::parse("```mermaid\ngraph TD\n A-->B\n```\n"),
+		Path::new("note.md"),
+		1,
+		false,
+		&Stylesheet::default(),
+		&FontConfig::default(),
+	);
+	assert!(
+		diagram.diagram.is_some(),
+		"the diagram faces were not built"
+	);
+}
+
+#[test]
+fn a_private_font_directory_draws_a_diagram() {
+	// The face comes from `--fonts` alone: with the system set off, a diagram
+	// still measures and draws, which is what the reader's own collection is
+	// shared with the renderer and the rasterizer for.
+	let dir = Path::new(env!("CARGO_MANIFEST_DIR"))
+		.join("crates/markview-core/tests/fonts");
+	let config = FontConfig {
+		ignore_system_fonts: true,
+		directories: vec![dir],
+		revision: 0,
+	};
+	let sheet = Stylesheet::parse(
+		"format_version=2\nversion=1\n\
+		 [mermaid]\ntheme='default'\nfont_family=['Noto Serif']",
+	)
+	.unwrap();
+	let doc = crate::document::parse(
+		"```mermaid\ngraph TD\n A[Wide label] --> B[Serif test]\n```\n",
+	);
+	let mut specs = Vec::new();
+	for block in &doc.blocks {
+		block.images(&mut specs);
+	}
+	let src = specs[0].src.clone();
+	let mut images = Images::with_cache_and_fonts(true, None, config.clone());
+	images.prepare(&doc, Path::new("note.md"), 1, false, &sheet, &config);
+	images.wait();
+	let entry = &images.snapshot.entries[&src];
+	assert!(entry.error.is_none(), "{entry:?}");
+	assert!(entry.size.is_some());
+	let pixels = images.snapshot.pixels.decoded.lock().unwrap();
+	assert!(
+		pixels[&src].rgba.chunks(4).any(|pixel| pixel[3] > 0),
+		"blank diagram"
+	);
+}
+
+#[test]
+fn a_generic_family_still_draws_in_a_diagram() {
+	// A database built face by face has no generic mappings, so text that
+	// names `sans-serif` would be skipped before character fallback runs.
+	const SVG: &[u8] = br##"<svg xmlns="http://www.w3.org/2000/svg" width="60" height="24"><text x="2" y="18" font-family="sans-serif" font-size="16" fill="#000000">Ab</text></svg>"##;
+	for config in [
+		FontConfig::default(),
+		// A pinned directory has no system generics to borrow either.
+		FontConfig {
+			ignore_system_fonts: true,
+			directories: vec![
+				Path::new(env!("CARGO_MANIFEST_DIR"))
+					.join("crates/markview-core/tests/fonts"),
+			],
+			revision: 0,
+		},
+	] {
+		let fonts = DiagramFonts::get(&config, &[]);
+		let decoded =
+			decode_image(SVG, None, Some((&fonts, "sans-serif"))).unwrap();
+		assert!(
+			decoded.pixels.rgba.chunks(4).any(|pixel| pixel[3] > 0),
+			"no ink for {config:?}"
+		);
+	}
+}
+
+#[test]
+fn a_new_font_configuration_reaches_the_diagrams() {
+	let dir = Path::new(env!("CARGO_MANIFEST_DIR"))
+		.join("crates/markview-core/tests/fonts");
+	let system = FontConfig::default();
+	// A download adds the directory and bumps the revision; the request that
+	// follows carries the configuration.
+	let downloaded = FontConfig {
+		ignore_system_fonts: true,
+		directories: vec![dir],
+		revision: 1,
+	};
+	let doc = crate::document::parse(
+		"```mermaid\ngraph TD\n A[Start] --> B[End]\n```\n",
+	);
+	let mut specs = Vec::new();
+	for block in &doc.blocks {
+		block.images(&mut specs);
+	}
+	let src = specs[0].src.clone();
+	let path = Path::new("note.md");
+	let sheet = Stylesheet::default();
+	let mut images = Images::with_cache_and_fonts(true, None, system.clone());
+	images.prepare(&doc, path, 1, false, &sheet, &system);
+	images.wait();
+	let painted = |images: &Images| {
+		let pixels = images.snapshot.pixels.decoded.lock().unwrap();
+		crate::document::fingerprint(&pixels[&src].rgba.to_vec())
+	};
+	let before = painted(&images);
+	let key = source(&specs[0].src, path).unwrap();
+	let faces = images
+		.diagram
+		.as_ref()
+		.expect("a diagram built the faces")
+		.key();
+	images.prepare(&doc, path, 2, false, &sheet, &downloaded);
+	assert_eq!(images.fonts, downloaded);
+	assert_ne!(
+		images
+			.diagram
+			.as_ref()
+			.expect("a diagram built the faces")
+			.key(),
+		faces
+	);
+	assert!(
+		images.entries[&key].busy,
+		"the diagram was not scheduled again"
+	);
+	images.wait();
+	assert!(
+		images.entries[&key].info.error.is_none(),
+		"{:?}",
+		images.entries[&key].info.error
+	);
+	assert_ne!(painted(&images), before, "diagrams kept the old faces");
 }
 
 #[test]
@@ -233,6 +467,7 @@ fn a_new_diagram_theme_redraws_the_diagram() {
 		1,
 		false,
 		&Stylesheet::default(),
+		&FontConfig::default(),
 	);
 	images.wait();
 	let painted = |images: &Images| {
@@ -245,7 +480,14 @@ fn a_new_diagram_theme_redraws_the_diagram() {
 		"format_version=2\nversion=1\n[mermaid]\ntheme='dark'\nbackground='#101820'",
 	)
 	.unwrap();
-	images.prepare(&doc, Path::new("note.md"), 1, false, &dark);
+	images.prepare(
+		&doc,
+		Path::new("note.md"),
+		1,
+		false,
+		&dark,
+		&FontConfig::default(),
+	);
 	images.wait();
 	let dark = painted(&images);
 	assert_ne!(light, dark);
@@ -269,7 +511,14 @@ fn a_diagram_failure_does_not_outlive_its_theme() {
 		"format_version=2\nversion=1\n[mermaid]\nfont_size=4000",
 	)
 	.unwrap();
-	images.prepare(&doc, Path::new("note.md"), 1, false, &huge);
+	images.prepare(
+		&doc,
+		Path::new("note.md"),
+		1,
+		false,
+		&huge,
+		&FontConfig::default(),
+	);
 	images.wait();
 	assert!(images.snapshot.entries[&src].error.is_some());
 	// The next theme draws a size that fits, and must get its own chance.
@@ -277,7 +526,14 @@ fn a_diagram_failure_does_not_outlive_its_theme() {
 		"format_version=2\nversion=1\n[mermaid]\ntheme='dark'",
 	)
 	.unwrap();
-	images.prepare(&doc, Path::new("note.md"), 1, false, &dark);
+	images.prepare(
+		&doc,
+		Path::new("note.md"),
+		1,
+		false,
+		&dark,
+		&FontConfig::default(),
+	);
 	images.wait();
 	let entry = &images.snapshot.entries[&src];
 	assert!(entry.error.is_none(), "{entry:?}");
@@ -298,7 +554,14 @@ fn a_failure_from_the_previous_theme_is_retried() {
 	let path = Path::new("note.md");
 	let alias = specs[0].src.clone();
 	let src = source(&alias, path).unwrap();
-	images.prepare(&doc, path, 1, false, &Stylesheet::default());
+	images.prepare(
+		&doc,
+		path,
+		1,
+		false,
+		&Stylesheet::default(),
+		&FontConfig::default(),
+	);
 	// A job under the current theme is still in flight when the reader
 	// switches, and it is about to fail.
 	let old_ticket = {
@@ -311,7 +574,7 @@ fn a_failure_from_the_previous_theme_is_retried() {
 		"format_version=2\nversion=1\n[mermaid]\ntheme='dark'",
 	)
 	.unwrap();
-	images.prepare(&doc, path, 1, false, &dark);
+	images.prepare(&doc, path, 1, false, &dark, &FontConfig::default());
 	assert!(images.entries[&src].busy);
 	send.send(Finished {
 		source: src.clone(),
@@ -347,6 +610,7 @@ fn broken_mermaid_diagram_becomes_an_error_placeholder() {
 		1,
 		false,
 		&Stylesheet::default(),
+		&FontConfig::default(),
 	);
 	images.wait();
 	let entry = &images.snapshot.entries[&src];
@@ -505,7 +769,14 @@ fn gpu_frame_draws_decoded_images() -> Result<()> {
 	)?;
 	let doc = crate::document::parse(source.to_string());
 	let mut images = images(true);
-	images.prepare(&doc, &path, 1, false, &Stylesheet::default());
+	images.prepare(
+		&doc,
+		&path,
+		1,
+		false,
+		&Stylesheet::default(),
+		&FontConfig::default(),
+	);
 	images.wait();
 	let mut snapshot = LayoutEngine::new().layout_with_images(
 		&doc,
@@ -596,7 +867,14 @@ fn loader_publishes_pixels_and_reports_failures() {
 	fs::write(dir.path().join("a.png"), png(6, 4, [9, 8, 7, 255])).unwrap();
 	let doc = crate::document::parse(source.to_string());
 	let mut images = images(true);
-	images.prepare(&doc, &path, 1, false, &Stylesheet::default());
+	images.prepare(
+		&doc,
+		&path,
+		1,
+		false,
+		&Stylesheet::default(),
+		&FontConfig::default(),
+	);
 	images.wait();
 	assert_eq!(images.snapshot.entries["a.png"].size, Some((6, 4)));
 	assert!(images.snapshot.entries["a.png"].error.is_none());
@@ -618,6 +896,7 @@ fn renamed_alias_reuses_pixels_and_removed_aliases_are_released() {
 		1,
 		false,
 		&Stylesheet::default(),
+		&FontConfig::default(),
 	);
 	images.wait();
 	let first = images.snapshot.pixels.decoded.lock().unwrap()["a.png"].clone();
@@ -628,6 +907,7 @@ fn renamed_alias_reuses_pixels_and_removed_aliases_are_released() {
 		2,
 		false,
 		&Stylesheet::default(),
+		&FontConfig::default(),
 	);
 	assert_eq!(images.snapshot.entries["./a.png"].version, version);
 	let pixels = images.snapshot.pixels.decoded.lock().unwrap();
@@ -642,7 +922,14 @@ fn obsolete_completion_cannot_replace_a_readded_resource() {
 	images.recv = recv;
 	let path = Path::new("/unused/note.md");
 	let doc = crate::document::parse("![a](a.png)");
-	images.prepare(&doc, path, 1, false, &Stylesheet::default());
+	images.prepare(
+		&doc,
+		path,
+		1,
+		false,
+		&Stylesheet::default(),
+		&FontConfig::default(),
+	);
 	let src = source("a.png", path).unwrap();
 	let old_ticket = images.entries[&src].ticket;
 	images.prepare(
@@ -651,8 +938,16 @@ fn obsolete_completion_cannot_replace_a_readded_resource() {
 		2,
 		false,
 		&Stylesheet::default(),
+		&FontConfig::default(),
 	);
-	images.prepare(&doc, path, 3, false, &Stylesheet::default());
+	images.prepare(
+		&doc,
+		path,
+		3,
+		false,
+		&Stylesheet::default(),
+		&FontConfig::default(),
+	);
 	assert_ne!(images.entries[&src].ticket, old_ticket);
 	send.send(Finished {
 		source: src.clone(),
@@ -713,6 +1008,7 @@ fn vector_demand_merges_alias_sizes_and_gpu_residency_avoids_refetch() {
 		1,
 		false,
 		&Stylesheet::default(),
+		&FontConfig::default(),
 	);
 	images.wait();
 	*images.snapshot.pixels.demand.lock().unwrap() = HashMap::from([
@@ -802,16 +1098,44 @@ fn remote_images_are_capped_per_document_and_revision() {
 	let doc = many(130);
 	let path = std::path::Path::new("note.md");
 	let mut images = images(false);
-	images.prepare(&doc, path, 1, false, &Stylesheet::default());
+	images.prepare(
+		&doc,
+		path,
+		1,
+		false,
+		&Stylesheet::default(),
+		&FontConfig::default(),
+	);
 	assert_eq!(images.deferred_remote(), 2);
 	// Reloading the same revision does not change which images were deferred.
-	images.prepare(&doc, path, 1, false, &Stylesheet::default());
+	images.prepare(
+		&doc,
+		path,
+		1,
+		false,
+		&Stylesheet::default(),
+		&FontConfig::default(),
+	);
 	assert_eq!(images.deferred_remote(), 2);
 	// Lifting the cap schedules the remainder for this revision only.
-	images.prepare(&doc, path, 1, true, &Stylesheet::default());
+	images.prepare(
+		&doc,
+		path,
+		1,
+		true,
+		&Stylesheet::default(),
+		&FontConfig::default(),
+	);
 	assert_eq!(images.deferred_remote(), 0);
 	// The next revision is capped again.
-	images.prepare(&doc, path, 2, false, &Stylesheet::default());
+	images.prepare(
+		&doc,
+		path,
+		2,
+		false,
+		&Stylesheet::default(),
+		&FontConfig::default(),
+	);
 	assert_eq!(images.deferred_remote(), 2);
 	// A different document is never affected by another tab's exemption, even
 	// when its own preparation asks for the cap.
@@ -821,6 +1145,7 @@ fn remote_images_are_capped_per_document_and_revision() {
 		1,
 		true,
 		&Stylesheet::default(),
+		&FontConfig::default(),
 	);
 	assert_eq!(images.deferred_remote(), 0);
 	let other = many(131);
@@ -830,9 +1155,17 @@ fn remote_images_are_capped_per_document_and_revision() {
 		2,
 		false,
 		&Stylesheet::default(),
+		&FontConfig::default(),
 	);
 	assert_eq!(images.deferred_remote(), 3);
-	images.prepare(&doc, path, 1, false, &Stylesheet::default());
+	images.prepare(
+		&doc,
+		path,
+		1,
+		false,
+		&Stylesheet::default(),
+		&FontConfig::default(),
+	);
 	assert_eq!(images.deferred_remote(), 2);
 }
 
@@ -849,7 +1182,14 @@ fn offline_serves_a_cached_remote_image_and_fails_without_one() {
 	fs::write(&path, &document).unwrap();
 	let doc = crate::document::parse(document);
 	let mut images = Images::with_cache(true, Some(root));
-	images.prepare(&doc, &path, 1, false, &Stylesheet::default());
+	images.prepare(
+		&doc,
+		&path,
+		1,
+		false,
+		&Stylesheet::default(),
+		&FontConfig::default(),
+	);
 	images.wait();
 	let entry = &images.snapshot.entries[url];
 	assert!(entry.error.is_none(), "{entry:?}");
@@ -861,7 +1201,14 @@ fn offline_serves_a_cached_remote_image_and_fails_without_one() {
 	fs::write(&path, &document).unwrap();
 	let doc = crate::document::parse(document);
 	let mut images = Images::with_cache(true, None);
-	images.prepare(&doc, &path, 1, false, &Stylesheet::default());
+	images.prepare(
+		&doc,
+		&path,
+		1,
+		false,
+		&Stylesheet::default(),
+		&FontConfig::default(),
+	);
 	images.wait();
 	assert_eq!(
 		images.snapshot.entries[missing].error.as_deref(),

@@ -152,8 +152,18 @@ pub(super) fn run() -> Result<()> {
 		let mut engine = LayoutEngine::new();
 		engine.validate_stylesheet(&args.options.stylesheet)?;
 		let doc = document::parse(read_document(path)?);
-		let mut images = crate::images::Images::new(args.offline);
-		images.prepare(&doc, path, 1, false, &args.options.stylesheet);
+		let mut images = crate::images::Images::new(
+			args.offline,
+			args.options.fonts.clone(),
+		);
+		images.prepare(
+			&doc,
+			path,
+			1,
+			false,
+			&args.options.stylesheet,
+			&args.options.fonts,
+		);
 		images.wait();
 		let mut snapshot =
 			engine.layout_with_images(&doc, &args.options, &images.snapshot);

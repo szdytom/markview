@@ -148,7 +148,7 @@ pub fn run(
 	let mut renderer = pollster::block_on(Renderer::new(None))?;
 	renderer.set_stylesheet(options.stylesheet.clone());
 	let mut engine = LayoutEngine::new();
-	let mut images = crate::images::Images::new(offline);
+	let mut images = crate::images::Images::new(offline, options.fonts.clone());
 	engine.validate_stylesheet(&options.stylesheet)?;
 	let _ =
 		engine.label("Markview", 14.0, 0.0, 0.0, crate::layout::Paint::Text);
@@ -184,7 +184,14 @@ pub fn run(
 		let doc = document::parse(text);
 		let parse_ms = t.elapsed().as_secs_f64() * 1000.0;
 		let image_start = Instant::now();
-		images.prepare(&doc, path, 1, false, &options.stylesheet);
+		images.prepare(
+			&doc,
+			path,
+			1,
+			false,
+			&options.stylesheet,
+			&options.fonts,
+		);
 		images.wait();
 		let mut image_prepare_ms = image_start.elapsed().as_secs_f64() * 1000.;
 		let t = Instant::now();

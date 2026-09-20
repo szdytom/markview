@@ -142,7 +142,8 @@ impl Worker {
 				// clones the resulting collection instead of scanning again.
 				crate::layout::TextShaper::warm_fonts(&fonts);
 				let mut engine = LayoutEngine::new();
-				let mut images = crate::images::Images::new(offline);
+				let mut images =
+					crate::images::Images::new(offline, fonts.clone());
 				let mut last: Option<Request> = None;
 				let mut completed_version = 0;
 				// Reads counts for the last content identity, reused by every
@@ -263,6 +264,7 @@ impl Worker {
 												request.content_version,
 												request.load_all_images,
 												&request.options.stylesheet,
+												&request.options.fonts,
 											);
 											// Stop at the viewport rather
 											// than laying out the whole
@@ -352,6 +354,7 @@ impl Worker {
 								request.content_version,
 								request.load_all_images,
 								&request.options.stylesheet,
+								&request.options.fonts,
 							);
 							let mut publication =
 								PrefixPublication::new(document.source.len());

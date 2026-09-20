@@ -16,9 +16,11 @@ at the same level, without `[brackets]`.
 - Let a stylesheet draw Mermaid diagrams in its own colors with a `[mermaid]`
   table: a built-in preset plus any of the renderer's fields, overlaid field by
   field as `[page]` is. `font_family` names `fontdef` ids the way a rule's
-  `font` does, and a diagram carrying Han text leads with the reader's own Han
-  faces. The bundled dark reader themes use it now, so they no longer show
-  diagrams on white paper.
+  `font` does. Diagrams measure and draw with the reader's own faces — the
+  theme's list, then the body's Han faces for a cluster the list cannot draw,
+  downloads and `--fonts` included — so a Chinese label keeps the reader's
+  regional face. The bundled dark reader themes use it now, so they no longer
+  show diagrams on white paper.
 
 - Keep a diagram's parsed source across a theme change, so a new `[mermaid]`
   table redraws the diagrams already on screen without parsing them again.

@@ -154,3 +154,10 @@ path = "src/main.rs"
 # block prefix parsers (upstream PR #836).
 [patch.crates-io]
 comrak = { git = "https://github.com/kivikakk/comrak", rev = "cf8955abe961454dff39cfb64952e1933645d870" }
+# Our fork adds `LayoutConfig::metrics`, which lets Markview measure diagram
+# labels with the faces its own stylesheet selected (upstream PR #151). The rev
+# below is the change based on v0.3.1, the release Markview's diagrams are
+# validated against; the fork's `host-text-metrics` branch carries the same
+# change rebased onto upstream master, and this rev stays reachable on the
+# fork's `host-text-metrics-0.3.1` branch.
+mermaid-rs-renderer = { git = "https://github.com/szdytom/mermaid-rs-renderer", rev = "8d540ab4994383b69d509868a5a2405b1da681f4" }
