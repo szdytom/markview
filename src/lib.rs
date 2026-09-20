@@ -6,6 +6,7 @@ mod benchmark;
 mod cli;
 mod export;
 mod file;
+mod fonts;
 mod images;
 mod latency;
 mod link;

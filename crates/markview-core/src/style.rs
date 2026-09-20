@@ -340,6 +340,22 @@ impl Stylesheet {
 			.keys()
 			.any(|(candidate, _)| candidate == id)
 	}
+	/// The font file URLs the sheet declares, deduplicated, across every CJK
+	/// variant rather than only the selected one.
+	///
+	/// The list is what a reader offers to download, so it must not depend on
+	/// which variant happens to be selected right now.
+	pub fn font_urls(&self) -> Vec<String> {
+		let mut out: Vec<String> = Vec::new();
+		for def in self.fontdef_variants.values() {
+			for url in &def.urls {
+				if !out.contains(url) {
+					out.push(url.clone());
+				}
+			}
+		}
+		out
+	}
 	pub fn apply_font_overrides(
 		&mut self,
 		overrides: &[(String, String)],

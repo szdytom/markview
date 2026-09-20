@@ -134,6 +134,9 @@ fn settings_and_selection_frame() -> Result<()> {
 				name: "Invalid stylesheet".into(),
 				source: "/example/styles/invalid.mvss.toml".into(),
 				error: Some("em.font: must not be empty".into()),
+				urls: vec![
+					"https://example.invalid/NotoSerif-Regular.ttf".into(),
+				],
 			});
 			let overlay = draw_styles(
 				&mut crate::test_support::shaper(),
@@ -141,6 +144,7 @@ fn settings_and_selection_frame() -> Result<()> {
 				settings.style.as_deref(),
 				&interaction,
 				&entries,
+				&crate::fonts::Status::default(),
 				0,
 				width,
 				height,
@@ -845,6 +849,7 @@ fn redesigned_chrome_frames() -> Result<()> {
 						interaction.settings_scroll =
 							form.reveal(Command::Larger);
 					}
+					let fonts = crate::fonts::Status::default();
 					let mut chrome = Chrome {
 						ui: &mut ui,
 						session,
@@ -857,6 +862,7 @@ fn redesigned_chrome_frames() -> Result<()> {
 						interaction: &interaction,
 						style_entries: &entries,
 						style_page: 0,
+						fonts: &fonts,
 						width,
 						height,
 						scrollbar: None,

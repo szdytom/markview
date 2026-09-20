@@ -62,6 +62,8 @@ pub(crate) enum Command {
 	StylePrev,
 	StyleNext,
 	StylesFolder,
+	/// Fetch the font files the shown stylesheets declare.
+	FontsDownload,
 	SelectTab(usize),
 	CloseTab(usize),
 	/// Dismiss the local-file confirmation without opening anything.

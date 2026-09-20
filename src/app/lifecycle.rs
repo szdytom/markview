@@ -220,6 +220,24 @@ impl ApplicationHandler<Event> for App {
 			Event::Exported(outcome) => {
 				self.export_finished(*outcome);
 			}
+			Event::Fonts(status) => {
+				let finished = self.fonts.running && !status.running;
+				self.fonts = *status;
+				if finished {
+					self.register_fonts();
+					if let Some(failure) = self.fonts.failures.last() {
+						self.notify(
+							&format!(
+								"Font {}: {}",
+								failure.file, failure.reason
+							),
+							true,
+							6,
+						);
+					}
+				}
+				self.redraw();
+			}
 			Event::DeviceLost => {
 				if let Err(e) = self.gpu() {
 					self.fatal = Some(format!("GPU recovery failed: {e:#}"));

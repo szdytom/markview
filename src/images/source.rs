@@ -61,14 +61,21 @@ pub(super) fn rooted(path: &Path) -> bool {
 	)
 }
 
-pub(super) fn bounded(mut reader: impl Read) -> Result<Vec<u8>> {
+pub(super) fn bounded(reader: impl Read) -> Result<Vec<u8>> {
+	bounded_to(reader, MAX_BYTES as u64, "Image")
+}
+
+/// Reads at most `max` bytes, refusing a larger body. `what` names the body in
+/// the error because the cap is the caller's own policy.
+pub(super) fn bounded_to(
+	mut reader: impl Read,
+	max: u64,
+	what: &str,
+) -> Result<Vec<u8>> {
 	let mut bytes = Vec::new();
-	reader
-		.by_ref()
-		.take((MAX_BYTES + 1) as u64)
-		.read_to_end(&mut bytes)?;
-	if bytes.len() > MAX_BYTES {
-		bail!("Image exceeds 32 MiB");
+	reader.by_ref().take(max + 1).read_to_end(&mut bytes)?;
+	if bytes.len() as u64 > max {
+		bail!("{what} exceeds {} MiB", max / (1024 * 1024));
 	}
 	Ok(bytes)
 }

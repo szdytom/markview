@@ -1,0 +1,50 @@
+format_version = 2
+version = 1
+targets = ["ui", "pdf"]
+
+[meta]
+name = "Noto Serif Download"
+description = "Fetch the Noto Serif faces this sheet reads with; installed families still come first"
+
+# The bundled `serif` chain, plus the files Noto publishes. Installing the
+# sheet downloads nothing: open Styles (Ctrl+T) and press **Download fonts**.
+# The Latin files are about 0.6 MiB each.
+[[fontdef]]
+id = "serif"
+lookfor = [
+    "Georgia",
+    "Times New Roman",
+    "Noto Serif",
+    "DejaVu Serif",
+    "Liberation Serif",
+    "Linux Libertine",
+    "serif",
+]
+urls = [
+    "https://raw.githubusercontent.com/notofonts/noto-fonts/main/hinted/ttf/NotoSerif/NotoSerif-Regular.ttf",
+    "https://raw.githubusercontent.com/notofonts/noto-fonts/main/hinted/ttf/NotoSerif/NotoSerif-Bold.ttf",
+    "https://raw.githubusercontent.com/notofonts/noto-fonts/main/hinted/ttf/NotoSerif/NotoSerif-Italic.ttf",
+]
+
+# The subset SC faces are named "Noto Serif SC"; the full collections are
+# named "Noto Serif CJK SC". Both are listed so either download is found.
+# These two files are about 11 MiB each; a full CJK collection is tens of MiB.
+[[fontdef]]
+id = "serif[cjk]"
+type = "SC"
+lookfor = [
+    "Noto Serif SC",
+    "Noto Serif CJK SC",
+    "Source Han Serif SC",
+    "Songti SC",
+    "SimSun",
+    "NSimSun",
+    "STSong",
+    "AR PL UMing CN",
+    "AR PL SungtiL GB",
+    "serif",
+]
+urls = [
+    "https://raw.githubusercontent.com/notofonts/noto-cjk/main/Serif/SubsetOTF/SC/NotoSerifSC-Regular.otf",
+    "https://raw.githubusercontent.com/notofonts/noto-cjk/main/Serif/SubsetOTF/SC/NotoSerifSC-Bold.otf",
+]

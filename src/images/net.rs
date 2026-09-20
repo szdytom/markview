@@ -4,7 +4,7 @@
 //! cannot re-resolve behind the check; redirects are followed here and every
 //! hop repeats that policy. The raw response headers are returned so the disk
 //! cache can decide freshness without a second client.
-use super::source::bounded;
+use super::source::bounded_to;
 use anyhow::{Context, Result, bail};
 use reqwest::header::HeaderMap;
 use std::{
@@ -235,6 +235,22 @@ fn pinned_client(url: &url::Url) -> Result<reqwest::blocking::Client> {
 /// [`Fetched::final_url`] names the resource that answered, and
 /// [`Fetched::freshness_cap`] is the earliest instant the chain allows.
 pub(super) fn get(url: &str, validators: &Validators) -> Result<Fetched> {
+	get_with(url, validators, super::source::MAX_BYTES as u64, "Image")
+}
+
+/// An unconditional GET for a caller outside the image cache, such as a font
+/// download. The caller chooses the body cap; the address policy and the
+/// redirect handling are exactly those of an image request.
+pub(crate) fn get_body(url: &str, max: u64) -> Result<Vec<u8>> {
+	Ok(get_with(url, &Validators::default(), max, "Font file")?.body)
+}
+
+fn get_with(
+	url: &str,
+	validators: &Validators,
+	max: u64,
+	what: &str,
+) -> Result<Fetched> {
 	let mut current = url::Url::parse(url).context("Invalid image URL")?;
 	let mut chain = Chain::default();
 	for _ in 0..=MAX_REDIRECTS {
@@ -283,7 +299,7 @@ pub(super) fn get(url: &str, validators: &Validators) -> Result<Fetched> {
 			continue;
 		}
 		let headers = headers(response.headers());
-		let body = bounded(response.error_for_status()?)?;
+		let body = bounded_to(response.error_for_status()?, max, what)?;
 		return Ok(Fetched {
 			status: status.as_u16(),
 			headers,

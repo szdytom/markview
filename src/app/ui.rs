@@ -40,6 +40,7 @@ impl App {
 			interaction: &self.interaction,
 			style_entries: &self.preferences.style_entries,
 			style_page: self.preferences.style_page,
+			fonts: &self.fonts,
 			width,
 			height,
 			scrollbar,

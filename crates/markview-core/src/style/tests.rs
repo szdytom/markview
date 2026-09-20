@@ -142,6 +142,60 @@ fn fontdefs_are_selected_by_cjk_type() {
 	assert!(!sheet.fontdefs.contains_key("cjk"));
 }
 #[test]
+fn fontdef_urls_are_optional_http_urls_that_parse_changes_nothing_else() {
+	// A sheet without `urls` keeps exactly the old definition, empty list and
+	// all, so nothing that did not opt in can start downloading.
+	let plain = Stylesheet::parse(
+		"format_version=2\nversion=1\n[[fontdef]]\nid='reading'\nlookfor=['Noto Serif']",
+	)
+	.unwrap();
+	assert!(plain.fontdefs["reading"].urls.is_empty());
+	assert!(plain.font_urls().is_empty());
+
+	let source = "format_version=2\nversion=1\n[[fontdef]]\nid='reading'\nlookfor=['Noto Serif']\nurls=[\n 'https://example.invalid/NotoSerif-Regular.ttf',\n 'http://example.invalid/NotoSerif-Bold.ttf',\n]\n[[fontdef]]\nid='empty'\nlookfor=['Georgia']\nurls=[]";
+	let sheet = Stylesheet::parse(source).unwrap();
+	assert_eq!(
+		sheet.fontdefs["reading"].urls,
+		[
+			"https://example.invalid/NotoSerif-Regular.ttf",
+			"http://example.invalid/NotoSerif-Bold.ttf",
+		]
+	);
+	assert!(sheet.fontdefs["empty"].urls.is_empty());
+	assert_eq!(sheet.font_urls().len(), 2);
+	// A scheme is case-insensitive, as RFC 3986 says.
+	assert_eq!(
+		Stylesheet::parse(
+			"format_version=2\nversion=1\n[[fontdef]]\nid='a'\nlookfor=['x']\nurls=['HTTPS://example.invalid/A.ttf']"
+		)
+		.unwrap()
+		.font_urls(),
+		["HTTPS://example.invalid/A.ttf"]
+	);
+	// The list is the sheet's whole declaration, whatever the CJK selection.
+	let mut variant = Stylesheet::parse(
+		"format_version=2\nversion=1\n[[fontdef]]\nid='cjk'\ntype='SC'\nlookfor=['SC']\nurls=['https://example.invalid/SC.otf']",
+	)
+	.unwrap();
+	assert_eq!(variant.font_urls(), ["https://example.invalid/SC.otf"]);
+	variant.set_cjk_type(CjkType::None);
+	assert_eq!(variant.font_urls(), ["https://example.invalid/SC.otf"]);
+
+	// Only http(s) is a downloadable font; every other shape is an error, as
+	// is a field the definition does not declare.
+	for bad in [
+		"format_version=2\nversion=1\n[[fontdef]]\nid='a'\nlookfor=['x']\nurls=['file:///tmp/a.ttf']",
+		"format_version=2\nversion=1\n[[fontdef]]\nid='a'\nlookfor=['x']\nurls=['/tmp/a.ttf']",
+		"format_version=2\nversion=1\n[[fontdef]]\nid='a'\nlookfor=['x']\nurls=['https://']",
+		"format_version=2\nversion=1\n[[fontdef]]\nid='a'\nlookfor=['x']\nurls=['https:///a.ttf']",
+		"format_version=2\nversion=1\n[[fontdef]]\nid='a'\nlookfor=['x']\nurls=['https://example.com/a b.ttf']",
+		"format_version=2\nversion=1\n[[fontdef]]\nid='a'\nlookfor=['x']\nurl='https://example.com/a.ttf'",
+		"format_version=2\nversion=1\n[[fontdef]]\nid='a'\nlookfor=['x']\nurls='https://example.com/a.ttf'",
+	] {
+		assert!(Stylesheet::parse(bad).is_err(), "{bad}");
+	}
+}
+#[test]
 fn cascade_arrays_and_font_defaults() {
 	let mut low=Stylesheet::parse("format_version=2\nversion=1\n[[rule]]\nwhen=['em']\ncolor='#123456'\nfont=[{family='Noto Serif',variant='italic'},{family='落霞文楷'}]").unwrap();
 	let high = Stylesheet::parse(

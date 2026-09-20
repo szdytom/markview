@@ -13,6 +13,11 @@ at the same level, without `[brackets]`.
 
 ## Unreleased
 
+- Let a stylesheet declare font files with `fontdef.urls` and download them from
+  the Styles panel: an explicit, verified, atomically stored action into a user
+  `fonts/` directory, with progress and per-file failures; reading, installing
+  and `ss validate` still fetch nothing, and `--offline` refuses the job.
+
 - Cache network images on disk beneath the configuration directory: honor
   `Cache-Control`/`Expires`, revalidate stale entries, hold at most 128 MiB with
   LRU eviction, and serve a cached body under `--offline`.

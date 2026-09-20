@@ -143,12 +143,37 @@ fn parse_fontdefs(
 		{
 			bail!("fontdef {:?}: invalid id or lookfor", def.id);
 		}
+		for url in &def.urls {
+			validate_font_url(url)
+				.with_context(|| format!("fontdef {:?}.urls", def.id))?;
+		}
 		let key = (def.id.clone(), def.r#type);
 		if out.insert(key.clone(), def).is_some() {
 			bail!("fontdef {:?} type {:?}: duplicate definition", key.0, key.1);
 		}
 	}
 	Ok(out)
+}
+
+/// A downloadable font is an absolute `http` or `https` URL, and nothing else:
+/// the reader never infers a scheme, a host, or a path.
+fn validate_font_url(url: &str) -> Result<()> {
+	let (scheme, rest) = url.split_once("://").unwrap_or_default();
+	let host = rest
+		.split(['/', '?', '#'])
+		.next()
+		.filter(|host| !host.is_empty());
+	let scheme = scheme.eq_ignore_ascii_case("http")
+		|| scheme.eq_ignore_ascii_case("https");
+	if !scheme
+		|| host.is_none()
+		|| rest.starts_with('/')
+		|| url.len() > 4096
+		|| url.chars().any(|c| c.is_control() || c.is_whitespace())
+	{
+		bail!("expected an http(s) URL");
+	}
+	Ok(())
 }
 fn parse_meta(doc: &mut toml_edit::DocumentMut) -> Result<Metadata> {
 	let Some(item) = doc.remove("meta") else {

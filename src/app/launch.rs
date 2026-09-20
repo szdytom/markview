@@ -231,6 +231,9 @@ pub(super) fn run() -> Result<()> {
 		);
 		return Ok(());
 	}
+	// The reader adds the personal font directory to its own copy of the
+	// configuration in `App::new`; `args.options.fonts` stays the set the
+	// command line named, so a window export and a CLI one agree.
 	let event_loop = EventLoop::<Event>::with_user_event().build()?;
 	event_loop.set_control_flow(ControlFlow::Wait);
 	let mut app = App::new(args, event_loop.create_proxy());

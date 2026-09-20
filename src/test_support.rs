@@ -15,6 +15,7 @@ pub(crate) fn fonts() -> FontConfig {
 			std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
 				.join("crates/markview-core/tests/fonts"),
 		],
+		..Default::default()
 	}
 }
 

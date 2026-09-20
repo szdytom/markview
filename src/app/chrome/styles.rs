@@ -101,6 +101,7 @@ pub(super) fn style_controls(
 	target: StylesTarget,
 	selected: Option<&[String]>,
 	entries: &[crate::stylesheet::Entry],
+	fonts: &crate::fonts::Status,
 	page: usize,
 	width: f32,
 	height: f32,
@@ -152,6 +153,32 @@ pub(super) fn style_controls(
 				h: 32.,
 			},
 		});
+	}
+	// The catalogued sheets declare the files, so the button appears whether
+	// or not the sheet that names them is currently enabled. It is disabled
+	// only while the one running job still holds it.
+	if entries.iter().any(|entry| !entry.urls.is_empty()) {
+		// The previous button shares this row on every page after the first,
+		// so the download button must leave room for either one.
+		let paginated = page > 0 || (page + 1) * rows < order.len();
+		let limit = if paginated { r.w - 104. } else { r.w - 24. };
+		let w = (limit - 262.0).clamp(0.0, 148.0);
+		if w >= 96.0 {
+			out.push(Button {
+				label: "Download fonts",
+				icon: None,
+				active: false,
+				kind: Default::default(),
+				enabled: !fonts.running,
+				action: Command::FontsDownload,
+				rect: Rect {
+					x: r.x + 262.,
+					y: r.y + r.h - 48.,
+					w,
+					h: 32.,
+				},
+			});
+		}
 	}
 	if page > 0 {
 		out.push(Button {
@@ -246,6 +273,56 @@ pub(super) fn style_controls(
 	out
 }
 
+/// The one line under the page title: the font download's state when it has
+/// anything to say, otherwise the page's own guidance.
+fn summary_text(
+	fonts: &crate::fonts::Status,
+	declared: usize,
+	fallback: &str,
+) -> (String, bool) {
+	if let Some(note) = &fonts.note {
+		return (note.clone(), note.starts_with("Offline"));
+	}
+	if fonts.running {
+		let percent = (fonts.done * 100).checked_div(fonts.total).unwrap_or(0);
+		let current = fonts.current.as_deref().unwrap_or("fonts");
+		return (
+			format!(
+				"Downloading {current} — {}/{} files ({percent}%)",
+				fonts.done, fonts.total
+			),
+			false,
+		);
+	}
+	if let Some(failure) = fonts.failures.last() {
+		let more = if fonts.failures.len() > 1 {
+			format!("{} failed; ", fonts.failures.len())
+		} else {
+			String::new()
+		};
+		return (
+			format!(
+				"{}/{} font files downloaded; {more}{}: {}",
+				fonts.done, fonts.total, failure.file, failure.reason
+			),
+			true,
+		);
+	}
+	if fonts.done > 0 {
+		return (
+			format!("{}/{} font files downloaded", fonts.done, fonts.total),
+			false,
+		);
+	}
+	if declared > 0 {
+		return (
+			format!("{declared} font files are available to download"),
+			false,
+		);
+	}
+	(fallback.to_string(), false)
+}
+
 #[expect(clippy::too_many_arguments, reason = "one page's explicit inputs")]
 pub(super) fn draw_styles(
 	shaper: &mut TextShaper,
@@ -253,6 +330,7 @@ pub(super) fn draw_styles(
 	selected: Option<&[String]>,
 	interaction: &InteractionState,
 	entries: &[crate::stylesheet::Entry],
+	fonts: &crate::fonts::Status,
 	page: usize,
 	width: f32,
 	height: f32,
@@ -291,12 +369,23 @@ pub(super) fn draw_styles(
 		));
 	}
 
+	let declared = entries
+		.iter()
+		.flat_map(|entry| entry.urls.iter())
+		.collect::<std::collections::BTreeSet<_>>()
+		.len();
+	let (summary, error) =
+		summary_text(fonts, declared, target.summary(selected));
+	let summary = shaper.fit(&summary, 12., r.w - 40.);
 	out.extend(shaper.label(
-		target.summary(selected),
+		&summary,
 		12.,
 		r.x + 20.,
 		r.y + 62.,
-		Paint::Styled(Condition::Panel, C::Color),
+		Paint::Styled(
+			Condition::Panel,
+			if error { C::Error } else { C::Color },
+		),
 	));
 	for (row, index) in
 		order.into_iter().skip(page * rows).take(rows).enumerate()
@@ -378,7 +467,9 @@ pub(super) fn draw_styles(
 			),
 		));
 	}
-	for b in style_controls(target, selected, entries, page, width, height) {
+	for b in
+		style_controls(target, selected, entries, fonts, page, width, height)
+	{
 		out.extend(draw_button(shaper, interaction, &b, true));
 	}
 	out
@@ -387,28 +478,39 @@ pub(super) fn draw_styles(
 #[cfg(test)]
 mod stylesheet_tests {
 	use super::*;
+
+	fn entry(
+		id: &str,
+		error: Option<&str>,
+		urls: &[&str],
+	) -> crate::stylesheet::Entry {
+		crate::stylesheet::Entry {
+			id: id.into(),
+			name: id.into(),
+			source: "test".into(),
+			error: error.map(str::to_owned),
+			urls: urls.iter().map(|url| (*url).to_owned()).collect(),
+		}
+	}
+
 	#[test]
 	fn stylesheet_controls_fit_and_cannot_enable_invalid_entries() {
-		let entries = vec![
-			crate::stylesheet::Entry {
-				id: "a".into(),
-				name: "A".into(),
-				source: "test".into(),
-				error: None,
-			},
-			crate::stylesheet::Entry {
-				id: "broken".into(),
-				name: "Broken".into(),
-				source: "test".into(),
-				error: Some("Invalid".into()),
-			},
-		];
+		let entries =
+			vec![entry("a", None, &[]), entry("broken", Some("Invalid"), &[])];
 		let selected = vec!["a".to_string()];
+		let fonts = crate::fonts::Status::default();
 		for target in [StylesTarget::Reader, StylesTarget::Export] {
 			for (w, h) in [(500., 300.), (820., 600.)] {
 				let panel = panel_rect(w, h);
-				let buttons =
-					style_controls(target, Some(&selected), &entries, 0, w, h);
+				let buttons = style_controls(
+					target,
+					Some(&selected),
+					&entries,
+					&fonts,
+					0,
+					w,
+					h,
+				);
 				assert!(buttons.iter().all(|b| {
 					panel.contains(b.rect.x, b.rect.y)
 						&& panel
@@ -429,5 +531,129 @@ mod stylesheet_tests {
 				assert_eq!(system, target == StylesTarget::Reader);
 			}
 		}
+	}
+
+	#[test]
+	fn the_download_button_appears_only_for_declared_font_urls() {
+		let selected = vec!["a".to_string()];
+		let find = |entries: &[crate::stylesheet::Entry],
+		            fonts: &crate::fonts::Status| {
+			let (w, h) = (500., 300.);
+			let panel = panel_rect(w, h);
+			let buttons = style_controls(
+				StylesTarget::Reader,
+				Some(&selected),
+				entries,
+				fonts,
+				0,
+				w,
+				h,
+			);
+			// Every button, the download one included, stays on the panel.
+			assert!(buttons.iter().all(|b| {
+				panel.contains(b.rect.x, b.rect.y)
+					&& panel.contains(b.rect.x + b.rect.w, b.rect.y + b.rect.h)
+			}));
+			buttons
+				.into_iter()
+				.find(|b| b.action == Command::FontsDownload)
+		};
+		assert!(find(&[entry("a", None, &[])], &Default::default()).is_none());
+		let url = "https://example.invalid/NotoSerif-Regular.ttf";
+		let button = find(&[entry("a", None, &[url])], &Default::default())
+			.expect("a declared URL shows the button");
+		assert!(button.enabled);
+		// The catalogued sheet declares it even when it is not enabled.
+		assert!(
+			find(&[entry("other", None, &[url])], &Default::default())
+				.is_some()
+		);
+		// A running job holds the one button rather than stacking another.
+		let running = crate::fonts::Status {
+			running: true,
+			total: 1,
+			..Default::default()
+		};
+		assert!(!find(&[entry("a", None, &[url])], &running).unwrap().enabled);
+	}
+
+	/// The last page still draws the previous button, so the download button
+	/// must not grow under it: hit testing takes the first matching button and
+	/// would start a download from the visible back arrow.
+	#[test]
+	fn the_last_page_leaves_room_for_the_previous_button() {
+		let url = "https://example.invalid/NotoSerif-Regular.ttf";
+		let entries: Vec<_> = (0..6)
+			.map(|i| entry(&format!("style-{i}"), None, &[url]))
+			.collect();
+		let (w, h) = (500., 300.);
+		let rows = style_rows(styles_rect(w, h, entries.len()));
+		let last = entries.len().div_ceil(rows).saturating_sub(1);
+		assert!(last > 0, "the catalog spans more than one page");
+		let buttons = style_controls(
+			StylesTarget::Reader,
+			None,
+			&entries,
+			&crate::fonts::Status::default(),
+			last,
+			w,
+			h,
+		);
+		let download = buttons
+			.iter()
+			.find(|b| b.action == Command::FontsDownload)
+			.expect("a declared URL shows the button");
+		let prev = buttons
+			.iter()
+			.find(|b| b.action == Command::StylePrev)
+			.expect("the last page has a previous button");
+		assert!(
+			download.rect.intersect(prev.rect).is_none(),
+			"download {:?} overlaps previous {:?}",
+			download.rect,
+			prev.rect
+		);
+		// The window selects the first button under the pointer.
+		let (x, y) = (prev.rect.x + 8.0, prev.rect.y + 8.0);
+		let hit = buttons
+			.iter()
+			.find(|b| b.rect.contains(x, y))
+			.expect("a button under the arrow");
+		assert_eq!(hit.action, Command::StylePrev);
+	}
+
+	#[test]
+	fn the_font_summary_reports_progress_and_failures() {
+		let idle = crate::fonts::Status::default();
+		assert_eq!(
+			summary_text(&idle, 3, "guidance").0,
+			"3 font files are available to download"
+		);
+		assert_eq!(summary_text(&idle, 0, "guidance").0, "guidance");
+		let running = crate::fonts::Status {
+			total: 4,
+			done: 1,
+			current: Some("Bold.ttf".into()),
+			running: true,
+			..Default::default()
+		};
+		let (text, error) = summary_text(&running, 3, "guidance");
+		assert_eq!(text, "Downloading Bold.ttf — 1/4 files (25%)");
+		assert!(!error);
+		let failed = crate::fonts::Status {
+			total: 4,
+			done: 2,
+			failures: vec![crate::fonts::Failure {
+				file: "Missing.ttf".into(),
+				reason: "HTTP 404".into(),
+			}],
+			..Default::default()
+		};
+		let (text, error) = summary_text(&failed, 3, "guidance");
+		assert!(
+			text.contains("Missing.ttf") && text.contains("404"),
+			"{text}"
+		);
+		assert!(error);
 	}
 }

@@ -500,6 +500,13 @@ pub struct FontDefinition {
 	#[serde(default)]
 	pub emoji: bool,
 	pub lookfor: Vec<String>,
+	/// Font files this family may be downloaded from, several per family.
+	///
+	/// Absent or empty means the family must come from the host or from
+	/// `--fonts`, which is what every stylesheet did before this field
+	/// existed. Nothing is fetched at parse or install time.
+	#[serde(default)]
+	pub urls: Vec<String>,
 }
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Deserialize)]
 pub enum Decoration {

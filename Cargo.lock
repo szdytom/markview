@@ -2193,6 +2193,7 @@ dependencies = [
  "serde",
  "swash",
  "syntect",
+ "tempfile",
  "toml_edit",
  "two-face",
  "unicode-segmentation",

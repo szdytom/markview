@@ -158,6 +158,10 @@ impl App {
 			| Command::ExportOrientation(_)
 			| Command::ExportMargin(_)
 			| Command::ExportScale(_) => return,
+			Command::FontsDownload => {
+				self.download_fonts();
+				return;
+			}
 			Command::StylesFolder => {
 				let result = crate::stylesheet::directory()
 					.ok_or_else(|| anyhow::anyhow!("No stylesheet directory"))

@@ -37,6 +37,7 @@ fn fonts() -> FontConfig {
 			std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
 				.join("../markview-core/tests/fonts"),
 		],
+		..Default::default()
 	}
 }
 

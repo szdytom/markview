@@ -133,7 +133,7 @@ A condition is one fact about a rendered run: the blocks that contain it, the pa
 
 `page` paints the exported sheet; the other three style page furniture. They never apply to the reader window, and a theme that ignores them still exports: the PDF falls back to the body appearance.
 
-A rule applies to a run when **every** condition it names holds for that run. The order inside `when` is not part of the rule's identity, so `["strong", "code"]` and `["code", "strong"]` are the same rule, and a file that declares both is rejected as a duplicate. There are no selectors, variables, `inherit`, `unset`, imports, scripts, or remote resources.
+A rule applies to a run when **every** condition it names holds for that run. The order inside `when` is not part of the rule's identity, so `["strong", "code"]` and `["code", "strong"]` are the same rule, and a file that declares both is rejected as a duplicate. There are no selectors, variables, `inherit`, `unset`, imports, or scripts. The only remote resource a stylesheet can name is a font file, listed under [`urls`](#downloadable-fonts), and even that is never fetched until the reader presses a button.
 
 Footnote links are clicks that move inside the document: a reference jumps to its note, and the note's number jumps back to the citation it was opened from. They carry `footnote_ref` instead of `link`, so a theme can mark them without recoloring every hyperlink; `["footnote_ref", "hover"]` styles the link under the pointer. Consecutive references share one bracket pair, as in `[1,2]`, and only their numbers stay click targets.
 
@@ -247,7 +247,7 @@ font = [
 ]
 ```
 
-The flag applies only to `variant = "italic"` or `"oblique"`; a real italic or oblique face is still preferred when one exists. CJK variants may be defined with `type = "SC"`, `"TC"`, or `"JP"`. A user may override a definition with `[[fontdef-override]]`, but stylesheet files cannot bundle font files or download them.
+The flag applies only to `variant = "italic"` or `"oblique"`; a real italic or oblique face is still preferred when one exists. CJK variants may be defined with `type = "SC"`, `"TC"`, or `"JP"`. A user may override a definition with `[[fontdef-override]]`. Stylesheet files never bundle font binaries; they may name files to download, as the next section describes.
 
 An Emoji definition sets `emoji = true`, which makes the family the face for Emoji text rather than one candidate among the reading fonts:
 
@@ -265,6 +265,47 @@ font = [{ family = "serif" }, { family = "emoji", weight = 400 }]
 A grapheme cluster that Unicode presents as Emoji—a character with `Emoji_Presentation`, or any cluster carrying a `U+FE0F` selector—takes the Emoji face even when an earlier text candidate also covers it, which keeps check marks and warning signs colored instead of taking a symbol glyph from the CJK or symbol family that happens to hold one. A `U+FE0E` selector asks for the text presentation again. A text cluster never takes the Emoji face until the other candidates are exhausted, wherever the definition sits in the rule's list. Many Emoji families ship only a regular face, so an Emoji candidate is usually written with `weight = 400`.
 
 Redefining a bundled `fontdef` id replaces its whole definition, so a style that redefines `emoji` repeats the flag; `[[fontdef-override]]` changes only the family names and keeps it.
+
+## Downloadable fonts
+
+A `fontdef` may name the files its family is published as. The reader offers them as an explicit download; nothing is fetched when a document is read, when a style is installed, or when `ss validate` runs.
+
+```toml
+[[fontdef]]
+id = "reading"
+lookfor = ["Noto Serif", "Georgia"]
+urls = [
+    "https://example.invalid/NotoSerif-Regular.ttf",
+    "https://example.invalid/NotoSerif-Bold.ttf",
+]
+```
+
+`urls` is optional and accepts an `http` or `https` URL per file; an empty or absent list is exactly the old behavior. The list is per definition, not per variant, and a sheet may declare several files per family. HTTPS is preferred. Plain `http` is accepted for a mirror that only serves it, and the download then has no transport privacy; the [network policy](security.md#t7-network-access) still applies either way.
+
+The **Styles** panel (Ctrl+T) shows **Download fonts** whenever a catalogued stylesheet declares files, with the count beside it. The button downloads what is missing, one file at a time, and the panel reports the file in flight, files done of the total, and failures with their reason; a failure does not stop the remaining files, and pressing the button again retries. A file already present under the name its URL maps to is skipped, so a complete re-run is a no-op. The stored name is the URL's basename plus a short hash of the URL, so two URLs that end in the same basename never share one file, and a job that stored nothing does not trigger a reflow. Downloading is available in the reader window only.
+
+Files land in a `fonts/` directory beside `settings.toml`:
+
+| Platform | Directory |
+| --- | --- |
+| Linux | `$XDG_CONFIG_HOME/markview/fonts/` or `~/.config/markview/fonts/` |
+| macOS | `~/Library/Application Support/markview/fonts/` |
+| Windows | `%APPDATA%/markview/fonts/` |
+
+A body is verified as a font and renamed into place, so a failed transfer never registers. One file may be at most 64 MiB and the directory at most 256 MiB; a file counts against the directory budget only once it is complete. After a successful download the directory joins the reader's fonts immediately and the document reflows. Delete a file to fetch it again.
+
+A downloaded font is a personal resource like the fonts installed on the machine, so a run that asks for reproducible output never sees it: the `--render`, `--pdf`, `--bench`, `--latency`, and `--smoke-test` diagnostics ignore the directory, `--ignore-system-fonts` excludes it in the window too, and the reader's own Export panel uses the same `--fonts` set as a CLI export rather than the personal directory. A personal download therefore cannot change an exported file. `--offline` refuses the download and says so.
+
+### Recommended Noto files
+
+Noto is the recommended family: it is open, covers Latin and CJK, and publishes stable URLs. [`examples/noto-serif.mvss.toml`](../examples/noto-serif.mvss.toml) declares real files and can be installed as a starting point:
+
+| Role | Files | Size |
+| --- | --- | --- |
+| Latin serif | `NotoSerif-Regular.ttf`, `-Bold.ttf`, `-Italic.ttf` | about 0.6 MiB each |
+| Simplified Chinese serif | `NotoSerifSC-Regular.otf`, `-Bold.otf` (subset OTF) | about 11 MiB each |
+
+A full Noto CJK collection, rather than the subset faces, is **tens of MiB per file**; choose it only when the subset does not cover the text. Noto is licensed under the SIL Open Font License 1.1; the license ships with the upstream repository and is not bundled here. The reader never bundles font binaries, and the user trusts the URLs a stylesheet names.
 
 ## Heavier CJK UI labels
 

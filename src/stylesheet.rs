@@ -151,6 +151,8 @@ pub struct Entry {
 	pub name: String,
 	pub source: String,
 	pub error: Option<String>,
+	/// Font files the sheet offers to download, in declaration order.
+	pub urls: Vec<String>,
 }
 fn read_rules(id: &str, dir: Option<&Path>) -> Result<Arc<Stylesheet>> {
 	validate_id(id)?;
@@ -222,6 +224,10 @@ pub fn catalog_for(
 				.ok()
 				.and_then(|s| s.meta.name.clone())
 				.unwrap_or_else(|| id.clone());
+			let urls = result
+				.as_ref()
+				.map(|sheet| sheet.font_urls())
+				.unwrap_or_default();
 			let error = if incompatible {
 				Some(format!(
 					"Stylesheet does not support {} use",
@@ -243,6 +249,7 @@ pub fn catalog_for(
 				name,
 				source,
 				error,
+				urls,
 			})
 		})
 		.collect()
@@ -339,6 +346,31 @@ mod tests {
 		let error = validate(&source).unwrap_err().to_string();
 		assert!(error.contains("a.mvss.toml"), "{error}");
 		assert!(validate(&tmp.path().join("missing.mvss.toml")).is_err());
+	}
+	#[test]
+	fn a_sheet_with_font_urls_validates_and_installs_without_fetching() {
+		let tmp = tempfile::tempdir().unwrap();
+		let source = tmp.path().join("noto.mvss.toml");
+		fs::write(
+			&source,
+			"format_version=2\nversion=1\n[[fontdef]]\nid='reading'\nlookfor=['Noto Serif']\nurls=['https://example.invalid/NotoSerif-Regular.ttf']\n[[rule]]\nwhen=['body']\nfont=[{family='reading'}]",
+		)
+		.unwrap();
+		let sheet = validate(&source).unwrap();
+		assert_eq!(
+			sheet.font_urls(),
+			["https://example.invalid/NotoSerif-Regular.ttf"]
+		);
+		// The URL does not resolve, so a fetch would fail; validating and
+		// installing must stay local. Only the stylesheet is copied.
+		let dir = tmp.path().join("styles");
+		install(&source, &dir, false).unwrap();
+		let files: Vec<_> = fs::read_dir(&dir)
+			.unwrap()
+			.flatten()
+			.map(|entry| entry.file_name())
+			.collect();
+		assert_eq!(files, ["noto.mvss.toml"]);
 	}
 	#[test]
 	fn install_is_validated_atomic_and_not_enabled() {

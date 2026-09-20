@@ -13,6 +13,7 @@ use markview_core::{
 	document::Document,
 	image::{ImageInfo, ImageSnapshot},
 };
+pub(crate) use net::get_body;
 use pixels::cache_pixels;
 use source::{Source, fetch, source, stamp};
 use std::{
