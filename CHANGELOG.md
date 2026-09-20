@@ -37,6 +37,8 @@ at the same level, without `[brackets]`.
 - Render a raw `<details>` block as a collapsible element: clicking its summary toggles a Markdown body (nesting and `open` supported), `details` and `summary` join the MVSS vocabulary, and both exports show every body expanded.
 - Render a `mermaid` fenced block as a diagram: the library runs on the image workers, its SVG and pixels are cached per source, and the result appears in the window, `--render`, `--pdf` and `--smoke-test`, while a broken diagram keeps the image placeholder and `--offline` still renders local diagrams.
 - Measure per-frame scroll pacing in `--bench` over a cold, warm and prewarmed pass: prepare and total percentiles, frames over the 120 Hz and 60 Hz budgets, glyphs rasterized in and out of the frame, and atlas pressure, including for a document with no geometry.
+- Support independent box edges and corners, heading markers, letter spacing, position conditions and pagination hints in reader and PDF output.
+- Add paper-edge rules under `page.header` and `page.footer`, with symmetric `rule_width`/`rule_color` decorations for PDF and PNG exports.
 
 ### Changed
 

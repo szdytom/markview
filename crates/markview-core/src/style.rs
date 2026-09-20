@@ -17,8 +17,9 @@ pub use types::{
 	CaptionSource, CjkType, Color, ColorField, Condition, ConditionSet,
 	Decoration, Font, FontArchive, FontDefType, FontDefinition, FontFamily,
 	FontFile, FontSource, MAX_CHAIN, MarkerShape, MarkerShapes, MermaidStyle,
-	Padding, PageStyle, Rule, SYNTHETIC_ITALIC_ANGLE_DEG, SvgStyle, TextAlign,
-	Variant, chain_of, chain_push, chain_set, parse_paper_size,
+	Padding, PageEdgeStyle, PageStyle, Rule, SYNTHETIC_ITALIC_ANGLE_DEG,
+	SvgStyle, TextAlign, Variant, chain_of, chain_push, chain_set,
+	parse_paper_size,
 };
 
 /// A supported stylesheet destination.
@@ -597,6 +598,9 @@ impl Stylesheet {
 	/// Colors are resolved by the renderer; only geometry-affecting declarations invalidate layout.
 	pub fn layout_key(&self) -> u64 {
 		let mut s = format!("{:?}", self.cjk_type);
+		if self.has_child_rules() {
+			s.push_str("child-positions");
+		}
 		for (conditions, rule) in &self.rules {
 			if !rule.layout_relevant() {
 				continue;
@@ -622,6 +626,17 @@ impl Stylesheet {
 				"{:?}{:?}{:?}{:?}",
 				rule.radius, rule.gutter, rule.shape, rule.numbering
 			));
+			s.push_str(&format!("{:?}", rule.wrap));
+			s.push_str(&format!(
+				"{:?}{:?}{:?}{:?}{:?}{:?}{:?}",
+				rule.border_edges,
+				rule.corner_radii,
+				rule.heading_marker,
+				rule.letter_spacing,
+				rule.orphans,
+				rule.widows,
+				rule.keep_together
+			));
 		}
 		crate::document::fingerprint(&s)
 	}
@@ -638,6 +653,9 @@ impl Stylesheet {
 		}
 		if let Some(v) = rule.line_height {
 			out.line_height = v;
+		}
+		if let Some(v) = rule.letter_spacing {
+			out.letter_spacing = v;
 		}
 		if let Some(v) = &rule.decoration {
 			out.decoration = v.clone();
@@ -674,6 +692,46 @@ impl Stylesheet {
 	) -> TextAppearance {
 		self.enter(parent, condition)
 	}
+	pub fn has_child_rules(&self) -> bool {
+		[Condition::FirstChild, Condition::LastChild]
+			.into_iter()
+			.any(|c| !self.rule_index[c as usize].is_empty())
+	}
+
+	/// Enter the position of a direct child without retaining its parent's position.
+	pub fn child(
+		&self,
+		parent: &TextAppearance,
+		index: usize,
+		count: usize,
+	) -> TextAppearance {
+		if !self.has_child_rules() {
+			return parent.clone();
+		}
+		let mut out = parent.clone();
+		let mut chain = parent.chain;
+		out.chain = 0;
+		let mut shift = 0;
+		while chain != 0 {
+			let id = (chain & 63) as usize;
+			let condition = Condition::ALL[id - 1].0;
+			if !matches!(
+				condition,
+				Condition::FirstChild | Condition::LastChild
+			) {
+				out.chain |= (id as u128) << shift;
+				shift += 6;
+			}
+			chain >>= 6;
+		}
+		if index == 0 {
+			out = self.enter(&out, Condition::FirstChild);
+		}
+		if index + 1 == count {
+			out = self.enter(&out, Condition::LastChild);
+		}
+		out
+	}
 	pub fn inline(
 		&self,
 		parent: &TextAppearance,
@@ -693,6 +751,7 @@ impl Stylesheet {
 }
 #[derive(Clone, Debug)]
 pub struct TextAppearance {
+	pub letter_spacing: f32,
 	pub font: Vec<Font>,
 	pub weight: u16,
 	pub size: f32,
@@ -706,6 +765,7 @@ pub struct TextAppearance {
 impl Default for TextAppearance {
 	fn default() -> Self {
 		Self {
+			letter_spacing: 0.0,
 			font: vec![Font {
 				family: "serif".into(),
 				variant: Variant::Normal,

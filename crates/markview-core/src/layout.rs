@@ -266,6 +266,7 @@ struct CacheEntry {
 
 #[derive(Hash, PartialEq, Eq)]
 struct CacheKey {
+	position: u8,
 	external: u64,
 	content: u64,
 	width: u32,
@@ -393,8 +394,10 @@ impl LayoutEngine {
 			radius: body.radius.unwrap_or(0.),
 			border: body.border_width.unwrap_or(0.),
 			left_only: false,
+			decoration: crate::scene::BoxDecoration::from_rule(body, false),
 		});
-		for block in &document.blocks {
+		let body_appearance = self.shaper.appearance.clone();
+		for (index, block) in document.blocks.iter().enumerate() {
 			if let Some(Draw::Box { rect, .. }) = &mut result.document_box {
 				rect.h = result.height;
 			}
@@ -402,6 +405,12 @@ impl LayoutEngine {
 				return None;
 			}
 			let key = CacheKey {
+				position: if options.stylesheet.has_child_rules() {
+					u8::from(index == 0)
+						| (u8::from(index + 1 == document.blocks.len()) << 1)
+				} else {
+					0
+				},
 				external: external_key(
 					block,
 					images,
@@ -433,6 +442,11 @@ impl LayoutEngine {
 					crate::profile::Stage::Blocks,
 					|| {
 						let mut out = BlockLayout::default();
+						self.shaper.appearance = options.stylesheet.child(
+							&body_appearance,
+							index,
+							document.blocks.len(),
+						);
 						BlockContext {
 							shaper: &mut self.shaper,
 							math: &mut self.math,
@@ -489,6 +503,7 @@ impl LayoutEngine {
 			radius: body.radius.unwrap_or(0.),
 			border: body.border_width.unwrap_or(0.),
 			left_only: false,
+			decoration: crate::scene::BoxDecoration::from_rule(body, false),
 		});
 		Some(result)
 	}

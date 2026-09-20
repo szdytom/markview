@@ -222,6 +222,112 @@ impl Renderer {
 }
 
 impl Painter<'_> {
+	fn decorated_box(
+		&self,
+		surface: &mut Surface<'_>,
+		rect: Rect,
+		corners: [f32; 4],
+		edges: [f32; 4],
+		chain: u128,
+		condition: Condition,
+	) {
+		let corners = markview_core::scene::fit_corners(
+			LocalRect {
+				x: 0.0,
+				y: 0.0,
+				w: rect.width(),
+				h: rect.height(),
+			},
+			corners,
+		);
+		let mut builder = PathBuilder::new();
+		rounded_contour(&mut builder, rect, corners);
+		let background =
+			Paint::Scoped(chain, condition, ColorField::Background);
+		if !self.invisible(background) {
+			surface.set_fill(Some(self.fill(background)));
+			let mut background_path = PathBuilder::new();
+			rounded_contour(&mut background_path, rect, corners);
+			if let Some(path) = background_path.finish() {
+				surface.draw_path(&path);
+			}
+		}
+		if edges == [0.0; 4] {
+			return;
+		}
+		let [t, r, b, l] = markview_core::scene::fit_edges(
+			LocalRect {
+				x: 0.0,
+				y: 0.0,
+				w: rect.width(),
+				h: rect.height(),
+			},
+			edges,
+		);
+		// Straight edges avoid coincident contours, which PDF viewers can antialias into hairlines.
+		if [
+			(t, corners[0].max(corners[1])),
+			(r, corners[1].max(corners[2])),
+			(b, corners[2].max(corners[3])),
+			(l, corners[3].max(corners[0])),
+		]
+		.iter()
+		.all(|(w, r)| *w == 0.0 || *r == 0.0)
+		{
+			let paint =
+				Paint::Scoped(chain, condition, ColorField::BorderColor);
+			for (x, y, w, h) in [
+				(rect.left(), rect.top(), rect.width(), t.min(rect.height())),
+				(
+					rect.left(),
+					rect.bottom() - b,
+					rect.width(),
+					b.min(rect.height()),
+				),
+				(
+					rect.left(),
+					rect.top() + t,
+					l.min(rect.width()),
+					rect.height() - t - b,
+				),
+				(
+					rect.right() - r,
+					rect.top() + t,
+					r.min(rect.width()),
+					rect.height() - t - b,
+				),
+			] {
+				if let Some(edge) = Rect::from_xywh(x, y, w, h) {
+					self.solid(surface, edge, paint);
+				}
+			}
+			return;
+		}
+		if let Some(inner) = Rect::from_xywh(
+			rect.left() + l,
+			rect.top() + t,
+			rect.width() - l - r,
+			rect.height() - t - b,
+		) {
+			let inner_corners = [
+				(corners[0] - t.max(l)).max(0.0),
+				(corners[1] - t.max(r)).max(0.0),
+				(corners[2] - b.max(r)).max(0.0),
+				(corners[3] - b.max(l)).max(0.0),
+			];
+			rounded_contour(&mut builder, inner, inner_corners);
+		}
+		let paint = Paint::Scoped(chain, condition, ColorField::BorderColor);
+		if !self.invisible(paint) {
+			let mut fill = self.fill(paint);
+			fill.rule = FillRule::EvenOdd;
+			surface.set_fill(Some(fill));
+			if let Some(path) = builder.finish() {
+				surface.draw_path(&path);
+			}
+		}
+	}
+
 	fn fill(&self, paint: Paint) -> Fill {
 		let (color, alpha) = self.color(paint);
 		Fill {
@@ -303,6 +409,26 @@ impl Painter<'_> {
 			.unwrap_or_else(fallback_rect),
 			Paint::Styled(Condition::Page, ColorField::Background),
 		);
+		for (bottom, edge) in [
+			(false, &self.stylesheet.page().header),
+			(true, &self.stylesheet.page().footer),
+		] {
+			let Some((height, color)) = edge.rule(self.geometry.height_pt)
+			else {
+				continue;
+			};
+			let y = if bottom {
+				self.geometry.height_pt - height
+			} else {
+				0.0
+			};
+			self.solid(
+				surface,
+				Rect::from_xywh(0.0, y, self.geometry.width_pt, height)
+					.unwrap(),
+				Paint::Color(color),
+			);
+		}
 		surface.push_clip_path(
 			&rect_path(
 				Rect::from_xywh(left, top, width, height)
@@ -561,6 +687,7 @@ impl Painter<'_> {
 				radius,
 				border,
 				left_only,
+				decoration,
 			} => {
 				// A container is painted only where its own rectangle meets
 				// this fragment: a nested list or quote can belong entirely to
@@ -596,6 +723,24 @@ impl Painter<'_> {
 				} else {
 					0.0
 				};
+				if let Some(decoration) = decoration {
+					let mut corners = decoration.corners.map(|r| frame.size(r));
+					let mut edges = decoration.edges.map(|w| frame.size(w));
+					if !owns_top {
+						corners[0] = 0.0;
+						corners[1] = 0.0;
+						edges[0] = 0.0;
+					}
+					if !owns_bottom {
+						corners[2] = 0.0;
+						corners[3] = 0.0;
+						edges[2] = 0.0;
+					}
+					self.decorated_box(
+						surface, box_rect, corners, edges, *chain, *condition,
+					);
+					return;
+				}
 				let background =
 					Paint::Scoped(*chain, *condition, ColorField::Background);
 				if !self.invisible(background) {
@@ -1185,63 +1330,41 @@ fn rounded_path(
 	first: bool,
 	last: bool,
 ) -> Option<Path> {
-	let radius = radius.clamp(0.0, rect.width().min(rect.height()) * 0.5);
-	let (left, top, right, bottom) =
-		(rect.left(), rect.top(), rect.right(), rect.bottom());
-	let top_corner = if first { radius } else { 0.0 };
-	let bottom_corner = if last { radius } else { 0.0 };
 	let mut builder = PathBuilder::new();
-	builder.move_to(left + top_corner, top);
-	builder.line_to(right - top_corner, top);
-	if top_corner > 0.0 {
-		let r = top_corner;
-		builder.cubic_to(
-			right - r + r * KAPPA,
-			top,
-			right,
-			top + r - r * KAPPA,
-			right,
-			top + r,
-		);
-	}
-	builder.line_to(right, bottom - bottom_corner);
-	if bottom_corner > 0.0 {
-		let r = bottom_corner;
-		builder.cubic_to(
-			right,
-			bottom - r + r * KAPPA,
-			right - r + r * KAPPA,
-			bottom,
-			right - r,
-			bottom,
-		);
-	}
-	builder.line_to(left + bottom_corner, bottom);
-	if bottom_corner > 0.0 {
-		let r = bottom_corner;
-		builder.cubic_to(
-			left + r - r * KAPPA,
-			bottom,
-			left,
-			bottom - r + r * KAPPA,
-			left,
-			bottom - r,
-		);
-	}
-	builder.line_to(left, top + top_corner);
-	if top_corner > 0.0 {
-		let r = top_corner;
-		builder.cubic_to(
-			left,
-			top + r - r * KAPPA,
-			left + r - r * KAPPA,
-			top,
-			left + r,
-			top,
-		);
-	}
-	builder.close();
+	rounded_contour(
+		&mut builder,
+		rect,
+		[
+			if first { radius } else { 0.0 },
+			if first { radius } else { 0.0 },
+			if last { radius } else { 0.0 },
+			if last { radius } else { 0.0 },
+		],
+	);
 	builder.finish()
+}
+
+fn rounded_contour(builder: &mut PathBuilder, rect: Rect, corners: [f32; 4]) {
+	let [tl, tr, br, bl] = markview_core::scene::fit_corners(
+		LocalRect {
+			x: 0.0,
+			y: 0.0,
+			w: rect.width(),
+			h: rect.height(),
+		},
+		corners,
+	);
+	let (l, t, r, b) = (rect.left(), rect.top(), rect.right(), rect.bottom());
+	builder.move_to(l + tl, t);
+	builder.line_to(r - tr, t);
+	builder.cubic_to(r - tr + tr * KAPPA, t, r, t + tr - tr * KAPPA, r, t + tr);
+	builder.line_to(r, b - br);
+	builder.cubic_to(r, b - br + br * KAPPA, r - br + br * KAPPA, b, r - br, b);
+	builder.line_to(l + bl, b);
+	builder.cubic_to(l + bl - bl * KAPPA, b, l, b - bl + bl * KAPPA, l, b - bl);
+	builder.line_to(l, t + tl);
+	builder.cubic_to(l, t + tl - tl * KAPPA, l + tl - tl * KAPPA, t, l + tl, t);
+	builder.close();
 }
 
 /// The container edges a fragment paints: its sides always, its top only on

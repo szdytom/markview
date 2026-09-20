@@ -114,6 +114,7 @@ pub enum Draw {
 		radius: f32,
 		border: f32,
 		left_only: bool,
+		decoration: Option<BoxDecoration>,
 	},
 	Math {
 		math: Arc<MathBox>,
@@ -137,6 +138,64 @@ pub enum Draw {
 		y: f32,
 		size: f32,
 	},
+}
+
+/// Explicit box edges and corners, in logical pixels. Legacy boxes keep their fast path.
+#[derive(Clone, Copy, Debug)]
+pub struct BoxDecoration {
+	pub edges: [f32; 4],
+	pub corners: [f32; 4],
+}
+
+impl BoxDecoration {
+	pub fn from_rule(
+		rule: &crate::style::Rule,
+		left_only: bool,
+	) -> Option<Self> {
+		(rule.border_edges.is_some() || rule.corner_radii.is_some()).then(
+			|| Self {
+				edges: rule.border_edges.unwrap_or_else(|| {
+					let width = rule.border_width.unwrap_or(0.0);
+					if left_only {
+						[0.0, 0.0, 0.0, width]
+					} else {
+						[width; 4]
+					}
+				}),
+				corners: rule
+					.corner_radii
+					.unwrap_or([rule.radius.unwrap_or(0.0); 4]),
+			},
+		)
+	}
+}
+
+/// Scale all corners together so adjacent arcs cannot overlap.
+pub fn fit_corners(rect: Rect, corners: [f32; 4]) -> [f32; 4] {
+	let [tl, tr, br, bl] = corners;
+	let factor = [
+		(rect.w, tl + tr),
+		(rect.w, bl + br),
+		(rect.h, tl + bl),
+		(rect.h, tr + br),
+	]
+	.into_iter()
+	.filter(|(_, sum)| *sum > 0.0)
+	.map(|(side, sum)| side / sum)
+	.fold(1.0_f32, f32::min)
+	.max(0.0);
+	corners.map(|r| r * factor)
+}
+
+pub fn fit_edges(rect: Rect, mut edges: [f32; 4]) -> [f32; 4] {
+	for (a, b, extent) in [(0, 2, rect.h), (1, 3, rect.w)] {
+		let sum = edges[a] + edges[b];
+		if sum > extent && sum > 0.0 {
+			edges[a] *= extent / sum;
+			edges[b] *= extent / sum;
+		}
+	}
+	edges
 }
 impl Draw {
 	pub fn translate(&mut self, x: f32, y: f32) {
@@ -201,6 +260,7 @@ pub struct HeadingAnchor {
 
 #[derive(Debug, Default)]
 pub struct BlockLayout {
+	pub page_constraints: Vec<PageConstraint>,
 	pub text: Vec<TextNode>,
 	pub draws: Vec<Draw>,
 	pub height: f32,
@@ -211,6 +271,16 @@ pub struct BlockLayout {
 	pub anchors: Vec<HeadingAnchor>,
 	pub degraded: usize,
 	pub math_errors: usize,
+}
+
+/// Pagination hints retain local ranges so nested paragraphs and quotes keep their own rules.
+#[derive(Clone, Copy, Debug)]
+pub struct PageConstraint {
+	pub top: f32,
+	pub bottom: f32,
+	pub orphans: Option<u16>,
+	pub widows: Option<u16>,
+	pub keep_together: bool,
 }
 
 #[derive(Clone, Debug)]

@@ -148,6 +148,42 @@ fn print() -> Arc<Stylesheet> {
 	Arc::new(sheet)
 }
 
+#[test]
+fn top_bands_repeat_without_moving_text_or_page_furniture() {
+	for (landscape, margin, height) in [(false, 18.0, 4.5), (true, 0.0, 2000.0)]
+	{
+		let mut sheet = (*print()).clone();
+		sheet.page.landscape = Some(landscape);
+		sheet.page.margin = Some(vec![margin]);
+		let source = long_source();
+		let plain = export(&source, Arc::new(sheet.clone()), true);
+		sheet.merge(&Stylesheet::parse(&format!("format_version=2\nversion=1\n[page]\nheader.rule_width={height}\nheader.rule_color='#FF0000'")).unwrap());
+		sheet.merge(&Stylesheet::parse(&format!("format_version=2\nversion=1\n[page.footer]\nrule_width={height}\nrule_color='#0000FF'")).unwrap());
+		let banded = export(&source, Arc::new(sheet.clone()), true);
+		assert_eq!(plain.pages, banded.pages);
+		assert!(banded.pages > 1);
+		assert_eq!(plain.geometry, banded.geometry);
+		assert_eq!(plain.anchors, banded.anchors);
+		for (number, id) in banded.pdf.get_pages() {
+			assert_eq!(text_runs(&plain, number), text_runs(&banded, number));
+			let content =
+				String::from_utf8_lossy(&banded.pdf.get_page_content(id))
+					.into_owned();
+			assert_eq!(content.matches("1 0 0 rg").count(), 1, "{content}");
+			assert_eq!(content.matches("0 0 1 rg").count(), 1, "{content}");
+			assert!(
+				content.find("0 0 1 rg").unwrap() < content.find("BT").unwrap()
+			);
+			assert!(
+				content.find("1 0 0 rg").unwrap() < content.find("BT").unwrap()
+			);
+		}
+		sheet.page.header.rule_width = Some(0.0);
+		sheet.page.footer.rule_width = Some(0.0);
+		assert_eq!(export(&source, Arc::new(sheet), true).bytes, plain.bytes);
+	}
+}
+
 /// A body of prose long enough to fill more than one A4 page.
 fn long_source() -> String {
 	let mut source = String::from("# A heading\n\n");

@@ -213,6 +213,7 @@ pub(super) fn frame(rect: Rect, width: f32, height: f32) -> Vec<Draw> {
 			radius: 0.0,
 			border: 1.0,
 			left_only: false,
+			decoration: None,
 		},
 	]
 }

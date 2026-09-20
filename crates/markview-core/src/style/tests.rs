@@ -1,4 +1,105 @@
 use super::*;
+
+#[test]
+fn decoration_fields_are_strict() {
+	for declaration in [
+		"border_edges=[1,2]",
+		"corner_radii=[1,-2,3,4]",
+		"letter_spacing=nan",
+		"orphans=0",
+		"widows=-1",
+		"heading_marker=[1,inf,0]",
+	] {
+		assert!(
+			Stylesheet::parse(&format!(
+				"format_version=2\nversion=1\n[[rule]]\nwhen=['h2']\n{declaration}"
+			))
+			.is_err(),
+			"{declaration}"
+		);
+	}
+	assert!(
+		Stylesheet::parse(
+			"format_version=2\nversion=1\n[[rule]]\nwhen=['p']\nheading_marker=[1,1,1]"
+		)
+		.is_err()
+	);
+}
+
+#[test]
+fn page_bands_validate_cascade_and_leave_layout_unchanged() {
+	let mut sheet = (*Stylesheet::bundled_print()).clone();
+	let layout = sheet.layout_key();
+	let geometry =
+		crate::paginate::PageGeometry::from_style(sheet.page()).unwrap();
+	sheet.merge(&Stylesheet::parse("format_version=2\nversion=1\n[page.footer]\nrule_width=2\nrule_color='#112233'").unwrap());
+	for source in [
+		"header.rule_width=3.0\nheader.rule_color='#244C8080'",
+		"header.rule_width=4.5",
+	] {
+		sheet.merge(
+			&Stylesheet::parse(&format!(
+				"format_version=2\nversion=1\n[page]\n{source}"
+			))
+			.unwrap(),
+		);
+	}
+	assert_eq!(
+		sheet.page().header.rule(100.0),
+		Some((4.5, Color(0x244C8080)))
+	);
+	assert_eq!(
+		sheet.page().header.rule(2.0),
+		Some((2.0, Color(0x244C8080)))
+	);
+	assert_eq!(sheet.layout_key(), layout);
+	assert_eq!(
+		sheet.page().footer.rule(100.0),
+		Some((2.0, Color(0x112233FF)))
+	);
+	for section in ["header", "footer"] {
+		for field in [
+			"rule_width=-1",
+			"rule_width=nan",
+			"rule_width='3'",
+			"rule_color=''",
+			"unknown=1",
+		] {
+			assert!(
+				Stylesheet::parse(&format!(
+					"format_version=2\nversion=1\n[page.{section}]\n{field}"
+				))
+				.is_err()
+			);
+		}
+	}
+	assert_eq!(
+		crate::paginate::PageGeometry::from_style(sheet.page()).unwrap(),
+		geometry
+	);
+	for source in [
+		"header.rule_width=-1",
+		"header.rule_width=nan",
+		"header.rule_width=inf",
+		"header.rule_color='red'",
+	] {
+		assert!(
+			Stylesheet::parse(&format!(
+				"format_version=2\nversion=1\n[page]\n{source}"
+			))
+			.is_err()
+		);
+	}
+	sheet.merge(
+		&Stylesheet::parse(
+			"format_version=2\nversion=1\n[page]\nheader.rule_width=0",
+		)
+		.unwrap(),
+	);
+	assert_eq!(sheet.page().header.rule(100.0), None);
+	assert_eq!(PageStyle::default().header.rule(100.0), None);
+}
+
 #[test]
 fn bundled_emoji_keeps_regular_face_in_headings_and_emphasis() {
 	for dark in [false, true] {

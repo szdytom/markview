@@ -65,6 +65,9 @@ pub enum Condition {
 	PageHeader,
 	PageFooter,
 	PageNumber,
+	/// Position within the immediate block container or table.
+	FirstChild,
+	LastChild,
 }
 impl Condition {
 	pub const ALL: &'static [(Self, &'static str)] = &[
@@ -115,6 +118,8 @@ impl Condition {
 		(Self::PageHeader, "page_header"),
 		(Self::PageFooter, "page_footer"),
 		(Self::PageNumber, "page_number"),
+		(Self::FirstChild, "first_child"),
+		(Self::LastChild, "last_child"),
 	];
 	pub fn name(self) -> &'static str {
 		Self::ALL.iter().find(|(r, _)| *r == self).unwrap().1
@@ -164,6 +169,7 @@ impl Condition {
 			// stylesheet says otherwise, so it inherits from the body.
 			PageHeader | PageFooter | PageNumber => chain_of(&[Body, self]),
 			Page | Selection | Scrollbar => chain_of(&[self]),
+			FirstChild | LastChild => chain_of(&[Body, P, self]),
 		}
 	}
 	pub fn ui(self) -> bool {
@@ -349,6 +355,7 @@ pub fn chain_set(chain: u128) -> ConditionSet {
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum ColorField {
+	MarkerColor,
 	Color,
 	Background,
 	BorderColor,
@@ -368,6 +375,7 @@ pub enum ColorField {
 impl ColorField {
 	pub fn name(self) -> &'static str {
 		match self {
+			Self::MarkerColor => "marker_color",
 			Self::Color => "color",
 			Self::Background => "background",
 			Self::BorderColor => "border_color",
@@ -720,6 +728,19 @@ pub struct Rule {
 	pub padding: Option<Padding>,
 	pub border_width: Option<f32>,
 	pub radius: Option<f32>,
+	/// Top, right, bottom, left widths in logical pixels; overrides `border_width`.
+	pub border_edges: Option<[f32; 4]>,
+	/// Top-left, top-right, bottom-right, bottom-left radii in logical pixels.
+	pub corner_radii: Option<[f32; 4]>,
+	/// Heading marker width, height, gap in base-size units.
+	pub heading_marker: Option<[f32; 3]>,
+	pub marker_color: Option<Color>,
+	/// Additional spacing in em, including negative tracking.
+	pub letter_spacing: Option<f32>,
+	pub orphans: Option<u16>,
+	pub widows: Option<u16>,
+	pub keep_together: Option<bool>,
+	pub wrap: Option<bool>,
 	pub muted: Option<Color>,
 	pub accent: Option<Color>,
 	pub error: Option<Color>,
@@ -759,6 +780,14 @@ impl Rule {
 			|| self.padding.is_some()
 			|| self.border_width.is_some()
 			|| self.radius.is_some()
+			|| self.border_edges.is_some()
+			|| self.corner_radii.is_some()
+			|| self.heading_marker.is_some()
+			|| self.letter_spacing.is_some()
+			|| self.orphans.is_some()
+			|| self.widows.is_some()
+			|| self.keep_together.is_some()
+			|| self.wrap.is_some()
 			|| self.gutter.is_some()
 	}
 	pub fn overlay(&mut self, higher: &Self) {
@@ -783,6 +812,15 @@ impl Rule {
 			padding,
 			border_width,
 			radius,
+			border_edges,
+			corner_radii,
+			heading_marker,
+			marker_color,
+			letter_spacing,
+			orphans,
+			widows,
+			keep_together,
+			wrap,
 			muted,
 			accent,
 			error,
@@ -805,6 +843,7 @@ impl Rule {
 	}
 	pub fn color(&self, field: ColorField) -> Option<Color> {
 		match field {
+			ColorField::MarkerColor => self.marker_color,
 			ColorField::Color => self.color,
 			ColorField::Background => self.background,
 			ColorField::BorderColor => self.border_color,
@@ -912,12 +951,42 @@ pub struct PageStyle {
 	/// Top, right, bottom, left, in millimetres: one value for all sides, two
 	/// for top/bottom and left/right, or four in that order.
 	pub margin: Option<Vec<f32>>,
+	/// Paper-edge decoration in points, independent of text margins.
+	#[serde(default)]
+	pub header: PageEdgeStyle,
+	#[serde(default)]
+	pub footer: PageEdgeStyle,
 	pub header_left: Option<String>,
 	pub header_center: Option<String>,
 	pub header_right: Option<String>,
 	pub footer_left: Option<String>,
 	pub footer_center: Option<String>,
 	pub footer_right: Option<String>,
+}
+
+#[derive(Clone, Debug, Default, PartialEq, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct PageEdgeStyle {
+	pub rule_width: Option<f32>,
+	pub rule_color: Option<Color>,
+}
+
+impl PageEdgeStyle {
+	/// The visible band height and color, clipped to the output surface.
+	pub fn rule(&self, height_pt: f32) -> Option<(f32, Color)> {
+		let height = self.rule_width.unwrap_or(0.0).min(height_pt);
+		let color = self.rule_color.unwrap_or(Color(0x000000FF));
+		(height > 0.0 && color.rgba()[3] > 0.0).then_some((height, color))
+	}
+
+	fn overlay(&mut self, higher: &Self) {
+		if higher.rule_width.is_some() {
+			self.rule_width = higher.rule_width;
+		}
+		if higher.rule_color.is_some() {
+			self.rule_color = higher.rule_color;
+		}
+	}
 }
 
 impl PageStyle {
@@ -994,11 +1063,21 @@ impl PageStyle {
 			footer_center,
 			footer_right
 		);
+		self.header.overlay(&higher.header);
+		self.footer.overlay(&higher.footer);
 	}
 
 	/// Rejects a table the PDF layer could not honour, so a broken stylesheet
 	/// fails at parse time rather than at export time.
 	pub fn validate(&self) -> anyhow::Result<()> {
+		for (name, edge) in [("header", &self.header), ("footer", &self.footer)]
+		{
+			if edge.rule_width.is_some_and(|v| !v.is_finite() || v < 0.0) {
+				anyhow::bail!(
+					"page.{name}.rule_width: expected a finite nonnegative width in points"
+				);
+			}
+		}
 		if self.size.is_some() && self.paper_mm().is_none() {
 			anyhow::bail!(
 				"page.size: expected a paper name (a4, a5, letter, legal) or WIDTHxHEIGHT in millimetres"

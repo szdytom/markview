@@ -1,4 +1,32 @@
 use super::*;
+
+#[test]
+fn explicit_widows_and_keep_together_survive_nested_layout() {
+	let source = format!(
+		"{}\n\n> {}\n",
+		"Introduction. ".repeat(20),
+		"A quoted paragraph with several lines. ".repeat(12)
+	);
+	let document = document::parse(source);
+	let mut sheet = (*Stylesheet::bundled(false)).clone();
+	sheet.merge(&Stylesheet::parse("format_version=2\nversion=1\n[[rule]]\nwhen=['p']\norphans=3\nwidows=3\n[[rule]]\nwhen=['blockquote']\nkeep_together=true").unwrap());
+	let options = LayoutOptions {
+		width: 350.0,
+		stylesheet: std::sync::Arc::new(sheet),
+		..Default::default()
+	};
+	let snapshot = LayoutEngine::new().layout(&document, &options);
+	let quote_height = snapshot.blocks[1].layout.height;
+	let page = geometry(quote_height + 10.0);
+	let pagination = paginate(&document, &snapshot, &page);
+	assert_eq!(items_of(&pagination, 1).len(), 1);
+	assert!(items_of(&pagination, 1)[0].0 > 0);
+	assert_fragments_are_sound(&pagination, &page);
+	let small = geometry(120.0);
+	let split = paginate(&document, &snapshot, &small);
+	assert!(items_of(&split, 1).len() > 1);
+	assert_fragments_are_sound(&split, &small);
+}
 use crate::{
 	document,
 	image::{ImageInfo, ImageSnapshot},

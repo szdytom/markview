@@ -7,6 +7,7 @@ impl Renderer {
 		&mut self,
 		snapshot: &LayoutSnapshot,
 		view: &View<'_>,
+		underlay: &[Draw],
 		overlay: &[Draw],
 	) {
 		self.geometry.clear();
@@ -33,6 +34,9 @@ impl Renderer {
 				view,
 				false,
 			);
+		}
+		for draw in underlay {
+			self.draw(draw, 0.0, 0.0, full, view, false);
 		}
 		let start = snapshot
 			.blocks
@@ -198,12 +202,14 @@ impl Renderer {
 		&mut self,
 		snapshot: &LayoutSnapshot,
 		view: &View<'_>,
+		underlay: &[Draw],
 		overlay: &[Draw],
 		target: &wgpu::TextureView,
 		stylesheet: Arc<markview_core::style::Stylesheet>,
 	) -> Result<wgpu::SubmissionIndex> {
 		let previous = self.stylesheet.replace(stylesheet);
-		let result = self.render(snapshot, view, overlay, target);
+		let result =
+			self.render_layers(snapshot, view, underlay, overlay, target);
 		self.stylesheet = previous;
 		result
 	}
@@ -214,11 +220,22 @@ impl Renderer {
 		overlay: &[Draw],
 		target: &wgpu::TextureView,
 	) -> Result<wgpu::SubmissionIndex> {
-		self.prepare(snapshot, view, overlay);
+		self.render_layers(snapshot, view, &[], overlay, target)
+	}
+
+	fn render_layers(
+		&mut self,
+		snapshot: &LayoutSnapshot,
+		view: &View<'_>,
+		underlay: &[Draw],
+		overlay: &[Draw],
+		target: &wgpu::TextureView,
+	) -> Result<wgpu::SubmissionIndex> {
+		self.prepare(snapshot, view, underlay, overlay);
 		if self.raster.full() {
 			// Evict previous frames, then rebuild the entire current frame; never reuse stale UVs.
 			self.raster.reset_atlas(&self.gpu.queue);
-			self.prepare(snapshot, view, overlay);
+			self.prepare(snapshot, view, underlay, overlay);
 			if self.raster.full() {
 				bail!(
 					"Visible content exceeds the glyph atlases (4 MiB masks / 1 MiB color); reduce zoom"

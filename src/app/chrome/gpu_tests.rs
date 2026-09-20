@@ -9,6 +9,7 @@ use std::collections::HashMap;
 use std::path::PathBuf;
 
 use super::*;
+
 #[test]
 #[ignore = "requires a GPU; writes artifacts/refactor-ui.png"]
 fn settings_and_selection_frame() -> Result<()> {
@@ -582,7 +583,14 @@ fn a_whole_document_png_export_stitches_its_tiles() -> Result<()> {
 	};
 	let geometry = crate::export::geometry(&settings)?;
 	let mut renderer = pollster::block_on(Renderer::new(None))?;
-	let sheet = markview_core::style::Stylesheet::bundled_print();
+	let mut sheet = markview_core::style::Stylesheet::bundled_print();
+	// The band crosses a tile boundary and the top text margin.
+	std::sync::Arc::make_mut(&mut sheet).page.header.rule_width = Some(810.0);
+	std::sync::Arc::make_mut(&mut sheet).page.header.rule_color =
+		Some(markview_core::style::Color(0x244C80FF));
+	std::sync::Arc::make_mut(&mut sheet).page.footer.rule_width = Some(810.0);
+	std::sync::Arc::make_mut(&mut sheet).page.footer.rule_color =
+		Some(markview_core::style::Color(0xCC3322FF));
 	renderer.set_stylesheet(sheet.clone());
 	let document = document::parse(
 		"# Exporting\n\nA paragraph with 中文 and **bold** text.\n\n- one\n- two\n\n"
@@ -631,8 +639,17 @@ fn a_whole_document_png_export_stitches_its_tiles() -> Result<()> {
 	)?;
 	let image = image::open(&output)?.to_rgba8();
 	assert_eq!(image.dimensions(), (plan.width_px, plan.height_px));
-	// The top margin is the sheet's own background, opaque.
-	assert_eq!(image.get_pixel(0, 0).0, [255, 255, 255, 255]);
+	for y in [0, 1023, 1024, 1079] {
+		assert_eq!(image.get_pixel(0, y).0, [36, 76, 128, 255]);
+		assert_eq!(image.get_pixel(plan.width_px - 1, y).0, [36, 76, 128, 255]);
+	}
+	for y in [1080, plan.height_px - 1081] {
+		assert_eq!(image.get_pixel(0, y).0, [255, 255, 255, 255]);
+	}
+	for y in plan.height_px - 1080..plan.height_px {
+		assert_eq!(image.get_pixel(0, y).0, [204, 51, 34, 255]);
+		assert_eq!(image.get_pixel(plan.width_px - 1, y).0, [204, 51, 34, 255]);
+	}
 	Ok(())
 }
 

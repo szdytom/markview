@@ -562,6 +562,9 @@ impl TextShaper {
 		let fonts = self.fonts.get_or_insert_with(|| default_fonts(&config));
 		let mut builder = self.context.ranged_builder(fonts, text, 1.0, false);
 		builder.push_default(StyleProperty::FontSize(size));
+		builder.push_default(StyleProperty::LetterSpacing(
+			size * self.appearance.letter_spacing,
+		));
 		builder.push_default(StyleProperty::FontFamily("sans-serif".into()));
 		builder.push_default(StyleProperty::FontWeight(FontWeight::NORMAL));
 		builder.push_default(StyleProperty::FontStyle(FontStyle::Normal));
@@ -591,6 +594,12 @@ impl TextShaper {
 			}
 		}
 		for (i, span) in spans.iter().enumerate() {
+			builder.push(
+				StyleProperty::LetterSpacing(
+					size * appearances[i].size * appearances[i].letter_spacing,
+				),
+				span.range.clone(),
+			);
 			builder.push(StyleProperty::Brush(i), span.range.clone());
 			builder.push(
 				StyleProperty::FontSize(size * appearances[i].size),

@@ -15,6 +15,7 @@ use image::ImageEncoder;
 use markview_core::{
 	fonts::FontConfig,
 	paginate::PT_PER_PX,
+	scene::{Draw, Paint, Rect},
 	style::{CjkType, PageStyle, Stylesheet},
 };
 use std::{
@@ -498,9 +499,35 @@ pub(super) fn draw_tile(
 	};
 	let target = renderer.offscreen(plan.width_px, tile.height_px);
 	let target_view = target.create_view(&Default::default());
+	let height = plan.height_px as f32 / scale;
+	let tile_top = tile.y_px as f32 / scale;
+	let tile_bottom = tile_top + tile.height_px as f32 / scale;
+	let bands: Vec<_> = [
+		(false, &stylesheet.page().header),
+		(true, &stylesheet.page().footer),
+	]
+	.into_iter()
+	.filter_map(|(bottom, edge)| {
+		let (width, color) = edge.rule(height * PT_PER_PX)?;
+		let width = width / PT_PER_PX;
+		let start = if bottom { height - width } else { 0.0 };
+		let top = start.max(tile_top);
+		let end = (start + width).min(tile_bottom);
+		(end > top).then_some(Draw::Rect(
+			Rect {
+				x: 0.0,
+				y: top - tile_top,
+				w: plan.width_px as f32 / scale,
+				h: end - top,
+			},
+			Paint::Color(color),
+		))
+	})
+	.collect();
 	let submission = renderer.render_with_stylesheet(
 		snapshot,
 		&view,
+		&bands,
 		&[],
 		&target_view,
 		stylesheet.clone(),
