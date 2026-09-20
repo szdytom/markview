@@ -90,6 +90,17 @@ fn rows(settings: &ReaderSettings) -> Vec<Row> {
 			),
 		),
 		Row::new(
+			"Scroll speed",
+			choices(
+				&[
+					("−", Command::ScrollSpeed(-1)),
+					("+", Command::ScrollSpeed(1)),
+				],
+				None,
+			),
+		)
+		.value(format!("{:.2}×", settings.scroll_speed)),
+		Row::new(
 			"Smooth scrolling",
 			vec![action(
 				if settings.smooth_scroll { "On" } else { "Off" },

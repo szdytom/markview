@@ -394,3 +394,40 @@ fn smooth_scroll_round_trips_and_defaults_off() {
 	assert!(warning.is_some());
 	assert!(!loaded.settings().smooth_scroll);
 }
+
+#[test]
+fn scroll_speed_round_trips_and_stays_in_range() {
+	let mut settings = ReaderSettings::default();
+	assert_eq!(settings.scroll_speed, 1.0);
+	// The buttons step a quarter at a time and clamp at both ends.
+	for _ in 0..40 {
+		settings.step_scroll_speed(1);
+	}
+	assert_eq!(settings.scroll_speed, SCROLL_SPEED_MAX);
+	for _ in 0..40 {
+		settings.step_scroll_speed(-1);
+	}
+	assert_eq!(settings.scroll_speed, SCROLL_SPEED_MIN);
+
+	let dir = tempfile::tempdir().unwrap();
+	let path = dir.path().join("settings.toml");
+	let mut settings = ReaderSettings::default();
+	settings.step_scroll_speed(2);
+	let (mut store, warning) = SettingsStore::load(Some(path.clone()));
+	assert!(warning.is_none());
+	store.changed(&settings, Some(Setting::ScrollSpeed));
+	store.flush().unwrap();
+	assert!(
+		fs::read_to_string(&path)
+			.unwrap()
+			.contains("scroll-speed = 1.5")
+	);
+	let (loaded, warning) = SettingsStore::load(Some(path.clone()));
+	assert!(warning.is_none());
+	assert_eq!(loaded.settings().scroll_speed, 1.5);
+	// A speed outside the range is rejected and the defaults recover.
+	fs::write(&path, "scroll-speed = 4.0\n").unwrap();
+	let (loaded, warning) = SettingsStore::load(Some(path));
+	assert!(warning.is_some());
+	assert_eq!(loaded.settings().scroll_speed, 1.0);
+}

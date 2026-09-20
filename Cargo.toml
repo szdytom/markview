@@ -123,7 +123,10 @@ tempfile.workspace = true
 [target.'cfg(target_os = "windows")'.dependencies]
 wgpu = { workspace = true, features = ["dx12"] }
 ico = "0.5"
-windows-sys = { version = "0.61", features = ["Win32_System_Console"] }
+windows-sys = { version = "0.61", features = [
+	"Win32_System_Console",
+	"Win32_UI_WindowsAndMessaging",
+] }
 
 [target.'cfg(target_os = "windows")'.build-dependencies]
 winresource = { version = "0.1", default-features = false }

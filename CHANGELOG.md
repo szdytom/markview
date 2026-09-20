@@ -13,6 +13,11 @@ at the same level, without `[brackets]`.
 
 ## Unreleased
 
+- Honor the system's per-axis lines- and characters-per-notch on Windows, count
+  a Linux wheel detent as the usual three lines instead of one, and add a
+  persisted `scroll-speed` preference (0.5×–2×, in Settings) that scales every
+  wheel notch and arrow step.
+
 - Add an optional smooth scrolling preference, off by default: discrete scroll
   requests and wheel notches ease for 120–400 ms, with a reversing wheel taking
   over from the displayed offset, while a thumb drag stays immediate and ends a

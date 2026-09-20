@@ -4,9 +4,49 @@ use std::{
 	path::PathBuf,
 	time::{Duration, Instant},
 };
-use winit::window::CursorIcon;
+use winit::{event::MouseScrollDelta, window::CursorIcon};
 
-use super::{App, anchor, chrome};
+use super::{App, LINE_STEP, anchor, chrome};
+use crate::platform::{WheelAmount, WheelNotch};
+
+/// The logical pixels one notch of `amount` travels along an axis `extent` long.
+///
+/// A character borrows the line step: Windows names lines and characters in
+/// separate settings, but the two only differ in the count they carry.
+fn notch_pixels(amount: WheelAmount, extent: f32) -> f32 {
+	match amount {
+		WheelAmount::Lines(lines) => LINE_STEP * lines,
+		WheelAmount::Page => extent * 0.9,
+	}
+}
+
+/// The logical pixels one wheel event asks the reader to move.
+///
+/// A line delta is a notch on X11 and Wayland, where the desktop's own speed
+/// setting never reaches the event, and an already-scaled line on macOS, where
+/// it does, so the notch only multiplies where the platform left it raw. Each
+/// axis carries the desktop's own value, because Windows configures the two
+/// separately. A pixel delta is physical, so the display scale turns it back
+/// into logical pixels. The reader's speed multiplier scales both.
+pub(super) fn wheel_pixels(
+	delta: MouseScrollDelta,
+	notch: WheelNotch,
+	speed: f32,
+	scale: f32,
+	viewport: (f32, f32),
+) -> (f32, f32) {
+	match delta {
+		MouseScrollDelta::LineDelta(x, y) => (
+			x * notch_pixels(notch.horizontal, viewport.0) * speed,
+			y * notch_pixels(notch.vertical, viewport.1) * speed,
+		),
+		MouseScrollDelta::PixelDelta(p) => {
+			let step = speed / scale;
+			(p.x as f32 * step, p.y as f32 * step)
+		}
+	}
+}
+
 impl App {
 	pub(super) fn pointer_in_panel(&self) -> bool {
 		let (width, height, _) = self.dimensions();
@@ -31,6 +71,14 @@ impl App {
 	/// Whether discrete scroll requests ease over time.
 	pub(super) fn smooth_scroll(&self) -> bool {
 		self.preferences.values.smooth_scroll
+	}
+	/// The reader's scroll-speed multiplier over the desktop's own speed.
+	pub(super) fn scroll_speed(&self) -> f32 {
+		self.preferences.values.scroll_speed
+	}
+	/// Logical pixels one line of a discrete scroll travels.
+	pub(super) fn line_step(&self) -> f32 {
+		LINE_STEP * self.scroll_speed()
 	}
 	pub(super) fn scroll_by(&mut self, dy: f32) {
 		self.readers.session.scroll_by(dy, self.viewport());
@@ -356,3 +404,6 @@ impl App {
 		false
 	}
 }
+
+#[cfg(test)]
+mod tests;

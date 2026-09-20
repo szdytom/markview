@@ -231,6 +231,12 @@ pixels and the type to 18.
   `#heading` jump over 120–400 ms; a wheel turned against the motion still in
   flight takes over from where the page is rather than finishing it first. A
   thumb drag and every other scroll stay immediate. It is off by default.
+- **Scroll speed follows the desktop as far as it can.** Windows reports the
+  system's lines and characters per notch, each applied to its own axis, and
+  macOS scales its own deltas, so both are honored; a Linux detent carries no
+  value and counts as three lines, and **Scroll speed** in **Settings**
+  (`scroll-speed` in `settings.toml`, 0.5× to 2×) multiplies every wheel notch
+  and arrow step.
 - **A hard break stays hard.** Two trailing spaces leave the line at its natural
   width; an explicit `<br>` asks for the line it ends to be set flush.
 

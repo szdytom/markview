@@ -17,20 +17,20 @@ fn panel_exposes_first_line_indent_presets() {
 fn panel_toggles_codeblock_wrapping() {
 	let mut shaper = crate::test_support::shaper();
 	let mut label = |wrap| {
-		controls(
-			&mut shaper,
-			&ReaderSettings {
-				codeblock_wrap: wrap,
-				..Default::default()
-			},
-			true,
-			1200.0,
-			800.0,
-		)
-		.into_iter()
-		.find(|b| b.action == Command::CodeWrap)
-		.expect("wrap toggle")
-		.label
+		let settings = ReaderSettings {
+			codeblock_wrap: wrap,
+			..Default::default()
+		};
+		let initial = form(&mut shaper, &settings, 0.0, 1200.0, 800.0);
+		// The list is longer than the panel, so the last row is only on
+		// screen once something has revealed it.
+		let scroll = initial.reveal(Command::CodeWrap);
+		form(&mut shaper, &settings, scroll, 1200.0, 800.0)
+			.visible_buttons()
+			.into_iter()
+			.find(|b| b.action == Command::CodeWrap)
+			.expect("wrap toggle")
+			.label
 	};
 	assert_eq!(label(false), "Off");
 	assert_eq!(label(true), "On");
@@ -248,4 +248,16 @@ fn preview_keeps_controls_reachable_and_exit_icon_opaque() {
 	assert!(alphas[0] < 0.26);
 	assert_eq!(alphas[1], 1.0);
 	assert!(!draws.iter().any(|draw| matches!(draw, Draw::Box { .. })));
+}
+#[test]
+fn panel_steps_the_scroll_speed_between_its_bounds() {
+	let mut shaper = crate::test_support::shaper();
+	let buttons =
+		controls(&mut shaper, &ReaderSettings::default(), true, 1200.0, 800.0);
+	for action in [Command::ScrollSpeed(-1), Command::ScrollSpeed(1)] {
+		assert!(
+			buttons.iter().any(|b| b.action == action),
+			"missing {action:?}"
+		);
+	}
 }

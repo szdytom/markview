@@ -4,7 +4,7 @@ use log::{error, info};
 use std::time::{Duration, Instant};
 use winit::{
 	dpi::PhysicalSize,
-	event::{ElementState, MouseButton, MouseScrollDelta, WindowEvent},
+	event::{ElementState, MouseButton, WindowEvent},
 	event_loop::ActiveEventLoop,
 	keyboard::{Key, NamedKey},
 	window::{CursorIcon, WindowId},
@@ -302,13 +302,13 @@ impl App {
 				if self.interaction.modal.is_some() {
 					return;
 				}
-				let (dx, dy) = match delta {
-					MouseScrollDelta::LineDelta(x, y) => (x * 42.0, y * 42.0),
-					MouseScrollDelta::PixelDelta(p) => (
-						p.x as f32 / self.dimensions().2,
-						p.y as f32 / self.dimensions().2,
-					),
-				};
+				let (dx, dy) = super::pointer::wheel_pixels(
+					delta,
+					self.wheel_notch,
+					self.scroll_speed(),
+					self.dimensions().2,
+					self.viewport_size(),
+				);
 				if self.interaction.panel_open {
 					if self.pointer_in_panel() {
 						self.scroll_panel(-dy);
@@ -447,10 +447,10 @@ impl App {
 							self.move_outline(-1)
 						}
 						Key::Named(NamedKey::ArrowDown) => {
-							self.scroll_step(42.0)
+							self.scroll_step(self.line_step())
 						}
 						Key::Named(NamedKey::ArrowUp) => {
-							self.scroll_step(-42.0)
+							self.scroll_step(-self.line_step())
 						}
 						Key::Named(NamedKey::PageDown | NamedKey::Space) => {
 							self.scroll_step(self.viewport() * 0.9)
@@ -461,10 +461,10 @@ impl App {
 						Key::Named(NamedKey::Home) => self.scroll_bound(false),
 						Key::Named(NamedKey::End) => self.scroll_bound(true),
 						Key::Named(NamedKey::ArrowLeft) => {
-							self.horizontal_by(-42.0);
+							self.horizontal_by(-self.line_step());
 						}
 						Key::Named(NamedKey::ArrowRight) => {
-							self.horizontal_by(42.0);
+							self.horizontal_by(self.line_step());
 						}
 						Key::Named(NamedKey::Tab) => {
 							let actions: Vec<Command> = self

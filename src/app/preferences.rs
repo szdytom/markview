@@ -63,6 +63,7 @@ impl Preferences {
 			codeblock_theme_override: settings.codeblock_theme_override.clone(),
 			codeblock_wrap: settings.codeblock_wrap,
 			smooth_scroll: settings.smooth_scroll,
+			scroll_speed: settings.scroll_speed,
 		};
 		for field in &args.overrides {
 			settings.copy_field(&explicit, *field);

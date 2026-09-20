@@ -40,6 +40,8 @@ struct Config {
 	codeblock_wrap: bool,
 	#[serde(rename = "smooth-scroll")]
 	smooth_scroll: bool,
+	#[serde(rename = "scroll-speed")]
+	scroll_speed: f32,
 	/// The reader's export preferences, kept apart from the reading view.
 	export: ExportSettings,
 }
@@ -61,6 +63,7 @@ impl Default for Config {
 			codeblock_theme_override: None,
 			codeblock_wrap: settings.codeblock_wrap,
 			smooth_scroll: settings.smooth_scroll,
+			scroll_speed: settings.scroll_speed,
 			export: ExportSettings::default(),
 		}
 	}
@@ -104,6 +107,7 @@ impl Config {
 			codeblock_theme_override: self.codeblock_theme_override.clone(),
 			codeblock_wrap: self.codeblock_wrap,
 			smooth_scroll: self.smooth_scroll,
+			scroll_speed: self.scroll_speed,
 			..Default::default()
 		}
 	}
@@ -332,6 +336,7 @@ impl SettingsStore {
 					Setting::CjkType,
 					Setting::CodeblockWrap,
 					Setting::SmoothScroll,
+					Setting::ScrollSpeed,
 				];
 				self.saved = effective.clone();
 				self.saved.style = None;
@@ -383,6 +388,7 @@ impl SettingsStore {
 				.clone(),
 			codeblock_wrap: self.saved.codeblock_wrap,
 			smooth_scroll: self.saved.smooth_scroll,
+			scroll_speed: self.saved.scroll_speed,
 			export: self.saved_export.clone(),
 		};
 		let mut values = toml_edit::ser::to_document(&config)?;

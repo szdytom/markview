@@ -8,6 +8,12 @@ use std::path::PathBuf;
 mod store;
 pub use store::SettingsStore;
 
+/// The scroll-speed multiplier a reader may choose between, and the step its
+/// buttons move by.
+pub const SCROLL_SPEED_MIN: f32 = 0.5;
+pub const SCROLL_SPEED_MAX: f32 = 2.0;
+pub const SCROLL_SPEED_STEP: f32 = 0.25;
+
 #[derive(Clone, Debug, PartialEq)]
 pub struct ReaderSettings {
 	pub theme: Theme,
@@ -30,6 +36,9 @@ pub struct ReaderSettings {
 	/// Ease discrete scroll requests (keys, scrollbar track, anchors) over
 	/// time instead of applying them at once.
 	pub smooth_scroll: bool,
+	/// Multiplies every scroll request. The desktop's own speed is the
+	/// baseline; this is the only handle where the platform reports none.
+	pub scroll_speed: f32,
 }
 impl Default for ReaderSettings {
 	fn default() -> Self {
@@ -48,6 +57,7 @@ impl Default for ReaderSettings {
 			codeblock_theme_override: None,
 			codeblock_wrap: false,
 			smooth_scroll: false,
+			scroll_speed: 1.0,
 		}
 	}
 }
@@ -69,6 +79,7 @@ pub enum Setting {
 	CjkType,
 	CodeblockWrap,
 	SmoothScroll,
+	ScrollSpeed,
 }
 
 /// Which document an export writes to disk.
@@ -198,6 +209,8 @@ impl ReaderSettings {
 			|| !(240.0..=1600.0).contains(&self.width)
 			|| !self.paragraph_indent.is_finite()
 			|| !(0.0..=4.0).contains(&self.paragraph_indent)
+			|| !(SCROLL_SPEED_MIN..=SCROLL_SPEED_MAX)
+				.contains(&self.scroll_speed)
 		{
 			bail!("Reader settings are out of range");
 		}
@@ -205,6 +218,12 @@ impl ReaderSettings {
 			bail!("Justification limits are out of range");
 		}
 		Ok(())
+	}
+	/// Steps the scroll-speed multiplier by whole steps, clamped to its range.
+	pub fn step_scroll_speed(&mut self, steps: i8) {
+		self.scroll_speed = (self.scroll_speed
+			+ f32::from(steps) * SCROLL_SPEED_STEP)
+			.clamp(SCROLL_SPEED_MIN, SCROLL_SPEED_MAX);
 	}
 	pub fn copy_field(&mut self, other: &Self, field: Setting) {
 		match field {
@@ -224,6 +243,7 @@ impl ReaderSettings {
 				self.codeblock_wrap = other.codeblock_wrap
 			}
 			Setting::SmoothScroll => self.smooth_scroll = other.smooth_scroll,
+			Setting::ScrollSpeed => self.scroll_speed = other.scroll_speed,
 		}
 	}
 }

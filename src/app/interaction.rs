@@ -101,6 +101,12 @@ impl App {
 				self.redraw();
 				return;
 			}
+			Command::ScrollSpeed(delta) => {
+				self.preferences.values.step_scroll_speed(delta);
+				self.setting_changed(Some(Setting::ScrollSpeed));
+				self.redraw();
+				return;
+			}
 			Command::Styles => {
 				self.readers.session.cancel_scroll_animation();
 				self.tab_strip.cancel_drag();

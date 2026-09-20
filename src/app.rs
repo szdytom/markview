@@ -32,6 +32,9 @@ use winit::{event_loop::EventLoopProxy, window::Window};
 
 const TOP: f32 = 40.0;
 const BOTTOM: f32 = 28.0;
+/// Logical pixels one line of a discrete scroll travels, before the reader's
+/// speed multiplier and the desktop's lines-per-notch choice.
+const LINE_STEP: f32 = 42.0;
 
 pub fn run() -> Result<()> {
 	launch::run()
@@ -150,6 +153,9 @@ struct App {
 	_styles_watch: Option<FileWatch>,
 	ui: TextShaper,
 	preferences: preferences::Preferences,
+	/// What one wheel notch travels on this desktop, read once at startup:
+	/// nothing reports the desktop setting changing afterwards.
+	wheel_notch: crate::platform::WheelNotch,
 	/// The font download the Styles panel last started, or its quiet result.
 	fonts: crate::fonts::Status,
 	clipboard: crate::platform::Clipboard,
@@ -225,6 +231,7 @@ impl App {
 			_styles_watch: styles_watch,
 			ui,
 			preferences,
+			wheel_notch: crate::platform::wheel_notch(),
 			fonts: Default::default(),
 			clipboard: Default::default(),
 			paste_dir: tempfile::tempdir()
@@ -286,7 +293,12 @@ impl App {
 		}
 	}
 	pub(super) fn viewport(&self) -> f32 {
-		self.view_geometry().clip().h.max(1.0)
+		self.viewport_size().1
+	}
+	/// The reading viewport's logical width and height.
+	pub(super) fn viewport_size(&self) -> (f32, f32) {
+		let clip = self.view_geometry().clip();
+		(clip.w.max(1.0), clip.h.max(1.0))
 	}
 	pub(super) fn redraw(&self) {
 		if let Some(w) = &self.window {

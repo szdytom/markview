@@ -23,6 +23,8 @@ pub(crate) enum Command {
 	CodeWrap,
 	/// Ease discrete scroll requests over time.
 	SmoothScroll,
+	/// Step the reader's scroll-speed multiplier by whole steps.
+	ScrollSpeed(i8),
 	/// First-line paragraph indent in whole em units.
 	Indent(u8),
 	CjkType(markview_core::style::CjkType),
