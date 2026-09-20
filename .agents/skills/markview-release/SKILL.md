@@ -7,6 +7,15 @@ description: Cut a Markview release — bump the workspace version, cut the chan
 
 A release request authorizes the version commit, the tag, and the push that triggers publication.
 
+## Before you start
+
+1. **Start with a clean `main`.** The user's workspace must be up to date with `main` and have no uncommitted changes.
+2. **The latest CI must be green.** The current `main` must have a passing CI run. Use `gh` to check the latest run for `main` and confirm it is green.
+3. **Check the changelog.** The "Unreleased" section of `CHANGELOG.md` must be present and in good shape. For minor errors, fix them in the release commit; for larger issues, stop and report.
+4. **Check the version.** The user must explicitly name the version to release. The new specified version must be reasonable (greater than the current version, not skipping a version, etc.). E.g., if the current version is `0.1.1`, the user may release `0.1.2` or `0.2.0`, but not `0.1.3` or `0.1.0`.
+
+If any of these preconditions are not met, stop and report the problem to the user. Do not proceed with the release.
+
 ## Steps
 
 1. **Version.** Set `version` in `[workspace.package]` in `Cargo.toml`, then
