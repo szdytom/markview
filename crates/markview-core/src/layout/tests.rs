@@ -2935,3 +2935,44 @@ fn a_details_body_reference_link_lays_out_as_a_link() {
 		.collect();
 	assert!(urls.contains(&"https://example.com/b"), "{urls:?}");
 }
+
+#[test]
+fn a_diagram_theme_change_is_a_new_layout_request() {
+	let options = |mermaid: &str| LayoutOptions {
+		stylesheet: Arc::new(
+			crate::style::Stylesheet::parse(&format!(
+				"format_version=2\nversion=1\n[mermaid]\n{mermaid}"
+			))
+			.unwrap(),
+		),
+		..Default::default()
+	};
+	let dark = options("theme='dark'");
+	assert_eq!(dark, options("theme='dark'"));
+	// Colors are not geometry, but the image scheduler keys work by these
+	// options, so a new theme must look like a new request.
+	assert_ne!(dark, options("theme='dark'\nbackground='#101418'"));
+}
+
+#[test]
+fn a_named_font_definition_is_part_of_the_diagram_request() {
+	let options = |lookfor: &str| LayoutOptions {
+		stylesheet: Arc::new(
+			crate::style::Stylesheet::parse(&format!(
+				"format_version=2\nversion=1\n\
+				 [[fontdef]]\nid='reading'\nlookfor=[{lookfor}]\n\
+				 [mermaid]\nfont_family=['reading']"
+			))
+			.unwrap(),
+		),
+		..Default::default()
+	};
+	// The rules are identical, so only the definition the diagram names can
+	// tell these two requests apart.
+	assert_eq!(
+		options("'Noto Serif'").stylesheet.layout_key(),
+		options("'Source Han Serif'").stylesheet.layout_key()
+	);
+	assert_eq!(options("'Noto Serif'"), options("'Noto Serif'"));
+	assert_ne!(options("'Noto Serif'"), options("'Source Han Serif'"));
+}

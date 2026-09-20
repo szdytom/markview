@@ -69,10 +69,134 @@ fn strict_schema() {
 		"format_version=2\nversion=1\n[[rule]]\nwhen=['em']",
 		"format_version=2\nversion=1\n[[rule]]\ncolor='#ffffff'",
 		"format_version=2\nversion=1\n[[fontdef]]\nid='cjk'\ntype='none'\nlookfor=['serif']",
+		"format_version=2\nversion=1\n[mermaid]\nprimarycolor='#ffffff'",
+		"format_version=2\nversion=1\n[mermaid]\ntheme='solarized'",
+		"format_version=2\nversion=1\n[mermaid]\nbackground='white'",
+		"format_version=2\nversion=1\n[mermaid]\nfont_size=0.0",
+		"format_version=2\nversion=1\n[mermaid]\nfont_family=[]",
+		"format_version=2\nversion=1\n[mermaid]\nfont_family=['  ']",
+		"format_version=2\nversion=1\n[mermaid]\nfont_family=['a,b']",
+		"format_version=2\nversion=1\n[mermaid]\nfont_family='serif'",
+		"format_version=2\nversion=1\n[mermaid]\ngit_colors=['#000000']",
+		"format_version=2\nversion=1\n[mermaid]\npie_opacity=2.0",
 	] {
 		assert!(Stylesheet::parse(bad).is_err(), "{bad}");
 	}
 }
+#[test]
+fn mermaid_table_names_a_preset_and_merges_field_by_field() {
+	let bare = Stylesheet::parse("format_version=2\nversion=1").unwrap();
+	assert_eq!(bare.mermaid.preset(), "modern");
+	assert_eq!(bare.mermaid.background, None);
+	let low = Stylesheet::parse(
+		"format_version=2\nversion=1\n[mermaid]\ntheme='dark'\nbackground='#202630'\nprimary_text_color='#dce3ed'",
+	)
+	.unwrap();
+	let high = Stylesheet::parse(
+		"format_version=2\nversion=1\n[mermaid]\nbackground='#101418'",
+	)
+	.unwrap();
+	let mut sheet = (*Stylesheet::builtin()).clone();
+	sheet.merge(&low);
+	sheet.merge(&high);
+	// The leftmost selected stylesheet wins per field, as rules do.
+	assert_eq!(sheet.mermaid.preset(), "dark");
+	assert_eq!(sheet.mermaid.background, Some(Color(0x101418ff)));
+	assert_eq!(sheet.mermaid.primary_text_color, Some(Color(0xdce3edff)));
+	assert_ne!(low.mermaid, high.mermaid);
+	assert_eq!(
+		Stylesheet::parse(
+			"format_version=2\nversion=1\n[mermaid]\ntheme='DARK'"
+		)
+		.unwrap()
+		.mermaid
+		.preset(),
+		"DARK"
+	);
+}
+
+#[test]
+fn han_faces_follow_the_body_text_cjk_candidate() {
+	let sheet = |body: &str, defs: &str| {
+		let mut sheet = Stylesheet::parse(&format!(
+			"format_version=2\nversion=1\n{defs}\n\
+			 [[rule]]\nwhen=['body']\nfont=[{body}]"
+		))
+		.unwrap();
+		sheet.set_cjk_type(CjkType::Sc);
+		sheet
+	};
+	let han = sheet(
+		"{family='han',weight=500},{family='emoji',weight=400}",
+		"[[fontdef]]\nid='han'\ntype='SC'\nlookfor=['Songti SC','serif']\n\
+		 [[fontdef]]\nid='emoji'\nemoji=true\nlookfor=['Noto Color Emoji']",
+	);
+	assert_eq!(han.cjk_families(), ["Songti SC", "serif"]);
+	// A body that names no CJK candidate asks for no Han face, and neither
+	// does one the sheet declared for another convention.
+	let plain = sheet("{family='serif'}", "");
+	assert!(plain.cjk_families().is_empty());
+	let mut other = sheet(
+		"{family='han'}",
+		"[[fontdef]]\nid='han'\ntype='TC'\nlookfor=['Songti TC']",
+	);
+	other.set_cjk_type(CjkType::Sc);
+	assert!(other.cjk_families().is_empty());
+	// The Han faces are part of what a diagram is drawn from.
+	assert_ne!(han.diagram_key(), plain.diagram_key());
+}
+
+#[test]
+fn diagram_identity_follows_the_font_definitions_it_names() {
+	let sheet = |reading: &str, aside: &str, mermaid: &str| {
+		Stylesheet::parse(&format!(
+			"format_version=2\nversion=1\n\
+			 [[fontdef]]\nid='reading'\nlookfor=[{reading}]\n\
+			 [[fontdef]]\nid='aside'\nlookfor=[{aside}]\n\
+			 [mermaid]\n{mermaid}"
+		))
+		.unwrap()
+	};
+	let base = sheet(
+		"'Noto Serif'",
+		"'Aside'",
+		"font_family=['reading', 'serif']",
+	);
+	assert_eq!(base.mermaid_font_families(), ["Noto Serif", "serif"]);
+	// Changing the definition the table names redraws the diagram without
+	// touching a single rule, so layout identity alone cannot see it.
+	let edited = sheet(
+		"'Source Han Serif'",
+		"'Aside'",
+		"font_family=['reading', 'serif']",
+	);
+	assert_eq!(base.layout_key(), edited.layout_key());
+	assert_ne!(base.diagram_key(), edited.diagram_key());
+	// A definition the table does not name is not part of the theme.
+	let aside = sheet(
+		"'Noto Serif'",
+		"'Other Aside'",
+		"font_family=['reading', 'serif']",
+	);
+	assert_eq!(base.diagram_key(), aside.diagram_key());
+	// Everything else in the table still counts.
+	let coloured = sheet(
+		"'Noto Serif'",
+		"'Aside'",
+		"font_family=['reading', 'serif']\nbackground='#101418'",
+	);
+	assert_ne!(base.diagram_key(), coloured.diagram_key());
+	// A definition declared but not selected contributes nothing, as it does
+	// for a rule.
+	let variant = Stylesheet::parse(
+		"format_version=2\nversion=1\n\
+		 [[fontdef]]\nid='cjk'\ntype='TC'\nlookfor=['Songti TC']\n\
+		 [mermaid]\nfont_family=['cjk', 'sans-serif']",
+	)
+	.unwrap();
+	assert_eq!(variant.mermaid_font_families(), ["sans-serif"]);
+}
+
 #[test]
 fn scrollbar_sizes_are_configurable_and_validated() {
 	// A stylesheet without a scrollbar rule falls back to the built-in

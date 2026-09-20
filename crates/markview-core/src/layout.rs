@@ -187,6 +187,11 @@ impl PartialEq for LayoutOptions {
 			&& self.details_open == other.details_open
 			&& self.force_open == other.force_open
 			&& self.stylesheet.layout_key() == other.stylesheet.layout_key()
+			// A diagram theme is pixels, not geometry, but a new one must
+			// reach the image scheduler, which recognizes work by these
+			// options. Its key follows the font definitions the table names,
+			// so changing one of those is a new request too.
+			&& self.stylesheet.diagram_key() == other.stylesheet.diagram_key()
 			&& self.fonts == other.fonts
 			&& self.limits == other.limits
 	}

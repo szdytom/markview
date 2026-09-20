@@ -1,10 +1,48 @@
 format_version = 2
 targets = ["ui"]
-version = 1
+version = 2
 
 [meta]
 name = "Blueprint"
 description = "Technical notes in chalk blue with measured sans-serif type"
+
+# Diagrams are drawn in this theme's own palette: the preset supplies the
+# structure, the colors below put it on the same paper and surfaces as the
+# document around it.
+[mermaid]
+theme = "dark"
+background = "#172B46"
+text_color = "#E0EAF6"
+primary_color = "#203C5C"
+primary_text_color = "#E0EAF6"
+primary_border_color = "#426080"
+line_color = "#A1B9D4"
+secondary_color = "#2D4D70"
+tertiary_color = "#12243C"
+edge_label_background = "#172B46"
+cluster_background = "#12243C"
+cluster_border = "#426080"
+sequence_actor_fill = "#203C5C"
+sequence_actor_border = "#426080"
+sequence_actor_line = "#A1B9D4"
+sequence_note_fill = "#2D4D70"
+sequence_note_border = "#426080"
+sequence_activation_fill = "#2D4D70"
+sequence_activation_border = "#A1B9D4"
+git_commit_label_color = "#172B46"
+git_commit_label_background = "#A1B9D4"
+git_tag_label_color = "#E0EAF6"
+git_tag_label_background = "#203C5C"
+git_tag_label_border = "#426080"
+pie_colors = [
+	"#72B7CA", "#728BCA", "#8572CA", "#B172CA", "#CA72B7", "#CA728B",
+	"#CA8572", "#CAB172", "#B7CA72", "#8BCA72", "#72CA85", "#72CAB1",
+]
+pie_title_text_color = "#E0EAF6"
+pie_section_text_color = "#172B46"
+pie_legend_text_color = "#A1B9D4"
+pie_stroke_color = "#172B46"
+pie_outer_stroke_color = "#426080"
 
 [[rule]]
 when = ["body"]

@@ -1,10 +1,48 @@
 format_version = 2
 targets = ["ui"]
-version = 1
+version = 2
 
 [meta]
 name = "Rosewood"
 description = "Plum shadows, rose ink and literary serif headings"
+
+# Diagrams are drawn in this theme's own palette: the preset supplies the
+# structure, the colors below put it on the same paper and surfaces as the
+# document around it.
+[mermaid]
+theme = "dark"
+background = "#30242F"
+text_color = "#EFE1E6"
+primary_color = "#3D2F3D"
+primary_text_color = "#EFE1E6"
+primary_border_color = "#654C60"
+line_color = "#C5A9BA"
+secondary_color = "#4A3949"
+tertiary_color = "#382A37"
+edge_label_background = "#30242F"
+cluster_background = "#382A37"
+cluster_border = "#654C60"
+sequence_actor_fill = "#3D2F3D"
+sequence_actor_border = "#654C60"
+sequence_actor_line = "#C5A9BA"
+sequence_note_fill = "#4A3949"
+sequence_note_border = "#654C60"
+sequence_activation_fill = "#4A3949"
+sequence_activation_border = "#C5A9BA"
+git_commit_label_color = "#30242F"
+git_commit_label_background = "#C5A9BA"
+git_tag_label_color = "#EFE1E6"
+git_tag_label_background = "#3D2F3D"
+git_tag_label_border = "#654C60"
+pie_colors = [
+	"#CA7290", "#CA8172", "#CAAD72", "#BBCA72", "#90CA72", "#72CA81",
+	"#72CAAD", "#72BBCA", "#7290CA", "#8172CA", "#AD72CA", "#CA72BB",
+]
+pie_title_text_color = "#EFE1E6"
+pie_section_text_color = "#30242F"
+pie_legend_text_color = "#C5A9BA"
+pie_stroke_color = "#30242F"
+pie_outer_stroke_color = "#654C60"
 
 [[rule]]
 when = ["body"]

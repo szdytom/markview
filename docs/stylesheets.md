@@ -199,7 +199,7 @@ Colors are sRGB `#RRGGBB` or `#RRGGBBAA`; `body.background` must be opaque. Size
 
 ## Paper
 
-The PDF export always starts from the bundled `print` stylesheet, and `--style` layers a named style supporting `pdf` on top of it. A style may also set the `[page]` table, which is the only table besides `fontdef`, `meta`, and `rule`:
+The PDF export always starts from the bundled `print` stylesheet, and `--style` layers a named style supporting `pdf` on top of it. A style may also set the `[page]` table, which is the only table besides `fontdef`, `meta`, `mermaid`, and `rule`:
 
 ```toml
 [page]
@@ -215,6 +215,28 @@ footer_right = ""
 ```
 
 Slots are templates. `{page}`, `{pages}`, `{title}`, and `{path}` are the supported placeholders; any other name is rejected at parse time, and there is deliberately no date, so the same document always exports the same bytes. A slot holding a page number is styled by `page_number` and the rest by `page_header` or `page_footer`. `--paper`, `--landscape`, `--margin`, `--header*`, and `--footer*` override these fields for one run.
+
+## Diagrams
+
+A `mermaid` fence renders as an image, and the `[mermaid]` table draws those images in the theme's own palette instead of the renderer's default light one:
+
+```toml
+[mermaid]
+theme = "dark"              # default, dark, forest, neutral, or modern
+font_family = ["reading"]   # fontdef ids or literal families, in priority order
+background = "#202630"      # the diagram's own paper
+primary_color = "#2B3441"
+primary_text_color = "#DCE3ED"
+line_color = "#A5B3C5"
+```
+
+`theme` names a built-in palette and decides every field the table leaves out, so a theme that only sets `background` keeps the preset's nodes, edges and text; a stylesheet with no table at all keeps the renderer's light default. Every other field is the renderer's, one for one: `font_family`, `font_size`, `background`, `text_color`, `primary_color`, `primary_text_color`, `primary_border_color`, `line_color`, `secondary_color`, `tertiary_color`, `edge_label_background`, `cluster_background`, `cluster_border`, `sequence_actor_fill`, `sequence_actor_border`, `sequence_actor_line`, `sequence_note_fill`, `sequence_note_border`, `sequence_activation_fill`, `sequence_activation_border`, `git_commit_label_color`, `git_commit_label_background`, `git_tag_label_color`, `git_tag_label_background`, `git_tag_label_border`, `pie_title_text_color`, `pie_section_text_color`, `pie_legend_text_color`, `pie_stroke_color`, `pie_outer_stroke_color`, `pie_title_text_size`, `pie_section_text_size`, `pie_legend_text_size`, `pie_stroke_width`, `pie_outer_stroke_width` and `pie_opacity`. The `git_colors`, `git_inv_colors` and `git_branch_label_colors` palettes take eight colors each and `pie_colors` takes twelve; each one replaces a whole derived palette instead of adjusting it.
+
+`font_family` is an array in priority order, and a name that matches a `fontdef` id means that definition's families—exactly as it does in a rule's `font`—so a theme can write `font_family = ["reading", "emoji"]`. Any other name is a literal family. To see which family a diagram really used, put `一` in a label: a sans-serif face ends the stroke as a rectangle, while a serif face adds a small triangle at its right end.
+
+A diagram whose source carries Han or kana text is drawn with the sheet's own Han faces in front, whichever faces the body text's `font` candidates select for the reader's CJK convention. The SVG rasterizer resolves one base face per text element and falls back—with a warning—for every cluster that face cannot draw, and the renderer's own lists carry no Han face, so without this a Chinese label would come out in another region's face. A Latin-only diagram is left on the list above.
+
+Colors are `#RRGGBB` or `#RRGGBBAA`, as everywhere else in a stylesheet. Sizes are finite and positive, and `pie_opacity` runs from 0 to 1. Changing this table redraws every diagram: the source is parsed once and kept, so only its layout and drawing run again. The reader uses the selected theme's table, and an export uses the exporting stylesheet's. Diagrams are drawn from the operating system's fonts, so a definition only satisfied by `--fonts` or a downloaded file is not available to them and falls back like any other missing family.
 
 ## Cascade and inheritance
 
@@ -346,11 +368,11 @@ size = 0.8
 color = "#69747E"
 ```
 
-`align` affects image-only paragraphs. Images mixed with text remain inline and never create text wrapping on their sides. A single image paragraph may show a caption, using `title_or_alt`, `title`, `alt`, or `none`; multiple-image and mixed paragraphs do not show captions. `["img", "placeholder"]` styles loading and error text. A `mermaid` fence becomes an image with an empty `title` and `alt`, so `img` rules style the diagram and no caption appears by default.
+`align` affects image-only paragraphs. Images mixed with text remain inline and never create text wrapping on their sides. A single image paragraph may show a caption, using `title_or_alt`, `title`, `alt`, or `none`; multiple-image and mixed paragraphs do not show captions. `["img", "placeholder"]` styles loading and error text. A `mermaid` fence becomes an image with an empty `title` and `alt`, so `img` rules style the diagram and no caption appears by default; the [`[mermaid]` table](#diagrams) colors the diagram itself.
 
 ## Live updates and safe authoring
 
-Markview watches installed styles and settings. A valid save applies automatically; an invalid stylesheet leaves the previous effective style active. Color-only changes can repaint cached layout, while font and geometry changes reflow it.
+Markview watches installed styles and settings. A valid save applies automatically; an invalid stylesheet leaves the previous effective style active. Color-only changes can repaint cached layout, while font and geometry changes reflow it. A diagram theme change is the exception among color changes: it redraws every diagram from its cached parse, without reflowing the text.
 
 Keep a style focused on visual decisions, name the conditions a run really has rather than trying to imitate CSS, and test it with both Latin and CJK text, formulas, code, tables, links, selections, and missing images. Do not rely on a font that is unavailable on the target machine; provide an ordered fallback list.
 

@@ -52,6 +52,15 @@ change, and a reload starts from the source again.
 
 </details>
 
+A diagram takes its colors from the theme's `[mermaid]` table:
+
+```mermaid
+flowchart LR
+    Draft[草稿] --> Read{Read again 重读}
+    Read -->|clearly| Publish[Publish 发布]
+    Read -->|not yet| Draft
+```
+
 ---
 
 ![A deliberately unavailable image](theme-preview-missing.png "Image caption / 图注")

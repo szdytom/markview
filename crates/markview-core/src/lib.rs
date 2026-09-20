@@ -16,4 +16,4 @@ pub mod shaping;
 pub mod style;
 pub mod text;
 
-pub use microtype::JustificationLimits;
+pub use microtype::{JustificationLimits, needs_cjk_faces};

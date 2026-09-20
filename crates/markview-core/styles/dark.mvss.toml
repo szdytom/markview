@@ -1,10 +1,48 @@
 format_version = 2
 targets = ["ui"]
-version = 2
+version = 3
 
 [meta]
 name = "Dark"
 description = "Soft slate, silver text and glacier blue"
+
+# Diagrams are drawn in this theme's own palette: the preset supplies the
+# structure, the colors below put it on the same paper and surfaces as the
+# document around it.
+[mermaid]
+theme = "dark"
+background = "#202630"
+text_color = "#DCE3ED"
+primary_color = "#2B3441"
+primary_text_color = "#DCE3ED"
+primary_border_color = "#465366"
+line_color = "#A5B3C5"
+secondary_color = "#354459"
+tertiary_color = "#252E3A"
+edge_label_background = "#202630"
+cluster_background = "#252E3A"
+cluster_border = "#465366"
+sequence_actor_fill = "#2B3441"
+sequence_actor_border = "#465366"
+sequence_actor_line = "#A5B3C5"
+sequence_note_fill = "#354459"
+sequence_note_border = "#465366"
+sequence_activation_fill = "#354459"
+sequence_activation_border = "#A5B3C5"
+git_commit_label_color = "#202630"
+git_commit_label_background = "#A5B3C5"
+git_tag_label_color = "#DCE3ED"
+git_tag_label_background = "#2B3441"
+git_tag_label_border = "#465366"
+pie_colors = [
+	"#729ECA", "#7272CA", "#9E72CA", "#CA72CA", "#CA729E", "#CA7272",
+	"#CA9E72", "#CACA72", "#9ECA72", "#72CA72", "#72CA9E", "#72CACA",
+]
+pie_title_text_color = "#DCE3ED"
+pie_section_text_color = "#202630"
+pie_legend_text_color = "#A5B3C5"
+pie_stroke_color = "#202630"
+pie_outer_stroke_color = "#465366"
 
 [[rule]]
 when = ["body"]

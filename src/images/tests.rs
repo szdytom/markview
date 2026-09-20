@@ -4,6 +4,11 @@ use base64::Engine;
 use image::{Rgb, RgbImage, Rgba, RgbaImage};
 use std::{fs, io::Cursor};
 
+/// The diagram theme a test that never switches stylesheets renders with.
+fn diagram_theme() -> diagram::DiagramTheme {
+	diagram::resolve(&Stylesheet::default())
+}
+
 fn png(width: u32, height: u32, color: [u8; 4]) -> Vec<u8> {
 	let mut bytes = Vec::new();
 	image::DynamicImage::ImageRgba8(RgbaImage::from_pixel(
@@ -48,7 +53,13 @@ fn fence_images(code: &str) -> (Images, String) {
 	}
 	let src = specs[0].src.clone();
 	let mut images = images(true);
-	images.prepare(&doc, Path::new("note.md"), 1, false);
+	images.prepare(
+		&doc,
+		Path::new("note.md"),
+		1,
+		false,
+		&Stylesheet::default(),
+	);
 	images.wait();
 	(images, src)
 }
@@ -97,21 +108,31 @@ fn sources_cover_local_network_and_inline_images() {
 fn data_uris_decode_base64_and_percent_escapes() {
 	let bytes = png(4, 2, [1, 2, 3, 255]);
 	let encoded = data_uri("image/png", &bytes);
-	assert_eq!(fetch(&Source::Data(encoded), false, None).unwrap(), bytes);
+	assert_eq!(
+		fetch(&Source::Data(encoded), false, None, &diagram_theme()).unwrap(),
+		bytes
+	);
 	let plain = "data:image/svg+xml,%3Csvg%3E%3C/svg%3E";
 	assert_eq!(
-		fetch(&Source::Data(plain.into()), false, None).unwrap(),
+		fetch(&Source::Data(plain.into()), false, None, &diagram_theme())
+			.unwrap(),
 		b"<svg></svg>"
 	);
 	assert!(
-		fetch(&Source::Data("data:text/plain,hello".into()), false, None)
-			.is_err()
+		fetch(
+			&Source::Data("data:text/plain,hello".into()),
+			false,
+			None,
+			&diagram_theme(),
+		)
+		.is_err()
 	);
 	assert!(
 		fetch(
 			&Source::Data("data:image/png;base64,!!".into()),
 			false,
-			None
+			None,
+			&diagram_theme(),
 		)
 		.is_err()
 	);
@@ -178,7 +199,13 @@ fn mermaid_fences_render_through_the_image_scheduler() {
 	let src = specs[0].src.clone();
 	assert!(src.starts_with(markview_core::image::MERMAID_SCHEME));
 	let mut images = images(true);
-	images.prepare(&doc, Path::new("note.md"), 1, false);
+	images.prepare(
+		&doc,
+		Path::new("note.md"),
+		1,
+		false,
+		&Stylesheet::default(),
+	);
 	images.wait();
 	let entry = &images.snapshot.entries[&src];
 	assert!(entry.error.is_none());
@@ -187,6 +214,120 @@ fn mermaid_fences_render_through_the_image_scheduler() {
 	let pixels = images.snapshot.pixels.decoded.lock().unwrap();
 	let pixels = &pixels[&src];
 	assert!(pixels.rgba.chunks(4).any(|p| p[3] > 0), "blank diagram");
+}
+
+#[test]
+fn a_new_diagram_theme_redraws_the_diagram() {
+	let doc = crate::document::parse(
+		"```mermaid\ngraph TD\n A[Start] --> B[End]\n```\n",
+	);
+	let mut specs = Vec::new();
+	for block in &doc.blocks {
+		block.images(&mut specs);
+	}
+	let src = specs[0].src.clone();
+	let mut images = images(true);
+	images.prepare(
+		&doc,
+		Path::new("note.md"),
+		1,
+		false,
+		&Stylesheet::default(),
+	);
+	images.wait();
+	let painted = |images: &Images| {
+		let pixels = images.snapshot.pixels.decoded.lock().unwrap();
+		pixels[&src].rgba.to_vec()
+	};
+	let light = painted(&images);
+	// The same revision and the same source, only the stylesheet differs.
+	let dark = Stylesheet::parse(
+		"format_version=2\nversion=1\n[mermaid]\ntheme='dark'\nbackground='#101820'",
+	)
+	.unwrap();
+	images.prepare(&doc, Path::new("note.md"), 1, false, &dark);
+	images.wait();
+	let dark = painted(&images);
+	assert_ne!(light, dark);
+	// The diagram paints its own background over the whole canvas.
+	assert_eq!(&dark[..4], &[0x10, 0x18, 0x20, 255]);
+}
+
+#[test]
+fn a_diagram_failure_does_not_outlive_its_theme() {
+	// A text size far past the pixel limit makes the drawing fail.
+	let doc = crate::document::parse(
+		"```mermaid\ngraph TD\n A[Start] --> B[End]\n```\n",
+	);
+	let mut specs = Vec::new();
+	for block in &doc.blocks {
+		block.images(&mut specs);
+	}
+	let src = specs[0].src.clone();
+	let mut images = images(true);
+	let huge = Stylesheet::parse(
+		"format_version=2\nversion=1\n[mermaid]\nfont_size=4000",
+	)
+	.unwrap();
+	images.prepare(&doc, Path::new("note.md"), 1, false, &huge);
+	images.wait();
+	assert!(images.snapshot.entries[&src].error.is_some());
+	// The next theme draws a size that fits, and must get its own chance.
+	let dark = Stylesheet::parse(
+		"format_version=2\nversion=1\n[mermaid]\ntheme='dark'",
+	)
+	.unwrap();
+	images.prepare(&doc, Path::new("note.md"), 1, false, &dark);
+	images.wait();
+	let entry = &images.snapshot.entries[&src];
+	assert!(entry.error.is_none(), "{entry:?}");
+	assert!(entry.size.is_some());
+}
+
+#[test]
+fn a_failure_from_the_previous_theme_is_retried() {
+	let mut images = images(true);
+	// The test delivers completions itself, so no real job can race it.
+	let (send, recv) = mpsc::channel();
+	images.recv = recv;
+	let doc = crate::document::parse("```mermaid\ngraph TD\n A-->B\n```\n");
+	let mut specs = Vec::new();
+	for block in &doc.blocks {
+		block.images(&mut specs);
+	}
+	let path = Path::new("note.md");
+	let alias = specs[0].src.clone();
+	let src = source(&alias, path).unwrap();
+	images.prepare(&doc, path, 1, false, &Stylesheet::default());
+	// A job under the current theme is still in flight when the reader
+	// switches, and it is about to fail.
+	let old_ticket = {
+		let e = images.entries.get_mut(&src).unwrap();
+		e.busy = true;
+		e.ticket = VERSION.fetch_add(1, Ordering::Relaxed);
+		e.ticket
+	};
+	let dark = Stylesheet::parse(
+		"format_version=2\nversion=1\n[mermaid]\ntheme='dark'",
+	)
+	.unwrap();
+	images.prepare(&doc, path, 1, false, &dark);
+	assert!(images.entries[&src].busy);
+	send.send(Finished {
+		source: src.clone(),
+		generation: images.generation,
+		ticket: old_ticket,
+		result: Err(anyhow::Error::msg(
+			"Image exceeds 16 million pixels or has invalid dimensions",
+		)),
+	})
+	.unwrap();
+	images.poll();
+	// The failure belonged to the old theme: the new one was scheduled.
+	let entry = &images.entries[&src];
+	assert!(entry.info.error.is_none(), "{:?}", entry.info.error);
+	assert!(entry.busy, "the diagram was not scheduled again");
+	assert_ne!(entry.ticket, old_ticket);
 }
 
 #[test]
@@ -200,7 +341,13 @@ fn broken_mermaid_diagram_becomes_an_error_placeholder() {
 	}
 	let src = specs[0].src.clone();
 	let mut images = images(false);
-	images.prepare(&doc, Path::new("note.md"), 1, false);
+	images.prepare(
+		&doc,
+		Path::new("note.md"),
+		1,
+		false,
+		&Stylesheet::default(),
+	);
 	images.wait();
 	let entry = &images.snapshot.entries[&src];
 	assert!(entry.error.is_some());
@@ -358,7 +505,7 @@ fn gpu_frame_draws_decoded_images() -> Result<()> {
 	)?;
 	let doc = crate::document::parse(source.to_string());
 	let mut images = images(true);
-	images.prepare(&doc, &path, 1, false);
+	images.prepare(&doc, &path, 1, false, &Stylesheet::default());
 	images.wait();
 	let mut snapshot = LayoutEngine::new().layout_with_images(
 		&doc,
@@ -449,7 +596,7 @@ fn loader_publishes_pixels_and_reports_failures() {
 	fs::write(dir.path().join("a.png"), png(6, 4, [9, 8, 7, 255])).unwrap();
 	let doc = crate::document::parse(source.to_string());
 	let mut images = images(true);
-	images.prepare(&doc, &path, 1, false);
+	images.prepare(&doc, &path, 1, false, &Stylesheet::default());
 	images.wait();
 	assert_eq!(images.snapshot.entries["a.png"].size, Some((6, 4)));
 	assert!(images.snapshot.entries["a.png"].error.is_none());
@@ -465,11 +612,23 @@ fn renamed_alias_reuses_pixels_and_removed_aliases_are_released() {
 	let path = dir.path().join("note.md");
 	fs::write(dir.path().join("a.png"), png(6, 4, [1, 2, 3, 255])).unwrap();
 	let mut images = images(true);
-	images.prepare(&crate::document::parse("![a](a.png)"), &path, 1, false);
+	images.prepare(
+		&crate::document::parse("![a](a.png)"),
+		&path,
+		1,
+		false,
+		&Stylesheet::default(),
+	);
 	images.wait();
 	let first = images.snapshot.pixels.decoded.lock().unwrap()["a.png"].clone();
 	let version = images.snapshot.entries["a.png"].version;
-	images.prepare(&crate::document::parse("![a](./a.png)"), &path, 2, false);
+	images.prepare(
+		&crate::document::parse("![a](./a.png)"),
+		&path,
+		2,
+		false,
+		&Stylesheet::default(),
+	);
 	assert_eq!(images.snapshot.entries["./a.png"].version, version);
 	let pixels = images.snapshot.pixels.decoded.lock().unwrap();
 	assert!(!pixels.contains_key("a.png"));
@@ -483,11 +642,17 @@ fn obsolete_completion_cannot_replace_a_readded_resource() {
 	images.recv = recv;
 	let path = Path::new("/unused/note.md");
 	let doc = crate::document::parse("![a](a.png)");
-	images.prepare(&doc, path, 1, false);
+	images.prepare(&doc, path, 1, false, &Stylesheet::default());
 	let src = source("a.png", path).unwrap();
 	let old_ticket = images.entries[&src].ticket;
-	images.prepare(&crate::document::parse("no image"), path, 2, false);
-	images.prepare(&doc, path, 3, false);
+	images.prepare(
+		&crate::document::parse("no image"),
+		path,
+		2,
+		false,
+		&Stylesheet::default(),
+	);
+	images.prepare(&doc, path, 3, false, &Stylesheet::default());
 	assert_ne!(images.entries[&src].ticket, old_ticket);
 	send.send(Finished {
 		source: src.clone(),
@@ -547,6 +712,7 @@ fn vector_demand_merges_alias_sizes_and_gpu_residency_avoids_refetch() {
 		&path,
 		1,
 		false,
+		&Stylesheet::default(),
 	);
 	images.wait();
 	*images.snapshot.pixels.demand.lock().unwrap() = HashMap::from([
@@ -614,9 +780,10 @@ fn bracketed_ipv6_hosts_are_parsed_and_refused_before_connecting() {
 		"http://[fe80::1]:9/x.png",
 		"http://[fd00::1]:9/x.png",
 	] {
-		let error = fetch(&Source::Http(url.into()), false, None)
-			.unwrap_err()
-			.to_string();
+		let error =
+			fetch(&Source::Http(url.into()), false, None, &diagram_theme())
+				.unwrap_err()
+				.to_string();
 		assert!(error.contains("local or private address"), "{url}: {error}");
 	}
 }
@@ -635,25 +802,37 @@ fn remote_images_are_capped_per_document_and_revision() {
 	let doc = many(130);
 	let path = std::path::Path::new("note.md");
 	let mut images = images(false);
-	images.prepare(&doc, path, 1, false);
+	images.prepare(&doc, path, 1, false, &Stylesheet::default());
 	assert_eq!(images.deferred_remote(), 2);
 	// Reloading the same revision does not change which images were deferred.
-	images.prepare(&doc, path, 1, false);
+	images.prepare(&doc, path, 1, false, &Stylesheet::default());
 	assert_eq!(images.deferred_remote(), 2);
 	// Lifting the cap schedules the remainder for this revision only.
-	images.prepare(&doc, path, 1, true);
+	images.prepare(&doc, path, 1, true, &Stylesheet::default());
 	assert_eq!(images.deferred_remote(), 0);
 	// The next revision is capped again.
-	images.prepare(&doc, path, 2, false);
+	images.prepare(&doc, path, 2, false, &Stylesheet::default());
 	assert_eq!(images.deferred_remote(), 2);
 	// A different document is never affected by another tab's exemption, even
 	// when its own preparation asks for the cap.
-	images.prepare(&doc, std::path::Path::new("other.md"), 1, true);
+	images.prepare(
+		&doc,
+		std::path::Path::new("other.md"),
+		1,
+		true,
+		&Stylesheet::default(),
+	);
 	assert_eq!(images.deferred_remote(), 0);
 	let other = many(131);
-	images.prepare(&other, std::path::Path::new("other.md"), 2, false);
+	images.prepare(
+		&other,
+		std::path::Path::new("other.md"),
+		2,
+		false,
+		&Stylesheet::default(),
+	);
 	assert_eq!(images.deferred_remote(), 3);
-	images.prepare(&doc, path, 1, false);
+	images.prepare(&doc, path, 1, false, &Stylesheet::default());
 	assert_eq!(images.deferred_remote(), 2);
 }
 
@@ -670,7 +849,7 @@ fn offline_serves_a_cached_remote_image_and_fails_without_one() {
 	fs::write(&path, &document).unwrap();
 	let doc = crate::document::parse(document);
 	let mut images = Images::with_cache(true, Some(root));
-	images.prepare(&doc, &path, 1, false);
+	images.prepare(&doc, &path, 1, false, &Stylesheet::default());
 	images.wait();
 	let entry = &images.snapshot.entries[url];
 	assert!(entry.error.is_none(), "{entry:?}");
@@ -682,7 +861,7 @@ fn offline_serves_a_cached_remote_image_and_fails_without_one() {
 	fs::write(&path, &document).unwrap();
 	let doc = crate::document::parse(document);
 	let mut images = Images::with_cache(true, None);
-	images.prepare(&doc, &path, 1, false);
+	images.prepare(&doc, &path, 1, false, &Stylesheet::default());
 	images.wait();
 	assert_eq!(
 		images.snapshot.entries[missing].error.as_deref(),

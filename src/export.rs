@@ -124,7 +124,7 @@ pub(crate) fn png_snapshot(
 	engine.validate_stylesheet(&options.stylesheet)?;
 	let document = document::parse(read_document(path)?);
 	let mut images = Images::new(offline);
-	images.prepare(&document, path, 1, false);
+	images.prepare(&document, path, 1, false, &options.stylesheet);
 	images.wait();
 	for entry in images.snapshot.entries.values() {
 		if let Some(error) = &entry.error {

@@ -184,7 +184,7 @@ pub fn run(
 		let doc = document::parse(text);
 		let parse_ms = t.elapsed().as_secs_f64() * 1000.0;
 		let image_start = Instant::now();
-		images.prepare(&doc, path, 1, false);
+		images.prepare(&doc, path, 1, false, &options.stylesheet);
 		images.wait();
 		let mut image_prepare_ms = image_start.elapsed().as_secs_f64() * 1000.;
 		let t = Instant::now();

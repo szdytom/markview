@@ -12,6 +12,7 @@ use decode::{Decoded, decode};
 use markview_core::{
 	document::Document,
 	image::{ImageInfo, ImageSnapshot},
+	style::Stylesheet,
 };
 pub(crate) use net::get_body;
 use pixels::cache_pixels;
@@ -39,6 +40,8 @@ struct Job {
 	source: Source,
 	generation: u64,
 	target: Option<(u32, u32)>,
+	/// The diagram theme this job renders with; other sources ignore it.
+	theme: Arc<diagram::DiagramTheme>,
 }
 struct Finished {
 	ticket: u64,
@@ -54,6 +57,9 @@ struct Entry {
 	busy: bool,
 	svg: bool,
 	raster: Option<(u32, u32)>,
+	/// Fingerprint of the diagram theme these pixels were rendered with, so a
+	/// stylesheet change redraws a diagram instead of keeping its old colors.
+	theme: u64,
 }
 
 pub struct Images {
@@ -65,6 +71,7 @@ pub struct Images {
 	document: PathBuf,
 	revision: u64,
 	poll_at: Instant,
+	theme: Arc<diagram::DiagramTheme>,
 }
 
 impl Images {
@@ -98,8 +105,13 @@ impl Images {
 						// A malformed file must not take the reader down with it.
 						let result = std::panic::catch_unwind(
 							std::panic::AssertUnwindSafe(|| {
-								fetch(&job.source, offline, cache.as_ref())
-									.and_then(|b| decode(&b, job.target))
+								fetch(
+									&job.source,
+									offline,
+									cache.as_ref(),
+									&job.theme,
+								)
+								.and_then(|b| decode(&b, job.target))
 							}),
 						)
 						.unwrap_or_else(|_| {
@@ -129,18 +141,30 @@ impl Images {
 			document: PathBuf::new(),
 			revision: 0,
 			poll_at: Instant::now(),
+			theme: Arc::new(diagram::resolve(&Stylesheet::default())),
 		}
 	}
 
 	/// `load_all` comes from the tab that asked for this layout, so lifting the
 	/// remote cap never leaks into another document or another revision.
+	///
+	/// `sheet` is the stylesheet whose `[mermaid]` table draws the diagrams. A
+	/// resolved theme change redraws every diagram from the source it already
+	/// parsed; resolving per request also follows the sheet's font definitions
+	/// and the CJK variant the request selected.
 	pub fn prepare(
 		&mut self,
 		doc: &Document,
 		path: &Path,
 		revision: u64,
 		load_all: bool,
+		sheet: &Stylesheet,
 	) {
+		let resolved = diagram::resolve(sheet);
+		if resolved.fingerprint() != self.theme.fingerprint() {
+			self.theme = Arc::new(resolved);
+		}
+		let theme = self.theme.fingerprint();
 		if self.document != path {
 			self.entries.clear();
 			self.snapshot = Default::default();
@@ -202,6 +226,7 @@ impl Images {
 							busy: false,
 							svg: false,
 							raster: None,
+							theme,
 						},
 					);
 					if !e.aliases.contains(&spec.src) {
@@ -250,6 +275,7 @@ impl Images {
 	fn schedule(&mut self) {
 		let demand = self.snapshot.pixels.demand.lock().unwrap().clone();
 		let pixels = self.snapshot.pixels.decoded.lock().unwrap();
+		let theme = self.theme.fingerprint();
 		let mut running = self.entries.values().filter(|e| e.busy).count();
 		let mut keys: Vec<_> = self.entries.keys().cloned().collect();
 		keys.sort_by_key(|s| {
@@ -274,20 +300,35 @@ impl Images {
 			let target = requested.map(|d| d.size);
 			let resident = e.aliases.iter().any(|a| pixels.contains_key(a));
 			let resize = e.svg && target.is_some() && target != e.raster;
+			// A diagram drawn under another theme is stale even though its
+			// size and pixels are already here. Keeping them lets the old
+			// drawing stand until the new one is ready, so nothing reflows
+			// through a placeholder.
+			let stale = matches!(s, Source::Diagram(_)) && e.theme != theme;
+			// A failure the old theme caused — a drawing past the pixel
+			// limit, say — does not survive it, or the working theme that
+			// follows could never bring the diagram back. A job still in
+			// flight is covered too: it lands before the next schedule.
+			if stale && e.info.error.is_some() {
+				e.info.error = None;
+			}
 			if !e.busy
 				&& e.info.error.is_none()
-				&& (e.info.size.is_none()
+				&& (stale
+					|| e.info.size.is_none()
 					|| resize || (requested.is_some_and(|d| d.needs_pixels)
 					&& !resident))
 			{
 				e.ticket = VERSION.fetch_add(1, Ordering::Relaxed);
 				e.busy = true;
+				e.theme = theme;
 				running += 1;
 				let _ = self.send.as_ref().unwrap().send(Job {
 					ticket: e.ticket,
 					source: s,
 					generation: self.generation,
 					target: if e.svg { target } else { None },
+					theme: self.theme.clone(),
 				});
 			}
 		}

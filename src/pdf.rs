@@ -233,8 +233,13 @@ impl Exporter {
 			.as_ref()
 			.expect("a document is parsed before a layout")
 			.clone();
-		self.images
-			.prepare(&document, &self.path, self.revision, false);
+		self.images.prepare(
+			&document,
+			&self.path,
+			self.revision,
+			false,
+			&self.options.stylesheet,
+		);
 		self.images.wait();
 		for entry in self.images.snapshot.entries.values() {
 			if let Some(error) = &entry.error {

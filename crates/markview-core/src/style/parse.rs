@@ -4,8 +4,8 @@ use serde::Deserialize;
 use std::collections::BTreeMap;
 
 use super::{
-	CjkType, Condition, ConditionSet, FontDefinition, Metadata, PageStyle,
-	Rule, StyleTarget, Stylesheet,
+	CjkType, Condition, ConditionSet, FontDefinition, MermaidStyle, Metadata,
+	PageStyle, Rule, StyleTarget, Stylesheet,
 };
 impl Stylesheet {
 	pub fn parse(source: &str) -> Result<Self> {
@@ -47,6 +47,7 @@ impl Stylesheet {
 		let fontdefs = parse_fontdefs(&mut doc)?;
 		let meta = parse_meta(&mut doc)?;
 		let page = parse_page(&mut doc)?;
+		let mermaid = parse_mermaid(&mut doc)?;
 		let mut out = Self {
 			version,
 			targets,
@@ -55,6 +56,7 @@ impl Stylesheet {
 			cjk_type: CjkType::None,
 			meta,
 			page,
+			mermaid,
 			..Self::default()
 		};
 		out.resolve_fontdefs();
@@ -207,6 +209,25 @@ fn parse_page(doc: &mut toml_edit::DocumentMut) -> Result<PageStyle> {
 		.page;
 	page.validate().context("page")?;
 	Ok(page)
+}
+
+/// The `[mermaid]` table. Like `[page]` it holds no cascade: a merged
+/// stylesheet overlays it field by field.
+fn parse_mermaid(doc: &mut toml_edit::DocumentMut) -> Result<MermaidStyle> {
+	let Some(item) = doc.remove("mermaid") else {
+		return Ok(MermaidStyle::default());
+	};
+	let mut d = toml_edit::DocumentMut::new();
+	d["mermaid"] = item;
+	#[derive(Deserialize)]
+	struct M {
+		mermaid: MermaidStyle,
+	}
+	let mermaid = toml_edit::de::from_str::<M>(&d.to_string())
+		.context("mermaid")?
+		.mermaid;
+	mermaid.validate().context("mermaid")?;
+	Ok(mermaid)
 }
 
 /// Split one `[[rule]]` table into its condition set and style fields.

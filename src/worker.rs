@@ -262,6 +262,7 @@ impl Worker {
 												&request.path,
 												request.content_version,
 												request.load_all_images,
+												&request.options.stylesheet,
 											);
 											// Stop at the viewport rather
 											// than laying out the whole
@@ -350,6 +351,7 @@ impl Worker {
 								&request.path,
 								request.content_version,
 								request.load_all_images,
+								&request.options.stylesheet,
 							);
 							let mut publication =
 								PrefixPublication::new(document.source.len());

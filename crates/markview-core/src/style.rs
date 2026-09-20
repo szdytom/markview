@@ -16,8 +16,9 @@ use std::{
 pub use types::{
 	CaptionSource, CjkType, Color, ColorField, Condition, ConditionSet,
 	Decoration, Font, FontDefType, FontDefinition, MAX_CHAIN, MarkerShape,
-	MarkerShapes, Padding, PageStyle, Rule, SYNTHETIC_ITALIC_ANGLE_DEG,
-	TextAlign, Variant, chain_of, chain_push, chain_set, parse_paper_size,
+	MarkerShapes, MermaidStyle, Padding, PageStyle, Rule,
+	SYNTHETIC_ITALIC_ANGLE_DEG, TextAlign, Variant, chain_of, chain_push,
+	chain_set, parse_paper_size,
 };
 
 /// A supported stylesheet destination.
@@ -55,6 +56,9 @@ pub struct Stylesheet {
 	pub rules: BTreeMap<ConditionSet, Rule>,
 	/// Paper, margins and page furniture for the PDF export.
 	pub page: PageStyle,
+	/// How Mermaid diagrams are drawn. Like the page, it holds no cascade: a
+	/// merged stylesheet overlays it field by field.
+	pub mermaid: MermaidStyle,
 	/// Rule keys grouped by condition, most specific first.
 	rule_index: Vec<Vec<ConditionSet>>,
 }
@@ -299,6 +303,7 @@ impl Stylesheet {
 		}
 		self.reindex();
 		self.page.overlay(&higher.page);
+		self.mermaid.overlay(&higher.mermaid);
 	}
 	pub(super) fn resolve_fontdefs(&mut self) {
 		let mut resolved = BTreeMap::new();
@@ -502,6 +507,72 @@ impl Stylesheet {
 	}
 	pub fn color(&self, condition: Condition, field: ColorField) -> [f32; 4] {
 		self.resolve(condition.chain(), field)
+	}
+	/// The families this sheet's `[mermaid] font_family` names, in order. A
+	/// name is a font definition id resolved through its `lookfor` list,
+	/// exactly as a rule's `font` is, or a literal family name. A definition
+	/// that is declared but not selected contributes nothing.
+	pub fn mermaid_font_families(&self) -> Vec<&str> {
+		let mut out = Vec::new();
+		let Some(names) = &self.mermaid.font_family else {
+			return out;
+		};
+		for name in names {
+			match self.fontdefs.get(name) {
+				Some(def) => out.extend(def.lookfor.iter().map(String::as_str)),
+				None if self.has_fontdef_variant(name) => {}
+				None => out.push(name.as_str()),
+			}
+		}
+		out
+	}
+	/// The families this sheet draws Han text with: the body text's own CJK
+	/// candidates, resolved through their definitions. A diagram that carries
+	/// Han text leads with these, because the SVG rasterizer resolves one base
+	/// face per text element, and a face without Han glyphs falls back — with
+	/// a warning — for every Han cluster.
+	pub fn cjk_families(&self) -> Vec<&str> {
+		let selected = match self.cjk_type {
+			CjkType::None => return Vec::new(),
+			CjkType::Sc => FontDefType::Sc,
+			CjkType::Tc => FontDefType::Tc,
+			CjkType::Jp => FontDefType::Jp,
+		};
+		let Some(fonts) = &self.rule(Condition::Body).font else {
+			return Vec::new();
+		};
+		let mut out: Vec<&str> = Vec::new();
+		for font in fonts {
+			// Only a candidate the sheet declares for this convention carries
+			// Han text; a family named literally is the reader's own business.
+			if !self
+				.fontdef_variants
+				.contains_key(&(font.family.clone(), Some(selected)))
+			{
+				continue;
+			}
+			let Some(def) = self.fontdefs.get(&font.family) else {
+				continue;
+			};
+			for name in &def.lookfor {
+				if !out.contains(&name.as_str()) {
+					out.push(name);
+				}
+			}
+		}
+		out
+	}
+	/// Identity of the diagram theme this sheet resolves to: the `[mermaid]`
+	/// table together with the font definitions its `font_family` names and
+	/// the Han faces a diagram with Han text leads with. Two sheets with the
+	/// same key draw every diagram identically, so a reader can tell a redraw
+	/// from a repeat.
+	pub fn diagram_key(&self) -> u64 {
+		crate::document::fingerprint(&(
+			format!("{:?}", self.mermaid),
+			self.mermaid_font_families(),
+			self.cjk_families(),
+		))
 	}
 	/// Colors are resolved by the renderer; only geometry-affecting declarations invalidate layout.
 	pub fn layout_key(&self) -> u64 {

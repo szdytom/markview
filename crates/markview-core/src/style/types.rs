@@ -894,3 +894,168 @@ impl PageStyle {
 		.filter_map(|(name, value)| Some((name, value.as_ref()?)))
 	}
 }
+
+/// The `[mermaid]` table: how Mermaid diagrams are drawn. Each field mirrors
+/// one field of the renderer's theme, and a field the table leaves out keeps
+/// the value from the preset named by `theme`.
+///
+/// Colors are hex, so the renderer's derived palettes can be overridden but
+/// not replaced by a CSS function. `git_colors`, `git_inv_colors`,
+/// `git_branch_label_colors` and `pie_colors` replace a whole palette.
+#[derive(Clone, Debug, Default, PartialEq, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct MermaidStyle {
+	/// Built-in preset: `default`, `dark`, `forest`, `neutral` or `modern`.
+	pub theme: Option<String>,
+	/// Families in priority order. A name that matches a `fontdef` id is that
+	/// definition's families, exactly as in a rule's `font`; any other name is
+	/// a literal family.
+	pub font_family: Option<Vec<String>>,
+	pub font_size: Option<f32>,
+	pub primary_color: Option<Color>,
+	pub primary_text_color: Option<Color>,
+	pub primary_border_color: Option<Color>,
+	pub line_color: Option<Color>,
+	pub secondary_color: Option<Color>,
+	pub tertiary_color: Option<Color>,
+	pub edge_label_background: Option<Color>,
+	pub cluster_background: Option<Color>,
+	pub cluster_border: Option<Color>,
+	pub background: Option<Color>,
+	pub sequence_actor_fill: Option<Color>,
+	pub sequence_actor_border: Option<Color>,
+	pub sequence_actor_line: Option<Color>,
+	pub sequence_note_fill: Option<Color>,
+	pub sequence_note_border: Option<Color>,
+	pub sequence_activation_fill: Option<Color>,
+	pub sequence_activation_border: Option<Color>,
+	pub text_color: Option<Color>,
+	pub git_colors: Option<[Color; 8]>,
+	pub git_inv_colors: Option<[Color; 8]>,
+	pub git_branch_label_colors: Option<[Color; 8]>,
+	pub git_commit_label_color: Option<Color>,
+	pub git_commit_label_background: Option<Color>,
+	pub git_tag_label_color: Option<Color>,
+	pub git_tag_label_background: Option<Color>,
+	pub git_tag_label_border: Option<Color>,
+	pub pie_colors: Option<[Color; 12]>,
+	pub pie_title_text_size: Option<f32>,
+	pub pie_title_text_color: Option<Color>,
+	pub pie_section_text_size: Option<f32>,
+	pub pie_section_text_color: Option<Color>,
+	pub pie_legend_text_size: Option<f32>,
+	pub pie_legend_text_color: Option<Color>,
+	pub pie_stroke_color: Option<Color>,
+	pub pie_stroke_width: Option<f32>,
+	pub pie_outer_stroke_width: Option<f32>,
+	pub pie_outer_stroke_color: Option<Color>,
+	pub pie_opacity: Option<f32>,
+}
+
+impl MermaidStyle {
+	/// The presets the renderer resolves by name. This is the renderer's own
+	/// list; a name outside it is a typo the stylesheet should hear about.
+	pub const PRESETS: &[&str] = &[
+		"default", "base", "mermaid", "dark", "forest", "neutral", "modern",
+	];
+
+	/// The preset name, or the renderer's default when the table names none.
+	pub fn preset(&self) -> &str {
+		self.theme.as_deref().unwrap_or("modern")
+	}
+
+	pub fn overlay(&mut self, higher: &Self) {
+		macro_rules! merge { ($($f:ident),*) => { $(if higher.$f.is_some(){self.$f=higher.$f.clone();})* }; }
+		merge!(
+			theme,
+			font_family,
+			font_size,
+			primary_color,
+			primary_text_color,
+			primary_border_color,
+			line_color,
+			secondary_color,
+			tertiary_color,
+			edge_label_background,
+			cluster_background,
+			cluster_border,
+			background,
+			sequence_actor_fill,
+			sequence_actor_border,
+			sequence_actor_line,
+			sequence_note_fill,
+			sequence_note_border,
+			sequence_activation_fill,
+			sequence_activation_border,
+			text_color,
+			git_colors,
+			git_inv_colors,
+			git_branch_label_colors,
+			git_commit_label_color,
+			git_commit_label_background,
+			git_tag_label_color,
+			git_tag_label_background,
+			git_tag_label_border,
+			pie_colors,
+			pie_title_text_size,
+			pie_title_text_color,
+			pie_section_text_size,
+			pie_section_text_color,
+			pie_legend_text_size,
+			pie_legend_text_color,
+			pie_stroke_color,
+			pie_stroke_width,
+			pie_outer_stroke_width,
+			pie_outer_stroke_color,
+			pie_opacity
+		);
+	}
+
+	/// Rejects a table the renderer could not honour.
+	pub fn validate(&self) -> anyhow::Result<()> {
+		if let Some(name) = &self.theme
+			&& !Self::PRESETS
+				.contains(&name.trim().to_ascii_lowercase().as_str())
+		{
+			anyhow::bail!(
+				"mermaid.theme: expected one of {}",
+				Self::PRESETS.join(", ")
+			);
+		}
+		if let Some(families) = &self.font_family {
+			if families.is_empty() {
+				anyhow::bail!("mermaid.font_family: must not be empty");
+			}
+			for (i, family) in families.iter().enumerate() {
+				// The renderer's own list is comma separated, so a comma
+				// could not survive one name.
+				if family.trim().is_empty() || family.contains(',') {
+					anyhow::bail!(
+						"mermaid.font_family[{i}]: expected a family name or a fontdef id"
+					);
+				}
+			}
+		}
+		for (field, value) in [
+			("font_size", self.font_size),
+			("pie_title_text_size", self.pie_title_text_size),
+			("pie_section_text_size", self.pie_section_text_size),
+			("pie_legend_text_size", self.pie_legend_text_size),
+			("pie_stroke_width", self.pie_stroke_width),
+			("pie_outer_stroke_width", self.pie_outer_stroke_width),
+		] {
+			if value.is_some_and(|v| !v.is_finite() || v <= 0.) {
+				anyhow::bail!(
+					"mermaid.{field}: expected a finite positive number"
+				);
+			}
+		}
+		if self
+			.pie_opacity
+			.is_some_and(|v| !v.is_finite() || !(0. ..=1.).contains(&v))
+		{
+			anyhow::bail!("mermaid.pie_opacity: expected a number in 0..=1");
+		}
+		Ok(())
+	}
+}

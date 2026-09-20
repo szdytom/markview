@@ -166,7 +166,12 @@ impl Preferences {
 							.clone();
 						let reflow = sheet.layout_key()
 							!= self.values.stylesheet.layout_key()
-							|| old_codeblock_theme != new_codeblock_theme;
+							|| old_codeblock_theme != new_codeblock_theme
+							// Diagrams are pixels, so a new diagram theme
+							// needs a layout request to redraw them. The key
+							// follows the font definitions the table names.
+							|| self.values.stylesheet.diagram_key()
+								!= sheet.diagram_key();
 						self.values.stylesheet = sheet.clone();
 						ui.set_stylesheet(sheet.clone());
 						ui.appearance = sheet.text(

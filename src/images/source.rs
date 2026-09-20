@@ -82,10 +82,12 @@ pub(super) fn bounded_to(
 
 /// Reads a source. A remote source goes through the shared pinned client and
 /// the disk cache, so `--offline` is decided here rather than at resolution.
+/// Only a diagram reads `theme`; every other source ignores it.
 pub(super) fn fetch(
 	source: &Source,
 	offline: bool,
 	cache: Option<&super::cache::Cache>,
+	theme: &super::diagram::DiagramTheme,
 ) -> Result<Vec<u8>> {
 	match source {
 		Source::File(path) => {
@@ -98,7 +100,7 @@ pub(super) fn fetch(
 		Source::Http(url) => super::cache::fetch_http(url, offline, cache),
 		// The rendered SVG feeds the same rasterizer as an SVG file.
 		Source::Diagram(code) => {
-			Ok(super::diagram::svg(code)?.as_bytes().to_vec())
+			Ok(super::diagram::svg(code, theme)?.as_bytes().to_vec())
 		}
 		Source::Data(uri) => {
 			let (header, data) =
