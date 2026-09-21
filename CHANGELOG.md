@@ -58,6 +58,7 @@ at the same level, without `[brackets]`.
 - Reject pathologically nested Mermaid labels and render the diagram on a stack sized for the worst case the source cap allows, so a fence that passes the size bounds can no longer abort the reader.
 - Keep a Mermaid diagram's fence source out of the reading text, so selecting the figure no longer copies the source and a loading or failed diagram copies its placeholder message instead.
 - Remove soft line breaks from Chinese Markdown prose to avoid inserting spaces.
+- Name the download client with a `User-Agent`, so a mirror like Tsinghua's Arch repository answers instead of refusing an anonymous request.
 
 ## 0.1.4 - 2026-09-19
 

@@ -16,6 +16,10 @@ use std::{
 /// Redirect hops followed before a request is abandoned.
 const MAX_REDIRECTS: usize = 5;
 
+/// The download client names itself: some mirrors refuse a request with no
+/// `User-Agent`, and others refuse a browser one as hotlinking.
+const USER_AGENT: &str = concat!("markview/", env!("CARGO_PKG_VERSION"));
+
 /// Conditional-request validators from a stored entry.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub(super) struct Validators {
@@ -314,6 +318,7 @@ fn pinned_async_client(
 		.connect_timeout(Duration::from_secs(5))
 		.read_timeout(read_timeout)
 		.referer(false)
+		.user_agent(USER_AGENT)
 		.redirect(reqwest::redirect::Policy::none())
 		.resolve_to_addrs(&host, &addrs);
 	if let Some(total) = total_timeout {
