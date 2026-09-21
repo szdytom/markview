@@ -657,6 +657,19 @@ fn the_outline_toggles_closes_and_moves_its_selection() {
 }
 
 #[test]
+fn a_press_outside_the_outline_closes_it_but_its_toggle_does_not() {
+	let mut interaction = InteractionState::default();
+	assert!(interaction.toggle_outline(2, Some(0)));
+	assert!(!interaction.close_outline_if_outside(true, false));
+	assert!(interaction.outline_open);
+	assert!(!interaction.close_outline_if_outside(false, true));
+	assert!(interaction.outline_open);
+	assert!(interaction.close_outline_if_outside(false, false));
+	assert!(!interaction.outline_open);
+	assert_eq!(interaction.outline_selection, None);
+}
+
+#[test]
 fn enter_follows_the_outline_selection_after_a_click_and_a_step() {
 	let mut interaction = InteractionState::default();
 	assert!(interaction.toggle_outline(3, Some(0)));

@@ -59,6 +59,7 @@ at the same level, without `[brackets]`.
 
 ### Fixed
 
+- Close the table of contents when clicking outside its drawer.
 - Make platform and image-cache tests portable across macOS, Linux and Windows.
 - Fix `<details>` parsing and interaction edge cases: tags that share a block and elements nested in the opening block still match, a summary stays with its own element, a quoted body is not quoted twice, references and footnotes defined outside the element resolve, identical elements toggle independently, and adjacent elements keep their content and nesting budget.
 - Reject pathologically nested Mermaid labels and render the diagram on a stack sized for the worst case the source cap allows, so a fence that passes the size bounds can no longer abort the reader.

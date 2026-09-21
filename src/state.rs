@@ -655,6 +655,20 @@ impl InteractionState {
 		self.outline_selection = None;
 	}
 
+	/// Closes the drawer when a press lands outside it, except on its toggle.
+	pub(crate) fn close_outline_if_outside(
+		&mut self,
+		inside: bool,
+		on_toggle: bool,
+	) -> bool {
+		if self.outline_open && !inside && !on_toggle {
+			self.close_outline();
+			true
+		} else {
+			false
+		}
+	}
+
 	/// Whether the drawer answers input.
 	///
 	/// The drawer is an overlay, not a panel, so it stands down while a panel

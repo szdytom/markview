@@ -138,6 +138,18 @@ impl App {
 					self.redraw();
 					return;
 				}
+				let (x, y) = self.interaction.cursor;
+				let on_outline_toggle =
+					self.buttons().into_iter().any(|button| {
+						button.action == Command::Outline
+							&& button.rect.contains(x, y)
+					});
+				if self.interaction.close_outline_if_outside(
+					self.pointer_in_outline(),
+					on_outline_toggle,
+				) {
+					self.redraw();
+				}
 				if let Some(index) = (!self.interaction.panel_open)
 					.then(|| self.tab_close_at_cursor())
 					.flatten()
