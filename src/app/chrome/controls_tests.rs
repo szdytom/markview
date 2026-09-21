@@ -165,6 +165,8 @@ fn compiled_icons_stay_inside_the_unit_box() {
 		icons::OUTLINE,
 		icons::CLOSE,
 		icons::BACK,
+		icons::UP,
+		icons::DOWN,
 		icons::EYE,
 		icons::EYE_OFF,
 	] {

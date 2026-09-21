@@ -3,7 +3,7 @@ use super::{
 	App, Button,
 	chrome::{self, Chrome},
 };
-use crate::layout::Draw;
+use crate::layout::{Draw, Scrollbar};
 impl App {
 	/// The remote-image deferral count while its banner is worth showing.
 	pub(super) fn remote_notice(&self) -> Option<usize> {
@@ -40,11 +40,11 @@ impl App {
 			export: &self.preferences.export,
 			interaction: &self.interaction,
 			style_entries: &self.preferences.style_entries,
-			style_page: self.preferences.style_page,
+			style_scroll: self.interaction.styles_scroll,
 			font_catalog: &self.font_catalog,
 			fonts_shown: shown,
 			font_jobs: &self.font_jobs,
-			fonts_page: self.interaction.fonts_page,
+			fonts_scroll: self.interaction.fonts_scroll,
 			fonts_note: self.font_note.as_deref(),
 			font_source_filter: self.font_source_filter.as_deref(),
 			font_status_filter: self.font_status_filter,
@@ -90,21 +90,66 @@ impl App {
 			buttons
 		}
 	}
+	/// The scrolling list of whichever panel page shows one, if any.
+	///
+	/// The Styles page and the export's stylesheet chooser share their offset:
+	/// no two pages of the panel are ever open at once.
+	fn panel_list(&self) -> Option<chrome::list::List> {
+		let (width, height, _) = self.dimensions();
+		if self.interaction.styles_open || self.interaction.export_styles_open {
+			Some(chrome::styles::list(
+				width,
+				height,
+				self.preferences.style_entries.len(),
+				self.interaction.styles_scroll,
+			))
+		} else if self.interaction.fonts_open {
+			Some(chrome::fonts::list(
+				width,
+				height,
+				self.shown_fonts().len(),
+				self.interaction.fonts_scroll,
+			))
+		} else {
+			None
+		}
+	}
+	/// The offset and limit of whichever panel page scrolls, already clamped.
+	fn panel_scroll_range(&mut self) -> Option<(f32, f32)> {
+		if let Some(form) = self.panel_form() {
+			return Some((form.scroll, form.max_scroll));
+		}
+		self.panel_list()
+			.map(|list| (list.scroll, list.max_scroll()))
+	}
+	/// The scrollbar of whichever panel page scrolls.
+	fn panel_bar(&mut self) -> Option<Scrollbar> {
+		if let Some(form) = self.panel_form() {
+			return form.scrollbar(&self.ui);
+		}
+		self.panel_list()?.scrollbar(&self.ui)
+	}
 	pub(super) fn set_panel_scroll(&mut self, scroll: f32) {
-		if self.interaction.export_open {
+		if self.interaction.export_open && !self.interaction.export_styles_open
+		{
 			self.interaction.export_scroll = scroll;
+		} else if self.interaction.fonts_open {
+			self.interaction.fonts_scroll = scroll;
+		} else if self.interaction.styles_open
+			|| self.interaction.export_styles_open
+		{
+			self.interaction.styles_scroll = scroll;
 		} else {
 			self.interaction.settings_scroll = scroll;
 		}
 	}
 	pub(super) fn scroll_panel(&mut self, delta: f32) {
-		if let Some(form) = self.panel_form() {
-			self.set_panel_scroll(
-				(form.scroll + delta).clamp(0.0, form.max_scroll),
-			);
-			self.interaction.pressed = None;
-			self.redraw();
-		}
+		let Some((scroll, max)) = self.panel_scroll_range() else {
+			return;
+		};
+		self.set_panel_scroll((scroll + delta).clamp(0.0, max));
+		self.interaction.pressed = None;
+		self.redraw();
 	}
 	pub(super) fn reveal_panel_focus(&mut self) {
 		if let Some(form) = self.panel_form() {
@@ -116,9 +161,7 @@ impl App {
 		}
 	}
 	pub(super) fn begin_panel_drag(&mut self) -> bool {
-		let Some(bar) =
-			self.panel_form().and_then(|form| form.scrollbar(&self.ui))
-		else {
+		let Some(bar) = self.panel_bar() else {
 			return false;
 		};
 		let (x, y) = self.interaction.cursor;
@@ -136,8 +179,7 @@ impl App {
 	}
 	pub(super) fn drag_panel(&mut self) {
 		if let Some(grab) = self.interaction.panel_grab
-			&& let Some(bar) =
-				self.panel_form().and_then(|form| form.scrollbar(&self.ui))
+			&& let Some(bar) = self.panel_bar()
 		{
 			let (x, y) = self.interaction.cursor;
 			self.set_panel_scroll(bar.scroll_for(x, y, grab));
@@ -152,8 +194,9 @@ impl App {
 	pub(super) fn overlay(&mut self) -> Vec<Draw> {
 		self.ensure_outline();
 		self.normalize_tab_scroll();
-		if let Some(form) = self.panel_form() {
-			self.set_panel_scroll(form.scroll);
+		// The wheel, the scrollbar and the page all read one clamped offset.
+		if let Some((scroll, _)) = self.panel_scroll_range() {
+			self.set_panel_scroll(scroll);
 		}
 		let session = &self.readers.session;
 		let selection = self.interaction.selection.filter(|s| {

@@ -50,8 +50,6 @@ pub(crate) enum Command {
 	ExportStyleToggle(usize),
 	ExportStyleUp(usize),
 	ExportStyleDown(usize),
-	ExportStylePrev,
-	ExportStyleNext,
 	/// Write the document with the current export settings.
 	ExportRun,
 	Settings,
@@ -63,8 +61,6 @@ pub(crate) enum Command {
 	StyleToggle(usize),
 	StyleUp(usize),
 	StyleDown(usize),
-	StylePrev,
-	StyleNext,
 	StylesFolder,
 	/// Show one page of the settings panel.
 	SettingsTab(PanelTab),
@@ -79,8 +75,6 @@ pub(crate) enum Command {
 	FontsOpenFolder,
 	FontsSourceFilter,
 	FontsStatusFilter,
-	FontsPrev,
-	FontsNext,
 	SelectTab(usize),
 	CloseTab(usize),
 	/// Dismiss the local-file confirmation without opening anything.
@@ -288,10 +282,13 @@ pub(crate) struct InteractionState {
 	/// Offset from the centre of the panel scrollbar thumb while dragging.
 	pub(crate) panel_grab: Option<f32>,
 	pub(crate) styles_open: bool,
+	/// The Styles page's list offset. The export's stylesheet chooser shares
+	/// it: no two pages of the panel are ever open at once.
+	pub(crate) styles_scroll: f32,
 	/// The Fonts page of the panel. It implies `panel_open`.
 	pub(crate) fonts_open: bool,
 	/// The Fonts page's list offset.
-	pub(crate) fonts_page: usize,
+	pub(crate) fonts_scroll: f32,
 	/// The export page of the panel. It implies `panel_open`.
 	pub(crate) export_open: bool,
 	/// The export's stylesheet chooser, drawn in place of the export panel.

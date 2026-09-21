@@ -15,6 +15,10 @@ pub(super) const CLOSE: &[IconPath] =
 	markview_icon::icon!("assets/ui/close.svg");
 
 pub(super) const BACK: &[IconPath] = markview_icon::icon!("assets/ui/back.svg");
+pub(super) const UP: &[IconPath] =
+	markview_icon::icon!("assets/ui/arrow-up.svg");
+pub(super) const DOWN: &[IconPath] =
+	markview_icon::icon!("assets/ui/arrow-down.svg");
 
 pub(super) const EYE: &[IconPath] = markview_icon::icon!("assets/ui/eye.svg");
 pub(super) const EYE_OFF: &[IconPath] =

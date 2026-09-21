@@ -110,7 +110,7 @@ impl App {
 					self.preferences.values.style.as_deref(),
 				);
 				self.refresh_font_catalog();
-				self.preferences.style_page = 0;
+				self.interaction.styles_scroll = 0.0;
 				self.interaction.focus = None;
 				self.redraw();
 				return;
@@ -130,7 +130,7 @@ impl App {
 					Some(&self.preferences.export.style),
 					markview_core::style::StyleTarget::Pdf,
 				);
-				self.preferences.style_page = 0;
+				self.interaction.styles_scroll = 0.0;
 				self.interaction.focus = None;
 				self.redraw();
 				return;
@@ -214,17 +214,6 @@ impl App {
 				self.redraw();
 				return;
 			}
-			Command::FontsPrev => {
-				self.interaction.fonts_page =
-					self.interaction.fonts_page.saturating_sub(1);
-				self.redraw();
-				return;
-			}
-			Command::FontsNext => {
-				self.interaction.fonts_page += 1;
-				self.redraw();
-				return;
-			}
 			Command::SettingsTab(tab) => {
 				self.interaction.panel_open = true;
 				self.interaction.close_pages();
@@ -254,17 +243,6 @@ impl App {
 				if let Err(e) = result {
 					self.preferences.style_warning = Some(format!("{e:#}"));
 				}
-				self.redraw();
-				return;
-			}
-			Command::StylePrev => {
-				self.preferences.style_page =
-					self.preferences.style_page.saturating_sub(1);
-				self.redraw();
-				return;
-			}
-			Command::StyleNext => {
-				self.preferences.style_page += 1;
 				self.redraw();
 				return;
 			}
@@ -304,17 +282,6 @@ impl App {
 				self.preferences.values.style = Some(ids);
 				self.setting_changed(Some(Setting::Theme));
 				self.reload_styles();
-				self.redraw();
-				return;
-			}
-			Command::ExportStylePrev => {
-				self.preferences.style_page =
-					self.preferences.style_page.saturating_sub(1);
-				self.redraw();
-				return;
-			}
-			Command::ExportStyleNext => {
-				self.preferences.style_page += 1;
 				self.redraw();
 				return;
 			}

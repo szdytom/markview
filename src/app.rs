@@ -405,7 +405,7 @@ impl App {
 			}
 		};
 		self.font_source_filter = next;
-		self.interaction.fonts_page = 0;
+		self.interaction.fonts_scroll = 0.0;
 	}
 
 	/// Advances the status filter through missing, provided, downloaded, all.
@@ -420,7 +420,7 @@ impl App {
 			}
 			Some(crate::fonts::State::Downloaded) => None,
 		};
-		self.interaction.fonts_page = 0;
+		self.interaction.fonts_scroll = 0.0;
 	}
 
 	/// Rebuilds the catalogue the Fonts page shows.

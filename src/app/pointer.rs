@@ -55,17 +55,7 @@ fn eases(dy: f32) -> bool {
 impl App {
 	pub(super) fn pointer_in_panel(&self) -> bool {
 		let (width, height, _) = self.dimensions();
-		let rect = if self.interaction.styles_open
-			|| self.interaction.export_styles_open
-		{
-			chrome::styles_rect(
-				width,
-				height,
-				self.preferences.style_entries.len(),
-			)
-		} else {
-			chrome::panel_rect(width, height)
-		};
+		let rect = chrome::panel_rect(width, height);
 		self.interaction.panel_open
 			&& rect
 				.contains(self.interaction.cursor.0, self.interaction.cursor.1)

@@ -41,6 +41,8 @@ at the same level, without `[brackets]`.
 ### Changed
 
 - Redesign the Settings header with a persistent title and clickable Generic, Styles and Fonts tabs.
+- Draw the Styles page's order buttons as borderless vector arrows, matching the rest of the chrome instead of text glyphs.
+- Replace the Styles and Fonts pages' paging arrows with a scrolling list that shares the panel's wheel and scrollbar, clipping each row to the visible band.
 - Prepare Mermaid fonts and SVGs on the image workers, allowing the first layout to publish before a cold font collection is ready.
 - Load restricted SVG fonts only from configured Mermaid, SVG generic, and selected CJK `fontdef` candidates, avoiding full system-font materialization on first open.
 

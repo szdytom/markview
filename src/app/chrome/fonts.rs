@@ -7,40 +7,47 @@
 use super::super::Button;
 use super::components::{CONTROL, frame, line};
 use super::controls::{draw_button, panel_rect};
+use super::list::List;
 use crate::{
 	layout::{Draw, Paint, Rect, TextShaper},
 	state::{Command, InteractionState, PanelTab},
 };
 use markview_core::style::{ColorField as C, Condition, TextAppearance};
+use std::collections::HashMap;
 
 /// The height one family occupies, actions included.
 const ROW: f32 = 72.0;
-
-/// The panel rectangle the Fonts page uses.
-pub(in crate::app) fn fonts_rect(width: f32, height: f32) -> Rect {
-	panel_rect(width, height)
-}
 
 /// Where the list's first row starts, below the filter row's separator.
 const LIST_TOP: f32 = 164.0;
 /// How much of the panel's bottom the footer and its separator take.
 const FOOTER: f32 = 64.0;
 
-/// How many families fit between the filter row and the footer.
-///
-/// A window too short for even one whole row reports zero rather than drawing
-/// a row under the footer, where the bulk action would answer the pointer.
-fn fonts_rows(rect: Rect) -> usize {
-	let room = rect.h - FOOTER - LIST_TOP;
-	if room < ROW {
-		return 0;
-	}
-	(room / ROW).floor() as usize
+/// The panel rectangle the Fonts page uses.
+fn fonts_rect(width: f32, height: f32) -> Rect {
+	panel_rect(width, height)
 }
 
-/// The pages the shown families need, never zero so paging arithmetic is safe.
-fn fonts_pages(rows: usize, shown: usize) -> usize {
-	shown.div_ceil(rows.max(1)).max(1)
+/// The page's scrolling list of families.
+pub(in crate::app) fn list(
+	width: f32,
+	height: f32,
+	shown: usize,
+	scroll: f32,
+) -> List {
+	let r = fonts_rect(width, height);
+	List::new(
+		r,
+		Rect {
+			x: r.x,
+			y: r.y + LIST_TOP,
+			w: r.w,
+			h: (r.h - LIST_TOP - FOOTER).max(0.0),
+		},
+		ROW,
+		shown,
+		scroll,
+	)
 }
 
 /// One family's action, given what state it is in and whether it is running.
@@ -74,13 +81,13 @@ fn bytes_label(bytes: u64) -> String {
 	}
 }
 
-/// Every button the page draws, in drawing order.
+/// The page's fixed controls: the filter row, the footer and the settings
+/// header. They sit outside the scrolling list.
 #[expect(clippy::too_many_arguments, reason = "one page's explicit inputs")]
 pub(super) fn fonts_controls(
 	catalog: &[crate::fonts::Family],
 	shown: &[usize],
-	jobs: &std::collections::HashMap<String, crate::fonts::Progress>,
-	page: usize,
+	jobs: &HashMap<String, crate::fonts::Progress>,
 	source_filter: Option<&str>,
 	status_filter: Option<crate::fonts::State>,
 	preview: bool,
@@ -88,8 +95,6 @@ pub(super) fn fonts_controls(
 	height: f32,
 ) -> Vec<Button> {
 	let r = fonts_rect(width, height);
-	let rows = fonts_rows(r);
-	let page = page.min(fonts_pages(rows, shown.len()).saturating_sub(1));
 	let mut out = super::components::settings_header_controls(
 		r,
 		PanelTab::Fonts,
@@ -171,25 +176,30 @@ pub(super) fn fonts_controls(
 	};
 	download.kind = super::components::ButtonKind::Primary;
 	out.push(download);
-	// With no room for a row there is nothing to page through.
-	if rows > 0 && page > 0 {
-		out.push(nav(r, "←", Command::FontsPrev, 0.0));
-	}
-	if rows > 0 && (page + 1) * rows < shown.len() {
-		out.push(nav(r, "→", Command::FontsNext, 40.0));
-	}
-	for (row, position) in shown.iter().skip(page * rows).take(rows).enumerate()
-	{
-		let family = &catalog[*position];
+	out
+}
+
+/// One family's action, at the offset `list` puts its row.
+///
+/// Only the rows on screen have buttons, so the page never builds a control
+/// nothing can draw or reach. The action names the family by its position in
+/// the shown list.
+pub(super) fn font_rows(
+	catalog: &[crate::fonts::Family],
+	shown: &[usize],
+	jobs: &HashMap<String, crate::fonts::Progress>,
+	list: List,
+) -> Vec<Button> {
+	let r = list.panel;
+	let mut out = vec![];
+	for row in list.visible() {
+		let family = &catalog[shown[row]];
 		let running = jobs.contains_key(&family.family.id);
 		let (label, action) = action(family, running);
-		let index = page * rows + row;
 		let action = match action {
-			Command::FontsCancel(_) => Command::FontsCancel(index),
-			Command::FontsRedownloadOne(_) => {
-				Command::FontsRedownloadOne(index)
-			}
-			_ => Command::FontsDownloadOne(index),
+			Command::FontsCancel(_) => Command::FontsCancel(row),
+			Command::FontsRedownloadOne(_) => Command::FontsRedownloadOne(row),
+			_ => Command::FontsDownloadOne(row),
 		};
 		out.push(Button {
 			label,
@@ -200,37 +210,13 @@ pub(super) fn fonts_controls(
 			action,
 			rect: Rect {
 				x: r.x + r.w - 160.,
-				y: r.y + LIST_TOP + row as f32 * ROW + 10.,
+				y: list.row_rect(row).y + 10.,
 				w: 136.,
 				h: 28.,
 			},
 		});
 	}
 	out
-}
-
-/// One pagination arrow, in the footer beside the folder button so it never
-/// overlaps the bulk action on the right.
-fn nav(
-	rect: Rect,
-	label: &'static str,
-	action: Command,
-	offset: f32,
-) -> Button {
-	Button {
-		label,
-		icon: None,
-		active: false,
-		kind: Default::default(),
-		enabled: true,
-		action,
-		rect: Rect {
-			x: rect.x + 180. + offset,
-			y: rect.y + rect.h - 48.,
-			w: 32.,
-			h: CONTROL,
-		},
-	}
 }
 
 /// The one line under the tab row: what the catalogue adds up to.
@@ -267,8 +253,8 @@ pub(super) fn draw_fonts(
 	interaction: &InteractionState,
 	catalog: &[crate::fonts::Family],
 	shown: &[usize],
-	jobs: &std::collections::HashMap<String, crate::fonts::Progress>,
-	page: usize,
+	jobs: &HashMap<String, crate::fonts::Progress>,
+	scroll: f32,
 	note: Option<&str>,
 	source_filter: Option<&str>,
 	status_filter: Option<crate::fonts::State>,
@@ -283,8 +269,7 @@ pub(super) fn draw_fonts(
 		Condition::Panel,
 	);
 	let r = fonts_rect(width, height);
-	let rows = fonts_rows(r);
-	let page = page.min(fonts_pages(rows, shown.len()).saturating_sub(1));
+	let list = list(width, height, shown.len(), scroll);
 	// Previewing the document leaves only the panel surface, which then
 	// recedes with everything else.
 	let mut out = if preview {
@@ -292,9 +277,9 @@ pub(super) fn draw_fonts(
 	} else {
 		frame(r, width, height)
 	};
-	if rows == 0 {
-		// Too short for one whole row: say so rather than draw a row the
-		// footer would sit on top of.
+	// A clip too short for one whole row would only show a sliver of it.
+	let fits = list.fits();
+	if !fits {
 		out.extend(shaper.label(
 			"Not enough room to list fonts; enlarge the window",
 			12.,
@@ -313,7 +298,7 @@ pub(super) fn draw_fonts(
 		r.y + 104.,
 		Paint::Styled(Condition::Panel, C::Muted),
 	));
-	for y in [r.y + LIST_TOP - 8.0, r.y + r.h - 64.0] {
+	for y in [r.y + LIST_TOP - 8.0, r.y + r.h - FOOTER] {
 		out.push(line(
 			Rect {
 				x: r.x + 1.0,
@@ -325,12 +310,28 @@ pub(super) fn draw_fonts(
 			C::BorderColor,
 		));
 	}
-	for (row, position) in shown.iter().skip(page * rows).take(rows).enumerate()
-	{
-		let family = &catalog[*position];
-		let y = r.y + LIST_TOP + row as f32 * ROW;
+	// A pointer below the fold must not light up the row hidden under the
+	// footer, so the body only sees the cursor while it is inside the clip.
+	let body_interaction = InteractionState {
+		cursor: if list
+			.viewport
+			.contains(interaction.cursor.0, interaction.cursor.1)
+		{
+			interaction.cursor
+		} else {
+			(f32::NEG_INFINITY, f32::NEG_INFINITY)
+		},
+		focus: interaction.focus,
+		focus_visible: interaction.focus_visible,
+		pressed: interaction.pressed,
+		..Default::default()
+	};
+	let mut body = Vec::new();
+	for row in if fits { list.visible() } else { 0..0 } {
+		let family = &catalog[shown[row]];
+		let y = list.row_rect(row).y;
 		if row > 0 {
-			out.push(line(
+			body.push(line(
 				Rect {
 					x: r.x + 20.0,
 					y: y - 6.0,
@@ -344,7 +345,7 @@ pub(super) fn draw_fonts(
 		let weight = shaper.appearance.weight;
 		shaper.appearance.weight = 700;
 		let title = shaper.fit(family.family.display_name(), 14., r.w - 220.);
-		out.extend(shaper.label(
+		body.extend(shaper.label(
 			&title,
 			14.,
 			r.x + 20.,
@@ -362,7 +363,7 @@ pub(super) fn draw_fonts(
 				.unwrap_or_else(|| family.family.id.clone()),
 		};
 		let detail = shaper.fit(&detail, 12., r.w - 200.);
-		out.extend(shaper.label(
+		body.extend(shaper.label(
 			&detail,
 			12.,
 			r.x + 20.,
@@ -378,7 +379,7 @@ pub(super) fn draw_fonts(
 		));
 		let meta = meta_text(family);
 		let meta = shaper.fit(&meta, 11., r.w - 200.);
-		out.extend(shaper.label(
+		body.extend(shaper.label(
 			&meta,
 			11.,
 			r.x + 20.,
@@ -386,11 +387,20 @@ pub(super) fn draw_fonts(
 			Paint::Styled(Condition::Panel, C::Muted),
 		));
 	}
+	for b in font_rows(catalog, shown, jobs, list) {
+		if b.rect.intersect(list.viewport).is_some() {
+			body.extend(draw_button(shaper, &body_interaction, &b, true));
+		}
+	}
+	out.push(list.clip(body));
+	// A list the page refused to draw has no bar to offer either.
+	if fits {
+		list.draw_bar(&mut out, shaper, interaction);
+	}
 	for b in fonts_controls(
 		catalog,
 		shown,
 		jobs,
-		page,
 		source_filter,
 		status_filter,
 		preview,
@@ -505,20 +515,21 @@ mod tests {
 		let catalog =
 			vec![entry("a", State::Missing), entry("b", State::Downloaded)];
 		let shown = vec![0, 1];
-		let jobs = std::collections::HashMap::new();
+		let jobs = HashMap::new();
 		for (w, h) in [(500., 300.), (820., 600.)] {
 			let panel = panel_rect(w, h);
-			let buttons = fonts_controls(
-				&catalog, &shown, &jobs, 0, None, None, false, w, h,
+			let rows = list(w, h, shown.len(), 0.0);
+			let mut buttons = fonts_controls(
+				&catalog, &shown, &jobs, None, None, false, w, h,
 			);
+			buttons.extend(rows.hit(font_rows(&catalog, &shown, &jobs, rows)));
 			assert!(buttons.iter().all(|b| {
 				panel.contains(b.rect.x, b.rect.y)
 					&& panel.contains(b.rect.x + b.rect.w, b.rect.y + b.rect.h)
 			}));
 		}
-		let buttons = fonts_controls(
-			&catalog, &shown, &jobs, 0, None, None, false, 820., 600.,
-		);
+		let rows = list(820., 600., shown.len(), 0.0);
+		let buttons = rows.hit(font_rows(&catalog, &shown, &jobs, rows));
 		// The first row downloads, the second offers to download again.
 		assert!(buttons.iter().any(|b| {
 			b.action == Command::FontsDownloadOne(0) && b.label == "Download"
@@ -528,10 +539,12 @@ mod tests {
 				&& b.label == "Download again"
 		}));
 		// Only one family is missing, so the top action is offered for it.
-		let top = buttons
-			.iter()
-			.find(|b| b.action == Command::FontsDownload)
-			.unwrap();
+		let top = fonts_controls(
+			&catalog, &shown, &jobs, None, None, false, 820., 600.,
+		)
+		.into_iter()
+		.find(|b| b.action == Command::FontsDownload)
+		.unwrap();
 		assert!(top.enabled);
 	}
 
@@ -541,9 +554,9 @@ mod tests {
 	fn the_fonts_page_carries_the_settings_tabs() {
 		let catalog = vec![entry("a", State::Missing)];
 		let shown = vec![0];
-		let jobs = std::collections::HashMap::new();
+		let jobs = HashMap::new();
 		let buttons = fonts_controls(
-			&catalog, &shown, &jobs, 0, None, None, false, 820., 600.,
+			&catalog, &shown, &jobs, None, None, false, 820., 600.,
 		);
 		for tab in [PanelTab::Generic, PanelTab::Styles, PanelTab::Fonts] {
 			assert!(
@@ -555,73 +568,73 @@ mod tests {
 		}
 	}
 
-	/// At the shortest supported window no row fits, so none may be drawn over
-	/// the footer where the bulk action would answer the pointer.
+	/// At the shortest supported window no whole row fits, so none may be
+	/// drawn over the footer where the bulk action would answer the pointer.
 	#[test]
 	fn a_window_too_short_for_a_row_offers_none() {
 		let catalog: Vec<_> = (0..3)
 			.map(|i| entry(&format!("f{i}"), State::Missing))
 			.collect();
 		let shown: Vec<usize> = (0..catalog.len()).collect();
-		let jobs = std::collections::HashMap::new();
+		let jobs = HashMap::new();
 		// The panel is 236 px tall here, eight pixels short of a whole row.
 		let (w, h) = (500., 300.);
-		let buttons =
-			fonts_controls(&catalog, &shown, &jobs, 0, None, None, false, w, h);
-		assert!(fonts_rows(fonts_rect(w, h)) == 0);
+		let rows = list(w, h, shown.len(), 0.0);
+		assert!(!rows.fits());
+		let buttons = rows.hit(font_rows(&catalog, &shown, &jobs, rows));
 		assert!(
 			!buttons.iter().any(|b| matches!(
 				b.action,
 				Command::FontsDownloadOne(_)
 					| Command::FontsCancel(_)
 					| Command::FontsRedownloadOne(_)
-					| Command::FontsPrev
-					| Command::FontsNext
 			)),
-			"a row or an arrow is drawn with no room for it"
+			"a row is drawn with no room for it"
 		);
 		// The page still offers a way out and the bulk action.
-		assert!(buttons.iter().any(|b| b.action == Command::FontsOpenFolder));
-		assert!(buttons.iter().any(|b| b.action == Command::FontsDownload));
-		// One row fits as soon as the panel is tall enough for it.
-		assert!(fonts_rows(fonts_rect(w, 400.)) >= 1);
+		let fixed =
+			fonts_controls(&catalog, &shown, &jobs, None, None, false, w, h);
+		assert!(fixed.iter().any(|b| b.action == Command::FontsOpenFolder));
+		assert!(fixed.iter().any(|b| b.action == Command::FontsDownload));
+		// A whole row fits as soon as the panel is tall enough for one.
+		assert!(list(w, 400., shown.len(), 0.0).fits());
 	}
 
-	/// Pagination shares the footer with the bulk action, and hit testing takes
-	/// the first button under the pointer, so they must never overlap.
+	/// A catalogue past the fold scrolls to its last family instead of paging.
 	#[test]
-	fn the_pagination_arrows_leave_room_for_the_bulk_action() {
+	fn a_long_catalogue_scrolls_instead_of_paging() {
 		let catalog: Vec<_> = (0..9)
 			.map(|i| entry(&format!("f{i}"), State::Missing))
 			.collect();
 		let shown: Vec<usize> = (0..catalog.len()).collect();
-		let jobs = std::collections::HashMap::new();
-		let buttons = fonts_controls(
-			&catalog, &shown, &jobs, 1, None, None, false, 820., 600.,
+		let jobs = HashMap::new();
+		let (w, h) = (820., 600.);
+		let top = list(w, h, shown.len(), 0.0);
+		assert!(top.max_scroll() > 0.0);
+		let rows = top.hit(font_rows(&catalog, &shown, &jobs, top));
+		assert!(
+			rows.iter()
+				.any(|b| b.action == Command::FontsDownloadOne(0))
 		);
-		let download = buttons
-			.iter()
-			.find(|b| b.action == Command::FontsDownload)
-			.expect("a bulk action");
-		for action in [Command::FontsPrev, Command::FontsNext] {
-			let arrow = buttons
+		assert!(
+			!rows
 				.iter()
-				.find(|b| b.action == action)
-				.unwrap_or_else(|| panic!("{action:?} is missing"));
-			assert!(
-				download.rect.intersect(arrow.rect).is_none(),
-				"{action:?} {:?} overlaps the bulk action {:?}",
-				arrow.rect,
-				download.rect
-			);
-		}
+				.any(|b| b.action == Command::FontsDownloadOne(8))
+		);
+		let bottom = list(w, h, shown.len(), f32::MAX);
+		assert_eq!(bottom.scroll, top.max_scroll());
+		let rows = bottom.hit(font_rows(&catalog, &shown, &jobs, bottom));
+		assert!(
+			rows.iter()
+				.any(|b| b.action == Command::FontsDownloadOne(8))
+		);
 	}
 
 	#[test]
 	fn a_running_family_offers_cancelling_instead_of_downloading() {
 		let catalog = vec![entry("a", State::Missing)];
 		let shown = vec![0];
-		let mut jobs = std::collections::HashMap::new();
+		let mut jobs = HashMap::new();
 		jobs.insert(
 			"a".to_string(),
 			crate::fonts::Progress {
@@ -630,15 +643,16 @@ mod tests {
 				..crate::fonts::Progress::queued("a")
 			},
 		);
-		let buttons = fonts_controls(
-			&catalog, &shown, &jobs, 0, None, None, false, 820., 600.,
-		);
+		let rows = list(820., 600., shown.len(), 0.0);
+		let buttons = rows.hit(font_rows(&catalog, &shown, &jobs, rows));
 		assert!(buttons.iter().any(|b| b.action == Command::FontsCancel(0)));
 		// Nothing is left to start, so the top action is disabled.
-		let top = buttons
-			.iter()
-			.find(|b| b.action == Command::FontsDownload)
-			.unwrap();
+		let top = fonts_controls(
+			&catalog, &shown, &jobs, None, None, false, 820., 600.,
+		)
+		.into_iter()
+		.find(|b| b.action == Command::FontsDownload)
+		.unwrap();
 		assert!(!top.enabled);
 	}
 

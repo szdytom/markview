@@ -142,7 +142,7 @@ fn settings_and_selection_frame() -> Result<()> {
 				settings.style.as_deref(),
 				&interaction,
 				&entries,
-				0,
+				0.0,
 				false,
 				width,
 				height,
@@ -779,11 +779,11 @@ fn previewing_recedes_the_styles_and_fonts_pages() {
 				export: &export,
 				interaction: &interaction,
 				style_entries: &entries,
-				style_page: 0,
+				style_scroll: interaction.styles_scroll,
 				font_catalog: &catalog,
 				fonts_shown: shown.clone(),
 				font_jobs: &jobs,
-				fonts_page: 0,
+				fonts_scroll: interaction.fonts_scroll,
 				fonts_note: None,
 				font_source_filter: None,
 				font_status_filter: None,
@@ -860,11 +860,11 @@ fn a_page_flag_without_the_panel_opens_nothing() {
 			export: &export,
 			interaction: &interaction,
 			style_entries: &entries,
-			style_page: 0,
+			style_scroll: interaction.styles_scroll,
 			font_catalog: &[],
 			fonts_shown: shown.clone(),
 			font_jobs: &jobs,
-			fonts_page: 0,
+			fonts_scroll: interaction.fonts_scroll,
 			fonts_note: None,
 			font_source_filter: None,
 			font_status_filter: None,
@@ -936,6 +936,35 @@ fn font_samples() -> Vec<crate::fonts::Family> {
 			files: Vec::new(),
 			bytes: 0,
 		},
+		// Enough families past the fold that the scrolled frames scroll.
+		crate::fonts::Family {
+			family: family("noto-sans-mono", "Noto Sans Mono", "OFL-1.1"),
+			owners: vec!["builtin".into()],
+			state: crate::fonts::State::Downloaded,
+			files: vec!["NotoSansMono-Regular.ttf".into()],
+			bytes: 421_888,
+		},
+		crate::fonts::Family {
+			family: family("source-serif", "Source Serif", "OFL-1.1"),
+			owners: vec!["paper".into()],
+			state: crate::fonts::State::Missing,
+			files: Vec::new(),
+			bytes: 0,
+		},
+		crate::fonts::Family {
+			family: family("lora", "Lora", "OFL-1.1"),
+			owners: vec!["celadon".into()],
+			state: crate::fonts::State::Missing,
+			files: Vec::new(),
+			bytes: 0,
+		},
+		crate::fonts::Family {
+			family: family("inter", "Inter", "OFL-1.1"),
+			owners: vec!["blueprint".into()],
+			state: crate::fonts::State::Provided,
+			files: Vec::new(),
+			bytes: 0,
+		},
 	]
 }
 
@@ -968,7 +997,17 @@ fn redesigned_chrome_frames() -> Result<()> {
 		renderer.set_stylesheet(sheet);
 		let mut metrics = TabMetrics::default();
 		metrics.sync(&mut ui, &tabs);
-		let entries = crate::stylesheet::catalog(None, None);
+		let mut entries = crate::stylesheet::catalog(None, None);
+		// A catalogue past the fold, so the scrolled styles frame scrolls.
+		for (id, name) in [("journal", "Journal"), ("contrast", "Contrast")] {
+			entries.push(crate::stylesheet::Entry {
+				id: id.into(),
+				name: name.into(),
+				source: format!("/example/styles/{id}.mvss.toml"),
+				error: None,
+				font_families: Vec::new(),
+			});
+		}
 		for (width, height) in [(500.0, 300.0), (820.0, 600.0), (1200.0, 800.0)]
 		{
 			let snapshot = LayoutEngine::new().layout(
@@ -988,7 +1027,9 @@ fn redesigned_chrome_frames() -> Result<()> {
 					"settings",
 					"export",
 					"styles",
+					"styles-scrolled",
 					"fonts",
+					"fonts-scrolled",
 					"fonts-preview",
 					"empty",
 					"error",
@@ -1005,15 +1046,33 @@ fn redesigned_chrome_frames() -> Result<()> {
 							page,
 							"settings"
 								| "preview" | "export" | "styles"
-								| "fonts" | "fonts-preview"
+								| "styles-scrolled" | "fonts"
+								| "fonts-scrolled" | "fonts-preview"
 						),
 						settings_preview: matches!(
 							page,
 							"preview" | "fonts-preview"
 						),
 						export_open: page == "export",
-						styles_open: page == "styles",
-						fonts_open: matches!(page, "fonts" | "fonts-preview"),
+						styles_open: matches!(
+							page,
+							"styles" | "styles-scrolled"
+						),
+						fonts_open: matches!(
+							page,
+							"fonts" | "fonts-scrolled" | "fonts-preview"
+						),
+						// A page below the fold, to capture the clip and bar.
+						styles_scroll: if page == "styles-scrolled" {
+							f32::MAX
+						} else {
+							0.0
+						},
+						fonts_scroll: if page == "fonts-scrolled" {
+							f32::MAX
+						} else {
+							0.0
+						},
 						focus_visible: true,
 						focus: Some(if page == "export" {
 							Command::ExportRun
@@ -1081,11 +1140,11 @@ fn redesigned_chrome_frames() -> Result<()> {
 						export: &export,
 						interaction: &interaction,
 						style_entries: &entries,
-						style_page: 0,
+						style_scroll: interaction.styles_scroll,
 						font_catalog: &catalog,
 						fonts_shown: shown,
 						font_jobs: &jobs,
-						fonts_page: 0,
+						fonts_scroll: interaction.fonts_scroll,
 						fonts_note: None,
 						font_source_filter: None,
 						font_status_filter: None,

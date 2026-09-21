@@ -2,6 +2,7 @@ use super::super::Button;
 use super::components::CONTROL;
 use super::controls::{draw_button, panel_rect};
 use super::icons;
+use super::list::List;
 use crate::{
 	layout::{Draw, Paint, Rect, TextShaper},
 	state::{Command, InteractionState},
@@ -42,18 +43,6 @@ impl StylesTarget {
 			Self::Export => Command::ExportStyles,
 		}
 	}
-	fn prev(self) -> Command {
-		match self {
-			Self::Reader => Command::StylePrev,
-			Self::Export => Command::ExportStylePrev,
-		}
-	}
-	fn next(self) -> Command {
-		match self {
-			Self::Reader => Command::StyleNext,
-			Self::Export => Command::ExportStyleNext,
-		}
-	}
 	/// Only the reader can follow the system theme.
 	fn system(self) -> Option<Command> {
 		(self == Self::Reader).then_some(Command::SystemTheme)
@@ -69,19 +58,36 @@ impl StylesTarget {
 	}
 }
 
-pub(in crate::app) fn styles_rect(
+/// How much of the panel the title, tabs and summary take.
+const LIST_TOP: f32 = 132.0;
+/// How much the footer and its separator below the list take.
+const FOOTER: f32 = 64.0;
+/// One stylesheet row.
+const ROW: f32 = 60.0;
+
+/// The page's scrolling list of stylesheets.
+pub(in crate::app) fn list(
 	width: f32,
 	height: f32,
-	_count: usize,
-) -> Rect {
-	panel_rect(width, height)
+	entries: usize,
+	scroll: f32,
+) -> List {
+	let r = panel_rect(width, height);
+	List::new(
+		r,
+		Rect {
+			x: r.x,
+			y: r.y + LIST_TOP,
+			w: r.w,
+			h: (r.h - LIST_TOP - FOOTER).max(0.0),
+		},
+		ROW,
+		entries,
+		scroll,
+	)
 }
 
-fn style_rows(rect: Rect) -> usize {
-	// Reserve the footer and its separator below the last style row.
-	((rect.h - 202.) / 60.).floor().max(1.) as usize
-}
-
+/// The display order: enabled styles first, in priority order, then the rest.
 fn style_order(
 	selected: Option<&[String]>,
 	entries: &[crate::stylesheet::Entry],
@@ -95,19 +101,24 @@ fn style_order(
 	indices
 }
 
+/// One entry's priority, or `None` when it is not enabled.
+fn position(
+	selected: Option<&[String]>,
+	entry: &crate::stylesheet::Entry,
+) -> Option<usize> {
+	selected.and_then(|ids| ids.iter().position(|id| id == &entry.id))
+}
+
+/// The page's fixed controls: the settings header, and the footer's folder
+/// button and system-theme toggle. They sit outside the scrolling list.
 pub(super) fn style_controls(
 	target: StylesTarget,
 	selected: Option<&[String]>,
-	entries: &[crate::stylesheet::Entry],
-	page: usize,
 	preview: bool,
 	width: f32,
 	height: f32,
 ) -> Vec<Button> {
-	let r = styles_rect(width, height, entries.len());
-	let rows = style_rows(r);
-	let order = style_order(selected, entries);
-	let page = page.min(order.len().saturating_sub(1) / rows);
+	let r = panel_rect(width, height);
 	let mut out = vec![];
 	let mut headers = if target == StylesTarget::Export {
 		vec![
@@ -161,45 +172,27 @@ pub(super) fn style_controls(
 			},
 		});
 	}
-	if page > 0 {
-		out.push(Button {
-			label: "←",
-			icon: None,
-			active: false,
-			kind: Default::default(),
-			enabled: true,
-			action: target.prev(),
-			rect: Rect {
-				x: r.x + r.w - 96.,
-				y: r.y + r.h - 48.,
-				w: 32.,
-				h: 32.,
-			},
-		});
-	}
-	if (page + 1) * rows < order.len() {
-		out.push(Button {
-			label: "→",
-			icon: None,
-			active: false,
-			kind: Default::default(),
-			enabled: true,
-			action: target.next(),
-			rect: Rect {
-				x: r.x + r.w - 56.,
-				y: r.y + r.h - 48.,
-				w: 32.,
-				h: 32.,
-			},
-		});
-	}
-	for (row, index) in
-		order.into_iter().skip(page * rows).take(rows).enumerate()
-	{
+	out
+}
+
+/// One entry's toggle, and the arrows that move it in the priority order.
+///
+/// Only the rows on screen have buttons, so the page never builds a control
+/// nothing can draw or reach.
+pub(super) fn style_rows(
+	target: StylesTarget,
+	selected: Option<&[String]>,
+	entries: &[crate::stylesheet::Entry],
+	list: List,
+) -> Vec<Button> {
+	let r = list.panel;
+	let order = style_order(selected, entries);
+	let mut out = vec![];
+	for row in list.visible() {
+		let index = order[row];
 		let e = &entries[index];
-		let pos =
-			selected.and_then(|ids| ids.iter().position(|id| id == &e.id));
-		let y = r.y + 132. + row as f32 * 60.;
+		let pos = position(selected, e);
+		let y = list.row_rect(row).y;
 		if e.error.is_none() || pos.is_some() {
 			out.push(Button {
 				label: if pos.is_some() { "Enabled" } else { "Enable" },
@@ -219,8 +212,8 @@ pub(super) fn style_controls(
 		if let Some(pos) = pos {
 			if pos > 0 {
 				out.push(Button {
-					label: "↑",
-					icon: None,
+					label: "Move up",
+					icon: Some(icons::UP),
 					active: false,
 					kind: Default::default(),
 					enabled: true,
@@ -235,8 +228,8 @@ pub(super) fn style_controls(
 			}
 			if selected.is_some_and(|ids| pos + 1 < ids.len()) {
 				out.push(Button {
-					label: "↓",
-					icon: None,
+					label: "Move down",
+					icon: Some(icons::DOWN),
 					active: false,
 					kind: Default::default(),
 					enabled: true,
@@ -261,7 +254,7 @@ pub(super) fn draw_styles(
 	selected: Option<&[String]>,
 	interaction: &InteractionState,
 	entries: &[crate::stylesheet::Entry],
-	page: usize,
+	scroll: f32,
 	preview: bool,
 	width: f32,
 	height: f32,
@@ -272,10 +265,9 @@ pub(super) fn draw_styles(
 			.text(&TextAppearance::default(), Condition::Ui),
 		Condition::Panel,
 	);
-	let r = styles_rect(width, height, entries.len());
-	let rows = style_rows(r);
+	let r = panel_rect(width, height);
+	let list = list(width, height, entries.len(), scroll);
 	let order = style_order(selected, entries);
-	let page = page.min(order.len().saturating_sub(1) / rows);
 	// Previewing the document leaves only the panel surface, which then
 	// recedes with everything else.
 	let previewing = target == StylesTarget::Reader && preview;
@@ -302,7 +294,7 @@ pub(super) fn draw_styles(
 		));
 		shaper.appearance.weight = weight;
 	}
-	for y in [r.y + 92.0, r.y + r.h - 64.0] {
+	for y in [r.y + 92.0, r.y + r.h - FOOTER] {
 		out.push(super::components::line(
 			Rect {
 				x: r.x + 1.0,
@@ -323,14 +315,28 @@ pub(super) fn draw_styles(
 		r.y + 108.,
 		Paint::Styled(Condition::Panel, C::Color),
 	));
-	for (row, index) in
-		order.into_iter().skip(page * rows).take(rows).enumerate()
-	{
-		let e = &entries[index];
-		let pos =
-			selected.and_then(|ids| ids.iter().position(|id| id == &e.id));
-		let y = r.y + 132. + row as f32 * 60.;
-		out.push(super::components::line(
+	let mut body = Vec::new();
+	// A pointer below the fold must not light up the row hidden under the
+	// footer, so the body only sees the cursor while it is inside the clip.
+	let body_interaction = InteractionState {
+		cursor: if list
+			.viewport
+			.contains(interaction.cursor.0, interaction.cursor.1)
+		{
+			interaction.cursor
+		} else {
+			(f32::NEG_INFINITY, f32::NEG_INFINITY)
+		},
+		focus: interaction.focus,
+		focus_visible: interaction.focus_visible,
+		pressed: interaction.pressed,
+		..Default::default()
+	};
+	for row in list.visible() {
+		let e = &entries[order[row]];
+		let pos = position(selected, e);
+		let y = list.row_rect(row).y;
+		body.push(super::components::line(
 			Rect {
 				x: r.x + 20.0,
 				y: y + 53.0,
@@ -341,7 +347,7 @@ pub(super) fn draw_styles(
 			C::BorderColor,
 		));
 		if pos.is_some() {
-			out.push(super::components::line(
+			body.push(super::components::line(
 				Rect {
 					x: r.x + 8.0,
 					y: y + 5.0,
@@ -360,7 +366,7 @@ pub(super) fn draw_styles(
 			e.id
 		);
 		let title = shaper.fit(&title, 13., r.w - 212.);
-		out.extend(shaper.label(
+		body.extend(shaper.label(
 			&title,
 			13.,
 			r.x + 20.,
@@ -374,11 +380,11 @@ pub(super) fn draw_styles(
 				w: 76.,
 				h: 32.,
 			};
-			out.push(Draw::Rect(
+			body.push(Draw::Rect(
 				rect,
 				Paint::Styled(Condition::Button, C::Background),
 			));
-			out.extend(shaper.label(
+			body.extend(shaper.label(
 				"Invalid",
 				12.,
 				rect.x + 7.,
@@ -388,7 +394,7 @@ pub(super) fn draw_styles(
 		}
 		let detail = e.error.as_deref().unwrap_or(&e.source);
 		let detail = shaper.fit(detail, 12., r.w - 48.);
-		out.extend(shaper.label(
+		body.extend(shaper.label(
 			&detail,
 			12.,
 			r.x + 20.,
@@ -403,9 +409,14 @@ pub(super) fn draw_styles(
 			),
 		));
 	}
-	for b in
-		style_controls(target, selected, entries, page, preview, width, height)
-	{
+	for b in style_rows(target, selected, entries, list) {
+		if b.rect.intersect(list.viewport).is_some() {
+			body.extend(draw_button(shaper, &body_interaction, &b, true));
+		}
+	}
+	out.push(list.clip(body));
+	list.draw_bar(&mut out, shaper, interaction);
+	for b in style_controls(target, selected, preview, width, height) {
 		// The header of a settings tab is drawn once, by the header itself.
 		if target == StylesTarget::Reader
 			&& super::components::is_settings_header(b.action)
@@ -455,15 +466,15 @@ mod stylesheet_tests {
 		for target in [StylesTarget::Reader, StylesTarget::Export] {
 			for (w, h) in [(500., 300.), (820., 600.)] {
 				let panel = panel_rect(w, h);
-				let buttons = style_controls(
+				let list = list(w, h, entries.len(), 0.0);
+				let mut buttons =
+					style_controls(target, Some(&selected), false, w, h);
+				buttons.extend(list.hit(style_rows(
 					target,
 					Some(&selected),
 					&entries,
-					0,
-					false,
-					w,
-					h,
-				);
+					list,
+				)));
 				assert!(buttons.iter().all(|b| {
 					panel.contains(b.rect.x, b.rect.y)
 						&& panel
@@ -492,12 +503,37 @@ mod stylesheet_tests {
 		}
 	}
 
+	/// A catalogue past the fold scrolls to its last row instead of paging.
+	#[test]
+	fn a_long_catalogue_scrolls_instead_of_paging() {
+		let entries: Vec<_> =
+			(0..20).map(|i| entry(&format!("s{i}"), None)).collect();
+		let (w, h) = (820., 600.);
+		let top = list(w, h, entries.len(), 0.0);
+		assert!(top.max_scroll() > 0.0);
+		let rows =
+			top.hit(style_rows(StylesTarget::Reader, None, &entries, top));
+		assert!(rows.iter().any(|b| b.action == Command::StyleToggle(0)));
+		assert!(!rows.iter().any(|b| b.action == Command::StyleToggle(19)));
+
+		let bottom = list(w, h, entries.len(), f32::MAX);
+		assert_eq!(bottom.scroll, top.max_scroll());
+		let rows = bottom.hit(style_rows(
+			StylesTarget::Reader,
+			None,
+			&entries,
+			bottom,
+		));
+		assert!(rows.iter().any(|b| b.action == Command::StyleToggle(19)));
+		assert!(!rows.iter().any(|b| b.action == Command::StyleToggle(0)));
+	}
+
 	/// The page names itself through the settings tab row rather than a title.
 	#[test]
 	fn the_styles_page_is_reached_by_its_tab() {
 		let (w, h) = (820., 600.);
 		let tabs = super::super::components::tab_controls(
-			styles_rect(w, h, 1),
+			panel_rect(w, h),
 			crate::state::PanelTab::Styles,
 		);
 		assert_eq!(tabs.len(), 3);
@@ -516,7 +552,7 @@ mod stylesheet_tests {
 	#[test]
 	fn settings_tabs_keep_the_same_panel_height() {
 		let generic = panel_rect(820.0, 600.0);
-		assert_eq!(styles_rect(820.0, 600.0, 1).h, generic.h);
-		assert_eq!(styles_rect(820.0, 600.0, 20).h, generic.h);
+		assert_eq!(panel_rect(820.0, 600.0).h, generic.h);
+		assert_eq!(panel_rect(500.0, 300.0).h, panel_rect(500.0, 300.0).h);
 	}
 }

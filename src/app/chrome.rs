@@ -2,14 +2,15 @@
 pub(super) mod components;
 mod controls;
 mod export;
-mod fonts;
+pub(in crate::app) mod fonts;
 mod footer;
 #[cfg(test)]
 mod gpu_tests;
 mod icons;
+pub(in crate::app) mod list;
 mod modal;
 pub(in crate::app) mod outline;
-mod styles;
+pub(in crate::app) mod styles;
 mod tabs;
 use super::{BOTTOM, Button, TOP};
 use crate::{
@@ -21,12 +22,11 @@ use crate::{
 };
 pub(super) use components::panel_rect;
 use controls::{draw_controls, toolbar_controls};
-use fonts::{draw_fonts, fonts_controls};
+use fonts::{draw_fonts, font_rows, fonts_controls};
 use footer::draw_footer;
 use markview_core::style::{ColorField as C, Condition, TextAppearance};
 use std::time::Instant;
-pub(super) use styles::styles_rect;
-use styles::{StylesTarget, draw_styles, style_controls};
+use styles::{StylesTarget, draw_styles, style_controls, style_rows};
 
 /// Height of the remote-image notice strip below the tab bar.
 pub(super) const BANNER: f32 = 34.0;
@@ -150,6 +150,23 @@ fn empty_button(width: f32, height: f32) -> Button {
 	b
 }
 
+/// The Styles page's controls: its fixed header and footer, and the list's
+/// row buttons clipped to the rows the frame shows.
+fn style_page_buttons(
+	target: StylesTarget,
+	selected: Option<&[String]>,
+	entries: &[crate::stylesheet::Entry],
+	scroll: f32,
+	preview: bool,
+	width: f32,
+	height: f32,
+) -> Vec<Button> {
+	let list = styles::list(width, height, entries.len(), scroll);
+	let mut buttons = style_controls(target, selected, preview, width, height);
+	buttons.extend(list.hit(style_rows(target, selected, entries, list)));
+	buttons
+}
+
 pub(super) struct Chrome<'a> {
 	pub(super) ui: &'a mut TextShaper,
 	pub(super) session: &'a ReaderSession,
@@ -162,14 +179,16 @@ pub(super) struct Chrome<'a> {
 	pub(super) export: &'a ExportSettings,
 	pub(super) interaction: &'a InteractionState,
 	pub(super) style_entries: &'a [crate::stylesheet::Entry],
-	pub(super) style_page: usize,
+	/// The Styles page's list offset.
+	pub(super) style_scroll: f32,
 	/// Every downloadable family, the positions the filters leave visible,
 	/// and the downloads running right now.
 	pub(super) font_catalog: &'a [crate::fonts::Family],
 	pub(super) fonts_shown: Vec<usize>,
 	pub(super) font_jobs:
 		&'a std::collections::HashMap<String, crate::fonts::Progress>,
-	pub(super) fonts_page: usize,
+	/// The Fonts page's list offset.
+	pub(super) fonts_scroll: f32,
 	pub(super) fonts_note: Option<&'a str>,
 	pub(super) font_source_filter: Option<&'a str>,
 	pub(super) font_status_filter: Option<crate::fonts::State>,
@@ -224,11 +243,11 @@ impl Chrome<'_> {
 		} else if self.interaction.panel_open
 			&& self.interaction.export_styles_open
 		{
-			style_controls(
+			style_page_buttons(
 				StylesTarget::Export,
-				Some(&self.export.style),
+				Some(self.export.style.as_slice()),
 				self.style_entries,
-				self.style_page,
+				self.style_scroll,
 				false,
 				width,
 				height,
@@ -243,23 +262,35 @@ impl Chrome<'_> {
 			)
 			.visible_buttons()
 		} else if self.interaction.panel_open && self.interaction.fonts_open {
-			fonts_controls(
+			let list = fonts::list(
+				width,
+				height,
+				self.fonts_shown.len(),
+				self.fonts_scroll,
+			);
+			let mut buttons = fonts_controls(
 				self.font_catalog,
 				&self.fonts_shown,
 				self.font_jobs,
-				self.fonts_page,
 				self.font_source_filter,
 				self.font_status_filter,
 				self.interaction.settings_preview,
 				width,
 				height,
-			)
+			);
+			buttons.extend(list.hit(font_rows(
+				self.font_catalog,
+				&self.fonts_shown,
+				self.font_jobs,
+				list,
+			)));
+			buttons
 		} else if self.interaction.panel_open && self.interaction.styles_open {
-			style_controls(
+			style_page_buttons(
 				StylesTarget::Reader,
 				self.settings.style.as_deref(),
 				self.style_entries,
-				self.style_page,
+				self.style_scroll,
 				self.interaction.settings_preview,
 				width,
 				height,
@@ -459,7 +490,7 @@ impl Chrome<'_> {
 				Some(&self.export.style),
 				self.interaction,
 				self.style_entries,
-				self.style_page,
+				self.style_scroll,
 				false,
 				width,
 				height,
@@ -488,7 +519,7 @@ impl Chrome<'_> {
 				self.font_catalog,
 				&self.fonts_shown,
 				self.font_jobs,
-				self.fonts_page,
+				self.fonts_scroll,
 				self.fonts_note,
 				self.font_source_filter,
 				self.font_status_filter,
@@ -503,7 +534,7 @@ impl Chrome<'_> {
 				self.settings.style.as_deref(),
 				self.interaction,
 				self.style_entries,
-				self.style_page,
+				self.style_scroll,
 				self.interaction.settings_preview,
 				width,
 				height,
