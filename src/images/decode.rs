@@ -273,7 +273,13 @@ mod tests {
 	#[test]
 	fn generic_svg_candidates_resolve_through_the_database() {
 		let mut database = resvg::usvg::fontdb::Database::new();
-		database.load_system_fonts();
+		database.load_font_data(
+			include_bytes!(
+				"../../crates/markview-core/tests/fonts/NotoSansMono-Regular-subset.otf"
+			)
+			.to_vec(),
+		);
+		database.set_monospace_family("Noto Sans Mono");
 		assert!(super::resolve_svg_family(&database, "monospace").is_some());
 	}
 }

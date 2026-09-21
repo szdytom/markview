@@ -1004,7 +1004,9 @@ mod tests {
 		let base = UNIX_EPOCH + Duration::from_secs(1_000_000);
 		let store = |url: &str, at: SystemTime| {
 			cache.put(url, Headers::default(), b"aaaa");
-			fs::File::open(cache.path(url))
+			fs::OpenOptions::new()
+				.write(true)
+				.open(cache.path(url))
 				.unwrap()
 				.set_modified(at)
 				.unwrap();

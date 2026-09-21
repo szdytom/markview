@@ -136,6 +136,7 @@ impl Clipboard {
 
 #[cfg(test)]
 mod tests {
+	#[cfg(not(any(windows, target_os = "macos")))]
 	use super::*;
 
 	/// X11 and Wayland report a detent as one unit with no desktop value
