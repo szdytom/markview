@@ -4,16 +4,16 @@ version = 1
 
 [[fontdef]]
 id = "serif"
-lookfor = ["Georgia", "Times New Roman", "Noto Serif", "DejaVu Serif", "Liberation Serif", "Linux Libertine", "serif"]
+lookfor = ["Noto Serif", "Georgia", "Times New Roman", "DejaVu Serif", "Liberation Serif", "Linux Libertine", "serif"]
 
 [[fontdef]]
 id = "sans-serif"
-lookfor = ["Helvetica", "Arial", "Noto Sans", "DejaVu Sans", "Liberation Sans", "Ubuntu", "sans-serif"]
+lookfor = ["Noto Sans", "Helvetica", "Arial", "DejaVu Sans", "Liberation Sans", "Ubuntu", "sans-serif"]
 
 [[fontdef]]
 id = "serif[cjk]"
 type = "SC"
-lookfor = ["Noto Serif CJK SC", "Source Han Serif SC", "Songti SC", "SimSun", "NSimSun", "STSong", "AR PL UMing CN", "AR PL SungtiL GB", "serif"]
+lookfor = ["Noto Serif CJK SC", "Noto Serif SC", "Source Han Serif SC", "Songti SC", "SimSun", "NSimSun", "STSong", "AR PL UMing CN", "AR PL SungtiL GB", "serif"]
 
 [[fontdef]]
 id = "serif[cjk]"
@@ -28,7 +28,7 @@ lookfor = ["Noto Serif CJK JP", "Source Han Serif JP", "Hiragino Mincho ProN", "
 [[fontdef]]
 id = "sans-serif[cjk]"
 type = "SC"
-lookfor = ["PingFang SC", "Microsoft YaHei", "Noto Sans CJK SC", "Source Han Sans CJK SC", "Source Han Sans", "Founder Lan Ting Hei", "WenQuanYi Micro Hei", "Hiragino Sans GB", "Heiti SC", "sans-serif"]
+lookfor = ["Noto Sans CJK SC", "Noto Sans SC", "PingFang SC", "Microsoft YaHei", "Source Han Sans CJK SC", "Source Han Sans", "Founder Lan Ting Hei", "WenQuanYi Micro Hei", "Hiragino Sans GB", "Heiti SC", "sans-serif"]
 
 [[fontdef]]
 id = "sans-serif[cjk]"
@@ -57,10 +57,15 @@ lookfor = ["Noto Color Emoji", "Apple Color Emoji", "Segoe UI Emoji", "Twemoji M
 # The recommended downloads. A family is not a font definition: these only say
 # how to obtain a concrete family, and a name that is already installed means
 # there is nothing to fetch. Nothing here is fetched until the reader asks.
+#
+# Every family asks for each static weight its mirrors publish, from Thin to
+# Black, so a rule that names 300 or 600 finds a real face instead of the
+# nearest one.
+
 [[font-family]]
 id = "noto-serif"
 lookfor = ["Noto Serif"]
-description = "Latin reading serif, regular and bold and italic"
+description = "Latin reading serif, nine weights with italics"
 license = "OFL-1.1"
 license_url = "https://scripts.sil.org/OFL"
 homepage = "https://github.com/notofonts/noto-fonts"
@@ -70,23 +75,99 @@ name = "GitHub release"
 [[font-family.source.archives]]
 url = "https://github.com/notofonts/latin-greek-cyrillic/releases/download/NotoSerif-v2.015/NotoSerif-v2.015.zip"
 members = [
+    "NotoSerif/hinted/ttf/NotoSerif-Thin.ttf",
+    "NotoSerif/hinted/ttf/NotoSerif-ThinItalic.ttf",
+    "NotoSerif/hinted/ttf/NotoSerif-ExtraLight.ttf",
+    "NotoSerif/hinted/ttf/NotoSerif-ExtraLightItalic.ttf",
+    "NotoSerif/hinted/ttf/NotoSerif-Light.ttf",
+    "NotoSerif/hinted/ttf/NotoSerif-LightItalic.ttf",
     "NotoSerif/hinted/ttf/NotoSerif-Regular.ttf",
-    "NotoSerif/hinted/ttf/NotoSerif-Bold.ttf",
     "NotoSerif/hinted/ttf/NotoSerif-Italic.ttf",
+    "NotoSerif/hinted/ttf/NotoSerif-Medium.ttf",
+    "NotoSerif/hinted/ttf/NotoSerif-MediumItalic.ttf",
+    "NotoSerif/hinted/ttf/NotoSerif-SemiBold.ttf",
+    "NotoSerif/hinted/ttf/NotoSerif-SemiBoldItalic.ttf",
+    "NotoSerif/hinted/ttf/NotoSerif-Bold.ttf",
+    "NotoSerif/hinted/ttf/NotoSerif-BoldItalic.ttf",
+    "NotoSerif/hinted/ttf/NotoSerif-ExtraBold.ttf",
+    "NotoSerif/hinted/ttf/NotoSerif-ExtraBoldItalic.ttf",
+    "NotoSerif/hinted/ttf/NotoSerif-Black.ttf",
+    "NotoSerif/hinted/ttf/NotoSerif-BlackItalic.ttf",
 ]
 
 [[font-family.source]]
 name = "jsDelivr"
 files = [
+    "https://cdn.jsdelivr.net/gh/notofonts/noto-fonts@main/hinted/ttf/NotoSerif/NotoSerif-Thin.ttf",
+    "https://cdn.jsdelivr.net/gh/notofonts/noto-fonts@main/hinted/ttf/NotoSerif/NotoSerif-ThinItalic.ttf",
+    "https://cdn.jsdelivr.net/gh/notofonts/noto-fonts@main/hinted/ttf/NotoSerif/NotoSerif-ExtraLight.ttf",
+    "https://cdn.jsdelivr.net/gh/notofonts/noto-fonts@main/hinted/ttf/NotoSerif/NotoSerif-ExtraLightItalic.ttf",
+    "https://cdn.jsdelivr.net/gh/notofonts/noto-fonts@main/hinted/ttf/NotoSerif/NotoSerif-Light.ttf",
+    "https://cdn.jsdelivr.net/gh/notofonts/noto-fonts@main/hinted/ttf/NotoSerif/NotoSerif-LightItalic.ttf",
     "https://cdn.jsdelivr.net/gh/notofonts/noto-fonts@main/hinted/ttf/NotoSerif/NotoSerif-Regular.ttf",
-    "https://cdn.jsdelivr.net/gh/notofonts/noto-fonts@main/hinted/ttf/NotoSerif/NotoSerif-Bold.ttf",
     "https://cdn.jsdelivr.net/gh/notofonts/noto-fonts@main/hinted/ttf/NotoSerif/NotoSerif-Italic.ttf",
+    "https://cdn.jsdelivr.net/gh/notofonts/noto-fonts@main/hinted/ttf/NotoSerif/NotoSerif-Medium.ttf",
+    "https://cdn.jsdelivr.net/gh/notofonts/noto-fonts@main/hinted/ttf/NotoSerif/NotoSerif-MediumItalic.ttf",
+    "https://cdn.jsdelivr.net/gh/notofonts/noto-fonts@main/hinted/ttf/NotoSerif/NotoSerif-SemiBold.ttf",
+    "https://cdn.jsdelivr.net/gh/notofonts/noto-fonts@main/hinted/ttf/NotoSerif/NotoSerif-SemiBoldItalic.ttf",
+    "https://cdn.jsdelivr.net/gh/notofonts/noto-fonts@main/hinted/ttf/NotoSerif/NotoSerif-Bold.ttf",
+    "https://cdn.jsdelivr.net/gh/notofonts/noto-fonts@main/hinted/ttf/NotoSerif/NotoSerif-BoldItalic.ttf",
+    "https://cdn.jsdelivr.net/gh/notofonts/noto-fonts@main/hinted/ttf/NotoSerif/NotoSerif-ExtraBold.ttf",
+    "https://cdn.jsdelivr.net/gh/notofonts/noto-fonts@main/hinted/ttf/NotoSerif/NotoSerif-ExtraBoldItalic.ttf",
+    "https://cdn.jsdelivr.net/gh/notofonts/noto-fonts@main/hinted/ttf/NotoSerif/NotoSerif-Black.ttf",
+    "https://cdn.jsdelivr.net/gh/notofonts/noto-fonts@main/hinted/ttf/NotoSerif/NotoSerif-BlackItalic.ttf",
+]
+
+[[font-family.source]]
+name = "CTAN"
+files = [
+    "https://mirror.ctan.org/fonts/noto/truetype/NotoSerif-Thin.ttf",
+    "https://mirror.ctan.org/fonts/noto/truetype/NotoSerif-ThinItalic.ttf",
+    "https://mirror.ctan.org/fonts/noto/truetype/NotoSerif-ExtraLight.ttf",
+    "https://mirror.ctan.org/fonts/noto/truetype/NotoSerif-ExtraLightItalic.ttf",
+    "https://mirror.ctan.org/fonts/noto/truetype/NotoSerif-Light.ttf",
+    "https://mirror.ctan.org/fonts/noto/truetype/NotoSerif-LightItalic.ttf",
+    "https://mirror.ctan.org/fonts/noto/truetype/NotoSerif-Regular.ttf",
+    "https://mirror.ctan.org/fonts/noto/truetype/NotoSerif-Italic.ttf",
+    "https://mirror.ctan.org/fonts/noto/truetype/NotoSerif-Medium.ttf",
+    "https://mirror.ctan.org/fonts/noto/truetype/NotoSerif-MediumItalic.ttf",
+    "https://mirror.ctan.org/fonts/noto/truetype/NotoSerif-SemiBold.ttf",
+    "https://mirror.ctan.org/fonts/noto/truetype/NotoSerif-SemiBoldItalic.ttf",
+    "https://mirror.ctan.org/fonts/noto/truetype/NotoSerif-Bold.ttf",
+    "https://mirror.ctan.org/fonts/noto/truetype/NotoSerif-BoldItalic.ttf",
+    "https://mirror.ctan.org/fonts/noto/truetype/NotoSerif-ExtraBold.ttf",
+    "https://mirror.ctan.org/fonts/noto/truetype/NotoSerif-ExtraBoldItalic.ttf",
+    "https://mirror.ctan.org/fonts/noto/truetype/NotoSerif-Black.ttf",
+    "https://mirror.ctan.org/fonts/noto/truetype/NotoSerif-BlackItalic.ttf",
+]
+
+[[font-family.source]]
+name = "TUNA CTAN"
+files = [
+    "https://mirrors.tuna.tsinghua.edu.cn/CTAN/fonts/noto/truetype/NotoSerif-Thin.ttf",
+    "https://mirrors.tuna.tsinghua.edu.cn/CTAN/fonts/noto/truetype/NotoSerif-ThinItalic.ttf",
+    "https://mirrors.tuna.tsinghua.edu.cn/CTAN/fonts/noto/truetype/NotoSerif-ExtraLight.ttf",
+    "https://mirrors.tuna.tsinghua.edu.cn/CTAN/fonts/noto/truetype/NotoSerif-ExtraLightItalic.ttf",
+    "https://mirrors.tuna.tsinghua.edu.cn/CTAN/fonts/noto/truetype/NotoSerif-Light.ttf",
+    "https://mirrors.tuna.tsinghua.edu.cn/CTAN/fonts/noto/truetype/NotoSerif-LightItalic.ttf",
+    "https://mirrors.tuna.tsinghua.edu.cn/CTAN/fonts/noto/truetype/NotoSerif-Regular.ttf",
+    "https://mirrors.tuna.tsinghua.edu.cn/CTAN/fonts/noto/truetype/NotoSerif-Italic.ttf",
+    "https://mirrors.tuna.tsinghua.edu.cn/CTAN/fonts/noto/truetype/NotoSerif-Medium.ttf",
+    "https://mirrors.tuna.tsinghua.edu.cn/CTAN/fonts/noto/truetype/NotoSerif-MediumItalic.ttf",
+    "https://mirrors.tuna.tsinghua.edu.cn/CTAN/fonts/noto/truetype/NotoSerif-SemiBold.ttf",
+    "https://mirrors.tuna.tsinghua.edu.cn/CTAN/fonts/noto/truetype/NotoSerif-SemiBoldItalic.ttf",
+    "https://mirrors.tuna.tsinghua.edu.cn/CTAN/fonts/noto/truetype/NotoSerif-Bold.ttf",
+    "https://mirrors.tuna.tsinghua.edu.cn/CTAN/fonts/noto/truetype/NotoSerif-BoldItalic.ttf",
+    "https://mirrors.tuna.tsinghua.edu.cn/CTAN/fonts/noto/truetype/NotoSerif-ExtraBold.ttf",
+    "https://mirrors.tuna.tsinghua.edu.cn/CTAN/fonts/noto/truetype/NotoSerif-ExtraBoldItalic.ttf",
+    "https://mirrors.tuna.tsinghua.edu.cn/CTAN/fonts/noto/truetype/NotoSerif-Black.ttf",
+    "https://mirrors.tuna.tsinghua.edu.cn/CTAN/fonts/noto/truetype/NotoSerif-BlackItalic.ttf",
 ]
 
 [[font-family]]
 id = "noto-sans"
 lookfor = ["Noto Sans"]
-description = "Latin sans-serif, regular and bold and italic"
+description = "Latin sans-serif, nine weights with italics"
 license = "OFL-1.1"
 license_url = "https://scripts.sil.org/OFL"
 homepage = "https://github.com/notofonts/noto-fonts"
@@ -96,22 +177,167 @@ name = "GitHub release"
 [[font-family.source.archives]]
 url = "https://github.com/notofonts/latin-greek-cyrillic/releases/download/NotoSans-v2.015/NotoSans-v2.015.zip"
 members = [
+    "NotoSans/hinted/ttf/NotoSans-Thin.ttf",
+    "NotoSans/hinted/ttf/NotoSans-ThinItalic.ttf",
+    "NotoSans/hinted/ttf/NotoSans-ExtraLight.ttf",
+    "NotoSans/hinted/ttf/NotoSans-ExtraLightItalic.ttf",
+    "NotoSans/hinted/ttf/NotoSans-Light.ttf",
+    "NotoSans/hinted/ttf/NotoSans-LightItalic.ttf",
     "NotoSans/hinted/ttf/NotoSans-Regular.ttf",
-    "NotoSans/hinted/ttf/NotoSans-Bold.ttf",
     "NotoSans/hinted/ttf/NotoSans-Italic.ttf",
+    "NotoSans/hinted/ttf/NotoSans-Medium.ttf",
+    "NotoSans/hinted/ttf/NotoSans-MediumItalic.ttf",
+    "NotoSans/hinted/ttf/NotoSans-SemiBold.ttf",
+    "NotoSans/hinted/ttf/NotoSans-SemiBoldItalic.ttf",
+    "NotoSans/hinted/ttf/NotoSans-Bold.ttf",
+    "NotoSans/hinted/ttf/NotoSans-BoldItalic.ttf",
+    "NotoSans/hinted/ttf/NotoSans-ExtraBold.ttf",
+    "NotoSans/hinted/ttf/NotoSans-ExtraBoldItalic.ttf",
+    "NotoSans/hinted/ttf/NotoSans-Black.ttf",
+    "NotoSans/hinted/ttf/NotoSans-BlackItalic.ttf",
 ]
 
 [[font-family.source]]
 name = "jsDelivr"
 files = [
+    "https://cdn.jsdelivr.net/gh/notofonts/noto-fonts@main/hinted/ttf/NotoSans/NotoSans-Thin.ttf",
+    "https://cdn.jsdelivr.net/gh/notofonts/noto-fonts@main/hinted/ttf/NotoSans/NotoSans-ThinItalic.ttf",
+    "https://cdn.jsdelivr.net/gh/notofonts/noto-fonts@main/hinted/ttf/NotoSans/NotoSans-ExtraLight.ttf",
+    "https://cdn.jsdelivr.net/gh/notofonts/noto-fonts@main/hinted/ttf/NotoSans/NotoSans-ExtraLightItalic.ttf",
+    "https://cdn.jsdelivr.net/gh/notofonts/noto-fonts@main/hinted/ttf/NotoSans/NotoSans-Light.ttf",
+    "https://cdn.jsdelivr.net/gh/notofonts/noto-fonts@main/hinted/ttf/NotoSans/NotoSans-LightItalic.ttf",
     "https://cdn.jsdelivr.net/gh/notofonts/noto-fonts@main/hinted/ttf/NotoSans/NotoSans-Regular.ttf",
-    "https://cdn.jsdelivr.net/gh/notofonts/noto-fonts@main/hinted/ttf/NotoSans/NotoSans-Bold.ttf",
     "https://cdn.jsdelivr.net/gh/notofonts/noto-fonts@main/hinted/ttf/NotoSans/NotoSans-Italic.ttf",
+    "https://cdn.jsdelivr.net/gh/notofonts/noto-fonts@main/hinted/ttf/NotoSans/NotoSans-Medium.ttf",
+    "https://cdn.jsdelivr.net/gh/notofonts/noto-fonts@main/hinted/ttf/NotoSans/NotoSans-MediumItalic.ttf",
+    "https://cdn.jsdelivr.net/gh/notofonts/noto-fonts@main/hinted/ttf/NotoSans/NotoSans-SemiBold.ttf",
+    "https://cdn.jsdelivr.net/gh/notofonts/noto-fonts@main/hinted/ttf/NotoSans/NotoSans-SemiBoldItalic.ttf",
+    "https://cdn.jsdelivr.net/gh/notofonts/noto-fonts@main/hinted/ttf/NotoSans/NotoSans-Bold.ttf",
+    "https://cdn.jsdelivr.net/gh/notofonts/noto-fonts@main/hinted/ttf/NotoSans/NotoSans-BoldItalic.ttf",
+    "https://cdn.jsdelivr.net/gh/notofonts/noto-fonts@main/hinted/ttf/NotoSans/NotoSans-ExtraBold.ttf",
+    "https://cdn.jsdelivr.net/gh/notofonts/noto-fonts@main/hinted/ttf/NotoSans/NotoSans-ExtraBoldItalic.ttf",
+    "https://cdn.jsdelivr.net/gh/notofonts/noto-fonts@main/hinted/ttf/NotoSans/NotoSans-Black.ttf",
+    "https://cdn.jsdelivr.net/gh/notofonts/noto-fonts@main/hinted/ttf/NotoSans/NotoSans-BlackItalic.ttf",
+]
+
+[[font-family.source]]
+name = "CTAN"
+files = [
+    "https://mirror.ctan.org/fonts/noto/truetype/NotoSans-Thin.ttf",
+    "https://mirror.ctan.org/fonts/noto/truetype/NotoSans-ThinItalic.ttf",
+    "https://mirror.ctan.org/fonts/noto/truetype/NotoSans-ExtraLight.ttf",
+    "https://mirror.ctan.org/fonts/noto/truetype/NotoSans-ExtraLightItalic.ttf",
+    "https://mirror.ctan.org/fonts/noto/truetype/NotoSans-Light.ttf",
+    "https://mirror.ctan.org/fonts/noto/truetype/NotoSans-LightItalic.ttf",
+    "https://mirror.ctan.org/fonts/noto/truetype/NotoSans-Regular.ttf",
+    "https://mirror.ctan.org/fonts/noto/truetype/NotoSans-Italic.ttf",
+    "https://mirror.ctan.org/fonts/noto/truetype/NotoSans-Medium.ttf",
+    "https://mirror.ctan.org/fonts/noto/truetype/NotoSans-MediumItalic.ttf",
+    "https://mirror.ctan.org/fonts/noto/truetype/NotoSans-SemiBold.ttf",
+    "https://mirror.ctan.org/fonts/noto/truetype/NotoSans-SemiBoldItalic.ttf",
+    "https://mirror.ctan.org/fonts/noto/truetype/NotoSans-Bold.ttf",
+    "https://mirror.ctan.org/fonts/noto/truetype/NotoSans-BoldItalic.ttf",
+    "https://mirror.ctan.org/fonts/noto/truetype/NotoSans-ExtraBold.ttf",
+    "https://mirror.ctan.org/fonts/noto/truetype/NotoSans-ExtraBoldItalic.ttf",
+    "https://mirror.ctan.org/fonts/noto/truetype/NotoSans-Black.ttf",
+    "https://mirror.ctan.org/fonts/noto/truetype/NotoSans-BlackItalic.ttf",
+]
+
+[[font-family.source]]
+name = "TUNA CTAN"
+files = [
+    "https://mirrors.tuna.tsinghua.edu.cn/CTAN/fonts/noto/truetype/NotoSans-Thin.ttf",
+    "https://mirrors.tuna.tsinghua.edu.cn/CTAN/fonts/noto/truetype/NotoSans-ThinItalic.ttf",
+    "https://mirrors.tuna.tsinghua.edu.cn/CTAN/fonts/noto/truetype/NotoSans-ExtraLight.ttf",
+    "https://mirrors.tuna.tsinghua.edu.cn/CTAN/fonts/noto/truetype/NotoSans-ExtraLightItalic.ttf",
+    "https://mirrors.tuna.tsinghua.edu.cn/CTAN/fonts/noto/truetype/NotoSans-Light.ttf",
+    "https://mirrors.tuna.tsinghua.edu.cn/CTAN/fonts/noto/truetype/NotoSans-LightItalic.ttf",
+    "https://mirrors.tuna.tsinghua.edu.cn/CTAN/fonts/noto/truetype/NotoSans-Regular.ttf",
+    "https://mirrors.tuna.tsinghua.edu.cn/CTAN/fonts/noto/truetype/NotoSans-Italic.ttf",
+    "https://mirrors.tuna.tsinghua.edu.cn/CTAN/fonts/noto/truetype/NotoSans-Medium.ttf",
+    "https://mirrors.tuna.tsinghua.edu.cn/CTAN/fonts/noto/truetype/NotoSans-MediumItalic.ttf",
+    "https://mirrors.tuna.tsinghua.edu.cn/CTAN/fonts/noto/truetype/NotoSans-SemiBold.ttf",
+    "https://mirrors.tuna.tsinghua.edu.cn/CTAN/fonts/noto/truetype/NotoSans-SemiBoldItalic.ttf",
+    "https://mirrors.tuna.tsinghua.edu.cn/CTAN/fonts/noto/truetype/NotoSans-Bold.ttf",
+    "https://mirrors.tuna.tsinghua.edu.cn/CTAN/fonts/noto/truetype/NotoSans-BoldItalic.ttf",
+    "https://mirrors.tuna.tsinghua.edu.cn/CTAN/fonts/noto/truetype/NotoSans-ExtraBold.ttf",
+    "https://mirrors.tuna.tsinghua.edu.cn/CTAN/fonts/noto/truetype/NotoSans-ExtraBoldItalic.ttf",
+    "https://mirrors.tuna.tsinghua.edu.cn/CTAN/fonts/noto/truetype/NotoSans-Black.ttf",
+    "https://mirrors.tuna.tsinghua.edu.cn/CTAN/fonts/noto/truetype/NotoSans-BlackItalic.ttf",
+]
+
+# The `monospace` definition already names Noto Sans Mono after Fira Code;
+# the family ships upright faces only, one per weight.
+[[font-family]]
+id = "noto-sans-mono"
+lookfor = ["Noto Sans Mono"]
+description = "Latin monospaced, nine weights"
+license = "OFL-1.1"
+license_url = "https://scripts.sil.org/OFL"
+homepage = "https://github.com/notofonts/noto-fonts"
+
+[[font-family.source]]
+name = "GitHub release"
+[[font-family.source.archives]]
+url = "https://github.com/notofonts/latin-greek-cyrillic/releases/download/NotoSansMono-v2.014/NotoSansMono-v2.014.zip"
+members = [
+    "NotoSansMono/hinted/ttf/NotoSansMono-Thin.ttf",
+    "NotoSansMono/hinted/ttf/NotoSansMono-ExtraLight.ttf",
+    "NotoSansMono/hinted/ttf/NotoSansMono-Light.ttf",
+    "NotoSansMono/hinted/ttf/NotoSansMono-Regular.ttf",
+    "NotoSansMono/hinted/ttf/NotoSansMono-Medium.ttf",
+    "NotoSansMono/hinted/ttf/NotoSansMono-SemiBold.ttf",
+    "NotoSansMono/hinted/ttf/NotoSansMono-Bold.ttf",
+    "NotoSansMono/hinted/ttf/NotoSansMono-ExtraBold.ttf",
+    "NotoSansMono/hinted/ttf/NotoSansMono-Black.ttf",
+]
+
+[[font-family.source]]
+name = "jsDelivr"
+files = [
+    "https://cdn.jsdelivr.net/gh/notofonts/noto-fonts@main/hinted/ttf/NotoSansMono/NotoSansMono-Thin.ttf",
+    "https://cdn.jsdelivr.net/gh/notofonts/noto-fonts@main/hinted/ttf/NotoSansMono/NotoSansMono-ExtraLight.ttf",
+    "https://cdn.jsdelivr.net/gh/notofonts/noto-fonts@main/hinted/ttf/NotoSansMono/NotoSansMono-Light.ttf",
+    "https://cdn.jsdelivr.net/gh/notofonts/noto-fonts@main/hinted/ttf/NotoSansMono/NotoSansMono-Regular.ttf",
+    "https://cdn.jsdelivr.net/gh/notofonts/noto-fonts@main/hinted/ttf/NotoSansMono/NotoSansMono-Medium.ttf",
+    "https://cdn.jsdelivr.net/gh/notofonts/noto-fonts@main/hinted/ttf/NotoSansMono/NotoSansMono-SemiBold.ttf",
+    "https://cdn.jsdelivr.net/gh/notofonts/noto-fonts@main/hinted/ttf/NotoSansMono/NotoSansMono-Bold.ttf",
+    "https://cdn.jsdelivr.net/gh/notofonts/noto-fonts@main/hinted/ttf/NotoSansMono/NotoSansMono-ExtraBold.ttf",
+    "https://cdn.jsdelivr.net/gh/notofonts/noto-fonts@main/hinted/ttf/NotoSansMono/NotoSansMono-Black.ttf",
+]
+
+[[font-family.source]]
+name = "CTAN"
+files = [
+    "https://mirror.ctan.org/fonts/noto/truetype/NotoSansMono-Thin.ttf",
+    "https://mirror.ctan.org/fonts/noto/truetype/NotoSansMono-ExtraLight.ttf",
+    "https://mirror.ctan.org/fonts/noto/truetype/NotoSansMono-Light.ttf",
+    "https://mirror.ctan.org/fonts/noto/truetype/NotoSansMono-Regular.ttf",
+    "https://mirror.ctan.org/fonts/noto/truetype/NotoSansMono-Medium.ttf",
+    "https://mirror.ctan.org/fonts/noto/truetype/NotoSansMono-SemiBold.ttf",
+    "https://mirror.ctan.org/fonts/noto/truetype/NotoSansMono-Bold.ttf",
+    "https://mirror.ctan.org/fonts/noto/truetype/NotoSansMono-ExtraBold.ttf",
+    "https://mirror.ctan.org/fonts/noto/truetype/NotoSansMono-Black.ttf",
+]
+
+[[font-family.source]]
+name = "TUNA CTAN"
+files = [
+    "https://mirrors.tuna.tsinghua.edu.cn/CTAN/fonts/noto/truetype/NotoSansMono-Thin.ttf",
+    "https://mirrors.tuna.tsinghua.edu.cn/CTAN/fonts/noto/truetype/NotoSansMono-ExtraLight.ttf",
+    "https://mirrors.tuna.tsinghua.edu.cn/CTAN/fonts/noto/truetype/NotoSansMono-Light.ttf",
+    "https://mirrors.tuna.tsinghua.edu.cn/CTAN/fonts/noto/truetype/NotoSansMono-Regular.ttf",
+    "https://mirrors.tuna.tsinghua.edu.cn/CTAN/fonts/noto/truetype/NotoSansMono-Medium.ttf",
+    "https://mirrors.tuna.tsinghua.edu.cn/CTAN/fonts/noto/truetype/NotoSansMono-SemiBold.ttf",
+    "https://mirrors.tuna.tsinghua.edu.cn/CTAN/fonts/noto/truetype/NotoSansMono-Bold.ttf",
+    "https://mirrors.tuna.tsinghua.edu.cn/CTAN/fonts/noto/truetype/NotoSansMono-ExtraBold.ttf",
+    "https://mirrors.tuna.tsinghua.edu.cn/CTAN/fonts/noto/truetype/NotoSansMono-Black.ttf",
 ]
 
 # The subset faces are named "Noto Serif SC"; the full collections are named
-# "Noto Serif CJK SC". Both are listed so either installed family is
-# recognized. Each of these files is about 8 to 12 MiB.
+# "Noto Serif CJK SC". Both are listed in the CJK definitions so either
+# installed family is recognized. The subset source carries seven weights and
+# the CTAN mirror serves the full collection, about 16 to 25 MiB per face.
 [[font-family]]
 id = "noto-serif-cjk-sc"
 lookfor = ["Noto Serif SC", "Noto Serif CJK SC", "Source Han Serif SC"]
@@ -125,15 +351,49 @@ name = "GitHub release"
 [[font-family.source.archives]]
 url = "https://github.com/notofonts/noto-cjk/releases/download/Serif2.003/14_NotoSerifSC.zip"
 members = [
+    "SubsetOTF/SC/NotoSerifSC-ExtraLight.otf",
+    "SubsetOTF/SC/NotoSerifSC-Light.otf",
     "SubsetOTF/SC/NotoSerifSC-Regular.otf",
+    "SubsetOTF/SC/NotoSerifSC-Medium.otf",
+    "SubsetOTF/SC/NotoSerifSC-SemiBold.otf",
     "SubsetOTF/SC/NotoSerifSC-Bold.otf",
+    "SubsetOTF/SC/NotoSerifSC-Black.otf",
 ]
 
 [[font-family.source]]
 name = "jsDelivr"
 files = [
+    "https://cdn.jsdelivr.net/gh/notofonts/noto-cjk@main/Serif/SubsetOTF/SC/NotoSerifSC-ExtraLight.otf",
+    "https://cdn.jsdelivr.net/gh/notofonts/noto-cjk@main/Serif/SubsetOTF/SC/NotoSerifSC-Light.otf",
     "https://cdn.jsdelivr.net/gh/notofonts/noto-cjk@main/Serif/SubsetOTF/SC/NotoSerifSC-Regular.otf",
+    "https://cdn.jsdelivr.net/gh/notofonts/noto-cjk@main/Serif/SubsetOTF/SC/NotoSerifSC-Medium.otf",
+    "https://cdn.jsdelivr.net/gh/notofonts/noto-cjk@main/Serif/SubsetOTF/SC/NotoSerifSC-SemiBold.otf",
     "https://cdn.jsdelivr.net/gh/notofonts/noto-cjk@main/Serif/SubsetOTF/SC/NotoSerifSC-Bold.otf",
+    "https://cdn.jsdelivr.net/gh/notofonts/noto-cjk@main/Serif/SubsetOTF/SC/NotoSerifSC-Black.otf",
+]
+
+[[font-family.source]]
+name = "CTAN"
+files = [
+    "https://mirror.ctan.org/fonts/notocjksc/NotoSerifCJKsc-ExtraLight.otf",
+    "https://mirror.ctan.org/fonts/notocjksc/NotoSerifCJKsc-Light.otf",
+    "https://mirror.ctan.org/fonts/notocjksc/NotoSerifCJKsc-Regular.otf",
+    "https://mirror.ctan.org/fonts/notocjksc/NotoSerifCJKsc-Medium.otf",
+    "https://mirror.ctan.org/fonts/notocjksc/NotoSerifCJKsc-SemiBold.otf",
+    "https://mirror.ctan.org/fonts/notocjksc/NotoSerifCJKsc-Bold.otf",
+    "https://mirror.ctan.org/fonts/notocjksc/NotoSerifCJKsc-Black.otf",
+]
+
+[[font-family.source]]
+name = "TUNA CTAN"
+files = [
+    "https://mirrors.tuna.tsinghua.edu.cn/CTAN/fonts/notocjksc/NotoSerifCJKsc-ExtraLight.otf",
+    "https://mirrors.tuna.tsinghua.edu.cn/CTAN/fonts/notocjksc/NotoSerifCJKsc-Light.otf",
+    "https://mirrors.tuna.tsinghua.edu.cn/CTAN/fonts/notocjksc/NotoSerifCJKsc-Regular.otf",
+    "https://mirrors.tuna.tsinghua.edu.cn/CTAN/fonts/notocjksc/NotoSerifCJKsc-Medium.otf",
+    "https://mirrors.tuna.tsinghua.edu.cn/CTAN/fonts/notocjksc/NotoSerifCJKsc-SemiBold.otf",
+    "https://mirrors.tuna.tsinghua.edu.cn/CTAN/fonts/notocjksc/NotoSerifCJKsc-Bold.otf",
+    "https://mirrors.tuna.tsinghua.edu.cn/CTAN/fonts/notocjksc/NotoSerifCJKsc-Black.otf",
 ]
 
 [[font-family]]
@@ -147,18 +407,119 @@ homepage = "https://github.com/notofonts/noto-cjk"
 [[font-family.source]]
 name = "GitHub release"
 [[font-family.source.archives]]
-url = "https://github.com/notofonts/noto-cjk/releases/download/Sans2.004/08_NotoSansCJKsc.zip"
+url = "https://github.com/notofonts/noto-cjk/releases/download/Sans2.004/18_NotoSansSC.zip"
 members = [
-    "NotoSansCJKsc-Regular.otf",
-    "NotoSansCJKsc-Bold.otf",
+    "NotoSansSC-Thin.otf",
+    "NotoSansSC-Light.otf",
+    "NotoSansSC-DemiLight.otf",
+    "NotoSansSC-Regular.otf",
+    "NotoSansSC-Medium.otf",
+    "NotoSansSC-Bold.otf",
+    "NotoSansSC-Black.otf",
 ]
 
 [[font-family.source]]
 name = "jsDelivr"
 files = [
+    "https://cdn.jsdelivr.net/gh/notofonts/noto-cjk@main/Sans/SubsetOTF/SC/NotoSansSC-Thin.otf",
+    "https://cdn.jsdelivr.net/gh/notofonts/noto-cjk@main/Sans/SubsetOTF/SC/NotoSansSC-Light.otf",
+    "https://cdn.jsdelivr.net/gh/notofonts/noto-cjk@main/Sans/SubsetOTF/SC/NotoSansSC-DemiLight.otf",
     "https://cdn.jsdelivr.net/gh/notofonts/noto-cjk@main/Sans/SubsetOTF/SC/NotoSansSC-Regular.otf",
+    "https://cdn.jsdelivr.net/gh/notofonts/noto-cjk@main/Sans/SubsetOTF/SC/NotoSansSC-Medium.otf",
     "https://cdn.jsdelivr.net/gh/notofonts/noto-cjk@main/Sans/SubsetOTF/SC/NotoSansSC-Bold.otf",
+    "https://cdn.jsdelivr.net/gh/notofonts/noto-cjk@main/Sans/SubsetOTF/SC/NotoSansSC-Black.otf",
 ]
+
+[[font-family.source]]
+name = "CTAN"
+files = [
+    "https://mirror.ctan.org/fonts/notocjksc/NotoSansCJKsc-Thin.otf",
+    "https://mirror.ctan.org/fonts/notocjksc/NotoSansCJKsc-Light.otf",
+    "https://mirror.ctan.org/fonts/notocjksc/NotoSansCJKsc-DemiLight.otf",
+    "https://mirror.ctan.org/fonts/notocjksc/NotoSansCJKsc-Regular.otf",
+    "https://mirror.ctan.org/fonts/notocjksc/NotoSansCJKsc-Medium.otf",
+    "https://mirror.ctan.org/fonts/notocjksc/NotoSansCJKsc-Bold.otf",
+    "https://mirror.ctan.org/fonts/notocjksc/NotoSansCJKsc-Black.otf",
+]
+
+[[font-family.source]]
+name = "TUNA CTAN"
+files = [
+    "https://mirrors.tuna.tsinghua.edu.cn/CTAN/fonts/notocjksc/NotoSansCJKsc-Thin.otf",
+    "https://mirrors.tuna.tsinghua.edu.cn/CTAN/fonts/notocjksc/NotoSansCJKsc-Light.otf",
+    "https://mirrors.tuna.tsinghua.edu.cn/CTAN/fonts/notocjksc/NotoSansCJKsc-DemiLight.otf",
+    "https://mirrors.tuna.tsinghua.edu.cn/CTAN/fonts/notocjksc/NotoSansCJKsc-Regular.otf",
+    "https://mirrors.tuna.tsinghua.edu.cn/CTAN/fonts/notocjksc/NotoSansCJKsc-Medium.otf",
+    "https://mirrors.tuna.tsinghua.edu.cn/CTAN/fonts/notocjksc/NotoSansCJKsc-Bold.otf",
+    "https://mirrors.tuna.tsinghua.edu.cn/CTAN/fonts/notocjksc/NotoSansCJKsc-Black.otf",
+]
+
+# The `emoji` definition above reaches this face by name. Its images are `CBDT`
+# strikes rather than outlines — about 10 MiB — which a download accepts.
+[[font-family]]
+id = "noto-emoji"
+lookfor = ["Noto Color Emoji"]
+description = "Color emoji"
+license = "OFL-1.1"
+license_url = "https://scripts.sil.org/OFL"
+homepage = "https://github.com/googlefonts/noto-emoji"
+
+[[font-family.source]]
+name = "GitHub"
+files = [
+    "https://raw.githubusercontent.com/googlefonts/noto-emoji/main/2D/fonts/NotoColorEmoji.ttf",
+]
+
+[[font-family.source]]
+name = "jsDelivr"
+files = [
+    "https://cdn.jsdelivr.net/gh/googlefonts/noto-emoji@main/2D/fonts/NotoColorEmoji.ttf",
+]
+
+[[font-family.source]]
+name = "CTAN"
+files = [
+    "https://mirror.ctan.org/fonts/noto-emoji/NotoColorEmoji.ttf",
+]
+
+[[font-family.source]]
+name = "TUNA CTAN"
+files = [
+    "https://mirrors.tuna.tsinghua.edu.cn/CTAN/fonts/noto-emoji/NotoColorEmoji.ttf",
+]
+
+# Fira Code is the first `monospace` candidate. The upstream release carries
+# the variable face, which covers every weight in one file; Arch's
+# `ttf-fira-code` package is the same fonts as a zstd tarball of statics.
+[[font-family]]
+id = "fira-code"
+lookfor = ["Fira Code"]
+description = "Monospaced font with programming ligatures"
+license = "OFL-1.1"
+license_url = "https://scripts.sil.org/OFL"
+homepage = "https://github.com/tonsky/FiraCode"
+
+[[font-family.source]]
+name = "GitHub release"
+[[font-family.source.archives]]
+url = "https://github.com/tonsky/FiraCode/releases/download/6.2/Fira_Code_v6.2.zip"
+sha256 = "0949915ba8eb24d89fd93d10a7ff623f42830d7c5ffc3ecbf960e4ecad3e3e79"
+members = ["variable_ttf/FiraCode-VF.ttf"]
+
+# `download/` always serves the current package, so this source never goes
+# stale and cannot pin a digest; the TUNA name fixes one package version.
+[[font-family.source]]
+name = "Arch Linux"
+[[font-family.source.archives]]
+url = "https://archlinux.org/packages/extra/any/ttf-fira-code/download/"
+members = ["usr/share/fonts/TTF/FiraCode-*.ttf"]
+
+[[font-family.source]]
+name = "TUNA Arch"
+[[font-family.source.archives]]
+url = "https://mirrors.tuna.tsinghua.edu.cn/archlinux/extra/os/x86_64/ttf-fira-code-6.2-4-any.pkg.tar.zst"
+sha256 = "47204905f7a4b063dd580168795c84abfe3238962ad6b4810e2e3b86126d53c7"
+members = ["usr/share/fonts/TTF/FiraCode-*.ttf"]
 
 [svg.generic_font_family]
 serif = ["serif"]

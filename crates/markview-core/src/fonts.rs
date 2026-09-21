@@ -150,13 +150,24 @@ fn register(
 	added
 }
 
-/// Tables a renderable outline font must have.
+/// Tables a renderable face must have.
 const REQUIRED_TABLES: [[u8; 4]; 6] =
 	[*b"head", *b"maxp", *b"hhea", *b"hmtx", *b"cmap", *b"name"];
 /// The outline data itself: a TrueType face has `glyf`, a PostScript one
 /// `CFF `, and a variable PostScript one `CFF2`. The shaper renders all three,
 /// so any one of them is enough.
 const OUTLINE_TABLES: [[u8; 4]; 3] = [*b"glyf", *b"CFF ", *b"CFF2"];
+
+/// Whether the directory names pixels the shaper can draw.
+///
+/// A color emoji face may carry no outline at all: `Noto Color Emoji` stores
+/// its images as `CBDT` strikes located by `CBLC`, and some platforms use an
+/// `sbix` table. The rasterizer draws both, so they count beside the outlines.
+fn has_drawable_glyphs(tables: &[[u8; 4]]) -> bool {
+	OUTLINE_TABLES.iter().any(|tag| tables.contains(tag))
+		|| (tables.contains(b"CBDT") && tables.contains(b"CBLC"))
+		|| tables.contains(b"sbix")
+}
 
 /// Whether `bytes` is a font file the shaper can load.
 ///
@@ -165,14 +176,14 @@ const OUTLINE_TABLES: [[u8; 4]; 3] = [*b"glyf", *b"CFF ", *b"CFF2"];
 /// not enough on its own: a body cut short can keep the early `head` and
 /// `cmap` records while losing the outlines, metrics and names that sit later
 /// in the file. The whole table directory is read instead, every record must
-/// lie inside `bytes`, the tables an outline font needs must be present, and
+/// lie inside `bytes`, the tables a drawable face needs must be present, and
 /// the character map must resolve at least one code point.
 pub fn is_font(bytes: &[u8]) -> bool {
 	let Some(tables) = table_tags(bytes) else {
 		return false;
 	};
 	if !REQUIRED_TABLES.iter().all(|tag| tables.contains(tag))
-		|| !OUTLINE_TABLES.iter().any(|tag| tables.contains(tag))
+		|| !has_drawable_glyphs(&tables)
 	{
 		return false;
 	}
@@ -1051,14 +1062,18 @@ mod tests {
 
 	#[test]
 	fn only_a_parsable_font_is_a_font() {
-		let font = std::fs::read(
-			Path::new(env!("CARGO_MANIFEST_DIR"))
-				.join("tests/fonts/NotoSerif-Regular-subset.otf"),
-		)
-		.unwrap();
+		let dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fonts");
+		let font =
+			std::fs::read(dir.join("NotoSerif-Regular-subset.otf")).unwrap();
 		assert!(is_font(&font));
 		assert!(!is_font(b"<!doctype html><html>404"));
 		assert!(!is_font(&font[..64]));
+		// A color emoji face keeps its pixels in `CBDT` strikes and has no
+		// outline table, and the shaper draws it all the same.
+		let emoji =
+			std::fs::read(dir.join("NotoColorEmoji-subset.ttf")).unwrap();
+		assert!(is_font(&emoji));
+		assert!(!is_font(&emoji[..64]));
 	}
 
 	/// A body cut after `cmap` keeps the tables the old two-table check named

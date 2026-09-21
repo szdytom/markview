@@ -1500,6 +1500,45 @@ mod tests {
 		assert!(members.next_file().is_none());
 	}
 
+	/// Arch ships a font as a zstd tarball, so that container must unpack like
+	/// the others.
+	#[test]
+	fn a_zstd_package_unpacks_the_same_way() {
+		let font = font_bytes();
+		let dir = tempfile::tempdir().unwrap();
+		let path = dir.path().join("ttf-fira-code-6.2-4-any.pkg.tar.zst");
+		{
+			let file = fs::File::create(&path).unwrap();
+			let encoder = zstd::stream::write::Encoder::new(file, 0).unwrap();
+			let mut builder = tar::Builder::new(encoder);
+			let mut header = tar::Header::new_gnu();
+			header.set_size(font.len() as u64);
+			header.set_mode(0o644);
+			header.set_cksum();
+			builder
+				.append_data(
+					&mut header,
+					"usr/share/fonts/TTF/FiraCode-Regular.ttf",
+					&font[..],
+				)
+				.unwrap();
+			builder.into_inner().unwrap().finish().unwrap();
+		}
+		let container = sniff_file(&path).unwrap();
+		assert_eq!(container, Container::Zstd);
+		let mut members = unpack(
+			container,
+			&path,
+			&["usr/share/fonts/TTF/FiraCode-*.ttf".into()],
+			dir.path(),
+		)
+		.unwrap();
+		let (temp, name) = members.next_file().unwrap();
+		assert!(temp.exists());
+		assert_eq!(name, "usr/share/fonts/TTF/FiraCode-Regular.ttf");
+		assert!(members.next_file().is_none());
+	}
+
 	/// A transport that serves canned bodies and mirrors, with no network.
 	#[derive(Default)]
 	struct Fake {
@@ -1546,6 +1585,35 @@ mod tests {
 
 	fn fan(id: &str, urls: &[&str]) -> FontFamily {
 		family(id, urls)
+	}
+
+	/// A color emoji face carries no outline table, only `CBDT` strikes, and
+	/// the reader draws it, so a download must store it like any other face.
+	#[test]
+	fn a_bitmap_color_emoji_is_a_downloadable_font() {
+		let dir = tempfile::tempdir().unwrap();
+		let emoji = fs::read(Path::new(env!("CARGO_MANIFEST_DIR")).join(
+			"crates/markview-core/tests/fonts/NotoColorEmoji-subset.ttf",
+		))
+		.unwrap();
+		let mut fake = Fake::default();
+		fake.bodies
+			.insert("https://good.example/emoji.ttf".into(), emoji);
+		let summary = run(
+			&[fan("noto-emoji", &["https://good.example/emoji.ttf"])],
+			dir.path(),
+			&fake,
+			1,
+			Arc::new(|_: &str| false),
+			&mut |_| {},
+		);
+		assert_eq!(summary.stored, 1, "{:?}", summary.failed);
+		let names: Vec<String> = fs::read_dir(dir.path())
+			.unwrap()
+			.flatten()
+			.map(|entry| entry.file_name().to_string_lossy().into_owned())
+			.collect();
+		assert!(names.iter().all(|name| name.ends_with(".ttf")), "{names:?}");
 	}
 
 	#[test]

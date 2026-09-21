@@ -432,7 +432,7 @@ fn a_font_family_is_validated_where_it_is_declared() {
 }
 
 #[test]
-fn builtin_offers_the_curated_noto_downloads() {
+fn builtin_offers_the_curated_downloads() {
 	let sheet = Stylesheet::builtin();
 	let ids: Vec<&str> =
 		sheet.font_families.iter().map(|f| f.id.as_str()).collect();
@@ -441,8 +441,11 @@ fn builtin_offers_the_curated_noto_downloads() {
 		[
 			"noto-serif",
 			"noto-sans",
+			"noto-sans-mono",
 			"noto-serif-cjk-sc",
-			"noto-sans-cjk-sc"
+			"noto-sans-cjk-sc",
+			"noto-emoji",
+			"fira-code"
 		]
 	);
 	for family in &sheet.font_families {
@@ -457,10 +460,154 @@ fn builtin_offers_the_curated_noto_downloads() {
 			}
 		}
 	}
+	// The Noto families offer both CTAN faces of the same archive: the
+	// canonical `mirror.ctan.org` redirector and the Tsinghua mirror, for
+	// networks that cannot reach the global hosts.
+	for family in sheet
+		.font_families
+		.iter()
+		.filter(|f| f.id.starts_with("noto-"))
+	{
+		for host in [
+			"https://mirror.ctan.org/",
+			"https://mirrors.tuna.tsinghua.edu.cn/CTAN/fonts/",
+		] {
+			let mirrored = family
+				.source
+				.iter()
+				.flat_map(|source| &source.files)
+				.any(|file| file.url().starts_with(host));
+			assert!(mirrored, "{} has no source on {host}", family.id);
+		}
+	}
+	// Fira Code has no CTAN package: it comes from the upstream release and
+	// from Arch's `ttf-fira-code` package, the same faces in a zstd tarball.
+	let fira = sheet.font_family("fira-code").unwrap();
+	for host in [
+		"https://github.com/tonsky/FiraCode/releases/download/",
+		"https://archlinux.org/packages/",
+		"https://mirrors.tuna.tsinghua.edu.cn/archlinux/",
+	] {
+		assert!(
+			fira.source
+				.iter()
+				.flat_map(|source| &source.archives)
+				.any(|archive| archive.url.starts_with(host)),
+			"fira-code has no archive on {host}"
+		);
+	}
 	// A download entry is not a font definition: the curated ids stay out of
 	// the shaping namespace.
 	for family in &sheet.font_families {
 		assert!(!sheet.fontdefs.contains_key(&family.id), "{}", family.id);
+	}
+}
+
+#[test]
+fn builtin_downloads_every_static_weight_from_every_mirror() {
+	let sheet = Stylesheet::builtin();
+	// A source's face names are the basenames of its files and members.
+	fn basename(path: &str) -> &str {
+		path.rsplit('/').next().unwrap_or(path)
+	}
+	let faces = |source: &FontSource| {
+		let mut names: Vec<String> = source
+			.files
+			.iter()
+			.map(|file| basename(file.url()).to_owned())
+			.collect();
+		for archive in &source.archives {
+			names.extend(
+				archive
+					.members
+					.iter()
+					.map(|member| basename(member).to_owned()),
+			);
+		}
+		names.sort();
+		names
+	};
+	// The Latin families publish the nine Noto weights, each beside the italic
+	// face where the family has one; Sans Mono is upright only. Every mirror
+	// carries the same set.
+	for (id, prefix, italic) in [
+		("noto-serif", "NotoSerif", true),
+		("noto-sans", "NotoSans", true),
+		("noto-sans-mono", "NotoSansMono", false),
+	] {
+		let mut expected = Vec::new();
+		for weight in [
+			"Thin",
+			"ExtraLight",
+			"Light",
+			"Regular",
+			"Medium",
+			"SemiBold",
+			"Bold",
+			"ExtraBold",
+			"Black",
+		] {
+			expected.push(format!("{prefix}-{weight}.ttf"));
+			if italic {
+				// `Regular`'s italic drops the weight word.
+				expected.push(if weight == "Regular" {
+					format!("{prefix}-Italic.ttf")
+				} else {
+					format!("{prefix}-{weight}Italic.ttf")
+				});
+			}
+		}
+		expected.sort();
+		let family = sheet.font_family(id).unwrap();
+		assert_eq!(family.source.len(), 4, "{id}");
+		for source in &family.source {
+			assert_eq!(faces(source), expected, "{id}");
+		}
+	}
+	// Each CJK family publishes all seven weights its subset release carries,
+	// even though the subset mirrors and the full collections name the faces
+	// differently.
+	for (id, weights) in [
+		(
+			"noto-serif-cjk-sc",
+			[
+				"ExtraLight",
+				"Light",
+				"Regular",
+				"Medium",
+				"SemiBold",
+				"Bold",
+				"Black",
+			],
+		),
+		(
+			"noto-sans-cjk-sc",
+			[
+				"Thin",
+				"Light",
+				"DemiLight",
+				"Regular",
+				"Medium",
+				"Bold",
+				"Black",
+			],
+		),
+	] {
+		let mut expected = weights.to_vec();
+		expected.sort();
+		let family = sheet.font_family(id).unwrap();
+		for source in &family.source {
+			let names = faces(source);
+			let mut got: Vec<&str> = names
+				.iter()
+				.map(|name| {
+					let stem = name.strip_suffix(".otf").unwrap();
+					stem.split_once('-').unwrap().1
+				})
+				.collect();
+			got.sort();
+			assert_eq!(got, expected, "{id}");
+		}
 	}
 }
 

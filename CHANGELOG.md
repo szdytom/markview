@@ -29,7 +29,10 @@ at the same level, without `[brackets]`.
 - Declare downloadable font families with `[[font-family]]`, independent of `fontdef`: a family lists the names it may already have (any of them being installed skips the download), optional description, SPDX license and homepage, and one or more mirror sources. A source is either a set of direct files or an archive whose container is recognized from its own bytes and whose members are picked by `**`-style patterns, with an optional `sha256` and a 2 GiB archive cap; a failed mirror is removed before the next one runs. `fontdef.urls` is gone with it.
 - Give the settings panel three tabs — Generic, Styles and Fonts — and put the whole font catalogue on the Fonts tab: every family the builtin recommendations and the catalogued stylesheets declare, with its name, description, license, size and owner, filters by source and state, one download and one cancel per family, and an **Open fonts folder** button. Styles no longer mention fonts at all.
 - Add `markview fonts list|download|path|verify`, and move the diagnostic modes to subcommands (`render`, `pdf`, `bench`, `latency`, `smoke-test`) parsed with `clap`; `markview FILE` still opens the reader, and the old `--render`-style flags now name the subcommand that replaced them.
-- Recommend Noto in the reader itself: the builtin stylesheet declares Noto Serif, Noto Sans, Noto Serif CJK SC and Noto Sans CJK SC, each mirroring the official GitHub release archive with a jsDelivr source, and downloads them through the streaming client.
+- Recommend Noto in the reader itself: the builtin stylesheet declares Noto Serif, Noto Sans, Noto Sans Mono, Noto Serif CJK SC and Noto Sans CJK SC, each mirroring the official GitHub release archive with jsDelivr, the canonical ctan.org redirector and the Tsinghua CTAN mirror, and downloading every static weight its mirrors publish—the nine Latin weights with their italics, seven per Chinese subset.
+- Offer Noto Color Emoji as a downloadable family, mirrored from GitHub, jsDelivr, ctan.org and the Tsinghua CTAN mirror.
+- Accept a color bitmap face as a font download: `CBDT`/`CBLC` or `sbix` strikes count beside the outline tables, since the rasterizer already draws them.
+- Offer Fira Code as a downloadable family, from the upstream variable release and from Arch's `ttf-fira-code` package on archlinux.org and the Tsinghua mirror.
 - Cache network images on disk beneath the configuration directory: honor `Cache-Control`/`Expires`, revalidate stale entries, hold at most 128 MiB with LRU eviction, and serve a cached body under `--offline`.
 - Render a raw `<details>` block as a collapsible element: clicking its summary toggles a Markdown body (nesting and `open` supported), `details` and `summary` join the MVSS vocabulary, and both exports show every body expanded.
 - Render a `mermaid` fenced block as a diagram: the library runs on the image workers, its SVG and pixels are cached per source, and the result appears in the window, `--render`, `--pdf` and `--smoke-test`, while a broken diagram keeps the image placeholder and `--offline` still renders local diagrams.
@@ -59,6 +62,7 @@ at the same level, without `[brackets]`.
 - Keep a Mermaid diagram's fence source out of the reading text, so selecting the figure no longer copies the source and a loading or failed diagram copies its placeholder message instead.
 - Remove soft line breaks from Chinese Markdown prose to avoid inserting spaces.
 - Name the download client with a `User-Agent`, so a mirror like Tsinghua's Arch repository answers instead of refusing an anonymous request.
+- Name `Noto Serif SC` and `Noto Sans SC` in the bundled Chinese `fontdef` lists, so the subset faces a download installs are actually shaped instead of being skipped.
 
 ## 0.1.4 - 2026-09-19
 

@@ -415,7 +415,7 @@ mod tests {
 		// The whole catalogue still leads with the recommendations.
 		let sheets = declared(None, None).unwrap();
 		assert_eq!(sheets[0].0, "builtin");
-		assert_eq!(sheets[0].1.len(), 4);
+		assert_eq!(sheets[0].1.len(), 7);
 	}
 
 	#[test]

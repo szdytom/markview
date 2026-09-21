@@ -304,29 +304,42 @@ Redefining a bundled `fontdef` id replaces its whole definition, so a style that
 ```toml
 [[font-family]]
 id = "noto-sans-cjk-sc"
-lookfor = ["Noto Sans CJK SC", "Source Han Sans SC", "Noto Sans SC"]
+lookfor = ["Noto Sans SC", "Noto Sans CJK SC", "Source Han Sans SC"]
 description = "Simplified Chinese sans-serif, subset OTF"
 license = "OFL-1.1"
 license_url = "https://scripts.sil.org/OFL"
 homepage = "https://github.com/notofonts/noto-cjk"
 ```
 
-`lookfor` lists the names the family may report for itself. When any of them is already available—installed on the machine, in a `--fonts` directory, or in the download directory—the family is skipped. A file that holds several faces, such as a TTC or OTC collection, counts for every family it declares. `description`, `license` (an SPDX identifier), `license_url` and `homepage` are optional, and are what the reader shows in its list.
+`lookfor` lists the names the family may report for itself. When any of them is already available—installed on the machine, in a `--fonts` directory, or in the download directory—the family is skipped. A file that holds several faces, such as a TTC or OTC collection, counts for every family it declares. A color emoji face counts too, whether it keeps outlines or the `CBDT` bitmap strikes `Noto Color Emoji` uses. `description`, `license` (an SPDX identifier), `license_url` and `homepage` are optional, and are what the reader shows in its list.
 
-A family is obtained from one or more *sources*, which are mirrors of one another: they are tried in order and the first that succeeds whole is the one used, so they may be laid out differently and even use different container formats.
+A family is obtained from one or more *sources*, which are mirrors of one another: the reader measures each distinct host once and tries them from the fastest to the slowest, with the declared order breaking ties, and the first that succeeds whole is the one used, so they may be laid out differently and even use different container formats.
 
 ```toml
 [[font-family.source]]
 name = "GitHub release"
 [[font-family.source.archives]]
-url = "https://github.com/notofonts/noto-cjk/releases/download/Sans2.004/08_NotoSansCJKsc.zip"
-members = ["NotoSansCJKsc-Regular.otf", "NotoSansCJKsc-Bold.otf"]
+url = "https://github.com/notofonts/noto-cjk/releases/download/Sans2.004/18_NotoSansSC.zip"
+members = [
+	"NotoSansSC-Thin.otf",
+	"NotoSansSC-Light.otf",
+	"NotoSansSC-DemiLight.otf",
+	"NotoSansSC-Regular.otf",
+	"NotoSansSC-Medium.otf",
+	"NotoSansSC-Bold.otf",
+	"NotoSansSC-Black.otf",
+]
 
 [[font-family.source]]
 name = "jsDelivr"
 files = [
+	"https://cdn.jsdelivr.net/gh/notofonts/noto-cjk@main/Sans/SubsetOTF/SC/NotoSansSC-Thin.otf",
+	"https://cdn.jsdelivr.net/gh/notofonts/noto-cjk@main/Sans/SubsetOTF/SC/NotoSansSC-Light.otf",
+	"https://cdn.jsdelivr.net/gh/notofonts/noto-cjk@main/Sans/SubsetOTF/SC/NotoSansSC-DemiLight.otf",
 	"https://cdn.jsdelivr.net/gh/notofonts/noto-cjk@main/Sans/SubsetOTF/SC/NotoSansSC-Regular.otf",
+	"https://cdn.jsdelivr.net/gh/notofonts/noto-cjk@main/Sans/SubsetOTF/SC/NotoSansSC-Medium.otf",
 	"https://cdn.jsdelivr.net/gh/notofonts/noto-cjk@main/Sans/SubsetOTF/SC/NotoSansSC-Bold.otf",
+	"https://cdn.jsdelivr.net/gh/notofonts/noto-cjk@main/Sans/SubsetOTF/SC/NotoSansSC-Black.otf",
 ]
 ```
 
@@ -366,7 +379,7 @@ Reading a document, installing a stylesheet and `ss validate` never fetch anythi
 
 ### Recommended Noto families
 
-The bundled `builtin` stylesheet already declares Noto Serif, Noto Sans, Noto Serif CJK SC and Noto Sans CJK SC, so they need no stylesheet of your own: open the Fonts page, or run `markview fonts download`. Each Latin file is about 0.6 MiB and each Simplified Chinese subset OTF 8 to 12 MiB. The GitHub source is the official release archive, from which only the wanted members are extracted; jsDelivr serves the same faces as single files.
+The bundled `builtin` stylesheet already declares Noto Serif, Noto Sans, Noto Sans Mono, Noto Serif CJK SC and Noto Sans CJK SC, so they need no stylesheet of your own: open the Fonts page, or run `markview fonts download`. Every family asks for each static weight its mirrors publish—the nine Latin weights from Thin to Black, with the italics a family has, and the seven weights each Chinese subset carries—so a rule that names 300 or 600 finds a real face instead of the nearest one. Each Latin file is about 0.5 MiB and each Simplified Chinese subset OTF 8 to 12 MiB; the CTAN mirror serves the full CJK collection, about 16 to 25 MiB per face. The GitHub source is the official release archive, from which only the wanted members are extracted; jsDelivr serves the same faces as single files.
 
 A full Noto CJK collection, rather than the subset faces, is **tens of MiB per file**; choose it only when the subset does not cover the text. Noto is licensed under the SIL Open Font License 1.1; the license ships with the upstream repository and is not bundled here. The reader never bundles font binaries, and the user trusts the URLs a stylesheet names.
 

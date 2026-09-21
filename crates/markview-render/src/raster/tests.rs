@@ -51,6 +51,29 @@ fn whole_pixel_translation_reuses_raster_phase() {
 	}
 }
 
+/// A color emoji face stores `CBDT` strikes instead of outlines, so a download
+/// of one is only useful if the scaler decodes those strikes to color. The
+/// pinned subset is the same face the builtin `noto-emoji` family offers.
+#[test]
+fn a_color_bitmap_emoji_decodes_to_color() {
+	use swash::scale::{Render, ScaleContext, Source, image::Content};
+	let data: &[u8] = include_bytes!(
+		"../../../markview-core/tests/fonts/NotoColorEmoji-subset.ttf"
+	);
+	let font = swash::FontRef::from_index(data, 0).unwrap();
+	let glyph = font.charmap().map('\u{1f600}');
+	assert_ne!(glyph, 0, "the subset should map U+1F600");
+	let mut context = ScaleContext::new();
+	let mut scaler = context.builder(font).size(32.0).build();
+	let render = Render::new(&[
+		Source::ColorBitmap(swash::scale::StrikeWith::BestFit),
+		Source::Outline,
+	]);
+	let image = render.render(&mut scaler, glyph).unwrap();
+	assert_eq!(image.content, Content::Color);
+	assert!(image.placement.width > 0 && image.placement.height > 0);
+}
+
 #[test]
 #[ignore = "requires a GPU; validates color glyph pixels and atlas reset"]
 fn color_glyphs_preserve_rgb_and_share_paint_order() {
