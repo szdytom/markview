@@ -160,7 +160,9 @@ struct App {
 	/// nothing reports the desktop setting changing afterwards.
 	wheel_notch: crate::platform::WheelNotch,
 	/// The downloadable families the shown stylesheets declare, with what is
-	/// already on disk.
+	/// already on disk. Empty until a page that shows it asks for it: building
+	/// it reads and parses the whole system font collection, so it must not sit
+	/// between a launch and the first frame.
 	font_catalog: Vec<crate::fonts::Family>,
 	/// The families being downloaded right now, by id.
 	font_jobs: std::collections::HashMap<String, crate::fonts::Progress>,
@@ -231,15 +233,9 @@ impl App {
 				let _ = proxy.send_event(Event::StylesChanged);
 			})
 		});
-		let builtin = markview_core::style::Stylesheet::builtin();
-		let font_catalog = crate::fonts::catalog(
-			std::iter::once(("builtin", builtin.font_families.as_slice()))
-				.chain(preferences.style_entries.iter().map(|entry| {
-					(entry.id.as_str(), entry.font_families.as_slice())
-				})),
-			crate::fonts::directory().as_deref(),
-			&args.options.fonts,
-		);
+		// Built on demand by `refresh_font_catalog`, which the pages that show
+		// it call when they open.
+		let font_catalog = Vec::new();
 		Self {
 			interaction: InteractionState::default(),
 			readers: tabs::Tabs::default(),
@@ -427,6 +423,8 @@ impl App {
 	///
 	/// The builtin recommendations come first and every catalogued sheet
 	/// follows, so a sheet that redefines a builtin family replaces it whole.
+	/// The reader's own configuration is used, so the build shares the shaper's
+	/// collection cache.
 	pub(super) fn refresh_font_catalog(&mut self) {
 		let builtin = markview_core::style::Stylesheet::builtin();
 		let sheets =
@@ -435,11 +433,8 @@ impl App {
 					(entry.id.as_str(), entry.font_families.as_slice())
 				}));
 		let dir = crate::fonts::directory();
-		self.font_catalog = crate::fonts::catalog(
-			sheets,
-			dir.as_deref(),
-			&self.args.options.fonts,
-		);
+		self.font_catalog =
+			crate::fonts::catalog(sheets, dir.as_deref(), &self.fonts_config);
 	}
 
 	/// Starts downloading the named families, or reports why nothing can run.

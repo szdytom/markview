@@ -225,7 +225,7 @@ impl App {
 						self.preferences.values.style.as_deref(),
 					);
 				}
-				if tab != PanelTab::Generic {
+				if tab.shows_font_catalog() {
 					self.refresh_font_catalog();
 				}
 				self.interaction.focus = None;

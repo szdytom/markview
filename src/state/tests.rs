@@ -1457,3 +1457,12 @@ fn closing_the_pages_leaves_none_of_them_open() {
 	// The panel itself is the caller's decision.
 	assert!(interaction.panel_open);
 }
+
+/// Building the catalogue reads the whole system font collection, so the
+/// Generic page leaves it alone and a launch never pays for it.
+#[test]
+fn only_the_settings_pages_that_show_fonts_build_the_catalogue() {
+	assert!(!PanelTab::Generic.shows_font_catalog());
+	assert!(PanelTab::Styles.shows_font_catalog());
+	assert!(PanelTab::Fonts.shows_font_catalog());
+}

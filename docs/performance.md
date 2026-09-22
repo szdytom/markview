@@ -118,10 +118,13 @@ These figures are also well above the 2026-09-18 baseline this page used to
 carry, which recorded 75.9 ms and 42.2 MiB for `ordinary-10k`. The released
 0.1.3 binary still reproduces that baseline on this host when the two are
 interleaved in one session: 77.1 ms and 42.4 MiB for 0.1.3 against 109.2 ms and
-49.7 MiB for the current build. The change therefore lies in the code between
-0.1.3 and this tree rather than in the session; this page records the current
-numbers, and attributing them to particular changes is a separate
-investigation.
+49.7 MiB for the build this table was taken from. The gap was the downloadable
+font catalogue: `App::new` built it on the way to the first frame, and building
+it reads and parses the whole system font collection. The Fonts and Styles pages
+now build it when they open instead. Interleaving the two builds in one session
+sizes that at 71.1 ms before app start against 21.8 ms, and 59.5 MiB of
+smoke-path RSS against 51.2. The first-frame rows above were taken before the
+change, so they are upper bounds rather than the current build.
 
 Reproduce the latency column with `RUST_LOG=info target/release/markview
 smoke FIXTURE --width 1200 --height 800 --offline`, once per process; the
