@@ -510,6 +510,38 @@ mod theme_tests {
 	}
 
 	#[test]
+	fn eight_bit_keeps_pixel_text_across_document_roles_and_ui() {
+		use markview_core::style::TextAppearance;
+		for cjk in [CjkType::Sc, CjkType::Tc, CjkType::Jp, CjkType::None] {
+			let sheet =
+				load_with_cjk_type(&["8-bit".into()], None, cjk).unwrap();
+			assert!(sheet.fontdefs.contains_key("fusion-pixel"));
+			let body = sheet.text(&TextAppearance::default(), Condition::Body);
+			for role in [
+				Condition::Body,
+				Condition::H1,
+				Condition::H2,
+				Condition::H3,
+				Condition::H4,
+				Condition::H5,
+				Condition::H6,
+				Condition::Code,
+				Condition::CodeBlock,
+				Condition::Em,
+			] {
+				let text = sheet.text(&body, role);
+				assert_eq!(text.font[0].family, "fusion-pixel", "{role:?}");
+				assert_eq!(text.font[0].weight, Some(400));
+			}
+			let ui = sheet.text(&body, Condition::Ui);
+			assert_eq!(ui.font, body.font);
+		}
+		assert!(
+			load_for_pdf(Some(&["8-bit".into()]), None, CjkType::Sc).is_err()
+		);
+	}
+
+	#[test]
 	fn every_reader_theme_loads_with_shared_fonts_and_owns_its_palette() {
 		let entries = catalog(None, None);
 		for &id in Stylesheet::READER_THEMES {

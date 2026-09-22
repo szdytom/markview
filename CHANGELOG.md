@@ -23,6 +23,8 @@ at the same level, without `[brackets]`.
 
 ### Added
 
+- Add the 8-bit reader theme with green CRT colors, Fusion Pixel typography throughout the document and UI.
+
 - Add a compact About tab in Settings with a centered application icon, the standard project description, a clickable project link and one-click copying of diagnostic information: version, build date, OS, active WGPU backend, and commit.
 
 - Read `---` fenced YAML front matter: a flat mapping renders as a two-column table with a bold key column, anything nested renders as a `yaml` code block, and `front_matter` joins the MVSS vocabulary as the frame around either shape — with `table`/`cell` or `code_block`/`label` composing into one rendering, and `show = false` hiding the block while its metadata stays parsed. A document that opens with an unclosed `---` is unchanged.

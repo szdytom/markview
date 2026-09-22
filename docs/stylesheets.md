@@ -22,7 +22,7 @@ The directory is next to `settings.toml`:
 | macOS | `~/Library/Application Support/markview/styles/` |
 | Windows | `%APPDATA%/markview/styles/` |
 
-The filename without `.mvss.toml` is the style ID. Only the first directory level is scanned. The bundled IDs `light`, `dark`, `celadon`, `blueprint`, `rosewood`, `print`, `monochrome`, `qibaishi`, `vangogh`, `mondrian`, and `builtin` are reserved (including case variants).
+The filename without `.mvss.toml` is the style ID. Only the first directory level is scanned. The bundled IDs `light`, `dark`, `celadon`, `blueprint`, `rosewood`, `8-bit`, `print`, `monochrome`, `qibaishi`, `vangogh`, `mondrian`, and `builtin` are reserved (including case variants).
 
 In the Settings panel's **Styles** tab (**Ctrl+T**) you can enable, disable, and reorder styles. The leftmost selected style has the highest priority. `--style` replaces the session's selected list and is not saved. It cannot be combined with `--light` or `--dark`.
 
@@ -55,6 +55,9 @@ The export panel shares paper layout and stylesheet selection between PDF and PN
 | `celadon` | Porcelain green and botanical ink | Spacious serif headings, diamond bullets, green inset quotations |
 | `blueprint` | Chalk blue on drafting-paper navy | Sans-serif text and headings, square/minus bullets, blue quotation panels |
 | `rosewood` | Plum shadows and rose accents | Literary serif headings, diamond bullets, plum quotation panels |
+| `8-bit` | Green phosphor on near-black glass | Fusion Pixel document and UI text, square markers and terminal frames |
+
+The `8-bit` theme uses Fusion Pixel 12px Monospaced (Simplified Chinese, Traditional Chinese and Japanese variants) throughout the document and UI, including headings, emphasis and code. Download its fonts from the Fonts panel or with `markview fonts download --style 8-bit`. Missing pixel fonts fall back to system monospace fonts. Emphasis uses an underline and strong text uses brighter phosphor, preserving the regular pixel face. Math retains its mathematical fonts.
 
 ### PDF themes
 

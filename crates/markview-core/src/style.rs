@@ -379,7 +379,7 @@ impl Stylesheet {
 	}
 	/// Selectable reader themes. `builtin` is always implicit and never listed.
 	pub const READER_THEMES: &[&str] =
-		&["light", "dark", "celadon", "blueprint", "rosewood"];
+		&["light", "dark", "celadon", "blueprint", "rosewood", "8-bit"];
 
 	pub const PDF_THEMES: &[&str] =
 		&["print", "monochrome", "qibaishi", "vangogh", "mondrian"];
@@ -410,6 +410,7 @@ impl Stylesheet {
 						include_str!("../styles/blueprint.mvss.toml"),
 					),
 					("rosewood", include_str!("../styles/rosewood.mvss.toml")),
+					("8-bit", include_str!("../styles/8-bit.mvss.toml")),
 					("print", include_str!("../styles/print.mvss.toml")),
 					(
 						"monochrome",

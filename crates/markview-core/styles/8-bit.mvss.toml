@@ -1,0 +1,282 @@
+format_version = 2
+targets = ["ui"]
+version = 1
+
+[meta]
+name = "8-bit"
+description = "Green phosphor terminal with Fusion Pixel text and controls"
+
+[[fontdef]]
+id = "fusion-pixel"
+lookfor = ["Fusion Pixel 12px Mono latin", "Fusion Pixel 12px Monospaced Latin", "Fusion Pixel 12px Mono zh_hans", "Fusion Pixel 12px Monospaced SC", "Fusion Pixel Font"]
+
+[[fontdef]]
+id = "fusion-pixel"
+type = "SC"
+lookfor = ["Fusion Pixel 12px Mono zh_hans", "Fusion Pixel 12px Monospaced SC", "Fusion Pixel Font"]
+
+[[fontdef]]
+id = "fusion-pixel"
+type = "TC"
+lookfor = ["Fusion Pixel 12px Mono zh_hant", "Fusion Pixel 12px Monospaced TC", "Fusion Pixel 12px Mono zh_hans", "Fusion Pixel 12px Monospaced SC", "Fusion Pixel Font"]
+
+[[fontdef]]
+id = "fusion-pixel"
+type = "JP"
+lookfor = ["Fusion Pixel 12px Mono ja", "Fusion Pixel 12px Monospaced JP", "Fusion Pixel 12px Mono zh_hans", "Fusion Pixel 12px Monospaced SC", "Fusion Pixel Font"]
+
+[[font-family]]
+id = "fusion-pixel-12px"
+lookfor = ["Fusion Pixel 12px Mono zh_hans", "Fusion Pixel 12px Mono zh_hant", "Fusion Pixel 12px Mono ja", "Fusion Pixel 12px Mono latin", "Fusion Pixel 12px Monospaced SC"]
+description = "Fusion Pixel 12px monospaced document font, Latin and CJK"
+license = "OFL-1.1"
+license_url = "https://github.com/TakWolf/fusion-pixel-font/blob/2026.09.01/OFL.txt"
+homepage = "https://github.com/TakWolf/fusion-pixel-font"
+
+[[font-family.source]]
+name = "GitHub release"
+[[font-family.source.archives]]
+url = "https://github.com/TakWolf/fusion-pixel-font/releases/download/2026.09.01/fusion-pixel-font-12px-monospaced-otf-v2026.09.01.zip"
+sha256 = "52f90d89a51ad49a1227b3d68e3d378edcd8571fe5172bf10d89c7b4ae4a7356"
+members = ["*.otf"]
+
+# Keep SVG family attributes generic; resolve the pixel face through the map.
+[[fontdef]]
+id = "pixel-diagram"
+lookfor = ["monospace"]
+
+[svg.generic_font_family]
+monospace = ["fusion-pixel"]
+
+[mermaid]
+font_family = ["pixel-diagram"]
+theme = "dark"
+background = "#07110B"
+text_color = "#A3E8A0"
+primary_color = "#102619"
+primary_text_color = "#A3E8A0"
+primary_border_color = "#387A49"
+line_color = "#7EBA87"
+secondary_color = "#1C4229"
+tertiary_color = "#050C08"
+edge_label_background = "#07110B"
+cluster_background = "#050C08"
+cluster_border = "#387A49"
+sequence_actor_fill = "#102619"
+sequence_actor_border = "#387A49"
+sequence_actor_line = "#7EBA87"
+sequence_note_fill = "#1C4229"
+sequence_note_border = "#387A49"
+sequence_activation_fill = "#1C4229"
+sequence_activation_border = "#7EBA87"
+git_commit_label_color = "#07110B"
+git_commit_label_background = "#7EBA87"
+git_tag_label_color = "#A3E8A0"
+git_tag_label_background = "#102619"
+git_tag_label_border = "#387A49"
+pie_colors = ["#70FF80", "#49C96A", "#B5F59D", "#7EBA87", "#3D9956", "#94D776", "#5DDC93", "#C8EAB1", "#56AB69", "#8AF5A9", "#A4C77D", "#68BCA0"]
+pie_title_text_color = "#A3E8A0"
+pie_section_text_color = "#07110B"
+pie_legend_text_color = "#7EBA87"
+pie_stroke_color = "#07110B"
+pie_outer_stroke_color = "#387A49"
+
+[[rule]]
+when = ["body"]
+line_height = 1.6
+font = [{ family = "fusion-pixel", weight = 400 }, { family = "monospace" }, { family = "monospace[cjk]" }, { family = "emoji", weight = 400 }]
+color = "#A3E8A0"
+background = "#07110B"
+
+[[rule]]
+when = ["link"]
+color = "#70FF80"
+
+[[rule]]
+when = ["link", "hover"]
+color = "#D5FFD4"
+
+[[rule]]
+when = ["code"]
+font = [{ family = "fusion-pixel", weight = 400 }, { family = "monospace" }, { family = "monospace[cjk]" }, { family = "emoji", weight = 400 }]
+background = "#102619"
+
+[[rule]]
+when = ["code_block"]
+border_width = 1.0
+border_color = "#387A49"
+radius = 0.0
+font = [{ family = "fusion-pixel", weight = 400 }, { family = "monospace" }, { family = "monospace[cjk]" }, { family = "emoji", weight = 400 }]
+background = "#102619"
+theme = "none"
+
+[[rule]]
+when = ["code_block", "label"]
+font = [{ family = "fusion-pixel", weight = 400 }, { family = "monospace" }, { family = "monospace[cjk]" }, { family = "emoji", weight = 400 }]
+color = "#7EBA87"
+
+[[rule]]
+when = ["blockquote"]
+background = "#102619"
+padding = [0.55, 0.8, 0.55, 1.0]
+border_width = 2.0
+border_color = "#70FF80"
+
+[[rule]]
+when = ["marker"]
+shape = ["square", "minus"]
+color = "#7EBA87"
+
+[[rule]]
+when = ["task_marker"]
+radius = 0.0
+color = "#07110B"
+background = "#07110B"
+accent = "#70FF80"
+border_color = "#70FF80"
+
+[[rule]]
+when = ["table", "cell"]
+border_color = "#387A49"
+
+[[rule]]
+when = ["table", "header"]
+background = "#102619"
+
+[[rule]]
+when = ["hr"]
+color = "#387A49"
+
+[[rule]]
+when = ["selection"]
+background = "#70FF8047"
+
+[[rule]]
+when = ["img"]
+border_color = "#387A49"
+
+[[rule]]
+when = ["img", "caption"]
+color = "#7EBA87"
+
+[[rule]]
+when = ["img", "placeholder"]
+font = [{ family = "fusion-pixel", weight = 400 }, { family = "monospace" }, { family = "monospace[cjk]" }, { family = "emoji", weight = 400 }]
+color = "#7EBA87"
+background = "#102619"
+
+[[rule]]
+when = ["scrollbar"]
+track = "#387A49"
+thumb = "#7EBA87"
+thumb_hover = "#70FF80"
+
+[[rule]]
+when = ["ui"]
+font = [{ family = "fusion-pixel", weight = 400 }, { family = "monospace" }, { family = "monospace[cjk]" }, { family = "emoji", weight = 400 }]
+color = "#A3E8A0"
+background = "#050C08"
+muted = "#7EBA87"
+accent = "#70FF80"
+border_color = "#387A49"
+error = "#FFD080"
+shadow = "#00000000"
+scrim = "#020805B8"
+
+[[rule]]
+when = ["ui", "panel"]
+background = "#0D2015"
+
+[[rule]]
+when = ["ui", "toolbar"]
+background = "#050C08"
+
+[[rule]]
+when = ["ui", "statusbar"]
+background = "#050C08"
+
+[[rule]]
+when = ["ui", "button"]
+background = "#0D2015"
+hover_background = "#1C4229"
+active_background = "#285B36"
+disabled_color = "#7EBA87"
+focus_color = "#70FF80"
+
+[[rule]]
+when = ["h1"]
+font = [{ family = "fusion-pixel", weight = 400 }, { family = "monospace" }, { family = "monospace[cjk]" }, { family = "emoji", weight = 400 }]
+size = 1.85
+color = "#A3E8A0"
+space_before = 0.2
+space_after = 0.65
+
+[[rule]]
+when = ["h2"]
+heading_marker = [0.45, 0.65, 0.5]
+marker_color = "#70FF80"
+font = [{ family = "fusion-pixel", weight = 400 }, { family = "monospace" }, { family = "monospace[cjk]" }, { family = "emoji", weight = 400 }]
+size = 1.55
+color = "#70FF80"
+space_before = 0.85
+space_after = 0.65
+
+[[rule]]
+when = ["h3"]
+font = [{ family = "fusion-pixel", weight = 400 }, { family = "monospace" }, { family = "monospace[cjk]" }, { family = "emoji", weight = 400 }]
+size = 1.22
+color = "#A3E8A0"
+space_before = 0.85
+space_after = 0.65
+
+[[rule]]
+when = ["em"]
+font = [{ family = "fusion-pixel", weight = 400 }, { family = "monospace" }, { family = "monospace[cjk]" }, { family = "emoji", weight = 400 }]
+decoration = ["underline"]
+
+[[rule]]
+when = ["h4"]
+font = [{ family = "fusion-pixel", weight = 400 }, { family = "monospace" }, { family = "monospace[cjk]" }, { family = "emoji", weight = 400 }]
+color = "#A3E8A0"
+
+[[rule]]
+when = ["h5"]
+font = [{ family = "fusion-pixel", weight = 400 }, { family = "monospace" }, { family = "monospace[cjk]" }, { family = "emoji", weight = 400 }]
+color = "#A3E8A0"
+
+[[rule]]
+when = ["h6"]
+font = [{ family = "fusion-pixel", weight = 400 }, { family = "monospace" }, { family = "monospace[cjk]" }, { family = "emoji", weight = 400 }]
+color = "#A3E8A0"
+
+[[rule]]
+when = ["strong"]
+color = "#D5FFD4"
+
+[[rule]]
+when = ["details"]
+background = "#102619"
+border_color = "#387A49"
+border_width = 1.0
+radius = 0.0
+
+[[rule]]
+when = ["summary"]
+color = "#70FF80"
+
+[[rule]]
+when = ["summary", "hover"]
+color = "#D5FFD4"
+
+[[rule]]
+when = ["front_matter"]
+background = "#102619"
+radius = 0.0
+
+[[rule]]
+when = ["footnote_ref"]
+color = "#70FF80"
+
+[[rule]]
+when = ["footnote_ref", "hover"]
+color = "#D5FFD4"
