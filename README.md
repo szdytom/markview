@@ -312,8 +312,9 @@ Markview reads with the fonts the machine already has. A stylesheet may also
 declare downloadable families under `[[font-family]]`, and the builtin sheet
 recommends Noto Serif, Noto Sans, Noto Sans Mono and their Simplified Chinese
 counterparts. The reader's **Fonts** page (`Ctrl+,`, then the Fonts tab) lists
-what the stylesheets offer, what each family is, and what is already installed,
-and downloads it one family at a time; the same is on the command line:
+what the stylesheets offer, what each family is, and whether it is missing,
+downloaded or already in the system, and downloads one family or every family
+not yet on disk; the same is on the command line:
 
 ```sh
 markview fonts list              # what still needs downloading

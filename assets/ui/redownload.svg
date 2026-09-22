@@ -1,0 +1,5 @@
+<!-- Two chased arrows: replace the copy this machine already has. -->
+<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+  <path d="M4 12a8 8 0 0 1 13.66-5.66L20 9M20 4v5h-5"/>
+  <path d="M20 12a8 8 0 0 1-13.66 5.66L4 15M4 20v-5h5"/>
+</svg>

@@ -8,13 +8,13 @@ pub(super) mod view;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum Command {
-	Download,
+	DownloadMissing,
+	DownloadAll,
 	DownloadOne(usize),
 	RedownloadOne(usize),
 	Cancel(usize),
 	OpenFolder,
-	SourceFilter,
-	StatusFilter,
+	StatusFilter(Option<crate::fonts::State>),
 }
 
 pub(super) enum Message {
@@ -29,7 +29,6 @@ pub(super) struct FontPanel {
 	font_jobs: HashMap<String, crate::fonts::Progress>,
 	font_cancel: Arc<Mutex<HashSet<String>>>,
 	font_note: Option<String>,
-	font_source_filter: Option<String>,
 	font_status_filter: Option<crate::fonts::State>,
 	scroll: f32,
 }
@@ -40,7 +39,6 @@ pub(super) struct View<'a> {
 	pub(super) jobs: &'a HashMap<String, crate::fonts::Progress>,
 	pub(super) scroll: f32,
 	pub(super) note: Option<&'a str>,
-	pub(super) source_filter: Option<&'a str>,
 	pub(super) status_filter: Option<crate::fonts::State>,
 }
 
@@ -52,7 +50,6 @@ impl FontPanel {
 			jobs: &self.font_jobs,
 			scroll: self.scroll,
 			note: self.font_note.as_deref(),
-			source_filter: self.font_source_filter.as_deref(),
 			status_filter: self.font_status_filter,
 		}
 	}
@@ -86,8 +83,11 @@ impl FontPanel {
 		send: impl Fn(Message) + Send + 'static,
 	) -> bool {
 		let (ids, scope) = match command {
-			Command::Download => {
+			Command::DownloadMissing => {
 				(self.shown_font_ids(), crate::fonts::Scope::Missing)
+			}
+			Command::DownloadAll => {
+				(self.shown_font_ids(), crate::fonts::Scope::Named)
 			}
 			Command::DownloadOne(index) | Command::RedownloadOne(index) => {
 				let Some(id) = self.shown_font_id(index) else {
@@ -110,12 +110,9 @@ impl FontPanel {
 				self.open_fonts_folder();
 				return false;
 			}
-			Command::SourceFilter => {
-				self.next_font_source();
-				return false;
-			}
-			Command::StatusFilter => {
-				self.next_font_status();
+			Command::StatusFilter(state) => {
+				self.font_status_filter = state;
+				self.scroll = 0.0;
 				return false;
 			}
 		};
@@ -126,11 +123,6 @@ impl FontPanel {
 		self.font_catalog
 			.iter()
 			.enumerate()
-			.filter(|(_, entry)| {
-				self.font_source_filter
-					.as_ref()
-					.is_none_or(|source| entry.owners.contains(source))
-			})
 			.filter(|(_, entry)| {
 				self.font_status_filter
 					.is_none_or(|state| entry.state == state)
@@ -152,48 +144,6 @@ impl FontPanel {
 			.iter()
 			.map(|position| self.font_catalog[*position].family.id.clone())
 			.collect()
-	}
-
-	/// The declaring sheets the Fonts page cycles its source filter through.
-	fn font_sources(&self) -> Vec<String> {
-		let mut out: Vec<String> = Vec::new();
-		for entry in &self.font_catalog {
-			for owner in &entry.owners {
-				if !out.contains(owner) {
-					out.push(owner.clone());
-				}
-			}
-		}
-		out
-	}
-
-	/// Advances the source filter to the next declaring sheet, or to all.
-	fn next_font_source(&mut self) {
-		let sources = self.font_sources();
-		let next = match &self.font_source_filter {
-			None => sources.first().cloned(),
-			Some(current) => {
-				let at = sources.iter().position(|source| source == current);
-				at.and_then(|at| sources.get(at + 1)).cloned()
-			}
-		};
-		self.font_source_filter = next;
-		self.scroll = 0.0;
-	}
-
-	/// Advances the status filter through missing, provided, downloaded, all.
-	fn next_font_status(&mut self) {
-		self.font_status_filter = match self.font_status_filter {
-			None => Some(crate::fonts::State::Missing),
-			Some(crate::fonts::State::Missing) => {
-				Some(crate::fonts::State::Provided)
-			}
-			Some(crate::fonts::State::Provided) => {
-				Some(crate::fonts::State::Downloaded)
-			}
-			Some(crate::fonts::State::Downloaded) => None,
-		};
-		self.scroll = 0.0;
 	}
 
 	/// Rebuilds the catalogue the Fonts page shows.
@@ -218,7 +168,7 @@ impl FontPanel {
 			crate::fonts::catalog(sheets, dir.as_deref(), fonts);
 	}
 
-	/// Starts downloading the named families, or reports why nothing can run.
+	/// Starts downloading the named families that still need a download.
 	///
 	/// Every family comes from the catalogued stylesheets and the builtin
 	/// recommendations, so a download is exactly that set; nothing here runs on
@@ -231,7 +181,6 @@ impl FontPanel {
 		offline: bool,
 		send: impl Fn(Message) + Send + 'static,
 	) -> bool {
-		let busy = ids.iter().any(|id| self.font_jobs.contains_key(id));
 		let ids: Vec<String> = ids
 			.iter()
 			.filter(|id| !self.font_jobs.contains_key(*id))
@@ -243,18 +192,9 @@ impl FontPanel {
 				.cloned()
 				.collect();
 		if missing.is_empty() {
-			// A family already being downloaded is not "downloaded", so the
-			// note has to tell the two apart.
-			self.font_note = Some(
-				if busy {
-					"Those families are already downloading"
-				} else {
-					"Everything selected is already downloaded"
-				}
-				.into(),
-			);
 			return false;
 		}
+
 		if offline {
 			self.font_note =
 				Some("Offline: font downloads are unavailable".into());
@@ -369,21 +309,68 @@ mod tests {
 	#[test]
 	fn filters_and_row_commands_address_the_same_families() {
 		let mut panel = panel();
-		panel.command(Command::SourceFilter, true, |_| unreachable!());
-		panel.command(Command::SourceFilter, true, |_| unreachable!());
 		panel.set_scroll(72.0);
-		panel.command(Command::StatusFilter, true, |_| unreachable!());
-		assert_eq!(panel.view().shown, vec![1]);
+		panel.command(
+			Command::StatusFilter(Some(crate::fonts::State::Missing)),
+			true,
+			|_| unreachable!(),
+		);
+		assert_eq!(panel.view().shown, vec![0, 1]);
 		assert_eq!(panel.view().scroll, 0.0);
 		let id = panel.font_catalog[1].family.id.clone();
 		panel.progress(crate::fonts::Progress::queued(&id));
-		panel.command(Command::Cancel(0), true, |_| unreachable!());
+		panel.command(Command::Cancel(1), true, |_| unreachable!());
 		assert!(panel.font_cancel.lock().unwrap().contains(&id));
-		panel.command(Command::Download, true, |_| unreachable!());
-		assert_eq!(
-			panel.view().note,
-			Some("Those families are already downloading")
+		panel.progress(crate::fonts::Progress::queued(
+			&panel.font_catalog[0].family.id,
+		));
+		panel.command(Command::DownloadMissing, true, |_| unreachable!());
+		assert!(panel.view().note.is_none());
+		panel.command(
+			Command::StatusFilter(Some(crate::fonts::State::Downloaded)),
+			true,
+			|_| unreachable!(),
 		);
+		assert!(panel.view().shown.is_empty());
+		panel.set_scroll(88.0);
+		panel.command(Command::StatusFilter(None), true, |_| unreachable!());
+		assert_eq!(panel.view().shown, vec![0, 1, 2]);
+		assert_eq!(panel.view().scroll, 0.0);
+		assert!(panel.view().status_filter.is_none());
+	}
+
+	#[test]
+	fn bulk_downloads_distinguish_missing_from_installed_and_downloaded() {
+		let mut panel = panel();
+		for state in [
+			crate::fonts::State::Provided,
+			crate::fonts::State::Downloaded,
+		] {
+			for entry in &mut panel.font_catalog {
+				entry.state = state;
+			}
+			assert!(!panel.command(
+				Command::DownloadMissing,
+				true,
+				|_| unreachable!()
+			));
+			assert_eq!(
+				panel.command(Command::DownloadAll, true, |_| unreachable!()),
+				state == crate::fonts::State::Provided
+			);
+		}
+		for entry in &mut panel.font_catalog {
+			entry.state = crate::fonts::State::Missing;
+		}
+		assert!(panel.command(
+			Command::DownloadMissing,
+			true,
+			|_| unreachable!()
+		));
+		for id in panel.shown_font_ids() {
+			panel.progress(crate::fonts::Progress::queued(&id));
+		}
+		assert!(!panel.command(Command::DownloadAll, true, |_| unreachable!()));
 	}
 
 	#[test]

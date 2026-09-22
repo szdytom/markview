@@ -104,8 +104,8 @@ fn rows(settings: &ExportSettings) -> Vec<Row> {
 		Row::new(
 			"Text size",
 			vec![
-				action("−", false, Command::ExportSize(-1)),
-				action("+", false, Command::ExportSize(1)),
+				action("Decrease", false, Command::ExportSize(-1)),
+				action("Increase", false, Command::ExportSize(1)),
 			],
 		)
 		.value(format!("{} px", settings.font_size)),

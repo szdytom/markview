@@ -339,7 +339,8 @@ pub enum Scope {
 	/// Only families nothing provides yet. This is what the bulk action means:
 	/// a family an installed face already covers is not "missing".
 	Missing,
-	/// Also families an installed face covers, when one is named explicitly.
+	/// Also families an installed face covers: a named family downloads a
+	/// copy, and the bulk **Download All** takes every family not on disk.
 	Named,
 	/// Everything named, even what is already on disk.
 	All,

@@ -809,7 +809,6 @@ fn previewing_recedes_the_styles_and_fonts_pages() {
 					jobs: &jobs,
 					scroll: 0.0,
 					note: None,
-					source_filter: None,
 					status_filter: None,
 				},
 				width,
@@ -891,7 +890,6 @@ fn dismissed_pages_stop_drawing_and_answering_pointers() {
 				jobs: &jobs,
 				scroll: 0.0,
 				note: None,
-				source_filter: None,
 				status_filter: None,
 			},
 			width,
@@ -912,8 +910,9 @@ fn dismissed_pages_stop_drawing_and_answering_pointers() {
 				Command::StylesFolder
 					| Command::Fonts(
 						crate::app::font_panel::Command::OpenFolder
-					) | Command::Fonts(crate::app::font_panel::Command::Download)
-					| Command::ExportRun
+					) | Command::Fonts(
+					crate::app::font_panel::Command::DownloadMissing
+				) | Command::ExportRun
 			)),
 			"{page} stayed active without the panel"
 		);
@@ -1054,8 +1053,10 @@ fn redesigned_chrome_frames() -> Result<()> {
 					"settings",
 					"export",
 					"styles",
+					"styles-system",
 					"styles-scrolled",
 					"fonts",
+					"fonts-empty",
 					"fonts-scrolled",
 					"fonts-preview",
 					"empty",
@@ -1074,12 +1075,11 @@ fn redesigned_chrome_frames() -> Result<()> {
 								PanelPage::Settings(PanelTab::Generic)
 							}
 							"export" => PanelPage::Export,
-							"styles" | "styles-scrolled" => {
+							"styles" | "styles-system" | "styles-scrolled" => {
 								PanelPage::Settings(PanelTab::Styles)
 							}
-							"fonts" | "fonts-scrolled" | "fonts-preview" => {
-								PanelPage::Settings(PanelTab::Fonts)
-							}
+							"fonts" | "fonts-empty" | "fonts-scrolled"
+							| "fonts-preview" => PanelPage::Settings(PanelTab::Fonts),
 							_ => PanelPage::Closed,
 						},
 						settings_preview: matches!(
@@ -1131,7 +1131,16 @@ fn redesigned_chrome_frames() -> Result<()> {
 							form.reveal(Command::Larger);
 					}
 					let catalog = font_samples();
-					let shown: Vec<usize> = (0..catalog.len()).collect();
+					let shown: Vec<usize> = if page == "fonts-empty" {
+						vec![]
+					} else {
+						(0..catalog.len()).collect()
+					};
+					let mut settings = settings.clone();
+					if matches!(page, "styles" | "styles-scrolled") {
+						settings.style =
+							Some(vec!["journal".into(), "light".into()]);
+					}
 					let mut jobs = std::collections::HashMap::new();
 					if matches!(page, "fonts" | "fonts-preview") {
 						jobs.insert(
@@ -1170,8 +1179,8 @@ fn redesigned_chrome_frames() -> Result<()> {
 								0.0
 							},
 							note: None,
-							source_filter: None,
-							status_filter: None,
+							status_filter: (page == "fonts-empty")
+								.then_some(crate::fonts::State::Downloaded),
 						},
 						width,
 						height,

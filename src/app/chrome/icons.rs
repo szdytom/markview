@@ -23,3 +23,12 @@ pub(super) const DOWN: &[IconPath] =
 pub(super) const EYE: &[IconPath] = markview_icon::icon!("assets/ui/eye.svg");
 pub(super) const EYE_OFF: &[IconPath] =
 	markview_icon::icon!("assets/ui/eye-off.svg");
+
+pub(in crate::app) const DOWNLOAD: &[IconPath] =
+	markview_icon::icon!("assets/ui/download.svg");
+pub(in crate::app) const REDOWNLOAD: &[IconPath] =
+	markview_icon::icon!("assets/ui/redownload.svg");
+
+pub(super) const MINUS: &[IconPath] =
+	markview_icon::icon!("assets/ui/minus.svg");
+pub(super) const PLUS: &[IconPath] = markview_icon::icon!("assets/ui/plus.svg");

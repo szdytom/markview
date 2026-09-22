@@ -30,7 +30,7 @@ source and original license texts are available in Cargo's registry packages.
 | unicode-segmentation | Grapheme boundaries for reading selections | MIT OR Apache-2.0 |
 | tempfile | Atomic settings replacement and tests | MIT OR Apache-2.0 |
 | usvg | Compile-time parsing of the SVG icon sources | Apache-2.0 OR MIT |
-| Lucide | Geometry of the `open` and `close` icons in `assets/ui` | ISC |
+| Lucide | Geometry of the `open`, `close`, `minus` and `plus` icons in `assets/ui` | ISC |
 
 KaTeX mathematical fonts are embedded by `ratex-katex-fonts`. Their SIL Open
 Font License is reproduced in `licenses/KaTeX-OFL.txt`; keep that file with

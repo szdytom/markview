@@ -32,13 +32,25 @@ fn rows(settings: &ReaderSettings) -> Vec<Row> {
 	vec![
 		Row::new(
 			"Text size",
-			choices(&[("−", Command::Smaller), ("+", Command::Larger)], None),
+			choices(
+				&[
+					("Decrease", Command::Smaller),
+					("Increase", Command::Larger),
+				],
+				None,
+			),
 		)
 		.value(format!("{:.1} px", settings.font_size))
 		.section("Reading layout"),
 		Row::new(
 			"Column width",
-			choices(&[("−", Command::Narrower), ("+", Command::Wider)], None),
+			choices(
+				&[
+					("Decrease", Command::Narrower),
+					("Increase", Command::Wider),
+				],
+				None,
+			),
 		)
 		.value(format!("{:.0} px", settings.width)),
 		Row::new(
@@ -73,8 +85,8 @@ fn rows(settings: &ReaderSettings) -> Vec<Row> {
 			"Scroll speed",
 			choices(
 				&[
-					("−", Command::ScrollSpeed(-1)),
-					("+", Command::ScrollSpeed(1)),
+					("Decrease", Command::ScrollSpeed(-1)),
+					("Increase", Command::ScrollSpeed(1)),
 				],
 				None,
 			),

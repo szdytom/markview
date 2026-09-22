@@ -50,20 +50,46 @@ impl StylesTarget {
 	fn summary(self, selected: Option<&[String]>) -> &'static str {
 		match self {
 			Self::Reader if selected.is_none() => {
-				"Following the system appearance"
+				"Following system appearance · enable a style to customize"
 			}
-			Self::Reader => "Enabled styles appear first, in priority order",
-			Self::Export => "Applied to the exported document",
+			Self::Reader | Self::Export => {
+				"Enabled styles come first · higher rows take priority"
+			}
 		}
 	}
 }
 
 /// How much of the panel the title, tabs and summary take.
-const LIST_TOP: f32 = 132.0;
+const LIST_TOP: f32 = 120.0;
 /// How much the footer and its separator below the list take.
 const FOOTER: f32 = 64.0;
 /// One stylesheet row.
-const ROW: f32 = 60.0;
+const ROW: f32 = 72.0;
+/// The row's enable/disable toggle and its invalid badge.
+const TOGGLE: f32 = 76.0;
+
+/// A short panel trades the summary line for room to list styles.
+fn spacious(panel: Rect) -> bool {
+	panel.h >= 300.0
+}
+
+/// The `x` of the row's right-hand column, relative to the panel.
+///
+/// The toggle sits at its left edge, the priority arrows follow it, and the
+/// column ends at the panel's right inset.
+fn column_x(panel: Rect) -> f32 {
+	panel.w - super::components::INSET - 2.0 * CONTROL - 6.0 - 8.0 - TOGGLE
+}
+
+/// The summary line's box, or `None` when a short panel needs the room.
+fn summary_rect(panel: Rect, list: List) -> Option<Rect> {
+	spacious(panel).then_some(Rect {
+		x: panel.x + super::components::INSET,
+		y: list.viewport.y - 36.0,
+		w: panel.w - 2.0 * super::components::INSET,
+		h: 20.0,
+	})
+}
 
 /// The page's scrolling list of stylesheets.
 pub(in crate::app) fn list(
@@ -73,13 +99,14 @@ pub(in crate::app) fn list(
 	scroll: f32,
 ) -> List {
 	let r = panel_rect(width, height);
+	let top = if spacious(r) { LIST_TOP } else { 88.0 };
 	List::new(
 		r,
 		Rect {
 			x: r.x,
-			y: r.y + LIST_TOP,
+			y: r.y + top,
 			w: r.w,
-			h: (r.h - LIST_TOP - FOOTER).max(0.0),
+			h: (r.h - top - FOOTER).max(0.0),
 		},
 		ROW,
 		entries,
@@ -143,11 +170,11 @@ pub(super) fn style_controls(
 		"Open styles folder",
 		None,
 		Command::StylesFolder,
-		108.,
+		24.,
 		146.,
 	));
 	if let Some(system) = target.system() {
-		headers.push(("System", None, system, 24., 74.));
+		headers.push(("Follow system", None, system, r.w - 148., 124.));
 	}
 	for (label, icon, action, x, w) in headers {
 		out.push(Button {
@@ -186,59 +213,57 @@ pub(super) fn style_rows(
 	list: List,
 ) -> Vec<Button> {
 	let r = list.panel;
+	let column = column_x(r);
 	let order = style_order(selected, entries);
 	let mut out = vec![];
 	for row in list.visible() {
 		let index = order[row];
 		let e = &entries[index];
 		let pos = position(selected, e);
-		let y = list.row_rect(row).y;
+		let y = list.row_rect(row).y + (ROW - CONTROL) / 2.0;
 		if e.error.is_none() || pos.is_some() {
 			out.push(Button {
-				label: if pos.is_some() { "Enabled" } else { "Enable" },
+				label: if pos.is_some() { "Disable" } else { "Enable" },
 				icon: None,
 				active: pos.is_some(),
 				kind: Default::default(),
 				enabled: true,
 				action: target.toggle(index),
 				rect: Rect {
-					x: r.x + r.w - 180.,
+					x: r.x + column,
 					y,
-					w: 76.,
-					h: 32.,
+					w: TOGGLE,
+					h: CONTROL,
 				},
 			});
 		}
 		if let Some(pos) = pos {
-			if pos > 0 {
+			let arrows = column + TOGGLE + 8.0;
+			for (label, icon, action, enabled, x) in [
+				("Move up", icons::UP, target.up(index), pos > 0, arrows),
+				(
+					"Move down",
+					icons::DOWN,
+					target.down(index),
+					selected.is_some_and(|ids| pos + 1 < ids.len()),
+					arrows + CONTROL + 6.0,
+				),
+			] {
+				if !enabled {
+					continue;
+				}
 				out.push(Button {
-					label: "Move up",
-					icon: Some(icons::UP),
+					label,
+					icon: Some(icon),
 					active: false,
 					kind: Default::default(),
-					enabled: true,
-					action: target.up(index),
+					enabled,
+					action,
 					rect: Rect {
-						x: r.x + r.w - 96.,
+						x: r.x + x,
 						y,
-						w: 32.,
-						h: 32.,
-					},
-				});
-			}
-			if selected.is_some_and(|ids| pos + 1 < ids.len()) {
-				out.push(Button {
-					label: "Move down",
-					icon: Some(icons::DOWN),
-					active: false,
-					kind: Default::default(),
-					enabled: true,
-					action: target.down(index),
-					rect: Rect {
-						x: r.x + r.w - 58.,
-						y,
-						w: 32.,
-						h: 32.,
+						w: CONTROL,
+						h: CONTROL,
 					},
 				});
 			}
@@ -294,7 +319,7 @@ pub(super) fn draw_styles(
 		));
 		shaper.appearance.weight = weight;
 	}
-	for y in [r.y + 92.0, r.y + r.h - FOOTER] {
+	for y in [list.viewport.y - 1.0, r.y + r.h - FOOTER] {
 		out.push(super::components::line(
 			Rect {
 				x: r.x + 1.0,
@@ -307,14 +332,15 @@ pub(super) fn draw_styles(
 		));
 	}
 
-	let summary = shaper.fit(target.summary(selected), 12., r.w - 40.);
-	out.extend(shaper.label(
-		&summary,
-		12.,
-		r.x + 20.,
-		r.y + 108.,
-		Paint::Styled(Condition::Panel, C::Color),
-	));
+	if let Some(rect) = summary_rect(r, list) {
+		out.extend(super::components::label(
+			shaper,
+			target.summary(selected),
+			12.0,
+			rect,
+			C::Muted,
+		));
+	}
 	let mut body = Vec::new();
 	// A pointer below the fold must not light up the row hidden under the
 	// footer, so the body only sees the cursor while it is inside the clip.
@@ -338,47 +364,60 @@ pub(super) fn draw_styles(
 		let y = list.row_rect(row).y;
 		body.push(super::components::line(
 			Rect {
-				x: r.x + 20.0,
-				y: y + 53.0,
-				w: r.w - 40.0,
+				x: r.x + 24.0,
+				y: y + ROW - 1.0,
+				w: r.w - 48.0,
 				h: 1.0,
 			},
 			Condition::Panel,
 			C::BorderColor,
 		));
-		if pos.is_some() {
+		if let Some(pos) = pos {
 			body.push(super::components::line(
 				Rect {
-					x: r.x + 8.0,
-					y: y + 5.0,
-					w: 2.0,
-					h: 38.0,
+					x: r.x + 24.0,
+					y: y + (ROW - 28.0) / 2.0,
+					w: 28.0,
+					h: 28.0,
 				},
-				Condition::Panel,
-				C::Accent,
+				Condition::Button,
+				C::ActiveBackground,
 			));
+			let mut appearance = shaper.appearance.clone();
+			appearance.weight = 700;
+			let (mut number, width) = shaper.label_with(
+				&(pos + 1).to_string(),
+				13.0,
+				0.0,
+				y + ROW / 2.0 + 13.0 * 0.35,
+				&appearance,
+				Paint::Styled(Condition::Panel, C::Accent),
+				None,
+			);
+			for draw in &mut number {
+				draw.translate(r.x + 24.0 + (28.0 - width) / 2.0, 0.0);
+			}
+			body.extend(number);
 		}
 
-		let title = format!(
-			"{}{} ({})",
-			pos.map(|p| format!("{}. ", p + 1)).unwrap_or_default(),
-			e.name,
-			e.id
-		);
-		let title = shaper.fit(&title, 13., r.w - 212.);
+		let text_x = r.x + 64.0;
+		let weight = shaper.appearance.weight;
+		shaper.appearance.weight = 600;
+		let title = shaper.fit(&e.name, 14., r.x + column_x(r) - 12.0 - text_x);
 		body.extend(shaper.label(
 			&title,
-			13.,
-			r.x + 20.,
-			y + 18.,
+			14.,
+			text_x,
+			y + 29.,
 			Paint::Styled(Condition::Panel, C::Color),
 		));
+		shaper.appearance.weight = weight;
 		if e.error.is_some() && pos.is_none() {
 			let rect = Rect {
-				x: r.x + r.w - 180.,
-				y,
-				w: 76.,
-				h: 32.,
+				x: r.x + column_x(r),
+				y: y + (ROW - CONTROL) / 2.0,
+				w: TOGGLE,
+				h: CONTROL,
 			};
 			body.push(Draw::Rect(
 				rect,
@@ -392,13 +431,16 @@ pub(super) fn draw_styles(
 				Paint::Styled(Condition::Button, C::DisabledColor),
 			));
 		}
-		let detail = e.error.as_deref().unwrap_or(&e.source);
-		let detail = shaper.fit(detail, 12., r.w - 48.);
+		let detail = e
+			.error
+			.clone()
+			.unwrap_or_else(|| format!("{} · {}", e.id, e.source));
+		let detail = shaper.fit(&detail, 12., r.x + r.w - 24. - text_x);
 		body.extend(shaper.label(
 			&detail,
 			12.,
-			r.x + 20.,
-			y + 40.,
+			text_x,
+			y + 54.,
 			Paint::Styled(
 				Condition::Panel,
 				if e.error.is_some() {
@@ -460,6 +502,137 @@ mod stylesheet_tests {
 	}
 
 	#[test]
+	fn priority_badge_and_actions_share_the_row_center() {
+		let mut ui = crate::test_support::shaper();
+		let entries = vec![entry("a", None)];
+		let selected = vec!["a".into()];
+		let draws = draw_styles(
+			&mut ui,
+			StylesTarget::Reader,
+			Some(&selected),
+			&InteractionState::default(),
+			&entries,
+			0.,
+			false,
+			820.,
+			600.,
+		);
+		let body = draws
+			.iter()
+			.find_map(|draw| match draw {
+				Draw::Clipped { draws, .. } => Some(draws),
+				_ => None,
+			})
+			.unwrap();
+		let badge = body
+			.iter()
+			.find_map(|draw| match draw {
+				Draw::Rect(
+					rect,
+					Paint::Styled(Condition::Button, C::ActiveBackground),
+				) if rect.w == 28.0 => Some(rect),
+				_ => None,
+			})
+			.unwrap();
+		let list = list(820., 600., 1, 0.);
+		let toggle =
+			style_rows(StylesTarget::Reader, Some(&selected), &entries, list)
+				.remove(0);
+		assert_eq!(badge.y + badge.h / 2., list.row_rect(0).y + ROW / 2.);
+		assert_eq!(badge.y + badge.h / 2., toggle.rect.y + toggle.rect.h / 2.);
+	}
+
+	#[test]
+	fn styles_and_generic_keep_the_same_header_height() {
+		let mut ui = crate::test_support::shaper();
+		for (width, height) in [(500.0, 300.0), (820.0, 600.0), (1200.0, 800.0)]
+		{
+			let generic = super::super::controls::form(
+				&mut ui,
+				&crate::settings::ReaderSettings::default(),
+				0.0,
+				width,
+				height,
+			);
+			assert_eq!(
+				list(width, height, 3, 0.0).viewport.y,
+				generic.viewport.y
+			);
+		}
+	}
+
+	#[test]
+	fn a_short_panel_keeps_the_style_summary_off_the_tabs() {
+		// The shortest supported window has no room between the tabs and the
+		// list, so the summary is dropped rather than drawn over them.
+		for (width, height) in [(500.0, 300.0), (820.0, 300.0)] {
+			let panel = panel_rect(width, height);
+			assert!(summary_rect(panel, list(width, height, 1, 0.0)).is_none());
+		}
+		for (width, height) in [(820.0, 600.0), (1200.0, 800.0)] {
+			let panel = panel_rect(width, height);
+			let summary = summary_rect(panel, list(width, height, 1, 0.0))
+				.expect("a tall panel shows the summary");
+			let tabs = super::super::components::tab_controls(
+				panel,
+				crate::state::PanelTab::Styles,
+			);
+			let tab_bottom = tabs
+				.iter()
+				.map(|tab| tab.rect.y + tab.rect.h)
+				.fold(f32::MIN, f32::max);
+			assert!(
+				summary.y >= tab_bottom,
+				"{width}x{height}: summary at {} over tabs ending at {tab_bottom}",
+				summary.y
+			);
+		}
+	}
+
+	#[test]
+	fn priority_rows_center_controls_and_hide_boundary_arrows() {
+		let entries =
+			vec![entry("a", None), entry("b", None), entry("c", None)];
+		let selected = vec!["c".into(), "a".into()];
+		for target in [StylesTarget::Reader, StylesTarget::Export] {
+			let rows = style_rows(
+				target,
+				Some(&selected),
+				&entries,
+				list(820., 600., 3, 0.),
+			);
+			let control =
+				|action| rows.iter().find(|b| b.action == action).unwrap();
+			assert!(
+				control(target.toggle(2)).rect.y
+					< control(target.toggle(0)).rect.y
+			);
+			assert!(
+				control(target.toggle(0)).rect.y
+					< control(target.toggle(1)).rect.y
+			);
+			assert_eq!(control(target.toggle(2)).label, "Disable");
+			for (row, index) in [2, 0, 1].into_iter().enumerate() {
+				let rect = list(820., 600., 3, 0.).row_rect(row);
+				for button in rows.iter().filter(|b| {
+					[target.toggle(index), target.up(index), target.down(index)]
+						.contains(&b.action)
+				}) {
+					assert_eq!(
+						button.rect.y + button.rect.h / 2.0,
+						rect.y + ROW / 2.0
+					);
+				}
+			}
+			assert!(!rows.iter().any(|b| b.action == target.up(2)));
+			assert!(control(target.down(2)).enabled);
+			assert!(control(target.up(0)).enabled);
+			assert!(!rows.iter().any(|b| b.action == target.down(0)));
+			assert!(!rows.iter().any(|b| b.action == target.up(1)));
+		}
+	}
+
+	#[test]
 	fn stylesheet_controls_fit_and_cannot_enable_invalid_entries() {
 		let entries = vec![entry("a", None), entry("broken", Some("Invalid"))];
 		let selected = vec!["a".to_string()];
@@ -479,6 +652,9 @@ mod stylesheet_tests {
 					panel.contains(b.rect.x, b.rect.y)
 						&& panel
 							.contains(b.rect.x + b.rect.w, b.rect.y + b.rect.h)
+				}));
+				assert!(!buttons.iter().any(|b| {
+					b.action == target.up(0) || b.action == target.down(0)
 				}));
 				assert!(!buttons.iter().any(|b| matches!(
 					b.action,

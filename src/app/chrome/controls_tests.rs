@@ -162,12 +162,16 @@ fn compiled_icons_stay_inside_the_unit_box() {
 	for icon in [
 		icons::OPEN,
 		icons::EXPORT,
+		icons::DOWNLOAD,
+		icons::REDOWNLOAD,
 		icons::SETTINGS,
 		icons::OUTLINE,
 		icons::CLOSE,
 		icons::BACK,
 		icons::UP,
 		icons::DOWN,
+		icons::MINUS,
+		icons::PLUS,
 		icons::EYE,
 		icons::EYE_OFF,
 	] {

@@ -417,7 +417,7 @@ Files land in a `fonts/` directory beside `settings.toml`:
 | macOS | `~/Library/Application Support/markview/fonts/` |
 | Windows | `%APPDATA%/markview/fonts/` |
 
-The reader's **Fonts** page (**Ctrl+,**, then the Fonts tab) lists every family the builtin recommendations and the catalogued stylesheets declare: its name, description, license, size, the stylesheets that declare it, and whether it is installed, on disk, or missing. A family downloads on its own, **Download missing** acts on whatever the filters show, and a running family can be cancelled by itself. **Open fonts folder** opens the directory.
+The reader's **Fonts** page (**Ctrl+,**, then the Fonts tab) lists every family the builtin recommendations and the catalogued stylesheets declare: its name, description, license, size, the stylesheets that declare it, and whether it is in the system, downloaded, or missing. The status filters narrow the list to **All**, **Missing**, **Downloaded** or **In System**; a family downloads, redownloads or downloads a copy on its own, **Download Missing** fetches every shown family that is missing, **Download All** also fetches a stored copy of families the system already provides, and a running family can be cancelled by itself. **Open fonts folder** opens the directory.
 
 `markview fonts` does the same from a shell:
 

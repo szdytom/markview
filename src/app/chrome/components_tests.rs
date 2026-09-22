@@ -191,3 +191,32 @@ fn button_feedback_distinguishes_hover_press_selection_and_keyboard_focus() {
 		}
 	}
 }
+
+#[test]
+fn settings_and_export_step_controls_draw_icons_without_font_glyphs() {
+	let mut ui = crate::test_support::shaper();
+	let forms = [
+		controls::form(&mut ui, &ReaderSettings::default(), 0., 1200., 800.),
+		export::form(&mut ui, &ExportSettings::default(), 0., 1200., 800.),
+	];
+	for command in [
+		Command::Smaller,
+		Command::Larger,
+		Command::Narrower,
+		Command::Wider,
+		Command::ScrollSpeed(-1),
+		Command::ScrollSpeed(1),
+		Command::ExportSize(-1),
+		Command::ExportSize(1),
+	] {
+		let button = forms
+			.iter()
+			.flat_map(|form| &form.buttons)
+			.find(|button| button.action == command)
+			.unwrap();
+		let draws =
+			draw_button(&mut ui, &InteractionState::default(), button, true);
+		assert!(draws.iter().any(|draw| matches!(draw, Draw::Icon { .. })));
+		assert!(!draws.iter().any(|draw| matches!(draw, Draw::Glyph(_))));
+	}
+}

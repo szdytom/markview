@@ -30,7 +30,17 @@ pub(super) fn button(
 		label,
 		action,
 		rect,
-		icon: None,
+		icon: match action {
+			Command::Smaller
+			| Command::Narrower
+			| Command::ScrollSpeed(-1)
+			| Command::ExportSize(-1) => Some(icons::MINUS),
+			Command::Larger
+			| Command::Wider
+			| Command::ScrollSpeed(1)
+			| Command::ExportSize(1) => Some(icons::PLUS),
+			_ => None,
+		},
 		active: false,
 		kind: ButtonKind::Standard,
 		enabled: true,

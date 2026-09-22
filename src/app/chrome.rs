@@ -6,7 +6,7 @@ use super::font_panel::view as fonts;
 mod footer;
 #[cfg(test)]
 mod gpu_tests;
-mod icons;
+pub(super) mod icons;
 pub(in crate::app) mod list;
 mod modal;
 pub(in crate::app) mod outline;

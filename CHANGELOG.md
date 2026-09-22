@@ -27,6 +27,8 @@ at the same level, without `[brackets]`.
 
 ### Changed
 
+- Rework the Styles settings with clearer priorities: numbered badges for enabled styles, and arrows hidden at the ends of the order.
+- Rework the Fonts settings: drop the source filter, rename the states to Missing / Downloaded / In System, split the bulk action into Download Missing and Download All, and show sources, download progress and empty-state guidance.
 - Consolidate panel navigation and font UI ownership, share bounded HTTP transport, and decouple PDF requests from CLI launch options.
 - Clarify paired performance checks under any consistent power mode; refresh absolute README metrics only during releases.
 - Compare readers and PDF pipelines against SuperGoodViewer 1.0.8, whose mathematics fixtures now render and whose new `sgv export` command joins the PDF table.
@@ -34,6 +36,9 @@ at the same level, without `[brackets]`.
 
 ### Fixed
 
+- Draw the increase/decrease controls with SVG icons instead of font glyphs, avoiding minus-sign font fallback warnings.
+- Keep the bulk font-download buttons hoverable, and silently do nothing when no downloads are needed.
+- Align the Styles summary and separator with Generic settings while keeping the tabs clear on short panels, align style text, center the priority badges and row controls, and hide unavailable arrows.
 - Build the downloadable-font catalogue when the Fonts or Styles page opens instead of during window startup, removing a system-font collection build from the first frame and about 8 MiB from the reader.
 - Name the requested resource in shared HTTP transport errors, so a failed font download no longer reports an image error.
 - Fold a ligature's continuation clusters into the cluster that draws the glyph, so its selection highlight, hit testing and copy range cover the whole ligature instead of leaving a gap over half of it.
