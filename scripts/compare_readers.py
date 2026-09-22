@@ -50,7 +50,7 @@ BINARY = ROOT / "target/release/markview"
 # SuperGoodViewer ships prebuilt Linux archives; unpack one here and point
 # `SUPERGOODVIEWER` at its executable to include it in a comparison.
 SGV = pathlib.Path(os.environ.get("SUPERGOODVIEWER",
-                                  ROOT / "artifacts/supergoodviewer/sogoodviewer"))
+                                  ROOT / "artifacts/supergoodviewer/supergoodviewer"))
 WINDOW_ROWS = 400          # physical rows of the window that are captured
 STRIDE = 8                 # analysis downsample factor
 SETTLE_QUIET = 1.5         # long enough to outlast a second rendering pass
@@ -416,13 +416,10 @@ def applications(display):
                             # cache instead, which is a different measurement.
                             "env": {"GDK_BACKEND": "x11", "HOME": "{work}/home"},
                             "env_dirs": ["{work}/home"],
-                            # Its LaTeX-to-Typst path rejects `\begin{pmatrix}`
-                            # and retries the compile, so the window never
-                            # settles on those fixtures.
-                            "skip": ("math-10k", "math-100k"),
-                            "skip_reason": "does not render this fixture: "
-                                           "Typst compile error, "
-                                           "unknown variable: pmatrix",
+                            # Its LaTeX-to-Typst path (mitex) covers the matrix
+                            # environments since 1.0.8, so the mathematics
+                            # fixtures are rendered rather than skipped. A
+                            # compile failure is still caught below.
                             "failure": r"compileDocument: FAILED \(([^)]*)\)"},
         "vscode": {"name": "vscode", "command": vscode, "display": display,
                    "title": "Visual Studio Code",

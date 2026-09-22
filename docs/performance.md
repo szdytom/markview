@@ -55,7 +55,7 @@ for the repeatable comparison and merge commands.
 
 ## Native baseline on the performance profile
 
-The headline figures in the root README were measured on 2026-09-18 on one
+The headline figures in the root README were measured on 2026-09-22 on one
 ordinary laptop: an Intel Core Ultra 5 125H with integrated Intel Arc (MTL)
 through Vulkan, 18 logical CPUs, Arch Linux with kernel 7.2.6, Rust
 1.96.0-nightly (2026-03-26), release mode with thin LTO and one codegen unit,
@@ -63,18 +63,18 @@ system fonts, 18 px text, a 760 px column, a 1200 × 800 window at DPR 2 on a
 2880 × 1920 display, and the `performance` power profile.
 
 **First readable frame** is the `process entry→readable GPU frame` line that
-`smoke-test` logs and that the window logs as well: process entry through
+`smoke` logs and that the window logs as well: process entry through
 parsing, geometry, glyph preparation and GPU completion of the first readable
 prefix, with window creation and initialization included and compositor
-presentation excluded. Each row is fifteen independent processes:
+presentation excluded. Each row is thirty independent processes:
 
 | Fixture | Bytes | Median (ms) | Range (ms) |
 | --- | ---: | ---: | ---: |
-| ordinary-10k | 10240 | 75.9 | 66.6–87.8 |
-| math-10k | 10240 | 82.0 | 69.6–91.3 |
-| text-cjk-100k | 102400 | 80.8 | 69.1–87.3 |
-| math-cjk-100k | 102400 | 83.0 | 69.9–89.8 |
-| text-cjk-1000k | 1024000 | 78.8 | 71.3–89.4 |
+| ordinary-10k | 10240 | 117.0 | 100.6–133.5 |
+| math-10k | 10240 | 114.5 | 104.1–133.5 |
+| text-cjk-100k | 102400 | 115.3 | 102.7–131.0 |
+| math-cjk-100k | 102400 | 116.2 | 104.3–134.4 |
+| text-cjk-1000k | 1024000 | 114.0 | 102.6–134.3 |
 
 The ranges overlap completely. Between runs the spread is wider than the
 difference between a 10 KiB note and a 1 MiB book, so what this table supports
@@ -90,13 +90,14 @@ reopens, from five processes with ten iterations each:
 
 | Fixture | `latency` RSS (MiB) | `bench` RSS (MiB) | `bench` first open (ms) |
 | --- | ---: | ---: | ---: |
-| ordinary-10k | 42.2 | 41.6 | 15.6 |
-| math-10k | 44.6 | 44.4 | 18.3 |
-| text-cjk-100k | 48.5 | 45.3 | 20.5 |
-| math-cjk-100k | 50.0 | 47.9 | 23.5 |
-| text-cjk-1000k | 82.7 | 70.9 | 71.7 |
+| ordinary-10k | 49.6 | 49.3 | 20.1 |
+| math-10k | 51.9 | 51.7 | 20.7 |
+| text-cjk-100k | 56.0 | 52.8 | 23.6 |
+| math-cjk-100k | 57.6 | 55.9 | 24.9 |
+| text-cjk-1000k | 89.1 | 78.7 | 78.9 |
 
-The two agree within 1 MiB up to 100 KiB and differ by about 12 MiB on the
+The two agree within 1 MiB on the ten-kilobyte fixtures and diverge as the
+document grows, by about 3 MiB at 100 KiB and about 10 MiB on the
 megabyte fixture, where the edit loop retains more than a full-layout pipeline
 does. `bench` first open is the mean of ten iterations rather than a P95, and
 it excludes initialization; it is listed for continuity with the older tables,
@@ -109,12 +110,21 @@ pooled, and this page does not attribute the difference to one change.
 
 The power profile is part of the result rather than a detail: the progressive
 window first frame table below recorded 148.97 ms for `ordinary-10k` under
-`power-saver` where this run records 75.9 ms. Those measurements are days and
+`power-saver` where this run records 117.0 ms. Those measurements are days and
 several changes apart, so the comparison sizes the effect instead of isolating
 it; a number reported without its power state is not comparable.
 
+These figures are also well above the 2026-09-18 baseline this page used to
+carry, which recorded 75.9 ms and 42.2 MiB for `ordinary-10k`. The released
+0.1.3 binary still reproduces that baseline on this host when the two are
+interleaved in one session: 77.1 ms and 42.4 MiB for 0.1.3 against 109.2 ms and
+49.7 MiB for the current build. The change therefore lies in the code between
+0.1.3 and this tree rather than in the session; this page records the current
+numbers, and attributing them to particular changes is a separate
+investigation.
+
 Reproduce the latency column with `RUST_LOG=info target/release/markview
-smoke-test FIXTURE --width 1200 --height 800 --offline`, once per process; the
+smoke FIXTURE --width 1200 --height 800 --offline`, once per process; the
 two memory columns with `latency FIXTURE --iterations 20 --offline` and
 `bench FIXTURE --iterations 10 --offline`. The raw reports and the generated
 megabyte fixture are under `artifacts/readme-baseline/` (ignored by Git).

@@ -21,6 +21,11 @@ at the same level, without `[brackets]`.
 
 ## Unreleased
 
+### Changed
+
+- Compare readers and PDF pipelines against SuperGoodViewer 1.0.8, whose mathematics fixtures now render and whose new `sgv export` command joins the PDF table.
+- Refresh the README size, memory and first-frame figures to the current build.
+
 ## 0.1.5 - 2026-09-22
 
 This release adds a downloadable font catalogue, a table-of-contents drawer, collapsible `<details>` blocks, and theme-colored Mermaid diagrams.

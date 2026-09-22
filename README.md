@@ -68,7 +68,7 @@ Per-platform details and the exact artifact list are in the
 
 ## Why Markview
 
-- **Fast at any size.** About 80 ms from launch to the first readable frame,
+- **Fast at any size.** About 115 ms from launch to the first readable frame,
   whether the file is a 10 KiB note or a 1 MiB book. Layout runs on a worker
   thread and the page is published as it is built, so the window never waits for
   the whole document.
@@ -79,9 +79,9 @@ Per-platform details and the exact artifact list are in the
 - **Real mathematics.** Inline and display LaTeX, parsed in Rust and set with the
   KaTeX fonts that travel inside the binary. Nothing to install, nothing to shell
   out to, no network.
-- **Small and native.** An 11–15 MB download that unpacks to one self-contained
+- **Small and native.** A download under 20 MB that unpacks to one self-contained
   binary — no runtime, no Electron, no Node. A typical document reads in about
-  42 MiB of resident memory.
+  50 MiB of resident memory.
 - **A reader, not an editor.** Read-only by design. It watches the file, keeps
   your place, opens linked documents in tabs, and stays out of the way.
 
@@ -95,17 +95,17 @@ page out on a worker thread and publishes each complete prefix as it is ready.
 </p>
 
 Every document, from a 10 KiB note to a 1 MiB book, reaches its first readable
-frame in 76–83 ms, process start and initialization included. Each bar is the
-median of fifteen native runs and the thin line is their range; the ranges
-overlap completely, which is the point. Resident memory stays in the tens of
-megabytes: about 42 MiB for a note, 50 MiB for 100 KiB of CJK with mathematics,
-and 83 MiB for a megabyte of CJK.
+frame in 114–117 ms, process start and initialization included. Each first-frame
+bar is the median of thirty native runs and the thin line is their range; the
+ranges overlap completely, which is the point. Resident memory stays in the tens
+of megabytes: about 50 MiB for a note, 58 MiB for 100 KiB of CJK with
+mathematics, and 89 MiB for a megabyte of CJK.
 
 These are one ordinary laptop's numbers, not a specification: an Intel Core
 Ultra 5 125H with integrated Intel Arc through Vulkan, on the `performance`
 power profile. The CPU, the GPU, the driver, the fonts, the display scale, the
 system load and the power profile all move them — the project's own notes record
-the same host at roughly twice the first-frame time under `power-saver`. The
+the same host at around 150 ms under `power-saver`. The
 [performance model](docs/performance.md) has the method, the full baselines, and
 what each number does and does not cover.
 
@@ -119,33 +119,30 @@ Opening a file, median of three runs in seconds, window included:
 
 | Document | Markview | SuperGoodViewer | MarkText |
 |:--|--:|--:|--:|
-| 10 KiB of prose | 0.12 | 0.61 | 1.13 |
-| 100 KiB of prose | 0.12 | 0.94 | 1.12 |
-| 10 KiB, 108 display formulas | 0.12 | failed to render¹ | 1.39 |
-| 100 KiB, 1092 display formulas | 0.11 | failed to render¹ | 3.24 |
+| 10 KiB of prose | 0.12 | 0.63 | 0.96 |
+| 100 KiB of prose | 0.12 | 0.73 | 1.00 |
+| 10 KiB, 108 display formulas | 0.12 | 0.65 | 1.20 |
+| 100 KiB, 1092 display formulas | 0.13 | 0.77 | 2.86 |
 
 Resident memory once the document is on screen, in MiB, every process of each
 reader counted:
 
 | Document | Markview | SuperGoodViewer | MarkText |
 |:--|--:|--:|--:|
-| 10 KiB of prose | 46 | 296 | 696 |
-| 100 KiB of prose | 46 | 347 | 706 |
-| 10 KiB, 108 display formulas | 48 | — | 753 |
-| 100 KiB, 1092 display formulas | 50 | — | 1143 |
-
-¹ SuperGoodViewer's LaTeX path rejects the matrix in this fixture
-(`unknown variable: pmatrix`) and its window stays on a compile-error notice, so
-it is recorded rather than timed.
+| 10 KiB of prose | 51 | 300 | 693 |
+| 100 KiB of prose | 52 | 344 | 703 |
+| 10 KiB, 108 display formulas | 55 | 299 | 750 |
+| 100 KiB, 1092 display formulas | 55 | 362 | 1148 |
 
 One document to one PDF, median of three runs in seconds:
 
 | Engine | 10 KiB | 100 KiB |
 |:--|--:|--:|
-| `markview pdf` | 0.04 | 0.10 |
-| `pandoc --pdf-engine=typst` | 0.48 | 0.72 |
-| `pandoc` → headless Chromium | 0.65 | 0.83 |
-| `pandoc --pdf-engine=xelatex` | 1.89 | 2.16 |
+| `markview pdf` | 0.04 | 0.07 |
+| `sgv export` | 0.10 | 0.16 |
+| `pandoc --pdf-engine=typst` | 0.49 | 0.68 |
+| `pandoc` → headless Chromium | 0.61 | 0.76 |
+| `pandoc --pdf-engine=xelatex` | 1.84 | 2.14 |
 
 One machine, one day. Method and caveats: [comparison page](docs/comparison.md).
 

@@ -73,28 +73,27 @@ is compared with the frame the application settles on by itself, and the reporte
 time is the first frame that agrees with it: half of the document's ink for *first
 frame*, 95 per cent of it for *complete*. The readers are MarkText 0.19.1, a
 browser-based preview that renders the document in its window, and
-SuperGoodViewer 1.0.7, which compiles the document to a PDF and draws that, both
+SuperGoodViewer 1.0.8, which compiles the document to a PDF and draws that, both
 against Markview built from this tree. SuperGoodViewer is the project's released
 Linux archive rather than a build from a checkout, because its interface is
 Flutter and this host has no Flutter SDK.
 
 | Document | Markview first / complete | SuperGoodViewer first / complete | MarkText first / complete |
 | --- | --- | --- | --- |
-| 10 KiB of prose | 0.123 / 0.123 s | 0.614 / 0.614 s | 1.128 / 1.128 s |
-| 100 KiB of prose | 0.122 / 0.122 s | 0.943 / 0.943 s | 1.124 / 1.124 s |
-| 10 KiB, 108 display formulas | 0.120 / 0.120 s | failed to render | 1.385 / 1.385 s |
-| 100 KiB, 1092 display formulas | 0.114 / 0.114 s | failed to render | 3.238 / 3.238 s |
+| 10 KiB of prose | 0.117 / 0.117 s | 0.625 / 0.673 s | 0.957 / 0.957 s |
+| 100 KiB of prose | 0.123 / 0.123 s | 0.730 / 0.730 s | 1.000 / 1.000 s |
+| 10 KiB, 108 display formulas | 0.123 / 0.123 s | 0.645 / 0.645 s | 1.195 / 1.195 s |
+| 100 KiB, 1092 display formulas | 0.127 / 0.127 s | 0.771 / 0.771 s | 2.863 / 2.863 s |
 
 Medians of three runs, interleaved so that all three readers met the same machine
 load. Every reader paints its page in one piece at these sizes, so its first frame
-and its complete frame are the same number.
+and its complete frame are the same number, save SuperGoodViewer on 10 KiB of
+prose, where a late window update puts its complete frame 48 ms after its first.
 
-**Failed to render** is a result, not a missing measurement.
-SuperGoodViewer's LaTeX-to-Typst path rejects `\begin{pmatrix}` in the fixture
-(`Typst compile errors: unknown variable: pmatrix`) and retries the compile, so
-its window stays on a compile-error notice and never settles. The harness stops
-submitting that fixture to that reader rather than waiting out the settle limit
-three times. Its other formulas, and the prose fixtures, are unaffected.
+SuperGoodViewer 1.0.8 renders the mathematics fixtures that 1.0.7 rejected. Its
+`\begin{pmatrix}` failure was a missing mitex prelude, fixed upstream after the
+previous comparison, so the two rows it used to fail are now measured like the
+rest.
 
 **Resident memory** comes from the same runs: once a document has settled, the
 resident set of every process in the reader's process group is summed, because
@@ -103,15 +102,16 @@ system monitor is their sum.
 
 | Document | Markview | SuperGoodViewer | MarkText |
 | --- | ---: | ---: | ---: |
-| 10 KiB of prose | 45.5 MiB | 295.6 MiB | 696.3 MiB |
-| 100 KiB of prose | 45.9 MiB | 346.9 MiB | 705.8 MiB |
-| 10 KiB, 108 display formulas | 48.2 MiB | failed to render | 753.3 MiB |
-| 100 KiB, 1092 display formulas | 49.5 MiB | failed to render | 1143.1 MiB |
+| 10 KiB of prose | 50.5 MiB | 299.9 MiB | 693.2 MiB |
+| 100 KiB of prose | 52.2 MiB | 344.4 MiB | 703.2 MiB |
+| 10 KiB, 108 display formulas | 54.7 MiB | 299.3 MiB | 750.4 MiB |
+| 100 KiB, 1092 display formulas | 55.4 MiB | 362.2 MiB | 1147.6 MiB |
 
-SuperGoodViewer keeps a cache of compiled documents under `$HOME`, so each run is
-given a private `HOME` and every open is a first open. Opening the same file twice
-is served from that cache instead — its own documentation quotes 0 ms for it —
-and that is a different measurement from the one in this table.
+SuperGoodViewer keeps a cache of compiled documents under
+`$HOME/.cache/supergoodviewer`, so each run is given a private `HOME` and every
+open is a first open. Opening the same file twice is served from that cache
+instead — its own documentation quotes 0 ms for it — and that is a different
+measurement from the one in this table.
 
 Two attempts were needed to define "on screen", and both failures are worth
 recording because they are the obvious ways to get this wrong. The first was
@@ -122,7 +122,7 @@ window as a finished one, which is wrong for the same reason in the other
 direction: MarkText holds a perfectly static loading page for about two seconds
 before its document appears. The measurement therefore requires both, that the
 window be unchanged and that it carry at least one per cent ink — a loading page
-has 0.2 per cent against 4.5 to 5.8 per cent for a document — and scores
+has 0.2 per cent against 2.8 to 6.1 per cent for a document — and scores
 agreement over the pixels where the settled page actually has ink. A run that
 never satisfies both is reported as having hit the limit rather than being
 counted as finished. A reader that refuses the document outright is caught in its
@@ -149,31 +149,31 @@ runs, with a separate cold run recorded in `artifacts/comparison/`.
 
 | Engine | 10 KiB | 100 KiB | Pages | Size | Same bytes twice |
 | --- | --- | --- | --- | --- | --- |
-| `markview pdf` | 0.042 s | 0.096 s | 4 / 34 | 62 / 307 KiB | yes |
-| `pandoc --pdf-engine=typst` | 0.482 s | 0.723 s | 3 / 31 | 28 / 162 KiB | yes |
-| `pandoc` → headless Chromium | 0.646 s | 0.833 s | 4 / 38 | 45 / 172 KiB | no |
-| `pandoc --pdf-engine=xelatex` | 1.890 s | 2.156 s | 4 / 35 | 19 / 99 KiB | no |
+| `markview pdf` | 0.041 s | 0.074 s | 4 / 40 | 62 / 425 KiB | yes |
+| `sgv export` | 0.102 s | 0.163 s | 3 / 28 | 24 / 142 KiB | yes |
+| `pandoc --pdf-engine=typst` | 0.486 s | 0.678 s | 3 / 31 | 28 / 162 KiB | yes |
+| `pandoc` → headless Chromium | 0.614 s | 0.757 s | 4 / 38 | 45 / 172 KiB | no |
+| `pandoc --pdf-engine=xelatex` | 1.838 s | 2.137 s | 4 / 35 | 19 / 99 KiB | no |
 
-All four recover the document's text through `pdftotext` essentially perfectly
+All five recover the document's text through `pdftotext` essentially perfectly
 (a ratio of 1.00 against the source), so text extraction is a tie and not a
 differentiator. The page counts are not comparable: each engine used its own
 default paper and margins, which nobody asked them to agree on. Markview's file
 is the largest and XeLaTeX's the smallest, and XeLaTeX's is only reachable after
-installing TeX Live, which is measured in gigabytes here.
+installing TeX Live, which is measured in gigabytes here. SuperGoodViewer's
+exporter is its reader's engine behind a command line, with nothing to install
+beyond the archive, and it writes the same bytes on every run as well.
 
 ## What it does not claim
 
 - These are one machine's numbers from one day, taken while the machine was doing
-  other work (a load average around three). They are not a specification.
+  other work (a load average of a few). They are not a specification.
 - The readers are compared cold, from process start. An already-running MarkText
-  is much faster than 1.13 s because most of that number is its own window being
+  is much faster than 0.96 s because most of that number is its own window being
   created; a person who keeps it open pays that cost once, not per document.
-- SuperGoodViewer's failed rows say one thing about one fixture. Its LaTeX path
-  rejects the matrix in this fixture; the prose fixtures and the other formulas
-  are unaffected, and nothing here says its mathematics is weak in general.
 - SuperGoodViewer is measured as a released archive, not as a build from source,
-  so its binary is whatever its maintainers shipped. MarkText is the packaged
-  0.19.1. Neither was rebuilt or reconfigured for this comparison.
+  so its binary is whatever its maintainers shipped — here 1.0.8. MarkText is the
+  packaged 0.19.1. Neither was rebuilt or reconfigured for this comparison.
 - Editing is not compared. MarkText notices that the file changed on disk and
   asks whether to reload it rather than reloading it, so it is not doing the same
   job as a reader that follows the file, and timing the two against each other
@@ -216,6 +216,8 @@ python3 scripts/compare_pdf_engines.py --runs 3 --fixtures 10k,100k
 ```
 
 `compare_readers.py` looks for the SuperGoodViewer executable at
-`artifacts/supergoodviewer/sogoodviewer`, and `SUPERGOODVIEWER` overrides that
-path. Each script prints its table and can write the raw samples to JSON with
+`artifacts/supergoodviewer/supergoodviewer`, its archive's own name, and
+`compare_pdf_engines.py` looks for the exporter shipped beside it at
+`artifacts/supergoodviewer/bin/sgv`; `SUPERGOODVIEWER` overrides that path for
+both. Each script prints its table and can write the raw samples to JSON with
 `--json`.
