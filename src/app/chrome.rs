@@ -317,7 +317,8 @@ impl Chrome<'_> {
 			if self.interaction.outline_open {
 				buttons.extend(outline::buttons(
 					self.outline_drawer(),
-					self.session.outline_entries().len(),
+					self.session.outline_entries(),
+					&self.session.outline_tree,
 					self.interaction.outline_scroll,
 				));
 			}
@@ -467,6 +468,7 @@ impl Chrome<'_> {
 				self.ui,
 				self.interaction,
 				self.session.outline_entries(),
+				&self.session.outline_tree,
 				self.session.current_outline(),
 				self.outline_drawer(),
 			));

@@ -638,14 +638,14 @@ fn the_outline_toggles_closes_and_moves_its_selection() {
 	assert_eq!(interaction.outline_selection, None);
 	// Up/Down move and clamp the keyboard selection.
 	interaction.toggle_outline(3, Some(0));
-	assert!(interaction.move_outline(-1, 3));
+	assert!(interaction.move_outline(-1, &[0, 1, 2]));
 	assert_eq!(interaction.outline_selection, Some(0));
-	assert!(interaction.move_outline(1, 3));
+	assert!(interaction.move_outline(1, &[0, 1, 2]));
 	assert_eq!(interaction.outline_selection, Some(1));
-	assert!(interaction.move_outline(9, 3));
+	assert!(interaction.move_outline(9, &[0, 1, 2]));
 	assert_eq!(interaction.outline_selection, Some(2));
 	// A headingless document has nothing to select.
-	assert!(!interaction.move_outline(1, 0));
+	assert!(!interaction.move_outline(1, &[]));
 	assert_eq!(interaction.outline_selection, None);
 	// The drawer's own wheel scroll stays inside its content.
 	interaction.scroll_outline(40.0, 100.0);
@@ -683,7 +683,7 @@ fn enter_follows_the_outline_selection_after_a_click_and_a_step() {
 	);
 	// Down moves the visible selection, and button focus follows it, so Enter
 	// no longer jumps back to the row that was clicked.
-	assert!(interaction.move_outline(1, 3));
+	assert!(interaction.move_outline(1, &[0, 1, 2]));
 	assert_eq!(interaction.outline_selection, Some(1));
 	assert_eq!(interaction.focus, Some(Command::OutlineGoto(1)));
 	assert_eq!(
@@ -1511,4 +1511,33 @@ fn only_the_settings_pages_that_show_fonts_build_the_catalogue() {
 	assert!(!PanelTab::About.shows_font_catalog());
 	assert!(PanelTab::Styles.shows_font_catalog());
 	assert!(PanelTab::Fonts.shows_font_catalog());
+}
+
+#[test]
+fn outline_collapse_is_per_session_and_resets_on_new_content() {
+	let mut session = ReaderSession {
+		document: Some(Arc::new(document::parse(
+			"# Parent\n## Child\n# Next\n",
+		))),
+		accepted_content_id: 1,
+		..Default::default()
+	};
+	session.ensure_outline();
+	session.outline_tree.toggle(0);
+	session.ensure_outline();
+	assert_eq!(session.outline_tree.rows(session.outline_entries()), [0, 2]);
+	assert_eq!(session.outline_anchor(2), Some("next"));
+	let mut other = ReaderSession {
+		document: session.document.clone(),
+		accepted_content_id: 1,
+		..Default::default()
+	};
+	other.ensure_outline();
+	assert_eq!(other.outline_tree.rows(other.outline_entries()), [0, 1, 2]);
+	session.accepted_content_id = 2;
+	session.ensure_outline();
+	assert_eq!(
+		session.outline_tree.rows(session.outline_entries()),
+		[0, 1, 2]
+	);
 }

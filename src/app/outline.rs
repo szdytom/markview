@@ -8,7 +8,7 @@
 //! first, and `outline_owns_input` makes every drawer path stand down.
 use super::App;
 use crate::layout::Rect;
-use crate::state::InteractionState;
+use crate::state::{Command, InteractionState, OutlineTree};
 
 /// Whether the drawer claims a pointer position.
 ///
@@ -25,6 +25,29 @@ pub(super) fn claims_pointer(
 }
 
 impl App {
+	fn outline_rows(&self) -> Vec<usize> {
+		self.readers
+			.session
+			.outline_tree
+			.rows(self.readers.session.outline_entries())
+	}
+
+	pub(super) fn toggle_outline_entry(&mut self, index: usize) {
+		self.readers.session.ensure_outline();
+		if !OutlineTree::has_children(
+			self.readers.session.outline_entries(),
+			index,
+		) {
+			return;
+		}
+		self.readers.session.outline_tree.toggle(index);
+		self.interaction.outline_selection = Some(index);
+		self.interaction.focus = Some(Command::OutlineToggle(index));
+		self.ensure_outline();
+		self.reveal_outline(index);
+		self.redraw();
+	}
+
 	/// The drawer's rectangle, matching what the chrome draws.
 	pub(super) fn outline_drawer(&self) -> Rect {
 		let (width, height, _) = self.dimensions();
@@ -51,12 +74,8 @@ impl App {
 		}
 		self.readers.session.ensure_outline();
 		let drawer = self.outline_drawer();
-		let entries = self.readers.session.outline_entries().len();
-		super::chrome::outline::normalize(
-			drawer,
-			entries,
-			&mut self.interaction,
-		);
+		let rows = self.outline_rows();
+		super::chrome::outline::normalize(drawer, &rows, &mut self.interaction);
 	}
 
 	/// Opens or closes the drawer on the reading position's entry.
@@ -68,12 +87,14 @@ impl App {
 		}
 		self.readers.session.ensure_outline();
 		let entries = self.readers.session.outline_entries().len();
-		let current = self.readers.session.current_outline();
+		let rows = self.outline_rows();
+		let current =
+			self.readers.session.current_outline().and_then(|index| {
+				rows.iter().copied().take_while(|row| *row <= index).last()
+			});
 		self.interaction.toggle_outline(entries, current);
 		if let Some(index) = self.interaction.outline_selection {
-			let drawer = self.outline_drawer();
-			self.interaction.outline_scroll =
-				super::chrome::outline::reveal(drawer, entries, 0.0, index);
+			self.reveal_outline(index);
 		}
 		self.redraw();
 	}
@@ -81,7 +102,7 @@ impl App {
 	/// Scrolls the drawer's own list, leaving the document where it is.
 	pub(super) fn scroll_outline(&mut self, delta: f32) {
 		self.readers.session.ensure_outline();
-		let entries = self.readers.session.outline_entries().len();
+		let entries = self.outline_rows().len();
 		let max =
 			super::chrome::outline::max_scroll(self.outline_drawer(), entries);
 		self.interaction.scroll_outline(delta, max);
@@ -91,8 +112,8 @@ impl App {
 	/// Moves the drawer's keyboard selection and keeps it in view.
 	pub(super) fn move_outline(&mut self, delta: isize) {
 		self.readers.session.ensure_outline();
-		let entries = self.readers.session.outline_entries().len();
-		if !self.interaction.move_outline(delta, entries) {
+		let rows = self.outline_rows();
+		if !self.interaction.move_outline(delta, &rows) {
 			return;
 		}
 		if let Some(index) = self.interaction.outline_selection {
@@ -104,12 +125,15 @@ impl App {
 	/// Brings one entry row into the drawer's own viewport.
 	pub(super) fn reveal_outline(&mut self, index: usize) {
 		self.readers.session.ensure_outline();
-		let entries = self.readers.session.outline_entries().len();
+		let rows = self.outline_rows();
+		let Some(row) = rows.iter().position(|entry| *entry == index) else {
+			return;
+		};
 		self.interaction.outline_scroll = super::chrome::outline::reveal(
 			self.outline_drawer(),
-			entries,
+			rows.len(),
 			self.interaction.outline_scroll,
-			index,
+			row,
 		);
 	}
 

@@ -12,6 +12,9 @@ use std::{
 };
 use winit::{event::TouchPhase, keyboard::ModifiersState};
 
+mod outline;
+pub(crate) use outline::OutlineTree;
+
 pub(crate) use markview_core::layout::scroll_limit;
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum Command {
@@ -83,6 +86,7 @@ pub(crate) enum Command {
 	Outline,
 	/// Scroll the document to the heading of one outline entry.
 	OutlineGoto(usize),
+	OutlineToggle(usize),
 }
 
 /// A panel has exactly one page; the outline and confirmation remain independent.
@@ -215,6 +219,7 @@ pub(crate) struct ReaderSession {
 	/// The outline built for `accepted_content_id`, cached so a frame or an
 	/// event never walks the document again. It is built on first demand.
 	pub(crate) outline: Option<(u64, Arc<[document::OutlineEntry]>)>,
+	pub(crate) outline_tree: OutlineTree,
 	pub(crate) requested_options: Option<LayoutOptions>,
 	/// Reader-chosen `<details>` collapse state, keyed by block id, overriding
 	/// what the source declared. It is layout input, and a reload drops it.
@@ -280,6 +285,7 @@ impl ReaderSession {
 		if let Some(document) = &self.document {
 			entries = document.outline();
 		}
+		self.outline_tree = OutlineTree::default();
 		self.outline = Some((self.accepted_content_id, entries.into()));
 	}
 
@@ -750,15 +756,19 @@ impl InteractionState {
 	pub(crate) fn move_outline(
 		&mut self,
 		delta: isize,
-		entries: usize,
+		rows: &[usize],
 	) -> bool {
-		if entries == 0 {
+		if rows.is_empty() {
 			self.outline_selection = None;
 			self.focus = None;
 			return false;
 		}
-		let base = self.outline_selection.unwrap_or(0) as isize;
-		let next = (base + delta).clamp(0, entries as isize - 1) as usize;
+		let base = rows
+			.iter()
+			.position(|index| Some(*index) == self.outline_selection)
+			.unwrap_or(0) as isize;
+		let next =
+			rows[(base + delta).clamp(0, rows.len() as isize - 1) as usize];
 		self.outline_selection = Some(next);
 		// The visible selection is what Enter activates, so button focus has
 		// to follow it; a row clicked before the move must not outrank it.
@@ -815,7 +825,8 @@ impl InteractionState {
 		};
 		let action = *buttons.get(index)?;
 		self.focus = Some(action);
-		if let Command::OutlineGoto(row) = action {
+		if let Command::OutlineGoto(row) | Command::OutlineToggle(row) = action
+		{
 			self.outline_selection = Some(row);
 		}
 		Some(action)
@@ -1089,6 +1100,7 @@ impl ReaderSession {
 		self.snapshot_complete = false;
 		self.document = None;
 		self.outline = None;
+		self.outline_tree = OutlineTree::default();
 		self.requested_options = None;
 		self.pending_anchor = None;
 		self.jump_origin = None;

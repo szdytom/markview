@@ -38,6 +38,7 @@ fn entry_rows_indent_by_level_and_stay_inside_the_drawer() {
 		&mut ui,
 		&InteractionState::default(),
 		&entries,
+		&OutlineTree::default(),
 		None,
 		drawer,
 	);
@@ -59,16 +60,17 @@ fn entry_rows_indent_by_level_and_stay_inside_the_drawer() {
 		left[0].is_finite() && left[1].is_finite(),
 		"both rows wrote"
 	);
-	assert!((left[0] - (drawer.x + INSET)).abs() < 0.01);
+	assert!((left[0] - (drawer.x + INSET + DISCLOSURE)).abs() < 0.01);
 	assert!(
-		(left[1] - (drawer.x + INSET + 2.0 * LEVEL_INDENT)).abs() < 0.01,
+		(left[1] - (drawer.x + INSET + DISCLOSURE + 2.0 * LEVEL_INDENT)).abs()
+			< 0.01,
 		"a level-three entry is indented twice more than a level one"
 	);
 	assert!(left[1] > left[0]);
 	for (x, _) in glyphs(body) {
 		assert!(x >= drawer.x && x < drawer.x + drawer.w);
 	}
-	for button in buttons(drawer, entries.len(), 0.0) {
+	for button in buttons(drawer, &entries, &OutlineTree::default(), 0.0) {
 		assert!(button.rect.x >= drawer.x);
 		assert!(button.rect.x + button.rect.w <= drawer.x + drawer.w);
 		assert!(button.rect.y >= clip.y);
@@ -97,7 +99,14 @@ fn tabbing_marks_the_row_keyboard_focus_lands_on() {
 		Some(Command::OutlineGoto(1))
 	);
 	// The frame marks exactly the row that took the focus.
-	let draws = draw(&mut ui, &interaction, &entries, None, drawer);
+	let draws = draw(
+		&mut ui,
+		&interaction,
+		&entries,
+		&OutlineTree::default(),
+		None,
+		drawer,
+	);
 	let (list, body) = clipped(&draws);
 	let marked: Vec<Rect> = body
 		.iter()
@@ -119,13 +128,13 @@ fn a_long_outline_only_offers_its_visible_rows() {
 	let entries: Vec<OutlineEntry> = (0..1000)
 		.map(|i| entry(1, &format!("Heading {i}")))
 		.collect();
-	let rows = buttons(drawer, entries.len(), 0.0);
+	let rows = buttons(drawer, &entries, &OutlineTree::default(), 0.0);
 	assert!(!rows.is_empty());
 	assert!(rows.len() < 30, "only the visible rows are clickable");
 	let list = viewport(drawer);
 	let max = max_scroll(drawer, entries.len());
 	assert!(max > 0.0);
-	let bottom = buttons(drawer, entries.len(), max);
+	let bottom = buttons(drawer, &entries, &OutlineTree::default(), max);
 	assert_eq!(
 		bottom.last().map(|b| b.action),
 		Some(Command::OutlineGoto(entries.len() - 1))
@@ -138,12 +147,12 @@ fn a_long_outline_only_offers_its_visible_rows() {
 #[test]
 fn row_hit_targets_stop_at_the_list_viewport() {
 	let drawer = rect(800.0, 600.0, TOP);
-	let entries = 100;
+	let entries: Vec<_> = (0..100).map(|_| entry(1, "Heading")).collect();
 	let list = viewport(drawer);
 	// Half a row is scrolled away, so the first row is only partly visible and
 	// the extra row below the list must be dropped; buttons match what is drawn.
 	let scroll = ROW / 2.0;
-	let rows = buttons(drawer, entries, scroll);
+	let rows = buttons(drawer, &entries, &OutlineTree::default(), scroll);
 	assert!(!rows.is_empty());
 	for button in &rows {
 		let hit = list
@@ -188,9 +197,14 @@ fn a_shorter_document_pulls_the_drawer_back_into_range() {
 	interaction.outline_selection = Some(long - 1);
 	// A reload drops most headings, so the old offsets no longer fit.
 	let short = 100;
-	normalize(drawer, short, &mut interaction);
+	normalize(drawer, &(0..short).collect::<Vec<_>>(), &mut interaction);
 	assert_eq!(interaction.outline_scroll, max_scroll(drawer, short));
-	let rows = buttons(drawer, short, interaction.outline_scroll);
+	let rows = buttons(
+		drawer,
+		&vec![entry(1, "Heading"); short],
+		&OutlineTree::default(),
+		interaction.outline_scroll,
+	);
 	assert!(!rows.is_empty(), "the shorter outline still shows rows");
 	let selected = interaction.outline_selection.unwrap();
 	assert!(
@@ -200,12 +214,12 @@ fn a_shorter_document_pulls_the_drawer_back_into_range() {
 	);
 	// A document short enough to fit whole shows every row and scrolls back.
 	let tiny = 4;
-	normalize(drawer, tiny, &mut interaction);
+	normalize(drawer, &(0..tiny).collect::<Vec<_>>(), &mut interaction);
 	assert_eq!(interaction.outline_scroll, 0.0);
 	assert!(interaction.outline_selection.unwrap() < tiny);
 	assert_eq!(visible(list, tiny, 0.0).len(), tiny);
 	// A headingless document has nothing to select.
-	normalize(drawer, 0, &mut interaction);
+	normalize(drawer, &[], &mut interaction);
 	assert_eq!(interaction.outline_selection, None);
 	assert_eq!(interaction.outline_scroll, 0.0);
 }
@@ -214,8 +228,15 @@ fn a_shorter_document_pulls_the_drawer_back_into_range() {
 fn the_empty_outline_draws_a_short_empty_state() {
 	let mut ui = crate::test_support::shaper();
 	let drawer = rect(800.0, 600.0, TOP);
-	let draws = draw(&mut ui, &InteractionState::default(), &[], None, drawer);
-	assert!(buttons(drawer, 0, 0.0).is_empty());
+	let draws = draw(
+		&mut ui,
+		&InteractionState::default(),
+		&[],
+		&OutlineTree::default(),
+		None,
+		drawer,
+	);
+	assert!(buttons(drawer, &[], &OutlineTree::default(), 0.0).is_empty());
 	assert!(
 		!draws
 			.iter()
@@ -263,4 +284,77 @@ fn the_wheel_over_the_list_scrolls_it_and_not_the_document() {
 	let beside = (drawer.x - 10.0, drawer.y + 60.0);
 	assert!(!drawer.contains(beside.0, beside.1));
 	assert_eq!(interaction.outline_scroll, 42.0);
+}
+
+#[test]
+fn collapsed_outline_keeps_drawing_hits_and_navigation_in_sync() {
+	let entries = crate::document::parse(
+		"# Parent\n### Child\n##### Grandchild\n## Sibling\n# Next\n",
+	)
+	.outline();
+	let mut tree = OutlineTree::default();
+	tree.toggle(1);
+	tree.toggle(0);
+	assert_eq!(tree.rows(&entries), [0, 4]);
+	tree.toggle(0);
+	assert_eq!(tree.rows(&entries), [0, 1, 3, 4]);
+	let drawer = rect(800.0, 600.0, TOP);
+	let buttons = buttons(drawer, &entries, &tree, 0.0);
+	assert_eq!(
+		buttons.iter().map(|b| b.action).collect::<Vec<_>>(),
+		[
+			Command::OutlineToggle(0),
+			Command::OutlineGoto(0),
+			Command::OutlineToggle(1),
+			Command::OutlineGoto(1),
+			Command::OutlineGoto(3),
+			Command::OutlineGoto(4),
+		]
+	);
+	assert!(buttons[0].rect.x + buttons[0].rect.w <= buttons[1].rect.x);
+	let mut interaction = InteractionState {
+		outline_open: true,
+		outline_selection: Some(2),
+		focus: Some(Command::OutlineGoto(2)),
+		outline_scroll: 900.0,
+		..Default::default()
+	};
+	let rows = tree.rows(&entries);
+	normalize(drawer, &rows, &mut interaction);
+	assert_eq!(interaction.outline_selection, Some(1));
+	assert_eq!(interaction.focus, Some(Command::OutlineGoto(1)));
+	assert_eq!(interaction.outline_scroll, 0.0);
+	assert!(interaction.move_outline(1, &rows));
+	assert_eq!(
+		interaction.enter_action(buttons.iter().map(|b| b.action)),
+		Some(Command::OutlineGoto(3))
+	);
+	assert!(interaction.move_outline(-1, &rows));
+	assert_eq!(interaction.outline_selection, Some(1));
+	let mut ui = crate::test_support::shaper();
+	let draws = draw(&mut ui, &interaction, &entries, &tree, Some(2), drawer);
+	let (_, body) = clipped(&draws);
+	let arrows: Vec<_> = body
+		.iter()
+		.filter_map(|draw| match draw {
+			Draw::Polygon { center, points, .. } => Some((center, points)),
+			_ => None,
+		})
+		.collect();
+	assert_eq!(arrows.len(), 2);
+	assert_eq!(arrows[0].1[2], [0.0, 2.5]);
+	assert_eq!(arrows[1].1[1], [2.5, 0.0]);
+	let active: Vec<_> = body
+		.iter()
+		.filter_map(|draw| match draw {
+			Draw::Rect(
+				rect,
+				Paint::Styled(Condition::Button, C::ActiveBackground),
+			) => Some(rect.y),
+			_ => None,
+		})
+		.collect();
+	assert_eq!(active, [row_rect(viewport(drawer), 1, 0.0).y]);
+	tree.toggle(1);
+	assert_eq!(tree.rows(&entries), [0, 1, 2, 3, 4]);
 }

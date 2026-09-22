@@ -106,6 +106,10 @@ impl App {
 				self.toggle_outline();
 				return;
 			}
+			Command::OutlineToggle(index) => {
+				self.toggle_outline_entry(index);
+				return;
+			}
 			Command::OutlineGoto(index) => {
 				self.goto_outline(index);
 				return;

@@ -1534,7 +1534,13 @@ fn outline_drawer_frames() -> Result<()> {
 	let document = document::parse(
 		"# Reading, without distractions\n\nIntroductory text.\n\n## A clear view\n\n> ### Quoted section\n\n#### A deeper entry\n\n## Another section\n\nBody.\n",
 	);
-	for dark in [false, true] {
+	for (dark, collapsed) in
+		[(false, false), (true, false), (false, true), (true, true)]
+	{
+		let mut tree = crate::state::OutlineTree::default();
+		if collapsed {
+			tree.toggle(1);
+		}
 		let sheet = markview_core::style::Stylesheet::bundled(dark);
 		let settings = ReaderSettings {
 			stylesheet: sheet.clone(),
@@ -1581,6 +1587,7 @@ fn outline_drawer_frames() -> Result<()> {
 			&mut ui,
 			&interaction,
 			&document.outline(),
+			&tree,
 			Some(1),
 			outline::rect(width, height, TOP),
 		));
@@ -1612,8 +1619,9 @@ fn outline_drawer_frames() -> Result<()> {
 		renderer.save_png(
 			&target,
 			&directory.join(format!(
-				"outline-drawer-{}.png",
-				if dark { "dark" } else { "light" }
+				"outline-drawer-{}{}.png",
+				if dark { "dark" } else { "light" },
+				if collapsed { "-collapsed" } else { "" }
 			)),
 		)?;
 	}

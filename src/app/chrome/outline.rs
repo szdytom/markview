@@ -7,7 +7,7 @@ use super::super::Button;
 use super::components;
 use crate::{
 	layout::{Draw, Paint, Rect, TextShaper},
-	state::{Command, InteractionState},
+	state::{Command, InteractionState, OutlineTree},
 };
 use markview_core::document::OutlineEntry;
 use markview_core::style::{ColorField as C, Condition};
@@ -23,6 +23,7 @@ const INSET: f32 = 14.0;
 /// Extra indent for each heading level below the first.
 const LEVEL_INDENT: f32 = 12.0;
 const SIZE: f32 = 13.0;
+const DISCLOSURE: f32 = 18.0;
 
 /// The drawer's rectangle, from `top` down to just above the footer.
 pub(in crate::app) fn rect(width: f32, height: f32, top: f32) -> Rect {
@@ -89,27 +90,58 @@ pub(in crate::app) fn reveal(
 	}
 }
 
+/// The disclosure target before clipping to the list viewport.
+fn disclosure_rect(row: Rect, level: u8) -> Rect {
+	Rect {
+		x: row.x + INSET + f32::from(level.saturating_sub(1)) * LEVEL_INDENT,
+		w: DISCLOSURE,
+		..row
+	}
+}
+
 /// The clickable entry rows, already clipped to the list viewport.
 pub(super) fn buttons(
 	drawer: Rect,
-	entries: usize,
+	entries: &[OutlineEntry],
+	tree: &OutlineTree,
 	scroll: f32,
 ) -> Vec<Button> {
 	let list = viewport(drawer);
-	visible(list, entries, scroll)
-		.filter_map(|index| {
-			// A partly visible row is clickable only where it is drawn, so a
-			// press in the header or below the list cannot reach a hidden row.
-			let rect = row_rect(list, index, scroll).intersect(list)?;
-			let mut b = components::button(
+	let rows = tree.rows(entries);
+	let mut buttons = Vec::new();
+	for row in visible(list, rows.len(), scroll) {
+		let index = rows[row];
+		let rect = row_rect(list, row, scroll);
+		let disclosure = disclosure_rect(rect, entries[index].level);
+		let mut heading = rect;
+		if OutlineTree::has_children(entries, index) {
+			if let Some(rect) = disclosure.intersect(list) {
+				let mut button = components::button(
+					if tree.is_collapsed(index) {
+						"Expand section"
+					} else {
+						"Collapse section"
+					},
+					Command::OutlineToggle(index),
+					rect,
+				);
+				button.kind = components::ButtonKind::Quiet;
+				buttons.push(button);
+			}
+			heading.x = disclosure.x + disclosure.w;
+			heading.w = (rect.x + rect.w - heading.x).max(0.0);
+		}
+		if let Some(rect) = heading.intersect(list) {
+			let mut button = components::button(
 				"Heading",
 				Command::OutlineGoto(index),
 				rect,
 			);
-			b.kind = components::ButtonKind::Quiet;
-			Some(b)
-		})
-		.collect()
+			button.kind = components::ButtonKind::Quiet;
+			buttons.push(button);
+		}
+	}
+	buttons
 }
 
 /// Puts the drawer's scroll and selection back inside the entries it shows.
@@ -120,16 +152,26 @@ pub(super) fn buttons(
 /// address a row that is gone.
 pub(in crate::app) fn normalize(
 	drawer: Rect,
-	entries: usize,
+	rows: &[usize],
 	interaction: &mut InteractionState,
 ) {
-	let max = max_scroll(drawer, entries);
+	let max = max_scroll(drawer, rows.len());
 	interaction.outline_scroll = interaction.outline_scroll.clamp(0.0, max);
-	interaction.outline_selection = if entries == 0 {
-		None
-	} else {
-		Some(interaction.outline_selection.unwrap_or(0).min(entries - 1))
-	};
+	interaction.outline_selection = rows
+		.iter()
+		.copied()
+		.take_while(|index| {
+			*index <= interaction.outline_selection.unwrap_or(0)
+		})
+		.last()
+		.or_else(|| rows.first().copied());
+	if let Some(Command::OutlineGoto(index) | Command::OutlineToggle(index)) =
+		interaction.focus
+		&& !rows.contains(&index)
+	{
+		interaction.focus =
+			interaction.outline_selection.map(Command::OutlineGoto);
+	}
 }
 
 /// Draws the drawer: its frame, the title, and the entries currently visible.
@@ -141,6 +183,7 @@ pub(super) fn draw(
 	ui: &mut TextShaper,
 	interaction: &InteractionState,
 	entries: &[OutlineEntry],
+	tree: &OutlineTree,
 	current: Option<usize>,
 	drawer: Rect,
 ) -> Vec<Draw> {
@@ -189,8 +232,13 @@ pub(super) fn draw(
 		return out;
 	}
 	let mut body = Vec::new();
-	for index in visible(list, entries.len(), interaction.outline_scroll) {
-		let rect = row_rect(list, index, interaction.outline_scroll);
+	let rows = tree.rows(entries);
+	let current = current.and_then(|index| {
+		rows.iter().copied().take_while(|row| *row <= index).last()
+	});
+	for row in visible(list, rows.len(), interaction.outline_scroll) {
+		let index = rows[row];
+		let rect = row_rect(list, row, interaction.outline_scroll);
 		let entry = &entries[index];
 		let hovered = rect.contains(interaction.cursor.0, interaction.cursor.1);
 		let pressed =
@@ -218,8 +266,24 @@ pub(super) fn draw(
 				Paint::Styled(Condition::Button, C::Accent),
 			));
 		}
-		let indent =
-			INSET + f32::from(entry.level.saturating_sub(1)) * LEVEL_INDENT;
+		let indent = INSET
+			+ f32::from(entry.level.saturating_sub(1)) * LEVEL_INDENT
+			+ DISCLOSURE;
+		if OutlineTree::has_children(entries, index) {
+			let disclosure = disclosure_rect(rect, entry.level);
+			body.push(Draw::Polygon {
+				center: [
+					disclosure.x + DISCLOSURE / 2.0,
+					disclosure.y + ROW / 2.0,
+				],
+				points: if tree.is_collapsed(index) {
+					[[-2.5, -4.0], [2.5, 0.0], [-2.5, 4.0]].into()
+				} else {
+					[[-4.0, -2.5], [4.0, -2.5], [0.0, 2.5]].into()
+				},
+				paint: Paint::Styled(Condition::Panel, C::Muted),
+			});
+		}
 		let text =
 			ui.fit(&entry.text, SIZE, (rect.w - indent - INSET).max(0.0));
 		body.extend(ui.label(

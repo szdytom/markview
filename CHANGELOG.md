@@ -24,6 +24,7 @@ at the same level, without `[brackets]`.
 ### Added
 
 - Add the 8-bit reader theme with green CRT colors, Fusion Pixel typography throughout the document and UI.
+- Collapse and expand nested table-of-contents sections with per-tab state and keyboard navigation that skips hidden headings.
 
 - Add a compact About tab in Settings with a centered application icon, the standard project description, a clickable project link and one-click copying of diagnostic information: version, build date, OS, active WGPU backend, and commit.
 

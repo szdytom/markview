@@ -487,7 +487,9 @@ impl App {
 							if let Some(action) =
 								self.interaction.tab_focus(&actions, backward)
 							{
-								if let Command::OutlineGoto(index) = action {
+								if let Command::OutlineGoto(index)
+								| Command::OutlineToggle(index) = action
+								{
 									self.reveal_outline(index);
 								}
 								self.reveal_panel_focus();
