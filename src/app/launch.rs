@@ -112,7 +112,7 @@ pub(super) fn run() -> Result<()> {
 		)?
 	};
 	if args.mode == Mode::Pdf {
-		return crate::pdf::run(args.path.as_ref().unwrap(), &args);
+		return crate::pdf::run(&args.pdf_request()?, args.watch);
 	}
 	if args.mode == Mode::Render
 		|| args.mode == Mode::Bench

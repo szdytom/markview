@@ -1,4 +1,5 @@
 use crate::state::{Command, Modal};
+use crate::state::{PanelPage, PanelTab};
 use crate::{
 	document,
 	layout::LayoutEngine,
@@ -42,7 +43,11 @@ fn settings_and_selection_frame() -> Result<()> {
 			),
 		);
 		let interaction = InteractionState {
-			panel_open,
+			panel: if panel_open {
+				PanelPage::Settings(PanelTab::Generic)
+			} else {
+				PanelPage::Closed
+			},
 			focus_visible: true,
 			focus: Some(if panel_open {
 				Command::Larger
@@ -719,8 +724,7 @@ fn export_panel_frames() -> Result<()> {
 			&mut ui,
 			&settings,
 			&InteractionState {
-				panel_open: true,
-				export_open: true,
+				panel: PanelPage::Export,
 				focus_visible: true,
 				focus: Some(Command::ExportRun),
 				..Default::default()
@@ -779,9 +783,11 @@ fn previewing_recedes_the_styles_and_fonts_pages() {
 	for page in ["styles", "fonts"] {
 		for preview in [false, true] {
 			let interaction = InteractionState {
-				panel_open: true,
-				styles_open: page == "styles",
-				fonts_open: page == "fonts",
+				panel: PanelPage::Settings(if page == "styles" {
+					PanelTab::Styles
+				} else {
+					PanelTab::Fonts
+				}),
 				settings_preview: preview,
 				..Default::default()
 			};
@@ -797,13 +803,15 @@ fn previewing_recedes_the_styles_and_fonts_pages() {
 				interaction: &interaction,
 				style_entries: &entries,
 				style_scroll: interaction.styles_scroll,
-				font_catalog: &catalog,
-				fonts_shown: shown.clone(),
-				font_jobs: &jobs,
-				fonts_scroll: interaction.fonts_scroll,
-				fonts_note: None,
-				font_source_filter: None,
-				font_status_filter: None,
+				fonts: crate::app::font_panel::View {
+					catalog: &catalog,
+					shown: shown.clone(),
+					jobs: &jobs,
+					scroll: 0.0,
+					note: None,
+					source_filter: None,
+					status_filter: None,
+				},
 				width,
 				height,
 				scrollbar: None,
@@ -842,10 +850,9 @@ fn previewing_recedes_the_styles_and_fonts_pages() {
 	}
 }
 
-/// The panel's pages are pages of an open panel: a page flag left behind by a
-/// dismissal must not keep drawing or answering pointers.
+/// Dismissing any page restores toolbar input and removes its controls.
 #[test]
-fn a_page_flag_without_the_panel_opens_nothing() {
+fn dismissed_pages_stop_drawing_and_answering_pointers() {
 	use crate::app::{tab_metrics::TabMetrics, tab_strip::TabStrip};
 	let mut ui = crate::test_support::shaper();
 	let (width, height) = (820.0, 600.0);
@@ -859,13 +866,13 @@ fn a_page_flag_without_the_panel_opens_nothing() {
 	let shown: Vec<usize> = Vec::new();
 	let jobs = std::collections::HashMap::new();
 	for page in ["styles", "fonts", "export"] {
-		let interaction = InteractionState {
-			panel_open: false,
-			styles_open: page == "styles",
-			fonts_open: page == "fonts",
-			export_open: page == "export",
-			..Default::default()
-		};
+		let mut interaction = InteractionState::default();
+		interaction.show_panel(match page {
+			"styles" => PanelPage::Settings(PanelTab::Styles),
+			"fonts" => PanelPage::Settings(PanelTab::Fonts),
+			_ => PanelPage::Export,
+		});
+		interaction.show_panel(PanelPage::Closed);
 		let mut chrome = Chrome {
 			ui: &mut ui,
 			session: &session,
@@ -878,13 +885,15 @@ fn a_page_flag_without_the_panel_opens_nothing() {
 			interaction: &interaction,
 			style_entries: &entries,
 			style_scroll: interaction.styles_scroll,
-			font_catalog: &[],
-			fonts_shown: shown.clone(),
-			font_jobs: &jobs,
-			fonts_scroll: interaction.fonts_scroll,
-			fonts_note: None,
-			font_source_filter: None,
-			font_status_filter: None,
+			fonts: crate::app::font_panel::View {
+				catalog: &[],
+				shown: shown.clone(),
+				jobs: &jobs,
+				scroll: 0.0,
+				note: None,
+				source_filter: None,
+				status_filter: None,
+			},
 			width,
 			height,
 			scrollbar: None,
@@ -901,8 +910,9 @@ fn a_page_flag_without_the_panel_opens_nothing() {
 			!buttons.iter().any(|b| matches!(
 				b.action,
 				Command::StylesFolder
-					| Command::FontsOpenFolder
-					| Command::FontsDownload
+					| Command::Fonts(
+						crate::app::font_panel::Command::OpenFolder
+					) | Command::Fonts(crate::app::font_panel::Command::Download)
 					| Command::ExportRun
 			)),
 			"{page} stayed active without the panel"
@@ -1059,33 +1069,25 @@ fn redesigned_chrome_frames() -> Result<()> {
 						continue;
 					}
 					let mut interaction = InteractionState {
-						panel_open: matches!(
-							page,
-							"settings"
-								| "preview" | "export" | "styles"
-								| "styles-scrolled" | "fonts"
-								| "fonts-scrolled" | "fonts-preview"
-						),
+						panel: match page {
+							"settings" | "preview" => {
+								PanelPage::Settings(PanelTab::Generic)
+							}
+							"export" => PanelPage::Export,
+							"styles" | "styles-scrolled" => {
+								PanelPage::Settings(PanelTab::Styles)
+							}
+							"fonts" | "fonts-scrolled" | "fonts-preview" => {
+								PanelPage::Settings(PanelTab::Fonts)
+							}
+							_ => PanelPage::Closed,
+						},
 						settings_preview: matches!(
 							page,
 							"preview" | "fonts-preview"
 						),
-						export_open: page == "export",
-						styles_open: matches!(
-							page,
-							"styles" | "styles-scrolled"
-						),
-						fonts_open: matches!(
-							page,
-							"fonts" | "fonts-scrolled" | "fonts-preview"
-						),
 						// A page below the fold, to capture the clip and bar.
 						styles_scroll: if page == "styles-scrolled" {
-							f32::MAX
-						} else {
-							0.0
-						},
-						fonts_scroll: if page == "fonts-scrolled" {
 							f32::MAX
 						} else {
 							0.0
@@ -1158,13 +1160,19 @@ fn redesigned_chrome_frames() -> Result<()> {
 						interaction: &interaction,
 						style_entries: &entries,
 						style_scroll: interaction.styles_scroll,
-						font_catalog: &catalog,
-						fonts_shown: shown,
-						font_jobs: &jobs,
-						fonts_scroll: interaction.fonts_scroll,
-						fonts_note: None,
-						font_source_filter: None,
-						font_status_filter: None,
+						fonts: crate::app::font_panel::View {
+							catalog: &catalog,
+							shown,
+							jobs: &jobs,
+							scroll: if page == "fonts-scrolled" {
+								f32::MAX
+							} else {
+								0.0
+							},
+							note: None,
+							source_filter: None,
+							status_filter: None,
+						},
 						width,
 						height,
 						scrollbar: None,

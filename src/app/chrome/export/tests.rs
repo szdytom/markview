@@ -1,5 +1,6 @@
 use super::*;
 use crate::app::chrome::panel_rect;
+use crate::state::PanelPage;
 
 fn settings(format: ExportFormat) -> ExportSettings {
 	ExportSettings {
@@ -96,8 +97,7 @@ fn the_drawn_panel_keeps_the_panel_geometry() {
 		&mut shaper,
 		&ExportSettings::default(),
 		&InteractionState {
-			panel_open: true,
-			export_open: true,
+			panel: PanelPage::Export,
 			..Default::default()
 		},
 		"doc.md",

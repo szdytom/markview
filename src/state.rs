@@ -64,17 +64,7 @@ pub(crate) enum Command {
 	StylesFolder,
 	/// Show one page of the settings panel.
 	SettingsTab(PanelTab),
-	/// Download every family the Fonts page shows that is not there yet.
-	FontsDownload,
-	/// Download one shown family, named by its position in the shown list.
-	FontsDownloadOne(usize),
-	/// Download one shown family again, even though it is already present.
-	FontsRedownloadOne(usize),
-	/// Stop one shown family's download.
-	FontsCancel(usize),
-	FontsOpenFolder,
-	FontsSourceFilter,
-	FontsStatusFilter,
+	Fonts(crate::app::font_panel::Command),
 	SelectTab(usize),
 	CloseTab(usize),
 	/// Dismiss the local-file confirmation without opening anything.
@@ -93,15 +83,87 @@ pub(crate) enum Command {
 	OutlineGoto(usize),
 }
 
+/// A panel has exactly one page; the outline and confirmation remain independent.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub(crate) enum PanelPage {
+	#[default]
+	Closed,
+	Settings(PanelTab),
+	Export,
+	ExportStyles,
+}
+
 impl InteractionState {
-	/// Closes every page of the settings panel and the export panel, whatever
-	/// was showing. Whether the panel itself stays open is the caller's
-	/// decision, which is why this does not touch `panel_open`.
-	pub(crate) fn close_pages(&mut self) {
-		self.styles_open = false;
-		self.fonts_open = false;
-		self.export_open = false;
-		self.export_styles_open = false;
+	pub(crate) fn panel_open(&self) -> bool {
+		self.panel != PanelPage::Closed
+	}
+
+	pub(crate) fn styles_open(&self) -> bool {
+		self.panel == PanelPage::Settings(PanelTab::Styles)
+	}
+
+	pub(crate) fn fonts_open(&self) -> bool {
+		self.panel == PanelPage::Settings(PanelTab::Fonts)
+	}
+
+	pub(crate) fn export_open(&self) -> bool {
+		matches!(self.panel, PanelPage::Export | PanelPage::ExportStyles)
+	}
+
+	pub(crate) fn export_styles_open(&self) -> bool {
+		self.panel == PanelPage::ExportStyles
+	}
+
+	/// Changes pages without losing the parent form's scroll position.
+	pub(crate) fn show_panel(&mut self, page: PanelPage) {
+		self.panel = page;
+		self.focus = None;
+		self.pressed = None;
+		self.pointer_down = None;
+		self.drag_at = None;
+		self.scrollbar = None;
+		self.panel_grab = None;
+	}
+
+	pub(crate) fn toggle_settings(&mut self) {
+		let open = !self.panel_open();
+		self.show_panel(if open {
+			PanelPage::Settings(PanelTab::Generic)
+		} else {
+			PanelPage::Closed
+		});
+		if open {
+			self.settings_scroll = 0.0;
+			self.settings_preview = false;
+			self.focus = Some(Command::SettingsTab(PanelTab::Generic));
+		}
+	}
+
+	pub(crate) fn toggle_export(&mut self) {
+		let open = !self.export_open();
+		self.show_panel(if open {
+			PanelPage::Export
+		} else {
+			PanelPage::Closed
+		});
+		if open {
+			self.export_scroll = 0.0;
+			self.focus = Some(Command::ExportRun);
+		}
+	}
+
+	pub(crate) fn show_styles(&mut self, export: bool) {
+		let page = if export {
+			if self.export_styles_open() {
+				PanelPage::Export
+			} else {
+				PanelPage::ExportStyles
+			}
+		} else {
+			PanelPage::Settings(PanelTab::Styles)
+		};
+		self.show_panel(page);
+		self.styles_scroll = 0.0;
 	}
 }
 
@@ -285,24 +347,15 @@ impl ReaderTab {
 #[derive(Default)]
 pub(crate) struct InteractionState {
 	pub(crate) selection_counts: Option<(TextSelection, TextCounts)>,
-	pub(crate) panel_open: bool,
+	pub(crate) panel: PanelPage,
 	pub(crate) settings_scroll: f32,
 	pub(crate) settings_preview: bool,
 	pub(crate) export_scroll: f32,
 	/// Offset from the centre of the panel scrollbar thumb while dragging.
 	pub(crate) panel_grab: Option<f32>,
-	pub(crate) styles_open: bool,
 	/// The Styles page's list offset. The export's stylesheet chooser shares
 	/// it: no two pages of the panel are ever open at once.
 	pub(crate) styles_scroll: f32,
-	/// The Fonts page of the panel. It implies `panel_open`.
-	pub(crate) fonts_open: bool,
-	/// The Fonts page's list offset.
-	pub(crate) fonts_scroll: f32,
-	/// The export page of the panel. It implies `panel_open`.
-	pub(crate) export_open: bool,
-	/// The export's stylesheet chooser, drawn in place of the export panel.
-	pub(crate) export_styles_open: bool,
 	pub(crate) selection: Option<TextSelection>,
 	pub(crate) pointer_down: Option<Drag>,
 	pub(crate) dragged: bool,
@@ -686,7 +739,7 @@ impl InteractionState {
 	/// scrollbar drag and outside-click dismissal must keep working where they
 	/// overlap it.
 	pub(crate) fn outline_owns_input(&self) -> bool {
-		self.outline_open && !self.panel_open && self.modal.is_none()
+		self.outline_open && !self.panel_open() && self.modal.is_none()
 	}
 
 	/// Moves the drawer's selection by `delta` entries, clamped to the

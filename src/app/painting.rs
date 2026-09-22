@@ -66,8 +66,9 @@ impl App {
 			return Ok(());
 		};
 		renderer.set_pointer(
-			(!self.interaction.panel_open && self.interaction.modal.is_none())
-				.then_some(self.interaction.cursor),
+			(!self.interaction.panel_open()
+				&& self.interaction.modal.is_none())
+			.then_some(self.interaction.cursor),
 		);
 		let (frame, suboptimal) = match renderer.acquire(window.clone())? {
 			crate::render::FrameStatus::Ready(frame, suboptimal) => {

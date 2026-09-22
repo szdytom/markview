@@ -146,8 +146,7 @@ impl App {
 		}
 		// The panel closes so the document and the status line stay visible
 		// while the file is written.
-		self.interaction.panel_open = false;
-		self.interaction.close_pages();
+		self.interaction.show_panel(crate::state::PanelPage::Closed);
 		self.interaction.focus = None;
 		self.interaction.pointer_down = None;
 		self.dialog_open = true;
@@ -586,7 +585,7 @@ fn run(
 ) -> ExportOutcome {
 	match settings.format {
 		ExportFormat::Pdf => {
-			let args = match export::pdf_launch(
+			let args = match export::pdf_request(
 				path.to_path_buf(),
 				output.to_path_buf(),
 				settings,
@@ -600,7 +599,7 @@ fn run(
 					return ExportOutcome::Failed(format!("{error:#}"));
 				}
 			};
-			match crate::pdf::export_once(path, &args) {
+			match crate::pdf::export_once(&args) {
 				Ok(stats) => ExportOutcome::Written {
 					path: output.to_path_buf(),
 					detail: format!(

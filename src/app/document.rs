@@ -103,8 +103,7 @@ impl App {
 			// the closed one instead of holding it until the next open. The
 			// export panel has nothing to export either.
 			self.worker.release();
-			self.interaction.panel_open = false;
-			self.interaction.close_pages();
+			self.interaction.show_panel(crate::state::PanelPage::Closed);
 			if let Some(window) = &self.window {
 				window.set_title("Markview");
 			}

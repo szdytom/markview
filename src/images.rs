@@ -3,7 +3,6 @@ mod cache;
 mod decode;
 mod diagram;
 mod fonts;
-mod net;
 mod pixels;
 mod source;
 #[cfg(test)]
@@ -17,7 +16,6 @@ use markview_core::{
 	image::{ImageInfo, ImageSnapshot},
 	style::Stylesheet,
 };
-pub(crate) use net::Downloader;
 use pixels::cache_pixels;
 use source::{Source, fetch, source, stamp};
 use std::{

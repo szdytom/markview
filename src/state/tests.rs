@@ -766,7 +766,9 @@ fn a_panel_or_a_confirmation_stops_enter_from_reaching_the_outline() {
 	);
 	// A panel owns input: Enter without a focused panel button does nothing
 	// instead of scrolling the document behind the panel.
-	interaction.panel_open = true;
+	interaction.show_panel(crate::state::PanelPage::Settings(
+		crate::state::PanelTab::Generic,
+	));
 	assert!(!interaction.outline_owns_input());
 	assert_eq!(interaction.enter_action(visible().into_iter()), None);
 	// A visible panel button still answers Enter while the panel is open.
@@ -777,7 +779,7 @@ fn a_panel_or_a_confirmation_stops_enter_from_reaching_the_outline() {
 	);
 	// A confirmation owns input in the same way.
 	interaction.focus = None;
-	interaction.panel_open = false;
+	interaction.show_panel(crate::state::PanelPage::Closed);
 	interaction.modal = Some(Modal::OpenLocal {
 		path: "local.bin".into(),
 		dir: ".".into(),
@@ -1437,25 +1439,68 @@ fn a_page_away_from_the_settled_end_still_animates() {
 	assert!(session.scroll_animating());
 }
 
-/// Every path that dismisses the panel or leaves a page goes through one
-/// helper, so a page added later cannot survive a dismissal.
 #[test]
-fn closing_the_pages_leaves_none_of_them_open() {
+fn panel_navigation_preserves_parent_scroll_and_resets_new_visits() {
 	let mut interaction = InteractionState {
-		panel_open: true,
-		styles_open: true,
-		fonts_open: true,
-		export_open: true,
-		export_styles_open: true,
+		outline_open: true,
 		..Default::default()
 	};
-	interaction.close_pages();
-	assert!(!interaction.styles_open);
-	assert!(!interaction.fonts_open);
-	assert!(!interaction.export_open);
-	assert!(!interaction.export_styles_open);
-	// The panel itself is the caller's decision.
-	assert!(interaction.panel_open);
+	interaction.toggle_settings();
+	assert_eq!(
+		interaction.focus,
+		Some(Command::SettingsTab(PanelTab::Generic))
+	);
+	interaction.settings_scroll = 120.0;
+	interaction.settings_preview = true;
+	interaction.show_styles(false);
+	interaction.show_panel(PanelPage::Settings(PanelTab::Generic));
+	assert_eq!(interaction.settings_scroll, 120.0);
+	assert!(interaction.settings_preview);
+	interaction.toggle_settings();
+	assert!(!interaction.panel_open());
+	assert!(interaction.outline_open);
+	interaction.toggle_settings();
+	assert_eq!(interaction.settings_scroll, 0.0);
+	assert!(!interaction.settings_preview);
+	interaction.toggle_export();
+	interaction.export_scroll = 90.0;
+	interaction.show_styles(true);
+	assert!(interaction.export_styles_open());
+	interaction.styles_scroll = 50.0;
+	interaction.show_styles(true);
+	assert!(interaction.export_open());
+	assert!(!interaction.export_styles_open());
+	assert_eq!(interaction.export_scroll, 90.0);
+	assert_eq!(interaction.styles_scroll, 0.0);
+	interaction.toggle_export();
+	interaction.toggle_export();
+	assert_eq!(interaction.export_scroll, 0.0);
+	assert_eq!(interaction.focus, Some(Command::ExportRun));
+}
+
+#[test]
+fn every_panel_transition_clears_transient_input() {
+	for page in [
+		PanelPage::Closed,
+		PanelPage::Settings(PanelTab::Generic),
+		PanelPage::Settings(PanelTab::Styles),
+		PanelPage::Settings(PanelTab::Fonts),
+		PanelPage::Export,
+		PanelPage::ExportStyles,
+	] {
+		let mut interaction = InteractionState {
+			focus: Some(Command::Larger),
+			pressed: Some(Command::Larger),
+			panel_grab: Some(10.0),
+			drag_at: Some(Instant::now()),
+			..Default::default()
+		};
+		interaction.show_panel(page);
+		assert_eq!(interaction.focus, None);
+		assert_eq!(interaction.pressed, None);
+		assert_eq!(interaction.panel_grab, None);
+		assert_eq!(interaction.drag_at, None);
+	}
 }
 
 /// Building the catalogue reads the whole system font collection, so the

@@ -4,7 +4,7 @@ This document explains what the major parts of Markview own and why the boundari
 
 ## The three-layer pipeline
 
-Markview is a read-only desktop application split across three Cargo packages:
+Markview is a read-only desktop application organized around a core and two rendering backends:
 
 ```text
 Markdown / assets
@@ -28,6 +28,32 @@ markview-core: semantic document → immutable layout snapshot
 The root package owns effects that must touch the operating system: launching, file and settings I/O, file watching, image loading, clipboard access, platform link opening, window events, and background work. The UI translates gestures into commands; it does not define document semantics.
 
 The separation matters because the same core layout is used by the interactive window, the renderer tests, and the offscreen render and benchmark modes.
+
+## Application feature boundaries
+
+Panel navigation uses one `PanelPage` for closed, settings (general, styles or
+fonts), export and export styles. `InteractionState` owns transitions, clears
+transient input and preserves parent form offsets on page round trips. The
+outline and confirmation remain independent overlays.
+
+`app/font_panel` owns the font catalogue, filters, scroll, download progress,
+cancellation and notices, plus its view and typed commands. Chrome borrows one
+`View`; the application routes `Command::Fonts` and adapts download messages to
+the event loop. The feature receives stylesheet entries, font configuration and
+an offline flag instead of borrowing `App`. Font installation still belongs to
+`fonts`; only the application updates the reader's font revision after a job
+stores files. The CLI adapter uses the same installation service independently.
+
+`net` owns bounded HTTP transport, address validation, redirects and transfer
+cancellation. Images own their response-cache and decoding policies; fonts own
+archive limits and installation transactions. Neither service obtains transport
+through the other.
+
+`export::PdfRequest` contains the source, destination, layout/font options,
+page and metadata overrides, links and offline policy. CLI and GUI construct it
+independently, preserving their defaults. PDF processing consumes this request
+without launch or window state; its watch session retains the existing caches.
+PNG scheduling remains in the desktop adapter.
 
 ## Semantic identity and immutable snapshots
 
@@ -114,7 +140,7 @@ While the reader stays put, the renderer rasterizes the glyphs of the screenful 
 
 Links are activated only on a matching, non-drag release. `src/link.rs` is the single policy for what a document-controlled link may do: Markdown opens as a reader tab, an inert allowlist of files and any directory goes to the system handler, and everything else is shown in a confirmation first, whose default action opens the containing folder. [Security and threat model](security.md#t6-local-links) owns the allowlist and its residual risks. A document that names more remote images than the per-revision cap allows shows a notice strip below the tab bar with Dismiss and Load all; the strip reserves its own band rather than covering text. A heading fragment moves the reader to that heading: `#anchor` inside the current document, or `file.md#anchor` after the target tab opens. Anchors are the GitHub slugs of heading text, and a link that uses a different slug rule is reported as a missing heading rather than guessed at. Markdown is never opened for writing. Clipboard output is reading text: code preserves meaningful whitespace, tables use tabs, formulas contribute LaTeX, and Markdown markers are omitted.
 
-A table-of-contents drawer lists a document's headings in reading order, built once per accepted document and cached with the session. It is an overlay rather than a modal panel: `panel_open` stays false, so the document keeps scrolling and selecting behind it, while the wheel over the drawer, the drawer's own rows, and Up/Down while it is open belong to the list. An entry jumps through the same fragment path as a `#anchor` link, and the entry holding the reading position is highlighted from the snapshot's heading anchors, resolved only while the drawer is open.
+A table-of-contents drawer lists a document's headings in reading order, built once per accepted document and cached with the session. It is an overlay rather than a modal panel: `PanelPage` remains closed, so the document keeps scrolling and selecting behind it, while the wheel over the drawer, the drawer's own rows, and Up/Down while it is open belong to the list. An entry jumps through the same fragment path as a `#anchor` link, and the entry holding the reading position is highlighted from the snapshot's heading anchors, resolved only while the drawer is open.
 
 Settings are layered as defaults, user TOML, then explicit command-line overrides. Interactive changes may persist user preferences; render, benchmark, and smoke modes intentionally avoid personal configuration so their output is reproducible. Stylesheets are parsed and merged transactionally: an invalid update leaves the last effective stylesheet in place.
 
@@ -135,7 +161,7 @@ components; helpers receive borrowed inputs instead of an application-wide conte
 | Application `Preferences` | Effective settings, persistence store, stylesheet catalog, save deadline | Stylesheet validation finishes before the effective sheet and UI appearance change. The application applies successful changes to the renderer. Export preferences live beside the reader's, never inside them. |
 | Application export | One export's settings, its background job, the PNG strip loop and the watch target | Reads and lays the document out itself at the export's own options, so it never requests a reader layout; only PNG strips touch the shared GPU device, one per frame, with the export's own stylesheet. |
 | Application tab strip | Scroll offset, drag gesture and cached filename widths | Pure strip geometry drives both painting and hit testing. Reordering moves sessions without submitting layout requests; clipped draw groups contain overflow. |
-| Application chrome | Borrowed display state and compiled icon buffers | Controls, footer, tabs and styles produce geometry without window, worker or configuration I/O access. Shared buttons and grouped forms own drawing, clipped pointer regions and focus geometry; panel scroll offsets stay in interaction state. Selection-count caching remains in the application adapter; icons stay editable SVG files that the `markview-icon` macro parses into vector buffers at compile time, so no SVG parser reaches the binary. |
+| Application chrome | Borrowed display state and compiled icon buffers | Controls, footer, tabs and styles produce geometry without window, worker or configuration I/O access. Shared buttons and grouped forms own drawing, clipped pointer regions and focus geometry; font scroll and filters stay in the font feature; other panel offsets stay in interaction state. Selection-count caching remains in the application adapter; icons stay editable SVG files that the `markview-icon` macro parses into vector buffers at compile time, so no SVG parser reaches the binary. |
 | Image scheduler | Versioned entries, jobs and published snapshot | Source reads, the pinned HTTP client, the bounded disk cache, bounded decoding and allocation-aware pixel eviction are separate modules. |
 | `LayoutEngine` | Document block cache, shaping/math resources, highlight owner | Snapshot assembly and invalidation stay at this entry point; immutable stylesheet identity is computed once per document pass. |
 | `paginate` | Band segmentation, page distribution, page furniture | Pure geometry over a settled snapshot: no fonts, no I/O, and no effect on the reader's layout. |

@@ -4,10 +4,11 @@
 //! stylesheets and the builtin recommendations declare, says what each family
 //! is, what it is licensed under, and whether it is already there, and offers
 //! one family or all of them at a time.
-use super::super::Button;
-use super::components::{CONTROL, frame, line};
-use super::controls::{draw_button, panel_rect};
-use super::list::List;
+use super::Command as FontCommand;
+use crate::app::Button;
+use crate::app::chrome::components::{CONTROL, frame, line};
+use crate::app::chrome::components::{draw_button, panel_rect};
+use crate::app::chrome::list::List;
 use crate::{
 	layout::{Draw, Paint, Rect, TextShaper},
 	state::{Command, InteractionState, PanelTab},
@@ -50,18 +51,47 @@ pub(in crate::app) fn list(
 	)
 }
 
+pub(in crate::app) fn buttons(
+	view: &super::View<'_>,
+	preview: bool,
+	width: f32,
+	height: f32,
+) -> Vec<Button> {
+	let list = list(width, height, view.shown.len(), view.scroll);
+	let mut buttons = fonts_controls(
+		view.catalog,
+		&view.shown,
+		view.jobs,
+		view.source_filter,
+		view.status_filter,
+		preview,
+		width,
+		height,
+	);
+	buttons.extend(list.hit(font_rows(
+		view.catalog,
+		&view.shown,
+		view.jobs,
+		list,
+	)));
+	buttons
+}
+
 /// One family's action, given what state it is in and whether it is running.
 fn action(
 	family: &crate::fonts::Family,
 	running: bool,
 ) -> (&'static str, Command) {
 	if running {
-		return ("Cancel", Command::FontsCancel(0));
+		return ("Cancel", Command::Fonts(FontCommand::Cancel(0)));
 	}
 	if family.state == crate::fonts::State::Downloaded {
-		return ("Download again", Command::FontsRedownloadOne(0));
+		return (
+			"Download again",
+			Command::Fonts(FontCommand::RedownloadOne(0)),
+		);
 	}
-	("Download", Command::FontsDownloadOne(0))
+	("Download", Command::Fonts(FontCommand::DownloadOne(0)))
 }
 
 /// The state badge one family shows.
@@ -84,7 +114,7 @@ fn bytes_label(bytes: u64) -> String {
 /// The page's fixed controls: the filter row, the footer and the settings
 /// header. They sit outside the scrolling list.
 #[expect(clippy::too_many_arguments, reason = "one page's explicit inputs")]
-pub(super) fn fonts_controls(
+fn fonts_controls(
 	catalog: &[crate::fonts::Family],
 	shown: &[usize],
 	jobs: &HashMap<String, crate::fonts::Progress>,
@@ -95,7 +125,7 @@ pub(super) fn fonts_controls(
 	height: f32,
 ) -> Vec<Button> {
 	let r = fonts_rect(width, height);
-	let mut out = super::components::settings_header_controls(
+	let mut out = crate::app::chrome::components::settings_header_controls(
 		r,
 		PanelTab::Fonts,
 		preview,
@@ -107,7 +137,7 @@ pub(super) fn fonts_controls(
 			active: false,
 			kind: Default::default(),
 			enabled: true,
-			action: Command::FontsOpenFolder,
+			action: Command::Fonts(FontCommand::OpenFolder),
 			rect: Rect {
 				x: r.x + 24.,
 				y: r.y + r.h - 48.,
@@ -125,7 +155,7 @@ pub(super) fn fonts_controls(
 			active: source_filter.is_some(),
 			kind: Default::default(),
 			enabled: true,
-			action: Command::FontsSourceFilter,
+			action: Command::Fonts(FontCommand::SourceFilter),
 			rect: Rect {
 				x: r.x + 24.,
 				y: r.y + 116.,
@@ -144,7 +174,7 @@ pub(super) fn fonts_controls(
 			active: status_filter.is_some(),
 			kind: Default::default(),
 			enabled: true,
-			action: Command::FontsStatusFilter,
+			action: Command::Fonts(FontCommand::StatusFilter),
 			rect: Rect {
 				x: r.x + 152.,
 				y: r.y + 116.,
@@ -166,7 +196,7 @@ pub(super) fn fonts_controls(
 		active: false,
 		kind: Default::default(),
 		enabled: missing,
-		action: Command::FontsDownload,
+		action: Command::Fonts(FontCommand::Download),
 		rect: Rect {
 			x: r.x + r.w - 24. - 148.,
 			y: r.y + r.h - 48.,
@@ -174,7 +204,7 @@ pub(super) fn fonts_controls(
 			h: CONTROL,
 		},
 	};
-	download.kind = super::components::ButtonKind::Primary;
+	download.kind = crate::app::chrome::components::ButtonKind::Primary;
 	out.push(download);
 	out
 }
@@ -184,7 +214,7 @@ pub(super) fn fonts_controls(
 /// Only the rows on screen have buttons, so the page never builds a control
 /// nothing can draw or reach. The action names the family by its position in
 /// the shown list.
-pub(super) fn font_rows(
+fn font_rows(
 	catalog: &[crate::fonts::Family],
 	shown: &[usize],
 	jobs: &HashMap<String, crate::fonts::Progress>,
@@ -197,9 +227,13 @@ pub(super) fn font_rows(
 		let running = jobs.contains_key(&family.family.id);
 		let (label, action) = action(family, running);
 		let action = match action {
-			Command::FontsCancel(_) => Command::FontsCancel(row),
-			Command::FontsRedownloadOne(_) => Command::FontsRedownloadOne(row),
-			_ => Command::FontsDownloadOne(row),
+			Command::Fonts(FontCommand::Cancel(_)) => {
+				Command::Fonts(FontCommand::Cancel(row))
+			}
+			Command::Fonts(FontCommand::RedownloadOne(_)) => {
+				Command::Fonts(FontCommand::RedownloadOne(row))
+			}
+			_ => Command::Fonts(FontCommand::DownloadOne(row)),
 		};
 		out.push(Button {
 			label,
@@ -247,21 +281,25 @@ fn summary_text(
 	out
 }
 
-#[expect(clippy::too_many_arguments, reason = "one page's explicit inputs")]
-pub(super) fn draw_fonts(
+pub(in crate::app) fn draw_fonts(
 	shaper: &mut TextShaper,
 	interaction: &InteractionState,
-	catalog: &[crate::fonts::Family],
-	shown: &[usize],
-	jobs: &HashMap<String, crate::fonts::Progress>,
-	scroll: f32,
-	note: Option<&str>,
-	source_filter: Option<&str>,
-	status_filter: Option<crate::fonts::State>,
-	preview: bool,
+	view: &super::View<'_>,
 	width: f32,
 	height: f32,
 ) -> Vec<Draw> {
+	let super::View {
+		catalog,
+		shown,
+		jobs,
+		scroll,
+		note,
+		source_filter,
+		status_filter,
+	} = view;
+	let (scroll, note, source_filter, status_filter) =
+		(*scroll, *note, *source_filter, *status_filter);
+	let preview = interaction.settings_preview;
 	shaper.appearance = shaper.stylesheet.text(
 		&shaper
 			.stylesheet
@@ -408,20 +446,20 @@ pub(super) fn draw_fonts(
 		height,
 	) {
 		// The header of a settings tab is drawn once, by the header itself.
-		if super::components::is_settings_header(b.action) {
+		if crate::app::chrome::components::is_settings_header(b.action) {
 			continue;
 		}
 		out.extend(draw_button(shaper, interaction, &b, true));
 	}
 	if preview {
-		super::components::fade(
+		crate::app::chrome::components::fade(
 			&mut out,
 			shaper,
-			super::components::PREVIEW_OPACITY,
+			crate::app::chrome::components::PREVIEW_OPACITY,
 		);
 	}
 	// The header goes on top of the fade, so its own controls stay legible.
-	out.extend(super::components::draw_settings_header(
+	out.extend(crate::app::chrome::components::draw_settings_header(
 		shaper,
 		interaction,
 		r,
@@ -532,10 +570,11 @@ mod tests {
 		let buttons = rows.hit(font_rows(&catalog, &shown, &jobs, rows));
 		// The first row downloads, the second offers to download again.
 		assert!(buttons.iter().any(|b| {
-			b.action == Command::FontsDownloadOne(0) && b.label == "Download"
+			b.action == Command::Fonts(FontCommand::DownloadOne(0))
+				&& b.label == "Download"
 		}));
 		assert!(buttons.iter().any(|b| {
-			b.action == Command::FontsRedownloadOne(1)
+			b.action == Command::Fonts(FontCommand::RedownloadOne(1))
 				&& b.label == "Download again"
 		}));
 		// Only one family is missing, so the top action is offered for it.
@@ -543,7 +582,7 @@ mod tests {
 			&catalog, &shown, &jobs, None, None, false, 820., 600.,
 		)
 		.into_iter()
-		.find(|b| b.action == Command::FontsDownload)
+		.find(|b| b.action == Command::Fonts(FontCommand::Download))
 		.unwrap();
 		assert!(top.enabled);
 	}
@@ -585,17 +624,25 @@ mod tests {
 		assert!(
 			!buttons.iter().any(|b| matches!(
 				b.action,
-				Command::FontsDownloadOne(_)
-					| Command::FontsCancel(_)
-					| Command::FontsRedownloadOne(_)
+				Command::Fonts(FontCommand::DownloadOne(_))
+					| Command::Fonts(FontCommand::Cancel(_))
+					| Command::Fonts(FontCommand::RedownloadOne(_))
 			)),
 			"a row is drawn with no room for it"
 		);
 		// The page still offers a way out and the bulk action.
 		let fixed =
 			fonts_controls(&catalog, &shown, &jobs, None, None, false, w, h);
-		assert!(fixed.iter().any(|b| b.action == Command::FontsOpenFolder));
-		assert!(fixed.iter().any(|b| b.action == Command::FontsDownload));
+		assert!(
+			fixed
+				.iter()
+				.any(|b| b.action == Command::Fonts(FontCommand::OpenFolder))
+		);
+		assert!(
+			fixed
+				.iter()
+				.any(|b| b.action == Command::Fonts(FontCommand::Download))
+		);
 		// A whole row fits as soon as the panel is tall enough for one.
 		assert!(list(w, 400., shown.len(), 0.0).fits());
 	}
@@ -613,20 +660,22 @@ mod tests {
 		assert!(top.max_scroll() > 0.0);
 		let rows = top.hit(font_rows(&catalog, &shown, &jobs, top));
 		assert!(
-			rows.iter()
-				.any(|b| b.action == Command::FontsDownloadOne(0))
+			rows.iter().any(
+				|b| b.action == Command::Fonts(FontCommand::DownloadOne(0))
+			)
 		);
 		assert!(
-			!rows
-				.iter()
-				.any(|b| b.action == Command::FontsDownloadOne(8))
+			!rows.iter().any(
+				|b| b.action == Command::Fonts(FontCommand::DownloadOne(8))
+			)
 		);
 		let bottom = list(w, h, shown.len(), f32::MAX);
 		assert_eq!(bottom.scroll, top.max_scroll());
 		let rows = bottom.hit(font_rows(&catalog, &shown, &jobs, bottom));
 		assert!(
-			rows.iter()
-				.any(|b| b.action == Command::FontsDownloadOne(8))
+			rows.iter().any(
+				|b| b.action == Command::Fonts(FontCommand::DownloadOne(8))
+			)
 		);
 	}
 
@@ -645,13 +694,17 @@ mod tests {
 		);
 		let rows = list(820., 600., shown.len(), 0.0);
 		let buttons = rows.hit(font_rows(&catalog, &shown, &jobs, rows));
-		assert!(buttons.iter().any(|b| b.action == Command::FontsCancel(0)));
+		assert!(
+			buttons
+				.iter()
+				.any(|b| b.action == Command::Fonts(FontCommand::Cancel(0)))
+		);
 		// Nothing is left to start, so the top action is disabled.
 		let top = fonts_controls(
 			&catalog, &shown, &jobs, None, None, false, 820., 600.,
 		)
 		.into_iter()
-		.find(|b| b.action == Command::FontsDownload)
+		.find(|b| b.action == Command::Fonts(FontCommand::Download))
 		.unwrap();
 		assert!(!top.enabled);
 	}

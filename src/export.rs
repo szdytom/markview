@@ -5,7 +5,6 @@
 //! borrows [`ExportSettings`] for a single job, so an export can never reflow
 //! the document on screen.
 use crate::{
-	cli::{LaunchOptions, MetadataOverrides, Mode, PageOverrides},
 	document,
 	file::read_document,
 	images::Images,
@@ -22,6 +21,38 @@ use std::{
 	path::{Path, PathBuf},
 	sync::Arc,
 };
+
+/// The document metadata the command line writes into the PDF.
+#[derive(Default, Clone)]
+pub(crate) struct MetadataOverrides {
+	pub(crate) title: Option<String>,
+	pub(crate) authors: Vec<String>,
+	pub(crate) subject: Option<String>,
+	pub(crate) keywords: Vec<String>,
+	pub(crate) language: Option<String>,
+	pub(crate) creator: Option<String>,
+}
+
+/// The `[page]` fields the command line overrides on top of the stylesheet.
+#[derive(Default, Clone)]
+pub(crate) struct PageOverrides {
+	pub(crate) paper: Option<String>,
+	pub(crate) landscape: bool,
+	pub(crate) margin: Option<[f32; 4]>,
+	/// Header and footer slots, left to centre to right.
+	pub(crate) header: [Option<String>; 3],
+	pub(crate) footer: [Option<String>; 3],
+}
+/// A PDF job shared by desktop and CLI adapters, independent of launch state.
+pub(crate) struct PdfRequest {
+	pub(crate) path: PathBuf,
+	pub(crate) output: PathBuf,
+	pub(crate) options: LayoutOptions,
+	pub(crate) page: PageOverrides,
+	pub(crate) metadata: MetadataOverrides,
+	pub(crate) links: bool,
+	pub(crate) offline: bool,
+}
 
 /// A single PNG never allocates more pixels than this. At four bytes each the
 /// stitched image is at most roughly 256 MiB, and a document beyond it is asked
@@ -83,9 +114,8 @@ pub(crate) fn export_stylesheet(
 	crate::stylesheet::apply_font_overrides(sheet, overrides)
 }
 
-/// A PDF export described as the command line would have described it, so the
-/// reader and `--pdf` share one implementation.
-pub(crate) fn pdf_launch(
+/// Builds a PDF job from the export panel's own defaults.
+pub(crate) fn pdf_request(
 	path: PathBuf,
 	output: PathBuf,
 	settings: &ExportSettings,
@@ -93,13 +123,12 @@ pub(crate) fn pdf_launch(
 	cjk: CjkType,
 	overrides: &[FontDefOverride],
 	offline: bool,
-) -> Result<LaunchOptions> {
+) -> Result<PdfRequest> {
 	let stylesheet = export_stylesheet(&settings.style, cjk, overrides)?;
-	Ok(LaunchOptions {
+	Ok(PdfRequest {
 		offline,
-		mode: Mode::Pdf,
-		path: Some(path),
-		output: Some(output),
+		path,
+		output,
 		options: layout_options(settings, 0.0, stylesheet, fonts),
 		page: PageOverrides {
 			paper: Some(settings.paper.clone()),
@@ -109,7 +138,6 @@ pub(crate) fn pdf_launch(
 		},
 		metadata: MetadataOverrides::default(),
 		links: true,
-		..Default::default()
 	})
 }
 

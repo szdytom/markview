@@ -2,6 +2,7 @@ mod anchor;
 mod chrome;
 mod document;
 mod export;
+pub(crate) mod font_panel;
 mod fonts_command;
 mod icon;
 mod interaction;
@@ -49,9 +50,7 @@ enum Event {
 	Open(Option<PathBuf>),
 	DeviceLost,
 	Exported(Box<ExportOutcome>),
-	Fonts(Box<crate::fonts::Progress>),
-	/// A whole download finished, with what it stored.
-	FontsSettled(Box<crate::fonts::Summary>),
+	Fonts(font_panel::Message),
 }
 
 /// What one export produced, or why it produced nothing.
@@ -159,23 +158,7 @@ struct App {
 	/// What one wheel notch travels on this desktop, read once at startup:
 	/// nothing reports the desktop setting changing afterwards.
 	wheel_notch: crate::platform::WheelNotch,
-	/// The downloadable families the shown stylesheets declare, with what is
-	/// already on disk. Empty until a page that shows it asks for it: building
-	/// it reads and parses the whole system font collection, so it must not sit
-	/// between a launch and the first frame.
-	font_catalog: Vec<crate::fonts::Family>,
-	/// The families being downloaded right now, by id.
-	font_jobs: std::collections::HashMap<String, crate::fonts::Progress>,
-	/// Families the reader has asked to stop.
-	font_cancel: Arc<std::sync::Mutex<std::collections::HashSet<String>>>,
-	/// A quiet note about the last download: offline, or nothing to do.
-	font_note: Option<String>,
-	/// The Fonts tab's filters: a declaring sheet id, and a state.
-	font_source_filter: Option<String>,
-	font_status_filter: Option<crate::fonts::State>,
-	/// How many files this process has stored, which is what tells a finished
-	/// download that the reader's own font set changed.
-	font_stored: usize,
+	font_panel: font_panel::FontPanel,
 	clipboard: crate::platform::Clipboard,
 	paste_dir: tempfile::TempDir,
 	paste_serial: u32,
@@ -233,9 +216,7 @@ impl App {
 				let _ = proxy.send_event(Event::StylesChanged);
 			})
 		});
-		// Built on demand by `refresh_font_catalog`, which the pages that show
-		// it call when they open.
-		let font_catalog = Vec::new();
+
 		Self {
 			interaction: InteractionState::default(),
 			readers: tabs::Tabs::default(),
@@ -253,15 +234,7 @@ impl App {
 			ui,
 			preferences,
 			wheel_notch: crate::platform::wheel_notch(),
-			font_catalog,
-			font_jobs: std::collections::HashMap::new(),
-			font_cancel: Arc::new(std::sync::Mutex::new(
-				std::collections::HashSet::new(),
-			)),
-			font_note: None,
-			font_source_filter: None,
-			font_status_filter: None,
-			font_stored: 0,
+			font_panel: font_panel::FontPanel::default(),
 			clipboard: Default::default(),
 			paste_dir: tempfile::tempdir()
 				.expect("create clipboard paste directory"),
@@ -294,7 +267,7 @@ impl App {
 				self.request(false);
 			}
 		}
-		if self.interaction.export_styles_open {
+		if self.interaction.export_styles_open() {
 			self.preferences.style_entries = crate::stylesheet::catalog_for(
 				crate::stylesheet::directory().as_deref(),
 				Some(&self.preferences.export.style),
@@ -344,222 +317,6 @@ impl App {
 		options
 	}
 
-	/// The catalogue positions the Fonts page shows, filters applied.
-	pub(super) fn shown_fonts(&self) -> Vec<usize> {
-		self.font_catalog
-			.iter()
-			.enumerate()
-			.filter(|(_, entry)| {
-				self.font_source_filter
-					.as_ref()
-					.is_none_or(|source| entry.owners.contains(source))
-			})
-			.filter(|(_, entry)| {
-				self.font_status_filter
-					.is_none_or(|state| entry.state == state)
-			})
-			.map(|(index, _)| index)
-			.collect()
-	}
-
-	/// The family id behind one shown position.
-	pub(super) fn shown_font_id(&self, index: usize) -> Option<String> {
-		self.shown_fonts()
-			.get(index)
-			.map(|position| self.font_catalog[*position].family.id.clone())
-	}
-
-	/// Every family the Fonts page shows.
-	pub(super) fn shown_font_ids(&self) -> Vec<String> {
-		self.shown_fonts()
-			.iter()
-			.map(|position| self.font_catalog[*position].family.id.clone())
-			.collect()
-	}
-
-	/// The declaring sheets the Fonts page cycles its source filter through.
-	pub(super) fn font_sources(&self) -> Vec<String> {
-		let mut out: Vec<String> = Vec::new();
-		for entry in &self.font_catalog {
-			for owner in &entry.owners {
-				if !out.contains(owner) {
-					out.push(owner.clone());
-				}
-			}
-		}
-		out
-	}
-
-	/// Advances the source filter to the next declaring sheet, or to all.
-	pub(super) fn next_font_source(&mut self) {
-		let sources = self.font_sources();
-		let next = match &self.font_source_filter {
-			None => sources.first().cloned(),
-			Some(current) => {
-				let at = sources.iter().position(|source| source == current);
-				at.and_then(|at| sources.get(at + 1)).cloned()
-			}
-		};
-		self.font_source_filter = next;
-		self.interaction.fonts_scroll = 0.0;
-	}
-
-	/// Advances the status filter through missing, provided, downloaded, all.
-	pub(super) fn next_font_status(&mut self) {
-		self.font_status_filter = match self.font_status_filter {
-			None => Some(crate::fonts::State::Missing),
-			Some(crate::fonts::State::Missing) => {
-				Some(crate::fonts::State::Provided)
-			}
-			Some(crate::fonts::State::Provided) => {
-				Some(crate::fonts::State::Downloaded)
-			}
-			Some(crate::fonts::State::Downloaded) => None,
-		};
-		self.interaction.fonts_scroll = 0.0;
-	}
-
-	/// Rebuilds the catalogue the Fonts page shows.
-	///
-	/// The builtin recommendations come first and every catalogued sheet
-	/// follows, so a sheet that redefines a builtin family replaces it whole.
-	/// The reader's own configuration is used, so the build shares the shaper's
-	/// collection cache.
-	pub(super) fn refresh_font_catalog(&mut self) {
-		let builtin = markview_core::style::Stylesheet::builtin();
-		let sheets =
-			std::iter::once(("builtin", builtin.font_families.as_slice()))
-				.chain(self.preferences.style_entries.iter().map(|entry| {
-					(entry.id.as_str(), entry.font_families.as_slice())
-				}));
-		let dir = crate::fonts::directory();
-		self.font_catalog =
-			crate::fonts::catalog(sheets, dir.as_deref(), &self.fonts_config);
-	}
-
-	/// Starts downloading the named families, or reports why nothing can run.
-	///
-	/// Every family comes from the catalogued stylesheets and the builtin
-	/// recommendations, so a download is exactly that set; nothing here runs on
-	/// its own. A family already being downloaded is left to the run that owns
-	/// it, so two runs never write the same files.
-	pub(super) fn download_fonts(
-		&mut self,
-		ids: &[String],
-		scope: crate::fonts::Scope,
-	) {
-		let busy = ids.iter().any(|id| self.font_jobs.contains_key(id));
-		let ids: Vec<String> = ids
-			.iter()
-			.filter(|id| !self.font_jobs.contains_key(*id))
-			.cloned()
-			.collect();
-		let missing: Vec<markview_core::style::FontFamily> =
-			crate::fonts::select(&self.font_catalog, &ids, scope)
-				.into_iter()
-				.cloned()
-				.collect();
-		if missing.is_empty() {
-			// A family already being downloaded is not "downloaded", so the
-			// note has to tell the two apart.
-			self.font_note = Some(
-				if busy {
-					"Those families are already downloading"
-				} else {
-					"Everything selected is already downloaded"
-				}
-				.into(),
-			);
-			self.redraw();
-			return;
-		}
-		if self.args.offline {
-			self.font_note =
-				Some("Offline: font downloads are unavailable".into());
-			self.notify("Offline: cannot download fonts", true, 4);
-			return;
-		}
-		let Some(dir) = crate::fonts::directory() else {
-			self.font_note = Some("No user configuration directory".into());
-			self.redraw();
-			return;
-		};
-		for family in &missing {
-			self.font_jobs.insert(
-				family.id.clone(),
-				crate::fonts::Progress::queued(&family.id),
-			);
-			if let Ok(mut cancel) = self.font_cancel.lock() {
-				cancel.remove(&family.id);
-			}
-		}
-		self.font_note = None;
-		let proxy = self.proxy.clone();
-		let cancels = self.font_cancel.clone();
-		std::thread::spawn(move || {
-			let transport = match crate::images::Downloader::new() {
-				Ok(transport) => transport,
-				Err(error) => {
-					let reason = format!("{error:#}");
-					let failed = missing
-						.iter()
-						.map(|family| (family.id.clone(), reason.clone()))
-						.collect();
-					let _ = proxy.send_event(Event::FontsSettled(Box::new(
-						crate::fonts::Summary {
-							requested: missing
-								.iter()
-								.map(|family| family.id.clone())
-								.collect(),
-							failed,
-							..Default::default()
-						},
-					)));
-					return;
-				}
-			};
-			let cancel: Arc<dyn Fn(&str) -> bool + Send + Sync> =
-				Arc::new(move |id: &str| {
-					cancels.lock().is_ok_and(|cancel| cancel.contains(id))
-				});
-			let summary = crate::fonts::run(
-				&missing,
-				&dir,
-				&transport,
-				crate::fonts::DEFAULT_JOBS,
-				cancel,
-				&mut |progress| {
-					let _ = proxy.send_event(Event::Fonts(Box::new(progress)));
-				},
-			);
-			let _ = proxy.send_event(Event::FontsSettled(Box::new(summary)));
-		});
-		self.redraw();
-	}
-
-	/// Asks one family's running download to stop.
-	pub(super) fn cancel_font(&mut self, id: &str) {
-		if let Ok(mut cancel) = self.font_cancel.lock() {
-			cancel.insert(id.to_owned());
-		}
-		self.redraw();
-	}
-
-	/// Opens the download directory, creating it when it does not exist yet.
-	pub(super) fn open_fonts_folder(&mut self) {
-		let result = crate::fonts::directory()
-			.ok_or_else(|| anyhow::anyhow!("No user configuration directory"))
-			.and_then(|dir| {
-				std::fs::create_dir_all(&dir)?;
-				open::that_detached(dir)?;
-				Ok(())
-			});
-		if let Err(error) = result {
-			self.font_note = Some(format!("{error:#}"));
-		}
-		self.redraw();
-	}
-
 	/// Makes the user font directory part of every later layout after a job
 	/// that stored at least one file.
 	///
@@ -571,11 +328,10 @@ impl App {
 	/// collection cache key, so the reflow after a real change picks the new
 	/// faces up without a restart. Exports keep `args.options.fonts`, which
 	/// never gains the directory.
-	pub(super) fn register_fonts(&mut self) {
+	pub(super) fn register_fonts(&mut self, stored: usize) {
 		if self.fonts_config.ignore_system_fonts {
 			return;
 		}
-		let stored = std::mem::take(&mut self.font_stored);
 		let Some(dir) = crate::fonts::directory() else {
 			return;
 		};

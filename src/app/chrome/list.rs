@@ -15,9 +15,9 @@ use markview_core::style::{ColorField as C, Condition};
 pub(in crate::app) struct List {
 	/// The whole panel: a page lays its fixed controls out in it, and it owns
 	/// the scrollbar band every page of the settings panel shares.
-	pub(super) panel: Rect,
+	pub(in crate::app) panel: Rect,
 	/// The clip: rows are drawn and clicked only inside it.
-	pub(super) viewport: Rect,
+	pub(in crate::app) viewport: Rect,
 	/// One row's height.
 	row: f32,
 	/// How many rows the page has.
@@ -27,7 +27,7 @@ pub(in crate::app) struct List {
 }
 
 impl List {
-	pub(super) fn new(
+	pub(in crate::app) fn new(
 		panel: Rect,
 		viewport: Rect,
 		row: f32,
@@ -52,13 +52,13 @@ impl List {
 
 	/// Whether a whole row fits. A shorter clip shows a sliver of one, which a
 	/// page with its own footer prefers to say rather than draw.
-	pub(super) fn fits(&self) -> bool {
+	pub(in crate::app) fn fits(&self) -> bool {
 		self.viewport.h >= self.row
 	}
 
 	/// The rows the clip shows, and the one just below it, so a row that is
 	/// half scrolled off an edge is still laid out where it belongs.
-	pub(super) fn visible(&self) -> std::ops::Range<usize> {
+	pub(in crate::app) fn visible(&self) -> std::ops::Range<usize> {
 		if self.rows == 0 || self.viewport.h <= 0.0 {
 			return 0..0;
 		}
@@ -70,7 +70,7 @@ impl List {
 	}
 
 	/// Where one row's band sits at the current offset, in window coordinates.
-	pub(super) fn row_rect(&self, index: usize) -> Rect {
+	pub(in crate::app) fn row_rect(&self, index: usize) -> Rect {
 		Rect {
 			x: self.viewport.x,
 			y: self.viewport.y + index as f32 * self.row - self.scroll,
@@ -81,7 +81,7 @@ impl List {
 
 	/// The buttons a press may reach, each clipped to the rows on screen, so a
 	/// press outside the clip cannot find a row hidden above or below it.
-	pub(super) fn hit(&self, buttons: Vec<Button>) -> Vec<Button> {
+	pub(in crate::app) fn hit(&self, buttons: Vec<Button>) -> Vec<Button> {
 		buttons
 			.into_iter()
 			.filter_map(|mut b| {
@@ -92,7 +92,7 @@ impl List {
 	}
 
 	/// One drawn row group, clipped to the rows on screen.
-	pub(super) fn clip(&self, draws: Vec<Draw>) -> Draw {
+	pub(in crate::app) fn clip(&self, draws: Vec<Draw>) -> Draw {
 		Draw::Clipped {
 			rect: self.viewport,
 			draws,
@@ -118,7 +118,7 @@ impl List {
 	}
 
 	/// Paints the bar, when the list has one, beside the rows it scrolls.
-	pub(super) fn draw_bar(
+	pub(in crate::app) fn draw_bar(
 		&self,
 		out: &mut Vec<Draw>,
 		ui: &TextShaper,

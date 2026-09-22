@@ -1,7 +1,9 @@
 //! Commands, selection gestures and clipboard actions.
 use crate::cli::Mode;
 use crate::settings::{ReaderSettings, Setting};
-use crate::state::{Command, Modal, PanelTab, ScrollbarAxis, ScrollbarDrag};
+use crate::state::{
+	Command, Modal, PanelPage, PanelTab, ScrollbarAxis, ScrollbarDrag,
+};
 use markview_core::text::TextPosition;
 use std::time::{Duration, Instant};
 
@@ -102,15 +104,15 @@ impl App {
 			Command::Styles => {
 				self.readers.session.cancel_scroll_animation();
 				self.tab_strip.cancel_drag();
-				self.interaction.panel_open = true;
-				self.interaction.close_pages();
-				self.interaction.styles_open = true;
+				self.interaction.show_styles(false);
 				self.preferences.style_entries = crate::stylesheet::catalog(
 					crate::stylesheet::directory().as_deref(),
 					self.preferences.values.style.as_deref(),
 				);
-				self.refresh_font_catalog();
-				self.interaction.styles_scroll = 0.0;
+				self.font_panel.refresh(
+					&self.preferences.style_entries,
+					&self.fonts_config,
+				);
 				self.interaction.focus = None;
 				self.redraw();
 				return;
@@ -118,19 +120,12 @@ impl App {
 			Command::ExportStyles => {
 				self.readers.session.cancel_scroll_animation();
 				self.tab_strip.cancel_drag();
-				let open = !self.interaction.export_styles_open;
-				self.interaction.panel_open = true;
-				self.interaction.close_pages();
-				// Closing the chooser returns to the export panel, not to the
-				// document.
-				self.interaction.export_open = true;
-				self.interaction.export_styles_open = open;
+				self.interaction.show_styles(true);
 				self.preferences.style_entries = crate::stylesheet::catalog_for(
 					crate::stylesheet::directory().as_deref(),
 					Some(&self.preferences.export.style),
 					markview_core::style::StyleTarget::Pdf,
 				);
-				self.interaction.styles_scroll = 0.0;
 				self.interaction.focus = None;
 				self.redraw();
 				return;
@@ -138,22 +133,13 @@ impl App {
 			Command::Export => {
 				self.readers.session.cancel_scroll_animation();
 				self.tab_strip.cancel_drag();
-				let open = !self.interaction.export_open;
-				if open {
-					self.interaction.export_scroll = 0.0;
-				}
-				if open && self.readers.session.path.is_none() {
+				if !self.interaction.export_open()
+					&& self.readers.session.path.is_none()
+				{
 					self.notify("Open a document first", true, 4);
 					return;
 				}
-				self.interaction.panel_open = open;
-				self.interaction.close_pages();
-				self.interaction.export_open = open;
-				self.interaction.pointer_down = None;
-				self.interaction.drag_at = None;
-				self.interaction.scrollbar = None;
-				self.interaction.panel_grab = None;
-				self.interaction.focus = open.then_some(Command::ExportRun);
+				self.interaction.toggle_export();
 				self.refresh_hover();
 				self.redraw();
 				return;
@@ -174,51 +160,22 @@ impl App {
 			| Command::ExportOrientation(_)
 			| Command::ExportMargin(_)
 			| Command::ExportScale(_) => return,
-			Command::FontsDownload => {
-				// The button says "Download missing", so it takes exactly the
-				// families nothing provides; an installed family is reached by
-				// its own row instead.
-				let ids = self.shown_font_ids();
-				self.download_fonts(&ids, crate::fonts::Scope::Missing);
-				return;
-			}
-			Command::FontsDownloadOne(index) => {
-				if let Some(id) = self.shown_font_id(index) {
-					self.download_fonts(&[id], crate::fonts::Scope::Named);
+			Command::Fonts(command) => {
+				let proxy = self.proxy.clone();
+				if self.font_panel.command(
+					command,
+					self.args.offline,
+					move |message| {
+						let _ = proxy.send_event(Event::Fonts(message));
+					},
+				) {
+					self.notify("Offline: cannot download fonts", true, 4);
 				}
-				return;
-			}
-			Command::FontsRedownloadOne(index) => {
-				if let Some(id) = self.shown_font_id(index) {
-					self.download_fonts(&[id], crate::fonts::Scope::All);
-				}
-				return;
-			}
-			Command::FontsCancel(index) => {
-				if let Some(id) = self.shown_font_id(index) {
-					self.cancel_font(&id);
-				}
-				return;
-			}
-			Command::FontsOpenFolder => {
-				self.open_fonts_folder();
-				return;
-			}
-			Command::FontsSourceFilter => {
-				self.next_font_source();
-				self.redraw();
-				return;
-			}
-			Command::FontsStatusFilter => {
-				self.next_font_status();
 				self.redraw();
 				return;
 			}
 			Command::SettingsTab(tab) => {
-				self.interaction.panel_open = true;
-				self.interaction.close_pages();
-				self.interaction.styles_open = tab == PanelTab::Styles;
-				self.interaction.fonts_open = tab == PanelTab::Fonts;
+				self.interaction.show_panel(PanelPage::Settings(tab));
 				if tab == PanelTab::Styles {
 					self.preferences.style_entries = crate::stylesheet::catalog(
 						crate::stylesheet::directory().as_deref(),
@@ -226,7 +183,10 @@ impl App {
 					);
 				}
 				if tab.shows_font_catalog() {
-					self.refresh_font_catalog();
+					self.font_panel.refresh(
+						&self.preferences.style_entries,
+						&self.fonts_config,
+					);
 				}
 				self.interaction.focus = None;
 				self.redraw();
@@ -355,22 +315,7 @@ impl App {
 			Command::Settings => {
 				self.readers.session.cancel_scroll_animation();
 				self.tab_strip.cancel_drag();
-				self.interaction.panel_open = !self.interaction.panel_open;
-				if self.interaction.panel_open {
-					self.interaction.settings_scroll = 0.0;
-					self.interaction.settings_preview = false;
-				}
-				self.interaction.close_pages();
-				self.interaction.pointer_down = None;
-				self.interaction.drag_at = None;
-				self.interaction.scrollbar = None;
-				self.interaction.panel_grab = None;
-				// Opening the panel focuses its first tab, which is the page
-				// it opens on; closing it leaves nothing focused.
-				self.interaction.focus = self
-					.interaction
-					.panel_open
-					.then_some(Command::SettingsTab(PanelTab::Generic));
+				self.interaction.toggle_settings();
 				self.refresh_hover();
 				self.redraw();
 				return;

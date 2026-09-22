@@ -156,7 +156,7 @@ The residual is the one revision 2 already named: user confirmation is the least
 
 1. **A per-revision cap.** At most `MAX_REMOTE_SOURCES` (128) distinct remote sources are requested. The remainder are not requested at all; they render as placeholders with the reason.
 2. **A notice strip.** When anything is deferred, a strip below the tab bar reports it and offers **Dismiss** and **Load all**. Both answers are per tab and per content revision: Load all lifts the cap for the tab that asked, never for another document, and a reload asks again. The strip is informational, not a dialog.
-3. **A private-address policy.** `pinned_client` in `src/images/net.rs` resolves the host itself, refuses any address that is loopback, private, link-local, carrier-grade NAT, unspecified, documentation, multicast, or broadcast, and then pins the surviving addresses with `resolve_to_addrs`, so the client cannot re-resolve behind the check. Redirects are followed manually, at most five hops, and every hop repeats the resolution and the check before a connection is made. It is the only HTTP client in the program.
+3. **A private-address policy.** `pinned_client` in `src/net.rs` resolves the host itself, refuses any address that is loopback, private, link-local, carrier-grade NAT, unspecified, documentation, multicast, or broadcast, and then pins the surviving addresses with `resolve_to_addrs`, so the client cannot re-resolve behind the check. Redirects are followed manually, at most five hops, and every hop repeats the resolution and the check before a connection is made. It is the only HTTP client in the program.
 
 The same client serves the one other remote resource a user can name: a font family a stylesheet declares under `[[font-family]]`. A stylesheet is a user-installed artifact, not document content, so its URLs carry the user's own trust; nothing fetches them on open, on install, or in `ss validate`. A job starts only when the reader asks for one on the Fonts page or runs `markview fonts download`, and is refused under `--offline`.
 
@@ -225,7 +225,7 @@ The values are compile-time defaults and are not exposed to `settings.toml` or t
 
 ## Existing defenses
 
-Worth keeping: `unsafe_code` forbidden workspace-wide; ratex pinned to an exact version; per-image pixel, byte, and cache bounds; the `--offline` switch; the `data:image/` prefix check; the SVG image-href resolver disabled; the texture-dimension clamp for raster images; the single link policy in `src/link.rs`; the single pinned HTTP client in `src/images/net.rs`; the bounded image cache in `src/images/cache.rs`; the per-revision remote cap; the explicit, verified, user-triggered font download in `src/fonts.rs`; and the shared `Limits` value with its tests.
+Worth keeping: `unsafe_code` forbidden workspace-wide; ratex pinned to an exact version; per-image pixel, byte, and cache bounds; the `--offline` switch; the `data:image/` prefix check; the SVG image-href resolver disabled; the texture-dimension clamp for raster images; the single link policy in `src/link.rs`; the single pinned HTTP client in `src/net.rs`; the bounded image cache in `src/images/cache.rs`; the per-revision remote cap; the explicit, verified, user-triggered font download in `src/fonts.rs`; and the shared `Limits` value with its tests.
 
 ## Policy decisions
 
@@ -267,7 +267,7 @@ The confirmation must be blocking, default to the safe action, offer no "remembe
 
 Decision: remote images remain enabled by default, with a per-revision cap, a notice strip, and an unconditional private-address policy.
 
-Implementation: `src/images.rs` (cap, notice state), `src/images/net.rs` (resolution, pinning, and the streaming download client), `src/images/cache.rs` (bounded disk cache) and `src/fonts.rs` (the explicit font download); the strip is drawn from `src/app/chrome.rs` and the catalogue from `src/app/chrome/fonts.rs`, with `markview fonts` in `src/app/fonts_command.rs`.
+Implementation: `src/images.rs` (cap, notice state), `src/net.rs` (resolution, pinning, and the streaming download client), `src/images/cache.rs` (bounded disk cache) and `src/fonts.rs` (the explicit font download); the strip is drawn from `src/app/chrome.rs` and the catalogue from `src/app/font_panel/view.rs`, with `markview fonts` in `src/app/fonts_command.rs`.
 
 1. At most 128 distinct remote sources are requested per document revision. The remainder render as placeholders naming the reason, so a headless `render` or `smoke-test` run cannot block on them.
 2. The notice strip appears below the tab bar and offers Dismiss and Load all. Both answers belong to the tab and content revision they were chosen in: opening another document shows its own notice and starts capped again, and so does a reload. The exemption travels with the layout request instead of a shared flag, so it cannot leak into the next document laid out.

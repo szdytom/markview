@@ -63,7 +63,7 @@ impl App {
 				self.drag_panel();
 				self.update_drag();
 				self.refresh_hover();
-				if self.interaction.panel_open
+				if self.interaction.panel_open()
 					|| was_button || self.button_at_cursor()
 					|| old.1 < TOP || self.interaction.cursor.1 < TOP
 					|| old.0 >= self.dimensions().0 - 16.
@@ -97,7 +97,7 @@ impl App {
 				button: MouseButton::Middle,
 				state: ElementState::Pressed,
 				..
-			} if !self.interaction.panel_open
+			} if !self.interaction.panel_open()
 				&& self.interaction.modal.is_none()
 				&& !self.pointer_in_outline() =>
 			{
@@ -150,14 +150,14 @@ impl App {
 				) {
 					self.redraw();
 				}
-				if let Some(index) = (!self.interaction.panel_open)
+				if let Some(index) = (!self.interaction.panel_open())
 					.then(|| self.tab_close_at_cursor())
 					.flatten()
 				{
 					self.interaction.reset_clicks();
 					self.interaction.focus = None;
 					self.action(Command::CloseTab(index));
-				} else if let Some(index) = (!self.interaction.panel_open)
+				} else if let Some(index) = (!self.interaction.panel_open())
 					.then(|| self.tab_at_cursor())
 					.flatten()
 				{
@@ -175,7 +175,7 @@ impl App {
 					self.interaction.focus = Some(button.action);
 					self.interaction.pressed = Some(button.action);
 					self.redraw();
-				} else if self.interaction.panel_open {
+				} else if self.interaction.panel_open() {
 					// A panel draws over the drawer, so it answers first: its
 					// scrollbar drag and its outside-click dismissal must work
 					// where the two overlap.
@@ -321,7 +321,7 @@ impl App {
 					self.dimensions().2,
 					self.viewport_size(),
 				);
-				if self.interaction.panel_open {
+				if self.interaction.panel_open() {
 					if self.pointer_in_panel() {
 						self.scroll_panel(-dy);
 					}
@@ -409,7 +409,7 @@ impl App {
 							"c" if !self.panel_has_focus() => {
 								self.copy_selection()
 							}
-							"v" if !self.interaction.panel_open => {
+							"v" if !self.interaction.panel_open() => {
 								self.paste_markdown()
 							}
 							"w" if !self.panel_has_focus() => self.action(
@@ -508,8 +508,8 @@ impl App {
 							self.interaction.pressed = None;
 							self.interaction.focus = None;
 							self.interaction.modal = None;
-							self.interaction.panel_open = false;
-							self.interaction.close_pages();
+							self.interaction
+								.show_panel(crate::state::PanelPage::Closed);
 							self.interaction.selection = None;
 							self.interaction.pointer_down = None;
 							self.interaction.drag_at = None;

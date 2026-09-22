@@ -11,8 +11,8 @@
 //! The key is the absolute URL. The reader sends no user agent or `Accept` of
 //! its own and the client's `Accept: */*` is constant, so no other request
 //! header can select a different body.
-use super::net::{Fetched, Headers, Validators};
 use super::source::bounded;
+use crate::net::{Fetched, Headers, Validators};
 use anyhow::{Context, Result, bail};
 use serde::{Deserialize, Serialize};
 use std::{
@@ -472,10 +472,21 @@ pub(super) fn fetch_http(
 ) -> Result<Vec<u8>> {
 	match cache {
 		Some(cache) => fetch(cache, url, offline, &mut |validators| {
-			super::net::get(url, &validators)
+			crate::net::get(
+				url,
+				&validators,
+				super::source::MAX_BYTES as u64,
+				"Image",
+			)
 		}),
 		None if offline => bail!("Network images disabled (--offline)"),
-		None => Ok(super::net::get(url, &Validators::default())?.body),
+		None => Ok(crate::net::get(
+			url,
+			&Validators::default(),
+			super::source::MAX_BYTES as u64,
+			"Image",
+		)?
+		.body),
 	}
 }
 
@@ -788,7 +799,7 @@ mod tests {
 		let mut map = HeaderMap::new();
 		map.append(CACHE_CONTROL, HeaderValue::from_static("max-age=600"));
 		map.append(CACHE_CONTROL, HeaderValue::from_static("no-store"));
-		let headers = super::super::net::headers(&map);
+		let headers = crate::net::headers(&map);
 		assert_eq!(headers.max_age, Some(600));
 		assert!(headers.no_store, "a later field still forbids storage");
 		// A response that both grants a lifetime and forbids storage is never
@@ -909,7 +920,7 @@ mod tests {
 		let mut map = HeaderMap::new();
 		map.append(CACHE_CONTROL, HeaderValue::from_static("max-age=600"));
 		map.append(VARY, HeaderValue::from_static("*"));
-		let headers = super::super::net::headers(&map);
+		let headers = crate::net::headers(&map);
 		assert!(headers.varies_wildcard());
 		let dir = tempfile::tempdir().unwrap();
 		let cache = Cache::new(dir.path().to_owned());

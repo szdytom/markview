@@ -8,8 +8,8 @@
 //! first reuses the previous parse, the layout engine's block cache and the
 //! decoded images, exactly as the reader's worker does.
 use crate::{
-	cli::{LaunchOptions, MetadataOverrides, PageOverrides},
 	document,
+	export::{MetadataOverrides, PageOverrides, PdfRequest},
 	file::read_document,
 	images::Images,
 	layout::{LayoutEngine, LayoutOptions},
@@ -66,12 +66,13 @@ fn slot_of(page: &mut PageStyle, header: bool, slot: usize, value: String) {
 	*target = Some(value);
 }
 
-pub fn run(path: &Path, args: &LaunchOptions) -> Result<()> {
-	if !args.watch {
-		export_once(path, args)?;
+pub(crate) fn run(args: &PdfRequest, watching: bool) -> Result<()> {
+	let path = &args.path;
+	if !watching {
+		export_once(args)?;
 		return Ok(());
 	}
-	let mut exporter = Exporter::new(path, args)?;
+	let mut exporter = Exporter::new(args)?;
 	// Register the watcher before the first build reads the source: a save that
 	// lands while that build lays out or waits for images must schedule the
 	// next one, and the watcher's own baseline stamp would absorb it.
@@ -89,15 +90,9 @@ pub fn run(path: &Path, args: &LaunchOptions) -> Result<()> {
 	watch(&mut exporter, rx)
 }
 
-/// Exports the document once and writes it beside `output`.
-///
-/// The reader's export panel builds a [`LaunchOptions`] and calls this, so the
-/// window and `--pdf` cannot drift apart.
-pub(crate) fn export_once(
-	path: &Path,
-	args: &LaunchOptions,
-) -> Result<ExportStats> {
-	Exporter::new(path, args)?
+/// Exports one immutable job without a window or GPU.
+pub(crate) fn export_once(args: &PdfRequest) -> Result<ExportStats> {
+	Exporter::new(args)?
 		.export(false)?
 		.context("the export produced no output")
 }
@@ -167,11 +162,8 @@ struct Exporter {
 }
 
 impl Exporter {
-	fn new(path: &Path, args: &LaunchOptions) -> Result<Self> {
-		let output = args
-			.output
-			.clone()
-			.context("--pdf requires --output out.pdf")?;
+	fn new(args: &PdfRequest) -> Result<Self> {
+		let output = args.output.clone();
 		let stylesheet = styled(args.options.stylesheet.clone(), &args.page);
 		let geometry = PageGeometry::from_style(stylesheet.page())?;
 		// The page's text measure replaces the reader's reading column, and a
@@ -186,7 +178,7 @@ impl Exporter {
 		let mut engine = LayoutEngine::new();
 		engine.validate_stylesheet(&options.stylesheet)?;
 		Ok(Self {
-			path: path.to_owned(),
+			path: args.path.clone(),
 			output,
 			options,
 			geometry,
@@ -365,21 +357,22 @@ fn title_of(
 #[cfg(test)]
 mod tests {
 	use super::*;
-	use crate::cli::Mode;
 	use markview_core::style::Stylesheet;
 	use std::fs;
 
-	fn options(path: &Path, output: &Path) -> LaunchOptions {
-		LaunchOptions {
-			mode: Mode::Pdf,
-			path: Some(path.into()),
-			output: Some(output.into()),
+	fn options(path: &Path, output: &Path) -> PdfRequest {
+		PdfRequest {
+			path: path.into(),
+			output: output.into(),
 			options: LayoutOptions {
 				stylesheet: Stylesheet::bundled_print(),
 				fonts: crate::test_support::fonts(),
 				..Default::default()
 			},
-			..Default::default()
+			page: PageOverrides::default(),
+			metadata: MetadataOverrides::default(),
+			links: true,
+			offline: false,
 		}
 	}
 
@@ -387,7 +380,7 @@ mod tests {
 		let path = dir.join("doc.md");
 		let output = dir.join("out.pdf");
 		fs::write(&path, source).unwrap();
-		let exporter = Exporter::new(&path, &options(&path, &output)).unwrap();
+		let exporter = Exporter::new(&options(&path, &output)).unwrap();
 		(path, output, exporter)
 	}
 

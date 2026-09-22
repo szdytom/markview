@@ -57,7 +57,7 @@ pub(in crate::app) fn panel_rect(width: f32, height: f32) -> Rect {
 	}
 }
 
-pub(super) fn line(rect: Rect, condition: Condition, color: C) -> Draw {
+pub(in crate::app) fn line(rect: Rect, condition: Condition, color: C) -> Draw {
 	Draw::Rect(rect, Paint::Styled(condition, color))
 }
 
@@ -195,7 +195,7 @@ pub(in crate::app) fn draw_settings_header(
 	out
 }
 
-pub(super) fn frame(rect: Rect, width: f32, height: f32) -> Vec<Draw> {
+pub(in crate::app) fn frame(rect: Rect, width: f32, height: f32) -> Vec<Draw> {
 	vec![
 		Draw::Rect(
 			Rect {
@@ -235,7 +235,7 @@ pub(super) fn label(
 	)
 }
 
-pub(super) fn draw_button(
+pub(in crate::app) fn draw_button(
 	ui: &mut TextShaper,
 	interaction: &InteractionState,
 	b: &Button,

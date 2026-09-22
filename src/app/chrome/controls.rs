@@ -204,7 +204,7 @@ pub(super) fn draw_controls(
 	width: f32,
 	height: f32,
 ) -> Vec<Draw> {
-	if interaction.panel_open {
+	if interaction.panel_open() {
 		let form =
 			form(ui, settings, interaction.settings_scroll, width, height);
 		let rect = form.rect;
@@ -238,7 +238,7 @@ pub(super) fn draw_toolbar(
 ) -> Vec<Draw> {
 	components::appearance(ui);
 	let idle = InteractionState::default();
-	let state = if interaction.panel_open || interaction.modal.is_some() {
+	let state = if interaction.panel_open() || interaction.modal.is_some() {
 		&idle
 	} else {
 		interaction

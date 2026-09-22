@@ -215,7 +215,7 @@ pub trait Transport: Sync {
 	fn probe(&self, url: &str) -> Result<Duration>;
 }
 
-impl Transport for crate::images::Downloader {
+impl Transport for crate::net::Downloader {
 	fn fetch(
 		&self,
 		url: &str,
@@ -224,10 +224,10 @@ impl Transport for crate::images::Downloader {
 		progress: &mut dyn FnMut(u64),
 		cancel: &dyn Fn() -> bool,
 	) -> Result<()> {
-		crate::images::Downloader::fetch(self, url, path, cap, progress, cancel)
+		crate::net::Downloader::fetch(self, url, path, cap, progress, cancel)
 	}
 	fn probe(&self, url: &str) -> Result<Duration> {
-		crate::images::Downloader::probe(self, url)
+		crate::net::Downloader::probe(self, url)
 	}
 }
 

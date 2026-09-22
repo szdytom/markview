@@ -1,5 +1,6 @@
 use super::*;
 use crate::app::TOP;
+use crate::state::{PanelPage, PanelTab};
 #[test]
 fn panel_exposes_first_line_indent_presets() {
 	let mut shaper = crate::test_support::shaper();
@@ -142,7 +143,7 @@ fn the_toolbar_and_panel_close_buttons_carry_icons() {
 		&mut shaper,
 		&ReaderSettings::default(),
 		&InteractionState {
-			panel_open: true,
+			panel: PanelPage::Settings(PanelTab::Generic),
 			..Default::default()
 		},
 		1200.0,
@@ -228,7 +229,7 @@ fn preview_keeps_controls_reachable_and_exit_icon_opaque() {
 		&mut ui,
 		&settings,
 		&InteractionState {
-			panel_open: true,
+			panel: PanelPage::Settings(PanelTab::Generic),
 			settings_preview: true,
 			..Default::default()
 		},

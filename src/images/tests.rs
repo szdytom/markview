@@ -1087,11 +1087,11 @@ fn private_and_local_addresses_are_refused() {
 		"::ffff:127.0.0.1",
 	] {
 		let ip: IpAddr = ip.parse().unwrap();
-		assert!(!net::permitted(ip), "{ip}");
+		assert!(!crate::net::permitted(ip), "{ip}");
 	}
 	for ip in ["8.8.8.8", "1.1.1.1", "93.184.216.34", "2606:4700::1111"] {
 		let ip: IpAddr = ip.parse().unwrap();
-		assert!(net::permitted(ip), "{ip}");
+		assert!(crate::net::permitted(ip), "{ip}");
 	}
 }
 

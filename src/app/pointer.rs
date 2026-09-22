@@ -56,12 +56,12 @@ impl App {
 	pub(super) fn pointer_in_panel(&self) -> bool {
 		let (width, height, _) = self.dimensions();
 		let rect = chrome::panel_rect(width, height);
-		self.interaction.panel_open
+		self.interaction.panel_open()
 			&& rect
 				.contains(self.interaction.cursor.0, self.interaction.cursor.1)
 	}
 	pub(super) fn panel_has_focus(&self) -> bool {
-		self.interaction.panel_open
+		self.interaction.panel_open()
 	}
 	/// The reader's scroll-speed multiplier over the desktop's own speed.
 	pub(super) fn scroll_speed(&self) -> f32 {
@@ -172,7 +172,7 @@ impl App {
 		// The drawer covers document content, so it must not inherit the link
 		// or image hover underneath it.
 		let over_outline = self.pointer_in_outline();
-		let idle = !self.interaction.panel_open
+		let idle = !self.interaction.panel_open()
 			&& self.interaction.modal.is_none()
 			&& !holding
 			&& !over_outline;
@@ -208,7 +208,7 @@ impl App {
 			|| hover.is_some()
 		{
 			CursorIcon::Pointer
-		} else if !self.interaction.panel_open
+		} else if !self.interaction.panel_open()
 			&& !over_outline
 			&& self.text_under_cursor()
 		{

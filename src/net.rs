@@ -4,11 +4,10 @@
 //! cannot re-resolve behind the check; redirects are followed here and every
 //! hop repeats that policy. The raw response headers are returned so the disk
 //! cache can decide freshness without a second client.
-use super::source::bounded_to;
 use anyhow::{Context, Result, bail};
 use reqwest::header::HeaderMap;
 use std::{
-	io::Write,
+	io::{Read, Write},
 	net::{IpAddr, SocketAddr, ToSocketAddrs},
 	path::Path,
 	time::{Duration, SystemTime, UNIX_EPOCH},
@@ -22,13 +21,13 @@ const USER_AGENT: &str = concat!("markview/", env!("CARGO_PKG_VERSION"));
 
 /// Conditional-request validators from a stored entry.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
-pub(super) struct Validators {
-	pub(super) etag: Option<String>,
-	pub(super) last_modified: Option<String>,
+pub(crate) struct Validators {
+	pub(crate) etag: Option<String>,
+	pub(crate) last_modified: Option<String>,
 	/// The absolute URL the validators were stored for. A validator is only
 	/// meaningful for the resource that supplied it, so it is attached to a
 	/// request for this URL alone; every other hop is unconditional.
-	pub(super) url: Option<String>,
+	pub(crate) url: Option<String>,
 }
 
 impl Validators {
@@ -40,27 +39,27 @@ impl Validators {
 
 /// The response headers that decide freshness, parsed once.
 #[derive(Clone, Debug, Default)]
-pub(super) struct Headers {
-	pub(super) etag: Option<String>,
-	pub(super) last_modified: Option<String>,
+pub(crate) struct Headers {
+	pub(crate) etag: Option<String>,
+	pub(crate) last_modified: Option<String>,
 	/// The `Vary` field values joined. A `*` anywhere means external factors
 	/// select the representation.
-	pub(super) vary: Option<String>,
-	pub(super) max_age: Option<u64>,
-	pub(super) no_store: bool,
-	pub(super) no_cache: bool,
+	pub(crate) vary: Option<String>,
+	pub(crate) max_age: Option<u64>,
+	pub(crate) no_store: bool,
+	pub(crate) no_cache: bool,
 	/// Whether a `Cache-Control` header was present at all, so a `304` can be
 	/// told apart from one that only left the stored directives in place.
-	pub(super) has_cache_control: bool,
-	pub(super) expires: Option<SystemTime>,
-	pub(super) date: Option<SystemTime>,
+	pub(crate) has_cache_control: bool,
+	pub(crate) expires: Option<SystemTime>,
+	pub(crate) date: Option<SystemTime>,
 }
 
 impl Headers {
 	/// The explicit freshness lifetime this response grants, measured from its
 	/// own `Date` (or from `now` when it omitted one). `None` means the
 	/// response said nothing about how long it stays fresh.
-	pub(super) fn lifetime(&self, now: SystemTime) -> Option<u64> {
+	pub(crate) fn lifetime(&self, now: SystemTime) -> Option<u64> {
 		let reference = self.date.unwrap_or(now);
 		self.max_age.or_else(|| {
 			self.expires.and_then(|at| {
@@ -89,7 +88,7 @@ impl Headers {
 	/// Whether `Vary` lists `*`, meaning factors outside the request headers
 	/// select the representation, so a constant request shape cannot justify
 	/// reuse.
-	pub(super) fn varies_wildcard(&self) -> bool {
+	pub(crate) fn varies_wildcard(&self) -> bool {
 		self.vary.as_deref().is_some_and(|value| {
 			value.split(',').any(|field| field.trim() == "*")
 		})
@@ -136,23 +135,23 @@ impl Chain {
 	}
 }
 
-pub(super) struct Fetched {
-	pub(super) status: u16,
-	pub(super) headers: Headers,
-	pub(super) body: Vec<u8>,
+pub(crate) struct Fetched {
+	pub(crate) status: u16,
+	pub(crate) headers: Headers,
+	pub(crate) body: Vec<u8>,
 	/// Whether a followed redirect chain may be represented by this response.
 	/// A redirect hop that forbids storage, or that grants no reusable
 	/// freshness, cannot be: a body stored under the original URL would
 	/// bypass re-resolving it. A response with no redirects is storable.
-	pub(super) redirects_cacheable: bool,
+	pub(crate) redirects_cacheable: bool,
 	/// The absolute URL that supplied `headers` and `body`. A `304` answers
 	/// only for this resource, never for another redirect target.
-	pub(super) final_url: String,
+	pub(crate) final_url: String,
 	/// The earliest absolute instant at which any redirect hop's freshness
 	/// ends, if any, so the stored body cannot outlive a hop that may move
 	/// sooner. It is an absolute instant because each hop measures its own
 	/// lifetime from its own `Date`.
-	pub(super) freshness_cap: Option<SystemTime>,
+	pub(crate) freshness_cap: Option<SystemTime>,
 }
 
 /// Whether a document may reach this address.
@@ -161,7 +160,7 @@ pub(super) struct Fetched {
 /// use the reader as a request proxy against local services. The check runs on
 /// every resolved address, and the chosen address is then pinned, so a rebind
 /// between resolution and connection cannot slip a private address through.
-pub(super) fn permitted(ip: IpAddr) -> bool {
+pub(crate) fn permitted(ip: IpAddr) -> bool {
 	if let IpAddr::V6(v6) = ip
 		&& let Some(v4) = v6.to_ipv4_mapped()
 	{
@@ -244,17 +243,6 @@ fn pinned_client(url: &url::Url) -> Result<reqwest::blocking::Client> {
 		.resolve_to_addrs(&host, &addrs)
 		.build()
 		.context("Image client")
-}
-
-/// Fetches over HTTP(S), validating and re-pinning every redirect hop.
-///
-/// `validators` add the conditional headers a cached entry uses to ask for a
-/// `304` instead of a body; they are scoped to the URL stored with them, so a
-/// redirect to another resource is fetched unconditionally. The returned
-/// [`Fetched::final_url`] names the resource that answered, and
-/// [`Fetched::freshness_cap`] is the earliest instant the chain allows.
-pub(super) fn get(url: &str, validators: &Validators) -> Result<Fetched> {
-	get_with(url, validators, super::source::MAX_BYTES as u64, "Image")
 }
 
 /// A transfer that may make no progress at all before it is abandoned.
@@ -441,7 +429,14 @@ async fn probe_once(url: &str) -> Result<Duration> {
 	bail!("Redirects to too many locations")
 }
 
-fn get_with(
+/// Fetches over HTTP(S), validating and re-pinning every redirect hop.
+///
+/// `validators` add the conditional headers a cached entry uses to ask for a
+/// `304` instead of a body; they are scoped to the URL stored with them, so a
+/// redirect to another resource is fetched unconditionally. The returned
+/// [`Fetched::final_url`] names the resource that answered, and
+/// [`Fetched::freshness_cap`] is the earliest instant the chain allows.
+pub(crate) fn get(
 	url: &str,
 	validators: &Validators,
 	max: u64,
@@ -508,7 +503,7 @@ fn get_with(
 	bail!("Image redirects to too many locations")
 }
 
-pub(super) fn headers(map: &HeaderMap) -> Headers {
+pub(crate) fn headers(map: &HeaderMap) -> Headers {
 	// A field may repeat and every value still applies, so all values are
 	// joined before they are interpreted.
 	let text = |name: reqwest::header::HeaderName| {
@@ -614,6 +609,21 @@ fn days_from_civil(year: i64, month: u32, day: u32) -> i64 {
 	let doy = (153 * mp + 2) / 5 + i64::from(day) - 1;
 	let doe = yoe * 365 + yoe / 4 - yoe / 100 + doy;
 	era * 146_097 + doe - 719_468
+}
+
+/// Reads at most `max` bytes, refusing a larger body. `what` names the body in
+/// the error because the cap is the caller's own policy.
+pub(crate) fn bounded_to(
+	mut reader: impl Read,
+	max: u64,
+	what: &str,
+) -> Result<Vec<u8>> {
+	let mut bytes = Vec::new();
+	reader.by_ref().take(max + 1).read_to_end(&mut bytes)?;
+	if bytes.len() as u64 > max {
+		bail!("{what} exceeds {} MiB", max / (1024 * 1024));
+	}
+	Ok(bytes)
 }
 
 #[cfg(test)]

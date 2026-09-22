@@ -1,7 +1,7 @@
 //! The table-of-contents drawer: the application's commands and pointer
 //! routing around the chrome's geometry.
 //!
-//! The drawer is not a panel: opening it leaves `interaction.panel_open`
+//! The drawer is not a panel: opening it leaves `interaction.panel_open()`
 //! false, so the document keeps scrolling, selecting and following links; only
 //! the wheel over the drawer, the entry rows, and Up/Down while it is open are
 //! routed to the list. A panel or a confirmation opened over it owns input

@@ -18,10 +18,12 @@ fn an_open_panel_takes_the_presses_the_drawer_covers() {
 	assert!(claims_pointer(&interaction, drawer, over.0, over.1));
 	// Opening a panel leaves the drawer open but hands every press to the
 	// panel, so its scrollbar drag and its outside-click dismissal answer.
-	interaction.panel_open = true;
+	interaction.show_panel(crate::state::PanelPage::Settings(
+		crate::state::PanelTab::Generic,
+	));
 	assert!(!claims_pointer(&interaction, drawer, over.0, over.1));
 	// A confirmation owns input in the same way.
-	interaction.panel_open = false;
+	interaction.show_panel(crate::state::PanelPage::Closed);
 	interaction.modal = Some(Modal::OpenLocal {
 		path: "local.bin".into(),
 		dir: ".".into(),

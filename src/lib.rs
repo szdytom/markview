@@ -11,6 +11,7 @@ mod images;
 mod latency;
 mod link;
 mod logging;
+mod net;
 mod paste;
 mod pdf;
 mod platform;

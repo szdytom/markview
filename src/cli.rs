@@ -4,6 +4,7 @@
 //! opens, so `markview notes.md` still reads a document while `markview render
 //! notes.md --output preview.png` names what it does.
 use crate::{
+	export::{MetadataOverrides, PageOverrides, PdfRequest},
 	layout::LayoutOptions,
 	render::Theme,
 	settings::{ExportSettings, Setting},
@@ -59,27 +60,6 @@ pub(crate) enum FontsCommand {
 	},
 }
 
-/// The document metadata the command line writes into the PDF.
-#[derive(Default, Clone)]
-pub(crate) struct MetadataOverrides {
-	pub(crate) title: Option<String>,
-	pub(crate) authors: Vec<String>,
-	pub(crate) subject: Option<String>,
-	pub(crate) keywords: Vec<String>,
-	pub(crate) language: Option<String>,
-	pub(crate) creator: Option<String>,
-}
-
-/// The `[page]` fields the command line overrides on top of the stylesheet.
-#[derive(Default)]
-pub(crate) struct PageOverrides {
-	pub(crate) paper: Option<String>,
-	pub(crate) landscape: bool,
-	pub(crate) margin: Option<[f32; 4]>,
-	/// Header and footer slots, left to centre to right.
-	pub(crate) header: [Option<String>; 3],
-	pub(crate) footer: [Option<String>; 3],
-}
 pub(crate) struct LaunchOptions {
 	pub(crate) offline: bool,
 	pub(crate) mode: Mode,
@@ -855,6 +835,26 @@ fn normalize(path: &std::path::Path) -> std::path::PathBuf {
 	out
 }
 
+impl LaunchOptions {
+	pub(crate) fn pdf_request(&self) -> Result<PdfRequest> {
+		Ok(PdfRequest {
+			path: self
+				.path
+				.clone()
+				.context("PDF export requires a document")?,
+			output: self
+				.output
+				.clone()
+				.context("--pdf requires --output out.pdf")?,
+			options: self.options.clone(),
+			page: self.page.clone(),
+			metadata: self.metadata.clone(),
+			links: self.links,
+			offline: self.offline,
+		})
+	}
+}
+
 #[cfg(test)]
 mod tests {
 	use super::*;
@@ -990,6 +990,9 @@ mod tests {
 			"Editor",
 		]);
 		assert!(args.mode == Mode::Pdf);
+		let args = args.pdf_request().unwrap();
+		assert_eq!(args.path, PathBuf::from("a.md"));
+		assert_eq!(args.output, PathBuf::from("out.pdf"));
 		assert_eq!(args.page.paper.as_deref(), Some("letter"));
 		assert!(args.page.landscape);
 		assert_eq!(args.page.margin, Some([10.0, 15.0, 10.0, 15.0]));

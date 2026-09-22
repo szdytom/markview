@@ -6,7 +6,7 @@ impl App {
 	/// handling share this geometry, so the thumb always agrees with what a
 	/// press grabs.
 	pub(super) fn document_scrollbar(&self) -> Option<Scrollbar> {
-		if self.interaction.panel_open
+		if self.interaction.panel_open()
 			|| self.interaction.outline_open
 			|| self.readers.session.layout_pending
 		{

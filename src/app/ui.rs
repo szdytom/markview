@@ -28,7 +28,6 @@ impl App {
 					.as_deref()
 					.filter(|url| !super::anchor::footnote_link(url))
 			});
-		let shown = self.shown_fonts();
 		Chrome {
 			ui: &mut self.ui,
 			session: &self.readers.session,
@@ -41,13 +40,7 @@ impl App {
 			interaction: &self.interaction,
 			style_entries: &self.preferences.style_entries,
 			style_scroll: self.interaction.styles_scroll,
-			font_catalog: &self.font_catalog,
-			fonts_shown: shown,
-			font_jobs: &self.font_jobs,
-			fonts_scroll: self.interaction.fonts_scroll,
-			fonts_note: self.font_note.as_deref(),
-			font_source_filter: self.font_source_filter.as_deref(),
-			font_status_filter: self.font_status_filter,
+			fonts: self.font_panel.view(),
 			width,
 			height,
 			scrollbar,
@@ -96,19 +89,22 @@ impl App {
 	/// no two pages of the panel are ever open at once.
 	fn panel_list(&self) -> Option<chrome::list::List> {
 		let (width, height, _) = self.dimensions();
-		if self.interaction.styles_open || self.interaction.export_styles_open {
+		if self.interaction.styles_open()
+			|| self.interaction.export_styles_open()
+		{
 			Some(chrome::styles::list(
 				width,
 				height,
 				self.preferences.style_entries.len(),
 				self.interaction.styles_scroll,
 			))
-		} else if self.interaction.fonts_open {
-			Some(chrome::fonts::list(
+		} else if self.interaction.fonts_open() {
+			let fonts = self.font_panel.view();
+			Some(super::font_panel::view::list(
 				width,
 				height,
-				self.shown_fonts().len(),
-				self.interaction.fonts_scroll,
+				fonts.shown.len(),
+				fonts.scroll,
 			))
 		} else {
 			None
@@ -130,13 +126,14 @@ impl App {
 		self.panel_list()?.scrollbar(&self.ui)
 	}
 	pub(super) fn set_panel_scroll(&mut self, scroll: f32) {
-		if self.interaction.export_open && !self.interaction.export_styles_open
+		if self.interaction.export_open()
+			&& !self.interaction.export_styles_open()
 		{
 			self.interaction.export_scroll = scroll;
-		} else if self.interaction.fonts_open {
-			self.interaction.fonts_scroll = scroll;
-		} else if self.interaction.styles_open
-			|| self.interaction.export_styles_open
+		} else if self.interaction.fonts_open() {
+			self.font_panel.set_scroll(scroll);
+		} else if self.interaction.styles_open()
+			|| self.interaction.export_styles_open()
 		{
 			self.interaction.styles_scroll = scroll;
 		} else {

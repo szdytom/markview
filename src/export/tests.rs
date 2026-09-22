@@ -71,13 +71,13 @@ fn a_document_past_the_pixel_cap_is_refused() {
 }
 
 #[test]
-fn an_export_becomes_the_command_line_job_it_reuses() {
+fn a_panel_export_preserves_its_settings_in_the_pdf_request() {
 	let mut s = settings(ExportFormat::Pdf);
 	s.paper = "letter".into();
 	s.landscape = true;
 	s.font_size = 20.0;
 	s.paragraph_indent = 2.0;
-	let args = pdf_launch(
+	let args = pdf_request(
 		PathBuf::from("doc.md"),
 		PathBuf::from("doc.pdf"),
 		&s,
@@ -87,7 +87,6 @@ fn an_export_becomes_the_command_line_job_it_reuses() {
 		false,
 	)
 	.unwrap();
-	assert!(args.mode == Mode::Pdf);
 	assert_eq!(args.page.paper.as_deref(), Some("letter"));
 	assert!(args.page.landscape);
 	assert_eq!(args.page.margin, Some([22.0, 20.0, 22.0, 20.0]));
@@ -117,7 +116,7 @@ fn a_mapped_export_writes_a_real_pdf() {
 	let path = dir.path().join("doc.md");
 	let output = dir.path().join("doc.pdf");
 	std::fs::write(&path, "# Title\n\nA paragraph.\n").unwrap();
-	let args = pdf_launch(
+	let args = pdf_request(
 		path.clone(),
 		output.clone(),
 		&ExportSettings::default(),
@@ -127,7 +126,7 @@ fn a_mapped_export_writes_a_real_pdf() {
 		false,
 	)
 	.unwrap();
-	let stats = crate::pdf::export_once(&path, &args).unwrap();
+	let stats = crate::pdf::export_once(&args).unwrap();
 	assert_eq!(stats.pages, 1);
 	assert!(stats.bytes > 0);
 	assert!(std::fs::read(&output).unwrap().starts_with(b"%PDF"));
@@ -188,7 +187,7 @@ fn a_pdf_shows_every_details_body() {
 	}
 	source.push_str("</details>\n");
 	std::fs::write(&path, source).unwrap();
-	let args = pdf_launch(
+	let args = pdf_request(
 		path.clone(),
 		output.clone(),
 		&ExportSettings::default(),
@@ -199,7 +198,7 @@ fn a_pdf_shows_every_details_body() {
 	)
 	.unwrap();
 	assert!(args.options.force_open);
-	let stats = crate::pdf::export_once(&path, &args).unwrap();
+	let stats = crate::pdf::export_once(&args).unwrap();
 	// A collapsed body would need exactly one page.
 	assert!(stats.pages > 1, "{} pages", stats.pages);
 	assert!(std::fs::read(&output).unwrap().starts_with(b"%PDF"));

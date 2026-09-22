@@ -23,6 +23,8 @@ at the same level, without `[brackets]`.
 
 ### Changed
 
+- Consolidate panel navigation and font UI ownership, share bounded HTTP transport, and decouple PDF requests from CLI launch options.
+- Clarify paired performance checks under any consistent power mode; refresh absolute README metrics only during releases.
 - Compare readers and PDF pipelines against SuperGoodViewer 1.0.8, whose mathematics fixtures now render and whose new `sgv export` command joins the PDF table.
 - Refresh the README size, memory and first-frame figures to the current build.
 

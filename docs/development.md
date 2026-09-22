@@ -188,6 +188,21 @@ document and print typography are independent.
 
 Keep core free of window, GPU, clipboard, filesystem, and configuration dependencies. Prefer immutable snapshots and explicit version tags at asynchronous boundaries. Reuse the retained `Document` when only layout settings change.
 
+## Change a feature
+
+For a font filter or row action, edit `src/app/font_panel/mod.rs` and its
+`view.rs`; the root command routes the feature as one category and chrome
+borrows its display model. Add a behavior test there for the filtered row's
+identity, cancellation or progress. Shared button and list geometry stays in
+`app/chrome`. Change panel navigation through `InteractionState` operations,
+keeping the outline and confirmations independent.
+
+For PDF options, update `export::PdfRequest` only when the service needs new
+information, then adapt CLI parsing and/or the GUI request builder. Keep
+entry-point defaults explicit and test the resulting request and export.
+Transport policy belongs in `net`; image caching and font installation stay
+with their respective services.
+
 ## Add a UI icon
 
 1. Put a square, geometry-only SVG in `assets/ui`. Its colors are ignored: the button's theme color paints it, stroked figures are drawn round-capped, and a filled figure must set `fill` on the element. Keep `width`, `height` and `viewBox` consistent so the stroke weight normalizes correctly.
@@ -223,10 +238,21 @@ Document guarantees and reasons in architecture pages, procedures and examples i
 Before changing a performance-sensitive path, build the current release and copy
 its binary outside `target/release`. Keep its source revision with it. After the
 change, build the candidate with the same lockfile, toolchain and release profile.
-Run on an idle machine with hardware GPU access, on AC power with the
-`performance` power profile: on `power-saver` this host ran 1.6–2× slower in
-every stage, and the preserved binary reproduced the slowdown, so a power-limited
-run looks exactly like a regression without being one.
+Compare the preserved and candidate binaries on the same machine with hardware
+GPU access, under the same power mode and operating conditions. Battery power
+and `power-saver` are valid for regression checks; AC power and the `performance`
+profile are not prerequisites. Alternate the binaries across repeated process
+groups, keeping power mode, CPU affinity, fonts, DPI and driver consistent.
+Avoid competing workloads and record changes in thermal or power conditions.
+On this host, `power-saver` slowed both binaries by 1.6–2×, which illustrates why
+current results must be compared with a contemporaneous baseline rather than
+historical absolute timings. Power mode alone neither establishes nor excuses
+a regression; investigate differences using paired measurements and A/A controls.
+
+Refresh the absolute performance figures in the README only during a release,
+using a recorded, reproducible measurement environment. Ordinary refactors
+validate relative performance against their preserved baseline and do not need
+to reproduce or update the README's absolute numbers.
 
 ```sh
 python3 scripts/compare_performance.py \
