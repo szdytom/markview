@@ -712,7 +712,7 @@ mod stylesheet_tests {
 			panel_rect(w, h),
 			crate::state::PanelTab::Styles,
 		);
-		assert_eq!(tabs.len(), 3);
+		assert_eq!(tabs.len(), 4);
 		assert!(tabs.iter().any(|b| {
 			b.action == Command::SettingsTab(crate::state::PanelTab::Styles)
 				&& b.active

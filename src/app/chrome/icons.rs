@@ -32,3 +32,8 @@ pub(in crate::app) const REDOWNLOAD: &[IconPath] =
 pub(super) const MINUS: &[IconPath] =
 	markview_icon::icon!("assets/ui/minus.svg");
 pub(super) const PLUS: &[IconPath] = markview_icon::icon!("assets/ui/plus.svg");
+
+pub(super) const COPY: &[IconPath] = markview_icon::icon!("assets/ui/copy.svg");
+
+pub(super) const APP: &[IconPath] =
+	markview_icon::icon!("assets/markview-icon.svg");

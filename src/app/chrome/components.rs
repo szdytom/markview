@@ -9,7 +9,7 @@ use markview_core::style::{Color, ColorField as C, Condition, TextAppearance};
 
 pub(in crate::app) const CONTROL: f32 = 32.0;
 pub(super) const INSET: f32 = 24.0;
-const TAB_Y: f32 = 48.0;
+const TAB_Y: f32 = 52.0;
 const ROW: f32 = 44.0;
 const SECTION: f32 = 32.0;
 
@@ -18,6 +18,7 @@ pub(in crate::app) enum ButtonKind {
 	#[default]
 	Standard,
 	Quiet,
+	Link,
 	Primary,
 }
 
@@ -31,6 +32,7 @@ pub(super) fn button(
 		action,
 		rect,
 		icon: match action {
+			Command::CopyDiagnostics => Some(icons::COPY),
 			Command::Smaller
 			| Command::Narrower
 			| Command::ScrollSpeed(-1)
@@ -71,25 +73,27 @@ pub(in crate::app) fn line(rect: Rect, condition: Condition, color: C) -> Draw {
 	Draw::Rect(rect, Paint::Styled(condition, color))
 }
 
-/// The settings panel's three pages, as one row of tabs below its title.
+/// The settings panel's pages, as one row of tabs below its title.
 pub(in crate::app) fn tab_controls(
 	rect: Rect,
 	current: PanelTab,
 ) -> Vec<Button> {
-	const TABS: [(&str, PanelTab); 3] = [
+	const TABS: [(&str, PanelTab); 4] = [
 		("Generic", PanelTab::Generic),
 		("Styles", PanelTab::Styles),
 		("Fonts", PanelTab::Fonts),
+		("About", PanelTab::About),
 	];
+	let step = ((rect.w - INSET * 2.0) / TABS.len() as f32).min(110.0);
 	let mut out = Vec::new();
 	for (index, (label, tab)) in TABS.iter().enumerate() {
 		let mut b = button(
 			label,
 			Command::SettingsTab(*tab),
 			Rect {
-				x: rect.x + INSET + index as f32 * 110.0,
+				x: rect.x + INSET + index as f32 * step,
 				y: rect.y + TAB_Y,
-				w: 104.0,
+				w: (step - 6.0).max(0.0),
 				h: CONTROL,
 			},
 		);
@@ -294,7 +298,10 @@ fn draw_button_edges(
 		&& b.rect.contains(interaction.cursor.0, interaction.cursor.1);
 	let pressed = b.enabled && interaction.pressed == Some(b.action) && hovered;
 	let primary = b.enabled && b.kind == ButtonKind::Primary;
-	let quiet = b.kind == ButtonKind::Quiet || b.icon.is_some() || !panel;
+	let link = b.kind == ButtonKind::Link;
+	let quiet = matches!(b.kind, ButtonKind::Quiet | ButtonKind::Link)
+		|| b.icon.is_some()
+		|| !panel;
 	let focused = b.enabled
 		&& interaction.focus_visible
 		&& interaction.focus == Some(b.action);
@@ -344,6 +351,8 @@ fn draw_button_edges(
 		C::DisabledColor
 	} else if primary {
 		C::Background
+	} else if link {
+		C::Accent
 	} else {
 		C::Color
 	};
@@ -360,7 +369,23 @@ fn draw_button_edges(
 		});
 	} else {
 		let text = ui.fit(b.label, 13.0, (b.rect.w - 8.0).max(0.0));
-		let x = b.rect.x + (b.rect.w - ui.text_width(&text, 13.0)) / 2.0;
+		let x = if link {
+			b.rect.x
+		} else {
+			b.rect.x + (b.rect.w - ui.text_width(&text, 13.0)) / 2.0
+		};
+		if link {
+			out.push(line(
+				Rect {
+					x,
+					y: b.rect.y + b.rect.h / 2.0 + 7.0,
+					w: ui.text_width(&text, 13.0),
+					h: 1.0,
+				},
+				Condition::Button,
+				color,
+			));
+		}
 		out.extend(ui.label(
 			&text,
 			13.0,
@@ -421,18 +446,43 @@ pub(super) fn action(
 	}
 }
 pub(super) struct Row {
+	icon: Option<&'static [markview_core::scene::IconPath]>,
 	pub label: String,
 	pub actions: Vec<Action>,
 	pub section: Option<&'static str>,
 	pub value: Option<String>,
+	link: Option<(&'static str, Command)>,
 }
 impl Row {
 	pub fn new(label: impl Into<String>, actions: Vec<Action>) -> Self {
 		Self {
+			icon: None,
 			label: label.into(),
 			actions,
 			section: None,
 			value: None,
+			link: None,
+		}
+	}
+	pub fn icon(paths: &'static [markview_core::scene::IconPath]) -> Self {
+		Self {
+			icon: Some(paths),
+			..Self::new("", vec![])
+		}
+	}
+	pub fn link(label: &'static str, command: Command) -> Self {
+		Self {
+			link: Some((label, command)),
+			..Self::new("", vec![])
+		}
+	}
+	fn height(&self) -> f32 {
+		if self.icon.is_some() {
+			72.0
+		} else if self.actions.is_empty() && self.value.is_none() {
+			26.0
+		} else {
+			ROW
 		}
 	}
 	pub fn section(mut self, title: &'static str) -> Self {
@@ -476,7 +526,7 @@ impl Form {
 			h: rect.h - if spacious_header { 184.0 } else { 152.0 },
 		};
 		let content = 16.0
-			+ rows.len() as f32 * ROW
+			+ rows.iter().map(Row::height).sum::<f32>()
 			+ rows.iter().filter(|r| r.section.is_some()).count() as f32
 				* SECTION;
 		let max_scroll = (content - viewport.h).max(0.0);
@@ -502,6 +552,20 @@ impl Form {
 			if row.section.is_some() {
 				y += SECTION;
 			}
+			if let Some((label, command)) = row.link {
+				let mut link = button(
+					label,
+					command,
+					Rect {
+						x: viewport.x,
+						y,
+						w: viewport.w,
+						h: row.height(),
+					},
+				);
+				link.kind = ButtonKind::Link;
+				buttons.push(link);
+			}
 			let right = viewport.x + viewport.w - 8.0;
 			let w = 232.0_f32.min(viewport.w * 0.56);
 			let count = row.actions.len();
@@ -525,8 +589,9 @@ impl Form {
 				b.active = entry.active;
 				buttons.push(b);
 			}
+			let height = row.height();
 			placed.push((row, y));
-			y += ROW;
+			y += height;
 		}
 		let body_end = buttons.len();
 		Self {
@@ -585,7 +650,11 @@ impl Form {
 	) {
 		let mut right = self.rect.x + self.rect.w - INSET;
 		for &(text, action, kind) in entries.iter().rev() {
-			let w = super::controls::button_width(ui, text, 13.0) + 6.0;
+			let w = if action == Command::CopyDiagnostics {
+				CONTROL
+			} else {
+				super::controls::button_width(ui, text, 13.0) + 6.0
+			};
 			let mut b = button(
 				text,
 				action,
@@ -706,9 +775,19 @@ impl Form {
 		}
 		let mut body = Vec::new();
 		for (row, y) in &self.rows {
-			if y + ROW < self.viewport.y
+			if y + row.height().max(CONTROL) < self.viewport.y
 				|| y - SECTION > self.viewport.y + self.viewport.h
 			{
+				continue;
+			}
+			if let Some(paths) = row.icon {
+				body.push(Draw::Icon {
+					paths,
+					paint: Paint::Styled(Condition::Panel, C::Color),
+					x: self.viewport.x + (self.viewport.w - 64.0) / 2.0,
+					y: *y,
+					size: 64.0,
+				});
 				continue;
 			}
 			if let Some(section) = row.section {
@@ -718,7 +797,8 @@ impl Form {
 					section,
 					12.0,
 					Rect {
-						y: y - SECTION,
+						y: y - SECTION
+							+ if row.height() < ROW { 14.0 } else { 0.0 },
 						h: 24.0,
 						..self.viewport
 					},
@@ -733,7 +813,11 @@ impl Form {
 				13.0,
 				Rect {
 					y: *y,
-					w: self.viewport.w - control_width - 20.0,
+					w: if row.actions.is_empty() && row.value.is_none() {
+						self.viewport.w
+					} else {
+						self.viewport.w - control_width - 20.0
+					},
 					h: CONTROL,
 					..self.viewport
 				},

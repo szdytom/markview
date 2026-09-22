@@ -6,7 +6,7 @@ use super::{
 use crate::{
 	layout::{Draw, Rect, TextShaper},
 	settings::ReaderSettings,
-	state::{Command, InteractionState},
+	state::{Command, InteractionState, PanelPage, PanelTab},
 };
 pub(super) use components::{draw_button, panel_rect};
 use markview_core::style::{
@@ -209,16 +209,96 @@ pub(super) fn toolbar_controls(width: f32, outline_open: bool) -> Vec<Button> {
 pub(super) fn toolbar_right_edge(width: f32) -> f32 {
 	width - 4.0 * ICON_BUTTON - 3.0 * GAP - 16.0
 }
+pub(super) fn settings_form(
+	ui: &mut TextShaper,
+	settings: &ReaderSettings,
+	interaction: &InteractionState,
+	width: f32,
+	height: f32,
+	backend: Option<wgpu::Backend>,
+) -> Form {
+	if interaction.panel != PanelPage::Settings(PanelTab::About) {
+		return form(ui, settings, interaction.settings_scroll, width, height);
+	}
+	components::appearance(ui);
+	let width_available = panel_rect(width, height).w - components::INSET * 2.0;
+	let mut lines = vec![String::new()];
+	for word in
+		"A fast, native Markdown reader with publication-quality typography."
+			.split_whitespace()
+	{
+		let line = lines.last_mut().unwrap();
+		let next = if line.is_empty() {
+			word.into()
+		} else {
+			format!("{line} {word}")
+		};
+		if !line.is_empty() && ui.text_width(&next, 13.0) > width_available {
+			lines.push(word.into());
+		} else {
+			*line = next;
+		}
+	}
+	let mut rows: Vec<_> = lines
+		.into_iter()
+		.map(|line| Row::new(line, vec![]))
+		.collect();
+	rows.insert(0, Row::icon(icons::APP));
+	for (index, (name, value)) in
+		crate::diagnostics::fields(backend).into_iter().enumerate()
+	{
+		let row = Row::new(format!("{name}: {value}"), vec![]);
+		rows.push(if index == 0 {
+			row.section("Diagnostics")
+		} else {
+			row
+		});
+	}
+	rows.extend([
+		Row::new(
+			concat!(
+				"Created by ",
+				env!("CARGO_PKG_AUTHORS"),
+				" · ",
+				env!("CARGO_PKG_LICENSE"),
+				" license"
+			),
+			vec![],
+		)
+		.section("Project"),
+		Row::link(env!("CARGO_PKG_REPOSITORY"), Command::OpenProject),
+	]);
+	let mut form = Form::new(
+		width,
+		height,
+		interaction.settings_scroll,
+		rows,
+		Some(Command::Settings),
+		false,
+	);
+	form.footer(
+		ui,
+		&[(
+			"Copy diagnostics",
+			Command::CopyDiagnostics,
+			ButtonKind::Standard,
+		)],
+	);
+	form.preview_control();
+	form
+}
+
 pub(super) fn draw_controls(
 	ui: &mut TextShaper,
 	settings: &ReaderSettings,
 	interaction: &InteractionState,
 	width: f32,
 	height: f32,
+	backend: Option<wgpu::Backend>,
 ) -> Vec<Draw> {
 	if interaction.panel_open() {
 		let form =
-			form(ui, settings, interaction.settings_scroll, width, height);
+			settings_form(ui, settings, interaction, width, height, backend);
 		let rect = form.rect;
 		let mut out = form
 			.without_header()
@@ -227,7 +307,13 @@ pub(super) fn draw_controls(
 				ui,
 				interaction,
 				"",
-				"Saved automatically",
+				if rect.h < 300.0
+					|| interaction.panel == PanelPage::Settings(PanelTab::About)
+				{
+					""
+				} else {
+					"Saved automatically"
+				},
 				C::Muted,
 				(width, height),
 			);
@@ -235,7 +321,11 @@ pub(super) fn draw_controls(
 			ui,
 			interaction,
 			rect,
-			crate::state::PanelTab::Generic,
+			if interaction.panel == PanelPage::Settings(PanelTab::About) {
+				PanelTab::About
+			} else {
+				PanelTab::Generic
+			},
 			interaction.settings_preview,
 		));
 		out

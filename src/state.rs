@@ -54,6 +54,8 @@ pub(crate) enum Command {
 	ExportRun,
 	Settings,
 	SettingsPreview,
+	CopyDiagnostics,
+	OpenProject,
 	Reset,
 	OpenConfig,
 	SystemTheme,
@@ -174,6 +176,7 @@ pub(crate) enum PanelTab {
 	Generic,
 	Styles,
 	Fonts,
+	About,
 }
 
 impl PanelTab {

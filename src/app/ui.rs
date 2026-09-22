@@ -29,6 +29,7 @@ impl App {
 					.filter(|url| !super::anchor::footnote_link(url))
 			});
 		Chrome {
+			backend: self.renderer.as_ref().map(|renderer| renderer.backend),
 			ui: &mut self.ui,
 			session: &self.readers.session,
 			tabs: self.readers.entries(),

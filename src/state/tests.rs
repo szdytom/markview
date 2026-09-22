@@ -1508,6 +1508,7 @@ fn every_panel_transition_clears_transient_input() {
 #[test]
 fn only_the_settings_pages_that_show_fonts_build_the_catalogue() {
 	assert!(!PanelTab::Generic.shows_font_catalog());
+	assert!(!PanelTab::About.shows_font_catalog());
 	assert!(PanelTab::Styles.shows_font_catalog());
 	assert!(PanelTab::Fonts.shows_font_catalog());
 }

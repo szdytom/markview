@@ -4,6 +4,7 @@ pub use markview_render as render;
 pub mod app;
 mod benchmark;
 mod cli;
+mod diagnostics;
 mod export;
 mod file;
 mod fonts;

@@ -17,6 +17,7 @@ pub(super) struct Gpu {
 	pub(super) queue: wgpu::Queue,
 	pub(super) format: wgpu::TextureFormat,
 	pub adapter_name: String,
+	pub backend: wgpu::Backend,
 	lost: Arc<AtomicBool>,
 }
 impl Gpu {
@@ -133,6 +134,7 @@ impl Gpu {
 			queue,
 			format,
 			adapter_name,
+			backend: info.backend,
 			lost,
 		})
 	}

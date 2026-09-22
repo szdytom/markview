@@ -40,6 +40,25 @@ impl App {
 			return;
 		}
 		match action {
+			Command::OpenProject => {
+				self.launch(env!("CARGO_PKG_REPOSITORY"));
+				return;
+			}
+			Command::CopyDiagnostics => {
+				let text = crate::diagnostics::report(
+					self.renderer.as_ref().map(|renderer| renderer.backend),
+				);
+				match self.clipboard.write(text) {
+					Ok(()) => self.notify("Copied diagnostics", false, 3),
+					Err(error) => self.notify(
+						&format!("Cannot copy diagnostics: {error}"),
+						true,
+						4,
+					),
+				}
+				self.redraw();
+				return;
+			}
 			Command::SelectTab(index) => {
 				self.select_tab(index);
 				return;

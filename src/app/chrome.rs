@@ -168,6 +168,7 @@ fn style_page_buttons(
 }
 
 pub(super) struct Chrome<'a> {
+	pub(super) backend: Option<wgpu::Backend>,
 	pub(super) ui: &'a mut TextShaper,
 	pub(super) session: &'a ReaderSession,
 	pub(super) tabs: &'a [ReaderTab],
@@ -215,12 +216,13 @@ impl Chrome<'_> {
 				self.height,
 			)
 		} else {
-			controls::form(
+			controls::settings_form(
 				self.ui,
 				self.settings,
-				self.interaction.settings_scroll,
+				self.interaction,
 				self.width,
 				self.height,
+				self.backend,
 			)
 			.preview(self.interaction.settings_preview)
 		})
@@ -274,12 +276,13 @@ impl Chrome<'_> {
 				height,
 			)
 		} else if self.interaction.panel_open() {
-			let form = controls::form(
+			let form = controls::settings_form(
 				self.ui,
 				self.settings,
-				self.interaction.settings_scroll,
+				self.interaction,
 				width,
 				height,
+				self.backend,
 			)
 			.without_header()
 			.preview(self.interaction.settings_preview)
@@ -287,7 +290,14 @@ impl Chrome<'_> {
 			let mut buttons = form;
 			buttons.extend(components::settings_header_controls(
 				components::panel_rect(width, height),
-				crate::state::PanelTab::Generic,
+				if self.interaction.panel
+					== crate::state::PanelPage::Settings(
+						crate::state::PanelTab::About,
+					) {
+					crate::state::PanelTab::About
+				} else {
+					crate::state::PanelTab::Generic
+				},
 				self.interaction.settings_preview,
 			));
 			buttons
@@ -524,6 +534,7 @@ impl Chrome<'_> {
 				self.interaction,
 				width,
 				height,
+				self.backend,
 			));
 		}
 		// A confirmation owns the frame; nothing behind it is interactive.

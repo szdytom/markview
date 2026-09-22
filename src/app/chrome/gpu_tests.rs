@@ -94,6 +94,7 @@ fn settings_and_selection_frame() -> Result<()> {
 			&interaction,
 			width,
 			height,
+			None,
 		));
 		let mut renderer = pollster::block_on(Renderer::new(None))?;
 		let horizontal = HashMap::new();
@@ -127,6 +128,29 @@ fn settings_and_selection_frame() -> Result<()> {
 		std::fs::create_dir_all(output.parent().unwrap())?;
 		renderer.save_png(&target, &output)?;
 		if panel_open {
+			let about = InteractionState {
+				panel: PanelPage::Settings(PanelTab::About),
+				..Default::default()
+			};
+			let overlay = draw_controls(
+				&mut crate::test_support::shaper(),
+				&settings,
+				&about,
+				width,
+				height,
+				Some(renderer.backend),
+			);
+			let submission = renderer.render(
+				&snapshot,
+				&view,
+				&overlay,
+				&target.create_view(&Default::default()),
+			)?;
+			renderer.wait(Some(submission))?;
+			renderer.save_png(
+				&target,
+				&output.with_file_name(format!("about-{filename}")),
+			)?;
 			let mut settings = settings.clone();
 			settings.style = Some(vec!["paper".into(), "dark".into()]);
 			let mut entries =
@@ -413,6 +437,7 @@ fn tab_strip_frames_clip_overflow_at_fractional_dpi() -> Result<()> {
 			&InteractionState::default(),
 			width,
 			100.0,
+			None,
 		);
 		let horizontal = HashMap::new();
 		let view = View {
@@ -519,6 +544,7 @@ fn icons_keep_their_optical_centre_at_fractional_dpi() -> Result<()> {
 			&InteractionState::default(),
 			width,
 			HEIGHT,
+			None,
 		);
 		let target = renderer.offscreen(view.width, view.height);
 		let submission = renderer.render(
@@ -792,6 +818,7 @@ fn previewing_recedes_the_styles_and_fonts_pages() {
 				..Default::default()
 			};
 			let mut chrome = Chrome {
+				backend: None,
 				ui: &mut ui,
 				session: &session,
 				tabs: &tabs,
@@ -873,6 +900,7 @@ fn dismissed_pages_stop_drawing_and_answering_pointers() {
 		});
 		interaction.show_panel(PanelPage::Closed);
 		let mut chrome = Chrome {
+			backend: None,
 			ui: &mut ui,
 			session: &session,
 			tabs: &tabs,
@@ -1158,6 +1186,7 @@ fn redesigned_chrome_frames() -> Result<()> {
 						);
 					}
 					let mut chrome = Chrome {
+						backend: None,
 						ui: &mut ui,
 						session,
 						tabs: &tabs,

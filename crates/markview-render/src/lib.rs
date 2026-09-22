@@ -85,6 +85,7 @@ pub struct Renderer {
 	stylesheet: Option<Arc<markview_core::style::Stylesheet>>,
 	fallback: Option<TextShaper>,
 	pub adapter_name: String,
+	pub backend: wgpu::Backend,
 }
 
 /// A rendered texture read back as tightly packed, non-premultiplied sRGB RGBA8.
@@ -138,6 +139,7 @@ impl Renderer {
 		let geometry = geometry::Geometry::new(&gpu.device);
 		let adapter_name = gpu.adapter_name.clone();
 		Ok(Self {
+			backend: gpu.backend,
 			gpu,
 			raster,
 			geometry,

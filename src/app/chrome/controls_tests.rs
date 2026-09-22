@@ -148,6 +148,7 @@ fn the_toolbar_and_panel_close_buttons_carry_icons() {
 		},
 		1200.0,
 		800.0,
+		None,
 	) {
 		if matches!(draw, Draw::Icon { .. }) {
 			icons += 1;
@@ -239,6 +240,7 @@ fn preview_keeps_controls_reachable_and_exit_icon_opaque() {
 		},
 		1200.0,
 		800.0,
+		None,
 	);
 	let Draw::Rect(_, paint) = draws[0] else {
 		panic!("preview panel background");
@@ -264,6 +266,112 @@ fn panel_steps_the_scroll_speed_between_its_bounds() {
 		assert!(
 			buttons.iter().any(|b| b.action == action),
 			"missing {action:?}"
+		);
+	}
+}
+
+#[test]
+fn about_tab_keeps_navigation_and_scrolls_on_short_windows() {
+	assert_eq!(
+		icons::APP.len(),
+		4,
+		"both pages and both halves of the book"
+	);
+	assert!(icons::APP[1].commands.iter().any(|command| matches!(command, markview_core::scene::PathCommand::MoveTo { x, .. } if *x > 0.5)));
+	let mut ui = crate::test_support::shaper();
+	let settings = ReaderSettings::default();
+	let interaction = InteractionState {
+		panel: PanelPage::Settings(PanelTab::About),
+		..Default::default()
+	};
+	for (width, height) in [(500.0, 300.0), (820.0, 600.0), (820.0, 800.0)] {
+		let form = settings_form(
+			&mut ui,
+			&settings,
+			&interaction,
+			width,
+			height,
+			None,
+		);
+		assert_eq!(form.max_scroll > 0.0, height == 300.0);
+		assert!(form.buttons.iter().all(|b| matches!(
+			b.action,
+			Command::Settings
+				| Command::SettingsPreview
+				| Command::CopyDiagnostics
+				| Command::OpenProject
+		)));
+		let copy = form
+			.buttons
+			.iter()
+			.find(|b| b.action == Command::CopyDiagnostics)
+			.unwrap();
+		assert!(copy.icon.is_some());
+		assert!(
+			form.visible_buttons()
+				.iter()
+				.any(|b| b.action == Command::CopyDiagnostics)
+		);
+		let project = form
+			.buttons
+			.iter()
+			.find(|b| b.action == Command::OpenProject)
+			.unwrap();
+		assert_eq!(project.label, env!("CARGO_PKG_REPOSITORY"));
+		assert_eq!(
+			form.visible_buttons()
+				.iter()
+				.any(|b| b.action == Command::OpenProject),
+			height != 300.0
+		);
+		let scrolled = InteractionState {
+			panel: interaction.panel,
+			settings_scroll: form.reveal(Command::OpenProject),
+			..Default::default()
+		};
+		let bottom =
+			settings_form(&mut ui, &settings, &scrolled, width, height, None);
+		assert!(
+			bottom
+				.visible_buttons()
+				.iter()
+				.any(|b| b.action == Command::OpenProject)
+		);
+		let tabs = components::tab_controls(form.rect, PanelTab::About);
+		assert_eq!(tabs.len(), 4);
+		assert_eq!(tabs.iter().filter(|b| b.active).count(), 1);
+		assert!(
+			tabs.iter().any(|b| b.active
+				&& b.action == Command::SettingsTab(PanelTab::About))
+		);
+		assert!(tabs.iter().all(|b| {
+			form.rect.contains(b.rect.x + b.rect.w, b.rect.y + b.rect.h)
+		}));
+		let draws = draw_controls(
+			&mut ui,
+			&settings,
+			&interaction,
+			width,
+			height,
+			None,
+		);
+		let icon = draws
+			.iter()
+			.find_map(|draw| {
+				let Draw::Clipped { draws, .. } = draw else {
+					return None;
+				};
+				draws.iter().find_map(|draw| match draw {
+					Draw::Icon { x, size, .. } if *size == 64.0 => {
+						Some((*x, *size))
+					}
+					_ => None,
+				})
+			})
+			.expect("application icon in the scrolling body");
+		assert!(
+			(icon.0 + icon.1 / 2.0 - (form.rect.x + form.rect.w / 2.0)).abs()
+				< 0.01
 		);
 	}
 }

@@ -3,8 +3,8 @@
   <desc id="desc">A black angular open book forming an M with squared gear teeth on a transparent background.</desc>
   <g fill="#000000">
     <path id="left-page" d="M108 88 246 194 108 130Z"/>
-    <use href="#left-page" transform="translate(512 0) scale(-1 1)"/>
+    <path d="M404 88 266 194 404 130Z"/>
     <path id="left-body" d="M58 132H80L250 210V374L142 302V412H80V338H58V274H80V200H58Z"/>
-    <use href="#left-body" transform="translate(512 0) scale(-1 1)"/>
+    <path d="M454 132H432L262 210V374L370 302V412H432V338H454V274H432V200H454Z"/>
   </g>
 </svg>
