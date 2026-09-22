@@ -44,6 +44,10 @@ padding = [0.35, 0.6, 0.45, 0.6]
 radius = 4.0
 
 [[rule]]
+when = ["front_matter"]
+background = "#EDF1F6"
+
+[[rule]]
 when = ["summary"]
 color = "#283343"
 

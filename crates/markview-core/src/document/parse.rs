@@ -9,8 +9,8 @@ use std::{collections::HashMap, ops::Range, sync::Arc};
 
 use super::{
 	Anchors, Block, BlockKind, CellAlign, Document, Inline, InlineKind,
-	ListItem, RichText, TextStyle, content_identity, fingerprint, incremental,
-	plain_text, semantic_key,
+	ListItem, RichText, TextStyle, content_identity, fingerprint, front_matter,
+	incremental, plain_text, semantic_key,
 };
 struct Reader<'s> {
 	source: &'s str,
@@ -257,6 +257,25 @@ impl Reader<'_> {
 			}
 		} else {
 			match &data.value {
+				NodeValue::FrontMatter(text) => {
+					match front_matter::parse(text, &source) {
+						front_matter::Content::Empty => {
+							return Child::Skip;
+						}
+						front_matter::Content::Table(table, yaml) => {
+							BlockKind::FrontMatter {
+								table: Some(table),
+								text: yaml,
+							}
+						}
+						front_matter::Content::Source(yaml) => {
+							BlockKind::FrontMatter {
+								table: None,
+								text: yaml,
+							}
+						}
+					}
+				}
 				NodeValue::Paragraph => BlockKind::Paragraph(self.rich(child)),
 				NodeValue::Heading(h) => {
 					let text = self.rich(child);
@@ -773,6 +792,10 @@ pub fn parse(source: impl Into<Arc<str>>) -> Document {
 fn markdown_options() -> Options<'static> {
 	let mut options = Options::default();
 	options.extension.table = true;
+	// A document may open with `---` fenced YAML metadata. Comrak only splits
+	// it off: it hands the block back verbatim, delimiters included, and the
+	// YAML itself is read in `front_matter`.
+	options.extension.front_matter_delimiter = Some("---".into());
 	options.extension.strikethrough = true;
 	options.extension.tasklist = true;
 	options.extension.autolink = true;

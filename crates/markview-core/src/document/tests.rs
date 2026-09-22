@@ -1282,3 +1282,127 @@ fn many_adjacent_details_do_not_reach_the_nesting_limit() {
 		assert_eq!(plain_text(summary), format!("S{i}"));
 	}
 }
+
+#[test]
+fn a_flat_front_matter_becomes_a_table() {
+	let doc = parse(
+		"---\ntitle: Notes\ncount: 3\ntags: [a, b]\ndraft: false\n---\n\nBody\n",
+	);
+	assert_eq!(doc.blocks.len(), 2);
+	let BlockKind::FrontMatter { table, text } = &doc.blocks[0].kind else {
+		panic!("{:?}", doc.blocks[0].kind)
+	};
+	let rows = table.as_ref().expect("a flat mapping tabulates");
+	assert_eq!(rows.len(), 4);
+	assert_eq!(plain_text(&rows[0][0]), "title");
+	assert_eq!(plain_text(&rows[0][1]), "Notes");
+	assert_eq!(plain_text(&rows[1][1]), "3");
+	assert_eq!(plain_text(&rows[2][1]), "a, b");
+	assert_eq!(plain_text(&rows[3][1]), "false");
+	// A key is bold, so a theme reaches the column through `strong`.
+	assert!(rows[0][0].iter().all(|s| s.style.bold));
+	assert!(!rows[0][1].iter().any(|s| s.style.bold));
+	// The delimiters are not part of the source a code block would show.
+	assert_eq!(
+		text.trim(),
+		"title: Notes\ncount: 3\ntags: [a, b]\ndraft: false"
+	);
+}
+
+#[test]
+fn a_nested_front_matter_stays_source() {
+	let doc = parse("---\ntitle: Notes\nauthor:\n  name: A\n---\n\nBody\n");
+	assert_eq!(doc.blocks.len(), 2);
+	let BlockKind::FrontMatter { table, text } = &doc.blocks[0].kind else {
+		panic!("{:?}", doc.blocks[0].kind)
+	};
+	assert!(table.is_none());
+	assert_eq!(text.trim(), "title: Notes\nauthor:\n  name: A");
+	// It is drawn as a `yaml` code block, so it is code to the highlighter.
+	let mut code = Vec::new();
+	doc.blocks[0].code_blocks(&mut code);
+	assert_eq!(code, [("yaml", text.as_str())]);
+	// Not a mapping at all is source too.
+	let doc = parse("---\n- one\n- two\n---\n\nBody\n");
+	let BlockKind::FrontMatter { table, .. } = &doc.blocks[0].kind else {
+		panic!("{:?}", doc.blocks[0].kind)
+	};
+	assert!(table.is_none());
+}
+
+#[test]
+fn front_matter_only_opens_a_document() {
+	// An unclosed fence is an ordinary rule, not metadata.
+	let doc = parse("---\ntitle: Notes\n\nBody\n");
+	assert!(!matches!(doc.blocks[0].kind, BlockKind::FrontMatter { .. }));
+	// Dashes further down stay a rule.
+	let doc = parse("Body\n\n---\n\ntitle: Notes\n");
+	assert!(
+		!doc.blocks
+			.iter()
+			.any(|b| matches!(b.kind, BlockKind::FrontMatter { .. }))
+	);
+	// An empty block draws nothing.
+	let doc = parse("---\n\n---\nBody\n");
+	assert!(
+		!doc.blocks
+			.iter()
+			.any(|b| matches!(b.kind, BlockKind::FrontMatter { .. }))
+	);
+}
+
+#[test]
+fn only_a_delimiter_line_closes_front_matter() {
+	// A line that merely opens with `---` is content: comrak closes on the
+	// second delimiter, so the body holds the first one too.
+	let source = "---\ntitle: a\n---extra\n---\n\nBody\n";
+	let doc = parse(source);
+	let BlockKind::FrontMatter { table, text } = &doc.blocks[0].kind else {
+		panic!("{:?}", doc.blocks[0].kind)
+	};
+	assert_eq!(text, "title: a\n---extra\n");
+	// That body is not a mapping, so it draws as source rather than losing the
+	// line between the delimiters.
+	assert!(table.is_none());
+	assert!(source.contains(text.as_str()));
+	// A value that opens with dashes mid-line still tabulates.
+	let doc = parse("---\ntitle: a\n---\n\nBody\n");
+	let BlockKind::FrontMatter { table, .. } = &doc.blocks[0].kind else {
+		panic!("{:?}", doc.blocks[0].kind)
+	};
+	assert_eq!(table.as_ref().map(Vec::len), Some(1));
+}
+
+#[test]
+fn a_closing_delimiter_at_the_end_of_the_file_still_closes() {
+	// The file ends on the delimiter, so no trailing line ending remains to
+	// cut the body at. Dropping the metadata here would be silent.
+	let doc = parse("---\ntitle: Notes\n---");
+	let BlockKind::FrontMatter { table, text } = &doc.blocks[0].kind else {
+		panic!("{:?}", doc.blocks[0].kind)
+	};
+	assert_eq!(text, "title: Notes\n");
+	let rows = table.as_ref().expect("a flat mapping tabulates");
+	assert_eq!(plain_text(&rows[0][1]), "Notes");
+}
+
+#[test]
+fn an_edit_inside_front_matter_keeps_it_metadata() {
+	// Front matter is one block however many blank lines it holds, so the
+	// blank-line window the incremental path replaces can never hold part of
+	// it. This edit has to fall back to a full parse.
+	let before: Arc<str> =
+		"---\ntitle: Notes\n\nauthor: Alice\n---\n\nBody\n".into();
+	let edited: Arc<str> =
+		"---\ntitle: Notes\n\nauthor: Bob\n---\n\nBody\n".into();
+	let updated = reparse(&parse(before), edited.clone());
+	let full = parse(edited);
+	let metadata = |doc: &Document| {
+		doc.blocks.iter().find_map(|block| match &block.kind {
+			BlockKind::FrontMatter { text, .. } => Some(text.clone()),
+			_ => None,
+		})
+	};
+	assert_eq!(metadata(&updated), metadata(&full));
+	assert!(metadata(&updated).is_some_and(|yaml| yaml.contains("Bob")));
+}

@@ -1429,3 +1429,42 @@ fn details_and_summary_conditions_are_styleable() {
 		assert!(Stylesheet::parse(bad).is_err(), "{bad}");
 	}
 }
+
+#[test]
+fn front_matter_frames_both_shapes() {
+	let sheet = Stylesheet::parse(
+		"format_version=2\nversion=1\n\
+		 [[rule]]\nwhen=['front_matter']\nbackground='#eef1f5'\npadding=0.5\nradius=4.0\nspace_after=0.8\nshow=false\n\
+		 [[rule]]\nwhen=['front_matter','table','cell']\nborder_width=0.0\n\
+		 [[rule]]\nwhen=['front_matter','code_block']\nsize=0.9",
+	)
+	.unwrap();
+	let front = sheet.text(&TextAppearance::default(), Condition::FrontMatter);
+	assert!(chain_set(front.chain).contains(Condition::FrontMatter));
+	let rule = sheet.element_rule(front.chain, Condition::FrontMatter);
+	assert_eq!(rule.padding, Some(Padding::All(0.5)));
+	assert_eq!(rule.radius, Some(4.0));
+	assert_eq!(rule.show, Some(false));
+	// Each shape composes with the frame, so `front_matter` with `table` or
+	// with `code_block` reaches one rendering alone.
+	let cell =
+		sheet.text(&sheet.text(&front, Condition::Table), Condition::Cell);
+	assert_eq!(
+		sheet.element_rule(cell.chain, Condition::Cell).border_width,
+		Some(0.0)
+	);
+	let code = sheet.text(&front, Condition::CodeBlock);
+	assert_eq!(code.size, 0.9);
+	// A container field on the frame never reaches a shape's own box.
+	assert_eq!(
+		sheet.element_rule(code.chain, Condition::CodeBlock).radius,
+		None
+	);
+	// `show` belongs to the frame, not to the shapes it holds.
+	for bad in [
+		"format_version=2\nversion=1\n[[rule]]\nwhen=['front_matter','code_block']\nshow=false",
+		"format_version=2\nversion=1\n[[rule]]\nwhen=['front_matter']\nshape='disc'",
+	] {
+		assert!(Stylesheet::parse(bad).is_err(), "{bad}");
+	}
+}

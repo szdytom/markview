@@ -219,7 +219,17 @@ fn leaf_only(source: &str) -> bool {
 			&& !rest.starts_with("```")
 			&& !rest.starts_with("~~~")
 			&& !list_marker(rest)
+			// Front matter is one block however many blank lines it holds, so
+			// the window this path cuts cannot contain it.
+			&& !delimiter_line(rest)
 	})
+}
+
+/// Whether a line is a bare `---`, which can only be a front-matter delimiter
+/// or a thematic break. Neither is a leaf block: front matter spans blank
+/// lines, and a break becomes a setext underline for the text above it.
+fn delimiter_line(line: &str) -> bool {
+	line.trim_end().len() == 3 && line.starts_with("---")
 }
 
 /// A bullet or ordered list marker, which keeps its list open across blank
@@ -325,6 +335,11 @@ fn shift(block: &mut Block, delta: isize) {
 			shift_rich(summary, delta);
 			for block in blocks {
 				shift(block, delta);
+			}
+		}
+		BlockKind::FrontMatter { table, .. } => {
+			for cell in table.iter_mut().flatten().flatten() {
+				shift_rich(cell, delta);
 			}
 		}
 		BlockKind::List { items, .. } => {

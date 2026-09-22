@@ -1,9 +1,6 @@
 //! Background highlighting owns its jobs, completion queue and bounded results.
 use super::{LayoutOptions, expand_tabs_mapped};
-use crate::{
-	document::{Block, BlockKind},
-	style::Condition,
-};
+use crate::{document::Block, style::Condition};
 use std::ops::Range;
 use std::time::{Duration, Instant};
 use std::{
@@ -195,22 +192,46 @@ fn collect<'a>(
 	out: &mut Vec<(u64, &'a str, &'a str)>,
 ) {
 	for block in blocks {
-		match &block.kind {
-			BlockKind::Code { language, text } => {
-				out.push((key(language, text, theme), language, text));
-			}
-			BlockKind::Quote { blocks, .. }
-			| BlockKind::Footnote { blocks, .. }
-			| BlockKind::Details { blocks, .. } => collect(blocks, theme, out),
-			BlockKind::List { items, .. } => {
-				for item in items {
-					collect(&item.blocks, theme, out);
-				}
-			}
-			_ => {}
-		}
+		block.for_each_code_block(&mut |language, text| {
+			out.push((key(language, text, theme), language, text));
+		});
 	}
 }
 
 /// How long an export waits for the cosmetic highlighting pass.
 const HIGHLIGHT_WAIT: Duration = Duration::from_secs(30);
+
+#[cfg(test)]
+mod tests {
+	use super::*;
+	use crate::layout::LayoutOptions;
+
+	/// A front matter drawn as source is a code block to the highlighter, so
+	/// it starts a job; the tabulated shape holds no code and starts none.
+	#[test]
+	fn only_a_source_shape_starts_a_highlight_job() {
+		let nested = crate::document::parse(
+			"---\ntitle: N\nauthor:\n  name: A\n---\n\nBody\n",
+		);
+		let options = LayoutOptions::default();
+		let theme = resolved_theme(&options);
+		let mut out = Vec::new();
+		collect(&nested.blocks, theme.as_deref(), &mut out);
+		assert_eq!(
+			out,
+			[(
+				key(
+					crate::document::front_matter::LANGUAGE,
+					"title: N\nauthor:\n  name: A\n",
+					theme.as_deref(),
+				),
+				crate::document::front_matter::LANGUAGE,
+				"title: N\nauthor:\n  name: A\n",
+			)]
+		);
+		let flat = crate::document::parse("---\ntitle: N\n---\n\nBody\n");
+		let mut out = Vec::new();
+		collect(&flat.blocks, theme.as_deref(), &mut out);
+		assert!(out.is_empty(), "{out:?}");
+	}
+}

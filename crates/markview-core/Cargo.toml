@@ -27,6 +27,7 @@ anyhow.workspace = true
 log.workspace = true
 toml_edit = { version = "0.25", features = ["serde"] }
 swash.workspace = true
+yaml-rust2 = { version = "0.13.0", default-features = false }
 
 [lints]
 workspace = true

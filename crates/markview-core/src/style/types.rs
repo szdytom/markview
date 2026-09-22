@@ -23,6 +23,7 @@ pub enum Condition {
 	Table,
 	Footnote,
 	Details,
+	FrontMatter,
 	CodeBlock,
 	ListItem,
 	Hr,
@@ -78,6 +79,7 @@ impl Condition {
 		(Self::Table, "table"),
 		(Self::Footnote, "footnote"),
 		(Self::Details, "details"),
+		(Self::FrontMatter, "front_matter"),
 		(Self::CodeBlock, "code_block"),
 		(Self::ListItem, "list_item"),
 		(Self::Hr, "hr"),
@@ -145,6 +147,7 @@ impl Condition {
 			Table => chain_of(&[Body, Table]),
 			Footnote => chain_of(&[Body, Footnote]),
 			Details => chain_of(&[Body, Details]),
+			FrontMatter => chain_of(&[Body, FrontMatter]),
 			Summary => chain_of(&[Body, Details, Summary]),
 			CodeBlock => chain_of(&[Body, CodeBlock]),
 			Hr => chain_of(&[Body, Hr]),
@@ -220,6 +223,7 @@ impl Condition {
 				| Self::ListItem
 				| Self::Footnote
 				| Self::Details
+				| Self::FrontMatter
 				| Self::CodeBlock
 				| Self::Table
 				| Self::Cell

@@ -519,7 +519,9 @@ fn validate_field(conditions: ConditionSet, key: &str) -> Result<()> {
 	} else {
 		match key {
 			"wrap" => has(K::CodeBlock) && !has(K::Label),
-			"show" => has(K::Label),
+			"show" => {
+				has(K::Label) || conditions == ConditionSet::of(K::FrontMatter)
+			}
 			"letter_spacing" => true,
 			"border_edges" | "corner_radii" => conditions.container(),
 			"heading_marker" | "marker_color" => {

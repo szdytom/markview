@@ -4,50 +4,57 @@ use crate::{
 	scene::{BlockLayout, Draw, Overflow, Paint, Rect},
 	style::Condition,
 };
+
+/// One table's grid, and whether its first row is a header. A front-matter
+/// table is all data, so `header` applies nowhere in it.
+pub(crate) struct Table<'a> {
+	pub align: &'a [CellAlign],
+	pub headed: bool,
+	pub rows: &'a [Vec<RichText>],
+}
 impl BlockContext<'_> {
-	#[expect(
-		clippy::too_many_arguments,
-		reason = "Table geometry and column alignment"
-	)]
 	pub(super) fn table(
 		&mut self,
-		align: &[CellAlign],
-		rows: &[Vec<RichText>],
+		table: &Table<'_>,
 		x: f32,
 		y: f32,
 		width: f32,
 		opts: &LayoutOptions,
 		out: &mut BlockLayout,
 	) -> f32 {
+		let align = table.align;
 		let n = align.len().min(opts.limits.table_columns);
 		if n == 0 {
 			return 0.;
 		}
 		// Both loops walk the same truncated grid: columns are capped first,
 		// then rows are capped so the cell total stays bounded too.
-		let rows = &rows[..rows
+		let rows = &table.rows[..table
+			.rows
 			.len()
 			.min(opts.limits.table_rows)
 			.min((opts.limits.table_cells / n).max(1))];
 		let table_appearance = self.shaper.appearance.clone();
 		let mut minima = vec![48_f32; n];
 		let mut preferred = vec![48_f32; n];
+		let headed = table.headed;
+		// Asked for both the text appearance and the box, so the two can never
+		// disagree about which row is a header.
+		let header_at = |index: usize| headed && index == 0;
 		let cell_appearance = |index: usize| {
-			let header = index == 0;
 			let parent =
 				opts.stylesheet.child(&table_appearance, index, rows.len());
 			let base = opts.stylesheet.text(&parent, Condition::Cell);
-			if header {
+			if header_at(index) {
 				opts.stylesheet.text(&base, Condition::Header)
 			} else {
 				base
 			}
 		};
 		let cell_rule = |index: usize| {
-			let header = index == 0;
 			let chain = cell_appearance(index).chain;
 			let mut rule = opts.stylesheet.element_rule(chain, Condition::Cell);
-			if header {
+			if header_at(index) {
 				rule.overlay(
 					&opts.stylesheet.element_rule(chain, Condition::Header),
 				);
@@ -110,8 +117,7 @@ impl BlockContext<'_> {
 		let overflow_start = out.overflow.len();
 		let mut top = y;
 		for (row_index, row) in rows.iter().enumerate() {
-			let header = row_index == 0;
-			let role = if header {
+			let role = if header_at(row_index) {
 				Condition::Header
 			} else {
 				Condition::Cell

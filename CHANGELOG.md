@@ -21,6 +21,10 @@ at the same level, without `[brackets]`.
 
 ## Unreleased
 
+### Added
+
+- Read `---` fenced YAML front matter: a flat mapping renders as a two-column table with a bold key column, anything nested renders as a `yaml` code block, and `front_matter` joins the MVSS vocabulary as the frame around either shape — with `table`/`cell` or `code_block`/`label` composing into one rendering, and `show = false` hiding the block while its metadata stays parsed. A document that opens with an unclosed `---` is unchanged.
+
 ### Changed
 
 - Consolidate panel navigation and font UI ownership, share bounded HTTP transport, and decouple PDF requests from CLI launch options.

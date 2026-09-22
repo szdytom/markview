@@ -662,6 +662,26 @@ space_after = 0.8
 when = ["summary"]
 weight = 600
 
+# Front matter is metadata rather than prose, so it sits apart from the text in
+# a frame of its own, whichever of its two shapes it takes. The frame is
+# theme-neutral here; the reader themes supply the surface.
+[[rule]]
+when = ["front_matter"]
+padding = [0.35, 0.6, 0.45, 0.6]
+radius = 4.0
+space_after = 0.8
+
+# A metadata table is a list of pairs, not a grid: it has no header row and its
+# cells drop the ordinary table frame, so a key reads beside its value.
+[[rule]]
+when = ["front_matter", "table"]
+size = 0.9
+
+[[rule]]
+when = ["front_matter", "table", "cell"]
+border_width = 0.0
+padding = [0.2, 0.8, 0.2, 0.0]
+
 [[rule]]
 when = ["list"]
 indent = 0.5

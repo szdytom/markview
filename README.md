@@ -162,7 +162,9 @@ accents, operators and the whole Greek alphabet work in either position.
 Tables keep their alignment, fenced code is highlighted, footnotes are numbered
 and clickable, GitHub alerts keep their meaning, and images — PNG, JPEG, GIF,
 WebP, BMP, ICO or SVG, with an animated image showing its first frame — sit
-inline or centred. A `mermaid` fenced block becomes a diagram: flowcharts,
+inline or centred. `---` fenced YAML front matter is read as metadata: a flat
+mapping is shown as a two-column table, and a nested one keeps its YAML as a
+highlighted `yaml` block. A `mermaid` fenced block becomes a diagram: flowcharts,
 sequence diagrams and the other supported types are laid out and rasterized in
 Rust, so they need no browser, network or external process. Links to other
 Markdown files open in new tabs, so a folder of documents behaves like one.

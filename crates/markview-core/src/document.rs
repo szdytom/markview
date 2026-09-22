@@ -1,5 +1,6 @@
 //! Semantic Markdown nodes and stable reading identities.
 pub mod footnote;
+pub(crate) mod front_matter;
 mod heading;
 mod incremental;
 mod parse;
@@ -132,6 +133,15 @@ pub enum BlockKind {
 		blocks: Vec<Block>,
 	},
 	Rule,
+	/// YAML front matter: a flat mapping rendered as a two-column table, and
+	/// the verbatim source as a `yaml` code block when a value nests.
+	FrontMatter {
+		/// A key cell and a value cell per entry, set when every value fits
+		/// a cell.
+		table: Option<Vec<Vec<RichText>>>,
+		/// The YAML between the delimiters, verbatim.
+		text: String,
+	},
 }
 
 #[derive(Clone, Debug, Hash, PartialEq, Eq)]
@@ -356,25 +366,38 @@ impl Block {
 	/// document order, so a caller can tell which syntax colors the geometry
 	/// depends on without laying the block out again.
 	pub fn code_blocks<'a>(&'a self, out: &mut Vec<(&'a str, &'a str)>) {
+		self.for_each_code_block(&mut |language, text| {
+			out.push((language, text));
+		});
+	}
+
+	/// The same walk as [`Block::code_blocks`], without the intermediate
+	/// vector. One walk serves both the geometry's external inputs and the
+	/// highlighter's job list, so the two can never disagree about which code
+	/// a block draws — a block that one of them saw and the other missed would
+	/// keep its uncolored geometry forever.
+	pub(crate) fn for_each_code_block<'a>(
+		&'a self,
+		visit: &mut impl FnMut(&'a str, &'a str),
+	) {
 		match &self.kind {
-			BlockKind::Code { language, text } => {
-				out.push((language, text));
+			BlockKind::Code { language, text } => visit(language, text),
+			// A front matter drawn as source is a `yaml` code block; the table
+			// shape holds cells with no code in them.
+			BlockKind::FrontMatter { table: None, text } => {
+				visit(front_matter::LANGUAGE, text);
 			}
 			BlockKind::Quote { blocks, .. }
-			| BlockKind::Footnote { blocks, .. } => {
+			| BlockKind::Footnote { blocks, .. }
+			| BlockKind::Details { blocks, .. } => {
 				for b in blocks {
-					b.code_blocks(out);
-				}
-			}
-			BlockKind::Details { blocks, .. } => {
-				for b in blocks {
-					b.code_blocks(out);
+					b.for_each_code_block(visit);
 				}
 			}
 			BlockKind::List { items, .. } => {
 				for item in items {
 					for b in &item.blocks {
-						b.code_blocks(out);
+						b.for_each_code_block(visit);
 					}
 				}
 			}
@@ -420,6 +443,8 @@ fn semantic_key(kind: &BlockKind) -> u64 {
 			anchor,
 		} => (level, rich(text), anchor).hash(&mut hash),
 		BlockKind::Code { language, text } => (language, text).hash(&mut hash),
+		// The YAML determines both shapes, so it is the whole identity.
+		BlockKind::FrontMatter { table: _, text } => text.hash(&mut hash),
 		BlockKind::Quote { label: _, blocks }
 		| BlockKind::Footnote {
 			label: _, blocks, ..

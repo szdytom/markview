@@ -1,4 +1,4 @@
-use super::{BlockContext, LayoutOptions};
+use super::{BlockContext, LayoutOptions, Table};
 use crate::text::{TextCluster, TextNode};
 use crate::{
 	document::{
@@ -230,6 +230,7 @@ fn block_role(block: &Block) -> Condition {
 		BlockKind::Table { .. } => Condition::Table,
 		BlockKind::Footnote { .. } => Condition::Footnote,
 		BlockKind::Details { .. } => Condition::Details,
+		BlockKind::FrontMatter { .. } => Condition::FrontMatter,
 		BlockKind::Rule => Condition::Hr,
 	}
 }
@@ -439,6 +440,12 @@ impl BlockContext<'_> {
 		let appearance = opts.stylesheet.text(&previous, role);
 		let chain = appearance.chain;
 		let rule = opts.stylesheet.element_rule(chain, role);
+		// A hidden block draws nothing, box included, so a stylesheet can keep
+		// a document's metadata parsed while keeping it off the page.
+		if rule.show == Some(false) {
+			self.shaper.appearance = previous;
+			return 0.;
+		}
 		let left_only = role == Condition::Blockquote;
 		self.shaper.appearance = appearance;
 		self.shaper.appearance.background = None;
@@ -608,6 +615,45 @@ impl BlockContext<'_> {
 			}
 			BlockKind::Code { language, text } => {
 				self.code(language, text, x, y, width, size, opts, out)
+			}
+			// Front matter enters the condition it renders through, so a
+			// stylesheet reaches the two shapes as `front_matter` with
+			// `table` or with `code_block`.
+			BlockKind::FrontMatter { table, text } => {
+				let parent = self.shaper.appearance.clone();
+				match table {
+					Some(rows) => {
+						self.shaper.appearance =
+							opts.stylesheet.text(&parent, Condition::Table);
+						self.table(
+							&Table {
+								align: &[CellAlign::Left, CellAlign::Left],
+								headed: false,
+								rows,
+							},
+							x,
+							y,
+							width,
+							opts,
+							out,
+						)
+					}
+					None => {
+						self.shaper.appearance =
+							opts.stylesheet.text(&parent, Condition::CodeBlock);
+						let size = opts.font_size * self.shaper.appearance.size;
+						self.code(
+							crate::document::front_matter::LANGUAGE,
+							text,
+							x,
+							y,
+							width,
+							size,
+							opts,
+							out,
+						)
+					}
+				}
 			}
 			BlockKind::Quote { label, blocks } => {
 				let mut top = y;
@@ -911,9 +957,18 @@ impl BlockContext<'_> {
 				self.shaper.appearance = list_appearance;
 				top - y
 			}
-			BlockKind::Table { align, rows } => {
-				self.table(align, rows, x, y, width, opts, out)
-			}
+			BlockKind::Table { align, rows } => self.table(
+				&Table {
+					align,
+					headed: true,
+					rows,
+				},
+				x,
+				y,
+				width,
+				opts,
+				out,
+			),
 			BlockKind::Footnote {
 				label,
 				column,

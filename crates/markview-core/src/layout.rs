@@ -10,6 +10,7 @@ mod paragraph;
 #[cfg(test)]
 mod stylesheet_tests;
 mod table;
+pub(crate) use table::Table;
 #[cfg(test)]
 mod tests;
 pub use crate::scene::{

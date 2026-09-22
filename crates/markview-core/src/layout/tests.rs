@@ -2982,3 +2982,80 @@ fn a_named_font_definition_is_part_of_the_diagram_request() {
 	assert_eq!(options("'Noto Serif'"), options("'Noto Serif'"));
 	assert_ne!(options("'Noto Serif'"), options("'Source Han Serif'"));
 }
+
+#[test]
+fn a_front_matter_table_never_reaches_the_header_condition() {
+	let mut engine = LayoutEngine::new();
+	let mut stylesheet = (*crate::style::Stylesheet::bundled(false)).clone();
+	stylesheet.merge(
+		&crate::style::Stylesheet::parse(
+			"format_version=2\nversion=1\n\
+			 [[rule]]\nwhen=['front_matter','table','header']\nbackground='#FF0000'",
+		)
+		.unwrap(),
+	);
+	let opts = LayoutOptions {
+		stylesheet: Arc::new(stylesheet),
+		..Default::default()
+	};
+	let mut header_boxes = |source: &str| {
+		let layout = engine.layout(&document::parse(source), &opts);
+		layout
+			.blocks
+			.iter()
+			.flat_map(|block| block.layout.draws.iter())
+			.filter(|draw| {
+				matches!(
+					draw,
+					crate::scene::Draw::Box {
+						condition: crate::style::Condition::Header,
+						..
+					}
+				)
+			})
+			.count()
+	};
+	// Its rows are data, so the header condition owns no box in it.
+	assert_eq!(header_boxes("---\ntitle: N\n---\n\nBody\n"), 0);
+	// An ordinary table keeps its own header row.
+	assert!(header_boxes("| A | B |\n|-|-|\n| 1 | 2 |\n") > 0);
+}
+
+/// The colors the glyphs of one document are painted with, after the cosmetic
+/// highlighting pass has settled.
+fn glyph_colors(source: &str) -> std::collections::BTreeSet<u32> {
+	let doc = document::parse(source);
+	let options = LayoutOptions::default();
+	let mut engine = LayoutEngine::new();
+	let mut snapshot = engine.layout(&doc, &options);
+	if engine.wait_highlights() {
+		snapshot = engine.layout(&doc, &options);
+	}
+	let mut out = std::collections::BTreeSet::new();
+	for block in &snapshot.blocks {
+		for draw in &block.layout.draws {
+			if let crate::scene::Draw::Glyph(glyph) = draw
+				&& let crate::scene::Paint::Color(color) = glyph.paint
+			{
+				out.insert(color.0);
+			}
+		}
+	}
+	out
+}
+
+#[test]
+fn a_front_matter_drawn_as_source_is_highlighted() {
+	// A nested mapping draws as a `yaml` code block, so it colors exactly as
+	// the equivalent fenced block does. The layout cache only redraws the
+	// block once the highlights land if it counts that block as code, so this
+	// fails when the highlighter and the cache disagree about it.
+	let yaml = "title: N\nauthor:\n  name: A\n";
+	let front = glyph_colors(&format!("---\n{yaml}---\n\nBody\n"));
+	assert!(!front.is_empty(), "the front matter drew no colors");
+	let fence = glyph_colors(&format!("Body\n\n```yaml\n{yaml}```\n"));
+	assert_eq!(front, fence);
+	// The tabulated shape is cells, not code, so it stays uncolored.
+	let flat = glyph_colors("---\ntitle: N\n---\n\nBody\n");
+	assert!(flat.is_empty(), "{flat:?}");
+}
