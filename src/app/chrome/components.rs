@@ -251,6 +251,45 @@ pub(in crate::app) fn draw_button(
 	b: &Button,
 	panel: bool,
 ) -> Vec<Draw> {
+	draw_button_edges(ui, interaction, b, panel, [true, true])
+}
+
+/// Draws a segment with shared edges owned by the focused or selected neighbor.
+pub(in crate::app) fn draw_segmented_button(
+	ui: &mut TextShaper,
+	interaction: &InteractionState,
+	buttons: &[Button],
+	i: usize,
+) -> Vec<Draw> {
+	let b = &buttons[i];
+	let priority = |b: &Button| {
+		(
+			b.enabled
+				&& interaction.focus_visible
+				&& interaction.focus == Some(b.action),
+			b.enabled && b.active,
+		)
+	};
+	let joined = |left: &Button, right: &Button| {
+		left.rect.y == right.rect.y
+			&& (left.rect.x + left.rect.w - right.rect.x).abs() < 0.001
+	};
+	let left = i == 0
+		|| !joined(&buttons[i - 1], b)
+		|| priority(b) > priority(&buttons[i - 1]);
+	let right = i + 1 == buttons.len()
+		|| !joined(b, &buttons[i + 1])
+		|| priority(b) >= priority(&buttons[i + 1]);
+	draw_button_edges(ui, interaction, b, true, [left, right])
+}
+
+fn draw_button_edges(
+	ui: &mut TextShaper,
+	interaction: &InteractionState,
+	b: &Button,
+	panel: bool,
+	edges: [bool; 2],
+) -> Vec<Draw> {
 	let hovered = b.enabled
 		&& b.rect.contains(interaction.cursor.0, interaction.cursor.1);
 	let pressed = b.enabled && interaction.pressed == Some(b.action) && hovered;
@@ -291,12 +330,14 @@ pub(in crate::app) fn draw_button(
 			b.rect,
 			if primary { C::Color } else { C::FocusColor },
 			2.0,
+			edges,
 		));
 	} else if !quiet && !primary {
 		out.extend(outline(
 			b.rect,
 			if selected { C::Accent } else { C::BorderColor },
 			1.0,
+			edges,
 		));
 	}
 	let color = if !b.enabled {
@@ -332,7 +373,7 @@ pub(in crate::app) fn draw_button(
 	out
 }
 
-fn outline(r: Rect, color: C, thickness: f32) -> Vec<Draw> {
+fn outline(r: Rect, color: C, thickness: f32, edges: [bool; 2]) -> Vec<Draw> {
 	[
 		Rect { h: thickness, ..r },
 		Rect {
@@ -348,7 +389,9 @@ fn outline(r: Rect, color: C, thickness: f32) -> Vec<Draw> {
 		},
 	]
 	.into_iter()
-	.map(|r| line(r, Condition::Button, color))
+	.enumerate()
+	.filter(|(i, _)| *i < 2 || edges[*i - 2])
+	.map(|(_, r)| line(r, Condition::Button, color))
 	.collect()
 }
 
@@ -743,7 +786,12 @@ impl Form {
 			}
 			if (self.body_start..self.body_end).contains(&i) {
 				if b.rect.intersect(self.viewport).is_some() {
-					body.extend(draw_button(ui, &body_interaction, b, true));
+					body.extend(draw_segmented_button(
+						ui,
+						&body_interaction,
+						&self.buttons[self.body_start..self.body_end],
+						i - self.body_start,
+					));
 				}
 			} else {
 				out.extend(draw_button(ui, interaction, b, true));

@@ -27,6 +27,8 @@ at the same level, without `[brackets]`.
 
 ### Changed
 
+- Reuse segmented settings controls for the Fonts status filter, with shared borders and consistent selection and focus highlights.
+
 - Rework the Styles settings with clearer priorities: numbered badges for enabled styles, and arrows hidden at the ends of the order.
 - Rework the Fonts settings: drop the source filter, rename the states to Missing / Downloaded / In System, split the bulk action into Download Missing and Download All, and show sources, download progress and empty-state guidance.
 - Consolidate panel navigation and font UI ownership, share bounded HTTP transport, and decouple PDF requests from CLI launch options.
@@ -35,6 +37,8 @@ at the same level, without `[brackets]`.
 - Refresh the README size, memory and first-frame figures to the current build.
 
 ### Fixed
+
+- Draw shared borders in segmented settings controls only once, preserving selection and keyboard focus highlights.
 
 - Update font download counts as each file finishes, accumulate transferred bytes correctly, and show a continuous progress bar using each active transfer’s byte fraction with clearer details and an SVG cancel control.
 

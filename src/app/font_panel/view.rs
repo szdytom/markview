@@ -6,7 +6,9 @@
 //! one family or all of them at a time.
 use super::Command as FontCommand;
 use crate::app::Button;
-use crate::app::chrome::components::{ButtonKind, draw_button, panel_rect};
+use crate::app::chrome::components::{
+	ButtonKind, draw_button, draw_segmented_button, panel_rect,
+};
 use crate::app::chrome::components::{CONTROL, frame, line};
 use crate::app::chrome::list::List;
 use crate::{
@@ -148,14 +150,14 @@ fn fonts_controls(
 			label,
 			icon: None,
 			active: status_filter == state,
-			kind: ButtonKind::Quiet,
+			kind: ButtonKind::Standard,
 			enabled: true,
 			action: Command::Fonts(FontCommand::StatusFilter(state)),
 			rect: Rect {
 				x: r.x + 24. + index as f32 * w,
 				y: r.y + 96.,
 				w,
-				h: 28.,
+				h: CONTROL,
 			},
 		});
 	}
@@ -501,12 +503,13 @@ pub(in crate::app) fn draw_fonts(
 	if fits {
 		list.draw_bar(&mut out, shaper, interaction);
 	}
-	for b in fonts_controls(shown, status_filter, preview, width, height) {
+	let controls = fonts_controls(shown, status_filter, preview, width, height);
+	for (i, b) in controls.iter().enumerate() {
 		// The header of a settings tab is drawn once, by the header itself.
 		if crate::app::chrome::components::is_settings_header(b.action) {
 			continue;
 		}
-		out.extend(draw_button(shaper, interaction, &b, true));
+		out.extend(draw_segmented_button(shaper, interaction, &controls, i));
 	}
 	if preview {
 		crate::app::chrome::components::fade(
@@ -616,6 +619,62 @@ mod tests {
 			state,
 			files: Vec::new(),
 			bytes: 1024 * 1024,
+		}
+	}
+
+	#[test]
+	fn status_filters_share_borders_and_highlight_the_selection() {
+		let mut ui = crate::test_support::shaper();
+		let jobs = HashMap::new();
+		for status_filter in [
+			None,
+			Some(State::Missing),
+			Some(State::Downloaded),
+			Some(State::Provided),
+		] {
+			let view = super::super::View {
+				catalog: &[],
+				shown: vec![],
+				jobs: &jobs,
+				scroll: 0.,
+				note: None,
+				status_filter,
+			};
+			let controls =
+				fonts_controls(&[], status_filter, false, 820., 600.);
+			let filters: Vec<_> = controls
+				.iter()
+				.filter(|b| {
+					matches!(
+						b.action,
+						Command::Fonts(FontCommand::StatusFilter(_))
+					)
+				})
+				.collect();
+			assert_eq!(filters.len(), 4);
+			assert_eq!(filters.iter().filter(|b| b.active).count(), 1);
+			assert!(filters.iter().all(|b| b.rect.h == CONTROL));
+			let draws = draw_fonts(
+				&mut ui,
+				&InteractionState::default(),
+				&view,
+				820.,
+				600.,
+			);
+			let edges: Vec<_> = draws
+				.iter()
+				.filter_map(|d| match d {
+					Draw::Rect(r, Paint::Styled(Condition::Button, color))
+						if r.y == filters[0].rect.y
+							&& r.h == CONTROL && r.w == 1. =>
+					{
+						Some(color)
+					}
+					_ => None,
+				})
+				.collect();
+			assert_eq!(edges.len(), 5);
+			assert_eq!(edges.iter().filter(|c| ***c == C::Accent).count(), 2);
 		}
 	}
 

@@ -220,3 +220,78 @@ fn settings_and_export_step_controls_draw_icons_without_font_glyphs() {
 		assert!(!draws.iter().any(|draw| matches!(draw, Draw::Glyph(_))));
 	}
 }
+
+#[test]
+fn segmented_choices_draw_each_shared_edge_once() {
+	let mut ui = crate::test_support::shaper();
+	for selected in 0..4 {
+		for focus in [None, Some(0), Some(1), Some(2), Some(3)] {
+			let form = Form::new(
+				1200.0,
+				800.0,
+				0.0,
+				vec![Row::new(
+					"Indent",
+					(0..4)
+						.map(|i| {
+							action("Choice", i == selected, Command::Indent(i))
+						})
+						.collect(),
+				)],
+				None,
+				false,
+			);
+			let state = InteractionState {
+				focus: focus.map(Command::Indent),
+				focus_visible: focus.is_some(),
+				..Default::default()
+			};
+			let draws =
+				form.draw(&mut ui, &state, "", "", C::Muted, (1200.0, 800.0));
+			let body = draws
+				.iter()
+				.find_map(|draw| match draw {
+					Draw::Clipped { draws, .. } => Some(draws),
+					_ => None,
+				})
+				.unwrap();
+			let edges: Vec<_> = body
+				.iter()
+				.filter_map(|draw| match draw {
+					Draw::Rect(
+						rect,
+						Paint::Styled(Condition::Button, color),
+					) if rect.h == CONTROL && rect.w <= 2.0 => Some((rect, color)),
+					_ => None,
+				})
+				.collect();
+			assert_eq!(
+				edges.len(),
+				5,
+				"four segments need five vertical edges"
+			);
+			for pair in form.buttons.windows(2) {
+				let boundary = pair[1].rect.x;
+				let shared: Vec<_> = edges
+					.iter()
+					.filter(|(r, _)| r.x >= boundary - 2.0 && r.x <= boundary)
+					.collect();
+				assert_eq!(shared.len(), 1);
+				let focused =
+					pair.iter().any(|b| state.focus == Some(b.action));
+				let selected = pair.iter().any(|b| b.active);
+				assert_eq!(
+					*shared[0].1,
+					if focused {
+						C::FocusColor
+					} else if selected {
+						C::Accent
+					} else {
+						C::BorderColor
+					}
+				);
+				assert_eq!(shared[0].0.w, if focused { 2.0 } else { 1.0 });
+			}
+		}
+	}
+}
