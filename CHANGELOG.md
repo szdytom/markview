@@ -21,6 +21,10 @@ at the same level, without `[brackets]`.
 
 ## Unreleased
 
+## 0.1.6 - 2026-09-23
+
+This release renders YAML front matter, adds an About tab and collapsible table-of-contents sections, brings the green 8-bit reader theme, and reworks the Styles and Fonts settings.
+
 ### Added
 
 - Add compact, right-aligned stacked-square SVG buttons in the Contents header to expand or collapse all outline sections.
