@@ -110,6 +110,12 @@ impl App {
 				self.toggle_outline_entry(index);
 				return;
 			}
+			Command::OutlineExpandAll | Command::OutlineCollapseAll => {
+				self.set_outline_collapsed(
+					action == Command::OutlineCollapseAll,
+				);
+				return;
+			}
 			Command::OutlineGoto(index) => {
 				self.goto_outline(index);
 				return;

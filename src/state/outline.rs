@@ -8,6 +8,14 @@ pub(crate) struct OutlineTree {
 }
 
 impl OutlineTree {
+	pub(crate) fn all_collapsed(entries: &[OutlineEntry]) -> Self {
+		Self {
+			collapsed: (0..entries.len())
+				.filter(|&index| Self::has_children(entries, index))
+				.collect(),
+		}
+	}
+
 	pub(crate) fn has_children(entries: &[OutlineEntry], index: usize) -> bool {
 		entries
 			.get(index)

@@ -11,6 +11,10 @@ pub(super) const SETTINGS: &[IconPath] =
 	markview_icon::icon!("assets/ui/settings.svg");
 pub(super) const OUTLINE: &[IconPath] =
 	markview_icon::icon!("assets/ui/outline.svg");
+pub(super) const EXPAND_ALL: &[IconPath] =
+	markview_icon::icon!("assets/ui/expand-all.svg");
+pub(super) const COLLAPSE_ALL: &[IconPath] =
+	markview_icon::icon!("assets/ui/collapse-all.svg");
 pub(in crate::app) const CLOSE: &[IconPath] =
 	markview_icon::icon!("assets/ui/close.svg");
 

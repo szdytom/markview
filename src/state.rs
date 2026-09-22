@@ -87,6 +87,8 @@ pub(crate) enum Command {
 	/// Scroll the document to the heading of one outline entry.
 	OutlineGoto(usize),
 	OutlineToggle(usize),
+	OutlineExpandAll,
+	OutlineCollapseAll,
 }
 
 /// A panel has exactly one page; the outline and confirmation remain independent.

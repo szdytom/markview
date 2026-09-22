@@ -23,6 +23,7 @@ at the same level, without `[brackets]`.
 
 ### Added
 
+- Add compact, right-aligned stacked-square SVG buttons in the Contents header to expand or collapse all outline sections.
 - Add the 8-bit reader theme with green CRT colors, Fusion Pixel typography throughout the document and UI.
 - Collapse and expand nested table-of-contents sections with per-tab state and keyboard navigation that skips hidden headings.
 

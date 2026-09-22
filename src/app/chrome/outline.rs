@@ -24,6 +24,43 @@ const INSET: f32 = 14.0;
 const LEVEL_INDENT: f32 = 12.0;
 const SIZE: f32 = 13.0;
 const DISCLOSURE: f32 = 18.0;
+const HEADER_BUTTON: f32 = 28.0;
+const HEADER_GAP: f32 = 4.0;
+
+pub(super) fn header_buttons(drawer: Rect) -> [Button; 2] {
+	[
+		(
+			"Expand all",
+			Command::OutlineExpandAll,
+			super::icons::EXPAND_ALL,
+		),
+		(
+			"Collapse all",
+			Command::OutlineCollapseAll,
+			super::icons::COLLAPSE_ALL,
+		),
+	]
+	.map(|(label, action, icon)| {
+		let offset = if action == Command::OutlineExpandAll {
+			2.0 * HEADER_BUTTON + HEADER_GAP
+		} else {
+			HEADER_BUTTON
+		};
+		let mut button = components::button(
+			label,
+			action,
+			Rect {
+				x: drawer.x + drawer.w - INSET - offset,
+				y: drawer.y + (HEADER - HEADER_BUTTON) / 2.0,
+				w: HEADER_BUTTON,
+				h: HEADER_BUTTON,
+			},
+		);
+		button.icon = Some(icon);
+		button.kind = components::ButtonKind::Quiet;
+		button
+	})
+}
 
 /// The drawer's rectangle, from `top` down to just above the footer.
 pub(in crate::app) fn rect(width: f32, height: f32, top: f32) -> Rect {
@@ -210,12 +247,16 @@ pub(super) fn draw(
 		Rect {
 			x: drawer.x + INSET,
 			y: drawer.y,
-			w: (drawer.w - 2.0 * INSET).max(0.0),
+			w: (drawer.w - 2.0 * INSET - 2.0 * (HEADER_BUTTON + HEADER_GAP))
+				.max(0.0),
 			h: HEADER,
 		},
 		C::Muted,
 	));
 	ui.appearance.weight = weight;
+	for button in header_buttons(drawer) {
+		out.extend(components::draw_button(ui, interaction, &button, true));
+	}
 	if entries.is_empty() {
 		out.extend(components::label(
 			ui,

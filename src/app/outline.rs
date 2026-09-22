@@ -25,6 +25,20 @@ pub(super) fn claims_pointer(
 }
 
 impl App {
+	pub(super) fn set_outline_collapsed(&mut self, collapsed: bool) {
+		self.readers.session.ensure_outline();
+		self.readers.session.outline_tree = if collapsed {
+			OutlineTree::all_collapsed(self.readers.session.outline_entries())
+		} else {
+			OutlineTree::default()
+		};
+		self.ensure_outline();
+		if let Some(index) = self.interaction.outline_selection {
+			self.reveal_outline(index);
+		}
+		self.redraw();
+	}
+
 	fn outline_rows(&self) -> Vec<usize> {
 		self.readers
 			.session

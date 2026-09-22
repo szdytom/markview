@@ -358,3 +358,61 @@ fn collapsed_outline_keeps_drawing_hits_and_navigation_in_sync() {
 	tree.toggle(1);
 	assert_eq!(tree.rows(&entries), [0, 1, 2, 3, 4]);
 }
+
+#[test]
+fn bulk_controls_draw_in_the_header_and_collapse_every_level() {
+	let drawer = rect(800.0, 600.0, TOP);
+	let entries = crate::document::parse(
+		"# Parent\n### Child\n##### Grandchild\n## Sibling\n# Next\n",
+	)
+	.outline();
+	let controls = header_buttons(drawer);
+	assert_eq!(controls[0].action, Command::OutlineExpandAll);
+	assert_eq!(controls[1].action, Command::OutlineCollapseAll);
+	assert!(controls[0].rect.x + controls[0].rect.w < controls[1].rect.x);
+	assert_eq!(
+		controls[1].rect.x + controls[1].rect.w,
+		drawer.x + drawer.w - INSET
+	);
+	let mut interaction = InteractionState {
+		outline_open: true,
+		outline_selection: Some(2),
+		focus: Some(Command::OutlineGoto(2)),
+		outline_scroll: 900.0,
+		..Default::default()
+	};
+	let mut tree = OutlineTree::all_collapsed(&entries);
+	assert_eq!(tree.rows(&entries), [0, 4]);
+	normalize(drawer, &tree.rows(&entries), &mut interaction);
+	assert_eq!(interaction.outline_selection, Some(0));
+	assert_eq!(interaction.focus, Some(Command::OutlineGoto(0)));
+	assert_eq!(interaction.outline_scroll, 0.0);
+	// Reopening a parent leaves its nested sections collapsed.
+	tree.toggle(0);
+	assert_eq!(tree.rows(&entries), [0, 1, 3, 4]);
+	tree = OutlineTree::default();
+	assert_eq!(tree.rows(&entries), [0, 1, 2, 3, 4]);
+	let mut ui = crate::test_support::shaper();
+	let draws = draw(&mut ui, &interaction, &entries, &tree, None, drawer);
+	let icons: Vec<_> = draws
+		.iter()
+		.filter_map(|draw| match draw {
+			Draw::Icon { x, y, size, .. } => Some((*x, *y, *size)),
+			_ => None,
+		})
+		.collect();
+	assert_eq!(icons.len(), 2);
+	for (button, (x, y, size)) in controls.iter().zip(icons) {
+		assert!(button.icon.is_some());
+		assert!(button.rect.contains(x, y));
+		assert!(button.rect.contains(x + size, y + size));
+		assert!(button.rect.y >= drawer.y);
+		assert!(button.rect.y + button.rect.h <= viewport(drawer).y);
+		interaction.focus = Some(button.action);
+		assert_eq!(
+			interaction.enter_action(controls.iter().map(|b| b.action)),
+			Some(button.action)
+		);
+	}
+	assert!(OutlineTree::all_collapsed(&[]).rows(&[]).is_empty());
+}

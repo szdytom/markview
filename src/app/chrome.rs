@@ -315,6 +315,7 @@ impl Chrome<'_> {
 				buttons.extend(banner_buttons(self.ui, width));
 			}
 			if self.interaction.outline_open {
+				buttons.extend(outline::header_buttons(self.outline_drawer()));
 				buttons.extend(outline::buttons(
 					self.outline_drawer(),
 					self.session.outline_entries(),
