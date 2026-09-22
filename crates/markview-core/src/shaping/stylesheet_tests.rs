@@ -214,22 +214,8 @@ fn cached_choices_preserve_contextual_shaping() {
 		assert_eq!(cold.len(), warm.len());
 		for (a, b) in cold.iter().zip(&warm) {
 			assert_eq!(
-				(
-					&a.range,
-					a.rtl,
-					a.width,
-					a.ascent,
-					a.descent,
-					a.continuation
-				),
-				(
-					&b.range,
-					b.rtl,
-					b.width,
-					b.ascent,
-					b.descent,
-					b.continuation
-				)
+				(&a.range, a.rtl, a.width, a.ascent, a.descent),
+				(&b.range, b.rtl, b.width, b.ascent, b.descent)
 			);
 			assert_eq!(a.glyphs.len(), b.glyphs.len());
 			for (a, b) in a.glyphs.iter().zip(&b.glyphs) {

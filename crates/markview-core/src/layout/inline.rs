@@ -268,11 +268,7 @@ impl BlockContext<'_> {
 			let hard = t.contains('\n');
 			let soft_hyphen = t == "\u{ad}";
 			let math = p.math.get(&c.range.start);
-			let next = clusters.get(i + 1);
-			// A continuation carries no glyph of its own, so a break before it
-			// would split one grapheme cluster.
-			let attachable = !next.is_some_and(|c| c.continuation);
-			let legal = (breaks.contains(&c.range.end) && attachable)
+			let legal = breaks.contains(&c.range.end)
 				|| microtype::quote_edge_break(&clusters, &p.text, i, size);
 			// Only a boundary between two code characters belongs to the code
 			// run. Its edges belong to the surrounding text, so the segmenter's
@@ -302,7 +298,7 @@ impl BlockContext<'_> {
 				})
 			} else if legal {
 				Some(Break::NORMAL)
-			} else if attachable && in_code {
+			} else if in_code {
 				// Inline code has its own breaking rule: a boundary between two
 				// code characters is always legal. A token edge is free, the
 				// way a whole-word selection stops there; a split inside a word

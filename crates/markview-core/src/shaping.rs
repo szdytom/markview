@@ -113,7 +113,6 @@ pub(crate) struct Cluster {
 	pub(crate) ascent: f32,
 	pub(crate) descent: f32,
 	pub(crate) glyphs: Vec<Glyph>,
-	pub(crate) continuation: bool,
 }
 /// Reusable shaping context for UI labels and document text.
 pub struct TextShaper {
@@ -631,10 +630,29 @@ impl TextShaper {
 		let mut clusters: Vec<Cluster> = Vec::new();
 		for line in layout.lines() {
 			for run in line.runs() {
-				let run_start = clusters.len();
 				let coords: Arc<[i16]> = run.normalized_coords().into();
+				// The last cluster that draws a glyph, which a ligature's
+				// continuations fold into. `parley` emits it before them.
+				let mut inked: Option<usize> = None;
 				for c in run.visual_clusters() {
 					let range = c.text_range();
+					// A ligature is one glyph for several characters: `parley`
+					// hands the glyph to one cluster and leaves the rest as
+					// zero-glyph continuations carrying only their share of the
+					// advance. Fold them into that cluster, so one cluster
+					// spans the whole ligature with its full advance; a reader
+					// otherwise sees selection ink over half of it and a gap
+					// over the rest.
+					if c.is_ligature_continuation() {
+						if let Some(start) = inked {
+							let start = &mut clusters[start];
+							start.range.start =
+								start.range.start.min(range.start);
+							start.range.end = start.range.end.max(range.end);
+							start.width += c.advance();
+						}
+						continue;
+					}
 					let synthetic_italic = synthetic_at(range.start);
 					let mut x = 0.0;
 					let mut glyphs = Vec::new();
@@ -661,6 +679,7 @@ impl TextShaper {
 						});
 						x += g.advance;
 					}
+					inked = Some(clusters.len());
 					clusters.push(Cluster {
 						rtl: c.is_rtl(),
 						range,
@@ -669,24 +688,7 @@ impl TextShaper {
 						ascent: run.metrics().ascent,
 						descent: run.metrics().descent,
 						glyphs,
-						continuation: c.is_ligature_continuation(),
 					});
-				}
-				// A ligature is one glyph for several characters: `parley`
-				// gives the glyph to the first cluster and leaves the rest as
-				// continuations. The glyph stands for all of them, so the
-				// cluster that carries it takes their range; a PDF otherwise
-				// maps the `fi` ligature to `f` alone and drops the `i`.
-				let mut ligature: Option<usize> = None;
-				for index in run_start..clusters.len() {
-					if clusters[index].continuation {
-						if let Some(start) = ligature {
-							let end = clusters[index].range.end;
-							clusters[start].range.end = end;
-						}
-					} else {
-						ligature = Some(index);
-					}
 				}
 			}
 		}

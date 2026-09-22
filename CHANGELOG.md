@@ -36,6 +36,7 @@ at the same level, without `[brackets]`.
 
 - Build the downloadable-font catalogue when the Fonts or Styles page opens instead of during window startup, removing a system-font collection build from the first frame and about 8 MiB from the reader.
 - Name the requested resource in shared HTTP transport errors, so a failed font download no longer reports an image error.
+- Fold a ligature's continuation clusters into the cluster that draws the glyph, so its selection highlight, hit testing and copy range cover the whole ligature instead of leaving a gap over half of it.
 
 ## 0.1.5 - 2026-09-22
 

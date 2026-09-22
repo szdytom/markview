@@ -372,9 +372,7 @@ impl BlockContext<'_> {
 						+ fit.stretch * solve.ratio
 						+ if fit.share { solve.extra } else { 0.0 }
 				};
-				// A ligature continuation carries no ink of its own; the
-				// cluster that holds the glyph already spans its characters.
-				if !range.is_empty() && !c.continuation {
+				if !range.is_empty() {
 					out.text[node].push(TextCluster {
 						range,
 						rect: Rect {

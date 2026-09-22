@@ -665,7 +665,6 @@ mod tests {
 			ascent: 0.0,
 			descent: 0.0,
 			glyphs: Vec::new(),
-			continuation: false,
 		}
 	}
 
