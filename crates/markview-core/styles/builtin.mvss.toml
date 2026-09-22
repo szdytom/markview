@@ -50,6 +50,11 @@ type = "SC"
 lookfor = ["Noto Sans Mono CJK SC", "Source Han Mono", "Source Code Pro", "monospace"]
 
 [[fontdef]]
+id = "regularscript[cjk]"
+type = "SC"
+lookfor = ["LXGW WenKai", "KaiTi", "STKaiti", "Kaiti SC"]
+
+[[fontdef]]
 id = "emoji"
 emoji = true
 lookfor = ["Noto Color Emoji", "Apple Color Emoji", "Segoe UI Emoji", "Twemoji Mozilla", "EmojiOne Color", "JoyPixels", "Twitter Color Emoji", "EmojiSymbols"]
@@ -521,6 +526,55 @@ url = "https://mirrors.tuna.tsinghua.edu.cn/archlinux/extra/os/x86_64/ttf-fira-c
 sha256 = "47204905f7a4b063dd580168795c84abfe3238962ad6b4810e2e3b86126d53c7"
 members = ["usr/share/fonts/TTF/FiraCode-*.ttf"]
 
+[[font-family]]
+id = "lxgw-wenkai"
+lookfor = ["LXGW WenKai"]
+description = "Simplified Chinese emphasis in upright Kai, three weights"
+license = "OFL-1.1"
+license_url = "https://github.com/lxgw/LxgwWenKai/blob/main/OFL.txt"
+homepage = "https://github.com/lxgw/LxgwWenKai"
+
+[[font-family.source]]
+name = "GitHub release"
+files = [
+    "https://github.com/lxgw/LxgwWenKai/releases/download/v1.522/LXGWWenKai-Light.ttf",
+    "https://github.com/lxgw/LxgwWenKai/releases/download/v1.522/LXGWWenKai-Regular.ttf",
+    "https://github.com/lxgw/LxgwWenKai/releases/download/v1.522/LXGWWenKai-Medium.ttf",
+]
+
+# SourceForge hosts release files independently; jsDelivr's 20 MB limit
+# excludes these full TTFs.
+[[font-family.source]]
+name = "SourceForge"
+files = [
+    "https://downloads.sourceforge.net/project/lxgw-wenkai.mirror/v1.522/LXGWWenKai-Light.ttf",
+    "https://downloads.sourceforge.net/project/lxgw-wenkai.mirror/v1.522/LXGWWenKai-Regular.ttf",
+    "https://downloads.sourceforge.net/project/lxgw-wenkai.mirror/v1.522/LXGWWenKai-Medium.ttf",
+]
+
+# The `any` package is architecture-independent, including its font files.
+[[font-family.source]]
+name = "archlinuxcn (Europe)"
+[[font-family.source.archives]]
+url = "https://repo.archlinuxcn.org/x86_64/ttf-lxgw-wenkai-1.522-1-any.pkg.tar.zst"
+sha256 = "ba635236ce2d03b37cbc8277400ff64251d59fca76d5b9d4ef15b3fc101105dc"
+members = [
+    "usr/share/fonts/TTF/LXGWWenKai-Light.ttf",
+    "usr/share/fonts/TTF/LXGWWenKai-Regular.ttf",
+    "usr/share/fonts/TTF/LXGWWenKai-Medium.ttf",
+]
+
+[[font-family.source]]
+name = "TUNA archlinuxcn (China)"
+[[font-family.source.archives]]
+url = "https://mirrors.tuna.tsinghua.edu.cn/archlinuxcn/x86_64/ttf-lxgw-wenkai-1.522-1-any.pkg.tar.zst"
+sha256 = "ba635236ce2d03b37cbc8277400ff64251d59fca76d5b9d4ef15b3fc101105dc"
+members = [
+    "usr/share/fonts/TTF/LXGWWenKai-Light.ttf",
+    "usr/share/fonts/TTF/LXGWWenKai-Regular.ttf",
+    "usr/share/fonts/TTF/LXGWWenKai-Medium.ttf",
+]
+
 [svg.generic_font_family]
 serif = ["serif"]
 sans-serif = ["sans-serif"]
@@ -596,7 +650,8 @@ font = [{ family = "sans-serif" }, { family = "sans-serif[cjk]", weight = 500 },
 when = ["em"]
 font = [
 	{ family = "serif", variant = "italic" },
-	# CJK families usually ship no italic, so their Han text is sheared.
+	# Prefer upright WenKai for SC; retain shear as the CJK fallback.
+	{ family = "regularscript[cjk]" }, { family = "regularscript[cjk]", weight = 500 }, { family = "regularscript[cjk]", weight = 400 },
 	{ family = "serif[cjk]", variant = "italic", synthetic_italic = true, weight = 500 }, { family = "serif[cjk]", variant = "italic", synthetic_italic = true },
 	{ family = "emoji", weight = 400 },
 ]

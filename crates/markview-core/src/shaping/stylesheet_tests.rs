@@ -445,6 +445,111 @@ fn bundled_emphasis_shears_cjk_but_keeps_a_real_latin_italic() {
 }
 
 #[test]
+fn bundled_emphasis_prefers_upright_wenkai_only_for_sc() {
+	use crate::style::CjkType;
+
+	for theme in ["light", "blueprint", "print"] {
+		for cjk in [CjkType::Sc, CjkType::Tc, CjkType::Jp, CjkType::None] {
+			let mut s = TextShaper::new();
+			// Register known Han coverage under WenKai's family name.
+			for (data, weight) in [
+				(
+					include_bytes!(
+						"../../tests/fonts/NotoSerifCJKsc-Regular-subset.otf"
+					)
+					.as_slice(),
+					400.,
+				),
+				(
+					include_bytes!(
+						"../../tests/fonts/NotoSerifCJKsc-Bold-subset.otf"
+					)
+					.as_slice(),
+					500.,
+				),
+			] {
+				s.font_context().collection.register_fonts(
+					parley::fontique::Blob::new(Arc::new(data)),
+					Some(parley::fontique::FontInfoOverride {
+						family_name: Some("LXGW WenKai"),
+						weight: Some(FontWeight::new(weight)),
+						..Default::default()
+					}),
+				);
+			}
+			let mut sheet = (*Stylesheet::builtin()).clone();
+			sheet.merge(&Stylesheet::named_rules(theme).unwrap());
+			sheet.set_cjk_type(cjk);
+			s.set_stylesheet(Arc::new(sheet));
+			for bold in [false, true] {
+				let appearance = s.stylesheet.inline(
+					&s.appearance,
+					&TextStyle {
+						italic: true,
+						bold,
+						..Default::default()
+					},
+				);
+				let index = s.resolve_fonts(&appearance);
+				assert_eq!(
+					s.font_sets[index]
+						.faces
+						.iter()
+						.any(|f| f.family == "LXGW WenKai"),
+					cjk == CjkType::Sc,
+					"{theme} {cjk:?} bold={bold}",
+				);
+				if cjk == CjkType::Sc {
+					let han = s.choose_font("中", &appearance).unwrap();
+					assert_eq!(han.family, "LXGW WenKai");
+					assert_eq!(han.style, FontStyle::Normal);
+					assert_eq!(han.weight, if bold { 500 } else { 400 });
+					assert!(!han.synthetic_italic);
+					if !bold {
+						let latin = s.choose_font("a", &appearance).unwrap();
+						assert_eq!(latin.style, FontStyle::Italic);
+						assert!(!latin.synthetic_italic);
+					}
+				}
+			}
+		}
+	}
+}
+
+#[test]
+fn regularscript_uses_the_first_available_kai_family() {
+	let families = ["LXGW WenKai", "KaiTi", "STKaiti", "Kaiti SC"];
+	for first in 0..families.len() {
+		let mut s = TextShaper::new();
+		for family in &families[first..] {
+			s.font_context().collection.register_fonts(
+				parley::fontique::Blob::new(Arc::new(
+					include_bytes!(
+						"../../tests/fonts/NotoSerifCJKsc-Regular-subset.otf"
+					)
+					.as_slice(),
+				)),
+				Some(parley::fontique::FontInfoOverride {
+					family_name: Some(family),
+					..Default::default()
+				}),
+			);
+		}
+		let appearance = s.stylesheet.inline(
+			&s.appearance,
+			&TextStyle {
+				italic: true,
+				..Default::default()
+			},
+		);
+		let han = s.choose_font("中", &appearance).unwrap();
+		assert_eq!(han.family, families[first]);
+		assert_eq!(han.style, FontStyle::Normal);
+		assert!(!han.synthetic_italic);
+	}
+}
+
+#[test]
 fn emoji_presentation_follows_the_unicode_defaults() {
 	for emoji in [
 		"\u{2705}",  // WHITE HEAVY CHECK MARK, `Emoji_Presentation=Yes`

@@ -86,7 +86,8 @@ font = [{ family = "sans-serif" }, { family = "sans-serif[cjk]", weight = 500 },
 when = ["em"]
 font = [
 	{ family = "serif", variant = "italic" },
-	# CJK families usually ship no italic, so their Han text is sheared.
+	# Prefer upright WenKai for SC; retain shear as the CJK fallback.
+	{ family = "regularscript[cjk]" }, { family = "regularscript[cjk]", weight = 500 }, { family = "regularscript[cjk]", weight = 400 },
 	{ family = "serif[cjk]", variant = "italic", synthetic_italic = true, weight = 500 }, { family = "serif[cjk]", variant = "italic", synthetic_italic = true },
 	{ family = "emoji", weight = 400 },
 ]

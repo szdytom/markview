@@ -29,6 +29,8 @@ at the same level, without `[brackets]`.
 
 ### Changed
 
+- Prefer upright LXGW WenKai for Simplified Chinese emphasis in reader and PDF themes, offer it through GitHub, SourceForge and archlinuxcn (Europe/TUNA) font downloads, and fall back through system Kai fonts (`regularscript[cjk]`) to synthetic italics.
+
 - Reuse segmented settings controls for the Fonts status filter, with shared borders and consistent selection and focus highlights.
 
 - Rework the Styles settings with clearer priorities: numbered badges for enabled styles, and arrows hidden at the ends of the order.

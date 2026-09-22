@@ -546,7 +546,8 @@ fn builtin_offers_the_curated_downloads() {
 			"noto-serif-cjk-sc",
 			"noto-sans-cjk-sc",
 			"noto-emoji",
-			"fira-code"
+			"fira-code",
+			"lxgw-wenkai"
 		]
 	);
 	for family in &sheet.font_families {

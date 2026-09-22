@@ -183,4 +183,4 @@ space_after = 0.65
 
 [[rule]]
 when = ["em"]
-font = [{ family = "sans-serif", variant = "italic" }, { family = "sans-serif[cjk]", variant = "italic", synthetic_italic = true, weight = 500 }, { family = "sans-serif[cjk]", variant = "italic", synthetic_italic = true }, { family = "emoji", weight = 400 }]
+font = [{ family = "sans-serif", variant = "italic" }, { family = "regularscript[cjk]" }, { family = "regularscript[cjk]", weight = 500 }, { family = "regularscript[cjk]", weight = 400 }, { family = "sans-serif[cjk]", variant = "italic", synthetic_italic = true, weight = 500 }, { family = "sans-serif[cjk]", variant = "italic", synthetic_italic = true }, { family = "emoji", weight = 400 }]
