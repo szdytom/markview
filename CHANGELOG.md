@@ -31,6 +31,7 @@ at the same level, without `[brackets]`.
 ### Fixed
 
 - Build the downloadable-font catalogue when the Fonts or Styles page opens instead of during window startup, removing a system-font collection build from the first frame and about 8 MiB from the reader.
+- Name the requested resource in shared HTTP transport errors, so a failed font download no longer reports an image error.
 
 ## 0.1.5 - 2026-09-22
 

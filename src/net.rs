@@ -232,9 +232,14 @@ fn check_scheme(url: &url::Url, what: &str) -> Result<()> {
 	Ok(())
 }
 
-fn pinned_client(url: &url::Url) -> Result<reqwest::blocking::Client> {
-	check_scheme(url, "image")?;
-	let (host, addrs) = resolved(url, "Image")?;
+/// Builds a client whose connection can only go to a public address of `url`,
+/// naming the fetched resource `what` in the errors.
+fn pinned_client(
+	url: &url::Url,
+	what: &str,
+) -> Result<reqwest::blocking::Client> {
+	check_scheme(url, what)?;
+	let (host, addrs) = resolved(url, what)?;
 	reqwest::blocking::Client::builder()
 		.timeout(Duration::from_secs(15))
 		.connect_timeout(Duration::from_secs(5))
@@ -242,7 +247,7 @@ fn pinned_client(url: &url::Url) -> Result<reqwest::blocking::Client> {
 		.redirect(reqwest::redirect::Policy::none())
 		.resolve_to_addrs(&host, &addrs)
 		.build()
-		.context("Image client")
+		.with_context(|| format!("{what} client"))
 }
 
 /// A transfer that may make no progress at all before it is abandoned.
@@ -258,18 +263,21 @@ const CANCEL_POLL: Duration = Duration::from_millis(150);
 ///
 /// Only the async client carries a read timeout, so one small runtime drives
 /// this path; the image cache keeps its blocking client and its own limits.
+/// `what` names the resource the transfers are for, so a font failure is not
+/// reported as an image one.
 pub(crate) struct Downloader {
 	runtime: tokio::runtime::Runtime,
+	what: &'static str,
 }
 
 impl Downloader {
-	pub(crate) fn new() -> Result<Self> {
+	pub(crate) fn new(what: &'static str) -> Result<Self> {
 		let runtime = tokio::runtime::Builder::new_multi_thread()
 			.worker_threads(1)
 			.enable_all()
 			.build()
 			.context("Download runtime")?;
-		Ok(Self { runtime })
+		Ok(Self { runtime, what })
 	}
 
 	/// Streams `url` into `path`, bounded by `cap` bytes, reporting the bytes
@@ -284,12 +292,12 @@ impl Downloader {
 		cancel: &dyn Fn() -> bool,
 	) -> Result<()> {
 		self.runtime
-			.block_on(fetch_into(url, path, cap, progress, cancel))
+			.block_on(fetch_into(url, path, cap, progress, cancel, self.what))
 	}
 
 	/// How long `url` takes to answer a one-byte range request.
 	pub(crate) fn probe(&self, url: &str) -> Result<Duration> {
-		self.runtime.block_on(probe_once(url))
+		self.runtime.block_on(probe_once(url, self.what))
 	}
 }
 
@@ -299,9 +307,10 @@ fn pinned_async_client(
 	url: &url::Url,
 	read_timeout: Duration,
 	total_timeout: Option<Duration>,
+	what: &str,
 ) -> Result<reqwest::Client> {
-	check_scheme(url, "download")?;
-	let (host, addrs) = resolved(url, "download")?;
+	check_scheme(url, what)?;
+	let (host, addrs) = resolved(url, what)?;
 	let mut builder = reqwest::Client::builder()
 		.connect_timeout(Duration::from_secs(5))
 		.read_timeout(read_timeout)
@@ -312,7 +321,7 @@ fn pinned_async_client(
 	if let Some(total) = total_timeout {
 		builder = builder.timeout(total);
 	}
-	builder.build().context("Download client")
+	builder.build().with_context(|| format!("{what} client"))
 }
 
 /// Follows one redirect hop, or returns the target of the next one.
@@ -334,8 +343,10 @@ async fn fetch_into(
 	cap: u64,
 	progress: &mut dyn FnMut(u64),
 	cancel: &dyn Fn() -> bool,
+	what: &str,
 ) -> Result<()> {
-	let mut current = url::Url::parse(url).context("Invalid download URL")?;
+	let mut current =
+		url::Url::parse(url).with_context(|| format!("Invalid {what} URL"))?;
 	for _ in 0..=MAX_REDIRECTS {
 		// A cancelled transfer must not even open a connection, and a server
 		// that accepts one and then stalls before its headers must not hold
@@ -343,7 +354,7 @@ async fn fetch_into(
 		if cancel() {
 			bail!("Cancelled");
 		}
-		let client = pinned_async_client(&current, STALL_TIMEOUT, None)?;
+		let client = pinned_async_client(&current, STALL_TIMEOUT, None, what)?;
 		let response = tokio::select! {
 			response = client.get(current.clone()).send() => response?,
 			_ = wait_for_cancel(cancel) => bail!("Cancelled"),
@@ -367,7 +378,7 @@ async fn fetch_into(
 		}
 		return Ok(());
 	}
-	bail!("Redirects to too many locations")
+	bail!("{what} redirects to too many locations")
 }
 
 async fn stream_body(
@@ -405,14 +416,16 @@ async fn wait_for_cancel(cancel: &dyn Fn() -> bool) {
 	}
 }
 
-async fn probe_once(url: &str) -> Result<Duration> {
-	let mut current = url::Url::parse(url).context("Invalid download URL")?;
+async fn probe_once(url: &str, what: &str) -> Result<Duration> {
+	let mut current =
+		url::Url::parse(url).with_context(|| format!("Invalid {what} URL"))?;
 	let started = std::time::Instant::now();
 	for _ in 0..=MAX_REDIRECTS {
 		let client = pinned_async_client(
 			&current,
 			Duration::from_secs(5),
 			Some(Duration::from_secs(10)),
+			what,
 		)?;
 		let response = client
 			.get(current.clone())
@@ -426,7 +439,7 @@ async fn probe_once(url: &str) -> Result<Duration> {
 		response.error_for_status()?;
 		return Ok(started.elapsed());
 	}
-	bail!("Redirects to too many locations")
+	bail!("{what} redirects to too many locations")
 }
 
 /// Fetches over HTTP(S), validating and re-pinning every redirect hop.
@@ -436,16 +449,19 @@ async fn probe_once(url: &str) -> Result<Duration> {
 /// redirect to another resource is fetched unconditionally. The returned
 /// [`Fetched::final_url`] names the resource that answered, and
 /// [`Fetched::freshness_cap`] is the earliest instant the chain allows.
+/// `what` names the resource being fetched, so an error names the transfer
+/// that failed rather than the one this transport was first built for.
 pub(crate) fn get(
 	url: &str,
 	validators: &Validators,
 	max: u64,
 	what: &str,
 ) -> Result<Fetched> {
-	let mut current = url::Url::parse(url).context("Invalid image URL")?;
+	let mut current =
+		url::Url::parse(url).with_context(|| format!("Invalid {what} URL"))?;
 	let mut chain = Chain::default();
 	for _ in 0..=MAX_REDIRECTS {
-		let client = pinned_client(&current)?;
+		let client = pinned_client(&current, what)?;
 		let mut request = client.get(current.clone());
 		// Validators answer for one resource only: they go to the URL that
 		// supplied them, and a request to any other hop is unconditional.
@@ -500,7 +516,7 @@ pub(crate) fn get(
 			freshness_cap: chain.expires_at,
 		});
 	}
-	bail!("Image redirects to too many locations")
+	bail!("{what} redirects to too many locations")
 }
 
 pub(crate) fn headers(map: &HeaderMap) -> Headers {
@@ -670,6 +686,28 @@ mod tests {
 		assert!(
 			!Validators::default().applies_to("https://cdn.example.com/a.png")
 		);
+	}
+
+	#[test]
+	fn errors_name_the_resource_the_caller_asked_for() {
+		// The transport is shared, so a font failure must not be reported
+		// as an image one.
+		let local = url::Url::parse("file:///fonts/a.ttf").unwrap();
+		let message = pinned_client(&local, "Font").unwrap_err().to_string();
+		assert!(message.contains("Font"), "{message}");
+		assert!(!message.contains("Image"), "{message}");
+		let message = get("notaurl", &Validators::default(), 1024, "Font")
+			.err()
+			.expect("an unparsable URL is refused")
+			.to_string();
+		assert!(message.contains("Font"), "{message}");
+		assert!(!message.contains("Image"), "{message}");
+		// Fonts use the streaming downloader rather than `get`, so the
+		// name it was built with has to reach its own errors too.
+		let downloader = Downloader::new("Font").unwrap();
+		let message = downloader.probe("notaurl").unwrap_err().to_string();
+		assert!(message.contains("Font"), "{message}");
+		assert!(!message.contains("Image"), "{message}");
 	}
 
 	#[test]

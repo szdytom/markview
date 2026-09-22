@@ -276,7 +276,7 @@ impl FontPanel {
 		self.font_note = None;
 		let cancels = self.font_cancel.clone();
 		std::thread::spawn(move || {
-			let transport = match crate::net::Downloader::new() {
+			let transport = match crate::net::Downloader::new("Font") {
 				Ok(transport) => transport,
 				Err(error) => {
 					let reason = format!("{error:#}");

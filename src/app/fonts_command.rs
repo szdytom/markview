@@ -307,7 +307,7 @@ fn download(
 		return Ok(());
 	}
 	let dir = directory()?;
-	let transport = crate::net::Downloader::new()?;
+	let transport = crate::net::Downloader::new("Font")?;
 	let terminal = std::io::stdout().is_terminal();
 	let mut last: std::collections::HashMap<String, (usize, String)> =
 		std::collections::HashMap::new();
