@@ -21,7 +21,7 @@ use std::{
 		atomic::{AtomicUsize, Ordering},
 		mpsc::{Sender, channel},
 	},
-	time::Duration,
+	time::{Duration, Instant},
 };
 
 /// The largest single downloaded font accepted.
@@ -37,8 +37,8 @@ pub const MAX_MEMBERS: usize = 4096;
 pub const SOFT_TOTAL_BYTES: u64 = 1024 * 1024 * 1024;
 /// Transfers in flight at once unless `--jobs` says otherwise.
 pub const DEFAULT_JOBS: usize = 4;
-/// How many bytes of a file may pass between two progress reports.
-const PROGRESS_STEP: u64 = 256 * 1024;
+/// Limit redraws while still reporting slow transfers regularly.
+const PROGRESS_INTERVAL: Duration = Duration::from_millis(50);
 
 /// The user font directory beside `settings.toml`.
 pub fn directory() -> Option<PathBuf> {
@@ -155,9 +155,10 @@ pub struct Progress {
 	/// Files finished so far, and how many the source holds.
 	pub files_done: usize,
 	pub files_total: usize,
-	/// Bytes written so far, and what the transfer announced when it knows.
+	/// Bytes written so far across all transfers.
 	pub bytes_done: u64,
-	pub bytes_total: Option<u64>,
+	/// Sum of per-transfer completion fractions, including active downloads.
+	pub files_progress: f64,
 	pub current: Option<String>,
 	/// A failure reason, or the name of the source being tried.
 	pub note: Option<String>,
@@ -170,7 +171,7 @@ impl Progress {
 			files_done: 0,
 			files_total: 0,
 			bytes_done: 0,
-			bytes_total: None,
+			files_progress: 0.0,
 			current: None,
 			note: None,
 		}
@@ -202,13 +203,13 @@ pub struct Summary {
 
 /// Fetches bytes, so the engine can be exercised without a network.
 pub trait Transport: Sync {
-	/// Streams one URL into `path`, bounded by `cap` bytes.
+	/// Streams one URL into `path`, reporting bytes written and the optional total.
 	fn fetch(
 		&self,
 		url: &str,
 		path: &Path,
 		cap: u64,
-		progress: &mut dyn FnMut(u64),
+		progress: &mut dyn FnMut(u64, Option<u64>),
 		cancel: &dyn Fn() -> bool,
 	) -> Result<()>;
 	/// The time a URL takes to answer a one-byte range request.
@@ -221,7 +222,7 @@ impl Transport for crate::net::Downloader {
 		url: &str,
 		path: &Path,
 		cap: u64,
-		progress: &mut dyn FnMut(u64),
+		progress: &mut dyn FnMut(u64, Option<u64>),
 		cancel: &dyn Fn() -> bool,
 	) -> Result<()> {
 		crate::net::Downloader::fetch(self, url, path, cap, progress, cancel)
@@ -385,6 +386,51 @@ impl Reporter {
 		// A closed channel means the run loop already finished.
 		let _ = self.tx.send(self.id.clone());
 	}
+
+	/// Each transfer contributes one unit, independent of when other headers arrive.
+	fn fetch(
+		&self,
+		transport: &dyn Transport,
+		url: &str,
+		path: &Path,
+		cap: u64,
+		stopped: &dyn Fn() -> bool,
+	) -> Result<()> {
+		let mut last_bytes = 0;
+		let mut last_fraction = 0.0;
+		let mut last_report: Option<Instant> = None;
+		transport.fetch(
+			url,
+			path,
+			cap,
+			&mut |bytes, total| {
+				if last_report
+					.is_some_and(|at| at.elapsed() < PROGRESS_INTERVAL)
+					&& total != Some(bytes)
+				{
+					return;
+				}
+				let fraction =
+					total.filter(|total| *total > 0).map_or(0.0, |total| {
+						(bytes as f64 / total as f64).min(1.0)
+					});
+				self.update(|state| {
+					state.bytes_done += bytes - last_bytes;
+					state.files_progress += fraction - last_fraction;
+				});
+				last_bytes = bytes;
+				last_fraction = fraction;
+				last_report = Some(Instant::now());
+			},
+			stopped,
+		)?;
+		let bytes = fs::metadata(path)?.len();
+		self.update(|state| {
+			state.bytes_done += bytes - last_bytes;
+			state.files_progress += 1.0 - last_fraction;
+		});
+		Ok(())
+	}
 }
 
 /// Limits how many transfers are in flight at once.
@@ -515,6 +561,7 @@ fn download_family(
 			state.current = None;
 			state.files_done = 0;
 			state.bytes_done = 0;
+			state.files_progress = 0.0;
 		});
 		match attempt(family, source, dir, transport, gate, reporter, &stopped)
 		{
@@ -561,7 +608,6 @@ fn attempt(
 	let mut staged: Vec<Staged> = Vec::new();
 	let mut bytes = 0u64;
 	let outcome = (|| -> Result<()> {
-		let mut done = 0usize;
 		let mut files: Vec<&FontFile> = source.files.iter().collect();
 		// Several direct files are independent, so they may run at once; the
 		// gate keeps the total number of transfers bounded.
@@ -569,9 +615,11 @@ fn attempt(
 			let mut handles = Vec::new();
 			for file in files.drain(..) {
 				handles.push(scope.spawn(|| {
-					fetch_file(
+					let entry = fetch_file(
 						family, file, dir, transport, gate, reporter, stopped,
-					)
+					)?;
+					reporter.update(|state| state.files_done += 1);
+					Ok(entry)
 				}));
 			}
 			handles
@@ -589,8 +637,6 @@ fn attempt(
 				Ok(entry) => {
 					bytes += entry.bytes;
 					staged.push(entry);
-					done += 1;
-					reporter.update(|state| state.files_done = done);
 				}
 				Err(error) => {
 					first_error.get_or_insert(error);
@@ -603,16 +649,15 @@ fn attempt(
 		for archive in &source.archives {
 			reporter.update(|state| {
 				state.phase = Phase::Downloading;
-				state.current = Some(archive.url.clone());
+				state.current = Some(url_basename(&archive.url));
 			});
 			let members = fetch_archive(
 				family, archive, dir, transport, gate, reporter, stopped,
 			)?;
 			bytes += members.iter().map(|entry| entry.bytes).sum::<u64>();
 			staged.extend(members);
-			done += 1;
 			reporter.update(|state| {
-				state.files_done = done;
+				state.files_done += 1;
 				state.phase = Phase::Downloading;
 			});
 		}
@@ -813,22 +858,16 @@ fn fetch_file(
 	stopped: &(dyn Fn() -> bool + Sync),
 ) -> Result<Staged> {
 	let basename = url_basename(file.url());
-	reporter.update(|state| state.current = Some(basename.clone()));
 	let temp = temp_path(dir);
 	let outcome = (|| -> Result<Staged> {
 		{
 			let _ticket = gate.enter();
-			let mut last = 0;
-			transport.fetch(
+			reporter.update(|state| state.current = Some(basename.clone()));
+			reporter.fetch(
+				transport,
 				file.url(),
 				&temp,
 				MAX_FILE_BYTES,
-				&mut |bytes| {
-					if bytes.saturating_sub(last) >= PROGRESS_STEP {
-						last = bytes;
-						reporter.update(|state| state.bytes_done = bytes);
-					}
-				},
 				stopped,
 			)?;
 		}
@@ -855,17 +894,12 @@ fn fetch_archive(
 	let outcome = (|| -> Result<Vec<Staged>> {
 		{
 			let _ticket = gate.enter();
-			let mut last = 0;
-			transport.fetch(
+			reporter.update(|state| state.current = Some(basename.clone()));
+			reporter.fetch(
+				transport,
 				&archive.url,
 				&temp,
 				MAX_ARCHIVE_BYTES,
-				&mut |bytes| {
-					if bytes.saturating_sub(last) >= PROGRESS_STEP * 4 {
-						last = bytes;
-						reporter.update(|state| state.bytes_done = bytes);
-					}
-				},
 				stopped,
 			)?;
 		}
@@ -1557,7 +1591,7 @@ mod tests {
 			url: &str,
 			path: &Path,
 			_cap: u64,
-			progress: &mut dyn FnMut(u64),
+			progress: &mut dyn FnMut(u64, Option<u64>),
 			_cancel: &dyn Fn() -> bool,
 		) -> Result<()> {
 			self.seen.lock().unwrap().push(url.to_owned());
@@ -1572,7 +1606,7 @@ mod tests {
 			if let Some(arm) = &self.arm {
 				arm.store(true, std::sync::atomic::Ordering::Relaxed);
 			}
-			progress(body.len() as u64);
+			progress(body.len() as u64, Some(body.len() as u64));
 			Ok(())
 		}
 		fn probe(&self, url: &str) -> Result<Duration> {
@@ -1615,6 +1649,86 @@ mod tests {
 			.map(|entry| entry.file_name().to_string_lossy().into_owned())
 			.collect();
 		assert!(names.iter().all(|name| name.ends_with(".ttf")), "{names:?}");
+	}
+
+	#[test]
+	fn completed_files_report_before_a_slower_first_file_finishes() {
+		struct Delayed {
+			fake: Fake,
+			release: Mutex<std::sync::mpsc::Receiver<()>>,
+		}
+		impl Transport for Delayed {
+			fn fetch(
+				&self,
+				url: &str,
+				path: &Path,
+				cap: u64,
+				progress: &mut dyn FnMut(u64, Option<u64>),
+				cancel: &dyn Fn() -> bool,
+			) -> Result<()> {
+				if url.ends_with("slow.otf") {
+					let body = &self.fake.bodies[url];
+					let half = body.len() / 2;
+					fs::write(path, &body[..half])?;
+					progress(half as u64, Some(body.len() as u64));
+					self.release
+						.lock()
+						.unwrap()
+						.recv_timeout(Duration::from_secs(5))?;
+				}
+				self.fake.fetch(url, path, cap, progress, cancel)
+			}
+			fn probe(&self, url: &str) -> Result<Duration> {
+				self.fake.probe(url)
+			}
+		}
+		let dir = tempfile::tempdir().unwrap();
+		let font = font_bytes();
+		let urls = [
+			"https://good.example/slow.otf",
+			"https://good.example/fast.otf",
+		];
+		let (release, receiver) = channel();
+		let transport = Delayed {
+			fake: Fake {
+				bodies: urls
+					.iter()
+					.map(|url| (url.to_string(), font.clone()))
+					.collect(),
+				..Default::default()
+			},
+			release: Mutex::new(receiver),
+		};
+		let mut events = Vec::new();
+		let summary = run(
+			&[fan("noto", &urls)],
+			dir.path(),
+			&transport,
+			2,
+			Arc::new(|_| false),
+			&mut |progress| {
+				if progress.files_done == 1 && progress.files_progress > 1.0 {
+					let _ = release.send(());
+				}
+				events.push(progress);
+			},
+		);
+		assert!(summary.failed.is_empty(), "{:?}", summary.failed);
+		assert_eq!(summary.stored, 1);
+		assert!(events.iter().any(|p| p.files_done == 1
+			&& p.files_progress > 1.0
+			&& p.files_progress < 2.0
+			&& p.phase == Phase::Downloading));
+		assert!(
+			events
+				.windows(2)
+				.all(|pair| pair[0].bytes_done <= pair[1].bytes_done
+					&& pair[0].files_progress <= pair[1].files_progress)
+		);
+		let last = events.last().unwrap();
+		assert_eq!(last.files_done, 2);
+		assert_eq!(last.files_progress, 2.0);
+		assert_eq!(last.bytes_done, 2 * font.len() as u64);
 	}
 
 	#[test]

@@ -36,6 +36,8 @@ at the same level, without `[brackets]`.
 
 ### Fixed
 
+- Update font download counts as each file finishes, accumulate transferred bytes correctly, and show a continuous progress bar using each active transfer’s byte fraction with clearer details and an SVG cancel control.
+
 - Draw the increase/decrease controls with SVG icons instead of font glyphs, avoiding minus-sign font fallback warnings.
 - Keep the bulk font-download buttons hoverable, and silently do nothing when no downloads are needed.
 - Align the Styles summary and separator with Generic settings while keeping the tabs clear on short panels, align style text, center the priority badges and row controls, and hide unavailable arrows.

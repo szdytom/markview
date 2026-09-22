@@ -234,7 +234,7 @@ fn font_rows(
 		out.push(Button {
 			label,
 			icon: if running {
-				None
+				Some(crate::app::chrome::icons::CLOSE)
 			} else if family.state == crate::fonts::State::Downloaded {
 				Some(crate::app::chrome::icons::REDOWNLOAD)
 			} else {
@@ -249,9 +249,9 @@ fn font_rows(
 			enabled: true,
 			action,
 			rect: Rect {
-				x: r.x + r.w - 24. - if running { 76. } else { CONTROL },
+				x: r.x + r.w - 24. - CONTROL,
 				y: list.row_rect(row).y + 34.,
-				w: if running { 76. } else { CONTROL },
+				w: CONTROL,
 				h: 32.,
 			},
 		});
@@ -440,7 +440,7 @@ pub(in crate::app) fn draw_fonts(
 				.clone()
 				.unwrap_or_else(|| family.family.id.clone()),
 		};
-		let detail = shaper.fit(&detail, 12., r.w - 184.);
+		let detail = shaper.fit(&detail, 12., r.w - 96.);
 		body.extend(shaper.label(
 			&detail,
 			12.,
@@ -455,8 +455,17 @@ pub(in crate::app) fn draw_fonts(
 				},
 			),
 		));
-		let meta = meta_text(family);
-		let meta = shaper.fit(&meta, 11., r.w - 184.);
+		let meta = if let Some(progress) = jobs.get(&family.family.id) {
+			progress
+				.current
+				.as_deref()
+				.or(progress.note.as_deref())
+				.unwrap_or("Preparing download")
+				.to_owned()
+		} else {
+			meta_text(family)
+		};
+		let meta = shaper.fit(&meta, 11., r.w - 96.);
 		body.extend(shaper.label(
 			&meta,
 			11.,
@@ -464,21 +473,17 @@ pub(in crate::app) fn draw_fonts(
 			y + 67.,
 			Paint::Styled(Condition::Panel, C::Muted),
 		));
-		if let Some(progress) = jobs.get(&family.family.id)
-			&& let Some(total) = progress.bytes_total.filter(|total| *total > 0)
-		{
+		if let Some(progress) = jobs.get(&family.family.id) {
 			let track = Rect {
 				x: r.x + 24.,
 				y: y + 78.,
 				w: r.w - 48.,
-				h: 2.,
+				h: 3.,
 			};
 			body.push(line(track, Condition::Panel, C::BorderColor));
 			body.push(line(
 				Rect {
-					w: track.w
-						* (progress.bytes_done as f64 / total as f64)
-							.clamp(0.0, 1.0) as f32,
+					w: track.w * job_fraction(progress),
 					..track
 				},
 				Condition::Panel,
@@ -532,17 +537,12 @@ fn describe_job(progress: &crate::fonts::Progress) -> String {
 		crate::fonts::Phase::Cancelled => "Cancelled",
 	};
 	let mut out = phase.to_owned();
-	// A known total is more useful as a percentage; without one, the bytes
-	// transferred so far are all there is to show.
-	match progress.bytes_total {
-		Some(total) if total > 0 => {
-			let percent = (progress.bytes_done * 100 / total).min(100);
-			out.push_str(&format!(", {percent}%"));
-		}
-		_ if progress.bytes_done > 0 => {
-			out.push_str(&format!(", {}", bytes_label(progress.bytes_done)));
-		}
-		_ => {}
+	if progress.files_total > 0 {
+		let percent = (job_fraction(progress) * 100.0) as u32;
+		out.push_str(&format!(", {percent}%"));
+	}
+	if progress.bytes_done > 0 {
+		out.push_str(&format!(" · {}", bytes_label(progress.bytes_done)));
 	}
 	if progress.files_total > 0 {
 		out.push_str(&format!(
@@ -550,13 +550,19 @@ fn describe_job(progress: &crate::fonts::Progress) -> String {
 			progress.files_done, progress.files_total
 		));
 	}
-	if let Some(current) = &progress.current {
-		out.push_str(&format!(" · {current}"));
-	}
-	if let Some(note) = &progress.note {
-		out.push_str(&format!(" — {note}"));
-	}
+
 	out
+}
+
+/// Active transfers contribute their byte fraction to the file count.
+fn job_fraction(progress: &crate::fonts::Progress) -> f32 {
+	if progress.files_total > 0 {
+		(progress.files_progress.max(progress.files_done as f64)
+			/ progress.files_total as f64)
+			.clamp(0.0, 1.0) as f32
+	} else {
+		0.0
+	}
 }
 
 /// The third line: license, size, and who declares the family.
@@ -757,7 +763,7 @@ mod tests {
 			"a".to_string(),
 			crate::fonts::Progress {
 				note: None,
-				bytes_total: None,
+				files_progress: 0.0,
 				..crate::fonts::Progress::queued("a")
 			},
 		);
@@ -846,9 +852,56 @@ mod tests {
 		let mut progress = crate::fonts::Progress::queued("a");
 		progress.phase = crate::fonts::Phase::Downloading;
 		progress.bytes_done = 512;
-		progress.bytes_total = Some(1024);
+		progress.files_total = 1;
+		progress.files_progress = 0.5;
 		progress.current = Some("a-very-long-font-family-filename.otf".into());
 		assert!(describe_job(&progress).starts_with("Downloading, 50%"));
+	}
+
+	#[test]
+	fn downloads_without_byte_totals_have_a_track_and_svg_cancel() {
+		let catalog = vec![entry("a", State::Missing)];
+		let mut progress = crate::fonts::Progress::queued("a");
+		progress.phase = crate::fonts::Phase::Downloading;
+		progress.files_done = 6;
+		progress.files_progress = 6.5;
+		progress.files_total = 18;
+		progress.bytes_done = 2 * 1024 * 1024;
+		assert!(describe_job(&progress).contains("2.0 MiB · 6/18 files"));
+		let jobs = HashMap::from([("a".into(), progress)]);
+		let view = super::super::View {
+			catalog: &catalog,
+			shown: vec![0],
+			jobs: &jobs,
+			scroll: 0.,
+			note: None,
+			status_filter: None,
+		};
+		let rows = list(820., 600., 1, 0.);
+		let button = font_rows(&catalog, &[0], &jobs, rows).remove(0);
+		assert_eq!(button.action, Command::Fonts(FontCommand::Cancel(0)));
+		assert!(button.icon.is_some());
+		assert_eq!(button.rect.w, CONTROL);
+		let mut shaper = crate::test_support::shaper();
+		let draws = draw_fonts(
+			&mut shaper,
+			&InteractionState::default(),
+			&view,
+			820.,
+			600.,
+		);
+		let Draw::Clipped { draws, .. } = draws
+			.iter()
+			.find(|d| matches!(d, Draw::Clipped { .. }))
+			.unwrap()
+		else {
+			unreachable!()
+		};
+		let expected = (rows.panel.w - 48.) * (6.5 / 18.);
+		assert!(draws.iter().any(|d| matches!(d,
+			Draw::Rect(rect, Paint::Styled(Condition::Panel, C::Accent))
+			if rect.h == 3. && (rect.w - expected).abs() < 0.01
+		)));
 	}
 
 	#[test]

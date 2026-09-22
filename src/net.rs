@@ -281,14 +281,14 @@ impl Downloader {
 	}
 
 	/// Streams `url` into `path`, bounded by `cap` bytes, reporting the bytes
-	/// written so far after every chunk. `cancel` is polled throughout, so a
+	/// written so far and the optional total after every chunk. `cancel` is polled throughout, so a
 	/// stalled transfer still stops promptly.
 	pub(crate) fn fetch(
 		&self,
 		url: &str,
 		path: &Path,
 		cap: u64,
-		progress: &mut dyn FnMut(u64),
+		progress: &mut dyn FnMut(u64, Option<u64>),
 		cancel: &dyn Fn() -> bool,
 	) -> Result<()> {
 		self.runtime
@@ -341,7 +341,7 @@ async fn fetch_into(
 	url: &str,
 	path: &Path,
 	cap: u64,
-	progress: &mut dyn FnMut(u64),
+	progress: &mut dyn FnMut(u64, Option<u64>),
 	cancel: &dyn Fn() -> bool,
 	what: &str,
 ) -> Result<()> {
@@ -386,7 +386,7 @@ async fn stream_body(
 	path: &Path,
 	cap: u64,
 	total: Option<u64>,
-	progress: &mut dyn FnMut(u64),
+	progress: &mut dyn FnMut(u64, Option<u64>),
 ) -> Result<()> {
 	let mut file = std::fs::File::create(path)
 		.with_context(|| format!("Cannot write {}", path.display()))?;
@@ -397,7 +397,7 @@ async fn stream_body(
 			bail!("File exceeds {} MiB", cap / (1024 * 1024));
 		}
 		file.write_all(&chunk)?;
-		progress(written);
+		progress(written, total);
 	}
 	file.sync_all()?;
 	// A body shorter than its own announced length is a truncated transfer,
@@ -645,6 +645,61 @@ pub(crate) fn bounded_to(
 #[cfg(test)]
 mod tests {
 	use super::*;
+
+	#[test]
+	fn streamed_progress_carries_the_response_size_when_known() {
+		for known in [false, true] {
+			let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+			let address = listener.local_addr().unwrap();
+			let server = std::thread::spawn(move || {
+				let (mut socket, _) = listener.accept().unwrap();
+				use std::io::BufRead;
+				socket
+					.set_read_timeout(Some(Duration::from_secs(5)))
+					.unwrap();
+				for line in std::io::BufReader::new(&socket).lines() {
+					if line.unwrap().is_empty() {
+						break;
+					}
+				}
+				let length = if known { "Content-Length: 6\r\n" } else { "" };
+				write!(
+					socket,
+					"HTTP/1.1 200 OK\r\n{length}Connection: close\r\n\r\nabcdef"
+				)
+				.unwrap();
+			});
+			let dir = tempfile::tempdir().unwrap();
+			let path = dir.path().join("download");
+			let mut events = Vec::new();
+			let downloader = Downloader::new("Font").unwrap();
+			downloader.runtime.block_on(async {
+				let response = reqwest::Client::builder()
+					.no_proxy()
+					.build()
+					.unwrap()
+					.get(format!("http://{address}"))
+					.send()
+					.await
+					.unwrap();
+				let total = response.content_length();
+				stream_body(
+					response,
+					&path,
+					1024,
+					total,
+					&mut |bytes, total| {
+						events.push((bytes, total));
+					},
+				)
+				.await
+				.unwrap();
+			});
+			server.join().unwrap();
+			assert_eq!(events.last(), Some(&(6, known.then_some(6))));
+			assert_eq!(std::fs::read(path).unwrap(), b"abcdef");
+		}
+	}
 
 	#[test]
 	fn cache_control_directives_are_parsed() {

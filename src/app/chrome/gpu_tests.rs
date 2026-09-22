@@ -1151,7 +1151,7 @@ fn redesigned_chrome_frames() -> Result<()> {
 								files_done: 1,
 								files_total: 2,
 								bytes_done: 8 * 1024 * 1024,
-								bytes_total: Some(16 * 1024 * 1024),
+								files_progress: 1.5,
 								current: Some("NotoSansCJKsc-Bold.otf".into()),
 								note: Some("jsDelivr".into()),
 							},
