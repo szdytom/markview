@@ -21,6 +21,10 @@ at the same level, without `[brackets]`.
 
 ## Unreleased
 
+## 0.1.5 - 2026-09-22
+
+This release adds a downloadable font catalogue, a table-of-contents drawer, collapsible `<details>` blocks, and theme-colored Mermaid diagrams.
+
 ### Added
 
 - Let a stylesheet draw Mermaid diagrams in its own colors with a `[mermaid]` table: a built-in preset plus any of the renderer's fields, overlaid field by field as `[page]` is. `font_family` names `fontdef` ids the way a rule's `font` does. Diagrams measure and draw with the reader's own faces — the theme's list, then the body's Han faces for a cluster the list cannot draw, downloads and `--fonts` included — so a Chinese label keeps the reader's regional face. The bundled dark reader themes use it now, so they no longer show diagrams on white paper.
