@@ -439,6 +439,7 @@ impl BlockContext<'_> {
 		let appearance = opts.stylesheet.text(&previous, role);
 		let chain = appearance.chain;
 		let rule = opts.stylesheet.element_rule(chain, role);
+		let left_only = role == Condition::Blockquote;
 		self.shaper.appearance = appearance;
 		self.shaper.appearance.background = None;
 		let before = rule.space_before.unwrap_or(0.) * opts.font_size;
@@ -462,6 +463,8 @@ impl BlockContext<'_> {
 		let marker_extra = marker
 			.map_or(0.0, |m| (m[1] * opts.font_size - line_height).max(0.0));
 		let inner_y = y + before + pad[0] + marker_extra * 0.5;
+		let decoration =
+			crate::scene::BoxDecoration::from_rule(&rule, left_only);
 		let placeholder = out.draws.len();
 		out.draws.push(Draw::Box {
 			rect: Rect::default(),
@@ -469,11 +472,8 @@ impl BlockContext<'_> {
 			condition: role,
 			radius: rule.radius.unwrap_or(0.),
 			border: rule.border_width.unwrap_or(0.),
-			left_only: role == Condition::Blockquote,
-			decoration: crate::scene::BoxDecoration::from_rule(
-				&rule,
-				role == Condition::Blockquote,
-			),
+			left_only,
+			decoration,
 		});
 		let height = self.block_inner(
 			block,
@@ -497,9 +497,6 @@ impl BlockContext<'_> {
 			});
 		}
 		if let Some([w, h, _]) = marker {
-			let line_height = opts.font_size
-				* self.shaper.appearance.size
-				* self.shaper.appearance.line_height;
 			out.draws.push(Draw::Rect(
 				Rect {
 					x: x + pad[3],
@@ -529,11 +526,8 @@ impl BlockContext<'_> {
 			} else {
 				rule.border_width.unwrap_or(0.)
 			},
-			left_only: role == Condition::Blockquote,
-			decoration: crate::scene::BoxDecoration::from_rule(
-				&rule,
-				role == Condition::Blockquote,
-			),
+			left_only,
+			decoration,
 		};
 		if let BlockKind::Heading { anchor, .. } = &block.kind {
 			// A link to this heading lands on the top of its box.
