@@ -2,6 +2,8 @@
 
 Markview is a native Markdown reader. It renders Markdown end-to-end, directly from the source text to the screen, without a browser, WebView, JavaScript, or an external TeX process. Its main goals are fast, low-memory, and publication-quality typography. It is a read-only reader, not an editor.
 
+To AI Agents: NO editing of this file is allowed. This file is for human editing exclusively.
+
 ## General Instructions
 
 - Always run tests after making changes.
