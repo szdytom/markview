@@ -4,7 +4,7 @@ use log::{error, info};
 use std::time::{Duration, Instant};
 use winit::{
 	dpi::PhysicalSize,
-	event::{ElementState, MouseButton, WindowEvent},
+	event::{ElementState, MouseButton, MouseScrollDelta, WindowEvent},
 	event_loop::ActiveEventLoop,
 	keyboard::{Key, NamedKey},
 	window::{CursorIcon, WindowId},
@@ -19,8 +19,17 @@ impl App {
 		event: WindowEvent,
 	) {
 		match event {
+			WindowEvent::Touch(touch) => self.handle_touch(touch),
+			WindowEvent::PinchGesture { .. } => {
+				// TODO: implement viewport zoom without changing the document layout.
+			}
+			WindowEvent::CursorMoved { .. }
+			| WindowEvent::CursorLeft { .. }
+			| WindowEvent::MouseInput { .. }
+				if self.gestures.suppress_mouse() => {}
 			WindowEvent::CloseRequested => event_loop.exit(),
 			WindowEvent::Resized(PhysicalSize { width, height }) => {
+				self.cancel_gestures();
 				self.tab_strip.reveal_active = true;
 				if let Some(r) = &mut self.renderer {
 					r.resize(width, height);
@@ -36,6 +45,7 @@ impl App {
 				}
 			}
 			WindowEvent::ScaleFactorChanged { scale_factor, .. } => {
+				self.cancel_gestures();
 				self.tab_strip.reveal_active = true;
 				info!("Display scale (DPR) changed: {scale_factor:.3}");
 				if let Some(r) = &mut self.renderer {
@@ -115,6 +125,7 @@ impl App {
 				state: ElementState::Pressed,
 				..
 			} => {
+				self.cancel_gestures();
 				self.tab_strip.cancel_drag();
 				self.interaction.focus_visible = false;
 				self.interaction.pressed = None;
@@ -299,6 +310,7 @@ impl App {
 				self.redraw();
 			}
 			WindowEvent::Focused(false) => {
+				self.cancel_gestures();
 				self.interaction.focus_visible = false;
 				self.tab_strip.cancel_drag();
 				self.interaction.pressed = None;
@@ -321,6 +333,17 @@ impl App {
 					self.dimensions().2,
 					self.viewport_size(),
 				);
+				if matches!(delta, MouseScrollDelta::PixelDelta(_)) {
+					if self.interaction.modifiers.control_key()
+						|| self.interaction.modifiers.super_key()
+					{
+						// TODO: implement viewport zoom without changing the document layout.
+					} else {
+						self.trackpad_scroll(dx, dy, phase);
+					}
+					return;
+				}
+				self.cancel_gestures();
 				if self.interaction.panel_open() {
 					if self.pointer_in_panel() {
 						self.scroll_panel(-dy);
@@ -374,6 +397,7 @@ impl App {
 			WindowEvent::KeyboardInput { event, .. }
 				if event.state == ElementState::Pressed =>
 			{
+				self.cancel_gestures();
 				self.interaction.focus_visible = true;
 				let command = self.interaction.modifiers.control_key()
 					|| self.interaction.modifiers.super_key();

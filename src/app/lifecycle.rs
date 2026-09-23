@@ -92,6 +92,7 @@ impl ApplicationHandler<Event> for App {
 			Event::Changed(path)
 				if self.readers.session.path.as_ref() == Some(&path) =>
 			{
+				self.cancel_gestures();
 				self.readers.session.content_version += 1;
 				// New content asks again before fetching every remote image,
 				// and `<details>` start from what the new source declares.
@@ -264,6 +265,7 @@ impl ApplicationHandler<Event> for App {
 		let now = Instant::now();
 		self.auto_scroll_tabs(now);
 		self.advance_scroll(now);
+		self.advance_gestures(now);
 		self.readers.release_inactive(now);
 		// One PNG strip per frame keeps the window responsive and the status
 		// line counting; the draw requests the next frame while work remains.
@@ -328,6 +330,7 @@ impl ApplicationHandler<Event> for App {
 			.chain(self.interaction.drag_at)
 			.chain(self.readers.session.scroll_animation_deadline(now))
 			.chain(self.tab_strip.scroll_at)
+			.chain(self.gestures.deadline(now))
 			.chain(self.readers.release_deadline())
 			.chain(
 				(self.args.mode == Mode::Smoke)

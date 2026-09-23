@@ -35,6 +35,7 @@ fn sanitize_filename(title: &str) -> String {
 
 impl App {
 	pub(super) fn action(&mut self, action: Command) {
+		self.cancel_gestures();
 		// Export-panel changes own their settings and never reflow the reader.
 		if self.export_command(action) {
 			return;

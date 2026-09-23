@@ -185,3 +185,26 @@ heuristic, not a reason to split an otherwise cohesive algorithm. Tests live nex
 to their owning modules in separate sources when they obscure production code.
 `scene.rs` remains a small exception at about 530 lines: it keeps the shared
 immutable drawing, viewport and scrollbar geometry vocabulary together.
+
+### Touch and touchpad gestures
+
+`app::gestures` owns gesture capture and routes motion to the document, a wide
+block, Contents, a settings panel or the tab strip. The pure `recognizer` handles
+contact identity, tap slop, direction locking and velocity decay;
+it does not depend on window creation, layout workers or renderer state. A tap
+activates only on release over its original target. A drag or additional finger
+cancels that activation. Touch controls accept at least a 44-logical-pixel hit
+area where space permits, with exact hits taking priority over nearby controls.
+
+Touch motion follows the finger without wheel-speed scaling. Pixel-based
+trackpad motion uses the configured scroll multiplier but bypasses wheel easing.
+Both inputs capture their scrolling surface and share exponential coasting,
+stopping at bounds or on new input, navigation, focus loss, resize and reload.
+macOS pixel events include native momentum, so Markview does not synthesize a
+second coast. Other pixel streams can coast when the backend supplies an `Ended`
+phase. Streams without an end phase retain their delivered motion; line events
+remain discrete wheel input because winit does not identify their device source.
+
+Touch and native `PinchGesture` zoom are pending viewport-based zoom support;
+pinching does not currently change document settings. Generated mouse events
+are suppressed while touching and briefly after release.

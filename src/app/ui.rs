@@ -112,7 +112,7 @@ impl App {
 		}
 	}
 	/// The offset and limit of whichever panel page scrolls, already clamped.
-	fn panel_scroll_range(&mut self) -> Option<(f32, f32)> {
+	pub(super) fn panel_scroll_range(&mut self) -> Option<(f32, f32)> {
 		if let Some(form) = self.panel_form() {
 			return Some((form.scroll, form.max_scroll));
 		}

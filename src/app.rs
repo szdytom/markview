@@ -4,6 +4,7 @@ mod document;
 mod export;
 pub(crate) mod font_panel;
 mod fonts_command;
+mod gestures;
 mod icon;
 mod interaction;
 mod launch;
@@ -138,6 +139,7 @@ fn register_font_dir(
 
 struct App {
 	interaction: InteractionState,
+	gestures: gestures::GestureState,
 	readers: tabs::Tabs,
 	tab_strip: tab_strip::TabStrip,
 	tab_metrics: tab_metrics::TabMetrics,
@@ -219,6 +221,7 @@ impl App {
 
 		Self {
 			interaction: InteractionState::default(),
+			gestures: gestures::GestureState::default(),
 			readers: tabs::Tabs::default(),
 			tab_strip: Default::default(),
 			tab_metrics: Default::default(),

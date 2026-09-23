@@ -35,6 +35,7 @@ impl App {
 		});
 	}
 	pub(super) fn open(&mut self, path: PathBuf) {
+		self.cancel_gestures();
 		self.tab_strip.cancel_drag();
 		self.tab_strip.reveal_active = true;
 		let path = if path.is_absolute() {
@@ -53,6 +54,7 @@ impl App {
 		self.request(false);
 	}
 	pub(super) fn select_tab(&mut self, index: usize) {
+		self.cancel_gestures();
 		self.tab_strip.cancel_drag();
 		self.tab_strip.reveal_active = true;
 		if !self.readers.select(index, Instant::now()) {
@@ -77,6 +79,7 @@ impl App {
 		self.redraw();
 	}
 	pub(super) fn close_tab(&mut self, index: usize) {
+		self.cancel_gestures();
 		self.tab_strip.cancel_drag();
 		self.tab_strip.reveal_active = true;
 		let closed = self.readers.session.path.clone();

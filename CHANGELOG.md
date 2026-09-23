@@ -21,6 +21,14 @@ at the same level, without `[brackets]`.
 
 ## Unreleased
 
+### Added
+
+- Support touch taps, captured dragging and inertial scrolling, with larger control hit areas and shared touchpad gesture handling.
+
+### Fixed
+
+- Keep fast trackpad scrolling continuous when fingers lift before motion settles, avoiding a pause followed by a sudden long scroll.
+
 ## 0.1.6 - 2026-09-23
 
 This release renders YAML front matter, adds an About tab and collapsible table-of-contents sections, brings the green 8-bit reader theme, and reworks the Styles and Fonts settings.
