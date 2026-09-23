@@ -21,7 +21,7 @@ mod tabs;
 mod ui;
 mod viewport;
 mod window;
-use crate::cli::{LaunchOptions, Mode};
+use crate::cli::LaunchOptions;
 use crate::state::{Command, InteractionState};
 use crate::{
 	layout::{LayoutOptions, Rect, TextShaper},
@@ -119,20 +119,6 @@ fn system_theme(window: &Window) -> Option<Theme> {
 	})
 }
 
-/// The reader's font sources: the configured set plus the personal download
-/// directory. Exports are built from `args.options.fonts`, which never gains
-/// that directory.
-fn reader_fonts(args: &LaunchOptions, personal: Option<PathBuf>) -> FontConfig {
-	let mut fonts = args.options.fonts.clone();
-	if args.mode == Mode::Window
-		&& !fonts.ignore_system_fonts
-		&& let Some(dir) = personal
-	{
-		fonts.directories.push(dir);
-	}
-	fonts
-}
-
 /// Records a finished download in `config`, returning whether it changed.
 ///
 /// A job that stored no file leaves the directories and the revision alone: a
@@ -164,8 +150,8 @@ struct App<P = EventLoopProxy<Event>> {
 	tab_metrics: tab_metrics::TabMetrics,
 	args: LaunchOptions,
 	/// The reader's own font sources: the configured directories plus the
-	/// personal download directory. Exports keep using `args.options.fonts`,
-	/// so a download can never change reproducible output.
+	/// personal download directory. The export panel shapes with the same
+	/// sources, so an export matches what the reader shows.
 	fonts_config: FontConfig,
 	proxy: P,
 	window: Option<Arc<Window>>,
@@ -210,8 +196,10 @@ struct App<P = EventLoopProxy<Event>> {
 }
 impl<P: SendEvent> App<P> {
 	pub(super) fn new(args: LaunchOptions, proxy: P) -> Self {
-		let personal = crate::fonts::directory().filter(|dir| dir.is_dir());
-		let fonts_config = reader_fonts(&args, personal);
+		// Parse already folded the personal download directory into the font
+		// set for the drawing modes. This copy is the reader's own, so a
+		// download can extend it without touching what the command line named.
+		let fonts_config = args.options.fonts.clone();
 		let done = proxy.clone();
 		let worker = Worker::with_images(
 			args.offline,
@@ -345,8 +333,8 @@ impl<P: SendEvent> App<P> {
 	/// wrote nothing also cannot have created the directory, so it is not
 	/// added either. `FontConfig` is part of the layout options and of the
 	/// collection cache key, so the reflow after a real change picks the new
-	/// faces up without a restart. Exports keep `args.options.fonts`, which
-	/// never gains the directory.
+	/// faces up without a restart. The export panel reads this same
+	/// configuration, so an export picks them up too.
 	pub(super) fn register_fonts(&mut self, stored: usize) {
 		if self.fonts_config.ignore_system_fonts {
 			return;
@@ -366,31 +354,6 @@ impl<P: SendEvent> App<P> {
 #[cfg(test)]
 mod tests {
 	use super::*;
-
-	/// Exports are built from the same configuration the command line parsed,
-	/// so a personal download can never reach one.
-	#[test]
-	fn the_personal_directory_joins_the_reader_but_not_the_export_config() {
-		let dir = PathBuf::from("/tmp/markview-fonts");
-		let args = LaunchOptions::default();
-		let reader = reader_fonts(&args, Some(dir.clone()));
-		assert_eq!(reader.directories, vec![dir.clone()]);
-		assert!(args.options.fonts.directories.is_empty());
-
-		// A reproducible run keeps its pinned set in the window too.
-		let pinned = LaunchOptions {
-			options: LayoutOptions {
-				fonts: FontConfig {
-					ignore_system_fonts: true,
-					..Default::default()
-				},
-				..Default::default()
-			},
-			..Default::default()
-		};
-		let reader = reader_fonts(&pinned, Some(dir));
-		assert!(reader.directories.is_empty());
-	}
 
 	#[test]
 	fn a_finished_download_bumps_the_revision_only_after_storing_a_file() {

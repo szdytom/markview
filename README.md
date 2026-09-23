@@ -325,9 +325,9 @@ markview fonts verify            # check the download directory
 ```
 
 Nothing is fetched while reading a document, installing a stylesheet or running
-`ss validate`. Downloaded fonts are a personal resource: exports and the
-reproducible diagnostic modes never see them, so a download cannot change an
-exported file.
+`ss validate`. Downloaded fonts are a personal resource: the reader and its
+exports use them by default, so an export matches what the reader shows, while
+`--ignore-system-fonts` and the measurement modes keep their pinned set.
 
 ## Documentation
 

@@ -31,6 +31,13 @@ impl Mode {
 	pub(crate) fn wraps_code_blocks(&self) -> bool {
 		matches!(self, Self::Render | Self::Smoke | Self::Pdf)
 	}
+	/// A mode that draws an artifact — the reader, a PNG or a sheet of paper —
+	/// shapes with the personal download directory too, so an export matches
+	/// what the reader shows. Measurement runs keep the pinned set, so a
+	/// download cannot move a benchmark.
+	pub(crate) fn uses_personal_fonts(&self) -> bool {
+		matches!(self, Self::Window | Self::Render | Self::Smoke | Self::Pdf)
+	}
 }
 
 /// What `markview fonts` was asked to do.
@@ -732,6 +739,14 @@ fn finish(mut out: LaunchOptions) -> Result<Option<LaunchOptions>> {
 	if out.style.is_some() && out.theme.is_some() {
 		bail!("--style conflicts with --light and --dark");
 	}
+	// A drawing run shapes with the personal download directory, so an export
+	// matches the reader on the same machine; a pinned run keeps its set.
+	if out.mode.uses_personal_fonts() {
+		crate::fonts::join_download_directory(
+			&mut out.options.fonts,
+			crate::fonts::directory(),
+		);
+	}
 	// Paper is set at 12 pt unless the command line names a size; the reader
 	// and the other diagnostic modes keep their own default.
 	if out.mode == Mode::Pdf && !out.overrides.contains(&Setting::FontSize) {
@@ -873,6 +888,39 @@ mod tests {
 		assert!(Mode::Pdf.wraps_code_blocks());
 		assert!(!Mode::Window.wraps_code_blocks());
 		assert!(!Mode::Bench.wraps_code_blocks());
+	}
+
+	#[test]
+	fn drawing_modes_shape_with_the_personal_download_directory() {
+		for mode in [Mode::Window, Mode::Render, Mode::Smoke, Mode::Pdf] {
+			assert!(mode.uses_personal_fonts());
+		}
+		for mode in [
+			Mode::Bench,
+			Mode::Latency,
+			Mode::StylesheetList,
+			Mode::Fonts,
+		] {
+			assert!(!mode.uses_personal_fonts());
+		}
+		// A drawing run folds the directory in where this machine has one.
+		let args = parse(&["pdf", "a.md", "--output", "out.pdf"]);
+		match crate::fonts::directory() {
+			Some(dir) if dir.is_dir() => {
+				assert!(args.options.fonts.directories.contains(&dir));
+			}
+			_ => assert!(args.options.fonts.directories.is_empty()),
+		}
+		// A pinned run keeps exactly the set it named.
+		let args = parse(&[
+			"pdf",
+			"a.md",
+			"--output",
+			"out.pdf",
+			"--ignore-system-fonts",
+		]);
+		assert!(args.options.fonts.ignore_system_fonts);
+		assert!(args.options.fonts.directories.is_empty());
 	}
 
 	#[test]

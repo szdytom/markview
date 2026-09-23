@@ -236,7 +236,9 @@ impl<P: super::SendEvent> App<P> {
 	) {
 		let proxy = self.proxy.clone();
 		let offline = self.args.offline;
-		let fonts = self.args.options.fonts.clone();
+		// The reader's own font set, so the export shapes with the personal
+		// download directory exactly like the display does.
+		let fonts = self.fonts_config.clone();
 		let cjk = self.preferences.values.cjk_type;
 		let overrides = self.preferences.values.fontdef_overrides.clone();
 		std::thread::spawn(move || {

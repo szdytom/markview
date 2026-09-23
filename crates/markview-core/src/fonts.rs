@@ -136,18 +136,37 @@ fn register(
 		if !is_font_file(&path) {
 			continue;
 		}
-		match std::fs::read(&path) {
-			Ok(bytes) => {
+		match map_font(&path) {
+			Ok(Some(bytes)) => {
 				added.extend(
 					collection.register_fonts(Blob::new(Arc::new(bytes)), None),
 				);
 			}
+			Ok(None) => {}
 			Err(error) => {
 				log::warn!("Font: cannot read {}: {error}", path.display())
 			}
 		}
 	}
 	added
+}
+
+/// Maps a font file instead of copying it into memory.
+///
+/// The collection owns the mapping and the shaper pages in only the tables the
+/// document touches, so a directory of downloaded faces costs what is drawn
+/// rather than the whole directory. An empty file holds no face, so it is
+/// skipped instead of reported.
+#[allow(unsafe_code)]
+fn map_font(path: &Path) -> std::io::Result<Option<memmap2::Mmap>> {
+	let file = std::fs::File::open(path)?;
+	if file.metadata()?.len() == 0 {
+		return Ok(None);
+	}
+	// SAFETY: the mapping is read-only, and a face is installed under its
+	// final name by renaming a fresh file into place, so the bytes behind a
+	// mapping are never rewritten or shortened in place.
+	unsafe { memmap2::Mmap::map(&file) }.map(Some)
 }
 
 /// Tables a renderable face must have.
@@ -1011,6 +1030,27 @@ mod tests {
 			.fallback_families(Script::from_bytes(*b"Hani"))
 			.collect();
 		assert!(!fallback.is_empty());
+	}
+
+	/// An empty file in a font directory holds no face, and one beside a real
+	/// face must not cost it.
+	#[test]
+	fn an_empty_font_file_is_skipped_beside_a_real_one() {
+		let dir = tempfile::tempdir().unwrap();
+		std::fs::write(dir.path().join("empty.ttf"), b"").unwrap();
+		std::fs::copy(
+			Path::new(env!("CARGO_MANIFEST_DIR"))
+				.join("tests/fonts/NotoSerif-Regular-subset.otf"),
+			dir.path().join("face.otf"),
+		)
+		.unwrap();
+		let config = FontConfig {
+			ignore_system_fonts: true,
+			directories: vec![dir.path().to_owned()],
+			..Default::default()
+		};
+		let mut context = context(&config);
+		assert!(context.collection.family_by_name("Noto Serif").is_some());
 	}
 
 	#[test]

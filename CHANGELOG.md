@@ -34,6 +34,11 @@ at the same level, without `[brackets]`.
 - Resolve the system language once instead of per frame, so drawing a label costs no allocation.
 - Refresh the measured performance baselines, charts and comparison tables against the current build, and drop SuperGoodViewer from the reader and PDF tables.
 
+### Fixed
+
+- Use the personal font download directory in PDF and PNG exports and in the `pdf`, `render` and `smoke-test` subcommands, so an export matches the reader's display; `--ignore-system-fonts` still pins the run.
+- Map each font file into the shaper instead of reading it whole, so a drawing run that loads the download directory pays for the tables a document draws rather than for every face on disk.
+
 ## 0.1.7 - 2026-09-23
 
 This patch release adds touch and trackpad gestures, captured dragging, inertial scrolling, and larger control hit areas.

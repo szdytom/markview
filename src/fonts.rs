@@ -46,6 +46,27 @@ pub fn directory() -> Option<PathBuf> {
 		.and_then(|path| path.parent().map(|parent| parent.join("fonts")))
 }
 
+/// Makes the download directory part of a drawing run's font set, like
+/// another `--fonts` directory.
+///
+/// A run that pins its own faces keeps exactly the command-line set, a
+/// directory that is not there yet adds nothing, and a directory that is
+/// already listed is not listed twice.
+pub fn join_download_directory(
+	fonts: &mut FontConfig,
+	personal: Option<PathBuf>,
+) {
+	if fonts.ignore_system_fonts {
+		return;
+	}
+	let Some(dir) = personal.filter(|dir| dir.is_dir()) else {
+		return;
+	};
+	if !fonts.directories.contains(&dir) {
+		fonts.directories.push(dir);
+	}
+}
+
 /// What the reader knows about one catalogued family.
 #[derive(Clone, Debug)]
 pub struct Family {
@@ -1363,6 +1384,32 @@ mod tests {
 				archives: Vec::new(),
 			}],
 		}
+	}
+
+	#[test]
+	fn a_download_directory_joins_the_font_set_once() {
+		let dir = tempfile::tempdir().unwrap();
+		// A drawing run gains the directory, like another `--fonts` one.
+		let mut fonts = FontConfig::default();
+		join_download_directory(&mut fonts, Some(dir.path().to_path_buf()));
+		assert_eq!(fonts.directories, vec![dir.path().to_path_buf()]);
+		// A second listing of the same directory is dropped.
+		join_download_directory(&mut fonts, Some(dir.path().to_path_buf()));
+		assert_eq!(fonts.directories, vec![dir.path().to_path_buf()]);
+		// A directory already named on the command line is not repeated.
+		let mut named = FontConfig {
+			directories: vec![dir.path().to_path_buf()],
+			..Default::default()
+		};
+		join_download_directory(&mut named, Some(dir.path().to_path_buf()));
+		assert_eq!(named.directories, vec![dir.path().to_path_buf()]);
+		// A pinned run keeps exactly its command-line set.
+		let mut pinned = FontConfig {
+			ignore_system_fonts: true,
+			..Default::default()
+		};
+		join_download_directory(&mut pinned, Some(dir.path().to_path_buf()));
+		assert!(pinned.directories.is_empty());
 	}
 
 	#[test]
