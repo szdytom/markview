@@ -7,7 +7,6 @@ use crate::{
 use anyhow::Result;
 use log::{debug, info};
 use std::time::Instant;
-use winit::event_loop::ActiveEventLoop;
 
 use super::{App, BOTTOM, Event};
 /// How long one glyph prewarm pass may spend before yielding to the next
@@ -21,10 +20,10 @@ const PREWARM_INTERVAL: std::time::Duration =
 /// A frame slower than this means the reader is moving through content that
 /// is not prepared yet, so prewarming waits instead of competing with it.
 const PREWARM_QUIET_MS: f64 = 3.0;
-impl App {
+impl<P: super::SendEvent> App<P> {
 	pub(super) fn render(
 		&mut self,
-		event_loop: &ActiveEventLoop,
+		event_loop: &impl super::window::Loop,
 	) -> Result<()> {
 		let Some(window) = self.window.clone() else {
 			return Ok(());
@@ -171,7 +170,7 @@ impl App {
 		renderer.set_stylesheet(self.preferences.values.stylesheet.clone());
 		let proxy = self.proxy.clone();
 		renderer.on_device_lost(move || {
-			let _ = proxy.send_event(Event::DeviceLost);
+			proxy.send(Event::DeviceLost);
 		});
 		self.renderer = Some(renderer);
 		Ok(())

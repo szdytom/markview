@@ -1,6 +1,7 @@
 mod anchor;
 mod chrome;
 mod document;
+mod dropdown;
 mod export;
 pub(crate) mod font_panel;
 mod fonts_command;
@@ -32,6 +33,21 @@ use anyhow::Result;
 use markview_core::fonts::FontConfig;
 use std::{path::PathBuf, sync::Arc, time::Instant};
 use winit::{event_loop::EventLoopProxy, window::Window};
+
+/// How the reader hands an event to its own loop.
+///
+/// `EventLoopProxy` is what the application uses; a test drives the same
+/// handlers without a window server by handing them a stub, which is why the
+/// application names this rather than the concrete type. It carries no error:
+/// a loop that has stopped is a loop nobody is drawing.
+trait SendEvent: Clone + Send + 'static {
+	fn send(&self, event: Event);
+}
+impl SendEvent for EventLoopProxy<Event> {
+	fn send(&self, event: Event) {
+		let _ = self.send_event(event);
+	}
+}
 
 const TOP: f32 = 40.0;
 const BOTTOM: f32 = 28.0;
@@ -87,6 +103,9 @@ struct Button {
 	label: &'static str,
 	/// Drawn centered in place of the label when set.
 	icon: Option<&'static [markview_core::scene::IconPath]>,
+	/// Drawn after the label, which makes room for it. It marks what the
+	/// button does beyond naming it, such as opening a list.
+	marker: Option<&'static [markview_core::scene::IconPath]>,
 	/// Whether this button is the current choice in its row.
 	active: bool,
 	action: Command,
@@ -137,7 +156,7 @@ fn register_font_dir(
 	true
 }
 
-struct App {
+struct App<P = EventLoopProxy<Event>> {
 	interaction: InteractionState,
 	gestures: gestures::GestureState,
 	readers: tabs::Tabs,
@@ -148,7 +167,7 @@ struct App {
 	/// personal download directory. Exports keep using `args.options.fonts`,
 	/// so a download can never change reproducible output.
 	fonts_config: FontConfig,
-	proxy: EventLoopProxy<Event>,
+	proxy: P,
 	window: Option<Arc<Window>>,
 	renderer: Option<Renderer>,
 	worker: Worker,
@@ -189,11 +208,8 @@ struct App {
 	/// The export in flight was asked to keep watching its file.
 	export_watch_request: bool,
 }
-impl App {
-	pub(super) fn new(
-		args: LaunchOptions,
-		proxy: EventLoopProxy<Event>,
-	) -> Self {
+impl<P: SendEvent> App<P> {
+	pub(super) fn new(args: LaunchOptions, proxy: P) -> Self {
 		let personal = crate::fonts::directory().filter(|dir| dir.is_dir());
 		let fonts_config = reader_fonts(&args, personal);
 		let done = proxy.clone();
@@ -201,7 +217,7 @@ impl App {
 			args.offline,
 			fonts_config.clone(),
 			move |update| {
-				let _ = done.send_event(Event::Ready(Box::new(update)));
+				done.send(Event::Ready(Box::new(update)));
 			},
 		);
 		let mut ui = TextShaper::with_fonts(fonts_config.clone());
@@ -209,13 +225,13 @@ impl App {
 		let settings_watch = preferences.path().map(|path| {
 			let proxy = proxy.clone();
 			FileWatch::new(path.to_path_buf(), move || {
-				let _ = proxy.send_event(Event::SettingsChanged);
+				proxy.send(Event::SettingsChanged);
 			})
 		});
 		let styles_watch = crate::stylesheet::directory().map(|dir| {
 			let proxy = proxy.clone();
 			FileWatch::directory(dir, move || {
-				let _ = proxy.send_event(Event::StylesChanged);
+				proxy.send(Event::StylesChanged);
 			})
 		});
 

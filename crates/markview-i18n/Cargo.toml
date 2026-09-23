@@ -1,0 +1,22 @@
+[package]
+name = "markview-i18n"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish = false
+
+[lib]
+proc-macro = true
+
+[dependencies]
+# `default-features = false` drops `toml_edit`'s writer: locale files are only
+# ever read. The proc macro runs on the host, so resolver 3 keeps this separate
+# from the runtime dependencies of the reader.
+toml_edit = { version = "0.25", default-features = false, features = ["parse"] }
+syn = "2"
+quote = "1"
+proc-macro2 = "1"
+
+[lints]
+workspace = true

@@ -243,17 +243,23 @@ pub(crate) fn plan(
 /// The result the export panel derives from the current settings: the measure a
 /// PDF will set, or how wide a PNG will be. It never restates a row's own
 /// value, and doubles as the panel's validation line.
-pub(crate) fn geometry_summary(settings: &ExportSettings) -> Result<String> {
+pub(crate) fn geometry_summary(
+	settings: &ExportSettings,
+	lang: crate::lang::Lang,
+) -> Result<String> {
 	let geometry = geometry(settings)?;
 	Ok(match settings.format {
 		ExportFormat::Pdf => {
 			let [_, _, width, height] = geometry.text_pt();
-			format!("text {:.0}×{:.0} mm", width / MM_TO_PT, height / MM_TO_PT,)
+			lang.export_summary_pdf(
+				format!("{:.0}", width / MM_TO_PT),
+				format!("{:.0}", height / MM_TO_PT),
+			)
 		}
 		ExportFormat::Png => {
 			let width_px =
 				(geometry.width_pt / PT_PER_PX * settings.scale).round();
-			format!("{width_px:.0} px wide")
+			lang.export_summary_png(format!("{width_px:.0}"))
 		}
 	})
 }

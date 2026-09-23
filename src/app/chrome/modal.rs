@@ -3,6 +3,7 @@ use super::super::Button;
 use super::controls::{ICON_BUTTON, draw_button};
 use super::icons;
 use crate::{
+	lang::Lang,
 	layout::{Draw, Paint, Rect, TextShaper},
 	state::{Command, InteractionState, Modal},
 };
@@ -189,19 +190,21 @@ pub(in crate::app) fn modal_buttons(
 	interaction: &InteractionState,
 	width: f32,
 	height: f32,
+	lang: Lang,
 ) -> Vec<Button> {
 	if interaction.modal.is_none() {
 		return Vec::new();
 	}
 	let rect = modal_rect(width, height);
 	let close = ICON_BUTTON;
-	let folder = button_width(shaper, "Open folder");
-	let anyway = button_width(shaper, "Open anyway");
+	let folder = button_width(shaper, lang.modal_open_folder());
+	let anyway = button_width(shaper, lang.modal_open_anyway());
 	let row = rect.y + rect.h - 46.0;
 	vec![
 		Button {
-			label: "Open folder",
+			label: lang.modal_open_folder(),
 			icon: None,
+			marker: None,
 			active: false,
 			kind: Default::default(),
 			enabled: true,
@@ -214,8 +217,9 @@ pub(in crate::app) fn modal_buttons(
 			},
 		},
 		Button {
-			label: "Open anyway",
+			label: lang.modal_open_anyway(),
 			icon: None,
+			marker: None,
 			active: false,
 			kind: Default::default(),
 			enabled: true,
@@ -228,8 +232,9 @@ pub(in crate::app) fn modal_buttons(
 			},
 		},
 		Button {
-			label: "Close",
+			label: lang.modal_close(),
 			icon: Some(icons::CLOSE),
+			marker: None,
 			active: false,
 			kind: Default::default(),
 			enabled: true,
@@ -249,6 +254,7 @@ pub(in crate::app) fn draw_modal(
 	interaction: &InteractionState,
 	width: f32,
 	height: f32,
+	lang: Lang,
 ) -> Vec<Draw> {
 	let Some(Modal::OpenLocal {
 		path, document_dir, ..
@@ -262,7 +268,7 @@ pub(in crate::app) fn draw_modal(
 	let muted = Paint::Styled(Condition::Panel, C::Muted);
 	let x = rect.x + 20.0;
 	let mut out = super::components::frame(rect, width, height);
-	out.extend(shaper.label("Open this file?", 20.0, x, rect.y + 36.0, text));
+	out.extend(shaper.label(lang.modal_title(), 20.0, x, rect.y + 36.0, text));
 	// The canonical path, not the link label, which the document controls.
 	let close = ICON_BUTTON;
 	let shown = visible_path(
@@ -276,20 +282,17 @@ pub(in crate::app) fn draw_modal(
 		.extension()
 		.and_then(|e| e.to_str())
 		.map(str::to_ascii_lowercase)
-		.unwrap_or_else(|| "no extension".into());
+		.unwrap_or_else(|| lang.modal_no_extension().into());
 	out.extend(shaper.label(
-		&format!("Type · {kind}"),
+		&lang.modal_type(kind),
 		13.0,
 		x,
 		rect.y + 84.0,
 		muted,
 	));
-	for (i, line) in [
-		"Open this file with the system default application.",
-		"Only continue if you trust this file; it may run code.",
-	]
-	.into_iter()
-	.enumerate()
+	for (i, line) in [lang.modal_system_default(), lang.modal_untrusted()]
+		.into_iter()
+		.enumerate()
 	{
 		out.extend(shaper.label(
 			line,
@@ -299,7 +302,7 @@ pub(in crate::app) fn draw_modal(
 			muted,
 		));
 	}
-	for mut button in modal_buttons(shaper, interaction, width, height) {
+	for mut button in modal_buttons(shaper, interaction, width, height, lang) {
 		if button.action == Command::ModalOpenFolder {
 			button.kind = super::components::ButtonKind::Primary;
 		}
@@ -325,8 +328,13 @@ mod tests {
 		};
 		for (width, height) in [(600.0, 400.0), (1200.0, 800.0)] {
 			let rect = modal_rect(width, height);
-			let buttons =
-				modal_buttons(&mut shaper, &interaction, width, height);
+			let buttons = modal_buttons(
+				&mut shaper,
+				&interaction,
+				width,
+				height,
+				Lang::En,
+			);
 			for action in [
 				Command::ModalOpenFolder,
 				Command::ModalConfirm,
@@ -352,9 +360,13 @@ mod tests {
 		let mut shaper = crate::test_support::shaper();
 		let interaction = InteractionState::default();
 		assert!(
-			modal_buttons(&mut shaper, &interaction, 800.0, 600.0).is_empty()
+			modal_buttons(&mut shaper, &interaction, 800.0, 600.0, Lang::En)
+				.is_empty()
 		);
-		assert!(draw_modal(&mut shaper, &interaction, 800.0, 600.0).is_empty());
+		assert!(
+			draw_modal(&mut shaper, &interaction, 800.0, 600.0, Lang::En)
+				.is_empty()
+		);
 	}
 	#[test]
 	fn a_long_path_loses_its_front_and_keeps_the_file_name() {

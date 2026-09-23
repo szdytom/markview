@@ -52,7 +52,7 @@ fn eases(dy: f32) -> bool {
 	dy.is_finite() && dy != 0.0
 }
 
-impl App {
+impl<P: super::SendEvent> App<P> {
 	pub(super) fn pointer_in_panel(&self) -> bool {
 		let (width, height, _) = self.dimensions();
 		let rect = chrome::panel_rect(width, height);
@@ -314,7 +314,8 @@ impl App {
 			}
 			None => {
 				self.error = true;
-				self.status = format!("Not opened: {url}");
+				self.status =
+					self.preferences.values.lang().status_not_opened(url);
 				self.status_until =
 					Some(Instant::now() + Duration::from_secs(4));
 				self.redraw();
@@ -349,11 +350,12 @@ impl App {
 	/// Hands an already-approved target to the operating system.
 	pub(super) fn launch(&mut self, target: &str) {
 		self.error = false;
+		let lang = self.preferences.values.lang();
 		self.status = match open::that_detached(target) {
-			Ok(()) => format!("Opened {target}"),
+			Ok(()) => lang.status_opened(target),
 			Err(error) => {
 				self.error = true;
-				format!("Cannot open {target}: {error}")
+				lang.status_cannot_open(target, error)
 			}
 		};
 		self.status_until = Some(Instant::now() + Duration::from_secs(4));

@@ -1,15 +1,47 @@
 //! Effective preferences and transactional stylesheet updates.
 use crate::{
 	cli::{LaunchOptions, Mode},
+	lang::Lang,
 	layout::TextShaper,
 	render::Theme,
-	settings::{ExportSettings, ReaderSettings, Setting, SettingsStore},
+	settings::{
+		ExportSettings, ReaderSettings, Setting, SettingsStore, SettingsWarning,
+	},
 };
 use std::{
 	path::Path,
 	sync::Arc,
 	time::{Duration, Instant},
 };
+
+/// Why the stylesheet in force is not the one the reader asked for.
+///
+/// Like [`SettingsWarning`], it is kept as the failure rather than as text, so
+/// it can be spelled in whichever interface language is in force when it is
+/// finally drawn.
+#[derive(Debug)]
+pub(super) enum StyleWarning {
+	/// The chosen styles were read, but loading them failed.
+	Load(anyhow::Error),
+	/// Applying the font overrides on top of them failed.
+	Override(anyhow::Error),
+	/// The result was not a stylesheet this build can use.
+	Invalid(anyhow::Error),
+}
+impl StyleWarning {
+	/// The warning in `lang`, spelled as late as possible: the failure only
+	/// costs an allocation when there is one to spell.
+	pub(super) fn text(&self, lang: Lang) -> std::borrow::Cow<'static, str> {
+		use std::borrow::Cow;
+		match self {
+			Self::Load(error)
+			| Self::Override(error)
+			| Self::Invalid(error) => {
+				Cow::Owned(lang.status_styles_failed(format!("{error:#}")))
+			}
+		}
+	}
+}
 
 pub(super) struct Preferences {
 	pub(super) values: ReaderSettings,
@@ -18,8 +50,8 @@ pub(super) struct Preferences {
 	pub(super) export: ExportSettings,
 	store: SettingsStore,
 	pub(super) style_entries: Vec<crate::stylesheet::Entry>,
-	pub(super) style_warning: Option<String>,
-	pub(super) settings_warning: Option<String>,
+	pub(super) style_warning: Option<StyleWarning>,
+	pub(super) settings_warning: Option<SettingsWarning>,
 	save_at: Option<Instant>,
 }
 impl Preferences {
@@ -34,8 +66,7 @@ impl Preferences {
 			&& settings_store.path().is_some()
 			&& let Err(error) = settings_store.ensure_file()
 		{
-			settings_warning =
-				Some(format!("Cannot initialize settings: {error}"));
+			settings_warning = Some(SettingsWarning::InitFailed(error));
 		}
 		let mut settings = settings_store.settings();
 		// A diagnostic image cannot be scrolled sideways, so its code blocks
@@ -50,6 +81,7 @@ impl Preferences {
 					vec![if t == Theme::Dark { "dark" } else { "light" }.into()]
 				})
 			}),
+			lang: settings.lang,
 			stylesheet: args.options.stylesheet.clone(),
 			theme: args.theme.unwrap_or_default(),
 			font_size: args.options.font_size,
@@ -79,7 +111,7 @@ impl Preferences {
 				settings.cjk_type,
 			) {
 				Ok(sheet) => settings.stylesheet = sheet,
-				Err(e) => style_warning = Some(format!("Styles: {e:#}")),
+				Err(e) => style_warning = Some(StyleWarning::Load(e)),
 			}
 		}
 		if settings.style.is_none() {
@@ -93,13 +125,13 @@ impl Preferences {
 				&settings.fontdef_overrides,
 			) {
 				Ok(sheet) => settings.stylesheet = sheet,
-				Err(e) => style_warning = Some(format!("Styles: {e:#}")),
+				Err(e) => style_warning = Some(StyleWarning::Override(e)),
 			}
 		}
 		if style_warning.is_none()
 			&& let Err(error) = ui.validate_stylesheet(&settings.stylesheet)
 		{
-			style_warning = Some(format!("Styles: {error:#}"));
+			style_warning = Some(StyleWarning::Invalid(error));
 		}
 		ui.set_stylesheet(settings.stylesheet.clone());
 		ui.appearance = settings.stylesheet.text(
@@ -179,11 +211,11 @@ impl Preferences {
 						return Some(reflow);
 					}
 					Err(e) => {
-						self.style_warning = Some(format!("Styles: {e:#}"))
+						self.style_warning = Some(StyleWarning::Override(e))
 					}
 				}
 			}
-			Err(e) => self.style_warning = Some(format!("Styles: {e:#}")),
+			Err(e) => self.style_warning = Some(StyleWarning::Load(e)),
 		}
 		None
 	}
@@ -234,7 +266,7 @@ impl Preferences {
 				true
 			}
 			Err(error) => {
-				self.settings_warning = Some(format!("{error:#}"));
+				self.settings_warning = Some(SettingsWarning::Invalid(error));
 				false
 			}
 		}
@@ -248,7 +280,7 @@ impl Preferences {
 			}
 			Err(error) => {
 				self.settings_warning =
-					Some(format!("Cannot save settings: {error}"));
+					Some(SettingsWarning::SaveFailed(error));
 				false
 			}
 		}

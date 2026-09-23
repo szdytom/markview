@@ -4,6 +4,7 @@ use super::controls::{draw_button, panel_rect};
 use super::icons;
 use super::list::List;
 use crate::{
+	lang::Lang,
 	layout::{Draw, Paint, Rect, TextShaper},
 	state::{Command, InteractionState},
 };
@@ -47,14 +48,12 @@ impl StylesTarget {
 	fn system(self) -> Option<Command> {
 		(self == Self::Reader).then_some(Command::SystemTheme)
 	}
-	fn summary(self, selected: Option<&[String]>) -> &'static str {
+	fn summary(self, selected: Option<&[String]>, lang: Lang) -> &'static str {
 		match self {
 			Self::Reader if selected.is_none() => {
-				"Following system appearance · enable a style to customize"
+				lang.styles_following_system()
 			}
-			Self::Reader | Self::Export => {
-				"Enabled styles come first · higher rows take priority"
-			}
+			Self::Reader | Self::Export => lang.styles_priority(),
 		}
 	}
 }
@@ -144,14 +143,21 @@ pub(super) fn style_controls(
 	preview: bool,
 	width: f32,
 	height: f32,
+	lang: Lang,
 ) -> Vec<Button> {
 	let r = panel_rect(width, height);
 	let mut out = vec![];
 	let mut headers = if target == StylesTarget::Export {
 		vec![
-			("Back", Some(icons::BACK), target.back(), r.w - 96., CONTROL),
 			(
-				"Close",
+				lang.styles_back(),
+				Some(icons::BACK),
+				target.back(),
+				r.w - 96.,
+				CONTROL,
+			),
+			(
+				lang.styles_close(),
 				Some(icons::CLOSE),
 				Command::Settings,
 				r.w - 24. - CONTROL,
@@ -163,23 +169,31 @@ pub(super) fn style_controls(
 			r,
 			crate::state::PanelTab::Styles,
 			preview,
+			lang,
 		));
 		vec![]
 	};
 	headers.push((
-		"Open styles folder",
+		lang.styles_open_folder(),
 		None,
 		Command::StylesFolder,
 		24.,
 		146.,
 	));
 	if let Some(system) = target.system() {
-		headers.push(("Follow system", None, system, r.w - 148., 124.));
+		headers.push((
+			lang.styles_follow_system(),
+			None,
+			system,
+			r.w - 148.,
+			124.,
+		));
 	}
 	for (label, icon, action, x, w) in headers {
 		out.push(Button {
 			label,
 			icon,
+			marker: None,
 			active: action == Command::SystemTheme && selected.is_none(),
 			kind: Default::default(),
 			enabled: true,
@@ -211,6 +225,7 @@ pub(super) fn style_rows(
 	selected: Option<&[String]>,
 	entries: &[crate::stylesheet::Entry],
 	list: List,
+	lang: Lang,
 ) -> Vec<Button> {
 	let r = list.panel;
 	let column = column_x(r);
@@ -223,8 +238,13 @@ pub(super) fn style_rows(
 		let y = list.row_rect(row).y + (ROW - CONTROL) / 2.0;
 		if e.error.is_none() || pos.is_some() {
 			out.push(Button {
-				label: if pos.is_some() { "Disable" } else { "Enable" },
+				label: if pos.is_some() {
+					lang.styles_disable()
+				} else {
+					lang.styles_enable()
+				},
 				icon: None,
+				marker: None,
 				active: pos.is_some(),
 				kind: Default::default(),
 				enabled: true,
@@ -240,9 +260,15 @@ pub(super) fn style_rows(
 		if let Some(pos) = pos {
 			let arrows = column + TOGGLE + 8.0;
 			for (label, icon, action, enabled, x) in [
-				("Move up", icons::UP, target.up(index), pos > 0, arrows),
 				(
-					"Move down",
+					lang.styles_move_up(),
+					icons::UP,
+					target.up(index),
+					pos > 0,
+					arrows,
+				),
+				(
+					lang.styles_move_down(),
 					icons::DOWN,
 					target.down(index),
 					selected.is_some_and(|ids| pos + 1 < ids.len()),
@@ -255,6 +281,7 @@ pub(super) fn style_rows(
 				out.push(Button {
 					label,
 					icon: Some(icon),
+					marker: None,
 					active: false,
 					kind: Default::default(),
 					enabled,
@@ -283,6 +310,7 @@ pub(super) fn draw_styles(
 	preview: bool,
 	width: f32,
 	height: f32,
+	lang: Lang,
 ) -> Vec<Draw> {
 	shaper.appearance = shaper.stylesheet.text(
 		&shaper
@@ -307,7 +335,7 @@ pub(super) fn draw_styles(
 		shaper.appearance.weight = 700;
 		out.extend(super::components::label(
 			shaper,
-			"Stylesheets",
+			lang.styles_title(),
 			20.0,
 			Rect {
 				x: r.x + super::components::INSET,
@@ -335,7 +363,7 @@ pub(super) fn draw_styles(
 	if let Some(rect) = summary_rect(r, list) {
 		out.extend(super::components::label(
 			shaper,
-			target.summary(selected),
+			target.summary(selected, lang),
 			12.0,
 			rect,
 			C::Muted,
@@ -424,7 +452,7 @@ pub(super) fn draw_styles(
 				Paint::Styled(Condition::Button, C::Background),
 			));
 			body.extend(shaper.label(
-				"Invalid",
+				lang.styles_invalid(),
 				12.,
 				rect.x + 7.,
 				rect.y + 18.,
@@ -451,14 +479,14 @@ pub(super) fn draw_styles(
 			),
 		));
 	}
-	for b in style_rows(target, selected, entries, list) {
+	for b in style_rows(target, selected, entries, list, lang) {
 		if b.rect.intersect(list.viewport).is_some() {
 			body.extend(draw_button(shaper, &body_interaction, &b, true));
 		}
 	}
 	out.push(list.clip(body));
 	list.draw_bar(&mut out, shaper, interaction);
-	for b in style_controls(target, selected, preview, width, height) {
+	for b in style_controls(target, selected, preview, width, height, lang) {
 		// The header of a settings tab is drawn once, by the header itself.
 		if target == StylesTarget::Reader
 			&& super::components::is_settings_header(b.action)
@@ -482,6 +510,7 @@ pub(super) fn draw_styles(
 			r,
 			crate::state::PanelTab::Styles,
 			preview,
+			lang,
 		));
 	}
 	out
@@ -516,6 +545,7 @@ mod stylesheet_tests {
 			false,
 			820.,
 			600.,
+			Lang::En,
 		);
 		let body = draws
 			.iter()
@@ -535,9 +565,14 @@ mod stylesheet_tests {
 			})
 			.unwrap();
 		let list = list(820., 600., 1, 0.);
-		let toggle =
-			style_rows(StylesTarget::Reader, Some(&selected), &entries, list)
-				.remove(0);
+		let toggle = style_rows(
+			StylesTarget::Reader,
+			Some(&selected),
+			&entries,
+			list,
+			Lang::En,
+		)
+		.remove(0);
 		assert_eq!(badge.y + badge.h / 2., list.row_rect(0).y + ROW / 2.);
 		assert_eq!(badge.y + badge.h / 2., toggle.rect.y + toggle.rect.h / 2.);
 	}
@@ -576,6 +611,7 @@ mod stylesheet_tests {
 			let tabs = super::super::components::tab_controls(
 				panel,
 				crate::state::PanelTab::Styles,
+				Lang::En,
 			);
 			let tab_bottom = tabs
 				.iter()
@@ -600,6 +636,7 @@ mod stylesheet_tests {
 				Some(&selected),
 				&entries,
 				list(820., 600., 3, 0.),
+				Lang::En,
 			);
 			let control =
 				|action| rows.iter().find(|b| b.action == action).unwrap();
@@ -640,13 +677,20 @@ mod stylesheet_tests {
 			for (w, h) in [(500., 300.), (820., 600.)] {
 				let panel = panel_rect(w, h);
 				let list = list(w, h, entries.len(), 0.0);
-				let mut buttons =
-					style_controls(target, Some(&selected), false, w, h);
+				let mut buttons = style_controls(
+					target,
+					Some(&selected),
+					false,
+					w,
+					h,
+					Lang::En,
+				);
 				buttons.extend(list.hit(style_rows(
 					target,
 					Some(&selected),
 					&entries,
 					list,
+					Lang::En,
 				)));
 				assert!(buttons.iter().all(|b| {
 					panel.contains(b.rect.x, b.rect.y)
@@ -687,8 +731,13 @@ mod stylesheet_tests {
 		let (w, h) = (820., 600.);
 		let top = list(w, h, entries.len(), 0.0);
 		assert!(top.max_scroll() > 0.0);
-		let rows =
-			top.hit(style_rows(StylesTarget::Reader, None, &entries, top));
+		let rows = top.hit(style_rows(
+			StylesTarget::Reader,
+			None,
+			&entries,
+			top,
+			Lang::En,
+		));
 		assert!(rows.iter().any(|b| b.action == Command::StyleToggle(0)));
 		assert!(!rows.iter().any(|b| b.action == Command::StyleToggle(19)));
 
@@ -699,6 +748,7 @@ mod stylesheet_tests {
 			None,
 			&entries,
 			bottom,
+			Lang::En,
 		));
 		assert!(rows.iter().any(|b| b.action == Command::StyleToggle(19)));
 		assert!(!rows.iter().any(|b| b.action == Command::StyleToggle(0)));
@@ -711,6 +761,7 @@ mod stylesheet_tests {
 		let tabs = super::super::components::tab_controls(
 			panel_rect(w, h),
 			crate::state::PanelTab::Styles,
+			Lang::En,
 		);
 		assert_eq!(tabs.len(), 4);
 		assert!(tabs.iter().any(|b| {

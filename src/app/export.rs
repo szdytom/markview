@@ -76,7 +76,7 @@ pub(super) struct PngExport {
 	rebuild: bool,
 }
 
-impl App {
+impl<P: super::SendEvent> App<P> {
 	/// Applies an export-panel change, and reports whether it owned the
 	/// command. It never requests a reader layout, so the window cannot move.
 	pub(super) fn export_command(&mut self, action: Command) -> bool {
@@ -132,16 +132,32 @@ impl App {
 	/// `watch` keeps rewriting the chosen file whenever the document changes.
 	pub(super) fn start_export(&mut self, watch: bool) {
 		if self.export_running || self.dialog_open {
-			self.notify("An export is already running", true, 4);
+			self.notify(
+				self.preferences.values.lang().status_export_running(),
+				true,
+				4,
+			);
 			return;
 		}
 		let Some(path) = self.readers.session.path.clone() else {
-			self.notify("Open a document first", true, 4);
+			self.notify(
+				self.preferences.values.lang().status_open_first(),
+				true,
+				4,
+			);
 			return;
 		};
 		let settings = self.preferences.export.clone();
 		if let Err(error) = settings.validate() {
-			self.notify(&format!("Export settings: {error}"), true, 6);
+			self.notify(
+				&self
+					.preferences
+					.values
+					.lang()
+					.status_export_settings_invalid(error),
+				true,
+				6,
+			);
 			return;
 		}
 		// The panel closes so the document and the status line stay visible
@@ -153,7 +169,11 @@ impl App {
 		self.export_rebuild = false;
 		self.export_watch_request = watch;
 		self.export_running = true;
-		self.notify("Exporting…", false, 3600);
+		self.notify(
+			self.preferences.values.lang().status_exporting(),
+			false,
+			3600,
+		);
 		self.refresh_hover();
 
 		let directory = path.parent().map(Path::to_path_buf);
@@ -187,7 +207,11 @@ impl App {
 		self.export_rebuild = true;
 		self.export_watch_request = true;
 		self.export_running = true;
-		self.notify("Re-exporting…", false, 3600);
+		self.notify(
+			self.preferences.values.lang().status_reexporting(),
+			false,
+			3600,
+		);
 		self.spawn_export(path, Destination::Path(output), settings);
 	}
 
@@ -231,7 +255,7 @@ impl App {
 					&path, &output, &settings, fonts, cjk, &overrides, offline,
 				),
 			};
-			let _ = proxy.send_event(Event::Exported(Box::new(outcome)));
+			proxy.send(Event::Exported(Box::new(outcome)));
 		});
 	}
 
@@ -243,14 +267,15 @@ impl App {
 		match outcome {
 			ExportOutcome::Written { path, detail } => {
 				self.export_running = false;
-				let message = format!(
-					"Exported {detail} to {}{}",
+				let lang = self.preferences.values.lang();
+				let message = lang.status_exported(
+					detail,
 					path.display(),
 					if rebuild || watch {
-						" · watching for changes"
+						lang.status_export_watching()
 					} else {
 						""
-					}
+					},
 				);
 				if rebuild {
 					self.notify(&message, false, 6);
@@ -274,7 +299,11 @@ impl App {
 			}
 			ExportOutcome::Failed(error) => {
 				self.export_running = false;
-				self.notify(&format!("Export failed: {error}"), true, 8);
+				self.notify(
+					&self.preferences.values.lang().status_export_failed(error),
+					true,
+					8,
+				);
 			}
 			ExportOutcome::Cancelled => {
 				self.export_running = false;
@@ -308,7 +337,11 @@ impl App {
 		match open::that_detached(path) {
 			Ok(()) => self.notify(&message, false, 6),
 			Err(error) => self.notify(
-				&format!("{message}; cannot open it: {error}"),
+				&self
+					.preferences
+					.values
+					.lang()
+					.status_open_failed(message, error.to_string()),
 				true,
 				8,
 			),
@@ -331,7 +364,9 @@ impl App {
 					(geometry, renderer.max_texture_dimension_2d())
 				}
 				(None, _) => {
-					self.fail_png_export("the GPU is not ready");
+					let reason =
+						self.preferences.values.lang().status_gpu_not_ready();
+					self.fail_png_export(reason);
 					return;
 				}
 				(_, Err(error)) => {
@@ -364,7 +399,11 @@ impl App {
 			rebuild,
 			plan,
 		});
-		self.status = format!("Exporting PNG… 0/{}", self.tiles());
+		self.status = self
+			.preferences
+			.values
+			.lang()
+			.status_exporting_png(0, self.tiles());
 		self.status_until = Some(Instant::now() + Duration::from_secs(3600));
 		self.redraw();
 	}
@@ -378,7 +417,11 @@ impl App {
 	fn fail_png_export(&mut self, reason: &str) {
 		self.png_export = None;
 		self.export_running = false;
-		self.notify(&format!("Export failed: {reason}"), true, 8);
+		self.notify(
+			&self.preferences.values.lang().status_export_failed(reason),
+			true,
+			8,
+		);
 	}
 
 	/// Draws one strip of a waiting PNG. Called once per frame so the window
@@ -393,7 +436,8 @@ impl App {
 		}
 		let Some(renderer) = &mut self.renderer else {
 			self.png_export = Some(job);
-			self.fail_png_export("the GPU is not ready");
+			let reason = self.preferences.values.lang().status_gpu_not_ready();
+			self.fail_png_export(reason);
 			return;
 		};
 		let tile = job.plan.tiles[job.next];
@@ -417,8 +461,11 @@ impl App {
 		if job.next >= job.plan.tiles.len() {
 			self.finish_png_export(job);
 		} else {
-			self.status =
-				format!("Exporting PNG… {}/{}", job.next, job.plan.tiles.len());
+			self.status = self
+				.preferences
+				.values
+				.lang()
+				.status_exporting_png(job.next, job.plan.tiles.len());
 			self.status_until =
 				Some(Instant::now() + Duration::from_secs(3600));
 			self.png_export = Some(job);
@@ -437,16 +484,16 @@ impl App {
 		let path = job.path.clone();
 		match outcome {
 			Ok(()) => {
-				let message = format!(
-					"Exported {}×{} px to {}{}",
+				let lang = self.preferences.values.lang();
+				let message = lang.status_exported_png(
 					job.plan.width_px,
 					job.plan.height_px,
 					path.display(),
 					if job.rebuild || job.watch {
-						" · watching for changes"
+						lang.status_export_watching()
 					} else {
 						""
-					}
+					},
 				);
 				if job.rebuild {
 					self.notify(&message, false, 6);
@@ -459,9 +506,15 @@ impl App {
 					self.disarm_watch();
 				}
 			}
-			Err(error) => {
-				self.notify(&format!("Export failed: {error:#}"), true, 8)
-			}
+			Err(error) => self.notify(
+				&self
+					.preferences
+					.values
+					.lang()
+					.status_export_failed(format!("{error:#}")),
+				true,
+				8,
+			),
 		}
 	}
 }
@@ -560,9 +613,12 @@ fn choose_output(
 	settings: &ExportSettings,
 	directory: Option<&Path>,
 ) -> Option<PathBuf> {
+	// The format names the export panel offers, so the dialog and the page
+	// behind it cannot drift apart.
+	let lang = crate::lang::Lang::default();
 	let (extension, label) = match settings.format {
-		ExportFormat::Pdf => ("pdf", "PDF"),
-		ExportFormat::Png => ("png", "PNG"),
+		ExportFormat::Pdf => ("pdf", lang.export_pdf()),
+		ExportFormat::Png => ("png", lang.export_png()),
 	};
 	let mut dialog = rfd::FileDialog::new()
 		.set_file_name(format!("{stem}.{extension}"))

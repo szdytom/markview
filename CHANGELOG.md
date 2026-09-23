@@ -21,8 +21,17 @@ at the same level, without `[brackets]`.
 
 ## Unreleased
 
+### Added
+
+- Draw the whole interface in Simplified Chinese — both panels, the reader's chrome, the status line, the notice strip, the confirmation and the fonts page — following the system language or the new Interface language setting under a new Interface section, with every label compiled in from `assets/locales`.
+- Offer the interface languages in a list the row's own control opens, so the chooser grows with every language the build carries instead of with every row's width.
+- Make that list own input like a confirmation: it takes the pointer, wheel, touch and keys while it is open, returns focus to its chooser when it closes, and closes when its row leaves the page.
+- Carry the status line, the footer's warnings, the export panel's own buttons and the format names in its save dialog in the same compiled-in text, so no label is left behind in English.
+
 ### Changed
 
+- Move Scroll speed out of Reading layout into the Interface section, beside the language it shares a device-level concern with.
+- Resolve the system language once instead of per frame, so drawing a label costs no allocation.
 - Refresh the measured performance baselines, charts and comparison tables against the current build.
 
 ## 0.1.7 - 2026-09-23

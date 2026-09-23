@@ -1,0 +1,232 @@
+# The interface's English text. Flat keys, one per method.
+#
+# This file is the base: every other locale must declare exactly these keys with
+# exactly these `{placeholders}`. Keys are lowercase snake_case and become the
+# methods on `Lang`; a `{name}` becomes a parameter of that method.
+
+# The language these words are written in, named as its own speakers name it.
+# A chooser lists every language this way, so the name stays the same in every
+# file that has one.
+language_name = "English"
+
+# The settings panel's tabs.
+tabs_about = "About"
+tabs_fonts = "Fonts"
+tabs_generic = "Generic"
+tabs_styles = "Styles"
+
+# The panel shell, drawn once around every page.
+panel_close = "Close"
+panel_exit_preview = "Exit preview"
+panel_preview = "Preview document"
+panel_saved = "Saved automatically"
+panel_settings = "Settings"
+
+# The toolbar's icon buttons.
+toolbar_export = "Export"
+toolbar_open = "Open"
+toolbar_outline = "Outline"
+toolbar_settings = "Settings"
+
+# Section headings.
+section_diagnostics = "Diagnostics"
+section_interface = "Interface"
+section_language_code = "Language & code"
+section_project = "Project"
+section_reading_layout = "Reading layout"
+
+# The General page's rows.
+settings_alignment = "Alignment"
+settings_cjk_none = "None"
+settings_cjk_punctuation = "CJK punctuation"
+settings_codeblock_wrapping = "Code block wrapping"
+settings_column_width = "Column width"
+settings_decrease = "Decrease"
+settings_english_hyphenation = "English hyphenation"
+settings_increase = "Increase"
+settings_indent_off = "Off"
+settings_justified = "Justified"
+settings_language = "Interface language"
+settings_language_system = "Follow system"
+settings_left_aligned = "Left aligned"
+settings_off = "Off"
+settings_on = "On"
+settings_open_config = "Open settings.toml"
+settings_paragraph_indent = "Paragraph indent"
+settings_reset_defaults = "Reset defaults"
+settings_scroll_speed = "Scroll speed"
+settings_text_size = "Text size"
+
+# The About page.
+about_copy_diagnostics = "Copy diagnostics"
+about_created_by = "Created by {authors} · {license} license"
+about_description = "A fast, native Markdown reader with publication-quality typography."
+
+# The diagnostics rows.
+diagnostics_backend = "WGPU backend"
+diagnostics_backend_none = "Not initialized"
+diagnostics_build_date = "Build date"
+diagnostics_commit = "Commit"
+diagnostics_os = "OS"
+diagnostics_row = "{name}: {value}"
+diagnostics_version = "Version"
+
+# The reader window's notice strip.
+notice_dismiss = "Dismiss"
+notice_load_all = "Load all"
+notice_remote_images = "{count} remote images were not loaded."
+
+# What the reading area says instead of a document.
+empty_blank_detail = "Content will appear here when the file changes."
+empty_blank_title = "The document is empty"
+empty_open_detail = "Open a Markdown file, or drop one into this window."
+empty_open_file = "Open file…"
+empty_open_title = "Open a Markdown file"
+empty_opening_detail = "Preparing the first page…"
+empty_opening_title = "Opening document…"
+empty_unreadable_detail = "Check the file path and access permissions."
+empty_unreadable_title = "Unable to read this file"
+
+# The status bar.
+footer_counts = "{chars} chars · {words} words"
+footer_loading = "Loading…"
+footer_selected = "    ·    Selected {chars} chars · {words} words"
+
+# The tab strip.
+tabs_untitled = "Untitled"
+
+# The style warnings the footer's warning strip carries; the inner error text is
+# the platform's or the parser's own and stays as it is.
+status_styles_failed = "Styles: {error}"
+
+# The confirmation for a local file.
+modal_close = "Close"
+modal_no_extension = "no extension"
+modal_open_anyway = "Open anyway"
+modal_open_folder = "Open folder"
+modal_system_default = "Open this file with the system default application."
+modal_title = "Open this file?"
+modal_type = "Type · {kind}"
+modal_untrusted = "Only continue if you trust this file; it may run code."
+
+# The table-of-contents drawer.
+outline_collapse = "Collapse section"
+outline_collapse_all = "Collapse all"
+outline_contents = "Contents"
+outline_empty = "No headings"
+outline_expand = "Expand section"
+outline_expand_all = "Expand all"
+outline_heading = "Heading"
+
+# The export panel.
+export_and_watch = "Export and Watch…"
+export_decrease = "Decrease"
+export_format = "Format"
+export_increase = "Increase"
+export_indent_off = "Off"
+export_landscape = "Landscape"
+export_margins = "Margins"
+export_orientation = "Orientation"
+export_output = "Output"
+export_page = "Page"
+export_paper = "Paper · {paper}"
+export_paragraph_indent = "Paragraph indent"
+export_pdf = "PDF"
+export_png = "PNG"
+export_portrait = "Portrait"
+export_run = "Export…"
+export_scale = "PNG scale"
+export_status = "{document} · {summary}"
+export_status_failed = "{document} · {error}"
+export_status_watching = "{document} · {summary} · watching"
+export_style_separator = ", "
+export_styles = "Styles · {styles}"
+export_styles_none = "none"
+export_summary_pdf = "text {width}×{height} mm"
+export_summary_png = "{width} px wide"
+export_styles_open = "Styles…"
+export_text_size = "Text size"
+export_title = "Export document"
+export_typography = "Typography"
+
+# The stylesheets page.
+styles_back = "Back"
+styles_close = "Close"
+styles_disable = "Disable"
+styles_enable = "Enable"
+styles_follow_system = "Follow system"
+styles_following_system = "Following system appearance · enable a style to customize"
+styles_invalid = "Invalid"
+styles_move_down = "Move down"
+styles_move_up = "Move up"
+styles_open_folder = "Open styles folder"
+styles_priority = "Enabled styles come first · higher rows take priority"
+styles_title = "Stylesheets"
+
+# The fonts page.
+fonts_cancel = "Cancel"
+fonts_directory_large = " — the font directory is large"
+fonts_download = "Download"
+fonts_download_all = "Download All"
+fonts_download_copy = "Download copy"
+fonts_download_missing = "Download Missing"
+fonts_enlarge = "Enlarge the window to browse fonts"
+fonts_filter_all = "All"
+fonts_in_progress = "In progress"
+fonts_job_bytes = " · {bytes}"
+fonts_job_files = " · {done}/{total} files"
+fonts_job_percent = ", {percent}%"
+fonts_meta_builtin = "Built-in"
+fonts_no_match = "No fonts match these filters"
+fonts_open_folder = "Open fonts folder"
+fonts_owner_separator = ", "
+fonts_phase_cancelled = "Cancelled"
+fonts_phase_done = "Done"
+fonts_phase_downloading = "Downloading"
+fonts_phase_extracting = "Extracting"
+fonts_phase_failed = "Failed"
+fonts_phase_waiting = "Waiting"
+fonts_preparing = "Preparing download"
+fonts_redownload = "Redownload"
+fonts_select_all = "Select All to see all available families."
+fonts_state_downloaded = "Downloaded"
+fonts_state_missing = "Missing"
+fonts_state_provided = "In System"
+fonts_summary = "{families} families, {missing} missing, {disk} on disk"
+
+# What the status bar says while the reader acts.
+status_clipboard_unreadable = "Cannot read clipboard: {error}"
+status_copied_diagnostics = "Copied diagnostics"
+status_copied_selection = "Copied selection"
+status_copy_failed = "Cannot copy: {error}"
+status_diagnostics_failed = "Cannot copy diagnostics: {error}"
+status_export_failed = "Export failed: {error}"
+status_export_settings_invalid = "Export settings: {error}"
+status_export_running = "An export is already running"
+status_export_saw_settings_failed = "Export settings: {error}; using defaults"
+status_export_watching = " · watching for changes"
+status_exported = "Exported {detail} to {path}{watching}"
+status_exported_png = "Exported {width}×{height} px to {path}{watching}"
+status_exporting = "Exporting…"
+status_exporting_png = "Exporting PNG… {done}/{total}"
+status_gpu_failed = "GPU recovery failed: {error}"
+status_heading_not_found = "Heading not found: #{anchor}"
+status_gpu_not_ready = "the GPU is not ready"
+status_math_errors = "{count} formulas shown as source"
+status_not_opened = "Not opened: {url}"
+status_opened = "Opened {target}"
+status_cannot_open = "Cannot open {target}: {error}"
+status_no_stylesheet_directory = "No stylesheet directory"
+status_offline = "Offline: cannot download fonts"
+status_open_failed = "{message}; cannot open it: {error}"
+status_open_first = "Open a document first"
+status_paste_failed = "Cannot paste Markdown: {error}"
+status_pasted = "Pasted Markdown"
+status_reexporting = "Re-exporting…"
+status_rendering_failed = "Rendering failed: {error}"
+status_settings_init_failed = "Cannot initialize settings: {error}"
+status_settings_invalid = "Settings: {error}; using defaults"
+status_settings_open_failed = "Cannot open settings: {error}"
+status_settings_save_failed = "Cannot save settings: {error}"
+status_settings_unreadable = "Cannot read settings: {error}"
+status_updating = "Updating…"

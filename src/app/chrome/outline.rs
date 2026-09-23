@@ -6,6 +6,7 @@
 use super::super::Button;
 use super::components;
 use crate::{
+	lang::Lang,
 	layout::{Draw, Paint, Rect, TextShaper},
 	state::{Command, InteractionState, OutlineTree},
 };
@@ -27,15 +28,15 @@ const DISCLOSURE: f32 = 18.0;
 const HEADER_BUTTON: f32 = 28.0;
 const HEADER_GAP: f32 = 4.0;
 
-pub(super) fn header_buttons(drawer: Rect) -> [Button; 2] {
+pub(super) fn header_buttons(drawer: Rect, lang: Lang) -> [Button; 2] {
 	[
 		(
-			"Expand all",
+			lang.outline_expand_all(),
 			Command::OutlineExpandAll,
 			super::icons::EXPAND_ALL,
 		),
 		(
-			"Collapse all",
+			lang.outline_collapse_all(),
 			Command::OutlineCollapseAll,
 			super::icons::COLLAPSE_ALL,
 		),
@@ -142,6 +143,7 @@ pub(super) fn buttons(
 	entries: &[OutlineEntry],
 	tree: &OutlineTree,
 	scroll: f32,
+	lang: Lang,
 ) -> Vec<Button> {
 	let list = viewport(drawer);
 	let rows = tree.rows(entries);
@@ -155,9 +157,9 @@ pub(super) fn buttons(
 			if let Some(rect) = disclosure.intersect(list) {
 				let mut button = components::button(
 					if tree.is_collapsed(index) {
-						"Expand section"
+						lang.outline_expand()
 					} else {
-						"Collapse section"
+						lang.outline_collapse()
 					},
 					Command::OutlineToggle(index),
 					rect,
@@ -170,7 +172,7 @@ pub(super) fn buttons(
 		}
 		if let Some(rect) = heading.intersect(list) {
 			let mut button = components::button(
-				"Heading",
+				lang.outline_heading(),
 				Command::OutlineGoto(index),
 				rect,
 			);
@@ -223,6 +225,7 @@ pub(super) fn draw(
 	tree: &OutlineTree,
 	current: Option<usize>,
 	drawer: Rect,
+	lang: Lang,
 ) -> Vec<Draw> {
 	components::appearance(ui);
 	let list = viewport(drawer);
@@ -242,7 +245,7 @@ pub(super) fn draw(
 	ui.appearance.weight = 700;
 	out.extend(components::label(
 		ui,
-		"Contents",
+		lang.outline_contents(),
 		SIZE,
 		Rect {
 			x: drawer.x + INSET,
@@ -254,13 +257,13 @@ pub(super) fn draw(
 		C::Muted,
 	));
 	ui.appearance.weight = weight;
-	for button in header_buttons(drawer) {
+	for button in header_buttons(drawer, lang) {
 		out.extend(components::draw_button(ui, interaction, &button, true));
 	}
 	if entries.is_empty() {
 		out.extend(components::label(
 			ui,
-			"No headings",
+			lang.outline_empty(),
 			12.0,
 			Rect {
 				x: drawer.x + INSET,

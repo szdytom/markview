@@ -4,7 +4,7 @@ use super::{
 	chrome::{self, Chrome},
 };
 use crate::layout::{Draw, Scrollbar};
-impl App {
+impl<P: super::SendEvent> App<P> {
 	/// The remote-image deferral count while its banner is worth showing.
 	pub(super) fn remote_notice(&self) -> Option<usize> {
 		self.readers.session.remote_notice()
@@ -15,10 +15,25 @@ impl App {
 		super::chrome::content_top(self.remote_notice().is_some())
 	}
 
-	fn chrome(&mut self) -> Chrome<'_> {
+	pub(super) fn chrome(&mut self) -> Chrome<'_> {
 		let (width, height, _) = self.dimensions();
 		let scrollbar = self.document_scrollbar();
 		let remote_notice = self.remote_notice();
+		// A warning is stored as the failure it is, not as text: it is raised
+		// before the interface knows which language it is drawn in, so it is
+		// spelled here, where that language is known.
+		let lang = self.preferences.values.lang();
+		let style_warning = self
+			.preferences
+			.style_warning
+			.as_ref()
+			.map(|warning| warning.text(lang));
+		let settings_warning = self
+			.preferences
+			.settings_warning
+			.as_ref()
+			.map(|warning| warning.text(lang));
+		let warning = style_warning.or(settings_warning);
 		// An internal footnote jump has no external target to name, so the
 		// footer stays empty while the pointer is over one.
 		let hover_hint =
@@ -45,11 +60,7 @@ impl App {
 			width,
 			height,
 			scrollbar,
-			warning: self
-				.preferences
-				.style_warning
-				.as_deref()
-				.or(self.preferences.settings_warning.as_deref()),
+			warning,
 			status: &self.status,
 			status_until: self.status_until,
 			error: self.error,
@@ -142,6 +153,11 @@ impl App {
 		}
 	}
 	pub(super) fn scroll_panel(&mut self, delta: f32) {
+		// The open list owns the wheel: the page keeps its scroll, so the row
+		// its list hangs from cannot move out from under it.
+		if self.interaction.dropdown.is_some() {
+			return;
+		}
 		let Some((scroll, max)) = self.panel_scroll_range() else {
 			return;
 		};
@@ -187,7 +203,16 @@ impl App {
 
 	pub(super) fn buttons(&mut self) -> Vec<Button> {
 		self.ensure_outline();
-		self.chrome().buttons()
+		// An open option list answers for itself: its options are pressed,
+		// released and tabbed on like any other control, so they lead the list
+		// the pointer and the keyboard both read. They are painted over the
+		// page, and a hit test reads the same order, so the first option a
+		// point falls in wins before any control the list covers. Nothing else
+		// is open at once.
+		let mut buttons = self.dropdown_buttons();
+		let mut page = self.chrome().buttons();
+		buttons.append(&mut page);
+		buttons
 	}
 	pub(super) fn overlay(&mut self) -> Vec<Draw> {
 		self.ensure_outline();

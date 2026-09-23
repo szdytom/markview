@@ -253,7 +253,7 @@ pub(super) fn run() -> Result<()> {
 	event_loop.run_app(&mut app)?;
 	app.flush_settings();
 	if let Some(warning) = &app.preferences.settings_warning {
-		warn!("{warning}");
+		warn!("{}", warning.text(app.preferences.values.lang()));
 	}
 	if let Some(error) = app.fatal {
 		bail!("{error}");

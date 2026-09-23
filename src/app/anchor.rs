@@ -38,7 +38,7 @@ pub(super) fn footnote_link(link: &str) -> bool {
 		})
 }
 
-impl App {
+impl<P: super::SendEvent> App<P> {
 	/// Queues an anchor and applies it as soon as it is laid out.
 	pub(super) fn goto_anchor(&mut self, anchor: String) {
 		// A jump is direct input, so any easing for the previous destination
@@ -119,7 +119,11 @@ impl App {
 			}
 			Err(anchor) => {
 				self.error = true;
-				self.status = format!("Heading not found: #{anchor}");
+				self.status = self
+					.preferences
+					.values
+					.lang()
+					.status_heading_not_found(anchor);
 				self.status_until =
 					Some(Instant::now() + Duration::from_secs(4));
 			}

@@ -1,12 +1,12 @@
 //! Reader preferences, isolated from launch flags and document state.
-use crate::{layout::LayoutOptions, render::Theme};
+use crate::{lang::Lang, layout::LayoutOptions, render::Theme};
 use anyhow::{Result, bail};
 use markview_core::JustificationLimits;
 use markview_core::style::CjkType;
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 mod store;
-pub use store::SettingsStore;
+pub use store::{SettingsStore, SettingsWarning};
 
 /// The scroll-speed multiplier a reader may choose between, and the step its
 /// buttons move by.
@@ -18,6 +18,9 @@ pub const SCROLL_SPEED_STEP: f32 = 0.25;
 pub struct ReaderSettings {
 	pub theme: Theme,
 	pub style: Option<Vec<String>>,
+	/// The interface language; absent means "follow the system", so a locale
+	/// change reaches the next launch. Use [`ReaderSettings::lang`].
+	pub lang: Option<Lang>,
 	pub fontdef_overrides: Vec<FontDefOverride>,
 	pub stylesheet: std::sync::Arc<markview_core::style::Stylesheet>,
 	pub font_size: f32,
@@ -42,6 +45,7 @@ impl Default for ReaderSettings {
 		Self {
 			theme: Theme::default(),
 			style: None,
+			lang: None,
 			fontdef_overrides: Vec::new(),
 			stylesheet: markview_core::style::Stylesheet::bundled(false),
 			font_size: 18.0,
@@ -73,6 +77,7 @@ pub enum Setting {
 	Hyphenate,
 	ParagraphIndent,
 	CjkType,
+	Language,
 	CodeblockWrap,
 	ScrollSpeed,
 }
@@ -154,6 +159,11 @@ impl ExportSettings {
 }
 
 impl ReaderSettings {
+	/// The language the interface is drawn in.
+	pub fn lang(&self) -> Lang {
+		self.lang.unwrap_or_default()
+	}
+
 	/// The stylesheet with this reader's CJK variant applied.
 	///
 	/// The variant picks which `[cjk]` font definition exists at all, so a
@@ -234,6 +244,7 @@ impl ReaderSettings {
 				self.paragraph_indent = other.paragraph_indent
 			}
 			Setting::CjkType => self.cjk_type = other.cjk_type,
+			Setting::Language => self.lang = other.lang,
 			Setting::CodeblockWrap => {
 				self.codeblock_wrap = other.codeblock_wrap
 			}
@@ -242,10 +253,9 @@ impl ReaderSettings {
 	}
 }
 fn default_cjk_type() -> CjkType {
-	let Some(locale) = sys_locale::get_locale() else {
+	let Some(locale) = crate::lang::system_locale() else {
 		return CjkType::Sc;
 	};
-	let locale = locale.to_ascii_lowercase().replace('_', "-");
 	if locale.starts_with("ja-") || locale == "ja" {
 		CjkType::Jp
 	} else if locale.starts_with("zh-")

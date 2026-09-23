@@ -4,9 +4,10 @@ use super::{
 	icons,
 };
 use crate::{
+	lang::Lang,
 	layout::{Draw, Rect, TextShaper},
 	settings::ReaderSettings,
-	state::{Command, InteractionState, PanelPage, PanelTab},
+	state::{Command, DropdownId, InteractionState, PanelPage, PanelTab},
 };
 pub(super) use components::{draw_button, panel_rect};
 use markview_core::style::{
@@ -26,50 +27,87 @@ fn choices(
 		})
 		.collect()
 }
+/// The interface languages, offered as a list of the current one.
+///
+/// Following the system comes first and is named in the language in force;
+/// every language after it is named in its own, so the list reads the same
+/// however the interface is currently drawn.
+fn language_options(t: Lang, settings: &ReaderSettings) -> Vec<Action> {
+	let mut entries = vec![action(
+		t.settings_language_system(),
+		settings.lang.is_none(),
+		Command::Language(None),
+	)];
+	entries.extend(Lang::ALL.iter().map(|lang| {
+		action(
+			lang.language_name(),
+			settings.lang == Some(*lang),
+			Command::Language(Some(*lang)),
+		)
+	}));
+	entries
+}
 fn rows(settings: &ReaderSettings) -> Vec<Row> {
 	// Choosing a stylesheet is the Styles tab's own job, so this page offers
 	// no theme row at all.
+	let t = settings.lang();
 	vec![
+		Row::new(t.settings_language(), vec![])
+			.menu(DropdownId::Language, language_options(t, settings))
+			.section(t.section_interface()),
+		// How far a scroll request moves is a property of the pointing device,
+		// not of the type, so it belongs beside the interface language.
 		Row::new(
-			"Text size",
+			t.settings_scroll_speed(),
 			choices(
 				&[
-					("Decrease", Command::Smaller),
-					("Increase", Command::Larger),
+					(t.settings_decrease(), Command::ScrollSpeed(-1)),
+					(t.settings_increase(), Command::ScrollSpeed(1)),
+				],
+				None,
+			),
+		)
+		.value(format!("{:.2}×", settings.scroll_speed)),
+		Row::new(
+			t.settings_text_size(),
+			choices(
+				&[
+					(t.settings_decrease(), Command::Smaller),
+					(t.settings_increase(), Command::Larger),
 				],
 				None,
 			),
 		)
 		.value(format!("{:.1} px", settings.font_size))
-		.section("Reading layout"),
+		.section(t.section_reading_layout()),
 		Row::new(
-			"Column width",
+			t.settings_column_width(),
 			choices(
 				&[
-					("Decrease", Command::Narrower),
-					("Increase", Command::Wider),
+					(t.settings_decrease(), Command::Narrower),
+					(t.settings_increase(), Command::Wider),
 				],
 				None,
 			),
 		)
 		.value(format!("{:.0} px", settings.width)),
 		Row::new(
-			"Alignment",
+			t.settings_alignment(),
 			vec![action(
 				if settings.justify {
-					"Justified"
+					t.settings_justified()
 				} else {
-					"Left aligned"
+					t.settings_left_aligned()
 				},
 				settings.justify,
 				Command::Align,
 			)],
 		),
 		Row::new(
-			"Paragraph indent",
+			t.settings_paragraph_indent(),
 			choices(
 				&[
-					("Off", Command::Indent(0)),
+					(t.settings_indent_off(), Command::Indent(0)),
 					("1 em", Command::Indent(1)),
 					("2 em", Command::Indent(2)),
 					("3 em", Command::Indent(3)),
@@ -82,41 +120,38 @@ fn rows(settings: &ReaderSettings) -> Vec<Row> {
 			),
 		),
 		Row::new(
-			"Scroll speed",
-			choices(
-				&[
-					("Decrease", Command::ScrollSpeed(-1)),
-					("Increase", Command::ScrollSpeed(1)),
-				],
-				None,
-			),
-		)
-		.value(format!("{:.2}×", settings.scroll_speed)),
-		Row::new(
-			"CJK punctuation",
+			t.settings_cjk_punctuation(),
 			choices(
 				&[
 					("SC", Command::CjkType(CjkType::Sc)),
 					("TC", Command::CjkType(CjkType::Tc)),
 					("JP", Command::CjkType(CjkType::Jp)),
-					("None", Command::CjkType(CjkType::None)),
+					(t.settings_cjk_none(), Command::CjkType(CjkType::None)),
 				],
 				Some(Command::CjkType(settings.cjk_type)),
 			),
 		)
-		.section("Language & code"),
+		.section(t.section_language_code()),
 		Row::new(
-			"English hyphenation",
+			t.settings_english_hyphenation(),
 			vec![action(
-				if settings.hyphenate { "On" } else { "Off" },
+				if settings.hyphenate {
+					t.settings_on()
+				} else {
+					t.settings_off()
+				},
 				settings.hyphenate,
 				Command::Hyphens,
 			)],
 		),
 		Row::new(
-			"Code block wrapping",
+			t.settings_codeblock_wrapping(),
 			vec![action(
-				if settings.codeblock_wrap { "On" } else { "Off" },
+				if settings.codeblock_wrap {
+					t.settings_on()
+				} else {
+					t.settings_off()
+				},
 				settings.codeblock_wrap,
 				Command::CodeWrap,
 			)],
@@ -137,17 +172,23 @@ pub(in crate::app) fn form(
 		rows(settings),
 		Some(Command::Settings),
 		true,
+		settings.lang(),
 	);
 	form.preview_control();
+	let t = settings.lang();
 	form.footer(
 		ui,
 		&[
 			(
-				"Open settings.toml",
+				t.settings_open_config(),
 				Command::OpenConfig,
 				ButtonKind::Standard,
 			),
-			("Reset defaults", Command::Reset, ButtonKind::Quiet),
+			(
+				t.settings_reset_defaults(),
+				Command::Reset,
+				ButtonKind::Quiet,
+			),
 		],
 	);
 	form
@@ -163,7 +204,7 @@ pub(super) fn controls(
 	if panel_open {
 		form(ui, settings, 0.0, width, height).visible_buttons()
 	} else {
-		toolbar_controls(width, false)
+		toolbar_controls(width, false, settings.lang())
 	}
 }
 pub(super) fn button_width(
@@ -179,12 +220,53 @@ pub(super) fn button_width(
 	shaper.appearance = old;
 	width
 }
-pub(super) fn toolbar_controls(width: f32, outline_open: bool) -> Vec<Button> {
+/// Wraps running text to a column `width` pixels wide.
+///
+/// Words break at the spaces between them; a word wider than a line is broken
+/// between its characters instead. Chinese prose has no spaces to break at, so
+/// without that second rule a whole description would run off the panel.
+fn wrap(ui: &mut TextShaper, text: &str, size: f32, width: f32) -> Vec<String> {
+	let mut lines = Vec::new();
+	let mut line = String::new();
+	for word in text.split(' ') {
+		let joined = if line.is_empty() {
+			word.to_owned()
+		} else {
+			format!("{line} {word}")
+		};
+		if ui.text_width(&joined, size) <= width {
+			line = joined;
+			continue;
+		}
+		if !line.is_empty() {
+			lines.push(std::mem::take(&mut line));
+		}
+		for character in word.chars() {
+			if !line.is_empty() {
+				let mut widened = line.clone();
+				widened.push(character);
+				if ui.text_width(&widened, size) > width {
+					lines.push(std::mem::take(&mut line));
+				}
+			}
+			line.push(character);
+		}
+	}
+	if !line.is_empty() {
+		lines.push(line);
+	}
+	lines
+}
+pub(super) fn toolbar_controls(
+	width: f32,
+	outline_open: bool,
+	lang: Lang,
+) -> Vec<Button> {
 	[
-		(icons::OPEN, "Open", Command::Open),
-		(icons::EXPORT, "Export", Command::Export),
-		(icons::SETTINGS, "Settings", Command::Settings),
-		(icons::OUTLINE, "Outline", Command::Outline),
+		(icons::OPEN, lang.toolbar_open(), Command::Open),
+		(icons::EXPORT, lang.toolbar_export(), Command::Export),
+		(icons::SETTINGS, lang.toolbar_settings(), Command::Settings),
+		(icons::OUTLINE, lang.toolbar_outline(), Command::Outline),
 	]
 	.into_iter()
 	.enumerate()
@@ -221,51 +303,34 @@ pub(super) fn settings_form(
 		return form(ui, settings, interaction.settings_scroll, width, height);
 	}
 	components::appearance(ui);
+	let t = settings.lang();
 	let width_available = panel_rect(width, height).w - components::INSET * 2.0;
-	let mut lines = vec![String::new()];
-	for word in
-		"A fast, native Markdown reader with publication-quality typography."
-			.split_whitespace()
-	{
-		let line = lines.last_mut().unwrap();
-		let next = if line.is_empty() {
-			word.into()
-		} else {
-			format!("{line} {word}")
-		};
-		if !line.is_empty() && ui.text_width(&next, 13.0) > width_available {
-			lines.push(word.into());
-		} else {
-			*line = next;
-		}
-	}
-	let mut rows: Vec<_> = lines
-		.into_iter()
-		.map(|line| Row::new(line, vec![]))
-		.collect();
+	let mut rows: Vec<_> =
+		wrap(ui, t.about_description(), 13.0, width_available)
+			.into_iter()
+			.map(|line| Row::new(line, vec![]))
+			.collect();
 	rows.insert(0, Row::icon(icons::APP));
-	for (index, (name, value)) in
-		crate::diagnostics::fields(backend).into_iter().enumerate()
+	for (index, (name, value)) in crate::diagnostics::fields(t, backend)
+		.into_iter()
+		.enumerate()
 	{
-		let row = Row::new(format!("{name}: {value}"), vec![]);
+		let row = Row::new(t.diagnostics_row(name, value), vec![]);
 		rows.push(if index == 0 {
-			row.section("Diagnostics")
+			row.section(t.section_diagnostics())
 		} else {
 			row
 		});
 	}
 	rows.extend([
 		Row::new(
-			concat!(
-				"Created by ",
+			t.about_created_by(
 				env!("CARGO_PKG_AUTHORS"),
-				" · ",
 				env!("CARGO_PKG_LICENSE"),
-				" license"
 			),
 			vec![],
 		)
-		.section("Project"),
+		.section(t.section_project()),
 		Row::link(env!("CARGO_PKG_REPOSITORY"), Command::OpenProject),
 	]);
 	let mut form = Form::new(
@@ -275,11 +340,12 @@ pub(super) fn settings_form(
 		rows,
 		Some(Command::Settings),
 		false,
+		t,
 	);
 	form.footer(
 		ui,
 		&[(
-			"Copy diagnostics",
+			t.about_copy_diagnostics(),
 			Command::CopyDiagnostics,
 			ButtonKind::Standard,
 		)],
@@ -297,9 +363,17 @@ pub(super) fn draw_controls(
 	backend: Option<wgpu::Backend>,
 ) -> Vec<Draw> {
 	if interaction.panel_open() {
+		let t = settings.lang();
 		let form =
 			settings_form(ui, settings, interaction, width, height, backend);
 		let rect = form.rect;
+		// An open option list is only reached through a form, so the form
+		// measures it and the same value answers the pointer. Measuring also
+		// brings its highlight into view, on a copy: the state is corrected
+		// the next time the input paths measure it.
+		let menu = interaction
+			.dropdown
+			.and_then(|mut open| form.menu(&mut open, (width, height)));
 		let mut out = form
 			.without_header()
 			.preview(interaction.settings_preview)
@@ -312,7 +386,7 @@ pub(super) fn draw_controls(
 				{
 					""
 				} else {
-					"Saved automatically"
+					t.panel_saved()
 				},
 				C::Muted,
 				(width, height),
@@ -327,16 +401,23 @@ pub(super) fn draw_controls(
 				PanelTab::Generic
 			},
 			interaction.settings_preview,
+			t,
 		));
+		// The list floats over the page, so it goes on after everything the
+		// page draws.
+		if let Some(menu) = &menu {
+			out.extend(super::components::draw_menu(ui, interaction, menu));
+		}
 		out
 	} else {
-		draw_toolbar(ui, interaction, width)
+		draw_toolbar(ui, interaction, width, settings.lang())
 	}
 }
 pub(super) fn draw_toolbar(
 	ui: &mut TextShaper,
 	interaction: &InteractionState,
 	width: f32,
+	lang: Lang,
 ) -> Vec<Draw> {
 	components::appearance(ui);
 	let idle = InteractionState::default();
@@ -345,7 +426,7 @@ pub(super) fn draw_toolbar(
 	} else {
 		interaction
 	};
-	toolbar_controls(width, interaction.outline_open)
+	toolbar_controls(width, interaction.outline_open, lang)
 		.iter()
 		.flat_map(|b| draw_button(ui, state, b, false))
 		.collect()

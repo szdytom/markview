@@ -41,6 +41,7 @@ fn entry_rows_indent_by_level_and_stay_inside_the_drawer() {
 		&OutlineTree::default(),
 		None,
 		drawer,
+		Lang::En,
 	);
 	let (clip, body) = clipped(&draws);
 	let list = viewport(drawer);
@@ -70,7 +71,9 @@ fn entry_rows_indent_by_level_and_stay_inside_the_drawer() {
 	for (x, _) in glyphs(body) {
 		assert!(x >= drawer.x && x < drawer.x + drawer.w);
 	}
-	for button in buttons(drawer, &entries, &OutlineTree::default(), 0.0) {
+	for button in
+		buttons(drawer, &entries, &OutlineTree::default(), 0.0, Lang::En)
+	{
 		assert!(button.rect.x >= drawer.x);
 		assert!(button.rect.x + button.rect.w <= drawer.x + drawer.w);
 		assert!(button.rect.y >= clip.y);
@@ -106,6 +109,7 @@ fn tabbing_marks_the_row_keyboard_focus_lands_on() {
 		&OutlineTree::default(),
 		None,
 		drawer,
+		Lang::En,
 	);
 	let (list, body) = clipped(&draws);
 	let marked: Vec<Rect> = body
@@ -128,13 +132,15 @@ fn a_long_outline_only_offers_its_visible_rows() {
 	let entries: Vec<OutlineEntry> = (0..1000)
 		.map(|i| entry(1, &format!("Heading {i}")))
 		.collect();
-	let rows = buttons(drawer, &entries, &OutlineTree::default(), 0.0);
+	let rows =
+		buttons(drawer, &entries, &OutlineTree::default(), 0.0, Lang::En);
 	assert!(!rows.is_empty());
 	assert!(rows.len() < 30, "only the visible rows are clickable");
 	let list = viewport(drawer);
 	let max = max_scroll(drawer, entries.len());
 	assert!(max > 0.0);
-	let bottom = buttons(drawer, &entries, &OutlineTree::default(), max);
+	let bottom =
+		buttons(drawer, &entries, &OutlineTree::default(), max, Lang::En);
 	assert_eq!(
 		bottom.last().map(|b| b.action),
 		Some(Command::OutlineGoto(entries.len() - 1))
@@ -152,7 +158,8 @@ fn row_hit_targets_stop_at_the_list_viewport() {
 	// Half a row is scrolled away, so the first row is only partly visible and
 	// the extra row below the list must be dropped; buttons match what is drawn.
 	let scroll = ROW / 2.0;
-	let rows = buttons(drawer, &entries, &OutlineTree::default(), scroll);
+	let rows =
+		buttons(drawer, &entries, &OutlineTree::default(), scroll, Lang::En);
 	assert!(!rows.is_empty());
 	for button in &rows {
 		let hit = list
@@ -204,6 +211,7 @@ fn a_shorter_document_pulls_the_drawer_back_into_range() {
 		&vec![entry(1, "Heading"); short],
 		&OutlineTree::default(),
 		interaction.outline_scroll,
+		Lang::En,
 	);
 	assert!(!rows.is_empty(), "the shorter outline still shows rows");
 	let selected = interaction.outline_selection.unwrap();
@@ -235,8 +243,11 @@ fn the_empty_outline_draws_a_short_empty_state() {
 		&OutlineTree::default(),
 		None,
 		drawer,
+		Lang::En,
 	);
-	assert!(buttons(drawer, &[], &OutlineTree::default(), 0.0).is_empty());
+	assert!(
+		buttons(drawer, &[], &OutlineTree::default(), 0.0, Lang::En).is_empty()
+	);
 	assert!(
 		!draws
 			.iter()
@@ -299,7 +310,7 @@ fn collapsed_outline_keeps_drawing_hits_and_navigation_in_sync() {
 	tree.toggle(0);
 	assert_eq!(tree.rows(&entries), [0, 1, 3, 4]);
 	let drawer = rect(800.0, 600.0, TOP);
-	let buttons = buttons(drawer, &entries, &tree, 0.0);
+	let buttons = buttons(drawer, &entries, &tree, 0.0, Lang::En);
 	assert_eq!(
 		buttons.iter().map(|b| b.action).collect::<Vec<_>>(),
 		[
@@ -332,7 +343,15 @@ fn collapsed_outline_keeps_drawing_hits_and_navigation_in_sync() {
 	assert!(interaction.move_outline(-1, &rows));
 	assert_eq!(interaction.outline_selection, Some(1));
 	let mut ui = crate::test_support::shaper();
-	let draws = draw(&mut ui, &interaction, &entries, &tree, Some(2), drawer);
+	let draws = draw(
+		&mut ui,
+		&interaction,
+		&entries,
+		&tree,
+		Some(2),
+		drawer,
+		Lang::En,
+	);
 	let (_, body) = clipped(&draws);
 	let arrows: Vec<_> = body
 		.iter()
@@ -366,7 +385,7 @@ fn bulk_controls_draw_in_the_header_and_collapse_every_level() {
 		"# Parent\n### Child\n##### Grandchild\n## Sibling\n# Next\n",
 	)
 	.outline();
-	let controls = header_buttons(drawer);
+	let controls = header_buttons(drawer, Lang::En);
 	assert_eq!(controls[0].action, Command::OutlineExpandAll);
 	assert_eq!(controls[1].action, Command::OutlineCollapseAll);
 	assert!(controls[0].rect.x + controls[0].rect.w < controls[1].rect.x);
@@ -393,7 +412,15 @@ fn bulk_controls_draw_in_the_header_and_collapse_every_level() {
 	tree = OutlineTree::default();
 	assert_eq!(tree.rows(&entries), [0, 1, 2, 3, 4]);
 	let mut ui = crate::test_support::shaper();
-	let draws = draw(&mut ui, &interaction, &entries, &tree, None, drawer);
+	let draws = draw(
+		&mut ui,
+		&interaction,
+		&entries,
+		&tree,
+		None,
+		drawer,
+		Lang::En,
+	);
 	let icons: Vec<_> = draws
 		.iter()
 		.filter_map(|draw| match draw {

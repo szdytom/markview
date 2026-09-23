@@ -2,8 +2,9 @@
 use super::icons;
 use crate::{
 	app::Button,
+	lang::Lang,
 	layout::{Draw, Paint, Rect, Scrollbar, TextShaper},
-	state::{Command, InteractionState, PanelTab},
+	state::{Command, Dropdown, DropdownId, InteractionState, PanelTab},
 };
 use markview_core::style::{Color, ColorField as C, Condition, TextAppearance};
 
@@ -12,6 +13,13 @@ pub(super) const INSET: f32 = 24.0;
 const TAB_Y: f32 = 52.0;
 const ROW: f32 = 44.0;
 const SECTION: f32 = 32.0;
+/// The trailing marker on a button that opens a list.
+const MARKER: f32 = 14.0;
+/// The pitch of one option in an open list, and the list's own padding.
+pub(super) const OPTION: f32 = 30.0;
+const MENU_PAD: f32 = 4.0;
+/// How far an open list stands off the control it belongs to.
+const MENU_GAP: f32 = 4.0;
 
 #[derive(Clone, Copy, Default, PartialEq, Eq)]
 pub(in crate::app) enum ButtonKind {
@@ -43,6 +51,7 @@ pub(super) fn button(
 			| Command::ExportSize(1) => Some(icons::PLUS),
 			_ => None,
 		},
+		marker: None,
 		active: false,
 		kind: ButtonKind::Standard,
 		enabled: true,
@@ -77,16 +86,17 @@ pub(in crate::app) fn line(rect: Rect, condition: Condition, color: C) -> Draw {
 pub(in crate::app) fn tab_controls(
 	rect: Rect,
 	current: PanelTab,
+	lang: Lang,
 ) -> Vec<Button> {
-	const TABS: [(&str, PanelTab); 4] = [
-		("Generic", PanelTab::Generic),
-		("Styles", PanelTab::Styles),
-		("Fonts", PanelTab::Fonts),
-		("About", PanelTab::About),
+	let tabs = [
+		(lang.tabs_generic(), PanelTab::Generic),
+		(lang.tabs_styles(), PanelTab::Styles),
+		(lang.tabs_fonts(), PanelTab::Fonts),
+		(lang.tabs_about(), PanelTab::About),
 	];
-	let step = ((rect.w - INSET * 2.0) / TABS.len() as f32).min(110.0);
+	let step = ((rect.w - INSET * 2.0) / tabs.len() as f32).min(110.0);
 	let mut out = Vec::new();
-	for (index, (label, tab)) in TABS.iter().enumerate() {
+	for (index, (label, tab)) in tabs.iter().enumerate() {
 		let mut b = button(
 			label,
 			Command::SettingsTab(*tab),
@@ -115,9 +125,10 @@ pub(in crate::app) fn draw_tabs(
 	interaction: &InteractionState,
 	rect: Rect,
 	current: PanelTab,
+	lang: Lang,
 ) -> Vec<Draw> {
 	let mut out = Vec::new();
-	for b in tab_controls(rect, current) {
+	for b in tab_controls(rect, current, lang) {
 		out.extend(draw_button(ui, interaction, &b, true));
 		if b.active {
 			out.push(line(
@@ -148,10 +159,11 @@ pub(in crate::app) fn settings_header_controls(
 	rect: Rect,
 	current: PanelTab,
 	preview: bool,
+	lang: Lang,
 ) -> Vec<Button> {
-	let mut out = tab_controls(rect, current);
+	let mut out = tab_controls(rect, current, lang);
 	let close = button(
-		"Close",
+		lang.panel_close(),
 		Command::Settings,
 		Rect {
 			x: rect.x + rect.w - INSET - CONTROL,
@@ -161,7 +173,7 @@ pub(in crate::app) fn settings_header_controls(
 		},
 	);
 	let mut eye = button(
-		"Preview document",
+		lang.panel_preview(),
 		Command::SettingsPreview,
 		Rect {
 			x: close.rect.x - CONTROL - 8.0,
@@ -184,13 +196,14 @@ pub(in crate::app) fn draw_settings_header(
 	rect: Rect,
 	current: PanelTab,
 	preview: bool,
+	lang: Lang,
 ) -> Vec<Draw> {
 	appearance(ui);
 	let old_weight = ui.appearance.weight;
 	ui.appearance.weight = 700;
 	let mut out = label(
 		ui,
-		"Settings",
+		lang.panel_settings(),
 		20.0,
 		Rect {
 			x: rect.x + INSET,
@@ -201,8 +214,8 @@ pub(in crate::app) fn draw_settings_header(
 		C::Color,
 	);
 	ui.appearance.weight = old_weight;
-	out.extend(draw_tabs(ui, interaction, rect, current));
-	let controls = settings_header_controls(rect, current, preview);
+	out.extend(draw_tabs(ui, interaction, rect, current, lang));
+	let controls = settings_header_controls(rect, current, preview, lang);
 	for control in controls.iter().filter(|b| b.icon.is_some()) {
 		out.extend(draw_button(ui, interaction, control, true));
 	}
@@ -368,18 +381,24 @@ fn draw_button_edges(
 			size: 20.0,
 		});
 	} else {
-		let text = ui.fit(b.label, 13.0, (b.rect.w - 8.0).max(0.0));
+		let room = if b.marker.is_some() {
+			MARKER + 4.0
+		} else {
+			0.0
+		};
+		let text = ui.fit(b.label, 13.0, (b.rect.w - 8.0 - room).max(0.0));
+		let width = ui.text_width(&text, 13.0);
 		let x = if link {
 			b.rect.x
 		} else {
-			b.rect.x + (b.rect.w - ui.text_width(&text, 13.0)) / 2.0
+			b.rect.x + (b.rect.w - width - room) / 2.0
 		};
 		if link {
 			out.push(line(
 				Rect {
 					x,
 					y: b.rect.y + b.rect.h / 2.0 + 7.0,
-					w: ui.text_width(&text, 13.0),
+					w: width,
 					h: 1.0,
 				},
 				Condition::Button,
@@ -393,6 +412,15 @@ fn draw_button_edges(
 			b.rect.y + b.rect.h / 2.0 + 4.5,
 			Paint::Styled(Condition::Button, color),
 		));
+		if let Some(paths) = b.marker {
+			out.push(Draw::Icon {
+				paths,
+				paint: Paint::Styled(Condition::Button, color),
+				x: x + width + 4.0,
+				y: b.rect.y + (b.rect.h - MARKER) / 2.0,
+				size: MARKER,
+			});
+		}
 	}
 	ui.appearance = old;
 	out
@@ -452,6 +480,23 @@ pub(super) struct Row {
 	pub section: Option<&'static str>,
 	pub value: Option<String>,
 	link: Option<(&'static str, Command)>,
+	/// The options this row offers in a list instead of in place.
+	menu: Option<RowMenu>,
+}
+/// A row's options, and the control whose list they belong to.
+pub(super) struct RowMenu {
+	pub(super) id: DropdownId,
+	pub(super) entries: Vec<Action>,
+}
+impl RowMenu {
+	/// The option the row shows while its list is closed: the current one, or
+	/// the first when the reader has not chosen any.
+	fn chosen(&self) -> Option<&Action> {
+		self.entries
+			.iter()
+			.find(|entry| entry.active)
+			.or_else(|| self.entries.first())
+	}
 }
 impl Row {
 	pub fn new(label: impl Into<String>, actions: Vec<Action>) -> Self {
@@ -462,7 +507,14 @@ impl Row {
 			section: None,
 			value: None,
 			link: None,
+			menu: None,
 		}
+	}
+	/// Offers `entries` in a list the row's own control opens, showing the
+	/// current one where a value would go.
+	pub fn menu(mut self, id: DropdownId, entries: Vec<Action>) -> Self {
+		self.menu = Some(RowMenu { id, entries });
+		self
 	}
 	pub fn icon(paths: &'static [markview_core::scene::IconPath]) -> Self {
 		Self {
@@ -479,7 +531,10 @@ impl Row {
 	fn height(&self) -> f32 {
 		if self.icon.is_some() {
 			72.0
-		} else if self.actions.is_empty() && self.value.is_none() {
+		} else if self.actions.is_empty()
+			&& self.value.is_none()
+			&& self.menu.is_none()
+		{
 			26.0
 		} else {
 			ROW
@@ -499,6 +554,8 @@ impl Row {
 pub(in crate::app) struct Form {
 	header: bool,
 	preview: bool,
+	/// The language its own controls are labelled in.
+	lang: Lang,
 	pub rect: Rect,
 	pub viewport: Rect,
 	pub scroll: f32,
@@ -507,6 +564,8 @@ pub(in crate::app) struct Form {
 	body_start: usize,
 	body_end: usize,
 	rows: Vec<(Row, f32)>,
+	/// The control each list row opens its options from.
+	menus: Vec<(DropdownId, Rect)>,
 }
 impl Form {
 	pub(super) fn new(
@@ -516,6 +575,7 @@ impl Form {
 		rows: Vec<Row>,
 		close: Option<Command>,
 		spacious_header: bool,
+		lang: Lang,
 	) -> Self {
 		let rect = panel_rect(width, height);
 		let spacious_header = spacious_header && rect.h >= 300.0;
@@ -534,7 +594,7 @@ impl Form {
 		let body_start = usize::from(close.is_some());
 		let mut buttons = close.map_or_else(Vec::new, |action| {
 			let mut close = button(
-				"Close",
+				lang.panel_close(),
 				action,
 				Rect {
 					x: rect.x + rect.w - INSET - CONTROL,
@@ -548,6 +608,7 @@ impl Form {
 		});
 		let mut y = viewport.y + 8.0 - scroll;
 		let mut placed = Vec::new();
+		let mut menus = Vec::new();
 		for row in rows {
 			if row.section.is_some() {
 				y += SECTION;
@@ -568,6 +629,32 @@ impl Form {
 			}
 			let right = viewport.x + viewport.w - 8.0;
 			let w = 232.0_f32.min(viewport.w * 0.56);
+			// A list row answers with one control the width of the whole
+			// control area, showing the option in force.
+			if let Some(menu) = &row.menu
+				&& let Some(chosen) = menu.chosen()
+			{
+				let rect = Rect {
+					x: right - w,
+					y,
+					w,
+					h: CONTROL,
+				};
+				let mut b = button(
+					chosen.label,
+					Command::ToggleDropdown(
+						menu.id,
+						menu.entries
+							.iter()
+							.position(|entry| entry.active)
+							.unwrap_or(0),
+					),
+					rect,
+				);
+				b.marker = Some(icons::CHEVRON);
+				buttons.push(b);
+				menus.push((menu.id, rect));
+			}
 			let count = row.actions.len();
 			for (i, entry) in row.actions.iter().enumerate() {
 				let (x, w) = if row.value.is_some() {
@@ -597,6 +684,7 @@ impl Form {
 		Self {
 			header: true,
 			preview: false,
+			lang,
 			rect,
 			viewport,
 			scroll,
@@ -605,12 +693,13 @@ impl Form {
 			body_start,
 			body_end,
 			rows: placed,
+			menus,
 		}
 	}
 	pub(super) fn preview_control(&mut self) {
 		let close = self.buttons[0].rect;
 		let mut eye = button(
-			"Preview document",
+			self.lang.panel_preview(),
 			Command::SettingsPreview,
 			Rect {
 				x: close.x - CONTROL - 8.0,
@@ -632,9 +721,9 @@ impl Form {
 			if b.action == Command::SettingsPreview {
 				b.active = enabled;
 				b.label = if enabled {
-					"Exit preview"
+					self.lang.panel_exit_preview()
 				} else {
-					"Preview document"
+					self.lang.panel_preview()
 				};
 				b.icon =
 					Some(if enabled { icons::EYE_OFF } else { icons::EYE });
@@ -813,7 +902,10 @@ impl Form {
 				13.0,
 				Rect {
 					y: *y,
-					w: if row.actions.is_empty() && row.value.is_none() {
+					w: if row.actions.is_empty()
+						&& row.value.is_none()
+						&& row.menu.is_none()
+					{
 						self.viewport.w
 					} else {
 						self.viewport.w - control_width - 20.0
@@ -911,6 +1003,157 @@ impl Form {
 
 		out
 	}
+}
+
+/// An open option list: where it sits, and the buttons that answer for it.
+///
+/// The same value carries the geometry, the painting and the hit testing, so
+/// the list cannot answer a click somewhere other than where it is drawn.
+pub(in crate::app) struct Menu {
+	pub(in crate::app) rect: Rect,
+	pub(in crate::app) buttons: Vec<Button>,
+	/// How many options the row holds, drawn or not.
+	pub(in crate::app) options: usize,
+	/// The option the keyboard is on, counted over every option the list holds.
+	pub(super) highlight: usize,
+	/// The first option drawn.
+	pub(super) offset: usize,
+}
+impl Menu {
+	/// The command the keyboard would commit.
+	pub(in crate::app) fn chosen(&self) -> Option<Command> {
+		self.buttons
+			.get(self.highlight.saturating_sub(self.offset))
+			.map(|button| button.action)
+	}
+}
+
+impl Form {
+	/// The list `dropdown` has open, when this form holds that row.
+	///
+	/// Measuring is what decides which options are drawn, so it is also where
+	/// the highlight is brought into that window. A list opened on its last
+	/// option therefore shows that option rather than starting from the top,
+	/// and the option under the keyboard is always one the reader can see.
+	pub(super) fn menu(
+		&self,
+		dropdown: &mut Dropdown,
+		size: (f32, f32),
+	) -> Option<Menu> {
+		let anchor = self
+			.menus
+			.iter()
+			.find(|(id, _)| *id == dropdown.id)
+			.map(|(_, rect)| *rect)
+			// A row the page scrolled away holds no list: its anchor is gone,
+			// so the list must not hang from where the control used to be.
+			.filter(|rect| rect.intersect(self.viewport).is_some())?;
+		let entries = self.rows.iter().find_map(|(row, _)| {
+			row.menu
+				.as_ref()
+				.filter(|menu| menu.id == dropdown.id)
+				.map(|menu| menu.entries.as_slice())
+		})?;
+		let (rect, shown) = menu_rect(anchor, entries.len(), size);
+		dropdown.follow(shown);
+		let offset = dropdown.offset;
+		let buttons = entries
+			.iter()
+			.skip(offset)
+			.take(shown)
+			.enumerate()
+			.map(|(slot, entry)| {
+				let mut b = button(
+					entry.label,
+					entry.action,
+					Rect {
+						x: rect.x + MENU_PAD,
+						y: rect.y + MENU_PAD + slot as f32 * OPTION,
+						w: rect.w - 2.0 * MENU_PAD,
+						h: OPTION - 2.0,
+					},
+				);
+				// Options read as a flat list: only the pointer and the current
+				// choice give them a fill.
+				b.kind = ButtonKind::Quiet;
+				b.active = entry.active;
+				b
+			})
+			.collect();
+		Some(Menu {
+			rect,
+			buttons,
+			options: entries.len(),
+			highlight: dropdown.highlight,
+			offset,
+		})
+	}
+}
+
+/// Where an option list sits, and how many of its options are drawn.
+///
+/// It stands under its control, or above it when the window's bottom edge is
+/// the nearer one. It never leaves the window: where neither side holds every
+/// option, the longer side shows as many as it can and the rest follow the
+/// highlight within that window.
+fn menu_rect(anchor: Rect, count: usize, size: (f32, f32)) -> (Rect, usize) {
+	let (_, height) = size;
+	let room = |available: f32| {
+		((available - 2.0 * MENU_PAD) / OPTION).floor().max(0.0) as usize
+	};
+	let below = room(height - MENU_PAD - (anchor.y + anchor.h + MENU_GAP));
+	let above = room(anchor.y - MENU_GAP - MENU_PAD);
+	let (shown, downwards) = if below >= count {
+		(count, true)
+	} else if above >= count {
+		(count, false)
+	} else if below >= above {
+		(below, true)
+	} else {
+		(above, false)
+	};
+	let shown = shown.max(1);
+	let h = shown as f32 * OPTION + 2.0 * MENU_PAD;
+	let y = if downwards {
+		anchor.y + anchor.h + MENU_GAP
+	} else {
+		anchor.y - MENU_GAP - h
+	};
+	(
+		Rect {
+			x: anchor.x,
+			y,
+			w: anchor.w,
+			h,
+		},
+		shown,
+	)
+}
+
+/// Draws an open option list over the page behind it.
+pub(in crate::app) fn draw_menu(
+	ui: &mut TextShaper,
+	interaction: &InteractionState,
+	menu: &Menu,
+) -> Vec<Draw> {
+	let mut out = vec![Draw::Rect(
+		menu.rect,
+		Paint::Styled(Condition::Panel, C::Background),
+	)];
+	out.extend(outline(menu.rect, C::BorderColor, 1.0, [true, true]));
+	// A list always has an option under the keyboard, so it wears the focus
+	// ring whether the pointer put it there or the arrow keys did.
+	let targeted = InteractionState {
+		cursor: interaction.cursor,
+		pressed: interaction.pressed,
+		focus: menu.chosen(),
+		focus_visible: true,
+		..Default::default()
+	};
+	for b in &menu.buttons {
+		out.extend(draw_button(ui, &targeted, b, true));
+	}
+	out
 }
 
 /// Forms contain only painted vectors and clipped groups; document assets stay outside.

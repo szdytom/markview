@@ -2,12 +2,65 @@
 use super::{
 	ExportSettings, FontDefOverride, ReaderSettings, Setting, default_cjk_type,
 };
+use crate::lang::Lang;
 use crate::render::Theme;
 use anyhow::{Context, Result, bail};
 use markview_core::JustificationLimits;
 use markview_core::style::CjkType;
 use serde::{Deserialize, Serialize};
 use std::{fs, io::Write, path::PathBuf};
+
+/// What went wrong while reading the configuration, kept as the failure it is
+/// rather than as text.
+///
+/// The file is read before the interface knows which language it is drawn in,
+/// so a message spelled here could never follow the reader's choice of
+/// interface language. The value carries the failure until
+/// [`SettingsWarning::text`] is asked for it, in the language in force by
+/// then.
+#[derive(Debug)]
+pub enum SettingsWarning {
+	/// The file was read, but its contents did not make sense.
+	Invalid(anyhow::Error),
+	/// The export half was rejected while the reading half survived.
+	ExportInvalid(anyhow::Error),
+	/// The file exists but could not be read at all.
+	Unreadable(anyhow::Error),
+	/// A write of the settings in force did not reach the disk.
+	SaveFailed(anyhow::Error),
+	/// The settings file could not be handed to the operating system.
+	OpenFailed(anyhow::Error),
+	/// The settings file could not be created where it belongs.
+	InitFailed(anyhow::Error),
+}
+impl SettingsWarning {
+	/// The warning in `lang`. The failure is spelled into the message, so the
+	/// result borrows the text only when there is none to spell.
+	pub fn text(&self, lang: Lang) -> std::borrow::Cow<'static, str> {
+		use std::borrow::Cow;
+		match self {
+			Self::Invalid(error) => {
+				Cow::Owned(lang.status_settings_invalid(format!("{error:#}")))
+			}
+			Self::ExportInvalid(error) => Cow::Owned(
+				lang.status_export_saw_settings_failed(format!("{error:#}")),
+			),
+			Self::Unreadable(error) => Cow::Owned(
+				lang.status_settings_unreadable(format!("{error:#}")),
+			),
+			Self::SaveFailed(error) => Cow::Owned(
+				lang.status_settings_save_failed(format!("{error:#}")),
+			),
+			Self::OpenFailed(error) => Cow::Owned(
+				lang.status_settings_open_failed(format!("{error:#}")),
+			),
+			Self::InitFailed(error) => Cow::Owned(
+				lang.status_settings_init_failed(format!("{error:#}")),
+			),
+		}
+	}
+}
+
 #[derive(Serialize, Deserialize)]
 #[serde(default)]
 struct Config {
@@ -23,6 +76,10 @@ struct Config {
 	fontdef_overrides: Vec<FontDefOverride>,
 	#[serde(skip_serializing_if = "Option::is_none")]
 	theme: Option<Theme>,
+	/// Absent means "follow the system language"; only a user choice is
+	/// stored, so a locale change reaches the next launch.
+	#[serde(skip_serializing_if = "Option::is_none")]
+	language: Option<Lang>,
 	font_size: f32,
 	width: f32,
 	justify: bool,
@@ -49,6 +106,7 @@ impl Default for Config {
 		Self {
 			version: 1,
 			theme: None,
+			language: None,
 			style: None,
 			fontdef_overrides: Vec::new(),
 			font_size: settings.font_size,
@@ -101,6 +159,7 @@ impl Config {
 			justification: self.justification,
 			paragraph_indent: self.paragraph_indent,
 			cjk_type: self.cjk_type.unwrap_or_else(default_cjk_type),
+			lang: self.language,
 			codeblock_theme_override: self.codeblock_theme_override.clone(),
 			codeblock_wrap: self.codeblock_wrap,
 			scroll_speed: self.scroll_speed,
@@ -122,7 +181,7 @@ pub struct SettingsStore {
 	source: Option<Vec<u8>>,
 }
 impl SettingsStore {
-	pub fn load(path: Option<PathBuf>) -> (Self, Option<String>) {
+	pub fn load(path: Option<PathBuf>) -> (Self, Option<SettingsWarning>) {
 		let mut store = Self {
 			path,
 			saved: ReaderSettings::default(),
@@ -154,9 +213,7 @@ impl SettingsStore {
 						Ok(config) => {
 							store.saved = config.reader_settings();
 							if let Err(error) = store.saved.validate() {
-								warning = Some(format!(
-									"Settings: {error}; using defaults"
-								));
+								warning = Some(SettingsWarning::Invalid(error));
 								store.saved = ReaderSettings::default();
 
 								store.invalid = Some(bytes);
@@ -166,23 +223,21 @@ impl SettingsStore {
 							match config.export.validate() {
 								Ok(()) => store.saved_export = config.export,
 								Err(error) => {
-									warning = Some(format!(
-										"Export settings: {error}; using defaults"
-									));
+									warning = Some(
+										SettingsWarning::ExportInvalid(error),
+									);
 								}
 							}
 						}
 						Err(error) => {
-							warning = Some(format!(
-								"Settings: {error}; using defaults"
-							));
+							warning = Some(SettingsWarning::Invalid(error));
 							store.invalid = Some(bytes);
 						}
 					}
 				}
 				Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
 				Err(error) => {
-					warning = Some(format!("Cannot read settings: {error}"))
+					warning = Some(SettingsWarning::Unreadable(error.into()))
 				}
 			}
 		}
@@ -330,6 +385,7 @@ impl SettingsStore {
 					Setting::Hyphenate,
 					Setting::ParagraphIndent,
 					Setting::CjkType,
+					Setting::Language,
 					Setting::CodeblockWrap,
 					Setting::ScrollSpeed,
 				];
@@ -377,6 +433,7 @@ impl SettingsStore {
 			justification: self.saved.justification,
 			paragraph_indent: self.saved.paragraph_indent,
 			cjk_type: Some(self.saved.cjk_type),
+			language: self.saved.lang,
 			codeblock_theme_override: self
 				.saved
 				.codeblock_theme_override
@@ -414,9 +471,13 @@ impl SettingsStore {
 			document[key] = value;
 		}
 		let mut comments = String::new();
-		for key in [Some("theme"), config.style.is_none().then_some("style")]
-			.into_iter()
-			.flatten()
+		for key in [
+			Some("theme"),
+			config.style.is_none().then_some("style"),
+			config.language.is_none().then_some("language"),
+		]
+		.into_iter()
+		.flatten()
 		{
 			if let Some(prefix) = document
 				.key(key)

@@ -15,6 +15,9 @@ enum Tap {
 	Command(Command),
 	Link(String),
 	ClearSelection,
+	/// A tap the open option list owns but that lands on none of its options:
+	/// it closes the list and reaches nothing behind it.
+	DismissDropdown,
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -47,13 +50,20 @@ impl GestureState {
 		self.coasting.then_some(now + Duration::from_millis(16))
 	}
 
+	/// Clears the pause a touch leaves on mouse input, so a test that drives
+	/// both paths is not held back by one it just sent.
+	#[cfg(test)]
+	pub(super) fn allow_mouse(&mut self) {
+		self.mouse_after = None;
+	}
+
 	pub(super) fn suppress_mouse(&self) -> bool {
 		!self.gesture.contacts.is_empty()
 			|| self.mouse_after.is_some_and(|until| Instant::now() < until)
 	}
 }
 
-impl App {
+impl<P: super::SendEvent> App<P> {
 	pub(super) fn cancel_gestures(&mut self) {
 		if !self.gestures.gesture.contacts.is_empty() {
 			self.interaction.pressed = None;
@@ -65,6 +75,21 @@ impl App {
 	}
 
 	fn touch_tap(&mut self) -> Option<Tap> {
+		// An open option list owns the tap the way it owns a press: only its
+		// own exact option rectangles answer, and a tap anywhere else only
+		// dismisses it. The page controls under it and the 44-pixel expansion
+		// below stay out of reach, so reaching for a covered setting cannot
+		// activate it and the list's padding cannot commit a nearby option.
+		if self.interaction.dropdown.is_some() {
+			let (x, y) = self.interaction.cursor;
+			let hit = self
+				.dropdown_buttons()
+				.into_iter()
+				.find(|button| button.rect.contains(x, y));
+			return Some(hit.map_or(Tap::DismissDropdown, |button| {
+				Tap::Command(button.action)
+			}));
+		}
 		let (x, y) = self.interaction.cursor;
 		let buttons = self.buttons();
 		let hit = buttons
@@ -121,6 +146,11 @@ impl App {
 
 	fn touch_surface(&mut self) -> Surface {
 		if self.interaction.modal.is_some() {
+			return Surface::None;
+		}
+		// The open list owns the gesture too: nothing behind it pans, so the
+		// row its list hangs from cannot move out from under it.
+		if self.interaction.dropdown.is_some() {
 			return Surface::None;
 		}
 		if self.interaction.panel_open() {
@@ -210,6 +240,9 @@ impl App {
 							Some(Tap::ClearSelection) => {
 								self.interaction.clear_selection();
 								self.interaction.close_outline();
+							}
+							Some(Tap::DismissDropdown) => {
+								self.close_dropdown();
 							}
 							None => {}
 						}

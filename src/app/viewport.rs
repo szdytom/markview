@@ -1,7 +1,7 @@
 use super::{App, BOTTOM};
 use crate::layout::{Rect, Scrollbar};
 use crate::state::scroll_limit;
-impl App {
+impl<P: super::SendEvent> App<P> {
 	/// The document scrollbar while it is visible. Drawing and pointer
 	/// handling share this geometry, so the thumb always agrees with what a
 	/// press grabs.

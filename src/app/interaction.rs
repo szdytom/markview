@@ -9,7 +9,7 @@ use std::time::{Duration, Instant};
 
 use super::{App, BOTTOM, Event, TOP, system_theme};
 
-fn sanitize_filename(title: &str) -> String {
+fn sanitize_filename(title: &str, lang: crate::lang::Lang) -> String {
 	let name: String = title
 		.chars()
 		.map(|c| {
@@ -27,13 +27,13 @@ fn sanitize_filename(title: &str) -> String {
 	let name = name.split_whitespace().collect::<Vec<_>>().join(" ");
 	let name: String = name.chars().take(48).collect();
 	if name.trim().is_empty() {
-		"Pasted Markdown".into()
+		lang.status_pasted().into()
 	} else {
 		name
 	}
 }
 
-impl App {
+impl<P: super::SendEvent> App<P> {
 	pub(super) fn action(&mut self, action: Command) {
 		self.cancel_gestures();
 		// Export-panel changes own their settings and never reflow the reader.
@@ -50,9 +50,20 @@ impl App {
 					self.renderer.as_ref().map(|renderer| renderer.backend),
 				);
 				match self.clipboard.write(text) {
-					Ok(()) => self.notify("Copied diagnostics", false, 3),
+					Ok(()) => self.notify(
+						self.preferences
+							.values
+							.lang()
+							.status_copied_diagnostics(),
+						false,
+						3,
+					),
 					Err(error) => self.notify(
-						&format!("Cannot copy diagnostics: {error}"),
+						&self
+							.preferences
+							.values
+							.lang()
+							.status_diagnostics_failed(format!("{error}")),
 						true,
 						4,
 					),
@@ -166,7 +177,11 @@ impl App {
 				if !self.interaction.export_open()
 					&& self.readers.session.path.is_none()
 				{
-					self.notify("Open a document first", true, 4);
+					self.notify(
+						self.preferences.values.lang().status_open_first(),
+						true,
+						4,
+					);
 					return;
 				}
 				self.interaction.toggle_export();
@@ -196,10 +211,14 @@ impl App {
 					command,
 					self.args.offline,
 					move |message| {
-						let _ = proxy.send_event(Event::Fonts(message));
+						proxy.send(Event::Fonts(message));
 					},
 				) {
-					self.notify("Offline: cannot download fonts", true, 4);
+					self.notify(
+						self.preferences.values.lang().status_offline(),
+						true,
+						4,
+					);
 				}
 				self.redraw();
 				return;
@@ -224,14 +243,23 @@ impl App {
 			}
 			Command::StylesFolder => {
 				let result = crate::stylesheet::directory()
-					.ok_or_else(|| anyhow::anyhow!("No stylesheet directory"))
+					.ok_or_else(|| {
+						anyhow::anyhow!(
+							self.preferences
+								.values
+								.lang()
+								.status_no_stylesheet_directory()
+						)
+					})
 					.and_then(|dir| {
 						std::fs::create_dir_all(&dir)?;
 						open::that_detached(dir)?;
 						Ok(())
 					});
 				if let Err(e) = result {
-					self.preferences.style_warning = Some(format!("{e:#}"));
+					self.preferences.style_warning = Some(
+						crate::app::preferences::StyleWarning::Override(e),
+					);
 				}
 				self.redraw();
 				return;
@@ -321,8 +349,9 @@ impl App {
 						.map_err(Into::into)
 				});
 				if let Err(error) = result {
-					self.preferences.settings_warning =
-						Some(format!("Cannot open settings: {error}"));
+					self.preferences.settings_warning = Some(
+						crate::settings::SettingsWarning::OpenFailed(error),
+					);
 				}
 				self.redraw();
 				return;
@@ -373,7 +402,7 @@ impl App {
 							&["md", "markdown", "mdown", "txt"],
 						)
 						.pick_file();
-					let _ = proxy.send_event(Event::Open(path));
+					proxy.send(Event::Open(path));
 				});
 				return;
 			}
@@ -412,6 +441,28 @@ impl App {
 				self.preferences.values.cjk_type = value;
 				self.setting_changed(Some(Setting::CjkType));
 				self.request(false);
+				self.redraw();
+				return;
+			}
+			Command::Language(value) => {
+				self.preferences.values.lang = value;
+				self.setting_changed(Some(Setting::Language));
+				// Picking an option ends the list, whether the pointer or the
+				// keyboard committed it, and returns focus to its chooser.
+				self.close_dropdown();
+				// Only the chrome is drawn in this language, so the document
+				// keeps its layout: a request here would reflow every line.
+				self.redraw();
+				return;
+			}
+			Command::ToggleDropdown(id, highlight) => {
+				match self.interaction.dropdown {
+					Some(open) if open.id == id => self.close_dropdown(),
+					_ => {
+						self.interaction.dropdown =
+							Some(crate::state::Dropdown::new(id, highlight));
+					}
+				}
 				self.redraw();
 				return;
 			}
@@ -588,11 +639,20 @@ impl App {
 			if !text.is_empty() {
 				match self.clipboard.write(text) {
 					Ok(()) => {
-						self.status = "Copied selection".into();
+						self.status = self
+							.preferences
+							.values
+							.lang()
+							.status_copied_selection()
+							.into();
 						self.error = false;
 					}
 					Err(e) => {
-						self.status = format!("Cannot copy: {e}");
+						self.status = self
+							.preferences
+							.values
+							.lang()
+							.status_copy_failed(e.to_string());
 						self.error = true;
 					}
 				}
@@ -604,7 +664,11 @@ impl App {
 		let text = match self.clipboard.read() {
 			Ok(text) => text,
 			Err(error) => {
-				self.status = format!("Cannot read clipboard: {error}");
+				self.status = self
+					.preferences
+					.values
+					.lang()
+					.status_clipboard_unreadable(error.to_string());
 				self.error = true;
 				self.status_until =
 					Some(Instant::now() + Duration::from_secs(3));
@@ -615,13 +679,21 @@ impl App {
 		if !crate::paste::looks_like_markdown(&text) {
 			return;
 		}
-		let title = crate::paste::title_for(&text);
+		let title =
+			crate::paste::title_for(&text, self.preferences.values.lang());
 		self.paste_serial = self.paste_serial.wrapping_add(1);
-		let filename =
-			format!("{}-{}.md", sanitize_filename(&title), self.paste_serial);
+		let filename = format!(
+			"{}-{}.md",
+			sanitize_filename(&title, self.preferences.values.lang()),
+			self.paste_serial
+		);
 		let path = self.paste_dir.path().join(filename);
 		if let Err(error) = std::fs::write(&path, text) {
-			self.status = format!("Cannot paste Markdown: {error}");
+			self.status = self
+				.preferences
+				.values
+				.lang()
+				.status_paste_failed(error.to_string());
 			self.error = true;
 			self.status_until = Some(Instant::now() + Duration::from_secs(3));
 			self.redraw();

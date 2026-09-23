@@ -11,10 +11,25 @@ use winit::{
 };
 
 use super::{App, BOTTOM, TOP};
-impl App {
+
+/// What the app asks of the loop it runs under.
+///
+/// `ActiveEventLoop` is the only real implementation; a test drives the app
+/// without a window server by handing it a stub instead, which is why the
+/// handlers below name this rather than the concrete type.
+pub(super) trait Loop {
+	fn exit(&self);
+}
+impl Loop for ActiveEventLoop {
+	fn exit(&self) {
+		ActiveEventLoop::exit(self);
+	}
+}
+
+impl<P: super::SendEvent> App<P> {
 	pub(super) fn handle_window_event(
 		&mut self,
-		event_loop: &ActiveEventLoop,
+		event_loop: &impl Loop,
 		_: WindowId,
 		event: WindowEvent,
 	) {
@@ -68,6 +83,7 @@ impl App {
 				let was_button = self.button_at_cursor();
 				self.interaction.cursor =
 					(position.x as f32 / scale, position.y as f32 / scale);
+				self.hover_dropdown();
 				self.move_tab_drag();
 				self.drag_scrollbar();
 				self.drag_panel();
@@ -145,6 +161,35 @@ impl App {
 					{
 						self.interaction.focus = Some(button.action);
 						self.interaction.pressed = Some(button.action);
+					}
+					self.redraw();
+					return;
+				}
+				// An open option list owns input the way a confirmation does: a
+				// press on it picks an option, and a press anywhere else closes
+				// it without reaching the page it covered. Nothing behind it
+				// answers the same click, so the press is always the last word
+				// and the release that follows has nothing left to dispatch.
+				if self.interaction.dropdown.is_some() {
+					self.interaction.reset_clicks();
+					let (x, y) = self.interaction.cursor;
+					match self
+						.buttons()
+						.into_iter()
+						.find(|button| button.rect.contains(x, y))
+						.map(|button| button.action)
+					{
+						Some(action)
+							if matches!(
+								action,
+								Command::ToggleDropdown(..)
+									| Command::Language(_)
+							) =>
+						{
+							self.interaction.focus = Some(action);
+							self.interaction.pressed = Some(action);
+						}
+						_ => self.close_dropdown(),
 					}
 					self.redraw();
 					return;
@@ -459,100 +504,17 @@ impl App {
 						}
 					}
 				} else {
-					if self.panel_has_focus()
-						&& !matches!(
-							event.logical_key,
-							Key::Named(
-								NamedKey::Tab
-									| NamedKey::Enter | NamedKey::Escape
-							)
-						) {
-						return;
-					}
-					match event.logical_key {
-						Key::Named(NamedKey::ArrowDown)
-							if self.interaction.outline_owns_input() =>
-						{
-							self.move_outline(1)
-						}
-						Key::Named(NamedKey::ArrowUp)
-							if self.interaction.outline_owns_input() =>
-						{
-							self.move_outline(-1)
-						}
-						Key::Named(NamedKey::ArrowDown) => {
-							self.scroll_step(self.line_step())
-						}
-						Key::Named(NamedKey::ArrowUp) => {
-							self.scroll_step(-self.line_step())
-						}
-						Key::Named(NamedKey::PageDown | NamedKey::Space) => {
-							self.scroll_step(self.viewport() * 0.9)
-						}
-						Key::Named(NamedKey::PageUp) => {
-							self.scroll_step(-self.viewport() * 0.9)
-						}
-						Key::Named(NamedKey::Home) => self.scroll_bound(false),
-						Key::Named(NamedKey::End) => self.scroll_bound(true),
-						Key::Named(NamedKey::ArrowLeft) => {
-							self.horizontal_by(-self.line_step());
-						}
-						Key::Named(NamedKey::ArrowRight) => {
-							self.horizontal_by(self.line_step());
-						}
-						Key::Named(NamedKey::Tab) => {
-							let actions: Vec<Command> = self
-								.focus_buttons()
-								.into_iter()
-								.map(|button| button.action)
-								.collect();
-							let backward =
-								self.interaction.modifiers.shift_key();
-							if let Some(action) =
-								self.interaction.tab_focus(&actions, backward)
-							{
-								if let Command::OutlineGoto(index)
-								| Command::OutlineToggle(index) = action
-								{
-									self.reveal_outline(index);
-								}
-								self.reveal_panel_focus();
-							}
-							self.redraw();
-						}
-						Key::Named(NamedKey::Enter) => {
-							let buttons = self.buttons();
-							if let Some(action) = self
-								.interaction
-								.enter_action(buttons.iter().map(|b| b.action))
-							{
-								self.action(action);
-							}
-						}
-						Key::Named(NamedKey::Escape) => {
-							self.tab_strip.cancel_drag();
-							self.interaction.pressed = None;
-							self.interaction.focus = None;
-							self.interaction.modal = None;
-							self.interaction
-								.show_panel(crate::state::PanelPage::Closed);
-							self.interaction.selection = None;
-							self.interaction.pointer_down = None;
-							self.interaction.drag_at = None;
-							self.interaction.scrollbar = None;
-							self.interaction.panel_grab = None;
-							self.interaction.close_outline();
-							self.refresh_hover();
-							self.redraw();
-						}
-						_ => {}
-					}
+					self.press_unmodified(event_loop, &event.logical_key);
 				}
 			}
 			WindowEvent::RedrawRequested => {
 				if let Err(e) = self.render(event_loop) {
 					self.error = true;
-					self.status = format!("Rendering failed: {e:#}");
+					self.status = self
+						.preferences
+						.values
+						.lang()
+						.status_rendering_failed(format!("{e:#}"));
 					error!("{}", self.status);
 					if self.args.mode == Mode::Smoke {
 						self.fatal = Some(self.status.clone());
@@ -562,5 +524,120 @@ impl App {
 			}
 			_ => {}
 		}
+	}
+	/// Routes one unmodified key press through the owners of input, then
+	/// answers the quit shortcut itself.
+	///
+	/// A chord with a modifier never reaches here; the caller answers those
+	/// first. Inside, an open option list and the settings panel come before
+	/// the shortcut, so a key they own never quits the reader.
+	pub(super) fn press_unmodified(
+		&mut self,
+		event_loop: &impl Loop,
+		key: &Key,
+	) {
+		if !self.key_pressed(key) && *key == Key::Character("q".into()) {
+			event_loop.exit();
+		}
+	}
+	/// Routes one unmodified key press, with no window server involved,
+	/// reporting whether an owner took the key.
+	///
+	/// A chord with a modifier is the reader's and never reaches here; the
+	/// caller answers those first. An open option list comes before the
+	/// settings panel's own guard, which would otherwise swallow the keys
+	/// that move it. A key no owner takes comes back as `false`, which is
+	/// what lets the caller answer it last.
+	pub(super) fn key_pressed(&mut self, key: &Key) -> bool {
+		// An open option list owns the keys while it is up. A key it hands
+		// back still reaches the page behind it.
+		if self.interaction.dropdown.is_some() && self.dropdown_key(key) {
+			self.redraw();
+			return true;
+		}
+		if self.panel_has_focus()
+			&& !matches!(
+				key,
+				Key::Named(NamedKey::Tab | NamedKey::Enter | NamedKey::Escape)
+			) {
+			return true;
+		}
+		match key {
+			Key::Named(NamedKey::ArrowDown)
+				if self.interaction.outline_owns_input() =>
+			{
+				self.move_outline(1)
+			}
+			Key::Named(NamedKey::ArrowUp)
+				if self.interaction.outline_owns_input() =>
+			{
+				self.move_outline(-1)
+			}
+			Key::Named(NamedKey::ArrowDown) => {
+				self.scroll_step(self.line_step())
+			}
+			Key::Named(NamedKey::ArrowUp) => {
+				self.scroll_step(-self.line_step())
+			}
+			Key::Named(NamedKey::PageDown | NamedKey::Space) => {
+				self.scroll_step(self.viewport() * 0.9)
+			}
+			Key::Named(NamedKey::PageUp) => {
+				self.scroll_step(-self.viewport() * 0.9)
+			}
+			Key::Named(NamedKey::Home) => self.scroll_bound(false),
+			Key::Named(NamedKey::End) => self.scroll_bound(true),
+			Key::Named(NamedKey::ArrowLeft) => {
+				self.horizontal_by(-self.line_step());
+			}
+			Key::Named(NamedKey::ArrowRight) => {
+				self.horizontal_by(self.line_step());
+			}
+			Key::Named(NamedKey::Tab) => {
+				let actions: Vec<Command> = self
+					.focus_buttons()
+					.into_iter()
+					.map(|button| button.action)
+					.collect();
+				let backward = self.interaction.modifiers.shift_key();
+				if let Some(action) =
+					self.interaction.tab_focus(&actions, backward)
+				{
+					if let Command::OutlineGoto(index)
+					| Command::OutlineToggle(index) = action
+					{
+						self.reveal_outline(index);
+					}
+					self.reveal_panel_focus();
+				}
+				self.redraw();
+			}
+			Key::Named(NamedKey::Enter) => {
+				let buttons = self.buttons();
+				if let Some(action) = self
+					.interaction
+					.enter_action(buttons.iter().map(|b| b.action))
+				{
+					self.action(action);
+				}
+			}
+			Key::Named(NamedKey::Escape) => {
+				self.tab_strip.cancel_drag();
+				self.interaction.pressed = None;
+				self.interaction.focus = None;
+				self.interaction.modal = None;
+				self.interaction.show_panel(crate::state::PanelPage::Closed);
+				self.interaction.selection = None;
+				self.interaction.pointer_down = None;
+				self.interaction.drag_at = None;
+				self.interaction.scrollbar = None;
+				self.interaction.panel_grab = None;
+				self.interaction.close_outline();
+				self.refresh_hover();
+				self.redraw();
+			}
+			_ => return false,
+		}
+		true
 	}
 }

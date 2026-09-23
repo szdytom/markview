@@ -14,6 +14,7 @@ pub(in crate::app) mod styles;
 mod tabs;
 use super::{BOTTOM, Button, TOP};
 use crate::{
+	lang::Lang,
 	layout::{Draw, Paint, Rect, Scrollbar, TextShaper},
 	settings::{ExportSettings, ReaderSettings},
 	state::{
@@ -51,17 +52,22 @@ fn ui_appearance(shaper: &TextShaper) -> TextAppearance {
 		.text(&TextAppearance::default(), Condition::Ui)
 }
 
-fn banner_buttons(shaper: &mut TextShaper, width: f32) -> Vec<Button> {
+fn banner_buttons(
+	shaper: &mut TextShaper,
+	width: f32,
+	lang: Lang,
+) -> Vec<Button> {
 	let old = shaper.appearance.clone();
 	shaper.appearance = ui_appearance(shaper);
-	let dismiss = shaper.text_width("Dismiss", 13.0) + 22.0;
-	let load = shaper.text_width("Load all", 13.0) + 22.0;
+	let dismiss = shaper.text_width(lang.notice_dismiss(), 13.0) + 22.0;
+	let load = shaper.text_width(lang.notice_load_all(), 13.0) + 22.0;
 	shaper.appearance = old;
 	let y = TOP + (BANNER - 22.0) / 2.0;
 	vec![
 		Button {
-			label: "Dismiss",
+			label: lang.notice_dismiss(),
 			icon: None,
+			marker: None,
 			active: false,
 			kind: Default::default(),
 			enabled: true,
@@ -74,8 +80,9 @@ fn banner_buttons(shaper: &mut TextShaper, width: f32) -> Vec<Button> {
 			},
 		},
 		Button {
-			label: "Load all",
+			label: lang.notice_load_all(),
 			icon: None,
+			marker: None,
 			active: false,
 			kind: Default::default(),
 			enabled: true,
@@ -95,6 +102,7 @@ fn draw_banner(
 	width: f32,
 	deferred: usize,
 	interaction: &InteractionState,
+	lang: Lang,
 ) -> Vec<Draw> {
 	let rect = banner_rect(width);
 	shaper.appearance = shaper
@@ -112,13 +120,10 @@ fn draw_banner(
 			Paint::Styled(Condition::Statusbar, C::BorderColor),
 		),
 	];
-	let buttons = banner_buttons(shaper, width);
+	let buttons = banner_buttons(shaper, width, lang);
 	let available = buttons.first().map_or(width - 32.0, |b| b.rect.x - 16.0);
-	let label = shaper.fit(
-		&format!("{deferred} remote images were not loaded."),
-		12.0,
-		available,
-	);
+	let label =
+		shaper.fit(&lang.notice_remote_images(deferred), 12.0, available);
 	out.extend(shaper.label(
 		&label,
 		12.0,
@@ -135,9 +140,9 @@ fn draw_banner(
 	out
 }
 
-fn empty_button(width: f32, height: f32) -> Button {
+fn empty_button(width: f32, height: f32, lang: Lang) -> Button {
 	let mut b = components::button(
-		"Open file…",
+		lang.empty_open_file(),
 		Command::Open,
 		Rect {
 			x: ((width - 400.0) / 2.0).max(24.0),
@@ -158,12 +163,14 @@ fn style_page_buttons(
 	entries: &[crate::stylesheet::Entry],
 	scroll: f32,
 	preview: bool,
-	width: f32,
-	height: f32,
+	size: (f32, f32),
+	lang: Lang,
 ) -> Vec<Button> {
+	let (width, height) = size;
 	let list = styles::list(width, height, entries.len(), scroll);
-	let mut buttons = style_controls(target, selected, preview, width, height);
-	buttons.extend(list.hit(style_rows(target, selected, entries, list)));
+	let mut buttons =
+		style_controls(target, selected, preview, width, height, lang);
+	buttons.extend(list.hit(style_rows(target, selected, entries, list, lang)));
 	buttons
 }
 
@@ -186,7 +193,7 @@ pub(super) struct Chrome<'a> {
 	pub(super) width: f32,
 	pub(super) height: f32,
 	pub(super) scrollbar: Option<Scrollbar>,
-	pub(super) warning: Option<&'a str>,
+	pub(super) warning: Option<std::borrow::Cow<'a, str>>,
 	pub(super) status: &'a str,
 	pub(super) status_until: Option<Instant>,
 	pub(super) error: bool,
@@ -198,6 +205,25 @@ pub(super) struct Chrome<'a> {
 	pub(super) watching: bool,
 }
 impl Chrome<'_> {
+	/// The open option list, measured against the page that holds its row.
+	pub(in crate::app) fn dropdown_menu(
+		&mut self,
+		open: &mut crate::state::Dropdown,
+	) -> Option<components::Menu> {
+		if !self.interaction.panel_open() {
+			return None;
+		}
+		let form = controls::settings_form(
+			self.ui,
+			self.settings,
+			self.interaction,
+			self.width,
+			self.height,
+			self.backend,
+		);
+		form.menu(open, (self.width, self.height))
+	}
+
 	pub(super) fn form(&mut self) -> Option<components::Form> {
 		if !self.interaction.panel_open()
 			|| self.interaction.modal.is_some()
@@ -214,6 +240,7 @@ impl Chrome<'_> {
 				self.interaction.export_scroll,
 				self.width,
 				self.height,
+				self.settings.lang(),
 			)
 		} else {
 			controls::settings_form(
@@ -231,7 +258,13 @@ impl Chrome<'_> {
 	pub(super) fn buttons(&mut self) -> Vec<Button> {
 		let (width, height, _) = (self.width, self.height, 1.0);
 		if self.interaction.modal.is_some() {
-			modal::modal_buttons(self.ui, self.interaction, width, height)
+			modal::modal_buttons(
+				self.ui,
+				self.interaction,
+				width,
+				height,
+				self.settings.lang(),
+			)
 		} else if self.interaction.panel_open()
 			&& self.interaction.export_styles_open()
 		{
@@ -241,8 +274,8 @@ impl Chrome<'_> {
 				self.style_entries,
 				self.style_scroll,
 				false,
-				width,
-				height,
+				(width, height),
+				self.settings.lang(),
 			)
 		} else if self.interaction.panel_open()
 			&& self.interaction.export_open()
@@ -253,6 +286,7 @@ impl Chrome<'_> {
 				self.interaction.export_scroll,
 				width,
 				height,
+				self.settings.lang(),
 			)
 			.visible_buttons()
 		} else if self.interaction.panel_open() && self.interaction.fonts_open()
@@ -262,6 +296,7 @@ impl Chrome<'_> {
 				self.interaction.settings_preview,
 				width,
 				height,
+				self.settings.lang(),
 			)
 		} else if self.interaction.panel_open()
 			&& self.interaction.styles_open()
@@ -272,8 +307,8 @@ impl Chrome<'_> {
 				self.style_entries,
 				self.style_scroll,
 				self.interaction.settings_preview,
-				width,
-				height,
+				(width, height),
+				self.settings.lang(),
 			)
 		} else if self.interaction.panel_open() {
 			let form = controls::settings_form(
@@ -299,28 +334,41 @@ impl Chrome<'_> {
 					crate::state::PanelTab::Generic
 				},
 				self.interaction.settings_preview,
+				self.settings.lang(),
 			));
 			buttons
 		} else {
-			let mut buttons =
-				toolbar_controls(width, self.interaction.outline_open);
+			let mut buttons = toolbar_controls(
+				width,
+				self.interaction.outline_open,
+				self.settings.lang(),
+			);
 			if self.session.path.is_none()
 				&& self.session.snapshot.blocks.is_empty()
 			{
 				// One `Open` command owns keyboard focus; both regions answer the pointer.
-				buttons.push(empty_button(width, height));
+				buttons.push(empty_button(width, height, self.settings.lang()));
 			}
 
 			if self.remote_notice.is_some() {
-				buttons.extend(banner_buttons(self.ui, width));
+				buttons.extend(banner_buttons(
+					self.ui,
+					width,
+					self.settings.lang(),
+				));
 			}
 			if self.interaction.outline_open {
-				buttons.extend(outline::header_buttons(self.outline_drawer()));
+				let lang = self.settings.lang();
+				buttons.extend(outline::header_buttons(
+					self.outline_drawer(),
+					lang,
+				));
 				buttons.extend(outline::buttons(
 					self.outline_drawer(),
 					self.session.outline_entries(),
 					&self.session.outline_tree,
 					self.interaction.outline_scroll,
+					lang,
 				));
 			}
 			buttons
@@ -358,9 +406,20 @@ impl Chrome<'_> {
 			),
 		];
 		out.extend(self.tab_bar().draw_tabs());
-		out.extend(controls::draw_toolbar(self.ui, self.interaction, width));
+		out.extend(controls::draw_toolbar(
+			self.ui,
+			self.interaction,
+			width,
+			self.settings.lang(),
+		));
 		if let Some(deferred) = self.remote_notice {
-			out.extend(draw_banner(self.ui, width, deferred, self.interaction));
+			out.extend(draw_banner(
+				self.ui,
+				width,
+				deferred,
+				self.interaction,
+				self.settings.lang(),
+			));
 		}
 		let warning = if self.error
 			&& self
@@ -369,7 +428,7 @@ impl Chrome<'_> {
 		{
 			Some(self.status)
 		} else {
-			self.warning
+			self.warning.as_deref()
 		};
 		out.extend(draw_footer(
 			self.ui,
@@ -384,31 +443,23 @@ impl Chrome<'_> {
 			} else {
 				self.hover_hint.unwrap_or("")
 			},
-			width,
-			height,
+			(width, height),
+			self.settings.lang(),
 		));
 		if self.session.snapshot.blocks.is_empty() {
-			let button = empty_button(width, height);
+			let button = empty_button(width, height, self.settings.lang());
 			let y = button.rect.y - 64.0;
+			let t = self.settings.lang();
 			let (title, detail) = if self.session.path.is_none() {
-				(
-					"Open a Markdown file",
-					"Open a Markdown file, or drop one into this window.",
-				)
+				(t.empty_open_title(), t.empty_open_detail())
 			} else if self.error {
-				(
-					"Unable to read this file",
-					"Check the file path and access permissions.",
-				)
+				(t.empty_unreadable_title(), t.empty_unreadable_detail())
 			} else if self.session.layout_pending
 				|| self.session.document.is_none()
 			{
-				("Opening document…", "Preparing the first page…")
+				(t.empty_opening_title(), t.empty_opening_detail())
 			} else {
-				(
-					"The document is empty",
-					"Content will appear here when the file changes.",
-				)
+				(t.empty_blank_title(), t.empty_blank_detail())
 			};
 			self.ui.appearance = ui_appearance(self.ui);
 			self.ui.appearance.weight = 700;
@@ -472,6 +523,7 @@ impl Chrome<'_> {
 				&self.session.outline_tree,
 				self.session.current_outline(),
 				self.outline_drawer(),
+				self.settings.lang(),
 			));
 		}
 		if self.interaction.panel_open()
@@ -487,6 +539,7 @@ impl Chrome<'_> {
 				false,
 				width,
 				height,
+				self.settings.lang(),
 			));
 		} else if self.interaction.panel_open()
 			&& self.interaction.export_open()
@@ -497,15 +550,15 @@ impl Chrome<'_> {
 				.as_deref()
 				.and_then(|path| path.file_name())
 				.map(|name| name.to_string_lossy().into_owned())
-				.unwrap_or_else(|| "Untitled".into());
+				.unwrap_or_else(|| self.settings.lang().tabs_untitled().into());
 			out.extend(export::draw_export(
 				self.ui,
 				self.export,
 				self.interaction,
 				&document,
 				self.watching,
-				width,
-				height,
+				(width, height),
+				self.settings.lang(),
 			));
 		} else if self.interaction.panel_open() && self.interaction.fonts_open()
 		{
@@ -515,6 +568,7 @@ impl Chrome<'_> {
 				&self.fonts,
 				width,
 				height,
+				self.settings.lang(),
 			));
 		} else if self.interaction.panel_open()
 			&& self.interaction.styles_open()
@@ -529,6 +583,7 @@ impl Chrome<'_> {
 				self.interaction.settings_preview,
 				width,
 				height,
+				self.settings.lang(),
 			));
 		} else if self.interaction.panel_open() {
 			out.extend(draw_controls(
@@ -547,6 +602,7 @@ impl Chrome<'_> {
 				self.interaction,
 				width,
 				height,
+				self.settings.lang(),
 			));
 		}
 		out
@@ -586,7 +642,7 @@ mod tests {
 	fn banner_buttons_fit_between_the_toolbar_and_the_document() {
 		let mut shaper = crate::test_support::shaper();
 		for width in [420.0, 500.0, 1200.0] {
-			let buttons = banner_buttons(&mut shaper, width);
+			let buttons = banner_buttons(&mut shaper, width, Lang::En);
 			assert_eq!(buttons.len(), 2);
 			assert_eq!(buttons[0].action, Command::RemoteDismiss);
 			assert_eq!(buttons[1].action, Command::RemoteLoadAll);

@@ -197,6 +197,7 @@ mod tests {
 				Button {
 					label: "Row",
 					icon: None,
+					marker: None,
 					active: false,
 					kind: Default::default(),
 					enabled: true,

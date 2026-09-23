@@ -24,6 +24,10 @@ pub(super) const UP: &[IconPath] =
 pub(super) const DOWN: &[IconPath] =
 	markview_icon::icon!("assets/ui/arrow-down.svg");
 
+/// Trails the value of a control whose options open in a list.
+pub(super) const CHEVRON: &[IconPath] =
+	markview_icon::icon!("assets/ui/chevron.svg");
+
 pub(super) const EYE: &[IconPath] = markview_icon::icon!("assets/ui/eye.svg");
 pub(super) const EYE_OFF: &[IconPath] =
 	markview_icon::icon!("assets/ui/eye-off.svg");

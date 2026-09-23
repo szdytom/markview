@@ -17,7 +17,7 @@ pub(crate) fn looks_like_markdown(text: &str) -> bool {
 }
 
 /// Finds an ATX heading, then falls back to the first sentence-like line.
-pub(crate) fn title_for(text: &str) -> String {
+pub(crate) fn title_for(text: &str, lang: crate::lang::Lang) -> String {
 	let candidate = text.lines().find_map(|line| {
 		let trimmed = line.trim();
 		is_heading(trimmed).then(|| {
@@ -45,11 +45,12 @@ pub(crate) fn title_for(text: &str) -> String {
 			})
 	});
 
-	let candidate = candidate.unwrap_or_else(|| "Pasted Markdown".into());
+	let fallback = lang.status_pasted();
+	let candidate = candidate.unwrap_or_else(|| fallback.into());
 	let candidate = strip_inline_markup(&candidate);
 	let candidate: String = candidate.chars().take(72).collect();
 	if candidate.trim().is_empty() {
-		"Pasted Markdown".into()
+		fallback.into()
 	} else {
 		candidate.trim().into()
 	}
@@ -69,6 +70,7 @@ fn strip_inline_markup(text: &str) -> String {
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use crate::lang::Lang;
 
 	#[test]
 	fn detects_structured_markdown_and_rejects_plain_prose() {
@@ -88,14 +90,29 @@ mod tests {
 	#[test]
 	fn chooses_heading_or_first_sentence() {
 		assert_eq!(
-			title_for("# **Release notes** ###\n\nText"),
+			title_for("# **Release notes** ###\n\nText", Lang::En),
 			"Release notes"
 		);
 		assert_eq!(
-			title_for("A short sentence. More details follow."),
+			title_for("A short sentence. More details follow.", Lang::En),
 			"A short sentence."
 		);
-		assert_eq!(title_for("这是一个句子。后面还有内容。"), "这是一个句子。");
-		assert_eq!(title_for("問題ですか？続きがあります。"), "問題ですか？");
+		assert_eq!(
+			title_for("这是一个句子。后面还有内容。", Lang::En),
+			"这是一个句子。"
+		);
+		assert_eq!(
+			title_for("問題ですか？続きがあります。", Lang::En),
+			"問題ですか？"
+		);
+	}
+
+	/// A paste with nothing to name it takes its name from the interface, so
+	/// the tab it opens reads in the reader's own language.
+	#[test]
+	fn an_unnamed_paste_is_named_in_the_interface_language() {
+		// Nothing to name it by: no heading, no sentence, no line at all.
+		assert_eq!(title_for("", Lang::En), "Pasted Markdown");
+		assert_eq!(title_for("", Lang::ZhHans), "已粘贴 Markdown");
 	}
 }

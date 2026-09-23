@@ -3,7 +3,7 @@ use crate::watch::FileWatch;
 use std::{path::PathBuf, time::Instant};
 
 use super::{App, Event};
-impl App {
+impl<P: super::SendEvent> App<P> {
 	pub(super) fn request(&mut self, follow: bool) {
 		if let Some(mut request) = self.readers.request(self.options(), follow)
 		{
@@ -20,7 +20,8 @@ impl App {
 			};
 			self.error = false;
 			self.status_until = None;
-			self.status = "Updating…".into();
+			self.status =
+				self.preferences.values.lang().status_updating().into();
 			self.worker.submit(request);
 			self.redraw();
 		}
@@ -30,7 +31,7 @@ impl App {
 			let proxy = self.proxy.clone();
 			let observed = path.clone();
 			FileWatch::new(path, move || {
-				let _ = proxy.send_event(Event::Changed(observed.clone()));
+				proxy.send(Event::Changed(observed.clone()));
 			})
 		});
 	}

@@ -1,4 +1,5 @@
 use super::super::BOTTOM;
+use crate::lang::Lang;
 use crate::layout::{Draw, Paint, Rect, TextShaper};
 use markview_core::style::{ColorField as C, Condition, TextAppearance};
 pub(super) fn draw_footer(
@@ -7,9 +8,10 @@ pub(super) fn draw_footer(
 	selected: Option<markview_core::text::TextCounts>,
 	warning: Option<&str>,
 	secondary: &str,
-	width: f32,
-	height: f32,
+	size: (f32, f32),
+	lang: Lang,
 ) -> Vec<Draw> {
+	let (width, height) = size;
 	shaper.appearance = shaper.stylesheet.text(
 		&shaper
 			.stylesheet
@@ -37,14 +39,11 @@ pub(super) fn draw_footer(
 		),
 	];
 	let mut text = counts.map_or_else(
-		|| "Loading…".into(),
-		|counts| format!("{} chars · {} words", counts.chars, counts.words),
+		|| lang.footer_loading().to_owned(),
+		|counts| lang.footer_counts(counts.chars, counts.words),
 	);
 	if let Some(selected) = selected {
-		text.push_str(&format!(
-			"    ·    Selected {} chars · {} words",
-			selected.chars, selected.words
-		));
+		text.push_str(&lang.footer_selected(selected.chars, selected.words));
 	}
 	let text = shaper.fit(&text, 11.0, width - 32.0);
 	let used = shaper.text_width(&text, 11.0);

@@ -5,7 +5,7 @@ use super::{
 };
 use std::time::{Duration, Instant};
 
-impl App {
+impl<P: super::SendEvent> App<P> {
 	pub(super) fn tab_at_cursor(&mut self) -> Option<usize> {
 		let (x, y) = self.interaction.cursor;
 		self.tab_layout().hit(x, y)

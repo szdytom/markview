@@ -1,4 +1,5 @@
 use super::*;
+use crate::lang::Lang;
 use std::fs;
 #[test]
 fn external_edits_merge_pending_ui_fields_and_preserve_comments() {
@@ -328,10 +329,15 @@ fn a_bad_export_table_only_resets_the_export() {
 	let (mut store, warning) = SettingsStore::load(Some(path.clone()));
 	assert_eq!(store.settings().font_size, 21.0);
 	assert_eq!(store.export(), ExportSettings::default());
-	assert!(
-		warning.expect("export warning").contains("Export settings"),
-		"expected an export warning"
-	);
+	let warning = warning.expect("export warning");
+	let english = warning.text(Lang::En);
+	assert!(english.starts_with("Export settings:"), "{english}");
+	assert!(english.ends_with("; using defaults"), "{english}");
+	// The same failure reads in the reader's own language, which is why the
+	// store keeps it as a failure instead of as text.
+	let chinese = warning.text(Lang::ZhHans);
+	assert!(chinese.starts_with("导出设置："), "{chinese}");
+	assert!(chinese.ends_with("；改用默认值"), "{chinese}");
 	// A live reload keeps the last good values when the table is invalid.
 	fs::write(&path, "font_size = 21.0\n[export]\npaper = 'nonsense'\n")
 		.unwrap();

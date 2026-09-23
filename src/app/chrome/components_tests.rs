@@ -1,6 +1,7 @@
 use super::*;
 use crate::{
 	app::chrome::{controls, export},
+	lang::Lang,
 	settings::{ExportFormat, ExportSettings, ReaderSettings},
 };
 
@@ -20,6 +21,7 @@ fn every_form_action_is_reachable_without_clicking_through_the_clip() {
 						scroll,
 						width,
 						height,
+						Lang::En,
 					)
 				} else {
 					controls::form(
@@ -32,9 +34,11 @@ fn every_form_action_is_reachable_without_clicking_through_the_clip() {
 				}
 			};
 			let initial = build(&mut ui, 0.0);
-			// Both forms fit the default window now that the theme row lives on
-			// the Styles tab; a short window still has to be scrolled.
-			assert_eq!(initial.max_scroll > 0.0, height < 800.0);
+			// The panel is capped at 620 logical pixels whatever the window, so
+			// both pages scroll in a short one. In a tall one the export page
+			// still fits whole; the General page does not any more, now that it
+			// carries the Interface row beside the rest.
+			assert_eq!(initial.max_scroll > 0.0, height < 800.0 || !exporting);
 			for button in &initial.buttons {
 				assert_eq!(button.rect.h, CONTROL);
 				let revealed = build(&mut ui, initial.reveal(button.action));
@@ -197,7 +201,14 @@ fn settings_and_export_step_controls_draw_icons_without_font_glyphs() {
 	let mut ui = crate::test_support::shaper();
 	let forms = [
 		controls::form(&mut ui, &ReaderSettings::default(), 0., 1200., 800.),
-		export::form(&mut ui, &ExportSettings::default(), 0., 1200., 800.),
+		export::form(
+			&mut ui,
+			&ExportSettings::default(),
+			0.,
+			1200.,
+			800.,
+			Lang::En,
+		),
 	];
 	for command in [
 		Command::Smaller,
@@ -240,6 +251,7 @@ fn segmented_choices_draw_each_shared_edge_once() {
 				)],
 				None,
 				false,
+				Lang::En,
 			);
 			let state = InteractionState {
 				focus: focus.map(Command::Indent),
@@ -291,6 +303,151 @@ fn segmented_choices_draw_each_shared_edge_once() {
 					}
 				);
 				assert_eq!(shared[0].0.w, if focused { 2.0 } else { 1.0 });
+			}
+		}
+	}
+}
+
+/// A form holding one list row and `fillers` plain rows around it.
+fn list_form_at(
+	count: usize,
+	fillers: usize,
+	scroll: f32,
+	menu_first: bool,
+	size: (f32, f32),
+) -> Form {
+	const OPTIONS: [&str; 10] = [
+		"one", "two", "three", "four", "five", "six", "seven", "eight", "nine",
+		"ten",
+	];
+	let entries = OPTIONS[..count]
+		.iter()
+		.enumerate()
+		.map(|(index, label)| {
+			action(label, index == 0, Command::Indent(index as u8))
+		})
+		.collect();
+	let mut rows: Vec<Row> = (0..fillers)
+		.map(|index| Row::new(format!("row {index}"), vec![]))
+		.collect();
+	let list = Row::new("List", vec![]).menu(DropdownId::Language, entries);
+	if menu_first {
+		rows.insert(0, list);
+	} else {
+		rows.push(list);
+	}
+	Form::new(size.0, size.1, scroll, rows, None, true, Lang::En)
+}
+
+/// A form holding one list row, behind `fillers` plain rows.
+fn list_form(count: usize, fillers: usize, size: (f32, f32)) -> Form {
+	list_form_at(count, fillers, 0.0, false, size)
+}
+
+/// A row the page scrolled past holds no list: there is no anchor left to
+/// hang it from, so measuring finds nothing instead of placing the list where
+/// the control used to be.
+#[test]
+fn a_list_whose_row_left_the_viewport_is_not_measured() {
+	let size = (820.0, 600.0);
+	let mut open = Dropdown::new(DropdownId::Language, 0);
+	assert!(
+		list_form_at(3, 20, 0.0, true, size)
+			.menu(&mut open, size)
+			.is_some(),
+		"the row is on screen, so its list opens"
+	);
+	assert!(
+		list_form_at(3, 20, 100.0, true, size)
+			.menu(&mut open, size)
+			.is_none(),
+		"a row the page scrolled away holds no list"
+	);
+}
+
+/// An option list floats over the page, so it is the one thing in the chrome
+/// that has to be measured against the window rather than against the panel.
+#[test]
+fn an_open_option_list_stays_inside_the_window() {
+	for (width, height) in [(500.0, 300.0), (820.0, 600.0), (1200.0, 800.0)] {
+		let size = (width, height);
+		let window = Rect {
+			x: 0.0,
+			y: 0.0,
+			w: width,
+			h: height,
+		};
+		for (count, fillers) in [(1, 0), (3, 0), (6, 0), (10, 0), (10, 6)] {
+			for highlight in [0, count - 1] {
+				let form = list_form(count, fillers, size);
+				let where_ = format!(
+					"{width}x{height}, {count} options, {fillers} above"
+				);
+				let anchor = form
+					.buttons
+					.iter()
+					.find(|b| {
+						matches!(
+							b.action,
+							Command::ToggleDropdown(DropdownId::Language, _)
+						)
+					})
+					.expect("the control that opens the list")
+					.rect;
+				let mut open = Dropdown::new(DropdownId::Language, highlight);
+				let menu = form.menu(&mut open, size);
+				// A row the page does not show holds no list, so the cases
+				// whose anchor is off the page measure nothing.
+				if anchor.intersect(form.viewport).is_none() {
+					assert!(
+						menu.is_none(),
+						"{where_}: a list with no visible row measured"
+					);
+					continue;
+				}
+				let menu = menu.expect("the row opens a list");
+				assert!(
+					window.contains(menu.rect.x, menu.rect.y)
+						&& window.contains(
+							menu.rect.x + menu.rect.w,
+							menu.rect.y + menu.rect.h
+						),
+					"{where_}: the list leaves the window"
+				);
+				assert!(
+					!menu.buttons.is_empty(),
+					"{where_}: the list is empty"
+				);
+				assert!(
+					menu.buttons.len() <= count,
+					"{where_}: more options drawn than declared"
+				);
+				for button in &menu.buttons {
+					assert!(
+						menu.rect.contains(button.rect.x, button.rect.y)
+							&& menu.rect.contains(
+								button.rect.x + button.rect.w,
+								button.rect.y + button.rect.h
+							),
+						"{where_}: an option leaves the list"
+					);
+				}
+				for (index, a) in menu.buttons.iter().enumerate() {
+					for b in &menu.buttons[index + 1..] {
+						assert!(
+							a.rect.intersect(b.rect).is_none(),
+							"{where_}: two options overlap"
+						);
+					}
+				}
+				assert!(
+					anchor.intersect(menu.rect).is_none(),
+					"{where_}: the list covers its own control"
+				);
+				assert!(
+					menu.chosen().is_some(),
+					"{where_}: no option under the keyboard"
+				);
 			}
 		}
 	}

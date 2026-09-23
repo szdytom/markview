@@ -3,34 +3,35 @@ use super::components::{ButtonKind, Form, Row, action};
 use crate::{
 	app::export::{MARGIN_PRESETS, PAPER_PRESETS, SCALE_PRESETS},
 	export,
+	lang::Lang,
 	layout::{Draw, TextShaper},
 	settings::{ExportFormat, ExportSettings},
 	state::{Command, InteractionState},
 };
 use markview_core::style::ColorField as C;
 
-fn rows(settings: &ExportSettings) -> Vec<Row> {
+fn rows(settings: &ExportSettings, lang: Lang) -> Vec<Row> {
 	let mut rows = vec![
 		Row::new(
-			"Format",
+			lang.export_format(),
 			vec![
 				action(
-					"PDF",
+					lang.export_pdf(),
 					settings.format == ExportFormat::Pdf,
 					Command::ExportFormat(ExportFormat::Pdf),
 				),
 				action(
-					"PNG",
+					lang.export_png(),
 					settings.format == ExportFormat::Png,
 					Command::ExportFormat(ExportFormat::Png),
 				),
 			],
 		)
-		.section("Output"),
+		.section(lang.export_output()),
 	];
 	if settings.format == ExportFormat::Png {
 		rows.push(Row::new(
-			"PNG scale",
+			lang.export_scale(),
 			SCALE_PRESETS
 				.iter()
 				.enumerate()
@@ -46,7 +47,7 @@ fn rows(settings: &ExportSettings) -> Vec<Row> {
 	}
 	rows.extend([
 		Row::new(
-			format!("Paper · {}", settings.paper),
+			lang.export_paper(&settings.paper),
 			PAPER_PRESETS
 				.iter()
 				.enumerate()
@@ -59,24 +60,24 @@ fn rows(settings: &ExportSettings) -> Vec<Row> {
 				})
 				.collect(),
 		)
-		.section("Page"),
+		.section(lang.export_page()),
 		Row::new(
-			"Orientation",
+			lang.export_orientation(),
 			vec![
 				action(
-					"Portrait",
+					lang.export_portrait(),
 					!settings.landscape,
 					Command::ExportOrientation(false),
 				),
 				action(
-					"Landscape",
+					lang.export_landscape(),
 					settings.landscape,
 					Command::ExportOrientation(true),
 				),
 			],
 		),
 		Row::new(
-			"Margins",
+			lang.export_margins(),
 			MARGIN_PRESETS
 				.iter()
 				.enumerate()
@@ -90,28 +91,29 @@ fn rows(settings: &ExportSettings) -> Vec<Row> {
 				.collect(),
 		),
 		Row::new(
-			format!(
-				"Styles · {}",
-				if settings.style.is_empty() {
-					"none".into()
-				} else {
-					settings.style.join(", ")
-				}
-			),
-			vec![action("Styles…", false, Command::ExportStyles)],
+			lang.export_styles(if settings.style.is_empty() {
+				lang.export_styles_none().to_owned()
+			} else {
+				settings.style.join(lang.export_style_separator())
+			}),
+			vec![action(
+				lang.export_styles_open(),
+				false,
+				Command::ExportStyles,
+			)],
 		)
-		.section("Typography"),
+		.section(lang.export_typography()),
 		Row::new(
-			"Text size",
+			lang.export_text_size(),
 			vec![
-				action("Decrease", false, Command::ExportSize(-1)),
-				action("Increase", false, Command::ExportSize(1)),
+				action(lang.export_decrease(), false, Command::ExportSize(-1)),
+				action(lang.export_increase(), false, Command::ExportSize(1)),
 			],
 		)
 		.value(format!("{} px", settings.font_size)),
 		Row::new(
-			"Paragraph indent",
-			["Off", "1 em", "2 em", "3 em"]
+			lang.export_paragraph_indent(),
+			[lang.export_indent_off(), "1 em", "2 em", "3 em"]
 				.into_iter()
 				.enumerate()
 				.map(|(i, label)| {
@@ -133,24 +135,26 @@ pub(in crate::app) fn form(
 	scroll: f32,
 	width: f32,
 	height: f32,
+	lang: Lang,
 ) -> Form {
 	let mut form = Form::new(
 		width,
 		height,
 		scroll,
-		rows(settings),
+		rows(settings, lang),
 		Some(Command::Export),
 		false,
+		lang,
 	);
 	form.footer(
 		ui,
 		&[
 			(
-				"Export and Watch…",
+				lang.export_and_watch(),
 				Command::ExportAndWatch,
 				ButtonKind::Standard,
 			),
-			("Export…", Command::ExportRun, ButtonKind::Primary),
+			(lang.export_run(), Command::ExportRun, ButtonKind::Primary),
 		],
 	);
 	if export::geometry(settings).is_err() {
@@ -172,8 +176,9 @@ fn export_controls(
 	settings: &ExportSettings,
 	width: f32,
 	height: f32,
+	lang: Lang,
 ) -> Vec<crate::app::Button> {
-	form(ui, settings, 0.0, width, height).visible_buttons()
+	form(ui, settings, 0.0, width, height, lang).visible_buttons()
 }
 
 pub(super) fn draw_export(
@@ -182,23 +187,21 @@ pub(super) fn draw_export(
 	interaction: &InteractionState,
 	document: &str,
 	watching: bool,
-	width: f32,
-	height: f32,
+	size: (f32, f32),
+	lang: Lang,
 ) -> Vec<Draw> {
-	let (detail, color) = match export::geometry_summary(settings) {
-		Ok(summary) => (
-			format!(
-				"{document} · {summary}{}",
-				if watching { " · watching" } else { "" }
-			),
-			C::Muted,
-		),
-		Err(error) => (format!("{document} · {error}"), C::Error),
+	let (width, height) = size;
+	let (detail, color) = match export::geometry_summary(settings, lang) {
+		Ok(summary) if watching => {
+			(lang.export_status_watching(document, summary), C::Muted)
+		}
+		Ok(summary) => (lang.export_status(document, summary), C::Muted),
+		Err(error) => (lang.export_status_failed(document, error), C::Error),
 	};
-	form(ui, settings, interaction.export_scroll, width, height).draw(
+	form(ui, settings, interaction.export_scroll, width, height, lang).draw(
 		ui,
 		interaction,
-		"Export document",
+		lang.export_title(),
 		&detail,
 		color,
 		(width, height),

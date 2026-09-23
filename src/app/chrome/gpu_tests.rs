@@ -85,8 +85,8 @@ fn settings_and_selection_frame() -> Result<()> {
 			Some(counts),
 			None,
 			"",
-			width,
-			height,
+			(width, height),
+			Lang::En,
 		));
 		overlay.extend(draw_controls(
 			&mut crate::test_support::shaper(),
@@ -176,6 +176,7 @@ fn settings_and_selection_frame() -> Result<()> {
 				false,
 				width,
 				height,
+				settings.lang(),
 			);
 			let submission = renderer.render(
 				&snapshot,
@@ -262,7 +263,15 @@ fn notice_strip_and_confirmation_frames() -> Result<()> {
 				),
 			]
 			.into_iter()
-			.chain(draw_footer(ui, None, None, None, "", width, height))
+			.chain(draw_footer(
+				ui,
+				None,
+				None,
+				None,
+				"",
+				(width, height),
+				Lang::En,
+			))
 			.collect()
 		};
 		let horizontal = HashMap::new();
@@ -292,6 +301,7 @@ fn notice_strip_and_confirmation_frames() -> Result<()> {
 			width,
 			37,
 			&InteractionState::default(),
+			Lang::En,
 		));
 		let submission = renderer.render(
 			&snapshot,
@@ -347,6 +357,7 @@ fn notice_strip_and_confirmation_frames() -> Result<()> {
 				interaction,
 				width,
 				height,
+				Lang::En,
 			));
 			let submission = renderer.render(
 				&snapshot,
@@ -757,8 +768,8 @@ fn export_panel_frames() -> Result<()> {
 			},
 			"document.md",
 			false,
-			width,
-			height,
+			(width, height),
+			Lang::En,
 		));
 		let view = View {
 			selection: None,
@@ -1226,10 +1237,11 @@ fn redesigned_chrome_frames() -> Result<()> {
 					// The toolbar's own icon buttons stay visible behind every
 					// page, so the count follows the toolbar rather than a
 					// number that has to be edited whenever one is added.
-					let expected = controls::toolbar_controls(width, false)
-						.iter()
-						.filter(|button| button.icon.is_some())
-						.count();
+					let expected =
+						controls::toolbar_controls(width, false, Lang::En)
+							.iter()
+							.filter(|button| button.icon.is_some())
+							.count();
 					assert_eq!(
 						overlay
 							.iter()
@@ -1590,6 +1602,7 @@ fn outline_drawer_frames() -> Result<()> {
 			&tree,
 			Some(1),
 			outline::rect(width, height, TOP),
+			Lang::En,
 		));
 		let horizontal = HashMap::new();
 		let view = View {

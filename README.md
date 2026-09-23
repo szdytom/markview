@@ -235,6 +235,9 @@ pixels and the type to 18.
   value and counts as three lines, and **Scroll speed** in **Settings**
   (`scroll-speed` in `settings.toml`, 0.5× to 2×) multiplies every wheel notch
   and arrow step.
+- **The interface follows the system language.** Every label is compiled in from
+  `assets/locales`, so nothing is read from disk at startup; **Interface
+  language** in **Settings** pins it to English or Simplified Chinese instead.
 - **A hard break stays hard.** Two trailing spaces leave the line at its natural
   width; an explicit `<br>` asks for the line it ends to be set flush.
 

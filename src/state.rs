@@ -31,6 +31,10 @@ pub(crate) enum Command {
 	/// First-line paragraph indent in whole em units.
 	Indent(u8),
 	CjkType(markview_core::style::CjkType),
+	/// The interface language; `None` follows the system again.
+	Language(Option<crate::lang::Lang>),
+	/// Open a control's option list on the option in force, or close it again.
+	ToggleDropdown(DropdownId, usize),
 	/// Open or close the export panel.
 	Export,
 	ExportFormat(crate::settings::ExportFormat),
@@ -131,6 +135,8 @@ impl InteractionState {
 		self.drag_at = None;
 		self.scrollbar = None;
 		self.panel_grab = None;
+		// An option list belongs to the page that opened it.
+		self.dropdown = None;
 	}
 
 	pub(crate) fn toggle_settings(&mut self) {
@@ -206,6 +212,56 @@ pub(crate) enum Modal {
 		/// The open document's directory, for a shorter relative display.
 		document_dir: Option<PathBuf>,
 	},
+}
+
+/// A control whose options open in a list rather than in place.
+///
+/// The list is anchored to the control that opens it and floats over the page
+/// behind, so the page never reflows for it.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum DropdownId {
+	Language,
+}
+
+/// The option list a control has open.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) struct Dropdown {
+	pub(crate) id: DropdownId,
+	/// The highlighted option, which `Enter` commits.
+	pub(crate) highlight: usize,
+	/// The first option drawn. It follows the highlight, so a list too long for
+	/// the window shows the part the reader is on rather than a scrollbar.
+	pub(crate) offset: usize,
+}
+impl Dropdown {
+	pub(crate) fn new(id: DropdownId, highlight: usize) -> Self {
+		Self {
+			id,
+			highlight,
+			offset: 0,
+		}
+	}
+	/// Moves the highlight by `steps`, wrapping round `count` options.
+	pub(crate) fn step(&mut self, steps: i8, count: usize) {
+		if count == 0 {
+			return;
+		}
+		if steps < 0 {
+			self.highlight = self.highlight.checked_sub(1).unwrap_or(count - 1);
+		} else if self.highlight + 1 == count {
+			self.highlight = 0;
+		} else {
+			self.highlight += 1;
+		}
+	}
+	/// Keeps the highlight inside a window of `capacity` drawn options.
+	pub(crate) fn follow(&mut self, capacity: usize) {
+		if capacity == 0 {
+			return;
+		}
+		let last = self.highlight.saturating_sub(capacity - 1);
+		self.offset = self.offset.min(self.highlight).max(last);
+	}
 }
 
 #[derive(Default, Clone)]
@@ -385,6 +441,9 @@ pub(crate) struct InteractionState {
 	pub(crate) last_click: Option<(Instant, (f32, f32), u8)>,
 	/// A pending local-file confirmation; while it is set it owns input.
 	pub(crate) modal: Option<Modal>,
+	/// An open option list. Like a confirmation it owns input while it is set:
+	/// a press outside it closes it without reaching the page behind.
+	pub(crate) dropdown: Option<Dropdown>,
 	/// The axis of the wheel gesture in flight.
 	pub(crate) wheel: WheelGesture,
 	/// The outline drawer is open. It is an overlay, not a modal panel: the

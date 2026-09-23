@@ -12,6 +12,7 @@ use crate::app::chrome::components::{
 use crate::app::chrome::components::{CONTROL, frame, line};
 use crate::app::chrome::list::List;
 use crate::{
+	lang::Lang,
 	layout::{Draw, Paint, Rect, TextShaper},
 	state::{Command, InteractionState, PanelTab},
 };
@@ -60,15 +61,23 @@ pub(in crate::app) fn buttons(
 	preview: bool,
 	width: f32,
 	height: f32,
+	lang: Lang,
 ) -> Vec<Button> {
 	let list = list(width, height, view.shown.len(), view.scroll);
-	let mut buttons =
-		fonts_controls(&view.shown, view.status_filter, preview, width, height);
+	let mut buttons = fonts_controls(
+		&view.shown,
+		view.status_filter,
+		preview,
+		width,
+		height,
+		lang,
+	);
 	buttons.extend(list.hit(font_rows(
 		view.catalog,
 		&view.shown,
 		view.jobs,
 		list,
+		lang,
 	)));
 	buttons
 }
@@ -77,25 +86,35 @@ pub(in crate::app) fn buttons(
 fn action(
 	family: &crate::fonts::Family,
 	running: bool,
+	lang: Lang,
 ) -> (&'static str, Command) {
 	if running {
-		return ("Cancel", Command::Fonts(FontCommand::Cancel(0)));
+		return (lang.fonts_cancel(), Command::Fonts(FontCommand::Cancel(0)));
 	}
 	if family.state == crate::fonts::State::Downloaded {
-		return ("Redownload", Command::Fonts(FontCommand::RedownloadOne(0)));
+		return (
+			lang.fonts_redownload(),
+			Command::Fonts(FontCommand::RedownloadOne(0)),
+		);
 	}
 	if family.state == crate::fonts::State::Provided {
-		return ("Download copy", Command::Fonts(FontCommand::DownloadOne(0)));
+		return (
+			lang.fonts_download_copy(),
+			Command::Fonts(FontCommand::DownloadOne(0)),
+		);
 	}
-	("Download", Command::Fonts(FontCommand::DownloadOne(0)))
+	(
+		lang.fonts_download(),
+		Command::Fonts(FontCommand::DownloadOne(0)),
+	)
 }
 
 /// The state badge one family shows.
-fn state_label(state: crate::fonts::State) -> &'static str {
+fn state_label(state: crate::fonts::State, lang: Lang) -> &'static str {
 	match state {
-		crate::fonts::State::Downloaded => "Downloaded",
-		crate::fonts::State::Provided => "In System",
-		crate::fonts::State::Missing => "Missing",
+		crate::fonts::State::Downloaded => lang.fonts_state_downloaded(),
+		crate::fonts::State::Provided => lang.fonts_state_provided(),
+		crate::fonts::State::Missing => lang.fonts_state_missing(),
 	}
 }
 
@@ -115,16 +134,19 @@ fn fonts_controls(
 	preview: bool,
 	width: f32,
 	height: f32,
+	lang: Lang,
 ) -> Vec<Button> {
 	let r = fonts_rect(width, height);
 	let mut out = crate::app::chrome::components::settings_header_controls(
 		r,
 		PanelTab::Fonts,
 		preview,
+		lang,
 	);
 	out.extend(vec![Button {
-		label: "Open fonts folder",
+		label: lang.fonts_open_folder(),
 		icon: None,
+		marker: None,
 		active: false,
 		kind: Default::default(),
 		enabled: true,
@@ -137,10 +159,19 @@ fn fonts_controls(
 		},
 	}]);
 	for (index, (label, state)) in [
-		("All", None),
-		("Missing", Some(crate::fonts::State::Missing)),
-		("Downloaded", Some(crate::fonts::State::Downloaded)),
-		("In System", Some(crate::fonts::State::Provided)),
+		(lang.fonts_filter_all(), None),
+		(
+			lang.fonts_state_missing(),
+			Some(crate::fonts::State::Missing),
+		),
+		(
+			lang.fonts_state_downloaded(),
+			Some(crate::fonts::State::Downloaded),
+		),
+		(
+			lang.fonts_state_provided(),
+			Some(crate::fonts::State::Provided),
+		),
 	]
 	.into_iter()
 	.enumerate()
@@ -149,6 +180,7 @@ fn fonts_controls(
 		out.push(Button {
 			label,
 			icon: None,
+			marker: None,
 			active: status_filter == state,
 			kind: ButtonKind::Standard,
 			enabled: true,
@@ -163,14 +195,14 @@ fn fonts_controls(
 	}
 	for (label, action, missing_only, x, w) in [
 		(
-			"Download Missing",
+			lang.fonts_download_missing(),
 			FontCommand::DownloadMissing,
 			true,
 			r.w - 288.,
 			146.,
 		),
 		(
-			"Download All",
+			lang.fonts_download_all(),
 			FontCommand::DownloadAll,
 			false,
 			r.w - 134.,
@@ -180,6 +212,7 @@ fn fonts_controls(
 		out.push(Button {
 			label,
 			icon: None,
+			marker: None,
 			active: false,
 			kind: if missing_only {
 				ButtonKind::Primary
@@ -214,6 +247,7 @@ fn font_rows(
 	shown: &[usize],
 	jobs: &HashMap<String, crate::fonts::Progress>,
 	list: List,
+	lang: Lang,
 ) -> Vec<Button> {
 	let r = list.panel;
 	let mut out = vec![];
@@ -223,7 +257,7 @@ fn font_rows(
 	for row in list.visible() {
 		let family = &catalog[shown[row]];
 		let running = jobs.contains_key(&family.family.id);
-		let (label, action) = action(family, running);
+		let (label, action) = action(family, running, lang);
 		let action = match action {
 			Command::Fonts(FontCommand::Cancel(_)) => {
 				Command::Fonts(FontCommand::Cancel(row))
@@ -242,6 +276,7 @@ fn font_rows(
 			} else {
 				Some(crate::app::chrome::icons::DOWNLOAD)
 			},
+			marker: None,
 			active: false,
 			kind: if running || family.state != crate::fonts::State::Missing {
 				ButtonKind::Quiet
@@ -266,6 +301,7 @@ fn summary_text(
 	catalog: &[crate::fonts::Family],
 	shown: &[usize],
 	note: Option<&str>,
+	lang: Lang,
 ) -> String {
 	if let Some(note) = note {
 		return note.to_owned();
@@ -280,14 +316,10 @@ fn summary_text(
 			catalog[**position].state == crate::fonts::State::Missing
 		})
 		.count();
-	let mut out = format!(
-		"{} families, {missing} missing, {} on disk",
-		shown.len(),
-		bytes_label(bytes)
-	);
+	let mut out = lang.fonts_summary(shown.len(), missing, bytes_label(bytes));
 	// Past the soft cap the page says so; it never refuses a download.
 	if bytes > crate::fonts::SOFT_TOTAL_BYTES {
-		out.push_str(" — the font directory is large");
+		out.push_str(lang.fonts_directory_large());
 	}
 	out
 }
@@ -298,6 +330,7 @@ pub(in crate::app) fn draw_fonts(
 	view: &super::View<'_>,
 	width: f32,
 	height: f32,
+	lang: Lang,
 ) -> Vec<Draw> {
 	let super::View {
 		catalog,
@@ -328,7 +361,7 @@ pub(in crate::app) fn draw_fonts(
 	let fits = list.fits();
 	if !fits {
 		out.extend(shaper.label(
-			"Enlarge the window to browse fonts",
+			lang.fonts_enlarge(),
 			12.,
 			r.x + 24.,
 			r.y + 120.,
@@ -336,7 +369,7 @@ pub(in crate::app) fn draw_fonts(
 		));
 	}
 
-	let summary = summary_text(catalog, shown, note);
+	let summary = summary_text(catalog, shown, note, lang);
 	let summary = shaper.fit(&summary, 12., r.w - 48.);
 	if footer(r) > 56.0 {
 		out.extend(shaper.label(
@@ -381,8 +414,8 @@ pub(in crate::app) fn draw_fonts(
 	let mut body = Vec::new();
 	if fits && shown.is_empty() {
 		for (text, offset, color) in [
-			("No fonts match these filters", 28., C::Color),
-			("Select All to see all available families.", 50., C::Muted),
+			(lang.fonts_no_match(), 28., C::Color),
+			(lang.fonts_select_all(), 50., C::Muted),
 		] {
 			let text = shaper.fit(text, 13., r.w - 48.);
 			body.extend(shaper.label(
@@ -421,9 +454,9 @@ pub(in crate::app) fn draw_fonts(
 		));
 		shaper.appearance.weight = weight;
 		let status = if jobs.contains_key(&family.family.id) {
-			"In progress"
+			lang.fonts_in_progress()
 		} else {
-			state_label(family.state)
+			state_label(family.state, lang)
 		};
 		let status_x = r.x + r.w - 24. - shaper.text_width(status, 11.);
 		body.extend(shaper.label(
@@ -435,7 +468,7 @@ pub(in crate::app) fn draw_fonts(
 		));
 		// A running family reports what it is doing instead of what it is.
 		let detail = match jobs.get(&family.family.id) {
-			Some(progress) => describe_job(progress),
+			Some(progress) => describe_job(progress, lang),
 			None => family
 				.family
 				.description
@@ -462,10 +495,10 @@ pub(in crate::app) fn draw_fonts(
 				.current
 				.as_deref()
 				.or(progress.note.as_deref())
-				.unwrap_or("Preparing download")
+				.unwrap_or_else(|| lang.fonts_preparing())
 				.to_owned()
 		} else {
-			meta_text(family)
+			meta_text(family, lang)
 		};
 		let meta = shaper.fit(&meta, 11., r.w - 96.);
 		body.extend(shaper.label(
@@ -493,7 +526,7 @@ pub(in crate::app) fn draw_fonts(
 			));
 		}
 	}
-	for b in font_rows(catalog, shown, jobs, list) {
+	for b in font_rows(catalog, shown, jobs, list, lang) {
 		if b.rect.intersect(list.viewport).is_some() {
 			body.extend(draw_button(shaper, &body_interaction, &b, true));
 		}
@@ -503,7 +536,8 @@ pub(in crate::app) fn draw_fonts(
 	if fits {
 		list.draw_bar(&mut out, shaper, interaction);
 	}
-	let controls = fonts_controls(shown, status_filter, preview, width, height);
+	let controls =
+		fonts_controls(shown, status_filter, preview, width, height, lang);
 	for (i, b) in controls.iter().enumerate() {
 		// The header of a settings tab is drawn once, by the header itself.
 		if crate::app::chrome::components::is_settings_header(b.action) {
@@ -525,33 +559,33 @@ pub(in crate::app) fn draw_fonts(
 		r,
 		PanelTab::Fonts,
 		preview,
+		lang,
 	));
 	out
 }
 
 /// One family's second line while it is downloading.
-fn describe_job(progress: &crate::fonts::Progress) -> String {
+fn describe_job(progress: &crate::fonts::Progress, lang: Lang) -> String {
 	let phase = match progress.phase {
-		crate::fonts::Phase::Queued => "Waiting",
-		crate::fonts::Phase::Downloading => "Downloading",
-		crate::fonts::Phase::Extracting => "Extracting",
-		crate::fonts::Phase::Done => "Done",
-		crate::fonts::Phase::Failed => "Failed",
-		crate::fonts::Phase::Cancelled => "Cancelled",
+		crate::fonts::Phase::Queued => lang.fonts_phase_waiting(),
+		crate::fonts::Phase::Downloading => lang.fonts_phase_downloading(),
+		crate::fonts::Phase::Extracting => lang.fonts_phase_extracting(),
+		crate::fonts::Phase::Done => lang.fonts_phase_done(),
+		crate::fonts::Phase::Failed => lang.fonts_phase_failed(),
+		crate::fonts::Phase::Cancelled => lang.fonts_phase_cancelled(),
 	};
 	let mut out = phase.to_owned();
 	if progress.files_total > 0 {
 		let percent = (job_fraction(progress) * 100.0) as u32;
-		out.push_str(&format!(", {percent}%"));
+		out.push_str(&lang.fonts_job_percent(percent));
 	}
 	if progress.bytes_done > 0 {
-		out.push_str(&format!(" · {}", bytes_label(progress.bytes_done)));
+		out.push_str(&lang.fonts_job_bytes(bytes_label(progress.bytes_done)));
 	}
 	if progress.files_total > 0 {
-		out.push_str(&format!(
-			" · {}/{} files",
-			progress.files_done, progress.files_total
-		));
+		out.push_str(
+			&lang.fonts_job_files(progress.files_done, progress.files_total),
+		);
 	}
 
 	out
@@ -569,7 +603,7 @@ fn job_fraction(progress: &crate::fonts::Progress) -> f32 {
 }
 
 /// The third line: license, size, and who declares the family.
-fn meta_text(family: &crate::fonts::Family) -> String {
+fn meta_text(family: &crate::fonts::Family, lang: Lang) -> String {
 	let mut parts = vec![];
 	if let Some(license) = &family.family.license {
 		parts.push(license.clone());
@@ -582,14 +616,14 @@ fn meta_text(family: &crate::fonts::Family) -> String {
 		.iter()
 		.map(|owner| {
 			if owner == "builtin" {
-				"Built-in"
+				lang.fonts_meta_builtin()
 			} else {
 				owner.as_str()
 			}
 		})
 		.collect();
 	if !owners.is_empty() {
-		parts.push(owners.join(", "));
+		parts.push(owners.join(lang.fonts_owner_separator()));
 	}
 	parts.join(" · ")
 }
@@ -641,7 +675,7 @@ mod tests {
 				status_filter,
 			};
 			let controls =
-				fonts_controls(&[], status_filter, false, 820., 600.);
+				fonts_controls(&[], status_filter, false, 820., 600., Lang::En);
 			let filters: Vec<_> = controls
 				.iter()
 				.filter(|b| {
@@ -660,6 +694,7 @@ mod tests {
 				&view,
 				820.,
 				600.,
+				Lang::En,
 			);
 			let edges: Vec<_> = draws
 				.iter()
@@ -687,8 +722,15 @@ mod tests {
 		for (w, h) in [(500., 300.), (820., 600.)] {
 			let panel = panel_rect(w, h);
 			let rows = list(w, h, shown.len(), 0.0);
-			let mut buttons = fonts_controls(&shown, None, false, w, h);
-			buttons.extend(rows.hit(font_rows(&catalog, &shown, &jobs, rows)));
+			let mut buttons =
+				fonts_controls(&shown, None, false, w, h, Lang::En);
+			buttons.extend(rows.hit(font_rows(
+				&catalog,
+				&shown,
+				&jobs,
+				rows,
+				Lang::En,
+			)));
 			assert!(buttons.iter().all(|b| {
 				panel.contains(b.rect.x, b.rect.y)
 					&& panel.contains(b.rect.x + b.rect.w, b.rect.y + b.rect.h)
@@ -705,7 +747,8 @@ mod tests {
 			}
 		}
 		let rows = list(820., 600., shown.len(), 0.0);
-		let buttons = rows.hit(font_rows(&catalog, &shown, &jobs, rows));
+		let buttons =
+			rows.hit(font_rows(&catalog, &shown, &jobs, rows, Lang::En));
 		// The first row downloads, the second offers to download again.
 		assert!(buttons.iter().any(|b| {
 			b.action == Command::Fonts(FontCommand::DownloadOne(0))
@@ -718,7 +761,7 @@ mod tests {
 				&& b.icon.is_some()
 		}));
 		// Only one family is missing, so the top action is offered for it.
-		let top = fonts_controls(&shown, None, false, 820., 600.)
+		let top = fonts_controls(&shown, None, false, 820., 600., Lang::En)
 			.into_iter()
 			.find(|b| b.action == Command::Fonts(FontCommand::DownloadMissing))
 			.unwrap();
@@ -730,7 +773,7 @@ mod tests {
 	#[test]
 	fn the_fonts_page_carries_the_settings_tabs() {
 		let shown = vec![0];
-		let buttons = fonts_controls(&shown, None, false, 820., 600.);
+		let buttons = fonts_controls(&shown, None, false, 820., 600., Lang::En);
 		for tab in [PanelTab::Generic, PanelTab::Styles, PanelTab::Fonts] {
 			assert!(
 				buttons
@@ -754,7 +797,8 @@ mod tests {
 		let (w, h) = (500., 300.);
 		let rows = list(w, h, shown.len(), 0.0);
 		assert!(!rows.fits());
-		let buttons = rows.hit(font_rows(&catalog, &shown, &jobs, rows));
+		let buttons =
+			rows.hit(font_rows(&catalog, &shown, &jobs, rows, Lang::En));
 		assert!(
 			!buttons.iter().any(|b| matches!(
 				b.action,
@@ -765,7 +809,7 @@ mod tests {
 			"a row is drawn with no room for it"
 		);
 		// The page still offers a way out and the bulk action.
-		let fixed = fonts_controls(&shown, None, false, w, h);
+		let fixed = fonts_controls(&shown, None, false, w, h, Lang::En);
 		assert!(
 			fixed
 				.iter()
@@ -792,7 +836,7 @@ mod tests {
 		let (w, h) = (820., 600.);
 		let top = list(w, h, shown.len(), 0.0);
 		assert!(top.max_scroll() > 0.0);
-		let rows = top.hit(font_rows(&catalog, &shown, &jobs, top));
+		let rows = top.hit(font_rows(&catalog, &shown, &jobs, top, Lang::En));
 		assert!(
 			rows.iter().any(
 				|b| b.action == Command::Fonts(FontCommand::DownloadOne(0))
@@ -805,7 +849,8 @@ mod tests {
 		);
 		let bottom = list(w, h, shown.len(), f32::MAX);
 		assert_eq!(bottom.scroll, top.max_scroll());
-		let rows = bottom.hit(font_rows(&catalog, &shown, &jobs, bottom));
+		let rows =
+			bottom.hit(font_rows(&catalog, &shown, &jobs, bottom, Lang::En));
 		assert!(
 			rows.iter().any(
 				|b| b.action == Command::Fonts(FontCommand::DownloadOne(8))
@@ -827,14 +872,15 @@ mod tests {
 			},
 		);
 		let rows = list(820., 600., shown.len(), 0.0);
-		let buttons = rows.hit(font_rows(&catalog, &shown, &jobs, rows));
+		let buttons =
+			rows.hit(font_rows(&catalog, &shown, &jobs, rows, Lang::En));
 		assert!(
 			buttons
 				.iter()
 				.any(|b| b.action == Command::Fonts(FontCommand::Cancel(0)))
 		);
 		// Bulk actions remain available and report when nothing can start.
-		let top = fonts_controls(&shown, None, false, 820., 600.)
+		let top = fonts_controls(&shown, None, false, 820., 600., Lang::En)
 			.into_iter()
 			.find(|b| b.action == Command::Fonts(FontCommand::DownloadMissing))
 			.unwrap();
@@ -847,17 +893,18 @@ mod tests {
 		for dark in [false, true] {
 			ui.set_stylesheet(markview_core::style::Stylesheet::bundled(dark));
 			for shown in [vec![0], vec![]] {
-				for button in fonts_controls(&shown, None, false, 820., 600.)
-					.into_iter()
-					.filter(|b| {
-						matches!(
-							b.action,
-							Command::Fonts(
-								FontCommand::DownloadMissing
-									| FontCommand::DownloadAll
+				for button in
+					fonts_controls(&shown, None, false, 820., 600., Lang::En)
+						.into_iter()
+						.filter(|b| {
+							matches!(
+								b.action,
+								Command::Fonts(
+									FontCommand::DownloadMissing
+										| FontCommand::DownloadAll
+								)
 							)
-						)
-					}) {
+						}) {
 					assert!(button.enabled);
 					let fills: Vec<_> = [
 						(f32::NEG_INFINITY, f32::NEG_INFINITY),
@@ -894,16 +941,19 @@ mod tests {
 		let catalog =
 			vec![entry("a", State::Missing), entry("b", State::Downloaded)];
 		let shown = vec![0, 1];
-		let text = summary_text(&catalog, &shown, None);
+		let text = summary_text(&catalog, &shown, None, Lang::En);
 		assert!(text.contains("2 families"), "{text}");
 		assert!(text.contains("1 missing"), "{text}");
 		assert!(text.contains("2.0 MiB"), "{text}");
 		// A filtered page reports only the families it shows.
-		let empty = summary_text(&catalog, &[], None);
+		let empty = summary_text(&catalog, &[], None, Lang::En);
 		assert!(empty.contains("0 families"), "{empty}");
 		assert!(!empty.contains("MiB"), "{empty}");
 		// A note stands in for the whole line.
-		assert_eq!(summary_text(&catalog, &shown, Some("Offline")), "Offline");
+		assert_eq!(
+			summary_text(&catalog, &shown, Some("Offline"), Lang::En),
+			"Offline"
+		);
 	}
 
 	#[test]
@@ -914,7 +964,9 @@ mod tests {
 		progress.files_total = 1;
 		progress.files_progress = 0.5;
 		progress.current = Some("a-very-long-font-family-filename.otf".into());
-		assert!(describe_job(&progress).starts_with("Downloading, 50%"));
+		assert!(
+			describe_job(&progress, Lang::En).starts_with("Downloading, 50%")
+		);
 	}
 
 	#[test]
@@ -926,7 +978,9 @@ mod tests {
 		progress.files_progress = 6.5;
 		progress.files_total = 18;
 		progress.bytes_done = 2 * 1024 * 1024;
-		assert!(describe_job(&progress).contains("2.0 MiB · 6/18 files"));
+		assert!(
+			describe_job(&progress, Lang::En).contains("2.0 MiB · 6/18 files")
+		);
 		let jobs = HashMap::from([("a".into(), progress)]);
 		let view = super::super::View {
 			catalog: &catalog,
@@ -937,7 +991,7 @@ mod tests {
 			status_filter: None,
 		};
 		let rows = list(820., 600., 1, 0.);
-		let button = font_rows(&catalog, &[0], &jobs, rows).remove(0);
+		let button = font_rows(&catalog, &[0], &jobs, rows, Lang::En).remove(0);
 		assert_eq!(button.action, Command::Fonts(FontCommand::Cancel(0)));
 		assert!(button.icon.is_some());
 		assert_eq!(button.rect.w, CONTROL);
@@ -948,6 +1002,7 @@ mod tests {
 			&view,
 			820.,
 			600.,
+			Lang::En,
 		);
 		let Draw::Clipped { draws, .. } = draws
 			.iter()
@@ -966,7 +1021,7 @@ mod tests {
 	#[test]
 	fn a_family_reports_its_license_and_owner() {
 		let family = entry("a", State::Provided);
-		let meta = meta_text(&family);
+		let meta = meta_text(&family, Lang::En);
 		assert!(meta.contains("OFL-1.1"), "{meta}");
 		assert!(meta.contains("Built-in"), "{meta}");
 	}

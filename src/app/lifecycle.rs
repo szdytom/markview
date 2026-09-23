@@ -16,7 +16,7 @@ use winit::{
 };
 
 use super::{App, Event, TOP, system_theme};
-impl ApplicationHandler<Event> for App {
+impl<P: super::SendEvent> ApplicationHandler<Event> for App<P> {
 	fn resumed(&mut self, event_loop: &ActiveEventLoop) {
 		if self.window.is_some() {
 			return;
@@ -168,13 +168,13 @@ impl ApplicationHandler<Event> for App {
 							self.readers.session.select_all_pending = false;
 						}
 						self.refresh_hover();
+						let lang = self.preferences.values.lang();
 						self.status = if !complete {
-							"Loading…".into()
+							lang.footer_loading().to_owned()
 						} else if self.readers.session.snapshot.math_errors > 0
 						{
-							format!(
-								"{} formulas shown as source",
-								self.readers.session.snapshot.math_errors
+							lang.status_math_errors(
+								self.readers.session.snapshot.math_errors,
 							)
 						} else {
 							String::new()
@@ -244,7 +244,12 @@ impl ApplicationHandler<Event> for App {
 			}
 			Event::DeviceLost => {
 				if let Err(e) = self.gpu() {
-					self.fatal = Some(format!("GPU recovery failed: {e:#}"));
+					self.fatal = Some(
+						self.preferences
+							.values
+							.lang()
+							.status_gpu_failed(format!("{e:#}")),
+					);
 					event_loop.exit();
 				} else {
 					self.redraw();

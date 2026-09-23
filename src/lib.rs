@@ -9,6 +9,7 @@ mod export;
 mod file;
 mod fonts;
 mod images;
+mod lang;
 mod latency;
 mod link;
 mod logging;

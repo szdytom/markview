@@ -1,5 +1,6 @@
 use super::*;
 use crate::app::TOP;
+use crate::lang::Lang;
 use crate::state::{PanelPage, PanelTab};
 #[test]
 fn panel_exposes_first_line_indent_presets() {
@@ -86,10 +87,68 @@ fn controls_fit_minimum_window_and_panel_focus_has_no_document_actions() {
 		assert!(toolbar.iter().all(|b| b.rect.y + b.rect.h < TOP));
 	}
 }
+/// Chinese labels are narrower than their English counterparts, but nothing
+/// relies on that: the panel is a fixed grid, so the same bounds hold.
+#[test]
+fn the_chinese_panel_keeps_its_controls_inside_the_panel() {
+	let settings = ReaderSettings {
+		lang: Some(Lang::ZhHans),
+		..Default::default()
+	};
+	for (width, height) in [(500.0, 300.0), (820.0, 600.0), (1200.0, 800.0)] {
+		let mut shaper = crate::test_support::shaper();
+		let panel = panel_rect(width, height);
+		let buttons = controls(&mut shaper, &settings, true, width, height);
+		for button in &buttons {
+			assert!(
+				panel.contains(button.rect.x, button.rect.y)
+					&& panel.contains(
+						button.rect.x + button.rect.w,
+						button.rect.y + button.rect.h
+					),
+				"{width}x{height}: {:?} leaves the panel",
+				button.action
+			);
+		}
+		for (index, a) in buttons.iter().enumerate() {
+			for b in &buttons[index + 1..] {
+				assert!(
+					a.rect.intersect(b.rect).is_none(),
+					"{width}x{height}: {:?} overlaps {:?}",
+					a.action,
+					b.action
+				);
+			}
+		}
+	}
+}
+/// Chinese prose has no spaces, so the About page's wrapper has to break
+/// between characters; at the word boundaries English offers it would run the
+/// whole description past the panel edge.
+#[test]
+fn a_chinese_description_wraps_inside_the_column() {
+	let mut shaper = crate::test_support::shaper();
+	let description = Lang::ZhHans.about_description();
+	for width in [100.0, 160.0, 240.0] {
+		let lines = wrap(&mut shaper, description, 13.0, width);
+		assert!(lines.len() > 1, "a {width}-pixel column breaks it");
+		for line in &lines {
+			assert!(
+				shaper.text_width(line, 13.0) <= width,
+				"{line:?} is wider than {width}"
+			);
+		}
+		// Breaking moves text around; it never drops or reorders a character.
+		assert_eq!(
+			lines.concat().replace(' ', ""),
+			description.replace(' ', "")
+		);
+	}
+}
 #[test]
 fn the_outline_button_carries_its_icon_and_toggled_state() {
 	let outline = |open: bool| -> Button {
-		toolbar_controls(1200.0, open)
+		toolbar_controls(1200.0, open, Lang::En)
 			.into_iter()
 			.find(|b| b.action == Command::Outline)
 			.expect("the toolbar has an outline button")
@@ -106,12 +165,14 @@ fn the_outline_button_carries_its_icon_and_toggled_state() {
 			..Default::default()
 		},
 		1200.0,
+		Lang::En,
 	);
 	assert!(draws.iter().any(|draw| matches!(draw, Draw::Icon { .. })));
 	for draw in draw_toolbar(
 		&mut crate::test_support::shaper(),
 		&InteractionState::default(),
 		1200.0,
+		Lang::En,
 	) {
 		if let Draw::Icon { x, .. } = draw {
 			assert!(x >= 0.0 && x + 20.0 <= 1200.0);
@@ -337,7 +398,8 @@ fn about_tab_keeps_navigation_and_scrolls_on_short_windows() {
 				.iter()
 				.any(|b| b.action == Command::OpenProject)
 		);
-		let tabs = components::tab_controls(form.rect, PanelTab::About);
+		let tabs =
+			components::tab_controls(form.rect, PanelTab::About, Lang::En);
 		assert_eq!(tabs.len(), 4);
 		assert_eq!(tabs.iter().filter(|b| b.active).count(), 1);
 		assert!(
@@ -373,5 +435,78 @@ fn about_tab_keeps_navigation_and_scrolls_on_short_windows() {
 			(icon.0 + icon.1 / 2.0 - (form.rect.x + form.rect.w / 2.0)).abs()
 				< 0.01
 		);
+	}
+}
+
+/// The interface's own language row, which is the reason the list exists: it
+/// offers every language the build carries, so adding one costs a locale file
+/// and a variant rather than an edit here.
+#[test]
+fn the_language_row_offers_every_language_the_build_carries() {
+	let settings = ReaderSettings::default();
+	let t = settings.lang();
+	let entries = language_options(t, &settings);
+	assert_eq!(entries.len(), 1 + Lang::ALL.len());
+	assert_eq!(entries.iter().filter(|entry| entry.active).count(), 1);
+	// Following the system comes first and is named in the language in force.
+	assert_eq!(entries[0].label, t.settings_language_system());
+	assert_eq!(entries[0].action, Command::Language(None));
+	assert!(entries[0].active);
+	// Every language names itself.
+	for (entry, lang) in entries[1..].iter().zip(Lang::ALL) {
+		assert_eq!(entry.label, lang.language_name());
+		assert_eq!(entry.action, Command::Language(Some(*lang)));
+		assert!(!entry.active);
+	}
+
+	// A chosen language marks itself rather than the system.
+	let settings = ReaderSettings {
+		lang: Some(Lang::ZhHans),
+		..Default::default()
+	};
+	let entries = language_options(settings.lang(), &settings);
+	assert!(!entries[0].active);
+	assert!(entries.iter().any(|entry| {
+		entry.active && entry.action == Command::Language(Some(Lang::ZhHans))
+	}));
+}
+
+/// The closed control shows the language in force, and is marked as opening a
+/// list rather than stepping through options.
+#[test]
+fn the_language_control_shows_the_language_in_force() {
+	for (lang, expected) in [
+		(None, Lang::En.settings_language_system()),
+		(Some(Lang::ZhHans), Lang::ZhHans.language_name()),
+		(Some(Lang::En), Lang::En.language_name()),
+	] {
+		let settings = ReaderSettings {
+			lang,
+			..Default::default()
+		};
+		let buttons = controls(
+			&mut crate::test_support::shaper(),
+			&settings,
+			true,
+			1200.0,
+			800.0,
+		);
+		let control = buttons
+			.iter()
+			.find(|button| {
+				matches!(
+					button.action,
+					Command::ToggleDropdown(DropdownId::Language, _)
+				)
+			})
+			.expect("the language control");
+		assert_eq!(control.label, expected);
+		assert!(control.marker.is_some(), "the control is marked");
+		// Opening the list starts on the option in force.
+		let Command::ToggleDropdown(_, highlight) = control.action else {
+			unreachable!()
+		};
+		let entries = language_options(settings.lang(), &settings);
+		assert!(entries[highlight].active);
 	}
 }

@@ -24,7 +24,7 @@ pub(super) fn claims_pointer(
 	interaction.outline_owns_input() && drawer.contains(x, y)
 }
 
-impl App {
+impl<P: super::SendEvent> App<P> {
 	pub(super) fn set_outline_collapsed(&mut self, collapsed: bool) {
 		self.readers.session.ensure_outline();
 		self.readers.session.outline_tree = if collapsed {

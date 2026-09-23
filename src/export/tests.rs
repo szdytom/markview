@@ -1,4 +1,5 @@
 use super::*;
+use crate::lang::Lang;
 
 fn settings(format: ExportFormat) -> ExportSettings {
 	ExportSettings {
@@ -23,10 +24,10 @@ fn paper_geometry_follows_the_export_settings() {
 
 #[test]
 fn the_summary_reports_only_the_derived_measure() {
-	let pdf = geometry_summary(&settings(ExportFormat::Pdf)).unwrap();
+	let pdf = geometry_summary(&settings(ExportFormat::Pdf), Lang::En).unwrap();
 	// 210 - 2×20 wide, 297 - 2×22 tall, and none of it repeats a row.
 	assert_eq!(pdf, "text 170×253 mm");
-	let png = geometry_summary(&settings(ExportFormat::Png)).unwrap();
+	let png = geometry_summary(&settings(ExportFormat::Png), Lang::En).unwrap();
 	assert!(png.ends_with("px wide"), "{png}");
 	assert!(!png.contains("A4") && !png.contains("2×"), "{png}");
 }
