@@ -26,16 +26,16 @@ ACCENT_SOFT = "#7FA0BE"
 
 # First readable frame in a native DPR-2 window: median and observed range of
 # thirty runs per fixture, process entry and initialization included.
-LATENCY_MEDIAN = [117.0, 115.3, 116.2, 114.0]
-LATENCY_LOW = [100.6, 102.7, 104.3, 102.6]
-LATENCY_HIGH = [133.5, 131.0, 134.4, 134.3]
+LATENCY_MEDIAN = [95.1, 102.5, 105.7, 102.7]
+LATENCY_LOW = [81.9, 82.3, 84.5, 84.3]
+LATENCY_HIGH = [123.3, 117.7, 114.5, 119.8]
 # Process RSS after scrolling through the document.
-MEMORY = [49.6, 56.0, 57.6, 89.1]
+MEMORY = [49.7, 55.9, 57.6, 90.8]
 
 TEXT = {
     "file": "en-performance.png",
     "font": "Noto Sans",
-    "latency_title": "First readable frame: about 115 ms",
+    "latency_title": "First readable frame: about 100 ms",
     "latency_note": "process entry to the first readable frame, initialization "
                     "included",
     "latency_unit": "milliseconds",
@@ -50,7 +50,7 @@ TEXT = {
 ZH = {
     "file": "zh-performance.png",
     "font": "Noto Sans CJK SC",
-    "latency_title": "第一帧可读画面：约 115 毫秒",
+    "latency_title": "第一帧可读画面：约 100 毫秒",
     "latency_note": "从进程启动到第一帧可读画面，含初始化",
     "latency_unit": "毫秒",
     "latency_limit": 160,

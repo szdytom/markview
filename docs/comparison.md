@@ -80,15 +80,18 @@ Flutter and this host has no Flutter SDK.
 
 | Document | Markview first / complete | SuperGoodViewer first / complete | MarkText first / complete |
 | --- | --- | --- | --- |
-| 10 KiB of prose | 0.117 / 0.117 s | 0.625 / 0.673 s | 0.957 / 0.957 s |
-| 100 KiB of prose | 0.123 / 0.123 s | 0.730 / 0.730 s | 1.000 / 1.000 s |
-| 10 KiB, 108 display formulas | 0.123 / 0.123 s | 0.645 / 0.645 s | 1.195 / 1.195 s |
-| 100 KiB, 1092 display formulas | 0.127 / 0.127 s | 0.771 / 0.771 s | 2.863 / 2.863 s |
+| 10 KiB of prose | 0.101 / 0.101 s | 0.625 / 0.673 s | 0.957 / 0.957 s |
+| 100 KiB of prose | 0.102 / 0.102 s | 0.730 / 0.730 s | 1.000 / 1.000 s |
+| 10 KiB, 108 display formulas | 0.104 / 0.104 s | 0.645 / 0.645 s | 1.195 / 1.195 s |
+| 100 KiB, 1092 display formulas | 0.115 / 0.131 s | 0.771 / 0.771 s | 2.863 / 2.863 s |
 
-Medians of three runs, interleaved so that all three readers met the same machine
-load. Every reader paints its page in one piece at these sizes, so its first frame
-and its complete frame are the same number, save SuperGoodViewer on 10 KiB of
-prose, where a late window update puts its complete frame 48 ms after its first.
+Medians of three runs. Markview's rows were re-measured alone on 2026-09-23; the
+other two readers keep their 2026-09-22 numbers, taken interleaved so that all
+three met the same machine load. Every reader paints its page in one piece at
+these sizes, so its first frame and its complete frame are the same number, save
+SuperGoodViewer on 10 KiB of prose, where a late window update puts its complete
+frame 48 ms after its first, and Markview on 100 KiB with formulas, where one
+run's complete frame lands 16 ms after its first.
 
 SuperGoodViewer 1.0.8 renders the mathematics fixtures that 1.0.7 rejected. Its
 `\begin{pmatrix}` failure was a missing mitex prelude, fixed upstream after the
@@ -102,10 +105,10 @@ system monitor is their sum.
 
 | Document | Markview | SuperGoodViewer | MarkText |
 | --- | ---: | ---: | ---: |
-| 10 KiB of prose | 50.5 MiB | 299.9 MiB | 693.2 MiB |
-| 100 KiB of prose | 52.2 MiB | 344.4 MiB | 703.2 MiB |
-| 10 KiB, 108 display formulas | 54.7 MiB | 299.3 MiB | 750.4 MiB |
-| 100 KiB, 1092 display formulas | 55.4 MiB | 362.2 MiB | 1147.6 MiB |
+| 10 KiB of prose | 50.7 MiB | 299.9 MiB | 693.2 MiB |
+| 100 KiB of prose | 53.2 MiB | 344.4 MiB | 703.2 MiB |
+| 10 KiB, 108 display formulas | 53.8 MiB | 299.3 MiB | 750.4 MiB |
+| 100 KiB, 1092 display formulas | 53.8 MiB | 362.2 MiB | 1147.6 MiB |
 
 SuperGoodViewer keeps a cache of compiled documents under
 `$HOME/.cache/supergoodviewer`, so each run is given a private `HOME` and every
@@ -149,7 +152,7 @@ runs, with a separate cold run recorded in `artifacts/comparison/`.
 
 | Engine | 10 KiB | 100 KiB | Pages | Size | Same bytes twice |
 | --- | --- | --- | --- | --- | --- |
-| `markview pdf` | 0.041 s | 0.074 s | 4 / 40 | 62 / 425 KiB | yes |
+| `markview pdf` | 0.043 s | 0.075 s | 4 / 40 | 63 / 426 KiB | yes |
 | `sgv export` | 0.102 s | 0.163 s | 3 / 28 | 24 / 142 KiB | yes |
 | `pandoc --pdf-engine=typst` | 0.486 s | 0.678 s | 3 / 31 | 28 / 162 KiB | yes |
 | `pandoc` → headless Chromium | 0.614 s | 0.757 s | 4 / 38 | 45 / 172 KiB | no |

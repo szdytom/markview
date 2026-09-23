@@ -68,7 +68,7 @@ Per-platform details and the exact artifact list are in the
 
 ## Why Markview
 
-- **Fast at any size.** About 115 ms from launch to the first readable frame,
+- **Fast at any size.** About 100 ms from launch to the first readable frame,
   whether the file is a 10 KiB note or a 1 MiB book. Layout runs on a worker
   thread and the page is published as it is built, so the window never waits for
   the whole document.
@@ -95,11 +95,11 @@ page out on a worker thread and publishes each complete prefix as it is ready.
 </p>
 
 Every document, from a 10 KiB note to a 1 MiB book, reaches its first readable
-frame in 114–117 ms, process start and initialization included. Each first-frame
+frame in 95–106 ms, process start and initialization included. Each first-frame
 bar is the median of thirty native runs and the thin line is their range; the
 ranges overlap completely, which is the point. Resident memory stays in the tens
 of megabytes: about 50 MiB for a note, 58 MiB for 100 KiB of CJK with
-mathematics, and 89 MiB for a megabyte of CJK.
+mathematics, and 91 MiB for a megabyte of CJK.
 
 These are one ordinary laptop's numbers, not a specification: an Intel Core
 Ultra 5 125H with integrated Intel Arc through Vulkan, on the `performance`
@@ -119,10 +119,10 @@ Opening a file, median of three runs in seconds, window included:
 
 | Document | Markview | SuperGoodViewer | MarkText |
 |:--|--:|--:|--:|
-| 10 KiB of prose | 0.12 | 0.63 | 0.96 |
-| 100 KiB of prose | 0.12 | 0.73 | 1.00 |
-| 10 KiB, 108 display formulas | 0.12 | 0.65 | 1.20 |
-| 100 KiB, 1092 display formulas | 0.13 | 0.77 | 2.86 |
+| 10 KiB of prose | 0.10 | 0.63 | 0.96 |
+| 100 KiB of prose | 0.10 | 0.73 | 1.00 |
+| 10 KiB, 108 display formulas | 0.10 | 0.65 | 1.20 |
+| 100 KiB, 1092 display formulas | 0.12 | 0.77 | 2.86 |
 
 Resident memory once the document is on screen, in MiB, every process of each
 reader counted:
@@ -130,9 +130,9 @@ reader counted:
 | Document | Markview | SuperGoodViewer | MarkText |
 |:--|--:|--:|--:|
 | 10 KiB of prose | 51 | 300 | 693 |
-| 100 KiB of prose | 52 | 344 | 703 |
-| 10 KiB, 108 display formulas | 55 | 299 | 750 |
-| 100 KiB, 1092 display formulas | 55 | 362 | 1148 |
+| 100 KiB of prose | 53 | 344 | 703 |
+| 10 KiB, 108 display formulas | 54 | 299 | 750 |
+| 100 KiB, 1092 display formulas | 54 | 362 | 1148 |
 
 One document to one PDF, median of three runs in seconds:
 
@@ -144,7 +144,7 @@ One document to one PDF, median of three runs in seconds:
 | `pandoc` → headless Chromium | 0.61 | 0.76 |
 | `pandoc --pdf-engine=xelatex` | 1.84 | 2.14 |
 
-One machine, one day. Method and caveats: [comparison page](docs/comparison.md).
+One machine's numbers. Method and caveats: [comparison page](docs/comparison.md).
 
 ## Mathematics
 

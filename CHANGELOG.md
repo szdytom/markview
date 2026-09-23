@@ -21,6 +21,10 @@ at the same level, without `[brackets]`.
 
 ## Unreleased
 
+### Changed
+
+- Refresh the measured performance baselines, charts and comparison tables against the current build.
+
 ## 0.1.7 - 2026-09-23
 
 This patch release adds touch and trackpad gestures, captured dragging, inertial scrolling, and larger control hit areas.
