@@ -50,5 +50,4 @@ someone can.
 
 `Assisted-by:` is an optional trailer, `Assisted-by: Claude Code`, for recording
 that a tool helped. It is a courtesy, not a requirement, and it does not stand in
-for the review above. `Signed-off-by:` must come from a human; a model must never
-add one.
+for the review above. `Signed-off-by:` must be followed by a human, not a model.
