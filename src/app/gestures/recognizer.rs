@@ -62,10 +62,9 @@ impl<T: Clone> Recognizer<T> {
 		let ending = matches!(phase, TouchPhase::Ended | TouchPhase::Cancelled);
 		if ending {
 			self.contacts.remove(&id);
-		} else if let Some(position) = self.contacts.get_mut(&id) {
-			*position = point;
 		} else {
-			return None;
+			let position = self.contacts.get_mut(&id)?;
+			*position = point;
 		}
 		let drag = self.drag.as_mut().filter(|drag| drag.id == id)?;
 		if phase == TouchPhase::Cancelled {
