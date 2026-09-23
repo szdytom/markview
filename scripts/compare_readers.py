@@ -15,16 +15,15 @@ through Vulkan, which needs DRI3 to present, and neither server provides it to
 clients. The applications therefore run on a real X server, and only the top of
 each window is read, which is the region a reader sees first.
 
-The applications are Markview, MarkText, SuperGoodViewer and VS Code. MarkText
-and SuperGoodViewer render the document in their window; VS Code is asked for
-its Markdown preview, because its editor shows the source rather than the
-document. Every application is also weighed once its document has settled: the
+The applications are Markview, MarkText and VS Code. MarkText renders the
+document in its window; VS Code is asked for its Markdown preview, because its
+editor shows the source rather than the document. Every application is also weighed once its document has settled: the
 resident memory of all of its processes together, because an Electron reader is
 several processes and the number a person would read off a monitor is their sum.
 
 Usage: scripts/compare_readers.py [--task open,edit] [--runs 3]
                                   [--fixtures 10k,100k]
-                                  [--apps markview,marktext,supergoodviewer,vscode]
+                                  [--apps markview,marktext,vscode]
                                   [--json FILE]
 """
 import argparse
@@ -47,10 +46,6 @@ import comparison_fixtures
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 BINARY = ROOT / "target/release/markview"
-# SuperGoodViewer ships prebuilt Linux archives; unpack one here and point
-# `SUPERGOODVIEWER` at its executable to include it in a comparison.
-SGV = pathlib.Path(os.environ.get("SUPERGOODVIEWER",
-                                  ROOT / "artifacts/supergoodviewer/supergoodviewer"))
 WINDOW_ROWS = 400          # physical rows of the window that are captured
 STRIDE = 8                 # analysis downsample factor
 SETTLE_QUIET = 1.5         # long enough to outlast a second rendering pass
@@ -397,9 +392,6 @@ def applications(display):
                 f"--user-data-dir={WORK}/vscode",
                 f"--extensions-dir={WORK}/vscode-ext", str(document)]
 
-    def supergoodviewer(document):
-        return [str(SGV), str(document)]
-
     applications = {
         "markview": {"name": "markview", "command": markview, "display": display,
                      "title": "{document}",
@@ -407,27 +399,10 @@ def applications(display):
         "marktext": {"name": "marktext", "command": marktext, "display": display,
                      "title": "{document}",
                      "env": {"XDG_CONFIG_HOME": "{work}/config"}},
-        "supergoodviewer": {"name": "supergoodviewer", "command": supergoodviewer,
-                            "display": display,
-                            "title": "{stem} - SuperGoodViewer",
-                            # Its compiled-document cache lives under `$HOME`, so
-                            # a private `HOME` keeps every run a first open. A
-                            # repeat open of the same file is served from that
-                            # cache instead, which is a different measurement.
-                            "env": {"GDK_BACKEND": "x11", "HOME": "{work}/home"},
-                            "env_dirs": ["{work}/home"],
-                            # Its LaTeX-to-Typst path (mitex) covers the matrix
-                            # environments since 1.0.8, so the mathematics
-                            # fixtures are rendered rather than skipped. A
-                            # compile failure is still caught below.
-                            "failure": r"compileDocument: FAILED \(([^)]*)\)"},
         "vscode": {"name": "vscode", "command": vscode, "display": display,
                    "title": "Visual Studio Code",
                    "open_preview": "ctrl+shift+v"},
     }
-    if not SGV.exists():
-        applications.pop("supergoodviewer")
-        print(f"skipping supergoodviewer: {SGV} not found", file=sys.stderr)
     return applications
 
 
@@ -436,7 +411,7 @@ def main():
     parser.add_argument("--task", default="open", help="comma-separated: open,edit")
     parser.add_argument("--runs", type=int, default=3)
     parser.add_argument("--fixtures", default="10k")
-    parser.add_argument("--apps", default="markview,marktext,supergoodviewer")
+    parser.add_argument("--apps", default="markview,marktext")
     parser.add_argument("--display", default=":0")
     parser.add_argument("--json", help="write the raw report here")
     parser.add_argument("--save-settled",

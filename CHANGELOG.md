@@ -32,7 +32,7 @@ at the same level, without `[brackets]`.
 
 - Move Scroll speed out of Reading layout into the Interface section, beside the language it shares a device-level concern with.
 - Resolve the system language once instead of per frame, so drawing a label costs no allocation.
-- Refresh the measured performance baselines, charts and comparison tables against the current build.
+- Refresh the measured performance baselines, charts and comparison tables against the current build, and drop SuperGoodViewer from the reader and PDF tables.
 
 ## 0.1.7 - 2026-09-23
 

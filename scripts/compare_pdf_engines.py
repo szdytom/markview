@@ -8,16 +8,15 @@ the fonts are embedded, and whether two runs produce identical bytes. Every
 engine is given its own documented reproducibility recipe, which here means
 `SOURCE_DATE_EPOCH` is fixed for all of them.
 
-The engines are Markview, the SuperGoodViewer command line, pandoc through
-XeLaTeX, pandoc through Typst, and pandoc through a headless Chromium, which is
-what the browser-based exporters do underneath.
+The engines are Markview, pandoc through XeLaTeX, pandoc through Typst, and
+pandoc through a headless Chromium, which is what the browser-based exporters
+do underneath.
 
 Usage: scripts/compare_pdf_engines.py [--runs 3] [--fixtures 10k,100k] [--json FILE]
 """
 import argparse
 import hashlib
 import json
-import os
 import pathlib
 import re
 import shutil
@@ -32,11 +31,6 @@ import comparison_fixtures
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 BINARY = ROOT / "target/release/markview"
-# SuperGoodViewer's release archive carries its own headless exporter beside the
-# reader; unpack one under `artifacts/supergoodviewer` or point `SUPERGOODVIEWER`
-# at the launcher to include it in a comparison.
-SGV = pathlib.Path(os.environ.get("SUPERGOODVIEWER",
-                                  ROOT / "artifacts/supergoodviewer/bin/sgv"))
 
 # A print stylesheet for the browser engine, in the spirit of what a
 # "Markdown to PDF" tool ships: a serif face, a readable size, and margins.
@@ -49,9 +43,6 @@ h1 { font-size: 1.6em }
 def engines():
     def markview(fixture, work):
         return [str(BINARY), "pdf", str(fixture), "-o", str(work / "out.pdf")]
-
-    def supergoodviewer(fixture, work):
-        return [str(SGV), "export", str(fixture), "-o", str(work / "out.pdf")]
 
     def xelatex(fixture, work):
         return ["pandoc", str(fixture), "-o", str(work / "out.pdf"),
@@ -73,9 +64,8 @@ def engines():
                 "--no-pdf-header-footer",
                 f"--print-to-pdf={work}/out.pdf", f"file://{html}"]
 
-    return {"markview": markview, "supergoodviewer": supergoodviewer,
-            "pandoc+xelatex": xelatex, "pandoc+typst": typst,
-            "pandoc+chromium": chromium}
+    return {"markview": markview, "pandoc+xelatex": xelatex,
+            "pandoc+typst": typst, "pandoc+chromium": chromium}
 
 
 def run_engine(build, fixture, work):
@@ -149,9 +139,6 @@ def main():
                                              tuple(args.fixtures.split(",")))
         for name, build in engines().items():
             if args.engine and name not in args.engine:
-                continue
-            if name == "supergoodviewer" and not SGV.exists():
-                print(f"skipping supergoodviewer: {SGV} not found", file=sys.stderr)
                 continue
             for fixture in fixtures:
                 source = fixture.read_text()

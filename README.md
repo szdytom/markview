@@ -117,29 +117,28 @@ what each number does and does not cover.
 
 Opening a file, median of three runs in seconds, window included:
 
-| Document | Markview | SuperGoodViewer | MarkText |
-|:--|--:|--:|--:|
-| 10 KiB of prose | 0.10 | 0.63 | 0.96 |
-| 100 KiB of prose | 0.10 | 0.73 | 1.00 |
-| 10 KiB, 108 display formulas | 0.10 | 0.65 | 1.20 |
-| 100 KiB, 1092 display formulas | 0.12 | 0.77 | 2.86 |
+| Document | Markview | MarkText |
+|:--|--:|--:|
+| 10 KiB of prose | 0.10 | 0.96 |
+| 100 KiB of prose | 0.10 | 1.00 |
+| 10 KiB, 108 display formulas | 0.10 | 1.20 |
+| 100 KiB, 1092 display formulas | 0.12 | 2.86 |
 
 Resident memory once the document is on screen, in MiB, every process of each
 reader counted:
 
-| Document | Markview | SuperGoodViewer | MarkText |
-|:--|--:|--:|--:|
-| 10 KiB of prose | 51 | 300 | 693 |
-| 100 KiB of prose | 53 | 344 | 703 |
-| 10 KiB, 108 display formulas | 54 | 299 | 750 |
-| 100 KiB, 1092 display formulas | 54 | 362 | 1148 |
+| Document | Markview | MarkText |
+|:--|--:|--:|
+| 10 KiB of prose | 51 | 693 |
+| 100 KiB of prose | 53 | 703 |
+| 10 KiB, 108 display formulas | 54 | 750 |
+| 100 KiB, 1092 display formulas | 54 | 1148 |
 
 One document to one PDF, median of three runs in seconds:
 
 | Engine | 10 KiB | 100 KiB |
 |:--|--:|--:|
 | `markview pdf` | 0.04 | 0.07 |
-| `sgv export` | 0.10 | 0.16 |
 | `pandoc --pdf-engine=typst` | 0.49 | 0.68 |
 | `pandoc` → headless Chromium | 0.61 | 0.76 |
 | `pandoc --pdf-engine=xelatex` | 1.84 | 2.14 |
