@@ -16,7 +16,9 @@
 //! the pending event is dispatched the moment launching ends, so a handler
 //! registered later never runs.
 
-use super::{Event, SendEvent};
+use super::Event;
+#[cfg(target_os = "macos")]
+use super::SendEvent;
 use winit::event_loop::EventLoopProxy;
 
 #[cfg(target_os = "macos")]
