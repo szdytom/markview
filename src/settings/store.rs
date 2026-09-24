@@ -388,6 +388,7 @@ impl SettingsStore {
 					Setting::Language,
 					Setting::CodeblockWrap,
 					Setting::ScrollSpeed,
+					Setting::FontFamily,
 				];
 				self.saved = effective.clone();
 				self.saved.style = None;

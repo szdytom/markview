@@ -47,9 +47,10 @@ fn language_options(t: Lang, settings: &ReaderSettings) -> Vec<Action> {
 	}));
 	entries
 }
+
 fn rows(settings: &ReaderSettings) -> Vec<Row> {
-	// Choosing a stylesheet is the Styles tab's own job, so this page offers
-	// no theme row at all.
+	// Choosing a stylesheet is the Styles tab's own job, and choosing a family
+	// for a role the Fonts tab's, so this page offers neither.
 	let t = settings.lang();
 	vec![
 		Row::new(t.settings_language(), vec![])

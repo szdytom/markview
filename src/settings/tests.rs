@@ -406,3 +406,81 @@ fn scroll_speed_round_trips_and_stays_in_range() {
 	assert!(warning.is_some());
 	assert_eq!(loaded.settings().scroll_speed, 1.0);
 }
+
+/// A family picked for one role is one override in the file, so it survives a
+/// restart, and picking the default entry takes it back out.
+#[test]
+fn a_font_family_round_trips_and_the_default_removes_the_override() {
+	let dir = tempfile::tempdir().unwrap();
+	let path = dir.path().join("settings.toml");
+	let (mut store, warning) = SettingsStore::load(Some(path.clone()));
+	assert!(warning.is_none());
+	let mut settings = store.settings();
+	assert_eq!(settings.font_family(FontRole::Serif), None);
+	settings.set_font_family(FontRole::Serif, Some("Noto Sans".to_owned()));
+	// One role's pick leaves the other roles on the stylesheet's own chain.
+	assert_eq!(settings.font_family(FontRole::Monospace), None);
+	store.changed(&settings, Some(Setting::FontFamily));
+	store.flush().unwrap();
+
+	let (loaded, warning) = SettingsStore::load(Some(path));
+	assert!(warning.is_none());
+	let loaded = loaded.settings();
+	assert_eq!(loaded.font_family(FontRole::Serif), Some("Noto Sans"));
+	assert_eq!(loaded.font_family(FontRole::Monospace), None);
+	// The override reaches the stylesheet in force, replacing that role's own
+	// candidate chain and nothing else.
+	let sheet = crate::stylesheet::apply_font_overrides(
+		loaded.stylesheet.clone(),
+		&loaded.fontdef_overrides,
+	)
+	.unwrap();
+	assert_eq!(
+		sheet.fontdefs["serif"].lookfor,
+		vec!["Noto Sans".to_owned()]
+	);
+	assert_ne!(
+		sheet.fontdefs["monospace"].lookfor,
+		vec!["Noto Sans".to_owned()]
+	);
+
+	let mut reset = loaded.clone();
+	reset.set_font_family(FontRole::Serif, None);
+	assert_eq!(reset.font_family(FontRole::Serif), None);
+	assert!(reset.fontdef_overrides.is_empty());
+	assert_eq!(
+		crate::stylesheet::apply_font_overrides(
+			reset.stylesheet.clone(),
+			&reset.fontdef_overrides
+		)
+		.unwrap()
+		.fontdefs["serif"]
+			.lookfor,
+		loaded.stylesheet.fontdefs["serif"].lookfor
+	);
+}
+
+/// A Han role names one definition whatever CJK variant is in force, so a
+/// family picked for it follows a change of variant.
+#[test]
+fn a_han_family_follows_a_change_of_cjk_variant() {
+	let mut settings = ReaderSettings::default();
+	settings.set_font_family(
+		FontRole::SerifHan,
+		Some("Noto Serif CJK SC".to_owned()),
+	);
+	for cjk_type in [CjkType::Sc, CjkType::Tc, CjkType::Jp] {
+		let mut sheet = (*settings.stylesheet).clone();
+		sheet.set_cjk_type(cjk_type);
+		let sheet = crate::stylesheet::apply_font_overrides(
+			std::sync::Arc::new(sheet),
+			&settings.fontdef_overrides,
+		)
+		.unwrap();
+		assert_eq!(
+			sheet.fontdefs["serif[cjk]"].lookfor,
+			vec!["Noto Serif CJK SC".to_owned()],
+			"{cjk_type:?}"
+		);
+	}
+}

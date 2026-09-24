@@ -10,6 +10,7 @@ use crate::app::{App, Event, SendEvent};
 use crate::cli::{LaunchOptions, Mode};
 use crate::lang::Lang;
 use crate::layout::Rect;
+use crate::settings::FontRole;
 use crate::state::{Command, DropdownId, PanelPage, PanelTab};
 use std::cell::Cell;
 use winit::dpi::PhysicalPosition;
@@ -579,5 +580,97 @@ fn tab_after_closing_the_list_advances_from_the_chooser() {
 		app.interaction.focus,
 		Some(Command::ScrollSpeed(-1)),
 		"traversal moved past the chooser, not back to the first control"
+	);
+}
+
+/// A reader whose faces are the pinned subset fonts, so the families its
+/// chooser offers do not depend on the machine running the test.
+fn app_with_pinned_fonts() -> App<StubProxy> {
+	let mut app = App::new(
+		LaunchOptions {
+			mode: Mode::Smoke,
+			options: crate::layout::LayoutOptions {
+				fonts: crate::test_support::fonts(),
+				..Default::default()
+			},
+			..Default::default()
+		},
+		StubProxy,
+	);
+	app.interaction
+		.show_panel(PanelPage::Settings(PanelTab::Fonts));
+	app
+}
+
+/// The family chooser takes the pointer exactly as the language chooser does:
+/// a release over an option commits it, the list closes and focus returns to
+/// the row it belongs to. The default entry takes the override back out.
+#[test]
+fn a_family_option_commits_and_the_default_restores_the_chain() {
+	let mut app = app_with_pinned_fonts();
+	// The choosers lead the Fonts page's scroll, so its first row is on screen
+	// as the page opens.
+	let chooser = Command::ToggleDropdown(DropdownId::Font(FontRole::Serif), 0);
+	app.action(chooser);
+	assert!(app.interaction.dropdown.is_some());
+	// The list offers the machine's own families, so the pick is whatever the
+	// first one past the default entry is named.
+	let (target, family) = app
+		.buttons()
+		.into_iter()
+		.find_map(|button| match button.action {
+			Command::FontFamily(FontRole::Serif, Some(name)) => {
+				Some((button.action, name))
+			}
+			_ => None,
+		})
+		.expect("a family to pick");
+	let chain = app.preferences.values.stylesheet.fontdefs["serif"]
+		.lookfor
+		.clone();
+	let (x, y) = option_centre(&mut app, target);
+	click(&mut app, x, y);
+
+	assert_eq!(
+		app.preferences.values.font_family(FontRole::Serif),
+		Some(family)
+	);
+	assert!(app.interaction.dropdown.is_none());
+	assert!(
+		matches!(
+			app.interaction.focus,
+			Some(Command::ToggleDropdown(
+				DropdownId::Font(FontRole::Serif),
+				_
+			))
+		),
+		"focus returns to the row the list belongs to"
+	);
+	// The stylesheet in force is the one the document is laid out with.
+	assert_eq!(
+		app.preferences.values.stylesheet.fontdefs["serif"].lookfor,
+		vec![family.to_owned()]
+	);
+
+	// The default entry restores the stylesheet's own candidate chain.
+	app.action(chooser);
+	let default = app
+		.buttons()
+		.into_iter()
+		.find(|button| {
+			button.action == Command::FontFamily(FontRole::Serif, None)
+		})
+		.expect("the default entry")
+		.rect;
+	click(
+		&mut app,
+		default.x + default.w / 2.0,
+		default.y + default.h / 2.0,
+	);
+	assert_eq!(app.preferences.values.font_family(FontRole::Serif), None);
+	assert!(app.preferences.values.fontdef_overrides.is_empty());
+	assert_eq!(
+		app.preferences.values.stylesheet.fontdefs["serif"].lookfor,
+		chain
 	);
 }

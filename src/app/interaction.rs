@@ -501,6 +501,19 @@ impl<P: super::SendEvent> App<P> {
 				self.redraw();
 				return;
 			}
+			Command::FontFamily(role, family) => {
+				self.preferences
+					.values
+					.set_font_family(role, family.map(str::to_owned));
+				self.setting_changed(Some(Setting::FontFamily));
+				// The stylesheet's own definitions are what the override
+				// replaces, so they are read again and every line is laid out
+				// with the family now in force.
+				self.reload_styles();
+				self.close_dropdown();
+				self.redraw();
+				return;
+			}
 			Command::ToggleDropdown(id, highlight) => {
 				match self.interaction.dropdown {
 					Some(open) if open.id == id => self.close_dropdown(),

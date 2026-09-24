@@ -26,7 +26,10 @@ pub(super) use components::panel_rect;
 use controls::{draw_controls, toolbar_controls};
 use fonts::draw_fonts;
 use footer::draw_footer;
-use markview_core::style::{ColorField as C, Condition, TextAppearance};
+use markview_core::{
+	fonts::FontConfig,
+	style::{ColorField as C, Condition, TextAppearance},
+};
 use std::time::Instant;
 use styles::{StylesTarget, draw_styles, style_controls, style_rows};
 
@@ -185,6 +188,8 @@ pub(super) struct Chrome<'a> {
 	pub(super) tab_strip: &'a super::tab_strip::TabStrip,
 	pub(super) tab_widths: &'a [(f32, f32)],
 	pub(super) settings: &'a ReaderSettings,
+	/// The fonts the reader shapes with, which the family choosers describe.
+	pub(super) font_config: &'a FontConfig,
 	/// The export panel's own settings, drawn but never applied to the reader.
 	pub(super) export: &'a ExportSettings,
 	pub(super) interaction: &'a InteractionState,
@@ -214,6 +219,17 @@ impl Chrome<'_> {
 	) -> Option<components::Menu> {
 		if !self.interaction.panel_open() {
 			return None;
+		}
+		// The Fonts page carries its choosers outside any form, so their lists
+		// are measured against the page itself; the anchor follows its scroll.
+		if self.interaction.fonts_open() {
+			return fonts::menu(
+				&self.fonts,
+				self.settings,
+				self.font_config,
+				open,
+				(self.width, self.height),
+			);
 		}
 		let form = controls::settings_form(
 			self.ui,
@@ -295,6 +311,8 @@ impl Chrome<'_> {
 		{
 			fonts::buttons(
 				&self.fonts,
+				self.settings,
+				self.font_config,
 				self.interaction.settings_preview,
 				width,
 				height,
@@ -570,9 +588,10 @@ impl Chrome<'_> {
 				self.ui,
 				self.interaction,
 				&self.fonts,
+				self.settings,
+				self.font_config,
 				width,
 				height,
-				self.settings.lang(),
 			));
 		} else if self.interaction.panel_open()
 			&& self.interaction.styles_open()
@@ -600,6 +619,15 @@ impl Chrome<'_> {
 			));
 		}
 		out.append(&mut self.input_draws);
+		// An open option list floats over whichever page holds its row, so it
+		// goes on after everything the page draws. Measuring brings the
+		// highlight into the drawn window, on a copy: the state is corrected
+		// the next time the input paths measure it.
+		if let Some(mut open) = self.interaction.dropdown
+			&& let Some(menu) = self.dropdown_menu(&mut open)
+		{
+			out.extend(components::draw_menu(self.ui, self.interaction, &menu));
+		}
 		// A confirmation owns the frame; nothing behind it is interactive.
 		if self.interaction.modal.is_some() {
 			out.extend(modal::draw_modal(

@@ -809,6 +809,7 @@ fn previewing_recedes_the_styles_and_fonts_pages() {
 	let (width, height) = (820.0, 600.0);
 	let settings = ReaderSettings::default();
 	let export = ExportSettings::default();
+	let font_config = crate::test_support::fonts();
 	let entries: Vec<crate::stylesheet::Entry> = Vec::new();
 	let catalog = font_samples();
 	let shown: Vec<usize> = (0..catalog.len()).collect();
@@ -838,6 +839,7 @@ fn previewing_recedes_the_styles_and_fonts_pages() {
 				tab_strip: &strip,
 				tab_widths: &metrics.widths,
 				settings: &settings,
+				font_config: &font_config,
 				export: &export,
 				interaction: &interaction,
 				style_entries: &entries,
@@ -896,6 +898,7 @@ fn dismissed_pages_stop_drawing_and_answering_pointers() {
 	let (width, height) = (820.0, 600.0);
 	let settings = ReaderSettings::default();
 	let export = ExportSettings::default();
+	let font_config = crate::test_support::fonts();
 	let entries: Vec<crate::stylesheet::Entry> = Vec::new();
 	let tabs = vec![ReaderTab::new("a.md".into())];
 	let strip = TabStrip::default();
@@ -921,6 +924,7 @@ fn dismissed_pages_stop_drawing_and_answering_pointers() {
 			tab_strip: &strip,
 			tab_widths: &metrics.widths,
 			settings: &settings,
+			font_config: &font_config,
 			export: &export,
 			interaction: &interaction,
 			style_entries: &entries,
@@ -1208,6 +1212,7 @@ fn redesigned_chrome_frames() -> Result<()> {
 						tab_strip: &strip,
 						tab_widths: &metrics.widths,
 						settings: &settings,
+						font_config: &fonts,
 						export: &export,
 						interaction: &interaction,
 						style_entries: &entries,

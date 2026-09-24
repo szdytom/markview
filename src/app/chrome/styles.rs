@@ -107,6 +107,7 @@ pub(in crate::app) fn list(
 			w: r.w,
 			h: (r.h - top - FOOTER).max(0.0),
 		},
+		0.0,
 		ROW,
 		entries,
 		scroll,

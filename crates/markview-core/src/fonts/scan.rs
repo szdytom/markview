@@ -67,7 +67,7 @@ fn map_font(path: &Path) -> std::io::Result<Option<memmap2::Mmap>> {
 #[cfg(test)]
 mod tests {
 	use super::*;
-	use crate::fonts::{FontConfig, context};
+	use crate::fonts::{FontConfig, context, families};
 	use parley::fontique::Script;
 
 	#[test]
@@ -143,13 +143,16 @@ mod tests {
 		};
 		let mut before = context(&config);
 		assert!(before.collection.family_by_name("Noto Serif").is_some());
-		assert!(before.collection.family_by_name("Noto Sans").is_none());
+		assert!(!families(&config, false).contains(&"Noto Sans"));
 		// A second download lands another family without changing the paths.
 		download("NotoSans-Regular-subset.otf");
 		let mut downloaded = config.clone();
 		downloaded.revision += 1;
 		let mut after = context(&downloaded);
 		assert!(after.collection.family_by_name("Noto Sans").is_some());
+		// The chooser's family list is keyed the same way, so the fresh
+		// revision is what offers the downloaded family, without a restart.
+		assert!(families(&downloaded, false).contains(&"Noto Sans"));
 		// The collection the old configuration built before the download is
 		// untouched. (Assert on `before` rather than re-asking the global
 		// cache: a parallel test can evict the cached slot in between.)

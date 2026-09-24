@@ -3,26 +3,34 @@
 //! The page is a catalogue, not a queue: it lists what the catalogued
 //! stylesheets and the builtin recommendations declare, says what each family
 //! is, what it is licensed under, and whether it is already there, and offers
-//! one family or all of them at a time.
+//! one family or all of them at a time. Above the catalogue, inside the same
+//! scroll, sit the family choosers: one row per font role, picking which
+//! family the reader shapes with — a different job from putting a family on
+//! disk, which is what the catalogue below does.
 use super::Command as FontCommand;
 use crate::app::Button;
 use crate::app::chrome::components::{
-	ButtonKind, draw_button, draw_segmented_button, panel_rect,
+	ButtonKind, CONTROL, ROW as CHOOSER_ROW, SECTION, action as entry,
+	draw_button, draw_segmented_button, frame, line, menu as option_list,
+	panel_rect,
 };
-use crate::app::chrome::components::{CONTROL, frame, line};
 use crate::app::chrome::list::List;
 use crate::{
 	lang::Lang,
 	layout::{Draw, Paint, Rect, TextShaper},
-	state::{Command, InteractionState, PanelTab},
+	settings::{FontRole, ReaderSettings},
+	state::{Command, Dropdown, DropdownId, InteractionState, PanelTab},
 };
-use markview_core::style::{ColorField as C, Condition, TextAppearance};
+use markview_core::fonts::FontConfig;
+use markview_core::style::{
+	CjkType, ColorField as C, Condition, TextAppearance,
+};
 use std::collections::HashMap;
 
 /// The height one family occupies, actions included.
 const ROW: f32 = 88.0;
 
-/// Where the list's first row starts, below the filter row's separator.
+/// Where the scrolling body starts, below the filter row's separator.
 const LIST_TOP: f32 = 136.0;
 /// How much of the panel's bottom the footer and its separator take.
 fn footer(panel: Rect) -> f32 {
@@ -34,12 +42,36 @@ fn fonts_rect(width: f32, height: f32) -> Rect {
 	panel_rect(width, height)
 }
 
-/// The page's scrolling list of families.
+/// The roles the page offers a family chooser for.
+///
+/// The Han three follow the `cjk-type` setting: with no variant in force the
+/// stylesheet resolves no `[cjk]` definition for them to override, so their
+/// rows are not shown at all.
+pub(in crate::app) fn roles(settings: &ReaderSettings) -> Vec<FontRole> {
+	let mut roles =
+		vec![FontRole::Serif, FontRole::SansSerif, FontRole::Monospace];
+	if settings.cjk_type != CjkType::None {
+		roles.extend([
+			FontRole::SerifHan,
+			FontRole::SansSerifHan,
+			FontRole::MonospaceHan,
+		]);
+	}
+	roles
+}
+
+/// The chooser rows and their heading, which scroll ahead of the catalogue.
+fn chooser_height(roles: usize) -> f32 {
+	8.0 + SECTION + roles as f32 * CHOOSER_ROW
+}
+
+/// The page's scrolling body: the chooser rows, then the families.
 pub(in crate::app) fn list(
 	width: f32,
 	height: f32,
 	shown: usize,
 	scroll: f32,
+	roles: usize,
 ) -> List {
 	let r = fonts_rect(width, height);
 	List::new(
@@ -50,27 +82,165 @@ pub(in crate::app) fn list(
 			w: r.w,
 			h: (r.h - LIST_TOP - footer(r)).max(0.0),
 		},
+		chooser_height(roles),
 		ROW,
 		shown,
 		scroll,
 	)
 }
 
+/// One chooser row's band, at the offset `list` has scrolled to.
+fn chooser_rect(list: &List, index: usize) -> Rect {
+	Rect {
+		x: list.viewport.x,
+		y: list.viewport.y + 8.0 + SECTION + index as f32 * CHOOSER_ROW
+			- list.scroll,
+		w: list.viewport.w,
+		h: CHOOSER_ROW,
+	}
+}
+
+/// The baseline of `size`-point text centred in a band of `height`.
+fn centered(top: f32, height: f32, size: f32) -> f32 {
+	top + height / 2.0 + size * 0.35
+}
+
+/// The families a font role's chooser offers, with the stylesheet's own
+/// candidate chain first.
+///
+/// Every family the machine can shape with is offered, because a family the
+/// reader has installed is one the document may be set in.
+fn font_options(
+	role: FontRole,
+	families: &[&'static str],
+	settings: &ReaderSettings,
+	t: Lang,
+) -> Vec<crate::app::chrome::components::Action> {
+	let mut entries = vec![entry(
+		t.settings_font_default(),
+		settings.font_family(role).is_none(),
+		Command::FontFamily(role, None),
+	)];
+	entries.extend(families.iter().map(|family| {
+		entry(
+			family,
+			settings.font_family(role) == Some(family),
+			Command::FontFamily(role, Some(family)),
+		)
+	}));
+	entries
+}
+
+/// The name of a font role's row, in the language in force.
+fn role_label(role: FontRole, t: Lang) -> &'static str {
+	match role {
+		FontRole::Serif => t.settings_font_serif(),
+		FontRole::SansSerif => t.settings_font_sans_serif(),
+		FontRole::Monospace => t.settings_font_monospace(),
+		FontRole::SerifHan => t.settings_font_serif_han(),
+		FontRole::SansSerifHan => t.settings_font_sans_serif_han(),
+		FontRole::MonospaceHan => t.settings_font_monospace_han(),
+	}
+}
+
+/// One role's chooser control: the family in force, opening its option list.
+fn chooser_button(
+	list: &List,
+	index: usize,
+	role: FontRole,
+	fonts: &FontConfig,
+	settings: &ReaderSettings,
+	lang: Lang,
+) -> Button {
+	let band = chooser_rect(list, index);
+	let w = 232.0_f32.min(band.w * 0.56);
+	let entries = font_options(
+		role,
+		&markview_core::fonts::families(fonts, role.han()),
+		settings,
+		lang,
+	);
+	let chosen = entries
+		.iter()
+		.find(|entry| entry.active)
+		.or_else(|| entries.first());
+	Button {
+		label: chosen.map_or("", |entry| entry.label),
+		icon: None,
+		marker: Some(crate::app::chrome::icons::CHEVRON),
+		active: false,
+		kind: Default::default(),
+		enabled: true,
+		action: Command::ToggleDropdown(
+			DropdownId::Font(role),
+			entries.iter().position(|entry| entry.active).unwrap_or(0),
+		),
+		rect: Rect {
+			x: band.x + band.w - 8.0 - w,
+			y: band.y,
+			w,
+			h: CONTROL,
+		},
+	}
+}
+
+/// The open option list over this page, when one of its chooser rows anchors
+/// it. A row the scroll has moved out of the clip holds no list, exactly as a
+/// form row the page scrolled away does.
+pub(in crate::app) fn menu(
+	view: &super::View<'_>,
+	settings: &ReaderSettings,
+	fonts: &FontConfig,
+	open: &mut Dropdown,
+	size: (f32, f32),
+) -> Option<crate::app::chrome::components::Menu> {
+	let DropdownId::Font(role) = open.id else {
+		return None;
+	};
+	let index = roles(settings).iter().position(|shown| *shown == role)?;
+	let (width, height) = size;
+	let list = list(
+		width,
+		height,
+		view.shown.len(),
+		view.scroll,
+		roles(settings).len(),
+	);
+	let anchor =
+		chooser_button(&list, index, role, fonts, settings, settings.lang())
+			.rect;
+	anchor.intersect(list.viewport)?;
+	let entries = font_options(
+		role,
+		&markview_core::fonts::families(fonts, role.han()),
+		settings,
+		settings.lang(),
+	);
+	Some(option_list(anchor, &entries, open, size))
+}
+
 pub(in crate::app) fn buttons(
 	view: &super::View<'_>,
+	settings: &ReaderSettings,
+	fonts: &FontConfig,
 	preview: bool,
 	width: f32,
 	height: f32,
 	lang: Lang,
 ) -> Vec<Button> {
-	let list = list(width, height, view.shown.len(), view.scroll);
-	let mut buttons = fonts_controls(
-		&view.shown,
-		view.status_filter,
-		preview,
-		width,
-		height,
-		lang,
+	let roles = roles(settings);
+	let list = list(width, height, view.shown.len(), view.scroll, roles.len());
+	let mut buttons = fonts_controls(list, view.status_filter, preview, lang);
+	buttons.extend(
+		list.hit(
+			roles
+				.iter()
+				.enumerate()
+				.map(|(index, role)| {
+					chooser_button(&list, index, *role, fonts, settings, lang)
+				})
+				.collect(),
+		),
 	);
 	buttons.extend(list.hit(font_rows(
 		view.catalog,
@@ -129,14 +299,12 @@ fn bytes_label(bytes: u64) -> String {
 /// The page's fixed controls: the filter row, the footer and the settings
 /// header. They sit outside the scrolling list.
 fn fonts_controls(
-	shown: &[usize],
+	list: List,
 	status_filter: Option<crate::fonts::State>,
 	preview: bool,
-	width: f32,
-	height: f32,
 	lang: Lang,
 ) -> Vec<Button> {
-	let r = fonts_rect(width, height);
+	let r = list.panel;
 	let mut out = crate::app::chrome::components::settings_header_controls(
 		r,
 		PanelTab::Fonts,
@@ -229,7 +397,7 @@ fn fonts_controls(
 			},
 		});
 	}
-	if !list(width, height, shown.len(), 0.).fits() {
+	if !list.fits() {
 		out.retain(|b| {
 			!matches!(b.action, Command::Fonts(FontCommand::StatusFilter(_)))
 		});
@@ -328,9 +496,10 @@ pub(in crate::app) fn draw_fonts(
 	shaper: &mut TextShaper,
 	interaction: &InteractionState,
 	view: &super::View<'_>,
+	settings: &ReaderSettings,
+	fonts: &FontConfig,
 	width: f32,
 	height: f32,
-	lang: Lang,
 ) -> Vec<Draw> {
 	let super::View {
 		catalog,
@@ -341,6 +510,7 @@ pub(in crate::app) fn draw_fonts(
 		status_filter,
 	} = view;
 	let (scroll, note, status_filter) = (*scroll, *note, *status_filter);
+	let lang = settings.lang();
 	let preview = interaction.settings_preview;
 	shaper.appearance = shaper.stylesheet.text(
 		&shaper
@@ -349,7 +519,8 @@ pub(in crate::app) fn draw_fonts(
 		Condition::Panel,
 	);
 	let r = fonts_rect(width, height);
-	let list = list(width, height, shown.len(), scroll);
+	let roles = roles(settings);
+	let list = list(width, height, shown.len(), scroll, roles.len());
 	// Previewing the document leaves only the panel surface, which then
 	// recedes with everything else.
 	let mut out = if preview {
@@ -412,7 +583,49 @@ pub(in crate::app) fn draw_fonts(
 		..Default::default()
 	};
 	let mut body = Vec::new();
+	// The choosers lead the scroll: one row per role under its own heading,
+	// each control showing the family in force.
+	let heading = chooser_rect(&list, 0);
+	let weight = shaper.appearance.weight;
+	shaper.appearance.weight = 700;
+	body.extend(shaper.label(
+		lang.section_fonts(),
+		12.0,
+		list.viewport.x,
+		centered(heading.y - SECTION, 24.0, 12.0),
+		Paint::Styled(Condition::Panel, C::Muted),
+	));
+	shaper.appearance.weight = weight;
+	let control_width = 232.0_f32.min(list.viewport.w * 0.56);
+	let choosers: Vec<_> = roles
+		.iter()
+		.enumerate()
+		.map(|(index, role)| {
+			chooser_button(&list, index, *role, fonts, settings, lang)
+		})
+		.collect();
+	for (index, role) in roles.iter().enumerate() {
+		let band = chooser_rect(&list, index);
+		let label = shaper.fit(
+			role_label(*role, lang),
+			13.0,
+			list.viewport.w - control_width - 20.0,
+		);
+		body.extend(shaper.label(
+			&label,
+			13.0,
+			list.viewport.x,
+			centered(band.y, CONTROL, 13.0),
+			Paint::Styled(Condition::Panel, C::Color),
+		));
+	}
+	for button in &choosers {
+		if button.rect.intersect(list.viewport).is_some() {
+			body.extend(draw_button(shaper, &body_interaction, button, true));
+		}
+	}
 	if fits && shown.is_empty() {
+		let empty = list.row_rect(0).y;
 		for (text, offset, color) in [
 			(lang.fonts_no_match(), 28., C::Color),
 			(lang.fonts_select_all(), 50., C::Muted),
@@ -422,7 +635,7 @@ pub(in crate::app) fn draw_fonts(
 				&text,
 				13.,
 				r.x + 24.,
-				list.viewport.y + offset,
+				empty + offset,
 				Paint::Styled(Condition::Panel, color),
 			));
 		}
@@ -430,18 +643,18 @@ pub(in crate::app) fn draw_fonts(
 	for row in if fits { list.visible() } else { 0..0 } {
 		let family = &catalog[shown[row]];
 		let y = list.row_rect(row).y;
-		if row > 0 {
-			body.push(line(
-				Rect {
-					x: r.x + 24.0,
-					y,
-					w: r.w - 48.0,
-					h: 1.0,
-				},
-				Condition::Panel,
-				C::BorderColor,
-			));
-		}
+		// The catalogue's every row is separated, from the choosers above it
+		// as much as from the family before it.
+		body.push(line(
+			Rect {
+				x: r.x + 24.0,
+				y,
+				w: r.w - 48.0,
+				h: 1.0,
+			},
+			Condition::Panel,
+			C::BorderColor,
+		));
 		let weight = shaper.appearance.weight;
 		shaper.appearance.weight = 600;
 		let title = shaper.fit(family.family.display_name(), 14., r.w - 188.);
@@ -536,8 +749,7 @@ pub(in crate::app) fn draw_fonts(
 	if fits {
 		list.draw_bar(&mut out, shaper, interaction);
 	}
-	let controls =
-		fonts_controls(shown, status_filter, preview, width, height, lang);
+	let controls = fonts_controls(list, status_filter, preview, lang);
 	for (i, b) in controls.iter().enumerate() {
 		// The header of a settings tab is drawn once, by the header itself.
 		if crate::app::chrome::components::is_settings_header(b.action) {
@@ -632,7 +844,13 @@ fn meta_text(family: &crate::fonts::Family, lang: Lang) -> String {
 mod tests {
 	use super::*;
 	use crate::fonts::{Family, State};
+	use crate::settings::ReaderSettings;
+	use markview_core::style::CjkType;
 	use markview_core::style::{FontFamily, FontSource};
+
+	/// The chooser rows the default settings show: a CJK variant is in force,
+	/// so all six roles are drawn.
+	const CHOOSERS: usize = 6;
 
 	fn entry(id: &str, state: State) -> Family {
 		Family {
@@ -660,6 +878,8 @@ mod tests {
 	fn status_filters_share_borders_and_highlight_the_selection() {
 		let mut ui = crate::test_support::shaper();
 		let jobs = HashMap::new();
+		let settings = ReaderSettings::default();
+		let fonts = crate::test_support::fonts();
 		for status_filter in [
 			None,
 			Some(State::Missing),
@@ -674,8 +894,12 @@ mod tests {
 				note: None,
 				status_filter,
 			};
-			let controls =
-				fonts_controls(&[], status_filter, false, 820., 600., Lang::En);
+			let controls = fonts_controls(
+				list(820., 600., 0, 0.0, CHOOSERS),
+				status_filter,
+				false,
+				Lang::En,
+			);
 			let filters: Vec<_> = controls
 				.iter()
 				.filter(|b| {
@@ -692,9 +916,10 @@ mod tests {
 				&mut ui,
 				&InteractionState::default(),
 				&view,
+				&settings,
+				&fonts,
 				820.,
 				600.,
-				Lang::En,
 			);
 			let edges: Vec<_> = draws
 				.iter()
@@ -719,18 +944,20 @@ mod tests {
 			vec![entry("a", State::Missing), entry("b", State::Downloaded)];
 		let shown = vec![0, 1];
 		let jobs = HashMap::new();
+		let settings = ReaderSettings::default();
+		let fonts = crate::test_support::fonts();
 		for (w, h) in [(500., 300.), (820., 600.)] {
 			let panel = panel_rect(w, h);
-			let rows = list(w, h, shown.len(), 0.0);
-			let mut buttons =
-				fonts_controls(&shown, None, false, w, h, Lang::En);
-			buttons.extend(rows.hit(font_rows(
-				&catalog,
-				&shown,
-				&jobs,
-				rows,
-				Lang::En,
-			)));
+			let view = super::super::View {
+				catalog: &catalog,
+				shown: shown.clone(),
+				jobs: &jobs,
+				scroll: 0.,
+				note: None,
+				status_filter: None,
+			};
+			let buttons =
+				buttons(&view, &settings, &fonts, false, w, h, Lang::En);
 			assert!(buttons.iter().all(|b| {
 				panel.contains(b.rect.x, b.rect.y)
 					&& panel.contains(b.rect.x + b.rect.w, b.rect.y + b.rect.h)
@@ -746,10 +973,16 @@ mod tests {
 				}
 			}
 		}
-		let rows = list(820., 600., shown.len(), 0.0);
+		// Without a CJK variant the choosers leave the catalogue in view, so
+		// the first row downloads and the second offers to download again.
+		let plain = ReaderSettings {
+			cjk_type: CjkType::None,
+			..settings.clone()
+		};
+		let rows =
+			list(820., 600., shown.len(), 0.0, super::roles(&plain).len());
 		let buttons =
 			rows.hit(font_rows(&catalog, &shown, &jobs, rows, Lang::En));
-		// The first row downloads, the second offers to download again.
 		assert!(buttons.iter().any(|b| {
 			b.action == Command::Fonts(FontCommand::DownloadOne(0))
 				&& b.label == "Download"
@@ -761,7 +994,7 @@ mod tests {
 				&& b.icon.is_some()
 		}));
 		// Only one family is missing, so the top action is offered for it.
-		let top = fonts_controls(&shown, None, false, 820., 600., Lang::En)
+		let top = fonts_controls(rows, None, false, Lang::En)
 			.into_iter()
 			.find(|b| b.action == Command::Fonts(FontCommand::DownloadMissing))
 			.unwrap();
@@ -772,8 +1005,12 @@ mod tests {
 	/// who lands here cannot leave it.
 	#[test]
 	fn the_fonts_page_carries_the_settings_tabs() {
-		let shown = vec![0];
-		let buttons = fonts_controls(&shown, None, false, 820., 600., Lang::En);
+		let buttons = fonts_controls(
+			list(820., 600., 1, 0.0, CHOOSERS),
+			None,
+			false,
+			Lang::En,
+		);
 		for tab in [PanelTab::Generic, PanelTab::Styles, PanelTab::Fonts] {
 			assert!(
 				buttons
@@ -795,7 +1032,7 @@ mod tests {
 		let jobs = HashMap::new();
 		// The remaining viewport is shorter than one whole row.
 		let (w, h) = (500., 300.);
-		let rows = list(w, h, shown.len(), 0.0);
+		let rows = list(w, h, shown.len(), 0.0, CHOOSERS);
 		assert!(!rows.fits());
 		let buttons =
 			rows.hit(font_rows(&catalog, &shown, &jobs, rows, Lang::En));
@@ -809,7 +1046,7 @@ mod tests {
 			"a row is drawn with no room for it"
 		);
 		// The page still offers a way out and the bulk action.
-		let fixed = fonts_controls(&shown, None, false, w, h, Lang::En);
+		let fixed = fonts_controls(rows, None, false, Lang::En);
 		assert!(
 			fixed
 				.iter()
@@ -822,7 +1059,7 @@ mod tests {
 					== Command::Fonts(FontCommand::DownloadMissing))
 		);
 		// A whole row fits as soon as the panel is tall enough for one.
-		assert!(list(w, 400., shown.len(), 0.0).fits());
+		assert!(list(w, 400., shown.len(), 0.0, CHOOSERS).fits());
 	}
 
 	/// A catalogue past the fold scrolls to its last family instead of paging.
@@ -833,8 +1070,14 @@ mod tests {
 			.collect();
 		let shown: Vec<usize> = (0..catalog.len()).collect();
 		let jobs = HashMap::new();
+		// Without a CJK variant the choosers leave the first rows in view.
+		let plain = ReaderSettings {
+			cjk_type: CjkType::None,
+			..Default::default()
+		};
+		let choosers = super::roles(&plain).len();
 		let (w, h) = (820., 600.);
-		let top = list(w, h, shown.len(), 0.0);
+		let top = list(w, h, shown.len(), 0.0, choosers);
 		assert!(top.max_scroll() > 0.0);
 		let rows = top.hit(font_rows(&catalog, &shown, &jobs, top, Lang::En));
 		assert!(
@@ -847,7 +1090,7 @@ mod tests {
 				|b| b.action == Command::Fonts(FontCommand::DownloadOne(8))
 			)
 		);
-		let bottom = list(w, h, shown.len(), f32::MAX);
+		let bottom = list(w, h, shown.len(), f32::MAX, choosers);
 		assert_eq!(bottom.scroll, top.max_scroll());
 		let rows =
 			bottom.hit(font_rows(&catalog, &shown, &jobs, bottom, Lang::En));
@@ -871,7 +1114,13 @@ mod tests {
 				..crate::fonts::Progress::queued("a")
 			},
 		);
-		let rows = list(820., 600., shown.len(), 0.0);
+		// Without a CJK variant the choosers leave the family in view.
+		let plain = ReaderSettings {
+			cjk_type: CjkType::None,
+			..Default::default()
+		};
+		let rows =
+			list(820., 600., shown.len(), 0.0, super::roles(&plain).len());
 		let buttons =
 			rows.hit(font_rows(&catalog, &shown, &jobs, rows, Lang::En));
 		assert!(
@@ -880,7 +1129,7 @@ mod tests {
 				.any(|b| b.action == Command::Fonts(FontCommand::Cancel(0)))
 		);
 		// Bulk actions remain available and report when nothing can start.
-		let top = fonts_controls(&shown, None, false, 820., 600., Lang::En)
+		let top = fonts_controls(rows, None, false, Lang::En)
 			.into_iter()
 			.find(|b| b.action == Command::Fonts(FontCommand::DownloadMissing))
 			.unwrap();
@@ -892,19 +1141,23 @@ mod tests {
 		let mut ui = crate::test_support::shaper();
 		for dark in [false, true] {
 			ui.set_stylesheet(markview_core::style::Stylesheet::bundled(dark));
-			for shown in [vec![0], vec![]] {
-				for button in
-					fonts_controls(&shown, None, false, 820., 600., Lang::En)
-						.into_iter()
-						.filter(|b| {
-							matches!(
-								b.action,
-								Command::Fonts(
-									FontCommand::DownloadMissing
-										| FontCommand::DownloadAll
-								)
-							)
-						}) {
+			for shown in [1, 0] {
+				for button in fonts_controls(
+					list(820., 600., shown, 0.0, CHOOSERS),
+					None,
+					false,
+					Lang::En,
+				)
+				.into_iter()
+				.filter(|b| {
+					matches!(
+						b.action,
+						Command::Fonts(
+							FontCommand::DownloadMissing
+								| FontCommand::DownloadAll
+						)
+					)
+				}) {
 					assert!(button.enabled);
 					let fills: Vec<_> = [
 						(f32::NEG_INFINITY, f32::NEG_INFINITY),
@@ -990,7 +1243,7 @@ mod tests {
 			note: None,
 			status_filter: None,
 		};
-		let rows = list(820., 600., 1, 0.);
+		let rows = list(820., 600., 1, 0., CHOOSERS);
 		let button = font_rows(&catalog, &[0], &jobs, rows, Lang::En).remove(0);
 		assert_eq!(button.action, Command::Fonts(FontCommand::Cancel(0)));
 		assert!(button.icon.is_some());
@@ -1000,9 +1253,10 @@ mod tests {
 			&mut shaper,
 			&InteractionState::default(),
 			&view,
+			&ReaderSettings::default(),
+			&crate::test_support::fonts(),
 			820.,
 			600.,
-			Lang::En,
 		);
 		let Draw::Clipped { draws, .. } = draws
 			.iter()
@@ -1024,5 +1278,184 @@ mod tests {
 		let meta = meta_text(&family, Lang::En);
 		assert!(meta.contains("OFL-1.1"), "{meta}");
 		assert!(meta.contains("Built-in"), "{meta}");
+	}
+
+	/// Each role's chooser lists the families that role can shape with, with
+	/// the stylesheet's own candidate chain first and named "default".
+	#[test]
+	fn each_font_row_offers_the_families_its_role_can_shape_with() {
+		let fonts = crate::test_support::fonts();
+		let latin = markview_core::fonts::families(&fonts, false);
+		let han = markview_core::fonts::families(&fonts, true);
+		assert!(!latin.is_empty(), "the machine has families");
+		// A Han family is a subset of them all, so a face that covers no Han
+		// text is offered to no Han role and a Latin-only family cannot be
+		// picked for one, while it stays in every Latin list.
+		assert!(han.len() < latin.len());
+		assert!(han.iter().all(|name| latin.contains(name)));
+		for (role, families) in [
+			(FontRole::Serif, &latin),
+			(FontRole::SansSerif, &latin),
+			(FontRole::Monospace, &latin),
+			(FontRole::SerifHan, &han),
+			(FontRole::SansSerifHan, &han),
+			(FontRole::MonospaceHan, &han),
+		] {
+			let settings = ReaderSettings::default();
+			let t = settings.lang();
+			let entries = font_options(role, families, &settings, t);
+			assert_eq!(entries.len(), 1 + families.len());
+			assert_eq!(entries[0].label, t.settings_font_default());
+			assert_eq!(entries[0].action, Command::FontFamily(role, None));
+			assert!(entries[0].active, "the stylesheet's chain is in force");
+			// Every family names itself, and none is in force yet.
+			for (entry, family) in entries[1..].iter().zip(families.iter()) {
+				assert_eq!(entry.label, *family);
+				assert_eq!(
+					entry.action,
+					Command::FontFamily(role, Some(family))
+				);
+				assert!(!entry.active);
+			}
+			// A pick marks itself rather than the default entry.
+			let mut picked = ReaderSettings::default();
+			picked.set_font_family(role, Some(families[0].to_owned()));
+			let entries = font_options(role, families, &picked, t);
+			assert!(!entries[0].active);
+			assert!(entries[1].active);
+			assert_eq!(
+				entries[1].action,
+				Command::FontFamily(role, Some(families[0]))
+			);
+		}
+	}
+
+	/// The closed chooser shows the family in force, and opening its list
+	/// starts on that family, exactly as the language row does.
+	#[test]
+	fn a_font_row_shows_the_family_in_force() {
+		let fonts = crate::test_support::fonts();
+		let families = markview_core::fonts::families(&fonts, false);
+		let jobs = HashMap::new();
+		let view = super::super::View {
+			catalog: &[],
+			shown: vec![],
+			jobs: &jobs,
+			scroll: 0.,
+			note: None,
+			status_filter: None,
+		};
+		let control = |settings: &ReaderSettings| {
+			buttons(
+				&view,
+				settings,
+				&fonts,
+				false,
+				1200.,
+				800.,
+				settings.lang(),
+			)
+			.into_iter()
+			.find(|button| {
+				matches!(
+					button.action,
+					Command::ToggleDropdown(
+						DropdownId::Font(FontRole::Monospace),
+						_
+					)
+				)
+			})
+			.expect("the monospace chooser")
+		};
+		let mut settings = ReaderSettings::default();
+		settings
+			.set_font_family(FontRole::Monospace, Some(families[0].to_owned()));
+		let t = settings.lang();
+		let row = control(&settings);
+		assert_eq!(row.label, families[0]);
+		assert!(row.marker.is_some(), "the chooser is marked");
+		let Command::ToggleDropdown(_, highlight) = row.action else {
+			unreachable!()
+		};
+		let entries =
+			font_options(FontRole::Monospace, &families, &settings, t);
+		assert!(entries[highlight].active);
+		// Without a pick the chooser names the default entry instead.
+		let settings = ReaderSettings::default();
+		assert_eq!(control(&settings).label, t.settings_font_default());
+	}
+
+	/// With no CJK variant in force the sheet resolves no `[cjk]` definition,
+	/// so the Han rows are not offered at all — there is nothing for a pick to
+	/// shape. A variant brings them back.
+	#[test]
+	fn without_a_cjk_variant_the_han_choosers_are_hidden() {
+		let fonts = crate::test_support::fonts();
+		let jobs = HashMap::new();
+		let view = super::super::View {
+			catalog: &[],
+			shown: vec![],
+			jobs: &jobs,
+			scroll: 0.,
+			note: None,
+			status_filter: None,
+		};
+		let plain = ReaderSettings {
+			cjk_type: CjkType::None,
+			..Default::default()
+		};
+		let buttons =
+			buttons(&view, &plain, &fonts, false, 820., 600., Lang::En);
+		assert!(buttons.iter().any(|b| matches!(
+			b.action,
+			Command::ToggleDropdown(DropdownId::Font(FontRole::Serif), _)
+		)));
+		for role in [
+			FontRole::SerifHan,
+			FontRole::SansSerifHan,
+			FontRole::MonospaceHan,
+		] {
+			assert!(
+				!buttons
+					.iter()
+					.any(|b| matches!(b.action, Command::ToggleDropdown(DropdownId::Font(shown), _) if shown == role)),
+				"the {role:?} row is hidden"
+			);
+		}
+		// A variant in force shows all six.
+		let settings = ReaderSettings::default();
+		assert_eq!(super::roles(&settings).len(), 6);
+		assert_eq!(super::roles(&plain).len(), 3);
+	}
+
+	/// A chooser the scroll has moved out of the clip holds no list, exactly as
+	/// a form row the page scrolled away does.
+	#[test]
+	fn a_scrolled_away_chooser_holds_no_list() {
+		let fonts = crate::test_support::fonts();
+		let settings = ReaderSettings::default();
+		let catalog: Vec<_> = (0..5)
+			.map(|i| entry(&format!("f{i}"), State::Missing))
+			.collect();
+		let jobs = HashMap::new();
+		let view = |scroll: f32| super::super::View {
+			catalog: &catalog,
+			shown: vec![0, 1, 2, 3, 4],
+			jobs: &jobs,
+			scroll,
+			note: None,
+			status_filter: None,
+		};
+		let mut open = Dropdown::new(DropdownId::Font(FontRole::Serif), 0);
+		assert!(
+			menu(&view(0.), &settings, &fonts, &mut open, (820., 600.))
+				.is_some(),
+			"the first chooser anchors its list"
+		);
+		assert!(
+			menu(&view(f32::MAX), &settings, &fonts, &mut open, (820., 600.))
+				.is_none(),
+			"the page scrolled the chooser away"
+		);
 	}
 }

@@ -53,6 +53,7 @@ impl<P: super::SendEvent> App<P> {
 			tab_strip: &self.tab_strip,
 			tab_widths: &self.tab_metrics.widths,
 			settings: &self.preferences.values,
+			font_config: &self.fonts_config,
 			export: &self.preferences.export,
 			interaction: &self.interaction,
 			style_entries: &self.preferences.style_entries,
@@ -118,6 +119,7 @@ impl<P: super::SendEvent> App<P> {
 				height,
 				fonts.shown.len(),
 				fonts.scroll,
+				super::font_panel::view::roles(&self.preferences.values).len(),
 			))
 		} else {
 			None

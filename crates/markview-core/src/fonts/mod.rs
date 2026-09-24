@@ -24,6 +24,7 @@ use parley::fontique::{
 	SourceCache,
 };
 use std::{
+	collections::HashSet,
 	fmt,
 	hash::{Hash, Hasher},
 	path::PathBuf,
@@ -135,30 +136,94 @@ fn collection(config: &FontConfig) -> Collection {
 	type Cache = Mutex<Vec<(FontConfig, Arc<OnceLock<Collection>>)>>;
 	static CACHE: OnceLock<Cache> = OnceLock::new();
 	let cache_mutex = CACHE.get_or_init(|| Mutex::new(Vec::new()));
-	let slot =
-		cached_slot(&mut cache(cache_mutex, "Font collection cache"), config);
+	let slot = cached_slot(
+		&mut cache(cache_mutex, "Font collection cache"),
+		config.clone(),
+		|| Arc::new(OnceLock::new()),
+	);
 	// The build reads and parses files outside the cache lock, so a panic in
 	// a font backend cannot poison it. The slot's own lock still makes exactly
 	// one caller do the work.
 	slot.get_or_init(|| build(config)).clone()
 }
 
-/// The cache slot for `config`, retiring the least recently used entry past
+/// The families `config` can shape with, in alphabetical order.
+///
+/// `han` keeps only the families whose character map covers a Han ideograph,
+/// which is what makes one a useful fallback for a `[cjk]` font definition.
+/// Reading the maps loads every family's faces, so the answer is cached per
+/// configuration exactly as the collection itself is. Every name is stored for
+/// the process, so a caller can name one in a label that outlives the list.
+pub fn families(config: &FontConfig, han: bool) -> Arc<[&'static str]> {
+	type Cache =
+		Mutex<Vec<((FontConfig, bool), Arc<OnceLock<Arc<[&'static str]>>>)>>;
+	static CACHE: OnceLock<Cache> = OnceLock::new();
+	let cache_mutex = CACHE.get_or_init(|| Mutex::new(Vec::new()));
+	let slot = cached_slot(
+		&mut cache(cache_mutex, "Font family cache"),
+		(config.clone(), han),
+		|| Arc::new(OnceLock::new()),
+	);
+	// The build reads and parses faces outside the cache lock, so a panic in
+	// a font backend cannot poison it. The slot's own lock still makes exactly
+	// one caller do the work.
+	slot.get_or_init(|| build_families(config, han)).clone()
+}
+
+fn build_families(config: &FontConfig, han: bool) -> Arc<[&'static str]> {
+	let mut collection = collection(config);
+	let mut names: Vec<&'static str> =
+		collection.family_names().map(interned).collect();
+	if han {
+		let mut source_cache = SourceCache::default();
+		names.retain(|name| {
+			collection.family_by_name(name).is_some_and(|family| {
+				family
+					.fonts()
+					.iter()
+					.any(|info| covers_cjk(info, &mut source_cache))
+			})
+		});
+	}
+	names.sort_unstable();
+	names.dedup();
+	names.into()
+}
+
+/// Stores `name` for the life of the process and returns it.
+///
+/// A chooser names a family in a label the interface draws every frame, so a
+/// name is kept once however many lists, roles or frames mention it: one small
+/// string per family the machine has, rather than one per option per frame.
+fn interned(name: &str) -> &'static str {
+	static NAMES: OnceLock<Mutex<HashSet<&'static str>>> = OnceLock::new();
+	let names = NAMES.get_or_init(|| Mutex::new(HashSet::new()));
+	let mut names = names.lock().expect("font family names");
+	if let Some(stored) = names.get(name) {
+		return stored;
+	}
+	let stored: &'static str = Box::leak(name.to_owned().into_boxed_str());
+	names.insert(stored);
+	stored
+}
+
+/// The cache slot for `key`, retiring the least recently used entry past
 /// [`CACHE_CAP`].
 ///
-/// A hit refreshes its entry, so a repeated configuration keeps the collection
-/// it already built and the entry dropped is the one unused the longest.
-fn cached_slot(
-	cache: &mut Vec<(FontConfig, Arc<OnceLock<Collection>>)>,
-	config: &FontConfig,
-) -> Arc<OnceLock<Collection>> {
-	if let Some(index) = cache.iter().position(|(key, _)| key == config) {
+/// A hit refreshes its entry, so a repeated key keeps the value it already
+/// built and the entry dropped is the one unused the longest.
+fn cached_slot<K: Eq + Clone, V: Clone>(
+	cache: &mut Vec<(K, V)>,
+	key: K,
+	value: impl FnOnce() -> V,
+) -> V {
+	if let Some(index) = cache.iter().position(|(k, _)| *k == key) {
 		let (_, slot) = cache.remove(index);
-		cache.push((config.clone(), slot.clone()));
+		cache.push((key, slot.clone()));
 		return slot;
 	}
-	let slot = Arc::new(OnceLock::new());
-	cache.push((config.clone(), slot.clone()));
+	let slot = value();
+	cache.push((key, slot.clone()));
 	if cache.len() > CACHE_CAP {
 		cache.remove(0);
 	}
@@ -273,15 +338,15 @@ mod tests {
 		};
 		let mut cache = Vec::new();
 		for revision in 0..CACHE_CAP as u64 {
-			cached_slot(&mut cache, &config(revision));
+			cached_slot(&mut cache, config(revision), || Arc::new(0));
 		}
 		assert_eq!(cache.len(), CACHE_CAP);
 		// A repeated configuration reuses its slot and becomes the newest.
-		let slot = cached_slot(&mut cache, &config(0));
+		let slot = cached_slot(&mut cache, config(0), || Arc::new(0));
 		assert_eq!(cache.len(), CACHE_CAP);
 		assert!(Arc::ptr_eq(&slot, &cache.last().unwrap().1));
 		// One more revision retires the least recently used entry, revision 1.
-		cached_slot(&mut cache, &config(CACHE_CAP as u64));
+		cached_slot(&mut cache, config(CACHE_CAP as u64), || Arc::new(0));
 		assert_eq!(cache.len(), CACHE_CAP);
 		assert!(cache.iter().any(|(key, _)| key.revision == 0));
 		assert!(!cache.iter().any(|(key, _)| key.revision == 1));
@@ -293,7 +358,11 @@ mod tests {
 			..Default::default()
 		};
 		let mutex = Mutex::new(Vec::new());
-		let slot = cached_slot(&mut cache(&mutex, "Test font cache"), &config);
+		let slot = cached_slot(
+			&mut cache(&mutex, "Test font cache"),
+			config.clone(),
+			|| Arc::new(OnceLock::new()),
+		);
 		std::thread::scope(|scope| {
 			assert!(
 				scope
@@ -308,12 +377,19 @@ mod tests {
 		assert!(!mutex.is_poisoned());
 		assert!(Arc::ptr_eq(
 			&slot,
-			&cached_slot(&mut cache(&mutex, "Test font cache"), &config)
+			&cached_slot(
+				&mut cache(&mutex, "Test font cache"),
+				config.clone(),
+				|| Arc::new(OnceLock::new()),
+			)
 		));
 		slot.get_or_init(|| build(&config));
 		poison(&mutex);
-		let replacement =
-			cached_slot(&mut cache(&mutex, "Test font cache"), &config);
+		let replacement = cached_slot(
+			&mut cache(&mutex, "Test font cache"),
+			config.clone(),
+			|| Arc::new(OnceLock::new()),
+		);
 		assert!(!Arc::ptr_eq(&slot, &replacement));
 		assert!(!mutex.is_poisoned());
 		replacement.get_or_init(|| build(&config));
@@ -387,8 +463,29 @@ mod tests {
 		assert!(supplied.family_by_name("Noto Serif").is_some());
 		// And so a local cache gives them separate slots.
 		let mut cache = Vec::new();
-		let empty_slot = cached_slot(&mut cache, &unconfigured);
-		let supplied_slot = cached_slot(&mut cache, &tagged);
+		let empty_slot = cached_slot(&mut cache, &unconfigured, || Arc::new(0));
+		let supplied_slot = cached_slot(&mut cache, &tagged, || Arc::new(0));
 		assert!(!Arc::ptr_eq(&empty_slot, &supplied_slot));
+	}
+
+	/// A chooser lists every family the configuration can shape with, and a
+	/// Han chooser keeps only the ones that draw a Han ideograph.
+	#[test]
+	fn a_family_list_keeps_only_han_families_where_asked() {
+		let dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fonts");
+		let config = FontConfig {
+			ignore_system_fonts: true,
+			directories: vec![dir],
+			..Default::default()
+		};
+		let all = families(&config, false);
+		let han = families(&config, true);
+		assert!(all.contains(&"Noto Sans"), "{all:?}");
+		assert!(!han.contains(&"Noto Sans"), "{han:?}");
+		assert!(han.iter().any(|name| name.contains("CJK")), "{han:?}");
+		// Both lists read in alphabetical order, and a Han family is a subset.
+		assert!(all.windows(2).all(|pair| pair[0] <= pair[1]));
+		assert!(han.windows(2).all(|pair| pair[0] <= pair[1]));
+		assert!(han.iter().all(|name| all.contains(name)));
 	}
 }

@@ -42,6 +42,10 @@ pub(crate) enum Command {
 	CjkType(markview_core::style::CjkType),
 	/// The interface language; `None` follows the system again.
 	Language(Option<crate::lang::Lang>),
+	/// Pick the family a font role shapes with; `None` restores the
+	/// stylesheet's own candidate chain. The name is interned by
+	/// [`markview_core::fonts::families`], which is where a chooser gets it.
+	FontFamily(crate::settings::FontRole, Option<&'static str>),
 	/// Open a control's option list on the option in force, or close it again.
 	ToggleDropdown(DropdownId, usize),
 	/// Open or close the export panel.
@@ -347,6 +351,8 @@ impl Viewer {
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum DropdownId {
 	Language,
+	/// One font role's family chooser.
+	Font(crate::settings::FontRole),
 }
 
 /// The option list a control has open.

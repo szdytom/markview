@@ -10,7 +10,8 @@ use crate::{
 };
 use markview_core::style::{ColorField as C, Condition};
 
-/// Equal-height rows inside a clipped viewport.
+/// Equal-height rows inside a clipped viewport, optionally behind a block of
+/// content that scrolls ahead of them.
 #[derive(Clone, Copy)]
 pub(in crate::app) struct List {
 	/// The whole panel: a page lays its fixed controls out in it, and it owns
@@ -18,6 +19,9 @@ pub(in crate::app) struct List {
 	pub(in crate::app) panel: Rect,
 	/// The clip: rows are drawn and clicked only inside it.
 	pub(in crate::app) viewport: Rect,
+	/// Content ahead of the first row — a page's own group of controls, say —
+	/// which scrolls with the rows and counts toward the scroll range.
+	lead: f32,
 	/// One row's height.
 	row: f32,
 	/// How many rows the page has.
@@ -30,6 +34,7 @@ impl List {
 	pub(in crate::app) fn new(
 		panel: Rect,
 		viewport: Rect,
+		lead: f32,
 		row: f32,
 		rows: usize,
 		scroll: f32,
@@ -37,6 +42,7 @@ impl List {
 		let mut list = Self {
 			panel,
 			viewport,
+			lead,
 			row,
 			rows,
 			scroll: 0.0,
@@ -47,7 +53,7 @@ impl List {
 
 	/// How far the list scrolls before its last row reaches the clip's bottom.
 	pub(in crate::app) fn max_scroll(&self) -> f32 {
-		(self.rows as f32 * self.row - self.viewport.h).max(0.0)
+		(self.lead + self.rows as f32 * self.row - self.viewport.h).max(0.0)
 	}
 
 	/// Whether a whole row fits. A shorter clip shows a sliver of one, which a
@@ -62,18 +68,21 @@ impl List {
 		if self.rows == 0 || self.viewport.h <= 0.0 {
 			return 0..0;
 		}
-		let first = (self.scroll / self.row).floor().max(0.0) as usize;
-		let last = (((self.scroll + self.viewport.h) / self.row).ceil()
-			as usize + 1)
-			.min(self.rows);
-		first.min(self.rows)..last
+		let top = self.scroll - self.lead;
+		let first = (top / self.row).floor().max(0.0) as usize;
+		let first = first.min(self.rows);
+		let last = (((top + self.viewport.h) / self.row).ceil() as usize + 1)
+			.min(self.rows)
+			.max(first);
+		first..last
 	}
 
 	/// Where one row's band sits at the current offset, in window coordinates.
 	pub(in crate::app) fn row_rect(&self, index: usize) -> Rect {
 		Rect {
 			x: self.viewport.x,
-			y: self.viewport.y + index as f32 * self.row - self.scroll,
+			y: self.viewport.y + self.lead + index as f32 * self.row
+				- self.scroll,
 			w: self.viewport.w,
 			h: self.row,
 		}
@@ -161,6 +170,7 @@ mod tests {
 				w: 600.0,
 				h: 424.0,
 			},
+			0.0,
 			60.0,
 			rows,
 			scroll,
@@ -260,10 +270,44 @@ mod tests {
 				w: 500.0,
 				h: 8.0,
 			},
+			0.0,
 			72.0,
 			4,
 			0.0,
 		);
 		assert!(!short.fits());
+	}
+
+	/// A lead block scrolls ahead of the rows: it pushes the first row down,
+	/// counts toward the scroll range, and hides the rows beneath it until the
+	/// page is scrolled past it.
+	#[test]
+	fn a_lead_block_scrolls_ahead_of_the_rows() {
+		let list = List::new(
+			Rect {
+				x: 0.0,
+				y: 0.0,
+				w: 600.0,
+				h: 620.0,
+			},
+			Rect {
+				x: 0.0,
+				y: 132.0,
+				w: 600.0,
+				h: 300.0,
+			},
+			296.0,
+			88.0,
+			4,
+			0.0,
+		);
+		// The lead fills most of the clip, so only a sliver of the first row
+		// shows; the next row is laid out too, clipped to nothing.
+		assert_eq!(list.row_rect(0).y, 132.0 + 296.0);
+		assert_eq!(list.visible(), 0..2);
+		assert_eq!(list.max_scroll(), 296.0 + 4.0 * 88.0 - 300.0);
+		// Scrolled past the lead, the rows read exactly as a leadless list.
+		let past = List::new(list.panel, list.viewport, 296.0, 88.0, 4, 296.0);
+		assert_eq!(past.visible(), 0..4);
 	}
 }

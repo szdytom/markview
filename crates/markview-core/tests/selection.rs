@@ -26,15 +26,16 @@ fn fonts() -> FontConfig {
 	}
 }
 
+fn plain_options() -> LayoutOptions {
+	LayoutOptions {
+		width: 400.0,
+		fonts: fonts(),
+		..Default::default()
+	}
+}
+
 fn layout(source: &str) -> LayoutSnapshot {
-	LayoutEngine::new().layout(
-		&document::parse(source),
-		&LayoutOptions {
-			width: 400.0,
-			fonts: fonts(),
-			..Default::default()
-		},
-	)
+	LayoutEngine::new().layout(&document::parse(source), &plain_options())
 }
 
 /// A selection marks only the reading text it names. Every cluster the
@@ -236,4 +237,53 @@ fn a_partially_selected_ligature_is_subdivided_before_it_is_clipped() {
 		rects.is_empty(),
 		"the selected letter is offscreen, so nothing is marked: {rects:?}"
 	);
+}
+
+/// Picking another family for the serif role moves the ink and nothing else:
+/// the text, its cluster boundaries and so its selection and copy stay put.
+#[test]
+fn a_family_override_keeps_the_text_and_its_selection() {
+	let source = "The quick brown fox\n\n- one\n- two\n";
+	let plain = layout(source);
+	let mut picked = (*plain_options().stylesheet).clone();
+	picked
+		.apply_font_overrides(&[("serif".to_owned(), "Noto Sans".to_owned())])
+		.unwrap();
+	let picked = LayoutEngine::new().layout(
+		&document::parse(source),
+		&LayoutOptions {
+			stylesheet: std::sync::Arc::new(picked),
+			..plain_options()
+		},
+	);
+	// List markers are not part of the reading text, so both copies of the
+	// document read the same either way.
+	let text = "The quick brown fox\none\ntwo";
+	assert_eq!(picked.extract_text(picked.select_all(1).unwrap(), 1), text);
+	assert_eq!(plain.extract_text(plain.select_all(1).unwrap(), 1), text);
+	let (plain_lines, picked_lines): (Vec<_>, Vec<_>) =
+		(lines(&plain).collect(), lines(&picked).collect());
+	assert_eq!(plain_lines.len(), picked_lines.len());
+	let mut moved = 0;
+	for (a, b) in plain_lines.iter().zip(&picked_lines) {
+		assert_eq!(a.0, b.0, "the text of a line");
+		assert_eq!(a.1, b.1, "the character spans a line breaks into");
+		moved += a.2.iter().zip(&b.2).filter(|(x, y)| x != y).count();
+	}
+	assert!(moved > 0, "the family in force changed the geometry");
+}
+
+/// Every text node as its text, its cluster ranges and each cluster's x.
+fn lines(
+	snapshot: &LayoutSnapshot,
+) -> impl Iterator<Item = (&str, Vec<std::ops::Range<usize>>, Vec<f32>)> {
+	snapshot.blocks.iter().flat_map(move |block| {
+		block.layout.text.iter().map(move |node| {
+			(
+				node.text.as_ref(),
+				node.clusters.iter().map(|c| c.range.clone()).collect(),
+				node.clusters.iter().map(|c| c.rect.x).collect(),
+			)
+		})
+	})
 }

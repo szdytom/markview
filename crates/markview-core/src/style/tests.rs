@@ -407,6 +407,31 @@ fn fontdefs_are_selected_by_cjk_type() {
 	sheet.set_cjk_type(CjkType::Jp);
 	assert!(!sheet.fontdefs.contains_key("cjk"));
 }
+/// An override for a variant-scoped definition waits while no variant resolves
+/// it, so a stored Han pick never fails the whole set when the reader reads
+/// without one. An id no layer declares is still an error: nothing would ever
+/// apply it.
+#[test]
+fn overrides_skip_unresolved_variants_and_fail_unknown_ids() {
+	let mut sheet = (*Stylesheet::builtin()).clone();
+	sheet.set_cjk_type(CjkType::None);
+	assert!(!sheet.fontdefs.contains_key("serif[cjk]"));
+	let overrides = [
+		("serif".to_owned(), "Picked".to_owned()),
+		("serif[cjk]".to_owned(), "Han Serif".to_owned()),
+	];
+	sheet.apply_font_overrides(&overrides).unwrap();
+	assert_eq!(sheet.fontdefs["serif"].lookfor, ["Picked"]);
+	// A variant resolves the definition again, and the waiting pick with it.
+	sheet.set_cjk_type(CjkType::Sc);
+	sheet.apply_font_overrides(&overrides).unwrap();
+	assert_eq!(sheet.fontdefs["serif[cjk]"].lookfor, ["Han Serif"]);
+	let error = sheet
+		.apply_font_overrides(&[("nope".to_owned(), "Picked".to_owned())])
+		.unwrap_err()
+		.to_string();
+	assert!(error.contains("nope"), "{error}");
+}
 #[test]
 fn font_families_parse_metadata_and_mirrors() {
 	let digest =

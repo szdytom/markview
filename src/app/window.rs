@@ -226,30 +226,25 @@ impl<P: super::SendEvent> App<P> {
 					return;
 				}
 				// An open option list owns input the way a confirmation does: a
-				// press on it picks an option, and a press anywhere else closes
-				// it without reaching the page it covered. Nothing behind it
-				// answers the same click, so the press is always the last word
-				// and the release that follows has nothing left to dispatch.
+				// press on one of its own options picks it, and a press anywhere
+				// else closes it without reaching the page it covered. Nothing
+				// behind it answers the same click, so the press is always the
+				// last word and the release that follows has nothing left to
+				// dispatch.
 				if self.interaction.dropdown.is_some() {
 					self.interaction.reset_clicks();
 					let (x, y) = self.interaction.cursor;
 					match self
-						.buttons()
+						.dropdown_buttons()
 						.into_iter()
 						.find(|button| button.rect.contains(x, y))
 						.map(|button| button.action)
 					{
-						Some(action)
-							if matches!(
-								action,
-								Command::ToggleDropdown(..)
-									| Command::Language(_)
-							) =>
-						{
+						Some(action) => {
 							self.interaction.focus = Some(action);
 							self.interaction.pressed = Some(action);
 						}
-						_ => self.close_dropdown(),
+						None => self.close_dropdown(),
 					}
 					self.redraw();
 					return;

@@ -68,6 +68,45 @@ pub struct FontDefOverride {
 	#[serde(rename = "override")]
 	pub replacement: String,
 }
+
+/// A font definition a reader may pick a family for.
+///
+/// A role names one `fontdef` of the stylesheet in force, so picking a family
+/// for it overrides that definition's own candidate chain and nothing else.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum FontRole {
+	Serif,
+	SansSerif,
+	Monospace,
+	/// The same three roles for Han text. A stylesheet carries one definition
+	/// per CJK variant and resolves the one in force, so a family chosen here
+	/// follows a change of variant.
+	SerifHan,
+	SansSerifHan,
+	MonospaceHan,
+}
+impl FontRole {
+	/// The `fontdef` id this role overrides.
+	pub fn id(self) -> &'static str {
+		match self {
+			Self::Serif => "serif",
+			Self::SansSerif => "sans-serif",
+			Self::Monospace => "monospace",
+			Self::SerifHan => "serif[cjk]",
+			Self::SansSerifHan => "sans-serif[cjk]",
+			Self::MonospaceHan => "monospace[cjk]",
+		}
+	}
+	/// Whether the role shapes Han text, whose chooser offers only the
+	/// families that cover a Han ideograph.
+	pub fn han(self) -> bool {
+		matches!(
+			self,
+			Self::SerifHan | Self::SansSerifHan | Self::MonospaceHan
+		)
+	}
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Setting {
 	Theme,
@@ -80,6 +119,8 @@ pub enum Setting {
 	Language,
 	CodeblockWrap,
 	ScrollSpeed,
+	/// Every per-role font family, which is one list of overrides.
+	FontFamily,
 }
 
 /// Which document an export writes to disk.
@@ -232,6 +273,28 @@ impl ReaderSettings {
 			+ f32::from(steps) * SCROLL_SPEED_STEP)
 			.clamp(SCROLL_SPEED_MIN, SCROLL_SPEED_MAX);
 	}
+	/// The family chosen for `role`, or `None` while the stylesheet's own
+	/// candidate chain applies.
+	pub fn font_family(&self, role: FontRole) -> Option<&str> {
+		self.fontdef_overrides
+			.iter()
+			.find(|over| over.id == role.id())
+			.map(|over| over.replacement.as_str())
+	}
+
+	/// Picks `family` for `role`, or restores the stylesheet's own candidate
+	/// chain when `family` is `None`.
+	pub fn set_font_family(&mut self, role: FontRole, family: Option<String>) {
+		let id = role.id();
+		self.fontdef_overrides.retain(|over| over.id != id);
+		if let Some(replacement) = family {
+			self.fontdef_overrides.push(FontDefOverride {
+				id: id.to_owned(),
+				replacement,
+			});
+		}
+	}
+
 	pub fn copy_field(&mut self, other: &Self, field: Setting) {
 		match field {
 			Setting::Theme => {
@@ -251,6 +314,10 @@ impl ReaderSettings {
 				self.codeblock_wrap = other.codeblock_wrap
 			}
 			Setting::ScrollSpeed => self.scroll_speed = other.scroll_speed,
+			// One role's change rewrites the whole list of overrides.
+			Setting::FontFamily => {
+				self.fontdef_overrides = other.fontdef_overrides.clone()
+			}
 		}
 	}
 }

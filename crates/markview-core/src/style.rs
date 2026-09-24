@@ -6,7 +6,7 @@ use crate::{
 	document::TextStyle,
 	scene::{Paint, SCROLLBAR_GUTTER, ScrollbarMetrics},
 };
-use anyhow::{Context, Result, bail};
+use anyhow::{Result, bail};
 pub use numbering::NumberingPattern;
 use serde::Deserialize;
 use std::{
@@ -367,9 +367,16 @@ impl Stylesheet {
 		overrides: &[(String, String)],
 	) -> Result<()> {
 		for (id, name) in overrides {
-			let def = self.fontdefs.get_mut(id).with_context(|| {
-				format!("fontdef override: unknown id {id:?}")
-			})?;
+			let Some(def) = self.fontdefs.get_mut(id) else {
+				// A variant-scoped definition resolves only while a CJK
+				// variant is in force, so an override for one waits unread
+				// rather than failing the whole set. An id no layer declares
+				// stays an error: nothing would ever apply it.
+				if self.has_fontdef_variant(id) {
+					continue;
+				}
+				bail!("fontdef override: unknown id {id:?}");
+			};
 			if name.trim().is_empty() {
 				bail!("fontdef override {id:?}: empty font name");
 			}
