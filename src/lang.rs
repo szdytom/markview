@@ -11,6 +11,8 @@ use serde::{Deserialize, Serialize};
 pub enum Lang {
 	En,
 	ZhHans,
+	ZhHant,
+	Ja,
 }
 impl Default for Lang {
 	/// The system's language, chosen the same way the CJK convention is. Only
@@ -30,13 +32,24 @@ impl Default for Lang {
 impl Lang {
 	/// The language a locale tag names.
 	///
-	/// A tag this reader has no translation for falls back to English. Every
-	/// Chinese tag takes the Simplified text: a Traditional reader is better
-	/// served by another Chinese script than by none.
+	/// A tag this reader has no translation for falls back to English. A Chinese
+	/// tag takes the script its own subtag names, and one this list does not name
+	/// takes the Simplified text: a reader of one Chinese script is better served
+	/// by the other than by none, and most `zh` tags are Simplified.
 	pub fn from_locale(locale: &str) -> Self {
 		let locale = normalize(locale);
-		if locale == "zh" || locale.starts_with("zh-") {
-			Self::ZhHans
+		if locale == "ja" || locale.starts_with("ja-") {
+			Self::Ja
+		} else if locale == "zh" || locale.starts_with("zh-") {
+			// The Chinese tags that name Traditional script; every other `zh`
+			// spelling is Simplified, including a tag this list does not name.
+			const TRADITIONAL: [&str; 4] =
+				["zh-hant", "zh-tw", "zh-hk", "zh-mo"];
+			if TRADITIONAL.iter().any(|tag| locale.starts_with(tag)) {
+				Self::ZhHant
+			} else {
+				Self::ZhHans
+			}
 		} else {
 			Self::En
 		}
@@ -70,7 +83,9 @@ fn normalize(locale: &str) -> String {
 markview_i18n::locales!(
 	"assets/locales",
 	En = "en.toml",
-	ZhHans = "zh-Hans.toml"
+	ZhHans = "zh-Hans.toml",
+	ZhHant = "zh-Hant.toml",
+	Ja = "ja.toml"
 );
 
 #[cfg(test)]

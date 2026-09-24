@@ -130,7 +130,7 @@ fn panel_buttons_never_overlap() {
 	let mut shaper = crate::test_support::shaper();
 	// The panel's grid does not move for a longer label, so the translations
 	// have to hold inside the same slots the English ones do.
-	for lang in [Lang::En, Lang::ZhHans] {
+	for &lang in Lang::ALL {
 		for (width, height) in [(500.0, 300.0), (820.0, 600.0), (1200.0, 800.0)]
 		{
 			let buttons = export_controls(

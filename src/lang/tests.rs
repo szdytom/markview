@@ -5,12 +5,15 @@ fn a_locale_tag_names_a_language() {
 	assert_eq!(Lang::from_locale("en"), Lang::En);
 	assert_eq!(Lang::from_locale("en-US"), Lang::En);
 	assert_eq!(Lang::from_locale("en-GB"), Lang::En);
-	assert_eq!(Lang::from_locale("ja-JP"), Lang::En);
+	assert_eq!(Lang::from_locale("ja-JP"), Lang::Ja);
 	assert_eq!(Lang::from_locale(""), Lang::En);
 	assert_eq!(Lang::from_locale("zh"), Lang::ZhHans);
 	assert_eq!(Lang::from_locale("zh_CN"), Lang::ZhHans);
 	assert_eq!(Lang::from_locale("zh-Hans"), Lang::ZhHans);
-	assert_eq!(Lang::from_locale("ZH-hant-tw"), Lang::ZhHans);
+	assert_eq!(Lang::from_locale("zh-Hant"), Lang::ZhHant);
+	assert_eq!(Lang::from_locale("ZH-hant-tw"), Lang::ZhHant);
+	assert_eq!(Lang::from_locale("zh-TW"), Lang::ZhHant);
+	assert_eq!(Lang::from_locale("zh-HK"), Lang::ZhHant);
 }
 
 #[test]
@@ -20,6 +23,8 @@ fn text_comes_from_the_locale_files() {
 	assert_eq!(Lang::En.settings_on(), "On");
 	assert_eq!(Lang::ZhHans.settings_on(), "开");
 	assert_eq!(Lang::ZhHans.settings_reset_defaults(), "恢复默认值");
+	assert_eq!(Lang::ZhHant.settings_reset_defaults(), "還原預設值");
+	assert_eq!(Lang::Ja.settings_reset_defaults(), "既定値に戻す");
 }
 
 #[test]

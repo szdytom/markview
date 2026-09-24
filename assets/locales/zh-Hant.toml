@@ -1,0 +1,233 @@
+# The interface's Traditional Chinese text.
+#
+# This file must declare exactly the same keys as `en.toml`, and every value
+# must spell exactly the same `{placeholders}`. The macro rejects anything else,
+# so a missing key or a dropped placeholder is a compile error rather than a
+# blank label.
+
+# The language these words are written in, named as its own speakers name it.
+# A chooser lists every language this way, so the name stays the same in every
+# file that has one.
+language_name = "繁體中文"
+
+# The settings panel's tabs.
+tabs_about = "關於"
+tabs_fonts = "字型"
+tabs_generic = "一般"
+tabs_styles = "樣式"
+
+# The panel shell, drawn once around every page.
+panel_close = "關閉"
+panel_exit_preview = "結束預覽"
+panel_preview = "預覽文件"
+panel_saved = "自動儲存"
+panel_settings = "設定"
+
+# The toolbar's icon buttons.
+toolbar_export = "匯出"
+toolbar_open = "開啟"
+toolbar_outline = "大綱"
+toolbar_settings = "設定"
+
+# Section headings.
+section_diagnostics = "診斷"
+section_interface = "介面"
+section_language_code = "語言與程式碼"
+section_project = "專案"
+section_reading_layout = "閱讀版面"
+
+# The General page's rows.
+settings_alignment = "對齊"
+settings_cjk_none = "無"
+settings_cjk_punctuation = "CJK 標點"
+settings_codeblock_wrapping = "程式碼區塊換行"
+settings_column_width = "欄寬"
+settings_decrease = "縮小"
+settings_english_hyphenation = "英文斷字"
+settings_increase = "放大"
+settings_indent_off = "不縮排"
+settings_justified = "左右對齊"
+settings_language = "介面語言"
+settings_language_system = "跟隨系統"
+settings_left_aligned = "靠左對齊"
+settings_off = "關"
+settings_on = "開"
+settings_open_config = "開啟 settings.toml"
+settings_paragraph_indent = "段落縮排"
+settings_reset_defaults = "還原預設值"
+settings_scroll_speed = "捲動速度"
+settings_text_size = "文字大小"
+
+# The About page.
+about_copy_diagnostics = "複製診斷資訊"
+about_created_by = "由 {authors} 開發 · {license} 授權條款"
+about_description = "快速、原生的 Markdown 閱讀器，出版級排版。"
+
+# The diagnostics rows.
+diagnostics_backend = "WGPU 後端"
+diagnostics_backend_none = "未初始化"
+diagnostics_build_date = "建置日期"
+diagnostics_commit = "提交"
+diagnostics_os = "作業系統"
+diagnostics_row = "{name}：{value}"
+diagnostics_version = "版本"
+
+# The reader window's notice strip.
+notice_dismiss = "略過"
+notice_load_all = "全部載入"
+notice_remote_images = "有 {count} 張遠端圖片未載入。"
+
+# What the reading area says instead of a document.
+empty_blank_detail = "檔案有變更時，內容會顯示在這裡。"
+empty_blank_title = "文件是空的"
+empty_open_detail = "開啟 Markdown 檔案，或將它拖進這個視窗。"
+empty_open_file = "開啟檔案…"
+empty_open_title = "開啟 Markdown 檔案"
+empty_opening_detail = "正在準備第一頁…"
+empty_opening_title = "正在開啟文件…"
+empty_unreadable_detail = "請檢查檔案路徑與存取權限。"
+empty_unreadable_title = "無法讀取這個檔案"
+
+# The status bar.
+footer_counts = "{chars} 字元 · {words} 詞"
+footer_loading = "載入中…"
+footer_selected = "    ·    已選 {chars} 字元 · {words} 詞"
+
+# The tab strip.
+tabs_untitled = "未命名"
+
+# The style warnings the footer's warning strip carries; the inner error text is
+# the platform's or the parser's own and stays as it is.
+status_styles_failed = "樣式：{error}"
+
+# The confirmation for a local file.
+modal_close = "關閉"
+modal_no_extension = "無副檔名"
+modal_open_anyway = "仍要開啟"
+modal_open_folder = "開啟所在資料夾"
+modal_system_default = "將以系統預設應用程式開啟這個檔案。"
+modal_title = "要開啟這個檔案嗎？"
+modal_type = "類型 · {kind}"
+modal_untrusted = "請確認你信任這個檔案，它可能會執行程式碼。"
+
+# The table-of-contents drawer.
+outline_collapse = "收合本節"
+outline_collapse_all = "全部收合"
+outline_contents = "目錄"
+outline_empty = "沒有標題"
+outline_expand = "展開本節"
+outline_expand_all = "全部展開"
+outline_heading = "標題"
+
+# The export panel.
+export_and_watch = "匯出並監看…"
+export_decrease = "縮小"
+export_format = "格式"
+export_increase = "放大"
+export_indent_off = "不縮排"
+export_landscape = "橫向"
+export_margins = "頁邊距"
+export_orientation = "頁面方向"
+export_output = "輸出"
+export_page = "頁面"
+export_paper = "紙張 · {paper}"
+export_paragraph_indent = "段落縮排"
+export_pdf = "PDF"
+export_png = "PNG"
+export_portrait = "縱向"
+export_run = "匯出…"
+export_scale = "PNG 縮放"
+export_status = "{document} · {summary}"
+export_status_failed = "{document} · {error}"
+export_status_watching = "{document} · {summary} · 監看中"
+export_style_separator = "、"
+export_styles = "樣式 · {styles}"
+export_styles_none = "無"
+export_summary_pdf = "正文 {width}×{height} mm"
+export_summary_png = "{width} px 寬"
+export_styles_open = "樣式…"
+export_text_size = "文字大小"
+export_title = "匯出文件"
+export_typography = "排版"
+
+# The stylesheets page.
+styles_back = "返回"
+styles_close = "關閉"
+styles_disable = "停用"
+styles_enable = "啟用"
+styles_follow_system = "跟隨系統"
+styles_following_system = "跟隨系統外觀 · 啟用一個樣式即可自訂"
+styles_invalid = "無效"
+styles_move_down = "下移"
+styles_move_up = "上移"
+styles_open_folder = "開啟樣式資料夾"
+styles_priority = "已啟用的樣式在前 · 越上面優先順序越高"
+styles_title = "樣式表"
+
+# The fonts page.
+fonts_cancel = "取消"
+fonts_directory_large = " —— 字型目錄很大"
+fonts_download = "下載"
+fonts_download_all = "全部下載"
+fonts_download_copy = "下載副本"
+fonts_download_missing = "下載缺少項目"
+fonts_enlarge = "放大視窗以瀏覽字型"
+fonts_filter_all = "全部"
+fonts_in_progress = "進行中"
+fonts_job_bytes = " · {bytes}"
+fonts_job_files = " · {done}/{total} 個檔案"
+fonts_job_percent = "，{percent}%"
+fonts_meta_builtin = "內建"
+fonts_no_match = "沒有字型符合目前的篩選"
+fonts_open_folder = "開啟字型資料夾"
+fonts_owner_separator = "、"
+fonts_phase_cancelled = "已取消"
+fonts_phase_done = "完成"
+fonts_phase_downloading = "下載中"
+fonts_phase_extracting = "解壓縮中"
+fonts_phase_failed = "失敗"
+fonts_phase_waiting = "等待中"
+fonts_preparing = "正在準備下載"
+fonts_redownload = "重新下載"
+fonts_select_all = "選擇「全部」以查看所有可用的字型家族。"
+fonts_state_downloaded = "已下載"
+fonts_state_missing = "缺少"
+fonts_state_provided = "系統中已有"
+fonts_summary = "{families} 個字型家族，{missing} 個缺少，磁碟占用 {disk}"
+
+# What the status bar says while the reader acts.
+status_clipboard_unreadable = "無法讀取剪貼簿：{error}"
+status_copied_diagnostics = "已複製診斷資訊"
+status_copied_selection = "已複製選取內容"
+status_copy_failed = "無法複製：{error}"
+status_diagnostics_failed = "無法複製診斷資訊：{error}"
+status_export_failed = "匯出失敗：{error}"
+status_export_settings_invalid = "匯出設定：{error}"
+status_export_running = "已有匯出工作正在進行"
+status_export_saw_settings_failed = "匯出設定：{error}；改用預設值"
+status_export_watching = " · 監看檔案變更"
+status_exported = "已匯出 {detail} 至 {path}{watching}"
+status_exported_png = "已匯出 {width}×{height} px 至 {path}{watching}"
+status_exporting = "正在匯出…"
+status_exporting_png = "正在匯出 PNG… {done}/{total}"
+status_gpu_failed = "GPU 復原失敗：{error}"
+status_heading_not_found = "找不到標題：#{anchor}"
+status_gpu_not_ready = "GPU 尚未就緒"
+status_math_errors = "{count} 個公式以原始碼顯示"
+status_not_opened = "未開啟：{url}"
+status_opened = "已開啟 {target}"
+status_cannot_open = "無法開啟 {target}：{error}"
+status_no_stylesheet_directory = "沒有樣式表目錄"
+status_offline = "離線：無法下載字型"
+status_open_failed = "{message}；無法開啟它：{error}"
+status_open_first = "請先開啟一份文件"
+status_paste_failed = "無法貼上 Markdown：{error}"
+status_pasted = "已貼上 Markdown"
+status_reexporting = "正在重新匯出…"
+status_rendering_failed = "算繪失敗：{error}"
+status_settings_init_failed = "無法初始化設定：{error}"
+status_settings_invalid = "設定：{error}；改用預設值"
+status_settings_open_failed = "無法開啟設定檔：{error}"
+status_settings_save_failed = "無法儲存設定：{error}"
+status_settings_unreadable = "無法讀取設定：{error}"
+status_updating = "正在更新…"

@@ -222,7 +222,11 @@ fn an_arrow_under_an_open_list_stays_in_the_list() {
 	app.action(Command::ToggleDropdown(DropdownId::Language, 0));
 	let before = app.readers.session.scroll;
 	app.key_pressed(&Key::Named(NamedKey::ArrowUp));
-	assert_eq!(highlighted(&mut app), Command::Language(Some(Lang::ZhHans)));
+	// The wrap lands on the other end of the list, whatever it holds.
+	assert_eq!(
+		highlighted(&mut app),
+		Command::Language(Lang::ALL.last().copied())
+	);
 	assert!(app.interaction.dropdown.is_some());
 	assert_eq!(app.readers.session.scroll, before);
 }
