@@ -58,6 +58,8 @@ xattr -d com.apple.quarantine /Applications/Markview.app
 
 Windows 的 MSI 会把 Markview 加入 `.md`、`.markdown`、`.mdown` 的**打开方式**列表，并列入**默认应用**。Windows 10 和 11 仍会让用户确认一次，因此这些文件第一次由谁打开是用户的选择，安装程序无法代为决定。
 
+macOS 的 `.app` 同样响应桌面：在访达中双击 Markdown 文件、在**打开方式**中选择 Markview，或把文件拖到应用图标上，都会在阅读器中打开它。
+
 各平台的具体要求与完整产物列表见[打包说明](docs/packaging.md)。
 
 ## 为什么选择 Markview

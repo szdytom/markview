@@ -157,6 +157,22 @@ wgpu = { workspace = true, features = ["vulkan"] }
 
 [target.'cfg(target_os = "macos")'.dependencies]
 wgpu = { workspace = true, features = ["metal"] }
+# A double-clicked document arrives as an Apple Event, which only the Objective-C
+# runtime can answer; `winit` drives it for us but does not expose the hook.
+objc2 = { version = "0.6", default-features = false, features = ["std"] }
+objc2-foundation = { version = "0.3", default-features = false, features = [
+	"NSAppleEventDescriptor",
+	"NSAppleEventManager",
+	"NSNotification",
+	"NSString",
+	"NSURL",
+	"objc2-core-services",
+] }
+objc2-core-services = { version = "0.3", default-features = false, features = [
+	"AE",
+	"AEDataModel",
+	"AppleEvents",
+] }
 
 
 [profile.release]

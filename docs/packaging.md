@@ -87,7 +87,8 @@ console window. They also install the MSI for real, check that the three
 Markdown extensions now resolve to Markview, and remove the product again.
 The Linux checks extract both the Debian package and AppImage and run their
 executables. The macOS check unpacks the application archive, validates its
-plist and signature, and runs the bundled executable. The `Packages` workflow
+plist, its declared Markdown document types and its signature, and runs the
+bundled executable. The `Packages` workflow
 also builds these packages whenever a packaging input changes.
 
 ## Why Linux archives build on Ubuntu 22.04
