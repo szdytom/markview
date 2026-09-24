@@ -39,7 +39,7 @@ section_reading_layout = "読みやすさ"
 # The General page's rows.
 settings_alignment = "行揃え"
 settings_cjk_none = "なし"
-settings_cjk_punctuation = "CJK 約物"
+settings_cjk_variant = "CJK 表記"
 settings_codeblock_wrapping = "コードブロックの折り返し"
 settings_column_width = "行幅"
 settings_decrease = "狭く"
@@ -57,6 +57,9 @@ settings_paragraph_indent = "段落の字下げ"
 settings_reset_defaults = "既定値に戻す"
 settings_scroll_speed = "スクロール速度"
 settings_text_size = "文字サイズ"
+
+# The reader's own labels.
+front_matter = "フロンターマター"
 
 # The About page.
 about_copy_diagnostics = "診断情報をコピー"

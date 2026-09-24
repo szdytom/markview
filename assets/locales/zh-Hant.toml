@@ -39,7 +39,7 @@ section_reading_layout = "閱讀版面"
 # The General page's rows.
 settings_alignment = "對齊"
 settings_cjk_none = "無"
-settings_cjk_punctuation = "CJK 標點"
+settings_cjk_variant = "CJK 變體"
 settings_codeblock_wrapping = "程式碼區塊換行"
 settings_column_width = "欄寬"
 settings_decrease = "縮小"
@@ -57,6 +57,9 @@ settings_paragraph_indent = "段落縮排"
 settings_reset_defaults = "還原預設值"
 settings_scroll_speed = "捲動速度"
 settings_text_size = "文字大小"
+
+# The reader's own labels.
+front_matter = "文首元資料"
 
 # The About page.
 about_copy_diagnostics = "複製診斷資訊"
