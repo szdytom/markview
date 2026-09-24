@@ -120,7 +120,7 @@ fn rows(settings: &ReaderSettings) -> Vec<Row> {
 			),
 		),
 		Row::new(
-			t.settings_cjk_punctuation(),
+			t.settings_cjk_variant(),
 			choices(
 				&[
 					("SC", Command::CjkType(CjkType::Sc)),

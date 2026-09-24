@@ -39,7 +39,7 @@ section_reading_layout = "阅读排版"
 # The General page's rows.
 settings_alignment = "对齐"
 settings_cjk_none = "无"
-settings_cjk_punctuation = "CJK 变体"
+settings_cjk_variant = "CJK 变体"
 settings_codeblock_wrapping = "代码块折行"
 settings_column_width = "栏宽"
 settings_decrease = "减小"

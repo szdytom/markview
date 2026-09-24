@@ -38,7 +38,7 @@ section_reading_layout = "Reading layout"
 # The General page's rows.
 settings_alignment = "Alignment"
 settings_cjk_none = "None"
-settings_cjk_punctuation = "CJK punctuation"
+settings_cjk_variant = "CJK variant"
 settings_codeblock_wrapping = "Code block wrapping"
 settings_column_width = "Column width"
 settings_decrease = "Decrease"
