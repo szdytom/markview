@@ -86,9 +86,11 @@ pub(super) fn run() -> Result<()> {
 		args.options.codeblock_wrap = true;
 	}
 	// A rendered page or a printed sheet has no pointer to open a collapsed
-	// `<details>` with, so both show every body.
+	// `<details>` with, so both show every body — and has no room for the
+	// reader's metadata aid, so neither draws front matter.
 	if matches!(args.mode, Mode::Pdf | Mode::Render) {
 		args.options.force_open = true;
+		args.options.hide_front_matter = true;
 	}
 	args.options.stylesheet = if args.mode == Mode::Pdf {
 		// A PDF always starts from the bundled print sheet, whatever the

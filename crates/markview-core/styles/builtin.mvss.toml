@@ -717,25 +717,20 @@ space_after = 0.8
 when = ["summary"]
 weight = 600
 
-# Front matter is metadata rather than prose, so it sits apart from the text in
-# a frame of its own, whichever of its two shapes it takes. The frame is
-# theme-neutral here; the reader themes supply the surface.
+# Front matter is metadata rather than prose, so it sits apart from the text as
+# a collapsed disclosure whose body is the code block that holds its source.
+# The surface, padding and radius come from `code_block`; a rule on
+# `front_matter` alone owns the spacing and can hide the whole block. Its
+# summary takes the same weight a `<details>` summary does.
 [[rule]]
 when = ["front_matter"]
-padding = [0.35, 0.6, 0.45, 0.6]
-radius = 4.0
 space_after = 0.8
 
-# A metadata table is a list of pairs, not a grid: it has no header row and its
-# cells drop the ordinary table frame, so a key reads beside its value.
+# The disclosure already says what the block is, so it draws no second label;
+# a theme that wants the `yaml` tag back flips this rule.
 [[rule]]
-when = ["front_matter", "table"]
-size = 0.9
-
-[[rule]]
-when = ["front_matter", "table", "cell"]
-border_width = 0.0
-padding = [0.2, 0.8, 0.2, 0.0]
+when = ["front_matter", "code_block", "label"]
+show = false
 
 [[rule]]
 when = ["list"]

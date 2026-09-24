@@ -91,6 +91,8 @@ pub(crate) fn layout_options(
 		paragraph_indent: settings.paragraph_indent,
 		codeblock_wrap: true,
 		force_open: true,
+		// A page carries the document's text, not the reader's metadata aid.
+		hide_front_matter: true,
 		stylesheet,
 		fonts,
 		..Default::default()

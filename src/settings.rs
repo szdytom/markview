@@ -199,6 +199,8 @@ impl ReaderSettings {
 			codeblock_wrap: self.codeblock_wrap,
 			details_open: Default::default(),
 			force_open: false,
+			front_matter_label: self.lang().front_matter().into(),
+			hide_front_matter: false,
 			limits: markview_core::limits::Limits::default(),
 		}
 	}

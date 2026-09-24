@@ -258,20 +258,27 @@ impl Reader<'_> {
 		} else {
 			match &data.value {
 				NodeValue::FrontMatter(text) => {
-					match front_matter::parse(text, &source) {
+					match front_matter::parse(text) {
 						front_matter::Content::Empty => {
 							return Child::Skip;
 						}
-						front_matter::Content::Table(table, yaml) => {
-							BlockKind::FrontMatter {
-								table: Some(table),
-								text: yaml,
-							}
-						}
 						front_matter::Content::Source(yaml) => {
-							BlockKind::FrontMatter {
-								table: None,
+							let code = BlockKind::Code {
+								language: front_matter::LANGUAGE.into(),
 								text: yaml,
+							};
+							let id = fingerprint(&(
+								std::mem::discriminant(&code),
+								&self.source[source.clone()],
+							));
+							BlockKind::FrontMatter {
+								open: false,
+								blocks: vec![Block {
+									id,
+									content_key: semantic_key(&code),
+									source: source.clone(),
+									kind: code,
+								}],
 							}
 						}
 					}

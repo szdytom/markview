@@ -2984,52 +2984,111 @@ fn a_named_font_definition_is_part_of_the_diagram_request() {
 }
 
 #[test]
-fn a_front_matter_table_never_reaches_the_header_condition() {
+fn a_front_matter_drawn_as_source_is_highlighted() {
+	// Front matter is a `yaml` code block, so it colors exactly as the
+	// equivalent fenced block does. The layout cache only redraws the block
+	// once the highlights land if it counts that block as code, so this fails
+	// when the highlighter and the cache disagree about it. The block starts
+	// collapsed, so the reader's own state has to open it first.
+	let yaml = "title: N\nauthor:\n  name: A";
+	let doc = document::parse(format!("---\n{yaml}\n---\n\nBody\n").as_str());
+	let options =
+		with_details(LayoutOptions::default(), doc.blocks[0].id, true);
+	let front = glyph_colors_of(&doc, options);
+	assert!(!front.is_empty(), "the front matter drew no colors");
+	let fence = glyph_colors(&format!("Body\n\n```yaml\n{yaml}\n```\n"));
+	assert_eq!(front, fence);
+}
+
+#[test]
+fn front_matter_is_a_labelled_disclosure() {
+	let source = "---\ntitle: N\n---\n\nBody\n";
+	let doc = document::parse(source);
+	let id = doc.blocks[0].id;
 	let mut engine = LayoutEngine::new();
-	let mut stylesheet = (*crate::style::Stylesheet::bundled(false)).clone();
-	stylesheet.merge(
-		&crate::style::Stylesheet::parse(
-			"format_version=2\nversion=1\n\
-			 [[rule]]\nwhen=['front_matter','table','header']\nbackground='#FF0000'",
-		)
-		.unwrap(),
+	let collapsed = engine.layout(&doc, &LayoutOptions::default());
+	let text = reading_text(&collapsed);
+	assert!(text.contains("Frontmatter"), "{text:?}");
+	assert!(!text.contains("title"), "{text:?}");
+	let expanded =
+		engine.layout(&doc, &with_details(LayoutOptions::default(), id, true));
+	let text = reading_text(&expanded);
+	assert!(text.contains("title: N"), "{text:?}");
+	assert!(expanded.height > collapsed.height);
+	// A page carries the document's text, so an export draws none of it.
+	let options = LayoutOptions {
+		hide_front_matter: true,
+		..LayoutOptions::default()
+	};
+	let exported = engine.layout(&doc, &options);
+	let text = reading_text(&exported);
+	assert!(!text.contains("Frontmatter"), "{text:?}");
+	assert!(!text.contains("title"), "{text:?}");
+}
+
+#[test]
+fn relabeling_the_front_matter_invalidates_only_its_block() {
+	let source = "---\ntitle: N\n---\n\nBody\n";
+	let doc = document::parse(source);
+	let mut engine = LayoutEngine::new();
+	let english = engine.layout(&doc, &LayoutOptions::default());
+	assert!(reading_text(&english).contains("Frontmatter"));
+	// The interface language changes while the document stays open: only the
+	// label is new, the disclosure state is not.
+	let chinese = LayoutOptions {
+		front_matter_label: "文首元数据".into(),
+		..LayoutOptions::default()
+	};
+	let relabeled = engine.layout(&doc, &chinese);
+	let text = reading_text(&relabeled);
+	assert!(text.contains("文首元数据"), "{text:?}");
+	assert!(!text.contains("Frontmatter"), "{text:?}");
+	assert!(!text.contains("title"), "the disclosure opened: {text:?}");
+	// Only the front matter reads the label, so only it re-lays out.
+	assert_eq!(relabeled.reused, 1);
+}
+
+#[test]
+fn hiding_the_front_matter_invalidates_only_its_block() {
+	let source = "---\ntitle: N\n---\n\nBody\n";
+	let doc = document::parse(source);
+	let mut engine = LayoutEngine::new();
+	let shown = engine.layout(&doc, &LayoutOptions::default());
+	assert!(reading_text(&shown).contains("Frontmatter"));
+	// An export of the same open document draws none of the metadata.
+	let hidden = engine.layout(
+		&doc,
+		&LayoutOptions {
+			hide_front_matter: true,
+			..LayoutOptions::default()
+		},
 	);
-	let opts = LayoutOptions {
-		stylesheet: Arc::new(stylesheet),
-		..Default::default()
-	};
-	let mut header_boxes = |source: &str| {
-		let layout = engine.layout(&document::parse(source), &opts);
-		layout
-			.blocks
-			.iter()
-			.flat_map(|block| block.layout.draws.iter())
-			.filter(|draw| {
-				matches!(
-					draw,
-					crate::scene::Draw::Box {
-						condition: crate::style::Condition::Header,
-						..
-					}
-				)
-			})
-			.count()
-	};
-	// Its rows are data, so the header condition owns no box in it.
-	assert_eq!(header_boxes("---\ntitle: N\n---\n\nBody\n"), 0);
-	// An ordinary table keeps its own header row.
-	assert!(header_boxes("| A | B |\n|-|-|\n| 1 | 2 |\n") > 0);
+	let text = reading_text(&hidden);
+	assert!(!text.contains("Frontmatter"), "{text:?}");
+	assert!(!text.contains("title"), "{text:?}");
+	assert!(hidden.height < shown.height);
+	assert_eq!(hidden.reused, 1);
+	// And showing it again must not keep the cached empty geometry.
+	let restored = engine.layout(&doc, &LayoutOptions::default());
+	assert!(reading_text(&restored).contains("Frontmatter"));
+	assert_eq!(restored.height, shown.height);
 }
 
 /// The colors the glyphs of one document are painted with, after the cosmetic
 /// highlighting pass has settled.
 fn glyph_colors(source: &str) -> std::collections::BTreeSet<u32> {
-	let doc = document::parse(source);
-	let options = LayoutOptions::default();
+	glyph_colors_of(&document::parse(source), LayoutOptions::default())
+}
+
+/// The same, for a document already parsed and options already chosen.
+fn glyph_colors_of(
+	doc: &document::Document,
+	options: LayoutOptions,
+) -> std::collections::BTreeSet<u32> {
 	let mut engine = LayoutEngine::new();
-	let mut snapshot = engine.layout(&doc, &options);
+	let mut snapshot = engine.layout(doc, &options);
 	if engine.wait_highlights() {
-		snapshot = engine.layout(&doc, &options);
+		snapshot = engine.layout(doc, &options);
 	}
 	let mut out = std::collections::BTreeSet::new();
 	for block in &snapshot.blocks {
@@ -3042,20 +3101,4 @@ fn glyph_colors(source: &str) -> std::collections::BTreeSet<u32> {
 		}
 	}
 	out
-}
-
-#[test]
-fn a_front_matter_drawn_as_source_is_highlighted() {
-	// A nested mapping draws as a `yaml` code block, so it colors exactly as
-	// the equivalent fenced block does. The layout cache only redraws the
-	// block once the highlights land if it counts that block as code, so this
-	// fails when the highlighter and the cache disagree about it.
-	let yaml = "title: N\nauthor:\n  name: A\n";
-	let front = glyph_colors(&format!("---\n{yaml}---\n\nBody\n"));
-	assert!(!front.is_empty(), "the front matter drew no colors");
-	let fence = glyph_colors(&format!("Body\n\n```yaml\n{yaml}```\n"));
-	assert_eq!(front, fence);
-	// The tabulated shape is cells, not code, so it stays uncolored.
-	let flat = glyph_colors("---\ntitle: N\n---\n\nBody\n");
-	assert!(flat.is_empty(), "{flat:?}");
 }

@@ -58,6 +58,9 @@ settings_reset_defaults = "恢复默认值"
 settings_scroll_speed = "滚动速度"
 settings_text_size = "文字大小"
 
+# The reader's own labels.
+front_matter = "文首元数据"
+
 # The About page.
 about_copy_diagnostics = "复制诊断信息"
 about_created_by = "由 {authors} 开发 · {license} 许可证"

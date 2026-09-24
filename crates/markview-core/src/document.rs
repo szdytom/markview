@@ -133,14 +133,13 @@ pub enum BlockKind {
 		blocks: Vec<Block>,
 	},
 	Rule,
-	/// YAML front matter: a flat mapping rendered as a two-column table, and
-	/// the verbatim source as a `yaml` code block when a value nests.
+	/// YAML front matter: a disclosure whose body is the verbatim source as a
+	/// `yaml` code block. Metadata is not prose, so it starts collapsed.
 	FrontMatter {
-		/// A key cell and a value cell per entry, set when every value fits
-		/// a cell.
-		table: Option<Vec<Vec<RichText>>>,
-		/// The YAML between the delimiters, verbatim.
-		text: String,
+		/// Whether the reader has expanded it; the source declares no state.
+		open: bool,
+		/// The `yaml` code block holding the source between the delimiters.
+		blocks: Vec<Block>,
 	},
 }
 
@@ -344,6 +343,7 @@ impl Block {
 					b.images(out);
 				}
 			}
+			BlockKind::FrontMatter { .. } => {}
 			BlockKind::List { items, .. } => {
 				for item in items {
 					for b in &item.blocks {
@@ -382,14 +382,10 @@ impl Block {
 	) {
 		match &self.kind {
 			BlockKind::Code { language, text } => visit(language, text),
-			// A front matter drawn as source is a `yaml` code block; the table
-			// shape holds cells with no code in them.
-			BlockKind::FrontMatter { table: None, text } => {
-				visit(front_matter::LANGUAGE, text);
-			}
 			BlockKind::Quote { blocks, .. }
 			| BlockKind::Footnote { blocks, .. }
-			| BlockKind::Details { blocks, .. } => {
+			| BlockKind::Details { blocks, .. }
+			| BlockKind::FrontMatter { blocks, .. } => {
 				for b in blocks {
 					b.for_each_code_block(visit);
 				}
@@ -409,7 +405,8 @@ impl Block {
 	/// searching the containers it may be nested in.
 	pub fn details_declared(&self, id: u64) -> Option<bool> {
 		match &self.kind {
-			BlockKind::Details { open, blocks, .. } => {
+			BlockKind::Details { open, blocks, .. }
+			| BlockKind::FrontMatter { open, blocks } => {
 				if self.id == id {
 					return Some(*open);
 				}
@@ -443,8 +440,11 @@ fn semantic_key(kind: &BlockKind) -> u64 {
 			anchor,
 		} => (level, rich(text), anchor).hash(&mut hash),
 		BlockKind::Code { language, text } => (language, text).hash(&mut hash),
-		// The YAML determines both shapes, so it is the whole identity.
-		BlockKind::FrontMatter { table: _, text } => text.hash(&mut hash),
+		// The YAML is the whole identity; whether it is expanded belongs to
+		// the reader's disclosure state, not to the content.
+		BlockKind::FrontMatter { open: _, blocks } => {
+			children(blocks).hash(&mut hash);
+		}
 		BlockKind::Quote { label: _, blocks }
 		| BlockKind::Footnote {
 			label: _, blocks, ..

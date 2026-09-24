@@ -2,7 +2,8 @@ use super::{BlockContext, LayoutOptions, Table};
 use crate::text::{TextCluster, TextNode};
 use crate::{
 	document::{
-		Block, BlockKind, CellAlign, Inline, InlineKind, RichText, footnote,
+		Block, BlockKind, CellAlign, Inline, InlineKind, RichText, TextStyle,
+		footnote,
 	},
 	scene::{BlockLayout, Draw, HeadingAnchor, LinkRect, Paint, Rect},
 	style::{ColorField, Condition, MarkerShape, TextAlign, TextAppearance},
@@ -435,6 +436,13 @@ impl BlockContext<'_> {
 		opts: &LayoutOptions,
 		out: &mut BlockLayout,
 	) -> f32 {
+		// An export draws the document's text, and front matter is the reader's
+		// aid, so it takes no page there.
+		if opts.hide_front_matter
+			&& matches!(block.kind, BlockKind::FrontMatter { .. })
+		{
+			return 0.;
+		}
 		let role = block_role(block);
 		let previous = self.shaper.appearance.clone();
 		let appearance = opts.stylesheet.text(&previous, role);
@@ -616,44 +624,15 @@ impl BlockContext<'_> {
 			BlockKind::Code { language, text } => {
 				self.code(language, text, x, y, width, size, opts, out)
 			}
-			// Front matter enters the condition it renders through, so a
-			// stylesheet reaches the two shapes as `front_matter` with
-			// `table` or with `code_block`.
-			BlockKind::FrontMatter { table, text } => {
-				let parent = self.shaper.appearance.clone();
-				match table {
-					Some(rows) => {
-						self.shaper.appearance =
-							opts.stylesheet.text(&parent, Condition::Table);
-						self.table(
-							&Table {
-								align: &[CellAlign::Left, CellAlign::Left],
-								headed: false,
-								rows,
-							},
-							x,
-							y,
-							width,
-							opts,
-							out,
-						)
-					}
-					None => {
-						self.shaper.appearance =
-							opts.stylesheet.text(&parent, Condition::CodeBlock);
-						let size = opts.font_size * self.shaper.appearance.size;
-						self.code(
-							crate::document::front_matter::LANGUAGE,
-							text,
-							x,
-							y,
-							width,
-							size,
-							opts,
-							out,
-						)
-					}
-				}
+			// The body is `yaml` source, so the disclosure below supplies the
+			// appearance and the highlighter takes the block from there.
+			BlockKind::FrontMatter { blocks, .. } => {
+				let label = RichText::from([Inline {
+					kind: InlineKind::Text(opts.front_matter_label.clone()),
+					style: TextStyle::default(),
+					source: block.source.clone(),
+				}]);
+				self.disclosure(block, &label, blocks, x, y, width, opts, out)
 			}
 			BlockKind::Quote { label, blocks } => {
 				let mut top = y;
@@ -1041,87 +1020,101 @@ impl BlockContext<'_> {
 				body
 			}
 			BlockKind::Details {
-				open,
-				summary,
-				blocks,
-				..
-			} => {
-				let expanded = opts.details_expanded(block.id, *open);
-				let parent = self.shaper.appearance.clone();
-				self.shaper.appearance =
-					opts.stylesheet.text(&parent, Condition::Summary);
-				let size = opts.font_size * self.shaper.appearance.size;
-				let line = size * self.shaper.appearance.line_height;
-				let paint = self.shaper.appearance.paint;
-				let side = size * DETAILS_MARKER;
-				let column = size * DETAILS_COLUMN;
-				// The marker is geometry rather than a glyph, so no font can
-				// change its shape.
-				let marker = out.draws.len();
-				out.draws.push(Draw::Polygon {
-					center: [x + DETAILS_INSET + side * 0.5, y + line * 0.5],
-					points: disclosure_points(expanded, side),
-					paint,
-				});
-				let mut height = self
-					.rich(
-						summary,
-						x + column,
-						y,
-						(width - column).max(1.0),
-						size,
-						false,
-						CellAlign::Left,
-						false,
-						false,
-						opts,
-						out,
-					)
-					.max(line);
-				let summary_height = height;
-				// The body is the element's ordinary content, so it must not
-				// inherit the summary's weight, color or condition chain.
-				self.shaper.appearance = parent;
-				// The whole summary line toggles the element. It is hit like a
-				// link, so a non-drag release and the hover state are enough.
-				// The range is registered before the body, and it ends at the
-				// first body command, so its command order matches its rects
-				// and pointing into the content never highlights the summary.
-				if !opts.force_open {
-					out.links.push(LinkRect {
-						command: marker,
-						rect: Rect {
-							x,
-							y,
-							w: width,
-							h: summary_height,
-						},
-						url: crate::document::details_url(block.id),
-					});
-					if expanded {
-						out.links.push(LinkRect {
-							command: out.draws.len(),
-							rect: Rect::default(),
-							url: String::new(),
-						});
-					}
-				}
-				if expanded {
-					height += size * DETAILS_GAP;
-					height += self.framed_children(
-						blocks,
-						x,
-						y + height,
-						width,
-						opts,
-						out,
-					);
-				}
-				height
-			}
+				summary, blocks, ..
+			} => self.disclosure(block, summary, blocks, x, y, width, opts, out),
 		};
 		out.height = out.height.max(y + height);
 		out.width = out.width.max(x + width);
+		height
+	}
+
+	/// A summary line that toggles the blocks under it: front matter and a raw
+	/// `<details>` element are the same disclosure with different content.
+	#[expect(
+		clippy::too_many_arguments,
+		reason = "Disclosure geometry and layout inputs"
+	)]
+	fn disclosure(
+		&mut self,
+		block: &Block,
+		summary: &RichText,
+		blocks: &[Block],
+		x: f32,
+		y: f32,
+		width: f32,
+		opts: &LayoutOptions,
+		out: &mut BlockLayout,
+	) -> f32 {
+		let open = match &block.kind {
+			BlockKind::Details { open, .. }
+			| BlockKind::FrontMatter { open, .. } => *open,
+			_ => false,
+		};
+		let expanded = opts.details_expanded(block.id, open);
+		let parent = self.shaper.appearance.clone();
+		self.shaper.appearance =
+			opts.stylesheet.text(&parent, Condition::Summary);
+		let size = opts.font_size * self.shaper.appearance.size;
+		let line = size * self.shaper.appearance.line_height;
+		let paint = self.shaper.appearance.paint;
+		let side = size * DETAILS_MARKER;
+		let column = size * DETAILS_COLUMN;
+		// The marker is geometry rather than a glyph, so no font can
+		// change its shape.
+		let marker = out.draws.len();
+		out.draws.push(Draw::Polygon {
+			center: [x + DETAILS_INSET + side * 0.5, y + line * 0.5],
+			points: disclosure_points(expanded, side),
+			paint,
+		});
+		let mut height = self
+			.rich(
+				summary,
+				x + column,
+				y,
+				(width - column).max(1.0),
+				size,
+				false,
+				CellAlign::Left,
+				false,
+				false,
+				opts,
+				out,
+			)
+			.max(line);
+		let summary_height = height;
+		// The body is the element's ordinary content, so it must not
+		// inherit the summary's weight, color or condition chain.
+		self.shaper.appearance = parent;
+		// The whole summary line toggles the element. It is hit like a
+		// link, so a non-drag release and the hover state are enough.
+		// The range is registered before the body, and it ends at the
+		// first body command, so its command order matches its rects
+		// and pointing into the content never highlights the summary.
+		if !opts.force_open {
+			out.links.push(LinkRect {
+				command: marker,
+				rect: Rect {
+					x,
+					y,
+					w: width,
+					h: summary_height,
+				},
+				url: crate::document::details_url(block.id),
+			});
+			if expanded {
+				out.links.push(LinkRect {
+					command: out.draws.len(),
+					rect: Rect::default(),
+					url: String::new(),
+				});
+			}
+		}
+		if expanded {
+			height += size * DETAILS_GAP;
+			height +=
+				self.framed_children(blocks, x, y + height, width, opts, out);
+		}
 		height
 	}
 }

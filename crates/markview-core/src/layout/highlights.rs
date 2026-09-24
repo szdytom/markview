@@ -206,32 +206,33 @@ mod tests {
 	use super::*;
 	use crate::layout::LayoutOptions;
 
-	/// A front matter drawn as source is a code block to the highlighter, so
-	/// it starts a job; the tabulated shape holds no code and starts none.
+	/// Front matter is a `yaml` code block to the highlighter whatever the
+	/// metadata holds, so it starts a job like any other fenced block.
 	#[test]
-	fn only_a_source_shape_starts_a_highlight_job() {
-		let nested = crate::document::parse(
+	fn front_matter_starts_a_highlight_job() {
+		let source = crate::document::parse(
 			"---\ntitle: N\nauthor:\n  name: A\n---\n\nBody\n",
 		);
 		let options = LayoutOptions::default();
 		let theme = resolved_theme(&options);
 		let mut out = Vec::new();
-		collect(&nested.blocks, theme.as_deref(), &mut out);
+		collect(&source.blocks, theme.as_deref(), &mut out);
 		assert_eq!(
 			out,
 			[(
 				key(
 					crate::document::front_matter::LANGUAGE,
-					"title: N\nauthor:\n  name: A\n",
+					"title: N\nauthor:\n  name: A",
 					theme.as_deref(),
 				),
 				crate::document::front_matter::LANGUAGE,
-				"title: N\nauthor:\n  name: A\n",
+				"title: N\nauthor:\n  name: A",
 			)]
 		);
+		// A flat metadata block is the same job: nothing parses it.
 		let flat = crate::document::parse("---\ntitle: N\n---\n\nBody\n");
 		let mut out = Vec::new();
 		collect(&flat.blocks, theme.as_deref(), &mut out);
-		assert!(out.is_empty(), "{out:?}");
+		assert_eq!(out.len(), 1, "{out:?}");
 	}
 }

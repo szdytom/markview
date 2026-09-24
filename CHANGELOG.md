@@ -30,6 +30,7 @@ at the same level, without `[brackets]`.
 
 ### Changed
 
+- Draw YAML front matter as a collapsed `Frontmatter` disclosure whose body is the `yaml` code block, dropping the YAML parser and its dependency so no alias or nesting expands under the reader; exports draw none of it.
 - Move Scroll speed out of Reading layout into the Interface section, beside the language it shares a device-level concern with.
 - Resolve the system language once instead of per frame, so drawing a label costs no allocation.
 - Refresh the measured performance baselines, charts and comparison tables against the current build, and drop SuperGoodViewer from the reader and PDF tables.
@@ -37,6 +38,7 @@ at the same level, without `[brackets]`.
 ### Fixed
 
 - Use the personal font download directory in PDF and PNG exports and in the `pdf`, `render` and `smoke-test` subcommands, so an export matches the reader's display; `--ignore-system-fonts` still pins the run.
+- Put the front matter's label and visibility options in its layout cache key, so switching the interface language or hiding the front matter for an export updates its disclosure instead of reusing stale geometry.
 - Map each font file into the shaper instead of reading it whole, so a drawing run that loads the download directory pays for the tables a document draws rather than for every face on disk.
 
 ## 0.1.7 - 2026-09-23

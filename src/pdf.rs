@@ -167,11 +167,12 @@ impl Exporter {
 		let stylesheet = styled(args.options.stylesheet.clone(), &args.page);
 		let geometry = PageGeometry::from_style(stylesheet.page())?;
 		// The page's text measure replaces the reader's reading column, and a
-		// printed sheet shows every `<details>` body.
+		// printed sheet shows every `<details>` body but no front matter.
 		let options = LayoutOptions {
 			width: geometry.text_px().0,
 			codeblock_wrap: true,
 			force_open: true,
+			hide_front_matter: true,
 			stylesheet,
 			..args.options.clone()
 		};

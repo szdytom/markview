@@ -61,9 +61,11 @@ fn fitted_range(full: &str, shown: &str, range: Range<usize>) -> Range<usize> {
 }
 
 /// Everything outside a block's own content that its geometry depends on:
-/// which images are decoded, and which of its code blocks already carry syntax
-/// colors. Both arrive asynchronously, so a change to either must invalidate
-/// exactly the blocks that use it rather than the whole layout cache.
+/// which images are decoded, which of its code blocks already carry syntax
+/// colors, and — for the front matter — the reader's own front-matter
+/// options. The images and colors arrive asynchronously; a change to any of
+/// these must invalidate exactly the blocks that use it rather than the
+/// whole layout cache.
 fn external_key(
 	block: &Block,
 	images: &crate::image::ImageSnapshot,
@@ -80,6 +82,11 @@ fn external_key(
 	// a nested element must invalidate each ancestor that frames it.
 	let mut disclosures = Vec::new();
 	disclosure_states(block, options, &mut disclosures);
+	// The front matter is the only block that reads the reader's own options:
+	// it draws the reader's interface label, and an export hides it entirely.
+	// Neither belongs to the source, so both belong to the block's key.
+	let front_matter = matches!(block.kind, BlockKind::FrontMatter { .. })
+		.then(|| (&options.front_matter_label, options.hide_front_matter));
 	crate::document::fingerprint(&(
 		specs
 			.iter()
@@ -100,6 +107,7 @@ fn external_key(
 			})
 			.collect::<Vec<_>>(),
 		disclosures,
+		front_matter,
 	))
 }
 
@@ -115,7 +123,8 @@ fn disclosure_states(
 	out: &mut Vec<(u64, bool)>,
 ) {
 	match &block.kind {
-		BlockKind::Details { open, blocks, .. } => {
+		BlockKind::Details { open, blocks, .. }
+		| BlockKind::FrontMatter { open, blocks } => {
 			out.push((block.id, options.details_expanded(block.id, *open)));
 			for block in blocks {
 				disclosure_states(block, options, out);
@@ -160,6 +169,12 @@ pub struct LayoutOptions {
 	/// Render every `<details>` expanded regardless of the map. Exports set
 	/// this: a printed page has no pointer to open a collapsed body with.
 	pub force_open: bool,
+	/// The label on a collapsed front-matter block. The core holds no
+	/// interface text, so the reader supplies the one it draws.
+	pub front_matter_label: String,
+	/// Draw no front matter at all. Exports set this: metadata is the reader's
+	/// aid, not part of the document's text.
+	pub hide_front_matter: bool,
 	pub stylesheet: Arc<crate::style::Stylesheet>,
 	/// Which faces the shaper may use. The default is the host's own fonts.
 	pub fonts: crate::fonts::FontConfig,
@@ -180,6 +195,8 @@ impl Default for LayoutOptions {
 			codeblock_wrap: false,
 			details_open: Arc::default(),
 			force_open: false,
+			front_matter_label: "Frontmatter".into(),
+			hide_front_matter: false,
 			stylesheet: crate::style::Stylesheet::bundled(false),
 			fonts: crate::fonts::FontConfig::default(),
 			limits: crate::limits::Limits::default(),
@@ -200,6 +217,8 @@ impl PartialEq for LayoutOptions {
 			&& self.codeblock_wrap == other.codeblock_wrap
 			&& self.details_open == other.details_open
 			&& self.force_open == other.force_open
+			&& self.front_matter_label == other.front_matter_label
+			&& self.hide_front_matter == other.hide_front_matter
 			&& self.stylesheet.layout_key() == other.stylesheet.layout_key()
 			// A diagram theme is pixels, not geometry, but a new one must
 			// reach the image scheduler, which recognizes work by these

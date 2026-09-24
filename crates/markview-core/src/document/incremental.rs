@@ -337,9 +337,9 @@ fn shift(block: &mut Block, delta: isize) {
 				shift(block, delta);
 			}
 		}
-		BlockKind::FrontMatter { table, .. } => {
-			for cell in table.iter_mut().flatten().flatten() {
-				shift_rich(cell, delta);
+		BlockKind::FrontMatter { blocks, .. } => {
+			for block in blocks {
+				shift(block, delta);
 			}
 		}
 		BlockKind::List { items, .. } => {

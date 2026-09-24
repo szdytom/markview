@@ -269,11 +269,6 @@ when = ["summary", "hover"]
 color = "#D5FFD4"
 
 [[rule]]
-when = ["front_matter"]
-background = "#102619"
-radius = 0.0
-
-[[rule]]
 when = ["footnote_ref"]
 color = "#70FF80"
 

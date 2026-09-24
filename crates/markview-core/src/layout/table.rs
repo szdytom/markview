@@ -5,8 +5,8 @@ use crate::{
 	style::Condition,
 };
 
-/// One table's grid, and whether its first row is a header. A front-matter
-/// table is all data, so `header` applies nowhere in it.
+/// One table's grid, and whether its first row is a header. A table that is all
+/// data declares no header, so `header` applies nowhere in it.
 pub(crate) struct Table<'a> {
 	pub align: &'a [CellAlign],
 	pub headed: bool,

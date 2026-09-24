@@ -57,6 +57,9 @@ settings_reset_defaults = "Reset defaults"
 settings_scroll_speed = "Scroll speed"
 settings_text_size = "Text size"
 
+# The reader's own labels.
+front_matter = "Frontmatter"
+
 # The About page.
 about_copy_diagnostics = "Copy diagnostics"
 about_created_by = "Created by {authors} · {license} license"

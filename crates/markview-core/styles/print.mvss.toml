@@ -152,10 +152,6 @@ when = ["summary"]
 color = "#000000"
 
 [[rule]]
-when = ["front_matter"]
-background = "#F4F5F7"
-
-[[rule]]
 when = ["list"]
 indent = 0.5
 space_after = 0.55
