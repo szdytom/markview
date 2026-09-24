@@ -21,6 +21,10 @@ at the same level, without `[brackets]`.
 
 ## Unreleased
 
+## 0.1.8 - 2026-09-24
+
+This release adds compiled-in Chinese and Japanese interface translations, improves font loading, and fixes front matter layout and macOS file opening.
+
 ### Added
 
 - Draw the whole interface in Simplified Chinese — both panels, the reader's chrome, the status line, the notice strip, the confirmation and the fonts page — following the system language or the new Interface language setting under a new Interface section, with every label compiled in from `assets/locales`.
