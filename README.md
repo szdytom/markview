@@ -336,6 +336,17 @@ Nothing is fetched while reading a document, installing a stylesheet or running
 exports use them by default, so an export matches what the reader shows, while
 `--ignore-system-fonts` and the measurement modes keep their pinned set.
 
+Downloading a family and choosing one are separate steps, and the Fonts page
+(`Ctrl+,`, then the Fonts tab) carries both: at the top of its scroll, above
+the catalogue, one chooser row per role — serif, sans-serif, monospace, and the
+same three for Han text — lists the families the machine has, with **Default**
+first: the default is the stylesheet's own candidate chain. Picking a family
+reflows the document at once and is remembered, and picking **Default** hands
+the role back to the stylesheet. The three Han rows appear only while the
+`cjk-type` setting names a variant, and their choosers offer only the families
+whose character map covers Han text, so a Latin-only face cannot be picked for
+one.
+
 ## Documentation
 
 | Page | What is in it |

@@ -29,6 +29,8 @@ at the same level, without `[brackets]`.
 - Cover the selection paths that had no test: what a copy takes, the drag-past-edge auto-scroll tick, the deferred `Ctrl+A`, and carrying a selection across an update.
 - Let a host with no filesystem supply its own faces as bytes through `FontConfig::from_faces`, so the shaper can be driven from a front end that has no directory to scan.
 
+- Choose the family of each font role — serif, sans-serif, monospace and the same three for Han text — from a **Set fonts** step beside the Fonts page's catalogue filters, one chooser row per role: a pick reflows the document at once and persists as a per-role `fontdef` override, and the Han rows appear only for the `cjk-type` variant in force, offering only the families that cover Han text.
+
 ### Changed
 
 - Split the font module into validation, directory scanning and diagram selection, so a front end reuses the parts it has and leaves the rest behind.
