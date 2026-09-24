@@ -30,7 +30,9 @@ use objc2::runtime::NSObject;
 #[cfg(target_os = "macos")]
 use objc2::{define_class, msg_send, sel};
 #[cfg(target_os = "macos")]
-use objc2_core_services::{kAEOpenDocuments, kCoreEventClass, keyDirectObject};
+use objc2_core_services::{
+	kAEOpenDocuments, kCoreEventClass, keyDirectObject, typeFileURL,
+};
 #[cfg(target_os = "macos")]
 use objc2_foundation::{
 	NSAppleEventDescriptor, NSAppleEventManager, NSNotification,
@@ -134,7 +136,10 @@ fn answer_open_documents(observer: &OpenDocument) {
 #[cfg(target_os = "macos")]
 fn documents(files: &NSAppleEventDescriptor) -> impl Iterator<Item = PathBuf> {
 	(1..=files.numberOfItems()).filter_map(|index| {
-		let url = files.descriptorAtIndex(index)?.fileURLValue()?;
+		let url = files
+			.descriptorAtIndex(index)?
+			.coerceToDescriptorType(typeFileURL)?
+			.fileURLValue()?;
 		Some(PathBuf::from(url.path()?.to_string()))
 	})
 }
@@ -153,6 +158,7 @@ impl OpenDocument {
 #[cfg(all(test, target_os = "macos"))]
 mod tests {
 	use super::*;
+	use objc2_core_services::typeAlias;
 	use objc2_foundation::{NSString, NSURL};
 
 	/// The event's direct object is a list with one file URL per document.
@@ -177,6 +183,25 @@ mod tests {
 				PathBuf::from("/tmp/second.md")
 			]
 		);
+	}
+
+	/// Finder can send an alias descriptor for an existing document.
+	#[test]
+	fn alias_descriptor_opens_its_document() {
+		let directory = tempfile::tempdir().unwrap();
+		let path = directory.path().join("aliased.md");
+		std::fs::write(&path, "# Document").unwrap();
+		let url = NSURL::fileURLWithPath_isDirectory(
+			&NSString::from_str(&path.to_string_lossy()),
+			false,
+		);
+		let alias = NSAppleEventDescriptor::descriptorWithFileURL(&url)
+			.coerceToDescriptorType(typeAlias)
+			.unwrap();
+		let files = NSAppleEventDescriptor::listDescriptor();
+		files.insertDescriptor_atIndex(&alias, 1);
+
+		assert_eq!(documents(&files).collect::<Vec<_>>(), [path]);
 	}
 
 	/// An event that carries nothing has nothing to open.

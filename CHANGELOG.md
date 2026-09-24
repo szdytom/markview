@@ -43,6 +43,7 @@ at the same level, without `[brackets]`.
 - Ask for a relayout when the interface language changes, so the front matter's label follows it instead of waiting for the next edit.
 - Map each font file into the shaper instead of reading it whole, so a drawing run that loads the download directory pays for the tables a document draws rather than for every face on disk.
 - Open the Markdown files the macOS desktop hands the reader — a double-click in Finder, an "Open with" choice, or a file dropped on the app's icon — which arrived as an Apple Event the bundle advertised but nothing answered, so the desktop reported that the reader could not open the format and started it with an empty window; every file of one event becomes its own document.
+- Resolve alias descriptors in macOS open-documents events so Finder opens those files too.
 
 ## 0.1.7 - 2026-09-23
 
