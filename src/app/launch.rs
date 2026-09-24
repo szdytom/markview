@@ -250,7 +250,11 @@ pub(super) fn run() -> Result<()> {
 	// for the drawing modes, so a window export and a CLI one still agree.
 	let event_loop = EventLoop::<Event>::with_user_event().build()?;
 	event_loop.set_control_flow(ControlFlow::Wait);
-	let mut app = App::new(args, event_loop.create_proxy());
+	// A window has to exist before the desktop can hand it a document, so the
+	// listener is armed while the launch event is still pending.
+	let proxy = event_loop.create_proxy();
+	super::open_document::install(proxy.clone());
+	let mut app = App::new(args, proxy);
 	event_loop.run_app(&mut app)?;
 	app.flush_settings();
 	if let Some(warning) = &app.preferences.settings_warning {

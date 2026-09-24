@@ -63,6 +63,10 @@ and `.mdown` and lists it under **Default apps**. Windows 10 and 11 still ask th
 user to confirm the handoff, so the first one of those files is a choice, not
 something an installer can make on the user's behalf.
 
+The macOS bundle answers the desktop the same way: a Markdown file
+double-clicked in Finder, or chosen under **Open with**, opens in the reader,
+and so does one dropped on the app's icon.
+
 Per-platform details and the exact artifact list are in the
 [packaging guide](docs/packaging.md).
 

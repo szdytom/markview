@@ -10,6 +10,7 @@ mod icon;
 mod interaction;
 mod launch;
 mod lifecycle;
+mod open_document;
 mod outline;
 mod painting;
 mod pointer;
