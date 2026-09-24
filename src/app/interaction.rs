@@ -450,8 +450,10 @@ impl<P: super::SendEvent> App<P> {
 				// Picking an option ends the list, whether the pointer or the
 				// keyboard committed it, and returns focus to its chooser.
 				self.close_dropdown();
-				// Only the chrome is drawn in this language, so the document
-				// keeps its layout: a request here would reflow every line.
+				// The front matter draws the interface's own label, so the
+				// change reaches the document too: the request relabels that
+				// one block and leaves every other line's geometry alone.
+				self.request(false);
 				self.redraw();
 				return;
 			}

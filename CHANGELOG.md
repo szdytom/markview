@@ -39,6 +39,7 @@ at the same level, without `[brackets]`.
 
 - Use the personal font download directory in PDF and PNG exports and in the `pdf`, `render` and `smoke-test` subcommands, so an export matches the reader's display; `--ignore-system-fonts` still pins the run.
 - Put the front matter's label and visibility options in its layout cache key, so switching the interface language or hiding the front matter for an export updates its disclosure instead of reusing stale geometry.
+- Ask for a relayout when the interface language changes, so the front matter's label follows it instead of waiting for the next edit.
 - Map each font file into the shaper instead of reading it whole, so a drawing run that loads the download directory pays for the tables a document draws rather than for every face on disk.
 
 ## 0.1.7 - 2026-09-23

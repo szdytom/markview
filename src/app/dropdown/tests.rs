@@ -174,6 +174,25 @@ fn a_release_over_an_open_option_commits_it() {
 	assert!(app.interaction.dropdown.is_none());
 }
 
+/// The language reaches the document as well as the chrome: the front matter
+/// draws the interface's own label, so committing a language has to ask for a
+/// relayout. Without the request the open document keeps the old label until
+/// some unrelated edit happens to lay the block out again.
+#[test]
+fn committing_a_language_relabels_the_front_matter() {
+	let mut app = app_with_panel();
+	// A request is only about a document, so the session needs one.
+	app.readers.session.path = Some(std::path::PathBuf::from("/tmp/a.md"));
+	app.action(Command::Language(Some(Lang::ZhHans)));
+
+	let options = app
+		.readers
+		.session
+		.requested_options
+		.expect("a language change asks for a relayout");
+	assert_eq!(options.front_matter_label, Lang::ZhHans.front_matter());
+}
+
 /// The release path and the drawing path have to agree on where an option is,
 /// which they only do because the open list answers through `App::buttons`.
 #[test]
