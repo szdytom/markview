@@ -24,6 +24,7 @@ at the same level, without `[brackets]`.
 ### Added
 
 - Draw the whole interface in Simplified Chinese — both panels, the reader's chrome, the status line, the notice strip, the confirmation and the fonts page — following the system language or the new Interface language setting under a new Interface section, with every label compiled in from `assets/locales`.
+- Translate the interface into Traditional Chinese and Japanese as well, so a `zh-Hant`, `zh-TW`, `zh-HK` or `ja` locale gets its own text instead of the Simplified or English fallback.
 - Offer the interface languages in a list the row's own control opens, so the chooser grows with every language the build carries instead of with every row's width.
 - Make that list own input like a confirmation: it takes the pointer, wheel, touch and keys while it is open, returns focus to its chooser when it closes, and closes when its row leaves the page.
 - Carry the status line, the footer's warnings, the export panel's own buttons and the format names in its save dialog in the same compiled-in text, so no label is left behind in English.

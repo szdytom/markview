@@ -1,0 +1,233 @@
+# The interface's Japanese text.
+#
+# This file must declare exactly the same keys as `en.toml`, and every value
+# must spell exactly the same `{placeholders}`. The macro rejects anything else,
+# so a missing key or a dropped placeholder is a compile error rather than a
+# blank label.
+
+# The language these words are written in, named as its own speakers name it.
+# A chooser lists every language this way, so the name stays the same in every
+# file that has one.
+language_name = "日本語"
+
+# The settings panel's tabs.
+tabs_about = "このアプリについて"
+tabs_fonts = "フォント"
+tabs_generic = "一般"
+tabs_styles = "スタイル"
+
+# The panel shell, drawn once around every page.
+panel_close = "閉じる"
+panel_exit_preview = "プレビューを終了"
+panel_preview = "文書をプレビュー"
+panel_saved = "自動保存"
+panel_settings = "設定"
+
+# The toolbar's icon buttons.
+toolbar_export = "書き出し"
+toolbar_open = "開く"
+toolbar_outline = "アウトライン"
+toolbar_settings = "設定"
+
+# Section headings.
+section_diagnostics = "診断"
+section_interface = "インターフェース"
+section_language_code = "言語とコード"
+section_project = "プロジェクト"
+section_reading_layout = "読みやすさ"
+
+# The General page's rows.
+settings_alignment = "行揃え"
+settings_cjk_none = "なし"
+settings_cjk_punctuation = "CJK 約物"
+settings_codeblock_wrapping = "コードブロックの折り返し"
+settings_column_width = "行幅"
+settings_decrease = "狭く"
+settings_english_hyphenation = "英語のハイフネーション"
+settings_increase = "広く"
+settings_indent_off = "字下げなし"
+settings_justified = "両端揃え"
+settings_language = "表示言語"
+settings_language_system = "システムに従う"
+settings_left_aligned = "左揃え"
+settings_off = "オフ"
+settings_on = "オン"
+settings_open_config = "settings.toml を開く"
+settings_paragraph_indent = "段落の字下げ"
+settings_reset_defaults = "既定値に戻す"
+settings_scroll_speed = "スクロール速度"
+settings_text_size = "文字サイズ"
+
+# The About page.
+about_copy_diagnostics = "診断情報をコピー"
+about_created_by = "{authors} による開発 · {license} ライセンス"
+about_description = "組版品質にこだわった、高速でネイティブな Markdown リーダー。"
+
+# The diagnostics rows.
+diagnostics_backend = "WGPU バックエンド"
+diagnostics_backend_none = "未初期化"
+diagnostics_build_date = "ビルド日時"
+diagnostics_commit = "コミット"
+diagnostics_os = "OS"
+diagnostics_row = "{name}：{value}"
+diagnostics_version = "バージョン"
+
+# The reader window's notice strip.
+notice_dismiss = "閉じる"
+notice_load_all = "すべて読み込む"
+notice_remote_images = "{count} 枚のリモート画像を読み込んでいません。"
+
+# What the reading area says instead of a document.
+empty_blank_detail = "ファイルが変更されると、ここに内容が表示されます。"
+empty_blank_title = "文書は空です"
+empty_open_detail = "Markdown ファイルを開くか、このウィンドウにドロップしてください。"
+empty_open_file = "ファイルを開く…"
+empty_open_title = "Markdown ファイルを開く"
+empty_opening_detail = "最初のページを準備しています…"
+empty_opening_title = "文書を開いています…"
+empty_unreadable_detail = "ファイルのパスとアクセス権を確認してください。"
+empty_unreadable_title = "このファイルを読み込めません"
+
+# The status bar.
+footer_counts = "{chars} 文字 · {words} 語"
+footer_loading = "読み込み中…"
+footer_selected = "    ·    選択中 {chars} 文字 · {words} 語"
+
+# The tab strip.
+tabs_untitled = "無題"
+
+# The style warnings the footer's warning strip carries; the inner error text is
+# the platform's or the parser's own and stays as it is.
+status_styles_failed = "スタイル：{error}"
+
+# The confirmation for a local file.
+modal_close = "閉じる"
+modal_no_extension = "拡張子なし"
+modal_open_anyway = "それでも開く"
+modal_open_folder = "フォルダを開く"
+modal_system_default = "このファイルをシステムの既定のアプリで開きます。"
+modal_title = "このファイルを開きますか？"
+modal_type = "種類 · {kind}"
+modal_untrusted = "このファイルが信頼できる場合のみ続行してください。コードが実行される可能性があります。"
+
+# The table-of-contents drawer.
+outline_collapse = "この節を折りたたむ"
+outline_collapse_all = "すべて折りたたむ"
+outline_contents = "目次"
+outline_empty = "見出しがありません"
+outline_expand = "この節を展開"
+outline_expand_all = "すべて展開"
+outline_heading = "見出し"
+
+# The export panel.
+export_and_watch = "書き出して監視…"
+export_decrease = "狭く"
+export_format = "形式"
+export_increase = "広く"
+export_indent_off = "字下げなし"
+export_landscape = "横向き"
+export_margins = "余白"
+export_orientation = "向き"
+export_output = "出力先"
+export_page = "ページ"
+export_paper = "用紙 · {paper}"
+export_paragraph_indent = "段落の字下げ"
+export_pdf = "PDF"
+export_png = "PNG"
+export_portrait = "縦向き"
+export_run = "書き出し…"
+export_scale = "PNG 倍率"
+export_status = "{document} · {summary}"
+export_status_failed = "{document} · {error}"
+export_status_watching = "{document} · {summary} · 監視中"
+export_style_separator = "、"
+export_styles = "スタイル · {styles}"
+export_styles_none = "なし"
+export_summary_pdf = "本文 {width}×{height} mm"
+export_summary_png = "幅 {width} px"
+export_styles_open = "スタイル…"
+export_text_size = "文字サイズ"
+export_title = "文書を書き出す"
+export_typography = "組版"
+
+# The stylesheets page.
+styles_back = "戻る"
+styles_close = "閉じる"
+styles_disable = "無効化"
+styles_enable = "有効化"
+styles_follow_system = "システムに従う"
+styles_following_system = "システムの外観に従っています · スタイルを有効にするとカスタマイズできます"
+styles_invalid = "無効"
+styles_move_down = "下へ移動"
+styles_move_up = "上へ移動"
+styles_open_folder = "スタイルのフォルダを開く"
+styles_priority = "有効なスタイルが先頭 · 上にあるほど優先されます"
+styles_title = "スタイルシート"
+
+# The fonts page.
+fonts_cancel = "キャンセル"
+fonts_directory_large = " — フォントディレクトリが大きいです"
+fonts_download = "ダウンロード"
+fonts_download_all = "すべてダウンロード"
+fonts_download_copy = "コピーをダウンロード"
+fonts_download_missing = "不足分をダウンロード"
+fonts_enlarge = "フォントを閲覧するにはウィンドウを広げてください"
+fonts_filter_all = "すべて"
+fonts_in_progress = "進行中"
+fonts_job_bytes = " · {bytes}"
+fonts_job_files = " · {done}/{total} ファイル"
+fonts_job_percent = "、{percent}%"
+fonts_meta_builtin = "組み込み"
+fonts_no_match = "条件に一致するフォントがありません"
+fonts_open_folder = "フォントのフォルダを開く"
+fonts_owner_separator = "、"
+fonts_phase_cancelled = "キャンセル済み"
+fonts_phase_done = "完了"
+fonts_phase_downloading = "ダウンロード中"
+fonts_phase_extracting = "展開中"
+fonts_phase_failed = "失敗"
+fonts_phase_waiting = "待機中"
+fonts_preparing = "ダウンロードを準備しています"
+fonts_redownload = "再ダウンロード"
+fonts_select_all = "「すべて」を選ぶと利用可能なフォントファミリーを確認できます。"
+fonts_state_downloaded = "ダウンロード済み"
+fonts_state_missing = "不足"
+fonts_state_provided = "システムにあり"
+fonts_summary = "{families} ファミリー、不足 {missing}、ディスク上 {disk}"
+
+# What the status bar says while the reader acts.
+status_clipboard_unreadable = "クリップボードを読み取れません：{error}"
+status_copied_diagnostics = "診断情報をコピーしました"
+status_copied_selection = "選択範囲をコピーしました"
+status_copy_failed = "コピーできません：{error}"
+status_diagnostics_failed = "診断情報をコピーできません：{error}"
+status_export_failed = "書き出しに失敗しました：{error}"
+status_export_settings_invalid = "書き出し設定：{error}"
+status_export_running = "書き出しはすでに実行中です"
+status_export_saw_settings_failed = "書き出し設定：{error}；既定値を使用します"
+status_export_watching = " · 変更を監視中"
+status_exported = "{detail} を {path} に書き出しました{watching}"
+status_exported_png = "{width}×{height} px を {path} に書き出しました{watching}"
+status_exporting = "書き出し中…"
+status_exporting_png = "PNG を書き出し中… {done}/{total}"
+status_gpu_failed = "GPU の復旧に失敗しました：{error}"
+status_heading_not_found = "見出しが見つかりません：#{anchor}"
+status_gpu_not_ready = "GPU の準備ができていません"
+status_math_errors = "{count} 個の数式をソースとして表示"
+status_not_opened = "開けませんでした：{url}"
+status_opened = "{target} を開きました"
+status_cannot_open = "{target} を開けません：{error}"
+status_no_stylesheet_directory = "スタイルシートのディレクトリがありません"
+status_offline = "オフライン：フォントをダウンロードできません"
+status_open_failed = "{message}；開けません：{error}"
+status_open_first = "先に文書を開いてください"
+status_paste_failed = "Markdown を貼り付けられません：{error}"
+status_pasted = "Markdown を貼り付けました"
+status_reexporting = "再書き出し中…"
+status_rendering_failed = "描画に失敗しました：{error}"
+status_settings_init_failed = "設定を初期化できません：{error}"
+status_settings_invalid = "設定：{error}；既定値を使用します"
+status_settings_open_failed = "設定を開けません：{error}"
+status_settings_save_failed = "設定を保存できません：{error}"
+status_settings_unreadable = "設定を読み取れません：{error}"
+status_updating = "更新中…"
