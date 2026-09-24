@@ -383,14 +383,17 @@ pub(crate) enum DropdownId {
 }
 
 /// The option list a control has open.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq)]
 pub(crate) struct Dropdown {
 	pub(crate) id: DropdownId,
 	/// The highlighted option, which `Enter` commits.
 	pub(crate) highlight: usize,
 	/// The first option drawn. It follows the highlight, so a list too long for
-	/// the window shows the part the reader is on rather than a scrollbar.
+	/// the window always shows the part the reader is on.
 	pub(crate) offset: usize,
+	/// Wheel travel held back until it adds up to one option, so a trackpad's
+	/// small deltas and a mouse's whole notches move the list alike.
+	pub(crate) wheel: f32,
 }
 impl Dropdown {
 	pub(crate) fn new(id: DropdownId, highlight: usize) -> Self {
@@ -398,6 +401,7 @@ impl Dropdown {
 			id,
 			highlight,
 			offset: 0,
+			wheel: 0.0,
 		}
 	}
 	/// Moves the highlight by `steps`, wrapping round `count` options.

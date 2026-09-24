@@ -448,3 +448,92 @@ fn an_open_option_list_stays_inside_the_panel() {
 		}
 	}
 }
+
+/// A list that fits its window draws every option and carries no scrollbar.
+#[test]
+fn a_list_that_fits_whole_has_no_scrollbar() {
+	let size = (820.0, 600.0);
+	let mut open = Dropdown::new(DropdownId::Language, 0);
+	let menu = list_form(1, 0, size)
+		.menu(&mut open, size)
+		.expect("the row opens a list");
+	assert_eq!(menu.buttons.len(), 1, "every option is drawn");
+	assert!(
+		menu.scrollbar().is_none(),
+		"a list with nothing hidden reports no position"
+	);
+}
+
+/// A list longer than its window keeps a strip clear for its scrollbar, and
+/// the bar reports where the drawn options sit in the whole list.
+#[test]
+fn an_overflowing_list_reports_where_its_options_sit() {
+	let size = (500.0, 300.0);
+	let form = list_form(10, 0, size);
+	let mut open = Dropdown::new(DropdownId::Language, 0);
+	let menu = form.menu(&mut open, size).expect("the row opens a list");
+	let shown = menu.buttons.len();
+	assert!(shown < 10, "the test needs a list longer than its window");
+
+	let (track, thumb) = menu.scrollbar().expect("the list overflows");
+	assert!(track.w <= 8.0, "the bar keeps to its reserved strip");
+	assert!(
+		(thumb.h / track.h - shown as f32 / 10.0).abs() < 0.05,
+		"the thumb covers the drawn share of the list"
+	);
+	for button in &menu.buttons {
+		assert!(
+			button.rect.x + button.rect.w <= track.x,
+			"an option runs under the scrollbar"
+		);
+	}
+
+	// The bar follows the highlight: deeper into the list, the thumb travels
+	// down with the options the window now draws.
+	for _ in 0..(10 - shown) {
+		open.step(1, 10);
+	}
+	let moved = form.menu(&mut open, size).expect("the row opens a list");
+	let (_, moved_thumb) = moved.scrollbar().expect("the list overflows");
+	assert!(
+		moved.offset > menu.offset,
+		"the window followed the highlight"
+	);
+	assert!(
+		moved_thumb.y > thumb.y,
+		"the thumb reports the moved position"
+	);
+}
+
+/// The scrollbar an overflowing list paints is the one its geometry measured:
+/// both the track and the thumb reach the screen, and the options stop short
+/// of the strip they were reserved.
+#[test]
+fn an_overflowing_list_paints_the_scrollbar_it_measured() {
+	let size = (500.0, 300.0);
+	let mut ui = crate::test_support::shaper();
+	let mut open = Dropdown::new(DropdownId::Language, 0);
+	let menu = list_form(10, 0, size)
+		.menu(&mut open, size)
+		.expect("the row opens a list");
+	let (track, thumb) = menu.scrollbar().expect("the list overflows");
+
+	let painted: Vec<Rect> =
+		draw_menu(&mut ui, &InteractionState::default(), &menu)
+			.iter()
+			.filter_map(|draw| match draw {
+				Draw::Rect(rect, _) => Some(*rect),
+				_ => None,
+			})
+			.collect();
+	let drawn = |want: Rect| {
+		painted.iter().any(|rect| {
+			rect.x == want.x
+				&& rect.y == want.y
+				&& rect.w == want.w
+				&& rect.h == want.h
+		})
+	};
+	assert!(drawn(track), "the track reaches the screen");
+	assert!(drawn(thumb), "and so does the thumb");
+}

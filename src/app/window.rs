@@ -1,5 +1,7 @@
 use crate::cli::Mode;
-use crate::state::{Command, Grain, Selection, WheelAxis, WheelStep};
+use crate::state::{
+	Command, Grain, Selection, WheelAxis, WheelGesture, WheelStep,
+};
 use log::{error, info};
 use std::time::{Duration, Instant};
 use winit::{
@@ -431,6 +433,46 @@ impl<P: super::SendEvent> App<P> {
 					return;
 				}
 				if self.interaction.modal.is_some() {
+					return;
+				}
+				// An open option list owns the wheel wherever the pointer
+				// rests, so the page behind it never scrolls out from under the
+				// row the list hangs from. One notch of travel moves the list
+				// one option, whatever the reader's own scroll speed is. A
+				// chord with a modifier belongs to the reader, as it does for
+				// the list's own keys.
+				//
+				// Owning the wheel also means the page's gesture is fed
+				// nothing while the list is open, so it is put away here: the
+				// wheel event that follows the list's close starts a fresh
+				// page gesture instead of waking a stale one.
+				if self.interaction.dropdown.is_some()
+					&& !self.interaction.modifiers.control_key()
+					&& !self.interaction.modifiers.super_key()
+				{
+					self.interaction.wheel = WheelGesture::default();
+					// One detent is one option, so a line delta counts
+					// options directly: the desktop's lines-per-notch value
+					// sizes the page's scroll, not the list's highlight, and
+					// letting it in would move three options per detent on
+					// the platforms that ship a three-line notch. A
+					// trackpad's pixel travel still accumulates to a notch.
+					let travel = match delta {
+						MouseScrollDelta::LineDelta(_, y) => {
+							y * super::dropdown::NOTCH
+						}
+						MouseScrollDelta::PixelDelta(_) => {
+							super::pointer::wheel_pixels(
+								delta,
+								self.wheel_notch,
+								1.0,
+								self.dimensions().2,
+								self.viewport_size(),
+							)
+							.1
+						}
+					};
+					self.wheel_dropdown(-travel);
 					return;
 				}
 				let (dx, dy) = super::pointer::wheel_pixels(

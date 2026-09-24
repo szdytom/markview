@@ -3,7 +3,7 @@ use super::icons;
 use crate::{
 	app::{Button, Label},
 	lang::Lang,
-	layout::{Draw, Paint, Rect, Scrollbar, TextShaper},
+	layout::{Draw, Paint, Rect, Scrollbar, ScrollbarMetrics, TextShaper},
 	state::{Command, Dropdown, DropdownId, InteractionState, PanelTab},
 };
 use markview_core::style::{Color, ColorField as C, Condition, TextAppearance};
@@ -20,6 +20,8 @@ const MARKER: f32 = 14.0;
 /// The pitch of one option in an open list, and the list's own padding.
 pub(super) const OPTION: f32 = 30.0;
 const MENU_PAD: f32 = 4.0;
+/// The strip an overflowing option list keeps clear for its scrollbar.
+const MENU_BAR: f32 = 8.0;
 /// How far an open list stands off the control it belongs to.
 const MENU_GAP: f32 = 4.0;
 
@@ -1052,6 +1054,30 @@ impl Menu {
 			.get(self.highlight.saturating_sub(self.offset))
 			.map(|button| button.action)
 	}
+	/// The track and thumb that show where the drawn options sit in the whole
+	/// list, or `None` when every option is drawn. The wheel and the keys move
+	/// the list; the bar only reports.
+	pub(in crate::app) fn scrollbar(&self) -> Option<(Rect, Rect)> {
+		let shown = self.buttons.len();
+		Scrollbar::vertical(
+			Rect {
+				x: self.rect.x + self.rect.w - MENU_PAD - MENU_BAR,
+				y: self.rect.y + MENU_PAD,
+				w: MENU_BAR,
+				h: self.rect.h - 2.0 * MENU_PAD,
+			},
+			self.offset as f32,
+			self.options as f32,
+			shown as f32,
+			// The bar is a report, not a control: it never thickens for the
+			// pointer, because the pointer never grabs it.
+			ScrollbarMetrics {
+				thickness: MENU_BAR,
+				thickness_hover: MENU_BAR,
+			},
+		)
+		.map(|bar| bar.bars(false))
+	}
 }
 
 impl Form {
@@ -1098,6 +1124,9 @@ pub(in crate::app) fn menu(
 	let (rect, shown) = menu_rect(anchor, entries.len(), size);
 	dropdown.follow(shown);
 	let offset = dropdown.offset;
+	// A list longer than its window keeps a strip clear for its scrollbar,
+	// so the bar never sits on an option's label.
+	let bar = if entries.len() > shown { MENU_BAR } else { 0.0 };
 	let buttons = entries
 		.iter()
 		.skip(offset)
@@ -1110,7 +1139,7 @@ pub(in crate::app) fn menu(
 				Rect {
 					x: rect.x + MENU_PAD,
 					y: rect.y + MENU_PAD + slot as f32 * OPTION,
-					w: rect.w - 2.0 * MENU_PAD,
+					w: rect.w - 2.0 * MENU_PAD - bar,
 					h: OPTION - 2.0,
 				},
 			);
@@ -1193,6 +1222,10 @@ pub(in crate::app) fn draw_menu(
 	};
 	for b in &menu.buttons {
 		out.extend(draw_button(ui, &targeted, b, true));
+	}
+	if let Some((track, thumb)) = menu.scrollbar() {
+		out.push(line(track, Condition::Scrollbar, C::Track));
+		out.push(line(thumb, Condition::Scrollbar, C::Thumb));
 	}
 	out
 }

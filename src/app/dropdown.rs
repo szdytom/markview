@@ -6,10 +6,14 @@
 //! which is the rule this file exists to keep in one place — a press on it
 //! picks an option, a press anywhere else closes it without reaching the page
 //! it covered, and every key but a modified chord is its own.
-use super::App;
+use super::{App, LINE_STEP};
 use crate::app::chrome::components::Menu;
 use crate::state::Command;
 use winit::keyboard::{Key, NamedKey};
+
+/// Wheel travel, in logical pixels, that moves the list one option. The
+/// reader's own line step is the familiar distance for one notch.
+pub(super) const NOTCH: f32 = LINE_STEP;
 
 impl<P: super::SendEvent> App<P> {
 	/// The open list, measured against the page that holds its row.
@@ -61,6 +65,39 @@ impl<P: super::SendEvent> App<P> {
 	pub(super) fn dropdown_buttons(&mut self) -> Vec<super::Button> {
 		self.dropdown_menu()
 			.map_or_else(Vec::new, |menu| menu.buttons)
+	}
+
+	/// Moves the list's highlight with the wheel, one option per notch of
+	/// travel.
+	///
+	/// The list owns the wheel wherever the pointer rests: the page behind it
+	/// keeps its scroll, so the row the list hangs from cannot move out from
+	/// under it. Travel shorter than a notch is held for the next event, so a
+	/// trackpad's small deltas and a mouse's whole notches move alike.
+	pub(super) fn wheel_dropdown(&mut self, travel: f32) {
+		let Some(menu) = self.dropdown_menu() else {
+			return;
+		};
+		let Some(mut open) = self.interaction.dropdown else {
+			return;
+		};
+		open.wheel += travel;
+		let mut stepped = false;
+		while open.wheel.abs() >= NOTCH {
+			let forward = open.wheel > 0.0;
+			open.step(if forward { 1 } else { -1 }, menu.options);
+			open.wheel -= if forward { NOTCH } else { -NOTCH };
+			stepped = true;
+		}
+		self.interaction.dropdown = Some(open);
+		if stepped {
+			// Measuring again brings the moved highlight into the drawn window
+			// and names the option it now holds.
+			self.interaction.focus =
+				self.dropdown_menu().and_then(|menu| menu.chosen());
+			self.interaction.focus_visible = true;
+			self.redraw();
+		}
 	}
 
 	/// Moves the list's highlight with the pointer, so that clicking an option

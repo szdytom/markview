@@ -18,7 +18,7 @@ use winit::event::{
 	DeviceId, ElementState, MouseButton, MouseScrollDelta, Touch, TouchPhase,
 	WindowEvent,
 };
-use winit::keyboard::{Key, NamedKey};
+use winit::keyboard::{Key, ModifiersState, NamedKey};
 use winit::window::WindowId;
 
 /// Stands in for the reader's loop, which a test cannot open: winit builds one
@@ -125,6 +125,19 @@ fn touch(app: &mut App<StubProxy>, x: f32, y: f32) {
 /// An unmodified key press, as the window's own loop delivers one.
 fn press(app: &mut App<StubProxy>, quit: &QuitLoop, key: Key) {
 	app.press_unmodified(quit, &key);
+}
+
+/// One wheel event, as the window's own loop delivers one.
+fn wheel(app: &mut App<StubProxy>, delta: MouseScrollDelta) {
+	app.handle_window_event(
+		&StubLoop,
+		WindowId::dummy(),
+		WindowEvent::MouseWheel {
+			device_id: DeviceId::dummy(),
+			delta,
+			phase: TouchPhase::Moved,
+		},
+	);
 }
 
 /// A point inside both rectangles, when they overlap.
@@ -525,6 +538,96 @@ fn the_wheel_does_not_scroll_the_page_behind_an_open_list() {
 		app.dropdown_menu().is_some(),
 		"the list still hangs from a visible row"
 	);
+}
+
+/// One notch of wheel travel moves the list's highlight the way an arrow key
+/// does, wraps round the same way, and leaves the page behind it alone.
+#[test]
+fn the_wheel_steps_the_highlight_like_the_arrow_keys() {
+	let mut app = app_with_panel();
+	app.action(Command::ToggleDropdown(DropdownId::Language, 0));
+	// The pointer rests on the page the list covers.
+	app.interaction.cursor = (700.0, 400.0);
+	let before = app.interaction.settings_scroll;
+
+	wheel(&mut app, MouseScrollDelta::LineDelta(0.0, -1.0));
+	assert_eq!(highlighted(&mut app), Command::Language(Some(Lang::En)));
+	wheel(&mut app, MouseScrollDelta::LineDelta(0.0, -1.0));
+	assert_eq!(highlighted(&mut app), Command::Language(Some(Lang::ZhHans)));
+	wheel(&mut app, MouseScrollDelta::LineDelta(0.0, -1.0));
+	assert_eq!(highlighted(&mut app), Command::Language(Some(Lang::ZhHant)));
+	wheel(&mut app, MouseScrollDelta::LineDelta(0.0, -1.0));
+	assert_eq!(highlighted(&mut app), Command::Language(Some(Lang::Ja)));
+	// The list wraps round, as the arrow keys do.
+	wheel(&mut app, MouseScrollDelta::LineDelta(0.0, -1.0));
+	assert_eq!(highlighted(&mut app), Command::Language(None));
+	wheel(&mut app, MouseScrollDelta::LineDelta(0.0, 1.0));
+	assert_eq!(highlighted(&mut app), Command::Language(Some(Lang::Ja)));
+
+	assert_eq!(
+		app.interaction.settings_scroll, before,
+		"the page behind the list kept its scroll"
+	);
+	assert!(app.interaction.dropdown.is_some());
+}
+
+/// A trackpad reports travel in small deltas: the list holds what is short of
+/// a notch and moves once the gesture has travelled one, so it answers at the
+/// same pace whichever device is scrolling.
+#[test]
+fn a_trackpads_small_deltas_add_up_to_one_option_per_notch() {
+	let mut app = app_with_panel();
+	app.action(Command::ToggleDropdown(DropdownId::Language, 0));
+
+	// Half a notch's travel moves nothing yet.
+	wheel(
+		&mut app,
+		MouseScrollDelta::PixelDelta(PhysicalPosition::new(0.0, -20.0)),
+	);
+	assert_eq!(highlighted(&mut app), Command::Language(None));
+	// The rest of the notch steps the list once, and no further.
+	wheel(
+		&mut app,
+		MouseScrollDelta::PixelDelta(PhysicalPosition::new(0.0, -25.0)),
+	);
+	assert_eq!(highlighted(&mut app), Command::Language(Some(Lang::En)));
+}
+
+/// The highlight the wheel moved to is the one `Enter` commits, exactly as
+/// after an arrow key.
+#[test]
+fn enter_commits_the_option_the_wheel_moved_to() {
+	let mut app = app_with_panel();
+	app.action(Command::ToggleDropdown(DropdownId::Language, 0));
+	wheel(&mut app, MouseScrollDelta::LineDelta(0.0, -2.0));
+	assert_eq!(highlighted(&mut app), Command::Language(Some(Lang::ZhHans)));
+
+	app.key_pressed(&Key::Named(NamedKey::Enter));
+	assert!(app.interaction.dropdown.is_none());
+	assert_eq!(app.preferences.values.lang, Some(Lang::ZhHans));
+}
+
+/// A chord with a modifier belongs to the reader, menus or not: `Cmd`+wheel
+/// over an open list leaves the list's highlight where it was, exactly as the
+/// list's own keys hand a chord back.
+#[test]
+fn a_modified_wheel_over_an_open_list_leaves_the_highlight() {
+	let mut app = app_with_panel();
+	app.action(Command::ToggleDropdown(DropdownId::Language, 0));
+	app.interaction.modifiers = ModifiersState::SUPER;
+	let before = app.interaction.settings_scroll;
+
+	wheel(&mut app, MouseScrollDelta::LineDelta(0.0, -1.0));
+	assert_eq!(
+		highlighted(&mut app),
+		Command::Language(None),
+		"the chord left the list where it was"
+	);
+	assert_eq!(
+		app.interaction.settings_scroll, before,
+		"the page behind it kept its scroll too"
+	);
+	assert!(app.interaction.dropdown.is_some());
 }
 
 /// Closing the list returns focus to its chooser, so `Enter` opens the list

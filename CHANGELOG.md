@@ -25,6 +25,7 @@ at the same level, without `[brackets]`.
 
 - Add host-managed asynchronous MVaaC image requests with viewport priorities, cancellable RGBA delivery, progressive reflow and opt-in browser URL/decode helpers.
 - Keep an open option list inside the panel that owns it and cap its width at the panel's, so a list never overflows the window.
+- Scroll an open option list with the wheel: wherever the pointer rests, one notch of travel moves the highlight one option, a trackpad's pixel travel accumulates to that notch, and a list longer than its window draws its own scrollbar.
 - Open a full-size viewer over any image: click to open, wheel or glide to zoom about the pointer, drag to pan, click or Escape to close.
 - Add `markview-selection`, the pointer-driven selection machine taken out of `InteractionState`, so a second front end can drive the same grains, click counting and drag rules.
 - Cover the selection paths that had no test: what a copy takes, the drag-past-edge auto-scroll tick, the deferred `Ctrl+A`, and carrying a selection across an update.
