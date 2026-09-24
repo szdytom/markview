@@ -201,7 +201,12 @@ mod tests {
 		let files = NSAppleEventDescriptor::listDescriptor();
 		files.insertDescriptor_atIndex(&alias, 1);
 
-		assert_eq!(documents(&files).collect::<Vec<_>>(), [path]);
+		let opened: Vec<_> = documents(&files).collect();
+		assert_eq!(opened.len(), 1);
+		assert_eq!(
+			opened[0].canonicalize().unwrap(),
+			path.canonicalize().unwrap()
+		);
 	}
 
 	/// An event that carries nothing has nothing to open.
