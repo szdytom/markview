@@ -23,6 +23,7 @@ at the same level, without `[brackets]`.
 
 ### Fixed
 
+- Keep a high-resolution wheel stream moving across the gaps between its packets: a Windows touchpad hands its inertia over as a few large packets, each arriving a quarter of a second after the motion it describes, so the reader now carries a speed between them instead of easing every packet from a standstill, which made a fast two-finger scroll crawl and then lurch. Whole-detent wheels and stream events are untouched.
 - A font test flaking under parallel `cargo test` by relying on a global cache slot surviving LRU eviction; it now asserts on the collection it built itself.
 
 ## 0.1.8 - 2026-09-24
