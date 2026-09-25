@@ -1095,9 +1095,10 @@ mod tests {
 		downloaded.revision += 1;
 		let mut after = context(&downloaded);
 		assert!(after.collection.family_by_name("Noto Sans").is_some());
-		// The old configuration keeps the collection it already built.
-		let mut unchanged = context(&config);
-		assert!(unchanged.collection.family_by_name("Noto Sans").is_none());
+		// The collection the old configuration built before the download is
+		// untouched. (Assert on `before` rather than re-asking the global
+		// cache: a parallel test can evict the cached slot in between.)
+		assert!(before.collection.family_by_name("Noto Sans").is_none());
 	}
 
 	#[test]

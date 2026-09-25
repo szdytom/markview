@@ -21,6 +21,10 @@ at the same level, without `[brackets]`.
 
 ## Unreleased
 
+### Fixed
+
+- A font test flaking under parallel `cargo test` by relying on a global cache slot surviving LRU eviction; it now asserts on the collection it built itself.
+
 ## 0.1.8 - 2026-09-24
 
 This release adds compiled-in Chinese and Japanese interface translations, improves font loading, and fixes front matter layout and macOS file opening.
