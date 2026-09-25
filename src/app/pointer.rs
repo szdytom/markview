@@ -47,6 +47,21 @@ pub(super) fn wheel_pixels(
 	}
 }
 
+/// Whether a wheel event comes from a high-resolution device.
+///
+/// A mouse wheel names whole detents. A touchpad emulating one through Windows'
+/// high-resolution wheel support names the fractional counts it accumulated
+/// instead, and the same device hands its inertia over in a few large packets
+/// rather than as the stream a desktop's own smooth scrolling would give.
+pub(super) fn high_resolution(delta: MouseScrollDelta) -> bool {
+	match delta {
+		MouseScrollDelta::LineDelta(x, y) => {
+			x.fract() != 0.0 || y.fract() != 0.0
+		}
+		MouseScrollDelta::PixelDelta(_) => false,
+	}
+}
+
 /// Whether a `dy` of input has a finite distance to ease over.
 fn eases(dy: f32) -> bool {
 	dy.is_finite() && dy != 0.0
@@ -88,6 +103,15 @@ impl<P: super::SendEvent> App<P> {
 	pub(super) fn scroll_wheel(&mut self, dy: f32) {
 		if eases(dy) {
 			self.readers.session.animate_wheel_by(dy, Instant::now());
+		} else {
+			self.readers.session.scroll_by(dy, self.viewport());
+		}
+		self.after_scroll();
+	}
+	/// A wheel travel from a high-resolution device, which arrives in packets.
+	pub(super) fn scroll_wheel_packet(&mut self, dy: f32) {
+		if eases(dy) {
+			self.readers.session.coast_wheel_by(dy, Instant::now());
 		} else {
 			self.readers.session.scroll_by(dy, self.viewport());
 		}

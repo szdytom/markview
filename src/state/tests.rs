@@ -1296,6 +1296,103 @@ fn a_wheel_notch_eases_and_continues_from_the_destination() {
 	assert!(!session.scroll_animating());
 }
 
+/// Drives `packets` — milliseconds and logical pixels — through the reader at
+/// `frame` ms a frame and returns the offset after every frame.
+fn drive_packets(
+	packets: &[(f64, f32)],
+	end: Duration,
+	frame: Duration,
+) -> (ReaderSession, Vec<f32>) {
+	let mut session = ReaderSession {
+		snapshot_complete: true,
+		..Default::default()
+	};
+	session.snapshot.height = 100_000.0;
+	let start = Instant::now();
+	let mut offsets = Vec::new();
+	let mut next = 0;
+	let mut at = Duration::ZERO;
+	while at <= end {
+		while next < packets.len()
+			&& Duration::from_secs_f64(packets[next].0 / 1000.0) <= at
+		{
+			let when =
+				start + Duration::from_secs_f64(packets[next].0 / 1000.0);
+			session.coast_wheel_by(packets[next].1, when);
+			next += 1;
+		}
+		session.advance_scroll(start + at, 700.0);
+		offsets.push(session.scroll);
+		at += frame;
+	}
+	(session, offsets)
+}
+
+/// The Windows trace from issue #3: a flick's packets, then the inertia
+/// arriving as one 1673-pixel packet 268 ms after the hand stopped.
+const WINDOWS_FLICK: [(f64, f32); 7] = [
+	(0.0, 225.0),
+	(31.2, 240.0),
+	(58.3, 233.0),
+	(66.1, 476.0),
+	(82.7, 123.0),
+	(87.5, 60.0),
+	(355.4, 1673.0),
+];
+
+#[test]
+fn a_high_resolution_packet_stream_carries_its_momentum_across_a_gap() {
+	let (session, offsets) = drive_packets(
+		&WINDOWS_FLICK,
+		Duration::from_millis(3000),
+		Duration::from_millis(16),
+	);
+	let steps: Vec<f32> =
+		offsets.windows(2).map(|pair| pair[1] - pair[0]).collect();
+	// The page never reverses, and it never stands still between the last
+	// packet of the hand and the inertia packet that follows it: that stall is
+	// what the reader used to answer with a lurch.
+	assert!(
+		steps.iter().all(|step| *step >= -0.01),
+		"the page moved backwards: {steps:?}"
+	);
+	let hand = (87.5 / 16.0) as usize;
+	let inertia = (355.4 / 16.0) as usize;
+	let gap = &steps[hand + 1..inertia];
+	assert!(
+		gap.iter().all(|step| *step > 0.0),
+		"the page stood still before the inertia packet: {gap:?}"
+	);
+	// The momentum may lead the packets, but only by the distance its own
+	// speed predicts, so the flick cannot run away.
+	let total: f32 = WINDOWS_FLICK.iter().map(|(_, dy)| dy).sum();
+	assert!(
+		(total..total * 1.25).contains(&session.scroll),
+		"{} is not near {total}",
+		session.scroll
+	);
+	assert!(!session.scroll_animating());
+}
+
+#[test]
+fn a_lone_high_resolution_packet_still_arrives_and_stops_there() {
+	// One small packet after a long pause has no hand behind it: the page takes
+	// it as a distance to travel, not as a speed to keep.
+	let (session, offsets) = drive_packets(
+		&[(500.0, 42.0)],
+		Duration::from_millis(2000),
+		Duration::from_millis(16),
+	);
+	let steps: Vec<f32> =
+		offsets.windows(2).map(|pair| pair[1] - pair[0]).collect();
+	assert!(steps.iter().all(|step| *step >= -0.01), "{steps:?}");
+	assert!(
+		(42.0..44.0).contains(&session.scroll),
+		"a lone packet travelled to {}",
+		session.scroll
+	);
+}
+
 #[test]
 fn an_eased_wheel_reversal_takes_over_from_the_screen() {
 	let mut session = ReaderSession {

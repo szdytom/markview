@@ -290,6 +290,9 @@ pub(crate) struct ReaderSession {
 	/// An eased scroll in flight. Its destination is `pending_scroll`, so the
 	/// worker still prioritizes what the animation is heading for.
 	pub(crate) scroll_animation: Option<ScrollAnimation>,
+	/// The momentum of a high-resolution wheel stream, which owns the displayed
+	/// offset while it lasts and may carry it past `pending_scroll`.
+	pub(crate) momentum: Option<Momentum>,
 	/// A heading anchor waiting for its heading to be laid out.
 	pub(crate) pending_anchor: Option<String>,
 	/// The internal fragment the reader last jumped to, with the scroll offset
@@ -902,6 +905,19 @@ const SCROLL_FULL: f32 = 2400.0;
 /// How often a running animation asks the event loop for a frame.
 const SCROLL_FRAME: Duration = Duration::from_millis(8);
 
+/// How long a high-resolution wheel stream's momentum takes to die away, in
+/// seconds. It is also how far ahead of the packets that momentum may carry the
+/// page, because at a fixed speed distance and time say the same thing.
+const COAST: f32 = 0.25;
+/// The shortest gap a packet's own speed is read over, so a timer that never
+/// advanced cannot claim an unbounded rate.
+const PACKET_MIN: f32 = 0.008;
+/// A pause this long ends the run of packets whose spacing sets the speed: a
+/// packet after it belongs to a new gesture and says nothing about the hand.
+const PACKET_GAP: f32 = 0.15;
+/// How much of a packet's own speed one reading takes in.
+const PACKET_BLEND: f32 = 0.05;
+
 /// Ease-out cubic: fast away from the start and settling into the target.
 /// Both ends are exact and the curve is strictly increasing between them.
 pub(crate) fn ease_out_cubic(t: f32) -> f32 {
@@ -952,6 +968,30 @@ impl ScrollAnimation {
 	pub(crate) fn finished(&self, now: Instant) -> bool {
 		now >= self.end()
 	}
+}
+
+/// The momentum of a high-resolution wheel stream, in logical pixels and
+/// seconds.
+///
+/// A touchpad on Windows hands its motion to a reader that has not opted into
+/// Direct Manipulation as a few large wheel packets, each landing a quarter of
+/// a second after the motion it describes: `LineDelta(0.0, -13.275)` arrives
+/// after 268 ms of silence, having carried the inertia of the flick inside it.
+/// Easing every packet from a standstill is what makes a fast two-finger scroll
+/// crawl and then lurch, so the stream keeps a speed of its own instead. The
+/// page rides that speed across the gaps between packets, and a packet settles
+/// the distance the page has already run ahead by.
+#[derive(Clone, Copy, Debug)]
+pub(crate) struct Momentum {
+	/// Logical pixels per second, signed like the scroll offset.
+	velocity: f32,
+	/// The frame the offset was last advanced to.
+	at: Instant,
+	/// When the last packet arrived, so a pause can stop reading speeds.
+	packet: Instant,
+	/// Whether the last frame moved the page. A stream the packets have caught
+	/// up with keeps its speed but asks for no frames until the next one.
+	moving: bool,
 }
 
 impl ReaderSession {
@@ -1063,11 +1103,114 @@ impl ReaderSession {
 		self.animate_scroll_by(dy, now);
 	}
 
+	/// A wheel travel from a high-resolution device, which Windows delivers in
+	/// large packets rather than as a stream.
+	///
+	/// The packet is distance the hand has already travelled, so the page takes
+	/// its speed from how long the packet took to arrive and keeps it for the
+	/// packets still to come. Nothing here changes a wheel that reports whole
+	/// detents: those keep the eased step above.
+	pub(crate) fn coast_wheel_by(&mut self, dy: f32, now: Instant) {
+		if dy == 0.0 {
+			return;
+		}
+		// The stream owns the displayed offset; an eased step in flight is
+		// distance the packets have already accounted for.
+		self.scroll_animation = None;
+		self.pending_anchor = None;
+		self.follow_update = false;
+		let base = self.pending_scroll.unwrap_or(self.scroll);
+		self.pending_scroll = Some((base + dy).max(0.0));
+		let gap = self.momentum.as_ref().map(|momentum| {
+			now.saturating_duration_since(momentum.packet).as_secs_f32()
+		});
+		let momentum = self.momentum.get_or_insert(Momentum {
+			velocity: 0.0,
+			at: now,
+			packet: now,
+			moving: false,
+		});
+		// Only a packet that follows another packet says how fast the hand is
+		// moving; the first of a gesture, and the first after a pause, are
+		// distances to travel rather than speeds to keep.
+		if let Some(gap) = gap.filter(|gap| *gap <= PACKET_GAP) {
+			let rate = dy / gap.max(PACKET_MIN);
+			let weight = 1.0 - (-gap / PACKET_BLEND).exp();
+			momentum.velocity += (rate - momentum.velocity) * weight;
+		}
+		momentum.packet = now;
+	}
+
+	/// Advances a high-resolution stream's momentum.
+	///
+	/// The page runs at the stream's speed until the packets have paid for it,
+	/// and may lead them by the distance that speed predicts; a packet whose
+	/// distance the page has already covered is simply spent as it arrives.
+	/// Returns whether another frame is due.
+	fn advance_momentum(&mut self, now: Instant, viewport: f32) -> bool {
+		let Some(momentum) = self.momentum.as_mut() else {
+			return false;
+		};
+		let dt = now.saturating_duration_since(momentum.at).as_secs_f32();
+		momentum.at = now;
+		let ceiling = if self.layout_pending {
+			(self.snapshot.height - viewport).max(0.0)
+		} else {
+			scroll_limit(self.snapshot.height, viewport)
+		};
+		let received = self.pending_scroll.unwrap_or(self.scroll);
+		let owed = received - self.scroll;
+		let forward = momentum.velocity >= 0.0;
+		// Only a debt still to pay sets a speed; distance the page has already
+		// run past is settled by the packets arriving, never by reversing.
+		let debt = if forward {
+			owed.max(0.0)
+		} else {
+			owed.min(0.0)
+		};
+		let chase = debt / COAST;
+		let used = if forward {
+			momentum.velocity.max(chase)
+		} else {
+			momentum.velocity.min(chase)
+		};
+		let limit = received + momentum.velocity * COAST;
+		let (low, high) = if forward {
+			(self.scroll, limit.max(self.scroll))
+		} else {
+			(limit.min(self.scroll), self.scroll)
+		};
+		let before = self.scroll;
+		self.scroll = (self.scroll + used * dt)
+			.clamp(low, high)
+			.clamp(0.0, ceiling);
+		let moved = (self.scroll - before).abs() > 0.05;
+		momentum.velocity *= (-dt / COAST).exp();
+		// A page the packets have caught up with stops asking for frames while
+		// it waits for the next one, but keeps the speed it was carrying.
+		momentum.moving = moved;
+		if momentum.velocity.abs() > 4.0 {
+			return moved;
+		}
+		// Spent: the page sits where the offset reached, which a packet that
+		// arrived late may already have paid for.
+		self.scroll = if forward {
+			self.scroll.max(received)
+		} else {
+			self.scroll.min(received)
+		}
+		.clamp(0.0, ceiling);
+		self.pending_scroll = None;
+		self.momentum = None;
+		false
+	}
+
 	/// Eases the displayed offset to an absolute `target`, retargeting a
 	/// running animation from where it currently is rather than snapping.
 	pub(crate) fn animate_scroll_to(&mut self, target: f32, now: Instant) {
 		self.pending_anchor = None;
 		self.follow_update = false;
+		self.momentum = None;
 		self.pending_scroll = Some(target);
 		self.scroll_animation =
 			Some(ScrollAnimation::new(self.scroll, target, now));
@@ -1082,6 +1225,9 @@ impl ReaderSession {
 		now: Instant,
 		viewport: f32,
 	) -> bool {
+		if self.momentum.is_some() {
+			return self.advance_momentum(now, viewport);
+		}
 		let Some(animation) = self.scroll_animation else {
 			return false;
 		};
@@ -1115,6 +1261,7 @@ impl ReaderSession {
 	/// on the next input or layout; a target a direct input set on top of it
 	/// differs from the destination and is left alone.
 	pub(crate) fn cancel_scroll_animation(&mut self) {
+		self.momentum = None;
 		let Some(animation) = self.scroll_animation.take() else {
 			return;
 		};
@@ -1124,7 +1271,7 @@ impl ReaderSession {
 	}
 
 	pub(crate) fn scroll_animating(&self) -> bool {
-		self.scroll_animation.is_some()
+		self.scroll_animation.is_some() || self.momentum.is_some()
 	}
 
 	/// When the next animation frame is due, or `None` when nothing is
@@ -1133,14 +1280,16 @@ impl ReaderSession {
 		&self,
 		now: Instant,
 	) -> Option<Instant> {
-		self.scroll_animation
-			.as_ref()
-			.map(|animation| (now + SCROLL_FRAME).min(animation.end()))
+		if let Some(animation) = &self.scroll_animation {
+			return Some((now + SCROLL_FRAME).min(animation.end()));
+		}
+		self.momentum.is_some().then_some(now + SCROLL_FRAME)
 	}
 
 	pub(crate) fn resolve_scroll(&mut self, viewport: f32) {
-		// While an animation is in flight it owns the displayed offset.
-		if self.scroll_animation.is_some() {
+		// While an animation or a stream's momentum is in flight it owns the
+		// displayed offset.
+		if self.scroll_animating() {
 			return;
 		}
 		if let Some(target) = self.pending_scroll {
@@ -1153,7 +1302,8 @@ impl ReaderSession {
 		}
 	}
 	pub(crate) fn coverage(&self, viewport: f32) -> f32 {
-		self.pending_scroll.unwrap_or(self.scroll) + viewport * 1.5
+		self.scroll.max(self.pending_scroll.unwrap_or(self.scroll))
+			+ viewport * 1.5
 	}
 	pub(crate) fn release_heavy(&mut self) {
 		self.counts = TextCounts::default();
@@ -1166,6 +1316,7 @@ impl ReaderSession {
 		self.pending_anchor = None;
 		self.jump_origin = None;
 		self.scroll_animation = None;
+		self.momentum = None;
 	}
 
 	/// Expands the `<details>` elements enclosing `anchor` and reports whether

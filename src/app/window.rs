@@ -414,13 +414,24 @@ impl<P: super::SendEvent> App<P> {
 				} else {
 					let now = Instant::now();
 					let shift = self.interaction.modifiers.shift_key();
+					// Windows hands a touchpad's inertia over in packets the
+					// reader has to give momentum of its own; a whole-detent
+					// wheel, and every other desktop's stream, is one eased
+					// step per event.
+					let packets =
+						cfg!(windows) && super::pointer::high_resolution(delta);
+					let travel = if packets {
+						Self::scroll_wheel_packet
+					} else {
+						Self::scroll_wheel
+					};
 					match self.interaction.wheel.feed(dx, dy, now, shift, phase)
 					{
 						// Nothing to move: the direction is not decided yet,
 						// or the event carried no motion.
 						WheelStep::Pending => {}
 						WheelStep::Travel(WheelAxis::Vertical, _, dy) => {
-							self.scroll_wheel(-dy);
+							travel(self, -dy);
 						}
 						WheelStep::Travel(WheelAxis::Horizontal, dx, dy) => {
 							// A sideways gesture pans the block under the
@@ -433,7 +444,7 @@ impl<P: super::SendEvent> App<P> {
 							let pan =
 								if dx.abs() >= dy.abs() { -dx } else { -dy };
 							if !self.horizontal_by(pan) {
-								self.scroll_wheel(-dy);
+								travel(self, -dy);
 							}
 						}
 					}
