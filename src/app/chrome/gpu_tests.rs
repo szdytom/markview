@@ -829,6 +829,7 @@ fn previewing_recedes_the_styles_and_fonts_pages() {
 				..Default::default()
 			};
 			let mut chrome = Chrome {
+				input_draws: Vec::new(),
 				backend: None,
 				ui: &mut ui,
 				session: &session,
@@ -911,6 +912,7 @@ fn dismissed_pages_stop_drawing_and_answering_pointers() {
 		});
 		interaction.show_panel(PanelPage::Closed);
 		let mut chrome = Chrome {
+			input_draws: Vec::new(),
 			backend: None,
 			ui: &mut ui,
 			session: &session,
@@ -1197,6 +1199,7 @@ fn redesigned_chrome_frames() -> Result<()> {
 						);
 					}
 					let mut chrome = Chrome {
+						input_draws: Vec::new(),
 						backend: None,
 						ui: &mut ui,
 						session,

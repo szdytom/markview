@@ -239,6 +239,9 @@ impl<P: super::SendEvent> App<P> {
 		// The reader's own font set, so the export shapes with the personal
 		// download directory exactly like the display does.
 		let fonts = self.fonts_config.clone();
+		let metadata = export::MetadataOverrides::with_title(
+			self.readers.session.export_title.text(),
+		);
 		let cjk = self.preferences.values.cjk_type;
 		let overrides = self.preferences.values.fontdef_overrides.clone();
 		std::thread::spawn(move || {
@@ -247,14 +250,15 @@ impl<P: super::SendEvent> App<P> {
 					match choose_output(&stem, &settings, directory.as_deref())
 					{
 						Some(output) => run(
-							&path, &output, &settings, fonts, cjk, &overrides,
-							offline,
+							&path, &output, &settings, metadata, fonts, cjk,
+							&overrides, offline,
 						),
 						None => ExportOutcome::Cancelled,
 					}
 				}
 				Destination::Path(output) => run(
-					&path, &output, &settings, fonts, cjk, &overrides, offline,
+					&path, &output, &settings, metadata, fonts, cjk,
+					&overrides, offline,
 				),
 			};
 			proxy.send(Event::Exported(Box::new(outcome)));
@@ -632,10 +636,15 @@ fn choose_output(
 }
 
 /// Everything that happens off the event loop for one export.
+#[expect(
+	clippy::too_many_arguments,
+	reason = "Export job captures independent settings, metadata and font configuration"
+)]
 fn run(
 	path: &Path,
 	output: &Path,
 	settings: &ExportSettings,
+	metadata: export::MetadataOverrides,
 	fonts: FontConfig,
 	cjk: CjkType,
 	overrides: &[FontDefOverride],
@@ -643,7 +652,7 @@ fn run(
 ) -> ExportOutcome {
 	match settings.format {
 		ExportFormat::Pdf => {
-			let args = match export::pdf_request(
+			let mut args = match export::pdf_request(
 				path.to_path_buf(),
 				output.to_path_buf(),
 				settings,
@@ -657,6 +666,7 @@ fn run(
 					return ExportOutcome::Failed(format!("{error:#}"));
 				}
 			};
+			args.metadata = metadata;
 			match crate::pdf::export_once(&args) {
 				Ok(stats) => ExportOutcome::Written {
 					path: output.to_path_buf(),
@@ -701,6 +711,42 @@ fn run(
 				},
 				Err(error) => ExportOutcome::Failed(format!("{error:#}")),
 			}
+		}
+	}
+}
+
+#[cfg(test)]
+mod tests {
+	use super::*;
+	#[test]
+	fn desktop_pdf_jobs_use_custom_titles_and_empty_titles_fall_back() {
+		let dir = tempfile::tempdir().unwrap();
+		let source = dir.path().join("source.md");
+		std::fs::write(&source, "# Document heading\n\nBody").unwrap();
+		for (title, expected) in [
+			(" Custom title ", "Custom title"),
+			("   ", "Document heading"),
+		] {
+			let output = dir.path().join("output.pdf");
+			let result = run(
+				&source,
+				&output,
+				&ExportSettings::default(),
+				export::MetadataOverrides::with_title(title),
+				crate::test_support::fonts(),
+				CjkType::Sc,
+				&[],
+				false,
+			);
+			assert!(matches!(result, ExportOutcome::Written { .. }));
+			let bytes = std::fs::read(&output).unwrap();
+			let pdf = String::from_utf8_lossy(&bytes);
+			assert!(
+				pdf.contains(&format!("/Title({expected})")),
+				"PDF metadata must contain the job title: {:?}",
+				pdf.find("/Title")
+					.map(|i| &pdf[i..(i + 140).min(pdf.len())])
+			);
 		}
 	}
 }

@@ -268,6 +268,7 @@ impl<P: super::SendEvent> ApplicationHandler<Event> for App<P> {
 	}
 	fn about_to_wait(&mut self, event_loop: &ActiveEventLoop) {
 		let now = Instant::now();
+		self.input_tick(now);
 		self.auto_scroll_tabs(now);
 		self.advance_scroll(now);
 		self.advance_gestures(now);
@@ -324,9 +325,11 @@ impl<P: super::SendEvent> ApplicationHandler<Event> for App<P> {
 			event_loop.exit();
 			return;
 		}
+		self.flush_ime_area();
 		let deadline = self
 			.reflow_at
 			.into_iter()
+			.chain(self.text_input.deadline)
 			.chain(self.retry_at)
 			.chain(self.prewarm_at)
 			.chain(self.watch_at)

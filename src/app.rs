@@ -19,6 +19,7 @@ mod tab_metrics;
 mod tab_navigation;
 mod tab_strip;
 mod tabs;
+mod text_input;
 mod ui;
 mod viewport;
 mod window;
@@ -168,6 +169,7 @@ struct App<P = EventLoopProxy<Event>> {
 	wheel_notch: crate::platform::WheelNotch,
 	font_panel: font_panel::FontPanel,
 	clipboard: crate::platform::Clipboard,
+	text_input: text_input::InputState,
 	paste_dir: tempfile::TempDir,
 	paste_serial: u32,
 	status: String,
@@ -244,6 +246,7 @@ impl<P: SendEvent> App<P> {
 			wheel_notch: crate::platform::wheel_notch(),
 			font_panel: font_panel::FontPanel::default(),
 			clipboard: Default::default(),
+			text_input: Default::default(),
 			paste_dir: tempfile::tempdir()
 				.expect("create clipboard paste directory"),
 			paste_serial: 0,

@@ -21,7 +21,13 @@ at the same level, without `[brackets]`.
 
 ## Unreleased
 
+### Added
+
+- Reusable single-line text input with selection, clipboard, undo/redo and IME support; PDF exports can use a custom title for each document session.
+
 ### Fixed
+
+- Coalesce IME cursor-area updates and skip unchanged rectangles to prevent Wayland request feedback during text input.
 
 - A font test flaking under parallel `cargo test` by relying on a global cache slot surviving LRU eviction; it now asserts on the collection it built itself.
 

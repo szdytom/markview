@@ -193,7 +193,9 @@ impl<P: super::SendEvent> App<P> {
 		} else {
 			None
 		};
-		let cursor = if self.tab_strip.drag.is_some_and(|d| d.moving) {
+		let cursor = if self.input_at_cursor().is_some() {
+			CursorIcon::Text
+		} else if self.tab_strip.drag.is_some_and(|d| d.moving) {
 			CursorIcon::Grabbing
 		} else if self.interaction.scrollbar.is_some() {
 			CursorIcon::Default

@@ -233,3 +233,6 @@ status_settings_open_failed = "Cannot open settings: {error}"
 status_settings_save_failed = "Cannot save settings: {error}"
 status_settings_unreadable = "Cannot read settings: {error}"
 status_updating = "Updating…"
+
+export_document_title = "Title"
+export_title_placeholder = "Leave blank for document title"

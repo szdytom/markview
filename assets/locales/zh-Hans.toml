@@ -231,3 +231,6 @@ status_settings_save_failed = "无法保存设置：{error}"
 status_settings_unreadable = "无法读取设置：{error}"
 status_styles_failed = "样式：{error}"
 status_updating = "正在更新…"
+
+export_document_title = "标题"
+export_title_placeholder = "留空使用文档标题"

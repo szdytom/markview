@@ -226,6 +226,40 @@ fn default_fonts(config: &FontConfig) -> FontContext {
 	crate::fonts::context(config)
 }
 impl TextShaper {
+	/// Shares the UI font collection and layout context with an input field.
+	pub(crate) fn input_driver<'a>(
+		&'a mut self,
+		editor: &'a mut parley::editing::PlainEditor<usize>,
+	) -> parley::editing::PlainEditorDriver<'a, usize> {
+		let appearance = self
+			.stylesheet
+			.text(&TextAppearance::default(), Condition::Ui);
+		let index = self.resolve_fonts(&appearance);
+		let families: Vec<_> = self.font_sets[index]
+			.faces
+			.iter()
+			.map(|face| {
+				parley::FontFamilyName::Named(face.family.clone().into())
+			})
+			.collect();
+		for property in [
+			StyleProperty::FontFamily(parley::FontFamily::List(
+				families.into(),
+			)),
+			StyleProperty::FontSize(13.0 * appearance.size),
+			StyleProperty::FontWeight(FontWeight::new(
+				appearance.weight as f32,
+			)),
+		] {
+			let key = std::mem::discriminant(&property);
+			if editor.get_styles().inner().get(&key) != Some(&property) {
+				editor.edit_styles().insert(property);
+			}
+		}
+		let config = self.font_config.clone();
+		let fonts = self.fonts.get_or_insert_with(|| default_fonts(&config));
+		editor.driver(fonts, &mut self.context)
+	}
 	pub fn new() -> Self {
 		Self::with_fonts(FontConfig::default())
 	}

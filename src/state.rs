@@ -18,6 +18,7 @@ pub(crate) use outline::OutlineTree;
 pub(crate) use markview_core::layout::scroll_limit;
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum Command {
+	FocusInput(TextField),
 	Open,
 	Smaller,
 	Larger,
@@ -93,6 +94,11 @@ pub(crate) enum Command {
 	OutlineToggle(usize),
 	OutlineExpandAll,
 	OutlineCollapseAll,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum TextField {
+	ExportTitle,
 }
 
 /// A panel has exactly one page; the outline and confirmation remain independent.
@@ -266,6 +272,7 @@ impl Dropdown {
 
 #[derive(Default, Clone)]
 pub(crate) struct ReaderSession {
+	pub(crate) export_title: markview_core::text_input::TextInput,
 	pub(crate) counts: TextCounts,
 	pub(crate) path: Option<PathBuf>,
 	pub(crate) snapshot: LayoutSnapshot,
