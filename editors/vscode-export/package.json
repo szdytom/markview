@@ -1,6 +1,6 @@
 {
   "name": "markview-export",
-  "displayName": "Markview Export",
+  "displayName": "Better markdown PDF",
   "description": "Export Markdown to PDF or PNG with native typography and customizable MVSS templates.",
   "version": "0.1.2",
   "publisher": "Stevvven",
@@ -44,15 +44,15 @@
     "commands": [
       {
         "command": "markviewExport.exportPdf",
-        "title": "Markview Export: Export to PDF"
+        "title": "Better markdown PDF: Export to PDF"
       },
       {
         "command": "markviewExport.exportPng",
-        "title": "Markview Export: Export to PNG"
+        "title": "Better markdown PDF: Export to PNG"
       },
       {
         "command": "markviewExport.exportWithTemplate",
-        "title": "Markview Export: Export with Template\u2026"
+        "title": "Better markdown PDF: Export with Template\u2026"
       }
     ],
     "menus": {
@@ -84,7 +84,7 @@
       ]
     },
     "configuration": {
-      "title": "Markview Export",
+      "title": "Better markdown PDF",
       "properties": {
         "markviewExport.template": {
           "scope": "language-overridable",

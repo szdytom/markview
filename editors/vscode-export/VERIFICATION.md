@@ -37,5 +37,9 @@ short, first-tile and last-tile SVG cases with no remaining findings.
 - The native engine is byte-identical to the reviewed package above; no Rust code changed.
 - TypeScript compilation, picker tests and installed-VSIX export/lifecycle tests passed
   under the new publisher identity (`dist/integration-marketplace.log`).
-- Candidate VSIX SHA-256: `c1f029e57b00676720271a4b96cbc25c98dce5631aa6e72bfa76d46548489fbe`.
+- Candidate VSIX SHA-256: `fef0b63ac52d27a4c8f62c11d29d39820b9e8a2f0bbb14234f28a1e795a529c9`.
 - Publisher metadata review: **approve**, first round (`dist/review-marketplace.log`). No Marketplace upload has been performed.
+
+Display name updated to **Better markdown PDF**, including command titles and
+settings. The extension ID stays `Stevvven.markview-export`. Repackaging and
+installed-VSIX tests passed after the rename; name-change review **approve** (`dist/review-final-name.log`).

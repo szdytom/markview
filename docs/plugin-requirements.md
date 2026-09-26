@@ -43,10 +43,12 @@ The review command is `codex review` with `gpt-6-astra` at medium effort.
 
 | Publisher preparation: INV-4/5, EXT-9/12/13, NFR-4 | **Approve**, first round, 2026-09-27. Manifest-derived installed-package discovery and PDF/PNG lifecycle tests pass under `Stevvven.markview-export`; native binary unchanged. |
 
+| Display name: EXT-9/12/13 | **Approve**, 2026-09-27: **Better markdown PDF** across the manifest, command/settings titles and README; installed-VSIX tests pass. |
+
 ## State of play
 
 The export-only baseline passed the review gate on 2026-09-26; the registered publisher package passed its metadata review on 2026-09-27.
-The extension exposes PDF, PNG and template export commands, document-scoped
+**Better markdown PDF** (`Stevvven.markview-export`) exposes PDF, PNG and template export commands, document-scoped
 settings, and editor context-menu entries. The bundled private engine accepts
 `open`, `close`, `styles` and `export` over JSON lines. The packaged target is
 currently Apple Silicon macOS. No Marketplace publication is part of this PR.

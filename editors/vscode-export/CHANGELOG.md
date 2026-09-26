@@ -2,6 +2,8 @@
 
 ## 0.1.2
 
+- Name the extension **Better markdown PDF** in the Marketplace and command palette.
+
 - Prepare the first Marketplace package under the personal publisher `Stevvven`.
 
 - Update the bundled engine to Markview 0.1.8 and preserve template geometry, source paths and scaled SVG quality.
