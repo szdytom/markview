@@ -624,18 +624,42 @@ fn the_bundled_emoji_face_beats_a_text_candidate_covering_the_cluster() {
 }
 
 #[test]
-fn unavailable_cjk_medium_keeps_an_explicit_regular_fallback() {
-	let mut shaper = TextShaper::new();
-	let mut sheet = (*Stylesheet::bundled(false)).clone();
-	sheet.set_cjk_type(crate::style::CjkType::Sc);
-	sheet.merge(&Stylesheet::parse("format_version=2\nversion=1\n[[rule]]\nwhen=['ui']\nfont=[{family='sans-serif'},{family='sans-serif[cjk]',weight=500},{family='sans-serif[cjk]'},{family='emoji',weight=400}]").unwrap());
-	shaper.set_stylesheet(Arc::new(sheet));
-	let appearance = shaper
-		.stylesheet
-		.text(&TextAppearance::default(), Condition::Ui);
-	// Pinned CJK faces have 400 and 700, so 500 must not cause system fallback.
-	let cjk = shaper.choose_font("中", &appearance).unwrap();
-	assert_eq!(cjk.weight, 400);
-	assert!(cjk.family.contains("CJK"));
-	assert_eq!(shaper.choose_font("a", &appearance).unwrap().weight, 400);
+fn cjk_medium_uses_an_explicit_regular_fallback_when_unavailable() {
+	for medium_available in [false, true] {
+		let mut shaper = TextShaper::new();
+		if !medium_available {
+			// This collection deliberately omits the committed Medium face.
+			shaper.font_context().collection =
+				parley::fontique::Collection::new(
+					parley::fontique::CollectionOptions {
+						system_fonts: false,
+						..Default::default()
+					},
+				);
+			for data in [
+				include_bytes!("../../tests/fonts/NotoSans-Regular-subset.otf")
+					.as_slice(),
+				include_bytes!(
+					"../../tests/fonts/NotoSansCJKsc-Regular-subset.otf"
+				)
+				.as_slice(),
+			] {
+				shaper.font_context().collection.register_fonts(
+					parley::fontique::Blob::new(Arc::new(data)),
+					None,
+				);
+			}
+		}
+		let mut sheet = (*Stylesheet::bundled(false)).clone();
+		sheet.set_cjk_type(crate::style::CjkType::Sc);
+		sheet.merge(&Stylesheet::parse("format_version=2\nversion=1\n[[rule]]\nwhen=['ui']\nfont=[{family='sans-serif'},{family='sans-serif[cjk]',weight=500},{family='sans-serif[cjk]'},{family='emoji',weight=400}]").unwrap());
+		shaper.set_stylesheet(Arc::new(sheet));
+		let appearance = shaper
+			.stylesheet
+			.text(&TextAppearance::default(), Condition::Ui);
+		let cjk = shaper.choose_font("中", &appearance).unwrap();
+		assert_eq!(cjk.weight, if medium_available { 500 } else { 400 });
+		assert!(cjk.family.contains("CJK"));
+		assert_eq!(shaper.choose_font("a", &appearance).unwrap().weight, 400);
+	}
 }

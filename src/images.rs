@@ -133,7 +133,7 @@ impl Images {
 	/// every fetch off the user's disk.
 	#[cfg(test)]
 	pub(super) fn with_cache(offline: bool, root: Option<PathBuf>) -> Self {
-		Self::with_cache_and_fonts(offline, root, FontConfig::default())
+		Self::with_cache_and_fonts(offline, root, crate::test_support::fonts())
 	}
 
 	/// The same, with the faces a diagram is measured and drawn with.

@@ -95,11 +95,11 @@ fn families(
 	let dir = crate::fonts::directory();
 	// A command line has no `--fonts` of its own; what is installed is the
 	// machine's own set plus whatever the download directory holds.
-	Ok(crate::fonts::catalog(
-		refs,
-		dir.as_deref(),
-		&FontConfig::default(),
-	))
+	#[cfg(not(test))]
+	let fonts = FontConfig::default();
+	#[cfg(test)]
+	let fonts: FontConfig = crate::test_support::fonts();
+	Ok(crate::fonts::catalog(refs, dir.as_deref(), &fonts))
 }
 
 fn state_label(state: crate::fonts::State) -> &'static str {

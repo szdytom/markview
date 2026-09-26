@@ -142,6 +142,7 @@ fn native_touch_and_trackpad_route_through_reader_and_chrome() {
 		crate::cli::LaunchOptions {
 			offline: true,
 			mode: crate::cli::Mode::Smoke,
+			options: crate::test_support::options(),
 			..Default::default()
 		},
 		event_loop.create_proxy(),

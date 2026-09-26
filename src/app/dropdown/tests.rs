@@ -50,6 +50,7 @@ fn app_with_panel() -> App<StubProxy> {
 	let mut app = App::new(
 		LaunchOptions {
 			mode: Mode::Smoke,
+			options: crate::test_support::options(),
 			..Default::default()
 		},
 		StubProxy,
@@ -479,6 +480,7 @@ fn an_unmodified_q_with_no_owner_quits() {
 	let mut app = App::new(
 		LaunchOptions {
 			mode: Mode::Smoke,
+			options: crate::test_support::options(),
 			..Default::default()
 		},
 		StubProxy,

@@ -2252,7 +2252,7 @@ mod tests {
 			..low.clone()
 		};
 		// Nothing on disk and no system font: the family is missing.
-		let config = FontConfig::default();
+		let config = crate::test_support::fonts();
 		let listed = catalog(
 			[("builtin", std::slice::from_ref(&low))],
 			Some(dir.path()),
@@ -2329,7 +2329,7 @@ mod tests {
 		named.lookfor = vec!["Noto Serif".into()];
 		let name = local_name("noto", "a.otf", &font);
 		fs::write(dir.path().join(&name), &font).unwrap();
-		let config = FontConfig::default();
+		let config = crate::test_support::fonts();
 		let listed = catalog(
 			[("builtin", std::slice::from_ref(&named))],
 			Some(dir.path()),

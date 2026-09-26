@@ -1174,23 +1174,7 @@ mod tests {
 			.cover("Noto Serif CJK SC", '\u{4e2d}')
 			.expect("a Han face draws it");
 		assert_eq!(han.family, "Noto Serif CJK SC");
-		// A rasterizer needs to know what a generic means, and a measurement
-		// resolves it to the same face. The host's own collection answers
-		// directly; a pinned directory falls back to a face whose name looks
-		// like the generic, which is all it can offer.
-		let system = DiagramFonts::new(&FontConfig::default(), &[]);
-		assert!(
-			system
-				.generics()
-				.iter()
-				.any(|(generic, _)| *generic == "sans-serif"),
-			"{:?}",
-			system.generics()
-		);
-		assert!(
-			system.measure("sans-serif", "Hello", 16.0).is_some(),
-			"the host's collection does not measure a generic"
-		);
+		// Generic families resolve through the pinned collection too.
 		let generic = |name: &str| {
 			fonts
 				.generics()

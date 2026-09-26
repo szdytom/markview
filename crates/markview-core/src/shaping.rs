@@ -173,6 +173,8 @@ fn test_fonts() -> FontContext {
 				.as_slice(),
 			include_bytes!("../tests/fonts/NotoSansCJKsc-Regular-subset.otf")
 				.as_slice(),
+			include_bytes!("../tests/fonts/NotoSansCJKsc-Medium-subset.otf")
+				.as_slice(),
 			include_bytes!("../tests/fonts/NotoSansCJKsc-Bold-subset.otf")
 				.as_slice(),
 			include_bytes!(

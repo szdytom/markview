@@ -1435,7 +1435,7 @@ fn button_feedback_frames() -> Result<()> {
 }
 
 #[test]
-#[ignore = "requires a GPU and system CJK fonts; writes artifacts/cjk-weight/*.png"]
+#[ignore = "requires a GPU; writes artifacts/cjk-weight/*.png"]
 fn cjk_ui_weight_comparison() -> Result<()> {
 	use markview_core::style::{CjkType, Stylesheet, TextAppearance};
 	let directory =
@@ -1462,8 +1462,7 @@ fn cjk_ui_weight_comparison() -> Result<()> {
 				trial.merge(&Stylesheet::parse(&format!(
 					"format_version=2\nversion=1\n[[rule]]\nwhen=['ui']\nfont=[{{family='sans-serif'}},{{family='sans-serif[cjk]',weight={weight}}},{{family='sans-serif[cjk]'}},{{family='emoji',weight=400}}]"
 				))?);
-				// Use installed fonts: pinned test faces intentionally lack Medium.
-				let mut ui = TextShaper::new();
+				let mut ui = crate::test_support::shaper();
 				ui.set_stylesheet(std::sync::Arc::new(trial));
 				ui.appearance = ui
 					.stylesheet

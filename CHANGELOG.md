@@ -41,6 +41,8 @@ at the same level, without `[brackets]`.
 
 - Use canonical document paths in search tests so tab restoration works on Windows and macOS temporary directories.
 
+- Pin fonts in app, image, diagram, font catalogue and GPU tests, including SVG decoding, benchmark warmup and a committed CJK Medium face; Linux CI now hides system fonts.
+
 - A font test flaking under parallel `cargo test` by relying on a global cache slot surviving LRU eviction; it now asserts on the collection it built itself.
 
 ## 0.1.8 - 2026-09-24

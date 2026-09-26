@@ -6,6 +6,7 @@ use std::sync::Arc;
 fn image_export_wraps_code_blocks_by_default() {
 	let args = LaunchOptions {
 		mode: Mode::Smoke,
+		options: crate::test_support::options(),
 		..Default::default()
 	};
 	let mut ui = crate::test_support::shaper();
@@ -23,6 +24,7 @@ fn image_export_wraps_code_blocks_by_default() {
 fn invalid_stylesheet_update_preserves_effective_sheet_and_ui() {
 	let args = LaunchOptions {
 		mode: Mode::Smoke,
+		options: crate::test_support::options(),
 		..Default::default()
 	};
 	let mut ui = crate::test_support::shaper();

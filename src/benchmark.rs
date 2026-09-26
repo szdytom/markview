@@ -150,8 +150,7 @@ pub fn run(
 	let mut engine = LayoutEngine::new();
 	let mut images = crate::images::Images::new(offline, options.fonts.clone());
 	engine.validate_stylesheet(&options.stylesheet)?;
-	let _ =
-		engine.label("Markview", 14.0, 0.0, 0.0, crate::layout::Paint::Text);
+	crate::layout::TextShaper::warm_fonts(&options.fonts);
 	let texture = renderer.offscreen(width, height);
 	let target = texture.create_view(&Default::default());
 	let initialization_ms = init.elapsed().as_secs_f64() * 1000.0;

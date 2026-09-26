@@ -47,6 +47,7 @@ FONTS = [
     (f"{NOTO_CJK}/NotoSerifCJK-Regular.ttc", 2, "NotoSerifCJKsc-Regular-subset.otf"),
     (f"{NOTO_CJK}/NotoSerifCJK-Bold.ttc", 2, "NotoSerifCJKsc-Bold-subset.otf"),
     (f"{NOTO_CJK}/NotoSansCJK-Regular.ttc", 2, "NotoSansCJKsc-Regular-subset.otf"),
+    (f"{NOTO_CJK}/NotoSansCJK-Medium.ttc", 2, "NotoSansCJKsc-Medium-subset.otf"),
     (f"{NOTO_CJK}/NotoSansCJK-Bold.ttc", 2, "NotoSansCJKsc-Bold-subset.otf"),
     (f"{NOTO_CJK}/NotoSansCJK-Regular.ttc", 7, "NotoSansMonoCJKsc-Regular-subset.otf"),
     (f"{NOTO_CJK}/NotoSansCJK-Bold.ttc", 7, "NotoSansMonoCJKsc-Bold-subset.otf"),

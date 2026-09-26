@@ -13,12 +13,21 @@ cargo clippy --workspace --all-targets --locked -- -D warnings
 cargo build --release --locked
 ```
 
-Debian and Ubuntu additionally need the native development packages, and a set
-of fonts that covers Latin and CJK:
+Debian and Ubuntu additionally need the native development packages:
 
 ```sh
-sudo apt-get install libfontconfig1-dev libxkbcommon-dev libwayland-dev fonts-noto-core fonts-noto-cjk
+sudo apt-get install libfontconfig1-dev libxkbcommon-dev libwayland-dev
 ```
+
+Automated tests use the committed subsets in `crates/markview-core/tests/fonts`
+with system fonts disabled, including SVG, Mermaid and GPU tests. Running the
+reader itself needs fonts covering Latin and CJK, such as `fonts-noto-core` and
+`fonts-noto-cjk`. Regenerate subsets with `scripts/generate_test_fonts.py` when
+adding characters or faces; that step requires the source Noto fonts and
+Python `fontTools`.
+
+On Linux, CI uses `tests/fontconfig.conf` to hide all installed fonts. Reproduce
+that check with `FONTCONFIG_FILE="$PWD/tests/fontconfig.conf" cargo test --workspace --all-targets --locked`.
 
 Release archives, installers, and the platform icons are maintained separately;
 see the [packaging guide](packaging.md). After changing `assets/markview-icon-color.svg`:

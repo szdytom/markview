@@ -21,6 +21,7 @@ fn app() -> App<Proxy> {
 	let mut app = App::new(
 		LaunchOptions {
 			mode: Mode::Smoke,
+			options: crate::test_support::options(),
 			..Default::default()
 		},
 		Proxy,

@@ -66,7 +66,12 @@ fn svg_fonts(
 	}
 	let system = SYSTEM.get_or_init(|| {
 		let mut db = resvg::usvg::fontdb::Database::new();
+		#[cfg(not(test))]
 		db.load_system_fonts();
+		#[cfg(test)]
+		for directory in crate::test_support::fonts().directories {
+			db.load_fonts_dir(directory);
+		}
 		Arc::new(db)
 	});
 	let mut database = (**system).clone();
@@ -263,6 +268,25 @@ pub(super) fn decode(
 
 #[cfg(test)]
 mod tests {
+	#[test]
+	fn standalone_svg_text_uses_only_pinned_faces() {
+		let mappings = [("sans-serif".into(), vec!["Noto Sans".into()])];
+		let database = super::svg_fonts(&mappings);
+		let directories = crate::test_support::fonts().directories;
+		assert!(!database.is_empty());
+		for face in database.faces() {
+			let resvg::usvg::fontdb::Source::File(path) = &face.source else {
+				panic!("an SVG face did not come from a pinned file");
+			};
+			assert!(
+				directories.contains(&path.parent().unwrap().to_path_buf())
+			);
+		}
+		const SVG: &[u8] = br#"<svg xmlns="http://www.w3.org/2000/svg" width="60" height="24"><text x="2" y="18" font-family="sans-serif" font-size="16">Ab</text></svg>"#;
+		let decoded = super::decode(SVG, None, None, &mappings).unwrap();
+		assert!(decoded.pixels.rgba.chunks(4).any(|pixel| pixel[3] > 0));
+	}
+
 	#[test]
 	fn rejects_invalid_pixel_dimensions() {
 		assert!(super::dimensions(0, 10).is_err());
