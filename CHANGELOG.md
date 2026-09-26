@@ -23,6 +23,8 @@ at the same level, without `[brackets]`.
 
 ### Added
 
+- Streamline the Marketplace README by removing redundant installation instructions.
+
 - Document the export workflow, template settings, and MVSS authoring with a starter example.
 
 - Prepare **Better markdown PDF**, the standalone export extension, for the personal Marketplace publisher `Stevvven`.

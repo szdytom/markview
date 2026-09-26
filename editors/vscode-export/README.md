@@ -10,7 +10,6 @@ Rust, or TeX installation is required.
 ## Contents
 
 - [Features](#features)
-- [Installation](#installation)
 - [Usage](#usage)
 - [Extension settings](#extension-settings)
 - [Templates](#templates)
@@ -30,18 +29,6 @@ Rust, or TeX installation is required.
 | Current-buffer export | Include unsaved edits in the exported document. |
 | Per-document defaults | Set a template through user, workspace, folder, or Markdown-specific settings. |
 | Editor integration | Export from the command palette or the Markdown editor's right-click menu. |
-
-## Installation
-
-The current package supports **Apple Silicon macOS** and **VS Code 1.95 or newer**.
-
-To install a downloaded `.vsix` file:
-
-1. Open the Extensions view in VS Code.
-2. Open its **…** menu and choose **Install from VSIX…**.
-3. Select the package, then open a Markdown document.
-
-Publisher: **Stevvven**. Extension ID: `Stevvven.markview-export`.
 
 ## Usage
 

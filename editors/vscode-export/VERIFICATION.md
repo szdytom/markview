@@ -37,7 +37,7 @@ short, first-tile and last-tile SVG cases with no remaining findings.
 - The native engine is byte-identical to the reviewed package above; no Rust code changed.
 - TypeScript compilation, picker tests and installed-VSIX export/lifecycle tests passed
   under the new publisher identity (`dist/integration-marketplace.log`).
-- Candidate VSIX SHA-256: `e931d43d46431ced96e099d4bbf0aec8b517eccb9426ea062840329e0d420ae5`.
+- Candidate VSIX SHA-256: `ab4ca2a69fa6e514f292f9584187d368259a058b2ca6319e25d71905c5ffd670`.
 - Publisher metadata review: **approve**, first round (`dist/review-marketplace.log`). No Marketplace upload has been performed.
 
 Display name updated to **Better markdown PDF**, including command titles and
@@ -48,3 +48,13 @@ README refresh: linked MVSS authoring guide confirmed through GitHub API; JSON
 settings and section anchors validated. The exact starter template passes
 `ss validate` and exports PDF/PNG offline (`dist/readme-validation.log`).
 Installed-VSIX tests pass (`dist/integration-readme.log`); documentation review **approve** (`dist/review-readme.log`).
+
+Final submission candidate: removed the redundant installation section per user
+review. Package identity and native binary verified; packaged README differs
+only by vsce expanding the relative Changelog link. Installed-VSIX tests pass
+(`dist/integration-final.log`). Final README review **approve** (`dist/review-final.log`).
+
+Marketplace submission — 2026-09-27: version 0.1.2, publisher Stevvven,
+display name Better markdown PDF, target darwin-arm64. The publisher management
+page confirms the uploaded extension is Public with status **Verifying**.
+This submission record supersedes the earlier not-yet-uploaded candidate notes.

@@ -47,18 +47,20 @@ The review command is `codex review` with `gpt-6-astra` at medium effort.
 
 | README: EXT-8/9/12/13 | **Approve**, 2026-09-27: documented commands, scoped settings and MVSS authoring; linked guide verified and starter template exports PDF/PNG. |
 
+| Final Marketplace README: EXT-9/12/13 | **Approve**, 2026-09-27: removed installation instructions; final installed-VSIX tests pass. |
+
 ## State of play
 
 The export-only baseline passed the review gate on 2026-09-26; the registered publisher package passed its metadata review on 2026-09-27.
 **Better markdown PDF** (`Stevvven.markview-export`) exposes PDF, PNG and template export commands, document-scoped
 settings, and editor context-menu entries. The bundled private engine accepts
 `open`, `close`, `styles` and `export` over JSON lines. The packaged target is
-currently Apple Silicon macOS. No Marketplace publication is part of this PR.
+currently Apple Silicon macOS. Marketplace submission is recorded separately from code review; platform verification was still running at the last check.
 
 ## Known limitations and open questions
 
 - Six-platform VSIX packaging and fresh-machine distribution testing remain future work.
-- The user has registered publisher `Stevvven`; its installation identity is `Stevvven.markview-export`. Marketplace submission remains pending.
+- The user has registered publisher `Stevvven`; its installation identity is `Stevvven.markview-export`. Version 0.1.2 was submitted on 2026-09-27; the publisher management page shows Public / Verifying.
 - Templates are native MVSS, not CSS; remote, virtual and untrusted workspaces are unsupported.
 - Automated dialog-sequence tests mock VS Code pickers. Installed-VSIX tests
   exercise their export implementation with explicit destinations.
