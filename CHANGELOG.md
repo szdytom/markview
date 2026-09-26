@@ -23,6 +23,14 @@ at the same level, without `[brackets]`.
 
 ### Added
 
+- Streamline the Marketplace README by removing redundant installation instructions.
+
+- Document the export workflow, template settings, and MVSS authoring with a starter example.
+
+- Prepare **Better markdown PDF**, the standalone export extension, for the personal Marketplace publisher `Stevvven`.
+
+- Add a standalone VS Code PDF/PNG export extension with bundled native engine, custom MVSS templates and document-scoped context-menu exports.
+
 - Find text throughout a document with a bottom search bar, Unicode case folding, whole-word matching, disclosure navigation and independent match highlights.
 
 - Reusable single-line text input with selection, clipboard, undo/redo and IME support; PDF exports can use a custom title for each document session.

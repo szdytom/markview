@@ -1,0 +1,8 @@
+node_modules/
+out/
+bin/
+dist/
+.npm-cache/
+.vscode-test/
+
+.vscode-test.*/

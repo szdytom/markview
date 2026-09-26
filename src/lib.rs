@@ -17,6 +17,7 @@ mod net;
 mod paste;
 mod pdf;
 mod platform;
+mod serve;
 mod settings;
 mod state;
 mod stylesheet;

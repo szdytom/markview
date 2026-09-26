@@ -316,3 +316,33 @@ python3 scripts/compare_performance.py \
 
 Merging verifies identical binary hashes, toolchain, fonts, CPU affinity, backend,
 profile and iteration counts; it reports the number of groups for each fixture.
+
+## VS Code export extension
+
+The standalone host lives in `editors/vscode-export`; its JSON-lines client is
+in `editors/shared`. Build the release engine from the same checkout before
+packaging, so the protocol and binary stay in step:
+
+```sh
+cargo build --release --locked
+cd editors/vscode-export
+npm ci
+npm run compile
+node test/pickers.js
+./package-vsix.sh
+./run-tests.sh
+```
+
+Packaging currently targets Apple Silicon macOS. Installed-package tests need
+VS Code at `/Applications/Visual Studio Code.app`, or `VSCODE_EXEC_PATH` pointing
+to its executable. They use disposable profiles and verify the engine exits
+with its host. Do not commit build outputs, VSIX files, test profiles or logs.
+See [the acceptance baseline](plugin-requirements.md).
+
+The engine command is `markview serve --state-dir <private-storage>`. Each stdin
+line is one JSON object with one method. Replies are ordered JSON lines on
+stdout; errors have an `error` string. Keep stdin open until replies arrive;
+EOF cancels pending work and ends the service, even during a blocked export. `open` carries
+`id`, `text`, `path`; `close` carries `id`; `styles` lists PDF templates;
+`export` carries `id`, `output`, optional `format` (`pdf`/`png`), `style` and
+inline MVSS `stylesheet`. The client and engine ship together in each VSIX.

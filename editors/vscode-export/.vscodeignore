@@ -1,0 +1,11 @@
+**/*
+!package.json
+!README.md
+!LICENSE
+!THIRD_PARTY.md
+!licenses/**
+!CHANGELOG.md
+!icon.png
+!out/vscode-export/src/extension.js
+!out/shared/sidecar.js
+!bin/**
