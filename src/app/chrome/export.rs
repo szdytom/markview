@@ -126,6 +126,12 @@ fn rows(settings: &ExportSettings, lang: Lang) -> Vec<Row> {
 				.collect(),
 		),
 	]);
+	if settings.format == ExportFormat::Pdf {
+		rows.push(
+			Row::new(lang.export_document_title(), vec![])
+				.input(crate::state::TextField::ExportTitle),
+		);
+	}
 	rows
 }
 

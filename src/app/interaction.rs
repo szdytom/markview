@@ -35,12 +35,24 @@ fn sanitize_filename(title: &str, lang: crate::lang::Lang) -> String {
 
 impl<P: super::SendEvent> App<P> {
 	pub(super) fn action(&mut self, action: Command) {
+		if let Command::FocusInput(id) = action {
+			self.interaction.focus = Some(Command::FocusInput(id));
+			self.sync_input();
+			self.redraw();
+			return;
+		}
+		self.blur_input();
+		if matches!(self.interaction.focus, Some(Command::FocusInput(_))) {
+			self.interaction.focus = None;
+		}
+
 		self.cancel_gestures();
 		// Export-panel changes own their settings and never reflow the reader.
 		if self.export_command(action) {
 			return;
 		}
 		match action {
+			Command::FocusInput(_) => unreachable!("input focus handled above"),
 			Command::OpenProject => {
 				self.launch(env!("CARGO_PKG_REPOSITORY"));
 				return;

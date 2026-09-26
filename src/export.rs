@@ -22,7 +22,7 @@ use std::{
 	sync::Arc,
 };
 
-/// The document metadata the command line writes into the PDF.
+/// The document metadata written into the PDF.
 #[derive(Default, Clone)]
 pub(crate) struct MetadataOverrides {
 	pub(crate) title: Option<String>,
@@ -31,6 +31,16 @@ pub(crate) struct MetadataOverrides {
 	pub(crate) keywords: Vec<String>,
 	pub(crate) language: Option<String>,
 	pub(crate) creator: Option<String>,
+}
+
+impl MetadataOverrides {
+	pub(crate) fn with_title(title: &str) -> Self {
+		let title = title.trim();
+		Self {
+			title: (!title.is_empty()).then(|| title.to_owned()),
+			..Default::default()
+		}
+	}
 }
 
 /// The `[page]` fields the command line overrides on top of the stylesheet.

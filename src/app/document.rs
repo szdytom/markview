@@ -36,6 +36,7 @@ impl<P: super::SendEvent> App<P> {
 		});
 	}
 	pub(super) fn open(&mut self, path: PathBuf) {
+		self.clear_input_focus();
 		self.cancel_gestures();
 		self.tab_strip.cancel_drag();
 		self.tab_strip.reveal_active = true;
@@ -55,6 +56,7 @@ impl<P: super::SendEvent> App<P> {
 		self.request(false);
 	}
 	pub(super) fn select_tab(&mut self, index: usize) {
+		self.clear_input_focus();
 		self.cancel_gestures();
 		self.tab_strip.cancel_drag();
 		self.tab_strip.reveal_active = true;
@@ -80,6 +82,7 @@ impl<P: super::SendEvent> App<P> {
 		self.redraw();
 	}
 	pub(super) fn close_tab(&mut self, index: usize) {
+		self.clear_input_focus();
 		self.cancel_gestures();
 		self.tab_strip.cancel_drag();
 		self.tab_strip.reveal_active = true;

@@ -44,6 +44,7 @@ impl<P: super::SendEvent> App<P> {
 					.filter(|url| !super::anchor::footnote_link(url))
 			});
 		Chrome {
+			input_draws: Vec::new(),
 			backend: self.renderer.as_ref().map(|renderer| renderer.backend),
 			ui: &mut self.ui,
 			session: &self.readers.session,
@@ -239,7 +240,10 @@ impl<P: super::SendEvent> App<P> {
 				)
 			});
 		}
-		self.chrome().overlay()
+		let inputs = self.draw_inputs();
+		let mut chrome = self.chrome();
+		chrome.input_draws = inputs;
+		chrome.overlay()
 	}
 	pub(super) fn tab_layout(&mut self) -> super::tab_strip::TabLayout {
 		self.tab_metrics.sync(&mut self.ui, self.readers.entries());

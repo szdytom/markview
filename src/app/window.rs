@@ -33,6 +33,9 @@ impl<P: super::SendEvent> App<P> {
 		_: WindowId,
 		event: WindowEvent,
 	) {
+		if self.input_event(&event) {
+			return;
+		}
 		match event {
 			WindowEvent::Touch(touch) => self.handle_touch(touch),
 			WindowEvent::PinchGesture { .. } => {

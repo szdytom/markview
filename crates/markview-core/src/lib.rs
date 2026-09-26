@@ -15,5 +15,6 @@ pub mod scene;
 pub mod shaping;
 pub mod style;
 pub mod text;
+pub mod text_input;
 
 pub use microtype::JustificationLimits;

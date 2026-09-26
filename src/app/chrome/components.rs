@@ -476,6 +476,7 @@ pub(super) fn action(
 pub(super) struct Row {
 	icon: Option<&'static [markview_core::scene::IconPath]>,
 	pub label: String,
+	input: Option<crate::state::TextField>,
 	pub actions: Vec<Action>,
 	pub section: Option<&'static str>,
 	pub value: Option<String>,
@@ -503,12 +504,17 @@ impl Row {
 		Self {
 			icon: None,
 			label: label.into(),
+			input: None,
 			actions,
 			section: None,
 			value: None,
 			link: None,
 			menu: None,
 		}
+	}
+	pub fn input(mut self, id: crate::state::TextField) -> Self {
+		self.input = Some(id);
+		self
 	}
 	/// Offers `entries` in a list the row's own control opens, showing the
 	/// current one where a value would go.
@@ -534,6 +540,7 @@ impl Row {
 		} else if self.actions.is_empty()
 			&& self.value.is_none()
 			&& self.menu.is_none()
+			&& self.input.is_none()
 		{
 			26.0
 		} else {
@@ -654,6 +661,18 @@ impl Form {
 				b.marker = Some(icons::CHEVRON);
 				buttons.push(b);
 				menus.push((menu.id, rect));
+			}
+			if let Some(id) = row.input {
+				buttons.push(button(
+					"",
+					Command::FocusInput(id),
+					Rect {
+						x: right - w,
+						y,
+						w,
+						h: CONTROL,
+					},
+				));
 			}
 			let count = row.actions.len();
 			for (i, entry) in row.actions.iter().enumerate() {
@@ -905,6 +924,7 @@ impl Form {
 					w: if row.actions.is_empty()
 						&& row.value.is_none()
 						&& row.menu.is_none()
+						&& row.input.is_none()
 					{
 						self.viewport.w
 					} else {
@@ -950,6 +970,9 @@ impl Form {
 		};
 
 		for (i, b) in self.buttons.iter().enumerate() {
+			if matches!(b.action, Command::FocusInput(_)) {
+				continue;
+			}
 			if !self.header
 				&& matches!(
 					b.action,

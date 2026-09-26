@@ -175,6 +175,7 @@ fn style_page_buttons(
 }
 
 pub(super) struct Chrome<'a> {
+	pub(super) input_draws: Vec<Draw>,
 	pub(super) backend: Option<wgpu::Backend>,
 	pub(super) ui: &'a mut TextShaper,
 	pub(super) session: &'a ReaderSession,
@@ -595,6 +596,7 @@ impl Chrome<'_> {
 				self.backend,
 			));
 		}
+		out.append(&mut self.input_draws);
 		// A confirmation owns the frame; nothing behind it is interactive.
 		if self.interaction.modal.is_some() {
 			out.extend(modal::draw_modal(
