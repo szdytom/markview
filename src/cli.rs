@@ -23,6 +23,7 @@ pub(crate) enum Mode {
 	Smoke,
 	Pdf,
 	StylesheetList,
+	Serve,
 	Fonts,
 }
 impl Mode {
@@ -69,6 +70,7 @@ pub(crate) enum FontsCommand {
 
 pub(crate) struct LaunchOptions {
 	pub(crate) offline: bool,
+	pub(crate) state_dir: Option<PathBuf>,
 	pub(crate) mode: Mode,
 	pub(crate) path: Option<PathBuf>,
 	pub(crate) output: Option<PathBuf>,
@@ -95,6 +97,7 @@ impl Default for LaunchOptions {
 	fn default() -> Self {
 		Self {
 			offline: false,
+			state_dir: None,
 			mode: Mode::Window,
 			path: None,
 			output: None,
@@ -198,6 +201,12 @@ struct Reading {
 	reason = "one parsed command, then dropped"
 )]
 enum Command {
+	/// Serve editor-owned buffers for PDF and PNG export over JSON lines.
+	Serve {
+		/// Private engine storage; never use the desktop reader settings.
+		#[arg(long)]
+		state_dir: PathBuf,
+	},
 	/// Render one document to a PNG image.
 	Render(RenderArgs),
 	/// Export one document to a PDF.
@@ -478,6 +487,11 @@ fn parse_arguments(
 
 fn apply_command(out: &mut LaunchOptions, command: Command) -> Result<()> {
 	match command {
+		Command::Serve { state_dir } => {
+			out.mode = Mode::Serve;
+			out.state_dir = Some(state_dir);
+			Ok(())
+		}
 		Command::Render(args) => {
 			out.mode = Mode::Render;
 			out.path = Some(args.file);
@@ -752,7 +766,10 @@ fn finish(mut out: LaunchOptions) -> Result<Option<LaunchOptions>> {
 	if out.mode == Mode::Pdf && !out.overrides.contains(&Setting::FontSize) {
 		out.options.font_size = ExportSettings::DEFAULT_FONT_SIZE_PX;
 	}
-	if matches!(out.mode, Mode::Window | Mode::StylesheetList | Mode::Fonts) {
+	if matches!(
+		out.mode,
+		Mode::Window | Mode::StylesheetList | Mode::Fonts | Mode::Serve
+	) {
 		return Ok(Some(out));
 	}
 	if out.path.is_none() {
@@ -788,7 +805,7 @@ fn finish(mut out: LaunchOptions) -> Result<Option<LaunchOptions>> {
 /// Whether two paths name the same file once the filesystem resolves them:
 /// absolute and relative spellings, `.` and `..`, and directory symlinks all
 /// collapse to one answer, so an output cannot overwrite its own document.
-fn same_target(a: &std::path::Path, b: &std::path::Path) -> bool {
+pub(crate) fn same_target(a: &std::path::Path, b: &std::path::Path) -> bool {
 	resolved(a) == resolved(b)
 }
 

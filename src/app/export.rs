@@ -7,19 +7,15 @@ use super::{App, Event, ExportOutcome};
 use crate::{
 	export,
 	layout::LayoutSnapshot,
-	render::View,
 	settings::{ExportFormat, ExportSettings, FontDefOverride},
 	state::Command,
 };
-use image::ImageEncoder;
 use markview_core::{
 	fonts::FontConfig,
 	paginate::PT_PER_PX,
-	scene::{Draw, Paint, Rect},
 	style::{CjkType, PageStyle, Stylesheet},
 };
 use std::{
-	collections::HashMap,
 	path::{Path, PathBuf},
 	sync::Arc,
 	time::{Duration, Instant},
@@ -448,7 +444,7 @@ impl<P: super::SendEvent> App<P> {
 		};
 		let tile = job.plan.tiles[job.next];
 		let theme = self.preferences.values.theme;
-		if let Err(error) = draw_tile(
+		if let Err(error) = export::draw_tile(
 			renderer,
 			&job.snapshot,
 			&job.plan,
@@ -480,7 +476,7 @@ impl<P: super::SendEvent> App<P> {
 	}
 
 	fn finish_png_export(&mut self, job: PngExport) {
-		let outcome = write_png(
+		let outcome = export::write_png(
 			&job.path,
 			&job.rgba,
 			job.plan.width_px,
@@ -523,94 +519,6 @@ impl<P: super::SendEvent> App<P> {
 			),
 		}
 	}
-}
-
-/// Draws one strip into the whole image's RGBA buffer.
-#[expect(clippy::too_many_arguments, reason = "one strip's explicit geometry")]
-pub(super) fn draw_tile(
-	renderer: &mut crate::render::Renderer,
-	snapshot: &LayoutSnapshot,
-	plan: &export::PngPlan,
-	stylesheet: &Arc<Stylesheet>,
-	tile: export::PngTile,
-	scale: f32,
-	left: f32,
-	theme: crate::render::Theme,
-	rgba: &mut [u8],
-) -> anyhow::Result<()> {
-	let horizontal = HashMap::new();
-	let view = View {
-		selection: None,
-		revision: 0,
-		width: plan.width_px,
-		height: tile.height_px,
-		scale,
-		scroll: tile.scroll,
-		left,
-		top: 0.0,
-		bottom: 0.0,
-		theme,
-		horizontal: &horizontal,
-		hovered_link: None,
-		hovered_overflow: None,
-		held_overflow: None,
-	};
-	let target = renderer.offscreen(plan.width_px, tile.height_px);
-	let target_view = target.create_view(&Default::default());
-	let height = plan.height_px as f32 / scale;
-	let tile_top = tile.y_px as f32 / scale;
-	let tile_bottom = tile_top + tile.height_px as f32 / scale;
-	let bands: Vec<_> = [
-		(false, &stylesheet.page().header),
-		(true, &stylesheet.page().footer),
-	]
-	.into_iter()
-	.filter_map(|(bottom, edge)| {
-		let (width, color) = edge.rule(height * PT_PER_PX)?;
-		let width = width / PT_PER_PX;
-		let start = if bottom { height - width } else { 0.0 };
-		let top = start.max(tile_top);
-		let end = (start + width).min(tile_bottom);
-		(end > top).then_some(Draw::Rect(
-			Rect {
-				x: 0.0,
-				y: top - tile_top,
-				w: plan.width_px as f32 / scale,
-				h: end - top,
-			},
-			Paint::Color(color),
-		))
-	})
-	.collect();
-	let submission = renderer.render_with_stylesheet(
-		snapshot,
-		&view,
-		&bands,
-		&[],
-		&target_view,
-		stylesheet.clone(),
-	)?;
-	renderer.wait(Some(submission))?;
-	let pixels = renderer.read_pixels(&target)?;
-	let start = tile.y_px as usize * plan.width_px as usize * 4;
-	rgba[start..start + pixels.rgba.len()].copy_from_slice(&pixels.rgba);
-	Ok(())
-}
-
-pub(super) fn write_png(
-	path: &Path,
-	rgba: &[u8],
-	width: u32,
-	height: u32,
-) -> anyhow::Result<()> {
-	let mut bytes = Vec::new();
-	image::codecs::png::PngEncoder::new(&mut bytes).write_image(
-		rgba,
-		width,
-		height,
-		image::ExtendedColorType::Rgba8,
-	)?;
-	export::write_atomic(path, &bytes)
 }
 
 /// The save dialog, on the exporting thread so the window never blocks.
