@@ -431,22 +431,24 @@ impl Chrome<'_> {
 		} else {
 			self.warning.as_deref()
 		};
-		out.extend(draw_footer(
-			self.ui,
-			(!self.session.layout_pending).then_some(self.session.counts),
-			self.interaction.selection_counts.map(|(_, counts)| counts),
-			warning,
-			if self
-				.status_until
-				.is_some_and(|until| until > Instant::now())
-			{
-				self.status
-			} else {
-				self.hover_hint.unwrap_or("")
-			},
-			(width, height),
-			self.settings.lang(),
-		));
+		if !self.session.search.open {
+			out.extend(draw_footer(
+				self.ui,
+				(!self.session.layout_pending).then_some(self.session.counts),
+				self.interaction.selection_counts.map(|(_, counts)| counts),
+				warning,
+				if self
+					.status_until
+					.is_some_and(|until| until > Instant::now())
+				{
+					self.status
+				} else {
+					self.hover_hint.unwrap_or("")
+				},
+				(width, height),
+				self.settings.lang(),
+			));
+		}
 		if self.session.snapshot.blocks.is_empty() {
 			let button = empty_button(width, height, self.settings.lang());
 			let y = button.rect.y - 64.0;
@@ -624,10 +626,11 @@ impl Chrome<'_> {
 
 	/// The outline drawer's rectangle for this window and notice strip.
 	pub(super) fn outline_drawer(&self) -> Rect {
-		outline::rect(
+		outline::rect_above(
 			self.width,
 			self.height,
 			content_top(self.remote_notice.is_some()),
+			super::search::bottom(self.session.search.open),
 		)
 	}
 }

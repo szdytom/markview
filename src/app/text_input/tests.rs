@@ -346,3 +346,41 @@ fn ime_cursor_requests_settle_after_callbacks_and_coalesce_preedit_batches() {
 	event(&mut app, WindowEvent::Focused(false));
 	assert!(app.take_ime_area().is_none());
 }
+
+#[test]
+fn search_ime_defers_queries_enter_and_escape_until_composition_ends() {
+	let mut app = app();
+	app.readers.session.path = Some("search.md".into());
+	app.open_search();
+	app.readers.session.search.dirty = false;
+	let sequence = app.readers.session.search.sequence;
+	event(&mut app, WindowEvent::Ime(Ime::Enabled));
+	event(
+		&mut app,
+		WindowEvent::Ime(Ime::Preedit("ni".into(), Some((2, 2)))),
+	);
+	app.input_key(&Key::Named(NamedKey::Enter), None);
+	assert_eq!(app.readers.session.search.current, None);
+	assert_eq!(app.readers.session.search.sequence, sequence);
+	assert!(!app.readers.session.search.dirty);
+	assert!(app.readers.session.search.input.is_composing());
+	app.input_key(&Key::Named(NamedKey::Escape), None);
+	assert!(!app.readers.session.search.input.is_composing());
+	assert!(app.readers.session.search.open);
+	event(
+		&mut app,
+		WindowEvent::Ime(Ime::Preedit("ni".into(), Some((2, 2)))),
+	);
+	event(&mut app, WindowEvent::Ime(Ime::Commit("你".into())));
+	assert_eq!(app.readers.session.search.input.text(), "你");
+	assert!(app.readers.session.search.dirty);
+	assert!(app.readers.session.search.sequence > sequence);
+	assert!(app.take_ime_area().is_some());
+	for _ in 0..20 {
+		event(&mut app, WindowEvent::Ime(Ime::Preedit("".into(), None)));
+		assert!(app.take_ime_area().is_none());
+	}
+	app.input_key(&Key::Named(NamedKey::Escape), None);
+	assert!(!app.readers.session.search.open);
+	assert_eq!(app.readers.session.search.input.text(), "你");
+}

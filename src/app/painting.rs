@@ -8,7 +8,7 @@ use anyhow::Result;
 use log::{debug, info};
 use std::time::Instant;
 
-use super::{App, BOTTOM, Event};
+use super::{App, Event};
 /// How long one glyph prewarm pass may spend before yielding to the next
 /// frame. Scroll frames cost about 0.4 ms when their glyphs are cached, so
 /// this hands the reader a much better frame than the 13 ms a screenful of
@@ -47,7 +47,7 @@ impl<P: super::SendEvent> App<P> {
 			left: ((width - self.readers.session.snapshot.width) / 2.0)
 				.max(20.0),
 			top: self.content_top() + 10.0,
-			bottom: BOTTOM + 10.0,
+			bottom: self.bottom() + 10.0,
 			theme: self.preferences.values.theme,
 			horizontal: &self.readers.session.horizontal,
 			hovered_link: self.interaction.hover.as_deref(),

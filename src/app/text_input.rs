@@ -178,6 +178,9 @@ fn key(
 impl<P: SendEvent> App<P> {
 	fn input(&mut self, id: TextField) -> (&mut TextInput, &mut TextShaper) {
 		match id {
+			TextField::Search => {
+				(&mut self.readers.session.search.input, &mut self.ui)
+			}
 			TextField::ExportTitle => {
 				(&mut self.readers.session.export_title, &mut self.ui)
 			}
@@ -187,6 +190,20 @@ impl<P: SendEvent> App<P> {
 		&mut self,
 		id: TextField,
 	) -> Option<(Rect, Rect)> {
+		if id == TextField::Search {
+			return self.readers.session.search.open.then(|| {
+				let (w, h, _) = self.dimensions();
+				(
+					self.search_input_rect(),
+					Rect {
+						x: 0.0,
+						y: h - super::search::HEIGHT,
+						w,
+						h: super::search::HEIGHT,
+					},
+				)
+			});
+		}
 		let form = self.panel_form()?;
 		let rect = form
 			.buttons
@@ -200,6 +217,12 @@ impl<P: SendEvent> App<P> {
 			|| self.interaction.dropdown.is_some()
 		{
 			return None;
+		}
+		let (x, y) = self.interaction.cursor;
+		if self.readers.session.search.open
+			&& self.search_input_rect().contains(x, y)
+		{
+			return Some(TextField::Search);
 		}
 		let form = self.panel_form()?;
 		let (x, y) = self.interaction.cursor;
@@ -373,6 +396,9 @@ impl<P: SendEvent> App<P> {
 						Ime::Commit(text) => {
 							let (input, ui) = self.input(id);
 							input.commit(ui, text);
+							if id == TextField::Search {
+								self.search_changed();
+							}
 						}
 					}
 					self.reset_input_blink();
@@ -419,7 +445,7 @@ impl<P: SendEvent> App<P> {
 					self.sync_input();
 					let (rect, _) = self
 						.input_geometry(id)
-						.expect("hit input belongs to form");
+						.expect("hit input has geometry");
 					let point = self.interaction.cursor;
 					let clicks = self.interaction.click_count(Instant::now());
 					let extend = self.interaction.modifiers.shift_key();
@@ -456,7 +482,17 @@ impl<P: SendEvent> App<P> {
 	fn input_key(&mut self, logical: &Key, text: Option<&str>) -> Outcome {
 		let id = self.text_input.focused.expect("focused input owns key");
 		let mods = self.interaction.modifiers;
+		let before = (id == TextField::Search)
+			.then(|| self.readers.session.search.input.text().to_owned());
 		let outcome = match id {
+			TextField::Search => key(
+				&mut self.readers.session.search.input,
+				&mut self.ui,
+				&mut self.clipboard,
+				logical,
+				text,
+				mods,
+			),
 			TextField::ExportTitle => key(
 				&mut self.readers.session.export_title,
 				&mut self.ui,
@@ -466,6 +502,24 @@ impl<P: SendEvent> App<P> {
 				mods,
 			),
 		};
+		if id == TextField::Search {
+			if before.as_deref()
+				!= Some(self.readers.session.search.input.text())
+			{
+				self.search_changed();
+			}
+			match outcome {
+				Outcome::Submit => {
+					self.navigate_search(mods.shift_key());
+					return Outcome::Consumed;
+				}
+				Outcome::Cancel => {
+					self.close_search();
+					return Outcome::Consumed;
+				}
+				_ => {}
+			}
+		}
 		match outcome {
 			Outcome::Submit | Outcome::Cancel | Outcome::Application => {
 				self.blur_input();
@@ -479,6 +533,20 @@ impl<P: SendEvent> App<P> {
 		}
 		outcome
 	}
+	pub(super) fn draw_search_input(&mut self) -> Vec<Draw> {
+		self.sync_input();
+		let rect = self.search_input_rect();
+		let placeholder = self.preferences.values.lang().search_placeholder();
+		let focused = self.text_input.focused == Some(TextField::Search);
+		self.readers.session.search.input.draw(
+			&mut self.ui,
+			rect,
+			focused,
+			self.text_input.caret,
+			placeholder,
+		)
+	}
+
 	pub(super) fn draw_inputs(&mut self) -> Vec<Draw> {
 		self.sync_input();
 		let Some(form) = self.panel_form() else {

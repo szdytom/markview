@@ -12,6 +12,7 @@ mod microtype;
 pub mod paginate;
 pub mod profile;
 pub mod scene;
+pub mod search;
 pub mod shaping;
 pub mod style;
 pub mod text;

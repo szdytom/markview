@@ -2368,6 +2368,8 @@ dependencies = [
  "ratex-layout",
  "ratex-parser",
  "ratex-types",
+ "regex",
+ "regex-automata",
  "serde",
  "swash",
  "syntect",

@@ -7,6 +7,8 @@ license.workspace = true
 publish = false
 
 [dependencies]
+regex.workspace = true
+regex-automata.workspace = true
 html-escape = "0.2"
 codex.workspace = true
 unicode-segmentation.workspace = true

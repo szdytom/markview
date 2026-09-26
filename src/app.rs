@@ -15,6 +15,7 @@ mod outline;
 mod painting;
 mod pointer;
 mod preferences;
+pub(crate) mod search;
 mod tab_metrics;
 mod tab_navigation;
 mod tab_strip;
@@ -63,6 +64,12 @@ pub fn run() -> Result<()> {
 
 enum Event {
 	Ready(Box<Update>),
+	SearchReady(search::Result),
+	Parsed {
+		path: PathBuf,
+		content_version: u64,
+		document: Arc<markview_core::document::Document>,
+	},
 	Changed(PathBuf),
 	SettingsChanged,
 	StylesChanged,
@@ -159,6 +166,7 @@ struct App<P = EventLoopProxy<Event>> {
 	window: Option<Arc<Window>>,
 	renderer: Option<Renderer>,
 	worker: Worker,
+	search_worker: search::Worker,
 	watch: Option<FileWatch>,
 	_settings_watch: Option<FileWatch>,
 	_styles_watch: Option<FileWatch>,
@@ -204,13 +212,25 @@ impl<P: SendEvent> App<P> {
 		// download can extend it without touching what the command line named.
 		let fonts_config = args.options.fonts.clone();
 		let done = proxy.clone();
-		let worker = Worker::with_images(
+		let parsed_proxy = proxy.clone();
+		let worker = Worker::with_images_and_parsed(
 			args.offline,
 			fonts_config.clone(),
 			move |update| {
 				done.send(Event::Ready(Box::new(update)));
 			},
+			move |path, content_version, document| {
+				parsed_proxy.send(Event::Parsed {
+					path,
+					content_version,
+					document,
+				})
+			},
 		);
+		let search_proxy = proxy.clone();
+		let search_worker = search::Worker::new(move |result| {
+			search_proxy.send(Event::SearchReady(result))
+		});
 		let mut ui = TextShaper::with_fonts(fonts_config.clone());
 		let preferences = preferences::Preferences::new(&args, &mut ui);
 		let settings_watch = preferences.path().map(|path| {
@@ -238,6 +258,7 @@ impl<P: SendEvent> App<P> {
 			window: None,
 			renderer: None,
 			worker,
+			search_worker,
 			watch: None,
 			_settings_watch: settings_watch,
 			_styles_watch: styles_watch,
@@ -301,7 +322,7 @@ impl<P: SendEvent> App<P> {
 			left: ((width - self.readers.session.snapshot.width) / 2.0)
 				.max(20.0),
 			top: self.content_top() + 10.0,
-			bottom: BOTTOM + 10.0,
+			bottom: self.bottom() + 10.0,
 			scroll: self.readers.session.scroll,
 		}
 	}

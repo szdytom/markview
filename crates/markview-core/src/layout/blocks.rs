@@ -325,7 +325,8 @@ impl BlockContext<'_> {
 		for (i, inline) in rich.iter().enumerate() {
 			if let InlineKind::Math { display: true, .. } = inline.kind {
 				if i > start {
-					cursor += self.paragraph(
+					let search_node = out.text.len();
+					let h = self.paragraph(
 						&rich[start..i],
 						x,
 						cursor,
@@ -338,9 +339,20 @@ impl BlockContext<'_> {
 						opts,
 						out,
 					);
+					bind_rich_source(
+						out,
+						search_node,
+						rich,
+						start,
+						self.search_fields
+							.get(&(rich.as_ptr() as usize))
+							.copied(),
+					);
+					cursor += h;
 				}
 				cursor += size * 0.5;
-				cursor += self.paragraph(
+				let search_node = out.text.len();
+				let h = self.paragraph(
 					&rich[i..i + 1],
 					x,
 					cursor,
@@ -353,12 +365,21 @@ impl BlockContext<'_> {
 					opts,
 					out,
 				);
+				bind_rich_source(
+					out,
+					search_node,
+					rich,
+					i,
+					self.search_fields.get(&(rich.as_ptr() as usize)).copied(),
+				);
+				cursor += h;
 				cursor += size * 0.5;
 				start = i + 1;
 			}
 		}
 		if start < rich.len() {
-			cursor += self.paragraph(
+			let search_node = out.text.len();
+			let h = self.paragraph(
 				&rich[start..],
 				x,
 				cursor,
@@ -371,6 +392,14 @@ impl BlockContext<'_> {
 				opts,
 				out,
 			);
+			bind_rich_source(
+				out,
+				search_node,
+				rich,
+				start,
+				self.search_fields.get(&(rich.as_ptr() as usize)).copied(),
+			);
+			cursor += h;
 		}
 		if let Some(node) = out.text.get_mut(first_node) {
 			node.separator = "\n\n";
@@ -622,7 +651,13 @@ impl BlockContext<'_> {
 					.unwrap_or(1.)
 			}
 			BlockKind::Code { language, text } => {
-				self.code(language, text, x, y, width, size, opts, out)
+				let node = out.text.len();
+				let h = self.code(language, text, x, y, width, size, opts, out);
+				out.text[node].search_field =
+					self.search_fields.get(&(text.as_ptr() as usize)).copied();
+				out.text[node].search_ranges =
+					vec![(0..text.len(), 0..text.len())];
+				h
 			}
 			// The body is `yaml` source, so the disclosure below supplies the
 			// appearance and the highlighter takes the block from there.
@@ -1116,5 +1151,22 @@ impl BlockContext<'_> {
 				self.framed_children(blocks, x, y + height, width, opts, out);
 		}
 		height
+	}
+}
+
+fn bind_rich_source(
+	out: &mut BlockLayout,
+	node: usize,
+	rich: &RichText,
+	start: usize,
+	field: Option<crate::search::SearchField>,
+) {
+	if let Some(node) = out.text.get_mut(node) {
+		node.search_field = field;
+		let offset = crate::document::plain_text(&rich[..start]).len();
+		for (semantic, _) in &mut node.search_ranges {
+			semantic.start += offset;
+			semantic.end += offset;
+		}
 	}
 }

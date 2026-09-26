@@ -7,6 +7,7 @@ use std::{
 pub(super) struct Prepared {
 	pub(super) images: BTreeMap<usize, crate::image::ImageSpec>,
 	pub(super) reading: String,
+	pub(super) search_ranges: Vec<(Range<usize>, Range<usize>)>,
 	pub(super) mapping: Vec<(Range<usize>, Range<usize>, bool)>,
 	pub(super) text: String,
 	pub(super) spans: Vec<Span>,

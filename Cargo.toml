@@ -56,6 +56,8 @@ documentation = "https://github.com/szdytom/markview/tree/main/docs"
 unsafe_code = "deny"
 
 [workspace.dependencies]
+regex = "1"
+regex-automata = "0.4"
 arboard = { version = "3.6", default-features = false, features = ["wayland-data-control"] }
 unicode-segmentation = "1.13"
 tempfile = "3"

@@ -69,6 +69,8 @@ pub enum Condition {
 	/// Position within the immediate block container or table.
 	FirstChild,
 	LastChild,
+	Search,
+	SearchCurrent,
 }
 impl Condition {
 	pub const ALL: &'static [(Self, &'static str)] = &[
@@ -122,6 +124,8 @@ impl Condition {
 		(Self::PageNumber, "page_number"),
 		(Self::FirstChild, "first_child"),
 		(Self::LastChild, "last_child"),
+		(Self::Search, "search"),
+		(Self::SearchCurrent, "search_current"),
 	];
 	pub fn name(self) -> &'static str {
 		Self::ALL.iter().find(|(r, _)| *r == self).unwrap().1
@@ -171,7 +175,9 @@ impl Condition {
 			// Page furniture is set in the document's own fonts unless the
 			// stylesheet says otherwise, so it inherits from the body.
 			PageHeader | PageFooter | PageNumber => chain_of(&[Body, self]),
-			Page | Selection | Scrollbar => chain_of(&[self]),
+			Page | Selection | Scrollbar | Search | SearchCurrent => {
+				chain_of(&[self])
+			}
 			FirstChild | LastChild => chain_of(&[Body, P, self]),
 		}
 	}

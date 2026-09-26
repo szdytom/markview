@@ -10,7 +10,7 @@ use winit::{
 	window::{CursorIcon, WindowId},
 };
 
-use super::{App, BOTTOM, TOP};
+use super::{App, TOP};
 
 /// What the app asks of the loop it runs under.
 ///
@@ -33,6 +33,37 @@ impl<P: super::SendEvent> App<P> {
 		_: WindowId,
 		event: WindowEvent,
 	) {
+		if self.interaction.modal.is_none()
+			&& let WindowEvent::KeyboardInput { event, .. } = &event
+			&& event.state == ElementState::Pressed
+		{
+			let primary = if cfg!(target_os = "macos") {
+				self.interaction.modifiers.super_key()
+			} else {
+				self.interaction.modifiers.control_key()
+					&& !self.interaction.modifiers.alt_key()
+			};
+			if primary
+				&& matches!(&event.logical_key, Key::Character(c) if c.eq_ignore_ascii_case("f"))
+			{
+				self.open_search();
+				return;
+			}
+			if self.readers.session.search.open
+				&& !self.readers.session.search.input.is_composing()
+			{
+				if event.logical_key == Key::Named(NamedKey::F3) {
+					self.navigate_search(
+						self.interaction.modifiers.shift_key(),
+					);
+					return;
+				}
+				if event.logical_key == Key::Named(NamedKey::Escape) {
+					self.close_search();
+					return;
+				}
+			}
+		}
 		if self.input_event(&event) {
 			return;
 		}
@@ -257,7 +288,7 @@ impl<P: super::SendEvent> App<P> {
 					} else if self.interaction.cursor.1
 						>= self.content_top() + 10.0
 						&& self.interaction.cursor.1
-							< self.dimensions().1 - BOTTOM - 10.0
+							< self.dimensions().1 - self.bottom() - 10.0
 					{
 						let link = self.link_at(
 							self.interaction.cursor.0,
@@ -371,6 +402,12 @@ impl<P: super::SendEvent> App<P> {
 				self.redraw();
 			}
 			WindowEvent::MouseWheel { delta, phase, .. } => {
+				if self.readers.session.search.open
+					&& self.interaction.cursor.1
+						>= self.dimensions().1 - self.bottom()
+				{
+					return;
+				}
 				if self.interaction.modal.is_some() {
 					return;
 				}

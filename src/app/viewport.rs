@@ -1,4 +1,4 @@
-use super::{App, BOTTOM};
+use super::App;
 use crate::layout::{Rect, Scrollbar};
 use crate::state::scroll_limit;
 impl<P: super::SendEvent> App<P> {
@@ -20,7 +20,7 @@ impl<P: super::SendEvent> App<P> {
 			x: width - band - 2.0,
 			y: top,
 			w: band,
-			h: (height - top - BOTTOM).max(0.0),
+			h: (height - top - self.bottom()).max(0.0),
 		};
 		let viewport = self.viewport();
 		// The bar spans the scrollable range, including the blank kept below

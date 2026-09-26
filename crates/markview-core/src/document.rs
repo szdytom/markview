@@ -283,7 +283,7 @@ pub(super) fn content_identity(blocks: &[Block]) -> u64 {
 	hasher.finish()
 }
 
-pub fn plain_text(text: &RichText) -> String {
+pub fn plain_text(text: &[Inline]) -> String {
 	let mut out = String::new();
 	for span in text {
 		match &span.kind {

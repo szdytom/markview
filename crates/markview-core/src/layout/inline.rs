@@ -42,6 +42,7 @@ impl BlockContext<'_> {
 		let mut p = Prepared {
 			images: BTreeMap::new(),
 			reading: String::new(),
+			search_ranges: Vec::new(),
 			mapping: Vec::new(),
 			text: String::new(),
 			spans: Vec::new(),
@@ -50,6 +51,7 @@ impl BlockContext<'_> {
 			notes: BTreeMap::new(),
 			breaks: std::collections::BTreeSet::new(),
 		};
+		let mut semantic_offset = 0;
 		let mut i = 0;
 		while i < rich.len() {
 			let inline = &rich[i];
@@ -71,6 +73,12 @@ impl BlockContext<'_> {
 					reading_start..p.reading.len(),
 					false,
 				));
+				let len = crate::document::plain_text(&rich[i..run]).len();
+				p.search_ranges.push((
+					semantic_offset..semantic_offset + len,
+					reading_start..p.reading.len(),
+				));
+				semantic_offset += len;
 				i = run;
 				continue;
 			}
@@ -89,6 +97,18 @@ impl BlockContext<'_> {
 				}
 				InlineKind::LineBreak { .. } => p.reading.push('\n'),
 			}
+			let semantic =
+				crate::document::plain_text(std::slice::from_ref(inline));
+			let reading_end = if matches!(inline.kind, InlineKind::Image(_)) {
+				p.reading.len()
+			} else {
+				reading_start + semantic.len()
+			};
+			p.search_ranges.push((
+				semantic_offset..semantic_offset + semantic.len(),
+				reading_start..reading_end,
+			));
+			semantic_offset += semantic.len();
 			let mut style = inline.style.clone();
 			match &inline.kind {
 				InlineKind::Image(image) => {
