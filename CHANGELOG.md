@@ -23,6 +23,8 @@ at the same level, without `[brackets]`.
 
 ### Added
 
+- Add a standalone VS Code PDF/PNG export extension with bundled native engine, custom MVSS templates and document-scoped context-menu exports.
+
 - Find text throughout a document with a bottom search bar, Unicode case folding, whole-word matching, disclosure navigation and independent match highlights.
 
 - Reusable single-line text input with selection, clipboard, undo/redo and IME support; PDF exports can use a custom title for each document session.

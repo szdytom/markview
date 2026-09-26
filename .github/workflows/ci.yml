@@ -6,6 +6,18 @@ jobs:
   check:
     uses: ./.github/workflows/checks.yml
 
+  export-extension:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 22
+      - run: npm ci
+        working-directory: editors/vscode-export
+      - run: npm run compile && node test/pickers.js
+        working-directory: editors/vscode-export
+
   packaging:
     runs-on: ubuntu-latest
     steps:
@@ -44,7 +56,7 @@ jobs:
   # packaging input.
   ci:
     if: always()
-    needs: [check, packaging]
+    needs: [check, packaging, export-extension]
     runs-on: ubuntu-latest
     steps:
       - name: Fail unless every job succeeded

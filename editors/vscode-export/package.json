@@ -1,0 +1,109 @@
+{
+  "name": "markview-export",
+  "displayName": "Markview Export",
+  "description": "Export Markdown to PDF or PNG with native typography and customizable MVSS templates.",
+  "version": "0.1.2",
+  "publisher": "markview",
+  "license": "MIT",
+  "icon": "icon.png",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/szdytom/markview.git",
+    "directory": "editors/vscode-export"
+  },
+  "homepage": "https://github.com/szdytom/markview",
+  "bugs": {
+    "url": "https://github.com/szdytom/markview/issues"
+  },
+  "engines": {
+    "vscode": "^1.95.0"
+  },
+  "categories": [
+    "Other"
+  ],
+  "keywords": [
+    "markdown",
+    "pdf",
+    "png",
+    "export",
+    "typography"
+  ],
+  "main": "./out/vscode-export/src/extension.js",
+  "extensionKind": [
+    "ui"
+  ],
+  "capabilities": {
+    "untrustedWorkspaces": {
+      "supported": false
+    },
+    "virtualWorkspaces": {
+      "supported": false
+    }
+  },
+  "contributes": {
+    "commands": [
+      {
+        "command": "markviewExport.exportPdf",
+        "title": "Markview Export: Export to PDF"
+      },
+      {
+        "command": "markviewExport.exportPng",
+        "title": "Markview Export: Export to PNG"
+      },
+      {
+        "command": "markviewExport.exportWithTemplate",
+        "title": "Markview Export: Export with Template\u2026"
+      }
+    ],
+    "menus": {
+      "commandPalette": [
+        {
+          "command": "markviewExport.exportPdf",
+          "when": "editorLangId == markdown"
+        },
+        {
+          "command": "markviewExport.exportPng",
+          "when": "editorLangId == markdown"
+        },
+        {
+          "command": "markviewExport.exportWithTemplate",
+          "when": "editorLangId == markdown"
+        }
+      ],
+      "editor/context": [
+        {
+          "command": "markviewExport.exportPdf",
+          "when": "editorLangId == markdown",
+          "group": "markviewExport@1"
+        },
+        {
+          "command": "markviewExport.exportPng",
+          "when": "editorLangId == markdown",
+          "group": "markviewExport@2"
+        }
+      ]
+    },
+    "configuration": {
+      "title": "Markview Export",
+      "properties": {
+        "markviewExport.template": {
+          "scope": "language-overridable",
+          "type": "string",
+          "default": "",
+          "markdownDescription": "Default export template: a bundled name such as `mondrian`, or a `.mvss.toml` path (relative to the Markdown file). Empty uses the bundled print sheet. For untitled documents, relative paths use the workspace folder."
+        }
+      }
+    }
+  },
+  "scripts": {
+    "compile": "tsc -p tsconfig.json",
+    "vscode:prepublish": "npm run compile",
+    "package": "./package-vsix.sh",
+    "test": "./run-tests.sh"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "@types/vscode": "^1.95.0",
+    "typescript": "^5.6.0"
+  }
+}

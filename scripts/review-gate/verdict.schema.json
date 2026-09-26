@@ -1,0 +1,35 @@
+{
+  "type": "object",
+  "properties": {
+    "verdict": { "type": "string", "enum": ["approve", "reject"] },
+    "requirements": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "Requirement IDs this review covers, for example ENG-5 or EXT-3."
+    },
+    "summary": {
+      "type": "string",
+      "description": "One paragraph stating what was reviewed and the outcome."
+    },
+    "findings": {
+      "type": "array",
+      "description": "One entry per defect. Empty when the verdict is approve.",
+      "items": {
+        "type": "object",
+        "properties": {
+          "requirement": { "type": "string" },
+          "severity": { "type": "string", "enum": ["blocker", "major", "minor"] },
+          "evidence": {
+            "type": "string",
+            "description": "The file, line, or command output that shows the defect."
+          },
+          "detail": { "type": "string" }
+        },
+        "required": ["requirement", "severity", "evidence", "detail"],
+        "additionalProperties": false
+      }
+    }
+  },
+  "required": ["verdict", "requirements", "summary", "findings"],
+  "additionalProperties": false
+}
