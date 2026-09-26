@@ -96,7 +96,7 @@ impl LayoutSnapshot {
 				})
 			})
 	}
-	fn text_rect(
+	pub(crate) fn text_rect(
 		&self,
 		bi: usize,
 		cluster: &TextCluster,

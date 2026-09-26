@@ -23,11 +23,21 @@ at the same level, without `[brackets]`.
 
 ### Added
 
+- Find text throughout a document with a bottom search bar, Unicode case folding, whole-word matching, disclosure navigation and independent match highlights.
+
 - Reusable single-line text input with selection, clipboard, undo/redo and IME support; PDF exports can use a custom title for each document session.
+
+### Changed
+
+- Close the search bar when switching documents while retaining each document’s query and match options.
+
+- Submit document searches immediately without debounce, scan a compact text index and receive results without rebuilding highlight indexes on the UI thread.
 
 ### Fixed
 
 - Coalesce IME cursor-area updates and skip unchanged rectangles to prevent Wayland request feedback during text input.
+
+- Use canonical document paths in search tests so tab restoration works on Windows and macOS temporary directories.
 
 - A font test flaking under parallel `cargo test` by relying on a global cache slot surviving LRU eviction; it now asserts on the collection it built itself.
 

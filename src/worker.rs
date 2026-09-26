@@ -24,6 +24,7 @@ pub struct ReaderSnapshot {
 	pub layout: LayoutSnapshot,
 	pub content_version: u64,
 	pub complete: bool,
+	pub parse_complete: bool,
 	/// Remote image sources the per-revision cap left unrequested.
 	pub remote_deferred: usize,
 }
@@ -119,6 +120,14 @@ impl Worker {
 		offline: bool,
 		fonts: markview_core::fonts::FontConfig,
 		done: impl Fn(Update) + Send + 'static,
+	) -> Self {
+		Self::with_images_and_parsed(offline, fonts, done, |_, _, _| {})
+	}
+	pub fn with_images_and_parsed(
+		offline: bool,
+		fonts: markview_core::fonts::FontConfig,
+		done: impl Fn(Update) + Send + 'static,
+		parsed: impl Fn(PathBuf, u64, Arc<document::Document>) + Send + 'static,
 	) -> Self {
 		let inbox = Arc::new((
 			Mutex::new(Inbox {
@@ -312,6 +321,7 @@ impl Worker {
 															request
 																.content_version,
 														complete: false,
+														parse_complete: false,
 														remote_deferred: images
 															.deferred_remote(),
 													}));
@@ -342,6 +352,11 @@ impl Worker {
 							{
 								return Err("Superseded".into());
 							}
+							parsed(
+								request.path.clone(),
+								request.content_version,
+								document.clone(),
+							);
 							let start = Instant::now();
 							engine
 								.validate_stylesheet(
@@ -390,6 +405,7 @@ impl Worker {
 													content_version: request
 														.content_version,
 													complete: false,
+													parse_complete: true,
 													remote_deferred: images
 														.deferred_remote(),
 												}));
@@ -406,6 +422,7 @@ impl Worker {
 								layout,
 								content_version: request.content_version,
 								complete: true,
+								parse_complete: true,
 								remote_deferred: images.deferred_remote(),
 							})
 						})());

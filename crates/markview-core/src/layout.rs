@@ -257,6 +257,7 @@ impl LayoutOptions {
 }
 
 struct BlockContext<'a> {
+	search_fields: HashMap<usize, crate::search::SearchField>,
 	shaper: &'a mut TextShaper,
 	math: &'a mut MathEngine,
 	images: &'a crate::image::ImageSnapshot,
@@ -468,6 +469,7 @@ impl LayoutEngine {
 							document.blocks.len(),
 						);
 						BlockContext {
+							search_fields: crate::search::layout_fields(block),
 							shaper: &mut self.shaper,
 							math: &mut self.math,
 							images,

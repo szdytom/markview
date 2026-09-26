@@ -18,6 +18,11 @@ pub(crate) use outline::OutlineTree;
 pub(crate) use markview_core::layout::scroll_limit;
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum Command {
+	SearchCase,
+	SearchWord,
+	SearchPrevious,
+	SearchNext,
+	SearchClose,
 	FocusInput(TextField),
 	Open,
 	Smaller,
@@ -98,6 +103,7 @@ pub(crate) enum Command {
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum TextField {
+	Search,
 	ExportTitle,
 }
 
@@ -272,6 +278,8 @@ impl Dropdown {
 
 #[derive(Default, Clone)]
 pub(crate) struct ReaderSession {
+	pub(crate) search: crate::app::search::SearchState,
+	pub(crate) parse_complete: bool,
 	pub(crate) export_title: markview_core::text_input::TextInput,
 	pub(crate) counts: TextCounts,
 	pub(crate) path: Option<PathBuf>,
@@ -1167,6 +1175,8 @@ impl ReaderSession {
 		self.snapshot = LayoutSnapshot::default();
 		self.snapshot_complete = false;
 		self.document = None;
+		self.search.document = None;
+		self.parse_complete = false;
 		self.outline = None;
 		self.outline_tree = OutlineTree::default();
 		self.requested_options = None;
@@ -1269,6 +1279,7 @@ impl ReaderSession {
 		self.snapshot = reader.layout;
 		self.layout_pending = !reader.complete;
 		self.snapshot_complete = reader.complete;
+		self.parse_complete = reader.parse_complete;
 		self.remote_deferred = reader.remote_deferred;
 		self.resolve_scroll(viewport);
 		self.accepted_revision = reader.content_version;

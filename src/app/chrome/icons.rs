@@ -19,9 +19,9 @@ pub(in crate::app) const CLOSE: &[IconPath] =
 	markview_icon::icon!("assets/ui/close.svg");
 
 pub(super) const BACK: &[IconPath] = markview_icon::icon!("assets/ui/back.svg");
-pub(super) const UP: &[IconPath] =
+pub(in crate::app) const UP: &[IconPath] =
 	markview_icon::icon!("assets/ui/arrow-up.svg");
-pub(super) const DOWN: &[IconPath] =
+pub(in crate::app) const DOWN: &[IconPath] =
 	markview_icon::icon!("assets/ui/arrow-down.svg");
 
 /// Trails the value of a control whose options open in a list.

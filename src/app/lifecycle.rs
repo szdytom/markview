@@ -73,6 +73,19 @@ impl<P: super::SendEvent> ApplicationHandler<Event> for App<P> {
 	}
 	fn user_event(&mut self, event_loop: &ActiveEventLoop, event: Event) {
 		match event {
+			Event::SearchReady(result) => self.search_ready(result),
+			Event::Parsed {
+				path,
+				content_version,
+				document,
+			} if self.readers.session.path.as_ref() == Some(&path)
+				&& self.readers.session.content_version == content_version =>
+			{
+				self.readers.session.parse_complete = true;
+				self.readers.session.search.document = Some(document);
+				self.search_tick();
+				self.redraw();
+			}
 			Event::StylesChanged => {
 				self.reload_styles();
 				self.redraw();
@@ -94,6 +107,17 @@ impl<P: super::SendEvent> ApplicationHandler<Event> for App<P> {
 			{
 				self.cancel_gestures();
 				self.readers.session.content_version += 1;
+				self.readers.session.parse_complete = false;
+				self.readers.session.search.retained = self
+					.readers
+					.session
+					.search
+					.current
+					.and_then(|i| self.readers.session.search.matches.get(i))
+					.cloned();
+				self.readers.session.search.document = None;
+				self.readers.session.search.matches = Arc::default();
+				self.search_changed();
 				// New content asks again before fetching every remote image,
 				// and `<details>` start from what the new source declares.
 				self.readers.session.load_all_images = false;
@@ -180,6 +204,8 @@ impl<P: super::SendEvent> ApplicationHandler<Event> for App<P> {
 							String::new()
 						};
 						self.apply_anchor();
+						self.search_tick();
+						self.apply_search_navigation();
 						if let Some(w) = &self.window {
 							w.set_title(&format!(
 								"{} — Markview",
@@ -269,6 +295,7 @@ impl<P: super::SendEvent> ApplicationHandler<Event> for App<P> {
 	fn about_to_wait(&mut self, event_loop: &ActiveEventLoop) {
 		let now = Instant::now();
 		self.input_tick(now);
+		self.search_tick();
 		self.auto_scroll_tabs(now);
 		self.advance_scroll(now);
 		self.advance_gestures(now);

@@ -8,7 +8,7 @@ use unicode_segmentation::UnicodeSegmentation;
 /// UAX #29 rules plus the Chinese and Japanese dictionaries, so 中文文字 breaks
 /// into 中文 / 文字 instead of one segment per character. The segmenter is
 /// immutable and cheap to copy, so one process-wide instance serves every thread.
-fn word_segmenter() -> WordSegmenterBorrowed<'static> {
+pub(crate) fn word_segmenter() -> WordSegmenterBorrowed<'static> {
 	static SEGMENTER: OnceLock<WordSegmenterBorrowed<'static>> =
 		OnceLock::new();
 	*SEGMENTER.get_or_init(|| WordSegmenter::new_auto(Default::default()))
@@ -136,6 +136,9 @@ impl TextSelection {
 }
 #[derive(Clone, Debug)]
 pub struct TextNode {
+	pub search_field: Option<crate::search::SearchField>,
+	/// Pairs of semantic and reading byte ranges; diagnostics have no pair.
+	pub search_ranges: Vec<(Range<usize>, Range<usize>)>,
 	pub text: String,
 	pub separator: &'static str,
 	pub clusters: Vec<TextCluster>,
@@ -147,6 +150,8 @@ impl TextNode {
 			text.grapheme_indices(true).map(|(i, _)| i).collect();
 		boundaries.push(text.len());
 		Self {
+			search_field: None,
+			search_ranges: Vec::new(),
 			text,
 			separator,
 			clusters: Vec::new(),

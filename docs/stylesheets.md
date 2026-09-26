@@ -131,7 +131,7 @@ A condition is one fact about a rendered run: the blocks that contain it, the pa
 | Block parts | `label`, `cell`, `header`, `marker`, `task_marker`, `caption`, `placeholder`, `summary` |
 | Inline | `em`, `strong`, `link`, `del`, `sup`, `footnote_ref`, `code`, `math` |
 | State | `hover`, `error` |
-| Surfaces and UI | `img`, `selection`, `scrollbar`, `ui`, `toolbar`, `statusbar`, `panel`, `button` |
+| Surfaces and UI | `img`, `selection`, `search`, `search_current`, `scrollbar`, `ui`, `toolbar`, `statusbar`, `panel`, `button` |
 | Paper | `page`, `page_header`, `page_footer`, `page_number` |
 
 `page` paints the exported sheet; the other three style page furniture. They never apply to the reader window, and a theme that ignores them still exports: the PDF falls back to the body appearance.
@@ -139,6 +139,8 @@ A condition is one fact about a rendered run: the blocks that contain it, the pa
 A rule applies to a run when **every** condition it names holds for that run. The order inside `when` is not part of the rule's identity, so `["strong", "code"]` and `["code", "strong"]` are the same rule, and a file that declares both is rejected as a duplicate. There are no selectors, variables, `inherit`, `unset`, imports, or scripts. The only remote resource a stylesheet can name is a font family, declared under [`[[font-family]]`](#downloadable-fonts), and even that is never fetched until the reader asks for it.
 
 Footnote links are clicks that move inside the document: a reference jumps to its note, and the note's number jumps back to the citation it was opened from. They carry `footnote_ref` instead of `link`, so a theme can mark them without recoloring every hyperlink; `["footnote_ref", "hover"]` styles the link under the pointer. Consecutive references share one bracket pair, as in `[1,2]`, and only their numbers stay click targets.
+
+`search` and `search_current` paint the backgrounds of document find results and the active result. They are independent of `selection` and only appear while the search bar is open.
 
 ## Composition
 

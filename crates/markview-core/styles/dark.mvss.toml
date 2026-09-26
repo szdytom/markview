@@ -1,6 +1,6 @@
 format_version = 2
 targets = ["ui"]
-version = 3
+version = 4
 
 [meta]
 name = "Dark"
@@ -165,3 +165,11 @@ hover_background = "#354459"
 active_background = "#3E526D"
 disabled_color = "#A5B3C5"
 focus_color = "#98C5ED"
+
+[[rule]]
+when = ["search"]
+background = "#EBC86B47"
+
+[[rule]]
+when = ["search_current"]
+background = "#EBC86B88"

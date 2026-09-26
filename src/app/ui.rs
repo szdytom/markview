@@ -213,6 +213,7 @@ impl<P: super::SendEvent> App<P> {
 		let mut buttons = self.dropdown_buttons();
 		let mut page = self.chrome().buttons();
 		buttons.append(&mut page);
+		buttons.extend(self.search_buttons());
 		buttons
 	}
 	pub(super) fn overlay(&mut self) -> Vec<Draw> {
@@ -240,10 +241,16 @@ impl<P: super::SendEvent> App<P> {
 				)
 			});
 		}
-		let inputs = self.draw_inputs();
+		let mut inputs = self.draw_inputs();
+		if self.readers.session.search.open {
+			inputs.extend(self.draw_search());
+			inputs.extend(self.draw_search_input());
+		}
+		let mut out = self.draw_search_highlights();
 		let mut chrome = self.chrome();
 		chrome.input_draws = inputs;
-		chrome.overlay()
+		out.extend(chrome.overlay());
+		out
 	}
 	pub(super) fn tab_layout(&mut self) -> super::tab_strip::TabLayout {
 		self.tab_metrics.sync(&mut self.ui, self.readers.entries());

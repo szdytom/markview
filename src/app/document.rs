@@ -50,6 +50,7 @@ impl<P: super::SendEvent> App<P> {
 			self.select_tab(index);
 			return;
 		}
+		self.close_search();
 		self.readers.open(path, Instant::now());
 		self.interaction.clear_selection();
 		self.observe_document();
@@ -68,6 +69,8 @@ impl<P: super::SendEvent> App<P> {
 		self.observe_document();
 		self.interaction.clear_selection();
 		self.worker.cancel();
+		self.close_search();
+		self.search_changed();
 		self.error = false;
 		self.status.clear();
 		self.status_until = None;
@@ -118,6 +121,8 @@ impl<P: super::SendEvent> App<P> {
 			self.worker.cancel();
 		}
 		self.interaction.clear_selection();
+		self.close_search();
+		self.search_changed();
 		self.error = false;
 		self.status.clear();
 		self.status_until = None;

@@ -1,6 +1,6 @@
 format_version = 2
 targets = ["ui", "pdf"]
-version = 1
+version = 2
 
 [[fontdef]]
 id = "serif"
@@ -857,3 +857,11 @@ hover_background = "#E2E8F1"
 active_background = "#DFE7FA"
 disabled_color = "#626C79"
 focus_color = "#2856D8"
+
+[[rule]]
+when = ["search"]
+background = "#E9BA4547"
+
+[[rule]]
+when = ["search_current"]
+background = "#E49B2377"

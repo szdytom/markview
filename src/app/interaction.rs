@@ -7,7 +7,7 @@ use crate::state::{
 use markview_core::text::TextPosition;
 use std::time::{Duration, Instant};
 
-use super::{App, BOTTOM, Event, TOP, system_theme};
+use super::{App, Event, TOP, system_theme};
 
 fn sanitize_filename(title: &str, lang: crate::lang::Lang) -> String {
 	let name: String = title
@@ -41,6 +41,16 @@ impl<P: super::SendEvent> App<P> {
 			self.redraw();
 			return;
 		}
+		if matches!(
+			action,
+			Command::Settings
+				| Command::SettingsTab(_)
+				| Command::Styles
+				| Command::Export
+				| Command::ExportStyles
+		) {
+			self.close_search();
+		}
 		self.blur_input();
 		if matches!(self.interaction.focus, Some(Command::FocusInput(_))) {
 			self.interaction.focus = None;
@@ -52,6 +62,27 @@ impl<P: super::SendEvent> App<P> {
 			return;
 		}
 		match action {
+			Command::SearchClose => {
+				self.close_search();
+				return;
+			}
+			Command::SearchNext | Command::SearchPrevious => {
+				self.navigate_search(action == Command::SearchPrevious);
+				self.interaction.focus =
+					Some(Command::FocusInput(crate::state::TextField::Search));
+				self.sync_input();
+				return;
+			}
+			Command::SearchCase | Command::SearchWord => {
+				let options = &mut self.readers.session.search.options;
+				if action == Command::SearchCase {
+					options.case_sensitive = !options.case_sensitive;
+				} else {
+					options.whole_word = !options.whole_word;
+				}
+				self.search_changed();
+				return;
+			}
 			Command::FocusInput(_) => unreachable!("input focus handled above"),
 			Command::OpenProject => {
 				self.launch(env!("CARGO_PKG_REPOSITORY"));
@@ -631,7 +662,7 @@ impl<P: super::SendEvent> App<P> {
 			let (_, height, _) = self.dimensions();
 			let can_scroll = (self.interaction.cursor.1 < TOP + 24.0
 				&& self.readers.session.scroll > 0.0)
-				|| (self.interaction.cursor.1 > height - BOTTOM - 24.0
+				|| (self.interaction.cursor.1 > height - self.bottom() - 24.0
 					&& self.readers.session.scroll
 						< (self.readers.session.snapshot.height
 							- self.viewport())

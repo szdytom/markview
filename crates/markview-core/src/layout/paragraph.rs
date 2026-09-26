@@ -61,6 +61,7 @@ impl BlockContext<'_> {
 		});
 		let node = out.text.len();
 		out.text.push(TextNode::new(p.reading.clone(), ""));
+		out.text.last_mut().unwrap().search_ranges = p.search_ranges.clone();
 		if p.text.is_empty() {
 			return size * self.shaper.appearance.line_height;
 		}

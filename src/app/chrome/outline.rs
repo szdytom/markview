@@ -64,13 +64,23 @@ pub(super) fn header_buttons(drawer: Rect, lang: Lang) -> [Button; 2] {
 }
 
 /// The drawer's rectangle, from `top` down to just above the footer.
+#[cfg(test)]
 pub(in crate::app) fn rect(width: f32, height: f32, top: f32) -> Rect {
+	rect_above(width, height, top, super::super::BOTTOM)
+}
+
+pub(in crate::app) fn rect_above(
+	width: f32,
+	height: f32,
+	top: f32,
+	bottom: f32,
+) -> Rect {
 	let w = WIDTH.min(width);
 	Rect {
 		x: width - w,
 		y: top,
 		w,
-		h: (height - top - super::super::BOTTOM).max(0.0),
+		h: (height - top - bottom).max(0.0),
 	}
 }
 
