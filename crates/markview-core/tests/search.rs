@@ -125,6 +125,57 @@ fn semantic_projection_excludes_diagnostics_and_preserves_math_and_alt_text() {
 	assert!(copied.contains("Math error"));
 }
 #[test]
+fn visible_clusters_survive_multiline_image_placeholders() {
+	let doc = document::parse(
+		"before ![long alternative text that wraps onto several lines](missing.png) needle after",
+	);
+	for error in [None, Some("Image could not be loaded".to_owned())] {
+		let mut opts = options();
+		opts.width = 640.0;
+		let mut images = markview_core::image::ImageSnapshot::default();
+		images.entries.insert(
+			"missing.png".to_owned(),
+			markview_core::image::ImageInfo {
+				error,
+				..Default::default()
+			},
+		);
+		let snapshot =
+			LayoutEngine::new().layout_with_images(&doc, &opts, &images);
+		assert!(snapshot.blocks.iter().any(|block| {
+			block.layout.text.iter().any(|node| {
+				node.clusters
+					.windows(2)
+					.any(|pair| pair[0].rect.y > pair[1].rect.y)
+			})
+		}));
+		let horizontal = HashMap::new();
+		let mut all = Vec::new();
+		snapshot.visit_search_clusters(
+			&horizontal,
+			0.0..snapshot.height,
+			|bi, field, range, rect| all.push((bi, field, range, rect)),
+		);
+		for (_, _, _, rect) in &all {
+			let visible = rect.y..rect.y + 1.0;
+			let expected: Vec<_> = all
+				.iter()
+				.filter(|(_, _, _, r)| {
+					r.y + r.h >= visible.start && r.y <= visible.end
+				})
+				.map(|(bi, field, range, _)| (*bi, *field, range.clone()))
+				.collect();
+			let mut actual = Vec::new();
+			snapshot.visit_search_clusters(
+				&horizontal,
+				visible.clone(),
+				|bi, field, range, _| actual.push((bi, field, range)),
+			);
+			assert_eq!(actual, expected, "visible range {visible:?}");
+		}
+	}
+}
+#[test]
 fn cancellation_and_matches_cross_chunk_boundaries_without_normalization() {
 	let text = format!("{}Kneedle{}", "x".repeat(65535), "x".repeat(65536));
 	let doc = document::parse(text.as_str());

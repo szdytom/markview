@@ -35,6 +35,8 @@ at the same level, without `[brackets]`.
 
 ### Fixed
 
+- Reveal the correct search anchor in RTL text and preserve visible highlights around multiline image placeholders.
+
 - Coalesce IME cursor-area updates and skip unchanged rectangles to prevent Wayland request feedback during text input.
 
 - Use canonical document paths in search tests so tab restoration works on Windows and macOS temporary directories.
