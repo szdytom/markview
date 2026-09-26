@@ -37,7 +37,8 @@ checks cancellation between bounded chunks and matches. Query edits preserve
 an index build for the same document version while cancelling stale matching;
 a different document/version invalidates that build. Results arrive as a
 shared ordered array, so the UI neither copies all matches nor allocates a
-separate per-field highlight index. Visible clusters use binary search.
+separate per-field highlight index. Visible blocks use binary search; clusters
+within them are filtered individually to accommodate multiline image placeholders.
 
 ## Native GUI checklist
 

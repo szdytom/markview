@@ -297,7 +297,7 @@ impl<P: SendEvent> App<P> {
 							b.layout.text[s.anchor.node]
 								.clusters
 								.iter()
-								.find(|c| c.range.end > s.anchor.offset)
+								.find(|c| c.range.contains(&s.anchor.offset))
 								.map(|c| b.y + c.rect.y)
 						})
 						.or_else(|| {
@@ -381,7 +381,7 @@ impl<P: SendEvent> App<P> {
 		let Some(cluster) = node
 			.clusters
 			.iter()
-			.find(|c| c.range.end > selection.anchor.offset)
+			.find(|c| c.range.contains(&selection.anchor.offset))
 		else {
 			search.pending_navigation = false;
 			return;

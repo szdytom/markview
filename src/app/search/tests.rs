@@ -242,6 +242,48 @@ fn horizontal_navigation_reveals_code_and_table_targets() {
 	}
 }
 #[test]
+fn horizontal_navigation_reveals_rtl_anchor() {
+	let source =
+		format!("```\n{}مرحبا{}\n```", "س".repeat(100), "س".repeat(100));
+	let mut h = Harness::new(&source);
+	h.app.preferences.values.width = 300.0;
+	let options = h.app.options();
+	h.app.readers.session.snapshot = LayoutEngine::new()
+		.layout(h.app.readers.session.document.as_ref().unwrap(), &options);
+	h.app.readers.session.requested_options = Some(options);
+	h.query("مرحبا");
+	h.app.navigate_search(false);
+	let session = &h.app.readers.session;
+	let hit = &session.search.matches[0];
+	let selection = session.snapshot.search_selection(hit, 1).unwrap();
+	let block = &session.snapshot.blocks[selection.anchor.block];
+	let node = &block.layout.text[selection.anchor.node];
+	let anchor = node
+		.clusters
+		.iter()
+		.find(|c| c.range.contains(&selection.anchor.offset))
+		.unwrap();
+	assert!(anchor.rtl);
+	let (oi, overflow) = block
+		.layout
+		.overflow
+		.iter()
+		.enumerate()
+		.find(|(_, o)| o.commands.contains(&anchor.command))
+		.unwrap();
+	let offset = session
+		.horizontal
+		.get(&(hit.block, oi))
+		.copied()
+		.unwrap_or_default();
+	assert!(offset > 0.0);
+	assert!(anchor.rect.x - offset >= overflow.rect.x - 0.5);
+	assert!(
+		anchor.rect.x + anchor.rect.w - offset
+			<= overflow.rect.x + overflow.rect.w + 0.5
+	);
+}
+#[test]
 fn parsed_full_document_searches_before_layout_and_rejects_stale_results() {
 	let mut h = Harness::new("first\n\nneedle\n");
 	h.app.readers.session.snapshot.blocks.truncate(1);

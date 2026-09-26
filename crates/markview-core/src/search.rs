@@ -296,12 +296,12 @@ impl crate::layout::LayoutSnapshot {
 				let Some(field) = node.search_field else {
 					continue;
 				};
-				let first = node.clusters.partition_point(|c| {
-					c.rect.y + c.rect.h + block.y < visible.start
-				});
-				for cluster in node.clusters.iter().skip(first) {
-					if cluster.rect.y + block.y > visible.end {
-						break;
+				// Image placeholders can put later clusters above earlier ones.
+				for cluster in &node.clusters {
+					if cluster.rect.y + cluster.rect.h + block.y < visible.start
+						|| cluster.rect.y + block.y > visible.end
+					{
+						continue;
 					}
 					let Some(rect) = self.text_rect(bi, cluster, horizontal)
 					else {
