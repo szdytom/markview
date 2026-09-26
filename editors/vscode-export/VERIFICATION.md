@@ -24,9 +24,18 @@ Git dependencies were cached locally from the exact locked GitHub commits to
 work around slow Git transfers; the dependency manifest and lockfile are unchanged.
 
 Fresh-machine macOS distribution, other platform VSIX packages and Marketplace
-publisher ownership remain unverified. No Marketplace release has been made.
+remain unverified; the user has registered personal publisher `Stevvven`. No Marketplace release has been made.
 
 Review gate: **approve**, round 4 (`dist/review-main-4.log`). Round 2 found
 page geometry, read-only source, path header, blocked EOF and SVG issues; round 3
 found remaining SVG demand loss across tiles. Round 4 independently verified
 short, first-tile and last-tile SVG cases with no remaining findings.
+
+## Marketplace candidate — 2026-09-27
+
+- Identity: `Stevvven.markview-export`, version 0.1.2, target `darwin-arm64`.
+- The native engine is byte-identical to the reviewed package above; no Rust code changed.
+- TypeScript compilation, picker tests and installed-VSIX export/lifecycle tests passed
+  under the new publisher identity (`dist/integration-marketplace.log`).
+- Candidate VSIX SHA-256: `c1f029e57b00676720271a4b96cbc25c98dce5631aa6e72bfa76d46548489fbe`.
+- Publisher metadata review: **approve**, first round (`dist/review-marketplace.log`). No Marketplace upload has been performed.

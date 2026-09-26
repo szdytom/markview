@@ -41,9 +41,11 @@ The review command is `codex review` with `gpt-6-astra` at medium effort.
 |:--|:--|
 | INV-1/3/4/5/6, ENG-1/2/3/12/13/14/16, EXT-8/9/12/13, NFR-4/5 | **Approve, round 4**, on main 67f1955. Round 1 interrupted for main refresh; round 2 caught template geometry, read-only sources, path headers, blocked EOF and SVG scaling; round 3 caught multi-tile SVG demand loss. Round 4 verified per-tile settling and found no remaining export regressions. 758 Rust tests and installed-VSIX tests pass. |
 
+| Publisher preparation: INV-4/5, EXT-9/12/13, NFR-4 | **Approve**, first round, 2026-09-27. Manifest-derived installed-package discovery and PDF/PNG lifecycle tests pass under `Stevvven.markview-export`; native binary unchanged. |
+
 ## State of play
 
-The export-only baseline passed the review gate on 2026-09-26.
+The export-only baseline passed the review gate on 2026-09-26; the registered publisher package passed its metadata review on 2026-09-27.
 The extension exposes PDF, PNG and template export commands, document-scoped
 settings, and editor context-menu entries. The bundled private engine accepts
 `open`, `close`, `styles` and `export` over JSON lines. The packaged target is
@@ -52,7 +54,7 @@ currently Apple Silicon macOS. No Marketplace publication is part of this PR.
 ## Known limitations and open questions
 
 - Six-platform VSIX packaging and fresh-machine distribution testing remain future work.
-- Marketplace publisher ownership must be established before public publication.
+- The user has registered publisher `Stevvven`; its installation identity is `Stevvven.markview-export`. Marketplace submission remains pending.
 - Templates are native MVSS, not CSS; remote, virtual and untrusted workspaces are unsupported.
 - Automated dialog-sequence tests mock VS Code pickers. Installed-VSIX tests
   exercise their export implementation with explicit destinations.

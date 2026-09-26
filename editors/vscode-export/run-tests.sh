@@ -13,7 +13,8 @@ cat > "$scratch/ws/.vscode/settings.json" <<'JSON'
 JSON
 "$cli" --user-data-dir "$scratch/user" --extensions-dir "$scratch/ext" \
 	--install-extension "$here/dist/markview-export-darwin-arm64.vsix" --force
-installed="$(find "$scratch/ext" -maxdepth 1 -type d -name 'markview.markview-export-*' -print)"
+extension_id="$(node -p "const p = require('$here/package.json'); (p.publisher + '.' + p.name).toLowerCase()")"
+installed="$(find "$scratch/ext" -maxdepth 1 -type d -name "$extension_id-*" -print)"
 test -n "$installed"
 "$editor" "$scratch/ws" --extensionDevelopmentPath="$installed" \
 	--extensionTestsPath="$here/test/run.js" \

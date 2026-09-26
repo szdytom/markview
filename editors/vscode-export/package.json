@@ -3,7 +3,7 @@
   "displayName": "Markview Export",
   "description": "Export Markdown to PDF or PNG with native typography and customizable MVSS templates.",
   "version": "0.1.2",
-  "publisher": "markview",
+  "publisher": "Stevvven",
   "license": "MIT",
   "icon": "icon.png",
   "repository": {

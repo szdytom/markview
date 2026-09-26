@@ -49,6 +49,11 @@ reads the standalone reader's settings or templates.
 The engine starts on first use and exits with the VS Code window. Remote images
 referenced by the document may be downloaded by the engine for export.
 
+## Publisher
+
+Published under the personal publisher **Stevvven** as
+`Stevvven.markview-export`. This extension shares the upstream Markview engine.
+
 ## Install a local VSIX
 
 In VS Code, run **Extensions: Install from VSIX…** and select the platform package.

@@ -2,6 +2,8 @@
 
 ## 0.1.2
 
+- Prepare the first Marketplace package under the personal publisher `Stevvven`.
+
 - Update the bundled engine to Markview 0.1.8 and preserve template geometry, source paths and scaled SVG quality.
 
 ## 0.1.1

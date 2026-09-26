@@ -7,7 +7,8 @@ const { execFileSync } = require("node:child_process");
 exports.run = async () => {
 	const vscode = require("vscode");
 	const folder = vscode.workspace.workspaceFolders[0].uri.fsPath;
-	const extension = vscode.extensions.getExtension("markview.markview-export");
+	const manifest = require("../package.json");
+	const extension = vscode.extensions.getExtension(`${manifest.publisher}.${manifest.name}`);
 	assert.ok(extension);
 	assert.ok(extension.extensionPath.includes("/ext/"), "test the installed package");
 	assert.ok(fs.existsSync(path.join(extension.extensionPath, "bin/darwin-arm64/markview")));
