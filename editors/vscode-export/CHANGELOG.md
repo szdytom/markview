@@ -2,6 +2,8 @@
 
 ## 0.1.2
 
+- Document the export workflow, template settings, and MVSS authoring with a starter example.
+
 - Name the extension **Better markdown PDF** in the Marketplace and command palette.
 
 - Prepare the first Marketplace package under the personal publisher `Stevvven`.

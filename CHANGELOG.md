@@ -23,6 +23,8 @@ at the same level, without `[brackets]`.
 
 ### Added
 
+- Document the export workflow, template settings, and MVSS authoring with a starter example.
+
 - Prepare **Better markdown PDF**, the standalone export extension, for the personal Marketplace publisher `Stevvven`.
 
 - Add a standalone VS Code PDF/PNG export extension with bundled native engine, custom MVSS templates and document-scoped context-menu exports.

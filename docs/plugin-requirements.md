@@ -45,6 +45,8 @@ The review command is `codex review` with `gpt-6-astra` at medium effort.
 
 | Display name: EXT-9/12/13 | **Approve**, 2026-09-27: **Better markdown PDF** across the manifest, command/settings titles and README; installed-VSIX tests pass. |
 
+| README: EXT-8/9/12/13 | **Approve**, 2026-09-27: documented commands, scoped settings and MVSS authoring; linked guide verified and starter template exports PDF/PNG. |
+
 ## State of play
 
 The export-only baseline passed the review gate on 2026-09-26; the registered publisher package passed its metadata review on 2026-09-27.
