@@ -1690,3 +1690,64 @@ fn an_option_list_highlight_wraps_and_stays_in_view() {
 	open.step(1, 0);
 	assert_eq!(open.highlight, 0);
 }
+
+#[test]
+fn viewer_fits_without_upscaling_and_zoom_keeps_the_pointer_spot() {
+	let window = (1200., 800.);
+	// A tall picture fits the window; a native-size cap keeps small pictures
+	// from upscaling past the pixels the rasterizer produced.
+	let mut viewer = Viewer {
+		src: "mermaid:x".into(),
+		pixels: (1000., 4000.),
+		scale: 2.,
+		zoom: 1.,
+		pan: (0., 0.),
+		grab: None,
+		pressed_at: None,
+	};
+	let rect = viewer.rect(window);
+	// The window fit (0.188) is below the native cap (0.5), so the picture
+	// fills the window's content height and stays sharp.
+	assert!((rect.h - 752.).abs() < 0.5, "{rect:?}");
+	assert_eq!(rect.w, rect.h / 4., "the aspect survives fitting");
+	// A small picture stays at its native logical size rather than blurring.
+	viewer.pixels = (300., 200.);
+	let rect = viewer.rect(window);
+	assert!((rect.w - 150.).abs() < 0.5, "{rect:?}");
+
+	// Zooming about a point keeps that point over the same picture spot.
+	// The picture is wider than the window, so both axes can pan and the
+	// invariant holds on both.
+	viewer.pixels = (4000., 1000.);
+	viewer.scale = 1.;
+	let spot = (300., 400.);
+	let before = viewer.rect(window);
+	let covered = (
+		(spot.0 - before.x) / before.w,
+		(spot.1 - before.y) / before.h,
+	);
+	viewer.zoom_at(2., spot, window);
+	let after = viewer.rect(window);
+	let now = ((spot.0 - after.x) / after.w, (spot.1 - after.y) / after.h);
+	assert!((covered.0 - now.0).abs() < 0.01);
+	assert!((covered.1 - now.1).abs() < 0.01);
+	assert_eq!(after.w, before.w * 2.);
+
+	// A pan cannot push the picture out of the window, and a picture smaller
+	// than the window stays centred.
+	viewer.pan_by((10_000., 10_000.), window);
+	let rect = viewer.rect(window);
+	assert!(rect.x + rect.w > 0. && rect.x < window.0);
+	viewer.zoom = 1.;
+	viewer.pixels = (300., 200.);
+	viewer.pan_by((10_000., 10_000.), window);
+	assert_eq!(viewer.pan, (0., 0.));
+
+	// A press that never moved is a click, not a pan.
+	assert!(!viewer.is_drag());
+	viewer.grab = Some((4., 4.));
+	viewer.pressed_at = Some((4., 4.));
+	assert!(!viewer.is_drag());
+	viewer.grab = Some((10., 4.));
+	assert!(viewer.is_drag());
+}

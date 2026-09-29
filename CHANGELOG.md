@@ -21,6 +21,10 @@ at the same level, without `[brackets]`.
 
 ## Unreleased
 
+### Added
+
+- Open a full-size viewer over any image: click to open, wheel or glide to zoom about the pointer, drag to pan, click or Escape to close.
+
 ### Changed
 
 - Focus security documentation on policy and the threat model, with implementation details and verification work in separate references.

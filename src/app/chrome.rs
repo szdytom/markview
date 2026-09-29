@@ -12,6 +12,7 @@ mod modal;
 pub(in crate::app) mod outline;
 pub(in crate::app) mod styles;
 mod tabs;
+mod viewer;
 use super::{BOTTOM, Button, TOP};
 use crate::{
 	lang::Lang,
@@ -607,6 +608,14 @@ impl Chrome<'_> {
 				width,
 				height,
 				self.settings.lang(),
+			));
+		}
+		// The image viewer floats over everything, the modal included.
+		if let Some(viewer) = &self.interaction.viewer {
+			out.extend(viewer::draw_viewer(
+				viewer,
+				&self.session.snapshot,
+				(width, height),
 			));
 		}
 		out

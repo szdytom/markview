@@ -117,6 +117,20 @@ impl<P: super::SendEvent> App<P> {
 				let was_button = self.button_at_cursor();
 				self.interaction.cursor =
 					(position.x as f32 / scale, position.y as f32 / scale);
+				// A held pointer pans the viewer by the motion since the
+				// last event; nothing behind the scrim follows.
+				if self.interaction.viewer.is_some() {
+					let window = (self.dimensions().0, self.dimensions().1);
+					let cursor = self.interaction.cursor;
+					if let Some(viewer) = self.interaction.viewer.as_mut()
+						&& let Some((gx, gy)) = viewer.grab
+					{
+						viewer.pan_by((cursor.0 - gx, cursor.1 - gy), window);
+						viewer.grab = Some(cursor);
+						self.redraw();
+					}
+					return;
+				}
 				self.hover_dropdown();
 				self.move_tab_drag();
 				self.drag_scrollbar();
@@ -195,6 +209,18 @@ impl<P: super::SendEvent> App<P> {
 					{
 						self.interaction.focus = Some(button.action);
 						self.interaction.pressed = Some(button.action);
+					}
+					self.redraw();
+					return;
+				}
+				// The image viewer owns input like a modal: a press starts a
+				// pan, and the release that follows either pans on or closes.
+				if self.interaction.viewer.is_some() {
+					self.interaction.reset_clicks();
+					let cursor = self.interaction.cursor;
+					if let Some(grab) = self.interaction.viewer.as_mut() {
+						grab.grab = Some(cursor);
+						grab.pressed_at = Some(cursor);
 					}
 					self.redraw();
 					return;
@@ -350,6 +376,25 @@ impl<P: super::SendEvent> App<P> {
 				..
 			} => {
 				self.tab_strip.cancel_drag();
+				// The viewer's release pans or closes, and never reaches the
+				// buttons and links behind the scrim.
+				if self.interaction.viewer.is_some() {
+					let was_drag = self
+						.interaction
+						.viewer
+						.as_ref()
+						.is_some_and(|viewer| viewer.is_drag());
+					if let Some(viewer) = self.interaction.viewer.as_mut() {
+						viewer.grab = None;
+						viewer.pressed_at = None;
+					}
+					if !was_drag {
+						self.interaction.viewer = None;
+					}
+					self.refresh_hover();
+					self.redraw();
+					return;
+				}
 				let was_pressed = self.interaction.pressed.is_some();
 				let hovered = self
 					.buttons()
@@ -376,6 +421,7 @@ impl<P: super::SendEvent> App<P> {
 					self.redraw();
 					return;
 				}
+				let pressed = self.interaction.pointer_down.is_some();
 				let link = self.link_at(
 					self.interaction.cursor.0,
 					self.interaction.cursor.1,
@@ -384,6 +430,10 @@ impl<P: super::SendEvent> App<P> {
 					self.interaction.finish_selection(link.as_deref())
 				{
 					self.open_link(&link, false);
+				} else if pressed && !self.interaction.dragged {
+					// A click that selected nothing and hit no link opens the
+					// viewer when it landed on an image.
+					self.open_viewer_at_cursor();
 				}
 				self.refresh_hover();
 				self.redraw();
@@ -402,6 +452,23 @@ impl<P: super::SendEvent> App<P> {
 				self.redraw();
 			}
 			WindowEvent::MouseWheel { delta, phase, .. } => {
+				if self.interaction.viewer.is_some() {
+					// A wheel notch or a trackpad glide zooms about the
+					// pointer, so the spot under the hand stays there.
+					let factor = match delta {
+						MouseScrollDelta::LineDelta(_, y) => (0.2 * y).exp(),
+						MouseScrollDelta::PixelDelta(p) => {
+							(p.y as f32 / 240.).exp()
+						}
+					};
+					let window = (self.dimensions().0, self.dimensions().1);
+					let cursor = self.interaction.cursor;
+					if let Some(viewer) = self.interaction.viewer.as_mut() {
+						viewer.zoom_at(factor, cursor, window);
+					}
+					self.redraw();
+					return;
+				}
 				if self.readers.session.search.open
 					&& self.interaction.cursor.1
 						>= self.dimensions().1 - self.bottom()
@@ -507,6 +574,13 @@ impl<P: super::SendEvent> App<P> {
 									| NamedKey::Enter | NamedKey::Escape
 							)
 						)) {
+					return;
+				}
+				// The viewer answers to Escape alone.
+				if self.interaction.viewer.is_some()
+					&& (command
+						|| event.logical_key != Key::Named(NamedKey::Escape))
+				{
 					return;
 				}
 				if command {
@@ -674,6 +748,12 @@ impl<P: super::SendEvent> App<P> {
 			}
 			Key::Named(NamedKey::Escape) => {
 				self.tab_strip.cancel_drag();
+				// The viewer is the topmost layer, so Escape closes it alone.
+				if self.interaction.viewer.take().is_some() {
+					self.refresh_hover();
+					self.redraw();
+					return false;
+				}
 				self.interaction.pressed = None;
 				self.interaction.focus = None;
 				self.interaction.modal = None;

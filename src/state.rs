@@ -226,6 +226,117 @@ pub(crate) enum Modal {
 	},
 }
 
+/// The full-size image viewer an opened image floats in.
+///
+/// Like a modal it owns input while it is set: a press pans, a wheel zooms,
+/// and a click or Escape closes. The picture is the page's own image texture
+/// named the way the document names it, so a diagram shows the same drawing
+/// the page does, at whatever resolution the demand has produced.
+pub(crate) struct Viewer {
+	/// The image's alias, as the page's `Draw::Image` spells it.
+	pub(crate) src: String,
+	/// The raster's pixel size, which caps how far fitting may upscale.
+	pub(crate) pixels: (f32, f32),
+	/// The window scale at open time, which puts the pixels in logical units.
+	pub(crate) scale: f32,
+	/// Zoom over the fitted size, `1.0` showing the whole image.
+	pub(crate) zoom: f32,
+	/// The picture centre's offset from the window centre.
+	pub(crate) pan: (f32, f32),
+	/// Where the panning drag started, while the pointer pans.
+	pub(crate) grab: Option<(f32, f32)>,
+	/// Where the press began, to tell a closing click from a pan.
+	pub(crate) pressed_at: Option<(f32, f32)>,
+}
+
+/// The margin the fitted picture keeps to the window's edges.
+const VIEWER_MARGIN: f32 = 48.0;
+
+impl Viewer {
+	/// The picture's displayed size at the current zoom.
+	fn displayed(&self, window: (f32, f32)) -> (f32, f32) {
+		// Fitting shows everything without upscaling past the pixels the
+		// rasterizer produced, so the fitted size is never blurry.
+		let fit = ((window.0 - VIEWER_MARGIN) / self.pixels.0.max(1.))
+			.min((window.1 - VIEWER_MARGIN) / self.pixels.1.max(1.))
+			.min(1. / self.scale.max(1.))
+			.max(1. / self.pixels.0.max(1.))
+			.max(1. / self.pixels.1.max(1.));
+		(
+			(self.pixels.0 * fit).max(1.) * self.zoom,
+			(self.pixels.1 * fit).max(1.) * self.zoom,
+		)
+	}
+
+	/// The picture's rect at the current zoom and pan.
+	pub(crate) fn rect(
+		&self,
+		window: (f32, f32),
+	) -> markview_core::scene::Rect {
+		let (w, h) = self.displayed(window);
+		markview_core::scene::Rect {
+			x: (window.0 - w) / 2. + self.pan.0,
+			y: (window.1 - h) / 2. + self.pan.1,
+			w,
+			h,
+		}
+	}
+
+	/// Zooms by `factor` about `pointer`, which stays over the same spot.
+	pub(crate) fn zoom_at(
+		&mut self,
+		factor: f32,
+		pointer: (f32, f32),
+		window: (f32, f32),
+	) {
+		let zoom = (self.zoom * factor).clamp(1., 8.);
+		let ratio = zoom / self.zoom;
+		if (ratio - 1.).abs() <= f32::EPSILON {
+			return;
+		}
+		self.zoom = zoom;
+		// The point under the pointer keeps its distance from the picture's
+		// centre, which scales with the picture.
+		let centre = (window.0 / 2., window.1 / 2.);
+		self.pan = (
+			pointer.0 - centre.0 - (pointer.0 - centre.0 - self.pan.0) * ratio,
+			pointer.1 - centre.1 - (pointer.1 - centre.1 - self.pan.1) * ratio,
+		);
+		self.clamp_pan(window);
+	}
+
+	/// Pans by `delta`, keeping some of the picture inside the window.
+	pub(crate) fn pan_by(&mut self, delta: (f32, f32), window: (f32, f32)) {
+		self.pan.0 += delta.0;
+		self.pan.1 += delta.1;
+		self.clamp_pan(window);
+	}
+
+	/// Keeps the picture's centre within half a picture of the window's.
+	fn clamp_pan(&mut self, window: (f32, f32)) {
+		let (w, h) = self.displayed(window);
+		self.pan.0 = if w >= window.0 {
+			self.pan.0.clamp(-(w - window.0) / 2., (w - window.0) / 2.)
+		} else {
+			0.
+		};
+		self.pan.1 = if h >= window.1 {
+			self.pan.1.clamp(-(h - window.1) / 2., (h - window.1) / 2.)
+		} else {
+			0.
+		};
+	}
+
+	/// Whether the pointer has moved far enough from its press to count as
+	/// panning rather than clicking.
+	pub(crate) fn is_drag(&self) -> bool {
+		match (self.pressed_at, self.grab) {
+			(Some((px, py)), Some((cx, cy))) => (cx - px).hypot(cy - py) > 3.,
+			_ => false,
+		}
+	}
+}
+
 /// A control whose options open in a list rather than in place.
 ///
 /// The list is anchored to the control that opens it and floats over the page
@@ -459,6 +570,8 @@ pub(crate) struct InteractionState {
 	pub(crate) last_click: Option<(Instant, (f32, f32), u8)>,
 	/// A pending local-file confirmation; while it is set it owns input.
 	pub(crate) modal: Option<Modal>,
+	/// The full-size image viewer; while it is set it owns input too.
+	pub(crate) viewer: Option<Viewer>,
 	/// An open option list. Like a confirmation it owns input while it is set:
 	/// a press outside it closes it without reaching the page behind.
 	pub(crate) dropdown: Option<Dropdown>,
