@@ -21,6 +21,15 @@ at the same level, without `[brackets]`.
 
 ## Unreleased
 
+### Added
+
+- Add Markview4vsc: native live preview and PDF/PNG export in one extension, with shared templates, legacy export compatibility and CI tests.
+- Keep preview following attached to the replacement engine after a restart; verify scroll anchors in physical display pixels.
+
+### Fixed
+
+- Bound VS Code test shutdown and isolate Linux desktop handoffs; explicitly defer synchronization acceptance in CI while preserving its tests.
+
 ### Changed
 
 - Focus security documentation on policy and the threat model, with implementation details and verification work in separate references.

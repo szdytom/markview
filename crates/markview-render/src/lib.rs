@@ -180,17 +180,22 @@ impl Renderer {
 			rgba,
 		})
 	}
-	pub fn save_png(
-		&self,
-		texture: &wgpu::Texture,
-		path: &std::path::Path,
-	) -> Result<()> {
+	/// The texture read back and encoded as a PNG, for a caller that hands the
+	/// image on rather than storing it.
+	pub fn png_bytes(&self, texture: &wgpu::Texture) -> Result<Vec<u8>> {
 		let readback = self.read_pixels(texture)?;
 		let size = tiny_skia::IntSize::from_wh(readback.width, readback.height)
 			.context("Screenshot dimensions too large")?;
 		let pixmap = tiny_skia::Pixmap::from_vec(readback.rgba, size)
 			.context("Screenshot dimensions too large")?;
-		pixmap.save_png(path)?;
+		Ok(pixmap.encode_png()?)
+	}
+	pub fn save_png(
+		&self,
+		texture: &wgpu::Texture,
+		path: &std::path::Path,
+	) -> Result<()> {
+		std::fs::write(path, self.png_bytes(texture)?)?;
 		Ok(())
 	}
 	pub fn gpu_bytes(&self) -> u64 {

@@ -318,6 +318,21 @@ impl Stylesheet {
 		self.svg.overlay(&higher.svg);
 		self.mermaid.overlay(&higher.mermaid);
 	}
+	/// Overlays a theme: the palette a sheet declares, and the diagrams drawn
+	/// in it, but none of its geometry.
+	///
+	/// A theme is a palette, so naming one on a sheet a client already shaped
+	/// must recolour that shape rather than replace it — otherwise a repaint
+	/// reflows the document, which is the difference TST-3 draws.
+	pub fn merge_palette(&mut self, higher: &Self) {
+		for (conditions, v) in &higher.rules {
+			let mut palette = v.clone();
+			palette.retain_palette();
+			self.rules.entry(*conditions).or_default().overlay(&palette);
+		}
+		self.reindex();
+		self.mermaid.overlay(&higher.mermaid);
+	}
 	pub(super) fn resolve_fontdefs(&mut self) {
 		let mut resolved = BTreeMap::new();
 		for ((id, ty), def) in &self.fontdef_variants {

@@ -384,7 +384,8 @@ fn relabel_headings(blocks: &mut [Block]) {
 				_ => {}
 			}
 			if relabeled {
-				block.content_key = semantic_key(&block.kind);
+				block.content_key =
+					semantic_key(&block.kind, block.source.start);
 			}
 		}
 	}

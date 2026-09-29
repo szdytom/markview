@@ -44,6 +44,7 @@ impl BlockContext<'_> {
 			reading: String::new(),
 			search_ranges: Vec::new(),
 			mapping: Vec::new(),
+			source: Vec::new(),
 			text: String::new(),
 			spans: Vec::new(),
 			padding: Vec::new(),
@@ -79,6 +80,11 @@ impl BlockContext<'_> {
 					reading_start..p.reading.len(),
 				));
 				semantic_offset += len;
+				p.source.push((
+					reading_start..p.reading.len(),
+					inline.source.start.saturating_sub(self.origin)
+						..rich[run - 1].source.end.saturating_sub(self.origin),
+				));
 				i = run;
 				continue;
 			}
@@ -189,6 +195,13 @@ impl BlockContext<'_> {
 					InlineKind::Math { .. } | InlineKind::Image(_)
 				),
 			));
+			push_source_runs(
+				&mut p.source,
+				self.origin,
+				inline,
+				reading_start,
+				p.reading.len(),
+			);
 			let padding = self.code_padding(&style, size);
 			p.spans.push(Span {
 				range: start..p.text.len(),
@@ -618,4 +631,39 @@ fn footnote_group(p: &mut Prepared, run: &[Inline]) {
 			..run[0].style.clone()
 		},
 	});
+}
+
+/// Records where each run of an inline's reading text came from.
+///
+/// A decoded text node is not a slice of the source, so the parser splits it
+/// at the boundaries it could establish and this records one run per piece.
+/// Everything else is a single run.
+fn push_source_runs(
+	source: &mut Vec<(Range<usize>, Range<usize>)>,
+	origin: usize,
+	inline: &Inline,
+	reading_start: usize,
+	reading_end: usize,
+) {
+	let base = inline.source.start.saturating_sub(origin);
+	let extent = inline
+		.source
+		.end
+		.saturating_sub(origin)
+		.saturating_sub(base);
+	let bounds = &inline.text_map;
+	if bounds.len() < 2 {
+		source.push((reading_start..reading_end, base..base + extent));
+		return;
+	}
+	for (index, (reading, offset)) in bounds.iter().enumerate() {
+		let next_reading = bounds
+			.get(index + 1)
+			.map_or(reading_end - reading_start, |(r, _)| *r);
+		let next_offset = bounds.get(index + 1).map_or(extent, |(_, o)| *o);
+		source.push((
+			reading_start + reading..reading_start + next_reading,
+			base + offset..base + next_offset,
+		));
+	}
 }

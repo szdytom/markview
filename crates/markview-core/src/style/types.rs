@@ -780,6 +780,42 @@ pub struct Rule {
 	pub theme: Option<String>,
 }
 impl Rule {
+	/// Drops every declaration that affects geometry, leaving the palette.
+	///
+	/// A theme is a palette, so recolouring a sheet that already has a shape
+	/// must not bring a second shape with it; see `merge_palette`.
+	pub fn retain_palette(&mut self) {
+		macro_rules! clear {
+			($($f:ident),*) => { $(self.$f = None;)* };
+		}
+		clear!(
+			show,
+			source,
+			align,
+			shape,
+			numbering,
+			font,
+			weight,
+			size,
+			decoration,
+			line_height,
+			space_before,
+			space_after,
+			indent,
+			padding,
+			border_width,
+			radius,
+			border_edges,
+			corner_radii,
+			heading_marker,
+			letter_spacing,
+			orphans,
+			widows,
+			keep_together,
+			wrap,
+			gutter
+		);
+	}
 	/// Whether a declaration can change layout geometry. Color-only rules must
 	/// not invalidate cached layout.
 	pub fn layout_relevant(&self) -> bool {

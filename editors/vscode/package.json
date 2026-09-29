@@ -1,0 +1,250 @@
+{
+  "name": "markview-export",
+  "displayName": "Markview4vsc",
+  "description": "Native Markdown preview and PDF/PNG export with shared MVSS templates.",
+  "version": "0.2.0",
+  "publisher": "Stevvven",
+  "license": "MIT",
+  "engines": {
+    "vscode": "^1.95.0"
+  },
+  "categories": [
+    "Other"
+  ],
+  "main": "./out/vscode/src/extension.js",
+  "activationEvents": [
+    "onWebviewPanel:markview.preview"
+  ],
+  "contributes": {
+    "commands": [
+      {
+        "command": "markview.openPreview",
+        "title": "Markview4vsc: Open Preview to the Side",
+        "icon": {
+          "light": "resources/preview-light.svg",
+          "dark": "resources/preview-dark.svg"
+        }
+      },
+      {
+        "command": "markview.closePreview",
+        "title": "Markview4vsc: Close Preview"
+      },
+      {
+        "command": "markview.exportPdf",
+        "title": "Markview4vsc: Export to PDF"
+      },
+      {
+        "command": "markview.revealSource",
+        "title": "Markview4vsc: Reveal the Source of the Selection"
+      },
+      {
+        "command": "markview.exportPng",
+        "title": "Markview4vsc: Export to PNG"
+      },
+      {
+        "command": "markview.exportWithTemplate",
+        "title": "Markview4vsc: Export with Template…"
+      },
+      {
+        "command": "markview.copySelection",
+        "title": "Markview4vsc: Copy Preview Selection"
+      },
+      {
+        "command": "markviewExport.exportPdf",
+        "title": "Markview4vsc: Export to PDF"
+      },
+      {
+        "command": "markviewExport.exportPng",
+        "title": "Markview4vsc: Export to PNG"
+      },
+      {
+        "command": "markviewExport.exportWithTemplate",
+        "title": "Markview4vsc: Export with Template…"
+      }
+    ],
+    "menus": {
+      "editor/title": [
+        {
+          "command": "markview.openPreview",
+          "when": "editorLangId == markdown",
+          "group": "navigation@0"
+        }
+      ],
+      "commandPalette": [
+        {
+          "command": "markview.openPreview",
+          "when": "editorLangId == markdown"
+        },
+        {
+          "command": "markview.closePreview"
+        },
+        {
+          "command": "markview.exportPdf",
+          "when": "editorLangId == markdown"
+        },
+        {
+          "command": "markview.revealSource"
+        },
+        {
+          "command": "markview.exportPng",
+          "when": "editorLangId == markdown"
+        },
+        {
+          "command": "markview.exportWithTemplate",
+          "when": "editorLangId == markdown"
+        },
+        {
+          "command": "markview.copySelection"
+        },
+        {
+          "command": "markviewExport.exportPdf",
+          "when": "false"
+        },
+        {
+          "command": "markviewExport.exportPng",
+          "when": "false"
+        },
+        {
+          "command": "markviewExport.exportWithTemplate",
+          "when": "false"
+        }
+      ],
+      "webview/context": [
+        {
+          "command": "markview.copySelection",
+          "when": "webviewId == 'markview.preview'",
+          "group": "navigation"
+        }
+      ],
+      "editor/context": [
+        {
+          "command": "markview.exportPdf",
+          "when": "editorLangId == markdown",
+          "group": "markviewExport@1"
+        },
+        {
+          "command": "markview.exportPng",
+          "when": "editorLangId == markdown",
+          "group": "markviewExport@2"
+        }
+      ]
+    },
+    "configuration": {
+      "title": "Markview4vsc",
+      "properties": {
+        "markview.enginePath": {
+          "scope": "machine",
+          "type": "string",
+          "default": "",
+          "markdownDescription": "The Markview executable. Empty uses the one shipped with this extension."
+        },
+        "markview.fontSize": {
+          "scope": "language-overridable",
+          "type": "number",
+          "default": 18,
+          "minimum": 6,
+          "maximum": 48,
+          "markdownDescription": "Body text size in layout pixels."
+        },
+        "markview.columnWidth": {
+          "scope": "language-overridable",
+          "type": "number",
+          "default": 760,
+          "minimum": 240,
+          "maximum": 1600,
+          "markdownDescription": "The reading column's width in layout pixels."
+        },
+        "markview.justify": {
+          "scope": "language-overridable",
+          "type": "boolean",
+          "default": false,
+          "markdownDescription": "Set prose flush on both sides."
+        },
+        "markview.hyphenate": {
+          "scope": "language-overridable",
+          "type": "boolean",
+          "default": true,
+          "markdownDescription": "Hyphenate where the document's language allows it."
+        },
+        "markview.paragraphIndent": {
+          "scope": "language-overridable",
+          "type": "number",
+          "default": 0,
+          "minimum": 0,
+          "maximum": 4,
+          "markdownDescription": "First-line indent in multiples of the text size."
+        },
+        "markview.codeblockWrap": {
+          "scope": "language-overridable",
+          "type": "boolean",
+          "default": false,
+          "markdownDescription": "Wrap code block lines at the column instead of scrolling them."
+        },
+        "markview.scrollSync": {
+          "scope": "language-overridable",
+          "type": "boolean",
+          "default": true,
+          "markdownDescription": "Keep the preview and the editor at the same place."
+        },
+        "markview.template": {
+          "scope": "language-overridable",
+          "type": "string",
+          "default": "",
+          "markdownDescription": "Template shared by preview and default export: a bundled name such as `mondrian`, or a `.mvss.toml` path relative to the Markdown file. If not configured, uses `markviewExport.template`. An explicit empty value disables that fallback. Template colors take priority over the editor theme."
+        },
+        "markviewExport.template": {
+          "scope": "language-overridable",
+          "type": "string",
+          "default": "",
+          "markdownDescription": "Default export template: a bundled name such as `mondrian`, or a `.mvss.toml` path (relative to the Markdown file). Empty uses the bundled print sheet. For untitled documents, relative paths use the workspace folder.",
+          "markdownDeprecationMessage": "Use `markview.template`; this setting remains supported when the new setting is unset."
+        }
+      }
+    }
+  },
+  "scripts": {
+    "compile": "tsc -p tsconfig.json",
+    "watch": "tsc -p tsconfig.json --watch",
+    "test": "./run-tests.sh",
+    "package": "./package-vsix.sh",
+    "vscode:prepublish": "tsc -p tsconfig.json"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "@types/vscode": "^1.95.0",
+    "@vscode/test-electron": "^2.5.2",
+    "@vscode/vsce": "^4.0.0",
+    "typescript": "^5.6.0"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/szdytom/markview.git",
+    "directory": "editors/vscode"
+  },
+  "icon": "icon.png",
+  "extensionKind": [
+    "ui"
+  ],
+  "capabilities": {
+    "untrustedWorkspaces": {
+      "supported": false,
+      "description": "The preview starts a native engine and resolves local resources."
+    },
+    "virtualWorkspaces": {
+      "supported": false,
+      "description": "The native engine requires local document paths."
+    }
+  },
+  "homepage": "https://github.com/szdytom/markview",
+  "bugs": {
+    "url": "https://github.com/szdytom/markview/issues"
+  },
+  "keywords": [
+    "markdown",
+    "pdf",
+    "png",
+    "export",
+    "typography",
+    "preview"
+  ]
+}

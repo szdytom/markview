@@ -1,0 +1,43 @@
+name: Publish Markview4vsc
+on:
+  push:
+    tags: ['markview4vsc-v*']
+permissions:
+  contents: read
+jobs:
+  version:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - name: Match tag to extension version
+        run: |
+          version=$(node -p "require('./editors/vscode/package.json').version")
+          test "$GITHUB_REF_NAME" = "markview4vsc-v$version"
+  tests:
+    needs: version
+    uses: ./.github/workflows/ci.yml
+  packages:
+    needs: version
+    uses: ./.github/workflows/preview-extension.yml
+  publish:
+    needs: [tests, packages]
+    runs-on: ubuntu-latest
+    environment: marketplace
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 22
+      - run: npm ci
+        working-directory: editors/vscode
+      - uses: actions/download-artifact@v6
+        with:
+          pattern: markview4vsc-platform-*
+          path: vsix
+          merge-multiple: true
+      - name: Publish tested platform packages
+        env:
+          VSCE_PAT: ${{ secrets.VSCE_PAT }}
+        run: |
+          test -n "$VSCE_PAT" || { echo 'Configure the VSCE_PAT publishing secret.'; exit 1; }
+          editors/vscode/node_modules/.bin/vsce publish --packagePath vsix/*.vsix --skip-duplicate

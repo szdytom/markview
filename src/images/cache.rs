@@ -168,7 +168,7 @@ fn time_unix(time: SystemTime) -> Option<u64> {
 }
 
 /// The image cache directory, beside `settings.toml`.
-pub(super) fn directory() -> Option<PathBuf> {
+pub(crate) fn directory() -> Option<PathBuf> {
 	crate::settings::config_path()
 		.and_then(|path| path.parent().map(|dir| dir.join("cache/images")))
 }

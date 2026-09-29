@@ -1,0 +1,19 @@
+# What the packaged extension does not carry. The compiled extension and the
+# engine binaries are the package; everything else is for building and testing
+# it. See `package-vsix.sh`.
+.vscode/**
+.vscode-test*/**
+.npm-cache/**
+node_modules/**
+.vscodeignore
+src/**
+test/**
+out/vscode/test/**
+tsconfig.json
+package-lock.json
+run-tests.sh
+package-vsix.sh
+dist/**
+**/*.map
+
+.gitignore

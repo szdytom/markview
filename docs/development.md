@@ -316,3 +316,10 @@ python3 scripts/compare_performance.py \
 
 Merging verifies identical binary hashes, toolchain, fonts, CPU affinity, backend,
 profile and iteration counts; it reports the number of groups for each fixture.
+
+## VS Code extension
+
+The unified host lives in `editors/vscode`, with its framed protocol client in
+`editors/shared`. It bundles the native engine; no standalone reader installation
+is required. See [extension maintenance](extension-maintenance.md) for tests,
+packaging and publication.

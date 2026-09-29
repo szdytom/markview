@@ -186,6 +186,12 @@ pub struct TextCluster {
 	pub rtl: bool,
 	/// Draw index binds geometry to the same overflow viewport as painted text.
 	pub command: usize,
+	/// The document bytes this cluster was set from, where the mapping from
+	/// reading text back to the source is known. Reading text drops markers
+	/// and decodes entities, so it is not a slice of the source and the
+	/// boundaries cannot always be recovered; `None` leaves the caller with
+	/// the enclosing block's own range.
+	pub source: Option<Range<usize>>,
 }
 
 mod geometry;

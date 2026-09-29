@@ -7,7 +7,7 @@ use crate::{
 	style::{ColorField, Condition},
 	text::{TextCluster, TextNode},
 };
-use std::sync::Arc;
+use std::{ops::Range, sync::Arc};
 impl BlockContext<'_> {
 	#[expect(
 		clippy::too_many_arguments,
@@ -17,6 +17,8 @@ impl BlockContext<'_> {
 		&mut self,
 		language: &str,
 		text: &str,
+		body: Range<usize>,
+		runs: &[(Range<usize>, Range<usize>)],
 		x: f32,
 		y: f32,
 		width: f32,
@@ -142,8 +144,15 @@ impl BlockContext<'_> {
 				} else {
 					end
 				};
+				let range = line_offset + start..line_offset + end;
 				out.text[node].push(TextCluster {
-					range: line_offset + start..line_offset + end,
+					// The body's runs are the pieces that are byte for byte the
+					// literal, so a line indented to its container still maps to
+					// where that line really is.
+					source: Some(super::mapping::runs_source(
+						runs, &range, &body,
+					)),
+					range,
 					rect: Rect {
 						x: left,
 						y: cursor,

@@ -5,6 +5,7 @@ use markview_core::JustificationLimits;
 use markview_core::style::CjkType;
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
+use std::sync::OnceLock;
 mod store;
 pub use store::{SettingsStore, SettingsWarning};
 
@@ -270,7 +271,26 @@ fn default_cjk_type() -> CjkType {
 		CjkType::Sc
 	}
 }
+/// The root a host keeps this engine's own files under, when it names one.
+///
+/// A plugin host runs the engine as its own private instance and owns every
+/// file it writes, so that instance is pointed at storage inside the host.
+/// The font, stylesheet, and image cache directories all derive from
+/// [`config_path`], so one root moves them together.
+static STATE_DIR: OnceLock<PathBuf> = OnceLock::new();
+
+/// Points the state directories at `root`.
+///
+/// Called once at startup, before anything reads a path. A later call is
+/// ignored, so the first one wins.
+pub fn set_state_dir(root: PathBuf) {
+	let _ = STATE_DIR.set(root);
+}
+
 pub fn config_path() -> Option<PathBuf> {
+	if let Some(root) = STATE_DIR.get() {
+		return Some(root.join("settings.toml"));
+	}
 	#[cfg(target_os = "windows")]
 	let base = std::env::var_os("APPDATA").map(PathBuf::from);
 	#[cfg(target_os = "macos")]

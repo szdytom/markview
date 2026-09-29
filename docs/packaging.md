@@ -188,3 +188,42 @@ them after changing the source SVG and commit the result:
 cargo run -p xtask -- icons
 cargo run -p xtask -- icons --check
 ```
+
+## The editor plugin
+
+The VS Code extension in `editors/vscode/` is packaged separately from the
+reader, one VSIX per platform, because it carries the engine as a native binary
+at `bin/<platform>/`. The `Markview4vsc packages` workflow builds six VSIX artifacts on pushes, pull
+requests or manual dispatch. It does not publish to the Marketplace. The script
+below builds the same packages locally and validates each executable header.
+
+`package-vsix.sh` maps the two sets of platform names — VS Code's, which the
+extension looks up at runtime, and cargo's native build targets:
+
+| VS Code | cargo | engine |
+| --- | --- | --- |
+| `win32-x64` | `x86_64-pc-windows-msvc` | `markview.exe` |
+| `win32-arm64` | `aarch64-pc-windows-msvc` | `markview.exe` |
+| `linux-x64` | `x86_64-unknown-linux-gnu` | `markview` |
+| `linux-arm64` | `aarch64-unknown-linux-gnu` | `markview` |
+| `darwin-x64` | `x86_64-apple-darwin` | `markview` |
+| `darwin-arm64` | `aarch64-apple-darwin` | `markview` |
+
+Build each target with `cargo build --release --target <cargo-name>`, or
+build the host's own with `cargo build --release`, then:
+
+```sh
+editors/vscode/package-vsix.sh --check     # which engines are in place
+editors/vscode/package-vsix.sh             # require and package all six
+editors/vscode/package-vsix.sh darwin-arm64
+```
+
+`--check` exits non-zero when an engine is missing, so it is also the way a
+release job asserts that all six were built. The script refuses to take the
+host's own `target/release/` binary for another platform's package.
+
+Linux VSIX engines are built on Ubuntu 22.04 and require glibc 2.35+,
+fontconfig and a Vulkan loader with a compatible driver (including software
+Vulkan for CI). The six-target extension matrix is independent of the reader
+release matrix above. See [extension maintenance](extension-maintenance.md)
+for installed-package tests and the separate Marketplace release workflow.

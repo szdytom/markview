@@ -9,6 +9,9 @@ pub(super) struct Prepared {
 	pub(super) reading: String,
 	pub(super) search_ranges: Vec<(Range<usize>, Range<usize>)>,
 	pub(super) mapping: Vec<(Range<usize>, Range<usize>, bool)>,
+	/// Reading text to the document bytes it was set from, one segment per
+	/// inline, in reading order.
+	pub(super) source: Vec<(Range<usize>, Range<usize>)>,
 	pub(super) text: String,
 	pub(super) spans: Vec<Span>,
 	/// The inline code chip padding for each span, in logical pixels, in the
@@ -58,6 +61,41 @@ impl Prepared {
 			.unwrap_or(self.reading.len());
 		start..end
 	}
+
+	/// The document bytes a reading range was set from, where that is known.
+	///
+	/// Reading text is what the reader shows and copies, so it is not a slice
+	/// of the source. Every run the range touches contributes: the first gives
+	/// where it starts, the last where it ends. A run whose reading and source
+	/// lengths agree maps offset for offset; a run that does not is a single
+	/// decoded unit, such as an entity reference or an escape, and is taken
+	/// whole because its interior boundaries are not recoverable.
+	pub(super) fn source_range(
+		&self,
+		reading: &Range<usize>,
+	) -> Option<Range<usize>> {
+		runs_source_option(&self.source, reading)
+	}
+}
+
+/// Where a reading offset enters a run.
+fn map_start(run: &(Range<usize>, Range<usize>), at: usize) -> usize {
+	let (r, s) = run;
+	if r.len() == s.len() {
+		s.start + at.saturating_sub(r.start)
+	} else {
+		s.start
+	}
+}
+
+/// Where a reading offset leaves a run.
+fn map_end(run: &(Range<usize>, Range<usize>), at: usize) -> usize {
+	let (r, s) = run;
+	if r.len() == s.len() {
+		s.start + at.min(r.end).saturating_sub(r.start)
+	} else {
+		s.end
+	}
 }
 pub(super) fn expand_tabs_mapped(
 	text: &str,
@@ -83,4 +121,44 @@ pub(super) fn expand_tabs_mapped(
 		}
 	}
 	(out, offsets)
+}
+
+/// The source a reading range came from, given the runs it was set from.
+///
+/// Every run the range touches contributes: the first gives where it starts,
+/// the last where it ends. A run whose reading and source lengths agree maps
+/// offset for offset; a run that does not is a single decoded unit and is
+/// taken whole. An empty run set means the range maps onto `fallback`.
+pub(super) fn runs_source(
+	runs: &[(Range<usize>, Range<usize>)],
+	reading: &Range<usize>,
+	fallback: &Range<usize>,
+) -> Range<usize> {
+	runs_source_option(runs, reading).unwrap_or_else(|| fallback.clone())
+}
+
+/// The shared mapping: every run the range touches contributes, the first
+/// giving where it starts and the last where it ends. A run whose reading and
+/// source lengths agree maps offset for offset; one that does not is a single
+/// decoded unit, such as an entity reference, and is taken whole.
+fn runs_source_option(
+	runs: &[(Range<usize>, Range<usize>)],
+	reading: &Range<usize>,
+) -> Option<Range<usize>> {
+	let mut first = None;
+	let mut last = None;
+	for (index, (r, _)) in runs.iter().enumerate() {
+		if r.start < reading.end && reading.start < r.end {
+			first.get_or_insert(index);
+			last = Some(index);
+		}
+	}
+	let (Some(first), Some(last)) = (first, last) else {
+		// An empty range belongs to whichever run holds its start.
+		let (_, s) = runs.iter().find(|(r, _)| r.contains(&reading.start))?;
+		return Some(s.clone());
+	};
+	let start = map_start(&runs[first], reading.start);
+	let end = map_end(&runs[last], reading.end);
+	Some(start..end.max(start))
 }

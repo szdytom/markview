@@ -71,6 +71,15 @@ pub struct Inline {
 	pub kind: InlineKind,
 	pub style: TextStyle,
 	pub source: Range<usize>,
+	/// Where the reading runs of a decoded text node begin in the source, as
+	/// (reading offset, source offset) within this inline.
+	///
+	/// Reading text is not a slice of the document: an entity reference or a
+	/// backslash escape decodes to fewer bytes than it occupies. Runs whose
+	/// reading and source lengths agree map offset for offset, so only the
+	/// boundaries between them are recorded; an empty list means the whole
+	/// inline is one such run.
+	pub text_map: Vec<(usize, usize)>,
 }
 
 pub type RichText = Vec<Inline>;
@@ -100,6 +109,13 @@ pub enum BlockKind {
 	Code {
 		language: String,
 		text: String,
+		/// Where the fence's contents sit in the document, relative to the
+		/// block, and the pieces of them that are byte-for-byte the literal.
+		/// A cluster's source range is taken from these, because the code text
+		/// is the body and not the whole block, and an indented or nested block
+		/// repeats or drops bytes between its lines.
+		body: Range<usize>,
+		runs: Vec<(Range<usize>, Range<usize>)>,
 	},
 	Quote {
 		label: Option<String>,
@@ -381,7 +397,7 @@ impl Block {
 		visit: &mut impl FnMut(&'a str, &'a str),
 	) {
 		match &self.kind {
-			BlockKind::Code { language, text } => visit(language, text),
+			BlockKind::Code { language, text, .. } => visit(language, text),
 			BlockKind::Quote { blocks, .. }
 			| BlockKind::Footnote { blocks, .. }
 			| BlockKind::Details { blocks, .. }
@@ -424,14 +440,49 @@ impl Block {
 	}
 }
 
-fn semantic_key(kind: &BlockKind) -> u64 {
+fn semantic_key(kind: &BlockKind, at: usize) -> u64 {
 	let mut hash = DefaultHasher::new();
 	std::mem::discriminant(kind).hash(&mut hash);
+	// The position is deliberately absent, but the relative spelling is not:
+	// a cached layout carries the runs a text node was decoded from, so two
+	// paragraphs that read alike but are written differently must not share.
 	let rich = |t: &RichText| {
-		fingerprint(&t.iter().map(|i| (&i.kind, &i.style)).collect::<Vec<_>>())
+		// Inline offsets are taken from the block's own start, which is what
+		// the cached cluster ranges are relative to. Normalizing against the
+		// first inline instead would call `# a` and `#  a` the same block,
+		// although their text sits one byte apart.
+		fingerprint(
+			&t.iter()
+				.map(|i| {
+					(
+						&i.kind,
+						&i.style,
+						&i.text_map,
+						i.source.start.saturating_sub(at),
+						i.source.len(),
+					)
+				})
+				.collect::<Vec<_>>(),
+		)
 	};
-	let children =
-		|b: &[Block]| b.iter().map(|b| b.content_key).collect::<Vec<_>>();
+	// As with inlines, the placement of nested content relative to the
+	// container is part of its shape: two blockquotes whose markers are
+	// spaced differently read the same but map differently. A child of a
+	// container the parser built from a synthesized body — a `<details>`
+	// body — is placed from that body instead, so its offset is already
+	// relative and is taken as it stands.
+	let children = |b: &[Block]| {
+		b.iter()
+			.map(|child| {
+				(child.content_key, child.source.start.saturating_sub(at))
+			})
+			.collect::<Vec<_>>()
+	};
+	let body_children = |b: &[Block]| {
+		b.iter()
+			.map(|child| (child.content_key, child.source.start))
+			.collect::<Vec<_>>()
+	};
 	match kind {
 		BlockKind::Paragraph(t) => rich(t).hash(&mut hash),
 		BlockKind::Heading {
@@ -439,7 +490,15 @@ fn semantic_key(kind: &BlockKind) -> u64 {
 			text,
 			anchor,
 		} => (level, rich(text), anchor).hash(&mut hash),
-		BlockKind::Code { language, text } => (language, text).hash(&mut hash),
+		// The body's position is deliberately not part of the content key: the
+		// cache is keyed by what the block says, not by where it says it. Its
+		// runs are, because a cached layout carries them.
+		BlockKind::Code {
+			language,
+			text,
+			body,
+			runs,
+		} => (language, text, runs, body.len()).hash(&mut hash),
 		// The YAML is the whole identity; whether it is expanded belongs to
 		// the reader's disclosure state, not to the content.
 		BlockKind::FrontMatter { open: _, blocks } => {
@@ -474,7 +533,7 @@ fn semantic_key(kind: &BlockKind) -> u64 {
 			summary,
 			blocks,
 		} => {
-			(open, rich(summary), children(blocks)).hash(&mut hash);
+			(open, rich(summary), body_children(blocks)).hash(&mut hash);
 		}
 		BlockKind::Table { align, rows } => {
 			align.hash(&mut hash);

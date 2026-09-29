@@ -193,6 +193,24 @@ pub(super) fn resolve(
 	}
 }
 
+/// A palette may name a preset whose default metrics differ from the current one.
+/// Materialize the old metrics so the preset changes only diagram colors.
+pub(crate) fn preserve_geometry(sheet: &mut Stylesheet, base: &Stylesheet) {
+	let geometry = resolve(base, None).render;
+	sheet.mermaid.font_family = Some(candidate_families(base));
+	macro_rules! keep {
+        ($($field:ident),*) => { $(sheet.mermaid.$field = Some(geometry.$field);)* };
+    }
+	keep!(
+		font_size,
+		pie_title_text_size,
+		pie_section_text_size,
+		pie_legend_text_size,
+		pie_stroke_width,
+		pie_outer_stroke_width
+	);
+}
+
 /// The renderer's font list for the sheet's `[mermaid] font_family`.
 ///
 /// The renderer reads the system's own font database, so a definition only

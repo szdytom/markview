@@ -1,10 +1,55 @@
 name: CI
-on: [push, pull_request]
+on:
+  push:
+  pull_request:
+  workflow_call:
 permissions:
   contents: read
 jobs:
   check:
     uses: ./.github/workflows/checks.yml
+
+  extension:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v6
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          cache-on-failure: true
+          cache-workspace-crates: true
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: editors/vscode/package-lock.json
+      - name: Install native and headless display libraries
+        run: sudo apt-get update && sudo apt-get install -y libfontconfig1-dev libxkbcommon-dev libwayland-dev mesa-vulkan-drivers libvulkan1 xvfb libasound2 libgtk-3-0 libnss3
+      - run: npm ci
+        working-directory: editors/vscode
+      - run: npm run compile && node test/pickers.js && node --test ../shared/test/frames.cjs
+        working-directory: editors/vscode
+      - run: python3 editors/vscode/test/test_run_host.py
+      - run: cargo build --release --locked
+      - name: Native GPU protocol tests with software Vulkan
+        run: cargo test --locked -p markview --lib serve::tests -- --ignored --test-threads=1
+        env:
+          WGPU_BACKEND: vulkan
+      - run: editors/vscode/package-vsix.sh linux-x64
+      - name: Installed VSIX in real VS Code
+        working-directory: editors/vscode
+        run: xvfb-run -a node test/ci.cjs
+        env:
+          # Deferred by the maintainer; keep the cases available for explicit runs.
+          MARKVIEW_SKIP_SCROLL_SYNC: "1"
+          MARKVIEW_VSIX: ${{ github.workspace }}/editors/vscode/dist/markview-export-linux-x64.vsix
+          WGPU_BACKEND: vulkan
+      - uses: actions/upload-artifact@v6
+        if: always()
+        with:
+          name: markview4vsc-linux-test-package
+          path: editors/vscode/dist/*.vsix
 
   packaging:
     runs-on: ubuntu-latest
@@ -26,7 +71,8 @@ jobs:
             https://raw.githubusercontent.com/rhysd/actionlint/main/scripts/download-actionlint.bash)
           ./actionlint -color .github/workflows/ci.yml \
             .github/workflows/packages.yml .github/workflows/packaging.yml \
-            .github/workflows/checks.yml
+            .github/workflows/checks.yml .github/workflows/preview-extension.yml \
+            .github/workflows/extension-release.yml
       - name: Generated release files match the configuration
         # `cargo install cargo-dist` installs the bare `dist` binary, which
         # cargo will not resolve as a subcommand.
@@ -44,7 +90,7 @@ jobs:
   # packaging input.
   ci:
     if: always()
-    needs: [check, packaging]
+    needs: [check, packaging, extension]
     runs-on: ubuntu-latest
     steps:
       - name: Fail unless every job succeeded

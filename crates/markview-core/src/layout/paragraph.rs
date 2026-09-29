@@ -336,6 +336,7 @@ impl BlockContext<'_> {
 							rect,
 							rtl: false,
 							command,
+							source: p.source_range(&range),
 						});
 					}
 					if let Some(url) = p
@@ -373,7 +374,10 @@ impl BlockContext<'_> {
 						+ fit.stretch * solve.ratio
 						+ if fit.share { solve.extra } else { 0.0 }
 				};
+				// A ligature continuation carries no ink of its own; the
+				// cluster that holds the glyph already spans its characters.
 				if !range.is_empty() {
+					let source = p.source_range(&range);
 					out.text[node].push(TextCluster {
 						range,
 						rect: Rect {
@@ -384,6 +388,7 @@ impl BlockContext<'_> {
 						},
 						rtl: c.rtl,
 						command: out.draws.len(),
+						source,
 					});
 				}
 
@@ -546,6 +551,7 @@ impl BlockContext<'_> {
 						kind: InlineKind::Text(caption.to_owned()),
 						style: TextStyle::default(),
 						source: 0..0,
+						text_map: Vec::new(),
 					}],
 					x,
 					y_cursor,

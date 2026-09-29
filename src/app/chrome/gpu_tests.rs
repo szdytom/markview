@@ -658,7 +658,7 @@ fn a_whole_document_png_export_stitches_its_tiles() -> Result<()> {
 	let mut rgba =
 		vec![0; plan.width_px as usize * plan.height_px as usize * 4];
 	for tile in plan.tiles.iter().copied() {
-		crate::app::export::draw_tile(
+		crate::export::draw_tile(
 			&mut renderer,
 			&snapshot,
 			&plan,
@@ -673,12 +673,7 @@ fn a_whole_document_png_export_stitches_its_tiles() -> Result<()> {
 	let output = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
 		.join("artifacts/export-whole.png");
 	std::fs::create_dir_all(output.parent().unwrap())?;
-	crate::app::export::write_png(
-		&output,
-		&rgba,
-		plan.width_px,
-		plan.height_px,
-	)?;
+	crate::export::write_png(&output, &rgba, plan.width_px, plan.height_px)?;
 	let image = image::open(&output)?.to_rgba8();
 	assert_eq!(image.dimensions(), (plan.width_px, plan.height_px));
 	for y in [0, 1023, 1024, 1079] {

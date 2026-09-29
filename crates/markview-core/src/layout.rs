@@ -268,6 +268,12 @@ struct BlockContext<'a> {
 	/// How many ordered lists enclose the block being laid out. A numbering
 	/// pattern gives each level its own counting symbol.
 	enum_depth: usize,
+	/// Where the block this context lays out begins in the document.
+	///
+	/// Cluster source ranges are recorded relative to it, because a block's
+	/// geometry is cached by content and reused wherever the same content
+	/// appears; an absolute offset would then point at the first occurrence.
+	origin: usize,
 }
 pub struct LayoutEngine {
 	shaper: TextShaper,
@@ -476,6 +482,7 @@ impl LayoutEngine {
 							highlight_cache: self.highlights.results(),
 							marker_depth: 0,
 							enum_depth: 0,
+							origin: block.source.start,
 						}
 						.block(
 							block,

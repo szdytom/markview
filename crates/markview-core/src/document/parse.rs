@@ -69,10 +69,13 @@ impl Reader<'_> {
 		if depth >= self.limits.inline_depth {
 			let text = self.flattened(node);
 			if !text.is_empty() {
+				let source = self.range(node);
+				let text_map = text_map(&self.source[source.clone()], &text);
 				out.push(Inline {
 					kind: InlineKind::Text(text),
 					style: style.clone(),
-					source: self.range(node),
+					source,
+					text_map,
 				});
 			}
 			return;
@@ -172,15 +175,97 @@ impl Reader<'_> {
 				_ => None,
 			};
 			if let Some(kind) = kind {
+				let source = self.range(child);
+				let text_map = match &kind {
+					InlineKind::Text(text) => {
+						text_map(&self.source[source.clone()], text)
+					}
+					_ => Vec::new(),
+				};
 				out.push(Inline {
 					kind,
 					style: child_style,
-					source: self.range(child),
+					source,
+					text_map,
 				});
 			} else {
 				self.inlines(child, &child_style, out, depth + 1);
 			}
 		}
+	}
+
+	/// Where a fenced block's contents sit inside the block's own source.
+	///
+	/// The body is searched for rather than counted from the opening fence, so
+	/// an info string, an indentation, or a longer fence run cannot put it in
+	/// the wrong place. An indented block, whose text is not a slice of its
+	/// source at all, keeps the whole block.
+	fn body(
+		&self,
+		source: &Range<usize>,
+		literal: &str,
+	) -> Option<Range<usize>> {
+		let raw = &self.source[source.clone()];
+		let after_fence = raw.find('\n').map_or(0, |at| at + 1);
+		raw[after_fence..].find(literal).map(|at| {
+			let start = source.start + after_fence + at;
+			start..start + literal.len()
+		})
+	}
+
+	/// The runs of a code block's literal, as (reading, source) ranges within
+	/// the block.
+	///
+	/// A fence's contents are indented to whatever contains it, and an indented
+	/// block is its own source with the indentation removed, so the literal is
+	/// not a slice of the block. The runs are the pieces that are byte for byte
+	/// the same; each is linear, and together they map a cluster back to its
+	/// bytes even when lines do not sit where their text does.
+	fn code_runs(
+		&self,
+		source: &Range<usize>,
+		literal: &str,
+		from: usize,
+	) -> Vec<(Range<usize>, Range<usize>)> {
+		let raw = self.source[source.clone()].as_bytes();
+		let mut runs = Vec::new();
+		let mut at = from;
+		let mut reading = 0;
+		// Each literal line is matched inside one source line, in order. A
+		// whole-block search would happily land on a fence's language or a
+		// container's marker, which read the same as the body they precede.
+		for line in literal.split_inclusive('\n') {
+			let content = line.trim_end_matches('\n');
+			if at > raw.len() {
+				return Vec::new();
+			}
+			let rest = &raw[at..];
+			let end = rest.iter().position(|byte| *byte == b'\n');
+			let line_end = end.map_or(rest.len(), |at| at + 1);
+			if content.is_empty() {
+				// A blank literal line still occupies its own source line.
+				reading += line.len();
+				at += line_end;
+				continue;
+			}
+			// The literal line is the tail of the source line: whatever a
+			// container prefix or the code's own indentation stripped sits in
+			// front of it, so matching from the right cannot land on it.
+			let body = rest[..line_end]
+				.strip_suffix(b"\n")
+				.unwrap_or(&rest[..line_end]);
+			if !body.ends_with(content.as_bytes()) {
+				return Vec::new();
+			}
+			let found = body.len() - content.len();
+			runs.push((
+				reading..reading + content.len(),
+				at + found..at + found + content.len(),
+			));
+			at += line_end;
+			reading += line.len();
+		}
+		runs
 	}
 
 	/// The readable text of a subtree, collected without recursion.
@@ -254,6 +339,8 @@ impl Reader<'_> {
 			BlockKind::Code {
 				language: "nested Markdown".into(),
 				text: self.source[source.clone()].to_string(),
+				body: source.clone(),
+				runs: Vec::new(),
 			}
 		} else {
 			match &data.value {
@@ -263,7 +350,14 @@ impl Reader<'_> {
 							return Child::Skip;
 						}
 						front_matter::Content::Source(yaml) => {
+							let start = source.start
+								+ self.source[source.clone()]
+									.find('\n')
+									.map_or(0, |at| at + 1);
+							let body = start..start + yaml.len();
 							let code = BlockKind::Code {
+								body,
+								runs: Vec::new(),
 								language: front_matter::LANGUAGE.into(),
 								text: yaml,
 							};
@@ -275,7 +369,10 @@ impl Reader<'_> {
 								open: false,
 								blocks: vec![Block {
 									id,
-									content_key: semantic_key(&code),
+									content_key: semantic_key(
+										&code,
+										source.start,
+									),
 									source: source.clone(),
 									kind: code,
 								}],
@@ -311,6 +408,7 @@ impl Reader<'_> {
 						}),
 						style: TextStyle::default(),
 						source: source.clone(),
+						text_map: Vec::new(),
 					}])
 				}
 				NodeValue::CodeBlock(c) if c.info.trim() == "math" => {
@@ -321,16 +419,40 @@ impl Reader<'_> {
 						},
 						style: TextStyle::default(),
 						source: source.clone(),
+						text_map: Vec::new(),
 					}])
 				}
-				NodeValue::CodeBlock(c) => BlockKind::Code {
-					language: c.info.clone(),
-					text: c.literal.clone(),
-				},
+				NodeValue::CodeBlock(c) => {
+					let body = self.body(&source, &c.literal);
+					// Without a whole-literal match the search still has to
+					// skip the opening fence's own line. Whether there is one
+					// is the parser's answer: an indented block whose first
+					// line happens to read like a fence is still indented.
+					let from = body.as_ref().map_or_else(
+						|| {
+							if c.fenced {
+								self.source[source.clone()]
+									.find('\n')
+									.map_or(0, |at| at + 1)
+							} else {
+								0
+							}
+						},
+						|body| body.start - source.start,
+					);
+					BlockKind::Code {
+						language: c.info.clone(),
+						runs: self.code_runs(&source, &c.literal, from),
+						body: body.unwrap_or_else(|| source.clone()),
+						text: c.literal.clone(),
+					}
+				}
 				NodeValue::HtmlBlock(h) => match html::block(&h.literal) {
 					html::Block::Unsupported => BlockKind::Code {
 						language: "HTML source".into(),
 						text: h.literal.clone(),
+						body: source.clone(),
+						runs: Vec::new(),
 					},
 					html::Block::Empty => return Child::Skip,
 					html::Block::Rule => BlockKind::Rule,
@@ -409,7 +531,7 @@ impl Reader<'_> {
 			std::mem::discriminant(&kind),
 			&self.source[source.clone()],
 		));
-		let content_key = semantic_key(&kind);
+		let content_key = semantic_key(&kind, source.start);
 		Child::Block(Block {
 			id,
 			content_key,
@@ -624,10 +746,12 @@ impl Reader<'_> {
 			}
 		}
 		if out.is_empty() {
+			let trimmed = text.trim();
 			out.push(Inline {
-				kind: InlineKind::Text(text.trim().to_string()),
+				kind: InlineKind::Text(trimmed.to_string()),
 				style: TextStyle::default(),
 				source: source.clone(),
+				text_map: text_map(&self.source[source.clone()], trimmed),
 			});
 		}
 		// The summary has no sub-range of its own in the document; like a raw
@@ -663,7 +787,7 @@ impl Reader<'_> {
 		));
 		Block {
 			id,
-			content_key: semantic_key(&kind),
+			content_key: semantic_key(&kind, source.start),
 			source,
 			kind,
 		}
@@ -844,6 +968,9 @@ fn html_rich(spans: Vec<html::Span>, source: &Range<usize>) -> RichText {
 				),
 				style,
 				source: source.clone(),
+				// A span is a piece of a larger fragment, so no interior
+				// boundary can be claimed.
+				text_map: Vec::new(),
 			}
 		})
 		.collect()
@@ -861,18 +988,51 @@ fn merge_text(text: RichText) -> RichText {
 		let mut merged = false;
 		if let Some(last) = out.last_mut()
 			&& last.style == span.style
+			&& last.source.end <= span.source.start
 			&& let InlineKind::Text(prev) = &mut last.kind
 		{
-			if prev.ends_with(char::is_whitespace)
-				&& t.starts_with(char::is_whitespace)
-			{
-				let len = prev.trim_end().len();
-				prev.truncate(len);
-				prev.push(' ');
-				prev.push_str(t.trim_start());
+			let collapse = prev.ends_with(char::is_whitespace)
+				&& t.starts_with(char::is_whitespace);
+			let keep = if collapse {
+				prev.trim_end().len()
 			} else {
-				prev.push_str(t);
+				prev.len()
+			};
+			let skip = if collapse {
+				t.len() - t.trim_start().len()
+			} else {
+				0
+			};
+			let left_end = map_boundary(
+				&last.text_map,
+				prev.len(),
+				last.source.len(),
+				keep,
+			);
+			if last.text_map.is_empty() {
+				last.text_map.push((0, 0));
 			}
+			last.text_map.retain(|(reading, _)| *reading < keep);
+			last.text_map.push((keep, left_end));
+			prev.truncate(keep);
+			if collapse {
+				prev.push(' ');
+			}
+			// A zero-length reading run preserves the gap left by a dropped tag.
+			last.text_map.push((prev.len(), last.source.len()));
+			let base = span.source.start - last.source.start;
+			let right_start =
+				map_boundary(&span.text_map, t.len(), span.source.len(), skip);
+			last.text_map.push((prev.len(), base + right_start));
+			last.text_map.extend(
+				span.text_map
+					.iter()
+					.filter(|(reading, _)| *reading > skip)
+					.map(|(reading, source)| {
+						(prev.len() + reading - skip, base + source)
+					}),
+			);
+			prev.push_str(&t[skip..]);
 			last.source.end = span.source.end;
 			merged = true;
 		}
@@ -881,4 +1041,156 @@ fn merge_text(text: RichText) -> RichText {
 		}
 	}
 	out
+}
+
+/// Maps a boundary inside a run, retaining a covering range for decoded units.
+fn map_boundary(
+	map: &[(usize, usize)],
+	reading_len: usize,
+	source_len: usize,
+	at: usize,
+) -> usize {
+	if at == reading_len {
+		return source_len;
+	}
+	let index = map.partition_point(|(reading, _)| *reading <= at);
+	let (reading, source) =
+		index.checked_sub(1).map_or((0, 0), |index| map[index]);
+	let (next_reading, next_source) =
+		map.get(index).copied().unwrap_or((reading_len, source_len));
+	if next_reading - reading == next_source - source {
+		source + at - reading
+	} else {
+		source
+	}
+}
+
+/// Where each reading run of a decoded text node begins in the source.
+///
+/// Comrak decodes entity references and backslash escapes, so a text node's
+/// reading text is not a slice of the document. Runs whose reading and source
+/// lengths agree map offset for offset, and only the boundaries between them
+/// need recording. An empty list means the whole node is one run, which is
+/// also the answer when the text does not align at all: one covering run is
+/// then the only mapping the source supports.
+fn text_map(source: &str, text: &str) -> Vec<(usize, usize)> {
+	let mut runs: Vec<(usize, usize)> = Vec::new();
+	let mut linear: Option<(usize, usize)> = None;
+	let mut offset = 0;
+	let mut reading = 0;
+	while offset < source.len() && reading < text.len() {
+		let (source_span, reading_span) =
+			source_unit(source, offset, &text[reading..]);
+		if source_span == reading_span {
+			linear.get_or_insert((reading, offset));
+		} else {
+			if let Some(start) = linear.take() {
+				runs.push(start);
+			}
+			runs.push((reading, offset));
+		}
+		offset += source_span;
+		reading += reading_span;
+	}
+	if let Some(start) = linear {
+		runs.push(start);
+	}
+	// Anything left over means this text is not this source decoded, so no
+	// interior boundary can be claimed.
+	if offset != source.len() || reading != text.len() || runs.len() < 2 {
+		return Vec::new();
+	}
+	runs
+}
+
+/// How many source bytes, and how many reading bytes, the text at `reading`
+/// was decoded from.
+///
+/// An entity reference may decode to more than one character, so the whole
+/// decoded sequence is matched rather than its first character. A `&` that
+/// does not decode to what is being read is a literal ampersand, and a
+/// backslash only escapes the punctuation after it.
+fn source_unit(source: &str, offset: usize, reading: &str) -> (usize, usize) {
+	let rest = &source[offset..];
+	// The parser's own rule is mirrored rather than approximated, so the two
+	// always agree on what an entity spells.
+	if rest.starts_with('&')
+		&& let Some((decoded, span)) = entity(rest)
+		&& reading.starts_with(&decoded)
+	{
+		return (span, decoded.len());
+	}
+	if let Some(escaped) = rest
+		.strip_prefix('\\')
+		.and_then(|after| after.chars().next())
+		&& escaped.is_ascii_punctuation()
+		&& reading.starts_with(escaped)
+	{
+		return (1 + escaped.len_utf8(), escaped.len_utf8());
+	}
+	// Neither side is assumed to advance alike: when a source unit and what it
+	// decodes to differ, this step is simply not a 1:1 run, and the caller
+	// stops claiming interior boundaries from here on.
+	let source_span = rest.chars().next().map_or(1, char::len_utf8);
+	let reading_span = reading.chars().next().map_or(1, char::len_utf8);
+	(source_span, reading_span)
+}
+
+/// The entity `text` begins with, and how many bytes of it the entity took.
+///
+/// This mirrors the parser's decoder: a numeric reference needs the right
+/// number of digits and a terminating semicolon, and a named one ends at the
+/// first semicolon, which must come before any space. Names come from the same
+/// table the parser builds its own from, so the two cannot disagree.
+fn entity(text: &str) -> Option<(String, usize)> {
+	let bytes = text.as_bytes();
+	if text.len() >= 4 && bytes[1] == b'#' {
+		let (radix, start) = if bytes[2] == b'x' || bytes[2] == b'X' {
+			(16u32, 3)
+		} else {
+			(10u32, 2)
+		};
+		let limit = if radix == 16 { 6 } else { 7 };
+		let mut digits = 0;
+		let mut codepoint = 0u32;
+		let mut at = start;
+		while at < bytes.len() {
+			let Some(digit) = (bytes[at] as char).to_digit(radix) else {
+				break;
+			};
+			codepoint = (codepoint * radix + digit).min(0x11_0000);
+			digits += 1;
+			at += 1;
+		}
+		if at < bytes.len()
+			&& bytes[at] == b';'
+			&& (1..=limit).contains(&digits)
+		{
+			// The parser substitutes the replacement character for anything
+			// that is not a scalar value.
+			let codepoint = if codepoint == 0
+				|| (0xD800..=0xE000).contains(&codepoint)
+				|| codepoint >= 0x110000
+			{
+				0xFFFD
+			} else {
+				codepoint
+			};
+			let character = char::from_u32(codepoint).unwrap_or('\u{FFFD}');
+			return Some((character.to_string(), at + 1));
+		}
+	}
+	for at in 2..text.len().min(32) {
+		if bytes[at] == b' ' {
+			return None;
+		}
+		if bytes[at] == b';' {
+			let name = &text[..=at];
+			return entities::ENTITIES
+				.iter()
+				.find(|entry| entry.entity == name)
+				.map(|entry| (entry.characters.to_owned(), at + 1));
+		}
+	}
+	None
 }

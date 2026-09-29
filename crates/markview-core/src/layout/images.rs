@@ -125,6 +125,7 @@ impl BlockContext<'_> {
 						kind: InlineKind::Text(text),
 						style: TextStyle::default(),
 						source: 0..0,
+						text_map: Vec::new(),
 					}],
 					rect.x + pad,
 					rect.y + pad,

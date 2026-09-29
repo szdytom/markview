@@ -70,7 +70,7 @@ fn unsupported_html_keeps_the_source() {
 	let doc = parse("<div class=\"x\">\n\nspan <span>s</span>\n");
 	assert!(matches!(
 		&doc.blocks[0].kind,
-		BlockKind::Code { language, text }
+		BlockKind::Code { language, text, .. }
 			if language == "HTML source" && text.contains("div")
 	));
 	let BlockKind::Paragraph(p) = &doc.blocks[1].kind else {
@@ -251,7 +251,7 @@ fn mermaid_fences_become_diagram_images_for_both_fence_styles() {
 #[test]
 fn fences_that_merely_mention_mermaid_stay_code() {
 	let d = parse("```mermaidish\nnot a diagram\n```\n");
-	let BlockKind::Code { language, text } = &d.blocks[0].kind else {
+	let BlockKind::Code { language, text, .. } = &d.blocks[0].kind else {
 		panic!("expected a code block")
 	};
 	assert_eq!(language, "mermaidish");
@@ -926,7 +926,7 @@ fn a_details_body_resolves_document_wide_footnotes() {
 #[test]
 fn unmatched_details_keeps_the_html_source() {
 	let doc = parse("<details>\n<summary>More</summary>\n\nBody\n");
-	let BlockKind::Code { language, text } = &doc.blocks[0].kind else {
+	let BlockKind::Code { language, text, .. } = &doc.blocks[0].kind else {
 		panic!("expected the literal fallback")
 	};
 	assert_eq!(language, "HTML source");
@@ -941,7 +941,7 @@ fn unmatched_details_keeps_the_html_source() {
 #[test]
 fn stray_details_close_keeps_the_html_source() {
 	let doc = parse("</details>\n");
-	let BlockKind::Code { language, text } = &doc.blocks[0].kind else {
+	let BlockKind::Code { language, text, .. } = &doc.blocks[0].kind else {
 		panic!("expected the literal fallback")
 	};
 	assert_eq!(language, "HTML source");
@@ -1298,7 +1298,7 @@ fn front_matter_is_a_collapsed_yaml_source_block() {
 	// whatever shape it has.
 	let [
 		Block {
-			kind: BlockKind::Code { language, text },
+			kind: BlockKind::Code { language, text, .. },
 			source,
 			..
 		},

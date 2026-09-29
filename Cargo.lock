@@ -2384,6 +2384,7 @@ dependencies = [
  "anyhow",
  "codex",
  "comrak",
+ "entities",
  "html-escape",
  "hypher",
  "icu_properties",

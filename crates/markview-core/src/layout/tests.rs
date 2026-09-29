@@ -559,6 +559,7 @@ fn cjk_boundaries_and_hyphenation() {
 		kind: InlineKind::Text("（中文），排版。 extraordinary".into()),
 		style: TextStyle::default(),
 		source: 0..0,
+		text_map: Vec::new(),
 	}];
 	let images = Default::default();
 	let mut context = BlockContext {
@@ -569,6 +570,7 @@ fn cjk_boundaries_and_hyphenation() {
 		highlight_cache: e.highlights.results(),
 		marker_depth: 0,
 		enum_depth: 0,
+		origin: 0,
 	};
 	let p = context.prepare(&rich, 18.0, &mut out);
 	let units = context.units(&p, 18.0, false, true, 760.0, Default::default());
@@ -2016,11 +2018,13 @@ fn typst_hyphenation_can_be_turned_off_for_a_passage() {
 				kind: InlineKind::Text("networks".into()),
 				style,
 				source: 0..0,
+				text_map: Vec::new(),
 			},
 			Inline {
 				kind: InlineKind::Text(" networks,".into()),
 				style: TextStyle::default(),
 				source: 0..0,
+				text_map: Vec::new(),
 			},
 		];
 		let images = Default::default();
@@ -2032,6 +2036,7 @@ fn typst_hyphenation_can_be_turned_off_for_a_passage() {
 			highlight_cache: e.highlights.results(),
 			marker_depth: 0,
 			enum_depth: 0,
+			origin: 0,
 		};
 		let p = context.prepare(&rich, 18.0, &mut out);
 		let units =
@@ -2131,6 +2136,7 @@ fn inline_code_breaks_for_free_at_word_edges_and_cheaply_inside_a_word() {
 		highlight_cache: e.highlights.results(),
 		marker_depth: 0,
 		enum_depth: 0,
+		origin: 0,
 	};
 	let p = context.prepare(rich, 18.0, &mut out);
 	let breaks: Vec<(usize, f64, f32)> = context
@@ -2247,6 +2253,7 @@ fn typst_curly_quotes_break_like_cjk_brackets() {
 			kind: InlineKind::Text(text.into()),
 			style: TextStyle::default(),
 			source: 0..0,
+			text_map: Vec::new(),
 		}];
 		let images = Default::default();
 		let mut context = BlockContext {
@@ -2257,6 +2264,7 @@ fn typst_curly_quotes_break_like_cjk_brackets() {
 			highlight_cache: e.highlights.results(),
 			marker_depth: 0,
 			enum_depth: 0,
+			origin: 0,
 		};
 		let p = context.prepare(&rich, 18.0, &mut out);
 		context
@@ -2393,6 +2401,7 @@ fn a_hyphen_near_a_word_edge_costs_more_than_one_in_the_middle() {
 		kind: InlineKind::Text("hyphenation".into()),
 		style: TextStyle::default(),
 		source: 0..0,
+		text_map: Vec::new(),
 	}];
 	let images = Default::default();
 	let mut context = BlockContext {
@@ -2403,6 +2412,7 @@ fn a_hyphen_near_a_word_edge_costs_more_than_one_in_the_middle() {
 		highlight_cache: e.highlights.results(),
 		marker_depth: 0,
 		enum_depth: 0,
+		origin: 0,
 	};
 	let p = context.prepare(&rich, 18.0, &mut out);
 	let found: Vec<(usize, f64)> = context

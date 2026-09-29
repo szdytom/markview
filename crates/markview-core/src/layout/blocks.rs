@@ -650,9 +650,39 @@ impl BlockContext<'_> {
 					.border_width
 					.unwrap_or(1.)
 			}
-			BlockKind::Code { language, text } => {
+			BlockKind::Code {
+				language,
+				text,
+				body,
+				runs,
+			} => {
+				// A code block nested in a quote or a list starts after its
+				// container, so its runs are shifted onto the origin the
+				// cached geometry is keyed against.
+				let shift = block.source.start.saturating_sub(self.origin);
+				let runs: Vec<_> = runs
+					.iter()
+					.map(|(reading, source)| {
+						(
+							reading.clone(),
+							source.start + shift..source.end + shift,
+						)
+					})
+					.collect();
 				let node = out.text.len();
-				let h = self.code(language, text, x, y, width, size, opts, out);
+				let h = self.code(
+					language,
+					text,
+					body.start.saturating_sub(self.origin)
+						..body.end.saturating_sub(self.origin),
+					&runs,
+					x,
+					y,
+					width,
+					size,
+					opts,
+					out,
+				);
 				out.text[node].search_field =
 					self.search_fields.get(&(text.as_ptr() as usize)).copied();
 				out.text[node].search_ranges =
@@ -666,6 +696,7 @@ impl BlockContext<'_> {
 					kind: InlineKind::Text(opts.front_matter_label.clone()),
 					style: TextStyle::default(),
 					source: block.source.clone(),
+					text_map: Vec::new(),
 				}]);
 				self.disclosure(block, &label, blocks, x, y, width, opts, out)
 			}
@@ -859,6 +890,9 @@ impl BlockContext<'_> {
 								},
 								rtl: false,
 								command: command + offset,
+								// A display equation is atomic, so its glyphs
+								// keep the enclosing block's own range.
+								source: None,
 							});
 							glyph += 1;
 						}

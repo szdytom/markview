@@ -1,9 +1,11 @@
 //! Window-independent export planning: paper geometry, a paperless PNG layout,
 //! and the one-shot job descriptions the reader hands to a background thread.
 //!
-//! Nothing here touches a window, a GPU or the reader's settings. The reader
+//! No helper owns a window or reads saved reader settings. GPU draws receive
+//! the caller's renderer explicitly. The reader
 //! borrows [`ExportSettings`] for a single job, so an export can never reflow
 //! the document on screen.
+use crate::render::View;
 use crate::{
 	document,
 	file::read_document,
@@ -12,12 +14,15 @@ use crate::{
 	settings::{ExportFormat, ExportSettings, FontDefOverride},
 };
 use anyhow::{Context, Result, bail};
+use image::ImageEncoder;
 use markview_core::{
 	fonts::FontConfig,
 	paginate::{PT_PER_PX, PageGeometry},
+	scene::{Draw, Paint, Rect},
 	style::{CjkType, PageStyle, Stylesheet},
 };
 use std::{
+	collections::HashMap,
 	path::{Path, PathBuf},
 	sync::Arc,
 };
@@ -160,9 +165,45 @@ pub(crate) fn png_snapshot(
 	options: LayoutOptions,
 	offline: bool,
 ) -> Result<LayoutSnapshot> {
+	Ok(
+		png_buffer(path, read_document(path)?.into(), options, offline)?
+			.snapshot,
+	)
+}
+
+/// Keeps image workers alive until drawing has published and settled SVG demand.
+pub(crate) struct PngDocument {
+	pub snapshot: LayoutSnapshot,
+	engine: LayoutEngine,
+	document: document::Document,
+	options: LayoutOptions,
+	images: Images,
+}
+
+impl PngDocument {
+	pub fn settle(&mut self) -> bool {
+		self.images.wait();
+		if self.snapshot.images.entries == self.images.snapshot.entries {
+			return false;
+		}
+		self.snapshot = self.engine.layout_with_images(
+			&self.document,
+			&self.options,
+			&self.images.snapshot,
+		);
+		true
+	}
+}
+
+pub(crate) fn png_buffer(
+	path: &Path,
+	text: Arc<str>,
+	options: LayoutOptions,
+	offline: bool,
+) -> Result<PngDocument> {
 	let mut engine = LayoutEngine::new();
 	engine.validate_stylesheet(&options.stylesheet)?;
-	let document = document::parse(read_document(path)?);
+	let document = document::parse(text);
 	let mut images = Images::new(offline, options.fonts.clone());
 	images.prepare(
 		&document,
@@ -180,13 +221,17 @@ pub(crate) fn png_snapshot(
 	}
 	let mut snapshot =
 		engine.layout_with_images(&document, &options, &images.snapshot);
-	// Highlighting arrives from a worker; an export has no later frame to
-	// settle it, so it waits and keeps the colors.
 	if engine.wait_highlights() {
 		snapshot =
 			engine.layout_with_images(&document, &options, &images.snapshot);
 	}
-	Ok(snapshot)
+	Ok(PngDocument {
+		snapshot,
+		engine,
+		document,
+		options,
+		images,
+	})
 }
 
 /// One horizontal strip of the PNG, in device pixels.
@@ -276,28 +321,123 @@ pub(crate) fn geometry_summary(
 	})
 }
 
-/// Writes `bytes` beside `path` and renames them into place, so a viewer that
-/// opens the file never sees one that is still being written.
+/// Final writes complete before an editor disconnect terminates the process.
+pub(crate) static OUTPUT_WRITE: std::sync::Mutex<()> =
+	std::sync::Mutex::new(());
+
+/// Writes `bytes` beside `path` and renames them into place atomically.
 pub(crate) fn write_atomic(path: &Path, bytes: &[u8]) -> Result<()> {
+	use std::io::Write;
+	let _writing = OUTPUT_WRITE.lock().unwrap();
 	let parent = path
 		.parent()
-		.filter(|parent| !parent.as_os_str().is_empty())
+		.filter(|p| !p.as_os_str().is_empty())
 		.unwrap_or(Path::new("."));
 	std::fs::create_dir_all(parent)?;
-	let name = path
-		.file_name()
-		.map(|name| name.to_string_lossy().into_owned())
-		.unwrap_or_default();
-	let temp = parent.join(format!(".{name}.{}.tmp", std::process::id()));
-	std::fs::write(&temp, bytes)
-		.with_context(|| format!("Cannot write {}", temp.display()))?;
-	if let Err(error) = std::fs::rename(&temp, path) {
-		let _ = std::fs::remove_file(&temp);
-		return Err(error)
-			.with_context(|| format!("Cannot replace {}", path.display()));
+	let mut temp = tempfile::Builder::new()
+		.prefix(".markview-export-")
+		.suffix(".tmp")
+		.tempfile_in(parent)?;
+	temp.write_all(bytes)
+		.with_context(|| format!("Cannot write {}", path.display()))?;
+	match temp.persist(path) {
+		Ok(_) => Ok(()),
+		Err(error) => {
+			// Drop the temporary before releasing the shutdown guard.
+			drop(error.file);
+			Err(error.error)
+				.with_context(|| format!("Cannot replace {}", path.display()))
+		}
 	}
-	Ok(())
 }
 
 #[cfg(test)]
 mod tests;
+
+/// Draws one strip into the whole image's RGBA buffer.
+#[expect(clippy::too_many_arguments, reason = "one strip's explicit geometry")]
+pub(crate) fn draw_tile(
+	renderer: &mut crate::render::Renderer,
+	snapshot: &LayoutSnapshot,
+	plan: &PngPlan,
+	stylesheet: &Arc<Stylesheet>,
+	tile: PngTile,
+	scale: f32,
+	left: f32,
+	theme: crate::render::Theme,
+	rgba: &mut [u8],
+) -> anyhow::Result<()> {
+	let horizontal = HashMap::new();
+	let view = View {
+		selection: None,
+		revision: 0,
+		width: plan.width_px,
+		height: tile.height_px,
+		scale,
+		scroll: tile.scroll,
+		left,
+		top: 0.0,
+		bottom: 0.0,
+		theme,
+		horizontal: &horizontal,
+		hovered_link: None,
+		hovered_overflow: None,
+		held_overflow: None,
+	};
+	let target = renderer.offscreen(plan.width_px, tile.height_px);
+	let target_view = target.create_view(&Default::default());
+	let height = plan.height_px as f32 / scale;
+	let tile_top = tile.y_px as f32 / scale;
+	let tile_bottom = tile_top + tile.height_px as f32 / scale;
+	let bands: Vec<_> = [
+		(false, &stylesheet.page().header),
+		(true, &stylesheet.page().footer),
+	]
+	.into_iter()
+	.filter_map(|(bottom, edge)| {
+		let (width, color) = edge.rule(height * PT_PER_PX)?;
+		let width = width / PT_PER_PX;
+		let start = if bottom { height - width } else { 0.0 };
+		let top = start.max(tile_top);
+		let end = (start + width).min(tile_bottom);
+		(end > top).then_some(Draw::Rect(
+			Rect {
+				x: 0.0,
+				y: top - tile_top,
+				w: plan.width_px as f32 / scale,
+				h: end - top,
+			},
+			Paint::Color(color),
+		))
+	})
+	.collect();
+	let submission = renderer.render_with_stylesheet(
+		snapshot,
+		&view,
+		&bands,
+		&[],
+		&target_view,
+		stylesheet.clone(),
+	)?;
+	renderer.wait(Some(submission))?;
+	let pixels = renderer.read_pixels(&target)?;
+	let start = tile.y_px as usize * plan.width_px as usize * 4;
+	rgba[start..start + pixels.rgba.len()].copy_from_slice(&pixels.rgba);
+	Ok(())
+}
+
+pub(crate) fn write_png(
+	path: &Path,
+	rgba: &[u8],
+	width: u32,
+	height: u32,
+) -> anyhow::Result<()> {
+	let mut bytes = Vec::new();
+	image::codecs::png::PngEncoder::new(&mut bytes).write_image(
+		rgba,
+		width,
+		height,
+		image::ExtendedColorType::Rgba8,
+	)?;
+	write_atomic(path, &bytes)
+}

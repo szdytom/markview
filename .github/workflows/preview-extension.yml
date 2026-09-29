@@ -1,0 +1,46 @@
+name: Markview4vsc packages
+on:
+  workflow_dispatch:
+  workflow_call:
+  push:
+    paths: ['editors/**', 'src/**', 'crates/**', 'Cargo.*', '.github/workflows/preview-extension.yml']
+  pull_request:
+    paths: ['editors/**', 'src/**', 'crates/**', 'Cargo.*', '.github/workflows/preview-extension.yml']
+permissions:
+  contents: read
+jobs:
+  package:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { os: windows-2022, target: x86_64-pc-windows-msvc, platform: win32-x64 }
+          - { os: windows-2022, target: aarch64-pc-windows-msvc, platform: win32-arm64 }
+          - { os: ubuntu-22.04, target: x86_64-unknown-linux-gnu, platform: linux-x64 }
+          - { os: ubuntu-22.04-arm, target: aarch64-unknown-linux-gnu, platform: linux-arm64 }
+          - { os: macos-15-intel, target: x86_64-apple-darwin, platform: darwin-x64 }
+          - { os: macos-latest, target: aarch64-apple-darwin, platform: darwin-arm64 }
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v6
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+      - uses: Swatinem/rust-cache@v2
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 22
+      - name: Linux development libraries
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y libfontconfig1-dev libxkbcommon-dev libwayland-dev
+      - run: cargo build --release --locked --target ${{ matrix.target }}
+      - run: npm ci
+        working-directory: editors/vscode
+      - name: Package the matching engine
+        shell: bash
+        run: editors/vscode/package-vsix.sh '${{ matrix.platform }}'
+      - uses: actions/upload-artifact@v6
+        with:
+          name: markview4vsc-platform-${{ matrix.platform }}
+          path: editors/vscode/dist/*.vsix
+          if-no-files-found: error

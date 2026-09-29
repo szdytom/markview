@@ -1,5 +1,5 @@
 //! Bounded image scheduling and versioned snapshot publication.
-mod cache;
+pub(crate) mod cache;
 mod decode;
 mod diagram;
 mod fonts;
@@ -9,6 +9,7 @@ mod source;
 mod tests;
 use anyhow::Result;
 use decode::{Decoded, decode};
+pub(crate) use diagram::preserve_geometry as preserve_diagram_geometry;
 use fonts::DiagramFonts;
 use markview_core::{
 	document::Document,
@@ -601,12 +602,20 @@ impl Images {
 	pub fn wait(&mut self) {
 		// A headless frame can have posted new SVG sizes since the last load.
 		self.poll();
-		while self.entries.values().any(|e| {
-			e.busy || (e.info.size.is_none() && e.info.error.is_none())
-		}) {
+		while self.busy() > 0 {
 			self.poll();
 			thread::sleep(Duration::from_millis(5));
 		}
+	}
+
+	/// How many images are still being fetched or decoded.
+	pub fn busy(&self) -> usize {
+		self.entries
+			.values()
+			.filter(|e| {
+				e.busy || (e.info.size.is_none() && e.info.error.is_none())
+			})
+			.count()
 	}
 
 	/// Remote sources the per-revision cap left unrequested.
