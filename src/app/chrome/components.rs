@@ -11,8 +11,10 @@ use markview_core::style::{Color, ColorField as C, Condition, TextAppearance};
 pub(in crate::app) const CONTROL: f32 = 32.0;
 pub(super) const INSET: f32 = 24.0;
 const TAB_Y: f32 = 52.0;
-const ROW: f32 = 44.0;
-const SECTION: f32 = 32.0;
+/// One form row's height, which a page embedding form rows follows.
+pub(in crate::app) const ROW: f32 = 44.0;
+/// The band a section heading adds above the row it titles.
+pub(in crate::app) const SECTION: f32 = 32.0;
 /// The trailing marker on a button that opens a list.
 const MARKER: f32 = 14.0;
 /// The pitch of one option in an open list, and the list's own padding.
@@ -457,12 +459,12 @@ fn mix(ui: &TextShaper, from: C, to: C, amount: f32) -> Paint {
 	}))))
 }
 
-pub(super) struct Action {
+pub(in crate::app) struct Action {
 	pub label: &'static str,
 	pub action: Command,
 	pub active: bool,
 }
-pub(super) fn action(
+pub(in crate::app) fn action(
 	label: &'static str,
 	active: bool,
 	action: Command,
@@ -1077,55 +1079,70 @@ impl Form {
 				.filter(|menu| menu.id == dropdown.id)
 				.map(|menu| menu.entries.as_slice())
 		})?;
-		let (rect, shown) = menu_rect(anchor, entries.len(), size);
-		dropdown.follow(shown);
-		let offset = dropdown.offset;
-		let buttons = entries
-			.iter()
-			.skip(offset)
-			.take(shown)
-			.enumerate()
-			.map(|(slot, entry)| {
-				let mut b = button(
-					entry.label,
-					entry.action,
-					Rect {
-						x: rect.x + MENU_PAD,
-						y: rect.y + MENU_PAD + slot as f32 * OPTION,
-						w: rect.w - 2.0 * MENU_PAD,
-						h: OPTION - 2.0,
-					},
-				);
-				// Options read as a flat list: only the pointer and the current
-				// choice give them a fill.
-				b.kind = ButtonKind::Quiet;
-				b.active = entry.active;
-				b
-			})
-			.collect();
-		Some(Menu {
-			rect,
-			buttons,
-			options: entries.len(),
-			highlight: dropdown.highlight,
-			offset,
+		Some(menu(anchor, entries, dropdown, size))
+	}
+}
+
+/// The option list hanging from `anchor`, windowed by `dropdown`.
+///
+/// This is the shared body of every list a control opens, form row or page
+/// row: where it stands and which of its options are drawn is decided here,
+/// so the drawing, the keys and the pointer all read the same list.
+pub(in crate::app) fn menu(
+	anchor: Rect,
+	entries: &[Action],
+	dropdown: &mut Dropdown,
+	size: (f32, f32),
+) -> Menu {
+	let (rect, shown) = menu_rect(anchor, entries.len(), size);
+	dropdown.follow(shown);
+	let offset = dropdown.offset;
+	let buttons = entries
+		.iter()
+		.skip(offset)
+		.take(shown)
+		.enumerate()
+		.map(|(slot, entry)| {
+			let mut b = button(
+				entry.label,
+				entry.action,
+				Rect {
+					x: rect.x + MENU_PAD,
+					y: rect.y + MENU_PAD + slot as f32 * OPTION,
+					w: rect.w - 2.0 * MENU_PAD,
+					h: OPTION - 2.0,
+				},
+			);
+			// Options read as a flat list: only the pointer and the current
+			// choice give them a fill.
+			b.kind = ButtonKind::Quiet;
+			b.active = entry.active;
+			b
 		})
+		.collect();
+	Menu {
+		rect,
+		buttons,
+		options: entries.len(),
+		highlight: dropdown.highlight,
+		offset,
 	}
 }
 
 /// Where an option list sits, and how many of its options are drawn.
 ///
-/// It stands under its control, or above it when the window's bottom edge is
-/// the nearer one. It never leaves the window: where neither side holds every
-/// option, the longer side shows as many as it can and the rest follow the
-/// highlight within that window.
+/// It stands under its control, or above it when the panel's bottom edge is
+/// the nearer one. It never leaves the panel that owns it: where neither side
+/// holds every option, the longer side shows as many as it can and the rest
+/// follow the highlight within that window.
 fn menu_rect(anchor: Rect, count: usize, size: (f32, f32)) -> (Rect, usize) {
-	let (_, height) = size;
+	let panel = panel_rect(size.0, size.1);
 	let room = |available: f32| {
 		((available - 2.0 * MENU_PAD) / OPTION).floor().max(0.0) as usize
 	};
-	let below = room(height - MENU_PAD - (anchor.y + anchor.h + MENU_GAP));
-	let above = room(anchor.y - MENU_GAP - MENU_PAD);
+	let below =
+		room(panel.y + panel.h - MENU_PAD - (anchor.y + anchor.h + MENU_GAP));
+	let above = room(anchor.y - MENU_GAP - MENU_PAD - panel.y);
 	let (shown, downwards) = if below >= count {
 		(count, true)
 	} else if above >= count {
@@ -1146,7 +1163,7 @@ fn menu_rect(anchor: Rect, count: usize, size: (f32, f32)) -> (Rect, usize) {
 		Rect {
 			x: anchor.x,
 			y,
-			w: anchor.w,
+			w: anchor.w.min(panel.w),
 			h,
 		},
 		shown,

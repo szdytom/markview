@@ -21,6 +21,10 @@ at the same level, without `[brackets]`.
 
 ## Unreleased
 
+### Added
+
+- Keep an open option list inside the panel that owns it and cap its width at the panel's, so a list never overflows the window.
+
 ### Changed
 
 - Focus security documentation on policy and the threat model, with implementation details and verification work in separate references.

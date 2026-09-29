@@ -365,18 +365,14 @@ fn a_list_whose_row_left_the_viewport_is_not_measured() {
 	);
 }
 
-/// An option list floats over the page, so it is the one thing in the chrome
-/// that has to be measured against the window rather than against the panel.
+/// An option list floats over its page, but never leaves the panel that owns
+/// it: a control near the panel's bottom edge opens a list that reaches no
+/// further than the panel, not the window behind it.
 #[test]
-fn an_open_option_list_stays_inside_the_window() {
+fn an_open_option_list_stays_inside_the_panel() {
 	for (width, height) in [(500.0, 300.0), (820.0, 600.0), (1200.0, 800.0)] {
 		let size = (width, height);
-		let window = Rect {
-			x: 0.0,
-			y: 0.0,
-			w: width,
-			h: height,
-		};
+		let window = panel_rect(width, height);
 		for (count, fillers) in [(1, 0), (3, 0), (6, 0), (10, 0), (10, 6)] {
 			for highlight in [0, count - 1] {
 				let form = list_form(count, fillers, size);
@@ -412,7 +408,7 @@ fn an_open_option_list_stays_inside_the_window() {
 							menu.rect.x + menu.rect.w,
 							menu.rect.y + menu.rect.h
 						),
-					"{where_}: the list leaves the window"
+					"{where_}: the list leaves the panel"
 				);
 				assert!(
 					!menu.buttons.is_empty(),
