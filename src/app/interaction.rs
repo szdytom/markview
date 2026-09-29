@@ -250,6 +250,15 @@ impl<P: super::SendEvent> App<P> {
 			| Command::ExportMargin(_)
 			| Command::ExportScale(_) => return,
 			Command::Fonts(command) => {
+				// Switching the page's view leaves the chooser rows the open
+				// list anchors to, so the list goes with them.
+				if matches!(
+					command,
+					super::font_panel::Command::StatusFilter(_)
+						| super::font_panel::Command::Choosers
+				) {
+					self.interaction.dropdown = None;
+				}
 				let proxy = self.proxy.clone();
 				if self.font_panel.command(
 					command,

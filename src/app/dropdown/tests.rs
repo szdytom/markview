@@ -599,6 +599,9 @@ fn app_with_pinned_fonts() -> App<StubProxy> {
 	);
 	app.interaction
 		.show_panel(PanelPage::Settings(PanelTab::Fonts));
+	// The chooser rows sit behind the page's own Set step, not with the
+	// catalogue the page opens on.
+	app.action(Command::Fonts(crate::app::font_panel::Command::Choosers));
 	app
 }
 
@@ -608,8 +611,7 @@ fn app_with_pinned_fonts() -> App<StubProxy> {
 #[test]
 fn a_family_option_commits_and_the_default_restores_the_chain() {
 	let mut app = app_with_pinned_fonts();
-	// The choosers lead the Fonts page's scroll, so its first row is on screen
-	// as the page opens.
+	// The Set step holds its first chooser row on screen as the page opens.
 	let chooser = Command::ToggleDropdown(DropdownId::Font(FontRole::Serif), 0);
 	app.action(chooser);
 	assert!(app.interaction.dropdown.is_some());

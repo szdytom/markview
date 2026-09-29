@@ -15,6 +15,8 @@ pub(crate) enum Command {
 	Cancel(usize),
 	OpenFolder,
 	StatusFilter(Option<crate::fonts::State>),
+	/// Switches the page to its chooser rows, away from the catalogue.
+	Choosers,
 }
 
 pub(super) enum Message {
@@ -30,6 +32,8 @@ pub(super) struct FontPanel {
 	font_cancel: Arc<Mutex<HashSet<String>>>,
 	font_note: Option<String>,
 	font_status_filter: Option<crate::fonts::State>,
+	/// Whether the page shows its chooser rows rather than the catalogue.
+	font_choosers: bool,
 	scroll: f32,
 }
 
@@ -40,6 +44,7 @@ pub(super) struct View<'a> {
 	pub(super) scroll: f32,
 	pub(super) note: Option<&'a str>,
 	pub(super) status_filter: Option<crate::fonts::State>,
+	pub(super) choosers: bool,
 }
 
 impl FontPanel {
@@ -51,6 +56,7 @@ impl FontPanel {
 			scroll: self.scroll,
 			note: self.font_note.as_deref(),
 			status_filter: self.font_status_filter,
+			choosers: self.font_choosers,
 		}
 	}
 	pub(super) fn set_scroll(&mut self, scroll: f32) {
@@ -112,6 +118,12 @@ impl FontPanel {
 			}
 			Command::StatusFilter(state) => {
 				self.font_status_filter = state;
+				self.font_choosers = false;
+				self.scroll = 0.0;
+				return false;
+			}
+			Command::Choosers => {
+				self.font_choosers = true;
 				self.scroll = 0.0;
 				return false;
 			}
@@ -347,6 +359,21 @@ mod tests {
 		assert_eq!(panel.view().shown, vec![0, 1, 2]);
 		assert_eq!(panel.view().scroll, 0.0);
 		assert!(panel.view().status_filter.is_none());
+		assert!(!panel.view().choosers);
+		// The chooser rows are a view of their own: opening one resets the
+		// scroll, and any status filter leaves it again.
+		panel.set_scroll(72.0);
+		panel.command(Command::Choosers, true, |_| unreachable!());
+		assert!(panel.view().choosers);
+		assert_eq!(panel.view().scroll, 0.0);
+		panel.set_scroll(72.0);
+		panel.command(
+			Command::StatusFilter(Some(crate::fonts::State::Missing)),
+			true,
+			|_| unreachable!(),
+		);
+		assert!(!panel.view().choosers);
+		assert_eq!(panel.view().scroll, 0.0);
 	}
 
 	#[test]

@@ -851,6 +851,7 @@ fn previewing_recedes_the_styles_and_fonts_pages() {
 					scroll: 0.0,
 					note: None,
 					status_filter: None,
+					choosers: false,
 				},
 				width,
 				height,
@@ -888,6 +889,93 @@ fn previewing_recedes_the_styles_and_fonts_pages() {
 			);
 		}
 	}
+}
+
+/// An option list open on a chooser row is drawn over the Fonts page, which
+/// carries its rows outside any form: the list is what the page itself never
+/// draws, so the frame has to.
+#[test]
+fn the_fonts_page_draws_its_open_option_list() {
+	use crate::app::{tab_metrics::TabMetrics, tab_strip::TabStrip};
+	use crate::state::{Command as StateCommand, PanelPage, PanelTab};
+	use crate::state::{Dropdown, DropdownId};
+	let mut ui = crate::test_support::shaper();
+	let (width, height) = (820.0, 600.0);
+	let settings = ReaderSettings::default();
+	let export = ExportSettings::default();
+	let font_config = crate::test_support::fonts();
+	let entries: Vec<crate::stylesheet::Entry> = Vec::new();
+	let strip = TabStrip::default();
+	let metrics = TabMetrics::default();
+	let session = ReaderSession::default();
+	let jobs = std::collections::HashMap::new();
+	let mut interaction = InteractionState::default();
+	interaction.show_panel(PanelPage::Settings(PanelTab::Fonts));
+	interaction.dropdown = Some(Dropdown::new(
+		DropdownId::Font(crate::settings::FontRole::Serif),
+		0,
+	));
+	let chrome_tabs: Vec<ReaderTab> = Vec::new();
+	let mut chrome = Chrome {
+		backend: None,
+		ui: &mut ui,
+		session: &session,
+		tabs: &chrome_tabs,
+		active_tab: 0,
+		tab_strip: &strip,
+		input_draws: Vec::new(),
+		tab_widths: &metrics.widths,
+		settings: &settings,
+		font_config: &font_config,
+		export: &export,
+		interaction: &interaction,
+		style_entries: &entries,
+		style_scroll: interaction.styles_scroll,
+		fonts: crate::app::font_panel::View {
+			catalog: &[],
+			shown: Vec::new(),
+			jobs: &jobs,
+			scroll: 0.0,
+			note: None,
+			status_filter: None,
+			choosers: true,
+		},
+		width,
+		height,
+		scrollbar: None,
+		warning: None,
+		status: "",
+		status_until: None,
+		error: false,
+		hover_hint: None,
+		remote_notice: None,
+		watching: false,
+	};
+	let overlay = chrome.overlay();
+	// The list's own background is painted where it is measured, and it holds
+	// the option the reader can commit.
+	let mut open = interaction.dropdown.unwrap();
+	let menu = chrome
+		.dropdown_menu(&mut open)
+		.expect("the chooser anchors its list");
+	assert!(
+		overlay.iter().any(|draw| matches!(draw,
+			Draw::Rect(rect, _)
+				if rect.x == menu.rect.x
+					&& rect.y == menu.rect.y
+					&& rect.w == menu.rect.w
+					&& rect.h == menu.rect.h
+		)),
+		"the open list is painted where it is measured"
+	);
+	assert!(menu.chosen().is_some());
+	assert!(matches!(
+		menu.chosen(),
+		Some(StateCommand::FontFamily(
+			crate::settings::FontRole::Serif,
+			_
+		))
+	));
 }
 
 /// Dismissing any page restores toolbar input and removes its controls.
@@ -936,6 +1024,7 @@ fn dismissed_pages_stop_drawing_and_answering_pointers() {
 				scroll: 0.0,
 				note: None,
 				status_filter: None,
+				choosers: false,
 			},
 			width,
 			height,
@@ -1104,6 +1193,8 @@ fn redesigned_chrome_frames() -> Result<()> {
 					"fonts-empty",
 					"fonts-scrolled",
 					"fonts-preview",
+					"fonts-choosers",
+					"fonts-menu",
 					"empty",
 					"error",
 					"loading",
@@ -1124,7 +1215,8 @@ fn redesigned_chrome_frames() -> Result<()> {
 								PanelPage::Settings(PanelTab::Styles)
 							}
 							"fonts" | "fonts-empty" | "fonts-scrolled"
-							| "fonts-preview" => PanelPage::Settings(PanelTab::Fonts),
+							| "fonts-preview" | "fonts-choosers"
+							| "fonts-menu" => PanelPage::Settings(PanelTab::Fonts),
 							_ => PanelPage::Closed,
 						},
 						settings_preview: matches!(
@@ -1152,6 +1244,17 @@ fn redesigned_chrome_frames() -> Result<()> {
 							document_dir: None,
 						});
 						interaction.focus = Some(Command::ModalOpenFolder);
+					}
+					// A chooser's option list open on the Fonts page, on its
+					// second option so the frame shows a moving highlight.
+					if page == "fonts-menu" {
+						interaction.dropdown =
+							Some(crate::state::Dropdown::new(
+								crate::state::DropdownId::Font(
+									crate::settings::FontRole::SansSerif,
+								),
+								1,
+							));
 					}
 					let empty = ReaderSession {
 						path: (page != "empty").then(|| "Missing.md".into()),
@@ -1229,6 +1332,10 @@ fn redesigned_chrome_frames() -> Result<()> {
 							note: None,
 							status_filter: (page == "fonts-empty")
 								.then_some(crate::fonts::State::Downloaded),
+							choosers: matches!(
+								page,
+								"fonts-choosers" | "fonts-menu"
+							),
 						},
 						width,
 						height,

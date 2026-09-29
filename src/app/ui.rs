@@ -119,6 +119,7 @@ impl<P: super::SendEvent> App<P> {
 				height,
 				fonts.shown.len(),
 				fonts.scroll,
+				fonts.choosers,
 				super::font_panel::view::roles(&self.preferences.values).len(),
 			))
 		} else {
