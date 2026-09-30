@@ -29,11 +29,23 @@ anyhow.workspace = true
 log.workspace = true
 toml_edit = { version = "0.25", features = ["serde"] }
 swash.workspace = true
-memmap2.workspace = true
+web-time.workspace = true
+memmap2 = { workspace = true, optional = true }
+
+[features]
+# Reading faces out of directories needs a filesystem, so it is off by
+# default: the plain build is the one a front end without one links against,
+# and it supplies its faces as bytes through `FontConfig::from_faces`.
+# A native caller that scans a directory opts in.
+default = []
+font-directories = ["dep:memmap2"]
 
 [lints]
 workspace = true
 
 [dev-dependencies]
+# The tests shape with the committed subset faces, so they need the
+# directory scanning that production builds leave to the caller.
+markview-core = { path = ".", features = ["font-directories"] }
 ratex-katex-fonts.workspace = true
 tempfile.workspace = true

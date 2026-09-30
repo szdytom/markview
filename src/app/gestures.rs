@@ -2,6 +2,7 @@
 use std::time::{Duration, Instant};
 use winit::event::{Touch, TouchPhase};
 
+use crate::state::Selection;
 mod recognizer;
 use recognizer::{Gesture, Motion, Recognizer};
 

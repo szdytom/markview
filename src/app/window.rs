@@ -1,5 +1,5 @@
 use crate::cli::Mode;
-use crate::state::{Command, Grain, WheelAxis, WheelStep};
+use crate::state::{Command, Grain, Selection, WheelAxis, WheelStep};
 use log::{error, info};
 use std::time::{Duration, Instant};
 use winit::{

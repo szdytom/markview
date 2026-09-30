@@ -151,6 +151,7 @@ impl BlockContext<'_> {
 						h: line_height,
 					},
 					rtl: c.rtl,
+					atomic: false,
 					command: out.draws.len(),
 				});
 				for mut g in c.glyphs {

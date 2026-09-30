@@ -858,6 +858,7 @@ impl BlockContext<'_> {
 									h: height,
 								},
 								rtl: false,
+								atomic: false,
 								command: command + offset,
 							});
 							glyph += 1;

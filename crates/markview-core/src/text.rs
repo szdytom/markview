@@ -178,12 +178,113 @@ impl TextNode {
 			.partition_point(|&i| i < offset)
 			.min(self.boundaries.len() - 1)]
 	}
+	/// The offsets a cluster may be split at, its own start first and its end
+	/// last.
+	///
+	/// A cluster is a unit of shaping, not of reading. A ligature sets two or
+	/// three letters as a single glyph, and picking one letter out of it has
+	/// to be possible; a base letter and its combining mark are one grapheme,
+	/// and parting them would put a caret inside a character. Only the
+	/// grapheme boundaries tell the two apart, and an atomic box — a formula
+	/// or a drawn image — has no letters to pick apart at all.
+	///
+	/// The boundaries are sorted, so the cluster's own slice is found with
+	/// `partition_point`; scanning the whole node here would make painting a
+	/// long paragraph quadratic in its text length.
+	fn splits<'a>(
+		&'a self,
+		cluster: &'a TextCluster,
+	) -> impl Iterator<Item = usize> + 'a {
+		let start = self
+			.boundaries
+			.partition_point(|&b| b < cluster.range.start);
+		let end = self.boundaries.partition_point(|&b| b <= cluster.range.end);
+		let inside = (start + 1..end - 1)
+			.filter(move |_| !cluster.atomic)
+			.map(move |i| self.boundaries[i]);
+		std::iter::once(cluster.range.start)
+			.chain(inside)
+			.chain(std::iter::once(cluster.range.end))
+	}
+	/// How many graphemes a cluster covers, and so how many parts it has.
+	fn parts(&self, cluster: &TextCluster) -> usize {
+		self.splits(cluster).count() - 1
+	}
+	/// The offset `part` parts into a cluster, where zero is its start and
+	/// [`Self::parts`] is its end.
+	fn split_at(&self, cluster: &TextCluster, part: usize) -> usize {
+		self.splits(cluster).nth(part).unwrap_or(cluster.range.end)
+	}
+	/// How many parts of a cluster end at or before `offset`.
+	fn part_at(&self, cluster: &TextCluster, offset: usize) -> usize {
+		self.splits(cluster).take_while(|&b| b <= offset).count() - 1
+	}
+	/// The parts a selection covers of a cluster, empty when it takes none.
+	///
+	/// `at` names the cluster's node; `from` and `to` are the ordered ends of
+	/// the selection as `(block, node, offset)`. A cluster the selection never
+	/// reaches is taken by none of it, which is most of the document; one the
+	/// selection only reaches into is taken up to where it stops, and an
+	/// atomic formula or image is taken whole as soon as it is reached.
+	fn covered_parts(
+		&self,
+		cluster: &TextCluster,
+		at: (usize, usize),
+		from: (usize, usize, usize),
+		to: (usize, usize, usize),
+	) -> Range<usize> {
+		let here = |offset| (at.0, at.1, offset);
+		if here(cluster.range.end) <= from || here(cluster.range.start) >= to {
+			return 0..0;
+		}
+		// An atomic box is all or nothing: once the selection reaches it, it
+		// is marked whole. Its source text is not what is displayed, so a
+		// selection made against a placeholder must not lose its highlight
+		// when a partial offset pair falls between the box's two parts.
+		if cluster.atomic {
+			return 0..self.parts(cluster);
+		}
+		let start = if at == (from.0, from.1) {
+			from.2.max(cluster.range.start)
+		} else {
+			cluster.range.start
+		};
+		let end = if at == (to.0, to.1) {
+			to.2.min(cluster.range.end)
+		} else {
+			cluster.range.end
+		};
+		if end <= start {
+			return 0..0;
+		}
+		self.part_at(cluster, start)..self.part_at(cluster, end)
+	}
+	/// The part of a cluster's own rect `parts` covers, measured in graphemes.
+	/// The letters of a ligature share its advance evenly: one glyph carries
+	/// no per-letter advance to divide it by. The result stays in cluster
+	/// coordinates; the caller scrolls and clips it.
+	fn part_rect(&self, cluster: &TextCluster, parts: Range<usize>) -> Rect {
+		let total = self.parts(cluster) as f32;
+		let (mut left, mut right) =
+			(parts.start as f32 / total, parts.end as f32 / total);
+		if cluster.rtl {
+			(left, right) = (1.0 - right, 1.0 - left);
+		}
+		Rect {
+			x: cluster.rect.x + cluster.rect.w * left,
+			w: cluster.rect.w * (right - left),
+			..cluster.rect
+		}
+	}
 }
 #[derive(Clone, Debug)]
 pub struct TextCluster {
 	pub range: Range<usize>,
 	pub rect: Rect,
 	pub rtl: bool,
+	/// A formula or a drawn image is one box that reads as one unit, so it is
+	/// never split between its graphemes the way a ligature is.
+	pub atomic: bool,
 	/// Draw index binds geometry to the same overflow viewport as painted text.
 	pub command: usize,
 }
@@ -253,5 +354,5 @@ pub(crate) fn changed_span(old: &str, new: &str) -> (usize, usize, usize) {
 	(prefix, old.len() - suffix, new.len() - suffix)
 }
 
-#[cfg(test)]
+#[cfg(all(test, feature = "font-directories"))]
 mod tests;

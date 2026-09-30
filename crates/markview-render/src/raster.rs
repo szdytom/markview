@@ -4,15 +4,13 @@ use markview_core::{
 };
 use parley::FontData;
 use serde::Serialize;
-use std::{
-	collections::HashMap,
-	time::{Duration, Instant},
-};
+use std::{collections::HashMap, time::Duration};
 use swash::{
 	FontRef,
 	scale::{Render, ScaleContext, Source},
 	zeno::{Angle, Format, Transform, Vector},
 };
+use web_time::Instant;
 pub(super) const ATLAS_SIZE: u32 = 2048;
 mod color;
 pub(super) const COLOR_ATLAS_SIZE: u32 = color::SIZE;

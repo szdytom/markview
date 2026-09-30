@@ -1,3 +1,7 @@
+// These shape with the committed subset faces, so they need a
+// filesystem to read them from.
+#![cfg(feature = "font-directories")]
+
 use markview_core::{
 	document::{self, BlockKind, InlineKind},
 	image::{ImageInfo, ImageSnapshot},
@@ -232,6 +236,88 @@ fn mixed_inline_images_do_not_gain_captions() {
 	assert_eq!(
 		hidden.blocks[0].layout.draws.len(),
 		shown.blocks[0].layout.draws.len()
+	);
+}
+
+/// A drawn image reads as its `alt` but is one box, so the pointer only ever
+/// lands on either edge of the alt text, never on a fragment of it.
+#[test]
+fn a_drawn_image_is_one_atomic_box_for_the_pointer() {
+	let doc = document::parse("![alternative text](test.png)");
+	let mut engine = LayoutEngine::new();
+	let snapshot =
+		engine.layout_with_images(&doc, &styled("", 400.), &resources());
+	let block = &snapshot.blocks[0];
+	let node = &block.layout.text[0];
+	let image = node
+		.clusters
+		.iter()
+		.find(|c| c.atomic)
+		.expect("the image box is one cluster");
+	assert_eq!(node.text.get(image.range.clone()), Some("alternative text"));
+	let line = block.y + image.rect.y + image.rect.h * 0.5;
+	let ends = [image.range.start, image.range.end];
+	for step in 0..=20 {
+		let x = image.rect.x + image.rect.w * (step as f32 / 20.0);
+		let hit = snapshot
+			.hit_test_text(x, line, &Default::default(), 1)
+			.expect("a hit inside the image");
+		assert!(
+			ends.contains(&hit.offset),
+			"a hit at {x} landed on {}, inside the alt text",
+			hit.offset
+		);
+	}
+	// A double click takes the whole `alt`, not one word of it.
+	let hit = snapshot
+		.hit_test_text(
+			image.rect.x + image.rect.w * 0.5,
+			line,
+			&Default::default(),
+			1,
+		)
+		.unwrap();
+	let word = snapshot.select_word_at(hit).expect("a word selection");
+	assert_eq!(snapshot.extract_text(word, 1), "alternative text");
+}
+
+/// A selection made against the loading placeholder survives the swap to the
+/// drawn box, and the box still highlights even though its two parts cannot
+/// express the partial offsets the selection was made of.
+#[test]
+fn a_selection_inside_a_loaded_image_keeps_its_highlight() {
+	use markview_core::text::{Affinity, TextPosition};
+	let doc = document::parse("![alternative text](test.png)");
+	let options = LayoutOptions {
+		width: 400.,
+		fonts: fonts(),
+		..Default::default()
+	};
+	let mut engine = LayoutEngine::new();
+	// While loading, the placeholder spells out the `alt`, so its first word
+	// is selectable on its own.
+	let pending = engine.layout(&doc, &options);
+	let selection = pending
+		.select_word_at(TextPosition {
+			revision: 7,
+			block: 0,
+			node: 0,
+			offset: 0,
+			affinity: Affinity::Before,
+		})
+		.expect("a word selection");
+	assert_eq!(pending.extract_text(selection, 7), "alternative");
+	// The image loads into one atomic box over the whole `alt`.
+	let ready = engine.layout_with_images(&doc, &options, &resources());
+	let rebased = pending
+		.rebase_selection(&ready, selection, 7, 8)
+		.expect("the selected text survives");
+	assert_eq!(ready.extract_text(rebased, 8), "alternative");
+	assert!(
+		!ready
+			.selection_rects(rebased, &Default::default(), 8)
+			.is_empty(),
+		"the whole image box stays highlighted"
 	);
 }
 

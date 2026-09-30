@@ -3,6 +3,7 @@ use crate::watch::FileWatch;
 use std::{path::PathBuf, time::Instant};
 
 use super::{App, Event};
+use crate::state::Selection;
 impl<P: super::SendEvent> App<P> {
 	pub(super) fn request(&mut self, follow: bool) {
 		if let Some(mut request) = self.readers.request(self.options(), follow)

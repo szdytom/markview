@@ -12,6 +12,7 @@ use winit::{
 	keyboard::{Key, ModifiersState, NamedKey},
 };
 
+use crate::state::Selection;
 const BLINK: Duration = Duration::from_millis(500);
 
 #[derive(Clone, Copy, Debug, PartialEq)]

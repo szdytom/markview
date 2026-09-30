@@ -7,8 +7,8 @@
 use std::{
 	collections::HashMap,
 	sync::atomic::{AtomicBool, AtomicU64, Ordering},
-	time::Instant,
 };
+use web_time::Instant;
 
 /// Layout sub-stages that the diagnostic `--bench` breakdown reports.
 ///

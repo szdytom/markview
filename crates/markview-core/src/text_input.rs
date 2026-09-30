@@ -5,12 +5,9 @@ use crate::{
 	style::{ColorField as C, Condition},
 };
 use parley::{PositionedLayoutItem, editing::PlainEditor};
-use std::{
-	collections::VecDeque,
-	sync::Arc,
-	time::{Duration, Instant},
-};
+use std::{collections::VecDeque, sync::Arc, time::Duration};
 use unicode_segmentation::UnicodeSegmentation;
+use web_time::Instant;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Motion {

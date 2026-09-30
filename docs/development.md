@@ -192,8 +192,9 @@ document and print typography are independent.
 ## Choose the layer
 
 1. Put Markdown meaning, reading text, geometry, hit testing, and selection mapping in `crates/markview-core`.
-2. Put GPU resources, clipping, rasterization, and frame assembly in `crates/markview-render`.
-3. Put files, settings, watching, image I/O, platform effects, commands, and window interaction in the root crate.
+2. Put the pointer-driven selection machine, which holds no reading text and no events of its own, in `crates/markview-selection`.
+3. Put GPU resources, clipping, rasterization, and frame assembly in `crates/markview-render`.
+4. Put files, settings, watching, image I/O, platform effects, commands, and window interaction in the root crate.
 
 Keep core free of window, GPU, clipboard, filesystem, and configuration dependencies. Prefer immutable snapshots and explicit version tags at asynchronous boundaries. Reuse the retained `Document` when only layout settings change.
 

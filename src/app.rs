@@ -16,6 +16,7 @@ mod painting;
 mod pointer;
 mod preferences;
 pub(crate) mod search;
+mod surface;
 mod tab_metrics;
 mod tab_navigation;
 mod tab_strip;

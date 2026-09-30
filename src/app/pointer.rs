@@ -157,15 +157,27 @@ impl<P: super::SendEvent> App<P> {
 			self.worker
 				.prioritize(self.readers.session.coverage(self.viewport()));
 		}
+		self.follow_scroll();
 		self.refresh_hover();
 		self.redraw();
 	}
-	/// Re-prioritizes the worker and repaints after the offset moved.
-	fn after_scroll(&mut self) {
+	/// Re-prioritizes the worker, follows the pointer and repaints after the
+	/// offset moved.
+	pub(super) fn after_scroll(&mut self) {
+		self.follow_scroll();
 		self.worker
 			.prioritize(self.readers.session.coverage(self.viewport()));
 		self.refresh_hover();
 		self.redraw();
+	}
+	/// The text moves under a pointer that has not, so a press in flight now
+	/// covers different reading text. No pointer event arrives to say so: the
+	/// pointer never moved, which is why every path that moves the offset has
+	/// to say it instead.
+	fn follow_scroll(&mut self) {
+		if self.interaction.pointer_down.is_some() {
+			self.update_drag();
+		}
 	}
 	/// The link under a window point, using the same origin as the renderer.
 	pub(super) fn link_at(&self, px: f32, py: f32) -> Option<String> {

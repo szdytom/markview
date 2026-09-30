@@ -43,19 +43,29 @@ impl LayoutSnapshot {
 							bi,
 							horizontal,
 						);
-						let after = (x
-							>= cluster.rect.x - offset + cluster.rect.w * 0.5)
-							!= cluster.rtl;
+						// The nearest of the offsets the cluster may be split
+						// at. A ligature sets several letters as one glyph, so
+						// the pointer has to be able to land between them; a
+						// base letter and its combining mark are one grapheme,
+						// and an atomic formula or image is one box, so those
+						// offer only the two edges.
+						let width = cluster.rect.w;
+						let along = if width > 0.0 {
+							((x - (cluster.rect.x - offset)) / width)
+								.clamp(0.0, 1.0)
+						} else {
+							0.5
+						};
+						let along =
+							if cluster.rtl { 1.0 - along } else { along };
+						let parts = node.parts(cluster);
+						let part = (along * parts as f32).round() as usize;
 						best = Some(TextPosition {
 							revision,
 							block: bi,
 							node: ni,
-							offset: if after {
-								cluster.range.end
-							} else {
-								cluster.range.start
-							},
-							affinity: if after {
+							offset: node.split_at(cluster, part),
+							affinity: if part == parts {
 								Affinity::After
 							} else {
 								Affinity::Before
@@ -102,10 +112,19 @@ impl LayoutSnapshot {
 		cluster: &TextCluster,
 		horizontal: &HashMap<(usize, usize), f32>,
 	) -> Option<Rect> {
+		self.view_rect(bi, cluster.command, cluster.rect, horizontal)
+	}
+	/// Applies a block's scroll offset and overflow clip to a cluster-local
+	/// rect, then moves it into block coordinates.
+	fn view_rect(
+		&self,
+		bi: usize,
+		command: usize,
+		mut rect: Rect,
+		horizontal: &HashMap<(usize, usize), f32>,
+	) -> Option<Rect> {
 		let block = &self.blocks[bi];
-		let mut rect = cluster.rect;
-		let (offset, clip) =
-			block.layout.command_view(cluster.command, bi, horizontal);
+		let (offset, clip) = block.layout.command_view(command, bi, horizontal);
 		rect.x -= offset;
 		if let Some(clip) = clip {
 			rect = rect.intersect(clip)?;
@@ -172,44 +191,58 @@ impl LayoutSnapshot {
 			}
 			for (ni, node) in block.layout.text.iter().enumerate() {
 				for cluster in &node.clusters {
-					if (bi, ni, cluster.range.end) > a.key()
-						&& (bi, ni, cluster.range.start) < b.key()
-						&& let Some(rect) =
-							self.text_rect(bi, cluster, horizontal)
-					{
-						if matches!(
-							block.layout.draws.get(cluster.command),
-							Some(crate::scene::Draw::Image { .. })
-						) {
-							rects.extend([
-								Rect {
-									x: rect.x - 2.,
-									y: rect.y - 2.,
-									w: rect.w + 4.,
-									h: 2.,
-								},
-								Rect {
-									x: rect.x - 2.,
-									y: rect.y + rect.h,
-									w: rect.w + 4.,
-									h: 2.,
-								},
-								Rect {
-									x: rect.x - 2.,
-									y: rect.y,
-									w: 2.,
-									h: rect.h,
-								},
-								Rect {
-									x: rect.x + rect.w,
-									y: rect.y,
-									w: 2.,
-									h: rect.h,
-								},
-							]);
-						} else {
-							rects.push(rect);
-						}
+					// A selection that stops inside a cluster covers only the
+					// letters up to where it stops, so a ligature can be
+					// highlighted in part. A cluster of one grapheme has no
+					// part but all of it, which is the whole of a plain letter,
+					// and an atomic formula or image is never split.
+					let parts =
+						node.covered_parts(cluster, (bi, ni), a.key(), b.key());
+					if parts.is_empty() {
+						continue;
+					}
+					// The selected share of the glyph's own advance is taken
+					// before the viewport moves and clips it, so a partially
+					// selected ligature keeps the letter it names even when
+					// that letter sits outside the visible range.
+					let rect = node.part_rect(cluster, parts);
+					let Some(rect) =
+						self.view_rect(bi, cluster.command, rect, horizontal)
+					else {
+						continue;
+					};
+					if matches!(
+						block.layout.draws.get(cluster.command),
+						Some(crate::scene::Draw::Image { .. })
+					) {
+						rects.extend([
+							Rect {
+								x: rect.x - 2.,
+								y: rect.y - 2.,
+								w: rect.w + 4.,
+								h: 2.,
+							},
+							Rect {
+								x: rect.x - 2.,
+								y: rect.y + rect.h,
+								w: rect.w + 4.,
+								h: 2.,
+							},
+							Rect {
+								x: rect.x - 2.,
+								y: rect.y,
+								w: 2.,
+								h: rect.h,
+							},
+							Rect {
+								x: rect.x + rect.w,
+								y: rect.y,
+								w: 2.,
+								h: rect.h,
+							},
+						]);
+					} else {
+						rects.push(rect);
 					}
 				}
 			}
