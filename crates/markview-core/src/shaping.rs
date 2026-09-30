@@ -35,6 +35,9 @@ struct FontSet {
 	diagnostic_key: u64,
 	diagnostic_fonts: Vec<Font>,
 	diagnostic_weight: u16,
+	/// The style the stack's first candidate asks for, which the collection
+	/// scan prefers when the configured faces all miss.
+	wanted_style: FontStyle,
 }
 type FaceChoice = Option<(usize, usize)>;
 impl FontSet {
@@ -70,14 +73,27 @@ impl FontSet {
 /// modulate a neighbor.
 fn covers(face: &Face, text: &str) -> bool {
 	swash::FontRef::from_index(face.font.data.data(), face.font.index as usize)
-		.is_some_and(|font| {
-			let charmap = font.charmap();
-			text.chars().all(|c| {
-				c.is_control()
-					|| matches!(c as u32,0x200c..=0x200f|0xfe00..=0xfe0f|0xe0100..=0xe01ef)
-					|| charmap.map(c) != 0
-			})
-		})
+		.is_some_and(|font| maps_all(font, text))
+}
+
+/// Whether `font` maps every character of `text`, ignoring the ones that only
+/// modulate a neighbor.
+fn maps_all(font: swash::FontRef, text: &str) -> bool {
+	let charmap = font.charmap();
+	text.chars().all(|c| {
+		c.is_control()
+			|| matches!(c as u32,0x200c..=0x200f|0xfe00..=0xfe0f|0xe0100..=0xe01ef)
+			|| charmap.map(c) != 0
+	})
+}
+
+/// A hashable stand-in for a style, which itself carries an `f32` angle.
+fn style_tag(style: FontStyle) -> u8 {
+	match style {
+		FontStyle::Normal => 0,
+		FontStyle::Italic => 1,
+		FontStyle::Oblique(_) => 2,
+	}
 }
 /// Whether a grapheme cluster asks for emoji presentation.
 ///
@@ -129,6 +145,11 @@ pub struct TextShaper {
 	font_sets: Vec<FontSet>,
 	// Retained across reflows and stylesheet resets; no document text is stored.
 	warned_fallbacks: HashSet<u64>,
+	/// Faces found by scanning the whole collection for a cluster the
+	/// configured stacks miss, keyed by the wanted style, weight and cluster
+	/// text. Coverage belongs to the collection, so every font set shares one
+	/// memo.
+	fallbacks: HashMap<(u8, u16, String), Option<Face>>,
 }
 impl Default for TextShaper {
 	fn default() -> Self {
@@ -281,6 +302,7 @@ impl TextShaper {
 			faces: HashMap::new(),
 			font_sets: Vec::new(),
 			warned_fallbacks: HashSet::new(),
+			fallbacks: HashMap::new(),
 		}
 	}
 
@@ -293,6 +315,7 @@ impl TextShaper {
 			self.fonts = None;
 			self.faces.clear();
 			self.font_sets.clear();
+			self.fallbacks.clear();
 		}
 	}
 
@@ -334,8 +357,12 @@ impl TextShaper {
 		appearance: &TextAppearance,
 	) -> Option<Face> {
 		let index = self.resolve_fonts(appearance);
-		let set = &mut self.font_sets[index];
-		set.choose(text).map(|i| set.faces[i].clone())
+		match self.font_sets[index].choose(text) {
+			Some(i) => Some(self.font_sets[index].faces[i].clone()),
+			None => self
+				.collection_fallback(index, text)
+				.map(|i| self.font_sets[index].faces[i].clone()),
+		}
 	}
 	fn resolve_fonts(&mut self, appearance: &TextAppearance) -> usize {
 		let key = (appearance.font.clone(), appearance.weight);
@@ -458,12 +485,139 @@ impl TextShaper {
 				diagnostic_key: crate::document::fingerprint(&key),
 				diagnostic_fonts: appearance.font.clone(),
 				diagnostic_weight: appearance.weight,
+				wanted_style: appearance
+					.font
+					.first()
+					.map(|candidate| match candidate.variant {
+						Variant::Normal => FontStyle::Normal,
+						Variant::Italic => FontStyle::Italic,
+						Variant::Oblique => FontStyle::Oblique(None),
+					})
+					.unwrap_or(FontStyle::Normal),
 				faces,
 				..Default::default()
 			});
 		}
 		self.faces[&key]
 	}
+	/// A face for a cluster the configured stacks all miss, from scanning the
+	/// whole collection's character maps. The platform's per-script fallback
+	/// knows no family for the Common script — most symbol blocks — so a rare
+	/// symbol would otherwise draw `.notdef` whatever fonts are installed.
+	fn collection_fallback(&mut self, set: usize, text: &str) -> Option<usize> {
+		let key = {
+			let set = &self.font_sets[set];
+			(
+				style_tag(set.wanted_style),
+				set.diagnostic_weight,
+				text.to_owned(),
+			)
+		};
+		let found = if let Some(found) = self.fallbacks.get(&key) {
+			found.clone()
+		} else {
+			let found = self.scan_collection(
+				self.font_sets[set].wanted_style,
+				FontWeight::new(self.font_sets[set].diagnostic_weight as f32),
+				text,
+			);
+			// Bound retained keys exactly like the per-set choice cache.
+			if text.len() <= 128 && self.fallbacks.len() < 4096 {
+				self.fallbacks.insert(key, found.clone());
+			}
+			found
+		};
+		let found = found?;
+		let set = &mut self.font_sets[set];
+		let index = set.faces.len();
+		set.faces.push(found);
+		// The miss is already cached as `None`; point the cluster at the face.
+		if set.choices.len() < 4096 {
+			set.choices.insert(text.to_owned(), Some(index));
+		}
+		Some(index)
+	}
+
+	/// Scans every family's character maps for a face covering `text`, stops
+	/// at the closest style and weight, and never picks a placeholder that
+	/// maps all code points to pictures of its own.
+	fn scan_collection(
+		&mut self,
+		wanted_style: FontStyle,
+		wanted_weight: FontWeight,
+		text: &str,
+	) -> Option<Face> {
+		let config = self.font_config.clone();
+		let fonts = self.fonts.get_or_insert_with(|| default_fonts(&config));
+		let names: Vec<String> =
+			fonts.collection.family_names().map(str::to_owned).collect();
+		let mut best: Option<((u8, u16), Face)> = None;
+		for name in names {
+			if name.eq_ignore_ascii_case("LastResort") {
+				continue;
+			}
+			let Some(id) = fonts.collection.family_id(&name) else {
+				continue;
+			};
+			let Some(family) = fonts.collection.family(id) else {
+				continue;
+			};
+			for info in family.fonts() {
+				let Some(data) = info.load(Some(&mut fonts.source_cache))
+				else {
+					continue;
+				};
+				let Some(font) = swash::FontRef::from_index(
+					data.data(),
+					info.index() as usize,
+				) else {
+					continue;
+				};
+				if !maps_all(font, text) {
+					continue;
+				}
+				let style = info.style();
+				// An upright face standing in for a slanted run is sheared by
+				// the renderer, so it ranks just behind a real match; a
+				// slanted face for upright text ranks last.
+				let style_gap = if style == wanted_style {
+					0
+				} else if style == FontStyle::Normal
+					&& wanted_style != FontStyle::Normal
+				{
+					1
+				} else {
+					2
+				};
+				let gap = info.weight().value() - wanted_weight.value();
+				let score = (style_gap, gap.abs() as u16);
+				if best
+					.as_ref()
+					.is_none_or(|(best_score, _)| score < *best_score)
+				{
+					best = Some((
+						score,
+						Face {
+							family: family.name().into(),
+							font: parley::FontData::new(data, info.index()),
+							style,
+							weight: info.weight().value() as u16,
+							// The scan is not a stylesheet author, so it opts
+							// every upright stand-in into the shear.
+							synthetic_italic: style_gap == 1,
+							// Not declared by a fontdef, so no emoji slot.
+							emoji: false,
+						},
+					));
+				}
+				if score == (0, 0) {
+					return best.map(|(_, face)| face);
+				}
+			}
+		}
+		best.map(|(_, face)| face)
+	}
+
 	fn fallback_warning(&mut self, fonts: usize, text: &str) -> Option<String> {
 		const LIMIT: usize = 64;
 		// Inline images/math use an object replacement character for layout,
@@ -503,7 +657,7 @@ impl TextShaper {
 			.collect::<Vec<_>>()
 			.join(", ");
 		Some(format!(
-			"font fallback to Parley/system for [{codes}]: no configured face covers the entire cluster/word. Requested: [{}]. Available exact faces: [{}]. Check installed fonts and candidate weight/variant (Emoji fonts commonly require weight = 400).{}",
+			"no face covers [{codes}]: the configured stack and the whole collection were scanned. Requested: [{}]. Available exact faces: [{}]. Install a font covering these code points, or point the font stack at one that does.{}",
 			requested,
 			resolved,
 			if self.warned_fallbacks.len() == LIMIT {
@@ -565,8 +719,12 @@ impl TextShaper {
 						.position(|s| s.range.contains(&pos))
 						.map(|i| span_fonts[i])
 						.unwrap_or(base_fonts);
-					let face =
-						self.font_sets[fonts].choose(part).map(|i| (fonts, i));
+					let face = match self.font_sets[fonts].choose(part) {
+						Some(index) => Some((fonts, index)),
+						None => self
+							.collection_fallback(fonts, part)
+							.map(|index| (fonts, index)),
+					};
 					if face.is_none()
 						&& let Some(warning) =
 							self.fallback_warning(fonts, part)

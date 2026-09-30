@@ -170,10 +170,9 @@ fn font_choices_are_scoped_and_invalidated_with_stylesheet() {
 	s.set_stylesheet(Arc::new(style));
 	assert!(s.font_sets.is_empty());
 	assert!(s.faces.is_empty());
-	assert_ne!(
-		s.choose_font("a", &appearance).map(|f| f.family),
-		Some("Primary".into())
-	);
+	// The stale chain is gone, so "a" resolves afresh; the collection scan
+	// may supply whichever face it likes, since the fontdef no longer does.
+	assert!(s.choose_font("a", &appearance).is_some());
 }
 
 #[test]
@@ -265,12 +264,14 @@ fn explicit_regular_fallback_survives_bold_and_missing_primary() {
 		],
 		..Default::default()
 	};
-	assert!(s.choose_font("A", &appearance).is_none());
+	// No face covers the intercalate sign at weight 700, not even after the
+	// collection scan, so the choice is none and the warning fires.
+	assert!(s.choose_font("\u{2A0E}", &appearance).is_none());
 	let unavailable = s.resolve_fonts(&appearance);
 	assert!(s.fallback_warning(unavailable, "\u{fffc}").is_none());
 	assert!(s.fallback_warning(unavailable, "\n").is_none());
-	let warning = s.fallback_warning(unavailable, "A\u{1b}").unwrap();
-	assert!(warning.contains("U+0041 U+001B"));
+	let warning = s.fallback_warning(unavailable, "\u{2A0E}\u{1b}").unwrap();
+	assert!(warning.contains("U+2A0E U+001B"));
 	assert!(!warning.contains('\u{1b}'));
 	assert!(warning.contains("weight 700"));
 	assert!(warning.contains("Available exact faces: []"));
@@ -412,7 +413,9 @@ fn a_synthetic_italic_candidate_keeps_an_upright_face() {
 	// The fixture family ships one upright face. Without the opt-in the
 	// candidate is skipped, as before; with it the shaper keeps the face and
 	// records that the renderer must shear its outline.
-	assert!(s.choose_font("A", &appearance(false)).is_none());
+	let without = s.choose_font("A", &appearance(false)).unwrap();
+	assert_ne!(without.family, "Fallback");
+	assert!(!without.synthetic_italic);
 	let face = s.choose_font("A", &appearance(true)).unwrap();
 	assert_eq!(face.family, "Fallback");
 	assert_eq!(face.style, FontStyle::Normal);
@@ -662,4 +665,73 @@ fn cjk_medium_uses_an_explicit_regular_fallback_when_unavailable() {
 		assert!(cjk.family.contains("CJK"));
 		assert_eq!(shaper.choose_font("a", &appearance).unwrap().weight, 400);
 	}
+}
+
+fn register_distant_face(shaper: &mut TextShaper, family: &str, file: &str) {
+	let data = ratex_katex_fonts::ttf_bytes(file).unwrap().into_owned();
+	shaper.font_context().collection.register_fonts(
+		data.into(),
+		Some(parley::fontique::FontInfoOverride {
+			family_name: Some(family),
+			..Default::default()
+		}),
+	);
+}
+
+fn italic_appearance(shaper: &TextShaper) -> TextAppearance {
+	shaper.stylesheet.inline(
+		&shaper.appearance,
+		&crate::document::TextStyle {
+			italic: true,
+			..Default::default()
+		},
+	)
+}
+
+#[test]
+fn a_cluster_no_configured_face_covers_is_scanned_from_the_collection() {
+	let mut shaper = shaper();
+	// Registered first so enumeration order alone would pick it; the scan
+	// must prefer the face whose weight matches the appearance.
+	register_distant_face(&mut shaper, "DistantBold", "KaTeX_Main-Bold.ttf");
+	register_distant_face(&mut shaper, "Distant", "KaTeX_Main-Regular.ttf");
+	let appearance = italic_appearance(&shaper);
+	// The stack has no face for the cluster and it is not a configured
+	// family, so only the collection scan can supply one.
+	let scanned = shaper.choose_font("\u{27FA}", &appearance).unwrap();
+	assert_eq!(scanned.family, "Distant");
+	assert_eq!(scanned.weight, 400);
+	assert_eq!(scanned.style, FontStyle::Normal);
+}
+
+#[test]
+fn a_scanned_face_matches_the_wanted_weight() {
+	let mut shaper = shaper();
+	register_distant_face(&mut shaper, "DistantBold", "KaTeX_Main-Bold.ttf");
+	register_distant_face(&mut shaper, "Distant", "KaTeX_Main-Regular.ttf");
+	let mut sheet = (*Stylesheet::bundled(false)).clone();
+	sheet.merge(&Stylesheet::parse("format_version=2\nversion=1\n[[rule]]\nwhen=['strong']\nfont=[{family='Primary'}]\nweight=700").unwrap());
+	shaper.set_stylesheet(Arc::new(sheet));
+	let appearance = shaper.stylesheet.inline(
+		&shaper.appearance,
+		&crate::document::TextStyle {
+			bold: true,
+			..Default::default()
+		},
+	);
+	assert_eq!(
+		shaper.choose_font("\u{27FA}", &appearance).unwrap().family,
+		"DistantBold"
+	);
+}
+
+#[test]
+fn a_cluster_the_collection_cannot_cover_still_warns_after_the_scan() {
+	let mut shaper = shaper();
+	let appearance = italic_appearance(&shaper);
+	// No fixture covers the intercalate sign, so even the scan finds nothing.
+	assert!(shaper.choose_font("\u{2A0E}", &appearance).is_none());
+	let index = shaper.resolve_fonts(&appearance);
+	let warning = shaper.fallback_warning(index, "\u{2A0E}").unwrap();
+	assert!(warning.contains("whole collection"), "{warning}");
 }
