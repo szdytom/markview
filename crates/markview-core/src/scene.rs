@@ -323,19 +323,38 @@ impl LayoutSnapshot {
 		y: f32,
 		horizontal: &HashMap<(usize, usize), f32>,
 	) -> Option<&str> {
+		self.image_at(x, y, horizontal)
+			.map(|(_, _, _, title)| title)
+			.filter(|title| !title.is_empty())
+	}
+	/// The image under a point in document coordinates: its alias, the
+	/// version the page drew it with, its rect and its title. The alias and
+	/// version name the texture the viewer draws; the rect carries the aspect
+	/// the layout chose for it.
+	pub fn image_at(
+		&self,
+		x: f32,
+		y: f32,
+		horizontal: &HashMap<(usize, usize), f32>,
+	) -> Option<(&str, u64, Rect, &str)> {
 		for (bi, b) in self.blocks.iter().enumerate() {
 			if y < b.y || y > b.y + b.layout.height {
 				continue;
 			}
 			for (i, d) in b.layout.draws.iter().enumerate() {
-				if let Draw::Image { rect, title, .. } = d {
+				if let Draw::Image {
+					src,
+					version,
+					rect,
+					title,
+				} = d
+				{
 					let (offset, clip) =
 						b.layout.command_view(i, bi, horizontal);
-					if !title.is_empty()
-						&& clip.is_none_or(|r| r.contains(x, y - b.y))
+					if clip.is_none_or(|r| r.contains(x, y - b.y))
 						&& rect.contains(x + offset, y - b.y)
 					{
-						return Some(title);
+						return Some((src, *version, *rect, title));
 					}
 				}
 			}

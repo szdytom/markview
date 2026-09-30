@@ -15,7 +15,9 @@ use winit::{
 	window::{Window, WindowId},
 };
 
+use super::window::Loop;
 use super::{App, Event, TOP, system_theme};
+use crate::state::Selection;
 impl<P: super::SendEvent> ApplicationHandler<Event> for App<P> {
 	fn resumed(&mut self, event_loop: &ActiveEventLoop) {
 		if self.window.is_some() {
@@ -72,6 +74,34 @@ impl<P: super::SendEvent> ApplicationHandler<Event> for App<P> {
 		}
 	}
 	fn user_event(&mut self, event_loop: &ActiveEventLoop, event: Event) {
+		self.handle_user_event(event_loop, event);
+	}
+
+	fn window_event(
+		&mut self,
+		event_loop: &ActiveEventLoop,
+		window: WindowId,
+		event: WindowEvent,
+	) {
+		self.handle_window_event(event_loop, window, event);
+	}
+	fn about_to_wait(&mut self, event_loop: &ActiveEventLoop) {
+		let deadline = self.tick(event_loop, Instant::now());
+		event_loop.set_control_flow(
+			deadline.map_or(ControlFlow::Wait, ControlFlow::WaitUntil),
+		);
+	}
+}
+
+impl<P: super::SendEvent> App<P> {
+	/// The loop's own events, handled without naming winit's loop type so a
+	/// test can deliver an update to the same code the window runs. The only
+	/// thing asked of the loop is whether to stop.
+	pub(super) fn handle_user_event(
+		&mut self,
+		event_loop: &impl Loop,
+		event: Event,
+	) {
 		match event {
 			Event::SearchReady(result) => self.search_ready(result),
 			Event::Parsed {
@@ -284,16 +314,18 @@ impl<P: super::SendEvent> ApplicationHandler<Event> for App<P> {
 			_ => {}
 		}
 	}
-	fn window_event(
+	/// Runs every deadline that came due and returns the soonest one still
+	/// pending, so the loop can sleep until then. `None` means nothing is
+	/// waiting, or this frame asked the loop to stop.
+	///
+	/// The loop type is named generically because a test drives the same
+	/// timers without a window server, and because the only thing asked of
+	/// the loop here is whether to stop.
+	pub(super) fn tick(
 		&mut self,
-		event_loop: &ActiveEventLoop,
-		window: WindowId,
-		event: WindowEvent,
-	) {
-		self.handle_window_event(event_loop, window, event);
-	}
-	fn about_to_wait(&mut self, event_loop: &ActiveEventLoop) {
-		let now = Instant::now();
+		event_loop: &impl Loop,
+		now: Instant,
+	) -> Option<Instant> {
 		self.input_tick(now);
 		self.search_tick();
 		self.auto_scroll_tabs(now);
@@ -316,12 +348,14 @@ impl<P: super::SendEvent> ApplicationHandler<Event> for App<P> {
 		if self.interaction.drag_at.is_some_and(|d| d <= now) {
 			self.interaction.drag_at = None;
 			if self.interaction.pointer_down.is_some() {
+				// `scroll_by` re-derives the selection and re-arms this
+				// deadline through `after_scroll`, because the pointer stays
+				// where it is while the text moves under it.
 				self.scroll_by(if self.interaction.cursor.1 < TOP + 24.0 {
 					-14.0
 				} else {
 					14.0
 				});
-				self.update_drag();
 			}
 		}
 		if self.reflow_at.is_some_and(|d| d <= now) {
@@ -350,11 +384,10 @@ impl<P: super::SendEvent> ApplicationHandler<Event> for App<P> {
 		{
 			self.fatal = Some("Native window smoke test timed out".into());
 			event_loop.exit();
-			return;
+			return None;
 		}
 		self.flush_ime_area();
-		let deadline = self
-			.reflow_at
+		self.reflow_at
 			.into_iter()
 			.chain(self.text_input.deadline)
 			.chain(self.retry_at)
@@ -371,9 +404,6 @@ impl<P: super::SendEvent> ApplicationHandler<Event> for App<P> {
 				(self.args.mode == Mode::Smoke)
 					.then_some(self.started + Duration::from_secs(30)),
 			)
-			.min();
-		event_loop.set_control_flow(
-			deadline.map_or(ControlFlow::Wait, ControlFlow::WaitUntil),
-		);
+			.min()
 	}
 }

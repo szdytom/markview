@@ -335,6 +335,7 @@ impl BlockContext<'_> {
 							range: range.clone(),
 							rect,
 							rtl: false,
+							atomic: true,
 							command,
 						});
 					}
@@ -383,6 +384,8 @@ impl BlockContext<'_> {
 							h: height,
 						},
 						rtl: c.rtl,
+						// A formula is a single drawn box, like an image.
+						atomic: p.math.contains_key(&c.range.start),
 						command: out.draws.len(),
 					});
 				}

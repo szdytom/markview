@@ -17,7 +17,7 @@ ratex-katex-fonts.workspace = true
 ratex-types.workspace = true
 anyhow.workspace = true
 log.workspace = true
-markview-core = { path = "../markview-core" }
+markview-core = { path = "../markview-core", features = ["font-directories"] }
 
 [dev-dependencies]
 tempfile.workspace = true

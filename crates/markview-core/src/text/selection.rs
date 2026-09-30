@@ -93,9 +93,10 @@ impl LayoutSnapshot {
 			focus: position(selection.focus)?,
 		})
 	}
-	/// Select the word nearest a text hit-test position. Uses dictionary
-	/// segmentation, so double-click selects a Chinese or Japanese word rather
-	/// than a single character.
+	/// Select the word nearest a text hit-test position, or the whole atomic
+	/// box the position falls in. Uses dictionary segmentation, so
+	/// double-click selects a Chinese or Japanese word rather than a single
+	/// character.
 	pub fn select_word_at(
 		&self,
 		position: TextPosition,
@@ -106,6 +107,33 @@ impl LayoutSnapshot {
 			.layout
 			.text
 			.get(position.node)?;
+		// A formula or a drawn image is one box whose source is not what is
+		// displayed, so a double click takes all of it rather than a word of
+		// the LaTeX or the `alt` text it copies. Its two edges only belong to
+		// it from the inside: `After` at its start means the text before it,
+		// and `Before` at its end means the text after it.
+		if let Some(cluster) = node.clusters.iter().find(|c| {
+			c.atomic
+				&& ((position.offset > c.range.start
+					&& position.offset < c.range.end)
+					|| (position.offset == c.range.start
+						&& position.affinity == Affinity::Before)
+					|| (position.offset == c.range.end
+						&& position.affinity == Affinity::After))
+		}) {
+			return Some(TextSelection {
+				anchor: TextPosition {
+					offset: cluster.range.start,
+					affinity: Affinity::Before,
+					..position
+				},
+				focus: TextPosition {
+					offset: cluster.range.end,
+					affinity: Affinity::After,
+					..position
+				},
+			});
+		}
 		let text = node.text.as_str();
 		let offset = position.offset.min(text.len());
 		// A hit reports the boundary before or after the grapheme under the

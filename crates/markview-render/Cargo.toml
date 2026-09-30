@@ -11,14 +11,25 @@ serde.workspace = true
 anyhow.workspace = true
 bytemuck.workspace = true
 parley.workspace = true
-pollster.workspace = true
 ratex-font.workspace = true
 ratex-katex-fonts.workspace = true
 ratex-types.workspace = true
 swash.workspace = true
 tiny-skia.workspace = true
-winit.workspace = true
+web-time.workspace = true
+# No windowing toolkit: the host hands over a `SurfaceSource`, so drawing and
+# driving text never names a window.
+# No font directories: a front end that compiles this for the Web has no
+# filesystem to read.
 markview-core = { path = "../markview-core" }
+
+[features]
+# Reading a texture back, and waiting on submitted work, both block the
+# calling thread. A browser cannot: its callbacks only run when the event
+# loop does, so a wait on one would never end. A native caller that exports
+# an image or measures a frame opts in; a front end that only draws does not.
+default = []
+readback = []
 
 [target.'cfg(target_os = "windows")'.dependencies]
 wgpu = { workspace = true, features = ["dx12"] }
@@ -29,5 +40,18 @@ wgpu = { workspace = true, features = ["vulkan"] }
 [target.'cfg(target_os = "macos")'.dependencies]
 wgpu = { workspace = true, features = ["metal"] }
 
+# The browser backend. A front end that draws into a canvas builds this crate
+# for `wasm32-unknown-unknown`, where none of the native backends above apply
+# and the GL backend is the one a canvas can present through.
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+wgpu = { workspace = true, features = ["webgl"] }
+
 [lints]
 workspace = true
+
+[dev-dependencies]
+# `Renderer::new` is async, and a test has no runtime to drive it. The library
+# never blocks: a host that has a loop drives it from there.
+pollster.workspace = true
+# The GPU tests compare pixels, so they read them back.
+markview-render = { path = ".", features = ["readback"] }

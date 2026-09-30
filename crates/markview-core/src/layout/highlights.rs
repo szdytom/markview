@@ -2,20 +2,23 @@
 use super::{LayoutOptions, expand_tabs_mapped};
 use crate::{document::Block, style::Condition};
 use std::ops::Range;
-use std::time::{Duration, Instant};
+use std::time::Duration;
 use std::{
 	collections::{HashMap, HashSet},
-	sync::{
-		Arc,
-		atomic::{AtomicUsize, Ordering},
-		mpsc,
-	},
+	sync::{Arc, mpsc},
+};
+#[cfg(not(target_arch = "wasm32"))]
+use std::{
+	sync::atomic::{AtomicUsize, Ordering},
 	thread,
 };
+use web_time::Instant;
 pub(super) type HighlightLines =
 	Vec<Vec<(Range<usize>, Option<crate::style::Color>)>>;
 pub(super) type HighlightResult = Arc<HighlightLines>;
 type HighlightMessage = (u64, HighlightResult);
+/// One code block's source, and the theme to color it with.
+type Job = (u64, String, String, Option<Arc<str>>);
 
 pub(super) struct Highlights {
 	highlight_cache: HashMap<u64, HighlightResult>,
@@ -57,7 +60,7 @@ impl Highlights {
 		// Highlighting is cosmetic, so work past the byte budget is simply not
 		// done: the code keeps its text and is laid out uncolored.
 		let mut bytes = 0;
-		let jobs: Vec<(u64, String, String, Option<Arc<str>>)> = candidates
+		let jobs: Vec<Job> = candidates
 			.into_iter()
 			.filter(|(key, ..)| {
 				!self.highlight_cache.contains_key(key)
@@ -77,45 +80,16 @@ impl Highlights {
 		for (key, ..) in &jobs {
 			self.highlight_inflight.insert(*key);
 		}
-		let worker_count = thread::available_parallelism()
-			.map_or(1, std::num::NonZeroUsize::get)
-			.min(jobs.len())
-			.min(if jobs.len() < 4 { 1 } else { 4 });
 		let tx = self.highlight_tx.clone();
 		let max_line_bytes = options.limits.highlight_line_bytes;
-		thread::spawn(move || {
-			let next = AtomicUsize::new(0);
-			thread::scope(|scope| {
-				for _ in 0..worker_count {
-					let next = &next;
-					let jobs = &jobs;
-					let tx = tx.clone();
-					scope.spawn(move || {
-						loop {
-							let index = next.fetch_add(1, Ordering::Relaxed);
-							let Some((key, language, text, theme)) =
-								jobs.get(index)
-							else {
-								break;
-							};
-							let lines = text
-								.trim_end_matches('\n')
-								.split('\n')
-								.map(|line| {
-									expand_tabs_mapped(line, 4).0.to_owned()
-								});
-							let highlighted = crate::highlight::highlight_block(
-								language,
-								theme.as_deref(),
-								lines,
-								max_line_bytes,
-							);
-							let _ = tx.send((*key, Arc::new(highlighted)));
-						}
-					});
-				}
-			});
-		});
+		// A desktop colors off the critical path, so a page of code never
+		// delays the frame that asked for it. A browser has no threads at all
+		// — `spawn` compiles there and panics at run time — so it colors the
+		// same jobs in this call, under the same byte budget.
+		#[cfg(not(target_arch = "wasm32"))]
+		thread::spawn(move || color(&jobs, &tx, max_line_bytes));
+		#[cfg(target_arch = "wasm32")]
+		color(&jobs, &tx, max_line_bytes);
 	}
 
 	pub(super) fn poll(&mut self) -> bool {
@@ -163,6 +137,54 @@ impl Highlights {
 	fn store(&mut self, key: u64, highlighted: HighlightResult) {
 		self.highlight_inflight.remove(&key);
 		self.highlight_cache.insert(key, highlighted);
+	}
+}
+
+/// Colors every job and reports it, fanning out across threads where the
+/// target has them. Every job reports exactly once, so a caller that waits
+/// for the queue to drain is never left waiting on a job that never ran.
+fn color(jobs: &[Job], tx: &mpsc::Sender<HighlightMessage>, line_bytes: usize) {
+	let color_one = |(key, language, text, theme): &Job| {
+		let lines = text
+			.trim_end_matches('\n')
+			.split('\n')
+			.map(|line| expand_tabs_mapped(line, 4).0.to_owned());
+		let highlighted = crate::highlight::highlight_block(
+			language,
+			theme.as_deref(),
+			lines,
+			line_bytes,
+		);
+		let _ = tx.send((*key, Arc::new(highlighted)));
+	};
+	#[cfg(target_arch = "wasm32")]
+	for job in jobs {
+		color_one(job);
+	}
+	#[cfg(not(target_arch = "wasm32"))]
+	{
+		// Four at most: more workers than that only contend for the same
+		// syntax set, and a couple of blocks do not pay for the split.
+		let workers = thread::available_parallelism()
+			.map_or(1, std::num::NonZeroUsize::get)
+			.min(jobs.len())
+			.min(if jobs.len() < 4 { 1 } else { 4 });
+		let next = AtomicUsize::new(0);
+		thread::scope(|scope| {
+			for _ in 0..workers {
+				let next = &next;
+				let color_one = &color_one;
+				scope.spawn(move || {
+					loop {
+						let index = next.fetch_add(1, Ordering::Relaxed);
+						let Some(job) = jobs.get(index) else {
+							break;
+						};
+						color_one(job);
+					}
+				});
+			}
+		});
 	}
 }
 
@@ -234,5 +256,22 @@ mod tests {
 		let mut out = Vec::new();
 		collect(&flat.blocks, theme.as_deref(), &mut out);
 		assert_eq!(out.len(), 1, "{out:?}");
+	}
+
+	/// Every queued job reports exactly one result. That count is the
+	/// contract `settle` rests on: an export waits for the queue to drain,
+	/// and a job that ran without reporting would hold it until the timeout.
+	#[test]
+	fn every_job_reports_its_own_result() {
+		let jobs: Vec<Job> = vec![
+			(1, "rust".to_owned(), "fn main() {}".to_owned(), None),
+			(2, "python".to_owned(), "print(1)".to_owned(), None),
+		];
+		let (tx, rx) = mpsc::channel();
+		color(&jobs, &tx, 64 * 1024);
+		drop(tx);
+		let mut reported: Vec<u64> = rx.iter().map(|(key, _)| key).collect();
+		reported.sort_unstable();
+		assert_eq!(reported, [1, 2]);
 	}
 }

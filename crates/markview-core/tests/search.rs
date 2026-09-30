@@ -1,3 +1,7 @@
+// These shape with the committed subset faces, so they need a
+// filesystem to read them from.
+#![cfg(feature = "font-directories")]
+
 use markview_core::{
 	document,
 	fonts::FontConfig,

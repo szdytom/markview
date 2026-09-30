@@ -6,14 +6,40 @@ mod images;
 mod paint;
 mod pipeline;
 mod raster;
-use anyhow::{Context, Result};
+#[cfg(feature = "readback")]
+use anyhow::Context;
+use anyhow::Result;
 use markview_core::{
 	scene::{Paint, Rect},
 	shaping::TextShaper,
 };
 pub use raster::RasterStats;
 use std::{collections::HashMap, sync::Arc, time::Duration};
-use winit::window::Window;
+
+/// A render target the host owns.
+///
+/// The renderer never names a window. It asks this for a surface when it
+/// starts and again whenever the driver reports the surface it holds lost,
+/// and for the size to configure that surface to. A native host implements
+/// it over its window; a front end that draws into a canvas implements it
+/// over the canvas.
+pub trait SurfaceSource: 'static {
+	/// How the GPU instance is created.
+	///
+	/// A host that has a display handle overrides this to hand it over; one
+	/// that has none, such as a browser, keeps the default.
+	fn instance_descriptor(&self) -> wgpu::InstanceDescriptor {
+		wgpu::InstanceDescriptor::new_without_display_handle_from_env()
+	}
+	/// Builds the surface. Called once at startup, and again after a loss.
+	fn create_surface(
+		&self,
+		instance: &wgpu::Instance,
+	) -> Result<wgpu::Surface<'static>>;
+	/// The target's size in physical pixels.
+	fn size(&self) -> (u32, u32);
+}
+
 #[derive(
 	Clone,
 	Copy,
@@ -89,6 +115,7 @@ pub struct Renderer {
 }
 
 /// A rendered texture read back as tightly packed, non-premultiplied sRGB RGBA8.
+#[cfg(feature = "readback")]
 pub struct Readback {
 	pub width: u32,
 	pub height: u32,
@@ -130,8 +157,8 @@ impl Renderer {
 		}
 	}
 
-	pub async fn new(window: Option<Arc<Window>>) -> Result<Self> {
-		let gpu = gpu::Gpu::new(window).await?;
+	pub async fn new(surface: Option<Box<dyn SurfaceSource>>) -> Result<Self> {
+		let gpu = gpu::Gpu::new(surface).await?;
 		let (pipeline, image_pipeline) =
 			pipeline::create(&gpu.device, gpu.format);
 		let raster =
@@ -152,8 +179,8 @@ impl Renderer {
 			fallback: None,
 		})
 	}
-	pub fn acquire(&mut self, window: Arc<Window>) -> Result<FrameStatus> {
-		self.gpu.acquire(window)
+	pub fn acquire(&mut self) -> Result<FrameStatus> {
+		self.gpu.acquire()
 	}
 	pub fn resize(&mut self, width: u32, height: u32) {
 		self.gpu.resize(width, height);
@@ -161,6 +188,8 @@ impl Renderer {
 	pub fn on_device_lost(&self, callback: impl Fn() + Send + 'static) {
 		self.gpu.on_device_lost(callback);
 	}
+	/// Waits for submitted work to complete.
+	#[cfg(feature = "readback")]
 	pub fn wait(&self, index: Option<wgpu::SubmissionIndex>) -> Result<()> {
 		self.gpu.wait(index)
 	}
@@ -172,6 +201,7 @@ impl Renderer {
 	pub fn max_texture_dimension_2d(&self) -> u32 {
 		self.gpu.device.limits().max_texture_dimension_2d
 	}
+	#[cfg(feature = "readback")]
 	pub fn read_pixels(&self, texture: &wgpu::Texture) -> Result<Readback> {
 		let (width, height, rgba) = self.gpu.read_pixels(texture)?;
 		Ok(Readback {
@@ -180,6 +210,7 @@ impl Renderer {
 			rgba,
 		})
 	}
+	#[cfg(feature = "readback")]
 	pub fn save_png(
 		&self,
 		texture: &wgpu::Texture,

@@ -7,7 +7,7 @@
 //! kept here is what is on disk.
 use anyhow::{Context, Result, bail};
 use markview_core::{
-	fonts::FontConfig,
+	fonts::{FontConfig, is_font_file},
 	style::{FontArchive, FontFamily, FontFile, FontSource},
 };
 use sha2::{Digest, Sha256};
@@ -67,6 +67,113 @@ pub fn join_download_directory(
 	}
 }
 
+/// What one font file on disk says about itself.
+///
+/// A downloaded family is only ever known through its own files: the reader
+/// reads their names and attributes instead of trusting a manifest, so a file
+/// copied in by hand is described exactly like one this application wrote.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct FaceInfo {
+	/// The file name inside its directory, which is what a reader shows.
+	pub file: String,
+	/// Family names the file declares, the typographic family first. Every
+	/// localized spelling is kept, because one family may be named differently
+	/// per language.
+	pub families: Vec<String>,
+	/// The attributes of the first face. A collection's faces differ from one
+	/// another, and only the family names are needed to recognize a family.
+	pub weight: u16,
+	pub style: FaceStyle,
+	/// How many faces the file holds; a collection holds several.
+	pub faces: usize,
+	pub bytes: u64,
+}
+
+/// The slant a face declares for itself.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum FaceStyle {
+	Normal,
+	Italic,
+	Oblique,
+}
+
+/// Reads every font file directly inside `directory` and reports what each one
+/// says about itself, in file-name order. A file that cannot be read is
+/// skipped, exactly as the shaper's own scan does.
+pub fn describe(directory: &Path) -> Vec<FaceInfo> {
+	let Ok(entries) = std::fs::read_dir(directory) else {
+		return Vec::new();
+	};
+	let mut paths: Vec<PathBuf> =
+		entries.flatten().map(|entry| entry.path()).collect();
+	// Sorting keeps the report stable on every filesystem.
+	paths.sort();
+	paths.iter().filter_map(|path| describe_one(path)).collect()
+}
+
+fn describe_one(path: &Path) -> Option<FaceInfo> {
+	if !is_font_file(path) {
+		return None;
+	}
+	let file = path.file_name()?.to_str()?.to_owned();
+	let bytes = std::fs::read(path).ok()?;
+	let bytes_len = bytes.len() as u64;
+	let data = swash::FontDataRef::new(&bytes)?;
+	// The typographic family groups every weight of one family; the plain
+	// family is what an older face declares instead. Every face contributes,
+	// because a collection may hold several families.
+	let mut typographic: Vec<String> = Vec::new();
+	let mut plain: Vec<String> = Vec::new();
+	let mut first: Option<(u16, FaceStyle)> = None;
+	for font in data.fonts() {
+		if first.is_none() {
+			let attributes = font.attributes();
+			let style = match attributes.style() {
+				swash::Style::Italic => FaceStyle::Italic,
+				swash::Style::Oblique(_) => FaceStyle::Oblique,
+				swash::Style::Normal => FaceStyle::Normal,
+			};
+			first = Some((attributes.weight().0, style));
+		}
+		for string in font.localized_strings() {
+			if !string.is_decodable() {
+				continue;
+			}
+			let name = string.chars().collect::<String>();
+			let name = name.trim();
+			if name.is_empty() {
+				continue;
+			}
+			let name = name.to_owned();
+			match string.id() {
+				swash::StringId::TypographicFamily => {
+					push_name(&mut typographic, name)
+				}
+				swash::StringId::Family => push_name(&mut plain, name),
+				_ => {}
+			}
+		}
+	}
+	typographic.extend(plain);
+	let (weight, style) = first?;
+	Some(FaceInfo {
+		file,
+		families: typographic,
+		// A collection's faces differ; these describe its first face and are
+		// shown for it alone.
+		weight,
+		style,
+		faces: data.len(),
+		bytes: bytes_len,
+	})
+}
+
+fn push_name(names: &mut Vec<String>, name: String) {
+	if !names.contains(&name) {
+		names.push(name);
+	}
+}
+
 /// What the reader knows about one catalogued family.
 #[derive(Clone, Debug)]
 pub struct Family {
@@ -102,7 +209,7 @@ pub fn catalog<'a>(
 	dir: Option<&Path>,
 	config: &FontConfig,
 ) -> Vec<Family> {
-	let faces = dir.map(markview_core::fonts::describe).unwrap_or_default();
+	let faces = dir.map(describe).unwrap_or_default();
 	let mut out: Vec<Family> = Vec::new();
 	for (owner, families) in sheets {
 		for family in families {
@@ -835,7 +942,7 @@ fn retire_replaced(
 	if stems.is_empty() {
 		return Ok(());
 	}
-	for face in markview_core::fonts::describe(dir) {
+	for face in describe(dir) {
 		if installed.contains(&face.file) {
 			continue;
 		}
@@ -1381,6 +1488,110 @@ fn glob_at(p: &[char], pi: usize, s: &[char], si: usize) -> bool {
 mod tests {
 	use super::*;
 	use std::io::Write as _;
+
+	/// Packs single-face fonts into one collection, so a test can describe a
+	/// file that holds more than one family.
+	fn collection_of(faces: &[Vec<u8>]) -> Vec<u8> {
+		let mut out = Vec::new();
+		out.extend(b"ttcf");
+		out.extend(1u32.to_be_bytes());
+		out.extend((faces.len() as u32).to_be_bytes());
+		out.extend(std::iter::repeat_n(0u8, 4 * faces.len()));
+		for (index, face) in faces.iter().enumerate() {
+			let start = out.len();
+			let slot = 12 + index * 4;
+			out[slot..slot + 4].copy_from_slice(&(start as u32).to_be_bytes());
+			let count = u16::from_be_bytes([face[4], face[5]]) as usize;
+			out.extend(&face[..12]);
+			let mut tables = Vec::new();
+			for table in 0..count {
+				let record = 12 + table * 16;
+				let at = u32::from_be_bytes(
+					face[record + 8..record + 12].try_into().unwrap(),
+				) as usize;
+				let length = u32::from_be_bytes(
+					face[record + 12..record + 16].try_into().unwrap(),
+				) as usize;
+				tables.push(face[at..at + length].to_vec());
+				out.extend(&face[record..record + 8]);
+				out.extend(0u32.to_be_bytes());
+				out.extend((length as u32).to_be_bytes());
+			}
+			for (table, data) in tables.iter().enumerate() {
+				while out.len() % 4 != 0 {
+					out.push(0);
+				}
+				let at = out.len();
+				let slot = start + 12 + table * 16 + 8;
+				out[slot..slot + 4].copy_from_slice(&(at as u32).to_be_bytes());
+				out.extend(data);
+			}
+		}
+		out
+	}
+
+	/// A collection holds several families; describing only its first face
+	/// would hide the rest from the download catalogue.
+	#[test]
+	fn a_collection_reports_every_family() {
+		let dir = tempfile::tempdir().unwrap();
+		let read = |name: &str| {
+			std::fs::read(
+				Path::new(env!("CARGO_MANIFEST_DIR"))
+					.join("crates/markview-core/tests/fonts")
+					.join(name),
+			)
+			.unwrap()
+		};
+		let faces = vec![
+			read("NotoSerif-Regular-subset.otf"),
+			read("NotoSans-Regular-subset.otf"),
+		];
+		let bytes = collection_of(&faces);
+		std::fs::write(dir.path().join("both.ttc"), &bytes).unwrap();
+		let described = describe(dir.path());
+		assert_eq!(described.len(), 1);
+		assert_eq!(described[0].file, "both.ttc");
+		assert_eq!(described[0].faces, 2);
+		assert_eq!(described[0].bytes, bytes.len() as u64);
+		let names = &described[0].families;
+		assert!(
+			names.iter().any(|name| name.contains("Noto Serif")),
+			"{names:?}"
+		);
+		assert!(
+			names.iter().any(|name| name.contains("Noto Sans")),
+			"{names:?}"
+		);
+	}
+
+	#[test]
+	fn a_face_is_described_from_its_own_tables() {
+		let dir = tempfile::tempdir().unwrap();
+		let bytes = std::fs::read(Path::new(env!("CARGO_MANIFEST_DIR")).join(
+			"crates/markview-core/tests/fonts/NotoSerif-Regular-subset.otf",
+		))
+		.unwrap();
+		std::fs::write(dir.path().join("face.ttf"), &bytes).unwrap();
+		// A file that is not a font is skipped rather than reported.
+		std::fs::write(dir.path().join("notes.txt"), b"x").unwrap();
+		let faces = describe(dir.path());
+		assert_eq!(faces.len(), 1);
+		assert_eq!(faces[0].file, "face.ttf");
+		assert_eq!(faces[0].bytes, bytes.len() as u64);
+		assert_eq!(faces[0].style, FaceStyle::Normal);
+		assert!((1..=1000).contains(&faces[0].weight), "{}", faces[0].weight);
+		assert!(
+			faces[0]
+				.families
+				.iter()
+				.any(|name| name.contains("Noto Serif")),
+			"{:?}",
+			faces[0].families
+		);
+		// An absent directory describes nothing instead of failing.
+		assert!(describe(&dir.path().join("missing")).is_empty());
+	}
 
 	/// A real face, so the "is a font" check is exercised rather than stubbed.
 	fn font_bytes() -> Vec<u8> {
@@ -2094,9 +2305,7 @@ mod tests {
 	fn declared_names(font: &[u8]) -> Vec<String> {
 		let dir = tempfile::tempdir().unwrap();
 		fs::write(dir.path().join("probe.ttf"), font).unwrap();
-		markview_core::fonts::describe(dir.path())[0]
-			.families
-			.clone()
+		describe(dir.path())[0].families.clone()
 	}
 
 	fn names_in(dir: &Path) -> Vec<String> {

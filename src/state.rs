@@ -16,6 +16,9 @@ mod outline;
 pub(crate) use outline::OutlineTree;
 
 pub(crate) use markview_core::layout::scroll_limit;
+pub(crate) use markview_selection::{
+	Drag, Grain, Host, Modifiers, Point, Selection,
+};
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum Command {
 	SearchCase,
@@ -224,6 +227,117 @@ pub(crate) enum Modal {
 		/// The open document's directory, for a shorter relative display.
 		document_dir: Option<PathBuf>,
 	},
+}
+
+/// The full-size image viewer an opened image floats in.
+///
+/// Like a modal it owns input while it is set: a press pans, a wheel zooms,
+/// and a click or Escape closes. The picture is the page's own image texture
+/// named the way the document names it, so a diagram shows the same drawing
+/// the page does, at whatever resolution the demand has produced.
+pub(crate) struct Viewer {
+	/// The image's alias, as the page's `Draw::Image` spells it.
+	pub(crate) src: String,
+	/// The raster's pixel size, which caps how far fitting may upscale.
+	pub(crate) pixels: (f32, f32),
+	/// The window scale at open time, which puts the pixels in logical units.
+	pub(crate) scale: f32,
+	/// Zoom over the fitted size, `1.0` showing the whole image.
+	pub(crate) zoom: f32,
+	/// The picture centre's offset from the window centre.
+	pub(crate) pan: (f32, f32),
+	/// Where the panning drag started, while the pointer pans.
+	pub(crate) grab: Option<(f32, f32)>,
+	/// Where the press began, to tell a closing click from a pan.
+	pub(crate) pressed_at: Option<(f32, f32)>,
+}
+
+/// The margin the fitted picture keeps to the window's edges.
+const VIEWER_MARGIN: f32 = 48.0;
+
+impl Viewer {
+	/// The picture's displayed size at the current zoom.
+	fn displayed(&self, window: (f32, f32)) -> (f32, f32) {
+		// Fitting shows everything without upscaling past the pixels the
+		// rasterizer produced, so the fitted size is never blurry.
+		let fit = ((window.0 - VIEWER_MARGIN) / self.pixels.0.max(1.))
+			.min((window.1 - VIEWER_MARGIN) / self.pixels.1.max(1.))
+			.min(1. / self.scale.max(1.))
+			.max(1. / self.pixels.0.max(1.))
+			.max(1. / self.pixels.1.max(1.));
+		(
+			(self.pixels.0 * fit).max(1.) * self.zoom,
+			(self.pixels.1 * fit).max(1.) * self.zoom,
+		)
+	}
+
+	/// The picture's rect at the current zoom and pan.
+	pub(crate) fn rect(
+		&self,
+		window: (f32, f32),
+	) -> markview_core::scene::Rect {
+		let (w, h) = self.displayed(window);
+		markview_core::scene::Rect {
+			x: (window.0 - w) / 2. + self.pan.0,
+			y: (window.1 - h) / 2. + self.pan.1,
+			w,
+			h,
+		}
+	}
+
+	/// Zooms by `factor` about `pointer`, which stays over the same spot.
+	pub(crate) fn zoom_at(
+		&mut self,
+		factor: f32,
+		pointer: (f32, f32),
+		window: (f32, f32),
+	) {
+		let zoom = (self.zoom * factor).clamp(1., 8.);
+		let ratio = zoom / self.zoom;
+		if (ratio - 1.).abs() <= f32::EPSILON {
+			return;
+		}
+		self.zoom = zoom;
+		// The point under the pointer keeps its distance from the picture's
+		// centre, which scales with the picture.
+		let centre = (window.0 / 2., window.1 / 2.);
+		self.pan = (
+			pointer.0 - centre.0 - (pointer.0 - centre.0 - self.pan.0) * ratio,
+			pointer.1 - centre.1 - (pointer.1 - centre.1 - self.pan.1) * ratio,
+		);
+		self.clamp_pan(window);
+	}
+
+	/// Pans by `delta`, keeping some of the picture inside the window.
+	pub(crate) fn pan_by(&mut self, delta: (f32, f32), window: (f32, f32)) {
+		self.pan.0 += delta.0;
+		self.pan.1 += delta.1;
+		self.clamp_pan(window);
+	}
+
+	/// Keeps the picture's centre within half a picture of the window's.
+	fn clamp_pan(&mut self, window: (f32, f32)) {
+		let (w, h) = self.displayed(window);
+		self.pan.0 = if w >= window.0 {
+			self.pan.0.clamp(-(w - window.0) / 2., (w - window.0) / 2.)
+		} else {
+			0.
+		};
+		self.pan.1 = if h >= window.1 {
+			self.pan.1.clamp(-(h - window.1) / 2., (h - window.1) / 2.)
+		} else {
+			0.
+		};
+	}
+
+	/// Whether the pointer has moved far enough from its press to count as
+	/// panning rather than clicking.
+	pub(crate) fn is_drag(&self) -> bool {
+		match (self.pressed_at, self.grab) {
+			(Some((px, py)), Some((cx, cy))) => (cx - px).hypot(cy - py) > 3.,
+			_ => false,
+		}
+	}
 }
 
 /// A control whose options open in a list rather than in place.
@@ -459,6 +573,8 @@ pub(crate) struct InteractionState {
 	pub(crate) last_click: Option<(Instant, (f32, f32), u8)>,
 	/// A pending local-file confirmation; while it is set it owns input.
 	pub(crate) modal: Option<Modal>,
+	/// The full-size image viewer; while it is set it owns input too.
+	pub(crate) viewer: Option<Viewer>,
 	/// An open option list. Like a confirmation it owns input while it is set:
 	/// a press outside it closes it without reaching the page behind.
 	pub(crate) dropdown: Option<Dropdown>,
@@ -599,47 +715,6 @@ pub(crate) struct ScrollbarDrag {
 	pub(crate) grab: f32,
 }
 
-/// Selection unit of an in-flight press.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) enum Grain {
-	Char,
-	Word,
-	Block,
-}
-
-/// An in-flight press: where it started and the link it would activate.
-#[derive(Clone, Debug)]
-pub(crate) struct Drag {
-	pub(crate) start: (f32, f32),
-	pub(crate) link: Option<String>,
-	pub(crate) grain: Grain,
-	/// The word or block a multi-click press selected, kept as the drag base.
-	pub(crate) base: Option<TextSelection>,
-}
-
-/// Extends a multi-click base selection to the word or block under the pointer,
-/// keeping the base as the fixed edge.
-fn extend(
-	base: TextSelection,
-	unit: TextSelection,
-	position: markview_core::text::TextPosition,
-) -> TextSelection {
-	let (first, last) = base.ordered();
-	if position.cmp_reading(first).is_lt() {
-		TextSelection {
-			anchor: last,
-			focus: unit.anchor,
-		}
-	} else if position.cmp_reading(last).is_gt() {
-		TextSelection {
-			anchor: first,
-			focus: unit.focus,
-		}
-	} else {
-		base
-	}
-}
-
 impl InteractionState {
 	/// Activate only when the release still targets the pressed control.
 	pub(crate) fn release_button(
@@ -649,135 +724,6 @@ impl InteractionState {
 		self.pressed
 			.take()
 			.filter(|command| Some(*command) == hovered)
-	}
-
-	pub(crate) fn reset_clicks(&mut self) {
-		self.last_click = None;
-	}
-
-	pub(crate) fn click_count(&mut self, now: Instant) -> u8 {
-		const CLICK_INTERVAL: Duration = Duration::from_millis(500);
-		const CLICK_DISTANCE: f32 = 6.0;
-		let count = match self.last_click {
-			Some((at, point, count))
-				if now.duration_since(at) <= CLICK_INTERVAL
-					&& (self.cursor.0 - point.0)
-						.hypot(self.cursor.1 - point.1)
-						<= CLICK_DISTANCE =>
-			{
-				count % 3 + 1
-			}
-			_ => 1,
-		};
-		self.last_click = Some((now, self.cursor, count));
-		count
-	}
-
-	pub(crate) fn begin_selection(
-		&mut self,
-		position: markview_core::text::TextPosition,
-		link: Option<String>,
-	) {
-		let anchor = if self.modifiers.shift_key() {
-			self.selection.map_or(position, |s| s.anchor)
-		} else {
-			position
-		};
-		self.selection = Some(TextSelection {
-			anchor,
-			focus: position,
-		});
-		self.pointer_down = Some(Drag {
-			start: self.cursor,
-			link,
-			grain: Grain::Char,
-			base: None,
-		});
-		self.dragged = self.modifiers.shift_key();
-		self.focus = None;
-	}
-	/// Starts a press that already selected a word or block, so dragging
-	/// extends the selection by that unit instead of by grapheme. Returns
-	/// false when there is no selection to start from.
-	pub(crate) fn begin_grain_selection(
-		&mut self,
-		selection: Option<TextSelection>,
-		grain: Grain,
-	) -> bool {
-		let Some(selection) = selection else {
-			return false;
-		};
-		self.selection = Some(selection);
-		self.pointer_down = Some(Drag {
-			start: self.cursor,
-			link: None,
-			grain,
-			base: Some(selection),
-		});
-		self.dragged = false;
-		self.focus = None;
-		true
-	}
-	/// Starts a press that has no text under it, so only a link-like target
-	/// can activate on release. A `<details>` marker is such a target.
-	pub(crate) fn begin_link_press(&mut self, link: String) {
-		self.pointer_down = Some(Drag {
-			start: self.cursor,
-			link: Some(link),
-			grain: Grain::Char,
-			base: None,
-		});
-		self.dragged = false;
-		self.focus = None;
-	}
-	pub(crate) fn move_selection(
-		&mut self,
-		position: Option<markview_core::text::TextPosition>,
-		snapshot: &LayoutSnapshot,
-	) {
-		let Some(drag) = &self.pointer_down else {
-			return;
-		};
-		let (start, grain, base) = (drag.start, drag.grain, drag.base);
-		self.dragged |=
-			(self.cursor.0 - start.0).hypot(self.cursor.1 - start.1) >= 4.0;
-		if !self.dragged {
-			return;
-		}
-		let Some(position) = position else {
-			return;
-		};
-		let Some(selection) = &mut self.selection else {
-			return;
-		};
-		match (grain, base) {
-			(Grain::Char, _) | (_, None) => selection.focus = position,
-			(Grain::Word, Some(base)) => {
-				if let Some(word) = snapshot.select_word_at(position) {
-					*selection = extend(base, word, position);
-				}
-			}
-			(Grain::Block, Some(base)) => {
-				if let Some(block) = snapshot.select_block_at(position) {
-					*selection = extend(base, block, position);
-				}
-			}
-		}
-	}
-	pub(crate) fn finish_selection(
-		&mut self,
-		release_link: Option<&str>,
-	) -> Option<String> {
-		self.drag_at = None;
-		let drag = self.pointer_down.take()?;
-		drag.link
-			.filter(|link| !self.dragged && release_link == Some(link.as_str()))
-	}
-	pub(crate) fn clear_selection(&mut self) {
-		self.selection = None;
-		self.pointer_down = None;
-		self.drag_at = None;
-		self.scrollbar = None;
 	}
 
 	/// Toggles the outline drawer. Opening puts the keyboard selection on the
@@ -1453,6 +1399,65 @@ impl ReaderSession {
 			}
 		});
 		changed
+	}
+}
+
+/// The state the selection machine keeps, reached through the accessors this
+/// crate's own types already name. `cursor` and `modifiers` are the reader's
+/// rather than the machine's: the tab strip, the chrome and the option lists
+/// all read the same pointer, and a chord is a chord wherever it lands.
+impl Host for InteractionState {
+	fn cursor(&self) -> Point {
+		Point::new(self.cursor.0, self.cursor.1)
+	}
+	fn modifiers(&self) -> Modifiers {
+		Modifiers {
+			shift: self.modifiers.shift_key(),
+			control: self.modifiers.control_key(),
+			alt: self.modifiers.alt_key(),
+			meta: self.modifiers.super_key(),
+		}
+	}
+	fn selection(&self) -> Option<TextSelection> {
+		self.selection
+	}
+	fn set_selection(&mut self, selection: Option<TextSelection>) {
+		self.selection = selection;
+	}
+	fn drag(&self) -> Option<&Drag> {
+		self.pointer_down.as_ref()
+	}
+	fn set_drag(&mut self, drag: Option<Drag>) {
+		self.pointer_down = drag;
+	}
+	fn take_drag(&mut self) -> Option<Drag> {
+		self.pointer_down.take()
+	}
+	fn dragged(&self) -> bool {
+		self.dragged
+	}
+	fn set_dragged(&mut self, dragged: bool) {
+		self.dragged = dragged;
+	}
+	fn auto_scroll_at(&self) -> Option<Instant> {
+		self.drag_at
+	}
+	fn set_auto_scroll_at(&mut self, at: Option<Instant>) {
+		self.drag_at = at;
+	}
+	fn last_click(&self) -> Option<(Instant, Point, u8)> {
+		self.last_click
+			.map(|(at, (x, y), count)| (at, Point::new(x, y), count))
+	}
+	fn set_last_click(&mut self, click: Option<(Instant, Point, u8)>) {
+		self.last_click =
+			click.map(|(at, point, count)| (at, (point.x, point.y), count));
+	}
+	fn blur(&mut self) {
+		self.focus = None;
+	}
+	fn release_pointer(&mut self) {
+		self.scrollbar = None;
 	}
 }
 

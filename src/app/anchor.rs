@@ -73,10 +73,7 @@ impl<P: super::SendEvent> App<P> {
 			self.error = false;
 			self.status.clear();
 			self.status_until = None;
-			self.worker
-				.prioritize(self.readers.session.coverage(self.viewport()));
-			self.refresh_hover();
-			self.redraw();
+			self.after_scroll();
 			return;
 		}
 		// No reference to return to: fall back to the first one.
@@ -113,9 +110,7 @@ impl<P: super::SendEvent> App<P> {
 				self.error = false;
 				self.status.clear();
 				self.status_until = None;
-				self.worker
-					.prioritize(self.readers.session.coverage(self.viewport()));
-				self.refresh_hover();
+				self.after_scroll();
 			}
 			Err(anchor) => {
 				self.error = true;

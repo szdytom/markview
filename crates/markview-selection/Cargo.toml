@@ -1,0 +1,16 @@
+[package]
+name = "markview-selection"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish = false
+
+[dependencies]
+# No font directories: this crate walks laid-out geometry with a pointer and
+# never reaches a face, so a front end can compile it for the Web.
+markview-core = { path = "../markview-core" }
+web-time.workspace = true
+
+[lints]
+workspace = true

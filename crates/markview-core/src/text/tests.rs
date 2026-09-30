@@ -34,6 +34,68 @@ fn layout(source: &str, width: f32) -> LayoutSnapshot {
 		},
 	)
 }
+/// Laid out over the committed subsets, so the clusters do not depend on
+/// whatever faces the host happens to have.
+fn pinned(source: &str) -> LayoutSnapshot {
+	LayoutEngine::new().layout(
+		&document::parse(source),
+		&LayoutOptions {
+			width: 400.0,
+			fonts: crate::fonts::FontConfig {
+				ignore_system_fonts: true,
+				directories: vec![
+					std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+						.join("tests/fonts"),
+				],
+				..Default::default()
+			},
+			..Default::default()
+		},
+	)
+}
+
+/// Every offset a pointer can land on is a grapheme boundary, so a caret never
+/// comes to rest inside a character. A ligature is several graphemes set as
+/// one glyph and its letters have to be tellable apart; `e` followed by a
+/// combining acute is one grapheme and is not.
+#[test]
+fn hit_testing_only_lands_on_grapheme_boundaries() {
+	for source in ["office", "difficult", "Cafe\u{301}", "e\u{301}x", "中文"]
+	{
+		let snapshot = pinned(source);
+		let node = &snapshot.blocks[0].layout.text[0];
+		let mut boundaries: Vec<usize> =
+			node.text.grapheme_indices(true).map(|(i, _)| i).collect();
+		boundaries.push(node.text.len());
+		let block = &snapshot.blocks[0];
+		let left = node
+			.clusters
+			.iter()
+			.map(|c| c.rect.x)
+			.fold(f32::INFINITY, f32::min);
+		let right = node
+			.clusters
+			.iter()
+			.map(|c| c.rect.x + c.rect.w)
+			.fold(f32::NEG_INFINITY, f32::max);
+		for step in 0..=200 {
+			let x = left + (right - left) * (step as f32 / 200.0);
+			let y = block.y
+				+ node.clusters[0].rect.y
+				+ node.clusters[0].rect.h * 0.5;
+			let Some(hit) = snapshot.hit_test_text(x, y, &HashMap::new(), 1)
+			else {
+				continue;
+			};
+			assert_eq!((hit.block, hit.node), (0, 0), "{source:?} at {x}");
+			assert!(
+				boundaries.contains(&hit.offset),
+				"{source:?}: a hit at {x} landed on {}, inside a grapheme",
+				hit.offset
+			);
+		}
+	}
+}
 #[test]
 fn copies_reading_text_code_tables_and_atomic_math() {
 	let snapshot = layout(

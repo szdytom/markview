@@ -69,7 +69,7 @@ impl<P: super::SendEvent> App<P> {
 				&& self.interaction.modal.is_none())
 			.then_some(self.interaction.cursor),
 		);
-		let (frame, suboptimal) = match renderer.acquire(window.clone())? {
+		let (frame, suboptimal) = match renderer.acquire()? {
 			crate::render::FrameStatus::Ready(frame, suboptimal) => {
 				(frame, suboptimal)
 			}
@@ -165,8 +165,8 @@ impl<P: super::SendEvent> App<P> {
 		Ok(())
 	}
 	pub(super) fn gpu(&mut self) -> Result<()> {
-		let mut renderer =
-			pollster::block_on(Renderer::new(self.window.clone()))?;
+		let surface = self.window.clone().map(super::surface::target);
+		let mut renderer = pollster::block_on(Renderer::new(surface))?;
 		renderer.set_stylesheet(self.preferences.values.stylesheet.clone());
 		let proxy = self.proxy.clone();
 		renderer.on_device_lost(move || {

@@ -1,5 +1,5 @@
 //! Device, surface recovery and offscreen readback.
-use crate::FrameStatus;
+use crate::{FrameStatus, SurfaceSource};
 use anyhow::{Context, Result, bail};
 use std::{
 	sync::{
@@ -8,11 +8,45 @@ use std::{
 	},
 	time::Duration,
 };
-use winit::window::Window;
+
+/// The surface being drawn into, and the host that can rebuild it.
+///
+/// A lost surface is only recoverable through the host that made it, so the
+/// two are kept together: neither is of any use without the other.
+struct Surface {
+	source: Box<dyn SurfaceSource>,
+	handle: wgpu::Surface<'static>,
+	config: wgpu::SurfaceConfiguration,
+}
+impl Surface {
+	fn resize(&mut self, device: &wgpu::Device, width: u32, height: u32) {
+		if width == 0 || height == 0 {
+			return;
+		}
+		self.config.width = width;
+		self.config.height = height;
+		self.handle.configure(device, &self.config);
+	}
+}
+
+/// The limits the device is created with.
+///
+/// WebGL2 has no compute or storage buffers at all, so the desktop defaults
+/// fail the device request outright: the Wasm build links and then never
+/// draws. The renderer uses neither, so the downlevel set costs it nothing —
+/// but only the backend that needs it gets it, because the other backends
+/// keep the texture-size limit that export tiling reads.
+fn device_limits(backend: wgpu::Backend) -> wgpu::Limits {
+	if backend == wgpu::Backend::Gl {
+		wgpu::Limits::downlevel_webgl2_defaults()
+	} else {
+		wgpu::Limits::default()
+	}
+}
+
 pub(super) struct Gpu {
 	instance: wgpu::Instance,
-	surface: Option<wgpu::Surface<'static>>,
-	config: Option<wgpu::SurfaceConfiguration>,
+	surface: Option<Surface>,
 	pub(super) device: wgpu::Device,
 	pub(super) queue: wgpu::Queue,
 	pub(super) format: wgpu::TextureFormat,
@@ -21,10 +55,13 @@ pub(super) struct Gpu {
 	lost: Arc<AtomicBool>,
 }
 impl Gpu {
-	pub fn acquire(&mut self, window: Arc<Window>) -> Result<FrameStatus> {
-		let size = window.inner_size();
-		let surface = self.surface.as_ref().context("No window surface")?;
-		Ok(match surface.get_current_texture() {
+	pub fn acquire(&mut self) -> Result<FrameStatus> {
+		let surface =
+			self.surface.as_mut().context("No surface to draw into")?;
+		// Read before the match: the recovering arms replace the handle this
+		// borrow points at, and all of them want the size the host reports.
+		let (width, height) = surface.source.size();
+		Ok(match surface.handle.get_current_texture() {
 			wgpu::CurrentSurfaceTexture::Success(frame) => {
 				FrameStatus::Ready(frame, false)
 			}
@@ -32,12 +69,13 @@ impl Gpu {
 				FrameStatus::Ready(frame, true)
 			}
 			wgpu::CurrentSurfaceTexture::Lost => {
-				self.surface = Some(self.instance.create_surface(window)?);
-				self.resize(size.width, size.height);
+				surface.handle =
+					surface.source.create_surface(&self.instance)?;
+				surface.resize(&self.device, width, height);
 				FrameStatus::Retry(Duration::from_millis(16))
 			}
 			wgpu::CurrentSurfaceTexture::Outdated => {
-				self.resize(size.width, size.height);
+				surface.resize(&self.device, width, height);
 				FrameStatus::Retry(Duration::from_millis(16))
 			}
 			wgpu::CurrentSurfaceTexture::Timeout => {
@@ -59,26 +97,22 @@ impl Gpu {
 		});
 	}
 
-	pub async fn new(window: Option<Arc<Window>>) -> Result<Self> {
-		let descriptor = match &window {
-			Some(w) => {
-				wgpu::InstanceDescriptor::new_with_display_handle_from_env(
-					Box::new(w.clone()),
-				)
-			}
-			None => {
-				wgpu::InstanceDescriptor::new_without_display_handle_from_env()
-			}
-		};
+	pub async fn new(
+		surface_source: Option<Box<dyn SurfaceSource>>,
+	) -> Result<Self> {
+		let descriptor = surface_source.as_ref().map_or_else(
+			wgpu::InstanceDescriptor::new_without_display_handle_from_env,
+			|source| source.instance_descriptor(),
+		);
 		let instance = wgpu::Instance::new(descriptor);
-		let surface = window
+		let handle = surface_source
 			.as_ref()
-			.map(|w| instance.create_surface(w.clone()))
+			.map(|source| source.create_surface(&instance))
 			.transpose()?;
 		let adapter = instance
 			.request_adapter(&wgpu::RequestAdapterOptions {
 				power_preference: wgpu::PowerPreference::LowPower,
-				compatible_surface: surface.as_ref(),
+				compatible_surface: handle.as_ref(),
 				force_fallback_adapter: false,
 			})
 			.await
@@ -91,6 +125,7 @@ impl Gpu {
 		let (device, queue) = adapter
 			.request_device(&wgpu::DeviceDescriptor {
 				label: Some("Markview"),
+				required_limits: device_limits(info.backend),
 				memory_hints: wgpu::MemoryHints::MemoryUsage,
 				..Default::default()
 			})
@@ -100,36 +135,40 @@ impl Gpu {
 		device.set_device_lost_callback(move |_, _| {
 			flag.store(true, Ordering::Relaxed);
 		});
-		let config = surface.as_ref().map(|s| {
-			let size = window.as_ref().unwrap().inner_size();
-			let caps = s.get_capabilities(&adapter);
+		// A source either yields a handle or has already failed, so the two
+		// arrive together and there is no state with one but not the other.
+		let surface = surface_source.zip(handle).map(|(source, handle)| {
+			let caps = handle.get_capabilities(&adapter);
 			let format = caps
 				.formats
 				.iter()
 				.find(|f| f.is_srgb())
 				.copied()
 				.unwrap_or(caps.formats[0]);
-			wgpu::SurfaceConfiguration {
+			let (width, height) = source.size();
+			let config = wgpu::SurfaceConfiguration {
 				usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
 				format,
-				width: size.width.max(1),
-				height: size.height.max(1),
+				width: width.max(1),
+				height: height.max(1),
 				present_mode: wgpu::PresentMode::AutoVsync,
 				desired_maximum_frame_latency: 1,
 				alpha_mode: caps.alpha_modes[0],
 				view_formats: vec![],
+			};
+			handle.configure(&device, &config);
+			Surface {
+				source,
+				handle,
+				config,
 			}
 		});
-		if let (Some(surface), Some(config)) = (&surface, &config) {
-			surface.configure(&device, config);
-		}
-		let format = config
+		let format = surface
 			.as_ref()
-			.map_or(wgpu::TextureFormat::Rgba8UnormSrgb, |c| c.format);
+			.map_or(wgpu::TextureFormat::Rgba8UnormSrgb, |s| s.config.format);
 		Ok(Self {
 			instance,
 			surface,
-			config,
 			device,
 			queue,
 			format,
@@ -139,17 +178,13 @@ impl Gpu {
 		})
 	}
 	pub fn resize(&mut self, width: u32, height: u32) {
-		if width == 0 || height == 0 {
-			return;
-		}
-		if let (Some(surface), Some(config)) = (&self.surface, &mut self.config)
-		{
-			config.width = width;
-			config.height = height;
-			surface.configure(&self.device, config);
+		if let Some(surface) = &mut self.surface {
+			surface.resize(&self.device, width, height);
 		}
 	}
 
+	/// Waits for submitted work to complete.
+	#[cfg(feature = "readback")]
 	pub fn wait(&self, index: Option<wgpu::SubmissionIndex>) -> Result<()> {
 		self.device.poll(wgpu::PollType::Wait {
 			submission_index: index,
@@ -175,6 +210,7 @@ impl Gpu {
 		})
 	}
 	/// Reads a texture back as tightly packed, non-premultiplied sRGB RGBA8.
+	#[cfg(feature = "readback")]
 	pub(super) fn read_pixels(
 		&self,
 		texture: &wgpu::Texture,
@@ -229,5 +265,33 @@ impl Gpu {
 		drop(mapped);
 		buffer.unmap();
 		Ok((w, h, rgba))
+	}
+}
+
+#[cfg(test)]
+mod tests {
+	use super::device_limits;
+
+	/// A WebGL2 device has no compute or storage buffers, so the desktop
+	/// defaults make `request_device` fail before a browser can draw anything.
+	/// The build succeeding says nothing about this: it is a runtime failure,
+	/// and only the requested limits decide it.
+	#[test]
+	fn the_browser_backend_asks_only_for_what_webgl2_has() {
+		let limits = device_limits(wgpu::Backend::Gl);
+		assert_eq!(limits.max_storage_buffers_per_shader_stage, 0);
+		assert_eq!(limits.max_compute_invocations_per_workgroup, 0);
+		assert!(limits.max_texture_dimension_2d >= crate::raster::ATLAS_SIZE);
+	}
+
+	/// Export tiling reads the device's texture limit, so giving the desktop
+	/// backends the WebGL one would cut every page into small tiles.
+	#[test]
+	fn the_desktop_backends_keep_their_own_texture_limit() {
+		assert!(
+			device_limits(wgpu::Backend::Vulkan).max_texture_dimension_2d
+				> wgpu::Limits::downlevel_webgl2_defaults()
+					.max_texture_dimension_2d
+		);
 	}
 }

@@ -24,10 +24,32 @@ at the same level, without `[brackets]`.
 ### Added
 
 - Keep an open option list inside the panel that owns it and cap its width at the panel's, so a list never overflows the window.
+- Open a full-size viewer over any image: click to open, wheel or glide to zoom about the pointer, drag to pan, click or Escape to close.
+- Add `markview-selection`, the pointer-driven selection machine taken out of `InteractionState`, so a second front end can drive the same grains, click counting and drag rules.
+- Cover the selection paths that had no test: what a copy takes, the drag-past-edge auto-scroll tick, the deferred `Ctrl+A`, and carrying a selection across an update.
+- Let a host with no filesystem supply its own faces as bytes through `FontConfig::from_faces`, so the shaper can be driven from a front end that has no directory to scan.
 
 ### Changed
 
+- Split the font module into validation, directory scanning and diagram selection, so a front end reuses the parts it has and leaves the rest behind.
+- Put directory scanning behind a `font-directories` feature that is off by default, so a build for a host without a filesystem leaves every `std::fs` call out of the binary.
 - Focus security documentation on policy and the threat model, with implementation details and verification work in separate references.
+- Name the loop generically in `handle_user_event` and the new `tick`, so the event and timer paths run without a window server.
+- Separate the reading text a copy takes from the clipboard write that stores it.
+- Take a `SurfaceSource` in `markview-render` instead of a window, so the renderer never names a windowing toolkit and a canvas front end can drive it the way the desktop window does.
+- Take the library crates' clock from `web-time` instead of `std::time`, because `Instant::now` panics on `wasm32-unknown-unknown`; on every other target it is the same type re-exported.
+- Put texture readback and GPU waits behind a `readback` feature that is off by default, because both block the calling thread and a browser has no second thread to wait on.
+- Declare wgpu's `webgl` backend for `wasm32-unknown-unknown`, so `markview-render` builds for the Web; `winit` leaves its dependency tree.
+
+### Fixed
+
+- Let a selection stop between the letters of a ligature, so `ff` and `fi` can be picked apart instead of only taken whole, while a single grapheme is still never parted.
+- Re-derive the selection when the view scrolls under a held press, so scrolling with the wheel extends what the pointer covers.
+- Take a formula or a drawn image whole, since its source text is not what is displayed, instead of selecting an arbitrary slice of it.
+- Mark the selected part of a ligature from the glyph's own advance, so a horizontally scrolled line never lights the letter that is still onscreen in place of the one selected.
+- Keep selection painting linear in the paragraph length by scanning only the cluster's own grapheme boundaries.
+- Ask a WebGL2 device only for the limits it has, so the browser backend gets past `request_device` instead of failing it on the desktop storage-buffer and compute defaults.
+- Color a document's code blocks without spawning a thread where the target has none, since `thread::spawn` panics on `wasm32-unknown-unknown` and every fenced block went through it.
 
 ## 0.1.9 - 2026-09-29
 

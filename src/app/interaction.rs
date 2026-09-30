@@ -9,6 +9,7 @@ use std::time::{Duration, Instant};
 
 use super::{App, Event, TOP, system_theme};
 
+use crate::state::Selection;
 fn sanitize_filename(title: &str, lang: crate::lang::Lang) -> String {
 	let name: String = title
 		.chars()
@@ -673,37 +674,43 @@ impl<P: super::SendEvent> App<P> {
 		}
 	}
 
+	/// The reading text the current selection copies, or `None` when there is
+	/// nothing to copy: no selection, an empty one, or one whose revision the
+	/// snapshot has outlived.
+	pub(super) fn selected_text(&self) -> Option<String> {
+		let selection = self.interaction.selection.filter(|s| !s.is_empty())?;
+		let text = self
+			.readers
+			.session
+			.snapshot
+			.extract_text(selection, self.readers.session.accepted_revision);
+		(!text.is_empty()).then_some(text)
+	}
+
 	pub(super) fn copy_selection(&mut self) {
-		if let Some(selection) = self.interaction.selection
-			&& !selection.is_empty()
-		{
-			let text = self.readers.session.snapshot.extract_text(
-				selection,
-				self.readers.session.accepted_revision,
-			);
-			if !text.is_empty() {
-				match self.clipboard.write(text) {
-					Ok(()) => {
-						self.status = self
-							.preferences
-							.values
-							.lang()
-							.status_copied_selection()
-							.into();
-						self.error = false;
-					}
-					Err(e) => {
-						self.status = self
-							.preferences
-							.values
-							.lang()
-							.status_copy_failed(e.to_string());
-						self.error = true;
-					}
-				}
-				self.redraw();
+		let Some(text) = self.selected_text() else {
+			return;
+		};
+		match self.clipboard.write(text) {
+			Ok(()) => {
+				self.status = self
+					.preferences
+					.values
+					.lang()
+					.status_copied_selection()
+					.into();
+				self.error = false;
+			}
+			Err(e) => {
+				self.status = self
+					.preferences
+					.values
+					.lang()
+					.status_copy_failed(e.to_string());
+				self.error = true;
 			}
 		}
+		self.redraw();
 	}
 	pub(super) fn paste_markdown(&mut self) {
 		let text = match self.clipboard.read() {
@@ -780,3 +787,6 @@ impl<P: super::SendEvent> App<P> {
 		}
 	}
 }
+
+#[cfg(test)]
+mod tests;

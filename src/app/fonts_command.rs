@@ -217,7 +217,7 @@ fn verify(style: Option<&str>, file: Option<&Path>) -> Result<()> {
 	let Some(dir) = crate::fonts::directory() else {
 		bail!("No user configuration directory to hold downloaded fonts");
 	};
-	let described: BTreeSet<String> = markview_core::fonts::describe(&dir)
+	let described: BTreeSet<String> = crate::fonts::describe(&dir)
 		.into_iter()
 		.map(|face| face.file)
 		.collect();

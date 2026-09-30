@@ -157,15 +157,27 @@ impl<P: super::SendEvent> App<P> {
 			self.worker
 				.prioritize(self.readers.session.coverage(self.viewport()));
 		}
+		self.follow_scroll();
 		self.refresh_hover();
 		self.redraw();
 	}
-	/// Re-prioritizes the worker and repaints after the offset moved.
-	fn after_scroll(&mut self) {
+	/// Re-prioritizes the worker, follows the pointer and repaints after the
+	/// offset moved.
+	pub(super) fn after_scroll(&mut self) {
+		self.follow_scroll();
 		self.worker
 			.prioritize(self.readers.session.coverage(self.viewport()));
 		self.refresh_hover();
 		self.redraw();
+	}
+	/// The text moves under a pointer that has not, so a press in flight now
+	/// covers different reading text. No pointer event arrives to say so: the
+	/// pointer never moved, which is why every path that moves the offset has
+	/// to say it instead.
+	fn follow_scroll(&mut self) {
+		if self.interaction.pointer_down.is_some() {
+			self.update_drag();
+		}
 	}
 	/// The link under a window point, using the same origin as the renderer.
 	pub(super) fn link_at(&self, px: f32, py: f32) -> Option<String> {
@@ -236,6 +248,13 @@ impl<P: super::SendEvent> App<P> {
 			CursorIcon::Pointer
 		} else if !self.interaction.panel_open()
 			&& !over_outline
+			&& self.interaction.viewer.is_none()
+			&& self.image_at_cursor().is_some()
+		{
+			// An image opens the viewer, so it points like the control it is.
+			CursorIcon::Pointer
+		} else if !self.interaction.panel_open()
+			&& !over_outline
 			&& self.text_under_cursor()
 		{
 			CursorIcon::Text
@@ -274,6 +293,66 @@ impl<P: super::SendEvent> App<P> {
 			self.redraw();
 		}
 	}
+	/// The image under the cursor, named the way the viewer and the renderer
+	/// name textures.
+	pub(super) fn image_at_cursor(
+		&self,
+	) -> Option<(String, markview_core::scene::Rect)> {
+		let geometry = self.view_geometry();
+		if !geometry
+			.clip()
+			.contains(self.interaction.cursor.0, self.interaction.cursor.1)
+		{
+			return None;
+		}
+		let (x, y) = geometry.document_point(
+			self.interaction.cursor.0,
+			self.interaction.cursor.1,
+		);
+		self.readers
+			.session
+			.snapshot
+			.image_at(x, y, &self.readers.session.horizontal)
+			.map(|(src, _, rect, _)| (src.to_string(), rect))
+	}
+
+	/// Opens the full-size viewer over the image under the cursor, if any.
+	pub(super) fn open_viewer_at_cursor(&mut self) {
+		if self.interaction.viewer.is_some() {
+			return;
+		}
+		let Some((src, rect)) = self.image_at_cursor() else {
+			return;
+		};
+		// The pixels the renderer already holds cap the fitting, so the
+		// viewer never promises a sharper picture than exists. A picture
+		// still decoding fits its laid-out rect instead.
+		let pixels = self
+			.readers
+			.session
+			.snapshot
+			.images
+			.pixels
+			.decoded
+			.lock()
+			.unwrap()
+			.get(&src)
+			.map(|p| (p.width as f32, p.height as f32))
+			.unwrap_or((rect.w.max(1.), rect.h.max(1.)));
+		let scale = self.dimensions().2;
+		self.interaction.viewer = Some(crate::state::Viewer {
+			src,
+			pixels,
+			scale,
+			zoom: 1.,
+			pan: (0., 0.),
+			grab: None,
+			pressed_at: None,
+		});
+		self.refresh_hover();
+		self.redraw();
+	}
+
 	pub(super) fn open_link(&mut self, url: &str, background: bool) {
 		// Activating a link is direct input, so nothing keeps easing behind it.
 		self.readers.session.cancel_scroll_animation();
