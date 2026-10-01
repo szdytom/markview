@@ -1,6 +1,12 @@
 import { init, type InitOptions } from "./index.js";
 import { CanvasReader, type CanvasReaderOptions } from "./reader.js";
-import type { Heading, MarkviewOptions, MarkviewStats, Outline, SourceGeometry } from "./types.js";
+import type {
+	Heading,
+	MarkviewOptions,
+	MarkviewStats,
+	Outline,
+	SourceGeometry,
+} from "./types.js";
 
 export interface ReadingPosition {
 	documentVersion: number;
@@ -28,45 +34,72 @@ export class Viewer {
 	#subscribers = new Set<(position: ReadingPosition) => void>();
 	#position: ReadingPosition | null = null;
 	#headingTarget: string | null = null;
-	#target: { offset: number; fraction: number; version: number } | null = null;
+	#target: { offset: number; fraction: number; version: number } | null =
+		null;
 	#reason: ReadingPosition["reason"] = "reflow";
 	#lastRevision = -1;
 	#lastScroll = NaN;
 	#section: string | null = null;
 	#outline: Outline | null = null;
 
-	private constructor(element: HTMLDivElement, canvas: HTMLCanvasElement, reader: CanvasReader, options: ViewerOptions) {
+	private constructor(
+		element: HTMLDivElement,
+		canvas: HTMLCanvasElement,
+		reader: CanvasReader,
+		options: ViewerOptions,
+	) {
 		this.element = element;
 		this.canvas = canvas;
 		this.reader = reader;
 		this.#markdown = options.markdown ?? "";
-		if (options.onReadingPosition) this.#subscribers.add(options.onReadingPosition);
+		if (options.onReadingPosition)
+			this.#subscribers.add(options.onReadingPosition);
 	}
 
-	static async mount(container: HTMLElement, options: ViewerOptions = {}): Promise<Viewer> {
+	static async mount(
+		container: HTMLElement,
+		options: ViewerOptions = {},
+	): Promise<Viewer> {
 		await init(options.initialization);
 		const element = document.createElement("div");
 		element.className = "markview-viewer";
-		element.style.cssText = "position:relative;width:100%;height:100%;min-width:0;min-height:0;overflow:hidden";
+		element.style.cssText =
+			"position:relative;width:100%;height:100%;min-width:0;min-height:0;overflow:hidden";
 		const canvas = document.createElement("canvas");
-		canvas.style.cssText = "display:block;width:100%;height:100%;touch-action:none";
+		canvas.style.cssText =
+			"display:block;width:100%;height:100%;touch-action:none";
 		element.append(canvas);
 		container.append(element);
 		let viewer: Viewer | undefined;
 		try {
 			const reader = await CanvasReader.attach(canvas, {
 				...options,
-				onUserInput: () => { if (viewer) viewer.#takeUserInput(); options.onUserInput?.(); },
-				onStats: (stats) => { if (viewer) viewer.#frame(stats, options); options.onStats?.(stats); },
+				onUserInput: () => {
+					if (viewer) viewer.#takeUserInput();
+					options.onUserInput?.();
+				},
+				onStats: (stats) => {
+					if (viewer) viewer.#frame(stats, options);
+					options.onStats?.(stats);
+				},
 			});
 			viewer = new Viewer(element, canvas, reader, options);
 			return viewer;
-		} catch (error) { element.remove(); throw error; }
+		} catch (error) {
+			element.remove();
+			throw error;
+		}
 	}
 
-	getMarkdown(): string { this.#live(); return this.#markdown; }
+	getMarkdown(): string {
+		this.#live();
+		return this.#markdown;
+	}
 	/** Replaces source progressively, keeping the nearest source reading position. */
-	setMarkdown(markdown: string, preserveOffset = this.#position?.offset ?? 0): void {
+	setMarkdown(
+		markdown: string,
+		preserveOffset = this.#position?.offset ?? 0,
+	): void {
 		this.#live();
 		const fraction = this.#position?.fraction ?? 0;
 		this.#markdown = markdown;
@@ -77,22 +110,39 @@ export class Viewer {
 	}
 	outline(): Outline {
 		this.#live();
-		if (this.#outline?.documentVersion !== this.reader.markview.stats().documentVersion) {
+		if (
+			this.#outline?.documentVersion !==
+			this.reader.markview.stats().documentVersion
+		) {
 			this.#outline = this.reader.markview.outline();
 		}
 		return this.#outline;
 	}
-	sourceToPreview(offset: number): SourceGeometry | null { this.#live(); return this.reader.markview.sourceToPreview(offset); }
-	previewToSource(y: number): SourceGeometry | null { this.#live(); return this.reader.markview.previewToSource(y); }
-	readingPosition(): ReadingPosition | null { this.#live(); return this.#position; }
-	currentSection(): Heading | null { return this.readingPosition()?.heading ?? null; }
+	sourceToPreview(offset: number): SourceGeometry | null {
+		this.#live();
+		return this.reader.markview.sourceToPreview(offset);
+	}
+	previewToSource(y: number): SourceGeometry | null {
+		this.#live();
+		return this.reader.markview.previewToSource(y);
+	}
+	readingPosition(): ReadingPosition | null {
+		this.#live();
+		return this.#position;
+	}
+	currentSection(): Heading | null {
+		return this.readingPosition()?.heading ?? null;
+	}
 
 	/** Waits through ordinary budgeted layout; a new user gesture cancels waiting. */
 	scrollToSource(offset: number, fraction = 0): void {
 		this.#live();
 		this.#headingTarget = null;
-		this.#target = { offset: Math.max(0, Math.min(this.#markdown.length, offset)), fraction,
-			version: this.reader.markview.stats().documentVersion };
+		this.#target = {
+			offset: Math.max(0, Math.min(this.#markdown.length, offset)),
+			fraction,
+			version: this.reader.markview.stats().documentVersion,
+		};
 		this.#reason = "programmatic";
 		this.#followTarget();
 	}
@@ -108,7 +158,16 @@ export class Viewer {
 		this.#live();
 		this.reader.markview.setOptions(options);
 	}
-	onReadingPosition(listener: (position: ReadingPosition) => void): () => void {
+	/** Lets a host gesture on another pane cancel a deferred navigation. */
+	cancelNavigation(): void {
+		this.#live();
+		this.#target = null;
+		this.#headingTarget = null;
+		this.reader.markview.setScroll(this.reader.markview.scroll());
+	}
+	onReadingPosition(
+		listener: (position: ReadingPosition) => void,
+	): () => void {
 		this.#live();
 		this.#subscribers.add(listener);
 		return () => this.#subscribers.delete(listener);
@@ -131,19 +190,35 @@ export class Viewer {
 	#followTarget(): void {
 		const target = this.#target;
 		if (!target) return;
-		if (target.version !== this.reader.markview.stats().documentVersion) { this.#target = null; return; }
+		if (target.version !== this.reader.markview.stats().documentVersion) {
+			this.#target = null;
+			return;
+		}
 		const geometry = this.sourceToPreview(target.offset);
 		if (!geometry) return;
-		this.reader.markview.setScroll(geometry.rect.y + target.fraction * geometry.rect.height);
+		this.reader.markview.setScroll(
+			geometry.rect.y + target.fraction * geometry.rect.height,
+		);
 		this.#target = null;
 	}
 	#frame(stats: MarkviewStats, options: ViewerOptions): void {
 		const engine = this.reader.markview;
 		const changed = stats.revision !== this.#lastRevision;
-		const userMoved = this.#reason === "user" && engine.scroll() !== this.#lastScroll;
-		if (changed && !userMoved && this.#position?.documentVersion === stats.documentVersion && !this.#target && !this.#headingTarget) {
+		const userMoved =
+			this.#reason === "user" && engine.scroll() !== this.#lastScroll;
+		if (
+			changed &&
+			!userMoved &&
+			this.#position?.documentVersion === stats.documentVersion &&
+			!this.#target &&
+			!this.#headingTarget
+		) {
 			const geometry = this.sourceToPreview(this.#position.offset);
-			if (geometry) engine.setScroll(geometry.rect.y + this.#position.fraction * geometry.rect.height);
+			if (geometry)
+				engine.setScroll(
+					geometry.rect.y +
+						this.#position.fraction * geometry.rect.height,
+				);
 			this.#reason = "reflow";
 		}
 		this.#followTarget();
@@ -156,10 +231,18 @@ export class Viewer {
 		if (!geometry) return;
 		const entries = this.outline().entries;
 		let heading: Heading | null = null;
-		for (const entry of entries) { if (entry.source.start <= geometry.source.start) heading = entry; }
-		this.#position = { documentVersion: geometry.documentVersion, revision: geometry.revision,
-			offset: geometry.source.start, fraction: (scroll - geometry.rect.y) / Math.max(1, geometry.rect.height),
-			reason: this.#reason, heading };
+		for (const entry of entries) {
+			if (entry.source.start <= geometry.source.start) heading = entry;
+		}
+		this.#position = {
+			documentVersion: geometry.documentVersion,
+			revision: geometry.revision,
+			offset: geometry.source.start,
+			fraction:
+				(scroll - geometry.rect.y) / Math.max(1, geometry.rect.height),
+			reason: this.#reason,
+			heading,
+		};
 		for (const subscriber of this.#subscribers) subscriber(this.#position);
 		const section = `${stats.documentVersion}:${heading?.anchor ?? ""}`;
 		if (section !== this.#section) {
@@ -167,5 +250,7 @@ export class Viewer {
 			options.onSectionChange?.(heading);
 		}
 	}
-	#live(): void { if (this.#disposed) throw new Error("this Viewer has been destroyed"); }
+	#live(): void {
+		if (this.#disposed) throw new Error("this Viewer has been destroyed");
+	}
 }

@@ -15,7 +15,7 @@ async function hostPage(page) {
   }));
   await page.route("**/font-host/index.js", (route) => route.fulfill({
     contentType: "text/javascript",
-    path: fileURLToPath(new URL("../packages/markview/dist/index.js", import.meta.url)),
+    path: fileURLToPath(new URL("../dist/api.js", import.meta.url)),
   }));
   await page.goto("/font-host.html");
 }

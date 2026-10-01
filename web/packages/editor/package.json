@@ -1,0 +1,30 @@
+{
+  "name": "@markview/editor",
+  "version": "0.1.10",
+  "description": "Framework-independent CodeMirror and Markview split editor",
+  "license": "MIT",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "sideEffects": false,
+  "scripts": {
+    "build": "node ../build-package.mjs editor"
+  },
+  "dependencies": {
+    "@markview/viewer": "workspace:*",
+    "@codemirror/state": "^6.5.2",
+    "@codemirror/view": "^6.38.6",
+    "@codemirror/commands": "^6.8.1",
+    "@codemirror/lang-markdown": "^6.3.4",
+    "@codemirror/language": "^6.11.3"
+  }
+}

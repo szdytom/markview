@@ -4,13 +4,17 @@
   "type": "module",
   "scripts": {
     "build": "node build.mjs",
-    "typecheck": "tsc --noEmit -p packages/markview && tsc --noEmit -p apps/demo",
+    "typecheck": "tsc --noEmit -p packages/markview && tsc --noEmit -p packages/resources && tsc --noEmit -p packages/web && tsc --noEmit -p packages/editor && tsc --noEmit -p apps/demo && tsc --noEmit -p apps/editor",
     "serve": "node serve.mjs",
-    "test": "playwright test"
+    "test": "playwright test",
+    "format": "prettier --write packages/editor/src packages/resources/src packages/web/src apps/editor/src packages/markview/src/viewer.ts packages/build-package.mjs tests/editor.spec.mjs check-packages.mjs",
+    "lint": "pnpm typecheck && prettier --check packages/editor/src packages/resources/src packages/web/src apps/editor/src packages/markview/src/viewer.ts packages/build-package.mjs tests/editor.spec.mjs check-packages.mjs",
+    "test:packages": "node check-packages.mjs"
   },
   "devDependencies": {
     "@playwright/test": "1.63.0-alpha-2026-08-31",
     "esbuild": "^0.28.0",
+    "prettier": "^3.9.9",
     "typescript": "^5.9.0"
   }
 }

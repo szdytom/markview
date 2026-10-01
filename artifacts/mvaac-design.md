@@ -39,8 +39,8 @@ TOC comes from the complete parsed document, including nested/closed headings, i
 
 1. Contract and package decisions: this document; baseline TypeScript checks and 53 browser tests passed. Native release binary and current WASM backed up in `artifacts/`.
 2. Engine source mapping, UTF conversion and TOC implemented, including disclosure source restoration and cached geometry binding. Mounted viewer navigation/events implemented; CodeMirror synchronization remains pending. Evidence: core source integration tests, built-package browser navigation tests and existing reader regressions; API documented in `docs/mvaac-source-api.md`.
-3. Public viewer and CodeMirror synchronization: pending.
-4. Package builds, helpers, instance fonts and WOFF codecs: pending.
+3. Public viewer and CodeMirror synchronization implemented and verified with real long paragraph/code scrolling, focus checks, history/list continuation, Chromium IME, TOC, divider, responsive layout and multiple-instance tests.
+4. Viewer/editor/resource/compatibility package extraction and built-entry examples implemented. Independent resource helper has no runtime/type dependency on the viewer. Instance font sets, font helper and WOFF codecs remain pending.
 5. SVG scope, regression matrix and authoritative user documentation: pending.
 
 Each implementation stage updates the changelog, formats/lints, runs relevant tests and is committed separately. Final acceptance also exercises built package entries and rendered browser output. WOFF decoder selection requires WASM compilation, license/format checks and measured size/startup evidence. Confirmed SVG scope: file references, data URLs, host bytes and inline `<svg>` rendered as static images. Relative external resources inside SVG are unsupported. Mermaid is deferred.
@@ -53,3 +53,11 @@ Each implementation stage updates the changelog, formats/lints, runs relevant te
 - Workspace/all-target native Clippy, WASM Clippy, Rust formatting, TypeScript checks and the official WASM/package builds passed.
 - Uncompressed WASM baseline: 14,864,809 bytes; source/viewer stage: 14,887,278 bytes (+22,469 bytes). Codec and startup measurements remain pending.
 - This is partial iteration progress: CodeMirror, package extraction, helper packages, per-instance fonts, WOFF codecs, SVG and final migration/support documentation remain required.
+
+### Editor/package stage evidence (2026-10-02)
+
+- Full built-package browser regression: 62 tests passed. After isolating resource helper types and formatting, all 13 editor/resource tests passed.
+- TypeScript checks cover all libraries and both examples; strict declaration consumption also passed with `skipLibCheck: false`. Added `pnpm --dir web lint` and scoped formatting commands.
+- The editor screenshot was inspected: source highlighting, directory, reading text and separator render correctly. The responsive narrow layout test passed.
+- Native outline regression: 22 tests passed; its optional GPU screenshot test was ignored (browser rendering was independently verified).
+- `pnpm --dir web test:packages` produced and installed actual tarballs in an isolated consumer, checked declarations with `skipLibCheck: false`, bundled and initialized/mounted/destroyed in Chromium successfully. Final font/SVG and full requirement-by-requirement acceptance remain pending.

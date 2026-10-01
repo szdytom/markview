@@ -226,6 +226,8 @@ markview fonts verify            # 检查下载目录
 | [安全与威胁模型](docs/security.md) | 不可信文档能够触及的范围 |
 | [开发指南](docs/development.md) | 构建、测试与修改行为 |
 
+独立的 [Web 组件](docs/mvaac.md)提供框架无关的 WASM 预览和 CodeMirror 分屏编辑器；编辑能力属于 Web 包，原生应用仍为只读阅读器。
+
 ## 开发
 
 项目是 Rust workspace。请从[开发指南](docs/development.md)开始；[架构说明](docs/architecture.md)解释了修改代码时应保持的边界。

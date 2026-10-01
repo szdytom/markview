@@ -362,6 +362,8 @@ one.
 | [Security and threat model](docs/security.md) | What an untrusted document can reach |
 | [Development guide](docs/development.md) | Building, testing and changing behavior |
 
+The separate [Web components](docs/mvaac.md) provide a framework-independent WASM viewer and CodeMirror split editor. Web editing belongs to that package; the native application remains read-only.
+
 ## Development
 
 The project is a Rust workspace. Start with the

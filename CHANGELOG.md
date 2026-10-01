@@ -23,6 +23,7 @@ at the same level, without `[brackets]`.
 
 ### Added
 
+- Add reusable viewer/editor/resource packages, a CodeMirror split editor with automatic source following, configurable TOC/layout and a built-package example.
 - Add versioned MVaaC source geometry, complete TOC and a container-mounted viewer with progressive navigation and reading-position events.
 
 ### Fixed

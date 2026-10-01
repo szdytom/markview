@@ -1,7 +1,7 @@
 // Builds the package's `dist/`: one ESM bundle plus `.d.ts` from `tsc`.
 import esbuild from "esbuild";
 import { execFileSync } from "node:child_process";
-import { cpSync, mkdirSync, rmSync } from "node:fs";
+import { cpSync, mkdirSync, rmSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -38,3 +38,8 @@ for (const file of ["markview_web.d.ts", "markview_web_bg.wasm.d.ts", "markview_
 }
 
 console.log("built packages/markview/dist");
+
+for (const file of readdirSync(dist).filter(file => file.endsWith(".d.ts"))) {
+	const path = join(dist,file);
+	writeFileSync(path,readFileSync(path,"utf8").replaceAll("../wasm/","./"));
+}

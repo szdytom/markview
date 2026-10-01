@@ -11,7 +11,7 @@ async function host(page) {
   await page.route("**/navigation.html", route => route.fulfill({ contentType: "text/html",
     body: '<input id="focus"><div id="host" style="width:640px;height:400px"></div>' }));
   await page.route("**/viewer.js", route => route.fulfill({ contentType: "text/javascript",
-    path: fileURLToPath(new URL("../packages/markview/dist/index.js", import.meta.url)) }));
+    path: fileURLToPath(new URL("../dist/api.js", import.meta.url)) }));
   await page.goto("/navigation.html");
   await page.evaluate(async fonts => {
     window.api = await import("/viewer.js");

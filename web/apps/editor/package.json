@@ -1,0 +1,6 @@
+{
+  "name": "@markview/editor-demo",
+  "private": true,
+  "type": "module",
+  "dependencies": {"@markview/editor":"workspace:*","@markview/resources":"workspace:*"}
+}

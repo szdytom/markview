@@ -14,7 +14,7 @@ async function host(page) {
   }));
   await page.route("**/resource-host.js", (route) => route.fulfill({
     contentType: "text/javascript",
-    path: fileURLToPath(new URL("../packages/markview/dist/index.js", import.meta.url)),
+    path: fileURLToPath(new URL("../dist/api.js", import.meta.url)),
   }));
   await page.goto("/resource-host.html");
   await page.evaluate(async (fonts) => {

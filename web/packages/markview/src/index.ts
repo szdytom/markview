@@ -1,4 +1,4 @@
-// Public surface of `@markview/web`: `init()` plus the component classes.
+// Public surface of `@markview/viewer`: `init()` plus the component classes.
 
 import { default as __wbg_init, configureFonts, type InitInput } from "../wasm/markview_web.js";
 import { loadFontSources } from "./fonts.js";
@@ -12,7 +12,6 @@ import type { MarkviewOptions, MarkviewStats, Modifiers, ScrollMode, DocumentCur
 export { CanvasReader, LayoutUpdate, Markview };
 export { Viewer } from "./viewer.js";
 export type { ViewerOptions, ReadingPosition } from "./viewer.js";
-export { decodeImage, loadImageUrl } from "./image-loader.js";
 export type { ImagePixels, ImagePriority, ImageRequest, ImageResourceEvent, ResourceOptions } from "./resources.js";
 export type { CanvasReaderOptions, MarkviewOptions, MarkviewStats, Modifiers, ScrollMode, DocumentCursor, PointerAction, SourceRange, SourceGeometry, Heading, Outline };
 export type { FontSource };

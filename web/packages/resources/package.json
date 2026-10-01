@@ -1,7 +1,7 @@
 {
-  "name": "@markview/viewer",
+  "name": "@markview/resources",
   "version": "0.1.10",
-  "description": "Markdown rendered onto a canvas through the Markview engine compiled to WebAssembly",
+  "description": "Opt-in browser image transport and decoding",
   "license": "MIT",
   "type": "module",
   "main": "./dist/index.js",
@@ -10,14 +10,13 @@
     ".": {
       "types": "./dist/index.d.ts",
       "import": "./dist/index.js"
-    },
-    "./wasm": "./dist/markview_web_bg.wasm"
+    }
   },
   "files": [
     "dist"
   ],
   "sideEffects": false,
   "scripts": {
-    "build": "node build.mjs"
+    "build": "node ../build-package.mjs resources"
   }
 }

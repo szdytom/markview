@@ -1,8 +1,7 @@
 # MVaaC source navigation and TOC
 
 The iteration contract is [mvaac-design.md](../artifacts/mvaac-design.md).
-This page describes the implemented source/navigation API. CodeMirror composition,
-new package entry points and instance font sets are still being implemented.
+This page describes the implemented source/navigation API. See [MVaaC components](mvaac.md) for CodeMirror composition, package entries and migration. Instance font sets are the next stage.
 
 ## Coordinates and publication
 
@@ -34,7 +33,7 @@ its own canvas and uses the existing `CanvasReader` input and frame loop. Give
 the container an explicit height. `getMarkdown`, `setMarkdown`, `setOptions`,
 `outline`, `sourceToPreview`, `previewToSource`, `readingPosition`,
 `currentSection`, `scrollToSource`, `navigateHeading`, `onReadingPosition` and
-`destroy` form the component API. `reader` provides the same low-level canvas API.
+`cancelNavigation` and `destroy` form the component API. `reader` provides the same low-level canvas API.
 
 `scrollToSource(offset, fraction = 0)` waits for unpublished geometry through the
 normal budgeted layout loop. A new navigation, document replacement or user input
