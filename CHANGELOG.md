@@ -23,6 +23,8 @@ at the same level, without `[brackets]`.
 
 ### Fixed
 
+- Tell macOS users in the README to install the `.app.zip` for the desktop app, and that the `aarch64-apple-darwin.tar.gz` is the standalone executable.
+
 - Preserve symlinked settings resources and fade loading/error feedback when previewing the document.
 
 - Load settings styles and font catalogues in the background with immediate loading feedback, cached refreshes and retry controls.

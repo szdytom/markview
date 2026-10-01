@@ -41,7 +41,12 @@ Download the latest build from [Releases](https://github.com/szdytom/markview/re
 |:--|:--|
 | Linux | `.deb`, AppImage, `.tar.gz` |
 | Windows | `.msi`, `.zip` |
-| macOS | zipped `.app` bundle |
+| macOS | zipped `.app` bundle (`markview-<version>-aarch64.app.zip`) |
+
+On macOS, take the `.app.zip` for the desktop app: unzip it and drag
+`Markview.app` to Applications. The `markview-aarch64-apple-darwin.tar.gz` in the
+release's download table is the standalone command-line executable, not an app
+bundle, so it will not show up in Spotlight.
 
 On Linux and macOS the install script does the same thing:
 
