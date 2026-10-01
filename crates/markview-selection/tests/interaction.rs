@@ -180,3 +180,94 @@ fn gesture_inertia_and_selection_edges_stop() {
 	assert_eq!(selection_scroll(110.0, 10.0, 100.0, 50.0, 500.0), 14.0);
 	assert_eq!(selection_scroll(110.0, 10.0, 100.0, 500.0, 500.0), 0.0);
 }
+
+#[test]
+fn wheel_packet_stream_rides_across_gaps_and_settles() {
+	let start = Instant::now();
+	let bounds = ScrollBounds {
+		max: 4000.0,
+		complete: true,
+	};
+	let mut scroll = ScrollState::default();
+	// A fast two-finger scroll: packets 40 ms apart, with the frame loop
+	// running between them as the event loop would.
+	let mut at = start;
+	for _ in 0..5 {
+		at += Duration::from_millis(40);
+		scroll.coast_wheel_by(120.0, at);
+		for step in 1..=4 {
+			scroll.advance(at + Duration::from_millis(step * 8), bounds);
+		}
+	}
+	// The stream keeps a speed of its own, so the page has ridden well past
+	// where easing each packet from a standstill would have left it.
+	assert!(
+		scroll.offset > 300.0,
+		"the page should ride the stream, at {}",
+		scroll.offset
+	);
+	assert_eq!(scroll.target, Some(600.0));
+	// Frames keep coming while the momentum lasts. When the speed dies the
+	// stream is spent and the page rests at the lead it earned.
+	let mut frame = at;
+	for _ in 0..400 {
+		frame += Duration::from_millis(8);
+		scroll.advance(frame, bounds);
+	}
+	assert!(!scroll.animating());
+	assert!(scroll.offset > 600.0 && scroll.offset < 1200.0);
+	assert_eq!(scroll.target, None);
+}
+
+#[test]
+fn wheel_packet_after_a_pause_answers_a_reversal() {
+	let start = Instant::now();
+	let bounds = ScrollBounds {
+		max: 4000.0,
+		complete: true,
+	};
+	let mut scroll = ScrollState::default();
+	// A downward flick hands its inertia over in packets, and the page
+	// rides on after the last one.
+	let mut at = start;
+	for _ in 0..4 {
+		at += Duration::from_millis(40);
+		scroll.coast_wheel_by(120.0, at);
+		for step in 1..=4 {
+			scroll.advance(at + Duration::from_millis(step * 8), bounds);
+		}
+	}
+	let ridden = scroll.offset;
+	// After the stream has gone quiet the hand reverses. The speed the old
+	// gesture left behind is spent, so the page answers the upward packet
+	// instead of carrying on downward past it.
+	at += Duration::from_millis(200);
+	scroll.coast_wheel_by(-300.0, at);
+	assert_eq!(scroll.target, Some(180.0));
+	let mut frame = at;
+	for _ in 0..400 {
+		frame += Duration::from_millis(8);
+		scroll.advance(frame, bounds);
+	}
+	assert!(
+		scroll.offset < ridden,
+		"the page should have turned, at {ridden}"
+	);
+	assert!((scroll.offset - 180.0).abs() < 1.0);
+	assert_eq!(scroll.target, None);
+}
+
+#[test]
+fn a_direct_scroll_stops_a_wheel_stream() {
+	let start = Instant::now();
+	let bounds = ScrollBounds {
+		max: 4000.0,
+		complete: true,
+	};
+	let mut scroll = ScrollState::default();
+	scroll.coast_wheel_by(-120.0, start + Duration::from_millis(40));
+	scroll.coast_wheel_by(-120.0, start + Duration::from_millis(80));
+	assert!(scroll.animating());
+	scroll.by(10.0, bounds);
+	assert!(!scroll.animating());
+}

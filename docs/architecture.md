@@ -205,7 +205,8 @@ stopping at bounds or on new input, navigation, focus loss, resize and reload.
 macOS pixel events include native momentum, so Markview does not synthesize a
 second coast. Other pixel streams can coast when the backend supplies an `Ended`
 phase. Streams without an end phase retain their delivered motion; line events
-remain discrete wheel input because winit does not identify their device source.
+take the wheel path, where a Windows touchpad's fractional stream is a
+high-resolution device whose spacing gives the reader the momentum to ride.
 
 Touch and native `PinchGesture` zoom are pending viewport-based zoom support;
 pinching does not currently change document settings. Generated mouse events

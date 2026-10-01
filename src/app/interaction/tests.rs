@@ -406,7 +406,7 @@ fn a_deferred_select_all_resolves_once_the_layout_is_complete() {
 }
 
 #[test]
-fn fractional_and_whole_line_wheels_use_the_same_eased_path() {
+fn a_fractional_line_wheel_coasts_on_windows_and_eases_elsewhere() {
 	let (mut app, _) = reader(&"A scrolling paragraph.\n\n".repeat(100), 760.0);
 	app.interaction.cursor = point_over(&app, 0);
 	let feed = |app: &mut App<StubProxy>, lines| {
@@ -427,7 +427,14 @@ fn fractional_and_whole_line_wheels_use_the_same_eased_path() {
 	app.interaction.wheel = Default::default();
 	feed(&mut app, -0.5);
 	assert_eq!(app.readers.session.scrolling.target, Some(whole * 0.5));
-	assert!(app.readers.session.scrolling.animation.is_some());
+	if cfg!(windows) {
+		// A fractional line count names a touchpad's packet stream, which
+		// owns the offset and coasts under momentum instead of an eased step.
+		assert!(app.readers.session.scrolling.animation.is_none());
+		assert!(app.readers.session.scroll_animating());
+	} else {
+		assert!(app.readers.session.scrolling.animation.is_some());
+	}
 	app.readers.session.advance_scroll(
 		Instant::now() + Duration::from_secs(1),
 		app.viewport(),
