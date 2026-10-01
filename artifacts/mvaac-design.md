@@ -38,9 +38,18 @@ TOC comes from the complete parsed document, including nested/closed headings, i
 ## Delivery and verification
 
 1. Contract and package decisions: this document; baseline TypeScript checks and 53 browser tests passed. Native release binary and current WASM backed up in `artifacts/`.
-2. Engine source mapping, UTF conversion and TOC: pending.
+2. Engine source mapping, UTF conversion and TOC implemented, including disclosure source restoration and cached geometry binding. Mounted viewer navigation/events implemented; CodeMirror synchronization remains pending. Evidence: core source integration tests, built-package browser navigation tests and existing reader regressions; API documented in `docs/mvaac-source-api.md`.
 3. Public viewer and CodeMirror synchronization: pending.
 4. Package builds, helpers, instance fonts and WOFF codecs: pending.
 5. SVG scope, regression matrix and authoritative user documentation: pending.
 
 Each implementation stage updates the changelog, formats/lints, runs relevant tests and is committed separately. Final acceptance also exercises built package entries and rendered browser output. WOFF decoder selection requires WASM compilation, license/format checks and measured size/startup evidence. Confirmed SVG scope: file references, data URLs, host bytes and inline `<svg>` rendered as static images. Relative external resources inside SVG are unsupported. Mermaid is deferred.
+
+### Source/viewer stage evidence (2026-10-02)
+
+- Initial reader baseline: 53 browser tests passed; TypeScript checks passed; release native binary backed up before Rust edits.
+- Core suite and 14 web-state unit tests passed. After final disclosure-coordinate changes, 81 parser tests and four source integration tests passed.
+- Full browser regression: 56 tests passed; after the last source changes and added cancellation test, all 14 navigation/input tests passed. The new viewer screenshot was inspected and contains rendered heading/body text.
+- Workspace/all-target native Clippy, WASM Clippy, Rust formatting, TypeScript checks and the official WASM/package builds passed.
+- Uncompressed WASM baseline: 14,864,809 bytes; source/viewer stage: 14,887,278 bytes (+22,469 bytes). Codec and startup measurements remain pending.
+- This is partial iteration progress: CodeMirror, package extraction, helper packages, per-instance fonts, WOFF codecs, SVG and final migration/support documentation remain required.

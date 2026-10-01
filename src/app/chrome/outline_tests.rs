@@ -3,6 +3,7 @@ use crate::app::TOP;
 
 fn entry(level: u8, text: &str) -> OutlineEntry {
 	OutlineEntry {
+		source: 0..0,
 		level,
 		text: text.into(),
 		anchor: text.to_lowercase(),

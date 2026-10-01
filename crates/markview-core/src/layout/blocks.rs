@@ -1175,6 +1175,9 @@ fn bind_rich_source(
 ) {
 	if let Some(node) = out.text.get_mut(node) {
 		node.search_field = field;
+		for (index, _) in &mut node.source_images {
+			*index += start;
+		}
 		let offset = crate::document::plain_text(&rich[..start]).len();
 		for (semantic, _) in &mut node.search_ranges {
 			semantic.start += offset;

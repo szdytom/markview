@@ -155,6 +155,8 @@ pub struct Block {
 /// One heading of a document's outline, in reading order.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct OutlineEntry {
+	/// The heading block's half-open UTF-8 byte range.
+	pub source: Range<usize>,
 	pub level: u8,
 	/// The heading's plain reading text.
 	pub text: String,
@@ -246,6 +248,7 @@ impl Document {
 						text,
 						anchor,
 					} => out.push(OutlineEntry {
+						source: block.source.clone(),
 						level: *level,
 						text: plain_text(text),
 						anchor: anchor.clone(),

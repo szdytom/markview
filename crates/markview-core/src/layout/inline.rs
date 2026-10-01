@@ -41,6 +41,7 @@ impl BlockContext<'_> {
 	) -> Prepared {
 		let mut p = Prepared {
 			images: BTreeMap::new(),
+			image_indices: BTreeMap::new(),
 			reading: String::new(),
 			search_ranges: Vec::new(),
 			mapping: Vec::new(),
@@ -113,6 +114,7 @@ impl BlockContext<'_> {
 			match &inline.kind {
 				InlineKind::Image(image) => {
 					p.images.insert(start, image.clone());
+					p.image_indices.insert(start, i);
 					p.text.push('\u{fffc}');
 				}
 				InlineKind::Text(t) => p.text.push_str(t),

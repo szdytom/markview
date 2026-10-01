@@ -16,6 +16,7 @@ use markview_core::{
 	image::Pixels,
 	layout::{LayoutEngine, LayoutOptions, ProgressiveLayout, Viewport},
 	scene::Rect,
+	source::{SourceIndex, SourcePosition, byte_to_utf16, utf16_to_byte},
 	style::Stylesheet,
 };
 use markview_render::{FrameStatus, Renderer, SurfaceSource, Theme, View};
@@ -111,6 +112,9 @@ pub async fn create(
 		published: Published::default(),
 		pointer: Pointer::default(),
 		published_document: document.clone(),
+		source_index: SourceIndex::new(&document),
+		source_text: document.source.clone(),
+		document_version: 0,
 		document,
 		pending: None,
 		images: Images::default(),
@@ -139,6 +143,9 @@ pub async fn create(
 /// One rendering of a Markdown document, driven by the page.
 #[wasm_bindgen]
 pub struct Markview {
+	source_index: SourceIndex,
+	source_text: Arc<str>,
+	document_version: u64,
 	canvas: HtmlCanvasElement,
 	renderer: Renderer,
 	engine: LayoutEngine,
@@ -182,6 +189,70 @@ pub struct Markview {
 
 #[wasm_bindgen]
 impl Markview {
+	/// The complete parsed outline, available before any layout step.
+	pub fn outline(&self) -> String {
+		let document = self
+			.pending
+			.as_ref()
+			.and_then(|p| p.parsed.as_ref())
+			.unwrap_or(&self.document);
+		let entries: Vec<_> = document.outline().into_iter().map(|entry| serde_json::json!({
+			"text": entry.text, "level": entry.level, "anchor": entry.anchor,
+			"source": { "start": byte_to_utf16(&document.source, entry.source.start), "end": byte_to_utf16(&document.source, entry.source.end) },
+		})).collect();
+		serde_json::json!({ "documentVersion": self.document_version, "entries": entries }).to_string()
+	}
+
+	/// Queries current-version geometry without advancing layout.
+	#[wasm_bindgen(js_name = sourceToPreview)]
+	pub fn source_to_preview(&self, offset: usize) -> String {
+		let position = self
+			.current_source_geometry()
+			.then(|| {
+				self.source_index.source_to_preview(
+					&self.published.snapshot,
+					&self.horizontal,
+					utf16_to_byte(&self.source_text, offset),
+				)
+			})
+			.flatten();
+		self.source_position_json(position)
+	}
+
+	/// `y` is measured from the document top, in CSS pixels.
+	#[wasm_bindgen(js_name = previewToSource)]
+	pub fn preview_to_source(&self, y: f32) -> String {
+		let position = self
+			.current_source_geometry()
+			.then(|| {
+				self.source_index.preview_to_source(
+					&self.published.snapshot,
+					&self.horizontal,
+					y,
+				)
+			})
+			.flatten();
+		self.source_position_json(position)
+	}
+
+	/// Heading navigation uses the same deferred, expanding path as anchor links.
+	#[wasm_bindgen(js_name = navigateHeading)]
+	pub fn navigate_heading(&mut self, anchor: String) -> bool {
+		let document = self
+			.pending
+			.as_ref()
+			.and_then(|p| p.parsed.as_ref())
+			.unwrap_or(&self.document);
+		if !document
+			.outline()
+			.iter()
+			.any(|entry| entry.anchor == anchor)
+		{
+			return false;
+		}
+		self.activate_document_link(&format!("#{anchor}"))
+	}
+
 	/// Every source in the newest document, including unpublished blocks.
 	#[wasm_bindgen(js_name = imageSources)]
 	pub fn image_sources(&self) -> String {
@@ -268,6 +339,7 @@ impl Markview {
 		let started = Instant::now();
 		self.reset_document_interaction();
 		self.document = Arc::new(parse(text));
+		self.replace_source(self.document.clone());
 		self.images.prepare(&self.document);
 		self.images_dirty = false;
 		self.pending = None;
@@ -285,6 +357,7 @@ impl Markview {
 		let started = Instant::now();
 		self.reset_document_interaction();
 		let document = Arc::new(parse(text));
+		self.replace_source(document.clone());
 		self.images.prepare(&document);
 		self.images_dirty = false;
 		self.parse_ms = started.elapsed().as_secs_f64() * 1000.0;
@@ -945,6 +1018,25 @@ impl Markview {
 		}
 	}
 
+	fn replace_source(&mut self, document: Arc<Document>) {
+		self.document_version += 1;
+		self.source_index = SourceIndex::new(&document);
+		self.source_text = document.source.clone();
+	}
+	fn current_source_geometry(&self) -> bool {
+		self.published
+			.source
+			.as_ref()
+			.is_some_and(|source| Arc::ptr_eq(source, &self.source_text))
+	}
+	fn source_position_json(&self, position: Option<SourcePosition>) -> String {
+		position.map(|position| serde_json::json!({
+			"documentVersion": self.document_version, "revision": self.published.revision,
+			"source": { "start": byte_to_utf16(&self.source_text, position.source.start), "end": byte_to_utf16(&self.source_text, position.source.end) },
+			"rect": { "x": position.rect.x, "y": position.rect.y, "width": position.rect.w, "height": position.rect.h },
+		})).unwrap_or(serde_json::Value::Null).to_string()
+	}
+
 	/// The x of the layout column's left edge inside the canvas.
 	fn left(&self) -> f32 {
 		((self.logical.0 - self.published.snapshot.width) / 2.0).max(MARGIN)
@@ -1103,6 +1195,7 @@ impl Markview {
 
 	fn stats_json(&self) -> String {
 		serde_json::json!({
+			"documentVersion": self.document_version,
 			"revision": self.published.revision,
 			"blocks": self.published.snapshot.blocks.len(),
 			"contentHeight": self.published.snapshot.height,

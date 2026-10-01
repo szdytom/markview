@@ -189,26 +189,26 @@ impl SearchIndex {
 				.sum::<usize>()
 	}
 }
-enum FieldText<'a> {
+pub(crate) enum FieldText<'a> {
 	Rich(&'a RichText),
-	Code(&'a str),
+	Code(&'a str, &'a Block),
 }
 impl FieldText<'_> {
 	fn locator(&self) -> usize {
 		match self {
 			Self::Rich(t) => t.as_ptr() as usize,
-			Self::Code(t) => t.as_ptr() as usize,
+			Self::Code(t, _) => t.as_ptr() as usize,
 		}
 	}
 	fn reading(&self) -> String {
 		match self {
 			Self::Rich(t) => plain_text(t),
-			Self::Code(t) => (*t).to_owned(),
+			Self::Code(t, _) => (*t).to_owned(),
 		}
 	}
 }
 /// The same complete semantic traversal binds indexing and cached layout fields.
-fn visit_fields(
+pub(crate) fn visit_fields(
 	block: &Block,
 	enclosing: &mut Vec<u64>,
 	cancelled: &impl Fn() -> bool,
@@ -221,7 +221,9 @@ fn visit_fields(
 		BlockKind::Paragraph(t) | BlockKind::Heading { text: t, .. } => {
 			visit(FieldText::Rich(t), enclosing)
 		}
-		BlockKind::Code { text, .. } => visit(FieldText::Code(text), enclosing),
+		BlockKind::Code { text, .. } => {
+			visit(FieldText::Code(text, block), enclosing)
+		}
 		BlockKind::Table { rows, .. } => {
 			for row in rows {
 				for cell in row {

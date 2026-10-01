@@ -5,7 +5,7 @@
 import { Markview as WasmMarkview, create as wasmCreate } from "../wasm/markview_web.js";
 import { ResourceEvents, type ResourceOptions } from "./resources.js";
 import { LayoutUpdate } from "./layout-update.js";
-import type { MarkviewOptions, MarkviewStats, Modifiers, ScrollMode, DocumentCursor, PointerAction } from "./types.js";
+import type { MarkviewOptions, MarkviewStats, Modifiers, ScrollMode, DocumentCursor, PointerAction, SourceGeometry, Outline } from "./types.js";
 import { parseStats, serializeOptions } from "./internal.js";
 
 /**
@@ -91,6 +91,19 @@ export class Markview {
 		if (reflowed) this.#supersede();
 		return reflowed;
 	}
+
+	/** Complete outline of the newest parsed document, including hidden headings. */
+	outline(): Outline { return JSON.parse(this.#live().outline()) as Outline; }
+	/** Returns `null` until this source position has current-version geometry. */
+	sourceToPreview(offset: number): SourceGeometry | null {
+		return JSON.parse(this.#live().sourceToPreview(Math.max(0, Math.trunc(normalize(offset))))) as SourceGeometry | null;
+	}
+	/** Maps document CSS pixels to the closest visible source line. */
+	previewToSource(y: number): SourceGeometry | null {
+		return JSON.parse(this.#live().previewToSource(normalize(y))) as SourceGeometry | null;
+	}
+	/** Opens enclosing disclosures and waits for unpublished heading geometry. */
+	navigateHeading(anchor: string): boolean { return this.#live().navigateHeading(anchor); }
 
 	/** Sets the document scroll in logical pixels. */
 	setScroll(y: number): void {

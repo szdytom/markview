@@ -6,6 +6,7 @@ use std::{
 };
 pub(super) struct Prepared {
 	pub(super) images: BTreeMap<usize, crate::image::ImageSpec>,
+	pub(super) image_indices: BTreeMap<usize, usize>,
 	pub(super) reading: String,
 	pub(super) search_ranges: Vec<(Range<usize>, Range<usize>)>,
 	pub(super) mapping: Vec<(Range<usize>, Range<usize>, bool)>,

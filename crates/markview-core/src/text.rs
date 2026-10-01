@@ -139,6 +139,8 @@ pub struct TextNode {
 	pub search_field: Option<crate::search::SearchField>,
 	/// Pairs of semantic and reading byte ranges; diagnostics have no pair.
 	pub search_ranges: Vec<(Range<usize>, Range<usize>)>,
+	/// Image geometry bound by inline ordinal, independent of reading text.
+	pub(crate) source_images: Vec<(usize, TextCluster)>,
 	pub text: String,
 	pub separator: &'static str,
 	pub clusters: Vec<TextCluster>,
@@ -154,6 +156,7 @@ impl TextNode {
 		Self {
 			search_field: None,
 			search_ranges: Vec::new(),
+			source_images: Vec::new(),
 			text,
 			separator,
 			clusters: Vec::new(),

@@ -21,8 +21,14 @@ at the same level, without `[brackets]`.
 
 ## Unreleased
 
+### Added
+
+- Add versioned MVaaC source geometry, complete TOC and a container-mounted viewer with progressive navigation and reading-position events.
+
 ### Fixed
 
+- Preserve Unicode source ranges in adjacent quoted disclosures, atomic image geometry and source navigation through horizontally panned content.
+- Preserve original source ranges inside HTML disclosures and code-line offsets across CRLF input.
 - Preserve symlinked settings resources and fade loading/error feedback when previewing the document.
 
 - Load settings styles and font catalogues in the background with immediate loading feedback, cached refreshes and retry controls.

@@ -143,6 +143,14 @@ pub fn details(source: &str) -> Details {
 	}
 }
 
+/// Byte offset where a valid disclosure's body begins in its HTML literal.
+pub(crate) fn details_content_start(source: &str) -> usize {
+	let text = source.trim();
+	let rest = &text[tag_len(text).unwrap()..];
+	let lead = summary_at(rest).map_or(rest, |(_, after)| after);
+	lead.as_ptr() as usize - source.as_ptr() as usize
+}
+
 /// The name, remaining attributes and closing flag of one `<...>` tag.
 fn tag_parts(tag: &str) -> Option<(String, &str, bool)> {
 	let body = tag.strip_prefix('<')?.strip_suffix('>')?.trim();

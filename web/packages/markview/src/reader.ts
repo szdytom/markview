@@ -10,6 +10,8 @@ import type { MarkviewOptions, MarkviewStats, Modifiers, ScrollMode } from "./ty
 
 /** Options for `CanvasReader.attach`; every key is optional. */
 export interface CanvasReaderOptions {
+	/** Fires before pointer, wheel or navigation-key input takes ownership. */
+	onUserInput?: () => void;
 	/** Document laid out progressively when the reader attaches. */
 	markdown?: string;
 	/** Options handed to the engine. */
@@ -90,6 +92,9 @@ export class CanvasReader {
 		if (!canvas.hasAttribute("tabindex")) {
 			canvas.tabIndex = 0;
 			this.madeFocusable = true;
+		}
+		for (const name of ["pointerdown", "wheel", "keydown"] as const) {
+			canvas.addEventListener(name, () => options.onUserInput?.(), { capture: true, signal: this.listeners.signal });
 		}
 		this.bindInput();
 		if (options.markdown !== undefined) {

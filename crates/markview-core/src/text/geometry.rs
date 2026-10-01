@@ -162,6 +162,9 @@ impl LayoutSnapshot {
 									* std::mem::size_of::<usize>()
 								+ n.clusters.capacity()
 									* std::mem::size_of::<TextCluster>()
+								+ n.source_images.capacity()
+									* std::mem::size_of::<(usize, TextCluster)>(
+									)
 						})
 						.sum::<usize>()
 			})

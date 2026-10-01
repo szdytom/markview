@@ -26,7 +26,6 @@ impl BlockContext<'_> {
 	) -> f32 {
 		let node = out.text.len();
 		out.text.push(TextNode::new(text.to_owned(), "\n\n"));
-		let mut line_offset = 0;
 
 		let mut cursor = y;
 		let label_appearance = opts
@@ -92,6 +91,8 @@ impl BlockContext<'_> {
 			.unwrap_or_else(|| Arc::new(vec![Vec::new(); lines.len()]));
 		for (line_index, line) in lines.iter().enumerate() {
 			let original = line;
+			let line_offset =
+				original.as_ptr() as usize - text.as_ptr() as usize;
 			let (line, offsets) = expand_tabs_mapped(line, 4);
 			// Syntax colors are applied after shaping. Keeping the shaper input
 			// plain means highlighting cannot affect font selection, shaping,
@@ -166,7 +167,6 @@ impl BlockContext<'_> {
 			}
 			natural = natural.max(left - x);
 			cursor += line_height;
-			line_offset += original.len() + 1;
 		}
 		let mut h = cursor - y;
 		if natural > width {

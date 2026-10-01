@@ -325,6 +325,17 @@ impl BlockContext<'_> {
 						h: c.ascent,
 					};
 					let command = out.draws.len();
+					out.text[node].source_images.push((
+						p.image_indices[&c.range.start],
+						TextCluster {
+							mixed_spacing: (0.0, 0.0),
+							range: range.clone(),
+							rect,
+							rtl: false,
+							atomic: true,
+							command,
+						},
+					));
 					// A drawn image's whole box is selectable for its `alt`.
 					// A placeholder is instead selected character by
 					// character, so its visible message copies as shown.

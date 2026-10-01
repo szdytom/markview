@@ -17,6 +17,7 @@ pub mod profile;
 pub mod scene;
 pub mod search;
 pub mod shaping;
+pub mod source;
 pub mod style;
 pub mod sync;
 pub mod text;

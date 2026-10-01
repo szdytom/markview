@@ -954,7 +954,8 @@ fn a_details_body_with_a_lone_carriage_return_keeps_its_ranges() {
 	let (_, _, blocks) = details(&doc);
 	assert_eq!(blocks.len(), 2);
 	assert_eq!(
-		blocks[1].source.start, 8,
+		blocks[1].source.start,
+		doc.source.find("Second").unwrap(),
 		"the second block starts after the lone \\r line"
 	);
 }

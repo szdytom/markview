@@ -454,8 +454,16 @@ impl Reader<'_> {
 				mut rest,
 			} => {
 				let source = self.range(children[start]);
+				let offsets =
+					source_offsets(&literal, self.source, source.clone());
+				let mut body_start =
+					offsets[html::details_content_start(&literal)];
 				loop {
-					let blocks = self.markdown_blocks(&body, depth + 1);
+					let blocks = self.markdown_blocks_at(
+						&body,
+						depth + 1,
+						body_start..source.end,
+					);
 					let rich = self.summary_rich(
 						summary.as_deref(),
 						depth + 1,
@@ -477,9 +485,16 @@ impl Reader<'_> {
 						rest: next_rest,
 					} = html::details(&rest)
 					else {
-						out.extend(self.markdown_blocks(&rest, depth));
+						out.extend(self.markdown_blocks_at(
+							&rest,
+							depth,
+							offsets[literal.trim_end().len() - rest.len()]
+								..source.end,
+						));
 						break;
 					};
+					body_start = offsets[literal.trim_end().len() - rest.len()
+						+ html::details_content_start(&rest)];
 					(open, summary, body, rest) =
 						(next_open, next_summary, next_body, next_rest);
 				}
@@ -537,20 +552,94 @@ impl Reader<'_> {
 				body.push_str(&between);
 				body.push_str(&prefix);
 				let source = start_source.start..tag_end;
-				let blocks = self.markdown_blocks(&body, depth + 1);
+				let body_start =
+					source_offsets(&literal, self.source, start_source.clone())
+						[html::details_content_start(&literal)];
+				let blocks = self.markdown_blocks_at(
+					&body,
+					depth + 1,
+					body_start..source.end,
+				);
 				let summary =
 					self.summary_rich(summary.as_deref(), depth + 1, &source);
 				// Content after the closing tag is a sibling of the element,
 				// so it keeps its place instead of being dropped with the
 				// block that carries the tag.
-				out.push(self.details_block(open, summary, blocks, source));
+				out.push(self.details_block(
+					open,
+					summary,
+					blocks,
+					source.clone(),
+				));
 				if !rest.trim().is_empty() {
-					out.extend(self.markdown_blocks(&rest, depth));
+					out.extend(self.markdown_blocks_at(
+						&rest,
+						depth,
+						tag_end..close_source.end,
+					));
 				}
 				Some(close - start + 1)
 			}
 			html::Details::Close | html::Details::No => None,
 		}
+	}
+
+	/// Restore snippet coordinates after removing disclosure tags and quote prefixes.
+	fn markdown_blocks_at(
+		&mut self,
+		text: &str,
+		depth: usize,
+		source: Range<usize>,
+	) -> Vec<Block> {
+		let mut blocks = self.markdown_blocks(text, depth);
+		let offsets = source_offsets(text, self.source, source);
+		fn range(range: &mut Range<usize>, offsets: &[usize]) {
+			let start = offsets[range.start.min(offsets.len() - 1)];
+			let end = if range.end > range.start {
+				offsets[(range.end - 1).min(offsets.len() - 1)] + 1
+			} else {
+				start
+			};
+			*range = start..end.max(start);
+		}
+		fn rich(text: &mut RichText, offsets: &[usize]) {
+			for inline in text {
+				range(&mut inline.source, offsets);
+			}
+		}
+		fn walk(blocks: &mut [Block], offsets: &[usize]) {
+			for block in blocks {
+				range(&mut block.source, offsets);
+				match &mut block.kind {
+					BlockKind::Paragraph(text)
+					| BlockKind::Heading { text, .. } => rich(text, offsets),
+					BlockKind::Details {
+						summary, blocks, ..
+					} => {
+						rich(summary, offsets);
+						walk(blocks, offsets);
+					}
+					BlockKind::Quote { blocks, .. }
+					| BlockKind::Footnote { blocks, .. }
+					| BlockKind::FrontMatter { blocks, .. } => walk(blocks, offsets),
+					BlockKind::List { items, .. } => {
+						for item in items {
+							walk(&mut item.blocks, offsets);
+						}
+					}
+					BlockKind::Table { rows, .. } => {
+						for row in rows {
+							for cell in row {
+								rich(cell, offsets);
+							}
+						}
+					}
+					_ => {}
+				}
+			}
+		}
+		walk(&mut blocks, &offsets);
+		blocks
 	}
 
 	/// The block list `text` describes, parsed by the ordinary pipeline. The
@@ -889,6 +978,40 @@ fn apply_patch(patch: &html::Patch, style: &mut TextStyle) {
 		html::Patch::Link(url) => style.link = Some(url.clone()),
 		html::Patch::None => {}
 	}
+}
+
+/// Map snippet bytes to original lines, allowing removed quote prefixes and synthetic breaks.
+fn source_offsets(
+	text: &str,
+	original: &str,
+	source: Range<usize>,
+) -> Vec<usize> {
+	let raw = &original[source.clone()];
+	let mut offsets = vec![source.start; text.len() + 1];
+	let mut cursor = 0;
+	let lines = line_starts(text);
+	for (index, &at) in lines.iter().enumerate() {
+		let line =
+			&text[at..lines.get(index + 1).copied().unwrap_or(text.len())];
+		let content = line.trim_end_matches(['\r', '\n']);
+		if !content.is_empty()
+			&& let Some(found) = raw[cursor..].find(content)
+		{
+			cursor += found;
+			for i in 0..content.len() {
+				offsets[at + i] = source.start + cursor + i;
+			}
+			cursor += content.len();
+		}
+		for i in content.len()..line.len() {
+			offsets[at + i] = source.start + cursor;
+			if raw.as_bytes().get(cursor) == Some(&line.as_bytes()[i]) {
+				cursor += 1;
+			}
+		}
+	}
+	offsets[text.len()] = source.start + cursor;
+	offsets
 }
 
 fn html_rich(spans: Vec<html::Span>, source: &Range<usize>) -> RichText {
