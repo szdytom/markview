@@ -12,7 +12,7 @@ const root = dirname(fileURLToPath(import.meta.url));
 const consumer = mkdtempSync(join(tmpdir(), "markview-packages-"));
 let browser;
 try {
-	const names = ["viewer", "editor", "resources", "web"];
+	const names = ["viewer", "editor", "resources", "fonts", "web"];
 	const dependencies = {};
 	for (const name of names) {
 		const pkg = name === "viewer" ? "markview" : name;
@@ -52,13 +52,15 @@ try {
 	const main = `
 import { Editor } from "@markview/editor";
 import { Viewer, init, type SourceGeometry } from "@markview/viewer";
+import { loadFontSet } from "@markview/fonts";
 import { browserResources, decodeImage } from "@markview/resources";
 import { CanvasReader } from "@markview/web";
-await init({wasmUrl:"/viewer.wasm",fonts:["/body.otf"]});
-const editor = await Editor.mount(document.body,{markdown:"# Hello",viewer:{resources:browserResources()}});
+const fonts = await loadFontSet({sources:["/body.otf"]},{wasmUrl:"/viewer.wasm"});
+const editor = await Editor.mount(document.body,{markdown:"# Hello",viewer:{fonts,resources:browserResources()}});
 const geometry: SourceGeometry | null = editor.viewer.sourceToPreview(0);
 console.log(geometry, Viewer, CanvasReader, decodeImage);
 editor.destroy();
+fonts.destroy();
 Object.assign(window,{packageSmoke:true});
 `;
 	writeFileSync(join(consumer, "main.ts"), main);

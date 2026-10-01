@@ -1,0 +1,25 @@
+{
+  "name": "@markview/fonts",
+  "version": "0.1.10",
+  "description": "Explicit font loading, caching and CDN file descriptors",
+  "license": "MIT",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "sideEffects": false,
+  "scripts": {
+    "build": "node ../build-package.mjs fonts"
+  },
+  "dependencies": {
+    "@markview/viewer": "workspace:*"
+  }
+}

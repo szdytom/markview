@@ -298,7 +298,8 @@ Text fonts come from the host through `InitOptions.fonts`, a readonly array of
 `FontSource` (`string | URL | ArrayBuffer | Uint8Array`). URL sources are fetched
 in parallel with wasm initialization; byte sources are copied into wasm with
 their view bounds preserved. OpenType, TrueType and collections are accepted;
-WOFF/WOFF2 and CSS fonts are not. Only KaTeX's math fonts remain embedded.
+The initial build excluded WOFF/WOFF2; official builds now enable their
+optional decoder. CSS font descriptions remain unsupported. Only KaTeX's math fonts remain embedded.
 Missing or invalid font files reject initialization and allow a corrected retry.
 Repeated calls share the first successful initialization's options and fonts;
 omitting `fonts` leaves the text collection empty. Paragraph metrics, including
@@ -669,6 +670,7 @@ returns pixels without completing a request, so hosts can compose it with
 custom storage or authentication. Browser decoding determines supported image
 formats; no Rust decoder or worker thread is added.
 
-Text fonts retain the initialization-only `InitOptions.fonts` contract.
+`InitOptions.fonts` remains a deprecated compatibility default. New components
+use independent reusable `FontSet` values; see [the current guide](mvaac.md).
 Mermaid is an internal rendering computation, not an external image request;
 its existing desktop renderer will be integrated with MVaaC separately.

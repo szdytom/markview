@@ -40,7 +40,7 @@ TOC comes from the complete parsed document, including nested/closed headings, i
 1. Contract and package decisions: this document; baseline TypeScript checks and 53 browser tests passed. Native release binary and current WASM backed up in `artifacts/`.
 2. Engine source mapping, UTF conversion and TOC implemented, including disclosure source restoration and cached geometry binding. Mounted viewer navigation/events implemented; CodeMirror synchronization remains pending. Evidence: core source integration tests, built-package browser navigation tests and existing reader regressions; API documented in `docs/mvaac-source-api.md`.
 3. Public viewer and CodeMirror synchronization implemented and verified with real long paragraph/code scrolling, focus checks, history/list continuation, Chromium IME, TOC, divider, responsive layout and multiple-instance tests.
-4. Viewer/editor/resource/compatibility package extraction and built-entry examples implemented. Independent resource helper has no runtime/type dependency on the viewer. Instance font sets, font helper and WOFF codecs remain pending.
+4. Viewer/editor/resource/compatibility package extraction and built-entry examples implemented. Independent resource helper has no runtime/type dependency on the viewer. Instance font sets, the independent font helper and optional WOFF codecs implemented and verified.
 5. SVG scope, regression matrix and authoritative user documentation: pending.
 
 Each implementation stage updates the changelog, formats/lints, runs relevant tests and is committed separately. Final acceptance also exercises built package entries and rendered browser output. WOFF decoder selection requires WASM compilation, license/format checks and measured size/startup evidence. Confirmed SVG scope: file references, data URLs, host bytes and inline `<svg>` rendered as static images. Relative external resources inside SVG are unsupported. Mermaid is deferred.
@@ -52,7 +52,7 @@ Each implementation stage updates the changelog, formats/lints, runs relevant te
 - Full browser regression: 56 tests passed; after the last source changes and added cancellation test, all 14 navigation/input tests passed. The new viewer screenshot was inspected and contains rendered heading/body text.
 - Workspace/all-target native Clippy, WASM Clippy, Rust formatting, TypeScript checks and the official WASM/package builds passed.
 - Uncompressed WASM baseline: 14,864,809 bytes; source/viewer stage: 14,887,278 bytes (+22,469 bytes). Codec and startup measurements remain pending.
-- This is partial iteration progress: CodeMirror, package extraction, helper packages, per-instance fonts, WOFF codecs, SVG and final migration/support documentation remain required.
+- This is partial iteration progress; subsequent sections record CodeMirror/package/font completion. SVG and the final content/support audit remain required.
 
 ### Editor/package stage evidence (2026-10-02)
 
@@ -61,3 +61,11 @@ Each implementation stage updates the changelog, formats/lints, runs relevant te
 - The editor screenshot was inspected: source highlighting, directory, reading text and separator render correctly. The responsive narrow layout test passed.
 - Native outline regression: 22 tests passed; its optional GPU screenshot test was ignored (browser rendering was independently verified).
 - `pnpm --dir web test:packages` produced and installed actual tarballs in an isolated consumer, checked declarations with `skipLibCheck: false`, bundled and initialized/mounted/destroyed in Chromium successfully. Final font/SVG and full requirement-by-requirement acceptance remain pending.
+
+## Font stage verification
+
+- Per-instance/shared FontSet ownership, explicit FontLoader cache/CDN descriptors, retry, byte views, raw TTC and CFF/TrueType-color WOFF/WOFF2 paint validated through built entries.
+- Native font/publication suite: 15 tests pass with codecs enabled and 15 disabled. WASM Clippy passes with both feature configurations; official enabled and custom disabled release WASM builds pass. Disabled decoder rejection verified in Chromium.
+- A long-document font change exposed loss of the source anchor while a progressive prefix omitted its target. Viewer now retains a source target until geometry and enough viewport content are published; 7 font/navigation tests pass.
+- Codec overhead: +243,141 raw bytes, +105,576 gzip bytes. Compilation/instantiation and font input medians, licenses and fixture limitations are recorded in `docs/mvaac-font-measurements.md`; raw measurements remain ignored artifacts.
+- Editor example and isolated tarball consumer now explicitly compose all four public component/helper packages.

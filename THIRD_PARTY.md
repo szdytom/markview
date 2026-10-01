@@ -29,6 +29,8 @@ source and original license texts are available in Cargo's registry packages.
 | tokio / tokio-socks | Streaming downloads with a stall timeout, through SOCKS when asked | MIT |
 | unicode-segmentation | Grapheme boundaries for reading selections | MIT OR Apache-2.0 |
 | tempfile | Atomic settings replacement and tests | MIT OR Apache-2.0 |
+| wuff / brotli-decompressor | Optional Web WOFF/WOFF2 decoding | MIT / BSD-3-Clause OR MIT |
+| CodeMirror | Web editor state, input and Markdown editing | MIT |
 | usvg | Compile-time parsing of the SVG icon sources | Apache-2.0 OR MIT |
 | Lucide | Geometry of the `open`, `close`, `minus` and `plus` icons in `assets/ui` | ISC |
 
@@ -38,7 +40,8 @@ redistributed binaries. Markview does not bundle the JavaScript KaTeX runtime.
 Body/UI fonts are discovered from the operating system and are not distributed
 with this repository. Unit tests shape with the pinned Noto subsets under
 `crates/markview-core/tests/fonts`; their SIL Open Font License is reproduced in
-`licenses/Noto-OFL.txt`. The Lucide icon geometry under `assets/ui` is ISC
+`licenses/Noto-OFL.txt`. The WOFF/WOFF2 and collection test fixtures under
+`crates/markview-web/tests/fonts` derive from those same Noto subsets. The Lucide icon geometry under `assets/ui` is ISC
 licensed; its license is reproduced in `licenses/Lucide-ISC.txt`.
 
 Before packaging a release, include notices for the complete dependency tree,

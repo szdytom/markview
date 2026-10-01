@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Builds the WebAssembly front end and its JavaScript bindings into the
-# `@markview/web` package's `wasm/` directory.
+# `@markview/viewer` package's `wasm/` directory.
 #
 # The `wasm-bindgen` CLI's version must equal the `wasm-bindgen` crate's, so
 # the pin in `crates/markview-web/Cargo.toml` and the pinned CLI move together.
@@ -25,7 +25,7 @@ if [[ -z "$cli" ]]; then
 	exit 1
 fi
 
-cargo build -p markview-web --target wasm32-unknown-unknown --release
+cargo build -p markview-web --target wasm32-unknown-unknown --release --features woff
 
 rm -rf "$out"
 mkdir -p "$out"

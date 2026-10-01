@@ -13,6 +13,10 @@ description = "The browser front end: Markview driven from JavaScript through We
 # behind the `wasm32` gate.
 crate-type = ["cdylib", "rlib"]
 
+[features]
+default = []
+woff = ["dep:wuff"]
+
 [dependencies]
 markview-core = { path = "../markview-core" }
 markview-render = { path = "../markview-render" }
@@ -23,6 +27,7 @@ serde.workspace = true
 serde_json.workspace = true
 web-time.workspace = true
 percent-encoding = "2"
+wuff = { version = "0.2.9", optional = true, default-features = false, features = ["brotli", "z"] }
 # `FontConfig::from_faces` takes `parley::fontique::Blob`, which has to be
 # named to hand a browser its faces as bytes.
 parley.workspace = true

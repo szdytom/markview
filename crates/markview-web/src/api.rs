@@ -54,15 +54,40 @@ const MAX_STEP_MS: f64 = 60_000.0;
 /// Installs host font bytes for subsequently created readers.
 #[wasm_bindgen(js_name = configureFonts)]
 pub fn configure_fonts(faces: js_sys::Array) -> Result<(), JsValue> {
-	let faces = faces
+	fonts::install(font_bytes(faces)?).map_err(fail)
+}
+
+fn font_bytes(faces: js_sys::Array) -> Result<Vec<Vec<u8>>, JsValue> {
+	faces
 		.iter()
 		.map(|face| {
 			face.dyn_into::<js_sys::Uint8Array>()
 				.map(|data| data.to_vec())
 				.map_err(|_| fail("host fonts must be Uint8Array values"))
 		})
-		.collect::<Result<Vec<_>, _>>()?;
-	fonts::install(faces).map_err(fail)
+		.collect()
+}
+
+/// An immutable font configuration shared by independently owned readers.
+#[wasm_bindgen]
+pub struct FontSet {
+	config: FontConfig,
+}
+
+#[wasm_bindgen]
+impl FontSet {
+	#[wasm_bindgen(constructor)]
+	pub fn new(faces: js_sys::Array) -> Result<FontSet, JsValue> {
+		Ok(Self {
+			config: fonts::build(font_bytes(faces)?).map_err(fail)?,
+		})
+	}
+
+	pub fn duplicate(&self) -> FontSet {
+		Self {
+			config: self.config.clone(),
+		}
+	}
 }
 
 /// Builds a handle that draws into `canvas`, importing `config_json` when the
@@ -71,10 +96,11 @@ pub fn configure_fonts(faces: js_sys::Array) -> Result<(), JsValue> {
 pub async fn create(
 	canvas: HtmlCanvasElement,
 	config_json: Option<String>,
+	font_set: Option<FontSet>,
 ) -> Result<Markview, JsValue> {
 	console_error_panic_hook::set_once();
 	let config = Config::parse(config_json.as_deref())?;
-	let fonts = fonts::config();
+	let fonts = font_set.map_or_else(fonts::config, |set| set.config);
 	let dpr = ratio(web_sys::window().map_or(1.0, |w| w.device_pixel_ratio()));
 	// The page may not have sized the canvas yet, so start from its CSS box
 	// when there is one and let `resize` keep it current afterwards.
@@ -810,6 +836,13 @@ impl Markview {
 	/// The GPU adapter and backend this handle draws through.
 	pub fn adapter(&self) -> String {
 		self.renderer.adapter_name.clone()
+	}
+
+	/// Replaces text faces and starts budgeted reflow.
+	#[wasm_bindgen(js_name = setFonts)]
+	pub fn set_fonts(&mut self, fonts: FontSet) {
+		self.options.fonts = fonts.config;
+		self.reflow();
 	}
 
 	/// Applies a new `Config` and lays the document out again.

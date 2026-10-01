@@ -10,6 +10,7 @@ import type { CanvasReaderOptions } from "./reader.js";
 import type { MarkviewOptions, MarkviewStats, Modifiers, ScrollMode, DocumentCursor, PointerAction, SourceRange, SourceGeometry, Heading, Outline } from "./types.js";
 
 export { CanvasReader, LayoutUpdate, Markview };
+export { FontSet } from "./font-set.js";
 export { Viewer } from "./viewer.js";
 export type { ViewerOptions, ReadingPosition } from "./viewer.js";
 export type { ImagePixels, ImagePriority, ImageRequest, ImageResourceEvent, ResourceOptions } from "./resources.js";
@@ -25,7 +26,8 @@ export interface InitOptions {
 	 */
 	wasmUrl?: string | URL;
 	/**
-	 * Text fonts shared by every reader. URLs are fetched in parallel; byte
+	 * @deprecated Use `FontSet` and the per-reader `fonts` option.
+	 * Legacy default text fonts shared by readers without an explicit set. URLs are fetched in parallel; byte
 	 * sources are copied into wasm. Omitted means no text fonts are available.
 	 * Only KaTeX fonts are embedded. Supply every face your document needs.
 	 */

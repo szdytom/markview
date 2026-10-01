@@ -32,6 +32,9 @@ importers:
       '@markview/editor':
         specifier: workspace:*
         version: link:../../packages/editor
+      '@markview/fonts':
+        specifier: workspace:*
+        version: link:../../packages/fonts
       '@markview/resources':
         specifier: workspace:*
         version: link:../../packages/resources
@@ -53,6 +56,12 @@ importers:
       '@codemirror/view':
         specifier: ^6.38.6
         version: 6.43.13
+      '@markview/viewer':
+        specifier: workspace:*
+        version: link:../markview
+
+  packages/fonts:
+    dependencies:
       '@markview/viewer':
         specifier: workspace:*
         version: link:../markview

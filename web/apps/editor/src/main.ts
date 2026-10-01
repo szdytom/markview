@@ -1,3 +1,4 @@
+import { loadFontSet } from "@markview/fonts";
 import { Editor } from "@markview/editor";
 import { browserResources } from "@markview/resources";
 import { fonts } from "../../demo/src/fonts.js";
@@ -43,12 +44,13 @@ const source =
 	).join("");
 let dark = false;
 try {
+	const fontSet = await loadFontSet({ sources: fonts });
 	const editor = await Editor.mount(
 		document.querySelector("#desk") as HTMLElement,
 		{
 			markdown: source,
 			viewer: {
-				initialization: { fonts },
+				fonts: fontSet,
 				resources: browserResources({ baseUrl: document.baseURI }),
 			},
 		},

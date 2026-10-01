@@ -1,4 +1,4 @@
-/** Host font files: OpenType, TrueType or collections; WOFF is unsupported. */
+/** Host font files: OpenType, TrueType or collections, WOFF or WOFF2. */
 export type FontSource = string | URL | ArrayBuffer | Uint8Array;
 
 /** Fetches URL sources in parallel and keeps byte views' offsets intact. */

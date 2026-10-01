@@ -12,10 +12,10 @@ const tsc = join(root, "node_modules/typescript/bin/tsc");
 
 const pkg = join(root, "packages/markview");
 execFileSync(process.execPath, [join(pkg, "build.mjs")], { stdio: "inherit" });
-for (const name of ["resources", "web", "editor"]) {
+for (const name of ["resources", "fonts", "web", "editor"]) {
 	execFileSync(process.execPath, [join(root, "packages/build-package.mjs"), name], { stdio: "inherit" });
 }
-const alias = Object.fromEntries(["viewer", "resources", "web", "editor"].map(name =>
+const alias = Object.fromEntries(["viewer", "resources", "fonts", "web", "editor"].map(name =>
 	[`@markview/${name}`,join(root,"packages",name === "viewer" ? "markview" : name,"dist/index.js")]));
 
 // --- 2. The demo site: a self-contained static directory ---------------------
@@ -48,7 +48,7 @@ cpSync(join(pkg, "dist/markview_web_bg.wasm"), join(site, "markview_web_bg.wasm"
 console.log("built web/dist (index.html, main.js, main.css, markview_web_bg.wasm, assets/)");
 
 // Smoke hosts also consume built public package entries.
-for (const [name,entry] of [["api","web"],["editor-api","editor"]]) {
+for (const [name,entry] of [["api","web"],["editor-api","editor"],["fonts-api","fonts"]]) {
 	await esbuild.build({entryPoints:[alias[`@markview/${entry}`]],bundle:true,format:"esm",
 		outfile:join(site,`${name}.js`),target:"es2022",alias});
 }
@@ -56,3 +56,4 @@ await esbuild.build({entryPoints:[join(root,"apps/editor/src/main.ts")],bundle:t
 	outfile:join(site,"editor.js"),sourcemap:true,target:"es2022",alias,
 	loader:{".otf":"file",".ttf":"file"},assetNames:"assets/[name]-[hash]"});
 cpSync(join(root,"apps/editor/index.html"),join(site,"editor.html"));
+await esbuild.build({stdin:{contents:'export * from "@markview/viewer"; export * from "@markview/editor"; export * from "@markview/fonts"; export * from "@markview/resources";',resolveDir:root},bundle:true,format:"esm",outfile:join(site,"integration-api.js"),target:"es2022",alias});

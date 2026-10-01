@@ -3,6 +3,8 @@
 // parses the JSON once and hands out `MarkviewStats`.
 
 import { Markview as WasmMarkview, create as wasmCreate } from "../wasm/markview_web.js";
+import { fontHandle } from "./font-handles.js";
+import type { FontSet } from "./font-set.js";
 import { ResourceEvents, type ResourceOptions } from "./resources.js";
 import { LayoutUpdate } from "./layout-update.js";
 import type { MarkviewOptions, MarkviewStats, Modifiers, ScrollMode, DocumentCursor, PointerAction, SourceGeometry, Outline } from "./types.js";
@@ -31,10 +33,10 @@ export class Markview {
 	}
 
 	/** Builds a handle that draws into `canvas`, importing `options`. */
-	static async create(canvas: HTMLCanvasElement, options?: MarkviewOptions, resources?: ResourceOptions): Promise<Markview> {
+	static async create(canvas: HTMLCanvasElement, options?: MarkviewOptions, resources?: ResourceOptions, fonts?: FontSet): Promise<Markview> {
 		// A handle created before any frame will size itself on the first
 		// `resize()`; nothing else needs to happen here.
-		const handle = await wasmCreate(canvas, serializeOptions(options));
+		const handle = await wasmCreate(canvas, serializeOptions(options), fonts ? fontHandle(fonts) : undefined);
 		return new Markview(handle, resources);
 	}
 
@@ -227,6 +229,14 @@ export class Markview {
 		// Relaying out cancels the pending pass, so it supersedes it too.
 		this.#supersede();
 		this.#live().setConfig(serializeOptions(options));
+	}
+
+	/** Replaces faces through ordinary budgeted reflow. */
+	setFonts(fonts: FontSet): void {
+		const handle = this.#live();
+		const faces = fontHandle(fonts);
+		this.#supersede();
+		handle.setFonts(faces);
 	}
 
 	/** Releases the wasm handle. Later calls throw. */

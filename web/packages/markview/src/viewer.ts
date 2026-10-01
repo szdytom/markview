@@ -1,4 +1,5 @@
 import { init, type InitOptions } from "./index.js";
+import type { FontSet } from "./font-set.js";
 import { CanvasReader, type CanvasReaderOptions } from "./reader.js";
 import type {
 	Heading,
@@ -154,6 +155,10 @@ export class Viewer {
 		if (navigated) this.#headingTarget = anchor;
 		return navigated;
 	}
+	setFonts(fonts: FontSet): void {
+		this.#live();
+		this.reader.markview.setFonts(fonts);
+	}
 	setOptions(options: MarkviewOptions): void {
 		this.#live();
 		this.reader.markview.setOptions(options);
@@ -196,10 +201,13 @@ export class Viewer {
 		}
 		const geometry = this.sourceToPreview(target.offset);
 		if (!geometry) return;
-		this.reader.markview.setScroll(
-			geometry.rect.y + target.fraction * geometry.rect.height,
-		);
-		this.#target = null;
+		const y = geometry.rect.y + target.fraction * geometry.rect.height;
+		const engine = this.reader.markview;
+		engine.setScroll(y);
+		// A published prefix may contain the line without enough content below
+		// it to place it at the viewport top. Keep its source reference waiting.
+		if (Math.abs(engine.scroll() - y) < 1 || !engine.stats().pending)
+			this.#target = null;
 	}
 	#frame(stats: MarkviewStats, options: ViewerOptions): void {
 		const engine = this.reader.markview;
@@ -213,15 +221,15 @@ export class Viewer {
 			!this.#target &&
 			!this.#headingTarget
 		) {
-			const geometry = this.sourceToPreview(this.#position.offset);
-			if (geometry)
-				engine.setScroll(
-					geometry.rect.y +
-						this.#position.fraction * geometry.rect.height,
-				);
+			this.#target = {
+				offset: this.#position.offset,
+				fraction: this.#position.fraction,
+				version: stats.documentVersion,
+			};
 			this.#reason = "reflow";
 		}
 		this.#followTarget();
+		if (this.#target) return;
 		if (!stats.pending) this.#headingTarget = null;
 		const scroll = engine.scroll();
 		if (!changed && scroll === this.#lastScroll) return;

@@ -3,8 +3,7 @@
 //! Browser-independent state also builds as a native `rlib`, so the workspace
 //! tests font registration and publication without any browser code in it.
 //!
-//! The JavaScript contract these modules implement is frozen in
-//! `docs/mvaac-web-demo.md`.
+//! The JavaScript component contract is documented in `docs/mvaac.md`.
 
 // The pointer and the publication bookkeeping are pure state: they name no
 // browser type, so native tests cover them directly and `api.rs` stays the
@@ -19,4 +18,4 @@ mod fonts;
 mod images;
 
 #[cfg(target_arch = "wasm32")]
-pub use api::{Markview, configure_fonts, create};
+pub use api::{FontSet, Markview, configure_fonts, create};

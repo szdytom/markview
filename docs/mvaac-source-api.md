@@ -1,7 +1,7 @@
 # MVaaC source navigation and TOC
 
 The iteration contract is [mvaac-design.md](../artifacts/mvaac-design.md).
-This page describes the implemented source/navigation API. See [MVaaC components](mvaac.md) for CodeMirror composition, package entries and migration. Instance font sets are the next stage.
+This page describes the implemented source/navigation API. See [MVaaC components](mvaac.md) for CodeMirror composition, package entries and migration.
 
 ## Coordinates and publication
 
@@ -28,7 +28,7 @@ not advance or synchronously finish layout.
 
 ## Mounted viewer
 
-After `init({ wasmUrl, fonts })`, `Viewer.mount(container, { markdown })` creates
+After explicit font loading, `Viewer.mount(container, { markdown, fonts })` creates
 its own canvas and uses the existing `CanvasReader` input and frame loop. Give
 the container an explicit height. `getMarkdown`, `setMarkdown`, `setOptions`,
 `outline`, `sourceToPreview`, `previewToSource`, `readingPosition`,

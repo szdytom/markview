@@ -11,12 +11,13 @@ reference; its scope exclusions do not apply to the reusable components.
 
 - `packages/markview`: `@markview/viewer`, including sibling WASM asset.
 - `packages/editor`: `@markview/editor`, CodeMirror and preview composition.
+- `packages/fonts`: optional `@markview/fonts` explicit loading/cache.
 - `packages/resources`: optional `@markview/resources` browser transport.
 - `packages/web`: deprecated `@markview/web` compatibility entry.
 - `apps/editor`: split editing example, built as `/editor.html`.
 - `apps/demo`: original reader regression host, built as `/index.html`.
 
-The font helper and instance/WOFF support are the next implementation stage.
+Official WASM enables WOFF/WOFF2; hosts explicitly supply per-instance font sets.
 
 ## Build and validate
 
@@ -38,4 +39,4 @@ WASM is copied under `markview_web_bg.wasm`; downstream bundlers can import the
 Use `MV_GPU=1 pnpm --dir web test --project=chromium-gpu` for the opt-in Vulkan
 browser project. Default browser tests use SwiftShader. Native engine tests run
 with `cargo test -p markview-core`; WASM lint runs with
-`cargo clippy -p markview-web --target wasm32-unknown-unknown -- -D warnings`.
+`cargo clippy -p markview-web --target wasm32-unknown-unknown --features woff -- -D warnings`.
