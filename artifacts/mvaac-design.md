@@ -1,0 +1,46 @@
+# MVaaC implementation contract
+
+This document records implementation decisions for `mvaac-iter-plan.md`.
+Implementation and acceptance evidence are tracked below; a design decision alone is not acceptance evidence.
+
+## Packages
+
+- `@markview/viewer`: engine, canvas input/frame loop and container-mounted `Viewer`.
+- `@markview/editor`: CodeMirror Markdown editor and viewer composition. Uses only the viewer public mapping/navigation APIs.
+- `@markview/fonts`: explicit URL/byte font sets and reusable fetch cache; no bundled text faces or automatic CDN requests.
+- `@markview/resources`: opt-in browser image transport, decoding, base URL and request options.
+- `@markview/web`: deprecated compatibility entry re-exporting the viewer's low-level API. Existing global initialization fonts remain a compatibility default, while explicit per-instance font sets take precedence.
+
+The viewer ships WASM beside its ESM entry, with an exported WASM asset path and explicit `wasmUrl` override for bundlers. Auxiliary packages remain optional. No frontend framework is required.
+
+## Coordinates, versions and mapping
+
+All public source offsets/ranges count UTF-16 code units from zero; ranges are half-open. Rust source byte ranges convert against the original string, preserving CRLF. An offset inside a surrogate pair snaps to the character start. Geometry is in document CSS pixels, with downward-positive y; viewport positions add the engine scroll offset.
+
+A document version changes only when source is replaced. Layout revision changes on publication, including progressive publication and reflows. Queries and events identify both; old-version targets never drive a replacement document.
+
+Mapping follows rendered line geometry and inline source ranges for prose, and source lines for code. Nested blocks/cells use their own ranges. Atomic content maps to its source range. Invisible syntax and whitespace choose the nearest rendered source position, preferring the following position on a tie; collapsed bodies fall back to their disclosure header. Mapping is approximate for transformed text, ligatures, math and generated labels, and does not promise one rendered glyph per source character.
+
+Navigation to source keeps disclosures collapsed by default; heading navigation opens enclosing disclosures. A source navigation request for unpublished content remains pending and advances only through the normal budgeted frame loop. New source, navigation or user input cancels an obsolete target.
+
+## Scrolling and preservation
+
+The synchronization reference is the top visible content position, with the line's fractional vertical displacement retained. Events distinguish user motion, programmatic navigation and reflow; programmatic following never initiates reverse following. Wheel, pointer and keyboard input on either pane immediately take ownership. Synchronization does not focus either pane or interfere with text selection.
+
+On reflow, retain the source reference rather than the document scroll fraction. On edits, map the retained source offset through CodeMirror's changes before restoring it in the new viewer document. Pending navigation is version-scoped. Resources are independently pending after layout completion and can cause reflow; replacing a document or destroying a component aborts prior requests.
+
+## TOC and components
+
+TOC comes from the complete parsed document, including nested/closed headings, in source order. Entries contain text, level, unique anchor and source range. Heading navigation and active-section notifications use that same data. A no-heading document has an empty outline and no current section.
+
+`Viewer.mount(container, options)` and `Editor.mount(container, options)` own only their created DOM. Destruction is idempotent, removes listeners and releases engine state. An editor exposes its CodeMirror view and extension configuration, document get/set/change notifications, layout/theme configuration, draggable separator and optional TOC. Styles are scoped to component roots.
+
+## Delivery and verification
+
+1. Contract and package decisions: this document; baseline TypeScript checks and 53 browser tests passed. Native release binary and current WASM backed up in `artifacts/`.
+2. Engine source mapping, UTF conversion and TOC: pending.
+3. Public viewer and CodeMirror synchronization: pending.
+4. Package builds, helpers, instance fonts and WOFF codecs: pending.
+5. SVG scope, regression matrix and authoritative user documentation: pending.
+
+Each implementation stage updates the changelog, formats/lints, runs relevant tests and is committed separately. Final acceptance also exercises built package entries and rendered browser output. WOFF decoder selection requires WASM compilation, license/format checks and measured size/startup evidence. Confirmed SVG scope: file references, data URLs, host bytes and inline `<svg>` rendered as static images. Relative external resources inside SVG are unsupported. Mermaid is deferred.
