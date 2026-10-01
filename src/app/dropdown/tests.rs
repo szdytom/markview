@@ -61,11 +61,8 @@ fn app_with_panel() -> App<StubProxy> {
 	app
 }
 
-/// One physical click: move the pointer there, press, then release in place.
-fn click(app: &mut App<StubProxy>, x: f32, y: f32) {
-	// A tap suppresses mouse input for a moment; these tests drive both paths,
-	// so each click starts from a pointer the platform is not holding back.
-	app.gestures.allow_mouse();
+/// A pointer report at a window point, as the platform delivers one.
+fn move_to(app: &mut App<StubProxy>, x: f32, y: f32) {
 	app.handle_window_event(
 		&StubLoop,
 		WindowId::dummy(),
@@ -74,6 +71,14 @@ fn click(app: &mut App<StubProxy>, x: f32, y: f32) {
 			position: PhysicalPosition::new(f64::from(x), f64::from(y)),
 		},
 	);
+}
+
+/// One physical click: move the pointer there, press, then release in place.
+fn click(app: &mut App<StubProxy>, x: f32, y: f32) {
+	// A tap suppresses mouse input for a moment; these tests drive both paths,
+	// so each click starts from a pointer the platform is not holding back.
+	app.gestures.allow_mouse();
+	move_to(app, x, y);
 	for state in [ElementState::Pressed, ElementState::Released] {
 		app.handle_window_event(
 			&StubLoop,
@@ -605,6 +610,38 @@ fn enter_commits_the_option_the_wheel_moved_to() {
 	app.key_pressed(&Key::Named(NamedKey::Enter));
 	assert!(app.interaction.dropdown.is_none());
 	assert_eq!(app.preferences.values.lang, Some(Lang::ZhHans));
+}
+
+/// The macOS backend reports the pointer's position again before every wheel
+/// event, hand still or not. A report that moves nothing must not claim the
+/// highlight back from the wheel it precedes: with the pointer resting on an
+/// option, each notch still advances past it instead of returning to it.
+#[test]
+fn a_report_that_moves_nothing_keeps_the_wheels_highlight() {
+	let mut app = app_with_panel();
+	app.action(Command::ToggleDropdown(DropdownId::Language, 0));
+	// The pointer rests on an option, whose hover owns the highlight.
+	let (x, y) = option_centre(&mut app, Command::Language(Some(Lang::En)));
+	move_to(&mut app, x, y);
+	assert_eq!(highlighted(&mut app), Command::Language(Some(Lang::En)));
+
+	// Every notch arrives behind a report of the same position, and each moves
+	// the highlight one option on from where the last left it.
+	for expected in [
+		Command::Language(Some(Lang::ZhHans)),
+		Command::Language(Some(Lang::ZhHant)),
+		Command::Language(Some(Lang::Ja)),
+	] {
+		move_to(&mut app, x, y);
+		wheel(&mut app, MouseScrollDelta::LineDelta(0.0, -1.0));
+		assert_eq!(highlighted(&mut app), expected);
+	}
+
+	// `Enter` commits the option the wheel moved to, not the one under the
+	// pointer.
+	app.key_pressed(&Key::Named(NamedKey::Enter));
+	assert!(app.interaction.dropdown.is_none());
+	assert_eq!(app.preferences.values.lang, Some(Lang::Ja));
 }
 
 /// A chord with a modifier belongs to the reader, menus or not: `Cmd`+wheel

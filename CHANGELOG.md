@@ -24,6 +24,7 @@ at the same level, without `[brackets]`.
 ### Fixed
 
 - Preserve CJK bold in reader and PDF themes by treating the preferred Medium face as a minimum weight instead of an absolute override.
+- Ignore the pointer position reports the macOS backend repeats before every wheel event, which pulled an open list's highlight back to the hovered option between notches.
 
 ## 0.1.10 - 2026-10-01
 

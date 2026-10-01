@@ -118,31 +118,38 @@ impl<P: super::SendEvent> App<P> {
 			}
 			WindowEvent::CursorMoved { position, .. } => {
 				let scale = self.dimensions().2;
-				let old = self.interaction.cursor;
-				let was_button = self.button_at_cursor();
-				self.interaction.cursor =
+				let point =
 					(position.x as f32 / scale, position.y as f32 / scale);
-				if let Some((_, (px, py))) =
-					self.interaction.pressed_image.as_ref()
-					&& (self.interaction.cursor.0 - px)
-						.hypot(self.interaction.cursor.1 - py)
-						> 3.
-				{
-					self.interaction.pressed_image = None;
-				}
-				self.hover_dropdown();
-				self.move_tab_drag();
-				self.drag_scrollbar();
-				self.drag_panel();
-				self.update_drag();
-				self.refresh_hover();
-				if self.interaction.panel_open()
-					|| was_button || self.button_at_cursor()
-					|| old.1 < TOP || self.interaction.cursor.1 < TOP
-					|| old.0 >= self.dimensions().0 - 16.
-					|| self.interaction.cursor.0 >= self.dimensions().0 - 16.
-				{
-					self.redraw();
+				// The macOS backend reports the pointer's position again
+				// before every wheel event, hand still or not. A report that
+				// moves nothing is not motion, and every handler below
+				// answers motion — the open list's hover, most urgently,
+				// must not claim the highlight back from the wheel the
+				// report precedes.
+				if point != self.interaction.cursor {
+					let old = self.interaction.cursor;
+					let was_button = self.button_at_cursor();
+					self.interaction.cursor = point;
+					if let Some((_, (px, py))) =
+						self.interaction.pressed_image.as_ref()
+						&& (point.0 - px).hypot(point.1 - py) > 3.
+					{
+						self.interaction.pressed_image = None;
+					}
+					self.hover_dropdown();
+					self.move_tab_drag();
+					self.drag_scrollbar();
+					self.drag_panel();
+					self.update_drag();
+					self.refresh_hover();
+					if self.interaction.panel_open()
+						|| was_button || self.button_at_cursor()
+						|| old.1 < TOP || point.1 < TOP
+						|| old.0 >= self.dimensions().0 - 16.
+						|| point.0 >= self.dimensions().0 - 16.
+					{
+						self.redraw();
+					}
 				}
 			}
 			WindowEvent::CursorLeft { .. } => {
