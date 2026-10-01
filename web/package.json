@@ -7,8 +7,8 @@
     "typecheck": "tsc --noEmit -p packages/markview && tsc --noEmit -p packages/fonts && tsc --noEmit -p packages/resources && tsc --noEmit -p packages/web && tsc --noEmit -p packages/editor && tsc --noEmit -p apps/demo && tsc --noEmit -p apps/editor",
     "serve": "node serve.mjs",
     "test": "playwright test",
-    "format": "prettier --write packages/fonts/src packages/markview/src/font-*.ts packages/editor/src packages/resources/src packages/web/src apps/editor/src packages/markview/src/viewer.ts packages/build-package.mjs tests/editor.spec.mjs check-packages.mjs tests/font-sets.spec.mjs measure-fonts.mjs",
-    "lint": "pnpm typecheck && prettier --check packages/fonts/src packages/markview/src/font-*.ts packages/editor/src packages/resources/src packages/web/src apps/editor/src packages/markview/src/viewer.ts packages/build-package.mjs tests/editor.spec.mjs check-packages.mjs tests/font-sets.spec.mjs measure-fonts.mjs",
+    "format": "prettier --write packages/fonts/src packages/markview/src/font-*.ts apps/assets packages/editor/src packages/resources/src packages/web/src apps/editor/src packages/markview/src/viewer.ts packages/build-package.mjs tests/editor.spec.mjs check-packages.mjs tests/font-sets.spec.mjs measure-fonts.mjs tests/svg.spec.mjs",
+    "lint": "pnpm typecheck && prettier --check packages/fonts/src packages/markview/src/font-*.ts apps/assets packages/editor/src packages/resources/src packages/web/src apps/editor/src packages/markview/src/viewer.ts packages/build-package.mjs tests/editor.spec.mjs check-packages.mjs tests/font-sets.spec.mjs measure-fonts.mjs tests/svg.spec.mjs",
     "test:packages": "node check-packages.mjs"
   },
   "devDependencies": {

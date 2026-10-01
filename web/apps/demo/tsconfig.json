@@ -5,5 +5,5 @@
       "@markview/web": ["../../packages/markview/src/index.ts"]
     }
   },
-  "include": ["src/**/*.ts", "../../packages/markview/src/**/*.ts"]
+  "include": ["src/**/*.ts", "../assets/types.d.ts", "../../packages/markview/src/**/*.ts"]
 }

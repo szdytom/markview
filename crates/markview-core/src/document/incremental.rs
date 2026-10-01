@@ -154,6 +154,19 @@ pub fn parse_prefix(source: &Arc<str>, bytes: usize) -> Option<Document> {
 	if ends_in_open_html(&source[..end]) {
 		return None;
 	}
+	// An SVG image is atomic even when blank lines split its raw HTML nodes.
+	let mut at = 0;
+	while let Some(open) = source[at..end].find("<svg") {
+		let open = at + open;
+		if let Some(len) = crate::html::svg_len(&source[open..]) {
+			if open + len > end {
+				return None;
+			}
+			at = open + len;
+		} else {
+			at = open + 4;
+		}
+	}
 	let blocks = prefix_blocks(source, end);
 	Some(Document {
 		source: source.clone(),

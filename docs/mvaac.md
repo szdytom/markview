@@ -2,7 +2,7 @@
 
 MVaaC is the framework-independent Web/WASM interface to Markview. The native
 application remains a read-only Markdown reader; Web editing belongs to
-`@markview/editor`. SVG completion and the final content audit remain in progress.
+`@markview/editor`. This guide is the authoritative reusable-component contract.
 
 ## Packages and ownership
 
@@ -47,9 +47,25 @@ editor.destroy();
 fonts.destroy();
 ```
 
-For an independent preview, replace the editor import/mount with
-`Viewer`/`Viewer.mount` from `@markview/viewer`, and pass the nested `viewer`
-options directly. No CodeMirror or frontend framework is involved.
+An independent preview uses the same explicitly loaded set and resources:
+
+```ts
+import { Viewer } from "@markview/viewer";
+import { loadFontSet } from "@markview/fonts";
+import { browserResources } from "@markview/resources";
+import wasmUrl from "@markview/viewer/wasm?url";
+const fonts = await loadFontSet({ sources: ["/fonts/body.woff2"] }, { wasmUrl });
+const viewer = await Viewer.mount(document.getElementById("preview")!, {
+  markdown: "# Preview\n\nRead this independently.", fonts,
+  resources: browserResources({ baseUrl: document.baseURI }),
+  onSectionChange: heading => console.log(heading?.anchor),
+});
+viewer.navigateHeading(viewer.outline().entries[0]!.anchor);
+viewer.destroy();
+fonts.destroy();
+```
+
+No CodeMirror or frontend framework is involved.
 
 WASM is exported at `@markview/viewer/wasm` and shipped beside the viewer ESM
 entry. Unbundled ESM loads that sibling by default. When bundling JavaScript,
@@ -150,6 +166,52 @@ Replacing source or destroying a component cancels obsolete requests; stale
 results cannot update the new document. URL bases belong to the host, including
 any future local-file protocol supplied by a VS Code plugin.
 
+## SVG and content support
+
+SVG file URLs, `data:image/svg+xml` URLs, Blob/ArrayBuffer/Uint8Array decoding
+and raw `<svg>` elements all render as static image pixels. Inline elements
+travel through the same host image protocol as other images, with a percent
+encoded data URL and an atomic source range. Complete elements may span blank
+lines, contain nested SVG/comments/CDATA and appear in paragraphs or containers.
+A missing root `xmlns` is supplied for inline elements; supplied SVG files/bytes
+must be valid XML. The browser determines text/font painting inside SVG, which
+is separate from WASM text `FontSet` shaping. SVG is rasterized once at its
+intrinsic browser size; scripts, live DOM interaction, animation playback and
+vector export are outside this interface.
+
+The resource helper accepts internal fragment references (for example
+`<use href="#shape">` and `url(#gradient)`) and embedded `data:image` references.
+External dependencies, including relative image/`use` URLs and external CSS
+URLs/imports, are unsupported and rejected with `SVG external resources are
+unsupported`. Absolute external dependencies are also excluded by image-mode
+SVG. Hosts needing them must produce a self-contained SVG before delivery.
+Malformed XML rejects decoding; resource rejection produces the reader's image
+error placeholder. An incomplete/unclosed inline SVG retains the raw-HTML
+fallback while it is being edited. This is static SVG support, not a full HTML
+or SVG document renderer. Mermaid remains deferred and its image request is
+unsupported by the browser helper.
+
+| Content | Rendering and source following |
+| --- | --- |
+| Paragraphs / emphasis | Shaped/wrapped lines; nearest semantic cluster, including long paragraphs |
+| Headings | Complete ordered TOC, duplicate-safe anchors, source ranges and deferred navigation |
+| Nested lists / quotes | Internal lines/items retain source ranges; no whole-document percentage mapping |
+| Code | Syntax colors and line following; wide blocks can pan horizontally |
+| Tables | Styled cells and rows, internal text following and horizontal overflow handling |
+| Inline / display math | Embedded KaTeX faces; formulas are atomic ranges; unsupported TeX can show errors |
+| Raster / SVG images | Explicit host pixels or optional browser transport; atomic ranges and late-image reflow |
+| Links | Internal anchors use reader navigation; external targets use the host `onLink` callback |
+| Disclosures / front matter | Folded visible-container fallback; TOC navigation opens containing disclosures |
+| Supported raw HTML | Small semantic subset plus SVG; unsupported HTML displays source, not a browser page |
+
+Escapes/entities, invisible syntax, whitespace and shaped ligatures do not give
+one source character per rendered glyph. Horizontal clipping and hidden bodies
+use the available visible geometry. Content/image bounds and unsupported input
+follow engine limits; these packages do not promise arbitrary HTML/CSS or TeX
+compatibility. Actual canvas and split-editor integration tests cover the matrix,
+including tall late images, long wrapped tables, nested containers, collapsed
+bodies, Unicode, editing, font replacement and source-anchor preservation.
+
 ## Lifecycle and examples
 
 Every mount creates owned DOM and engine state. Multiple instances are supported;
@@ -161,7 +223,9 @@ by these packages.
 `apps/editor` consumes built public entries and demonstrates editing, both
 scroll directions, TOC, themes and a draggable split. `/editor.html` is the
 current example; `/index.html` preserves the original low-level reader regression
-host. It explicitly composes the font and resource helpers.
+host. It explicitly composes the font and resource helpers. The two examples share
+explicit licensed host font assets under `apps/assets`; no font assets are
+shipped in the libraries.
 
 ## Build and test
 

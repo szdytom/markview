@@ -16,13 +16,22 @@ export async function decodeImage(
 						? source.slice().buffer
 						: source,
 				]);
-	if (!blob.type && /^\s*</.test(await blob.slice(0, 256).text())) {
-		const root = new DOMParser().parseFromString(
+	if (
+		blob.type.split(";")[0] === "image/svg+xml" ||
+		/^\s*</.test(await blob.slice(0, 256).text())
+	) {
+		const document = new DOMParser().parseFromString(
 			await blob.text(),
 			"image/svg+xml",
-		).documentElement;
-		if (root.localName === "svg")
+		);
+		if (document.documentElement.localName === "svg") {
+			if (document.querySelector("parsererror"))
+				throw new Error("Invalid SVG XML");
+			validateSvg(document);
 			blob = blob.slice(0, blob.size, "image/svg+xml");
+		} else if (blob.type.split(";")[0] === "image/svg+xml") {
+			throw new Error("Invalid SVG XML");
+		}
 	}
 	signal?.throwIfAborted();
 	const url = URL.createObjectURL(blob);
@@ -68,6 +77,37 @@ export async function decodeImage(
 		if (abort) signal?.removeEventListener("abort", abort);
 		image.src = "";
 		URL.revokeObjectURL(url);
+	}
+}
+
+/** Image-mode SVG uses self-contained resources, including embedded data. */
+function validateSvg(document: Document): void {
+	const supported = (value: string): boolean =>
+		value.startsWith("#") || /^data:image\//i.test(value);
+	const css = (text: string): void => {
+		if (/@import\b/i.test(text))
+			throw new Error(
+				"SVG external resources are unsupported: CSS @import",
+			);
+		for (const match of text.matchAll(/url\(\s*(['"]?)(.*?)\1\s*\)/gi)) {
+			if (!supported(match[2]!.trim()))
+				throw new Error(
+					`SVG external resources are unsupported: ${match[2]}`,
+				);
+		}
+	};
+	for (const element of document.querySelectorAll("*")) {
+		for (const attribute of element.attributes) {
+			if (
+				attribute.localName === "href" &&
+				!supported(attribute.value.trim())
+			)
+				throw new Error(
+					`SVG external resources are unsupported: ${attribute.value}`,
+				);
+			css(attribute.value);
+		}
+		if (element.localName === "style") css(element.textContent ?? "");
 	}
 }
 

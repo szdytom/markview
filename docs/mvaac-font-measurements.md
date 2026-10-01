@@ -31,7 +31,7 @@ bytes are absent from WASM. Only KaTeX math faces are embedded.
 
 ## Binary size
 
-Same source state, release optimization and wasm-bindgen processing:
+Same font-stage source state, release optimization and wasm-bindgen processing:
 
 | Variant | WASM bytes | gzip bytes |
 | --- | ---: | ---: |

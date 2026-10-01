@@ -23,11 +23,14 @@ at the same level, without `[brackets]`.
 
 ### Added
 
+- Render inline SVG as static host-decoded images and reject unsupported external SVG dependencies in browser resources.
 - Add per-instance shared font sets, an explicit font loading/cache package and optional WOFF/WOFF2 decoding in official WASM builds.
 - Add reusable viewer/editor/resource packages, a CodeMirror split editor with automatic source following, configurable TOC/layout and a built-package example.
 - Add versioned MVaaC source geometry, complete TOC and a container-mounted viewer with progressive navigation and reading-position events.
 
 ### Fixed
+
+- Parse adjacent SVG elements iteratively and preserve normalized code and math text extending beyond inline SVG boundaries.
 
 - Preserve Unicode source ranges in adjacent quoted disclosures, atomic image geometry and source navigation through horizontally panned content.
 - Retain source reading targets while progressive reflow has not yet published enough content to position them.

@@ -229,6 +229,7 @@ fn adjacent_quoted_disclosures_map_unicode_bodies_and_trailing_text() {
 fn empty_alt_images_keep_atomic_source_geometry_across_resource_updates() {
 	for source in [
 		"before ![](test.png) after",
+		"before <svg width=\"100\" height=\"140\"><rect/></svg> after",
 		"![first](test.png)![](test.png)![](test.png)",
 		"> before ![](test.png) after",
 		"| image |\n|---|\n| ![](test.png) |",
@@ -240,8 +241,12 @@ fn empty_alt_images_keep_atomic_source_geometry_across_resource_updates() {
 		let mut engine = LayoutEngine::new();
 		for state in [None, Some((100, 140))] {
 			let mut resources = markview_core::image::ImageSnapshot::default();
+			let mut images = Vec::new();
+			for block in &doc.blocks {
+				block.images(&mut images);
+			}
 			resources.entries.insert(
-				"test.png".into(),
+				images[0].src.clone(),
 				markview_core::image::ImageInfo {
 					version: 1,
 					size: state,
@@ -249,8 +254,17 @@ fn empty_alt_images_keep_atomic_source_geometry_across_resource_updates() {
 				},
 			);
 			let snapshot = engine.layout_with_images(&doc, &opts, &resources);
-			for (start, _) in source.match_indices("![]") {
-				let end = start + "![](test.png)".len();
+			let ranges: Vec<_> = if let Some(start) = source.find("<svg") {
+				std::iter::once(start..source.find("</svg>").unwrap() + 6)
+					.collect()
+			} else {
+				source
+					.match_indices("![]")
+					.map(|(start, _)| start..start + "![](test.png)".len())
+					.collect()
+			};
+			for range in &ranges {
+				let (start, end) = (range.start, range.end);
 				for offset in start..end {
 					let mapped = index
 						.source_to_preview(
@@ -275,7 +289,7 @@ fn empty_alt_images_keep_atomic_source_geometry_across_resource_updates() {
 					.source_to_preview(
 						&snapshot,
 						&Default::default(),
-						source.find("![]").unwrap(),
+						ranges[0].start,
 					)
 					.unwrap();
 				let reverse = index

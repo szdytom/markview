@@ -2464,6 +2464,7 @@ dependencies = [
  "markview-core",
  "memmap2",
  "parley",
+ "percent-encoding",
  "ratex-katex-fonts",
  "ratex-layout",
  "ratex-parser",

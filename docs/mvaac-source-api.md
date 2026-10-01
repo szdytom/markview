@@ -30,10 +30,10 @@ not advance or synchronously finish layout.
 
 After explicit font loading, `Viewer.mount(container, { markdown, fonts })` creates
 its own canvas and uses the existing `CanvasReader` input and frame loop. Give
-the container an explicit height. `getMarkdown`, `setMarkdown`, `setOptions`,
+the container an explicit height. `getMarkdown`, `setMarkdown`, `setOptions`, `setFonts`,
 `outline`, `sourceToPreview`, `previewToSource`, `readingPosition`,
 `currentSection`, `scrollToSource`, `navigateHeading`, `onReadingPosition` and
-`cancelNavigation` and `destroy` form the component API. `reader` provides the same low-level canvas API.
+`cancelNavigation`, `destroy` form the component API. `reader` provides the same low-level canvas API.
 
 `scrollToSource(offset, fraction = 0)` waits for unpublished geometry through the
 normal budgeted layout loop. A new navigation, document replacement or user input
@@ -46,7 +46,7 @@ that edit source can pass the reading offset mapped through their edits.
 line `fraction`, current heading, and `reason`: `user`, `programmatic`, or
 `reflow`. Subscribe using `onReadingPosition(listener)`; the returned function
 unsubscribes. Following a programmatic event should not start reverse following.
-Width, options and asynchronous image reflow retain the source reading anchor.
+Width, options, fonts and asynchronous image reflow retain the source reading anchor.
 Destruction is idempotent and removes the owned DOM, input handlers, frame loop,
 subscriptions and pending resource requests. Calls after destruction throw.
 

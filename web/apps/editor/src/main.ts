@@ -1,7 +1,7 @@
 import { loadFontSet } from "@markview/fonts";
 import { Editor } from "@markview/editor";
 import { browserResources } from "@markview/resources";
-import { fonts } from "../../demo/src/fonts.js";
+import { fonts } from "../../assets/fonts.js";
 
 const markdown = `# The reading desk
 
@@ -29,6 +29,14 @@ Markview shapes and lays out Markdown directly, with publication-quality line br
 $$
 E = mc^2
 $$
+
+## A static illustration
+
+<svg width="320" height="96" viewBox="0 0 320 96">
+<rect width="320" height="96" rx="12" fill="#e2e8f0"/>
+<path d="M24 72 Q84 8 144 48 T296 24" fill="none" stroke="#0f766e" stroke-width="4"/>
+<circle cx="144" cy="48" r="6" fill="#0f766e"/>
+</svg>
 
 ## A small program
 

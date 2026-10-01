@@ -4,7 +4,8 @@
 //! the same semantics: `b`, `strong`, `i`, `em`, `del`, `s`, `strike`, `code`,
 //! `kbd`, `samp`, `tt`, `sup`, `a`, `br`, `h1`-`h6`, `p` and `hr`. Attributes
 //! such as `class` or `style` are never interpreted. Any other markup keeps
-//! the existing fallback: the raw source is shown as code.
+//! the existing fallback: the raw source is shown as code. Complete SVG
+//! elements become atomic host-decoded images.
 
 /// One style delta carried by a supported tag.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -318,6 +319,7 @@ enum Tag {
 
 enum Token {
 	Text(String),
+	Image(crate::image::ImageSpec),
 	Comment,
 	Tag(String),
 }
@@ -344,6 +346,14 @@ pub fn block(source: &str) -> Block {
 	let mut rule = false;
 	for token in tokenize(source) {
 		let fragment = match token {
+			Token::Image(image) => {
+				spans.push(Span {
+					image: Some(image),
+					text: String::new(),
+					styles: styles.clone(),
+				});
+				continue;
+			}
 			Token::Text(t) => {
 				push_text(&mut spans, &t, &styles);
 				continue;
@@ -562,6 +572,11 @@ fn tokenize(source: &str) -> Vec<Token> {
 			tokens.push(Token::Text(rest[..open].to_string()));
 		}
 		let candidate = &rest[open..];
+		if let Some((len, image)) = svg(candidate) {
+			tokens.push(Token::Image(image));
+			i += open + len;
+			continue;
+		}
 		match tag_len(candidate) {
 			Some(len) => {
 				tokens.push(Token::Tag(candidate[..len].to_string()));
@@ -575,6 +590,69 @@ fn tokenize(source: &str) -> Vec<Token> {
 		}
 	}
 	tokens
+}
+
+/// One complete SVG element as an atomic, host-decoded image.
+pub(crate) fn svg_len(source: &str) -> Option<usize> {
+	if !source.starts_with('<') {
+		return None;
+	}
+	let first = tag_len(source)?;
+	let (name, attrs, closing) = tag_parts(&source[..first])?;
+	if name != "svg" || closing {
+		return None;
+	}
+	let mut depth = usize::from(!attrs.trim_end().ends_with('/'));
+	let mut end = first;
+	while depth > 0 {
+		let open = source[end..].find('<')? + end;
+		let rest = &source[open..];
+		if rest.starts_with("<!--") {
+			end = open + rest.find("-->")? + 3;
+			continue;
+		}
+		if rest.starts_with("<![CDATA[") {
+			end = open + rest.find("]]>")? + 3;
+			continue;
+		}
+		end = open + tag_len(rest)?;
+		if let Some((name, attrs, closing)) = tag_parts(&source[open..end])
+			&& name == "svg"
+		{
+			if closing {
+				depth -= 1;
+			} else if !attrs.trim_end().ends_with('/') {
+				depth += 1;
+			}
+		}
+	}
+	Some(end)
+}
+
+pub(crate) fn svg(source: &str) -> Option<(usize, crate::image::ImageSpec)> {
+	let end = svg_len(source)?;
+	let first = tag_len(source)?;
+	let (_, attrs, _) = tag_parts(&source[..first])?;
+	let mut xml = source[..end].to_string();
+	if attribute(attrs, "xmlns").is_none() {
+		xml.insert_str(4, " xmlns=\"http://www.w3.org/2000/svg\"");
+	}
+	Some((
+		end,
+		crate::image::ImageSpec {
+			src: format!(
+				"data:image/svg+xml,{}",
+				percent_encoding::utf8_percent_encode(
+					&xml,
+					percent_encoding::NON_ALPHANUMERIC
+				)
+			),
+			alt: String::new(),
+			title: String::new(),
+			width: attribute(attrs, "width").and_then(|v| v.parse().ok()),
+			height: attribute(attrs, "height").and_then(|v| v.parse().ok()),
+		},
+	))
 }
 
 /// Byte length of a `<...>` candidate, honoring quoted attribute values.

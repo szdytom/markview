@@ -69,17 +69,19 @@ impl Reader<'_> {
 		style: &TextStyle,
 		out: &mut RichText,
 		depth: usize,
+		mut from: usize,
 	) {
 		// Comrak builds the AST iteratively but produces recursion as deep as
 		// the input demands; past the budget the remaining text is kept flat
 		// instead of descending.
 		if depth >= self.limits.inline_depth {
-			let text = self.flattened(node);
+			let text = self.flattened_from(node, from);
 			if !text.is_empty() {
 				out.push(Inline {
 					kind: InlineKind::Text(text),
 					style: style.clone(),
-					source: self.range(node),
+					source: self.range(node).start.max(from)
+						..self.range(node).end,
 				});
 			}
 			return;
@@ -89,21 +91,55 @@ impl Reader<'_> {
 		let mut style = style.clone();
 		let mut scopes: Vec<(String, TextStyle)> = Vec::new();
 		for child in node.children() {
+			let source = self.range(child);
+			if from > 0 && source.end <= from {
+				continue;
+			}
+			if matches!(child.data.borrow().value, NodeValue::HtmlInline(_))
+				&& let Some(len) = html::svg_len(&self.source[source.start..])
+				&& source.start + len <= self.range(node).end
+			{
+				let end = source.start + len;
+				let raw = strip_blockquotes(
+					&self.source[source.start..end],
+					enclosing_quotes(self.source, source.start),
+				);
+				let (_, image) = html::svg(&raw).unwrap();
+				out.push(Inline {
+					kind: InlineKind::Image(image),
+					style: style.clone(),
+					source: source.start..end,
+				});
+				from = end;
+				continue;
+			}
 			let mut child_style = style.clone();
 			let value = child.data.borrow();
 			let kind = match &value.value {
-				NodeValue::Text(t) => Some(InlineKind::Text(t.to_string())),
+				NodeValue::Text(t) => Some(InlineKind::Text(self.text_after(
+					t,
+					source.clone(),
+					from,
+				))),
 				NodeValue::SoftBreak => Some(InlineKind::Text(" ".into())),
 				NodeValue::LineBreak => {
 					Some(InlineKind::LineBreak { justify: false })
 				}
 				NodeValue::Code(c) => {
 					child_style.code = true;
-					Some(InlineKind::Text(c.literal.clone()))
+					Some(InlineKind::Text(self.text_after(
+						&c.literal,
+						source.clone(),
+						from,
+					)))
 				}
 				NodeValue::Raw(t) => {
 					child_style.code = true;
-					Some(InlineKind::Text(t.clone()))
+					Some(InlineKind::Text(self.text_after(
+						t,
+						source.clone(),
+						from,
+					)))
 				}
 				NodeValue::HtmlInline(t) => match html::inline(t) {
 					html::Inline::Image(image) => {
@@ -133,7 +169,7 @@ impl Reader<'_> {
 					}
 				},
 				NodeValue::Math(m) => Some(InlineKind::Math {
-					latex: m.literal.clone(),
+					latex: self.text_after(&m.literal, source.clone(), from),
 					display: m.display_math,
 				}),
 				NodeValue::FootnoteReference(f) => {
@@ -166,6 +202,7 @@ impl Reader<'_> {
 						&TextStyle::default(),
 						&mut alt,
 						depth + 1,
+						from,
 					);
 					let alt = plain_text(&alt);
 					Some(InlineKind::Image(crate::image::ImageSpec {
@@ -182,23 +219,64 @@ impl Reader<'_> {
 				out.push(Inline {
 					kind,
 					style: child_style,
-					source: self.range(child),
+					source: source.start.max(from)..source.end,
 				});
 			} else {
-				self.inlines(child, &child_style, out, depth + 1);
+				self.inlines(child, &child_style, out, depth + 1, from);
 			}
 		}
 	}
 
-	/// The readable text of a subtree, collected without recursion.
-	fn flattened<'a>(&self, node: &'a AstNode<'a>) -> String {
+	fn text_after(
+		&self,
+		text: &str,
+		source: Range<usize>,
+		from: usize,
+	) -> String {
+		if source.start >= from {
+			return text.to_string();
+		}
+		let mut cursor = source.start;
+		for (i, ch) in text.char_indices() {
+			// Code spans normalize line endings to spaces.
+			if let Some(at) = self.source[cursor..source.end].find(|raw| {
+				raw == ch || ch == ' ' && matches!(raw, '\r' | '\n')
+			}) {
+				let at = cursor + at;
+				if at >= from {
+					return text[i..].to_string();
+				}
+				cursor =
+					at + self.source[at..].chars().next().unwrap().len_utf8();
+				if ch == ' ' && self.source[at..].starts_with("\r\n") {
+					cursor += 1;
+				}
+			}
+		}
+		String::new()
+	}
+
+	/// The readable text after `from`, collected without recursion.
+	fn flattened_from<'a>(&self, node: &'a AstNode<'a>, from: usize) -> String {
 		let mut text = String::new();
 		for descendant in node.descendants() {
+			let source = self.range(descendant);
+			if from > 0 && source.end <= from {
+				continue;
+			}
 			match &descendant.data.borrow().value {
-				NodeValue::Text(t) => text.push_str(t),
-				NodeValue::Raw(t) => text.push_str(t),
-				NodeValue::Code(c) => text.push_str(&c.literal),
-				NodeValue::Math(m) => text.push_str(&m.literal),
+				NodeValue::Text(t) => {
+					text.push_str(&self.text_after(t, source, from))
+				}
+				NodeValue::Raw(t) => {
+					text.push_str(&self.text_after(t, source, from))
+				}
+				NodeValue::Code(c) => {
+					text.push_str(&self.text_after(&c.literal, source, from))
+				}
+				NodeValue::Math(m) => {
+					text.push_str(&self.text_after(&m.literal, source, from))
+				}
 				NodeValue::SoftBreak => text.push(' '),
 				NodeValue::LineBreak => text.push('\n'),
 				_ => {}
@@ -209,7 +287,7 @@ impl Reader<'_> {
 
 	fn rich<'a>(&self, node: &'a AstNode<'a>) -> RichText {
 		let mut text = Vec::new();
-		self.inlines(node, &TextStyle::default(), &mut text, 0);
+		self.inlines(node, &TextStyle::default(), &mut text, 0, 0);
 		merge_text(text)
 	}
 
@@ -232,6 +310,10 @@ impl Reader<'_> {
 		let mut blocks = Vec::new();
 		let mut i = 0;
 		while i < children.len() {
+			if let Some(consumed) = self.svg(children, i, depth, &mut blocks) {
+				i += consumed;
+				continue;
+			}
 			if let Some(consumed) =
 				self.details(children, i, depth, &mut blocks)
 			{
@@ -248,6 +330,100 @@ impl Reader<'_> {
 			i += 1;
 		}
 		blocks
+	}
+
+	/// SVG may cross Comrak's blank-line HTML boundaries.
+	fn svg<'a>(
+		&mut self,
+		children: &[&'a AstNode<'a>],
+		start: usize,
+		depth: usize,
+		out: &mut Vec<Block>,
+	) -> Option<usize> {
+		if depth >= self.limits.block_depth {
+			return None;
+		}
+		let node = children[start];
+		let range = self.range(node);
+		let begin = match &node.data.borrow().value {
+			NodeValue::HtmlBlock(_) => range.start,
+			NodeValue::Paragraph => node.children().find_map(|child| {
+				if !matches!(
+					child.data.borrow().value,
+					NodeValue::HtmlInline(_)
+				) {
+					return None;
+				}
+				let at = self.range(child).start;
+				let len = html::svg_len(&self.source[at..])?;
+				(at + len > range.end).then_some(at)
+			})?,
+			_ => return None,
+		};
+		let mut end = begin + html::svg_len(&self.source[begin..])?;
+		let mut close = (start..children.len())
+			.find(|&i| self.range(children[i]).end >= end)?;
+		let quotes = enclosing_quotes(self.source, begin);
+		if begin > range.start {
+			let prefix =
+				strip_blockquotes(&self.source[range.start..begin], quotes);
+			out.extend(self.markdown_blocks_at(
+				&prefix,
+				depth,
+				range.start..begin,
+			));
+		}
+		let mut begin = begin;
+		loop {
+			let raw = strip_blockquotes(&self.source[begin..end], quotes);
+			let (_, image) = html::svg(&raw)?;
+			let source = begin..end;
+			let kind = BlockKind::Paragraph(vec![Inline {
+				kind: InlineKind::Image(image),
+				style: TextStyle::default(),
+				source: source.clone(),
+			}]);
+			out.push(Block {
+				id: fingerprint(&(
+					std::mem::discriminant(&kind),
+					&self.source[source.clone()],
+				)),
+				content_key: semantic_key(&kind),
+				source,
+				kind,
+			});
+			let tail_end = self.range(children[close]).end;
+			let mut rest = &self.source[end..tail_end];
+			loop {
+				let next =
+					without_quotes(rest.trim_start(), quotes).trim_start();
+				if next.len() == rest.len() {
+					break;
+				}
+				rest = next;
+			}
+			let next_begin = tail_end - rest.len();
+			if !rest.is_empty()
+				&& let Some(len) = html::svg_len(&self.source[next_begin..])
+				&& let Some(next_close) = (close..children.len())
+					.find(|&i| self.range(children[i]).end >= next_begin + len)
+			{
+				begin = next_begin;
+				end = begin + len;
+				close = next_close;
+				continue;
+			}
+			let tail = strip_blockquotes(&self.source[end..tail_end], quotes);
+			if !tail.trim().is_empty() {
+				out.extend(self.markdown_blocks_at(
+					&tail,
+					depth,
+					end..tail_end,
+				));
+			}
+			break;
+		}
+		Some(close - start + 1)
 	}
 
 	fn child_block<'a>(

@@ -38,10 +38,10 @@ TOC comes from the complete parsed document, including nested/closed headings, i
 ## Delivery and verification
 
 1. Contract and package decisions: this document; baseline TypeScript checks and 53 browser tests passed. Native release binary and current WASM backed up in `artifacts/`.
-2. Engine source mapping, UTF conversion and TOC implemented, including disclosure source restoration and cached geometry binding. Mounted viewer navigation/events implemented; CodeMirror synchronization remains pending. Evidence: core source integration tests, built-package browser navigation tests and existing reader regressions; API documented in `docs/mvaac-source-api.md`.
+2. Engine source mapping, UTF conversion and TOC implemented, including disclosure source restoration and cached geometry binding. Mounted viewer navigation/events implemented. Evidence: core source integration tests, built-package browser navigation tests and existing reader regressions; API documented in `docs/mvaac-source-api.md`.
 3. Public viewer and CodeMirror synchronization implemented and verified with real long paragraph/code scrolling, focus checks, history/list continuation, Chromium IME, TOC, divider, responsive layout and multiple-instance tests.
 4. Viewer/editor/resource/compatibility package extraction and built-entry examples implemented. Independent resource helper has no runtime/type dependency on the viewer. Instance font sets, the independent font helper and optional WOFF codecs implemented and verified.
-5. SVG scope, regression matrix and authoritative user documentation: pending.
+5. Confirmed SVG scope implemented, with raw elements mapped as static images; content support matrix and authoritative quickstart/API/helper/migration documentation completed.
 
 Each implementation stage updates the changelog, formats/lints, runs relevant tests and is committed separately. Final acceptance also exercises built package entries and rendered browser output. WOFF decoder selection requires WASM compilation, license/format checks and measured size/startup evidence. Confirmed SVG scope: file references, data URLs, host bytes and inline `<svg>` rendered as static images. Relative external resources inside SVG are unsupported. Mermaid is deferred.
 
@@ -51,8 +51,8 @@ Each implementation stage updates the changelog, formats/lints, runs relevant te
 - Core suite and 14 web-state unit tests passed. After final disclosure-coordinate changes, 81 parser tests and four source integration tests passed.
 - Full browser regression: 56 tests passed; after the last source changes and added cancellation test, all 14 navigation/input tests passed. The new viewer screenshot was inspected and contains rendered heading/body text.
 - Workspace/all-target native Clippy, WASM Clippy, Rust formatting, TypeScript checks and the official WASM/package builds passed.
-- Uncompressed WASM baseline: 14,864,809 bytes; source/viewer stage: 14,887,278 bytes (+22,469 bytes). Codec and startup measurements remain pending.
-- This is partial iteration progress; subsequent sections record CodeMirror/package/font completion. SVG and the final content/support audit remain required.
+- Uncompressed WASM baseline: 14,864,809 bytes; source/viewer stage: 14,887,278 bytes (+22,469 bytes). Codec and startup measurements are recorded in the later font-stage section.
+- This is partial iteration progress; subsequent sections record CodeMirror/package/font completion. The later sections record SVG/content completion and final verification.
 
 ### Editor/package stage evidence (2026-10-02)
 
@@ -60,7 +60,7 @@ Each implementation stage updates the changelog, formats/lints, runs relevant te
 - TypeScript checks cover all libraries and both examples; strict declaration consumption also passed with `skipLibCheck: false`. Added `pnpm --dir web lint` and scoped formatting commands.
 - The editor screenshot was inspected: source highlighting, directory, reading text and separator render correctly. The responsive narrow layout test passed.
 - Native outline regression: 22 tests passed; its optional GPU screenshot test was ignored (browser rendering was independently verified).
-- `pnpm --dir web test:packages` produced and installed actual tarballs in an isolated consumer, checked declarations with `skipLibCheck: false`, bundled and initialized/mounted/destroyed in Chromium successfully. Final font/SVG and full requirement-by-requirement acceptance remain pending.
+- `pnpm --dir web test:packages` produced and installed actual tarballs in an isolated consumer, checked declarations with `skipLibCheck: false`, bundled and initialized/mounted/destroyed in Chromium successfully. The later font/SVG sections record the remaining acceptance.
 
 ## Font stage verification
 
@@ -69,3 +69,25 @@ Each implementation stage updates the changelog, formats/lints, runs relevant te
 - A long-document font change exposed loss of the source anchor while a progressive prefix omitted its target. Viewer now retains a source target until geometry and enough viewport content are published; 7 font/navigation tests pass.
 - Codec overhead: +243,141 raw bytes, +105,576 gzip bytes. Compilation/instantiation and font input medians, licenses and fixture limitations are recorded in `docs/mvaac-font-measurements.md`; raw measurements remain ignored artifacts.
 - Editor example and isolated tarball consumer now explicitly compose all four public component/helper packages.
+
+## SVG and final acceptance
+
+- Complete SVG elements become host images with atomic original ranges, including blank-line HTML boundaries, nested elements, CDATA/comments, quoted/list contexts, CRLF and Unicode. Prefix parsing avoids cutting an atomic SVG; editing matches a full parse.
+- Browser file/data URL/byte/inline paths produce the expected four distinct colors. Actual canvas screenshot inspected. Relative/external href and CSS dependencies reject explicitly; internal fragments work. Mermaid is deferred.
+- A built CodeMirror test follows long wrapped table content across a tall image's late arrival, nested/folded containers, TOC navigation and insertion before the reading reference.
+- `docs/mvaac.md` is authoritative for quickstarts, APIs, helpers, resource/font ownership, support matrix and migration. Both root READMEs, Web README, documentation index and historical contract link there.
+
+| Plan acceptance | Evidence |
+| --- | --- |
+| Independent integration | Actual viewer/editor/fonts/resources/compatibility tarballs installed, strict declarations, downstream bundling, WASM initialization and lifecycle |
+| Automatic bidirectional following | Long prose/code tests, source ranges and line geometry, no focus theft, no scroll feedback |
+| Unequal heights | Tall late image + long table/container/folded-content integration, TOC opening and source fallback |
+| Edits and reflow | CodeMirror changes, IME, resizing, font replacement, late image, progressive/cancelled version-scoped targets |
+| Unicode and line endings | UTF-8/UTF-16 conversion tests, CJK/emoji/combining characters, CRLF preservation in viewer and LF normalization in editor |
+| TOC | Complete parsed outline, repeated/nested/Chinese/skipped headings, no headings, active section and deferred navigation |
+| Fonts | Independent/shared sets, explicit URL/byte/cache/CDN descriptors, WOFF/WOFF2 enabled/disabled paths, raw formats, measured overhead |
+| Resources and lifetime | Relative host bases, explicit transport/config, cancellation/stale results, repeated mounts and instance isolation |
+| SVG and content | Atomic static SVG paths/pixels, unsupported dependency errors, documented Markdown matrix |
+| Engineering | Rust formatting/Clippy/tests, TypeScript checks, scoped formatting/lint, built-entry examples and isolated package test |
+
+Final verification: 69 built-package Chromium tests passed, core unit/integration suites passed (including 3 SVG and 4 source mapping tests), 15 web-state/font tests passed, workspace/all-target and WOFF-enabled WASM Clippy passed, Rust/TypeScript formatting and lint passed, and actual tarball consumption passed. Examples use shared explicit host assets rather than a demo-specific font interface.

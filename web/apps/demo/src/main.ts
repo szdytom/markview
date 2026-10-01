@@ -4,7 +4,7 @@
 
 import { CanvasReader, init } from "@markview/web";
 import type { Markview, MarkviewOptions, MarkviewStats } from "@markview/web";
-import { fonts } from "./fonts.js";
+import { fonts } from "../../assets/fonts.js";
 
 const DEBOUNCE_MS = 120;
 const NOTICE_MS = 2200;
