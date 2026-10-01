@@ -477,6 +477,8 @@ A full Noto CJK collection, rather than the subset faces, is **tens of MiB per f
 
 MVSS accepts a per-candidate `weight` from 1 to 1000. It is an **absolute** weight, not an offset from the inherited one. Markview requires an exact static weight or a variable font whose `wght` axis covers the requested value; it does not synthesize bold or round 450 to 500. An unavailable candidate is skipped. A `fontdef` chooses its first installed family before matching weight, so later `lookfor` entries do not rescue a missing Medium face in that family.
 
+A cluster no candidate covers is not lost to the platform's own fallback table, which knows no family for the script most symbol blocks belong to. The shaper instead scans the character maps of every family the machine offers — installed, `--fonts`, or downloaded — and draws the cluster from the face closest in style and weight, remembered per cluster so the scan costs once per document. Only when nothing installed covers the cluster does the glyph stay missing, and the log records it: `no face covers [U+27FA]: the configured stack and the whole collection were scanned.` A font covering the code points, installed or named in the stack, silences it.
+
 Bundled reader and PDF themes now prefer CJK weight 500 throughout, then fall back to the inherited weight when Medium is unavailable. [UI CJK Medium](../examples/ui-cjk-medium.mvss.toml) also provides this behavior as a focused overlay for custom themes. Latin retains its normal UI weight and Emoji stays at 400. Install it and place it before the reader theme:
 
 ```sh
