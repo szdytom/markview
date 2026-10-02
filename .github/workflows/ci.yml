@@ -55,7 +55,7 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           Install-Module Microsoft.WinGet.Client -Repository PSGallery -Force -Scope CurrentUser
-          Repair-WinGetPackageManager -AllUsers -Latest -Force
+          Repair-WinGetPackageManager -AllUsers
           winget --version
       - name: Validate and install the WinGet package
         shell: pwsh
