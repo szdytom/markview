@@ -163,14 +163,20 @@ After a stable release is published, `.github/workflows/winget.yml` uses the
 pinned Microsoft WinGetCreate tool to update the community manifest from the
 public MSI URL. WinGetCreate downloads and inspects the installer to refresh
 its hash and product metadata. The result is saved as a `winget-<version>`
-workflow artifact. The initial community submission must be merged before
-these updates can run. Prereleases are skipped.
+workflow artifact. Until the initial community submission is merged, the
+workflow reports a notice and successfully skips the update. GitHub releases
+can continue at their usual pace. Prereleases are skipped.
+
+Keep the initial submission on its tested release while it is reviewed. After
+it merges, manually run the `WinGet` workflow for the latest stable tag; there
+is no need to submit every intermediate version. Subsequent stable releases
+then use the normal update workflow.
 
 For automatic update PRs, configure a repository secret named `WINGET_TOKEN`
 with a dedicated GitHub classic personal access token with `public_repo`
 scope, as described in [WinGetCreate's token guide](https://github.com/microsoft/winget-create/blob/main/doc/token.md).
-Without it, the workflow still produces the manifest artifact for manual
-submission. The release's built-in `GITHUB_TOKEN` only reads metadata; it cannot
+Without the secret, registered packages still produce the manifest artifact for
+manual submission. The release's built-in `GITHUB_TOKEN` only reads metadata; it cannot
 submit PRs to Microsoft's repository. A maintainer can also rerun the `WinGet`
 workflow manually with a published stable tag, for example `v0.1.11`.
 

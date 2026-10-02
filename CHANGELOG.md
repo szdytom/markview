@@ -23,7 +23,7 @@ at the same level, without `[brackets]`.
 
 ### Added
 
-- Add WinGet package manifests, installation checks and stable-release update submissions for `szdytom.Markview`.
+- Add WinGet package manifests, installation checks and stable-release update submissions for `szdytom.Markview`; keep releases moving while first-time registration is pending.
 - Add an opt-in single-instance setting that opens files from subsequent launches in tabs of the existing reader window.
 
 ### Changed

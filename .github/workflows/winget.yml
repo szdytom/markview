@@ -26,6 +26,9 @@ jobs:
       RELEASE_PLAN: ${{ inputs.plan }}
       RELEASE_TAG: ${{ inputs.tag }}
     steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
       - name: Resolve the published release
         id: release
         shell: pwsh
@@ -44,10 +47,16 @@ jobs:
           "version=$version" >> $env:GITHUB_OUTPUT
           "url=$($msi.url)" >> $env:GITHUB_OUTPUT
           "notes=https://github.com/$env:GITHUB_REPOSITORY/releases/tag/$tag" >> $env:GITHUB_OUTPUT
+      - name: Check whether the initial WinGet submission has merged
+        id: community
+        shell: pwsh
+        run: ./scripts/check_winget_registration.ps1 $env:GITHUB_OUTPUT
       - name: Install WinGetCreate
+        if: steps.community.outputs.registered == 'true'
         shell: pwsh
         run: Invoke-WebRequest https://github.com/microsoft/winget-create/releases/download/v1.12.13.0/wingetcreate.exe -OutFile wingetcreate.exe
       - name: Update the community manifest from the released MSI
+        if: steps.community.outputs.registered == 'true'
         shell: pwsh
         env:
           WINGET_CREATE_GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -58,11 +67,13 @@ jobs:
           ./wingetcreate.exe update szdytom.Markview --version $env:PACKAGE_VERSION --urls $env:INSTALLER_URL --release-notes-url $env:RELEASE_NOTES_URL --out .
           if ($LASTEXITCODE -ne 0) { throw "WinGet manifest update failed" }
       - uses: actions/upload-artifact@v7
+        if: steps.community.outputs.registered == 'true'
         with:
           name: winget-${{ steps.release.outputs.version }}
           path: manifests/
           if-no-files-found: error
       - name: Submit the manifest to the community repository
+        if: steps.community.outputs.registered == 'true'
         shell: pwsh
         env:
           WINGET_CREATE_GITHUB_TOKEN: ${{ secrets.WINGET_TOKEN }}
