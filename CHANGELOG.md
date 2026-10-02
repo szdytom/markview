@@ -23,6 +23,8 @@ at the same level, without `[brackets]`.
 
 ### Changed
 
+- Remove the MVaaC demo’s redundant reading hint.
+- Redesign the MVaaC demo with restrained typesetting, square controls, a centered width-limited workspace and a compact header with a GitHub link.
 - Load the MVaaC SPA’s Noto fonts from version-pinned CDN URLs and keep tiny subset fonts in the regression harness only.
 - Show font download counts, received bytes or percentages and renderer/page preparation stages during MVaaC SPA startup.
 

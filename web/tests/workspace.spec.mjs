@@ -31,6 +31,10 @@ test("read/edit navigation shares source, canvas, history and document drafts", 
 	page.on("pageerror", (error) => errors.push(error.message));
 	await open(page);
 	await expect(source(page)).toBeHidden();
+	await expect(page.locator("#mode-hint")).toBeHidden();
+	await expect(
+		page.getByText("Select text on the page to copy it.", { exact: true }),
+	).toHaveCount(0);
 	await page
 		.context()
 		.grantPermissions(["clipboard-read", "clipboard-write"]);
@@ -193,6 +197,116 @@ test("empty source offers a working edit action and old editor links open the SP
 	).toBeHidden();
 });
 
+test("flat workspace keeps square surfaces and accessible tools in both themes", async ({
+	page,
+}) => {
+	await open(page);
+	await expect(page.locator(".brand-note")).toHaveText("as a component");
+	await expect(page.locator(".introduction, .site-footer")).toHaveCount(0);
+	for (const theme of ["light", "dark"]) {
+		if (theme === "dark")
+			await page.getByRole("button", { name: "Dark paper" }).click();
+		expect(
+			await page.locator(".markview-editor").evaluate((el) => {
+				const component = getComputedStyle(el);
+				const site = getComputedStyle(document.documentElement);
+				return [
+					"paper",
+					"source",
+					"ink",
+					"muted",
+					"rule",
+					"accent",
+				].every(
+					(token) =>
+						component.getPropertyValue(`--mv-${token}`).trim() ===
+						site.getPropertyValue(`--${token}`).trim(),
+				);
+			}),
+		).toBe(true);
+		for (const width of [2560, 1440, 768, 320]) {
+			await page.setViewportSize({ width, height: 900 });
+			const workspace = await page.locator("main").boundingBox();
+			expect(workspace.width).toBeLessThanOrEqual(1440);
+			expect(workspace.x + workspace.width / 2).toBeCloseTo(width / 2);
+			const repository = page.getByRole("link", {
+				name: "GitHub",
+				exact: true,
+			});
+			await expect(repository).toBeVisible();
+			await expect(repository).toHaveAttribute(
+				"href",
+				"https://github.com/szdytom/markview",
+			);
+			for (const mode of ["read", "edit"]) {
+				const link = page.getByRole("link", {
+					name: mode === "read" ? "Read" : "Edit",
+					exact: true,
+				});
+				await page.keyboard.press("Tab");
+				await link.focus();
+				await expect(link).toBeFocused();
+				expect(
+					await link.evaluate(
+						(el) => getComputedStyle(el).outlineStyle,
+					),
+				).toBe("solid");
+				await link.press("Enter");
+				await expect(page.locator("html")).toHaveAttribute(
+					"data-mode",
+					mode,
+				);
+				await expect(link).toHaveAttribute("aria-current", "page");
+				expect(
+					await page.evaluate(
+						() => document.documentElement.scrollWidth,
+					),
+				).toBe(width);
+				for (const control of await page
+					.locator(".actions button")
+					.all()) {
+					const box = await control.boundingBox();
+					expect(box.x).toBeGreaterThanOrEqual(0);
+					expect(box.x + box.width).toBeLessThanOrEqual(width);
+				}
+				const surfaces = await page
+					.locator(
+						".workspace, .mode-switch a, .actions button, .mv-toc button",
+					)
+					.evaluateAll((elements) =>
+						elements.map((el) => {
+							const style = getComputedStyle(el);
+							return [style.borderRadius, style.boxShadow];
+						}),
+					);
+				expect(
+					surfaces.every(
+						([radius, shadow]) =>
+							radius === "0px" && shadow === "none",
+					),
+				).toBe(true);
+				await expect(page.locator("#document-name")).toHaveText(
+					"typography.md",
+				);
+				const canvas = page.locator("canvas");
+				await expect(canvas).toBeVisible();
+				expect((await canvas.boundingBox()).height).toBeGreaterThan(
+					100,
+				);
+				if (width !== 768) {
+					await link.evaluate((el) => el.blur());
+					await page.screenshot({
+						path: test
+							.info()
+							.outputPath(`${theme}-${width}-${mode}.png`),
+						fullPage: true,
+					});
+				}
+			}
+		}
+	}
+});
+
 test("font startup failure offers recovery and keeps controls disabled", async ({
 	page,
 }) => {
@@ -223,8 +337,8 @@ test("the component guide loads from repository Markdown and retains its own dra
 }) => {
 	await open(page);
 	await page
-		.getByRole("button", { name: "Component guide", exact: true })
-		.click();
+		.getByRole("combobox", { name: "Document", exact: true })
+		.selectOption("component-guide");
 	await expect(
 		page.getByRole("combobox", { name: "Document", exact: true }),
 	).toHaveValue("component-guide");

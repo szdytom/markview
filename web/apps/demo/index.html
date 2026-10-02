@@ -3,7 +3,7 @@
 	<head>
 		<meta charset="utf-8" />
 		<meta name="viewport" content="width=device-width, initial-scale=1" />
-		<meta name="theme-color" content="#eef0f8" />
+		<meta name="theme-color" content="#e5e6e3" />
 		<meta
 			name="description"
 			content="Explore Markview's Markdown typography. Read a document or edit its source with a live canvas preview."
@@ -23,20 +23,15 @@
 				<a href="#read" data-mode="read" aria-current="page">Read</a>
 				<a href="#edit" data-mode="edit">Edit</a>
 			</nav>
-			<button id="guide" class="docs-link" type="button" disabled>
-				Component guide
-			</button>
+			<a
+				class="repository-link"
+				href="https://github.com/szdytom/markview"
+				target="_blank"
+				rel="noopener noreferrer"
+				>GitHub</a
+			>
 		</header>
 		<main>
-			<div class="introduction">
-				<div>
-					<h1>Markdown, <em>composed.</em></h1>
-				</div>
-				<p id="mode-description">
-					A quiet place to explore the page.<br />Switch to Edit to
-					make it your own.
-				</p>
-			</div>
 			<section
 				class="workspace"
 				aria-label="Markdown workspace"
@@ -98,7 +93,6 @@
 				</div>
 				<div id="desk" aria-label="Document">
 					<div class="loading" role="status">
-						<span class="loading-book" aria-hidden="true">M</span>
 						<p id="loading-text">Starting font downloads…</p>
 						<p id="loading-detail" class="loading-detail">
 							Connecting to the font CDN.
@@ -129,16 +123,12 @@
 							>Starting font downloads…</span
 						></span
 					><span id="notice" role="status" aria-live="polite"></span
-					><span class="mode-hint" id="mode-hint"
-						>Select text on the page to copy it.</span
+					><span class="mode-hint" id="mode-hint" hidden
+						>Live preview · scroll either pane to follow along</span
 					>
 				</footer>
 			</section>
 		</main>
-		<footer class="site-footer">
-			<span>Markdown in. A typeset page out.</span
-			><span>Rendered by Markview · WebAssembly + canvas</span>
-		</footer>
 		<noscript
 			><p class="error">
 				Enable JavaScript to use the reading room.

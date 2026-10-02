@@ -6,7 +6,6 @@ import { loadDemoFonts, type FontDownload } from "./fonts.js";
 import { documents } from "./documents.js";
 
 const dom = {
-	guide: document.querySelector<HTMLButtonElement>("#guide")!,
 	copy: document.querySelector<HTMLButtonElement>("#copy-selection")!,
 	workspace: document.querySelector<HTMLElement>(".workspace")!,
 	desk: document.querySelector<HTMLElement>("#desk")!,
@@ -24,7 +23,6 @@ const dom = {
 	notice: document.querySelector<HTMLElement>("#notice")!,
 	engine: document.querySelector<HTMLElement>("#engine-state")!,
 	engineText: document.querySelector<HTMLElement>("#engine-text")!,
-	description: document.querySelector<HTMLElement>("#mode-description")!,
 	hint: document.querySelector<HTMLElement>("#mode-hint")!,
 	empty: document.querySelector<HTMLElement>(".empty-state")!,
 };
@@ -111,18 +109,7 @@ function setMode(): void {
 			link.setAttribute("aria-current", "page");
 		else link.removeAttribute("aria-current");
 	}
-	setText(
-		dom.description,
-		mode === "read"
-			? "A quiet place to explore the page. Switch to Edit to make it your own."
-			: "Work in the source. See it on the page. Both panes follow your place.",
-	);
-	setText(
-		dom.hint,
-		mode === "read"
-			? "Select text on the page to copy it."
-			: "Live preview · scroll either pane to follow along",
-	);
+	dom.hint.hidden = mode === "read";
 	if (editor) {
 		editor.view.requestMeasure();
 		// Keep keyboard focus on the visible pane.
@@ -280,16 +267,6 @@ async function boot(): Promise<void> {
 		>("button, select"))
 			control.disabled = false;
 		const signal = listeners.signal;
-		dom.guide.disabled = false;
-		dom.guide.addEventListener(
-			"click",
-			() => {
-				++fileRequest;
-				dom.sample.value = "component-guide";
-				replaceDocument("component-guide");
-			},
-			{ signal },
-		);
 		dom.copy.addEventListener(
 			"click",
 			() => {
