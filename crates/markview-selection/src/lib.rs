@@ -2,8 +2,10 @@
 //!
 //! [`DocumentInteraction`] shares hit testing, hover and cursor decisions;
 //! [`ScrollState`] shares eased offsets and pending layout destinations;
-//! [`Motion`] shares gesture release inertia. Hosts own platform events,
-//! motion-source policy, repainting and document activation side effects.
+//! [`Motion`] shares gesture release inertia; [`PanFeed`] folds a Direct
+//! Manipulation viewport's feed into pan phases and deltas. Hosts own platform
+//! events, motion-source policy, repainting and document activation side
+//! effects.
 //!
 //! The machine is the one the reader has always run: a press names a reading
 //! position and may extend it by grapheme, word or block; a second press
@@ -305,6 +307,9 @@ pub use scroll::{
 
 mod motion;
 pub use motion::Motion;
+
+mod dm;
+pub use dm::{PanFeed, PanPhase, PanStatus};
 
 mod document;
 pub use document::{
