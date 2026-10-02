@@ -161,6 +161,18 @@ lopdf = { version = "0.45", default-features = false }
 [target.'cfg(target_os = "windows")'.dependencies]
 wgpu = { workspace = true, features = ["dx12"] }
 ico = "0.5"
+# Direct Manipulation pans a precision touchpad with the OS's own inertia;
+# winit initializes the COM apartment the viewport assembles in. The event
+# handler macro expands to `::windows_core::` paths, so that crate is named
+# here too.
+windows = { version = "0.62", features = [
+	"Win32_Foundation",
+	"Win32_Graphics_DirectManipulation",
+	"Win32_System_Com",
+	"Win32_UI_Input_Pointer",
+	"Win32_UI_WindowsAndMessaging",
+] }
+windows-core = "0.62"
 windows-sys = { version = "0.61", features = [
 	"Win32_Foundation",
 	"Win32_Graphics_Gdi",

@@ -104,6 +104,10 @@ impl<P: super::SendEvent> App<P> {
 			WindowEvent::Resized(PhysicalSize { width, height }) => {
 				self.cancel_gestures();
 				self.tab_strip.reveal_active = true;
+				let scale = self.dimensions().2;
+				if let Some(dm) = self.dm.as_mut() {
+					dm.resize(width, height, scale);
+				}
 				if let Some(r) = &mut self.renderer {
 					r.resize(width, height);
 				}
@@ -121,6 +125,12 @@ impl<P: super::SendEvent> App<P> {
 				self.cancel_gestures();
 				self.tab_strip.reveal_active = true;
 				info!("Display scale (DPR) changed: {scale_factor:.3}");
+				if let (Some(dm), Some(window)) =
+					(self.dm.as_mut(), self.window.as_ref())
+				{
+					let size = window.inner_size();
+					dm.resize(size.width, size.height, scale_factor as f32);
+				}
 				if let Some(r) = &mut self.renderer {
 					r.clear_raster_cache();
 				}

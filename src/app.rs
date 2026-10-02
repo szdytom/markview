@@ -1,5 +1,6 @@
 mod anchor;
 mod chrome;
+mod dm;
 mod document;
 mod dropdown;
 mod export;
@@ -228,6 +229,9 @@ struct App<P = EventLoopProxy<Event>> {
 	/// What one wheel notch travels on this desktop, read once at startup:
 	/// nothing reports the desktop setting changing afterwards.
 	wheel_notch: crate::platform::WheelNotch,
+	/// The window's Direct Manipulation viewport, when the desktop and the
+	/// initialization both offered one; `None` keeps the wheel paths.
+	dm: Option<dm::DirectManipulation>,
 	font_panel: font_panel::FontPanel,
 	services: Arc<crate::services::Services>,
 	clipboard: crate::platform::Clipboard,
@@ -344,6 +348,7 @@ impl<P: SendEvent> App<P> {
 			preferences,
 			settings_resources,
 			wheel_notch: crate::platform::wheel_notch(),
+			dm: None,
 			font_panel: font_panel::FontPanel::with_services(
 				services.handle.clone(),
 			),

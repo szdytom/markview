@@ -16,7 +16,7 @@ use winit::{
 };
 
 use super::window::Loop;
-use super::{App, Event, TOP, system_theme};
+use super::{App, Event, TOP, dm, system_theme};
 use crate::state::Selection;
 impl<P: super::SendEvent> ApplicationHandler<Event> for App<P> {
 	fn resumed(&mut self, event_loop: &ActiveEventLoop) {
@@ -99,7 +99,9 @@ impl<P: super::SendEvent> ApplicationHandler<Event> for App<P> {
 				size.width as f64 / scale,
 				size.height as f64 / scale,
 			);
+			let dm = dm::DirectManipulation::new(&window);
 			self.window = Some(window);
+			self.dm = dm;
 			self.reload_styles();
 			self.gpu()?;
 			if let Some(path) = self.args.path.clone() {
@@ -385,6 +387,22 @@ impl<P: super::SendEvent> App<P> {
 		self.input_tick(now);
 		self.search_tick();
 		self.auto_scroll_tabs(now);
+		// Direct Manipulation's updates arrive by pumping, before any
+		// synthesis of the reader's own: a stream that starts here cancels
+		// what is running before this tick can carry it a frame further, and
+		// the deltas drive the seam exactly as a macOS pixel stream does.
+		let pans = self.dm.as_mut().map_or_else(Vec::new, |dm| dm.pump());
+		if !pans.is_empty() {
+			let speed = self.scroll_speed();
+			for (phase, dx, dy) in pans {
+				self.trackpad_scroll(
+					dx * speed,
+					dy * speed,
+					phase,
+					super::gestures::Inertia::Native,
+				);
+			}
+		}
 		self.advance_scroll(now);
 		self.advance_gestures(now);
 		self.readers.release_inactive(now);
@@ -458,6 +476,7 @@ impl<P: super::SendEvent> App<P> {
 			.chain(self.readers.session.scroll_animation_deadline(now))
 			.chain(self.tab_strip.scroll_at)
 			.chain(self.gestures.deadline(now))
+			.chain(self.dm.as_ref().and_then(|dm| dm.deadline(now)))
 			.chain(self.readers.release_deadline())
 			.chain(
 				(self.args.mode == Mode::Smoke)
