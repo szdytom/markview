@@ -39,6 +39,7 @@ impl<P: super::SendEvent> App<P> {
 	pub(super) fn open(&mut self, path: PathBuf) {
 		self.clear_input_focus();
 		self.cancel_gestures();
+		self.abandon_dm();
 		self.tab_strip.cancel_drag();
 		self.tab_strip.reveal_active = true;
 		let path = if path.is_absolute() {
@@ -60,6 +61,7 @@ impl<P: super::SendEvent> App<P> {
 	pub(super) fn select_tab(&mut self, index: usize) {
 		self.clear_input_focus();
 		self.cancel_gestures();
+		self.abandon_dm();
 		self.tab_strip.cancel_drag();
 		self.tab_strip.reveal_active = true;
 		if !self.readers.select(index, Instant::now()) {
@@ -88,6 +90,7 @@ impl<P: super::SendEvent> App<P> {
 	pub(super) fn close_tab(&mut self, index: usize) {
 		self.clear_input_focus();
 		self.cancel_gestures();
+		self.abandon_dm();
 		self.tab_strip.cancel_drag();
 		self.tab_strip.reveal_active = true;
 		let closed = self.readers.session.path.clone();

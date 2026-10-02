@@ -600,6 +600,44 @@ fn a_pixel_stream_without_native_inertia_still_coasts_on_release() {
 }
 
 #[test]
+fn a_scrollbar_a_selection_or_a_viewer_drag_owns_the_pan_input() {
+	let (mut app, _) = reader(SOURCE, 400.0);
+	assert!(!app.pointer_owns_input());
+	// A press that has not crossed the drag threshold is only a click in
+	// waiting; the stream it would interrupt is left alone.
+	app.interaction.pointer_down = Some(Drag {
+		start: Point::new(40.0, 40.0),
+		link: None,
+		grain: Grain::Char,
+		base: None,
+	});
+	assert!(!app.pointer_owns_input());
+	app.interaction.dragged = true;
+	assert!(app.pointer_owns_input(), "a text selection drag owns it");
+	app.interaction.pointer_down = None;
+	app.interaction.dragged = false;
+	app.interaction.scrollbar = Some(crate::state::ScrollbarDrag {
+		target: crate::state::ScrollbarAxis::Document,
+		grab: 0.0,
+	});
+	assert!(app.pointer_owns_input(), "a scrollbar drag owns it");
+	app.interaction.scrollbar = None;
+	app.interaction.viewer = Some(crate::state::Viewer {
+		src: String::new(),
+		pixels: (10.0, 10.0),
+		scale: 1.0,
+		zoom: 1.0,
+		pan: (0.0, 0.0),
+		grab: Some((5.0, 5.0)),
+		pressed_at: None,
+		dragged: false,
+	});
+	assert!(app.pointer_owns_input(), "a viewer grab owns it");
+	app.interaction.viewer.as_mut().unwrap().grab = None;
+	assert!(!app.pointer_owns_input(), "a viewer at rest does not");
+}
+
+#[test]
 fn forwarded_files_open_tabs_and_reuse_existing_tabs() {
 	let (mut app, _) = reader(SOURCE, 400.0);
 	let first = PathBuf::from(env!("CARGO_MANIFEST_DIR"))

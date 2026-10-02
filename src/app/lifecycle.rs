@@ -196,6 +196,7 @@ impl<P: super::SendEvent> App<P> {
 				if self.readers.session.path.as_ref() == Some(&path) =>
 			{
 				self.cancel_gestures();
+				self.abandon_dm();
 				self.readers.session.content_version += 1;
 				self.readers.session.parse_complete = false;
 				self.readers.session.search.retained = self
@@ -391,7 +392,11 @@ impl<P: super::SendEvent> App<P> {
 		// synthesis of the reader's own: a stream that starts here cancels
 		// what is running before this tick can carry it a frame further, and
 		// the deltas drive the seam exactly as a macOS pixel stream does.
-		let pans = self.dm.as_mut().map_or_else(Vec::new, |dm| dm.pump());
+		// While a pointer-driven interaction owns the input the pump is
+		// `held`: the deltas drop, and the stream they belonged to cannot
+		// resume when the owner lets go.
+		let held = self.pointer_owns_input();
+		let pans = self.dm.as_mut().map_or_else(Vec::new, |dm| dm.pump(held));
 		if !pans.is_empty() {
 			let speed = self.scroll_speed();
 			for (phase, dx, dy) in pans {

@@ -106,6 +106,9 @@ impl<P: super::SendEvent> App<P> {
 				self.tab_strip.reveal_active = true;
 				let scale = self.dimensions().2;
 				if let Some(dm) = self.dm.as_mut() {
+					// The layout changes under the gesture, so it is
+					// abandoned and the offset clamps with the reflow.
+					dm.abandon();
 					dm.resize(width, height, scale);
 				}
 				if let Some(r) = &mut self.renderer {
@@ -128,6 +131,7 @@ impl<P: super::SendEvent> App<P> {
 				if let (Some(dm), Some(window)) =
 					(self.dm.as_mut(), self.window.as_ref())
 				{
+					dm.abandon();
 					let size = window.inner_size();
 					dm.resize(size.width, size.height, scale_factor as f32);
 				}
@@ -461,6 +465,9 @@ impl<P: super::SendEvent> App<P> {
 				self.frame.pressed = None;
 				self.frame.last_click = None;
 				self.cancel_gestures();
+				// The gesture dies with the focus: the OS cancels it, and
+				// the page is still when the window is revisited.
+				self.abandon_dm();
 				self.interaction.focus_visible = false;
 				self.tab_strip.cancel_drag();
 				self.interaction.pressed = None;

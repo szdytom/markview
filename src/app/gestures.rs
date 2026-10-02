@@ -406,6 +406,30 @@ impl<P: super::SendEvent> App<P> {
 		self.redraw();
 	}
 
+	/// Whether a pointer-driven interaction — a scrollbar drag, a text
+	/// selection drag, a viewer grab — owns the input right now. Direct
+	/// Manipulation's stream yields to it: two inputs must never fight over
+	/// the offset.
+	pub(super) fn pointer_owns_input(&self) -> bool {
+		self.interaction.scrollbar.is_some()
+			|| (self.interaction.pointer_down.is_some()
+				&& self.interaction.dragged)
+			|| self
+				.interaction
+				.viewer
+				.as_ref()
+				.is_some_and(|viewer| viewer.grab.is_some())
+	}
+
+	/// Abandons the viewport: the OS cancels its running gesture and the
+	/// stream's bookkeeping ends, so no stale delta can speak for a view
+	/// that focus loss, a resize, a reload or a tab switch replaced.
+	pub(super) fn abandon_dm(&mut self) {
+		if let Some(dm) = self.dm.as_mut() {
+			dm.abandon();
+		}
+	}
+
 	pub(super) fn advance_gestures(&mut self, now: Instant) {
 		if !self.gestures.coasting {
 			return;

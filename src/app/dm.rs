@@ -4,6 +4,9 @@
 //! pixel-pan phases and deltas — is platform-neutral so it tests everywhere;
 //! the COM assembly that feeds it lives in [`win`] below.
 
+// Only the other-desktop stub's signatures name it; the COM assembly
+// imports its own.
+#[cfg(not(windows))]
 use std::time::Instant;
 use winit::event::TouchPhase;
 
@@ -53,6 +56,17 @@ fn phases(
 		.map(|phase| (phase, 0.0, 0.0))
 }
 
+/// Ends the gesture a held stream was carrying, silencing it: a
+/// pointer-driven interaction owns the input, the gesture in flight speaks
+/// its `Cancelled` once, and its deltas drop — so nothing stale resumes
+/// panning after the owner lets go.
+#[cfg_attr(not(windows), allow(dead_code))]
+fn hold(feed: &mut PanFeed) -> Vec<(TouchPhase, f32, f32)> {
+	feed.abandon()
+		.map(|phase| vec![(touch(phase), 0.0, 0.0)])
+		.unwrap_or_default()
+}
+
 /// The pan lifecycle in the seam's terms; the two spell the same three
 /// moments.
 fn touch(phase: PanPhase) -> TouchPhase {
@@ -68,7 +82,7 @@ fn touch(phase: PanPhase) -> TouchPhase {
 #[cfg(windows)]
 #[allow(unsafe_code)]
 mod win {
-	use super::fold;
+	use super::{fold, hold};
 	use std::cell::{Cell, RefCell};
 	use std::rc::Rc;
 	use std::time::{Duration, Instant};
@@ -342,12 +356,34 @@ mod win {
 			{
 				return false;
 			}
-			// SAFETY: `SetContact` hands one live pointer id to the viewport.
-			if unsafe { self.viewport.SetContact(id) }.is_err() {
+			// SAFETY: `Enable` and `SetContact` configure the window's own
+			// viewport on this thread; `Enable` repeats harmlessly on one
+			// that was never disabled.
+			if unsafe { self.viewport.Enable() }.is_err()
+				|| unsafe { self.viewport.SetContact(id) }.is_err()
+			{
 				return false;
 			}
 			self.contact_at = Some(Instant::now());
 			true
+		}
+
+		/// Cancels the viewport's gesture: the OS stops all its transforms
+		/// at once, and the stream's bookkeeping ends, so no stale delta
+		/// speaks for a view that focus loss, a resize, a reload or a tab
+		/// switch replaced. The next contact re-enables the viewport.
+		pub(super) fn abandon(&mut self) {
+			let _ = self.feed.abandon();
+			self.live = false;
+			self.contact_at = None;
+			// What the callbacks recorded for the dead gesture must not
+			// survive it: a later pump would fold it onto a fresh one.
+			self.inbox.statuses.borrow_mut().clear();
+			self.inbox.transform.set(None);
+			self.inbox.resetting.set(false);
+			// SAFETY: `Disable` stops the window's own viewport on this
+			// thread; `Enable` from the next contact resumes it.
+			let _ = unsafe { self.viewport.Disable() };
 		}
 
 		/// Follows the window: the viewport rect is the client area, and the
@@ -366,8 +402,13 @@ mod win {
 		}
 
 		/// Pumps the update manager and folds what its callbacks recorded
-		/// into seam events, in logical pixels.
-		pub(super) fn pump(&mut self) -> Vec<(TouchPhase, f32, f32)> {
+		/// into seam events, in logical pixels. While `held`, a
+		/// pointer-driven interaction owns the input and the stream is
+		/// silenced instead.
+		pub(super) fn pump(
+			&mut self,
+			held: bool,
+		) -> Vec<(TouchPhase, f32, f32)> {
 			if !self.live
 				&& self
 					.contact_at
@@ -385,25 +426,23 @@ mod win {
 			let statuses =
 				std::mem::take(&mut *self.inbox.statuses.borrow_mut());
 			let transform = self.inbox.transform.take();
-			let events = fold(
-				&mut self.feed,
-				statuses,
-				transform,
-				self.inbox.scale.get(),
-			);
-			for (phase, _, _) in &events {
-				match phase {
-					TouchPhase::Started => {
-						self.live = true;
-						self.contact_at = None;
-					}
-					TouchPhase::Ended | TouchPhase::Cancelled => {
-						self.live = false
-					}
-					TouchPhase::Moved => {}
+			// The viewport's own statuses say whether news may still come,
+			// whether the seam hears it or not.
+			if let Some(last) = statuses.last() {
+				self.live = matches!(
+					last,
+					PanStatus::Building
+						| PanStatus::Running
+						| PanStatus::Inertia
+				);
+				if self.live {
+					self.contact_at = None;
 				}
 			}
-			events
+			if held {
+				return hold(&mut self.feed);
+			}
+			fold(&mut self.feed, statuses, transform, self.inbox.scale.get())
 		}
 
 		/// The next pump, while a gesture or an offered contact may still
@@ -444,7 +483,8 @@ impl DirectManipulation {
 		false
 	}
 	pub(super) fn resize(&mut self, _: u32, _: u32, _: f32) {}
-	pub(super) fn pump(&mut self) -> Vec<(TouchPhase, f32, f32)> {
+	pub(super) fn abandon(&mut self) {}
+	pub(super) fn pump(&mut self, _: bool) -> Vec<(TouchPhase, f32, f32)> {
 		Vec::new()
 	}
 	pub(super) fn deadline(&self, _: Instant) -> Option<Instant> {
@@ -513,6 +553,32 @@ mod tests {
 		assert_eq!(events, vec![(TouchPhase::Started, 0.0, 0.0)]);
 		let events = fold(&mut feed, vec![], Some((25.0, 10.0)), 1.0);
 		assert_eq!(moved(&events), vec![(25.0, 10.0)]);
+	}
+
+	#[test]
+	fn a_held_stream_is_silenced_and_cannot_resume_after_the_owner_lets_go() {
+		let mut feed = PanFeed::default();
+		let statuses = vec![PanStatus::Running];
+		fold(&mut feed, statuses, Some((0.0, 0.0)), 1.0);
+		let events = fold(&mut feed, vec![], Some((30.0, 0.0)), 1.0);
+		assert_eq!(moved(&events), vec![(30.0, 0.0)]);
+		// A pointer drag takes the input: the gesture in flight ends once,
+		// and the delta the batch carried drops with it.
+		let events = hold(&mut feed);
+		assert_eq!(events, vec![(TouchPhase::Cancelled, 0.0, 0.0)]);
+		// The stale stream keeps arriving while the drag owns the input,
+		// and pans nothing.
+		let events = hold(&mut feed);
+		assert!(events.is_empty());
+		// The owner lets go; the stream is still stale and pans nothing.
+		let events = fold(&mut feed, vec![], Some((50.0, 0.0)), 1.0);
+		assert!(events.is_empty(), "a stale stream must not resume panning");
+		// A fresh gesture after the drag pans again.
+		let statuses = vec![PanStatus::Building];
+		let events = fold(&mut feed, statuses, Some((0.0, 0.0)), 1.0);
+		assert_eq!(events, vec![(TouchPhase::Started, 0.0, 0.0)]);
+		let events = fold(&mut feed, vec![], Some((12.0, 0.0)), 1.0);
+		assert_eq!(moved(&events), vec![(12.0, 0.0)]);
 	}
 
 	#[test]
