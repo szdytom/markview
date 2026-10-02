@@ -637,6 +637,80 @@ test("editing, history, indentation and Markdown continuation update the same ve
 	expect(result.last.documentVersion).toBe(result.toc.documentVersion);
 });
 
+test("divider grip stays centered across layouts and host styles", async ({
+	page,
+}) => {
+	await host(page, "# Divider", { toc: false });
+	for (const demo of [false, true]) {
+		if (demo) {
+			await page.addStyleTag({ url: "/main.css" });
+			await page
+				.locator("#host")
+				.evaluate((host) => host.classList.add("workspace"));
+		}
+		for (const boxSizing of ["content-box", "border-box"]) {
+			for (const [orientation, width] of [
+				["horizontal", 1180],
+				["vertical", 1180],
+				["auto", 500],
+			]) {
+				await page.evaluate(
+					({ orientation, width, boxSizing }) => {
+						document.querySelector("#host").style.width =
+							`${width}px`;
+						document.querySelector(".mv-divider").style.boxSizing =
+							boxSizing;
+						window.editor.setOptions({ orientation });
+					},
+					{ orientation, width, boxSizing },
+				);
+				await expect
+					.poll(() =>
+						page.locator(".mv-divider").evaluate((divider) => {
+							const rect = divider.getBoundingClientRect();
+							const style = getComputedStyle(divider);
+							const grip = getComputedStyle(divider, "::after");
+							const transform = new DOMMatrix(grip.transform);
+							const size = (axis, start, end) =>
+								parseFloat(grip[axis]) +
+								(grip.boxSizing === "border-box"
+									? 0
+									: parseFloat(grip[start]) +
+										parseFloat(grip[end]));
+							return Math.max(
+								Math.abs(
+									parseFloat(style.borderLeftWidth) +
+										parseFloat(grip.left) +
+										transform.e +
+										size(
+											"width",
+											"borderLeftWidth",
+											"borderRightWidth",
+										) /
+											2 -
+										rect.width / 2,
+								),
+								Math.abs(
+									parseFloat(style.borderTopWidth) +
+										parseFloat(grip.top) +
+										transform.f +
+										size(
+											"height",
+											"borderTopWidth",
+											"borderBottomWidth",
+										) /
+											2 -
+										rect.height / 2,
+								),
+							);
+						}),
+					)
+					.toBeLessThan(0.1);
+			}
+		}
+	}
+});
+
 test("TOC opens folded headings, divider and configuration keep component lifecycle isolated", async ({
 	page,
 }) => {

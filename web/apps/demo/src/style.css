@@ -277,9 +277,6 @@ main {
 .workspace .markview-editor .mv-divider {
 	flex-basis: 8px;
 }
-.workspace .markview-editor .mv-divider::after {
-	left: 2px;
-}
 .workspace canvas {
 	background: var(--paper);
 }

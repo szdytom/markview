@@ -15,10 +15,10 @@ export const styles = `
 .markview-editor .mv-read{flex:1;background:var(--mv-paper)}
 .markview-editor .mv-content{flex:1;min-height:0;overflow:hidden}
 .markview-editor .mv-divider{flex:0 0 10px;cursor:col-resize;touch-action:none;position:relative;background:var(--mv-paper);border:0;border-inline:1px solid var(--mv-rule)}
-.markview-editor .mv-divider:after{content:"";position:absolute;top:calc(50% - 15px);left:3px;width:2px;height:30px;border-inline:1px solid var(--mv-muted)}
+.markview-editor .mv-divider:after{content:"";position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);width:2px;height:30px;border-inline:1px solid var(--mv-muted)}
 .markview-editor[data-orientation=vertical] .mv-split{flex-direction:column}
 .markview-editor[data-orientation=vertical] .mv-divider{cursor:row-resize;border:0;border-block:1px solid var(--mv-rule)}
-.markview-editor[data-orientation=vertical] .mv-divider:after{top:3px;left:calc(50% - 15px);width:30px;height:2px;border:0;border-block:1px solid var(--mv-muted)}
+.markview-editor[data-orientation=vertical] .mv-divider:after{width:30px;height:2px;border:0;border-block:1px solid var(--mv-muted)}
 @container(max-width:720px){.markview-editor .mv-toc{display:none}}
-@container(max-width:540px){.markview-editor[data-orientation=auto] .mv-split{flex-direction:column}.markview-editor[data-orientation=auto] .mv-divider{cursor:row-resize;border:0;border-block:1px solid var(--mv-rule)}.markview-editor[data-orientation=auto] .mv-divider:after{top:3px;left:calc(50% - 15px);width:30px;height:2px;border:0;border-block:1px solid var(--mv-muted)}}
+@container(max-width:540px){.markview-editor[data-orientation=auto] .mv-split{flex-direction:column}.markview-editor[data-orientation=auto] .mv-divider{cursor:row-resize;border:0;border-block:1px solid var(--mv-rule)}.markview-editor[data-orientation=auto] .mv-divider:after{width:30px;height:2px;border:0;border-block:1px solid var(--mv-muted)}}
 `;

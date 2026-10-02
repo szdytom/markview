@@ -42,6 +42,7 @@ at the same level, without `[brackets]`.
 
 ### Fixed
 
+- Center the MVaaC editor divider grip in horizontal and vertical layouts, including hosts with a global border-box reset.
 - Keep MVaaC disclosure summaries in their intended font and spacing by supplying their required 600 weight.
 - Evict MVaaC demo font cache batches that fail validation so malformed HTTP 200 responses cannot prevent startup recovery.
 - Preserve CR source-line offsets and restrict text-free collapsed-container scroll anchors to their visible opening line.
