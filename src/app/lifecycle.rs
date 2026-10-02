@@ -91,6 +91,10 @@ impl<P: super::SendEvent> ApplicationHandler<Event> for App<P> {
 			deadline.map_or(ControlFlow::Wait, ControlFlow::WaitUntil),
 		);
 	}
+	fn exiting(&mut self, _: &ActiveEventLoop) {
+		self.instance_path = None;
+		self.instance.take();
+	}
 }
 
 impl<P: super::SendEvent> App<P> {
@@ -103,6 +107,9 @@ impl<P: super::SendEvent> App<P> {
 		event: Event,
 	) {
 		match event {
+			Event::SettingsLoaded(completion) => {
+				self.settings_loaded(*completion)
+			}
 			Event::SearchReady(result) => self.search_ready(result),
 			Event::Parsed {
 				path,
@@ -125,6 +132,15 @@ impl<P: super::SendEvent> App<P> {
 					self.apply_saved_settings();
 				}
 				self.redraw();
+			}
+			Event::Activate(path) => {
+				if let Some(path) = path {
+					self.open(path);
+				}
+				if let Some(window) = &self.window {
+					window.set_minimized(false);
+					window.focus_window();
+				}
 			}
 			Event::Open(path) => {
 				self.dialog_open = false;
@@ -287,10 +303,8 @@ impl<P: super::SendEvent> App<P> {
 					super::font_panel::Message::Settled(summary) => {
 						self.font_panel.settled(&summary);
 						self.register_fonts(summary.stored);
-						self.font_panel.refresh(
-							&self.preferences.style_entries,
-							&self.fonts_config,
-						);
+						self.settings_resources.invalidate();
+						self.refresh_settings_resources(false);
 						if let Some((_, reason)) = summary.failed.first() {
 							self.notify(reason, true, 6);
 						}

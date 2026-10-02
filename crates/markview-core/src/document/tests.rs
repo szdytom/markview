@@ -405,6 +405,83 @@ fn reparse_reuses_the_fast_path_and_falls_back_to_a_full_parse() {
 	assert_eq!(replaced.blocks, parse(PARAGRAPHS).blocks);
 }
 
+#[test]
+fn multiline_inline_ranges_use_their_closing_lines_indent() {
+	for newline in ["\n", "\r\n", "\r"] {
+		for (open, close) in [
+			("$a", "b$"),
+			("$$a", "b$$"),
+			("`a", "b`"),
+			("\\(a", "b\\)"),
+			("<img", "src='x'>"),
+		] {
+			for first_indent in 0..=3 {
+				for last_indent in 0..=3 {
+					for prefix in ["", "> ", "- "] {
+						let continuation =
+							if prefix == "- " { "  " } else { prefix };
+						let source = format!(
+							"{prefix}Lead{newline}{continuation}{}{open}{newline}{continuation}{}{close} suffix{newline}{newline}Tail{newline}",
+							" ".repeat(first_indent),
+							" ".repeat(last_indent),
+						);
+						let doc = parse(source.as_str());
+						let block = match &doc.blocks[0].kind {
+							BlockKind::Quote { blocks, .. } => &blocks[0],
+							BlockKind::List { items, .. } => {
+								&items[0].blocks[0]
+							}
+							_ => &doc.blocks[0],
+						};
+						let BlockKind::Paragraph(rich) = &block.kind else {
+							panic!("not a paragraph: {source:?}");
+						};
+						let start = source.find(open).unwrap();
+						let end = source.find(close).unwrap() + close.len();
+						let inline = rich
+							.iter()
+							.find(|i| i.source.start == start)
+							.unwrap();
+						assert_eq!(inline.source, start..end, "{source:?}");
+					}
+				}
+			}
+		}
+	}
+}
+
+#[test]
+fn incremental_multiline_inlines_match_full_parses() {
+	for newline in ["\n", "\r\n", "\r"] {
+		for (open, close) in [("$a", "b$"), ("`a", "b`"), ("\\(a", "b\\)")] {
+			for first_indent in 0..=3 {
+				for last_indent in 0..=3 {
+					for tail in ["", "Tail"] {
+						let before = format!(
+							"{}{open}{newline}{}{close}{newline}{newline}{tail}",
+							" ".repeat(first_indent),
+							" ".repeat(last_indent),
+						);
+						let after = format!("Lead{newline}{before}");
+						assert_incremental(&before, &after);
+						assert_incremental(&after, &before);
+						assert_incremental(
+							&before,
+							&format!("First{newline}{newline}{before}"),
+						);
+					}
+				}
+			}
+		}
+	}
+}
+
+#[test]
+fn incremental_inline_ranges_match_the_minimized_fuzz_input() {
+	let before = String::from_utf8_lossy(b"  $##o\r\x04\0\xd8$\n");
+	assert_incremental(&before, &format!("$x^2$\n{before}"));
+}
+
 const PARAGRAPHS: &str =
 	"# Title\n\nAlpha beta gamma.\n\nDelta epsilon zeta.\n\nEta theta iota.\n";
 
@@ -427,6 +504,58 @@ fn incremental_parse_matches_a_full_parse_for_plain_edits() {
 		PARAGRAPHS,
 		&PARAGRAPHS.replace("iota.\n", "iota.\nKappa.\n"),
 	);
+}
+
+#[test]
+fn thematic_break_ranges_exclude_trailing_blank_lines() {
+	for newline in ["\n", "\r\n", "\r"] {
+		for marker in ["----", "***", "___", "- - -", "  ---- "] {
+			let before = format!("a{newline}{newline}{marker}");
+			let expected = parse(before.as_str()).blocks.pop().unwrap();
+			assert!(matches!(expected.kind, BlockKind::Rule));
+			assert_eq!(
+				&before[expected.source.clone()],
+				marker.trim_start_matches(' ')
+			);
+			for blank in ["", " ", "  ", "\t", " \t", newline] {
+				let source = format!("{before}{newline}{blank}");
+				let full = parse(source.as_str());
+				assert_eq!(
+					full.blocks.last().unwrap(),
+					&expected,
+					"{source:?}"
+				);
+				let prefix =
+					parse_prefix(&Arc::from(source), before.len()).unwrap();
+				assert_eq!(prefix.blocks, full.blocks);
+			}
+		}
+	}
+}
+
+#[test]
+fn incremental_thematic_breaks_match_full_parses_with_trailing_blanks() {
+	// The minimized fuzz input duplicates the blank line before `----`.
+	assert_incremental("a\n\n\n----\n ", "a\n\n\n\n----\n ");
+	for newline in ["\n", "\r\n", "\r"] {
+		for marker in ["----", "***", "___"] {
+			for blank in ["", " ", "  ", newline] {
+				let before =
+					format!("a{newline}{newline}{marker}{newline}{blank}");
+				for after in [
+					before.replacen('a', "alpha", 1),
+					format!("a{newline}{before}"),
+					format!("{newline}{before}"),
+					format!("a{newline}{newline}____{newline}{blank}"),
+					format!("{before} {newline}"),
+					format!("{before}{newline}body"),
+				] {
+					assert_incremental(&before, &after);
+					assert_incremental(&after, &before);
+				}
+			}
+		}
+	}
 }
 
 #[test]
@@ -1568,4 +1697,141 @@ fn an_edit_inside_front_matter_keeps_it_metadata() {
 	};
 	assert_eq!(metadata(&updated), metadata(&full));
 	assert!(metadata(&updated).is_some_and(|yaml| yaml.contains("Bob")));
+}
+
+#[test]
+fn an_attribute_after_a_stray_slash_does_not_split_a_character() {
+	// A fuzz finding: `<details /\u{a0}open>` reaches `has_attribute` and
+	// `<p><img /\u{a0}src=x>` reaches `attribute`; both split the two-byte
+	// space the stripped `/` exposed.
+	assert!(parse("<details /\u{a0}open>\n").blocks.iter().all(|b| {
+		match &b.kind {
+			BlockKind::Paragraph(text) => text.iter().all(
+				|i| !matches!(&i.kind, InlineKind::Text(t) if t.contains('\u{a0}')),
+			),
+			_ => true,
+		}
+	}));
+	let doc = parse("<p><img /\u{a0}src=x>\n");
+	let mut images = Vec::new();
+	for block in &doc.blocks {
+		block.images(&mut images);
+	}
+	let [image] = images.as_slice() else {
+		panic!("expected the image the raw block declares")
+	};
+	assert_eq!(image.src, "x");
+}
+
+#[test]
+fn inline_source_ranges_never_run_backwards() {
+	// A fuzz finding: comrak reports the paragraph after a link reference
+	// definition at the definition's own columns, so a `SoftBreak` span can
+	// end before the text before it starts; merging used to move the merged
+	// range's end backwards and leave `17..16`.
+	fn check(blocks: &[Block]) {
+		for block in blocks {
+			let text: &RichText = match &block.kind {
+				BlockKind::Paragraph(text)
+				| BlockKind::Heading { text, .. } => text,
+				BlockKind::Quote { blocks, .. }
+				| BlockKind::Footnote { blocks, .. }
+				| BlockKind::FrontMatter { blocks, .. } => {
+					check(blocks);
+					continue;
+				}
+				BlockKind::Details {
+					summary, blocks, ..
+				} => {
+					for inline in summary {
+						assert!(inline.source.start <= inline.source.end);
+					}
+					check(blocks);
+					continue;
+				}
+				BlockKind::List { items, .. } => {
+					for item in items {
+						check(&item.blocks);
+					}
+					continue;
+				}
+				BlockKind::Table { rows, .. } => {
+					for row in rows {
+						for cell in row {
+							for inline in cell {
+								assert!(
+									inline.source.start <= inline.source.end
+								);
+							}
+						}
+					}
+					continue;
+				}
+				BlockKind::Code { .. } | BlockKind::Rule => continue,
+			};
+			for inline in text {
+				assert!(
+					inline.source.start <= inline.source.end,
+					"inverted inline range {:?} in {:?}",
+					inline.source,
+					block.source
+				);
+			}
+		}
+	}
+	let doc = parse("[foo]: d\n   d\n[foo]: d\nc\n[foo]: d");
+	check(&doc.blocks);
+}
+
+#[test]
+fn a_definition_line_inside_a_paragraph_is_not_a_definition() {
+	// A fuzz finding: `[bar]: /baz` cannot interrupt the paragraph `Foo`, so
+	// it is text. Extracting it as a definition resolved `[bar]` into a link
+	// the document never had — in the prefix path and in a `<details>` body.
+	let source: Arc<str> = Arc::from("Foo\n[bar]: /baz\n\n[bar]\n");
+	let full = parse(source.as_ref());
+	let BlockKind::Paragraph(first) = &full.blocks[0].kind else {
+		panic!("expected a paragraph")
+	};
+	assert!(first.iter().all(|i| i.style.link.is_none()));
+	let prefix = parse_prefix(&source, source.len() - 1).expect("a prefix");
+	assert_eq!(prefix.blocks, full.blocks);
+}
+
+#[test]
+fn a_definition_after_a_leaf_block_still_counts() {
+	// The paragraph rule must not reject a definition that follows a block
+	// which leaves nothing open: a heading ends the paragraph, so `[x]` in
+	// the prefix resolves through the definition after the cut.
+	let source: Arc<str> = Arc::from("See [x].\n\n# H\n[x]: url\n");
+	let full = parse(source.as_ref());
+	let prefix = parse_prefix(&source, 8).expect("a prefix");
+	assert_eq!(prefix.blocks, full.blocks[..prefix.blocks.len()]);
+	let BlockKind::Paragraph(text) = &prefix.blocks[0].kind else {
+		panic!("expected a paragraph")
+	};
+	assert!(text.iter().any(|i| i.style.link.as_deref() == Some("url")));
+}
+
+#[test]
+fn a_prefix_never_cuts_through_front_matter() {
+	// The opening `---` is a delimiter, not a thematic break: until the
+	// closing delimiter arrives the document puts no block there at all.
+	let source: Arc<str> = Arc::from("---\n\n---");
+	assert!(parse_prefix(&source, 1).is_none());
+	assert!(parse_prefix(&source, 3).is_none());
+	let full = parse(source.as_ref());
+	let prefix = parse_prefix(&source, 5).expect("a prefix past the closer");
+	assert_eq!(prefix.blocks, full.blocks);
+}
+
+#[test]
+fn a_prefix_keeps_the_line_ending_a_list_marker_needs() {
+	// `1.` with no line ending parses as a paragraph; with one it is the
+	// empty ordered item the document has.
+	let source: Arc<str> = Arc::from("1.\n");
+	let full = parse(source.as_ref());
+	assert!(matches!(full.blocks[0].kind, BlockKind::List { .. }));
+	let prefix = parse_prefix(&source, 1).expect("a prefix");
+	assert_eq!(prefix.blocks, full.blocks);
 }

@@ -404,6 +404,9 @@ impl BlockContext<'_> {
 		if let Some(node) = out.text.get_mut(first_node) {
 			node.separator = "\n\n";
 		}
+		for node in &mut out.text[first_node..] {
+			node.selection_group = Some(first_node);
+		}
 		cursor - y
 	}
 
@@ -850,6 +853,7 @@ impl BlockContext<'_> {
 								.copied()
 								.unwrap_or(item_x + dx + width);
 							node.push(TextCluster {
+								mixed_spacing: (0.0, 0.0),
 								range,
 								rect: Rect {
 									x,
@@ -962,6 +966,13 @@ impl BlockContext<'_> {
 						// A number shares its line with the item text; an item
 						// without one starts its own line.
 						node.separator = if numbered { "" } else { "\n" };
+					}
+					if numbered && first_child < out.text.len() {
+						out.text[first_child - 1].selection_group = Some(
+							out.text[first_child]
+								.selection_group
+								.unwrap_or(first_child),
+						);
 					}
 				}
 				if start.is_none() {

@@ -94,6 +94,7 @@ impl Preferences {
 			codeblock_theme_override: settings.codeblock_theme_override.clone(),
 			codeblock_wrap: settings.codeblock_wrap,
 			scroll_speed: settings.scroll_speed,
+			single_instance: settings.single_instance,
 		};
 		for field in &args.overrides {
 			settings.copy_field(&explicit, *field);
@@ -153,10 +154,6 @@ impl Preferences {
 		&mut self,
 		ui: &mut TextShaper,
 	) -> Option<bool> {
-		self.style_entries = crate::stylesheet::catalog(
-			crate::stylesheet::directory().as_deref(),
-			self.values.style.as_deref(),
-		);
 		let ids = self.values.style.clone().unwrap_or_else(|| {
 			vec![
 				if self.values.theme == Theme::Dark {

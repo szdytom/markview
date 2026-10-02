@@ -238,6 +238,10 @@ pixels and the type to 18.
   value and counts as three lines, and **Scroll speed** in **Settings**
   (`scroll-speed` in `settings.toml`, 0.5× to 2×) multiplies every wheel notch
   and arrow step.
+- **Single instance is optional.** Enable **Single instance** in **Settings**, or set
+  `single-instance = true` in `settings.toml`, to open files from subsequent
+  launches in tabs of the existing window. It is off by default; files already
+  open select their existing tab. Existing windows stay open when you enable it.
 - **The interface follows the system language.** Every label is compiled in from
   `assets/locales`, so nothing is read from disk at startup; **Interface
   language** in **Settings** pins it to English, Simplified or Traditional Chinese, or Japanese instead.

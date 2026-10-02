@@ -97,6 +97,8 @@ struct Config {
 	codeblock_wrap: bool,
 	#[serde(rename = "scroll-speed")]
 	scroll_speed: f32,
+	#[serde(rename = "single-instance")]
+	single_instance: bool,
 	/// The reader's export preferences, kept apart from the reading view.
 	export: ExportSettings,
 }
@@ -119,6 +121,7 @@ impl Default for Config {
 			codeblock_theme_override: None,
 			codeblock_wrap: settings.codeblock_wrap,
 			scroll_speed: settings.scroll_speed,
+			single_instance: settings.single_instance,
 			export: ExportSettings::default(),
 		}
 	}
@@ -163,6 +166,7 @@ impl Config {
 			codeblock_theme_override: self.codeblock_theme_override.clone(),
 			codeblock_wrap: self.codeblock_wrap,
 			scroll_speed: self.scroll_speed,
+			single_instance: self.single_instance,
 			..Default::default()
 		}
 	}
@@ -388,6 +392,7 @@ impl SettingsStore {
 					Setting::Language,
 					Setting::CodeblockWrap,
 					Setting::ScrollSpeed,
+					Setting::SingleInstance,
 					Setting::FontFamily,
 				];
 				self.saved = effective.clone();
@@ -441,6 +446,7 @@ impl SettingsStore {
 				.clone(),
 			codeblock_wrap: self.saved.codeblock_wrap,
 			scroll_speed: self.saved.scroll_speed,
+			single_instance: self.saved.single_instance,
 			export: self.saved_export.clone(),
 		};
 		let mut values = toml_edit::ser::to_document(&config)?;

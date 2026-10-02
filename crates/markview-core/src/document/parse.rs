@@ -31,19 +31,26 @@ struct Reader<'s> {
 
 impl Reader<'_> {
 	fn range(&self, node: &AstNode<'_>) -> Range<usize> {
-		let p = node.data.borrow().sourcepos;
-		let start = self
+		let data = node.data.borrow();
+		let p = data.sourcepos;
+		let line_start = self
 			.lines
 			.get(p.start.line.saturating_sub(1))
 			.copied()
-			.unwrap_or(0)
-			+ p.start.column.saturating_sub(1);
-		let end = self
-			.lines
-			.get(p.end.line.saturating_sub(1))
-			.copied()
-			.unwrap_or(0)
-			+ p.end.column;
+			.unwrap_or(0);
+		let start = line_start + p.start.column.saturating_sub(1);
+		let end = if matches!(data.value, NodeValue::ThematicBreak) {
+			// Comrak can leave a break open through trailing blank lines at
+			// EOF. Its source range belongs only to the marker's line.
+			let line = &self.source[line_start..];
+			line_start + line.find(['\r', '\n']).unwrap_or(line.len())
+		} else {
+			self.lines
+				.get(p.end.line.saturating_sub(1))
+				.copied()
+				.unwrap_or(0)
+				+ p.end.column
+		};
 		// Comrak columns are byte offsets unless sourcepos_chars is enabled.
 		let mut start = start.min(self.source.len());
 		let mut end = end.min(self.source.len()).max(start);
@@ -928,7 +935,11 @@ fn merge_text(text: RichText) -> RichText {
 			} else {
 				prev.push_str(t);
 			}
-			last.source.end = span.source.end;
+			// Comrak's source positions can run backwards across siblings — a
+			// paragraph that follows a link reference definition keeps the
+			// definition line's columns — so taking the second span's end
+			// verbatim can invert the merged range. The end only ever grows.
+			last.source.end = last.source.end.max(span.source.end);
 			merged = true;
 		}
 		if !merged {

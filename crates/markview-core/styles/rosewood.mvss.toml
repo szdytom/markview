@@ -1,6 +1,6 @@
 format_version = 2
 targets = ["ui"]
-version = 2
+version = 3
 
 [meta]
 name = "Rosewood"
@@ -47,7 +47,7 @@ pie_outer_stroke_color = "#654C60"
 [[rule]]
 when = ["body"]
 line_height = 1.6
-font = [{ family = "serif" }, { family = "serif[cjk]", weight = 500 }, { family = "serif[cjk]" }, { family = "emoji", weight = 400 }]
+font = [{ family = "serif" }, { family = "serif[cjk]", min_weight = 500 }, { family = "serif[cjk]" }, { family = "emoji", weight = 400 }]
 color = "#EFE1E6"
 background = "#30242F"
 
@@ -159,7 +159,7 @@ focus_color = "#E8ADC2"
 
 [[rule]]
 when = ["h1"]
-font = [{ family = "serif" }, { family = "serif[cjk]", weight = 500 }, { family = "serif[cjk]" }, { family = "emoji", weight = 400 }]
+font = [{ family = "serif" }, { family = "serif[cjk]", min_weight = 500 }, { family = "serif[cjk]" }, { family = "emoji", weight = 400 }]
 size = 2.15
 color = "#EFE1E6"
 space_before = 0.2
@@ -167,7 +167,7 @@ space_after = 0.65
 
 [[rule]]
 when = ["h2"]
-font = [{ family = "serif" }, { family = "serif[cjk]", weight = 500 }, { family = "serif[cjk]" }, { family = "emoji", weight = 400 }]
+font = [{ family = "serif" }, { family = "serif[cjk]", min_weight = 500 }, { family = "serif[cjk]" }, { family = "emoji", weight = 400 }]
 size = 1.55
 color = "#E8ADC2"
 space_before = 0.85
@@ -175,7 +175,7 @@ space_after = 0.65
 
 [[rule]]
 when = ["h3"]
-font = [{ family = "serif" }, { family = "serif[cjk]", weight = 500 }, { family = "serif[cjk]" }, { family = "emoji", weight = 400 }]
+font = [{ family = "serif" }, { family = "serif[cjk]", min_weight = 500 }, { family = "serif[cjk]" }, { family = "emoji", weight = 400 }]
 size = 1.22
 color = "#EFE1E6"
 space_before = 0.85

@@ -280,3 +280,14 @@ fn a_summary_belongs_to_the_element_that_declares_it() {
 	assert_eq!(summary, None);
 	assert_eq!(body, "<details><summary>I</summary>B</details>C");
 }
+
+#[test]
+fn a_multibyte_space_exposed_by_a_stray_slash_is_skipped_whole() {
+	// A fuzz finding: stripping the `/` of ` /<nbsp>open` exposes a two-byte
+	// space, and the "starts with a separator" branch skipped it a byte at a
+	// time, splitting the character.
+	assert!(!has_attribute(" /", "open"));
+	assert!(has_attribute(" /\u{a0}open", "open"));
+	assert_eq!(attribute(" /\u{a0}src=x", "src").as_deref(), Some("x"));
+	assert_eq!(attribute(" /\u{a0}src", "src"), None);
+}

@@ -27,7 +27,74 @@ const SOURCE: &str = "First paragraph.\n\nSecond paragraph.";
 #[derive(Clone)]
 struct StubProxy;
 impl SendEvent for StubProxy {
-	fn send(&self, _event: Event) {}
+	fn try_send(&self, _event: Event) -> bool {
+		true
+	}
+}
+
+#[test]
+fn enabling_a_surviving_independent_window_registers_it_for_later_launches() {
+	use crate::app::single_instance::{Start, start};
+	use std::sync::mpsc;
+	use std::time::Duration;
+
+	#[derive(Clone)]
+	struct Proxy(mpsc::Sender<Option<PathBuf>>);
+	impl SendEvent for Proxy {
+		fn try_send(&self, event: Event) -> bool {
+			if let Event::Activate(path) = event {
+				self.0.send(path).is_ok()
+			} else {
+				true
+			}
+		}
+	}
+	let dir = tempfile::tempdir().unwrap();
+	let lock = dir.path().join("instance.lock");
+	let Start::Primary(primary) = start(&lock, false, None).unwrap() else {
+		panic!()
+	};
+	let (original_tx, original_rx) = mpsc::channel();
+	let listener = primary.listen(move |event| {
+		let Event::Activate(path) = event else {
+			panic!()
+		};
+		original_tx.send(path).is_ok()
+	});
+	assert!(matches!(
+		start(&lock, false, None).unwrap(),
+		Start::Independent
+	));
+	let (tx, rx) = mpsc::channel();
+	let mut app = App::new(
+		crate::cli::LaunchOptions {
+			mode: Mode::Smoke,
+			options: crate::test_support::options(),
+			..Default::default()
+		},
+		Proxy(tx),
+	);
+	app.instance_path = Some(lock.clone());
+	let started = Instant::now();
+	app.action(Command::SingleInstance);
+	assert!(started.elapsed() < Duration::from_secs(1));
+	assert!(app.preferences.values.single_instance);
+	assert!(app.instance.is_none());
+	assert!(matches!(
+		original_rx.try_recv(),
+		Err(mpsc::TryRecvError::Empty)
+	));
+	app.action(Command::SingleInstance);
+	drop(listener);
+	app.action(Command::SingleInstance);
+	assert!(app.preferences.values.single_instance);
+	assert!(app.instance.is_some());
+	let path = dir.path().join("second.md");
+	assert!(matches!(
+		start(&lock, true, Some(path.clone())).unwrap(),
+		Start::Forwarded(_)
+	));
+	assert_eq!(rx.recv_timeout(Duration::from_secs(2)).unwrap(), Some(path));
 }
 
 /// A loop that does nothing, for the timers and handlers that only ask
@@ -441,4 +508,21 @@ fn a_fractional_line_wheel_coasts_on_windows_and_eases_elsewhere() {
 	);
 	assert_eq!(app.readers.session.scrolling.offset, whole * 0.5);
 	assert!(!app.readers.session.scroll_animating());
+}
+
+#[test]
+fn forwarded_files_open_tabs_and_reuse_existing_tabs() {
+	let (mut app, _) = reader(SOURCE, 400.0);
+	let first = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+		.join("tests/fixtures/ordinary-10k.md");
+	let second = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+		.join("tests/fixtures/code-10k.md");
+	app.handle_user_event(&StubLoop, Event::Activate(Some(first.clone())));
+	app.handle_user_event(&StubLoop, Event::Activate(Some(second.clone())));
+	assert_eq!(app.readers.session.path.as_ref(), Some(&second));
+	let count = app.readers.entries().len();
+	assert_eq!(count, 2);
+	app.handle_user_event(&StubLoop, Event::Activate(Some(first.clone())));
+	assert_eq!(app.readers.entries().len(), count);
+	assert_eq!(app.readers.session.path.as_ref(), Some(&first));
 }

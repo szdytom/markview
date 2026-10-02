@@ -46,6 +46,12 @@ they drift.
 `Release`, after local archives are built and before the release is published.
 Its failure blocks publication; all assets are uploaded together.
 
+After publication, `.github/workflows/release-notes.yml` updates the download
+table to link the macOS `.app.zip`, Windows MSI and portable ZIP, and Linux
+AppImage. It checks that each package and checksum file is attached, and
+preserves the changelog and installation commands. It also adds macOS extraction,
+Applications installation and quarantine instructions. This also runs for prereleases.
+
 ## Packaging inputs build every package
 
 The `Packages` workflow builds the complete package set whenever a file it

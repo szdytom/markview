@@ -332,6 +332,7 @@ impl BlockContext<'_> {
 						&& self.image_placeholder(image).is_none()
 					{
 						out.text[node].push(TextCluster {
+							mixed_spacing: (0.0, 0.0),
 							range: range.clone(),
 							rect,
 							rtl: false,
@@ -376,6 +377,19 @@ impl BlockContext<'_> {
 				};
 				if !range.is_empty() {
 					out.text[node].push(TextCluster {
+						mixed_spacing: (
+							if c.mixed.0 {
+								size * microtype::MIXED_GAP - pulled
+							} else {
+								0.0
+							},
+							if c.mixed.1 {
+								size * microtype::MIXED_GAP
+									+ fit.shrink.1 * solve.ratio.min(0.0)
+							} else {
+								0.0
+							},
+						),
 						range,
 						rect: Rect {
 							x: cursor,

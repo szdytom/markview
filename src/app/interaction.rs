@@ -1,9 +1,7 @@
 //! Commands, selection gestures and clipboard actions.
 use crate::cli::Mode;
 use crate::settings::{ReaderSettings, Setting};
-use crate::state::{
-	Command, Modal, PanelPage, PanelTab, ScrollbarAxis, ScrollbarDrag,
-};
+use crate::state::{Command, Modal, PanelPage, ScrollbarAxis, ScrollbarDrag};
 use markview_core::text::TextPosition;
 use std::time::{Duration, Instant};
 
@@ -36,6 +34,9 @@ fn sanitize_filename(title: &str, lang: crate::lang::Lang) -> String {
 
 impl<P: super::SendEvent> App<P> {
 	pub(super) fn action(&mut self, action: Command) {
+		if !self.settings_action_enabled(action) {
+			return;
+		}
 		if let Command::FocusInput(id) = action {
 			self.interaction.focus = Some(Command::FocusInput(id));
 			self.sync_input();
@@ -180,6 +181,15 @@ impl<P: super::SendEvent> App<P> {
 				self.close_tab(index);
 				return;
 			}
+			Command::SingleInstance => {
+				self.preferences.values.single_instance =
+					!self.preferences.values.single_instance;
+				self.setting_changed(Some(Setting::SingleInstance));
+				self.flush_settings();
+				self.register_instance();
+				self.redraw();
+				return;
+			}
 			Command::ScrollSpeed(delta) => {
 				self.preferences.values.step_scroll_speed(delta);
 				self.setting_changed(Some(Setting::ScrollSpeed));
@@ -190,14 +200,7 @@ impl<P: super::SendEvent> App<P> {
 				self.readers.session.cancel_scroll_animation();
 				self.tab_strip.cancel_drag();
 				self.interaction.show_styles(false);
-				self.preferences.style_entries = crate::stylesheet::catalog(
-					crate::stylesheet::directory().as_deref(),
-					self.preferences.values.style.as_deref(),
-				);
-				self.font_panel.refresh(
-					&self.preferences.style_entries,
-					&self.fonts_config,
-				);
+				self.refresh_settings_resources(true);
 				self.interaction.focus = None;
 				self.redraw();
 				return;
@@ -206,11 +209,7 @@ impl<P: super::SendEvent> App<P> {
 				self.readers.session.cancel_scroll_animation();
 				self.tab_strip.cancel_drag();
 				self.interaction.show_styles(true);
-				self.preferences.style_entries = crate::stylesheet::catalog_for(
-					crate::stylesheet::directory().as_deref(),
-					Some(&self.preferences.export.style),
-					markview_core::style::StyleTarget::Pdf,
-				);
+				self.refresh_settings_resources(true);
 				self.interaction.focus = None;
 				self.redraw();
 				return;
@@ -273,23 +272,18 @@ impl<P: super::SendEvent> App<P> {
 						4,
 					);
 				}
+				self.refresh_settings_resources(false);
+				self.redraw();
+				return;
+			}
+			Command::RetrySettingsLoad => {
+				self.refresh_settings_resources(true);
 				self.redraw();
 				return;
 			}
 			Command::SettingsTab(tab) => {
 				self.interaction.show_panel(PanelPage::Settings(tab));
-				if tab == PanelTab::Styles {
-					self.preferences.style_entries = crate::stylesheet::catalog(
-						crate::stylesheet::directory().as_deref(),
-						self.preferences.values.style.as_deref(),
-					);
-				}
-				if tab.shows_font_catalog() {
-					self.font_panel.refresh(
-						&self.preferences.style_entries,
-						&self.fonts_config,
-					);
-				}
+				self.refresh_settings_resources(true);
 				self.interaction.focus = None;
 				self.redraw();
 				return;
@@ -359,7 +353,8 @@ impl<P: super::SendEvent> App<P> {
 			Command::ExportStyleToggle(index)
 			| Command::ExportStyleUp(index)
 			| Command::ExportStyleDown(index) => {
-				let Some(entry) = self.preferences.style_entries.get(index)
+				let Some(entry) =
+					self.settings_resources.export_entries.get(index)
 				else {
 					return;
 				};
@@ -393,6 +388,7 @@ impl<P: super::SendEvent> App<P> {
 				let mut export = self.preferences.export.clone();
 				export.style = ids;
 				self.preferences.set_export(export);
+				self.refresh_settings_resources(false);
 				self.redraw();
 				return;
 			}
@@ -511,7 +507,6 @@ impl<P: super::SendEvent> App<P> {
 				return;
 			}
 			Command::FontFamily(role, selection) => {
-				self.font_panel.refresh_choices(&self.fonts_config);
 				let family = if let Some(selection) = selection {
 					let Some(name) = self.font_panel.resolve(role, selection)
 					else {
@@ -791,6 +786,7 @@ impl<P: super::SendEvent> App<P> {
 		for field in &self.args.overrides {
 			self.preferences.values.copy_field(&previous, *field);
 		}
+		self.register_instance();
 		self.reload_styles();
 		if self.options() != options
 			&& self.readers.session.requested_options.as_ref()

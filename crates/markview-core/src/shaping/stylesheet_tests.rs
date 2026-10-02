@@ -107,24 +107,28 @@ fn unavailable_variant_weight_and_family_are_skipped() {
 				family: "Missing".into(),
 				variant: Variant::Normal,
 				weight: None,
+				min_weight: None,
 				synthetic_italic: false,
 			},
 			Font {
 				family: "Fallback".into(),
 				variant: Variant::Italic,
 				weight: None,
+				min_weight: None,
 				synthetic_italic: false,
 			},
 			Font {
 				family: "Primary".into(),
 				variant: Variant::Italic,
 				weight: Some(700),
+				min_weight: None,
 				synthetic_italic: false,
 			},
 			Font {
 				family: "Primary".into(),
 				variant: Variant::Italic,
 				weight: Some(400),
+				min_weight: None,
 				synthetic_italic: false,
 			},
 		],
@@ -157,6 +161,7 @@ fn font_choices_are_scoped_and_invalidated_with_stylesheet() {
 		family: "Fallback".into(),
 		variant: Variant::Normal,
 		weight: None,
+		min_weight: None,
 		synthetic_italic: false,
 	}];
 	assert_ne!(index, s.resolve_fonts(&other));
@@ -253,12 +258,14 @@ fn explicit_regular_fallback_survives_bold_and_missing_primary() {
 				family: "Missing".into(),
 				variant: Variant::Normal,
 				weight: None,
+				min_weight: None,
 				synthetic_italic: false,
 			},
 			Font {
 				family: "Fallback".into(),
 				variant: Variant::Normal,
 				weight: None,
+				min_weight: None,
 				synthetic_italic: false,
 			},
 		],
@@ -296,6 +303,7 @@ fn fallback_warnings_are_bounded_and_allow_new_candidate_sets() {
 				family: format!("Missing{i}"),
 				variant: Variant::Normal,
 				weight: None,
+				min_weight: None,
 				synthetic_italic: false,
 			}],
 			..Default::default()
@@ -321,6 +329,7 @@ fn shaping_warns_only_when_configured_candidates_are_exhausted() {
 		family: "Fallback".into(),
 		variant: Variant::Normal,
 		weight: Some(400),
+		min_weight: None,
 		synthetic_italic: false,
 	}];
 	s.shape("A", &[], 18., false);
@@ -406,6 +415,7 @@ fn a_synthetic_italic_candidate_keeps_an_upright_face() {
 			family: "Fallback".into(),
 			variant: Variant::Italic,
 			weight: None,
+			min_weight: None,
 			synthetic_italic,
 		}],
 		..Default::default()
@@ -655,7 +665,7 @@ fn cjk_medium_uses_an_explicit_regular_fallback_when_unavailable() {
 		}
 		let mut sheet = (*Stylesheet::bundled(false)).clone();
 		sheet.set_cjk_type(crate::style::CjkType::Sc);
-		sheet.merge(&Stylesheet::parse("format_version=2\nversion=1\n[[rule]]\nwhen=['ui']\nfont=[{family='sans-serif'},{family='sans-serif[cjk]',weight=500},{family='sans-serif[cjk]'},{family='emoji',weight=400}]").unwrap());
+		sheet.merge(&Stylesheet::parse("format_version=2\nversion=1\n[[rule]]\nwhen=['ui']\nfont=[{family='sans-serif'},{family='sans-serif[cjk]',min_weight=500},{family='sans-serif[cjk]'},{family='emoji',weight=400}]").unwrap());
 		shaper.set_stylesheet(Arc::new(sheet));
 		let appearance = shaper
 			.stylesheet
@@ -751,6 +761,7 @@ fn scanned_weight_is_independent_of_previous_clusters() {
 				family: "Missing".into(),
 				variant: Variant::Normal,
 				weight: None,
+				min_weight: None,
 				synthetic_italic: false,
 			}],
 			weight: 700,

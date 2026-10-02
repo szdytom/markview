@@ -108,7 +108,7 @@ pub fn describe(directory: &Path) -> Vec<FaceInfo> {
 	paths.iter().filter_map(|path| describe_one(path)).collect()
 }
 
-fn describe_one(path: &Path) -> Option<FaceInfo> {
+pub(crate) fn describe_one(path: &Path) -> Option<FaceInfo> {
 	if !is_font_file(path) {
 		return None;
 	}
@@ -207,6 +207,14 @@ pub fn catalog<'a>(
 	config: &FontConfig,
 ) -> Vec<Family> {
 	let faces = dir.map(describe).unwrap_or_default();
+	catalog_faces(sheets, &faces, config)
+}
+
+pub(crate) fn catalog_faces<'a>(
+	sheets: impl IntoIterator<Item = (&'a str, &'a [FontFamily])>,
+	faces: &[FaceInfo],
+	config: &FontConfig,
+) -> Vec<Family> {
 	let mut out: Vec<Family> = Vec::new();
 	for (owner, families) in sheets {
 		for family in families {

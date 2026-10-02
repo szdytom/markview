@@ -21,6 +21,7 @@ pub(crate) use markview_selection::{
 };
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum Command {
+	RetrySettingsLoad,
 	SearchCase,
 	SearchWord,
 	SearchPrevious,
@@ -35,6 +36,7 @@ pub(crate) enum Command {
 	Align,
 	Hyphens,
 	CodeWrap,
+	SingleInstance,
 	/// Step the reader's scroll-speed multiplier by whole steps.
 	ScrollSpeed(i8),
 	/// First-line paragraph indent in whole em units.
@@ -214,16 +216,6 @@ pub(crate) enum PanelTab {
 	About,
 }
 
-impl PanelTab {
-	/// Whether showing this page refreshes the downloadable-font catalogue.
-	///
-	/// Building the catalogue reads the whole system font collection, so the
-	/// Generic page leaves it alone and a launch never pays for it.
-	pub(crate) fn shows_font_catalog(self) -> bool {
-		matches!(self, PanelTab::Styles | PanelTab::Fonts)
-	}
-}
-
 /// A blocking question awaiting the reader's answer.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub(crate) enum Modal {
@@ -383,14 +375,17 @@ pub(crate) enum DropdownId {
 }
 
 /// The option list a control has open.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq)]
 pub(crate) struct Dropdown {
 	pub(crate) id: DropdownId,
 	/// The highlighted option, which `Enter` commits.
 	pub(crate) highlight: usize,
 	/// The first option drawn. It follows the highlight, so a list too long for
-	/// the window shows the part the reader is on rather than a scrollbar.
+	/// the window always shows the part the reader is on.
 	pub(crate) offset: usize,
+	/// Wheel travel held back until it adds up to one option, so a trackpad's
+	/// small deltas and a mouse's whole notches move the list alike.
+	pub(crate) wheel: f32,
 }
 impl Dropdown {
 	pub(crate) fn new(id: DropdownId, highlight: usize) -> Self {
@@ -398,6 +393,7 @@ impl Dropdown {
 			id,
 			highlight,
 			offset: 0,
+			wheel: 0.0,
 		}
 	}
 	/// Moves the highlight by `steps`, wrapping round `count` options.

@@ -12,7 +12,7 @@ use std::{
 };
 
 use markview_core::{
-	document::Document,
+	document::{Block, BlockKind, Document, Inline},
 	scene::{BlockLayout, Draw, LayoutSnapshot, Rect},
 };
 
@@ -53,16 +53,170 @@ impl F {
 	}
 }
 
-/// Semantic equality of a parsed document: content id plus each block's id,
-/// source range, and content key. Position-dependent fields (the source
-/// range) are included, so a shift that a reparse must mirror is caught.
+/// Semantic equality of a parsed document: content id plus, for the whole
+/// block tree, each block's id, source range, and content key, and each
+/// inline's kind, style, and source range.
+///
+/// The walk is recursive on purpose. A shallow hash would miss exactly the
+/// fields a reparse has to shift — a nested block's or an inline's source
+/// range — because `content_key` is position-independent: the reading text
+/// would compare equal while the ranges drifted.
 pub fn document(doc: &Document) -> Fingerprint {
+	fn rich(h: &mut Hashers, text: &[Inline]) {
+		for inline in text {
+			hash3(h, &(&inline.kind, &inline.style, &inline.source));
+		}
+	}
+	fn hash_blocks(h: &mut Hashers, list: &[Block]) {
+		for block in list {
+			hash3(h, &(block.id, &block.source, block.content_key));
+			match &block.kind {
+				BlockKind::Paragraph(text) => rich(h, text),
+				BlockKind::Heading { text, .. } => rich(h, text),
+				BlockKind::Quote { blocks, .. }
+				| BlockKind::Footnote { blocks, .. } => hash_blocks(h, blocks),
+				BlockKind::Details {
+					summary, blocks, ..
+				} => {
+					rich(h, summary);
+					hash_blocks(h, blocks);
+				}
+				BlockKind::FrontMatter { blocks, .. } => hash_blocks(h, blocks),
+				BlockKind::List { items, .. } => {
+					for item in items {
+						hash_blocks(h, &item.blocks);
+					}
+				}
+				BlockKind::Table { rows, .. } => {
+					for row in rows {
+						for cell in row {
+							rich(h, cell);
+						}
+					}
+				}
+				BlockKind::Code { .. } | BlockKind::Rule => {}
+			}
+		}
+	}
 	let mut h = hashers();
 	hash3(&mut h, &doc.content_id);
-	for block in &doc.blocks {
-		hash3(&mut h, &(block.id, &block.source, block.content_key));
-	}
+	hash_blocks(&mut h, &doc.blocks);
 	finish(h)
+}
+
+/// Every source range a document carries must be ordered and in bounds, so
+/// that the range addresses its source and a downstream `&source[range]` is
+/// sound.
+///
+/// The character-boundary half of that contract is deliberately not asserted:
+/// a `<details>` body and the blocks its closing block spills into the top
+/// level are parsed as snippets of their own, so their ranges are relative to
+/// the snippet rather than to the document (the crate's own
+/// `a_details_body_with_a_lone_carriage_return_keeps_its_ranges` pins that).
+/// A byte offset that is off a boundary for *this* source is therefore not a
+/// defect by itself, while an inverted or out-of-range one is.
+pub fn assert_source_ranges(doc: &Document) {
+	fn check(what: &str, r: &std::ops::Range<usize>, len: usize) {
+		assert!(r.start <= r.end, "{what} range is inverted: {r:?}");
+		assert!(
+			r.end <= len,
+			"{what} range {r:?} runs past the {len}-byte source"
+		);
+	}
+	fn rich(what: &str, text: &[Inline], len: usize) {
+		for inline in text {
+			check(what, &inline.source, len);
+		}
+	}
+	fn walk(blocks: &[Block], len: usize) {
+		for block in blocks {
+			check("block", &block.source, len);
+			match &block.kind {
+				BlockKind::Paragraph(text) => rich("inline", text, len),
+				BlockKind::Heading { text, .. } => rich("inline", text, len),
+				BlockKind::Quote { blocks, .. }
+				| BlockKind::Footnote { blocks, .. }
+				| BlockKind::FrontMatter { blocks, .. } => walk(blocks, len),
+				BlockKind::Details {
+					summary, blocks, ..
+				} => {
+					rich("summary", summary, len);
+					walk(blocks, len);
+				}
+				BlockKind::List { items, .. } => {
+					for item in items {
+						walk(&item.blocks, len);
+					}
+				}
+				BlockKind::Table { rows, .. } => {
+					for row in rows {
+						for cell in row {
+							rich("cell", cell, len);
+						}
+					}
+				}
+				BlockKind::Code { .. } | BlockKind::Rule => {}
+			}
+		}
+	}
+	walk(&doc.blocks, doc.source.len());
+}
+
+/// A prefix parse must be the opening of the full parse: every block it
+/// returns but the last must equal the one a full parse puts at that index,
+/// field for field (id, source range, content key, kind). The last may differ
+/// because it is the block the cut lands inside, which a prefix is allowed to
+/// show up to the cut.
+pub fn assert_prefix_consistent(full: &Document, prefix: &Document) {
+	assert!(
+		prefix.blocks.len() <= full.blocks.len(),
+		"prefix has {} blocks, the full parse {}",
+		prefix.blocks.len(),
+		full.blocks.len()
+	);
+	if prefix.blocks.is_empty() {
+		return;
+	}
+	let keep = prefix.blocks.len() - 1;
+	for i in 0..keep {
+		assert_eq!(
+			prefix.blocks[i], full.blocks[i],
+			"prefix block {i} of {keep} diverges from the full parse"
+		);
+	}
+	// The last block is the one the cut landed inside, so it may be truncated,
+	// but it must still be the same construct the full parse continues: a
+	// prefix that turns a YAML front matter opener into a thematic break, or
+	// a document's only block into a different kind, is not a truncation.
+	if let Some(next) = full.blocks.get(keep)
+		&& prefix.blocks[keep].source.end > next.source.start
+	{
+		assert_eq!(
+			kind_tag(&prefix.blocks[keep].kind),
+			kind_tag(&next.kind),
+			"the prefix's last block is a different construct than the full \
+			 parse puts there: {:?} versus {:?}",
+			prefix.blocks[keep].kind,
+			next.kind
+		);
+	}
+}
+
+/// A stable tag per [`BlockKind`] variant, for comparing constructs without
+/// requiring their payloads to match.
+fn kind_tag(kind: &BlockKind) -> u8 {
+	match kind {
+		BlockKind::Paragraph(_) => 0,
+		BlockKind::Heading { .. } => 1,
+		BlockKind::Code { .. } => 2,
+		BlockKind::Quote { .. } => 3,
+		BlockKind::List { .. } => 4,
+		BlockKind::Table { .. } => 5,
+		BlockKind::Footnote { .. } => 6,
+		BlockKind::Details { .. } => 7,
+		BlockKind::Rule => 8,
+		BlockKind::FrontMatter { .. } => 9,
+	}
 }
 
 /// Field-by-field equality of a layout snapshot. The `reused` counters are

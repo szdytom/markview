@@ -383,7 +383,7 @@ impl TextShaper {
 					Variant::Italic => FontStyle::Italic,
 					Variant::Oblique => FontStyle::Oblique(None),
 				};
-				let weight = candidate.weight.unwrap_or(appearance.weight);
+				let weight = candidate.resolved_weight(appearance.weight);
 				let def = self.stylesheet.fontdefs.get(&candidate.family);
 				let families: Vec<_> = if let Some(def) = def {
 					def.lookfor
@@ -671,7 +671,7 @@ impl TextShaper {
 					"{:?} ({:?}, weight {})",
 					f.family,
 					f.variant,
-					f.weight.unwrap_or(set.diagnostic_weight)
+					f.resolved_weight(set.diagnostic_weight)
 				)
 			})
 			.collect::<Vec<_>>()
@@ -823,7 +823,12 @@ impl TextShaper {
 			crate::profile::span(crate::profile::Stage::ShapeBuild, || {
 				builder.build(text)
 			});
-		layout.break_all_lines(None);
+		// `parley`'s default height ceiling is `f32::MAX`; an overflowing
+		// line height repeatedly yields without consuming the next cluster.
+		// Shaping imposes no height limit.
+		let mut breaker = layout.break_lines();
+		breaker.state_mut().set_line_max_height(f32::INFINITY);
+		breaker.break_remaining(f32::MAX);
 		// A cluster keeps the choice its first byte resolved to, which is the
 		// face the shaper used for the whole cluster. Documents without a
 		// synthetic candidate skip the lookup entirely.

@@ -1505,3 +1505,29 @@ fn front_matter_frames_its_disclosure() {
 		assert!(Stylesheet::parse(bad).is_err(), "{bad}");
 	}
 }
+
+#[test]
+fn font_minimum_weight_is_validated_and_preserves_inherited_bold() {
+	let sheet = |fields| {
+		Stylesheet::parse(&format!(
+			"format_version=2\nversion=1\n[[rule]]\nwhen=['body']\nfont=[{{family='serif', {fields}}}]"
+		))
+	};
+	let valid = sheet("min_weight=500").unwrap();
+	let font = &valid.rule(Condition::Body).font.as_ref().unwrap()[0];
+	assert_eq!(font.resolved_weight(400), 500);
+	assert_eq!(font.resolved_weight(700), 700);
+	for fields in [
+		"min_weight=0",
+		"min_weight=1001",
+		"min_weight=500,weight=400",
+	] {
+		assert!(sheet(fields).is_err(), "{fields}");
+	}
+	let fixed = sheet("weight=400").unwrap();
+	assert_eq!(
+		fixed.rule(Condition::Body).font.as_ref().unwrap()[0]
+			.resolved_weight(700),
+		400
+	);
+}

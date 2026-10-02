@@ -453,12 +453,21 @@ pub struct Font {
 	#[serde(default)]
 	pub variant: Variant,
 	pub weight: Option<u16>,
+	/// Lower bound on the inherited weight; mutually exclusive with `weight`.
+	pub min_weight: Option<u16>,
 	/// Shear the face when it carries no italic or oblique of its own. CJK
 	/// families usually ship a single upright face, so their emphasis has to
 	/// be faked.
 	#[serde(default)]
 	pub synthetic_italic: bool,
 }
+impl Font {
+	pub fn resolved_weight(&self, inherited: u16) -> u16 {
+		self.weight
+			.unwrap_or_else(|| inherited.max(self.min_weight.unwrap_or(1)))
+	}
+}
+
 #[derive(
 	Clone,
 	Copy,

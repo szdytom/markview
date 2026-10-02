@@ -1,6 +1,6 @@
 format_version = 2
 targets = ["ui"]
-version = 1
+version = 2
 
 [meta]
 name = "Celadon"
@@ -9,7 +9,7 @@ description = "Porcelain green, botanical ink and spacious serif reading"
 [[rule]]
 when = ["body"]
 line_height = 1.72
-font = [{ family = "serif" }, { family = "serif[cjk]", weight = 500 }, { family = "serif[cjk]" }, { family = "emoji", weight = 400 }]
+font = [{ family = "serif" }, { family = "serif[cjk]", min_weight = 500 }, { family = "serif[cjk]" }, { family = "emoji", weight = 400 }]
 color = "#263F37"
 background = "#F1F6F0"
 
@@ -121,7 +121,7 @@ focus_color = "#276A50"
 
 [[rule]]
 when = ["h1"]
-font = [{ family = "serif" }, { family = "serif[cjk]", weight = 500 }, { family = "serif[cjk]" }, { family = "emoji", weight = 400 }]
+font = [{ family = "serif" }, { family = "serif[cjk]", min_weight = 500 }, { family = "serif[cjk]" }, { family = "emoji", weight = 400 }]
 size = 2.15
 color = "#263F37"
 space_before = 0.2
@@ -129,7 +129,7 @@ space_after = 0.65
 
 [[rule]]
 when = ["h2"]
-font = [{ family = "serif" }, { family = "serif[cjk]", weight = 500 }, { family = "serif[cjk]" }, { family = "emoji", weight = 400 }]
+font = [{ family = "serif" }, { family = "serif[cjk]", min_weight = 500 }, { family = "serif[cjk]" }, { family = "emoji", weight = 400 }]
 size = 1.55
 color = "#276A50"
 space_before = 0.85
@@ -137,7 +137,7 @@ space_after = 0.65
 
 [[rule]]
 when = ["h3"]
-font = [{ family = "serif" }, { family = "serif[cjk]", weight = 500 }, { family = "serif[cjk]" }, { family = "emoji", weight = 400 }]
+font = [{ family = "serif" }, { family = "serif[cjk]", min_weight = 500 }, { family = "serif[cjk]" }, { family = "emoji", weight = 400 }]
 size = 1.22
 color = "#263F37"
 space_before = 0.85

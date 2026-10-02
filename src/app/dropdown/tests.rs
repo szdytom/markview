@@ -18,7 +18,7 @@ use winit::event::{
 	DeviceId, ElementState, MouseButton, MouseScrollDelta, Touch, TouchPhase,
 	WindowEvent,
 };
-use winit::keyboard::{Key, NamedKey};
+use winit::keyboard::{Key, ModifiersState, NamedKey};
 use winit::window::WindowId;
 
 /// Stands in for the reader's loop, which a test cannot open: winit builds one
@@ -27,7 +27,9 @@ use winit::window::WindowId;
 #[derive(Clone)]
 struct StubProxy;
 impl SendEvent for StubProxy {
-	fn send(&self, _event: Event) {}
+	fn try_send(&self, _event: Event) -> bool {
+		true
+	}
 }
 
 /// What the app asks of its loop, answered without a window server.
@@ -61,11 +63,8 @@ fn app_with_panel() -> App<StubProxy> {
 	app
 }
 
-/// One physical click: move the pointer there, press, then release in place.
-fn click(app: &mut App<StubProxy>, x: f32, y: f32) {
-	// A tap suppresses mouse input for a moment; these tests drive both paths,
-	// so each click starts from a pointer the platform is not holding back.
-	app.gestures.allow_mouse();
+/// A pointer report at a window point, as the platform delivers one.
+fn move_to(app: &mut App<StubProxy>, x: f32, y: f32) {
 	app.handle_window_event(
 		&StubLoop,
 		WindowId::dummy(),
@@ -74,6 +73,14 @@ fn click(app: &mut App<StubProxy>, x: f32, y: f32) {
 			position: PhysicalPosition::new(f64::from(x), f64::from(y)),
 		},
 	);
+}
+
+/// One physical click: move the pointer there, press, then release in place.
+fn click(app: &mut App<StubProxy>, x: f32, y: f32) {
+	// A tap suppresses mouse input for a moment; these tests drive both paths,
+	// so each click starts from a pointer the platform is not holding back.
+	app.gestures.allow_mouse();
+	move_to(app, x, y);
 	for state in [ElementState::Pressed, ElementState::Released] {
 		app.handle_window_event(
 			&StubLoop,
@@ -125,6 +132,19 @@ fn touch(app: &mut App<StubProxy>, x: f32, y: f32) {
 /// An unmodified key press, as the window's own loop delivers one.
 fn press(app: &mut App<StubProxy>, quit: &QuitLoop, key: Key) {
 	app.press_unmodified(quit, &key);
+}
+
+/// One wheel event, as the window's own loop delivers one.
+fn wheel(app: &mut App<StubProxy>, delta: MouseScrollDelta) {
+	app.handle_window_event(
+		&StubLoop,
+		WindowId::dummy(),
+		WindowEvent::MouseWheel {
+			device_id: DeviceId::dummy(),
+			delta,
+			phase: TouchPhase::Moved,
+		},
+	);
 }
 
 /// A point inside both rectangles, when they overlap.
@@ -527,6 +547,128 @@ fn the_wheel_does_not_scroll_the_page_behind_an_open_list() {
 	);
 }
 
+/// One notch of wheel travel moves the list's highlight the way an arrow key
+/// does, wraps round the same way, and leaves the page behind it alone.
+#[test]
+fn the_wheel_steps_the_highlight_like_the_arrow_keys() {
+	let mut app = app_with_panel();
+	app.action(Command::ToggleDropdown(DropdownId::Language, 0));
+	// The pointer rests on the page the list covers.
+	app.interaction.cursor = (700.0, 400.0);
+	let before = app.interaction.settings_scroll;
+
+	wheel(&mut app, MouseScrollDelta::LineDelta(0.0, -1.0));
+	assert_eq!(highlighted(&mut app), Command::Language(Some(Lang::En)));
+	wheel(&mut app, MouseScrollDelta::LineDelta(0.0, -1.0));
+	assert_eq!(highlighted(&mut app), Command::Language(Some(Lang::ZhHans)));
+	wheel(&mut app, MouseScrollDelta::LineDelta(0.0, -1.0));
+	assert_eq!(highlighted(&mut app), Command::Language(Some(Lang::ZhHant)));
+	wheel(&mut app, MouseScrollDelta::LineDelta(0.0, -1.0));
+	assert_eq!(highlighted(&mut app), Command::Language(Some(Lang::Ja)));
+	// The list wraps round, as the arrow keys do.
+	wheel(&mut app, MouseScrollDelta::LineDelta(0.0, -1.0));
+	assert_eq!(highlighted(&mut app), Command::Language(None));
+	wheel(&mut app, MouseScrollDelta::LineDelta(0.0, 1.0));
+	assert_eq!(highlighted(&mut app), Command::Language(Some(Lang::Ja)));
+
+	assert_eq!(
+		app.interaction.settings_scroll, before,
+		"the page behind the list kept its scroll"
+	);
+	assert!(app.interaction.dropdown.is_some());
+}
+
+/// A trackpad reports travel in small deltas: the list holds what is short of
+/// a notch and moves once the gesture has travelled one, so it answers at the
+/// same pace whichever device is scrolling.
+#[test]
+fn a_trackpads_small_deltas_add_up_to_one_option_per_notch() {
+	let mut app = app_with_panel();
+	app.action(Command::ToggleDropdown(DropdownId::Language, 0));
+
+	// Half a notch's travel moves nothing yet.
+	wheel(
+		&mut app,
+		MouseScrollDelta::PixelDelta(PhysicalPosition::new(0.0, -20.0)),
+	);
+	assert_eq!(highlighted(&mut app), Command::Language(None));
+	// The rest of the notch steps the list once, and no further.
+	wheel(
+		&mut app,
+		MouseScrollDelta::PixelDelta(PhysicalPosition::new(0.0, -25.0)),
+	);
+	assert_eq!(highlighted(&mut app), Command::Language(Some(Lang::En)));
+}
+
+/// The highlight the wheel moved to is the one `Enter` commits, exactly as
+/// after an arrow key.
+#[test]
+fn enter_commits_the_option_the_wheel_moved_to() {
+	let mut app = app_with_panel();
+	app.action(Command::ToggleDropdown(DropdownId::Language, 0));
+	wheel(&mut app, MouseScrollDelta::LineDelta(0.0, -2.0));
+	assert_eq!(highlighted(&mut app), Command::Language(Some(Lang::ZhHans)));
+
+	app.key_pressed(&Key::Named(NamedKey::Enter));
+	assert!(app.interaction.dropdown.is_none());
+	assert_eq!(app.preferences.values.lang, Some(Lang::ZhHans));
+}
+
+/// The macOS backend reports the pointer's position again before every wheel
+/// event, hand still or not. A report that moves nothing must not claim the
+/// highlight back from the wheel it precedes: with the pointer resting on an
+/// option, each notch still advances past it instead of returning to it.
+#[test]
+fn a_report_that_moves_nothing_keeps_the_wheels_highlight() {
+	let mut app = app_with_panel();
+	app.action(Command::ToggleDropdown(DropdownId::Language, 0));
+	// The pointer rests on an option, whose hover owns the highlight.
+	let (x, y) = option_centre(&mut app, Command::Language(Some(Lang::En)));
+	move_to(&mut app, x, y);
+	assert_eq!(highlighted(&mut app), Command::Language(Some(Lang::En)));
+
+	// Every notch arrives behind a report of the same position, and each moves
+	// the highlight one option on from where the last left it.
+	for expected in [
+		Command::Language(Some(Lang::ZhHans)),
+		Command::Language(Some(Lang::ZhHant)),
+		Command::Language(Some(Lang::Ja)),
+	] {
+		move_to(&mut app, x, y);
+		wheel(&mut app, MouseScrollDelta::LineDelta(0.0, -1.0));
+		assert_eq!(highlighted(&mut app), expected);
+	}
+
+	// `Enter` commits the option the wheel moved to, not the one under the
+	// pointer.
+	app.key_pressed(&Key::Named(NamedKey::Enter));
+	assert!(app.interaction.dropdown.is_none());
+	assert_eq!(app.preferences.values.lang, Some(Lang::Ja));
+}
+
+/// A chord with a modifier belongs to the reader, menus or not: `Cmd`+wheel
+/// over an open list leaves the list's highlight where it was, exactly as the
+/// list's own keys hand a chord back.
+#[test]
+fn a_modified_wheel_over_an_open_list_leaves_the_highlight() {
+	let mut app = app_with_panel();
+	app.action(Command::ToggleDropdown(DropdownId::Language, 0));
+	app.interaction.modifiers = ModifiersState::SUPER;
+	let before = app.interaction.settings_scroll;
+
+	wheel(&mut app, MouseScrollDelta::LineDelta(0.0, -1.0));
+	assert_eq!(
+		highlighted(&mut app),
+		Command::Language(None),
+		"the chord left the list where it was"
+	);
+	assert_eq!(
+		app.interaction.settings_scroll, before,
+		"the page behind it kept its scroll too"
+	);
+	assert!(app.interaction.dropdown.is_some());
+}
+
 /// Closing the list returns focus to its chooser, so `Enter` opens the list
 /// again instead of doing nothing.
 #[test]
@@ -603,6 +745,7 @@ fn app_with_pinned_fonts() -> App<StubProxy> {
 	// The chooser rows sit behind the page's own Set step, not with the
 	// catalogue the page opens on.
 	app.action(Command::Fonts(crate::app::font_panel::Command::Choosers));
+	app.complete_choices_fixture();
 	app
 }
 

@@ -1,0 +1,30 @@
+name: Release notes
+
+on:
+  workflow_call:
+    inputs:
+      plan:
+        required: true
+        type: string
+
+permissions:
+  contents: write
+
+jobs:
+  download-table:
+    runs-on: ubuntu-22.04
+    env:
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      RELEASE_PLAN: ${{ inputs.plan }}
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - name: Use desktop packages in the download table
+        run: |
+          printf '%s\n' "$RELEASE_PLAN" > "$RUNNER_TEMP/plan.json"
+          tag=$(jq -r '.announcement_tag' "$RUNNER_TEMP/plan.json")
+          gh release view "$tag" --json body,assets > "$RUNNER_TEMP/release.json"
+          python3 scripts/render_release_notes.py "$RUNNER_TEMP/plan.json" \
+            "$RUNNER_TEMP/release.json" > "$RUNNER_TEMP/notes.md"
+          gh release edit "$tag" --notes-file "$RUNNER_TEMP/notes.md"

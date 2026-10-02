@@ -16,6 +16,8 @@ mod painting;
 mod pointer;
 mod preferences;
 pub(crate) mod search;
+mod settings_load;
+mod single_instance;
 mod surface;
 mod tab_metrics;
 mod tab_navigation;
@@ -42,14 +44,17 @@ use winit::{event_loop::EventLoopProxy, window::Window};
 ///
 /// `EventLoopProxy` is what the application uses; a test drives the same
 /// handlers without a window server by handing them a stub, which is why the
-/// application names this rather than the concrete type. It carries no error:
-/// a loop that has stopped is a loop nobody is drawing.
+/// application names this rather than the concrete type. Internal wake-ups
+/// can ignore a closed loop; IPC uses `try_send` to acknowledge delivery.
 trait SendEvent: Clone + Send + 'static {
-	fn send(&self, event: Event);
+	fn try_send(&self, event: Event) -> bool;
+	fn send(&self, event: Event) {
+		self.try_send(event);
+	}
 }
 impl SendEvent for EventLoopProxy<Event> {
-	fn send(&self, event: Event) {
-		let _ = self.send_event(event);
+	fn try_send(&self, event: Event) -> bool {
+		self.send_event(event).is_ok()
 	}
 }
 
@@ -64,6 +69,7 @@ pub fn run() -> Result<()> {
 }
 
 enum Event {
+	SettingsLoaded(Box<settings_load::Completion>),
 	Ready(Box<Update>),
 	SearchReady(search::Result),
 	Parsed {
@@ -75,6 +81,7 @@ enum Event {
 	SettingsChanged,
 	StylesChanged,
 	Open(Option<PathBuf>),
+	Activate(Option<PathBuf>),
 	DeviceLost,
 	Exported(Box<ExportOutcome>),
 	Fonts(font_panel::Message),
@@ -200,6 +207,8 @@ struct App<P = EventLoopProxy<Event>> {
 	/// sources, so an export matches what the reader shows.
 	fonts_config: FontConfig,
 	proxy: P,
+	instance_path: Option<PathBuf>,
+	instance: Option<single_instance::Listener>,
 	window: Option<Arc<Window>>,
 	renderer: Option<Renderer>,
 	worker: Worker,
@@ -209,6 +218,7 @@ struct App<P = EventLoopProxy<Event>> {
 	_styles_watch: Option<FileWatch>,
 	ui: TextShaper,
 	preferences: preferences::Preferences,
+	settings_resources: settings_load::Resources,
 	/// What one wheel notch travels on this desktop, read once at startup:
 	/// nothing reports the desktop setting changing afterwards.
 	wheel_notch: crate::platform::WheelNotch,
@@ -246,6 +256,7 @@ struct App<P = EventLoopProxy<Event>> {
 }
 impl<P> Drop for App<P> {
 	fn drop(&mut self) {
+		self.instance.take();
 		self.services.handle.cancel.cancel();
 		self.worker.shutdown();
 		self.search_worker.shutdown();
@@ -285,12 +296,16 @@ impl<P: SendEvent> App<P> {
 		});
 		let mut ui = TextShaper::with_fonts(fonts_config.clone());
 		let preferences = preferences::Preferences::new(&args, &mut ui);
+		let instance_path = preferences
+			.path()
+			.map(|config| config.with_file_name("instance.lock"));
 		let settings_watch = preferences.path().map(|path| {
 			let proxy = proxy.clone();
 			FileWatch::new(path.to_path_buf(), move || {
 				proxy.send(Event::SettingsChanged);
 			})
 		});
+		let settings_resources = settings_load::Resources::new();
 		let styles_watch = crate::stylesheet::directory().map(|dir| {
 			let proxy = proxy.clone();
 			FileWatch::directory(dir, move || {
@@ -307,6 +322,8 @@ impl<P: SendEvent> App<P> {
 			args,
 			fonts_config,
 			proxy,
+			instance_path,
+			instance: None,
 			window: None,
 			renderer: None,
 			worker,
@@ -316,6 +333,7 @@ impl<P: SendEvent> App<P> {
 			_styles_watch: styles_watch,
 			ui,
 			preferences,
+			settings_resources,
 			wheel_notch: crate::platform::wheel_notch(),
 			font_panel: font_panel::FontPanel::with_services(
 				services.handle.clone(),
@@ -355,13 +373,8 @@ impl<P: SendEvent> App<P> {
 				self.request(false);
 			}
 		}
-		if self.interaction.export_styles_open() {
-			self.preferences.style_entries = crate::stylesheet::catalog_for(
-				crate::stylesheet::directory().as_deref(),
-				Some(&self.preferences.export.style),
-				markview_core::style::StyleTarget::Pdf,
-			);
-		}
+		self.settings_resources.invalidate();
+		self.refresh_settings_resources(false);
 	}
 	pub(super) fn dimensions(&self) -> (f32, f32, f32) {
 		self.window.as_ref().map_or((1200.0, 800.0, 1.0), |w| {
@@ -435,6 +448,50 @@ impl<P: SendEvent> App<P> {
 #[cfg(test)]
 mod tests {
 	use super::*;
+
+	#[test]
+	fn shutdown_releases_instance_ownership_before_joining_an_export() {
+		#[derive(Clone)]
+		struct Proxy;
+		impl SendEvent for Proxy {
+			fn try_send(&self, _: Event) -> bool {
+				true
+			}
+		}
+
+		let dir = tempfile::tempdir().unwrap();
+		let lock = dir.path().join("instance.lock");
+		let single_instance::Start::Primary(primary) =
+			single_instance::start(&lock, false, None).unwrap()
+		else {
+			panic!()
+		};
+		let mut app = App::new(
+			LaunchOptions {
+				options: crate::test_support::options(),
+				..Default::default()
+			},
+			Proxy,
+		);
+		app.instance = Some(primary.listen(|_| true));
+		let (tx, rx) = std::sync::mpsc::channel();
+		app.export_thread = Some(std::thread::spawn(move || {
+			let deadline = Instant::now() + std::time::Duration::from_secs(2);
+			while Instant::now() < deadline {
+				if matches!(
+					single_instance::start(&lock, false, None).unwrap(),
+					single_instance::Start::Primary(_)
+				) {
+					tx.send(true).unwrap();
+					return;
+				}
+				std::thread::sleep(std::time::Duration::from_millis(25));
+			}
+			tx.send(false).unwrap();
+		}));
+		drop(app);
+		assert!(rx.recv().unwrap());
+	}
 
 	#[test]
 	fn a_finished_download_bumps_the_revision_only_after_storing_a_file() {

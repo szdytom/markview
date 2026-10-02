@@ -12,8 +12,8 @@ use std::{
 #[derive(Clone)]
 struct Proxy(mpsc::Sender<Event>);
 impl SendEvent for Proxy {
-	fn send(&self, event: Event) {
-		let _ = self.0.send(event);
+	fn try_send(&self, event: Event) -> bool {
+		self.0.send(event).is_ok()
 	}
 }
 struct Harness {

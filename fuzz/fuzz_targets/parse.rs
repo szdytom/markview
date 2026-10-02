@@ -7,7 +7,7 @@
 use std::sync::Arc;
 
 use libfuzzer_sys::{fuzz_mutator, fuzz_target};
-use mvfuzz::{budget, mutators};
+use mvfuzz::{budget, mutators, oracle};
 
 fuzz_mutator! { |data: &mut [u8], size: usize, max_size: usize, seed: u32| {
 	mutators::markdown(data, size, max_size, seed)
@@ -24,6 +24,9 @@ fuzz_target!(|data: &[u8]| {
 	let guard = budget::InputGuard::new();
 	let src: Arc<str> = Arc::from(md.into_owned());
 	let doc = markview_core::document::parse(src.clone());
+	// Every range the parse produced must address this source, so a later
+	// `&source[range]` cannot panic on an out-of-bounds or split character.
+	oracle::assert_source_ranges(&doc);
 	// The outline and image walks re-derive structure the parser built.
 	let _ = doc.outline();
 	let _ = doc.details_enclosing("x");

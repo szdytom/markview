@@ -778,6 +778,7 @@ impl Default for TextAppearance {
 				family: "serif".into(),
 				variant: Variant::Normal,
 				weight: None,
+				min_weight: None,
 				synthetic_italic: false,
 			}],
 			weight: 400,

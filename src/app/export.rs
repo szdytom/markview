@@ -764,7 +764,9 @@ mod tests {
 		#[derive(Clone)]
 		struct Proxy;
 		impl super::super::SendEvent for Proxy {
-			fn send(&self, _: Event) {}
+			fn try_send(&self, _: Event) -> bool {
+				true
+			}
 		}
 		struct OpenDialog {
 			entered: Option<std::sync::mpsc::Sender<()>>,

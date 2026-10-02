@@ -251,6 +251,34 @@ pub(super) fn run() -> Result<()> {
 		);
 		return Ok(());
 	}
+	// Register while disabled too, so enabling the setting needs no restart.
+	let mut instance = None;
+	if args.mode == Mode::Window
+		&& let Some(config) = crate::settings::config_path()
+	{
+		let (store, _) =
+			crate::settings::SettingsStore::load(Some(config.clone()));
+		match super::single_instance::start(
+			&config.with_file_name("instance.lock"),
+			store.settings().single_instance,
+			args.path.clone(),
+		)
+		.or_else(|error| {
+			if store.settings().single_instance {
+				return Err(error);
+			}
+			warn!("Instance discovery unavailable: {error:#}");
+			Ok(super::single_instance::Start::Independent)
+		})? {
+			super::single_instance::Start::Forwarded(remote) => {
+				return super::open_document::forward_pending(remote);
+			}
+			super::single_instance::Start::Primary(primary) => {
+				instance = Some(primary)
+			}
+			super::single_instance::Start::Independent => {}
+		}
+	}
 	// Parse already folded the personal font directory into `args.options.fonts`
 	// for the drawing modes, so a window export and a CLI one still agree.
 	let event_loop = EventLoop::<Event>::with_user_event().build()?;
@@ -259,8 +287,14 @@ pub(super) fn run() -> Result<()> {
 	// listener is armed while the launch event is still pending.
 	let proxy = event_loop.create_proxy();
 	super::open_document::install(proxy.clone());
-	let mut app = App::new(args, proxy);
-	event_loop.run_app(&mut app)?;
+	let mut app = App::new(args, proxy.clone());
+	app.instance = instance.map(|primary| {
+		primary.listen(move |event| proxy.send_event(event).is_ok())
+	});
+	let result = event_loop.run_app(&mut app);
+	app.instance_path = None;
+	app.instance.take();
+	result?;
 	app.flush_settings();
 	if let Some(warning) = &app.preferences.settings_warning {
 		warn!("{}", warning.text(app.preferences.values.lang()));

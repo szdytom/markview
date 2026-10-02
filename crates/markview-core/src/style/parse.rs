@@ -94,7 +94,11 @@ impl Stylesheet {
 						if font.family.trim().is_empty()
 							|| font
 								.weight
-								.is_some_and(|w| !(1..=1000).contains(&w))
+								.into_iter()
+								.chain(font.min_weight)
+								.any(|w| !(1..=1000).contains(&w))
+							|| (font.weight.is_some()
+								&& font.min_weight.is_some())
 						{
 							bail!(
 								"rule [{name}].font[{i}]: invalid family or weight"

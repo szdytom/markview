@@ -41,7 +41,7 @@ members = [
 resolver = "3"
 
 [workspace.package]
-version = "0.1.9"
+version = "0.1.10"
 edition = "2024"
 # `krilla` sets the floor: the PDF backend needs newer standard-library items.
 rust-version = "1.92"
@@ -123,6 +123,7 @@ tokio-util = { version = "0.7", features = ["rt"] }
 url = "2"
 percent-encoding = "2"
 base64 = "0.22"
+getrandom = { version = "0.4", features = ["std"] }
 toml_edit = { version = "0.25", features = ["serde"] }
 arboard.workspace = true
 markview-core = { path = "crates/markview-core", features = ["font-directories"] }
@@ -202,10 +203,10 @@ inherits = "release"
 name = "markview"
 path = "src/main.rs"
 
-# Temporary until a release carries the fix; see `fence_offset` in comrak's
-# block prefix parsers (upstream PR #836).
+# Temporary until a release carries the fence-offset fix (upstream PR #836)
+# and the multiline inline source-position fix (upstream PR #855).
 [patch.crates-io]
-comrak = { git = "https://github.com/kivikakk/comrak", rev = "cf8955abe961454dff39cfb64952e1933645d870" }
+comrak = { git = "https://github.com/kivikakk/comrak", rev = "9b0e8ee12ca941642da46e1cebb396061b5d23da" }
 # Our fork adds `LayoutConfig::metrics`, which lets Markview measure diagram
 # labels with the faces its own stylesheet selected (upstream PR #151). The rev
 # below is the change based on v0.3.1, the release Markview's diagrams are

@@ -72,7 +72,7 @@ impl JustificationLimits {
 
 /// The quarter em that CLReq 3.2.2 inserts between CJK and Latin. Half of it
 /// stays available for compression, so a mixed line can tighten again.
-const MIXED_GAP: f32 = 0.25;
+pub(crate) const MIXED_GAP: f32 = 0.25;
 
 /// The reader's typographic choices, as `LayoutOptions` carries them into
 /// layout: how far justification may move spacing, and which CJK convention

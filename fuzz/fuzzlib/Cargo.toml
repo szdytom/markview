@@ -18,4 +18,4 @@ markview-pdf = { path = "../../crates/markview-pdf", features = ["fuzz"] }
 
 # Mirror the workspace patch so the harness fuzzes the same comrak the app does.
 [patch.crates-io]
-comrak = { git = "https://github.com/kivikakk/comrak", rev = "cf8955abe961454dff39cfb64952e1933645d870" }
+comrak = { git = "https://github.com/kivikakk/comrak", rev = "9b0e8ee12ca941642da46e1cebb396061b5d23da" }

@@ -39,6 +39,7 @@ pub struct ReaderSettings {
 	/// Multiplies every scroll request. The desktop's own speed is the
 	/// baseline; this is the only handle where the platform reports none.
 	pub scroll_speed: f32,
+	pub single_instance: bool,
 }
 impl Default for ReaderSettings {
 	fn default() -> Self {
@@ -58,6 +59,7 @@ impl Default for ReaderSettings {
 			codeblock_theme_override: None,
 			codeblock_wrap: false,
 			scroll_speed: 1.0,
+			single_instance: false,
 		}
 	}
 }
@@ -119,6 +121,7 @@ pub enum Setting {
 	Language,
 	CodeblockWrap,
 	ScrollSpeed,
+	SingleInstance,
 	/// Every per-role font family, which is one list of overrides.
 	FontFamily,
 }
@@ -316,6 +319,9 @@ impl ReaderSettings {
 				self.codeblock_wrap = other.codeblock_wrap
 			}
 			Setting::ScrollSpeed => self.scroll_speed = other.scroll_speed,
+			Setting::SingleInstance => {
+				self.single_instance = other.single_instance
+			}
 			// One role's change rewrites the whole list of overrides.
 			Setting::FontFamily => {
 				self.fontdef_overrides = other.fontdef_overrides.clone()

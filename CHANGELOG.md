@@ -23,8 +23,39 @@ at the same level, without `[brackets]`.
 
 ### Added
 
+- Add an opt-in single-instance setting that opens files from subsequent launches in tabs of the existing reader window.
+
+### Changed
+
+- Link macOS app bundles and Linux AppImages in release downloads; list the Windows MSI before the portable ZIP and include macOS installation and quarantine instructions.
+
+### Fixed
+
+- Restore the high-resolution wheel stream's packet momentum dropped by the interaction refactor, so a Windows touchpad's inertia rides across the gaps between packets again (#3).
+- Spend the speed a paused wheel stream leaves behind, whose stale carry sent the page on the old way and made a reversal answer nothing (#3).
+- Make the syntax-highlight cache regression test independent of background worker scheduling.
+- Keep single-instance authentication tokens private, bound IPC requests and reject forwarding after the event loop closes.
+- Forward macOS desktop-opened documents before a secondary instance exits and register surviving independent windows when enabling single-instance mode.
+
+- Preserve symlinked settings resources and fade loading/error feedback when previewing the document.
+
+- Load settings styles and font catalogues in the background with immediate loading feedback, cached refreshes and retry controls.
+
+- Exclude automatic CJK/Latin spacing from the start and end of selection highlights.
+
+- Limit triple-click selection and dragging to the current paragraph or table cell inside lists, block quotes and other containers.
+- Preserve CJK bold in reader and PDF themes by treating the preferred Medium face as a minimum weight instead of an absolute override.
+- Ignore the pointer position reports the macOS backend repeats before every wheel event, which pulled an open list's highlight back to the hovered option between notches.
+
+## 0.1.10 - 2026-10-01
+
+This is a hardening release: hostile-input fuzzing removed panics in parsing, incremental reparse, download date/`max-age` handling and raw HTML scanning, and shaping no longer hangs on an extreme font size. Desktop readers also get a full-size image viewer, wheel-scrolled option lists and per-role font selection, while the WebAssembly front end stays in-progress groundwork.
+
+### Added
+
 - Add host-managed asynchronous MVaaC image requests with viewport priorities, cancellable RGBA delivery, progressive reflow and opt-in browser URL/decode helpers.
 - Keep an open option list inside the panel that owns it and cap its width at the panel's, so a list never overflows the window.
+- Scroll an open option list with the wheel: wherever the pointer rests, one notch of travel moves the highlight one option, a trackpad's pixel travel accumulates to that notch, and a list longer than its window draws its own scrollbar.
 - Open a full-size viewer over any image: click to open, wheel or glide to zoom about the pointer, drag to pan, click or Escape to close.
 - Add `markview-selection`, the pointer-driven selection machine taken out of `InteractionState`, so a second front end can drive the same grains, click counting and drag rules.
 - Cover the selection paths that had no test: what a copy takes, the drag-past-edge auto-scroll tick, the deferred `Ctrl+A`, and carrying a selection across an update.
@@ -39,6 +70,7 @@ at the same level, without `[brackets]`.
 
 ### Changed
 
+- Point the Comrak patch at upstream again, now carrying the fence-offset fix and the multiline inline source-position fix.
 - Align publishable web package versions with Markview and synchronize them during releases.
 - Load MVaaC text fonts from host URLs or bytes during initialization; the esbuild demo emits separate font assets, while KaTeX stays embedded in wasm.
 - Share document hover, cursor, scrolling and gesture inertia between desktop and Web; Web adds host activation callbacks, anchors, details and selectable scroll motion ownership, defaulting to internal wheel easing.
@@ -60,8 +92,15 @@ at the same level, without `[brackets]`.
 
 ### Fixed
 
-- Restore the high-resolution wheel stream's packet momentum dropped by the interaction refactor, so a Windows touchpad's inertia rides across the gaps between packets again (#3).
-- Spend the speed a paused wheel stream leaves behind, whose stale carry sent the page on the old way and made a reversal answer nothing (#3).
+- Prevent malicious HTTP dates and overflowing `max-age` values from panicking during downloads or redirect cache calculations.
+- Take multiline inline source positions from the block rather than the inline, so formulas and code spans keep the same range across differing indents, containers and line endings.
+- Keep the line ending that closes an incremental parse window, so a multiline formula or code span at the window's edge gets the same source range as in a full parse.
+- Prevent shaping from hanging when an extreme font size overflows Parley's line height, including sizes supplied by a valid MVSS rule.
+- Keep thematic-break source ranges on their marker line, so trailing blank lines no longer change block IDs or make incremental and full parses disagree.
+- A raw HTML attribute scan no longer splits a multi-byte space that stripping a leading `/` exposed (`<details /\u{a0}open>`), which panicked on an 18-byte document.
+- A merged inline's source range only ever grows, so the out-of-order positions comrak reports after a link reference definition can no longer invert a range.
+- Treat a `[x]: y` line that continues a paragraph as text, not as a reference definition, so a prefix parse or a `<details>` body no longer resolves a link the document never had.
+- A prefix parse no longer cuts through YAML front matter or an open raw HTML block, and keeps the line ending a trailing list marker needs.
 - Remove deprecated TypeScript `baseUrl` options and resolve web package aliases relative to each configuration file.
 - Apply horizontal overflow transforms and clipping to MVaaC image priorities, and infer SVG MIME types for byte decoding.
 - Keep scanned glyph fallback choices independent of preceding characters, reuse fallback faces when caches fill, and preserve the cached text length limit.

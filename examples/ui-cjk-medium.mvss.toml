@@ -1,5 +1,5 @@
 format_version = 2
-version = 1
+version = 2
 targets = ["ui"]
 
 [meta]
@@ -10,7 +10,7 @@ description = "Prefer Medium CJK labels, retaining the original weight when Medi
 when = ["ui"]
 font = [
     { family = "sans-serif" },
-    { family = "sans-serif[cjk]", weight = 500 },
+    { family = "sans-serif[cjk]", min_weight = 500 },
     { family = "sans-serif[cjk]" },
     { family = "emoji", weight = 400 },
 ]

@@ -1,6 +1,6 @@
 format_version = 2
 targets = ["ui"]
-version = 2
+version = 3
 
 [meta]
 name = "Blueprint"
@@ -47,7 +47,7 @@ pie_outer_stroke_color = "#426080"
 [[rule]]
 when = ["body"]
 line_height = 1.6
-font = [{ family = "sans-serif" }, { family = "sans-serif[cjk]", weight = 500 }, { family = "sans-serif[cjk]" }, { family = "emoji", weight = 400 }]
+font = [{ family = "sans-serif" }, { family = "sans-serif[cjk]", min_weight = 500 }, { family = "sans-serif[cjk]" }, { family = "emoji", weight = 400 }]
 color = "#E0EAF6"
 background = "#172B46"
 
@@ -159,7 +159,7 @@ focus_color = "#85D8EC"
 
 [[rule]]
 when = ["h1"]
-font = [{ family = "sans-serif" }, { family = "sans-serif[cjk]", weight = 500 }, { family = "sans-serif[cjk]" }, { family = "emoji", weight = 400 }]
+font = [{ family = "sans-serif" }, { family = "sans-serif[cjk]", min_weight = 500 }, { family = "sans-serif[cjk]" }, { family = "emoji", weight = 400 }]
 size = 1.85
 color = "#E0EAF6"
 space_before = 0.2
@@ -167,7 +167,7 @@ space_after = 0.65
 
 [[rule]]
 when = ["h2"]
-font = [{ family = "sans-serif" }, { family = "sans-serif[cjk]", weight = 500 }, { family = "sans-serif[cjk]" }, { family = "emoji", weight = 400 }]
+font = [{ family = "sans-serif" }, { family = "sans-serif[cjk]", min_weight = 500 }, { family = "sans-serif[cjk]" }, { family = "emoji", weight = 400 }]
 size = 1.55
 color = "#85D8EC"
 space_before = 0.85
@@ -175,7 +175,7 @@ space_after = 0.65
 
 [[rule]]
 when = ["h3"]
-font = [{ family = "sans-serif" }, { family = "sans-serif[cjk]", weight = 500 }, { family = "sans-serif[cjk]" }, { family = "emoji", weight = 400 }]
+font = [{ family = "sans-serif" }, { family = "sans-serif[cjk]", min_weight = 500 }, { family = "sans-serif[cjk]" }, { family = "emoji", weight = 400 }]
 size = 1.22
 color = "#E0EAF6"
 space_before = 0.85
@@ -183,4 +183,4 @@ space_after = 0.65
 
 [[rule]]
 when = ["em"]
-font = [{ family = "sans-serif", variant = "italic" }, { family = "regularscript[cjk]" }, { family = "regularscript[cjk]", weight = 500 }, { family = "regularscript[cjk]", weight = 400 }, { family = "sans-serif[cjk]", variant = "italic", synthetic_italic = true, weight = 500 }, { family = "sans-serif[cjk]", variant = "italic", synthetic_italic = true }, { family = "emoji", weight = 400 }]
+font = [{ family = "sans-serif", variant = "italic" }, { family = "regularscript[cjk]" }, { family = "regularscript[cjk]", weight = 500 }, { family = "regularscript[cjk]", weight = 400 }, { family = "sans-serif[cjk]", variant = "italic", synthetic_italic = true, min_weight = 500 }, { family = "sans-serif[cjk]", variant = "italic", synthetic_italic = true }, { family = "emoji", weight = 400 }]

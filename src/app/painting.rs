@@ -61,6 +61,7 @@ impl<P: super::SendEvent> App<P> {
 				},
 			),
 		};
+		let settings_kind = self.settings_kind();
 		let Some(renderer) = &mut self.renderer else {
 			return Ok(());
 		};
@@ -92,6 +93,10 @@ impl<P: super::SendEvent> App<P> {
 		let rasterized = renderer.raster_stats().rasterized - rasterized_before;
 		window.pre_present_notify();
 		frame.present();
+		// Publish a ready body only after the first loading frame has been presented.
+		if self.settings_resources.presented(settings_kind) {
+			window.request_redraw();
+		}
 		if suboptimal {
 			renderer.resize(size.width, size.height);
 		}

@@ -177,6 +177,7 @@ fn settings_and_selection_frame() -> Result<()> {
 				width,
 				height,
 				settings.lang(),
+				None,
 			);
 			let submission = renderer.render(
 				&snapshot,
@@ -819,79 +820,147 @@ fn previewing_recedes_the_styles_and_fonts_pages() {
 	let metrics = TabMetrics::default();
 	let session = ReaderSession::default();
 	for page in ["styles", "fonts"] {
-		for preview in [false, true] {
-			let interaction = InteractionState {
-				panel: PanelPage::Settings(if page == "styles" {
-					PanelTab::Styles
-				} else {
-					PanelTab::Fonts
-				}),
-				settings_preview: preview,
-				..Default::default()
+		for state in
+			["ready", "loading", "refreshing", "failed", "cached-failure"]
+		{
+			let mut load = crate::app::settings_load::Load::default();
+			load.cached = matches!(state, "refreshing" | "cached-failure");
+			load.displayed = load.cached;
+			load.status = if state.contains("fail") {
+				crate::app::settings_load::Status::Failed("scan failed".into())
+			} else {
+				crate::app::settings_load::Status::Loading
 			};
-			let mut chrome = Chrome {
-				input_draws: Vec::new(),
-				backend: None,
-				ui: &mut ui,
-				session: &session,
-				tabs: &tabs,
-				active_tab: 0,
-				tab_strip: &strip,
-				tab_widths: &metrics.widths,
-				settings: &settings,
-				font_config: &font_config,
-				export: &export,
-				interaction: &interaction,
-				style_entries: &entries,
-				style_scroll: interaction.styles_scroll,
-				fonts: crate::app::font_panel::View {
-					choices: {
-						let mut c = crate::app::font_panel::Choices::default();
-						c.refresh(&crate::test_support::fonts());
-						c
+			let mut normal_feedback: Vec<f32> = Vec::new();
+			for preview in [false, true] {
+				let interaction = InteractionState {
+					panel: PanelPage::Settings(if page == "styles" {
+						PanelTab::Styles
+					} else {
+						PanelTab::Fonts
+					}),
+					settings_preview: preview,
+					..Default::default()
+				};
+				let mut chrome = Chrome {
+					input_draws: Vec::new(),
+					backend: None,
+					ui: &mut ui,
+					session: &session,
+					tabs: &tabs,
+					active_tab: 0,
+					tab_strip: &strip,
+					tab_widths: &metrics.widths,
+					settings: &settings,
+					font_config: &font_config,
+					export: &export,
+					interaction: &interaction,
+					style_entries: &entries,
+					style_scroll: interaction.styles_scroll,
+					resource_load: (state != "ready").then_some(&load),
+					fonts: crate::app::font_panel::View {
+						choices: {
+							let mut c =
+								crate::app::font_panel::Choices::default();
+							c.refresh(&crate::test_support::fonts());
+							c
+						},
+						catalog: &catalog,
+						shown: shown.clone(),
+						jobs: &jobs,
+						scroll: 0.0,
+						note: None,
+						status_filter: None,
+						choosers: false,
 					},
-					catalog: &catalog,
-					shown: shown.clone(),
-					jobs: &jobs,
-					scroll: 0.0,
-					note: None,
-					status_filter: None,
-					choosers: false,
-				},
-				width,
-				height,
-				scrollbar: None,
-				warning: None,
-				status: "",
-				status_until: None,
-				error: false,
-				hover_hint: None,
-				remote_notice: None,
-				watching: false,
-			};
-			let overlay = chrome.overlay();
-			// Fading resolves each paint to a color, so a translucent draw is
-			// what tells the two states apart.
-			let translucent = overlay
-				.iter()
-				.filter(|draw| {
-					let paint = match draw {
-						Draw::Rect(_, paint)
-						| Draw::Icon { paint, .. }
-						| Draw::Polygon { paint, .. }
-						| Draw::Math { paint, .. } => paint,
-						Draw::Glyph(glyph) => &glyph.paint,
-						_ => return false,
-					};
-					matches!(paint, crate::layout::Paint::Color(color)
+					width,
+					height,
+					scrollbar: None,
+					warning: None,
+					status: "",
+					status_until: None,
+					error: false,
+					hover_hint: None,
+					remote_notice: None,
+					watching: false,
+				};
+				let overlay = chrome.overlay();
+				let panel = components::panel_rect(width, height);
+				let header: Vec<_> = overlay
+					.iter()
+					.filter_map(|draw| match draw {
+						Draw::Glyph(glyph)
+							if glyph.y >= panel.y
+								&& glyph.y < panel.y + 80. =>
+						{
+							Some(chrome.ui.stylesheet.paint(glyph.paint)[3])
+						}
+						_ => None,
+					})
+					.collect();
+				assert!(!header.is_empty());
+				assert!(
+					header.iter().all(|alpha| *alpha == 1.),
+					"{page} {state}: header must remain legible"
+				);
+				let mut feedback = Vec::new();
+				chrome.draw_resource_feedback(&mut feedback);
+				let alphas: Vec<_> = feedback
+					.iter()
+					.filter_map(|draw| match draw {
+						Draw::Rect(_, paint) => {
+							Some(chrome.ui.stylesheet.paint(*paint)[3])
+						}
+						Draw::Glyph(glyph) => {
+							Some(chrome.ui.stylesheet.paint(glyph.paint)[3])
+						}
+						_ => None,
+					})
+					.collect();
+				assert_eq!(alphas.is_empty(), state == "ready");
+				if preview {
+					let actual: Vec<_> = alphas
+						.iter()
+						.map(|alpha| (alpha * 255.).round() as u8)
+						.collect();
+					let expected: Vec<_> = normal_feedback
+						.iter()
+						.map(|alpha| {
+							(alpha * components::PREVIEW_OPACITY * 255.).round()
+								as u8
+						})
+						.collect();
+					assert_eq!(
+						actual, expected,
+						"{page} {state}: every feedback draw must fade with the page"
+					);
+				} else {
+					normal_feedback = alphas;
+				}
+
+				// Fading resolves each paint to a color, so a translucent draw is
+				// what tells the two states apart.
+				let translucent = overlay
+					.iter()
+					.filter(|draw| {
+						let paint = match draw {
+							Draw::Rect(_, paint)
+							| Draw::Icon { paint, .. }
+							| Draw::Polygon { paint, .. }
+							| Draw::Math { paint, .. } => paint,
+							Draw::Glyph(glyph) => &glyph.paint,
+							_ => return false,
+						};
+						matches!(paint, crate::layout::Paint::Color(color)
 						if color.0 & 255 < 255)
-				})
-				.count();
-			assert_eq!(
-				translucent > 0,
-				preview,
-				"{page}: preview fading is wrong ({translucent} faded draws)"
-			);
+					})
+					.count();
+				assert_eq!(
+					translucent > 0,
+					preview,
+					"{page}: preview fading is wrong ({translucent} faded draws)"
+				);
+			}
 		}
 	}
 }
@@ -936,6 +1005,7 @@ fn the_fonts_page_draws_its_open_option_list() {
 		interaction: &interaction,
 		style_entries: &entries,
 		style_scroll: interaction.styles_scroll,
+		resource_load: None,
 		fonts: crate::app::font_panel::View {
 			choices: {
 				let mut c = crate::app::font_panel::Choices::default();
@@ -1027,6 +1097,7 @@ fn dismissed_pages_stop_drawing_and_answering_pointers() {
 			interaction: &interaction,
 			style_entries: &entries,
 			style_scroll: interaction.styles_scroll,
+			resource_load: None,
 			fonts: crate::app::font_panel::View {
 				choices: {
 					let mut c = crate::app::font_panel::Choices::default();
@@ -1201,6 +1272,19 @@ fn redesigned_chrome_frames() -> Result<()> {
 					"preview",
 					"settings",
 					"export",
+					"styles-loading",
+					"styles-loading-preview",
+					"styles-failed-preview",
+					"fonts-loading-preview",
+					"fonts-failed-preview",
+					"styles-refreshing",
+					"styles-failed",
+					"fonts-loading",
+					"fonts-refreshing",
+					"fonts-failed",
+					"fonts-load-failed",
+					"styles-load-failed",
+					"export-styles-loading",
 					"styles",
 					"styles-system",
 					"styles-scrolled",
@@ -1226,17 +1310,37 @@ fn redesigned_chrome_frames() -> Result<()> {
 								PanelPage::Settings(PanelTab::Generic)
 							}
 							"export" => PanelPage::Export,
-							"styles" | "styles-system" | "styles-scrolled" => {
-								PanelPage::Settings(PanelTab::Styles)
-							}
-							"fonts" | "fonts-empty" | "fonts-scrolled"
-							| "fonts-preview" | "fonts-choosers"
+							"export-styles-loading" => PanelPage::ExportStyles,
+							"styles"
+							| "styles-system"
+							| "styles-scrolled"
+							| "styles-loading"
+							| "styles-refreshing"
+							| "styles-failed"
+							| "styles-load-failed"
+							| "styles-loading-preview"
+							| "styles-failed-preview" => PanelPage::Settings(PanelTab::Styles),
+							"fonts-loading-preview"
+							| "fonts-failed-preview"
+							| "fonts-load-failed"
+							| "fonts-loading"
+							| "fonts-refreshing"
+							| "fonts-failed"
+							| "fonts"
+							| "fonts-empty"
+							| "fonts-scrolled"
+							| "fonts-preview"
+							| "fonts-choosers"
 							| "fonts-menu" => PanelPage::Settings(PanelTab::Fonts),
 							_ => PanelPage::Closed,
 						},
 						settings_preview: matches!(
 							page,
-							"preview" | "fonts-preview"
+							"preview"
+								| "fonts-preview" | "styles-loading-preview"
+								| "styles-failed-preview"
+								| "fonts-loading-preview"
+								| "fonts-failed-preview"
 						),
 						// A page below the fold, to capture the clip and bar.
 						styles_scroll: if page == "styles-scrolled" {
@@ -1320,6 +1424,21 @@ fn redesigned_chrome_frames() -> Result<()> {
 							},
 						);
 					}
+					let state = page.strip_suffix("-preview").unwrap_or(page);
+					let mut load = crate::app::settings_load::Load::default();
+					let pending = state.ends_with("-loading")
+						|| state.ends_with("-refreshing")
+						|| state.ends_with("-failed");
+					load.cached = !state.ends_with("-loading")
+						&& !state.ends_with("-load-failed");
+					load.displayed = load.cached;
+					load.status = if state.ends_with("-failed") {
+						crate::app::settings_load::Status::Failed(
+							"Resource scan failed".into(),
+						)
+					} else {
+						crate::app::settings_load::Status::Loading
+					};
 					let mut chrome = Chrome {
 						input_draws: Vec::new(),
 						backend: None,
@@ -1335,6 +1454,7 @@ fn redesigned_chrome_frames() -> Result<()> {
 						interaction: &interaction,
 						style_entries: &entries,
 						style_scroll: interaction.styles_scroll,
+						resource_load: pending.then_some(&load),
 						fonts: crate::app::font_panel::View {
 							choices: {
 								let mut c =

@@ -70,6 +70,18 @@ fn rows(settings: &ReaderSettings) -> Vec<Row> {
 		)
 		.value(format!("{:.2}×", settings.scroll_speed)),
 		Row::new(
+			t.settings_single_instance(),
+			vec![action(
+				if settings.single_instance {
+					t.settings_on()
+				} else {
+					t.settings_off()
+				},
+				settings.single_instance,
+				Command::SingleInstance,
+			)],
+		),
+		Row::new(
 			t.settings_text_size(),
 			choices(
 				&[

@@ -93,6 +93,33 @@ fn word_and_block_drag_extend_from_the_multi_click_base() {
 	);
 }
 #[test]
+fn triple_click_drag_extends_by_cells_inside_one_table() {
+	let snapshot =
+		snapshot_of("| A | B | C |\n|---|---|---|\n| First | Middle | Last |");
+	let cell = |node| TextPosition {
+		node,
+		..position(2)
+	};
+	let base = snapshot.select_block_at(cell(4)).unwrap();
+	assert_eq!(snapshot.extract_text(base, 1), "Middle");
+	let mut interaction = InteractionState::default();
+	assert!(interaction.begin_grain_selection(Some(base), Grain::Block));
+	interaction.cursor = (60.0, 0.0);
+	interaction.move_selection(Some(cell(5)), &snapshot);
+	assert_eq!(
+		snapshot.extract_text(interaction.selection.unwrap(), 1),
+		"Middle\tLast"
+	);
+	interaction.move_selection(Some(cell(3)), &snapshot);
+	assert_eq!(
+		snapshot.extract_text(interaction.selection.unwrap(), 1),
+		"First\tMiddle"
+	);
+	interaction.move_selection(Some(cell(4)), &snapshot);
+	assert_eq!(interaction.selection.unwrap(), base);
+}
+
+#[test]
 fn move_selection_reports_whether_the_selection_moved() {
 	let snapshot = LayoutSnapshot::default();
 	let mut interaction = InteractionState {
@@ -1541,16 +1568,6 @@ fn every_panel_transition_clears_transient_input() {
 		assert_eq!(interaction.panel_grab, None);
 		assert_eq!(interaction.drag_at, None);
 	}
-}
-
-/// Building the catalogue reads the whole system font collection, so the
-/// Generic page leaves it alone and a launch never pays for it.
-#[test]
-fn only_the_settings_pages_that_show_fonts_build_the_catalogue() {
-	assert!(!PanelTab::Generic.shows_font_catalog());
-	assert!(!PanelTab::About.shows_font_catalog());
-	assert!(PanelTab::Styles.shows_font_catalog());
-	assert!(PanelTab::Fonts.shows_font_catalog());
 }
 
 #[test]

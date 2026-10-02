@@ -313,6 +313,7 @@ pub(super) fn draw_styles(
 	width: f32,
 	height: f32,
 	lang: Lang,
+	load: Option<&crate::app::settings_load::Load>,
 ) -> Vec<Draw> {
 	shaper.appearance = shaper.stylesheet.text(
 		&shaper
@@ -481,14 +482,17 @@ pub(super) fn draw_styles(
 			),
 		));
 	}
-	for b in style_rows(target, selected, entries, list, lang) {
+	for mut b in style_rows(target, selected, entries, list, lang) {
+		crate::app::settings_load::prepare_button(&mut b, load);
 		if b.rect.intersect(list.viewport).is_some() {
 			body.extend(draw_button(shaper, &body_interaction, &b, true));
 		}
 	}
 	out.push(list.clip(body));
 	list.draw_bar(&mut out, shaper, interaction);
-	for b in style_controls(target, selected, preview, width, height, lang) {
+	for mut b in style_controls(target, selected, preview, width, height, lang)
+	{
+		crate::app::settings_load::prepare_button(&mut b, load);
 		// The header of a settings tab is drawn once, by the header itself.
 		if target == StylesTarget::Reader
 			&& super::components::is_settings_header(b.action)
@@ -548,6 +552,7 @@ mod stylesheet_tests {
 			820.,
 			600.,
 			Lang::En,
+			None,
 		);
 		let body = draws
 			.iter()

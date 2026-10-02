@@ -9,7 +9,9 @@ use winit::{event::DeviceId, window::WindowId};
 #[derive(Clone)]
 struct Proxy;
 impl SendEvent for Proxy {
-	fn send(&self, _: Event) {}
+	fn try_send(&self, _: Event) -> bool {
+		true
+	}
 }
 struct TestLoop;
 impl Loop for TestLoop {

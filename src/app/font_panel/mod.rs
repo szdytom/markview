@@ -23,7 +23,7 @@ pub(super) enum Message {
 
 #[derive(Clone, Default)]
 pub(super) struct Choices {
-	generation: u64,
+	pub(super) generation: u64,
 	config: Option<markview_core::fonts::FontConfig>,
 	latin: Arc<[Arc<str>]>,
 	han: Arc<[Arc<str>]>,
@@ -96,6 +96,7 @@ impl FontPanel {
 			choosers: self.font_choosers,
 		}
 	}
+	#[cfg(test)]
 	pub(super) fn refresh_choices(
 		&mut self,
 		config: &markview_core::fonts::FontConfig,
@@ -212,29 +213,14 @@ impl FontPanel {
 			.collect()
 	}
 
-	/// Rebuilds the catalogue the Fonts page shows.
-	///
-	/// The builtin recommendations come first and every catalogued sheet
-	/// follows, so a sheet that redefines a builtin family replaces it whole.
-	/// The reader's own configuration is used, so the build shares the shaper's
-	/// collection cache.
-	pub(super) fn refresh(
-		&mut self,
-		entries: &[crate::stylesheet::Entry],
-		fonts: &markview_core::fonts::FontConfig,
-	) {
-		if self.font_choosers {
-			self.choices.refresh(fonts);
-		}
-		let builtin = markview_core::style::Stylesheet::builtin();
-		let sheets =
-			std::iter::once(("builtin", builtin.font_families.as_slice()))
-				.chain(entries.iter().map(|entry| {
-					(entry.id.as_str(), entry.font_families.as_slice())
-				}));
-		let dir = crate::fonts::directory();
-		self.font_catalog =
-			crate::fonts::catalog(sheets, dir.as_deref(), fonts);
+	pub(super) fn set_catalog(&mut self, catalog: Vec<crate::fonts::Family>) {
+		self.font_catalog = catalog;
+	}
+	pub(super) fn set_choices(&mut self, choices: Choices) {
+		self.choices = choices;
+	}
+	pub(super) fn choosers(&self) -> bool {
+		self.font_choosers
 	}
 
 	/// Starts downloading the named families that still need a download.

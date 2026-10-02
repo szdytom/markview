@@ -35,6 +35,18 @@ This page records threat details, implementation controls, and historical findin
 | `crates/markview-core/src/linebreak.rs`, `greedy` | The greedy fallback now observes the same `linebreak_evaluations` budget as the optimal pass, and always terminates: when the budget runs out it keeps the best candidate found, or advances one unit. |
 | `crates/markview-core/src/layout/table.rs`, wide tables | `table_columns` (256), `table_rows` (16384), and `table_cells` (131072) truncate the grid before it is shaped. |
 
+Shaping also explicitly disables Parley's intermediate line-height ceiling.
+The six-byte `shaping-raw-size-hang` fuzz input derives a finite font size of
+`3.0887546e38`, which overflows line height to infinity; Parley 0.11.1's default
+`f32::MAX` ceiling then makes its convenience loop yield forever without
+consuming the next cluster. Ordinary Markdown cannot set a font size: HTML
+styles are ignored and front matter remains source. A user-selected MVSS rule
+can reach it because validation accepts any finite positive `size` (for
+example, `size=1.716e37` for `p` hangs on `ab` before the fix). The shared shaper
+now sets the height ceiling to infinity before breaking lines. Regression
+coverage is in `crates/markview-core/tests/shaping.rs`; this ensures termination,
+while extreme sizes can still overflow geometry.
+
 The defaults are chosen so that ordinary documents never reach them; a pasted 10K-character formula is well inside `math_formula_bytes` even when every character is three bytes wide, and a code-heavy document fits inside `highlight_bytes`.
 
 One residual is honest and cannot be closed from here: ratex exposes no work budget, so the bound on a single formula is its byte length. A hostile formula just under 256 KiB can still take a long time. This is recorded under [Accepted and residual risks](security.md#accepted-and-residual-risks) and is the reason the byte limits are the only lever available.

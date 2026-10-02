@@ -1,6 +1,6 @@
 format_version = 2
 targets = ["ui", "pdf"]
-version = 2
+version = 3
 
 [[fontdef]]
 id = "serif"
@@ -591,7 +591,7 @@ when = ["body"]
 color = "#262B30"
 background = "#FAFAF8"
 # Emoji fonts usually have only a regular face, even inside strong text.
-font = [{ family = "serif" }, { family = "serif[cjk]", weight = 500 }, { family = "serif[cjk]" }, { family = "emoji", weight = 400 }]
+font = [{ family = "serif" }, { family = "serif[cjk]", min_weight = 500 }, { family = "serif[cjk]" }, { family = "emoji", weight = 400 }]
 line_height = 1.65
 
 [[rule]]
@@ -604,7 +604,7 @@ size = 1.9
 weight = 700
 space_before = 0.17
 space_after = 0.8
-font = [{ family = "sans-serif" }, { family = "sans-serif[cjk]", weight = 500 }, { family = "sans-serif[cjk]" }, { family = "emoji", weight = 400 }]
+font = [{ family = "sans-serif" }, { family = "sans-serif[cjk]", min_weight = 500 }, { family = "sans-serif[cjk]" }, { family = "emoji", weight = 400 }]
 
 [[rule]]
 when = ["h2"]
@@ -612,7 +612,7 @@ size = 1.5
 weight = 700
 space_before = 0.6
 space_after = 0.8
-font = [{ family = "sans-serif" }, { family = "sans-serif[cjk]", weight = 500 }, { family = "sans-serif[cjk]" }, { family = "emoji", weight = 400 }]
+font = [{ family = "sans-serif" }, { family = "sans-serif[cjk]", min_weight = 500 }, { family = "sans-serif[cjk]" }, { family = "emoji", weight = 400 }]
 
 [[rule]]
 when = ["h3"]
@@ -620,7 +620,7 @@ size = 1.25
 weight = 700
 space_before = 0.6
 space_after = 0.8
-font = [{ family = "sans-serif" }, { family = "sans-serif[cjk]", weight = 500 }, { family = "sans-serif[cjk]" }, { family = "emoji", weight = 400 }]
+font = [{ family = "sans-serif" }, { family = "sans-serif[cjk]", min_weight = 500 }, { family = "sans-serif[cjk]" }, { family = "emoji", weight = 400 }]
 
 [[rule]]
 when = ["h4"]
@@ -628,7 +628,7 @@ size = 1.1
 weight = 700
 space_before = 0.6
 space_after = 0.8
-font = [{ family = "sans-serif" }, { family = "sans-serif[cjk]", weight = 500 }, { family = "sans-serif[cjk]" }, { family = "emoji", weight = 400 }]
+font = [{ family = "sans-serif" }, { family = "sans-serif[cjk]", min_weight = 500 }, { family = "sans-serif[cjk]" }, { family = "emoji", weight = 400 }]
 
 [[rule]]
 when = ["h5"]
@@ -636,7 +636,7 @@ size = 1.0
 weight = 700
 space_before = 0.6
 space_after = 0.8
-font = [{ family = "sans-serif" }, { family = "sans-serif[cjk]", weight = 500 }, { family = "sans-serif[cjk]" }, { family = "emoji", weight = 400 }]
+font = [{ family = "sans-serif" }, { family = "sans-serif[cjk]", min_weight = 500 }, { family = "sans-serif[cjk]" }, { family = "emoji", weight = 400 }]
 
 [[rule]]
 when = ["h6"]
@@ -644,7 +644,7 @@ size = 0.95
 weight = 700
 space_before = 0.6
 space_after = 0.8
-font = [{ family = "sans-serif" }, { family = "sans-serif[cjk]", weight = 500 }, { family = "sans-serif[cjk]" }, { family = "emoji", weight = 400 }]
+font = [{ family = "sans-serif" }, { family = "sans-serif[cjk]", min_weight = 500 }, { family = "sans-serif[cjk]" }, { family = "emoji", weight = 400 }]
 
 [[rule]]
 when = ["em"]
@@ -652,7 +652,7 @@ font = [
 	{ family = "serif", variant = "italic" },
 	# Prefer upright WenKai for SC; retain shear as the CJK fallback.
 	{ family = "regularscript[cjk]" }, { family = "regularscript[cjk]", weight = 500 }, { family = "regularscript[cjk]", weight = 400 },
-	{ family = "serif[cjk]", variant = "italic", synthetic_italic = true, weight = 500 }, { family = "serif[cjk]", variant = "italic", synthetic_italic = true },
+	{ family = "serif[cjk]", variant = "italic", synthetic_italic = true, min_weight = 500 }, { family = "serif[cjk]", variant = "italic", synthetic_italic = true },
 	{ family = "emoji", weight = 400 },
 ]
 
@@ -678,7 +678,7 @@ size = 0.7
 
 [[rule]]
 when = ["code"]
-font = [{ family = "monospace" }, { family = "monospace[cjk]", weight = 500 }, { family = "monospace[cjk]" }, { family = "emoji", weight = 400 }]
+font = [{ family = "monospace" }, { family = "monospace[cjk]", min_weight = 500 }, { family = "monospace[cjk]" }, { family = "emoji", weight = 400 }]
 size = 0.9
 padding = [0.15, 0.3, 0.15, 0.3]
 background = "#EFF1F3"
@@ -686,7 +686,7 @@ background = "#EFF1F3"
 [[rule]]
 when = ["code_block"]
 theme = "InspiredGitHub"
-font = [{ family = "monospace" }, { family = "monospace[cjk]", weight = 500 }, { family = "monospace[cjk]" }, { family = "emoji", weight = 400 }]
+font = [{ family = "monospace" }, { family = "monospace[cjk]", min_weight = 500 }, { family = "monospace[cjk]" }, { family = "emoji", weight = 400 }]
 size = 0.9
 line_height = 1.6
 background = "#EFF1F3"
@@ -696,7 +696,7 @@ space_after = 0.8
 [[rule]]
 when = ["code_block", "label"]
 color = "#69747E"
-font = [{ family = "sans-serif" }, { family = "sans-serif[cjk]", weight = 500 }, { family = "sans-serif[cjk]" }, { family = "emoji", weight = 400 }]
+font = [{ family = "sans-serif" }, { family = "sans-serif[cjk]", min_weight = 500 }, { family = "sans-serif[cjk]" }, { family = "emoji", weight = 400 }]
 size = 0.67
 
 [[rule]]
@@ -814,7 +814,7 @@ when = ["img", "placeholder"]
 size = 0.78
 color = "#69747E"
 background = "#EFF1F3"
-font = [{ family = "sans-serif" }, { family = "sans-serif[cjk]", weight = 500 }, { family = "sans-serif[cjk]" }, { family = "emoji", weight = 400 }]
+font = [{ family = "sans-serif" }, { family = "sans-serif[cjk]", min_weight = 500 }, { family = "sans-serif[cjk]" }, { family = "emoji", weight = 400 }]
 
 [[rule]]
 when = ["scrollbar"]
@@ -831,7 +831,7 @@ gutter = 8.0
 when = ["ui"]
 color = "#20252D"
 background = "#F4F5F7"
-font = [{ family = "sans-serif" }, { family = "sans-serif[cjk]", weight = 500 }, { family = "sans-serif[cjk]" }, { family = "emoji", weight = 400 }]
+font = [{ family = "sans-serif" }, { family = "sans-serif[cjk]", min_weight = 500 }, { family = "sans-serif[cjk]" }, { family = "emoji", weight = 400 }]
 muted = "#626C79"
 accent = "#2856D8"
 border_color = "#D5DAE1"

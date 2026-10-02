@@ -142,6 +142,7 @@ impl BlockContext<'_> {
 					end
 				};
 				out.text[node].push(TextCluster {
+					mixed_spacing: (0.0, 0.0),
 					range: line_offset + start..line_offset + end,
 					rect: Rect {
 						x: left,

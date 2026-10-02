@@ -2840,6 +2840,18 @@ fn a_localized_edit_reuses_every_unchanged_block() {
 
 #[test]
 fn syntax_colors_settle_without_thrashing_the_block_cache() {
+	use crate::background::{Executor, Task};
+	use std::sync::Mutex;
+
+	#[derive(Default)]
+	struct Deferred(Mutex<Vec<Task>>);
+	impl Executor for Deferred {
+		fn try_submit(&self, task: Task) -> Result<(), Task> {
+			self.0.lock().unwrap().push(task);
+			Ok(())
+		}
+	}
+
 	// One entry per code block, past the 256-entry point where the highlight
 	// cache used to clear itself and re-enqueue all of them forever.
 	let mut source = String::new();
@@ -2848,12 +2860,21 @@ fn syntax_colors_settle_without_thrashing_the_block_cache() {
 	}
 	let doc = document::parse(source);
 	let opts = LayoutOptions::default();
-	let mut engine = LayoutEngine::new();
+	let executor = Arc::new(Deferred::default());
+	let mut engine =
+		LayoutEngine::with_executor(executor.clone(), Arc::new(|| {}));
 	assert_eq!(engine.layout(&doc, &opts).reused, 0);
+	// Keep colors out of the first pass regardless of worker scheduling.
+	let tasks = std::mem::take(&mut *executor.0.lock().unwrap());
+	assert_eq!(tasks.len(), doc.blocks.len());
+	for task in tasks {
+		task.run();
+	}
 	assert!(engine.wait_highlights(), "highlight jobs must report");
 	// Each block gains its colors once, then keeps them across passes.
 	assert_eq!(engine.layout(&doc, &opts).reused, 0);
 	assert_eq!(engine.layout(&doc, &opts).reused, doc.blocks.len());
+	assert!(executor.0.lock().unwrap().is_empty());
 }
 
 /// Layout options that force the `<details>` block with `id` to `open`.

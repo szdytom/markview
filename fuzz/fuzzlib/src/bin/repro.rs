@@ -27,10 +27,7 @@ fn main() {
 		incr.blocks.len()
 	);
 	for (i, (f, x)) in full.blocks.iter().zip(&incr.blocks).enumerate() {
-		let same = f.id == x.id
-			&& f.source == x.source
-			&& f.content_key == x.content_key;
-		if !same {
+		if f != x {
 			println!("block {i} differs:");
 			println!(
 				"  full: id={:#x} source={:?} key={:#x}",

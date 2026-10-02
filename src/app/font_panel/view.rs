@@ -553,9 +553,9 @@ pub(in crate::app) fn draw_fonts(
 	interaction: &InteractionState,
 	view: &super::View<'_>,
 	settings: &ReaderSettings,
-	_fonts: &FontConfig,
 	width: f32,
 	height: f32,
+	load: Option<&crate::app::settings_load::Load>,
 ) -> Vec<Draw> {
 	let super::View {
 		catalog,
@@ -642,7 +642,7 @@ pub(in crate::app) fn draw_fonts(
 		..Default::default()
 	};
 	let mut body = Vec::new();
-	if choosers {
+	if choosers && load.is_none_or(|load| load.displayed && load.cached) {
 		// One chooser row per role: the role's name at the inset the catalogue
 		// rows use, the family in force at the control beside it.
 		let control_width = 232.0_f32.min(list.viewport.w * 0.56);
@@ -675,12 +675,13 @@ pub(in crate::app) fn draw_fonts(
 				Paint::Styled(Condition::Panel, C::Color),
 			));
 		}
-		for button in &choosers {
+		for mut button in choosers {
+			crate::app::settings_load::prepare_button(&mut button, load);
 			if button.rect.intersect(list.viewport).is_some() {
 				body.extend(draw_button(
 					shaper,
 					&body_interaction,
-					button,
+					&button,
 					true,
 				));
 			}
@@ -804,7 +805,8 @@ pub(in crate::app) fn draw_fonts(
 		}
 	}
 	if !choosers {
-		for b in font_rows(catalog, shown, jobs, list, lang) {
+		for mut b in font_rows(catalog, shown, jobs, list, lang) {
+			crate::app::settings_load::prepare_button(&mut b, load);
 			if b.rect.intersect(list.viewport).is_some() {
 				body.extend(draw_button(shaper, &body_interaction, &b, true));
 			}
@@ -815,7 +817,11 @@ pub(in crate::app) fn draw_fonts(
 	if fits {
 		list.draw_bar(&mut out, shaper, interaction);
 	}
-	let controls = fonts_controls(list, status_filter, choosers, preview, lang);
+	let mut controls =
+		fonts_controls(list, status_filter, choosers, preview, lang);
+	for button in &mut controls {
+		crate::app::settings_load::prepare_button(button, load);
+	}
 	for (i, b) in controls.iter().enumerate() {
 		// The header of a settings tab is drawn once, by the header itself.
 		if crate::app::chrome::components::is_settings_header(b.action) {
@@ -945,7 +951,6 @@ mod tests {
 		let mut ui = crate::test_support::shaper();
 		let jobs = HashMap::new();
 		let settings = ReaderSettings::default();
-		let fonts = crate::test_support::fonts();
 		for status_filter in [
 			None,
 			Some(State::Missing),
@@ -993,9 +998,9 @@ mod tests {
 				&InteractionState::default(),
 				&view,
 				&settings,
-				&fonts,
 				820.,
 				600.,
+				None,
 			);
 			let edges: Vec<_> = draws
 				.iter()
@@ -1404,9 +1409,9 @@ mod tests {
 			&InteractionState::default(),
 			&view,
 			&ReaderSettings::default(),
-			&crate::test_support::fonts(),
 			820.,
 			600.,
+			None,
 		);
 		let Draw::Clipped { draws, .. } = draws
 			.iter()

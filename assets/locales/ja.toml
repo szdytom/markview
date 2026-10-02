@@ -63,6 +63,7 @@ settings_open_config = "settings.toml を開く"
 settings_paragraph_indent = "段落の字下げ"
 settings_reset_defaults = "既定値に戻す"
 settings_scroll_speed = "スクロール速度"
+settings_single_instance = "単一インスタンス"
 settings_text_size = "文字サイズ"
 
 # The reader's own labels.
@@ -250,3 +251,8 @@ search_word = "単語"
 search_preparing = "準備中…"
 search_previous = "前の一致"
 search_next = "次の一致"
+
+panel_loading = "読み込み中…"
+panel_refreshing = "更新中…"
+panel_load_failed = "読み込めません：{error}"
+panel_retry = "再試行"

@@ -1,5 +1,5 @@
 format_version = 2
-version = 1
+version = 2
 targets = ["pdf"]
 
 [meta]
@@ -19,7 +19,7 @@ line_height = 1.55
 
 [[rule]]
 when = ["h1"]
-font = [{ family = "sans-serif" }, { family = "sans-serif[cjk]", weight = 500 }, { family = "sans-serif[cjk]" }, { family = "emoji", weight = 400 }]
+font = [{ family = "sans-serif" }, { family = "sans-serif[cjk]", min_weight = 500 }, { family = "sans-serif[cjk]" }, { family = "emoji", weight = 400 }]
 size = 1.8
 weight = 700
 color = "#171717"
@@ -28,7 +28,7 @@ space_after = 0.65
 
 [[rule]]
 when = ["h2"]
-font = [{ family = "sans-serif" }, { family = "sans-serif[cjk]", weight = 500 }, { family = "sans-serif[cjk]" }, { family = "emoji", weight = 400 }]
+font = [{ family = "sans-serif" }, { family = "sans-serif[cjk]", min_weight = 500 }, { family = "sans-serif[cjk]" }, { family = "emoji", weight = 400 }]
 size = 1.4
 weight = 700
 color = "#171717"
@@ -37,7 +37,7 @@ space_after = 0.45
 
 [[rule]]
 when = ["h3"]
-font = [{ family = "sans-serif" }, { family = "sans-serif[cjk]", weight = 500 }, { family = "sans-serif[cjk]" }, { family = "emoji", weight = 400 }]
+font = [{ family = "sans-serif" }, { family = "sans-serif[cjk]", min_weight = 500 }, { family = "sans-serif[cjk]" }, { family = "emoji", weight = 400 }]
 size = 1.12
 weight = 700
 color = "#171717"

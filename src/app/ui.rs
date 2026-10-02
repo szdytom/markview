@@ -16,9 +16,6 @@ impl<P: super::SendEvent> App<P> {
 	}
 
 	pub(super) fn chrome(&mut self) -> Chrome<'_> {
-		if self.interaction.fonts_open() {
-			self.font_panel.refresh_choices(&self.fonts_config);
-		}
 		let (width, height, _) = self.dimensions();
 		let scrollbar = self.document_scrollbar();
 		let remote_notice = self.remote_notice();
@@ -46,6 +43,17 @@ impl<P: super::SendEvent> App<P> {
 					.as_deref()
 					.filter(|url| !super::anchor::footnote_link(url))
 			});
+		let resource_kind = self.settings_kind();
+		let show_snapshot = resource_kind.is_none_or(|kind| {
+			let load = self.settings_resources.load(kind);
+			load.displayed && load.cached
+		});
+		let mut fonts = self.font_panel.view();
+		if !show_snapshot {
+			fonts.catalog = &[];
+			fonts.shown.clear();
+		}
+
 		Chrome {
 			input_draws: Vec::new(),
 			backend: self.renderer.as_ref().map(|renderer| renderer.backend),
@@ -59,9 +67,17 @@ impl<P: super::SendEvent> App<P> {
 			font_config: &self.fonts_config,
 			export: &self.preferences.export,
 			interaction: &self.interaction,
-			style_entries: &self.preferences.style_entries,
+			style_entries: if !show_snapshot {
+				&[]
+			} else if self.interaction.export_styles_open() {
+				&self.settings_resources.export_entries
+			} else {
+				&self.preferences.style_entries
+			},
+			resource_load: resource_kind
+				.map(|kind| self.settings_resources.load(kind)),
 			style_scroll: self.interaction.styles_scroll,
-			fonts: self.font_panel.view(),
+			fonts,
 			width,
 			height,
 			scrollbar,

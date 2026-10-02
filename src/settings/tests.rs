@@ -496,3 +496,25 @@ fn a_han_family_follows_a_change_of_cjk_variant() {
 		);
 	}
 }
+
+#[test]
+fn single_instance_defaults_off_and_survives_settings_merge() {
+	let dir = tempfile::tempdir().unwrap();
+	let path = dir.path().join("settings.toml");
+	let (mut store, warning) = SettingsStore::load(Some(path.clone()));
+	assert!(warning.is_none());
+	assert!(!store.settings().single_instance);
+	store.ensure_file().unwrap();
+	let mut settings = store.settings();
+	settings.single_instance = true;
+	store.changed(&settings, Some(Setting::SingleInstance));
+	fs::write(&path, "width = 900\nsingle-instance = false\n").unwrap();
+	store.flush().unwrap();
+	let (mut loaded, warning) = SettingsStore::load(Some(path));
+	assert!(warning.is_none());
+	assert!(loaded.settings().single_instance);
+	assert_eq!(loaded.settings().width, 900.0);
+	loaded.changed(&ReaderSettings::default(), None);
+	loaded.flush().unwrap();
+	assert!(!loaded.settings().single_instance);
+}

@@ -479,7 +479,7 @@ MVSS accepts a per-candidate `weight` from 1 to 1000. It is an **absolute** weig
 
 A cluster no candidate covers is not lost to the platform's own fallback table, which knows no family for the script most symbol blocks belong to. The shaper instead scans the character maps of every family the machine offers — installed, `--fonts`, or downloaded — and draws the cluster from the face closest in style and weight, remembered per cluster so the scan costs once per document. Only when nothing installed covers the cluster does the glyph stay missing, and the log records it: `no face covers [U+27FA]: the configured stack and the whole collection were scanned.` A font covering the code points, installed or named in the stack, silences it.
 
-Bundled reader and PDF themes now prefer CJK weight 500 throughout, then fall back to the inherited weight when Medium is unavailable. [UI CJK Medium](../examples/ui-cjk-medium.mvss.toml) also provides this behavior as a focused overlay for custom themes. Latin retains its normal UI weight and Emoji stays at 400. Install it and place it before the reader theme:
+A candidate may instead declare `min_weight` (1–1000), which requests the larger of that minimum and the inherited weight. `weight` and `min_weight` are mutually exclusive. Bundled reader and PDF themes use `min_weight = 500` for CJK: ordinary text prefers Medium, while strong text inherits 700. A following inherited-weight candidate handles families without Medium. [UI CJK Medium](../examples/ui-cjk-medium.mvss.toml) also provides this behavior as a focused overlay for custom themes. Latin retains its normal UI weight and Emoji stays at 400. Install it and place it before the reader theme:
 
 ```sh
 markview ss install examples/ui-cjk-medium.mvss.toml

@@ -142,6 +142,8 @@ pub struct TextNode {
 	pub text: String,
 	pub separator: &'static str,
 	pub clusters: Vec<TextCluster>,
+	/// First node of the paragraph or cell; `None` denotes a standalone node.
+	pub(crate) selection_group: Option<usize>,
 	boundaries: Vec<usize>,
 }
 impl TextNode {
@@ -155,6 +157,7 @@ impl TextNode {
 			text,
 			separator,
 			clusters: Vec::new(),
+			selection_group: None,
 			boundaries,
 		}
 	}
@@ -279,6 +282,8 @@ impl TextNode {
 }
 #[derive(Clone, Debug)]
 pub struct TextCluster {
+	/// Automatic CJK/Latin spacing on the visual left and right edges.
+	pub mixed_spacing: (f32, f32),
 	pub range: Range<usize>,
 	pub rect: Rect,
 	pub rtl: bool,

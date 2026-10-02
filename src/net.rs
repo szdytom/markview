@@ -15,6 +15,9 @@ use std::{
 /// Redirect hops followed before a request is abandoned.
 const MAX_REDIRECTS: usize = 5;
 
+/// RFC 9111's fallback for an overflowing `delta-seconds` value.
+const OVERFLOW_AGE: u64 = 1 << 31;
+
 /// The download client names itself: some mirrors refuse a request with no
 /// `User-Agent`, and others refuse a browser one as hotlinking.
 const USER_AGENT: &str = concat!("markview/", env!("CARGO_PKG_VERSION"));
@@ -61,10 +64,17 @@ impl Headers {
 	/// response said nothing about how long it stays fresh.
 	pub(crate) fn lifetime(&self, now: SystemTime) -> Option<u64> {
 		let reference = self.date.unwrap_or(now);
-		self.max_age.or_else(|| {
-			self.expires.and_then(|at| {
-				at.duration_since(reference).ok().map(|life| life.as_secs())
-			})
+		if let Some(age) = self.max_age {
+			return Some(
+				if reference.checked_add(Duration::from_secs(age)).is_some() {
+					age
+				} else {
+					OVERFLOW_AGE
+				},
+			);
+		}
+		self.expires.and_then(|at| {
+			at.duration_since(reference).ok().map(|life| life.as_secs())
 		})
 	}
 
@@ -80,9 +90,12 @@ impl Headers {
 	/// having its lifetime extended by the later date.
 	fn expires_at(&self, now: SystemTime) -> Option<SystemTime> {
 		let reference = self.date.unwrap_or(now);
-		self.max_age
-			.map(|age| reference + Duration::from_secs(age))
-			.or(self.expires)
+		match self.max_age {
+			Some(_) => {
+				reference.checked_add(Duration::from_secs(self.lifetime(now)?))
+			}
+			None => self.expires,
+		}
 	}
 
 	/// Whether `Vary` lists `*`, meaning factors outside the request headers
@@ -557,7 +570,13 @@ fn cache_control(value: &str) -> (Option<u64>, bool, bool) {
 			None => (directive, None),
 		};
 		match name.to_ascii_lowercase().as_str() {
-			"max-age" => max_age = value.and_then(|v| v.parse().ok()),
+			"max-age" => {
+				max_age = value
+					.filter(|v| {
+						!v.is_empty() && v.bytes().all(|b| b.is_ascii_digit())
+					})
+					.map(|v| v.parse().unwrap_or(OVERFLOW_AGE));
+			}
 			"no-store" => no_store = true,
 			"no-cache" => no_cache = true,
 			_ => {}
@@ -589,7 +608,11 @@ fn http_date(value: &str) -> Option<SystemTime> {
 		"Dec" => 12,
 		_ => return None,
 	};
-	let year: i64 = parts.next()?.parse().ok()?;
+	let year = parts.next()?;
+	if year.len() != 4 || !year.bytes().all(|b| b.is_ascii_digit()) {
+		return None;
+	}
+	let year: i64 = year.parse().ok()?;
 	let mut clock = parts.next()?.split(':');
 	let hour: u64 = clock.next()?.parse().ok()?;
 	let minute: u64 = clock.next()?.parse().ok()?;
@@ -602,10 +625,10 @@ fn http_date(value: &str) -> Option<SystemTime> {
 		return None;
 	}
 	let seconds = days as u64 * 86_400 + hour * 3_600 + minute * 60 + second;
-	Some(UNIX_EPOCH + Duration::from_secs(seconds))
+	UNIX_EPOCH.checked_add(Duration::from_secs(seconds))
 }
 
-/// Days since 1970-01-01 for a proleptic Gregorian date.
+/// Days since 1970-01-01 for a proleptic Gregorian date with a four-digit year.
 fn days_from_civil(year: i64, month: u32, day: u32) -> i64 {
 	let year = if month <= 2 { year - 1 } else { year };
 	let era = year.div_euclid(400);
@@ -779,6 +802,10 @@ mod tests {
 		assert_eq!(cache_control("no-store"), (None, true, false));
 		assert_eq!(cache_control("no-cache"), (None, false, true));
 		assert_eq!(cache_control("max-age=\"60\"").0, Some(60));
+		assert_eq!(cache_control("max-age=4294967296").0, Some(1 << 32));
+		for value in ["", "-1", "+1", "1.5", "18446744073709551616x"] {
+			assert_eq!(cache_control(&format!("max-age={value}")).0, None);
+		}
 		assert_eq!(cache_control("private").0, None);
 	}
 
@@ -794,6 +821,77 @@ mod tests {
 		assert_eq!(http_date("not a date"), None);
 		assert_eq!(http_date("Sun, 32 Nov 1994 08:49:37 GMT"), None);
 		assert_eq!(http_date("Sun, 06 Xxx 1994 08:49:37 GMT"), None);
+	}
+
+	#[test]
+	fn extreme_http_dates_are_ignored_in_response_headers() {
+		for year in [
+			"-9223372036854775808",
+			"9223372036854775807",
+			"1000000000000",
+			"1000000000",
+			"10000",
+			"+1970",
+		] {
+			let value = format!("Thu, 01 Jan {year} 00:00:00 GMT");
+			let mut map = HeaderMap::new();
+			map.insert(reqwest::header::DATE, value.parse().unwrap());
+			map.insert(reqwest::header::EXPIRES, value.parse().unwrap());
+			let parsed = headers(&map);
+			assert_eq!(parsed.date, None, "{value}");
+			assert_eq!(parsed.expires, None, "{value}");
+			let mut chain = Chain::default();
+			chain.note(&parsed, UNIX_EPOCH);
+			assert!(!chain.cacheable);
+			assert_eq!(chain.expires_at, None);
+		}
+		assert!(http_date("Fri, 31 Dec 9999 23:59:59 GMT").is_some());
+	}
+
+	#[test]
+	fn overflowing_max_age_preserves_redirect_freshness_constraints() {
+		let now = UNIX_EPOCH + Duration::from_secs(784_111_777);
+		for value in [
+			"18446744073709551615",
+			"18446744073709551616",
+			"9999999999999999999999999999999999999999",
+		] {
+			for date in [None, Some("Sun, 06 Nov 1994 08:49:37 GMT")] {
+				let mut map = HeaderMap::new();
+				map.insert(
+					reqwest::header::CACHE_CONTROL,
+					format!("max-age={value}").parse().unwrap(),
+				);
+				if let Some(date) = date {
+					map.insert(reqwest::header::DATE, date.parse().unwrap());
+				}
+				// `max-age` retains precedence over an earlier `Expires`.
+				map.insert(
+					reqwest::header::EXPIRES,
+					"Thu, 01 Jan 1970 00:00:00 GMT".parse().unwrap(),
+				);
+				let parsed = headers(&map);
+				let mut chain = Chain::default();
+				chain.note(&parsed, now);
+				assert_eq!(parsed.lifetime(now), Some(1 << 31), "{value}");
+				assert!(chain.cacheable);
+				assert_eq!(
+					chain.expires_at,
+					Some(now + Duration::from_secs(1 << 31))
+				);
+				chain.note(
+					&Headers {
+						max_age: Some(30),
+						..Default::default()
+					},
+					now,
+				);
+				assert_eq!(
+					chain.expires_at,
+					Some(now + Duration::from_secs(30))
+				);
+			}
+		}
 	}
 
 	#[test]
@@ -848,6 +946,15 @@ mod tests {
 		};
 		assert_eq!(max_age.lifetime(now), Some(30));
 		assert!(max_age.grants_freshness(now));
+		let large = Headers {
+			max_age: Some(1 << 32),
+			..Default::default()
+		};
+		assert_eq!(large.lifetime(now), Some(1 << 32));
+		assert_eq!(
+			large.expires_at(now),
+			now.checked_add(Duration::from_secs(1 << 32))
+		);
 		let expires = Headers {
 			expires: Some(now + Duration::from_secs(15)),
 			date: Some(now),

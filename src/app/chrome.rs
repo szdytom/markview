@@ -196,6 +196,7 @@ pub(super) struct Chrome<'a> {
 	pub(super) style_entries: &'a [crate::stylesheet::Entry],
 	/// The Styles page's list offset.
 	pub(super) style_scroll: f32,
+	pub(super) resource_load: Option<&'a super::settings_load::Load>,
 	pub(super) fonts: super::font_panel::View<'a>,
 	pub(super) width: f32,
 	pub(super) height: f32,
@@ -275,7 +276,7 @@ impl Chrome<'_> {
 
 	pub(super) fn buttons(&mut self) -> Vec<Button> {
 		let (width, height, _) = (self.width, self.height, 1.0);
-		if self.interaction.modal.is_some() {
+		let mut buttons = if self.interaction.modal.is_some() {
 			modal::modal_buttons(
 				self.ui,
 				self.interaction,
@@ -392,7 +393,21 @@ impl Chrome<'_> {
 				));
 			}
 			buttons
+		};
+		if let Some(load) = self.resource_load {
+			if load.blocked() {
+				for button in &mut buttons {
+					if super::settings_load::dependent(button.action) {
+						button.enabled = false;
+					}
+				}
+			}
+			if matches!(load.status, super::settings_load::Status::Failed(_)) {
+				buttons
+					.push(self.resource_retry(load.displayed && load.cached));
+			}
 		}
+		buttons
 	}
 	pub(super) fn overlay(&mut self) -> Vec<Draw> {
 		let (width, height, _) = (self.width, self.height, 1.0);
@@ -562,6 +577,7 @@ impl Chrome<'_> {
 				width,
 				height,
 				self.settings.lang(),
+				self.resource_load,
 			));
 		} else if self.interaction.panel_open()
 			&& self.interaction.export_open()
@@ -589,9 +605,9 @@ impl Chrome<'_> {
 				self.interaction,
 				&self.fonts,
 				self.settings,
-				self.font_config,
 				width,
 				height,
+				self.resource_load,
 			));
 		} else if self.interaction.panel_open()
 			&& self.interaction.styles_open()
@@ -607,6 +623,7 @@ impl Chrome<'_> {
 				width,
 				height,
 				self.settings.lang(),
+				self.resource_load,
 			));
 		} else if self.interaction.panel_open() {
 			out.extend(draw_controls(
@@ -618,6 +635,7 @@ impl Chrome<'_> {
 				self.backend,
 			));
 		}
+		self.draw_resource_feedback(&mut out);
 		out.append(&mut self.input_draws);
 		// An open option list floats over whichever page holds its row, so it
 		// goes on after everything the page draws. Measuring brings the
@@ -649,6 +667,118 @@ impl Chrome<'_> {
 		out
 	}
 
+	fn resource_viewport(&self) -> Rect {
+		if self.interaction.fonts_open() {
+			fonts::list(
+				self.width,
+				self.height,
+				self.fonts.shown.len(),
+				self.fonts.scroll,
+				self.fonts.choosers,
+				fonts::roles(self.settings).len(),
+			)
+			.viewport
+		} else {
+			styles::list(
+				self.width,
+				self.height,
+				self.style_entries.len(),
+				self.style_scroll,
+			)
+			.viewport
+		}
+	}
+	fn resource_retry(&self, cached: bool) -> Button {
+		let panel = components::panel_rect(self.width, self.height);
+		let viewport = self.resource_viewport();
+		components::button(
+			self.settings.lang().panel_retry(),
+			Command::RetrySettingsLoad,
+			Rect {
+				x: if cached {
+					panel.x + panel.w - 100.
+				} else {
+					viewport.x + (viewport.w - 80.) / 2.
+				},
+				y: if cached {
+					panel.y + panel.h - 64.
+				} else {
+					if viewport.h >= 80. {
+						viewport.y + viewport.h / 2. + 8.
+					} else {
+						viewport.y + (viewport.h - 16.).max(0.)
+					}
+				},
+				w: 80.,
+				h: if cached || viewport.h < 80. { 16. } else { 32. },
+			},
+		)
+	}
+	fn draw_resource_feedback(&mut self, out: &mut Vec<Draw>) {
+		let Some(load) = self.resource_load else {
+			return;
+		};
+		let Some(message) = load.message(self.settings.lang()) else {
+			return;
+		};
+		let panel = components::panel_rect(self.width, self.height);
+		let viewport = self.resource_viewport();
+		let failed =
+			matches!(load.status, super::settings_load::Status::Failed(_));
+		let cached = load.displayed && load.cached;
+		let rect = if cached {
+			Rect {
+				x: panel.x + 1.,
+				y: panel.y + panel.h - 64.,
+				w: panel.w - 2.,
+				h: 16.,
+			}
+		} else {
+			viewport
+		};
+		let start = out.len();
+		out.push(Draw::Rect(
+			rect,
+			crate::layout::Paint::Styled(
+				markview_core::style::Condition::Panel,
+				markview_core::style::ColorField::Background,
+			),
+		));
+		let width = (rect.w - if failed { 116. } else { 48. }).max(0.);
+		let text = self.ui.fit(&message, 12., width);
+		out.extend(self.ui.label(
+			&text,
+			12.,
+			rect.x + 24.,
+			if cached || (failed && rect.h < 80.) {
+				rect.y + 12.
+			} else {
+				rect.y + rect.h / 2. - 8.
+			},
+			crate::layout::Paint::Styled(
+				markview_core::style::Condition::Panel,
+				markview_core::style::ColorField::Muted,
+			),
+		));
+		if failed && rect.h >= 16. {
+			let button = self.resource_retry(load.displayed && load.cached);
+			out.extend(components::draw_button(
+				self.ui,
+				self.interaction,
+				&button,
+				true,
+			));
+		}
+		if self.interaction.settings_preview
+			&& (self.interaction.styles_open() || self.interaction.fonts_open())
+		{
+			components::fade(
+				&mut out[start..],
+				self.ui,
+				components::PREVIEW_OPACITY,
+			);
+		}
+	}
 	pub(super) fn tab_bar(&mut self) -> tabs::TabBar<'_> {
 		tabs::TabBar {
 			ui: self.ui,

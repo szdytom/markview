@@ -1,5 +1,5 @@
 format_version = 2
-version = 5
+version = 6
 targets = ["pdf"]
 
 [meta]
@@ -60,7 +60,7 @@ rule_color = "#244C80"
 when = ["body"]
 color = "#272B30"
 background = "#FFFFFF"
-font = [{ family = "serif" }, { family = "serif", weight = 700 }, { family = "serif[cjk]", weight = 500 }, { family = "serif[cjk]" }, { family = "emoji", weight = 400 }]
+font = [{ family = "serif" }, { family = "serif", weight = 700 }, { family = "serif[cjk]", min_weight = 500 }, { family = "serif[cjk]" }, { family = "emoji", weight = 400 }]
 line_height = 1.55
 
 [[rule]]
@@ -72,7 +72,7 @@ widows = 3
 
 [[rule]]
 when = ["h1"]
-font = [{ family = "assignment-heading" }, { family = "assignment-heading", weight = 700 }, { family = "serif[cjk]", weight = 500 }, { family = "serif[cjk]" }, { family = "emoji", weight = 400 }]
+font = [{ family = "assignment-heading" }, { family = "assignment-heading", weight = 700 }, { family = "serif[cjk]", min_weight = 500 }, { family = "serif[cjk]" }, { family = "emoji", weight = 400 }]
 size = 2.1739
 weight = 400
 color = "#244C80"
@@ -85,7 +85,7 @@ padding = [0, 0, 1.3043, 0]
 
 [[rule]]
 when = ["h2"]
-font = [{ family = "assignment-heading" }, { family = "assignment-heading", weight = 700 }, { family = "serif[cjk]", weight = 500 }, { family = "serif[cjk]" }, { family = "emoji", weight = 400 }]
+font = [{ family = "assignment-heading" }, { family = "assignment-heading", weight = 700 }, { family = "serif[cjk]", min_weight = 500 }, { family = "serif[cjk]" }, { family = "emoji", weight = 400 }]
 size = 1.3043
 weight = 600
 color = "#244C80"
@@ -98,7 +98,7 @@ padding = [0, 0, 0, 0.9130]
 
 [[rule]]
 when = ["h3"]
-font = [{ family = "assignment-heading" }, { family = "assignment-heading", weight = 700 }, { family = "serif[cjk]", weight = 500 }, { family = "serif[cjk]" }, { family = "emoji", weight = 400 }]
+font = [{ family = "assignment-heading" }, { family = "assignment-heading", weight = 700 }, { family = "serif[cjk]", min_weight = 500 }, { family = "serif[cjk]" }, { family = "emoji", weight = 400 }]
 size = 1.0435
 weight = 600
 color = "#272B30"
@@ -132,7 +132,7 @@ space_after = 0.2609
 
 [[rule]]
 when = ["blockquote", "p", "first_child", "strong"]
-font = [{ family = "assignment-heading" }, { family = "assignment-heading", weight = 700 }, { family = "serif[cjk]", weight = 500 }, { family = "serif[cjk]" }, { family = "emoji", weight = 400 }]
+font = [{ family = "assignment-heading" }, { family = "assignment-heading", weight = 700 }, { family = "serif[cjk]", min_weight = 500 }, { family = "serif[cjk]" }, { family = "emoji", weight = 400 }]
 size = 0.825
 weight = 600
 letter_spacing = 0.09

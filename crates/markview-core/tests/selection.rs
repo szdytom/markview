@@ -38,6 +38,81 @@ fn layout(source: &str) -> LayoutSnapshot {
 	LayoutEngine::new().layout(&document::parse(source), &plain_options())
 }
 
+#[test]
+fn triple_click_selects_paragraphs_and_cells_inside_containers() {
+	let cases: &[(&str, &[&str])] = &[
+		(
+			"- First paragraph.\n\n  Second paragraph.\n- Next item.",
+			&["First paragraph.", "Second paragraph.", "Next item."],
+		),
+		(
+			"- Outer paragraph.\n  - Nested paragraph.\n- Next item.",
+			&["Outer paragraph.", "Nested paragraph.", "Next item."],
+		),
+		(
+			"1. First paragraph.\n\n   Second paragraph.\n2. Next item.",
+			&["1. First paragraph.", "Second paragraph.", "2. Next item."],
+		),
+		(
+			"> First paragraph.\n>\n> Second paragraph.\n>\n> - Quoted item.\n> - Next item.",
+			&[
+				"First paragraph.",
+				"Second paragraph.",
+				"Quoted item.",
+				"Next item.",
+			],
+		),
+		(
+			"| Header A | Header B |\n|---|---|\n| Cell **A** | Cell B |",
+			&["Header A", "Header B", "Cell A", "Cell B"],
+		),
+		(
+			"- [x] First item.\n- [ ] Next item.",
+			&["First item.", "Next item."],
+		),
+		(
+			"- First line.  \n  Second line.\n- Next item.",
+			&["First line.\nSecond line.", "Next item."],
+		),
+		(
+			"- Before \\[x+y\\] after.\n- Next item.",
+			&["Before x+y after.", "Next item."],
+		),
+		(
+			"| A | B |\n|---|---|\n| Before \\[x+y\\] after. | Next cell. |",
+			&["A", "B", "Before x+y after.", "Next cell."],
+		),
+	];
+	for &(source, expected) in cases {
+		let snapshot = layout(source);
+		assert_eq!(snapshot.blocks.len(), 1, "{source}");
+		let placed = &snapshot.blocks[0];
+		let mut selected = Vec::new();
+		for node in &placed.layout.text {
+			for cluster in &node.clusters {
+				let hit = snapshot
+					.hit_test_text(
+						cluster.rect.x + cluster.rect.w * 0.5,
+						placed.y + cluster.rect.y + cluster.rect.h * 0.5,
+						&Default::default(),
+						1,
+					)
+					.unwrap();
+				let selection = snapshot.select_block_at(hit).unwrap();
+				let text = snapshot.extract_text(selection, 1);
+				assert!(
+					expected.contains(&text.as_str()),
+					"{source}: selected {text:?}"
+				);
+				if selected.last() != Some(&text) {
+					selected.push(text);
+				}
+			}
+		}
+		assert_eq!(selected, expected, "{source}");
+	}
+}
+
 /// A selection marks only the reading text it names. Every cluster the
 /// selection never reaches draws nothing, which is what keeps a partial
 /// selection from lighting up the rest of the document.
@@ -286,4 +361,69 @@ fn lines(
 			)
 		})
 	})
+}
+
+#[test]
+fn selection_endpoints_exclude_automatic_mixed_script_spacing() {
+	for (source, selected, left, right) in [
+		("MarkView测试文本 `Inline Code`", "测试", true, false),
+		("测试MarkView", "测试", false, true),
+		("a测b", "测", true, true),
+		("MarkView 测试文本", " 测试", false, false),
+	] {
+		let options = LayoutOptions {
+			justify: false,
+			..plain_options()
+		};
+		let snapshot =
+			LayoutEngine::new().layout(&document::parse(source), &options);
+		let node = &snapshot.blocks[0].layout.text[0];
+		let start = node.text.find(selected).unwrap();
+		let end = start + selected.len();
+		let mut selection = snapshot.select_all(1).unwrap();
+		selection.anchor.offset = start;
+		selection.focus.offset = end;
+		assert_eq!(snapshot.extract_text(selection, 1), selected);
+		let clusters: Vec<_> = node
+			.clusters
+			.iter()
+			.filter(|c| c.range.start >= start && c.range.end <= end)
+			.collect();
+		let gap = options.font_size * 0.25;
+		for reversed in [false, true] {
+			let mut selection = selection;
+			if reversed {
+				std::mem::swap(&mut selection.anchor, &mut selection.focus);
+			}
+			let rects =
+				snapshot.selection_rects(selection, &Default::default(), 1);
+			let first = rects.first().unwrap();
+			let last = rects.last().unwrap();
+			let expected_start =
+				clusters[0].rect.x + if left { gap } else { 0.0 };
+			let final_cluster = clusters.last().unwrap();
+			let expected_end = final_cluster.rect.x + final_cluster.rect.w
+				- if right { gap } else { 0.0 };
+			assert!(
+				(first.x - expected_start).abs() < 0.01,
+				"{source}: {rects:?}"
+			);
+			assert!(
+				(last.x + last.w - expected_end).abs() < 0.01,
+				"{source}: {rects:?}"
+			);
+		}
+		// Selecting both scripts keeps the intervening spacing covered.
+		let rects = snapshot.selection_rects(
+			snapshot.select_all(1).unwrap(),
+			&Default::default(),
+			1,
+		);
+		for pair in rects.windows(2) {
+			assert!(
+				(pair[0].x + pair[0].w - pair[1].x).abs() < 0.01,
+				"{source}"
+			);
+		}
+	}
 }

@@ -205,7 +205,24 @@ impl LayoutSnapshot {
 					// before the viewport moves and clips it, so a partially
 					// selected ligature keeps the letter it names even when
 					// that letter sits outside the visible range.
-					let rect = node.part_rect(cluster, parts);
+					let mut rect = node.part_rect(cluster, parts);
+					// Automatic spacing belongs between selected characters,
+					// but outside the selection at either endpoint.
+					let at = |offset| (bi, ni, offset);
+					let starts = at(cluster.range.start) == a.key();
+					let ends = at(cluster.range.end) == b.key();
+					let (left, right) = if cluster.rtl {
+						(ends, starts)
+					} else {
+						(starts, ends)
+					};
+					if left {
+						rect.x += cluster.mixed_spacing.0;
+						rect.w -= cluster.mixed_spacing.0;
+					}
+					if right {
+						rect.w -= cluster.mixed_spacing.1;
+					}
 					let Some(rect) =
 						self.view_rect(bi, cluster.command, rect, horizontal)
 					else {

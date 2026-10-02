@@ -176,25 +176,27 @@ impl LayoutSnapshot {
 		})
 	}
 
-	/// Select all text belonging to the laid-out block under a text hit.
+	/// Select the paragraph or table cell under a text hit, including any
+	/// fragments split around display math and its ordered-list marker.
 	pub fn select_block_at(
 		&self,
 		position: TextPosition,
 	) -> Option<TextSelection> {
 		let block = self.blocks.get(position.block)?;
-		let first = block
-			.layout
-			.text
-			.iter()
-			.enumerate()
-			.find(|(_, node)| !node.text.is_empty())?;
-		let last = block
-			.layout
-			.text
-			.iter()
-			.enumerate()
-			.rev()
-			.find(|(_, node)| !node.text.is_empty())?;
+		let node = block.layout.text.get(position.node)?;
+		let group = node.selection_group.unwrap_or(position.node);
+		let mut nodes =
+			block
+				.layout
+				.text
+				.iter()
+				.enumerate()
+				.filter(|(index, node)| {
+					node.selection_group.unwrap_or(*index) == group
+						&& !node.text.is_empty()
+				});
+		let first = nodes.next()?;
+		let last = nodes.next_back().unwrap_or(first);
 		Some(TextSelection {
 			anchor: TextPosition {
 				block: position.block,

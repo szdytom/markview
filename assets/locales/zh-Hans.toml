@@ -63,6 +63,7 @@ settings_open_config = "打开 settings.toml"
 settings_paragraph_indent = "段落缩进"
 settings_reset_defaults = "恢复默认值"
 settings_scroll_speed = "滚动速度"
+settings_single_instance = "单实例"
 settings_text_size = "文字大小"
 
 # The reader's own labels.
@@ -248,3 +249,8 @@ search_word = "整词"
 search_preparing = "准备中…"
 search_previous = "上一项"
 search_next = "下一项"
+
+panel_loading = "加载中…"
+panel_refreshing = "刷新中…"
+panel_load_failed = "加载失败：{error}"
+panel_retry = "重试"

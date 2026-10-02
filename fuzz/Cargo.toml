@@ -26,7 +26,7 @@ tempfile = "3"
 # Mirror the workspace patches so the harness fuzzes the same comrak the app
 # does; the mermaid patch is binary-crate-only and not needed here.
 [patch.crates-io]
-comrak = { git = "https://github.com/kivikakk/comrak", rev = "cf8955abe961454dff39cfb64952e1933645d870" }
+comrak = { git = "https://github.com/kivikakk/comrak", rev = "9b0e8ee12ca941642da46e1cebb396061b5d23da" }
 
 # Overflow checks stay on (the `dev` default): an integer overflow in a
 # fuzzed path panics and becomes a regression test (O1).
@@ -54,6 +54,14 @@ bench = false
 [[bin]]
 name = "reparse"
 path = "fuzz_targets/reparse.rs"
+test = false
+doc = false
+bench = false
+
+# G1: a prefix parse versus the start of the full parse (Tier 3 differential).
+[[bin]]
+name = "prefix"
+path = "fuzz_targets/prefix.rs"
 test = false
 doc = false
 bench = false
