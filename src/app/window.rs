@@ -526,12 +526,15 @@ impl<P: super::SendEvent> App<P> {
 					{
 						// TODO: implement viewport zoom without changing the document layout.
 					} else {
-						self.trackpad_scroll(
-							dx,
-							dy,
-							phase,
-							cfg!(target_os = "macos"),
-						);
+						// macOS delivers its momentum inside the pixel deltas;
+						// every other desktop's pixel stream asks the reader
+						// to coast on its own when the stream ends.
+						let inertia = if cfg!(target_os = "macos") {
+							super::gestures::Inertia::Native
+						} else {
+							super::gestures::Inertia::Synthesized
+						};
+						self.trackpad_scroll(dx, dy, phase, inertia);
 					}
 					return;
 				}

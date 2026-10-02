@@ -38,6 +38,14 @@ struct Capture {
 	tap: Option<Tap>,
 }
 
+/// Who authors a pixel stream's release inertia: the OS already put it in the
+/// deltas, or the reader synthesizes a coast of its own when the stream ends.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(super) enum Inertia {
+	Native,
+	Synthesized,
+}
+
 #[derive(Default)]
 pub(super) struct GestureState {
 	gesture: Recognizer<Capture>,
@@ -306,16 +314,16 @@ impl<P: super::SendEvent> App<P> {
 		caption_action
 	}
 
-	/// Pixel scrolling already carries the OS speed. A native stream also
-	/// carries the OS's own momentum, so its deltas are the whole motion: none
-	/// are eased, none are loaned a lead, and none are followed by a coast of
-	/// the reader's own when the stream ends.
+	/// Pixel scrolling already carries the OS speed. A stream with
+	/// [`Inertia::Native`] also carries the OS's own momentum, so its deltas
+	/// are the whole motion: none are eased, none are loaned a lead, and none
+	/// are followed by a coast of the reader's own when the stream ends.
 	pub(super) fn trackpad_scroll(
 		&mut self,
 		dx: f32,
 		dy: f32,
 		phase: TouchPhase,
-		native: bool,
+		inertia: Inertia,
 	) {
 		let now = Instant::now();
 		if phase == TouchPhase::Cancelled {
@@ -333,7 +341,7 @@ impl<P: super::SendEvent> App<P> {
 			self.interaction.wheel = Default::default();
 			let surface = self.touch_surface();
 			self.gestures.trackpad = Some((surface, now));
-			if !native {
+			if inertia == Inertia::Synthesized {
 				self.gestures.motion = Some((surface, Motion::new(now)));
 			}
 		}
@@ -371,7 +379,8 @@ impl<P: super::SendEvent> App<P> {
 			motion.sample(delta, now);
 		}
 		self.pan_gesture(surface, delta);
-		if phase == TouchPhase::Ended && !native {
+		// A native stream keeps no `Motion`, so its release coasts nothing.
+		if phase == TouchPhase::Ended {
 			self.gestures.coasting = self
 				.gestures
 				.motion

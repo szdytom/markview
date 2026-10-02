@@ -7,6 +7,7 @@
 //! order in which an update rebases a selection before it is accepted.
 use super::*;
 use crate::app::SendEvent;
+use crate::app::gestures::Inertia;
 use crate::app::window::Loop;
 use crate::layout::{LayoutEngine, LayoutOptions, LayoutSnapshot};
 use crate::state::{Drag, Grain, Point};
@@ -512,13 +513,19 @@ fn a_fractional_line_wheel_coasts_on_windows_and_eases_elsewhere() {
 	assert!(!app.readers.session.scroll_animating());
 }
 
+/// Feeds the seam the way each desktop delivers pixel scrolling: macOS puts
+/// its momentum in the deltas, the rest ask the reader to coast on release.
+fn pixel_scroll(
+	inertia: Inertia,
+) -> impl FnMut(&mut App<StubProxy>, f32, TouchPhase) {
+	move |app, dy, phase| app.trackpad_scroll(0.0, dy, phase, inertia)
+}
+
 #[test]
 fn a_native_pixel_stream_follows_contact_and_stops_where_the_hand_stops() {
 	let (mut app, _) = reader(&"A scrolling paragraph.\n\n".repeat(100), 760.0);
 	app.interaction.cursor = point_over(&app, 0);
-	let feed = |app: &mut App<StubProxy>, dy: f32, phase: TouchPhase| {
-		app.trackpad_scroll(0.0, dy, phase, true);
-	};
+	let mut feed = pixel_scroll(Inertia::Native);
 	feed(&mut app, -40.0, TouchPhase::Started);
 	feed(&mut app, -60.0, TouchPhase::Moved);
 	feed(&mut app, -20.0, TouchPhase::Moved);
@@ -544,9 +551,7 @@ fn a_native_pixel_stream_follows_contact_and_stops_where_the_hand_stops() {
 fn a_native_pixel_stream_reverses_with_the_first_opposite_delta() {
 	let (mut app, _) = reader(&"A scrolling paragraph.\n\n".repeat(100), 760.0);
 	app.interaction.cursor = point_over(&app, 0);
-	let feed = |app: &mut App<StubProxy>, dy: f32, phase: TouchPhase| {
-		app.trackpad_scroll(0.0, dy, phase, true);
-	};
+	let mut feed = pixel_scroll(Inertia::Native);
 	feed(&mut app, -50.0, TouchPhase::Started);
 	feed(&mut app, -30.0, TouchPhase::Moved);
 	assert_eq!(app.readers.session.scrolling.offset, 80.0);
@@ -565,7 +570,7 @@ fn a_native_stream_start_cancels_a_running_wheel_momentum() {
 	);
 	assert!(app.readers.session.scroll_animating());
 	app.interaction.cursor = point_over(&app, 0);
-	app.trackpad_scroll(0.0, -10.0, TouchPhase::Started, true);
+	app.trackpad_scroll(0.0, -10.0, TouchPhase::Started, Inertia::Native);
 	let resting = app.readers.session.scrolling.offset;
 	assert!(resting > 0.0, "the momentum had already moved the page");
 	assert!(!app.readers.session.scroll_animating());
@@ -580,9 +585,7 @@ fn a_native_stream_start_cancels_a_running_wheel_momentum() {
 fn a_pixel_stream_without_native_inertia_still_coasts_on_release() {
 	let (mut app, _) = reader(&"A scrolling paragraph.\n\n".repeat(100), 760.0);
 	app.interaction.cursor = point_over(&app, 0);
-	let feed = |app: &mut App<StubProxy>, dy: f32, phase: TouchPhase| {
-		app.trackpad_scroll(0.0, dy, phase, false);
-	};
+	let mut feed = pixel_scroll(Inertia::Synthesized);
 	feed(&mut app, -40.0, TouchPhase::Started);
 	for _ in 0..4 {
 		feed(&mut app, -40.0, TouchPhase::Moved);
