@@ -3,7 +3,7 @@ import { expect, test } from "@playwright/test";
 test.setTimeout(120_000);
 
 async function ready(page) {
-  await page.goto("/index.html");
+  await page.goto("/test-reader.html");
   await page.waitForFunction(() => window.__markviewReady === true, null, { timeout: 90_000 });
 }
 

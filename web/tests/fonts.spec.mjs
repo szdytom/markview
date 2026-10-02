@@ -46,7 +46,7 @@ test("demo waits for host fonts before creating readers and fetches each once", 
   });
   const request = page.waitForRequest(/\/assets\/NotoSerif-Regular-subset-.*\.otf$/);
   try {
-    await page.goto("/index.html");
+    await page.goto("/test-reader.html");
     await request;
     expect(await page.evaluate(() => window.__markviewReady === true)).toBe(false);
     expect(await page.evaluate(() => window.mv !== undefined)).toBe(false);

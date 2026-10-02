@@ -3,8 +3,8 @@
 
 The web demo ships only subsetted faces, so a character none of them covers
 draws as tofu. With no argument, the demo document is located in
-`web/src/main.js` (its longest template literal) or the `#source` textarea
-of `web/index.html`, else stdin is read. `cmap` subtable formats 4 and 12
+`web/apps/demo/src/documents.ts` (template literals and Markdown imports), else
+stdin is read. `cmap` subtable formats 4 and 12
 are parsed with `struct`, mirroring how the engine's `swash` selects and
 maps them. Exit 0 when fully covered, 1 otherwise.
 
@@ -22,11 +22,9 @@ import sys
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 FONTS = os.path.join(ROOT, "crates", "markview-core", "tests", "fonts")
-# The demo lives in the `web/` pnpm monorepo; the page's textarea holds the
-# document, and the entry module may hold it as a template literal.
-DEMO_JS = os.path.join(ROOT, "web", "apps", "demo", "src", "main.ts")
+# The SPA keeps its samples as template literals in `documents.ts`.
+DEMO_JS = os.path.join(ROOT, "web", "apps", "demo", "src", "documents.ts")
 DEMO_HTML = os.path.join(ROOT, "web", "apps", "demo", "index.html")
-DEMO_MIN_LEN = 200  # a template literal shorter than this is not the demo text
 JS_ESCAPES = {"n": "\n", "t": "\t", "r": "\r", "0": "\0", "\\": "\\", "`": "`", "$": "$"}
 
 
@@ -115,10 +113,14 @@ def unescape_js(literal):
 def demo_document():
     """The demo document from the web demo, or None when not on disk yet."""
     if os.path.exists(DEMO_JS):
-        longest = max(re.findall(r"`((?:[^`\\]|\\.)*)`", open(DEMO_JS, encoding="utf-8").read(), re.S),
-                      key=len, default="")
-        if len(longest) >= DEMO_MIN_LEN:
-            return unescape_js(longest)
+        source = open(DEMO_JS, encoding="utf-8").read()
+        samples = [unescape_js(literal) for literal in
+                   re.findall(r"`((?:[^`\\]|\\.)*)`", source, re.S)]
+        for imported in re.findall(r"from [\"']([^\"']+\.md)[\"']", source):
+            path = os.path.join(os.path.dirname(DEMO_JS), imported)
+            samples.append(open(path, encoding="utf-8").read())
+        if samples:
+            return "\n".join(samples)
     if os.path.exists(DEMO_HTML):
         match = re.search(r'<textarea[^>]*id="source"[^>]*>(.*?)</textarea>',
                           open(DEMO_HTML, encoding="utf-8").read(), re.S)

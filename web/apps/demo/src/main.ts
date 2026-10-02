@@ -1,240 +1,382 @@
-// `main.ts` is the demo's wiring file: attach a `CanvasReader`, feed it the
-// textarea, and surface the engine's state to the page. Everything else —
-// frame loop, DPR sizing, input, selection — lives in the package.
-
-import { CanvasReader, init } from "@markview/web";
-import type { Markview, MarkviewOptions, MarkviewStats } from "@markview/web";
+import "./style.css";
+import { Editor } from "@markview/editor";
+import { loadFontSet } from "@markview/fonts";
+import { browserResources } from "@markview/resources";
+import type { MarkviewStats } from "@markview/viewer";
 import { fonts } from "../../assets/fonts.js";
-
-const DEBOUNCE_MS = 120;
-const NOTICE_MS = 2200;
-const DONE_MS = 1400;
-// The thumb never shrinks below this, so it stays grabbable on short viewports.
-const MIN_THUMB_PX = 24;
-const NUMBERS = new Intl.NumberFormat("en-US");
+import { documents } from "./documents.js";
 
 const dom = {
-	source: document.querySelector("#source") as HTMLTextAreaElement,
-	canvas: document.querySelector("#view") as HTMLCanvasElement,
-	error: document.querySelector("#error") as HTMLDivElement,
-	engine: document.querySelector("#engine-state") as HTMLElement,
-	engineText: document.querySelector("#engine-text") as HTMLElement,
-	backend: document.querySelector("#backend") as HTMLElement,
-	sourceMeta: document.querySelector("#source-meta") as HTMLElement,
-	notice: document.querySelector("#notice") as HTMLElement,
-	copy: document.querySelector("#copy") as HTMLButtonElement,
-	selectAll: document.querySelector("#select-all") as HTMLButtonElement,
-	theme: document.querySelector("#theme") as HTMLButtonElement,
-	rail: document.querySelector("#rail") as HTMLDivElement,
-	thumb: document.querySelector("#thumb") as HTMLDivElement,
-	stats: {
-		blocks: document.querySelector("#stat-blocks") as HTMLElement,
-		height: document.querySelector("#stat-height") as HTMLElement,
-		layout: document.querySelector("#stat-layout") as HTMLElement,
-		frame: document.querySelector("#stat-frame") as HTMLElement,
-		reused: document.querySelector("#stat-reused") as HTMLElement,
-		glyphs: document.querySelector("#stat-glyphs") as HTMLElement,
-	},
+	guide: document.querySelector<HTMLButtonElement>("#guide")!,
+	copy: document.querySelector<HTMLButtonElement>("#copy-selection")!,
+	workspace: document.querySelector<HTMLElement>(".workspace")!,
+	desk: document.querySelector<HTMLElement>("#desk")!,
+	sample: document.querySelector<HTMLSelectElement>("#sample")!,
+	file: document.querySelector<HTMLInputElement>("#file")!,
+	name: document.querySelector<HTMLElement>("#document-name")!,
+	meta: document.querySelector<HTMLElement>("#document-meta")!,
+	theme: document.querySelector<HTMLButtonElement>("#theme")!,
+	contents: document.querySelector<HTMLButtonElement>("#contents")!,
+	error: document.querySelector<HTMLElement>("#error")!,
+	errorMessage: document.querySelector<HTMLElement>("#error-message")!,
+	retry: document.querySelector<HTMLButtonElement>("#retry")!,
+	notice: document.querySelector<HTMLElement>("#notice")!,
+	engine: document.querySelector<HTMLElement>("#engine-state")!,
+	engineText: document.querySelector<HTMLElement>("#engine-text")!,
+	description: document.querySelector<HTMLElement>("#mode-description")!,
+	hint: document.querySelector<HTMLElement>("#mode-hint")!,
+	empty: document.querySelector<HTMLElement>(".empty-state")!,
 };
-
-const COPY_LABEL = dom.copy.textContent ?? "Copy";
-
-// One handle and one config for every control below; `boot()` fills them in.
-// The config is read inside `boot` so a malformed `MV_CONFIG` fails through
-// the same error boundary as every other startup fault.
-let markview: Markview | undefined;
-let config: MarkviewOptions = {};
-
+const drafts = new Map<string, { name: string; markdown: string }>(
+	Object.entries(documents).map(([id, doc]) => [id, { ...doc }]),
+);
+const listeners = new AbortController();
+const narrow = window.matchMedia("(max-width: 800px)");
+let editor: Editor | undefined;
+let selected = "welcome";
+let dark = false;
+let mode: "read" | "edit";
 let noticeTimer = 0;
-let doneTimer = 0;
-let scrubbing = false;
+let fileRequest = 0;
+let metadataTimer = 0;
+let disposed = false;
 
-function set(node: HTMLElement, text: string): void {
+function setText(node: HTMLElement, text: string): void {
 	if (node.textContent !== text) node.textContent = text;
 }
 
-// `notify` reports one-shot feedback in the pane head; a new message cancels
-// the previous one's timer so they never stack.
 function notify(message: string): void {
 	clearTimeout(noticeTimer);
-	set(dom.notice, message);
-	noticeTimer = window.setTimeout(() => set(dom.notice, ""), NOTICE_MS);
+	setText(dom.notice, message);
+	noticeTimer = window.setTimeout(() => setText(dom.notice, ""), 4000);
 }
 
-function fail(error: unknown): void {
-	window.__markviewError = String(error);
-	dom.engine.dataset.state = "error";
-	set(dom.engineText, "Engine failed");
-	set(dom.error, `The Markview wasm module did not start: ${String(error)}. `
-		+ "Build it with scripts/build-web.sh and serve web/dist over http.");
-	dom.error.hidden = false;
-	console.error("markview demo:", error);
+function updateDocument(): void {
+	const draft = drafts.get(selected)!;
+	setText(dom.name, draft.name);
+	const characters = Array.from(draft.markdown).length;
+	const lines = draft.markdown ? draft.markdown.split("\n").length : 0;
+	setText(
+		dom.meta,
+		`${lines.toLocaleString("en-US")} lines · ${characters.toLocaleString("en-US")} characters`,
+	);
+	const empty = !draft.markdown.trim();
+	dom.workspace.classList.toggle("is-empty", empty);
+	dom.empty.hidden = !empty || mode !== "read";
 }
 
-// `MV_CONFIG` is injected by the page or a test; it may be an object or a JSON
-// string. Unknown keys are the engine's business to ignore.
-function readConfig(): MarkviewOptions {
-	const injected = globalThis.MV_CONFIG;
-	if (injected === undefined) return {};
-	if (typeof injected === "string") return JSON.parse(injected) as MarkviewOptions;
-	return injected;
+function setMode(): void {
+	const sourceFocused = editor?.view.dom.contains(document.activeElement);
+	mode = location.hash === "#edit" ? "edit" : "read";
+	document.documentElement.dataset.mode = mode;
+	for (const link of document.querySelectorAll<HTMLAnchorElement>(
+		".mode-switch a",
+	)) {
+		if (link.dataset.mode === mode)
+			link.setAttribute("aria-current", "page");
+		else link.removeAttribute("aria-current");
+	}
+	setText(
+		dom.description,
+		mode === "read"
+			? "A quiet place to explore the page. Switch to Edit to make it your own."
+			: "Work in the source. See it on the page. Both panes follow your place.",
+	);
+	setText(
+		dom.hint,
+		mode === "read"
+			? "Select text on the page to copy it."
+			: "Live preview · scroll either pane to follow along",
+	);
+	if (editor) {
+		editor.view.requestMeasure();
+		// Keep keyboard focus on the visible pane.
+		if (mode === "read" && sourceFocused) {
+			editor.viewer.canvas.focus({ preventScroll: true });
+		}
+	}
+	updateDocument();
 }
 
 function renderStats(stats: MarkviewStats): void {
-	set(dom.stats.blocks, NUMBERS.format(stats.blocks));
-	set(dom.stats.height, `${NUMBERS.format(Math.round(stats.contentHeight))} px`);
-	set(dom.stats.layout, `${stats.layoutMs.toFixed(1)} ms`);
-	set(dom.stats.frame, `${stats.frameMs.toFixed(1)} ms`);
-	set(dom.stats.reused, NUMBERS.format(stats.reused));
-	set(dom.stats.glyphs, NUMBERS.format(stats.glyphs));
-}
-
-// The rail mirrors the document's scroll: the thumb's height is the
-// viewport-to-content ratio, its offset the scroll-to-max ratio.
-function updateRail(): void {
-	if (!markview) return;
-	const max = markview.maxScroll();
-	if (max <= 0.5) {
-		dom.rail.hidden = true;
-		return;
-	}
-	dom.rail.hidden = false;
-	const railHeight = dom.rail.clientHeight;
-	const thumbHeight = Math.max(
-		MIN_THUMB_PX,
-		Math.round((railHeight / markview.contentHeight()) * railHeight),
+	if (!editor || disposed) return;
+	dom.copy.hidden = stats.selectionLength === 0;
+	const state = stats.pending ? "layout" : "ready";
+	dom.engine.dataset.state = state;
+	setText(
+		dom.engineText,
+		stats.pending ? "Composing page…" : "Ready to read",
 	);
-	const travel = Math.max(0, railHeight - thumbHeight);
-	dom.thumb.style.height = `${thumbHeight}px`;
-	dom.thumb.style.transform =
-		`translateY(${Math.round((markview.scroll() / max) * travel)}px)`;
-}
-
-// Maps a pointer y to a scroll position along the rail.
-function scrollRailTo(clientY: number): void {
-	if (!markview) return;
-	const rect = dom.rail.getBoundingClientRect();
-	const fraction = Math.min(1, Math.max(0, (clientY - rect.top) / rect.height));
-	markview.setScroll(fraction * markview.maxScroll());
-}
-
-async function copySelection(): Promise<void> {
-	if (!markview) return;
-	const text = markview.selectedText();
-	if (!text) {
-		notify("Nothing selected");
-		return;
+	if (!stats.pending && stats.frames > 0) {
+		document.body.dataset.ready = "true";
+		dom.workspace.setAttribute("aria-busy", "false");
 	}
-	const ok = await markview.copy();
-	if (!ok) return;
-	notify(`Copied ${NUMBERS.format(text.length)} characters`);
-	set(dom.copy, "Copied");
-	dom.copy.classList.add("is-done");
-	clearTimeout(doneTimer);
-	doneTimer = window.setTimeout(() => {
-		set(dom.copy, COPY_LABEL);
-		dom.copy.classList.remove("is-done");
-	}, DONE_MS);
 }
 
-function toggleTheme(): void {
-	if (!markview) return;
-	const theme = config.theme === "dark" ? "light" : "dark";
-	config = { ...config, theme };
-	document.documentElement.dataset.theme = theme;
-	dom.theme.setAttribute("aria-pressed", String(theme === "dark"));
-	markview.setOptions(config);
+function showError(message: string, startup = false): void {
+	setText(dom.errorMessage, message);
+	dom.error.hidden = false;
+	dom.retry.hidden = !startup;
+	if (startup) {
+		dom.desk.querySelector(".loading")?.remove();
+		dom.engine.dataset.state = "error";
+		setText(dom.engineText, "Reader unavailable");
+		dom.workspace.setAttribute("aria-busy", "false");
+	}
 }
 
-dom.copy.addEventListener("click", () => {
-	void copySelection();
-});
+function setContents(show: boolean): void {
+	dom.contents.setAttribute("aria-pressed", String(show));
+	dom.workspace.dataset.contents = String(show);
+	editor!.setOptions({ toc: show });
+}
 
-dom.selectAll.addEventListener("click", () => {
-	if (!markview) return;
-	markview.selectAll();
-	dom.canvas.focus({ preventScroll: true });
-});
+function replaceDocument(id: string): void {
+	selected = id;
+	const draft = drafts.get(id)!;
+	editor!.setMarkdown(draft.markdown);
+	editor!.viewer.scrollToSource(0, 0);
+	dom.error.hidden = true;
+	updateDocument();
+}
 
-dom.theme.addEventListener("click", toggleTheme);
+async function openFile(): Promise<void> {
+	const file = dom.file.files?.[0];
+	if (!file) return;
+	const request = ++fileRequest;
+	try {
+		const markdown = await file.text();
+		if (request !== fileRequest || disposed) return;
+		drafts.set("file", { name: file.name, markdown });
+		let option =
+			dom.sample.querySelector<HTMLOptionElement>('[value="file"]');
+		if (!option) {
+			option = new Option(file.name, "file");
+			dom.sample.add(option);
+		}
+		option.textContent = file.name;
+		dom.sample.value = "file";
+		replaceDocument("file");
+		notify(`Opened ${file.name}`);
+	} catch {
+		showError(`Could not read ${file.name}. Open the file again to retry.`);
+	} finally {
+		dom.file.value = "";
+	}
+}
 
-// The rail jumps on press and scrubs while held; the pointer capture keeps the
-// drag alive when the pointer leaves the 11 px strip.
-dom.rail.addEventListener("pointerdown", (event) => {
-	if (event.button !== 0) return;
-	scrubbing = true;
-	dom.rail.setPointerCapture(event.pointerId);
-	scrollRailTo(event.clientY);
-});
-dom.rail.addEventListener("pointermove", (event) => {
-	if (scrubbing) scrollRailTo(event.clientY);
-});
-const endScrub = (): void => {
-	scrubbing = false;
-};
-dom.rail.addEventListener("pointerup", endScrub);
-dom.rail.addEventListener("pointercancel", endScrub);
-
-function updateSourceMeta(): void {
-	const text = dom.source.value;
-	const lines = text ? text.split("\n").length : 0;
-	set(dom.sourceMeta, `${NUMBERS.format(lines)} lines · ${NUMBERS.format(text.length)} chars`);
+function download(): void {
+	const draft = drafts.get(selected)!;
+	const url = URL.createObjectURL(
+		new Blob([editor!.getMarkdown()], {
+			type: "text/markdown;charset=utf-8",
+		}),
+	);
+	const link = document.createElement("a");
+	link.href = url;
+	link.download = /\.(md|markdown)$/i.test(draft.name)
+		? draft.name
+		: `${draft.name}.md`;
+	link.click();
+	window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+	notify(`Downloaded ${link.download}`);
 }
 
 async function boot(): Promise<void> {
+	let fontSet: Awaited<ReturnType<typeof loadFontSet>> | undefined;
 	try {
-		dom.engine.dataset.state = "loading";
-		config = readConfig();
-		await init({ fonts });
-
-		let ready = false;
-		const reader = await CanvasReader.attach(dom.canvas, {
-			markdown: dom.source.value,
-			onLink: (target) => notify(`Link: ${target}`),
-			onImage: (target) => notify(`Image: ${target}`),
-			markview: config,
-			onStats: (stats) => {
-				renderStats(stats);
-				updateRail();
-				if (!ready && stats.frames > 0) {
-					ready = true;
-					window.__markviewReady = true;
-					document.body.dataset.ready = "true";
-					dom.engine.dataset.state = "ready";
-					set(dom.engineText, "Ready");
-					set(dom.backend, `${stats.backend} · ${stats.adapter}`);
-					dom.backend.title = stats.adapter;
+		fontSet = await loadFontSet({ sources: fonts });
+		if (disposed) {
+			fontSet.destroy();
+			return;
+		}
+		editor = await Editor.mount(dom.desk, {
+			markdown: documents.welcome.markdown,
+			toc: !narrow.matches,
+			viewer: {
+				fonts: fontSet,
+				markview: { width: 760, fontSize: 18 },
+				resources: browserResources({
+					baseUrl: document.baseURI,
+					onError: () =>
+						notify(
+							"An image could not load. Check its URL and try opening the document again.",
+						),
+				}),
+				onStats: renderStats,
+				onLink: (target) => {
+					const url = new URL(
+						target,
+						selected === "component-guide"
+							? "https://github.com/szdytom/markview/blob/main/docs/"
+							: document.baseURI,
+					);
+					if (["https:", "http:", "mailto:"].includes(url.protocol))
+						window.open(url.href, "_blank", "noopener,noreferrer");
+				},
+				onError: () =>
+					showError(
+						"The renderer stopped. Reload the page to try again.",
+						true,
+					),
+			},
+			onChange: ({ markdown }) => {
+				drafts.get(selected)!.markdown = markdown;
+				clearTimeout(metadataTimer);
+				metadataTimer = window.setTimeout(updateDocument, 150);
+			},
+		});
+		// The mounted viewer retains its own font handle.
+		fontSet.destroy();
+		fontSet = undefined;
+		if (disposed) {
+			editor.destroy();
+			return;
+		}
+		dom.desk.querySelector(".loading")!.remove();
+		editor.viewer.canvas.setAttribute("aria-label", "Rendered Markdown");
+		editor.view.contentDOM.setAttribute("aria-label", "Markdown source");
+		for (const control of dom.workspace.querySelectorAll<
+			HTMLButtonElement | HTMLSelectElement
+		>("button, select"))
+			control.disabled = false;
+		const signal = listeners.signal;
+		dom.guide.disabled = false;
+		dom.guide.addEventListener(
+			"click",
+			() => {
+				++fileRequest;
+				dom.sample.value = "component-guide";
+				replaceDocument("component-guide");
+			},
+			{ signal },
+		);
+		dom.copy.addEventListener(
+			"click",
+			() => {
+				void editor!.viewer.reader.markview.copy().then(
+					(copied) =>
+						notify(
+							copied
+								? "Copied selection"
+								: "Select text on the page first.",
+						),
+					() =>
+						notify(
+							"Could not copy. Select the text and try again.",
+						),
+				);
+			},
+			{ signal },
+		);
+		dom.sample.addEventListener(
+			"change",
+			() => {
+				++fileRequest;
+				replaceDocument(dom.sample.value);
+			},
+			{ signal },
+		);
+		dom.file.addEventListener(
+			"change",
+			() => {
+				void openFile();
+			},
+			{ signal },
+		);
+		document
+			.querySelector("#open")!
+			.addEventListener("click", () => dom.file.click(), { signal });
+		document
+			.querySelector("#download")!
+			.addEventListener("click", download, { signal });
+		dom.theme.addEventListener(
+			"click",
+			() => {
+				dark = !dark;
+				editor!.setOptions({ theme: dark ? "dark" : "light" });
+				document.documentElement.dataset.theme = dark
+					? "dark"
+					: "light";
+				dom.theme.setAttribute("aria-pressed", String(dark));
+				setText(dom.theme, dark ? "Light paper" : "Dark paper");
+			},
+			{ signal },
+		);
+		dom.contents.addEventListener(
+			"click",
+			() => {
+				const show =
+					dom.contents.getAttribute("aria-pressed") !== "true";
+				setContents(show);
+			},
+			{ signal },
+		);
+		setContents(!narrow.matches);
+		narrow.addEventListener("change", () => setContents(!narrow.matches), {
+			signal,
+		});
+		dom.desk.addEventListener(
+			"pointerdown",
+			(event) => {
+				if (
+					!narrow.matches ||
+					dom.workspace.dataset.contents !== "true"
+				)
+					return;
+				if (!(event.target as Element).closest(".mv-toc")) {
+					setContents(false);
+					event.preventDefault();
+					event.stopPropagation();
 				}
 			},
-			onError: fail,
-		});
-		// `mv` is the package's `Markview`, so the page and its tests drive the
-		// same public surface a host application would.
-		markview = reader.markview;
-		window.mv = reader.markview;
-		window.mvStats = () => reader.markview.stats();
-		window.mvReader = reader;
-		document.querySelector("#scroll-mode")?.addEventListener("change", (event) => {
-			reader.markview.setScrollMode((event.target as HTMLSelectElement).value === "external" ? "external" : "internal");
-		});
-		document.querySelector("#interaction-sample")?.addEventListener("click", () => {
-			dom.source.value = "# Interaction sample\n\n[Jump to hidden heading](#hidden) · [External link](https://example.com)\n\n<details>\n<summary>Expandable section</summary>\n\n## Hidden\n\nThis heading is inside a disclosure.\n\n</details>\n\n```text\n" + "Wide block — ".repeat(30) + "\n```\n\n" + "A paragraph for wheel scrolling and selection.\n\n".repeat(80);
-			reader.setMarkdown(dom.source.value); updateSourceMeta();
-		});
-		// The counts and the update share the debounce: a big paste must not run
-		// a full-string scan once per inserted character.
-		let timer = 0;
-		dom.source.addEventListener("input", () => {
-			clearTimeout(timer);
-			timer = setTimeout(() => {
-				updateSourceMeta();
-				reader.setMarkdown(dom.source.value);
-			}, DEBOUNCE_MS);
-		});
-		updateSourceMeta();
+			{ capture: true, signal },
+		);
+		dom.desk.addEventListener(
+			"click",
+			(event) => {
+				if (
+					narrow.matches &&
+					(event.target as Element).closest(".mv-toc button")
+				)
+					setContents(false);
+			},
+			{ signal },
+		);
+		dom.desk.addEventListener(
+			"keydown",
+			(event) => {
+				if (narrow.matches && event.key === "Escape") {
+					setContents(false);
+					editor!.viewer.canvas.focus({ preventScroll: true });
+				}
+			},
+			{ signal },
+		);
+		setMode();
+		renderStats(editor.viewer.reader.markview.stats());
 	} catch (error) {
-		fail(error);
+		fontSet?.destroy();
+		if (disposed) return;
+		console.error("Markview startup:", error);
+		showError(
+			"The reading room could not start. Check your connection and WebGL2 support, then try again.",
+			true,
+		);
 	}
 }
 
+dom.retry.addEventListener("click", () => location.reload(), {
+	signal: listeners.signal,
+});
+window.addEventListener("hashchange", setMode, { signal: listeners.signal });
+window.addEventListener("pagehide", (event) => {
+	if (event.persisted) return;
+	disposed = true;
+	listeners.abort();
+	clearTimeout(noticeTimer);
+	clearTimeout(metadataTimer);
+	editor?.destroy();
+});
+setMode();
 void boot();

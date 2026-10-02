@@ -13,10 +13,25 @@ const tsc = join(root, "node_modules/typescript/bin/tsc");
 const pkg = join(root, "packages/markview");
 execFileSync(process.execPath, [join(pkg, "build.mjs")], { stdio: "inherit" });
 for (const name of ["scroll-sync", "resources", "fonts", "web", "editor"]) {
-	execFileSync(process.execPath, [join(root, "packages/build-package.mjs"), name], { stdio: "inherit" });
+	execFileSync(
+		process.execPath,
+		[join(root, "packages/build-package.mjs"), name],
+		{ stdio: "inherit" },
+	);
 }
-const alias = Object.fromEntries(["viewer", "scroll-sync", "resources", "fonts", "web", "editor"].map(name =>
-	[`@markview/${name}`,join(root,"packages",name === "viewer" ? "markview" : name,"dist/index.js")]));
+const alias = Object.fromEntries(
+	["viewer", "scroll-sync", "resources", "fonts", "web", "editor"].map(
+		(name) => [
+			`@markview/${name}`,
+			join(
+				root,
+				"packages",
+				name === "viewer" ? "markview" : name,
+				"dist/index.js",
+			),
+		],
+	),
+);
 
 // --- 2. The demo site: a self-contained static directory ---------------------
 
@@ -36,24 +51,47 @@ await esbuild.build({
 	sourcemap: true,
 	target: "es2022",
 	alias,
-	loader: { ".otf": "file", ".ttf": "file" },
+	loader: { ".otf": "file", ".ttf": "file", ".md": "text" },
 	assetNames: "assets/[name]-[hash]",
 });
 
 cpSync(join(root, "apps/demo/index.html"), join(site, "index.html"));
-cpSync(join(root, "apps/demo/src/style.css"), join(site, "main.css"));
+cpSync(join(root, "../assets/markview-icon.svg"), join(site, "markview.svg"));
 // `init()` looks for this name beside the module it was loaded from.
-cpSync(join(pkg, "dist/markview_web_bg.wasm"), join(site, "markview_web_bg.wasm"));
+cpSync(
+	join(pkg, "dist/markview_web_bg.wasm"),
+	join(site, "markview_web_bg.wasm"),
+);
 
-console.log("built web/dist (index.html, main.js, main.css, markview_web_bg.wasm, assets/)");
+console.log(
+	"built web/dist (index.html, main.js, main.css, markview_web_bg.wasm, assets/)",
+);
 
 // Smoke hosts also consume built public package entries.
-for (const [name,entry] of [["api","web"],["editor-api","editor"],["fonts-api","fonts"]]) {
-	await esbuild.build({entryPoints:[alias[`@markview/${entry}`]],bundle:true,format:"esm",
-		outfile:join(site,`${name}.js`),target:"es2022",alias});
+for (const [name, entry] of [
+	["api", "web"],
+	["editor-api", "editor"],
+	["fonts-api", "fonts"],
+]) {
+	await esbuild.build({
+		entryPoints: [alias[`@markview/${entry}`]],
+		bundle: true,
+		format: "esm",
+		outfile: join(site, `${name}.js`),
+		target: "es2022",
+		alias,
+	});
 }
-await esbuild.build({entryPoints:[join(root,"apps/editor/src/main.ts")],bundle:true,format:"esm",
-	outfile:join(site,"editor.js"),sourcemap:true,target:"es2022",alias,
-	loader:{".otf":"file",".ttf":"file"},assetNames:"assets/[name]-[hash]"});
-cpSync(join(root,"apps/editor/index.html"),join(site,"editor.html"));
-await esbuild.build({stdin:{contents:'export * from "@markview/viewer"; export * from "@markview/editor"; export * from "@markview/fonts"; export * from "@markview/resources";',resolveDir:root},bundle:true,format:"esm",outfile:join(site,"integration-api.js"),target:"es2022",alias});
+cpSync(join(root, "apps/demo/editor.html"), join(site, "editor.html"));
+await esbuild.build({
+	stdin: {
+		contents:
+			'export * from "@markview/viewer"; export * from "@markview/editor"; export * from "@markview/fonts"; export * from "@markview/resources";',
+		resolveDir: root,
+	},
+	bundle: true,
+	format: "esm",
+	outfile: join(site, "integration-api.js"),
+	target: "es2022",
+	alias,
+});

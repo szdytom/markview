@@ -20,7 +20,7 @@ async function openDemo(page) {
     }
   });
   page.on("pageerror", (err) => diag.pageErrors.push(String(err)));
-  await page.goto("/index.html");
+  await page.goto("/test-reader.html");
   return diag;
 }
 
@@ -77,7 +77,7 @@ test.beforeEach(async ({ context }) => {
 // --- 1. The harness serves the demo over the fixed port ----------------------
 
 test("serve.mjs serves index.html on the fixed port", async ({ page }) => {
-  const response = await page.goto("/index.html");
+  const response = await page.goto("/test-reader.html");
   expect(response.status()).toBe(200);
   expect(response.headers()["content-type"]).toContain("text/html");
   await expect(page).toHaveTitle(/Markview/);
@@ -941,7 +941,7 @@ test("initial sizing and a high-DPR resize stay inside the device limits", async
   });
   page.on("pageerror", (err) => diag.pageErrors.push(String(err)));
   const baseURL = test.info().project.use.baseURL ?? "http://127.0.0.1:4173";
-  await page.goto(`${baseURL}/index.html`);
+  await page.goto(`${baseURL}/test-reader.html`);
   await page.waitForFunction(() => window.__markviewReady === true, null, { timeout: 90_000 });
 
   const result = await page.evaluate(async () => {
@@ -1138,7 +1138,7 @@ test("a canvas without CSS dimensions keeps its box across frames", async ({ bro
   });
   page.on("pageerror", (err) => diag.pageErrors.push(String(err)));
   const baseURL = test.info().project.use.baseURL ?? "http://127.0.0.1:4173";
-  await page.goto(`${baseURL}/index.html`);
+  await page.goto(`${baseURL}/test-reader.html`);
   await page.waitForFunction(() => window.__markviewReady === true, null, { timeout: 90_000 });
 
   const result = await page.evaluate(async () => {

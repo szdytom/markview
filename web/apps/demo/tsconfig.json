@@ -1,9 +1,4 @@
 {
-  "extends": "../../tsconfig.base.json",
-  "compilerOptions": {
-    "paths": {
-      "@markview/web": ["../../packages/markview/src/index.ts"]
-    }
-  },
-  "include": ["src/**/*.ts", "../assets/types.d.ts", "../../packages/markview/src/**/*.ts"]
+	"extends": "../../tsconfig.base.json",
+	"include": ["src/**/*.ts", "../assets/types.d.ts"]
 }

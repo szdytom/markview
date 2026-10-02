@@ -15,8 +15,9 @@ reference; its scope exclusions do not apply to the reusable components.
 - `packages/fonts`: optional `@markview/fonts` explicit loading/cache.
 - `packages/resources`: optional `@markview/resources` browser transport.
 - `packages/web`: deprecated `@markview/web` compatibility entry.
-- `apps/editor`: split editing example, built as `/editor.html`.
-- `apps/demo`: original reader regression host, built as `/index.html`.
+- `apps/demo`: one reading/editing SPA at `/index.html`, with shared source, history, and reading position.
+- `/editor.html` redirects to `/index.html#edit` for existing links.
+- `tests/fixtures/reader`: legacy renderer regression host, built only by `pnpm test`.
 
 Official WASM enables WOFF/WOFF2; hosts explicitly supply per-instance font sets.
 

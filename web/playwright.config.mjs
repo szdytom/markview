@@ -7,6 +7,7 @@ import { defineConfig } from "@playwright/test";
 // platform's Vulkan driver, so the default project rasterizes on the CPU. The
 // `chromium-gpu` project asks for the real device; it is opt-in because a
 // machine with no Vulkan driver would fail it rather than fall back.
+const baseURL = `http://127.0.0.1:${process.env.PORT || 4173}`;
 const gpuArgs = ["--use-angle=vulkan", "--enable-features=Vulkan"];
 
 export default defineConfig({
@@ -15,12 +16,12 @@ export default defineConfig({
   reporter: "list",
   webServer: {
     command: "node serve.mjs",
-    url: "http://127.0.0.1:4173/index.html",
+    url: `${baseURL}/index.html`,
     reuseExistingServer: false,
     timeout: 30000,
   },
   use: {
-    baseURL: "http://127.0.0.1:4173",
+    baseURL,
   },
   projects: [
     {

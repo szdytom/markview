@@ -1,104 +1,146 @@
 <!doctype html>
-<html lang="en" data-theme="light">
-<head>
-	<meta charset="utf-8">
-	<meta name="viewport" content="width=device-width, initial-scale=1">
-	<title>Markview — canvas demo</title>
-	<link rel="icon" href="data:,">
-	<link rel="stylesheet" href="main.css">
-</head>
-<body>
-	<header class="masthead">
-		<div class="nameplate">
-			<h1 class="wordmark">Markview</h1>
-			<p class="tagline">MarkView as a Component</p>
-		</div>
-		<p class="engine" id="engine-state" data-state="loading">
-			<span class="dot" aria-hidden="true"></span>
-			<span id="engine-text">Loading engine</span>
-		</p>
-	</header>
-
-	<div class="notices">
-		<noscript class="error">This demo needs JavaScript and a browser with WebGL2.</noscript>
-		<div id="error" class="error" role="alert" hidden></div>
-	</div>
-
-	<main class="workspace">
-		<section class="pane pane-source" aria-labelledby="source-label">
-			<div class="pane-head">
-				<h2 class="eyebrow" id="source-label">Source</h2>
-				<p class="meta" id="source-meta">—</p>
-			</div>
-			<textarea id="source" aria-label="Markdown source" spellcheck="false"
-				autocapitalize="off" autocomplete="off" wrap="soft"># MarkView as a Component
-
-Markview lays out and paints Markdown **directly onto a canvas**. There is no
-DOM tree, no HTML renderer and no KaTeX: *markview-core* parses the source,
-*markview-render* rasterises glyphs through the GPU, and this page only wires
-the two together.
-
-> The engine does the rendering. JavaScript only runs the frame loop.
-
-## What the reader gets
-
-1. Continuous, incremental layout — a long document paints a prefix at once.
-2. Real typography: justification, hyphenation and optical margins.
-3. Selection and copy, driven straight from the pointer.
-
-| Stage | Crate | Output |
-| --- | --- | --- |
-| Parse | markview-core | block tree |
-| Layout | markview-core | line boxes |
-| Raster | markview-render | glyph atlas |
-
-Inline math is typeset by the engine: $e^{i\pi} + 1 = 0$.
-
-```rust
-pub fn layout(&mut self, doc: &Document) -> Snapshot {
-  self.blocks.reuse(doc)
-}
-```
-
-中文排版：标点、换行、字距与字体都由 Markview 处理。中英文混排同样可以排版。
-
----
-
-*Edit the Markdown; the canvas answers.*</textarea>
-		</section>
-
-		<section class="pane pane-view" aria-labelledby="view-label">
-			<div class="pane-head">
-				<h2 class="eyebrow" id="view-label">Rendered</h2>
-				<p class="meta" id="backend" title="">—</p>
-				<span class="notice" id="notice" role="status" aria-live="polite"></span>
-				<div class="tools">
-					<button id="copy" type="button" title="Copy the canvas selection">Copy</button>
-					<button id="select-all" type="button">Select all</button>
-					<label>Scroll <select id="scroll-mode"><option value="internal">Internal</option><option value="external">External</option></select></label>
-                    <button id="interaction-sample" type="button">Interaction sample</button>
-                    <button id="theme" type="button" aria-pressed="false" title="Toggle dark paper">Dark paper</button>
+<html lang="en" data-theme="light" data-mode="read">
+	<head>
+		<meta charset="utf-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1" />
+		<meta name="theme-color" content="#eef0f8" />
+		<meta
+			name="description"
+			content="Explore Markview's Markdown typography. Read a document or edit its source with a live canvas preview."
+		/>
+		<title>Markview — reading room</title>
+		<link rel="icon" href="markview.svg" type="image/svg+xml" />
+		<link rel="stylesheet" href="main.css" />
+	</head>
+	<body>
+		<header class="masthead">
+			<a class="brand" href="#read" aria-label="Markview reading mode">
+				<img src="markview.svg" width="32" height="32" alt="" />
+				<span>Markview</span>
+				<span class="brand-note">as a component</span>
+			</a>
+			<nav class="mode-switch" aria-label="Workspace mode">
+				<a href="#read" data-mode="read" aria-current="page">Read</a>
+				<a href="#edit" data-mode="edit">Edit</a>
+			</nav>
+			<button id="guide" class="docs-link" type="button" disabled>
+				Component guide
+			</button>
+		</header>
+		<main>
+			<div class="introduction">
+				<div>
+					<h1>Markdown, <em>composed.</em></h1>
 				</div>
+				<p id="mode-description">
+					A quiet place to explore the page.<br />Switch to Edit to
+					make it your own.
+				</p>
 			</div>
-
-			<div class="stage">
-				<figure class="plate">
-					<canvas id="view" tabindex="0" aria-label="Rendered Markdown"></canvas>
-					<div class="rail" id="rail" hidden><div class="thumb" id="thumb"></div></div>
-				</figure>
-			</div>
-
-			<dl class="colophon">
-				<div class="stat"><dt>Blocks</dt><dd id="stat-blocks">—</dd></div>
-				<div class="stat"><dt>Height</dt><dd id="stat-height">—</dd></div>
-				<div class="stat"><dt>Layout</dt><dd id="stat-layout">—</dd></div>
-				<div class="stat"><dt>Frame</dt><dd id="stat-frame">—</dd></div>
-				<div class="stat"><dt>Reused</dt><dd id="stat-reused">—</dd></div>
-				<div class="stat"><dt>Glyphs</dt><dd id="stat-glyphs">—</dd></div>
-			</dl>
-		</section>
-	</main>
-
-	<script type="module" src="main.js"></script>
-</body>
+			<section
+				class="workspace"
+				aria-label="Markdown workspace"
+				aria-busy="true"
+			>
+				<div class="toolbar">
+					<div class="document-picker">
+						<label for="sample">Document</label>
+						<select id="sample" disabled>
+							<option value="welcome">
+								A note on typography
+							</option>
+							<option value="field-notes">Field notes</option>
+							<option value="technical">A technical page</option>
+							<option value="component-guide">
+								Component guide
+							</option>
+						</select>
+					</div>
+					<div class="actions">
+						<button id="open" type="button" disabled>
+							Open file
+						</button>
+						<button id="download" type="button" disabled>
+							Download
+						</button>
+						<span class="tool-divider" aria-hidden="true"></span>
+						<button
+							id="contents"
+							type="button"
+							aria-pressed="true"
+							disabled
+						>
+							Contents
+						</button>
+						<button
+							id="theme"
+							type="button"
+							aria-pressed="false"
+							disabled
+						>
+							Dark paper
+						</button>
+					</div>
+					<input
+						id="file"
+						type="file"
+						accept=".md,.markdown,.txt,text/markdown,text/plain"
+						hidden
+					/>
+				</div>
+				<div class="document-bar">
+					<span id="document-name">typography.md</span>
+					<div class="document-meta">
+						<button id="copy-selection" type="button" hidden>
+							Copy selection</button
+						><span id="document-meta">Loading document…</span>
+					</div>
+				</div>
+				<div id="desk" aria-label="Document">
+					<div class="loading" role="status">
+						<span class="loading-book" aria-hidden="true">M</span>
+						<p>Preparing the reading room…</p>
+					</div>
+				</div>
+				<div class="empty-state" hidden>
+					<h2>Your page starts here.</h2>
+					<p>
+						Switch to Edit and write your first line, or open a
+						Markdown file.
+					</p>
+					<a href="#edit"
+						>Write Markdown <span aria-hidden="true">→</span></a
+					>
+				</div>
+				<div id="error" class="error" role="alert" hidden>
+					<span id="error-message"></span
+					><button id="retry" type="button">Try again</button>
+				</div>
+				<footer class="workspace-footer">
+					<span
+						class="engine-state"
+						id="engine-state"
+						data-state="loading"
+						><span class="status-dot" aria-hidden="true"></span
+						><span id="engine-text"
+							>Loading fonts &amp; renderer</span
+						></span
+					><span id="notice" role="status" aria-live="polite"></span
+					><span class="mode-hint" id="mode-hint"
+						>Select text on the page to copy it.</span
+					>
+				</footer>
+			</section>
+		</main>
+		<footer class="site-footer">
+			<span>Markdown in. A typeset page out.</span
+			><span>Rendered by Markview · WebAssembly + canvas</span>
+		</footer>
+		<noscript
+			><p class="error">
+				Enable JavaScript to use the reading room.
+			</p></noscript
+		>
+		<script type="module" src="main.js"></script>
+	</body>
 </html>

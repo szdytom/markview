@@ -1,0 +1,340 @@
+/* A proofing desk for the engine: the page chrome borrows Markview's own MVSS
+   palettes, so the canvas is simply the brightest sheet in the room. */
+
+:root {
+	color-scheme: light;
+	--ground: #e4e9f0;
+	--panel: #eff2f7;
+	--paper: #f9fafc;
+	--ink: #283343;
+	--ink-soft: #5d6c80;
+	--source-ink: #46536a;
+	--faint: #8a97a8;
+	--rule: #d5dde7;
+	--accent: #275d91;
+	--accent-soft: rgba(39, 93, 145, 0.15);
+	--error-ink: #8f2f24;
+	--error-soft: #fbeae7;
+	--shadow: 0 1px 2px rgba(28, 37, 50, 0.07), 0 22px 44px -20px rgba(28, 37, 50, 0.42);
+	--serif: "Iowan Old Style", "Palatino Linotype", Palatino, "Source Serif 4", Georgia, serif;
+	--sans: ui-sans-serif, -apple-system, "Segoe UI", Inter, Roboto, "Helvetica Neue", Arial, sans-serif;
+	--mono: ui-monospace, "SF Mono", "Cascadia Code", "JetBrains Mono", Menlo, Consolas, monospace;
+}
+
+html[data-theme="dark"] {
+	color-scheme: dark;
+	--ground: #151a21;
+	--panel: #1b212a;
+	--paper: #202630;
+	--ink: #dce3ed;
+	--ink-soft: #a5b3c5;
+	--source-ink: #b9c4d3;
+	--faint: #78879a;
+	--rule: #35414f;
+	--accent: #98c5ed;
+	--accent-soft: rgba(152, 197, 237, 0.18);
+	--error-ink: #f3b3a6;
+	--error-soft: #2b1d1c;
+	--shadow: 0 1px 2px rgba(0, 0, 0, 0.45), 0 18px 40px -20px rgba(0, 0, 0, 0.65);
+}
+
+*, *::before, *::after { box-sizing: border-box; }
+
+html, body { height: 100%; }
+
+body {
+	margin: 0;
+	display: grid;
+	grid-template-rows: auto auto 1fr;
+	height: 100dvh;
+	overflow: hidden;
+	background: var(--ground);
+	color: var(--ink);
+	font: 400 14px/1.5 var(--sans);
+	-webkit-font-smoothing: antialiased;
+}
+
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+/* The nameplate: a serif wordmark against mono chrome. */
+.masthead {
+	display: flex;
+	align-items: baseline;
+	gap: 16px;
+	padding: 13px 24px 11px;
+	border-bottom: 1px solid var(--rule);
+}
+
+.nameplate { display: flex; align-items: baseline; gap: 16px; }
+
+.wordmark {
+	margin: 0;
+	font-family: var(--serif);
+	font-size: 21px;
+	font-weight: 600;
+	line-height: 1.15;
+	letter-spacing: 0.005em;
+}
+
+.tagline {
+	margin: 0;
+	padding-left: 16px;
+	border-left: 1px solid var(--rule);
+	font-family: var(--mono);
+	font-size: 10px;
+	letter-spacing: 0.14em;
+	text-transform: uppercase;
+	color: var(--faint);
+}
+
+.engine {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	margin: 0 0 0 auto;
+	font-family: var(--mono);
+	font-size: 10px;
+	letter-spacing: 0.12em;
+	text-transform: uppercase;
+	color: var(--ink-soft);
+}
+
+.dot { width: 7px; height: 7px; border-radius: 50%; background: var(--faint); }
+[data-state="loading"] .dot { background: var(--accent); animation: pulse 1.4s ease-in-out infinite; }
+[data-state="ready"] .dot { background: var(--accent); }
+[data-state="error"] .dot { background: var(--error-ink); }
+
+@keyframes pulse { 50% { opacity: 0.2; } }
+
+.error {
+	margin: 0;
+	padding: 11px 24px;
+	background: var(--error-soft);
+	border-bottom: 1px solid var(--error-ink);
+	color: var(--error-ink);
+	font-size: 12.5px;
+}
+
+.error[hidden] { display: none; }
+
+.workspace {
+	display: grid;
+	grid-template-columns: minmax(300px, 32fr) 68fr;
+	min-height: 0;
+}
+
+.pane { display: grid; min-width: 0; min-height: 0; }
+
+.pane-source {
+	grid-template-rows: auto minmax(0, 1fr);
+	gap: 11px;
+	padding: 15px 16px 16px;
+	background: var(--panel);
+}
+
+.pane-view {
+	grid-template-rows: auto minmax(0, 1fr) auto;
+	gap: 12px;
+	padding: 15px 24px 12px;
+	border-left: 1px solid var(--rule);
+}
+
+.pane-head { display: flex; align-items: center; gap: 12px; min-width: 0; }
+
+.eyebrow {
+	display: flex;
+	align-items: center;
+	gap: 10px;
+	margin: 0;
+	font-family: var(--mono);
+	font-size: 10px;
+	font-weight: 500;
+	letter-spacing: 0.2em;
+	text-transform: uppercase;
+	white-space: nowrap;
+}
+
+.eyebrow::after { content: ""; width: 22px; height: 1px; background: var(--rule); }
+
+.meta {
+	margin: 0;
+	font-family: var(--mono);
+	font-size: 10px;
+	letter-spacing: 0.06em;
+	color: var(--faint);
+	white-space: nowrap;
+	overflow: hidden;
+	text-overflow: ellipsis;
+}
+
+#backend { max-width: 30ch; }
+#source-meta { margin-left: auto; }
+
+.tools { display: flex; align-items: center; gap: 8px; margin-left: auto; }
+
+button {
+	padding: 7px 11px;
+	border: 1px solid var(--rule);
+	border-radius: 2px;
+	background: transparent;
+	color: var(--ink-soft);
+	font: 500 11px/1 var(--sans);
+	letter-spacing: 0.04em;
+	cursor: pointer;
+	transition: color 0.12s, border-color 0.12s, background-color 0.12s;
+}
+
+button:hover { border-color: var(--accent); color: var(--accent); }
+button[aria-pressed="true"], button.is-done {
+	border-color: var(--accent);
+	background: var(--accent);
+	color: var(--paper);
+}
+
+#copy { min-width: 66px; }
+
+.notice {
+	min-width: 0;
+	overflow: hidden;
+	font-family: var(--mono);
+	font-size: 10px;
+	letter-spacing: 0.04em;
+	color: var(--accent);
+	white-space: nowrap;
+	text-overflow: ellipsis;
+}
+
+#source {
+	width: 100%;
+	height: 100%;
+	min-height: 0;
+	margin: 0;
+	padding: 13px 15px;
+	border: 1px solid var(--rule);
+	border-radius: 2px;
+	background: var(--ground);
+	color: var(--source-ink);
+	font: 400 12.5px/1.7 var(--mono);
+	caret-color: var(--accent);
+	tab-size: 2;
+	resize: none;
+	outline: none;
+	overflow: auto;
+	scrollbar-width: thin;
+	scrollbar-color: var(--rule) transparent;
+}
+
+#source:focus { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
+#source::selection { background: var(--accent-soft); }
+
+.stage { display: grid; min-height: 0; }
+
+/* The plate is the artifact: a bright sheet lifted off the desk. */
+.plate {
+	position: relative;
+	margin: 0;
+	min-width: 0;
+	min-height: 0;
+	border: 1px solid var(--rule);
+	border-radius: 2px;
+	background: var(--paper);
+	box-shadow: var(--shadow);
+	overflow: hidden;
+}
+
+#view {
+	position: absolute;
+	inset: 0;
+	display: block;
+	width: 100%;
+	height: 100%;
+	background: var(--paper);
+	outline: none;
+}
+
+.rail {
+	position: absolute;
+	top: 0;
+	right: 0;
+	bottom: 0;
+	width: 11px;
+	cursor: pointer;
+}
+
+.rail[hidden] { display: none; }
+
+.rail::before {
+	content: "";
+	position: absolute;
+	top: 0;
+	right: 3px;
+	bottom: 0;
+	width: 3px;
+	border-radius: 2px;
+	background: var(--rule);
+	opacity: 0.55;
+}
+
+.thumb {
+	position: absolute;
+	top: 0;
+	right: 3px;
+	width: 3px;
+	min-height: 24px;
+	border-radius: 2px;
+	background: var(--ink-soft);
+	opacity: 0.4;
+	will-change: transform;
+}
+
+.rail:hover .thumb { right: 2px; width: 5px; opacity: 0.65; }
+
+/* The colophon: the engine's own numbers, set like a printer's imprint. */
+.colophon {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: baseline;
+	gap: 6px 24px;
+	margin: 0;
+	padding-top: 10px;
+	border-top: 1px solid var(--rule);
+}
+
+.stat { display: flex; align-items: baseline; gap: 7px; }
+
+.stat dt {
+	font-family: var(--mono);
+	font-size: 9.5px;
+	letter-spacing: 0.16em;
+	text-transform: uppercase;
+	color: var(--faint);
+}
+
+.stat dd {
+	margin: 0;
+	font-family: var(--mono);
+	font-size: 11.5px;
+	font-weight: 500;
+	font-variant-numeric: tabular-nums;
+	color: var(--ink);
+}
+
+/* One deliberate arrival: the plate settles once the engine presents. */
+body[data-ready="true"] .plate { animation: settle 0.5s cubic-bezier(0.2, 0.7, 0.3, 1) both; }
+
+@keyframes settle {
+	from { opacity: 0; transform: translateY(7px); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+	*, *::before, *::after { animation-duration: 0.01ms !important; transition-duration: 0.01ms !important; }
+}
+
+@media (max-width: 900px) {
+	body { height: auto; min-height: 100dvh; overflow: auto; grid-template-rows: auto auto auto; }
+	.workspace { grid-template-columns: 1fr; }
+	.pane-source { grid-template-rows: auto minmax(180px, 30vh); }
+	.pane-view { border-left: 0; border-top: 1px solid var(--rule); }
+	.stage { min-height: 58vh; }
+	.tools { flex-wrap: wrap; }
+}

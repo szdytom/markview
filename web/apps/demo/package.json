@@ -1,9 +1,12 @@
 {
-  "name": "@markview/demo",
-  "private": true,
-  "type": "module",
-  "//": "Built by the monorepo root: `pnpm --dir web build` (see web/build.mjs).",
-  "dependencies": {
-    "@markview/web": "workspace:*"
-  }
+	"name": "@markview/demo",
+	"private": true,
+	"type": "module",
+	"//": "Built by the monorepo root: `pnpm --dir web build` (see web/build.mjs).",
+	"dependencies": {
+		"@markview/editor": "workspace:*",
+		"@markview/viewer": "workspace:*",
+		"@markview/fonts": "workspace:*",
+		"@markview/resources": "workspace:*"
+	}
 }

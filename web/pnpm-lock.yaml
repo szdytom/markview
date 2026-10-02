@@ -23,12 +23,6 @@ importers:
 
   apps/demo:
     dependencies:
-      '@markview/web':
-        specifier: workspace:*
-        version: link:../../packages/web
-
-  apps/editor:
-    dependencies:
       '@markview/editor':
         specifier: workspace:*
         version: link:../../packages/editor
@@ -38,6 +32,9 @@ importers:
       '@markview/resources':
         specifier: workspace:*
         version: link:../../packages/resources
+      '@markview/viewer':
+        specifier: workspace:*
+        version: link:../../packages/markview
 
   packages/editor:
     dependencies:

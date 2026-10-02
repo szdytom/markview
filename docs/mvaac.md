@@ -282,12 +282,14 @@ and stops listeners, frame loops and resources. No filesystem, file manager,
 PDF export, framework wrappers, VS Code plugin or Mermaid rendering is supplied
 by these packages.
 
-`apps/editor` consumes built public entries and demonstrates editing, both
-scroll directions, TOC, themes and a draggable split. `/editor.html` is the
-current example; `/index.html` preserves the original low-level reader regression
-host. It explicitly composes the font and resource helpers. The two examples share
-explicit licensed host font assets under `apps/assets`; no font assets are
-shipped in the libraries.
+`apps/demo` consumes built public entries and presents one SPA at `/index.html`.
+Read and Edit share the same document, editor history and viewer; it demonstrates
+source following, TOC, themes, a draggable split, file opening and Markdown
+downloads. `/editor.html` redirects to `/index.html#edit`. Sample drafts remain
+in memory while switching documents; download changes before reloading. The
+legacy low-level reader regression host lives under `tests/fixtures/reader` and
+is built only for tests. The SPA composes the font and resource helpers with
+licensed subset font assets under `apps/assets`; no fonts ship in the libraries.
 
 ## Build and test
 

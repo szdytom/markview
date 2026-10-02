@@ -1,7 +1,6 @@
 import { expect, test } from "@playwright/test";
 import { readdirSync } from "node:fs";
 import { fileURLToPath } from "node:url";
-import { decodePng, inkPixels } from "./png.mjs";
 
 test.setTimeout(120_000);
 const fonts = readdirSync(
@@ -398,34 +397,6 @@ test("TOC opens folded headings, divider and configuration keep component lifecy
 	await expect(page.locator(".cm-editor")).toHaveCount(1);
 	await expect(page.locator("canvas")).toHaveCount(1);
 	await expect(page.locator(".mv-toc button")).toHaveText("Again");
-});
-
-test("the built editor example paints source and preview and supports narrow layout", async ({
-	page,
-}) => {
-	const errors = [];
-	page.on("pageerror", (error) => errors.push(String(error)));
-	await page.goto("/editor.html");
-	await page.waitForFunction(
-		() =>
-			window.editor &&
-			!window.editor.viewer.reader.markview.stats().pending,
-	);
-	const buffer = await page
-		.locator("#desk")
-		.screenshot({ path: test.info().outputPath("editor.png") });
-	const png = decodePng(buffer);
-	expect(inkPixels(png, { r: 249, g: 250, b: 252 })).toBeGreaterThan(10000);
-	await page.setViewportSize({ width: 480, height: 800 });
-	await expect
-		.poll(() =>
-			page
-				.locator(".mv-split")
-				.evaluate((el) => getComputedStyle(el).flexDirection),
-		)
-		.toBe("column");
-	expect(errors).toEqual([]);
-	await expect(page.locator("#error")).toBeHidden();
 });
 
 test("Chinese composition, extensions and multiple instances retain content and focus", async ({

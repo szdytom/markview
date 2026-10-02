@@ -23,6 +23,8 @@ at the same level, without `[brackets]`.
 
 ### Added
 
+- Unify the MVaaC demos into a reading/editing SPA with shared documents, an embedded component guide, file opening, downloads and a compact responsive workspace.
+
 - Extract editor-independent scroll anchors, input ownership and versioned request cancellation into `@markview/scroll-sync`.
 - Render inline SVG as static host-decoded images and reject unsupported external SVG dependencies in browser resources.
 - Add per-instance shared font sets, an explicit font loading/cache package and optional WOFF/WOFF2 decoding in official WASM builds.
