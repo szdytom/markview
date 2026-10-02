@@ -317,3 +317,12 @@ jobs:
     with:
       plan: ${{ needs.plan.outputs.val }}
     secrets: inherit
+
+  custom-winget:
+    needs:
+      - plan
+      - announce
+    uses: ./.github/workflows/winget.yml
+    with:
+      plan: ${{ needs.plan.outputs.val }}
+    secrets: inherit

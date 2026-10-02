@@ -1,0 +1,76 @@
+name: WinGet
+
+on:
+  workflow_call:
+    inputs:
+      plan:
+        required: true
+        type: string
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Published stable release tag (for example v0.1.11)
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  update:
+    # WinGet tracks stable releases; the MSI must already be publicly available.
+    if: inputs.plan == '' || !fromJson(inputs.plan).announcement_is_prerelease
+    runs-on: windows-2025
+    env:
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      RELEASE_PLAN: ${{ inputs.plan }}
+      RELEASE_TAG: ${{ inputs.tag }}
+    steps:
+      - name: Resolve the published release
+        id: release
+        shell: pwsh
+        run: |
+          $tag = $env:RELEASE_TAG
+          if ($env:RELEASE_PLAN) {
+            $tag = ($env:RELEASE_PLAN | ConvertFrom-Json).announcement_tag
+          }
+          $release = gh release view $tag --repo $env:GITHUB_REPOSITORY --json tagName,isDraft,isPrerelease,assets | ConvertFrom-Json
+          if ($LASTEXITCODE -ne 0) { throw "could not read release $tag" }
+          if ($release.isDraft -or $release.isPrerelease) { throw "WinGet requires a published stable release" }
+          if ($release.tagName -notmatch '^v(\d+\.\d+\.\d+)$') { throw "unexpected release tag: $($release.tagName)" }
+          $version = $Matches[1]
+          $msi = $release.assets | Where-Object { $_.name -eq "markview-x86_64-pc-windows-msvc.msi" }
+          if (-not $msi) { throw "release has no Windows MSI" }
+          "version=$version" >> $env:GITHUB_OUTPUT
+          "url=$($msi.url)" >> $env:GITHUB_OUTPUT
+          "notes=https://github.com/$env:GITHUB_REPOSITORY/releases/tag/$tag" >> $env:GITHUB_OUTPUT
+      - name: Install WinGetCreate
+        shell: pwsh
+        run: Invoke-WebRequest https://github.com/microsoft/winget-create/releases/download/v1.12.13.0/wingetcreate.exe -OutFile wingetcreate.exe
+      - name: Update the community manifest from the released MSI
+        shell: pwsh
+        env:
+          WINGET_CREATE_GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PACKAGE_VERSION: ${{ steps.release.outputs.version }}
+          INSTALLER_URL: ${{ steps.release.outputs.url }}
+          RELEASE_NOTES_URL: ${{ steps.release.outputs.notes }}
+        run: |
+          ./wingetcreate.exe update szdytom.Markview --version $env:PACKAGE_VERSION --urls $env:INSTALLER_URL --release-notes-url $env:RELEASE_NOTES_URL --out .
+          if ($LASTEXITCODE -ne 0) { throw "WinGet manifest update failed" }
+      - uses: actions/upload-artifact@v7
+        with:
+          name: winget-${{ steps.release.outputs.version }}
+          path: manifests/
+          if-no-files-found: error
+      - name: Submit the manifest to the community repository
+        shell: pwsh
+        env:
+          WINGET_CREATE_GITHUB_TOKEN: ${{ secrets.WINGET_TOKEN }}
+          PACKAGE_VERSION: ${{ steps.release.outputs.version }}
+        run: |
+          if (-not $env:WINGET_CREATE_GITHUB_TOKEN) {
+            Write-Output "::notice::Configure WINGET_TOKEN to submit updates automatically; the manifest is available as a workflow artifact."
+            exit 0
+          }
+          ./wingetcreate.exe submit "manifests/s/szdytom/Markview/$env:PACKAGE_VERSION" --no-open --prtitle "New version: szdytom.Markview version $env:PACKAGE_VERSION"
+          if ($LASTEXITCODE -ne 0) { throw "WinGet manifest submission failed" }

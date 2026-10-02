@@ -43,6 +43,13 @@
 | Windows | `.msi`、`.zip` |
 | macOS | 打包好的 `.app`（zip） |
 
+[WinGet 社区收录 PR](https://github.com/microsoft/winget-pkgs/pull/445697) 合并后，Windows 用户可以用以下命令安装和更新：
+
+```powershell
+winget install --id szdytom.Markview --exact --source winget
+winget upgrade --id szdytom.Markview --exact --source winget
+```
+
 Linux 与 macOS 也可以用安装脚本：
 
 ```sh

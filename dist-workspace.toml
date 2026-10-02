@@ -37,7 +37,7 @@ source-tarball = true
 # gitignored, so none of it enters the archive.
 pr-run-mode = "upload"
 global-artifacts-jobs = ["./packaging"]
-post-announce-jobs = ["./release-notes"]
+post-announce-jobs = ["./release-notes", "./winget"]
 include = ["THIRD_PARTY.md", "licenses/"]
 
 [dist.min-glibc-version]

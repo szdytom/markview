@@ -30,6 +30,7 @@ jobs:
           ./actionlint -color .github/workflows/ci.yml \
             .github/workflows/packages.yml .github/workflows/packaging.yml \
             .github/workflows/release-notes.yml \
+            .github/workflows/winget.yml \
             .github/workflows/checks.yml .github/workflows/fuzz.yml
       - name: Generated release files match the configuration
         # `cargo install cargo-dist` installs the bare `dist` binary, which
@@ -43,6 +44,21 @@ jobs:
         run: cargo run -p xtask -- icons --check
       - name: Shell scripts are sound
         run: shellcheck scripts/build-web.sh scripts/package_*.sh scripts/verify_*.sh
+
+  winget:
+    runs-on: windows-2025
+    steps:
+      - uses: actions/checkout@v6
+      - name: Install WinGet
+        shell: pwsh
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          Install-Module Microsoft.WinGet.Client -Repository PSGallery -Force -Scope CurrentUser
+          Repair-WinGetPackageManager -AllUsers
+      - name: Validate and install the WinGet package
+        shell: pwsh
+        run: ./scripts/verify_winget_package.ps1
 
   # The browser front end shares the engine but not its build: a `wasm32`
   # compile, the pinned `wasm-bindgen` CLI, the pnpm monorepo under `web/` and
@@ -96,7 +112,7 @@ jobs:
   # packaging input.
   ci:
     if: always()
-    needs: [check, fuzz, packaging, web]
+    needs: [check, fuzz, packaging, winget, web]
     runs-on: ubuntu-latest
     steps:
       - name: Fail unless every job succeeded

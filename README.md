@@ -43,6 +43,13 @@ Download the latest build from [Releases](https://github.com/szdytom/markview/re
 | Windows | `.msi`, `.zip` |
 | macOS | zipped `.app` bundle |
 
+Once the [WinGet community submission](https://github.com/microsoft/winget-pkgs/pull/445697) is accepted, Windows users can install and update it with:
+
+```powershell
+winget install --id szdytom.Markview --exact --source winget
+winget upgrade --id szdytom.Markview --exact --source winget
+```
+
 On Linux and macOS the install script does the same thing:
 
 ```sh
