@@ -53,6 +53,59 @@ export function anchorToSource(
 }
 
 export type SyncPane = "source" | "preview";
+
+/** Matching document coordinates in the two scrollable panes. */
+export interface ScrollPoint {
+	source: number;
+	preview: number;
+}
+
+/** A continuous, reversible map with shared top and bottom endpoints. */
+export class ScrollMap {
+	readonly #points: ScrollPoint[];
+
+	constructor(
+		points: readonly ScrollPoint[],
+		sourceMax: number,
+		previewMax: number,
+	) {
+		this.#points = [{ source: 0, preview: 0 }];
+		for (const point of points) {
+			const last = this.#points.at(-1)!;
+			if (
+				point.source > last.source &&
+				point.preview > last.preview &&
+				point.source < sourceMax &&
+				point.preview < previewMax
+			)
+				this.#points.push(point);
+		}
+		this.#points.push({ source: sourceMax, preview: previewMax });
+	}
+
+	map(origin: SyncPane, position: number): number {
+		const destination = origin === "source" ? "preview" : "source";
+		const points = this.#points;
+		const max = points.at(-1)![origin];
+		if (max <= 0) return 0;
+		position = Math.max(0, Math.min(max, position));
+		let low = 0,
+			high = points.length - 1;
+		while (high - low > 1) {
+			const middle = (low + high) >>> 1;
+			if (points[middle]![origin] <= position) low = middle;
+			else high = middle;
+		}
+		const start = points[low]!,
+			end = points[high]!;
+		const fraction =
+			(position - start[origin]) / (end[origin] - start[origin]);
+		return (
+			start[destination] +
+			fraction * (end[destination] - start[destination])
+		);
+	}
+}
 /** Serializable ticket for a measurement or a message across a host boundary. */
 export interface SyncRequest {
 	readonly origin: SyncPane;

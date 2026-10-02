@@ -1,16 +1,32 @@
 //! Source navigation over semantic fields and cached rendering geometry.
 use crate::{
-	document::{Document, InlineKind, plain_text},
+	document::{BlockKind, Document, InlineKind, plain_text},
 	scene::{LayoutSnapshot, Rect},
 	search::{FieldText, visit_fields},
 };
-use std::{collections::HashMap, ops::Range};
+use std::{
+	collections::{BTreeMap, HashMap},
+	ops::Range,
+};
 
 /// A rendered source unit, in UTF-8 bytes and document logical pixels.
 #[derive(Clone, Debug)]
 pub struct SourcePosition {
 	pub source: Range<usize>,
 	pub rect: Rect,
+}
+
+/// A visible source-line extent in UTF-16 units and document logical pixels.
+#[derive(Clone, Debug)]
+pub struct SourceScrollAnchor {
+	pub source: Range<usize>,
+	pub top: f32,
+	pub bottom: f32,
+}
+
+struct SourceLine {
+	bytes: Range<usize>,
+	utf16: Range<usize>,
 }
 
 struct FieldSpans {
@@ -22,6 +38,8 @@ struct FieldSpans {
 pub struct SourceIndex {
 	fields: Vec<Vec<FieldSpans>>,
 	blocks: Vec<Range<usize>>,
+	relocated_footnotes: Vec<bool>,
+	lines: Vec<SourceLine>,
 }
 impl SourceIndex {
 	pub fn new(document: &Document) -> Self {
@@ -112,7 +130,125 @@ impl SourceIndex {
 		Self {
 			fields,
 			blocks: document.blocks.iter().map(|b| b.source.clone()).collect(),
+			relocated_footnotes: document
+				.blocks
+				.iter()
+				.scan(0, |end, block| {
+					let relocated =
+						matches!(block.kind, BlockKind::Footnote { .. })
+							&& block.source.start < *end;
+					*end = (*end).max(block.source.end);
+					Some(relocated)
+				})
+				.collect(),
+			lines: {
+				let mut lines = Vec::new();
+				let mut byte = 0;
+				let mut utf16 = 0;
+				while byte < document.source.len() {
+					let rest = &document.source[byte..];
+					let end = rest.find(['\r', '\n']).unwrap_or(rest.len());
+					let units = rest[..end].encode_utf16().count();
+					lines.push(SourceLine {
+						bytes: byte..byte + end,
+						utf16: utf16..utf16 + units,
+					});
+					let newline = if rest[end..].starts_with("\r\n") {
+						2
+					} else {
+						usize::from(end < rest.len())
+					};
+					byte += end + newline;
+					utf16 += units + newline;
+				}
+				lines
+			},
 		}
+	}
+
+	/// Batches anchors for newly published blocks, excluding relocated footnotes.
+	pub fn scroll_anchors(
+		&self,
+		snapshot: &LayoutSnapshot,
+		horizontal: &HashMap<(usize, usize), f32>,
+		from_block: usize,
+	) -> Vec<SourceScrollAnchor> {
+		let Some(first_block) = snapshot.blocks.get(from_block) else {
+			return Vec::new();
+		};
+		let mut lines = BTreeMap::<usize, SourceScrollAnchor>::new();
+		let mut seen = vec![false; snapshot.blocks.len() - from_block];
+		let mut collect = |position: SourcePosition| {
+			if position.source.is_empty() {
+				return;
+			}
+			let first = self.lines.partition_point(|line| {
+				line.bytes.start <= position.source.start
+			}) - 1;
+			let last = if position.source.end <= self.lines[first].bytes.end {
+				first
+			} else {
+				self.lines.partition_point(|line| {
+					line.bytes.start < position.source.end
+				}) - 1
+			};
+			let bottom = position.rect.y + position.rect.h;
+			let anchor =
+				lines.entry(first).or_insert_with(|| SourceScrollAnchor {
+					source: self.lines[first].utf16.start
+						..self.lines[last].utf16.end,
+					top: position.rect.y,
+					bottom,
+				});
+			anchor.source.end =
+				anchor.source.end.max(self.lines[last].utf16.end);
+			anchor.top = anchor.top.min(position.rect.y);
+			anchor.bottom = anchor.bottom.max(bottom);
+		};
+		self.visit(
+			snapshot,
+			horizontal,
+			first_block.y..snapshot.height,
+			|block, position| {
+				if block >= from_block && !self.relocated_footnotes[block] {
+					seen[block - from_block] = true;
+					collect(position);
+				}
+			},
+		);
+		// Text-free blocks anchor their opening line, excluding collapsed bodies.
+		for (block, placed) in
+			snapshot.blocks.iter().enumerate().skip(from_block)
+		{
+			if !seen[block - from_block] && !self.relocated_footnotes[block] {
+				let line = self.lines.partition_point(|line| {
+					line.bytes.start <= placed.source.start
+				}) - 1;
+				collect(SourcePosition {
+					source: placed.source.start
+						..placed.source.end.min(self.lines[line].bytes.end),
+					rect: Rect {
+						x: 0.,
+						y: placed.y,
+						w: placed.layout.width,
+						h: placed.layout.height,
+					},
+				});
+			}
+		}
+		let mut anchors: Vec<SourceScrollAnchor> = Vec::new();
+		for anchor in lines.into_values() {
+			if let Some(last) = anchors.last_mut()
+				&& anchor.source.start <= last.source.end
+			{
+				last.source.end = last.source.end.max(anchor.source.end);
+				last.top = last.top.min(anchor.top);
+				last.bottom = last.bottom.max(anchor.bottom);
+			} else {
+				anchors.push(anchor);
+			}
+		}
+		anchors
 	}
 
 	/// Unpublished targets return `None`; hidden content uses its visible container.

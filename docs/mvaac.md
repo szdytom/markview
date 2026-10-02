@@ -10,7 +10,7 @@ application remains a read-only Markdown reader; Web editing belongs to
 | --- | --- |
 | `@markview/viewer` | Engine, canvas input/frame loop, source geometry, reading events and TOC navigation |
 | `@markview/editor` | CodeMirror Markdown editing, split layout and automatic bidirectional source following |
-| `@markview/scroll-sync` | Pure source-anchor projection, input ownership and versioned synchronization requests |
+| `@markview/scroll-sync` | Continuous position maps, source-anchor projection, input ownership and versioned synchronization requests |
 | `@markview/fonts` | Explicit font-file descriptors, loading and reusable caches |
 | `@markview/resources` | Explicit browser image transport/decoding, base URL and request configuration |
 | `@markview/web` | Deprecated compatibility re-export of viewer and legacy image helpers |
@@ -97,12 +97,16 @@ stacks narrow containers and hides the TOC on small screens. The separator is
 draggable and keyboard accessible. Component styles are scoped to its root;
 `--mv-*` CSS variables provide host color overrides.
 
-Following uses the source position at the top visible line and its fractional
-vertical displacement through the rendered unit's complete source extent.
-Images and inline SVG keep continuous progress across every source wrap or line;
-adjacent blank lines cannot advance past the end of that unit. It follows within
-long paragraphs/code, not by whole scroll percentage. Input in either pane takes ownership, cancels pending motion
-from the other, and prevents programmatic follow events feeding back. Following
+Following interpolates between matching source-line and preview positions using
+one monotonic map in both directions, with shared document-top and scroll-bottom
+endpoints. Blank lines and preview margins interpolate between adjacent anchors;
+images, inline SVG and math span their complete source extent, including wraps.
+Rust batches source-line extents using precomputed UTF-16 line offsets. The editor
+retains anchor batches for a progressive layout pass and queries only newly
+published blocks; edits and reflows start a new pass. The map is cached until
+source geometry or preview layout changes. Input in
+either pane takes ownership, cancels pending motion from the other, and prevents
+programmatic follow events feeding back. Following
 never focuses the other pane or changes its selection. Editor changes map the
 previous reading reference through CodeMirror changes. See the
 [source, version and TOC reference](mvaac-source-api.md) for pending geometry,
@@ -114,35 +118,34 @@ scroll coordinates. The core has no runtime dependencies, DOM, editor APIs or
 WASM initialization. Other editors can reuse the same logic:
 
 ```ts
-import {
-  ScrollSync, sourceToAnchor, anchorToSource,
-  type SourceViewport, type SourceRange, type SourceExtent,
-} from "@markview/scroll-sync";
+import { ScrollSync, ScrollMap, type ScrollPoint } from "@markview/scroll-sync";
 import type { ReadingPosition } from "@markview/viewer";
 
 // Supply these operations from the host editor.
 declare const source: {
-  viewport(): SourceViewport;
-  measure(range: SourceRange): SourceExtent | null;
+  scrollTop(): number;
+  maxScroll(): number;
+  matchingPositions(): ScrollPoint[];
   scrollTo(top: number): void;
 };
 const sync = new ScrollSync(viewer.outline().documentVersion);
+// Rebuild after source, pane size, font, image or layout changes.
+let map = new ScrollMap(
+  source.matchingPositions(), source.maxScroll(), viewer.reader.markview.maxScroll(),
+);
 
 function sourceMoved() {
   const request = sync.begin("source");
   if (!request) return;
-  const viewport = source.viewport();
-  const range = viewer.sourceToPreview(viewport.offset)?.source ?? null;
-  const anchor = sourceToAnchor(viewport, range, r => source.measure(r));
-  if (sync.isCurrent(request)) viewer.scrollToSource(anchor.offset, anchor.fraction);
+  const top = map.map("source", source.scrollTop());
+  if (sync.isCurrent(request)) viewer.scrollTo(top);
 }
 
 function previewMoved(position: ReadingPosition) {
   const request = sync.begin("preview", position.documentVersion);
   if (!request) return;
-  const range = viewer.sourceToPreview(position.offset)?.source ?? null;
-  const top = anchorToSource(position, range, r => source.measure(r));
-  if (sync.isCurrent(request) && top !== null) source.scrollTo(top);
+  const top = map.map("preview", viewer.reader.markview.scroll());
+  if (sync.isCurrent(request)) source.scrollTo(top);
 }
 ```
 
@@ -152,12 +155,14 @@ On source input, call `sync.takeControl("source")` and
 event: `begin` rejects events from the follower. After replacing Markdown, call
 `sync.setDocumentVersion(viewer.outline().documentVersion)` before following.
 
-The source adapter measures the **entire supplied range**, including all wrapped
-lines. An empty range measures the caret's visual line. Use consistent source
-coordinates for the viewport and measurements; they may be pixels or fractional
-line units. Offsets refer to the exact shared string in UTF-16, including its
-actual line endings. Missing measurements retain the requested offset with zero
-progress; `Viewer.scrollToSource` continues waiting for unpublished geometry.
+Pass `ScrollMap` matching positions in document order, using each pane's document
+coordinates. `scrollAnchors` excludes relocated footnotes before filtering so
+their document-end geometry cannot displace the main prose's anchors.
+Duplicate or backwards positions from hidden content or table cells
+are skipped, and positions past either scroll limit give way to the shared bottom
+endpoint. `sourceToAnchor` and `anchorToSource` remain available for hosts that
+exchange source offsets and fractional progress instead of scroll coordinates;
+their measurer must cover the entire range, including all wrapped lines.
 
 For asynchronous measurements or extension/webview messaging, send the plain
 `SyncRequest` ticket with the work and call `isCurrent` immediately before

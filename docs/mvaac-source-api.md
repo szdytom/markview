@@ -31,7 +31,7 @@ not advance or synchronously finish layout.
 After explicit font loading, `Viewer.mount(container, { markdown, fonts })` creates
 its own canvas and uses the existing `CanvasReader` input and frame loop. Give
 the container an explicit height. `getMarkdown`, `setMarkdown`, `setOptions`, `setFonts`,
-`outline`, `sourceToPreview`, `previewToSource`, `readingPosition`,
+`outline`, `sourceToPreview`, `previewToSource`, `scrollAnchors`, `readingPosition`,
 `currentSection`, `scrollToSource`, `navigateHeading`, `onReadingPosition` and
 `cancelNavigation`, `destroy` form the component API. `reader` provides the same low-level canvas API.
 
@@ -49,6 +49,24 @@ unsubscribes. Following a programmatic event should not start reverse following.
 Width, options, fonts and asynchronous image reflow retain the source reading anchor.
 Destruction is idempotent and removes the owned DOM, input handlers, frame loop,
 subscriptions and pending resource requests. Calls after destruction throw.
+
+`scrollTo(y)` applies an immediate position in document CSS pixels and cancels
+deferred navigation. Split-pane following uses it with a continuous position map;
+source-based navigation uses `scrollToSource` when geometry may still be pending.
+
+`scrollAnchors(previous?)` batches visible source-line extents in Rust. The result
+contains `documentVersion`, `revision`, an opaque layout `pass`, `fromBlock`,
+`blocks`, and `anchors: { source, top, bottom }[]`. Source ranges use UTF-16 line
+boundaries recognizing LF, CRLF and lone CR without normalizing original offsets;
+vertical extents include wraps and complete multiline atomic content. Text-free
+fallbacks cover only the opening source line, excluding collapsed YAML or body lines.
+Hidden source and footnotes relocated out of source order have no scroll anchors;
+direct source navigation still locates those footnotes. Pass the previous batch
+to collect only newly published blocks. If `fromBlock` is zero, replace retained anchors; otherwise
+append the batch in source order, merging overlapping source ranges at the boundary. A new
+document, width, font or image layout pass resets the cursor. Geometry queries
+never advance layout, and unpublished current-version geometry returns an empty
+batch. Omitting the cursor returns the complete published batch.
 
 ## Outline and headings
 

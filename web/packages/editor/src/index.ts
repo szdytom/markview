@@ -26,14 +26,9 @@ import {
 	Viewer,
 	type ViewerOptions,
 	type ReadingPosition,
+	type ScrollAnchors,
 } from "@markview/viewer";
-import {
-	ScrollSync,
-	sourceToAnchor,
-	anchorToSource,
-	type SourceRange,
-	type SourceExtent,
-} from "@markview/scroll-sync";
+import { ScrollSync, ScrollMap, type ScrollPoint } from "@markview/scroll-sync";
 import { styles } from "./style.js";
 
 export interface ContentChange {
@@ -68,6 +63,10 @@ export class Editor {
 	#disposed = false;
 	#sync: ScrollSync;
 	#tocVersion = -1;
+	#map: ScrollMap | null = null;
+	#mapRevision = -1;
+	#anchors: ScrollAnchors["anchors"] = [];
+	#anchorBatch: ScrollAnchors | undefined;
 
 	private constructor(
 		element: HTMLDivElement,
@@ -168,6 +167,7 @@ export class Editor {
 				onUserInput: () => {
 					if (editor) {
 						editor.#sync.takeControl("preview");
+						editor.#follow();
 					}
 					options.viewer?.onUserInput?.();
 				},
@@ -249,6 +249,7 @@ export class Editor {
 	#update(update: ViewUpdate): void {
 		if (this.#disposed) return;
 		if (update.docChanged) {
+			this.#mapRevision = -1;
 			const position = this.viewer.readingPosition();
 			const offset = update.changes.mapPos(position?.offset ?? 0);
 			this.viewer.setMarkdown(update.state.doc.toString(), offset);
@@ -262,57 +263,90 @@ export class Editor {
 			});
 		}
 		if (update.docChanged || update.geometryChanged) {
-			if (this.#sync.owner === "source") this.#followEditor();
-			else {
-				const position = this.viewer.readingPosition();
-				if (position) this.#previewMoved(position);
-			}
+			this.#map = null;
+			this.#follow();
 		}
 	}
-	#followEditor(): void {
+	#follow(): void {
 		if (this.#disposed) return;
-		const request = this.#sync.begin("source");
+		const request = this.#sync.begin(this.#sync.owner);
 		if (!request) return;
 		this.view.requestMeasure({
 			key: this,
 			read: (view) => {
-				const top =
-					view.scrollDOM.getBoundingClientRect().top +
-					view.documentPadding.top;
-				const offset =
-					view.posAtCoords(
-						{
-							x: view.contentDOM.getBoundingClientRect().left + 1,
-							y: top + 1,
-						},
-						false,
-					) ?? 0;
-				return sourceToAnchor(
-					{ offset, top },
-					this.viewer.sourceToPreview(offset)?.source ?? null,
-					(source) => this.#sourceExtent(view, source),
+				const engine = this.viewer.reader.markview;
+				if (engine.stats().documentVersion !== request.documentVersion)
+					return null;
+				const map = this.#scrollMap(view);
+				return (
+					map?.map(
+						request.origin,
+						request.origin === "source"
+							? view.scrollDOM.scrollTop
+							: engine.scroll(),
+					) ?? null
 				);
 			},
-			write: (position) => {
-				if (!this.#disposed && this.#sync.isCurrent(request)) {
-					this.viewer.scrollToSource(
-						position.offset,
-						position.fraction,
-					);
-				}
+			write: (target, view) => {
+				if (
+					this.#disposed ||
+					!this.#sync.isCurrent(request) ||
+					target === null
+				)
+					return;
+				if (request.origin === "source") this.viewer.scrollTo(target);
+				else view.scrollDOM.scrollTop = target;
 			},
 		});
 	}
-	#sourceExtent(view: EditorView, source: SourceRange): SourceExtent {
-		const end = Math.max(source.start, source.end - 1);
-		return {
-			top:
-				view.coordsAtPos(source.start, 1)?.top ??
-				view.documentTop + view.lineBlockAt(source.start).top,
-			bottom:
-				view.coordsAtPos(source.end, source.end > source.start ? -1 : 1)
-					?.bottom ?? view.documentTop + view.lineBlockAt(end).bottom,
-		};
+	#scrollMap(view: EditorView): ScrollMap | null {
+		const engine = this.viewer.reader.markview;
+		const revision = engine.stats().revision;
+		if (this.#map && this.#mapRevision === revision) return this.#map;
+		const points: ScrollPoint[] = [];
+		if (this.#mapRevision !== revision) {
+			const batch = this.viewer.scrollAnchors(this.#anchorBatch);
+			if (batch.fromBlock === 0) this.#anchors = [];
+			for (const anchor of batch.anchors) {
+				const last = this.#anchors.at(-1);
+				if (
+					last &&
+					anchor.source.start >= last.source.start &&
+					anchor.source.start <= last.source.end
+				) {
+					last.source.end = Math.max(
+						last.source.end,
+						anchor.source.end,
+					);
+					last.top = Math.min(last.top, anchor.top);
+					last.bottom = Math.max(last.bottom, anchor.bottom);
+				} else this.#anchors.push(anchor);
+			}
+			this.#anchors.sort((a, b) => a.source.start - b.source.start);
+			if (!this.#anchors.length && engine.stats().pending) return null;
+			this.#anchorBatch = batch;
+			this.#mapRevision = batch.revision;
+		}
+		for (const anchor of this.#anchors) {
+			points.push(
+				{
+					source: view.lineBlockAt(anchor.source.start).top,
+					preview: anchor.top,
+				},
+				{
+					source: view.lineBlockAt(anchor.source.end).bottom,
+					preview: anchor.bottom,
+				},
+			);
+		}
+		return (this.#map = new ScrollMap(
+			points,
+			Math.max(
+				0,
+				view.scrollDOM.scrollHeight - view.scrollDOM.clientHeight,
+			),
+			engine.maxScroll(),
+		));
 	}
 	#previewMoved(position: ReadingPosition): void {
 		if (
@@ -326,31 +360,11 @@ export class Editor {
 				button.setAttribute("aria-current", "location");
 			else button.removeAttribute("aria-current");
 		}
-		const request = this.#sync.begin("preview", position.documentVersion);
-		if (!request) return;
-		const offset = Math.min(position.offset, this.view.state.doc.length);
-		this.view.requestMeasure({
-			key: this,
-			read: (view) => ({
-				target: anchorToSource(
-					{ offset, fraction: position.fraction },
-					this.viewer.sourceToPreview(offset)?.source ?? null,
-					(source) => this.#sourceExtent(view, source),
-				),
-				top:
-					view.scrollDOM.getBoundingClientRect().top +
-					view.documentPadding.top,
-			}),
-			write: ({ target, top }, view) => {
-				if (
-					!this.#disposed &&
-					this.#sync.isCurrent(request) &&
-					target !== null
-				) {
-					view.scrollDOM.scrollTop += target - top;
-				}
-			},
-		});
+		if (
+			this.#sync.owner === "preview" ||
+			position.revision !== this.#mapRevision
+		)
+			this.#follow();
 	}
 	#bindInput(): void {
 		const signal = this.#listeners.signal;
@@ -366,7 +380,9 @@ export class Editor {
 		}
 		this.view.scrollDOM.addEventListener(
 			"scroll",
-			() => this.#followEditor(),
+			() => {
+				if (this.#sync.owner === "source") this.#follow();
+			},
 			{ signal },
 		);
 		let pointer: number | null = null;

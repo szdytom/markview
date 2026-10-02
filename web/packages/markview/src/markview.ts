@@ -7,7 +7,7 @@ import { fontHandle } from "./font-handles.js";
 import type { FontSet } from "./font-set.js";
 import { ResourceEvents, type ResourceOptions } from "./resources.js";
 import { LayoutUpdate } from "./layout-update.js";
-import type { MarkviewOptions, MarkviewStats, Modifiers, ScrollMode, DocumentCursor, PointerAction, SourceGeometry, Outline } from "./types.js";
+import type { MarkviewOptions, MarkviewStats, Modifiers, ScrollMode, DocumentCursor, PointerAction, SourceGeometry, ScrollAnchors, Outline } from "./types.js";
 import { parseStats, serializeOptions } from "./internal.js";
 
 /**
@@ -99,6 +99,10 @@ export class Markview {
 	/** Returns `null` until this source position has current-version geometry. */
 	sourceToPreview(offset: number): SourceGeometry | null {
 		return JSON.parse(this.#live().sourceToPreview(Math.max(0, Math.trunc(normalize(offset))))) as SourceGeometry | null;
+	}
+	/** Batches visible source-line geometry from the current publication. */
+	scrollAnchors(previous?: ScrollAnchors): ScrollAnchors {
+		return JSON.parse(this.#live().scrollAnchors(previous?.pass ?? undefined, previous?.blocks ?? 0)) as ScrollAnchors;
 	}
 	/** Maps document CSS pixels to the closest visible source line. */
 	previewToSource(y: number): SourceGeometry | null {

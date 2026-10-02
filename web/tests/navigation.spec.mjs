@@ -72,6 +72,67 @@ test("public mapping and complete TOC use UTF-16 and isolate replacement version
   expect(result.revisionChanged).toBe(true);
 });
 
+test("scroll anchors retain original CR, CRLF and mixed Unicode source lines", async ({ page }) => {
+  await host(page);
+  await mount(page, "Start");
+  for (const source of [
+    "# One\r\rParagraph\r\r# Two",
+    "# 中文😀\r\rParagraph e\u0301\r\n\r\n# Two\n\nLast 😀\r",
+  ]) {
+    await page.evaluate(source => window.viewer.setMarkdown(source, 0), source);
+    await settled(page);
+    const anchors = await page.evaluate(() => window.viewer.scrollAnchors().anchors);
+    const lines = source.split(/\r\n|[\r\n]/).filter(line => line.length);
+    expect(anchors.map(anchor => anchor.source)).toEqual(lines.map(line => ({
+      start: source.indexOf(line), end: source.indexOf(line) + line.length,
+    })));
+    expect(anchors.map(anchor => source.slice(anchor.source.start, anchor.source.end))).toEqual(lines);
+    for (let i = 1; i < anchors.length; i++)
+      expect(anchors[i].top).toBeGreaterThan(anchors[i - 1].bottom);
+  }
+});
+
+test("text-free collapsed container anchors exclude hidden lines across expansion", async ({ page }) => {
+  await host(page);
+  await mount(page, "Start");
+  for (const source of [
+    "---\r\ntitle: hidden 中文😀\r\nother: body\r\n---\r\n\r\n# After",
+    "<details>\n<summary></summary>\n\nhidden 中文😀 body\n\n</details>\n\n# After",
+    "> <details>\r> <summary></summary>\r>\r> hidden 中文😀 body\r>\r> </details>\r\r# After",
+  ]) {
+    await page.evaluate(source => window.viewer.setMarkdown(source, 0), source);
+    await settled(page);
+    const closed = await page.evaluate(() => window.viewer.scrollAnchors());
+    expect(closed.anchors.map(anchor => source.slice(anchor.source.start, anchor.source.end)))
+      .toEqual([source.split(/[\r\n]/)[0], "# After"]);
+    const hidden = source.indexOf("hidden");
+    for (const expanded of [true, false]) {
+      const action = await page.evaluate(() => {
+        const mv = window.viewer.reader.markview;
+        let point;
+        for (let y = 1; y < 100 && !point; y += 2)
+          for (let x = 1; x < 100; x += 2) {
+            mv.pointerMove(x, y);
+            if (mv.cursor() === "pointer") {
+              point = { x, y };
+              break;
+            }
+          }
+        if (!point) throw new Error("Missing disclosure header");
+        mv.cancelPointer();
+        mv.pointerDown(point.x, point.y);
+        return mv.pointerUp(point.x, point.y);
+      });
+      expect(action).toMatchObject({ kind: "document", reflowed: true });
+      await settled(page);
+      const batch = await page.evaluate(previous => window.viewer.scrollAnchors(previous), closed);
+      expect(batch.fromBlock).toBe(0);
+      expect(batch.anchors.some(anchor => anchor.source.start <= hidden && hidden < anchor.source.end))
+        .toBe(expanded);
+    }
+  }
+});
+
 test("viewer navigation waits for layout, expands TOC targets and preserves focus", async ({ page }) => {
   await host(page);
   const source = "# first\n\n" + "body text\n\n".repeat(1500)

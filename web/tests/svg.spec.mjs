@@ -248,6 +248,14 @@ test("unequal image, table, nested and folded content follow source across arriv
 	}, target);
 	await expect
 		.poll(() =>
+			page.evaluate(
+				(target) => Math.abs(window.readEditor() - target),
+				target,
+			),
+		)
+		.toBeLessThan(10);
+	await expect
+		.poll(() =>
 			page.evaluate(() =>
 				Math.abs(
 					window.readEditor() -

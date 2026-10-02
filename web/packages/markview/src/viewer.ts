@@ -7,6 +7,7 @@ import type {
 	MarkviewStats,
 	Outline,
 	SourceGeometry,
+	ScrollAnchors,
 } from "./types.js";
 
 export interface ReadingPosition {
@@ -40,6 +41,7 @@ export class Viewer {
 	#reason: ReadingPosition["reason"] = "reflow";
 	#lastRevision = -1;
 	#lastScroll = NaN;
+	#preserveOnReflow = true;
 	#section: string | null = null;
 	#outline: Outline | null = null;
 
@@ -127,12 +129,27 @@ export class Viewer {
 		this.#live();
 		return this.reader.markview.previewToSource(y);
 	}
+	/** Batches visible source-line geometry without per-offset source searches. */
+	scrollAnchors(previous?: ScrollAnchors): ScrollAnchors {
+		this.#live();
+		return this.reader.markview.scrollAnchors(previous);
+	}
 	readingPosition(): ReadingPosition | null {
 		this.#live();
 		return this.#position;
 	}
 	currentSection(): Heading | null {
 		return this.readingPosition()?.heading ?? null;
+	}
+
+	/** Sets an immediate document scroll position, cancelling deferred navigation. */
+	scrollTo(y: number): void {
+		this.#live();
+		this.#target = null;
+		this.#headingTarget = null;
+		this.#reason = "programmatic";
+		this.#preserveOnReflow = false;
+		this.reader.markview.setScroll(y);
 	}
 
 	/** Waits through ordinary budgeted layout; a new user gesture cancels waiting. */
@@ -187,6 +204,7 @@ export class Viewer {
 	}
 
 	#takeUserInput(): void {
+		this.#preserveOnReflow = true;
 		this.#target = null;
 		this.#headingTarget = null;
 		this.#reason = "user";
@@ -216,6 +234,7 @@ export class Viewer {
 			this.#reason === "user" && engine.scroll() !== this.#lastScroll;
 		if (
 			changed &&
+			this.#preserveOnReflow &&
 			!userMoved &&
 			this.#position?.documentVersion === stats.documentVersion &&
 			!this.#target &&
@@ -228,6 +247,7 @@ export class Viewer {
 			};
 			this.#reason = "reflow";
 		}
+		this.#preserveOnReflow = true;
 		this.#followTarget();
 		if (this.#target) return;
 		if (!stats.pending) this.#headingTarget = null;

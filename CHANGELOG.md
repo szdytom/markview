@@ -38,6 +38,10 @@ at the same level, without `[brackets]`.
 
 ### Fixed
 
+- Preserve CR source-line offsets and restrict text-free collapsed-container scroll anchors to their visible opening line.
+- Exclude relocated footnotes from MVaaC scroll anchors so early definitions cannot displace main prose synchronization.
+- Batch MVaaC scroll anchors in Rust and retain progressive-layout prefixes instead of repeating quadratic source queries on every revision.
+- Rebuild MVaaC editor scroll following around continuous, reversible position maps with shared endpoints and gesture ownership to prevent jumps and feedback.
 - Keep editor-to-preview scrolling continuous across wrapped image source and multiline SVG, including adjacent blank lines.
 - Parse adjacent SVG elements iteratively and preserve normalized code and math text extending beyond inline SVG boundaries.
 

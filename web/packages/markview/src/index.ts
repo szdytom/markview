@@ -7,14 +7,14 @@ import { LayoutUpdate } from "./layout-update.js";
 import { Markview } from "./markview.js";
 import { CanvasReader } from "./reader.js";
 import type { CanvasReaderOptions } from "./reader.js";
-import type { MarkviewOptions, MarkviewStats, Modifiers, ScrollMode, DocumentCursor, PointerAction, SourceRange, SourceGeometry, Heading, Outline } from "./types.js";
+import type { MarkviewOptions, MarkviewStats, Modifiers, ScrollMode, DocumentCursor, PointerAction, SourceRange, SourceGeometry, ScrollAnchors, Heading, Outline } from "./types.js";
 
 export { CanvasReader, LayoutUpdate, Markview };
 export { FontSet } from "./font-set.js";
 export { Viewer } from "./viewer.js";
 export type { ViewerOptions, ReadingPosition } from "./viewer.js";
 export type { ImagePixels, ImagePriority, ImageRequest, ImageResourceEvent, ResourceOptions } from "./resources.js";
-export type { CanvasReaderOptions, MarkviewOptions, MarkviewStats, Modifiers, ScrollMode, DocumentCursor, PointerAction, SourceRange, SourceGeometry, Heading, Outline };
+export type { CanvasReaderOptions, MarkviewOptions, MarkviewStats, Modifiers, ScrollMode, DocumentCursor, PointerAction, SourceRange, SourceGeometry, ScrollAnchors, Heading, Outline };
 export type { FontSource };
 
 /** How `init()` finds the binary and the host's text fonts. */

@@ -1,6 +1,40 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { ScrollSync, sourceToAnchor, anchorToSource } from "../dist/index.js";
+import {
+	ScrollMap,
+	ScrollSync,
+	sourceToAnchor,
+	anchorToSource,
+} from "../dist/index.js";
+
+test("scroll maps interpolate gaps and atomic content reversibly through both endpoints", () => {
+	const map = new ScrollMap(
+		[
+			{ source: 20, preview: 40 },
+			{ source: 60, preview: 1240 },
+			{ source: 100, preview: 1280 },
+			{ source: 100, preview: 1290 },
+			{ source: 120, preview: 1270 },
+			{ source: 150, preview: 1600 },
+		],
+		140,
+		1500,
+	);
+	let previous = -1;
+	for (let source = 0; source <= 140; source += 0.25) {
+		const preview = map.map("source", source);
+		assert.ok(preview >= previous);
+		assert.ok(Math.abs(map.map("preview", preview) - source) < 1e-10);
+		previous = preview;
+	}
+	assert.equal(map.map("source", 40), 640);
+	assert.equal(map.map("source", 80), 1260);
+	assert.equal(map.map("source", -10), 0);
+	assert.equal(map.map("source", 200), 1500);
+	assert.equal(map.map("preview", 2000), 140);
+	assert.equal(new ScrollMap([], 0, 100).map("source", 0), 0);
+	assert.equal(new ScrollMap([], 100, 0).map("preview", 0), 0);
+});
 
 test("a wrapped image follows its entire source extent in both directions", () => {
 	const source = { start: 5, end: 900 };

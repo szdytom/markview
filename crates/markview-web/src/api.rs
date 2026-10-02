@@ -245,6 +245,51 @@ impl Markview {
 		self.source_position_json(position)
 	}
 
+	/// Batches visible source-line extents without repeated source searches.
+	#[wasm_bindgen(js_name = scrollAnchors)]
+	pub fn scroll_anchors(
+		&self,
+		previous_pass: Option<String>,
+		from_block: usize,
+	) -> String {
+		let current = self.current_source_geometry();
+		let pass = current
+			.then_some(self.published.pass)
+			.flatten()
+			.map(|pass| pass.to_string());
+		let blocks = if current {
+			self.published.snapshot.blocks.len()
+		} else {
+			0
+		};
+		let from_block = if pass.is_some()
+			&& pass == previous_pass
+			&& from_block <= blocks
+		{
+			from_block
+		} else {
+			0
+		};
+		let anchors: Vec<_> = if current {
+			self.source_index.scroll_anchors(
+				&self.published.snapshot,
+				&self.horizontal,
+				from_block,
+			)
+		} else {
+			Vec::new()
+		}
+		.into_iter()
+		.map(|anchor| {
+			serde_json::json!({
+				"source": { "start": anchor.source.start, "end": anchor.source.end },
+				"top": anchor.top, "bottom": anchor.bottom,
+			})
+		})
+		.collect();
+		serde_json::json!({ "documentVersion": self.document_version, "revision": self.published.revision, "pass": pass, "fromBlock": from_block, "blocks": blocks, "anchors": anchors }).to_string()
+	}
+
 	/// `y` is measured from the document top, in CSS pixels.
 	#[wasm_bindgen(js_name = previewToSource)]
 	pub fn preview_to_source(&self, y: f32) -> String {

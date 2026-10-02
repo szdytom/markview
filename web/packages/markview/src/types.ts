@@ -80,5 +80,16 @@ export interface SourceGeometry {
 	source: SourceRange;
 	rect: { x: number; y: number; width: number; height: number };
 }
+/** Visible source-line extents collected in one published geometry traversal. */
+export interface ScrollAnchors {
+	documentVersion: number;
+	revision: number;
+	/** A progressive layout pass; `null` for a publication that cannot extend. */
+	pass: string | null;
+	/** Previously returned blocks reused by this batch; zero resets the anchors. */
+	fromBlock: number;
+	blocks: number;
+	anchors: { source: SourceRange; top: number; bottom: number }[];
+}
 export interface Heading { text: string; level: number; anchor: string; source: SourceRange; }
 export interface Outline { documentVersion: number; entries: Heading[]; }

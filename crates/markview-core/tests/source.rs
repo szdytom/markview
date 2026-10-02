@@ -41,6 +41,217 @@ fn original_unicode_coordinates_preserve_crlf_and_surrogate_boundaries() {
 }
 
 #[test]
+fn scroll_anchor_batches_cover_visible_lines_and_complete_atomic_ranges() {
+	let svg = "<svg width=\"80\" height=\"1200\">\r\n<rect/>\r\n</svg>";
+	let source = format!(
+		"# 中文😀\r\n\r\n{}\r\n\r\n{svg}\r\n\r\n<details><summary>closed</summary>\r\n\r\nhidden body\r\n\r\n</details>\r\n\r\n---\r\n\r\nAfter 😀",
+		"word ".repeat(160)
+	);
+	let doc = document::parse(source.clone());
+	let index = SourceIndex::new(&doc);
+	let mut images = Vec::new();
+	for block in &doc.blocks {
+		block.images(&mut images);
+	}
+	let mut resources = markview_core::image::ImageSnapshot::default();
+	resources.entries.insert(
+		images[0].src.clone(),
+		markview_core::image::ImageInfo {
+			version: 1,
+			size: Some((80, 1200)),
+			error: None,
+		},
+	);
+	let snapshot =
+		LayoutEngine::new().layout_with_images(&doc, &options(), &resources);
+	let anchors = index.scroll_anchors(&snapshot, &Default::default(), 0);
+	for text in ["中文😀", "word", svg, "After 😀", "---"] {
+		let byte = source.find(text).unwrap();
+		let offset = byte_to_utf16(&source, byte);
+		let anchor = anchors
+			.iter()
+			.find(|anchor| anchor.source.contains(&offset))
+			.unwrap();
+		let point = index
+			.source_to_preview(&snapshot, &Default::default(), byte)
+			.unwrap();
+		assert!(anchor.top <= point.rect.y + 0.01, "{text}: {anchor:?}");
+		assert!(
+			anchor.bottom >= point.rect.y + point.rect.h - 0.01,
+			"{text}: {anchor:?}"
+		);
+		if text == svg {
+			assert_eq!(
+				anchor.source,
+				offset..byte_to_utf16(&source, byte + svg.len())
+			);
+			assert!(anchor.bottom - anchor.top >= 1200.);
+		}
+		if text == "word" {
+			assert!(anchor.bottom - anchor.top > 200.);
+		}
+	}
+	let hidden = byte_to_utf16(&source, source.find("hidden body").unwrap());
+	assert!(!anchors.iter().any(|anchor| anchor.source.contains(&hidden)));
+	assert!(
+		anchors
+			.windows(2)
+			.all(|pair| pair[0].source.end < pair[1].source.start)
+	);
+}
+
+#[test]
+fn scroll_anchors_preserve_original_lines_across_all_markdown_line_endings() {
+	let documents = ["\r", "\n", "\r\n"].map(|newline| {
+		["# 中文😀", "", "Paragraph e\u{301}", "", "# Two"].join(newline)
+	});
+	for source in documents.into_iter().chain(std::iter::once(
+		"# 中文😀\r\rParagraph e\u{301}\r\n\r\n# Two\n\nLast 😀\r".to_owned(),
+	)) {
+		let doc = document::parse(source.clone());
+		let index = SourceIndex::new(&doc);
+		let snapshot = LayoutEngine::new().layout(&doc, &options());
+		let anchors = index.scroll_anchors(&snapshot, &Default::default(), 0);
+		let expected: Vec<_> =
+			["# 中文😀", "Paragraph e\u{301}", "# Two", "Last 😀"]
+				.into_iter()
+				.filter_map(|line| {
+					let start = source.find(line)?;
+					Some(
+						byte_to_utf16(&source, start)
+							..byte_to_utf16(&source, start + line.len()),
+					)
+				})
+				.collect();
+		assert_eq!(
+			anchors
+				.iter()
+				.map(|anchor| anchor.source.clone())
+				.collect::<Vec<_>>(),
+			expected
+		);
+		assert!(anchors.windows(2).all(|pair| pair[0].bottom < pair[1].top));
+	}
+}
+
+#[test]
+fn text_free_collapsed_containers_anchor_only_their_opening_line() {
+	for source in [
+		"---\r\ntitle: hidden 中文😀\r\nother: body\r\n---\r\n\r\n# After",
+		"<details>\n<summary></summary>\n\nhidden 中文😀 body\n\n</details>\n\n# After",
+		"> <details>\r> <summary></summary>\r>\r> hidden 中文😀 body\r>\r> </details>\r\r# After",
+	] {
+		let doc = document::parse(source);
+		let index = SourceIndex::new(&doc);
+		let mut engine = LayoutEngine::new();
+		let mut opts = options();
+		let snapshot = engine.layout(&doc, &opts);
+		let anchors = index.scroll_anchors(&snapshot, &Default::default(), 0);
+		assert_eq!(anchors.len(), 2);
+		assert_eq!(
+			anchors[0].source,
+			0..byte_to_utf16(source, source.find(['\r', '\n']).unwrap())
+		);
+		let hidden = byte_to_utf16(source, source.find("hidden").unwrap());
+		assert!(!anchors.iter().any(|anchor| anchor.source.contains(&hidden)));
+		opts.force_open = true;
+		let expanded = engine.layout(&doc, &opts);
+		assert!(
+			index
+				.scroll_anchors(&expanded, &Default::default(), 0)
+				.iter()
+				.any(|anchor| anchor.source.contains(&hidden))
+		);
+		let closed = engine.layout(&doc, &options());
+		assert_eq!(
+			index.scroll_anchors(&closed, &Default::default(), 0)[0].source,
+			anchors[0].source
+		);
+	}
+}
+
+#[test]
+fn scroll_anchors_exclude_relocated_footnotes_but_preserve_direct_navigation() {
+	for body in ["Long footnote 中文😀. ".repeat(100), "---".to_owned()] {
+		for early in [true, false] {
+			let prose = "Main paragraph.\n\n".repeat(20);
+			let note = format!("[^note]: {body}\n\n");
+			let source = if early {
+				format!("# Start[^note]\n\n{note}{prose}")
+			} else {
+				format!("# Start[^note]\n\n{prose}{note}")
+			};
+			let doc = document::parse(source.clone());
+			let index = SourceIndex::new(&doc);
+			let snapshot = LayoutEngine::new().layout(&doc, &options());
+			let anchors =
+				index.scroll_anchors(&snapshot, &Default::default(), 0);
+			let byte = source
+				.find(if body == "---" { "[^note]:" } else { &body })
+				.unwrap();
+			let offset = byte_to_utf16(&source, byte);
+			assert_eq!(
+				anchors.iter().any(|anchor| anchor.source.contains(&offset)),
+				!early
+			);
+			assert!(anchors.len() >= 21);
+			assert!(
+				anchors.windows(2).all(|pair| pair[0].bottom <= pair[1].top)
+			);
+			let point = index
+				.source_to_preview(&snapshot, &Default::default(), byte)
+				.unwrap();
+			assert!(point.source.contains(&byte), "{point:?}");
+			let last_prose = index
+				.source_to_preview(
+					&snapshot,
+					&Default::default(),
+					source.rfind("Main paragraph").unwrap(),
+				)
+				.unwrap();
+			assert!(point.rect.y > last_prose.rect.y);
+		}
+	}
+}
+
+#[test]
+fn incremental_scroll_anchor_batches_match_a_complete_geometry_traversal() {
+	let source = "# Start[^note]\n\n[^note]: 中文😀 footnote.\n\n".to_owned()
+		+ &"中文😀 paragraph.\n\n".repeat(120);
+	let doc = document::parse(source);
+	let index = SourceIndex::new(&doc);
+	let mut engine = LayoutEngine::new();
+	let mut layout = engine.begin_layout(&doc, &options(), &Default::default());
+	let mut blocks = 0;
+	let mut incremental = Vec::new();
+	while !layout.is_complete() {
+		engine.advance(&mut layout, &doc, std::time::Duration::from_millis(1));
+		incremental.extend(index.scroll_anchors(
+			layout.snapshot(),
+			&Default::default(),
+			blocks,
+		));
+		blocks = layout.snapshot().blocks.len();
+	}
+	let complete =
+		index.scroll_anchors(layout.snapshot(), &Default::default(), 0);
+	incremental.sort_by_key(|anchor| anchor.source.start);
+	assert_eq!(incremental.len(), complete.len());
+	for (incremental, complete) in incremental.iter().zip(&complete) {
+		assert_eq!(incremental.source, complete.source);
+		assert_eq!(
+			(incremental.top, incremental.bottom),
+			(complete.top, complete.bottom)
+		);
+	}
+	assert!(
+		index
+			.scroll_anchors(layout.snapshot(), &Default::default(), blocks)
+			.is_empty()
+	);
+}
+
+#[test]
 fn mapping_follows_wrapped_lines_nested_cells_and_reused_geometry() {
 	let source = format!(
 		"# repeat\r\n\r\n{}\r\n\r\n> nested **target** text\r\n\r\n| first | second |\r\n|---|---|\r\n| cell | final |\r\n\r\n```rust\r\nfirst\r\nsecond\r\nthird\r\n```\r\n",

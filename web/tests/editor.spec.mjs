@@ -9,7 +9,13 @@ const fonts = readdirSync(
 	.filter((name) => /\.(otf|ttf)$/.test(name))
 	.map((name) => `/assets/${name}`);
 
-async function host(page, markdown, options = {}, imageSize) {
+async function host(
+	page,
+	markdown,
+	options = {},
+	imageSize,
+	measureScroll = false,
+) {
 	await page.route("**/editor-host.html", (route) =>
 		route.fulfill({
 			contentType: "text/html",
@@ -26,8 +32,35 @@ async function host(page, markdown, options = {}, imageSize) {
 	);
 	await page.goto("/editor-host.html");
 	await page.evaluate(
-		async ({ markdown, options, fonts, imageSize }) => {
-			window.api = await import("/editor-api.js");
+		async ({ markdown, options, fonts, imageSize, measureScroll }) => {
+			window.api = await import(
+				measureScroll ? "/integration-api.js" : "/editor-api.js"
+			);
+			if (measureScroll) {
+				window.scrollWork = {
+					queries: 0,
+					anchors: 0,
+					maxBatchMs: 0,
+					maxReadMs: 0,
+				};
+				for (const name of ["sourceToPreview", "scrollAnchors"]) {
+					const original = window.api.Viewer.prototype[name];
+					window.api.Viewer.prototype[name] = function (...args) {
+						const begin = performance.now();
+						const result = original.apply(this, args);
+						if (name === "sourceToPreview")
+							window.scrollWork.queries++;
+						else {
+							window.scrollWork.anchors += result.anchors.length;
+							window.scrollWork.maxBatchMs = Math.max(
+								window.scrollWork.maxBatchMs,
+								performance.now() - begin,
+							);
+						}
+						return result;
+					};
+				}
+			}
 			window.changes = [];
 			window.editor = await window.api.Editor.mount(
 				document.querySelector("#host"),
@@ -36,6 +69,7 @@ async function host(page, markdown, options = {}, imageSize) {
 					markdown,
 					onChange: (change) => window.changes.push(change),
 					viewer: {
+						...options.viewer,
 						resources: imageSize && {
 							onResources(events) {
 								for (const event of events)
@@ -58,6 +92,28 @@ async function host(page, markdown, options = {}, imageSize) {
 					},
 				},
 			);
+			if (measureScroll) {
+				const measure = window.editor.view.requestMeasure.bind(
+					window.editor.view,
+				);
+				window.editor.view.requestMeasure = (request) =>
+					measure(
+						request?.key === window.editor
+							? {
+									...request,
+									read(view) {
+										const begin = performance.now();
+										const result = request.read(view);
+										window.scrollWork.maxReadMs = Math.max(
+											window.scrollWork.maxReadMs,
+											performance.now() - begin,
+										);
+										return result;
+									},
+								}
+							: request,
+					);
+			}
 			window.readEditor = () => {
 				const view = window.editor.view;
 				return view.posAtCoords(
@@ -72,12 +128,126 @@ async function host(page, markdown, options = {}, imageSize) {
 				);
 			};
 		},
-		{ markdown, options, fonts, imageSize },
+		{ markdown, options, fonts, imageSize, measureScroll },
 	);
 	await page.waitForFunction(
 		() => !window.editor.viewer.reader.markview.stats().pending,
 	);
 }
+
+test("large document loading, edits and reflow avoid long scroll-map reads", async ({
+	page,
+}) => {
+	await host(
+		page,
+		"# Large 中文😀\n\n" +
+			"Short paragraph with words and 中文😀.\n\n".repeat(2000),
+		{ viewer: { stepBudgetMs: 1 } },
+		undefined,
+		true,
+	);
+	for (const phase of ["loading", "editing", "reflow"]) {
+		if (phase !== "loading") {
+			await page.evaluate((phase) => {
+				for (const key of Object.keys(window.scrollWork))
+					window.scrollWork[key] = 0;
+				if (phase === "editing")
+					window.editor.view.dispatch({
+						changes: { from: 0, insert: "Inserted before.\n\n" },
+					});
+				else window.editor.setOptions({ split: 0.65 });
+			}, phase);
+		}
+		await page.waitForFunction(
+			() => !window.editor.viewer.reader.markview.stats().pending,
+		);
+		await expect
+			.poll(() => page.evaluate(() => window.scrollWork.anchors))
+			.toBeGreaterThan(2000);
+		const work = await page.evaluate(() => window.scrollWork);
+		console.log(`[scroll ${phase}] ${JSON.stringify(work)}`);
+		expect(work.queries, phase).toBeLessThan(100);
+		expect(work.anchors, phase).toBeLessThan(2200);
+		expect(work.maxBatchMs, phase).toBeLessThan(100);
+		expect(work.maxReadMs, phase).toBeLessThan(100);
+	}
+	await page.evaluate(() => {
+		const scroller = window.editor.view.scrollDOM;
+		scroller.scrollTop = scroller.scrollHeight;
+	});
+	await expect
+		.poll(() =>
+			page.evaluate(() => {
+				const engine = window.editor.viewer.reader.markview;
+				return engine.maxScroll() - engine.scroll();
+			}),
+		)
+		.toBeLessThan(2);
+});
+
+test("early-defined footnotes preserve main prose scroll alignment in both directions", async ({
+	page,
+}) => {
+	const markdown =
+		"# Footnotes[^long]\n\n[^long]: " +
+		"Lengthy footnote content with 中文😀. ".repeat(400) +
+		"\n\n" +
+		Array.from(
+			{ length: 100 },
+			(_, i) => `Paragraph ${i}: Main prose with some words.\n\n`,
+		).join("");
+	await host(page, markdown, { viewer: { stepBudgetMs: 1 } });
+	const note = await page.evaluate(() => {
+		const { viewer } = window.editor;
+		return {
+			top: viewer.sourceToPreview(
+				window.editor.getMarkdown().indexOf("Lengthy"),
+			).rect.y,
+			max: viewer.reader.markview.maxScroll(),
+		};
+	});
+	expect(note.top).toBeLessThan(note.max);
+	for (const paragraph of [25, 50, 75]) {
+		const start = markdown.indexOf(`Paragraph ${paragraph}:`);
+		await page.evaluate((start) => {
+			const view = window.editor.view;
+			view.scrollDOM.dispatchEvent(
+				new WheelEvent("wheel", { deltaY: 0, bubbles: true }),
+			);
+			view.dispatch({
+				effects: view.constructor.scrollIntoView(start, {
+					y: "start",
+					yMargin: view.documentPadding.top,
+				}),
+			});
+		}, start);
+		await expect
+			.poll(() => page.evaluate(() => window.readEditor()))
+			.toBe(start);
+		await expect
+			.poll(() =>
+				page.evaluate((start) => {
+					const { viewer } = window.editor;
+					return Math.abs(
+						viewer.reader.markview.scroll() -
+							viewer.sourceToPreview(start).rect.y,
+					);
+				}, start),
+			)
+			.toBeLessThan(5);
+	}
+	const start = markdown.indexOf("Paragraph 50:");
+	await page.evaluate((start) => {
+		const { viewer } = window.editor;
+		viewer.canvas.dispatchEvent(
+			new WheelEvent("wheel", { deltaY: 0, bubbles: true }),
+		);
+		viewer.scrollToSource(start);
+	}, start);
+	await expect
+		.poll(() => page.evaluate(() => window.readEditor()))
+		.toBe(start);
+});
 
 function documentText() {
 	return (
@@ -94,6 +264,137 @@ function documentText() {
 		"Ending paragraph.\n\n".repeat(120)
 	);
 }
+
+test("both panes scroll continuously across prose, blank lines, code and images", async ({
+	page,
+}) => {
+	const markdown =
+		"# Scroll\n\n" +
+		"A long paragraph with **formatting** and 中文😀. ".repeat(90) +
+		"\n\n\n\n```rust\n" +
+		Array.from({ length: 45 }, (_, i) => `let value_${i} = ${i};`).join(
+			"\n",
+		) +
+		"\n```\n\n\n\n![image](tall.png)\n\n\n\n" +
+		"Ending paragraph.\n\n".repeat(70);
+	await host(page, markdown, {}, [80, 1200]);
+	await page.waitForFunction(
+		() =>
+			window.editor.viewer.sourceToPreview(
+				window.editor.getMarkdown().indexOf("![image]"),
+			)?.rect.height >= 1200,
+	);
+	for (const origin of ["source", "preview"]) {
+		const samples = await page.evaluate(async (origin) => {
+			const { view, viewer } = window.editor;
+			const engine = viewer.reader.markview;
+			const scroller = view.scrollDOM;
+			const input = origin === "source" ? scroller : viewer.canvas;
+			input.dispatchEvent(
+				new WheelEvent("wheel", { deltaY: 0, bubbles: true }),
+			);
+			const maximum =
+				origin === "source"
+					? scroller.scrollHeight - scroller.clientHeight
+					: engine.maxScroll();
+			const samples = [];
+			for (const direction of [1, -1]) {
+				for (let step = 0; step <= 100; step++) {
+					const target =
+						maximum *
+						(direction === 1 ? step / 100 : 1 - step / 100);
+					if (origin === "source") scroller.scrollTop = target;
+					else viewer.scrollTo(target);
+					await new Promise((resolve) => setTimeout(resolve, 35));
+					samples.push({
+						direction,
+						source: scroller.scrollTop,
+						preview: engine.scroll(),
+					});
+				}
+			}
+			return samples;
+		}, origin);
+		for (let i = 1; i < samples.length; i++) {
+			if (samples[i].direction !== samples[i - 1].direction) continue;
+			for (const pane of ["source", "preview"])
+				expect(
+					(samples[i][pane] - samples[i - 1][pane]) *
+						samples[i].direction,
+					`${origin} drives ${pane}, step ${i}`,
+				).toBeGreaterThanOrEqual(-2);
+		}
+		expect(samples[100].source).toBeGreaterThan(2000);
+		expect(samples[100].preview).toBeGreaterThan(3000);
+		expect(samples.at(-1).source).toBeLessThan(2);
+		expect(samples.at(-1).preview).toBeLessThan(2);
+	}
+});
+
+test("scroll endpoints, rapid gesture takeover and resizing preserve stable panes", async ({
+	page,
+}) => {
+	await host(page, documentText());
+	await page.locator(".cm-content").click();
+	await page.keyboard.press("Control+End");
+	await page.evaluate(() => {
+		const scroller = window.editor.view.scrollDOM;
+		scroller.scrollTop = scroller.scrollHeight;
+	});
+	await expect
+		.poll(() =>
+			page.evaluate(() => {
+				const engine = window.editor.viewer.reader.markview;
+				return engine.maxScroll() - engine.scroll();
+			}),
+		)
+		.toBeLessThan(2);
+	await page.locator("canvas").focus();
+	await page.keyboard.press("Home");
+	await expect
+		.poll(() => page.evaluate(() => window.editor.view.scrollDOM.scrollTop))
+		.toBeLessThan(2);
+	await page.keyboard.press("End");
+	await expect
+		.poll(() =>
+			page.evaluate(() => {
+				const scroller = window.editor.view.scrollDOM;
+				return (
+					scroller.scrollHeight -
+					scroller.clientHeight -
+					scroller.scrollTop
+				);
+			}),
+		)
+		.toBeLessThan(2);
+	await page.keyboard.press("Home");
+	await expect
+		.poll(() => page.evaluate(() => window.editor.view.scrollDOM.scrollTop))
+		.toBeLessThan(2);
+	await page.mouse.wheel(0, 850);
+	await page.waitForTimeout(50);
+	await page.locator(".cm-scroller").hover();
+	await page.mouse.wheel(0, 250);
+	await page.waitForTimeout(50);
+	await page.locator("canvas").hover();
+	await page.mouse.wheel(0, -80);
+	await page.waitForTimeout(800);
+	const read = () =>
+		page.evaluate(() => ({
+			source: window.editor.view.scrollDOM.scrollTop,
+			preview: window.editor.viewer.reader.markview.scroll(),
+			selection: window.editor.view.state.selection.main.head,
+		}));
+	const before = await read();
+	await page.waitForTimeout(300);
+	expect(await read()).toEqual(before);
+	await page.evaluate(() => window.editor.setOptions({ split: 0.65 }));
+	await page.waitForTimeout(800);
+	const resized = await read();
+	await page.waitForTimeout(300);
+	expect(await read()).toEqual(resized);
+	expect(resized.selection).toBe(before.selection);
+});
 
 for (const [name, image] of [
 	[
