@@ -16,7 +16,9 @@ use markview_core::text::{Affinity, TextSelection};
 use std::path::PathBuf;
 use std::sync::Arc;
 use winit::dpi::PhysicalPosition;
-use winit::event::{DeviceId, ElementState, MouseButton, WindowEvent};
+use winit::event::{
+	DeviceId, ElementState, MouseButton, TouchPhase, WindowEvent,
+};
 use winit::keyboard::ModifiersState;
 use winit::window::WindowId;
 
@@ -508,6 +510,90 @@ fn a_fractional_line_wheel_coasts_on_windows_and_eases_elsewhere() {
 	);
 	assert_eq!(app.readers.session.scrolling.offset, whole * 0.5);
 	assert!(!app.readers.session.scroll_animating());
+}
+
+#[test]
+fn a_native_pixel_stream_follows_contact_and_stops_where_the_hand_stops() {
+	let (mut app, _) = reader(&"A scrolling paragraph.\n\n".repeat(100), 760.0);
+	app.interaction.cursor = point_over(&app, 0);
+	let feed = |app: &mut App<StubProxy>, dy: f32, phase: TouchPhase| {
+		app.trackpad_scroll(0.0, dy, phase, true);
+	};
+	feed(&mut app, -40.0, TouchPhase::Started);
+	feed(&mut app, -60.0, TouchPhase::Moved);
+	feed(&mut app, -20.0, TouchPhase::Moved);
+	assert_eq!(
+		app.readers.session.scrolling.offset, 120.0,
+		"contact pans by exactly the deltas, with no easing and no lead"
+	);
+	feed(&mut app, -10.0, TouchPhase::Ended);
+	assert_eq!(app.readers.session.scrolling.offset, 130.0);
+	// The deltas were the whole motion: when the OS stops sending them, the
+	// page rests where the last one put it and nothing of the reader's own
+	// carries on.
+	app.readers.session.advance_scroll(
+		Instant::now() + Duration::from_secs(1),
+		app.viewport(),
+	);
+	app.advance_gestures(Instant::now() + Duration::from_millis(16));
+	assert_eq!(app.readers.session.scrolling.offset, 130.0);
+	assert!(!app.readers.session.scroll_animating());
+}
+
+#[test]
+fn a_native_pixel_stream_reverses_with_the_first_opposite_delta() {
+	let (mut app, _) = reader(&"A scrolling paragraph.\n\n".repeat(100), 760.0);
+	app.interaction.cursor = point_over(&app, 0);
+	let feed = |app: &mut App<StubProxy>, dy: f32, phase: TouchPhase| {
+		app.trackpad_scroll(0.0, dy, phase, true);
+	};
+	feed(&mut app, -50.0, TouchPhase::Started);
+	feed(&mut app, -30.0, TouchPhase::Moved);
+	assert_eq!(app.readers.session.scrolling.offset, 80.0);
+	feed(&mut app, 12.0, TouchPhase::Moved);
+	assert_eq!(app.readers.session.scrolling.offset, 68.0);
+}
+
+#[test]
+fn a_native_stream_start_cancels_a_running_wheel_momentum() {
+	let (mut app, _) = reader(&"A scrolling paragraph.\n\n".repeat(100), 760.0);
+	// The packet path owns the offset and coasts under momentum of its own.
+	app.scroll_wheel_packet(30.0);
+	app.readers.session.advance_scroll(
+		Instant::now() + Duration::from_millis(100),
+		app.viewport(),
+	);
+	assert!(app.readers.session.scroll_animating());
+	app.interaction.cursor = point_over(&app, 0);
+	app.trackpad_scroll(0.0, -10.0, TouchPhase::Started, true);
+	let resting = app.readers.session.scrolling.offset;
+	assert!(resting > 0.0, "the momentum had already moved the page");
+	assert!(!app.readers.session.scroll_animating());
+	app.readers.session.advance_scroll(
+		Instant::now() + Duration::from_secs(1),
+		app.viewport(),
+	);
+	assert_eq!(app.readers.session.scrolling.offset, resting);
+}
+
+#[test]
+fn a_pixel_stream_without_native_inertia_still_coasts_on_release() {
+	let (mut app, _) = reader(&"A scrolling paragraph.\n\n".repeat(100), 760.0);
+	app.interaction.cursor = point_over(&app, 0);
+	let feed = |app: &mut App<StubProxy>, dy: f32, phase: TouchPhase| {
+		app.trackpad_scroll(0.0, dy, phase, false);
+	};
+	feed(&mut app, -40.0, TouchPhase::Started);
+	for _ in 0..4 {
+		feed(&mut app, -40.0, TouchPhase::Moved);
+	}
+	feed(&mut app, 0.0, TouchPhase::Ended);
+	let released = app.readers.session.scrolling.offset;
+	app.advance_gestures(Instant::now() + Duration::from_millis(16));
+	assert!(
+		app.readers.session.scrolling.offset > released,
+		"an unmarked stream keeps the reader's own coast on release"
+	);
 }
 
 #[test]

@@ -306,12 +306,16 @@ impl<P: super::SendEvent> App<P> {
 		caption_action
 	}
 
-	/// Pixel scrolling already carries the OS speed and, on macOS, momentum.
+	/// Pixel scrolling already carries the OS speed. A native stream also
+	/// carries the OS's own momentum, so its deltas are the whole motion: none
+	/// are eased, none are loaned a lead, and none are followed by a coast of
+	/// the reader's own when the stream ends.
 	pub(super) fn trackpad_scroll(
 		&mut self,
 		dx: f32,
 		dy: f32,
 		phase: TouchPhase,
+		native: bool,
 	) {
 		let now = Instant::now();
 		if phase == TouchPhase::Cancelled {
@@ -329,7 +333,9 @@ impl<P: super::SendEvent> App<P> {
 			self.interaction.wheel = Default::default();
 			let surface = self.touch_surface();
 			self.gestures.trackpad = Some((surface, now));
-			self.gestures.motion = Some((surface, Motion::new(now)));
+			if !native {
+				self.gestures.motion = Some((surface, Motion::new(now)));
+			}
 		}
 		let surface = self
 			.gestures
@@ -365,7 +371,7 @@ impl<P: super::SendEvent> App<P> {
 			motion.sample(delta, now);
 		}
 		self.pan_gesture(surface, delta);
-		if phase == TouchPhase::Ended && !cfg!(target_os = "macos") {
+		if phase == TouchPhase::Ended && !native {
 			self.gestures.coasting = self
 				.gestures
 				.motion

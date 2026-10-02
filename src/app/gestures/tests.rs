@@ -164,21 +164,21 @@ fn native_touch_and_trackpad_route_through_reader_and_chrome() {
 	app.handle_touch(touch(1, TouchPhase::Ended, 600.0, 300.0));
 	app.cancel_gestures();
 	app.interaction.cursor = (600.0, 300.0);
-	app.trackpad_scroll(0.0, -50.0, TouchPhase::Started);
+	app.trackpad_scroll(0.0, -50.0, TouchPhase::Started, false);
 	assert_eq!(app.readers.session.scrolling.offset, 150.0);
 	app.gestures.motion.as_mut().unwrap().1 =
 		Motion::new(Instant::now() - Duration::from_millis(20));
 	app.interaction.cursor = (10.0, 10.0);
-	app.trackpad_scroll(0.0, -30.0, TouchPhase::Moved);
+	app.trackpad_scroll(0.0, -30.0, TouchPhase::Moved, false);
 	assert_eq!(
 		app.readers.session.scrolling.offset, 180.0,
 		"the initial surface owns the whole trackpad gesture"
 	);
-	app.trackpad_scroll(0.0, 0.0, TouchPhase::Ended);
+	app.trackpad_scroll(0.0, 0.0, TouchPhase::Ended, false);
 	assert!(app.gestures.coasting);
 	app.advance_gestures(Instant::now() + Duration::from_millis(16));
 	assert!(app.readers.session.scrolling.offset > 180.0);
-	app.trackpad_scroll(0.0, 0.0, TouchPhase::Cancelled);
+	app.trackpad_scroll(0.0, 0.0, TouchPhase::Cancelled, false);
 	assert!(!app.gestures.coasting);
 	let size = app.preferences.values.font_size;
 	app.handle_touch(touch(1, TouchPhase::Started, 500.0, 300.0));

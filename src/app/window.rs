@@ -526,7 +526,12 @@ impl<P: super::SendEvent> App<P> {
 					{
 						// TODO: implement viewport zoom without changing the document layout.
 					} else {
-						self.trackpad_scroll(dx, dy, phase);
+						self.trackpad_scroll(
+							dx,
+							dy,
+							phase,
+							cfg!(target_os = "macos"),
+						);
 					}
 					return;
 				}
