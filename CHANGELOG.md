@@ -23,6 +23,7 @@ at the same level, without `[brackets]`.
 
 ### Changed
 
+- Expand MVaaC demo fonts with variable Latin weights and italics plus Chinese medium/semibold faces, using npmmirror with a jsDelivr fallback.
 - Use version-pinned CDN WOFF2 faces for MVaaC demo Latin and Simplified Chinese text, and persist font downloads across reloads with Cache Storage.
 - Remove the MVaaC demo’s redundant reading hint.
 - Redesign the MVaaC demo with restrained typesetting, square controls, a centered width-limited workspace and a compact header with a GitHub link.
@@ -41,6 +42,7 @@ at the same level, without `[brackets]`.
 
 ### Fixed
 
+- Keep MVaaC disclosure summaries in their intended font and spacing by supplying their required 600 weight.
 - Evict MVaaC demo font cache batches that fail validation so malformed HTTP 200 responses cannot prevent startup recovery.
 - Preserve CR source-line offsets and restrict text-free collapsed-container scroll anchors to their visible opening line.
 - Exclude relocated footnotes from MVaaC scroll anchors so early definitions cannot displace main prose synchronization.

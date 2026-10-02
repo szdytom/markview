@@ -496,7 +496,7 @@ Run with `pnpm --dir web test` against `web/dist`. The harness must:
 * The stdlib-only PNG decoder lives in `web/tests/png.mjs`.
 * The `wasm-bindgen` CLI 0.2.129 is vendored at
   `.tools/wasm-bindgen-0.2.129/wasm-bindgen`; the crate pins `=0.2.129`.
-* The demo emits 16 committed subset faces as host assets; `scripts/check_web_font_coverage.py`
+* The regression host emits 16 committed subset faces as test assets; `scripts/check_web_font_coverage.py`
   guards the demo document against tofu. It unions every face, so a style gap
   can still slip through.
 

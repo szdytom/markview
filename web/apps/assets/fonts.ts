@@ -1,37 +1,56 @@
 const cdn = "https://cdn.jsdelivr.net/gh/";
 const sans = `${cdn}notofonts/noto-cjk@Sans2.004/Sans/`;
-const fontsource = "https://cdn.jsdelivr.net/npm/@fontsource/";
+export const fontFallbacks = new Map<string, URL>();
 
-function webFonts(family: string, subset: string, styles: readonly string[]) {
-	// The SC v4 faces retain names recognized by the bundled stylesheet.
-	const version = family.endsWith("-sc") ? "4.5.12" : "5.2.9";
-	return styles.map(
-		(style) =>
+function webFonts(
+	family: string,
+	version: string,
+	subset: string,
+	styles: readonly string[],
+	variable = false,
+) {
+	const scope = variable ? "@fontsource-variable" : "@fontsource";
+	return styles.map((style) => {
+		const file = `files/${family}-${subset}-${style}.woff2`;
+		const url = new URL(
+			`https://registry.npmmirror.com/${scope}/${family}/${version}/files/${file}`,
+		);
+		fontFallbacks.set(
+			url.href,
 			new URL(
-				`${family}@${version}/files/${family}-${subset}-${style}.woff2`,
-				fontsource,
+				`https://cdn.jsdelivr.net/npm/${scope}/${family}@${version}/${file}`,
 			),
-	);
+		);
+		return url;
+	});
 }
 
 // Explicit web subsets, independent of the regression fixtures.
 export const fonts = [
-	...webFonts("noto-serif", "latin", [
+	// One variable face covers every weight from 100 to 900.
+	...webFonts(
+		"noto-serif",
+		"5.3.0",
+		"latin",
+		["wght-normal", "wght-italic"],
+		true,
+	),
+	...webFonts(
+		"noto-sans",
+		"5.3.0",
+		"latin",
+		["wght-normal", "wght-italic"],
+		true,
+	),
+	...webFonts("noto-sans-mono", "5.3.0", "latin", ["wght-normal"], true),
+	// The SC v4 faces retain names recognized by the bundled stylesheet.
+	...webFonts("noto-serif-sc", "4.5.12", "chinese-simplified", [
 		"400-normal",
-		"700-normal",
-		"400-italic",
-	]),
-	...webFonts("noto-sans", "latin", [
-		"400-normal",
-		"700-normal",
-		"400-italic",
-	]),
-	...webFonts("noto-sans-mono", "latin", ["400-normal", "700-normal"]),
-	...webFonts("noto-serif-sc", "chinese-simplified", [
-		"400-normal",
+		"500-normal",
+		"600-normal",
 		"700-normal",
 	]),
-	...webFonts("noto-sans-sc", "chinese-simplified", [
+	...webFonts("noto-sans-sc", "4.5.12", "chinese-simplified", [
 		"400-normal",
 		"500-normal",
 		"700-normal",

@@ -294,14 +294,20 @@ downloads. `/editor.html` redirects to `/index.html#edit`. Sample drafts remain
 in memory while switching documents; download changes before reloading. The
 legacy low-level reader regression host lives under `tests/fixtures/reader` and
 is built only for tests. The SPA composes the font and resource helpers with
-version-pinned Noto font files from jsDelivr. Latin and common Simplified Chinese
-text use Fontsource WOFF2 subsets; full CJK monospace OTF and bitmap color emoji
-TTF remain upstream files. Its UI serif face reuses the same WOFF2 bytes through
+version-pinned Noto font files. Fontsource WOFF2 downloads use npmmirror,
+falling back to jsDelivr on HTTP or network failure. Latin Serif and Sans cover
+100–900 weights in upright and italic variable faces; Latin Mono covers the
+same upright weights. Simplified Chinese Serif supplies 400/500/600/700 and
+Sans supplies 400/500/700 static faces. The 600 Serif face keeps disclosure
+summaries from falling through to unrelated fonts and Emoji spaces. Full CJK
+monospace OTF and bitmap color emoji TTF remain upstream jsDelivr files.
+Its UI serif face reuses the same WOFF2 bytes through
 the browser's `FontFace` API, avoiding a separate CSS download. The demo
 requires network access on first load and stores successful font responses in
 Cache Storage (`markview-demo-fonts-v1`), keyed by their version-pinned URLs.
 Reloads reuse these bytes without contacting the CDN; changed URLs fetch new
-files. Storage failures fall back to downloading, and failed HTTP responses are
+files. Recovered fallback bytes are cached under the primary URL as well.
+Storage failures fall back to downloading, and failed HTTP responses are
 never cached. A fully downloaded batch that fails validation is evicted before
 reporting the startup error, allowing retries to fetch recovered CDN files,
 including when malformed bytes came from an existing cache entry.

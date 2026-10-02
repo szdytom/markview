@@ -1,5 +1,5 @@
 import { FontLoader } from "@markview/fonts";
-import { fonts } from "../../assets/fonts.js";
+import { fontFallbacks, fonts } from "../../assets/fonts.js";
 
 export interface FontDownload {
 	url: string;
@@ -8,6 +8,18 @@ export interface FontDownload {
 	total: number;
 	complete: boolean;
 	cached: boolean;
+}
+
+async function fetchFont(input: RequestInfo | URL, options?: RequestInit) {
+	const fallback = fontFallbacks.get(String(input));
+	let response: Response;
+	try {
+		response = await fetch(input, options);
+	} catch (error) {
+		if (!fallback) throw error;
+		return fetch(fallback, options);
+	}
+	return !response.ok && fallback ? fetch(fallback, options) : response;
 }
 
 export async function loadDemoFonts(
@@ -40,7 +52,7 @@ export async function loadDemoFonts(
 				?.match(download.url)
 				.catch(() => undefined);
 			download.cached = !!cached;
-			const response = cached ?? (await fetch(input, options));
+			const response = cached ?? (await fetchFont(input, options));
 			if (!response.ok || !response.body) return response;
 			if (download.url === fonts[0]!.href) serif = response.clone();
 			if (cache && !cached)
@@ -83,6 +95,7 @@ export async function loadDemoFonts(
 	document.fonts.add(
 		await new FontFace("Reading serif", await serif!.arrayBuffer(), {
 			display: "swap",
+			weight: "100 900",
 		}).load(),
 	);
 	await Promise.all(writes);

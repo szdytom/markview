@@ -23,7 +23,12 @@ Regression fixtures derive from the existing licensed Noto subsets:
 | TTC | Uncompressed Serif + Sans collection validates and paints |
 | Invalid/truncated bytes | Recognizable rejection, including input index; no partial font-set installation |
 
-This set does not establish complete conformance for variable fonts, CFF2 or
+The demo's TrueType variable Noto Serif, Sans and Mono WOFF2 faces were also
+verified on 2026-10-03. The browser regression compares disclosure and bold
+italic geometry with a Serif-only reference and checks ordinary 600-weight
+spaces at 4.68 logical pixels for an 18-pixel font size.
+
+This set does not establish complete conformance for arbitrary variable fonts, CFF2 or
 compressed collections. Metadata/private WOFF tables are not exposed by the
 component. Browser CSS font registration is unrelated to the WASM text faces.
 Test fixtures never enter package assets; tests check that original text-font

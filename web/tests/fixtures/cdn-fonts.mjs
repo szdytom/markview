@@ -2,7 +2,8 @@ import { fileURLToPath } from "node:url";
 import { readFile } from "node:fs/promises";
 import { deflateSync } from "node:zlib";
 
-export const cdnFonts = "https://cdn.jsdelivr.net/**";
+export const cdnFonts =
+	/^https:\/\/(?:registry\.npmmirror\.com|cdn\.jsdelivr\.net)\//;
 
 // Lossless WOFF fixtures exercise the WASM decoder without new binary assets.
 function woff(sfnt) {
@@ -50,7 +51,6 @@ export async function mockCdnFonts(page) {
 			.replace(/\.(otf|ttf)$/, "-subset.otf")
 			.replace("NotoColorEmoji-subset.otf", "NotoColorEmoji-subset.ttf");
 		if (url.pathname.endsWith(".woff2")) {
-			const family = url.pathname.split("/")[3].split("@")[0];
 			const families = {
 				"noto-serif": "NotoSerif",
 				"noto-sans": "NotoSans",
@@ -58,6 +58,22 @@ export async function mockCdnFonts(page) {
 				"noto-serif-sc": "NotoSerifCJKsc",
 				"noto-sans-sc": "NotoSansCJKsc",
 			};
+			const file = url.pathname.split("/").pop();
+			const [, family] = file.match(
+				/^(.*)-(?:latin|chinese-simplified)-/,
+			);
+			if (file.includes("-wght-")) {
+				name = `${families[family]}-Variable${file.includes("-italic.") ? "Italic" : ""}-subset.woff2`;
+				return route.fulfill({
+					contentType: "font/woff2",
+					path: fileURLToPath(
+						new URL(
+							`../../../crates/markview-web/tests/fonts/${name}`,
+							import.meta.url,
+						),
+					),
+				});
+			}
 			const [, weight, style] = url.pathname.match(
 				/-(\d+)-(normal|italic)\.woff2$/,
 			);
@@ -68,14 +84,19 @@ export async function mockCdnFonts(page) {
 						? "Bold"
 						: weight === "500"
 							? "Medium"
-							: "Regular";
+							: weight === "600"
+								? "SemiBold"
+								: "Regular";
 			name = `${families[family]}-${face}-subset.otf`;
-			if (family === "noto-serif" && face === "Regular")
+			if (
+				face === "SemiBold" ||
+				(family === "noto-serif-sc" && face === "Medium")
+			)
 				return route.fulfill({
 					contentType: "font/woff2",
 					path: fileURLToPath(
 						new URL(
-							"../../../crates/markview-web/tests/fonts/NotoSerif-Regular-subset.woff2",
+							`../../../crates/markview-web/tests/fonts/${name.replace(".otf", ".woff2")}`,
 							import.meta.url,
 						),
 					),
