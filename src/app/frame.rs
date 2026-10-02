@@ -102,9 +102,9 @@ impl Layout {
 			CONTROL_SIZE
 		};
 		let count = if cfg!(target_os = "android") {
-			5.0
+			6.0
 		} else {
-			4.0
+			5.0
 		};
 		let toolbar_x =
 			right - (count * toolbar_button_size + (count - 1.0) * CONTROL_GAP);
@@ -474,7 +474,7 @@ mod tests {
 			WindowLayout::Windows,
 			WindowLayout::Linux,
 		] {
-			for width in [500.0, 800.0, 1200.0] {
+			for width in [536.0, 800.0, 1200.0] {
 				let base =
 					Layout::new(style, false, width, 300.0, false, false);
 				for widths in
@@ -547,7 +547,7 @@ mod tests {
 			WindowLayout::Linux,
 		] {
 			for native in [false, true] {
-				for width in [500.0, 800.0, 1200.0] {
+				for width in [536.0, 800.0, 1200.0] {
 					let layout =
 						Layout::new(style, native, width, 300.0, false, false);
 					assert!(layout.tabs.w >= 150.0);

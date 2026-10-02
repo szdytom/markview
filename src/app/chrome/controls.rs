@@ -375,6 +375,7 @@ pub(super) fn toolbar_controls_at(
 			lang.search_placeholder(),
 			Command::SearchOpen,
 		),
+		(icons::REVEAL, lang.toolbar_reveal(), Command::RevealFolder),
 		(icons::OPEN, lang.toolbar_open(), Command::Open),
 		(icons::EXPORT, lang.toolbar_export(), Command::Export),
 		(icons::SETTINGS, lang.toolbar_settings(), Command::Settings),

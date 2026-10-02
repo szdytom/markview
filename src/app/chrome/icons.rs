@@ -10,7 +10,10 @@ pub(super) const SEARCH: &[IconPath] =
 
 pub(super) const TABS: &[IconPath] = markview_icon::icon!("assets/ui/tabs.svg");
 
-pub(super) const OPEN: &[IconPath] = markview_icon::icon!("assets/ui/open.svg");
+pub(super) const OPEN: &[IconPath] =
+	markview_icon::icon!("assets/ui/file-plus.svg");
+pub(super) const REVEAL: &[IconPath] =
+	markview_icon::icon!("assets/ui/folder-open.svg");
 pub(super) const EXPORT: &[IconPath] =
 	markview_icon::icon!("assets/ui/export.svg");
 pub(super) const SETTINGS: &[IconPath] =

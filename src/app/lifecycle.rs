@@ -30,7 +30,7 @@ impl<P: super::SendEvent> ApplicationHandler<Event> for App<P> {
 					self.args.width,
 					self.args.height,
 				))
-				.with_min_inner_size(LogicalSize::new(500, 300));
+				.with_min_inner_size(LogicalSize::new(536, 300));
 			#[cfg(target_os = "macos")]
 			{
 				use winit::platform::macos::WindowAttributesExtMacOS;

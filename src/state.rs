@@ -37,6 +37,8 @@ pub(crate) enum Command {
 	OpenUrl,
 	NewPage,
 	Open,
+	/// Reveal the active document's folder in the file manager.
+	RevealFolder,
 	Smaller,
 	Larger,
 	Narrower,

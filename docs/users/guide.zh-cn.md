@@ -64,6 +64,7 @@ APK 安装、导入文档与移动端操作见 [Android 使用指南](android.md
 | 按键 | 操作 |
 |:--|:--|
 | `Ctrl+O` | 打开文件 |
+| `Ctrl+Shift+O` | 在文件管理器中显示当前文档所在的文件夹 |
 | `/` / `Ctrl+F` | 查找文档内容 |
 | `Enter` / `Shift+Enter`、`F3` / `Shift+F3` | 下一个 / 上一个搜索结果 |
 | `Ctrl+B` | 打开目录 |

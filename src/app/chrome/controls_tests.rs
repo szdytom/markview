@@ -159,7 +159,7 @@ fn panel_toggles_codeblock_wrapping() {
 }
 #[test]
 fn controls_fit_minimum_window_and_panel_focus_has_no_document_actions() {
-	for (width, height) in [(500.0, 300.0), (820.0, 600.0), (1200.0, 800.0)] {
+	for (width, height) in [(536.0, 300.0), (820.0, 600.0), (1200.0, 800.0)] {
 		let mut shaper = crate::test_support::shaper();
 		let panel = panel_rect(width, height);
 		if width < 640.0 {
@@ -201,6 +201,7 @@ fn controls_fit_minimum_window_and_panel_focus_has_no_document_actions() {
 			toolbar.iter().map(|b| b.action).collect::<Vec<_>>(),
 			vec![
 				Command::NewPage,
+				Command::RevealFolder,
 				Command::Open,
 				Command::Export,
 				Command::Settings,
@@ -349,6 +350,7 @@ fn the_toolbar_and_panel_close_buttons_carry_icons() {
 fn compiled_icons_stay_inside_the_unit_box() {
 	for icon in [
 		icons::OPEN,
+		icons::REVEAL,
 		icons::EXPORT,
 		icons::DOWNLOAD,
 		icons::REDOWNLOAD,

@@ -41,6 +41,7 @@ at the same level, without `[brackets]`.
 - Send browser-style web/image headers with configurable `user-agent` and `accept-language`, HTML acceptance for articles and a separate capitalized font UA.
 - Include the browser UA OS comment in About diagnostics and copied issue reports.
 - Open URL and file tabs immediately, show loading and persistent errors in the reader, and keep background web completions attached to their original tabs.
+- Add a "Reveal" toolbar button and <kbd>Ctrl+Shift+O</kbd> that show the active document's folder in the file manager; the Open button becomes a file-plus icon and the minimum window width rises to 536 px to keep the tab strip's floor.
 
 ### Fixed
 

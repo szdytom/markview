@@ -5,6 +5,7 @@
 | Keys | Action |
 |:--|:--|
 | `Ctrl+O` | Open a file |
+| `Ctrl+Shift+O` | Show the active document's folder in the file manager |
 | `/` | Start an empty document search |
 | `Ctrl+F` | Find the selection or reopen the previous query |
 | `Enter` / `Shift+Enter`, `F3` / `Shift+F3` | Next or previous search result |

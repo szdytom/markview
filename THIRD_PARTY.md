@@ -35,7 +35,7 @@ source and original license texts are available in Cargo's registry packages.
 | CodeMirror | Web editor state, input and Markdown editing | MIT |
 | usvg | Compile-time parsing of the SVG icon sources | Apache-2.0 OR MIT |
 | ttf-parser | OpenType glyph outlines for SVG and Mermaid text | Apache-2.0 OR MIT |
-| Lucide | Geometry of the `open`, `close`, `minus` and `plus` icons in `assets/ui` | ISC |
+| Lucide | Geometry of the `folder-open`, `file-plus`, `close`, `minus` and `plus` icons in `assets/ui` | ISC |
 
 KaTeX mathematical fonts are embedded by `ratex-katex-fonts`. Their SIL Open
 Font License is reproduced in `licenses/KaTeX-OFL.txt`; keep that file with
