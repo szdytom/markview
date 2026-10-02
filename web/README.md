@@ -20,6 +20,9 @@ reference; its scope exclusions do not apply to the reusable components.
 - `tests/fixtures/reader`: legacy renderer regression host, built only by `pnpm test`.
 
 Official WASM enables WOFF/WOFF2; hosts explicitly supply per-instance font sets.
+The SPA loads version-pinned Noto Latin, Simplified Chinese and emoji fonts from
+jsDelivr, so its first load needs network access. Test font subsets are used only
+by the regression harness.
 
 ## Build and validate
 

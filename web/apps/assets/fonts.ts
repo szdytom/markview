@@ -1,36 +1,29 @@
-// esbuild emits these host-owned files as hashed assets beside both example applications.
-import serif from "../../../crates/markview-core/tests/fonts/NotoSerif-Regular-subset.otf";
-import serifBold from "../../../crates/markview-core/tests/fonts/NotoSerif-Bold-subset.otf";
-import serifItalic from "../../../crates/markview-core/tests/fonts/NotoSerif-Italic-subset.otf";
-import sans from "../../../crates/markview-core/tests/fonts/NotoSans-Regular-subset.otf";
-import sansBold from "../../../crates/markview-core/tests/fonts/NotoSans-Bold-subset.otf";
-import sansItalic from "../../../crates/markview-core/tests/fonts/NotoSans-Italic-subset.otf";
-import mono from "../../../crates/markview-core/tests/fonts/NotoSansMono-Regular-subset.otf";
-import monoBold from "../../../crates/markview-core/tests/fonts/NotoSansMono-Bold-subset.otf";
-import cjkSerif from "../../../crates/markview-core/tests/fonts/NotoSerifCJKsc-Regular-subset.otf";
-import cjkSerifBold from "../../../crates/markview-core/tests/fonts/NotoSerifCJKsc-Bold-subset.otf";
-import cjkSans from "../../../crates/markview-core/tests/fonts/NotoSansCJKsc-Regular-subset.otf";
-import cjkSansMedium from "../../../crates/markview-core/tests/fonts/NotoSansCJKsc-Medium-subset.otf";
-import cjkSansBold from "../../../crates/markview-core/tests/fonts/NotoSansCJKsc-Bold-subset.otf";
-import cjkMono from "../../../crates/markview-core/tests/fonts/NotoSansMonoCJKsc-Regular-subset.otf";
-import cjkMonoBold from "../../../crates/markview-core/tests/fonts/NotoSansMonoCJKsc-Bold-subset.otf";
-import emoji from "../../../crates/markview-core/tests/fonts/NotoColorEmoji-subset.ttf";
+const cdn = "https://cdn.jsdelivr.net/gh/";
+const latin = `${cdn}notofonts/noto-fonts@ffebf8c1ee449e544955a7e813c54f9b73848eac/hinted/ttf/`;
+const serif = `${cdn}notofonts/noto-cjk@Serif2.003/Serif/SubsetOTF/SC/`;
+const sans = `${cdn}notofonts/noto-cjk@Sans2.004/Sans/`;
 
+// Load upstream faces with their full language coverage, independent of test fixtures.
 export const fonts = [
-	serif,
-	serifBold,
-	serifItalic,
-	sans,
-	sansBold,
-	sansItalic,
-	mono,
-	monoBold,
-	cjkSerif,
-	cjkSerifBold,
-	cjkSans,
-	cjkSansMedium,
-	cjkSansBold,
-	cjkMono,
-	cjkMonoBold,
-	emoji,
-].map((url) => new URL(url, import.meta.url));
+	...[
+		"NotoSerif/NotoSerif-Regular.ttf",
+		"NotoSerif/NotoSerif-Bold.ttf",
+		"NotoSerif/NotoSerif-Italic.ttf",
+		"NotoSans/NotoSans-Regular.ttf",
+		"NotoSans/NotoSans-Bold.ttf",
+		"NotoSans/NotoSans-Italic.ttf",
+		"NotoSansMono/NotoSansMono-Regular.ttf",
+		"NotoSansMono/NotoSansMono-Bold.ttf",
+	].map((file) => new URL(file, latin)),
+	...["NotoSerifSC-Regular.otf", "NotoSerifSC-Bold.otf"].map(
+		(file) => new URL(file, serif),
+	),
+	...[
+		"SubsetOTF/SC/NotoSansSC-Regular.otf",
+		"SubsetOTF/SC/NotoSansSC-Medium.otf",
+		"SubsetOTF/SC/NotoSansSC-Bold.otf",
+		"Mono/NotoSansMonoCJKsc-Regular.otf",
+		"Mono/NotoSansMonoCJKsc-Bold.otf",
+	].map((file) => new URL(file, sans)),
+	new URL(`${cdn}googlefonts/noto-emoji@v2.051/fonts/NotoColorEmoji.ttf`),
+];

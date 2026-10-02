@@ -1,8 +1,10 @@
 import { expect, test } from "@playwright/test";
 import { readFile } from "node:fs/promises";
 import { decodePng, inkPixels } from "./png.mjs";
+import { cdnFonts, mockCdnFonts } from "./fixtures/cdn-fonts.mjs";
 
 test.setTimeout(120_000);
+test.beforeEach(async ({ page }) => mockCdnFonts(page));
 
 async function open(page, hash = "read") {
 	await page.goto(`/index.html#${hash}`);
@@ -194,7 +196,8 @@ test("empty source offers a working edit action and old editor links open the SP
 test("font startup failure offers recovery and keeps controls disabled", async ({
 	page,
 }) => {
-	await page.route("**/assets/*.otf", (route) => route.abort());
+	const fail = (route) => route.abort();
+	await page.route(cdnFonts, fail);
 	await page.goto("/index.html");
 	await expect(page.getByRole("alert")).toContainText("could not start", {
 		timeout: 30_000,
@@ -207,7 +210,7 @@ test("font startup failure offers recovery and keeps controls disabled", async (
 		"aria-busy",
 		"false",
 	);
-	await page.unroute("**/assets/*.otf");
+	await page.unroute(cdnFonts, fail);
 	await page.getByRole("button", { name: "Try again" }).click();
 	await expect(page.locator("body")).toHaveAttribute("data-ready", "true", {
 		timeout: 90_000,

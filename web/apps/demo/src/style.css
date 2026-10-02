@@ -1,13 +1,13 @@
 @font-face {
 	font-family: "Reading serif";
-	src: url("../../../../crates/markview-core/tests/fonts/NotoSerif-Regular-subset.otf")
-		format("opentype");
+	src: url("https://cdn.jsdelivr.net/gh/notofonts/noto-fonts@ffebf8c1ee449e544955a7e813c54f9b73848eac/hinted/ttf/NotoSerif/NotoSerif-Regular.ttf")
+		format("truetype");
 	font-display: swap;
 }
 @font-face {
 	font-family: "Reading serif";
-	src: url("../../../../crates/markview-core/tests/fonts/NotoSerif-Italic-subset.otf")
-		format("opentype");
+	src: url("https://cdn.jsdelivr.net/gh/notofonts/noto-fonts@ffebf8c1ee449e544955a7e813c54f9b73848eac/hinted/ttf/NotoSerif/NotoSerif-Italic.ttf")
+		format("truetype");
 	font-style: italic;
 	font-display: swap;
 }
@@ -397,6 +397,15 @@ h1 em {
 		Georgia,
 		serif;
 	color: var(--accent);
+}
+.loading-detail {
+	margin: 0;
+	max-width: 100%;
+	padding: 0 24px;
+	font-size: 12px;
+	line-height: 1.6;
+	text-align: center;
+	overflow-wrap: anywhere;
 }
 .error {
 	padding: 16px 20px;

@@ -99,7 +99,10 @@
 				<div id="desk" aria-label="Document">
 					<div class="loading" role="status">
 						<span class="loading-book" aria-hidden="true">M</span>
-						<p>Preparing the reading room…</p>
+						<p id="loading-text">Starting font downloads…</p>
+						<p id="loading-detail" class="loading-detail">
+							Connecting to the font CDN.
+						</p>
 					</div>
 				</div>
 				<div class="empty-state" hidden>
@@ -123,7 +126,7 @@
 						data-state="loading"
 						><span class="status-dot" aria-hidden="true"></span
 						><span id="engine-text"
-							>Loading fonts &amp; renderer</span
+							>Starting font downloads…</span
 						></span
 					><span id="notice" role="status" aria-live="polite"></span
 					><span class="mode-hint" id="mode-hint"

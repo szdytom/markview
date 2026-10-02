@@ -20,8 +20,10 @@ async function hostPage(page) {
   await page.goto("/font-host.html");
 }
 
-test("text fonts are separate esbuild assets and absent from wasm", () => {
+test("test fonts belong to the regression host and are absent from the SPA and wasm", () => {
   const wasm = readFileSync(`${site}/markview_web_bg.wasm`);
+  const demo = readFileSync(`${site}/main.js`, "utf8") + readFileSync(`${site}/main.css`, "utf8");
+  expect(demo).not.toMatch(/Noto[\w-]+-subset/);
   const faces = readdirSync(fontDir).filter((file) => /\.(otf|ttf)$/.test(file));
   expect(assets).toHaveLength(faces.length);
   for (const face of faces) {
@@ -33,7 +35,7 @@ test("text fonts are separate esbuild assets and absent from wasm", () => {
   }
 });
 
-test("demo waits for host fonts before creating readers and fetches each once", async ({ page }) => {
+test("regression host waits for local fonts before creating readers and fetches each once", async ({ page }) => {
   const responses = [];
   page.on("response", (response) => {
     if (/\/assets\/.*\.(otf|ttf)$/.test(response.url())) responses.push(response);

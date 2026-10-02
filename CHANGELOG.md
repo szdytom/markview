@@ -21,6 +21,11 @@ at the same level, without `[brackets]`.
 
 ## Unreleased
 
+### Changed
+
+- Load the MVaaC SPA’s Noto fonts from version-pinned CDN URLs and keep tiny subset fonts in the regression harness only.
+- Show font download counts, received bytes or percentages and renderer/page preparation stages during MVaaC SPA startup.
+
 ### Added
 
 - Unify the MVaaC demos into a reading/editing SPA with shared documents, an embedded component guide, file opening, downloads and a compact responsive workspace.

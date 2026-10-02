@@ -38,7 +38,7 @@ const alias = Object.fromEntries(
 	),
 );
 
-// --- 2. The demo site: a self-contained static directory ---------------------
+// --- 2. The demo site: static files with CDN-hosted fonts ---------------------
 
 const site = join(root, "dist");
 rmSync(site, { recursive: true, force: true });
@@ -56,7 +56,7 @@ await esbuild.build({
 	sourcemap: true,
 	target: "es2022",
 	alias,
-	loader: { ".otf": "file", ".ttf": "file", ".md": "text" },
+	loader: { ".md": "text" },
 	assetNames: "assets/[name]-[hash]",
 });
 
@@ -69,7 +69,7 @@ cpSync(
 );
 
 console.log(
-	"built web/dist (index.html, main.js, main.css, markview_web_bg.wasm, assets/)",
+	"built web/dist (index.html, main.js, main.css, markview_web_bg.wasm)",
 );
 
 // Smoke hosts also consume built public package entries.

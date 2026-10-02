@@ -1,9 +1,8 @@
 import "./style.css";
 import { Editor } from "@markview/editor";
-import { loadFontSet } from "@markview/fonts";
 import { browserResources } from "@markview/resources";
 import type { MarkviewStats } from "@markview/viewer";
-import { fonts } from "../../assets/fonts.js";
+import { loadDemoFonts, type FontDownload } from "./fonts.js";
 import { documents } from "./documents.js";
 
 const dom = {
@@ -11,6 +10,8 @@ const dom = {
 	copy: document.querySelector<HTMLButtonElement>("#copy-selection")!,
 	workspace: document.querySelector<HTMLElement>(".workspace")!,
 	desk: document.querySelector<HTMLElement>("#desk")!,
+	loadingText: document.querySelector<HTMLElement>("#loading-text")!,
+	loadingDetail: document.querySelector<HTMLElement>("#loading-detail")!,
 	sample: document.querySelector<HTMLSelectElement>("#sample")!,
 	file: document.querySelector<HTMLInputElement>("#file")!,
 	name: document.querySelector<HTMLElement>("#document-name")!,
@@ -43,6 +44,40 @@ let disposed = false;
 
 function setText(node: HTMLElement, text: string): void {
 	if (node.textContent !== text) node.textContent = text;
+}
+
+function setLoading(text: string, detail: string): void {
+	if (disposed || dom.engine.dataset.state === "error") return;
+	setText(dom.loadingText, text);
+	setText(dom.loadingDetail, detail);
+	setText(dom.engineText, text);
+}
+
+function downloadProgress(downloads: readonly FontDownload[]): void {
+	const completed = downloads.filter((font) => font.complete).length;
+	if (completed === downloads.length) {
+		setLoading(
+			"Preparing fonts and renderer…",
+			"All fonts downloaded. Initializing the renderer and registering fonts.",
+		);
+		return;
+	}
+	const current =
+		downloads.find((font) => !font.complete && font.received > 0) ??
+		downloads.find((font) => !font.complete)!;
+	const bytes = (value: number) =>
+		value < 1_000_000
+			? `${Math.round(value / 1000)} KB`
+			: `${(value / 1_000_000).toFixed(1)} MB`;
+	const received = current.total
+		? `${Math.min(99, Math.floor((current.received / current.total) * 100))}% received · ${bytes(current.received)} / ${bytes(current.total)}`
+		: current.received
+			? `${bytes(current.received)} received`
+			: "Waiting for download…";
+	setLoading(
+		`Downloading fonts · ${completed}/${downloads.length} complete`,
+		`${current.name} · ${received}`,
+	);
 }
 
 function notify(message: string): void {
@@ -183,13 +218,17 @@ function download(): void {
 }
 
 async function boot(): Promise<void> {
-	let fontSet: Awaited<ReturnType<typeof loadFontSet>> | undefined;
+	let fontSet: Awaited<ReturnType<typeof loadDemoFonts>> | undefined;
 	try {
-		fontSet = await loadFontSet({ sources: fonts });
+		fontSet = await loadDemoFonts(downloadProgress);
 		if (disposed) {
 			fontSet.destroy();
 			return;
 		}
+		setLoading(
+			"Preparing page…",
+			"Building the document outline and laying out Markdown.",
+		);
 		editor = await Editor.mount(dom.desk, {
 			markdown: documents.welcome.markdown,
 			toc: !narrow.matches,

@@ -289,7 +289,10 @@ downloads. `/editor.html` redirects to `/index.html#edit`. Sample drafts remain
 in memory while switching documents; download changes before reloading. The
 legacy low-level reader regression host lives under `tests/fixtures/reader` and
 is built only for tests. The SPA composes the font and resource helpers with
-licensed subset font assets under `apps/assets`; no fonts ship in the libraries.
+version-pinned Noto font files from jsDelivr, including Latin, Simplified Chinese
+and emoji coverage. Its CSS serif faces use the same CDN URLs. The demo requires
+network access on first load; tiny pinned subsets stay under `tests/fixtures`
+for deterministic regression tests. No text fonts ship in the demo or libraries.
 
 ## Build and test
 
