@@ -35,6 +35,9 @@ at the same level, without `[brackets]`.
 - Clear cancelled wheel momentum targets and start paused or reversed packet streams from the displayed position, preventing jumps and motion against new input.
 - Restore the high-resolution wheel stream's packet momentum dropped by the interaction refactor, so a Windows touchpad's inertia rides across the gaps between packets again (#3).
 - Spend the speed a paused wheel stream leaves behind, whose stale carry sent the page on the old way and made a reversal answer nothing (#3).
+- Continue a wheel stream through the flushes a batchy touchpad delivers after a silence and the whole detents it rounds out mid-gesture, instead of killing the momentum into a dead stop and a lurch (#3).
+- Still the page within a beat once its packets go quiet, by lifting the lead and dying at a faster quiet rate, so a hand that halts on the pad no longer leaves a long coast (#3).
+- Cap the chase and adapt the lead to packet spacing, let a late flush keep the stream's decaying speed instead of claiming one from its silence-long distance, and believe a packet's own rate no faster than the chase — a flush lands as a dense burst of large packets whose rates name speeds no finger reached — so all of them arrive as glides instead of lunges and freezes (#3).
 - Make the syntax-highlight cache regression test independent of background worker scheduling.
 - Keep single-instance authentication tokens private, bound IPC requests and reject forwarding after the event loop closes.
 - Forward macOS desktop-opened documents before a secondary instance exits and register surviving independent windows when enabling single-instance mode.

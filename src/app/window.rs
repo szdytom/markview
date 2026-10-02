@@ -528,9 +528,12 @@ impl<P: super::SendEvent> App<P> {
 					// Windows hands a touchpad's inertia over in packets the
 					// reader has to give momentum of its own; a whole-detent
 					// wheel, and every other desktop's stream, is one eased
-					// step per event.
-					let packets =
-						cfg!(windows) && super::pointer::high_resolution(delta);
+					// step per event. A whole detent inside a live stream is
+					// the OS rounding a packet, not a wheel: the stream
+					// adopts it, or easing it would kill the momentum.
+					let packets = cfg!(windows)
+						&& (super::pointer::high_resolution(delta)
+							|| self.readers.session.wheel_stream_alive(now));
 					let travel = if packets {
 						Self::scroll_wheel_packet
 					} else {

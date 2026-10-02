@@ -969,6 +969,11 @@ impl ReaderSession {
 		}
 		self.scrolling.coast_wheel_by(dy, now);
 	}
+	/// Whether a wheel packet stream is live enough to adopt a whole-detent
+	/// event, which the OS rounds out of a fractional stream mid-gesture.
+	pub(crate) fn wheel_stream_alive(&self, now: Instant) -> bool {
+		self.scrolling.wheel_stream_alive(now)
+	}
 	pub(crate) fn animate_scroll_to(&mut self, target: f32, now: Instant) {
 		self.pending_anchor = None;
 		self.follow_update = false;
