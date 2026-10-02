@@ -6,17 +6,22 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const root = dirname(fileURLToPath(import.meta.url));
-const tsc = join(root, "node_modules/typescript/bin/tsc");
 
 // --- 1. The package: ESM bundle + declarations -------------------------------
 
 const pkg = join(root, "packages/markview");
-execFileSync(process.execPath, [join(pkg, "build.mjs")], { stdio: "inherit" });
-for (const name of ["scroll-sync", "resources", "fonts", "web", "editor"]) {
+for (const name of [
+	"markview",
+	"scroll-sync",
+	"resources",
+	"fonts",
+	"web",
+	"editor",
+]) {
 	execFileSync(
 		process.execPath,
 		[join(root, "packages/build-package.mjs"), name],
-		{ stdio: "inherit" },
+		{ stdio: "inherit", cwd: root },
 	);
 }
 const alias = Object.fromEntries(

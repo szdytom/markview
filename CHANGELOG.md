@@ -72,6 +72,7 @@ This is a hardening release: hostile-input fuzzing removed panics in parsing, in
 
 ### Changed
 
+- Simplify MVaaC builds with pnpm setup/build commands, a cross-platform Python WASM builder and a TypeScript-only rebuild path.
 - Point the Comrak patch at upstream again, now carrying the fence-offset fix and the multiline inline source-position fix.
 - Align publishable web package versions with Markview and synchronize them during releases.
 - Load MVaaC text fonts from host URLs or bytes during initialization; the esbuild demo emits separate font assets, while KaTeX stays embedded in wasm.

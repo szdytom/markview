@@ -3,14 +3,17 @@
 	"private": true,
 	"type": "module",
 	"scripts": {
-		"build": "node build.mjs",
+		"setup": "node scripts/wasm.mjs --setup",
+		"build": "pnpm build:wasm && pnpm build:ts",
+		"build:wasm": "node scripts/wasm.mjs",
+		"build:ts": "node build.mjs",
 		"typecheck": "tsc --noEmit -p packages/markview && tsc --noEmit -p packages/fonts && tsc --noEmit -p packages/resources && tsc --noEmit -p packages/web && tsc --noEmit -p packages/scroll-sync && tsc --noEmit -p packages/editor && tsc --noEmit -p apps/demo",
 		"serve": "node serve.mjs",
 		"test": "pnpm test:scroll-sync && node tests/build-reader.mjs && playwright test",
-		"format": "prettier --write packages/fonts/src packages/markview/src/font-*.ts apps/assets packages/scroll-sync/src packages/scroll-sync/tests packages/editor/src packages/resources/src packages/web/src apps/demo tests/build-reader.mjs tests/workspace.spec.mjs build.mjs packages/markview/src/viewer.ts packages/build-package.mjs tests/editor.spec.mjs check-packages.mjs tests/font-sets.spec.mjs measure-fonts.mjs tests/svg.spec.mjs",
-		"lint": "pnpm typecheck && prettier --check packages/fonts/src packages/markview/src/font-*.ts apps/assets packages/scroll-sync/src packages/scroll-sync/tests packages/editor/src packages/resources/src packages/web/src apps/demo tests/build-reader.mjs tests/workspace.spec.mjs build.mjs packages/markview/src/viewer.ts packages/build-package.mjs tests/editor.spec.mjs check-packages.mjs tests/font-sets.spec.mjs measure-fonts.mjs tests/svg.spec.mjs",
+		"format": "prettier --write packages/fonts/src packages/markview/src/font-*.ts apps/assets packages/scroll-sync/src packages/scroll-sync/tests packages/editor/src packages/resources/src packages/web/src apps/demo tests/build-reader.mjs tests/workspace.spec.mjs build.mjs packages/markview/src/viewer.ts packages/build-package.mjs tests/editor.spec.mjs check-packages.mjs tests/font-sets.spec.mjs measure-fonts.mjs tests/svg.spec.mjs scripts/wasm.mjs",
+		"lint": "pnpm typecheck && prettier --check packages/fonts/src packages/markview/src/font-*.ts apps/assets packages/scroll-sync/src packages/scroll-sync/tests packages/editor/src packages/resources/src packages/web/src apps/demo tests/build-reader.mjs tests/workspace.spec.mjs build.mjs packages/markview/src/viewer.ts packages/build-package.mjs tests/editor.spec.mjs check-packages.mjs tests/font-sets.spec.mjs measure-fonts.mjs tests/svg.spec.mjs scripts/wasm.mjs",
 		"test:packages": "node check-packages.mjs",
-		"test:scroll-sync": "node --test packages/scroll-sync/tests/*.test.mjs"
+		"test:scroll-sync": "pnpm --dir packages/scroll-sync test"
 	},
 	"devDependencies": {
 		"@playwright/test": "1.63.0-alpha-2026-08-31",

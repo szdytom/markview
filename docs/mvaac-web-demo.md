@@ -23,7 +23,7 @@ PDF export, search, outlines. Configuration is injected from JavaScript.
 ```
 crates/markview-core/            Rust: the engine. Owns ProgressiveLayout.
 crates/markview-web/             Rust: wasm-bindgen front end.
-scripts/build-web.sh             cargo + wasm-bindgen -> the package's wasm/
+scripts/build-web.py             cargo + wasm-bindgen -> the package's wasm/
 web/                             pnpm monorepo root (private)
   package.json                   private, "workspaces" via pnpm-workspace.yaml
   pnpm-workspace.yaml
@@ -343,9 +343,12 @@ it earlier would clear positions whose blocks have not been laid out yet.
 
 ## Build (frozen)
 
+This is the original pipeline. For current cross-platform setup and daily
+TypeScript development, use [the build guide](mvaac.md#build-and-test).
+
 ```sh
-scripts/build-web.sh      # cargo build --target wasm32 + wasm-bindgen -> web/packages/markview/wasm/
-pnpm --dir web build      # esbuild + tsc: package dist and the demo site in web/dist/
+python3 scripts/build-web.py # cargo build --target wasm32 + wasm-bindgen -> web/packages/markview/wasm/
+pnpm --dir web build:ts   # esbuild + tsc: package dist and the demo site in web/dist/
 pnpm --dir web test       # Playwright
 node web/serve.mjs        # serves web/dist on http://127.0.0.1:4173
 ```

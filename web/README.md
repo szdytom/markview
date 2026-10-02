@@ -23,14 +23,29 @@ Official WASM enables WOFF/WOFF2; hosts explicitly supply per-instance font sets
 
 ## Build and validate
 
+Install Node.js 22+, pnpm, Python 3.11+ and [Rust via rustup](https://rustup.rs).
+From the repository root, the same commands work in Windows shells, macOS and Linux:
+
 ```sh
 pnpm --dir web install
-scripts/build-web.sh
+pnpm --dir web run setup
 pnpm --dir web build
+pnpm --dir web serve
+```
+
+`setup` prepares the browser target and matching bindings tool automatically.
+Use `pnpm --dir web build:ts` for subsequent TypeScript-only changes and reload
+the page. `build` includes an incremental WASM build; `build:wasm` rebuilds only
+the engine. See [build and test](../docs/mvaac.md#build-and-test) for prerequisites,
+generated directories and advanced tool/output-path configuration.
+
+To validate a build:
+
+```sh
 pnpm --dir web typecheck
+pnpm --dir web exec playwright install chromium
 pnpm --dir web test
 pnpm --dir web test:packages
-pnpm --dir web serve
 ```
 
 Build examples and tests consume package `dist` entries rather than source

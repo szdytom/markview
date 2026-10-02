@@ -52,7 +52,7 @@ let wasmPromise: Promise<void> | null = null;
  * plain sibling reference survives bundling, and `wasmUrl` covers the case
  * where it does not.
  *
- * @throws when the binary is missing — build it with `scripts/build-web.sh`.
+ * @throws when the binary is missing — build it with `pnpm --dir web build`.
  * @throws when a host font cannot be fetched or is not a valid font file.
  */
 export function init(options?: InitOptions): Promise<void> {
@@ -88,7 +88,7 @@ async function loadWasm(options?: InitOptions): Promise<void> {
 		await __wbg_init({ module_or_path: source as InitInput });
 	} catch (error) {
 		throw new Error(
-			"the Markview wasm module could not be loaded; run scripts/build-web.sh "
+			"the Markview wasm module could not be loaded; run pnpm --dir web build "
 			+ "and make sure markview_web_bg.wasm is served beside the module, or pass "
 			+ `init({ wasmUrl }): ${String(error)}`,
 			{ cause: error },

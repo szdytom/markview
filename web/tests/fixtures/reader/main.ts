@@ -66,7 +66,7 @@ function fail(error: unknown): void {
 	dom.engine.dataset.state = "error";
 	set(dom.engineText, "Engine failed");
 	set(dom.error, `The Markview wasm module did not start: ${String(error)}. `
-		+ "Build it with scripts/build-web.sh and serve web/dist over http.");
+		+ "Build it with pnpm --dir web build and serve web/dist over http.");
 	dom.error.hidden = false;
 	console.error("markview demo:", error);
 }

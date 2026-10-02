@@ -9,6 +9,8 @@ import esbuild from "esbuild";
 import { chromium } from "@playwright/test";
 
 const root = dirname(fileURLToPath(import.meta.url));
+const pnpm = process.env.npm_execpath;
+if (!pnpm) throw new Error("Run this check with pnpm --dir web test:packages.");
 const consumer = mkdtempSync(join(tmpdir(), "markview-packages-"));
 let browser;
 try {
@@ -26,12 +28,16 @@ try {
 		const { version } = JSON.parse(
 			readFileSync(join(root, "packages", pkg, "package.json"), "utf8"),
 		);
-		execFileSync("pnpm", ["pack", "--pack-destination", consumer], {
-			cwd: join(root, "packages", pkg),
-			stdio: "pipe",
-		});
+		execFileSync(
+			process.execPath,
+			[pnpm, "pack", "--pack-destination", consumer],
+			{
+				cwd: join(root, "packages", pkg),
+				stdio: "pipe",
+			},
+		);
 		dependencies[`@markview/${name}`] =
-			`file:${join(consumer, `markview-${name}-${version}.tgz`)}`;
+			`file:${join(consumer, `markview-${name}-${version}.tgz`).replaceAll("\\", "/")}`;
 	}
 	writeFileSync(
 		join(consumer, "package.json"),
@@ -52,7 +58,7 @@ try {
 				)
 				.join(""),
 	);
-	execFileSync("pnpm", ["install", "--ignore-scripts"], {
+	execFileSync(process.execPath, [pnpm, "install", "--ignore-scripts"], {
 		cwd: consumer,
 		stdio: "pipe",
 	});

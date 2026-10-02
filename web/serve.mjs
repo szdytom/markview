@@ -15,7 +15,6 @@ if (!existsSync(path.join(root, "index.html"))) {
     [
       `serve.mjs: the built demo site is missing (no index.html under ${root}).`,
       "Build it first:",
-      "  scripts/build-web.sh",
       "  pnpm --dir web build",
     ].join("\n"),
   );
