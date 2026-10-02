@@ -12,7 +12,14 @@ const root = dirname(fileURLToPath(import.meta.url));
 const consumer = mkdtempSync(join(tmpdir(), "markview-packages-"));
 let browser;
 try {
-	const names = ["viewer", "editor", "resources", "fonts", "web"];
+	const names = [
+		"viewer",
+		"scroll-sync",
+		"editor",
+		"resources",
+		"fonts",
+		"web",
+	];
 	const dependencies = {};
 	for (const name of names) {
 		const pkg = name === "viewer" ? "markview" : name;
@@ -51,6 +58,7 @@ try {
 	});
 	const main = `
 import { Editor } from "@markview/editor";
+import { ScrollSync, sourceToAnchor, anchorToSource } from "@markview/scroll-sync";
 import { Viewer, init, type SourceGeometry } from "@markview/viewer";
 import { loadFontSet } from "@markview/fonts";
 import { browserResources, decodeImage } from "@markview/resources";
@@ -58,6 +66,9 @@ import { CanvasReader } from "@markview/web";
 const fonts = await loadFontSet({sources:["/body.otf"]},{wasmUrl:"/viewer.wasm"});
 const editor = await Editor.mount(document.body,{markdown:"# Hello",viewer:{fonts,resources:browserResources()}});
 const geometry: SourceGeometry | null = editor.viewer.sourceToPreview(0);
+const sync = new ScrollSync(editor.viewer.outline().documentVersion);
+const anchor = sourceToAnchor({offset:0,top:15},{start:0,end:7},() => ({top:10,bottom:20}));
+if (!sync.isCurrent(sync.begin("source")!) || anchorToSource(anchor,{start:0,end:7},() => ({top:10,bottom:20})) !== 15) throw new Error("scroll sync failed");
 console.log(geometry, Viewer, CanvasReader, decodeImage);
 editor.destroy();
 fonts.destroy();

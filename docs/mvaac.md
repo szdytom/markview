@@ -10,6 +10,7 @@ application remains a read-only Markdown reader; Web editing belongs to
 | --- | --- |
 | `@markview/viewer` | Engine, canvas input/frame loop, source geometry, reading events and TOC navigation |
 | `@markview/editor` | CodeMirror Markdown editing, split layout and automatic bidirectional source following |
+| `@markview/scroll-sync` | Pure source-anchor projection, input ownership and versioned synchronization requests |
 | `@markview/fonts` | Explicit font-file descriptors, loading and reusable caches |
 | `@markview/resources` | Explicit browser image transport/decoding, base URL and request configuration |
 | `@markview/web` | Deprecated compatibility re-export of viewer and legacy image helpers |
@@ -97,13 +98,74 @@ draggable and keyboard accessible. Component styles are scoped to its root;
 `--mv-*` CSS variables provide host color overrides.
 
 Following uses the source position at the top visible line and its fractional
-vertical displacement. It follows within long paragraphs/code, not by whole
-scroll percentage. Input in either pane takes ownership, cancels pending motion
+vertical displacement through the rendered unit's complete source extent.
+Images and inline SVG keep continuous progress across every source wrap or line;
+adjacent blank lines cannot advance past the end of that unit. It follows within
+long paragraphs/code, not by whole scroll percentage. Input in either pane takes ownership, cancels pending motion
 from the other, and prevents programmatic follow events feeding back. Following
 never focuses the other pane or changes its selection. Editor changes map the
 previous reading reference through CodeMirror changes. See the
 [source, version and TOC reference](mvaac-source-api.md) for pending geometry,
 reflow preservation, atomic content and collapsed-content behavior.
+
+The editor delegates projection and synchronization policy to
+`@markview/scroll-sync`; its CodeMirror adapter measures source ranges and applies
+scroll coordinates. The core has no runtime dependencies, DOM, editor APIs or
+WASM initialization. Other editors can reuse the same logic:
+
+```ts
+import {
+  ScrollSync, sourceToAnchor, anchorToSource,
+  type SourceViewport, type SourceRange, type SourceExtent,
+} from "@markview/scroll-sync";
+import type { ReadingPosition } from "@markview/viewer";
+
+// Supply these operations from the host editor.
+declare const source: {
+  viewport(): SourceViewport;
+  measure(range: SourceRange): SourceExtent | null;
+  scrollTo(top: number): void;
+};
+const sync = new ScrollSync(viewer.outline().documentVersion);
+
+function sourceMoved() {
+  const request = sync.begin("source");
+  if (!request) return;
+  const viewport = source.viewport();
+  const range = viewer.sourceToPreview(viewport.offset)?.source ?? null;
+  const anchor = sourceToAnchor(viewport, range, r => source.measure(r));
+  if (sync.isCurrent(request)) viewer.scrollToSource(anchor.offset, anchor.fraction);
+}
+
+function previewMoved(position: ReadingPosition) {
+  const request = sync.begin("preview", position.documentVersion);
+  if (!request) return;
+  const range = viewer.sourceToPreview(position.offset)?.source ?? null;
+  const top = anchorToSource(position, range, r => source.measure(r));
+  if (sync.isCurrent(request) && top !== null) source.scrollTo(top);
+}
+```
+
+On source input, call `sync.takeControl("source")` and
+`viewer.cancelNavigation()`. On preview input or explicit TOC navigation, call
+`sync.takeControl("preview")`. Do not take control for a programmatic follow
+event: `begin` rejects events from the follower. After replacing Markdown, call
+`sync.setDocumentVersion(viewer.outline().documentVersion)` before following.
+
+The source adapter measures the **entire supplied range**, including all wrapped
+lines. An empty range measures the caret's visual line. Use consistent source
+coordinates for the viewport and measurements; they may be pixels or fractional
+line units. Offsets refer to the exact shared string in UTF-16, including its
+actual line endings. Missing measurements retain the requested offset with zero
+progress; `Viewer.scrollToSource` continues waiting for unpublished geometry.
+
+For asynchronous measurements or extension/webview messaging, send the plain
+`SyncRequest` ticket with the work and call `isCurrent` immediately before
+applying its result. A newer request, user takeover, document replacement or
+`cancel()` invalidates it. Call `cancel()` when removing the host or invalidating
+an in-flight geometry snapshot, then schedule a new request if still mounted.
+The core supplies no event listeners, timers or transport. Layout publication
+and reading-anchor preservation remain owned by the viewer.
 
 The default TOC uses the complete parsed heading list. Hosts can read
 `editor.viewer.outline()` and own their own UI, or disable the component's panel.
@@ -243,7 +305,7 @@ The WASM target and matching wasm-bindgen CLI are described in
 [the historical build contract](mvaac-web-demo.md). `web/build.mjs` builds the
 viewer, helpers, compatibility entry and editor in dependency order, emits type
 declarations, copies WASM, then bundles examples using built entries. Tests
-also install actual tarballs into an isolated consumer, typecheck with `skipLibCheck: false`, bundle without source aliases and initialize/mount/destroy in Chromium. The normal suite includes the original reader regressions, built viewer/source navigation, real
+also install actual tarballs into an isolated consumer, typecheck with `skipLibCheck: false`, bundle without source aliases and initialize/mount/destroy in Chromium. The normal suite starts with DOM-free Node tests of the scroll core, then runs the original reader regressions, built viewer/source navigation, real
 CodeMirror scrolling/editing, Chinese composition, resize, TOC and lifecycle.
 
 ## Migration

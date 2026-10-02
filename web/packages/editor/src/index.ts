@@ -27,6 +27,13 @@ import {
 	type ViewerOptions,
 	type ReadingPosition,
 } from "@markview/viewer";
+import {
+	ScrollSync,
+	sourceToAnchor,
+	anchorToSource,
+	type SourceRange,
+	type SourceExtent,
+} from "@markview/scroll-sync";
 import { styles } from "./style.js";
 
 export interface ContentChange {
@@ -59,8 +66,7 @@ export class Editor {
 	#split: HTMLElement;
 	#divider: HTMLElement;
 	#disposed = false;
-	#owner: "editor" | "viewer" = "editor";
-	#generation = 0;
+	#sync: ScrollSync;
 	#tocVersion = -1;
 
 	private constructor(
@@ -78,6 +84,7 @@ export class Editor {
 		this.#split = split;
 		this.#divider = divider;
 		this.#options = options;
+		this.#sync = new ScrollSync(viewer.outline().documentVersion);
 		this.view = new EditorView({
 			parent: write,
 			doc: viewer.getMarkdown(),
@@ -160,8 +167,7 @@ export class Editor {
 				markview: { ...options.viewer?.markview, theme },
 				onUserInput: () => {
 					if (editor) {
-						editor.#owner = "viewer";
-						editor.#generation++;
+						editor.#sync.takeControl("preview");
 					}
 					options.viewer?.onUserInput?.();
 				},
@@ -232,7 +238,7 @@ export class Editor {
 	destroy(): void {
 		if (this.#disposed) return;
 		this.#disposed = true;
-		this.#generation++;
+		this.#sync.cancel();
 		this.#listeners.abort();
 		this.#unsubscribe();
 		this.view.destroy();
@@ -246,18 +252,27 @@ export class Editor {
 			const position = this.viewer.readingPosition();
 			const offset = update.changes.mapPos(position?.offset ?? 0);
 			this.viewer.setMarkdown(update.state.doc.toString(), offset);
-			this.#generation++;
+			this.#sync.setDocumentVersion(
+				this.viewer.outline().documentVersion,
+			);
 			this.#renderTOC();
 			this.#options.onChange?.({
 				markdown: this.getMarkdown(),
 				documentVersion: this.viewer.outline().documentVersion,
 			});
 		}
-		if (update.docChanged || update.geometryChanged) this.#followEditor();
+		if (update.docChanged || update.geometryChanged) {
+			if (this.#sync.owner === "source") this.#followEditor();
+			else {
+				const position = this.viewer.readingPosition();
+				if (position) this.#previewMoved(position);
+			}
+		}
 	}
 	#followEditor(): void {
-		if (this.#owner !== "editor" || this.#disposed) return;
-		const generation = this.#generation;
+		if (this.#disposed) return;
+		const request = this.#sync.begin("source");
+		if (!request) return;
 		this.view.requestMeasure({
 			key: this,
 			read: (view) => {
@@ -272,20 +287,14 @@ export class Editor {
 						},
 						false,
 					) ?? 0;
-				const rect = view.coordsAtPos(offset);
-				return {
-					offset,
-					fraction: rect
-						? (top - rect.top) / Math.max(1, rect.bottom - rect.top)
-						: 0,
-				};
+				return sourceToAnchor(
+					{ offset, top },
+					this.viewer.sourceToPreview(offset)?.source ?? null,
+					(source) => this.#sourceExtent(view, source),
+				);
 			},
 			write: (position) => {
-				if (
-					!this.#disposed &&
-					this.#owner === "editor" &&
-					generation === this.#generation
-				) {
+				if (!this.#disposed && this.#sync.isCurrent(request)) {
 					this.viewer.scrollToSource(
 						position.offset,
 						position.fraction,
@@ -293,6 +302,17 @@ export class Editor {
 				}
 			},
 		});
+	}
+	#sourceExtent(view: EditorView, source: SourceRange): SourceExtent {
+		const end = Math.max(source.start, source.end - 1);
+		return {
+			top:
+				view.coordsAtPos(source.start, 1)?.top ??
+				view.documentTop + view.lineBlockAt(source.start).top,
+			bottom:
+				view.coordsAtPos(source.end, source.end > source.start ? -1 : 1)
+					?.bottom ?? view.documentTop + view.lineBlockAt(end).bottom,
+		};
 	}
 	#previewMoved(position: ReadingPosition): void {
 		if (
@@ -306,34 +326,28 @@ export class Editor {
 				button.setAttribute("aria-current", "location");
 			else button.removeAttribute("aria-current");
 		}
-		if (this.#owner !== "viewer") return;
-		const generation = this.#generation;
+		const request = this.#sync.begin("preview", position.documentVersion);
+		if (!request) return;
 		const offset = Math.min(position.offset, this.view.state.doc.length);
-		this.view.dispatch({
-			effects: EditorView.scrollIntoView(offset, {
-				y: "start",
-				yMargin: this.view.documentPadding.top,
-			}),
-		});
 		this.view.requestMeasure({
 			key: this,
 			read: (view) => ({
-				rect: view.coordsAtPos(offset),
+				target: anchorToSource(
+					{ offset, fraction: position.fraction },
+					this.viewer.sourceToPreview(offset)?.source ?? null,
+					(source) => this.#sourceExtent(view, source),
+				),
 				top:
 					view.scrollDOM.getBoundingClientRect().top +
 					view.documentPadding.top,
 			}),
-			write: ({ rect, top }, view) => {
+			write: ({ target, top }, view) => {
 				if (
 					!this.#disposed &&
-					this.#owner === "viewer" &&
-					generation === this.#generation &&
-					rect
+					this.#sync.isCurrent(request) &&
+					target !== null
 				) {
-					view.scrollDOM.scrollTop +=
-						rect.top -
-						top +
-						position.fraction * (rect.bottom - rect.top);
+					view.scrollDOM.scrollTop += target - top;
 				}
 			},
 		});
@@ -344,8 +358,7 @@ export class Editor {
 			this.view.dom.addEventListener(
 				name,
 				() => {
-					this.#owner = "editor";
-					this.#generation++;
+					this.#sync.takeControl("source");
 					this.viewer.cancelNavigation();
 				},
 				{ capture: true, signal },
@@ -457,8 +470,7 @@ export class Editor {
 			button.dataset.anchor = heading.anchor;
 			button.style.paddingLeft = `${8 + (heading.level - 1) * 10}px`;
 			button.onclick = () => {
-				this.#owner = "viewer";
-				this.#generation++;
+				this.#sync.takeControl("preview");
 				this.viewer.navigateHeading(heading.anchor);
 			};
 			this.#toc.append(button);

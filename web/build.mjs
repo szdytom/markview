@@ -12,10 +12,10 @@ const tsc = join(root, "node_modules/typescript/bin/tsc");
 
 const pkg = join(root, "packages/markview");
 execFileSync(process.execPath, [join(pkg, "build.mjs")], { stdio: "inherit" });
-for (const name of ["resources", "fonts", "web", "editor"]) {
+for (const name of ["scroll-sync", "resources", "fonts", "web", "editor"]) {
 	execFileSync(process.execPath, [join(root, "packages/build-package.mjs"), name], { stdio: "inherit" });
 }
-const alias = Object.fromEntries(["viewer", "resources", "fonts", "web", "editor"].map(name =>
+const alias = Object.fromEntries(["viewer", "scroll-sync", "resources", "fonts", "web", "editor"].map(name =>
 	[`@markview/${name}`,join(root,"packages",name === "viewer" ? "markview" : name,"dist/index.js")]));
 
 // --- 2. The demo site: a self-contained static directory ---------------------

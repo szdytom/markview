@@ -56,6 +56,9 @@ importers:
       '@codemirror/view':
         specifier: ^6.38.6
         version: 6.43.13
+      '@markview/scroll-sync':
+        specifier: workspace:*
+        version: link:../scroll-sync
       '@markview/viewer':
         specifier: workspace:*
         version: link:../markview
@@ -69,6 +72,8 @@ importers:
   packages/markview: {}
 
   packages/resources: {}
+
+  packages/scroll-sync: {}
 
   packages/web:
     dependencies:

@@ -11,6 +11,7 @@ reference; its scope exclusions do not apply to the reusable components.
 
 - `packages/markview`: `@markview/viewer`, including sibling WASM asset.
 - `packages/editor`: `@markview/editor`, CodeMirror and preview composition.
+- `packages/scroll-sync`: `@markview/scroll-sync`, editor-independent anchor projection and scroll coordination.
 - `packages/fonts`: optional `@markview/fonts` explicit loading/cache.
 - `packages/resources`: optional `@markview/resources` browser transport.
 - `packages/web`: deprecated `@markview/web` compatibility entry.

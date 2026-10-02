@@ -10,7 +10,7 @@ const fonts = readdirSync(
 	.filter((name) => /\.(otf|ttf)$/.test(name))
 	.map((name) => `/assets/${name}`);
 
-async function host(page, markdown, options = {}) {
+async function host(page, markdown, options = {}, imageSize) {
 	await page.route("**/editor-host.html", (route) =>
 		route.fulfill({
 			contentType: "text/html",
@@ -27,7 +27,7 @@ async function host(page, markdown, options = {}) {
 	);
 	await page.goto("/editor-host.html");
 	await page.evaluate(
-		async ({ markdown, options, fonts }) => {
+		async ({ markdown, options, fonts, imageSize }) => {
 			window.api = await import("/editor-api.js");
 			window.changes = [];
 			window.editor = await window.api.Editor.mount(
@@ -37,6 +37,21 @@ async function host(page, markdown, options = {}) {
 					markdown,
 					onChange: (change) => window.changes.push(change),
 					viewer: {
+						resources: imageSize && {
+							onResources(events) {
+								for (const event of events)
+									if (event.kind === "request") {
+										const [width, height] = imageSize;
+										event.request.resolve({
+											width,
+											height,
+											rgba: new Uint8Array(
+												width * height * 4,
+											).fill(255),
+										});
+									}
+							},
+						},
 						initialization: {
 							wasmUrl: "/markview_web_bg.wasm",
 							fonts,
@@ -58,7 +73,7 @@ async function host(page, markdown, options = {}) {
 				);
 			};
 		},
-		{ markdown, options, fonts },
+		{ markdown, options, fonts, imageSize },
 	);
 	await page.waitForFunction(
 		() => !window.editor.viewer.reader.markview.stats().pending,
@@ -80,6 +95,121 @@ function documentText() {
 		"Ending paragraph.\n\n".repeat(120)
 	);
 }
+
+for (const [name, image] of [
+	[
+		"wrapped Markdown",
+		`![${"long image description ".repeat(30)}](tall.png)`,
+	],
+	["single-line Markdown", "![image](tall.png)"],
+	[
+		"multiline SVG",
+		'<svg width="80" height="1200">\n' +
+			'<rect width="80" height="1200" fill="red"/>\n'.repeat(35) +
+			"</svg>",
+	],
+]) {
+	test(`${name} image follows editor scrolling through wraps and adjacent blank lines`, async ({
+		page,
+	}) => {
+		const before = "# Images\n\n" + "Before image.\n\n".repeat(35);
+		const source = before + image + "\n\n" + "After image.\n\n".repeat(80);
+		await host(page, source, {}, [80, 1200]);
+		await page.waitForFunction(
+			(start) =>
+				window.editor.viewer.sourceToPreview(start)?.rect.height >=
+				1200,
+			before.length,
+		);
+		await page.evaluate((start) => {
+			const view = window.editor.view;
+			view.dispatch({
+				effects: view.constructor.scrollIntoView(start, {
+					y: "start",
+					yMargin: view.documentPadding.top,
+				}),
+			});
+		}, before.length);
+		await expect
+			.poll(() => page.evaluate(() => window.readEditor()))
+			.toBe(before.length);
+		const samples = await page.evaluate(
+			async ({ start, end }) => {
+				const view = window.editor.view;
+				const height =
+					view.lineBlockAt(end - 1).bottom -
+					view.lineBlockAt(start).top;
+				const steps = Math.ceil(
+					(height + view.defaultLineHeight * 2) / 3,
+				);
+				const samples = [];
+				for (let step = 0; step < steps; step++) {
+					view.scrollDOM.scrollTop += 3;
+					await new Promise((resolve) => setTimeout(resolve, 40));
+					samples.push(window.editor.viewer.reader.markview.scroll());
+				}
+				return samples;
+			},
+			{ start: before.length, end: before.length + image.length },
+		);
+		for (let i = 1; i < samples.length; i++)
+			expect(
+				samples[i] - samples[i - 1],
+				`step ${i}`,
+			).toBeGreaterThanOrEqual(-2);
+		expect(samples.at(-1) - samples[0]).toBeGreaterThan(900);
+	});
+}
+
+test("preview image progress maps across wrapped source and survives editor takeover", async ({
+	page,
+}) => {
+	const before = "# Images\n\n" + "Before image.\n\n".repeat(35);
+	const image = `![${"long image description ".repeat(30)}](tall.png)`;
+	await host(
+		page,
+		before + image + "\n\n" + "After image.\n\n".repeat(80),
+		{},
+		[80, 1200],
+	);
+	await page.waitForFunction(
+		(start) =>
+			window.editor.viewer.sourceToPreview(start)?.rect.height >= 1200,
+		before.length,
+	);
+	await page.evaluate(
+		(start) => window.editor.viewer.scrollToSource(start, 0.4),
+		before.length,
+	);
+	await expect
+		.poll(() =>
+			page.evaluate(
+				() => window.editor.viewer.readingPosition()?.fraction,
+			),
+		)
+		.toBeCloseTo(0.4, 2);
+	await page.locator("canvas").hover();
+	await page.mouse.wheel(0, 1);
+	await expect
+		.poll(() => page.evaluate(() => window.readEditor()))
+		.toBeGreaterThan(before.length + image.length * 0.3);
+	const position = await page.evaluate(() => ({
+		offset: window.readEditor(),
+		scroll: window.editor.viewer.reader.markview.scroll(),
+	}));
+	expect(position.offset).toBeLessThan(before.length + image.length * 0.6);
+	await page.locator(".cm-scroller").hover();
+	await page.mouse.wheel(0, 3);
+	await expect
+		.poll(() =>
+			page.evaluate(() => window.editor.viewer.readingPosition()?.offset),
+		)
+		.toBe(before.length);
+	const followed = await page.evaluate(() =>
+		window.editor.viewer.reader.markview.scroll(),
+	);
+	expect(Math.abs(followed - position.scroll)).toBeLessThan(100);
+});
 
 test("CodeMirror and preview follow source inside long paragraphs and code without focus changes", async ({
 	page,
@@ -137,6 +267,19 @@ test("CodeMirror and preview follow source inside long paragraphs and code witho
 	expect(code.viewer).toBeGreaterThan(codeOffset);
 	expect(code.editor).toBeGreaterThan(codeOffset);
 	expect(code.focus).toBe(true);
+	// Wait for wheel easing before checking that both panes stay still.
+	await expect
+		.poll(async () => {
+			const before = await page.evaluate(() =>
+				window.editor.viewer.reader.markview.scroll(),
+			);
+			await page.waitForTimeout(100);
+			const after = await page.evaluate(() =>
+				window.editor.viewer.reader.markview.scroll(),
+			);
+			return Math.abs(after - before);
+		})
+		.toBeLessThan(1);
 	const stable = await page.evaluate(() => ({
 		editor: window.editor.view.scrollDOM.scrollTop,
 		viewer: window.editor.viewer.reader.markview.scroll(),

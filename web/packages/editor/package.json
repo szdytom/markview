@@ -20,6 +20,7 @@
     "build": "node ../build-package.mjs editor"
   },
   "dependencies": {
+    "@markview/scroll-sync": "workspace:*",
     "@markview/viewer": "workspace:*",
     "@codemirror/state": "^6.5.2",
     "@codemirror/view": "^6.38.6",
