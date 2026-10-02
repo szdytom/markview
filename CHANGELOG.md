@@ -23,6 +23,7 @@ at the same level, without `[brackets]`.
 
 ### Changed
 
+- Use version-pinned CDN WOFF2 faces for MVaaC demo Latin and Simplified Chinese text, and persist font downloads across reloads with Cache Storage.
 - Remove the MVaaC demo’s redundant reading hint.
 - Redesign the MVaaC demo with restrained typesetting, square controls, a centered width-limited workspace and a compact header with a GitHub link.
 - Load the MVaaC SPA’s Noto fonts from version-pinned CDN URLs and keep tiny subset fonts in the regression harness only.
@@ -40,6 +41,7 @@ at the same level, without `[brackets]`.
 
 ### Fixed
 
+- Evict MVaaC demo font cache batches that fail validation so malformed HTTP 200 responses cannot prevent startup recovery.
 - Preserve CR source-line offsets and restrict text-free collapsed-container scroll anchors to their visible opening line.
 - Exclude relocated footnotes from MVaaC scroll anchors so early definitions cannot displace main prose synchronization.
 - Batch MVaaC scroll anchors in Rust and retain progressive-layout prefixes instead of repeating quadratic source queries on every revision.

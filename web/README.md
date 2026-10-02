@@ -21,7 +21,11 @@ reference; its scope exclusions do not apply to the reusable components.
 
 Official WASM enables WOFF/WOFF2; hosts explicitly supply per-instance font sets.
 The SPA loads version-pinned Noto Latin, Simplified Chinese and emoji fonts from
-jsDelivr, so its first load needs network access. Test font subsets are used only
+jsDelivr, using Fontsource WOFF2 for Latin and common Simplified Chinese text.
+Full CJK monospace OTF and bitmap emoji TTF remain upstream files. The first
+load needs network access; successful font downloads persist in Cache Storage
+for subsequent reloads, with ordinary downloads if storage is unavailable.
+Test font subsets are used only
 by the regression harness.
 
 ## Build and validate

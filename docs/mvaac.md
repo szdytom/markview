@@ -294,10 +294,20 @@ downloads. `/editor.html` redirects to `/index.html#edit`. Sample drafts remain
 in memory while switching documents; download changes before reloading. The
 legacy low-level reader regression host lives under `tests/fixtures/reader` and
 is built only for tests. The SPA composes the font and resource helpers with
-version-pinned Noto font files from jsDelivr, including Latin, Simplified Chinese
-and emoji coverage. Its CSS serif faces use the same CDN URLs. The demo requires
-network access on first load; tiny pinned subsets stay under `tests/fixtures`
-for deterministic regression tests. No text fonts ship in the demo or libraries.
+version-pinned Noto font files from jsDelivr. Latin and common Simplified Chinese
+text use Fontsource WOFF2 subsets; full CJK monospace OTF and bitmap color emoji
+TTF remain upstream files. Its UI serif face reuses the same WOFF2 bytes through
+the browser's `FontFace` API, avoiding a separate CSS download. The demo
+requires network access on first load and stores successful font responses in
+Cache Storage (`markview-demo-fonts-v1`), keyed by their version-pinned URLs.
+Reloads reuse these bytes without contacting the CDN; changed URLs fetch new
+files. Storage failures fall back to downloading, and failed HTTP responses are
+never cached. A fully downloaded batch that fails validation is evicted before
+reporting the startup error, allowing retries to fetch recovered CDN files,
+including when malformed bytes came from an existing cache entry.
+This persistence belongs to the demo; `FontLoader` itself caches
+only in memory. Tiny pinned subsets stay under `tests/fixtures` for deterministic
+regression tests. No text fonts ship in the demo or libraries.
 
 ## Build and test
 

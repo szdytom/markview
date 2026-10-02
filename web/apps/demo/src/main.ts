@@ -54,9 +54,10 @@ function setLoading(text: string, detail: string): void {
 function downloadProgress(downloads: readonly FontDownload[]): void {
 	const completed = downloads.filter((font) => font.complete).length;
 	if (completed === downloads.length) {
+		const cached = downloads.filter((font) => font.cached).length;
 		setLoading(
 			"Preparing fonts and renderer…",
-			"All fonts downloaded. Initializing the renderer and registering fonts.",
+			`${cached ? `${cached}/${downloads.length} fonts loaded from cache.` : "All fonts downloaded."} Initializing the renderer and registering fonts.`,
 		);
 		return;
 	}
@@ -73,7 +74,7 @@ function downloadProgress(downloads: readonly FontDownload[]): void {
 			? `${bytes(current.received)} received`
 			: "Waiting for download…";
 	setLoading(
-		`Downloading fonts · ${completed}/${downloads.length} complete`,
+		`Loading fonts · ${completed}/${downloads.length} complete`,
 		`${current.name} · ${received}`,
 	);
 }
