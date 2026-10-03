@@ -19,12 +19,19 @@ use markview_selection::{PanFeed, PanPhase, PanStatus};
 /// batch belongs to the gesture it closed: its delta is fed before the
 /// release, so the last motion of a gesture is not orphaned after its
 /// `Ended`.
+///
+/// Travel finer than one physical pixel cannot change what the reader shows,
+/// so it waits in `carry` until it adds up to one — the OS inertia tail
+/// decays for seconds through deltas a fraction of a pixel wide, and feeding
+/// each one would redraw the page for nothing. A release flushes whatever is
+/// left, so the page lands exactly where the viewport did.
 #[cfg_attr(not(windows), allow(dead_code))]
 pub(crate) fn fold(
 	feed: &mut PanFeed,
 	statuses: Vec<PanStatus>,
 	transform: Option<(f32, f32)>,
 	scale: f32,
+	carry: &mut (f32, f32),
 ) -> Vec<(TouchPhase, f32, f32)> {
 	let release = statuses
 		.iter()
@@ -40,12 +47,19 @@ pub(crate) fn fold(
 	if let Some((x, y)) = transform
 		&& let Some((dx, dy)) = feed.transform(x / scale, y / scale)
 	{
-		// A settled hand reports the same transform again; its zero travel
-		// says nothing the seam needs to hear.
-		if dx != 0.0 || dy != 0.0 {
-			log::debug!("pan delta ({dx:.1},{dy:.1})");
-			events.push((TouchPhase::Moved, dx, dy));
-		}
+		carry.0 += dx;
+		carry.1 += dy;
+	}
+	let quantum = 1.0 / scale;
+	if carry.0.abs() >= quantum || carry.1.abs() >= quantum {
+		log::debug!("pan delta ({:.1},{:.1})", carry.0, carry.1);
+		events.push((TouchPhase::Moved, carry.0, carry.1));
+		*carry = (0.0, 0.0);
+	}
+	if !closing.is_empty() && *carry != (0.0, 0.0) {
+		log::debug!("pan delta ({:.1},{:.1})", carry.0, carry.1);
+		events.push((TouchPhase::Moved, carry.0, carry.1));
+		*carry = (0.0, 0.0);
 	}
 	events.extend(phases(feed, closing.iter().copied()));
 	events
@@ -316,6 +330,9 @@ mod win {
 		updates: IDirectManipulationUpdateManager,
 		viewport: IDirectManipulationViewport,
 		feed: PanFeed,
+		/// Sub-pixel travel held back until it adds up to one shown
+		/// pixel; a release or a silenced stream drops it.
+		carry: (f32, f32),
 		inbox: Rc<Inbox>,
 		/// When the last touchpad contact was offered; the pump stays awake
 		/// for it even before the viewport reports a gesture.
@@ -416,6 +433,7 @@ mod win {
 						updates,
 						viewport,
 						feed: PanFeed::default(),
+						carry: (0.0, 0.0),
 						inbox,
 						contact_at: None,
 						live: false,
@@ -477,6 +495,7 @@ mod win {
 			self.contact_at = None;
 			// What the callbacks recorded for the dead gesture must not
 			// survive it: a later pump would fold it onto a fresh one.
+			self.carry = (0.0, 0.0);
 			self.inbox.statuses.borrow_mut().clear();
 			self.inbox.transform.set(None);
 			self.inbox.content.set((0.0, 0.0));
@@ -540,9 +559,16 @@ mod win {
 				}
 			}
 			if held {
+				self.carry = (0.0, 0.0);
 				return hold(&mut self.feed);
 			}
-			fold(&mut self.feed, statuses, transform, self.inbox.scale.get())
+			fold(
+				&mut self.feed,
+				statuses,
+				transform,
+				self.inbox.scale.get(),
+				&mut self.carry,
+			)
 		}
 
 		/// The next pump, while a gesture or an offered contact may still
@@ -610,11 +636,13 @@ mod tests {
 	#[test]
 	fn a_batch_that_opens_the_gesture_pans_by_the_travel_it_carries() {
 		let mut feed = PanFeed::default();
+		let mut carry = (0.0, 0.0);
 		let statuses = vec![PanStatus::Running];
 		// Physical pixels on a 2× display: the contact's first pump may
 		// already name travel, and the content rested at its origin, so it
 		// pans in full.
-		let events = fold(&mut feed, statuses, Some((200.0, -60.0)), 2.0);
+		let events =
+			fold(&mut feed, statuses, Some((200.0, -60.0)), 2.0, &mut carry);
 		assert_eq!(
 			events,
 			vec![
@@ -623,18 +651,53 @@ mod tests {
 			]
 		);
 		// The origin's own report carries no travel.
-		let events = fold(&mut feed, vec![], Some((200.0, -60.0)), 2.0);
+		let events =
+			fold(&mut feed, vec![], Some((200.0, -60.0)), 2.0, &mut carry);
 		assert!(events.is_empty());
+	}
+
+	#[test]
+	fn sub_pixel_travel_waits_to_add_up_to_one_shown_pixel() {
+		let mut feed = PanFeed::default();
+		let mut carry = (0.0, 0.0);
+		let statuses = vec![PanStatus::Running];
+		// On a 2× display one physical pixel is half a logical one, so a
+		// tail decaying through fifth-of-a-pixel deltas lights nothing yet.
+		let events =
+			fold(&mut feed, statuses, Some((0.4, 0.0)), 2.0, &mut carry);
+		assert_eq!(events, vec![(TouchPhase::Started, 0.0, 0.0)]);
+		// The tail's residue adds up to a whole pixel and pans in one piece.
+		let events = fold(&mut feed, vec![], Some((1.2, 0.0)), 2.0, &mut carry);
+		assert_eq!(moved(&events), vec![(0.6, 0.0)]);
+		assert_eq!(carry, (0.0, 0.0));
+	}
+
+	#[test]
+	fn a_release_flushes_the_travel_a_quiet_tail_left_behind() {
+		let mut feed = PanFeed::default();
+		let mut carry = (0.0, 0.0);
+		let statuses = vec![PanStatus::Running];
+		fold(&mut feed, statuses, Some((0.4, 0.0)), 2.0, &mut carry);
+		// The viewport settles and releases while the residue is still
+		// finer than a pixel: the page takes it before the release, so it
+		// lands exactly where the viewport did.
+		let events =
+			fold(&mut feed, vec![PanStatus::Ready], None, 2.0, &mut carry);
+		assert_eq!(moved(&events), vec![(0.2, 0.0)]);
+		assert_eq!(events.last(), Some(&(TouchPhase::Ended, 0.0, 0.0)));
+		assert_eq!(carry, (0.0, 0.0));
 	}
 
 	#[test]
 	fn the_last_transform_of_a_closing_gesture_precedes_its_release() {
 		let mut feed = PanFeed::default();
+		let mut carry = (0.0, 0.0);
 		let statuses = vec![PanStatus::Running];
-		fold(&mut feed, statuses, Some((200.0, -60.0)), 2.0);
+		fold(&mut feed, statuses, Some((200.0, -60.0)), 2.0, &mut carry);
 		// The lift and the final motion land in one pump.
 		let statuses = vec![PanStatus::Ready];
-		let events = fold(&mut feed, statuses, Some((240.0, -80.0)), 2.0);
+		let events =
+			fold(&mut feed, statuses, Some((240.0, -80.0)), 2.0, &mut carry);
 		assert_eq!(moved(&events), vec![(20.0, -10.0)]);
 		assert_eq!(
 			events.last(),
@@ -646,34 +709,41 @@ mod tests {
 	#[test]
 	fn the_inertia_tail_keeps_arriving_as_plain_deltas() {
 		let mut feed = PanFeed::default();
+		let mut carry = (0.0, 0.0);
 		let statuses = vec![PanStatus::Running, PanStatus::Inertia];
-		fold(&mut feed, statuses, Some((0.0, 0.0)), 1.0);
-		let events = fold(&mut feed, vec![], Some((30.0, 0.0)), 1.0);
+		fold(&mut feed, statuses, Some((0.0, 0.0)), 1.0, &mut carry);
+		let events =
+			fold(&mut feed, vec![], Some((30.0, 0.0)), 1.0, &mut carry);
 		assert_eq!(moved(&events), vec![(30.0, 0.0)]);
 	}
 
 	#[test]
 	fn a_reset_transform_between_gestures_moves_nothing() {
 		let mut feed = PanFeed::default();
+		let mut carry = (0.0, 0.0);
 		let statuses = vec![PanStatus::Running];
-		fold(&mut feed, statuses, Some((300.0, 0.0)), 1.0);
+		fold(&mut feed, statuses, Some((300.0, 0.0)), 1.0, &mut carry);
 		let statuses = vec![PanStatus::Ready];
-		fold(&mut feed, statuses, Some((300.0, 0.0)), 1.0);
+		fold(&mut feed, statuses, Some((300.0, 0.0)), 1.0, &mut carry);
 		// The viewport resets its transform to the origin while idle; the
 		// next gesture's first transform still only names its origin.
 		let statuses = vec![PanStatus::Building];
-		let events = fold(&mut feed, statuses, Some((0.0, 0.0)), 1.0);
+		let events =
+			fold(&mut feed, statuses, Some((0.0, 0.0)), 1.0, &mut carry);
 		assert_eq!(events, vec![(TouchPhase::Started, 0.0, 0.0)]);
-		let events = fold(&mut feed, vec![], Some((25.0, 10.0)), 1.0);
+		let events =
+			fold(&mut feed, vec![], Some((25.0, 10.0)), 1.0, &mut carry);
 		assert_eq!(moved(&events), vec![(25.0, 10.0)]);
 	}
 
 	#[test]
 	fn a_held_stream_is_silenced_and_cannot_resume_after_the_owner_lets_go() {
 		let mut feed = PanFeed::default();
+		let mut carry = (0.0, 0.0);
 		let statuses = vec![PanStatus::Running];
-		fold(&mut feed, statuses, Some((0.0, 0.0)), 1.0);
-		let events = fold(&mut feed, vec![], Some((30.0, 0.0)), 1.0);
+		fold(&mut feed, statuses, Some((0.0, 0.0)), 1.0, &mut carry);
+		let events =
+			fold(&mut feed, vec![], Some((30.0, 0.0)), 1.0, &mut carry);
 		assert_eq!(moved(&events), vec![(30.0, 0.0)]);
 		// A pointer drag takes the input: the gesture in flight ends once,
 		// and the delta the batch carried drops with it.
@@ -684,23 +754,28 @@ mod tests {
 		let events = hold(&mut feed);
 		assert!(events.is_empty());
 		// The owner lets go; the stream is still stale and pans nothing.
-		let events = fold(&mut feed, vec![], Some((50.0, 0.0)), 1.0);
+		let events =
+			fold(&mut feed, vec![], Some((50.0, 0.0)), 1.0, &mut carry);
 		assert!(events.is_empty(), "a stale stream must not resume panning");
 		// A fresh gesture after the drag pans again.
 		let statuses = vec![PanStatus::Building];
-		let events = fold(&mut feed, statuses, Some((0.0, 0.0)), 1.0);
+		let events =
+			fold(&mut feed, statuses, Some((0.0, 0.0)), 1.0, &mut carry);
 		assert_eq!(events, vec![(TouchPhase::Started, 0.0, 0.0)]);
-		let events = fold(&mut feed, vec![], Some((12.0, 0.0)), 1.0);
+		let events =
+			fold(&mut feed, vec![], Some((12.0, 0.0)), 1.0, &mut carry);
 		assert_eq!(moved(&events), vec![(12.0, 0.0)]);
 	}
 
 	#[test]
 	fn a_disabled_viewport_cancels_what_it_was_panning() {
 		let mut feed = PanFeed::default();
+		let mut carry = (0.0, 0.0);
 		let statuses = vec![PanStatus::Running];
-		fold(&mut feed, statuses, Some((0.0, 0.0)), 1.0);
+		fold(&mut feed, statuses, Some((0.0, 0.0)), 1.0, &mut carry);
 		let statuses = vec![PanStatus::Disabled];
-		let events = fold(&mut feed, statuses, Some((10.0, 0.0)), 1.0);
+		let events =
+			fold(&mut feed, statuses, Some((10.0, 0.0)), 1.0, &mut carry);
 		// The teardown still delivers the contact's last motion, then cancels.
 		assert_eq!(
 			events,

@@ -38,6 +38,10 @@ at the same level, without `[brackets]`.
 - Choose window layout from a dropdown, matching the language selector.
 - Share caption input routing across viewer and reader modes, keep layout queries free of native-window mutations, and cache tab-strip extents.
 
+### Changed
+
+- Batch a pan's sub-pixel travel until it adds up to a whole physical pixel, and flush the residue on release: the OS inertia tail stops redrawing the page for motion the display cannot show, while the page still lands exactly where the viewport does.
+
 ### Fixed
 
 - Keep custom window controls interactive above the image viewer and support caption-button taps without triggering covered controls.
