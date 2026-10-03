@@ -48,6 +48,7 @@ pub(crate) fn fold(
 		if pinned {
 			log::debug!("the pin drops a coast delta ({dx:.1},{dy:.1})");
 		} else {
+			log::debug!("pan delta ({dx:.1},{dy:.1})");
 			events.push((TouchPhase::Moved, dx, dy));
 		}
 	}
@@ -290,6 +291,10 @@ mod win {
 		/// to keep today's wheel handling; every failure is silent.
 		pub(crate) fn new(window: &winit::window::Window) -> Option<Self> {
 			if std::env::var_os("MARKVIEW_NO_DM").is_some() {
+				log::debug!(
+					"touchpad panning stays on the wheel paths: \
+						`MARKVIEW_NO_DM` is set"
+				);
 				return None;
 			}
 			let Ok(handle) = window.window_handle() else {
@@ -372,7 +377,10 @@ mod win {
 				}
 			};
 			match assembly() {
-				Ok(owner) => Some(owner),
+				Ok(owner) => {
+					log::debug!("the viewport owns touchpad panning");
+					Some(owner)
+				}
 				Err(error) => {
 					log::debug!("direct manipulation unavailable: {error}");
 					None

@@ -208,6 +208,7 @@ impl<P: super::SendEvent> App<P> {
 		&mut self,
 		touch: Touch,
 	) -> Option<super::frame::Caption> {
+		log::debug!("touch {:?} id {}", touch.phase, touch.id);
 		let scale = self.dimensions().2;
 		let point = (
 			touch.location.x as f32 / scale,
@@ -226,7 +227,7 @@ impl<P: super::SendEvent> App<P> {
 		{
 			self.interaction.cursor = point;
 			if self.dm.as_mut().is_some_and(|dm| dm.contact(touch.id)) {
-				return;
+				return None;
 			}
 		}
 		// A contact the viewport owns leaves it here, so the seam knows
@@ -234,7 +235,7 @@ impl<P: super::SendEvent> App<P> {
 		if matches!(touch.phase, TouchPhase::Ended | TouchPhase::Cancelled)
 			&& self.dm.as_mut().is_some_and(|dm| dm.release(touch.id))
 		{
-			return;
+			return None;
 		}
 		let id = (touch.device_id, touch.id);
 		if touch.phase != TouchPhase::Started
