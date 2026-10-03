@@ -20,7 +20,7 @@ use markview_selection::{PanFeed, PanPhase, PanStatus};
 /// release, so the last motion of a gesture is not orphaned after its
 /// `Ended`.
 #[cfg_attr(not(windows), allow(dead_code))]
-pub(super) fn fold(
+pub(crate) fn fold(
 	feed: &mut PanFeed,
 	statuses: Vec<PanStatus>,
 	transform: Option<(f32, f32)>,
@@ -235,7 +235,7 @@ mod win {
 
 	/// One window's Direct Manipulation viewport: a precision touchpad pans
 	/// with the OS's own inertia, folded at the pixel-pan seam.
-	pub(super) struct DirectManipulation {
+	pub(crate) struct DirectManipulation {
 		manager: IDirectManipulationManager,
 		updates: IDirectManipulationUpdateManager,
 		viewport: IDirectManipulationViewport,
@@ -253,7 +253,7 @@ mod win {
 	impl DirectManipulation {
 		/// Opts `window` into precision-touchpad panning, or returns `None`
 		/// to keep today's wheel handling; every failure is silent.
-		pub(super) fn new(window: &winit::window::Window) -> Option<Self> {
+		pub(crate) fn new(window: &winit::window::Window) -> Option<Self> {
 			if std::env::var_os("MARKVIEW_NO_DM").is_some() {
 				return None;
 			}
@@ -345,7 +345,7 @@ mod win {
 
 		/// Offers a touch contact to the viewport; `true` when it was a
 		/// precision touchpad's and Direct Manipulation owns it now.
-		pub(super) fn contact(&mut self, pointer: u64) -> bool {
+		pub(crate) fn contact(&mut self, pointer: u64) -> bool {
 			let id = pointer as u32;
 			let mut kind = POINTER_INPUT_TYPE::default();
 			// SAFETY: `GetPointerType` writes one `POINTER_INPUT_TYPE` for a
@@ -372,7 +372,7 @@ mod win {
 		/// at once, and the stream's bookkeeping ends, so no stale delta
 		/// speaks for a view that focus loss, a resize, a reload or a tab
 		/// switch replaced. The next contact re-enables the viewport.
-		pub(super) fn abandon(&mut self) {
+		pub(crate) fn abandon(&mut self) {
 			let _ = self.feed.abandon();
 			self.live = false;
 			self.contact_at = None;
@@ -388,7 +388,7 @@ mod win {
 
 		/// Follows the window: the viewport rect is the client area, and the
 		/// transform turns into logical pixels at the display's scale.
-		pub(super) fn resize(&mut self, width: u32, height: u32, scale: f32) {
+		pub(crate) fn resize(&mut self, width: u32, height: u32, scale: f32) {
 			self.inbox.scale.set(scale);
 			// SAFETY: `SetViewportRect` reads one `RECT`.
 			let _ = unsafe {
@@ -405,7 +405,7 @@ mod win {
 		/// into seam events, in logical pixels. While `held`, a
 		/// pointer-driven interaction owns the input and the stream is
 		/// silenced instead.
-		pub(super) fn pump(
+		pub(crate) fn pump(
 			&mut self,
 			held: bool,
 		) -> Vec<(TouchPhase, f32, f32)> {
@@ -447,7 +447,7 @@ mod win {
 
 		/// The next pump, while a gesture or an offered contact may still
 		/// have news.
-		pub(super) fn deadline(&self, now: Instant) -> Option<Instant> {
+		pub(crate) fn deadline(&self, now: Instant) -> Option<Instant> {
 			(self.live || self.contact_at.is_some())
 				.then_some(now + PUMP_PERIOD)
 		}
@@ -467,27 +467,27 @@ mod win {
 }
 
 #[cfg(windows)]
-use win::DirectManipulation;
+pub(crate) use win::DirectManipulation;
 
 /// Other desktops have no Direct Manipulation to offer; the reader pans by
 /// the wheel paths it already had.
 #[cfg(not(windows))]
-pub(super) struct DirectManipulation;
+pub(crate) struct DirectManipulation;
 
 #[cfg(not(windows))]
 impl DirectManipulation {
-	pub(super) fn new(_: &winit::window::Window) -> Option<Self> {
+	pub(crate) fn new(_: &winit::window::Window) -> Option<Self> {
 		None
 	}
-	pub(super) fn contact(&mut self, _: u64) -> bool {
+	pub(crate) fn contact(&mut self, _: u64) -> bool {
 		false
 	}
-	pub(super) fn resize(&mut self, _: u32, _: u32, _: f32) {}
-	pub(super) fn abandon(&mut self) {}
-	pub(super) fn pump(&mut self, _: bool) -> Vec<(TouchPhase, f32, f32)> {
+	pub(crate) fn resize(&mut self, _: u32, _: u32, _: f32) {}
+	pub(crate) fn abandon(&mut self) {}
+	pub(crate) fn pump(&mut self, _: bool) -> Vec<(TouchPhase, f32, f32)> {
 		Vec::new()
 	}
-	pub(super) fn deadline(&self, _: Instant) -> Option<Instant> {
+	pub(crate) fn deadline(&self, _: Instant) -> Option<Instant> {
 		None
 	}
 }
