@@ -139,6 +139,12 @@ impl BlockContext<'_> {
 					&mut decoration,
 				);
 				let offset = out.draws.len();
+				out.inline_decorations.extend(
+					decoration
+						.inline_decorations
+						.into_iter()
+						.map(|(command, row)| (command + offset, row)),
+				);
 				for node in decoration.text {
 					for mut cluster in node.clusters {
 						cluster.command += offset;

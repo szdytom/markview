@@ -170,10 +170,17 @@ fn join(bands: &mut Vec<Band>, top: f32, bottom: f32) {
 /// bands follow the lines the paragraph optimizer chose; images, rules and
 /// formulas join the line they overlap, or become a band of their own.
 ///
-/// Container boxes are skipped: they span the whole block, and the painter
-/// clips them to each page fragment instead.
+/// Inline decorations follow their text rows without enlarging them. Container
+/// boxes are skipped: the painter clips them to each page fragment instead.
 fn bands(layout: &BlockLayout) -> Vec<Band> {
 	let mut bands: Vec<Band> = Vec::new();
+	let mut mapped_glyphs = vec![false; layout.draws.len()];
+	for (span, _, _) in layout.text_draw_spans() {
+		for command in span {
+			mapped_glyphs[command] =
+				matches!(layout.draws[command], Draw::Glyph(_));
+		}
+	}
 	let vertical = |draw: &Draw| -> Option<(f32, f32)> {
 		match draw {
 			Draw::Box { .. } | Draw::Clipped { .. } => None,
@@ -203,7 +210,19 @@ fn bands(layout: &BlockLayout) -> Vec<Band> {
 			join(&mut bands, cluster.rect.y, cluster.rect.y + cluster.rect.h);
 		}
 	}
-	for draw in &layout.draws {
+	let mut decorations = layout.inline_decorations.iter().peekable();
+	for (index, draw) in layout.draws.iter().enumerate() {
+		// Mapped glyphs already contribute their owning rows above.
+		if mapped_glyphs[index] {
+			continue;
+		}
+		if decorations
+			.peek()
+			.is_some_and(|(command, _)| *command == index)
+		{
+			decorations.next();
+			continue;
+		}
 		if let Some((top, bottom)) = vertical(draw) {
 			join(&mut bands, top, bottom);
 		}

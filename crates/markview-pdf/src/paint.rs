@@ -1215,44 +1215,30 @@ impl Painter<'_> {
 struct Cluster {
 	node: usize,
 	range: Range<usize>,
-	/// The cluster's line box, in block-local y.
+	/// The glyph's line box or decoration's owning row, in block-local y.
 	span: Option<(f32, f32)>,
-}
-
-/// Where one cluster starts in the draw list, and what it is.
-struct ClusterSpan {
-	command: usize,
-	cluster: Cluster,
 }
 
 fn cluster_map(layout: &BlockLayout) -> Vec<Cluster> {
 	let mut out = vec![Cluster::default(); layout.draws.len()];
-	let mut spans: Vec<ClusterSpan> = Vec::new();
-	for (node, text) in layout.text.iter().enumerate() {
-		for cluster in &text.clusters {
-			spans.push(ClusterSpan {
-				command: cluster.command,
-				cluster: Cluster {
-					node,
-					range: cluster.range.clone(),
-					span: Some((
-						cluster.rect.y,
-						cluster.rect.y + cluster.rect.h.max(0.0),
-					)),
-				},
-			});
+	for (commands, node, cluster) in layout.text_draw_spans() {
+		for command in commands {
+			let entry = &mut out[command];
+			*entry = Cluster {
+				node,
+				range: cluster.range.clone(),
+				span: Some((
+					cluster.rect.y,
+					cluster.rect.y + cluster.rect.h.max(0.0),
+				)),
+			};
+			if matches!(layout.draws[command], Draw::Rect(..)) {
+				entry.span = None;
+			}
 		}
 	}
-	spans.sort_by_key(|span| span.command);
-	for (index, span) in spans.iter().enumerate() {
-		let end = spans
-			.get(index + 1)
-			.map(|next| next.command)
-			.unwrap_or(layout.draws.len())
-			.min(layout.draws.len());
-		for entry in out.iter_mut().take(end).skip(span.command) {
-			*entry = span.cluster.clone();
-		}
+	for (command, row) in &layout.inline_decorations {
+		out[*command].span = Some((row.start, row.end));
 	}
 	out
 }
@@ -1271,7 +1257,9 @@ fn visible(cluster: Option<&Cluster>, draw: &Draw, item: &PageItem) -> bool {
 				glyph.y + glyph.size * 0.25,
 			))
 		}
-		Draw::Rect(rect, _) => (rect.y, rect.y + rect.h),
+		Draw::Rect(rect, _) => cluster
+			.and_then(|cluster| cluster.span)
+			.unwrap_or((rect.y, rect.y + rect.h)),
 		Draw::Polygon { center, points, .. } => {
 			let top = points
 				.iter()

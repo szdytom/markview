@@ -1,4 +1,5 @@
 //! Shared font shaping for document text, labels and renderer fallbacks.
+mod metrics;
 use crate::fonts::FontConfig;
 use crate::style::{Condition, Font, Stylesheet, TextAppearance, Variant};
 use crate::{
@@ -131,6 +132,9 @@ pub(crate) struct Cluster {
 	pub(crate) mixed: (bool, bool),
 	pub(crate) ascent: f32,
 	pub(crate) descent: f32,
+	/// Background extents, independent of layout edges and possibly signed.
+	pub(crate) background: (f32, f32),
+	pub(crate) baseline_shift: f32,
 	pub(crate) glyphs: Vec<Glyph>,
 }
 /// Reusable shaping context for UI labels and document text.
@@ -153,6 +157,7 @@ pub struct TextShaper {
 	/// text. Coverage belongs to the collection, so every font set shares one
 	/// memo.
 	fallbacks: HashMap<(u8, u16, String), Option<Face>>,
+	bounds: HashMap<metrics::BoundsKey, Option<(f32, f32)>>,
 }
 impl Default for TextShaper {
 	fn default() -> Self {
@@ -307,6 +312,7 @@ impl TextShaper {
 			font_sets: Vec::new(),
 			warned_fallbacks: HashSet::new(),
 			fallbacks: HashMap::new(),
+			bounds: HashMap::new(),
 		}
 	}
 
@@ -320,6 +326,7 @@ impl TextShaper {
 			self.faces.clear();
 			self.font_sets.clear();
 			self.fallbacks.clear();
+			self.bounds.clear();
 		}
 	}
 
@@ -853,6 +860,34 @@ impl TextShaper {
 					.is_ok_and(|i| choices[i].2)
 		};
 		let mut clusters: Vec<Cluster> = Vec::new();
+		let needs_bounds = base.uses_bounds()
+			|| appearances.iter().any(TextAppearance::uses_bounds);
+		let mut inked_styles = HashSet::new();
+		let mut bound_styles = Vec::new();
+		if needs_bounds {
+			for line in layout.lines() {
+				for run in line.runs() {
+					let coords: Arc<[i16]> = run.normalized_coords().into();
+					for c in run.visual_clusters() {
+						if metrics::blank(&text[c.text_range()]) {
+							continue;
+						}
+						for g in c.glyphs() {
+							let index = layout.styles()[g.style_index()].brush;
+							if appearances
+								.get(index)
+								.unwrap_or(&base)
+								.uses_bounds() && self
+								.glyph_bounds(run.font(), &coords, g.id as u16)
+								.is_some()
+							{
+								inked_styles.insert(index);
+							}
+						}
+					}
+				}
+			}
+		}
 		for line in layout.lines() {
 			for run in line.runs() {
 				let coords: Arc<[i16]> = run.normalized_coords().into();
@@ -881,21 +916,42 @@ impl TextShaper {
 					let synthetic_italic = synthetic_at(range.start);
 					let mut x = 0.0;
 					let mut glyphs = Vec::new();
-					for g in c.glyphs() {
-						let index = layout.styles()[g.style_index()].brush;
-						let style = spans.get(index).map(|s| &s.style);
-						let rise = if style.is_some_and(|s| s.superscript) {
+					let mut bounds: Option<(f32, f32)> = None;
+					let blank =
+						needs_bounds && metrics::blank(&text[range.clone()]);
+					let index = c.glyphs().next().map_or(usize::MAX, |g| {
+						layout.styles()[g.style_index()].brush
+					});
+					let appearance = appearances.get(index).unwrap_or(&base);
+					let style = spans.get(index).map(|s| &s.style);
+					let shift = run.font_size() * appearance.baseline
+						- if style.is_some_and(|s| s.superscript) {
 							size * 0.35
 						} else {
-							0.0
+							0.
 						};
+					for g in c.glyphs() {
+						let index = layout.styles()[g.style_index()].brush;
+						if !blank
+							&& appearance.uses_bounds()
+							&& let Some((lo, hi)) = self.glyph_bounds(
+								run.font(),
+								&coords,
+								g.id as u16,
+							) {
+							let lo = lo * run.font_size() - g.y;
+							let hi = hi * run.font_size() - g.y;
+							bounds = Some(bounds.map_or((lo, hi), |(a, b)| {
+								(a.min(lo), b.max(hi))
+							}));
+						}
 						glyphs.push(Glyph {
 							font: run.font().clone(),
 							coords: coords.clone(),
 							id: g.id as u16,
 							size: run.font_size(),
 							x: x + g.x,
-							y: g.y - rise,
+							y: g.y + shift,
 							synthetic_italic,
 							paint: appearances
 								.get(index)
@@ -905,16 +961,58 @@ impl TextShaper {
 						x += g.advance;
 					}
 					inked = Some(clusters.len());
+					let metrics = run.metrics();
+					let bounds = bounds.unwrap_or(
+						if inked_styles.contains(&index) && blank {
+							(f32::INFINITY, f32::NEG_INFINITY)
+						} else {
+							(-metrics.descent, metrics.ascent)
+						},
+					);
+					let edge = |edge: crate::style::TextEdge, top| {
+						edge.position(metrics, run.font_size(), bounds, top)
+					};
 					clusters.push(Cluster {
 						rtl: c.is_rtl(),
 						range,
 						width: c.advance(),
 						mixed: (false, false),
-						ascent: run.metrics().ascent,
-						descent: run.metrics().descent,
+						ascent: (edge(appearance.top_edge, true) - shift)
+							.max(0.),
+						descent: (shift - edge(appearance.bottom_edge, false))
+							.max(0.),
+						background: (
+							edge(appearance.background_top_edge, true) - shift,
+							shift
+								- edge(
+									appearance.background_bottom_edge,
+									false,
+								),
+						),
+						baseline_shift: shift,
 						glyphs,
 					});
+					if needs_bounds {
+						bound_styles.push(index);
+					}
 				}
+			}
+		}
+		if needs_bounds {
+			// Empty bounds contribute no edges; resolve the fragment before
+			// backgrounds reach the scene, including its leading/trailing spaces.
+			let mut backgrounds: HashMap<usize, (f32, f32)> = HashMap::new();
+			for (c, &index) in clusters.iter().zip(&bound_styles) {
+				backgrounds
+					.entry(index)
+					.and_modify(|b| {
+						b.0 = b.0.max(c.background.0);
+						b.1 = b.1.max(c.background.1);
+					})
+					.or_insert(c.background);
+			}
+			for (c, index) in clusters.iter_mut().zip(bound_styles) {
+				c.background = backgrounds[&index];
 			}
 		}
 		clusters
@@ -1032,20 +1130,29 @@ impl TextShaper {
 		let mut draws = Vec::new();
 		let mut ranges = Vec::new();
 		let mut cursor = x;
-		if let Some(background) = background {
+		if let Some(background) = background
+			&& !clusters.is_empty()
+		{
 			let width = clusters.iter().map(|c| c.width).sum();
-			let ascent = clusters.iter().map(|c| c.ascent).fold(0., f32::max);
-			let descent = clusters.iter().map(|c| c.descent).fold(0., f32::max);
+			let ascent = clusters
+				.iter()
+				.map(|c| c.background.0)
+				.fold(f32::NEG_INFINITY, f32::max);
+			let descent = clusters
+				.iter()
+				.map(|c| c.background.1)
+				.fold(f32::NEG_INFINITY, f32::max);
 			draws.push(Draw::Rect(
 				crate::scene::Rect {
 					x,
 					y: baseline - ascent,
 					w: width,
-					h: ascent + descent,
+					h: (ascent + descent).max(0.),
 				},
 				background,
 			));
 		}
+		let shift = clusters.first().map_or(0., |c| c.baseline_shift);
 		for c in clusters {
 			for mut g in c.glyphs {
 				g.x += cursor;
@@ -1061,9 +1168,9 @@ impl TextShaper {
 				crate::scene::Rect {
 					x,
 					y: if d == crate::style::Decoration::Strike {
-						baseline - size * 0.3
+						baseline + shift - size * appearance.size * 0.3
 					} else {
-						baseline + size * 0.12
+						baseline + shift + size * appearance.size * 0.12
 					},
 					w: cursor - x,
 					h: 1.,

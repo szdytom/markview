@@ -24,10 +24,19 @@ at the same level, without `[brackets]`.
 ### Added
 
 - Add MVaaC instance-local MVSS registration and dynamic selection by ID, with cached parsing and reserved `bundled:` theme IDs.
+- Add configurable text and inline background edges with local-em baseline shifts, shared by reader and PDF typography.
+
+### Changed
+
+- Default text layout edges to cap-height/baseline, allowing line heights and page breaks to follow the new typography policy.
 
 ### Fixed
 
 - Invalidate MVaaC cached geometry when stylesheet selection changes font definitions, including when restoring the default theme.
+- Raise inline code beside Chinese text by 0.08em (#6), join mixed-font code backgrounds, and keep vertical background padding independent of line height.
+- Keep the same external spacing between Chinese prose and inline code containing Chinese or Latin text.
+- Keep glyphs, inline backgrounds and decorations with their text row during PDF pagination, preventing compact spacing or large padding from duplicating text.
+- Keep blank text rows safe when the font collection is empty, including the browser's initial font configuration.
 
 ## 0.1.11 - 2026-10-03
 

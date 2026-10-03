@@ -18,8 +18,8 @@ pub use types::{
 	ConditionSet, Decoration, Font, FontArchive, FontDefType, FontDefinition,
 	FontFamily, FontFile, FontSource, MAX_CHAIN, MarkerShape, MarkerShapes,
 	MermaidStyle, Padding, PageEdgeStyle, PageStyle, Rule,
-	SYNTHETIC_ITALIC_ANGLE_DEG, SvgStyle, TextAlign, Variant, chain_of,
-	chain_push, chain_set, parse_paper_size,
+	SYNTHETIC_ITALIC_ANGLE_DEG, SvgStyle, TextAlign, TextEdge, TextMetric,
+	Variant, chain_of, chain_push, chain_set, parse_paper_size,
 };
 
 /// A supported stylesheet destination.
@@ -636,6 +636,14 @@ impl Stylesheet {
 			));
 			s.push_str(&format!("{:?}{:?}", rule.wrap, rule.border_collapse));
 			s.push_str(&format!(
+				"{:?}{:?}{:?}{:?}{:?}",
+				rule.top_edge,
+				rule.bottom_edge,
+				rule.background_top_edge,
+				rule.background_bottom_edge,
+				rule.baseline
+			));
+			s.push_str(&format!(
 				"{:?}{:?}{:?}{:?}{:?}{:?}{:?}",
 				rule.border_edges,
 				rule.corner_radii,
@@ -658,6 +666,21 @@ impl Stylesheet {
 		}
 		if let Some(v) = rule.size {
 			out.size = v;
+		}
+		if let Some(v) = rule.top_edge {
+			out.top_edge = v;
+		}
+		if let Some(v) = rule.bottom_edge {
+			out.bottom_edge = v;
+		}
+		if let Some(v) = rule.background_top_edge {
+			out.background_top_edge = v;
+		}
+		if let Some(v) = rule.background_bottom_edge {
+			out.background_bottom_edge = v;
+		}
+		if let Some(v) = rule.baseline {
+			out.baseline = v;
 		}
 		if let Some(v) = rule.line_height {
 			out.line_height = v;
@@ -763,6 +786,11 @@ pub struct TextAppearance {
 	pub font: Vec<Font>,
 	pub weight: u16,
 	pub size: f32,
+	pub top_edge: TextEdge,
+	pub bottom_edge: TextEdge,
+	pub background_top_edge: TextEdge,
+	pub background_bottom_edge: TextEdge,
+	pub baseline: f32,
 	pub line_height: f32,
 	pub paint: Paint,
 	pub background: Option<Paint>,
@@ -783,6 +811,11 @@ impl Default for TextAppearance {
 			}],
 			weight: 400,
 			size: 1.,
+			top_edge: TextEdge::Metric(TextMetric::CapHeight),
+			bottom_edge: TextEdge::Metric(TextMetric::Baseline),
+			background_top_edge: TextEdge::Metric(TextMetric::Ascender),
+			background_bottom_edge: TextEdge::Metric(TextMetric::Descender),
+			baseline: 0.,
 			line_height: 1.65,
 			paint: Paint::Styled(Condition::Body, ColorField::Color),
 			background: None,

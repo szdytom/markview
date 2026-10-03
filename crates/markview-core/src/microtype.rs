@@ -448,10 +448,9 @@ pub(crate) fn cjk_punct(
 
 /// Insert the mixed CJK and Latin gap of CLReq 3.2.2.
 ///
-/// The blank belongs to the CJK cluster, on the side facing the Latin one, so
-/// that a line break between the two scripts simply drops it. No gap is
-/// inserted across a change of baseline shift, because a superscript or a
-/// subscript is already set apart from the text it follows.
+/// CJK prose also keeps this gap outside an inline code chip, regardless of
+/// its script. The blank belongs to the CJK cluster, so a line break drops it.
+/// Superscripts are already set apart and do not gain a gap.
 pub(crate) fn space_mixed_scripts(
 	clusters: &mut [Cluster],
 	text: &str,
@@ -459,17 +458,19 @@ pub(crate) fn space_mixed_scripts(
 	size: f32,
 ) {
 	let gap = size * MIXED_GAP;
-	let shifts = shifts(clusters, spans);
-	let mut prev: Option<(char, bool)> = None;
+	let styles = spacing_styles(clusters, spans);
 	for i in 0..clusters.len() {
 		let c = first_char(text, &clusters[i]);
-		let shifted = shifts[i];
+		let (shifted, code) = styles[i];
 		if is_han_kana(c) {
-			let left =
-				prev.is_some_and(|(c, s)| s == shifted && is_word_spaced(c));
-			let right = i + 1 < clusters.len()
-				&& shifts[i + 1] == shifted
-				&& is_word_spaced(first_char(text, &clusters[i + 1]));
+			let adjacent = |j: usize| {
+				let other = first_char(text, &clusters[j]);
+				styles[j].0 == shifted
+					&& (is_word_spaced(other)
+						|| (!code && styles[j].1 && !other.is_whitespace()))
+			};
+			let left = i > 0 && adjacent(i - 1);
+			let right = i + 1 < clusters.len() && adjacent(i + 1);
 			let cluster = &mut clusters[i];
 			cluster.mixed = (left, right);
 			if left {
@@ -482,14 +483,12 @@ pub(crate) fn space_mixed_scripts(
 				cluster.width += gap;
 			}
 		}
-		prev = Some((c, shifted));
 	}
 }
 
-/// Whether each cluster is set as a superscript, found by walking the spans
-/// alongside the clusters, both of which are in reading order.
-fn shifts(clusters: &[Cluster], spans: &[Span]) -> Vec<bool> {
-	let mut shifted = Vec::with_capacity(clusters.len());
+/// Superscript and inline-code status, found by walking spans in reading order.
+fn spacing_styles(clusters: &[Cluster], spans: &[Span]) -> Vec<(bool, bool)> {
+	let mut styles = Vec::with_capacity(clusters.len());
 	let mut cursor = 0;
 	for cluster in clusters {
 		while cursor < spans.len()
@@ -497,11 +496,16 @@ fn shifts(clusters: &[Cluster], spans: &[Span]) -> Vec<bool> {
 		{
 			cursor += 1;
 		}
-		shifted.push(spans.get(cursor).is_some_and(|span| {
-			span.range.contains(&cluster.range.start) && span.style.superscript
-		}));
+		styles.push(
+			spans
+				.get(cursor)
+				.filter(|span| span.range.contains(&cluster.range.start))
+				.map_or((false, false), |span| {
+					(span.style.superscript, span.style.code)
+				}),
+		);
 	}
-	shifted
+	styles
 }
 
 /// Give back the blank half of a CJK punctuation mark at a line edge, per CLReq
@@ -664,6 +668,8 @@ mod tests {
 			mixed: (false, false),
 			ascent: 0.0,
 			descent: 0.0,
+			background: (0., 0.),
+			baseline_shift: 0.,
 			glyphs: Vec::new(),
 		}
 	}

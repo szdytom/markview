@@ -1,6 +1,57 @@
 use super::*;
 
 #[test]
+fn text_edges_validate_inherit_and_invalidate_layout() {
+	for declaration in [
+		"top_edge='descender'",
+		"bottom_edge='cap-height'",
+		"top_edge='auto'",
+		"top_edge=nan",
+		"background_bottom_edge=inf",
+		"baseline=nan",
+	] {
+		assert!(
+			Stylesheet::parse(&format!(
+				"format_version=2\nversion=1\n[[rule]]\nwhen=['body']\n{declaration}"
+			))
+			.is_err(),
+			"{declaration}"
+		);
+	}
+	let mut sheet = (*Stylesheet::bundled(false)).clone();
+	for declaration in [
+		"top_edge='bounds'",
+		"bottom_edge=-0.2",
+		"background_top_edge='x-height'",
+		"background_bottom_edge='baseline'",
+		"baseline=-0.04",
+	] {
+		let previous = sheet.layout_key();
+		sheet.merge(
+			&Stylesheet::parse(&format!(
+				"format_version=2\nversion=1\n[[rule]]\nwhen=['body']\n{declaration}"
+			))
+			.unwrap(),
+		);
+		assert_ne!(sheet.layout_key(), previous, "{declaration}");
+	}
+	let body = sheet.text(&TextAppearance::default(), Condition::Body);
+	let paragraph = sheet.text(&body, Condition::P);
+	let inline = sheet.inline(&paragraph, &TextStyle::default());
+	assert_eq!(inline.top_edge, TextEdge::Metric(TextMetric::Bounds));
+	assert_eq!(inline.bottom_edge, TextEdge::Em(-0.2));
+	assert_eq!(
+		inline.background_top_edge,
+		TextEdge::Metric(TextMetric::XHeight)
+	);
+	assert_eq!(
+		inline.background_bottom_edge,
+		TextEdge::Metric(TextMetric::Baseline)
+	);
+	assert_eq!(inline.baseline, -0.04);
+}
+
+#[test]
 fn border_collapse_validates_values_and_table_scope() {
 	for (conditions, value, valid) in [
 		("'table'", "collapse", true),

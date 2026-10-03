@@ -2473,6 +2473,7 @@ dependencies = [
  "regex",
  "regex-automata",
  "serde",
+ "skrifa 0.42.1",
  "swash",
  "syntect",
  "tempfile",

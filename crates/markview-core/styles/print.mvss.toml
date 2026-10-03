@@ -1,6 +1,6 @@
 format_version = 2
 targets = ["pdf"]
-version = 3
+version = 4
 
 [meta]
 name = "Print"
@@ -114,6 +114,7 @@ size = 0.7
 when = ["code"]
 font = [{ family = "monospace" }, { family = "monospace[cjk]", min_weight = 500 }, { family = "monospace[cjk]" }, { family = "emoji", weight = 400 }]
 size = 0.9
+baseline = -0.08
 padding = [0.15, 0.3, 0.15, 0.3]
 background = "#F0F0F0"
 

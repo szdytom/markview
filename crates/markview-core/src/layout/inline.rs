@@ -435,12 +435,16 @@ impl BlockContext<'_> {
 				c.width = w;
 				c.ascent = h;
 				c.descent = 0.;
+				c.background = (h, 0.);
+				c.baseline_shift = 0.;
 				c.glyphs.clear();
 			}
 			if let Some(m) = p.math.get(&c.range.start) {
 				c.width = m.width;
 				c.ascent = m.ascent;
 				c.descent = m.descent;
+				c.background = (m.ascent, m.descent);
+				c.baseline_shift = 0.;
 				c.glyphs.clear();
 			}
 			if p.text.get(c.range.clone()) == Some("\u{ad}") {
@@ -454,16 +458,15 @@ impl BlockContext<'_> {
 		microtype::space_mixed_scripts(&mut clusters, &p.text, &p.spans, size);
 		microtype::compress_line_edges(&mut clusters, &p.text, size, typo.cjk);
 		// The chip's horizontal padding widens the run and insets its glyphs,
-		// and its vertical padding makes every cluster of the run as tall as
-		// the chip, so the background stays one rectangle.
+		// while its vertical padding only expands the decoration.
 		let chip = chip_padding(&clusters, &p.spans, &p.padding);
 		for (c, pad) in clusters.iter_mut().zip(chip) {
 			if pad == [0.0; 4] {
 				continue;
 			}
 			c.width += pad[1] + pad[3];
-			c.ascent += pad[0];
-			c.descent += pad[2];
+			c.background.0 += pad[0];
+			c.background.1 += pad[2];
 			for glyph in &mut c.glyphs {
 				glyph.x += pad[3];
 			}

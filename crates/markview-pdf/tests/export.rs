@@ -524,6 +524,126 @@ fn text_runs(exported: &Exported, page: u32) -> Vec<([f32; 3], f32)> {
 }
 
 #[test]
+fn compact_text_rows_export_once_across_page_breaks() {
+	let geometry = PageGeometry {
+		width_pt: 200.0,
+		height_pt: 70.0,
+		margin_pt: [0.0; 4],
+	};
+	let mut sheet = (*print()).clone();
+	sheet.page.footer_center = Some(String::new());
+	sheet.merge(&Stylesheet::parse("format_version=2\nversion=1\n[[rule]]\nwhen=['p']\nline_height=1.0\n[[rule]]\nwhen=['code_block']\nline_height=1.0").unwrap());
+	let lines: Vec<_> = ('a'..='l').map(|c| c.to_string()).collect();
+	for source in [
+		lines.join("  \n"),
+		format!("```\n{}\n```", lines.join("\n")),
+	] {
+		let exported = export_at(
+			&source,
+			Arc::new(sheet.clone()),
+			false,
+			Metadata::default(),
+			geometry,
+		);
+		assert!(exported.pages > 1);
+		let all: String = (1..=exported.pages as u32)
+			.map(|page| {
+				without_whitespace(&exported.pdf.extract_text(&[page]).unwrap())
+			})
+			.collect();
+		assert_eq!(all, "abcdefghijkl", "{source}");
+	}
+}
+
+#[test]
+fn inline_background_padding_keeps_text_and_decorations_on_their_page() {
+	let geometry = PageGeometry {
+		width_pt: 200.0,
+		height_pt: 70.0,
+		margin_pt: [0.0; 4],
+	};
+	let render = |source: &str, padding| {
+		let mut sheet = (*print()).clone();
+		sheet.page.footer_center = Some(String::new());
+		sheet.merge(&Stylesheet::parse(&format!("format_version=2\nversion=1\n[[rule]]\nwhen=['code']\npadding=[{padding},0,{padding},0]\nbackground='#FF0000'")).unwrap());
+		export_at(
+			source,
+			Arc::new(sheet),
+			false,
+			Metadata::default(),
+			geometry,
+		)
+	};
+	// The chip sits on either side of the first page break.
+	for (source, code) in [
+		("a  \nb  \n`c`  \nd  \ne  \nf  \ng  \nh", 'c'),
+		("a  \nb  \nc  \n`d`  \ne  \nf  \ng  \nh", 'd'),
+	] {
+		let plain = render(source, 0);
+		let padded = render(source, 2);
+		let all: String = (1..=padded.pages as u32)
+			.map(|page| {
+				without_whitespace(&padded.pdf.extract_text(&[page]).unwrap())
+			})
+			.collect();
+		assert_eq!(all, "abcdefgh");
+		assert!(plain.pages > 1);
+		assert_eq!(padded.pages, plain.pages);
+		for (number, id) in padded.pdf.get_pages() {
+			let text = without_whitespace(
+				&padded.pdf.extract_text(&[number]).unwrap(),
+			);
+			assert_eq!(
+				text,
+				without_whitespace(&plain.pdf.extract_text(&[number]).unwrap())
+			);
+			let content =
+				String::from_utf8_lossy(&padded.pdf.get_page_content(id))
+					.into_owned();
+			assert_eq!(
+				content.matches("1 0 0 rg").count(),
+				usize::from(text.contains(code)),
+				"page {number}: {content}"
+			);
+		}
+	}
+}
+
+#[test]
+fn inline_code_edges_and_baseline_keep_selectable_pdf_text() {
+	let source = "A `中文API gyp` [link](https://example.com)";
+	let render = |baseline| {
+		let mut sheet = (*print()).clone();
+		sheet.set_cjk_type(CjkType::Sc);
+		sheet.merge(&Stylesheet::parse(&format!("format_version=2\nversion=1\n[[rule]]\nwhen=['body']\ntop_edge=2\nbottom_edge=-2\n[[rule]]\nwhen=['code']\ncolor='#FF0000'\nbackground_top_edge='bounds'\nbackground_bottom_edge='bounds'\nbaseline={baseline}")).unwrap());
+		export(source, Arc::new(sheet), true)
+	};
+	let zero = render(0.);
+	let raised = render(-0.08);
+	assert!(
+		without_whitespace(&raised.pdf.extract_text(&[1]).unwrap())
+			.contains("中文APIgyp")
+	);
+	let red = |exported: &Exported| {
+		text_runs(exported, 1)
+			.into_iter()
+			.filter(|(color, _)| *color == [1., 0., 0.])
+			.map(|(_, y)| y)
+			.collect::<Vec<_>>()
+	};
+	let a = red(&zero);
+	let b = red(&raised);
+	assert!(!a.is_empty());
+	assert_eq!(a.len(), b.len());
+	for (a, b) in a.into_iter().zip(b) {
+		assert!(
+			(b - a + 0.08 * 18. * 0.9 * PT_PER_PX).abs() < 0.01,
+			"{a} {b}"
+		);
+	}
+}
+
+#[test]
 #[ignore = "requires Poppler's pdftotext"]
 fn code_blocks_keep_text_and_selection_bounds() {
 	for language in ["", "rust"] {

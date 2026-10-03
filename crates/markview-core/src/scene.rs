@@ -1,5 +1,8 @@
 //! Immutable drawing and hit-test geometry shared by layout and rendering.
-use crate::{math::MathBox, text::TextNode};
+use crate::{
+	math::MathBox,
+	text::{TextCluster, TextNode},
+};
 use parley::FontData;
 pub use ratex_types::PathCommand;
 use std::{collections::HashMap, ops::Range, sync::Arc};
@@ -265,6 +268,8 @@ pub struct BlockLayout {
 	pub page_constraints: Vec<PageConstraint>,
 	pub text: Vec<TextNode>,
 	pub draws: Vec<Draw>,
+	/// Inline decoration draw indices and their owning text rows, in draw order.
+	pub inline_decorations: Vec<(usize, Range<f32>)>,
 	pub height: f32,
 	pub width: f32,
 	pub overflow: Vec<Overflow>,
@@ -646,6 +651,27 @@ impl Viewport {
 	}
 }
 impl BlockLayout {
+	/// Draw spans owned by each text cluster, with its node index and row geometry.
+	pub fn text_draw_spans(
+		&self,
+	) -> impl Iterator<Item = (Range<usize>, usize, &TextCluster)> {
+		let mut clusters: Vec<_> = self
+			.text
+			.iter()
+			.enumerate()
+			.flat_map(|(node, text)| {
+				text.clusters.iter().map(move |c| (node, c))
+			})
+			.collect();
+		clusters.sort_by_key(|(_, c)| c.command);
+		let mut end = self.draws.len();
+		clusters.into_iter().rev().map(move |(node, cluster)| {
+			let span = cluster.command..end;
+			end = cluster.command;
+			(span, node, cluster)
+		})
+	}
+
 	/// Shared overflow transform for painting, link hits and text selection.
 	pub fn command_view(
 		&self,

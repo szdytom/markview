@@ -102,12 +102,14 @@ impl BlockContext<'_> {
 				style: TextStyle::default(),
 			}];
 			let clusters = self.shaper.shape(&line, &spans, size, false);
-			let line_ascent =
-				clusters.iter().map(|c| c.ascent).fold(size * 0.8, f32::max);
-			let line_descent = clusters
-				.iter()
-				.map(|c| c.descent)
-				.fold(size * 0.2, f32::max);
+			let (line_ascent, line_descent) = if clusters.is_empty() {
+				self.shaper.empty_metrics(size)
+			} else {
+				(
+					clusters.iter().map(|c| c.ascent).fold(0., f32::max),
+					clusters.iter().map(|c| c.descent).fold(0., f32::max),
+				)
+			};
 			let line_height = (size * self.shaper.appearance.line_height)
 				.max(line_ascent + line_descent);
 			let baseline_at = |top: f32| {

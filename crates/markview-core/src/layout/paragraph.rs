@@ -256,12 +256,14 @@ impl BlockContext<'_> {
 				line.hyphen = false;
 				lines.clear();
 			}
-			let ascent =
-				clusters.iter().map(|c| c.ascent).fold(size * 0.8, f32::max);
-			let descent = clusters
-				.iter()
-				.map(|c| c.descent)
-				.fold(size * 0.2, f32::max);
+			let (ascent, descent) = if clusters.is_empty() {
+				self.shaper.empty_metrics(size)
+			} else {
+				(
+					clusters.iter().map(|c| c.ascent).fold(0., f32::max),
+					clusters.iter().map(|c| c.descent).fold(0., f32::max),
+				)
+			};
 			let mut height = (size * self.shaper.appearance.line_height)
 				.max(ascent + descent + size * 0.18);
 			let baseline =
@@ -301,7 +303,12 @@ impl BlockContext<'_> {
 			// rectangle. Pushing one per cluster made the export emit a
 			// rectangle per glyph and, because a rectangle interrupts a run,
 			// a text object per glyph as well.
-			let mut background: Option<(usize, Paint, Rect)> = None;
+			let mut background: Option<(
+				usize,
+				Paint,
+				Option<std::ops::Range<usize>>,
+				Rect,
+			)> = None;
 			for (c, fit) in clusters.into_iter().zip(fits) {
 				let range = p.reading_range(c.range.clone());
 				// A footnote reference registers the anchor its number returns
@@ -415,11 +422,9 @@ impl BlockContext<'_> {
 					});
 				}
 
-				let style = p
-					.spans
-					.iter()
-					.find(|s| s.range.contains(&c.range.start))
-					.map(|s| &s.style);
+				let span =
+					p.spans.iter().find(|s| s.range.contains(&c.range.start));
+				let style = span.map(|s| &s.style);
 				// A lone reference carries its link in the style; every number
 				// of a merged group shares the group's style, so it resolves
 				// through `notes` instead.
@@ -457,29 +462,36 @@ impl BlockContext<'_> {
 				if let Some(paint) = appearance.background {
 					let rect = Rect {
 						x: cursor,
-						y: baseline - c.ascent - 1.0,
+						y: baseline - c.background.0,
 						w: advance,
-						h: c.ascent + c.descent + 2.0,
+						h: (c.background.0 + c.background.1).max(0.),
 					};
-					// Clusters of one run share their metrics, so the boxes are
-					// the same height; a run whose boxes differ keeps one
-					// rectangle per cluster rather than growing the union.
+					// A fragment owns one background even when font fallback
+					// gives its clusters different vertical edges.
+					let fragment = span.map(|s| s.range.clone());
 					let joins = background.as_ref().is_some_and(
-						|(_, previous, span)| {
+						|(_, previous, previous_fragment, span)| {
 							*previous == paint
-								&& (span.y - rect.y).abs() < 0.01
-								&& (span.h - rect.h).abs() < 0.01
+								&& *previous_fragment == fragment
 								&& rect.x <= span.x + span.w + 0.01
 						},
 					);
 					match background.as_mut() {
-						Some((index, _, span)) if joins => {
+						Some((index, _, _, span)) if joins => {
+							let bottom = (span.y + span.h).max(rect.y + rect.h);
+							span.y = span.y.min(rect.y);
+							span.h = bottom - span.y;
 							span.w =
 								(rect.x + rect.w).max(span.x + span.w) - span.x;
 							out.draws[*index] = Draw::Rect(*span, paint);
 						}
 						_ => {
-							background = Some((out.draws.len(), paint, rect));
+							background =
+								Some((out.draws.len(), paint, fragment, rect));
+							out.inline_decorations.push((
+								out.draws.len(),
+								y_cursor..y_cursor + height,
+							));
 							out.draws.push(Draw::Rect(rect, paint));
 						}
 					}
@@ -503,13 +515,18 @@ impl BlockContext<'_> {
 					}
 				}
 				for decoration in &appearance.decoration {
+					out.inline_decorations
+						.push((out.draws.len(), y_cursor..y_cursor + height));
 					out.draws.push(Draw::Rect(
 						Rect {
 							x: cursor,
 							y: if *decoration == Decoration::Strike {
-								baseline - size * 0.3
+								baseline + c.baseline_shift
+									- size * appearance.size * 0.3
 							} else {
-								baseline + size * 0.12
+								baseline
+									+ c.baseline_shift + size
+									* appearance.size * 0.12
 							},
 							w: advance,
 							h: 1.0,
@@ -587,6 +604,12 @@ impl BlockContext<'_> {
 					&mut decoration,
 				);
 				let offset = out.draws.len();
+				out.inline_decorations.extend(
+					decoration
+						.inline_decorations
+						.into_iter()
+						.map(|(command, row)| (command + offset, row)),
+				);
 				for mut node in decoration.text {
 					node.separator = "\n";
 					for cluster in &mut node.clusters {

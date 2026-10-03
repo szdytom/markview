@@ -405,8 +405,25 @@ fn validate_numbers(name: &str, rule: &Rule) -> Result<()> {
 			bail!("rule [{name}].{field}: expected finite nonnegative values");
 		}
 	}
-	if rule.letter_spacing.is_some_and(|v| !v.is_finite()) {
-		bail!("rule [{name}].letter_spacing: expected a finite number");
+	for (field, value) in [
+		("letter_spacing", rule.letter_spacing),
+		("baseline", rule.baseline),
+	] {
+		if value.is_some_and(|v| !v.is_finite()) {
+			bail!("rule [{name}].{field}: expected a finite number");
+		}
+	}
+	for (field, value, top) in [
+		("top_edge", rule.top_edge, true),
+		("bottom_edge", rule.bottom_edge, false),
+		("background_top_edge", rule.background_top_edge, true),
+		("background_bottom_edge", rule.background_bottom_edge, false),
+	] {
+		if value.is_some_and(|v| !v.valid(top)) {
+			bail!(
+				"rule [{name}].{field}: expected a supported metric or finite number"
+			);
+		}
 	}
 	if rule.orphans == Some(0) || rule.widows == Some(0) {
 		bail!("rule [{name}]: orphans and widows must be positive integers");
@@ -455,6 +472,19 @@ fn validate_numbers(name: &str, rule: &Rule) -> Result<()> {
 	Ok(())
 }
 fn validate_field(conditions: ConditionSet, key: &str) -> Result<()> {
+	let requested = key;
+	let key = if matches!(
+		key,
+		"top_edge"
+			| "bottom_edge"
+			| "background_top_edge"
+			| "background_bottom_edge"
+			| "baseline"
+	) {
+		"font"
+	} else {
+		key
+	};
 	use Condition as K;
 	let has = |condition| conditions.contains(condition);
 	let allowed = if has(K::Scrollbar) {
@@ -572,7 +602,10 @@ fn validate_field(conditions: ConditionSet, key: &str) -> Result<()> {
 		}
 	};
 	if !allowed {
-		bail!("rule [{}].{key}: unsupported field", conditions.display());
+		bail!(
+			"rule [{}].{requested}: unsupported field",
+			conditions.display()
+		);
 	}
 	Ok(())
 }

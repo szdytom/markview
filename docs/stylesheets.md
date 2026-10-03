@@ -230,10 +230,41 @@ These properties work in both reader and export themes. They are resolved by the
 | `heading_marker = [width, height, gap]` | A rectangular decoration before `h1`–`h6`, in base-font-size units. Reserves text width and aligns with the first line; a tall marker also reserves height. Zero width or height disables it. |
 | `marker_color` | The heading marker's fill, using the usual hex color syntax. Omitted color is transparent. |
 | `letter_spacing` | Extra advance in em, inherited by text; finite negative values tighten tracking. Applied during shaping, so wrapping, selection and PDF text positions agree. |
+| `top_edge`, `bottom_edge` | The text's layout edges relative to its baseline. Defaults are `"cap-height"` and `"baseline"`. |
+| `background_top_edge`, `background_bottom_edge` | Independent inline background edges. Defaults are `"ascender"` and `"descender"`. |
+| `baseline` | Baseline shift in local em units; positive lowers text, negative raises it. Defaults to zero. |
 | `orphans`, `widows` | Positive line/band counts required on each side of a page break. The existing default is two. |
 | `keep_together` | Prefer keeping a block on one page. A block taller than the page is allowed to split. |
 | `wrap` | On `code_block`, override the destination's default line wrapping. |
 | `show` | On `code_block` + `label`, show or hide the language label. |
+
+### Text and background edges
+
+Text edges are inherited typography and apply to document text, code blocks and labels in both screen and PDF output. The top edge accepts `"ascender"`, `"cap-height"`, `"x-height"`, `"baseline"` or `"bounds"`; the bottom edge accepts `"baseline"`, `"descender"` or `"bounds"`. Either edge also accepts a finite number: a signed position above the baseline in units of the **actual text size**, including an inline size adjustment. For example, `top_edge = 0.8` and `bottom_edge = -0.2` place the edges 0.8em above and 0.2em below the baseline.
+
+`"bounds"` measures shaped glyph outlines, including variation coordinates and glyph offsets. Blank glyphs do not enlarge the measured bounds; fragments without measurable ink use the font's ascender/descender. Missing or invalid cap-height and x-height metrics use the ascender. Edges define layout geometry, not clipping: letters with accents or descenders can extend outside the conceptual frame. Inline math and images retain their own metrics.
+
+The same choices apply to the independent background edges. Each line fragment uses the union of its fonts' background edges, so Latin and CJK fallback faces share one continuous rectangle. Background edges and vertical code padding are decorations: they do not enlarge line height or selection rows. Horizontal code padding still participates in wrapping. Backgrounds have no implicit extra pixel margin; code padding is the only extra inset. Background color retains its existing non-inheritance behavior even though the edge settings inherit.
+
+CJK prose keeps the same quarter-em gap outside an adjacent inline code background whether the code contains Chinese, Latin or symbols. This gap is separate from the chip's padding, participates in justification, and disappears at a line break. Explicit whitespace already separates the runs and does not gain an extra gap.
+
+`baseline` shifts glyphs, their background and line decorations together and contributes to the text's layout edges. It is additive with superscript positioning and does not disable mixed-script spacing. A value of `-0.08` raises 16.2px text by 1.296px. Bundled reader and Print inline code use that offset, retain `size = 0.9`, and keep their existing padding.
+
+```toml
+[[rule]]
+when = ["body"]
+top_edge = "cap-height"
+bottom_edge = "baseline"
+
+[[rule]]
+when = ["code"]
+background_top_edge = "ascender"
+background_bottom_edge = "descender"
+baseline = -0.08
+padding = [0.15, 0.3, 0.15, 0.3]
+```
+
+These defaults replace the previous ascent/descent text layout frame without changing MVSS format version 2. Existing themes may therefore have different baselines, line heights and page breaks. Set `top_edge = "ascender"` and `bottom_edge = "descender"` on `body` to restore the earlier text-edge policy; override `baseline = 0.0` on `code` to retain a shared unshifted baseline. Vertical code padding no longer affects line height.
 
 `first_child` and `last_child` describe the immediate block's position among its siblings; on table cells they describe the row's position. They do not describe arbitrary descendants or individual characters. Position is replaced when entering another child container. A one-child container has both conditions. Add a block condition when targeting a particular element:
 

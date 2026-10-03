@@ -728,6 +728,44 @@ pub enum BorderCollapse {
 	Collapse,
 }
 
+/// A font metric or a signed position above the baseline, in local em units.
+#[derive(Clone, Copy, Debug, PartialEq, Deserialize)]
+#[serde(untagged)]
+pub enum TextEdge {
+	Metric(TextMetric),
+	Em(f32),
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum TextMetric {
+	Ascender,
+	CapHeight,
+	XHeight,
+	Baseline,
+	Descender,
+	Bounds,
+}
+
+impl TextEdge {
+	pub(crate) fn uses_bounds(self) -> bool {
+		self == Self::Metric(TextMetric::Bounds)
+	}
+
+	pub(crate) fn valid(self, top: bool) -> bool {
+		match self {
+			Self::Em(v) => v.is_finite(),
+			Self::Metric(TextMetric::Descender) => !top,
+			Self::Metric(
+				TextMetric::Ascender
+				| TextMetric::CapHeight
+				| TextMetric::XHeight,
+			) => top,
+			_ => true,
+		}
+	}
+}
+
 #[derive(Clone, Debug, Default, PartialEq, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Rule {
@@ -746,6 +784,12 @@ pub struct Rule {
 	pub font: Option<Vec<Font>>,
 	pub weight: Option<u16>,
 	pub size: Option<f32>,
+	pub top_edge: Option<TextEdge>,
+	pub bottom_edge: Option<TextEdge>,
+	pub background_top_edge: Option<TextEdge>,
+	pub background_bottom_edge: Option<TextEdge>,
+	/// Baseline shift in local em units; positive values lower the text.
+	pub baseline: Option<f32>,
 	pub decoration: Option<Vec<Decoration>>,
 	pub line_height: Option<f32>,
 	pub space_before: Option<f32>,
@@ -800,6 +844,11 @@ impl Rule {
 			|| self.font.is_some()
 			|| self.weight.is_some()
 			|| self.size.is_some()
+			|| self.top_edge.is_some()
+			|| self.bottom_edge.is_some()
+			|| self.background_top_edge.is_some()
+			|| self.background_bottom_edge.is_some()
+			|| self.baseline.is_some()
 			|| self.decoration.is_some()
 			|| self.line_height.is_some()
 			|| self.space_before.is_some()
@@ -833,6 +882,11 @@ impl Rule {
 			font,
 			weight,
 			size,
+			top_edge,
+			bottom_edge,
+			background_top_edge,
+			background_bottom_edge,
+			baseline,
 			decoration,
 			line_height,
 			space_before,
