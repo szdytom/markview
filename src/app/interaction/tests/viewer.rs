@@ -423,3 +423,21 @@ fn decoding_refreshes_the_viewer_dimensions_and_texture_version() {
 		assert_eq!(version, 2);
 	}
 }
+
+#[test]
+fn a_touchpad_stream_pans_nothing_while_the_viewer_is_open() {
+	let mut app = image_reader("![](a.png)", "a.png", true);
+	open(&mut app);
+	// A Direct Manipulation stream bypasses the wheel the viewer zooms by,
+	// so the pixel surfaces owe it nothing: the page behind the viewer
+	// holds still.
+	app.trackpad_scroll(0.0, -40.0, TouchPhase::Started, Inertia::Native);
+	app.trackpad_scroll(0.0, -60.0, TouchPhase::Moved, Inertia::Native);
+	assert_eq!(app.readers.session.scrolling.offset, 0.0);
+	// With the viewer gone, the page pans again.
+	app.key_pressed(&Key::Named(NamedKey::Escape));
+	assert!(app.interaction.viewer.is_none());
+	app.trackpad_scroll(0.0, -40.0, TouchPhase::Started, Inertia::Native);
+	app.trackpad_scroll(0.0, -60.0, TouchPhase::Moved, Inertia::Native);
+	assert!(app.readers.session.scrolling.offset > 0.0);
+}

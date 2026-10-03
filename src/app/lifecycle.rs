@@ -399,13 +399,15 @@ impl<P: super::SendEvent> App<P> {
 		// The window's hook offers its hit-tested touchpad pointers before
 		// the pump: with `MANUALUPDATE` the OS buffers the gesture until the
 		// pump's own `Update` consumes it, so the offer beats the input.
-		// While a pointer drag, a confirmation or an option list owns the
-		// input the offer is withheld, and the wheel paths keep serving the
-		// pad.
+		// While a pointer drag, a confirmation, an option list or the image
+		// viewer owns the input the offer is withheld, and the wheel paths
+		// keep serving the pad — under the viewer they zoom it, as the wheel
+		// always has.
 		let offered = dm::DirectManipulation::take_offered_pointers();
 		if !offered.is_empty()
 			&& !held && self.interaction.modal.is_none()
 			&& self.interaction.dropdown.is_none()
+			&& self.interaction.viewer.is_none()
 			&& let Some(viewport) = self.dm.as_mut()
 		{
 			for pointer in offered {

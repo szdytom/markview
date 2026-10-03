@@ -46,6 +46,7 @@ at the same level, without `[brackets]`.
 - Show the pointer cursor over custom window buttons, including Windows maximize-hover Snap Layouts, while preserving drag and resize cursors.
 - Pin the page while the OS inertia coasts over a touchpad contact that never left the pad, so a hand that rests on the glass holds the page still.
 - Count a touchpad pan's first and last frames in full: the travel the first content update already carries pans instead of grounding the gesture, and the final update reaches the seam even when it shares the release's batch.
+- Keep an open image viewer out of the touchpad pan: its contacts stay on the wheel paths, which zoom the viewer, instead of scrolling the page behind it.
 - Claim the touchpad pointer through the window's pointer hit-test, the only message that can begin a touchpad gesture; the touch events winit delivers never carry the pad's contacts.
 - Keep the viewport's own ready-reset cycle out of the fold, so releasing a pan parks the content without throwing the page back by everything the hand had travelled.
 - Invalidate MVaaC cached geometry when stylesheet selection changes font definitions, including when restoring the default theme.
