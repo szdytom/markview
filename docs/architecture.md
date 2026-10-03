@@ -220,12 +220,12 @@ macOS trackpad feeds: a status run speaks the gesture's start and end, each
 content transform's motion since the last frame becomes a delta in logical
 pixels, and the motion after the lift is the OS's own native inertia, so the
 reader synthesizes no coast of its own. While a scrollbar, selection or viewer
-drag owns the input the deltas drop, and focus loss, resize, reload or a tab
-switch abandons the viewport, so the OS cancels the gesture in flight. When the
-API is absent, initialization fails, or `MARKVIEW_NO_DM` is set, the reader
-silently keeps the wheel handling above; Chromium opts its windows into Direct
-Manipulation for the same reason, and its implementation is the prior art for
-the [choreography](https://codereview.chromium.org/1283913002).
+drag owns the input the deltas drop, and focus loss, resize, reload, a panel
+opening or a tab switch abandons the viewport, so the OS cancels the gesture
+in flight. When the API is absent, initialization fails, or `MARKVIEW_NO_DM`
+is set, the reader silently keeps the wheel handling above; Chromium opts its
+windows into Direct Manipulation for the same reason, and its implementation
+is the prior art for the [choreography](https://codereview.chromium.org/1283913002).
 
 Touch and native `PinchGesture` zoom are pending viewport-based zoom support;
 pinching does not currently change document settings. Generated mouse events

@@ -59,6 +59,9 @@ impl<P: super::SendEvent> App<P> {
 		}
 
 		self.cancel_gestures();
+		// A command replaces what a glide was moving, so the viewport's
+		// gesture is abandoned with the reader's own motion.
+		self.abandon_dm();
 		// Export-panel changes own their settings and never reflow the reader.
 		if self.export_command(action) {
 			return;

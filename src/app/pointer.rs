@@ -337,6 +337,9 @@ impl<P: super::SendEvent> App<P> {
 			dragged: false,
 		});
 		self.cancel_gestures();
+		// Opening the viewer replaces the view, so the viewport's gesture
+		// is abandoned with the reader's own motion.
+		self.abandon_dm();
 		self.interaction.reset_clicks();
 		self.sync_input();
 		self.refresh_hover();
