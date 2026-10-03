@@ -396,6 +396,22 @@ impl<P: super::SendEvent> App<P> {
 		// `held`: the deltas drop, and the stream they belonged to cannot
 		// resume when the owner lets go.
 		let held = self.pointer_owns_input();
+		// The window's hook offers its hit-tested touchpad pointers before
+		// the pump: with `MANUALUPDATE` the OS buffers the gesture until the
+		// pump's own `Update` consumes it, so the offer beats the input.
+		// While a pointer drag, a confirmation or an option list owns the
+		// input the offer is withheld, and the wheel paths keep serving the
+		// pad.
+		let offered = dm::DirectManipulation::take_offered_pointers();
+		if !offered.is_empty()
+			&& !held && self.interaction.modal.is_none()
+			&& self.interaction.dropdown.is_none()
+			&& let Some(viewport) = self.dm.as_mut()
+		{
+			for pointer in offered {
+				viewport.contact(pointer);
+			}
+		}
 		let pans = self.dm.as_mut().map_or_else(Vec::new, |dm| dm.pump(held));
 		if !pans.is_empty() {
 			let speed = self.scroll_speed();

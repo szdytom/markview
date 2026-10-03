@@ -19,17 +19,12 @@ use markview_selection::{PanFeed, PanPhase, PanStatus};
 /// batch belongs to the gesture it closed: its delta is fed before the
 /// release, so the last motion of a gesture is not orphaned after its
 /// `Ended`.
-///
-/// While `pinned`, the OS inertia is coasting the content over a contact
-/// that never left the pad: the deltas drop, but the transform still
-/// anchors, so a re-grip pans by the hand's motion alone.
 #[cfg_attr(not(windows), allow(dead_code))]
 pub(crate) fn fold(
 	feed: &mut PanFeed,
 	statuses: Vec<PanStatus>,
 	transform: Option<(f32, f32)>,
 	scale: f32,
-	pinned: bool,
 ) -> Vec<(TouchPhase, f32, f32)> {
 	let release = statuses
 		.iter()
@@ -45,33 +40,11 @@ pub(crate) fn fold(
 	if let Some((x, y)) = transform
 		&& let Some((dx, dy)) = feed.transform(x / scale, y / scale)
 	{
-		if pinned {
-			log::debug!("the pin drops a coast delta ({dx:.1},{dy:.1})");
-		} else {
-			log::debug!("pan delta ({dx:.1},{dy:.1})");
-			events.push((TouchPhase::Moved, dx, dy));
-		}
+		log::debug!("pan delta ({dx:.1},{dy:.1})");
+		events.push((TouchPhase::Moved, dx, dy));
 	}
 	events.extend(phases(feed, closing.iter().copied()));
 	events
-}
-
-/// Whether the page pins while the OS inertia engine coasts the content.
-///
-/// The engine can coast while a contact is still on the pad; such a coast is
-/// not the hand's motion, so the page holds still under it. The pin, once
-/// set, outlives the contact's lift — a dropped glide must not resurrect
-/// when the fingers leave — and it ends when the hand re-grips (`Running`)
-/// or the coast is spent (`Ready`).
-#[cfg_attr(not(windows), allow(dead_code))]
-fn pin(latched: bool, contact_held: bool, status: Option<PanStatus>) -> bool {
-	match status {
-		Some(PanStatus::Inertia) => latched || contact_held,
-		Some(PanStatus::Running | PanStatus::Ready | PanStatus::Disabled) => {
-			false
-		}
-		_ => latched,
-	}
 }
 
 /// The phases of a status run, in order.
@@ -110,7 +83,7 @@ fn touch(phase: PanPhase) -> TouchPhase {
 #[cfg(windows)]
 #[allow(unsafe_code)]
 mod win {
-	use super::{fold, hold, pin};
+	use super::{fold, hold};
 	use std::cell::{Cell, RefCell};
 	use std::rc::Rc;
 	use std::time::{Duration, Instant};
@@ -118,7 +91,9 @@ mod win {
 	use winit::raw_window_handle::{HasWindowHandle, RawWindowHandle};
 
 	use markview_selection::{PanFeed, PanStatus};
-	use windows::Win32::Foundation::{HWND, RECT};
+	use windows::Win32::Foundation::{
+		E_FAIL, HWND, LPARAM, LRESULT, RECT, WPARAM,
+	};
 	use windows::Win32::Graphics::DirectManipulation::{
 		DIRECTMANIPULATION_BUILDING,
 		DIRECTMANIPULATION_CONFIGURATION_INTERACTION,
@@ -137,8 +112,13 @@ mod win {
 	};
 	use windows::Win32::System::Com::{CLSCTX_INPROC_SERVER, CoCreateInstance};
 	use windows::Win32::UI::Input::Pointer::GetPointerType;
+	use windows::Win32::UI::Shell::{
+		DefSubclassProc, RemoveWindowSubclass, SetWindowSubclass,
+	};
 	use windows::Win32::UI::WindowsAndMessaging::{
-		POINTER_INPUT_TYPE, PT_TOUCHPAD,
+		DM_POINTERHITTEST, POINTER_INPUT_TYPE, PT_TOUCHPAD,
+		WM_POINTERCAPTURECHANGED, WM_POINTERDOWN, WM_POINTERUP,
+		WM_POINTERUPDATE,
 	};
 	use windows::core::{GUID, Ref, implement};
 
@@ -152,6 +132,48 @@ mod win {
 	/// The pump's period while a gesture or an offered contact may still
 	/// have news: one frame at the display's own rate.
 	const PUMP_PERIOD: Duration = Duration::from_millis(16);
+
+	/// The id the reader's pointer hook hangs under; hook ids are private to
+	/// a window, and one window owns one viewport.
+	const HOOK: usize = 1;
+
+	thread_local! {
+		/// The touchpad pointers the window's hook hit-tested, offered to
+		/// the viewport by the next tick.
+		static HIT_TESTS: RefCell<Vec<u32>> =
+			const { RefCell::new(Vec::new()) };
+	}
+
+	/// The window's pointer hook. Only `DM_POINTERHITTEST` can begin a
+	/// touchpad input sequence — Chromium's helper hangs off the same
+	/// message — and winit never surfaces it, so the hook records the
+	/// pointer for the next tick to offer the viewport. Every message still
+	/// reaches the window's own procedure.
+	unsafe extern "system" fn hook(
+		hwnd: HWND,
+		msg: u32,
+		wparam: WPARAM,
+		lparam: LPARAM,
+		_id: usize,
+		_data: usize,
+	) -> LRESULT {
+		if msg == DM_POINTERHITTEST {
+			let id = (wparam.0 & 0xffff) as u32;
+			HIT_TESTS.with(|hit_tests| hit_tests.borrow_mut().push(id));
+			log::debug!("the window hit-tests pointer {id}");
+		} else if matches!(
+			msg,
+			WM_POINTERDOWN
+				| WM_POINTERUPDATE
+				| WM_POINTERUP
+				| WM_POINTERCAPTURECHANGED
+		) {
+			log::debug!("pointer message {msg:#06x} for {:#x}", wparam.0);
+		}
+		// SAFETY: the hook records and answers for nothing; the window's own
+		// procedure sees every message exactly as without it.
+		unsafe { DefSubclassProc(hwnd, msg, wparam, lparam) }
+	}
 
 	/// What the viewport callbacks recorded during one `Update`.
 	struct Inbox {
@@ -273,13 +295,6 @@ mod win {
 		/// When the last touchpad contact was offered; the pump stays awake
 		/// for it even before the viewport reports a gesture.
 		contact_at: Option<Instant>,
-		/// The touch contacts the viewport owns whose leaving it has not
-		/// seen yet.
-		contacts: Vec<u32>,
-		/// True while the page pins: the OS inertia coasts over a held
-		/// contact, and once set it outlives the lift until the hand
-		/// re-grips or the coast is spent.
-		pinned: bool,
 		/// True while the viewport has a gesture, contact or inertia in
 		/// flight.
 		live: bool,
@@ -362,6 +377,14 @@ mod win {
 					updates.Update(
 						None::<&IDirectManipulationFrameInfoProvider>,
 					)?;
+					// The hook is the input's doorway: without it no
+					// touchpad gesture can reach the viewport, so an
+					// assembly that cannot hang one is no assembly. It goes
+					// up last, so a failure above it leaves nothing
+					// recording.
+					if !SetWindowSubclass(hwnd, Some(hook), HOOK, 0).as_bool() {
+						return Err(windows::core::Error::from_hresult(E_FAIL));
+					}
 					Ok(Self {
 						manager,
 						updates,
@@ -369,8 +392,6 @@ mod win {
 						feed: PanFeed::default(),
 						inbox,
 						contact_at: None,
-						contacts: Vec::new(),
-						pinned: false,
 						live: false,
 						hwnd,
 					})
@@ -388,48 +409,36 @@ mod win {
 			}
 		}
 
-		/// Offers a touch contact to the viewport; `true` when it was a
-		/// precision touchpad's and Direct Manipulation owns it now.
-		pub(crate) fn contact(&mut self, pointer: u64) -> bool {
-			let id = pointer as u32;
+		/// Offers a touchpad pointer to the viewport: from here the OS's own
+		/// gesture recognition and inertia engine own the pan.
+		pub(crate) fn contact(&mut self, pointer: u32) {
 			let mut kind = POINTER_INPUT_TYPE::default();
 			// SAFETY: `GetPointerType` writes one `POINTER_INPUT_TYPE` for a
-			// live pointer id, and the event loop is still dispatching this
-			// contact's message.
-			if unsafe { GetPointerType(id, &mut kind) }.is_err()
+			// live pointer id, and the hook recorded it within the pointer's
+			// lifetime.
+			if unsafe { GetPointerType(pointer, &mut kind) }.is_err()
 				|| kind != PT_TOUCHPAD
 			{
-				return false;
+				return;
 			}
 			// SAFETY: `Enable` and `SetContact` configure the window's own
 			// viewport on this thread; `Enable` repeats harmlessly on one
 			// that was never disabled.
 			if unsafe { self.viewport.Enable() }.is_err()
-				|| unsafe { self.viewport.SetContact(id) }.is_err()
+				|| unsafe { self.viewport.SetContact(pointer) }.is_err()
 			{
-				return false;
+				log::debug!("the viewport could not take pointer {pointer}");
+				return;
 			}
-			self.contacts.push(id);
 			self.contact_at = Some(Instant::now());
-			log::debug!(
-				"the viewport holds contact {id} ({} now)",
-				self.contacts.len()
-			);
-			true
+			log::debug!("the viewport holds pointer {pointer}");
 		}
 
-		/// Retires a touch contact the viewport owned; `true` when it was
-		/// the viewport's. Its answer tells the touch path that the contact
-		/// was never a gesture of its own.
-		pub(crate) fn release(&mut self, pointer: u64) -> bool {
-			let id = pointer as u32;
-			let before = self.contacts.len();
-			self.contacts.retain(|&held| held != id);
-			if before == self.contacts.len() {
-				return false;
-			}
-			log::debug!("contact {id} left ({} remain)", self.contacts.len());
-			true
+		/// The touchpad pointers the window's hook hit-tested since the last
+		/// tick, whether or not a viewport waits for them.
+		pub(crate) fn take_offered_pointers() -> Vec<u32> {
+			HIT_TESTS
+				.with(|hit_tests| std::mem::take(&mut *hit_tests.borrow_mut()))
 		}
 
 		/// Cancels the viewport's gesture: the OS stops all its transforms
@@ -440,8 +449,6 @@ mod win {
 			let _ = self.feed.abandon();
 			self.live = false;
 			self.contact_at = None;
-			self.contacts.clear();
-			self.pinned = false;
 			// What the callbacks recorded for the dead gesture must not
 			// survive it: a later pump would fold it onto a fresh one.
 			self.inbox.statuses.borrow_mut().clear();
@@ -505,28 +512,10 @@ mod win {
 					self.contact_at = None;
 				}
 			}
-			let pinned = pin(
-				self.pinned,
-				!self.contacts.is_empty(),
-				statuses.last().copied(),
-			);
-			if pinned != self.pinned {
-				log::debug!(
-					"the page {}",
-					if pinned { "pins" } else { "releases the pin" }
-				);
-			}
-			self.pinned = pinned;
 			if held {
 				return hold(&mut self.feed);
 			}
-			fold(
-				&mut self.feed,
-				statuses,
-				transform,
-				self.inbox.scale.get(),
-				self.pinned,
-			)
+			fold(&mut self.feed, statuses, transform, self.inbox.scale.get())
 		}
 
 		/// The next pump, while a gesture or an offered contact may still
@@ -539,9 +528,11 @@ mod win {
 
 	impl Drop for DirectManipulation {
 		fn drop(&mut self) {
-			// SAFETY: the teardown stops and releases the viewport and the
-			// window's registration before the interfaces drop themselves.
+			// SAFETY: the teardown removes the window's hook and stops and
+			// releases the viewport and the window's registration before the
+			// interfaces drop themselves.
 			unsafe {
+				let _ = RemoveWindowSubclass(self.hwnd, Some(hook), HOOK);
 				let _ = self.viewport.Stop();
 				let _ = self.viewport.Abandon();
 				let _ = self.manager.Deactivate(self.hwnd);
@@ -563,11 +554,9 @@ impl DirectManipulation {
 	pub(crate) fn new(_: &winit::window::Window) -> Option<Self> {
 		None
 	}
-	pub(crate) fn contact(&mut self, _: u64) -> bool {
-		false
-	}
-	pub(crate) fn release(&mut self, _: u64) -> bool {
-		false
+	pub(crate) fn contact(&mut self, _: u32) {}
+	pub(crate) fn take_offered_pointers() -> Vec<u32> {
+		Vec::new()
 	}
 	pub(crate) fn resize(&mut self, _: u32, _: u32, _: f32) {}
 	pub(crate) fn abandon(&mut self) {}
@@ -597,8 +586,7 @@ mod tests {
 		let statuses = vec![PanStatus::Running];
 		// Physical pixels on a 2× display; the first transform names the
 		// origin, so it moves nothing however far it sits from zero.
-		let events =
-			fold(&mut feed, statuses, Some((200.0, -60.0)), 2.0, false);
+		let events = fold(&mut feed, statuses, Some((200.0, -60.0)), 2.0);
 		assert_eq!(events, vec![(TouchPhase::Started, 0.0, 0.0)]);
 	}
 
@@ -606,11 +594,10 @@ mod tests {
 	fn the_last_transform_of_a_closing_gesture_precedes_its_release() {
 		let mut feed = PanFeed::default();
 		let statuses = vec![PanStatus::Running];
-		fold(&mut feed, statuses, Some((200.0, -60.0)), 2.0, false);
+		fold(&mut feed, statuses, Some((200.0, -60.0)), 2.0);
 		// The lift and the final motion land in one pump.
 		let statuses = vec![PanStatus::Ready];
-		let events =
-			fold(&mut feed, statuses, Some((240.0, -80.0)), 2.0, false);
+		let events = fold(&mut feed, statuses, Some((240.0, -80.0)), 2.0);
 		assert_eq!(moved(&events), vec![(20.0, -10.0)]);
 		assert_eq!(
 			events.last(),
@@ -623,8 +610,8 @@ mod tests {
 	fn the_inertia_tail_keeps_arriving_as_plain_deltas() {
 		let mut feed = PanFeed::default();
 		let statuses = vec![PanStatus::Running, PanStatus::Inertia];
-		fold(&mut feed, statuses, Some((0.0, 0.0)), 1.0, false);
-		let events = fold(&mut feed, vec![], Some((30.0, 0.0)), 1.0, false);
+		fold(&mut feed, statuses, Some((0.0, 0.0)), 1.0);
+		let events = fold(&mut feed, vec![], Some((30.0, 0.0)), 1.0);
 		assert_eq!(moved(&events), vec![(30.0, 0.0)]);
 	}
 
@@ -632,15 +619,15 @@ mod tests {
 	fn a_reset_transform_between_gestures_moves_nothing() {
 		let mut feed = PanFeed::default();
 		let statuses = vec![PanStatus::Running];
-		fold(&mut feed, statuses, Some((300.0, 0.0)), 1.0, false);
+		fold(&mut feed, statuses, Some((300.0, 0.0)), 1.0);
 		let statuses = vec![PanStatus::Ready];
-		fold(&mut feed, statuses, Some((300.0, 0.0)), 1.0, false);
+		fold(&mut feed, statuses, Some((300.0, 0.0)), 1.0);
 		// The viewport resets its transform to the origin while idle; the
 		// next gesture's first transform still only names its origin.
 		let statuses = vec![PanStatus::Building];
-		let events = fold(&mut feed, statuses, Some((0.0, 0.0)), 1.0, false);
+		let events = fold(&mut feed, statuses, Some((0.0, 0.0)), 1.0);
 		assert_eq!(events, vec![(TouchPhase::Started, 0.0, 0.0)]);
-		let events = fold(&mut feed, vec![], Some((25.0, 10.0)), 1.0, false);
+		let events = fold(&mut feed, vec![], Some((25.0, 10.0)), 1.0);
 		assert_eq!(moved(&events), vec![(25.0, 10.0)]);
 	}
 
@@ -648,8 +635,8 @@ mod tests {
 	fn a_held_stream_is_silenced_and_cannot_resume_after_the_owner_lets_go() {
 		let mut feed = PanFeed::default();
 		let statuses = vec![PanStatus::Running];
-		fold(&mut feed, statuses, Some((0.0, 0.0)), 1.0, false);
-		let events = fold(&mut feed, vec![], Some((30.0, 0.0)), 1.0, false);
+		fold(&mut feed, statuses, Some((0.0, 0.0)), 1.0);
+		let events = fold(&mut feed, vec![], Some((30.0, 0.0)), 1.0);
 		assert_eq!(moved(&events), vec![(30.0, 0.0)]);
 		// A pointer drag takes the input: the gesture in flight ends once,
 		// and the delta the batch carried drops with it.
@@ -660,13 +647,13 @@ mod tests {
 		let events = hold(&mut feed);
 		assert!(events.is_empty());
 		// The owner lets go; the stream is still stale and pans nothing.
-		let events = fold(&mut feed, vec![], Some((50.0, 0.0)), 1.0, false);
+		let events = fold(&mut feed, vec![], Some((50.0, 0.0)), 1.0);
 		assert!(events.is_empty(), "a stale stream must not resume panning");
 		// A fresh gesture after the drag pans again.
 		let statuses = vec![PanStatus::Building];
-		let events = fold(&mut feed, statuses, Some((0.0, 0.0)), 1.0, false);
+		let events = fold(&mut feed, statuses, Some((0.0, 0.0)), 1.0);
 		assert_eq!(events, vec![(TouchPhase::Started, 0.0, 0.0)]);
-		let events = fold(&mut feed, vec![], Some((12.0, 0.0)), 1.0, false);
+		let events = fold(&mut feed, vec![], Some((12.0, 0.0)), 1.0);
 		assert_eq!(moved(&events), vec![(12.0, 0.0)]);
 	}
 
@@ -674,9 +661,9 @@ mod tests {
 	fn a_disabled_viewport_cancels_what_it_was_panning() {
 		let mut feed = PanFeed::default();
 		let statuses = vec![PanStatus::Running];
-		fold(&mut feed, statuses, Some((0.0, 0.0)), 1.0, false);
+		fold(&mut feed, statuses, Some((0.0, 0.0)), 1.0);
 		let statuses = vec![PanStatus::Disabled];
-		let events = fold(&mut feed, statuses, Some((10.0, 0.0)), 1.0, false);
+		let events = fold(&mut feed, statuses, Some((10.0, 0.0)), 1.0);
 		// The teardown still delivers the contact's last motion, then cancels.
 		assert_eq!(
 			events,
@@ -685,51 +672,5 @@ mod tests {
 				(TouchPhase::Cancelled, 0.0, 0.0)
 			]
 		);
-	}
-
-	#[test]
-	fn a_coast_over_a_held_contact_pins_the_page_and_keeps_the_anchor() {
-		let mut feed = PanFeed::default();
-		let statuses = vec![PanStatus::Running];
-		fold(&mut feed, statuses, Some((30.0, 0.0)), 1.0, false);
-		// The OS coasts the content while the contact is still on the pad;
-		// the deltas drop, but the anchor rides the coast.
-		let events = fold(
-			&mut feed,
-			vec![PanStatus::Inertia],
-			Some((90.0, 0.0)),
-			1.0,
-			true,
-		);
-		assert!(
-			moved(&events).is_empty(),
-			"a coast the hand never asked for pans nothing"
-		);
-		let events = fold(&mut feed, vec![], Some((120.0, 0.0)), 1.0, true);
-		assert!(moved(&events).is_empty());
-		// The hand re-grips: the page pans by the hand's motion alone, not
-		// by the distance the coast stole while pinned.
-		let events = fold(
-			&mut feed,
-			vec![PanStatus::Running],
-			Some((126.0, 0.0)),
-			1.0,
-			false,
-		);
-		assert_eq!(moved(&events), vec![(6.0, 0.0)]);
-	}
-
-	#[test]
-	fn the_pin_sets_on_a_held_coast_and_outlives_the_contact() {
-		assert!(pin(false, true, Some(PanStatus::Inertia)));
-		// The fingers leave mid-coast; the dropped glide must not resurrect.
-		assert!(pin(true, false, Some(PanStatus::Inertia)));
-		assert!(pin(true, false, None));
-		// A re-grip or a spent coast hands the page back.
-		assert!(!pin(true, false, Some(PanStatus::Running)));
-		assert!(!pin(true, false, Some(PanStatus::Ready)));
-		// Without a coast there is nothing to pin.
-		assert!(!pin(false, true, Some(PanStatus::Running)));
-		assert!(!pin(false, true, None));
 	}
 }

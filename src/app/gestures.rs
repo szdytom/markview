@@ -214,29 +214,6 @@ impl<P: super::SendEvent> App<P> {
 			touch.location.x as f32 / scale,
 			touch.location.y as f32 / scale,
 		);
-		// A precision touchpad's contact goes to the Direct Manipulation
-		// viewport once it is offered; the OS hands the contact over and the
-		// pump in `tick` turns its updates into pixel panning. The contact's
-		// point names where the gesture begins — the seam's surface capture
-		// reads it from the cursor, which no mouse move may have set. While
-		// a confirmation or an option list owns input the offer is withheld,
-		// so the wheel path keeps serving them as it does today.
-		if touch.phase == TouchPhase::Started
-			&& self.interaction.modal.is_none()
-			&& self.interaction.dropdown.is_none()
-		{
-			self.interaction.cursor = point;
-			if self.dm.as_mut().is_some_and(|dm| dm.contact(touch.id)) {
-				return None;
-			}
-		}
-		// A contact the viewport owns leaves it here, so the seam knows
-		// when the pad is empty and the OS inertia speaks for the hand.
-		if matches!(touch.phase, TouchPhase::Ended | TouchPhase::Cancelled)
-			&& self.dm.as_mut().is_some_and(|dm| dm.release(touch.id))
-		{
-			return None;
-		}
 		let id = (touch.device_id, touch.id);
 		if touch.phase != TouchPhase::Started
 			&& !self.gestures.gesture.contacts.contains_key(&id)
