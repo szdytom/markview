@@ -206,9 +206,32 @@ stopping at bounds or on new input, navigation, focus loss, resize and reload.
 macOS pixel events include the platform's native inertia, so Markview does
 not synthesize a second coast. Other pixel streams can coast when the backend
 supplies an `Ended` phase. Streams without an end phase retain their delivered
-motion; line events take the wheel path, where a Windows touchpad's fractional
-stream is a high-resolution device whose spacing gives the reader the momentum
-to ride.
+motion. Line events take the wheel path, where the momentum branch opens on
+the shape of the report rather than the device's name: a whole detent only
+ever eases, while fractional packets — what a high-resolution or free-spinning
+wheel mouse produces, and a Windows touchpad produces on the fallback path —
+carry a speed taken from their spacing that rides the silences between them.
+
+Every scrolling input reaches the page by one of four channels, told apart by
+what each carries. A discrete request — a key, an anchor jump, a scrollbar
+click — carries a destination and nothing of the motion. The wheel channel
+carries deltas alone: no statement of contact ever arrives, and a stream can
+batch up with silences inside it, its inertia flushes landing seconds after
+the lift. The pixel channel carries the motion itself — on macOS together
+with the platform's finished momentum and its phases, on Wayland as bare
+deltas with no end phase. The Direct Manipulation channel, Windows only,
+carries the fullest set: contact state, per-frame deltas and the OS's own
+inertia engine.
+
+| Input | Channel | The platform supplies | The reader does |
+| --- | --- | --- | --- |
+| macOS trackpad, Magic Mouse | Pixel | Deltas, phases, finished momentum | Carries the motion across as delivered |
+| macOS wheel mouse | Wheel | Whole detents | Eases each step |
+| Windows touchpad, Direct Manipulation | Direct Manipulation | Contact, deltas, inertia | Carries the motion across as delivered |
+| Windows touchpad, fallback | Wheel | Fractional packets, batched and late | Rides the packet momentum |
+| Windows wheel mouse | Wheel | Whole detents, or fractional packets | Eases, or rides the packet momentum |
+| Linux touchpad | Pixel | Deltas only, no end phase | Coasts on its own when the stream ends |
+| Linux wheel mouse | Wheel | Whole detents, or fractional packets | Eases, or rides the packet momentum |
 
 On Windows, a precision touchpad pans through Direct Manipulation when the
 platform offers it: the document window opts in once at creation, and the OS
@@ -219,7 +242,11 @@ channel, and what the viewport reports folds onto the same pixel-pan seam the
 macOS trackpad feeds: a status run speaks the gesture's start and end, each
 content transform's motion since the last frame becomes a delta in logical
 pixels, and the motion after the lift is the OS's own native inertia, so the
-reader synthesizes no coast of its own. While a scrollbar, selection or viewer
+reader synthesizes no coast of its own. The OS never touches the page itself —
+a self-drawn renderer has no child surface for it to push — so the motion is
+transcribed rather than delegated: the physics stays with the OS, and the
+reader's whole work is carrying the displacement across. While a scrollbar,
+selection or viewer
 drag owns the input the deltas drop, and focus loss, resize, reload, a panel
 opening or a tab switch abandons the viewport, so the OS cancels the gesture
 in flight. When the API is absent, initialization fails, or `MARKVIEW_NO_DM`
