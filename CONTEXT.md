@@ -43,6 +43,19 @@ _Avoid_: session, run
 One hand motion between boundaries: a reported start/end phase where the
 platform gives one, else a pause in the event flow.
 
+**Contact**:
+The finger's touch on the pad, from landing to lift. The wheel channel never
+names it, which is why a contact stop is indistinguishable from a lift there;
+Direct Manipulation is offered the contact itself, and an OS that takes it
+drives the pan while the finger stays down.
+
+**Native inertia**:
+The motion an operating system authors itself once the hand lifts: macOS's
+momentum phases on the pixel path, Direct Manipulation's inertia engine on
+Windows. It arrives as deltas on the stream the hand began, so the page
+follows the OS rather than coasting on speed it borrowed.
+_Avoid_: coast (the input has not stopped)
+
 ### The page's side
 
 **Received distance**:

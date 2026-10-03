@@ -24,6 +24,7 @@ at the same level, without `[brackets]`.
 ### Added
 
 - Pan a Windows precision touchpad through Direct Manipulation, so the finger's contact and the OS's own inertia move the page as one motion; `MARKVIEW_NO_DM` keeps the wheel paths. The pan yields to scrollbar, selection and viewer drags, and focus loss, resize, reload or a tab switch abandon it mid-glide.
+- Document the Direct Manipulation touchpad pan in the architecture document, and add the design's terms, **contact** and **native inertia**, to the scrolling glossary.
 - Add MVaaC instance-local MVSS registration and dynamic selection by ID, with cached parsing and reserved `bundled:` theme IDs.
 - Add configurable text and inline background edges with local-em baseline shifts, shared by reader and PDF typography.
 - Integrate tabs into platform-style window chrome, with a persisted System, macOS, Windows or Linux layout choice and native window movement and resizing.

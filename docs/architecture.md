@@ -203,11 +203,29 @@ Touch motion follows the finger without wheel-speed scaling. Pixel-based
 trackpad motion uses the configured scroll multiplier but bypasses wheel easing.
 Both inputs capture their scrolling surface and share exponential coasting,
 stopping at bounds or on new input, navigation, focus loss, resize and reload.
-macOS pixel events include native momentum, so Markview does not synthesize a
-second coast. Other pixel streams can coast when the backend supplies an `Ended`
-phase. Streams without an end phase retain their delivered motion; line events
-take the wheel path, where a Windows touchpad's fractional stream is a
-high-resolution device whose spacing gives the reader the momentum to ride.
+macOS pixel events include the platform's native inertia, so Markview does
+not synthesize a second coast. Other pixel streams can coast when the backend
+supplies an `Ended` phase. Streams without an end phase retain their delivered
+motion; line events take the wheel path, where a Windows touchpad's fractional
+stream is a high-resolution device whose spacing gives the reader the momentum
+to ride.
+
+On Windows, a precision touchpad pans through Direct Manipulation when the
+platform offers it: the document window opts in once at creation, and the OS
+then drives the offset itself, with its own gesture recognition and inertia
+engine, pumped from the frame deadline the reader already keeps. A touchpad
+contact offered to the viewport hands the pan to the OS, away from the wheel
+channel, and what the viewport reports folds onto the same pixel-pan seam the
+macOS trackpad feeds: a status run speaks the gesture's start and end, each
+content transform's motion since the last frame becomes a delta in logical
+pixels, and the motion after the lift is the OS's own native inertia, so the
+reader synthesizes no coast of its own. While a scrollbar, selection or viewer
+drag owns the input the deltas drop, and focus loss, resize, reload or a tab
+switch abandons the viewport, so the OS cancels the gesture in flight. When the
+API is absent, initialization fails, or `MARKVIEW_NO_DM` is set, the reader
+silently keeps the wheel handling above; Chromium opts its windows into Direct
+Manipulation for the same reason, and its implementation is the prior art for
+the [choreography](https://codereview.chromium.org/1283913002).
 
 Touch and native `PinchGesture` zoom are pending viewport-based zoom support;
 pinching does not currently change document settings. Generated mouse events
