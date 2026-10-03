@@ -11,10 +11,21 @@ fn a_pan_in_contact_follows_the_content_transform_exactly() {
 		"a transform outside a gesture is ignored"
 	);
 	assert_eq!(feed.status(PanStatus::Building), Some(PanPhase::Started));
-	// The first transform of a gesture names the origin and moves nothing.
-	assert_eq!(feed.transform(0.0, 0.0), None);
+	// The content rests at its origin between gestures, so the origin's own
+	// report carries no travel.
+	assert_eq!(feed.transform(0.0, 0.0), Some((0.0, 0.0)));
 	assert_eq!(feed.transform(12.0, 4.0), Some((12.0, 4.0)));
 	assert_eq!(feed.transform(15.0, 1.0), Some((3.0, -3.0)));
+}
+
+#[test]
+fn the_first_transform_of_a_gesture_carries_its_full_travel() {
+	let mut feed = PanFeed::default();
+	// The hand does not wait for the seam: the first pump of a contact may
+	// already name travel, and none of it may be swallowed as a baseline.
+	assert_eq!(feed.status(PanStatus::Running), Some(PanPhase::Started));
+	assert_eq!(feed.transform(20.0, 0.0), Some((20.0, 0.0)));
+	assert_eq!(feed.transform(25.0, 0.0), Some((5.0, 0.0)));
 }
 
 #[test]
@@ -47,9 +58,10 @@ fn a_gesture_interrupted_by_abandon_cancels_and_stays_quiet() {
 	assert_eq!(feed.status(PanStatus::Ready), None);
 	assert_eq!(feed.transform(5.0, 0.0), None);
 	assert_eq!(feed.abandon(), None);
-	// A new gesture starts clean, from a fresh origin.
+	// A new gesture starts clean, from the origin the reset parks the
+	// content at.
 	assert_eq!(feed.status(PanStatus::Running), Some(PanPhase::Started));
-	assert_eq!(feed.transform(0.0, 0.0), None);
+	assert_eq!(feed.transform(0.0, 0.0), Some((0.0, 0.0)));
 	assert_eq!(feed.transform(2.0, 0.0), Some((2.0, 0.0)));
 }
 

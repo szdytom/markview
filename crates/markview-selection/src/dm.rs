@@ -30,9 +30,10 @@ pub enum PanPhase {
 /// phases and per-frame deltas.
 ///
 /// The viewport leaving idle — `Building`, `Running` or `Inertia` — starts a
-/// gesture exactly once, and every content transform after the first yields
-/// the delta since the last one: the seam pans by exactly these during
-/// contact and through the OS inertia tail. The viewport returning to idle
+/// gesture exactly once, and every content transform yields the delta since
+/// the last one, the first against the origin the ready-reset parks the
+/// content at: the seam pans by exactly these during contact and through the
+/// OS inertia tail. The viewport returning to idle
 /// releases; after a release or cancellation nothing speaks again until a new
 /// gesture starts.
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
@@ -50,7 +51,10 @@ impl PanFeed {
 					return None;
 				}
 				self.active = true;
-				self.last = None;
+				// The ready-reset parks the content at its origin between
+				// gestures, so the first transform of a gesture is the
+				// travel since it began, not a baseline to swallow.
+				self.last = Some((0.0, 0.0));
 				Some(PanPhase::Started)
 			}
 			PanStatus::Ready => {
@@ -66,8 +70,9 @@ impl PanFeed {
 	}
 
 	/// Folds a content transform, returning the delta since the last one to
-	/// feed as a `Moved` pan. The first transform of a gesture names the
-	/// origin and moves nothing; a transform outside a gesture is ignored.
+	/// feed as a `Moved` pan. The content rests at its origin between
+	/// gestures, so the first transform of a gesture is the travel since it
+	/// began; a transform outside a gesture is ignored.
 	pub fn transform(&mut self, x: f32, y: f32) -> Option<(f32, f32)> {
 		if !self.active {
 			return None;

@@ -40,10 +40,12 @@ pub(crate) fn fold(
 	if let Some((x, y)) = transform
 		&& let Some((dx, dy)) = feed.transform(x / scale, y / scale)
 	{
+		// A settled hand reports the same transform again; its zero travel
+		// says nothing the seam needs to hear.
 		if dx != 0.0 || dy != 0.0 {
 			log::debug!("pan delta ({dx:.1},{dy:.1})");
+			events.push((TouchPhase::Moved, dx, dy));
 		}
-		events.push((TouchPhase::Moved, dx, dy));
 	}
 	events.extend(phases(feed, closing.iter().copied()));
 	events
@@ -181,6 +183,10 @@ mod win {
 	struct Inbox {
 		statuses: RefCell<Vec<PanStatus>>,
 		transform: Cell<Option<(f32, f32)>>,
+		/// Where the content last rested, kept across pumps: the pump
+		/// drains `transform` before the release's batch, so the
+		/// ready-reset reads this to learn whether it must park.
+		content: Cell<(f32, f32)>,
 		/// Display scale, physical transform to logical pixels.
 		scale: Cell<f32>,
 		/// True while the ready-reset's own updates arrive: the viewport
@@ -217,6 +223,9 @@ mod win {
 					DIRECTMANIPULATION_READY | DIRECTMANIPULATION_BUILDING
 				) {
 					self.inbox.resetting.set(false);
+					// The reset parks the content at the origin the next
+					// gesture reads its travel from.
+					self.inbox.content.set((0.0, 0.0));
 				}
 				return Ok(());
 			}
@@ -225,18 +234,17 @@ mod win {
 			if current != DIRECTMANIPULATION_READY {
 				return Ok(());
 			}
-			// Park the content back at its origin so the next gesture starts
-			// from identity. The updates this synthesizes are the viewport
-			// moving itself, so they are marked and dropped until the cycle
-			// closes.
-			if !self
-				.inbox
-				.transform
-				.get()
-				.is_some_and(|(x, y)| x != 0.0 || y != 0.0)
-			{
+			// Park the content back at its origin so the next gesture reads
+			// its travel from there. The decision reads the content's own
+			// record, which no pump drains, and the pending transform is
+			// left alone: the last motion of the gesture reaches the seam
+			// even when it shares this release's batch. The updates the
+			// reset synthesizes are the viewport moving itself, so they are
+			// marked and dropped until the cycle closes.
+			if self.inbox.content.get() == (0.0, 0.0) {
 				return Ok(());
 			}
+			self.inbox.resetting.set(true);
 			if let Some(viewport) = viewport.as_ref() {
 				// SAFETY: `GetViewportRect` reads the viewport's own rect and
 				// `ZoomToRect` moves only that viewport; zooming it onto its
@@ -253,8 +261,6 @@ mod win {
 					}
 				}
 			}
-			self.inbox.transform.set(None);
-			self.inbox.resetting.set(true);
 			Ok(())
 		}
 
@@ -281,7 +287,9 @@ mod win {
 			unsafe {
 				content.GetContentTransform(&mut matrix)?;
 			};
-			self.inbox.transform.set(Some((matrix[4], matrix[5])));
+			let position = (matrix[4], matrix[5]);
+			self.inbox.transform.set(Some(position));
+			self.inbox.content.set(position);
 			Ok(())
 		}
 	}
@@ -346,6 +354,7 @@ mod win {
 			let inbox = Rc::new(Inbox {
 				statuses: RefCell::new(Vec::new()),
 				transform: Cell::new(None),
+				content: Cell::new((0.0, 0.0)),
 				scale: Cell::new(window.scale_factor() as f32),
 				resetting: Cell::new(false),
 			});
@@ -470,6 +479,7 @@ mod win {
 			// survive it: a later pump would fold it onto a fresh one.
 			self.inbox.statuses.borrow_mut().clear();
 			self.inbox.transform.set(None);
+			self.inbox.content.set((0.0, 0.0));
 			self.inbox.resetting.set(false);
 			// SAFETY: `Disable` stops the window's own viewport on this
 			// thread; `Enable` from the next contact resumes it.
@@ -598,13 +608,23 @@ mod tests {
 	}
 
 	#[test]
-	fn a_pump_batch_starts_the_gesture_before_its_first_transform() {
+	fn a_batch_that_opens_the_gesture_pans_by_the_travel_it_carries() {
 		let mut feed = PanFeed::default();
 		let statuses = vec![PanStatus::Running];
-		// Physical pixels on a 2× display; the first transform names the
-		// origin, so it moves nothing however far it sits from zero.
+		// Physical pixels on a 2× display: the contact's first pump may
+		// already name travel, and the content rested at its origin, so it
+		// pans in full.
 		let events = fold(&mut feed, statuses, Some((200.0, -60.0)), 2.0);
-		assert_eq!(events, vec![(TouchPhase::Started, 0.0, 0.0)]);
+		assert_eq!(
+			events,
+			vec![
+				(TouchPhase::Started, 0.0, 0.0),
+				(TouchPhase::Moved, 100.0, -30.0),
+			]
+		);
+		// The origin's own report carries no travel.
+		let events = fold(&mut feed, vec![], Some((200.0, -60.0)), 2.0);
+		assert!(events.is_empty());
 	}
 
 	#[test]
