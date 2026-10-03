@@ -40,7 +40,9 @@ pub(crate) fn fold(
 	if let Some((x, y)) = transform
 		&& let Some((dx, dy)) = feed.transform(x / scale, y / scale)
 	{
-		log::debug!("pan delta ({dx:.1},{dy:.1})");
+		if dx != 0.0 || dy != 0.0 {
+			log::debug!("pan delta ({dx:.1},{dy:.1})");
+		}
 		events.push((TouchPhase::Moved, dx, dy));
 	}
 	events.extend(phases(feed, closing.iter().copied()));
@@ -198,14 +200,29 @@ mod win {
 			current: DIRECTMANIPULATION_STATUS,
 			_previous: DIRECTMANIPULATION_STATUS,
 		) -> windows::core::Result<()> {
+			// The ready-reset's own cycle — its `Running` and its closing
+			// `Ready` — is the viewport moving itself, not the hand, so
+			// nothing it says is recorded; otherwise its content jump back
+			// to the origin would fold as the gesture's last motion and
+			// throw the page back by everything the hand had travelled. A
+			// fresh gesture's `Building` closes the cycle too, so a hand
+			// faster than the reset is never swallowed.
+			if self.inbox.resetting.get() {
+				log::debug!(
+					"the reset moves the viewport ({:?}, unrecorded)",
+					status(current)
+				);
+				if matches!(
+					current,
+					DIRECTMANIPULATION_READY | DIRECTMANIPULATION_BUILDING
+				) {
+					self.inbox.resetting.set(false);
+				}
+				return Ok(());
+			}
 			log::debug!("viewport status {:?}", status(current));
 			self.inbox.statuses.borrow_mut().push(status(current));
 			if current != DIRECTMANIPULATION_READY {
-				self.inbox.resetting.set(false);
-				return Ok(());
-			}
-			if self.inbox.resetting.get() {
-				self.inbox.resetting.set(false);
 				return Ok(());
 			}
 			// Park the content back at its origin so the next gesture starts

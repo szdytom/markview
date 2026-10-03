@@ -46,6 +46,7 @@ at the same level, without `[brackets]`.
 - Show the pointer cursor over custom window buttons, including Windows maximize-hover Snap Layouts, while preserving drag and resize cursors.
 - Pin the page while the OS inertia coasts over a touchpad contact that never left the pad, so a hand that rests on the glass holds the page still.
 - Claim the touchpad pointer through the window's pointer hit-test, the only message that can begin a touchpad gesture; the touch events winit delivers never carry the pad's contacts.
+- Keep the viewport's own ready-reset cycle out of the fold, so releasing a pan parks the content without throwing the page back by everything the hand had travelled.
 - Invalidate MVaaC cached geometry when stylesheet selection changes font definitions, including when restoring the default theme.
 - Raise inline code beside Chinese text by 0.08em (#6), join mixed-font code backgrounds, and keep vertical background padding independent of line height.
 - Keep the same external spacing between Chinese prose and inline code containing Chinese or Latin text.
