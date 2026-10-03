@@ -229,6 +229,13 @@ impl<P: super::SendEvent> App<P> {
 				return;
 			}
 		}
+		// A contact the viewport owns leaves it here, so the seam knows
+		// when the pad is empty and the OS inertia speaks for the hand.
+		if matches!(touch.phase, TouchPhase::Ended | TouchPhase::Cancelled)
+			&& self.dm.as_mut().is_some_and(|dm| dm.release(touch.id))
+		{
+			return;
+		}
 		let id = (touch.device_id, touch.id);
 		if touch.phase != TouchPhase::Started
 			&& !self.gestures.gesture.contacts.contains_key(&id)
