@@ -492,7 +492,14 @@ impl Chrome<'_> {
 			let y = button.rect.y - 64.0;
 			let t = self.settings.lang();
 			let (title, detail) = if self.session.path.is_none() {
-				(t.empty_open_title(), t.empty_open_detail())
+				(
+					t.empty_open_title(),
+					if cfg!(target_os = "android") {
+						t.empty_open_detail_android()
+					} else {
+						t.empty_open_detail()
+					},
+				)
 			} else if self.error {
 				(t.empty_unreadable_title(), t.empty_unreadable_detail())
 			} else if self.session.layout_pending

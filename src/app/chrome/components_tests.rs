@@ -8,7 +8,12 @@ use crate::{
 #[test]
 fn every_form_action_is_reachable_without_clicking_through_the_clip() {
 	let mut ui = crate::test_support::shaper();
-	for (width, height) in [(500.0, 300.0), (820.0, 600.0), (1200.0, 800.0)] {
+	for (width, height) in [
+		(360.0, 740.0),
+		(500.0, 300.0),
+		(820.0, 600.0),
+		(1200.0, 800.0),
+	] {
 		for exporting in [false, true] {
 			let build = |ui: &mut TextShaper, scroll| {
 				if exporting {
@@ -370,7 +375,12 @@ fn a_list_whose_row_left_the_viewport_is_not_measured() {
 /// further than the panel, not the window behind it.
 #[test]
 fn an_open_option_list_stays_inside_the_panel() {
-	for (width, height) in [(500.0, 300.0), (820.0, 600.0), (1200.0, 800.0)] {
+	for (width, height) in [
+		(360.0, 740.0),
+		(500.0, 300.0),
+		(820.0, 600.0),
+		(1200.0, 800.0),
+	] {
 		let size = (width, height);
 		let window = panel_rect(width, height);
 		for (count, fillers) in [(1, 0), (3, 0), (6, 0), (10, 0), (10, 6)] {

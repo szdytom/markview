@@ -67,6 +67,11 @@ impl<P: super::SendEvent> App<P> {
 			return;
 		}
 		match action {
+			#[cfg(target_os = "android")]
+			Command::SearchOpen => {
+				self.open_new_search();
+				return;
+			}
 			Command::SearchClose => {
 				self.close_search();
 				return;
@@ -318,7 +323,7 @@ impl<P: super::SendEvent> App<P> {
 					})
 					.and_then(|dir| {
 						std::fs::create_dir_all(&dir)?;
-						open::that_detached(dir)?;
+						crate::platform::open_external(dir)?;
 						Ok(())
 					});
 				if let Err(e) = result {
@@ -412,8 +417,9 @@ impl<P: super::SendEvent> App<P> {
 			}
 			Command::OpenConfig => {
 				let result = self.preferences.ensure_file().and_then(|()| {
-					open::that_detached(self.preferences.path().unwrap())
-						.map_err(Into::into)
+					crate::platform::open_external(
+						self.preferences.path().unwrap(),
+					)
 				});
 				if let Err(error) = result {
 					self.preferences.settings_warning = Some(
@@ -462,13 +468,7 @@ impl<P: super::SendEvent> App<P> {
 				}
 				self.dialog_open = true;
 				let proxy = self.proxy.clone();
-				std::thread::spawn(move || {
-					let path = rfd::FileDialog::new()
-						.add_filter(
-							"Markdown",
-							&["md", "markdown", "mdown", "txt"],
-						)
-						.pick_file();
+				crate::platform::pick_document(move |path| {
 					proxy.send(Event::Open(path));
 				});
 				return;

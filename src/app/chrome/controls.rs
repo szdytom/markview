@@ -324,6 +324,12 @@ pub(super) fn toolbar_controls_at(
 	lang: Lang,
 ) -> Vec<Button> {
 	[
+		#[cfg(target_os = "android")]
+		(
+			icons::SEARCH,
+			lang.search_placeholder(),
+			Command::SearchOpen,
+		),
 		(icons::OPEN, lang.toolbar_open(), Command::Open),
 		(icons::EXPORT, lang.toolbar_export(), Command::Export),
 		(icons::SETTINGS, lang.toolbar_settings(), Command::Settings),

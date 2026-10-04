@@ -91,6 +91,7 @@ notice_remote_images = "有 {count} 张远程图片未加载。"
 # What the reading area says instead of a document.
 empty_blank_detail = "文件有变化时，内容会出现在这里。"
 empty_blank_title = "文档是空的"
+empty_open_detail_android = "选择 Markdown 文件或文件夹，或将文档分享给 Markview。"
 empty_open_detail = "打开一个 Markdown 文件，或把它拖进这个窗口。"
 empty_open_file = "打开文件…"
 empty_open_title = "打开一个 Markdown 文件"

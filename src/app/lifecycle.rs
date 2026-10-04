@@ -111,7 +111,9 @@ impl<P: super::SendEvent> ApplicationHandler<Event> for App<P> {
 			self.dm = dm;
 			self.reload_styles();
 			self.gpu()?;
-			if let Some(path) = self.args.path.clone() {
+			if self.readers.session.path.is_none()
+				&& let Some(path) = self.args.path.clone()
+			{
 				self.open(path);
 			}
 			self.redraw();
@@ -121,6 +123,13 @@ impl<P: super::SendEvent> ApplicationHandler<Event> for App<P> {
 			self.fatal = Some(format!("{e:#}"));
 			event_loop.exit();
 		}
+	}
+	#[cfg(target_os = "android")]
+	fn suspended(&mut self, _: &ActiveEventLoop) {
+		self.cancel_gestures();
+		self.flush_settings();
+		self.renderer.take();
+		self.window.take();
 	}
 	fn user_event(&mut self, event_loop: &ActiveEventLoop, event: Event) {
 		self.handle_user_event(event_loop, event);
@@ -156,6 +165,12 @@ impl<P: super::SendEvent> App<P> {
 		event: Event,
 	) {
 		match event {
+			#[cfg(target_os = "android")]
+			Event::AndroidBack => self.android_back(),
+			#[cfg(all(target_os = "android", debug_assertions))]
+			Event::AndroidInspect(send) => {
+				let _ = send.send(self.android_snapshot());
+			}
 			Event::SettingsLoaded(completion) => {
 				self.settings_loaded(*completion)
 			}
@@ -395,6 +410,13 @@ impl<P: super::SendEvent> App<P> {
 		#[cfg(target_os = "linux")]
 		if let Some(frame) = &mut self.touch_frame {
 			frame.dispatch();
+		}
+		let insets = self.insets();
+		if self.surface_insets != insets {
+			self.surface_insets = insets;
+			self.cancel_gestures();
+			self.request(false);
+			self.redraw();
 		}
 		self.input_tick(now);
 		self.search_tick();

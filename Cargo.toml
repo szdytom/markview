@@ -14,6 +14,9 @@ keywords = ["markdown", "reader", "desktop", "typography", "wgpu"]
 categories = ["text-processing", "gui"]
 publish = false
 
+[lib]
+crate-type = ["rlib", "cdylib"]
+
 [lints]
 workspace = true
 
@@ -126,7 +129,6 @@ percent-encoding = "2"
 base64 = "0.22"
 getrandom = { version = "0.4", features = ["std"] }
 toml_edit = { version = "0.25", features = ["serde"] }
-arboard.workspace = true
 markview-core = { path = "crates/markview-core", features = ["font-directories"] }
 markview-i18n = { path = "crates/markview-i18n" }
 markview-icon = { path = "crates/markview-icon" }
@@ -146,7 +148,6 @@ tar.workspace = true
 tokio.workspace = true
 zip.workspace = true
 zstd.workspace = true
-rfd.workspace = true
 sys-locale.workspace = true
 swash.workspace = true
 serde.workspace = true
@@ -157,6 +158,16 @@ tempfile.workspace = true
 
 [dev-dependencies]
 lopdf = { version = "0.45", default-features = false }
+
+[target.'cfg(not(target_os = "android"))'.dependencies]
+arboard.workspace = true
+rfd.workspace = true
+
+[target.'cfg(target_os = "android")'.dependencies]
+winit = { workspace = true, features = ["android-native-activity"] }
+wgpu = { workspace = true, features = ["vulkan", "gles"] }
+jni = "0.21"
+android_logger = "0.15"
 
 [target.'cfg(target_os = "windows")'.dependencies]
 wgpu = { workspace = true, features = ["dx12"] }

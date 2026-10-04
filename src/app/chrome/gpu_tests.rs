@@ -733,6 +733,7 @@ fn a_whole_document_png_export_stitches_its_tiles() -> Result<()> {
 	};
 	let geometry = crate::export::geometry(&settings)?;
 	let mut renderer = pollster::block_on(Renderer::new(None))?;
+	renderer.set_ui_origin((0.0, 48.0));
 	let mut sheet = markview_core::style::Stylesheet::bundled_print();
 	// The band crosses a tile boundary and the top text margin.
 	std::sync::Arc::make_mut(&mut sheet).page.header.rule_width = Some(810.0);

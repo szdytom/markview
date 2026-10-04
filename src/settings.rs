@@ -388,12 +388,18 @@ fn default_cjk_type() -> CjkType {
 	}
 }
 pub fn config_path() -> Option<PathBuf> {
+	#[cfg(target_os = "android")]
+	let base = crate::platform::android::data_path();
 	#[cfg(target_os = "windows")]
 	let base = std::env::var_os("APPDATA").map(PathBuf::from);
 	#[cfg(target_os = "macos")]
 	let base = std::env::var_os("HOME")
 		.map(|p| PathBuf::from(p).join("Library/Application Support"));
-	#[cfg(not(any(target_os = "windows", target_os = "macos")))]
+	#[cfg(not(any(
+		target_os = "windows",
+		target_os = "macos",
+		target_os = "android"
+	)))]
 	let base = std::env::var_os("XDG_CONFIG_HOME")
 		.map(PathBuf::from)
 		.filter(|p| p.is_absolute())

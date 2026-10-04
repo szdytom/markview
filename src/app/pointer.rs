@@ -467,7 +467,7 @@ impl<P: super::SendEvent> App<P> {
 	pub(super) fn launch(&mut self, target: &str) {
 		self.error = false;
 		let lang = self.preferences.values.lang();
-		self.status = match open::that_detached(target) {
+		self.status = match crate::platform::open_external(target) {
 			Ok(()) => lang.status_opened(target),
 			Err(error) => {
 				self.error = true;

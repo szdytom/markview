@@ -77,6 +77,10 @@ and so does one dropped on the app's icon.
 Per-platform details and the exact artifact list are in the
 [packaging guide](docs/packaging.md).
 
+The Android subproject **MV4A** ships as **Markview** and shares the desktop
+reader, settings, tabs, font manager and image cache. See its
+[build and emulator guide](android/README.md).
+
 ## Why Markview
 
 - **Fast at any size.** About 100 ms from launch to the first readable frame,

@@ -1,0 +1,125 @@
+# MV4A
+
+**MV4A — MarkView as a Android App** runs Markview's desktop application on
+Android 9 (API 28) and newer. It uses the existing Rust `App`, native typography
+and GPU renderer. Android supplies the activity, system file pickers, clipboard
+and URI permissions.
+
+The installed app is named **Markview**. **MV4A** is used only in documentation
+to distinguish this Android subproject from the Markview desktop app and MVaaC.
+
+## Screenshots
+
+Captured from the API 35 Pixel 6 x86_64 emulator during the integration suite.
+The screens use the shared desktop application UI with narrow-layout adaptation.
+
+| Reader | Shared settings |
+|---|---|
+| <img src="../docs/screenshots/android/reader.png" alt="Markview Android reader with CJK and an SVG image" width="250"> | <img src="../docs/screenshots/android/settings.png" alt="Markview Android shared settings and tabs" width="250"> |
+| Font manager | Dark styles |
+| <img src="../docs/screenshots/android/fonts.png" alt="Markview Android shared font catalogue" width="250"> | <img src="../docs/screenshots/android/dark-styles.png" alt="Markview Android shared style selection in dark mode" width="250"> |
+
+## What is shared
+
+| Capability | Existing implementation used by MV4A |
+|---|---|
+| Settings, styles and languages | `src/app/chrome`, `src/settings.rs`, `src/stylesheet.rs` |
+| Tabs and reading positions | `src/state`, `src/app/tab_strip.rs`, `src/app/tab_metrics.rs` |
+| Font catalogue, downloads and family selection | `src/fonts.rs`, `src/app/font_panel`, shared font configuration |
+| Images, SVG and Mermaid | `src/images`, including bounded decoding and the persistent HTTP cache |
+| Markdown, CJK and mathematics | `markview-core`, the desktop worker and layout pipeline |
+| Search, outline, gestures and image viewer | The desktop application controllers |
+| PDF and PNG export | `src/app/export.rs`, `markview-pdf`, the desktop renderer |
+
+The APK contains the root `markview` crate as `libmarkview.so`. The Android
+entry point is `src/app/android.rs`; OS calls live in `src/platform/android.rs`
+and `android/java`. This shares the application above `core`, including its
+state and UI. Narrow settings forms stack labels above controls; the desktop
+keeps its wider layout. System bars and the keyboard are excluded from the
+reader's content area.
+
+## Build and install
+
+Use a recent Rust toolchain, Python 3, JDK 17 or newer, and the Android SDK.
+The current script supports Linux and macOS build hosts. Install SDK command
+line tools, accept the SDK licences, then install:
+
+```sh
+sdkmanager 'platform-tools' 'platforms;android-35' 'build-tools;35.0.0' 'ndk;29.0.14206865'
+rustup target add aarch64-linux-android x86_64-linux-android
+export ANDROID_HOME=/path/to/android-sdk
+python3 android/build.py
+adb install -r target/android/markview-android-debug.apk
+```
+
+`ANDROID_NDK_HOME` overrides the NDK location. If `ANDROID_HOME` is absent, the
+script uses `.tools/android-sdk` in the repository. `--abi arm64-v8a` and
+`--abi x86_64` build one architecture; the default APK contains both. Native
+libraries and APK entries are aligned for 16 KiB pages.
+
+`--release` enables Rust optimizations, disables Android debugging and writes
+`target/android/markview-android-release.apk`. Both build variants are signed with a local development key in `target/android`.
+Distribution signing and store publication are separate steps. SDK files,
+keys, native libraries and APKs are excluded from Git.
+
+## Read and customize
+
+Tap **Open** to choose a file or a folder. Folder imports preserve relative
+images and Markdown links; `README.md` is preferred as the first document.
+Android's **Open with** and **Share** also send documents into Markview, and shared
+text opens as a Markdown document. Tabs, touch scrolling, outline, search,
+settings and styles use the same controls as the desktop reader. Back closes
+the open search or panel before returning the task to the background.
+
+Settings, downloaded fonts, styles and image cache live under the private app
+files directory in `markview/`. The font and style directory buttons open the
+system importer for TTF/OTF/TTC and `.mvss.toml` files respectively. Downloaded
+and imported fonts use the existing catalogue and font-family selectors.
+Export uses Android's system save dialog and passes the written result to an
+installed viewer. Repeated watched exports update the selected destination.
+
+Documents are imported copies. Reopen a file or folder to import external
+changes. Tabs survive rotations and activity suspension; process termination
+starts a new tab session, as with the desktop application. Folder imports copy
+the chosen tree, so choose the document's own folder rather than a large
+archive. Android limits access to sibling files when only one file is granted;
+use folder import for local images and neighbouring Markdown files.
+
+## Emulator verification
+
+Create an API 35 x86_64 AVD and boot it with a working GPU backend:
+
+```sh
+sdkmanager 'emulator' 'system-images;android-35;google_apis;x86_64'
+avdmanager create avd -n markview-api35 -k 'system-images;android-35;google_apis;x86_64' --device pixel_6
+emulator -avd markview-api35 -gpu host -no-snapshot
+python3 android/build.py --abi x86_64
+python3 android/test.py --serial emulator-5554
+```
+
+The test APK supplies external content URIs and exercises real touch and key
+input in the rendered reader. It checks multilingual Markdown, mathematics,
+Mermaid and image decoding, scrolling and cached tabs, shared settings, font
+import and catalogue pages, theme selection, search input, rotation, background/resume, durable
+preferences, the system picker, folder resources, read-only grants, PDF saving and GPU PNG export. Reports and screenshots are written to
+`artifacts/android/`.
+
+By default the test seeds a valid image-cache fixture from the repository logo
+so it remains repeatable without public Internet access. `--online` instead
+clears that entry and fetches the image from GitHub. HTTP cache fetching,
+validation and offline behaviour are also covered by the shared workspace
+tests. Tests run against a debug APK; the inspection JNI entry point is absent
+from release builds.
+
+For this development environment, emulator 36.1.8 with `-gpu host` boots and
+renders through the Vulkan backend. Emulator 37.2.12 failed before guest boot,
+and 36.1.8's SwiftShader backend failed during shader creation. These host
+emulator limitations do not change the APK's Vulkan/OpenGL fallback.
+
+Run the desktop regression and GPU export checks with:
+
+```sh
+cargo test --workspace --locked
+cargo test --lib a_whole_document_png_export_stitches_its_tiles -- --ignored
+cargo clippy --workspace --all-targets --locked -- -D warnings
+```

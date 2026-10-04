@@ -548,7 +548,7 @@ impl Row {
 			..Self::new("", vec![])
 		}
 	}
-	fn height(&self) -> f32 {
+	fn height(&self, stacked: bool) -> f32 {
 		if self.icon.is_some() {
 			72.0
 		} else if self.actions.is_empty()
@@ -558,7 +558,7 @@ impl Row {
 		{
 			26.0
 		} else {
-			ROW
+			ROW + if stacked { 26.0 } else { 0.0 }
 		}
 	}
 	pub fn section(mut self, title: &'static str) -> Self {
@@ -585,6 +585,7 @@ pub(in crate::app) struct Form {
 	body_start: usize,
 	body_end: usize,
 	rows: Vec<(Row, f32)>,
+	stacked: bool,
 	/// The control each list row opens its options from.
 	menus: Vec<(DropdownId, Rect)>,
 }
@@ -606,8 +607,9 @@ impl Form {
 			w: rect.w - INSET * 2.0,
 			h: rect.h - if spacious_header { 184.0 } else { 152.0 },
 		};
+		let stacked = viewport.w < 360.0;
 		let content = 16.0
-			+ rows.iter().map(Row::height).sum::<f32>()
+			+ rows.iter().map(|row| row.height(stacked)).sum::<f32>()
 			+ rows.iter().filter(|r| r.section.is_some()).count() as f32
 				* SECTION;
 		let max_scroll = (content - viewport.h).max(0.0);
@@ -642,14 +644,19 @@ impl Form {
 						x: viewport.x,
 						y,
 						w: viewport.w,
-						h: row.height(),
+						h: row.height(stacked),
 					},
 				);
 				link.kind = ButtonKind::Link;
 				buttons.push(link);
 			}
 			let right = viewport.x + viewport.w - 8.0;
-			let w = 232.0_f32.min(viewport.w * 0.56);
+			let w = if stacked {
+				viewport.w - 8.0
+			} else {
+				232.0_f32.min(viewport.w * 0.56)
+			};
+			let control_y = y + if stacked { 26.0 } else { 0.0 };
 			// A list row answers with one control the width of the whole
 			// control area, showing the option in force.
 			if let Some(menu) = &row.menu
@@ -657,7 +664,7 @@ impl Form {
 			{
 				let rect = Rect {
 					x: right - w,
-					y,
+					y: control_y,
 					w,
 					h: CONTROL,
 				};
@@ -682,7 +689,7 @@ impl Form {
 					Command::FocusInput(id),
 					Rect {
 						x: right - w,
-						y,
+						y: control_y,
 						w,
 						h: CONTROL,
 					},
@@ -701,7 +708,7 @@ impl Form {
 					entry.action,
 					Rect {
 						x,
-						y,
+						y: control_y,
 						w,
 						h: CONTROL,
 					},
@@ -709,7 +716,7 @@ impl Form {
 				b.active = entry.active;
 				buttons.push(b);
 			}
-			let height = row.height();
+			let height = row.height(stacked);
 			placed.push((row, y));
 			y += height;
 		}
@@ -726,6 +733,7 @@ impl Form {
 			body_start,
 			body_end,
 			rows: placed,
+			stacked,
 			menus,
 		}
 	}
@@ -898,7 +906,7 @@ impl Form {
 		}
 		let mut body = Vec::new();
 		for (row, y) in &self.rows {
-			if y + row.height().max(CONTROL) < self.viewport.y
+			if y + row.height(self.stacked).max(CONTROL) < self.viewport.y
 				|| y - SECTION > self.viewport.y + self.viewport.h
 			{
 				continue;
@@ -921,7 +929,11 @@ impl Form {
 					12.0,
 					Rect {
 						y: y - SECTION
-							+ if row.height() < ROW { 14.0 } else { 0.0 },
+							+ if row.height(self.stacked) < ROW {
+								14.0
+							} else {
+								0.0
+							},
 						h: 24.0,
 						..self.viewport
 					},
@@ -929,17 +941,21 @@ impl Form {
 				));
 				ui.appearance.weight = weight;
 			}
-			let control_width = 232.0_f32.min(self.viewport.w * 0.56);
+			let control_width = if self.stacked {
+				self.viewport.w - 8.0
+			} else {
+				232.0_f32.min(self.viewport.w * 0.56)
+			};
 			body.extend(label(
 				ui,
 				&row.label,
 				13.0,
 				Rect {
 					y: *y,
-					w: if row.actions.is_empty()
-						&& row.value.is_none()
-						&& row.menu.is_none()
-						&& row.input.is_none()
+					w: if self.stacked
+						|| row.actions.is_empty()
+							&& row.value.is_none()
+							&& row.menu.is_none() && row.input.is_none()
 					{
 						self.viewport.w
 					} else {
@@ -954,7 +970,7 @@ impl Form {
 				let r = Rect {
 					x: self.viewport.x + self.viewport.w - 8.0 - control_width
 						+ CONTROL,
-					y: *y,
+					y: *y + if self.stacked { 26.0 } else { 0.0 },
 					w: control_width - CONTROL * 2.0,
 					h: CONTROL,
 				};

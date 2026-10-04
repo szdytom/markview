@@ -63,12 +63,37 @@ impl Loop for ActiveEventLoop {
 }
 
 impl<P: super::SendEvent> App<P> {
+	#[cfg(target_os = "android")]
+	pub(super) fn android_back(&mut self) {
+		if self.readers.session.search.open {
+			self.close_search();
+		} else if self.interaction.panel_open()
+			|| self.interaction.viewer.is_some()
+			|| self.interaction.outline_open
+			|| self.interaction.modal.is_some()
+		{
+			self.key_pressed(&Key::Named(NamedKey::Escape));
+		} else if let Err(error) =
+			crate::platform::android::call_string("backgroundTask", "")
+		{
+			log::warn!("Android back: {error}");
+		}
+	}
+
 	pub(super) fn handle_window_event(
 		&mut self,
 		event_loop: &impl Loop,
 		_: WindowId,
 		event: WindowEvent,
 	) {
+		#[cfg(target_os = "android")]
+		if let WindowEvent::KeyboardInput { event, .. } = &event
+			&& event.state == ElementState::Pressed
+			&& event.logical_key == Key::Named(NamedKey::BrowserBack)
+		{
+			self.android_back();
+			return;
+		}
 		if self.frame_event(event_loop, &event) || self.viewer_event(&event) {
 			return;
 		}
@@ -185,8 +210,11 @@ impl<P: super::SendEvent> App<P> {
 			}
 			WindowEvent::CursorMoved { position, .. } => {
 				let scale = self.dimensions().2;
-				let point =
-					(position.x as f32 / scale, position.y as f32 / scale);
+				let insets = self.insets();
+				let point = (
+					position.x as f32 / scale - insets[0],
+					position.y as f32 / scale - insets[1],
+				);
 				// The macOS backend reports the pointer's position again
 				// before every wheel event, hand still or not. A report that
 				// moves nothing is not motion, and every handler below
@@ -765,11 +793,14 @@ impl<P: super::SendEvent> App<P> {
 		}
 		self.refresh_viewer();
 		let (width, height, scale) = self.dimensions();
+		let insets = self.insets();
 		let viewer = self.interaction.viewer.as_mut().unwrap();
 		match event {
 			WindowEvent::CursorMoved { position, .. } => {
-				self.interaction.cursor =
-					(position.x as f32 / scale, position.y as f32 / scale);
+				self.interaction.cursor = (
+					position.x as f32 / scale - insets[0],
+					position.y as f32 / scale - insets[1],
+				);
 				viewer.move_pointer(self.interaction.cursor, (width, height));
 			}
 			WindowEvent::CursorLeft { .. } => {
