@@ -51,6 +51,9 @@ public class MarkviewActivity extends NativeActivity {
     }
     public void backgroundTask(String ignored) { runOnUiThread(() -> moveTaskToBack(true)); }
 
+    public int smallestWidthDp() {
+        return getResources().getConfiguration().smallestScreenWidthDp;
+    }
     public boolean phoneLayout() {
         return getResources().getBoolean(getResources().getIdentifier("phone_layout", "bool", getPackageName()));
     }

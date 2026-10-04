@@ -62,6 +62,9 @@ public class Smoke extends Instrumentation {
                 waitFor(s -> s.optString("panel").equals("Settings(Generic)"));
                 require((button(state(), "ToggleDropdown(TabStyle") == null) == phone, "Tab style matches sw600dp");
                 requireSettingsLayout();
+                tap("SettingsTab(About)");
+                waitFor(s -> s.optString("panel").equals("Settings(About)"));
+                checkLayoutDiagnostics(smallestWidth);
                 screenshot("layout");
                 result.putString("stream", results.toString() + "MARKVIEW_ANDROID_INTEGRATION_OK\n");
                 finish(Activity.RESULT_OK, result);
@@ -139,6 +142,8 @@ public class Smoke extends Instrumentation {
             tap("SettingsTab(About)");
             waitFor(s -> s.optString("panel").equals("Settings(About)"));
             requireSettingsLayout();
+            screenshot("diagnostics");
+            checkLayoutDiagnostics(activity.getResources().getConfiguration().smallestScreenWidthDp);
             tap("SettingsTab(Styles)");
             waitFor(s -> s.optString("panel").equals("Settings(Styles)"));
             sendKeyDownUpSync(KeyEvent.KEYCODE_BACK);
@@ -290,6 +295,18 @@ public class Smoke extends Instrumentation {
             result.putString("stream", results.toString() + "FAIL: " + error + "\n");
             finish(Activity.RESULT_CANCELED, result);
         }
+    }
+    private void checkLayoutDiagnostics(int width) throws Exception {
+        tap("CopyDiagnostics");
+        String[] text = new String[1];
+        runOnMainSync(() -> {
+            android.content.ClipboardManager clipboard = (android.content.ClipboardManager)activity.getSystemService(Activity.CLIPBOARD_SERVICE);
+            text[0] = clipboard.getPrimaryClip().getItemAt(0).coerceToText(activity).toString();
+        });
+        require(text[0].contains("Smallest width: " + width + " dp\n"), "Diagnostics contain current Android smallest width");
+        require(text[0].contains("sw600dp: " + !phone + " (" + (phone ? "Phone" : "Tablet") + ")\n"), "Diagnostics contain resolved sw600dp mode");
+        require(text[0].contains("phone_layout: " + phone + "\n"), "Diagnostics contain resource value");
+        pass("Copied diagnostics include smallest width, resolved sw600dp and phone_layout");
     }
     private void requireSettingsLayout() throws Exception {
         JSONObject current = state();

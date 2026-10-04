@@ -82,6 +82,9 @@ diagnostics_build_date = "建置日期"
 diagnostics_commit = "提交"
 diagnostics_os = "作業系統"
 diagnostics_row = "{name}：{value}"
+diagnostics_smallest_width = "最小寬度"
+diagnostics_phone = "手機"
+diagnostics_tablet = "平板"
 diagnostics_version = "版本"
 
 # The reader window's notice strip.

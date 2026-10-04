@@ -19,6 +19,10 @@ integration suite. The screens reuse the desktop UI with phone adaptation.
 | Font manager | Dark styles |
 | <img src="../docs/screenshots/android/fonts.png" alt="Markview Android shared font catalogue" width="250"> | <img src="../docs/screenshots/android/dark-styles.png" alt="Markview Android shared style selection in dark mode" width="250"> |
 
+Android layout diagnostics:
+
+<img src="../docs/screenshots/android/diagnostics.png" alt="Markview Android About page showing smallest width and resolved sw600dp mode" width="250">
+
 Phones manage tabs in the left drawer:
 
 <img src="../docs/screenshots/android/tab-drawer.png" alt="Markview phone tab drawer with switching, closing and opening controls" width="250">
@@ -54,6 +58,10 @@ controls. Android's `values-sw600dp` resource qualifier selects tablet mode:
 |---|---|---|---|
 | Smallest width below 600 dp | Left drawer: switch, close and open documents | Portrait | Hidden and ignored |
 | Smallest width at least 600 dp | Shared desktop tab strip | Portrait or landscape | Available |
+
+**About** and **Copy diagnostics** include the current smallest width in dp,
+the resolved `sw600dp` result and device mode, and the `phone_layout` resource
+value.
 
 The device mode follows the smallest width, independent of rotation and keyboard
 visibility; configuration changes update it without discarding reader sessions. Desktop window-layout and single-instance settings are hidden and
