@@ -2,7 +2,7 @@
     <uses-sdk android:minSdkVersion="28" android:targetSdkVersion="35" />
     <uses-permission android:name="android.permission.INTERNET" />
     <application android:label="Markview" android:icon="@drawable/icon" android:theme="@style/AppTheme" android:allowBackup="false" android:debuggable="true" android:extractNativeLibs="true" android:usesCleartextTraffic="false">
-        <activity android:name=".MarkviewActivity" android:exported="true" android:launchMode="singleTask" android:configChanges="orientation|screenSize|screenLayout|keyboardHidden|keyboard|uiMode|density">
+        <activity android:name=".MarkviewActivity" android:exported="true" android:launchMode="singleTask" android:configChanges="orientation|screenSize|smallestScreenSize|screenLayout|keyboardHidden|keyboard|uiMode|density">
             <meta-data android:name="android.app.lib_name" android:value="markview" />
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />

@@ -50,6 +50,12 @@ pub(crate) fn call_string(method: &str, text: &str) -> Result<()> {
 		Ok(())
 	})
 }
+pub(crate) fn phone_layout() -> bool {
+	with_env(|env, activity| {
+		Ok(env.call_method(activity, "phoneLayout", "()Z", &[])?.z()?)
+	})
+	.unwrap()
+}
 pub(crate) fn clipboard_read() -> Result<String> {
 	with_env(|env, activity| {
 		let text = env
@@ -118,6 +124,7 @@ pub extern "system" fn Java_io_github_szdytom_markview_MarkviewActivity_nativeRe
 		}
 		2 => crate::app::android::assets_changed(),
 		3 => crate::app::android::back(),
+		4 => crate::app::android::configuration_changed(),
 		_ => unreachable!(),
 	}
 }

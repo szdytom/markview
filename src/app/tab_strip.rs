@@ -6,6 +6,8 @@ pub(super) const GAP: f32 = 2.0;
 
 #[derive(Default)]
 pub(super) struct TabStrip {
+	pub phone: bool,
+	pub drawer_scroll: f32,
 	pub scroll: f32,
 	pub drag: Option<TabDrag>,
 	pub reveal_active: bool,

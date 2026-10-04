@@ -91,6 +91,8 @@ enum Event {
 	DeviceLost,
 	#[cfg(target_os = "android")]
 	AndroidBack,
+	#[cfg(target_os = "android")]
+	AndroidConfiguration,
 	#[cfg(all(target_os = "android", debug_assertions))]
 	AndroidInspect(std::sync::mpsc::Sender<String>),
 	Exported(Box<ExportOutcome>),

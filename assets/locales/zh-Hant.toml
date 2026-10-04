@@ -26,6 +26,7 @@ panel_settings = "設定"
 # The toolbar's icon buttons.
 toolbar_export = "匯出"
 toolbar_open = "開啟"
+toolbar_tabs = "標籤頁"
 toolbar_outline = "大綱"
 toolbar_settings = "設定"
 

@@ -23,9 +23,13 @@ import org.json.JSONObject;
 /** Device integration tests operate the rendered reader with real touch events. */
 public class Smoke extends Instrumentation {
     private Activity activity;
+    private String expectedLayout;
+    private boolean layoutOnly;
+    private boolean phone;
+    private int portraitRotation;
     private final StringBuilder results = new StringBuilder();
     private interface Check { boolean matches(JSONObject state) throws Exception; }
-    @Override public void onCreate(Bundle args) { super.onCreate(args); start(); }
+    @Override public void onCreate(Bundle args) { super.onCreate(args); expectedLayout = args.getString("layout", "phone"); layoutOnly = args.getBoolean("layout-only", false) || "true".equals(args.getString("layout-only")); start(); }
     @Override public void onStart() {
         Bundle result = new Bundle();
         try {
@@ -36,10 +40,33 @@ public class Smoke extends Instrumentation {
             String stored = config.exists() ? new String(Files.readAllBytes(config.toPath()), StandardCharsets.UTF_8) : "";
             stored = "window-layout = \"macos\"\nsingle-instance = true\n" + stored.replaceAll("(?m)^(window-layout|single-instance) *=.*\\R?", "");
             Files.write(config.toPath(), stored.getBytes(StandardCharsets.UTF_8));
+            getUiAutomation().setRotation(0);
             activity = startActivitySync(intent("reader.md", Intent.ACTION_VIEW));
             JSONObject initial = waitFor(s -> s.optBoolean("ready") && s.optInt("blocks") > 20 && loadedImages(s) >= 2);
             require(initial.getString("window_layout").equals("Macos") && initial.getBoolean("single_instance"), "Saved desktop options loaded");
             require(!initial.getString("frame_layout").equals("Macos") && !initial.getBoolean("instance_listener"), "Saved desktop options do not affect Android");
+            phone = initial.getBoolean("phone_layout");
+            if (!phone && initial.getJSONArray("dimensions").getDouble(0) > initial.getJSONArray("dimensions").getDouble(1)) {
+                portraitRotation = 1;
+                getUiAutomation().setRotation(portraitRotation);
+                initial = waitFor(s -> s.optBoolean("ready") && s.optJSONArray("dimensions").optDouble(0) < s.optJSONArray("dimensions").optDouble(1));
+            }
+            int smallestWidth = activity.getResources().getConfiguration().smallestScreenWidthDp;
+            require(phone == (smallestWidth < 600) && phone == expectedLayout.equals("phone"), "sw600dp resource selection: " + smallestWidth);
+            require(((MarkviewActivity)activity).phoneLayout() == phone, "Native and Java layout agree");
+            require(activity.getRequestedOrientation() == (phone ? android.content.pm.ActivityInfo.SCREEN_ORIENTATION_PORTRAIT : android.content.pm.ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED), "Device orientation policy");
+            pass("sw600dp " + expectedLayout + " layout and orientation policy (sw" + smallestWidth + "dp)");
+            if (layoutOnly) {
+                require((button(state(), "Tabs") != null) == phone, "Drawer toggle matches sw600dp");
+                tap("Settings");
+                waitFor(s -> s.optString("panel").equals("Settings(Generic)"));
+                require((button(state(), "ToggleDropdown(TabStyle") == null) == phone, "Tab style matches sw600dp");
+                requireSettingsLayout();
+                screenshot("layout");
+                result.putString("stream", results.toString() + "MARKVIEW_ANDROID_INTEGRATION_OK\n");
+                finish(Activity.RESULT_OK, result);
+                return;
+            }
             require(initial.getInt("math_errors") == 0, "Mathematics layout");
             require(initial.getString("backend").equals("Vulkan") || initial.getString("backend").equals("Gl"), "GPU backend");
             stableLayout();
@@ -51,8 +78,15 @@ public class Smoke extends Instrumentation {
             double position = beforeSwitch.getDouble("scroll");
             getTargetContext().startActivity(intent("second.md", Intent.ACTION_SEND));
             waitFor(s -> s.optJSONArray("tabs").length() == 2 && s.optBoolean("ready") && loadedImages(s) >= 1);
-            // Reveal the first tab through the same horizontal touch routing.
-            swipe(45, 20, 185, 20);
+            if (phone) {
+                require(button(state(), "SelectTab(") == null, "Phone has no horizontal tab strip");
+                tap("Tabs");
+                waitFor(s -> s.optString("panel").equals("Tabs"));
+                screenshot("tab-drawer");
+            } else {
+                require(button(state(), "Tabs") == null, "Tablet keeps the desktop tab strip");
+                swipe(45, 20, 185, 20);
+            }
             tap("SelectTab(0)");
             JSONObject restored = waitFor(s -> s.optInt("active") == 0 && s.optBoolean("ready") && loadedImages(s) >= 2);
             restored = stableLayout();
@@ -61,10 +95,16 @@ public class Smoke extends Instrumentation {
 
             tap("Settings");
             waitFor(s -> s.optString("panel").equals("Settings(Generic)"));
-            requireFullscreenSettings();
+            requireSettingsLayout();
             JSONObject settingsState = state();
             require(button(settingsState, "ToggleDropdown(WindowLayout") == null && button(settingsState, "SingleInstance") == null,
                 "Desktop-only window and instance controls are absent");
+            require((button(settingsState, "ToggleDropdown(TabStyle") == null) == phone, "Tab style is offered only on tablets");
+            if (!phone) {
+                tap("ToggleDropdown(TabStyle");
+                tap("TabStyle(Connected)");
+                waitFor(s -> s.optString("tab_style").equals("Connected"));
+            }
             screenshot("settings");
             for (int i = 0; i < 8 && button(state(), "Larger") == null; i++) { swipe(180, 550, 180, 270); swipe(180, 223, 180, 223); }
             double font = state().getDouble("font_size");
@@ -72,7 +112,7 @@ public class Smoke extends Instrumentation {
             waitFor(s -> s.optDouble("font_size") > font);
             tap("SettingsTab(Fonts)");
             waitFor(s -> s.optString("panel").equals("Settings(Fonts)") && s.optInt("font_catalog") > 0);
-            requireFullscreenSettings();
+            requireSettingsLayout();
             screenshot("fonts");
             long revision = state().getLong("font_revision");
             tap("Fonts(OpenFolder)");
@@ -94,11 +134,11 @@ public class Smoke extends Instrumentation {
             require(dark >= 0, "Shared stylesheet catalogue");
             if (!styles.optString("selected_styles").contains("dark")) tap("StyleToggle(" + dark + ")");
             waitFor(s -> s.optString("selected_styles").contains("dark"));
-            requireFullscreenSettings();
+            requireSettingsLayout();
             screenshot("dark-styles");
             tap("SettingsTab(About)");
             waitFor(s -> s.optString("panel").equals("Settings(About)"));
-            requireFullscreenSettings();
+            requireSettingsLayout();
             tap("SettingsTab(Styles)");
             waitFor(s -> s.optString("panel").equals("Settings(Styles)"));
             sendKeyDownUpSync(KeyEvent.KEYCODE_BACK);
@@ -115,18 +155,29 @@ public class Smoke extends Instrumentation {
             waitFor(s -> !s.optBoolean("search_open"));
             pass("Touch search and Android text input");
 
-            getUiAutomation().setRotation(1);
-            waitFor(s -> s.optJSONArray("dimensions").optDouble(0) > s.optJSONArray("dimensions").optDouble(1));
-            screenshot("landscape");
-            tap("Settings");
-            JSONObject wideSettings = waitFor(s -> s.optString("panel").equals("Settings(Generic)"));
-            JSONArray widePanel = wideSettings.getJSONArray("panel_rect");
-            require(widePanel.getDouble(0) > 0 && widePanel.getDouble(1) > 0
-                && widePanel.getDouble(2) <= 600 && widePanel.getDouble(3) <= 620, "Wide settings retain the centered dialog");
-            screenshot("landscape-settings");
-            sendKeyDownUpSync(KeyEvent.KEYCODE_BACK);
-            waitFor(s -> s.optString("panel").equals("Closed"));
-            getUiAutomation().setRotation(0);
+            getUiAutomation().setRotation(phone ? 1 : 1 - portraitRotation);
+            if (phone) {
+                SystemClock.sleep(1000);
+                JSONObject rotated = state();
+                JSONArray size = rotated.getJSONArray("dimensions");
+                require(size.getDouble(0) < size.getDouble(1) && rotated.getBoolean("phone_layout"), "Phone remains portrait when the device rotates");
+                tap("Tabs");
+                sendKeyDownUpSync(KeyEvent.KEYCODE_BACK);
+                waitFor(s -> s.optString("panel").equals("Closed"));
+                pass("Phone portrait lock and Back dismissal of the tab drawer");
+            } else {
+                waitFor(s -> s.optJSONArray("dimensions").optDouble(0) > s.optJSONArray("dimensions").optDouble(1));
+                require(!state().getBoolean("phone_layout"), "Tablet remains a tablet in landscape");
+                screenshot("landscape");
+                tap("Settings");
+                waitFor(s -> s.optString("panel").equals("Settings(Generic)"));
+                requireSettingsLayout();
+                screenshot("landscape-settings");
+                sendKeyDownUpSync(KeyEvent.KEYCODE_BACK);
+                waitFor(s -> s.optString("panel").equals("Closed"));
+                pass("Tablet rotation and centered settings dialog");
+            }
+            getUiAutomation().setRotation(portraitRotation);
             waitFor(s -> s.optJSONArray("dimensions").optDouble(0) < s.optJSONArray("dimensions").optDouble(1));
             sendKeyDownUpSync(KeyEvent.KEYCODE_HOME);
             SystemClock.sleep(600);
@@ -209,6 +260,29 @@ public class Smoke extends Instrumentation {
             require(copper > 50, "GPU export contains the local SVG"); exported.recycle();
             pass("Shared PNG exporter and GPU readback with safe-area offsets");
 
+            if (phone) {
+                getTargetContext().startActivity(new Intent(getTargetContext(), MarkviewActivity.class).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK));
+                waitFor(s -> s.optString("backend").length() > 0 && s.optBoolean("ready") && s.optJSONArray("dimensions") != null);
+                tap("Tabs");
+                int tabs = state().getJSONArray("tabs").length();
+                int active = state().getInt("active");
+                tap("CloseTab(0)");
+                waitFor(s -> s.optJSONArray("tabs").length() == tabs - 1 && s.optString("panel").equals("Tabs"));
+                require(state().getInt("active") == active - 1, "Closing an inactive tab preserves the active document");
+                tap("CloseTab(" + (active - 1) + ")");
+                waitFor(s -> s.optJSONArray("tabs").length() == tabs - 2 && s.optBoolean("ready"));
+                // Dismiss through the scrim, then open another file through the drawer.
+                JSONArray size = state().getJSONArray("dimensions");
+                swipe((float)size.getDouble(0) - 20, 300, (float)size.getDouble(0) - 20, 300);
+                waitFor(s -> s.optString("panel").equals("Closed"));
+                tap("Tabs");
+                tap("Open");
+                clickText("Open file");
+                waitSystem("documentsui");
+                sendKeyDownUpSync(KeyEvent.KEYCODE_BACK);
+                waitFor(s -> s.optString("panel").equals("Closed"));
+                pass("Phone drawer switches, closes active/inactive tabs, dismisses on scrim and opens the system picker");
+            }
             result.putString("stream", results.toString() + "MARKVIEW_ANDROID_INTEGRATION_OK\n");
             finish(Activity.RESULT_OK, result);
         } catch (Throwable error) {
@@ -217,12 +291,15 @@ public class Smoke extends Instrumentation {
             finish(Activity.RESULT_CANCELED, result);
         }
     }
-    private void requireFullscreenSettings() throws Exception {
+    private void requireSettingsLayout() throws Exception {
         JSONObject current = state();
         JSONArray size = current.getJSONArray("dimensions");
         JSONArray panel = current.getJSONArray("panel_rect");
-        require(size.getDouble(0) < 640 && panel.getDouble(0) == 0 && panel.getDouble(1) == 0
-            && panel.getDouble(2) == size.getDouble(0) && panel.getDouble(3) == size.getDouble(1), "Settings fill the app content area");
+        if (size.getDouble(0) < 640) {
+            require(panel.getDouble(0) == 0 && panel.getDouble(1) == 0 && panel.getDouble(2) == size.getDouble(0) && panel.getDouble(3) == size.getDouble(1), "Settings fill the app content area");
+        } else {
+            require(panel.getDouble(0) > 0 && panel.getDouble(1) > 0 && panel.getDouble(2) <= 600 && panel.getDouble(3) <= 620, "Wide settings retain the centered dialog");
+        }
     }
     private void waitSystem(String name) throws Exception {
         long deadline = SystemClock.uptimeMillis() + 15000;

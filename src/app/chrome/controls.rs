@@ -48,7 +48,7 @@ fn language_options(t: Lang, settings: &ReaderSettings) -> Vec<Action> {
 	entries
 }
 
-fn rows(settings: &ReaderSettings) -> Vec<Row> {
+fn rows(settings: &ReaderSettings, phone: bool) -> Vec<Row> {
 	// Choosing a stylesheet is the Styles tab's own job, and choosing a family
 	// for a role the Fonts tab's, so this page offers neither.
 	let t = settings.lang();
@@ -69,7 +69,9 @@ fn rows(settings: &ReaderSettings) -> Vec<Row> {
 			),
 		)
 		.value(format!("{:.2}×", settings.scroll_speed)),
-		Row::new(t.settings_tab_style(), vec![]).menu(
+	];
+	if !phone {
+		rows.push(Row::new(t.settings_tab_style(), vec![]).menu(
 			DropdownId::TabStyle,
 			choices(
 				&[
@@ -84,8 +86,8 @@ fn rows(settings: &ReaderSettings) -> Vec<Row> {
 				],
 				Some(Command::TabStyle(settings.tab_style)),
 			),
-		),
-	];
+		));
+	}
 	if !cfg!(target_os = "android") {
 		rows.extend([
 			Row::new(t.settings_window_layout(), vec![])
@@ -220,6 +222,7 @@ fn rows(settings: &ReaderSettings) -> Vec<Row> {
 	]);
 	rows
 }
+#[cfg(test)]
 pub(in crate::app) fn form(
 	ui: &mut TextShaper,
 	settings: &ReaderSettings,
@@ -227,11 +230,21 @@ pub(in crate::app) fn form(
 	width: f32,
 	height: f32,
 ) -> Form {
+	reader_form(ui, settings, scroll, width, height, false)
+}
+fn reader_form(
+	ui: &mut TextShaper,
+	settings: &ReaderSettings,
+	scroll: f32,
+	width: f32,
+	height: f32,
+	phone: bool,
+) -> Form {
 	let mut form = Form::new(
 		width,
 		height,
 		scroll,
-		rows(settings),
+		rows(settings, phone),
 		Some(Command::Settings),
 		true,
 		settings.lang(),
@@ -376,9 +389,17 @@ pub(super) fn settings_form(
 	width: f32,
 	height: f32,
 	backend: Option<wgpu::Backend>,
+	phone: bool,
 ) -> Form {
 	if interaction.panel != PanelPage::Settings(PanelTab::About) {
-		return form(ui, settings, interaction.settings_scroll, width, height);
+		return reader_form(
+			ui,
+			settings,
+			interaction.settings_scroll,
+			width,
+			height,
+			phone,
+		);
 	}
 	components::appearance(ui);
 	let t = settings.lang();
@@ -439,11 +460,19 @@ pub(super) fn draw_controls(
 	width: f32,
 	height: f32,
 	backend: Option<wgpu::Backend>,
+	phone: bool,
 ) -> Vec<Draw> {
 	if interaction.panel_open() {
 		let t = settings.lang();
-		let form =
-			settings_form(ui, settings, interaction, width, height, backend);
+		let form = settings_form(
+			ui,
+			settings,
+			interaction,
+			width,
+			height,
+			backend,
+			phone,
+		);
 		let rect = form.rect;
 		let mut out = form
 			.without_header()

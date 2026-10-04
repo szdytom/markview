@@ -167,6 +167,17 @@ impl<P: super::SendEvent> App<P> {
 		match event {
 			#[cfg(target_os = "android")]
 			Event::AndroidBack => self.android_back(),
+			#[cfg(target_os = "android")]
+			Event::AndroidConfiguration => {
+				self.tab_strip.phone = crate::platform::android::phone_layout();
+				self.cancel_gestures();
+				if self.interaction.panel == crate::state::PanelPage::Tabs {
+					self.interaction
+						.show_panel(crate::state::PanelPage::Closed);
+				}
+				self.tab_strip.reveal_active = true;
+				self.redraw();
+			}
 			#[cfg(all(target_os = "android", debug_assertions))]
 			Event::AndroidInspect(send) => {
 				let _ = send.send(self.android_snapshot());
