@@ -57,6 +57,8 @@ at the same level, without `[brackets]`.
 
 ### Fixed
 
+- Reload changed local images after their source files are updated.
+
 - Support touchscreen dragging and edge resizing of custom window frames on Linux, using the touch contact's native serial on Wayland.
 - Hide desktop window-layout and single-instance options on Android and ignore their saved runtime values.
 - Make settings fill the app content area on narrow screens, keeping centered dialogs on wider screens.

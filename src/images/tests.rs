@@ -875,6 +875,52 @@ fn loader_publishes_pixels_and_reports_failures() {
 }
 
 #[test]
+fn a_changed_local_image_reloads_without_pixel_demand() {
+	let dir = tempfile::tempdir().unwrap();
+	let path = dir.path().join("note.md");
+	let file = dir.path().join("a.png");
+	fs::write(&file, png(2, 2, [1, 2, 3, 255])).unwrap();
+	let mut images = images(true);
+	images.prepare(
+		&crate::document::parse("![a](a.png)"),
+		&path,
+		1,
+		false,
+		&Stylesheet::default(),
+		&crate::test_support::fonts(),
+	);
+	images.wait();
+	assert_eq!(images.snapshot.entries["a.png"].size, Some((2, 2)));
+	let version = images.snapshot.entries["a.png"].version;
+	fs::write(&file, png(7, 5, [9, 8, 7, 255])).unwrap();
+	let modified = images
+		.entries
+		.values()
+		.next()
+		.unwrap()
+		.stamp
+		.unwrap()
+		.1
+		.unwrap()
+		+ Duration::from_secs(1);
+	fs::File::options()
+		.write(true)
+		.open(&file)
+		.unwrap()
+		.set_times(fs::FileTimes::new().set_modified(modified))
+		.unwrap();
+	images.poll_at = Instant::now();
+	assert!(images.poll());
+	assert!(images.entries.values().next().unwrap().busy);
+	images.wait();
+	assert_eq!(images.snapshot.entries["a.png"].size, Some((7, 5)));
+	assert_ne!(images.snapshot.entries["a.png"].version, version);
+	let pixels = images.snapshot.decoded();
+	assert_eq!((pixels["a.png"].width, pixels["a.png"].height), (7, 5));
+	assert_eq!(&pixels["a.png"].rgba[..4], &[9, 8, 7, 255]);
+}
+
+#[test]
 fn renamed_alias_reuses_pixels_and_removed_aliases_are_released() {
 	let dir = tempfile::tempdir().unwrap();
 	let path = dir.path().join("note.md");

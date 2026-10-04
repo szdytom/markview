@@ -539,6 +539,7 @@ impl Images {
 			if running < 4
 				&& !e.busy && e.info.error.is_none()
 				&& (stale
+					|| e.info.size.is_none()
 					|| e.raster.is_none()
 					|| resize || (requested.is_some_and(|d| d.needs_pixels)
 					&& !resident))
