@@ -18,6 +18,11 @@ static OUTPUT: Mutex<Option<tokio::sync::oneshot::Sender<Option<PathBuf>>>> =
 pub(crate) fn initialize(app: AndroidApp) {
 	*APP.lock().unwrap() = Some(app);
 }
+pub(crate) fn shutdown() {
+	PICKED.lock().unwrap().take();
+	OUTPUT.lock().unwrap().take();
+	APP.lock().unwrap().take();
+}
 pub(crate) fn data_path() -> Option<PathBuf> {
 	APP.lock().unwrap().as_ref()?.internal_data_path()
 }
@@ -36,7 +41,7 @@ fn with_env<T>(
 	// SAFETY: The glue retains the activity's global reference; the borrowed
 	// `JObject` is only used while `app` and the attached environment live.
 	let activity = unsafe { JObject::from_raw(app.activity_as_ptr().cast()) };
-	call(&mut env, &activity)
+	env.with_local_frame(16, |env| call(env, &activity))
 }
 pub(crate) fn call_string(method: &str, text: &str) -> Result<()> {
 	with_env(|env, activity| {
@@ -71,6 +76,46 @@ pub(crate) fn clipboard_read() -> Result<String> {
 			.l()?;
 		Ok(env.get_string(&JString::from(text))?.into())
 	})
+}
+
+// SAFETY: The VM supplies a valid `JNIEnv` and class for this debug-only test.
+#[cfg(debug_assertions)]
+#[unsafe(no_mangle)]
+pub extern "system" fn Java_io_github_szdytom_markview_MarkviewActivity_nativeBridgeReferencesReleased(
+	mut env: JNIEnv,
+	_: JClass,
+) -> jni::sys::jboolean {
+	let mut check = || -> Result<()> {
+		let mut references = Vec::new();
+		for fail in [false, true] {
+			for _ in 0..32 {
+				let result = with_env(|env, _| {
+					let text = env.new_string("bridge reference")?;
+					references.push(env.new_weak_ref(text)?.unwrap());
+					if fail {
+						anyhow::bail!("Test bridge failure");
+					}
+					Ok(())
+				});
+				anyhow::ensure!(result.is_err() == fail);
+			}
+		}
+		env.call_static_method("java/lang/System", "gc", "()V", &[])?;
+		for reference in references {
+			anyhow::ensure!(
+				reference.is_garbage_collected(&env)?,
+				"JNI local reference retained"
+			);
+		}
+		Ok(())
+	};
+	match check() {
+		Ok(()) => 1,
+		Err(error) => {
+			log::error!("JNI reference test: {error:#}");
+			0
+		}
+	}
 }
 pub(crate) fn pick_document(
 	done: impl FnOnce(Option<PathBuf>) + Send + 'static,

@@ -58,6 +58,8 @@ fn android_main(android: AndroidApp) {
 	if let Err(error) = run(android) {
 		log::error!("Markview: {error:#}");
 	}
+	*PROXY.lock().unwrap() = (None, Vec::new());
+	crate::platform::android::shutdown();
 }
 fn run(android: AndroidApp) -> anyhow::Result<()> {
 	let event_loop = EventLoop::<Event>::with_user_event()

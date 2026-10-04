@@ -59,9 +59,11 @@ at the same level, without `[brackets]`.
 
 ### Fixed
 
-- Reload changed local images after their source files are updated.
-
 - Support touchscreen dragging and edge resizing of custom window frames on Linux, using the touch contact's native serial on Wayland.
+- Exit and recreate the Android reader cleanly when its Activity is destroyed, using a pinned winit fork.
+- Reload changed local images after their source files are updated.
+- Replace reimported Android folders without stale files and release JNI local references after each bridge call.
+
 - Hide desktop window-layout and single-instance options on Android and ignore their saved runtime values.
 - Make settings fill the app content area on narrow screens, keeping centered dialogs on wider screens.
 - Preserve reading positions inside large images when returning to cached tabs, retaining bounded intrinsic sizes while releasing inactive pixels.

@@ -246,6 +246,8 @@ path = "src/main.rs"
 # multiline inlines, front matter, tables, trailing blank
 # lines in indented code blocks, and CRLF paragraphs before tables.
 [patch.crates-io]
+# Android activity destruction must exit the loop and permit its recreation.
+winit = { git = "https://github.com/szdytom/winit", rev = "9299a76998fd8975afb97c5a1d81495845ab8ec8" }
 comrak = { git = "https://github.com/kivikakk/comrak", rev = "4127507465ee41e0a6298fd4b217b685a499af79" }
 # Our fork adds `LayoutConfig::metrics`, which lets Markview measure diagram
 # labels with the faces its own stylesheet selected (upstream PR #151). The rev

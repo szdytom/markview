@@ -49,9 +49,10 @@ Wide screens retain the centered settings dialog:
 
 The APK contains the root `markview` crate as `libmarkview.so`. The Android
 entry point is `src/app/android.rs`; OS calls live in `src/platform/android.rs`
-and `android/java`. This shares the application above `core`, including its
-state and UI. Below 640 logical pixels, settings occupy the entire app content
-area; wider screens retain the centered dialog. Narrow forms stack labels above
+and `android/java`. The [pinned `winit` fork](https://github.com/szdytom/winit/commit/9299a76998fd8975afb97c5a1d81495845ab8ec8)
+handles Activity destruction and allows event-loop recreation. This shares the
+application above `core`, including its state and UI. Below 640 logical pixels,
+settings occupy the entire app content area; wider screens retain the centered dialog. Narrow forms stack labels above
 controls. Android's `values-sw600dp` resource qualifier selects tablet mode:
 
 | Device configuration | Tab management | Orientation | Tab-style setting |
@@ -71,6 +72,12 @@ The device mode follows the smallest width, independent of rotation and keyboard
 visibility; configuration changes update it without discarding reader sessions. Desktop window-layout and single-instance settings are hidden and
 ignored on Android; Android reuses the `singleTask` activity. System bars and
 the keyboard are excluded from the reader's content area.
+
+Upstream tracking: [Destroy handling #4303](https://github.com/rust-windowing/winit/issues/4303),
+[event-loop recreation #3325](https://github.com/rust-windowing/winit/issues/3325),
+and [Destroy fix #4711](https://github.com/rust-windowing/winit/pull/4711).
+Return to a published upstream release once it includes both lifecycle fixes
+and passes the phone and tablet Activity integration tests.
 
 ## Build and install
 
@@ -117,7 +124,9 @@ Export uses Android's system save dialog and passes the written result to an
 installed viewer. Repeated watched exports update the selected destination.
 
 Documents are imported copies. Reopen a file or folder to import external
-changes. Tabs survive rotations and activity suspension; process termination
+changes. Reimporting a folder removes files deleted at the source and retains
+the previous copy if importing fails. Tabs survive rotations and activity
+suspension; Activity destruction or process termination
 starts a new tab session, as with the desktop application. Folder imports copy
 the chosen tree, so choose the document's own folder rather than a large
 archive. Android limits access to sibling files when only one file is granted;
@@ -145,7 +154,11 @@ input in the rendered reader. It checks multilingual Markdown, mathematics,
 Mermaid and image decoding, scrolling and cached tabs, shared settings, font
 catalogue pages, theme selection, search input, phone portrait lock,
 phone drawer operations, tablet rotation, background/resume, durable preferences,
-the system picker, folder resources, read-only grants, PDF saving and GPU PNG export.
+the system picker, folder refresh and failed imports, read-only grants, PDF saving,
+GPU PNG export, and repeated Activity destruction/recreation in the same process.
+Use `--lifecycle-only` to run just the Activity checks, including Android
+**Don't keep activities**. Both devices can run without an emulator window by
+adding `-no-window` to the emulator command.
 Reports and screenshots are written to `artifacts/android/phone/` and
 `artifacts/android/tablet/` (or the corresponding `*-boundary/` directories).
 

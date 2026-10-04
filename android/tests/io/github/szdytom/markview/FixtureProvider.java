@@ -6,6 +6,7 @@ import android.database.Cursor;
 import android.database.MatrixCursor;
 import android.net.Uri;
 import android.os.ParcelFileDescriptor;
+import android.os.Bundle;
 import android.provider.OpenableColumns;
 import android.provider.DocumentsContract;
 import java.io.File;
@@ -16,6 +17,16 @@ import java.nio.file.StandardCopyOption;
 
 /** External content URIs exercise the real Android document-import path. */
 public class FixtureProvider extends ContentProvider {
+    private volatile boolean chapter = true;
+    private volatile boolean failCopy;
+    private volatile boolean image = true;
+    @Override public Bundle call(String method, String arg, Bundle extras) {
+        if (!"folder".equals(method)) return super.call(method, arg, extras);
+        chapter = extras.getBoolean("chapter", true);
+        failCopy = extras.getBoolean("failCopy");
+        image = extras.getBoolean("image", true);
+        return Bundle.EMPTY;
+    }
     @Override public boolean onCreate() { return true; }
     @Override public String getType(Uri uri) { return "text/markdown"; }
     private String name(Uri uri) throws FileNotFoundException {
@@ -31,8 +42,8 @@ public class FixtureProvider extends ContentProvider {
                 if ("root".equals(id)) {
                     cursor.addRow(new Object[]{"README.md", "text/markdown"});
                     cursor.addRow(new Object[]{"images", DocumentsContract.Document.MIME_TYPE_DIR});
-                    cursor.addRow(new Object[]{"chapter.md", "text/markdown"});
-                } else if ("images".equals(id)) cursor.addRow(new Object[]{"images/logo.svg", "image/svg+xml"});
+                    if (chapter) cursor.addRow(new Object[]{"chapter.md", "text/markdown"});
+                } else if ("images".equals(id) && image) cursor.addRow(new Object[]{"images/logo.svg", "image/svg+xml"});
                 return cursor;
             }
             String name = name(uri);
@@ -45,11 +56,13 @@ public class FixtureProvider extends ContentProvider {
         try {
             if (!"r".equals(mode)) throw new FileNotFoundException();
             String name = name(uri);
+            if (failCopy && "images/logo.svg".equals(name)) throw new FileNotFoundException("Interrupted folder import");
             String asset = "README.md".equals(name) ? "folder.md" : "chapter.md".equals(name) ? "second.md" : "images/logo.svg".equals(name) ? "logo.svg" : name;
             File file = new File(getContext().getCacheDir(), asset);
             try (InputStream input = getContext().getAssets().open(asset)) {
                 Files.copy(input, file.toPath(), StandardCopyOption.REPLACE_EXISTING);
             }
+            if (failCopy && "README.md".equals(name)) Files.write(file.toPath(), "Incomplete import".getBytes(java.nio.charset.StandardCharsets.UTF_8));
             return ParcelFileDescriptor.open(file, ParcelFileDescriptor.MODE_READ_ONLY);
         } catch (Exception error) { throw new FileNotFoundException(error.toString()); }
     }

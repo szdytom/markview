@@ -25,11 +25,12 @@ public class Smoke extends Instrumentation {
     private Activity activity;
     private String expectedLayout;
     private boolean layoutOnly;
+    private boolean lifecycleOnly;
     private boolean phone;
     private int portraitRotation;
     private final StringBuilder results = new StringBuilder();
     private interface Check { boolean matches(JSONObject state) throws Exception; }
-    @Override public void onCreate(Bundle args) { super.onCreate(args); expectedLayout = args.getString("layout", "phone"); layoutOnly = args.getBoolean("layout-only", false) || "true".equals(args.getString("layout-only")); start(); }
+    @Override public void onCreate(Bundle args) { super.onCreate(args); expectedLayout = args.getString("layout", "phone"); layoutOnly = args.getBoolean("layout-only", false) || "true".equals(args.getString("layout-only")); lifecycleOnly = "true".equals(args.getString("lifecycle-only")); start(); }
     @Override public void onStart() {
         Bundle result = new Bundle();
         try {
@@ -58,6 +59,12 @@ public class Smoke extends Instrumentation {
             require(((MarkviewActivity)activity).phoneLayout() == phone, "Native and Java layout agree");
             require(activity.getRequestedOrientation() == (phone ? android.content.pm.ActivityInfo.SCREEN_ORIENTATION_PORTRAIT : android.content.pm.ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED), "Device orientation policy");
             pass("sw600dp " + expectedLayout + " layout and orientation policy (sw" + smallestWidth + "dp)");
+            if (lifecycleOnly) {
+                checkLifecycle();
+                result.putString("stream", results.toString() + "MARKVIEW_ANDROID_INTEGRATION_OK\n");
+                finish(Activity.RESULT_OK, result);
+                return;
+            }
             if (layoutOnly) {
                 require((button(state(), "Tabs") != null) == phone, "Drawer toggle matches sw600dp");
                 screenshot("reader");
@@ -81,6 +88,8 @@ public class Smoke extends Instrumentation {
                 return;
             }
             require(initial.getInt("math_errors") == 0, "Mathematics layout");
+            require(MarkviewActivity.nativeBridgeReferencesReleased(), "JNI local references are released on success and failure");
+            pass("JNI bridge releases local references while the calling thread remains attached");
             require(initial.getString("backend").equals("Vulkan") || initial.getString("backend").equals("Gl"), "GPU backend");
             stableLayout();
             screenshot("reader");
@@ -221,6 +230,7 @@ public class Smoke extends Instrumentation {
             sendKeyDownUpSync(KeyEvent.KEYCODE_BACK);
             waitFor(s -> s.optString("backend").length() > 0);
             Uri tree = Uri.parse("content://io.github.szdytom.markview.test.fixtures/tree/root");
+            configureFolder(tree, true, false);
             runOnMainSync(() -> ((MarkviewActivity)activity).onActivityResult(12, Activity.RESULT_OK, new Intent().setData(tree)));
             JSONObject folder = waitFor(s -> s.optBoolean("ready") && s.optString("path").endsWith("README.md") && loadedImages(s) == 1);
             File directory = new File(folder.getString("path")).getParentFile();
@@ -232,6 +242,24 @@ public class Smoke extends Instrumentation {
             try { activity.getContentResolver().openFileDescriptor(grant, "w"); } catch (java.io.FileNotFoundException expected) { refused = true; }
             require(refused, "Provider rejects writes");
             pass("Folder import, relative SVG resources and read-only file grants");
+            byte[] imported = Files.readAllBytes(new File(directory, "README.md").toPath());
+            configureFolder(tree, true, true);
+            reimportFolder(tree);
+            require(java.util.Arrays.equals(imported, Files.readAllBytes(new File(directory, "README.md").toPath())) && new File(directory, "chapter.md").isFile(), "Failed folder import preserves the previous copy");
+            configureFolder(tree, false, false);
+            reimportFolder(tree);
+            require(!new File(directory, "chapter.md").exists() && new File(directory, "images/logo.svg").isFile(), "Folder reimport removes deleted source files and retains current resources");
+            for (File file : directory.getParentFile().listFiles()) require(!file.getName().startsWith(".import-") && !file.getName().startsWith(".previous-"), "Folder import removes temporary copies");
+            Bundle deletedImage = new Bundle();
+            deletedImage.putBoolean("chapter", false);
+            deletedImage.putBoolean("image", false);
+            getContext().getContentResolver().call(tree, "folder", null, deletedImage);
+            reimportFolder(tree);
+            require(!new File(directory, "images/logo.svg").exists(), "Folder reimport removes deleted source images");
+            configureFolder(tree, false, false);
+            reimportFolder(tree);
+            waitFor(s -> s.optBoolean("ready") && loadedImages(s) == 1);
+            pass("Folder reimport removes deleted documents and images and preserves the old copy on failure");
 
             File pdf = new File(activity.getFilesDir(), "exports/README.pdf");
             pdf.delete();
@@ -306,6 +334,7 @@ public class Smoke extends Instrumentation {
                 waitFor(s -> s.optString("panel").equals("Closed"));
                 pass("Phone drawer switches, closes active/inactive tabs, dismisses on scrim and opens the system picker");
             }
+            checkLifecycle();
             result.putString("stream", results.toString() + "MARKVIEW_ANDROID_INTEGRATION_OK\n");
             finish(Activity.RESULT_OK, result);
         } catch (Throwable error) {
@@ -313,6 +342,55 @@ public class Smoke extends Instrumentation {
             result.putString("stream", results.toString() + "FAIL: " + error + "\n");
             finish(Activity.RESULT_CANCELED, result);
         }
+    }
+    private void checkLifecycle() throws Exception {
+        getTargetContext().startActivity(intent("reader.md", Intent.ACTION_VIEW));
+        waitFor(s -> s.optBoolean("ready") && s.optString("path").endsWith("reader.md") && loadedImages(s) >= 2);
+        int pid = android.os.Process.myPid();
+        double fontSize = state().getDouble("font_size");
+        for (int attempt = 0; attempt < 4; attempt++) {
+            boolean recreate = attempt < 2;
+            boolean discardOnBackground = attempt == 3;
+            int alwaysFinish = android.provider.Settings.Global.getInt(getTargetContext().getContentResolver(), "always_finish_activities", 0);
+            if (discardOnBackground) alwaysFinish(true);
+            Activity previous = activity;
+            ActivityMonitor monitor = addMonitor(MarkviewActivity.class.getName(), null, false);
+            try {
+                runOnMainSync(() -> {
+                    if (recreate) previous.recreate();
+                    else if (discardOnBackground) previous.startActivity(new Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_HOME).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK));
+                    else previous.finish();
+                });
+                long deadline = SystemClock.uptimeMillis() + 5000;
+                while (!previous.isDestroyed() && SystemClock.uptimeMillis() < deadline) SystemClock.sleep(50);
+                require(previous.isDestroyed(), "Activity destruction finishes within five seconds");
+                if (!recreate) activity = startActivitySync(intent("reader.md", Intent.ACTION_VIEW));
+                else activity = monitor.waitForActivityWithTimeout(10000);
+                require(activity != null && activity != previous, "A new Activity is created in the same process");
+                JSONObject recreated = waitFor(s -> s.optBoolean("ready") && s.optInt("blocks") > 20 && loadedImages(s) >= 2);
+                require(android.os.Process.myPid() == pid, "Activity restart preserves the process");
+                require(recreated.getDouble("font_size") == fontSize, "Activity restart retains preferences");
+                require(recreated.getJSONArray("tabs").length() == 1, "Activity restart opens a fresh tab session");
+                java.lang.reflect.Method deliver = MarkviewActivity.class.getDeclaredMethod("deliver", int.class, String.class);
+                deliver.setAccessible(true);
+                deliver.invoke(previous, 0, new File(previous.getFilesDir(), "stale.md").getAbsolutePath());
+                SystemClock.sleep(250);
+                require(state().getJSONArray("tabs").length() == 1, "Destroyed Activity cannot deliver stale I/O results");
+            } finally {
+                removeMonitor(monitor);
+                if (discardOnBackground) {
+                    alwaysFinish(alwaysFinish != 0);
+                }
+            }
+        }
+        pass("Activity recreation, finish/reopen and Don't keep activities preserve preferences without stale callbacks");
+    }
+    private void alwaysFinish(boolean enabled) throws Exception {
+        getUiAutomation().adoptShellPermissionIdentity("android.permission.SET_ALWAYS_FINISH");
+        try {
+            Object service = android.app.ActivityManager.class.getMethod("getService").invoke(null);
+            Class.forName("android.app.IActivityManager").getMethod("setAlwaysFinish", boolean.class).invoke(service, enabled);
+        } finally { getUiAutomation().dropShellPermissionIdentity(); }
     }
     private void checkLayoutDiagnostics(int width) throws Exception {
         tap("CopyDiagnostics");
@@ -324,6 +402,19 @@ public class Smoke extends Instrumentation {
         require(text[0].contains("Mobile Mode: " + (phone ? "Phone" : "Tablet") + " (" + width + " dp)\n"), "Diagnostics contain mobile mode and smallest width in one line");
         require(!text[0].contains("Smallest width:") && !text[0].contains("sw600dp:") && !text[0].contains("phone_layout:"), "Diagnostics omit separate layout rows");
         pass("Copied diagnostics include a single Mobile Mode line");
+    }
+    private void configureFolder(Uri tree, boolean chapter, boolean failCopy) {
+        Bundle options = new Bundle();
+        options.putBoolean("chapter", chapter);
+        options.putBoolean("failCopy", failCopy);
+        getContext().getContentResolver().call(tree, "folder", null, options);
+    }
+    private void reimportFolder(Uri tree) throws Exception {
+        runOnMainSync(() -> ((MarkviewActivity)activity).onActivityResult(12, Activity.RESULT_OK, new Intent().setData(tree)));
+        java.lang.reflect.Field field = MarkviewActivity.class.getDeclaredField("io");
+        field.setAccessible(true);
+        ((java.util.concurrent.ExecutorService)field.get(activity)).submit(() -> {}).get(20, java.util.concurrent.TimeUnit.SECONDS);
+        stableLayout();
     }
     private void requireSettingsLayout() throws Exception {
         JSONObject current = state();

@@ -19,6 +19,8 @@ import java.io.OutputStream;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.StandardCopyOption;
+import java.nio.file.Path;
+import java.util.Comparator;
 import java.security.MessageDigest;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.Map;
@@ -31,10 +33,12 @@ public class MarkviewActivity extends NativeActivity {
     private static final int OPEN = 10, SAVE = 11, TREE = 12, ASSETS = 13;
     private final ExecutorService io = Executors.newSingleThreadExecutor();
     private final Map<String, Uri> exports = new ConcurrentHashMap<>();
+    private boolean destroyed;
     private String outputName;
     private File assetDirectory;
     private static native void nativeResult(int kind, String path);
     static native String nativeSnapshot();
+    static native boolean nativeBridgeReferencesReleased();
     public void systemBars(String mode) {
         runOnUiThread(() -> {
             boolean light = "light".equals(mode);
@@ -64,17 +68,17 @@ public class MarkviewActivity extends NativeActivity {
     @Override public void onConfigurationChanged(android.content.res.Configuration configuration) {
         super.onConfigurationChanged(configuration);
         applyOrientation();
-        nativeResult(4, null);
+        deliver(4, null);
     }
     @Override public void onCreate(Bundle state) {
         applyOrientation();
         super.onCreate(state);
         if (android.os.Build.VERSION.SDK_INT >= 33) getOnBackInvokedDispatcher().registerOnBackInvokedCallback(
-            android.window.OnBackInvokedDispatcher.PRIORITY_DEFAULT, () -> nativeResult(3, null));
+            android.window.OnBackInvokedDispatcher.PRIORITY_DEFAULT, () -> deliver(3, null));
         // `NativeActivity` loads the library before intent delivery.
         receive(getIntent());
     }
-    @Override public void onBackPressed() { nativeResult(3, null); }
+    @Override public void onBackPressed() { deliver(3, null); }
     @Override public void onNewIntent(Intent intent) {
         super.onNewIntent(intent);
         setIntent(intent);
@@ -93,7 +97,7 @@ public class MarkviewActivity extends NativeActivity {
                         File file = new File(getFilesDir(), "shared/Shared.md");
                         file.getParentFile().mkdirs();
                         Files.write(file.toPath(), text.getBytes(StandardCharsets.UTF_8));
-                        nativeResult(0, file.getAbsolutePath());
+                        deliver(0, file.getAbsolutePath());
                     } catch (Exception error) { fail(error, 0); }
                 });
                 return;
@@ -108,7 +112,7 @@ public class MarkviewActivity extends NativeActivity {
                 if (which == 0) { intent.addCategory(Intent.CATEGORY_OPENABLE); intent.setType("*/*"); }
                 intent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION | Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION);
                 startActivityForResult(intent, which == 0 ? OPEN : TREE);
-            }).setOnCancelListener(dialog -> nativeResult(0, null)).show());
+            }).setOnCancelListener(dialog -> deliver(0, null)).show());
     }
     private void importAssets(File directory) {
         assetDirectory = directory;
@@ -147,14 +151,14 @@ public class MarkviewActivity extends NativeActivity {
                                 throw new java.io.IOException("Choose " + (font ? "a TTF, OTF or TTC font" : "an MVSS stylesheet"));
                             copyDocument(uri, new File(directory, name));
                         }
-                        nativeResult(2, null);
+                        deliver(2, null);
                     } catch (Exception error) { fail(error, -1); }
                 });
             }
             return;
         }
         if (result != RESULT_OK || data == null || data.getData() == null) {
-            nativeResult(kind, null);
+            deliver(kind, null);
             return;
         }
         Uri uri = data.getData();
@@ -167,7 +171,7 @@ public class MarkviewActivity extends NativeActivity {
             File file = new File(getFilesDir(), "exports/" + outputName);
             file.getParentFile().mkdirs();
             exports.put(file.getAbsolutePath(), uri);
-            nativeResult(1, file.getAbsolutePath());
+            deliver(1, file.getAbsolutePath());
         }
     }
     private void importDocument(Uri uri) {
@@ -175,7 +179,7 @@ public class MarkviewActivity extends NativeActivity {
             try {
                 File file = new File(documentDirectory(uri), displayName(uri));
                 copyDocument(uri, file);
-                nativeResult(0, file.getAbsolutePath());
+                deliver(0, file.getAbsolutePath());
             } catch (Exception error) { fail(error, 0); }
         });
     }
@@ -205,22 +209,52 @@ public class MarkviewActivity extends NativeActivity {
     private void importTree(Uri tree) {
         io.execute(() -> {
             try {
-                List<File> documents = new ArrayList<>();
-                copyTree(tree, DocumentsContract.getTreeDocumentId(tree), documentDirectory(tree), documents, 0);
-                documents.sort((a, b) -> {
-                    boolean ar = a.getName().equalsIgnoreCase("README.md"), br = b.getName().equalsIgnoreCase("README.md");
-                    return ar != br ? (ar ? -1 : 1) : a.getPath().compareToIgnoreCase(b.getPath());
-                });
-                if (documents.isEmpty()) throw new java.io.IOException("No Markdown documents in this folder");
-                nativeResult(0, documents.get(0).getAbsolutePath());
+                Path directory = documentDirectory(tree).toPath();
+                Files.createDirectories(directory.getParent());
+                Path temporary = Files.createTempDirectory(directory.getParent(), ".import-");
+                try {
+                    List<File> documents = new ArrayList<>();
+                    copyTree(tree, DocumentsContract.getTreeDocumentId(tree), temporary.toFile(), documents, 0);
+                    documents.sort((a, b) -> {
+                        boolean ar = a.getName().equalsIgnoreCase("README.md"), br = b.getName().equalsIgnoreCase("README.md");
+                        return ar != br ? (ar ? -1 : 1) : a.getPath().compareToIgnoreCase(b.getPath());
+                    });
+                    if (documents.isEmpty()) throw new java.io.IOException("No Markdown documents in this folder");
+                    Path document = temporary.relativize(documents.get(0).toPath());
+                    replaceDirectory(temporary, directory);
+                    deliver(0, directory.resolve(document).toString());
+                } finally {
+                    if (Files.exists(temporary)) deleteTree(temporary);
+                }
             } catch (Exception error) { fail(error, 0); }
         });
+    }
+    private void replaceDirectory(Path temporary, Path directory) throws Exception {
+        Path previous = null;
+        if (Files.exists(directory)) {
+            previous = Files.createTempDirectory(directory.getParent(), ".previous-");
+            Files.move(directory, previous, StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING);
+        }
+        try {
+            Files.move(temporary, directory, StandardCopyOption.ATOMIC_MOVE);
+        } catch (Exception error) {
+            if (previous != null) Files.move(previous, directory, StandardCopyOption.ATOMIC_MOVE);
+            throw error;
+        }
+        if (previous != null) deleteTree(previous);
+    }
+    private void deleteTree(Path directory) throws Exception {
+        try (java.util.stream.Stream<Path> paths = Files.walk(directory)) {
+            java.util.Iterator<Path> entries = paths.sorted(Comparator.reverseOrder()).iterator();
+            while (entries.hasNext()) Files.delete(entries.next());
+        }
     }
     private void copyTree(Uri tree, String id, File directory, List<File> documents, int depth) throws Exception {
         if (depth > 32) throw new java.io.IOException("Folder nesting is too deep");
         Uri children = DocumentsContract.buildChildDocumentsUriUsingTree(tree, id);
         try (Cursor cursor = getContentResolver().query(children, new String[]{DocumentsContract.Document.COLUMN_DOCUMENT_ID, DocumentsContract.Document.COLUMN_MIME_TYPE}, null, null, null)) {
-            while (cursor != null && cursor.moveToNext()) {
+            if (cursor == null) throw new java.io.IOException("Cannot read folder contents");
+            while (cursor.moveToNext()) {
                 Uri child = DocumentsContract.buildDocumentUriUsingTree(tree, cursor.getString(0));
                 File file = new File(directory, displayName(child));
                 if (DocumentsContract.Document.MIME_TYPE_DIR.equals(cursor.getString(1))) copyTree(tree, cursor.getString(0), file, documents, depth + 1);
@@ -283,10 +317,14 @@ public class MarkviewActivity extends NativeActivity {
     private void fail(Exception error, int kind) {
         android.util.Log.e("Markview", "Android document I/O", error);
         runOnUiThread(() -> Toast.makeText(this, error.getMessage(), Toast.LENGTH_LONG).show());
-        if (kind >= 0) nativeResult(kind, null);
+        if (kind >= 0) deliver(kind, null);
+    }
+    private synchronized void deliver(int kind, String path) {
+        if (!destroyed) nativeResult(kind, path);
     }
     @Override public void onDestroy() {
-        io.shutdown();
+        synchronized (this) { destroyed = true; }
+        io.shutdownNow();
         super.onDestroy();
     }
 }
