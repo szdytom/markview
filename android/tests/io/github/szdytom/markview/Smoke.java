@@ -38,7 +38,7 @@ public class Smoke extends Instrumentation {
             File config = new File(getTargetContext().getFilesDir(), "markview/settings.toml");
             config.getParentFile().mkdirs();
             String stored = config.exists() ? new String(Files.readAllBytes(config.toPath()), StandardCharsets.UTF_8) : "";
-            stored = "window-layout = \"macos\"\nsingle-instance = true\n" + stored.replaceAll("(?m)^(window-layout|single-instance) *=.*\\R?", "");
+            stored = "window-layout = \"macos\"\nsingle-instance = true\nwidth = 240\n" + stored.replaceAll("(?m)^(window-layout|single-instance|width) *=.*\\R?", "");
             Files.write(config.toPath(), stored.getBytes(StandardCharsets.UTF_8));
             getUiAutomation().setRotation(0);
             activity = startActivitySync(intent("reader.md", Intent.ACTION_VIEW));
@@ -46,6 +46,8 @@ public class Smoke extends Instrumentation {
             require(initial.getString("window_layout").equals("Macos") && initial.getBoolean("single_instance"), "Saved desktop options loaded");
             require(!initial.getString("frame_layout").equals("Macos") && !initial.getBoolean("instance_listener"), "Saved desktop options do not affect Android");
             phone = initial.getBoolean("phone_layout");
+            double availableWidth = initial.getJSONArray("dimensions").getDouble(0) - 40;
+            require(Math.abs(initial.getDouble("layout_width") - (phone ? availableWidth : Math.min(initial.getDouble("column_width"), availableWidth))) < 0.01, "Phone fills available reading width; tablet respects saved column width");
             if (!phone && initial.getJSONArray("dimensions").getDouble(0) > initial.getJSONArray("dimensions").getDouble(1)) {
                 portraitRotation = 1;
                 getUiAutomation().setRotation(portraitRotation);
@@ -58,10 +60,18 @@ public class Smoke extends Instrumentation {
             pass("sw600dp " + expectedLayout + " layout and orientation policy (sw" + smallestWidth + "dp)");
             if (layoutOnly) {
                 require((button(state(), "Tabs") != null) == phone, "Drawer toggle matches sw600dp");
+                screenshot("reader");
                 tap("Settings");
                 waitFor(s -> s.optString("panel").equals("Settings(Generic)"));
                 require((button(state(), "ToggleDropdown(TabStyle") == null) == phone, "Tab style matches sw600dp");
                 requireSettingsLayout();
+                screenshot("settings");
+                if (!phone) {
+                    getUiAutomation().setRotation(0);
+                    waitFor(s -> s.optJSONArray("dimensions").optDouble(0) > s.optJSONArray("dimensions").optDouble(1));
+                    requireSettingsLayout();
+                    screenshot("landscape-settings");
+                }
                 tap("SettingsTab(About)");
                 waitFor(s -> s.optString("panel").equals("Settings(About)"));
                 screenshot("layout");
@@ -310,6 +320,9 @@ public class Smoke extends Instrumentation {
     private void requireSettingsLayout() throws Exception {
         JSONObject current = state();
         require(button(current, "ScrollSpeed(") == null, "Scroll speed controls are absent on Android");
+        if (current.getString("panel").equals("Settings(Generic)")) {
+            require((button(current, "Narrower") == null) == phone && (button(current, "Wider") == null) == phone, "Column width controls are offered only on tablets");
+        }
         JSONArray size = current.getJSONArray("dimensions");
         JSONArray panel = current.getJSONArray("panel_rect");
         if (size.getDouble(0) < 640) {

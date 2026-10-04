@@ -37,6 +37,7 @@ at the same level, without `[brackets]`.
 ### Changed
 
 - Hide the scroll-speed setting on Android phones and tablets.
+- Fill the available reading width in phone mode, preserving side margins, and hide the column-width setting; tablets and desktops retain adjustable columns.
 
 - Refine the phone tab drawer with left-aligned filenames, subtle selection markers, quiet open controls and a theme-colored Markview icon.
 

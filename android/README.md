@@ -15,7 +15,7 @@ integration suite. The screens reuse the desktop UI with phone adaptation.
 
 | Reader | Fullscreen settings |
 |---|---|
-| <img src="../docs/screenshots/android/reader.png" alt="Markview Android reader with CJK and an SVG image" width="250"> | <img src="../docs/screenshots/android/settings.png" alt="Markview Android fullscreen settings without desktop or tab-style options" width="250"> |
+| <img src="../docs/screenshots/android/reader.png" alt="Markview Android reader with CJK and an SVG image" width="250"> | <img src="../docs/screenshots/android/settings.png" alt="Markview phone settings without scroll-speed, column-width or desktop options" width="250"> |
 | Font manager | Dark styles |
 | <img src="../docs/screenshots/android/fonts.png" alt="Markview Android shared font catalogue" width="250"> | <img src="../docs/screenshots/android/dark-styles.png" alt="Markview Android shared style selection in dark mode" width="250"> |
 
@@ -58,6 +58,11 @@ controls. Android's `values-sw600dp` resource qualifier selects tablet mode:
 |---|---|---|---|
 | Smallest width below 600 dp | Left drawer: switch, close and open documents | Portrait | Hidden and ignored |
 | Smallest width at least 600 dp | Shared desktop tab strip | Portrait or landscape | Available |
+
+Phone mode fills the available reading width with 20 logical pixels of margin
+on each side and hides the column-width setting; tablets retain adjustable
+columns. Scroll speed is hidden on all Android devices because it does not
+change touch scrolling.
 
 **About** and **Copy diagnostics** include one mobile-mode line, such as
 `Mobile Mode: Phone (411 dp)` or `Mobile Mode: Tablet (800 dp)`.

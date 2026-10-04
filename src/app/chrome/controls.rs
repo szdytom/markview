@@ -134,7 +134,7 @@ fn rows(settings: &ReaderSettings, phone: bool) -> Vec<Row> {
 			),
 		]);
 	}
-	rows.extend([
+	rows.push(
 		Row::new(
 			t.settings_text_size(),
 			choices(
@@ -147,17 +147,23 @@ fn rows(settings: &ReaderSettings, phone: bool) -> Vec<Row> {
 		)
 		.value(format!("{:.1} px", settings.font_size))
 		.section(t.section_reading_layout()),
-		Row::new(
-			t.settings_column_width(),
-			choices(
-				&[
-					(t.settings_decrease(), Command::Narrower),
-					(t.settings_increase(), Command::Wider),
-				],
-				None,
-			),
-		)
-		.value(format!("{:.0} px", settings.width)),
+	);
+	if !phone {
+		rows.push(
+			Row::new(
+				t.settings_column_width(),
+				choices(
+					&[
+						(t.settings_decrease(), Command::Narrower),
+						(t.settings_increase(), Command::Wider),
+					],
+					None,
+				),
+			)
+			.value(format!("{:.0} px", settings.width)),
+		);
+	}
+	rows.extend([
 		Row::new(
 			t.settings_alignment(),
 			vec![action(

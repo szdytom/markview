@@ -657,6 +657,44 @@ fn forwarded_files_open_tabs_and_reuse_existing_tabs() {
 }
 
 #[test]
+fn phone_uses_available_column_width_and_preserves_the_saved_width() {
+	use crate::state::PanelTab;
+
+	let (mut app, _) = reader(SOURCE, 320.);
+	app.interaction
+		.show_panel(PanelPage::Settings(PanelTab::Generic));
+	for saved in [240.0, 1600.0] {
+		app.preferences.values.width = saved;
+		app.tab_strip.phone = true;
+		assert_eq!(app.options().width, app.dimensions().0 - 40.0);
+		assert!(
+			!app.panel_form().unwrap().buttons.iter().any(|b| matches!(
+				b.action,
+				Command::Narrower | Command::Wider
+			))
+		);
+		for action in [Command::Narrower, Command::Wider] {
+			app.action(action);
+			assert_eq!(app.preferences.values.width, saved);
+		}
+		app.tab_strip.phone = false;
+		assert_eq!(app.options().width, saved.min(app.dimensions().0 - 40.0));
+		for action in [Command::Narrower, Command::Wider] {
+			assert!(
+				app.panel_form()
+					.unwrap()
+					.buttons
+					.iter()
+					.any(|b| b.action == action)
+			);
+		}
+	}
+	app.preferences.values.width = 300.0;
+	app.action(Command::Wider);
+	assert_eq!(app.options().width, 360.0);
+}
+
+#[test]
 fn phone_drawer_switches_and_closes_shared_tabs_and_hides_tab_style() {
 	use crate::settings::TabStyle;
 	use crate::state::{DropdownId, PanelPage, PanelTab};

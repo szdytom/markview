@@ -523,6 +523,9 @@ impl<P: super::SendEvent> App<P> {
 				self.preferences.values.font_size =
 					(self.preferences.values.font_size + 1.0).min(40.0)
 			}
+			Command::Narrower | Command::Wider if self.tab_strip.phone => {
+				return;
+			}
 			Command::Narrower => {
 				self.preferences.values.width =
 					(self.preferences.values.width - 60.0).max(240.0)

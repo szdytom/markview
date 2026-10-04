@@ -68,7 +68,7 @@ def main():
     assert result.returncode == 0 and "MARKVIEW_ANDROID_INTEGRATION_OK" in report, "Android integration tests failed"
     screenshots = ["reader", "settings", "fonts", "font-choices", "dark-styles", "diagnostics", "search", "resumed", "folder"] + (["tab-drawer"] if args.layout == "phone" else ["landscape", "landscape-settings"])
     if args.layout_only:
-        screenshots = ["layout"]
+        screenshots = ["reader", "settings", "layout"] + (["landscape-settings"] if args.layout == "tablet" else [])
     for name in screenshots:
         with (artifacts / f"{name}.png").open("wb") as output:
             subprocess.run([str(sdk / "platform-tools/adb"), "-s", args.serial, "exec-out", "run-as", "io.github.szdytom.markview", "cat", f"files/test-artifacts/{name}.png"], stdout=output, check=True)

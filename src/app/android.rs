@@ -123,6 +123,7 @@ impl<P: super::SendEvent> App<P> {
 			"frame_layout":format!("{:?}", self.frame.layout),
 			"single_instance":self.preferences.values.single_instance,
 			"phone_layout":self.tab_strip.phone,
+			"column_width":self.preferences.values.width, "layout_width":session.snapshot.width,
 			"drawer_scroll":self.tab_strip.drawer_scroll,
 			"tab_style":format!("{:?}", self.preferences.values.tab_style),
 			"instance_listener":self.instance.is_some(),
