@@ -39,7 +39,7 @@ public class Smoke extends Instrumentation {
             File config = new File(getTargetContext().getFilesDir(), "markview/settings.toml");
             config.getParentFile().mkdirs();
             String stored = config.exists() ? new String(Files.readAllBytes(config.toPath()), StandardCharsets.UTF_8) : "";
-            stored = "window-layout = \"macos\"\nsingle-instance = true\nwidth = 240\n" + stored.replaceAll("(?m)^(window-layout|single-instance|width) *=.*\\R?", "");
+            stored = "window-layout = \"macos\"\nsingle-instance = true\nwidth = 240\nstyle = [\"light\"]\n" + stored.replaceAll("(?m)^(window-layout|single-instance|width|style) *=.*\\R?", "");
             Files.write(config.toPath(), stored.getBytes(StandardCharsets.UTF_8));
             getUiAutomation().setRotation(0);
             activity = startActivitySync(intent("reader.md", Intent.ACTION_VIEW));
@@ -93,6 +93,7 @@ public class Smoke extends Instrumentation {
             require(initial.getString("backend").equals("Vulkan") || initial.getString("backend").equals("Gl"), "GPU backend");
             stableLayout();
             screenshot("reader");
+            checkSystemBars(true);
             swipe(280, 180, 100, 180);
             waitFor(s -> s.optBoolean("outline_open"));
             swipe(280, 180, 100, 180);
@@ -171,6 +172,8 @@ public class Smoke extends Instrumentation {
             sendKeyDownUpSync(KeyEvent.KEYCODE_BACK);
             waitFor(s -> s.optString("panel").equals("Closed"));
             require(!state().getBoolean("instance_listener"), "Android does not register the desktop instance listener");
+            screenshot("dark-reader");
+            checkSystemBars(false);
             pass("Shared settings, typography, font catalogue and styles without desktop file controls");
 
             tap("SearchOpen");
@@ -528,6 +531,31 @@ public class Smoke extends Instrumentation {
         JSONArray images = state.getJSONArray("images");
         for (int i = 0; i < images.length(); i++) if (!images.getJSONObject(i).isNull("size")) count++;
         return count;
+    }
+    private void checkSystemBars(boolean light) throws Exception {
+        JSONObject current = state();
+        double scale = current.getJSONArray("dimensions").getDouble(2);
+        int top = (int)Math.round(current.getJSONArray("insets").getDouble(1) * scale);
+        int bottom = top + (int)Math.round(current.getJSONArray("dimensions").getDouble(1) * scale);
+        SystemClock.sleep(250);
+        Bitmap pixels = getUiAutomation().takeScreenshot();
+        require(pixels != null, "System bar screenshot");
+        try {
+            int x = pixels.getWidth() / 8;
+            if (top > 4) {
+                int middle = pixels.getWidth() / 2;
+                require(sameColor(pixels.getPixel(middle, top / 2), pixels.getPixel(middle, top + 2)), "Status bar blends into the toolbar");
+            }
+            if (bottom + 4 < pixels.getHeight()) {
+                require(sameColor(pixels.getPixel(x, bottom - 2), pixels.getPixel(x, (bottom + pixels.getHeight()) / 2)), "Navigation bar blends into the footer");
+            }
+            int background = pixels.getPixel(x, bottom - 2);
+            require((Color.red(background) + Color.green(background) + Color.blue(background) > 384) == light, "System bars follow the selected style");
+        } finally { pixels.recycle(); }
+        pass((light ? "Light" : "Dark") + " system bars blend into reader chrome");
+    }
+    private boolean sameColor(int a, int b) {
+        return Math.abs(Color.red(a) - Color.red(b)) <= 2 && Math.abs(Color.green(a) - Color.green(b)) <= 2 && Math.abs(Color.blue(a) - Color.blue(b)) <= 2;
     }
     private void screenshot(String name) throws Exception {
         SystemClock.sleep(250);

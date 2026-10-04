@@ -1,6 +1,9 @@
 <resources>
     <style name="AppTheme" parent="android:style/Theme.Material.Light.NoActionBar">
         <item name="android:windowLightStatusBar">true</item>
+        <item name="android:enforceStatusBarContrast">false</item>
+        <item name="android:enforceNavigationBarContrast">false</item>
+        <item name="android:navigationBarDividerColor">@android:color/transparent</item>
         <item name="android:windowActionModeOverlay">true</item>
         <item name="android:windowOptOutEdgeToEdgeEnforcement">true</item>
         <item name="android:windowSoftInputMode">adjustResize</item>

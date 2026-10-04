@@ -284,6 +284,31 @@ impl<P: super::SendEvent> App<P> {
 		let mut chrome = self.chrome();
 		chrome.input_draws = inputs;
 		out.extend(chrome.overlay());
+		#[cfg(target_os = "android")]
+		{
+			use crate::layout::{Paint, Rect};
+			use markview_core::style::{ColorField, Condition};
+			let (width, height, _) = self.dimensions();
+			let [left, top, right, bottom] = self.insets();
+			// Extend the chrome behind system bars without moving its controls.
+			for (x, y, w, h, condition) in [
+				(-left, -top, width + left + right, top, Condition::Toolbar),
+				(
+					-left,
+					height,
+					width + left + right,
+					bottom,
+					Condition::Statusbar,
+				),
+				(-left, 0.0, left, height, Condition::Toolbar),
+				(width, 0.0, right, height, Condition::Toolbar),
+			] {
+				out.push(Draw::Rect(
+					Rect { x, y, w, h },
+					Paint::Styled(condition, ColorField::Background),
+				));
+			}
+		}
 		out
 	}
 	pub(super) fn tab_layout(&mut self) -> super::tab_strip::TabLayout {

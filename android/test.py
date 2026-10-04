@@ -67,7 +67,7 @@ def main():
     (artifacts / "integration.txt").write_text(report)
     print(report)
     assert result.returncode == 0 and "MARKVIEW_ANDROID_INTEGRATION_OK" in report, "Android integration tests failed"
-    screenshots = ["reader", "settings", "fonts", "font-choices", "dark-styles", "diagnostics", "search", "resumed", "folder"] + (["tab-drawer"] if args.layout == "phone" else ["landscape", "landscape-settings"])
+    screenshots = ["reader", "dark-reader", "settings", "fonts", "font-choices", "dark-styles", "diagnostics", "search", "resumed", "folder"] + (["tab-drawer"] if args.layout == "phone" else ["landscape", "landscape-settings"])
     if args.layout_only:
         screenshots = ["reader", "settings", "layout"] + (["landscape-settings"] if args.layout == "tablet" else [])
     if args.lifecycle_only:

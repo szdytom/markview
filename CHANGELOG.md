@@ -59,6 +59,7 @@ at the same level, without `[brackets]`.
 
 ### Fixed
 
+- Blend Android system bars into the reader chrome in light and dark styles while keeping controls inside the safe area.
 - Support touchscreen dragging and edge resizing of custom window frames on Linux, using the touch contact's native serial on Wayland.
 - Exit and recreate the Android reader cleanly when its Activity is destroyed, using a pinned winit fork.
 - Reload changed local images after their source files are updated.
