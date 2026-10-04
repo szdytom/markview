@@ -1,5 +1,5 @@
 format_version = 2
-version = 6
+version = 7
 targets = ["pdf"]
 
 [meta]
@@ -16,7 +16,7 @@ lookfor = ["TeX Gyre Pagella", "Iowan Old Style", "Palatino Linotype", "Palatino
 
 [[fontdef]]
 id = "monospace"
-lookfor = ["Noto Sans Mono", "Menlo", "Consolas", "Liberation Mono", "monospace"]
+lookfor = ["Noto Sans Mono", "Menlo", "Consolas", "Liberation Mono", "Droid Sans Mono", "monospace"]
 
 [[font-family]]
 id = "tex-gyre-pagella"

@@ -88,6 +88,8 @@ ratex-layout = "=0.1.14"
 ratex-types = "=0.1.14"
 ratex-font = "=0.1.14"
 ratex-katex-fonts = "=0.1.14"
+# `ratex-katex-fonts` otherwise reads the build machine's files in debug builds.
+rust-embed = { version = "8.11", features = ["debug-embed"] }
 rfd = "0.16"
 sys-locale = "0.3"
 serde = { version = "1", features = ["derive"] }

@@ -1,6 +1,23 @@
 use super::GlyphOrigin;
 
 #[test]
+fn math_fonts_are_embedded_in_debug_builds() {
+	for name in [
+		"Main-Regular",
+		"Math-Italic",
+		"Size1-Regular",
+		"Size2-Regular",
+	] {
+		let bytes =
+			ratex_katex_fonts::ttf_bytes(&format!("KaTeX_{name}.ttf")).unwrap();
+		assert!(
+			matches!(bytes, std::borrow::Cow::Borrowed(_)),
+			"{name} must not require the build machine's font directory"
+		);
+	}
+}
+
+#[test]
 fn outline_colors_convert_to_straight_alpha() {
 	let mut rgba = [64, 32, 0, 128, 90, 80, 70, 255, 1, 2, 3, 0];
 	super::color::unpremultiply(&mut rgba);

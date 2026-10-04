@@ -13,6 +13,7 @@ bytemuck.workspace = true
 parley.workspace = true
 ratex-font.workspace = true
 ratex-katex-fonts.workspace = true
+rust-embed.workspace = true
 ratex-types.workspace = true
 swash.workspace = true
 tiny-skia.workspace = true

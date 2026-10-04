@@ -59,6 +59,8 @@ at the same level, without `[brackets]`.
 
 ### Fixed
 
+- Add Droid Sans Mono before the generic monospace fallback in builtin and artist MVSS themes.
+- Embed KaTeX fonts in debug builds so Android formulas and PDF exports use the bundled math faces.
 - Blend Android system bars into the reader chrome in light and dark styles while keeping controls inside the safe area.
 - Support touchscreen dragging and edge resizing of custom window frames on Linux, using the touch contact's native serial on Wayland.
 - Exit and recreate the Android reader cleanly when its Activity is destroyed, using a pinned winit fork.

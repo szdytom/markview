@@ -117,7 +117,7 @@ public class Smoke extends Instrumentation {
                 waitFor(s -> s.optBoolean("outline_open") && s.optString("panel").equals("Closed"));
                 swipe(100, 180, 280, 180);
                 waitFor(s -> s.optString("panel").equals("Tabs") && !s.optBoolean("outline_open"));
-                screenshot("tab-drawer");
+                screenshot("tab-drawer-light");
             } else {
                 require(button(state(), "Tabs") == null, "Tablet keeps the desktop tab strip");
                 swipe(45, 20, 185, 20);
@@ -174,6 +174,13 @@ public class Smoke extends Instrumentation {
             require(!state().getBoolean("instance_listener"), "Android does not register the desktop instance listener");
             screenshot("dark-reader");
             checkSystemBars(false);
+            if (phone) {
+                tap("Tabs");
+                waitFor(s -> s.optString("panel").equals("Tabs"));
+                screenshot("tab-drawer");
+                sendKeyDownUpSync(KeyEvent.KEYCODE_BACK);
+                waitFor(s -> s.optString("panel").equals("Closed"));
+            }
             pass("Shared settings, typography, font catalogue and styles without desktop file controls");
 
             tap("SearchOpen");
@@ -202,9 +209,13 @@ public class Smoke extends Instrumentation {
                 tap("Settings");
                 waitFor(s -> s.optString("panel").equals("Settings(Generic)"));
                 requireSettingsLayout();
+                for (int i = 0; i < 9; i++) tap("Wider");
+                waitFor(s -> s.optDouble("column_width") >= 760);
                 screenshot("landscape-settings");
                 sendKeyDownUpSync(KeyEvent.KEYCODE_BACK);
                 waitFor(s -> s.optString("panel").equals("Closed"));
+                stableLayout();
+                screenshot("tablet-tabs");
                 pass("Tablet rotation and centered settings dialog");
             }
             getUiAutomation().setRotation(portraitRotation);
@@ -282,6 +293,8 @@ public class Smoke extends Instrumentation {
             require(pdf.isFile() && pdf.length() > 100, "Native PDF export");
             byte[] bytes = Files.readAllBytes(pdf.toPath());
             require(new String(bytes, 0, 5, StandardCharsets.US_ASCII).equals("%PDF-"), "PDF header");
+            String pdfSource = new String(bytes, StandardCharsets.ISO_8859_1);
+            require(pdfSource.contains("KaTeX_Main") && pdfSource.contains("KaTeX_Math") && pdfSource.contains("KaTeX_Size"), "PDF embeds bundled KaTeX fonts for inline and display mathematics");
             SystemClock.sleep(800);
             java.lang.reflect.Field field = MarkviewActivity.class.getDeclaredField("exports");
             field.setAccessible(true);

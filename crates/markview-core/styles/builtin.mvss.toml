@@ -1,6 +1,6 @@
 format_version = 2
 targets = ["ui", "pdf"]
-version = 5
+version = 6
 
 [[fontdef]]
 id = "serif"
@@ -42,7 +42,7 @@ lookfor = ["Noto Sans CJK JP", "Source Han Sans CJK JP", "Hiragino Sans", "Yu Go
 
 [[fontdef]]
 id = "monospace"
-lookfor = ["Fira Code", "Consolas", "Noto Sans Mono", "monospace"]
+lookfor = ["Fira Code", "Consolas", "Noto Sans Mono", "Droid Sans Mono", "monospace"]
 
 [[fontdef]]
 id = "monospace[cjk]"

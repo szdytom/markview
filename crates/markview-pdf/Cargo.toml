@@ -18,6 +18,7 @@ swash.workspace = true
 parley.workspace = true
 ratex-font.workspace = true
 ratex-katex-fonts.workspace = true
+rust-embed.workspace = true
 ratex-types.workspace = true
 anyhow.workspace = true
 log.workspace = true

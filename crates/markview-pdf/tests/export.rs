@@ -19,6 +19,23 @@ struct Exported {
 	anchors: std::collections::HashMap<String, (usize, f32)>,
 }
 
+#[test]
+fn math_fonts_are_embedded_in_debug_builds() {
+	for name in [
+		"Main-Regular",
+		"Math-Italic",
+		"Size1-Regular",
+		"Size2-Regular",
+	] {
+		let bytes =
+			ratex_katex_fonts::ttf_bytes(&format!("KaTeX_{name}.ttf")).unwrap();
+		assert!(
+			matches!(bytes, std::borrow::Cow::Borrowed(_)),
+			"{name} must not require the build machine's font directory"
+		);
+	}
+}
+
 /// One document's laid-out inputs, kept so a test can export them more than
 /// once, with and without a reused renderer.
 struct Inputs {
