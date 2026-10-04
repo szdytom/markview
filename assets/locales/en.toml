@@ -25,6 +25,7 @@ panel_settings = "Settings"
 # The toolbar's icon buttons.
 toolbar_export = "Export"
 toolbar_open = "Open"
+toolbar_tabs = "Tabs"
 toolbar_outline = "Outline"
 toolbar_settings = "Settings"
 
@@ -80,6 +81,9 @@ diagnostics_build_date = "Build date"
 diagnostics_commit = "Commit"
 diagnostics_os = "OS"
 diagnostics_row = "{name}: {value}"
+diagnostics_mobile_mode = "Mobile Mode"
+diagnostics_phone = "Phone"
+diagnostics_tablet = "Tablet"
 diagnostics_version = "Version"
 
 # The reader window's notice strip.
@@ -90,6 +94,7 @@ notice_remote_images = "{count} remote images were not loaded."
 # What the reading area says instead of a document.
 empty_blank_detail = "Content will appear here when the file changes."
 empty_blank_title = "The document is empty"
+empty_open_detail_android = "Choose a Markdown file or folder, or share a document with Markview."
 empty_open_detail = "Open a Markdown file, or drop one into this window."
 empty_open_file = "Open file…"
 empty_open_title = "Open a Markdown file"

@@ -26,6 +26,7 @@ panel_settings = "設定"
 # The toolbar's icon buttons.
 toolbar_export = "書き出し"
 toolbar_open = "開く"
+toolbar_tabs = "タブ"
 toolbar_outline = "アウトライン"
 toolbar_settings = "設定"
 
@@ -81,6 +82,9 @@ diagnostics_build_date = "ビルド日時"
 diagnostics_commit = "コミット"
 diagnostics_os = "OS"
 diagnostics_row = "{name}：{value}"
+diagnostics_mobile_mode = "モバイルモード"
+diagnostics_phone = "スマートフォン"
+diagnostics_tablet = "タブレット"
 diagnostics_version = "バージョン"
 
 # The reader window's notice strip.
@@ -91,6 +95,7 @@ notice_remote_images = "{count} 枚のリモート画像を読み込んでいま
 # What the reading area says instead of a document.
 empty_blank_detail = "ファイルが変更されると、ここに内容が表示されます。"
 empty_blank_title = "文書は空です"
+empty_open_detail_android = "Markdown ファイルやフォルダーを開くか、Markview に文書を共有してください。"
 empty_open_detail = "Markdown ファイルを開くか、このウィンドウにドロップしてください。"
 empty_open_file = "ファイルを開く…"
 empty_open_title = "Markdown ファイルを開く"

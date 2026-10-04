@@ -72,7 +72,11 @@ fn eases(dy: f32) -> bool {
 impl<P: super::SendEvent> App<P> {
 	pub(super) fn pointer_in_panel(&self) -> bool {
 		let (width, height, _) = self.dimensions();
-		let rect = chrome::panel_rect(width, height);
+		let rect = if self.interaction.panel == crate::state::PanelPage::Tabs {
+			chrome::tab_drawer::rect(width, height)
+		} else {
+			chrome::panel_rect(width, height)
+		};
 		self.interaction.panel_open()
 			&& rect
 				.contains(self.interaction.cursor.0, self.interaction.cursor.1)
@@ -467,7 +471,7 @@ impl<P: super::SendEvent> App<P> {
 	pub(super) fn launch(&mut self, target: &str) {
 		self.error = false;
 		let lang = self.preferences.values.lang();
-		self.status = match open::that_detached(target) {
+		self.status = match crate::platform::open_external(target) {
 			Ok(()) => lang.status_opened(target),
 			Err(error) => {
 				self.error = true;

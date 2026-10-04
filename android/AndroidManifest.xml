@@ -1,0 +1,28 @@
+<manifest xmlns:android="http://schemas.android.com/apk/res/android" package="io.github.szdytom.markview" android:versionCode="1" android:versionName="0.1.11">
+    <uses-sdk android:minSdkVersion="28" android:targetSdkVersion="35" />
+    <uses-permission android:name="android.permission.INTERNET" />
+    <application android:label="Markview" android:icon="@drawable/icon" android:theme="@style/AppTheme" android:allowBackup="false" android:debuggable="true" android:extractNativeLibs="true" android:usesCleartextTraffic="false">
+        <activity android:name=".MarkviewActivity" android:exported="true" android:launchMode="singleTask" android:configChanges="orientation|screenSize|smallestScreenSize|screenLayout|keyboardHidden|keyboard|uiMode|density">
+            <meta-data android:name="android.app.lib_name" android:value="markview" />
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="content" />
+                <data android:mimeType="text/markdown" />
+                <data android:mimeType="text/plain" />
+                <data android:mimeType="text/x-markdown" />
+            </intent-filter>
+            <intent-filter>
+                <action android:name="android.intent.action.SEND" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:mimeType="text/*" />
+            </intent-filter>
+        </activity>
+        <provider android:name=".ReaderProvider" android:authorities="io.github.szdytom.markview.files" android:exported="false" android:grantUriPermissions="true" />
+    </application>
+</manifest>

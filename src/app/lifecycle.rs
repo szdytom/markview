@@ -104,7 +104,9 @@ impl<P: super::SendEvent> ApplicationHandler<Event> for App<P> {
 			self.dm = dm;
 			self.reload_styles();
 			self.gpu()?;
-			if let Some(path) = self.args.path.clone() {
+			if self.readers.session.path.is_none()
+				&& let Some(path) = self.args.path.clone()
+			{
 				self.open(path);
 			}
 			self.redraw();
@@ -114,6 +116,13 @@ impl<P: super::SendEvent> ApplicationHandler<Event> for App<P> {
 			self.fatal = Some(format!("{e:#}"));
 			event_loop.exit();
 		}
+	}
+	#[cfg(target_os = "android")]
+	fn suspended(&mut self, _: &ActiveEventLoop) {
+		self.cancel_gestures();
+		self.flush_settings();
+		self.renderer.take();
+		self.window.take();
 	}
 	fn user_event(&mut self, event_loop: &ActiveEventLoop, event: Event) {
 		self.handle_user_event(event_loop, event);
@@ -149,6 +158,23 @@ impl<P: super::SendEvent> App<P> {
 		event: Event,
 	) {
 		match event {
+			#[cfg(target_os = "android")]
+			Event::AndroidBack => self.android_back(),
+			#[cfg(target_os = "android")]
+			Event::AndroidConfiguration => {
+				self.tab_strip.phone = crate::platform::android::phone_layout();
+				self.cancel_gestures();
+				if self.interaction.panel == crate::state::PanelPage::Tabs {
+					self.interaction
+						.show_panel(crate::state::PanelPage::Closed);
+				}
+				self.tab_strip.reveal_active = true;
+				self.redraw();
+			}
+			#[cfg(all(target_os = "android", debug_assertions))]
+			Event::AndroidInspect(send) => {
+				let _ = send.send(self.android_snapshot());
+			}
 			Event::SettingsLoaded(completion) => {
 				self.settings_loaded(*completion)
 			}
@@ -385,6 +411,13 @@ impl<P: super::SendEvent> App<P> {
 		event_loop: &impl Loop,
 		now: Instant,
 	) -> Option<Instant> {
+		let insets = self.insets();
+		if self.surface_insets != insets {
+			self.surface_insets = insets;
+			self.cancel_gestures();
+			self.request(false);
+			self.redraw();
+		}
 		self.input_tick(now);
 		self.search_tick();
 		self.auto_scroll_tabs(now);

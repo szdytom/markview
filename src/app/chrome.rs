@@ -12,6 +12,7 @@ pub(in crate::app) mod list;
 mod modal;
 pub(in crate::app) mod outline;
 pub(in crate::app) mod styles;
+pub(in crate::app) mod tab_drawer;
 mod tabs;
 mod viewer;
 use super::{BOTTOM, Button, TOP};
@@ -241,12 +242,14 @@ impl Chrome<'_> {
 			self.width,
 			self.height,
 			self.backend,
+			self.tab_strip.phone,
 		);
 		form.menu(open, (self.width, self.height))
 	}
 
 	pub(super) fn form(&mut self) -> Option<components::Form> {
 		if !self.interaction.panel_open()
+			|| self.interaction.panel == crate::state::PanelPage::Tabs
 			|| self.interaction.modal.is_some()
 			|| self.interaction.styles_open()
 			|| self.interaction.fonts_open()
@@ -271,6 +274,7 @@ impl Chrome<'_> {
 				self.width,
 				self.height,
 				self.backend,
+				self.tab_strip.phone,
 			)
 			.preview(self.interaction.settings_preview)
 		})
@@ -284,6 +288,15 @@ impl Chrome<'_> {
 				self.interaction,
 				width,
 				height,
+				self.settings.lang(),
+			)
+		} else if self.interaction.panel == crate::state::PanelPage::Tabs {
+			tab_drawer::buttons(
+				self.ui,
+				self.tabs,
+				self.active_tab,
+				self.tab_strip.drawer_scroll,
+				(width, height),
 				self.settings.lang(),
 			)
 		} else if self.interaction.panel_open()
@@ -341,6 +354,7 @@ impl Chrome<'_> {
 				width,
 				height,
 				self.backend,
+				self.tab_strip.phone,
 			)
 			.without_header()
 			.preview(self.interaction.settings_preview)
@@ -366,6 +380,9 @@ impl Chrome<'_> {
 				self.interaction.outline_open,
 				self.settings.lang(),
 			);
+			if self.tab_strip.phone {
+				buttons.push(tab_drawer::toggle(self.settings.lang()));
+			}
 			if self.session.path.is_none()
 				&& self.session.snapshot.blocks.is_empty()
 			{
@@ -433,7 +450,9 @@ impl Chrome<'_> {
 				Paint::Styled(Condition::Toolbar, C::Background),
 			),
 		];
-		if self.settings.tab_style == crate::settings::TabStyle::Underline {
+		if !self.tab_strip.phone
+			&& self.settings.tab_style == crate::settings::TabStyle::Underline
+		{
 			out.push(Draw::Rect(
 				Rect {
 					x: 0.0,
@@ -444,7 +463,35 @@ impl Chrome<'_> {
 				Paint::Styled(Condition::Toolbar, C::BorderColor),
 			));
 		}
-		out.extend(self.tab_bar().draw_tabs());
+		if self.tab_strip.phone {
+			self.ui.appearance = ui_appearance(self.ui);
+			let toggle = tab_drawer::toggle(self.settings.lang());
+			out.extend(components::draw_button(
+				self.ui,
+				self.interaction,
+				&toggle,
+				true,
+			));
+			let name = self
+				.session
+				.path
+				.as_deref()
+				.and_then(std::path::Path::file_name)
+				.map(|name| name.to_string_lossy())
+				.unwrap_or_else(|| "Markview".into());
+			let name =
+				self.ui
+					.fit(&name, 12., (self.frame.toolbar_x - 56.).max(0.));
+			out.extend(self.ui.label(
+				&name,
+				12.,
+				52.,
+				25.,
+				Paint::Styled(Condition::Toolbar, C::Color),
+			));
+		} else {
+			out.extend(self.tab_bar().draw_tabs());
+		}
 		out.extend(controls::draw_toolbar_at(
 			self.ui,
 			self.interaction,
@@ -492,7 +539,14 @@ impl Chrome<'_> {
 			let y = button.rect.y - 64.0;
 			let t = self.settings.lang();
 			let (title, detail) = if self.session.path.is_none() {
-				(t.empty_open_title(), t.empty_open_detail())
+				(
+					t.empty_open_title(),
+					if cfg!(target_os = "android") {
+						t.empty_open_detail_android()
+					} else {
+						t.empty_open_detail()
+					},
+				)
 			} else if self.error {
 				(t.empty_unreadable_title(), t.empty_unreadable_detail())
 			} else if self.session.layout_pending
@@ -567,7 +621,17 @@ impl Chrome<'_> {
 				self.settings.lang(),
 			));
 		}
-		if self.interaction.panel_open()
+		if self.interaction.panel == crate::state::PanelPage::Tabs {
+			out.extend(tab_drawer::draw(
+				self.ui,
+				self.tabs,
+				self.active_tab,
+				self.tab_strip.drawer_scroll,
+				self.interaction,
+				(width, height),
+				self.settings.lang(),
+			));
+		} else if self.interaction.panel_open()
 			&& self.interaction.export_styles_open()
 		{
 			out.extend(draw_styles(
@@ -637,6 +701,7 @@ impl Chrome<'_> {
 				width,
 				height,
 				self.backend,
+				self.tab_strip.phone,
 			));
 		}
 		self.draw_resource_feedback(&mut out);

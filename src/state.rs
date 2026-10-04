@@ -21,6 +21,8 @@ pub(crate) use markview_selection::{
 };
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum Command {
+	#[cfg(target_os = "android")]
+	SearchOpen,
 	RetrySettingsLoad,
 	SearchCase,
 	SearchWord,
@@ -94,6 +96,7 @@ pub(crate) enum Command {
 	/// Show one page of the settings panel.
 	SettingsTab(PanelTab),
 	Fonts(crate::app::font_panel::Command),
+	Tabs,
 	SelectTab(usize),
 	CloseTab(usize),
 	/// Dismiss the local-file confirmation without opening anything.
@@ -126,6 +129,7 @@ pub(crate) enum TextField {
 pub(crate) enum PanelPage {
 	#[default]
 	Closed,
+	Tabs,
 	Settings(PanelTab),
 	Export,
 	ExportStyles,

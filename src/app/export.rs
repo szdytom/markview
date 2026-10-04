@@ -299,6 +299,13 @@ impl<P: super::SendEvent> App<P> {
 					},
 				);
 				if rebuild {
+					#[cfg(target_os = "android")]
+					if let Err(error) = crate::platform::android::call_string(
+						"publishExport",
+						&path.to_string_lossy(),
+					) {
+						log::error!("Export handoff: {error:#}");
+					}
 					self.notify(&message, false, 6);
 				} else {
 					self.open_export(&path, message);
@@ -355,7 +362,7 @@ impl<P: super::SendEvent> App<P> {
 	/// result. A platform that cannot start a viewer does not undo the file,
 	/// so its failure is reported beside the export's own status.
 	fn open_export(&mut self, path: &Path, message: String) {
-		match open::that_detached(path) {
+		match crate::platform::open_external(path) {
 			Ok(()) => self.notify(&message, false, 6),
 			Err(error) => self.notify(
 				&self
@@ -517,6 +524,13 @@ impl<P: super::SendEvent> App<P> {
 					},
 				);
 				if job.rebuild {
+					#[cfg(target_os = "android")]
+					if let Err(error) = crate::platform::android::call_string(
+						"publishExport",
+						&path.to_string_lossy(),
+					) {
+						log::error!("Export handoff: {error:#}");
+					}
 					self.notify(&message, false, 6);
 				} else {
 					self.open_export(&path, message);
@@ -597,6 +611,7 @@ pub(super) fn draw_tile(
 		))
 	})
 	.collect();
+	let origin = renderer.set_ui_origin((0.0, 0.0));
 	let submission = renderer.render_with_stylesheet(
 		snapshot,
 		&view,
@@ -604,8 +619,9 @@ pub(super) fn draw_tile(
 		&[],
 		&target_view,
 		stylesheet.clone(),
-	)?;
-	renderer.wait(Some(submission))?;
+	);
+	renderer.set_ui_origin(origin);
+	renderer.wait(Some(submission?))?;
 	let pixels = renderer.read_pixels(&target)?;
 	let start = tile.y_px as usize * plan.width_px as usize * 4;
 	rgba[start..start + pixels.rgba.len()].copy_from_slice(&pixels.rgba);
@@ -629,6 +645,7 @@ pub(super) fn write_png(
 }
 
 /// Construct native dialogs on the UI thread; await their result on the I/O service.
+#[cfg(not(target_os = "android"))]
 fn choose_output(
 	stem: &str,
 	settings: &ExportSettings,
@@ -654,6 +671,20 @@ fn choose_output(
 	// Construct native dialogs on the UI thread and await them on the I/O service.
 	let selection = dialog.save_file();
 	async move { selection.await.map(|file| file.path().to_owned()) }
+}
+
+#[cfg(target_os = "android")]
+fn choose_output(
+	stem: &str,
+	settings: &ExportSettings,
+	_directory: Option<&Path>,
+	_window: Option<&winit::window::Window>,
+) -> impl std::future::Future<Output = Option<PathBuf>> + Send + use<> {
+	let extension = match settings.format {
+		ExportFormat::Pdf => "pdf",
+		ExportFormat::Png => "png",
+	};
+	crate::platform::android::choose_output(format!("{stem}.{extension}"))
 }
 
 fn wait_for_output(

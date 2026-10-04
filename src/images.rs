@@ -143,11 +143,15 @@ pub(crate) fn cache_directory() -> Option<PathBuf> {
 	cache::directory()
 }
 
+type Intrinsic = (Source, Option<(u64, Option<SystemTime>)>, (u32, u32));
+
 pub struct Images {
 	pub snapshot: ImageSnapshot,
 	/// Compress PDF resources on the workers instead of caching raw pixels.
 	pdf: bool,
 	entries: HashMap<Source, Entry>,
+	/// Keep bounded intrinsic sizes across tabs, without retaining decoded pixels.
+	intrinsic: Vec<Intrinsic>,
 	resident: HashMap<String, Arc<markview_core::image::Pixels>>,
 	demand: HashMap<String, markview_core::image::ImageDemand>,
 	done: mpsc::Sender<Finished>,
@@ -248,6 +252,7 @@ impl Images {
 			snapshot: ImageSnapshot::default(),
 			pdf: false,
 			entries: HashMap::new(),
+			intrinsic: Vec::new(),
 			resident: HashMap::new(),
 			demand: HashMap::new(),
 			done,
@@ -325,7 +330,16 @@ impl Images {
 		}
 		let theme = self.theme_key;
 		if self.document != path {
-			self.entries.clear();
+			for (source, entry) in self.entries.drain() {
+				if let Some(size) = entry.info.size
+					&& matches!(source, Source::File(_) | Source::Http(_))
+				{
+					self.intrinsic.retain(|(key, _, _)| *key != source);
+					self.intrinsic.push((source, entry.stamp, size));
+				}
+			}
+			let excess = self.intrinsic.len().saturating_sub(256);
+			self.intrinsic.drain(..excess);
 			self.snapshot.pixels.replace(HashMap::new());
 			self.snapshot = Default::default();
 			self.resident.clear();
@@ -379,6 +393,15 @@ impl Images {
 					}
 					let capped =
 						remote && !load_all && remote_seen > MAX_REMOTE_SOURCES;
+					let stamp = stamp(&source);
+					let size = self
+						.intrinsic
+						.iter()
+						.rev()
+						.find(|(key, previous, _)| {
+							*key == source && *previous == stamp
+						})
+						.map(|(_, _, size)| *size);
 					let e = self.entries.entry(source.clone()).or_insert_with(
 						|| Entry {
 							cancel: self.services.cancel.child_token(),
@@ -386,8 +409,11 @@ impl Images {
 							pdf: None,
 							ticket: 0,
 							aliases: Vec::new(),
-							info: Default::default(),
-							stamp: stamp(&source),
+							info: ImageInfo {
+								size,
+								..Default::default()
+							},
+							stamp,
 							busy: false,
 							svg: false,
 							raster: None,
@@ -513,7 +539,7 @@ impl Images {
 			if running < 4
 				&& !e.busy && e.info.error.is_none()
 				&& (stale
-					|| e.info.size.is_none()
+					|| e.raster.is_none()
 					|| resize || (requested.is_some_and(|d| d.needs_pixels)
 					&& !resident))
 			{
@@ -772,6 +798,7 @@ impl Images {
 	/// a load already in flight for it cannot reappear as a current entry.
 	pub fn release(&mut self) {
 		self.entries.clear();
+		self.intrinsic.clear();
 		self.snapshot.pixels.replace(HashMap::new());
 		self.snapshot = Default::default();
 		self.resident.clear();

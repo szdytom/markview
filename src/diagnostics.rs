@@ -5,6 +5,11 @@ pub(crate) fn fields(
 	lang: Lang,
 	backend: Option<wgpu::Backend>,
 ) -> Vec<(&'static str, String)> {
+	#[cfg(target_os = "android")]
+	let (smallest_width, phone) = (
+		crate::platform::android::smallest_width_dp(),
+		crate::platform::android::phone_layout(),
+	);
 	vec![
 		(lang.diagnostics_version(), env!("CARGO_PKG_VERSION").into()),
 		(
@@ -23,6 +28,18 @@ pub(crate) fn fields(
 			),
 		),
 		(lang.diagnostics_commit(), env!("MARKVIEW_COMMIT").into()),
+		#[cfg(target_os = "android")]
+		(
+			lang.diagnostics_mobile_mode(),
+			format!(
+				"{} ({smallest_width} dp)",
+				if phone {
+					lang.diagnostics_phone()
+				} else {
+					lang.diagnostics_tablet()
+				}
+			),
+		),
 	]
 }
 
@@ -51,7 +68,10 @@ mod tests {
 		{
 			assert!(text.contains(&format!("{name}: {value}\n")));
 		}
-		assert_eq!(text.lines().count(), 6);
+		assert_eq!(
+			text.lines().count(),
+			1 + super::fields(Lang::En, Some(wgpu::Backend::Vulkan)).len()
+		);
 		assert!(!text.contains("https://"));
 		assert!(!text.contains("License"));
 		assert!(super::report(None).contains("Not initialized"));

@@ -4,6 +4,12 @@
 //! stay editable and no SVG runtime reaches the reader.
 use markview_core::scene::IconPath;
 
+#[cfg(target_os = "android")]
+pub(super) const SEARCH: &[IconPath] =
+	markview_icon::icon!("assets/ui/search.svg");
+
+pub(super) const TABS: &[IconPath] = markview_icon::icon!("assets/ui/tabs.svg");
+
 pub(super) const OPEN: &[IconPath] = markview_icon::icon!("assets/ui/open.svg");
 pub(super) const EXPORT: &[IconPath] =
 	markview_icon::icon!("assets/ui/export.svg");

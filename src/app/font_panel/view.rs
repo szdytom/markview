@@ -34,7 +34,12 @@ const ROW: f32 = 88.0;
 const LIST_TOP: f32 = 136.0;
 /// How much of the panel's bottom the footer and its separator take.
 fn footer(panel: Rect) -> f32 {
-	if panel.h >= 360.0 { 88.0 } else { 56.0 }
+	let actions = if panel.w < 488.0 && panel.h >= 360.0 {
+		96.0
+	} else {
+		56.0
+	};
+	actions + if panel.h >= 360.0 { 32.0 } else { 0.0 }
 }
 
 /// The panel rectangle the Fonts page uses.
@@ -339,6 +344,9 @@ fn fonts_controls(
 	lang: Lang,
 ) -> Vec<Button> {
 	let r = list.panel;
+	let compact = r.w < 488.0;
+	let stacked = compact && r.h >= 360.0;
+	let third = (r.w - 64.0) / 3.0;
 	let mut out = crate::app::chrome::components::settings_header_controls(
 		r,
 		PanelTab::Fonts,
@@ -355,8 +363,14 @@ fn fonts_controls(
 		action: Command::Fonts(FontCommand::OpenFolder),
 		rect: Rect {
 			x: r.x + 24.,
-			y: r.y + r.h - 48.,
-			w: 146.,
+			y: r.y + r.h - if stacked { 88.0 } else { 48.0 },
+			w: if stacked {
+				r.w - 48.0
+			} else if compact {
+				third
+			} else {
+				146.0
+			},
 			h: CONTROL,
 		},
 	}]);
@@ -441,9 +455,27 @@ fn fonts_controls(
 			enabled: true,
 			action: Command::Fonts(action),
 			rect: Rect {
-				x: r.x + x,
+				x: r.x
+					+ if stacked {
+						24.0 + if missing_only {
+							0.0
+						} else {
+							(r.w - 40.0) / 2.0
+						}
+					} else if compact {
+						24.0 + (third + 8.0)
+							* if missing_only { 1.0 } else { 2.0 }
+					} else {
+						x
+					},
 				y: r.y + r.h - 48.,
-				w,
+				w: if stacked {
+					(r.w - 56.0) / 2.0
+				} else if compact {
+					third
+				} else {
+					w
+				},
 				h: CONTROL,
 			},
 		});
@@ -601,12 +633,12 @@ pub(in crate::app) fn draw_fonts(
 
 	let summary = summary_text(catalog, shown, note, lang);
 	let summary = shaper.fit(&summary, 12., r.w - 48.);
-	if footer(r) > 56.0 {
+	if r.h >= 360.0 {
 		out.extend(shaper.label(
 			&summary,
 			12.,
 			r.x + 24.,
-			r.y + r.h - 66.,
+			r.y + r.h - footer(r) + 22.0,
 			Paint::Styled(Condition::Panel, C::Muted),
 		));
 	}
@@ -1163,20 +1195,37 @@ mod tests {
 	/// who lands here cannot leave it.
 	#[test]
 	fn the_fonts_page_carries_the_settings_tabs() {
-		let buttons = fonts_controls(
-			list(820., 600., 1, 0.0, false, CHOOSERS),
-			None,
-			false,
-			false,
-			Lang::En,
-		);
-		for tab in [PanelTab::Generic, PanelTab::Styles, PanelTab::Fonts] {
-			assert!(
-				buttons
-					.iter()
-					.any(|b| b.action == Command::SettingsTab(tab)),
-				"{tab:?} is missing"
+		for (width, height) in [
+			(360.0, 600.0),
+			(411.0, 600.0),
+			(500.0, 300.0),
+			(820.0, 600.0),
+		] {
+			let buttons = fonts_controls(
+				list(width, height, 1, 0.0, false, CHOOSERS),
+				None,
+				false,
+				false,
+				Lang::En,
 			);
+			for tab in [PanelTab::Generic, PanelTab::Styles, PanelTab::Fonts] {
+				assert!(
+					buttons
+						.iter()
+						.any(|b| b.action == Command::SettingsTab(tab)),
+					"{tab:?} is missing"
+				);
+			}
+			for (index, button) in buttons.iter().enumerate() {
+				for other in &buttons[index + 1..] {
+					assert!(
+						button.rect.intersect(other.rect).is_none(),
+						"{:?} overlaps {:?}",
+						button.action,
+						other.action
+					);
+				}
+			}
 		}
 	}
 
@@ -1190,7 +1239,7 @@ mod tests {
 		let shown: Vec<usize> = (0..catalog.len()).collect();
 		let jobs = HashMap::new();
 		// The remaining viewport is shorter than one whole row.
-		let (w, h) = (500., 300.);
+		let (w, h) = (500., 260.);
 		let rows = list(w, h, shown.len(), 0.0, false, CHOOSERS);
 		assert!(!rows.fits());
 		let buttons =

@@ -655,3 +655,58 @@ fn forwarded_files_open_tabs_and_reuse_existing_tabs() {
 	assert_eq!(app.readers.entries().len(), count);
 	assert_eq!(app.readers.session.path.as_ref(), Some(&first));
 }
+
+#[test]
+fn phone_drawer_switches_and_closes_shared_tabs_and_hides_tab_style() {
+	use crate::settings::TabStyle;
+	use crate::state::{DropdownId, PanelPage, PanelTab};
+	let (mut app, _) = reader(SOURCE, 320.);
+	let now = Instant::now();
+	for index in 0..30 {
+		app.readers
+			.open(PathBuf::from(format!("/tmp/phone-tab-{index}.md")), now);
+	}
+	app.tab_strip.phone = true;
+	assert!(app.tab_layout().rects.is_empty());
+	app.action(Command::Tabs);
+	assert_eq!(app.interaction.panel, PanelPage::Tabs);
+	assert!(app.tab_strip.drawer_scroll > 0.);
+	assert!(
+		app.buttons()
+			.iter()
+			.any(|b| b.action == Command::SelectTab(29))
+	);
+	let before = app.readers.session.scrolling.offset;
+	app.scroll_panel(-f32::INFINITY);
+	assert_eq!(app.readers.session.scrolling.offset, before);
+	assert!(
+		app.buttons()
+			.iter()
+			.any(|b| b.action == Command::SelectTab(0))
+	);
+	app.action(Command::SelectTab(0));
+	assert_eq!(app.readers.active(), 0);
+	assert_eq!(app.interaction.panel, PanelPage::Closed);
+	app.action(Command::Tabs);
+	app.action(Command::CloseTab(1));
+	assert_eq!(app.readers.entries().len(), 29);
+	assert_eq!(app.interaction.panel, PanelPage::Tabs);
+	app.action(Command::Tabs);
+	assert_eq!(app.interaction.panel, PanelPage::Closed);
+	app.interaction
+		.show_panel(PanelPage::Settings(PanelTab::Generic));
+	assert!(!app.panel_form().unwrap().buttons.iter().any(|b| matches!(
+		b.action,
+		Command::ToggleDropdown(DropdownId::TabStyle, _)
+	)));
+	app.action(Command::TabStyle(TabStyle::Connected));
+	assert_eq!(app.preferences.values.tab_style, TabStyle::Underline);
+	app.tab_strip.phone = false;
+	assert!(app.panel_form().unwrap().buttons.iter().any(|b| matches!(
+		b.action,
+		Command::ToggleDropdown(DropdownId::TabStyle, _)
+	)));
+	app.action(Command::TabStyle(TabStyle::Connected));
+	assert_eq!(app.preferences.values.tab_style, TabStyle::Connected);
+	assert_eq!(app.tab_layout().rects.len(), 29);
+}

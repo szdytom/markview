@@ -26,6 +26,7 @@ panel_settings = "設定"
 # The toolbar's icon buttons.
 toolbar_export = "匯出"
 toolbar_open = "開啟"
+toolbar_tabs = "標籤頁"
 toolbar_outline = "大綱"
 toolbar_settings = "設定"
 
@@ -81,6 +82,9 @@ diagnostics_build_date = "建置日期"
 diagnostics_commit = "提交"
 diagnostics_os = "作業系統"
 diagnostics_row = "{name}：{value}"
+diagnostics_mobile_mode = "行動模式"
+diagnostics_phone = "手機"
+diagnostics_tablet = "平板"
 diagnostics_version = "版本"
 
 # The reader window's notice strip.
@@ -91,6 +95,7 @@ notice_remote_images = "有 {count} 張遠端圖片未載入。"
 # What the reading area says instead of a document.
 empty_blank_detail = "檔案有變更時，內容會顯示在這裡。"
 empty_blank_title = "文件是空的"
+empty_open_detail_android = "選擇 Markdown 檔案或資料夾，或將文件分享給 Markview。"
 empty_open_detail = "開啟 Markdown 檔案，或將它拖進這個視窗。"
 empty_open_file = "開啟檔案…"
 empty_open_title = "開啟 Markdown 檔案"

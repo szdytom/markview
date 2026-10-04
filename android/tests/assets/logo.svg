@@ -1,0 +1,33 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512" role="img" aria-labelledby="title desc">
+  <title id="title">Markview — copper</title>
+  <desc id="desc">An angular copper and amber book forming an M, with flat colors, beveled gear teeth and layered pages on a transparent background.</desc>
+  <defs>
+    <path id="left-page" d="M108 88 246 194 108 130Z"/>
+    <path id="left-body" d="M58 132H80L250 210V374L142 302V412H80V338H58V274H80V200H58Z"/>
+    <clipPath id="body-clip">
+      <use href="#left-body"/>
+      <use href="#left-body" transform="translate(512 0) scale(-1 1)"/>
+    </clipPath>
+    <g id="bevels">
+      <path d="M58 132H80L250 210V218L78 140H58Z" fill="#F3C58D"/>
+      <path d="M58 192H88V282H58V274H80V200H58ZM58 330H88V404H142V412H80V338H58Z" fill="#A95032"/>
+      <path d="M142 302 250 374V362L142 290Z" fill="#A95032"/>
+      <path d="M232 210 250 218V362L232 350Z" fill="#A95032"/>
+    </g>
+  </defs>
+  <g>
+    <g fill="#F3C58D">
+      <use href="#left-page"/>
+      <use href="#left-page" transform="translate(512 0) scale(-1 1)"/>
+    </g>
+    <path d="M108 120 246 194 108 130ZM404 120 266 194 404 130Z" fill="#A95032"/>
+    <use href="#left-body" fill="#CC7044"/>
+    <g fill="#E39A5D">
+      <path d="M454 132H432L262 210V374L370 302V412H432V338H454V274H432V200H454Z"/>
+    </g>
+    <g clip-path="url(#body-clip)">
+      <use href="#bevels"/>
+      <use href="#bevels" transform="translate(512 0) scale(-1 1)"/>
+    </g>
+  </g>
+</svg>

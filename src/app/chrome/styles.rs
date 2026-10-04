@@ -605,13 +605,13 @@ mod stylesheet_tests {
 
 	#[test]
 	fn a_short_panel_keeps_the_style_summary_off_the_tabs() {
-		// The shortest supported window has no room between the tabs and the
-		// list, so the summary is dropped rather than drawn over them.
-		for (width, height) in [(500.0, 300.0), (820.0, 300.0)] {
+		// Short panels omit the summary rather than draw it over the tabs.
+		for (width, height) in [(500.0, 260.0), (820.0, 300.0)] {
 			let panel = panel_rect(width, height);
 			assert!(summary_rect(panel, list(width, height, 1, 0.0)).is_none());
 		}
-		for (width, height) in [(820.0, 600.0), (1200.0, 800.0)] {
+		for (width, height) in [(500.0, 300.0), (820.0, 600.0), (1200.0, 800.0)]
+		{
 			let panel = panel_rect(width, height);
 			let summary = summary_rect(panel, list(width, height, 1, 0.0))
 				.expect("a tall panel shows the summary");

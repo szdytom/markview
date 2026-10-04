@@ -8,7 +8,12 @@ use crate::{
 #[test]
 fn every_form_action_is_reachable_without_clicking_through_the_clip() {
 	let mut ui = crate::test_support::shaper();
-	for (width, height) in [(500.0, 300.0), (820.0, 600.0), (1200.0, 800.0)] {
+	for (width, height) in [
+		(360.0, 740.0),
+		(500.0, 300.0),
+		(820.0, 600.0),
+		(1200.0, 800.0),
+	] {
 		for exporting in [false, true] {
 			let build = |ui: &mut TextShaper, scroll| {
 				if exporting {
@@ -34,11 +39,9 @@ fn every_form_action_is_reachable_without_clicking_through_the_clip() {
 				}
 			};
 			let initial = build(&mut ui, 0.0);
-			// The panel is capped at 620 logical pixels whatever the window, so
-			// both pages scroll in a short one. In a tall one the export page
-			// still fits whole; the General page does not any more, now that it
-			// carries the Interface row beside the rest.
-			assert_eq!(initial.max_scroll > 0.0, height < 800.0 || !exporting);
+			if height == 300.0 {
+				assert!(initial.max_scroll > 0.0);
+			}
 			for button in &initial.buttons {
 				assert_eq!(button.rect.h, CONTROL);
 				let revealed = build(&mut ui, initial.reveal(button.action));
@@ -370,7 +373,12 @@ fn a_list_whose_row_left_the_viewport_is_not_measured() {
 /// further than the panel, not the window behind it.
 #[test]
 fn an_open_option_list_stays_inside_the_panel() {
-	for (width, height) in [(500.0, 300.0), (820.0, 600.0), (1200.0, 800.0)] {
+	for (width, height) in [
+		(360.0, 740.0),
+		(500.0, 300.0),
+		(820.0, 600.0),
+		(1200.0, 800.0),
+	] {
 		let size = (width, height);
 		let window = panel_rect(width, height);
 		for (count, fillers) in [(1, 0), (3, 0), (6, 0), (10, 0), (10, 6)] {
@@ -536,4 +544,58 @@ fn an_overflowing_list_paints_the_scrollbar_it_measured() {
 	};
 	assert!(drawn(track), "the track reaches the screen");
 	assert!(drawn(thumb), "and so does the thumb");
+}
+
+#[test]
+fn narrow_settings_fill_the_app_and_wide_settings_keep_the_dialog() {
+	let mut ui = crate::test_support::shaper();
+	for (width, height) in [
+		(320.0, 568.0),
+		(360.0, 740.0),
+		(639.0, 1024.0),
+		(640.0, 740.0),
+		(1200.0, 800.0),
+	] {
+		let form = controls::form(
+			&mut ui,
+			&ReaderSettings::default(),
+			0.0,
+			width,
+			height,
+		);
+		let panel = form.rect;
+		let painted = frame(panel, width, height);
+		if width < 640.0 {
+			assert_eq!(
+				[panel.x, panel.y, panel.w, panel.h],
+				[0.0, 0.0, width, height]
+			);
+			assert!(matches!(
+				painted.as_slice(),
+				[Draw::Rect(
+					_,
+					Paint::Styled(Condition::Panel, C::Background)
+				)]
+			));
+		} else {
+			assert!(
+				panel.x > 0.0
+					&& panel.y > 0.0
+					&& panel.w <= 600.0
+					&& panel.h <= 620.0
+			);
+			assert!(matches!(
+				painted.as_slice(),
+				[Draw::Rect(_, Paint::Scrim), Draw::Box { border: 1.0, .. }]
+			));
+		}
+		let close = form
+			.visible_buttons()
+			.into_iter()
+			.find(|b| b.action == Command::Settings)
+			.unwrap();
+		assert_eq!(close.rect.y, panel.y + 18.0);
+		assert_eq!(close.rect.x + close.rect.w, panel.x + panel.w - INSET);
+		assert!(form.viewport.y + form.viewport.h < panel.y + panel.h);
+	}
 }

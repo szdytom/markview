@@ -50,6 +50,7 @@ impl<P: super::SendEvent> App<P> {
 				| Command::Styles
 				| Command::Export
 				| Command::ExportStyles
+				| Command::Tabs
 		) {
 			self.close_search();
 		}
@@ -67,6 +68,11 @@ impl<P: super::SendEvent> App<P> {
 			return;
 		}
 		match action {
+			#[cfg(target_os = "android")]
+			Command::SearchOpen => {
+				self.open_new_search();
+				return;
+			}
 			Command::SearchClose => {
 				self.close_search();
 				return;
@@ -120,6 +126,9 @@ impl<P: super::SendEvent> App<P> {
 				return;
 			}
 			Command::TabStyle(style) => {
+				if self.tab_strip.phone {
+					return;
+				}
 				self.preferences.values.tab_style = style;
 				self.setting_changed(Some(Setting::TabStyle));
 				self.close_dropdown();
@@ -134,7 +143,41 @@ impl<P: super::SendEvent> App<P> {
 				self.redraw();
 				return;
 			}
+			Command::Tabs => {
+				if !self.tab_strip.phone {
+					return;
+				}
+				self.readers.session.cancel_scroll_animation();
+				self.tab_strip.cancel_drag();
+				let open = self.interaction.panel != PanelPage::Tabs;
+				self.interaction.show_panel(if open {
+					PanelPage::Tabs
+				} else {
+					PanelPage::Closed
+				});
+				if open {
+					let (width, height, _) = self.dimensions();
+					let list = super::chrome::tab_drawer::list(
+						width,
+						height,
+						self.readers.entries().len(),
+						self.tab_strip.drawer_scroll,
+					);
+					let row = list.row_rect(self.readers.active());
+					self.tab_strip.drawer_scroll = (list.scroll
+						+ (row.y - list.viewport.y).min(0.)
+						+ (row.y + row.h - list.viewport.y - list.viewport.h)
+							.max(0.))
+					.clamp(0., list.max_scroll());
+				}
+				self.refresh_hover();
+				self.redraw();
+				return;
+			}
 			Command::SelectTab(index) => {
+				if self.interaction.panel == PanelPage::Tabs {
+					self.interaction.show_panel(PanelPage::Closed);
+				}
 				self.select_tab(index);
 				return;
 			}
@@ -318,7 +361,7 @@ impl<P: super::SendEvent> App<P> {
 					})
 					.and_then(|dir| {
 						std::fs::create_dir_all(&dir)?;
-						open::that_detached(dir)?;
+						crate::platform::open_external(dir)?;
 						Ok(())
 					});
 				if let Err(e) = result {
@@ -412,8 +455,9 @@ impl<P: super::SendEvent> App<P> {
 			}
 			Command::OpenConfig => {
 				let result = self.preferences.ensure_file().and_then(|()| {
-					open::that_detached(self.preferences.path().unwrap())
-						.map_err(Into::into)
+					crate::platform::open_external(
+						self.preferences.path().unwrap(),
+					)
 				});
 				if let Err(error) = result {
 					self.preferences.settings_warning = Some(
@@ -457,18 +501,16 @@ impl<P: super::SendEvent> App<P> {
 				}
 			}
 			Command::Open => {
+				if self.interaction.panel == PanelPage::Tabs {
+					self.interaction.show_panel(PanelPage::Closed);
+					self.redraw();
+				}
 				if self.dialog_open {
 					return;
 				}
 				self.dialog_open = true;
 				let proxy = self.proxy.clone();
-				std::thread::spawn(move || {
-					let path = rfd::FileDialog::new()
-						.add_filter(
-							"Markdown",
-							&["md", "markdown", "mdown", "txt"],
-						)
-						.pick_file();
+				crate::platform::pick_document(move |path| {
 					proxy.send(Event::Open(path));
 				});
 				return;
