@@ -442,15 +442,27 @@ fn preview_keeps_controls_reachable_and_exit_icon_opaque() {
 	assert!(!draws.iter().any(|draw| matches!(draw, Draw::Box { .. })));
 }
 #[test]
-fn panel_steps_the_scroll_speed_between_its_bounds() {
+fn panel_offers_scroll_speed_only_on_desktop() {
 	let mut shaper = crate::test_support::shaper();
-	let buttons =
-		controls(&mut shaper, &ReaderSettings::default(), true, 1200.0, 800.0);
-	for action in [Command::ScrollSpeed(-1), Command::ScrollSpeed(1)] {
-		assert!(
-			buttons.iter().any(|b| b.action == action),
-			"missing {action:?}"
-		);
+	for phone in [false, true] {
+		for width in [500.0, 1200.0] {
+			let buttons = reader_form(
+				&mut shaper,
+				&ReaderSettings::default(),
+				0.0,
+				width,
+				800.0,
+				phone,
+			)
+			.visible_buttons();
+			for action in [Command::ScrollSpeed(-1), Command::ScrollSpeed(1)] {
+				assert_eq!(
+					buttons.iter().any(|b| b.action == action),
+					!cfg!(target_os = "android"),
+					"{action:?}, phone={phone}, width={width}"
+				);
+			}
+		}
 	}
 }
 

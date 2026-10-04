@@ -56,20 +56,24 @@ fn rows(settings: &ReaderSettings, phone: bool) -> Vec<Row> {
 		Row::new(t.settings_language(), vec![])
 			.menu(DropdownId::Language, language_options(t, settings))
 			.section(t.section_interface()),
+	];
+	if !cfg!(target_os = "android") {
 		// How far a scroll request moves is a property of the pointing device,
 		// not of the type, so it belongs beside the interface language.
-		Row::new(
-			t.settings_scroll_speed(),
-			choices(
-				&[
-					(t.settings_decrease(), Command::ScrollSpeed(-1)),
-					(t.settings_increase(), Command::ScrollSpeed(1)),
-				],
-				None,
-			),
-		)
-		.value(format!("{:.2}×", settings.scroll_speed)),
-	];
+		rows.push(
+			Row::new(
+				t.settings_scroll_speed(),
+				choices(
+					&[
+						(t.settings_decrease(), Command::ScrollSpeed(-1)),
+						(t.settings_increase(), Command::ScrollSpeed(1)),
+					],
+					None,
+				),
+			)
+			.value(format!("{:.2}×", settings.scroll_speed)),
+		);
+	}
 	if !phone {
 		rows.push(Row::new(t.settings_tab_style(), vec![]).menu(
 			DropdownId::TabStyle,

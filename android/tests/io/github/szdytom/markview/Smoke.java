@@ -309,6 +309,7 @@ public class Smoke extends Instrumentation {
     }
     private void requireSettingsLayout() throws Exception {
         JSONObject current = state();
+        require(button(current, "ScrollSpeed(") == null, "Scroll speed controls are absent on Android");
         JSONArray size = current.getJSONArray("dimensions");
         JSONArray panel = current.getJSONArray("panel_rect");
         if (size.getDouble(0) < 640) {

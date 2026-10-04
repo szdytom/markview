@@ -36,6 +36,8 @@ at the same level, without `[brackets]`.
 
 ### Changed
 
+- Hide the scroll-speed setting on Android phones and tablets.
+
 - Refine the phone tab drawer with left-aligned filenames, subtle selection markers, quiet open controls and a theme-colored Markview icon.
 
 - Use `sw600dp` to keep phones in portrait with a left tab drawer and hide their tab-style setting; tablets retain desktop tabs and rotation.
