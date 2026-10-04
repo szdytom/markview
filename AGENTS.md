@@ -45,7 +45,8 @@ Update the [changelog](CHANGELOG.md) as you go. Never be too detailed. Fit every
 
 ## Runtime Specific Instructions
 
-Some agent harness hides the GPU inside the sandbox. Request a out-of-sandbox command to run related tests.
+- Some agent harness hides the GPU inside the sandbox. Request a out-of-sandbox command to run related tests.
+- Use headless Android emulator for Android tests, unless otherwise requested.
 
 ## Performance Measurement
 
