@@ -36,7 +36,14 @@ impl Renderer {
 			);
 		}
 		for draw in underlay {
-			self.draw(draw, 0.0, 0.0, full, view, false);
+			self.draw(
+				draw,
+				self.ui_origin.0,
+				self.ui_origin.1,
+				full,
+				view,
+				false,
+			);
 		}
 		let start = snapshot
 			.blocks
@@ -186,7 +193,14 @@ impl Renderer {
 			self.geometry.solid(rect, color, clip, view);
 		}
 		for draw in overlay {
-			self.draw(draw, 0.0, 0.0, full, view, false);
+			self.draw(
+				draw,
+				self.ui_origin.0,
+				self.ui_origin.1,
+				full,
+				view,
+				false,
+			);
 		}
 		// Publish atomically; the loader must never observe a half-painted frame.
 		// A prewarm pass has no frame to publish and must not replace the demand

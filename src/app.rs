@@ -1,4 +1,6 @@
 mod anchor;
+#[cfg(target_os = "android")]
+pub(crate) mod android;
 mod chrome;
 mod dm;
 mod document;
@@ -87,6 +89,10 @@ enum Event {
 	Open(Option<PathBuf>),
 	Activate(Option<PathBuf>),
 	DeviceLost,
+	#[cfg(target_os = "android")]
+	AndroidBack,
+	#[cfg(all(target_os = "android", debug_assertions))]
+	AndroidInspect(std::sync::mpsc::Sender<String>),
 	Exported(Box<ExportOutcome>),
 	Fonts(font_panel::Message),
 }
@@ -200,6 +206,7 @@ fn register_font_dir(
 }
 
 struct App<P = EventLoopProxy<Event>> {
+	surface_insets: [f32; 4],
 	frame: frame::State,
 	#[cfg(windows)]
 	native_frame: Option<crate::platform::window_frame::NativeFrame>,
@@ -324,6 +331,7 @@ impl<P: SendEvent> App<P> {
 		});
 
 		Self {
+			surface_insets: [0.0; 4],
 			frame: frame::State::new(preferences.values.window_layout),
 			#[cfg(windows)]
 			native_frame: None,
@@ -387,6 +395,24 @@ impl<P: SendEvent> App<P> {
 				self.request(false);
 			}
 		}
+		#[cfg(target_os = "android")]
+		{
+			use markview_core::style::{ColorField, Condition};
+			let [r, g, b, _] = self
+				.ui
+				.stylesheet
+				.color(Condition::Toolbar, ColorField::Background);
+			let mode = if r * 0.2126 + g * 0.7152 + b * 0.0722 > 0.5 {
+				"light"
+			} else {
+				"dark"
+			};
+			if let Err(error) =
+				crate::platform::android::call_string("systemBars", mode)
+			{
+				log::warn!("Android system bars: {error:#}");
+			}
+		}
 		self.settings_resources.invalidate();
 		self.refresh_settings_resources(false);
 	}
@@ -394,8 +420,25 @@ impl<P: SendEvent> App<P> {
 		self.window.as_ref().map_or((1200.0, 800.0, 1.0), |w| {
 			let s = w.scale_factor() as f32;
 			let size = w.inner_size();
-			(size.width as f32 / s, size.height as f32 / s, s)
+			let insets = self.insets();
+			(
+				(size.width as f32 / s - insets[0] - insets[2]).max(1.0),
+				(size.height as f32 / s - insets[1] - insets[3]).max(1.0),
+				s,
+			)
 		})
+	}
+	pub(super) fn insets(&self) -> [f32; 4] {
+		#[cfg(target_os = "android")]
+		if let Some(window) = &self.window {
+			let size = window.inner_size();
+			return crate::platform::android::insets(
+				size.width,
+				size.height,
+				window.scale_factor() as f32,
+			);
+		}
+		[0.0; 4]
 	}
 	pub(super) fn view_geometry(&self) -> markview_core::scene::Viewport {
 		let (width, height, _) = self.dimensions();

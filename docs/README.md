@@ -24,6 +24,7 @@ images it embeds are reproduced by `scripts/capture_screenshots.sh`.
 - [Security verification](security-verification.md) tracks security evidence, outstanding work, and proposed verification harnesses.
 - [Development guide](development.md) is the how-to page for building, testing, changing behavior, and adding a new document node.
 - [Stylesheet guide](stylesheets.md) is the how-to/reference page for authoring and installing MVSS themes.
+- [MV4A Android app](../android/README.md) covers shared desktop application features, Android document access, APK building and emulator verification.
 - [MVaaC components](mvaac.md) covers reusable viewer/editor packages, automatic source following, resource injection, deployment and migration. [Source navigation/TOC](mvaac-source-api.md) defines coordinates and versions; [the initial demo contract](mvaac-web-demo.md) is historical. [Font codec measurements](mvaac-font-measurements.md) record format coverage and size/startup cost.
 
 ## Ship the implementation

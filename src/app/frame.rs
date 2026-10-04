@@ -62,7 +62,10 @@ pub(crate) struct Layout {
 	pub toolbar_button_size: f32,
 	pub drag: Rect,
 	pub width: f32,
-	#[cfg_attr(target_os = "macos", allow(dead_code))]
+	#[cfg_attr(
+		any(target_os = "macos", target_os = "android"),
+		allow(dead_code)
+	)]
 	pub height: f32,
 }
 impl Layout {
@@ -92,8 +95,16 @@ impl Layout {
 		} else {
 			CONTROL_SIZE
 		};
-		let toolbar_x = right - (4.0 * toolbar_button_size + 3.0 * CONTROL_GAP);
-		let drag_width = if style == WindowLayout::Macos {
+		let count = if cfg!(target_os = "android") {
+			5.0
+		} else {
+			4.0
+		};
+		let toolbar_x =
+			right - (count * toolbar_button_size + (count - 1.0) * CONTROL_GAP);
+		let drag_width = if cfg!(target_os = "android") {
+			0.0
+		} else if style == WindowLayout::Macos {
 			48.0
 		} else {
 			40.0
@@ -199,7 +210,10 @@ impl Layout {
 			self.draggable(x, y).then_some(CursorIcon::Default)
 		}
 	}
-	#[cfg_attr(target_os = "macos", allow(dead_code))]
+	#[cfg_attr(
+		any(target_os = "macos", target_os = "android"),
+		allow(dead_code)
+	)]
 	pub fn resize_at(self, x: f32, y: f32) -> Option<ResizeDirection> {
 		if self.maximized
 			|| self.fullscreen
@@ -231,10 +245,11 @@ impl Layout {
 impl<P: super::SendEvent> App<P> {
 	pub(super) fn frame_layout(&self) -> Layout {
 		let (width, height, _) = self.dimensions();
-		let fullscreen = self
-			.window
-			.as_ref()
-			.is_some_and(|w| w.fullscreen().is_some());
+		let fullscreen = cfg!(target_os = "android")
+			|| self
+				.window
+				.as_ref()
+				.is_some_and(|w| w.fullscreen().is_some());
 		let maximized = self.window.as_ref().is_some_and(|w| w.is_maximized());
 		let mut layout = Layout::new(
 			self.frame.layout,

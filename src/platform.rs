@@ -1,5 +1,8 @@
 //! OS effects stay outside the reading core.
 
+#[cfg(target_os = "android")]
+pub(crate) mod android;
+
 #[cfg(windows)]
 pub(crate) mod window_frame;
 
@@ -185,9 +188,11 @@ pub(crate) fn wheel_notch() -> WheelNotch {
 
 #[derive(Default)]
 pub struct Clipboard {
+	#[cfg(not(target_os = "android"))]
 	inner: Option<arboard::Clipboard>,
 }
 impl Clipboard {
+	#[cfg(not(target_os = "android"))]
 	pub fn read(&mut self) -> anyhow::Result<String> {
 		if self.inner.is_none() {
 			self.inner = Some(arboard::Clipboard::new()?);
@@ -195,6 +200,7 @@ impl Clipboard {
 		Ok(self.inner.as_mut().unwrap().get_text()?)
 	}
 
+	#[cfg(not(target_os = "android"))]
 	pub fn write(&mut self, text: String) -> anyhow::Result<()> {
 		if self.inner.is_none() {
 			self.inner = Some(arboard::Clipboard::new()?);
@@ -202,6 +208,39 @@ impl Clipboard {
 		self.inner.as_mut().unwrap().set_text(text)?;
 		Ok(())
 	}
+	#[cfg(target_os = "android")]
+	pub fn read(&mut self) -> anyhow::Result<String> {
+		android::clipboard_read()
+	}
+	#[cfg(target_os = "android")]
+	pub fn write(&mut self, text: String) -> anyhow::Result<()> {
+		android::call_string("copyText", &text)
+	}
+}
+
+pub(crate) fn pick_document(
+	done: impl FnOnce(Option<std::path::PathBuf>) + Send + 'static,
+) {
+	#[cfg(not(target_os = "android"))]
+	std::thread::spawn(move || {
+		done(
+			rfd::FileDialog::new()
+				.add_filter("Markdown", &["md", "markdown", "mdown", "txt"])
+				.pick_file(),
+		);
+	});
+	#[cfg(target_os = "android")]
+	android::pick_document(done);
+}
+
+pub(crate) fn open_external(
+	target: impl AsRef<std::ffi::OsStr>,
+) -> anyhow::Result<()> {
+	#[cfg(not(target_os = "android"))]
+	open::that_detached(target)?;
+	#[cfg(target_os = "android")]
+	android::call_string("openExternal", &target.as_ref().to_string_lossy())?;
+	Ok(())
 }
 
 #[cfg(all(test, not(any(windows, target_os = "macos"))))]

@@ -25,7 +25,7 @@ impl Harness {
 			("first.png", [255, 0, 255, 255]),
 			("second.png", [0, 255, 0, 255]),
 		] {
-			image::RgbaImage::from_pixel(40, 30, image::Rgba(color))
+			image::RgbaImage::from_pixel(512, 512, image::Rgba(color))
 				.save(dir.path().join(name))
 				.unwrap();
 		}

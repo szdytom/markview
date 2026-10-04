@@ -23,6 +23,8 @@ at the same level, without `[brackets]`.
 
 ### Added
 
+- Add MV4A (MarkView as a Android App), sharing desktop settings, tabs, fonts, image caching and export, with Android document access, touch adaptation and emulator integration tests; the installed app is named Markview.
+
 - Pan a Windows precision touchpad through Direct Manipulation, so the finger's contact and the OS's own inertia move the page as one motion; `MARKVIEW_NO_DM` keeps the wheel paths. The pan yields to scrollbar, selection and viewer drags, and focus loss, resize, reload, a panel opening or a tab switch abandon it mid-glide.
 - Document the Direct Manipulation touchpad pan in the architecture document, and add the design's terms, **contact** and **native inertia**, to the scrolling glossary.
 - Add MVaaC instance-local MVSS registration and dynamic selection by ID, with cached parsing and reserved `bundled:` theme IDs.
@@ -44,6 +46,8 @@ at the same level, without `[brackets]`.
 - Batch a pan's sub-pixel travel until it adds up to a whole physical pixel, and flush the residue on release: the OS inertia tail stops redrawing the page for motion the display cannot show, while the page still lands exactly where the viewport does.
 
 ### Fixed
+
+- Preserve reading positions inside large images when returning to cached tabs, retaining bounded intrinsic sizes while releasing inactive pixels.
 
 - Reload images when returning to cached tabs, including after closing the active tab.
 - Keep custom window controls interactive above the image viewer and support caption-button taps without triggering covered controls.

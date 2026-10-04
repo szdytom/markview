@@ -21,6 +21,8 @@ pub(crate) use markview_selection::{
 };
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum Command {
+	#[cfg(target_os = "android")]
+	SearchOpen,
 	RetrySettingsLoad,
 	SearchCase,
 	SearchWord,

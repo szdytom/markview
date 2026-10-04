@@ -210,9 +210,10 @@ impl<P: super::SendEvent> App<P> {
 	) -> Option<super::frame::Caption> {
 		log::debug!("touch {:?} id {}", touch.phase, touch.id);
 		let scale = self.dimensions().2;
+		let insets = self.insets();
 		let point = (
-			touch.location.x as f32 / scale,
-			touch.location.y as f32 / scale,
+			touch.location.x as f32 / scale - insets[0],
+			touch.location.y as f32 / scale - insets[1],
 		);
 		let id = (touch.device_id, touch.id);
 		if touch.phase != TouchPhase::Started

@@ -45,6 +45,7 @@ impl<P: super::SendEvent> App<P> {
 		#[cfg(windows)]
 		self.sync_native_frame();
 		let (width, _, scale) = self.dimensions();
+		let insets = self.insets();
 		let view = View {
 			selection: self.interaction.selection,
 			revision: self.readers.session.accepted_revision,
@@ -53,9 +54,9 @@ impl<P: super::SendEvent> App<P> {
 			scale,
 			scroll: self.readers.session.scrolling.offset,
 			left: ((width - self.readers.session.snapshot.width) / 2.0)
-				.max(20.0),
-			top: self.content_top() + 10.0,
-			bottom: self.bottom() + 10.0,
+				.max(20.0) + insets[0],
+			top: self.content_top() + 10.0 + insets[1],
+			bottom: self.bottom() + 10.0 + insets[3],
 			theme: self.preferences.values.theme,
 			horizontal: &self.readers.session.horizontal,
 			hovered_link: self.interaction.hover.as_deref(),
@@ -73,10 +74,14 @@ impl<P: super::SendEvent> App<P> {
 		let Some(renderer) = &mut self.renderer else {
 			return Ok(());
 		};
+		renderer.set_ui_origin((insets[0], insets[1]));
 		renderer.set_pointer(
 			(!self.interaction.panel_open()
 				&& self.interaction.modal.is_none())
-			.then_some(self.interaction.cursor),
+			.then_some((
+				self.interaction.cursor.0 + insets[0],
+				self.interaction.cursor.1 + insets[1],
+			)),
 		);
 		let (frame, suboptimal) = match renderer.acquire()? {
 			crate::render::FrameStatus::Ready(frame, suboptimal) => {

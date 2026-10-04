@@ -98,6 +98,7 @@ impl View<'_> {
 }
 
 pub struct Renderer {
+	ui_origin: (f32, f32),
 	gpu: gpu::Gpu,
 	raster: raster::RasterCache,
 	images: images::ImageTextures,
@@ -127,6 +128,10 @@ pub enum FrameStatus {
 	Occluded,
 }
 impl Renderer {
+	/// Moves host UI layers into the safe area of a full-window surface.
+	pub fn set_ui_origin(&mut self, origin: (f32, f32)) -> (f32, f32) {
+		std::mem::replace(&mut self.ui_origin, origin)
+	}
 	pub fn set_pointer(&mut self, pointer: Option<(f32, f32)>) {
 		self.pointer = pointer;
 	}
@@ -166,6 +171,7 @@ impl Renderer {
 		let geometry = geometry::Geometry::new(&gpu.device);
 		let adapter_name = gpu.adapter_name.clone();
 		Ok(Self {
+			ui_origin: (0.0, 0.0),
 			backend: gpu.backend,
 			gpu,
 			raster,
