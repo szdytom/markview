@@ -30,15 +30,9 @@ pub(crate) fn fields(
 		(lang.diagnostics_commit(), env!("MARKVIEW_COMMIT").into()),
 		#[cfg(target_os = "android")]
 		(
-			lang.diagnostics_smallest_width(),
-			format!("{smallest_width} dp"),
-		),
-		#[cfg(target_os = "android")]
-		(
-			"sw600dp",
+			lang.diagnostics_mobile_mode(),
 			format!(
-				"{} ({})",
-				!phone,
+				"{} ({smallest_width} dp)",
 				if phone {
 					lang.diagnostics_phone()
 				} else {
@@ -46,8 +40,6 @@ pub(crate) fn fields(
 				}
 			),
 		),
-		#[cfg(target_os = "android")]
-		("phone_layout", phone.to_string()),
 	]
 }
 

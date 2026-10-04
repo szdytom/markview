@@ -23,7 +23,7 @@ at the same level, without `[brackets]`.
 
 ### Added
 
-- Include Android smallest width, resolved `sw600dp` mode and `phone_layout` in About and copied diagnostics.
+- Include Android mobile mode and smallest width in a single About and copied-diagnostics line.
 
 - Add MV4A (MarkView as a Android App), sharing desktop settings, tabs, fonts, image caching and export, with Android document access, touch adaptation and emulator integration tests; the installed app is named Markview.
 
