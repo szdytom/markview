@@ -331,6 +331,7 @@ fn the_toolbar_and_panel_close_buttons_carry_icons() {
 		1200.0,
 		800.0,
 		None,
+		false,
 	) {
 		if matches!(draw, Draw::Icon { .. }) {
 			icons += 1;
@@ -423,6 +424,7 @@ fn preview_keeps_controls_reachable_and_exit_icon_opaque() {
 		1200.0,
 		800.0,
 		None,
+		false,
 	);
 	let Draw::Rect(_, paint) = draws[0] else {
 		panic!("preview panel background");
@@ -474,6 +476,7 @@ fn about_tab_keeps_navigation_and_scrolls_on_short_windows() {
 			width,
 			height,
 			None,
+			false,
 		);
 		assert_eq!(form.max_scroll > 0.0, height == 300.0);
 		assert!(form.buttons.iter().all(|b| matches!(
@@ -511,8 +514,9 @@ fn about_tab_keeps_navigation_and_scrolls_on_short_windows() {
 			settings_scroll: form.reveal(Command::OpenProject),
 			..Default::default()
 		};
-		let bottom =
-			settings_form(&mut ui, &settings, &scrolled, width, height, None);
+		let bottom = settings_form(
+			&mut ui, &settings, &scrolled, width, height, None, false,
+		);
 		assert!(
 			bottom
 				.visible_buttons()
@@ -537,6 +541,7 @@ fn about_tab_keeps_navigation_and_scrolls_on_short_windows() {
 			width,
 			height,
 			None,
+			false,
 		);
 		let icon = draws
 			.iter()

@@ -10,14 +10,22 @@ to distinguish this Android subproject from the Markview desktop app and MVaaC.
 
 ## Screenshots
 
-Captured from the API 35 Pixel 6 x86_64 emulator during the integration suite.
-The screens use the shared desktop application UI with narrow-layout adaptation.
+Captured from API 35 Pixel 6 and Pixel Tablet x86_64 emulators during the
+integration suite. The screens reuse the desktop UI with phone adaptation.
 
 | Reader | Fullscreen settings |
 |---|---|
-| <img src="../docs/screenshots/android/reader.png" alt="Markview Android reader with CJK and an SVG image" width="250"> | <img src="../docs/screenshots/android/settings.png" alt="Markview Android shared settings and tabs" width="250"> |
+| <img src="../docs/screenshots/android/reader.png" alt="Markview Android reader with CJK and an SVG image" width="250"> | <img src="../docs/screenshots/android/settings.png" alt="Markview Android fullscreen settings without desktop or tab-style options" width="250"> |
 | Font manager | Dark styles |
 | <img src="../docs/screenshots/android/fonts.png" alt="Markview Android shared font catalogue" width="250"> | <img src="../docs/screenshots/android/dark-styles.png" alt="Markview Android shared style selection in dark mode" width="250"> |
+
+Phones manage tabs in the left drawer:
+
+<img src="../docs/screenshots/android/tab-drawer.png" alt="Markview phone tab drawer with switching, closing and opening controls" width="250">
+
+Tablets retain desktop tabs and support landscape:
+
+<img src="../docs/screenshots/android/tablet-tabs.png" alt="Markview tablet with desktop tabs in landscape" width="600">
 
 Wide screens retain the centered settings dialog:
 
@@ -40,7 +48,15 @@ entry point is `src/app/android.rs`; OS calls live in `src/platform/android.rs`
 and `android/java`. This shares the application above `core`, including its
 state and UI. Below 640 logical pixels, settings occupy the entire app content
 area; wider screens retain the centered dialog. Narrow forms stack labels above
-controls. Desktop window-layout and single-instance settings are hidden and
+controls. Android's `values-sw600dp` resource qualifier selects tablet mode:
+
+| Device configuration | Tab management | Orientation | Tab-style setting |
+|---|---|---|---|
+| Smallest width below 600 dp | Left drawer: switch, close and open documents | Portrait | Hidden and ignored |
+| Smallest width at least 600 dp | Shared desktop tab strip | Portrait or landscape | Available |
+
+The device mode follows the smallest width, independent of rotation and keyboard
+visibility; configuration changes update it without discarding reader sessions. Desktop window-layout and single-instance settings are hidden and
 ignored on Android; Android reuses the `singleTask` activity. System bars and
 the keyboard are excluded from the reader's content area.
 
@@ -74,7 +90,9 @@ Tap **Open** to choose a file or a folder. Folder imports preserve relative
 images and Markdown links; `README.md` is preferred as the first document.
 Android's **Open with** and **Share** also send documents into Markview, and shared
 text opens as a Markdown document. Tabs, touch scrolling, outline, search,
-settings and styles use the same controls as the desktop reader. Back closes
+settings and styles use the same controllers as the desktop reader. Phones open
+the tab drawer with the top-left menu button; selecting a tab, tapping the
+outside scrim or pressing Back dismisses it. Back closes
 the open search or panel before returning the task to the background.
 
 Settings, downloaded fonts, styles and image cache live under the private app
@@ -100,15 +118,22 @@ sdkmanager 'emulator' 'system-images;android-35;google_apis;x86_64'
 avdmanager create avd -n markview-api35 -k 'system-images;android-35;google_apis;x86_64' --device pixel_6
 emulator -avd markview-api35 -gpu host -no-snapshot
 python3 android/build.py --abi x86_64
-python3 android/test.py --serial emulator-5554
+python3 android/test.py --serial emulator-5554 --layout phone
 ```
+
+For tablet verification, create an AVD with `--device pixel_tablet`, boot it on
+a separate port, and run `python3 android/test.py --serial emulator-5556 --layout tablet`.
+`--layout-only` checks resource selection, orientation policy and tab-style
+visibility for boundary configurations such as `sw599dp` and `sw600dp`.
 
 The test APK supplies external content URIs and exercises real touch and key
 input in the rendered reader. It checks multilingual Markdown, mathematics,
 Mermaid and image decoding, scrolling and cached tabs, shared settings, font
-import and catalogue pages, theme selection, search input, rotation, background/resume, durable
-preferences, the system picker, folder resources, read-only grants, PDF saving and GPU PNG export. Reports and screenshots are written to
-`artifacts/android/`.
+import and catalogue pages, theme selection, search input, phone portrait lock,
+phone drawer operations, tablet rotation, background/resume, durable preferences,
+the system picker, folder resources, read-only grants, PDF saving and GPU PNG export.
+Reports and screenshots are written to `artifacts/android/phone/` and
+`artifacts/android/tablet/` (or the corresponding `*-boundary/` directories).
 
 By default the test seeds a valid image-cache fixture from the repository logo
 so it remains repeatable without public Internet access. `--online` instead

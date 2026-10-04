@@ -24,6 +24,12 @@ pub(crate) fn back() {
 	}
 }
 
+pub(crate) fn configuration_changed() {
+	if let Some(proxy) = &PROXY.lock().unwrap().0 {
+		let _ = proxy.send_event(Event::AndroidConfiguration);
+	}
+}
+
 pub(crate) fn assets_changed() {
 	if let Some(proxy) = &PROXY.lock().unwrap().0 {
 		let _ = proxy.send_event(Event::Fonts(
@@ -65,6 +71,7 @@ fn run(android: AndroidApp) -> anyhow::Result<()> {
 		crate::fonts::directory(),
 	);
 	let mut app = App::new(args, proxy.clone());
+	app.tab_strip.phone = crate::platform::android::phone_layout();
 	{
 		let mut bridge = PROXY.lock().unwrap();
 		bridge.0 = Some(proxy.clone());
@@ -115,6 +122,9 @@ impl<P: super::SendEvent> App<P> {
 			"window_layout":format!("{:?}", self.preferences.values.window_layout),
 			"frame_layout":format!("{:?}", self.frame.layout),
 			"single_instance":self.preferences.values.single_instance,
+			"phone_layout":self.tab_strip.phone,
+			"drawer_scroll":self.tab_strip.drawer_scroll,
+			"tab_style":format!("{:?}", self.preferences.values.tab_style),
 			"instance_listener":self.instance.is_some(),
 			"theme": self.preferences.values.theme, "font_size":self.preferences.values.font_size,
 			"font_catalog": self.font_panel.view().catalog.len(),

@@ -25,6 +25,7 @@ panel_settings = "Settings"
 # The toolbar's icon buttons.
 toolbar_export = "Export"
 toolbar_open = "Open"
+toolbar_tabs = "Tabs"
 toolbar_outline = "Outline"
 toolbar_settings = "Settings"
 

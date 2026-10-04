@@ -51,7 +51,20 @@ public class MarkviewActivity extends NativeActivity {
     }
     public void backgroundTask(String ignored) { runOnUiThread(() -> moveTaskToBack(true)); }
 
+    public boolean phoneLayout() {
+        return getResources().getBoolean(getResources().getIdentifier("phone_layout", "bool", getPackageName()));
+    }
+    private void applyOrientation() {
+        setRequestedOrientation(phoneLayout() ? android.content.pm.ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
+            : android.content.pm.ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED);
+    }
+    @Override public void onConfigurationChanged(android.content.res.Configuration configuration) {
+        super.onConfigurationChanged(configuration);
+        applyOrientation();
+        nativeResult(4, null);
+    }
     @Override public void onCreate(Bundle state) {
+        applyOrientation();
         super.onCreate(state);
         if (android.os.Build.VERSION.SDK_INT >= 33) getOnBackInvokedDispatcher().registerOnBackInvokedCallback(
             android.window.OnBackInvokedDispatcher.PRIORITY_DEFAULT, () -> nativeResult(3, null));

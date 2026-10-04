@@ -95,6 +95,7 @@ fn settings_and_selection_frame() -> Result<()> {
 			width,
 			height,
 			None,
+			false,
 		));
 		let mut renderer = pollster::block_on(Renderer::new(None))?;
 		let horizontal = HashMap::new();
@@ -139,6 +140,7 @@ fn settings_and_selection_frame() -> Result<()> {
 				width,
 				height,
 				Some(renderer.backend),
+				false,
 			);
 			let submission = renderer.render(
 				&snapshot,
@@ -484,6 +486,7 @@ fn tab_strip_frames_clip_overflow_at_fractional_dpi() -> Result<()> {
 			width,
 			100.0,
 			None,
+			false,
 		);
 		let horizontal = HashMap::new();
 		let view = View {
@@ -664,6 +667,7 @@ fn icons_keep_their_optical_centre_at_fractional_dpi() -> Result<()> {
 			width,
 			HEIGHT,
 			None,
+			false,
 		);
 		let target = renderer.offscreen(view.width, view.height);
 		let submission = renderer.render(

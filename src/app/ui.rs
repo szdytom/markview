@@ -124,7 +124,14 @@ impl<P: super::SendEvent> App<P> {
 	/// no two pages of the panel are ever open at once.
 	fn panel_list(&self) -> Option<chrome::list::List> {
 		let (width, height, _) = self.dimensions();
-		if self.interaction.styles_open()
+		if self.interaction.panel == crate::state::PanelPage::Tabs {
+			Some(chrome::tab_drawer::list(
+				width,
+				height,
+				self.readers.entries().len(),
+				self.tab_strip.drawer_scroll,
+			))
+		} else if self.interaction.styles_open()
 			|| self.interaction.export_styles_open()
 		{
 			Some(chrome::styles::list(
@@ -163,7 +170,9 @@ impl<P: super::SendEvent> App<P> {
 		self.panel_list()?.scrollbar(&self.ui)
 	}
 	pub(super) fn set_panel_scroll(&mut self, scroll: f32) {
-		if self.interaction.export_open()
+		if self.interaction.panel == crate::state::PanelPage::Tabs {
+			self.tab_strip.drawer_scroll = scroll;
+		} else if self.interaction.export_open()
 			&& !self.interaction.export_styles_open()
 		{
 			self.interaction.export_scroll = scroll;
@@ -279,6 +288,18 @@ impl<P: super::SendEvent> App<P> {
 	}
 	pub(super) fn tab_layout(&mut self) -> super::tab_strip::TabLayout {
 		self.tab_metrics.sync(&mut self.ui, self.readers.entries());
+		if self.tab_strip.phone {
+			return super::tab_strip::TabLayout::new(
+				crate::layout::Rect {
+					x: 0.,
+					y: 0.,
+					w: 0.,
+					h: 0.,
+				},
+				&[],
+				0.,
+			);
+		}
 		self.chrome().tab_bar().layout()
 	}
 }
