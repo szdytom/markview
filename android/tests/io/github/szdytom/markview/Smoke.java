@@ -84,6 +84,12 @@ public class Smoke extends Instrumentation {
             require(initial.getString("backend").equals("Vulkan") || initial.getString("backend").equals("Gl"), "GPU backend");
             stableLayout();
             screenshot("reader");
+            swipe(280, 180, 100, 180);
+            waitFor(s -> s.optBoolean("outline_open"));
+            swipe(280, 180, 100, 180);
+            require(state().getBoolean("outline_open"), "Left swipe keeps Contents open");
+            tap("Outline");
+            waitFor(s -> !s.optBoolean("outline_open"));
             swipe(180, 590, 180, 180);
             JSONObject scrolled = waitFor(s -> s.optDouble("scroll") > 100);
             swipe(180, 300, 180, 300);
@@ -93,8 +99,14 @@ public class Smoke extends Instrumentation {
             waitFor(s -> s.optJSONArray("tabs").length() == 2 && s.optBoolean("ready") && loadedImages(s) >= 1);
             if (phone) {
                 require(button(state(), "SelectTab(") == null, "Phone has no horizontal tab strip");
-                tap("Tabs");
+                swipe(100, 180, 280, 180);
                 waitFor(s -> s.optString("panel").equals("Tabs"));
+                swipe(100, 180, 220, 180);
+                require(state().getString("panel").equals("Tabs"), "Right swipe keeps Tabs open");
+                swipe(220, 180, 100, 180);
+                waitFor(s -> s.optBoolean("outline_open") && s.optString("panel").equals("Closed"));
+                swipe(100, 180, 280, 180);
+                waitFor(s -> s.optString("panel").equals("Tabs") && !s.optBoolean("outline_open"));
                 screenshot("tab-drawer");
             } else {
                 require(button(state(), "Tabs") == null, "Tablet keeps the desktop tab strip");

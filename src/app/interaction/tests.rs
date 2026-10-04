@@ -657,6 +657,123 @@ fn forwarded_files_open_tabs_and_reuse_existing_tabs() {
 }
 
 #[test]
+fn touch_swipes_open_drawers_without_toggling_them_closed() {
+	use crate::state::PanelPage;
+	use winit::event::Touch;
+	let (mut app, _) = reader("# Heading\n\nText.", 400.0);
+	let swipe = |app: &mut App<StubProxy>, start: f64, end: f64| {
+		for (phase, x) in [
+			(TouchPhase::Started, start),
+			(TouchPhase::Moved, end),
+			(TouchPhase::Ended, end),
+		] {
+			app.handle_touch(Touch {
+				device_id: DeviceId::dummy(),
+				id: 1,
+				phase,
+				location: PhysicalPosition::new(x, 300.0),
+				force: None,
+			});
+		}
+	};
+	for phone in [false, true] {
+		app.tab_strip.phone = phone;
+		swipe(&mut app, 600.0, 720.0);
+		assert_eq!(
+			app.interaction.panel,
+			if phone {
+				PanelPage::Tabs
+			} else {
+				PanelPage::Closed
+			}
+		);
+		if phone {
+			swipe(&mut app, 100.0, 220.0);
+			assert_eq!(app.interaction.panel, PanelPage::Tabs);
+			swipe(&mut app, 220.0, 100.0);
+		} else {
+			swipe(&mut app, 720.0, 600.0);
+		}
+		assert_eq!(app.interaction.panel, PanelPage::Closed);
+		assert!(app.interaction.outline_open);
+		assert_eq!(app.readers.session.outline_entries().len(), 1);
+		swipe(&mut app, 1100.0, 980.0);
+		assert!(app.interaction.outline_open);
+		assert_eq!(app.readers.session.scrolling.offset, 0.0);
+		assert!(app.gestures.deadline(Instant::now()).is_none());
+		if phone {
+			swipe(&mut app, 980.0, 1100.0);
+			assert_eq!(app.interaction.panel, PanelPage::Tabs);
+			assert!(!app.interaction.outline_open);
+		}
+		app.interaction.show_panel(PanelPage::Closed);
+		app.interaction.close_outline();
+	}
+}
+
+#[test]
+fn drawer_swipes_reject_short_cancelled_multitouch_and_owned_input() {
+	use crate::state::{PanelPage, PanelTab};
+	use winit::event::Touch;
+	let (mut app, _) = reader(SOURCE, 400.0);
+	app.tab_strip.phone = true;
+	let touch = |id, phase, x, y| Touch {
+		device_id: DeviceId::dummy(),
+		id,
+		phase,
+		location: PhysicalPosition::new(x, y),
+		force: None,
+	};
+	for (end, phase) in [
+		(630.0, TouchPhase::Ended),
+		(570.0, TouchPhase::Ended),
+		(720.0, TouchPhase::Cancelled),
+		(480.0, TouchPhase::Cancelled),
+	] {
+		app.handle_touch(touch(1, TouchPhase::Started, 600.0, 300.0));
+		app.handle_touch(touch(1, TouchPhase::Moved, end, 300.0));
+		app.handle_touch(touch(1, phase, end, 300.0));
+		assert_eq!(app.interaction.panel, PanelPage::Closed);
+		assert!(!app.interaction.outline_open);
+	}
+	app.handle_touch(touch(1, TouchPhase::Started, 600.0, 300.0));
+	app.handle_touch(touch(1, TouchPhase::Moved, 650.0, 300.0));
+	app.handle_touch(touch(2, TouchPhase::Started, 700.0, 300.0));
+	app.handle_touch(touch(1, TouchPhase::Ended, 750.0, 300.0));
+	app.handle_touch(touch(2, TouchPhase::Ended, 800.0, 300.0));
+	assert_eq!(app.interaction.panel, PanelPage::Closed);
+	assert!(!app.interaction.outline_open);
+	app.readers.session.snapshot.height = 5000.0;
+	app.handle_touch(touch(1, TouchPhase::Started, 600.0, 400.0));
+	app.handle_touch(touch(1, TouchPhase::Moved, 605.0, 300.0));
+	app.handle_touch(touch(1, TouchPhase::Ended, 720.0, 280.0));
+	assert_eq!(app.readers.session.scrolling.offset, 120.0);
+	assert_eq!(app.interaction.panel, PanelPage::Closed);
+	app.cancel_gestures();
+	app.interaction.cursor = (600.0, 300.0);
+	app.trackpad_scroll(120.0, 0.0, TouchPhase::Started, Inertia::Native);
+	app.trackpad_scroll(0.0, 0.0, TouchPhase::Ended, Inertia::Native);
+	assert_eq!(app.interaction.panel, PanelPage::Closed);
+	for panel in [PanelPage::Closed, PanelPage::Settings(PanelTab::Generic)] {
+		app.interaction.show_panel(panel);
+		if panel == PanelPage::Closed {
+			app.interaction.modal = Some(crate::state::Modal::OpenLocal {
+				path: PathBuf::from("/tmp/file.bin"),
+				dir: PathBuf::from("/tmp"),
+				document_dir: None,
+			});
+		}
+		for end in [480.0, 720.0] {
+			app.handle_touch(touch(1, TouchPhase::Started, 600.0, 300.0));
+			app.handle_touch(touch(1, TouchPhase::Ended, end, 300.0));
+			assert_eq!(app.interaction.panel, panel);
+			assert!(!app.interaction.outline_open);
+		}
+		app.interaction.modal = None;
+	}
+}
+
+#[test]
 fn phone_uses_available_column_width_and_preserves_the_saved_width() {
 	use crate::state::PanelTab;
 

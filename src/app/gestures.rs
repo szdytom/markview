@@ -7,7 +7,7 @@ mod recognizer;
 use recognizer::{Gesture, Motion, Recognizer};
 
 use super::App;
-use crate::state::{Command, WheelAxis, WheelStep};
+use crate::state::{Command, PanelPage, WheelAxis, WheelStep};
 
 type Point = (f32, f32);
 
@@ -60,6 +60,7 @@ pub(super) struct GestureState {
 	motion: Option<(Surface, Motion)>,
 	coasting: bool,
 	trackpad: Option<(Surface, Instant)>,
+	swipe_distance: f32,
 }
 
 impl GestureState {
@@ -90,6 +91,7 @@ impl<P: super::SendEvent> App<P> {
 		self.gestures.motion = None;
 		self.gestures.coasting = false;
 		self.gestures.trackpad = None;
+		self.gestures.swipe_distance = 0.0;
 	}
 
 	fn touch_tap(&mut self) -> Option<Tap> {
@@ -231,6 +233,7 @@ impl<P: super::SendEvent> App<P> {
 		self.frame.pressed = None;
 		let mut window_action = None;
 		if touch.phase == TouchPhase::Started {
+			self.gestures.swipe_distance = 0.0;
 			self.gestures.motion = None;
 			self.gestures.coasting = false;
 			self.gestures.trackpad = None;
@@ -309,10 +312,14 @@ impl<P: super::SendEvent> App<P> {
 				}
 				Some(Gesture::Pan(capture, delta)) => {
 					self.interaction.pressed = None;
+					self.gestures.swipe_distance += delta.0;
 					if let Some((_, motion)) = &mut self.gestures.motion {
 						motion.sample(delta, Instant::now());
 					}
 					self.pan_gesture(capture.surface, delta);
+					if touch.phase == TouchPhase::Ended {
+						self.open_swipe_drawer(capture.surface);
+					}
 				}
 				None => {}
 			}
@@ -337,6 +344,31 @@ impl<P: super::SendEvent> App<P> {
 		self.refresh_hover();
 		self.redraw();
 		window_action
+	}
+
+	fn open_swipe_drawer(&mut self, surface: Surface) {
+		if !matches!(surface, Surface::Document | Surface::Outline)
+			&& !(matches!(surface, Surface::Panel)
+				&& self.interaction.panel == PanelPage::Tabs)
+		{
+			return;
+		}
+		let distance = self.gestures.swipe_distance;
+		if distance <= -64.0 {
+			self.cancel_gestures();
+			if self.interaction.panel == PanelPage::Tabs {
+				self.action(Command::Tabs);
+			}
+			if !self.interaction.outline_open {
+				self.action(Command::Outline);
+			}
+		} else if distance >= 64.0 && self.tab_strip.phone {
+			self.cancel_gestures();
+			self.interaction.close_outline();
+			if self.interaction.panel != PanelPage::Tabs {
+				self.action(Command::Tabs);
+			}
+		}
 	}
 
 	/// Pixel scrolling already carries the OS speed. A stream with

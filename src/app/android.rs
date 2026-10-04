@@ -125,6 +125,7 @@ impl<P: super::SendEvent> App<P> {
 			"phone_layout":self.tab_strip.phone,
 			"column_width":self.preferences.values.width, "layout_width":session.snapshot.width,
 			"drawer_scroll":self.tab_strip.drawer_scroll,
+			"outline_open":self.interaction.outline_open,
 			"tab_style":format!("{:?}", self.preferences.values.tab_style),
 			"instance_listener":self.instance.is_some(),
 			"theme": self.preferences.values.theme, "font_size":self.preferences.values.font_size,

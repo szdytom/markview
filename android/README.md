@@ -103,8 +103,10 @@ images and Markdown links; `README.md` is preferred as the first document.
 Android's **Open with** and **Share** also send documents into Markview, and shared
 text opens as a Markdown document. Tabs, touch scrolling, outline, search,
 settings and styles use the same controllers as the desktop reader. Phones open
-the tab drawer with the top-left menu button; selecting a tab, tapping the
-outside scrim or pressing Back dismisses it. Back closes
+the tab drawer with the top-left menu button or a right swipe across the reader.
+Selecting a tab, tapping the outside scrim or pressing Back dismisses the tab
+drawer. A left swipe opens right-side Contents on phones and tablets, including
+while the tab drawer is open. Back closes
 the open search or panel before returning the task to the background.
 
 Settings, downloaded fonts, styles and image cache live under the private app

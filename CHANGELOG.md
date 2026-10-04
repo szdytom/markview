@@ -23,6 +23,8 @@ at the same level, without `[brackets]`.
 
 ### Added
 
+- Open the phone Tabs Drawer with a right swipe and right-side Contents with a left swipe on any touchscreen, including tablets and desktop computers.
+
 - Include Android mobile mode and smallest width in a single About and copied-diagnostics line.
 
 - Add MV4A (MarkView as a Android App), sharing desktop settings, tabs, fonts, image caching and export, with Android document access, touch adaptation and emulator integration tests; the installed app is named Markview.
