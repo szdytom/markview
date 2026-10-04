@@ -47,6 +47,7 @@ at the same level, without `[brackets]`.
 
 ### Fixed
 
+- Hide desktop window-layout and single-instance options on Android and ignore their saved runtime values.
 - Make settings fill the app content area on narrow screens, keeping centered dialogs on wider screens.
 - Preserve reading positions inside large images when returning to cached tabs, retaining bounded intrinsic sizes while releasing inactive pixels.
 

@@ -38,6 +38,11 @@ pub(super) struct State {
 }
 impl State {
 	pub fn new(layout: WindowLayout) -> Self {
+		let layout = if cfg!(target_os = "android") {
+			WindowLayout::System
+		} else {
+			layout
+		};
 		Self {
 			layout: layout.resolved(),
 			focused: true,
