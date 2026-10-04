@@ -81,6 +81,9 @@ diagnostics_build_date = "Build date"
 diagnostics_commit = "Commit"
 diagnostics_os = "OS"
 diagnostics_row = "{name}: {value}"
+diagnostics_smallest_width = "Smallest width"
+diagnostics_phone = "Phone"
+diagnostics_tablet = "Tablet"
 diagnostics_version = "Version"
 
 # The reader window's notice strip.

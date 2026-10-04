@@ -82,6 +82,9 @@ diagnostics_build_date = "ビルド日時"
 diagnostics_commit = "コミット"
 diagnostics_os = "OS"
 diagnostics_row = "{name}：{value}"
+diagnostics_smallest_width = "最小幅"
+diagnostics_phone = "スマートフォン"
+diagnostics_tablet = "タブレット"
 diagnostics_version = "バージョン"
 
 # The reader window's notice strip.

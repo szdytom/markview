@@ -50,6 +50,14 @@ pub(crate) fn call_string(method: &str, text: &str) -> Result<()> {
 		Ok(())
 	})
 }
+pub(crate) fn smallest_width_dp() -> i32 {
+	with_env(|env, activity| {
+		Ok(env
+			.call_method(activity, "smallestWidthDp", "()I", &[])?
+			.i()?)
+	})
+	.unwrap()
+}
 pub(crate) fn phone_layout() -> bool {
 	with_env(|env, activity| {
 		Ok(env.call_method(activity, "phoneLayout", "()Z", &[])?.z()?)
