@@ -117,7 +117,10 @@ pub(super) fn start(
 
 impl<P: super::SendEvent> super::App<P> {
 	pub(super) fn register_instance(&mut self) {
-		if self.instance.is_some() || !self.preferences.values.single_instance {
+		if cfg!(target_os = "android")
+			|| self.instance.is_some()
+			|| !self.preferences.values.single_instance
+		{
 			return;
 		}
 		let Some(lock) = &self.instance_path else {

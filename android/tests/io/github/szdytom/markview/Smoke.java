@@ -31,8 +31,15 @@ public class Smoke extends Instrumentation {
         try {
             require("Markview".contentEquals(getTargetContext().getApplicationInfo().loadLabel(getTargetContext().getPackageManager())), "Application display name");
             pass("Markview application display name");
+            File config = new File(getTargetContext().getFilesDir(), "markview/settings.toml");
+            config.getParentFile().mkdirs();
+            String stored = config.exists() ? new String(Files.readAllBytes(config.toPath()), StandardCharsets.UTF_8) : "";
+            stored = "window-layout = \"macos\"\nsingle-instance = true\n" + stored.replaceAll("(?m)^(window-layout|single-instance) *=.*\\R?", "");
+            Files.write(config.toPath(), stored.getBytes(StandardCharsets.UTF_8));
             activity = startActivitySync(intent("reader.md", Intent.ACTION_VIEW));
             JSONObject initial = waitFor(s -> s.optBoolean("ready") && s.optInt("blocks") > 20 && loadedImages(s) >= 2);
+            require(initial.getString("window_layout").equals("Macos") && initial.getBoolean("single_instance"), "Saved desktop options loaded");
+            require(!initial.getString("frame_layout").equals("Macos") && !initial.getBoolean("instance_listener"), "Saved desktop options do not affect Android");
             require(initial.getInt("math_errors") == 0, "Mathematics layout");
             require(initial.getString("backend").equals("Vulkan") || initial.getString("backend").equals("Gl"), "GPU backend");
             stableLayout();
@@ -55,6 +62,9 @@ public class Smoke extends Instrumentation {
             tap("Settings");
             waitFor(s -> s.optString("panel").equals("Settings(Generic)"));
             requireFullscreenSettings();
+            JSONObject settingsState = state();
+            require(button(settingsState, "ToggleDropdown(WindowLayout") == null && button(settingsState, "SingleInstance") == null,
+                "Desktop-only window and instance controls are absent");
             screenshot("settings");
             for (int i = 0; i < 8 && button(state(), "Larger") == null; i++) { swipe(180, 550, 180, 270); swipe(180, 223, 180, 223); }
             double font = state().getDouble("font_size");
@@ -93,6 +103,7 @@ public class Smoke extends Instrumentation {
             waitFor(s -> s.optString("panel").equals("Settings(Styles)"));
             sendKeyDownUpSync(KeyEvent.KEYCODE_BACK);
             waitFor(s -> s.optString("panel").equals("Closed"));
+            require(!state().getBoolean("instance_listener"), "Android does not register the desktop instance listener");
             pass("Shared settings, typography, font imports, catalogue and styles");
 
             tap("SearchOpen");

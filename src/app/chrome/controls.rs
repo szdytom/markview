@@ -52,7 +52,7 @@ fn rows(settings: &ReaderSettings) -> Vec<Row> {
 	// Choosing a stylesheet is the Styles tab's own job, and choosing a family
 	// for a role the Fonts tab's, so this page offers neither.
 	let t = settings.lang();
-	vec![
+	let mut rows = vec![
 		Row::new(t.settings_language(), vec![])
 			.menu(DropdownId::Language, language_options(t, settings))
 			.section(t.section_interface()),
@@ -85,38 +85,50 @@ fn rows(settings: &ReaderSettings) -> Vec<Row> {
 				Some(Command::TabStyle(settings.tab_style)),
 			),
 		),
-		Row::new(t.settings_window_layout(), vec![])
-			.menu(
-				DropdownId::WindowLayout,
-				choices(
-					&[
-						(
-							t.settings_language_system(),
-							Command::WindowLayout(WindowLayout::System),
-						),
-						("macOS", Command::WindowLayout(WindowLayout::Macos)),
-						(
-							"Windows",
-							Command::WindowLayout(WindowLayout::Windows),
-						),
-						("Linux", Command::WindowLayout(WindowLayout::Linux)),
-					],
-					Some(Command::WindowLayout(settings.window_layout)),
-				),
-			)
-			.section(t.section_next_launch()),
-		Row::new(
-			t.settings_single_instance(),
-			vec![action(
-				if settings.single_instance {
-					t.settings_on()
-				} else {
-					t.settings_off()
-				},
-				settings.single_instance,
-				Command::SingleInstance,
-			)],
-		),
+	];
+	if !cfg!(target_os = "android") {
+		rows.extend([
+			Row::new(t.settings_window_layout(), vec![])
+				.menu(
+					DropdownId::WindowLayout,
+					choices(
+						&[
+							(
+								t.settings_language_system(),
+								Command::WindowLayout(WindowLayout::System),
+							),
+							(
+								"macOS",
+								Command::WindowLayout(WindowLayout::Macos),
+							),
+							(
+								"Windows",
+								Command::WindowLayout(WindowLayout::Windows),
+							),
+							(
+								"Linux",
+								Command::WindowLayout(WindowLayout::Linux),
+							),
+						],
+						Some(Command::WindowLayout(settings.window_layout)),
+					),
+				)
+				.section(t.section_next_launch()),
+			Row::new(
+				t.settings_single_instance(),
+				vec![action(
+					if settings.single_instance {
+						t.settings_on()
+					} else {
+						t.settings_off()
+					},
+					settings.single_instance,
+					Command::SingleInstance,
+				)],
+			),
+		]);
+	}
+	rows.extend([
 		Row::new(
 			t.settings_text_size(),
 			choices(
@@ -205,7 +217,8 @@ fn rows(settings: &ReaderSettings) -> Vec<Row> {
 				Command::CodeWrap,
 			)],
 		),
-	]
+	]);
+	rows
 }
 pub(in crate::app) fn form(
 	ui: &mut TextShaper,

@@ -40,8 +40,9 @@ entry point is `src/app/android.rs`; OS calls live in `src/platform/android.rs`
 and `android/java`. This shares the application above `core`, including its
 state and UI. Below 640 logical pixels, settings occupy the entire app content
 area; wider screens retain the centered dialog. Narrow forms stack labels above
-controls. System bars and the keyboard are excluded from the
-reader's content area.
+controls. Desktop window-layout and single-instance settings are hidden and
+ignored on Android; Android reuses the `singleTask` activity. System bars and
+the keyboard are excluded from the reader's content area.
 
 ## Build and install
 
