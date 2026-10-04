@@ -71,6 +71,14 @@ pub(super) fn appearance(ui: &mut TextShaper) {
 }
 
 pub(in crate::app) fn panel_rect(width: f32, height: f32) -> Rect {
+	if width < 640.0 {
+		return Rect {
+			x: 0.0,
+			y: 0.0,
+			w: width,
+			h: height,
+		};
+	}
 	let w = 600.0_f32.min((width - 32.0).max(0.0));
 	let top = crate::app::TOP + 8.0;
 	let h = 620.0_f32.min((height - top - 16.0).max(0.0));
@@ -227,6 +235,9 @@ pub(in crate::app) fn draw_settings_header(
 }
 
 pub(in crate::app) fn frame(rect: Rect, width: f32, height: f32) -> Vec<Draw> {
+	if rect.w == width && rect.h == height {
+		return vec![line(rect, Condition::Panel, C::Background)];
+	}
 	vec![
 		Draw::Rect(
 			Rect {

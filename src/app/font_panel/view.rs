@@ -1239,7 +1239,7 @@ mod tests {
 		let shown: Vec<usize> = (0..catalog.len()).collect();
 		let jobs = HashMap::new();
 		// The remaining viewport is shorter than one whole row.
-		let (w, h) = (500., 300.);
+		let (w, h) = (500., 260.);
 		let rows = list(w, h, shown.len(), 0.0, false, CHOOSERS);
 		assert!(!rows.fits());
 		let buttons =

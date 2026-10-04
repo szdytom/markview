@@ -102,6 +102,8 @@ impl<P: super::SendEvent> App<P> {
 		}).collect();
 		buttons.extend(tab_buttons);
 		let session = &self.readers.session;
+		let (width, height, _) = self.dimensions();
+		let panel = super::chrome::panel_rect(width, height);
 		serde_json::json!({
 			"tabs": self.readers.entries().iter().map(|tab| tab.path.display().to_string()).collect::<Vec<_>>(),
 			"active": self.readers.active(), "path": session.path,
@@ -116,6 +118,7 @@ impl<P: super::SendEvent> App<P> {
 			"font_revision":self.fonts_config.revision,
 			"font_families":markview_core::fonts::families(&self.fonts_config,false).len(),
 			"panel":format!("{:?}",self.interaction.panel), "buttons":buttons,
+			"panel_rect":[panel.x, panel.y, panel.w, panel.h],
 			"dimensions":self.dimensions(), "insets":self.insets(),
 			"search_open":session.search.open, "matches":session.search.matches.len(),
 			"backend":self.renderer.as_ref().map(|r|format!("{:?}",r.backend)),
