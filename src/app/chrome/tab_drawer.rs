@@ -10,7 +10,7 @@ use crate::{
 	layout::{Draw, Paint, Rect, TextShaper},
 	state::{Command, InteractionState, ReaderTab},
 };
-use markview_core::style::{ColorField as C, Condition};
+use markview_core::style::{Color, ColorField as C, Condition};
 
 pub(in crate::app) fn rect(width: f32, height: f32) -> Rect {
 	Rect {
@@ -30,10 +30,10 @@ pub(in crate::app) fn list(
 	List::new(
 		panel,
 		Rect {
-			x: 8.,
-			y: 56.,
-			w: (panel.w - 28.).max(0.),
-			h: (height - 120.).max(0.),
+			x: 16.,
+			y: 64.,
+			w: (panel.w - 32.).max(0.),
+			h: (height - 128.).max(0.),
 		},
 		0.,
 		56.,
@@ -56,16 +56,13 @@ pub(super) fn toggle(lang: Lang) -> Button {
 	toggle.kind = ButtonKind::Quiet;
 	toggle
 }
-pub(super) fn buttons(
+fn row_buttons(
 	ui: &mut TextShaper,
 	tabs: &[ReaderTab],
 	active: usize,
-	scroll: f32,
-	size: (f32, f32),
+	list: List,
 	lang: Lang,
 ) -> Vec<Button> {
-	let (width, height) = size;
-	let list = list(width, height, tabs.len(), scroll);
 	let mut rows = Vec::new();
 	for index in list.visible() {
 		let row = list.row_rect(index);
@@ -74,7 +71,7 @@ pub(super) fn buttons(
 			.file_name()
 			.unwrap_or(path.as_os_str())
 			.to_string_lossy();
-		let name = ui.fit(&name, 13., (row.w - 68.).max(0.));
+		let name = ui.fit(&name, 14., (row.w - 72.).max(0.));
 		let mut select = button(
 			std::sync::Arc::<str>::from(name),
 			Command::SelectTab(index),
@@ -84,6 +81,7 @@ pub(super) fn buttons(
 			},
 		);
 		select.active = index == active;
+		select.kind = ButtonKind::Quiet;
 		rows.push(select);
 		let mut close = button(
 			lang.panel_close(),
@@ -99,12 +97,14 @@ pub(super) fn buttons(
 		close.kind = ButtonKind::Quiet;
 		rows.push(close);
 	}
-	let mut buttons = list.hit(rows);
+	rows
+}
+fn controls(panel: Rect, width: f32, lang: Lang) -> Vec<Button> {
 	let mut close = button(
 		lang.panel_close(),
 		Command::Tabs,
 		Rect {
-			x: list.panel.w - 52.,
+			x: panel.w - 52.,
 			y: 6.,
 			w: 44.,
 			h: 44.,
@@ -112,29 +112,77 @@ pub(super) fn buttons(
 	);
 	close.icon = Some(icons::CLOSE);
 	close.kind = ButtonKind::Quiet;
-	buttons.push(close);
-	buttons.push(button(
+	let mut open = button(
 		lang.toolbar_open(),
 		Command::Open,
 		Rect {
-			x: 12.,
-			y: height - 56.,
-			w: (list.panel.w - 24.).max(0.),
+			x: 16.,
+			y: panel.h - 54.,
+			w: (panel.w - 32.).max(0.),
 			h: 44.,
 		},
-	));
+	);
+	open.kind = ButtonKind::Quiet;
 	// The scrim dismisses the drawer without activating the document below.
-	buttons.push(button(
+	let scrim = button(
 		"",
 		Command::Tabs,
 		Rect {
-			x: list.panel.w,
+			x: panel.w,
 			y: 0.,
-			w: width - list.panel.w,
-			h: height,
+			w: width - panel.w,
+			h: panel.h,
 		},
-	));
+	);
+	vec![close, open, scrim]
+}
+pub(super) fn buttons(
+	ui: &mut TextShaper,
+	tabs: &[ReaderTab],
+	active: usize,
+	scroll: f32,
+	size: (f32, f32),
+	lang: Lang,
+) -> Vec<Button> {
+	components::appearance(ui);
+	let list = list(size.0, size.1, tabs.len(), scroll);
+	let mut buttons = list.hit(row_buttons(ui, tabs, active, list, lang));
+	buttons.extend(controls(list.panel, size.0, lang));
 	buttons
+}
+
+fn draw_entry(
+	ui: &mut TextShaper,
+	interaction: &InteractionState,
+	b: &Button,
+) -> Vec<Draw> {
+	let mut surface = b.clone();
+	surface.label = "".into();
+	surface.active = false;
+	let mut out = components::draw_button(ui, interaction, &surface, true);
+	let open = b.action == Command::Open;
+	if open {
+		out.push(Draw::Icon {
+			paths: icons::OPEN,
+			paint: Paint::Styled(Condition::Panel, C::Color),
+			x: b.rect.x + 8.,
+			y: b.rect.y + (b.rect.h - 20.) / 2.,
+			size: 20.,
+		});
+	}
+	let inset = if open { 40. } else { 16. };
+	let name = ui.fit(&b.label, 14., (b.rect.w - inset - 8.).max(0.));
+	out.extend(ui.label(
+		&name,
+		14.,
+		b.rect.x + inset,
+		b.rect.y + b.rect.h / 2. + 5.,
+		Paint::Styled(
+			Condition::Panel,
+			if b.active || open { C::Color } else { C::Muted },
+		),
+	));
+	out
 }
 pub(super) fn draw(
 	ui: &mut TextShaper,
@@ -159,36 +207,154 @@ pub(super) fn draw(
 			Paint::Scrim,
 		),
 		Draw::Rect(list.panel, Paint::Styled(Condition::Panel, C::Background)),
+		Draw::Icon {
+			paths: icons::APP,
+			paint: Paint::Styled(Condition::Panel, C::Color),
+			x: 12.,
+			y: 14.,
+			size: 28.,
+		},
 	];
+	for r in [
+		Rect {
+			x: list.panel.w - 1.,
+			w: 1.,
+			..list.panel
+		},
+		Rect {
+			x: 16.,
+			y: 55.,
+			w: list.panel.w - 32.,
+			h: 1.,
+		},
+		Rect {
+			y: height - 64.,
+			h: 1.,
+			..list.panel
+		},
+	] {
+		out.push(components::line(r, Condition::Panel, C::BorderColor));
+	}
+	let title = ui.fit(lang.toolbar_tabs(), 16., (list.panel.w - 132.).max(0.));
+	let title_width = ui.text_width(&title, 16.);
 	out.extend(ui.label(
-		&format!("{} · {}", lang.toolbar_tabs(), tabs.len()),
+		&title,
 		16.,
-		16.,
-		33.,
+		48.,
+		34.,
 		Paint::Styled(Condition::Panel, C::Color),
 	));
+	out.extend(ui.label(
+		&format!("· {}", tabs.len()),
+		13.,
+		48. + title_width + 8.,
+		34.,
+		Paint::Styled(Condition::Panel, C::Muted),
+	));
+	let background = ui.stylesheet.color(Condition::Panel, C::Background);
+	let accent = ui.stylesheet.color(Condition::Panel, C::Accent);
+	let selected =
+		Paint::Color(Color(u32::from_be_bytes(std::array::from_fn(|i| {
+			((background[i] + (accent[i] - background[i]) * 0.06) * 255.)
+				.round() as u8
+		}))));
 	let mut rows = Vec::new();
-	for b in buttons(ui, tabs, active, scroll, size, lang) {
-		if matches!(b.action, Command::SelectTab(_) | Command::CloseTab(_)) {
+	for b in row_buttons(ui, tabs, active, list, lang) {
+		if matches!(b.action, Command::SelectTab(_)) {
 			if b.active {
 				rows.push(Draw::Rect(
-					Rect { w: 3., ..b.rect },
+					Rect {
+						w: list.viewport.w,
+						..b.rect
+					},
+					selected,
+				));
+			}
+			rows.extend(draw_entry(ui, interaction, &b));
+			if b.active {
+				rows.push(Draw::Rect(
+					Rect {
+						y: b.rect.y + 16.,
+						w: 2.,
+						h: 24.,
+						..b.rect
+					},
 					Paint::Styled(Condition::Panel, C::Accent),
 				));
 			}
+		} else {
 			rows.extend(components::draw_button(ui, interaction, &b, true));
-		} else if b.rect.x < list.panel.w {
-			out.extend(components::draw_button(ui, interaction, &b, true));
 		}
 	}
 	out.push(list.clip(rows));
 	list.draw_bar(&mut out, ui, interaction);
+	for b in controls(list.panel, width, lang) {
+		if b.action == Command::Open {
+			out.extend(draw_entry(ui, interaction, &b));
+		} else if b.rect.x < list.panel.w {
+			out.extend(components::draw_button(ui, interaction, &b, true));
+		}
+	}
 	out
 }
 
 #[cfg(test)]
 mod tests {
 	use super::*;
+	#[test]
+	fn drawer_labels_follow_partial_scroll_without_recentering() {
+		let mut ui = crate::test_support::shaper();
+		let tabs: Vec<_> = (0..30)
+			.map(|i| ReaderTab::new(format!("{i}-document.md").into()))
+			.collect();
+		let first_label = |draws: Vec<Draw>| {
+			draws
+				.into_iter()
+				.find_map(|draw| {
+					let Draw::Clipped { draws, .. } = draw else {
+						return None;
+					};
+					draws.into_iter().find_map(|draw| match draw {
+						Draw::Glyph(glyph) => Some((glyph.x, glyph.y)),
+						_ => None,
+					})
+				})
+				.unwrap()
+		};
+		for dark in [false, true] {
+			ui.set_stylesheet(markview_core::style::Stylesheet::bundled(dark));
+			let resting = first_label(draw(
+				&mut ui,
+				&tabs,
+				0,
+				0.,
+				&InteractionState::default(),
+				(320., 760.),
+				Lang::En,
+			));
+			let scrolled = first_label(draw(
+				&mut ui,
+				&tabs,
+				0,
+				17.,
+				&InteractionState::default(),
+				(320., 760.),
+				Lang::En,
+			));
+			assert_eq!(resting.0, 32.);
+			assert_eq!(scrolled.0, resting.0);
+			assert_eq!(resting.1 - scrolled.1, 17.);
+			let buttons =
+				buttons(&mut ui, &tabs, 0, 17., (320., 760.), Lang::En);
+			let select = buttons
+				.iter()
+				.find(|b| b.action == Command::SelectTab(0))
+				.unwrap();
+			assert!(select.rect.contains(scrolled.0, scrolled.1));
+			assert_eq!(select.rect.y, 64.);
+		}
+	}
+
 	#[test]
 	fn drawer_rows_are_clipped_and_touch_targets_do_not_overlap() {
 		let mut ui = crate::test_support::shaper();

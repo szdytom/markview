@@ -36,6 +36,8 @@ at the same level, without `[brackets]`.
 
 ### Changed
 
+- Refine the phone tab drawer with left-aligned filenames, subtle selection markers, quiet open controls and a theme-colored Markview icon.
+
 - Use `sw600dp` to keep phones in portrait with a left tab drawer and hide their tab-style setting; tablets retain desktop tabs and rotation.
 
 - Move tab style from MVSS to the `tab-style` user setting, defaulting to `underline` (formerly `classic`).
