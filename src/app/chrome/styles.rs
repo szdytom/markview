@@ -174,13 +174,15 @@ pub(super) fn style_controls(
 		));
 		vec![]
 	};
-	headers.push((
-		lang.styles_open_folder(),
-		None,
-		Command::StylesFolder,
-		24.,
-		146.,
-	));
+	if !cfg!(target_os = "android") {
+		headers.push((
+			lang.styles_open_folder(),
+			None,
+			Command::StylesFolder,
+			24.,
+			146.,
+		));
+	}
 	if let Some(system) = target.system() {
 		headers.push((
 			lang.styles_follow_system(),

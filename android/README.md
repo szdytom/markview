@@ -108,9 +108,9 @@ outside scrim or pressing Back dismisses it. Back closes
 the open search or panel before returning the task to the background.
 
 Settings, downloaded fonts, styles and image cache live under the private app
-files directory in `markview/`. The font and style directory buttons open the
-system importer for TTF/OTF/TTC and `.mvss.toml` files respectively. Downloaded
-and imported fonts use the existing catalogue and font-family selectors.
+files directory in `markview/`. Android settings omit the desktop buttons for
+opening `settings.toml`, the fonts folder and the styles folder. Downloaded
+fonts use the existing catalogue and font-family selectors.
 Export uses Android's system save dialog and passes the written result to an
 installed viewer. Repeated watched exports update the selected destination.
 
@@ -141,7 +141,7 @@ visibility for boundary configurations such as `sw599dp` and `sw600dp`.
 The test APK supplies external content URIs and exercises real touch and key
 input in the rendered reader. It checks multilingual Markdown, mathematics,
 Mermaid and image decoding, scrolling and cached tabs, shared settings, font
-import and catalogue pages, theme selection, search input, phone portrait lock,
+catalogue pages, theme selection, search input, phone portrait lock,
 phone drawer operations, tablet rotation, background/resume, durable preferences,
 the system picker, folder resources, read-only grants, PDF saving and GPU PNG export.
 Reports and screenshots are written to `artifacts/android/phone/` and

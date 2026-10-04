@@ -127,15 +127,6 @@ public class Smoke extends Instrumentation {
             waitFor(s -> s.optString("panel").equals("Settings(Fonts)") && s.optInt("font_catalog") > 0);
             requireSettingsLayout();
             screenshot("fonts");
-            long revision = state().getLong("font_revision");
-            tap("Fonts(OpenFolder)");
-            waitSystem("documentsui");
-            sendKeyDownUpSync(KeyEvent.KEYCODE_BACK);
-            waitFor(s -> s.optString("backend").length() > 0);
-            Uri fontUri = Uri.parse("content://io.github.szdytom.markview.test.fixtures/Test.otf");
-            runOnMainSync(() -> ((MarkviewActivity)activity).onActivityResult(13, Activity.RESULT_OK, new Intent().setData(fontUri)));
-            waitFor(s -> s.optLong("font_revision") > revision && s.optInt("font_catalog") > 0);
-            require(new File(activity.getFilesDir(), "markview/fonts/Test.otf").isFile(), "Shared personal font directory");
             tap("Fonts(Choosers)");
             waitFor(s -> button(s, "ToggleDropdown(Font(Serif)") != null);
             screenshot("font-choices");
@@ -159,7 +150,7 @@ public class Smoke extends Instrumentation {
             sendKeyDownUpSync(KeyEvent.KEYCODE_BACK);
             waitFor(s -> s.optString("panel").equals("Closed"));
             require(!state().getBoolean("instance_listener"), "Android does not register the desktop instance listener");
-            pass("Shared settings, typography, font imports, catalogue and styles");
+            pass("Shared settings, typography, font catalogue and styles without desktop file controls");
 
             tap("SearchOpen");
             waitFor(s -> s.optBoolean("search_open"));
@@ -233,6 +224,11 @@ public class Smoke extends Instrumentation {
             File pdf = new File(activity.getFilesDir(), "exports/README.pdf");
             pdf.delete();
             tap("Export");
+            waitFor(s -> s.optString("panel").equals("Export"));
+            tap("ExportStyles");
+            JSONObject exportStyles = waitFor(s -> s.optString("panel").equals("ExportStyles"));
+            require(button(exportStyles, "StylesFolder") == null, "Styles folder control is absent from Android export styles");
+            tap("ExportStyles");
             waitFor(s -> s.optString("panel").equals("Export"));
             tap("ExportFormat(Pdf)");
             tap("ExportRun");
@@ -320,6 +316,8 @@ public class Smoke extends Instrumentation {
     private void requireSettingsLayout() throws Exception {
         JSONObject current = state();
         require(button(current, "ScrollSpeed(") == null, "Scroll speed controls are absent on Android");
+        require(button(current, "OpenConfig") == null && button(current, "Fonts(OpenFolder)") == null && button(current, "StylesFolder") == null,
+            "Desktop settings-file and folder controls are absent on Android");
         if (current.getString("panel").equals("Settings(Generic)")) {
             require((button(current, "Narrower") == null) == phone && (button(current, "Wider") == null) == phone, "Column width controls are offered only on tablets");
         }

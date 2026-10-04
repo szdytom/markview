@@ -442,6 +442,31 @@ fn preview_keeps_controls_reachable_and_exit_icon_opaque() {
 	assert!(!draws.iter().any(|draw| matches!(draw, Draw::Box { .. })));
 }
 #[test]
+fn file_and_style_folder_controls_are_desktop_only() {
+	use super::super::styles::{StylesTarget, style_controls};
+	let mut ui = crate::test_support::shaper();
+	let settings = ReaderSettings::default();
+	for (width, height) in [(360.0, 740.0), (820.0, 600.0)] {
+		let buttons =
+			form(&mut ui, &settings, 0.0, width, height).visible_buttons();
+		assert_eq!(
+			buttons.iter().any(|b| b.action == Command::OpenConfig),
+			!cfg!(target_os = "android")
+		);
+		assert!(buttons.iter().any(|b| b.action == Command::Reset));
+		for target in [StylesTarget::Reader, StylesTarget::Export] {
+			let buttons =
+				style_controls(target, None, false, width, height, Lang::En);
+			assert_eq!(
+				buttons.iter().any(|b| b.action == Command::StylesFolder),
+				!cfg!(target_os = "android")
+			);
+			assert!(buttons.iter().any(|b| b.action == Command::Settings));
+		}
+	}
+}
+
+#[test]
 fn panel_offers_scroll_speed_only_on_desktop() {
 	let mut shaper = crate::test_support::shaper();
 	for phone in [false, true] {

@@ -34,7 +34,10 @@ const ROW: f32 = 88.0;
 const LIST_TOP: f32 = 136.0;
 /// How much of the panel's bottom the footer and its separator take.
 fn footer(panel: Rect) -> f32 {
-	let actions = if panel.w < 488.0 && panel.h >= 360.0 {
+	let actions = if !cfg!(target_os = "android")
+		&& panel.w < 488.0
+		&& panel.h >= 360.0
+	{
 		96.0
 	} else {
 		56.0
@@ -345,7 +348,7 @@ fn fonts_controls(
 ) -> Vec<Button> {
 	let r = list.panel;
 	let compact = r.w < 488.0;
-	let stacked = compact && r.h >= 360.0;
+	let stacked = !cfg!(target_os = "android") && compact && r.h >= 360.0;
 	let third = (r.w - 64.0) / 3.0;
 	let mut out = crate::app::chrome::components::settings_header_controls(
 		r,
@@ -353,27 +356,29 @@ fn fonts_controls(
 		preview,
 		lang,
 	);
-	out.extend(vec![Button {
-		label: (lang.fonts_open_folder()).into(),
-		icon: None,
-		marker: None,
-		active: false,
-		kind: Default::default(),
-		enabled: true,
-		action: Command::Fonts(FontCommand::OpenFolder),
-		rect: Rect {
-			x: r.x + 24.,
-			y: r.y + r.h - if stacked { 88.0 } else { 48.0 },
-			w: if stacked {
-				r.w - 48.0
-			} else if compact {
-				third
-			} else {
-				146.0
+	if !cfg!(target_os = "android") {
+		out.push(Button {
+			label: (lang.fonts_open_folder()).into(),
+			icon: None,
+			marker: None,
+			active: false,
+			kind: Default::default(),
+			enabled: true,
+			action: Command::Fonts(FontCommand::OpenFolder),
+			rect: Rect {
+				x: r.x + 24.,
+				y: r.y + r.h - if stacked { 88.0 } else { 48.0 },
+				w: if stacked {
+					r.w - 48.0
+				} else if compact {
+					third
+				} else {
+					146.0
+				},
+				h: CONTROL,
 			},
-			h: CONTROL,
-		},
-	}]);
+		});
+	}
 	// The row's last step leaves the catalogue for the chooser rows, so it is
 	// held open by its own flag rather than by a state no family has.
 	// Each step's left edge is the last one's right, accumulated in order, so
@@ -456,7 +461,7 @@ fn fonts_controls(
 			action: Command::Fonts(action),
 			rect: Rect {
 				x: r.x
-					+ if stacked {
+					+ if stacked || (cfg!(target_os = "android") && compact) {
 						24.0 + if missing_only {
 							0.0
 						} else {
@@ -469,7 +474,7 @@ fn fonts_controls(
 						x
 					},
 				y: r.y + r.h - 48.,
-				w: if stacked {
+				w: if stacked || (cfg!(target_os = "android") && compact) {
 					(r.w - 56.0) / 2.0
 				} else if compact {
 					third
@@ -1135,7 +1140,7 @@ mod tests {
 		let jobs = HashMap::new();
 		let settings = ReaderSettings::default();
 		let fonts = crate::test_support::fonts();
-		for (w, h) in [(500., 300.), (820., 600.)] {
+		for (w, h) in [(360., 740.), (500., 300.), (820., 600.)] {
 			let panel = panel_rect(w, h);
 			let view = super::super::View {
 				choices: {
@@ -1153,6 +1158,12 @@ mod tests {
 			};
 			let buttons =
 				buttons(&view, &settings, &fonts, false, w, h, Lang::En);
+			assert_eq!(
+				buttons.iter().any(
+					|b| b.action == Command::Fonts(FontCommand::OpenFolder)
+				),
+				!cfg!(target_os = "android")
+			);
 			assert!(buttons.iter().all(|b| {
 				panel.contains(b.rect.x, b.rect.y)
 					&& panel.contains(b.rect.x + b.rect.w, b.rect.y + b.rect.h)
@@ -1255,10 +1266,11 @@ mod tests {
 		);
 		// The page still offers a way out and the bulk action.
 		let fixed = fonts_controls(rows, None, false, false, Lang::En);
-		assert!(
+		assert_eq!(
 			fixed
 				.iter()
-				.any(|b| b.action == Command::Fonts(FontCommand::OpenFolder))
+				.any(|b| b.action == Command::Fonts(FontCommand::OpenFolder)),
+			!cfg!(target_os = "android")
 		);
 		assert!(
 			fixed

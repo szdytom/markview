@@ -36,6 +36,7 @@ at the same level, without `[brackets]`.
 
 ### Changed
 
+- Hide the settings-file, fonts-folder and styles-folder buttons on Android phones and tablets.
 - Hide the scroll-speed setting on Android phones and tablets.
 - Fill the available reading width in phone mode, preserving side margins, and hide the column-width setting; tablets and desktops retain adjustable columns.
 

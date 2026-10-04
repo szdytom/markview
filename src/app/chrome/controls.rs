@@ -261,21 +261,20 @@ fn reader_form(
 	);
 	form.preview_control();
 	let t = settings.lang();
-	form.footer(
-		ui,
-		&[
-			(
-				t.settings_open_config(),
-				Command::OpenConfig,
-				ButtonKind::Standard,
-			),
-			(
-				t.settings_reset_defaults(),
-				Command::Reset,
-				ButtonKind::Quiet,
-			),
-		],
-	);
+	let mut footer = vec![];
+	if !cfg!(target_os = "android") {
+		footer.push((
+			t.settings_open_config(),
+			Command::OpenConfig,
+			ButtonKind::Standard,
+		));
+	}
+	footer.push((
+		t.settings_reset_defaults(),
+		Command::Reset,
+		ButtonKind::Quiet,
+	));
+	form.footer(ui, &footer);
 	form
 }
 #[cfg(test)]
