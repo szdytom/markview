@@ -23,6 +23,8 @@ at the same level, without `[brackets]`.
 
 ### Added
 
+- Run Android phone, tablet and sw600dp boundary integration tests in GitHub Actions, and attach signed universal APKs and checksums to releases.
+
 - Open the phone Tabs Drawer with a right swipe and right-side Contents with a left swipe on any touchscreen, including tablets and desktop computers.
 
 - Include Android mobile mode and smallest width in a single About and copied-diagnostics line.
@@ -59,6 +61,7 @@ at the same level, without `[brackets]`.
 
 ### Fixed
 
+- Stabilize Android CI with AOSP images, launcher-dialog handling and synchronization of focus, layouts and previews.
 - Add Droid Sans Mono before the generic monospace fallback in builtin and artist MVSS themes.
 - Embed KaTeX fonts in debug builds so Android formulas and PDF exports use the bundled math faces.
 - Blend Android system bars into the reader chrome in light and dark styles while keeping controls inside the safe area.

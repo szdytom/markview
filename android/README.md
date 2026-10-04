@@ -81,7 +81,7 @@ and passes the phone and tablet Activity integration tests.
 
 ## Build and install
 
-Use a recent Rust toolchain, Python 3, JDK 17 or newer, and the Android SDK.
+Use a recent Rust toolchain, Python 3.11 or newer, JDK 17 or newer, and the Android SDK.
 The current script supports Linux and macOS build hosts. Install SDK command
 line tools, accept the SDK licences, then install:
 
@@ -99,9 +99,76 @@ script uses `.tools/android-sdk` in the repository. `--abi arm64-v8a` and
 libraries and APK entries are aligned for 16 KiB pages.
 
 `--release` enables Rust optimizations, disables Android debugging and writes
-`target/android/markview-android-release.apk`. Both build variants are signed with a local development key in `target/android`.
-Distribution signing and store publication are separate steps. SDK files,
+`target/android/markview-android-release.apk`. Without `--keystore`, both build
+variants are signed with a local development key in `target/android`.
+The APK version name follows the workspace version in `Cargo.toml`;
+`--version-code` sets the Android update counter (default: `1`). SDK files,
 keys, native libraries and APKs are excluded from Git.
+
+## GitHub Actions and releases
+
+Every push and pull request runs [Android](../.github/workflows/android.yml)
+through the main CI workflow. It builds an x86_64 debug APK once, then runs the
+integration suite on API 35 AOSP Pixel 6 and Pixel Tablet emulators. Each device
+also checks its side of the `sw599dp` / `sw600dp` boundary. Both run headlessly
+with KVM and Mesa software Vulkan, using the pinned emulator 36.1.8 rather than
+its incompatible SwiftShader backend. The workflow can also be run manually.
+CI allows ten minutes per full instrumentation run for software rendering;
+local runs keep the three-minute default, adjustable with `--timeout`.
+CI emulators use four cores and 4 GiB RAM. AOSP images omit Google services.
+Instrumentation closes ANR dialogs from Quickstep or Pixel Launcher and waits
+for Markview to regain focus before reader touches.
+CI explicitly selects gesture navigation on both devices.
+Device tests wait for viewport and reading-width layout to settle before assertions.
+Instrumentation intercepts PDF and PNG preview intents after publication,
+so external viewers cannot capture subsequent reader input.
+`markview-android-debug` keeps the APK and instrumentation build inputs;
+`markview-android-tests-phone` and `markview-android-tests-tablet` keep reports,
+screenshots and logcat, including on failure. Android must pass for `ci` to pass.
+
+The existing cargo-dist Release workflow runs the same Android tests before
+publication and calls [Android release package](../.github/workflows/android-release.yml)
+through Packaging. A successful version-tag release includes
+`markview-<version>-android.apk` (ARM64 and x86_64) and
+`markview-android-SHA256SUMS`, with an Android row in the download table.
+The Release workflow's run number supplies the APK version code; retain that
+workflow's counter so later APKs can upgrade earlier installations.
+Pull requests build release APKs with a separate, generated development key and
+do not publish them. Distribution signing secrets are only passed to the tag
+release signing step; PR builds never receive them.
+
+Before the first tag release, configure these repository Actions secrets:
+
+| Secret | Value |
+|---|---|
+| `ANDROID_KEYSTORE_BASE64` | Base64-encoded distribution keystore |
+| `ANDROID_KEYSTORE_PASSWORD` | Keystore password |
+| `ANDROID_KEY_ALIAS` | Signing key alias in the keystore |
+| `ANDROID_KEY_PASSWORD` | Signing key password |
+
+Create the keystore once, keep a backup, and reuse it across releases so users
+can install updates. For example, `keytool` prompts for passwords:
+
+```sh
+keytool -genkeypair -keystore markview-release.keystore -alias markview \
+  -keyalg RSA -keysize 4096 -validity 10000 -dname 'CN=Markview'
+base64 < markview-release.keystore | tr -d '\n'
+```
+
+Use the encoded output only for `ANDROID_KEYSTORE_BASE64`. Release signing
+requires all four secrets; missing credentials fail the release before
+publication. The keystore is decoded into the runner's temporary directory,
+removed after signing, and excluded from uploaded release artifacts.
+For a local distribution build, set `ANDROID_KEYSTORE_PASSWORD` and
+`ANDROID_KEY_PASSWORD` in the environment, then run:
+
+```sh
+python3 android/build.py --release --version-code 42 \
+  --keystore /path/to/markview-release.keystore --key-alias markview
+```
+
+This publishes installable APKs on GitHub Releases. Google Play publication
+is a separate process.
 
 ## Read and customize
 

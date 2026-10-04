@@ -9,6 +9,9 @@ jobs:
   fuzz:
     uses: ./.github/workflows/fuzz.yml
 
+  android:
+    uses: ./.github/workflows/android.yml
+
   packaging:
     runs-on: ubuntu-latest
     steps:
@@ -31,19 +34,22 @@ jobs:
             .github/workflows/packages.yml .github/workflows/packaging.yml \
             .github/workflows/release-notes.yml \
             .github/workflows/winget.yml \
-            .github/workflows/checks.yml .github/workflows/fuzz.yml
+            .github/workflows/checks.yml .github/workflows/fuzz.yml \
+            .github/workflows/android.yml .github/workflows/android-release.yml
       - name: Generated release files match the configuration
         # `cargo install cargo-dist` installs the bare `dist` binary, which
         # cargo will not resolve as a subcommand.
         run: |
           dist generate --check
           dist plan
-      - name: Release notes use the desktop packages
+      - name: Release notes use the installable packages
         run: python3 -m unittest discover -s scripts -p 'test_render_release_notes.py'
+      - name: Android build orchestration
+        run: python3 -m unittest discover -s android -p 'test_build.py'
       - name: Committed icons match the source SVG
         run: cargo run -p xtask -- icons --check
       - name: Shell scripts are sound
-        run: shellcheck scripts/package_*.sh scripts/verify_*.sh
+        run: shellcheck scripts/package_*.sh scripts/verify_*.sh android/ci-test.sh
 
   web-tools:
     strategy:
@@ -123,7 +129,7 @@ jobs:
   # packaging input.
   ci:
     if: always()
-    needs: [check, fuzz, packaging, winget, web-tools, web]
+    needs: [check, fuzz, packaging, winget, web-tools, web, android]
     runs-on: ubuntu-latest
     steps:
       - name: Fail unless every job succeeded

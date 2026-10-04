@@ -20,6 +20,7 @@ def main():
     parser.add_argument("--layout-only", action="store_true", help="Check resource selection, orientation and controls at a screen-size boundary")
     parser.add_argument("--layout", choices=["phone", "tablet"], default="phone", help="Expected sw600dp layout on the test device")
     parser.add_argument("--online", action="store_true", help="Fetch the image from GitHub instead of using a deterministic warm-cache fixture")
+    parser.add_argument("--timeout", type=int, default=180, help="Maximum instrumentation runtime in seconds")
     args = parser.parse_args()
     sdk = Path(os.environ.get("ANDROID_HOME", ROOT / ".tools/android-sdk"))
     tools = sdk / "build-tools/35.0.0"
@@ -47,6 +48,7 @@ def main():
     run(tools / "apksigner", "sign", "--ks", build / "debug.keystore", "--ks-pass", "pass:android", apk)
     adb("install", "--no-incremental", "-r", build / "markview-android-debug.apk")
     adb("install", "--no-incremental", "-r", apk)
+    adb("shell", "run-as", "io.github.szdytom.markview", "rm", "-rf", "files/test-artifacts")
     # Seed a real disk entry so cache tests do not depend on public connectivity.
     adb("shell", "run-as", "io.github.szdytom.markview", "rm", "-rf", "files/markview/cache/images")
     if not args.online:
@@ -62,19 +64,24 @@ def main():
         adb("push", fixture, "/data/local/tmp/" + name)
         adb("shell", "run-as", "io.github.szdytom.markview", "mkdir", "-p", "files/markview/cache/images")
         adb("shell", "run-as", "io.github.szdytom.markview", "cp", "/data/local/tmp/" + name, "files/markview/cache/images/" + name)
-    result = subprocess.run([str(sdk / "platform-tools/adb"), "-s", args.serial, "shell", "am", "instrument", "-w", "-e", "layout", args.layout, "-e", "layout-only", str(args.layout_only).lower(), "-e", "lifecycle-only", str(args.lifecycle_only).lower(), "io.github.szdytom.markview.test/io.github.szdytom.markview.Smoke"], capture_output=True, text=True, timeout=180)
+    result = subprocess.run([str(sdk / "platform-tools/adb"), "-s", args.serial, "shell", "am", "instrument", "-w", "-e", "layout", args.layout, "-e", "layout-only", str(args.layout_only).lower(), "-e", "lifecycle-only", str(args.lifecycle_only).lower(), "io.github.szdytom.markview.test/io.github.szdytom.markview.Smoke"], capture_output=True, text=True, timeout=args.timeout)
     report = result.stdout + result.stderr
     (artifacts / "integration.txt").write_text(report)
     print(report)
-    assert result.returncode == 0 and "MARKVIEW_ANDROID_INTEGRATION_OK" in report, "Android integration tests failed"
+    success = result.returncode == 0 and "MARKVIEW_ANDROID_INTEGRATION_OK" in report
     screenshots = ["reader", "dark-reader", "settings", "fonts", "font-choices", "dark-styles", "diagnostics", "search", "resumed", "folder"] + (["tab-drawer", "tab-drawer-light"] if args.layout == "phone" else ["tablet-tabs", "landscape", "landscape-settings"])
     if args.layout_only:
         screenshots = ["reader", "settings", "layout"] + (["landscape-settings"] if args.layout == "tablet" else [])
     if args.lifecycle_only:
         screenshots = []
+    if not success:
+        screenshots.extend(["system-bars", "failure"])
     for name in screenshots:
         with (artifacts / f"{name}.png").open("wb") as output:
-            subprocess.run([str(sdk / "platform-tools/adb"), "-s", args.serial, "exec-out", "run-as", "io.github.szdytom.markview", "cat", f"files/test-artifacts/{name}.png"], stdout=output, check=True)
+            capture = subprocess.run([str(sdk / "platform-tools/adb"), "-s", args.serial, "exec-out", "run-as", "io.github.szdytom.markview", "cat", f"files/test-artifacts/{name}.png"], stdout=output, stderr=subprocess.DEVNULL, check=success)
+        if capture.returncode != 0:
+            (artifacts / f"{name}.png").unlink()
+    assert success, "Android integration tests failed"
 
 if __name__ == "__main__":
     main()

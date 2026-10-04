@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Replace cargo-dist's download table with the desktop packages."""
+"""Replace cargo-dist's download table with the installable packages."""
 
 import json
 import sys
@@ -37,6 +37,11 @@ def render(plan, release):
             f"markview-{version}-x86_64.AppImage",
             "x64 Linux",
             "markview-linux-SHA256SUMS",
+        ),
+        (
+            f"markview-{version}-android.apk",
+            "Android 9+ (ARM64 / x86_64)",
+            "markview-android-SHA256SUMS",
         ),
     ]
     assets = {asset["name"] for asset in release["assets"]}

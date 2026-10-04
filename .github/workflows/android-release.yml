@@ -1,0 +1,61 @@
+name: Android release package
+
+on:
+  workflow_call:
+    inputs:
+      plan:
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  apk:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    env:
+      RELEASE_PLAN: ${{ inputs.plan }}
+      VERSION_CODE: ${{ github.run_number }}
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/setup-android
+        with:
+          cache-key: android-release
+      - name: Build a release APK for pull requests
+        if: github.event_name == 'pull_request'
+        run: python3 android/build.py --release --version-code "$VERSION_CODE"
+      - name: Build and sign the release APK
+        if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/')
+        env:
+          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: |
+          : "${ANDROID_KEYSTORE_BASE64:?Set ANDROID_KEYSTORE_BASE64 before releasing}"
+          : "${ANDROID_KEYSTORE_PASSWORD:?Set ANDROID_KEYSTORE_PASSWORD before releasing}"
+          : "${ANDROID_KEY_ALIAS:?Set ANDROID_KEY_ALIAS before releasing}"
+          : "${ANDROID_KEY_PASSWORD:?Set ANDROID_KEY_PASSWORD before releasing}"
+          keystore="$RUNNER_TEMP/markview-release.keystore"
+          trap 'rm -f "$keystore"' EXIT
+          umask 077
+          printf '%s' "$ANDROID_KEYSTORE_BASE64" | base64 --decode > "$keystore"
+          python3 android/build.py --release --version-code "$VERSION_CODE" \
+            --keystore "$keystore" --key-alias "$ANDROID_KEY_ALIAS"
+      - name: Verify and stage the APK
+        run: |
+          version=$(printf '%s' "$RELEASE_PLAN" | jq -r '.releases[] | select(.app_name == "markview") | .app_version')
+          "$ANDROID_HOME/build-tools/35.0.0/apksigner" verify --verbose --print-certs target/android/markview-android-release.apk
+          "$ANDROID_HOME/build-tools/35.0.0/zipalign" -c -P 16 4 target/android/markview-android-release.apk
+          mkdir -p out
+          cp target/android/markview-android-release.apk "out/markview-${version}-android.apk"
+          (cd out && sha256sum ./*.apk > markview-android-SHA256SUMS)
+      # cargo-dist downloads `artifacts-*` and attaches them to the same Release.
+      - uses: actions/upload-artifact@v7
+        with:
+          name: artifacts-extra-android
+          path: out/*
+          if-no-files-found: error

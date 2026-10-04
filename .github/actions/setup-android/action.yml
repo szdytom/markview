@@ -1,0 +1,30 @@
+name: Set up Android build
+description: Install the SDK, NDK and toolchains used by android/build.py
+inputs:
+  cache-key:
+    description: Separate debug and release Rust caches
+    default: android-debug
+runs:
+  using: composite
+  steps:
+    - uses: actions/setup-python@v6
+      with:
+        python-version: '3.11'
+    - uses: actions/setup-java@v5
+      with:
+        distribution: temurin
+        java-version: '17'
+    - uses: dtolnay/rust-toolchain@stable
+      with:
+        targets: aarch64-linux-android,x86_64-linux-android
+    - uses: Swatinem/rust-cache@v2
+      with:
+        key: ${{ inputs.cache-key }}
+    - uses: android-actions/setup-android@v3
+      with:
+        packages: platform-tools
+    - name: Install the pinned Android build tools
+      shell: bash
+      run: |
+        sdkmanager 'platform-tools' 'platforms;android-35' 'build-tools;35.0.0' 'ndk;29.0.14206865'
+        echo "ANDROID_NDK_HOME=$ANDROID_HOME/ndk/29.0.14206865" >> "$GITHUB_ENV"

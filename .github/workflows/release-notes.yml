@@ -20,7 +20,7 @@ jobs:
       - uses: actions/checkout@v6
         with:
           persist-credentials: false
-      - name: Use desktop packages in the download table
+      - name: Use installable packages in the download table
         run: |
           printf '%s\n' "$RELEASE_PLAN" > "$RUNNER_TEMP/plan.json"
           tag=$(jq -r '.announcement_tag' "$RUNNER_TEMP/plan.json")

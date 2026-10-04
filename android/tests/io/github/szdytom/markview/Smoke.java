@@ -44,11 +44,13 @@ public class Smoke extends Instrumentation {
             getUiAutomation().setRotation(0);
             activity = startActivitySync(intent("reader.md", Intent.ACTION_VIEW));
             JSONObject initial = waitFor(s -> s.optBoolean("ready") && s.optInt("blocks") > 20 && loadedImages(s) >= 2);
+            initial = stableLayout();
             require(initial.getString("window_layout").equals("Macos") && initial.getBoolean("single_instance"), "Saved desktop options loaded");
             require(!initial.getString("frame_layout").equals("Macos") && !initial.getBoolean("instance_listener"), "Saved desktop options do not affect Android");
             phone = initial.getBoolean("phone_layout");
             double availableWidth = initial.getJSONArray("dimensions").getDouble(0) - 40;
-            require(Math.abs(initial.getDouble("layout_width") - (phone ? availableWidth : Math.min(initial.getDouble("column_width"), availableWidth))) < 0.01, "Phone fills available reading width; tablet respects saved column width");
+            double expectedWidth = phone ? availableWidth : Math.min(initial.getDouble("column_width"), availableWidth);
+            require(Math.abs(initial.getDouble("layout_width") - expectedWidth) < 0.01, "Reading width: " + initial.getDouble("layout_width") + "; expected: " + expectedWidth + "; dimensions: " + initial.getJSONArray("dimensions"));
             if (!phone && initial.getJSONArray("dimensions").getDouble(0) > initial.getJSONArray("dimensions").getDouble(1)) {
                 portraitRotation = 1;
                 getUiAutomation().setRotation(portraitRotation);
@@ -237,12 +239,16 @@ public class Smoke extends Instrumentation {
             waitSystem("documentsui");
             sendKeyDownUpSync(KeyEvent.KEYCODE_BACK);
             waitFor(s -> s.optString("backend").length() > 0 && s.optJSONArray("tabs").length() == 2);
+            waitSystem(getTargetContext().getPackageName());
+            stableLayout();
             pass("Android Storage Access Framework picker and cancellation");
             tap("Open");
             clickText("Open folder with images");
             waitSystem("documentsui");
             sendKeyDownUpSync(KeyEvent.KEYCODE_BACK);
             waitFor(s -> s.optString("backend").length() > 0);
+            waitSystem(getTargetContext().getPackageName());
+            stableLayout();
             Uri tree = Uri.parse("content://io.github.szdytom.markview.test.fixtures/tree/root");
             configureFolder(tree, true, false);
             runOnMainSync(() -> ((MarkviewActivity)activity).onActivityResult(12, Activity.RESULT_OK, new Intent().setData(tree)));
@@ -275,6 +281,12 @@ public class Smoke extends Instrumentation {
             waitFor(s -> s.optBoolean("ready") && loadedImages(s) == 1);
             pass("Folder reimport removes deleted documents and images and preserves the old copy on failure");
 
+            // Intercept export previews so third-party viewers cannot steal test input.
+            android.content.IntentFilter previews = new android.content.IntentFilter(Intent.ACTION_VIEW);
+            previews.addDataScheme("content");
+            previews.addDataType("application/pdf");
+            previews.addDataType("image/png");
+            ActivityMonitor preview = addMonitor(previews, null, true);
             File pdf = new File(activity.getFilesDir(), "exports/README.pdf");
             pdf.delete();
             tap("Export");
@@ -291,11 +303,11 @@ public class Smoke extends Instrumentation {
             long deadline = SystemClock.uptimeMillis() + 20000;
             while ((!pdf.isFile() || pdf.length() < 100) && SystemClock.uptimeMillis() < deadline) SystemClock.sleep(100);
             require(pdf.isFile() && pdf.length() > 100, "Native PDF export");
+            waitFor(s -> preview.getHits() == 1 && s.optBoolean("ready"));
             byte[] bytes = Files.readAllBytes(pdf.toPath());
             require(new String(bytes, 0, 5, StandardCharsets.US_ASCII).equals("%PDF-"), "PDF header");
             String pdfSource = new String(bytes, StandardCharsets.ISO_8859_1);
             require(pdfSource.contains("KaTeX_Main") && pdfSource.contains("KaTeX_Math") && pdfSource.contains("KaTeX_Size"), "PDF embeds bundled KaTeX fonts for inline and display mathematics");
-            SystemClock.sleep(800);
             java.lang.reflect.Field field = MarkviewActivity.class.getDeclaredField("exports");
             field.setAccessible(true);
             @SuppressWarnings("unchecked") java.util.Map<String, Uri> outputs = (java.util.Map<String, Uri>)field.get(activity);
@@ -317,6 +329,8 @@ public class Smoke extends Instrumentation {
             deadline = SystemClock.uptimeMillis() + 25000;
             while ((!png.isFile() || png.length() < 100) && SystemClock.uptimeMillis() < deadline) SystemClock.sleep(100);
             require(png.isFile(), "Native PNG export");
+            waitFor(s -> preview.getHits() == 2 && s.optBoolean("ready"));
+            removeMonitor(preview);
             Bitmap exported = android.graphics.BitmapFactory.decodeFile(png.getAbsolutePath());
             require(exported != null && exported.getWidth() > 300 && exported.getHeight() > 400, "PNG export dimensions");
             int copper = 0;
@@ -355,6 +369,14 @@ public class Smoke extends Instrumentation {
             finish(Activity.RESULT_OK, result);
         } catch (Throwable error) {
             android.util.Log.e("MarkviewTest", "Integration failure", error);
+            try {
+                File dir = new File(activity.getFilesDir(), "test-artifacts");
+                dir.mkdirs();
+                Bitmap pixels = getUiAutomation().takeScreenshot();
+                try (FileOutputStream output = new FileOutputStream(new File(dir, "failure.png"))) { pixels.compress(Bitmap.CompressFormat.PNG, 100, output); }
+                pixels.recycle();
+                results.append("STATE: ").append(state()).append('\n');
+            } catch (Exception captureError) { android.util.Log.w("MarkviewTest", "Failure capture", captureError); }
             result.putString("stream", results.toString() + "FAIL: " + error + "\n");
             finish(Activity.RESULT_CANCELED, result);
         }
@@ -452,7 +474,14 @@ public class Smoke extends Instrumentation {
         long deadline = SystemClock.uptimeMillis() + 15000;
         while (SystemClock.uptimeMillis() < deadline) {
             AccessibilityNodeInfo root = getUiAutomation().getRootInActiveWindow();
-            if (root != null && root.getPackageName().toString().contains(name)) return;
+            if (root != null && "android".contentEquals(root.getPackageName())
+                && (!root.findAccessibilityNodeInfosByText("Quickstep isn't responding").isEmpty()
+                    || !root.findAccessibilityNodeInfosByText("Pixel Launcher isn't responding").isEmpty())) {
+                clickText("Close app");
+                continue;
+            }
+            boolean reader = name.equals(getTargetContext().getPackageName());
+            if (root != null && root.getPackageName().toString().contains(name) && activity.hasWindowFocus() == reader) return;
             SystemClock.sleep(100);
         }
         throw new AssertionError("System window: " + name);
@@ -487,7 +516,9 @@ public class Smoke extends Instrumentation {
         while (SystemClock.uptimeMillis() < deadline) {
             SystemClock.sleep(100);
             JSONObject current = state();
-            if (!current.optBoolean("ready") || Math.abs(current.optDouble("height") - previous.optDouble("height")) > 0.1 || Math.abs(current.optDouble("scroll") - previous.optDouble("scroll")) > 0.1) stable = SystemClock.uptimeMillis();
+            if (!current.optBoolean("ready") || Math.abs(current.optDouble("height") - previous.optDouble("height")) > 0.1 || Math.abs(current.optDouble("scroll") - previous.optDouble("scroll")) > 0.1
+                || Math.abs(current.optDouble("layout_width") - previous.optDouble("layout_width")) > 0.01
+                || !current.optJSONArray("dimensions").toString().equals(previous.optJSONArray("dimensions").toString())) stable = SystemClock.uptimeMillis();
             if (SystemClock.uptimeMillis() - stable > 750) return current;
             previous = current;
         }
@@ -521,6 +552,7 @@ public class Smoke extends Instrumentation {
         swipe(x, y, x, y);
     }
     private void swipe(float x1, float y1, float x2, float y2) throws Exception {
+        waitSystem(getTargetContext().getPackageName());
         JSONObject state = state();
         JSONArray dims = state.getJSONArray("dimensions"), insets = state.getJSONArray("insets");
         float scale = (float)dims.getDouble(2);
@@ -551,26 +583,39 @@ public class Smoke extends Instrumentation {
         int top = (int)Math.round(current.getJSONArray("insets").getDouble(1) * scale);
         int bottom = top + (int)Math.round(current.getJSONArray("dimensions").getDouble(1) * scale);
         SystemClock.sleep(250);
-        Bitmap pixels = getUiAutomation().takeScreenshot();
-        require(pixels != null, "System bar screenshot");
-        try {
-            int x = pixels.getWidth() / 8;
-            if (top > 4) {
-                int middle = pixels.getWidth() / 2;
-                require(sameColor(pixels.getPixel(middle, top / 2), pixels.getPixel(middle, top + 2)), "Status bar blends into the toolbar");
-            }
-            if (bottom + 4 < pixels.getHeight()) {
-                require(sameColor(pixels.getPixel(x, bottom - 2), pixels.getPixel(x, (bottom + pixels.getHeight()) / 2)), "Navigation bar blends into the footer");
-            }
-            int background = pixels.getPixel(x, bottom - 2);
-            require((Color.red(background) + Color.green(background) + Color.blue(background) > 384) == light, "System bars follow the selected style");
-        } finally { pixels.recycle(); }
+        // Wait for the clipboard preview and theme transition to finish.
+        long deadline = SystemClock.uptimeMillis() + 10000;
+        while (true) {
+            waitSystem(getTargetContext().getPackageName());
+            Bitmap pixels = getUiAutomation().takeScreenshot();
+            require(pixels != null, "System bar screenshot");
+            try {
+                int x = pixels.getWidth() / 8;
+                if (top > 4) {
+                    int middle = pixels.getWidth() / 2;
+                    require(sameColor(pixels.getPixel(middle, top / 2), pixels.getPixel(middle, top + 2)), "Status bar blends into the toolbar");
+                }
+                if (bottom + 4 < pixels.getHeight()) {
+                    require(sameColor(pixels.getPixel(x, bottom - 2), pixels.getPixel(x, (bottom + pixels.getHeight()) / 2)), "Navigation bar blends into the footer");
+                }
+                int background = pixels.getPixel(x, bottom - 2);
+                require((Color.red(background) + Color.green(background) + Color.blue(background) > 384) == light, "System bars follow the selected style");
+                break;
+            } catch (AssertionError error) {
+                if (SystemClock.uptimeMillis() >= deadline) {
+                    screenshot("system-bars");
+                    throw error;
+                }
+            } finally { pixels.recycle(); }
+            SystemClock.sleep(100);
+        }
         pass((light ? "Light" : "Dark") + " system bars blend into reader chrome");
     }
     private boolean sameColor(int a, int b) {
         return Math.abs(Color.red(a) - Color.red(b)) <= 2 && Math.abs(Color.green(a) - Color.green(b)) <= 2 && Math.abs(Color.blue(a) - Color.blue(b)) <= 2;
     }
     private void screenshot(String name) throws Exception {
+        waitSystem(getTargetContext().getPackageName());
         SystemClock.sleep(250);
         Bitmap screenshot = getUiAutomation().takeScreenshot();
         require(screenshot != null, "Screenshot");
