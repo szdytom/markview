@@ -64,8 +64,8 @@ public class Smoke extends Instrumentation {
                 requireSettingsLayout();
                 tap("SettingsTab(About)");
                 waitFor(s -> s.optString("panel").equals("Settings(About)"));
-                checkLayoutDiagnostics(smallestWidth);
                 screenshot("layout");
+                checkLayoutDiagnostics(smallestWidth);
                 result.putString("stream", results.toString() + "MARKVIEW_ANDROID_INTEGRATION_OK\n");
                 finish(Activity.RESULT_OK, result);
                 return;
@@ -303,10 +303,9 @@ public class Smoke extends Instrumentation {
             android.content.ClipboardManager clipboard = (android.content.ClipboardManager)activity.getSystemService(Activity.CLIPBOARD_SERVICE);
             text[0] = clipboard.getPrimaryClip().getItemAt(0).coerceToText(activity).toString();
         });
-        require(text[0].contains("Smallest width: " + width + " dp\n"), "Diagnostics contain current Android smallest width");
-        require(text[0].contains("sw600dp: " + !phone + " (" + (phone ? "Phone" : "Tablet") + ")\n"), "Diagnostics contain resolved sw600dp mode");
-        require(text[0].contains("phone_layout: " + phone + "\n"), "Diagnostics contain resource value");
-        pass("Copied diagnostics include smallest width, resolved sw600dp and phone_layout");
+        require(text[0].contains("Mobile Mode: " + (phone ? "Phone" : "Tablet") + " (" + width + " dp)\n"), "Diagnostics contain mobile mode and smallest width in one line");
+        require(!text[0].contains("Smallest width:") && !text[0].contains("sw600dp:") && !text[0].contains("phone_layout:"), "Diagnostics omit separate layout rows");
+        pass("Copied diagnostics include a single Mobile Mode line");
     }
     private void requireSettingsLayout() throws Exception {
         JSONObject current = state();
