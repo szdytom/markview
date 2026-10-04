@@ -13,11 +13,15 @@ to distinguish this Android subproject from the Markview desktop app and MVaaC.
 Captured from the API 35 Pixel 6 x86_64 emulator during the integration suite.
 The screens use the shared desktop application UI with narrow-layout adaptation.
 
-| Reader | Shared settings |
+| Reader | Fullscreen settings |
 |---|---|
 | <img src="../docs/screenshots/android/reader.png" alt="Markview Android reader with CJK and an SVG image" width="250"> | <img src="../docs/screenshots/android/settings.png" alt="Markview Android shared settings and tabs" width="250"> |
 | Font manager | Dark styles |
 | <img src="../docs/screenshots/android/fonts.png" alt="Markview Android shared font catalogue" width="250"> | <img src="../docs/screenshots/android/dark-styles.png" alt="Markview Android shared style selection in dark mode" width="250"> |
+
+Wide screens retain the centered settings dialog:
+
+<img src="../docs/screenshots/android/landscape-settings.png" alt="Markview Android centered settings dialog in landscape" width="600">
 
 ## What is shared
 
@@ -34,8 +38,9 @@ The screens use the shared desktop application UI with narrow-layout adaptation.
 The APK contains the root `markview` crate as `libmarkview.so`. The Android
 entry point is `src/app/android.rs`; OS calls live in `src/platform/android.rs`
 and `android/java`. This shares the application above `core`, including its
-state and UI. Narrow settings forms stack labels above controls; the desktop
-keeps its wider layout. System bars and the keyboard are excluded from the
+state and UI. Below 640 logical pixels, settings occupy the entire app content
+area; wider screens retain the centered dialog. Narrow forms stack labels above
+controls. System bars and the keyboard are excluded from the
 reader's content area.
 
 ## Build and install

@@ -159,7 +159,11 @@ fn controls_fit_minimum_window_and_panel_focus_has_no_document_actions() {
 	for (width, height) in [(500.0, 300.0), (820.0, 600.0), (1200.0, 800.0)] {
 		let mut shaper = crate::test_support::shaper();
 		let panel = panel_rect(width, height);
-		assert!(panel.y >= TOP, "panel must not cover the toolbar");
+		if width < 640.0 {
+			assert_eq!(panel.y, 0.0);
+		} else {
+			assert!(panel.y >= TOP, "the dialog leaves the toolbar visible");
+		}
 		for button in controls(
 			&mut shaper,
 			&ReaderSettings::default(),

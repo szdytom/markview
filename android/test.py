@@ -64,7 +64,7 @@ def main():
     (artifacts / "integration.txt").write_text(report)
     print(report)
     assert result.returncode == 0 and "MARKVIEW_ANDROID_INTEGRATION_OK" in report, "Android integration tests failed"
-    for name in ["reader", "settings", "fonts", "font-choices", "dark-styles", "search", "landscape", "resumed", "folder"]:
+    for name in ["reader", "settings", "fonts", "font-choices", "dark-styles", "search", "landscape", "landscape-settings", "resumed", "folder"]:
         with (artifacts / f"{name}.png").open("wb") as output:
             subprocess.run([str(sdk / "platform-tools/adb"), "-s", args.serial, "exec-out", "run-as", "io.github.szdytom.markview", "cat", f"files/test-artifacts/{name}.png"], stdout=output, check=True)
 

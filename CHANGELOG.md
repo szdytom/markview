@@ -47,6 +47,7 @@ at the same level, without `[brackets]`.
 
 ### Fixed
 
+- Make settings fill the app content area on narrow screens, keeping centered dialogs on wider screens.
 - Preserve reading positions inside large images when returning to cached tabs, retaining bounded intrinsic sizes while releasing inactive pixels.
 
 - Reload images when returning to cached tabs, including after closing the active tab.

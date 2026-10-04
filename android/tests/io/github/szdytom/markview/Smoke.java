@@ -54,6 +54,7 @@ public class Smoke extends Instrumentation {
 
             tap("Settings");
             waitFor(s -> s.optString("panel").equals("Settings(Generic)"));
+            requireFullscreenSettings();
             screenshot("settings");
             for (int i = 0; i < 8 && button(state(), "Larger") == null; i++) { swipe(180, 550, 180, 270); swipe(180, 223, 180, 223); }
             double font = state().getDouble("font_size");
@@ -61,6 +62,7 @@ public class Smoke extends Instrumentation {
             waitFor(s -> s.optDouble("font_size") > font);
             tap("SettingsTab(Fonts)");
             waitFor(s -> s.optString("panel").equals("Settings(Fonts)") && s.optInt("font_catalog") > 0);
+            requireFullscreenSettings();
             screenshot("fonts");
             long revision = state().getLong("font_revision");
             tap("Fonts(OpenFolder)");
@@ -82,7 +84,13 @@ public class Smoke extends Instrumentation {
             require(dark >= 0, "Shared stylesheet catalogue");
             if (!styles.optString("selected_styles").contains("dark")) tap("StyleToggle(" + dark + ")");
             waitFor(s -> s.optString("selected_styles").contains("dark"));
+            requireFullscreenSettings();
             screenshot("dark-styles");
+            tap("SettingsTab(About)");
+            waitFor(s -> s.optString("panel").equals("Settings(About)"));
+            requireFullscreenSettings();
+            tap("SettingsTab(Styles)");
+            waitFor(s -> s.optString("panel").equals("Settings(Styles)"));
             sendKeyDownUpSync(KeyEvent.KEYCODE_BACK);
             waitFor(s -> s.optString("panel").equals("Closed"));
             pass("Shared settings, typography, font imports, catalogue and styles");
@@ -99,6 +107,14 @@ public class Smoke extends Instrumentation {
             getUiAutomation().setRotation(1);
             waitFor(s -> s.optJSONArray("dimensions").optDouble(0) > s.optJSONArray("dimensions").optDouble(1));
             screenshot("landscape");
+            tap("Settings");
+            JSONObject wideSettings = waitFor(s -> s.optString("panel").equals("Settings(Generic)"));
+            JSONArray widePanel = wideSettings.getJSONArray("panel_rect");
+            require(widePanel.getDouble(0) > 0 && widePanel.getDouble(1) > 0
+                && widePanel.getDouble(2) <= 600 && widePanel.getDouble(3) <= 620, "Wide settings retain the centered dialog");
+            screenshot("landscape-settings");
+            sendKeyDownUpSync(KeyEvent.KEYCODE_BACK);
+            waitFor(s -> s.optString("panel").equals("Closed"));
             getUiAutomation().setRotation(0);
             waitFor(s -> s.optJSONArray("dimensions").optDouble(0) < s.optJSONArray("dimensions").optDouble(1));
             sendKeyDownUpSync(KeyEvent.KEYCODE_HOME);
@@ -190,6 +206,13 @@ public class Smoke extends Instrumentation {
             finish(Activity.RESULT_CANCELED, result);
         }
     }
+    private void requireFullscreenSettings() throws Exception {
+        JSONObject current = state();
+        JSONArray size = current.getJSONArray("dimensions");
+        JSONArray panel = current.getJSONArray("panel_rect");
+        require(size.getDouble(0) < 640 && panel.getDouble(0) == 0 && panel.getDouble(1) == 0
+            && panel.getDouble(2) == size.getDouble(0) && panel.getDouble(3) == size.getDouble(1), "Settings fill the app content area");
+    }
     private void waitSystem(String name) throws Exception {
         long deadline = SystemClock.uptimeMillis() + 15000;
         while (SystemClock.uptimeMillis() < deadline) {
@@ -267,11 +290,13 @@ public class Smoke extends Instrumentation {
         JSONArray dims = state.getJSONArray("dimensions"), insets = state.getJSONArray("insets");
         float scale = (float)dims.getDouble(2);
         float left = (float)insets.getDouble(0), top = (float)insets.getDouble(1);
+        int[] origin = new int[2];
+        runOnMainSync(() -> activity.getWindow().getDecorView().getLocationOnScreen(origin));
         long down = SystemClock.uptimeMillis();
         for (int i = 0; i <= 10; i++) {
             float t = i / 10f;
             int action = i == 0 ? MotionEvent.ACTION_DOWN : i == 10 ? MotionEvent.ACTION_UP : MotionEvent.ACTION_MOVE;
-            MotionEvent event = MotionEvent.obtain(down, SystemClock.uptimeMillis(), action, (x1 + (x2 - x1)*t + left)*scale, (y1 + (y2 - y1)*t + top)*scale, 0);
+            MotionEvent event = MotionEvent.obtain(down, SystemClock.uptimeMillis(), action, (x1 + (x2 - x1)*t + left)*scale + origin[0], (y1 + (y2 - y1)*t + top)*scale + origin[1], 0);
             event.setSource(InputDevice.SOURCE_TOUCHSCREEN);
             getUiAutomation().injectInputEvent(event, true);
             event.recycle();
