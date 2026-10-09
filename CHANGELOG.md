@@ -33,6 +33,8 @@ at the same level, without `[brackets]`.
 ### Fixed
 
 - Allow two RGBA8 levels of cross-driver rounding in rendering baselines while still rejecting larger pixel differences and mismatched dimensions.
+- Cap a re-raster request with one uniform scale factor rounded to the nearest pixel, so a zoomed diagram keeps its proportions and repeated updates settle on one raster.
+- Redraw a diagram only when its demand outgrows the raster by more than a sixteenth or falls under half of it, so a fixed zoom stops re-rasterizing.
 - Ignore system fonts in SVG rendering baselines and pin CJK font selection in localized search baselines.
 - Pin regional monospace fonts in TC and JP rendering baselines to avoid nondeterministic fallback selection.
 - Use the Noto Sans CJK SC face consistently for Chinese README image captions, credits and charts instead of the collection's Japanese default.

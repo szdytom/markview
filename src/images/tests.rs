@@ -227,6 +227,40 @@ fn mermaid_fences_render_through_the_image_scheduler() {
 	assert!(pixels.rgba.chunks(4).any(|p| p[3] > 0), "blank diagram");
 }
 
+/// A diagram is redrawn only when the demand outgrows its raster or falls
+/// well under half of it. The fit a viewer derives from the raster it is
+/// showing wobbles the demand by a pixel at a fixed zoom, and honouring that
+/// wobble re-rasterizes long after the wheel stops.
+#[test]
+fn a_wobbling_demand_keeps_the_raster() {
+	let (mut images, src) = fence_images("graph TD\n A[Start] --> B[End]");
+	let raster = images.snapshot.decoded()[&src].clone();
+	let mut demand = |size| {
+		images.snapshot.pixels.publish_demand(
+			images.snapshot.generation,
+			HashMap::from([(
+				src.clone(),
+				markview_core::image::ImageDemand {
+					size,
+					needs_pixels: false,
+				},
+			)]),
+		);
+		images.schedule();
+		images.wait();
+		let pixels = images.snapshot.decoded()[&src].clone();
+		(pixels.width, pixels.height)
+	};
+	let (w, h) = (raster.width, raster.height);
+	// A pixel of wobble, or a sixth of growth, keeps the raster.
+	assert_eq!(demand((w + 1, h)), (w, h));
+	assert_eq!(demand((w + w / 16, h)), (w, h));
+	// Growth past a sixteenth, or a demand under half the raster, redraws.
+	assert_eq!(demand((w + w / 16 + 1, h)), (w + w / 16 + 1, h));
+	assert_eq!(demand((w / 4, h / 4)), (w / 4, h / 4));
+	assert_eq!(demand((2 * w, 2 * h)), (2 * w, 2 * h));
+}
+
 #[test]
 fn the_readers_own_faces_measure_a_diagram() {
 	// The provider resolves through the shaper's collection, so a diagram is
