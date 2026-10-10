@@ -32,6 +32,7 @@ at the same level, without `[brackets]`.
 
 ### Fixed
 
+- Ignore system fonts in SVG rendering baselines and pin CJK font selection in localized search baselines.
 - Pin regional monospace fonts in TC and JP rendering baselines to avoid nondeterministic fallback selection.
 - Use the Noto Sans CJK SC face consistently for Chinese README image captions, credits and charts instead of the collection's Japanese default.
 - Allow cached-tab refresh tests to update file timestamps on Windows.
