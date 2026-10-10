@@ -168,6 +168,17 @@ mod tests {
 	fn demand_for(w: f32, h: f32, scale: f32) -> (u32, u32) {
 		let mut renderer = pollster::block_on(Renderer::new(None)).unwrap();
 		let pixels = Arc::new(ImagePixels::default());
+		let layout = Arc::new(BlockLayout {
+			draws: vec![Draw::Image {
+				src: "mermaid:graph".into(),
+				version: 1,
+				rect: Rect { x: 0., y: 0., w, h },
+				title: String::new(),
+			}],
+			height: h,
+			width: w,
+			..Default::default()
+		});
 		let snapshot = LayoutSnapshot {
 			images: ImageSnapshot {
 				entries: HashMap::from([(
@@ -185,17 +196,8 @@ mod tests {
 				id: 0,
 				source: 0..0,
 				y: 0.,
-				layout: Arc::new(BlockLayout {
-					draws: vec![Draw::Image {
-						src: "mermaid:graph".into(),
-						version: 1,
-						rect: Rect { x: 0., y: 0., w, h },
-						title: String::new(),
-					}],
-					height: h,
-					width: w,
-					..Default::default()
-				}),
+				flow: Arc::new(layout.resolve_flow(&Default::default(), false)),
+				layout,
 			}],
 			height: h,
 			width: w,

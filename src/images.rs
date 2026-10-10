@@ -137,16 +137,19 @@ impl Drop for Entry {
 	}
 }
 
-/// Whether a diagram's demand has moved far enough from its last raster to
-/// justify drawing it again: an axis outgrows the raster by more than a
-/// sixteenth, or the demand falls under half of it. The fit a viewer derives
-/// from the raster it is showing wobbles the demand by a pixel at a fixed
-/// zoom, and honouring that wobble re-rasterizes long after the wheel stops.
+/// Redraw when proportions change beyond pixel rounding, an axis grows by
+/// more than a sixteenth, or one shrinks below half. The tolerance stops a
+/// viewer's pixel wobble at a fixed zoom from repeatedly re-rasterizing.
 fn outgrows(target: (u32, u32), raster: (u32, u32)) -> bool {
+	// Allow one pixel of rounding in each requested axis.
+	let skew = (u64::from(target.0) * u64::from(raster.1))
+		.abs_diff(u64::from(target.1) * u64::from(raster.0));
 	let far = |target: u32, raster: u32| {
 		target > raster + raster / 16 || 2 * target < raster
 	};
-	far(target.0, raster.0) || far(target.1, raster.1)
+	skew > u64::from(raster.0) + u64::from(raster.1)
+		|| far(target.0, raster.0)
+		|| far(target.1, raster.1)
 }
 
 /// The faces a rasterizer resolves `source` with. Only a diagram is measured

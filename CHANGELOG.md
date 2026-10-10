@@ -35,6 +35,7 @@ at the same level, without `[brackets]`.
 
 ### Fixed
 
+- Redraw vector images when their requested proportions change, so reloaded SVGs keep the correct aspect ratio in the viewer.
 - Refresh web scroll-sync coordinates after disclosure toggles and align footnote labels and backlinks with visible content.
 - Allow two RGBA8 levels of cross-driver rounding in rendering baselines while still rejecting larger pixel differences and mismatched dimensions.
 - Cap a re-raster request with one uniform scale factor rounded to the nearest pixel, so a zoomed diagram keeps its proportions and repeated updates settle on one raster.

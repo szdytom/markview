@@ -227,10 +227,7 @@ fn mermaid_fences_render_through_the_image_scheduler() {
 	assert!(pixels.rgba.chunks(4).any(|p| p[3] > 0), "blank diagram");
 }
 
-/// A diagram is redrawn only when the demand outgrows its raster or falls
-/// well under half of it. The fit a viewer derives from the raster it is
-/// showing wobbles the demand by a pixel at a fixed zoom, and honouring that
-/// wobble re-rasterizes long after the wheel stops.
+/// Small proportional changes and pixel rounding keep the last raster.
 #[test]
 fn a_wobbling_demand_keeps_the_raster() {
 	let (mut images, src) = fence_images("graph TD\n A[Start] --> B[End]");
@@ -252,11 +249,15 @@ fn a_wobbling_demand_keeps_the_raster() {
 		(pixels.width, pixels.height)
 	};
 	let (w, h) = (raster.width, raster.height);
-	// A pixel of wobble, or a sixth of growth, keeps the raster.
+	// A pixel of wobble, or proportional growth by a sixteenth, keeps the raster.
 	assert_eq!(demand((w + 1, h)), (w, h));
-	assert_eq!(demand((w + w / 16, h)), (w, h));
+	assert_eq!(demand((w + 1, h - 1)), (w, h));
+	assert_eq!(demand((w + w / 16, h + h / 16)), (w, h));
 	// Growth past a sixteenth, or a demand under half the raster, redraws.
-	assert_eq!(demand((w + w / 16 + 1, h)), (w + w / 16 + 1, h));
+	assert_eq!(
+		demand((w + w / 16 + 1, h + h / 16)),
+		(w + w / 16 + 1, h + h / 16)
+	);
 	assert_eq!(demand((w / 4, h / 4)), (w / 4, h / 4));
 	assert_eq!(demand((2 * w, 2 * h)), (2 * w, 2 * h));
 }
@@ -1026,6 +1027,69 @@ fn a_changed_local_image_reloads_without_pixel_demand() {
 	let pixels = images.snapshot.decoded();
 	assert_eq!((pixels["a.png"].width, pixels["a.png"].height), (7, 5));
 	assert_eq!(&pixels["a.png"].rgba[..4], &[9, 8, 7, 255]);
+}
+
+#[test]
+fn a_changed_svg_aspect_updates_the_viewers_raster() {
+	let dir = tempfile::tempdir().unwrap();
+	let path = dir.path().join("note.md");
+	let file = dir.path().join("a.svg");
+	let svg = |w, h| {
+		format!(
+			"<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"{w}\" height=\"{h}\"><rect width=\"{w}\" height=\"{h}\" fill=\"red\"/></svg>"
+		)
+	};
+	fs::write(&file, svg(40, 30)).unwrap();
+	let mut images = images(true);
+	images.prepare(
+		&crate::document::parse("![a](a.svg)"),
+		&path,
+		1,
+		false,
+		&Stylesheet::default(),
+		&crate::test_support::fonts(),
+	);
+	images.wait();
+	let demand = |images: &mut Images, size| {
+		images.snapshot.pixels.publish_demand(
+			images.snapshot.generation,
+			HashMap::from([(
+				"a.svg".into(),
+				markview_core::image::ImageDemand {
+					size,
+					needs_pixels: false,
+				},
+			)]),
+		);
+		images.wait();
+	};
+	demand(&mut images, (40, 30));
+	for size in [(40, 20), (30, 20)] {
+		fs::write(&file, svg(size.0, size.1)).unwrap();
+		let modified = images
+			.entries
+			.values()
+			.next()
+			.unwrap()
+			.stamp
+			.unwrap()
+			.1
+			.unwrap() + Duration::from_secs(1);
+		fs::File::options()
+			.write(true)
+			.open(&file)
+			.unwrap()
+			.set_times(fs::FileTimes::new().set_modified(modified))
+			.unwrap();
+		images.poll_at = Instant::now();
+		assert!(images.poll());
+		images.wait();
+		assert_eq!(images.snapshot.entries["a.svg"].size, Some(size));
+		// The new layout requests the updated intrinsic proportions.
+		demand(&mut images, size);
+		let pixels = images.snapshot.decoded()["a.svg"].clone();
+		assert_eq!((pixels.width, pixels.height), size);
+	}
 }
 
 #[test]
