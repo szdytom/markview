@@ -1,7 +1,7 @@
 //! Versioned image textures, GPU budget and per-frame demand publication.
 use crate::gpu::Gpu;
 use markview_core::{
-	image::{ImageDemand, ImageSnapshot},
+	image::{ImageDemand, ImageSnapshot, raster_size},
 	scene::Rect,
 };
 use std::{collections::HashMap, ops::Range};
@@ -71,11 +71,8 @@ impl ImageTextures {
 		gpu: &Gpu,
 	) -> Option<ImageKey> {
 		let key = (src.clone(), version);
-		let demand = markview_core::image::ImageDemand {
-			size: (
-				(rect.w * scale).ceil().clamp(1., 4000.) as u32,
-				(rect.h * scale).ceil().clamp(1., 4000.) as u32,
-			),
+		let demand = ImageDemand {
+			size: raster_size(rect.w * scale, rect.h * scale),
 			needs_pixels: !self.cache.contains_key(&key),
 		};
 		self.demand
@@ -154,5 +151,92 @@ impl ImageTextures {
 		}
 		self.demand.get_mut(src).unwrap().needs_pixels = false;
 		Some(key)
+	}
+}
+
+#[cfg(test)]
+mod tests {
+	use crate::{Renderer, Theme, View};
+	use markview_core::{
+		image::{ImageInfo, ImagePixels, ImageSnapshot},
+		scene::{BlockLayout, Draw, LayoutSnapshot, PlacedBlock, Rect},
+	};
+	use std::{collections::HashMap, sync::Arc};
+
+	/// A frame with one image drawn in a box `w` by `h` logical pixels large,
+	/// at the device `scale`.
+	fn demand_for(w: f32, h: f32, scale: f32) -> (u32, u32) {
+		let mut renderer = pollster::block_on(Renderer::new(None)).unwrap();
+		let pixels = Arc::new(ImagePixels::default());
+		let snapshot = LayoutSnapshot {
+			images: ImageSnapshot {
+				entries: HashMap::from([(
+					"mermaid:graph".into(),
+					ImageInfo {
+						version: 1,
+						size: Some((800, 600)),
+						error: None,
+					},
+				)]),
+				pixels: pixels.clone(),
+				..Default::default()
+			},
+			blocks: vec![PlacedBlock {
+				id: 0,
+				source: 0..0,
+				y: 0.,
+				layout: Arc::new(BlockLayout {
+					draws: vec![Draw::Image {
+						src: "mermaid:graph".into(),
+						version: 1,
+						rect: Rect { x: 0., y: 0., w, h },
+						title: String::new(),
+					}],
+					height: h,
+					width: w,
+					..Default::default()
+				}),
+			}],
+			height: h,
+			width: w,
+			..Default::default()
+		};
+		let view = View {
+			selection: None,
+			revision: 0,
+			width: (w / 2.) as u32,
+			height: (h / 2.) as u32,
+			scale,
+			scroll: 0.,
+			left: 0.,
+			top: 0.,
+			bottom: 0.,
+			theme: Theme::Light,
+			horizontal: &HashMap::new(),
+			hovered_link: None,
+			hovered_overflow: None,
+			held_overflow: None,
+		};
+		let target = renderer.offscreen(view.width, view.height);
+		let submission = renderer
+			.render(
+				&snapshot,
+				&view,
+				&[],
+				&target.create_view(&Default::default()),
+			)
+			.unwrap();
+		renderer.wait(Some(submission)).unwrap();
+		pixels.demand(0)["mermaid:graph"].size
+	}
+
+	/// A picture zoomed past the cap is re-rastered smaller in both axes, not
+	/// clipped in one and honoured in the other.
+	#[test]
+	#[ignore = "requires a GPU"]
+	fn a_demand_past_the_cap_keeps_the_pictures_proportions() {
+		assert_eq!(demand_for(1500., 1125., 2.), (3000, 2250));
+		assert_eq!(demand_for(3000., 2250., 2.), (4000, 3000));
+		assert_eq!(demand_for(6000., 4500., 2.), (4000, 3000));
 	}
 }

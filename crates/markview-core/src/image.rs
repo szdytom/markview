@@ -132,6 +132,38 @@ impl ImageDemand {
 	}
 }
 
+/// The largest raster one dimension may be asked at. `MAX_RASTER_PIXELS`
+/// bounds the pair, so a request is capped in both axes at once.
+const MAX_RASTER_DIMENSION: u32 = 4000;
+
+/// The most pixels one raster may hold.
+const MAX_RASTER_PIXELS: u64 = 16_000_000;
+
+/// The raster size to ask for a picture displayed `w` by `h` pixels large.
+///
+/// One uniform factor caps the request at the tightest of the per-dimension
+/// limit and the pixel budget, so a demand past the cap comes back smaller in
+/// both axes rather than honoured in one and refused in the other. Capping each
+/// axis on its own squares a wide picture off, and a viewer that then fits that
+/// raster shows the squash — and feeds the squared rect back as the next
+/// demand, which is what locks the distortion in.
+///
+/// The capped axes land on the nearest pixel, not the one below: the raster
+/// that arrives feeds the viewer's fit and through it the next demand, so
+/// shaving a sub-pixel per round trip re-rasterizes forever and walks the
+/// proportions away from the picture's.
+pub fn raster_size(w: f32, h: f32) -> (u32, u32) {
+	let (w, h) = (w.max(1.), h.max(1.));
+	let factor = (MAX_RASTER_DIMENSION as f32 / w)
+		.min(MAX_RASTER_DIMENSION as f32 / h)
+		.min((MAX_RASTER_PIXELS as f32 / (w * h)).sqrt())
+		.min(1.);
+	(
+		(w * factor).round().max(1.) as u32,
+		(h * factor).round().max(1.) as u32,
+	)
+}
+
 /// Immutable view of every image in one document revision.
 #[derive(Clone, Debug, Default)]
 pub struct ImageSnapshot {
@@ -227,5 +259,51 @@ mod tests {
 		pixels.publish_demand(2, frame((4, 2)));
 		assert_eq!(pixels.take_demand(2).unwrap()["same"].size, (4, 2));
 		assert!(pixels.take_demand(2).is_none());
+	}
+
+	#[test]
+	fn a_request_under_the_cap_is_untouched() {
+		assert_eq!(raster_size(100., 60.), (100, 60));
+		assert_eq!(raster_size(4000., 3000.), (4000, 3000));
+	}
+
+	#[test]
+	fn a_request_past_the_cap_keeps_its_proportions() {
+		assert_eq!(raster_size(6000., 4500.), (4000, 3000));
+		assert_eq!(raster_size(12_000., 9000.), (4000, 3000));
+	}
+
+	#[test]
+	fn the_capped_axes_land_on_the_nearest_pixel() {
+		// `4501` scaled by two thirds is `3000.67`: the nearest pixel is
+		// `3001`, and the one below would shave the raster's proportions a
+		// little further every time the viewer feeds it back.
+		assert_eq!(raster_size(6000., 4501.), (4000, 3001));
+		assert_eq!(raster_size(6000., 4498.), (4000, 2999));
+	}
+
+	#[test]
+	fn the_cap_bounds_both_axes_and_the_total_at_once() {
+		for (w, h) in [
+			(10_000., 10_000.),
+			(8192., 1024.),
+			(20_000., 100.),
+			(1., 1.),
+			(0., 0.),
+		] {
+			let (raster_w, raster_h) = raster_size(w, h);
+			assert!(
+				raster_w <= MAX_RASTER_DIMENSION
+					&& raster_h <= MAX_RASTER_DIMENSION,
+				"{raster_w}x{raster_h} from {w}x{h}"
+			);
+			assert!(
+				u64::from(raster_w) * u64::from(raster_h) <= MAX_RASTER_PIXELS,
+				"{raster_w}x{raster_h} from {w}x{h}"
+			);
+			let asked = w.max(1.) / h.max(1.);
+			let capped = raster_w as f32 / raster_h as f32;
+			assert!((asked - capped).abs() < 0.01, "{capped} from {asked}");
+		}
 	}
 }
