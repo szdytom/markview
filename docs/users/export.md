@@ -63,3 +63,30 @@ markview pdf article.md -o article.pdf --document-trust untrusted --allow-networ
 ```
 
 Both grant options repeat. A network grant names an origin (scheme, host, effective port) and a class: `private`, `loopback`, or `link-local`. It does not authorize other origins or address classes. `--offline` opens no network connections and grants no additional cache access. Grants apply to the initial document content; a changed source in `--watch` revokes them, so an Untrusted job needing them must be restarted with explicit grants.
+## Exporting an editor buffer
+
+`markview export` accepts Markdown on stdin, so an editor can export unsaved
+changes without creating a Markdown file:
+
+```sh
+markview export --stdin --format pdf --output snapshot.pdf --base-dir . < document.md
+markview export --stdin --format png --output whole.png --scale 2 < document.md
+```
+
+Buffers default to Untrusted. The host must preserve the document's trust using
+`--document-trust trusted|untrusted` and may supply the same `--allow-local-image`
+and `--allow-network` grants described above. A resource directory does not grant
+trust.
+
+`--base-dir` resolves relative images (default: the current directory).
+`--style` selects a bundled PDF template; `--style-file` selects a custom MVSS
+file targeting `pdf`. Both output formats use its page geometry. `--font-size`
+is in logical pixels (default: 16). Repeat `--fonts` for font directories or
+`--font-file` for explicit font files. Explicit files replace system discovery.
+
+Stdout contains one JSON object per line: `progress` events with a `phase` and
+`fraction`, followed by a `done` event with PDF page/byte counts or PNG dimensions.
+Errors go to stderr and return a nonzero exit status. A host can create the
+path supplied by `--cancel-file` to request cancellation at export checkpoints.
+Hosts that require cancellation to preserve the destination should export to
+a temporary output, wait for successful completion, and then replace it.

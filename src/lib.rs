@@ -6,6 +6,7 @@ mod benchmark;
 mod cli;
 mod diagnostics;
 mod export;
+mod export_cli;
 mod file;
 mod fonts;
 mod images;

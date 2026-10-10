@@ -27,6 +27,9 @@ pub(super) fn run() -> Result<()> {
 		return Ok(());
 	};
 	crate::logging::init(&args.mode);
+	if let Some(command) = &args.export_command {
+		return command.run(args.offline);
+	}
 	if let Some(command) = &args.fonts {
 		return super::fonts_command::run(command, args.offline);
 	}

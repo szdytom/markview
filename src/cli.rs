@@ -22,6 +22,7 @@ pub(crate) enum Mode {
 	Latency,
 	Smoke,
 	Pdf,
+	Export,
 	StylesheetList,
 	Fonts,
 }
@@ -89,6 +90,7 @@ pub(crate) struct LaunchOptions {
 	pub(crate) validate: Option<PathBuf>,
 	pub(crate) list_stylesheets: bool,
 	pub(crate) fonts: Option<FontsCommand>,
+	pub(crate) export_command: Option<crate::export_cli::Command>,
 	pub(crate) iterations: usize,
 	pub(crate) options: LayoutOptions,
 	pub(crate) overrides: Vec<Setting>,
@@ -123,6 +125,7 @@ impl Default for LaunchOptions {
 			validate: None,
 			list_stylesheets: false,
 			fonts: None,
+			export_command: None,
 			iterations: 100,
 			options: LayoutOptions::default(),
 			overrides: Vec::new(),
@@ -218,7 +221,7 @@ struct Reading {
 #[derive(Subcommand)]
 // The parsed command line is built once and dropped; a variant is never held
 // in a collection, so the size difference between them costs nothing.
-#[expect(
+#[allow(
 	clippy::large_enum_variant,
 	reason = "one parsed command, then dropped"
 )]
@@ -234,6 +237,8 @@ enum Command {
 	Render(RenderArgs),
 	/// Export one document to a PDF.
 	Pdf(PdfArgs),
+	/// Export an in-memory document to PDF or PNG.
+	Export(crate::export_cli::Command),
 	/// Measure layout throughput.
 	Bench(BenchArgs),
 	/// Measure first-frame latency.
@@ -538,6 +543,11 @@ fn parse_arguments(
 
 fn apply_command(out: &mut LaunchOptions, command: Command) -> Result<()> {
 	match command {
+		Command::Export(command) => {
+			out.mode = Mode::Export;
+			out.export_command = Some(command);
+			Ok(())
+		}
 		Command::Web { url, reading } => {
 			out.path = None;
 			out.web_url = Some(url);
@@ -822,7 +832,9 @@ fn template(flag: &str, value: &str) -> Result<()> {
 	Ok(())
 }
 
-fn network_grant(value: &str) -> Result<crate::security::Resource, String> {
+pub(crate) fn network_grant(
+	value: &str,
+) -> Result<crate::security::Resource, String> {
 	use crate::security::{AddressClass, Resource};
 	let (class, origin) = value.split_once('=').ok_or("Use CLASS=ORIGIN")?;
 	let class = match class {
@@ -865,7 +877,10 @@ fn finish(mut out: LaunchOptions) -> Result<Option<LaunchOptions>> {
 	if out.mode == Mode::Pdf && !out.overrides.contains(&Setting::FontSize) {
 		out.options.font_size = ExportSettings::DEFAULT_FONT_SIZE_PX;
 	}
-	if matches!(out.mode, Mode::Window | Mode::StylesheetList | Mode::Fonts) {
+	if matches!(
+		out.mode,
+		Mode::Window | Mode::StylesheetList | Mode::Fonts | Mode::Export
+	) {
 		return Ok(Some(out));
 	}
 	if out.path.is_none() {
