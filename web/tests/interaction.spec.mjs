@@ -60,7 +60,7 @@ test("hover follows scrolling and pointer cancellation never activates", async (
   expect(imageResult.cursor).not.toBe("pointer");
 });
 
-test("details reflow supersedes a layout and anchors expand hidden content", async ({ page }) => {
+test("details toggles preserve a pending layout and anchors expand hidden content", async ({ page }) => {
   await ready(page);
   const source = "<details>\n<summary>Open section</summary>\n\n## Hidden\n\nHidden body.\n\n</details>\n\n" + "Reading text.\n\n".repeat(100);
   await page.evaluate(source => window.mv.setMarkdown(source),source);
@@ -68,15 +68,25 @@ test("details reflow supersedes a layout and anchors expand hidden content", asy
   const result = await page.evaluate(({point,source}) => {
     const initial = window.mv.contentHeight();
     const update = window.mv.beginLayout(source);
+    const revision = window.mv.stats().revision;
     window.mv.pointerDown(point.x,point.y);
     const action = window.mv.pointerUp(point.x,point.y);
     const stale = update.stale;
-    while (window.mv.stepPending(1000)) {}
-    return {initial,expanded:window.mv.contentHeight(),stale,action};
+    const expanded = window.mv.contentHeight();
+    const toggled = window.mv.stats();
+    update.finish();
+    return {
+      initial, expanded, completed: window.mv.contentHeight(), stale, action,
+      pending: toggled.pending, revisionChanged: toggled.revision > revision, done: update.done,
+    };
   },{point,source});
-  expect(result.action.kind).toBe("document");
-  expect(result.stale).toBe(true);
+  expect(result.action).toMatchObject({ kind: "document", reflowed: false });
+  expect(result.stale).toBe(false);
+  expect(result.pending).toBe(true);
+  expect(result.revisionChanged).toBe(true);
+  expect(result.done).toBe(true);
   expect(result.expanded).toBeGreaterThan(result.initial);
+  expect(result.completed).toBe(result.expanded);
 
   await page.evaluate(() => window.mv.setMarkdown("[Jump](#hidd%65n)\n\n" + "Before heading.\n\n".repeat(30) + "<details>\n<summary>Hidden section</summary>\n\n## Hidden\n\nBody.\n\n</details>\n\n" + "After heading.\n\n".repeat(30)));
   const anchor = await target(page);

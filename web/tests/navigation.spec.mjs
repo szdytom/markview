@@ -107,7 +107,7 @@ test("text-free collapsed container anchors exclude hidden lines across expansio
       .toEqual([source.split(/[\r\n]/)[0], "# After"]);
     const hidden = source.indexOf("hidden");
     for (const expanded of [true, false]) {
-      const action = await page.evaluate(() => {
+      const result = await page.evaluate(() => {
         const mv = window.viewer.reader.markview;
         let point;
         for (let y = 1; y < 100 && !point; y += 2)
@@ -120,10 +120,15 @@ test("text-free collapsed container anchors exclude hidden lines across expansio
           }
         if (!point) throw new Error("Missing disclosure header");
         mv.cancelPointer();
+        const before = mv.stats();
         mv.pointerDown(point.x, point.y);
-        return mv.pointerUp(point.x, point.y);
+        const action = mv.pointerUp(point.x, point.y);
+        return { action, before, after: mv.stats() };
       });
-      expect(action).toMatchObject({ kind: "document", reflowed: true });
+      expect(result.action).toMatchObject({ kind: "document", reflowed: false });
+      expect(result.after.pending).toBe(false);
+      expect(result.after.documentVersion).toBe(result.before.documentVersion);
+      expect(result.after.revision).toBeGreaterThan(result.before.revision);
       await settled(page);
       const batch = await page.evaluate(previous => window.viewer.scrollAnchors(previous), closed);
       expect(batch.fromBlock).toBe(0);
