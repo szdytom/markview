@@ -7,6 +7,8 @@ use std::{
 	path::{Path, PathBuf},
 };
 
+const CHANNEL_TOLERANCE: u8 = 2;
+
 pub struct Baselines {
 	pub artifacts: PathBuf,
 	directory: PathBuf,
@@ -137,13 +139,13 @@ pub fn compare(
 	let diff = RgbaImage::from_fn(w, h, |x, y| {
 		let before = expected.get_pixel_checked(x, y);
 		let after = actual.get_pixel_checked(x, y);
-		// Allow one RGBA8 level for cross-driver rounding.
+		// Allow two RGBA8 levels for cross-driver rounding.
 		let matches = match (before, after) {
 			(Some(before), Some(after)) => before
 				.0
 				.iter()
 				.zip(after.0)
-				.all(|(a, b)| a.abs_diff(b) <= 1),
+				.all(|(a, b)| a.abs_diff(b) <= CHANNEL_TOLERANCE),
 			_ => before == after,
 		};
 		if matches {

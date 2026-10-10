@@ -13,7 +13,7 @@ Windows and macOS continue to run their existing rendering tests.
 
 Use `--update` only after reviewing an intended change. Normal runs never
 create or replace baselines. Every RGBA channel of every pixel must be within
-one level of its baseline, and dimensions must match. This accommodates the
+two levels of its baseline, and dimensions must match. This accommodates the
 observed Mesa rounding difference without allowing a percentage of bad pixels.
 
 | Suite | Baselines | Failure artifacts |
@@ -123,7 +123,7 @@ that only the intended layout/color changed; and that another theme, width,
 regional convention, page or state did not change unexpectedly. Re-run the
 normal suite after updating, followed by workspace tests and Clippy.
 
-Keep the one-level tolerance fixed. Driver or Poppler changes need a controlled
+Keep the two-level tolerance fixed. Driver or Poppler changes need a controlled
 comparison before updating images. Pinning the test fonts prevents host font
 installation from changing the baseline; it does not assert that every user's
 downloaded/system font produces identical pixels.

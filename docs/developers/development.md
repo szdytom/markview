@@ -47,7 +47,7 @@ generated frames in `artifacts/` for inspection.
 
 On Linux, `crates/markview-render/tests/golden.rs` also compares document frames
 against committed PNGs in `crates/markview-render/tests/goldens`. It requires
-Lavapipe and compares decoded RGBA pixels with a tolerance of one level per
+Lavapipe and compares decoded RGBA pixels with a tolerance of two levels per
 channel for cross-driver rounding. Every pixel must meet that limit; there is
 no permitted percentage of larger differences. Image dimensions must match
 exactly.

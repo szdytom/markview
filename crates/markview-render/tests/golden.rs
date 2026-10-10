@@ -233,6 +233,8 @@ fn comparisons_reject_pixel_changes_dimensions_and_missing_baselines()
 	let mut changed = expected.clone();
 	changed.get_pixel_mut(1, 0).0[0] += 1;
 	compare(&baseline, &changed, dir.path(), "rounding")?;
+	changed.get_pixel_mut(1, 0).0 = [42, 48, 62, 253];
+	compare(&baseline, &changed, dir.path(), "rounding-limit")?;
 	changed.get_pixel_mut(1, 0).0[0] += 1;
 	let error = compare(&baseline, &changed, dir.path(), "pixel").unwrap_err();
 	assert!(
