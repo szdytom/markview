@@ -42,7 +42,12 @@ impl Harness {
 		app.readers.open(path, Instant::now());
 		let document = Arc::new(markview_core::document::parse(source));
 		let options = app.options();
-		let snapshot = LayoutEngine::new().layout(&document, &options);
+		let mut engine = LayoutEngine::new();
+		let mut snapshot = engine.layout(&document, &options);
+		// The harness has no frame loop to accept later syntax colors.
+		if engine.wait_highlights() {
+			snapshot = engine.layout(&document, &options);
+		}
 		let session = &mut app.readers.session;
 		session.document = Some(document.clone());
 		session.search.document = Some(document);
@@ -596,6 +601,12 @@ fn search_states_match_rendering_baselines() -> anyhow::Result<()> {
 		h.app.ui.stylesheet = stylesheet.clone();
 		h.query("needle");
 		h.app.navigate_search(false);
+		assert!(
+			h.app.readers.session.snapshot.blocks[2].draws().any(
+				|(_, draw, _)| matches!(draw, Draw::Glyph(glyph) if matches!(glyph.paint, Paint::Color(_)))
+			),
+			"Search snapshots must include settled syntax highlighting"
+		);
 		let selection = h
 			.app
 			.readers

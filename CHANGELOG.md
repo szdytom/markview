@@ -35,6 +35,7 @@ at the same level, without `[brackets]`.
 
 ### Fixed
 
+- Wait for syntax highlighting before capturing search rendering baselines, avoiding timing-dependent code colors.
 - Update web disclosure regressions to verify retained layout tasks, immediate flow changes and refreshed source anchors.
 - Redraw vector images when their requested proportions change, so reloaded SVGs keep the correct aspect ratio in the viewer.
 - Refresh web scroll-sync coordinates after disclosure toggles and align footnote labels and backlinks with visible content.
