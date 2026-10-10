@@ -38,23 +38,17 @@ impl Position {
 				.filter(|b| b.id == block.id)
 				.count();
 			position.local = scroll - block.y;
-			if let Some((node, cluster)) = block
-				.layout
-				.text
-				.iter()
-				.enumerate()
-				.flat_map(|(node, text)| {
-					text.clusters.iter().map(move |c| (node, c))
-				})
-				.filter(|(_, c)| c.rect.y + c.rect.h >= position.local)
-				.min_by(|(_, a), (_, b)| {
-					(a.rect.y - position.local)
+			if let Some((node, cluster, rect)) = block
+				.clusters()
+				.filter(|(_, _, rect)| rect.y + rect.h >= position.local)
+				.min_by(|(_, _, a), (_, _, b)| {
+					(a.y - position.local)
 						.abs()
-						.total_cmp(&(b.rect.y - position.local).abs())
+						.total_cmp(&(b.y - position.local).abs())
 				}) {
 				position.node = Some(node);
 				position.byte = cluster.range.start;
-				position.local -= cluster.rect.y;
+				position.local -= rect.y;
 			}
 		}
 		position
@@ -67,15 +61,17 @@ impl Position {
 			.nth(self.occurrence)?;
 		let y = match self.node {
 			Some(node) => {
-				block
+				let c = block
 					.layout
 					.text
 					.get(node)?
 					.clusters
 					.iter()
-					.find(|c| c.range.contains(&self.byte))?
-					.rect
-					.y
+					.find(|c| c.range.contains(&self.byte))?;
+				block
+					.rect(c.command, c.rect)
+					.map(|r| r.y)
+					.or_else(|| block.visible_ancestor_y(c.command))?
 			}
 			None => 0.0,
 		};

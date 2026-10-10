@@ -198,8 +198,7 @@ fn accept(
 	let mut layout = LayoutEngine::new().layout(&doc, options);
 	if !complete {
 		layout.blocks.truncate(2);
-		layout.height =
-			layout.blocks.last().map_or(0.0, |b| b.y + b.layout.height);
+		layout.height = layout.blocks.last().map_or(0.0, |b| b.y + b.height());
 	}
 	session.accept(
 		ReaderSnapshot {

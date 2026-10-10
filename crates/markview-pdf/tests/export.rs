@@ -473,7 +473,7 @@ fn a_page_break_never_repeats_the_lines_that_moved_on() {
 			..Default::default()
 		},
 	);
-	let paragraph = probe.blocks[0].layout.height;
+	let paragraph = probe.blocks[0].height();
 	// A page that holds a bit more than half the paragraph.
 	let short = PageGeometry {
 		height_pt: geometry.margin_pt[0]

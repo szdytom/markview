@@ -23,19 +23,23 @@ at the same level, without `[brackets]`.
 
 ### Added
 
+- Cover nested disclosures in quotes and lists, styled container edges, selection and horizontal scrolling with rendering baselines.
 - Compare document rendering with committed PNG baselines on Lavapipe, with explicit updates and CI difference images.
 - Expand rendering baselines across Markdown combinations, all bundled themes, MVSS drawing properties, PDF pages, diagrams, UI states and Chinese/English typography.
 
 ### Changed
 
+- Retain node-local geometry for all disclosure bodies and recompute visible flow on toggles without restarting layout in native or web readers.
 - Run offscreen rendering tests by default, with Lavapipe in Linux CI and rendered frames uploaded for inspection.
 
 ### Fixed
 
+- Refresh web scroll-sync coordinates after disclosure toggles and align footnote labels and backlinks with visible content.
 - Allow two RGBA8 levels of cross-driver rounding in rendering baselines while still rejecting larger pixel differences and mismatched dimensions.
 - Cap a re-raster request with one uniform scale factor rounded to the nearest pixel, so a zoomed diagram keeps its proportions and repeated updates settle on one raster.
 - Redraw a diagram only when its demand outgrows the raster by more than a sixteenth or falls under half of it, so a fixed zoom stops re-rasterizing.
 - Ignore system fonts in SVG rendering baselines and pin CJK font selection in localized search baselines.
+- Include collapsed disclosure bodies in document word and character counts while keeping selection and hit testing limited to visible content.
 - Pin regional monospace fonts in TC and JP rendering baselines to avoid nondeterministic fallback selection.
 - Use the Noto Sans CJK SC face consistently for Chinese README image captions, credits and charts instead of the collection's Japanese default.
 - Allow cached-tab refresh tests to update file timestamps on Windows.

@@ -47,7 +47,7 @@ impl Renderer {
 		}
 		let start = snapshot
 			.blocks
-			.partition_point(|b| b.y + b.layout.height < view.scroll);
+			.partition_point(|b| b.y + b.height() < view.scroll);
 		// Selection sits above block and code backgrounds but below glyphs, so a
 		// highlight never tints the text it covers.
 		let mut backgrounds: Vec<(&Draw, f32, f32, Rect, bool)> = Vec::new();
@@ -58,7 +58,7 @@ impl Renderer {
 			if dy > clip.y + clip.h {
 				break;
 			}
-			for (i, draw) in block.layout.draws.iter().enumerate() {
+			for (i, draw, position) in block.draws() {
 				let hovered = view.hovered_link.is_some_and(|url| {
 					block.layout.links.iter().enumerate().any(|(n, link)| {
 						&*link.url == url
@@ -72,7 +72,7 @@ impl Renderer {
 					})
 				});
 				let (offset, local_clip) =
-					block.layout.command_view(i, index, view.horizontal);
+					block.command_view(i, index, view.horizontal);
 				let clip = if let Some(rect) = local_clip {
 					let rect = Rect {
 						x: view.left + rect.x,
@@ -86,7 +86,8 @@ impl Renderer {
 				} else {
 					clip
 				};
-				let dx = view.left - offset;
+				let dx = view.left + position[0] - offset;
+				let dy = dy + position[1];
 				match draw {
 					// Strike-through and similar marks stay above the glyphs.
 					Draw::Rect(
@@ -112,11 +113,14 @@ impl Renderer {
 				}
 			}
 			for (oi, o) in block.layout.overflow.iter().enumerate() {
+				let Some(rect) = block.overflow_rect(oi) else {
+					continue;
+				};
 				let offset =
 					view.horizontal.get(&(index, oi)).copied().unwrap_or(0.0);
 				let band = Rect {
-					x: view.left + o.rect.x,
-					y: dy + o.rect.y + o.rect.h,
+					x: view.left + rect.x,
+					y: dy + rect.y + rect.h,
 					w: o.rect.w,
 					h: metrics.overflow_band(o.gutter),
 				};

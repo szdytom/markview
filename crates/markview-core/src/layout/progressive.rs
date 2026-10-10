@@ -62,6 +62,16 @@ struct Pass {
 }
 
 impl ProgressiveLayout {
+	/// Changes presentation while continuing the same geometry pass.
+	pub fn set_disclosures(
+		&mut self,
+		open: Arc<std::collections::BTreeMap<u64, bool>>,
+		force_open: bool,
+	) {
+		self.result.set_disclosures(&open, force_open);
+		self.pass.options.details_open = open;
+		self.pass.options.force_open = force_open;
+	}
 	/// The blocks laid out so far, as a snapshot a renderer can draw.
 	pub fn snapshot(&self) -> &LayoutSnapshot {
 		&self.result
@@ -189,6 +199,10 @@ impl LayoutEngine {
 			id: self.pass,
 		};
 		let mut result = LayoutSnapshot {
+			presentation_key: crate::document::fingerprint(&(
+				&options.details_open,
+				options.force_open,
+			)),
 			images: images.clone(),
 			width: options.width,
 			height: opening,
@@ -227,6 +241,16 @@ impl LayoutEngine {
 		document: &Document,
 		budget: Duration,
 	) -> bool {
+		self.advance_cancellable(layout, document, budget, &|| false)
+	}
+
+	pub(super) fn advance_cancellable(
+		&mut self,
+		layout: &mut ProgressiveLayout,
+		document: &Document,
+		budget: Duration,
+		cancelled: &dyn Fn() -> bool,
+	) -> bool {
 		// A pass is a position in one document's block list, so advancing it
 		// with another document would read past the end or silently lay out a
 		// mixture of the two. The source `Arc` is the document's identity, and
@@ -255,7 +279,10 @@ impl LayoutEngine {
 		}
 		let started = Instant::now();
 		loop {
-			self.block(layout, document);
+			self.block(layout, document, cancelled);
+			if cancelled() {
+				return false;
+			}
 			if layout.is_complete() {
 				return true;
 			}
@@ -266,7 +293,12 @@ impl LayoutEngine {
 	}
 
 	/// Lays out the block at the pass's cursor.
-	fn block(&mut self, layout: &mut ProgressiveLayout, document: &Document) {
+	fn block(
+		&mut self,
+		layout: &mut ProgressiveLayout,
+		document: &Document,
+		cancelled: &dyn Fn() -> bool,
+	) {
 		{
 			let index = layout.index;
 			let child_index = layout.visible_index;
@@ -325,6 +357,7 @@ impl LayoutEngine {
 							pass.appearance.clone()
 						};
 						BlockContext {
+							cancelled,
 							search_fields: crate::search::layout_fields(block),
 							shaper: &mut self.shaper,
 							math: &mut self.math,
@@ -341,9 +374,13 @@ impl LayoutEngine {
 							&pass.options,
 							&mut out,
 						);
+						out.seal_scene();
 						Arc::new(out)
 					},
 				);
+				if cancelled() {
+					return;
+				}
 				self.cache.insert(
 					key,
 					CacheEntry {
@@ -354,13 +391,18 @@ impl LayoutEngine {
 				);
 				measured
 			};
+			let flow = Arc::new(geometry.resolve_flow(
+				&pass.options.details_open,
+				pass.options.force_open,
+			));
+			result.height += flow.height;
 			result.blocks.push(PlacedBlock {
 				id: block.id,
 				source: block.source.clone(),
-				y: result.height,
+				y: result.height - flow.height,
+				flow,
 				layout: geometry.clone(),
 			});
-			result.height += geometry.height;
 			result.degraded += geometry.degraded;
 			result.math_errors += geometry.math_errors;
 			// The body box is the document's background, so it must cover every

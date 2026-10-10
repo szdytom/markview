@@ -183,9 +183,10 @@ impl Renderer {
 		}
 		let mut document = Document::new();
 		document.set_metadata(information(&input.metadata));
+		let snapshot = input.snapshot.flattened();
 		let mut painter = Painter {
 			stylesheet: input.stylesheet,
-			snapshot: input.snapshot,
+			snapshot: &snapshot,
 			images: Images::new(input.images, input.prepared_images),
 			image_error: None,
 			geometry: input.geometry,

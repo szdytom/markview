@@ -28,42 +28,42 @@ pub fn anchored_scroll(
 			.filter(|b| b.id == anchor.id)
 			.nth(occurrence)
 		{
-			if old.images.entries != new.images.entries {
+			if old.images.entries != new.images.entries
+				|| old.presentation_key != new.presentation_key
+			{
 				let local_y = scroll - anchor.y;
 				let cluster = anchor
-					.layout
-					.text
-					.iter()
-					.enumerate()
-					.flat_map(|(ni, n)| n.clusters.iter().map(move |c| (ni, c)))
-					.filter(|(_, c)| c.rect.y + c.rect.h >= local_y)
-					.min_by(|(_, a), (_, b)| {
-						let a_image = matches!(
-							anchor.layout.draws[a.command],
-							Draw::Image { .. }
-						);
-						let b_image = matches!(
-							anchor.layout.draws[b.command],
-							Draw::Image { .. }
-						);
-						a_image.cmp(&b_image).then_with(|| {
-							(a.rect.y - local_y)
+					.clusters()
+					.filter(|(_, _, rect)| rect.y + rect.h >= local_y)
+					.min_by(|(_, a, ar), (_, c, cr)| {
+						let image = |c: &crate::text::TextCluster| {
+							matches!(
+								anchor.layout.draws[c.command],
+								Draw::Image { .. }
+							)
+						};
+						image(a).cmp(&image(c)).then_with(|| {
+							(ar.y - local_y)
 								.abs()
-								.total_cmp(&(b.rect.y - local_y).abs())
+								.total_cmp(&(cr.y - local_y).abs())
 						})
 					});
-				if let Some((ni, c)) = cluster
+				if let Some((ni, c, rect)) = cluster
 					&& let Some(next) = b.layout.text.get(ni).and_then(|n| {
 						n.clusters
 							.iter()
 							.find(|n| n.range.contains(&c.range.start))
 					}) {
-					return (b.y + next.rect.y + (local_y - c.rect.y))
-						.clamp(0., max);
+					if let Some(next_rect) = b.rect(next.command, next.rect) {
+						return (b.y + next_rect.y + local_y - rect.y)
+							.clamp(0., max);
+					}
+					if let Some(y) = b.visible_ancestor_y(next.command) {
+						return (b.y + y).clamp(0., max);
+					}
 				}
 			}
-			return (b.y + (scroll - anchor.y).min(b.layout.height))
-				.clamp(0.0, max);
+			return (b.y + (scroll - anchor.y).min(b.height())).clamp(0.0, max);
 		}
 		// Index each identity's first occurrence once for all fallback neighbors.
 		let mut first = HashMap::new();

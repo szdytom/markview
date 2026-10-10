@@ -89,16 +89,11 @@ impl<P: super::SendEvent> App<P> {
 		{
 			return;
 		}
-		// A heading or footnote inside a collapsed `<details>` is never laid
-		// out, so the jump first expands the disclosures framing it and lets
-		// the next layout resolve the anchor, exactly as clicking each summary
-		// would. Opening them changes the layout options, so the reflow is
-		// requested here and the anchor stays queued until it arrives.
+		// Reveal the retained target before resolving its visible position.
 		if let Some(anchor) = self.readers.session.pending_anchor.clone()
 			&& self.readers.session.open_enclosing_details(&anchor)
 		{
-			self.request(false);
-			return;
+			self.present_disclosures();
 		}
 		let before = self.readers.session.scrolling.offset;
 		let Some(result) = self.readers.session.resolve_anchor(self.viewport())

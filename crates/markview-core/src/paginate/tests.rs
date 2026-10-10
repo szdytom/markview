@@ -16,7 +16,7 @@ fn explicit_widows_and_keep_together_survive_nested_layout() {
 		..Default::default()
 	};
 	let snapshot = LayoutEngine::new().layout(&document, &options);
-	let quote_height = snapshot.blocks[1].layout.height;
+	let quote_height = snapshot.blocks[1].height();
 	let page = geometry(quote_height + 10.0);
 	let pagination = paginate(&document, &snapshot, &page);
 	assert_eq!(items_of(&pagination, 1).len(), 1);
@@ -419,11 +419,7 @@ fn a_wrapped_heading_and_its_body_fit_without_an_extra_break() {
 	);
 	let heading = &snapshot.blocks[0].layout;
 	assert!(bands(heading).len() > 1);
-	let height: f32 = snapshot
-		.blocks
-		.iter()
-		.map(|block| block.layout.height)
-		.sum();
+	let height: f32 = snapshot.blocks.iter().map(|block| block.height()).sum();
 	let geometry = geometry(height + 1.0);
 	let pagination = paginate(&document, &snapshot, &geometry);
 	assert_eq!(pagination.pages.len(), 1, "{pagination:?}");

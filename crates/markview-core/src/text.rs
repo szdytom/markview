@@ -300,6 +300,20 @@ pub struct TextCluster {
 mod geometry;
 mod selection;
 impl LayoutSnapshot {
+	/// Complete retained reading text, including collapsed disclosure bodies.
+	pub fn full_reading_text(&self) -> String {
+		let mut result = String::new();
+		for node in self.blocks.iter().flat_map(|b| &b.layout.text) {
+			if node.text.is_empty() {
+				continue;
+			}
+			if !result.is_empty() {
+				result.push_str(node.separator);
+			}
+			result.push_str(&node.text);
+		}
+		result.replace('\u{ad}', "")
+	}
 	pub fn extract_text(
 		&self,
 		selection: TextSelection,
@@ -314,7 +328,7 @@ impl LayoutSnapshot {
 		let mut result = String::new();
 		for (bi, block) in self.blocks.iter().enumerate() {
 			for (ni, node) in block.layout.text.iter().enumerate() {
-				if node.text.is_empty() {
+				if node.text.is_empty() || !block.text_visible(ni) {
 					continue;
 				}
 				if (bi, ni) < (a.block, a.node) || (bi, ni) > (b.block, b.node)

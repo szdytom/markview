@@ -262,6 +262,7 @@ fn prewarm_prepares_the_next_screenful_before_the_frame_needs_it() {
 	// One letter per glyph, laid out eight to a row: two screenfuls of
 	// distinct glyphs, the one on screen and the one below it.
 	let screenful = |letters: &str, y: f32| PlacedBlock {
+		flow: Default::default(),
 		id: y as u64,
 		source: 0..0,
 		y,
@@ -370,6 +371,7 @@ fn prewarming_leaves_the_visible_image_demand_alone() {
 		})
 		.collect();
 	let image_block = |src: &str, y: f32| PlacedBlock {
+		flow: Default::default(),
 		id: y as u64,
 		source: 0..0,
 		y,

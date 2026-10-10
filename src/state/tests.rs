@@ -355,7 +355,7 @@ fn a_jump_into_a_collapsed_body_expands_its_containers_first() {
 	let id = document.blocks[1].id;
 	let collapsed = crate::layout::LayoutEngine::new()
 		.layout(&document, &crate::test_support::options());
-	// A collapsed body registers no anchor: the heading is not laid out.
+	// A collapsed body's retained anchor is excluded from visible flow.
 	assert!(collapsed.anchor_y("hidden").is_none());
 	let mut session = ReaderSession::default();
 	session.accept(

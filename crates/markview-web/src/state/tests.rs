@@ -16,6 +16,7 @@ use std::sync::Arc;
 fn snapshot(text: &str) -> LayoutSnapshot {
 	LayoutSnapshot {
 		blocks: vec![PlacedBlock {
+			flow: Default::default(),
 			id: 1,
 			source: 0..0,
 			y: 0.0,
@@ -209,11 +210,94 @@ fn continues_names_only_the_same_source_and_pass() {
 	assert!(!published.continues(&other, 7));
 }
 
+#[test]
+fn disclosure_publication_invalidates_coordinates_and_retags_selection() {
+	use markview_core::{
+		document,
+		fonts::FontConfig,
+		layout::{LayoutEngine, LayoutOptions},
+		source::SourceIndex,
+	};
+	use std::{collections::BTreeMap, time::Duration};
+
+	let document = document::parse(
+		"<details>\n<summary>Summary</summary>\n\nHidden paragraph.\n\n</details>\n\nFollowing paragraph.\n",
+	);
+	let source_index = SourceIndex::new(&document);
+	let options = LayoutOptions {
+		fonts: FontConfig::from_faces(
+			0x776562,
+			vec![parley::fontique::Blob::new(Arc::new(
+				include_bytes!(
+					"../../../markview-core/tests/fonts/NotoSerif-Regular-subset.otf"
+				)
+				.as_slice(),
+			))],
+		),
+		..Default::default()
+	};
+	let mut engine = LayoutEngine::new();
+	let mut pass =
+		engine.begin_layout(&document, &options, &Default::default());
+	engine.advance(&mut pass, &document, Duration::MAX);
+	let mut pointer = Pointer::default();
+	let mut published = Published::default();
+	published.accept(
+		pass.snapshot().clone(),
+		document.source.clone(),
+		Some(pass.pass_id()),
+		&mut pointer,
+	);
+	pointer.set_selection(published.snapshot.select_all(published.revision));
+	let geometry = published.snapshot.blocks[0].layout.clone();
+	let old_revision = published.revision;
+	let closed = source_index.scroll_anchors(
+		&published.snapshot,
+		&Default::default(),
+		0,
+	);
+	let open = BTreeMap::from([(document.blocks[0].id, true)]);
+	published.present_disclosures(&open, false, &mut pointer);
+	assert_eq!(published.revision, old_revision + 1);
+	assert_eq!(published.pass, None);
+	assert!(!published.continues(&document.source, pass.pass_id()));
+	assert!(Arc::ptr_eq(&geometry, &published.snapshot.blocks[0].layout));
+	assert_eq!(
+		pointer.selection().unwrap().anchor.revision,
+		published.revision
+	);
+	assert!(
+		pointer
+			.selected_text(&published.snapshot, published.revision)
+			.contains("Following")
+	);
+	let opened = source_index.scroll_anchors(
+		&published.snapshot,
+		&Default::default(),
+		0,
+	);
+	assert!(opened.len() > closed.len());
+	assert!(opened.last().unwrap().top > closed.last().unwrap().top);
+	let pass_id = pass.pass_id();
+	pass.set_disclosures(Arc::new(open), false);
+	engine.advance(&mut pass, &document, Duration::MAX);
+	assert_eq!(pass.pass_id(), pass_id);
+	published.accept(
+		pass.into_snapshot(),
+		document.source.clone(),
+		Some(pass_id),
+		&mut pointer,
+	);
+	assert!(Arc::ptr_eq(&geometry, &published.snapshot.blocks[0].layout));
+	assert!(published.continues(&document.source, pass_id));
+}
+
 /// The prefix of a second block, as a resumable pass reports it.
 fn two_block_prefix() -> LayoutSnapshot {
 	LayoutSnapshot {
 		blocks: vec![
 			PlacedBlock {
+				flow: Default::default(),
 				id: 1,
 				source: 0..0,
 				y: 0.0,
@@ -227,6 +311,7 @@ fn two_block_prefix() -> LayoutSnapshot {
 				}),
 			},
 			PlacedBlock {
+				flow: Default::default(),
 				id: 2,
 				source: 0..0,
 				y: 100.0,

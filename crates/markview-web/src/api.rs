@@ -1050,6 +1050,30 @@ impl Markview {
 		let m = self.pointer.modifiers();
 		serde_json::json!({"kind":kind,"target":target,"modifiers":{"shift":m.shift,"control":m.control,"alt":m.alt,"meta":m.meta}}).to_string()
 	}
+	fn present_disclosures(&mut self) {
+		let old = self.published.snapshot.clone();
+		self.published.present_disclosures(
+			&self.options.details_open,
+			self.options.force_open,
+			&mut self.pointer,
+		);
+		if let Some(pending) = &mut self.pending {
+			pending.layout.set_disclosures(
+				self.options.details_open.clone(),
+				self.options.force_open,
+			);
+		}
+		self.scrolling.offset = markview_core::layout::anchored_scroll(
+			&old,
+			&self.published.snapshot,
+			self.scrolling.offset,
+			(self.logical.1 - 2.0 * INSET).max(0.0),
+			false,
+		);
+		self.selection_chars.forget();
+		self.clamp_scroll();
+	}
+
 	fn activate_document_link(&mut self, link: &str) -> bool {
 		self.scrolling.cancel();
 		if let Some(id) = markview_core::document::details_id(link) {
@@ -1062,8 +1086,7 @@ impl Markview {
 					},
 				);
 			Arc::make_mut(&mut self.options.details_open).insert(id, !expanded);
-			self.horizontal.clear();
-			self.reflow();
+			self.present_disclosures();
 			return true;
 		}
 		let Some(fragment) = link.strip_prefix('#') else {
@@ -1110,8 +1133,7 @@ impl Markview {
 			}
 		}
 		if expanded {
-			self.horizontal.clear();
-			self.reflow();
+			self.present_disclosures();
 		}
 		self.apply_anchor();
 		true

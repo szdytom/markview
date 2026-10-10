@@ -203,8 +203,11 @@ impl<P: super::SendEvent> App<P> {
 		for (bi, block) in
 			self.readers.session.snapshot.blocks.iter().enumerate()
 		{
-			for (oi, overflow) in block.layout.overflow.iter().enumerate() {
-				if overflow.rect.contains(dx, dy - block.y) {
+			for oi in 0..block.layout.overflow.len() {
+				if block
+					.overflow_rect(oi)
+					.is_some_and(|rect| rect.contains(dx, dy - block.y))
+				{
 					return Surface::Overflow(bi, oi);
 				}
 			}

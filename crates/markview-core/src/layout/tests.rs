@@ -59,8 +59,8 @@ fn progressive_prefixes_share_final_geometry_and_can_be_cancelled() {
 	assert_eq!(full.blocks.len(), final_layout.blocks.len());
 	for (a, b) in full.blocks.iter().zip(&final_layout.blocks) {
 		assert_eq!(
-			(a.y, a.layout.height, a.layout.draws.len()),
-			(b.y, b.layout.height, b.layout.draws.len())
+			(a.y, a.height(), a.layout.draws.len()),
+			(b.y, b.height(), b.layout.draws.len())
 		);
 	}
 	let mut visited = 0;
@@ -103,7 +103,7 @@ fn a_suspended_pass_matches_an_uninterrupted_one() {
 	assert_eq!(suspended.height, full.height);
 	assert!(suspended.same_reading_text(&full));
 	for (a, b) in suspended.blocks.iter().zip(&full.blocks) {
-		assert_eq!((a.id, a.y, a.layout.height), (b.id, b.y, b.layout.height));
+		assert_eq!((a.id, a.y, a.height()), (b.id, b.y, b.height()));
 	}
 }
 
@@ -383,7 +383,7 @@ fn heading_anchors_resolve_to_layout_positions() {
 	assert!(snapshot.anchor_y("missing").is_none());
 	// The nested heading's anchor belongs to the quote that contains it.
 	let quote = &snapshot.blocks[2];
-	assert!((quote.y..quote.y + quote.layout.height).contains(&nested));
+	assert!((quote.y..quote.y + quote.height()).contains(&nested));
 	assert!(quote.layout.anchors.iter().any(|a| a.anchor == "nested"));
 	// Reused geometry keeps its anchors.
 	let again = engine.layout(&doc, &opts);
@@ -415,8 +415,9 @@ fn a_quote_bar_is_centered_on_the_text_it_frames() {
 		"> ## Quoted heading\n>\n> Quoted paragraph text.\n",
 	] {
 		let doc = document::parse(source);
-		let snapshot =
-			LayoutEngine::new().layout(&doc, &LayoutOptions::default());
+		let snapshot = LayoutEngine::new()
+			.layout(&doc, &LayoutOptions::default())
+			.flattened();
 		let quote = &snapshot.blocks[0];
 		let rect = quote
 			.layout
@@ -454,7 +455,7 @@ fn list_items_keep_the_paragraph_space_between_them() {
 	// quote hugs its content; a list item must not.
 	let opts = LayoutOptions::default();
 	let doc = document::parse("- First item\n- Second item\n");
-	let snapshot = LayoutEngine::new().layout(&doc, &opts);
+	let snapshot = LayoutEngine::new().layout(&doc, &opts).flattened();
 	// A bullet is a drawn shape, so each item contributes one text node at the
 	// indented margin.
 	let items: Vec<Rect> = snapshot.blocks[0]
@@ -503,7 +504,7 @@ fn footnote_links_reach_the_note_and_its_number_returns() {
 	let hit = |url: &str| {
 		snapshot.blocks.iter().enumerate().find_map(|(bi, b)| {
 			let link = b.layout.links.iter().find(|l| &*l.url == url)?;
-			let (offset, _) = b.layout.command_view(link.command, bi, &empty);
+			let (offset, _) = b.command_view(link.command, bi, &empty);
 			Some((
 				link.rect.x - offset + link.rect.w * 0.5,
 				b.y + link.rect.y + link.rect.h * 0.5,
@@ -693,13 +694,15 @@ fn a_footnote_body_keeps_the_full_column() {
 fn a_footnote_number_is_set_like_the_note_body() {
 	let mut engine = LayoutEngine::new();
 	let doc = document::parse("Text[^a].\n\n[^a]: 字体由系统提供。\n");
-	let snapshot = engine.layout(
-		&doc,
-		&LayoutOptions {
-			width: 400.0,
-			..Default::default()
-		},
-	);
+	let snapshot = engine
+		.layout(
+			&doc,
+			&LayoutOptions {
+				width: 400.0,
+				..Default::default()
+			},
+		)
+		.flattened();
 	let glyphs = &snapshot.blocks[1].layout.draws;
 	let body = glyphs
 		.iter()
@@ -826,6 +829,7 @@ fn cjk_boundaries_and_hyphenation() {
 	}];
 	let images = Default::default();
 	let mut context = BlockContext {
+		cancelled: &|| false,
 		search_fields: Default::default(),
 		shaper: &mut e.shaper,
 		math: &mut e.math,
@@ -875,6 +879,7 @@ fn anchor_follows_content_and_only_follows_bottom_when_requested() {
 				.iter()
 				.enumerate()
 				.map(|(i, &id)| PlacedBlock {
+					flow: Default::default(),
 					id,
 					source: 0..0,
 					y: i as f32 * 120.0,
@@ -981,7 +986,7 @@ fn overflowing_blocks_reserve_the_configured_scrollbar_gutter() {
 		},
 	);
 	assert_eq!(taller.blocks[0].layout.overflow[0].gutter, 30.0);
-	let delta = taller.blocks[0].layout.height - base.blocks[0].layout.height;
+	let delta = taller.blocks[0].height() - base.blocks[0].height();
 	assert!((delta - (30.0 - bundled)).abs() < 0.01, "{delta}");
 }
 #[test]
@@ -1037,29 +1042,35 @@ fn indent_applies_to_text_leading_paragraphs_and_whole_lists() {
 		 [^1]: Footnote body text.\n",
 	);
 	let width = 320.0;
-	let plain = e.layout(
-		&doc,
-		&LayoutOptions {
-			width,
-			..Default::default()
-		},
-	);
-	let one = e.layout(
-		&doc,
-		&LayoutOptions {
-			width,
-			paragraph_indent: 1.0,
-			..Default::default()
-		},
-	);
-	let two = e.layout(
-		&doc,
-		&LayoutOptions {
-			width,
-			paragraph_indent: 2.0,
-			..Default::default()
-		},
-	);
+	let plain = e
+		.layout(
+			&doc,
+			&LayoutOptions {
+				width,
+				..Default::default()
+			},
+		)
+		.flattened();
+	let one = e
+		.layout(
+			&doc,
+			&LayoutOptions {
+				width,
+				paragraph_indent: 1.0,
+				..Default::default()
+			},
+		)
+		.flattened();
+	let two = e
+		.layout(
+			&doc,
+			&LayoutOptions {
+				width,
+				paragraph_indent: 2.0,
+				..Default::default()
+			},
+		)
+		.flattened();
 	let d1 = first_x(&one, 0, 0) - first_x(&plain, 0, 0);
 	let d2 = first_x(&two, 0, 0) - first_x(&plain, 0, 0);
 	assert!(d1 > 1.0, "expected an indent, got {d1}");
@@ -1086,23 +1097,27 @@ fn indent_applies_to_text_leading_paragraphs_and_whole_lists() {
 	// A footnote stays flush behind its own label.
 	assert_eq!(first_x(&plain, 7, 0), first_x(&two, 7, 0));
 	// The indent is part of the block cache identity.
-	let again = e.layout(
-		&doc,
-		&LayoutOptions {
-			width,
-			paragraph_indent: 2.0,
-			..Default::default()
-		},
-	);
+	let again = e
+		.layout(
+			&doc,
+			&LayoutOptions {
+				width,
+				paragraph_indent: 2.0,
+				..Default::default()
+			},
+		)
+		.flattened();
 	assert_eq!(again.reused, doc.blocks.len());
-	let changed = e.layout(
-		&doc,
-		&LayoutOptions {
-			width,
-			paragraph_indent: 3.0,
-			..Default::default()
-		},
-	);
+	let changed = e
+		.layout(
+			&doc,
+			&LayoutOptions {
+				width,
+				paragraph_indent: 3.0,
+				..Default::default()
+			},
+		)
+		.flattened();
 	assert_eq!(changed.reused, 0);
 }
 
@@ -1114,15 +1129,17 @@ fn a_theme_can_inset_bullet_and_ordered_lists_separately() {
 	) -> (f32, f32) {
 		let doc = document::parse("- bullet item\n\n1. ordered item\n");
 		let mut e = LayoutEngine::new();
-		let s = e.layout(
-			&doc,
-			&LayoutOptions {
-				width: 400.0,
-				paragraph_indent: indent,
-				stylesheet: sheet.clone(),
-				..Default::default()
-			},
-		);
+		let s = e
+			.layout(
+				&doc,
+				&LayoutOptions {
+					width: 400.0,
+					paragraph_indent: indent,
+					stylesheet: sheet.clone(),
+					..Default::default()
+				},
+			)
+			.flattened();
 		let x = |block: usize| {
 			s.blocks[block].layout.text.last().unwrap().clusters[0]
 				.rect
@@ -1581,17 +1598,19 @@ fn a_wide_numbering_format_widens_the_marker_column() {
 	// a fixed column would let a number run into its item text.
 	let layout = |numbering: &str| {
 		let source: String = (1..=8).map(|n| format!("{n}. item\n")).collect();
-		LayoutEngine::new().layout(
-			&document::parse(source.as_str()),
-			&LayoutOptions {
-				width: 400.0,
-				font_size: 30.0,
-				stylesheet: ordered_sheet(&format!(
-					"numbering=\"{numbering}\""
-				)),
-				..Default::default()
-			},
-		)
+		LayoutEngine::new()
+			.layout(
+				&document::parse(source.as_str()),
+				&LayoutOptions {
+					width: 400.0,
+					font_size: 30.0,
+					stylesheet: ordered_sheet(&format!(
+						"numbering=\"{numbering}\""
+					)),
+					..Default::default()
+				},
+			)
+			.flattened()
 	};
 	let text_x = |snapshot: &LayoutSnapshot| {
 		snapshot.blocks[0].layout.text[1].clusters[0].rect.x
@@ -2289,6 +2308,7 @@ fn typst_hyphenation_can_be_turned_off_for_a_passage() {
 		];
 		let images = Default::default();
 		let mut context = BlockContext {
+			cancelled: &|| false,
 			search_fields: Default::default(),
 			shaper: &mut e.shaper,
 			math: &mut e.math,
@@ -2388,6 +2408,7 @@ fn inline_code_breaks_for_free_at_word_edges_and_cheaply_inside_a_word() {
 	let mut out = BlockLayout::default();
 	let images = Default::default();
 	let mut context = BlockContext {
+		cancelled: &|| false,
 		search_fields: Default::default(),
 		shaper: &mut e.shaper,
 		math: &mut e.math,
@@ -2514,6 +2535,7 @@ fn typst_curly_quotes_break_like_cjk_brackets() {
 		}];
 		let images = Default::default();
 		let mut context = BlockContext {
+			cancelled: &|| false,
 			search_fields: Default::default(),
 			shaper: &mut e.shaper,
 			math: &mut e.math,
@@ -2660,6 +2682,7 @@ fn a_hyphen_near_a_word_edge_costs_more_than_one_in_the_middle() {
 	}];
 	let images = Default::default();
 	let mut context = BlockContext {
+		cancelled: &|| false,
 		search_fields: Default::default(),
 		shaper: &mut e.shaper,
 		math: &mut e.math,
@@ -2915,7 +2938,7 @@ fn reading_text(snapshot: &LayoutSnapshot) -> String {
 const DETAILS_DOC: &str = "<details>\n<summary>More</summary>\n\nHidden **body** text here.\n\n</details>\n\nAfter.\n";
 
 #[test]
-fn collapsed_details_lays_out_no_body() {
+fn collapsed_details_retains_hidden_geometry() {
 	let doc = document::parse(DETAILS_DOC);
 	let id = doc.blocks[0].id;
 	let mut engine = LayoutEngine::new();
@@ -2927,7 +2950,7 @@ fn collapsed_details_lays_out_no_body() {
 			.layout
 			.text
 			.iter()
-			.all(|node| !node.text.contains("Hidden"))
+			.any(|node| node.text.contains("Hidden"))
 	);
 	let expanded =
 		engine.layout(&doc, &with_details(LayoutOptions::default(), id, true));
@@ -2936,15 +2959,19 @@ fn collapsed_details_lays_out_no_body() {
 }
 
 #[test]
-fn details_toggle_is_stable_and_reuses_other_blocks() {
+fn details_toggle_is_stable_and_reuses_all_geometry() {
 	let doc = document::parse(DETAILS_DOC);
 	let id = doc.blocks[0].id;
 	let closed = LayoutOptions::default();
 	let mut engine = LayoutEngine::new();
 	let collapsed = engine.layout(&doc, &closed);
 	let expanded = engine.layout(&doc, &with_details(closed.clone(), id, true));
-	// Only the toggled block is re-laid out; the block after it is reused.
-	assert_eq!(expanded.reused, 1);
+	// Presentation changes reuse the disclosure and the following block.
+	assert_eq!(expanded.reused, 2);
+	assert!(Arc::ptr_eq(
+		&collapsed.blocks[0].layout,
+		&expanded.blocks[0].layout
+	));
 	let again = engine.layout(&doc, &closed);
 	assert_eq!(again.height, collapsed.height);
 	assert_eq!(reading_text(&again), reading_text(&collapsed));
@@ -2961,7 +2988,7 @@ fn details_summary_is_hit_testable_but_the_body_is_not() {
 	let mut engine = LayoutEngine::new();
 	let collapsed = engine.layout(&doc, &LayoutOptions::default());
 	let block = &collapsed.blocks[0];
-	assert_eq!(collapsed.blocks[0].layout.links.len(), 1);
+	assert_eq!(collapsed.blocks[0].layout.links.len(), 2);
 	let hit = block.layout.links[0].rect;
 	assert_eq!(
 		collapsed.link_at(hit.x + 1.0, block.y + hit.y + 1.0, &none),
@@ -2969,7 +2996,7 @@ fn details_summary_is_hit_testable_but_the_body_is_not() {
 	);
 	// A collapsed element is only its summary line, so nothing below it hits.
 	assert_eq!(
-		collapsed.link_at(100.0, block.y + block.layout.height + 4.0, &none),
+		collapsed.link_at(100.0, block.y + block.height() + 4.0, &none),
 		None
 	);
 	let expanded =
@@ -2981,7 +3008,7 @@ fn details_summary_is_hit_testable_but_the_body_is_not() {
 		Some(url.as_str())
 	);
 	assert_eq!(
-		expanded.link_at(100.0, block.y + block.layout.height - 2.0, &none),
+		expanded.link_at(100.0, block.y + block.height() - 2.0, &none),
 		None
 	);
 }
@@ -3023,7 +3050,7 @@ fn a_details_open_attribute_starts_expanded() {
 }
 
 #[test]
-fn nested_details_toggle_invalidates_its_container() {
+fn nested_details_toggle_reuses_its_container() {
 	let doc = document::parse(
 		"<details open>\n<summary>Outer</summary>\n\n<details><summary>Inner</summary>Deep</details>\n\n</details>\n\nAfter.\n",
 	);
@@ -3039,9 +3066,12 @@ fn nested_details_toggle_invalidates_its_container() {
 		.layout(&doc, &with_details(LayoutOptions::default(), inner, true));
 	assert!(reading_text(&expanded).contains("Deep"));
 	assert!(expanded.height > collapsed.height);
-	// The container that frames the toggled element is laid out again; only
-	// the trailing block is reused.
-	assert_eq!(expanded.reused, 1);
+	// Ancestor geometry survives a nested presentation change.
+	assert_eq!(expanded.reused, 2);
+	assert!(Arc::ptr_eq(
+		&collapsed.blocks[0].layout,
+		&expanded.blocks[0].layout
+	));
 }
 
 #[test]
@@ -3065,7 +3095,7 @@ fn identical_details_toggle_independently() {
 	};
 	let same = engine.layout(&doc, &both);
 	assert_eq!(reading_text(&same).matches("Body").count(), 2);
-	assert_eq!(same.reused, 1);
+	assert_eq!(same.reused, 2);
 	// A second pass with the same states reuses both, now that each has its
 	// own entry.
 	assert_eq!(engine.layout(&doc, &both).reused, 2);

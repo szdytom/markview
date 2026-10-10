@@ -49,8 +49,8 @@ fuzz_mutator! { |data: &mut [u8], size: usize, max_size: usize, seed: u32| {
 fn layout_targets(snapshot: &LayoutSnapshot) -> BTreeMap<String, usize> {
 	let mut out = BTreeMap::new();
 	for (index, block) in snapshot.blocks.iter().enumerate() {
-		for anchor in &block.layout.anchors {
-			out.entry(anchor.anchor.clone()).or_insert(index);
+		for (anchor, _) in block.anchor_positions() {
+			out.entry(anchor.to_owned()).or_insert(index);
 		}
 	}
 	out
@@ -182,24 +182,22 @@ fuzz_target!(|data: &[u8]| {
 	// 5. An anchor sits inside the block that registers it, in reading order.
 	for (index, block) in base.blocks.iter().enumerate() {
 		let mut last = f32::NEG_INFINITY;
-		for anchor in &block.layout.anchors {
+		for (anchor, y) in block.anchor_positions() {
 			assert!(
-				anchor.y.is_finite()
-					&& anchor.y >= -0.01
-					&& anchor.y <= block.layout.height + 0.01,
+				y.is_finite() && y >= -0.01 && y <= block.height() + 0.01,
 				"block {index} anchors {:?} at y={} outside its {}px box",
-				anchor.anchor,
-				anchor.y,
-				block.layout.height
+				anchor,
+				y,
+				block.height()
 			);
 			assert!(
-				anchor.y >= last,
+				y >= last,
 				"block {index} anchors {:?} at y={} after {}",
-				anchor.anchor,
-				anchor.y,
+				anchor,
+				y,
 				last
 			);
-			last = anchor.y;
+			last = y;
 		}
 	}
 

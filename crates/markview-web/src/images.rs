@@ -13,7 +13,7 @@ pub(crate) struct Images {
 	pub(crate) snapshot: ImageSnapshot,
 	pub(crate) sources: Vec<String>,
 	geometry: HashMap<String, Vec<ImageGeometry>>,
-	geometry_pass: Option<(u64, Option<u64>, u64)>,
+	geometry_pass: Option<(u64, Option<u64>, u64, u64)>,
 	geometry_blocks: usize,
 }
 
@@ -118,6 +118,7 @@ impl Images {
 			snapshot.images.generation,
 			pass,
 			if pass.is_none() { revision } else { 0 },
+			snapshot.presentation_key,
 		);
 		if self.geometry_pass != Some(key) {
 			self.geometry.clear();
@@ -130,8 +131,15 @@ impl Images {
 			.enumerate()
 			.skip(self.geometry_blocks)
 		{
-			for (command, draw) in block.layout.draws.iter().enumerate() {
-				collect(draw, block.y, None, bi, command, &mut self.geometry);
+			for (command, draw, position) in block.draws() {
+				collect(
+					draw,
+					[position[0], block.y + position[1]],
+					None,
+					bi,
+					command,
+					&mut self.geometry,
+				);
 			}
 		}
 		self.geometry_blocks = snapshot.blocks.len();
@@ -145,7 +153,7 @@ impl Images {
 					.flatten()
 					.map(|image| {
 						let block = &snapshot.blocks[image.block];
-						let (offset, clip) = block.layout.command_view(
+						let (offset, clip) = block.command_view(
 							image.command,
 							image.block,
 							horizontal,
@@ -198,7 +206,7 @@ impl Images {
 
 fn collect(
 	draw: &Draw,
-	y: f32,
+	position: [f32; 2],
 	clip: Option<Rect>,
 	block: usize,
 	command: usize,
@@ -207,7 +215,8 @@ fn collect(
 	match draw {
 		Draw::Image { src, rect, .. } => {
 			let rect = Rect {
-				y: rect.y + y,
+				x: rect.x + position[0],
+				y: rect.y + position[1],
 				..*rect
 			};
 			if let Some(rect) =
@@ -222,14 +231,15 @@ fn collect(
 		}
 		Draw::Clipped { rect, draws } => {
 			let rect = Rect {
-				y: rect.y + y,
+				x: rect.x + position[0],
+				y: rect.y + position[1],
 				..*rect
 			};
 			if let Some(clip) =
 				clip.map_or(Some(rect), |clip| clip.intersect(rect))
 			{
 				for draw in draws {
-					collect(draw, y, Some(clip), block, command, out);
+					collect(draw, position, Some(clip), block, command, out);
 				}
 			}
 		}
@@ -296,6 +306,7 @@ mod tests {
 			title: String::new(),
 		};
 		let block = |draws| PlacedBlock {
+			flow: Default::default(),
 			id: 1,
 			source: 0..0,
 			y: 0.,
@@ -356,6 +367,7 @@ mod tests {
 		let snapshot = LayoutSnapshot {
 			images: images.snapshot.clone(),
 			blocks: vec![PlacedBlock {
+				flow: Default::default(),
 				id: 1,
 				source: 0..0,
 				y: 30.,

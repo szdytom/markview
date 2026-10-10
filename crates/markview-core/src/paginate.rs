@@ -382,6 +382,8 @@ pub fn paginate(
 	snapshot: &LayoutSnapshot,
 	geometry: &PageGeometry,
 ) -> Pagination {
+	let flat = snapshot.flattened();
+	let snapshot = &flat;
 	let content = geometry.text_px();
 	let prepared: Vec<Prepared> = snapshot
 		.blocks

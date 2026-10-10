@@ -20,6 +20,7 @@ fn snapshot() -> LayoutSnapshot {
 		height: 100.0,
 		width: 100.0,
 		blocks: vec![PlacedBlock {
+			flow: Default::default(),
 			id: 1,
 			source: 0..0,
 			y: 0.0,

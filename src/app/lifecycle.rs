@@ -315,7 +315,11 @@ impl<P: super::SendEvent> App<P> {
 			{
 				let counts = update.counts;
 				match update.result.take() {
-					Some(Ok(reader)) => {
+					Some(Ok(mut reader)) => {
+						reader.layout.set_disclosures(
+							&self.readers.session.details_open,
+							false,
+						);
 						if !reader.complete
 							&& self.interaction.selection.is_some_and(|s| {
 								s.anchor.block.max(s.focus.block)

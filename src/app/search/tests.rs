@@ -724,7 +724,7 @@ fn search_navigation_cancels_restoration_before_later_layouts_arrive() {
 			Some(crate::app::session::Reading::capture(session));
 		session.snapshot.blocks.truncate(40);
 		session.snapshot.height = session.snapshot.blocks[39].y
-			+ session.snapshot.blocks[39].layout.height;
+			+ session.snapshot.blocks[39].height();
 		session.snapshot_complete = false;
 		session.layout_pending = true;
 		session.scrolling.offset = 0.0;

@@ -37,8 +37,9 @@ fn nested_list_tails_leave_one_gap_before_the_next_block() {
 			}
 			source +=
 				&format!("{}{marker} leaf\n\nAfter.\n", "    ".repeat(depth));
-			let layout =
-				LayoutEngine::new().layout(&document::parse(source), &opts);
+			let layout = LayoutEngine::new()
+				.layout(&document::parse(source), &opts)
+				.flattened();
 			let leaf = layout.blocks[0]
 				.layout
 				.text
@@ -68,13 +69,13 @@ fn phone_list_columns_reflow_cached_layout_and_fit_wide_numbers() {
 	);
 	let sheet = (*Stylesheet::bundled(false)).clone();
 	let mut engine = LayoutEngine::new();
-	let desktop = engine.layout(&source, &options(sheet.clone()));
+	let desktop = engine.layout(&source, &options(sheet.clone())).flattened();
 	let phone = sheet.for_media(MediaContext::new(
 		StyleTarget::Ui,
 		Media::Phone,
 		Some(Media::Android),
 	));
-	let narrow = engine.layout(&source, &options(phone));
+	let narrow = engine.layout(&source, &options(phone)).flattened();
 	assert_eq!(narrow.reused, 0);
 	let leaf_x = |layout: &markview_core::layout::LayoutSnapshot| {
 		layout.blocks[0]
@@ -116,8 +117,9 @@ fn narrow_marker_columns_keep_aligned_markers_before_item_text() {
 			let mut sheet = (*Stylesheet::builtin()).clone();
 			sheet.merge(&custom);
 			let opts = options(sheet);
-			let layout =
-				LayoutEngine::new().layout(&document::parse(source), &opts);
+			let layout = LayoutEngine::new()
+				.layout(&document::parse(source), &opts)
+				.flattened();
 			let block = &layout.blocks[0].layout;
 			let text_start = block.text.last().unwrap().clusters[0].rect.x;
 			let marker_right = if source.starts_with("1.") {

@@ -298,7 +298,7 @@ fn an_export_shows_every_details_body() {
 		snapshot
 			.blocks
 			.iter()
-			.all(|block| block.layout.links.is_empty())
+			.all(|block| block.links().next().is_none())
 	);
 }
 

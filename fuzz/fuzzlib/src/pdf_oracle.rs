@@ -367,15 +367,14 @@ impl Structure {
 					continue;
 				};
 				let expected = page_rect(link.rect, item, geometry);
-				let candidates =
-					by_uri.get(&*link.url).unwrap_or_else(|| {
-						panic!(
-							"the layout resolved the link {url:?} (block {bi} \
+				let candidates = by_uri.get(&*link.url).unwrap_or_else(|| {
+					panic!(
+						"the layout resolved the link {url:?} (block {bi} \
 							 link {li}) but the export has no annotation with \
 							 that URI",
-							url = link.url
-						)
-					});
+						url = link.url
+					)
+				});
 				let best = candidates
 					.iter()
 					.map(|a| {

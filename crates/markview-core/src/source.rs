@@ -231,7 +231,7 @@ impl SourceIndex {
 						x: 0.,
 						y: placed.y,
 						w: placed.layout.width,
-						h: placed.layout.height,
+						h: placed.height(),
 					},
 				});
 			}
@@ -280,7 +280,7 @@ impl SourceIndex {
 		self.visit(
 			snapshot,
 			horizontal,
-			placed.y..placed.y + placed.layout.height,
+			placed.y..placed.y + placed.height(),
 			|bi, position| {
 				if bi != block {
 					return;
@@ -301,7 +301,7 @@ impl SourceIndex {
 					x: 0.,
 					y: placed.y,
 					w: placed.layout.width,
-					h: placed.layout.height,
+					h: placed.height(),
 				},
 			})
 		})
@@ -314,15 +314,16 @@ impl SourceIndex {
 		horizontal: &HashMap<(usize, usize), f32>,
 		y: f32,
 	) -> Option<SourcePosition> {
-		let placed = snapshot.blocks.iter().min_by(|a, b| {
-			vertical_distance(a.y, a.layout.height, y)
-				.total_cmp(&vertical_distance(b.y, b.layout.height, y))
-		})?;
+		let placed =
+			snapshot.blocks.iter().min_by(|a, b| {
+				vertical_distance(a.y, a.height(), y)
+					.total_cmp(&vertical_distance(b.y, b.height(), y))
+			})?;
 		let mut best: Option<SourcePosition> = None;
 		self.visit(
 			snapshot,
 			horizontal,
-			placed.y..placed.y + placed.layout.height,
+			placed.y..placed.y + placed.height(),
 			|_, position| {
 				if best.as_ref().is_none_or(|old| {
 					vertical_distance(position.rect.y, position.rect.h, y)
@@ -346,7 +347,7 @@ impl SourceIndex {
 					x: 0.,
 					y: placed.y,
 					w: placed.layout.width,
-					h: placed.layout.height,
+					h: placed.height(),
 				},
 			})
 		})
@@ -392,12 +393,15 @@ impl SourceIndex {
 		);
 		let first = snapshot
 			.blocks
-			.partition_point(|b| b.y + b.layout.height < visible.start);
+			.partition_point(|b| b.y + b.height() < visible.start);
 		for (bi, block) in snapshot.blocks.iter().enumerate().skip(first) {
 			if block.y > visible.end {
 				break;
 			}
-			for node in &block.layout.text {
+			for (ni, node) in block.layout.text.iter().enumerate() {
+				if !block.text_visible(ni) {
+					continue;
+				}
 				let Some(field) = node.search_field else {
 					continue;
 				};

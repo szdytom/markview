@@ -407,6 +407,43 @@ fn update(
 }
 
 #[test]
+fn disclosure_toggles_keep_geometry_and_survive_an_old_worker_publication() {
+	let (mut app, document) = reader(
+		"<details>\n<summary>Summary</summary>\n\n```\nabcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyz\n```\n\nHidden words.\n\n</details>\n\nFollowing paragraph.",
+		240.0,
+	);
+	let path = PathBuf::from("/tmp/markview-retained-flow-test.md");
+	app.readers.session.path = Some(path.clone());
+	app.readers.session.version = 1;
+	let stale = app.readers.session.snapshot.clone();
+	let geometry = stale.blocks[0].layout.clone();
+	let id = document.blocks[0].id;
+	app.toggle_details(id);
+	assert_eq!(app.readers.session.version, 1);
+	assert!(Arc::ptr_eq(
+		&geometry,
+		&app.readers.session.snapshot.blocks[0].layout
+	));
+	assert!(app.readers.session.snapshot.height > stale.height);
+	app.interaction.selection = app.readers.session.snapshot.select_all(1);
+	let selected = app.selected_text().unwrap();
+	assert!(selected.contains("Hidden words."));
+	app.readers.session.horizontal.insert((0, 0), 10.0);
+	app.toggle_details(id);
+	assert!(!app.selected_text().unwrap().contains("Hidden words."));
+	app.toggle_details(id);
+	assert_eq!(app.selected_text().unwrap(), selected);
+	assert_eq!(app.readers.session.horizontal.get(&(0, 0)), Some(&10.0));
+	app.handle_user_event(&StubLoop, update(path, document, stale, 1));
+	assert!(app.selected_text().unwrap().contains("Hidden words."));
+	assert!(Arc::ptr_eq(
+		&geometry,
+		&app.readers.session.snapshot.blocks[0].layout
+	));
+	assert_eq!(app.readers.session.details_open.get(&id), Some(&true));
+}
+
+#[test]
 fn a_copy_takes_the_reading_text_and_a_stale_selection_takes_nothing() {
 	let (mut app, _) = reader(SOURCE, 760.0);
 	assert_eq!(app.selected_text(), None, "nothing is selected yet");
@@ -1238,7 +1275,7 @@ fn document_thumb_drag_cancels_restoration_during_reflow() {
 			Some(crate::app::session::Reading::capture(session));
 		session.snapshot.blocks.truncate(100);
 		session.snapshot.height = session.snapshot.blocks[99].y
-			+ session.snapshot.blocks[99].layout.height;
+			+ session.snapshot.blocks[99].height();
 		session.snapshot_complete = false;
 		session.layout_pending = loading;
 		session.scrolling.offset = 0.0;

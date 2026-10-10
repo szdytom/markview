@@ -472,8 +472,12 @@ impl<P: super::SendEvent> App<P> {
 		}
 	}
 
-	/// Toggles one `<details>` and reflows. The open set is layout input, so
-	/// the worker re-lays out the toggled block and reuses every other one.
+	pub(super) fn present_disclosures(&mut self) {
+		self.readers.session.present_disclosures(self.viewport());
+		self.interaction.selection_counts = None;
+	}
+
+	/// Toggles presentation while keeping the worker's retained geometry.
 	pub(super) fn toggle_details(&mut self, id: u64) {
 		let declared = self
 			.readers
@@ -491,7 +495,7 @@ impl<P: super::SendEvent> App<P> {
 			.unwrap_or(declared);
 		std::sync::Arc::make_mut(&mut self.readers.session.details_open)
 			.insert(id, !expanded);
-		self.request(false);
+		self.present_disclosures();
 		self.refresh_hover();
 		self.redraw();
 	}

@@ -1287,7 +1287,7 @@ dependencies = [
 
 [[package]]
 name = "markview-core"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "anyhow",
  "codex",
@@ -1331,7 +1331,7 @@ dependencies = [
 
 [[package]]
 name = "markview-pdf"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "anyhow",
  "krilla",
@@ -1349,7 +1349,7 @@ dependencies = [
 
 [[package]]
 name = "markview-render"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "anyhow",
  "bytemuck",

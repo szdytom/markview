@@ -222,6 +222,7 @@ fn kind_tag(kind: &BlockKind) -> u8 {
 /// Field-by-field equality of a layout snapshot. The `reused` counters are
 /// cache bookkeeping, not geometry, and are excluded.
 pub fn layout(snapshot: &LayoutSnapshot) -> Fingerprint {
+	let snapshot = snapshot.flattened();
 	let mut h = hashers();
 	hash3(&mut h, &(F::new(snapshot.width), F::new(snapshot.height)));
 	for block in &snapshot.blocks {
@@ -407,6 +408,9 @@ pub fn assert_snapshot_finite(snapshot: &LayoutSnapshot) {
 	assert_bounded("snapshot.height", snapshot.height);
 	for block in &snapshot.blocks {
 		assert_bounded("block.y", block.y);
+		assert_block_finite(&block.layout);
+	}
+	for block in &snapshot.flattened().blocks {
 		assert_block_finite(&block.layout);
 	}
 }

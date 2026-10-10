@@ -242,9 +242,9 @@ impl Document {
 	/// outermost first.
 	///
 	/// A heading, a footnote definition, and a footnote reference all register
-	/// a layout anchor, and any of them can sit inside a collapsed body that
-	/// is never laid out. A jump to such an anchor must expand the disclosures
-	/// framing it, outermost first, before its target can be found.
+	/// a layout anchor, and any of them can sit inside a collapsed body.
+	/// A jump must expand its enclosing disclosures before that retained
+	/// anchor participates in visible flow.
 	pub fn details_enclosing(&self, anchor: &str) -> Vec<u64> {
 		fn registers(block: &Block, anchor: &str) -> bool {
 			if block.anchors.iter().any(|a| a == anchor) {

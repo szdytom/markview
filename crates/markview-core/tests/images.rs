@@ -552,7 +552,7 @@ fn no_overlap(snapshot: &LayoutSnapshot) {
 	for block in &snapshot.blocks {
 		for draw in &block.layout.draws {
 			if let Draw::Image { rect, .. } = draw {
-				assert!(rect.y + rect.h <= block.layout.height + 0.01);
+				assert!(rect.y + rect.h <= block.height() + 0.01);
 				for node in &block.layout.text {
 					for c in &node.clusters {
 						if !matches!(
@@ -646,7 +646,7 @@ fn inline_images_share_their_line_and_never_wrap_text_beside_them() {
 			clusters.iter().any(|c| c.rect.x >= rect.x + rect.w - 0.01),
 			"no text after the image"
 		);
-		assert!(block.layout.height >= rect.h);
+		assert!(block.height() >= rect.h);
 		no_overlap(&snapshot);
 	}
 }

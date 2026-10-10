@@ -442,6 +442,9 @@ impl BlockContext<'_> {
 		let count = blocks.iter().filter(|b| !anchor_only(b)).count();
 		let mut index = 0;
 		for block in blocks {
+			if (self.cancelled)() {
+				break;
+			}
 			if anchor_only(block) {
 				self.shaper.appearance = parent.clone();
 				cursor += self.block(block, x, cursor, width, opts, out);
@@ -484,6 +487,24 @@ impl BlockContext<'_> {
 	}
 
 	pub(super) fn block(
+		&mut self,
+		block: &Block,
+		x: f32,
+		y: f32,
+		width: f32,
+		opts: &LayoutOptions,
+		out: &mut BlockLayout,
+	) -> f32 {
+		if (self.cancelled)() {
+			return 0.;
+		}
+		out.begin_scene(x, y);
+		let height = self.measured_block(block, x, y, width, opts, out);
+		out.end_scene(height, f32::NEG_INFINITY);
+		height
+	}
+
+	fn measured_block(
 		&mut self,
 		block: &Block,
 		x: f32,
@@ -852,6 +873,11 @@ impl BlockContext<'_> {
 					}
 				}
 				for (i, item) in items.iter().enumerate() {
+					if (self.cancelled)() {
+						break;
+					}
+					let item_top = top;
+					out.begin_scene(x, item_top);
 					self.shaper.appearance = item_appearance.clone();
 					top +=
 						item_rule.space_before.unwrap_or(0.) * opts.font_size;
@@ -1065,6 +1091,14 @@ impl BlockContext<'_> {
 								.unwrap_or(first_child),
 						);
 					}
+					out.end_scene(
+						top - item_top,
+						(box_y - item_top)
+							+ padding[0] + padding[2]
+							+ size * self.shaper.appearance.line_height
+							+ item_rule.space_after.unwrap_or(0.)
+								* opts.font_size,
+					);
 				}
 				if start.is_none() {
 					self.marker_depth -= 1;
@@ -1129,20 +1163,18 @@ impl BlockContext<'_> {
 					size * 0.5,
 					out,
 				);
-				// The note opens with text on almost every document, and its
-				// first glyph carries the baseline the number shares.
-				let baseline = out.draws[body_start..]
-					.iter()
-					.find_map(|d| match d {
-						Draw::Glyph(g) => Some(g.y),
-						_ => None,
-					})
-					.unwrap_or(y + size * 1.15);
+				// Visible flow resolves the baseline after disclosure placement.
+				let baseline = y + size * 1.15;
 				for draw in &mut draws {
 					draw.translate(0.0, baseline);
 				}
 				let command = out.draws.len();
 				out.draws.extend(draws);
+				out.retain_footnote(
+					body_start..command,
+					command..out.draws.len(),
+					baseline,
+				);
 				// The number is the way back to the reference that opened the
 				// note, so it is a link with the note's own label.
 				out.links.push(LinkRect {
@@ -1188,7 +1220,6 @@ impl BlockContext<'_> {
 			| BlockKind::FrontMatter { open, .. } => *open,
 			_ => false,
 		};
-		let expanded = opts.details_expanded(block.id, open);
 		let parent = self.shaper.appearance.clone();
 		self.shaper.appearance =
 			opts.stylesheet.text(&parent, Condition::Summary);
@@ -1202,7 +1233,7 @@ impl BlockContext<'_> {
 		let marker = out.draws.len();
 		out.draws.push(Draw::Polygon {
 			center: [x + DETAILS_INSET + side * 0.5, y + line * 0.5],
-			points: disclosure_points(expanded, side),
+			points: disclosure_points(true, side),
 			paint,
 		});
 		let mut height = self
@@ -1229,30 +1260,32 @@ impl BlockContext<'_> {
 		// The range is registered before the body, and it ends at the
 		// first body command, so its command order matches its rects
 		// and pointing into the content never highlights the summary.
-		if !opts.force_open {
-			out.links.push(LinkRect {
-				command: marker,
-				rect: Rect {
-					x,
-					y,
-					w: width,
-					h: summary_height,
-				},
-				url: Arc::from(crate::document::details_url(block.id)),
-			});
-			if expanded {
-				out.links.push(LinkRect {
-					command: out.draws.len(),
-					rect: Rect::default(),
-					url: Arc::from(""),
-				});
-			}
-		}
-		if expanded {
-			height += size * DETAILS_GAP;
-			height +=
-				self.framed_children(blocks, x, y + height, width, opts, out);
-		}
+		out.links.push(LinkRect {
+			command: marker,
+			rect: Rect {
+				x,
+				y,
+				w: width,
+				h: summary_height,
+			},
+			url: Arc::from(crate::document::details_url(block.id)),
+		});
+		out.links.push(LinkRect {
+			command: out.draws.len(),
+			rect: Rect::default(),
+			url: Arc::from(""),
+		});
+		let body = size * DETAILS_GAP
+			+ self.framed_children(
+				blocks,
+				x,
+				y + height + size * DETAILS_GAP,
+				width,
+				opts,
+				out,
+			);
+		out.retain_disclosure(block.id, open, marker, body);
+		height += body;
 		height
 	}
 }

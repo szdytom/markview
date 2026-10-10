@@ -289,26 +289,27 @@ impl crate::layout::LayoutSnapshot {
 	) {
 		let first = self
 			.blocks
-			.partition_point(|b| b.y + b.layout.height < visible.start);
+			.partition_point(|b| b.y + b.height() < visible.start);
 		for (bi, block) in self.blocks.iter().enumerate().skip(first) {
 			if block.y > visible.end {
 				break;
 			}
-			for node in &block.layout.text {
+			for (ni, node) in block.layout.text.iter().enumerate() {
+				if !block.text_visible(ni) {
+					continue;
+				}
 				let Some(field) = node.search_field else {
 					continue;
 				};
 				// Image placeholders can put later clusters above earlier ones.
 				for cluster in &node.clusters {
-					if cluster.rect.y + cluster.rect.h + block.y < visible.start
-						|| cluster.rect.y + block.y > visible.end
-					{
-						continue;
-					}
 					let Some(rect) = self.text_rect(bi, cluster, horizontal)
 					else {
 						continue;
 					};
+					if rect.y + rect.h < visible.start || rect.y > visible.end {
+						continue;
+					}
 					let first = node
 						.search_ranges
 						.partition_point(|(_, r)| r.end <= cluster.range.start);
@@ -345,6 +346,9 @@ impl crate::layout::LayoutSnapshot {
 		let mut start = None;
 		let mut end = None;
 		for (ni, node) in block.layout.text.iter().enumerate() {
+			if !block.text_visible(ni) {
+				continue;
+			}
 			if node.search_field != Some(hit.field) {
 				continue;
 			}

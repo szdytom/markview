@@ -6,6 +6,7 @@ use crate::selection::Pointer;
 use markview_core::layout::LayoutSnapshot;
 use markview_selection::Host;
 use std::cell::Cell;
+use std::collections::BTreeMap;
 use std::sync::Arc;
 
 /// The snapshot the canvas last drew, and the revision it was accepted at.
@@ -20,6 +21,20 @@ pub(crate) struct Published {
 	pub(crate) pass: Option<u64>,
 }
 impl Published {
+	/// Reflow retained geometry and invalidate published coordinate caches.
+	pub(crate) fn present_disclosures(
+		&mut self,
+		open: &BTreeMap<u64, bool>,
+		force_open: bool,
+		pointer: &mut Pointer,
+	) {
+		self.snapshot.set_disclosures(open, force_open);
+		let revision = self.revision.wrapping_add(1);
+		pointer.retag(self.revision, revision);
+		self.revision = revision;
+		self.pass = None;
+	}
+
 	/// A same-document prefix must cover the selection and held drag base
 	/// before replacement can rebase them onto it.
 	pub(crate) fn covers_interaction(
@@ -92,6 +107,7 @@ impl Published {
 			.blocks
 			.extend_from_slice(&prefix.blocks[published..]);
 		self.snapshot.height = prefix.height;
+		self.snapshot.presentation_key = prefix.presentation_key;
 		self.snapshot.document_box = prefix.document_box.clone();
 		self.snapshot.width = prefix.width;
 		self.snapshot.reused = prefix.reused;

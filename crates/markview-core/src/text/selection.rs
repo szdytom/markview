@@ -225,7 +225,9 @@ impl LayoutSnapshot {
 					.text
 					.iter()
 					.enumerate()
-					.filter(|(_, n)| !n.text.is_empty())
+					.filter(move |(ni, n)| {
+						!n.text.is_empty() && b.text_visible(*ni)
+					})
 					.map(move |(ni, n)| (bi, ni, n.text.len()))
 			})
 			.collect();

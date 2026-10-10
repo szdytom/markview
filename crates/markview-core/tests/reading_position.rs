@@ -12,6 +12,7 @@ fn snapshot(ids: impl IntoIterator<Item = u64>) -> LayoutSnapshot {
 		.into_iter()
 		.enumerate()
 		.map(|(i, id)| PlacedBlock {
+			flow: Default::default(),
 			id,
 			source: 0..0,
 			y: i as f32 * 120.0,

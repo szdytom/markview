@@ -6,6 +6,8 @@ use crate::{
 use parley::FontData;
 pub use ratex_types::PathCommand;
 use std::{collections::HashMap, ops::Range, sync::Arc};
+mod flow;
+pub use flow::{FlowIndex, Scene};
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash)]
 pub enum Paint {
 	Color(crate::style::Color),
@@ -258,20 +260,24 @@ pub struct LinkRect {
 	pub url: Arc<str>,
 }
 
-/// A heading's anchor and the block-local y a link to it should scroll to.
+/// A heading's anchor and its retained node-local y.
 #[derive(Clone, Debug, PartialEq)]
 pub struct HeadingAnchor {
 	pub anchor: String,
 	pub y: f32,
 }
 
+/// Immutable node-local geometry, including hidden disclosure bodies.
+/// Use `PlacedBlock` accessors for visible block coordinates.
 #[derive(Debug, Default)]
 pub struct BlockLayout {
+	pub scene: Scene,
 	pub page_constraints: Vec<PageConstraint>,
 	pub text: Vec<TextNode>,
 	pub draws: Vec<Draw>,
 	/// Inline decoration draw indices and their owning text rows, in draw order.
 	pub inline_decorations: Vec<(usize, Range<f32>)>,
+	/// Height with every disclosure expanded; visible height is `PlacedBlock::height`.
 	pub height: f32,
 	pub width: f32,
 	pub overflow: Vec<Overflow>,
@@ -298,10 +304,14 @@ pub struct PlacedBlock {
 	pub source: Range<usize>,
 	pub y: f32,
 	pub layout: Arc<BlockLayout>,
+	/// Resolved visibility and positions, shared independently of geometry.
+	pub flow: Arc<FlowIndex>,
 }
 
 #[derive(Clone, Debug, Default)]
 pub struct LayoutSnapshot {
+	/// Presentation identity, independent of the worker's geometry pass.
+	pub presentation_key: u64,
 	pub images: crate::image::ImageSnapshot,
 	pub document_box: Option<Draw>,
 	pub blocks: Vec<PlacedBlock>,
@@ -319,11 +329,9 @@ impl LayoutSnapshot {
 	pub fn anchor_y(&self, anchor: &str) -> Option<f32> {
 		self.blocks.iter().find_map(|block| {
 			block
-				.layout
-				.anchors
-				.iter()
-				.find(|a| a.anchor == anchor)
-				.map(|a| block.y + a.y)
+				.anchor_positions()
+				.find(|(name, _)| *name == anchor)
+				.map(|(_, y)| block.y + y)
 		})
 	}
 	pub fn image_title_at(
@@ -347,10 +355,10 @@ impl LayoutSnapshot {
 		horizontal: &HashMap<(usize, usize), f32>,
 	) -> Option<(&str, u64, Rect, &str)> {
 		for (bi, b) in self.blocks.iter().enumerate() {
-			if y < b.y || y > b.y + b.layout.height {
+			if y < b.y || y > b.y + b.height() {
 				continue;
 			}
-			for (i, d) in b.layout.draws.iter().enumerate() {
+			for (i, d, _) in b.draws() {
 				if let Draw::Image {
 					src,
 					version,
@@ -358,12 +366,12 @@ impl LayoutSnapshot {
 					title,
 				} = d
 				{
-					let (offset, clip) =
-						b.layout.command_view(i, bi, horizontal);
+					let (offset, clip) = b.command_view(i, bi, horizontal);
+					let rect = b.rect(i, *rect).unwrap();
 					if clip.is_none_or(|r| r.contains(x, y - b.y))
 						&& rect.contains(x + offset, y - b.y)
 					{
-						return Some((src, *version, *rect, title));
+						return Some((src, *version, rect, title));
 					}
 				}
 			}
@@ -380,16 +388,13 @@ impl LayoutSnapshot {
 	) -> Option<&str> {
 		for (bi, block) in self.blocks.iter().enumerate() {
 			let y = y - block.y;
-			if y < 0.0 || y > block.layout.height {
+			if y < 0.0 || y > block.height() {
 				continue;
 			}
-			for link in &block.layout.links {
+			for (link, mut rect) in block.links() {
 				let (offset, clip) =
-					block.layout.command_view(link.command, bi, horizontal);
-				let mut rect = Rect {
-					x: link.rect.x - offset,
-					..link.rect
-				};
+					block.command_view(link.command, bi, horizontal);
+				rect.x -= offset;
 				if let Some(clip) = clip {
 					let Some(clipped) = rect.intersect(clip) else {
 						continue;
@@ -672,30 +677,6 @@ impl BlockLayout {
 			end = cluster.command;
 			(span, node, cluster)
 		})
-	}
-
-	/// Shared overflow transform for painting, link hits and text selection.
-	pub fn command_view(
-		&self,
-		command: usize,
-		block: usize,
-		horizontal: &HashMap<(usize, usize), f32>,
-	) -> (f32, Option<Rect>) {
-		self.overflow
-			.iter()
-			.enumerate()
-			.find(|(_, o)| o.commands.contains(&command))
-			.map(|(oi, o)| {
-				(
-					horizontal
-						.get(&(block, oi))
-						.copied()
-						.unwrap_or(0.0)
-						.clamp(0.0, (o.content_width - o.rect.w).max(0.0)),
-					Some(o.rect),
-				)
-			})
-			.unwrap_or((0.0, None))
 	}
 }
 

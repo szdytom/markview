@@ -15,6 +15,7 @@ pub struct Case {
 	pub device: Media,
 	pub platform: Media,
 	pub variant: &'static str,
+	pub disclosures: Option<&'static [bool]>,
 	pub rules: String,
 }
 
@@ -31,6 +32,7 @@ impl Case {
 			device: Media::Desktop,
 			platform: Media::Linux,
 			variant: "",
+			disclosures: None,
 			rules: String::new(),
 		}
 	}
@@ -90,6 +92,32 @@ impl Case {
 
 pub fn cases() -> Vec<Case> {
 	let mut cases = Vec::new();
+	for (name, states, variant, width) in [
+		("declared", None, "", 560.),
+		("closed", Some(&[false, false, false, false][..]), "", 560.),
+		("opened", Some(&[true, true, true, true][..]), "", 560.),
+		("nested", Some(&[true, true, false, false][..]), "", 320.),
+		(
+			"selected",
+			Some(&[true, true, true, false][..]),
+			"selected",
+			560.,
+		),
+		(
+			"scrolled",
+			Some(&[true, true, true, false][..]),
+			"scrolled",
+			320.,
+		),
+	] {
+		let mut case = Case::new("details-flow", 2400.);
+		case.name = format!("details-flow-{name}");
+		case.disclosures = states;
+		case.variant = variant;
+		case.width = width;
+		case.rules = "[[rule]]\nwhen=['details']\npadding=0.6\nborder_width=1\nborder_color='#557799'\nbackground='#eef3f8'\nradius=7\nspace_before=0.4\nspace_after=0.7\n[[rule]]\nwhen=['list_item']\npadding=0.3\nborder_width=1\nborder_color='#bb8866'\n".into();
+		cases.push(case);
+	}
 	// Keep the original eight baselines as independent regression cases.
 	for fixture in ["prose", "lists", "table", "code", "math", "images"] {
 		let mut case = Case::new(fixture, 640.);

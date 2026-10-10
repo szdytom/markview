@@ -98,6 +98,32 @@ fn markdown_matches_rendering_baselines() -> Result<()> {
 			root.join(format!("tests/fixtures/{}.md", case.fixture)),
 		)?);
 		let mut options = case.options(root)?;
+		if let Some(states) = case.disclosures {
+			fn disclosures(blocks: &[document::Block], ids: &mut Vec<u64>) {
+				for block in blocks {
+					match &block.kind {
+						document::BlockKind::Details { blocks, .. } => {
+							ids.push(block.id);
+							disclosures(blocks, ids);
+						}
+						document::BlockKind::Quote { blocks, .. } => {
+							disclosures(blocks, ids)
+						}
+						document::BlockKind::List { items, .. } => {
+							for item in items {
+								disclosures(&item.blocks, ids);
+							}
+						}
+						_ => {}
+					}
+				}
+			}
+			let mut ids = Vec::new();
+			disclosures(&doc.blocks, &mut ids);
+			assert_eq!(ids.len(), states.len());
+			options.details_open =
+				Arc::new(ids.into_iter().zip(states.iter().copied()).collect());
+		}
 		options.fonts = fonts.clone();
 		renderer.set_stylesheet(options.stylesheet.clone());
 		let mut engine =
@@ -153,22 +179,27 @@ fn markdown_matches_rendering_baselines() -> Result<()> {
 			}
 			assert!(!horizontal.is_empty(), "{name}: nothing overflows");
 		}
-		let selection = (case.variant == "selected").then_some(TextSelection {
-			anchor: TextPosition {
-				revision: 1,
-				block: 1,
-				node: 0,
-				offset: 0,
-				affinity: Affinity::Before,
-			},
-			focus: TextPosition {
-				revision: 1,
-				block: 2,
-				node: 0,
-				offset: 10,
-				affinity: Affinity::After,
-			},
-		});
+		let selection =
+			if case.fixture == "details-flow" && case.variant == "selected" {
+				snapshot.select_all(1)
+			} else {
+				(case.variant == "selected").then_some(TextSelection {
+					anchor: TextPosition {
+						revision: 1,
+						block: 1,
+						node: 0,
+						offset: 0,
+						affinity: Affinity::Before,
+					},
+					focus: TextPosition {
+						revision: 1,
+						block: 2,
+						node: 0,
+						offset: 10,
+						affinity: Affinity::After,
+					},
+				})
+			};
 		let view = View {
 			width: (width * scale) as u32,
 			height: (height * scale) as u32,

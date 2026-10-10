@@ -18,16 +18,17 @@ impl LayoutSnapshot {
 		// blocks below it can only be farther.
 		let start = self
 			.blocks
-			.partition_point(|b| b.y + b.layout.height < y)
+			.partition_point(|b| b.y + b.height() < y)
 			.saturating_sub(1);
 		for (bi, block) in self.blocks.iter().enumerate().skip(start) {
-			let dy = (block.y - y)
-				.max(0.0)
-				.max(y - block.y - block.layout.height);
+			let dy = (block.y - y).max(0.0).max(y - block.y - block.height());
 			if dy * dy * 10000.0 > distance {
 				break;
 			}
 			for (ni, node) in block.layout.text.iter().enumerate() {
+				if !block.text_visible(ni) {
+					continue;
+				}
 				for cluster in &node.clusters {
 					let Some(rect) = self.text_rect(bi, cluster, horizontal)
 					else {
@@ -38,11 +39,8 @@ impl LayoutSnapshot {
 					let score = dy * dy * 10000.0 + dx * dx;
 					if score < distance {
 						distance = score;
-						let (offset, _) = block.layout.command_view(
-							cluster.command,
-							bi,
-							horizontal,
-						);
+						let (offset, _) =
+							block.command_view(cluster.command, bi, horizontal);
 						// The nearest of the offsets the cluster may be split
 						// at. A ligature sets several letters as one glyph, so
 						// the pointer has to be able to land between them; a
@@ -51,7 +49,10 @@ impl LayoutSnapshot {
 						// offer only the two edges.
 						let width = cluster.rect.w;
 						let along = if width > 0.0 {
-							((x - (cluster.rect.x - offset)) / width)
+							((x - (block
+								.rect(cluster.command, cluster.rect)
+								.unwrap()
+								.x - offset)) / width)
 								.clamp(0.0, 1.0)
 						} else {
 							0.5
@@ -88,7 +89,7 @@ impl LayoutSnapshot {
 	) -> bool {
 		let start = self
 			.blocks
-			.partition_point(|block| block.y + block.layout.height < y)
+			.partition_point(|block| block.y + block.height() < y)
 			.saturating_sub(1);
 		self.blocks
 			.iter()
@@ -98,11 +99,12 @@ impl LayoutSnapshot {
 				if block.y > y {
 					return false;
 				}
-				block.layout.text.iter().any(|node| {
-					node.clusters.iter().any(|cluster| {
-						self.text_rect(bi, cluster, horizontal)
-							.is_some_and(|rect| rect.contains(x, y))
-					})
+				block.layout.text.iter().enumerate().any(|(ni, node)| {
+					block.text_visible(ni)
+						&& node.clusters.iter().any(|cluster| {
+							self.text_rect(bi, cluster, horizontal)
+								.is_some_and(|rect| rect.contains(x, y))
+						})
 				})
 			})
 	}
@@ -124,7 +126,8 @@ impl LayoutSnapshot {
 		horizontal: &HashMap<(usize, usize), f32>,
 	) -> Option<Rect> {
 		let block = &self.blocks[bi];
-		let (offset, clip) = block.layout.command_view(command, bi, horizontal);
+		let (offset, clip) = block.command_view(command, bi, horizontal);
+		rect = block.rect(command, rect)?;
 		rect.x -= offset;
 		if let Some(clip) = clip {
 			rect = rect.intersect(clip)?;
@@ -187,12 +190,15 @@ impl LayoutSnapshot {
 		let mut rects = Vec::new();
 		let start = self
 			.blocks
-			.partition_point(|b| b.y + b.layout.height < visible_y.start);
+			.partition_point(|b| b.y + b.height() < visible_y.start);
 		for (bi, block) in self.blocks.iter().enumerate().skip(start) {
 			if block.y > visible_y.end {
 				break;
 			}
 			for (ni, node) in block.layout.text.iter().enumerate() {
+				if !block.text_visible(ni) {
+					continue;
+				}
 				for cluster in &node.clusters {
 					// A selection that stops inside a cluster covers only the
 					// letters up to where it stops, so a ligature can be

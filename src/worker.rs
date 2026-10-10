@@ -337,7 +337,7 @@ impl Worker {
 													.load(Ordering::Relaxed),
 											);
 											let mut shown = None;
-											engine.layout_progressive(
+											engine.layout_progressive_cancellable(
 												&prefix,
 												&request.options,
 												&images.snapshot,
@@ -354,6 +354,10 @@ impl Worker {
 														return false;
 													}
 													true
+												},
+											|| {
+													current.sequence.load(Ordering::Relaxed)
+														!= request.version
 												},
 											);
 											if let Some(layout) = shown {
@@ -431,7 +435,7 @@ impl Worker {
 							let mut publication =
 								PrefixPublication::new(document.source.len());
 							let layout = engine
-								.layout_progressive(
+								.layout_progressive_cancellable(
 									&document,
 									&request.options,
 									&images.snapshot,
@@ -477,6 +481,9 @@ impl Worker {
 										}
 										true
 									},
+								|| {
+										current.sequence.load(Ordering::Relaxed) != request.version
+									},
 								)
 								.ok_or_else(|| "Superseded".to_string())?;
 							update.layout_ms =
@@ -517,20 +524,7 @@ impl Worker {
 											Inbox::lock(lock).pending.is_some()
 										};
 										(!pending).then(|| {
-											let counts = reader
-												.layout
-												.select_all(
-													reader.content_version,
-												)
-												.map(|selection| {
-													markview_core::text::TextCounts::of(
-														&reader.layout.extract_text(
-															selection,
-															reader.content_version,
-														),
-													)
-												})
-												.unwrap_or_default();
+											let counts = markview_core::text::TextCounts::of(&reader.layout.full_reading_text());
 											counted = Some((
 												reader.document.content_id,
 												counts,
@@ -962,8 +956,9 @@ mod reflow_tests {
 		let second = dir.path().join("b.md");
 		// Identical content in two files: the second open shares the cached
 		// content identity, but its own session still needs the counts.
-		fs::write(&first, "Some words to count.\n").unwrap();
-		fs::write(&second, "Some words to count.\n").unwrap();
+		let source = "Before.\n\n<details>\n<summary>Summary</summary>\n\nHidden words.\n\n</details>\n\nAfter.\n";
+		fs::write(&first, source).unwrap();
+		fs::write(&second, source).unwrap();
 		let (tx, rx) = mpsc::channel();
 		let worker = Worker::new(move |u| {
 			let _ = tx.send(u);
@@ -988,7 +983,7 @@ mod reflow_tests {
 			.unwrap()
 			.counts
 			.expect("counts for the first document");
-		assert!(counts.chars > 0 && counts.words > 0);
+		assert_eq!(counts.words, 5);
 		submit(2, &second);
 		let update = rx.recv_timeout(Duration::from_secs(5)).unwrap();
 		assert!(update.result.unwrap().is_ok());

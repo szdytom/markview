@@ -350,7 +350,10 @@ impl<P: SendEvent> App<P> {
 								.clusters
 								.iter()
 								.find(|c| c.range.contains(&s.anchor.offset))
-								.map(|c| b.y + c.rect.y)
+								.and_then(|c| {
+									b.rect(c.command, c.rect)
+										.map(|rect| b.y + rect.y)
+								})
 						})
 						.or_else(|| {
 							session.snapshot.blocks.get(m.block).map(|b| b.y)
@@ -397,10 +400,9 @@ impl<P: SendEvent> App<P> {
 			}
 		}
 		if changed {
-			self.request(false);
-		} else {
-			self.apply_search_navigation();
+			self.present_disclosures();
 		}
+		self.apply_search_navigation();
 		self.redraw();
 	}
 	pub(super) fn apply_search_navigation(&mut self) {
@@ -411,12 +413,7 @@ impl<P: SendEvent> App<P> {
 			return;
 		}
 		session.saved_reading = None;
-		if session.accepted_revision != session.content_version
-			|| session
-				.requested_options
-				.as_ref()
-				.is_some_and(|o| o.details_open != session.details_open)
-		{
+		if session.accepted_revision != session.content_version {
 			return;
 		}
 		let Some(hit) = search.current.and_then(|i| search.matches.get(i))
@@ -442,9 +439,11 @@ impl<P: SendEvent> App<P> {
 		};
 		for (oi, overflow) in block.layout.overflow.iter().enumerate() {
 			if overflow.commands.contains(&cluster.command) {
+				let rect = block.overflow_rect(oi).unwrap();
+				let origin = block.command_offset(cluster.command).unwrap()[0];
 				let offset =
 					session.horizontal.entry((hit.block, oi)).or_default();
-				let x = cluster.rect.x;
+				let x = cluster.rect.x + origin;
 				let end = if selection.anchor.node == selection.focus.node {
 					node.clusters
 						.iter()
@@ -453,21 +452,20 @@ impl<P: SendEvent> App<P> {
 								&& c.range.end > selection.anchor.offset
 								&& (c.rect.y - cluster.rect.y).abs() < 0.5
 						})
-						.map(|c| c.rect.x + c.rect.w)
+						.map(|c| c.rect.x + c.rect.w + origin)
 						.fold(x + cluster.rect.w, f32::max)
 				} else {
 					x + cluster.rect.w
 				};
-				if x < overflow.rect.x + *offset
-					|| end > overflow.rect.x + overflow.rect.w + *offset
+				if x < rect.x + *offset
+					|| end > rect.x + overflow.rect.w + *offset
 				{
-					let target = if end - x > overflow.rect.w
-						|| x < overflow.rect.x + *offset
-					{
-						x - overflow.rect.x
-					} else {
-						end - overflow.rect.x - overflow.rect.w
-					};
+					let target =
+						if end - x > overflow.rect.w || x < rect.x + *offset {
+							x - rect.x
+						} else {
+							end - rect.x - overflow.rect.w
+						};
 					*offset = target.clamp(
 						0.0,
 						(overflow.content_width - overflow.rect.w).max(0.0),
@@ -475,7 +473,7 @@ impl<P: SendEvent> App<P> {
 				}
 			}
 		}
-		let y = block.y + cluster.rect.y;
+		let y = block.y + block.rect(cluster.command, cluster.rect).unwrap().y;
 		let to = if y < session.scrolling.offset
 			|| y + cluster.rect.h > session.scrolling.offset + viewport
 		{

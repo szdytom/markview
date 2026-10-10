@@ -78,11 +78,10 @@ fn external_key(
 	block.images(&mut specs);
 	let mut code = Vec::new();
 	block.code_blocks(&mut code);
-	// A `<details>` body is part of its container's geometry, so the resolved
-	// state of every disclosure in the subtree is an external input: toggling
-	// a nested element must invalidate each ancestor that frames it.
+	// Disclosure identities bind summary targets; presentation overrides do
+	// not belong to the geometry key.
 	let mut disclosures = Vec::new();
-	disclosure_states(block, options, &mut disclosures);
+	disclosure_identities(block, &mut disclosures);
 	// The front matter is the only block that reads the reader's own options:
 	// it draws the reader's interface label, and an export hides it entirely.
 	// Neither belongs to the source, so both belong to the block's key.
@@ -117,35 +116,26 @@ fn external_key(
 	))
 }
 
-/// Appends the identity and resolved collapse state of every `<details>` in
-/// `block`'s subtree, in reading order. The tree is enough; no laid-out child
-/// is consulted, so the key is available before the block is measured. The
-/// identity is part of the key because the placed geometry binds each
-/// summary's hit URL to its own block id: two distinct elements must never
-/// share geometry whose links point at one of them.
-fn disclosure_states(
-	block: &Block,
-	options: &LayoutOptions,
-	out: &mut Vec<(u64, bool)>,
-) {
+/// Binds summary targets and source defaults independently of reader state.
+fn disclosure_identities(block: &Block, out: &mut Vec<(u64, bool)>) {
 	match &block.kind {
 		BlockKind::Details { open, blocks, .. }
 		| BlockKind::FrontMatter { open, blocks } => {
-			out.push((block.id, options.details_expanded(block.id, *open)));
+			out.push((block.id, *open));
 			for block in blocks {
-				disclosure_states(block, options, out);
+				disclosure_identities(block, out);
 			}
 		}
 		BlockKind::Quote { blocks, .. }
 		| BlockKind::Footnote { blocks, .. } => {
 			for block in blocks {
-				disclosure_states(block, options, out);
+				disclosure_identities(block, out);
 			}
 		}
 		BlockKind::List { items, .. } => {
 			for item in items {
 				for block in &item.blocks {
-					disclosure_states(block, options, out);
+					disclosure_identities(block, out);
 				}
 			}
 		}
@@ -170,7 +160,8 @@ pub struct LayoutOptions {
 	pub codeblock_wrap: bool,
 	/// Reader-chosen collapse state of each `<details>`, keyed by the block's
 	/// semantic id. A block absent from the map uses the state its source
-	/// declared, so a fresh document starts there.
+	/// declared, so a fresh document starts there. Presentation state does not
+	/// invalidate cached geometry.
 	pub details_open: Arc<std::collections::BTreeMap<u64, bool>>,
 	/// Render every `<details>` expanded regardless of the map. Exports set
 	/// this: a printed page has no pointer to open a collapsed body with.
@@ -221,8 +212,6 @@ impl PartialEq for LayoutOptions {
 			&& self.greedy == other.greedy
 			&& self.codeblock_theme_override == other.codeblock_theme_override
 			&& self.codeblock_wrap == other.codeblock_wrap
-			&& self.details_open == other.details_open
-			&& self.force_open == other.force_open
 			&& self.front_matter_label == other.front_matter_label
 			&& self.hide_front_matter == other.hide_front_matter
 			&& self.stylesheet.layout_key() == other.stylesheet.layout_key()
@@ -252,17 +241,10 @@ impl LayoutOptions {
 	pub(crate) fn indent(&self, size: f32, width: f32) -> f32 {
 		(self.paragraph_indent.max(0.0) * size).min((width - size).max(0.0))
 	}
-
-	/// Whether one `<details>` block shows its body: the reader's choice when
-	/// they made one, the source declaration otherwise, and always when an
-	/// export forces every block open.
-	pub fn details_expanded(&self, id: u64, declared: bool) -> bool {
-		self.force_open
-			|| self.details_open.get(&id).copied().unwrap_or(declared)
-	}
 }
 
 struct BlockContext<'a> {
+	cancelled: &'a dyn Fn() -> bool,
 	search_fields: HashMap<usize, crate::search::SearchField>,
 	shaper: &'a mut TextShaper,
 	math: &'a mut MathEngine,
@@ -394,16 +376,42 @@ impl LayoutEngine {
 		document: &Document,
 		options: &LayoutOptions,
 		images: &crate::image::ImageSnapshot,
+		progress: impl FnMut(&LayoutSnapshot) -> bool,
+	) -> Option<LayoutSnapshot> {
+		self.layout_progressive_cancellable(
+			document,
+			options,
+			images,
+			progress,
+			|| false,
+		)
+	}
+
+	/// Checks cancellation between nested blocks as well as published prefixes.
+	pub fn layout_progressive_cancellable(
+		&mut self,
+		document: &Document,
+		options: &LayoutOptions,
+		images: &crate::image::ImageSnapshot,
 		mut progress: impl FnMut(&LayoutSnapshot) -> bool,
+		cancelled: impl Fn() -> bool,
 	) -> Option<LayoutSnapshot> {
 		let mut layout = self.begin_layout(document, options, images);
 		while !layout.is_complete() {
-			if !progress(layout.snapshot()) {
+			if cancelled() || !progress(layout.snapshot()) {
 				return None;
 			}
 			// A zero budget lays out exactly one block, so the closure sees
 			// every prefix.
-			self.advance(&mut layout, document, Duration::ZERO);
+			self.advance_cancellable(
+				&mut layout,
+				document,
+				Duration::ZERO,
+				&cancelled,
+			);
+			if cancelled() {
+				return None;
+			}
 		}
 		Some(layout.into_snapshot())
 	}

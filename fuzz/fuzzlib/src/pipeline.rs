@@ -145,6 +145,7 @@ pub fn export_pdf(
 	if engine.wait_highlights() {
 		snapshot = engine.layout(&document, &options);
 	}
+	let snapshot = snapshot.flattened();
 	let pagination = paginate(&document, &snapshot, &geometry);
 	let images = synthetic_images(&snapshot);
 	let bytes = markview_pdf::export(Export {

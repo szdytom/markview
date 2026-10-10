@@ -90,10 +90,11 @@ fn triple_click_selects_paragraphs_and_cells_inside_containers() {
 		let mut selected = Vec::new();
 		for node in &placed.layout.text {
 			for cluster in &node.clusters {
+				let rect = placed.rect(cluster.command, cluster.rect).unwrap();
 				let hit = snapshot
 					.hit_test_text(
-						cluster.rect.x + cluster.rect.w * 0.5,
-						placed.y + cluster.rect.y + cluster.rect.h * 0.5,
+						rect.x + rect.w * 0.5,
+						placed.y + rect.y + rect.h * 0.5,
 						&Default::default(),
 						1,
 					)
@@ -130,7 +131,7 @@ fn a_partial_selection_marks_nothing_it_does_not_cover() {
 	let rects = snapshot.selection_rects(partial, &Default::default(), 1);
 	assert!(!rects.is_empty(), "the covered text is marked");
 	let first = &snapshot.blocks[0];
-	let band = first.y..first.y + first.layout.height;
+	let band = first.y..first.y + first.height();
 	for rect in &rects {
 		assert!(
 			band.contains(&rect.y),

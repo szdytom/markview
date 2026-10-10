@@ -82,9 +82,10 @@ impl DocumentInteraction<'_> {
 	) -> Option<Scrollbar> {
 		let placed = self.snapshot.blocks.get(block)?;
 		let item = placed.layout.overflow.get(overflow)?;
+		let rect = placed.overflow_rect(overflow)?;
 		let track = self.viewport.window_rect(Rect {
-			x: item.rect.x,
-			y: placed.y + item.rect.y + item.rect.h,
+			x: rect.x,
+			y: placed.y + rect.y + rect.h,
 			w: item.rect.w,
 			h: metrics.overflow_band(item.gutter),
 		});
@@ -109,7 +110,7 @@ impl DocumentInteraction<'_> {
 		}
 		let (_, y) = self.viewport.document_point(point.x, point.y);
 		for (block, placed) in self.snapshot.blocks.iter().enumerate() {
-			if y < placed.y || y > placed.y + placed.layout.height {
+			if y < placed.y || y > placed.y + placed.height() {
 				continue;
 			}
 			for overflow in 0..placed.layout.overflow.len() {
@@ -131,7 +132,11 @@ impl DocumentInteraction<'_> {
 			b.layout
 				.overflow
 				.iter()
-				.position(|o| o.rect.contains(x, y - b.y))
+				.enumerate()
+				.find(|(oi, _)| {
+					b.overflow_rect(*oi).is_some_and(|r| r.contains(x, y - b.y))
+				})
+				.map(|(oi, _)| oi)
 				.map(|oi| (bi, oi))
 		})
 	}

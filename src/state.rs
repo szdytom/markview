@@ -573,20 +573,18 @@ impl ReaderSession {
 		let mut index = 0;
 		let mut current = None;
 		'blocks: for block in &self.snapshot.blocks {
-			for anchor in &block.layout.anchors {
+			for (anchor, y) in block.anchor_positions() {
 				// A footnote definition and a reference both register layout
 				// anchors. Neither is in the outline, so treating one as a
 				// heading would advance the scan past every later entry.
-				if document::footnote::is_anchor(&anchor.anchor) {
+				if document::footnote::is_anchor(anchor) {
 					continue;
 				}
-				while index < outline.len()
-					&& outline[index].anchor != anchor.anchor
-				{
+				while index < outline.len() && outline[index].anchor != anchor {
 					index += 1;
 				}
 				if index >= outline.len()
-					|| block.y + anchor.y > self.scrolling.offset + 0.5
+					|| block.y + y > self.scrolling.offset + 0.5
 				{
 					break 'blocks;
 				}
@@ -991,7 +989,7 @@ impl ReaderSession {
 			.filter(|b| b.id == anchor.id)
 			.nth(occurrence)
 			.is_some_and(|b| {
-				b.y + (self.scrolling.offset - anchor.y).min(b.layout.height)
+				b.y + (self.scrolling.offset - anchor.y).min(b.height())
 					+ viewport <= reader.layout.height
 			})
 	}
@@ -1092,12 +1090,25 @@ impl ReaderSession {
 		self.scrolling.cancel();
 	}
 
+	pub(crate) fn present_disclosures(&mut self, viewport: f32) {
+		let old = self.snapshot.clone();
+		self.snapshot.set_disclosures(&self.details_open, false);
+		self.scrolling.offset = crate::layout::anchored_scroll(
+			&old,
+			&self.snapshot,
+			self.scrolling.offset,
+			viewport,
+			false,
+		);
+		self.cancel_scroll_animation();
+		self.resolve_scroll(viewport);
+	}
+
 	/// Expands the `<details>` elements enclosing `anchor` and reports whether
 	/// any changed.
 	///
-	/// A heading or footnote inside a collapsed body is never laid out, so a
-	/// jump to its anchor must open the disclosures framing it, outermost
-	/// first, and wait for the reflow before the anchor can resolve.
+	/// A heading or footnote inside a collapsed body has retained geometry.
+	/// Opening its enclosing disclosures makes that anchor visible to flow.
 	pub(crate) fn open_enclosing_details(&mut self, anchor: &str) -> bool {
 		let Some(document) = self.document.clone() else {
 			return false;
@@ -1147,7 +1158,7 @@ impl ReaderSession {
 
 	pub(crate) fn accept(
 		&mut self,
-		reader: crate::worker::ReaderSnapshot,
+		mut reader: crate::worker::ReaderSnapshot,
 		viewport: f32,
 		counts: Option<TextCounts>,
 	) -> bool {
@@ -1158,6 +1169,7 @@ impl ReaderSession {
 		if let Some(counts) = counts {
 			self.counts = counts;
 		}
+		reader.layout.set_disclosures(&self.details_open, false);
 		let extending = self.extends_prefix(&reader);
 		self.scrolling.offset = if extending {
 			self.scrolling.offset
