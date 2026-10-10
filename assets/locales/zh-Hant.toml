@@ -223,6 +223,7 @@ fonts_summary = "{families} 個字型家族，{missing} 個缺少，磁碟占用
 # What the status bar says while the reader acts.
 status_clipboard_unreadable = "無法讀取剪貼簿：{error}"
 status_copied_diagnostics = "已複製診斷資訊"
+status_copied_path = "已複製路徑"
 status_copied_selection = "已複製選取內容"
 status_copy_failed = "無法複製：{error}"
 status_diagnostics_failed = "無法複製診斷資訊：{error}"

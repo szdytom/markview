@@ -222,6 +222,7 @@ fonts_summary = "{families} families, {missing} missing, {disk} on disk"
 # What the status bar says while the reader acts.
 status_clipboard_unreadable = "Cannot read clipboard: {error}"
 status_copied_diagnostics = "Copied diagnostics"
+status_copied_path = "Copied path"
 status_copied_selection = "Copied selection"
 status_copy_failed = "Cannot copy: {error}"
 status_diagnostics_failed = "Cannot copy diagnostics: {error}"

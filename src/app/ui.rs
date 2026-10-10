@@ -112,7 +112,11 @@ impl<P: super::SendEvent> App<P> {
 		} else {
 			let mut buttons: Vec<Button> = Vec::new();
 			for button in self.buttons() {
-				if !buttons.iter().any(|b| b.action == button.action) {
+				// The footer's path takes the pointer only: the band draws no
+				// focus ring, so the keyboard has nothing to show for it.
+				if !matches!(button.action, crate::state::Command::CopyPath)
+					&& !buttons.iter().any(|b| b.action == button.action)
+				{
 					buttons.push(button);
 				}
 			}

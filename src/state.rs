@@ -90,6 +90,8 @@ pub(crate) enum Command {
 	Settings,
 	SettingsPreview,
 	CopyDiagnostics,
+	/// Copy the active document's absolute path to the clipboard.
+	CopyPath,
 	OpenProject,
 	Reset,
 	OpenConfig,

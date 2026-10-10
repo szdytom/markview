@@ -314,6 +314,49 @@ fn document_scrollbar_keeps_its_edge_inset_and_width_while_dragging() {
 	assert_eq!((dragged_thumb.x, dragged_thumb.w), (thumb.x, thumb.w));
 }
 
+/// The footer names the open document while the reader is idle, and the label
+/// carries the whole path, so a press copies it even where the band had to
+/// trim it to fit. A hover hint, a timed status and an empty session each take
+/// the slot back.
+#[test]
+fn an_idle_footer_names_the_document_and_offers_its_whole_path() {
+	let (mut app, _) = reader("Body line.\n", 900.0);
+	let path = PathBuf::from("/Users/reader/Documents/markview/notes.md");
+	app.readers.session.path = Some(path.clone());
+	let (_, height, _) = app.dimensions();
+	let path_button = |app: &mut App<StubProxy>| {
+		app.buttons()
+			.into_iter()
+			.find(|button| button.action == Command::CopyPath)
+	};
+
+	let found =
+		path_button(&mut app).expect("an idle footer with a document names it");
+	// The label carries the whole path, so a copy never depends on what fit.
+	assert_eq!(found.label, &*path.to_string_lossy());
+	assert_eq!(found.rect.y, height - super::super::BOTTOM);
+
+	// A hover hint and a timed status each take the slot back.
+	app.interaction.hover = Some("https://example.com".into());
+	assert!(path_button(&mut app).is_none());
+	app.interaction.hover = None;
+	app.status = "Copied selection".into();
+	app.status_until = Some(Instant::now() + Duration::from_secs(3));
+	assert!(path_button(&mut app).is_none());
+
+	// A session with no document shows nothing, so there is nothing to copy.
+	app.status.clear();
+	app.status_until = None;
+	app.readers.session.path = None;
+	assert!(path_button(&mut app).is_none());
+	app.action(Command::CopyPath);
+	assert!(app.status.is_empty());
+
+	app.readers.session.path = Some(path);
+	app.action(Command::CopyPath);
+	assert!(!app.status.is_empty());
+}
+
 #[test]
 fn scrolled_content_paints_to_both_viewport_edges() -> anyhow::Result<()> {
 	use crate::render::{Renderer, Theme, View};

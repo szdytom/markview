@@ -135,6 +135,22 @@ impl<P: super::SendEvent> App<P> {
 				self.redraw();
 				return;
 			}
+			Command::CopyPath => {
+				let Some(path) = self.readers.session.path.clone() else {
+					return;
+				};
+				let lang = self.preferences.values.lang();
+				let text = path.to_string_lossy().into_owned();
+				match self.clipboard.write(text) {
+					Ok(()) => self.notify(lang.status_copied_path(), false, 3),
+					Err(error) => self.notify(
+						&lang.status_copy_failed(error.to_string()),
+						true,
+						4,
+					),
+				}
+				return;
+			}
 			Command::TabStyle(style) => {
 				if self.tab_strip.phone {
 					return;

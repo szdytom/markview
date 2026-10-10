@@ -26,6 +26,7 @@ at the same level, without `[brackets]`.
 - Cover nested disclosures in quotes and lists, styled container edges, selection and horizontal scrolling with rendering baselines.
 - Compare document rendering with committed PNG baselines on Lavapipe, with explicit updates and CI difference images.
 - Expand rendering baselines across Markdown combinations, all bundled themes, MVSS drawing properties, PDF pages, diagrams, UI states and Chinese/English typography.
+- Show the open document's absolute path in the footer's secondary slot while the reader is idle, and copy it when the path is clicked.
 
 ### Changed
 

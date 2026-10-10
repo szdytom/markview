@@ -350,10 +350,11 @@ impl<P: super::SendEvent> App<P> {
 	}
 
 	fn open_swipe_drawer(&mut self, surface: Surface) {
-		if !matches!(surface, Surface::Document | Surface::Outline)
-			&& !(matches!(surface, Surface::Panel)
-				&& self.interaction.panel == PanelPage::Tabs)
-		{
+		let swipes_drawer =
+			matches!(surface, Surface::Document | Surface::Outline)
+				|| (matches!(surface, Surface::Panel)
+					&& self.interaction.panel == PanelPage::Tabs);
+		if !swipes_drawer {
 			return;
 		}
 		let distance = self.gestures.swipe_distance;

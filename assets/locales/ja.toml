@@ -223,6 +223,7 @@ fonts_summary = "{families} ファミリー、不足 {missing}、ディスク上
 # What the status bar says while the reader acts.
 status_clipboard_unreadable = "クリップボードを読み取れません：{error}"
 status_copied_diagnostics = "診断情報をコピーしました"
+status_copied_path = "パスをコピーしました"
 status_copied_selection = "選択範囲をコピーしました"
 status_copy_failed = "コピーできません：{error}"
 status_diagnostics_failed = "診断情報をコピーできません：{error}"

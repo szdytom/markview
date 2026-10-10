@@ -204,7 +204,57 @@ pub(super) struct Chrome<'a> {
 	/// Whether an export is rewriting its file on every document change.
 	pub(super) watching: bool,
 }
-impl Chrome<'_> {
+impl<'a> Chrome<'a> {
+	/// The active document's absolute path, or `None` when its session has no
+	/// document to name.
+	fn path(&self) -> Option<std::borrow::Cow<'a, str>> {
+		self.session
+			.path
+			.as_deref()
+			.map(|path| path.to_string_lossy())
+	}
+
+	/// The footer's trailing label: a timed status, a hover hint, or — while
+	/// the reader is idle — the open document's absolute path.
+	fn secondary(&self) -> std::borrow::Cow<'a, str> {
+		if self
+			.status_until
+			.is_some_and(|until| until > Instant::now())
+		{
+			self.status.into()
+		} else if let Some(hint) = self.hover_hint {
+			hint.into()
+		} else {
+			self.path().unwrap_or_default()
+		}
+	}
+
+	/// The footer's path as a control of its own, while the footer shows it: a
+	/// press on the absolute path copies it, so the label is its own hit target.
+	fn path_button(&mut self) -> Option<Button> {
+		if self.session.search.open
+			|| self
+				.status_until
+				.is_some_and(|until| until > Instant::now())
+			|| self.hover_hint.is_some()
+		{
+			return None;
+		}
+		let path = self.path()?;
+		let size = (self.width, self.height);
+		let (_, used) = footer::counts_label(
+			self.ui,
+			(!self.session.layout_pending).then_some(self.session.counts),
+			self.interaction.selection_counts.map(|(_, counts)| counts),
+			self.width,
+			self.settings.lang(),
+		);
+		let (_, rect) = footer::trailing(self.ui, &path, used, size)?;
+		// The label holds the whole path, so a copy never depends on what fit.
+		let label: std::sync::Arc<str> = std::sync::Arc::from(&*path);
+		Some(components::button(label, Command::CopyPath, rect))
+	}
+
 	/// The open option list, measured against the page that holds its row.
 	pub(in crate::app) fn dropdown_menu(
 		&mut self,
@@ -412,6 +462,9 @@ impl Chrome<'_> {
 					lang,
 				));
 			}
+			// The footer's path answers a press last: nothing else in the
+			// reading view reaches the band it sits in.
+			buttons.extend(self.path_button());
 			buttons
 		};
 		if let Some(load) = self.resource_load {
@@ -518,19 +571,13 @@ impl Chrome<'_> {
 			self.warning.as_deref()
 		};
 		if !self.session.search.open {
+			let secondary = self.secondary();
 			out.extend(draw_footer(
 				self.ui,
 				(!self.session.layout_pending).then_some(self.session.counts),
 				self.interaction.selection_counts.map(|(_, counts)| counts),
 				warning,
-				if self
-					.status_until
-					.is_some_and(|until| until > Instant::now())
-				{
-					self.status
-				} else {
-					self.hover_hint.unwrap_or("")
-				},
+				&secondary,
 				(width, height),
 				self.settings.lang(),
 			));

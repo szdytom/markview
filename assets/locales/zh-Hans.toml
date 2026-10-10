@@ -219,6 +219,7 @@ fonts_summary = "{families} 个字体族，{missing} 个缺失，磁盘占用 {d
 # What the status bar says while the reader acts.
 status_clipboard_unreadable = "无法读取剪贴板：{error}"
 status_copied_diagnostics = "已复制诊断信息"
+status_copied_path = "已复制路径"
 status_copied_selection = "已复制所选内容"
 status_copy_failed = "无法复制：{error}"
 status_diagnostics_failed = "无法复制诊断信息：{error}"
