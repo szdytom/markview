@@ -148,6 +148,7 @@ impl LayoutEngine {
 				crate::document::fingerprint(&(
 					options.stylesheet.layout_key(),
 					&options.fonts,
+					options.limits,
 				))
 			})
 			.unwrap_or_default();
@@ -181,6 +182,10 @@ impl LayoutEngine {
 		// so entries that never completed a pass are kept by recency alone.
 		let completed = self.completed;
 		self.cache.retain(|_, entry| {
+			entry.pass == previous
+				|| completed.is_some() && entry.completed == completed
+		});
+		self.nested_cache.retain(|_, entry| {
 			entry.pass == previous
 				|| completed.is_some() && entry.completed == completed
 		});
@@ -319,7 +324,7 @@ impl LayoutEngine {
 				external: external_key(
 					block,
 					&pass.images,
-					&self.highlights,
+					self.highlights.results(),
 					pass.codeblock_theme.as_deref(),
 					&pass.options,
 				),
@@ -357,6 +362,10 @@ impl LayoutEngine {
 							pass.appearance.clone()
 						};
 						BlockContext {
+							nested: Some(super::cache::NestedCache {
+								entries: &self.nested_cache,
+								base: &key,
+							}),
 							cancelled,
 							search_fields: crate::search::layout_fields(block),
 							shaper: &mut self.shaper,
@@ -391,6 +400,7 @@ impl LayoutEngine {
 				);
 				measured
 			};
+			self.retain_children(&geometry, pass.id);
 			let flow = Arc::new(geometry.resolve_flow(
 				&pass.options.details_open,
 				pass.options.force_open,
@@ -435,6 +445,10 @@ impl LayoutEngine {
 		// Every survivor is part of this completing pass, so stamp that
 		// membership now: a later reuse must not erase it.
 		for entry in self.cache.values_mut() {
+			entry.completed = Some(id);
+		}
+		self.nested_cache.retain(|_, entry| entry.pass == id);
+		for entry in self.nested_cache.values_mut() {
 			entry.completed = Some(id);
 		}
 		self.completed = Some(id);

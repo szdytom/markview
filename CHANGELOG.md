@@ -29,6 +29,7 @@ at the same level, without `[brackets]`.
 
 ### Changed
 
+- Reuse unchanged nested block geometry after local edits, remeasuring only affected paragraphs inside disclosures, quotes and lists.
 - Retain node-local geometry for all disclosure bodies and recompute visible flow on toggles without restarting layout in native or web readers.
 - Run offscreen rendering tests by default, with Lavapipe in Linux CI and rendered frames uploaded for inspection.
 

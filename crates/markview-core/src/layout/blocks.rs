@@ -447,12 +447,13 @@ impl BlockContext<'_> {
 			}
 			if anchor_only(block) {
 				self.shaper.appearance = parent.clone();
-				cursor += self.block(block, x, cursor, width, opts, out);
+				cursor +=
+					self.cached_child(block, [x, cursor], width, opts, out);
 				continue;
 			}
 			self.shaper.appearance =
 				opts.stylesheet.child(&parent, index, count);
-			cursor += self.block(block, x, cursor, width, opts, out);
+			cursor += self.cached_child(block, [x, cursor], width, opts, out);
 			index += 1;
 		}
 		self.shaper.appearance = parent;

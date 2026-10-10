@@ -13,6 +13,19 @@ pub struct Scene {
 	footnotes: Vec<Footnote>,
 	active: Option<usize>,
 	cursor: Cursor,
+	leaves: Vec<Leaf>,
+	pub(crate) reused_leaves: usize,
+}
+
+#[derive(Debug)]
+struct Leaf {
+	key: u64,
+	span: usize,
+	height: f32,
+	degraded: usize,
+	math_errors: usize,
+	field: Option<crate::search::SearchField>,
+	separator: Option<&'static str>,
 }
 
 #[derive(Debug)]
@@ -57,6 +70,7 @@ struct Cursor {
 
 #[derive(Debug)]
 struct Span {
+	local: bool,
 	node: usize,
 	draws: Range<usize>,
 	text: Range<usize>,
@@ -103,6 +117,7 @@ impl BlockLayout {
 		if let Some(node) = self.scene.active {
 			let start = self.scene.cursor;
 			self.scene.spans.push(Span {
+				local: false,
 				node,
 				draws: start.draws..end.draws,
 				text: start.text..end.text,
@@ -191,7 +206,12 @@ impl BlockLayout {
 				if matches!(draw, Draw::Box { .. }) {
 					self.scene.nodes[span.node].boxes.push(command);
 				}
-				draw.translate(-x, -y);
+				if !span.local {
+					draw.translate(-x, -y);
+				}
+			}
+			if span.local {
+				continue;
 			}
 			for text in &mut self.text[span.text.clone()] {
 				for cluster in text
@@ -238,6 +258,129 @@ impl BlockLayout {
 				y = next;
 			}
 		}
+	}
+
+	pub(crate) fn leaf_keys(&self) -> impl Iterator<Item = u64> + '_ {
+		self.scene.leaves.iter().map(|leaf| leaf.key)
+	}
+
+	pub(crate) fn retain_leaf(
+		&mut self,
+		key: u64,
+		height: f32,
+		degraded: usize,
+		math_errors: usize,
+		field: Option<crate::search::SearchField>,
+	) {
+		self.scene.leaves.push(Leaf {
+			key,
+			span: self.scene.spans.len() - 1,
+			height,
+			degraded,
+			math_errors,
+			field,
+			separator: self.text[self.scene.spans.last().unwrap().text.clone()]
+				.first()
+				.map(|text| text.separator),
+		});
+	}
+
+	/// Copy a sealed leaf span and rebind indices while retaining local coordinates.
+	pub(crate) fn reuse_leaf(
+		&mut self,
+		previous: &Self,
+		leaf: usize,
+		position: [f32; 2],
+		width: f32,
+		field: Option<crate::search::SearchField>,
+	) -> f32 {
+		let leaf = &previous.scene.leaves[leaf];
+		let span = &previous.scene.spans[leaf.span];
+		let [x, y] = position;
+		self.begin_scene(x, y);
+		let start = self.cursor();
+		self.draws
+			.extend_from_slice(&previous.draws[span.draws.clone()]);
+		self.text.extend(
+			previous.text[span.text.clone()]
+				.iter()
+				.cloned()
+				.enumerate()
+				.map(|(index, mut text)| {
+					if index == 0
+						&& let Some(separator) = leaf.separator
+					{
+						text.separator = separator;
+					}
+					for cluster in text
+						.clusters
+						.iter_mut()
+						.chain(text.source_images.iter_mut().map(|(_, c)| c))
+					{
+						cluster.command =
+							start.draws + cluster.command - span.draws.start;
+					}
+					text.selection_group = text
+						.selection_group
+						.map(|group| start.text + group - span.text.start);
+					if let (Some(old), Some(new), Some(current)) =
+						(leaf.field, field, text.search_field)
+					{
+						text.search_field = Some(crate::search::SearchField(
+							new.0 + current.0 - old.0,
+						));
+					}
+					text
+				}),
+		);
+		self.links.extend(
+			previous.links[span.links.clone()].iter().cloned().map(
+				|mut link| {
+					link.command =
+						start.draws + link.command - span.draws.start;
+					link
+				},
+			),
+		);
+		self.overflow.extend(
+			previous.overflow[span.overflow.clone()]
+				.iter()
+				.cloned()
+				.map(|mut overflow| {
+					overflow.commands = (start.draws + overflow.commands.start
+						- span.draws.start)
+						..(start.draws + overflow.commands.end
+							- span.draws.start);
+					overflow
+				}),
+		);
+		self.anchors
+			.extend_from_slice(&previous.anchors[span.anchors.clone()]);
+		self.page_constraints.extend_from_slice(
+			&previous.page_constraints[span.constraints.clone()],
+		);
+		self.inline_decorations.extend(
+			previous.inline_decorations[span.decorations.clone()]
+				.iter()
+				.map(|(command, rows)| {
+					(start.draws + command - span.draws.start, rows.clone())
+				}),
+		);
+		self.height = self.height.max(y + leaf.height);
+		self.width = self.width.max(x + width);
+		self.degraded += leaf.degraded;
+		self.math_errors += leaf.math_errors;
+		self.end_scene(leaf.height, f32::NEG_INFINITY);
+		self.scene.spans.last_mut().unwrap().local = true;
+		self.retain_leaf(
+			leaf.key,
+			leaf.height,
+			leaf.degraded,
+			leaf.math_errors,
+			field,
+		);
+		self.scene.reused_leaves += 1;
+		leaf.height
 	}
 
 	pub fn resolve_flow(

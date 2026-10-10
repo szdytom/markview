@@ -907,5 +907,38 @@ impl Default for TextAppearance {
 		}
 	}
 }
+impl TextAppearance {
+	/// Include inherited child rules after their selector leaves the chain.
+	pub(crate) fn key(&self) -> u64 {
+		let edge = |edge| match edge {
+			TextEdge::Metric(metric) => (0, metric as u32),
+			TextEdge::Em(value) => (1, value.to_bits()),
+		};
+		crate::document::fingerprint(&(
+			(
+				self.chain,
+				&self.font,
+				self.weight,
+				self.paint,
+				self.background,
+			),
+			[
+				self.letter_spacing,
+				self.size,
+				self.baseline,
+				self.line_height,
+			]
+			.map(f32::to_bits),
+			[
+				self.top_edge,
+				self.bottom_edge,
+				self.background_top_edge,
+				self.background_bottom_edge,
+			]
+			.map(edge),
+			self.decoration.iter().map(|d| *d as u8).collect::<Vec<_>>(),
+		))
+	}
+}
 #[cfg(test)]
 mod tests;

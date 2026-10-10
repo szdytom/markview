@@ -1,6 +1,7 @@
 //! Document layout and immutable snapshots, independent of a window or GPU.
 mod anchor;
 mod blocks;
+mod cache;
 pub(crate) mod code;
 mod highlights;
 mod images;
@@ -70,7 +71,7 @@ fn fitted_range(full: &str, shown: &str, range: Range<usize>) -> Range<usize> {
 fn external_key(
 	block: &Block,
 	images: &crate::image::ImageSnapshot,
-	highlights: &highlights::Highlights,
+	highlights: &HashMap<u64, highlights::HighlightResult>,
 	theme: Option<&str>,
 	options: &LayoutOptions,
 ) -> u64 {
@@ -108,7 +109,7 @@ fn external_key(
 					theme,
 					options.limits.highlight_line_bytes,
 				);
-				(key, highlights.results().contains_key(&key))
+				(key, highlights.contains_key(&key))
 			})
 			.collect::<Vec<_>>(),
 		disclosures,
@@ -244,6 +245,7 @@ impl LayoutOptions {
 }
 
 struct BlockContext<'a> {
+	nested: Option<cache::NestedCache<'a>>,
 	cancelled: &'a dyn Fn() -> bool,
 	search_fields: HashMap<usize, crate::search::SearchField>,
 	shaper: &'a mut TextShaper,
@@ -261,6 +263,7 @@ pub struct LayoutEngine {
 	shaper: TextShaper,
 	math: MathEngine,
 	cache: HashMap<CacheKey, CacheEntry>,
+	nested_cache: HashMap<u64, cache::NestedEntry>,
 	/// Increases once per pass; an entry's stamp says which pass last used it.
 	pass: u64,
 	/// The newest pass that reached `close`. Its geometry stays reusable while
@@ -281,7 +284,7 @@ struct CacheEntry {
 	completed: Option<u64>,
 }
 
-#[derive(Hash, PartialEq, Eq)]
+#[derive(Clone, Hash, PartialEq, Eq)]
 struct CacheKey {
 	position: u8,
 	external: u64,
@@ -320,6 +323,7 @@ impl LayoutEngine {
 			shaper: TextShaper::new(),
 			math: MathEngine::default(),
 			cache: HashMap::new(),
+			nested_cache: HashMap::new(),
 			pass: 0,
 			completed: None,
 			highlights: highlights::Highlights::new(executor, wake),
@@ -327,11 +331,13 @@ impl LayoutEngine {
 	}
 	pub fn clear_document_cache(&mut self) {
 		self.cache.clear();
+		self.nested_cache.clear();
 	}
 	/// Drops geometry and syntax colors for a document that is no longer open,
 	/// so an idle reader keeps nothing from it.
 	pub fn release_document(&mut self) {
 		self.cache.clear();
+		self.nested_cache.clear();
 		self.highlights.clear();
 	}
 	/// How many block geometries the cache holds, so a test can check that

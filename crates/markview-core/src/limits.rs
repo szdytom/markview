@@ -5,7 +5,7 @@
 //! read. See `docs/developers/security.md` for the threat model.
 
 /// Depth, iteration, and byte budgets for parsing and layout.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub struct Limits {
 	/// Maximum inline AST recursion. Comrak builds the AST iteratively, so
 	/// this bounds only Markview's own recursion, which needs about 0.5 KB of

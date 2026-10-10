@@ -829,6 +829,7 @@ fn cjk_boundaries_and_hyphenation() {
 	}];
 	let images = Default::default();
 	let mut context = BlockContext {
+		nested: None,
 		cancelled: &|| false,
 		search_fields: Default::default(),
 		shaper: &mut e.shaper,
@@ -2308,6 +2309,7 @@ fn typst_hyphenation_can_be_turned_off_for_a_passage() {
 		];
 		let images = Default::default();
 		let mut context = BlockContext {
+			nested: None,
 			cancelled: &|| false,
 			search_fields: Default::default(),
 			shaper: &mut e.shaper,
@@ -2408,6 +2410,7 @@ fn inline_code_breaks_for_free_at_word_edges_and_cheaply_inside_a_word() {
 	let mut out = BlockLayout::default();
 	let images = Default::default();
 	let mut context = BlockContext {
+		nested: None,
 		cancelled: &|| false,
 		search_fields: Default::default(),
 		shaper: &mut e.shaper,
@@ -2535,6 +2538,7 @@ fn typst_curly_quotes_break_like_cjk_brackets() {
 		}];
 		let images = Default::default();
 		let mut context = BlockContext {
+			nested: None,
 			cancelled: &|| false,
 			search_fields: Default::default(),
 			shaper: &mut e.shaper,
@@ -2682,6 +2686,7 @@ fn a_hyphen_near_a_word_edge_costs_more_than_one_in_the_middle() {
 	}];
 	let images = Default::default();
 	let mut context = BlockContext {
+		nested: None,
 		cancelled: &|| false,
 		search_fields: Default::default(),
 		shaper: &mut e.shaper,
