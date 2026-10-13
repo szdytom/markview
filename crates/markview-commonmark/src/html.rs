@@ -282,17 +282,7 @@ pub(crate) fn block_events(source: &str) -> Vec<BlockEvent> {
 			// Consume the summary's own tags in the same pass, so an unclosed
 			// opener cannot rescan the suffix once per opener.
 			let content_start = start + len;
-			let mut close = None;
-			for (next, next_len) in it.by_ref() {
-				let next_fragment = &source[next..next + next_len];
-				if let Some((next_name, _, next_closing)) =
-					tag_parts(next_fragment)
-					&& next_closing && next_name == "summary"
-				{
-					close = Some((next, next_len));
-					break;
-				}
-			}
+			let close = consume_summary_close(source, &mut it);
 			match close {
 				Some((next, next_len)) => {
 					events.push(BlockEvent::Summary {
@@ -327,6 +317,21 @@ pub(crate) fn block_events(source: &str) -> Vec<BlockEvent> {
 		});
 	}
 	events
+}
+
+fn consume_summary_close(
+	source: &str,
+	tags: &mut impl Iterator<Item = (usize, usize)>,
+) -> Option<(usize, usize)> {
+	for (start, len) in tags.by_ref() {
+		if let Some((name, _, closing)) = tag_parts(&source[start..start + len])
+			&& closing
+			&& name == "summary"
+		{
+			return Some((start, len));
+		}
+	}
+	None
 }
 
 /// Whether `source` leaves a supported block container open. `<details>`
