@@ -225,14 +225,7 @@ pub(crate) fn visit_fields(
 			visit(FieldText::Code(text, block), enclosing)
 		}
 		BlockKind::Table { rows, .. } => {
-			for row in rows {
-				for cell in row {
-					if cancelled() {
-						return;
-					}
-					visit(FieldText::Rich(cell), enclosing);
-				}
-			}
+			visit_table_fields(rows, enclosing, cancelled, visit);
 		}
 		BlockKind::Details {
 			summary, blocks, ..
@@ -267,6 +260,22 @@ pub(crate) fn visit_fields(
 		BlockKind::Rule => {}
 	}
 }
+fn visit_table_fields(
+	rows: &[Vec<RichText>],
+	enclosing: &[u64],
+	cancelled: &impl Fn() -> bool,
+	visit: &mut impl FnMut(FieldText<'_>, &[u64]),
+) {
+	for row in rows {
+		for cell in row {
+			if cancelled() {
+				return;
+			}
+			visit(FieldText::Rich(cell), enclosing);
+		}
+	}
+}
+
 pub(crate) fn layout_fields(
 	block: &Block,
 ) -> std::collections::HashMap<usize, SearchField> {
