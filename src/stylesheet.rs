@@ -318,9 +318,19 @@ pub fn install(
 	fs::create_dir_all(dir)?;
 	let destination = dir.join(format!("{id}{SUFFIX}"));
 	let replace = force || destination.exists();
+	validate_replacement(source, &destination, incoming.version, force)?;
+	persist_stylesheet(&bytes, dir, &destination, replace)?;
+	Ok((id.into(), destination))
+}
+fn validate_replacement(
+	source: &Path,
+	destination: &Path,
+	incoming_version: u64,
+	force: bool,
+) -> Result<()> {
 	if destination.exists() && !force {
 		let installed = StylesheetSource::parse(
-			&fs::read_to_string(&destination).with_context(|| {
+			&fs::read_to_string(destination).with_context(|| {
 				format!(
 					"Cannot read installed stylesheet {}",
 					destination.display()
@@ -328,22 +338,31 @@ pub fn install(
 			})?,
 		)
 		.with_context(|| destination.display().to_string())?;
-		if incoming.version <= installed.version {
+		if incoming_version <= installed.version {
 			bail!(
 				"{} version {} is not newer than installed version {}; use --force to replace it",
 				source.display(),
-				incoming.version,
+				incoming_version,
 				installed.version
 			);
 		}
 	}
+	Ok(())
+}
+
+fn persist_stylesheet(
+	bytes: &[u8],
+	dir: &Path,
+	destination: &Path,
+	replace: bool,
+) -> Result<()> {
 	let mut file = tempfile::NamedTempFile::new_in(dir)?;
-	file.write_all(&bytes)?;
+	file.write_all(bytes)?;
 	file.as_file().sync_all()?;
 	if replace {
-		file.persist(&destination)?;
+		file.persist(destination)?;
 	} else {
-		file.persist_noclobber(&destination).with_context(|| {
+		file.persist_noclobber(destination).with_context(|| {
 			format!(
 				"Cannot install {}; use --force to replace an existing stylesheet",
 				destination.display()
@@ -353,8 +372,9 @@ pub fn install(
 	if let Ok(d) = fs::File::open(dir) {
 		let _ = d.sync_all();
 	}
-	Ok((id.into(), destination))
+	Ok(())
 }
+
 #[cfg(test)]
 mod tests {
 	use super::*;
