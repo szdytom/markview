@@ -622,7 +622,6 @@ pub(in crate::app) fn draw_fonts(
 	let super::View {
 		catalog,
 		shown,
-		jobs,
 		scroll,
 		note,
 		status_filter,
@@ -702,6 +701,67 @@ pub(in crate::app) fn draw_fonts(
 		controls: interaction.controls.clone(),
 		..Default::default()
 	};
+	let body = draw_font_body(
+		shaper,
+		view,
+		settings,
+		list,
+		&roles,
+		&body_interaction,
+		load,
+	);
+	out.push(list.clip(body));
+	// A list the page refused to draw has no bar to offer either.
+	if fits {
+		list.draw_bar(&mut out, shaper, interaction);
+	}
+	let mut controls =
+		fonts_controls(list, status_filter, choosers, preview, lang);
+	for button in &mut controls {
+		crate::app::settings_load::prepare_button(button, load);
+	}
+	for (i, b) in controls.iter().enumerate() {
+		// The header of a settings tab is drawn once, by the header itself.
+		if crate::app::chrome::components::is_settings_header(b.action) {
+			continue;
+		}
+		out.extend(draw_segmented_button(shaper, interaction, &controls, i));
+	}
+	if preview {
+		crate::app::chrome::components::fade(
+			&mut out,
+			shaper,
+			crate::app::chrome::components::PREVIEW_OPACITY,
+		);
+	}
+	// The header goes on top of the fade, so its own controls stay legible.
+	out.extend(crate::app::chrome::components::draw_settings_header(
+		shaper,
+		interaction,
+		r,
+		PanelTab::Fonts,
+		preview,
+		lang,
+	));
+	out
+}
+
+fn draw_font_body(
+	shaper: &mut TextShaper,
+	view: &super::View<'_>,
+	settings: &ReaderSettings,
+	list: List,
+	roles: &[FontRole],
+	body_interaction: &InteractionState,
+	load: Option<&crate::app::settings_load::Load>,
+) -> Vec<Draw> {
+	let catalog = view.catalog;
+	let shown = &view.shown;
+	let jobs = view.jobs;
+	let choosers = view.choosers;
+	let lang = settings.lang();
+	let r = list.panel;
+	let fits = list.fits();
 	let mut body = Vec::new();
 	if choosers && load.is_none_or(|load| load.displayed && load.cached) {
 		// One chooser row per role: the role's name at the inset the catalogue
@@ -741,7 +801,7 @@ pub(in crate::app) fn draw_fonts(
 			if button.rect.intersect(list.viewport).is_some() {
 				body.extend(draw_button(
 					shaper,
-					&body_interaction,
+					body_interaction,
 					&button,
 					true,
 				));
@@ -749,20 +809,7 @@ pub(in crate::app) fn draw_fonts(
 		}
 	}
 	if fits && shown.is_empty() && !choosers {
-		let empty = list.row_rect(0).y;
-		for (text, offset, color) in [
-			(lang.fonts_no_match(), 28., C::Color),
-			(lang.fonts_select_all(), 50., C::Muted),
-		] {
-			let text = shaper.fit(text, 13., r.w - 48.);
-			body.extend(shaper.label(
-				&text,
-				13.,
-				r.x + 24.,
-				empty + offset,
-				Paint::Styled(Condition::Panel, color),
-			));
-		}
+		draw_empty_font_catalog(&mut body, shaper, r, list, lang);
 	}
 	for row in if fits && !choosers {
 		list.visible()
@@ -771,142 +818,152 @@ pub(in crate::app) fn draw_fonts(
 	} {
 		let family = &catalog[shown[row]];
 		let y = list.row_rect(row).y;
-		body.push(line(
-			Rect {
-				x: r.x + 24.0,
-				y,
-				w: r.w - 48.0,
-				h: 1.0,
-			},
-			Condition::Panel,
-			C::BorderColor,
-		));
-		let weight = shaper.appearance.weight;
-		shaper.appearance.weight = 600;
-		let title = shaper.fit(family.family.display_name(), 14., r.w - 188.);
-		body.extend(shaper.label(
-			&title,
-			14.,
-			r.x + 24.,
-			y + 26.,
-			Paint::Styled(Condition::Panel, C::Color),
-		));
-		shaper.appearance.weight = weight;
-		let status = if jobs.contains_key(&family.family.id) {
-			lang.fonts_in_progress()
-		} else {
-			state_label(family.state, lang)
-		};
-		let status_x = r.x + r.w - 24. - shaper.text_width(status, 11.);
-		body.extend(shaper.label(
-			status,
-			11.,
-			status_x,
-			y + 25.,
-			Paint::Styled(Condition::Panel, C::Muted),
-		));
-		// A running family reports what it is doing instead of what it is.
-		let detail = match jobs.get(&family.family.id) {
-			Some(progress) => describe_job(progress, lang),
-			None => family
-				.family
-				.description
-				.clone()
-				.unwrap_or_else(|| family.family.id.clone()),
-		};
-		let detail = shaper.fit(&detail, 12., r.w - 96.);
-		body.extend(shaper.label(
-			&detail,
-			12.,
-			r.x + 24.,
-			y + 47.,
-			Paint::Styled(
-				Condition::Panel,
-				if jobs.contains_key(&family.family.id) {
-					C::Accent
-				} else {
-					C::Muted
-				},
-			),
-		));
-		let meta = if let Some(progress) = jobs.get(&family.family.id) {
-			progress
-				.current
-				.as_deref()
-				.or(progress.note.as_deref())
-				.unwrap_or_else(|| lang.fonts_preparing())
-				.to_owned()
-		} else {
-			meta_text(family, lang)
-		};
-		let meta = shaper.fit(&meta, 11., r.w - 96.);
-		body.extend(shaper.label(
-			&meta,
-			11.,
-			r.x + 24.,
-			y + 67.,
-			Paint::Styled(Condition::Panel, C::Muted),
-		));
-		if let Some(progress) = jobs.get(&family.family.id) {
-			let track = Rect {
-				x: r.x + 24.,
-				y: y + 78.,
-				w: r.w - 48.,
-				h: 3.,
-			};
-			body.push(line(track, Condition::Panel, C::BorderColor));
-			body.push(line(
-				Rect {
-					w: track.w * job_fraction(progress),
-					..track
-				},
-				Condition::Panel,
-				C::Accent,
-			));
-		}
+		draw_font_catalog_row(
+			&mut body,
+			shaper,
+			family,
+			jobs.get(&family.family.id),
+			r,
+			y,
+			lang,
+		);
 	}
 	if !choosers {
 		for mut b in font_rows(catalog, shown, jobs, list, lang) {
 			crate::app::settings_load::prepare_button(&mut b, load);
 			if b.rect.intersect(list.viewport).is_some() {
-				body.extend(draw_button(shaper, &body_interaction, &b, true));
+				body.extend(draw_button(shaper, body_interaction, &b, true));
 			}
 		}
 	}
-	out.push(list.clip(body));
-	// A list the page refused to draw has no bar to offer either.
-	if fits {
-		list.draw_bar(&mut out, shaper, interaction);
+	body
+}
+
+fn draw_empty_font_catalog(
+	body: &mut Vec<Draw>,
+	shaper: &mut TextShaper,
+	r: Rect,
+	list: List,
+	lang: Lang,
+) {
+	let empty = list.row_rect(0).y;
+	for (text, offset, color) in [
+		(lang.fonts_no_match(), 28., C::Color),
+		(lang.fonts_select_all(), 50., C::Muted),
+	] {
+		let text = shaper.fit(text, 13., r.w - 48.);
+		body.extend(shaper.label(
+			&text,
+			13.,
+			r.x + 24.,
+			empty + offset,
+			Paint::Styled(Condition::Panel, color),
+		));
 	}
-	let mut controls =
-		fonts_controls(list, status_filter, choosers, preview, lang);
-	for button in &mut controls {
-		crate::app::settings_load::prepare_button(button, load);
-	}
-	for (i, b) in controls.iter().enumerate() {
-		// The header of a settings tab is drawn once, by the header itself.
-		if crate::app::chrome::components::is_settings_header(b.action) {
-			continue;
-		}
-		out.extend(draw_segmented_button(shaper, interaction, &controls, i));
-	}
-	if preview {
-		crate::app::chrome::components::fade(
-			&mut out,
-			shaper,
-			crate::app::chrome::components::PREVIEW_OPACITY,
-		);
-	}
-	// The header goes on top of the fade, so its own controls stay legible.
-	out.extend(crate::app::chrome::components::draw_settings_header(
-		shaper,
-		interaction,
-		r,
-		PanelTab::Fonts,
-		preview,
-		lang,
+}
+
+fn draw_font_catalog_row(
+	body: &mut Vec<Draw>,
+	shaper: &mut TextShaper,
+	family: &crate::fonts::Family,
+	progress: Option<&crate::fonts::Progress>,
+	r: Rect,
+	y: f32,
+	lang: Lang,
+) {
+	body.push(line(
+		Rect {
+			x: r.x + 24.0,
+			y,
+			w: r.w - 48.0,
+			h: 1.0,
+		},
+		Condition::Panel,
+		C::BorderColor,
 	));
-	out
+	let weight = shaper.appearance.weight;
+	shaper.appearance.weight = 600;
+	let title = shaper.fit(family.family.display_name(), 14., r.w - 188.);
+	body.extend(shaper.label(
+		&title,
+		14.,
+		r.x + 24.,
+		y + 26.,
+		Paint::Styled(Condition::Panel, C::Color),
+	));
+	shaper.appearance.weight = weight;
+	let status = if progress.is_some() {
+		lang.fonts_in_progress()
+	} else {
+		state_label(family.state, lang)
+	};
+	let status_x = r.x + r.w - 24. - shaper.text_width(status, 11.);
+	body.extend(shaper.label(
+		status,
+		11.,
+		status_x,
+		y + 25.,
+		Paint::Styled(Condition::Panel, C::Muted),
+	));
+	// A running family reports what it is doing instead of what it is.
+	let detail = match progress {
+		Some(progress) => describe_job(progress, lang),
+		None => family
+			.family
+			.description
+			.clone()
+			.unwrap_or_else(|| family.family.id.clone()),
+	};
+	let detail = shaper.fit(&detail, 12., r.w - 96.);
+	body.extend(shaper.label(
+		&detail,
+		12.,
+		r.x + 24.,
+		y + 47.,
+		Paint::Styled(
+			Condition::Panel,
+			if progress.is_some() {
+				C::Accent
+			} else {
+				C::Muted
+			},
+		),
+	));
+	let meta = if let Some(progress) = progress {
+		progress
+			.current
+			.as_deref()
+			.or(progress.note.as_deref())
+			.unwrap_or_else(|| lang.fonts_preparing())
+			.to_owned()
+	} else {
+		meta_text(family, lang)
+	};
+	let meta = shaper.fit(&meta, 11., r.w - 96.);
+	body.extend(shaper.label(
+		&meta,
+		11.,
+		r.x + 24.,
+		y + 67.,
+		Paint::Styled(Condition::Panel, C::Muted),
+	));
+	if let Some(progress) = progress {
+		let track = Rect {
+			x: r.x + 24.,
+			y: y + 78.,
+			w: r.w - 48.,
+			h: 3.,
+		};
+		body.push(line(track, Condition::Panel, C::BorderColor));
+		body.push(line(
+			Rect {
+				w: track.w * job_fraction(progress),
+				..track
+			},
+			Condition::Panel,
+			C::Accent,
+		));
+	}
 }
 
 /// One family's second line while it is downloading.
