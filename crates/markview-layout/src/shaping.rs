@@ -847,6 +847,12 @@ impl TextShaper {
 		(layout, appearances, choices)
 	}
 
+	#[cfg_attr(
+		any(),
+		markview::allow_complexity(
+			reason = "Keep coordinated ink-bound and glyph passes with ligature merging and RTL reordering; shared cluster indices determine selection and decoration geometry."
+		)
+	)]
 	pub(crate) fn shape(
 		&mut self,
 		text: &str,
