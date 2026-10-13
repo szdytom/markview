@@ -415,55 +415,62 @@ impl<'a> Chrome<'a> {
 			));
 			buttons
 		} else {
-			let mut buttons = toolbar_controls_at(
-				self.frame,
-				self.interaction.outline_open,
-				self.settings.lang(),
-			);
-			if self.tab_strip.phone {
-				buttons.push(tab_drawer::toggle(self.settings.lang()));
-			}
-			if self.session.path.is_none()
-				&& self.session.snapshot.blocks.is_empty()
-			{
-				// Each `Open` control has its own identity and geometry.
-				buttons.extend(empty::buttons(
-					self.ui,
-					width,
-					height,
-					self.settings.lang(),
-				));
-			}
-
-			if self.remote_notice.is_some() {
-				buttons.extend(banner_buttons(
-					self.ui,
-					width,
-					self.settings.lang(),
-				));
-			}
-			if self.interaction.outline_open {
-				let lang = self.settings.lang();
-				buttons.extend(outline::header_buttons(
-					self.outline_drawer(),
-					lang,
-				));
-				buttons.extend(outline::buttons(
-					self.outline_drawer(),
-					self.session.outline_entries(),
-					&self.session.outline_tree,
-					self.interaction.outline_scroll,
-					lang,
-				));
-			}
-			// The footer's path answers a press last: nothing else in the
-			// reading view reaches the band it sits in.
-			buttons.extend(self.path_button());
-			buttons
+			self.reading_buttons()
 		};
+		self.apply_button_load_state(&mut buttons);
+		buttons
+	}
+	fn reading_buttons(&mut self) -> Vec<Button> {
+		let (width, height) = (self.width, self.height);
+		let mut buttons = toolbar_controls_at(
+			self.frame,
+			self.interaction.outline_open,
+			self.settings.lang(),
+		);
+		if self.tab_strip.phone {
+			buttons.push(tab_drawer::toggle(self.settings.lang()));
+		}
+		if self.session.path.is_none()
+			&& self.session.snapshot.blocks.is_empty()
+		{
+			// Each `Open` control has its own identity and geometry.
+			buttons.extend(empty::buttons(
+				self.ui,
+				width,
+				height,
+				self.settings.lang(),
+			));
+		}
+
+		if self.remote_notice.is_some() {
+			buttons.extend(banner_buttons(
+				self.ui,
+				width,
+				self.settings.lang(),
+			));
+		}
+		if self.interaction.outline_open {
+			let lang = self.settings.lang();
+			buttons
+				.extend(outline::header_buttons(self.outline_drawer(), lang));
+			buttons.extend(outline::buttons(
+				self.outline_drawer(),
+				self.session.outline_entries(),
+				&self.session.outline_tree,
+				self.interaction.outline_scroll,
+				lang,
+			));
+		}
+		// The footer's path answers a press last: nothing else in the
+		// reading view reaches the band it sits in.
+		buttons.extend(self.path_button());
+		buttons
+	}
+
+	fn apply_button_load_state(&self, buttons: &mut Vec<Button>) {
 		if let Some(load) = self.resource_load {
 			if load.blocked() {
-				for button in &mut buttons {
+				for button in buttons.iter_mut() {
 					if super::settings_load::dependent(button.action) {
 						button.enabled = false;
 					}
@@ -474,8 +481,8 @@ impl<'a> Chrome<'a> {
 					.push(self.resource_retry(load.displayed && load.cached));
 			}
 		}
-		buttons
 	}
+
 	#[cfg(test)]
 	pub(super) fn overlay(&mut self) -> Vec<Draw> {
 		let form = self.form();
