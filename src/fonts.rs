@@ -176,24 +176,7 @@ pub(crate) fn describe_one(path: &Path) -> Option<FaceInfo> {
 			};
 			first = Some((attributes.weight().0, style));
 		}
-		for string in font.localized_strings() {
-			if !string.is_decodable() {
-				continue;
-			}
-			let name = string.chars().collect::<String>();
-			let name = name.trim();
-			if name.is_empty() {
-				continue;
-			}
-			let name = name.to_owned();
-			match string.id() {
-				swash::StringId::TypographicFamily => {
-					push_name(&mut typographic, name)
-				}
-				swash::StringId::Family => push_name(&mut plain, name),
-				_ => {}
-			}
-		}
+		collect_family_names(font, &mut typographic, &mut plain);
 	}
 	typographic.extend(plain);
 	let (weight, style) = first?;
@@ -207,6 +190,29 @@ pub(crate) fn describe_one(path: &Path) -> Option<FaceInfo> {
 		faces: data.len(),
 		bytes: bytes_len,
 	})
+}
+
+fn collect_family_names(
+	font: swash::FontRef<'_>,
+	typographic: &mut Vec<String>,
+	plain: &mut Vec<String>,
+) {
+	for string in font.localized_strings() {
+		if !string.is_decodable() {
+			continue;
+		}
+		let name = string.chars().collect::<String>();
+		let name = name.trim();
+		if name.is_empty() {
+			continue;
+		}
+		let name = name.to_owned();
+		match string.id() {
+			swash::StringId::TypographicFamily => push_name(typographic, name),
+			swash::StringId::Family => push_name(plain, name),
+			_ => {}
+		}
+	}
 }
 
 fn push_name(names: &mut Vec<String>, name: String) {

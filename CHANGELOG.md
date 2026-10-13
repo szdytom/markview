@@ -32,6 +32,7 @@ at the same level, without `[brackets]`.
 
 ### Changed
 
+- Separate font family collection from first-face metadata when describing installed fonts.
 - Move shared rectangle geometry into `markview-geometry`, removing layout's dependency on UI core while preserving existing type exports.
 - Route Settings, Export and Fonts through a pure `markview-ui-core` message flow, sharing stable widget identities, interaction and clipped layout geometry while retaining native drawing.
 - Reduce shaping allocations by reusing layout storage and scanning inline spans once; measure label widths without emitting glyphs.
