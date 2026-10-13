@@ -822,6 +822,12 @@ pub struct Rule {
 impl Rule {
 	/// Whether a declaration can change layout geometry. Color-only rules must
 	/// not invalidate cached layout.
+	#[cfg_attr(
+		any(),
+		markview::allow_complexity(
+			reason = "Keep one short-circuit whitelist of geometry-affecting fields visible for cache invalidation review; every field must be assessed against Rule."
+		)
+	)]
 	pub fn layout_relevant(&self) -> bool {
 		self.show.is_some()
 			|| self.source.is_some()
