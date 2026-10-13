@@ -140,6 +140,12 @@ impl Condition {
 	/// The chain a single-condition paint resolves through, oldest first. A
 	/// paint usually carries the exact nesting instead; this is only the default
 	/// for isolated paints such as the reader chrome.
+	#[cfg_attr(
+		any(),
+		markview::allow_complexity(
+			reason = "Keep the exhaustive condition inheritance table and its ordered ancestors visible together; split dispatch would weaken hierarchy review."
+		)
+	)]
 	pub fn chain(self) -> u128 {
 		use Condition::*;
 		match self {
