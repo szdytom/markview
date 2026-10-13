@@ -189,6 +189,12 @@ fn line_score(
 	clippy::too_many_arguments,
 	reason = "Line metrics and break context are independent inputs"
 )]
+#[cfg_attr(
+	any(),
+	markview::allow_complexity(
+		reason = "Keep the dynamic-programming candidate walk, budget accounting and floating-point score updates together; evaluation order determines breaks and fallback."
+	)
+)]
 fn optimize(
 	units: &[Unit],
 	target: f32,
