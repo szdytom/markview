@@ -96,35 +96,67 @@ fn key(
 		return Outcome::Consumed;
 	}
 	if primary && let Key::Character(c) = key {
-		match c.to_lowercase().as_str() {
-			"a" => input.select_all(ui),
-			"c" | "x" => {
-				if let Some(text) = input.selected_text() {
-					match clipboard.write(text.to_owned()) {
-						Ok(()) if c.eq_ignore_ascii_case("x") => {
-							input.break_group();
-							input.delete(ui, false, false);
-							input.break_group();
-						}
-						Ok(()) => {}
-						Err(error) => {
-							log::warn!("Cannot copy input text: {error}")
-						}
+		return primary_key(input, ui, clipboard, c, mac, shift);
+	}
+	let motion = input_motion(key, mac, primary, word);
+	if let Some(motion) = motion {
+		input.move_cursor(ui, motion, shift);
+		return Outcome::Consumed;
+	}
+	edit_key(
+		input,
+		ui,
+		key,
+		text,
+		mods,
+		InputKeyModifiers { mac, primary, word },
+	)
+}
+
+fn primary_key(
+	input: &mut TextInput,
+	ui: &mut TextShaper,
+	clipboard: &mut impl InputClipboard,
+	c: &str,
+	mac: bool,
+	shift: bool,
+) -> Outcome {
+	match c.to_lowercase().as_str() {
+		"a" => input.select_all(ui),
+		"c" | "x" => {
+			if let Some(text) = input.selected_text() {
+				match clipboard.write(text.to_owned()) {
+					Ok(()) if c.eq_ignore_ascii_case("x") => {
+						input.break_group();
+						input.delete(ui, false, false);
+						input.break_group();
+					}
+					Ok(()) => {}
+					Err(error) => {
+						log::warn!("Cannot copy input text: {error}")
 					}
 				}
 			}
-			"v" => match clipboard.read() {
-				Ok(text) => input.insert(ui, &text, EditKind::Separate),
-				Err(error) => log::warn!("Cannot paste input text: {error}"),
-			},
-			"z" => input.undo(ui, shift),
-			"y" if !mac => input.undo(ui, true),
-			"q" | "o" | "e" | "," | "t" | "n" => return Outcome::Application,
-			_ => {}
 		}
-		return Outcome::Consumed;
+		"v" => match clipboard.read() {
+			Ok(text) => input.insert(ui, &text, EditKind::Separate),
+			Err(error) => log::warn!("Cannot paste input text: {error}"),
+		},
+		"z" => input.undo(ui, shift),
+		"y" if !mac => input.undo(ui, true),
+		"q" | "o" | "e" | "," | "t" | "n" => return Outcome::Application,
+		_ => {}
 	}
-	let motion = match key {
+	Outcome::Consumed
+}
+
+fn input_motion(
+	key: &Key,
+	mac: bool,
+	primary: bool,
+	word: bool,
+) -> Option<Motion> {
+	match key {
 		Key::Named(NamedKey::ArrowLeft) => Some(if mac && primary {
 			Motion::Start
 		} else if word {
@@ -142,11 +174,24 @@ fn key(
 		Key::Named(NamedKey::Home) => Some(Motion::Start),
 		Key::Named(NamedKey::End) => Some(Motion::End),
 		_ => None,
-	};
-	if let Some(motion) = motion {
-		input.move_cursor(ui, motion, shift);
-		return Outcome::Consumed;
 	}
+}
+
+struct InputKeyModifiers {
+	mac: bool,
+	primary: bool,
+	word: bool,
+}
+
+fn edit_key(
+	input: &mut TextInput,
+	ui: &mut TextShaper,
+	key: &Key,
+	text: Option<&str>,
+	mods: ModifiersState,
+	flags: InputKeyModifiers,
+) -> Outcome {
+	let InputKeyModifiers { mac, primary, word } = flags;
 	match key {
 		Key::Named(NamedKey::Tab) => return Outcome::Traverse,
 		Key::Named(NamedKey::Enter) => return Outcome::Submit,
