@@ -188,40 +188,9 @@ impl Worker {
 					Arc<document::Document>,
 				)> = None;
 				loop {
-					let (request, release) = {
-						let (lock, wake) = &*thread_inbox;
-						let mut inbox = Inbox::lock(lock);
-						if inbox.pending.is_none()
-							&& !inbox.stopped && !inbox.release
-							&& !inbox.background_ready
-						{
-							let waited = wake.wait_timeout(
-								inbox,
-								images
-									.poll_deadline()
-									.saturating_duration_since(Instant::now()),
-							);
-							inbox = Inbox::recover(
-								lock,
-								waited.map(|(guard, _)| guard).map_err(
-									|error| {
-										std::sync::PoisonError::new(
-											error.into_inner().0,
-										)
-									},
-								),
-							);
-						}
-						if inbox.stopped {
-							break;
-						}
-						inbox.background_ready = false;
-						let release = std::mem::take(&mut inbox.release);
-						(
-							if release { None } else { inbox.pending.take() },
-							release,
-						)
-					};
+					let Some((request, release)) = wait_for_request(&thread_inbox, images.poll_deadline()) else {
+                        break;
+                    };
 					if release {
 						cached = None;
 						last = None;
@@ -607,6 +576,36 @@ impl Drop for Worker {
 	fn drop(&mut self) {
 		self.shutdown();
 	}
+}
+
+fn wait_for_request(
+	shared: &(Mutex<Inbox>, Condvar),
+	deadline: Instant,
+) -> Option<(Option<Request>, bool)> {
+	let (lock, wake) = shared;
+	let mut inbox = Inbox::lock(lock);
+	if inbox.pending.is_none()
+		&& !inbox.stopped
+		&& !inbox.release
+		&& !inbox.background_ready
+	{
+		let waited = wake.wait_timeout(
+			inbox,
+			deadline.saturating_duration_since(Instant::now()),
+		);
+		inbox = Inbox::recover(
+			lock,
+			waited.map(|(guard, _)| guard).map_err(|error| {
+				std::sync::PoisonError::new(error.into_inner().0)
+			}),
+		);
+	}
+	if inbox.stopped {
+		return None;
+	}
+	inbox.background_ready = false;
+	let release = std::mem::take(&mut inbox.release);
+	Some((if release { None } else { inbox.pending.take() }, release))
 }
 
 #[cfg(test)]
