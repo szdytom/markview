@@ -67,17 +67,22 @@ fn table_tags(bytes: &[u8]) -> Option<Vec<[u8; 4]>> {
 	let mut tags = Vec::with_capacity(count);
 	for index in 0..count {
 		let record = start.checked_add(index.checked_mul(16)?)?;
-		let end = record.checked_add(4)?;
-		let tag: [u8; 4] = bytes.get(record..end)?.try_into().ok()?;
-		let offset = u32_at(bytes, record.checked_add(8)?)? as usize;
-		let length = u32_at(bytes, record.checked_add(12)?)? as usize;
-		// Every record, not only the named tables, has to fit.
-		if offset.checked_add(length)? > bytes.len() {
-			return None;
-		}
+		let tag = table_record(bytes, record)?;
 		tags.push(tag);
 	}
 	Some(tags)
+}
+
+fn table_record(bytes: &[u8], record: usize) -> Option<[u8; 4]> {
+	let end = record.checked_add(4)?;
+	let tag: [u8; 4] = bytes.get(record..end)?.try_into().ok()?;
+	let offset = u32_at(bytes, record.checked_add(8)?)? as usize;
+	let length = u32_at(bytes, record.checked_add(12)?)? as usize;
+	// Every record, not only the named tables, has to fit.
+	if offset.checked_add(length)? > bytes.len() {
+		return None;
+	}
+	Some(tag)
 }
 
 fn u16_at(bytes: &[u8], offset: usize) -> Option<u16> {
@@ -154,5 +159,28 @@ mod tests {
 	#[test]
 	fn the_outline_whitelist_accepts_variable_postscript() {
 		assert!(OUTLINE_TABLES.contains(b"CFF2"));
+	}
+}
+
+#[cfg(test)]
+mod directory_tests {
+	use super::*;
+
+	#[test]
+	fn every_font_directory_record_must_fit_the_body() {
+		let bytes = std::fs::read(
+			Path::new(env!("CARGO_MANIFEST_DIR"))
+				.join("tests/fonts/NotoSerif-Regular-subset.otf"),
+		)
+		.unwrap();
+		assert!(is_font(&bytes));
+		let count = u16_at(&bytes, 4).unwrap() as usize;
+		let record = 12 + (count - 1) * 16;
+		for field in [8, 12] {
+			let mut truncated = bytes.clone();
+			truncated[record + field..record + field + 4]
+				.copy_from_slice(&u32::MAX.to_be_bytes());
+			assert!(!is_font(&truncated), "record field {field}");
+		}
 	}
 }
