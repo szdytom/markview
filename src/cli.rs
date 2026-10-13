@@ -597,20 +597,7 @@ fn apply_command(out: &mut LaunchOptions, command: Command) -> Result<()> {
 			out.web_url = Some(url);
 			apply_screen_reading(out, &reading)
 		}
-		Command::Render(args) => {
-			out.mode = Mode::Render;
-			out.path = Some(args.file);
-			out.output = Some(args.output);
-			if let Some(scale) = args.scale {
-				check_number("--scale", scale)?;
-				out.scale = scale.clamp(0.5, 4.0);
-			}
-			if let Some(scroll) = args.scroll {
-				check_number("--scroll", scroll)?;
-				out.scroll = scroll;
-			}
-			apply_screen_reading(out, &args.reading)
-		}
+		Command::Render(args) => apply_render_command(out, args),
 		Command::Smoke(args) => {
 			out.mode = Mode::Smoke;
 			out.path = Some(args.file);
@@ -631,79 +618,7 @@ fn apply_command(out: &mut LaunchOptions, command: Command) -> Result<()> {
 			out.iterations = args.iterations.clamp(1, 10_000);
 			apply_screen_reading(out, &args.reading)
 		}
-		Command::Pdf(args) => {
-			out.mode = Mode::Pdf;
-			out.security =
-				crate::security::Security::local(args.document_trust);
-			for path in args.allow_local_image {
-				out.security.grant(crate::security::Resource::File(
-					std::fs::canonicalize(&path).with_context(|| {
-						format!(
-							"Cannot resolve authorized image {}",
-							path.display()
-						)
-					})?,
-				));
-			}
-			for resource in args.allow_network {
-				out.security.grant(resource);
-			}
-			out.path = Some(args.file);
-			out.output = Some(args.output);
-			out.links = !args.no_links;
-			out.watch = args.watch;
-			out.page.landscape = args.landscape.then_some(true);
-			if let Some(paper) = args.paper {
-				out.page.paper = Some(paper);
-			}
-			if let Some(margin) = args.margin {
-				out.page.margin = Some(parse_margin(&margin)?);
-			}
-			for (slot, value) in [
-				(0, args.header_left),
-				(1, args.header),
-				(2, args.header_right),
-			] {
-				if let Some(value) = value {
-					out.page.header[slot] = Some(value);
-				}
-			}
-			for (slot, value) in [
-				(0, args.footer_left),
-				(1, args.footer),
-				(2, args.footer_right),
-			] {
-				if let Some(value) = value {
-					out.page.footer[slot] = Some(value);
-				}
-			}
-			out.page.validate()?;
-			out.metadata.title = args.title;
-			out.metadata.authors = args
-				.author
-				.into_iter()
-				.filter(|name| !name.trim().is_empty())
-				.collect();
-			out.metadata.subject = args.subject;
-			out.metadata.keywords = args
-				.keywords
-				.unwrap_or_default()
-				.split(',')
-				.map(|word| word.trim())
-				.filter(|word| !word.is_empty())
-				.map(str::to_owned)
-				.collect();
-			if let Some(language) = args.language {
-				if !is_language_tag(&language) {
-					bail!(
-						"Invalid language {language:?}; use an RFC 3066 tag such as en, zh-CN or ja"
-					);
-				}
-				out.metadata.language = Some(language);
-			}
-			out.metadata.creator = args.creator;
-			args.reading.apply(out)
-		}
+		Command::Pdf(args) => apply_pdf_command(out, args),
 		Command::Ss { action } => {
 			match action {
 				SsAction::List => {
@@ -777,6 +692,94 @@ fn apply_screen_reading(
 		out.overrides.push(Setting::Width);
 	}
 	Ok(())
+}
+
+fn apply_render_command(
+	out: &mut LaunchOptions,
+	args: RenderArgs,
+) -> Result<()> {
+	out.mode = Mode::Render;
+	out.path = Some(args.file);
+	out.output = Some(args.output);
+	if let Some(scale) = args.scale {
+		check_number("--scale", scale)?;
+		out.scale = scale.clamp(0.5, 4.0);
+	}
+	if let Some(scroll) = args.scroll {
+		check_number("--scroll", scroll)?;
+		out.scroll = scroll;
+	}
+	apply_screen_reading(out, &args.reading)
+}
+
+fn apply_pdf_command(out: &mut LaunchOptions, args: PdfArgs) -> Result<()> {
+	out.mode = Mode::Pdf;
+	out.security = crate::security::Security::local(args.document_trust);
+	for path in args.allow_local_image {
+		out.security.grant(crate::security::Resource::File(
+			std::fs::canonicalize(&path).with_context(|| {
+				format!("Cannot resolve authorized image {}", path.display())
+			})?,
+		));
+	}
+	for resource in args.allow_network {
+		out.security.grant(resource);
+	}
+	out.path = Some(args.file);
+	out.output = Some(args.output);
+	out.links = !args.no_links;
+	out.watch = args.watch;
+	out.page.landscape = args.landscape.then_some(true);
+	if let Some(paper) = args.paper {
+		out.page.paper = Some(paper);
+	}
+	if let Some(margin) = args.margin {
+		out.page.margin = Some(parse_margin(&margin)?);
+	}
+	for (slot, value) in [
+		(0, args.header_left),
+		(1, args.header),
+		(2, args.header_right),
+	] {
+		if let Some(value) = value {
+			out.page.header[slot] = Some(value);
+		}
+	}
+	for (slot, value) in [
+		(0, args.footer_left),
+		(1, args.footer),
+		(2, args.footer_right),
+	] {
+		if let Some(value) = value {
+			out.page.footer[slot] = Some(value);
+		}
+	}
+	out.page.validate()?;
+	out.metadata.title = args.title;
+	out.metadata.authors = args
+		.author
+		.into_iter()
+		.filter(|name| !name.trim().is_empty())
+		.collect();
+	out.metadata.subject = args.subject;
+	out.metadata.keywords = args
+		.keywords
+		.unwrap_or_default()
+		.split(',')
+		.map(|word| word.trim())
+		.filter(|word| !word.is_empty())
+		.map(str::to_owned)
+		.collect();
+	if let Some(language) = args.language {
+		if !is_language_tag(&language) {
+			bail!(
+				"Invalid language {language:?}; use an RFC 3066 tag such as en, zh-CN or ja"
+			);
+		}
+		out.metadata.language = Some(language);
+	}
+	out.metadata.creator = args.creator;
+	args.reading.apply(out)
 }
 
 fn apply_reading(out: &mut LaunchOptions, reading: &Reading) -> Result<()> {
