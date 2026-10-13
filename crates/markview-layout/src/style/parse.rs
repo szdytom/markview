@@ -253,22 +253,30 @@ fn validate_font_family(
 			validate_font_url(file.url()).with_context(source_context)?;
 			validate_sha256(file.sha256(), &source_context)?;
 		}
-		for archive in &source.archives {
-			validate_font_url(&archive.url).with_context(source_context)?;
-			validate_sha256(archive.sha256.as_deref(), &source_context)?;
-			if archive.members.is_empty()
-				|| archive.members.iter().any(|member| member.is_empty())
-			{
-				bail!("{}: members must not be empty", source_context());
-			}
-			// A pattern stays inside one segment, so matching never revisits a
-			// pattern/name state and cannot run away.
-			if archive.members.iter().any(|member| member.contains("**")) {
-				bail!(
-					"{}: members cannot use `**`; name each directory level",
-					source_context()
-				);
-			}
+		validate_font_archives(source, &source_context)?;
+	}
+	Ok(())
+}
+
+fn validate_font_archives(
+	source: &super::FontSource,
+	context: &dyn Fn() -> String,
+) -> Result<()> {
+	for archive in &source.archives {
+		validate_font_url(&archive.url).with_context(context)?;
+		validate_sha256(archive.sha256.as_deref(), context)?;
+		if archive.members.is_empty()
+			|| archive.members.iter().any(|member| member.is_empty())
+		{
+			bail!("{}: members must not be empty", context());
+		}
+		// A pattern stays inside one segment, so matching never revisits a
+		// pattern/name state and cannot run away.
+		if archive.members.iter().any(|member| member.contains("**")) {
+			bail!(
+				"{}: members cannot use `**`; name each directory level",
+				context()
+			);
 		}
 	}
 	Ok(())
