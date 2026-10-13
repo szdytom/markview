@@ -591,6 +591,66 @@ impl<'a> Chrome<'a> {
 				self.settings.lang(),
 			));
 		}
+		self.draw_document_status(&mut out);
+
+		self.draw_drawers(&mut out);
+		self.draw_panel_overlay(&mut out, form);
+		self.draw_resource_feedback(&mut out);
+		out.append(&mut self.input_draws);
+		// An open option list floats over whichever page holds its row, so it
+		// goes on after everything the page draws. Measuring brings the
+		// highlight into the drawn window, on a copy: the state is corrected
+		// the next time the input paths measure it.
+		if let Some(mut open) = self.interaction.dropdown
+			&& let Some(menu) = self.dropdown_menu(&mut open)
+		{
+			out.extend(components::draw_menu(self.ui, self.interaction, &menu));
+		}
+		// A confirmation owns the frame; nothing behind it is interactive.
+		if self.interaction.modal.is_some() {
+			out.extend(modal::draw_modal(
+				self.ui,
+				self.interaction,
+				width,
+				height,
+				self.settings.lang(),
+			));
+		}
+		// The image viewer floats over everything, the modal included.
+		if let Some(viewer) = &self.interaction.viewer {
+			out.extend(viewer::draw_viewer(
+				viewer,
+				&self.session.snapshot,
+				(width, height),
+			));
+		}
+		out.extend(frame::draw(self.frame));
+		out
+	}
+
+	fn resource_viewport(&self) -> Rect {
+		if self.interaction.fonts_open() {
+			fonts::list(
+				self.width,
+				self.height,
+				self.fonts.shown.len(),
+				self.fonts.scroll,
+				self.fonts.choosers,
+				fonts::roles(self.settings).len(),
+			)
+			.viewport
+		} else {
+			styles::list(
+				self.width,
+				self.height,
+				self.style_entries.len(),
+				self.style_scroll,
+			)
+			.viewport
+		}
+	}
+	fn draw_document_status(&mut self, out: &mut Vec<Draw>) {
+		let (width, height) = (self.width, self.height);
 		if self.session.path.is_none() {
 			out.extend(empty::draw(
 				self.ui,
@@ -658,7 +718,10 @@ impl<'a> Chrome<'a> {
 				}
 			}
 		}
+	}
 
+	fn draw_drawers(&mut self, out: &mut Vec<Draw>) {
+		let (width, height) = (self.width, self.height);
 		if let Some(bar) = self.scrollbar {
 			let held = self
 				.interaction
@@ -706,6 +769,14 @@ impl<'a> Chrome<'a> {
 			);
 			out.extend(draws);
 		}
+	}
+
+	fn draw_panel_overlay(
+		&mut self,
+		out: &mut Vec<Draw>,
+		form: Option<&components::Form>,
+	) {
+		let (width, height) = (self.width, self.height);
 		if self.interaction.panel_open()
 			&& self.interaction.export_styles_open()
 		{
@@ -782,60 +853,8 @@ impl<'a> Chrome<'a> {
 				form.expect("settings form"),
 			));
 		}
-		self.draw_resource_feedback(&mut out);
-		out.append(&mut self.input_draws);
-		// An open option list floats over whichever page holds its row, so it
-		// goes on after everything the page draws. Measuring brings the
-		// highlight into the drawn window, on a copy: the state is corrected
-		// the next time the input paths measure it.
-		if let Some(mut open) = self.interaction.dropdown
-			&& let Some(menu) = self.dropdown_menu(&mut open)
-		{
-			out.extend(components::draw_menu(self.ui, self.interaction, &menu));
-		}
-		// A confirmation owns the frame; nothing behind it is interactive.
-		if self.interaction.modal.is_some() {
-			out.extend(modal::draw_modal(
-				self.ui,
-				self.interaction,
-				width,
-				height,
-				self.settings.lang(),
-			));
-		}
-		// The image viewer floats over everything, the modal included.
-		if let Some(viewer) = &self.interaction.viewer {
-			out.extend(viewer::draw_viewer(
-				viewer,
-				&self.session.snapshot,
-				(width, height),
-			));
-		}
-		out.extend(frame::draw(self.frame));
-		out
 	}
 
-	fn resource_viewport(&self) -> Rect {
-		if self.interaction.fonts_open() {
-			fonts::list(
-				self.width,
-				self.height,
-				self.fonts.shown.len(),
-				self.fonts.scroll,
-				self.fonts.choosers,
-				fonts::roles(self.settings).len(),
-			)
-			.viewport
-		} else {
-			styles::list(
-				self.width,
-				self.height,
-				self.style_entries.len(),
-				self.style_scroll,
-			)
-			.viewport
-		}
-	}
 	fn resource_retry(&self, cached: bool) -> Button {
 		let panel = components::panel_rect(self.width, self.height);
 		let viewport = self.resource_viewport();
