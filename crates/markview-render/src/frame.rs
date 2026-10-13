@@ -152,58 +152,14 @@ impl Renderer {
 					| Draw::Polygon { .. } => scratch.backgrounds.push(staged),
 				}
 			}
-			for (oi, o) in block.layout.overflow.iter().enumerate() {
-				let Some(rect) = block.overflow_rect(oi) else {
-					continue;
-				};
-				let offset =
-					view.horizontal.get(&(index, oi)).copied().unwrap_or(0.0);
-				let band = Rect {
-					x: view.left + rect.x,
-					y: dy + rect.y + rect.h,
-					w: o.rect.w,
-					h: metrics.overflow_band(o.gutter),
-				};
-				let Some(bar) = markview_layout::scene::Scrollbar::horizontal(
-					band,
-					offset,
-					o.content_width,
-					o.rect.w,
-					metrics,
-				) else {
-					continue;
-				};
-				let held = view.held_overflow == Some((index, oi));
-				let hovered =
-					held || view.hovered_overflow == Some((index, oi));
-				let on_thumb = held
-					|| self.pointer.is_some_and(|(x, y)| bar.on_thumb(x, y));
-				let (track, thumb) = bar.bars(hovered);
-				scratch.tracks.push((
-					track,
-					self.color(
-						Paint::Styled(
-							markview_layout::style::Condition::Scrollbar,
-							markview_layout::style::ColorField::Track,
-						),
-						view.theme,
-					),
-				));
-				scratch.tracks.push((
-					thumb,
-					self.color(
-						Paint::Styled(
-							markview_layout::style::Condition::Scrollbar,
-							if on_thumb {
-								markview_layout::style::ColorField::ThumbHover
-							} else {
-								markview_layout::style::ColorField::Thumb
-							},
-						),
-						view.theme,
-					),
-				));
-			}
+			self.stage_overflow_tracks(
+				&mut scratch,
+				block,
+				index,
+				dy,
+				view,
+				metrics,
+			);
 		}
 		for staged in &scratch.backgrounds {
 			self.draw(
@@ -215,28 +171,7 @@ impl Renderer {
 				staged.hovered,
 			);
 		}
-		if let Some(selection) = view.selection {
-			let color = self.color(
-				Paint::Styled(
-					markview_layout::style::Condition::Selection,
-					markview_layout::style::ColorField::Background,
-				),
-				view.theme,
-			);
-			for rect in snapshot.selection_rects_in(
-				selection,
-				view.horizontal,
-				view.revision,
-				view.scroll..view.scroll + clip.h,
-			) {
-				self.geometry.solid(
-					view.viewport().window_rect(rect),
-					color,
-					clip,
-					view,
-				);
-			}
-		}
+		self.draw_selection(snapshot, view, clip);
 		for staged in &scratch.foreground {
 			self.draw(
 				snapshot.blocks[staged.block].draw(staged.command),
@@ -269,6 +204,98 @@ impl Renderer {
 		// Keep the stage buffers for the next frame.
 		self.scratch = scratch;
 	}
+	fn stage_overflow_tracks(
+		&self,
+		scratch: &mut FrameScratch,
+		block: &markview_layout::scene::PlacedBlock,
+		index: usize,
+		dy: f32,
+		view: &View<'_>,
+		metrics: markview_layout::scene::ScrollbarMetrics,
+	) {
+		for (oi, o) in block.layout.overflow.iter().enumerate() {
+			let Some(rect) = block.overflow_rect(oi) else {
+				continue;
+			};
+			let offset =
+				view.horizontal.get(&(index, oi)).copied().unwrap_or(0.0);
+			let band = Rect {
+				x: view.left + rect.x,
+				y: dy + rect.y + rect.h,
+				w: o.rect.w,
+				h: metrics.overflow_band(o.gutter),
+			};
+			let Some(bar) = markview_layout::scene::Scrollbar::horizontal(
+				band,
+				offset,
+				o.content_width,
+				o.rect.w,
+				metrics,
+			) else {
+				continue;
+			};
+			let held = view.held_overflow == Some((index, oi));
+			let hovered = held || view.hovered_overflow == Some((index, oi));
+			let on_thumb =
+				held || self.pointer.is_some_and(|(x, y)| bar.on_thumb(x, y));
+			let (track, thumb) = bar.bars(hovered);
+			scratch.tracks.push((
+				track,
+				self.color(
+					Paint::Styled(
+						markview_layout::style::Condition::Scrollbar,
+						markview_layout::style::ColorField::Track,
+					),
+					view.theme,
+				),
+			));
+			scratch.tracks.push((
+				thumb,
+				self.color(
+					Paint::Styled(
+						markview_layout::style::Condition::Scrollbar,
+						if on_thumb {
+							markview_layout::style::ColorField::ThumbHover
+						} else {
+							markview_layout::style::ColorField::Thumb
+						},
+					),
+					view.theme,
+				),
+			));
+		}
+	}
+
+	fn draw_selection(
+		&mut self,
+		snapshot: &LayoutSnapshot,
+		view: &View<'_>,
+		clip: Rect,
+	) {
+		if let Some(selection) = view.selection {
+			let color = self.color(
+				Paint::Styled(
+					markview_layout::style::Condition::Selection,
+					markview_layout::style::ColorField::Background,
+				),
+				view.theme,
+			);
+			for rect in snapshot.selection_rects_in(
+				selection,
+				view.horizontal,
+				view.revision,
+				view.scroll..view.scroll + clip.h,
+			) {
+				self.geometry.solid(
+					view.viewport().window_rect(rect),
+					color,
+					clip,
+					view,
+				);
+			}
+		}
+	}
+
 	/// Renders one frame with a stylesheet of its own, leaving the renderer's
 	/// colors exactly as they were. The PNG export uses this so its strips can
 	/// never tint the reading view.
