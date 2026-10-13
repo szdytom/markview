@@ -34,6 +34,12 @@ pub(super) enum Message {
 	Reset(Box<ReaderSettings>),
 }
 impl Message {
+	#[cfg_attr(
+		any(),
+		markview::allow_complexity(
+			reason = "Keep the flat command-to-settings-message mapping together for review against the command enum."
+		)
+	)]
 	pub(super) fn from_command(command: Command) -> Option<Self> {
 		Some(match command {
 			Command::SettingsPreview => Self::TogglePreview,
