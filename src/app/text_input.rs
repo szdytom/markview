@@ -419,33 +419,7 @@ impl<P: SendEvent> App<P> {
 				self.sync_input();
 			}
 			WindowEvent::Ime(ime) => {
-				if let Some(id) = self.text_input.focused {
-					match ime {
-						Ime::Enabled => {
-							self.text_input.ime_enabled = true;
-							self.text_input.last_ime_area = None;
-						}
-						Ime::Disabled => {
-							self.text_input.ime_enabled = false;
-							self.text_input.last_ime_area = None;
-							let (input, ui) = self.input(id);
-							input.cancel_compose(ui);
-						}
-						Ime::Preedit(text, cursor) => {
-							let (input, ui) = self.input(id);
-							input.preedit(ui, text, *cursor);
-						}
-						Ime::Commit(text) => {
-							let (input, ui) = self.input(id);
-							input.commit(ui, text);
-							if id == TextField::Search {
-								self.search_changed();
-							}
-						}
-					}
-					self.reset_input_blink();
-					self.sync_input();
-				}
+				self.handle_input_ime(ime);
 				return true;
 			}
 			WindowEvent::KeyboardInput { event, .. }
@@ -519,6 +493,36 @@ impl<P: SendEvent> App<P> {
 		}
 		false
 	}
+	fn handle_input_ime(&mut self, ime: &Ime) {
+		if let Some(id) = self.text_input.focused {
+			match ime {
+				Ime::Enabled => {
+					self.text_input.ime_enabled = true;
+					self.text_input.last_ime_area = None;
+				}
+				Ime::Disabled => {
+					self.text_input.ime_enabled = false;
+					self.text_input.last_ime_area = None;
+					let (input, ui) = self.input(id);
+					input.cancel_compose(ui);
+				}
+				Ime::Preedit(text, cursor) => {
+					let (input, ui) = self.input(id);
+					input.preedit(ui, text, *cursor);
+				}
+				Ime::Commit(text) => {
+					let (input, ui) = self.input(id);
+					input.commit(ui, text);
+					if id == TextField::Search {
+						self.search_changed();
+					}
+				}
+			}
+			self.reset_input_blink();
+			self.sync_input();
+		}
+	}
+
 	fn input_key(&mut self, logical: &Key, text: Option<&str>) -> Outcome {
 		let id = self.text_input.focused.expect("focused input owns key");
 		let mods = self.interaction.modifiers;
