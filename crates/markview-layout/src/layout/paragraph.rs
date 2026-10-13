@@ -42,6 +42,12 @@ impl BlockContext<'_> {
 		clippy::too_many_arguments,
 		reason = "Text style and block geometry are independent layout inputs"
 	)]
+	#[cfg_attr(
+		any(),
+		markview::allow_complexity(
+			reason = "Keep line breaking, boundary reshaping and geometry emission in one ordered paragraph pipeline; shared clusters and decoration ranges must stay synchronized."
+		)
+	)]
 	pub(super) fn paragraph_bounded(
 		&mut self,
 		rich: &[Inline],
