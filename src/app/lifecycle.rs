@@ -430,6 +430,40 @@ impl<P: super::SendEvent> App<P> {
 			_ => {}
 		}
 	}
+	fn pump_native_pan(&mut self) {
+		let held = self.pointer_owns_input();
+		// The window's hook offers its hit-tested touchpad pointers before
+		// the pump: with `MANUALUPDATE` the OS buffers the gesture until the
+		// pump's own `Update` consumes it, so the offer beats the input.
+		// While a pointer drag, a confirmation, an option list or the image
+		// viewer owns the input the offer is withheld, and the wheel paths
+		// keep serving the pad — under the viewer they zoom it, as the wheel
+		// always has.
+		let offered = dm::DirectManipulation::take_offered_pointers();
+		if !offered.is_empty()
+			&& !held && self.interaction.modal.is_none()
+			&& self.interaction.dropdown.is_none()
+			&& self.interaction.viewer.is_none()
+			&& let Some(viewport) = self.dm.as_mut()
+		{
+			for pointer in offered {
+				viewport.contact(pointer);
+			}
+		}
+		let pans = self.dm.as_mut().map_or_else(Vec::new, |dm| dm.pump(held));
+		if !pans.is_empty() {
+			let speed = self.scroll_speed();
+			for (phase, dx, dy) in pans {
+				self.trackpad_scroll(
+					dx * speed,
+					dy * speed,
+					phase,
+					super::gestures::Inertia::Native,
+				);
+			}
+		}
+	}
+
 	/// Runs every deadline that came due and returns the soonest one still
 	/// pending, so the loop can sleep until then. `None` means nothing is
 	/// waiting, or this frame asked the loop to stop.
@@ -462,37 +496,7 @@ impl<P: super::SendEvent> App<P> {
 		// While a pointer-driven interaction owns the input the pump is
 		// `held`: the deltas drop, and the stream they belonged to cannot
 		// resume when the owner lets go.
-		let held = self.pointer_owns_input();
-		// The window's hook offers its hit-tested touchpad pointers before
-		// the pump: with `MANUALUPDATE` the OS buffers the gesture until the
-		// pump's own `Update` consumes it, so the offer beats the input.
-		// While a pointer drag, a confirmation, an option list or the image
-		// viewer owns the input the offer is withheld, and the wheel paths
-		// keep serving the pad — under the viewer they zoom it, as the wheel
-		// always has.
-		let offered = dm::DirectManipulation::take_offered_pointers();
-		if !offered.is_empty()
-			&& !held && self.interaction.modal.is_none()
-			&& self.interaction.dropdown.is_none()
-			&& self.interaction.viewer.is_none()
-			&& let Some(viewport) = self.dm.as_mut()
-		{
-			for pointer in offered {
-				viewport.contact(pointer);
-			}
-		}
-		let pans = self.dm.as_mut().map_or_else(Vec::new, |dm| dm.pump(held));
-		if !pans.is_empty() {
-			let speed = self.scroll_speed();
-			for (phase, dx, dy) in pans {
-				self.trackpad_scroll(
-					dx * speed,
-					dy * speed,
-					phase,
-					super::gestures::Inertia::Native,
-				);
-			}
-		}
+		self.pump_native_pan();
 		self.advance_scroll(now);
 		self.advance_gestures(now);
 		if self.interaction.advance_drawers(now) {
