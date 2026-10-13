@@ -28,27 +28,7 @@ impl StylesheetSource {
 			.context("version: expected a nonnegative integer")?;
 		let version = u64::try_from(version)
 			.context("version: expected a nonnegative integer")?;
-		let mut targets = vec![StyleTarget::Ui, StyleTarget::Pdf];
-		if let Some(value) = doc.remove("targets") {
-			let values = value
-				.as_array()
-				.context("targets: expected a nonempty array of ui, pdf")?;
-			if values.is_empty() {
-				bail!("targets: must not be empty");
-			}
-			targets.clear();
-			for value in values {
-				let target = match value.as_str() {
-					Some("ui") => StyleTarget::Ui,
-					Some("pdf") => StyleTarget::Pdf,
-					_ => bail!("targets: expected ui or pdf"),
-				};
-				if targets.contains(&target) {
-					bail!("targets: duplicate {}", target.as_str());
-				}
-				targets.push(target);
-			}
-		}
+		let targets = parse_targets(&mut doc)?;
 		let fontdefs = parse_fontdefs(&mut doc)?;
 		let fontdef_ids: Vec<String> =
 			fontdefs.keys().map(|(id, _)| id.clone()).collect();
@@ -70,66 +50,7 @@ impl StylesheetSource {
 			mermaid,
 		};
 		properties.resolve_fontdefs();
-		let mut layer = Vec::new();
-		let mut selectors = BTreeSet::new();
-		if let Some(item) = doc.remove("rule") {
-			let rules = item
-				.as_array_of_tables()
-				.context("rule: expected [[rule]] tables")?;
-			for table in rules.iter() {
-				let (conditions, media, fields) = split_rule(table)?;
-				for (key, _) in fields.iter() {
-					validate_field(conditions, key)?;
-				}
-				let name = conditions.display();
-				let rule: Rule = toml_edit::de::from_str(&fields.to_string())
-					.with_context(|| format!("rule [{name}]"))?;
-				validate_numbers(&name, &rule)?;
-				if rule.font.as_ref().is_some_and(Vec::is_empty) {
-					bail!("rule [{name}].font: must not be empty");
-				}
-				if rule
-					.shape
-					.as_ref()
-					.is_some_and(|shapes| shapes.cycle().is_empty())
-				{
-					bail!("rule [{name}].shape: must not be empty");
-				}
-				if let Some(fonts) = &rule.font {
-					for (i, font) in fonts.iter().enumerate() {
-						if font.family.trim().is_empty()
-							|| font
-								.weight
-								.into_iter()
-								.chain(font.min_weight)
-								.any(|w| !(1..=1000).contains(&w))
-							|| (font.weight.is_some()
-								&& font.min_weight.is_some())
-						{
-							bail!(
-								"rule [{name}].font[{i}]: invalid family or weight"
-							);
-						}
-						if font.synthetic_italic
-							&& font.variant == super::Variant::Normal
-						{
-							bail!(
-								"rule [{name}].font[{i}].synthetic_italic: requires variant italic or oblique"
-							);
-						}
-					}
-				}
-				if conditions == ConditionSet::of(Condition::Body)
-					&& rule.background.is_some_and(|c| c.0 & 255 != 255)
-				{
-					bail!("rule [body].background: must be opaque");
-				}
-				if !selectors.insert((conditions, media)) {
-					bail!("rule [{name}]: duplicate conditions and media");
-				}
-				layer.push((conditions, media, rule));
-			}
-		}
+		let mut layer = parse_rules(&mut doc)?;
 		if let Some((name, _)) = doc.iter().next() {
 			bail!("unknown table [{name}]");
 		}
@@ -141,6 +62,104 @@ impl StylesheetSource {
 			has_media,
 		})
 	}
+}
+
+fn parse_targets(doc: &mut toml_edit::DocumentMut) -> Result<Vec<StyleTarget>> {
+	let mut targets = vec![StyleTarget::Ui, StyleTarget::Pdf];
+	if let Some(value) = doc.remove("targets") {
+		let values = value
+			.as_array()
+			.context("targets: expected a nonempty array of ui, pdf")?;
+		if values.is_empty() {
+			bail!("targets: must not be empty");
+		}
+		targets.clear();
+		for value in values {
+			let target = match value.as_str() {
+				Some("ui") => StyleTarget::Ui,
+				Some("pdf") => StyleTarget::Pdf,
+				_ => bail!("targets: expected ui or pdf"),
+			};
+			if targets.contains(&target) {
+				bail!("targets: duplicate {}", target.as_str());
+			}
+			targets.push(target);
+		}
+	}
+	Ok(targets)
+}
+
+fn parse_rules(
+	doc: &mut toml_edit::DocumentMut,
+) -> Result<Vec<(ConditionSet, u32, Rule)>> {
+	let mut layer = Vec::new();
+	let mut selectors = BTreeSet::new();
+	if let Some(item) = doc.remove("rule") {
+		let rules = item
+			.as_array_of_tables()
+			.context("rule: expected [[rule]] tables")?;
+		for table in rules.iter() {
+			let (conditions, media, rule) = parse_rule(table)?;
+			let name = conditions.display();
+			if !selectors.insert((conditions, media)) {
+				bail!("rule [{name}]: duplicate conditions and media");
+			}
+			layer.push((conditions, media, rule));
+		}
+	}
+	Ok(layer)
+}
+
+fn parse_rule(table: &toml_edit::Table) -> Result<(ConditionSet, u32, Rule)> {
+	let (conditions, media, fields) = split_rule(table)?;
+	for (key, _) in fields.iter() {
+		validate_field(conditions, key)?;
+	}
+	let name = conditions.display();
+	let rule: Rule = toml_edit::de::from_str(&fields.to_string())
+		.with_context(|| format!("rule [{name}]"))?;
+	validate_numbers(&name, &rule)?;
+	if rule.font.as_ref().is_some_and(Vec::is_empty) {
+		bail!("rule [{name}].font: must not be empty");
+	}
+	if rule
+		.shape
+		.as_ref()
+		.is_some_and(|shapes| shapes.cycle().is_empty())
+	{
+		bail!("rule [{name}].shape: must not be empty");
+	}
+	validate_rule_fonts(&name, &rule)?;
+	if conditions == ConditionSet::of(Condition::Body)
+		&& rule.background.is_some_and(|c| c.0 & 255 != 255)
+	{
+		bail!("rule [body].background: must be opaque");
+	}
+	Ok((conditions, media, rule))
+}
+
+fn validate_rule_fonts(name: &str, rule: &Rule) -> Result<()> {
+	if let Some(fonts) = &rule.font {
+		for (i, font) in fonts.iter().enumerate() {
+			if font.family.trim().is_empty()
+				|| font
+					.weight
+					.into_iter()
+					.chain(font.min_weight)
+					.any(|w| !(1..=1000).contains(&w))
+				|| (font.weight.is_some() && font.min_weight.is_some())
+			{
+				bail!("rule [{name}].font[{i}]: invalid family or weight");
+			}
+			if font.synthetic_italic && font.variant == super::Variant::Normal {
+				bail!(
+					"rule [{name}].font[{i}].synthetic_italic: requires variant italic or oblique"
+				);
+			}
+		}
+	}
+
+	Ok(())
 }
 
 /// The `[svg]` table: generic family mappings shared by all SVG renderers.
