@@ -338,142 +338,217 @@ fn draw_button_edges(
 	edges: [bool; 2],
 	icon_size: f32,
 ) -> Vec<Draw> {
-	let placed = interaction
-		.controls
-		.as_ref()
-		.and_then(|layout| layout.get(b.id));
-	let rect = placed.map_or(b.rect, |w| w.rect);
-	let enabled = placed.map_or(b.enabled, |w| w.enabled);
-	let hovered = enabled
-		&& interaction.controls.as_ref().map_or_else(
-			|| b.contains(interaction.cursor),
-			|layout| {
-				layout
-					.hit(interaction.cursor)
-					.is_some_and(|w| w.id == b.id && w.enabled)
-			},
-		);
-	let pressed =
-		enabled && interaction.widgets.captured == Some(b.id) && hovered;
-	let primary = enabled && b.kind == ButtonKind::Primary;
-	let link = b.kind == ButtonKind::Link;
-	let quiet = matches!(b.kind, ButtonKind::Quiet | ButtonKind::Link)
-		|| b.icon.is_some()
-		|| !panel;
-	let focused = enabled
-		&& interaction.widgets.focus_visible
-		&& interaction.widgets.focus == Some(b.id);
-	let selected = enabled && b.active;
-	let styled = |field| Paint::Styled(Condition::Button, field);
-	let fill = if primary {
-		if pressed || hovered {
+	let visual = ButtonVisual::new(interaction, b, panel);
+	let mut out = visual.background(ui, edges);
+	out.extend(visual.content(ui, b, icon_size));
+	out
+}
+
+#[derive(Clone, Copy)]
+struct ButtonVisual {
+	rect: Rect,
+	enabled: bool,
+	hovered: bool,
+	pressed: bool,
+	primary: bool,
+	link: bool,
+	quiet: bool,
+	focused: bool,
+	selected: bool,
+}
+
+impl ButtonVisual {
+	fn new(interaction: &InteractionState, b: &Button, panel: bool) -> Self {
+		let placed = interaction
+			.controls
+			.as_ref()
+			.and_then(|layout| layout.get(b.id));
+		let rect = placed.map_or(b.rect, |w| w.rect);
+		let enabled = placed.map_or(b.enabled, |w| w.enabled);
+		let hovered = enabled
+			&& interaction.controls.as_ref().map_or_else(
+				|| b.contains(interaction.cursor),
+				|layout| {
+					layout
+						.hit(interaction.cursor)
+						.is_some_and(|w| w.id == b.id && w.enabled)
+				},
+			);
+		let pressed =
+			enabled && interaction.widgets.captured == Some(b.id) && hovered;
+		let primary = enabled && b.kind == ButtonKind::Primary;
+		let link = b.kind == ButtonKind::Link;
+		let quiet = matches!(b.kind, ButtonKind::Quiet | ButtonKind::Link)
+			|| b.icon.is_some()
+			|| !panel;
+		let focused = enabled
+			&& interaction.widgets.focus_visible
+			&& interaction.widgets.focus == Some(b.id);
+		let selected = enabled && b.active;
+		Self {
+			rect,
+			enabled,
+			hovered,
+			pressed,
+			primary,
+			link,
+			quiet,
+			focused,
+			selected,
+		}
+	}
+
+	fn fill(&self, ui: &TextShaper) -> Paint {
+		let Self {
+			primary,
+			pressed,
+			hovered,
+			selected,
+			..
+		} = *self;
+		let styled = |field| Paint::Styled(Condition::Button, field);
+		if primary {
+			if pressed || hovered {
+				mix(
+					ui,
+					styled(C::Accent),
+					styled(C::Color),
+					if pressed { 0.22 } else { 0.10 },
+				)
+			} else {
+				styled(C::Accent)
+			}
+		} else if selected && (pressed || hovered) {
 			mix(
 				ui,
+				styled(C::ActiveBackground),
 				styled(C::Accent),
-				styled(C::Color),
 				if pressed { 0.22 } else { 0.10 },
 			)
+		} else if pressed || selected {
+			styled(C::ActiveBackground)
+		} else if hovered {
+			styled(C::HoverBackground)
 		} else {
-			styled(C::Accent)
+			styled(C::Background)
 		}
-	} else if selected && (pressed || hovered) {
-		mix(
-			ui,
-			styled(C::ActiveBackground),
-			styled(C::Accent),
-			if pressed { 0.22 } else { 0.10 },
-		)
-	} else if pressed || selected {
-		styled(C::ActiveBackground)
-	} else if hovered {
-		styled(C::HoverBackground)
-	} else {
-		styled(C::Background)
-	};
-	let mut out = Vec::new();
-	if primary || selected || pressed || hovered || !quiet {
-		out.push(Draw::Rect(rect, fill));
 	}
-	// A single edge carries focus, replacing the resting border instead of stacking rings.
-	if focused {
-		out.extend(outline(
-			rect,
-			if primary { C::Color } else { C::FocusColor },
-			2.0,
-			edges,
-		));
-	} else if !quiet && !primary {
-		out.extend(outline(
-			rect,
-			if selected { C::Accent } else { C::BorderColor },
-			1.0,
-			edges,
-		));
-	}
-	let color = if !enabled {
-		C::DisabledColor
-	} else if primary {
-		C::Background
-	} else if link {
-		C::Accent
-	} else {
-		C::Color
-	};
 
-	let old = ui.appearance.clone();
-	ui.appearance = ui.stylesheet.text(&old, Condition::Button);
-	if let Some(paths) = b.icon {
-		out.push(Draw::Icon {
-			paths,
-			paint: Paint::Styled(Condition::Button, color),
-			x: rect.x + (rect.w - icon_size) / 2.0,
-			y: rect.y + (rect.h - icon_size) / 2.0,
-			size: icon_size,
-		});
-	} else {
-		let room = if b.marker.is_some() {
-			MARKER + 4.0
-		} else {
-			0.0
-		};
-		let text = ui.fit(&b.label, 13.0, (rect.w - 8.0 - room).max(0.0));
-		let width = ui.text_width(&text, 13.0);
-		let x = if link {
-			rect.x
-		} else {
-			rect.x + (rect.w - width - room) / 2.0
-		};
-		if link {
-			out.push(line(
-				Rect {
-					x,
-					y: rect.y + rect.h / 2.0 + 7.0,
-					w: width,
-					h: 1.0,
-				},
-				Condition::Button,
-				color,
+	fn background(&self, ui: &TextShaper, edges: [bool; 2]) -> Vec<Draw> {
+		let Self {
+			rect,
+			primary,
+			selected,
+			pressed,
+			hovered,
+			quiet,
+			focused,
+			..
+		} = *self;
+		let fill = self.fill(ui);
+		let mut out = Vec::new();
+		if primary || selected || pressed || hovered || !quiet {
+			out.push(Draw::Rect(rect, fill));
+		}
+		// A single edge carries focus, replacing the resting border instead of stacking rings.
+		if focused {
+			out.extend(outline(
+				rect,
+				if primary { C::Color } else { C::FocusColor },
+				2.0,
+				edges,
+			));
+		} else if !quiet && !primary {
+			out.extend(outline(
+				rect,
+				if selected { C::Accent } else { C::BorderColor },
+				1.0,
+				edges,
 			));
 		}
-		out.extend(ui.centered_label(
-			&text,
-			13.0,
-			x,
-			rect.y + rect.h / 2.0,
-			Paint::Styled(Condition::Button, color),
-		));
-		if let Some(paths) = b.marker {
+
+		out
+	}
+
+	fn content(
+		&self,
+		ui: &mut TextShaper,
+		b: &Button,
+		icon_size: f32,
+	) -> Vec<Draw> {
+		let Self {
+			rect,
+			enabled,
+			primary,
+			link,
+			..
+		} = *self;
+		let mut out = Vec::new();
+		let color = if !enabled {
+			C::DisabledColor
+		} else if primary {
+			C::Background
+		} else if link {
+			C::Accent
+		} else {
+			C::Color
+		};
+
+		let old = ui.appearance.clone();
+		ui.appearance = ui.stylesheet.text(&old, Condition::Button);
+		if let Some(paths) = b.icon {
 			out.push(Draw::Icon {
 				paths,
 				paint: Paint::Styled(Condition::Button, color),
-				x: x + width + 4.0,
-				y: rect.y + (rect.h - MARKER) / 2.0,
-				size: MARKER,
+				x: rect.x + (rect.w - icon_size) / 2.0,
+				y: rect.y + (rect.h - icon_size) / 2.0,
+				size: icon_size,
 			});
+		} else {
+			let room = if b.marker.is_some() {
+				MARKER + 4.0
+			} else {
+				0.0
+			};
+			let text = ui.fit(&b.label, 13.0, (rect.w - 8.0 - room).max(0.0));
+			let width = ui.text_width(&text, 13.0);
+			let x = if link {
+				rect.x
+			} else {
+				rect.x + (rect.w - width - room) / 2.0
+			};
+			if link {
+				out.push(line(
+					Rect {
+						x,
+						y: rect.y + rect.h / 2.0 + 7.0,
+						w: width,
+						h: 1.0,
+					},
+					Condition::Button,
+					color,
+				));
+			}
+			out.extend(ui.centered_label(
+				&text,
+				13.0,
+				x,
+				rect.y + rect.h / 2.0,
+				Paint::Styled(Condition::Button, color),
+			));
+			if let Some(paths) = b.marker {
+				out.push(Draw::Icon {
+					paths,
+					paint: Paint::Styled(Condition::Button, color),
+					x: x + width + 4.0,
+					y: rect.y + (rect.h - MARKER) / 2.0,
+					size: MARKER,
+				});
+			}
 		}
+		ui.appearance = old;
+		out
 	}
-	ui.appearance = old;
-	out
 }
 
 fn outline(r: Rect, color: C, thickness: f32, edges: [bool; 2]) -> Vec<Draw> {
