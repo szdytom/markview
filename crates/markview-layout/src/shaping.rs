@@ -447,30 +447,11 @@ impl TextShaper {
 					) else {
 						continue;
 					};
-					let axis = |tag: &[u8; 4], value: f32| {
-						info.axes().iter().any(|a| {
-							a.tag.to_be_bytes() == *tag
-								&& a.min <= value && value <= a.max
-						})
-					};
-					let exact_style = info.style() == style
-						|| (candidate.variant == Variant::Oblique
-							&& matches!(info.style(), FontStyle::Oblique(_)))
-						|| match candidate.variant {
-							Variant::Italic => axis(b"ital", 1.),
-							Variant::Oblique => axis(b"slnt", -14.),
-							Variant::Normal => {
-								axis(b"ital", 0.) || axis(b"slnt", 0.)
-							}
-						};
-					// A candidate may shear an upright face when the family
-					// has no italic or oblique of its own.
-					let synthetic = !exact_style
-						&& candidate.synthetic_italic
-						&& info.style() == FontStyle::Normal;
-					if !exact_style && !synthetic {
+					let Some(synthetic) =
+						matching_synthetic_style(info, candidate, style)
+					else {
 						continue;
-					}
+					};
 					// Keep the family's closest match without asking `parley` to
 					// synthesize bold; variable faces use their available range.
 					let weight = info
@@ -1343,3 +1324,32 @@ impl TextShaper {
 
 #[cfg(test)]
 mod stylesheet_tests;
+
+fn matching_synthetic_style(
+	info: &parley::fontique::FontInfo,
+	candidate: &Font,
+	style: FontStyle,
+) -> Option<bool> {
+	let axis = |tag: &[u8; 4], value: f32| {
+		info.axes().iter().any(|a| {
+			a.tag.to_be_bytes() == *tag && a.min <= value && value <= a.max
+		})
+	};
+	let exact_style = info.style() == style
+		|| (candidate.variant == Variant::Oblique
+			&& matches!(info.style(), FontStyle::Oblique(_)))
+		|| match candidate.variant {
+			Variant::Italic => axis(b"ital", 1.),
+			Variant::Oblique => axis(b"slnt", -14.),
+			Variant::Normal => axis(b"ital", 0.) || axis(b"slnt", 0.),
+		};
+	// A candidate may shear an upright face when the family
+	// has no italic or oblique of its own.
+	let synthetic = !exact_style
+		&& candidate.synthetic_italic
+		&& info.style() == FontStyle::Normal;
+	if !exact_style && !synthetic {
+		return None;
+	}
+	Some(synthetic)
+}
