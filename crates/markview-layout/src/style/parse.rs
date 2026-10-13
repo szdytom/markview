@@ -541,6 +541,12 @@ fn validate_numbers(name: &str, rule: &Rule) -> Result<()> {
 	}
 	Ok(())
 }
+#[cfg_attr(
+	any(),
+	markview::allow_complexity(
+		reason = "Keep the ordered selector-specific field whitelist together; condition precedence and generic fallthrough define the stylesheet schema."
+	)
+)]
 fn validate_field(conditions: ConditionSet, key: &str) -> Result<()> {
 	let requested = key;
 	let key = if matches!(
