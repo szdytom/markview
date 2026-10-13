@@ -53,21 +53,7 @@ impl Command {
 		offline: bool,
 	) -> Result<()> {
 		self.cancelled()?;
-		let mut security =
-			crate::security::Security::local(self.document_trust);
-		for path in &self.allow_local_image {
-			security.grant(crate::security::Resource::File(
-				std::fs::canonicalize(path).with_context(|| {
-					format!(
-						"Cannot resolve authorized image {}",
-						path.display()
-					)
-				})?,
-			));
-		}
-		for resource in &self.allow_network {
-			security.grant(resource.clone());
-		}
+		let security = self.resource_security()?;
 
 		if !self.stdin {
 			bail!("export requires --stdin");
@@ -76,9 +62,6 @@ impl Command {
 			self.output.as_ref().context("export requires --output")?;
 		config.scale = self.scale;
 		let prepared = config.prepare()?;
-		let scale = prepared.scale;
-		let sheet = prepared.options.stylesheet.clone();
-		let geometry = prepared.geometry;
 		let mut text = String::new();
 		std::io::stdin()
 			.take(crate::file::MAX_FILE_BYTES + 1)
@@ -103,50 +86,93 @@ impl Command {
 			self.cancelled()?;
 			json!({"type":"done","fraction":1.0,"pages":stats.pages,"bytes":stats.bytes})
 		} else {
-			let snapshot = export::png_snapshot_text(
-				&resource_path,
-				&text,
-				prepared.options,
-				offline,
+			self.export_png(
+				prepared,
+				(&resource_path, &text),
+				output,
 				services,
 				security,
-			)?;
-			self.cancelled()?;
-			let mut renderer =
-				pollster::block_on(crate::render::Renderer::new(None))?;
-			renderer.set_stylesheet(sheet.clone());
-			let plan = export::plan(
-				&geometry,
-				snapshot.height,
-				scale,
-				renderer.max_texture_dimension_2d(),
-			)?;
-			let mut rgba =
-				vec![0; plan.width_px as usize * plan.height_px as usize * 4];
-			for (index, tile) in plan.tiles.iter().enumerate() {
-				self.cancelled()?;
-				export::draw_tile(
-					&mut renderer,
-					&snapshot,
-					&plan,
-					&sheet,
-					*tile,
-					scale,
-					geometry.margin_pt[3] / PT_PER_PX,
-					crate::render::Theme::Light,
-					&mut rgba,
-				)?;
-				progress(
-					"render",
-					0.2 + 0.75 * (index + 1) as f64 / plan.tiles.len() as f64,
-				);
-			}
-			self.cancelled()?;
-			export::write_png(output, &rgba, plan.width_px, plan.height_px)?;
-			json!({"type":"done","fraction":1.0,"width":plan.width_px,"height":plan.height_px})
+				offline,
+			)?
 		};
 		self.cancelled()?;
 		report(done);
 		Ok(())
+	}
+	fn resource_security(&self) -> Result<crate::security::Security> {
+		let mut security =
+			crate::security::Security::local(self.document_trust);
+		for path in &self.allow_local_image {
+			security.grant(crate::security::Resource::File(
+				std::fs::canonicalize(path).with_context(|| {
+					format!(
+						"Cannot resolve authorized image {}",
+						path.display()
+					)
+				})?,
+			));
+		}
+		for resource in &self.allow_network {
+			security.grant(resource.clone());
+		}
+		Ok(security)
+	}
+
+	fn export_png(
+		&self,
+		prepared: export::config::Prepared,
+		input: (&std::path::Path, &str),
+		output: &std::path::Path,
+		services: Arc<crate::services::Services>,
+		security: crate::security::Security,
+		offline: bool,
+	) -> Result<serde_json::Value> {
+		let (resource_path, text) = input;
+		let scale = prepared.scale;
+		let sheet = prepared.options.stylesheet.clone();
+		let geometry = prepared.geometry;
+		let snapshot = export::png_snapshot_text(
+			resource_path,
+			text,
+			prepared.options,
+			offline,
+			services,
+			security,
+		)?;
+		self.cancelled()?;
+		let mut renderer =
+			pollster::block_on(crate::render::Renderer::new(None))?;
+		renderer.set_stylesheet(sheet.clone());
+		let plan = export::plan(
+			&geometry,
+			snapshot.height,
+			scale,
+			renderer.max_texture_dimension_2d(),
+		)?;
+		let mut rgba =
+			vec![0; plan.width_px as usize * plan.height_px as usize * 4];
+		for (index, tile) in plan.tiles.iter().enumerate() {
+			self.cancelled()?;
+			export::draw_tile(
+				&mut renderer,
+				&snapshot,
+				&plan,
+				&sheet,
+				*tile,
+				scale,
+				geometry.margin_pt[3] / PT_PER_PX,
+				crate::render::Theme::Light,
+				&mut rgba,
+			)?;
+			progress(
+				"render",
+				0.2 + 0.75 * (index + 1) as f64 / plan.tiles.len() as f64,
+			);
+		}
+		self.cancelled()?;
+		export::write_png(output, &rgba, plan.width_px, plan.height_px)?;
+		Ok(
+			json!({"type":"done","fraction":1.0,"width":plan.width_px,"height":plan.height_px}),
+		)
 	}
 }
