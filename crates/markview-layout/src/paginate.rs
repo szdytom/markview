@@ -489,15 +489,19 @@ pub fn paginate(
 	}
 	// A fragment knows whether it opens or closes its block, which is what
 	// decides where a container paints its edges.
-	for page in &mut pages {
+	mark_fragment_edges(&mut pages, &prepared);
+	let anchors = collect_anchors(snapshot, &prepared, &pages);
+	Pagination { pages, anchors }
+}
+
+fn mark_fragment_edges(pages: &mut [Vec<PageItem>], prepared: &[Prepared]) {
+	for page in pages {
 		for item in page {
 			let count = prepared[item.block].bands.len();
 			item.first = item.bands.start == 0;
 			item.last = item.bands.end == count;
 		}
 	}
-	let anchors = collect_anchors(snapshot, &prepared, &pages);
-	Pagination { pages, anchors }
 }
 
 /// Maps every heading anchor to the page and page-local y a link reaches.
