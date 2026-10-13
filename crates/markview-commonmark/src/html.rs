@@ -989,6 +989,14 @@ fn normalize(spans: Vec<Span>) -> Vec<Span> {
 			});
 		}
 	}
+	trim_trailing_whitespace(&mut out);
+	out
+}
+
+#[cfg(test)]
+mod tests;
+
+fn trim_trailing_whitespace(out: &mut Vec<Span>) {
 	for span in out.iter_mut().rev() {
 		if span.anchor.is_some() {
 			continue;
@@ -1005,8 +1013,4 @@ fn normalize(spans: Vec<Span>) -> Vec<Span> {
 	out.retain(|span| {
 		span.anchor.is_some() || span.image.is_some() || !span.text.is_empty()
 	});
-	out
 }
-
-#[cfg(test)]
-mod tests;
