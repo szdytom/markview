@@ -41,22 +41,9 @@ pub fn parse_incremental(
 	if previous.blocks.iter().any(|block| block.source.is_empty()) {
 		return None;
 	}
-	let (old, new) = (previous.source.as_bytes(), source.as_bytes());
-	// A byte-wise prefix can end inside a UTF-8 character, so pull both ends
-	// back to a character boundary.
-	let mut prefix = common_prefix(old, new);
-	while !previous.source.is_char_boundary(prefix) {
-		prefix -= 1;
-	}
-	let mut suffix = common_suffix(&old[prefix..], &new[prefix..]);
-	while !previous.source.is_char_boundary(old.len() - suffix)
-		|| !source.is_char_boundary(new.len() - suffix)
-	{
-		suffix -= 1;
-	}
-	let changed = prefix..old.len() - suffix;
+	let changed = changed_range(&previous.source, &source);
 
-	let delta = new.len() as isize - old.len() as isize;
+	let delta = source.len() as isize - previous.source.len() as isize;
 	// The window is the blank-line-delimited groups the change touches, so a
 	// block that merges with its neighbour across the change is re-parsed with
 	// it. Within those bounds `leaf_only` makes the old block boundaries hold.
@@ -72,7 +59,7 @@ pub fn parse_incremental(
 		.partition_point(|block| block.source.start < end_old);
 	if first > last
 		|| origin > end
-		|| end > new.len()
+		|| end > source.len()
 		|| !source.is_char_boundary(origin)
 		|| !source.is_char_boundary(end)
 	{
@@ -107,6 +94,23 @@ pub fn parse_incremental(
 		content_id: content_identity(&blocks),
 		blocks,
 	})
+}
+
+fn changed_range(previous: &str, source: &str) -> std::ops::Range<usize> {
+	let (old, new) = (previous.as_bytes(), source.as_bytes());
+	// A byte-wise prefix can end inside a UTF-8 character, so pull both ends
+	// back to a character boundary.
+	let mut prefix = common_prefix(old, new);
+	while !previous.is_char_boundary(prefix) {
+		prefix -= 1;
+	}
+	let mut suffix = common_suffix(&old[prefix..], &new[prefix..]);
+	while !previous.is_char_boundary(old.len() - suffix)
+		|| !source.is_char_boundary(new.len() - suffix)
+	{
+		suffix -= 1;
+	}
+	prefix..old.len() - suffix
 }
 
 /// The document `source` describes, reusing `previous`'s untouched blocks when
