@@ -249,48 +249,15 @@ impl<P: super::SendEvent> App<P> {
 		} else {
 			markview_selection::Hover::default()
 		};
+		let cursor = self.hover_cursor(
+			document_hover.cursor,
+			document_hover.link.is_some(),
+			over_control,
+			over_outline,
+			idle,
+		);
 		let hover = document_hover.link;
 		let hover_overflow = document_hover.overflow;
-		let cursor = if self.input_at_cursor().is_some() {
-			CursorIcon::Text
-		} else if self.tab_strip.drag.is_some_and(|d| d.moving) {
-			CursorIcon::Grabbing
-		} else if self.interaction.scrollbar.is_some() {
-			CursorIcon::Default
-		} else if self.interaction.pointer_down.is_some() {
-			if self.text_under_cursor() {
-				CursorIcon::Text
-			} else {
-				CursorIcon::Default
-			}
-		} else if let Some(cursor) = self.frame_cursor() {
-			cursor
-		} else if over_control
-			|| self.tab_at_cursor().is_some()
-			|| hover.is_some()
-		{
-			CursorIcon::Pointer
-		} else if !self.interaction.panel_open() && !over_outline {
-			let cursor = if idle {
-				document_hover.cursor
-			} else {
-				self.document_interaction().cursor(
-					markview_selection::Point::new(
-						self.interaction.cursor.0,
-						self.interaction.cursor.1,
-					),
-					false,
-					true,
-				)
-			};
-			match cursor {
-				markview_selection::Cursor::Default => CursorIcon::Default,
-				markview_selection::Cursor::Text => CursorIcon::Text,
-				markview_selection::Cursor::Pointer => CursorIcon::Pointer,
-			}
-		} else {
-			CursorIcon::Default
-		};
 
 		let hover_changed = hover != self.interaction.hover
 			|| hover_overflow != self.interaction.hover_overflow;
@@ -307,6 +274,61 @@ impl<P: super::SendEvent> App<P> {
 			self.redraw();
 		}
 	}
+	fn hover_cursor(
+		&mut self,
+		document_cursor: markview_selection::Cursor,
+		over_link: bool,
+		over_control: bool,
+		over_outline: bool,
+		idle: bool,
+	) -> CursorIcon {
+		if self.input_at_cursor().is_some() {
+			CursorIcon::Text
+		} else if self.tab_strip.drag.is_some_and(|d| d.moving) {
+			CursorIcon::Grabbing
+		} else if self.interaction.scrollbar.is_some() {
+			CursorIcon::Default
+		} else if self.interaction.pointer_down.is_some() {
+			if self.text_under_cursor() {
+				CursorIcon::Text
+			} else {
+				CursorIcon::Default
+			}
+		} else if let Some(cursor) = self.frame_cursor() {
+			cursor
+		} else if over_control || self.tab_at_cursor().is_some() || over_link {
+			CursorIcon::Pointer
+		} else if !self.interaction.panel_open() && !over_outline {
+			self.document_hover_cursor(document_cursor, idle)
+		} else {
+			CursorIcon::Default
+		}
+	}
+
+	fn document_hover_cursor(
+		&self,
+		document_cursor: markview_selection::Cursor,
+		idle: bool,
+	) -> CursorIcon {
+		let cursor = if idle {
+			document_cursor
+		} else {
+			self.document_interaction().cursor(
+				markview_selection::Point::new(
+					self.interaction.cursor.0,
+					self.interaction.cursor.1,
+				),
+				false,
+				true,
+			)
+		};
+		match cursor {
+			markview_selection::Cursor::Default => CursorIcon::Default,
+			markview_selection::Cursor::Text => CursorIcon::Text,
+			markview_selection::Cursor::Pointer => CursorIcon::Pointer,
+		}
+	}
+
 	/// The image under the cursor, named the way the viewer and the renderer
 	/// name textures.
 	pub(super) fn image_at_cursor(
