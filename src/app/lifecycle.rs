@@ -22,21 +22,7 @@ impl<P: super::SendEvent> ApplicationHandler<Event> for App<P> {
 			return;
 		}
 		let result = (|| -> Result<()> {
-			let mut attributes = Window::default_attributes()
-				.with_title("Markview")
-				.with_inner_size(LogicalSize::new(
-					self.args.width,
-					self.args.height,
-				))
-				.with_min_inner_size(LogicalSize::new(536, 300));
-			attributes = markview_platform::window_attributes(
-				attributes,
-				self.frame.layout == crate::settings::WindowLayout::Macos,
-			);
-			if let Some(icon) = markview_platform::window_icon() {
-				attributes = attributes.with_window_icon(Some(icon));
-			}
-			let window = Arc::new(event_loop.create_window(attributes)?);
+			let window = self.create_window(event_loop)?;
 			self.touch_frame =
 				markview_platform::TouchFrame::new(window.clone())?;
 			let proxy = self.proxy.clone();
@@ -139,6 +125,27 @@ impl<P: super::SendEvent> ApplicationHandler<Event> for App<P> {
 }
 
 impl<P: super::SendEvent> App<P> {
+	fn create_window(
+		&self,
+		event_loop: &ActiveEventLoop,
+	) -> Result<Arc<Window>> {
+		let mut attributes = Window::default_attributes()
+			.with_title("Markview")
+			.with_inner_size(LogicalSize::new(
+				self.args.width,
+				self.args.height,
+			))
+			.with_min_inner_size(LogicalSize::new(536, 300));
+		attributes = markview_platform::window_attributes(
+			attributes,
+			self.frame.layout == crate::settings::WindowLayout::Macos,
+		);
+		if let Some(icon) = markview_platform::window_icon() {
+			attributes = attributes.with_window_icon(Some(icon));
+		}
+		Ok(Arc::new(event_loop.create_window(attributes)?))
+	}
+
 	/// The loop's own events, handled without naming winit's loop type so a
 	/// test can deliver an update to the same code the window runs. The only
 	/// thing asked of the loop is whether to stop.
