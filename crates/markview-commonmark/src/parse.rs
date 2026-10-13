@@ -487,6 +487,38 @@ impl Reader<'_> {
 	}
 
 	/// Feed one raw HTML block's container events into the open frames.
+	fn attach_html_summary(
+		&self,
+		stack: &mut [Frame],
+		original: &HtmlSource<'_>,
+		child_range: &Range<usize>,
+		text: &str,
+		range: Range<usize>,
+	) -> bool {
+		if let Some(frame) = stack.last_mut()
+			&& let FrameKind::Details { summary, .. } = &mut frame.kind
+			&& summary.is_none()
+		{
+			let fragment = &original.text[range.clone()];
+			let opener_len = html::tag_len(fragment).unwrap();
+			let body_start = range.start + opener_len;
+			let body_source = map_source(
+				original,
+				child_range,
+				body_start..body_start + text.len(),
+			);
+			*summary = Some((text.to_owned(), body_source));
+			let at = map_source(original, child_range, range.clone()).start;
+			if self.opaque_until(at) == 0 {
+				frame.anchors.extend(html::anchors(&fragment[..opener_len]));
+			}
+			frame.raw.push_str(&original.text[range.clone()]);
+			true
+		} else {
+			false
+		}
+	}
+
 	fn html_events<'a>(
 		&mut self,
 		child: &'a AstNode<'a>,
@@ -514,32 +546,13 @@ impl Reader<'_> {
 					}
 				}
 				html::BlockEvent::Summary { text, range } => {
-					let set = if let Some(frame) = stack.last_mut()
-						&& let FrameKind::Details { summary, .. } =
-							&mut frame.kind && summary.is_none()
-					{
-						let fragment = &original.text[range.clone()];
-						let opener_len = html::tag_len(fragment).unwrap();
-						let body_start = range.start + opener_len;
-						let body_source = map_source(
-							&original,
-							&child_range,
-							body_start..body_start + text.len(),
-						);
-						*summary = Some((text.clone(), body_source));
-						let at =
-							map_source(&original, &child_range, range.clone())
-								.start;
-						if self.opaque_until(at) == 0 {
-							frame
-								.anchors
-								.extend(html::anchors(&fragment[..opener_len]));
-						}
-						frame.raw.push_str(&original.text[range.clone()]);
-						true
-					} else {
-						false
-					};
+					let set = self.attach_html_summary(
+						stack,
+						&original,
+						&child_range,
+						&text,
+						range.clone(),
+					);
 					if !set {
 						let html = &original.text[range.clone()];
 						let at = map_source(&original, &child_range, range);
