@@ -247,6 +247,10 @@ impl BlockLayout {
 				rows.end -= y;
 			}
 		}
+		self.localize_child_offsets();
+	}
+
+	fn localize_child_offsets(&mut self) {
 		// Children become relative to their parent and the preceding sibling's end.
 		for parent in (0..self.scene.nodes.len()).rev() {
 			let [x, mut y] = self.scene.nodes[parent].offset;
