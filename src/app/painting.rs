@@ -21,6 +21,12 @@ const PREWARM_INTERVAL: std::time::Duration =
 /// is not prepared yet, so prewarming waits instead of competing with it.
 const PREWARM_QUIET_MS: f64 = 3.0;
 impl<P: super::SendEvent> App<P> {
+	#[cfg_attr(
+		any(),
+		markview::allow_complexity(
+			reason = "Keep acquire, present, first-frame feedback and prewarm ordering in one frame transaction; retries must clear the prewarm deadline before returning."
+		)
+	)]
 	pub(super) fn render(
 		&mut self,
 		event_loop: &impl super::window::Loop,
