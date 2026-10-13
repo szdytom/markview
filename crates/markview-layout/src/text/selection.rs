@@ -49,20 +49,13 @@ impl LayoutSnapshot {
 				{
 					continue;
 				}
-				let (prefix, end, _) = changed_span(&old.text, &new.text);
-				let start = if (bi, ni) == (a.block, a.node) {
-					a.offset
-				} else {
-					0
-				};
-				let stop = if (bi, ni) == (b.block, b.node) {
-					b.offset
-				} else {
-					old.text.len()
-				};
-				if start < end && stop > prefix
-					|| (prefix == end && start < prefix && stop > prefix)
-				{
+				if selection_overlaps_change(
+					&old.text,
+					&new.text,
+					(bi, ni),
+					a,
+					b,
+				) {
 					return None;
 				}
 			}
@@ -250,4 +243,26 @@ impl LayoutSnapshot {
 			},
 		})
 	}
+}
+
+fn selection_overlaps_change(
+	old: &str,
+	new: &str,
+	node: (usize, usize),
+	a: TextPosition,
+	b: TextPosition,
+) -> bool {
+	let (prefix, end, _) = changed_span(old, new);
+	let start = if node == (a.block, a.node) {
+		a.offset
+	} else {
+		0
+	};
+	let stop = if node == (b.block, b.node) {
+		b.offset
+	} else {
+		old.len()
+	};
+	start < end && stop > prefix
+		|| (prefix == end && start < prefix && stop > prefix)
 }
