@@ -15,5 +15,22 @@ class PlatformBoundaryTests(unittest.TestCase):
         self.assertTrue(list(violations(link)))
 
 
+    def test_source_only_complexity_markers_do_not_introduce_platform_conditions(self):
+        for reason in ('Keep the mapping together', 'Keep a ) literal', 'Keep #[cfg(windows)] as literal text'):
+            source = f'#[cfg_attr(any(), markview::allow_complexity(reason = "{reason}"))]'
+            self.assertEqual(list(violations(source)), [], source)
+
+    def test_complexity_markers_cannot_hide_other_attributes_or_live_conditions(self):
+        for source in (
+            '#[cfg_attr(windows, markview::allow_complexity(reason = "mapping"))]',
+            '#[cfg_attr(any(windows), markview::allow_complexity(reason = "mapping"))]',
+            '#[cfg_attr(any(), markview::allow_complexity(reason = "mapping"), cfg(windows))]',
+            '#[cfg_attr(any(), other::allow_complexity(reason = "mapping"))]',
+            '#[cfg_attr(any(), markview::allow_complexity(reason = ""))]',
+            'cfg!(any(), markview::allow_complexity(reason = "mapping"))',
+        ):
+            self.assertTrue(list(violations(source)), source)
+
+
 if __name__ == "__main__":
     unittest.main()
