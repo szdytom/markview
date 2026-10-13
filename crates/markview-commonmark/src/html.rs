@@ -464,32 +464,11 @@ pub(crate) fn block_from(
 	let mut containers = 0;
 	let mut rule = false;
 	for token in tokenize(source, anchor_from) {
-		let fragment = match token {
-			Token::Image(image, anchors) => {
-				for anchor in anchors {
-					spans.push(Span {
-						anchor: Some(anchor),
-						image: None,
-						text: String::new(),
-						style: style.clone(),
-					});
-				}
-				spans.push(Span {
-					anchor: None,
-					image: Some(image),
-					text: String::new(),
-					style: style.clone(),
-				});
-				continue;
-			}
-			Token::Text(t) => {
-				push_text(&mut spans, &t, &style);
-				continue;
-			}
-			Token::Comment => continue,
-			Token::Tag(t, discover) => (t, discover),
+		let Some((fragment, discover)) =
+			append_html_token(token, &mut spans, &style)
+		else {
+			continue;
 		};
-		let (fragment, discover) = fragment;
 		for anchor in anchors(&fragment).into_iter().filter(|_| discover) {
 			spans.push(Span {
 				anchor: Some(anchor),
@@ -539,6 +518,47 @@ pub(crate) fn block_from(
 			}
 		}
 	}
+	finish_html_block(spans, first_open, containers, rule)
+}
+
+fn append_html_token(
+	token: Token,
+	spans: &mut Vec<Span>,
+	style: &Style,
+) -> Option<(String, bool)> {
+	match token {
+		Token::Image(image, anchors) => {
+			for anchor in anchors {
+				spans.push(Span {
+					anchor: Some(anchor),
+					image: None,
+					text: String::new(),
+					style: style.clone(),
+				});
+			}
+			spans.push(Span {
+				anchor: None,
+				image: Some(image),
+				text: String::new(),
+				style: style.clone(),
+			});
+			None
+		}
+		Token::Text(t) => {
+			push_text(spans, &t, style);
+			None
+		}
+		Token::Comment => None,
+		Token::Tag(t, discover) => Some((t, discover)),
+	}
+}
+
+fn finish_html_block(
+	spans: Vec<Span>,
+	first_open: Option<String>,
+	containers: usize,
+	rule: bool,
+) -> Block {
 	let text = normalize(spans);
 	if text.iter().all(|s| s.anchor.is_some()) {
 		return if rule {
