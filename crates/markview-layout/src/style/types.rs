@@ -950,22 +950,24 @@ pub fn parse_paper_size(name: &str) -> Option<(f32, f32)> {
 		"letter" => (215.9, 279.4),
 		"legal" => (215.9, 355.6),
 		"tabloid" => (279.4, 431.8),
-		_ => {
-			let (width, height) = name.trim().split_once(['x', 'X', '*'])?;
-			let width: f32 = width.trim().parse().ok()?;
-			let height: f32 = height.trim().parse().ok()?;
-			if !(width.is_finite() && height.is_finite())
-				|| width < 20.0
-				|| height < 20.0
-				|| width > 2000.0
-				|| height > 2000.0
-			{
-				return None;
-			}
-			return Some((width, height));
-		}
+		_ => return parse_custom_paper_size(name),
 	};
 	Some(named)
+}
+
+fn parse_custom_paper_size(name: &str) -> Option<(f32, f32)> {
+	let (width, height) = name.trim().split_once(['x', 'X', '*'])?;
+	let width: f32 = width.trim().parse().ok()?;
+	let height: f32 = height.trim().parse().ok()?;
+	if !(width.is_finite() && height.is_finite())
+		|| width < 20.0
+		|| height < 20.0
+		|| width > 2000.0
+		|| height > 2000.0
+	{
+		return None;
+	}
+	Some((width, height))
 }
 
 /// The `[svg]` table: generic families used by SVG text.

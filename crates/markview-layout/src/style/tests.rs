@@ -1667,3 +1667,37 @@ fn footnote_references_use_their_own_style_conditions() {
 			.any(|c| c == crate::style::Condition::Link)
 	);
 }
+
+#[test]
+fn paper_sizes_keep_names_separators_and_dimension_limits() {
+	for (size, expected) in [
+		(" A4 ", (210.0, 297.0)),
+		("LETTER", (215.9, 279.4)),
+		(" 20 x 2000 ", (20.0, 2000.0)),
+		("2000X20", (2000.0, 20.0)),
+		("100*150", (100.0, 150.0)),
+	] {
+		let sheet = Stylesheet::parse(&format!(
+			"format_version=2\nversion=1\n[page]\nsize={size:?}"
+		))
+		.unwrap();
+		assert_eq!(sheet.page().paper_mm(), Some(expected), "{size}");
+	}
+	for size in [
+		"",
+		"a7",
+		"19x100",
+		"100x2001",
+		"NaNx100",
+		"100xinf",
+		"100x100x100",
+	] {
+		assert!(
+			Stylesheet::parse(&format!(
+				"format_version=2\nversion=1\n[page]\nsize={size:?}"
+			))
+			.is_err(),
+			"{size}"
+		);
+	}
+}
