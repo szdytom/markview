@@ -23,7 +23,7 @@ at the same level, without `[brackets]`.
 
 ### Added
 
-- Add a Rust cyclomatic complexity check with a configurable maximum of 15, excluding tests and test support, with reasoned function-level exemptions.
+- Add a Rust cyclomatic complexity check with a configurable maximum of 15, excluding tests and test support, with reasoned function-level exemptions and mandatory CI enforcement.
 - Export unsaved Markdown through `markview export --stdin` to PDF or PNG, with templates, resource directories, JSON progress and cancellation.
 - Cover nested disclosures in quotes and lists, styled container edges, selection and horizontal scrolling with rendering baselines.
 - Compare document rendering with committed PNG baselines on Lavapipe, with explicit updates and CI difference images.

@@ -30,8 +30,10 @@ Each function or closure starts at 1. `if`, `while`, `for`, `?`, `&&` and `||`
 add 1; a `match` adds its arm count minus 1, plus 1 for each guard. Nested
 functions and closures are measured separately. This is a source AST check:
 macro bodies and expansions are not analyzed. Clippy's `cognitive_complexity`
-uses a different metric. The audit is a local command while existing violations
-are being assessed; it is not part of the CI gate.
+uses a different metric. CI runs the audit unconditionally on Linux, Windows
+and macOS; an unmarked violation or malformed exception fails the aggregate
+`ci` check. The [triage record](complexity-triage.md) links each existing violation
+to its refactor or explicit exception.
 
 An intentional exception must be marked on the function itself, with a
 nonempty reason:
