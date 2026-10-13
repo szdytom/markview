@@ -340,7 +340,7 @@ fn draw_button_edges(
 ) -> Vec<Draw> {
 	let visual = ButtonVisual::new(interaction, b, panel);
 	let mut out = visual.background(ui, edges);
-	out.extend(visual.content(ui, b, icon_size));
+	visual.content(&mut out, ui, b, icon_size);
 	out
 }
 
@@ -472,10 +472,11 @@ impl ButtonVisual {
 
 	fn content(
 		&self,
+		out: &mut Vec<Draw>,
 		ui: &mut TextShaper,
 		b: &Button,
 		icon_size: f32,
-	) -> Vec<Draw> {
+	) {
 		let Self {
 			rect,
 			enabled,
@@ -483,7 +484,6 @@ impl ButtonVisual {
 			link,
 			..
 		} = *self;
-		let mut out = Vec::new();
 		let color = if !enabled {
 			C::DisabledColor
 		} else if primary {
@@ -547,7 +547,6 @@ impl ButtonVisual {
 			}
 		}
 		ui.appearance = old;
-		out
 	}
 }
 
