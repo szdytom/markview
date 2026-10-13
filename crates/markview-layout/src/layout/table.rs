@@ -109,16 +109,7 @@ impl BlockContext<'_> {
 		for (row_index, row) in rows.iter().enumerate() {
 			self.shaper.appearance = cell_appearance(row_index);
 			let rule = &rules[row_index];
-			let mut pad = rule
-				.padding
-				.as_ref()
-				.map(|p| p.sides().map(|v| v * opts.font_size))
-				.unwrap_or([0.; 4]);
-			if let Some(edges) = rule.border_edges {
-				for (pad, edge) in pad.iter_mut().zip(edges) {
-					*pad += edge;
-				}
-			}
+			let pad = super::blocks::block_padding(rule, opts.font_size);
 			let size = opts.font_size * self.shaper.appearance.size;
 			for (col, cell) in row.iter().enumerate().take(n) {
 				let p = self.prepare(cell, size, out);
@@ -168,16 +159,7 @@ impl BlockContext<'_> {
 				Condition::Cell
 			};
 			let rule = &rules[row_index];
-			let mut pad = rule
-				.padding
-				.as_ref()
-				.map(|p| p.sides().map(|v| v * opts.font_size))
-				.unwrap_or([0.; 4]);
-			if let Some(edges) = rule.border_edges {
-				for (pad, edge) in pad.iter_mut().zip(edges) {
-					*pad += edge;
-				}
-			}
+			let pad = super::blocks::block_padding(rule, opts.font_size);
 			let before = rule.space_before.unwrap_or(0.) * opts.font_size;
 			let after = rule.space_after.unwrap_or(0.) * opts.font_size;
 			self.shaper.appearance = cell_appearance(row_index);
