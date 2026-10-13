@@ -91,34 +91,12 @@ impl BlockContext<'_> {
 				previous_text = false;
 				continue;
 			}
-			match &inline.kind {
-				InlineKind::Anchor(_) => unreachable!(),
-				// An image reads as its placeholder message while it loads or
-				// after it fails, and as its `alt` once it draws.
-				InlineKind::Image(image) => p.reading.push_str(
-					&self
-						.image_placeholder(image)
-						.unwrap_or_else(|| image.alt.clone()),
-				),
-				InlineKind::Text(t) => p.reading.push_str(t),
-				InlineKind::Math { latex, .. } => p.reading.push_str(latex),
-				InlineKind::FootnoteRef(n) => {
-					p.reading.push_str(&format!("[{n}]"));
-				}
-				InlineKind::LineBreak { .. } => p.reading.push('\n'),
-			}
-			let semantic =
-				crate::document::plain_text(std::slice::from_ref(inline));
-			let reading_end = if matches!(inline.kind, InlineKind::Image(_)) {
-				p.reading.len()
-			} else {
-				reading_start + semantic.len()
-			};
-			p.search_ranges.push((
-				semantic_offset..semantic_offset + semantic.len(),
-				reading_start..reading_end,
-			));
-			semantic_offset += semantic.len();
+			self.append_inline_reading(
+				&mut p,
+				inline,
+				reading_start,
+				&mut semantic_offset,
+			);
 			let mut style = inline.style.clone();
 			match &inline.kind {
 				InlineKind::Anchor(_) => unreachable!(),
@@ -202,25 +180,81 @@ impl BlockContext<'_> {
 				),
 			));
 			let text = matches!(inline.kind, InlineKind::Text(_));
-			// Invisible targets do not split a styled text run.
-			if text
-				&& previous_text
-				&& let Some(last) = p.spans.last_mut()
-				&& last.style == style
-			{
-				last.range.end = p.text.len();
-			} else {
-				let padding = self.code_padding(&style, size);
-				p.spans.push(Span {
-					range: start..p.text.len(),
-					style,
-				});
-				p.padding.push(padding);
-			}
+			self.push_inline_span(
+				&mut p,
+				style,
+				start,
+				size,
+				text,
+				previous_text,
+			);
 			previous_text = text;
 			i += 1;
 		}
 		p
+	}
+
+	fn append_inline_reading(
+		&self,
+		p: &mut Prepared,
+		inline: &Inline,
+		reading_start: usize,
+		semantic_offset: &mut usize,
+	) {
+		match &inline.kind {
+			InlineKind::Anchor(_) => unreachable!(),
+			// An image reads as its placeholder message while it loads or
+			// after it fails, and as its `alt` once it draws.
+			InlineKind::Image(image) => p.reading.push_str(
+				&self
+					.image_placeholder(image)
+					.unwrap_or_else(|| image.alt.clone()),
+			),
+			InlineKind::Text(t) => p.reading.push_str(t),
+			InlineKind::Math { latex, .. } => p.reading.push_str(latex),
+			InlineKind::FootnoteRef(n) => {
+				p.reading.push_str(&format!("[{n}]"));
+			}
+			InlineKind::LineBreak { .. } => p.reading.push('\n'),
+		}
+		let semantic =
+			crate::document::plain_text(std::slice::from_ref(inline));
+		let reading_end = if matches!(inline.kind, InlineKind::Image(_)) {
+			p.reading.len()
+		} else {
+			reading_start + semantic.len()
+		};
+		p.search_ranges.push((
+			*semantic_offset..*semantic_offset + semantic.len(),
+			reading_start..reading_end,
+		));
+		*semantic_offset += semantic.len();
+	}
+
+	fn push_inline_span(
+		&self,
+		p: &mut Prepared,
+		style: TextStyle,
+		start: usize,
+		size: f32,
+		text: bool,
+		previous_text: bool,
+	) {
+		// Invisible targets do not split a styled text run.
+		if text
+			&& previous_text
+			&& let Some(last) = p.spans.last_mut()
+			&& last.style == style
+		{
+			last.range.end = p.text.len();
+		} else {
+			let padding = self.code_padding(&style, size);
+			p.spans.push(Span {
+				range: start..p.text.len(),
+				style,
+			});
+			p.padding.push(padding);
+		}
 	}
 
 	/// The padding an inline code chip adds around its run, in logical pixels
