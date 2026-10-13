@@ -9,7 +9,11 @@ use anyhow::{Context, Result, bail};
 use markview_layout::JustificationLimits;
 use markview_layout::style::CjkType;
 use serde::{Deserialize, Serialize};
-use std::{fs, io::Write, path::PathBuf};
+use std::{
+	fs,
+	io::Write,
+	path::{Path, PathBuf},
+};
 
 /// What went wrong while reading the configuration, kept as the failure it is
 /// rather than as text.
@@ -444,17 +448,20 @@ impl SettingsStore {
 		let parent = path.parent().context("Invalid configuration path")?;
 		fs::create_dir_all(parent)?;
 		if let Some(bytes) = &self.invalid {
-			let mut backup = tempfile::Builder::new()
-				.prefix("settings-invalid-")
-				.suffix(".toml")
-				.tempfile_in(parent)?;
-			backup.write_all(bytes)?;
-			backup.as_file().sync_all()?;
-			backup.keep()?;
+			backup_invalid_settings(parent, bytes)?;
 			self.invalid = None;
 		}
 		self.saved.validate()?;
 		self.saved_export.validate()?;
+		let bytes = self.encoded_settings()?;
+		persist_settings(path, parent, &bytes)?;
+		self.dirty = false;
+		self.pending.clear();
+		self.pending_export = false;
+		self.source = Some(bytes);
+		Ok(())
+	}
+	fn encoded_settings(&self) -> Result<Vec<u8>> {
 		let config = Config {
 			version: 1,
 			window_layout: self.saved.window_layout,
@@ -554,18 +561,29 @@ impl SettingsStore {
 			document.remove(key);
 		}
 		let bytes = format!("{comments}{document}").into_bytes();
-		let mut temp = tempfile::NamedTempFile::new_in(parent)?;
-		temp.write_all(&bytes)?;
-		temp.as_file().sync_all()?;
-		temp.persist(path)?;
-		// Durability of the rename itself needs the directory entry flushed.
-		if let Ok(dir) = fs::File::open(parent) {
-			let _ = dir.sync_all();
-		}
-		self.dirty = false;
-		self.pending.clear();
-		self.pending_export = false;
-		self.source = Some(bytes);
-		Ok(())
+		Ok(bytes)
 	}
+}
+
+fn backup_invalid_settings(parent: &Path, bytes: &[u8]) -> Result<()> {
+	let mut backup = tempfile::Builder::new()
+		.prefix("settings-invalid-")
+		.suffix(".toml")
+		.tempfile_in(parent)?;
+	backup.write_all(bytes)?;
+	backup.as_file().sync_all()?;
+	backup.keep()?;
+	Ok(())
+}
+
+fn persist_settings(path: &Path, parent: &Path, bytes: &[u8]) -> Result<()> {
+	let mut temp = tempfile::NamedTempFile::new_in(parent)?;
+	temp.write_all(bytes)?;
+	temp.as_file().sync_all()?;
+	temp.persist(path)?;
+	// Durability of the rename itself needs the directory entry flushed.
+	if let Ok(dir) = fs::File::open(parent) {
+		let _ = dir.sync_all();
+	}
+	Ok(())
 }
