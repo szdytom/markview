@@ -1033,6 +1033,40 @@ impl Form {
 				C::BorderColor,
 			));
 		}
+		let mut body = self.draw_rows(ui);
+		self.draw_buttons(ui, interaction, &mut body, &mut out);
+		out.push(Draw::Clipped {
+			rect: self.viewport,
+			draws: body,
+		});
+		if let Some(bar) = self.scrollbar(ui) {
+			let hovered = bar.hit(interaction.cursor.0, interaction.cursor.1);
+			let (track, thumb) =
+				bar.bars(hovered || interaction.panel_grab.is_some());
+			out.push(line(track, Condition::Scrollbar, C::Track));
+			out.push(line(
+				thumb,
+				Condition::Scrollbar,
+				if hovered { C::ThumbHover } else { C::Thumb },
+			));
+		}
+		if self.preview {
+			fade(&mut out, ui, 0.25);
+			// Keep the exit control legible while the rest of the panel recedes.
+			if self.header
+				&& let Some(eye) = self
+					.buttons
+					.iter()
+					.find(|b| b.action == Command::SettingsPreview)
+			{
+				out.extend(draw_button(ui, interaction, eye, true));
+			}
+		}
+
+		out
+	}
+	fn draw_rows(&self, ui: &mut TextShaper) -> Vec<Draw> {
+		let weight = ui.appearance.weight;
 		let mut body = Vec::new();
 		for (row, y) in &self.rows {
 			if y + row.height(self.stacked).max(CONTROL) < self.viewport.y
@@ -1114,6 +1148,16 @@ impl Form {
 				));
 			}
 		}
+		body
+	}
+
+	fn draw_buttons(
+		&self,
+		ui: &mut TextShaper,
+		interaction: &InteractionState,
+		body: &mut Vec<Draw>,
+		out: &mut Vec<Draw>,
+	) {
 		let body_interaction = InteractionState {
 			widgets: interaction.widgets,
 			cursor: if self
@@ -1155,35 +1199,6 @@ impl Form {
 				out.extend(draw_button(ui, interaction, b, true));
 			}
 		}
-		out.push(Draw::Clipped {
-			rect: self.viewport,
-			draws: body,
-		});
-		if let Some(bar) = self.scrollbar(ui) {
-			let hovered = bar.hit(interaction.cursor.0, interaction.cursor.1);
-			let (track, thumb) =
-				bar.bars(hovered || interaction.panel_grab.is_some());
-			out.push(line(track, Condition::Scrollbar, C::Track));
-			out.push(line(
-				thumb,
-				Condition::Scrollbar,
-				if hovered { C::ThumbHover } else { C::Thumb },
-			));
-		}
-		if self.preview {
-			fade(&mut out, ui, 0.25);
-			// Keep the exit control legible while the rest of the panel recedes.
-			if self.header
-				&& let Some(eye) = self
-					.buttons
-					.iter()
-					.find(|b| b.action == Command::SettingsPreview)
-			{
-				out.extend(draw_button(ui, interaction, eye, true));
-			}
-		}
-
-		out
 	}
 }
 
