@@ -261,40 +261,7 @@ impl BlockContext<'_> {
 		let breaks: HashSet<usize> = segmenter.segment_str(&p.text).collect();
 		// Where a word may be split, and how many characters would be left on
 		// either side, which decides how much the break costs.
-		let mut hyphens: HashMap<usize, (usize, usize)> = HashMap::new();
-		if hyphenate {
-			let mut word_start = None;
-			for (i, c) in p
-				.text
-				.char_indices()
-				.chain(std::iter::once((p.text.len(), ' ')))
-			{
-				if c.is_ascii_alphabetic() {
-					word_start.get_or_insert(i);
-				} else if let Some(start) = word_start.take() {
-					// The run is ASCII, so byte and character counts agree.
-					let word = &p.text[start..i];
-					if word.len() >= 6
-						&& !p.spans.iter().any(|s| {
-							s.range.contains(&start)
-								&& (s.style.code || s.style.link.is_some())
-						}) {
-						let mut offset = start;
-						for syllable in
-							hypher::hyphenate(word, hypher::Lang::English)
-						{
-							offset += syllable.len();
-							if offset - start >= 2 && i - offset >= 3 {
-								hyphens.insert(
-									offset,
-									(offset - start, i - offset),
-								);
-							}
-						}
-					}
-				}
-			}
-		}
+		let hyphens = hyphenation_candidates(p, hyphenate);
 		let hyphen_width: f32 = self
 			.shaper
 			.shape("-", &[], size, sans)
@@ -643,4 +610,43 @@ fn footnote_group(p: &mut Prepared, run: &[Inline]) {
 			..run[0].style.clone()
 		},
 	});
+}
+
+fn hyphenation_candidates(
+	p: &Prepared,
+	hyphenate: bool,
+) -> HashMap<usize, (usize, usize)> {
+	let mut hyphens: HashMap<usize, (usize, usize)> = HashMap::new();
+	if hyphenate {
+		let mut word_start = None;
+		for (i, c) in p
+			.text
+			.char_indices()
+			.chain(std::iter::once((p.text.len(), ' ')))
+		{
+			if c.is_ascii_alphabetic() {
+				word_start.get_or_insert(i);
+			} else if let Some(start) = word_start.take() {
+				// The run is ASCII, so byte and character counts agree.
+				let word = &p.text[start..i];
+				if word.len() >= 6
+					&& !p.spans.iter().any(|s| {
+						s.range.contains(&start)
+							&& (s.style.code || s.style.link.is_some())
+					}) {
+					let mut offset = start;
+					for syllable in
+						hypher::hyphenate(word, hypher::Lang::English)
+					{
+						offset += syllable.len();
+						if offset - start >= 2 && i - offset >= 3 {
+							hyphens
+								.insert(offset, (offset - start, i - offset));
+						}
+					}
+				}
+			}
+		}
+	}
+	hyphens
 }
