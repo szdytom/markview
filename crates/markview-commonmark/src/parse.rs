@@ -803,6 +803,19 @@ impl Reader<'_> {
 		Some(close - start + 1)
 	}
 
+	fn unused_footnote(
+		&self,
+		name: &str,
+		references: u32,
+		start: usize,
+	) -> bool {
+		(self.snippet_end.is_none() && references == 0)
+			|| self.snippet_end.is_some_and(|end| {
+				start >= end
+					|| self.document_footnotes.contains(&note_key(name))
+			})
+	}
+
 	fn child_block<'a>(
 		&mut self,
 		child: &'a AstNode<'a>,
@@ -818,31 +831,12 @@ impl Reader<'_> {
 		} else {
 			match &data.value {
 				NodeValue::FrontMatter(text) => {
-					match front_matter::parse(text) {
-						front_matter::Content::Empty => {
-							return Child::Skip;
-						}
-						front_matter::Content::Source(yaml) => {
-							let code = BlockKind::Code {
-								language: front_matter::LANGUAGE.into(),
-								text: yaml,
-							};
-							let id = fingerprint(&(
-								std::mem::discriminant(&code),
-								&self.source[source.clone()],
-							));
-							BlockKind::FrontMatter {
-								open: false,
-								blocks: vec![Block {
-									anchors: Vec::new(),
-									id,
-									content_key: semantic_key(&code),
-									source: source.clone(),
-									kind: code,
-								}],
-							}
-						}
-					}
+					let Some(kind) =
+						front_matter_kind(text, &source, self.source)
+					else {
+						return Child::Skip;
+					};
+					kind
 				}
 				NodeValue::Paragraph => BlockKind::Paragraph(self.rich(child)),
 				NodeValue::Heading(h) => {
@@ -855,58 +849,16 @@ impl Reader<'_> {
 				}
 				// The info string's first word is the language; trailing
 				// words are metadata, so `mermaid title="x"` still renders.
-				NodeValue::CodeBlock(c)
-					if c.info.split_whitespace().next() == Some("mermaid") =>
-				{
-					BlockKind::Paragraph(vec![Inline {
-						kind: InlineKind::Image(crate::image::ImageSpec {
-							src: crate::image::mermaid_source(&c.literal),
-							// An empty `alt` draws no caption and keeps the
-							// fence source out of the reading text, so only
-							// the placeholder message is selectable.
-							alt: String::new(),
-							title: String::new(),
-							width: None,
-							height: None,
-						}),
-						style: TextStyle::default(),
-						source: source.clone(),
-					}])
-				}
-				NodeValue::CodeBlock(c) if c.info.trim() == "math" => {
-					BlockKind::Paragraph(vec![Inline {
-						kind: InlineKind::Math {
-							latex: c.literal.clone(),
-							display: true,
-						},
-						style: TextStyle::default(),
-						source: source.clone(),
-					}])
-				}
-				NodeValue::CodeBlock(c) => BlockKind::Code {
-					language: c.info.clone(),
-					text: c.literal.clone(),
-				},
+				NodeValue::CodeBlock(c) => code_block_kind(c, &source),
 				NodeValue::HtmlBlock(h) => {
-					match html::block(&h.literal, self.limits.html_scopes) {
-						html::Block::Unsupported => BlockKind::Code {
-							language: "HTML source".into(),
-							text: h.literal.clone(),
-						},
-						html::Block::Empty => return Child::Skip,
-						html::Block::Rule => BlockKind::Rule,
-						html::Block::Heading { level, text } => {
-							let text = html_rich(text, &source);
-							BlockKind::Heading {
-								level,
-								text,
-								anchor: String::new(),
-							}
-						}
-						html::Block::Paragraph(text) => {
-							BlockKind::Paragraph(html_rich(text, &source))
-						}
-					}
+					let Some(kind) = html_block_kind(
+						&h.literal,
+						self.limits.html_scopes,
+						&source,
+					) else {
+						return Child::Skip;
+					};
+					kind
 				}
 				NodeValue::ThematicBreak => BlockKind::Rule,
 				NodeValue::BlockQuote => BlockKind::Quote {
@@ -952,26 +904,23 @@ impl Reader<'_> {
 						.map(|r| r.children().map(|c| self.rich(c)).collect())
 						.collect(),
 				},
-				NodeValue::FootnoteDefinition(f)
-					if (self.snippet_end.is_none()
-						&& f.total_references == 0)
-						|| self.snippet_end.is_some_and(|end| {
-							source.start >= end
-								|| self
-									.document_footnotes
-									.contains(&note_key(&f.name))
-						}) =>
-				{
-					return Child::Skip;
+				NodeValue::FootnoteDefinition(f) => {
+					if self.unused_footnote(
+						&f.name,
+						f.total_references,
+						source.start,
+					) {
+						return Child::Skip;
+					}
+					BlockKind::Footnote {
+						label: self
+							.footnotes
+							.get(&note_key(&f.name))
+							.map_or_else(|| f.name.clone(), u32::to_string),
+						column: self.footnote_column,
+						blocks: self.blocks(child, depth + 1),
+					}
 				}
-				NodeValue::FootnoteDefinition(f) => BlockKind::Footnote {
-					label: self
-						.footnotes
-						.get(&note_key(&f.name))
-						.map_or_else(|| f.name.clone(), u32::to_string),
-					column: self.footnote_column,
-					blocks: self.blocks(child, depth + 1),
-				},
 				_ => {
 					return Child::Flatten;
 				}
@@ -1779,4 +1728,93 @@ fn append_merged_text(previous: &mut String, text: &str) {
 	} else {
 		previous.push_str(text);
 	}
+}
+
+fn front_matter_kind(
+	text: &str,
+	source: &Range<usize>,
+	original: &str,
+) -> Option<BlockKind> {
+	match front_matter::parse(text) {
+		front_matter::Content::Empty => None,
+		front_matter::Content::Source(yaml) => {
+			let code = BlockKind::Code {
+				language: front_matter::LANGUAGE.into(),
+				text: yaml,
+			};
+			let id = fingerprint(&(
+				std::mem::discriminant(&code),
+				&original[source.clone()],
+			));
+			Some(BlockKind::FrontMatter {
+				open: false,
+				blocks: vec![Block {
+					anchors: Vec::new(),
+					id,
+					content_key: semantic_key(&code),
+					source: source.clone(),
+					kind: code,
+				}],
+			})
+		}
+	}
+}
+
+fn code_block_kind(
+	c: &comrak::nodes::NodeCodeBlock,
+	source: &Range<usize>,
+) -> BlockKind {
+	if c.info.split_whitespace().next() == Some("mermaid") {
+		BlockKind::Paragraph(vec![Inline {
+			kind: InlineKind::Image(crate::image::ImageSpec {
+				src: crate::image::mermaid_source(&c.literal),
+				// An empty `alt` draws no caption and keeps the
+				// fence source out of the reading text, so only
+				// the placeholder message is selectable.
+				alt: String::new(),
+				title: String::new(),
+				width: None,
+				height: None,
+			}),
+			style: TextStyle::default(),
+			source: source.clone(),
+		}])
+	} else if c.info.trim() == "math" {
+		BlockKind::Paragraph(vec![Inline {
+			kind: InlineKind::Math {
+				latex: c.literal.clone(),
+				display: true,
+			},
+			style: TextStyle::default(),
+			source: source.clone(),
+		}])
+	} else {
+		BlockKind::Code {
+			language: c.info.clone(),
+			text: c.literal.clone(),
+		}
+	}
+}
+
+fn html_block_kind(
+	literal: &str,
+	scopes: usize,
+	source: &Range<usize>,
+) -> Option<BlockKind> {
+	Some(match html::block(literal, scopes) {
+		html::Block::Unsupported => BlockKind::Code {
+			language: "HTML source".into(),
+			text: literal.to_owned(),
+		},
+		html::Block::Empty => return None,
+		html::Block::Rule => BlockKind::Rule,
+		html::Block::Heading { level, text } => BlockKind::Heading {
+			level,
+			text: html_rich(text, source),
+			anchor: String::new(),
+		},
+		html::Block::Paragraph(text) => {
+			BlockKind::Paragraph(html_rich(text, source))
+		}
+	})
 }
