@@ -33,6 +33,18 @@ pub(super) fn run() -> Result<()> {
 	if let Some(command) = &args.fonts {
 		return super::fonts_command::run(command, args.offline);
 	}
+	if run_stylesheet_command(&args)? {
+		return Ok(());
+	}
+	let report_error = args.mode == Mode::Window && !args.foreground;
+	let result = run_with_options(args);
+	if report_error && let Err(error) = &result {
+		markview_platform::show_error(&format!("{error:#}"));
+	}
+	result
+}
+
+fn run_stylesheet_command(args: &LaunchOptions) -> Result<bool> {
 	if args.list_stylesheets {
 		let directory = crate::stylesheet::directory();
 		for entry in crate::stylesheet::catalog(directory.as_deref(), None) {
@@ -44,7 +56,7 @@ pub(super) fn run() -> Result<()> {
 				entry.id, status, entry.source
 			));
 		}
-		return Ok(());
+		return Ok(true);
 	}
 	if let Some(source) = &args.validate {
 		let sheet = crate::stylesheet::validate(source)?;
@@ -60,7 +72,7 @@ pub(super) fn run() -> Result<()> {
 				.collect::<Vec<_>>()
 				.join(", ")
 		));
-		return Ok(());
+		return Ok(true);
 	}
 	if let Some((source, force)) = &args.install {
 		let dir = crate::stylesheet::directory()
@@ -70,14 +82,9 @@ pub(super) fn run() -> Result<()> {
 			"Installed {id}: {}",
 			path.display()
 		));
-		return Ok(());
+		return Ok(true);
 	}
-	let report_error = args.mode == Mode::Window && !args.foreground;
-	let result = run_with_options(args);
-	if report_error && let Err(error) = &result {
-		markview_platform::show_error(&format!("{error:#}"));
-	}
-	result
+	Ok(false)
 }
 
 fn run_with_options(mut args: LaunchOptions) -> Result<()> {
