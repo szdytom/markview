@@ -530,21 +530,11 @@ pub(crate) async fn get(
 			security,
 		)
 		.await?;
-		let mut request = client.get(current.clone());
-		// Validators answer for one resource only: they go to the URL that
-		// supplied them, and a request to any other hop is unconditional.
-		if validators.applies_to(current.as_str()) {
-			if let Some(etag) = &validators.etag {
-				request = request
-					.header(reqwest::header::IF_NONE_MATCH, etag.as_str());
-			}
-			if let Some(modified) = &validators.last_modified {
-				request = request.header(
-					reqwest::header::IF_MODIFIED_SINCE,
-					modified.as_str(),
-				);
-			}
-		}
+		let request = conditional_request(
+			client.get(current.clone()),
+			current.as_str(),
+			validators,
+		);
 		let response = request.send().await?;
 		let status = response.status();
 		// `304` is a redirection status but carries no `Location`; it is the
@@ -595,6 +585,26 @@ pub(crate) async fn get(
 		});
 	}
 	bail!("{what} redirects to too many locations")
+}
+
+fn conditional_request(
+	mut request: reqwest::RequestBuilder,
+	url: &str,
+	validators: &Validators,
+) -> reqwest::RequestBuilder {
+	// Validators answer for one resource only: they go to the URL that
+	// supplied them, and a request to any other hop is unconditional.
+	if validators.applies_to(url) {
+		if let Some(etag) = &validators.etag {
+			request =
+				request.header(reqwest::header::IF_NONE_MATCH, etag.as_str());
+		}
+		if let Some(modified) = &validators.last_modified {
+			request = request
+				.header(reqwest::header::IF_MODIFIED_SINCE, modified.as_str());
+		}
+	}
+	request
 }
 
 pub(crate) fn headers(map: &HeaderMap) -> Headers {
