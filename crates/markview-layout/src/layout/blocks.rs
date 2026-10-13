@@ -642,6 +642,12 @@ impl BlockContext<'_> {
 		out.width = out.width.max(x + width);
 		total
 	}
+	#[cfg_attr(
+		any(),
+		markview::allow_complexity(
+			reason = "Keep block-kind dispatch with balanced list depths and scene ownership; marker, footnote and reading indices share the same output streams."
+		)
+	)]
 	pub(super) fn block_inner(
 		&mut self,
 		block: &Block,
