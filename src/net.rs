@@ -669,39 +669,43 @@ fn http_date(value: &str) -> Option<SystemTime> {
 	let rest = value.trim().split_once(", ")?.1;
 	let mut parts = rest.split(' ');
 	let day: u32 = parts.next()?.parse().ok()?;
-	let month = match parts.next()? {
-		"Jan" => 1,
-		"Feb" => 2,
-		"Mar" => 3,
-		"Apr" => 4,
-		"May" => 5,
-		"Jun" => 6,
-		"Jul" => 7,
-		"Aug" => 8,
-		"Sep" => 9,
-		"Oct" => 10,
-		"Nov" => 11,
-		"Dec" => 12,
-		_ => return None,
-	};
+	let month = http_month(parts.next()?)?;
 	let year = parts.next()?;
 	if year.len() != 4 || !year.bytes().all(|b| b.is_ascii_digit()) {
 		return None;
 	}
 	let year: i64 = year.parse().ok()?;
-	let mut clock = parts.next()?.split(':');
-	let hour: u64 = clock.next()?.parse().ok()?;
-	let minute: u64 = clock.next()?.parse().ok()?;
-	let second: u64 = clock.next()?.parse().ok()?;
-	if !(1..=31).contains(&day) || hour > 23 || minute > 59 || second > 60 {
+	let time = http_clock(parts.next()?)?;
+	if !(1..=31).contains(&day) {
 		return None;
 	}
 	let days = days_from_civil(year, month, day);
 	if days < 0 {
 		return None;
 	}
-	let seconds = days as u64 * 86_400 + hour * 3_600 + minute * 60 + second;
+	let seconds = days as u64 * 86_400 + time;
 	UNIX_EPOCH.checked_add(Duration::from_secs(seconds))
+}
+
+fn http_month(value: &str) -> Option<u32> {
+	[
+		"Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct",
+		"Nov", "Dec",
+	]
+	.iter()
+	.position(|month| *month == value)
+	.map(|index| index as u32 + 1)
+}
+
+fn http_clock(value: &str) -> Option<u64> {
+	let mut clock = value.split(':');
+	let hour: u64 = clock.next()?.parse().ok()?;
+	let minute: u64 = clock.next()?.parse().ok()?;
+	let second: u64 = clock.next()?.parse().ok()?;
+	if hour > 23 || minute > 59 || second > 60 {
+		return None;
+	}
+	Some(hour * 3_600 + minute * 60 + second)
 }
 
 /// Days since 1970-01-01 for a proleptic Gregorian date with a four-digit year.
