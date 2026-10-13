@@ -58,19 +58,7 @@ pub(super) fn resolve(
 			return Ok(Source::Http(url.to_string()));
 		}
 		crate::security::Origin::Clipboard => {
-			let decoded = percent_encoding::percent_decode_str(src)
-				.decode_utf8()
-				.context("Invalid path encoding")?;
-			if rooted(Path::new(decoded.as_ref())) {
-				bail!("Absolute image paths are not allowed");
-			}
-			return match security.selected_image(src) {
-				Some(path) => Ok(Source::File(path.to_owned())),
-				None => Err(crate::security::PermissionRequired(
-					crate::security::Resource::SelectImage(src.to_owned()),
-				)
-				.into()),
-			};
+			return resolve_clipboard_image(src, security);
 		}
 		crate::security::Origin::Local(_) => {}
 	}
@@ -88,6 +76,25 @@ pub(super) fn resolve(
 	let path = fs::canonicalize(&path).unwrap_or(path);
 	security.check_file(&path)?;
 	Ok(Source::File(path))
+}
+
+fn resolve_clipboard_image(
+	src: &str,
+	security: &crate::security::Security,
+) -> Result<Source> {
+	let decoded = percent_encoding::percent_decode_str(src)
+		.decode_utf8()
+		.context("Invalid path encoding")?;
+	if rooted(Path::new(decoded.as_ref())) {
+		bail!("Absolute image paths are not allowed");
+	}
+	match security.selected_image(src) {
+		Some(path) => Ok(Source::File(path.to_owned())),
+		None => Err(crate::security::PermissionRequired(
+			crate::security::Resource::SelectImage(src.to_owned()),
+		)
+		.into()),
+	}
 }
 
 /// Whether a path names an absolute location, including the Windows forms
