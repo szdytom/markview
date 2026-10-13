@@ -415,6 +415,64 @@ impl Images {
 			self.theme_key = key;
 		}
 		let theme = self.theme_key;
+		self.switch_document(path);
+		self.snapshot
+			.pixels
+			.set_wake((!specs.is_empty()).then(|| self.wake.clone()));
+		let reload = self.revision != revision;
+		if reload {
+			self.blocked.clear();
+		}
+		self.revision = revision;
+		if load_all {
+			// Clear a cap error recorded by an earlier pass of this revision,
+			// so the deferred images are scheduled now.
+			for e in self.entries.values_mut() {
+				if e.info.error.as_deref() == Some(REMOTE_LIMIT) {
+					e.info.error = None;
+					e.info.size = None;
+				}
+			}
+		}
+
+		let retained_pixels: HashMap<_, _> = {
+			let pixels = &self.resident;
+			self.entries
+				.iter()
+				.filter_map(|(source, e)| {
+					e.aliases
+						.iter()
+						.find_map(|a| pixels.get(a).cloned())
+						.map(|p| (source.clone(), p))
+				})
+				.collect()
+		};
+		for e in self.entries.values_mut() {
+			e.aliases.clear();
+		}
+		self.snapshot.entries.clear();
+		let wanted = self.prepare_sources(specs, path, load_all, reload, theme);
+		self.entries.retain(|s, _| wanted.contains(s));
+		self.blocked
+			.retain(|src, _| self.snapshot.entries.contains_key(src));
+		// A new spelling of a retained source shares its pixels immediately.
+		// Remove aliases no longer present so old snapshots cannot pin them.
+		{
+			let pixels = &mut self.resident;
+			for (source, e) in &self.entries {
+				if let Some(p) = retained_pixels.get(source) {
+					for alias in &e.aliases {
+						pixels.insert(alias.clone(), p.clone());
+					}
+				}
+			}
+			pixels.retain(|alias, _| self.snapshot.entries.contains_key(alias));
+		}
+		self.publish_pixels();
+		self.schedule();
+	}
+
+	fn switch_document(&mut self, path: &Path) {
 		if self.document != path {
 			self.blocked.clear();
 			for (source, entry) in self.entries.drain() {
@@ -435,44 +493,20 @@ impl Images {
 			self.snapshot.generation = self.generation;
 			self.document = path.into();
 		}
-		self.snapshot
-			.pixels
-			.set_wake((!specs.is_empty()).then(|| self.wake.clone()));
-		let reload = self.revision != revision;
-		if reload {
-			self.blocked.clear();
-		}
-		self.revision = revision;
-		if load_all {
-			// Clear a cap error recorded by an earlier pass of this revision,
-			// so the deferred images are scheduled now.
-			for e in self.entries.values_mut() {
-				if e.info.error.as_deref() == Some(REMOTE_LIMIT) {
-					e.info.error = None;
-					e.info.size = None;
-				}
-			}
-		}
+	}
+
+	fn prepare_sources(
+		&mut self,
+		specs: Vec<&markview_layout::image::ImageSpec>,
+		path: &Path,
+		load_all: bool,
+		reload: bool,
+		theme: u64,
+	) -> HashSet<Source> {
 		let mut wanted = HashSet::new();
 		// Distinct remote sources past the cap stay placeholders; in document
 		// order, so the same document always defers the same images.
 		let mut remote_seen = 0usize;
-		let retained_pixels: HashMap<_, _> = {
-			let pixels = &self.resident;
-			self.entries
-				.iter()
-				.filter_map(|(source, e)| {
-					e.aliases
-						.iter()
-						.find_map(|a| pixels.get(a).cloned())
-						.map(|p| (source.clone(), p))
-				})
-				.collect()
-		};
-		for e in self.entries.values_mut() {
-			e.aliases.clear();
-		}
-		self.snapshot.entries.clear();
 		for spec in specs {
 			match source::resolve(&spec.src, path, &self.security) {
 				Ok(source) => {
@@ -547,24 +581,7 @@ impl Images {
 				}
 			}
 		}
-		self.entries.retain(|s, _| wanted.contains(s));
-		self.blocked
-			.retain(|src, _| self.snapshot.entries.contains_key(src));
-		// A new spelling of a retained source shares its pixels immediately.
-		// Remove aliases no longer present so old snapshots cannot pin them.
-		{
-			let pixels = &mut self.resident;
-			for (source, e) in &self.entries {
-				if let Some(p) = retained_pixels.get(source) {
-					for alias in &e.aliases {
-						pixels.insert(alias.clone(), p.clone());
-					}
-				}
-			}
-			pixels.retain(|alias, _| self.snapshot.entries.contains_key(alias));
-		}
-		self.publish_pixels();
-		self.schedule();
+		wanted
 	}
 
 	fn publish_pixels(&self) {
