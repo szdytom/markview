@@ -143,6 +143,12 @@ impl State {
 
 // SAFETY: Windows calls this only on the installing thread. The guard keeps
 // `data` alive until this hook is removed; no reference to `App` crosses it.
+#[cfg_attr(
+	any(),
+	markview::allow_complexity(
+		reason = "Keep Win32 message dispatch, ABI return values and DefSubclassProc fallback together for callback lifetime and reentrancy auditing."
+	)
+)]
 unsafe extern "system" fn subclass(
 	hwnd: HWND,
 	message: u32,
