@@ -81,21 +81,7 @@ pub fn run(check: bool) -> Result<()> {
 		.push((root.join("assets/icons/markview.icns"), encode_icns(&tree)?));
 
 	if check {
-		let stale: Vec<_> = produced
-			.iter()
-			.filter(|(path, expected)| {
-				std::fs::read(path).ok().as_deref() != Some(expected.as_slice())
-			})
-			.map(|(path, _)| path.clone())
-			.collect();
-		if !stale.is_empty() {
-			for path in &stale {
-				eprintln!("stale icon asset: {}", path.display());
-			}
-			bail!("icon assets are stale; run `cargo run -p xtask -- icons`");
-		}
-		println!("icon assets are up to date");
-		return Ok(());
+		return check_assets(&produced);
 	}
 
 	for (path, bytes) in &produced {
@@ -105,6 +91,24 @@ pub fn run(check: bool) -> Result<()> {
 		std::fs::write(path, bytes)?;
 		println!("wrote {}", path.display());
 	}
+	Ok(())
+}
+
+fn check_assets(produced: &[(PathBuf, Vec<u8>)]) -> Result<()> {
+	let stale: Vec<_> = produced
+		.iter()
+		.filter(|(path, expected)| {
+			std::fs::read(path).ok().as_deref() != Some(expected.as_slice())
+		})
+		.map(|(path, _)| path.clone())
+		.collect();
+	if !stale.is_empty() {
+		for path in &stale {
+			eprintln!("stale icon asset: {}", path.display());
+		}
+		bail!("icon assets are stale; run `cargo run -p xtask -- icons`");
+	}
+	println!("icon assets are up to date");
 	Ok(())
 }
 
