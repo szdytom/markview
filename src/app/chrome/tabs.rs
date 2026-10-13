@@ -63,36 +63,7 @@ impl TabBar<'_> {
 			}
 			let active = index == self.active_tab;
 			let hovered = rect.contains(self.cursor.0, self.cursor.1);
-			let fill = if active {
-				match style {
-					TabStyle::Underline => {
-						Paint::Styled(Condition::Panel, C::Background)
-					}
-					TabStyle::Connected => Paint::Background,
-				}
-			} else if hovered {
-				Paint::Styled(Condition::Button, C::HoverBackground)
-			} else {
-				Paint::Styled(Condition::Toolbar, C::Background)
-			};
-			match style {
-				TabStyle::Connected => {
-					draw_connected(&mut out, rect, fill, active)
-				}
-				TabStyle::Underline => {
-					out.push(Draw::Rect(rect, fill));
-					if active {
-						out.push(Draw::Rect(
-							Rect {
-								y: rect.y + rect.h - 2.0,
-								h: 2.0,
-								..rect
-							},
-							Paint::Styled(Condition::Toolbar, C::Accent),
-						));
-					}
-				}
-			}
+			draw_tab_surface(&mut out, style, rect, active, hovered);
 			if index + 1 < self.tabs.len()
 				&& !active && index + 1 != self.active_tab
 			{
@@ -172,6 +143,43 @@ impl TabBar<'_> {
 			));
 		}
 		draws
+	}
+}
+
+fn draw_tab_surface(
+	out: &mut Vec<Draw>,
+	style: TabStyle,
+	rect: Rect,
+	active: bool,
+	hovered: bool,
+) {
+	let fill = if active {
+		match style {
+			TabStyle::Underline => {
+				Paint::Styled(Condition::Panel, C::Background)
+			}
+			TabStyle::Connected => Paint::Background,
+		}
+	} else if hovered {
+		Paint::Styled(Condition::Button, C::HoverBackground)
+	} else {
+		Paint::Styled(Condition::Toolbar, C::Background)
+	};
+	match style {
+		TabStyle::Connected => draw_connected(out, rect, fill, active),
+		TabStyle::Underline => {
+			out.push(Draw::Rect(rect, fill));
+			if active {
+				out.push(Draw::Rect(
+					Rect {
+						y: rect.y + rect.h - 2.0,
+						h: 2.0,
+						..rect
+					},
+					Paint::Styled(Condition::Toolbar, C::Accent),
+				));
+			}
+		}
 	}
 }
 
