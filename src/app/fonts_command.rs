@@ -260,32 +260,7 @@ fn download(
 		bail!("Offline: font downloads are unavailable; run without --offline");
 	}
 	let catalog = families(style, file)?;
-	for id in requested {
-		if !catalog.iter().any(|family| &family.family.id == id) {
-			bail!("No font family named {id:?}");
-		}
-	}
-	let ids: Vec<String> = if requested.is_empty() {
-		catalog
-			.iter()
-			.map(|family| family.family.id.clone())
-			.collect()
-	} else {
-		requested.to_vec()
-	};
-	// Naming a family asks for that family even when an installed face already
-	// covers it; naming none asks for what is missing.
-	let scope = if force {
-		crate::fonts::Scope::All
-	} else if requested.is_empty() {
-		crate::fonts::Scope::Missing
-	} else {
-		crate::fonts::Scope::Named
-	};
-	let selected: Vec<FontFamily> = crate::fonts::select(&catalog, &ids, scope)
-		.into_iter()
-		.cloned()
-		.collect();
+	let selected = select_downloads(&catalog, requested, force)?;
 	if selected.is_empty() {
 		report(format_args!("Everything selected is already downloaded\n"));
 		return Ok(());
@@ -357,6 +332,40 @@ fn download(
 		bail!("{} font famil(ies) failed", summary.failed.len());
 	}
 	Ok(())
+}
+
+fn select_downloads(
+	catalog: &[crate::fonts::Family],
+	requested: &[String],
+	force: bool,
+) -> Result<Vec<FontFamily>> {
+	for id in requested {
+		if !catalog.iter().any(|family| &family.family.id == id) {
+			bail!("No font family named {id:?}");
+		}
+	}
+	let ids: Vec<String> = if requested.is_empty() {
+		catalog
+			.iter()
+			.map(|family| family.family.id.clone())
+			.collect()
+	} else {
+		requested.to_vec()
+	};
+	// Naming a family asks for that family even when an installed face already
+	// covers it; naming none asks for what is missing.
+	let scope = if force {
+		crate::fonts::Scope::All
+	} else if requested.is_empty() {
+		crate::fonts::Scope::Missing
+	} else {
+		crate::fonts::Scope::Named
+	};
+	let selected = crate::fonts::select(catalog, &ids, scope)
+		.into_iter()
+		.cloned()
+		.collect();
+	Ok(selected)
 }
 
 /// One line of progress, for a terminal or a log.
