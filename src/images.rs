@@ -131,6 +131,43 @@ struct Entry {
 	theme: u64,
 }
 
+impl Entry {
+	fn cancel_stale_job(
+		&mut self,
+		stale: bool,
+		target: Option<(u32, u32)>,
+	) -> bool {
+		if self.busy
+			&& (stale
+				|| (self.svg
+					&& self.target.zip(target).is_some_and(
+						|(scheduled, wanted)| outgrows(wanted, scheduled),
+					))) {
+			self.cancel.cancel();
+			self.ticket = VERSION.fetch_add(1, Ordering::Relaxed);
+			self.busy = false;
+			return true;
+		}
+		false
+	}
+
+	fn needs_job(
+		&self,
+		stale: bool,
+		resize: bool,
+		requested: Option<markview_layout::image::ImageDemand>,
+		resident: bool,
+	) -> bool {
+		!self.busy
+			&& self.info.error.is_none()
+			&& (stale
+				|| self.info.size.is_none()
+				|| self.raster.is_none()
+				|| resize || (requested.is_some_and(|d| d.needs_pixels)
+				&& !resident))
+	}
+}
+
 impl Drop for Entry {
 	fn drop(&mut self) {
 		self.cancel.cancel();
@@ -591,28 +628,13 @@ impl Images {
 			// follows could never bring the diagram back. A job still in
 			// flight is cancelled before the next theme is scheduled, unless
 			// the demand has only wobbled within the redraw band.
-			if e.busy
-				&& (stale
-					|| (e.svg
-						&& e.target.zip(target).is_some_and(
-							|(scheduled, wanted)| outgrows(wanted, scheduled),
-						))) {
-				e.cancel.cancel();
-				e.ticket = VERSION.fetch_add(1, Ordering::Relaxed);
-				e.busy = false;
+			if e.cancel_stale_job(stale, target) {
 				running -= 1;
 			}
 			if stale && e.info.error.is_some() {
 				e.info.error = None;
 			}
-			if running < 4
-				&& !e.busy && e.info.error.is_none()
-				&& (stale
-					|| e.info.size.is_none()
-					|| e.raster.is_none()
-					|| resize || (requested.is_some_and(|d| d.needs_pixels)
-					&& !resident))
-			{
+			if running < 4 && e.needs_job(stale, resize, requested, resident) {
 				e.ticket = VERSION.fetch_add(1, Ordering::Relaxed);
 				e.busy = true;
 				e.theme = source_theme;
