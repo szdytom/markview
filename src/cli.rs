@@ -787,6 +787,33 @@ fn apply_reading(out: &mut LaunchOptions, reading: &Reading) -> Result<()> {
 		out.style = Some(reading.style.clone());
 		out.overrides.push(Setting::Theme);
 	}
+	apply_reading_typography(out, reading)?;
+	if let Some(name) = &reading.cjk_type {
+		out.cjk_type = Some(
+			markview_layout::style::CjkType::from_name(name).with_context(
+				|| format!("Invalid CJK type {name}; use SC, TC, JP or none"),
+			)?,
+		);
+		out.overrides.push(Setting::CjkType);
+	}
+	if reading.left {
+		out.options.justify = false;
+		out.overrides.push(Setting::Justify);
+	}
+	if reading.no_hyphens {
+		out.options.hyphenate = false;
+		out.overrides.push(Setting::Hyphenate);
+	}
+	if reading.greedy {
+		out.options.greedy = true;
+	}
+	Ok(())
+}
+
+fn apply_reading_typography(
+	out: &mut LaunchOptions,
+	reading: &Reading,
+) -> Result<()> {
 	crate::fonts::validate_directories(&reading.fonts)?;
 	for directory in &reading.fonts {
 		out.options.fonts.directories.push(directory.clone());
@@ -815,25 +842,6 @@ fn apply_reading(out: &mut LaunchOptions, reading: &Reading) -> Result<()> {
 				indent.clamp(0.0, 4.0)
 			};
 		out.overrides.push(Setting::ParagraphIndent);
-	}
-	if let Some(name) = &reading.cjk_type {
-		out.cjk_type = Some(
-			markview_layout::style::CjkType::from_name(name).with_context(
-				|| format!("Invalid CJK type {name}; use SC, TC, JP or none"),
-			)?,
-		);
-		out.overrides.push(Setting::CjkType);
-	}
-	if reading.left {
-		out.options.justify = false;
-		out.overrides.push(Setting::Justify);
-	}
-	if reading.no_hyphens {
-		out.options.hyphenate = false;
-		out.overrides.push(Setting::Hyphenate);
-	}
-	if reading.greedy {
-		out.options.greedy = true;
 	}
 	Ok(())
 }
