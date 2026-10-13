@@ -85,6 +85,12 @@ impl Renderer {
 			[color.r, color.g, color.b, color.a]
 		}
 	}
+	#[cfg_attr(
+		any(),
+		markview::allow_complexity(
+			reason = "Keep exhaustive Draw dispatch and recursive clipping with prewarm guards; image demand, atlas preparation and vertex emission share one ordering."
+		)
+	)]
 	pub(super) fn draw(
 		&mut self,
 		draw: &Draw,
