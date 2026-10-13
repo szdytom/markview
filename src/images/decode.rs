@@ -149,54 +149,65 @@ pub(super) fn decode(
 	fonts: Option<(&std::sync::Arc<super::fonts::DiagramFonts>, &str)>,
 	generic_families: &[(String, Vec<String>)],
 ) -> Result<Decoded> {
-	let format = image::guess_format(bytes).ok();
-	if format.is_none() {
-		let mut options = resvg::usvg::Options::default();
-		options.image_href_resolver.resolve_string = Box::new(|_, _| None);
-		if has_svg_text(bytes) {
-			match fonts {
-				Some((fonts, families)) => fonts.apply(&mut options, families),
-				None => options.fontdb = svg_fonts(generic_families),
-			}
+	let Some(format) = image::guess_format(bytes).ok() else {
+		return decode_svg(bytes, target, fonts, generic_families);
+	};
+	decode_bitmap(bytes, format)
+}
+
+fn decode_svg(
+	bytes: &[u8],
+	target: Option<(u32, u32)>,
+	fonts: Option<(&Arc<super::fonts::DiagramFonts>, &str)>,
+	generic_families: &[(String, Vec<String>)],
+) -> Result<Decoded> {
+	let mut options = resvg::usvg::Options::default();
+	options.image_href_resolver.resolve_string = Box::new(|_, _| None);
+	if has_svg_text(bytes) {
+		match fonts {
+			Some((fonts, families)) => fonts.apply(&mut options, families),
+			None => options.fontdb = svg_fonts(generic_families),
 		}
-		let tree = resvg::usvg::Tree::from_data(bytes, &options)
-			.context("Unsupported or invalid image/SVG")?;
-		let intrinsic = tree.size().to_int_size();
-		dimensions(intrinsic.width(), intrinsic.height())?;
-		let (w, h) = target.unwrap_or((intrinsic.width(), intrinsic.height()));
-		dimensions(w, h)?;
-		let mut pixmap = resvg::tiny_skia::Pixmap::new(w, h)
-			.context("Cannot allocate SVG")?;
-		resvg::render(
-			&tree,
-			resvg::tiny_skia::Transform::from_scale(
-				w as f32 / tree.size().width(),
-				h as f32 / tree.size().height(),
-			),
-			&mut pixmap.as_mut(),
-		);
-		// tiny-skia stores premultiplied alpha; the image pipeline uses straight alpha.
-		let mut rgba = pixmap.take();
-		for p in rgba.as_chunks_mut::<4>().0 {
-			if p[3] > 0 {
-				for i in 0..3 {
-					p[i] = ((u32::from(p[i]) * 255 + u32::from(p[3]) / 2)
-						/ u32::from(p[3]))
-					.min(255) as u8;
-				}
-			}
-		}
-		return Ok(Decoded {
-			pixels: Arc::new(Pixels {
-				width: w,
-				height: h,
-				rgba: rgba.into(),
-			}),
-			intrinsic: (intrinsic.width(), intrinsic.height()),
-			svg: true,
-		});
 	}
-	let format = format.unwrap();
+	let tree = resvg::usvg::Tree::from_data(bytes, &options)
+		.context("Unsupported or invalid image/SVG")?;
+	let intrinsic = tree.size().to_int_size();
+	dimensions(intrinsic.width(), intrinsic.height())?;
+	let (w, h) = target.unwrap_or((intrinsic.width(), intrinsic.height()));
+	dimensions(w, h)?;
+	let mut pixmap =
+		resvg::tiny_skia::Pixmap::new(w, h).context("Cannot allocate SVG")?;
+	resvg::render(
+		&tree,
+		resvg::tiny_skia::Transform::from_scale(
+			w as f32 / tree.size().width(),
+			h as f32 / tree.size().height(),
+		),
+		&mut pixmap.as_mut(),
+	);
+	// tiny-skia stores premultiplied alpha; the image pipeline uses straight alpha.
+	let mut rgba = pixmap.take();
+	for p in rgba.as_chunks_mut::<4>().0 {
+		if p[3] > 0 {
+			for i in 0..3 {
+				p[i] = ((u32::from(p[i]) * 255 + u32::from(p[3]) / 2)
+					/ u32::from(p[3]))
+				.min(255) as u8;
+			}
+		}
+	}
+	Ok(Decoded {
+		pixels: Arc::new(Pixels {
+			width: w,
+			height: h,
+			rgba: rgba.into(),
+		}),
+		intrinsic: (intrinsic.width(), intrinsic.height()),
+		svg: true,
+	})
+}
+
+fn decode_bitmap(bytes: &[u8], format: image::ImageFormat) -> Result<Decoded> {
 	let mut reader =
 		image::ImageReader::with_format(Cursor::new(bytes), format);
 	let mut limits = image::Limits::default();
@@ -206,58 +217,7 @@ pub(super) fn decode(
 	let (w, h) = decoder.dimensions();
 	dimensions(w, h)?;
 	let orientation = decoder.orientation()?;
-	let mut bitmap = match format {
-		image::ImageFormat::Gif => {
-			let mut d =
-				image::codecs::gif::GifDecoder::new(Cursor::new(bytes))?;
-			d.set_limits(limits)?;
-			image::DynamicImage::ImageRgba8(
-				d.into_frames().next().context("Empty GIF")??.into_buffer(),
-			)
-		}
-		image::ImageFormat::Png => {
-			let d = image::codecs::png::PngDecoder::with_limits(
-				Cursor::new(bytes),
-				limits,
-			)?;
-			if d.is_apng()? {
-				image::DynamicImage::ImageRgba8(
-					d.apng()?
-						.into_frames()
-						.next()
-						.context("Empty APNG")??
-						.into_buffer(),
-				)
-			} else {
-				image::DynamicImage::from_decoder(decoder)?
-			}
-		}
-		image::ImageFormat::WebP => {
-			let mut d =
-				image::codecs::webp::WebPDecoder::new(Cursor::new(bytes))?;
-			d.set_limits(limits)?;
-			if d.has_animation() {
-				image::DynamicImage::ImageRgba8(
-					d.into_frames()
-						.next()
-						.context("Empty WebP")??
-						.into_buffer(),
-				)
-			} else {
-				image::DynamicImage::from_decoder(decoder)?
-			}
-		}
-		image::ImageFormat::Ico => match ico_png(bytes) {
-			Some(png) => image::DynamicImage::from_decoder(
-				image::codecs::png::PngDecoder::with_limits(
-					Cursor::new(png),
-					limits,
-				)?,
-			)?,
-			None => image::DynamicImage::from_decoder(decoder)?,
-		},
-		_ => image::DynamicImage::from_decoder(decoder)?,
-	};
+	let mut bitmap = decode_first_frame(bytes, format, limits, decoder)?;
 	bitmap.apply_orientation(orientation);
 	let intrinsic = (bitmap.width(), bitmap.height());
 	// Stay within the baseline WebGPU 8192-pixel texture dimension.
@@ -274,6 +234,78 @@ pub(super) fn decode(
 			height: rgba.height(),
 			rgba: rgba.into_raw().into(),
 		}),
+	})
+}
+
+fn decode_first_frame(
+	bytes: &[u8],
+	format: image::ImageFormat,
+	limits: image::Limits,
+	decoder: impl ImageDecoder,
+) -> Result<image::DynamicImage> {
+	Ok(match format {
+		image::ImageFormat::Gif => gif_first_frame(bytes, limits)?,
+		image::ImageFormat::Png => png_first_frame(bytes, limits, decoder)?,
+		image::ImageFormat::WebP => webp_first_frame(bytes, limits, decoder)?,
+		image::ImageFormat::Ico => match ico_png(bytes) {
+			Some(png) => image::DynamicImage::from_decoder(
+				image::codecs::png::PngDecoder::with_limits(
+					Cursor::new(png),
+					limits,
+				)?,
+			)?,
+			None => image::DynamicImage::from_decoder(decoder)?,
+		},
+		_ => image::DynamicImage::from_decoder(decoder)?,
+	})
+}
+
+fn gif_first_frame(
+	bytes: &[u8],
+	limits: image::Limits,
+) -> Result<image::DynamicImage> {
+	let mut d = image::codecs::gif::GifDecoder::new(Cursor::new(bytes))?;
+	d.set_limits(limits)?;
+	Ok(image::DynamicImage::ImageRgba8(
+		d.into_frames().next().context("Empty GIF")??.into_buffer(),
+	))
+}
+
+fn png_first_frame(
+	bytes: &[u8],
+	limits: image::Limits,
+	decoder: impl ImageDecoder,
+) -> Result<image::DynamicImage> {
+	let d = image::codecs::png::PngDecoder::with_limits(
+		Cursor::new(bytes),
+		limits,
+	)?;
+	Ok(if d.is_apng()? {
+		image::DynamicImage::ImageRgba8(
+			d.apng()?
+				.into_frames()
+				.next()
+				.context("Empty APNG")??
+				.into_buffer(),
+		)
+	} else {
+		image::DynamicImage::from_decoder(decoder)?
+	})
+}
+
+fn webp_first_frame(
+	bytes: &[u8],
+	limits: image::Limits,
+	decoder: impl ImageDecoder,
+) -> Result<image::DynamicImage> {
+	let mut d = image::codecs::webp::WebPDecoder::new(Cursor::new(bytes))?;
+	d.set_limits(limits)?;
+	Ok(if d.has_animation() {
+		image::DynamicImage::ImageRgba8(
+			d.into_frames().next().context("Empty WebP")??.into_buffer(),
+		)
+	} else {
+		image::DynamicImage::from_decoder(decoder)?
 	})
 }
 
