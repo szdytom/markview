@@ -909,6 +909,12 @@ impl Rule {
 			theme
 		);
 	}
+	#[cfg_attr(
+		any(),
+		markview::allow_complexity(
+			reason = "Keep exhaustive ColorField access beside Rule fields; splitting the mapping would obscure schema coverage."
+		)
+	)]
 	pub fn color(&self, field: ColorField) -> Option<Color> {
 		match field {
 			ColorField::MarkerColor => self.marker_color,
