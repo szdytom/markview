@@ -636,6 +636,12 @@ impl Painter<'_> {
 		end
 	}
 
+	#[cfg_attr(
+		any(),
+		markview::allow_complexity(
+			reason = "Keep exhaustive Draw dispatch beside page visibility, clipping and frame transforms so every vector primitive follows the same page-fragment contract."
+		)
+	)]
 	fn draw(
 		&mut self,
 		surface: &mut Surface<'_>,
