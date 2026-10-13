@@ -843,25 +843,7 @@ impl<P: super::SendEvent> App<P> {
 	/// that move it. A key no owner takes comes back as `false`, which is
 	/// what lets the caller answer it last.
 	pub(super) fn key_pressed(&mut self, key: &Key) -> bool {
-		if self.interaction.viewer.is_some() {
-			if key == &Key::Named(NamedKey::Escape) {
-				self.interaction.viewer = None;
-				self.refresh_hover();
-				self.redraw();
-			}
-			return true;
-		}
-		// An open option list owns the keys while it is up. A key it hands
-		// back still reaches the page behind it.
-		if self.interaction.dropdown.is_some() && self.dropdown_key(key) {
-			self.redraw();
-			return true;
-		}
-		if self.panel_has_focus()
-			&& !matches!(
-				key,
-				Key::Named(NamedKey::Tab | NamedKey::Enter | NamedKey::Escape)
-			) {
+		if self.overlay_key(key) {
 			return true;
 		}
 		match key {
@@ -883,6 +865,54 @@ impl<P: super::SendEvent> App<P> {
 			{
 				self.move_outline(-1)
 			}
+			Key::Named(NamedKey::Tab) => {
+				self.navigate_focus();
+			}
+			Key::Named(NamedKey::Enter) => {
+				let buttons = self.buttons();
+				if let Some(action) = self.interaction.enter_action(
+					buttons
+						.iter()
+						.filter(|b| b.enabled)
+						.map(|b| (b.id, b.action)),
+				) {
+					self.action(action);
+				}
+			}
+			Key::Named(NamedKey::Escape) => {
+				self.escape_key();
+			}
+			_ => return self.document_key(key),
+		}
+		true
+	}
+	fn overlay_key(&mut self, key: &Key) -> bool {
+		if self.interaction.viewer.is_some() {
+			if key == &Key::Named(NamedKey::Escape) {
+				self.interaction.viewer = None;
+				self.refresh_hover();
+				self.redraw();
+			}
+			return true;
+		}
+		// An open option list owns the keys while it is up. A key it hands
+		// back still reaches the page behind it.
+		if self.interaction.dropdown.is_some() && self.dropdown_key(key) {
+			self.redraw();
+			return true;
+		}
+		if self.panel_has_focus()
+			&& !matches!(
+				key,
+				Key::Named(NamedKey::Tab | NamedKey::Enter | NamedKey::Escape)
+			) {
+			return true;
+		}
+		false
+	}
+
+	fn document_key(&mut self, key: &Key) -> bool {
+		match key {
 			Key::Named(NamedKey::ArrowDown) => {
 				self.scroll_step(self.line_step())
 			}
@@ -903,58 +933,49 @@ impl<P: super::SendEvent> App<P> {
 			Key::Named(NamedKey::ArrowRight) => {
 				self.horizontal_by(self.line_step());
 			}
-			Key::Named(NamedKey::Tab) => {
-				let backward = self.interaction.modifiers.shift_key();
-				if let Some(action) = self.navigate_widgets(backward) {
-					if let Command::OutlineGoto(index)
-					| Command::OutlineToggle(index) = action
-					{
-						self.reveal_outline(index);
-					}
-					self.reveal_panel_focus();
-				}
-				self.redraw();
-			}
-			Key::Named(NamedKey::Enter) => {
-				let buttons = self.buttons();
-				if let Some(action) = self.interaction.enter_action(
-					buttons
-						.iter()
-						.filter(|b| b.enabled)
-						.map(|b| (b.id, b.action)),
-				) {
-					self.action(action);
-				}
-			}
-			Key::Named(NamedKey::Escape) => {
-				if let Some(native) = &self.native_frame {
-					native.cancel();
-				}
-				if !self.interaction.panel_open()
-					&& self.interaction.modal.is_none()
-					&& let Some(window) = &self.window
-					&& window.fullscreen().is_some()
-				{
-					window.set_fullscreen(None);
-				}
-				self.frame.pressed = None;
-				self.frame.last_click = None;
-				self.tab_strip.cancel_drag();
-				self.interaction.widgets.captured = None;
-				self.interaction.widgets.focus = None;
-				self.interaction.modal = None;
-				self.interaction.show_panel(crate::state::PanelPage::Closed);
-				self.interaction.selection = None;
-				self.interaction.pointer_down = None;
-				self.interaction.drag_at = None;
-				self.interaction.scrollbar = None;
-				self.interaction.panel_grab = None;
-				self.interaction.close_outline();
-				self.refresh_hover();
-				self.redraw();
-			}
 			_ => return false,
 		}
 		true
+	}
+
+	fn navigate_focus(&mut self) {
+		let backward = self.interaction.modifiers.shift_key();
+		if let Some(action) = self.navigate_widgets(backward) {
+			if let Command::OutlineGoto(index) | Command::OutlineToggle(index) =
+				action
+			{
+				self.reveal_outline(index);
+			}
+			self.reveal_panel_focus();
+		}
+		self.redraw();
+	}
+
+	fn escape_key(&mut self) {
+		if let Some(native) = &self.native_frame {
+			native.cancel();
+		}
+		if !self.interaction.panel_open()
+			&& self.interaction.modal.is_none()
+			&& let Some(window) = &self.window
+			&& window.fullscreen().is_some()
+		{
+			window.set_fullscreen(None);
+		}
+		self.frame.pressed = None;
+		self.frame.last_click = None;
+		self.tab_strip.cancel_drag();
+		self.interaction.widgets.captured = None;
+		self.interaction.widgets.focus = None;
+		self.interaction.modal = None;
+		self.interaction.show_panel(crate::state::PanelPage::Closed);
+		self.interaction.selection = None;
+		self.interaction.pointer_down = None;
+		self.interaction.drag_at = None;
+		self.interaction.scrollbar = None;
+		self.interaction.panel_grab = None;
+		self.interaction.close_outline();
+		self.refresh_hover();
+		self.redraw();
 	}
 }
