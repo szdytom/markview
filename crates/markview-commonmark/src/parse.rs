@@ -141,6 +141,12 @@ impl Reader<'_> {
 		start..end
 	}
 
+	#[cfg_attr(
+		any(),
+		markview::allow_complexity(
+			reason = "Keep recursion, source and opaque cursors, and HTML style scopes in one source-ordered walk; the same boundaries control SVG consumption and anchor emission."
+		)
+	)]
 	fn inlines<'a>(
 		&self,
 		node: &'a AstNode<'a>,
