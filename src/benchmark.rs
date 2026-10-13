@@ -267,56 +267,8 @@ pub fn run(
 		offsets.push(scroll);
 		scroll += step;
 	}
-	let mut passes = Vec::new();
-	for pass in 0..3 {
-		// The warm pass keeps what the cold one rasterized; the prewarmed
-		// pass starts empty, the way a reader who has just arrived has it.
-		if pass != 1 {
-			renderer.clear_raster_cache();
-		}
-		let before = renderer.raster_stats();
-		let mut in_frame = 0;
-		let (mut prepare, mut total) = (
-			Vec::with_capacity(offsets.len()),
-			Vec::with_capacity(offsets.len()),
-		);
-		for &offset in &offsets {
-			view.scroll = offset;
-			if pass == 2 {
-				// The window spends a slice of each idle frame on the
-				// screenful ahead; here the reader is assumed to stay put
-				// until that work is done.
-				while renderer.prewarm(&latest, &view, Duration::from_millis(2))
-				{
-				}
-			}
-			let frame_before = renderer.raster_stats().rasterized;
-			let start = Instant::now();
-			let submission = renderer.render(&latest, &view, &[], &target)?;
-			in_frame += renderer.raster_stats().rasterized - frame_before;
-			prepare.push(start.elapsed().as_secs_f64() * 1000.0);
-			renderer.wait(Some(submission))?;
-			total.push(start.elapsed().as_secs_f64() * 1000.0);
-		}
-		let after = renderer.raster_stats();
-		passes.push(ScrollPass {
-			prepare_ms: percentiles(prepare),
-			over_8_33_ms: total.iter().filter(|t| **t > 8.33).count(),
-			over_16_7_ms: total.iter().filter(|t| **t > 16.7).count(),
-			total_ms: percentiles(total),
-			rasterized: after.rasterized - before.rasterized,
-			in_frame,
-			atlas_resets: after.resets - before.resets,
-			atlas_fill_percent: after.fill_percent,
-			atlas_entries: after.entries,
-		});
-	}
-	let scroll_pacing = ScrollPacing {
-		frames: offsets.len(),
-		cold: passes.remove(0),
-		warm: passes.remove(0),
-		prewarmed: passes.remove(0),
-	};
+	let scroll_pacing =
+		measure_scroll(&mut renderer, &latest, &mut view, &target, &offsets)?;
 	let text = read_document(path)?;
 	let report = Report {
 		scope: "Release-mode target. Offscreen full layout + completed first-viewport GPU rendering; window/compositor presentation excluded. First open has cold document/glyph/math caches. Reopens clear block layouts but retain text-engine, math and glyph caches. OS file cache is not flushed.",
@@ -355,6 +307,64 @@ pub fn run(
 	}
 	crate::logging::report(format_args!("{json}"));
 	Ok(())
+}
+
+fn measure_scroll(
+	renderer: &mut Renderer,
+	latest: &LayoutSnapshot,
+	view: &mut View<'_>,
+	target: &wgpu::TextureView,
+	offsets: &[f32],
+) -> Result<ScrollPacing> {
+	let mut passes = Vec::new();
+	for pass in 0..3 {
+		// The warm pass keeps what the cold one rasterized; the prewarmed
+		// pass starts empty, the way a reader who has just arrived has it.
+		if pass != 1 {
+			renderer.clear_raster_cache();
+		}
+		let before = renderer.raster_stats();
+		let mut in_frame = 0;
+		let (mut prepare, mut total) = (
+			Vec::with_capacity(offsets.len()),
+			Vec::with_capacity(offsets.len()),
+		);
+		for &offset in offsets {
+			view.scroll = offset;
+			if pass == 2 {
+				// The window spends a slice of each idle frame on the
+				// screenful ahead; here the reader is assumed to stay put
+				// until that work is done.
+				while renderer.prewarm(latest, view, Duration::from_millis(2)) {
+				}
+			}
+			let frame_before = renderer.raster_stats().rasterized;
+			let start = Instant::now();
+			let submission = renderer.render(latest, view, &[], target)?;
+			in_frame += renderer.raster_stats().rasterized - frame_before;
+			prepare.push(start.elapsed().as_secs_f64() * 1000.0);
+			renderer.wait(Some(submission))?;
+			total.push(start.elapsed().as_secs_f64() * 1000.0);
+		}
+		let after = renderer.raster_stats();
+		passes.push(ScrollPass {
+			prepare_ms: percentiles(prepare),
+			over_8_33_ms: total.iter().filter(|t| **t > 8.33).count(),
+			over_16_7_ms: total.iter().filter(|t| **t > 16.7).count(),
+			total_ms: percentiles(total),
+			rasterized: after.rasterized - before.rasterized,
+			in_frame,
+			atlas_resets: after.resets - before.resets,
+			atlas_fill_percent: after.fill_percent,
+			atlas_entries: after.entries,
+		});
+	}
+	Ok(ScrollPacing {
+		frames: offsets.len(),
+		cold: passes.remove(0),
+		warm: passes.remove(0),
+		prewarmed: passes.remove(0),
+	})
 }
 
 #[cfg(test)]
