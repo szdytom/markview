@@ -58,43 +58,46 @@ impl AddressClass {
 			return Self::of(IpAddr::V4(v4));
 		}
 		match ip {
-			IpAddr::V4(v4) => {
-				let o = v4.octets();
-				if v4.is_unspecified()
-					|| v4.is_broadcast()
-					|| v4.is_multicast()
-					|| v4.is_documentation()
-					|| o[0] == 0 || o[0] >= 240
-				{
-					Self::Invalid
-				} else if v4.is_loopback() {
-					Self::Loopback
-				} else if v4.is_link_local() {
-					Self::LinkLocal
-				} else if v4.is_private()
-					|| (o[0] == 100 && (64..=127).contains(&o[1]))
-				{
-					Self::Private
-				} else {
-					Self::Public
-				}
-			}
-			IpAddr::V6(v6) => {
-				if v6.is_unspecified()
-					|| v6.is_multicast()
-					|| (v6.segments()[0] == 0x2001 && v6.segments()[1] == 0xdb8)
-				{
-					Self::Invalid
-				} else if v6.is_loopback() {
-					Self::Loopback
-				} else if v6.is_unicast_link_local() {
-					Self::LinkLocal
-				} else if v6.is_unique_local() {
-					Self::Private
-				} else {
-					Self::Public
-				}
-			}
+			IpAddr::V4(v4) => Self::of_ipv4(v4),
+			IpAddr::V6(v6) => Self::of_ipv6(v6),
+		}
+	}
+	fn of_ipv4(v4: std::net::Ipv4Addr) -> Self {
+		let o = v4.octets();
+		if v4.is_unspecified()
+			|| v4.is_broadcast()
+			|| v4.is_multicast()
+			|| v4.is_documentation()
+			|| o[0] == 0
+			|| o[0] >= 240
+		{
+			Self::Invalid
+		} else if v4.is_loopback() {
+			Self::Loopback
+		} else if v4.is_link_local() {
+			Self::LinkLocal
+		} else if v4.is_private() || (o[0] == 100 && (64..=127).contains(&o[1]))
+		{
+			Self::Private
+		} else {
+			Self::Public
+		}
+	}
+
+	fn of_ipv6(v6: std::net::Ipv6Addr) -> Self {
+		if v6.is_unspecified()
+			|| v6.is_multicast()
+			|| (v6.segments()[0] == 0x2001 && v6.segments()[1] == 0xdb8)
+		{
+			Self::Invalid
+		} else if v6.is_loopback() {
+			Self::Loopback
+		} else if v6.is_unicast_link_local() {
+			Self::LinkLocal
+		} else if v6.is_unique_local() {
+			Self::Private
+		} else {
+			Self::Public
 		}
 	}
 }
@@ -305,6 +308,44 @@ mod tests {
 		);
 		for ip in ["0.0.0.0", "224.0.0.1", "::", "ff02::1", "2001:db8::1"] {
 			assert!(trusted.check_address(&url, ip.parse().unwrap()).is_err());
+		}
+	}
+	#[test]
+	fn address_classes_preserve_trusted_and_untrusted_resource_policy() {
+		use AddressClass::*;
+		let url = url::Url::parse("http://resource.example/image").unwrap();
+		let trusted = Security::local(Trust::Trusted);
+		let untrusted = Security::default();
+		for (address, class) in [
+			("1.1.1.1", Public),
+			("2001:4860::1", Public),
+			("192.168.1.1", Private),
+			("100.64.0.1", Private),
+			("100.127.255.255", Private),
+			("100.128.0.1", Public),
+			("fc00::1", Private),
+			("127.0.0.1", Loopback),
+			("::1", Loopback),
+			("::ffff:127.0.0.1", Loopback),
+			("169.254.1.1", LinkLocal),
+			("fe80::1", LinkLocal),
+			("255.255.255.255", Invalid),
+			("192.0.2.1", Invalid),
+			("240.0.0.1", Invalid),
+			("2001:db8::1", Invalid),
+		] {
+			let ip = address.parse().unwrap();
+			assert_eq!(AddressClass::of(ip), class, "{address}");
+			assert_eq!(
+				trusted.check_address(&url, ip).is_ok(),
+				matches!(class, Public | Private | Loopback),
+				"{address}"
+			);
+			assert_eq!(
+				untrusted.check_address(&url, ip).is_ok(),
+				class == Public,
+				"{address}"
+			);
 		}
 	}
 }
