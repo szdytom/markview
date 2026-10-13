@@ -293,6 +293,40 @@ pub(in crate::app) fn buttons(
 	buttons
 }
 
+fn download_control_rect(
+	r: Rect,
+	stacked: bool,
+	missing_only: bool,
+	x: f32,
+	w: f32,
+) -> Rect {
+	let compact = r.w < 488.0;
+	let third = (r.w - 64.0) / 3.0;
+	Rect {
+		x: r.x
+			+ if stacked || (markview_platform::touch_layout() && compact) {
+				24.0 + if missing_only {
+					0.0
+				} else {
+					(r.w - 40.0) / 2.0
+				}
+			} else if compact {
+				24.0 + (third + 8.0) * if missing_only { 1.0 } else { 2.0 }
+			} else {
+				x
+			},
+		y: r.y + r.h - 48.,
+		w: if stacked || (markview_platform::touch_layout() && compact) {
+			(r.w - 56.0) / 2.0
+		} else if compact {
+			third
+		} else {
+			w
+		},
+		h: CONTROL,
+	}
+}
+
 /// One family's action, given what state it is in and whether it is running.
 fn action(
 	family: &crate::fonts::Family,
@@ -471,33 +505,7 @@ fn fonts_controls(
 			},
 			enabled: true,
 			action: Command::Fonts(action),
-			rect: Rect {
-				x: r.x
-					+ if stacked
-						|| (markview_platform::touch_layout() && compact)
-					{
-						24.0 + if missing_only {
-							0.0
-						} else {
-							(r.w - 40.0) / 2.0
-						}
-					} else if compact {
-						24.0 + (third + 8.0)
-							* if missing_only { 1.0 } else { 2.0 }
-					} else {
-						x
-					},
-				y: r.y + r.h - 48.,
-				w: if stacked || (markview_platform::touch_layout() && compact)
-				{
-					(r.w - 56.0) / 2.0
-				} else if compact {
-					third
-				} else {
-					w
-				},
-				h: CONTROL,
-			},
+			rect: download_control_rect(r, stacked, missing_only, x, w),
 		});
 	}
 	if !list.fits() {
