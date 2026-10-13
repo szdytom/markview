@@ -506,38 +506,14 @@ pub fn run(
 		coverage,
 		request_start,
 	);
-	let mut cold = ColdFirstFrame::default();
-	let last_snapshot = loop {
-		let update = recv(&rx)?;
-		if update.version != version {
-			continue;
-		}
-		let reader = match update.result {
-			Some(Ok(reader)) => reader,
-			Some(Err(error)) => bail!("Cold open failed: {error}"),
-			None => continue,
-		};
-		if cold.process_start_to_first_readable_frame_ms == 0.0
-			&& displayable(&reader, viewport)
-		{
-			let r = Instant::now();
-			bench.render(&reader.layout, 0.0)?;
-			cold.render_and_gpu_ms = millis(r);
-			cold.request_to_first_readable_frame_ms = millis(request_start);
-			cold.process_start_to_first_readable_frame_ms =
-				millis(process_start);
-			cold.read_ms = update.read_ms;
-			cold.parse_ms = update.parse_ms;
-			cold.layout_ms = update.layout_ms;
-			cold.first_frame_blocks = reader.layout.blocks.len();
-			cold.reused_blocks = reader.layout.reused;
-		}
-		if reader.complete {
-			cold.process_start_to_complete_ms = millis(process_start);
-			cold.total_blocks = reader.layout.blocks.len();
-			break reader.layout;
-		}
-	};
+	let (cold, last_snapshot) = measure_cold_open(
+		&mut bench,
+		&rx,
+		version,
+		viewport,
+		process_start,
+		request_start,
+	)?;
 	let after_cold_frame = memory();
 
 	// Full layout is the state an edit starts from; the cold loop already
@@ -630,7 +606,54 @@ pub fn run(
 		edits_far,
 		memory,
 	};
-	let json = serde_json::to_string_pretty(&report)?;
+	write_report(&report, output)
+}
+
+fn measure_cold_open(
+	bench: &mut Bench,
+	rx: &Receiver<Update>,
+	version: u64,
+	viewport: f32,
+	process_start: Instant,
+	request_start: Instant,
+) -> Result<(ColdFirstFrame, LayoutSnapshot)> {
+	let mut cold = ColdFirstFrame::default();
+	let snapshot = loop {
+		let update = recv(rx)?;
+		if update.version != version {
+			continue;
+		}
+		let reader = match update.result {
+			Some(Ok(reader)) => reader,
+			Some(Err(error)) => bail!("Cold open failed: {error}"),
+			None => continue,
+		};
+		if cold.process_start_to_first_readable_frame_ms == 0.0
+			&& displayable(&reader, viewport)
+		{
+			let r = Instant::now();
+			bench.render(&reader.layout, 0.0)?;
+			cold.render_and_gpu_ms = millis(r);
+			cold.request_to_first_readable_frame_ms = millis(request_start);
+			cold.process_start_to_first_readable_frame_ms =
+				millis(process_start);
+			cold.read_ms = update.read_ms;
+			cold.parse_ms = update.parse_ms;
+			cold.layout_ms = update.layout_ms;
+			cold.first_frame_blocks = reader.layout.blocks.len();
+			cold.reused_blocks = reader.layout.reused;
+		}
+		if reader.complete {
+			cold.process_start_to_complete_ms = millis(process_start);
+			cold.total_blocks = reader.layout.blocks.len();
+			break reader.layout;
+		}
+	};
+	Ok((cold, snapshot))
+}
+
+fn write_report(report: &Report, output: Option<&Path>) -> Result<()> {
+	let json = serde_json::to_string_pretty(report)?;
 	if let Some(output) = output {
 		if let Some(parent) =
 			output.parent().filter(|p| !p.as_os_str().is_empty())
@@ -669,5 +692,56 @@ mod tests {
 		let copy = bench_copy(&original, source).unwrap();
 		assert_eq!(copy.path().parent(), original.parent());
 		assert_eq!(fs::read_to_string(copy.path()).unwrap(), source);
+	}
+}
+
+#[cfg(test)]
+mod report_tests {
+	use super::*;
+
+	#[test]
+	fn a_latency_run_preserves_cold_edit_and_memory_report_fields() -> Result<()>
+	{
+		let dir = tempfile::tempdir()?;
+		let input = dir.path().join("latency.md");
+		let output = dir.path().join("latency.json");
+		fs::write(
+			&input,
+			"# Latency\n\nFirst paragraph.\n\nSecond paragraph.",
+		)?;
+		run(
+			&input,
+			Some(&output),
+			800,
+			600,
+			1.0,
+			Theme::Light,
+			1,
+			LayoutOptions {
+				fonts: crate::test_support::fonts(),
+				..Default::default()
+			},
+			true,
+		)?;
+		let report: serde_json::Value =
+			serde_json::from_slice(&fs::read(output)?)?;
+		assert_eq!(report["edit_iterations"], 1);
+		assert!(report["cold"]["total_blocks"].as_u64().unwrap() > 0);
+		assert!(
+			report["cold"]["process_start_to_complete_ms"]
+				.as_f64()
+				.unwrap()
+				>= report["cold"]["process_start_to_first_readable_frame_ms"]
+					.as_f64()
+					.unwrap()
+		);
+		assert_eq!(report["edits_top"]["samples"].as_array().unwrap().len(), 1);
+		assert_eq!(report["edits_far"]["samples"].as_array().unwrap().len(), 1);
+		assert!(
+			report["memory"]["reading_text_index_bytes"]
+				.as_u64()
+				.unwrap() > 0
+		);
+		Ok(())
 	}
 }
