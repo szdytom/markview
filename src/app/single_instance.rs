@@ -66,24 +66,11 @@ pub(super) fn start(
 	loop {
 		match lock.try_lock() {
 			Ok(()) => {
-				let listener =
-					TcpListener::bind((std::net::Ipv4Addr::LOCALHOST, 0))?;
-				let mut secret = [0; 32];
-				getrandom::fill(&mut secret)?;
-				let endpoint = Endpoint {
-					address: listener.local_addr()?,
-					token: base64::engine::general_purpose::STANDARD
-						.encode(secret),
-				};
-				let mut metadata = tempfile::NamedTempFile::new_in(directory)?;
-				serde_json::to_writer(&mut metadata, &endpoint)?;
-				metadata.flush()?;
-				metadata.persist(&endpoint_path)?;
-				return Ok(Start::Primary(Primary {
-					_lock: lock,
-					listener,
-					endpoint,
-				}));
+				return Ok(Start::Primary(create_primary(
+					lock,
+					directory,
+					&endpoint_path,
+				)?));
 			}
 			Err(std::fs::TryLockError::WouldBlock) if !enabled => {
 				return Ok(Start::Independent);
@@ -109,6 +96,29 @@ pub(super) fn start(
 			}
 		}
 	}
+}
+
+fn create_primary(
+	lock: std::fs::File,
+	directory: &Path,
+	endpoint_path: &Path,
+) -> Result<Primary> {
+	let listener = TcpListener::bind((std::net::Ipv4Addr::LOCALHOST, 0))?;
+	let mut secret = [0; 32];
+	getrandom::fill(&mut secret)?;
+	let endpoint = Endpoint {
+		address: listener.local_addr()?,
+		token: base64::engine::general_purpose::STANDARD.encode(secret),
+	};
+	let mut metadata = tempfile::NamedTempFile::new_in(directory)?;
+	serde_json::to_writer(&mut metadata, &endpoint)?;
+	metadata.flush()?;
+	metadata.persist(endpoint_path)?;
+	Ok(Primary {
+		_lock: lock,
+		listener,
+		endpoint,
+	})
 }
 
 impl<P: super::SendEvent> super::App<P> {
