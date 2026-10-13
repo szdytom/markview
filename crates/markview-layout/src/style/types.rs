@@ -384,6 +384,12 @@ pub enum ColorField {
 	FocusColor,
 }
 impl ColorField {
+	#[cfg_attr(
+		any(),
+		markview::allow_complexity(
+			reason = "Keep the exhaustive ColorField-to-schema-name mapping together so new fields require an explicit spelling."
+		)
+	)]
 	pub fn name(self) -> &'static str {
 		match self {
 			Self::MarkerColor => "marker_color",
