@@ -412,94 +412,7 @@ pub(super) fn draw_styles(
 		let e = &entries[order[row]];
 		let pos = position(selected, e);
 		let y = list.row_rect(row).y;
-		body.push(super::components::line(
-			Rect {
-				x: r.x + 24.0,
-				y: y + ROW - 1.0,
-				w: r.w - 48.0,
-				h: 1.0,
-			},
-			Condition::Panel,
-			C::BorderColor,
-		));
-		if let Some(pos) = pos {
-			body.push(super::components::line(
-				Rect {
-					x: r.x + 24.0,
-					y: y + (ROW - 28.0) / 2.0,
-					w: 28.0,
-					h: 28.0,
-				},
-				Condition::Button,
-				C::ActiveBackground,
-			));
-			let mut appearance = shaper.appearance.clone();
-			appearance.weight = 700;
-			let (mut number, width) = shaper.label_with(
-				&(pos + 1).to_string(),
-				13.0,
-				0.0,
-				y + ROW / 2.0 + 13.0 * 0.35,
-				&appearance,
-				Paint::Styled(Condition::Panel, C::Accent),
-				None,
-			);
-			for draw in &mut number {
-				draw.translate(r.x + 24.0 + (28.0 - width) / 2.0, 0.0);
-			}
-			body.extend(number);
-		}
-
-		let text_x = r.x + 64.0;
-		let weight = shaper.appearance.weight;
-		shaper.appearance.weight = 600;
-		let title = shaper.fit(&e.name, 14., r.x + column_x(r) - 12.0 - text_x);
-		body.extend(shaper.label(
-			&title,
-			14.,
-			text_x,
-			y + 29.,
-			Paint::Styled(Condition::Panel, C::Color),
-		));
-		shaper.appearance.weight = weight;
-		if e.error.is_some() && pos.is_none() {
-			let rect = Rect {
-				x: r.x + column_x(r),
-				y: y + (ROW - CONTROL) / 2.0,
-				w: TOGGLE,
-				h: CONTROL,
-			};
-			body.push(Draw::Rect(
-				rect,
-				Paint::Styled(Condition::Button, C::Background),
-			));
-			body.extend(shaper.label(
-				lang.styles_invalid(),
-				12.,
-				rect.x + 7.,
-				rect.y + 18.,
-				Paint::Styled(Condition::Button, C::DisabledColor),
-			));
-		}
-		let detail = e
-			.error
-			.clone()
-			.unwrap_or_else(|| format!("{} · {}", e.id, e.source));
-		let detail = shaper.fit(&detail, 12., r.x + r.w - 24. - text_x);
-		body.extend(shaper.label(
-			&detail,
-			12.,
-			text_x,
-			y + 54.,
-			Paint::Styled(
-				Condition::Panel,
-				if e.error.is_some() {
-					C::Error
-				} else {
-					C::Muted
-				},
-			),
-		));
+		draw_style_row(&mut body, shaper, e, pos, r, y, lang);
 	}
 	for mut b in style_rows(target, selected, entries, list, lang) {
 		crate::app::settings_load::prepare_button(&mut b, load);
@@ -539,6 +452,105 @@ pub(super) fn draw_styles(
 		));
 	}
 	out
+}
+
+fn draw_style_row(
+	body: &mut Vec<Draw>,
+	shaper: &mut TextShaper,
+	e: &crate::stylesheet::Entry,
+	pos: Option<usize>,
+	r: Rect,
+	y: f32,
+	lang: Lang,
+) {
+	body.push(super::components::line(
+		Rect {
+			x: r.x + 24.0,
+			y: y + ROW - 1.0,
+			w: r.w - 48.0,
+			h: 1.0,
+		},
+		Condition::Panel,
+		C::BorderColor,
+	));
+	if let Some(pos) = pos {
+		body.push(super::components::line(
+			Rect {
+				x: r.x + 24.0,
+				y: y + (ROW - 28.0) / 2.0,
+				w: 28.0,
+				h: 28.0,
+			},
+			Condition::Button,
+			C::ActiveBackground,
+		));
+		let mut appearance = shaper.appearance.clone();
+		appearance.weight = 700;
+		let (mut number, width) = shaper.label_with(
+			&(pos + 1).to_string(),
+			13.0,
+			0.0,
+			y + ROW / 2.0 + 13.0 * 0.35,
+			&appearance,
+			Paint::Styled(Condition::Panel, C::Accent),
+			None,
+		);
+		for draw in &mut number {
+			draw.translate(r.x + 24.0 + (28.0 - width) / 2.0, 0.0);
+		}
+		body.extend(number);
+	}
+
+	let text_x = r.x + 64.0;
+	let weight = shaper.appearance.weight;
+	shaper.appearance.weight = 600;
+	let title = shaper.fit(&e.name, 14., r.x + column_x(r) - 12.0 - text_x);
+	body.extend(shaper.label(
+		&title,
+		14.,
+		text_x,
+		y + 29.,
+		Paint::Styled(Condition::Panel, C::Color),
+	));
+	shaper.appearance.weight = weight;
+	if e.error.is_some() && pos.is_none() {
+		let rect = Rect {
+			x: r.x + column_x(r),
+			y: y + (ROW - CONTROL) / 2.0,
+			w: TOGGLE,
+			h: CONTROL,
+		};
+		body.push(Draw::Rect(
+			rect,
+			Paint::Styled(Condition::Button, C::Background),
+		));
+		body.extend(shaper.label(
+			lang.styles_invalid(),
+			12.,
+			rect.x + 7.,
+			rect.y + 18.,
+			Paint::Styled(Condition::Button, C::DisabledColor),
+		));
+	}
+	let detail = e
+		.error
+		.clone()
+		.unwrap_or_else(|| format!("{} · {}", e.id, e.source));
+	let detail = shaper.fit(&detail, 12., r.x + r.w - 24. - text_x);
+	body.extend(shaper.label(
+		&detail,
+		12.,
+		text_x,
+		y + 54.,
+		Paint::Styled(
+			Condition::Panel,
+			if e.error.is_some() {
+				C::Error
+			} else {
+				C::Muted
+			},
+		),
+	));
 }
 
 #[cfg(test)]
