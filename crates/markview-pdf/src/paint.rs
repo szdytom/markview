@@ -840,6 +840,12 @@ impl Painter<'_> {
 
 	/// Math arrives as a flat display list in em units, measured from the
 	/// formula's top-left corner.
+	#[cfg_attr(
+		any(),
+		markview::allow_complexity(
+			reason = "Keep the ordered math display walk and glyph-run flush boundaries together so vector primitives and fallback glyphs cannot overtake a pending run."
+		)
+	)]
 	fn math(
 		&mut self,
 		surface: &mut Surface<'_>,
