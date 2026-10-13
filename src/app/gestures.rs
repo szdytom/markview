@@ -213,110 +213,11 @@ impl<P: super::SendEvent> App<P> {
 			Some(Instant::now() + Duration::from_millis(500));
 		self.interaction.cursor = point;
 		self.frame.pressed = None;
-		let mut window_action = None;
-		if touch.phase == TouchPhase::Started {
-			self.gestures.swipe_distance = 0.0;
-			self.gestures.motion = None;
-			self.gestures.coasting = false;
-			self.gestures.trackpad = None;
-			self.readers.session.cancel_scroll_animation();
-			self.tab_strip.cancel_drag();
-			self.interaction.pointer_down = None;
-			self.interaction.pressed_image = None;
-			self.interaction.drag_at = None;
-			self.interaction.scrollbar = None;
-			self.interaction.panel_grab = None;
-			self.interaction.widgets.focus_visible = false;
-			self.interaction.reset_clicks();
-			self.readers.session.select_all_pending = false;
-			let capture = Capture {
-				surface: self.touch_surface(),
-				tap: self.touch_tap(),
-			};
-			let capture = if markview_platform::client_resize()
-				&& self.gestures.gesture.contacts.is_empty()
-			{
-				self.tab_metrics.sync(&mut self.ui, self.readers.entries());
-				let layout = self.frame_layout();
-				let direction = layout.resize_at(point.0, point.1);
-				if direction.is_some() || layout.draggable(point.0, point.1) {
-					self.frame.last_click = None;
-					window_action = Some(TouchAction::Drag(direction));
-					Capture {
-						surface: Surface::None,
-						tap: None,
-					}
-				} else {
-					capture
-				}
-			} else {
-				capture
-			};
-			self.frame.pressed = match &capture.tap {
-				Some(Tap::Caption(caption)) => Some(*caption),
-				_ => None,
-			};
-			self.interaction.widgets.captured = match &capture.tap {
-				Some(Tap::Widget(id)) => Some(*id),
-				Some(Tap::Command(command)) => Some(command.widget_id()),
-				_ => None,
-			};
-			self.gestures.motion =
-				Some((capture.surface, Motion::new(Instant::now())));
-			self.gestures.gesture.begin(id, point, capture);
-			if self.gestures.gesture.drag.is_none() {
-				self.gestures.motion = None;
-				self.interaction.widgets.captured = None;
-				self.frame.pressed = None;
-			}
+		let window_action = if touch.phase == TouchPhase::Started {
+			self.start_touch_contact(id, point)
 		} else {
-			match self.gestures.gesture.update(id, touch.phase, point) {
-				Some(Gesture::Tap(capture)) => {
-					self.interaction.widgets.captured = None;
-					if capture.tap == self.touch_tap() {
-						match capture.tap {
-							Some(Tap::Caption(caption)) => {
-								window_action =
-									Some(TouchAction::Caption(caption));
-							}
-							Some(Tap::Command(command)) => self.action(command),
-							Some(Tap::Widget(id)) => {
-								let buttons = self.buttons();
-								if let Some(button) = buttons
-									.iter()
-									.find(|b| b.id == id && b.enabled)
-								{
-									self.action(button.action);
-								}
-							}
-							Some(Tap::Link(link)) => {
-								self.open_link(&link, false)
-							}
-							Some(Tap::ClearSelection) => {
-								self.interaction.clear_selection();
-								self.interaction.close_outline();
-							}
-							Some(Tap::DismissDropdown) => {
-								self.close_dropdown();
-							}
-							None => {}
-						}
-					}
-				}
-				Some(Gesture::Pan(capture, delta)) => {
-					self.interaction.widgets.captured = None;
-					self.gestures.swipe_distance += delta.0;
-					if let Some((_, motion)) = &mut self.gestures.motion {
-						motion.sample(delta, Instant::now());
-					}
-					self.pan_gesture(capture.surface, delta);
-					if touch.phase == TouchPhase::Ended {
-						self.open_swipe_drawer(capture.surface);
-					}
-				}
-				None => {}
-			}
-		}
+			self.update_touch_contact(id, touch.phase, point)
+		};
 		if touch.phase == TouchPhase::Ended
 			&& self.gestures.gesture.contacts.is_empty()
 		{
@@ -336,6 +237,121 @@ impl<P: super::SendEvent> App<P> {
 		}
 		self.refresh_hover();
 		self.redraw();
+		window_action
+	}
+
+	fn start_touch_contact(
+		&mut self,
+		id: recognizer::Contact,
+		point: Point,
+	) -> Option<TouchAction> {
+		let mut window_action = None;
+		self.gestures.swipe_distance = 0.0;
+		self.gestures.motion = None;
+		self.gestures.coasting = false;
+		self.gestures.trackpad = None;
+		self.readers.session.cancel_scroll_animation();
+		self.tab_strip.cancel_drag();
+		self.interaction.pointer_down = None;
+		self.interaction.pressed_image = None;
+		self.interaction.drag_at = None;
+		self.interaction.scrollbar = None;
+		self.interaction.panel_grab = None;
+		self.interaction.widgets.focus_visible = false;
+		self.interaction.reset_clicks();
+		self.readers.session.select_all_pending = false;
+		let capture = Capture {
+			surface: self.touch_surface(),
+			tap: self.touch_tap(),
+		};
+		let capture = if markview_platform::client_resize()
+			&& self.gestures.gesture.contacts.is_empty()
+		{
+			self.tab_metrics.sync(&mut self.ui, self.readers.entries());
+			let layout = self.frame_layout();
+			let direction = layout.resize_at(point.0, point.1);
+			if direction.is_some() || layout.draggable(point.0, point.1) {
+				self.frame.last_click = None;
+				window_action = Some(TouchAction::Drag(direction));
+				Capture {
+					surface: Surface::None,
+					tap: None,
+				}
+			} else {
+				capture
+			}
+		} else {
+			capture
+		};
+		self.frame.pressed = match &capture.tap {
+			Some(Tap::Caption(caption)) => Some(*caption),
+			_ => None,
+		};
+		self.interaction.widgets.captured = match &capture.tap {
+			Some(Tap::Widget(id)) => Some(*id),
+			Some(Tap::Command(command)) => Some(command.widget_id()),
+			_ => None,
+		};
+		self.gestures.motion =
+			Some((capture.surface, Motion::new(Instant::now())));
+		self.gestures.gesture.begin(id, point, capture);
+		if self.gestures.gesture.drag.is_none() {
+			self.gestures.motion = None;
+			self.interaction.widgets.captured = None;
+			self.frame.pressed = None;
+		}
+		window_action
+	}
+
+	fn update_touch_contact(
+		&mut self,
+		id: recognizer::Contact,
+		phase: TouchPhase,
+		point: Point,
+	) -> Option<TouchAction> {
+		let mut window_action = None;
+		match self.gestures.gesture.update(id, phase, point) {
+			Some(Gesture::Tap(capture)) => {
+				self.interaction.widgets.captured = None;
+				if capture.tap == self.touch_tap() {
+					match capture.tap {
+						Some(Tap::Caption(caption)) => {
+							window_action = Some(TouchAction::Caption(caption));
+						}
+						Some(Tap::Command(command)) => self.action(command),
+						Some(Tap::Widget(id)) => {
+							let buttons = self.buttons();
+							if let Some(button) =
+								buttons.iter().find(|b| b.id == id && b.enabled)
+							{
+								self.action(button.action);
+							}
+						}
+						Some(Tap::Link(link)) => self.open_link(&link, false),
+						Some(Tap::ClearSelection) => {
+							self.interaction.clear_selection();
+							self.interaction.close_outline();
+						}
+						Some(Tap::DismissDropdown) => {
+							self.close_dropdown();
+						}
+						None => {}
+					}
+				}
+			}
+			Some(Gesture::Pan(capture, delta)) => {
+				self.interaction.widgets.captured = None;
+				self.gestures.swipe_distance += delta.0;
+				if let Some((_, motion)) = &mut self.gestures.motion {
+					motion.sample(delta, Instant::now());
+				}
+				self.pan_gesture(capture.surface, delta);
+				if phase == TouchPhase::Ended {
+					self.open_swipe_drawer(capture.surface);
+				}
+			}
+			None => {}
+		}
 		window_action
 	}
 
