@@ -80,6 +80,12 @@ impl Component for Model {
 			values: &self.values,
 		}
 	}
+	#[cfg_attr(
+		any(),
+		markview::allow_complexity(
+			reason = "Each match arm owns one settings transition and its ordered persistence, reflow or session effects; keep that correspondence adjacent for review."
+		)
+	)]
 	fn update(&mut self, message: Message) -> Update<Effect> {
 		let mut update = Update::new(Invalidation::Layout);
 		let field = match message {
