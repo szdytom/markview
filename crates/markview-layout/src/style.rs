@@ -581,22 +581,19 @@ impl Stylesheet {
 	pub fn paint(&self, paint: Paint) -> [f32; 4] {
 		use ColorField as C;
 		use Condition as K;
-		if let Paint::Cascade(chain, field) = paint {
-			return if field == C::Background {
-				self.resolve_inline_background(chain)
-			} else {
-				self.resolve(chain, field)
-			};
-		}
-		if let Paint::Scoped(chain, condition, field) = paint {
-			return self.resolve_scoped(chain, condition, field);
-		}
-		if let Paint::Styled(condition, field) = paint {
-			return self.resolve(condition.chain(), field);
-		}
 		let (condition, field) = match paint {
-			Paint::Cascade(..) | Paint::Scoped(..) | Paint::Styled(..) => {
-				unreachable!()
+			Paint::Cascade(chain, field) => {
+				return if field == C::Background {
+					self.resolve_inline_background(chain)
+				} else {
+					self.resolve(chain, field)
+				};
+			}
+			Paint::Scoped(chain, condition, field) => {
+				return self.resolve_scoped(chain, condition, field);
+			}
+			Paint::Styled(condition, field) => {
+				return self.resolve(condition.chain(), field);
 			}
 			Paint::Color(color) => return color.rgba(),
 			Paint::Text => (K::Body, C::Color),
