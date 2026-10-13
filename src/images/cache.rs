@@ -419,10 +419,8 @@ async fn fetch_cached<
 	}
 	let now = SystemTime::now();
 	let stored = cache.disk(url, |cache, url| cache.load_meta(&url)).await?;
-	if let Some(meta) = &stored
-		&& meta.fresh(unix(now))
-		&& let Some(body) =
-			cache.disk(url, |cache, url| cache.load_body(&url)).await?
+	if let Some(body) =
+		fresh_cached_body(cache, url, stored.as_ref(), now).await?
 	{
 		return Ok(body);
 	}
@@ -431,59 +429,86 @@ async fn fetch_cached<
 	// A `304` is only an answer for the resource the stored validators belong
 	// to. When the chain now ends at another URL, the response says nothing
 	// about this entry, so the new resource is fetched in full.
-	let revalidated = fetched.status == 304
-		&& stored
+	if fetched.status == 304 {
+		// A `304` only answers the URL its stored validators belong to.
+		if stored
 			.as_ref()
-			.is_some_and(|meta| meta.final_url() == fetched.final_url);
-	if fetched.status == 304 && !revalidated {
-		let fetched = get(Validators::default()).await?;
-		return install(cache, url, fetched, now).await;
-	}
-	if revalidated {
-		// The metadata and the body are read together, so a replacement that
-		// landed while the request was in flight cannot pair its bytes with
-		// the validators this response answered.
-		if let Some((current, body)) =
-			cache.disk(url, |cache, url| cache.load_entry(&url)).await?
+			.is_none_or(|meta| meta.final_url() != fetched.final_url)
 		{
-			// A revalidation that forbids storage, varies on external factors,
-			// or that resolved through a redirect chain the cache cannot
-			// represent, drops the entry instead of retaining it.
-			if fetched.headers.no_store
-				|| fetched.headers.varies_wildcard()
-				|| !fetched.redirects_cacheable
-			{
-				cache.disk(url, |cache, url| cache.remove(&url)).await?;
-				return Ok(body);
-			}
-			// Only the entry the `304` actually answered may be refreshed. If
-			// it changed under the request, the result is discarded rather
-			// than stored against the wrong bytes.
-			if stored.as_ref() == Some(&current) {
-				let meta = refreshed(
-					&current,
-					url,
-					&fetched.final_url,
-					&fetched.headers,
-					&body,
-					now,
-					fetched.freshness_cap,
-				);
-				return cache
-					.disk(url, move |cache, url| {
-						cache.store(&url, &meta, &body);
-						body
-					})
-					.await;
-			}
+			let fetched = get(Validators::default()).await?;
+			return install(cache, url, fetched, now).await;
+		}
+		if let Some(body) =
+			refresh_cached_entry(cache, url, stored.as_ref(), &fetched, now)
+				.await?
+		{
 			return Ok(body);
 		}
-		// The entry vanished between the two reads; fetch it in full rather
-		// than fail a document over a revalidation.
+		// The entry vanished between reads; fetch a complete replacement.
 		let fetched = get(Validators::default()).await?;
 		return install(cache, url, fetched, now).await;
 	}
 	install(cache, url, fetched, now).await
+}
+
+async fn fresh_cached_body(
+	cache: &Cache,
+	url: &str,
+	stored: Option<&Meta>,
+	now: SystemTime,
+) -> Result<Option<Vec<u8>>> {
+	if stored.is_some_and(|meta| meta.fresh(unix(now))) {
+		cache.disk(url, |cache, url| cache.load_body(&url)).await
+	} else {
+		Ok(None)
+	}
+}
+
+async fn refresh_cached_entry(
+	cache: &Cache,
+	url: &str,
+	stored: Option<&Meta>,
+	fetched: &Fetched,
+	now: SystemTime,
+) -> Result<Option<Vec<u8>>> {
+	// Read metadata and bytes together so a concurrent replacement stays paired.
+	if let Some((current, body)) =
+		cache.disk(url, |cache, url| cache.load_entry(&url)).await?
+	{
+		// A revalidation that forbids storage, varies on external factors,
+		// or that resolved through a redirect chain the cache cannot
+		// represent, drops the entry instead of retaining it.
+		if fetched.headers.no_store
+			|| fetched.headers.varies_wildcard()
+			|| !fetched.redirects_cacheable
+		{
+			cache.disk(url, |cache, url| cache.remove(&url)).await?;
+			return Ok(Some(body));
+		}
+		// Only the entry the `304` actually answered may be refreshed. If
+		// it changed under the request, the result is discarded rather
+		// than stored against the wrong bytes.
+		if stored == Some(&current) {
+			let meta = refreshed(
+				&current,
+				url,
+				&fetched.final_url,
+				&fetched.headers,
+				&body,
+				now,
+				fetched.freshness_cap,
+			);
+			return cache
+				.disk(url, move |cache, url| {
+					cache.store(&url, &meta, &body);
+					body
+				})
+				.await
+				.map(Some);
+		}
+		return Ok(Some(body));
+	}
+	Ok(None)
 }
 
 /// Stores a fetched response when it may be stored, and returns its body. A
