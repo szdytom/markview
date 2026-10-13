@@ -1739,16 +1739,7 @@ fn merge_text(text: RichText) -> RichText {
 			&& last.style == span.style
 			&& let InlineKind::Text(prev) = &mut last.kind
 		{
-			if prev.ends_with(char::is_whitespace)
-				&& t.starts_with(char::is_whitespace)
-			{
-				let len = prev.trim_end().len();
-				prev.truncate(len);
-				prev.push(' ');
-				prev.push_str(t.trim_start());
-			} else {
-				prev.push_str(t);
-			}
+			append_merged_text(prev, t);
 			// Comrak's source positions can run backwards across siblings — a
 			// paragraph that follows a link reference definition keeps the
 			// definition line's columns — so taking the second span's end
@@ -1762,4 +1753,17 @@ fn merge_text(text: RichText) -> RichText {
 		previous_text = Some(out.len() - 1);
 	}
 	out
+}
+
+fn append_merged_text(previous: &mut String, text: &str) {
+	if previous.ends_with(char::is_whitespace)
+		&& text.starts_with(char::is_whitespace)
+	{
+		let len = previous.trim_end().len();
+		previous.truncate(len);
+		previous.push(' ');
+		previous.push_str(text.trim_start());
+	} else {
+		previous.push_str(text);
+	}
 }
