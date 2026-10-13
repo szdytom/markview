@@ -514,22 +514,7 @@ impl BlockContext<'_> {
 		opts: &LayoutOptions,
 		out: &mut BlockLayout,
 	) -> f32 {
-		if let BlockKind::Paragraph(text) = &block.kind
-			&& anchor_only(block)
-		{
-			for anchor in
-				block.anchors.iter().chain(text.iter().filter_map(|i| {
-					if let InlineKind::Anchor(a) = &i.kind {
-						Some(a)
-					} else {
-						None
-					}
-				})) {
-				out.anchors.push(HeadingAnchor {
-					anchor: anchor.clone(),
-					y,
-				});
-			}
+		if append_anchor_only(block, y, out) {
 			return 0.;
 		}
 		// An export draws the document's text, and front matter is the reader's
@@ -555,16 +540,7 @@ impl BlockContext<'_> {
 		self.shaper.appearance.background = None;
 		let before = rule.space_before.unwrap_or(0.) * opts.font_size;
 		let after = rule.space_after.unwrap_or(0.) * opts.font_size;
-		let mut pad = rule
-			.padding
-			.as_ref()
-			.map(|p| p.sides().map(|v| v * opts.font_size))
-			.unwrap_or([0.; 4]);
-		if let Some(edges) = rule.border_edges {
-			for (pad, edge) in pad.iter_mut().zip(edges) {
-				*pad += edge;
-			}
-		}
+		let pad = block_padding(&rule, opts.font_size);
 		let marker = rule.heading_marker.filter(|m| m[0] > 0.0 && m[1] > 0.0);
 		let marker_width =
 			marker.map_or(0.0, |m| (m[0] + m[2]) * opts.font_size);
@@ -1309,4 +1285,42 @@ fn bind_rich_source(
 			semantic.end += offset;
 		}
 	}
+}
+
+fn append_anchor_only(block: &Block, y: f32, out: &mut BlockLayout) -> bool {
+	if let BlockKind::Paragraph(text) = &block.kind
+		&& anchor_only(block)
+	{
+		for anchor in block.anchors.iter().chain(text.iter().filter_map(|i| {
+			if let InlineKind::Anchor(a) = &i.kind {
+				Some(a)
+			} else {
+				None
+			}
+		})) {
+			out.anchors.push(HeadingAnchor {
+				anchor: anchor.clone(),
+				y,
+			});
+		}
+		return true;
+	}
+	false
+}
+
+pub(super) fn block_padding(
+	rule: &crate::style::Rule,
+	font_size: f32,
+) -> [f32; 4] {
+	let mut pad = rule
+		.padding
+		.as_ref()
+		.map(|p| p.sides().map(|v| v * font_size))
+		.unwrap_or([0.; 4]);
+	if let Some(edges) = rule.border_edges {
+		for (pad, edge) in pad.iter_mut().zip(edges) {
+			*pad += edge;
+		}
+	}
+	pad
 }
