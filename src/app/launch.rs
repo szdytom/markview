@@ -94,6 +94,14 @@ fn run_with_options(mut args: LaunchOptions) -> Result<()> {
 	if args.mode == Mode::Pdf {
 		return crate::pdf::run(&args.pdf_request()?, args.watch);
 	}
+	configure_reading(&mut args)?;
+	if matches!(args.mode, Mode::Render | Mode::Bench | Mode::Latency) {
+		return run_diagnostic(args);
+	}
+	run_reader(args)
+}
+
+fn configure_reading(args: &mut LaunchOptions) -> Result<()> {
 	let ids = args.style.clone().or_else(|| {
 		args.theme.map(|t| {
 			vec![if t == Theme::Dark { "dark" } else { "light" }.into()]
@@ -141,103 +149,114 @@ fn run_with_options(mut args: LaunchOptions) -> Result<()> {
 		.with_size(args.width as f32, args.height as f32),
 	);
 	args.options.stylesheet = std::sync::Arc::new(sheet);
-	if args.mode == Mode::Render
-		|| args.mode == Mode::Bench
-		|| args.mode == Mode::Latency
-	{
-		args.options.width = args
-			.options
-			.width
-			.min(args.width as f32 / args.scale - 32.0)
-			.max(80.0);
-		let path = args.path.as_ref().unwrap();
-		if args.mode == Mode::Bench {
-			return benchmark::run(
-				path,
-				args.output.as_deref(),
-				args.width,
-				args.height,
-				args.scale,
-				args.theme.unwrap_or_default(),
-				args.iterations,
-				args.options,
-				args.offline,
-			);
-		}
-		if args.mode == Mode::Latency {
-			return crate::latency::run(
-				path,
-				args.output.as_deref(),
-				args.width,
-				args.height,
-				args.scale,
-				args.theme.unwrap_or_default(),
-				args.iterations,
-				args.options,
-				args.offline,
-			);
-		}
-		let mut renderer = pollster::block_on(Renderer::new(None))?;
-		renderer.set_stylesheet(args.options.stylesheet.clone());
-		let services = std::sync::Arc::new(crate::services::Services::new(4));
-		let mut engine = LayoutEngine::with_executor(
-			services.handle.cpu.clone(),
-			std::sync::Arc::new(|| {}),
-		);
-		engine.validate_stylesheet(&args.options.stylesheet)?;
-		let doc = markview_commonmark::parse(read_document(path)?);
-		let mut images = crate::images::Images::shared(
-			args.offline,
-			args.options.fonts.clone(),
-			&services,
-		);
-		images.set_security(crate::security::Security::local(
-			crate::security::Trust::Trusted,
-		));
-		images.prepare(
-			&doc,
+	Ok(())
+}
+
+fn run_diagnostic(mut args: LaunchOptions) -> Result<()> {
+	args.options.width = args
+		.options
+		.width
+		.min(args.width as f32 / args.scale - 32.0)
+		.max(80.0);
+	let path = args.path.as_ref().unwrap();
+	if args.mode == Mode::Bench {
+		return benchmark::run(
 			path,
-			1,
-			false,
-			&args.options.stylesheet,
-			&args.options.fonts,
+			args.output.as_deref(),
+			args.width,
+			args.height,
+			args.scale,
+			args.theme.unwrap_or_default(),
+			args.iterations,
+			args.options,
+			args.offline,
 		);
-		images.wait();
-		let mut snapshot =
+	}
+	if args.mode == Mode::Latency {
+		return crate::latency::run(
+			path,
+			args.output.as_deref(),
+			args.width,
+			args.height,
+			args.scale,
+			args.theme.unwrap_or_default(),
+			args.iterations,
+			args.options,
+			args.offline,
+		);
+	}
+	render_preview(args)
+}
+
+fn render_preview(args: LaunchOptions) -> Result<()> {
+	let path = args.path.as_ref().unwrap();
+	let mut renderer = pollster::block_on(Renderer::new(None))?;
+	renderer.set_stylesheet(args.options.stylesheet.clone());
+	let services = std::sync::Arc::new(crate::services::Services::new(4));
+	let mut engine = LayoutEngine::with_executor(
+		services.handle.cpu.clone(),
+		std::sync::Arc::new(|| {}),
+	);
+	engine.validate_stylesheet(&args.options.stylesheet)?;
+	let doc = markview_commonmark::parse(read_document(path)?);
+	let mut images = crate::images::Images::shared(
+		args.offline,
+		args.options.fonts.clone(),
+		&services,
+	);
+	images.set_security(crate::security::Security::local(
+		crate::security::Trust::Trusted,
+	));
+	images.prepare(
+		&doc,
+		path,
+		1,
+		false,
+		&args.options.stylesheet,
+		&args.options.fonts,
+	);
+	images.wait();
+	let mut snapshot =
+		engine.layout_with_images(&doc, &args.options, &images.snapshot);
+	// A static image cannot wait for a later frame, so it settles the
+	// cosmetic highlighting pass before drawing.
+	if engine.wait_highlights() {
+		snapshot =
 			engine.layout_with_images(&doc, &args.options, &images.snapshot);
-		// A static image cannot wait for a later frame, so it settles the
-		// cosmetic highlighting pass before drawing.
-		if engine.wait_highlights() {
-			snapshot = engine.layout_with_images(
-				&doc,
-				&args.options,
-				&images.snapshot,
-			);
-		}
-		for entry in images.snapshot.entries.values() {
-			if let Some(error) = &entry.error {
-				warn!("Image: {error}");
-			}
-		}
-		let target = renderer.offscreen(args.width, args.height);
-		let horizontal = HashMap::new();
-		let view = View {
-			selection: None,
-			hovered_link: None,
-			held_overflow: None,
-			hovered_overflow: None,
-			scroll: args.scroll,
-			horizontal: &horizontal,
-			revision: 0,
-			width: args.width,
-			height: args.height,
-			scale: args.scale,
-			left: ((args.width as f32 / args.scale - args.options.width) / 2.0)
-				.max(16.0),
-			top: 24.0,
-			bottom: 24.0,
-			theme: args.theme.unwrap_or_default(),
-		};
+	}
+	report_image_errors(&images.snapshot);
+	let target = renderer.offscreen(args.width, args.height);
+	let horizontal = HashMap::new();
+	let view = View {
+		selection: None,
+		hovered_link: None,
+		held_overflow: None,
+		hovered_overflow: None,
+		scroll: args.scroll,
+		horizontal: &horizontal,
+		revision: 0,
+		width: args.width,
+		height: args.height,
+		scale: args.scale,
+		left: ((args.width as f32 / args.scale - args.options.width) / 2.0)
+			.max(16.0),
+		top: 24.0,
+		bottom: 24.0,
+		theme: args.theme.unwrap_or_default(),
+	};
+	let index = renderer.render(
+		&snapshot,
+		&view,
+		&[],
+		&target.create_view(&Default::default()),
+	)?;
+	renderer.wait(Some(index))?;
+	// The first frame publishes the actual physical sizes, including DPI
+	// and explicit HTML dimensions. Export the settled vector raster.
+	images.wait();
+	if snapshot.images.entries != images.snapshot.entries {
+		snapshot =
+			engine.layout_with_images(&doc, &args.options, &images.snapshot);
 		let index = renderer.render(
 			&snapshot,
 			&view,
@@ -245,40 +264,42 @@ fn run_with_options(mut args: LaunchOptions) -> Result<()> {
 			&target.create_view(&Default::default()),
 		)?;
 		renderer.wait(Some(index))?;
-		// The first frame publishes the actual physical sizes, including DPI
-		// and explicit HTML dimensions. Export the settled vector raster.
-		images.wait();
-		if snapshot.images.entries != images.snapshot.entries {
-			snapshot = engine.layout_with_images(
-				&doc,
-				&args.options,
-				&images.snapshot,
-			);
-			let index = renderer.render(
-				&snapshot,
-				&view,
-				&[],
-				&target.create_view(&Default::default()),
-			)?;
-			renderer.wait(Some(index))?;
-		}
-		let output = args.output.as_ref().unwrap();
-		if let Some(parent) =
-			output.parent().filter(|p| !p.as_os_str().is_empty())
-		{
-			std::fs::create_dir_all(parent)?;
-		}
-		renderer.save_png(&target, output)?;
-		info!(
-			"Rendered {} blocks, {:.0}px tall, {} degraded paragraphs, {} formula errors; {}",
-			snapshot.blocks.len(),
-			snapshot.height,
-			snapshot.degraded,
-			snapshot.math_errors,
-			renderer.adapter_name
-		);
-		return Ok(());
 	}
+	let output = args.output.as_ref().unwrap();
+	save_preview(&renderer, &target, output)?;
+	info!(
+		"Rendered {} blocks, {:.0}px tall, {} degraded paragraphs, {} formula errors; {}",
+		snapshot.blocks.len(),
+		snapshot.height,
+		snapshot.degraded,
+		snapshot.math_errors,
+		renderer.adapter_name
+	);
+	Ok(())
+}
+
+fn report_image_errors(snapshot: &markview_layout::image::ImageSnapshot) {
+	for entry in snapshot.entries.values() {
+		if let Some(error) = &entry.error {
+			warn!("Image: {error}");
+		}
+	}
+}
+
+fn save_preview(
+	renderer: &Renderer,
+	target: &wgpu::Texture,
+	output: &std::path::Path,
+) -> Result<()> {
+	if let Some(parent) = output.parent().filter(|p| !p.as_os_str().is_empty())
+	{
+		std::fs::create_dir_all(parent)?;
+	}
+	renderer.save_png(target, output)?;
+	Ok(())
+}
+
+fn run_reader(args: LaunchOptions) -> Result<()> {
 	// Register while disabled too, so enabling the setting needs no restart.
 	let mut instance = None;
 	if args.mode == Mode::Window
