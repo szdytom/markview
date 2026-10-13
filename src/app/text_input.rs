@@ -301,21 +301,7 @@ impl<P: SendEvent> App<P> {
 		self.redraw();
 	}
 	pub(super) fn sync_input(&mut self) {
-		let focus = self.focused_input();
-		let desired = if self.text_input.window_active
-			&& self.text_input.window_visible
-			&& !self.dialog_open
-			&& self.interaction.modal.is_none()
-			&& self.interaction.dropdown.is_none()
-			&& self.interaction.viewer.is_none()
-		{
-			match focus {
-				Some(id) if self.input_geometry(id).is_some() => Some(id),
-				_ => None,
-			}
-		} else {
-			None
-		};
+		let desired = self.desired_input_focus();
 		if desired != self.text_input.focused {
 			self.blur_input();
 			self.text_input.focused = desired;
@@ -336,6 +322,24 @@ impl<P: SendEvent> App<P> {
 			}
 		}
 	}
+	fn desired_input_focus(&mut self) -> Option<TextField> {
+		let focus = self.focused_input();
+		if self.text_input.window_active
+			&& self.text_input.window_visible
+			&& !self.dialog_open
+			&& self.interaction.modal.is_none()
+			&& self.interaction.dropdown.is_none()
+			&& self.interaction.viewer.is_none()
+		{
+			match focus {
+				Some(id) if self.input_geometry(id).is_some() => Some(id),
+				_ => None,
+			}
+		} else {
+			None
+		}
+	}
+
 	// Wayland commits every cursor-area request and can answer with IME events.
 	// Publish only changed geometry, after the entire input batch is processed.
 	fn take_ime_area(&mut self) -> Option<ImeArea> {
