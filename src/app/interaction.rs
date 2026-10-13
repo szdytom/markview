@@ -33,6 +33,12 @@ fn sanitize_filename(title: &str, lang: crate::lang::Lang) -> String {
 }
 
 impl<P: super::SendEvent> App<P> {
+	#[cfg_attr(
+		any(),
+		markview::allow_complexity(
+			reason = "Keep exhaustive command dispatch with shared input and gesture cleanup; every host command must observe the same pre-dispatch ownership rules."
+		)
+	)]
 	pub(super) fn action(&mut self, action: Command) {
 		if !self.settings_action_enabled(action) {
 			return;
