@@ -929,6 +929,11 @@ fn finish(mut out: LaunchOptions) -> Result<Option<LaunchOptions>> {
 	) {
 		return Ok(Some(out));
 	}
+	validate_file_mode(&out)?;
+	Ok(Some(out))
+}
+
+fn validate_file_mode(out: &LaunchOptions) -> Result<()> {
 	if out.path.is_none() {
 		bail!("This mode requires a Markdown file");
 	}
@@ -951,7 +956,7 @@ fn finish(mut out: LaunchOptions) -> Result<Option<LaunchOptions>> {
 	} else if out.watch {
 		bail!("--watch re-exports on every save; it applies to pdf");
 	}
-	Ok(Some(out))
+	Ok(())
 }
 
 /// Whether two paths name the same file once the filesystem resolves them:
