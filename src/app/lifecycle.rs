@@ -149,6 +149,12 @@ impl<P: super::SendEvent> App<P> {
 	/// The loop's own events, handled without naming winit's loop type so a
 	/// test can deliver an update to the same code the window runs. The only
 	/// thing asked of the loop is whether to stop.
+	#[cfg_attr(
+		any(),
+		markview::allow_complexity(
+			reason = "Keep exhaustive user-event dispatch with revision and path guards; stale worker, picker and permission results must be rejected before any session effect."
+		)
+	)]
 	pub(super) fn handle_user_event(
 		&mut self,
 		event_loop: &impl Loop,
