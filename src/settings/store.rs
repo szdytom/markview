@@ -1,7 +1,7 @@
 //! Transactional configuration reads, merging and durable writes.
 use super::{
-	ExportSettings, FontDefOverride, ReaderSettings, Setting, Sidebar,
-	TabStyle, WindowLayout, default_cjk_type,
+	ExportSettings, FontDefOverride, MarkdownFlavor, ReaderSettings, Setting,
+	Sidebar, TabStyle, WindowLayout, default_cjk_type,
 };
 use crate::lang::Lang;
 use crate::render::Theme;
@@ -110,6 +110,12 @@ struct Config {
 	paragraph_indent: f32,
 	#[serde(rename = "cjk-type")]
 	cjk_type: Option<CjkType>,
+	#[serde(rename = "markdown-flavor")]
+	markdown_flavor: MarkdownFlavor,
+	#[serde(rename = "hard-breaks")]
+	hard_breaks: bool,
+	#[serde(rename = "highlight-marks")]
+	highlight_marks: bool,
 	#[serde(
 		rename = "codeblock-theme-override",
 		skip_serializing_if = "Option::is_none"
@@ -149,6 +155,9 @@ impl Default for Config {
 			justification: settings.justification,
 			paragraph_indent: settings.paragraph_indent,
 			cjk_type: Some(settings.cjk_type),
+			markdown_flavor: settings.markdown_flavor,
+			hard_breaks: settings.hard_breaks,
+			highlight_marks: settings.highlight_marks,
 			codeblock_theme_override: None,
 			codeblock_wrap: settings.codeblock_wrap,
 			scroll_speed: settings.scroll_speed,
@@ -199,6 +208,9 @@ impl Config {
 			justification: self.justification,
 			paragraph_indent: self.paragraph_indent,
 			cjk_type: self.cjk_type.unwrap_or_else(default_cjk_type),
+			markdown_flavor: self.markdown_flavor,
+			hard_breaks: self.hard_breaks,
+			highlight_marks: self.highlight_marks,
 			lang: self.language,
 			user_agent: self.user_agent.clone(),
 			accept_language: self.accept_language.clone(),
@@ -437,6 +449,7 @@ impl SettingsStore {
 					Setting::CjkType,
 					Setting::Language,
 					Setting::CodeblockWrap,
+					Setting::Dialect,
 					Setting::ScrollSpeed,
 					Setting::SingleInstance,
 					Setting::RestoreSession,
@@ -494,6 +507,9 @@ impl SettingsStore {
 			justification: self.saved.justification,
 			paragraph_indent: self.saved.paragraph_indent,
 			cjk_type: Some(self.saved.cjk_type),
+			markdown_flavor: self.saved.markdown_flavor,
+			hard_breaks: self.saved.hard_breaks,
+			highlight_marks: self.saved.highlight_marks,
 			language: self.saved.lang,
 			user_agent: self.saved.user_agent.clone(),
 			accept_language: self.saved.accept_language.clone(),

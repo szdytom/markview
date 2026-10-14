@@ -2015,6 +2015,51 @@ fn inline_code_chip_covers_justified_spaces() {
 }
 
 #[test]
+fn a_highlight_mark_paints_a_background_only_in_the_dialect() {
+	let laid_out = |dialect: markview_commonmark::Dialect| {
+		let doc = markview_commonmark::parse_with("a ==marked== b\n", dialect);
+		LayoutEngine::new().layout(&doc, &LayoutOptions::default())
+	};
+	let backgrounds = |snapshot: crate::scene::LayoutSnapshot| {
+		snapshot.blocks[0]
+			.layout
+			.draws
+			.iter()
+			.filter_map(|d| match d {
+				Draw::Rect(_, paint) => Some(*paint),
+				_ => None,
+			})
+			.collect::<Vec<_>>()
+	};
+	// Off, `==` is literal text and the plain paragraph paints no box at all.
+	assert!(
+		backgrounds(laid_out(markview_commonmark::Dialect::default()))
+			.is_empty()
+	);
+	// On, the marked run paints the sheet's highlighter background.
+	let on = backgrounds(laid_out(markview_commonmark::Dialect {
+		highlight_marks: true,
+		..Default::default()
+	}));
+	let sheet = &LayoutOptions::default().stylesheet;
+	let amber = document::Color(0xE9BA4566).rgba();
+	assert!(
+		on.iter().any(|paint| sheet.paint(*paint) == amber),
+		"{on:?}"
+	);
+	// One translucent amber serves both polarities of theme, so neither
+	// bundled sheet replaces it.
+	for dark in [false, true] {
+		assert_eq!(
+			crate::style::Stylesheet::bundled(dark)
+				.rule(Condition::Mark)
+				.background,
+			Some(document::Color(0xE9BA4566))
+		);
+	}
+}
+
+#[test]
 fn an_inline_code_chip_pads_its_text_and_pushes_its_neighbours() {
 	// `padding` on `code` insets the run's glyphs inside a wider chip, moves
 	// the text after the chip along with it, and makes the chip taller, so a

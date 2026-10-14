@@ -635,7 +635,8 @@ fn opaque_html_edits_match_full_parses() {
 			assert!(
 				markview_commonmark::parse_incremental(
 					&previous,
-					Arc::from(changed.clone())
+					Arc::from(changed.clone()),
+					markview_commonmark::Dialect::default()
 				)
 				.is_none()
 			);
@@ -660,8 +661,12 @@ fn opaque_html_edits_match_full_parses() {
 		let plain =
 			markview_commonmark::parse(source.replace(&format!("<{tag}>"), ""));
 		assert!(
-			markview_commonmark::parse_incremental(&plain, Arc::from(source))
-				.is_none()
+			markview_commonmark::parse_incremental(
+				&plain,
+				Arc::from(source),
+				markview_commonmark::Dialect::default()
+			)
+			.is_none()
 		);
 	}
 }

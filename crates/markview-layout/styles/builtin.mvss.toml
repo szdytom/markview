@@ -672,6 +672,12 @@ color = "#1F4568"
 when = ["del"]
 decoration = ["line-through"]
 
+# A `==highlight==` mark. One translucent amber reads over light and dark
+# themes alike, so the shared fallback owns it.
+[[rule]]
+when = ["mark"]
+background = "#E9BA4566"
+
 [[rule]]
 when = ["sup"]
 size = 0.7

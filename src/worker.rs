@@ -189,6 +189,7 @@ impl Worker {
 				let mut cached: Option<(
 					PathBuf,
 					u64,
+					markview_commonmark::Dialect,
 					Arc<document::Document>,
 				)> = None;
 				loop {
@@ -236,9 +237,16 @@ impl Worker {
 					};
 					update.result =
 						Some((|| -> Result<ReaderSnapshot, String> {
-							let document = if let Some((path, revision, doc)) =
-								&cached && path == &request.path
+							let dialect = markview_commonmark::Dialect {
+								hard_breaks: request.options.hard_breaks,
+								highlight_marks: request.options.highlight_marks,
+							};
+							let document = if let Some(
+								(path, revision, cached_dialect, doc),
+							) = &cached
+								&& path == &request.path
 								&& *revision == request.content_version
+								&& *cached_dialect == dialect
 							{
 								request.security =
 									request.security.for_content(&doc.source);
@@ -257,14 +265,20 @@ impl Worker {
 								// re-parses only the block it changed.
 								let previous = cached
 									.as_ref()
-									.filter(|(path, ..)| path == &request.path)
-									.map(|(_, _, doc)| doc.clone());
+									.filter(|(path, _, cached_dialect, _)| {
+										path == &request.path
+											&& *cached_dialect == dialect
+									})
+									.map(|(_, _, _, doc)| doc.clone());
 								let doc = match previous {
 									Some(previous) => {
-										Arc::new(markview_commonmark::reparse(
-											&previous,
-											source.clone(),
-										))
+										Arc::new(
+											markview_commonmark::reparse_with(
+												&previous,
+												source.clone(),
+												dialect,
+											),
+										)
 									}
 									None => {
 										// A fresh document that is large
@@ -277,9 +291,10 @@ impl Worker {
 											.sequence
 											.load(Ordering::Relaxed) == request
 											.version && let Some(prefix) =
-											markview_commonmark::parse_prefix(
+											markview_commonmark::parse_prefix_with(
 												&source,
 												PREFIX_BYTES,
+												dialect,
 											) {
 											let prefix_parse = prefix_start
 												.elapsed()
@@ -365,21 +380,25 @@ impl Worker {
 												done(partial);
 											}
 										}
-										Arc::new(markview_commonmark::parse(
-											source.clone(),
-										))
+										Arc::new(
+											markview_commonmark::parse_with(
+												source.clone(),
+												dialect,
+											),
+										)
 									}
 								};
 								update.parse_ms =
 									start.elapsed().as_secs_f64() * 1000.0;
 								if cached.as_ref().is_some_and(
-									|(path, _, _)| path != &request.path,
+									|(path, _, _, _)| path != &request.path,
 								) {
 									engine.release_document();
 								}
 								cached = Some((
 									request.path.clone(),
 									request.content_version,
+									dialect,
 									doc.clone(),
 								));
 								doc
@@ -812,6 +831,121 @@ mod tests {
 			}
 		}
 	}
+	#[test]
+	fn a_changed_hard_break_dialect_reparses_the_same_content() {
+		let dir = tempfile::tempdir().unwrap();
+		let path = dir.path().join("read.md");
+		fs::write(&path, "one\ntwo\n\nthree\n").unwrap();
+		let (tx, rx) = mpsc::channel();
+		let worker = Worker::new(move |u| {
+			let _ = tx.send(u);
+		});
+		let request = |version: u64, hard_breaks: bool| Request {
+			security: crate::security::Security::local(
+				crate::security::Trust::Trusted,
+			),
+			version,
+			content_version: 1,
+			path: path.clone(),
+			options: LayoutOptions {
+				hard_breaks,
+				..crate::test_support::options()
+			},
+			requested: Instant::now(),
+			coverage: f32::INFINITY,
+			load_all_images: false,
+		};
+		let complete = |version: u64| loop {
+			let update = rx.recv_timeout(Duration::from_secs(10)).unwrap();
+			if update.version == version
+				&& update.result.as_ref().unwrap().as_ref().unwrap().complete
+			{
+				break update.result.unwrap().unwrap();
+			}
+		};
+		let line_broken = |reader: &ReaderSnapshot| {
+			reader.document.blocks.iter().any(|b| {
+				matches!(
+					&b.kind,
+					markview_document::BlockKind::Paragraph(text)
+						if text.iter().any(|i| matches!(
+							i.kind,
+							markview_document::InlineKind::LineBreak { .. }
+						))
+				)
+			})
+		};
+		worker.submit(request(1, false));
+		let soft = complete(1);
+		assert!(!line_broken(&soft));
+		// The same content in the other dialect is a new parse, not a reflow
+		// of the document the worker kept.
+		worker.submit(request(2, true));
+		let hard = complete(2);
+		assert!(!Arc::ptr_eq(&soft.document, &hard.document));
+		assert!(line_broken(&hard));
+		// The same dialect again reuses the retained parse, like any reflow.
+		worker.submit(request(3, true));
+		let reused = complete(3);
+		assert!(Arc::ptr_eq(&hard.document, &reused.document));
+	}
+
+	#[test]
+	fn a_changed_highlight_dialect_reparses_the_same_content() {
+		let dir = tempfile::tempdir().unwrap();
+		let path = dir.path().join("read.md");
+		fs::write(&path, "a ==marked== b\n").unwrap();
+		let (tx, rx) = mpsc::channel();
+		let worker = Worker::new(move |u| {
+			let _ = tx.send(u);
+		});
+		let request = |version: u64, highlight_marks: bool| Request {
+			security: crate::security::Security::local(
+				crate::security::Trust::Trusted,
+			),
+			version,
+			content_version: 1,
+			path: path.clone(),
+			options: LayoutOptions {
+				highlight_marks,
+				..crate::test_support::options()
+			},
+			requested: Instant::now(),
+			coverage: f32::INFINITY,
+			load_all_images: false,
+		};
+		let complete = |version: u64| loop {
+			let update = rx.recv_timeout(Duration::from_secs(10)).unwrap();
+			if update.version == version
+				&& update.result.as_ref().unwrap().as_ref().unwrap().complete
+			{
+				break update.result.unwrap().unwrap();
+			}
+		};
+		let marked = |reader: &ReaderSnapshot| {
+			reader.document.blocks.iter().any(|b| {
+				matches!(
+					&b.kind,
+					markview_document::BlockKind::Paragraph(text)
+						if text.iter().any(|i| i.style.mark)
+				)
+			})
+		};
+		worker.submit(request(1, false));
+		let literal = complete(1);
+		assert!(!marked(&literal));
+		// The same content in the other dialect is a new parse, not a reflow
+		// of the document the worker kept.
+		worker.submit(request(2, true));
+		let highlighted = complete(2);
+		assert!(!Arc::ptr_eq(&literal.document, &highlighted.document));
+		assert!(marked(&highlighted));
+		// The same dialect again reuses the retained parse, like any reflow.
+		worker.submit(request(3, true));
+		let reused = complete(3);
+		assert!(Arc::ptr_eq(&highlighted.document, &reused.document));
+	}
+
 	#[test]
 	fn worker_publishes_latest_request() {
 		let dir = tempfile::tempdir().unwrap();

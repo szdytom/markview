@@ -17,7 +17,7 @@
 //! them. A prefix that ends inside a code block or a list simply shows the part
 //! of it that exists.
 use super::{
-	Anchors, Block, BlockKind, Document, RichText, content_identity,
+	Anchors, Block, BlockKind, Dialect, Document, RichText, content_identity,
 	plain_text, semantic_key,
 };
 use std::{ops::Range, sync::Arc};
@@ -25,9 +25,13 @@ use std::{ops::Range, sync::Arc};
 /// The document that `source` describes, reusing `previous`'s blocks where the
 /// edit did not touch them, or `None` when the change or the document is
 /// outside the fast path and the caller must [`super::parse`] instead.
+///
+/// `dialect` must be the one `previous` was parsed with, or reused blocks and
+/// re-parsed ones would disagree about what the source reads as.
 pub fn parse_incremental(
 	previous: &Document,
 	source: Arc<str>,
+	dialect: Dialect,
 ) -> Option<Document> {
 	if !leaf_only(&previous.source)
 		|| !leaf_only(&source)
@@ -77,7 +81,7 @@ pub fn parse_incremental(
 	let replaced = if window.starts_with('\u{feff}') {
 		None
 	} else {
-		Some(super::parse(window.to_owned()).blocks)
+		Some(super::parse_with(window.to_owned(), dialect).blocks)
 	};
 	let mut replaced = replaced?;
 	for block in &mut replaced {
@@ -117,8 +121,18 @@ fn changed_range(previous: &str, source: &str) -> std::ops::Range<usize> {
 /// it can and taking a full parse otherwise. A reader and a one-shot export
 /// share one policy here, so neither can drift from the fast path.
 pub fn reparse(previous: &Document, source: Arc<str>) -> Document {
-	parse_incremental(previous, source.clone())
-		.unwrap_or_else(|| super::parse(source))
+	reparse_with(previous, source, Dialect::default())
+}
+
+/// [`reparse`] with the dialect named: `dialect` must be the one `previous`
+/// was parsed with.
+pub fn reparse_with(
+	previous: &Document,
+	source: Arc<str>,
+	dialect: Dialect,
+) -> Document {
+	parse_incremental(previous, source.clone(), dialect)
+		.unwrap_or_else(|| super::parse_with(source, dialect))
 }
 
 /// The blocks at the start of `source` that `bytes` reaches, as a document over
@@ -128,6 +142,15 @@ pub fn reparse(previous: &Document, source: Arc<str>) -> Document {
 /// there, so a reader can show the opening viewport of a large file without
 /// waiting for the whole parse, and the complete parse reuses their geometry.
 pub fn parse_prefix(source: &Arc<str>, bytes: usize) -> Option<Document> {
+	parse_prefix_with(source, bytes, Dialect::default())
+}
+
+/// [`parse_prefix`] in the dialect `dialect` names.
+pub fn parse_prefix_with(
+	source: &Arc<str>,
+	bytes: usize,
+	dialect: Dialect,
+) -> Option<Document> {
 	if bytes == 0 || bytes >= source.len() {
 		return None;
 	}
@@ -181,7 +204,7 @@ pub fn parse_prefix(source: &Arc<str>, bytes: usize) -> Option<Document> {
 			at = open + 4;
 		}
 	}
-	let mut blocks = prefix_blocks(source, end);
+	let mut blocks = prefix_blocks(source, end, dialect);
 	if end < source.len() {
 		// Notes belong after all body content, including the unread suffix.
 		blocks
@@ -196,26 +219,26 @@ pub fn parse_prefix(source: &Arc<str>, bytes: usize) -> Option<Document> {
 
 /// The blocks of `source[..end]`, with every reference or note resolved from
 /// the definitions that follow the cut.
-fn prefix_blocks(source: &str, end: usize) -> Vec<Block> {
+fn prefix_blocks(source: &str, end: usize, dialect: Dialect) -> Vec<Block> {
 	let bare = &source[..end];
 	if !bare.contains('[') {
-		return super::parse(bare.to_owned()).blocks;
+		return super::parse_with(bare.to_owned(), dialect).blocks;
 	}
 	let definitions = missing_definitions(source, bare);
 	if definitions.is_empty() {
-		return super::parse(bare.to_owned()).blocks;
+		return super::parse_with(bare.to_owned(), dialect).blocks;
 	}
 	let mut slice = bare.to_owned();
 	slice.push_str("\n\n");
 	slice.push_str(&definitions);
-	let parsed = super::parse(slice).blocks;
+	let parsed = super::parse_with(slice, dialect).blocks;
 	// An open fence or HTML block can swallow the appended text; then only the
 	// bare prefix parses to what the full parse would put there.
 	if parsed
 		.iter()
 		.any(|block| block.source.start < end && block.source.end > end)
 	{
-		return super::parse(bare.to_owned()).blocks;
+		return super::parse_with(bare.to_owned(), dialect).blocks;
 	}
 	parsed
 		.into_iter()

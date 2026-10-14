@@ -92,6 +92,8 @@ pub struct TextStyle {
 	pub bold: bool,
 	pub italic: bool,
 	pub strike: bool,
+	/// A `==highlight==` mark, drawn over a highlighter background.
+	pub mark: bool,
 	pub code: bool,
 	pub math_error: bool,
 	pub superscript: bool,
