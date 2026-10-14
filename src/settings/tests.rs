@@ -345,6 +345,84 @@ fn codeblock_wrap_round_trips_settings_and_layout() {
 	);
 }
 
+/// The dialect a parse uses follows the preset: GFM keeps the stored toggles,
+/// while OFM lite forces highlight on and hard breaks off whatever is stored.
+#[test]
+fn markdown_dialect_defaults_and_ofm_lite_forces_its_toggles() {
+	let settings = ReaderSettings::default();
+	assert_eq!(settings.markdown_flavor, MarkdownFlavor::Gfm);
+	let dialect = settings.effective_dialect();
+	assert!(!dialect.hard_breaks);
+	assert!(!dialect.highlight_marks);
+	let mut settings = settings;
+	settings.hard_breaks = true;
+	settings.highlight_marks = true;
+	let dialect = settings.effective_dialect();
+	assert!(dialect.hard_breaks);
+	assert!(dialect.highlight_marks);
+	settings.markdown_flavor = MarkdownFlavor::OfmLite;
+	let dialect = settings.effective_dialect();
+	assert!(!dialect.hard_breaks);
+	assert!(dialect.highlight_marks);
+}
+
+/// The parse the layout options describe is the effective dialect: OFM lite
+/// keeps a stored toggle from ever reaching a parse.
+#[test]
+fn layout_options_carry_the_effective_dialect() {
+	let fonts = crate::test_support::fonts();
+	let mut settings = ReaderSettings::default();
+	let options = |settings: &ReaderSettings| {
+		settings.layout_options(900.0, false, &fonts)
+	};
+	assert!(!options(&settings).hard_breaks);
+	assert!(!options(&settings).highlight_marks);
+	settings.hard_breaks = true;
+	settings.highlight_marks = true;
+	assert!(options(&settings).hard_breaks);
+	assert!(options(&settings).highlight_marks);
+	settings.markdown_flavor = MarkdownFlavor::OfmLite;
+	assert!(!options(&settings).hard_breaks);
+	assert!(options(&settings).highlight_marks);
+}
+
+#[test]
+fn markdown_dialect_round_trips_and_old_files_still_load() {
+	let dir = tempfile::tempdir().unwrap();
+	let path = dir.path().join("settings.toml");
+	// A file from before the dialect existed keeps today's reading behavior.
+	fs::write(&path, "font_size = 20\n").unwrap();
+	let (mut store, warning) = SettingsStore::load(Some(path.clone()));
+	assert!(warning.is_none());
+	assert_eq!(store.settings().markdown_flavor, MarkdownFlavor::Gfm);
+	let dialect = store.settings().effective_dialect();
+	assert!(!dialect.hard_breaks);
+	assert!(!dialect.highlight_marks);
+
+	let mut ui = store.settings();
+	ui.markdown_flavor = MarkdownFlavor::OfmLite;
+	// The stored toggle survives the preset, ready for a switch back to GFM.
+	ui.hard_breaks = true;
+	store.changed(&ui, Some(Setting::Dialect));
+	store.flush().unwrap();
+	let text = fs::read_to_string(&path).unwrap();
+	assert!(text.contains("markdown-flavor"), "{text}");
+	assert!(text.contains("hard-breaks = true"), "{text}");
+	let (loaded, warning) = SettingsStore::load(Some(path.clone()));
+	assert!(warning.is_none());
+	let settings = loaded.settings();
+	assert_eq!(settings.markdown_flavor, MarkdownFlavor::OfmLite);
+	assert!(settings.hard_breaks);
+	let dialect = settings.effective_dialect();
+	assert!(!dialect.hard_breaks);
+	assert!(dialect.highlight_marks);
+	// A flavor the reader does not know is rejected, like any other enum.
+	fs::write(&path, "markdown-flavor = 'commonmark'\n").unwrap();
+	let (loaded, warning) = SettingsStore::load(Some(path));
+	assert!(warning.is_some());
+	assert_eq!(loaded.settings().markdown_flavor, MarkdownFlavor::Gfm);
+}
+
 #[test]
 fn footer_path_defaults_off_and_round_trips() {
 	let dir = tempfile::tempdir().unwrap();

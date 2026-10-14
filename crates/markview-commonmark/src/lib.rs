@@ -8,7 +8,9 @@ mod limits;
 mod parse;
 use heading::Anchors;
 pub use heading::heading_slug;
-pub use incremental::{parse_incremental, parse_prefix, reparse};
+pub use incremental::{
+	parse_incremental, parse_prefix, parse_prefix_with, reparse, reparse_with,
+};
 use markview_document as document;
 use markview_document::image;
 use markview_document::{
@@ -16,6 +18,6 @@ use markview_document::{
 	RichText, TextStyle, content_identity, fingerprint, footnote, plain_text,
 	semantic_key,
 };
-pub use parse::parse;
+pub use parse::{Dialect, parse, parse_with};
 #[cfg(test)]
 mod tests;

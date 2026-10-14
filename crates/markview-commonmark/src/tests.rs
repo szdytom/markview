@@ -407,31 +407,135 @@ fn a_line_break_survives_as_a_break_not_as_text() {
 	);
 }
 
-/// An edit the incremental path must handle: the result has to equal a full
-/// parse block for block, source range for source range.
-fn assert_incremental(before: &str, after: &str) {
-	let previous = parse(before);
-	let got = parse_incremental(&previous, Arc::from(after))
-		.unwrap_or_else(|| panic!("no fast path for {before:?} -> {after:?}"));
-	let expected = parse(after);
-	assert_eq!(
-		got.content_id, expected.content_id,
-		"{before:?} -> {after:?}"
+#[test]
+fn a_single_newline_breaks_only_in_the_hard_break_dialect() {
+	use crate::document::plain_text;
+	fn paragraph(doc: &Document) -> &RichText {
+		let BlockKind::Paragraph(rich) = &doc.blocks[0].kind else {
+			panic!("not a paragraph");
+		};
+		rich
+	}
+	// Off, a newline is the space CommonMark reads.
+	let soft = parse("one\ntwo\n");
+	assert_eq!(plain_text(paragraph(&soft)), "one two");
+	assert!(
+		paragraph(&soft)
+			.iter()
+			.all(|i| !matches!(i.kind, InlineKind::LineBreak { .. }))
 	);
-	assert_eq!(got.blocks, expected.blocks, "{before:?} -> {after:?}");
+	// On, the same newline ends its line like a typed hard break.
+	let hard = parse_with(
+		"one\ntwo\n",
+		Dialect {
+			hard_breaks: true,
+			..Dialect::default()
+		},
+	);
+	assert_eq!(plain_text(paragraph(&hard)), "one\ntwo");
+	assert!(
+		paragraph(&hard).iter().any(|i| matches!(
+			&i.kind,
+			InlineKind::LineBreak { justify: false }
+		))
+	);
+}
+
+#[test]
+fn a_disclosure_body_keeps_the_documents_hard_break_dialect() {
+	use crate::document::plain_text;
+	let doc = parse_with(
+		"<details>\n<summary>Note</summary>\n\none\ntwo\n\n</details>\n",
+		Dialect {
+			hard_breaks: true,
+			..Dialect::default()
+		},
+	);
+	let BlockKind::Details { blocks, .. } = &doc.blocks[0].kind else {
+		panic!("not a disclosure");
+	};
+	let BlockKind::Paragraph(rich) = &blocks[0].kind else {
+		panic!("not a paragraph");
+	};
+	assert_eq!(plain_text(rich), "one\ntwo");
+}
+
+#[test]
+fn a_highlight_mark_parses_only_in_the_dialect() {
+	fn paragraph(doc: &Document) -> &RichText {
+		let BlockKind::Paragraph(rich) = &doc.blocks[0].kind else {
+			panic!("not a paragraph");
+		};
+		rich
+	}
+	let highlighted = Dialect {
+		highlight_marks: true,
+		..Dialect::default()
+	};
+	// Off, `==` stays the literal source.
+	let literal = parse("a ==marked== b\n");
+	assert_eq!(plain_text(paragraph(&literal)), "a ==marked== b");
+	assert!(paragraph(&literal).iter().all(|i| !i.style.mark));
+	// On, the same source reads as a mark; OFM lite parses it this way.
+	let marked = parse_with("a ==marked== b\n", highlighted);
+	assert_eq!(plain_text(paragraph(&marked)), "a marked b");
+	assert!(paragraph(&marked).iter().any(|i| i.style.mark
+		&& matches!(&i.kind, InlineKind::Text(t) if t == "marked")));
+	// Emphasis inside a mark keeps its own style.
+	let nested = parse_with("a ==**bold**== b\n", highlighted);
+	assert_eq!(plain_text(paragraph(&nested)), "a bold b");
+	assert!(
+		paragraph(&nested)
+			.iter()
+			.any(|i| i.style.mark && i.style.bold)
+	);
+}
+
+/// An edit the incremental path must handle: the result has to equal a full
+/// parse block for block, source range for source range, in either dialect.
+fn assert_incremental(before: &str, after: &str) {
+	for hard_breaks in [false, true] {
+		let dialect = Dialect {
+			hard_breaks,
+			..Dialect::default()
+		};
+		let previous = parse_with(before, dialect);
+		let got = parse_incremental(&previous, Arc::from(after), dialect)
+			.unwrap_or_else(|| {
+				panic!("no fast path for {before:?} -> {after:?}")
+			});
+		let expected = parse_with(after, dialect);
+		assert_eq!(
+			got.content_id, expected.content_id,
+			"{before:?} -> {after:?} (hard breaks: {hard_breaks})"
+		);
+		assert_eq!(
+			got.blocks, expected.blocks,
+			"{before:?} -> {after:?} (hard breaks: {hard_breaks})"
+		);
+	}
 }
 
 /// Every edit, whether or not it takes the fast path, must be correct.
 fn assert_edit(before: &str, after: &str) {
-	let previous = parse(before);
-	let got = parse_incremental(&previous, Arc::from(after))
-		.unwrap_or_else(|| parse(after));
-	let expected = parse(after);
-	assert_eq!(
-		got.content_id, expected.content_id,
-		"{before:?} -> {after:?}"
-	);
-	assert_eq!(got.blocks, expected.blocks, "{before:?} -> {after:?}");
+	for hard_breaks in [false, true] {
+		let dialect = Dialect {
+			hard_breaks,
+			..Dialect::default()
+		};
+		let previous = parse_with(before, dialect);
+		let got = parse_incremental(&previous, Arc::from(after), dialect)
+			.unwrap_or_else(|| parse_with(after, dialect));
+		let expected = parse_with(after, dialect);
+		assert_eq!(
+			got.content_id, expected.content_id,
+			"{before:?} -> {after:?} (hard breaks: {hard_breaks})"
+		);
+		assert_eq!(
+			got.blocks, expected.blocks,
+			"{before:?} -> {after:?} (hard breaks: {hard_breaks})"
+		);
+	}
 }
 
 #[test]
@@ -720,13 +824,25 @@ fn block_constructs_fall_back_to_a_full_parse() {
 		"Alpha[^note].\n\n[^note]: Note.\n",
 	] {
 		assert!(
-			parse_incremental(&parse(plain), Arc::from(after)).is_none(),
+			parse_incremental(
+				&parse(plain),
+				Arc::from(after),
+				Dialect::default()
+			)
+			.is_none(),
 			"expected a fallback for {after:?}"
 		);
 		assert_edit(plain, after);
 	}
 	// A document that only becomes plain still falls back the first time.
-	assert!(parse_incremental(&parse("- item\n"), Arc::from(plain)).is_none());
+	assert!(
+		parse_incremental(
+			&parse("- item\n"),
+			Arc::from(plain),
+			Dialect::default()
+		)
+		.is_none()
+	);
 }
 
 #[test]
@@ -785,6 +901,7 @@ fn incremental_parse_matches_a_full_parse_under_random_edits() {
 			if parse_incremental(
 				&parse(source.as_str()),
 				Arc::from(after.as_str()),
+				Dialect::default(),
 			)
 			.is_some()
 			{
@@ -923,7 +1040,8 @@ fn incremental_parse_rejects_a_bare_list_marker() {
 	assert!(
 		parse_incremental(
 			&parse(before),
-			Arc::from(before.replace("Two", "TWO"))
+			Arc::from(before.replace("Two", "TWO")),
+			Dialect::default()
 		)
 		.is_none()
 	);
@@ -933,7 +1051,8 @@ fn incremental_parse_rejects_a_bare_list_marker() {
 	assert!(
 		parse_incremental(
 			&parse(ordered),
-			Arc::from(ordered.replace("Two", "TWO"))
+			Arc::from(ordered.replace("Two", "TWO")),
+			Dialect::default()
 		)
 		.is_none()
 	);
@@ -943,7 +1062,8 @@ fn incremental_parse_rejects_a_bare_list_marker() {
 	assert!(
 		parse_incremental(
 			&parse(listed),
-			Arc::from(listed.replace("Text", "TEXT"))
+			Arc::from(listed.replace("Text", "TEXT")),
+			Dialect::default()
 		)
 		.is_none()
 	);

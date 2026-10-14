@@ -255,6 +255,18 @@ fn reader(source: &str, width: f32) -> (App<StubProxy>, Arc<Document>) {
 }
 
 #[test]
+fn changing_the_dialect_marks_the_open_document_as_new_content() {
+	let (mut app, _) = reader("one\ntwo\n\nthree\n", 760.0);
+	let before = app.readers.session.content_version;
+	// Only the dialect changes what a parse reads; a layout-only setting
+	// reflows the same document instead.
+	app.setting_changed(Some(crate::settings::Setting::CodeblockWrap));
+	assert_eq!(app.readers.session.content_version, before);
+	app.setting_changed(Some(crate::settings::Setting::Dialect));
+	assert!(app.readers.session.content_version > before);
+}
+
+#[test]
 fn reading_viewport_meets_chrome_and_scrollbar_edges() {
 	let (mut app, _) = reader(&"Body line.\n\n".repeat(100), 760.0);
 	for notice in [false, true] {

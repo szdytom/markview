@@ -62,6 +62,30 @@ pub enum TabStyle {
 	Connected,
 }
 
+/// The Markdown dialect a document is read in.
+///
+/// The preset settles the toggles it owns, so OFM lite always reads with
+/// highlight marks and without hard breaks, while GFM leaves both to the
+/// reader's own choices. See [`ReaderSettings::effective_dialect`].
+#[derive(
+	Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize,
+)]
+#[serde(rename_all = "kebab-case")]
+pub enum MarkdownFlavor {
+	#[default]
+	Gfm,
+	OfmLite,
+}
+
+/// The dialect a parse uses once the preset has settled the toggles it owns.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct EffectiveDialect {
+	/// Single newlines end their line as a hard break rather than a space.
+	pub hard_breaks: bool,
+	/// `==highlight==` marks are parsed and rendered.
+	pub highlight_marks: bool,
+}
+
 #[derive(Clone, Debug, PartialEq)]
 pub struct ReaderSettings {
 	pub window_layout: WindowLayout,
@@ -90,6 +114,12 @@ pub struct ReaderSettings {
 	/// paragraphs, and the whole of a list, markers included. Zero disables it.
 	pub paragraph_indent: f32,
 	pub cjk_type: CjkType,
+	pub markdown_flavor: MarkdownFlavor,
+	/// Single newlines render as hard line breaks; stored, but in force only
+	/// under GFM.
+	pub hard_breaks: bool,
+	/// Parse and render `==highlight==`; stored, but in force only under GFM.
+	pub highlight_marks: bool,
 	pub codeblock_theme_override: Option<String>,
 	/// Hard-wrap code block lines at the reading column instead of scrolling.
 	pub codeblock_wrap: bool,
@@ -124,6 +154,9 @@ impl Default for ReaderSettings {
 			justification: JustificationLimits::default(),
 			paragraph_indent: 0.0,
 			cjk_type: default_cjk_type(),
+			markdown_flavor: MarkdownFlavor::Gfm,
+			hard_breaks: false,
+			highlight_marks: false,
 			codeblock_theme_override: None,
 			codeblock_wrap: false,
 			scroll_speed: 1.0,
@@ -193,6 +226,8 @@ pub enum Setting {
 	CjkType,
 	Language,
 	CodeblockWrap,
+	/// The whole reading dialect: the flavor preset and the GFM-only toggles.
+	Dialect,
 	ScrollSpeed,
 	SingleInstance,
 	RestoreSession,
@@ -274,6 +309,22 @@ impl ReaderSettings {
 		self.lang.unwrap_or_default()
 	}
 
+	/// The dialect a parse uses: the preset settles the toggles it owns, so
+	/// OFM lite always reads with highlight marks and without hard breaks,
+	/// while GFM keeps the stored choices.
+	pub fn effective_dialect(&self) -> EffectiveDialect {
+		match self.markdown_flavor {
+			MarkdownFlavor::Gfm => EffectiveDialect {
+				hard_breaks: self.hard_breaks,
+				highlight_marks: self.highlight_marks,
+			},
+			MarkdownFlavor::OfmLite => EffectiveDialect {
+				hard_breaks: false,
+				highlight_marks: true,
+			},
+		}
+	}
+
 	/// The stylesheet with this reader's CJK variant applied.
 	///
 	/// The variant picks which `[cjk]` font definition exists at all, so a
@@ -297,6 +348,7 @@ impl ReaderSettings {
 		greedy: bool,
 		fonts: &markview_layout::fonts::FontConfig,
 	) -> LayoutOptions {
+		let dialect = self.effective_dialect();
 		LayoutOptions {
 			width: self.width.min(viewport_width - 40.0).max(80.0),
 			font_size: self.font_size,
@@ -309,6 +361,8 @@ impl ReaderSettings {
 			fonts: fonts.clone(),
 			codeblock_theme_override: self.codeblock_theme_override.clone(),
 			codeblock_wrap: self.codeblock_wrap,
+			hard_breaks: dialect.hard_breaks,
+			highlight_marks: dialect.highlight_marks,
 			details_open: Default::default(),
 			force_open: false,
 			front_matter_label: self.lang().front_matter().into(),

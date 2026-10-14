@@ -348,6 +348,12 @@ impl<P: super::SendEvent> App<P> {
 		self.args
 			.overrides
 			.retain(|f| field.is_some_and(|changed| changed != *f));
+		// The dialect changes what the parse reads, so what the reader holds is
+		// new content even though the file is not: the reflow that follows
+		// reparses, and stale selections and search results drop off.
+		if field == Some(Setting::Dialect) {
+			self.readers.session.content_version += 1;
+		}
 		if field.is_none() || field == Some(Setting::Theme) {
 			self.args.theme = None;
 			self.args.style = None;

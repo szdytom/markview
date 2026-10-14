@@ -82,11 +82,11 @@ macro_rules! settings_schema {
 	) => {
 		impl Setting {
 			/// Every persisted setting, in the order the settings page resets.
-			pub const ALL: [Self; 19] =
+			pub const ALL: [Self; 20] =
 				[ $( Setting::$variant $(($arg))? ),* ];
 			/// The number of `Setting` variants.
 			#[allow(dead_code, reason = "The settings tests assert this count.")]
-			pub const COUNT: usize = 17;
+			pub const COUNT: usize = 18;
 		}
 		impl ReaderSettings {
 			pub fn copy_field(&mut self, other: &Self, field: Setting) {
@@ -161,6 +161,7 @@ settings_schema! {
 		CjkType => cjk_type : cjk_type, copy, special: copy_cjk_type;
 		Language => lang : language, copy;
 		CodeblockWrap => codeblock_wrap : codeblock_wrap, copy;
+		Dialect => markdown_flavor : markdown_flavor, copy, special: copy_dialect;
 		ScrollSpeed => scroll_speed : scroll_speed, copy;
 		SingleInstance => single_instance : single_instance, copy,
 			special: copy_single_instance;
@@ -170,6 +171,8 @@ settings_schema! {
 			special: copy_font_family;
 	}
 	config {
+		hard_breaks, copy;
+		highlight_marks, copy;
 		style, clone;
 		user_agent, clone;
 		accept_language, clone;
@@ -231,4 +234,10 @@ fn copy_single_instance(to: &mut ReaderSettings, from: &ReaderSettings) {
 
 fn copy_font_family(to: &mut ReaderSettings, from: &ReaderSettings) {
 	to.fontdef_overrides = from.fontdef_overrides.clone();
+}
+
+fn copy_dialect(to: &mut ReaderSettings, from: &ReaderSettings) {
+	to.markdown_flavor = from.markdown_flavor;
+	to.hard_breaks = from.hard_breaks;
+	to.highlight_marks = from.highlight_marks;
 }

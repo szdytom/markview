@@ -208,12 +208,20 @@ impl Exporter {
 				self.security.revoke();
 			}
 			let source: Arc<str> = text.into();
+			let dialect = markview_commonmark::Dialect {
+				hard_breaks: self.options.hard_breaks,
+				highlight_marks: self.options.highlight_marks,
+			};
 			let document = match &self.document {
-				Some(previous) => Arc::new(markview_commonmark::reparse(
+				Some(previous) => Arc::new(markview_commonmark::reparse_with(
 					previous,
 					source.clone(),
+					dialect,
 				)),
-				None => Arc::new(markview_commonmark::parse(source.clone())),
+				None => Arc::new(markview_commonmark::parse_with(
+					source.clone(),
+					dialect,
+				)),
 			};
 			self.source = Some(source);
 			self.document = Some(document);

@@ -159,6 +159,13 @@ pub struct LayoutOptions {
 	pub codeblock_theme_override: Option<String>,
 	/// Hard-wrap code block lines at the reading column instead of scrolling.
 	pub codeblock_wrap: bool,
+	/// Parse single newlines inside a paragraph as line breaks instead of
+	/// spaces. The document parse reads this, not the layout itself, but its
+	/// options reach every place a document is parsed from them.
+	pub hard_breaks: bool,
+	/// Parse `==text==` as a highlight mark instead of literal text; threaded
+	/// to the parse exactly like `hard_breaks`.
+	pub highlight_marks: bool,
 	/// Reader-chosen collapse state of each `<details>`, keyed by the block's
 	/// semantic id. A block absent from the map uses the state its source
 	/// declared, so a fresh document starts there. Presentation state does not
@@ -191,6 +198,8 @@ impl Default for LayoutOptions {
 			greedy: false,
 			codeblock_theme_override: None,
 			codeblock_wrap: false,
+			hard_breaks: false,
+			highlight_marks: false,
 			details_open: Arc::default(),
 			force_open: false,
 			front_matter_label: "Frontmatter".into(),
@@ -213,14 +222,18 @@ impl PartialEq for LayoutOptions {
 			&& self.greedy == other.greedy
 			&& self.codeblock_theme_override == other.codeblock_theme_override
 			&& self.codeblock_wrap == other.codeblock_wrap
+			// A different dialect is a different document parse, so equality
+			// without it would skip the reparse a tab resume owes.
+			&& (self.hard_breaks, self.highlight_marks)
+				== (other.hard_breaks, other.highlight_marks)
 			&& self.front_matter_label == other.front_matter_label
 			&& self.hide_front_matter == other.hide_front_matter
-			&& self.stylesheet.layout_key() == other.stylesheet.layout_key()
+			&& (self.stylesheet.layout_key(), self.stylesheet.diagram_key())
+				== (other.stylesheet.layout_key(), other.stylesheet.diagram_key())
 			// A diagram theme is pixels, not geometry, but a new one must
 			// reach the image scheduler, which recognizes work by these
 			// options. Its key follows the font definitions the table names,
 			// so changing one of those is a new request too.
-			&& self.stylesheet.diagram_key() == other.stylesheet.diagram_key()
 			&& self.fonts == other.fonts
 			&& self.limits == other.limits
 	}

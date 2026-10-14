@@ -131,7 +131,13 @@ pub(crate) fn png_snapshot_text(
 		std::sync::Arc::new(|| {}),
 	);
 	engine.validate_stylesheet(&options.stylesheet)?;
-	let document = markview_commonmark::parse(text.to_owned());
+	let document = markview_commonmark::parse_with(
+		text.to_owned(),
+		markview_commonmark::Dialect {
+			hard_breaks: options.hard_breaks,
+			highlight_marks: options.highlight_marks,
+		},
+	);
 	let mut images = Images::shared(offline, options.fonts.clone(), &services);
 	images.set_security(security.for_content(&document.source));
 	images.prepare(

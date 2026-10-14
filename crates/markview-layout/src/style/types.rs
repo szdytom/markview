@@ -58,6 +58,7 @@ pub enum Condition {
 	Sup,
 	FootnoteRef,
 	Code,
+	Mark,
 	Error,
 	Hover,
 	/// The sheet of paper: only its background is significant.
@@ -116,6 +117,7 @@ impl Condition {
 		(Self::Sup, "sup"),
 		(Self::FootnoteRef, "footnote_ref"),
 		(Self::Code, "code"),
+		(Self::Mark, "mark"),
 		(Self::Error, "error"),
 		(Self::Hover, "hover"),
 		(Self::Page, "page"),
@@ -173,7 +175,7 @@ impl Condition {
 			TaskMarker => chain_of(&[Body, ListItem, TaskMarker]),
 			Caption | Placeholder => chain_of(&[Body, Image, self]),
 			Math => chain_of(&[Body, Math]),
-			Em | Strong | Link | Del | Sup | FootnoteRef | Code => {
+			Em | Strong | Link | Del | Sup | FootnoteRef | Code | Mark => {
 				chain_of(&[Body, self])
 			}
 			Error => chain_of(&[Body, Math, Error]),
@@ -206,6 +208,7 @@ impl Condition {
 				| Self::Link | Self::Del
 				| Self::Sup | Self::FootnoteRef
 				| Self::Code | Self::Math
+				| Self::Mark
 		)
 	}
 	/// The conditions whose rules own this element's box: the element itself
@@ -285,7 +288,8 @@ impl ConditionSet {
 			| Condition::Sup.bit()
 			| Condition::FootnoteRef.bit()
 			| Condition::Code.bit()
-			| Condition::Math.bit();
+			| Condition::Math.bit()
+			| Condition::Mark.bit();
 		self.0 & INLINE != 0
 	}
 	pub const fn union(self, other: Self) -> Self {

@@ -1,7 +1,7 @@
 //! Transactional configuration reads, merging and durable writes.
 use super::{
-	ExportSettings, FontDefOverride, ReaderSettings, Setting, TabStyle,
-	WindowLayout,
+	ExportSettings, FontDefOverride, MarkdownFlavor, ReaderSettings, Setting,
+	TabStyle, WindowLayout,
 };
 use crate::lang::Lang;
 use crate::render::Theme;
@@ -110,6 +110,12 @@ pub(super) struct Config {
 	pub(super) paragraph_indent: f32,
 	#[serde(rename = "cjk-type")]
 	pub(super) cjk_type: Option<CjkType>,
+	#[serde(rename = "markdown-flavor")]
+	pub(super) markdown_flavor: MarkdownFlavor,
+	#[serde(rename = "hard-breaks")]
+	pub(super) hard_breaks: bool,
+	#[serde(rename = "highlight-marks")]
+	pub(super) highlight_marks: bool,
 	#[serde(
 		rename = "codeblock-theme-override",
 		skip_serializing_if = "Option::is_none"

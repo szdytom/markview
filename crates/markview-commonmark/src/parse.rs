@@ -25,10 +25,24 @@ use super::{
 	incremental, plain_text, semantic_key,
 };
 
+/// The reading dialect a parse uses: which Markdown extensions are on and
+/// how ambiguous source reads.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct Dialect {
+	/// Single newlines inside a paragraph end their line as a hard break
+	/// rather than a space.
+	pub hard_breaks: bool,
+	/// `==text==` parses as a highlight mark rather than literal text.
+	pub highlight_marks: bool,
+}
+
 struct Reader<'s> {
 	/// Opaque HTML content intervals in this source, shared across blocks.
 	opaque: RefCell<BTreeMap<usize, usize>>,
 	source: &'s str,
+	/// The dialect this parse reads: how a soft break reads, and whether
+	/// `==` marks a highlight.
+	dialect: Dialect,
 	lines: Vec<usize>,
 	footnotes: HashMap<String, u32>,
 	/// Definitions the full parse already owns; snippets only reference them.
@@ -236,7 +250,11 @@ impl Reader<'_> {
 					source.clone(),
 					from,
 				))),
-				NodeValue::SoftBreak => Some(InlineKind::Text(" ".into())),
+				NodeValue::SoftBreak => Some(if self.dialect.hard_breaks {
+					InlineKind::LineBreak { justify: false }
+				} else {
+					InlineKind::Text(" ".into())
+				}),
 				NodeValue::LineBreak => {
 					Some(InlineKind::LineBreak { justify: false })
 				}
@@ -336,6 +354,10 @@ impl Reader<'_> {
 					child_style.link = Some(Link::new(url, source.start));
 					None
 				}
+				NodeValue::Highlight => {
+					child_style.mark = true;
+					None
+				}
 				NodeValue::Link(l) => {
 					child_style.link =
 						Some(Link::new(l.url.clone(), source.start));
@@ -433,7 +455,9 @@ impl Reader<'_> {
 				NodeValue::Math(m) => {
 					text.push_str(&self.text_after(&m.literal, source, from))
 				}
-				NodeValue::SoftBreak => text.push(' '),
+				NodeValue::SoftBreak => {
+					text.push(if self.dialect.hard_breaks { '\n' } else { ' ' })
+				}
 				NodeValue::LineBreak => text.push('\n'),
 				_ => {}
 			}
@@ -903,7 +927,7 @@ impl Reader<'_> {
 		opaque_until: usize,
 	) -> Vec<Block> {
 		let arena = Arena::new();
-		let mut options = markdown_options();
+		let mut options = markdown_options(self.dialect);
 		// Another disclosure may reference a definition this snippet owns.
 		options.parse.leave_footnote_definitions = true;
 		let root = parse_document(&arena, text, &options);
@@ -959,6 +983,7 @@ impl Reader<'_> {
 				BTreeMap::from([(0, opaque_until)])
 			}),
 			source: text,
+			dialect: self.dialect,
 			lines,
 			footnotes: std::mem::take(&mut self.footnotes),
 			document_footnotes: self.document_footnotes,
@@ -1249,10 +1274,17 @@ fn note_key(name: &str) -> String {
 		.to_lowercase()
 }
 
+/// The document `source` describes in the default dialect, reading single
+/// newlines inside a paragraph as spaces and `==` as literal text.
 pub fn parse(source: impl Into<Arc<str>>) -> Document {
+	parse_with(source, Dialect::default())
+}
+
+/// The document `source` describes when read in `dialect`.
+pub fn parse_with(source: impl Into<Arc<str>>, dialect: Dialect) -> Document {
 	let source = source.into();
 	let arena = Arena::new();
-	let root = parse_document(&arena, &source, &markdown_options());
+	let root = parse_document(&arena, &source, &markdown_options(dialect));
 	let lines = line_starts(&source);
 	let footnotes: HashMap<String, u32> = root
 		.descendants()
@@ -1289,6 +1321,7 @@ pub fn parse(source: impl Into<Arc<str>>) -> Document {
 	let mut reader = Reader {
 		opaque: RefCell::new(BTreeMap::new()),
 		source: &source,
+		dialect,
 		lines,
 		footnotes,
 		document_footnotes: &document_footnotes,
@@ -1346,8 +1379,9 @@ pub fn parse(source: impl Into<Arc<str>>) -> Document {
 }
 
 /// The comrak configuration every Markdown parse shares, including the body
-/// of a `<details>` element.
-fn markdown_options() -> Options<'static> {
+/// of a `<details>` element. The dialect's extensions are on; the defaults
+/// every dialect shares are declared here once.
+fn markdown_options(dialect: Dialect) -> Options<'static> {
 	let mut options = Options::default();
 	options.extension.table = true;
 	options.extension.wikilinks_title_after_pipe = true;
@@ -1356,6 +1390,9 @@ fn markdown_options() -> Options<'static> {
 	// YAML itself is read in `front_matter`.
 	options.extension.front_matter_delimiter = Some("---".into());
 	options.extension.strikethrough = true;
+	// Only the highlight dialect reads `==` as a mark; otherwise the source
+	// stays literal text.
+	options.extension.highlight = dialect.highlight_marks;
 	options.extension.tasklist = true;
 	options.extension.autolink = true;
 	options.extension.footnotes = true;

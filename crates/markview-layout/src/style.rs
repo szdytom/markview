@@ -38,6 +38,7 @@ pub fn text_conditions(style: &TextStyle) -> impl Iterator<Item = Condition> {
 		style.superscript.then_some(C::Sup),
 		style.footnote_ref.then_some(C::FootnoteRef),
 		style.code.then_some(C::Code),
+		style.mark.then_some(C::Mark),
 		style.math_error.then_some(C::Math),
 		style.math_error.then_some(C::Error),
 	]
