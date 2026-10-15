@@ -47,6 +47,9 @@ pub(crate) enum SettingsCommand {
 	Align,
 	Hyphens,
 	CodeWrap,
+	MarkdownFlavor(crate::settings::MarkdownFlavor),
+	HardBreaks,
+	HighlightMarks,
 	SingleInstance,
 	RestoreSession,
 	/// Show the open document's path in the idle footer and copy it on click.

@@ -880,3 +880,104 @@ fn launch_options_belong_to_the_interface_section() {
 		}
 	);
 }
+
+#[test]
+fn markdown_dialect_preset_lists_gfm_and_ofm_lite() {
+	let mut shaper = crate::test_support::shaper();
+	for (index, selected) in [MarkdownFlavor::Gfm, MarkdownFlavor::OfmLite]
+		.into_iter()
+		.enumerate()
+	{
+		let settings = ReaderSettings {
+			markdown_flavor: selected,
+			..Default::default()
+		};
+		let scroll = form(&mut shaper, &settings, 0.0, 1200.0, 800.0).reveal(
+			Command::ToggleDropdown(DropdownId::MarkdownFlavor, index)
+				.widget_id(),
+		);
+		let form = form(&mut shaper, &settings, scroll, 1200.0, 800.0);
+		assert!(form.buttons.iter().any(|button| {
+			button.action
+				== Command::ToggleDropdown(DropdownId::MarkdownFlavor, index)
+		}));
+		let menu = form
+			.menu(
+				&mut crate::state::Dropdown::new(
+					DropdownId::MarkdownFlavor,
+					index,
+				),
+				(1200.0, 800.0),
+			)
+			.unwrap();
+		assert_eq!(menu.options, 2);
+		assert_eq!(menu.chosen(), Some(Command::MarkdownFlavor(selected)));
+		assert_eq!(menu.buttons[0].label, "GFM");
+		assert_eq!(menu.buttons[1].label, "OFM lite");
+		// The lite label must not claim full Obsidian Flavored Markdown.
+		assert!(!menu.buttons.iter().any(|b| {
+			b.label.contains("Obsidian") && !b.label.contains("lite")
+		}));
+	}
+}
+
+#[test]
+fn gfm_exposes_dialect_toggles_and_ofm_lite_hides_them() {
+	let mut shaper = crate::test_support::shaper();
+	let gfm = ReaderSettings::default();
+	let gfm_form = form(&mut shaper, &gfm, 0.0, 1200.0, 800.0);
+	assert!(
+		gfm_form
+			.buttons
+			.iter()
+			.any(|b| b.action == Command::HardBreaks)
+	);
+	assert!(
+		gfm_form
+			.buttons
+			.iter()
+			.any(|b| b.action == Command::HighlightMarks)
+	);
+	let scroll = gfm_form.reveal(Command::HardBreaks.widget_id());
+	let hard = form(&mut shaper, &gfm, scroll, 1200.0, 800.0)
+		.visible_buttons()
+		.into_iter()
+		.find(|b| b.action == Command::HardBreaks)
+		.expect("hard breaks toggle");
+	assert_eq!(hard.label, "Off");
+
+	let ofm = ReaderSettings {
+		markdown_flavor: MarkdownFlavor::OfmLite,
+		hard_breaks: true,
+		highlight_marks: false,
+		..Default::default()
+	};
+	let ofm_form = form(&mut shaper, &ofm, 0.0, 1200.0, 800.0);
+	assert!(
+		!ofm_form
+			.buttons
+			.iter()
+			.any(|b| b.action == Command::HardBreaks)
+	);
+	assert!(
+		!ofm_form
+			.buttons
+			.iter()
+			.any(|b| b.action == Command::HighlightMarks)
+	);
+	// The preset control remains, labelled as OFM lite.
+	let scroll = ofm_form.reveal(
+		Command::ToggleDropdown(DropdownId::MarkdownFlavor, 1).widget_id(),
+	);
+	let control = form(&mut shaper, &ofm, scroll, 1200.0, 800.0)
+		.visible_buttons()
+		.into_iter()
+		.find(|b| {
+			matches!(
+				b.action,
+				Command::ToggleDropdown(DropdownId::MarkdownFlavor, _)
+			)
+		})
+		.expect("dialect preset");
+	assert_eq!(control.label, "OFM lite");
+}

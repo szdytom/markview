@@ -157,6 +157,8 @@ pub(crate) enum DropdownId {
 	Language,
 	WindowLayout,
 	TabStyle,
+	/// The Markdown dialect preset (GFM or OFM lite).
+	MarkdownFlavor,
 	/// One font role's family chooser.
 	Font(crate::settings::FontRole),
 }

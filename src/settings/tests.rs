@@ -366,6 +366,102 @@ fn markdown_dialect_defaults_and_ofm_lite_forces_its_toggles() {
 	assert!(dialect.highlight_marks);
 }
 
+/// End-to-end fixture matrix for the four reading cases ticket 05 checks.
+///
+/// One source carries both a soft newline and a `==mark==`, so each case is
+/// the same bytes under a different `ReaderSettings` → `effective_dialect()`
+/// → parse path. Wikilinks stay out of scope.
+#[test]
+fn dialect_fixture_matrix_covers_the_four_reading_cases() {
+	use markview_commonmark::{Dialect, parse_with};
+	use markview_document::{BlockKind, InlineKind, plain_text};
+
+	const FIXTURE: &str = "line one\nline two and ==marked== text\n";
+
+	fn paragraph(
+		doc: &markview_document::Document,
+	) -> &markview_document::RichText {
+		let BlockKind::Paragraph(rich) = &doc.blocks[0].kind else {
+			panic!("expected a paragraph");
+		};
+		rich
+	}
+	fn parse_settings(
+		settings: &ReaderSettings,
+	) -> markview_document::Document {
+		let dialect = settings.effective_dialect();
+		parse_with(
+			FIXTURE,
+			Dialect {
+				hard_breaks: dialect.hard_breaks,
+				highlight_marks: dialect.highlight_marks,
+			},
+		)
+	}
+	fn has_hard_break(rich: &markview_document::RichText) -> bool {
+		rich.iter()
+			.any(|i| matches!(i.kind, InlineKind::LineBreak { .. }))
+	}
+	fn has_mark(rich: &markview_document::RichText) -> bool {
+		rich.iter().any(|i| i.style.mark)
+	}
+
+	// 1) GFM default: soft break → space, `==` stays literal.
+	let gfm = ReaderSettings::default();
+	assert_eq!(gfm.markdown_flavor, MarkdownFlavor::Gfm);
+	assert!(!gfm.hard_breaks && !gfm.highlight_marks);
+	let doc = parse_settings(&gfm);
+	let rich = paragraph(&doc);
+	assert_eq!(plain_text(rich), "line one line two and ==marked== text");
+	assert!(!has_hard_break(rich));
+	assert!(!has_mark(rich));
+
+	// 2) GFM + hard breaks: the same newline ends the line.
+	let gfm_hard = ReaderSettings {
+		hard_breaks: true,
+		..Default::default()
+	};
+	let doc = parse_settings(&gfm_hard);
+	let rich = paragraph(&doc);
+	assert_eq!(plain_text(rich), "line one\nline two and ==marked== text");
+	assert!(has_hard_break(rich));
+	assert!(!has_mark(rich));
+
+	// 3) GFM + highlight: `==marked==` becomes a mark; soft breaks stay spaces.
+	let gfm_mark = ReaderSettings {
+		highlight_marks: true,
+		..Default::default()
+	};
+	let doc = parse_settings(&gfm_mark);
+	let rich = paragraph(&doc);
+	assert_eq!(plain_text(rich), "line one line two and marked text");
+	assert!(!has_hard_break(rich));
+	assert!(has_mark(rich));
+
+	// 4) OFM lite: highlight on and hard breaks off even when stored toggles
+	// say otherwise (the panel hides those toggles under this preset).
+	let mut ofm = ReaderSettings {
+		markdown_flavor: MarkdownFlavor::OfmLite,
+		hard_breaks: true,
+		highlight_marks: false,
+		..Default::default()
+	};
+	let dialect = ofm.effective_dialect();
+	assert!(!dialect.hard_breaks);
+	assert!(dialect.highlight_marks);
+	let doc = parse_settings(&ofm);
+	let rich = paragraph(&doc);
+	assert_eq!(plain_text(rich), "line one line two and marked text");
+	assert!(!has_hard_break(rich));
+	assert!(has_mark(rich));
+
+	// Switching the stored flavor back to GFM restores the stored toggles.
+	ofm.markdown_flavor = MarkdownFlavor::Gfm;
+	let dialect = ofm.effective_dialect();
+	assert!(dialect.hard_breaks);
+	assert!(!dialect.highlight_marks);
+}
+
 /// The parse the layout options describe is the effective dialect: OFM lite
 /// keeps a stored toggle from ever reaching a parse.
 #[test]

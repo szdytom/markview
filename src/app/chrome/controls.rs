@@ -11,7 +11,7 @@ use crate::{
 	app::frame::{CONTROL_GAP, Layout},
 	lang::Lang,
 	layout::{Draw, Rect, TextShaper},
-	settings::{ReaderSettings, Sidebar, TabStyle, WindowLayout},
+	settings::{MarkdownFlavor, ReaderSettings, Sidebar, TabStyle, WindowLayout},
 	state::{Command, DropdownId, InteractionState, PanelPage, PanelTab},
 };
 pub(super) use components::{draw_button, panel_rect};
@@ -348,7 +348,54 @@ fn rows(settings: &ReaderSettings, phone: bool) -> Vec<Row> {
 				Command::Settings(SettingsCommand::CodeWrap),
 			)],
 		),
+		Row::new(t.settings_markdown_dialect(), vec![]).menu(
+			DropdownId::MarkdownFlavor,
+			choices(
+				&[
+					(
+						t.settings_flavor_gfm(),
+						Command::MarkdownFlavor(MarkdownFlavor::Gfm),
+					),
+					(
+						t.settings_flavor_ofm_lite(),
+						Command::MarkdownFlavor(MarkdownFlavor::OfmLite),
+					),
+				],
+				Some(Command::MarkdownFlavor(settings.markdown_flavor)),
+			),
+		),
 	]);
+	// Hard-break and highlight toggles are GFM-only: OFM lite forces highlight
+	// on and hard breaks off through effective_dialect(), so the panel hides
+	// controls that would only edit stored values the preset ignores.
+	if settings.markdown_flavor == MarkdownFlavor::Gfm {
+		rows.extend([
+			Row::new(
+				t.settings_hard_breaks(),
+				vec![action(
+					if settings.hard_breaks {
+						t.settings_on()
+					} else {
+						t.settings_off()
+					},
+					settings.hard_breaks,
+					Command::HardBreaks,
+				)],
+			),
+			Row::new(
+				t.settings_highlight_marks(),
+				vec![action(
+					if settings.highlight_marks {
+						t.settings_on()
+					} else {
+						t.settings_off()
+					},
+					settings.highlight_marks,
+					Command::HighlightMarks,
+				)],
+			),
+		]);
+	}
 	rows
 }
 #[cfg(test)]

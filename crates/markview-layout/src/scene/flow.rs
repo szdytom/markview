@@ -544,11 +544,11 @@ impl PlacedBlock {
 			.links
 			.iter()
 			.filter(move |link| {
-				!link.url.is_empty()
-					&& !(self.flow.force_open
+				!(link.url.is_empty()
+					|| (self.flow.force_open
 						&& link
 							.url
-							.starts_with(crate::document::DETAILS_SCHEME))
+							.starts_with(crate::document::DETAILS_SCHEME)))
 			})
 			.filter_map(move |link| {
 				self.rect(link.commands.start, link.rect)
