@@ -215,6 +215,7 @@ impl<P: super::SendEvent> App<P> {
 		if let Some(viewer) = &self.interaction.viewer {
 			self.interaction.hover = None;
 			self.interaction.hover_image = None;
+			self.interaction.hover_control = None;
 			self.interaction.hover_overflow = None;
 			if let Some(w) = &self.window {
 				w.set_cursor(if viewer.grab.is_some() {
@@ -230,7 +231,20 @@ impl<P: super::SendEvent> App<P> {
 			&controls.hit,
 			markview_ui_core::Input::Move(self.interaction.cursor),
 		);
-		let over_control = controls.hit.hit(self.interaction.cursor).is_some();
+		let over = controls.hit.hit(self.interaction.cursor);
+		let over_control = over.is_some();
+		let lang = self.preferences.values.lang();
+		let ofm = self.preferences.values.markdown_flavor
+			!= crate::settings::MarkdownFlavor::Gfm;
+		let hover_control = over.and_then(|widget| match &widget.message {
+			state::Command::DialectHelp => Some(lang.settings_dialect_tooltip()),
+			state::Command::HardBreaks | state::Command::HighlightMarks
+				if ofm =>
+			{
+				Some(lang.settings_dialect_ofm_forced())
+			}
+			_ => None,
+		});
 		let holding = self.holding_pointer();
 		// The drawer covers document content, so it must not inherit the link
 		// or image hover underneath it.
@@ -272,9 +286,12 @@ impl<P: super::SendEvent> App<P> {
 		let hover_image = document_hover.image_title;
 		let hover_changed =
 			hover_changed || hover_image != self.interaction.hover_image;
+		let hover_changed =
+			hover_changed || hover_control != self.interaction.hover_control;
 		self.interaction.hover_image = hover_image;
 		self.interaction.hover = hover;
 		self.interaction.hover_overflow = hover_overflow;
+		self.interaction.hover_control = hover_control;
 		if let Some(w) = &self.window {
 			w.set_cursor(cursor);
 		}

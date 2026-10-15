@@ -57,6 +57,8 @@ pub(crate) enum Command {
 	HardBreaks,
 	/// Under GFM only: parse and render `==highlight==`.
 	HighlightMarks,
+	/// Open the Markdown dialect user guide (tooltip on hover).
+	DialectHelp,
 	SingleInstance,
 	RestoreSession,
 	/// Step the reader's scroll-speed multiplier by whole steps.
@@ -675,6 +677,8 @@ pub(crate) struct InteractionState {
 	pub(crate) cursor: (f32, f32),
 	pub(crate) hover: Option<HoveredLink>,
 	pub(crate) hover_image: Option<String>,
+	/// Footer tip for a chrome control under the pointer (settings help, …).
+	pub(crate) hover_control: Option<&'static str>,
 	/// The wide block whose horizontal scrollbar the pointer is over.
 	pub(crate) hover_overflow: Option<(usize, usize)>,
 	pub(crate) widgets: markview_ui_core::Interaction,

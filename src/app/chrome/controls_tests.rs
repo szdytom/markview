@@ -808,8 +808,11 @@ fn markdown_dialect_preset_lists_gfm_and_ofm_lite() {
 			.unwrap();
 		assert_eq!(menu.options, 2);
 		assert_eq!(menu.chosen(), Some(Command::MarkdownFlavor(selected)));
-		assert_eq!(menu.buttons[0].label, "GFM");
-		assert_eq!(menu.buttons[1].label, "OFM lite");
+		assert_eq!(menu.buttons[0].label, "GFM (GitHub Flavored Markdown)");
+		assert_eq!(
+			menu.buttons[1].label,
+			"OFM lite (Obsidian-like, highlight only)"
+		);
 		// The lite label must not claim full Obsidian Flavored Markdown.
 		assert!(!menu.buttons.iter().any(|b| {
 			b.label.contains("Obsidian") && !b.label.contains("lite")
@@ -818,48 +821,54 @@ fn markdown_dialect_preset_lists_gfm_and_ofm_lite() {
 }
 
 #[test]
-fn gfm_exposes_dialect_toggles_and_ofm_lite_hides_them() {
+fn dialect_toggles_stay_visible_and_disable_under_ofm_lite() {
 	let mut shaper = crate::test_support::shaper();
 	let gfm = ReaderSettings::default();
 	let gfm_form = form(&mut shaper, &gfm, 0.0, 1200.0, 800.0);
-	assert!(
-		gfm_form
-			.buttons
-			.iter()
-			.any(|b| b.action == Command::HardBreaks)
-	);
-	assert!(
-		gfm_form
-			.buttons
-			.iter()
-			.any(|b| b.action == Command::HighlightMarks)
-	);
-	let scroll = gfm_form.reveal(Command::HardBreaks.widget_id());
-	let hard = form(&mut shaper, &gfm, scroll, 1200.0, 800.0)
-		.visible_buttons()
-		.into_iter()
+	let hard = gfm_form
+		.buttons
+		.iter()
 		.find(|b| b.action == Command::HardBreaks)
-		.expect("hard breaks toggle");
+		.expect("hard breaks");
+	assert!(hard.enabled);
 	assert_eq!(hard.label, "Off");
+	assert!(
+		gfm_form
+			.buttons
+			.iter()
+			.any(|b| b.action == Command::HighlightMarks && b.enabled)
+	);
 
 	let ofm = ReaderSettings {
 		markdown_flavor: MarkdownFlavor::OfmLite,
+		// Stored values the preset ignores: UI must show effective dialect.
 		hard_breaks: true,
 		highlight_marks: false,
 		..Default::default()
 	};
 	let ofm_form = form(&mut shaper, &ofm, 0.0, 1200.0, 800.0);
+	let hard = ofm_form
+		.buttons
+		.iter()
+		.find(|b| b.action == Command::HardBreaks)
+		.expect("hard breaks stay visible");
+	assert!(!hard.enabled);
+	assert_eq!(hard.label, "Off");
+	let highlight = ofm_form
+		.buttons
+		.iter()
+		.find(|b| b.action == Command::HighlightMarks)
+		.expect("highlight stays visible");
+	assert!(!highlight.enabled);
+	assert_eq!(highlight.label, "On");
+	// Disabled toggles remain in the hit list once scrolled into view, so hover
+	// can explain the force without letting a tap change them.
+	let scroll = ofm_form.reveal(Command::HardBreaks.widget_id());
 	assert!(
-		!ofm_form
-			.buttons
+		form(&mut shaper, &ofm, scroll, 1200.0, 800.0)
+			.visible_buttons()
 			.iter()
-			.any(|b| b.action == Command::HardBreaks)
-	);
-	assert!(
-		!ofm_form
-			.buttons
-			.iter()
-			.any(|b| b.action == Command::HighlightMarks)
+			.any(|b| b.action == Command::HardBreaks && !b.enabled)
 	);
 	// The preset control remains, labelled as OFM lite.
 	let scroll = ofm_form.reveal(
@@ -875,5 +884,59 @@ fn gfm_exposes_dialect_toggles_and_ofm_lite_hides_them() {
 			)
 		})
 		.expect("dialect preset");
-	assert_eq!(control.label, "OFM lite");
+	assert_eq!(control.label, "OFM lite (Obsidian-like, highlight only)");
+}
+
+#[test]
+fn dialect_toggles_are_nested_without_gfm_section_title() {
+	let settings = ReaderSettings::default();
+	let mut found = 0;
+	for row in rows(&settings, false) {
+		if [
+			settings.lang().settings_hard_breaks(),
+			settings.lang().settings_highlight_marks(),
+		]
+		.contains(&row.label.as_str())
+		{
+			assert!(row.nested, "toggles subordinate to dialect preset");
+			assert!(row.enabled);
+			assert!(row.section.is_none());
+			found += 1;
+		}
+	}
+	assert_eq!(found, 2);
+
+	let ofm = ReaderSettings {
+		markdown_flavor: MarkdownFlavor::OfmLite,
+		..Default::default()
+	};
+	let mut found = 0;
+	for row in rows(&ofm, false) {
+		if [
+		ofm.lang().settings_hard_breaks(),
+		ofm.lang().settings_highlight_marks(),
+		]
+		.contains(&row.label.as_str())
+		{
+			assert!(row.nested);
+			assert!(!row.enabled);
+			assert!(row.section.is_none());
+			found += 1;
+		}
+	}
+	assert_eq!(found, 2);
+}
+
+#[test]
+fn dialect_preset_exposes_icon_help_control() {
+	let mut shaper = crate::test_support::shaper();
+	let form =
+		form(&mut shaper, &ReaderSettings::default(), 0.0, 1200.0, 800.0);
+	let help = form
+		.buttons
+		.iter()
+		.find(|b| b.action == Command::DialectHelp)
+		.expect("dialect help");
+	assert!(help.label.is_empty());
+	assert!(help.icon.is_some());
 }

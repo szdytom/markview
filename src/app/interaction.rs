@@ -113,6 +113,37 @@ impl<P: super::SendEvent> App<P> {
 			Command::OpenProject => {
 				self.launch(env!("CARGO_PKG_REPOSITORY"));
 			}
+			Command::DialectHelp => {
+				let root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+				let localized = match self.preferences.values.lang() {
+					crate::lang::Lang::ZhHans => {
+						Some(root.join("docs/users/settings.zh-cn.md"))
+					}
+					_ => None,
+				};
+				let english = root.join("docs/users/settings.md");
+				let path = localized
+					.filter(|p| p.is_file())
+					.unwrap_or(english);
+				if path.is_file() {
+					if self.interaction.panel_open() {
+						self.interaction.show_panel(PanelPage::Closed);
+					}
+					self.open_markdown(
+						path,
+						Some("markdown-dialect".into()),
+						crate::state::TabPlacement::Foreground,
+						crate::security::Security::local(
+							crate::security::Trust::Trusted,
+						),
+					);
+				} else {
+					self.launch(&format!(
+						"{}/blob/main/docs/users/settings.md#markdown-dialect",
+						env!("CARGO_PKG_REPOSITORY")
+					));
+				}
+			}
 			Command::CopyDiagnostics => {
 				let text = crate::diagnostics::report(
 					self.renderer.as_ref().map(|renderer| renderer.backend),
