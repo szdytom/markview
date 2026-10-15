@@ -11,7 +11,9 @@ use crate::{
 	app::frame::{CONTROL_GAP, Layout},
 	lang::Lang,
 	layout::{Draw, Rect, TextShaper},
-	settings::{MarkdownFlavor, ReaderSettings, Sidebar, TabStyle, WindowLayout},
+	settings::{
+		MarkdownFlavor, ReaderSettings, Sidebar, TabStyle, WindowLayout,
+	},
 	state::{Command, DropdownId, InteractionState, PanelPage, PanelTab},
 };
 pub(super) use components::{draw_button, panel_rect};
@@ -348,54 +350,61 @@ fn rows(settings: &ReaderSettings, phone: bool) -> Vec<Row> {
 				Command::Settings(SettingsCommand::CodeWrap),
 			)],
 		),
-		Row::new(t.settings_markdown_dialect(), vec![]).menu(
-			DropdownId::MarkdownFlavor,
-			choices(
-				&[
-					(
-						t.settings_flavor_gfm(),
-						Command::MarkdownFlavor(MarkdownFlavor::Gfm),
-					),
-					(
-						t.settings_flavor_ofm_lite(),
-						Command::MarkdownFlavor(MarkdownFlavor::OfmLite),
-					),
-				],
-				Some(Command::MarkdownFlavor(settings.markdown_flavor)),
-			),
-		),
+		Row::new(t.settings_markdown_dialect(), vec![])
+			.menu(
+				DropdownId::MarkdownFlavor,
+				choices(
+					&[
+						(
+							t.settings_flavor_gfm(),
+							Command::MarkdownFlavor(MarkdownFlavor::Gfm),
+						),
+						(
+							t.settings_flavor_ofm_lite(),
+							Command::MarkdownFlavor(MarkdownFlavor::OfmLite),
+						),
+					],
+					Some(Command::MarkdownFlavor(settings.markdown_flavor)),
+				),
+			)
+			.help(Command::DialectHelp),
 	]);
-	// Hard-break and highlight toggles are GFM-only: OFM lite forces highlight
-	// on and hard breaks off through effective_dialect(), so the panel hides
-	// controls that would only edit stored values the preset ignores.
-	if settings.markdown_flavor == MarkdownFlavor::Gfm {
-		rows.extend([
-			Row::new(
-				t.settings_hard_breaks(),
-				vec![action(
-					if settings.hard_breaks {
-						t.settings_on()
-					} else {
-						t.settings_off()
-					},
-					settings.hard_breaks,
-					Command::HardBreaks,
-				)],
-			),
-			Row::new(
-				t.settings_highlight_marks(),
-				vec![action(
-					if settings.highlight_marks {
-						t.settings_on()
-					} else {
-						t.settings_off()
-					},
-					settings.highlight_marks,
-					Command::HighlightMarks,
-				)],
-			),
-		]);
-	}
+	// Hard-break and highlight toggles always sit under the dialect preset.
+	// OFM lite forces highlight on and hard breaks off through
+	// effective_dialect(); under that preset the controls stay visible but
+	// greyed, showing the effective values rather than ignored stored ones.
+	let gfm = settings.markdown_flavor == MarkdownFlavor::Gfm;
+	let dialect = settings.effective_dialect();
+	rows.extend([
+		Row::new(
+			t.settings_hard_breaks(),
+			vec![action(
+				if dialect.hard_breaks {
+					t.settings_on()
+				} else {
+					t.settings_off()
+				},
+				dialect.hard_breaks,
+				Command::HardBreaks,
+			)],
+		)
+		.nested()
+		.enabled(gfm),
+		Row::new(
+			t.settings_highlight_marks(),
+			vec![action(
+				if dialect.highlight_marks {
+					t.settings_on()
+				} else {
+					t.settings_off()
+				},
+				dialect.highlight_marks,
+				Command::HighlightMarks,
+			)],
+		)
+		.nested()
+		.enabled(gfm),
+	]);
 	rows
 }
 #[cfg(test)]

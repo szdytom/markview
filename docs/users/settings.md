@@ -70,6 +70,22 @@ Android stores settings in its private app files directory; see
 - **The interface follows the system language.** **Interface language** in
   **Settings** pins it to English, Simplified or Traditional Chinese, or Japanese instead.
 
+
+## Markdown dialect
+
+**Settings → Generic → Language & code** chooses how Markview reads Markdown.
+The info control next to the dialect preset opens this page.
+
+- **GFM (GitHub Flavored Markdown).** Soft newlines stay spaces. Under this
+  preset you can toggle single-newline hard breaks and `==highlight==` marks.
+  See the [GFM specification](https://github.github.com/gfm/).
+- **OFM lite (Obsidian-like, highlight only).** Highlight marks are on; soft
+  newlines stay spaces. The hard-break and highlight toggles stay visible but
+  are disabled: OFM lite forces highlight on and hard breaks off. This is
+  **not** full
+  [Obsidian Flavored Markdown](https://help.obsidian.md/obsidian-flavored-markdown):
+  Markview does not support wikilinks or other OFM-only features.
+
 ## Network and image cache
 
 Network images (`http:` and `https:`) are cached on disk between runs. A body

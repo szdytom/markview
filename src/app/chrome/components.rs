@@ -51,6 +51,7 @@ pub(super) fn button(
 		action,
 		rect,
 		icon: match action {
+			Command::Chrome(ChromeCommand::DialectHelp) => Some(icons::INFO),
 			Command::Chrome(ChromeCommand::CopyDiagnostics) => {
 				Some(icons::COPY)
 			}
@@ -642,6 +643,12 @@ pub(super) struct Row {
 	link: Option<(&'static str, Command)>,
 	/// The options this row offers in a list instead of in place.
 	menu: Option<RowMenu>,
+	/// A compact icon-only help control drawn beside the row's menu, when present.
+	help: Option<Command>,
+	/// Indents the label and uses secondary (muted) styling under a parent row.
+	pub nested: bool,
+	/// When false, the row's controls stay visible but greyed and inert.
+	pub enabled: bool,
 }
 /// A row's options, and the control whose list they belong to.
 pub(super) struct RowMenu {
@@ -669,6 +676,9 @@ impl Row {
 			value: None,
 			link: None,
 			menu: None,
+			help: None,
+			nested: false,
+			enabled: true,
 		}
 	}
 	pub fn input(mut self, id: crate::state::TextField) -> Self {
@@ -679,6 +689,21 @@ impl Row {
 	/// current one where a value would go.
 	pub fn menu(mut self, id: DropdownId, entries: Vec<Action>) -> Self {
 		self.menu = Some(RowMenu { id, entries });
+		self
+	}
+	/// Places a compact icon-only help control to the right of this row's menu.
+	pub fn help(mut self, command: Command) -> Self {
+		self.help = Some(command);
+		self
+	}
+	/// Marks this row as subordinate to the one above (indent + muted label).
+	pub fn nested(mut self) -> Self {
+		self.nested = true;
+		self
+	}
+	/// Keeps the row's controls visible but greyed when `enabled` is false.
+	pub fn enabled(mut self, enabled: bool) -> Self {
+		self.enabled = enabled;
 		self
 	}
 	pub fn icon(paths: &'static [markview_layout::scene::IconPath]) -> Self {
@@ -809,14 +834,21 @@ impl Form {
 			};
 			let control_y = y + if stacked { 26.0 } else { 0.0 };
 			// A list row answers with one control the width of the whole
-			// control area, showing the option in force.
+			// control area, showing the option in force. A help control, when
+			// present, sits to its right inside the same control band.
 			if let Some(menu) = &row.menu
 				&& let Some(chosen) = menu.chosen()
 			{
+				let help_gap = 4.0;
+				let help_w = if row.help.is_some() {
+					CONTROL + help_gap
+				} else {
+					0.0
+				};
 				let rect = Rect {
 					x: right - w,
 					y: control_y,
-					w,
+					w: (w - help_w).max(CONTROL),
 					h: CONTROL,
 				};
 				let mut b = button(
@@ -833,6 +865,20 @@ impl Form {
 				b.marker = Some(icons::CHEVRON);
 				buttons.push(b);
 				menus.push((menu.id, rect));
+				if let Some(command) = row.help {
+					let mut help = button(
+						"",
+						command,
+						Rect {
+							x: right - CONTROL,
+							y: control_y,
+							w: CONTROL,
+							h: CONTROL,
+						},
+					);
+					help.kind = ButtonKind::Quiet;
+					buttons.push(help);
+				}
 			}
 			if let Some(id) = row.input {
 				buttons.push(button(
@@ -865,6 +911,7 @@ impl Form {
 					},
 				);
 				b.active = entry.active;
+				b.enabled = row.enabled;
 				buttons.push(b);
 			}
 			let height = row.height(stacked);
@@ -974,9 +1021,8 @@ impl Form {
 					) {
 					return None;
 				}
-				if !b.enabled {
-					return None;
-				}
+				// Disabled controls stay in the hit list so hover can explain
+				// why they are greyed; taps still ignore them via `enabled`.
 				let mut b = b.clone();
 				if (self.body_start..self.body_end).contains(&i) {
 					b.rect.intersect(self.viewport)?;
@@ -1144,25 +1190,28 @@ impl Form {
 			} else {
 				232.0_f32.min(self.viewport.w * 0.56)
 			};
+			let indent = if row.nested { 16.0 } else { 0.0 };
+			let label_w = if self.stacked
+				|| row.actions.is_empty()
+					&& row.value.is_none()
+					&& row.menu.is_none()
+					&& row.input.is_none()
+			{
+				self.viewport.w
+			} else {
+				self.viewport.w - control_width - 20.0
+			};
 			body.extend(label(
 				ui,
 				&row.label,
 				13.0,
 				Rect {
+					x: self.viewport.x + indent,
 					y: *y,
-					w: if self.stacked
-						|| row.actions.is_empty()
-							&& row.value.is_none()
-							&& row.menu.is_none() && row.input.is_none()
-					{
-						self.viewport.w
-					} else {
-						self.viewport.w - control_width - 20.0
-					},
+					w: (label_w - indent).max(0.0),
 					h: CONTROL,
-					..self.viewport
 				},
-				C::Color,
+				if row.nested { C::Muted } else { C::Color },
 			));
 			if let Some(value) = &row.value {
 				let r = Rect {

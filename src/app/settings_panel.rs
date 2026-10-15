@@ -102,9 +102,13 @@ impl Message {
 			Command::Settings(SettingsCommand::Align) => Self::Align,
 			Command::Settings(SettingsCommand::Hyphens) => Self::Hyphens,
 			Command::Settings(SettingsCommand::CodeWrap) => Self::CodeWrap,
-			Command::Settings(SettingsCommand::MarkdownFlavor(value)) => Self::MarkdownFlavor(value),
+			Command::Settings(SettingsCommand::MarkdownFlavor(value)) => {
+				Self::MarkdownFlavor(value)
+			}
 			Command::Settings(SettingsCommand::HardBreaks) => Self::HardBreaks,
-			Command::Settings(SettingsCommand::HighlightMarks) => Self::HighlightMarks,
+			Command::Settings(SettingsCommand::HighlightMarks) => {
+				Self::HighlightMarks
+			}
 			Command::Settings(SettingsCommand::Indent(em)) => Self::Indent(em),
 			Command::Settings(SettingsCommand::CjkType(value)) => {
 				Self::CjkType(value)

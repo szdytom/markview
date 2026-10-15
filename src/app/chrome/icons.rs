@@ -57,5 +57,8 @@ pub(super) const PLUS: &[IconPath] = markview_icon::icon!("assets/ui/plus.svg");
 
 pub(super) const COPY: &[IconPath] = markview_icon::icon!("assets/ui/copy.svg");
 
+/// Opens dialect / settings help beside a control.
+pub(super) const INFO: &[IconPath] = markview_icon::icon!("assets/ui/info.svg");
+
 pub(super) const APP: &[IconPath] =
 	markview_icon::icon!("assets/markview-icon.svg");

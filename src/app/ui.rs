@@ -242,13 +242,18 @@ impl<P: super::SendEvent> App<P> {
 		let warning = style_warning.or(settings_warning);
 		// An internal footnote jump has no external target to name, so the
 		// footer stays empty while the pointer is over one.
-		let hover_hint = self.interaction.pointer.hover_image().or_else(|| {
-			self.interaction
-				.pointer
-				.hover()
-				.map(|link| link.url.as_str())
-				.filter(|url| !super::anchor::footnote_link(url))
-		});
+		let hover_hint = self
+			.interaction
+			.pointer
+			.hover_control()
+			.or(self.interaction.pointer.hover_image())
+			.or_else(|| {
+				self.interaction
+					.pointer
+					.hover()
+					.map(|link| link.url.as_str())
+					.filter(|url| !super::anchor::footnote_link(url))
+			});
 		let resource_kind = self.settings_kind();
 		let show_snapshot = resource_kind.is_none_or(|kind| {
 			let load = self.settings_resources.load(kind);

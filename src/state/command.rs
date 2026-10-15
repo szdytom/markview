@@ -110,6 +110,7 @@ pub(crate) enum ExportCommand {
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum ChromeCommand {
+	DialectHelp,
 	FocusInput(TextField),
 	OpenFolder,
 	Folder,
