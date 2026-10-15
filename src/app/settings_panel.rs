@@ -1,6 +1,9 @@
 //! Settings state transitions; persistence and reflow belong to the host.
 use crate::{
-	settings::{FontRole, ReaderSettings, Setting, TabStyle, WindowLayout},
+	settings::{
+		FontRole, MarkdownFlavor, ReaderSettings, Setting, TabStyle,
+		WindowLayout,
+	},
 	state::Command,
 };
 use markview_ui_core::{Component, Invalidation, Update};
@@ -23,6 +26,9 @@ pub(super) enum Message {
 	Align,
 	Hyphens,
 	CodeWrap,
+	MarkdownFlavor(MarkdownFlavor),
+	HardBreaks,
+	HighlightMarks,
 	Indent(u8),
 	CjkType(markview_layout::style::CjkType),
 	Language(Option<crate::lang::Lang>),
@@ -51,6 +57,9 @@ impl Message {
 			Command::Align => Self::Align,
 			Command::Hyphens => Self::Hyphens,
 			Command::CodeWrap => Self::CodeWrap,
+			Command::MarkdownFlavor(value) => Self::MarkdownFlavor(value),
+			Command::HardBreaks => Self::HardBreaks,
+			Command::HighlightMarks => Self::HighlightMarks,
 			Command::Indent(em) => Self::Indent(em),
 			Command::CjkType(value) => Self::CjkType(value),
 			Command::Language(value) => Self::Language(value),
@@ -144,6 +153,18 @@ impl Component for Model {
 				self.values.codeblock_wrap = !self.values.codeblock_wrap;
 				Setting::CodeblockWrap
 			}
+			Message::MarkdownFlavor(value) => {
+				self.values.markdown_flavor = value;
+				Setting::Dialect
+			}
+			Message::HardBreaks => {
+				self.values.hard_breaks = !self.values.hard_breaks;
+				Setting::Dialect
+			}
+			Message::HighlightMarks => {
+				self.values.highlight_marks = !self.values.highlight_marks;
+				Setting::Dialect
+			}
 			Message::Indent(em) => {
 				self.values.paragraph_indent = f32::from(em);
 				Setting::ParagraphIndent
@@ -206,7 +227,7 @@ impl Component for Model {
 			Setting::WindowLayout | Setting::TabStyle => {
 				update.effects.push(Effect::CloseDropdown);
 			}
-			Setting::Language => {
+			Setting::Language | Setting::Dialect => {
 				update
 					.effects
 					.extend([Effect::CloseDropdown, Effect::Reflow]);
@@ -218,5 +239,53 @@ impl Component for Model {
 			_ => update.effects.push(Effect::Reflow),
 		}
 		update
+	}
+}
+
+#[cfg(test)]
+mod tests {
+	use super::*;
+	use markview_ui_core::Component;
+
+	#[test]
+	fn dialect_messages_persist_as_one_setting_and_reflow() {
+		let mut model = Model {
+			values: ReaderSettings::default(),
+			preview: false,
+		};
+		let update =
+			model.update(Message::MarkdownFlavor(MarkdownFlavor::OfmLite));
+		assert_eq!(model.values.markdown_flavor, MarkdownFlavor::OfmLite);
+		assert!(update.effects.iter().any(|effect| {
+			matches!(effect, Effect::Persist(Some(Setting::Dialect)))
+		}));
+		assert!(
+			update
+				.effects
+				.iter()
+				.any(|effect| matches!(effect, Effect::Reflow))
+		);
+		assert!(
+			update
+				.effects
+				.iter()
+				.any(|effect| matches!(effect, Effect::CloseDropdown))
+		);
+
+		let update = model.update(Message::HardBreaks);
+		assert!(model.values.hard_breaks);
+		assert!(update.effects.iter().any(|effect| {
+			matches!(effect, Effect::Persist(Some(Setting::Dialect)))
+		}));
+
+		let update = model.update(Message::HighlightMarks);
+		assert!(model.values.highlight_marks);
+		assert!(update.effects.iter().any(|effect| {
+			matches!(effect, Effect::Persist(Some(Setting::Dialect)))
+		}));
+		// OFM lite still forces the effective dialect regardless of stored toggles.
+		let dialect = model.values.effective_dialect();
+		assert!(!dialect.hard_breaks);
+		assert!(dialect.highlight_marks);
 	}
 }

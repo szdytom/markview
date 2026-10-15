@@ -51,6 +51,12 @@ pub(crate) enum Command {
 	Align,
 	Hyphens,
 	CodeWrap,
+	/// Preset for how Markdown is read: GFM or OFM lite.
+	MarkdownFlavor(crate::settings::MarkdownFlavor),
+	/// Under GFM only: single newlines render as hard line breaks.
+	HardBreaks,
+	/// Under GFM only: parse and render `==highlight==`.
+	HighlightMarks,
 	SingleInstance,
 	RestoreSession,
 	/// Step the reader's scroll-speed multiplier by whole steps.
@@ -434,6 +440,8 @@ pub(crate) enum DropdownId {
 	Language,
 	WindowLayout,
 	TabStyle,
+	/// The Markdown dialect preset (GFM or OFM lite).
+	MarkdownFlavor,
 	/// One font role's family chooser.
 	Font(crate::settings::FontRole),
 }

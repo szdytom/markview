@@ -432,6 +432,9 @@ impl<P: super::SendEvent> App<P> {
 			| Command::Align
 			| Command::Hyphens
 			| Command::CodeWrap
+			| Command::MarkdownFlavor(_)
+			| Command::HardBreaks
+			| Command::HighlightMarks
 			| Command::Indent(_)
 			| Command::CjkType(_)
 			| Command::Language(_)
