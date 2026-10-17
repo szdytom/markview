@@ -13,7 +13,7 @@ export async function runNative(
   progress?: (event: Progress) => void,
 ): Promise<string> {
   const staging =
-    args[0] === "export" && !args.includes("--catalog")
+    args[0] === "export" || (args[0] === "fonts" && args[1] === "download")
       ? await fs.mkdtemp(path.join(os.tmpdir(), "markview-cancel-"))
       : undefined;
   const marker = staging ? path.join(staging, "cancel") : undefined;

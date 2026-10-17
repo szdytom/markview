@@ -3,12 +3,16 @@
 //! A download directory is another `--fonts` directory, so these commands only
 //! ever report what the declarations offer and what the directory holds; the
 //! families themselves are named by the files they contain.
-use crate::{cli::FontsCommand, logging::report};
+use crate::{
+	cli::{FontOutput, FontsCommand},
+	logging::report,
+};
 use anyhow::{Context, Result, bail};
 use markview_layout::{
 	fonts::FontConfig,
-	style::{FontFamily, Stylesheet},
+	style::{CjkType, FontFamily, StyleTarget, Stylesheet},
 };
+use serde_json::json;
 use std::{
 	collections::BTreeSet,
 	io::IsTerminal,
@@ -17,6 +21,16 @@ use std::{
 
 pub(super) fn run(command: &FontsCommand, offline: bool) -> Result<()> {
 	match command {
+		FontsCommand::Catalog {
+			style,
+			file,
+			destination,
+		} => {
+			let (sheet, target) =
+				effective(style.as_deref(), file.as_deref(), destination)?;
+			report_catalog(&sheet, target);
+			Ok(())
+		}
 		FontsCommand::Path => {
 			let dir = directory()?;
 			report(format_args!("{}\n", dir.display()));
@@ -35,13 +49,14 @@ pub(super) fn run(command: &FontsCommand, offline: bool) -> Result<()> {
 			force,
 			dry_run,
 			jobs,
+			output,
 		} => download(
-			style.as_deref(),
-			file.as_deref(),
+			(style.as_deref(), file.as_deref()),
 			families,
 			*force,
 			*dry_run,
 			*jobs,
+			output,
 			offline,
 		),
 	}
@@ -86,8 +101,14 @@ fn declared(
 fn families(
 	style: Option<&str>,
 	file: Option<&Path>,
+	output: &FontOutput,
 ) -> Result<Vec<crate::fonts::Family>> {
-	let sheets = declared(style, file)?;
+	let sheets = if let Some(destination) = &output.destination {
+		let (sheet, _) = effective(style, file, destination)?;
+		vec![("@effective".into(), sheet.font_families.clone())]
+	} else {
+		declared(style, file)?
+	};
 	let refs: Vec<(&str, &[FontFamily])> = sheets
 		.iter()
 		.map(|(owner, families)| (owner.as_str(), families.as_slice()))
@@ -99,7 +120,11 @@ fn families(
 	let fonts = FontConfig::default();
 	#[cfg(test)]
 	let fonts: FontConfig = crate::test_support::fonts();
-	Ok(crate::fonts::catalog(refs, dir.as_deref(), &fonts))
+	Ok(crate::fonts::catalog(
+		refs,
+		output.directory.as_deref().or(dir.as_deref()),
+		&fonts,
+	))
 }
 
 fn state_label(state: crate::fonts::State) -> &'static str {
@@ -121,7 +146,7 @@ fn bytes_label(bytes: u64) -> String {
 }
 
 fn list(style: Option<&str>, file: Option<&Path>, all: bool) -> Result<()> {
-	let catalog = families(style, file)?;
+	let catalog = families(style, file, &FontOutput::default())?;
 	let dir = crate::fonts::directory();
 	for family in &catalog {
 		// Without `--all` the list is what still needs downloading.
@@ -197,7 +222,7 @@ fn occupancy(
 }
 
 fn verify(style: Option<&str>, file: Option<&Path>) -> Result<()> {
-	let catalog = families(style, file)?;
+	let catalog = families(style, file, &FontOutput::default())?;
 	let mut problems = 0usize;
 	for family in &catalog {
 		let detail = match family.state {
@@ -246,12 +271,12 @@ fn verify(style: Option<&str>, file: Option<&Path>) -> Result<()> {
 }
 
 fn download(
-	style: Option<&str>,
-	file: Option<&Path>,
+	selection: (Option<&str>, Option<&Path>),
 	requested: &[String],
 	force: bool,
 	dry_run: bool,
 	jobs: usize,
+	output: &FontOutput,
 	offline: bool,
 ) -> Result<()> {
 	// The declarations are local, so a dry run still works offline; only the
@@ -259,35 +284,71 @@ fn download(
 	if offline && !dry_run {
 		bail!("Offline: font downloads are unavailable; run without --offline");
 	}
-	let catalog = families(style, file)?;
+	cancelled(output)?;
+	let catalog = families(selection.0, selection.1, output)?;
 	let selected = select_downloads(&catalog, requested, force)?;
 	if selected.is_empty() {
-		report(format_args!("Everything selected is already downloaded\n"));
-		return Ok(());
-	}
-	if dry_run {
-		for family in &selected {
-			let sources: Vec<&str> = family
-				.source
-				.iter()
-				.map(|source| source.label().unwrap_or("source"))
-				.collect();
-			report(format_args!(
-				"{:<22} {} ({})\n",
-				family.id,
-				family.display_name(),
-				sources.join(", ")
-			));
+		if output.json {
+			json_report(json!({"type":"done", "stored":0, "fraction":1.0}));
+		} else {
+			report(format_args!("Everything selected is already downloaded\n"));
 		}
 		return Ok(());
 	}
-	let dir = directory()?;
+	if dry_run {
+		return report_selection(&selected, output.json);
+	}
+	transfer(selected, jobs, output)
+}
+
+fn report_selection(selected: &[FontFamily], machine: bool) -> Result<()> {
+	if machine {
+		json_report(
+			json!({"type":"selection", "families":selected.iter().map(|f| &f.id).collect::<Vec<_>>()}),
+		);
+		return Ok(());
+	}
+	for family in selected {
+		let sources: Vec<&str> = family
+			.source
+			.iter()
+			.map(|source| source.label().unwrap_or("source"))
+			.collect();
+		report(format_args!(
+			"{:<22} {} ({})\n",
+			family.id,
+			family.display_name(),
+			sources.join(", ")
+		));
+	}
+	Ok(())
+}
+
+fn transfer(
+	selected: Vec<FontFamily>,
+	jobs: usize,
+	output: &FontOutput,
+) -> Result<()> {
+	let dir = output.directory.clone().map(Ok).unwrap_or_else(directory)?;
 	let transport = crate::net::Downloader::new("Font");
-	let terminal = std::io::stdout().is_terminal();
+	let terminal = !output.json && std::io::stdout().is_terminal();
+	let machine = output.json;
 	let mut last: std::collections::HashMap<String, (usize, String)> =
 		std::collections::HashMap::new();
 	let services = crate::services::Services::new(jobs);
 	let handle = services.handle.clone();
+	if let Some(marker) = output.cancel_file.clone() {
+		let token = handle.cancel.clone();
+		handle.submit(async move {
+			while !token.is_cancelled() {
+				if marker.exists() {
+					token.cancel();
+					break;
+				}
+				tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+			}
+		});
+	}
 	let (done, recv) = std::sync::mpsc::channel();
 	services.handle.submit(async move {
 		let summary = crate::fonts::run_async(
@@ -297,7 +358,12 @@ fn download(
 			&handle,
 			std::collections::HashMap::new(),
 			move |progress| {
-				let line = describe(&progress);
+				if machine {
+                    let fraction = if progress.files_total > 0 { progress.files_progress / progress.files_total as f64 } else { 0.0 };
+                    json_report(json!({"type":"progress", "id":progress.id, "phase":format!("{:?}", progress.phase), "fraction":fraction, "bytes":progress.bytes_done, "message":progress.current.or(progress.note)}));
+                    return;
+                }
+                let line = describe(&progress);
 				if terminal {
 					report(format_args!("\r\x1b[K{line}"));
 				} else {
@@ -315,6 +381,35 @@ fn download(
 		let _ = done.send(summary);
 	});
 	let summary = recv.recv()?;
+	cancelled(output)?;
+	finish_download(summary, output.json, terminal)
+}
+
+fn finish_download(
+	summary: crate::fonts::Summary,
+	machine: bool,
+	terminal: bool,
+) -> Result<()> {
+	if machine {
+		if !summary.failed.is_empty() {
+			bail!(
+				"{}",
+				summary
+					.failed
+					.iter()
+					.map(|(id, error)| format!("{id}: {error}"))
+					.collect::<Vec<_>>()
+					.join("; ")
+			);
+		}
+		if !summary.cancelled.is_empty() {
+			bail!("Cancelled");
+		}
+		json_report(
+			json!({"type":"done", "fraction":1.0, "stored":summary.stored}),
+		);
+		return Ok(());
+	}
 	if terminal {
 		report(format_args!("\r\x1b[K"));
 	}
@@ -395,6 +490,106 @@ fn describe(progress: &crate::fonts::Progress) -> String {
 	)
 }
 
+fn json_report(value: serde_json::Value) {
+	report(format_args!("{value}\n"));
+}
+fn cancelled(output: &FontOutput) -> Result<()> {
+	if output
+		.cancel_file
+		.as_ref()
+		.is_some_and(|file| file.exists())
+	{
+		bail!("Cancelled");
+	}
+	Ok(())
+}
+fn effective(
+	style: Option<&str>,
+	file: Option<&Path>,
+	destination: &str,
+) -> Result<(std::sync::Arc<Stylesheet>, StyleTarget)> {
+	let target = if destination == "ui" {
+		StyleTarget::Ui
+	} else {
+		StyleTarget::Pdf
+	};
+	let ids: Vec<String> = style.into_iter().map(str::to_owned).collect();
+	let sheet = crate::stylesheet::load_for_editor(
+		target,
+		&ids,
+		crate::stylesheet::directory().as_deref(),
+		CjkType::Sc,
+		file,
+	)?;
+	Ok((sheet, target))
+}
+fn report_catalog(sheet: &Stylesheet, target: StyleTarget) {
+	let templates: Vec<_> = crate::stylesheet::catalog_for(
+		crate::stylesheet::directory().as_deref(),
+		None,
+		target,
+	)
+	.into_iter()
+	.filter(|entry| entry.error.is_none())
+	.map(|entry| json!({"id":entry.id, "name":entry.name}))
+	.collect();
+
+	let mut definitions: Vec<_> = sheet
+		.fontdefs
+		.values()
+		.map(|font| json!({"id":font.id,"lookfor":font.lookfor}))
+		.collect();
+	let literal_families: std::collections::BTreeSet<_> = sheet
+		.rules
+		.values()
+		.flat_map(|rule| {
+			rule.font.iter().flatten().map(|font| font.family.as_str())
+		})
+		.chain(
+			sheet
+				.mermaid
+				.font_family
+				.iter()
+				.flatten()
+				.map(String::as_str),
+		)
+		.chain(
+			sheet
+				.svg
+				.generic_font_family
+				.values()
+				.flatten()
+				.map(String::as_str),
+		)
+		.filter(|name| !sheet.has_fontdef_variant(name))
+		.collect();
+	definitions.extend(
+		literal_families
+			.into_iter()
+			.map(|name| json!({"id":name,"lookfor":[name]})),
+	);
+	let families: Vec<_> = sheet.font_families.iter().map(|family| {
+                let sources: Vec<_> = family.source.iter().map(|source| {
+                    let files: Vec<_> = source.files.iter().map(|file|
+                        json!({"url": file.url(), "sha256": file.sha256()})
+                    ).collect();
+                    let archives: Vec<_> = source.archives.iter().map(|archive|
+                        json!({"url": archive.url, "sha256": archive.sha256, "members": archive.members})
+                    ).collect();
+                    json!({"name": source.name, "files": files, "archives": archives})
+                }).collect();
+                json!({
+                    "id": family.id, "lookfor": family.lookfor,
+                    "license": family.license, "license_url": family.license_url,
+                    "homepage": family.homepage, "sources": sources.len(),
+                    "source_info": sources
+                })
+            }).collect();
+	json_report(
+		json!({"templates":templates,"definitions":definitions,"families":families}),
+	);
+}
+
 #[cfg(test)]
 mod tests {
 	use super::*;
@@ -407,6 +602,7 @@ mod tests {
 			force: false,
 			dry_run,
 			jobs: 4,
+			output: FontOutput::default(),
 		}
 	}
 

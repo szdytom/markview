@@ -121,6 +121,27 @@ pub fn load_for_pdf(
 	)
 }
 
+/// Resolve an editor's font catalog with the same template layering as export.
+pub(crate) fn load_for_editor(
+	target: StyleTarget,
+	ids: &[String],
+	dir: Option<&Path>,
+	cjk: CjkType,
+	file: Option<&Path>,
+) -> Result<Arc<Stylesheet>> {
+	if target == StyleTarget::Pdf {
+		return load_for_pdf(Some(ids), dir, cjk, file);
+	}
+	load_over(
+		ids,
+		dir,
+		cjk,
+		Stylesheet::bundled(false),
+		Some(target),
+		file,
+	)
+}
+
 /// Offscreen diagnostics can preview either kind without selecting it in a UI.
 pub fn load_for_preview(
 	ids: Option<&[String]>,

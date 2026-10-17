@@ -45,3 +45,31 @@ A full Noto CJK collection, rather than the subset faces, is **tens of MiB per f
 
 The Han font choosers list only families whose character maps cover Han text,
 so a Latin-only face cannot be selected for those roles.
+
+## Editor integrations
+
+Editors need the effective template's font requirements, including families that
+have no download source. `markview fonts catalog --destination ui|pdf` reports
+those requirements as JSON, with template choices, family names, licenses and
+source metadata. Use `--style ID` or `--file FILE.mvss.toml` to select a template;
+custom files layer over the destination defaults and any selected named style.
+This is distinct from `fonts list`, which reports declared downloadable families
+and their local availability.
+
+The existing download command also supports editor-managed storage and progress:
+
+```sh
+markview fonts download noto-serif --json --directory ./font-cache
+markview fonts download --file custom.mvss.toml --destination pdf --json --directory ./font-cache
+```
+
+`--destination ui|pdf` downloads from the effective template instead of only the
+selected file's declarations. Existing family selection, `--force`, `--dry-run`
+and `--jobs` still apply. JSON mode emits `progress` followed by `done`, or a
+`selection` for a dry run. Failures return a nonzero exit status with details on
+stderr. A host may create the path given by `--cancel-file` to cancel a transfer.
+Without these options, terminal output and the user font directory are unchanged.
+
+Hosts should download to a staging directory and promote it after success, keeping
+their existing cache on failure or cancellation. The VS Code client lives in
+`web/app/vsc-ext/` and uses these same font commands.

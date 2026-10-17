@@ -16,7 +16,7 @@ export class FontClient {
       "--destination",
       destination,
       ...(template?.path
-        ? ["--style-file", template.path]
+        ? ["--file", template.path]
         : template && template.id !== "default"
           ? ["--style", template.id]
           : []),
@@ -25,8 +25,8 @@ export class FontClient {
   async catalog(template?: Template, destination = "pdf"): Promise<Catalog> {
     return JSON.parse(
       await runNative(this.binary, [
-        "export",
-        "--catalog",
+        "fonts",
+        "catalog",
         ...this.args(template, destination),
       ]),
     );
@@ -65,10 +65,11 @@ export class FontClient {
         await runNative(
           this.binary,
           [
-            "export",
-            "--download",
+            "fonts",
+            "download",
+            "--json",
             id,
-            "--cache",
+            "--directory",
             directory,
             ...this.args(template, destination),
           ],

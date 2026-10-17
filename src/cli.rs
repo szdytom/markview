@@ -47,9 +47,30 @@ impl Mode {
 	}
 }
 
+/// Optional machine output and storage controls for font downloads.
+#[derive(Args, Clone, Debug, Default, PartialEq, Eq)]
+pub(crate) struct FontOutput {
+	#[arg(long)]
+	pub(crate) json: bool,
+	/// Store fonts in this directory instead of the user font directory.
+	#[arg(long)]
+	pub(crate) directory: Option<PathBuf>,
+	/// Resolve effective template layers for this destination.
+	#[arg(long, value_parser = ["ui", "pdf"])]
+	pub(crate) destination: Option<String>,
+	/// Cancel when the host creates this file.
+	#[arg(long)]
+	pub(crate) cancel_file: Option<PathBuf>,
+}
+
 /// What `markview fonts` was asked to do.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub(crate) enum FontsCommand {
+	Catalog {
+		style: Option<String>,
+		file: Option<PathBuf>,
+		destination: String,
+	},
 	/// List the declared families and what the download directory holds.
 	List {
 		style: Option<String>,
@@ -64,6 +85,7 @@ pub(crate) enum FontsCommand {
 		force: bool,
 		dry_run: bool,
 		jobs: usize,
+		output: FontOutput,
 	},
 	/// Print the download directory.
 	Path,
@@ -410,6 +432,13 @@ enum SsAction {
 
 #[derive(Subcommand)]
 enum FontsAction {
+	/// Print effective template requirements and download sources as JSON.
+	Catalog {
+		#[command(flatten)]
+		selection: Selection,
+		#[arg(long, value_parser = ["ui", "pdf"], default_value = "pdf")]
+		destination: String,
+	},
 	/// List the declared families and what the download directory holds.
 	List {
 		#[command(flatten)]
@@ -433,6 +462,8 @@ enum FontsAction {
 		/// How many transfers may run at once.
 		#[arg(long, value_name = "N", default_value_t = 4)]
 		jobs: usize,
+		#[command(flatten)]
+		output: FontOutput,
 	},
 	/// Print the download directory.
 	Path,
@@ -634,34 +665,48 @@ fn apply_command(out: &mut LaunchOptions, command: Command) -> Result<()> {
 		}
 		Command::Fonts { action } => {
 			out.mode = Mode::Fonts;
-			out.fonts = Some(match action {
-				FontsAction::List { selection, all } => FontsCommand::List {
-					style: selection.style,
-					file: selection.file,
-					all,
-				},
-				FontsAction::Download {
-					families,
-					selection,
-					force,
-					dry_run,
-					jobs,
-				} => FontsCommand::Download {
-					style: selection.style,
-					file: selection.file,
-					families,
-					force,
-					dry_run,
-					jobs: jobs.clamp(1, 64),
-				},
-				FontsAction::Path => FontsCommand::Path,
-				FontsAction::Verify { selection } => FontsCommand::Verify {
-					style: selection.style,
-					file: selection.file,
-				},
-			});
+			out.fonts = Some(fonts_command(action));
 			Ok(())
 		}
+	}
+}
+
+fn fonts_command(action: FontsAction) -> FontsCommand {
+	match action {
+		FontsAction::Catalog {
+			selection,
+			destination,
+		} => FontsCommand::Catalog {
+			style: selection.style,
+			file: selection.file,
+			destination,
+		},
+		FontsAction::List { selection, all } => FontsCommand::List {
+			style: selection.style,
+			file: selection.file,
+			all,
+		},
+		FontsAction::Download {
+			families,
+			selection,
+			force,
+			dry_run,
+			jobs,
+			output,
+		} => FontsCommand::Download {
+			style: selection.style,
+			file: selection.file,
+			families,
+			force,
+			dry_run,
+			jobs: jobs.clamp(1, 64),
+			output,
+		},
+		FontsAction::Path => FontsCommand::Path,
+		FontsAction::Verify { selection } => FontsCommand::Verify {
+			style: selection.style,
+			file: selection.file,
+		},
 	}
 }
 
@@ -1587,6 +1632,7 @@ mod tests {
 				force: false,
 				dry_run: false,
 				jobs: 4,
+				output: FontOutput::default(),
 			})
 		);
 		// Named families, one stylesheet, and a re-download.
@@ -1610,6 +1656,7 @@ mod tests {
 				force: true,
 				dry_run: true,
 				jobs: 2,
+				output: FontOutput::default(),
 			})
 		);
 		// A draft stylesheet can be used without installing it.

@@ -20,11 +20,11 @@ coverage or exact rendering equivalence. Unreadable font files are skipped.
 and records its declared license/source metadata. Failed or cancelled downloads keep
 the prior installed family. Callers serialize installations for the same family.
 `runNative()` transports stdin and JSON progress to/from a subprocess; cancellation
-uses an export marker followed by bounded process termination.
+uses a cancellation marker followed by bounded process termination.
 
 Tests use committed font fixtures and temporary directories. No internet downloads
 or globally installed fonts are needed for deterministic matching tests.
 
 `FontClient` wraps the native catalog/download protocol and snapshots custom
-templates for batch operations. It requires a compatible `markview export` CLI;
+templates for batch operations. It requires a compatible `markview fonts` CLI;
 scanning and cache operations remain usable without a native binary.
