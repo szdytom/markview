@@ -15,9 +15,9 @@ use std::{
 };
 
 use super::{
-	Block, BlockKind, CellAlign, Document, Inline, InlineKind, Link, ListItem,
-	RichText, TextStyle, content_identity, fingerprint, front_matter,
-	incremental, plain_text, semantic_key,
+	Block, BlockKind, Callout, CalloutKind, CellAlign, Document, Inline,
+	InlineKind, Link, ListItem, RichText, TextStyle, content_identity,
+	fingerprint, front_matter, incremental, plain_text, semantic_key,
 };
 
 /// The reading dialect a parse uses: which Markdown extensions are on and
@@ -29,6 +29,10 @@ pub struct Dialect {
 	pub hard_breaks: bool,
 	/// `==text==` parses as a highlight mark rather than literal text.
 	pub highlight_marks: bool,
+	/// Obsidian extensions: `> [!type]` callouts read as callouts rather than
+	/// GitHub alerts, and raw HTML admits `<sub>`, `<mark>`, `<u>`, `<ins>`
+	/// and `<small>`.
+	pub ofm: bool,
 }
 
 struct Reader<'s> {
@@ -269,41 +273,44 @@ impl Reader<'_> {
 						from,
 					)))
 				}
-				NodeValue::HtmlInline(t) => match html::inline(t) {
-					html::Inline::Image(image) => {
-						Some(InlineKind::Image(image))
-					}
-					html::Inline::Ignore => continue,
-					html::Inline::Break => {
-						Some(InlineKind::LineBreak { justify: true })
-					}
-					html::Inline::Open { name, patch } => {
-						if scopes.len() >= self.limits.html_scopes {
-							// Past the budget the tag stays source, like any
-							// unsupported markup, so a run of sibling tags
-							// cannot grow the scope stack without bound.
-							child_style.code = true;
-							Some(InlineKind::Text(t.clone()))
-						} else {
-							scopes.push((name, style.clone()));
-							apply_patch(&patch, &mut style, source.start);
+				NodeValue::HtmlInline(t) => {
+					match html::inline(t, self.dialect.ofm) {
+						html::Inline::Image(image) => {
+							Some(InlineKind::Image(image))
+						}
+						html::Inline::Ignore => continue,
+						html::Inline::Break => {
+							Some(InlineKind::LineBreak { justify: true })
+						}
+						html::Inline::Open { name, patch } => {
+							if scopes.len() >= self.limits.html_scopes {
+								// Past the budget the tag stays source, like any
+								// unsupported markup, so a run of sibling tags
+								// cannot grow the scope stack without bound.
+								child_style.code = true;
+								Some(InlineKind::Text(t.clone()))
+							} else {
+								scopes.push((name, style.clone()));
+								apply_patch(&patch, &mut style, source.start);
+								continue;
+							}
+						}
+						html::Inline::Close { name } => {
+							if let Some(i) = scopes
+								.iter()
+								.rposition(|(open, _)| *open == name)
+							{
+								style = scopes[i].1.clone();
+								scopes.truncate(i);
+							}
 							continue;
 						}
-					}
-					html::Inline::Close { name } => {
-						if let Some(i) =
-							scopes.iter().rposition(|(open, _)| *open == name)
-						{
-							style = scopes[i].1.clone();
-							scopes.truncate(i);
+						html::Inline::Literal => {
+							child_style.code = true;
+							Some(InlineKind::Text(t.clone()))
 						}
-						continue;
 					}
-					html::Inline::Literal => {
-						child_style.code = true;
-						Some(InlineKind::Text(t.clone()))
-					}
-				},
+				}
 				NodeValue::Math(m) => Some(InlineKind::Math {
 					latex: self.text_after(&m.literal, source.clone(), from),
 					display: m.display_math,
@@ -529,6 +536,7 @@ impl Reader<'_> {
 				frame.start..frame.start.saturating_add(frame.raw.len()),
 				self.limits.html_scopes,
 				self.opaque_until(frame.start),
+				self.dialect.ofm,
 			) {
 				blocks.push(block);
 			}
@@ -593,6 +601,7 @@ impl Reader<'_> {
 						at,
 						self.limits.html_scopes,
 						self.opaque_until(child_range.start),
+						self.dialect.ofm,
 					) {
 						push_block(stack, out, block);
 					}
@@ -614,6 +623,7 @@ impl Reader<'_> {
 							at,
 							self.limits.html_scopes,
 							self.opaque_until(child_range.start),
+							self.dialect.ofm,
 						) {
 							push_block(stack, out, block);
 						}
@@ -629,6 +639,7 @@ impl Reader<'_> {
 							at,
 							self.limits.html_scopes,
 							self.opaque_until(child_range.start),
+							self.dialect.ofm,
 						) {
 							push_block(stack, out, block);
 						}
@@ -667,6 +678,7 @@ impl Reader<'_> {
 							at,
 							self.limits.html_scopes,
 							self.opaque_until(child_range.start),
+							self.dialect.ofm,
 						) {
 							push_block(stack, out, block);
 						}
@@ -868,6 +880,48 @@ impl Reader<'_> {
 			})
 	}
 
+	/// A block quote, or in the Obsidian dialect a callout when its first
+	/// line carries a `[!type]` marker.
+	fn quote_kind<'a>(
+		&mut self,
+		quote: &'a AstNode<'a>,
+		source: &Range<usize>,
+		depth: usize,
+	) -> BlockKind {
+		let callout = self
+			.dialect
+			.ofm
+			.then(|| callout_header(self, quote))
+			.flatten();
+		let mut blocks = self.blocks(quote, depth + 1);
+		if let Some(callout) = &callout
+			&& let Some(open) = callout.fold
+		{
+			// A foldable callout's body is one disclosure, so it toggles like
+			// a `<details>` element.
+			let ordinal = self.details_ordinal;
+			self.details_ordinal += 1;
+			let summary = vec![Inline {
+				kind: InlineKind::Text(callout.header()),
+				style: TextStyle::default(),
+				source: source.clone(),
+			}];
+			blocks = vec![details_block_of(
+				self.source,
+				open,
+				ordinal,
+				summary,
+				blocks,
+				source.clone(),
+			)];
+		}
+		BlockKind::Quote {
+			label: None,
+			callout,
+			blocks,
+		}
+	}
+
 	fn child_block<'a>(
 		&mut self,
 		child: &'a AstNode<'a>,
@@ -907,18 +961,17 @@ impl Reader<'_> {
 						&h.literal,
 						self.limits.html_scopes,
 						&source,
+						self.dialect.ofm,
 					) else {
 						return Child::Skip;
 					};
 					kind
 				}
 				NodeValue::ThematicBreak => BlockKind::Rule,
-				NodeValue::BlockQuote => BlockKind::Quote {
-					label: None,
-					blocks: self.blocks(child, depth + 1),
-				},
+				NodeValue::BlockQuote => self.quote_kind(child, &source, depth),
 				NodeValue::Alert(a) => BlockKind::Quote {
 					label: Some(format!("{:?}", a.alert_type)),
+					callout: None,
 					blocks: self.blocks(child, depth + 1),
 				},
 				NodeValue::List(l) => BlockKind::List {
@@ -1218,6 +1271,7 @@ impl Reader<'_> {
 			self.limits.html_scopes,
 			anchor_from,
 			source.start,
+			self.dialect.ofm,
 		) {
 			html::Block::Paragraph(spans) => html_rich(spans, source),
 			_ => RichText::new(),
@@ -1311,6 +1365,7 @@ fn html_leaf_block(
 	range: Range<usize>,
 	scope_limit: usize,
 	opaque_until: usize,
+	ofm: bool,
 ) -> Option<Block> {
 	let range = clamp_range(source, range);
 	let anchor_from = if opaque_until > range.start {
@@ -1319,23 +1374,28 @@ fn html_leaf_block(
 	} else {
 		0
 	};
-	let kind =
-		match html::block_from(text, scope_limit, anchor_from, range.start) {
-			html::Block::Unsupported => BlockKind::Code {
-				language: "HTML source".into(),
-				text: text.to_string(),
-			},
-			html::Block::Empty => return None,
-			html::Block::Rule => BlockKind::Rule,
-			html::Block::Heading { level, text } => BlockKind::Heading {
-				level,
-				text: html_rich(text, &range),
-				anchor: String::new(),
-			},
-			html::Block::Paragraph(text) => {
-				BlockKind::Paragraph(html_rich(text, &range))
-			}
-		};
+	let kind = match html::block_from(
+		text,
+		scope_limit,
+		anchor_from,
+		range.start,
+		ofm,
+	) {
+		html::Block::Unsupported => BlockKind::Code {
+			language: "HTML source".into(),
+			text: text.to_string(),
+		},
+		html::Block::Empty => return None,
+		html::Block::Rule => BlockKind::Rule,
+		html::Block::Heading { level, text } => BlockKind::Heading {
+			level,
+			text: html_rich(text, &range),
+			anchor: String::new(),
+		},
+		html::Block::Paragraph(text) => {
+			BlockKind::Paragraph(html_rich(text, &range))
+		}
+	};
 	let anchors = if matches!(kind, BlockKind::Code { .. } | BlockKind::Rule) {
 		html::block_anchors_from(text, anchor_from)
 	} else {
@@ -1660,7 +1720,9 @@ fn markdown_options(dialect: Dialect) -> Options<'static> {
 	options.extension.tasklist = true;
 	options.extension.autolink = true;
 	options.extension.footnotes = true;
-	options.extension.alerts = true;
+	// GitHub alerts know five types; the Obsidian dialect reads every
+	// `> [!type]` quote as a callout itself instead. See `callout_header`.
+	options.extension.alerts = !dialect.ofm;
 	options.extension.math_dollars = true;
 	options.extension.math_latex = true;
 	options.extension.math_code = true;
@@ -1677,6 +1739,8 @@ fn apply_patch(patch: &html::Patch, style: &mut TextStyle, origin: usize) {
 		html::Patch::Strike => style.strike = true,
 		html::Patch::Code => style.code = true,
 		html::Patch::Superscript => style.superscript = true,
+		html::Patch::Subscript => style.subscript = true,
+		html::Patch::Mark => style.mark = true,
 		html::Patch::Link(url) => {
 			style.link = Some(Link::new(url.as_str(), origin));
 		}
@@ -1736,6 +1800,8 @@ fn html_rich(spans: Vec<html::Span>, source: &Range<usize>) -> RichText {
 				strike: span.style.strike,
 				code: span.style.code,
 				superscript: span.style.superscript,
+				subscript: span.style.subscript,
+				mark: span.style.mark,
 				link: span.style.link,
 				..TextStyle::default()
 			},
@@ -1879,8 +1945,9 @@ fn html_block_kind(
 	literal: &str,
 	scopes: usize,
 	source: &Range<usize>,
+	ofm: bool,
 ) -> Option<BlockKind> {
-	Some(match html::block(literal, scopes, source.start) {
+	Some(match html::block(literal, scopes, source.start, ofm) {
 		html::Block::Unsupported => BlockKind::Code {
 			language: "HTML source".into(),
 			text: literal.to_owned(),
@@ -1896,4 +1963,105 @@ fn html_block_kind(
 			BlockKind::Paragraph(html_rich(text, source))
 		}
 	})
+}
+
+/// Splits an Obsidian callout header, `[!type]` with an optional fold sign
+/// and title, off the first line of a block quote. The header's inline nodes
+/// leave the tree, so the quote's blocks are the callout body alone. The
+/// marker must stand verbatim in the source; flattened inlines read an
+/// escaped, coded or styled `[!` just like a real one.
+fn callout_header<'a>(
+	reader: &Reader<'_>,
+	quote: &'a AstNode<'a>,
+) -> Option<Callout> {
+	let paragraph = quote.first_child()?;
+	if !matches!(paragraph.data.borrow().value, NodeValue::Paragraph) {
+		return None;
+	}
+	let mut line = Vec::new();
+	let mut line_end = None;
+	for node in paragraph.children() {
+		if matches!(
+			node.data.borrow().value,
+			NodeValue::SoftBreak | NodeValue::LineBreak
+		) {
+			line_end = Some(node);
+			break;
+		}
+		line.push(node);
+	}
+	let mut text = String::new();
+	for node in &line {
+		plain_inline(node, &mut text);
+	}
+	let (name, fold, title) = callout_marker(&text)?;
+	// Comrak starts escaped text after its backslash. Require a literal
+	// marker at the first inline's source; `name.len()` includes every UTF-8
+	// byte, so adding the delimiters keeps the slice on a character boundary.
+	let marker_end = name.len() + 3 + usize::from(fold.is_some());
+	let start = reader.range(line.first()?).start;
+	if reader.source[..start].ends_with('\\')
+		|| !reader.source[start..].starts_with(&text[..marker_end])
+	{
+		return None;
+	}
+	for node in line.into_iter().chain(line_end) {
+		node.detach();
+	}
+	if paragraph.first_child().is_none() {
+		paragraph.detach();
+	}
+	Some(Callout {
+		kind: CalloutKind::parse(name),
+		title,
+		fold,
+	})
+}
+
+/// The type name, fold state and title of a `[!type]± title` header line.
+/// Without a title the type name, capitalized, stands in.
+fn callout_marker(line: &str) -> Option<(&str, Option<bool>, String)> {
+	let rest = line.strip_prefix("[!")?;
+	let (name, mut after) = rest.split_once(']')?;
+	let word = |c: char| c.is_alphanumeric() || c == '-' || c == '_';
+	if name.is_empty() || !name.chars().all(word) {
+		return None;
+	}
+	let fold = match after.as_bytes().first() {
+		Some(b'+') => Some(true),
+		Some(b'-') => Some(false),
+		_ => None,
+	};
+	if fold.is_some() {
+		after = &after[1..];
+	}
+	if !after.is_empty() && !after.starts_with(char::is_whitespace) {
+		return None;
+	}
+	let title = match after.trim() {
+		"" => {
+			let mut chars = name.chars();
+			chars
+				.next()
+				.map(|c| c.to_uppercase().chain(chars).collect())
+				.unwrap_or_default()
+		}
+		title => title.to_owned(),
+	};
+	Some((name, fold, title))
+}
+
+/// The reading text of one inline node, markup dropped.
+fn plain_inline<'a>(node: &'a AstNode<'a>, out: &mut String) {
+	match &node.data.borrow().value {
+		NodeValue::Text(t) => out.push_str(t),
+		NodeValue::Code(c) => out.push_str(&c.literal),
+		NodeValue::Math(m) => out.push_str(&m.literal),
+		NodeValue::HtmlInline(_) => {}
+		_ => {
+			for child in node.children() {
+				plain_inline(child, out);
+			}
+		}
+	}
 }

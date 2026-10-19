@@ -166,6 +166,9 @@ pub struct LayoutOptions {
 	/// Parse `==text==` as a highlight mark instead of literal text; threaded
 	/// to the parse exactly like `hard_breaks`.
 	pub highlight_marks: bool,
+	/// Read Obsidian callouts and the extra inline HTML tags; threaded to
+	/// the parse exactly like `hard_breaks`.
+	pub ofm: bool,
 	/// Reader-chosen collapse state of each `<details>`, keyed by the block's
 	/// semantic id. A block absent from the map uses the state its source
 	/// declared, so a fresh document starts there. Presentation state does not
@@ -200,6 +203,7 @@ impl Default for LayoutOptions {
 			codeblock_wrap: false,
 			hard_breaks: false,
 			highlight_marks: false,
+			ofm: false,
 			details_open: Arc::default(),
 			force_open: false,
 			front_matter_label: "Frontmatter".into(),
@@ -226,6 +230,7 @@ impl PartialEq for LayoutOptions {
 			// without it would skip the reparse a tab resume owes.
 			&& self.hard_breaks == other.hard_breaks
 			&& self.highlight_marks == other.highlight_marks
+			&& self.ofm == other.ofm
 			&& self.front_matter_label == other.front_matter_label
 			&& self.hide_front_matter == other.hide_front_matter
 			&& self.stylesheet.layout_key() == other.stylesheet.layout_key()

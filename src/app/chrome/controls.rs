@@ -7,7 +7,9 @@ use crate::{
 	app::frame::{CONTROL_GAP, Layout},
 	lang::Lang,
 	layout::{Draw, Rect, TextShaper},
-	settings::{MarkdownFlavor, ReaderSettings, Sidebar, TabStyle, WindowLayout},
+	settings::{
+		MarkdownFlavor, ReaderSettings, Sidebar, TabStyle, WindowLayout,
+	},
 	state::{Command, DropdownId, InteractionState, PanelPage, PanelTab},
 };
 pub(super) use components::{draw_button, panel_rect};

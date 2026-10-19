@@ -240,6 +240,7 @@ impl Worker {
 							let dialect = markview_commonmark::Dialect {
 								hard_breaks: request.options.hard_breaks,
 								highlight_marks: request.options.highlight_marks,
+								ofm: request.options.ofm,
 							};
 							let document = if let Some(
 								(path, revision, cached_dialect, doc),

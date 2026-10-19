@@ -18,6 +18,17 @@ pub enum Condition {
 	#[default]
 	Body,
 	Blockquote,
+	/// An Obsidian callout: a block quote refined by one of the color
+	/// families below, which follow it so they are more local.
+	Callout,
+	/// Callout color families; each groups the types Obsidian colors alike.
+	CalloutNote,
+	CalloutTip,
+	CalloutSuccess,
+	CalloutWarning,
+	CalloutDanger,
+	CalloutExample,
+	CalloutQuote,
 	List,
 	Enum,
 	Table,
@@ -56,6 +67,7 @@ pub enum Condition {
 	Link,
 	Del,
 	Sup,
+	Sub,
 	FootnoteRef,
 	Code,
 	Mark,
@@ -77,6 +89,14 @@ impl Condition {
 	pub const ALL: &'static [(Self, &'static str)] = &[
 		(Self::Body, "body"),
 		(Self::Blockquote, "blockquote"),
+		(Self::Callout, "callout"),
+		(Self::CalloutNote, "callout_note"),
+		(Self::CalloutTip, "callout_tip"),
+		(Self::CalloutSuccess, "callout_success"),
+		(Self::CalloutWarning, "callout_warning"),
+		(Self::CalloutDanger, "callout_danger"),
+		(Self::CalloutExample, "callout_example"),
+		(Self::CalloutQuote, "callout_quote"),
 		(Self::List, "list"),
 		(Self::Enum, "enum"),
 		(Self::Table, "table"),
@@ -115,6 +135,7 @@ impl Condition {
 		(Self::Link, "link"),
 		(Self::Del, "del"),
 		(Self::Sup, "sup"),
+		(Self::Sub, "sub"),
 		(Self::FootnoteRef, "footnote_ref"),
 		(Self::Code, "code"),
 		(Self::Mark, "mark"),
@@ -153,6 +174,11 @@ impl Condition {
 		match self {
 			Body => chain_of(&[Body]),
 			Blockquote => chain_of(&[Body, Blockquote]),
+			Callout => chain_of(&[Body, Blockquote, Callout]),
+			CalloutNote | CalloutTip | CalloutSuccess | CalloutWarning
+			| CalloutDanger | CalloutExample | CalloutQuote => {
+				chain_of(&[Body, Blockquote, Callout, self])
+			}
 			List => chain_of(&[Body, List]),
 			Enum => chain_of(&[Body, Enum]),
 			ListItem => chain_of(&[Body, ListItem]),
@@ -175,9 +201,8 @@ impl Condition {
 			TaskMarker => chain_of(&[Body, ListItem, TaskMarker]),
 			Caption | Placeholder => chain_of(&[Body, Image, self]),
 			Math => chain_of(&[Body, Math]),
-			Em | Strong | Link | Del | Sup | FootnoteRef | Code | Mark => {
-				chain_of(&[Body, self])
-			}
+			Em | Strong | Link | Del | Sup | Sub | FootnoteRef | Code
+			| Mark => chain_of(&[Body, self]),
 			Error => chain_of(&[Body, Math, Error]),
 			Hover => chain_of(&[Body, Link, Hover]),
 			// Page furniture is set in the document's own fonts unless the
@@ -206,7 +231,8 @@ impl Condition {
 			Self::Em
 				| Self::Strong
 				| Self::Link | Self::Del
-				| Self::Sup | Self::FootnoteRef
+				| Self::Sup | Self::Sub
+				| Self::FootnoteRef
 				| Self::Code | Self::Math
 				| Self::Mark
 		)
@@ -222,6 +248,12 @@ impl Condition {
 				ConditionSet::of(Ui).with(self)
 			}
 			Hover => ConditionSet::of(Link).with(Hover),
+			// A callout's box is a block quote's, refined by its family.
+			Callout => ConditionSet::of(Blockquote).with(Callout),
+			CalloutNote | CalloutTip | CalloutSuccess | CalloutWarning
+			| CalloutDanger | CalloutExample | CalloutQuote => {
+				ConditionSet::of(Blockquote).with(Callout).with(self)
+			}
 			_ => ConditionSet::of(self),
 		}
 	}
@@ -234,6 +266,14 @@ impl Condition {
 				| Self::H2 | Self::H3
 				| Self::H4 | Self::H5
 				| Self::H6 | Self::Blockquote
+				| Self::Callout
+				| Self::CalloutNote
+				| Self::CalloutTip
+				| Self::CalloutSuccess
+				| Self::CalloutWarning
+				| Self::CalloutDanger
+				| Self::CalloutExample
+				| Self::CalloutQuote
 				| Self::List | Self::Enum
 				| Self::ListItem
 				| Self::Footnote
@@ -286,6 +326,7 @@ impl ConditionSet {
 			| Condition::Link.bit()
 			| Condition::Del.bit()
 			| Condition::Sup.bit()
+			| Condition::Sub.bit()
 			| Condition::FootnoteRef.bit()
 			| Condition::Code.bit()
 			| Condition::Math.bit()

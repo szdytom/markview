@@ -976,6 +976,8 @@ impl TextShaper {
 					let shift = run.font_size() * appearance.baseline
 						- if style.is_some_and(|s| s.superscript) {
 							size * 0.35
+						} else if style.is_some_and(|s| s.subscript) {
+							-size * 0.15
 						} else {
 							0.
 						};

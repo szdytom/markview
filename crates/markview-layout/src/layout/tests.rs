@@ -3769,3 +3769,60 @@ fn a_lone_cr_in_a_code_block_cannot_break_the_shaper() {
 	// asserts on a newline character inside a run.
 	assert_eq!(vec!["~\u{0}\u{0}\u{0}M", "\u{8e0d}f2I"], lines);
 }
+
+/// An Obsidian callout is a block quote refined by its color family: the box
+/// takes the family's border and the header line its color, and a quote rule
+/// from the theme still shapes it.
+#[test]
+fn a_callout_draws_its_family_color_and_header() {
+	let dialect = markview_commonmark::Dialect {
+		ofm: true,
+		..Default::default()
+	};
+	let doc = markview_commonmark::parse_with(
+		"> [!caution] Careful\n> Body.\n\n> Plain.\n",
+		dialect,
+	);
+	let options = LayoutOptions::default();
+	let snapshot = LayoutEngine::new().layout(&doc, &options).flattened();
+	let sheet = &options.stylesheet;
+	let rgba = |hex: u32| {
+		[hex >> 16, hex >> 8 & 0xff, hex & 0xff]
+			.map(|c| (c & 0xff) as f32 / 255.0)
+	};
+	let close = |a: [f32; 4], b: [f32; 3]| {
+		a.iter().zip(b).all(|(a, b)| (a - b).abs() < 0.01)
+	};
+	let boxed = |block: usize| {
+		snapshot.blocks[block]
+			.layout
+			.draws
+			.iter()
+			.find_map(|d| match d {
+				Draw::Box {
+					chain,
+					condition,
+					left_only,
+					..
+				} => Some((*chain, *condition, *left_only)),
+				_ => None,
+			})
+			.expect("quote box")
+	};
+	let (chain, condition, left_only) = boxed(0);
+	assert_eq!(condition, Condition::CalloutWarning);
+	assert!(left_only);
+	let border = sheet.paint(crate::scene::Paint::Scoped(
+		chain,
+		condition,
+		crate::style::ColorField::BorderColor,
+	));
+	assert!(close(border, rgba(0xC76A00)), "{border:?}");
+	// The header is drawn in the family color, ahead of the body text.
+	let header = snapshot.blocks[0].layout.draws.iter().any(|d| {
+		matches!(d, Draw::Glyph(g) if close(sheet.paint(g.paint), rgba(0xC76A00)))
+	});
+	assert!(header, "no header glyphs in the callout color");
+	// A plain quote keeps the quote box.
+	assert_eq!(boxed(1).1, Condition::Blockquote);
+}

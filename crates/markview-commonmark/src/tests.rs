@@ -1,4 +1,5 @@
 use super::*;
+use markview_document::{Callout, CalloutKind};
 use std::sync::Arc;
 #[test]
 fn gfm_and_raw_html() {
@@ -2274,4 +2275,249 @@ fn wikilinks_escape_literal_percents_without_changing_markdown_urls() {
 			"Note%20%41.md"
 		]
 	);
+}
+
+/// The OFM lite dialect: highlight marks, no hard breaks, Obsidian extras.
+fn ofm() -> Dialect {
+	Dialect {
+		highlight_marks: true,
+		ofm: true,
+		..Dialect::default()
+	}
+}
+
+fn callout_of(block: &Block) -> (&Callout, &[Block]) {
+	let BlockKind::Quote {
+		callout: Some(callout),
+		blocks,
+		..
+	} = &block.kind
+	else {
+		panic!("not a callout: {:?}", block.kind);
+	};
+	(callout, blocks)
+}
+
+#[test]
+fn obsidian_callouts_read_every_type_and_alias() {
+	let cases = [
+		("note", CalloutKind::Note),
+		("abstract", CalloutKind::Abstract),
+		("summary", CalloutKind::Abstract),
+		("TLDR", CalloutKind::Abstract),
+		("info", CalloutKind::Info),
+		("todo", CalloutKind::Todo),
+		("tip", CalloutKind::Tip),
+		("hint", CalloutKind::Tip),
+		("IMPORTANT", CalloutKind::Tip),
+		("success", CalloutKind::Success),
+		("check", CalloutKind::Success),
+		("done", CalloutKind::Success),
+		("question", CalloutKind::Question),
+		("help", CalloutKind::Question),
+		("Faq", CalloutKind::Question),
+		("warning", CalloutKind::Warning),
+		("caution", CalloutKind::Warning),
+		("attention", CalloutKind::Warning),
+		("failure", CalloutKind::Failure),
+		("fail", CalloutKind::Failure),
+		("missing", CalloutKind::Failure),
+		("danger", CalloutKind::Danger),
+		("error", CalloutKind::Danger),
+		("bug", CalloutKind::Bug),
+		("example", CalloutKind::Example),
+		("quote", CalloutKind::Quote),
+		("cite", CalloutKind::Quote),
+		("something-custom", CalloutKind::Note),
+	];
+	for (name, kind) in cases {
+		let doc = parse_with(format!("> [!{name}] Title\n> Body\n"), ofm());
+		let (callout, blocks) = callout_of(&doc.blocks[0]);
+		assert_eq!(callout.kind, kind, "{name}");
+		assert_eq!(callout.title, "Title");
+		assert_eq!(callout.fold, None);
+		let BlockKind::Paragraph(body) = &blocks[0].kind else {
+			panic!("{name}: body {:?}", blocks);
+		};
+		assert_eq!(plain_text(body), "Body");
+	}
+}
+
+#[test]
+fn a_callout_without_a_title_uses_its_type_name() {
+	let doc = parse_with("> [!info]\n> Default title.\n", ofm());
+	let (callout, blocks) = callout_of(&doc.blocks[0]);
+	assert_eq!(callout.title, "Info");
+	assert_eq!(blocks.len(), 1);
+	// A marker alone in its paragraph leaves no empty paragraph behind.
+	let doc = parse_with("> [!faq]\n>\n> Body.\n", ofm());
+	let (callout, blocks) = callout_of(&doc.blocks[0]);
+	assert_eq!(
+		(callout.kind, callout.title.as_str()),
+		(CalloutKind::Question, "Faq")
+	);
+	assert_eq!(blocks.len(), 1);
+}
+
+#[test]
+fn a_foldable_callout_wraps_its_body_in_a_disclosure() {
+	let doc = parse_with(
+		"> [!faq]- Folded\n> Hidden.\n> - one\n\n> [!tip]+ Open\n> Shown.\n",
+		ofm(),
+	);
+	let (folded, blocks) = callout_of(&doc.blocks[0]);
+	assert_eq!(folded.fold, Some(false));
+	let BlockKind::Details {
+		open,
+		summary,
+		blocks: body,
+		..
+	} = &blocks[0].kind
+	else {
+		panic!("no disclosure: {blocks:?}");
+	};
+	assert!(!open);
+	assert!(plain_text(summary).ends_with("Folded"));
+	assert_eq!(body.len(), 2);
+	let (open_callout, blocks) = callout_of(&doc.blocks[1]);
+	assert_eq!(open_callout.fold, Some(true));
+	assert!(matches!(
+		blocks[0].kind,
+		BlockKind::Details { open: true, .. }
+	));
+	assert_eq!(doc.details_declared(blocks[0].id), Some(true));
+}
+
+#[test]
+fn callouts_nest_and_keep_inline_markup_in_the_body() {
+	let doc = parse_with(
+		"> [!note] Outer\n> Outer text.\n> > [!warning] Inner\n> > **bold** ==mark==\n",
+		ofm(),
+	);
+	let (outer, blocks) = callout_of(&doc.blocks[0]);
+	assert_eq!(outer.title, "Outer");
+	let inner = blocks
+		.iter()
+		.find(|b| matches!(b.kind, BlockKind::Quote { .. }))
+		.expect("nested callout");
+	let (inner, body) = callout_of(inner);
+	assert_eq!(inner.kind, CalloutKind::Warning);
+	let BlockKind::Paragraph(text) = &body[0].kind else {
+		panic!()
+	};
+	assert!(text.iter().any(|i| i.style.bold));
+	assert!(text.iter().any(|i| i.style.mark));
+}
+
+#[test]
+fn gfm_keeps_github_alerts_and_plain_quotes() {
+	let doc = parse("> [!NOTE]\n> Alert.\n\n> [!faq] Not an alert\n> Quote.\n");
+	assert!(matches!(
+		&doc.blocks[0].kind,
+		BlockKind::Quote { label: Some(l), callout: None, .. } if l == "Note"
+	));
+	let BlockKind::Quote {
+		label: None,
+		callout: None,
+		blocks,
+	} = &doc.blocks[1].kind
+	else {
+		panic!()
+	};
+	let BlockKind::Paragraph(text) = &blocks[0].kind else {
+		panic!()
+	};
+	assert!(plain_text(text).starts_with("[!faq] Not an alert"));
+	// In OFM lite a GitHub alert is just another callout type.
+	let doc = parse_with("> [!NOTE]\n> Alert.\n", ofm());
+	let (callout, _) = callout_of(&doc.blocks[0]);
+	assert_eq!(
+		(callout.kind, callout.title.as_str()),
+		(CalloutKind::Note, "NOTE")
+	);
+}
+
+#[test]
+fn a_quote_that_only_looks_like_a_callout_stays_a_quote() {
+	for source in ["> [!] empty\n", "> [!note]x glued\n", "> text [!note]\n"] {
+		let doc = parse_with(source, ofm());
+		assert!(
+			matches!(
+				doc.blocks[0].kind,
+				BlockKind::Quote { callout: None, .. }
+			),
+			"{source}"
+		);
+	}
+}
+
+#[test]
+fn escaped_or_styled_callout_markers_stay_quotes() {
+	for source in [
+		"> \\[!note] Escaped\n> Body\n",
+		"> `[!note]` Code\n> Body\n",
+		"> **[!note]** Bold\n> Body\n",
+	] {
+		let doc = parse_with(source, ofm());
+		let BlockKind::Quote {
+			callout: None,
+			blocks,
+			..
+		} = &doc.blocks[0].kind
+		else {
+			panic!("became a callout: {source}");
+		};
+		let BlockKind::Paragraph(text) = &blocks[0].kind else {
+			panic!("{source}: {blocks:?}");
+		};
+		assert!(plain_text(text).contains("[!note]"), "{source}");
+	}
+}
+
+#[test]
+fn obsidian_html_tags_style_only_in_the_dialect() {
+	fn paragraph(doc: &Document) -> &RichText {
+		let BlockKind::Paragraph(rich) = &doc.blocks[0].kind else {
+			panic!("not a paragraph: {:?}", doc.blocks[0].kind);
+		};
+		rich
+	}
+	let source = "H<sub>2</sub>O x<sup>2</sup> <mark>hi</mark> <u>u</u> <ins>i</ins> <small>s</small>\n";
+	let doc = parse_with(source, ofm());
+	let text = paragraph(&doc);
+	assert_eq!(plain_text(text), "H2O x2 hi u i s");
+	assert!(text.iter().any(|i| i.style.subscript
+		&& matches!(&i.kind, InlineKind::Text(t) if t == "2")));
+	assert!(text.iter().any(|i| i.style.superscript));
+	assert!(
+		text.iter().any(|i| i.style.mark
+			&& matches!(&i.kind, InlineKind::Text(t) if t == "hi"))
+	);
+	// GFM keeps them as literal source, as before.
+	let gfm = parse(source);
+	let text = paragraph(&gfm);
+	assert!(plain_text(text).contains("<sub>"));
+	assert!(plain_text(text).contains("<mark>"));
+	assert!(text.iter().all(|i| !i.style.subscript && !i.style.mark));
+	// A raw HTML block reads the same tags.
+	let doc = parse_with("<p><mark>m</mark> H<sub>2</sub></p>\n", ofm());
+	let text = paragraph(&doc);
+	assert!(text.iter().any(|i| i.style.mark));
+	assert!(text.iter().any(|i| i.style.subscript));
+}
+
+#[test]
+fn editing_around_callouts_matches_a_full_parse() {
+	let before = "# T\n\nIntro.\n\n> [!faq]- Folded\n> Hidden.\n\n> [!tip] Tip\n> Shown.\n\nOutro.\n";
+	for after in [
+		"# T\n\nIntro, edited.\n\n> [!faq]- Folded\n> Hidden.\n\n> [!tip] Tip\n> Shown.\n\nOutro.\n",
+		"# T\n\nIntro.\n\n> [!faq]+ Folded\n> Hidden.\n\n> [!tip] Tip\n> Shown.\n\nOutro.\n",
+		"# T\n\nIntro.\n\n> [!faq]- Folded\n> Hidden.\n\n> [!bug] Tip\n> Shown more.\n\nOutro.\n",
+	] {
+		let previous = parse_with(before, ofm());
+		let got = reparse_with(&previous, Arc::from(after), ofm());
+		let expected = parse_with(after, ofm());
+		assert_eq!(got.blocks, expected.blocks, "{after:?}");
+		assert_eq!(got.content_id, expected.content_id);
+	}
 }

@@ -141,12 +141,14 @@ A condition is one fact about a rendered run: the blocks that contain it, the pa
 
 | Area | Conditions |
 | --- | --- |
-| Blocks | `body`, `p`, `h1`–`h6`, `blockquote`, `list`, `enum`, `list_item`, `footnote`, `details`, `front_matter`, `code_block`, `table`, `hr` |
+| Blocks | `body`, `p`, `h1`–`h6`, `blockquote`, `callout`, `callout_note`, `callout_tip`, `callout_success`, `callout_warning`, `callout_danger`, `callout_example`, `callout_quote`, `list`, `enum`, `list_item`, `footnote`, `details`, `front_matter`, `code_block`, `table`, `hr` |
 | Block parts | `label`, `cell`, `header`, `marker`, `task_marker`, `caption`, `placeholder`, `summary` |
-| Inline | `em`, `strong`, `link`, `del`, `sup`, `footnote_ref`, `code`, `math` |
+| Inline | `em`, `strong`, `link`, `del`, `sup`, `sub`, `footnote_ref`, `code`, `math` |
 | State | `hover`, `error` |
 | Surfaces and UI | `img`, `selection`, `search`, `search_current`, `scrollbar`, `ui`, `toolbar`, `statusbar`, `panel`, `button` |
 | Paper | `page`, `page_header`, `page_footer`, `page_number` |
+
+An Obsidian callout (read only in the OFM lite dialect) is a `blockquote` refined by `callout` and one color family, so a theme's quote rules still shape it and `["callout_warning"] border_color` or `["callout_warning", "label"] color` tint one family. The families group Obsidian's types: `callout_note` (note, info, todo), `callout_tip` (abstract, tip), `callout_success`, `callout_warning` (question, warning), `callout_danger` (failure, danger, bug), `callout_example` and `callout_quote`. The shared fallback colors each family; the header icon is fixed per type.
 
 `page` paints the exported sheet; the other three style page furniture. They never apply to the reader window, and a theme that ignores them still exports: the PDF falls back to the body appearance.
 
