@@ -268,7 +268,7 @@ impl Reader<'_> {
 							Some(InlineKind::Text(t.clone()))
 						} else {
 							scopes.push((name, style.clone()));
-							apply_patch(&patch, &mut style);
+							apply_patch(&patch, &mut style, source.start);
 							continue;
 						}
 					}
@@ -294,8 +294,10 @@ impl Reader<'_> {
 					let label = f.ix.to_string();
 					child_style.superscript = true;
 					child_style.footnote_ref = true;
-					child_style.link =
-						Some(Link::new(super::footnote::url(&label)));
+					child_style.link = Some(Link::new(
+						super::footnote::url(&label),
+						source.start,
+					));
 					Some(InlineKind::FootnoteRef(f.ix))
 				}
 				NodeValue::Strong => {
@@ -326,11 +328,12 @@ impl Reader<'_> {
 							)
 						},
 					);
-					child_style.link = Some(Link::new(url));
+					child_style.link = Some(Link::new(url, source.start));
 					None
 				}
 				NodeValue::Link(l) => {
-					child_style.link = Some(Link::new(l.url.clone()));
+					child_style.link =
+						Some(Link::new(l.url.clone(), source.start));
 					None
 				}
 				NodeValue::Image(link) => {
@@ -996,6 +999,10 @@ impl Reader<'_> {
 		fn rich(text: &mut RichText, offsets: &[usize]) {
 			for inline in text {
 				range(&mut inline.source, offsets);
+				if let Some(link) = inline.style.link.take() {
+					let at = link.origin().min(offsets.len() - 1);
+					inline.style.link = Some(link.rebase(offsets[at]));
+				}
 			}
 		}
 		fn walk(blocks: &mut [Block], offsets: &[usize]) {
@@ -1185,6 +1192,7 @@ impl Reader<'_> {
 			text,
 			self.limits.html_scopes,
 			anchor_from,
+			source.start,
 		) {
 			html::Block::Paragraph(spans) => html_rich(spans, source),
 			_ => RichText::new(),
@@ -1286,22 +1294,23 @@ fn html_leaf_block(
 	} else {
 		0
 	};
-	let kind = match html::block_from(text, scope_limit, anchor_from) {
-		html::Block::Unsupported => BlockKind::Code {
-			language: "HTML source".into(),
-			text: text.to_string(),
-		},
-		html::Block::Empty => return None,
-		html::Block::Rule => BlockKind::Rule,
-		html::Block::Heading { level, text } => BlockKind::Heading {
-			level,
-			text: html_rich(text, &range),
-			anchor: String::new(),
-		},
-		html::Block::Paragraph(text) => {
-			BlockKind::Paragraph(html_rich(text, &range))
-		}
-	};
+	let kind =
+		match html::block_from(text, scope_limit, anchor_from, range.start) {
+			html::Block::Unsupported => BlockKind::Code {
+				language: "HTML source".into(),
+				text: text.to_string(),
+			},
+			html::Block::Empty => return None,
+			html::Block::Rule => BlockKind::Rule,
+			html::Block::Heading { level, text } => BlockKind::Heading {
+				level,
+				text: html_rich(text, &range),
+				anchor: String::new(),
+			},
+			html::Block::Paragraph(text) => {
+				BlockKind::Paragraph(html_rich(text, &range))
+			}
+		};
 	let anchors = if matches!(kind, BlockKind::Code { .. } | BlockKind::Rule) {
 		html::block_anchors_from(text, anchor_from)
 	} else {
@@ -1624,14 +1633,16 @@ fn markdown_options() -> Options<'static> {
 	options
 }
 
-fn apply_patch(patch: &html::Patch, style: &mut TextStyle) {
+fn apply_patch(patch: &html::Patch, style: &mut TextStyle, origin: usize) {
 	match patch {
 		html::Patch::Bold => style.bold = true,
 		html::Patch::Italic => style.italic = true,
 		html::Patch::Strike => style.strike = true,
 		html::Patch::Code => style.code = true,
 		html::Patch::Superscript => style.superscript = true,
-		html::Patch::Link(url) => style.link = Some(Link::new(url.as_str())),
+		html::Patch::Link(url) => {
+			style.link = Some(Link::new(url.as_str(), origin));
+		}
 		html::Patch::None => {}
 	}
 }
@@ -1698,6 +1709,11 @@ fn html_rich(spans: Vec<html::Span>, source: &Range<usize>) -> RichText {
 
 /// Merge neighboring runs that share a style so a dropped comment or tag does
 /// not leave a double space behind.
+/// Text runs merge only when they carry one style and one link occurrence.
+fn mergeable_style(left: &TextStyle, right: &TextStyle) -> bool {
+	left == right && left.shares_link_occurrence(right)
+}
+
 fn merge_text(text: RichText) -> RichText {
 	let mut out: RichText = Vec::with_capacity(text.len());
 	let mut previous_text: Option<usize> = None;
@@ -1711,7 +1727,7 @@ fn merge_text(text: RichText) -> RichText {
 		};
 		if let Some(index) = previous_text
 			&& index + 1 < out.len()
-			&& out[index].style == span.style
+			&& mergeable_style(&out[index].style, &span.style)
 			&& let InlineKind::Text(prev) = &out[index].kind
 			&& prev.ends_with(char::is_whitespace)
 			&& t.starts_with(char::is_whitespace)
@@ -1724,7 +1740,7 @@ fn merge_text(text: RichText) -> RichText {
 		}
 		let mut merged = false;
 		if let Some(last) = out.last_mut()
-			&& last.style == span.style
+			&& mergeable_style(&last.style, &span.style)
 			&& let InlineKind::Text(prev) = &mut last.kind
 		{
 			append_merged_text(prev, t);
@@ -1827,7 +1843,7 @@ fn html_block_kind(
 	scopes: usize,
 	source: &Range<usize>,
 ) -> Option<BlockKind> {
-	Some(match html::block(literal, scopes) {
+	Some(match html::block(literal, scopes, source.start) {
 		html::Block::Unsupported => BlockKind::Code {
 			language: "HTML source".into(),
 			text: literal.to_owned(),

@@ -5,7 +5,7 @@ use crate::{
 		Block, BlockKind, CellAlign, Inline, InlineKind, RichText, TextStyle,
 		footnote,
 	},
-	scene::{BlockLayout, Draw, HeadingAnchor, LinkRect, Paint, Rect},
+	scene::{BlockLayout, Draw, HeadingAnchor, LinkId, LinkRect, Paint, Rect},
 	style::{ColorField, Condition, MarkerShape, TextAlign, TextAppearance},
 };
 use std::sync::Arc;
@@ -1153,15 +1153,18 @@ impl BlockContext<'_> {
 				}
 				let command = out.draws.len();
 				out.draws.extend(draws);
+				let commands = command..out.draws.len();
 				out.retain_footnote(
 					body_start..command,
-					command..out.draws.len(),
+					commands.clone(),
 					baseline,
 				);
 				// The number is the way back to the reference that opened the
 				// note, so it is a link with the note's own label.
+				let id = LinkId::Special(out.links.len());
 				out.links.push(LinkRect {
-					command,
+					commands,
+					id,
 					rect: Rect {
 						x,
 						y: baseline - size,
@@ -1219,6 +1222,7 @@ impl BlockContext<'_> {
 			points: disclosure_points(true, side),
 			paint,
 		});
+		let links_start = out.links.len();
 		let mut height = self
 			.rich(
 				summary,
@@ -1240,11 +1244,17 @@ impl BlockContext<'_> {
 		self.shaper.appearance = parent;
 		// The whole summary line toggles the element. It is hit like a
 		// link, so a non-drag release and the hover state are enough.
-		// The range is registered before the body, and it ends at the
-		// first body command, so its command order matches its rects
-		// and pointing into the content never highlights the summary.
+		// Its range stops at the first link inside the summary or at the
+		// body, so neither borrows the summary's hover.
+		let summary_end = out.links[links_start..]
+			.iter()
+			.map(|link| link.commands.start)
+			.min()
+			.unwrap_or(out.draws.len());
+		let id = LinkId::Special(out.links.len());
 		out.links.push(LinkRect {
-			command: marker,
+			commands: marker..summary_end,
+			id,
 			rect: Rect {
 				x,
 				y,
@@ -1252,11 +1262,6 @@ impl BlockContext<'_> {
 				h: summary_height,
 			},
 			url: Arc::from(crate::document::details_url(block.id)),
-		});
-		out.links.push(LinkRect {
-			command: out.draws.len(),
-			rect: Rect::default(),
-			url: Arc::from(""),
 		});
 		let body = size * DETAILS_GAP
 			+ self.framed_children(

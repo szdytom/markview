@@ -1,6 +1,6 @@
 use markview_layout::scene::{
-	BlockLayout, Draw, LayoutSnapshot, LinkRect, Overflow, PlacedBlock, Rect,
-	ScrollbarMetrics, Viewport,
+	BlockLayout, Draw, LayoutSnapshot, LinkId, LinkRect, Overflow, PlacedBlock,
+	Rect, ScrollbarMetrics, Viewport,
 };
 use markview_selection::{
 	Cursor, DocumentInteraction, Horizontal, Motion, Point, ScrollBounds,
@@ -35,7 +35,8 @@ fn snapshot() -> LayoutSnapshot {
 				links: vec![LinkRect {
 					rect: Rect { w: 30.0, ..rect },
 					url: "https://example.com".into(),
-					command: 0,
+					commands: 0..1,
+					id: LinkId::Inline(0),
 				}],
 				overflow: vec![Overflow {
 					rect,

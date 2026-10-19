@@ -176,7 +176,8 @@ impl<P: super::SendEvent> App<P> {
 			self.interaction.hover_image.as_deref().or_else(|| {
 				self.interaction
 					.hover
-					.as_deref()
+					.as_ref()
+					.map(|link| link.url.as_str())
 					.filter(|url| !super::anchor::footnote_link(url))
 			});
 		let resource_kind = self.settings_kind();

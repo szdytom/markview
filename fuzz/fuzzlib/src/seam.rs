@@ -1373,7 +1373,8 @@ mod tests {
 				match &mut inline.kind {
 					InlineKind::Image(image) => image.src = url.to_string(),
 					InlineKind::Text(_) if inline.style.link.is_some() => {
-						inline.style.link = Some(Link::new(url))
+						inline.style.link =
+							Some(Link::new(url, inline.source.start))
 					}
 					_ => {}
 				}

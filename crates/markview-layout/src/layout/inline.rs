@@ -3,7 +3,7 @@ use crate::{
 	document::{Inline, InlineKind, TextStyle},
 	linebreak::{Break, Unit},
 	microtype,
-	scene::BlockLayout,
+	scene::{BlockLayout, LinkId},
 	shaping::{Cluster, Span},
 	style::Condition,
 };
@@ -48,6 +48,8 @@ impl BlockContext<'_> {
 			mapping: Vec::new(),
 			text: String::new(),
 			spans: Vec::new(),
+			link_ids: Vec::new(),
+			link_occurrences: crate::document::inline_link_origins(rich),
 			padding: Vec::new(),
 			math: BTreeMap::new(),
 			notes: BTreeMap::new(),
@@ -111,7 +113,12 @@ impl BlockContext<'_> {
 					// The whole label is one link; `notes` carries only the
 					// number's own range, which registers the return anchor.
 					let at = start + 1;
-					p.notes.insert(at, (*n, at + label.len()));
+					let id =
+						style.link.as_ref().map_or(
+							LinkId::Inline(inline.source.start),
+							|link| LinkId::Inline(link.origin()),
+						);
+					p.notes.insert(at, (*n, at + label.len(), id));
 					p.text.push('[');
 					p.text.push_str(&label);
 					p.text.push(']');
@@ -191,6 +198,7 @@ impl BlockContext<'_> {
 			previous_text = text;
 			i += 1;
 		}
+		p.link_ids = collect_link_ids(&p.spans);
 		p
 	}
 
@@ -240,11 +248,13 @@ impl BlockContext<'_> {
 		text: bool,
 		previous_text: bool,
 	) {
-		// Invisible targets do not split a styled text run.
+		// Invisible targets do not split a styled text run, but adjacent links
+		// stay separate even when their addresses match.
 		if text
 			&& previous_text
 			&& let Some(last) = p.spans.last_mut()
 			&& last.style == style
+			&& last.style.shares_link_occurrence(&style)
 		{
 			last.range.end = p.text.len();
 		} else {
@@ -497,6 +507,21 @@ impl BlockContext<'_> {
 	}
 }
 
+/// The link occurrence of each span. Every span of one link, including its
+/// bold, code or image runs, shares the occurrence's source origin; a
+/// different link starts a new occurrence even when the address is identical.
+fn collect_link_ids(spans: &[Span]) -> Vec<Option<LinkId>> {
+	spans
+		.iter()
+		.map(|span| {
+			span.style
+				.link
+				.as_ref()
+				.map(|link| LinkId::Inline(link.origin()))
+		})
+		.collect()
+}
+
 /// Whether each cluster belongs to an inline code run, found by walking the
 /// spans alongside the clusters, both of which are in reading order.
 fn code_clusters(clusters: &[Cluster], spans: &[Span]) -> Vec<bool> {
@@ -631,7 +656,14 @@ fn footnote_group(p: &mut Prepared, run: &[Inline]) {
 		first = false;
 		let label = number.to_string();
 		let at = p.text.len();
-		p.notes.insert(at, (number, at + label.len()));
+		let id = inline
+			.style
+			.link
+			.as_ref()
+			.map_or(LinkId::Inline(inline.source.start), |link| {
+				LinkId::Inline(link.origin())
+			});
+		p.notes.insert(at, (number, at + label.len(), id));
 		p.text.push_str(&label);
 		p.reading.push_str(&label);
 	}

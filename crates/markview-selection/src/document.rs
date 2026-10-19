@@ -2,7 +2,7 @@
 use crate::Point;
 use markview_layout::{
 	layout::LayoutSnapshot,
-	scene::{Rect, Scrollbar, ScrollbarMetrics, Viewport},
+	scene::{LinkId, LinkRef, Rect, Scrollbar, ScrollbarMetrics, Viewport},
 	text::TextPosition,
 };
 use std::collections::HashMap;
@@ -35,9 +35,30 @@ impl Cursor {
 	}
 }
 
+/// One link occurrence under the pointer, owned so the host can keep it
+/// across frames.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct HoveredLink {
+	pub url: String,
+	/// The source start of the owning block.
+	pub block: usize,
+	pub id: LinkId,
+}
+
+impl HoveredLink {
+	/// The borrowed view the renderer uses for this occurrence.
+	pub fn link_ref(&self) -> LinkRef<'_> {
+		LinkRef {
+			url: &self.url,
+			block: self.block,
+			id: self.id,
+		}
+	}
+}
+
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct Hover {
-	pub link: Option<String>,
+	pub link: Option<HoveredLink>,
 	pub image_title: Option<String>,
 	pub overflow: Option<(usize, usize)>,
 	pub cursor: Cursor,
@@ -59,11 +80,15 @@ impl DocumentInteraction<'_> {
 		self.snapshot.contains_text(x, y, self.horizontal)
 	}
 	pub fn link(&self, point: Point) -> Option<&str> {
+		self.link_ref(point).map(|link| link.url)
+	}
+	/// The whole link under `point`, including the occurrence identity.
+	pub fn link_ref(&self, point: Point) -> Option<LinkRef<'_>> {
 		if !self.contains(point) {
 			return None;
 		}
 		let (x, y) = self.viewport.document_point(point.x, point.y);
-		self.snapshot.link_at(x, y, self.horizontal)
+		self.snapshot.link_ref_at(x, y, self.horizontal)
 	}
 	pub fn image(&self, point: Point) -> Option<(&str, Rect, &str)> {
 		if !self.contains(point) {
@@ -175,7 +200,11 @@ impl DocumentInteraction<'_> {
 				..Hover::default()
 			};
 		}
-		let link = self.link(point).map(str::to_owned);
+		let link = self.link_ref(point).map(|link| HoveredLink {
+			url: link.url.to_owned(),
+			block: link.block,
+			id: link.id,
+		});
 		let image = self.image(point);
 		let overflow =
 			self.overflow_bar_at(point, metrics).map(|(b, o, _)| (b, o));

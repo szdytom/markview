@@ -372,6 +372,230 @@ fn links_are_hit_testable_and_survive_reuse() {
 	);
 }
 
+/// Two links with one address hit as separate occurrences, even on one line.
+#[test]
+fn same_address_links_hit_their_own_occurrence() {
+	let d = markview_commonmark::parse("[one](target) and [two](target)\n");
+	let snapshot = LayoutEngine::new().layout(
+		&d,
+		&LayoutOptions {
+			width: 400.0,
+			..Default::default()
+		},
+	);
+	let block = &snapshot.blocks[0];
+	let links = &block.layout.links;
+	assert_eq!(links.len(), 2);
+	assert_ne!(links[0].id, links[1].id);
+	let none = HashMap::new();
+	for link in links {
+		let hit = snapshot
+			.link_ref_at(
+				link.rect.x + link.rect.w * 0.5,
+				block.y + link.rect.y + link.rect.h * 0.5,
+				&none,
+			)
+			.unwrap();
+		assert_eq!(hit.url, "target");
+		assert_eq!(hit.block, block.source.start);
+		assert_eq!(hit.id, link.id);
+	}
+}
+
+/// One link split into several paragraphs by display math keeps one hover
+/// identity, so every fragment highlights with it.
+#[test]
+fn a_link_split_across_paragraphs_keeps_one_occurrence() {
+	let d = markview_commonmark::parse("prefix [one $$x^2$$ two](target)\n");
+	let snapshot = LayoutEngine::new().layout(
+		&d,
+		&LayoutOptions {
+			width: 400.0,
+			..Default::default()
+		},
+	);
+	let layout = &snapshot.blocks[0].layout;
+	let links = &layout.links;
+	assert_eq!(links.len(), 3);
+	let id = links[0].id;
+	assert!(links.iter().all(|link| link.id == id));
+	for link in links {
+		assert!(layout.link_hovered(link.commands.start, &link.url, id));
+	}
+}
+
+/// Links in separate list items belong to one block but stay separate
+/// occurrences, so hovering one never highlights its neighbor.
+#[test]
+fn links_in_one_container_keep_distinct_occurrences() {
+	let d = markview_commonmark::parse("- [one](target)\n- [two](target)\n");
+	let snapshot = LayoutEngine::new().layout(
+		&d,
+		&LayoutOptions {
+			width: 400.0,
+			..Default::default()
+		},
+	);
+	assert_eq!(snapshot.blocks.len(), 1);
+	let layout = &snapshot.blocks[0].layout;
+	let links = &layout.links;
+	assert_eq!(links.len(), 2);
+	assert_ne!(links[0].id, links[1].id);
+	assert!(layout.link_hovered(
+		links[0].commands.start,
+		&links[0].url,
+		links[0].id
+	));
+	assert!(!layout.link_hovered(
+		links[1].commands.start,
+		&links[1].url,
+		links[0].id
+	));
+}
+
+/// Grouping is semantic: three neighboring links cannot share cached geometry
+/// with one link over three runs, which draws one fragment instead of three.
+#[test]
+fn link_grouping_is_part_of_the_semantic_cache_identity() {
+	let d = markview_commonmark::parse(
+		"> [one](target)[**two**](target)[three](target)\n>\n> [one**two**three](target)\n",
+	);
+	let snapshot = LayoutEngine::new().layout(
+		&d,
+		&LayoutOptions {
+			width: 600.0,
+			..Default::default()
+		},
+	);
+	let layout = &snapshot.blocks[0].layout;
+	assert_eq!(layout.links.len(), 4);
+}
+
+/// Two identical reused paragraphs must rebind their own occurrences; sharing
+/// one cached leaf cannot leave both links with one identity.
+#[test]
+fn reused_siblings_keep_their_own_link_occurrences() {
+	let options = LayoutOptions {
+		width: 600.0,
+		..Default::default()
+	};
+	let page = |intro: &str| {
+		format!("> {intro}\n>\n> [one](target)\n>\n> [one](target)\n")
+	};
+	let mut engine = LayoutEngine::new();
+	engine.layout(&markview_commonmark::parse(page("intro")), &options);
+	let snapshot = engine.layout(
+		&markview_commonmark::parse(page("a longer introduction")),
+		&options,
+	);
+	let links = &snapshot.blocks[0].layout.links;
+	assert_eq!(links.len(), 2);
+	assert_ne!(links[0].id, links[1].id);
+}
+
+/// RTL text paints link fragments right to left, but the occurrence ids follow
+/// source order; reusing the block must not swap which fragment they name.
+#[test]
+fn rtl_links_keep_their_occurrences_across_reuse() {
+	let d = markview_commonmark::parse("[אבג](target) [דהו](target)\n");
+	let options = LayoutOptions {
+		width: 400.0,
+		..Default::default()
+	};
+	let mut engine = LayoutEngine::new();
+	let before: Vec<_> = engine.layout(&d, &options).blocks[0]
+		.layout
+		.links
+		.iter()
+		.map(|link| (link.commands.start, link.id))
+		.collect();
+	assert_eq!(before.len(), 2);
+	assert_ne!(before[0].1, before[1].1);
+	let after: Vec<_> = engine.layout(&d, &options).blocks[0]
+		.layout
+		.links
+		.iter()
+		.map(|link| (link.commands.start, link.id))
+		.collect();
+	assert_eq!(after, before);
+}
+
+/// A leading whitespace-only link draws no fragment, yet it still heads the
+/// prepared occurrence list; reuse must not let it shift the painted ids.
+#[test]
+fn discarded_leading_link_does_not_shift_occurrence_remapping() {
+	let d = markview_commonmark::parse("[ ](u) [one](u) [two](u)\n");
+	let options = LayoutOptions {
+		width: 400.0,
+		..Default::default()
+	};
+	let mut engine = LayoutEngine::new();
+	let before: Vec<_> = engine.layout(&d, &options).blocks[0]
+		.layout
+		.links
+		.iter()
+		.map(|link| (link.commands.start, link.id))
+		.collect();
+	assert_eq!(before.len(), 2);
+	let after: Vec<_> = engine.layout(&d, &options).blocks[0]
+		.layout
+		.links
+		.iter()
+		.map(|link| (link.commands.start, link.id))
+		.collect();
+	assert_eq!(after, before);
+}
+
+/// A semantic caller may share one address allocation between two occurrences;
+/// their distinct origins still keep the adjacent runs apart.
+#[test]
+fn semantic_links_with_shared_address_keep_distinct_origins() {
+	let source: Arc<str> = Arc::from("onetwo");
+	let first = Link::new("target", 0);
+	let second = first.clone().rebase(3);
+	let rich = vec![
+		Inline {
+			kind: InlineKind::Text("one".into()),
+			style: TextStyle {
+				link: Some(first),
+				..Default::default()
+			},
+			source: 0..3,
+		},
+		Inline {
+			kind: InlineKind::Text("two".into()),
+			style: TextStyle {
+				link: Some(second),
+				..Default::default()
+			},
+			source: 3..6,
+		},
+	];
+	let kind = document::BlockKind::Paragraph(rich);
+	let blocks = vec![document::Block {
+		anchors: Vec::new(),
+		id: document::fingerprint(&kind),
+		content_key: document::semantic_key(&kind),
+		source: 0..source.len(),
+		kind,
+	}];
+	let document = document::Document {
+		source,
+		content_id: document::content_identity(&blocks),
+		blocks,
+	};
+	let snapshot = LayoutEngine::new().layout(
+		&document,
+		&LayoutOptions {
+			width: 400.0,
+			..Default::default()
+		},
+	);
+	let links = &snapshot.blocks[0].layout.links;
+	assert_eq!(links.len(), 2);
+	assert_ne!(links[0].id, links[1].id);
+}
+
 /// A link run must hit the same box the I-beam hits: the whole line, not the
 /// ink height. With leading, the pointer can sit above or below the glyphs
 /// and still be on the link.
@@ -543,7 +767,7 @@ fn footnote_links_reach_the_note_and_its_number_returns() {
 	let hit = |url: &str| {
 		snapshot.blocks.iter().enumerate().find_map(|(bi, b)| {
 			let link = b.layout.links.iter().find(|l| &*l.url == url)?;
-			let (offset, _) = b.command_view(link.command, bi, &empty);
+			let (offset, _) = b.command_view(link.commands.start, bi, &empty);
 			Some((
 				link.rect.x - offset + link.rect.w * 0.5,
 				b.y + link.rect.y + link.rect.h * 0.5,
@@ -778,6 +1002,7 @@ fn wrapped_links_produce_one_rect_per_line() {
 	let links = &snapshot.blocks[0].layout.links;
 	assert!(links.len() > 1, "expected a wrapped link, got {links:?}");
 	assert!(links.iter().all(|l| &*l.url == "https://example.com"));
+	assert!(links.iter().all(|l| l.id == links[0].id));
 	assert!(links.windows(2).all(|w| w[0].rect.y < w[1].rect.y));
 }
 #[test]
@@ -2388,7 +2613,7 @@ fn typst_hyphenation_can_be_turned_off_for_a_passage() {
 	// The same word set as a link, or as inline code, keeps its hyphenation.
 	for style in [
 		TextStyle {
-			link: Some(Link::new("http://example.com")),
+			link: Some(Link::new("http://example.com", 0)),
 			..Default::default()
 		},
 		TextStyle {
@@ -3039,7 +3264,7 @@ fn details_summary_is_hit_testable_but_the_body_is_not() {
 	let mut engine = LayoutEngine::new();
 	let collapsed = engine.layout(&doc, &LayoutOptions::default());
 	let block = &collapsed.blocks[0];
-	assert_eq!(collapsed.blocks[0].layout.links.len(), 2);
+	assert_eq!(collapsed.blocks[0].layout.links.len(), 1);
 	let hit = block.layout.links[0].rect;
 	assert_eq!(
 		collapsed.link_at(hit.x + 1.0, block.y + hit.y + 1.0, &none),
@@ -3248,50 +3473,56 @@ fn a_details_body_does_not_inherit_the_summary_appearance() {
 }
 
 #[test]
-fn disclosure_hover_ranges_are_ordered_and_bounded() {
-	/// The draw commands the renderer marks hovered for `url`.
-	fn hovered(layout: &BlockLayout, url: &str) -> Vec<usize> {
+fn disclosure_hover_stops_before_nested_content() {
+	/// The draw commands the renderer marks hovered for one occurrence.
+	fn hovered(
+		layout: &BlockLayout,
+		url: &str,
+		id: crate::scene::LinkId,
+	) -> Vec<usize> {
 		(0..layout.draws.len())
-			.filter(|&i| {
-				layout.links.iter().enumerate().any(|(n, link)| {
-					&*link.url == url
-						&& link.command <= i
-						&& layout
-							.links
-							.get(n + 1)
-							.map_or(i < layout.draws.len(), |next| {
-								i < next.command
-							})
-				})
-			})
+			.filter(|&i| layout.link_hovered(i, url, id))
 			.collect()
 	}
 	let doc = markview_commonmark::parse(
-		"<details open>\n<summary>Summary</summary>\n\nBody [link](https://example.com/b).\n\n</details>\n",
+		"<details open>\n<summary>Summary <a href=\"https://example.com/s\">inner</a></summary>\n\nBody [link](https://example.com/b).\n\n</details>\n",
 	);
 	let id = doc.blocks[0].id;
 	let snapshot = LayoutEngine::new()
 		.layout(&doc, &with_details(LayoutOptions::default(), id, true));
 	let block = &snapshot.blocks[0];
-	// Every range ends where the next link's command begins, so no range is
-	// inverted.
-	assert!(
-		block
-			.layout
-			.links
-			.windows(2)
-			.all(|w| w[0].command <= w[1].command),
-		"{:?}",
-		block.layout.links
-	);
-	let summary = hovered(&block.layout, &document::details_url(id));
-	let body = hovered(&block.layout, "https://example.com/b");
+	let summary_url = document::details_url(id);
+	let summary_link = block
+		.layout
+		.links
+		.iter()
+		.find(|link| link.url.as_ref() == summary_url.as_str())
+		.unwrap();
+	let inner_link = block
+		.layout
+		.links
+		.iter()
+		.find(|link| &*link.url == "https://example.com/s")
+		.unwrap();
+	let body_link = block
+		.layout
+		.links
+		.iter()
+		.find(|link| &*link.url == "https://example.com/b")
+		.unwrap();
+	let summary = hovered(&block.layout, &summary_url, summary_link.id);
+	let inner = hovered(&block.layout, &inner_link.url, inner_link.id);
+	let body = hovered(&block.layout, &body_link.url, body_link.id);
 	assert!(!summary.is_empty());
+	assert!(!inner.is_empty(), "the summary link never highlights");
 	assert!(!body.is_empty(), "the body link never highlights");
-	// The summary range stops at the first body command, so pointing into the
-	// content cannot highlight it.
-	assert!(summary.iter().all(|i| *i < block.layout.links[1].command));
+	assert_ne!(summary_link.id, inner_link.id);
+	// The summary owns only the draws before its first link, so neither the
+	// nested link nor the body borrows its hover.
+	assert!(summary.iter().all(|i| *i < inner[0]));
+	assert!(summary.iter().all(|i| !inner.contains(i)));
 	assert!(summary.iter().all(|i| !body.contains(i)));
+	assert!(summary_link.commands.end <= inner_link.commands.start);
 }
 
 #[test]

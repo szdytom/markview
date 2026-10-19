@@ -300,7 +300,7 @@ pub fn block_layout(block: &BlockLayout, h: &mut Hashers) {
 		);
 	}
 	for l in &block.links {
-		hash3(h, &(l.command, hash_rect(l.rect), &l.url));
+		hash3(h, &(&l.commands, l.id, hash_rect(l.rect), &l.url));
 	}
 	for a in &block.anchors {
 		hash3(h, &(&a.anchor, F::new(a.y)));

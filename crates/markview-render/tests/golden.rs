@@ -16,6 +16,7 @@ use markview_layout::{
 	fonts::FontConfig,
 	image::{ImageInfo, ImageSnapshot, Pixels},
 	layout::LayoutEngine,
+	scene::LinkRef,
 	text::{Affinity, TextPosition, TextSelection},
 };
 use markview_render::{Renderer, Theme, View};
@@ -201,6 +202,23 @@ fn markdown_matches_rendering_baselines() -> Result<()> {
 					},
 				})
 			};
+		// Hover one occurrence, not every link carrying this address.
+		let hovered_link = if case.variant == "hovered" {
+			snapshot.blocks.iter().find_map(|block| {
+				block
+					.layout
+					.links
+					.iter()
+					.find(|link| &*link.url == "https://example.invalid")
+					.map(|link| LinkRef {
+						url: link.url.as_ref(),
+						block: block.source.start,
+						id: link.id,
+					})
+			})
+		} else {
+			None
+		};
 		let view = View {
 			width: (width * scale) as u32,
 			height: (height * scale) as u32,
@@ -217,8 +235,7 @@ fn markdown_matches_rendering_baselines() -> Result<()> {
 			horizontal: &horizontal,
 			selection,
 			revision: 1,
-			hovered_link: (case.variant == "hovered")
-				.then_some("https://example.invalid"),
+			hovered_link,
 			hovered_overflow: (case.variant == "scrolled").then_some((1, 0)),
 			held_overflow: None,
 		};

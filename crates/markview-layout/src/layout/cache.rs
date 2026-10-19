@@ -2,7 +2,7 @@
 use super::{BlockContext, CacheKey, LayoutOptions, external_key};
 use crate::{
 	document::{Block, BlockKind, fingerprint},
-	scene::BlockLayout,
+	scene::{BlockLayout, LinkId},
 };
 use std::{collections::HashMap, sync::Arc};
 
@@ -63,12 +63,14 @@ impl BlockContext<'_> {
 			external_key(block, self.images, self.highlight_cache, theme, opts);
 		let key = fingerprint(&(&key, self.shaper.appearance.key()));
 		if let Some(entry) = cache.entries.get(&key) {
+			let origins = block_link_origins(block, &opts.limits);
 			return out.reuse_leaf(
 				&entry.layout,
 				entry.leaf,
 				position,
 				width,
 				field,
+				&origins,
 			);
 		}
 		let degraded = out.degraded;
@@ -107,6 +109,107 @@ impl super::LayoutEngine {
 			);
 		}
 	}
+}
+
+/// Rebind cached link occurrences to the ones `block` carries now. A reused
+/// block keeps the ids it was laid out with, but an edit before it shifts every
+/// source origin, so the current block is the authority on their values.
+pub(super) fn remap_link_ids(
+	geometry: Arc<BlockLayout>,
+	block: &Block,
+	limits: &crate::limits::Limits,
+) -> Arc<BlockLayout> {
+	let cached = &geometry.link_occurrences;
+	if cached.is_empty() {
+		return geometry;
+	}
+	let current = block_link_origins(block, limits);
+	// The two lists mirror what layout prepares, including runs line breaking
+	// discarded, so equal lengths pair logical occurrences exactly even when
+	// RTL paints them in the opposite order.
+	if cached.len() != current.len() || cached == &current {
+		return geometry;
+	}
+	let remap: HashMap<_, _> = cached
+		.iter()
+		.copied()
+		.zip(current.iter().copied())
+		.collect();
+	let mut layout = (*geometry).clone();
+	for link in &mut layout.links {
+		if let LinkId::Inline(origin) = link.id
+			&& let Some(&origin) = remap.get(&origin)
+		{
+			link.id = LinkId::Inline(origin);
+		}
+	}
+	layout.link_occurrences = current;
+	Arc::new(layout)
+}
+
+/// The inline link occurrences `block` prepares, in reading order, including
+/// runs whose content line breaking later discards.
+pub(super) fn block_link_origins(
+	block: &Block,
+	limits: &crate::limits::Limits,
+) -> Vec<usize> {
+	fn walk(
+		block: &Block,
+		limits: &crate::limits::Limits,
+		out: &mut Vec<usize>,
+	) {
+		match &block.kind {
+			BlockKind::Paragraph(text) => {
+				out.extend(crate::document::inline_link_origins(text));
+			}
+			BlockKind::Heading { text, .. } => {
+				out.extend(crate::document::inline_link_origins(text));
+			}
+			BlockKind::Code { .. } | BlockKind::Rule => {}
+			BlockKind::Quote { blocks, .. }
+			| BlockKind::Footnote { blocks, .. }
+			| BlockKind::FrontMatter { blocks, .. } => {
+				for block in blocks {
+					walk(block, limits, out);
+				}
+			}
+			BlockKind::List { items, .. } => {
+				for item in items {
+					for block in &item.blocks {
+						walk(block, limits, out);
+					}
+				}
+			}
+			BlockKind::Table { align, rows, .. } => {
+				// Both layout loops cap the columns, then the rows and the
+				// cell total, so only the cells they draw carry links.
+				let columns = align.len().min(limits.table_columns);
+				if columns == 0 {
+					return;
+				}
+				let rows = &rows[..rows
+					.len()
+					.min(limits.table_rows)
+					.min((limits.table_cells / columns).max(1))];
+				for row in rows {
+					for cell in row.iter().take(columns) {
+						out.extend(crate::document::inline_link_origins(cell));
+					}
+				}
+			}
+			BlockKind::Details {
+				summary, blocks, ..
+			} => {
+				out.extend(crate::document::inline_link_origins(summary));
+				for block in blocks {
+					walk(block, limits, out);
+				}
+			}
+		}
+	}
+	let mut out = Vec::new();
+	walk(block, limits, &mut out);
+	out
 }
 
 #[cfg(test)]

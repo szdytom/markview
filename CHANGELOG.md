@@ -64,6 +64,8 @@ at the same level, without `[brackets]`.
 
 ### Fixed
 
+- Restore fuzz harness compilation and include link command ranges and occurrence ids in layout differential checks.
+- Keep inline-link hover on the link under the pointer, so repeated links with one address and neighboring links no longer highlight together.
 - Hide the desktop sidebar toggle when no folder is open.
 - Keep outgoing phone drawer controls in their animated positions when toolbar input resumes.
 - Keep modals safe over open panels, distinguish same-path tabs and separate dismiss controls, and align animated drawer hit clips with their painted rows.

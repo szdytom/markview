@@ -3,7 +3,7 @@ use super::*;
 /// The block scanner with the scope budget out of the way, so each test
 /// states one rule; the budget has its own test.
 fn block(source: &str) -> Block {
-	super::block(source, usize::MAX)
+	super::block(source, usize::MAX, 0)
 }
 
 #[test]
@@ -299,7 +299,7 @@ fn block_style_follows_the_open_tags() {
 #[test]
 fn block_links_nest_and_images_carry_the_run_style() {
 	let linked = |url: &str| Style {
-		link: Some(crate::document::Link::new(url)),
+		link: Some(crate::document::Link::new(url, 0)),
 		..Style::default()
 	};
 	// A nested link overrides the outer one, which comes back on its close.
@@ -368,7 +368,8 @@ fn open_tags_are_budgeted() {
 		super::block(
 			"<b><b><b>x</b>
 ",
-			2
+			2,
+			0
 		),
 		Block::Unsupported
 	);
@@ -376,7 +377,8 @@ fn open_tags_are_budgeted() {
 		super::block(
 			"<b><b>x</b>
 ",
-			2
+			2,
+			0
 		),
 		Block::Paragraph(_)
 	));

@@ -1,4 +1,4 @@
-use crate::{math::MathBox, shaping::Span};
+use crate::{math::MathBox, scene::LinkId, shaping::Span};
 use std::{
 	collections::{BTreeMap, BTreeSet},
 	ops::Range,
@@ -13,13 +13,19 @@ pub(super) struct Prepared {
 	pub(super) mapping: Vec<(Range<usize>, Range<usize>, bool)>,
 	pub(super) text: String,
 	pub(super) spans: Vec<Span>,
+	/// The occurrence of each span's link, parallel to `spans`.
+	pub(super) link_ids: Vec<Option<LinkId>>,
+	/// Every inline link occurrence the paragraph prepares, in reading order,
+	/// including runs that line breaking discards.
+	pub(super) link_occurrences: Vec<usize>,
 	/// The inline code chip padding for each span, in logical pixels, in the
 	/// canonical top, right, bottom, left order.
 	pub(super) padding: Vec<[f32; 4]>,
 	pub(super) math: BTreeMap<usize, Arc<MathBox>>,
 	/// Footnote references by the offset of their first digit, each with the
-	/// offset just past its last one, so a link covers every digit.
-	pub(super) notes: BTreeMap<usize, (u32, usize)>,
+	/// offset just past its last one and its link occurrence, so a link covers
+	/// every digit.
+	pub(super) notes: BTreeMap<usize, (u32, usize, LinkId)>,
 	/// The text offsets of the forced breaks that asked to be justified.
 	pub(super) breaks: BTreeSet<usize>,
 }
@@ -29,9 +35,26 @@ impl Prepared {
 	/// first one. Only the first digit registers the return anchor; every digit
 	/// stays part of the link.
 	pub(super) fn note_at(&self, offset: usize) -> Option<(u32, bool)> {
-		let (&start, &(number, end)) =
+		let (&start, &(number, end, _)) =
 			self.notes.range(..=offset).next_back()?;
 		(offset < end).then_some((number, offset == start))
+	}
+
+	/// The link occurrence covering `offset`, if any. `span` is the index of
+	/// the containing styled span, so a link that spans several styles still
+	/// uses its occurrence's id.
+	pub(super) fn link_id(
+		&self,
+		offset: usize,
+		span: Option<usize>,
+	) -> Option<LinkId> {
+		if let Some(id) =
+			span.and_then(|index| self.link_ids.get(index).copied().flatten())
+		{
+			return Some(id);
+		}
+		let (&_, &(_, end, id)) = self.notes.range(..=offset).next_back()?;
+		(offset < end).then_some(id)
 	}
 
 	pub(super) fn reading_range(&self, range: Range<usize>) -> Range<usize> {

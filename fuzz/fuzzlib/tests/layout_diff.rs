@@ -3,7 +3,7 @@ use std::sync::{Arc, Mutex};
 use markview_layout::{
 	background::{Executor, Task},
 	layout::LayoutEngine,
-	scene::Draw,
+	scene::{Draw, LinkId},
 };
 use mvfuzz::{oracle, pipeline};
 
@@ -14,6 +14,32 @@ impl Executor for Deferred {
 	fn try_submit(&self, task: Task) -> Result<(), Task> {
 		self.0.lock().unwrap().push(task);
 		Ok(())
+	}
+}
+
+#[test]
+fn layout_fingerprint_tracks_link_commands_and_occurrences() {
+	let md = "[**bold** normal](https://example.com)";
+	let doc = markview_commonmark::parse(md);
+	let mut engine = pipeline::differential_engine();
+	let snapshot = engine.layout(&doc, &pipeline::options_for(md));
+	let expected = oracle::layout(&snapshot);
+	assert_eq!(
+		expected,
+		oracle::layout(&engine.layout(&doc, &pipeline::options_for(md)))
+	);
+
+	for field in 0..3 {
+		let mut changed = snapshot.flattened();
+		let link =
+			&mut Arc::get_mut(&mut changed.blocks[0].layout).unwrap().links[0];
+		match field {
+			0 => link.commands.start += 1,
+			1 => link.commands.end += 1,
+			2 => link.id = LinkId::Special(usize::MAX),
+			_ => unreachable!(),
+		}
+		assert_ne!(expected, oracle::layout(&changed), "link field {field}");
 	}
 }
 

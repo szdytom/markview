@@ -4,7 +4,8 @@ use crate::{
 	linebreak::{self},
 	microtype,
 	scene::{
-		BlockLayout, Draw, HeadingAnchor, LinkRect, Overflow, Paint, Rect,
+		BlockLayout, Draw, HeadingAnchor, LinkId, LinkRect, Overflow, Paint,
+		Rect,
 	},
 	style::{ColorField, Condition, Decoration},
 	text::{TextCluster, TextNode},
@@ -66,6 +67,13 @@ impl BlockContext<'_> {
 		let p = crate::profile::span(crate::profile::Stage::Prepare, || {
 			self.prepare(rich, size, out)
 		});
+		// Record occurrences before line breaking; a run it discards still has
+		// to hold its place so cached ids match the runs painted after it.
+		for &origin in &p.link_occurrences {
+			if out.link_occurrences.last() != Some(&origin) {
+				out.link_occurrences.push(origin);
+			}
+		}
 		if p.text.is_empty() {
 			for (_, anchor) in p.anchors {
 				out.anchors.push(HeadingAnchor { anchor, y });
@@ -353,7 +361,10 @@ impl BlockContext<'_> {
 			register_anchors(end, last, y_cursor, out);
 			let start_draw = out.draws.len();
 			let mut cursor = line_x + offset;
-			let mut link: Option<(Arc<str>, f32)> = None;
+			// The third and fourth fields are the run's first draw and its
+			// occurrence; the range closes at the URL change, so it never
+			// borrows a neighbor's draws.
+			let mut link: Option<(Arc<str>, f32, usize, LinkId)> = None;
 			// Consecutive clusters that share a background paint it as one
 			// rectangle. Pushing one per cluster made the export emit a
 			// rectangle per glyph and, because a rectangle interrupts a run,
@@ -413,21 +424,29 @@ impl BlockContext<'_> {
 							command,
 						});
 					}
-					if let Some(url) = p
+					let span = p
 						.spans
 						.iter()
-						.find(|s| s.range.contains(&c.range.start))
-						.and_then(|s| s.style.link.as_ref())
-						.map(|link| link.shared().clone())
-					{
-						out.links.push(LinkRect { command, rect, url });
-					}
+						.position(|s| s.range.contains(&c.range.start));
+					let link_id = p.link_id(c.range.start, span);
+					let link_url = span
+						.map(|index| &p.spans[index].style)
+						.and_then(|style| style.link.as_ref())
+						.map(|link| link.shared().clone());
 					for mut cluster in
 						self.draw_image(image, rect, size, width, opts, out)
 					{
 						cluster.range.start += range.start;
 						cluster.range.end += range.start;
 						out.text[node].push(cluster);
+					}
+					if let (Some(url), Some(id)) = (link_url, link_id) {
+						out.links.push(LinkRect {
+							commands: command..out.draws.len(),
+							id,
+							rect,
+							url,
+						});
 					}
 					cursor += c.width;
 					continue;
@@ -478,9 +497,12 @@ impl BlockContext<'_> {
 					});
 				}
 
-				let span =
-					p.spans.iter().find(|s| s.range.contains(&c.range.start));
-				let style = span.map(|s| &s.style);
+				let span = p
+					.spans
+					.iter()
+					.position(|s| s.range.contains(&c.range.start));
+				let style = span.map(|index| &p.spans[index].style);
+				let link_id = p.link_id(c.range.start, span);
 				// A lone reference carries its link in the style; every number
 				// of a merged group shares the group's style, so it resolves
 				// through `notes` instead.
@@ -492,10 +514,12 @@ impl BlockContext<'_> {
 					.map(|link| link.shared().clone())
 					.or_else(|| note_url.map(Arc::from));
 				// A link wraps as one run per line, so hit testing stays tight.
-				if link.as_ref().map(|(u, _)| &**u) != url.as_deref() {
-					if let Some((url, x0)) = link.take() {
+				let target = url.as_deref().zip(link_id);
+				if link.as_ref().map(|(u, _, _, id)| (&**u, *id)) != target {
+					if let Some((url, x0, command, id)) = link.take() {
 						out.links.push(LinkRect {
-							command: start_draw,
+							commands: command..out.draws.len(),
+							id,
 							// The whole line box, like the cluster rects the
 							// I-beam hits, so leading never leaves the link.
 							rect: Rect {
@@ -507,8 +531,8 @@ impl BlockContext<'_> {
 							url,
 						});
 					}
-					if let Some(url) = url {
-						link = Some((url, cursor));
+					if let (Some(url), Some(id)) = (url, link_id) {
+						link = Some((url, cursor, out.draws.len(), id));
 					}
 				}
 				let appearance = style
@@ -527,7 +551,8 @@ impl BlockContext<'_> {
 					};
 					// A fragment owns one background even when font fallback
 					// gives its clusters different vertical edges.
-					let fragment = span.map(|s| s.range.clone());
+					let fragment =
+						span.map(|index| p.spans[index].range.clone());
 					let joins = background.as_ref().is_some_and(
 						|(_, previous, previous_fragment, span)| {
 							*previous == paint
@@ -595,9 +620,10 @@ impl BlockContext<'_> {
 				}
 				cursor += advance;
 			}
-			if let Some((url, x0)) = link {
+			if let Some((url, x0, command, id)) = link {
 				out.links.push(LinkRect {
-					command: start_draw,
+					commands: command..out.draws.len(),
+					id,
 					// The whole line box, like the cluster rects the
 					// I-beam hits, so leading never leaves the link.
 					rect: Rect {

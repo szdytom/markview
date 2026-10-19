@@ -229,14 +229,39 @@ pub struct Overflow {
 	pub gutter: f32,
 }
 
+/// The occurrence a link fragment belongs to. Fragments of one link share it,
+/// while separate links with the same address keep different ids.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub enum LinkId {
+	/// The origin of a styled or footnote link occurrence, shared by every
+	/// fragment the link produces across paragraph splits.
+	Inline(usize),
+	/// A summary or backlink whose link is not part of the inline text.
+	Special(usize),
+}
+
 /// One clickable link fragment, in block-local coordinates.
 #[derive(Clone, Debug)]
 pub struct LinkRect {
-	pub command: usize,
+	/// The draw commands this fragment paints, in block-local order. Hover
+	/// marks exactly this range for the matching occurrence.
+	pub commands: Range<usize>,
+	/// The occurrence shared by every fragment of this one link.
+	pub id: LinkId,
 	pub rect: Rect,
 	/// Shared with the style the run came from, so one address costs one
 	/// allocation however many line fragments point at it.
 	pub url: Arc<str>,
+}
+
+/// A link under a point: its address, owning block and occurrence id.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct LinkRef<'a> {
+	pub url: &'a str,
+	/// The source start of the block, which stays stable across reflows and
+	/// distinguishes blocks with identical text.
+	pub block: usize,
+	pub id: LinkId,
 }
 
 /// A heading's anchor and its retained node-local y.
@@ -248,7 +273,7 @@ pub struct HeadingAnchor {
 
 /// Immutable node-local geometry, including hidden disclosure bodies.
 /// Use `PlacedBlock` accessors for visible block coordinates.
-#[derive(Debug, Default)]
+#[derive(Clone, Debug, Default)]
 pub struct BlockLayout {
 	pub scene: Scene,
 	pub page_constraints: Vec<PageConstraint>,
@@ -261,6 +286,10 @@ pub struct BlockLayout {
 	pub width: f32,
 	pub overflow: Vec<Overflow>,
 	pub links: Vec<LinkRect>,
+	/// Every inline link occurrence prepared in this block, in reading order,
+	/// including runs that line breaking discarded. Cache reuse rebinds its
+	/// ids from this list rather than from the painted fragments alone.
+	pub link_occurrences: Vec<usize>,
 	/// Headings laid out inside this block, in reading order.
 	pub anchors: Vec<HeadingAnchor>,
 	pub degraded: usize,
@@ -368,6 +397,16 @@ impl LayoutSnapshot {
 		y: f32,
 		horizontal: &HashMap<(usize, usize), f32>,
 	) -> Option<&str> {
+		self.link_ref_at(x, y, horizontal).map(|link| link.url)
+	}
+	/// The whole link under a point, including the occurrence the renderer
+	/// needs to highlight one link without its same-address neighbors.
+	pub fn link_ref_at(
+		&self,
+		x: f32,
+		y: f32,
+		horizontal: &HashMap<(usize, usize), f32>,
+	) -> Option<LinkRef<'_>> {
 		for (bi, block) in self.blocks.iter().enumerate() {
 			let y = y - block.y;
 			if y < 0.0 || y > block.height() {
@@ -375,7 +414,7 @@ impl LayoutSnapshot {
 			}
 			for (link, mut rect) in block.links() {
 				let (offset, clip) =
-					block.command_view(link.command, bi, horizontal);
+					block.command_view(link.commands.start, bi, horizontal);
 				rect.x -= offset;
 				if let Some(clip) = clip {
 					let Some(clipped) = rect.intersect(clip) else {
@@ -384,7 +423,11 @@ impl LayoutSnapshot {
 					rect = clipped;
 				}
 				if rect.contains(x, y) {
-					return Some(&link.url);
+					return Some(LinkRef {
+						url: link.url.as_ref(),
+						block: block.source.start,
+						id: link.id,
+					});
 				}
 			}
 		}
@@ -640,6 +683,15 @@ impl Viewport {
 	}
 }
 impl BlockLayout {
+	/// Whether the draw at `command` belongs to the link occurrence `id`.
+	pub fn link_hovered(&self, command: usize, url: &str, id: LinkId) -> bool {
+		self.links.iter().any(|link| {
+			link.id == id
+				&& &*link.url == url
+				&& link.commands.contains(&command)
+		})
+	}
+
 	/// Draw spans owned by each text cluster, with its node index and row geometry.
 	pub fn text_draw_spans(
 		&self,

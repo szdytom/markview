@@ -13,7 +13,7 @@ pub(super) mod parallel;
 
 use super::{
 	BlockContext, CacheEntry, CacheKey, LayoutEngine, LayoutOptions,
-	blocks::anchor_only, external_key,
+	blocks::anchor_only, cache, external_key,
 };
 use crate::{
 	document::{Block, Document},
@@ -333,7 +333,7 @@ impl LayoutEngine {
 		});
 		let geometry = if let Some(cached) = cached {
 			layout.result.reused += 1;
-			cached
+			cache::remap_link_ids(cached, block, &layout.pass.options.limits)
 		} else {
 			#[cfg(all(feature = "parallel", not(target_arch = "wasm32")))]
 			if _prefetch {

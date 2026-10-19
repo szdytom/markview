@@ -131,17 +131,9 @@ impl Renderer {
 				break;
 			}
 			for (i, draw, position) in block.draws() {
-				let hovered = view.hovered_link.is_some_and(|url| {
-					block.layout.links.iter().enumerate().any(|(n, link)| {
-						&*link.url == url
-							&& link.command <= i && block
-							.layout
-							.links
-							.get(n + 1)
-							.map_or(i < block.layout.draws.len(), |next| {
-								i < next.command
-							})
-					})
+				let hovered = view.hovered_link.is_some_and(|link| {
+					link.block == block.source.start
+						&& block.layout.link_hovered(i, link.url, link.id)
 				});
 				let (offset, local_clip) =
 					block.command_view(i, index, view.horizontal);

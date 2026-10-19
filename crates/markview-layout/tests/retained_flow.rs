@@ -144,7 +144,7 @@ fn footnote_markers_follow_visible_baselines_through_nested_disclosures() {
 				.unwrap();
 			let body_baseline =
 				note.draws().find_map(|(command, draw, offset)| {
-					if command < backlink.command
+					if command < backlink.commands.start
 						&& let markview_layout::scene::Draw::Glyph(glyph) = draw
 					{
 						Some(glyph.y + offset[1])
@@ -155,7 +155,7 @@ fn footnote_markers_follow_visible_baselines_through_nested_disclosures() {
 			let (label, offset) = note
 				.draws()
 				.find_map(|(command, draw, offset)| {
-					if command >= backlink.command
+					if command >= backlink.commands.start
 						&& let markview_layout::scene::Draw::Glyph(glyph) = draw
 					{
 						Some((glyph, offset))

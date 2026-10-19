@@ -313,5 +313,5 @@ pub use dm::{PanFeed, PanPhase, PanStatus};
 
 mod document;
 pub use document::{
-	Cursor, DocumentInteraction, Horizontal, Hover, horizontal_by,
+	Cursor, DocumentInteraction, Horizontal, Hover, HoveredLink, horizontal_by,
 };

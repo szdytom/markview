@@ -110,7 +110,10 @@ fn same_geometry(a: &LayoutSnapshot, b: &LayoutSnapshot) {
 		}
 		assert_eq!(a.links.len(), b.links.len());
 		for (a, b) in a.links.iter().zip(&b.links) {
-			assert_eq!((a.command, &a.url), (b.command, &b.url));
+			assert_eq!(
+				(&a.commands, a.id, &a.url),
+				(&b.commands, b.id, &b.url)
+			);
 			rect(a.rect, b.rect);
 		}
 		assert_eq!(a.overflow.len(), b.overflow.len());

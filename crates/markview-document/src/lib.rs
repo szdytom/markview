@@ -5,13 +5,14 @@ pub mod image;
 pub use color::Color;
 pub use image::ImageSpec;
 use std::{
-	collections::hash_map::DefaultHasher,
+	collections::{HashMap, hash_map::DefaultHasher},
 	hash::{Hash, Hasher},
 	ops::Range,
 	sync::Arc,
 };
 
-/// One link target, shared by every run and every open scope that carries it.
+/// One link occurrence, shared by every run and every open scope that carries
+/// it.
 ///
 /// Raw HTML can leave an address active across an unbounded number of sibling
 /// tags, so a style snapshot must never copy the address itself: the URL is
@@ -21,17 +22,33 @@ use std::{
 pub struct Link {
 	url: Arc<str>,
 	key: u64,
+	origin: usize,
 }
 
 impl Link {
-	pub fn new(url: impl Into<Arc<str>>) -> Self {
+	/// Creates one link occurrence. `origin` identifies it among links that
+	/// share its address, and every run of the occurrence carries it.
+	pub fn new(url: impl Into<Arc<str>>, origin: usize) -> Self {
 		let url = url.into();
 		let mut hasher = DefaultHasher::new();
 		url.hash(&mut hasher);
 		Self {
 			key: hasher.finish(),
 			url,
+			origin,
 		}
+	}
+
+	/// The identity of this occurrence, shared by every run of the link.
+	pub fn origin(&self) -> usize {
+		self.origin
+	}
+
+	/// Moves the occurrence identity to `origin`, keeping the shared address.
+	/// Snippet parses use this to map local offsets back to document ones.
+	pub fn rebase(mut self, origin: usize) -> Self {
+		self.origin = origin;
+		self
 	}
 
 	pub fn as_str(&self) -> &str {
@@ -41,6 +58,14 @@ impl Link {
 	/// The shared address, so a caller that stores one keeps the sharing.
 	pub fn shared(&self) -> &Arc<str> {
 		&self.url
+	}
+
+	/// Whether both styles carry this very link occurrence, not merely the
+	/// same address: adjacent links keep separate ids even when they match.
+	/// A shared address allocation alone does not make two origins one
+	/// occurrence, so callers that rebase a link keep them apart.
+	pub fn same_occurrence(&self, other: &Self) -> bool {
+		self.origin == other.origin && Arc::ptr_eq(&self.url, &other.url)
 	}
 }
 
@@ -80,6 +105,15 @@ impl TextStyle {
 	/// The link address this style carries, if any.
 	pub fn link_url(&self) -> Option<&str> {
 		self.link.as_ref().map(Link::as_str)
+	}
+
+	/// Whether both styles carry the same link occurrence, if any.
+	pub fn shares_link_occurrence(&self, other: &Self) -> bool {
+		match (&self.link, &other.link) {
+			(Some(a), Some(b)) => a.same_occurrence(b),
+			(None, None) => true,
+			_ => false,
+		}
 	}
 }
 
@@ -366,6 +400,27 @@ pub fn plain_text(text: &[Inline]) -> String {
 	out
 }
 
+/// The origin of every inline link occurrence in `text`, in reading order.
+/// Runs whose content is later discarded still count here: the list has to
+/// mirror what layout prepares, not what line breaking happens to paint.
+pub fn inline_link_origins(text: &[Inline]) -> Vec<usize> {
+	let mut out = Vec::new();
+	for inline in text {
+		if matches!(inline.kind, InlineKind::Anchor(_)) {
+			continue;
+		}
+		let origin = match (&inline.style.link, &inline.kind) {
+			(Some(link), _) => link.origin(),
+			(None, InlineKind::FootnoteRef(_)) => inline.source.start,
+			_ => continue,
+		};
+		if out.last() != Some(&origin) {
+			out.push(origin);
+		}
+	}
+	out
+}
+
 /// Scheme of the pseudo URL a `<details>` summary's hit region carries.
 pub const DETAILS_SCHEME: &str = "details:";
 
@@ -495,8 +550,22 @@ impl Block {
 pub fn semantic_key(kind: &BlockKind) -> u64 {
 	let mut hash = DefaultHasher::new();
 	std::mem::discriminant(kind).hash(&mut hash);
+	// Links with one address are still separate occurrences unless they share
+	// an origin, so the normalized grouping belongs to the identity: three
+	// neighboring links and one link over three runs must not share geometry.
 	let rich = |t: &RichText| {
-		fingerprint(&t.iter().map(|i| (&i.kind, &i.style)).collect::<Vec<_>>())
+		let mut origins = HashMap::new();
+		let normalized = t
+			.iter()
+			.map(|inline| {
+				let occurrence = inline.style.link.as_ref().map(|link| {
+					let next = origins.len();
+					*origins.entry(link.origin()).or_insert(next)
+				});
+				(&inline.kind, &inline.style, occurrence)
+			})
+			.collect::<Vec<_>>();
+		fingerprint(&normalized)
 	};
 	let children =
 		|b: &[Block]| b.iter().map(|b| b.content_key).collect::<Vec<_>>();

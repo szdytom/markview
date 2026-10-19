@@ -77,6 +77,39 @@ fn svg_elements_are_atomic_images_with_original_source_ranges() {
 }
 
 #[test]
+fn svg_snippets_translate_link_origins_to_document_offsets() {
+	let source =
+		"> [one](target)\n> <svg>\n> <rect/>\n> </svg>\n> [two](target)\n";
+	let doc = parse(source);
+	let mut origins = Vec::new();
+	fn visit(blocks: &[markview_document::Block], out: &mut Vec<usize>) {
+		for block in blocks {
+			match &block.kind {
+				BlockKind::Paragraph(rich) => {
+					out.extend(
+						rich.iter()
+							.filter_map(|inline| inline.style.link.as_ref())
+							.map(|link| link.origin()),
+					);
+				}
+				BlockKind::Quote { blocks, .. } => visit(blocks, out),
+				BlockKind::List { items, .. } => {
+					for item in items {
+						visit(&item.blocks, out);
+					}
+				}
+				_ => {}
+			}
+		}
+	}
+	visit(&doc.blocks, &mut origins);
+	assert_eq!(origins.len(), 2);
+	assert_ne!(origins[0], origins[1]);
+	assert!(source[origins[0]..].starts_with("[one](target)"));
+	assert!(source[origins[1]..].starts_with("[two](target)"));
+}
+
+#[test]
 fn editing_and_prefix_parsing_keep_svg_atomic() {
 	let source = std::sync::Arc::<str>::from(
 		"# Before\n\n<svg>\n\n<text>中文😀</text>\n\n</svg>\n\n# After\n",

@@ -89,7 +89,7 @@ pub struct Style {
 }
 
 impl Style {
-	fn apply(&mut self, patch: &Patch) {
+	fn apply(&mut self, patch: &Patch, origin: usize) {
 		match patch {
 			Patch::Bold => self.bold = true,
 			Patch::Italic => self.italic = true,
@@ -97,7 +97,8 @@ impl Style {
 			Patch::Code => self.code = true,
 			Patch::Superscript => self.superscript = true,
 			Patch::Link(url) => {
-				self.link = Some(crate::document::Link::new(url.as_str()))
+				self.link =
+					Some(crate::document::Link::new(url.as_str(), origin))
 			}
 			Patch::None => {}
 		}
@@ -427,7 +428,8 @@ enum Token {
 	Text(String),
 	Image(crate::image::ImageSpec, Vec<String>),
 	Comment,
-	Tag(String, bool),
+	/// A tag, whether its anchors are discoverable, and its source offset.
+	Tag(String, bool, usize),
 }
 
 /// Interpret one inline HTML fragment as produced by the Markdown parser.
@@ -446,14 +448,15 @@ pub fn inline(fragment: &str) -> Inline {
 ///
 /// `scope_limit` bounds the tags that may stay open at once, so a run of
 /// unclosed tags cannot grow the scope stack without bound.
-pub fn block(source: &str, scope_limit: usize) -> Block {
-	block_from(source, scope_limit, 0)
+pub fn block(source: &str, scope_limit: usize, origin_base: usize) -> Block {
+	block_from(source, scope_limit, 0, origin_base)
 }
 
 pub(crate) fn block_from(
 	source: &str,
 	scope_limit: usize,
 	anchor_from: usize,
+	origin_base: usize,
 ) -> Block {
 	let mut spans: Vec<Span> = Vec::new();
 	let mut style = Style::default();
@@ -464,7 +467,7 @@ pub(crate) fn block_from(
 	let mut containers = 0;
 	let mut rule = false;
 	for token in tokenize(source, anchor_from) {
-		let Some((fragment, discover)) =
+		let Some((fragment, discover, origin)) =
 			append_html_token(token, &mut spans, &style)
 		else {
 			continue;
@@ -506,7 +509,7 @@ pub(crate) fn block_from(
 					containers += 1;
 				}
 				scopes.push((name, style.clone()));
-				style.apply(&patch);
+				style.apply(&patch, origin_base + origin);
 			}
 			Tag::Close { name } => {
 				if let Some(i) =
@@ -525,7 +528,7 @@ fn append_html_token(
 	token: Token,
 	spans: &mut Vec<Span>,
 	style: &Style,
-) -> Option<(String, bool)> {
+) -> Option<(String, bool, usize)> {
 	match token {
 		Token::Image(image, anchors) => {
 			for anchor in anchors {
@@ -549,7 +552,7 @@ fn append_html_token(
 			None
 		}
 		Token::Comment => None,
-		Token::Tag(t, discover) => Some((t, discover)),
+		Token::Tag(t, discover, origin) => Some((t, discover, origin)),
 	}
 }
 
@@ -806,6 +809,7 @@ fn tokenize(source: &str, anchor_from: usize) -> Vec<Token> {
 				tokens.push(Token::Tag(
 					candidate[..len].to_string(),
 					i + open >= anchor_from,
+					i + open,
 				));
 				i += open + len;
 			}

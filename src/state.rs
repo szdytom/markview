@@ -19,7 +19,7 @@ pub(crate) use outline::OutlineTree;
 
 pub(crate) use markview_layout::layout::scroll_limit;
 pub(crate) use markview_selection::{
-	Drag, Grain, Host, Modifiers, Point, Selection,
+	Drag, Grain, Host, HoveredLink, Modifiers, Point, Selection,
 };
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum Command {
@@ -665,7 +665,7 @@ pub(crate) struct InteractionState {
 	pub(crate) drag_at: Option<Instant>,
 	pub(crate) modifiers: ModifiersState,
 	pub(crate) cursor: (f32, f32),
-	pub(crate) hover: Option<String>,
+	pub(crate) hover: Option<HoveredLink>,
 	pub(crate) hover_image: Option<String>,
 	/// The wide block whose horizontal scrollbar the pointer is over.
 	pub(crate) hover_overflow: Option<(usize, usize)>,

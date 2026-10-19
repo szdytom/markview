@@ -6,7 +6,7 @@ use std::{
 	sync::Arc,
 };
 
-#[derive(Debug, Default)]
+#[derive(Clone, Debug, Default)]
 pub struct Scene {
 	nodes: Vec<Node>,
 	spans: Vec<Span>,
@@ -17,7 +17,7 @@ pub struct Scene {
 	pub(crate) reused_leaves: usize,
 }
 
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 struct Leaf {
 	key: u64,
 	span: usize,
@@ -28,7 +28,7 @@ struct Leaf {
 	separator: Option<&'static str>,
 }
 
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 struct Node {
 	parent: Option<usize>,
 	children: Vec<usize>,
@@ -40,7 +40,7 @@ struct Node {
 	disclosure: Option<Disclosure>,
 }
 
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 struct Footnote {
 	node: usize,
 	body: Range<usize>,
@@ -48,7 +48,7 @@ struct Footnote {
 	baseline: f32,
 }
 
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 struct Disclosure {
 	id: u64,
 	declared: bool,
@@ -62,19 +62,21 @@ struct Cursor {
 	draws: usize,
 	text: usize,
 	links: usize,
+	occurrences: usize,
 	overflow: usize,
 	anchors: usize,
 	constraints: usize,
 	decorations: usize,
 }
 
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 struct Span {
 	local: bool,
 	node: usize,
 	draws: Range<usize>,
 	text: Range<usize>,
 	links: Range<usize>,
+	occurrences: Range<usize>,
 	overflow: Range<usize>,
 	anchors: Range<usize>,
 	constraints: Range<usize>,
@@ -105,6 +107,7 @@ impl BlockLayout {
 			draws: self.draws.len(),
 			text: self.text.len(),
 			links: self.links.len(),
+			occurrences: self.link_occurrences.len(),
 			overflow: self.overflow.len(),
 			anchors: self.anchors.len(),
 			constraints: self.page_constraints.len(),
@@ -122,6 +125,7 @@ impl BlockLayout {
 				draws: start.draws..end.draws,
 				text: start.text..end.text,
 				links: start.links..end.links,
+				occurrences: start.occurrences..end.occurrences,
 				overflow: start.overflow..end.overflow,
 				anchors: start.anchors..end.anchors,
 				constraints: start.constraints..end.constraints,
@@ -289,7 +293,9 @@ impl BlockLayout {
 		});
 	}
 
-	/// Copy a sealed leaf span and rebind indices while retaining local coordinates.
+	/// Copy a sealed leaf span and rebind indices while retaining local
+	/// coordinates. `origins` are the link occurrences the leaf carries now,
+	/// so a reused fragment never keeps an identity that has since moved.
 	pub(crate) fn reuse_leaf(
 		&mut self,
 		previous: &Self,
@@ -297,6 +303,7 @@ impl BlockLayout {
 		position: [f32; 2],
 		width: f32,
 		field: Option<crate::search::SearchField>,
+		origins: &[usize],
 	) -> f32 {
 		let leaf = &previous.scene.leaves[leaf];
 		let span = &previous.scene.spans[leaf.span];
@@ -337,15 +344,30 @@ impl BlockLayout {
 					text
 				}),
 		);
-		self.links.extend(
-			previous.links[span.links.clone()].iter().cloned().map(
-				|mut link| {
-					link.command =
-						start.draws + link.command - span.draws.start;
-					link
-				},
-			),
-		);
+		let links = &previous.links[span.links.clone()];
+		let occurrences = &previous.link_occurrences[span.occurrences.clone()];
+		let mut remap = HashMap::new();
+		if occurrences.len() == origins.len() {
+			for (&old, &new) in occurrences.iter().zip(origins) {
+				remap.insert(old, new);
+			}
+		}
+		self.links.extend(links.iter().cloned().map(|mut link| {
+			if let super::LinkId::Inline(origin) = link.id
+				&& let Some(&origin) = remap.get(&origin)
+			{
+				link.id = super::LinkId::Inline(origin);
+			}
+			link.commands = (start.draws + link.commands.start
+				- span.draws.start)
+				..(start.draws + link.commands.end - span.draws.start);
+			link
+		}));
+		for &origin in origins {
+			if self.link_occurrences.last() != Some(&origin) {
+				self.link_occurrences.push(origin);
+			}
+		}
 		self.overflow.extend(
 			previous.overflow[span.overflow.clone()]
 				.iter()
@@ -529,7 +551,8 @@ impl PlacedBlock {
 							.starts_with(crate::document::DETAILS_SCHEME))
 			})
 			.filter_map(move |link| {
-				self.rect(link.command, link.rect).map(|rect| (link, rect))
+				self.rect(link.commands.start, link.rect)
+					.map(|rect| (link, rect))
 			})
 	}
 	pub fn clusters(

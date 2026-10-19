@@ -521,7 +521,7 @@ impl Markview {
 			bottom: INSET,
 			theme: self.theme(),
 			horizontal: &self.horizontal,
-			hovered_link: hover.link.as_deref(),
+			hovered_link: hover.link.as_ref().map(|link| link.link_ref()),
 			hovered_overflow: hover.overflow,
 			held_overflow: self.overflow_drag.map(|(b, o, _)| (b, o)),
 		};

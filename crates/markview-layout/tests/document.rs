@@ -14,7 +14,7 @@ fn semantic_documents_layout_without_source_parsing() {
 	let kind = BlockKind::Paragraph(vec![Inline {
 		kind: InlineKind::Text(source.to_string()),
 		style: TextStyle {
-			link: Some(Link::new("https://example.com/article")),
+			link: Some(Link::new("https://example.com/article", 0)),
 			..Default::default()
 		},
 		source: 0..source.len(),

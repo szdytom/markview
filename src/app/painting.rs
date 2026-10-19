@@ -66,7 +66,11 @@ impl<P: super::SendEvent> App<P> {
 			bottom: geometry.bottom + insets[3],
 			theme: self.preferences.values.theme,
 			horizontal: &self.readers.session.horizontal,
-			hovered_link: self.interaction.hover.as_deref(),
+			hovered_link: self
+				.interaction
+				.hover
+				.as_ref()
+				.map(|link| link.link_ref()),
 			hovered_overflow: self.interaction.hover_overflow,
 			held_overflow: self.interaction.scrollbar.and_then(
 				|drag| match drag.target {

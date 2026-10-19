@@ -10,9 +10,10 @@ use crate::app::SendEvent;
 use crate::app::gestures::Inertia;
 use crate::app::window::Loop;
 use crate::layout::{LayoutEngine, LayoutOptions, LayoutSnapshot};
-use crate::state::{Drag, Grain, Point};
+use crate::state::{Drag, Grain, HoveredLink, Point};
 use crate::worker::{ReaderSnapshot, Update};
 use markview_document::Document;
+use markview_layout::scene::LinkId;
 use markview_layout::text::{Affinity, TextSelection};
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -337,7 +338,11 @@ fn an_idle_footer_names_the_document_and_offers_its_whole_path() {
 	assert_eq!(found.rect.y, height - super::super::BOTTOM);
 
 	// A hover hint and a timed status each take the slot back.
-	app.interaction.hover = Some("https://example.com".into());
+	app.interaction.hover = Some(HoveredLink {
+		url: "https://example.com".into(),
+		block: 0,
+		id: LinkId::Inline(0),
+	});
 	assert!(path_button(&mut app).is_none());
 	app.interaction.hover = None;
 	app.status = "Copied selection".into();
