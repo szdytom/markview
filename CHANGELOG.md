@@ -74,6 +74,7 @@ at the same level, without `[brackets]`.
 
 - Restore fuzz harness compilation and include link command ranges and occurrence ids in layout differential checks.
 - Keep inline-link hover on the link under the pointer, so repeated links with one address and neighboring links no longer highlight together.
+- Keep the standalone parse fuzz harness compatible with the dialect-aware incremental API.
 - Hide the desktop sidebar toggle when no folder is open.
 - Parse reader PDF, PNG and watch-rebuild exports with the selected markdown dialect, so OFM callouts, highlight marks and hard breaks match the window.
 - Keep a quote whose `[!type]` marker is escaped, coded or styled an ordinary quote instead of a callout.
