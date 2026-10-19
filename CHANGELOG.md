@@ -31,6 +31,7 @@ at the same level, without `[brackets]`.
 - Parse Obsidian wikilinks with labels and heading targets, preserving literal percent characters in note paths.
 - Add a dedicated serial/parallel layout fuzz differential covering retained scenes, progressive cancellation, cache reuse and reflows with verified worker execution.
 - Add native block layout workers with ordered publication and bounded prefetch, enabled automatically in the GUI after its first readable GPU frame; retain serial Web layout and formula budgets.
+- Include an upstream-compatible Warm Paper Obsidian stylesheet example in the macOS application bundle.
 - Hide `%%` inline and block comments in OFM lite across reading, copy, search and reader exports, preserving code and original source positions.
 - Store a markdown flavor preset, GFM or OFM lite, with GFM-only hard-break and highlight-mark toggles in reader settings, resolved for parsing through `effective_dialect()`.
 - Render single newlines inside a paragraph as line breaks when the effective GFM hard-break toggle is on, reparsing the open document when the setting changes.

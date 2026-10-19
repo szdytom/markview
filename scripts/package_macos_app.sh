@@ -31,6 +31,9 @@ install -m644 "$root/THIRD_PARTY.md" \
 	"$app/Contents/Resources/THIRD_PARTY.md"
 install -m644 "$root/licenses/KaTeX-OFL.txt" \
 	"$app/Contents/Resources/KaTeX-OFL.txt"
+mkdir -p "$app/Contents/Resources/styles"
+install -m644 "$root/examples/warm-paper-obsidian.mvss.toml" \
+	"$app/Contents/Resources/styles/warm-paper-obsidian.mvss.toml"
 
 if [[ -n "${MARKVIEW_NOTICES:-}" ]]; then
 	install -m644 "$MARKVIEW_NOTICES" "$app/Contents/Resources/third-party-notices.html"

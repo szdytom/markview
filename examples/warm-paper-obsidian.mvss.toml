@@ -1,0 +1,226 @@
+format_version = 2
+targets = ["ui"]
+version = 3
+
+[meta]
+name = "Warm Paper Obsidian"
+description = "Warm Paper palette with Obsidian-like emphasis: CJK *italic* uses synthetic slant (not Kai)"
+
+# Based on warm-paper.mvss.toml. Differences for Obsidian reading feel:
+# - em: no regularscript/WenKai; CJK falls through to synthetic_italic shear
+# - mark and callout colors use the shared builtin stylesheet
+# - Mermaid colors use the upstream schema, without branch-only sizing fields
+
+[mermaid]
+theme = "neutral"
+background = "#FFFFF8"
+text_color = "#3A3A35"
+primary_color = "#F4F2EC"
+primary_text_color = "#3A3A35"
+primary_border_color = "#E7E3D7"
+line_color = "#6B6A63"
+secondary_color = "#F4F2EA"
+tertiary_color = "#FFFDF4"
+edge_label_background = "#FFFFF8"
+cluster_background = "#FFFDF4"
+cluster_border = "#D8D4C8"
+sequence_actor_fill = "#F4F2EC"
+sequence_actor_border = "#D8D4C8"
+sequence_actor_line = "#6B6A63"
+sequence_note_fill = "#FFFDF4"
+sequence_note_border = "#D8D4C8"
+sequence_activation_fill = "#F4F2EA"
+sequence_activation_border = "#6B6A63"
+git_commit_label_color = "#FFFFF8"
+git_commit_label_background = "#6B6A63"
+git_tag_label_color = "#3A3A35"
+git_tag_label_background = "#F4F2EA"
+git_tag_label_border = "#D8D4C8"
+pie_colors = [
+	"#B0413E", "#B06A3C", "#9E8A3E", "#7E8F44", "#5C8F5C", "#4C8F78",
+	"#47848C", "#4A6F97", "#5F5F97", "#7C5B92", "#96547F", "#A05463",
+]
+pie_title_text_color = "#3A3A35"
+pie_section_text_color = "#FFFFF8"
+pie_legend_text_color = "#3A3A35"
+pie_stroke_color = "#FFFFF8"
+pie_outer_stroke_color = "#E7E3D7"
+
+[[rule]]
+when = ["body"]
+color = "#3A3A35"
+background = "#FFFFF8"
+font = [{ family = "serif" }, { family = "serif[cjk]", weight = 500 }, { family = "serif[cjk]" }, { family = "emoji", weight = 400 }]
+
+[[rule]]
+when = ["link"]
+color = "#B0413E"
+
+[[rule]]
+when = ["link", "hover"]
+color = "#963633"
+
+# Obsidian-like: Latin true italic; CJK synthetic shear (no upright Kai).
+[[rule]]
+when = ["em"]
+font = [
+	{ family = "serif", variant = "italic" },
+	{ family = "serif[cjk]", variant = "italic", synthetic_italic = true, weight = 500 },
+	{ family = "serif[cjk]", variant = "italic", synthetic_italic = true },
+	{ family = "emoji", weight = 400 },
+]
+
+[[rule]]
+when = ["h1"]
+font = [{ family = "serif" }, { family = "serif[cjk]", weight = 500 }, { family = "serif[cjk]" }, { family = "emoji", weight = 400 }]
+weight = 600
+color = "#1A1A1A"
+
+[[rule]]
+when = ["h2"]
+font = [{ family = "serif" }, { family = "serif[cjk]", weight = 500 }, { family = "serif[cjk]" }, { family = "emoji", weight = 400 }]
+weight = 600
+color = "#1A1A1A"
+
+[[rule]]
+when = ["h3"]
+font = [{ family = "serif" }, { family = "serif[cjk]", weight = 500 }, { family = "serif[cjk]" }, { family = "emoji", weight = 400 }]
+weight = 600
+color = "#1A1A1A"
+
+[[rule]]
+when = ["h4"]
+font = [{ family = "serif" }, { family = "serif[cjk]", weight = 500 }, { family = "serif[cjk]" }, { family = "emoji", weight = 400 }]
+weight = 600
+color = "#1A1A1A"
+
+[[rule]]
+when = ["h5"]
+font = [{ family = "serif" }, { family = "serif[cjk]", weight = 500 }, { family = "serif[cjk]" }, { family = "emoji", weight = 400 }]
+weight = 600
+color = "#1A1A1A"
+
+[[rule]]
+when = ["h6"]
+font = [{ family = "serif" }, { family = "serif[cjk]", weight = 500 }, { family = "serif[cjk]" }, { family = "emoji", weight = 400 }]
+weight = 600
+color = "#1A1A1A"
+
+[[rule]]
+when = ["code"]
+font = [{ family = "monospace" }, { family = "monospace[cjk]", weight = 500 }, { family = "monospace[cjk]" }, { family = "emoji", weight = 400 }]
+background = "#F4F2EC"
+
+[[rule]]
+when = ["code_block"]
+background = "#F4F2EC"
+border_edges = [1.0, 1.0, 1.0, 1.0]
+border_color = "#E7E3D7"
+radius = 8.0
+theme = "InspiredGitHub"
+
+[[rule]]
+when = ["code_block", "label"]
+color = "#6B6A63"
+
+[[rule]]
+when = ["blockquote"]
+background = "#F4F2EA"
+border_color = "#B0413E"
+border_width = 3.0
+corner_radii = [0.0, 8.0, 8.0, 0.0]
+padding = [0.55, 0.8, 0.55, 1.0]
+
+[[rule]]
+when = ["details"]
+background = "#FFFDF4"
+border_color = "#D8D4C8"
+radius = 10.0
+
+[[rule]]
+when = ["summary"]
+color = "#3A3A35"
+
+[[rule]]
+when = ["summary", "hover"]
+color = "#963633"
+
+[[rule]]
+when = ["marker"]
+color = "#6B6A63"
+
+[[rule]]
+when = ["task_marker"]
+color = "#FFFFF8"
+background = "#FFFFF8"
+accent = "#B0413E"
+border_color = "#B0413E"
+radius = 3.0
+
+[[rule]]
+when = ["table", "cell"]
+border_color = "#D8D4C8"
+
+[[rule]]
+when = ["table", "header"]
+background = "#F4F2EA"
+color = "#6B6A63"
+weight = 600
+
+[[rule]]
+when = ["hr"]
+color = "#E7E3D7"
+
+[[rule]]
+when = ["selection"]
+background = "#B0413E33"
+
+[[rule]]
+when = ["img"]
+border_color = "#D8D4C8"
+
+[[rule]]
+when = ["img", "caption"]
+color = "#6B6A63"
+
+[[rule]]
+when = ["img", "placeholder"]
+color = "#6B6A63"
+background = "#F4F2EC"
+
+[[rule]]
+when = ["scrollbar"]
+track = "#E7E3D7"
+thumb = "#6B6A63"
+thumb_hover = "#B0413E"
+
+[[rule]]
+when = ["ui"]
+color = "#3A3A35"
+background = "#F6F4EB"
+muted = "#6B6A63"
+accent = "#B0413E"
+border_color = "#D8D4C8"
+error = "#A03030"
+shadow = "#1A1A1A38"
+scrim = "#1A1A1A70"
+
+[[rule]]
+when = ["ui", "panel"]
+background = "#FFFDF4"
+
+[[rule]]
+when = ["ui", "toolbar"]
+background = "#F6F4EB"
+
+[[rule]]
+when = ["ui", "statusbar"]
+background = "#F6F4EB"
+
+[[rule]]
+when = ["ui", "button"]
+background = "#F4F2EA"
+hover_background = "#ECE9DD"
+active_background = "#E2DDCE"
+disabled_color = "#6B6A63"
+focus_color = "#B0413E"

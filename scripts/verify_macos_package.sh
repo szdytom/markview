@@ -16,3 +16,6 @@ codesign --verify --deep --strict "$app"
 "$app/Contents/MacOS/markview" --help
 test -s "$app/Contents/Resources/markview.icns"
 test -s "$app/Contents/Resources/THIRD_PARTY.md"
+
+"$app/Contents/MacOS/markview" ss validate \
+	"$app/Contents/Resources/styles/warm-paper-obsidian.mvss.toml"
