@@ -75,6 +75,18 @@ impl Config {
 		}
 	}
 
+	/// Parses the export with the dialect the reader window reads with, so the
+	/// file shows the same document the export was started from. Without this,
+	/// every export falls back to the default dialect.
+	pub(crate) fn with_dialect(
+		mut self,
+		dialect: crate::settings::EffectiveDialect,
+	) -> Self {
+		self.options.hard_breaks = dialect.hard_breaks;
+		self.options.highlight_marks = dialect.highlight_marks;
+		self
+	}
+
 	pub(crate) fn prepare(self) -> Result<Prepared> {
 		validate_font_size(self.options.font_size)?;
 		validate_indent(self.options.paragraph_indent)?;

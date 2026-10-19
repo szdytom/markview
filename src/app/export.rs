@@ -9,7 +9,9 @@ use crate::state::{Command, ExportCommand};
 use crate::{
 	export::{self, draw_tile, write_png},
 	layout::LayoutSnapshot,
-	settings::{ExportFormat, ExportSettings, FontDefOverride},
+	settings::{
+		EffectiveDialect, ExportFormat, ExportSettings, FontDefOverride,
+	},
 };
 use markview_layout::{
 	fonts::FontConfig,
@@ -308,6 +310,10 @@ impl<P: super::SendEvent> App<P> {
 		);
 		let cjk = self.preferences.values.cjk_type;
 		let overrides = self.preferences.values.fontdef_overrides.clone();
+		// The dialect the document is read in, captured now so an export always
+		// matches the window it was started from, even if settings change
+		// while the job runs.
+		let dialect = self.preferences.values.effective_dialect();
 		let services = self.services.clone();
 		let output = match &destination {
 			Destination::Ask { stem, directory } => Some(wait_for_output(
@@ -329,14 +335,15 @@ impl<P: super::SendEvent> App<P> {
 				Destination::Ask { .. } => {
 					match output.unwrap().recv().ok().flatten() {
 						Some(output) => run(
-							&path, &output, &settings, metadata, fonts, cjk,
-							&overrides, offline, services, security,
+							&path, &output, &settings, dialect, metadata,
+							fonts, cjk, &overrides, offline, services,
+							security,
 						),
 						None => ExportOutcome::Cancelled,
 					}
 				}
 				Destination::Path(output) => run(
-					&path, &output, &settings, metadata, fonts, cjk,
+					&path, &output, &settings, dialect, metadata, fonts, cjk,
 					&overrides, offline, services, security,
 				),
 			};
@@ -635,12 +642,13 @@ fn wait_for_output(
 /// Everything that happens off the event loop for one export.
 #[expect(
 	clippy::too_many_arguments,
-	reason = "Export job captures independent settings, metadata and font configuration"
+	reason = "Export job captures independent settings, dialect, metadata and font configuration"
 )]
 fn run(
 	path: &Path,
 	output: &Path,
 	settings: &ExportSettings,
+	dialect: EffectiveDialect,
 	metadata: export::MetadataOverrides,
 	fonts: FontConfig,
 	cjk: CjkType,
@@ -651,6 +659,7 @@ fn run(
 ) -> ExportOutcome {
 	let prepared =
 		match export::Config::from_settings(settings, fonts, cjk, overrides)
+			.with_dialect(dialect)
 			.prepare()
 		{
 			Ok(prepared) => prepared,
@@ -762,6 +771,7 @@ mod tests {
 			&source,
 			&dir.path().join("snapshot.png"),
 			&settings,
+			crate::settings::ReaderSettings::default().effective_dialect(),
 			Default::default(),
 			crate::test_support::fonts(),
 			CjkType::Sc,
@@ -913,6 +923,7 @@ mod tests {
 				&source,
 				&output,
 				&ExportSettings::default(),
+				crate::settings::ReaderSettings::default().effective_dialect(),
 				export::MetadataOverrides::with_title(title),
 				crate::test_support::fonts(),
 				CjkType::Sc,
@@ -969,6 +980,7 @@ mod security_tests {
 				&source,
 				&output,
 				&ExportSettings::default(),
+				crate::settings::ReaderSettings::default().effective_dialect(),
 				Default::default(),
 				crate::test_support::fonts(),
 				CjkType::Sc,
