@@ -40,7 +40,11 @@ fuzz_target!(|data: &[u8]| {
 		for cut in [1, n / 4, n / 2, (3 * n) / 4] {
 			let _ = markview_commonmark::parse_prefix(&src, cut);
 		}
-		let _ = markview_commonmark::parse_incremental(&doc, src.clone());
+		let _ = markview_commonmark::parse_incremental(
+			&doc,
+			src.clone(),
+			Default::default(),
+		);
 		let _ = markview_commonmark::reparse(&doc, src.clone());
 	}
 	guard.finish(&budget, len);
