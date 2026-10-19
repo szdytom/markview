@@ -9,7 +9,9 @@ use crate::state::Command;
 use crate::{
 	export::{self, draw_tile, write_png},
 	layout::LayoutSnapshot,
-	settings::{ExportFormat, ExportSettings, FontDefOverride},
+	settings::{
+		EffectiveDialect, ExportFormat, ExportSettings, FontDefOverride,
+	},
 };
 use markview_layout::{
 	fonts::FontConfig,
@@ -213,6 +215,10 @@ impl<P: super::SendEvent> App<P> {
 		);
 		let cjk = self.preferences.values.cjk_type;
 		let overrides = self.preferences.values.fontdef_overrides.clone();
+		// The dialect the document is read in, captured now so an export always
+		// matches the window it was started from, even if settings change
+		// while the job runs.
+		let dialect = self.preferences.values.effective_dialect();
 		let services = self.services.clone();
 		let output = match &destination {
 			Destination::Ask { stem, directory } => Some(wait_for_output(
@@ -234,14 +240,15 @@ impl<P: super::SendEvent> App<P> {
 				Destination::Ask { .. } => {
 					match output.unwrap().recv().ok().flatten() {
 						Some(output) => run(
-							&path, &output, &settings, metadata, fonts, cjk,
-							&overrides, offline, services, security,
+							&path, &output, &settings, dialect, metadata,
+							fonts, cjk, &overrides, offline, services,
+							security,
 						),
 						None => ExportOutcome::Cancelled,
 					}
 				}
 				Destination::Path(output) => run(
-					&path, &output, &settings, metadata, fonts, cjk,
+					&path, &output, &settings, dialect, metadata, fonts, cjk,
 					&overrides, offline, services, security,
 				),
 			};
@@ -565,12 +572,13 @@ fn wait_for_output(
 /// Everything that happens off the event loop for one export.
 #[expect(
 	clippy::too_many_arguments,
-	reason = "Export job captures independent settings, metadata and font configuration"
+	reason = "Export job captures independent settings, dialect, metadata and font configuration"
 )]
 fn run(
 	path: &Path,
 	output: &Path,
 	settings: &ExportSettings,
+	dialect: EffectiveDialect,
 	metadata: export::MetadataOverrides,
 	fonts: FontConfig,
 	cjk: CjkType,
@@ -581,6 +589,7 @@ fn run(
 ) -> ExportOutcome {
 	let prepared =
 		match export::Config::from_settings(settings, fonts, cjk, overrides)
+			.with_dialect(dialect)
 			.prepare()
 		{
 			Ok(prepared) => prepared,
@@ -690,6 +699,7 @@ mod tests {
 			&source,
 			&dir.path().join("snapshot.png"),
 			&settings,
+			crate::settings::ReaderSettings::default().effective_dialect(),
 			Default::default(),
 			crate::test_support::fonts(),
 			CjkType::Sc,
@@ -826,6 +836,146 @@ mod tests {
 	}
 
 	#[test]
+	fn reader_exports_parse_with_the_selected_dialect() {
+		#[derive(Clone)]
+		struct Proxy(std::sync::mpsc::Sender<Event>);
+		impl super::super::SendEvent for Proxy {
+			fn try_send(&self, event: Event) -> bool {
+				self.0.send(event).is_ok()
+			}
+		}
+		let dir = tempfile::tempdir().unwrap();
+		let source = dir.path().join("dialect.md");
+		// `[!example]` is no GitHub alert type, so only OFM lite reads it as a
+		// callout; GFM keeps the marker literal.
+		std::fs::write(
+			&source,
+			"Soft wrapped\nline one.\n\n> [!example] Callout title\n> ==marked== body\n",
+		)
+		.unwrap();
+		let source = std::fs::canonicalize(source).unwrap();
+		// (flavor, stored hard breaks, stored highlight, format, how the
+		// soft-wrapped line joins, highlight parsed, callout parsed)
+		let cases = [
+			(
+				crate::settings::MarkdownFlavor::Gfm,
+				false,
+				false,
+				ExportFormat::Png,
+				" ",
+				false,
+				false,
+			),
+			(
+				crate::settings::MarkdownFlavor::Gfm,
+				true,
+				true,
+				ExportFormat::Png,
+				"\n",
+				true,
+				false,
+			),
+			(
+				// The stored toggles are stale under OFM lite: the preset
+				// forces hard breaks off and highlight marks on.
+				crate::settings::MarkdownFlavor::OfmLite,
+				true,
+				false,
+				ExportFormat::Pdf,
+				" ",
+				true,
+				true,
+			),
+		];
+		for (
+			index,
+			(flavor, hard_breaks, highlight, format, join, marked, callout),
+		) in cases.into_iter().enumerate()
+		{
+			let (send, receive) = std::sync::mpsc::channel();
+			let mut app = App::new(
+				crate::cli::LaunchOptions {
+					mode: crate::cli::Mode::Smoke,
+					options: crate::test_support::options(),
+					..Default::default()
+				},
+				Proxy(send),
+			);
+			app.open_document(
+				source.clone(),
+				crate::security::Security::local(
+					crate::security::Trust::Trusted,
+				),
+			);
+			app.preferences.values.markdown_flavor = flavor;
+			app.preferences.values.hard_breaks = hard_breaks;
+			app.preferences.values.highlight_marks = highlight;
+			let settings = ExportSettings {
+				format,
+				..Default::default()
+			};
+			app.spawn_export(
+				source.clone(),
+				Destination::Path(dir.path().join(format!("{index}.out"))),
+				settings,
+			);
+			let outcome = loop {
+				if let Event::Exported(outcome) =
+					receive.recv_timeout(Duration::from_secs(20)).unwrap()
+				{
+					break outcome;
+				}
+			};
+			match *outcome {
+				ExportOutcome::PngReady { snapshot, .. } => {
+					assert_eq!(format, ExportFormat::Png);
+					let text = snapshot.full_reading_text();
+					assert!(
+						text.contains(&format!("Soft wrapped{join}line one.")),
+						"dialect lost: {text:?}"
+					);
+					assert_eq!(
+						text.contains("==marked=="),
+						!marked,
+						"dialect lost: {text:?}"
+					);
+					assert_eq!(
+						text.contains("marked body"),
+						marked,
+						"dialect lost: {text:?}"
+					);
+					assert_eq!(
+						!text.contains("[!example]"),
+						callout,
+						"dialect lost: {text:?}"
+					);
+					assert!(text.contains("Callout title"), "{text:?}");
+				}
+				ExportOutcome::Written { path, .. } => {
+					assert_eq!(format, ExportFormat::Pdf);
+					let pdf = lopdf::Document::load(&path).unwrap();
+					let text = pdf.extract_text(&[1]).unwrap();
+					assert!(!text.contains("=="), "dialect lost: {text:?}");
+					assert!(text.contains("marked"), "{text:?}");
+					// The callout title itself extracts as unmapped glyphs, so
+					// the marker's absence is the callout proof here; the PNG
+					// arm and the config tests check the title text.
+					assert!(
+						!text.contains("[!example]"),
+						"dialect lost: {text:?}"
+					);
+				}
+				ExportOutcome::Failed(error) => {
+					panic!("export failed: {error}");
+				}
+				ExportOutcome::Cancelled => {
+					panic!("export was cancelled");
+				}
+			}
+		}
+	}
+
+	#[test]
 	fn desktop_pdf_jobs_use_custom_titles_and_empty_titles_fall_back() {
 		let dir = tempfile::tempdir().unwrap();
 		let source = dir.path().join("source.md");
@@ -839,6 +989,7 @@ mod tests {
 				&source,
 				&output,
 				&ExportSettings::default(),
+				crate::settings::ReaderSettings::default().effective_dialect(),
 				export::MetadataOverrides::with_title(title),
 				crate::test_support::fonts(),
 				CjkType::Sc,
@@ -895,6 +1046,7 @@ mod security_tests {
 				&source,
 				&output,
 				&ExportSettings::default(),
+				crate::settings::ReaderSettings::default().effective_dialect(),
 				Default::default(),
 				crate::test_support::fonts(),
 				CjkType::Sc,
