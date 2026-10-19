@@ -360,10 +360,18 @@ fn markdown_dialect_defaults_and_ofm_lite_forces_its_toggles() {
 	let dialect = settings.effective_dialect();
 	assert!(dialect.hard_breaks);
 	assert!(dialect.highlight_marks);
+	// Obsidian callouts and HTML extras never reach GFM.
+	assert!(!dialect.ofm);
 	settings.markdown_flavor = MarkdownFlavor::OfmLite;
 	let dialect = settings.effective_dialect();
 	assert!(!dialect.hard_breaks);
 	assert!(dialect.highlight_marks);
+	assert!(dialect.ofm);
+	assert!(
+		settings
+			.layout_options(1000.0, false, &Default::default())
+			.ofm
+	);
 }
 
 /// End-to-end fixture matrix for the four reading cases ticket 05 checks.
@@ -395,6 +403,7 @@ fn dialect_fixture_matrix_covers_the_four_reading_cases() {
 			Dialect {
 				hard_breaks: dialect.hard_breaks,
 				highlight_marks: dialect.highlight_marks,
+				ofm: dialect.ofm,
 			},
 		)
 	}

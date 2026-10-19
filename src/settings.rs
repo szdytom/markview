@@ -84,6 +84,8 @@ pub struct EffectiveDialect {
 	pub hard_breaks: bool,
 	/// `==highlight==` marks are parsed and rendered.
 	pub highlight_marks: bool,
+	/// Obsidian callouts and the extra inline HTML tags; OFM lite only.
+	pub ofm: bool,
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -317,10 +319,12 @@ impl ReaderSettings {
 			MarkdownFlavor::Gfm => EffectiveDialect {
 				hard_breaks: self.hard_breaks,
 				highlight_marks: self.highlight_marks,
+				ofm: false,
 			},
 			MarkdownFlavor::OfmLite => EffectiveDialect {
 				hard_breaks: false,
 				highlight_marks: true,
+				ofm: true,
 			},
 		}
 	}
@@ -363,6 +367,7 @@ impl ReaderSettings {
 			codeblock_wrap: self.codeblock_wrap,
 			hard_breaks: dialect.hard_breaks,
 			highlight_marks: dialect.highlight_marks,
+			ofm: dialect.ofm,
 			details_open: Default::default(),
 			force_open: false,
 			front_matter_label: self.lang().front_matter().into(),

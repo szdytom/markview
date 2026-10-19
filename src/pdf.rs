@@ -211,6 +211,7 @@ impl Exporter {
 			let dialect = markview_commonmark::Dialect {
 				hard_breaks: self.options.hard_breaks,
 				highlight_marks: self.options.highlight_marks,
+				ofm: self.options.ofm,
 			};
 			let document = match &self.document {
 				Some(previous) => Arc::new(markview_commonmark::reparse_with(

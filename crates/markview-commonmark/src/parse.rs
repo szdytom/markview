@@ -34,6 +34,10 @@ pub struct Dialect {
 	pub hard_breaks: bool,
 	/// `==text==` parses as a highlight mark rather than literal text.
 	pub highlight_marks: bool,
+	/// Obsidian extensions: `> [!type]` callouts read as callouts rather than
+	/// GitHub alerts, and raw HTML admits `<sub>`, `<mark>`, `<u>`, `<ins>`
+	/// and `<small>`.
+	pub ofm: bool,
 }
 
 struct Reader<'s> {

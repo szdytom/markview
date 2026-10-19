@@ -166,6 +166,9 @@ pub struct LayoutOptions {
 	/// Parse `==text==` as a highlight mark instead of literal text; threaded
 	/// to the parse exactly like `hard_breaks`.
 	pub highlight_marks: bool,
+	/// Read Obsidian callouts and the extra inline HTML tags; threaded to
+	/// the parse exactly like `hard_breaks`.
+	pub ofm: bool,
 	/// Reader-chosen collapse state of each `<details>`, keyed by the block's
 	/// semantic id. A block absent from the map uses the state its source
 	/// declared, so a fresh document starts there. Presentation state does not
@@ -200,6 +203,7 @@ impl Default for LayoutOptions {
 			codeblock_wrap: false,
 			hard_breaks: false,
 			highlight_marks: false,
+			ofm: false,
 			details_open: Arc::default(),
 			force_open: false,
 			front_matter_label: "Frontmatter".into(),
@@ -224,16 +228,16 @@ impl PartialEq for LayoutOptions {
 			&& self.codeblock_wrap == other.codeblock_wrap
 			// A different dialect is a different document parse, so equality
 			// without it would skip the reparse a tab resume owes.
-			&& (self.hard_breaks, self.highlight_marks)
-				== (other.hard_breaks, other.highlight_marks)
+			&& (self.hard_breaks, self.highlight_marks, self.ofm)
+				== (other.hard_breaks, other.highlight_marks, other.ofm)
 			&& self.front_matter_label == other.front_matter_label
 			&& self.hide_front_matter == other.hide_front_matter
-			&& (self.stylesheet.layout_key(), self.stylesheet.diagram_key())
-				== (other.stylesheet.layout_key(), other.stylesheet.diagram_key())
 			// A diagram theme is pixels, not geometry, but a new one must
 			// reach the image scheduler, which recognizes work by these
 			// options. Its key follows the font definitions the table names,
 			// so changing one of those is a new request too.
+			&& (self.stylesheet.layout_key(), self.stylesheet.diagram_key())
+				== (other.stylesheet.layout_key(), other.stylesheet.diagram_key())
 			&& self.fonts == other.fonts
 			&& self.limits == other.limits
 	}

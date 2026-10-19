@@ -84,6 +84,7 @@ impl Config {
 	) -> Self {
 		self.options.hard_breaks = dialect.hard_breaks;
 		self.options.highlight_marks = dialect.highlight_marks;
+		self.options.ofm = dialect.ofm;
 		self
 	}
 

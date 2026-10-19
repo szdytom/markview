@@ -136,6 +136,7 @@ pub(crate) fn png_snapshot_text(
 		markview_commonmark::Dialect {
 			hard_breaks: options.hard_breaks,
 			highlight_marks: options.highlight_marks,
+			ofm: options.ofm,
 		},
 	);
 	let mut images = Images::shared(offline, options.fonts.clone(), &services);
