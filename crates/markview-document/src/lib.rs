@@ -97,6 +97,8 @@ pub struct TextStyle {
 	pub code: bool,
 	pub math_error: bool,
 	pub superscript: bool,
+	/// Raw-HTML `<sub>`, lowered below the baseline.
+	pub subscript: bool,
 	/// A footnote reference: clickable, but styled by `footnote_ref` rather
 	/// than by the link color.
 	pub footnote_ref: bool,

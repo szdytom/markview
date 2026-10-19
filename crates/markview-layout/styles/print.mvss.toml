@@ -111,6 +111,10 @@ when = ["sup"]
 size = 0.7
 
 [[rule]]
+when = ["sub"]
+size = 0.7
+
+[[rule]]
 when = ["code"]
 font = [{ family = "monospace" }, { family = "monospace[cjk]", min_weight = 500 }, { family = "monospace[cjk]" }, { family = "emoji", weight = 400 }]
 size = 0.9

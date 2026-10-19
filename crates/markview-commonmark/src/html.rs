@@ -37,6 +37,10 @@ pub enum Patch {
 	Strike,
 	Code,
 	Superscript,
+	/// `<sub>`; Obsidian dialect only.
+	Subscript,
+	/// `<mark>`, drawn like a `==highlight==`; Obsidian dialect only.
+	Mark,
 	Link(String),
 	/// Recognized but visually neutral, such as `<a>` without an `href`.
 	None,
@@ -87,6 +91,8 @@ pub struct Style {
 	pub strike: bool,
 	pub code: bool,
 	pub superscript: bool,
+	pub subscript: bool,
+	pub mark: bool,
 	pub link: Option<crate::document::Link>,
 }
 
@@ -98,6 +104,8 @@ impl Style {
 			Patch::Strike => self.strike = true,
 			Patch::Code => self.code = true,
 			Patch::Superscript => self.superscript = true,
+			Patch::Subscript => self.subscript = true,
+			Patch::Mark => self.mark = true,
 			Patch::Link(url) => {
 				self.link =
 					Some(crate::document::Link::new(url.as_str(), origin))
@@ -395,8 +403,10 @@ enum Token {
 }
 
 /// Interpret one inline HTML fragment as produced by the Markdown parser.
-pub fn inline(fragment: &str) -> Inline {
-	match classify(fragment) {
+///
+/// `ofm` admits the tags only the Obsidian dialect reads; see [`patch`].
+pub fn inline(fragment: &str, ofm: bool) -> Inline {
+	match classify(fragment, ofm) {
 		Tag::Image(image) => Inline::Image(image),
 		Tag::Comment => Inline::Ignore,
 		Tag::Open { name, patch } => Inline::Open { name, patch },
@@ -410,8 +420,13 @@ pub fn inline(fragment: &str) -> Inline {
 ///
 /// `scope_limit` bounds the tags that may stay open at once, so a run of
 /// unclosed tags cannot grow the scope stack without bound.
-pub fn block(source: &str, scope_limit: usize, origin_base: usize) -> Block {
-	block_from(source, scope_limit, 0, origin_base)
+pub fn block(
+	source: &str,
+	scope_limit: usize,
+	origin_base: usize,
+	ofm: bool,
+) -> Block {
+	block_from(source, scope_limit, 0, origin_base, ofm)
 }
 
 pub(crate) fn block_from(
@@ -419,6 +434,7 @@ pub(crate) fn block_from(
 	scope_limit: usize,
 	anchor_from: usize,
 	origin_base: usize,
+	ofm: bool,
 ) -> Block {
 	let mut spans: Vec<Span> = Vec::new();
 	let mut style = Style::default();
@@ -442,7 +458,7 @@ pub(crate) fn block_from(
 				style: style.clone(),
 			});
 		}
-		match classify(&fragment) {
+		match classify(&fragment, ofm) {
 			Tag::Image(image) => spans.push(Span {
 				anchor: None,
 				image: Some(image),
@@ -544,7 +560,7 @@ fn finish_html_block(
 	}
 }
 
-fn classify(fragment: &str) -> Tag {
+fn classify(fragment: &str, ofm: bool) -> Tag {
 	let text = fragment.trim();
 	if text.starts_with("<!") || text.starts_with("<?") {
 		return Tag::Comment;
@@ -566,7 +582,7 @@ fn classify(fragment: &str) -> Tag {
 	}
 	let name = name.to_ascii_lowercase();
 	if closing {
-		return if known(&name) {
+		return if known(&name, ofm) {
 			Tag::Close { name }
 		} else {
 			Tag::Unknown
@@ -590,7 +606,7 @@ fn classify(fragment: &str) -> Tag {
 			height: dimension("height"),
 		});
 	}
-	if let Some(patch) = patch(&name, attrs) {
+	if let Some(patch) = patch(&name, attrs, ofm) {
 		return Tag::Open { name, patch };
 	}
 	if name == "p" || heading_level(&name).is_some() {
@@ -602,16 +618,22 @@ fn classify(fragment: &str) -> Tag {
 	Tag::Unknown
 }
 
-fn known(name: &str) -> bool {
+fn known(name: &str, ofm: bool) -> bool {
 	name == "br"
 		|| name == "hr"
 		|| name == "p"
 		|| heading_level(name).is_some()
-		|| patch(name, "").is_some()
+		|| patch(name, "", ofm).is_some()
 }
 
-fn patch(name: &str, attrs: &str) -> Option<Patch> {
+/// The style a supported inline tag carries. `ofm` adds the tags Obsidian
+/// notes commonly use: `<sub>`, `<mark>`, and `<u>`, `<ins>` and `<small>`,
+/// which Markview has no distinct drawing for and so reads as plain text.
+fn patch(name: &str, attrs: &str, ofm: bool) -> Option<Patch> {
 	Some(match name {
+		"sub" if ofm => Patch::Subscript,
+		"mark" if ofm => Patch::Mark,
+		"u" | "ins" | "small" if ofm => Patch::None,
 		"b" | "strong" => Patch::Bold,
 		"i" | "em" => Patch::Italic,
 		"del" | "s" | "strike" => Patch::Strike,

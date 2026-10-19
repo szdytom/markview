@@ -36,6 +36,7 @@ pub fn text_conditions(style: &TextStyle) -> impl Iterator<Item = Condition> {
 		(style.link.is_some() && !style.footnote_ref).then_some(C::Link),
 		style.strike.then_some(C::Del),
 		style.superscript.then_some(C::Sup),
+		style.subscript.then_some(C::Sub),
 		style.footnote_ref.then_some(C::FootnoteRef),
 		style.code.then_some(C::Code),
 		style.mark.then_some(C::Mark),

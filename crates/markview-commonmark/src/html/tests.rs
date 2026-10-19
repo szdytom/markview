@@ -3,7 +3,12 @@ use super::*;
 /// The block scanner with the scope budget out of the way, so each test
 /// states one rule; the budget has its own test.
 fn block(source: &str) -> Block {
-	super::block(source, usize::MAX, 0)
+	super::block(source, usize::MAX, 0, false)
+}
+
+/// One inline fragment read in the GFM dialect.
+fn inline(fragment: &str) -> Inline {
+	super::inline(fragment, false)
 }
 
 #[test]
@@ -369,7 +374,8 @@ fn open_tags_are_budgeted() {
 			"<b><b><b>x</b>
 ",
 			2,
-			0
+			0,
+			false
 		),
 		Block::Unsupported
 	);
@@ -378,8 +384,29 @@ fn open_tags_are_budgeted() {
 			"<b><b>x</b>
 ",
 			2,
-			0
+			0,
+			false
 		),
 		Block::Paragraph(_)
 	));
+}
+
+#[test]
+fn obsidian_tags_are_supported_only_in_that_dialect() {
+	for (tag, patch) in [
+		("<sub>", Patch::Subscript),
+		("<mark>", Patch::Mark),
+		("<u>", Patch::None),
+		("<ins>", Patch::None),
+		("<small>", Patch::None),
+	] {
+		let name = tag.trim_matches(['<', '>']).to_string();
+		assert_eq!(super::inline(tag, true), Inline::Open { name, patch });
+		assert_eq!(inline(tag), Inline::Literal, "{tag}");
+	}
+	assert!(matches!(
+		super::block("<p>H<sub>2</sub>O</p>\n", usize::MAX, 0, true),
+		Block::Paragraph(_)
+	));
+	assert_eq!(block("<p>H<sub>2</sub>O</p>\n"), Block::Unsupported);
 }

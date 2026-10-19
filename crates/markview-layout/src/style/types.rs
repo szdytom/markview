@@ -56,6 +56,7 @@ pub enum Condition {
 	Link,
 	Del,
 	Sup,
+	Sub,
 	FootnoteRef,
 	Code,
 	Mark,
@@ -115,6 +116,7 @@ impl Condition {
 		(Self::Link, "link"),
 		(Self::Del, "del"),
 		(Self::Sup, "sup"),
+		(Self::Sub, "sub"),
 		(Self::FootnoteRef, "footnote_ref"),
 		(Self::Code, "code"),
 		(Self::Mark, "mark"),
@@ -175,9 +177,8 @@ impl Condition {
 			TaskMarker => chain_of(&[Body, ListItem, TaskMarker]),
 			Caption | Placeholder => chain_of(&[Body, Image, self]),
 			Math => chain_of(&[Body, Math]),
-			Em | Strong | Link | Del | Sup | FootnoteRef | Code | Mark => {
-				chain_of(&[Body, self])
-			}
+			Em | Strong | Link | Del | Sup | Sub | FootnoteRef | Code
+			| Mark => chain_of(&[Body, self]),
 			Error => chain_of(&[Body, Math, Error]),
 			Hover => chain_of(&[Body, Link, Hover]),
 			// Page furniture is set in the document's own fonts unless the
@@ -206,7 +207,8 @@ impl Condition {
 			Self::Em
 				| Self::Strong
 				| Self::Link | Self::Del
-				| Self::Sup | Self::FootnoteRef
+				| Self::Sup | Self::Sub
+				| Self::FootnoteRef
 				| Self::Code | Self::Math
 				| Self::Mark
 		)
@@ -286,6 +288,7 @@ impl ConditionSet {
 			| Condition::Link.bit()
 			| Condition::Del.bit()
 			| Condition::Sup.bit()
+			| Condition::Sub.bit()
 			| Condition::FootnoteRef.bit()
 			| Condition::Code.bit()
 			| Condition::Math.bit()

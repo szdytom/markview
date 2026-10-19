@@ -278,41 +278,44 @@ impl Reader<'_> {
 						from,
 					)))
 				}
-				NodeValue::HtmlInline(t) => match html::inline(t) {
-					html::Inline::Image(image) => {
-						Some(InlineKind::Image(image))
-					}
-					html::Inline::Ignore => continue,
-					html::Inline::Break => {
-						Some(InlineKind::LineBreak { justify: true })
-					}
-					html::Inline::Open { name, patch } => {
-						if scopes.len() >= self.limits.html_scopes {
-							// Past the budget the tag stays source, like any
-							// unsupported markup, so a run of sibling tags
-							// cannot grow the scope stack without bound.
-							child_style.code = true;
-							Some(InlineKind::Text(t.clone()))
-						} else {
-							scopes.push((name, style.clone()));
-							apply_patch(&patch, &mut style, source.start);
+				NodeValue::HtmlInline(t) => {
+					match html::inline(t, self.dialect.ofm) {
+						html::Inline::Image(image) => {
+							Some(InlineKind::Image(image))
+						}
+						html::Inline::Ignore => continue,
+						html::Inline::Break => {
+							Some(InlineKind::LineBreak { justify: true })
+						}
+						html::Inline::Open { name, patch } => {
+							if scopes.len() >= self.limits.html_scopes {
+								// Past the budget the tag stays source, like any
+								// unsupported markup, so a run of sibling tags
+								// cannot grow the scope stack without bound.
+								child_style.code = true;
+								Some(InlineKind::Text(t.clone()))
+							} else {
+								scopes.push((name, style.clone()));
+								apply_patch(&patch, &mut style, source.start);
+								continue;
+							}
+						}
+						html::Inline::Close { name } => {
+							if let Some(i) = scopes
+								.iter()
+								.rposition(|(open, _)| *open == name)
+							{
+								style = scopes[i].1.clone();
+								scopes.truncate(i);
+							}
 							continue;
 						}
-					}
-					html::Inline::Close { name } => {
-						if let Some(i) =
-							scopes.iter().rposition(|(open, _)| *open == name)
-						{
-							style = scopes[i].1.clone();
-							scopes.truncate(i);
+						html::Inline::Literal => {
+							child_style.code = true;
+							Some(InlineKind::Text(t.clone()))
 						}
-						continue;
 					}
-					html::Inline::Literal => {
-						child_style.code = true;
-						Some(InlineKind::Text(t.clone()))
-					}
-				},
+				}
 				NodeValue::Math(m) => Some(InlineKind::Math {
 					latex: self.text_after(&m.literal, source.clone(), from),
 					display: m.display_math,
@@ -714,6 +717,7 @@ impl Reader<'_> {
 						&h.literal,
 						self.limits.html_scopes,
 						&source,
+						self.dialect.ofm,
 					) else {
 						return Child::Skip;
 					};
@@ -1025,6 +1029,7 @@ impl Reader<'_> {
 			self.limits.html_scopes,
 			anchor_from,
 			source.start,
+			self.dialect.ofm,
 		) {
 			html::Block::Paragraph(spans) => html_rich(spans, source),
 			_ => RichText::new(),
@@ -1060,6 +1065,7 @@ impl ContainerHost for Reader<'_> {
 			range,
 			self.limits.html_scopes,
 			opaque_until,
+			self.dialect.ofm,
 		)
 	}
 
@@ -1093,6 +1099,7 @@ fn html_leaf_block(
 	range: Range<usize>,
 	scope_limit: usize,
 	opaque_until: usize,
+	ofm: bool,
 ) -> Option<Block> {
 	let range = clamp_range(source, range);
 	let anchor_from = if opaque_until > range.start {
@@ -1101,23 +1108,28 @@ fn html_leaf_block(
 	} else {
 		0
 	};
-	let kind =
-		match html::block_from(text, scope_limit, anchor_from, range.start) {
-			html::Block::Unsupported => BlockKind::Code {
-				language: "HTML source".into(),
-				text: text.to_string(),
-			},
-			html::Block::Empty => return None,
-			html::Block::Rule => BlockKind::Rule,
-			html::Block::Heading { level, text } => BlockKind::Heading {
-				level,
-				text: html_rich(text, &range),
-				anchor: String::new(),
-			},
-			html::Block::Paragraph(text) => {
-				BlockKind::Paragraph(html_rich(text, &range))
-			}
-		};
+	let kind = match html::block_from(
+		text,
+		scope_limit,
+		anchor_from,
+		range.start,
+		ofm,
+	) {
+		html::Block::Unsupported => BlockKind::Code {
+			language: "HTML source".into(),
+			text: text.to_string(),
+		},
+		html::Block::Empty => return None,
+		html::Block::Rule => BlockKind::Rule,
+		html::Block::Heading { level, text } => BlockKind::Heading {
+			level,
+			text: html_rich(text, &range),
+			anchor: String::new(),
+		},
+		html::Block::Paragraph(text) => {
+			BlockKind::Paragraph(html_rich(text, &range))
+		}
+	};
 	let anchors = if matches!(kind, BlockKind::Code { .. } | BlockKind::Rule) {
 		html::block_anchors_from(text, anchor_from)
 	} else {
@@ -1417,6 +1429,8 @@ fn apply_patch(patch: &html::Patch, style: &mut TextStyle, origin: usize) {
 		html::Patch::Strike => style.strike = true,
 		html::Patch::Code => style.code = true,
 		html::Patch::Superscript => style.superscript = true,
+		html::Patch::Subscript => style.subscript = true,
+		html::Patch::Mark => style.mark = true,
 		html::Patch::Link(url) => {
 			style.link = Some(Link::new(url.as_str(), origin));
 		}
@@ -1476,6 +1490,8 @@ fn html_rich(spans: Vec<html::Span>, source: &Range<usize>) -> RichText {
 				strike: span.style.strike,
 				code: span.style.code,
 				superscript: span.style.superscript,
+				subscript: span.style.subscript,
+				mark: span.style.mark,
 				link: span.style.link,
 				..TextStyle::default()
 			},
@@ -1619,8 +1635,9 @@ fn html_block_kind(
 	literal: &str,
 	scopes: usize,
 	source: &Range<usize>,
+	ofm: bool,
 ) -> Option<BlockKind> {
-	Some(match html::block(literal, scopes, source.start) {
+	Some(match html::block(literal, scopes, source.start, ofm) {
 		html::Block::Unsupported => BlockKind::Code {
 			language: "HTML source".into(),
 			text: literal.to_owned(),
