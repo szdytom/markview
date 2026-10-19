@@ -244,9 +244,7 @@ impl Worker {
 							let document = if let Some(
 								(path, revision, cached_dialect, doc),
 							) = &cached
-								&& path == &request.path
-								&& *revision == request.content_version
-								&& *cached_dialect == dialect
+								&& (path, revision, cached_dialect) == (&request.path, &request.content_version, &dialect)
 							{
 								request.security =
 									request.security.for_content(&doc.source);

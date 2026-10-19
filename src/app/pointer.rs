@@ -36,6 +36,7 @@ pub(crate) struct State {
 	cursor: (f32, f32),
 	hover: Option<HoveredLink>,
 	hover_image: Option<String>,
+	hover_control: Option<&'static str>,
 	/// The wide block whose horizontal scrollbar the pointer is over.
 	hover_overflow: Option<(usize, usize)>,
 	scrollbar: Option<ScrollbarDrag>,
@@ -147,7 +148,14 @@ impl State {
 		self.hover_overflow = overflow;
 	}
 
+	pub(crate) fn hover_control(&self) -> Option<&'static str> {
+		self.hover_control
+	}
+	pub(crate) fn set_hover_control(&mut self, hint: Option<&'static str>) {
+		self.hover_control = hint;
+	}
 	pub(crate) fn clear_hover(&mut self) {
+		self.hover_control = None;
 		self.set_hover(None, None, None);
 	}
 
