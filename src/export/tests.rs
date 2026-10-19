@@ -295,7 +295,7 @@ fn reader_dialects_reach_the_exported_layout() {
 	// callout header a disclosure summary, which is reading text.
 	std::fs::write(
 		&path,
-		"Soft wrapped\nline one.\n\n> [!example]+ Callout title\n> ==marked== body\n",
+		"Soft wrapped\nline one.\n\n> [!example]+ Callout title\n> ==marked== body\n\nVisible %%SECRET%% text.\n\n`%%CODEKEEP%%`\n",
 	)
 	.unwrap();
 	let gfm_breaks = ReaderSettings {
@@ -336,6 +336,8 @@ fn reader_dialects_reach_the_exported_layout() {
 		assert_eq!(text.contains("marked body"), highlight, "{text:?}");
 		assert_eq!(!text.contains("[!example]"), callout, "{text:?}");
 		assert!(text.contains("Callout title"), "{text:?}");
+		assert_eq!(text.contains("SECRET"), !callout, "{text}");
+		assert!(text.contains("Visible") && text.contains("%%CODEKEEP%%"));
 	}
 }
 

@@ -1607,6 +1607,17 @@ pub fn parse(source: impl Into<Arc<str>>) -> Document {
 /// The document `source` describes when read in `dialect`.
 pub fn parse_with(source: impl Into<Arc<str>>, dialect: Dialect) -> Document {
 	let source = source.into();
+	if let Some(masked) = super::comments::mask(&source, dialect) {
+		let mut document =
+			parse_unmasked(Arc::from(masked.text.as_str()), dialect);
+		super::comments::restore(&mut document.blocks, &masked);
+		document.source = source;
+		return document;
+	}
+	parse_unmasked(source, dialect)
+}
+
+fn parse_unmasked(source: Arc<str>, dialect: Dialect) -> Document {
 	let arena = Arena::new();
 	let root = parse_document(&arena, &source, &markdown_options(dialect));
 	let lines = line_starts(&source);
@@ -1705,7 +1716,7 @@ pub fn parse_with(source: impl Into<Arc<str>>, dialect: Dialect) -> Document {
 /// The comrak configuration every Markdown parse shares, including the body
 /// of a `<details>` element. The dialect's extensions are on; the defaults
 /// every dialect shares are declared here once.
-fn markdown_options(dialect: Dialect) -> Options<'static> {
+pub(super) fn markdown_options(dialect: Dialect) -> Options<'static> {
 	let mut options = Options::default();
 	options.extension.table = true;
 	options.extension.wikilinks_title_after_pipe = true;

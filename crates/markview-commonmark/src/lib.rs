@@ -1,4 +1,5 @@
 //! CommonMark and Markview extensions converted into semantic documents.
+mod comments;
 mod front_matter;
 mod heading;
 mod html;

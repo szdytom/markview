@@ -33,6 +33,11 @@ pub fn parse_incremental(
 	source: Arc<str>,
 	dialect: Dialect,
 ) -> Option<Document> {
+	// A comment edit can change blocks or definitions outside the edit window.
+	if dialect.ofm && (previous.source.contains("%%") || source.contains("%%"))
+	{
+		return None;
+	}
 	if !leaf_only(&previous.source)
 		|| !leaf_only(&source)
 		|| previous.blocks.is_empty()
@@ -151,6 +156,10 @@ pub fn parse_prefix_with(
 	bytes: usize,
 	dialect: Dialect,
 ) -> Option<Document> {
+	// A prefix can split a comment or a multiline code span protecting one.
+	if dialect.ofm && source.contains("%%") {
+		return None;
+	}
 	if bytes == 0 || bytes >= source.len() {
 		return None;
 	}

@@ -721,6 +721,40 @@ pub(crate) fn opaque_len(source: &str) -> Option<usize> {
 	opaque_end(source, len, &name)
 }
 
+/// The code scope starting at an actual HTML token, bounded by its AST context.
+pub(crate) fn comment_code_len(source: &str) -> Option<usize> {
+	let len = tag_len(source)?;
+	match inline(&source[..len], true) {
+		Inline::Open {
+			name,
+			patch: Patch::Code,
+		} => Some(enclosed_end(source, len, &name).unwrap_or(source.len())),
+		_ => {
+			let (name, _, closing) = tag_parts(&source[..len])?;
+			(!closing && name == "pre")
+				.then(|| opaque_len(source).unwrap_or(len))
+		}
+	}
+}
+
+/// Code scopes in a raw HTML AST block; comments and opaque bodies are skipped.
+pub(crate) fn comment_code_ranges(source: &str) -> Vec<std::ops::Range<usize>> {
+	let mut ranges = Vec::new();
+	let mut at = 0;
+	while let Some(open) = source[at..].find('<').map(|offset| at + offset) {
+		let rest = &source[open..];
+		if let Some(len) = non_element_len(rest) {
+			at = open + len;
+		} else if let Some(len) = comment_code_len(rest) {
+			ranges.push(open..open + len);
+			at = open + len;
+		} else {
+			at = open + opaque_len(rest).or_else(|| tag_len(rest)).unwrap_or(1);
+		}
+	}
+	ranges
+}
+
 /// Targets in raw HTML, excluding comments and opaque element contents.
 pub(crate) fn block_anchors(source: &str) -> Vec<String> {
 	block_anchors_from(source, 0)

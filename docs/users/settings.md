@@ -91,7 +91,16 @@ The info control next to the dialect preset opens this page.
 | --- | --- |
 | Callouts `> [!type] Title` with the built-in types and aliases, nesting, and foldable `+`/`-` bodies | Wikilinks `[[note]]`, embeds `![[note]]` and the vault model |
 | `==highlight==` marks (forced on) | `#tags` and block references `^id` |
-| Inline HTML `sub` and `mark` styling, and `u`, `ins`, `small` read as plain text, besides the usual `sup`, `b`, `i`, `code`, … | `%%` comments and other OFM-only syntax |
+| Inline HTML `sub` and `mark` styling, and `u`, `ins`, `small` read as plain text, besides the usual `sup`, `b`, `i`, `code`, … | Other OFM-only syntax |
+| Hidden `%%inline comments%%` and line-start `%%` block comments | Callout title formatting (titles stay plain text) |
+
+Comments disappear from reading, selection/copy, search and reader exports.
+Paired markers on one content line hide inline text; a marker at the start of a
+content line (also inside lists/quotes) can hide across blank lines until the next
+unescaped `%%`, or to EOF when unclosed. Unmatched midline markers stay literal.
+For example, `word%%note%%word` reads as `wordword`. Code spans/blocks, atomic
+math, supported HTML code/pre elements and front matter metadata stay protected;
+`\%%` escapes a marker. GFM keeps comment markers literal.
 
 Callout titles are plain text, and an escaped, coded or styled `[!type]`
 marker leaves the quote an ordinary quote.
