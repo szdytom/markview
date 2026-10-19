@@ -690,14 +690,61 @@ impl Row {
 			..Self::new("", vec![])
 		}
 	}
+	fn has_controls(&self) -> bool {
+		!self.actions.is_empty()
+			|| self.value.is_some()
+			|| self.menu.is_some()
+			|| self.input.is_some()
+	}
+
+	fn menu_controls(
+		&self,
+		band: Rect,
+	) -> Option<(DropdownId, Rect, Vec<Button>)> {
+		let menu = self.menu.as_ref()?;
+		let chosen = menu.chosen()?;
+		let help_width = if self.help.is_some() {
+			CONTROL + 4.0
+		} else {
+			0.0
+		};
+		let rect = Rect {
+			w: (band.w - help_width).max(CONTROL),
+			..band
+		};
+		let mut control = button(
+			chosen.label.clone(),
+			Command::ToggleDropdown(
+				menu.id,
+				menu.entries
+					.iter()
+					.position(|entry| entry.active)
+					.unwrap_or(0),
+			),
+			rect,
+		);
+		control.marker = Some(icons::CHEVRON);
+		let mut controls = vec![control];
+		if let Some(command) = self.help {
+			let mut help = button(
+				"",
+				command,
+				Rect {
+					x: band.x + band.w - CONTROL,
+					w: CONTROL,
+					..band
+				},
+			);
+			help.kind = ButtonKind::Quiet;
+			controls.push(help);
+		}
+		Some((menu.id, rect, controls))
+	}
+
 	fn height(&self, stacked: bool) -> f32 {
 		if self.icon.is_some() {
 			72.0
-		} else if self.actions.is_empty()
-			&& self.value.is_none()
-			&& self.menu.is_none()
-			&& self.input.is_none()
-		{
+		} else if !self.has_controls() {
 			26.0
 		} else {
 			ROW + if stacked { 26.0 } else { 0.0 }
@@ -805,52 +852,14 @@ impl Form {
 				232.0_f32.min(viewport.w * 0.56)
 			};
 			let control_y = y + if stacked { 26.0 } else { 0.0 };
-			// A list row answers with one control the width of the whole
-			// control area, showing the option in force. A help control, when
-			// present, sits to its right inside the same control band.
-			if let Some(menu) = &row.menu
-				&& let Some(chosen) = menu.chosen()
-			{
-				let help_gap = 4.0;
-				let help_w = if row.help.is_some() {
-					CONTROL + help_gap
-				} else {
-					0.0
-				};
-				let rect = Rect {
-					x: right - w,
-					y: control_y,
-					w: (w - help_w).max(CONTROL),
-					h: CONTROL,
-				};
-				let mut b = button(
-					chosen.label.clone(),
-					Command::ToggleDropdown(
-						menu.id,
-						menu.entries
-							.iter()
-							.position(|entry| entry.active)
-							.unwrap_or(0),
-					),
-					rect,
-				);
-				b.marker = Some(icons::CHEVRON);
-				buttons.push(b);
-				menus.push((menu.id, rect));
-				if let Some(command) = row.help {
-					let mut help = button(
-						"",
-						command,
-						Rect {
-							x: right - CONTROL,
-							y: control_y,
-							w: CONTROL,
-							h: CONTROL,
-						},
-					);
-					help.kind = ButtonKind::Quiet;
-					buttons.push(help);
-				}
+			if let Some((id, rect, controls)) = row.menu_controls(Rect {
+				x: right - w,
+				y: control_y,
+				w,
+				h: CONTROL,
+			}) {
+				buttons.extend(controls);
+				menus.push((id, rect));
 			}
 			if let Some(id) = row.input {
 				buttons.push(button(
@@ -1157,12 +1166,7 @@ impl Form {
 				232.0_f32.min(self.viewport.w * 0.56)
 			};
 			let indent = if row.nested { 16.0 } else { 0.0 };
-			let label_w = if self.stacked
-				|| row.actions.is_empty()
-					&& row.value.is_none()
-					&& row.menu.is_none()
-					&& row.input.is_none()
-			{
+			let label_w = if self.stacked || !row.has_controls() {
 				self.viewport.w
 			} else {
 				self.viewport.w - control_width - 20.0

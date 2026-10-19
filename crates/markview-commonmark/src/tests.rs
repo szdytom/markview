@@ -3238,3 +3238,26 @@ fn ofm_html_code_scopes_follow_markdown_recursion_child_close() {
 		assert_eq!(&*doc.source, source);
 	}
 }
+
+#[test]
+fn ofm_comments_preserve_upstream_wikilinks() {
+	let source = "Before %%SECRET%% [[Notes/A#A heading|Visible]] after.\n";
+	for dialect in [Dialect::default(), ofm()] {
+		let doc = parse_with(source, dialect);
+		let BlockKind::Paragraph(text) = &doc.blocks[0].kind else {
+			panic!()
+		};
+		assert_eq!(
+			text.iter()
+				.filter_map(|span| span.style.link_url())
+				.collect::<Vec<_>>(),
+			["Notes/A#a-heading"]
+		);
+		assert_eq!(plain_text(text).contains("SECRET"), !dialect.ofm);
+		assert!(plain_text(text).contains("Visible"));
+		assert_eq!(&*doc.source, source);
+		for span in text {
+			assert!(source.get(span.source.clone()).is_some());
+		}
+	}
+}

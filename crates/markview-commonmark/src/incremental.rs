@@ -34,7 +34,9 @@ pub fn parse_incremental(
 	dialect: Dialect,
 ) -> Option<Document> {
 	// A comment edit can change blocks or definitions outside the edit window.
-	if dialect.ofm && (previous.source.contains("%%") || source.contains("%%"))
+	if [&*previous.source, &*source]
+		.into_iter()
+		.any(|text| comments_need_full_parse(text, dialect))
 	{
 		return None;
 	}
@@ -157,7 +159,7 @@ pub fn parse_prefix_with(
 	dialect: Dialect,
 ) -> Option<Document> {
 	// A prefix can split a comment or a multiline code span protecting one.
-	if dialect.ofm && source.contains("%%") {
+	if comments_need_full_parse(source, dialect) {
 		return None;
 	}
 	if bytes == 0 || bytes >= source.len() {
@@ -175,13 +177,7 @@ pub fn parse_prefix_with(
 	// ending parses as a paragraph where the document's own line ends a list
 	// item.
 	let end = line_end(source, end);
-	if end < source.len()
-		&& source[end..].contains("[^")
-		&& source[..end]
-			.as_bytes()
-			.windows(8)
-			.any(|tag| tag.eq_ignore_ascii_case(b"<details"))
-	{
+	if unread_footnotes_affect_details(source, end) {
 		// Later references can reserve numbers before a disclosure snippet.
 		return None;
 	}
@@ -224,6 +220,18 @@ pub fn parse_prefix_with(
 		content_id: content_identity(&blocks),
 		blocks,
 	})
+}
+
+fn comments_need_full_parse(source: &str, dialect: Dialect) -> bool {
+	dialect.ofm && source.contains("%%")
+}
+
+fn unread_footnotes_affect_details(source: &str, end: usize) -> bool {
+	end < source.len()
+		&& source[end..].contains("[^")
+		&& source.as_bytes()[..end]
+			.windows(8)
+			.any(|tag| tag.eq_ignore_ascii_case(b"<details"))
 }
 
 /// The blocks of `source[..end]`, with every reference or note resolved from

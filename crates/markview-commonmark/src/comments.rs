@@ -183,6 +183,12 @@ fn protection(source: &str, dialect: Dialect) -> Vec<Range<usize>> {
 }
 
 /// Each Markdown recursion inherits code style but owns its HTML scope stack.
+#[cfg_attr(
+	any(),
+	markview::allow_complexity(
+		reason = "Keep the source-ordered HTML scope stack, inherited code style and opaque cursor together to match the reader recursion boundaries."
+	)
+)]
 fn inline_code_ranges<'a>(
 	scope: &'a comrak::nodes::AstNode<'a>,
 	source: &str,

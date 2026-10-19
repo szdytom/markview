@@ -228,17 +228,16 @@ impl PartialEq for LayoutOptions {
 			&& self.codeblock_wrap == other.codeblock_wrap
 			// A different dialect is a different document parse, so equality
 			// without it would skip the reparse a tab resume owes.
-			&& self.hard_breaks == other.hard_breaks
-			&& self.highlight_marks == other.highlight_marks
-			&& self.ofm == other.ofm
+			&& (self.hard_breaks, self.highlight_marks, self.ofm)
+                == (other.hard_breaks, other.highlight_marks, other.ofm)
 			&& self.front_matter_label == other.front_matter_label
 			&& self.hide_front_matter == other.hide_front_matter
-			&& self.stylesheet.layout_key() == other.stylesheet.layout_key()
 			// A diagram theme is pixels, not geometry, but a new one must
 			// reach the image scheduler, which recognizes work by these
 			// options. Its key follows the font definitions the table names,
 			// so changing one of those is a new request too.
-			&& self.stylesheet.diagram_key() == other.stylesheet.diagram_key()
+			&& (self.stylesheet.layout_key(), self.stylesheet.diagram_key())
+                == (other.stylesheet.layout_key(), other.stylesheet.diagram_key())
 			&& self.fonts == other.fonts
 			&& self.limits == other.limits
 	}

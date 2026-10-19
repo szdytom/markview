@@ -89,10 +89,13 @@ The info control next to the dialect preset opens this page.
 
 | Supported | Not supported |
 | --- | --- |
-| Callouts `> [!type] Title` with the built-in types and aliases, nesting, and foldable `+`/`-` bodies | Wikilinks `[[note]]`, embeds `![[note]]` and the vault model |
+| Callouts `> [!type] Title` with the built-in types and aliases, nesting, and foldable `+`/`-` bodies | Obsidian embeds `![[note]]` and full vault semantics |
 | `==highlight==` marks (forced on) | `#tags` and block references `^id` |
 | Inline HTML `sub` and `mark` styling, and `u`, `ins`, `small` read as plain text, besides the usual `sup`, `b`, `i`, `code`, … | Other OFM-only syntax |
 | Hidden `%%inline comments%%` and line-start `%%` block comments | Callout title formatting (titles stay plain text) |
+
+Wikilinks such as `[[note|label]]` and heading targets are supported by the core
+reader in both presets. An open folder also resolves relative note links.
 
 Comments disappear from reading, selection/copy, search and reader exports.
 Paired markers on one content line hide inline text; a marker at the start of a
