@@ -104,6 +104,7 @@ at the same level, without `[brackets]`.
 - Keep inline-link hover on the link under the pointer, so repeated links with one address and neighboring links no longer highlight together.
 - Hide the desktop sidebar toggle when no folder is open.
 - Parse reader PDF, PNG and watch-rebuild exports with the selected markdown dialect, so OFM callouts, highlight marks and hard breaks match the window.
+- Keep a quote whose `[!type]` marker is escaped, coded or styled an ordinary quote instead of a callout.
 - Keep outgoing phone drawer controls in their animated positions when toolbar input resumes.
 - Keep modals safe over open panels, distinguish same-path tabs and separate dismiss controls, and align animated drawer hit clips with their painted rows.
 - Wait for completed layout updates when verifying worker document counts, allowing intermediate snapshots during slower test runs.
@@ -136,6 +137,7 @@ at the same level, without `[brackets]`.
 
 - Document folder browsing, supported Obsidian links, the shared Android sidebar and persistent sidebar widths.
 - Remove unused English and Chinese README detail images and their composition code.
+- Describe the OFM lite subset accurately in the settings docs and all four locales: callouts, inline HTML tags and dialect-following exports.
 
 ## 0.3.0 - 2026-10-09
 

@@ -76,15 +76,35 @@ Android stores settings in its private app files directory; see
 **Settings → Generic → Language & code** chooses how Markview reads Markdown.
 The info control next to the dialect preset opens this page.
 
-- **GFM (GitHub Flavored Markdown).** Soft newlines stay spaces. Under this
-  preset you can toggle single-newline hard breaks and `==highlight==` marks.
-  See the [GFM specification](https://github.github.com/gfm/).
-- **OFM lite (Obsidian-like, highlight only).** Highlight marks are on; soft
-  newlines stay spaces. The hard-break and highlight toggles stay visible but
-  are disabled: OFM lite forces highlight on and hard breaks off. This is
-  **not** full
+- **GFM (GitHub Flavored Markdown), the default.** Soft newlines stay spaces.
+  Under this preset you can independently toggle single-newline hard breaks
+  and `==highlight==` marks. See the
+  [GFM specification](https://github.github.com/gfm/).
+- **OFM lite (Obsidian-like, limited subset).** A restricted reading of
   [Obsidian Flavored Markdown](https://help.obsidian.md/obsidian-flavored-markdown):
-  Markview does not support wikilinks or other OFM-only features.
+  highlight marks are forced on and soft newlines stay spaces, so the two
+  toggles stay visible but are disabled.
+
+### What OFM lite reads
+
+| Supported | Not supported |
+| --- | --- |
+| Callouts `> [!type] Title` with the built-in types and aliases, nesting, and foldable `+`/`-` bodies | Wikilinks `[[note]]`, embeds `![[note]]` and the vault model |
+| `==highlight==` marks (forced on) | `#tags` and block references `^id` |
+| Inline HTML `sub` and `mark` styling, and `u`, `ins`, `small` read as plain text, besides the usual `sup`, `b`, `i`, `code`, … | `%%` comments and other OFM-only syntax |
+
+Callout titles are plain text, and an escaped, coded or styled `[!type]`
+marker leaves the quote an ordinary quote.
+
+```markdown
+> [!warning]- Folded by default
+> Body with ==mark== and <sub>sub</sub> text.
+> > [!note] Callouts nest.
+```
+
+Exports follow the reader: in-app PDF and PNG export parse with the selected
+dialect and unfold callout bodies. Command-line `markview export` uses the
+default GFM dialect and does not load the reader's dialect settings.
 
 ## Network and image cache
 
