@@ -1177,11 +1177,7 @@ impl Form {
 					w: (label_w - indent).max(0.0),
 					h: CONTROL,
 				},
-				if row.nested {
-					C::Muted
-				} else {
-					C::Color
-				},
+				if row.nested { C::Muted } else { C::Color },
 			));
 			if let Some(value) = &row.value {
 				let r = Rect {

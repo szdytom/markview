@@ -122,9 +122,7 @@ impl<P: super::SendEvent> App<P> {
 					_ => None,
 				};
 				let english = root.join("docs/users/settings.md");
-				let path = localized
-					.filter(|p| p.is_file())
-					.unwrap_or(english);
+				let path = localized.filter(|p| p.is_file()).unwrap_or(english);
 				if path.is_file() {
 					if self.interaction.panel_open() {
 						self.interaction.show_panel(PanelPage::Closed);

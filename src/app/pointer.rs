@@ -237,7 +237,9 @@ impl<P: super::SendEvent> App<P> {
 		let ofm = self.preferences.values.markdown_flavor
 			!= crate::settings::MarkdownFlavor::Gfm;
 		let hover_control = over.and_then(|widget| match &widget.message {
-			state::Command::DialectHelp => Some(lang.settings_dialect_tooltip()),
+			state::Command::DialectHelp => {
+				Some(lang.settings_dialect_tooltip())
+			}
 			state::Command::HardBreaks | state::Command::HighlightMarks
 				if ofm =>
 			{
