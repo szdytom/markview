@@ -14,9 +14,9 @@ pub use incremental::{
 use markview_document as document;
 use markview_document::image;
 use markview_document::{
-	Block, BlockKind, CellAlign, Document, Inline, InlineKind, Link, ListItem,
-	RichText, TextStyle, content_identity, fingerprint, footnote, plain_text,
-	semantic_key,
+	Block, BlockKind, Callout, CalloutKind, CellAlign, Document, Inline,
+	InlineKind, Link, ListItem, RichText, TextStyle, content_identity,
+	fingerprint, footnote, plain_text, semantic_key,
 };
 pub use parse::{Dialect, parse, parse_with};
 #[cfg(test)]

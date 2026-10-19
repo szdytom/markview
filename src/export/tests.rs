@@ -1,5 +1,6 @@
 use super::*;
 use crate::lang::Lang;
+use crate::settings::{MarkdownFlavor, ReaderSettings};
 use markview_layout::style::CjkType;
 
 #[test]
@@ -283,6 +284,59 @@ fn a_symlinked_destination_is_replaced_rather_than_followed() {
 			.is_symlink()
 	);
 	assert_eq!(std::fs::read(&destination).unwrap(), b"exported");
+}
+
+#[test]
+fn reader_dialects_reach_the_exported_layout() {
+	let dir = tempfile::tempdir().unwrap();
+	let path = dir.path().join("dialect.md");
+	// `[!example]` is no GitHub alert type, so only OFM lite reads it as a
+	// callout; GFM keeps the marker literal. The `+` fold sign makes the
+	// callout header a disclosure summary, which is reading text.
+	std::fs::write(
+		&path,
+		"Soft wrapped\nline one.\n\n> [!example]+ Callout title\n> ==marked== body\n",
+	)
+	.unwrap();
+	let gfm_breaks = ReaderSettings {
+		hard_breaks: true,
+		highlight_marks: true,
+		..Default::default()
+	};
+	// The stored toggles are stale under OFM lite: the preset forces hard
+	// breaks off and highlight marks on.
+	let stale_ofm = ReaderSettings {
+		markdown_flavor: MarkdownFlavor::OfmLite,
+		hard_breaks: true,
+		highlight_marks: false,
+		..Default::default()
+	};
+	for (reader, join, highlight, callout) in [
+		(&ReaderSettings::default(), " ", false, false),
+		(&gfm_breaks, "\n", true, false),
+		(&stale_ofm, " ", true, true),
+	] {
+		let options = Config::from_settings(
+			&settings(ExportFormat::Png),
+			crate::test_support::fonts(),
+			CjkType::Sc,
+			&[],
+		)
+		.with_dialect(reader.effective_dialect())
+		.prepare()
+		.unwrap()
+		.options;
+		let snapshot = png_snapshot(&path, options, true).unwrap();
+		let text = snapshot.full_reading_text();
+		assert!(
+			text.contains(&format!("Soft wrapped{join}line one.")),
+			"{text:?}"
+		);
+		assert_eq!(text.contains("==marked=="), !highlight, "{text:?}");
+		assert_eq!(text.contains("marked body"), highlight, "{text:?}");
+		assert_eq!(!text.contains("[!example]"), callout, "{text:?}");
+		assert!(text.contains("Callout title"), "{text:?}");
+	}
 }
 
 #[test]

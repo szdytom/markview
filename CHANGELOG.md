@@ -67,6 +67,7 @@ at the same level, without `[brackets]`.
 - Render single newlines inside a paragraph as line breaks when the effective GFM hard-break toggle is on, reparsing the open document when the setting changes.
 - Render `==highlight==` marks on a themeable `mark` background when the effective highlight dialect is on, staying literal otherwise; OFM lite always highlights.
 - Style `sub` and `mark` and read `u`, `ins`, `small` inline HTML tags as plain text in the OFM lite preset.
+- Read Obsidian callouts in the OFM lite preset: built-in types and aliases, nesting and foldable bodies, with plain-text titles.
 - Add a Rust cyclomatic complexity check with a configurable maximum of 15, excluding tests and test support, with reasoned function-level exemptions and mandatory CI enforcement.
 - Add editor-side system and downloaded font indexing, family matching, and cancellable native process transport.
 - Add template font requirements as JSON and editor-managed downloads to the existing `fonts` CLI commands.

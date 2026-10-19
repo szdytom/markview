@@ -717,6 +717,70 @@ border_width = 3.0
 padding = [0.22, 0.22, 0.22, 1.1]
 space_after = 0.8
 
+# Obsidian callouts (OFM lite) are block quotes refined by `callout` and one
+# color family; each family tints the rule on the left and the header line.
+# The families: note (note, info, todo), tip (abstract, tip), success,
+# warning (question, warning), danger (failure, danger, bug), example, quote.
+[[rule]]
+when = ["callout", "label"]
+size = 1.0
+
+[[rule]]
+when = ["callout_note"]
+border_color = "#086DDD"
+
+[[rule]]
+when = ["callout_note", "label"]
+color = "#086DDD"
+
+[[rule]]
+when = ["callout_tip"]
+border_color = "#00838F"
+
+[[rule]]
+when = ["callout_tip", "label"]
+color = "#00838F"
+
+[[rule]]
+when = ["callout_success"]
+border_color = "#2E7D32"
+
+[[rule]]
+when = ["callout_success", "label"]
+color = "#2E7D32"
+
+[[rule]]
+when = ["callout_warning"]
+border_color = "#C76A00"
+
+[[rule]]
+when = ["callout_warning", "label"]
+color = "#C76A00"
+
+[[rule]]
+when = ["callout_danger"]
+border_color = "#D1343F"
+
+[[rule]]
+when = ["callout_danger", "label"]
+color = "#D1343F"
+
+[[rule]]
+when = ["callout_example"]
+border_color = "#7852EE"
+
+[[rule]]
+when = ["callout_example", "label"]
+color = "#7852EE"
+
+[[rule]]
+when = ["callout_quote"]
+border_color = "#7A7A7A"
+
+[[rule]]
+when = ["callout_quote", "label"]
+color = "#7A7A7A"
+
 # A `<details>` frame and its summary weight are theme-neutral, so they live in
 # the shared fallback; each reader theme supplies its own surface colors.
 [[rule]]

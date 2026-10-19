@@ -177,6 +177,8 @@ pub enum BlockKind {
 	},
 	Quote {
 		label: Option<String>,
+		/// An Obsidian callout (`> [!type] Title`) rather than a plain quote.
+		callout: Option<Callout>,
 		blocks: Vec<Block>,
 	},
 	List {
@@ -215,6 +217,83 @@ pub enum BlockKind {
 		/// The `yaml` code block holding the source between the delimiters.
 		blocks: Vec<Block>,
 	},
+}
+
+/// The Obsidian callout types. Every alias the Obsidian documentation lists
+/// reads as one of these, and an unknown type reads as [`CalloutKind::Note`].
+#[derive(Clone, Copy, Debug, Hash, PartialEq, Eq)]
+pub enum CalloutKind {
+	Note,
+	Abstract,
+	Info,
+	Todo,
+	Tip,
+	Success,
+	Question,
+	Warning,
+	Failure,
+	Danger,
+	Bug,
+	Example,
+	Quote,
+}
+
+impl CalloutKind {
+	/// The type a `[!name]` marker names, case-insensitively.
+	pub fn parse(name: &str) -> Self {
+		match name.to_ascii_lowercase().as_str() {
+			"abstract" | "summary" | "tldr" => Self::Abstract,
+			"info" => Self::Info,
+			"todo" => Self::Todo,
+			"tip" | "hint" | "important" => Self::Tip,
+			"success" | "check" | "done" => Self::Success,
+			"question" | "help" | "faq" => Self::Question,
+			"warning" | "caution" | "attention" => Self::Warning,
+			"failure" | "fail" | "missing" => Self::Failure,
+			"danger" | "error" => Self::Danger,
+			"bug" => Self::Bug,
+			"example" => Self::Example,
+			"quote" | "cite" => Self::Quote,
+			_ => Self::Note,
+		}
+	}
+
+	/// The symbol drawn before the title, after Obsidian's Lucide icons.
+	pub fn icon(self) -> &'static str {
+		match self {
+			Self::Note => "\u{270E}",
+			Self::Abstract => "\u{2630}",
+			Self::Info => "\u{2139}",
+			Self::Todo => "\u{2611}",
+			Self::Tip => "\u{2726}",
+			Self::Success => "\u{2714}",
+			Self::Question => "?",
+			Self::Warning => "\u{26A0}",
+			Self::Failure => "\u{2718}",
+			Self::Danger => "\u{03DF}",
+			Self::Bug => "\u{1F41B}",
+			Self::Example => "\u{2261}",
+			Self::Quote => "\u{275D}",
+		}
+	}
+}
+
+/// An Obsidian callout's header.
+#[derive(Clone, Debug, Hash, PartialEq, Eq)]
+pub struct Callout {
+	pub kind: CalloutKind,
+	/// The custom title, or the marker's type name when none was given.
+	pub title: String,
+	/// `Some(open)` for a foldable `[!x]+` / `[!x]-` callout. Its body is
+	/// then one `<details>`-style disclosure whose summary is the title.
+	pub fold: Option<bool>,
+}
+
+impl Callout {
+	/// The header line: icon and title.
+	pub fn header(&self) -> String {
+		format!("{} {}", self.kind.icon(), self.title)
+	}
 }
 
 #[derive(Clone, Debug, Hash, PartialEq, Eq)]
@@ -586,13 +665,13 @@ pub fn semantic_key(kind: &BlockKind) -> u64 {
 		BlockKind::FrontMatter { open: _, blocks } => {
 			children(blocks).hash(&mut hash);
 		}
-		BlockKind::Quote { label: _, blocks }
+		BlockKind::Quote { blocks, .. }
 		| BlockKind::Footnote {
 			label: _, blocks, ..
 		} => {
 			// The variants' labels have different types, so hash them separately.
-			if let BlockKind::Quote { label, .. } = kind {
-				label.hash(&mut hash);
+			if let BlockKind::Quote { label, callout, .. } = kind {
+				(label, callout).hash(&mut hash);
 			}
 			if let BlockKind::Footnote { label, column, .. } = kind {
 				(label, column).hash(&mut hash);

@@ -2,8 +2,8 @@ use super::{BlockContext, LayoutOptions, Table};
 use crate::text::{TextCluster, TextNode};
 use crate::{
 	document::{
-		Block, BlockKind, CellAlign, Inline, InlineKind, RichText, TextStyle,
-		footnote,
+		Block, BlockKind, CalloutKind, CellAlign, Inline, InlineKind, RichText,
+		TextStyle, footnote,
 	},
 	scene::{BlockLayout, Draw, HeadingAnchor, LinkId, LinkRect, Paint, Rect},
 	style::{ColorField, Condition, MarkerShape, TextAlign, TextAppearance},
@@ -219,12 +219,32 @@ pub(super) fn rounded_square_ring(
 	points
 }
 
+/// The stylesheet family that colors a callout type, after Obsidian's
+/// palette: blue notes, cyan tips, green successes, orange warnings, red
+/// dangers, purple examples and gray quotes.
+pub(crate) fn callout_family(kind: CalloutKind) -> Condition {
+	use CalloutKind as K;
+	match kind {
+		K::Note | K::Info | K::Todo => Condition::CalloutNote,
+		K::Abstract | K::Tip => Condition::CalloutTip,
+		K::Success => Condition::CalloutSuccess,
+		K::Question | K::Warning => Condition::CalloutWarning,
+		K::Failure | K::Danger | K::Bug => Condition::CalloutDanger,
+		K::Example => Condition::CalloutExample,
+		K::Quote => Condition::CalloutQuote,
+	}
+}
+
 /// The element a block's box belongs to.
 fn block_role(block: &Block) -> Condition {
 	match &block.kind {
 		BlockKind::Paragraph(_) => Condition::P,
 		BlockKind::Heading { level, .. } => Condition::heading(*level),
 		BlockKind::Code { .. } => Condition::CodeBlock,
+		BlockKind::Quote {
+			callout: Some(callout),
+			..
+		} => callout_family(callout.kind),
 		BlockKind::Quote { .. } => Condition::Blockquote,
 		BlockKind::List { start, .. } => {
 			if start.is_some() {
@@ -526,7 +546,15 @@ impl BlockContext<'_> {
 		}
 		let role = block_role(block);
 		let previous = self.shaper.appearance.clone();
-		let appearance = opts.stylesheet.text(&previous, role);
+		// A callout is a block quote first, so a theme's quote rules still
+		// shape it; `callout` and its family refine them in that order.
+		let appearance = if role.element_path().contains(Condition::Callout) {
+			[Condition::Blockquote, Condition::Callout, role]
+				.into_iter()
+				.fold(previous.clone(), |a, c| opts.stylesheet.text(&a, c))
+		} else {
+			opts.stylesheet.text(&previous, role)
+		};
 		let chain = appearance.chain;
 		let rule = opts.stylesheet.element_rule(chain, role);
 		// A hidden block draws nothing, box included, so a stylesheet can keep
@@ -535,7 +563,7 @@ impl BlockContext<'_> {
 			self.shaper.appearance = previous;
 			return 0.;
 		}
-		let left_only = role == Condition::Blockquote;
+		let left_only = role.element_path().contains(Condition::Blockquote);
 		self.shaper.appearance = appearance;
 		self.shaper.appearance.background = None;
 		let before = rule.space_before.unwrap_or(0.) * opts.font_size;
@@ -724,9 +752,28 @@ impl BlockContext<'_> {
 				}]);
 				self.disclosure(block, &label, blocks, x, y, width, opts, out)
 			}
-			BlockKind::Quote { label, blocks } => {
+			BlockKind::Quote {
+				label,
+				callout,
+				blocks,
+			} => {
 				let mut top = y;
-				if let Some(label) = label {
+				// A foldable callout's header is its disclosure's summary.
+				if let Some(callout) = callout
+					&& callout.fold.is_none()
+				{
+					let header = opts
+						.stylesheet
+						.text(&self.shaper.appearance, Condition::Label);
+					out.draws.extend(self.shaper.label(
+						&callout.header(),
+						opts.font_size * header.size,
+						x,
+						top + size,
+						header.paint,
+					));
+					top += size * self.shaper.appearance.line_height;
+				} else if let Some(label) = label {
 					out.draws.extend(self.shaper.label(
 						label,
 						size * 0.8,
