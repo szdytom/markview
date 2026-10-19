@@ -811,7 +811,7 @@ fn markdown_dialect_preset_lists_gfm_and_ofm_lite() {
 		assert_eq!(menu.buttons[0].label, "GFM (GitHub Flavored Markdown)");
 		assert_eq!(
 			menu.buttons[1].label,
-			"OFM lite (Obsidian-like, highlight only)"
+			"OFM lite (Obsidian-like, limited subset)"
 		);
 		// The lite label must not claim full Obsidian Flavored Markdown.
 		assert!(!menu.buttons.iter().any(|b| {
@@ -884,7 +884,7 @@ fn dialect_toggles_stay_visible_and_disable_under_ofm_lite() {
 			)
 		})
 		.expect("dialect preset");
-	assert_eq!(control.label, "OFM lite (Obsidian-like, highlight only)");
+	assert_eq!(control.label, "OFM lite (Obsidian-like, limited subset)");
 }
 
 #[test]
@@ -913,8 +913,8 @@ fn dialect_toggles_are_nested_without_gfm_section_title() {
 	let mut found = 0;
 	for row in rows(&ofm, false) {
 		if [
-		ofm.lang().settings_hard_breaks(),
-		ofm.lang().settings_highlight_marks(),
+			ofm.lang().settings_hard_breaks(),
+			ofm.lang().settings_highlight_marks(),
 		]
 		.contains(&row.label.as_str())
 		{
