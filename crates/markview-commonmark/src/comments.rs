@@ -393,6 +393,11 @@ pub(super) fn restore(blocks: &mut [Block], masked: &Masked) {
 	fn rich(offsets: &[(usize, usize)], text: &mut RichText) {
 		for inline in text {
 			range(offsets, &mut inline.source);
+			if let Some(link) = inline.style.link.take() {
+				let at = link.origin();
+				let origin = original_range(&(at..at), offsets).start;
+				inline.style.link = Some(link.rebase(origin));
+			}
 		}
 	}
 	fn walk(offsets: &[(usize, usize)], blocks: &mut [Block]) {

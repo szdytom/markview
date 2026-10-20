@@ -3261,3 +3261,38 @@ fn ofm_comments_preserve_upstream_wikilinks() {
 		}
 	}
 }
+
+#[test]
+fn ofm_comments_restore_link_occurrences_to_original_bytes() {
+	for (body, marker) in [
+		("[one **bold**](/same) [two](/same)", "["),
+		(
+			"<p><a href=\"/same\">one <b>bold</b></a> <a href=\"/same\">two</a></p>",
+			"<a ",
+		),
+		("[[same|one]] [[same|two]]", "[["),
+	] {
+		for prefix in ["中文 %%隐藏%%\r\n\r\n", "%%隐藏%% "] {
+			let source = format!("{prefix}{body}\n");
+			let doc = parse_with(source.as_str(), ofm());
+			let expected = source
+				.match_indices(marker)
+				.map(|(at, _)| at)
+				.collect::<Vec<_>>();
+			let mut origins = Vec::new();
+			for block in &doc.blocks {
+				let BlockKind::Paragraph(text) = &block.kind else {
+					continue;
+				};
+				for span in text {
+					if let Some(link) = &span.style.link
+						&& origins.last() != Some(&link.origin())
+					{
+						origins.push(link.origin());
+					}
+				}
+			}
+			assert_eq!(origins, expected, "{source}");
+		}
+	}
+}

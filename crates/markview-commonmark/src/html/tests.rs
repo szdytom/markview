@@ -405,7 +405,7 @@ fn obsidian_tags_are_supported_only_in_that_dialect() {
 		assert_eq!(inline(tag), Inline::Literal, "{tag}");
 	}
 	assert!(matches!(
-		super::block("<p>H<sub>2</sub>O</p>\n", usize::MAX, true),
+		super::block("<p>H<sub>2</sub>O</p>\n", usize::MAX, 0, true),
 		Block::Paragraph(_)
 	));
 	assert_eq!(block("<p>H<sub>2</sub>O</p>\n"), Block::Unsupported);
