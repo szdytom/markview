@@ -1,18 +1,59 @@
 //! Settings state transitions; persistence and reflow belong to the host.
 use crate::{
+	scroll::ScrollArea,
 	settings::{FontRole, ReaderSettings, Setting, TabStyle, WindowLayout},
 	state::Command,
 };
 use markview_ui_core::{Component, Invalidation, Update};
+use std::{ops::Deref, time::Instant};
 
+#[derive(Default)]
 pub(super) struct Model {
 	pub values: ReaderSettings,
-	pub preview: bool,
+	pub settings_preview: bool,
+	/// The settings page's own list offset.
+	settings_scroll: ScrollArea,
 }
-pub(super) struct View<'a> {
-	pub values: &'a ReaderSettings,
-}
+impl Model {
+	pub(super) fn new(values: ReaderSettings) -> Self {
+		Self {
+			values,
+			..Default::default()
+		}
+	}
 
+	pub(super) fn settings_scroll(&self) -> &ScrollArea {
+		&self.settings_scroll
+	}
+
+	pub(super) fn settings_scroll_mut(&mut self) -> &mut ScrollArea {
+		&mut self.settings_scroll
+	}
+
+	/// Clears the page's transient state when it is opened afresh.
+	pub(super) fn reset_page(&mut self) {
+		self.settings_scroll.reset();
+		self.settings_preview = false;
+	}
+
+	pub(super) fn advance_scroll(&mut self, now: Instant) {
+		self.settings_scroll.advance(now);
+	}
+
+	pub(super) fn scroll_deadline(&self, now: Instant) -> Option<Instant> {
+		self.settings_scroll.deadline(now)
+	}
+
+	pub(super) fn scroll_animating(&self) -> bool {
+		self.settings_scroll.animating()
+	}
+}
+impl Deref for Model {
+	type Target = ReaderSettings;
+	fn deref(&self) -> &ReaderSettings {
+		&self.values
+	}
+}
 pub(super) enum Message {
 	TogglePreview,
 	ResetPreview,
@@ -69,7 +110,6 @@ impl Message {
 	}
 }
 pub(super) enum Effect {
-	Preview(bool),
 	Persist(Option<Setting>),
 	Reflow,
 	SidebarResize(crate::settings::Sidebar),
@@ -81,11 +121,9 @@ pub(super) enum Effect {
 impl Component for Model {
 	type Message = Message;
 	type Effect = Effect;
-	type View<'a> = View<'a>;
-	fn view(&self) -> View<'_> {
-		View {
-			values: &self.values,
-		}
+	type View<'a> = &'a ReaderSettings;
+	fn view(&self) -> &ReaderSettings {
+		&self.values
 	}
 	#[cfg_attr(
 		any(),
@@ -97,10 +135,10 @@ impl Component for Model {
 		let mut update = Update::new(Invalidation::Layout);
 		let field = match message {
 			Message::TogglePreview | Message::ResetPreview => {
-				self.preview =
-					matches!(message, Message::TogglePreview) && !self.preview;
-				return Update::new(Invalidation::Paint)
-					.effect(Effect::Preview(self.preview));
+				self.settings_preview =
+					matches!(message, Message::TogglePreview)
+						&& !self.settings_preview;
+				return Update::new(Invalidation::Paint);
 			}
 			Message::Style(edit) => {
 				let mut ids = self.values.style.clone().unwrap_or_default();
@@ -194,9 +232,8 @@ impl Component for Model {
 			}
 			Message::Reset(settings) => {
 				self.values = *settings;
-				self.preview = false;
+				self.settings_preview = false;
 				return update
-					.effect(Effect::Preview(false))
 					.effect(Effect::Persist(None))
 					.effect(Effect::SyncSession)
 					.effect(Effect::Reflow);

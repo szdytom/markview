@@ -621,7 +621,10 @@ impl<P: SendEvent> App<P> {
 			}
 			out.extend(super::chrome::components::draw_button(
 				&mut self.ui,
-				&self.interaction,
+				&crate::app::widgets::Drawn::new(
+					&self.interaction,
+					self.controls.as_ref(),
+				),
 				&button,
 				true,
 			));

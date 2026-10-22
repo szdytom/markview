@@ -591,7 +591,7 @@ fn the_wheel_does_not_scroll_the_page_behind_an_open_list() {
 	app.action(Command::ToggleDropdown(DropdownId::Language, 0));
 	// The pointer is on the page the list covers.
 	app.interaction.pointer.move_to((700.0, 400.0));
-	let before = app.interaction.settings_scroll.offset();
+	let before = app.preferences.settings_scroll().offset();
 
 	app.handle_window_event(
 		&StubLoop,
@@ -603,7 +603,7 @@ fn the_wheel_does_not_scroll_the_page_behind_an_open_list() {
 		},
 	);
 	assert_eq!(
-		app.interaction.settings_scroll.offset(),
+		app.preferences.settings_scroll().offset(),
 		before,
 		"the wheel left the page where it was"
 	);
@@ -623,20 +623,20 @@ fn opening_a_list_stops_the_page_ease() {
 	assert!(max > 0.0, "the test needs a page with somewhere to scroll");
 	app.interaction.pointer.move_to((700.0, 400.0));
 	wheel(&mut app, MouseScrollDelta::LineDelta(0.0, -1.0));
-	assert!(app.interaction.settings_scroll.animating());
-	let held = app.interaction.settings_scroll.offset();
+	assert!(app.preferences.settings_scroll().animating());
+	let held = app.preferences.settings_scroll().offset();
 
 	app.action(Command::ToggleDropdown(DropdownId::Language, 0));
 	assert!(
 		app.dropdown_menu().is_some(),
 		"the list hangs from a row still on screen"
 	);
-	assert!(!app.interaction.settings_scroll.animating());
+	assert!(!app.preferences.settings_scroll().animating());
 	app.advance_control_scroll(
 		std::time::Instant::now() + std::time::Duration::from_secs(1),
 	);
 	assert_eq!(
-		app.interaction.settings_scroll.offset(),
+		app.preferences.settings_scroll().offset(),
 		held,
 		"the page stayed under the list"
 	);
@@ -650,7 +650,7 @@ fn the_wheel_steps_the_highlight_like_the_arrow_keys() {
 	app.action(Command::ToggleDropdown(DropdownId::Language, 0));
 	// The pointer rests on the page the list covers.
 	app.interaction.pointer.move_to((700.0, 400.0));
-	let before = app.interaction.settings_scroll.offset();
+	let before = app.preferences.settings_scroll().offset();
 
 	wheel(&mut app, MouseScrollDelta::LineDelta(0.0, -1.0));
 	assert_eq!(highlighted(&mut app), Command::Language(Some(Lang::En)));
@@ -667,7 +667,7 @@ fn the_wheel_steps_the_highlight_like_the_arrow_keys() {
 	assert_eq!(highlighted(&mut app), Command::Language(Some(Lang::Ja)));
 
 	assert_eq!(
-		app.interaction.settings_scroll.offset(),
+		app.preferences.settings_scroll().offset(),
 		before,
 		"the page behind the list kept its scroll"
 	);
@@ -750,7 +750,7 @@ fn a_modified_wheel_over_an_open_list_leaves_the_highlight() {
 	let mut app = app_with_panel();
 	app.action(Command::ToggleDropdown(DropdownId::Language, 0));
 	app.interaction.pointer.set_modifiers(ModifiersState::SUPER);
-	let before = app.interaction.settings_scroll.offset();
+	let before = app.preferences.settings_scroll().offset();
 
 	wheel(&mut app, MouseScrollDelta::LineDelta(0.0, -1.0));
 	assert_eq!(
@@ -759,7 +759,7 @@ fn a_modified_wheel_over_an_open_list_leaves_the_highlight() {
 		"the chord left the list where it was"
 	);
 	assert_eq!(
-		app.interaction.settings_scroll.offset(),
+		app.preferences.settings_scroll().offset(),
 		before,
 		"the page behind it kept its scroll too"
 	);

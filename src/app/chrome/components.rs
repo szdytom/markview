@@ -142,7 +142,7 @@ pub(in crate::app) const PREVIEW_OPACITY: f32 = 0.25;
 /// Draws the tab row, in the place a page's heading would occupy.
 pub(in crate::app) fn draw_tabs(
 	ui: &mut TextShaper,
-	interaction: &InteractionState,
+	interaction: &crate::app::widgets::Drawn<'_>,
 	rect: Rect,
 	current: PanelTab,
 	lang: Lang,
@@ -212,7 +212,7 @@ pub(in crate::app) fn settings_header_controls(
 
 pub(in crate::app) fn draw_settings_header(
 	ui: &mut TextShaper,
-	interaction: &InteractionState,
+	interaction: &crate::app::widgets::Drawn<'_>,
 	rect: Rect,
 	current: PanelTab,
 	preview: bool,
@@ -287,7 +287,7 @@ pub(super) fn label(
 
 pub(in crate::app) fn draw_button(
 	ui: &mut TextShaper,
-	interaction: &InteractionState,
+	interaction: &crate::app::widgets::Drawn<'_>,
 	b: &Button,
 	panel: bool,
 ) -> Vec<Draw> {
@@ -303,7 +303,7 @@ pub(in crate::app) fn draw_button(
 /// full-pitch hit area — and not just from `b.rect`.
 fn draw_option(
 	ui: &mut TextShaper,
-	interaction: &InteractionState,
+	interaction: &crate::app::widgets::Drawn<'_>,
 	b: &Button,
 ) -> Vec<Draw> {
 	let mut visual = ButtonVisual::new(interaction, b, true);
@@ -315,7 +315,7 @@ fn draw_option(
 
 pub(super) fn draw_icon_button(
 	ui: &mut TextShaper,
-	interaction: &InteractionState,
+	interaction: &crate::app::widgets::Drawn<'_>,
 	b: &Button,
 	size: f32,
 ) -> Vec<Draw> {
@@ -325,7 +325,7 @@ pub(super) fn draw_icon_button(
 /// Draws a segment with shared edges owned by the focused or selected neighbor.
 pub(in crate::app) fn draw_segmented_button(
 	ui: &mut TextShaper,
-	interaction: &InteractionState,
+	interaction: &crate::app::widgets::Drawn<'_>,
 	buttons: &[Button],
 	i: usize,
 ) -> Vec<Draw> {
@@ -353,7 +353,7 @@ pub(in crate::app) fn draw_segmented_button(
 
 fn draw_button_edges(
 	ui: &mut TextShaper,
-	interaction: &InteractionState,
+	interaction: &crate::app::widgets::Drawn<'_>,
 	b: &Button,
 	panel: bool,
 	edges: [bool; 2],
@@ -379,7 +379,11 @@ struct ButtonVisual {
 }
 
 impl ButtonVisual {
-	fn new(interaction: &InteractionState, b: &Button, panel: bool) -> Self {
+	fn new(
+		interaction: &crate::app::widgets::Drawn<'_>,
+		b: &Button,
+		panel: bool,
+	) -> Self {
 		let placed = interaction
 			.controls
 			.as_ref()
@@ -1003,7 +1007,7 @@ impl Form {
 	pub(super) fn draw(
 		&self,
 		ui: &mut TextShaper,
-		interaction: &InteractionState,
+		interaction: &crate::app::widgets::Drawn<'_>,
 		title: &str,
 		detail: &str,
 		detail_color: C,
@@ -1065,7 +1069,7 @@ impl Form {
 				interaction.pointer.cursor().1,
 			);
 			let (track, thumb) =
-				bar.bars(hovered || interaction.panel_grab.is_some());
+				bar.bars(hovered || interaction.panels.grab().is_some());
 			out.push(line(track, Condition::Scrollbar, C::Track));
 			out.push(line(
 				thumb,
@@ -1177,7 +1181,7 @@ impl Form {
 	fn draw_buttons(
 		&self,
 		ui: &mut TextShaper,
-		interaction: &InteractionState,
+		interaction: &crate::app::widgets::Drawn<'_>,
 		body: &mut Vec<Draw>,
 		out: &mut Vec<Draw>,
 	) {
@@ -1193,9 +1197,12 @@ impl Form {
 					(f32::NEG_INFINITY, f32::NEG_INFINITY)
 				},
 			),
-			controls: interaction.controls.clone(),
 			..Default::default()
 		};
+		let body_interaction = crate::app::widgets::Drawn::new(
+			&body_interaction,
+			interaction.controls,
+		);
 
 		for (i, b) in self.buttons.iter().enumerate() {
 			if matches!(b.action, Command::FocusInput(_)) {
@@ -1413,7 +1420,7 @@ fn menu_rect(anchor: Rect, count: usize, size: (f32, f32)) -> (Rect, usize) {
 /// Draws an open option list over the page behind it.
 pub(in crate::app) fn draw_menu(
 	ui: &mut TextShaper,
-	interaction: &InteractionState,
+	interaction: &crate::app::widgets::Drawn<'_>,
 	menu: &Menu,
 ) -> Vec<Draw> {
 	let mut out = vec![Draw::Rect(
@@ -1431,9 +1438,10 @@ pub(in crate::app) fn draw_menu(
 			..Default::default()
 		},
 		pointer: crate::app::pointer::State::at(interaction.pointer.cursor()),
-		controls: interaction.controls.clone(),
 		..Default::default()
 	};
+	let targeted =
+		crate::app::widgets::Drawn::new(&targeted, interaction.controls);
 	for b in &menu.buttons {
 		// Options are one full pitch apart for the pointer, but read as a
 		// separated list: the fill and focus ring keep the 2-point gap.

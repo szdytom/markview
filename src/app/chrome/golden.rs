@@ -65,8 +65,8 @@ fn ui_styles_match_rendering_baselines() -> Result<()> {
 			ui.set_stylesheet(sheet.clone());
 			let mut draws = draw_controls(
 				&mut ui,
-				&settings,
-				&interaction,
+				&crate::app::widgets::Drawn::new(&interaction, None),
+				&crate::app::settings_panel::Model::new(settings.clone()),
 				(800., 1000.),
 				None,
 				false,
@@ -112,8 +112,12 @@ fn ui_styles_match_rendering_baselines() -> Result<()> {
 					),
 					..Default::default()
 				};
-				draws
-					.extend(components::draw_button(&mut ui, &state, &b, true));
+				draws.extend(components::draw_button(
+					&mut ui,
+					&crate::app::widgets::Drawn::new(&state, None),
+					&b,
+					true,
+				));
 			}
 			draws.extend(ui.label(
 				"Warning 提示",
@@ -256,7 +260,7 @@ fn phone_sidebar_match_rendering_baselines() -> Result<()> {
 						&tabs,
 						8,
 						20.,
-						&interaction,
+						&crate::app::widgets::Drawn::new(&interaction, None),
 						(360., 760.),
 						&settings,
 					)
@@ -265,7 +269,7 @@ fn phone_sidebar_match_rendering_baselines() -> Result<()> {
 						&mut ui,
 						(page != "empty").then_some(&browser),
 						Some(&folder.join("chapter-02.md")),
-						&interaction,
+						&crate::app::widgets::Drawn::new(&interaction, None),
 						(360., 760.),
 						&settings,
 					)

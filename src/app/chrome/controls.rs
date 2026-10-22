@@ -456,8 +456,8 @@ pub(super) fn toolbar_controls_at(
 }
 pub(super) fn settings_form(
 	ui: &mut TextShaper,
-	settings: &ReaderSettings,
-	interaction: &InteractionState,
+	interaction: &crate::app::widgets::Drawn<'_>,
+	page: &super::super::settings_panel::Model,
 	width: f32,
 	height: f32,
 	backend: Option<wgpu::Backend>,
@@ -466,15 +466,15 @@ pub(super) fn settings_form(
 	if interaction.panel != PanelPage::Settings(PanelTab::About) {
 		return reader_form(
 			ui,
-			settings,
-			interaction.settings_scroll.offset(),
+			page,
+			page.settings_scroll().offset(),
 			width,
 			height,
 			phone,
 		);
 	}
 	components::appearance(ui);
-	let t = settings.lang();
+	let t = page.lang();
 	let width_available = panel_rect(width, height).w - components::INSET * 2.0;
 	let mut rows: Vec<_> =
 		wrap(ui, t.about_description(), 13.0, width_available)
@@ -507,7 +507,7 @@ pub(super) fn settings_form(
 	let mut form = Form::new(
 		width,
 		height,
-		interaction.settings_scroll.offset(),
+		page.settings_scroll().offset(),
 		rows,
 		Some(Command::Settings),
 		false,
@@ -528,8 +528,8 @@ pub(super) fn settings_form(
 #[cfg(test)]
 pub(super) fn draw_controls(
 	ui: &mut TextShaper,
-	settings: &ReaderSettings,
-	interaction: &InteractionState,
+	interaction: &crate::app::widgets::Drawn<'_>,
+	page: &super::super::settings_panel::Model,
 	size: (f32, f32),
 	backend: Option<wgpu::Backend>,
 	phone: bool,
@@ -538,38 +538,31 @@ pub(super) fn draw_controls(
 	if interaction.panel_open() {
 		let form = settings_form(
 			ui,
-			settings,
 			interaction,
+			page,
 			size.0,
 			size.1,
 			backend,
 			phone,
 		)
 		.without_header()
-		.preview(interaction.settings_preview);
-		draw_controls_form(
-			ui,
-			settings,
-			interaction,
-			size,
-			restart_pending,
-			&form,
-		)
+		.preview(page.settings_preview);
+		draw_controls_form(ui, interaction, page, size, restart_pending, &form)
 	} else {
-		draw_toolbar(ui, interaction, size.0, settings.lang())
+		draw_toolbar(ui, interaction, size.0, page.lang())
 	}
 }
 pub(super) fn draw_controls_form(
 	ui: &mut TextShaper,
-	settings: &ReaderSettings,
-	interaction: &InteractionState,
+	interaction: &crate::app::widgets::Drawn<'_>,
+	page: &super::super::settings_panel::Model,
 	size: (f32, f32),
 	restart_pending: bool,
 	form: &Form,
 ) -> Vec<Draw> {
 	let (width, height) = size;
 	if interaction.panel_open() {
-		let t = settings.lang();
+		let t = page.lang();
 		let rect = form.rect;
 		let mut out = form.draw(
 			ui,
@@ -600,17 +593,17 @@ pub(super) fn draw_controls_form(
 			} else {
 				PanelTab::Generic
 			},
-			interaction.settings_preview,
+			page.settings_preview,
 			t,
 		));
 		out
 	} else {
-		draw_toolbar(ui, interaction, width, settings.lang())
+		draw_toolbar(ui, interaction, width, page.lang())
 	}
 }
 pub(super) fn draw_toolbar(
 	ui: &mut TextShaper,
-	interaction: &InteractionState,
+	interaction: &crate::app::widgets::Drawn<'_>,
 	width: f32,
 	lang: Lang,
 ) -> Vec<Draw> {
@@ -623,12 +616,13 @@ pub(super) fn draw_toolbar(
 }
 pub(super) fn draw_toolbar_at(
 	ui: &mut TextShaper,
-	interaction: &InteractionState,
+	interaction: &crate::app::widgets::Drawn<'_>,
 	frame: Layout,
 	lang: Lang,
 ) -> Vec<Draw> {
 	components::appearance(ui);
 	let idle = InteractionState::default();
+	let idle = crate::app::widgets::Drawn::new(&idle, None);
 	let state = if interaction.panel_open() || interaction.modal.is_some() {
 		&idle
 	} else {

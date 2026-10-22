@@ -346,7 +346,7 @@ impl<P: super::SendEvent> App<P> {
 			Command::Settings => {
 				self.readers.session.cancel_scroll_animation();
 				self.tab_strip.cancel_drag();
-				self.interaction.toggle_settings();
+				self.toggle_settings();
 				if self.interaction.panel_open() {
 					self.dispatch_ui(super::ui_model::Message::Settings(
 						super::settings_panel::Message::ResetPreview,

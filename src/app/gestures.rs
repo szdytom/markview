@@ -84,7 +84,7 @@ impl GestureState {
 
 impl<P: super::SendEvent> App<P> {
 	pub(super) fn cancel_gestures(&mut self) {
-		self.interaction.sidebar_drag = None;
+		self.interaction.panels.sidebar_mut().clear();
 		self.frame.pressed = None;
 		if !self.gestures.gesture.contacts.is_empty() {
 			self.interaction.widgets.captured = None;
@@ -276,8 +276,8 @@ impl<P: super::SendEvent> App<P> {
 		self.interaction.pointer.clear_pressed_image();
 		self.interaction.pointer.set_auto_scroll_at(None);
 		self.interaction.pointer.end_scrollbar();
-		self.interaction.panel_grab = None;
-		self.interaction.sidebar_drag = None;
+		self.interaction.panels.set_grab(None);
+		self.interaction.panels.sidebar_mut().clear();
 		self.interaction.widgets.focus_visible = false;
 		self.interaction.reset_clicks();
 		self.readers.session.select_all_pending = false;
@@ -489,7 +489,7 @@ impl<P: super::SendEvent> App<P> {
 	/// the offset.
 	pub(super) fn pointer_owns_input(&self) -> bool {
 		self.interaction.pointer.scrollbar().is_some()
-			|| self.interaction.sidebar_drag.is_some()
+			|| self.interaction.panels.sidebar().drag().is_some()
 			|| (self.interaction.pointer.drag().is_some()
 				&& self.interaction.pointer.dragged())
 			|| self

@@ -13,6 +13,30 @@ pub(crate) struct Drag {
 	start_width: f32,
 }
 
+/// The resize drag a sidebar's edge owns while the pointer holds it.
+#[derive(Default)]
+pub(crate) struct State {
+	drag: Option<Drag>,
+}
+
+impl State {
+	pub(crate) fn drag(&self) -> Option<Drag> {
+		self.drag
+	}
+
+	pub(crate) fn begin(&mut self, drag: Drag) {
+		self.drag = Some(drag);
+	}
+
+	pub(crate) fn take(&mut self) -> Option<Drag> {
+		self.drag.take()
+	}
+
+	pub(crate) fn clear(&mut self) {
+		self.drag = None;
+	}
+}
+
 impl<P: super::SendEvent> App<P> {
 	pub(super) fn phone_folder_open(&self) -> bool {
 		self.tab_strip.phone
@@ -139,17 +163,18 @@ impl<P: super::SendEvent> App<P> {
 		self.interaction.reset_clicks();
 		self.interaction.pointer.release();
 		self.interaction.widgets.focus = None;
-		self.interaction.sidebar_drag = Some(Drag {
+		let drag = Drag {
 			sidebar,
 			start_x: self.interaction.pointer.cursor().0,
 			start_width: self.sidebar_rect(sidebar).w,
-		});
+		};
+		self.interaction.panels.sidebar_mut().begin(drag);
 		self.refresh_hover();
 		true
 	}
 
 	pub(super) fn drag_sidebar(&mut self) {
-		let Some(drag) = self.interaction.sidebar_drag else {
+		let Some(drag) = self.interaction.panels.sidebar().drag() else {
 			return;
 		};
 		let delta = self.interaction.pointer.cursor().0 - drag.start_x;

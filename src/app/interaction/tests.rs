@@ -878,7 +878,7 @@ fn desktop_sidebar_drags_resize_independently_and_capture_the_release() {
 	assert_eq!(app.chrome().outline_drawer().w, 300.);
 	assert!(app.options().width <= 800.);
 	assert!(app.interaction.pointer.drag().is_none());
-	assert!(app.interaction.sidebar_drag.is_none());
+	assert!(app.interaction.panels.sidebar().drag().is_none());
 	assert!(app.interaction.selection.is_none());
 	assert_eq!(app.readers.session.scrolling.offset, scroll);
 	assert_eq!(app.preferences.values.outline_width, 300.);
@@ -941,13 +941,13 @@ fn sidebar_edges_yield_to_overlays_and_cancel_on_focus_loss() {
 			device_id: DeviceId::dummy(),
 		},
 	);
-	assert!(app.interaction.sidebar_drag.is_some());
+	assert!(app.interaction.panels.sidebar().drag().is_some());
 	app.handle_window_event(
 		&StubLoop,
 		WindowId::dummy(),
 		WindowEvent::Focused(false),
 	);
-	assert!(app.interaction.sidebar_drag.is_none());
+	assert!(app.interaction.panels.sidebar().drag().is_none());
 	app.interaction.pointer.move_to((800., 200.));
 	app.drag_sidebar();
 	assert_eq!(app.preferences.values.outline_width, 300.);
@@ -1167,16 +1167,16 @@ fn wheel_travel_eases_the_settings_panel_and_tab_strip() {
 	app.interaction.pointer.move_to((700.0, 400.0));
 	let (_, max) = app.panel_scroll_range().expect("the page scrolls");
 	assert!(max > 0.0);
-	assert_eq!(app.interaction.settings_scroll.offset(), 0.0);
+	assert_eq!(app.preferences.settings_scroll().offset(), 0.0);
 	wheel(&mut app);
 	assert_eq!(
-		app.interaction.settings_scroll.offset(),
+		app.preferences.settings_scroll().offset(),
 		0.0,
 		"the wheel starts an ease instead of jumping"
 	);
 	assert!(app.control_scroll_animating());
 	app.advance_control_scroll(Instant::now() + Duration::from_secs(1));
-	assert!(app.interaction.settings_scroll.offset() > 0.0);
+	assert!(app.preferences.settings_scroll().offset() > 0.0);
 	assert!(!app.control_scroll_animating());
 
 	app.interaction.show_panel(crate::state::PanelPage::Closed);
@@ -1200,6 +1200,36 @@ fn wheel_travel_eases_the_settings_panel_and_tab_strip() {
 	app.advance_control_scroll(Instant::now() + Duration::from_secs(1));
 	assert!(app.tab_strip.scroll.offset() > 0.0);
 	assert!(!app.control_scroll_animating());
+}
+
+#[test]
+fn a_settings_page_round_trip_preserves_its_state_and_reopening_resets_it() {
+	let mut app = App::new(
+		crate::cli::LaunchOptions {
+			mode: Mode::Smoke,
+			options: crate::test_support::options(),
+			..Default::default()
+		},
+		StubProxy,
+	);
+	app.interaction
+		.show_panel(crate::state::PanelPage::Settings(
+			crate::state::PanelTab::Generic,
+		));
+	*app.preferences.settings_scroll_mut() = 120.0.into();
+	app.preferences.settings_preview = true;
+	// Leaving for the Styles page and returning keeps both: they belong to
+	// the settings page model, not to the page being left.
+	app.action(Command::Styles);
+	app.action(Command::SettingsTab(crate::state::PanelTab::Generic));
+	assert_eq!(app.preferences.settings_scroll().offset(), 120.0);
+	assert!(app.preferences.settings_preview);
+	// Closing and reopening starts a fresh visit.
+	app.action(Command::Settings);
+	assert!(!app.interaction.panel_open());
+	app.action(Command::Settings);
+	assert_eq!(app.preferences.settings_scroll().offset(), 0.0);
+	assert!(!app.preferences.settings_preview);
 }
 
 #[test]
@@ -1229,17 +1259,17 @@ fn grabbing_the_panel_thumb_stops_its_ease() {
 			phase: TouchPhase::Moved,
 		},
 	);
-	assert!(app.interaction.settings_scroll.animating());
+	assert!(app.preferences.settings_scroll().animating());
 	let (_, thumb) = app.panel_bar().expect("the page scrolls").bars(false);
 	app.interaction
 		.pointer
 		.move_to((thumb.x + thumb.w / 2.0, thumb.y + thumb.h / 2.0));
 	assert!(app.begin_panel_drag());
-	assert!(!app.interaction.settings_scroll.animating());
-	let held = app.interaction.settings_scroll.offset();
+	assert!(!app.preferences.settings_scroll().animating());
+	let held = app.preferences.settings_scroll().offset();
 	app.advance_control_scroll(Instant::now() + Duration::from_secs(1));
 	assert_eq!(
-		app.interaction.settings_scroll.offset(),
+		app.preferences.settings_scroll().offset(),
 		held,
 		"the thumb stayed under the held pointer"
 	);
@@ -1272,7 +1302,7 @@ fn touching_a_panel_stops_its_ease() {
 			phase: TouchPhase::Moved,
 		},
 	);
-	assert!(app.interaction.settings_scroll.animating());
+	assert!(app.preferences.settings_scroll().animating());
 	let at = (700.0, 400.0);
 	app.handle_touch(Touch {
 		device_id: DeviceId::dummy(),
@@ -1282,12 +1312,12 @@ fn touching_a_panel_stops_its_ease() {
 		force: None,
 	});
 	assert!(
-		!app.interaction.settings_scroll.animating(),
+		!app.preferences.settings_scroll().animating(),
 		"the captured panel stopped easing under the finger"
 	);
-	let held = app.interaction.settings_scroll.offset();
+	let held = app.preferences.settings_scroll().offset();
 	app.advance_control_scroll(Instant::now() + Duration::from_secs(1));
-	assert_eq!(app.interaction.settings_scroll.offset(), held);
+	assert_eq!(app.preferences.settings_scroll().offset(), held);
 }
 
 #[test]

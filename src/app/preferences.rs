@@ -164,10 +164,7 @@ impl Preferences {
 		Self {
 			launch_window_layout: settings.window_layout,
 			ui: markview_ui_core::Runtime::new(super::ui_model::Model {
-				settings: super::settings_panel::Model {
-					values: settings,
-					preview: false,
-				},
+				settings: super::settings_panel::Model::new(settings),
 				export,
 				fonts: Default::default(),
 			}),

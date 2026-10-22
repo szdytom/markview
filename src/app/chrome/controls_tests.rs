@@ -1,7 +1,11 @@
 use super::*;
 use crate::app::TOP;
 use crate::lang::Lang;
-use crate::state::{PanelPage, PanelTab};
+use crate::state::{InteractionState, PanelPage, PanelTab};
+
+fn drawn(interaction: &InteractionState) -> crate::app::widgets::Drawn<'_> {
+	crate::app::widgets::Drawn::new(interaction, None)
+}
 
 #[test]
 fn settings_expose_independent_sidebar_widths_in_every_layout_and_language() {
@@ -56,8 +60,12 @@ fn platform_toolbars_keep_hover_targets_and_caption_groups_separate() {
 					)),
 					..Default::default()
 				};
-				let draws =
-					draw_toolbar_at(&mut ui, &interaction, frame, Lang::En);
+				let draws = draw_toolbar_at(
+					&mut ui,
+					&drawn(&interaction),
+					frame,
+					Lang::En,
+				);
 				assert!(draws.iter().any(|draw| matches!(draw,
 					Draw::Rect(rect, crate::layout::Paint::Styled(Condition::Button, C::HoverBackground)) if (rect.x, rect.y, rect.w, rect.h) == (first.rect.x, first.rect.y, first.rect.w, first.rect.h))));
 				let icons: Vec<_> = draws
@@ -349,19 +357,20 @@ fn the_outline_button_carries_its_icon_and_toggled_state() {
 	assert!(!closed.active);
 	assert!(outline(true).active);
 	// The drawer state reaches the drawn toolbar through interaction state.
+	let outline_open = InteractionState {
+		outline_open: true,
+		..Default::default()
+	};
 	let draws = draw_toolbar(
 		&mut crate::test_support::shaper(),
-		&InteractionState {
-			outline_open: true,
-			..Default::default()
-		},
+		&drawn(&outline_open),
 		1200.0,
 		Lang::En,
 	);
 	assert!(draws.iter().any(|draw| matches!(draw, Draw::Icon { .. })));
 	for draw in draw_toolbar(
 		&mut crate::test_support::shaper(),
-		&InteractionState::default(),
+		&drawn(&InteractionState::default()),
 		1200.0,
 		Lang::En,
 	) {
@@ -391,13 +400,14 @@ fn the_toolbar_and_panel_close_buttons_carry_icons() {
 	assert_eq!(close.label, "Close");
 	assert!(close.icon.is_some());
 	let mut icons = 0;
+	let panel_open = InteractionState {
+		panel: PanelPage::Settings(PanelTab::Generic),
+		..Default::default()
+	};
 	for draw in draw_controls(
 		&mut shaper,
-		&ReaderSettings::default(),
-		&InteractionState {
-			panel: PanelPage::Settings(PanelTab::Generic),
-			..Default::default()
-		},
+		&drawn(&panel_open),
+		&crate::app::settings_panel::Model::default(),
 		(1200.0, 800.0),
 		None,
 		false,
@@ -488,14 +498,16 @@ fn preview_keeps_controls_reachable_and_exit_icon_opaque() {
 			(b.rect.x, b.rect.y, b.rect.w, b.rect.h)
 		);
 	}
+	let mut preview = crate::app::settings_panel::Model::default();
+	preview.settings_preview = true;
+	let previewing = InteractionState {
+		panel: PanelPage::Settings(PanelTab::Generic),
+		..Default::default()
+	};
 	let draws = draw_controls(
 		&mut ui,
-		&settings,
-		&InteractionState {
-			panel: PanelPage::Settings(PanelTab::Generic),
-			settings_preview: true,
-			..Default::default()
-		},
+		&drawn(&previewing),
+		&preview,
 		(1200.0, 800.0),
 		None,
 		false,
@@ -575,7 +587,6 @@ fn about_tab_keeps_navigation_and_scrolls_on_short_windows() {
 	);
 	assert!(icons::APP[1].commands.iter().any(|command| matches!(command, markview_layout::scene::PathCommand::MoveTo { x, .. } if *x > 0.5)));
 	let mut ui = crate::test_support::shaper();
-	let settings = ReaderSettings::default();
 	let interaction = InteractionState {
 		panel: PanelPage::Settings(PanelTab::About),
 		..Default::default()
@@ -583,8 +594,8 @@ fn about_tab_keeps_navigation_and_scrolls_on_short_windows() {
 	for (width, height) in [(500.0, 300.0), (820.0, 600.0), (820.0, 800.0)] {
 		let form = settings_form(
 			&mut ui,
-			&settings,
-			&interaction,
+			&drawn(&interaction),
+			&crate::app::settings_panel::Model::default(),
 			width,
 			height,
 			None,
@@ -623,13 +634,19 @@ fn about_tab_keeps_navigation_and_scrolls_on_short_windows() {
 		);
 		let scrolled = InteractionState {
 			panel: interaction.panel,
-			settings_scroll: form
-				.reveal(Command::OpenProject.widget_id())
-				.into(),
 			..Default::default()
 		};
+		let mut page = crate::app::settings_panel::Model::default();
+		*page.settings_scroll_mut() =
+			form.reveal(Command::OpenProject.widget_id()).into();
 		let bottom = settings_form(
-			&mut ui, &settings, &scrolled, width, height, None, false,
+			&mut ui,
+			&drawn(&scrolled),
+			&page,
+			width,
+			height,
+			None,
+			false,
 		);
 		assert!(
 			bottom
@@ -650,8 +667,8 @@ fn about_tab_keeps_navigation_and_scrolls_on_short_windows() {
 		}));
 		let draws = draw_controls(
 			&mut ui,
-			&settings,
-			&interaction,
+			&drawn(&interaction),
+			&crate::app::settings_panel::Model::default(),
 			(width, height),
 			None,
 			false,

@@ -325,9 +325,9 @@ impl<P: super::SendEvent> App<P> {
 	pub(super) fn pointer_left(&mut self) {
 		if self.tab_strip.drag.is_none()
 			&& self.interaction.pointer.scrollbar().is_none()
-			&& self.interaction.panel_grab.is_none()
+			&& self.interaction.panels.grab().is_none()
 			&& self.folder.grab.is_none()
-			&& self.interaction.sidebar_drag.is_none()
+			&& self.interaction.panels.sidebar().drag().is_none()
 		{
 			self.interaction.pointer.leave();
 		}
@@ -371,9 +371,9 @@ impl<P: super::SendEvent> App<P> {
 		self.interaction.widgets.captured = None;
 		self.interaction.pointer.reset_press();
 		self.readers.session.select_all_pending = false;
-		self.interaction.panel_grab = None;
+		self.interaction.panels.set_grab(None);
 		self.folder.grab = None;
-		self.interaction.sidebar_drag = None;
+		self.interaction.panels.sidebar_mut().clear();
 	}
 
 	/// A confirmation owns input: only its buttons answer.
@@ -551,7 +551,7 @@ impl<P: super::SendEvent> App<P> {
 	}
 
 	pub(super) fn pointer_released(&mut self) {
-		if self.interaction.sidebar_drag.take().is_some() {
+		if self.interaction.panels.sidebar_mut().take().is_some() {
 			self.refresh_hover();
 			self.redraw();
 			return;
@@ -561,9 +561,9 @@ impl<P: super::SendEvent> App<P> {
 		let was_pressed = self.interaction.widgets.captured.is_some();
 		let action = self.release_widget();
 		self.interaction.pointer.end_scrollbar();
-		self.interaction.panel_grab = None;
+		self.interaction.panels.set_grab(None);
 		self.folder.grab = None;
-		self.interaction.sidebar_drag = None;
+		self.interaction.panels.sidebar_mut().clear();
 		if was_pressed {
 			if let Some(action) = action {
 				self.action(action);
@@ -732,7 +732,7 @@ impl<P: super::SendEvent> App<P> {
 		self.interaction.pointer.drag().is_some()
 			|| self.interaction.pointer.scrollbar().is_some()
 			|| self.tab_strip.drag.is_some()
-			|| self.interaction.sidebar_drag.is_some()
+			|| self.interaction.panels.sidebar().drag().is_some()
 	}
 
 	/// Hover state follows scrolling and reflow, not only pointer motion.
@@ -816,7 +816,7 @@ impl<P: super::SendEvent> App<P> {
 		over_outline: bool,
 		idle: bool,
 	) -> CursorIcon {
-		if self.interaction.sidebar_drag.is_some()
+		if self.interaction.panels.sidebar().drag().is_some()
 			|| self.sidebar_edge().is_some()
 		{
 			CursorIcon::ColResize

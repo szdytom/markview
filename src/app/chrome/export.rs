@@ -6,7 +6,7 @@ use crate::{
 	lang::Lang,
 	layout::{Draw, TextShaper},
 	settings::{ExportFormat, ExportSettings},
-	state::{Command, InteractionState},
+	state::Command,
 };
 use markview_layout::style::ColorField as C;
 
@@ -191,7 +191,7 @@ fn export_controls(
 pub(super) fn draw_export(
 	ui: &mut TextShaper,
 	settings: &ExportSettings,
-	interaction: &InteractionState,
+	interaction: &crate::app::widgets::Drawn<'_>,
 	document: &str,
 	watching: bool,
 	size: (f32, f32),
@@ -200,7 +200,7 @@ pub(super) fn draw_export(
 	let form = form(
 		ui,
 		settings,
-		interaction.export_scroll.offset(),
+		interaction.panels.export_scroll().offset(),
 		size.0,
 		size.1,
 		lang,
@@ -218,7 +218,7 @@ pub(super) fn draw_export(
 pub(super) fn draw_export_form(
 	ui: &mut TextShaper,
 	settings: &ExportSettings,
-	interaction: &InteractionState,
+	interaction: &crate::app::widgets::Drawn<'_>,
 	status: (&str, bool),
 	size: (f32, f32),
 	lang: Lang,

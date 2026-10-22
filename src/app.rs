@@ -19,6 +19,7 @@ mod lifecycle;
 mod open_document;
 mod outline;
 mod painting;
+pub(crate) mod panels;
 pub(crate) mod pointer;
 mod preferences;
 mod preview;
@@ -239,6 +240,9 @@ struct App<P = EventLoopProxy<Event>> {
 	native_tab_end: std::rc::Rc<std::cell::Cell<Option<(f32, f32)>>>,
 	touch_frame: Option<markview_platform::TouchFrame>,
 	interaction: InteractionState,
+	/// The placed control geometry from the last layout: a paint product, not
+	/// interaction state.
+	controls: Option<markview_ui_core::Layout<Command>>,
 	gestures: gestures::GestureState,
 	readers: tabs::Tabs,
 	folder: folder::Browser,
@@ -377,6 +381,7 @@ impl<P: SendEvent> App<P> {
 			native_tab_end: Default::default(),
 			touch_frame: None,
 			interaction: InteractionState::default(),
+			controls: None,
 			gestures: gestures::GestureState::default(),
 			readers: tabs::Tabs::default(),
 			folder: Default::default(),

@@ -612,13 +612,14 @@ fn summary_text(
 
 pub(in crate::app) fn draw_fonts(
 	shaper: &mut TextShaper,
-	interaction: &InteractionState,
+	interaction: &crate::app::widgets::Drawn<'_>,
+	page: &crate::app::settings_panel::Model,
 	view: &super::View<'_>,
-	settings: &ReaderSettings,
 	width: f32,
 	height: f32,
 	load: Option<&crate::app::settings_load::Load>,
 ) -> Vec<Draw> {
+	let preview = page.settings_preview;
 	let super::View {
 		catalog,
 		shown,
@@ -630,8 +631,7 @@ pub(in crate::app) fn draw_fonts(
 	} = view;
 	let (scroll, note, status_filter, choosers) =
 		(*scroll, *note, *status_filter, *choosers);
-	let lang = settings.lang();
-	let preview = interaction.settings_preview;
+	let lang = page.lang();
 	shaper.appearance = shaper.stylesheet.text(
 		&shaper
 			.stylesheet
@@ -639,7 +639,7 @@ pub(in crate::app) fn draw_fonts(
 		Condition::Panel,
 	);
 	let r = fonts_rect(width, height);
-	let roles = roles(settings);
+	let roles = roles(page);
 	let list = list(width, height, shown.len(), scroll, choosers, roles.len());
 	// Previewing the document leaves only the panel surface, which then
 	// recedes with everything else.
@@ -700,13 +700,16 @@ pub(in crate::app) fn draw_fonts(
 				(f32::NEG_INFINITY, f32::NEG_INFINITY)
 			},
 		),
-		controls: interaction.controls.clone(),
 		..Default::default()
 	};
+	let body_interaction = crate::app::widgets::Drawn::new(
+		&body_interaction,
+		interaction.controls,
+	);
 	let body = draw_font_body(
 		shaper,
 		view,
-		settings,
+		page,
 		list,
 		&roles,
 		&body_interaction,
@@ -754,7 +757,7 @@ fn draw_font_body(
 	settings: &ReaderSettings,
 	list: List,
 	roles: &[FontRole],
-	body_interaction: &InteractionState,
+	body_interaction: &crate::app::widgets::Drawn<'_>,
 	load: Option<&crate::app::settings_load::Load>,
 ) -> Vec<Draw> {
 	let catalog = view.catalog;
@@ -1115,9 +1118,12 @@ mod tests {
 			assert!(filters.iter().all(|b| b.rect.h == CONTROL));
 			let draws = draw_fonts(
 				&mut ui,
-				&InteractionState::default(),
+				&crate::app::widgets::Drawn::new(
+					&InteractionState::default(),
+					None,
+				),
+				&crate::app::settings_panel::Model::new(settings.clone()),
 				&view,
-				&settings,
 				820.,
 				600.,
 				None,
@@ -1463,12 +1469,13 @@ mod tests {
 					]
 					.into_iter()
 					.map(|cursor| {
+						let state = InteractionState {
+							pointer: crate::app::pointer::State::at(cursor),
+							..Default::default()
+						};
 						let draws = draw_button(
 							&mut ui,
-							&InteractionState {
-								pointer: crate::app::pointer::State::at(cursor),
-								..Default::default()
-							},
+							&crate::app::widgets::Drawn::new(&state, None),
 							&button,
 							true,
 						);
@@ -1552,9 +1559,12 @@ mod tests {
 		let mut shaper = crate::test_support::shaper();
 		let draws = draw_fonts(
 			&mut shaper,
-			&InteractionState::default(),
+			&crate::app::widgets::Drawn::new(
+				&InteractionState::default(),
+				None,
+			),
+			&crate::app::settings_panel::Model::default(),
 			&view,
-			&ReaderSettings::default(),
 			820.,
 			600.,
 			None,

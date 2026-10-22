@@ -238,7 +238,7 @@ pub(in crate::app) fn normalize(
 /// bar, so the two never have to be confused.
 pub(super) fn draw(
 	ui: &mut TextShaper,
-	interaction: &InteractionState,
+	interaction: &crate::app::widgets::Drawn<'_>,
 	entries: &[OutlineEntry],
 	tree: &OutlineTree,
 	current: Option<usize>,

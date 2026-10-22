@@ -1,8 +1,39 @@
 //! Adapt the existing self-drawn controls to the common interaction protocol.
 use super::{App, Button};
-use crate::state::Command;
+use crate::state::{Command, InteractionState};
 use markview_ui_core::{Input, Layout, Widget, WidgetId};
-use std::hash::{Hash, Hasher};
+use std::{
+	hash::{Hash, Hasher},
+	ops::Deref,
+};
+
+/// What one paint pass reads: the interaction state and the placed control
+/// geometry from the last layout.
+///
+/// The geometry is a draw product, so it travels with the paint pass rather
+/// than the interaction state. The deref keeps every other read unchanged.
+#[derive(Clone, Copy)]
+pub(in crate::app) struct Drawn<'a> {
+	pub(in crate::app) interaction: &'a InteractionState,
+	pub(in crate::app) controls: Option<&'a Layout<Command>>,
+}
+impl<'a> Drawn<'a> {
+	pub(in crate::app) fn new(
+		interaction: &'a InteractionState,
+		controls: Option<&'a Layout<Command>>,
+	) -> Self {
+		Self {
+			interaction,
+			controls,
+		}
+	}
+}
+impl Deref for Drawn<'_> {
+	type Target = InteractionState;
+	fn deref(&self) -> &InteractionState {
+		self.interaction
+	}
+}
 
 /// One geometry product for paint, pointer input and keyboard traversal.
 pub(super) struct UiLayout {

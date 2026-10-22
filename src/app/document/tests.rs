@@ -1616,7 +1616,7 @@ fn file_sidebar_owns_the_full_left_column_without_moving_the_outline() {
 	let (x, y) = h.app.interaction.pointer.cursor();
 	h.app.interaction.pointer.move_to((x + 60., y));
 	h.app.drag_sidebar();
-	h.app.interaction.sidebar_drag = None;
+	h.app.interaction.panels.sidebar_mut().clear();
 	assert_eq!(h.app.frame_layout().left_inset, surface.w + 60.);
 	assert_eq!(h.app.outline_drawer(), outline);
 	h.app.toggle_folder();

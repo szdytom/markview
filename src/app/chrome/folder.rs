@@ -4,7 +4,7 @@ use crate::{
 	app::{Button, folder::Browser},
 	lang::Lang,
 	layout::{Draw, Paint, Rect, TextShaper},
-	state::{Command, InteractionState},
+	state::Command,
 };
 use markview_layout::{
 	fonts::FontConfig,
@@ -208,7 +208,7 @@ pub(super) fn draw(
 	ui: &mut TextShaper,
 	browser: &Browser,
 	active: Option<&Path>,
-	interaction: &InteractionState,
+	interaction: &crate::app::widgets::Drawn<'_>,
 	pane: Pane,
 	lang: Lang,
 ) -> Vec<Draw> {
@@ -330,7 +330,7 @@ impl Row<'_> {
 		ui: &mut TextShaper,
 		labels: &mut Labels,
 		out: &mut Vec<Draw>,
-		interaction: &InteractionState,
+		interaction: &crate::app::widgets::Drawn<'_>,
 	) {
 		let Self {
 			rect,
@@ -420,6 +420,11 @@ pub(in crate::app) fn toggle(rect: Rect, lang: Lang) -> Button {
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use crate::state::InteractionState;
+
+	fn drawn(interaction: &InteractionState) -> crate::app::widgets::Drawn<'_> {
+		crate::app::widgets::Drawn::new(interaction, None)
+	}
 	use crate::{
 		app::{folder::Tree, frame::Layout},
 		settings::WindowLayout,
@@ -451,7 +456,7 @@ mod tests {
 				ui,
 				&browser,
 				None,
-				&InteractionState::default(),
+				&drawn(&InteractionState::default()),
 				Pane {
 					body: drawer,
 					surface: drawer,
@@ -517,7 +522,7 @@ mod tests {
 					&mut ui,
 					&browser,
 					None,
-					&InteractionState::default(),
+					&drawn(&InteractionState::default()),
 					Pane {
 						body: drawer,
 						surface: drawer,

@@ -142,7 +142,7 @@ impl List {
 			interaction.pointer.cursor().1,
 		);
 		let (track, thumb) =
-			bar.bars(hovered || interaction.panel_grab.is_some());
+			bar.bars(hovered || interaction.panels.grab().is_some());
 		out.push(super::components::line(
 			track,
 			Condition::Scrollbar,

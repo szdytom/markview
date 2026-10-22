@@ -105,9 +105,6 @@ impl<P: super::SendEvent> App<P> {
 		for effect in update.effects {
 			match effect {
 				Effect::Settings(effect) => match effect {
-					settings_panel::Effect::Preview(value) => {
-						self.interaction.settings_preview = value
-					}
 					settings_panel::Effect::Persist(field) => {
 						self.setting_changed(field)
 					}
@@ -208,7 +205,10 @@ impl<P: super::SendEvent> App<P> {
 			settings: view.settings,
 			font_config: &self.fonts_config,
 			export: view.export,
-			interaction: &self.interaction,
+			interaction: super::widgets::Drawn::new(
+				&self.interaction,
+				self.controls.as_ref(),
+			),
 			style_entries: if !show_snapshot {
 				&[]
 			} else if self.interaction.export_styles_open() {
@@ -218,7 +218,7 @@ impl<P: super::SendEvent> App<P> {
 			},
 			resource_load: resource_kind
 				.map(|kind| self.settings_resources.load(kind)),
-			style_scroll: self.interaction.styles_scroll.offset(),
+			style_scroll: self.interaction.panels.styles_scroll().offset(),
 			fonts,
 			width,
 			height,
@@ -273,7 +273,7 @@ impl<P: super::SendEvent> App<P> {
 				width,
 				height,
 				self.preferences.style_entries.len(),
-				self.interaction.styles_scroll.offset(),
+				self.interaction.panels.styles_scroll().offset(),
 			))
 		} else if self.interaction.fonts_open() {
 			let fonts = self.preferences.fonts.view();
@@ -287,6 +287,14 @@ impl<P: super::SendEvent> App<P> {
 			))
 		} else {
 			None
+		}
+	}
+	/// Opens or closes the settings page. The page clears its own offset and
+	/// preview when the host opens it.
+	pub(super) fn toggle_settings(&mut self) {
+		self.interaction.toggle_settings();
+		if self.interaction.panel_open() {
+			self.preferences.reset_page();
 		}
 	}
 	/// The offset and limit of whichever panel page scrolls, already clamped.
@@ -313,15 +321,15 @@ impl<P: super::SendEvent> App<P> {
 		} else if self.interaction.export_open()
 			&& !self.interaction.export_styles_open()
 		{
-			Some(&mut self.interaction.export_scroll)
+			Some(self.interaction.panels.export_scroll_mut())
 		} else if self.interaction.fonts_open() {
 			Some(self.preferences.fonts.scroll_area())
 		} else if self.interaction.styles_open()
 			|| self.interaction.export_styles_open()
 		{
-			Some(&mut self.interaction.styles_scroll)
+			Some(self.interaction.panels.styles_scroll_mut())
 		} else if self.interaction.panel_open() {
-			Some(&mut self.interaction.settings_scroll)
+			Some(self.preferences.settings_scroll_mut())
 		} else {
 			None
 		}
@@ -395,11 +403,11 @@ impl<P: super::SendEvent> App<P> {
 			self.set_panel_scroll(bar.scroll_for(x, y, 0.0), bar.max_scroll());
 			0.0
 		};
-		self.interaction.panel_grab = Some(grab);
+		self.interaction.panels.set_grab(Some(grab));
 		true
 	}
 	pub(super) fn drag_panel(&mut self) {
-		if let Some(grab) = self.interaction.panel_grab
+		if let Some(grab) = self.interaction.panels.grab()
 			&& let Some(bar) = self.panel_bar()
 		{
 			let (x, y) = self.interaction.pointer.cursor();
@@ -413,6 +421,7 @@ impl<P: super::SendEvent> App<P> {
 			return;
 		}
 		self.interaction.advance_scrolls(now);
+		self.preferences.advance_scroll(now);
 		self.folder.scroll.advance(now);
 		let strip_moving = self.tab_strip.scroll.animating();
 		self.tab_strip.advance_scrolls(now);
@@ -427,6 +436,7 @@ impl<P: super::SendEvent> App<P> {
 	}
 	pub(super) fn control_scroll_animating(&self) -> bool {
 		self.interaction.scroll_animating()
+			|| self.preferences.scroll_animating()
 			|| self.folder.scroll.animating()
 			|| self.tab_strip.scroll_animating()
 			|| self.preferences.fonts.scroll_area_ref().animating()
@@ -439,6 +449,11 @@ impl<P: super::SendEvent> App<P> {
 		self.interaction
 			.scroll_deadline(now)
 			.into_iter()
+			.chain(
+				[self.preferences.scroll_deadline(now)]
+					.into_iter()
+					.flatten(),
+			)
 			.chain(self.folder.scroll.deadline(now))
 			.chain(self.tab_strip.scroll_deadline(now))
 			.chain(self.preferences.fonts.scroll_deadline(now))
@@ -522,7 +537,7 @@ impl<P: super::SendEvent> App<P> {
 			});
 		}
 		let layout = self.ui_layout();
-		self.interaction.controls = Some(layout.hit);
+		self.controls = Some(layout.hit);
 		let mut inputs = self.draw_inputs_with_form(layout.form.as_ref());
 		if self.readers.session.search.open {
 			inputs.extend(self.draw_search());

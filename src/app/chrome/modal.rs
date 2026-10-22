@@ -278,7 +278,7 @@ pub(in crate::app) fn modal_buttons(
 
 pub(in crate::app) fn draw_modal(
 	shaper: &mut TextShaper,
-	interaction: &InteractionState,
+	interaction: &crate::app::widgets::Drawn<'_>,
 	width: f32,
 	height: f32,
 	lang: Lang,
@@ -432,8 +432,14 @@ mod tests {
 				.is_empty()
 		);
 		assert!(
-			draw_modal(&mut shaper, &interaction, 800.0, 600.0, Lang::En)
-				.is_empty()
+			draw_modal(
+				&mut shaper,
+				&crate::app::widgets::Drawn::new(&interaction, None),
+				800.0,
+				600.0,
+				Lang::En,
+			)
+			.is_empty()
 		);
 	}
 	#[test]

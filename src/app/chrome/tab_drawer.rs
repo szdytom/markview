@@ -9,7 +9,7 @@ use crate::{
 	lang::Lang,
 	layout::{Draw, Paint, Rect, TextShaper},
 	settings::ReaderSettings,
-	state::{Command, InteractionState, ReaderTab, SidebarTab},
+	state::{Command, ReaderTab, SidebarTab},
 };
 use markview_layout::style::{Color, ColorField as C, Condition};
 use std::path::Path;
@@ -252,7 +252,7 @@ pub(super) fn buttons(
 
 fn draw_entry(
 	ui: &mut TextShaper,
-	interaction: &InteractionState,
+	interaction: &crate::app::widgets::Drawn<'_>,
 	b: &Button,
 ) -> Vec<Draw> {
 	let mut surface = b.clone();
@@ -289,7 +289,7 @@ fn draw_entry(
 }
 fn shell(
 	ui: &mut TextShaper,
-	interaction: &InteractionState,
+	interaction: &crate::app::widgets::Drawn<'_>,
 	size: (f32, f32),
 	settings: &ReaderSettings,
 	count: usize,
@@ -393,7 +393,7 @@ pub(super) fn draw(
 	tabs: &[ReaderTab],
 	active: usize,
 	scroll: f32,
-	interaction: &InteractionState,
+	interaction: &crate::app::widgets::Drawn<'_>,
 	size: (f32, f32),
 	settings: &ReaderSettings,
 ) -> Vec<Draw> {
@@ -475,7 +475,7 @@ pub(super) fn draw_folder(
 	ui: &mut TextShaper,
 	browser: Option<&Browser>,
 	active: Option<&Path>,
-	interaction: &InteractionState,
+	interaction: &crate::app::widgets::Drawn<'_>,
 	size: (f32, f32),
 	settings: &ReaderSettings,
 ) -> Vec<Draw> {
@@ -532,6 +532,7 @@ pub(super) fn draw_folder(
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use crate::state::InteractionState;
 
 	#[test]
 	fn outgoing_controls_keep_drawer_geometry_when_the_toolbar_owns_input() {
@@ -542,13 +543,15 @@ mod tests {
 		toolbar.push(toggle(Lang::En));
 		let open = toolbar.iter().find(|b| b.action == Command::Open).unwrap();
 		let interaction = InteractionState {
-			controls: Some(crate::app::widgets::layout(&toolbar)),
 			pointer: crate::app::pointer::State::at((
 				open.rect.x + open.rect.w / 2.,
 				open.rect.y + open.rect.h / 2.,
 			)),
 			..Default::default()
 		};
+		let placed = crate::app::widgets::layout(&toolbar);
+		let drawn =
+			crate::app::widgets::Drawn::new(&interaction, Some(&placed));
 		// Freeze outgoing geometry at several points after input returns to the toolbar.
 		for reveal in [1.0, 0.75, 0.5, 0.25] {
 			let mut outgoing = controls(
@@ -563,9 +566,9 @@ mod tests {
 					&& !matches!(b.action, Command::SidebarTab(_))
 			}) {
 				let draws = if button.action == Command::Open {
-					draw_entry(&mut ui, &interaction, button)
+					draw_entry(&mut ui, &drawn, button)
 				} else {
-					components::draw_button(&mut ui, &interaction, button, true)
+					components::draw_button(&mut ui, &drawn, button, true)
 				};
 				assert!(draws.iter().any(|draw| matches!(draw, Draw::Icon { x, y, size, .. }
 					if *x == button.rect.x + if button.action == Command::Open { 8. } else { (button.rect.w - size) / 2. }
@@ -674,10 +677,16 @@ mod tests {
 				&tabs,
 				0,
 				0.,
-				&InteractionState {
-					panel: crate::state::PanelPage::Tabs,
-					..Default::default()
-				},
+				&crate::app::widgets::Drawn::new(
+					&crate::app::widgets::Drawn::new(
+						&InteractionState {
+							panel: crate::state::PanelPage::Tabs,
+							..Default::default()
+						},
+						None,
+					),
+					None,
+				),
 				(320., 760.),
 				&ReaderSettings {
 					lang: Some(Lang::En),
@@ -689,10 +698,16 @@ mod tests {
 				&tabs,
 				0,
 				17.,
-				&InteractionState {
-					panel: crate::state::PanelPage::Tabs,
-					..Default::default()
-				},
+				&crate::app::widgets::Drawn::new(
+					&crate::app::widgets::Drawn::new(
+						&InteractionState {
+							panel: crate::state::PanelPage::Tabs,
+							..Default::default()
+						},
+						None,
+					),
+					None,
+				),
 				(320., 760.),
 				&ReaderSettings {
 					lang: Some(Lang::En),
@@ -768,10 +783,13 @@ mod tests {
 					&tabs,
 					29,
 					list.scroll,
-					&InteractionState {
-						panel: crate::state::PanelPage::Tabs,
-						..Default::default()
-					},
+					&crate::app::widgets::Drawn::new(
+						&InteractionState {
+							panel: crate::state::PanelPage::Tabs,
+							..Default::default()
+						},
+						None,
+					),
 					(width, 760.),
 					&ReaderSettings {
 						lang: Some(Lang::En),

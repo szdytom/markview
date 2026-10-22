@@ -1,6 +1,10 @@
 use super::*;
 use crate::app::TOP;
 
+fn drawn(interaction: &InteractionState) -> crate::app::widgets::Drawn<'_> {
+	crate::app::widgets::Drawn::new(interaction, None)
+}
+
 fn entry(level: u8, text: &str) -> OutlineEntry {
 	OutlineEntry {
 		source: 0..0,
@@ -37,7 +41,7 @@ fn entry_rows_indent_by_level_and_stay_inside_the_drawer() {
 	let entries = [entry(1, "One"), entry(3, "Three")];
 	let draws = draw(
 		&mut ui,
-		&InteractionState::default(),
+		&drawn(&InteractionState::default()),
 		&entries,
 		&OutlineTree::default(),
 		None,
@@ -107,7 +111,7 @@ fn tabbing_marks_the_row_keyboard_focus_lands_on() {
 	// The frame marks exactly the row that took the focus.
 	let draws = draw(
 		&mut ui,
-		&interaction,
+		&drawn(&interaction),
 		&entries,
 		&OutlineTree::default(),
 		None,
@@ -244,7 +248,7 @@ fn the_empty_outline_draws_a_short_empty_state() {
 	let drawer = rect(800.0, 600.0, TOP);
 	let draws = draw(
 		&mut ui,
-		&InteractionState::default(),
+		&drawn(&InteractionState::default()),
 		&[],
 		&OutlineTree::default(),
 		None,
@@ -362,7 +366,7 @@ fn collapsed_outline_keeps_drawing_hits_and_navigation_in_sync() {
 	let mut ui = crate::test_support::shaper();
 	let draws = draw(
 		&mut ui,
-		&interaction,
+		&drawn(&interaction),
 		&entries,
 		&tree,
 		Some(2),
@@ -437,7 +441,7 @@ fn bulk_controls_draw_in_the_header_and_collapse_every_level() {
 	let mut ui = crate::test_support::shaper();
 	let draws = draw(
 		&mut ui,
-		&interaction,
+		&drawn(&interaction),
 		&entries,
 		&tree,
 		None,

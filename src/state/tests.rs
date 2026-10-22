@@ -1573,31 +1573,33 @@ fn panel_navigation_preserves_parent_scroll_and_resets_new_visits() {
 		interaction.widgets.focus,
 		Some(Command::SettingsTab(PanelTab::Generic).widget_id())
 	);
-	interaction.settings_scroll = 120.0.into();
-	interaction.settings_preview = true;
+	// Page offsets do not live here; this pins the panel transitions the
+	// interaction state owns. The settings round-trip is covered at the App
+	// level by `app::interaction::tests`.
 	interaction.show_styles(false);
 	interaction.show_panel(PanelPage::Settings(PanelTab::Generic));
-	assert_eq!(interaction.settings_scroll.offset(), 120.0);
-	assert!(interaction.settings_preview);
+	assert!(interaction.panel_open());
 	interaction.toggle_settings();
 	assert!(!interaction.panel_open());
 	assert!(interaction.outline_open);
 	interaction.toggle_settings();
-	assert_eq!(interaction.settings_scroll.offset(), 0.0);
-	assert!(!interaction.settings_preview);
+	assert_eq!(
+		interaction.widgets.focus,
+		Some(Command::SettingsTab(PanelTab::Generic).widget_id())
+	);
 	interaction.toggle_export();
-	interaction.export_scroll = 90.0.into();
+	*interaction.panels.export_scroll_mut() = 90.0.into();
 	interaction.show_styles(true);
 	assert!(interaction.export_styles_open());
-	interaction.styles_scroll = 50.0.into();
+	*interaction.panels.styles_scroll_mut() = 50.0.into();
 	interaction.show_styles(true);
 	assert!(interaction.export_open());
 	assert!(!interaction.export_styles_open());
-	assert_eq!(interaction.export_scroll.offset(), 90.0);
-	assert_eq!(interaction.styles_scroll.offset(), 0.0);
+	assert_eq!(interaction.panels.export_scroll().offset(), 90.0);
+	assert_eq!(interaction.panels.styles_scroll().offset(), 0.0);
 	interaction.toggle_export();
 	interaction.toggle_export();
-	assert_eq!(interaction.export_scroll.offset(), 0.0);
+	assert_eq!(interaction.panels.export_scroll().offset(), 0.0);
 	assert_eq!(
 		interaction.widgets.focus,
 		Some(Command::ExportRun.widget_id())
@@ -1620,14 +1622,14 @@ fn every_panel_transition_clears_transient_input() {
 				captured: Some(Command::Larger.widget_id()),
 				..Default::default()
 			},
-			panel_grab: Some(10.0),
 			..Default::default()
 		};
+		interaction.panels.set_grab(Some(10.0));
 		interaction.pointer.set_auto_scroll_at(Some(Instant::now()));
 		interaction.show_panel(page);
 		assert_eq!(interaction.widgets.focus, None);
 		assert_eq!(interaction.widgets.captured, None);
-		assert_eq!(interaction.panel_grab, None);
+		assert_eq!(interaction.panels.grab(), None);
 		assert_eq!(interaction.pointer.auto_scroll_at(), None);
 	}
 }

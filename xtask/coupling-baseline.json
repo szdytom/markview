@@ -3,15 +3,19 @@
     "variants": 80
   },
   "structs": {
-    "App": 48,
+    "App": 49,
     "Chrome": 28,
     "Config": 26,
-    "InteractionState": 22,
+    "InteractionState": 16,
     "Markview": 35,
     "ReaderSession": 33,
     "ReaderSettings": 25
   },
   "writers": {
+    "controls": {
+      "files": 1,
+      "sites": 1
+    },
     "dropdown": {
       "files": 4,
       "sites": 8
@@ -51,6 +55,18 @@
     "modal": {
       "files": 5,
       "sites": 10
+    },
+    "panels.export_scroll": {
+      "files": 0,
+      "sites": 0
+    },
+    "panels.grab": {
+      "files": 0,
+      "sites": 0
+    },
+    "panels.styles_scroll": {
+      "files": 0,
+      "sites": 0
     },
     "pointer.cursor": {
       "files": 0,
@@ -97,6 +113,18 @@
       "sites": 0
     },
     "pointer.wheel": {
+      "files": 0,
+      "sites": 0
+    },
+    "settings_preview": {
+      "files": 0,
+      "sites": 0
+    },
+    "settings_scroll": {
+      "files": 0,
+      "sites": 0
+    },
+    "sidebar.drag": {
       "files": 0,
       "sites": 0
     },

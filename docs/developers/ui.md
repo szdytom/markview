@@ -25,7 +25,10 @@ borrow model data.
 
 `app/ui_model.rs` is the parent component. It routes Settings, Export and Fonts
 messages into independent models. Settings owns its preview flag and reader
-preferences; preview updates only invalidate painting. Reader settings return persistence, session
+preferences; preview updates only invalidate painting. Page offsets live with
+the page model: the settings page's list offset sits on `settings_panel::Model`,
+and the export and stylesheet page offsets and the scrollbar drag sit on
+`interaction.panels`. Reader settings return persistence, session
 and document-reflow effects. Export settings return persistence effects without
 changing reader settings. Both use the same style-priority reducer. Preferences
 owns the runtime and the native settings store; the store remains a host service.

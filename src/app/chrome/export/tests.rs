@@ -1,7 +1,7 @@
 use super::*;
 use crate::app::chrome::panel_rect;
 use crate::lang::Lang;
-use crate::state::PanelPage;
+use crate::state::{InteractionState, PanelPage};
 
 fn settings(format: ExportFormat) -> ExportSettings {
 	ExportSettings {
@@ -100,13 +100,14 @@ fn the_plain_export_sits_right_of_the_watching_one() {
 #[test]
 fn the_drawn_panel_keeps_the_panel_geometry() {
 	let mut shaper = crate::test_support::shaper();
+	let interaction = InteractionState {
+		panel: PanelPage::Export,
+		..Default::default()
+	};
 	let draws = draw_export(
 		&mut shaper,
 		&ExportSettings::default(),
-		&InteractionState {
-			panel: PanelPage::Export,
-			..Default::default()
-		},
+		&crate::app::widgets::Drawn::new(&interaction, None),
 		"doc.md",
 		false,
 		(1200.0, 800.0),

@@ -1,9 +1,14 @@
 use super::*;
+use crate::app::widgets::Drawn;
 use crate::{
 	app::chrome::{controls, export},
 	lang::Lang,
 	settings::{ExportFormat, ExportSettings, ReaderSettings},
 };
+
+fn drawn(interaction: &InteractionState) -> Drawn<'_> {
+	Drawn::new(interaction, None)
+}
 
 #[test]
 fn settings_labels_and_buttons_center_visible_text_in_their_bands() {
@@ -62,8 +67,12 @@ fn settings_labels_and_buttons_center_visible_text_in_their_bands() {
 				assert_centered(&draws, rect.y + rect.h / 2.0);
 			}
 			let b = button(text, Command::Open, Rect { h: CONTROL, ..rect });
-			let draws =
-				draw_button(&mut ui, &InteractionState::default(), &b, true);
+			let draws = draw_button(
+				&mut ui,
+				&drawn(&InteractionState::default()),
+				&b,
+				true,
+			);
 			assert_centered(&draws, b.rect.y + b.rect.h / 2.0);
 		}
 	}
@@ -77,7 +86,7 @@ fn settings_labels_and_buttons_center_visible_text_in_their_bands() {
 		let form = Form::new(width, height, 0.0, vec![], None, true, Lang::En);
 		let draws = form.draw(
 			&mut ui,
-			&InteractionState::default(),
+			&drawn(&InteractionState::default()),
 			"",
 			"Auto-saved",
 			C::Muted,
@@ -228,7 +237,7 @@ fn button_feedback_distinguishes_hover_press_selection_and_keyboard_focus() {
 			};
 			let mut fills = Vec::new();
 			for state in [&InteractionState::default(), &mouse, &hover, &held] {
-				let draws = draw_button(&mut ui, state, &b, true);
+				let draws = draw_button(&mut ui, &drawn(state), &b, true);
 				let fill = draws.iter().find_map(|draw| match draw {
 					Draw::Rect(rect, paint)
 						if rect.h == b.rect.h && rect.w == b.rect.w =>
@@ -266,7 +275,7 @@ fn button_feedback_distinguishes_hover_press_selection_and_keyboard_focus() {
 				},
 				..Default::default()
 			};
-			let draws = draw_button(&mut ui, &keyboard, &b, true);
+			let draws = draw_button(&mut ui, &drawn(&keyboard), &b, true);
 			let edges: Vec<_> = draws
 				.iter()
 				.filter_map(|d| match d {
@@ -286,9 +295,13 @@ fn button_feedback_distinguishes_hover_press_selection_and_keyboard_focus() {
 				|| r.x + r.w == b.rect.x + b.rect.w
 				|| r.y + r.h == b.rect.y + b.rect.h));
 			b.enabled = false;
-			let idle =
-				draw_button(&mut ui, &InteractionState::default(), &b, true);
-			let held = draw_button(&mut ui, &held, &b, true);
+			let idle = draw_button(
+				&mut ui,
+				&drawn(&InteractionState::default()),
+				&b,
+				true,
+			);
+			let held = draw_button(&mut ui, &drawn(&held), &b, true);
 			let rects = |draws: Vec<Draw>| {
 				draws
 					.into_iter()
@@ -341,8 +354,12 @@ fn settings_and_export_step_controls_draw_icons_without_font_glyphs() {
 			.flat_map(|form| &form.buttons)
 			.find(|button| button.action == command)
 			.unwrap();
-		let draws =
-			draw_button(&mut ui, &InteractionState::default(), button, true);
+		let draws = draw_button(
+			&mut ui,
+			&drawn(&InteractionState::default()),
+			button,
+			true,
+		);
 		assert!(draws.iter().any(|draw| matches!(draw, Draw::Icon { .. })));
 		assert!(!draws.iter().any(|draw| matches!(draw, Draw::Glyph(_))));
 	}
@@ -377,8 +394,14 @@ fn segmented_choices_draw_each_shared_edge_once() {
 				},
 				..Default::default()
 			};
-			let draws =
-				form.draw(&mut ui, &state, "", "", C::Muted, (1200.0, 800.0));
+			let draws = form.draw(
+				&mut ui,
+				&drawn(&state),
+				"",
+				"",
+				C::Muted,
+				(1200.0, 800.0),
+			);
 			let body = draws
 				.iter()
 				.find_map(|draw| match draw {
@@ -681,7 +704,7 @@ fn an_overflowing_list_paints_the_scrollbar_it_measured() {
 	let (track, thumb) = menu.scrollbar().expect("the list overflows");
 
 	let painted: Vec<Rect> =
-		draw_menu(&mut ui, &InteractionState::default(), &menu)
+		draw_menu(&mut ui, &drawn(&InteractionState::default()), &menu)
 			.iter()
 			.filter_map(|draw| match draw {
 				Draw::Rect(rect, _) => Some(*rect),
@@ -722,16 +745,16 @@ fn painted_options_keep_their_gap_after_the_layout_resolves() {
 			..Default::default()
 		},
 		pointer: crate::app::pointer::State::at(cursor),
-		controls: Some(controls),
 		..Default::default()
 	};
-	let rects: Vec<Rect> = draw_menu(&mut ui, &interaction, &menu)
-		.iter()
-		.filter_map(|draw| match draw {
-			Draw::Rect(rect, _) => Some(*rect),
-			_ => None,
-		})
-		.collect();
+	let rects: Vec<Rect> =
+		draw_menu(&mut ui, &Drawn::new(&interaction, Some(&controls)), &menu)
+			.iter()
+			.filter_map(|draw| match draw {
+				Draw::Rect(rect, _) => Some(*rect),
+				_ => None,
+			})
+			.collect();
 	let paints = |r: &Rect, b: &Rect| r.x == b.x && r.y == b.y && r.w == b.w;
 	assert!(
 		rects.iter().any(|r| {

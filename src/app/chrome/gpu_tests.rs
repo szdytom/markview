@@ -1,4 +1,3 @@
-use crate::scroll::ScrollArea;
 use crate::state::{Command, Modal};
 use crate::state::{PanelPage, PanelTab};
 use crate::{
@@ -140,8 +139,8 @@ fn settings_and_selection_frame() -> Result<()> {
 		ui.set_stylesheet(settings.stylesheet.clone());
 		overlay.extend(draw_controls(
 			&mut ui,
-			&settings,
-			&interaction,
+			&crate::app::widgets::Drawn::new(&interaction, None),
+			&crate::app::settings_panel::Model::default(),
 			(width, height),
 			None,
 			false,
@@ -186,8 +185,8 @@ fn settings_and_selection_frame() -> Result<()> {
 			};
 			let overlay = draw_controls(
 				&mut crate::test_support::shaper(),
-				&settings,
-				&about,
+				&crate::app::widgets::Drawn::new(&about, None),
+				&crate::app::settings_panel::Model::default(),
 				(width, height),
 				Some(renderer.backend),
 				false,
@@ -223,7 +222,7 @@ fn settings_and_selection_frame() -> Result<()> {
 				&mut crate::test_support::shaper(),
 				super::styles::StylesTarget::Reader,
 				settings.style.as_deref(),
-				&interaction,
+				&crate::app::widgets::Drawn::new(&interaction, None),
 				&entries,
 				0.0,
 				false,
@@ -354,7 +353,10 @@ fn notice_strip_and_confirmation_frames() -> Result<()> {
 			width,
 			37,
 			0.,
-			&InteractionState::default(),
+			&crate::app::widgets::Drawn::new(
+				&InteractionState::default(),
+				None,
+			),
 			Lang::En,
 		));
 		let submission = renderer.render(
@@ -430,7 +432,7 @@ fn notice_strip_and_confirmation_frames() -> Result<()> {
 			let mut overlay = toolbar(&mut ui);
 			overlay.extend(modal::draw_modal(
 				&mut ui,
-				interaction,
+				&crate::app::widgets::Drawn::new(interaction, None),
 				width,
 				height,
 				Lang::En,
@@ -462,8 +464,13 @@ fn notice_strip_and_confirmation_frames() -> Result<()> {
 				}),
 				..Default::default()
 			};
-			let overlay =
-				modal::draw_modal(&mut ui, &narrow, 360.0, 640.0, lang);
+			let overlay = modal::draw_modal(
+				&mut ui,
+				&crate::app::widgets::Drawn::new(&narrow, None),
+				360.0,
+				640.0,
+				lang,
+			);
 			let target = renderer.offscreen(450, 800);
 			let submission = renderer.render(
 				&snapshot,
@@ -589,8 +596,11 @@ fn tab_strip_frames_clip_overflow_at_fractional_dpi() -> Result<()> {
 		);
 		let controls = draw_controls(
 			&mut ui,
-			&settings,
-			&InteractionState::default(),
+			&crate::app::widgets::Drawn::new(
+				&InteractionState::default(),
+				None,
+			),
+			&crate::app::settings_panel::Model::default(),
 			(width, 100.0),
 			None,
 			false,
@@ -821,8 +831,11 @@ fn icons_keep_their_optical_centre_at_fractional_dpi() -> Result<()> {
 		};
 		let overlay = draw_controls(
 			&mut ui,
-			&settings,
-			&InteractionState::default(),
+			&crate::app::widgets::Drawn::new(
+				&InteractionState::default(),
+				None,
+			),
+			&crate::app::settings_panel::Model::default(),
 			(width, HEIGHT),
 			None,
 			false,
@@ -1027,18 +1040,19 @@ fn export_panel_frames() -> Result<()> {
 				Paint::Border,
 			),
 		];
+		let export_interaction = InteractionState {
+			widgets: markview_ui_core::Interaction {
+				focus_visible: true,
+				focus: Some(Command::ExportRun.widget_id()),
+				..Default::default()
+			},
+			panel: PanelPage::Export,
+			..Default::default()
+		};
 		overlay.extend(draw_export(
 			&mut ui,
 			&settings,
-			&InteractionState {
-				widgets: markview_ui_core::Interaction {
-					focus_visible: true,
-					focus: Some(Command::ExportRun.widget_id()),
-					..Default::default()
-				},
-				panel: PanelPage::Export,
-				..Default::default()
-			},
+			&crate::app::widgets::Drawn::new(&export_interaction, None),
 			"document.md",
 			false,
 			(width, height),
@@ -1111,9 +1125,11 @@ fn previewing_recedes_the_styles_and_fonts_pages() {
 					} else {
 						PanelTab::Fonts
 					}),
-					settings_preview: preview,
 					..Default::default()
 				};
+				let mut settings_page =
+					crate::app::settings_panel::Model::new(settings.clone());
+				settings_page.settings_preview = preview;
 				let status = crate::app::status::Status::default();
 				let mut chrome = Chrome {
 					folder: None,
@@ -1134,13 +1150,16 @@ fn previewing_recedes_the_styles_and_fonts_pages() {
 					tab_strip: &strip,
 					tab_widths: &metrics.widths,
 					preview: None,
-					settings: &settings,
+					settings: &settings_page,
 					restart_pending: false,
 					font_config: &font_config,
 					export: &export,
-					interaction: &interaction,
+					interaction: crate::app::widgets::Drawn::new(
+						&interaction,
+						None,
+					),
 					style_entries: &entries,
-					style_scroll: interaction.styles_scroll.offset(),
+					style_scroll: interaction.panels.styles_scroll().offset(),
 					resource_load: (state != "ready").then_some(&load),
 					fonts: crate::app::font_panel::View {
 						choices: std::borrow::Cow::Owned({
@@ -1272,6 +1291,8 @@ fn the_fonts_page_draws_its_open_option_list() {
 		0,
 	));
 	let chrome_tabs: Vec<ReaderTab> = Vec::new();
+	let settings_page =
+		crate::app::settings_panel::Model::new(settings.clone());
 	let status = crate::app::status::Status::default();
 	let mut chrome = Chrome {
 		folder: None,
@@ -1292,13 +1313,13 @@ fn the_fonts_page_draws_its_open_option_list() {
 		input_draws: Vec::new(),
 		tab_widths: &metrics.widths,
 		preview: None,
-		settings: &settings,
+		settings: &settings_page,
 		restart_pending: false,
 		font_config: &font_config,
 		export: &export,
-		interaction: &interaction,
+		interaction: crate::app::widgets::Drawn::new(&interaction, None),
 		style_entries: &entries,
-		style_scroll: interaction.styles_scroll.offset(),
+		style_scroll: interaction.panels.styles_scroll().offset(),
 		resource_load: None,
 		fonts: crate::app::font_panel::View {
 			choices: std::borrow::Cow::Owned({
@@ -1374,6 +1395,8 @@ fn dismissed_pages_stop_drawing_and_answering_pointers() {
 			_ => PanelPage::Export,
 		});
 		interaction.show_panel(PanelPage::Closed);
+		let settings_page =
+			crate::app::settings_panel::Model::new(settings.clone());
 		let status = crate::app::status::Status::default();
 		let mut chrome = Chrome {
 			folder: None,
@@ -1394,13 +1417,13 @@ fn dismissed_pages_stop_drawing_and_answering_pointers() {
 			tab_strip: &strip,
 			tab_widths: &metrics.widths,
 			preview: None,
-			settings: &settings,
+			settings: &settings_page,
 			restart_pending: false,
 			font_config: &font_config,
 			export: &export,
-			interaction: &interaction,
+			interaction: crate::app::widgets::Drawn::new(&interaction, None),
 			style_entries: &entries,
-			style_scroll: interaction.styles_scroll.offset(),
+			style_scroll: interaction.panels.styles_scroll().offset(),
 			resource_load: None,
 			fonts: crate::app::font_panel::View {
 				choices: std::borrow::Cow::Owned({
@@ -1660,22 +1683,25 @@ fn redesigned_chrome_frames() -> Result<()> {
 							| "fonts-menu" => PanelPage::Settings(PanelTab::Fonts),
 							_ => PanelPage::Closed,
 						},
-						settings_preview: matches!(
-							page,
-							"preview"
-								| "fonts-preview" | "styles-loading-preview"
-								| "styles-failed-preview"
-								| "fonts-loading-preview"
-								| "fonts-failed-preview"
-						),
-						// A page below the fold, to capture the clip and bar.
-						styles_scroll: if page == "styles-scrolled" {
-							f32::MAX.into()
-						} else {
-							ScrollArea::default()
-						},
 						..Default::default()
 					};
+					// A page below the fold, to capture the clip and bar.
+					if page == "styles-scrolled" {
+						*interaction.panels.styles_scroll_mut() =
+							f32::MAX.into();
+					}
+					let mut settings_page =
+						crate::app::settings_panel::Model::new(
+							settings.clone(),
+						);
+					settings_page.settings_preview = matches!(
+						page,
+						"preview"
+							| "fonts-preview" | "styles-loading-preview"
+							| "styles-failed-preview"
+							| "fonts-loading-preview"
+							| "fonts-failed-preview"
+					);
 					if page == "confirmation" {
 						interaction.modal = Some(Modal::OpenLocal {
 							path: "/tmp/example.desktop".into(),
@@ -1717,7 +1743,7 @@ fn redesigned_chrome_frames() -> Result<()> {
 						let form = controls::form(
 							&mut ui, &settings, 0.0, width, height,
 						);
-						interaction.settings_scroll =
+						*settings_page.settings_scroll_mut() =
 							form.reveal(Command::Larger.widget_id()).into();
 					}
 					let catalog = font_samples();
@@ -1836,13 +1862,19 @@ fn redesigned_chrome_frames() -> Result<()> {
 						tab_strip: &strip,
 						tab_widths: &metrics.widths,
 						preview: None,
-						settings: &settings,
+						settings: &settings_page,
 						restart_pending: false,
 						font_config: &fonts,
 						export: &export,
-						interaction: &interaction,
+						interaction: crate::app::widgets::Drawn::new(
+							&interaction,
+							None,
+						),
 						style_entries: &entries,
-						style_scroll: interaction.styles_scroll.offset(),
+						style_scroll: interaction
+							.panels
+							.styles_scroll()
+							.offset(),
 						resource_load: pending.then_some(&load),
 						fonts: crate::app::font_panel::View {
 							choices: std::borrow::Cow::Owned({
@@ -2041,7 +2073,12 @@ fn button_feedback_frames() -> Result<()> {
 						),
 						..Default::default()
 					};
-					draws.extend(draw_button(&mut ui, &interaction, &b, true));
+					draws.extend(draw_button(
+						&mut ui,
+						&crate::app::widgets::Drawn::new(&interaction, None),
+						&b,
+						true,
+					));
 				}
 			}
 			let horizontal = HashMap::new();
@@ -2244,7 +2281,7 @@ fn outline_drawer_frames() -> Result<()> {
 		];
 		overlay.extend(outline::draw(
 			&mut ui,
-			&interaction,
+			&crate::app::widgets::Drawn::new(&interaction, None),
 			&document.outline(),
 			&tree,
 			Some(1),

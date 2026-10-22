@@ -298,9 +298,9 @@ impl<P: super::SendEvent> App<P> {
 		self.tab_strip.cancel_drag();
 		self.interaction.widgets.captured = None;
 		self.interaction.pointer.cancel();
-		self.interaction.panel_grab = None;
+		self.interaction.panels.set_grab(None);
 		self.folder.grab = None;
-		self.interaction.sidebar_drag = None;
+		self.interaction.panels.sidebar_mut().clear();
 		self.interaction.pointer.set_modifiers(Default::default());
 		self.dismiss_preview();
 		self.refresh_hover();
@@ -839,9 +839,9 @@ impl<P: super::SendEvent> App<P> {
 		self.interaction.pointer.release();
 		self.interaction.pointer.set_auto_scroll_at(None);
 		self.interaction.pointer.end_scrollbar();
-		self.interaction.panel_grab = None;
+		self.interaction.panels.set_grab(None);
 		self.folder.grab = None;
-		self.interaction.sidebar_drag = None;
+		self.interaction.panels.sidebar_mut().clear();
 		self.interaction.close_outline();
 		if self.folder.open {
 			self.set_folder_open(false);

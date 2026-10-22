@@ -201,11 +201,13 @@ impl InteractionState {
 		self.widgets.captured = None;
 		// Opening a panel cancels the pointer gesture the document had.
 		self.pointer.cancel();
-		self.panel_grab = None;
+		self.panels.set_grab(None);
 		// An option list belongs to the page that opened it.
 		self.dropdown = None;
 	}
 
+	/// Toggles the settings page's visibility. The page model clears its own
+	/// offset and preview when the host opens it.
 	pub(crate) fn toggle_settings(&mut self) {
 		let open = !self.panel_open();
 		self.show_panel(if open {
@@ -214,8 +216,6 @@ impl InteractionState {
 			PanelPage::Closed
 		});
 		if open {
-			self.settings_scroll.reset();
-			self.settings_preview = false;
 			self.widgets.focus =
 				Some(Command::SettingsTab(PanelTab::Generic).widget_id());
 		}
@@ -229,7 +229,7 @@ impl InteractionState {
 			PanelPage::Closed
 		});
 		if open {
-			self.export_scroll.reset();
+			self.panels.export_scroll_mut().reset();
 			self.widgets.focus = Some(Command::ExportRun.widget_id());
 		}
 	}
@@ -245,7 +245,7 @@ impl InteractionState {
 			PanelPage::Settings(PanelTab::Styles)
 		};
 		self.show_panel(page);
-		self.styles_scroll.reset();
+		self.panels.styles_scroll_mut().reset();
 	}
 }
 
@@ -642,22 +642,14 @@ impl ReaderTab {
 
 #[derive(Default)]
 pub(crate) struct InteractionState {
-	pub(crate) controls: Option<markview_ui_core::Layout<Command>>,
 	pub(crate) tabs_animation: Option<DrawerAnimation>,
 	pub(crate) outline_animation: Option<DrawerAnimation>,
 	pub(crate) folder_animation: Option<DrawerAnimation>,
 	pub(crate) selection_counts: Option<(TextSelection, TextCounts)>,
 	pub(crate) panel: PanelPage,
 	pub(crate) sidebar_tab: SidebarTab,
-	pub(crate) settings_scroll: ScrollArea,
-	pub(crate) settings_preview: bool,
-	pub(crate) export_scroll: ScrollArea,
-	/// Offset from the centre of the panel scrollbar thumb while dragging.
-	pub(crate) panel_grab: Option<f32>,
-	pub(crate) sidebar_drag: Option<crate::app::sidebar::Drag>,
-	/// The Styles page's list offset. The export's stylesheet chooser shares
-	/// it: no two pages of the panel are ever open at once.
-	pub(crate) styles_scroll: ScrollArea,
+	/// The panel shell's shared page offsets and its drags.
+	pub(crate) panels: crate::app::panels::Model,
 	pub(crate) selection: Option<TextSelection>,
 	pub(crate) widgets: markview_ui_core::Interaction,
 	/// The pointer's own state: presses, hover, modifiers and the wheel.
@@ -917,41 +909,26 @@ impl InteractionState {
 		self.outline_scroll.by(delta);
 	}
 
-	/// Advances eased scrolling on every panel page and the outline.
+	/// Advances eased scrolling on the shell's pages and the outline.
 	pub(crate) fn advance_scrolls(&mut self, now: Instant) {
-		for area in [
-			&mut self.settings_scroll,
-			&mut self.export_scroll,
-			&mut self.styles_scroll,
-			&mut self.outline_scroll,
-		] {
-			area.advance(now);
-		}
+		self.panels.advance_scrolls(now);
+		self.outline_scroll.advance(now);
 	}
 
-	/// The earliest frame any panel page or the outline needs.
+	/// The earliest frame the shell's pages or the outline need.
 	pub(crate) fn scroll_deadline(&self, now: Instant) -> Option<Instant> {
 		[
-			&self.settings_scroll,
-			&self.export_scroll,
-			&self.styles_scroll,
-			&self.outline_scroll,
+			self.panels.scroll_deadline(now),
+			self.outline_scroll.deadline(now),
 		]
 		.into_iter()
-		.filter_map(|area| area.deadline(now))
+		.flatten()
 		.min()
 	}
 
-	/// Whether any panel page or the outline still has motion in flight.
+	/// Whether the shell's pages or the outline still have motion in flight.
 	pub(crate) fn scroll_animating(&self) -> bool {
-		[
-			&self.settings_scroll,
-			&self.export_scroll,
-			&self.styles_scroll,
-			&self.outline_scroll,
-		]
-		.into_iter()
-		.any(ScrollArea::animating)
+		self.panels.scroll_animating() || self.outline_scroll.animating()
 	}
 
 	/// Advances keyboard focus to the next (or previous) button, wrapping at

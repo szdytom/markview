@@ -73,6 +73,20 @@ const WRITERS: &[&str] = &[
 	"pointer.scrollbar",
 	"pointer.last_click",
 	"pointer.wheel",
+	// `panels::Model` owns the shell's page offsets and the scrollbar drag;
+	// the observation names the path through `InteractionState`, so a direct
+	// write from another module still counts while the owner's stays out.
+	"panels.export_scroll",
+	"panels.styles_scroll",
+	"panels.grab",
+	// `sidebar::State` owns the resize drag it holds.
+	"sidebar.drag",
+	// The settings page model owns its offset and preview; a write reached
+	// through `App.preferences` still counts, the owner's stays out.
+	"settings_scroll",
+	"settings_preview",
+	// A placed control layout is a draw product, so the host owns it.
+	"controls",
 ];
 
 const TOP_FUNCTIONS: usize = 20;
@@ -494,15 +508,16 @@ impl Analyzer<'_> {
 		// The enclosing impl must own the observed path, or reach it through
 		// the documented bridge (`App.interaction` for interaction fields).
 		let owner = writer_owner(field);
-		let allowed = if self.impl_type.as_deref() == Some(owner) {
-			start == 0
-		} else if let Some((container, bridge)) = writer_bridge(field)
-			&& self.impl_type.as_deref() == Some(container)
-		{
-			start >= 1 && chain.first().is_some_and(|first| first == bridge)
-		} else {
-			false
-		};
+		// The owner writes `self.<path>` directly; another impl may reach the
+		// path through its documented bridge (`App.interaction`, say), where
+		// the observed window starts after the bridge's first segment.
+		let allowed = (self.impl_type.as_deref() == Some(owner) && start == 0)
+			|| writer_bridge(field).is_some_and(|(container, bridge)| {
+				self.impl_type.as_deref() == Some(container)
+					&& start >= 1 && chain
+					.first()
+					.is_some_and(|first| first == bridge)
+			});
 		if !allowed {
 			return;
 		}
@@ -649,7 +664,8 @@ fn type_name(ty: &Type) -> String {
 
 fn writer_owner(field: &str) -> &'static str {
 	match field.split('.').next().unwrap_or(field) {
-		"status" | "export" => "App",
+		"status" | "export" | "controls" | "settings_scroll"
+		| "settings_preview" => "App",
 		_ => "InteractionState",
 	}
 }
@@ -657,8 +673,11 @@ fn writer_owner(field: &str) -> &'static str {
 /// The container type and field through which another impl may write the
 /// observed path.
 fn writer_bridge(field: &str) -> Option<(&'static str, &'static str)> {
-	match writer_owner(field) {
-		"InteractionState" => Some(("App", "interaction")),
+	match field.split('.').next().unwrap_or(field) {
+		"settings_scroll" | "settings_preview" => Some(("App", "preferences")),
+		_ if writer_owner(field) == "InteractionState" => {
+			Some(("App", "interaction"))
+		}
 		_ => None,
 	}
 }

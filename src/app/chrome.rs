@@ -21,13 +21,15 @@ pub(in crate::app) mod tab_drawer;
 mod tabs;
 mod viewer;
 use super::{BOTTOM, Button, TOP};
+#[cfg(test)]
+use crate::settings::ReaderSettings;
+#[cfg(test)]
+use crate::state::InteractionState;
 use crate::{
 	lang::Lang,
 	layout::{Draw, Paint, Rect, Scrollbar, TextShaper},
-	settings::{ExportSettings, ReaderSettings},
-	state::{
-		Command, InteractionState, ReaderSession, ReaderTab, ScrollbarAxis,
-	},
+	settings::ExportSettings,
+	state::{Command, ReaderSession, ReaderTab, ScrollbarAxis},
 };
 pub(super) use components::panel_rect;
 #[cfg(test)]
@@ -119,7 +121,7 @@ fn draw_banner(
 	width: f32,
 	deferred: usize,
 	left: f32,
-	interaction: &InteractionState,
+	interaction: &crate::app::widgets::Drawn<'_>,
 	lang: Lang,
 ) -> Vec<Draw> {
 	let rect = banner_rect(width);
@@ -190,13 +192,15 @@ pub(super) struct Chrome<'a> {
 	pub(super) tab_widths: &'a [(f32, f32)],
 	/// The open hover preview, when one is painted.
 	pub(super) preview: Option<&'a super::preview::Open>,
-	pub(super) settings: &'a ReaderSettings,
+	pub(super) settings: &'a super::settings_panel::Model,
 	pub(super) restart_pending: bool,
 	/// The fonts the reader shapes with, which the family choosers describe.
 	pub(super) font_config: &'a FontConfig,
 	/// The export panel's own settings, drawn but never applied to the reader.
 	pub(super) export: &'a ExportSettings,
-	pub(super) interaction: &'a InteractionState,
+	/// The paint view of the interaction state: its fields plus the placed
+	/// control geometry from the last layout.
+	pub(super) interaction: crate::app::widgets::Drawn<'a>,
 	pub(super) style_entries: &'a [crate::stylesheet::Entry],
 	/// The Styles page's list offset.
 	pub(super) style_scroll: f32,
@@ -292,8 +296,8 @@ impl<'a> Chrome<'a> {
 		}
 		let form = controls::settings_form(
 			self.ui,
+			&self.interaction,
 			self.settings,
-			self.interaction,
 			self.width,
 			self.height,
 			self.backend,
@@ -316,7 +320,7 @@ impl<'a> Chrome<'a> {
 			export::form(
 				self.ui,
 				self.export,
-				self.interaction.export_scroll.offset(),
+				self.interaction.panels.export_scroll().offset(),
 				self.width,
 				self.height,
 				self.settings.lang(),
@@ -324,15 +328,15 @@ impl<'a> Chrome<'a> {
 		} else {
 			controls::settings_form(
 				self.ui,
+				&self.interaction,
 				self.settings,
-				self.interaction,
 				self.width,
 				self.height,
 				self.backend,
 				self.tab_strip.phone,
 			)
 			.without_header()
-			.preview(self.interaction.settings_preview)
+			.preview(self.settings.settings_preview)
 		})
 	}
 
@@ -348,7 +352,7 @@ impl<'a> Chrome<'a> {
 		let mut buttons = if self.interaction.modal.is_some() {
 			modal::modal_buttons(
 				self.ui,
-				self.interaction,
+				&self.interaction,
 				width,
 				height,
 				self.settings.lang(),
@@ -401,7 +405,7 @@ impl<'a> Chrome<'a> {
 				&self.fonts,
 				self.settings,
 				self.font_config,
-				self.interaction.settings_preview,
+				self.settings.settings_preview,
 				width,
 				height,
 				self.settings.lang(),
@@ -414,7 +418,7 @@ impl<'a> Chrome<'a> {
 				self.settings.style.as_deref(),
 				self.style_entries,
 				self.style_scroll,
-				self.interaction.settings_preview,
+				self.settings.settings_preview,
 				(width, height),
 				self.settings.lang(),
 			)
@@ -430,7 +434,7 @@ impl<'a> Chrome<'a> {
 				} else {
 					crate::state::PanelTab::Generic
 				},
-				self.interaction.settings_preview,
+				self.settings.settings_preview,
 				self.settings.lang(),
 			));
 			buttons
@@ -654,7 +658,7 @@ impl<'a> Chrome<'a> {
 			let toggle = tab_drawer::toggle(self.settings.lang());
 			out.extend(components::draw_button(
 				self.ui,
-				self.interaction,
+				&self.interaction,
 				&toggle,
 				true,
 			));
@@ -680,7 +684,7 @@ impl<'a> Chrome<'a> {
 		}
 		out.extend(controls::draw_toolbar_at(
 			self.ui,
-			self.interaction,
+			&self.interaction,
 			self.frame,
 			self.settings.lang(),
 		));
@@ -690,7 +694,7 @@ impl<'a> Chrome<'a> {
 				width,
 				deferred,
 				self.frame.left_inset,
-				self.interaction,
+				&self.interaction,
 				self.settings.lang(),
 			));
 		}
@@ -731,13 +735,17 @@ impl<'a> Chrome<'a> {
 		if let Some(mut open) = self.interaction.dropdown
 			&& let Some(menu) = self.dropdown_menu(&mut open)
 		{
-			out.extend(components::draw_menu(self.ui, self.interaction, &menu));
+			out.extend(components::draw_menu(
+				self.ui,
+				&self.interaction,
+				&menu,
+			));
 		}
 		// A confirmation owns the frame; nothing behind it is interactive.
 		if self.interaction.modal.is_some() {
 			out.extend(modal::draw_modal(
 				self.ui,
-				self.interaction,
+				&self.interaction,
 				width,
 				height,
 				self.settings.lang(),
@@ -819,7 +827,7 @@ impl<'a> Chrome<'a> {
 		if self.session.path.is_none() {
 			out.extend(empty::draw(
 				self.ui,
-				self.interaction,
+				&self.interaction,
 				width,
 				height,
 				self.settings.lang(),
@@ -918,7 +926,7 @@ impl<'a> Chrome<'a> {
 				self.ui,
 				browser,
 				self.session.path.as_deref(),
-				self.interaction,
+				&self.interaction,
 				folder::Pane {
 					body: self.folder_drawer(),
 					surface: folder::surface(self.folder_drawer(), height),
@@ -929,7 +937,7 @@ impl<'a> Chrome<'a> {
 		if let Some(button) = self.folder_toggle() {
 			out.extend(components::draw_button(
 				self.ui,
-				self.interaction,
+				&self.interaction,
 				&button,
 				true,
 			));
@@ -937,7 +945,7 @@ impl<'a> Chrome<'a> {
 		if self.interaction.outline_reveal() > 0.0 {
 			out.extend(outline::draw(
 				self.ui,
-				self.interaction,
+				&self.interaction,
 				self.session.outline_entries(),
 				&self.session.outline_tree,
 				self.session.current_outline(),
@@ -953,7 +961,7 @@ impl<'a> Chrome<'a> {
 					self.tabs,
 					self.active_tab,
 					self.tab_strip.drawer_scroll.offset(),
-					self.interaction,
+					&self.interaction,
 					(width, height),
 					self.settings,
 				),
@@ -961,7 +969,7 @@ impl<'a> Chrome<'a> {
 					self.ui,
 					self.folder,
 					self.session.path.as_deref(),
-					self.interaction,
+					&self.interaction,
 					(width, height),
 					self.settings,
 				),
@@ -983,7 +991,7 @@ impl<'a> Chrome<'a> {
 				self.ui,
 				StylesTarget::Export,
 				Some(&self.export.style),
-				self.interaction,
+				&self.interaction,
 				self.style_entries,
 				self.style_scroll,
 				false,
@@ -1006,7 +1014,7 @@ impl<'a> Chrome<'a> {
 			out.extend(export::draw_export_form(
 				self.ui,
 				self.export,
-				self.interaction,
+				&self.interaction,
 				(&document, self.watching),
 				(width, height),
 				self.settings.lang(),
@@ -1016,9 +1024,9 @@ impl<'a> Chrome<'a> {
 		{
 			out.extend(draw_fonts(
 				self.ui,
-				self.interaction,
-				&self.fonts,
+				&self.interaction,
 				self.settings,
+				&self.fonts,
 				width,
 				height,
 				self.resource_load,
@@ -1030,10 +1038,10 @@ impl<'a> Chrome<'a> {
 				self.ui,
 				StylesTarget::Reader,
 				self.settings.style.as_deref(),
-				self.interaction,
+				&self.interaction,
 				self.style_entries,
 				self.style_scroll,
-				self.interaction.settings_preview,
+				self.settings.settings_preview,
 				width,
 				height,
 				self.settings.lang(),
@@ -1045,8 +1053,8 @@ impl<'a> Chrome<'a> {
 		{
 			out.extend(controls::draw_controls_form(
 				self.ui,
+				&self.interaction,
 				self.settings,
-				self.interaction,
 				(width, height),
 				self.restart_pending,
 				form.expect("settings form"),
@@ -1130,12 +1138,12 @@ impl<'a> Chrome<'a> {
 			let button = self.resource_retry(load.displayed && load.cached);
 			out.extend(components::draw_button(
 				self.ui,
-				self.interaction,
+				&self.interaction,
 				&button,
 				true,
 			));
 		}
-		if self.interaction.settings_preview
+		if self.settings.settings_preview
 			&& (self.interaction.styles_open() || self.interaction.fonts_open())
 		{
 			components::fade(

@@ -326,7 +326,7 @@ pub(super) fn draw_styles(
 	shaper: &mut TextShaper,
 	target: StylesTarget,
 	selected: Option<&[String]>,
-	interaction: &InteractionState,
+	interaction: &crate::app::widgets::Drawn<'_>,
 	entries: &[crate::stylesheet::Entry],
 	scroll: f32,
 	preview: bool,
@@ -407,9 +407,12 @@ pub(super) fn draw_styles(
 				(f32::NEG_INFINITY, f32::NEG_INFINITY)
 			},
 		),
-		controls: interaction.controls.clone(),
 		..Default::default()
 	};
+	let body_interaction = crate::app::widgets::Drawn::new(
+		&body_interaction,
+		interaction.controls,
+	);
 	for row in list.visible() {
 		let e = &entries[order[row]];
 		let pos = position(selected, e);
@@ -578,7 +581,10 @@ mod stylesheet_tests {
 			&mut ui,
 			StylesTarget::Reader,
 			Some(&selected),
-			&InteractionState::default(),
+			&crate::app::widgets::Drawn::new(
+				&InteractionState::default(),
+				None,
+			),
 			&entries,
 			0.,
 			false,

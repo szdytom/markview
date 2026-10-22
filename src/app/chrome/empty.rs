@@ -3,7 +3,7 @@ use super::{
 	Button, Command, Draw, Lang, Paint, Rect, TextShaper, components, controls,
 	ui_appearance,
 };
-use crate::state::{InteractionState, TextField};
+use crate::state::TextField;
 use markview_layout::style::{ColorField as C, Condition};
 
 struct Layout {
@@ -161,7 +161,7 @@ pub(super) fn buttons(
 
 pub(super) fn draw(
 	ui: &mut TextShaper,
-	interaction: &InteractionState,
+	interaction: &crate::app::widgets::Drawn<'_>,
 	width: f32,
 	height: f32,
 	lang: Lang,
@@ -275,6 +275,11 @@ pub(super) fn draw(
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use crate::state::InteractionState;
+
+	fn drawn(interaction: &InteractionState) -> crate::app::widgets::Drawn<'_> {
+		crate::app::widgets::Drawn::new(interaction, None)
+	}
 	use crate::render::{Renderer, Theme, View};
 
 	#[test]
@@ -328,7 +333,7 @@ mod tests {
 				}
 				let draws = draw(
 					&mut ui,
-					&InteractionState::default(),
+					&drawn(&InteractionState::default()),
 					width,
 					height,
 					lang,
@@ -400,8 +405,13 @@ mod tests {
 						},
 						..Default::default()
 					};
-					let mut overlay =
-						draw(&mut ui, &interaction, width, height, lang);
+					let mut overlay = draw(
+						&mut ui,
+						&drawn(&interaction),
+						width,
+						height,
+						lang,
+					);
 					let buttons = buttons(&mut ui, width, height, lang);
 					for b in &buttons {
 						assert!(

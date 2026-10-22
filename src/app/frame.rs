@@ -392,7 +392,7 @@ impl<P: super::SendEvent> App<P> {
 		self.interaction.pointer.release();
 		self.interaction.pointer.set_auto_scroll_at(None);
 		self.interaction.pointer.end_scrollbar();
-		self.interaction.panel_grab = None;
+		self.interaction.panels.set_grab(None);
 	}
 	pub(super) fn frame_press(&mut self) -> bool {
 		// A new press cancels a caption release swallowed outside the window.
