@@ -9,6 +9,8 @@
 
 use std::collections::HashMap;
 
+use crate::container::opaque_end;
+
 /// Block-level HTML tags whose multi-block form only groups Markdown
 /// content. The group has no visual semantics of its own, so its children
 /// render in place.
@@ -121,7 +123,7 @@ pub enum Block {
 }
 
 /// The name, remaining attributes and closing flag of one `<...>` tag.
-fn tag_parts(tag: &str) -> Option<(String, &str, bool)> {
+pub(crate) fn tag_parts(tag: &str) -> Option<(String, &str, bool)> {
 	let body = tag.strip_prefix('<')?.strip_suffix('>')?.trim();
 	let closing = body.starts_with('/');
 	let body = if closing {
@@ -134,46 +136,6 @@ fn tag_parts(tag: &str) -> Option<(String, &str, bool)> {
 		return None;
 	}
 	Some((name.to_ascii_lowercase(), &body[name.len()..], closing))
-}
-
-/// Elements whose content is not markup for the reader: raw text, RCDATA,
-/// foreign content, and `<pre>`, which the reader shows as literal source.
-const OPAQUE_ELEMENTS: &[&str] =
-	&["math", "pre", "script", "style", "svg", "textarea", "title"];
-
-/// Opaque elements whose content ends at the first matching close tag.
-const RAW_ELEMENTS: &[&str] = &["script", "style", "textarea", "title"];
-
-/// The offset just past the opaque element `name` whose opening tag ends
-/// at `start`, when `name` is opaque. An unclosed element is skipped to
-/// the end of `source`.
-fn opaque_end(source: &str, start: usize, name: &str) -> Option<usize> {
-	if RAW_ELEMENTS.contains(&name) {
-		return Some(raw_end(source, start, name));
-	}
-	if OPAQUE_ELEMENTS.contains(&name) {
-		return Some(enclosed_end(source, start, name).unwrap_or(source.len()));
-	}
-	None
-}
-
-/// The offset just past the first `</name>` at or after `start`, or the
-/// end of `source` when the element never closes.
-fn raw_end(source: &str, start: usize, name: &str) -> usize {
-	let mut at = start;
-	while let Some(found) = source[at..].find("</") {
-		let found = at + found;
-		let rest = &source[found..];
-		if let Some(len) = tag_len(rest)
-			&& let Some((tag, _, closing)) = tag_parts(&rest[..len])
-			&& closing
-			&& tag == name
-		{
-			return found + len;
-		}
-		at = found + 2;
-	}
-	source.len()
 }
 
 /// Length of a non-element HTML region, including its closing delimiter.
@@ -689,16 +651,6 @@ pub(crate) fn anchors(fragment: &str) -> Vec<String> {
 		.collect()
 }
 
-/// The end of an opaque element starting at this opening tag.
-pub(crate) fn opaque_len(source: &str) -> Option<usize> {
-	let len = tag_len(source)?;
-	let (name, attrs, closing) = tag_parts(&source[..len])?;
-	if closing || attrs.trim_end().ends_with('/') {
-		return None;
-	}
-	opaque_end(source, len, &name)
-}
-
 /// Targets in raw HTML, excluding comments and opaque element contents.
 pub(crate) fn block_anchors(source: &str) -> Vec<String> {
 	block_anchors_from(source, 0)
@@ -823,11 +775,16 @@ fn tokenize(source: &str, anchor_from: usize) -> Vec<Token> {
 	tokens
 }
 
-/// One complete SVG element as an atomic, host-decoded image.
 /// The offset just past the matching close tag of one `name` element whose
 /// opening tag ends at `start`. Nested same-name elements are counted, and
 /// comments and CDATA are skipped. `None` when the element never closes.
-fn enclosed_end(source: &str, start: usize, name: &str) -> Option<usize> {
+/// The text is lexed here; whether the element is opaque is the container
+/// stack's decision.
+pub(crate) fn enclosed_end(
+	source: &str,
+	start: usize,
+	name: &str,
+) -> Option<usize> {
 	let mut depth = 1usize;
 	let mut at = start;
 	while depth > 0 {

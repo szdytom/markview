@@ -399,10 +399,9 @@ fn leaf_only(source: &str) -> bool {
 	// Opaque inline HTML can carry anchor-discovery state across blocks.
 	if !definition_free(source)
 		|| source.contains('|')
-		|| source
-			.match_indices('<')
-			.any(|(at, _)| crate::html::opaque_len(&source[at..]).is_some())
-	{
+		|| source.match_indices('<').any(|(at, _)| {
+			crate::container::opaque_len(&source[at..]).is_some()
+		}) {
 		return false;
 	}
 	line_ranges(source)

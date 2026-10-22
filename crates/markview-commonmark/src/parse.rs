@@ -1,5 +1,10 @@
 //! Semantic Markdown; raw HTML is limited to a small supported subset.
-use crate::html;
+use crate::{
+	container::{
+		ContainerHost, ContainerStack, block_of, clamp_range, opaque_len,
+	},
+	html,
+};
 use comrak::{
 	Arena, Options,
 	nodes::{AstNode, ListType, NodeValue, TableAlignment},
@@ -58,7 +63,7 @@ impl Reader<'_> {
 	}
 
 	fn open_opaque(&self, start: usize, tag_len: usize) -> Option<usize> {
-		let end = start + html::opaque_len(&self.source[start..])?;
+		let end = start + opaque_len(&self.source[start..])?;
 		self.opaque.borrow_mut().insert(start + tag_len, end);
 		Some(end)
 	}
@@ -468,11 +473,11 @@ impl Reader<'_> {
 		depth: usize,
 	) -> Vec<Block> {
 		let mut out = Vec::new();
-		let mut stack: Vec<Frame> = Vec::new();
+		let mut stack = ContainerStack::default();
 		let mut i = 0;
 		while i < children.len() {
 			if let Some(consumed) =
-				self.svg(children, i, depth, frame_target(&mut stack, &mut out))
+				self.svg(children, i, depth, stack.target(&mut out))
 			{
 				i += consumed;
 				continue;
@@ -483,75 +488,27 @@ impl Reader<'_> {
 			} else {
 				let content_depth = depth + stack.len();
 				match self.child_block(child, content_depth) {
-					Child::Block(block) => {
-						push_block(&mut stack, &mut out, block);
-					}
+					Child::Block(block) => stack.push_block(&mut out, block),
 					Child::Skip => {}
 					Child::Flatten => {
 						let blocks = self.blocks(child, content_depth + 1);
-						extend_blocks(&mut stack, &mut out, blocks);
+						stack.extend_blocks(&mut out, blocks);
 					}
 				}
 			}
 			i += 1;
 		}
-		// An element that never closed keeps the literal fallback: the opener
-		// is shown as HTML source and its collected content follows it.
-		while let Some(frame) = stack.pop() {
-			let mut blocks = Vec::new();
-			if let Some(block) = html_leaf_block(
-				self.source,
-				&frame.raw,
-				frame.start..frame.start.saturating_add(frame.raw.len()),
-				self.limits.html_scopes,
-				self.opaque_until(frame.start),
-			) {
-				blocks.push(block);
-			}
-			blocks.extend(frame.blocks);
-			extend_blocks(&mut stack, &mut out, blocks);
-		}
+		// An element that never closed keeps the literal fallback.
+		stack.pop_unclosed(&mut out, self);
 		out
 	}
 
 	/// Feed one raw HTML block's container events into the open frames.
-	fn attach_html_summary(
-		&self,
-		stack: &mut [Frame],
-		original: &HtmlSource<'_>,
-		child_range: &Range<usize>,
-		text: &str,
-		range: Range<usize>,
-	) -> bool {
-		if let Some(frame) = stack.last_mut()
-			&& let FrameKind::Details { summary, .. } = &mut frame.kind
-			&& summary.is_none()
-		{
-			let fragment = &original.text[range.clone()];
-			let opener_len = html::tag_len(fragment).unwrap();
-			let body_start = range.start + opener_len;
-			let body_source = map_source(
-				original,
-				child_range,
-				body_start..body_start + text.len(),
-			);
-			*summary = Some((text.to_owned(), body_source));
-			let at = map_source(original, child_range, range.clone()).start;
-			if self.opaque_until(at) == 0 {
-				frame.anchors.extend(html::anchors(&fragment[..opener_len]));
-			}
-			frame.raw.push_str(&original.text[range.clone()]);
-			true
-		} else {
-			false
-		}
-	}
-
 	fn html_events<'a>(
 		&mut self,
 		child: &'a AstNode<'a>,
 		depth: usize,
-		stack: &mut Vec<Frame>,
+		stack: &mut ContainerStack,
 		out: &mut Vec<Block>,
 	) {
 		let source = self.source;
@@ -559,175 +516,21 @@ impl Reader<'_> {
 		self.block_opaque(child_range.clone());
 		let markers = container_markers(child);
 		let original = HtmlSource::new(&source[child_range.clone()], &markers);
-		for event in html::block_events(&original.text) {
-			match event {
-				html::BlockEvent::Text { text, range } => {
-					let at = map_source(&original, &child_range, range);
-					if let Some(block) = html_leaf_block(
-						source,
-						&text,
-						at,
-						self.limits.html_scopes,
-						self.opaque_until(child_range.start),
-					) {
-						push_block(stack, out, block);
-					}
-				}
-				html::BlockEvent::Summary { text, range } => {
-					let set = self.attach_html_summary(
-						stack,
-						&original,
-						&child_range,
-						&text,
-						range.clone(),
-					);
-					if !set {
-						let html = &original.text[range.clone()];
-						let at = map_source(&original, &child_range, range);
-						if let Some(block) = html_leaf_block(
-							source,
-							html,
-							at,
-							self.limits.html_scopes,
-							self.opaque_until(child_range.start),
-						) {
-							push_block(stack, out, block);
-						}
-					}
-				}
-				html::BlockEvent::Open { name, open, range } => {
-					let at = map_source(&original, &child_range, range.clone());
-					if depth + stack.len() >= self.limits.block_depth {
-						// Too deep: keep the tag as source instead of nesting.
-						if let Some(block) = html_leaf_block(
-							source,
-							&original.text[range.clone()],
-							at,
-							self.limits.html_scopes,
-							self.opaque_until(child_range.start),
-						) {
-							push_block(stack, out, block);
-						}
-						continue;
-					}
-					let kind = if name == "details" {
-						let ordinal = self.details_ordinal;
-						self.details_ordinal += 1;
-						FrameKind::Details {
-							open,
-							ordinal,
-							summary: None,
-						}
-					} else {
-						FrameKind::Transparent { name }
-					};
-					stack.push(Frame {
-						anchors: if self.opaque_until(at.start) == 0 {
-							html::anchors(&original.text[range.clone()])
-						} else {
-							Vec::new()
-						},
-						kind,
-						blocks: Vec::new(),
-						raw: original.text[range.clone()].to_string(),
-						start: at.start,
-					});
-				}
-				html::BlockEvent::Close { name, range } => {
-					let at = map_source(&original, &child_range, range.clone());
-					if !self.close_frame(&name, at.end, stack, out, source) {
-						// A stray close keeps only its own fragment as source.
-						if let Some(block) = html_leaf_block(
-							source,
-							&original.text[range.clone()],
-							at,
-							self.limits.html_scopes,
-							self.opaque_until(child_range.start),
-						) {
-							push_block(stack, out, block);
-						}
-					}
-				}
-			}
-		}
-	}
-
-	/// Pop the frame a closing tag names, or report that none matches so the
-	/// caller can keep the literal fallback.
-	fn close_frame(
-		&self,
-		name: &str,
-		end: usize,
-		stack: &mut Vec<Frame>,
-		out: &mut Vec<Block>,
-		source: &str,
-	) -> bool {
-		// An end tag closes the nearest matching frame and implicitly closes
-		// anything still open inside it.
-		let Some(index) = stack.iter().rposition(|frame| match &frame.kind {
-			FrameKind::Transparent { name: open } => name == open,
-			FrameKind::Details { .. } => name == "details",
-		}) else {
-			return false;
-		};
-		while stack.len() > index {
-			let frame = stack.pop().expect("index is in range");
-			self.finish_frame(frame, end, stack, out, source);
-		}
-		true
-	}
-
-	/// Close one frame into its parent: a transparent frame flattens and a
-	/// details frame becomes one block.
-	fn finish_frame(
-		&self,
-		mut frame: Frame,
-		end: usize,
-		stack: &mut [Frame],
-		out: &mut Vec<Block>,
-		source: &str,
-	) {
-		match frame.kind {
-			FrameKind::Transparent { .. } => {
-				let anchors = frame.anchors;
-				if !anchors.is_empty() {
-					let mut block = block_of(
-						source,
-						BlockKind::Paragraph(Vec::new()),
-						frame.start..frame.start + frame.raw.len(),
-					);
-					block.anchors = anchors;
-					if let Some(first) = frame.blocks.first_mut() {
-						first.anchors.splice(0..0, block.anchors);
-					} else {
-						frame.blocks.push(block);
-					}
-				}
-				extend_blocks(stack, out, frame.blocks);
-			}
-			FrameKind::Details {
-				open,
-				ordinal,
-				summary,
-			} => {
-				let span = frame.start..end.max(frame.start);
-				let summary = summary
-					.as_ref()
-					.map_or_else(RichText::new, |(text, source)| {
-						self.summary_rich(text, source)
-					});
-				let mut block = details_block_of(
-					source,
-					open,
-					ordinal,
-					summary,
-					frame.blocks,
-					span,
-				);
-				block.anchors = frame.anchors;
-				push_block(stack, out, block);
-			}
-		}
+		let events = html::block_events(&original.text);
+		let opaque_until = self.opaque_until(child_range.start);
+		let block_depth = self.limits.block_depth;
+		let map = |range| map_source(&original, &child_range, range);
+		stack.consume(
+			&events,
+			&original.text,
+			map,
+			opaque_until,
+			depth,
+			block_depth,
+			source,
+			self,
+			out,
+		);
 	}
 
 	/// SVG may cross Comrak's blank-line HTML boundaries.
@@ -1215,48 +1018,35 @@ impl Reader<'_> {
 	}
 }
 
-/// One open raw-HTML container while a sibling list is walked.
-struct Frame {
-	anchors: Vec<String>,
-	kind: FrameKind,
-	blocks: Vec<Block>,
-	/// The opener's HTML literal, used when the element never closes.
-	raw: String,
-	/// Source offset where the opener begins.
-	start: usize,
-}
-
-enum FrameKind {
-	Transparent {
-		name: String,
-	},
-	Details {
-		open: bool,
-		ordinal: u32,
-		summary: Option<(String, Range<usize>)>,
-	},
-}
-
-fn frame_target<'a>(
-	stack: &'a mut [Frame],
-	out: &'a mut Vec<Block>,
-) -> &'a mut Vec<Block> {
-	match stack.last_mut() {
-		Some(frame) => &mut frame.blocks,
-		None => out,
+impl ContainerHost for Reader<'_> {
+	fn leaf(
+		&mut self,
+		text: &str,
+		range: Range<usize>,
+		opaque_until: usize,
+	) -> Option<Block> {
+		html_leaf_block(
+			self.source,
+			text,
+			range,
+			self.limits.html_scopes,
+			opaque_until,
+		)
 	}
-}
 
-fn push_block(stack: &mut [Frame], out: &mut Vec<Block>, block: Block) {
-	frame_target(stack, out).push(block);
-}
+	fn summary(&mut self, text: &str, source: &Range<usize>) -> RichText {
+		Reader::summary_rich(self, text, source)
+	}
 
-fn extend_blocks(
-	stack: &mut [Frame],
-	out: &mut Vec<Block>,
-	blocks: Vec<Block>,
-) {
-	frame_target(stack, out).extend(blocks);
+	fn opaque_until(&self, at: usize) -> usize {
+		Reader::opaque_until(self, at)
+	}
+
+	fn next_details_ordinal(&mut self) -> u32 {
+		let ordinal = self.details_ordinal;
+		self.details_ordinal += 1;
+		ordinal
+	}
 }
 
 fn map_source(
@@ -1266,18 +1056,6 @@ fn map_source(
 ) -> Range<usize> {
 	let mapped = original.range(range);
 	child.start + mapped.start..child.start + mapped.end
-}
-
-fn clamp_range(source: &str, range: Range<usize>) -> Range<usize> {
-	let mut start = range.start.min(source.len());
-	let mut end = range.end.min(source.len());
-	while !source.is_char_boundary(start) {
-		start -= 1;
-	}
-	while !source.is_char_boundary(end) {
-		end -= 1;
-	}
-	start..end.max(start)
 }
 
 fn html_leaf_block(
@@ -1319,48 +1097,6 @@ fn html_leaf_block(
 	let mut block = block_of(source, kind, range);
 	block.anchors = anchors;
 	Some(block)
-}
-
-fn block_of(source: &str, kind: BlockKind, range: Range<usize>) -> Block {
-	let range = clamp_range(source, range);
-	let id =
-		fingerprint(&(std::mem::discriminant(&kind), &source[range.clone()]));
-	Block {
-		anchors: Vec::new(),
-		id,
-		content_key: semantic_key(&kind),
-		source: range,
-		kind,
-	}
-}
-
-fn details_block_of(
-	source: &str,
-	open: bool,
-	ordinal: u32,
-	summary: RichText,
-	blocks: Vec<Block>,
-	range: Range<usize>,
-) -> Block {
-	let range = clamp_range(source, range);
-	let kind = BlockKind::Details {
-		open,
-		ordinal,
-		summary,
-		blocks,
-	};
-	let id = fingerprint(&(
-		std::mem::discriminant(&kind),
-		&source[range.clone()],
-		ordinal,
-	));
-	Block {
-		anchors: Vec::new(),
-		id,
-		content_key: semantic_key(&kind),
-		source: range,
-		kind,
-	}
 }
 
 /// What one AST child contributes to its parent's block list.

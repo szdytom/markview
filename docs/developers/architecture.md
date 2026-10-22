@@ -26,7 +26,9 @@ no source parser, font engine or drawing geometry.
 
 `markview-commonmark` converts CommonMark, Markview's extensions and the
 supported embedded HTML subset into that document. It owns full, prefix and
-incremental parsing, front matter and heading anchor assignment.
+incremental parsing, front matter and heading anchor assignment. Within it,
+`html.rs` only lexes tags, `container.rs` owns the raw-HTML container stack,
+and `parse.rs` keeps the source coordinates and the reader cursor.
 
 `markview-layout` consumes a document with layout options and resource metadata.
 It shapes text, lays out paragraphs, measures math and images, and exposes
