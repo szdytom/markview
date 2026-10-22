@@ -4,9 +4,76 @@ use super::{
 	chrome::{self, Chrome},
 };
 use crate::layout::{Draw, Scrollbar};
+use crate::settings::Setting;
 use crate::state::{ExportCommand, SettingsCommand};
 use std::time::Instant;
 impl<P: super::SendEvent> App<P> {
+	/// Settings commands. Page commands go through their component messages
+	/// first; the rest are host effects that outlive a page update.
+	pub(super) fn settings_command(&mut self, command: SettingsCommand) {
+		if self.page_command(crate::state::Command::Settings(command)) {
+			return;
+		}
+		match command {
+			SettingsCommand::Styles => {
+				self.readers.session.cancel_scroll_animation();
+				self.tab_strip.cancel_drag();
+				self.show_styles(false);
+				self.refresh_settings_resources(true);
+				self.interaction.widgets.focus = None;
+				self.redraw();
+			}
+			SettingsCommand::RetrySettingsLoad => {
+				self.refresh_settings_resources(true);
+				self.redraw();
+			}
+			SettingsCommand::StylesFolder => {
+				let result = crate::stylesheet::directory()
+					.ok_or_else(|| {
+						anyhow::anyhow!(
+							self.preferences
+								.values
+								.lang()
+								.status_no_stylesheet_directory()
+						)
+					})
+					.and_then(|dir| {
+						std::fs::create_dir_all(&dir)?;
+						markview_platform::open_external(dir)?;
+						Ok(())
+					});
+				if let Err(e) = result {
+					self.preferences.style_warning = Some(
+						crate::app::preferences::StyleWarning::Override(e),
+					);
+				}
+				self.redraw();
+			}
+			SettingsCommand::OpenConfig => {
+				let result = self.preferences.ensure_file().and_then(|()| {
+					markview_platform::open_external(
+						self.preferences.path().unwrap(),
+					)
+				});
+				if let Err(error) = result {
+					self.preferences.settings_warning = Some(
+						crate::settings::SettingsWarning::OpenFailed(error),
+					);
+				}
+				self.redraw();
+			}
+			SettingsCommand::SystemTheme => {
+				self.args.overrides.retain(|f| *f != Setting::Theme);
+				self.args.theme = None;
+				self.args.style = None;
+				self.preferences.follow_system();
+				self.apply_saved_settings();
+				self.preferences.schedule_save();
+			}
+			_ => unreachable!("page command handled above"),
+		}
+	}
+
 	pub(super) fn page_command(
 		&mut self,
 		action: crate::state::Command,

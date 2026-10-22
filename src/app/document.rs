@@ -8,8 +8,76 @@ use std::{
 use super::modal::Message;
 use super::viewer::Message as ViewerMessage;
 use super::{App, Event};
-use crate::state::Selection;
+use crate::state::{DocumentCommand, Selection};
 impl<P: super::SendEvent> App<P> {
+	/// Document commands: the URL and clipboard, the remote-image banner, the
+	/// outline, page replacement and the file picker.
+	pub(super) fn document_command(&mut self, command: DocumentCommand) {
+		match command {
+			DocumentCommand::OpenUrl => {
+				let url = self.url_input.text().trim().to_owned();
+				if !url.is_empty() {
+					self.open_web_page(url);
+					self.url_input.set_text(&mut self.ui, "");
+				}
+			}
+			DocumentCommand::NewPage => self.new_page(),
+			DocumentCommand::Open => {
+				if self.interaction.panel == crate::state::PanelPage::Tabs {
+					self.show_panel(crate::state::PanelPage::Closed);
+					self.redraw();
+				}
+				if self.dialog_open {
+					return;
+				}
+				self.dialog_open = true;
+				let proxy = self.proxy.clone();
+				markview_platform::pick_document(move |path| {
+					proxy.send(Event::Open(path));
+				});
+			}
+			DocumentCommand::CopyPath => self.copy_path(),
+			DocumentCommand::RemoteDismiss => {
+				// Both answers belong to this tab and this content revision.
+				self.readers.session.remote_notice_dismissed = true;
+				self.redraw();
+			}
+			DocumentCommand::RemoteLoadAll => {
+				self.readers.session.remote_notice_dismissed = true;
+				self.readers.session.load_all_images = true;
+				self.request(false);
+			}
+			DocumentCommand::Outline => self.toggle_outline(),
+			DocumentCommand::OutlineGoto(index) => self.goto_outline(index),
+			DocumentCommand::OutlineToggle(index) => {
+				self.toggle_outline_entry(index)
+			}
+			DocumentCommand::OutlineExpandAll
+			| DocumentCommand::OutlineCollapseAll => self.set_outline_collapsed(
+				command == DocumentCommand::OutlineCollapseAll,
+			),
+		}
+	}
+
+	fn copy_path(&mut self) {
+		if !self.preferences.values.footer_path {
+			return;
+		}
+		let Some(path) = self.readers.session.path.clone() else {
+			return;
+		};
+		let lang = self.preferences.values.lang();
+		let text = path.to_string_lossy().into_owned();
+		match self.clipboard.write(text) {
+			Ok(()) => self.notify(lang.status_copied_path(), false, 3),
+			Err(error) => self.notify(
+				&lang.status_copy_failed(error.to_string()),
+				true,
+				4,
+			),
+		}
+	}
+
 	pub(super) fn request(&mut self, follow: bool) {
 		self.update_media();
 		if let Some(mut request) = self.readers.request(self.options(), follow)

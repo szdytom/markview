@@ -6,11 +6,15 @@
 //! text a copy takes, the auto-scroll tick a drag in the margin arms, and the
 //! order in which an update rebases a selection before it is accepted.
 use super::*;
+use crate::app::Event;
 use crate::app::SendEvent;
 use crate::app::gestures::Inertia;
 use crate::app::window::Loop;
 use crate::layout::{LayoutEngine, LayoutOptions, LayoutSnapshot};
-use crate::state::{ChromeCommand, DocumentCommand, SettingsCommand};
+use crate::state::{
+	ChromeCommand, DocumentCommand, ExportCommand, SearchCommand,
+	SettingsCommand,
+};
 use crate::state::{Drag, Grain, HoveredLink, Point};
 use crate::worker::{ReaderSnapshot, Update};
 use markview_document::Document;
@@ -1940,6 +1944,127 @@ fn permission_modals_over_forms_keep_close_geometry_and_own_input() {
 		assert!(!app.interaction.overlays.modal_open());
 		assert_eq!(app.interaction.panel, page);
 		app.overlay();
+	}
+}
+
+/// Every domain command observes the same pre-dispatch rules, and an open
+/// confirmation does not change them: routing still leaves the text input,
+/// cancels the gesture that was in flight and reaches the command's owner,
+/// while the confirmation keeps owning input until it is answered.
+#[test]
+fn each_domain_observes_the_shared_preamble_while_a_confirmation_owns_input() {
+	use crate::app::font_panel;
+	use crate::app::frame::Caption;
+	use crate::app::modal::{Message, Modal};
+	use crate::state::{DropdownId, TextField};
+
+	fn open_question(app: &mut App<StubProxy>) {
+		app.interaction
+			.overlays
+			.modal
+			.send(Message::Open(Modal::OpenLocal {
+				path: PathBuf::from("/tmp/file.bin"),
+				dir: PathBuf::from("/tmp"),
+				document_dir: None,
+			}));
+	}
+
+	type Case = (Command, &'static str, fn(&mut App<StubProxy>) -> bool);
+	let cases: &[Case] = &[
+		(
+			Command::Document(DocumentCommand::RemoteDismiss),
+			"document",
+			|app| app.readers.session.remote_notice_dismissed,
+		),
+		(
+			Command::Settings(SettingsCommand::Align),
+			"settings",
+			|app| {
+				app.preferences.values.justify
+					!= crate::settings::ReaderSettings::default().justify
+			},
+		),
+		(
+			Command::Export(ExportCommand::ExportSize(1)),
+			"export",
+			|app| {
+				app.preferences.export.font_size
+					> crate::settings::ExportSettings::default().font_size
+			},
+		),
+		(
+			Command::Chrome(ChromeCommand::ToggleDropdown(
+				DropdownId::TabStyle,
+				0,
+			)),
+			"chrome",
+			|app| app.interaction.overlays.dropdown_open(),
+		),
+		(
+			Command::Search(SearchCommand::SearchCase),
+			"search",
+			|app| app.readers.session.search.options.case_sensitive,
+		),
+		(
+			Command::Fonts(font_panel::Command::Choosers),
+			"fonts",
+			|app| app.preferences.fonts.choosers(),
+		),
+	];
+	for (command, domain, effect) in cases {
+		let (mut app, _) = reader(SOURCE, 760.);
+		open_question(&mut app);
+		app.interaction.widgets.focus = Some(
+			Command::Chrome(ChromeCommand::FocusInput(TextField::Search))
+				.widget_id(),
+		);
+		app.frame.pressed = Some(Caption::Close);
+		app.action(*command);
+		assert!(
+			app.interaction.overlays.modal_open(),
+			"{domain}: a routed command must not answer the confirmation"
+		);
+		assert!(
+			app.focused_input().is_none(),
+			"{domain}: the preamble leaves the text input"
+		);
+		assert_eq!(
+			app.frame.pressed, None,
+			"{domain}: the preamble cancels the gesture"
+		);
+		assert!(
+			(*effect)(&mut app),
+			"{domain}: the command reaches its owner"
+		);
+	}
+
+	// Commands that take the page away from search close it before their own
+	// effects, whether or not a confirmation is open.
+	for command in [
+		Command::Chrome(ChromeCommand::Settings),
+		Command::Chrome(ChromeCommand::SettingsTab(
+			crate::state::PanelTab::Generic,
+		)),
+		Command::Settings(SettingsCommand::Styles),
+		Command::Export(ExportCommand::Export),
+		Command::Export(ExportCommand::ExportStyles),
+		Command::Chrome(ChromeCommand::Tabs),
+		Command::Chrome(ChromeCommand::SidebarTab(
+			crate::state::SidebarTab::Folder,
+		)),
+	] {
+		let (mut app, _) = reader(SOURCE, 760.);
+		open_question(&mut app);
+		app.readers.session.search.open = true;
+		app.action(command);
+		assert!(
+			!app.readers.session.search.open,
+			"{command:?}: the page leaves search"
+		);
+		assert!(
+			app.interaction.overlays.modal_open(),
+			"{command:?}: the confirmation keeps owning input"
+		);
 	}
 }
 

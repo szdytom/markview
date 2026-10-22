@@ -2,7 +2,7 @@
 
 The original `artifacts/complexity-triage.csv` lists 83 functions and closures above the maximum of 15. The table records their disposition in commit order, from low-risk local changes to larger coupled pipelines. Each item has its own formatted, linted and tested commit.
 
-64 entries were refactored and 19 retain explicit function-level exceptions. The window-event extraction also marks three stateful input handlers, and the settings field mapping adds `copy_field`, giving 23 measured exceptions in the completed source tree. Reasons live beside the functions and are printed by the audit; neither modules nor nested functions inherit an exception.
+64 entries were refactored and 19 retain explicit function-level exceptions. The window-event extraction later marked two more stateful input handlers (`scroll_event`, `dispatch_key`), and `pointer_pressed` and `copy_field` were exceptions added during review. `pointer_pressed` (C3, pointer ownership), `copy_field` (C9, the derived settings table) and `action` (C11, domain command routing) have since been refactored away, leaving 20 measured exceptions in the completed source tree: 18 of the table's exceptions plus the two input handlers. Reasons live beside the functions and are printed by the audit; neither modules nor nested functions inherit an exception.
 
 Run `cargo run -p xtask --locked -- complexity` to audit every production workspace target and platform module. Tests, test support, examples and benchmarks are excluded; macro bodies are not expanded. CI runs this command unconditionally in the checks matrix and its failure propagates to the aggregate `ci` job.
 
@@ -89,5 +89,7 @@ Run `cargo run -p xtask --locked -- complexity` to audit every production worksp
 | 11 | `crates/markview-layout/src/layout/blocks.rs` — `block_inner` | 40 | Explicit exception | [0833c5c](https://github.com/szdytom/markview/commit/0833c5c) |
 | 53 | `src/app/lifecycle.rs` — `handle_user_event` | 59 | Explicit exception | [b1c1a7f](https://github.com/szdytom/markview/commit/b1c1a7f) |
 | 14 | `crates/markview-layout/src/layout/paragraph.rs` — `paragraph_bounded` | 63 | Explicit exception | [701a571](https://github.com/szdytom/markview/commit/701a571) |
-| 49 | `src/app/interaction.rs` — `action` | 70 | Explicit exception | [cc17c51](https://github.com/szdytom/markview/commit/cc17c51) |
+| 49 | `src/app/interaction.rs` — `action` | 76 | Refactored | C11 |
 | 63 | `src/app/window.rs` — `handle_window_event` | 163 | Refactored | [8e8cec5](https://github.com/szdytom/markview/commit/8e8cec5) |
+
+`action` is the one row without a commit link: its refactor ships in the commit that adds this note (C11), so no earlier hash names it.

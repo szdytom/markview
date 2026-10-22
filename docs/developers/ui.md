@@ -70,6 +70,33 @@ command in its domain changes the key's text, never the press-to-release
 mapping. `settings_dependent` is the domain-level precheck that keeps a command
 off a settings catalogue that is still loading.
 
+`app/interaction.rs::action` is the only router. Keyboard shortcuts in
+`dispatch_key`, widget messages and pointer gestures all call it, so every host
+command observes the same preamble before any domain sees it:
+
+```text
+action(command)
+├── settings_action_enabled?      reject while the settings catalogue loads
+├── FocusInput?                   focus the text field and stop
+├── prepare_command               close search, blur input, end gestures
+└── match command
+     ├── Document → document_command   src/app/document.rs
+     ├── Settings → settings_command   src/app/ui.rs
+     ├── Export   → export_command     src/app/export_panel.rs
+     ├── Chrome   → chrome_command     src/app/interaction.rs
+     ├── Search   → search_command     src/app/search.rs
+     └── Fonts    → fonts_command      src/app/interaction.rs
+```
+
+Each handler matches only its own domain enum and touches only that domain's
+state; shared cleanup happens once, before the match. Settings and export page
+commands still go through `page_command` first, which routes them as component
+messages, so a page setting never reflows the reader. Chrome's folder, tab,
+panel, dropdown and confirmation arms are separate helpers in the same module;
+cross-domain effects such as ending a pointer gesture before an export call the
+owner's method instead of writing its field. Routing is direct calls with `Copy`
+commands, so the 120 Hz input path gains no queue or allocation.
+
 Hover previews are transient chrome state, not a component: pointer motion arms
 a fixed delay, the event loop's tick opens a shared card with the target's
 wrapped title, detail line and optional page body, and the renderer composes

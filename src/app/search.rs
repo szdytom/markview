@@ -192,6 +192,34 @@ impl Drop for Worker {
 	}
 }
 impl<P: SendEvent> App<P> {
+	/// Search commands: opening and closing the bar, moving between matches
+	/// and toggling the matching options.
+	pub(super) fn search_command(&mut self, command: SearchCommand) {
+		match command {
+			SearchCommand::SearchOpen => self.open_new_search(),
+			SearchCommand::SearchClose => self.close_search(),
+			SearchCommand::SearchNext | SearchCommand::SearchPrevious => {
+				self.navigate_search(command == SearchCommand::SearchPrevious);
+				self.interaction.widgets.focus = Some(
+					Command::Chrome(ChromeCommand::FocusInput(
+						TextField::Search,
+					))
+					.widget_id(),
+				);
+				self.sync_input();
+			}
+			SearchCommand::SearchCase | SearchCommand::SearchWord => {
+				let options = &mut self.readers.session.search.options;
+				if command == SearchCommand::SearchCase {
+					options.case_sensitive = !options.case_sensitive;
+				} else {
+					options.whole_word = !options.whole_word;
+				}
+				self.search_changed();
+			}
+		}
+	}
+
 	pub(super) fn bottom(&self) -> f32 {
 		bottom(self.readers.session.search.open)
 	}

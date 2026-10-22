@@ -7,6 +7,46 @@ use crate::{
 };
 use markview_ui_core::{Component, Invalidation, Update};
 
+impl<P: super::SendEvent> super::App<P> {
+	/// Export commands. The panel's settings go through its component messages
+	/// first; opening the panel, the chooser and a run are host effects.
+	pub(super) fn export_command(&mut self, command: ExportCommand) {
+		if self.page_command(Command::Export(command)) {
+			return;
+		}
+		match command {
+			ExportCommand::Export => {
+				self.readers.session.cancel_scroll_animation();
+				self.tab_strip.cancel_drag();
+				if !self.interaction.export_open()
+					&& self.readers.session.path.is_none()
+				{
+					self.notify(
+						self.preferences.values.lang().status_open_first(),
+						true,
+						4,
+					);
+					return;
+				}
+				self.toggle_export();
+				self.refresh_hover();
+				self.redraw();
+			}
+			ExportCommand::ExportStyles => {
+				self.readers.session.cancel_scroll_animation();
+				self.tab_strip.cancel_drag();
+				self.show_styles(true);
+				self.refresh_settings_resources(true);
+				self.interaction.widgets.focus = None;
+				self.redraw();
+			}
+			ExportCommand::ExportRun => self.start_export(false),
+			ExportCommand::ExportAndWatch => self.start_export(true),
+			_ => unreachable!("page command handled above"),
+		}
+	}
+}
+
 pub enum Message {
 	Style(super::style_edit::Edit),
 	Format(ExportFormat),

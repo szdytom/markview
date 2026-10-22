@@ -2,15 +2,14 @@
 use crate::cli::Mode;
 use crate::settings::Setting;
 use crate::state::{
-	ChromeCommand, DocumentCommand, ExportCommand, SearchCommand,
-	SettingsCommand,
+	ChromeCommand, ExportCommand, SearchCommand, SettingsCommand,
 };
 use crate::state::{Command, PanelPage, ScrollbarAxis, ScrollbarDrag};
 use markview_layout::text::TextPosition;
 use std::time::{Duration, Instant};
 
 use super::modal::{Message, Modal};
-use super::{App, Event, TOP};
+use super::{App, TOP};
 
 use crate::state::Selection;
 fn sanitize_filename(title: &str, lang: crate::lang::Lang) -> String {
@@ -38,26 +37,35 @@ fn sanitize_filename(title: &str, lang: crate::lang::Lang) -> String {
 }
 
 impl<P: super::SendEvent> App<P> {
-	#[cfg_attr(
-		any(),
-		markview::allow_complexity(
-			reason = "Keep exhaustive command dispatch with shared input and gesture cleanup; every host command must observe the same pre-dispatch ownership rules."
-		)
-	)]
-	pub(super) fn action(&mut self, action: Command) {
-		if !self.settings_action_enabled(action) {
+	/// Routes one command to the domain that owns its state.
+	///
+	/// The pre-dispatch rules run once, before any domain sees the command:
+	/// an unavailable settings catalogue rejects it, input focus is a special
+	/// case, and every other command leaves search, the text input and any
+	/// pointer gesture to its owner.
+	pub(super) fn action(&mut self, command: Command) {
+		if !self.settings_action_enabled(command) {
 			return;
 		}
-		if let Command::Chrome(ChromeCommand::FocusInput(id)) = action {
-			self.interaction.widgets.focus = Some(
-				Command::Chrome(ChromeCommand::FocusInput(id)).widget_id(),
-			);
-			self.sync_input();
-			self.redraw();
+		if let Command::Chrome(ChromeCommand::FocusInput(field)) = command {
+			self.focus_input(field);
 			return;
 		}
+		self.prepare_command(command);
+		match command {
+			Command::Document(command) => self.document_command(command),
+			Command::Settings(command) => self.settings_command(command),
+			Command::Export(command) => self.export_command(command),
+			Command::Chrome(command) => self.chrome_command(command),
+			Command::Search(command) => self.search_command(command),
+			Command::Fonts(command) => self.fonts_command(command),
+		}
+	}
+
+	/// The ownership rules every command observes before its domain sees it.
+	fn prepare_command(&mut self, command: Command) {
 		if matches!(
-			action,
+			command,
 			Command::Chrome(ChromeCommand::Settings)
 				| Command::Chrome(ChromeCommand::SettingsTab(_))
 				| Command::Settings(SettingsCommand::Styles)
@@ -70,7 +78,7 @@ impl<P: super::SendEvent> App<P> {
 		}
 		// Search navigation keeps the IME open while moving between results.
 		if !matches!(
-			action,
+			command,
 			Command::Search(SearchCommand::SearchNext)
 				| Command::Search(SearchCommand::SearchPrevious)
 		) {
@@ -79,300 +87,94 @@ impl<P: super::SendEvent> App<P> {
 				self.interaction.widgets.focus = None;
 			}
 		}
-
 		self.cancel_gestures();
 		// A command replaces what a glide was moving, so the viewport's
 		// gesture is abandoned with the reader's own motion.
 		self.abandon_dm();
-		// Export-panel changes own their settings and never reflow the reader.
-		if self.page_command(action) {
-			return;
-		}
-		match action {
-			Command::Document(DocumentCommand::OpenUrl) => {
-				let url = self.url_input.text().trim().to_owned();
-				if !url.is_empty() {
-					self.open_web_page(url);
-					self.url_input.set_text(&mut self.ui, "");
-				}
+	}
+
+	fn focus_input(&mut self, field: crate::state::TextField) {
+		self.interaction.widgets.focus =
+			Some(Command::Chrome(ChromeCommand::FocusInput(field)).widget_id());
+		self.sync_input();
+		self.redraw();
+	}
+
+	/// Chrome commands: tabs, the settings page, folders, the dropdown and the
+	/// confirmation.
+	fn chrome_command(&mut self, command: ChromeCommand) {
+		match command {
+			ChromeCommand::FocusInput(_) => {
+				unreachable!("input focus handled before routing")
 			}
-			Command::Search(SearchCommand::SearchOpen) => {
-				self.open_new_search();
-			}
-			Command::Search(SearchCommand::SearchClose) => {
-				self.close_search();
-			}
-			Command::Search(SearchCommand::SearchNext)
-			| Command::Search(SearchCommand::SearchPrevious) => {
-				self.navigate_search(
-					action == Command::Search(SearchCommand::SearchPrevious),
-				);
-				self.interaction.widgets.focus = Some(
-					Command::Chrome(ChromeCommand::FocusInput(
-						crate::state::TextField::Search,
-					))
-					.widget_id(),
-				);
-				self.sync_input();
-			}
-			Command::Search(SearchCommand::SearchCase)
-			| Command::Search(SearchCommand::SearchWord) => {
-				let options = &mut self.readers.session.search.options;
-				if action == Command::Search(SearchCommand::SearchCase) {
-					options.case_sensitive = !options.case_sensitive;
-				} else {
-					options.whole_word = !options.whole_word;
-				}
-				self.search_changed();
-			}
-			Command::Chrome(ChromeCommand::FocusInput(_)) => {
-				unreachable!("input focus handled above")
-			}
-			Command::Chrome(ChromeCommand::OpenProject) => {
+			ChromeCommand::OpenProject => {
 				self.launch(env!("CARGO_PKG_REPOSITORY"));
 			}
-			Command::Chrome(ChromeCommand::CopyDiagnostics) => {
-				let text = crate::diagnostics::report(
-					self.renderer.as_ref().map(|renderer| renderer.backend),
-				);
-				match self.clipboard.write(text) {
-					Ok(()) => self.notify(
-						self.preferences
-							.values
-							.lang()
-							.status_copied_diagnostics(),
-						false,
-						3,
-					),
-					Err(error) => self.notify(
-						&self
-							.preferences
-							.values
-							.lang()
-							.status_diagnostics_failed(format!("{error}")),
-						true,
-						4,
-					),
-				}
-				self.redraw();
+			ChromeCommand::CopyDiagnostics => self.copy_diagnostics(),
+			ChromeCommand::Tabs
+			| ChromeCommand::SidebarTab(_)
+			| ChromeCommand::SelectTab(_)
+			| ChromeCommand::CloseTab(_) => self.chrome_tab_command(command),
+			ChromeCommand::Settings | ChromeCommand::SettingsTab(_) => {
+				self.chrome_panel_command(command)
 			}
-			Command::Document(DocumentCommand::CopyPath) => {
-				if !self.preferences.values.footer_path {
-					return;
-				}
-				let Some(path) = self.readers.session.path.clone() else {
-					return;
-				};
-				let lang = self.preferences.values.lang();
-				let text = path.to_string_lossy().into_owned();
-				match self.clipboard.write(text) {
-					Ok(()) => self.notify(lang.status_copied_path(), false, 3),
-					Err(error) => self.notify(
-						&lang.status_copy_failed(error.to_string()),
-						true,
-						4,
-					),
-				}
+			ChromeCommand::OpenFolder
+			| ChromeCommand::Folder
+			| ChromeCommand::FolderRoot
+			| ChromeCommand::FolderEntry(_)
+			| ChromeCommand::FolderCollapseAll
+			| ChromeCommand::FolderRefresh
+			| ChromeCommand::RevealFolder => self.chrome_folder_command(command),
+			ChromeCommand::ToggleDropdown(id, highlight) => {
+				self.chrome_dropdown_command(id, highlight)
 			}
-			Command::Chrome(ChromeCommand::Tabs) => self.toggle_phone_sidebar(),
-			Command::Chrome(ChromeCommand::SidebarTab(tab)) => {
-				self.switch_sidebar_tab(tab)
-			}
-			Command::Chrome(ChromeCommand::SelectTab(index)) => {
+			ChromeCommand::ModalDismiss
+			| ChromeCommand::ModalOpenFolder
+			| ChromeCommand::ModalConfirm => self.chrome_modal_command(command),
+		}
+	}
+
+	fn copy_diagnostics(&mut self) {
+		let text = crate::diagnostics::report(
+			self.renderer.as_ref().map(|renderer| renderer.backend),
+		);
+		match self.clipboard.write(text) {
+			Ok(()) => self.notify(
+				self.preferences.values.lang().status_copied_diagnostics(),
+				false,
+				3,
+			),
+			Err(error) => self.notify(
+				&self
+					.preferences
+					.values
+					.lang()
+					.status_diagnostics_failed(format!("{error}")),
+				true,
+				4,
+			),
+		}
+		self.redraw();
+	}
+
+	fn chrome_tab_command(&mut self, command: ChromeCommand) {
+		match command {
+			ChromeCommand::Tabs => self.toggle_phone_sidebar(),
+			ChromeCommand::SidebarTab(tab) => self.switch_sidebar_tab(tab),
+			ChromeCommand::SelectTab(index) => {
 				if self.interaction.panel == PanelPage::Tabs {
 					self.show_panel(PanelPage::Closed);
 				}
 				self.select_tab(index);
 			}
-			Command::Chrome(ChromeCommand::ModalDismiss) => {
-				self.interaction.overlays.modal.send(Message::Dismiss);
-				self.interaction.widgets.focus = None;
-				self.refresh_hover();
-				self.redraw();
-			}
-			Command::Chrome(ChromeCommand::ModalOpenFolder) => {
-				if let Some(Modal::OpenLocal { dir, .. }) =
-					self.interaction.overlays.modal().cloned()
-				{
-					self.interaction.overlays.modal.send(Message::Dismiss);
-					self.interaction.widgets.focus = None;
-					self.launch(&dir.display().to_string());
-				}
-			}
-			Command::Chrome(ChromeCommand::ModalConfirm) => {
-				if let Some(modal) = self.interaction.overlays.modal.take() {
-					self.interaction.widgets.focus = None;
-					match modal {
-						Modal::OpenLocal { path, .. } => {
-							self.launch(&path.display().to_string())
-						}
-						Modal::Permission { resource, resume } => {
-							self.confirm_permission(resource, resume)
-						}
-					}
-				}
-			}
-			Command::Document(DocumentCommand::RemoteDismiss) => {
-				// Both answers belong to this tab and this content revision.
-				self.readers.session.remote_notice_dismissed = true;
-				self.redraw();
-			}
-			Command::Document(DocumentCommand::RemoteLoadAll) => {
-				self.readers.session.remote_notice_dismissed = true;
-				self.readers.session.load_all_images = true;
-				self.request(false);
-			}
-			Command::Document(DocumentCommand::Outline) => {
-				self.toggle_outline();
-			}
-			Command::Document(DocumentCommand::OutlineToggle(index)) => {
-				self.toggle_outline_entry(index);
-			}
-			Command::Document(DocumentCommand::OutlineExpandAll)
-			| Command::Document(DocumentCommand::OutlineCollapseAll) => {
-				self.set_outline_collapsed(
-					action
-						== Command::Document(
-							DocumentCommand::OutlineCollapseAll,
-						),
-				);
-			}
-			Command::Document(DocumentCommand::OutlineGoto(index)) => {
-				self.goto_outline(index);
-			}
-			Command::Chrome(ChromeCommand::CloseTab(index)) => {
-				self.close_tab(index);
-			}
-			Command::Settings(SettingsCommand::Styles) => {
-				self.readers.session.cancel_scroll_animation();
-				self.tab_strip.cancel_drag();
-				self.show_styles(false);
-				self.refresh_settings_resources(true);
-				self.interaction.widgets.focus = None;
-				self.redraw();
-			}
-			Command::Export(ExportCommand::ExportStyles) => {
-				self.readers.session.cancel_scroll_animation();
-				self.tab_strip.cancel_drag();
-				self.show_styles(true);
-				self.refresh_settings_resources(true);
-				self.interaction.widgets.focus = None;
-				self.redraw();
-			}
-			Command::Export(ExportCommand::Export) => {
-				self.readers.session.cancel_scroll_animation();
-				self.tab_strip.cancel_drag();
-				if !self.interaction.export_open()
-					&& self.readers.session.path.is_none()
-				{
-					self.notify(
-						self.preferences.values.lang().status_open_first(),
-						true,
-						4,
-					);
-					return;
-				}
-				self.toggle_export();
-				self.refresh_hover();
-				self.redraw();
-			}
-			Command::Export(ExportCommand::ExportRun) => {
-				self.start_export(false);
-			}
-			Command::Export(ExportCommand::ExportAndWatch) => {
-				self.start_export(true);
-			}
-			// Applied by `page_command` before this match.
-			Command::Settings(SettingsCommand::FooterPath)
-			| Command::Export(ExportCommand::ExportFormat(_))
-			| Command::Export(ExportCommand::ExportSize(_))
-			| Command::Export(ExportCommand::ExportIndent(_))
-			| Command::Export(ExportCommand::ExportPaper(_))
-			| Command::Export(ExportCommand::ExportOrientation(_))
-			| Command::Export(ExportCommand::ExportMargin(_))
-			| Command::Export(ExportCommand::ExportScale(_)) => {}
-			Command::Fonts(command) => {
-				// Switching the page's view leaves the chooser rows the open
-				// list anchors to, so the list goes with them.
-				if matches!(
-					command,
-					super::font_panel::Command::StatusFilter(_)
-						| super::font_panel::Command::Choosers
-				) {
-					self.interaction
-						.overlays
-						.dropdown
-						.send(super::dropdown::Message::Close);
-				}
-				self.font_message(super::font_panel::Message::Command {
-					command,
-					offline: self.args.offline,
-				});
-				self.refresh_settings_resources(false);
-				self.redraw();
-			}
-			Command::Settings(SettingsCommand::RetrySettingsLoad) => {
-				self.refresh_settings_resources(true);
-				self.redraw();
-			}
-			Command::Chrome(ChromeCommand::SettingsTab(tab)) => {
-				self.show_panel(PanelPage::Settings(tab));
-				self.refresh_settings_resources(true);
-				self.interaction.widgets.focus = None;
-				self.redraw();
-			}
-			Command::Settings(SettingsCommand::StylesFolder) => {
-				let result = crate::stylesheet::directory()
-					.ok_or_else(|| {
-						anyhow::anyhow!(
-							self.preferences
-								.values
-								.lang()
-								.status_no_stylesheet_directory()
-						)
-					})
-					.and_then(|dir| {
-						std::fs::create_dir_all(&dir)?;
-						markview_platform::open_external(dir)?;
-						Ok(())
-					});
-				if let Err(e) = result {
-					self.preferences.style_warning = Some(
-						crate::app::preferences::StyleWarning::Override(e),
-					);
-				}
-				self.redraw();
-			}
-			Command::Settings(SettingsCommand::StyleToggle(_))
-			| Command::Settings(SettingsCommand::StyleUp(_))
-			| Command::Settings(SettingsCommand::StyleDown(_))
-			| Command::Export(ExportCommand::ExportStyleToggle(_))
-			| Command::Export(ExportCommand::ExportStyleUp(_))
-			| Command::Export(ExportCommand::ExportStyleDown(_)) => {
-				unreachable!("page command handled above")
-			}
-			Command::Settings(SettingsCommand::OpenConfig) => {
-				let result = self.preferences.ensure_file().and_then(|()| {
-					markview_platform::open_external(
-						self.preferences.path().unwrap(),
-					)
-				});
-				if let Err(error) = result {
-					self.preferences.settings_warning = Some(
-						crate::settings::SettingsWarning::OpenFailed(error),
-					);
-				}
-				self.redraw();
-			}
-			Command::Settings(SettingsCommand::SystemTheme) => {
-				self.args.overrides.retain(|f| *f != Setting::Theme);
-				self.args.theme = None;
-				self.args.style = None;
-				self.preferences.follow_system();
-				self.apply_saved_settings();
-				self.preferences.schedule_save();
-			}
-			Command::Chrome(ChromeCommand::Settings) => {
+			ChromeCommand::CloseTab(index) => self.close_tab(index),
+			_ => unreachable!("not a tab command"),
+		}
+	}
+
+	fn chrome_panel_command(&mut self, command: ChromeCommand) {
+		match command {
+			ChromeCommand::Settings => {
 				self.readers.session.cancel_scroll_animation();
 				self.tab_strip.cancel_drag();
 				self.toggle_settings();
@@ -384,22 +186,31 @@ impl<P: super::SendEvent> App<P> {
 				self.refresh_hover();
 				self.redraw();
 			}
-			Command::Document(DocumentCommand::NewPage) => {
-				self.new_page();
+			ChromeCommand::SettingsTab(tab) => {
+				self.show_panel(PanelPage::Settings(tab));
+				self.refresh_settings_resources(true);
+				self.interaction.widgets.focus = None;
+				self.redraw();
 			}
-			Command::Chrome(ChromeCommand::OpenFolder) => self.pick_folder(),
-			Command::Chrome(ChromeCommand::Folder) => self.toggle_folder(),
-			Command::Chrome(ChromeCommand::FolderRoot) => {
+			_ => unreachable!("not a settings-panel command"),
+		}
+	}
+
+	fn chrome_folder_command(&mut self, command: ChromeCommand) {
+		match command {
+			ChromeCommand::OpenFolder => self.pick_folder(),
+			ChromeCommand::Folder => self.toggle_folder(),
+			ChromeCommand::FolderRoot => {
 				if let Some(tree) = &mut self.folder.tree {
 					tree.toggle_root();
 					self.scroll_folder(0.);
 					self.redraw();
 				}
 			}
-			Command::Chrome(ChromeCommand::FolderEntry(index)) => {
+			ChromeCommand::FolderEntry(index) => {
 				self.activate_folder_entry(index)
 			}
-			Command::Chrome(ChromeCommand::FolderCollapseAll) => {
+			ChromeCommand::FolderCollapseAll => {
 				if let Some(tree) = &mut self.folder.tree {
 					tree.collapse_all();
 					self.folder.grab = None;
@@ -408,26 +219,12 @@ impl<P: super::SendEvent> App<P> {
 					self.redraw();
 				}
 			}
-			Command::Chrome(ChromeCommand::FolderRefresh) => {
+			ChromeCommand::FolderRefresh => {
 				if let Some(tree) = &self.folder.tree {
 					self.open_folder(tree.root.clone(), false);
 				}
 			}
-			Command::Document(DocumentCommand::Open) => {
-				if self.interaction.panel == PanelPage::Tabs {
-					self.show_panel(PanelPage::Closed);
-					self.redraw();
-				}
-				if self.dialog_open {
-					return;
-				}
-				self.dialog_open = true;
-				let proxy = self.proxy.clone();
-				markview_platform::pick_document(move |path| {
-					proxy.send(Event::Open(path));
-				});
-			}
-			Command::Chrome(ChromeCommand::RevealFolder) => {
+			ChromeCommand::RevealFolder => {
 				let dir = self
 					.readers
 					.session
@@ -460,48 +257,88 @@ impl<P: super::SendEvent> App<P> {
 					}
 				}
 			}
-			Command::Settings(SettingsCommand::Smaller)
-			| Command::Settings(SettingsCommand::Larger)
-			| Command::Settings(SettingsCommand::Narrower)
-			| Command::Settings(SettingsCommand::Wider)
-			| Command::Settings(SettingsCommand::Align)
-			| Command::Settings(SettingsCommand::Hyphens)
-			| Command::Settings(SettingsCommand::CodeWrap)
-			| Command::Settings(SettingsCommand::Indent(_))
-			| Command::Settings(SettingsCommand::CjkType(_))
-			| Command::Settings(SettingsCommand::Language(_))
-			| Command::Settings(SettingsCommand::FontFamily(_, _))
-			| Command::Settings(SettingsCommand::WindowLayout(_))
-			| Command::Settings(SettingsCommand::TabStyle(_))
-			| Command::Settings(SettingsCommand::SingleInstance)
-			| Command::Settings(SettingsCommand::RestoreSession)
-			| Command::Settings(SettingsCommand::ScrollSpeed(_))
-			| Command::Settings(SettingsCommand::SidebarWidth(_, _))
-			| Command::Settings(SettingsCommand::Reset)
-			| Command::Settings(SettingsCommand::SettingsPreview) => {
-				unreachable!("page command handled above")
-			}
-			Command::Chrome(ChromeCommand::ToggleDropdown(id, highlight)) => {
-				let same = self
-					.interaction
-					.overlays
-					.dropdown
-					.current()
-					.is_some_and(|open| open.id() == id);
-				if same {
-					self.close_dropdown();
-				} else {
-					// The list owns the page's scroll from here: freeze its
-					// anchor instead of easing it out from under the list.
-					self.cancel_panel_scroll();
-					self.interaction
-						.overlays
-						.dropdown
-						.send(super::dropdown::Message::Open { id, highlight });
-				}
+			_ => unreachable!("not a folder command"),
+		}
+	}
+
+	fn chrome_dropdown_command(
+		&mut self,
+		id: crate::state::DropdownId,
+		highlight: usize,
+	) {
+		let same = self
+			.interaction
+			.overlays
+			.dropdown
+			.current()
+			.is_some_and(|open| open.id() == id);
+		if same {
+			self.close_dropdown();
+		} else {
+			// The list owns the page's scroll from here: freeze its anchor
+			// instead of easing it out from under the list.
+			self.cancel_panel_scroll();
+			self.interaction
+				.overlays
+				.dropdown
+				.send(super::dropdown::Message::Open { id, highlight });
+		}
+		self.redraw();
+	}
+
+	fn chrome_modal_command(&mut self, command: ChromeCommand) {
+		match command {
+			ChromeCommand::ModalDismiss => {
+				self.interaction.overlays.modal.send(Message::Dismiss);
+				self.interaction.widgets.focus = None;
+				self.refresh_hover();
 				self.redraw();
 			}
+			ChromeCommand::ModalOpenFolder => {
+				if let Some(Modal::OpenLocal { dir, .. }) =
+					self.interaction.overlays.modal().cloned()
+				{
+					self.interaction.overlays.modal.send(Message::Dismiss);
+					self.interaction.widgets.focus = None;
+					self.launch(&dir.display().to_string());
+				}
+			}
+			ChromeCommand::ModalConfirm => {
+				if let Some(modal) = self.interaction.overlays.modal.take() {
+					self.interaction.widgets.focus = None;
+					match modal {
+						Modal::OpenLocal { path, .. } => {
+							self.launch(&path.display().to_string())
+						}
+						Modal::Permission { resource, resume } => {
+							self.confirm_permission(resource, resume)
+						}
+					}
+				}
+			}
+			_ => unreachable!("not a modal command"),
 		}
+	}
+
+	fn fonts_command(&mut self, command: super::font_panel::Command) {
+		// Switching the page's view leaves the chooser rows the open list
+		// anchors to, so the list goes with them.
+		if matches!(
+			command,
+			super::font_panel::Command::StatusFilter(_)
+				| super::font_panel::Command::Choosers
+		) {
+			self.interaction
+				.overlays
+				.dropdown
+				.send(super::dropdown::Message::Close);
+		}
+		self.font_message(super::font_panel::Message::Command {
+			command,
+			offline: self.args.offline,
+		});
+		self.refresh_settings_resources(false);
+		self.redraw();
 	}
 
 	pub(super) fn setting_changed(&mut self, field: Option<Setting>) {
