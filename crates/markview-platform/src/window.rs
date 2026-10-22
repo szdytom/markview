@@ -79,6 +79,11 @@ pub fn window_attributes(
 			.with_decorations(false)
 			.with_undecorated_shadow(true)
 			.with_corner_preference(CornerPreference::Round)
+			// A window that is visible while `CreateWindowEx` runs is composed
+			// and painted by the shell before the reader can present a frame,
+			// so startup shows a blank window until the first frame arrives.
+			// `reveal` shows it once that frame is ready instead.
+			.with_visible(false)
 	};
 	#[cfg(target_os = "linux")]
 	let attributes = {
@@ -89,6 +94,19 @@ pub fn window_attributes(
 	};
 	let _ = native_buttons;
 	crate::icon::with_icon(attributes)
+}
+
+/// Whether a new window stays hidden until the reader has a frame for it.
+pub fn starts_hidden() -> bool {
+	cfg!(windows)
+}
+
+/// Shows a window this platform created hidden; a no-op elsewhere.
+pub fn reveal(window: &Window) {
+	#[cfg(windows)]
+	window.set_visible(true);
+	#[cfg(not(windows))]
+	let _ = window;
 }
 
 pub fn pending_documents_loop<T: 'static>(
