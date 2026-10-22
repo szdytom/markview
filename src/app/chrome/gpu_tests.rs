@@ -1,5 +1,8 @@
 use crate::app::modal::{Message, Modal, PermissionAction};
 use crate::state::Command;
+use crate::state::{
+	ChromeCommand, DocumentCommand, ExportCommand, SettingsCommand,
+};
 use crate::state::{PanelPage, PanelTab};
 use crate::{
 	layout::LayoutEngine,
@@ -89,9 +92,9 @@ fn settings_and_selection_frame() -> Result<()> {
 				focus_visible: true,
 				focus: Some(
 					(if panel_open {
-						Command::Larger
+						Command::Settings(SettingsCommand::Larger)
 					} else {
-						Command::Settings
+						Command::Chrome(ChromeCommand::Settings)
 					})
 					.widget_id(),
 				),
@@ -378,7 +381,9 @@ fn notice_strip_and_confirmation_frames() -> Result<()> {
 		let mut relative = InteractionState {
 			widgets: markview_ui_core::Interaction {
 				focus_visible: true,
-				focus: Some(Command::ModalOpenFolder.widget_id()),
+				focus: Some(
+					Command::Chrome(ChromeCommand::ModalOpenFolder).widget_id(),
+				),
 				..Default::default()
 			},
 			pointer: crate::app::pointer::State::at((620.0, 300.0)),
@@ -395,7 +400,9 @@ fn notice_strip_and_confirmation_frames() -> Result<()> {
 		let mut permission = InteractionState {
 			widgets: markview_ui_core::Interaction {
 				focus_visible: true,
-				focus: Some(Command::ModalDismiss.widget_id()),
+				focus: Some(
+					Command::Chrome(ChromeCommand::ModalDismiss).widget_id(),
+				),
 				..Default::default()
 			},
 			..Default::default()
@@ -414,7 +421,9 @@ fn notice_strip_and_confirmation_frames() -> Result<()> {
 		let mut long = InteractionState {
 			widgets: markview_ui_core::Interaction {
 				focus_visible: true,
-				focus: Some(Command::ModalOpenFolder.widget_id()),
+				focus: Some(
+					Command::Chrome(ChromeCommand::ModalOpenFolder).widget_id(),
+				),
 				..Default::default()
 			},
 			pointer: crate::app::pointer::State::at((620.0, 300.0)),
@@ -456,7 +465,10 @@ fn notice_strip_and_confirmation_frames() -> Result<()> {
 			let mut narrow = InteractionState {
 				widgets: markview_ui_core::Interaction {
 					focus_visible: true,
-					focus: Some(Command::ModalDismiss.widget_id()),
+					focus: Some(
+						Command::Chrome(ChromeCommand::ModalDismiss)
+							.widget_id(),
+					),
 					..Default::default()
 				},
 				..Default::default()
@@ -858,7 +870,9 @@ fn icons_keep_their_optical_centre_at_fractional_dpi() -> Result<()> {
 		let image = image::open(output)?.to_rgba8();
 		let button = controls::toolbar_controls(width, false, Lang::En)
 			.into_iter()
-			.find(|button| button.action == Command::Settings)
+			.find(|button| {
+				button.action == Command::Chrome(ChromeCommand::Settings)
+			})
 			.unwrap();
 		let centre = [
 			(button.rect.x + button.rect.w / 2.0) * SCALE,
@@ -1044,7 +1058,9 @@ fn export_panel_frames() -> Result<()> {
 		let export_interaction = InteractionState {
 			widgets: markview_ui_core::Interaction {
 				focus_visible: true,
-				focus: Some(Command::ExportRun.widget_id()),
+				focus: Some(
+					Command::Export(ExportCommand::ExportRun).widget_id(),
+				),
 				..Default::default()
 			},
 			panel: PanelPage::Export,
@@ -1373,10 +1389,10 @@ fn the_fonts_page_draws_its_open_option_list() {
 	assert!(menu.chosen().is_some());
 	assert!(matches!(
 		menu.chosen(),
-		Some(StateCommand::FontFamily(
+		Some(StateCommand::Settings(SettingsCommand::FontFamily(
 			crate::settings::FontRole::Serif,
 			_
-		))
+		)))
 	));
 }
 
@@ -1461,18 +1477,20 @@ fn dismissed_pages_stop_drawing_and_answering_pointers() {
 		assert!(
 			!buttons.iter().any(|b| matches!(
 				b.action,
-				Command::StylesFolder
+				Command::Settings(SettingsCommand::StylesFolder)
 					| Command::Fonts(
 						crate::app::font_panel::Command::OpenFolder
 					) | Command::Fonts(
 					crate::app::font_panel::Command::DownloadMissing
-				) | Command::ExportRun
+				) | Command::Export(ExportCommand::ExportRun)
 			)),
 			"{page} stayed active without the panel"
 		);
 		// The toolbar answers instead, so the document is never stranded.
 		assert!(
-			buttons.iter().any(|b| b.action == Command::Open),
+			buttons
+				.iter()
+				.any(|b| b.action == Command::Document(DocumentCommand::Open)),
 			"{page}: no toolbar"
 		);
 	}
@@ -1655,9 +1673,9 @@ fn redesigned_chrome_frames() -> Result<()> {
 							focus_visible: true,
 							focus: Some(
 								(if page == "export" {
-									Command::ExportRun
+									Command::Export(ExportCommand::ExportRun)
 								} else {
-									Command::Larger
+									Command::Settings(SettingsCommand::Larger)
 								})
 								.widget_id(),
 							),
@@ -1719,8 +1737,10 @@ fn redesigned_chrome_frames() -> Result<()> {
 								document_dir: None,
 							},
 						));
-						interaction.widgets.focus =
-							Some(Command::ModalOpenFolder.widget_id());
+						interaction.widgets.focus = Some(
+							Command::Chrome(ChromeCommand::ModalOpenFolder)
+								.widget_id(),
+						);
 					}
 					// A chooser's option list open on the Fonts page, on its
 					// second option so the frame shows a moving highlight.
@@ -1755,8 +1775,12 @@ fn redesigned_chrome_frames() -> Result<()> {
 						let form = controls::form(
 							&mut ui, &settings, 0.0, width, height,
 						);
-						*settings_page.settings_scroll_mut() =
-							form.reveal(Command::Larger.widget_id()).into();
+						*settings_page.settings_scroll_mut() = form
+							.reveal(
+								Command::Settings(SettingsCommand::Larger)
+									.widget_id(),
+							)
+							.into();
 					}
 					let catalog = font_samples();
 					let shown: Vec<usize> = if page == "fonts-empty" {
@@ -1929,7 +1953,10 @@ fn redesigned_chrome_frames() -> Result<()> {
 							.iter()
 							.filter(|button| {
 								button.icon.is_some()
-									&& button.action != Command::NewPage
+									&& button.action
+										!= Command::Document(
+											DocumentCommand::NewPage,
+										)
 							})
 							.count();
 					assert_eq!(
@@ -2057,7 +2084,7 @@ fn button_feedback_frames() -> Result<()> {
 						} else {
 							"Open…"
 						},
-						Command::Open,
+						Command::Document(DocumentCommand::Open),
 						Rect {
 							x,
 							y,

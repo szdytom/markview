@@ -1,4 +1,7 @@
 use super::*;
+use crate::state::{
+	ChromeCommand, DocumentCommand, ExportCommand, SearchCommand,
+};
 use crate::{
 	app::{Event, window::Loop},
 	cli::{LaunchOptions, Mode},
@@ -30,8 +33,10 @@ fn app() -> App<Proxy> {
 	);
 	app.ui = crate::test_support::shaper();
 	app.show_panel(PanelPage::Export);
-	app.interaction.widgets.focus =
-		Some(Command::FocusInput(TextField::ExportTitle).widget_id());
+	app.interaction.widgets.focus = Some(
+		Command::Chrome(ChromeCommand::FocusInput(TextField::ExportTitle))
+			.widget_id(),
+	);
 	app.reveal_panel_focus();
 	app.sync_input();
 	app
@@ -96,7 +101,12 @@ fn form_focus_routes_typing_ime_and_tab_without_document_shortcuts() {
 	let actions = app.focus_buttons();
 	let at = actions
 		.iter()
-		.position(|b| b.action == Command::FocusInput(TextField::ExportTitle))
+		.position(|b| {
+			b.action
+				== Command::Chrome(ChromeCommand::FocusInput(
+					TextField::ExportTitle,
+				))
+		})
 		.unwrap();
 	assert_eq!(
 		app.input_key(&Key::Named(NamedKey::Tab), None),
@@ -164,7 +174,9 @@ fn pointer_drag_and_focus_loss_cancel_composition_without_losing_committed_text(
 	);
 	assert!(app.readers.session.export_title.selected_text().is_some());
 	assert!(!app.text_input.dragging);
-	app.action(Command::ExportFormat(crate::settings::ExportFormat::Png));
+	app.action(Command::Export(ExportCommand::ExportFormat(
+		crate::settings::ExportFormat::Png,
+	)));
 	app.sync_input();
 	assert!(app.text_input.focused.is_none());
 	assert_eq!(app.readers.session.export_title.text(), "original");
@@ -437,7 +449,7 @@ fn empty_page_url_input_accepts_text_and_submits_with_enter() {
 		.pointer
 		.move_to((rect.x + 8.0, rect.y + 16.0));
 	assert_eq!(app.input_at_cursor(), Some(id));
-	app.action(Command::FocusInput(id));
+	app.action(Command::Chrome(ChromeCommand::FocusInput(id)));
 	assert_eq!(app.text_input.focused, Some(id));
 	assert_eq!(
 		app.input_key(
@@ -462,25 +474,19 @@ fn empty_page_link_button_and_focus_follow_page_visibility() {
 	let mut app = app();
 	app.show_panel(PanelPage::Closed);
 	app.args.offline = true;
-	assert!(
-		app.focus_buttons()
-			.iter()
-			.any(|b| b.action == Command::FocusInput(TextField::Url))
-	);
-	app.action(Command::OpenUrl);
+	assert!(app.focus_buttons().iter().any(|b| b.action
+		== Command::Chrome(ChromeCommand::FocusInput(TextField::Url))));
+	app.action(Command::Document(DocumentCommand::OpenUrl));
 	assert!(app.readers.session.path.is_none());
 	app.show_panel(PanelPage::Tabs);
 	assert!(app.input_geometry(TextField::Url).is_none());
 	app.show_panel(PanelPage::Closed);
 	app.url_input
 		.set_text(&mut app.ui, "https://example.com/button");
-	app.action(Command::OpenUrl);
+	app.action(Command::Document(DocumentCommand::OpenUrl));
 	assert!(app.web_pages.contains_key("https://example.com/button"));
-	assert!(
-		!app.buttons()
-			.iter()
-			.any(|b| b.action == Command::FocusInput(TextField::Url))
-	);
+	assert!(!app.buttons().iter().any(|b| b.action
+		== Command::Chrome(ChromeCommand::FocusInput(TextField::Url))));
 }
 
 #[test]
@@ -489,11 +495,14 @@ fn search_navigation_preserves_the_input_method_session() {
 	app.readers.session.path = Some("search.md".into());
 	app.open_search();
 	event(&mut app, WindowEvent::Ime(Ime::Enabled));
-	for action in [Command::SearchNext, Command::SearchPrevious] {
+	for action in [
+		Command::Search(SearchCommand::SearchNext),
+		Command::Search(SearchCommand::SearchPrevious),
+	] {
 		app.action(action);
 		assert_eq!(app.text_input.focused, Some(TextField::Search));
 		assert!(app.text_input.ime_enabled);
 	}
-	app.action(Command::SearchClose);
+	app.action(Command::Search(SearchCommand::SearchClose));
 	assert!(!app.text_input.ime_enabled);
 }

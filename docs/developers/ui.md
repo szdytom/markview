@@ -50,6 +50,26 @@ Identity is local to the running UI and is not a persistence format.
 Drawer and toolbar controls use separate identities because both remain painted
 during drawer dismissal.
 
+Commands are a sum of domain enums. The top-level `state::command::Command`
+names only the domain; each domain enum holds the variants its owner handles.
+
+| Domain | Enum | Variants |
+|---|---|---:|
+| Document | `DocumentCommand` | 11 |
+| Settings | `SettingsCommand` | 28 |
+| Export | `ExportCommand` | 14 |
+| Chrome | `ChromeCommand` | 20 |
+| Search | `SearchCommand` | 6 |
+| Fonts | `font_panel::Command` | 8 |
+
+`Command::widget_id` dispatches to the domain enum and hashes the outer domain
+discriminant, the domain variant's discriminant and a `Debug` key. Hashing both
+discriminants keeps `scope` unique across the flat command surface; some call
+sites compare scopes alone. Identity is only stable within one run: nesting a
+command in its domain changes the key's text, never the press-to-release
+mapping. `settings_dependent` is the domain-level precheck that keeps a command
+off a settings catalogue that is still loading.
+
 Hover previews are transient chrome state, not a component: pointer motion arms
 a fixed delay, the event loop's tick opens a shared card with the target's
 wrapped title, detail line and optional page body, and the renderer composes

@@ -1,6 +1,10 @@
 use super::*;
 use crate::app::TOP;
 use crate::lang::Lang;
+use crate::state::{
+	ChromeCommand, DocumentCommand, ExportCommand, SearchCommand,
+	SettingsCommand,
+};
 use crate::state::{InteractionState, PanelPage, PanelTab};
 
 fn drawn(interaction: &InteractionState) -> crate::app::widgets::Drawn<'_> {
@@ -18,7 +22,9 @@ fn settings_expose_independent_sidebar_widths_in_every_layout_and_language() {
 		for phone in [false, true] {
 			for sidebar in [Sidebar::Folder, Sidebar::Outline, Sidebar::Tabs] {
 				for step in [-1, 1] {
-					let command = Command::SidebarWidth(sidebar, step);
+					let command = Command::Settings(
+						SettingsCommand::SidebarWidth(sidebar, step),
+					);
 					let offered = sidebar == Sidebar::Outline
 						|| (sidebar == Sidebar::Tabs) == phone;
 					let initial =
@@ -103,7 +109,10 @@ fn platform_toolbars_keep_hover_targets_and_caption_groups_separate() {
 				if style != WindowLayout::Macos && !fullscreen {
 					let mut controls: Vec<_> = buttons
 						.iter()
-						.filter(|b| b.action != Command::NewPage)
+						.filter(|b| {
+							b.action
+								!= Command::Document(DocumentCommand::NewPage)
+						})
 						.map(|b| b.rect)
 						.collect();
 					controls.extend(frame.captions().map(|(_, rect)| rect));
@@ -138,13 +147,19 @@ fn window_layout_dropdown_exposes_all_layouts_and_marks_the_saved_choice() {
 			..Default::default()
 		};
 		let scroll = form(&mut shaper, &settings, 0.0, 500.0, 300.0).reveal(
-			Command::ToggleDropdown(DropdownId::WindowLayout, index)
-				.widget_id(),
+			Command::Chrome(ChromeCommand::ToggleDropdown(
+				DropdownId::WindowLayout,
+				index,
+			))
+			.widget_id(),
 		);
 		let form = form(&mut shaper, &settings, scroll, 500.0, 300.0);
 		assert!(form.buttons.iter().any(|button| {
 			button.action
-				== Command::ToggleDropdown(DropdownId::WindowLayout, index)
+				== Command::Chrome(ChromeCommand::ToggleDropdown(
+					DropdownId::WindowLayout,
+					index,
+				))
 		}));
 		let menu = form
 			.menu(
@@ -156,10 +171,16 @@ fn window_layout_dropdown_exposes_all_layouts_and_marks_the_saved_choice() {
 			)
 			.unwrap();
 		assert_eq!(menu.options, layouts.len());
-		assert_eq!(menu.chosen(), Some(Command::WindowLayout(selected)));
+		assert_eq!(
+			menu.chosen(),
+			Some(Command::Settings(SettingsCommand::WindowLayout(selected)))
+		);
 		for (button, layout) in menu.buttons.iter().zip(&layouts[menu.offset..])
 		{
-			assert_eq!(button.action, Command::WindowLayout(*layout));
+			assert_eq!(
+				button.action,
+				Command::Settings(SettingsCommand::WindowLayout(*layout))
+			);
 			assert_eq!(button.active, selected == *layout);
 		}
 	}
@@ -169,13 +190,15 @@ fn panel_exposes_first_line_indent_presets() {
 	let mut shaper = crate::test_support::shaper();
 	let settings = ReaderSettings::default();
 	let scroll = form(&mut shaper, &settings, 0.0, 1200.0, 800.0)
-		.reveal(Command::Indent(0).widget_id());
+		.reveal(Command::Settings(SettingsCommand::Indent(0)).widget_id());
 	let buttons =
 		form(&mut shaper, &settings, scroll, 1200.0, 800.0).visible_buttons();
 	for (em, label) in [(0, "Off"), (1, "1 em"), (2, "2 em"), (3, "3 em")] {
 		let button = buttons
 			.iter()
-			.find(|b| b.action == Command::Indent(em))
+			.find(|b| {
+				b.action == Command::Settings(SettingsCommand::Indent(em))
+			})
 			.expect("indent preset");
 		assert_eq!(button.label, label);
 	}
@@ -189,11 +212,14 @@ fn panel_toggles_the_footer_path() {
 			..Default::default()
 		};
 		let initial = form(&mut shaper, &settings, 0.0, 1200.0, 800.0);
-		let scroll = initial.reveal(Command::FooterPath.widget_id());
+		let scroll = initial
+			.reveal(Command::Settings(SettingsCommand::FooterPath).widget_id());
 		let button = form(&mut shaper, &settings, scroll, 1200.0, 800.0)
 			.visible_buttons()
 			.into_iter()
-			.find(|b| b.action == Command::FooterPath)
+			.find(|b| {
+				b.action == Command::Settings(SettingsCommand::FooterPath)
+			})
 			.expect("footer path toggle");
 		assert_eq!(button.label, expected);
 	}
@@ -210,11 +236,12 @@ fn panel_toggles_codeblock_wrapping() {
 		let initial = form(&mut shaper, &settings, 0.0, 1200.0, 800.0);
 		// The list is longer than the panel, so the last row is only on
 		// screen once something has revealed it.
-		let scroll = initial.reveal(Command::CodeWrap.widget_id());
+		let scroll = initial
+			.reveal(Command::Settings(SettingsCommand::CodeWrap).widget_id());
 		form(&mut shaper, &settings, scroll, 1200.0, 800.0)
 			.visible_buttons()
 			.into_iter()
-			.find(|b| b.action == Command::CodeWrap)
+			.find(|b| b.action == Command::Settings(SettingsCommand::CodeWrap))
 			.expect("wrap toggle")
 			.label
 	};
@@ -243,7 +270,7 @@ fn controls_fit_minimum_window_and_panel_focus_has_no_document_actions() {
 				button.rect.x + button.rect.w,
 				button.rect.y + button.rect.h
 			));
-			assert_ne!(button.action, Command::Open);
+			assert_ne!(button.action, Command::Document(DocumentCommand::Open));
 		}
 		for button in controls(
 			&mut shaper,
@@ -261,17 +288,17 @@ fn controls_fit_minimum_window_and_panel_focus_has_no_document_actions() {
 			width,
 			height,
 		);
-		let mut expected = vec![Command::NewPage];
+		let mut expected = vec![Command::Document(DocumentCommand::NewPage)];
 		expected.push(if markview_platform::folder_reveal() {
-			Command::RevealFolder
+			Command::Chrome(ChromeCommand::RevealFolder)
 		} else {
-			Command::SearchOpen
+			Command::Search(SearchCommand::SearchOpen)
 		});
 		expected.extend([
-			Command::Open,
-			Command::Export,
-			Command::Settings,
-			Command::Outline,
+			Command::Document(DocumentCommand::Open),
+			Command::Export(ExportCommand::Export),
+			Command::Chrome(ChromeCommand::Settings),
+			Command::Document(DocumentCommand::Outline),
 		]);
 		assert_eq!(
 			toolbar.iter().map(|b| b.action).collect::<Vec<_>>(),
@@ -349,7 +376,7 @@ fn the_outline_button_carries_its_icon_and_toggled_state() {
 	let outline = |open: bool| -> Button {
 		toolbar_controls(1200.0, open, Lang::En)
 			.into_iter()
-			.find(|b| b.action == Command::Outline)
+			.find(|b| b.action == Command::Document(DocumentCommand::Outline))
 			.expect("the toolbar has an outline button")
 	};
 	let closed = outline(false);
@@ -393,7 +420,9 @@ fn the_toolbar_and_panel_close_buttons_carry_icons() {
 		controls(&mut shaper, &ReaderSettings::default(), true, 1200.0, 800.0);
 	let close = panel
 		.iter()
-		.find(|button| button.action == Command::Settings)
+		.find(|button| {
+			button.action == Command::Chrome(ChromeCommand::Settings)
+		})
 		.expect("panel close");
 	assert_eq!(close.label, "Close");
 	assert!(close.icon.is_some());
@@ -535,18 +564,31 @@ fn file_and_style_folder_controls_are_desktop_only() {
 		let buttons =
 			form(&mut ui, &settings, 0.0, width, height).visible_buttons();
 		assert_eq!(
-			buttons.iter().any(|b| b.action == Command::OpenConfig),
+			buttons
+				.iter()
+				.any(|b| b.action
+					== Command::Settings(SettingsCommand::OpenConfig)),
 			!markview_platform::touch_layout()
 		);
-		assert!(buttons.iter().any(|b| b.action == Command::Reset));
+		assert!(
+			buttons
+				.iter()
+				.any(|b| b.action == Command::Settings(SettingsCommand::Reset))
+		);
 		for target in [StylesTarget::Reader, StylesTarget::Export] {
 			let buttons =
 				style_controls(target, None, false, width, height, Lang::En);
 			assert_eq!(
-				buttons.iter().any(|b| b.action == Command::StylesFolder),
+				buttons.iter().any(|b| b.action
+					== Command::Settings(SettingsCommand::StylesFolder)),
 				!markview_platform::touch_layout()
 			);
-			assert!(buttons.iter().any(|b| b.action == Command::Settings));
+			assert!(
+				buttons
+					.iter()
+					.any(|b| b.action
+						== Command::Chrome(ChromeCommand::Settings))
+			);
 		}
 	}
 }
@@ -565,7 +607,10 @@ fn panel_offers_scroll_speed_only_on_desktop() {
 				phone,
 			)
 			.visible_buttons();
-			for action in [Command::ScrollSpeed(-1), Command::ScrollSpeed(1)] {
+			for action in [
+				Command::Settings(SettingsCommand::ScrollSpeed(-1)),
+				Command::Settings(SettingsCommand::ScrollSpeed(1)),
+			] {
 				assert_eq!(
 					buttons.iter().any(|b| b.action == action),
 					!markview_platform::touch_layout(),
@@ -602,32 +647,32 @@ fn about_tab_keeps_navigation_and_scrolls_on_short_windows() {
 		assert_eq!(form.max_scroll > 0.0, height < 800.0);
 		assert!(form.buttons.iter().all(|b| matches!(
 			b.action,
-			Command::Settings
-				| Command::SettingsPreview
-				| Command::CopyDiagnostics
-				| Command::OpenProject
+			Command::Chrome(ChromeCommand::Settings)
+				| Command::Settings(SettingsCommand::SettingsPreview)
+				| Command::Chrome(ChromeCommand::CopyDiagnostics)
+				| Command::Chrome(ChromeCommand::OpenProject)
 		)));
 		let copy = form
 			.buttons
 			.iter()
-			.find(|b| b.action == Command::CopyDiagnostics)
+			.find(|b| {
+				b.action == Command::Chrome(ChromeCommand::CopyDiagnostics)
+			})
 			.unwrap();
 		assert!(copy.icon.is_some());
-		assert!(
-			form.visible_buttons()
-				.iter()
-				.any(|b| b.action == Command::CopyDiagnostics)
-		);
+		assert!(form.visible_buttons().iter().any(
+			|b| b.action == Command::Chrome(ChromeCommand::CopyDiagnostics)
+		));
 		let project = form
 			.buttons
 			.iter()
-			.find(|b| b.action == Command::OpenProject)
+			.find(|b| b.action == Command::Chrome(ChromeCommand::OpenProject))
 			.unwrap();
 		assert_eq!(project.label, env!("CARGO_PKG_REPOSITORY"));
 		assert_eq!(
-			form.visible_buttons()
-				.iter()
-				.any(|b| b.action == Command::OpenProject),
+			form.visible_buttons().iter().any(
+				|b| b.action == Command::Chrome(ChromeCommand::OpenProject)
+			),
 			height != 300.0
 		);
 		let scrolled = InteractionState {
@@ -635,8 +680,9 @@ fn about_tab_keeps_navigation_and_scrolls_on_short_windows() {
 			..Default::default()
 		};
 		let mut page = crate::app::settings_panel::Model::default();
-		*page.settings_scroll_mut() =
-			form.reveal(Command::OpenProject.widget_id()).into();
+		*page.settings_scroll_mut() = form
+			.reveal(Command::Chrome(ChromeCommand::OpenProject).widget_id())
+			.into();
 		let bottom = settings_form(
 			&mut ui,
 			&drawn(&scrolled),
@@ -647,19 +693,19 @@ fn about_tab_keeps_navigation_and_scrolls_on_short_windows() {
 			false,
 		);
 		assert!(
-			bottom
-				.visible_buttons()
-				.iter()
-				.any(|b| b.action == Command::OpenProject)
+			bottom.visible_buttons().iter().any(
+				|b| b.action == Command::Chrome(ChromeCommand::OpenProject)
+			)
 		);
 		let tabs =
 			components::tab_controls(form.rect, PanelTab::About, Lang::En);
 		assert_eq!(tabs.len(), 4);
 		assert_eq!(tabs.iter().filter(|b| b.active).count(), 1);
-		assert!(
-			tabs.iter().any(|b| b.active
-				&& b.action == Command::SettingsTab(PanelTab::About))
-		);
+		assert!(tabs.iter().any(|b| b.active
+			&& b.action
+				== Command::Chrome(ChromeCommand::SettingsTab(
+					PanelTab::About
+				))));
 		assert!(tabs.iter().all(|b| {
 			form.rect.contains(b.rect.x + b.rect.w, b.rect.y + b.rect.h)
 		}));
@@ -705,12 +751,18 @@ fn the_language_row_offers_every_language_the_build_carries() {
 	assert_eq!(entries.iter().filter(|entry| entry.active).count(), 1);
 	// Following the system comes first and is named in the language in force.
 	assert_eq!(entries[0].label, t.settings_language_system());
-	assert_eq!(entries[0].action, Command::Language(None));
+	assert_eq!(
+		entries[0].action,
+		Command::Settings(SettingsCommand::Language(None))
+	);
 	assert!(entries[0].active);
 	// Every language names itself.
 	for (entry, lang) in entries[1..].iter().zip(Lang::ALL) {
 		assert_eq!(entry.label, lang.language_name());
-		assert_eq!(entry.action, Command::Language(Some(*lang)));
+		assert_eq!(
+			entry.action,
+			Command::Settings(SettingsCommand::Language(Some(*lang)))
+		);
 		assert!(!entry.active);
 	}
 
@@ -722,7 +774,11 @@ fn the_language_row_offers_every_language_the_build_carries() {
 	let entries = language_options(settings.lang(), &settings);
 	assert!(!entries[0].active);
 	assert!(entries.iter().any(|entry| {
-		entry.active && entry.action == Command::Language(Some(Lang::ZhHans))
+		entry.active
+			&& entry.action
+				== Command::Settings(SettingsCommand::Language(Some(
+					Lang::ZhHans,
+				)))
 	}));
 }
 
@@ -751,14 +807,19 @@ fn the_language_control_shows_the_language_in_force() {
 			.find(|button| {
 				matches!(
 					button.action,
-					Command::ToggleDropdown(DropdownId::Language, _)
+					Command::Chrome(ChromeCommand::ToggleDropdown(
+						DropdownId::Language,
+						_
+					))
 				)
 			})
 			.expect("the language control");
 		assert_eq!(control.label, expected);
 		assert!(control.marker.is_some(), "the control is marked");
 		// Opening the list starts on the option in force.
-		let Command::ToggleDropdown(_, highlight) = control.action else {
+		let Command::Chrome(ChromeCommand::ToggleDropdown(_, highlight)) =
+			control.action
+		else {
 			unreachable!()
 		};
 		let entries = language_options(settings.lang(), &settings);
@@ -778,12 +839,16 @@ fn single_instance_control_reflects_the_saved_choice() {
 		let buttons = controls(&mut shaper, &settings, true, 1200.0, 800.0);
 		let button = buttons
 			.iter()
-			.find(|b| b.action == Command::SingleInstance)
+			.find(|b| {
+				b.action == Command::Settings(SettingsCommand::SingleInstance)
+			})
 			.unwrap();
 		assert_eq!(button.active, enabled);
 		let restore = buttons
 			.iter()
-			.find(|b| b.action == Command::RestoreSession)
+			.find(|b| {
+				b.action == Command::Settings(SettingsCommand::RestoreSession)
+			})
 			.unwrap();
 		assert_eq!(restore.active, enabled);
 	}

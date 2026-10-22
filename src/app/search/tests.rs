@@ -1,5 +1,6 @@
 use super::*;
 use crate::app::Event;
+use crate::state::{ChromeCommand, ExportCommand, SearchCommand};
 use crate::{
 	cli::{LaunchOptions, Mode},
 	layout::LayoutEngine,
@@ -126,7 +127,10 @@ fn slash_opens_empty_search_without_using_selection_or_previous_results() {
 	assert!(h.app.readers.session.search.input.text().is_empty());
 	assert_eq!(
 		h.app.interaction.widgets.focus,
-		Some(Command::FocusInput(TextField::Search).widget_id())
+		Some(
+			Command::Chrome(ChromeCommand::FocusInput(TextField::Search))
+				.widget_id()
+		)
 	);
 	for already_open in [false, true] {
 		h.query("needle");
@@ -226,7 +230,10 @@ fn opening_search_uses_document_selection_and_submits_it() {
 		assert_eq!(h.app.interaction.selection, Some(selection));
 		assert_eq!(
 			h.app.interaction.widgets.focus,
-			Some(Command::FocusInput(TextField::Search).widget_id())
+			Some(
+				Command::Chrome(ChromeCommand::FocusInput(TextField::Search))
+					.widget_id()
+			)
 		);
 		h.app.interaction.selection = None;
 	}
@@ -459,7 +466,7 @@ fn search_state_belongs_to_each_tab_and_panels_preserve_query() {
 	let mut h = Harness::new("needle");
 	h.query("needle");
 	h.app.navigate_search(false);
-	h.app.action(Command::SearchWord);
+	h.app.action(Command::Search(SearchCommand::SearchWord));
 	let one = h.app.readers.session.path.clone().unwrap();
 	let two = h.dir.path().join("two.md");
 	std::fs::write(&two, "second needle").unwrap();
@@ -473,15 +480,18 @@ fn search_state_belongs_to_each_tab_and_panels_preserve_query() {
 	assert!(h.app.readers.session.search.options.whole_word);
 	assert_eq!(h.app.readers.session.search.current, Some(0));
 	h.app.open_search();
-	h.app.action(Command::Settings);
+	h.app.action(Command::Chrome(ChromeCommand::Settings));
 	assert!(!h.app.readers.session.search.open);
 	h.app.open_search();
 	assert!(!h.app.interaction.panel_open());
 	assert_eq!(
 		h.app.interaction.widgets.focus,
-		Some(Command::FocusInput(TextField::Search).widget_id())
+		Some(
+			Command::Chrome(ChromeCommand::FocusInput(TextField::Search))
+				.widget_id()
+		)
 	);
-	h.app.action(Command::Export);
+	h.app.action(Command::Export(ExportCommand::Export));
 	assert!(!h.app.readers.session.search.open);
 	assert_eq!(h.app.readers.session.search.input.text(), "needle");
 }

@@ -1,5 +1,6 @@
 //! Export preferences remain independent of the reading view.
 use super::components::{ButtonKind, Form, Row, action};
+use crate::state::ExportCommand;
 use crate::{
 	app::export::{MARGIN_PRESETS, PAPER_PRESETS, SCALE_PRESETS},
 	export,
@@ -18,12 +19,16 @@ fn rows(settings: &ExportSettings, lang: Lang) -> Vec<Row> {
 				action(
 					lang.export_pdf(),
 					settings.format == ExportFormat::Pdf,
-					Command::ExportFormat(ExportFormat::Pdf),
+					Command::Export(ExportCommand::ExportFormat(
+						ExportFormat::Pdf,
+					)),
 				),
 				action(
 					lang.export_png(),
 					settings.format == ExportFormat::Png,
-					Command::ExportFormat(ExportFormat::Png),
+					Command::Export(ExportCommand::ExportFormat(
+						ExportFormat::Png,
+					)),
 				),
 			],
 		)
@@ -39,7 +44,7 @@ fn rows(settings: &ExportSettings, lang: Lang) -> Vec<Row> {
 					action(
 						*label,
 						(settings.scale - scale).abs() < 1e-3,
-						Command::ExportScale(i as u8),
+						Command::Export(ExportCommand::ExportScale(i as u8)),
 					)
 				})
 				.collect(),
@@ -55,7 +60,7 @@ fn rows(settings: &ExportSettings, lang: Lang) -> Vec<Row> {
 					action(
 						*label,
 						settings.paper.eq_ignore_ascii_case(paper),
-						Command::ExportPaper(i as u8),
+						Command::Export(ExportCommand::ExportPaper(i as u8)),
 					)
 				})
 				.collect(),
@@ -67,12 +72,12 @@ fn rows(settings: &ExportSettings, lang: Lang) -> Vec<Row> {
 				action(
 					lang.export_portrait(),
 					!settings.landscape,
-					Command::ExportOrientation(false),
+					Command::Export(ExportCommand::ExportOrientation(false)),
 				),
 				action(
 					lang.export_landscape(),
 					settings.landscape,
-					Command::ExportOrientation(true),
+					Command::Export(ExportCommand::ExportOrientation(true)),
 				),
 			],
 		),
@@ -85,7 +90,7 @@ fn rows(settings: &ExportSettings, lang: Lang) -> Vec<Row> {
 					action(
 						*label,
 						settings.margin == *margin,
-						Command::ExportMargin(i as u8),
+						Command::Export(ExportCommand::ExportMargin(i as u8)),
 					)
 				})
 				.collect(),
@@ -99,15 +104,23 @@ fn rows(settings: &ExportSettings, lang: Lang) -> Vec<Row> {
 			vec![action(
 				lang.export_styles_open(),
 				false,
-				Command::ExportStyles,
+				Command::Export(ExportCommand::ExportStyles),
 			)],
 		)
 		.section(lang.export_typography()),
 		Row::new(
 			lang.export_text_size(),
 			vec![
-				action(lang.export_decrease(), false, Command::ExportSize(-1)),
-				action(lang.export_increase(), false, Command::ExportSize(1)),
+				action(
+					lang.export_decrease(),
+					false,
+					Command::Export(ExportCommand::ExportSize(-1)),
+				),
+				action(
+					lang.export_increase(),
+					false,
+					Command::Export(ExportCommand::ExportSize(1)),
+				),
 			],
 		)
 		.value(format!("{} px", settings.font_size)),
@@ -120,7 +133,7 @@ fn rows(settings: &ExportSettings, lang: Lang) -> Vec<Row> {
 					action(
 						label,
 						(settings.paragraph_indent - i as f32).abs() < 0.01,
-						Command::ExportIndent(i as u8),
+						Command::Export(ExportCommand::ExportIndent(i as u8)),
 					)
 				})
 				.collect(),
@@ -148,7 +161,7 @@ pub(in crate::app) fn form(
 		height,
 		scroll,
 		rows(settings, lang),
-		Some(Command::Export),
+		Some(Command::Export(ExportCommand::Export)),
 		false,
 		lang,
 	);
@@ -157,17 +170,22 @@ pub(in crate::app) fn form(
 		&[
 			(
 				lang.export_and_watch(),
-				Command::ExportAndWatch,
+				Command::Export(ExportCommand::ExportAndWatch),
 				ButtonKind::Standard,
 			),
-			(lang.export_run(), Command::ExportRun, ButtonKind::Primary),
+			(
+				lang.export_run(),
+				Command::Export(ExportCommand::ExportRun),
+				ButtonKind::Primary,
+			),
 		],
 	);
 	if export::geometry(settings).is_err() {
 		for button in &mut form.buttons {
 			if matches!(
 				button.action,
-				Command::ExportRun | Command::ExportAndWatch
+				Command::Export(ExportCommand::ExportRun)
+					| Command::Export(ExportCommand::ExportAndWatch)
 			) {
 				button.enabled = false;
 			}

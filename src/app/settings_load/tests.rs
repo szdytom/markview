@@ -1,4 +1,5 @@
 use super::*;
+use crate::state::{ChromeCommand, ExportCommand, SettingsCommand};
 use crate::{
 	cli::{LaunchOptions, Mode},
 	state::{PanelPage, PanelTab},
@@ -52,7 +53,9 @@ fn completion(events: &Receiver<Event>) -> Completion {
 #[test]
 fn styles_draw_feedback_before_work_and_refresh_without_losing_the_list() {
 	let (mut app, tasks, events) = app();
-	app.action(Command::SettingsTab(PanelTab::Styles));
+	app.action(Command::Chrome(ChromeCommand::SettingsTab(
+		PanelTab::Styles,
+	)));
 	let work = task(&tasks);
 	let initial = app.preferences.style_entries.clone();
 	assert!(!initial.is_empty());
@@ -70,16 +73,19 @@ fn styles_draw_feedback_before_work_and_refresh_without_losing_the_list() {
 	assert!(
 		app.buttons()
 			.iter()
-			.filter(|b| dependent(b.action))
+			.filter(|b| b.action.settings_dependent())
 			.all(|b| !b.enabled)
 	);
 	assert!(
 		app.buttons()
 			.iter()
-			.filter(|b| matches!(b.action, Command::SettingsTab(_)))
+			.filter(|b| matches!(
+				b.action,
+				Command::Chrome(ChromeCommand::SettingsTab(_))
+			))
 			.all(|b| b.enabled)
 	);
-	app.action(Command::Styles);
+	app.action(Command::Settings(SettingsCommand::Styles));
 	assert!(
 		tasks.try_recv().is_err(),
 		"same input must share its pending request"
@@ -90,7 +96,7 @@ fn styles_draw_feedback_before_work_and_refresh_without_losing_the_list() {
 	assert!(!app.settings_load().unwrap().blocked());
 	assert!(app.preferences.fonts.view().catalog.is_empty());
 	assert_eq!(app.preferences.fonts.view().choices.generation, 0);
-	app.action(Command::Styles);
+	app.action(Command::Settings(SettingsCommand::Styles));
 	let work = task(&tasks);
 	app.show_panel(PanelPage::Closed);
 	work.run();
@@ -104,7 +110,7 @@ fn styles_draw_feedback_before_work_and_refresh_without_losing_the_list() {
 #[test]
 fn a_fast_result_still_presents_feedback_before_shaping_the_first_list() {
 	let (mut app, tasks, events) = app();
-	app.action(Command::Styles);
+	app.action(Command::Settings(SettingsCommand::Styles));
 	task(&tasks).run();
 	app.settings_loaded(completion(&events));
 	assert!(matches!(app.settings_load().unwrap().status, Status::Ready));
@@ -125,7 +131,7 @@ fn a_fast_result_still_presents_feedback_before_shaping_the_first_list() {
 	);
 	assert!(!app.settings_load().unwrap().blocked());
 	assert!(!app.chrome().style_entries.is_empty());
-	app.action(Command::Styles);
+	app.action(Command::Settings(SettingsCommand::Styles));
 	let work = task(&tasks);
 	assert_eq!(
 		app.settings_load()
@@ -142,7 +148,7 @@ fn a_fast_result_still_presents_feedback_before_shaping_the_first_list() {
 #[test]
 fn fonts_load_catalogue_and_candidates_independently_and_reject_old_results() {
 	let (mut app, tasks, events) = app();
-	app.action(Command::SettingsTab(PanelTab::Fonts));
+	app.action(Command::Chrome(ChromeCommand::SettingsTab(PanelTab::Fonts)));
 	let catalog = task(&tasks);
 	assert_eq!(
 		app.settings_load()
@@ -190,8 +196,10 @@ fn fonts_load_catalogue_and_candidates_independently_and_reject_old_results() {
 			.is_some()
 	);
 	let generation = app.preferences.fonts.view().choices.generation;
-	app.action(Command::SettingsTab(PanelTab::Generic));
-	app.action(Command::SettingsTab(PanelTab::Fonts));
+	app.action(Command::Chrome(ChromeCommand::SettingsTab(
+		PanelTab::Generic,
+	)));
+	app.action(Command::Chrome(ChromeCommand::SettingsTab(PanelTab::Fonts)));
 	assert!(
 		tasks.try_recv().is_err(),
 		"unchanged candidates should be a cache hit"
@@ -202,7 +210,7 @@ fn fonts_load_catalogue_and_candidates_independently_and_reject_old_results() {
 #[test]
 fn failed_requests_leave_feedback_and_can_be_retried() {
 	let (mut app, tasks, events) = app();
-	app.action(Command::SettingsTab(PanelTab::Fonts));
+	app.action(Command::Chrome(ChromeCommand::SettingsTab(PanelTab::Fonts)));
 	let work = task(&tasks);
 	let version = app.settings_resources.loads[Kind::Catalog.index()].version;
 	app.settings_loaded(Completion {
@@ -218,13 +226,11 @@ fn failed_requests_leave_feedback_and_can_be_retried() {
 			.unwrap()
 			.contains("test failure")
 	);
-	assert!(
-		app.buttons()
-			.iter()
-			.any(|b| b.action == Command::RetrySettingsLoad && b.enabled)
-	);
+	assert!(app.buttons().iter().any(|b| b.action
+		== Command::Settings(SettingsCommand::RetrySettingsLoad)
+		&& b.enabled));
 	assert!(!app.chrome().overlay().is_empty());
-	app.action(Command::RetrySettingsLoad);
+	app.action(Command::Settings(SettingsCommand::RetrySettingsLoad));
 	let retry = task(&tasks);
 	work.run();
 	app.settings_loaded(completion(&events));
@@ -261,11 +267,13 @@ fn downloaded_face_cache_tracks_changed_and_removed_files() {
 #[test]
 fn reader_and_pdf_catalogues_remain_independent_during_refresh() {
 	let (mut app, tasks, events) = app();
-	app.action(Command::ExportStyles);
+	app.action(Command::Export(ExportCommand::ExportStyles));
 	let export = task(&tasks);
 	assert_eq!(app.settings_kind(), Some(Kind::Export));
 	assert!(!app.chrome().overlay().is_empty());
-	app.action(Command::SettingsTab(PanelTab::Styles));
+	app.action(Command::Chrome(ChromeCommand::SettingsTab(
+		PanelTab::Styles,
+	)));
 	let reader = task(&tasks);
 	let _draws = app.chrome().overlay();
 	let kind = app.settings_kind();
@@ -283,7 +291,7 @@ fn reader_and_pdf_catalogues_remain_independent_during_refresh() {
 		.iter()
 		.map(|e| e.id.clone())
 		.collect();
-	app.action(Command::ExportStyles);
+	app.action(Command::Export(ExportCommand::ExportStyles));
 	task(&tasks).run();
 	app.settings_loaded(completion(&events));
 	assert_eq!(
@@ -315,7 +323,9 @@ fn settings_feedback_measurement() {
 		Proxy(send),
 	);
 	// An opened reader has already drawn its toolbar and initialized UI fonts.
-	app.action(Command::SettingsTab(PanelTab::Generic));
+	app.action(Command::Chrome(ChromeCommand::SettingsTab(
+		PanelTab::Generic,
+	)));
 	let _draws = app.chrome().overlay();
 	for tab in [PanelTab::Styles, PanelTab::Fonts] {
 		let before = Instant::now();
@@ -340,7 +350,7 @@ fn settings_feedback_measurement() {
 		let synchronous_ms = before.elapsed().as_secs_f64() * 1000.;
 		for pass in ["first", "repeat"] {
 			let clicked = Instant::now();
-			app.action(Command::SettingsTab(tab));
+			app.action(Command::Chrome(ChromeCommand::SettingsTab(tab)));
 			let _draws = app.chrome().overlay();
 			let feedback_ms = clicked.elapsed().as_secs_f64() * 1000.;
 			let kind = app.settings_kind();

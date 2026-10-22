@@ -1,5 +1,6 @@
 //! A read-only folder tree shared by native entry points and the sidebar.
 use super::{App, Event, SendEvent};
+use crate::state::ChromeCommand;
 use crate::{
 	scroll::ScrollArea,
 	state::{Command, DrawerAnimation},
@@ -366,14 +367,16 @@ impl<P: SendEvent> App<P> {
 			return false;
 		};
 		if self.interaction.widgets.focus
-			== Some(Command::FolderRoot.widget_id())
+			== Some(Command::Chrome(ChromeCommand::FolderRoot).widget_id())
 		{
 			return self.folder_root_key(key);
 		}
 		let rows = tree.rows();
 		let focused = self.interaction.widgets.focus.and_then(|id| {
-			rows.iter()
-				.position(|i| Command::FolderEntry(*i).widget_id() == id)
+			rows.iter().position(|i| {
+				Command::Chrome(ChromeCommand::FolderEntry(*i)).widget_id()
+					== id
+			})
 		});
 		let Some(row) = focused else {
 			return false;
@@ -394,8 +397,9 @@ impl<P: SendEvent> App<P> {
 			_ => return false,
 		};
 		let index = rows[next];
-		self.interaction.widgets.focus =
-			Some(Command::FolderEntry(index).widget_id());
+		self.interaction.widgets.focus = Some(
+			Command::Chrome(ChromeCommand::FolderEntry(index)).widget_id(),
+		);
 		self.reveal_folder(index);
 		self.redraw();
 		true
@@ -409,13 +413,15 @@ impl<P: SendEvent> App<P> {
 				if tree.root_collapsed()
 					== matches!(key, Key::Named(NamedKey::ArrowRight))
 				{
-					self.action(Command::FolderRoot);
+					self.action(Command::Chrome(ChromeCommand::FolderRoot));
 				}
 			}
 			Key::Named(NamedKey::ArrowDown) => {
 				if let Some(index) = tree.rows().first() {
-					self.interaction.widgets.focus =
-						Some(Command::FolderEntry(*index).widget_id());
+					self.interaction.widgets.focus = Some(
+						Command::Chrome(ChromeCommand::FolderEntry(*index))
+							.widget_id(),
+					);
 					self.reveal_folder(*index);
 				}
 			}
@@ -664,8 +670,11 @@ impl<P: SendEvent> App<P> {
 			&mut self.interaction.widgets.captured,
 		] {
 			*slot = slot.filter(|id| {
-				*id != Command::FolderRoot.widget_id()
-					&& id.scope != Command::FolderEntry(0).widget_id().scope
+				*id != Command::Chrome(ChromeCommand::FolderRoot).widget_id()
+					&& id.scope
+						!= Command::Chrome(ChromeCommand::FolderEntry(0))
+							.widget_id()
+							.scope
 			});
 		}
 	}

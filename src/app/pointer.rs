@@ -1,3 +1,4 @@
+use crate::state::{ChromeCommand, DocumentCommand};
 use crate::state::{
 	Command, Drag, Grain, HoveredLink, ScrollbarDrag, Selection, WheelGesture,
 	WheelStep,
@@ -415,7 +416,8 @@ impl<P: super::SendEvent> App<P> {
 	fn press_drawer(&mut self) -> bool {
 		let (x, y) = self.interaction.pointer.cursor();
 		let on_outline_toggle = self.buttons().into_iter().any(|button| {
-			button.action == Command::Outline && button.rect.contains(x, y)
+			button.action == Command::Document(DocumentCommand::Outline)
+				&& button.rect.contains(x, y)
 		});
 		if self.interaction.close_outline_if_outside(
 			self.pointer_in_outline(),
@@ -434,7 +436,7 @@ impl<P: super::SendEvent> App<P> {
 		if let Some(index) = self.tab_close_at_cursor() {
 			self.interaction.reset_clicks();
 			self.interaction.widgets.focus = None;
-			self.action(Command::CloseTab(index));
+			self.action(Command::Chrome(ChromeCommand::CloseTab(index)));
 			return true;
 		}
 		let Some(index) = self.tab_at_cursor() else {
@@ -469,7 +471,7 @@ impl<P: super::SendEvent> App<P> {
 		}
 		self.interaction.reset_clicks();
 		if !self.pointer_in_panel() {
-			self.action(Command::Settings);
+			self.action(Command::Chrome(ChromeCommand::Settings));
 		}
 		true
 	}
@@ -1033,8 +1035,12 @@ impl<P: super::SendEvent> App<P> {
 					},
 				));
 				// "Open folder" is the default, and Enter activates it.
-				self.interaction.widgets.focus =
-					Some(state::Command::ModalOpenFolder.widget_id());
+				self.interaction.widgets.focus = Some(
+					crate::state::Command::Chrome(
+						crate::state::ChromeCommand::ModalOpenFolder,
+					)
+					.widget_id(),
+				);
 				self.refresh_hover();
 				self.redraw();
 			}

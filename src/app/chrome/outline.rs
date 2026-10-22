@@ -5,6 +5,7 @@
 //! document behind it keeps its scroll position and its selection.
 use super::super::Button;
 use super::components;
+use crate::state::DocumentCommand;
 use crate::{
 	lang::Lang,
 	layout::{Draw, Paint, Rect, TextShaper},
@@ -33,21 +34,22 @@ pub(super) fn header_buttons(drawer: Rect, lang: Lang) -> [Button; 2] {
 	[
 		(
 			lang.outline_expand_all(),
-			Command::OutlineExpandAll,
+			Command::Document(DocumentCommand::OutlineExpandAll),
 			super::icons::EXPAND_ALL,
 		),
 		(
 			lang.outline_collapse_all(),
-			Command::OutlineCollapseAll,
+			Command::Document(DocumentCommand::OutlineCollapseAll),
 			super::icons::COLLAPSE_ALL,
 		),
 	]
 	.map(|(label, action, icon)| {
-		let offset = if action == Command::OutlineExpandAll {
-			2.0 * HEADER_BUTTON + HEADER_GAP
-		} else {
-			HEADER_BUTTON
-		};
+		let offset =
+			if action == Command::Document(DocumentCommand::OutlineExpandAll) {
+				2.0 * HEADER_BUTTON + HEADER_GAP
+			} else {
+				HEADER_BUTTON
+			};
 		let mut button = components::button(
 			label,
 			action,
@@ -173,7 +175,7 @@ pub(super) fn buttons(
 					} else {
 						lang.outline_collapse()
 					},
-					Command::OutlineToggle(index),
+					Command::Document(DocumentCommand::OutlineToggle(index)),
 					rect,
 				);
 				button.kind = components::ButtonKind::Quiet;
@@ -185,7 +187,7 @@ pub(super) fn buttons(
 		if let Some(rect) = heading.intersect(list) {
 			let mut button = components::button(
 				lang.outline_heading(),
-				Command::OutlineGoto(index),
+				Command::Document(DocumentCommand::OutlineGoto(index)),
 				rect,
 			);
 			button.kind = components::ButtonKind::Quiet;
@@ -209,18 +211,24 @@ pub(in crate::app) fn normalize(
 	let max = max_scroll(drawer, rows.len());
 	interaction.overlays.outline.normalize(rows, max);
 	if interaction.widgets.focus.is_some_and(|id| {
-		(id.scope == Command::OutlineGoto(0).widget_id().scope
-			|| id.scope == Command::OutlineToggle(0).widget_id().scope)
-			&& !rows.iter().any(|index| {
-				id == Command::OutlineGoto(*index).widget_id()
-					|| id == Command::OutlineToggle(*index).widget_id()
-			})
+		(id.scope
+			== Command::Document(DocumentCommand::OutlineGoto(0))
+				.widget_id()
+				.scope || id.scope
+			== Command::Document(DocumentCommand::OutlineToggle(0))
+				.widget_id()
+				.scope) && !rows.iter().any(|index| {
+			id == Command::Document(DocumentCommand::OutlineGoto(*index))
+				.widget_id() || id
+				== Command::Document(DocumentCommand::OutlineToggle(*index))
+					.widget_id()
+		})
 	}) {
 		interaction.widgets.focus = interaction
 			.overlays
 			.outline
 			.selection()
-			.map(Command::OutlineGoto)
+			.map(|row| Command::Document(DocumentCommand::OutlineGoto(row)))
 			.map(Command::widget_id);
 	}
 }
@@ -307,7 +315,10 @@ pub(super) fn draw(
 		);
 		let pressed = hovered
 			&& interaction.widgets.captured
-				== Some(Command::OutlineGoto(index).widget_id());
+				== Some(
+					Command::Document(DocumentCommand::OutlineGoto(index))
+						.widget_id(),
+				);
 		let active = current == Some(index);
 		if active {
 			body.push(Draw::Rect(

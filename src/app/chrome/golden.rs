@@ -1,4 +1,5 @@
 use super::*;
+use crate::state::ChromeCommand;
 use crate::test_support::render_goldens::{Baselines, capture};
 use crate::{
 	render::{Renderer, Theme, View},
@@ -93,7 +94,11 @@ fn ui_styles_match_rendering_baselines() -> Result<()> {
 					w: 116.,
 					h: 36.,
 				};
-				let mut b = components::button(*state, Command::Settings, rect);
+				let mut b = components::button(
+					*state,
+					Command::Chrome(ChromeCommand::Settings),
+					rect,
+				);
 				b.active = *state == "selected";
 				b.enabled = *state != "disabled";
 				let state = InteractionState {

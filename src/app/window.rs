@@ -1,4 +1,7 @@
 use crate::cli::Mode;
+use crate::state::{
+	ChromeCommand, DocumentCommand, ExportCommand, SettingsCommand,
+};
 use crate::state::{Command, Selection, WheelAxis, WheelStep};
 use log::{error, info};
 use std::time::{Duration, Instant};
@@ -274,7 +277,7 @@ impl<P: super::SendEvent> App<P> {
 			&& !self.pointer_in_folder()
 		{
 			if let Some(index) = self.tab_at_cursor() {
-				self.action(Command::CloseTab(index));
+				self.action(Command::Chrome(ChromeCommand::CloseTab(index)));
 			} else if let Some(link) = self.link_at(
 				self.interaction.pointer.cursor().0,
 				self.interaction.pointer.cursor().1,
@@ -414,9 +417,9 @@ impl<P: super::SendEvent> App<P> {
 			|| self.interaction.pointer.modifiers().super_key()
 		{
 			self.action(if dy > 0.0 {
-				Command::Larger
+				Command::Settings(SettingsCommand::Larger)
 			} else {
-				Command::Smaller
+				Command::Settings(SettingsCommand::Smaller)
 			});
 		} else {
 			let now = Instant::now();
@@ -510,19 +513,23 @@ impl<P: super::SendEvent> App<P> {
 						self.paste_markdown()
 					}
 					"w" if !self.panel_has_focus() => {
-						self.action(Command::CloseTab(self.readers.active()))
+						self.action(Command::Chrome(ChromeCommand::CloseTab(
+							self.readers.active(),
+						)))
 					}
-					"," => self.action(Command::Settings),
+					"," => {
+						self.action(Command::Chrome(ChromeCommand::Settings))
+					}
 					"b" if !self.panel_has_focus() => {
-						self.action(Command::Outline)
+						self.action(Command::Document(DocumentCommand::Outline))
 					}
 					"o" if self.interaction.pointer.modifiers().shift_key()
 						&& !self.panel_has_focus() =>
 					{
-						self.action(Command::OpenFolder)
+						self.action(Command::Chrome(ChromeCommand::OpenFolder))
 					}
 					"o" if !self.panel_has_focus() => {
-						self.action(Command::Open)
+						self.action(Command::Document(DocumentCommand::Open))
 					}
 					"r" if markview_platform::folder_reveal()
 						&& self.interaction.pointer.modifiers().alt_key()
@@ -532,17 +539,34 @@ impl<P: super::SendEvent> App<P> {
 							.modifiers()
 							.shift_key() && !self.panel_has_focus() =>
 					{
-						self.action(Command::RevealFolder)
+						self.action(Command::Chrome(
+							ChromeCommand::RevealFolder,
+						))
 					}
-					"n" => self.action(Command::NewPage),
-					"t" => self.action(Command::Styles),
-					"e" => self.action(Command::Export),
-					"-" => self.action(Command::Smaller),
-					"+" | "=" => self.action(Command::Larger),
-					"[" => self.action(Command::Narrower),
-					"]" => self.action(Command::Wider),
-					"l" => self.action(Command::Align),
-					"h" => self.action(Command::Hyphens),
+					"n" => {
+						self.action(Command::Document(DocumentCommand::NewPage))
+					}
+					"t" => {
+						self.action(Command::Settings(SettingsCommand::Styles))
+					}
+					"e" => self.action(Command::Export(ExportCommand::Export)),
+					"-" => {
+						self.action(Command::Settings(SettingsCommand::Smaller))
+					}
+					"+" | "=" => {
+						self.action(Command::Settings(SettingsCommand::Larger))
+					}
+					"[" => self
+						.action(Command::Settings(SettingsCommand::Narrower)),
+					"]" => {
+						self.action(Command::Settings(SettingsCommand::Wider))
+					}
+					"l" => {
+						self.action(Command::Settings(SettingsCommand::Align))
+					}
+					"h" => {
+						self.action(Command::Settings(SettingsCommand::Hyphens))
+					}
 					"q" => event_loop.exit(),
 					_ => {}
 				}
@@ -817,12 +841,12 @@ impl<P: super::SendEvent> App<P> {
 	fn navigate_focus(&mut self) {
 		let backward = self.interaction.pointer.modifiers().shift_key();
 		if let Some(action) = self.navigate_widgets(backward) {
-			if let Command::OutlineGoto(index) | Command::OutlineToggle(index) =
-				action
+			if let Command::Document(DocumentCommand::OutlineGoto(index))
+			| Command::Document(DocumentCommand::OutlineToggle(index)) = action
 			{
 				self.reveal_outline(index);
 			}
-			if let Command::FolderEntry(index) = action {
+			if let Command::Chrome(ChromeCommand::FolderEntry(index)) = action {
 				self.reveal_folder(index);
 			}
 			self.reveal_panel_focus();

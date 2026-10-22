@@ -795,15 +795,21 @@ fn enter_follows_the_outline_selection_after_a_click_and_a_step() {
 	assert!(interaction.toggle_outline(3, Some(0)));
 	// A press on the first row leaves button focus there, as the pointer path
 	// does, and Enter activates it.
-	interaction.widgets.focus = Some(Command::OutlineGoto(0).widget_id());
-	let visible = || [Command::OutlineGoto(0), Command::OutlineGoto(1)];
+	interaction.widgets.focus =
+		Some(Command::Document(DocumentCommand::OutlineGoto(0)).widget_id());
+	let visible = || {
+		[
+			Command::Document(DocumentCommand::OutlineGoto(0)),
+			Command::Document(DocumentCommand::OutlineGoto(1)),
+		]
+	};
 	assert_eq!(
 		interaction.enter_action(
 			visible()
 				.into_iter()
 				.map(|action| (action.widget_id(), action))
 		),
-		Some(Command::OutlineGoto(0))
+		Some(Command::Document(DocumentCommand::OutlineGoto(0)))
 	);
 	// Down moves the visible selection, and button focus follows it, so Enter
 	// no longer jumps back to the row that was clicked.
@@ -811,7 +817,7 @@ fn enter_follows_the_outline_selection_after_a_click_and_a_step() {
 	assert_eq!(interaction.overlays.outline.selection(), Some(1));
 	assert_eq!(
 		interaction.widgets.focus,
-		Some(Command::OutlineGoto(1).widget_id())
+		Some(Command::Document(DocumentCommand::OutlineGoto(1)).widget_id())
 	);
 	assert_eq!(
 		interaction.enter_action(
@@ -819,7 +825,7 @@ fn enter_follows_the_outline_selection_after_a_click_and_a_step() {
 				.into_iter()
 				.map(|action| (action.widget_id(), action))
 		),
-		Some(Command::OutlineGoto(1))
+		Some(Command::Document(DocumentCommand::OutlineGoto(1)))
 	);
 	// With no button focus, the selection is still what Enter activates.
 	interaction.widgets.focus = None;
@@ -829,18 +835,19 @@ fn enter_follows_the_outline_selection_after_a_click_and_a_step() {
 				.into_iter()
 				.map(|action| (action.widget_id(), action))
 		),
-		Some(Command::OutlineGoto(1))
+		Some(Command::Document(DocumentCommand::OutlineGoto(1)))
 	);
 	// With nothing to select, the drawer leaves the focused button alone.
 	interaction.overlays.outline.select(None);
-	interaction.widgets.focus = Some(Command::Outline.widget_id());
+	interaction.widgets.focus =
+		Some(Command::Document(DocumentCommand::Outline).widget_id());
 	assert_eq!(
 		interaction.enter_action(
-			[Command::Outline]
+			[Command::Document(DocumentCommand::Outline)]
 				.into_iter()
 				.map(|action| (action.widget_id(), action))
 		),
-		Some(Command::Outline)
+		Some(Command::Document(DocumentCommand::Outline))
 	);
 }
 
@@ -849,49 +856,50 @@ fn tabbing_through_the_drawer_marks_the_row_focus_lands_on() {
 	let mut interaction = InteractionState::default();
 	assert!(interaction.toggle_outline(3, Some(0)));
 	let buttons = [
-		Command::Outline,
-		Command::OutlineGoto(0),
-		Command::OutlineGoto(1),
-		Command::OutlineGoto(2),
+		Command::Document(DocumentCommand::Outline),
+		Command::Document(DocumentCommand::OutlineGoto(0)),
+		Command::Document(DocumentCommand::OutlineGoto(1)),
+		Command::Document(DocumentCommand::OutlineGoto(2)),
 	];
 	// Tab from the toolbar toggle lands on the first row and marks it.
-	interaction.widgets.focus = Some(Command::Outline.widget_id());
+	interaction.widgets.focus =
+		Some(Command::Document(DocumentCommand::Outline).widget_id());
 	assert_eq!(
 		interaction
 			.tab_focus(&crate::app::widgets::command_layout(&buttons), false),
-		Some(Command::OutlineGoto(0))
+		Some(Command::Document(DocumentCommand::OutlineGoto(0)))
 	);
 	assert_eq!(interaction.overlays.outline.selection(), Some(0));
 	// Tabbing onward moves the visible selection with the focused row.
 	assert_eq!(
 		interaction
 			.tab_focus(&crate::app::widgets::command_layout(&buttons), false),
-		Some(Command::OutlineGoto(1))
+		Some(Command::Document(DocumentCommand::OutlineGoto(1)))
 	);
 	assert_eq!(interaction.overlays.outline.selection(), Some(1));
 	assert_eq!(
 		interaction
 			.tab_focus(&crate::app::widgets::command_layout(&buttons), false),
-		Some(Command::OutlineGoto(2))
+		Some(Command::Document(DocumentCommand::OutlineGoto(2)))
 	);
 	assert_eq!(interaction.overlays.outline.selection(), Some(2));
 	// Shift+Tab walks back over the same rows.
 	assert_eq!(
 		interaction
 			.tab_focus(&crate::app::widgets::command_layout(&buttons), true),
-		Some(Command::OutlineGoto(1))
+		Some(Command::Document(DocumentCommand::OutlineGoto(1)))
 	);
 	assert_eq!(interaction.overlays.outline.selection(), Some(1));
 	// Tabbing onto a toolbar button leaves the drawer's selection where it is.
 	assert_eq!(
 		interaction
 			.tab_focus(&crate::app::widgets::command_layout(&buttons), true),
-		Some(Command::OutlineGoto(0))
+		Some(Command::Document(DocumentCommand::OutlineGoto(0)))
 	);
 	assert_eq!(
 		interaction
 			.tab_focus(&crate::app::widgets::command_layout(&buttons), true),
-		Some(Command::Outline)
+		Some(Command::Document(DocumentCommand::Outline))
 	);
 	assert_eq!(interaction.overlays.outline.selection(), Some(0));
 }
@@ -903,7 +911,12 @@ fn a_panel_or_a_confirmation_stops_enter_from_reaching_the_outline() {
 	// Ctrl+T opens Styles and clears button focus, leaving the selection
 	// behind the panel intact.
 	interaction.widgets.focus = None;
-	let visible = || [Command::Styles, Command::Settings];
+	let visible = || {
+		[
+			Command::Settings(SettingsCommand::Styles),
+			Command::Chrome(ChromeCommand::Settings),
+		]
+	};
 	// With only the drawer open, Enter still jumps to its selection.
 	assert_eq!(
 		interaction.enter_action(
@@ -911,7 +924,7 @@ fn a_panel_or_a_confirmation_stops_enter_from_reaching_the_outline() {
 				.into_iter()
 				.map(|action| (action.widget_id(), action))
 		),
-		Some(Command::OutlineGoto(2))
+		Some(Command::Document(DocumentCommand::OutlineGoto(2)))
 	);
 	// A panel owns input: Enter without a focused panel button does nothing
 	// instead of scrolling the document behind the panel.
@@ -928,14 +941,15 @@ fn a_panel_or_a_confirmation_stops_enter_from_reaching_the_outline() {
 		None
 	);
 	// A visible panel button still answers Enter while the panel is open.
-	interaction.widgets.focus = Some(Command::Settings.widget_id());
+	interaction.widgets.focus =
+		Some(Command::Chrome(ChromeCommand::Settings).widget_id());
 	assert_eq!(
 		interaction.enter_action(
 			visible()
 				.into_iter()
 				.map(|action| (action.widget_id(), action))
 		),
-		Some(Command::Settings)
+		Some(Command::Chrome(ChromeCommand::Settings))
 	);
 	// A confirmation owns input in the same way.
 	interaction.widgets.focus = None;
@@ -964,7 +978,7 @@ fn a_panel_or_a_confirmation_stops_enter_from_reaching_the_outline() {
 				.into_iter()
 				.map(|action| (action.widget_id(), action))
 		),
-		Some(Command::OutlineGoto(2))
+		Some(Command::Document(DocumentCommand::OutlineGoto(2)))
 	);
 }
 
@@ -1608,7 +1622,10 @@ fn panel_navigation_preserves_parent_scroll_and_resets_new_visits() {
 	interaction.toggle_settings();
 	assert_eq!(
 		interaction.widgets.focus,
-		Some(Command::SettingsTab(PanelTab::Generic).widget_id())
+		Some(
+			Command::Chrome(ChromeCommand::SettingsTab(PanelTab::Generic))
+				.widget_id()
+		)
 	);
 	// Page offsets do not live here; this pins the panel transitions the
 	// interaction state owns. The settings round-trip is covered at the App
@@ -1622,7 +1639,10 @@ fn panel_navigation_preserves_parent_scroll_and_resets_new_visits() {
 	interaction.toggle_settings();
 	assert_eq!(
 		interaction.widgets.focus,
-		Some(Command::SettingsTab(PanelTab::Generic).widget_id())
+		Some(
+			Command::Chrome(ChromeCommand::SettingsTab(PanelTab::Generic))
+				.widget_id()
+		)
 	);
 	interaction.toggle_export();
 	*interaction.panels.export_scroll_mut() = 90.0.into();
@@ -1639,7 +1659,7 @@ fn panel_navigation_preserves_parent_scroll_and_resets_new_visits() {
 	assert_eq!(interaction.panels.export_scroll().offset(), 0.0);
 	assert_eq!(
 		interaction.widgets.focus,
-		Some(Command::ExportRun.widget_id())
+		Some(Command::Export(ExportCommand::ExportRun).widget_id())
 	);
 }
 
@@ -1655,8 +1675,12 @@ fn every_panel_transition_clears_transient_input() {
 	] {
 		let mut interaction = InteractionState {
 			widgets: markview_ui_core::Interaction {
-				focus: Some(Command::Larger.widget_id()),
-				captured: Some(Command::Larger.widget_id()),
+				focus: Some(
+					Command::Settings(SettingsCommand::Larger).widget_id(),
+				),
+				captured: Some(
+					Command::Settings(SettingsCommand::Larger).widget_id(),
+				),
 				..Default::default()
 			},
 			..Default::default()

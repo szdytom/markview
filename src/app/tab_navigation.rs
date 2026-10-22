@@ -46,7 +46,9 @@ impl<P: super::SendEvent> App<P> {
 		true
 	}
 	pub(super) fn begin_tab_drag(&mut self, index: usize) {
-		self.action(crate::state::Command::SelectTab(index));
+		self.action(crate::state::Command::Chrome(
+			crate::state::ChromeCommand::SelectTab(index),
+		));
 		self.normalize_tab_scroll();
 		let layout = self.tab_layout();
 		let x = self.interaction.pointer.cursor().0;

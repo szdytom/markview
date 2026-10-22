@@ -13,6 +13,7 @@
 //! borrows it read-only.
 use super::{App, LINE_STEP};
 use crate::app::chrome::components::Menu;
+use crate::state::ChromeCommand;
 use crate::state::{Command, DropdownId};
 use markview_ui_core::{Component, Invalidation, Update};
 use winit::keyboard::{Key, NamedKey};
@@ -244,11 +245,14 @@ impl<P: super::SendEvent> App<P> {
 			.find(|button| {
 				matches!(
 					button.action,
-					Command::ToggleDropdown(id, _) if id == open.id()
+					Command::Chrome(ChromeCommand::ToggleDropdown(id, _)) if id == open.id()
 				)
 			})
 			.map(|button| button.action)
-			.unwrap_or(Command::ToggleDropdown(open.id(), open.highlight()));
+			.unwrap_or(Command::Chrome(ChromeCommand::ToggleDropdown(
+				open.id(),
+				open.highlight(),
+			)));
 		self.interaction.widgets.focus = Some(anchor.widget_id());
 	}
 

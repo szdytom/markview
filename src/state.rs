@@ -13,8 +13,10 @@ use std::{
 };
 use winit::event::TouchPhase;
 
+mod command;
 mod drawer;
 mod outline;
+pub(crate) use command::*;
 pub(crate) use drawer::DrawerAnimation;
 pub(crate) use outline::OutlineTree;
 
@@ -22,126 +24,6 @@ pub(crate) use markview_layout::layout::scroll_limit;
 pub(crate) use markview_selection::{
 	Drag, Grain, Host, HoveredLink, Modifiers, Point, Selection,
 };
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) enum Command {
-	SearchOpen,
-	RetrySettingsLoad,
-	SearchCase,
-	SearchWord,
-	SearchPrevious,
-	SearchNext,
-	SearchClose,
-	FocusInput(TextField),
-	WindowLayout(crate::settings::WindowLayout),
-	TabStyle(crate::settings::TabStyle),
-	OpenUrl,
-	NewPage,
-	Open,
-	OpenFolder,
-	Folder,
-	FolderRoot,
-	FolderEntry(usize),
-	FolderRefresh,
-	FolderCollapseAll,
-	/// Reveal the active document's folder in the file manager.
-	RevealFolder,
-	Smaller,
-	Larger,
-	Narrower,
-	Wider,
-	Align,
-	Hyphens,
-	CodeWrap,
-	SingleInstance,
-	RestoreSession,
-	/// Show the open document's path in the idle footer and copy it on click.
-	FooterPath,
-	/// Step the reader's scroll-speed multiplier by whole steps.
-	ScrollSpeed(i8),
-	SidebarWidth(crate::settings::Sidebar, i8),
-	/// First-line paragraph indent in whole em units.
-	Indent(u8),
-	CjkType(markview_layout::style::CjkType),
-	/// The interface language; `None` follows the system again.
-	Language(Option<crate::lang::Lang>),
-	/// Pick the family a font role shapes with; `None` restores the
-	/// stylesheet's own candidate chain. Selections address the catalogue
-	/// generation that supplied the chooser's shared name.
-	FontFamily(
-		crate::settings::FontRole,
-		Option<crate::app::font_panel::Selection>,
-	),
-	/// Open a control's option list on the option in force, or close it again.
-	ToggleDropdown(DropdownId, usize),
-	/// Open or close the export panel.
-	Export,
-	ExportFormat(crate::settings::ExportFormat),
-	/// Step the export's text size by whole pixels.
-	ExportSize(i8),
-	/// First-line indent preset, in em units.
-	ExportIndent(u8),
-	/// Paper preset index.
-	ExportPaper(u8),
-	/// Paper orientation; `true` is landscape.
-	ExportOrientation(bool),
-	/// Margin preset index.
-	ExportMargin(u8),
-	/// PNG scale preset index.
-	ExportScale(u8),
-	/// Export once, then keep re-exporting whenever the document changes.
-	ExportAndWatch,
-	/// Show the export's stylesheet chooser in place of the export panel.
-	ExportStyles,
-	ExportStyleToggle(usize),
-	ExportStyleUp(usize),
-	ExportStyleDown(usize),
-	/// Write the document with the current export settings.
-	ExportRun,
-	Settings,
-	SettingsPreview,
-	CopyDiagnostics,
-	/// Copy the active document's absolute path to the clipboard.
-	CopyPath,
-	OpenProject,
-	Reset,
-	OpenConfig,
-	SystemTheme,
-	Styles,
-	StyleToggle(usize),
-	StyleUp(usize),
-	StyleDown(usize),
-	StylesFolder,
-	/// Show one page of the settings panel.
-	SettingsTab(PanelTab),
-	Fonts(crate::app::font_panel::Command),
-	Tabs,
-	SidebarTab(SidebarTab),
-	SelectTab(usize),
-	CloseTab(usize),
-	/// Dismiss the local-file confirmation without opening anything.
-	ModalDismiss,
-	/// Open the directory containing the file the confirmation names.
-	ModalOpenFolder,
-	/// Hand the confirmed local file to the operating system.
-	ModalConfirm,
-	/// Hide the remote-image banner, keeping the current fetch limit.
-	RemoteDismiss,
-	/// Lift the remote-image limit for the current document revision.
-	RemoteLoadAll,
-	/// Open or close the table-of-contents drawer.
-	Outline,
-	/// Scroll the document to the heading of one outline entry.
-	OutlineGoto(usize),
-	OutlineToggle(usize),
-	OutlineExpandAll,
-	OutlineCollapseAll,
-}
-
-impl Command {
-	pub(crate) fn widget_id(self) -> markview_ui_core::WidgetId {
-		crate::app::widgets::id(self)
-	}
-}
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum TextField {
@@ -214,8 +96,10 @@ impl InteractionState {
 			PanelPage::Closed
 		});
 		if open {
-			self.widgets.focus =
-				Some(Command::SettingsTab(PanelTab::Generic).widget_id());
+			self.widgets.focus = Some(
+				Command::Chrome(ChromeCommand::SettingsTab(PanelTab::Generic))
+					.widget_id(),
+			);
 		}
 	}
 
@@ -228,7 +112,8 @@ impl InteractionState {
 		});
 		if open {
 			self.panels.export_scroll_mut().reset();
-			self.widgets.focus = Some(Command::ExportRun.widget_id());
+			self.widgets.focus =
+				Some(Command::Export(ExportCommand::ExportRun).widget_id());
 		}
 	}
 
@@ -647,7 +532,7 @@ impl InteractionState {
 			.overlays
 			.outline
 			.selection()
-			.map(Command::OutlineGoto)
+			.map(|row| Command::Document(DocumentCommand::OutlineGoto(row)))
 			.map(Command::widget_id);
 		moved
 	}
@@ -669,7 +554,7 @@ impl InteractionState {
 		self.outline_owns_input()
 			.then_some(self.overlays.outline.selection())
 			.flatten()
-			.map(Command::OutlineGoto)
+			.map(|row| Command::Document(DocumentCommand::OutlineGoto(row)))
 	}
 
 	/// Scrolls the drawer's own list by `delta`, clamped to `max`.
@@ -716,7 +601,8 @@ impl InteractionState {
 		self.widgets
 			.handle(layout, markview_ui_core::Input::Navigate { backward });
 		let action = self.widgets.focus.and_then(|id| layout.get(id))?.message;
-		if let Command::OutlineGoto(row) | Command::OutlineToggle(row) = action
+		if let Command::Document(DocumentCommand::OutlineGoto(row))
+		| Command::Document(DocumentCommand::OutlineToggle(row)) = action
 		{
 			self.overlays.outline.select(Some(row));
 		}

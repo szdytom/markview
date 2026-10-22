@@ -1,5 +1,6 @@
 //! Shared, concrete chrome components. Geometry owns painting and input alike.
 use super::icons;
+use crate::state::{ChromeCommand, ExportCommand, SettingsCommand};
 use crate::{
 	app::{Button, Label, dropdown::Dropdown},
 	lang::Lang,
@@ -50,17 +51,19 @@ pub(super) fn button(
 		action,
 		rect,
 		icon: match action {
-			Command::CopyDiagnostics => Some(icons::COPY),
-			Command::Smaller
-			| Command::Narrower
-			| Command::ScrollSpeed(-1)
-			| Command::SidebarWidth(_, -1)
-			| Command::ExportSize(-1) => Some(icons::MINUS),
-			Command::Larger
-			| Command::Wider
-			| Command::ScrollSpeed(1)
-			| Command::SidebarWidth(_, 1)
-			| Command::ExportSize(1) => Some(icons::PLUS),
+			Command::Chrome(ChromeCommand::CopyDiagnostics) => {
+				Some(icons::COPY)
+			}
+			Command::Settings(SettingsCommand::Smaller)
+			| Command::Settings(SettingsCommand::Narrower)
+			| Command::Settings(SettingsCommand::ScrollSpeed(-1))
+			| Command::Settings(SettingsCommand::SidebarWidth(_, -1))
+			| Command::Export(ExportCommand::ExportSize(-1)) => Some(icons::MINUS),
+			Command::Settings(SettingsCommand::Larger)
+			| Command::Settings(SettingsCommand::Wider)
+			| Command::Settings(SettingsCommand::ScrollSpeed(1))
+			| Command::Settings(SettingsCommand::SidebarWidth(_, 1))
+			| Command::Export(ExportCommand::ExportSize(1)) => Some(icons::PLUS),
 			_ => None,
 		},
 		marker: None,
@@ -119,7 +122,7 @@ pub(in crate::app) fn tab_controls(
 	for (index, (label, tab)) in tabs.iter().enumerate() {
 		let mut b = button(
 			*label,
-			Command::SettingsTab(*tab),
+			Command::Chrome(ChromeCommand::SettingsTab(*tab)),
 			Rect {
 				x: rect.x + INSET + index as f32 * step,
 				y: rect.y + TAB_Y,
@@ -171,7 +174,9 @@ pub(in crate::app) fn draw_tabs(
 pub(in crate::app) fn is_settings_header(action: Command) -> bool {
 	matches!(
 		action,
-		Command::SettingsTab(_) | Command::Settings | Command::SettingsPreview
+		Command::Chrome(ChromeCommand::SettingsTab(_))
+			| Command::Chrome(ChromeCommand::Settings)
+			| Command::Settings(SettingsCommand::SettingsPreview)
 	)
 }
 
@@ -184,7 +189,7 @@ pub(in crate::app) fn settings_header_controls(
 	let mut out = tab_controls(rect, current, lang);
 	let close = button(
 		lang.panel_close(),
-		Command::Settings,
+		Command::Chrome(ChromeCommand::Settings),
 		Rect {
 			x: rect.x + rect.w - INSET - CONTROL,
 			y: rect.y + 18.0,
@@ -194,7 +199,7 @@ pub(in crate::app) fn settings_header_controls(
 	);
 	let mut eye = button(
 		lang.panel_preview(),
-		Command::SettingsPreview,
+		Command::Settings(SettingsCommand::SettingsPreview),
 		Rect {
 			x: close.rect.x - CONTROL - 8.0,
 			..close.rect
@@ -816,13 +821,13 @@ impl Form {
 				};
 				let mut b = button(
 					chosen.label.clone(),
-					Command::ToggleDropdown(
+					Command::Chrome(ChromeCommand::ToggleDropdown(
 						menu.id,
 						menu.entries
 							.iter()
 							.position(|entry| entry.active)
 							.unwrap_or(0),
-					),
+					)),
 					rect,
 				);
 				b.marker = Some(icons::CHEVRON);
@@ -832,7 +837,7 @@ impl Form {
 			if let Some(id) = row.input {
 				buttons.push(button(
 					"",
-					Command::FocusInput(id),
+					Command::Chrome(ChromeCommand::FocusInput(id)),
 					Rect {
 						x: right - w,
 						y: control_y,
@@ -893,7 +898,7 @@ impl Form {
 		let close = self.buttons[0].rect;
 		let mut eye = button(
 			self.lang.panel_preview(),
-			Command::SettingsPreview,
+			Command::Settings(SettingsCommand::SettingsPreview),
 			Rect {
 				x: close.x - CONTROL - 8.0,
 				..close
@@ -911,7 +916,7 @@ impl Form {
 	pub(super) fn preview(mut self, enabled: bool) -> Self {
 		self.preview = enabled;
 		for b in &mut self.buttons {
-			if b.action == Command::SettingsPreview {
+			if b.action == Command::Settings(SettingsCommand::SettingsPreview) {
 				b.active = enabled;
 				b.label = (if enabled {
 					self.lang.panel_exit_preview()
@@ -933,7 +938,8 @@ impl Form {
 	) {
 		let mut right = self.rect.x + self.rect.w - INSET;
 		for &(text, action, kind) in entries.iter().rev() {
-			let w = if action == Command::CopyDiagnostics {
+			let w = if action == Command::Chrome(ChromeCommand::CopyDiagnostics)
+			{
 				CONTROL
 			} else {
 				super::controls::button_width(ui, text, 13.0) + 6.0
@@ -961,7 +967,10 @@ impl Form {
 				if !self.header
 					&& matches!(
 						b.action,
-						Command::Settings | Command::SettingsPreview
+						Command::Chrome(ChromeCommand::Settings)
+							| Command::Settings(
+								SettingsCommand::SettingsPreview
+							)
 					) {
 					return None;
 				}
@@ -1081,11 +1090,10 @@ impl Form {
 			fade(&mut out, ui, 0.25);
 			// Keep the exit control legible while the rest of the panel recedes.
 			if self.header
-				&& let Some(eye) = self
-					.buttons
-					.iter()
-					.find(|b| b.action == Command::SettingsPreview)
-			{
+				&& let Some(eye) = self.buttons.iter().find(|b| {
+					b.action
+						== Command::Settings(SettingsCommand::SettingsPreview)
+				}) {
 				out.extend(draw_button(ui, interaction, eye, true));
 			}
 		}
@@ -1205,17 +1213,22 @@ impl Form {
 		);
 
 		for (i, b) in self.buttons.iter().enumerate() {
-			if matches!(b.action, Command::FocusInput(_)) {
+			if matches!(b.action, Command::Chrome(ChromeCommand::FocusInput(_)))
+			{
 				continue;
 			}
 			if !self.header
 				&& matches!(
 					b.action,
-					Command::Settings | Command::SettingsPreview
+					Command::Chrome(ChromeCommand::Settings)
+						| Command::Settings(SettingsCommand::SettingsPreview)
 				) {
 				continue;
 			}
-			if self.preview && b.action == Command::SettingsPreview {
+			if self.preview
+				&& b.action
+					== Command::Settings(SettingsCommand::SettingsPreview)
+			{
 				continue;
 			}
 			if (self.body_start..self.body_end).contains(&i) {

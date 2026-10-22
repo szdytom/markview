@@ -401,7 +401,7 @@ fn command_surface(
 	root: &Path,
 	sources: &[complexity::Source],
 ) -> Result<CommandSurface> {
-	let expected = root.join("src/state.rs");
+	let expected = root.join("src/state/command.rs");
 	let source = sources
 		.iter()
 		.find(|source| source.path == expected)

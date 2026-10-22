@@ -1,6 +1,10 @@
 //! Commands, selection gestures and clipboard actions.
 use crate::cli::Mode;
 use crate::settings::Setting;
+use crate::state::{
+	ChromeCommand, DocumentCommand, ExportCommand, SearchCommand,
+	SettingsCommand,
+};
 use crate::state::{Command, PanelPage, ScrollbarAxis, ScrollbarDrag};
 use markview_layout::text::TextPosition;
 use std::time::{Duration, Instant};
@@ -44,27 +48,32 @@ impl<P: super::SendEvent> App<P> {
 		if !self.settings_action_enabled(action) {
 			return;
 		}
-		if let Command::FocusInput(id) = action {
-			self.interaction.widgets.focus =
-				Some(Command::FocusInput(id).widget_id());
+		if let Command::Chrome(ChromeCommand::FocusInput(id)) = action {
+			self.interaction.widgets.focus = Some(
+				Command::Chrome(ChromeCommand::FocusInput(id)).widget_id(),
+			);
 			self.sync_input();
 			self.redraw();
 			return;
 		}
 		if matches!(
 			action,
-			Command::Settings
-				| Command::SettingsTab(_)
-				| Command::Styles
-				| Command::Export
-				| Command::ExportStyles
-				| Command::Tabs
-				| Command::SidebarTab(_)
+			Command::Chrome(ChromeCommand::Settings)
+				| Command::Chrome(ChromeCommand::SettingsTab(_))
+				| Command::Settings(SettingsCommand::Styles)
+				| Command::Export(ExportCommand::Export)
+				| Command::Export(ExportCommand::ExportStyles)
+				| Command::Chrome(ChromeCommand::Tabs)
+				| Command::Chrome(ChromeCommand::SidebarTab(_))
 		) {
 			self.close_search();
 		}
 		// Search navigation keeps the IME open while moving between results.
-		if !matches!(action, Command::SearchNext | Command::SearchPrevious) {
+		if !matches!(
+			action,
+			Command::Search(SearchCommand::SearchNext)
+				| Command::Search(SearchCommand::SearchPrevious)
+		) {
 			self.blur_input();
 			if self.focused_input().is_some() {
 				self.interaction.widgets.focus = None;
@@ -80,41 +89,49 @@ impl<P: super::SendEvent> App<P> {
 			return;
 		}
 		match action {
-			Command::OpenUrl => {
+			Command::Document(DocumentCommand::OpenUrl) => {
 				let url = self.url_input.text().trim().to_owned();
 				if !url.is_empty() {
 					self.open_web_page(url);
 					self.url_input.set_text(&mut self.ui, "");
 				}
 			}
-			Command::SearchOpen => {
+			Command::Search(SearchCommand::SearchOpen) => {
 				self.open_new_search();
 			}
-			Command::SearchClose => {
+			Command::Search(SearchCommand::SearchClose) => {
 				self.close_search();
 			}
-			Command::SearchNext | Command::SearchPrevious => {
-				self.navigate_search(action == Command::SearchPrevious);
+			Command::Search(SearchCommand::SearchNext)
+			| Command::Search(SearchCommand::SearchPrevious) => {
+				self.navigate_search(
+					action == Command::Search(SearchCommand::SearchPrevious),
+				);
 				self.interaction.widgets.focus = Some(
-					Command::FocusInput(crate::state::TextField::Search)
-						.widget_id(),
+					Command::Chrome(ChromeCommand::FocusInput(
+						crate::state::TextField::Search,
+					))
+					.widget_id(),
 				);
 				self.sync_input();
 			}
-			Command::SearchCase | Command::SearchWord => {
+			Command::Search(SearchCommand::SearchCase)
+			| Command::Search(SearchCommand::SearchWord) => {
 				let options = &mut self.readers.session.search.options;
-				if action == Command::SearchCase {
+				if action == Command::Search(SearchCommand::SearchCase) {
 					options.case_sensitive = !options.case_sensitive;
 				} else {
 					options.whole_word = !options.whole_word;
 				}
 				self.search_changed();
 			}
-			Command::FocusInput(_) => unreachable!("input focus handled above"),
-			Command::OpenProject => {
+			Command::Chrome(ChromeCommand::FocusInput(_)) => {
+				unreachable!("input focus handled above")
+			}
+			Command::Chrome(ChromeCommand::OpenProject) => {
 				self.launch(env!("CARGO_PKG_REPOSITORY"));
 			}
-			Command::CopyDiagnostics => {
+			Command::Chrome(ChromeCommand::CopyDiagnostics) => {
 				let text = crate::diagnostics::report(
 					self.renderer.as_ref().map(|renderer| renderer.backend),
 				);
@@ -139,7 +156,7 @@ impl<P: super::SendEvent> App<P> {
 				}
 				self.redraw();
 			}
-			Command::CopyPath => {
+			Command::Document(DocumentCommand::CopyPath) => {
 				if !self.preferences.values.footer_path {
 					return;
 				}
@@ -157,21 +174,23 @@ impl<P: super::SendEvent> App<P> {
 					),
 				}
 			}
-			Command::Tabs => self.toggle_phone_sidebar(),
-			Command::SidebarTab(tab) => self.switch_sidebar_tab(tab),
-			Command::SelectTab(index) => {
+			Command::Chrome(ChromeCommand::Tabs) => self.toggle_phone_sidebar(),
+			Command::Chrome(ChromeCommand::SidebarTab(tab)) => {
+				self.switch_sidebar_tab(tab)
+			}
+			Command::Chrome(ChromeCommand::SelectTab(index)) => {
 				if self.interaction.panel == PanelPage::Tabs {
 					self.show_panel(PanelPage::Closed);
 				}
 				self.select_tab(index);
 			}
-			Command::ModalDismiss => {
+			Command::Chrome(ChromeCommand::ModalDismiss) => {
 				self.interaction.overlays.modal.send(Message::Dismiss);
 				self.interaction.widgets.focus = None;
 				self.refresh_hover();
 				self.redraw();
 			}
-			Command::ModalOpenFolder => {
+			Command::Chrome(ChromeCommand::ModalOpenFolder) => {
 				if let Some(Modal::OpenLocal { dir, .. }) =
 					self.interaction.overlays.modal().cloned()
 				{
@@ -180,7 +199,7 @@ impl<P: super::SendEvent> App<P> {
 					self.launch(&dir.display().to_string());
 				}
 			}
-			Command::ModalConfirm => {
+			Command::Chrome(ChromeCommand::ModalConfirm) => {
 				if let Some(modal) = self.interaction.overlays.modal.take() {
 					self.interaction.widgets.focus = None;
 					match modal {
@@ -193,34 +212,38 @@ impl<P: super::SendEvent> App<P> {
 					}
 				}
 			}
-			Command::RemoteDismiss => {
+			Command::Document(DocumentCommand::RemoteDismiss) => {
 				// Both answers belong to this tab and this content revision.
 				self.readers.session.remote_notice_dismissed = true;
 				self.redraw();
 			}
-			Command::RemoteLoadAll => {
+			Command::Document(DocumentCommand::RemoteLoadAll) => {
 				self.readers.session.remote_notice_dismissed = true;
 				self.readers.session.load_all_images = true;
 				self.request(false);
 			}
-			Command::Outline => {
+			Command::Document(DocumentCommand::Outline) => {
 				self.toggle_outline();
 			}
-			Command::OutlineToggle(index) => {
+			Command::Document(DocumentCommand::OutlineToggle(index)) => {
 				self.toggle_outline_entry(index);
 			}
-			Command::OutlineExpandAll | Command::OutlineCollapseAll => {
+			Command::Document(DocumentCommand::OutlineExpandAll)
+			| Command::Document(DocumentCommand::OutlineCollapseAll) => {
 				self.set_outline_collapsed(
-					action == Command::OutlineCollapseAll,
+					action
+						== Command::Document(
+							DocumentCommand::OutlineCollapseAll,
+						),
 				);
 			}
-			Command::OutlineGoto(index) => {
+			Command::Document(DocumentCommand::OutlineGoto(index)) => {
 				self.goto_outline(index);
 			}
-			Command::CloseTab(index) => {
+			Command::Chrome(ChromeCommand::CloseTab(index)) => {
 				self.close_tab(index);
 			}
-			Command::Styles => {
+			Command::Settings(SettingsCommand::Styles) => {
 				self.readers.session.cancel_scroll_animation();
 				self.tab_strip.cancel_drag();
 				self.show_styles(false);
@@ -228,7 +251,7 @@ impl<P: super::SendEvent> App<P> {
 				self.interaction.widgets.focus = None;
 				self.redraw();
 			}
-			Command::ExportStyles => {
+			Command::Export(ExportCommand::ExportStyles) => {
 				self.readers.session.cancel_scroll_animation();
 				self.tab_strip.cancel_drag();
 				self.show_styles(true);
@@ -236,7 +259,7 @@ impl<P: super::SendEvent> App<P> {
 				self.interaction.widgets.focus = None;
 				self.redraw();
 			}
-			Command::Export => {
+			Command::Export(ExportCommand::Export) => {
 				self.readers.session.cancel_scroll_animation();
 				self.tab_strip.cancel_drag();
 				if !self.interaction.export_open()
@@ -253,21 +276,21 @@ impl<P: super::SendEvent> App<P> {
 				self.refresh_hover();
 				self.redraw();
 			}
-			Command::ExportRun => {
+			Command::Export(ExportCommand::ExportRun) => {
 				self.start_export(false);
 			}
-			Command::ExportAndWatch => {
+			Command::Export(ExportCommand::ExportAndWatch) => {
 				self.start_export(true);
 			}
 			// Applied by `page_command` before this match.
-			Command::FooterPath
-			| Command::ExportFormat(_)
-			| Command::ExportSize(_)
-			| Command::ExportIndent(_)
-			| Command::ExportPaper(_)
-			| Command::ExportOrientation(_)
-			| Command::ExportMargin(_)
-			| Command::ExportScale(_) => {}
+			Command::Settings(SettingsCommand::FooterPath)
+			| Command::Export(ExportCommand::ExportFormat(_))
+			| Command::Export(ExportCommand::ExportSize(_))
+			| Command::Export(ExportCommand::ExportIndent(_))
+			| Command::Export(ExportCommand::ExportPaper(_))
+			| Command::Export(ExportCommand::ExportOrientation(_))
+			| Command::Export(ExportCommand::ExportMargin(_))
+			| Command::Export(ExportCommand::ExportScale(_)) => {}
 			Command::Fonts(command) => {
 				// Switching the page's view leaves the chooser rows the open
 				// list anchors to, so the list goes with them.
@@ -288,17 +311,17 @@ impl<P: super::SendEvent> App<P> {
 				self.refresh_settings_resources(false);
 				self.redraw();
 			}
-			Command::RetrySettingsLoad => {
+			Command::Settings(SettingsCommand::RetrySettingsLoad) => {
 				self.refresh_settings_resources(true);
 				self.redraw();
 			}
-			Command::SettingsTab(tab) => {
+			Command::Chrome(ChromeCommand::SettingsTab(tab)) => {
 				self.show_panel(PanelPage::Settings(tab));
 				self.refresh_settings_resources(true);
 				self.interaction.widgets.focus = None;
 				self.redraw();
 			}
-			Command::StylesFolder => {
+			Command::Settings(SettingsCommand::StylesFolder) => {
 				let result = crate::stylesheet::directory()
 					.ok_or_else(|| {
 						anyhow::anyhow!(
@@ -320,13 +343,15 @@ impl<P: super::SendEvent> App<P> {
 				}
 				self.redraw();
 			}
-			Command::StyleToggle(_)
-			| Command::StyleUp(_)
-			| Command::StyleDown(_)
-			| Command::ExportStyleToggle(_)
-			| Command::ExportStyleUp(_)
-			| Command::ExportStyleDown(_) => unreachable!("page command handled above"),
-			Command::OpenConfig => {
+			Command::Settings(SettingsCommand::StyleToggle(_))
+			| Command::Settings(SettingsCommand::StyleUp(_))
+			| Command::Settings(SettingsCommand::StyleDown(_))
+			| Command::Export(ExportCommand::ExportStyleToggle(_))
+			| Command::Export(ExportCommand::ExportStyleUp(_))
+			| Command::Export(ExportCommand::ExportStyleDown(_)) => {
+				unreachable!("page command handled above")
+			}
+			Command::Settings(SettingsCommand::OpenConfig) => {
 				let result = self.preferences.ensure_file().and_then(|()| {
 					markview_platform::open_external(
 						self.preferences.path().unwrap(),
@@ -339,7 +364,7 @@ impl<P: super::SendEvent> App<P> {
 				}
 				self.redraw();
 			}
-			Command::SystemTheme => {
+			Command::Settings(SettingsCommand::SystemTheme) => {
 				self.args.overrides.retain(|f| *f != Setting::Theme);
 				self.args.theme = None;
 				self.args.style = None;
@@ -347,7 +372,7 @@ impl<P: super::SendEvent> App<P> {
 				self.apply_saved_settings();
 				self.preferences.schedule_save();
 			}
-			Command::Settings => {
+			Command::Chrome(ChromeCommand::Settings) => {
 				self.readers.session.cancel_scroll_animation();
 				self.tab_strip.cancel_drag();
 				self.toggle_settings();
@@ -359,20 +384,22 @@ impl<P: super::SendEvent> App<P> {
 				self.refresh_hover();
 				self.redraw();
 			}
-			Command::NewPage => {
+			Command::Document(DocumentCommand::NewPage) => {
 				self.new_page();
 			}
-			Command::OpenFolder => self.pick_folder(),
-			Command::Folder => self.toggle_folder(),
-			Command::FolderRoot => {
+			Command::Chrome(ChromeCommand::OpenFolder) => self.pick_folder(),
+			Command::Chrome(ChromeCommand::Folder) => self.toggle_folder(),
+			Command::Chrome(ChromeCommand::FolderRoot) => {
 				if let Some(tree) = &mut self.folder.tree {
 					tree.toggle_root();
 					self.scroll_folder(0.);
 					self.redraw();
 				}
 			}
-			Command::FolderEntry(index) => self.activate_folder_entry(index),
-			Command::FolderCollapseAll => {
+			Command::Chrome(ChromeCommand::FolderEntry(index)) => {
+				self.activate_folder_entry(index)
+			}
+			Command::Chrome(ChromeCommand::FolderCollapseAll) => {
 				if let Some(tree) = &mut self.folder.tree {
 					tree.collapse_all();
 					self.folder.grab = None;
@@ -381,12 +408,12 @@ impl<P: super::SendEvent> App<P> {
 					self.redraw();
 				}
 			}
-			Command::FolderRefresh => {
+			Command::Chrome(ChromeCommand::FolderRefresh) => {
 				if let Some(tree) = &self.folder.tree {
 					self.open_folder(tree.root.clone(), false);
 				}
 			}
-			Command::Open => {
+			Command::Document(DocumentCommand::Open) => {
 				if self.interaction.panel == PanelPage::Tabs {
 					self.show_panel(PanelPage::Closed);
 					self.redraw();
@@ -400,7 +427,7 @@ impl<P: super::SendEvent> App<P> {
 					proxy.send(Event::Open(path));
 				});
 			}
-			Command::RevealFolder => {
+			Command::Chrome(ChromeCommand::RevealFolder) => {
 				let dir = self
 					.readers
 					.session
@@ -433,26 +460,28 @@ impl<P: super::SendEvent> App<P> {
 					}
 				}
 			}
-			Command::Smaller
-			| Command::Larger
-			| Command::Narrower
-			| Command::Wider
-			| Command::Align
-			| Command::Hyphens
-			| Command::CodeWrap
-			| Command::Indent(_)
-			| Command::CjkType(_)
-			| Command::Language(_)
-			| Command::FontFamily(_, _)
-			| Command::WindowLayout(_)
-			| Command::TabStyle(_)
-			| Command::SingleInstance
-			| Command::RestoreSession
-			| Command::ScrollSpeed(_)
-			| Command::SidebarWidth(_, _)
-			| Command::Reset
-			| Command::SettingsPreview => unreachable!("page command handled above"),
-			Command::ToggleDropdown(id, highlight) => {
+			Command::Settings(SettingsCommand::Smaller)
+			| Command::Settings(SettingsCommand::Larger)
+			| Command::Settings(SettingsCommand::Narrower)
+			| Command::Settings(SettingsCommand::Wider)
+			| Command::Settings(SettingsCommand::Align)
+			| Command::Settings(SettingsCommand::Hyphens)
+			| Command::Settings(SettingsCommand::CodeWrap)
+			| Command::Settings(SettingsCommand::Indent(_))
+			| Command::Settings(SettingsCommand::CjkType(_))
+			| Command::Settings(SettingsCommand::Language(_))
+			| Command::Settings(SettingsCommand::FontFamily(_, _))
+			| Command::Settings(SettingsCommand::WindowLayout(_))
+			| Command::Settings(SettingsCommand::TabStyle(_))
+			| Command::Settings(SettingsCommand::SingleInstance)
+			| Command::Settings(SettingsCommand::RestoreSession)
+			| Command::Settings(SettingsCommand::ScrollSpeed(_))
+			| Command::Settings(SettingsCommand::SidebarWidth(_, _))
+			| Command::Settings(SettingsCommand::Reset)
+			| Command::Settings(SettingsCommand::SettingsPreview) => {
+				unreachable!("page command handled above")
+			}
+			Command::Chrome(ChromeCommand::ToggleDropdown(id, highlight)) => {
 				let same = self
 					.interaction
 					.overlays

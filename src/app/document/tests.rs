@@ -1,4 +1,7 @@
 use super::*;
+use crate::state::{
+	ChromeCommand, DocumentCommand, ExportCommand, SearchCommand,
+};
 use crate::{
 	app::SendEvent,
 	cli::{LaunchOptions, Mode},
@@ -543,20 +546,22 @@ fn new_page_preserves_tabs_and_opening_or_selecting_resumes_documents() {
 		});
 	h.app.readers.session.scrolling.offset = 120.;
 	h.app.show_panel(crate::state::PanelPage::Tabs);
-	h.app.action(crate::state::Command::NewPage);
+	h.app.action(crate::state::Command::Document(
+		crate::state::DocumentCommand::NewPage,
+	));
 	assert_eq!(h.app.readers.entries().len(), 1);
 	assert!(h.app.readers.session.path.is_none());
 	assert!(h.app.readers.session.snapshot.blocks.is_empty());
 	assert!(h.app.watch.is_none());
 	assert!(!h.app.interaction.overlays.viewer_open());
 	assert_eq!(h.app.interaction.panel, crate::state::PanelPage::Closed);
-	assert!(
-		h.app
-			.buttons()
-			.iter()
-			.any(|b| b.action == crate::state::Command::NewPage)
-	);
-	h.app.action(crate::state::Command::NewPage);
+	assert!(h.app.buttons().iter().any(|b| b.action
+		== crate::state::Command::Document(
+			crate::state::DocumentCommand::NewPage
+		)));
+	h.app.action(crate::state::Command::Document(
+		crate::state::DocumentCommand::NewPage,
+	));
 	assert_eq!(h.app.readers.entries().len(), 1);
 	h.app.select_tab(0);
 	h.wait_images(2);
@@ -675,9 +680,10 @@ fn untrusted_local_navigation_and_images_need_grants_without_reusing_trusted_tab
 	let resource = h.app.readers.session.blocked_images["first.png"].clone();
 	h.app
 		.ask_permission(resource, crate::app::modal::PermissionAction::Images);
-	h.app.action(Command::ModalConfirm);
+	h.app.action(Command::Chrome(ChromeCommand::ModalConfirm));
 	h.wait_images(1);
-	h.app.action(Command::RemoteLoadAll);
+	h.app
+		.action(Command::Document(DocumentCommand::RemoteLoadAll));
 	h.wait_images(1);
 	assert!(
 		h.app
@@ -696,7 +702,7 @@ fn untrusted_local_navigation_and_images_need_grants_without_reusing_trusted_tab
 		h.app.interaction.overlays.modal(),
 		Some(Modal::Permission { .. })
 	));
-	h.app.action(Command::ModalConfirm);
+	h.app.action(Command::Chrome(ChromeCommand::ModalConfirm));
 	h.wait_images(0);
 	assert_eq!(h.app.readers.entries().len(), 3);
 	assert_eq!(
@@ -749,7 +755,8 @@ fn clipboard_images_use_selected_files_and_web_relative_images_use_the_url() {
 		},
 	);
 	h.wait_images(1);
-	h.app.action(Command::RemoteLoadAll);
+	h.app
+		.action(Command::Document(DocumentCommand::RemoteLoadAll));
 	assert_eq!(
 		h.app.readers.session.security.origin.trust(),
 		Trust::Untrusted
@@ -800,7 +807,8 @@ fn folder_open_navigation_links_and_refresh_use_the_native_reader() {
 		.position(|e| e.path.ends_with("Other note.md"))
 		.unwrap();
 	assert_eq!(tree.entries[note].depth, 1);
-	h.app.action(Command::FolderEntry(note));
+	h.app
+		.action(Command::Chrome(ChromeCommand::FolderEntry(note)));
 	h.wait_images(0);
 	assert!(!h.app.phone_folder_open());
 	assert_eq!(
@@ -840,15 +848,16 @@ fn folder_open_navigation_links_and_refresh_use_the_native_reader() {
 		.position(|e| e.path == root.join("notes"))
 		.unwrap();
 	assert!(h.app.folder.tree.as_ref().unwrap().collapsed(notes));
-	h.app.action(Command::FolderEntry(notes));
-	h.app.action(Command::FolderRoot);
+	h.app
+		.action(Command::Chrome(ChromeCommand::FolderEntry(notes)));
+	h.app.action(Command::Chrome(ChromeCommand::FolderRoot));
 	fs::remove_file(root.join("notes/Other note.md")).unwrap();
 	fs::write(root.join("notes/New.md"), "# A new note").unwrap();
 	fs::create_dir(root.join("notes/new folder")).unwrap();
 	fs::write(root.join("notes/new folder/Nested.md"), "# Nested").unwrap();
 	h.app.folder_loaded(1, false, Tree::read(root.clone()));
 	assert!(h.app.folder.tree.as_ref().unwrap().rows().is_empty());
-	h.app.action(Command::FolderRoot);
+	h.app.action(Command::Chrome(ChromeCommand::FolderRoot));
 	let tree = h.app.folder.tree.as_ref().unwrap();
 	assert!(!tree.collapsed(notes));
 	assert!(
@@ -940,11 +949,12 @@ fn folder_scan_completion_preserves_newer_input_and_capture() {
 		let completion = crate::app::folder::Tree::read(root.clone());
 		let capture = if field == TextField::Search {
 			h.app.open_search();
-			Command::SearchCase
+			Command::Search(SearchCommand::SearchCase)
 		} else {
-			h.app.action(Command::Export);
-			h.app.action(Command::FocusInput(field));
-			Command::ExportRun
+			h.app.action(Command::Export(ExportCommand::Export));
+			h.app
+				.action(Command::Chrome(ChromeCommand::FocusInput(field)));
+			Command::Export(ExportCommand::ExportRun)
 		};
 		let captured = h
 			.app
@@ -965,7 +975,10 @@ fn folder_scan_completion_preserves_newer_input_and_capture() {
 			_ => unreachable!(),
 		};
 		assert_eq!(text, "typed");
-		for command in [Command::FolderRoot, Command::FolderEntry(0)] {
+		for command in [
+			Command::Chrome(ChromeCommand::FolderRoot),
+			Command::Chrome(ChromeCommand::FolderEntry(0)),
+		] {
 			h.app.interaction.widgets.focus = Some(command.widget_id());
 			h.app.interaction.widgets.captured = Some(command.widget_id());
 			h.app.folder_loaded(
@@ -1059,7 +1072,11 @@ fn desktop_folder_toggle_is_hidden_before_loading_a_tree() {
 		] {
 			h.app.frame.layout = style;
 			let buttons = h.app.buttons();
-			assert!(!buttons.iter().any(|b| b.action == Command::Folder));
+			assert!(
+				!buttons
+					.iter()
+					.any(|b| b.action == Command::Chrome(ChromeCommand::Folder))
+			);
 			assert!(h.app.folder.tree.is_none());
 			assert!(h.app.frame_layout().sidebar_toggle.is_none());
 			assert_eq!(h.app.frame_layout().left_inset, 0.);
@@ -1167,7 +1184,7 @@ fn reveal_folder_opens_the_active_document_directory_externally() {
 		return;
 	};
 	let mut h = Harness::new();
-	h.app.action(Command::RevealFolder);
+	h.app.action(Command::Chrome(ChromeCommand::RevealFolder));
 	assert!(h.app.status.is_error());
 	assert!(!std::path::Path::new(&output).exists());
 	let nested = h.dir.path().join("nested notes #1");
@@ -1188,7 +1205,7 @@ fn reveal_folder_opens_the_active_document_directory_externally() {
 			.app
 			.buttons()
 			.into_iter()
-			.find(|b| b.action == Command::RevealFolder)
+			.find(|b| b.action == Command::Chrome(ChromeCommand::RevealFolder))
 			.unwrap()
 			.action;
 		h.app.action(action);
@@ -1246,9 +1263,11 @@ fn folder_overlay_clips_empty_page_mouse_touch_and_focus_targets() {
 		let empty_control = |action| {
 			matches!(
 				action,
-				Command::Open
-					| Command::OpenUrl
-					| Command::FocusInput(TextField::Url)
+				Command::Document(DocumentCommand::Open)
+					| Command::Document(DocumentCommand::OpenUrl)
+					| Command::Chrome(ChromeCommand::FocusInput(
+						TextField::Url
+					))
 			)
 		};
 		for x in (0..drawer.w as usize).step_by(4) {
@@ -1284,18 +1303,14 @@ fn folder_overlay_clips_empty_page_mouse_touch_and_focus_targets() {
 		}
 		let toggle = buttons
 			.iter()
-			.find(|b| b.action == Command::Folder)
+			.find(|b| b.action == Command::Chrome(ChromeCommand::Folder))
 			.unwrap();
 		assert_eq!(toggle.rect.y, 6.);
 	}
 	// Closing the sidebar restores the empty page's original controls.
 	h.app.toggle_folder();
-	assert!(
-		h.app
-			.buttons()
-			.iter()
-			.any(|b| b.action == Command::FocusInput(TextField::Url))
-	);
+	assert!(h.app.buttons().iter().any(|b| b.action
+		== Command::Chrome(ChromeCommand::FocusInput(TextField::Url))));
 }
 
 #[test]
@@ -1379,32 +1394,34 @@ fn folder_sidebar_geometry_keyboard_and_pointer_ownership() {
 	);
 	let entry = buttons
 		.iter()
-		.find(|b| matches!(b.action, Command::FolderEntry(_)))
+		.find(|b| {
+			matches!(b.action, Command::Chrome(ChromeCommand::FolderEntry(_)))
+		})
 		.unwrap();
 	assert!(
 		entry.widget().hit_rect().unwrap().y >= h.app.folder_rect().y + 66.
 	);
-	h.app.interaction.widgets.focus = Some(Command::FolderEntry(0).widget_id());
+	h.app.interaction.widgets.focus =
+		Some(Command::Chrome(ChromeCommand::FolderEntry(0)).widget_id());
 	assert!(h.app.key_pressed(&Key::Named(NamedKey::ArrowDown)));
 	assert_eq!(
 		h.app.interaction.widgets.focus,
-		Some(Command::FolderEntry(1).widget_id())
+		Some(Command::Chrome(ChromeCommand::FolderEntry(1)).widget_id())
 	);
 	assert!(h.app.folder.scroll.offset() <= 28.);
-	h.app.interaction.widgets.focus = Some(Command::FolderRoot.widget_id());
+	h.app.interaction.widgets.focus =
+		Some(Command::Chrome(ChromeCommand::FolderRoot).widget_id());
 	assert!(h.app.key_pressed(&Key::Named(NamedKey::ArrowLeft)));
 	assert!(h.app.folder.tree.as_ref().unwrap().rows().is_empty());
-	assert!(
-		!h.app
-			.buttons()
-			.iter()
-			.any(|b| matches!(b.action, Command::FolderEntry(_)))
-	);
+	assert!(!h.app.buttons().iter().any(|b| matches!(
+		b.action,
+		Command::Chrome(ChromeCommand::FolderEntry(_))
+	)));
 	assert!(h.app.key_pressed(&Key::Named(NamedKey::ArrowRight)));
 	assert!(h.app.key_pressed(&Key::Named(NamedKey::ArrowDown)));
 	assert_eq!(
 		h.app.interaction.widgets.focus,
-		Some(Command::FolderEntry(0).widget_id())
+		Some(Command::Chrome(ChromeCommand::FolderEntry(0)).widget_id())
 	);
 	// The top-left control owns a complete press and toggles both ways.
 	for open in [false, true] {
@@ -1413,7 +1430,7 @@ fn folder_sidebar_geometry_keyboard_and_pointer_ownership() {
 		let buttons = h.app.buttons();
 		let toggle = buttons
 			.iter()
-			.find(|b| b.action == Command::Folder)
+			.find(|b| b.action == Command::Chrome(ChromeCommand::Folder))
 			.unwrap();
 		h.app
 			.interaction
@@ -1467,7 +1484,8 @@ fn folder_overlay_resize_keeps_search_and_its_focus() {
 			assert_eq!(h.app.folder.reveal(), 0.);
 			assert!(!h.app.buttons().iter().any(|b| matches!(
 				b.action,
-				Command::FolderRoot | Command::FolderEntry(_)
+				Command::Chrome(ChromeCommand::FolderRoot)
+					| Command::Chrome(ChromeCommand::FolderEntry(_))
 			)));
 		}
 	}
@@ -1490,8 +1508,10 @@ fn folder_drawers_reconcile_on_resize_to_an_overlay() {
 	assert!(h.app.folder.open);
 	assert!(h.app.interaction.overlays.outline.open());
 	h.app.folder.grab = Some(0.);
-	h.app.interaction.widgets.focus = Some(Command::FolderRoot.widget_id());
-	h.app.interaction.widgets.captured = Some(Command::FolderRoot.widget_id());
+	h.app.interaction.widgets.focus =
+		Some(Command::Chrome(ChromeCommand::FolderRoot).widget_id());
+	h.app.interaction.widgets.captured =
+		Some(Command::Chrome(ChromeCommand::FolderRoot).widget_id());
 	for (width, folder_open) in [(760, true), (536, false), (900, false)] {
 		h.app.handle_window_event(
 			&StubLoop,
@@ -1508,7 +1528,8 @@ fn folder_drawers_reconcile_on_resize_to_an_overlay() {
 			assert!(!h.app.pointer_in_folder());
 			assert!(!h.app.buttons().iter().any(|button| matches!(
 				button.action,
-				Command::FolderEntry(_) | Command::FolderRoot
+				Command::Chrome(ChromeCommand::FolderEntry(_))
+					| Command::Chrome(ChromeCommand::FolderRoot)
 			)));
 		}
 	}
@@ -1533,7 +1554,7 @@ fn folder_sidebar_reuses_drawer_motion_and_keeps_outgoing_coverage() {
 	let toggle = |app: &mut App<Proxy>| {
 		app.buttons()
 			.into_iter()
-			.find(|b| b.action == Command::Folder)
+			.find(|b| b.action == Command::Chrome(ChromeCommand::Folder))
 			.unwrap()
 	};
 	let open_toggle = toggle(&mut h.app);
@@ -1561,12 +1582,16 @@ fn folder_sidebar_reuses_drawer_motion_and_keeps_outgoing_coverage() {
 	let buttons = h.app.buttons();
 	assert!(!buttons.iter().any(|b| matches!(
 		b.action,
-		Command::FolderRoot | Command::FolderEntry(_)
+		Command::Chrome(ChromeCommand::FolderRoot)
+			| Command::Chrome(ChromeCommand::FolderEntry(_))
 	)));
 	// The outgoing surface still covers empty-page widgets while sliding away.
 	for button in buttons.iter().filter(|b| {
-		matches!(b.action, Command::Open | Command::OpenUrl)
-			&& b.rect.y > crate::app::TOP
+		matches!(
+			b.action,
+			Command::Document(DocumentCommand::Open)
+				| Command::Document(DocumentCommand::OpenUrl)
+		) && b.rect.y > crate::app::TOP
 	}) {
 		assert!(button.widget().hit_rect().unwrap().x >= drawer.x + drawer.w);
 	}
@@ -1630,9 +1655,10 @@ fn file_sidebar_owns_the_full_left_column_without_moving_the_outline() {
 			.iter()
 			.filter(|b| matches!(
 				b.action,
-				Command::NewPage
-					| Command::Open | Command::Settings
-					| Command::Outline
+				Command::Document(DocumentCommand::NewPage)
+					| Command::Document(DocumentCommand::Open)
+					| Command::Chrome(ChromeCommand::Settings)
+					| Command::Document(DocumentCommand::Outline)
 			))
 			.all(|b| b.widget().hit_rect().is_none_or(|r| r.x >= surface.w))
 	);
@@ -1861,7 +1887,7 @@ fn selecting_a_tab_opens_the_folder_onto_its_document() {
 		buttons
 			.iter()
 			.filter_map(|b| match b.action {
-				Command::FolderEntry(i) => Some(
+				Command::Chrome(ChromeCommand::FolderEntry(i)) => Some(
 					tree.entries[i]
 						.path
 						.strip_prefix(&tree.root)
@@ -1872,12 +1898,13 @@ fn selecting_a_tab_opens_the_folder_onto_its_document() {
 			})
 			.collect()
 	};
-	h.app.action(Command::FolderCollapseAll);
+	h.app
+		.action(Command::Chrome(ChromeCommand::FolderCollapseAll));
 	assert!(rows(&h).is_empty());
-	h.app.action(Command::SelectTab(0));
+	h.app.action(Command::Chrome(ChromeCommand::SelectTab(0)));
 	assert!(reachable(&mut h).contains(&PathBuf::from("README.md")));
 	assert!(!reachable(&mut h).iter().any(|p| p.starts_with("zoo")));
-	h.app.action(Command::SelectTab(1));
+	h.app.action(Command::Chrome(ChromeCommand::SelectTab(1)));
 	let opened = rows(&h);
 	for name in ["zoo", "zoo/deep", "zoo/deep/Zeta.md"] {
 		assert!(opened.contains(&PathBuf::from(name)), "{opened:?}");
@@ -1890,7 +1917,7 @@ fn selecting_a_tab_opens_the_folder_onto_its_document() {
 	);
 	// A closed tree stays out of the way of a tab switch.
 	h.app.set_folder_open(false);
-	h.app.action(Command::SelectTab(0));
+	h.app.action(Command::Chrome(ChromeCommand::SelectTab(0)));
 	assert!(!h.app.folder.open);
 }
 

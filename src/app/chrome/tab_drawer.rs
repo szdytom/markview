@@ -4,6 +4,7 @@ use super::{
 	icons,
 	list::List,
 };
+use crate::state::{ChromeCommand, DocumentCommand};
 use crate::{
 	app::{Button, folder::Browser},
 	lang::Lang,
@@ -86,7 +87,7 @@ pub(in crate::app) fn list(
 pub(super) fn toggle(lang: Lang) -> Button {
 	let mut toggle = button(
 		lang.sidebar_title(),
-		Command::Tabs,
+		Command::Chrome(ChromeCommand::Tabs),
 		Rect {
 			x: 4.,
 			y: 0.,
@@ -116,7 +117,7 @@ fn row_buttons(
 		let name = ui.fit(&name, 14., (row.w - 72.).max(0.));
 		let mut select = button(
 			std::sync::Arc::<str>::from(name),
-			Command::SelectTab(index),
+			Command::Chrome(ChromeCommand::SelectTab(index)),
 			Rect {
 				w: (row.w - 48.).max(0.),
 				..row
@@ -128,7 +129,7 @@ fn row_buttons(
 		rows.push(select);
 		let mut close = button(
 			lang.panel_close(),
-			Command::CloseTab(index),
+			Command::Chrome(ChromeCommand::CloseTab(index)),
 			Rect {
 				x: row.x + row.w - 44.,
 				y: row.y + 6.,
@@ -151,7 +152,7 @@ fn controls(
 ) -> Vec<Button> {
 	let mut close = button(
 		lang.panel_close(),
-		Command::Tabs,
+		Command::Chrome(ChromeCommand::Tabs),
 		Rect {
 			x: panel.x + panel.w - 52.,
 			y: 6.,
@@ -165,7 +166,7 @@ fn controls(
 	close.kind = ButtonKind::Quiet;
 	let mut new_page = button(
 		lang.toolbar_new_page(),
-		Command::NewPage,
+		Command::Document(DocumentCommand::NewPage),
 		Rect {
 			x: panel.x + panel.w - 100.,
 			y: 6.,
@@ -183,9 +184,9 @@ fn controls(
 			lang.sidebar_open_folder()
 		},
 		if page == SidebarTab::Tabs {
-			Command::Open
+			Command::Document(DocumentCommand::Open)
 		} else {
-			Command::OpenFolder
+			Command::Chrome(ChromeCommand::OpenFolder)
 		},
 		Rect {
 			x: panel.x + 16.,
@@ -199,7 +200,7 @@ fn controls(
 	// The scrim dismisses the drawer without activating the document below.
 	let mut scrim = button(
 		"",
-		Command::Tabs,
+		Command::Chrome(ChromeCommand::Tabs),
 		Rect {
 			x: panel.x + panel.w,
 			y: 0.,
@@ -218,7 +219,7 @@ fn controls(
 	{
 		let mut b = button(
 			label,
-			Command::SidebarTab(tab),
+			Command::Chrome(ChromeCommand::SidebarTab(tab)),
 			Rect {
 				x: panel.x + 16. + index as f32 * (panel.w - 32.) / 2.,
 				y: 56.,
@@ -259,10 +260,14 @@ fn draw_entry(
 	surface.label = "".into();
 	surface.active = false;
 	let mut out = components::draw_button(ui, interaction, &surface, true);
-	let open = matches!(b.action, Command::Open | Command::OpenFolder);
+	let open = matches!(
+		b.action,
+		Command::Document(DocumentCommand::Open)
+			| Command::Chrome(ChromeCommand::OpenFolder)
+	);
 	if open {
 		out.push(Draw::Icon {
-			paths: if b.action == Command::OpenFolder {
+			paths: if b.action == Command::Chrome(ChromeCommand::OpenFolder) {
 				icons::REVEAL
 			} else {
 				icons::OPEN
@@ -368,7 +373,11 @@ fn shell(
 	}
 
 	for b in controls(list.panel, width, lang, interaction.sidebar_tab) {
-		if matches!(b.action, Command::Open | Command::OpenFolder) {
+		if matches!(
+			b.action,
+			Command::Document(DocumentCommand::Open)
+				| Command::Chrome(ChromeCommand::OpenFolder)
+		) {
 			out.extend(draw_entry(ui, interaction, &b));
 		} else if b.rect.x < list.panel.x + list.panel.w {
 			out.extend(components::draw_button(ui, interaction, &b, true));
@@ -418,7 +427,7 @@ pub(super) fn draw(
 		}))));
 	let mut rows = Vec::new();
 	for b in row_buttons(ui, tabs, active, list, lang) {
-		if matches!(b.action, Command::SelectTab(_)) {
+		if matches!(b.action, Command::Chrome(ChromeCommand::SelectTab(_))) {
 			if b.active {
 				rows.push(Draw::Rect(
 					Rect {
@@ -536,7 +545,10 @@ mod tests {
 		let mut toolbar =
 			super::super::controls::toolbar_controls(width, false, Lang::En);
 		toolbar.push(toggle(Lang::En));
-		let open = toolbar.iter().find(|b| b.action == Command::Open).unwrap();
+		let open = toolbar
+			.iter()
+			.find(|b| b.action == Command::Document(DocumentCommand::Open))
+			.unwrap();
 		let interaction = InteractionState {
 			pointer: crate::app::pointer::State::at((
 				open.rect.x + open.rect.w / 2.,
@@ -558,15 +570,20 @@ mod tests {
 			slide_buttons(&mut outgoing, width, height, reveal, 320.);
 			for button in outgoing.iter().filter(|b| {
 				!b.label.is_empty()
-					&& !matches!(b.action, Command::SidebarTab(_))
+					&& !matches!(
+						b.action,
+						Command::Chrome(ChromeCommand::SidebarTab(_))
+					)
 			}) {
-				let draws = if button.action == Command::Open {
+				let draws = if button.action
+					== Command::Document(DocumentCommand::Open)
+				{
 					draw_entry(&mut ui, &drawn, button)
 				} else {
 					components::draw_button(&mut ui, &drawn, button, true)
 				};
 				assert!(draws.iter().any(|draw| matches!(draw, Draw::Icon { x, y, size, .. }
-					if *x == button.rect.x + if button.action == Command::Open { 8. } else { (button.rect.w - size) / 2. }
+					if *x == button.rect.x + if button.action == Command::Document(DocumentCommand::Open) { 8. } else { (button.rect.w - size) / 2. }
 					&& *y == button.rect.y + (button.rect.h - size) / 2.)), "{:?} at reveal {reveal}", button.action);
 				assert!(
 					!draws.iter().any(
@@ -590,7 +607,9 @@ mod tests {
 			slide_buttons(&mut buttons, width, height, reveal, 320.);
 			let target = buttons
 				.iter()
-				.find(|b| b.action == Command::SelectTab(0))
+				.find(|b| {
+					b.action == Command::Chrome(ChromeCommand::SelectTab(0))
+				})
 				.unwrap();
 			let mut clip = list(width, height, tabs.len(), 0., 320.).viewport;
 			clip.x += animated_rect(width, height, reveal, 320.).x;
@@ -611,11 +630,11 @@ mod tests {
 				(visible.x + visible.w / 2., visible.y + visible.h / 2.);
 			assert_eq!(
 				layout.hit(point).unwrap().message,
-				Command::SelectTab(0)
+				Command::Chrome(ChromeCommand::SelectTab(0))
 			);
 			assert_eq!(
 				layout.hit_touch(point, 44.).unwrap().message,
-				Command::SelectTab(0)
+				Command::Chrome(ChromeCommand::SelectTab(0))
 			);
 			assert!(!target.contains((point.0, clip.y - 1.)));
 		}
@@ -632,11 +651,9 @@ mod tests {
 			let scrim = buttons.last().unwrap();
 			assert_eq!(scrim.rect.x, panel.x + panel.w);
 			assert_eq!(scrim.rect.x + scrim.rect.w, 400.);
-			assert!(
-				buttons
-					.iter()
-					.any(|b| b.action == Command::NewPage && b.icon.is_some())
-			);
+			assert!(buttons.iter().any(|b| b.action
+				== Command::Document(DocumentCommand::NewPage)
+				&& b.icon.is_some()));
 			let close = &buttons[0];
 			assert_eq!(close.rect.x, panel.x + panel.w - 52.);
 			assert!(panel.contains(close.rect.x + 22., close.rect.y + 22.));
@@ -718,7 +735,9 @@ mod tests {
 				buttons(&mut ui, &tabs, 0, 17., (320., 760.), Lang::En, 320.);
 			let select = buttons
 				.iter()
-				.find(|b| b.action == Command::SelectTab(0))
+				.find(|b| {
+					b.action == Command::Chrome(ChromeCommand::SelectTab(0))
+				})
 				.unwrap();
 			assert!(select.rect.contains(scrolled.0, scrolled.1));
 			assert_eq!(select.rect.y, HEADER + 4. - 17.);
@@ -747,12 +766,13 @@ mod tests {
 				Lang::En,
 				320.,
 			);
-			assert!(!buttons.iter().any(|b| b.action == Command::SelectTab(0)));
 			assert!(
-				buttons
-					.iter()
-					.any(|b| b.action == Command::SelectTab(29) && b.active)
+				!buttons.iter().any(|b| b.action
+					== Command::Chrome(ChromeCommand::SelectTab(0)))
 			);
+			assert!(buttons.iter().any(|b| b.action
+				== Command::Chrome(ChromeCommand::SelectTab(29))
+				&& b.active));
 			for (i, a) in buttons.iter().enumerate() {
 				for b in &buttons[i + 1..] {
 					assert!(
@@ -765,7 +785,8 @@ mod tests {
 				}
 				if matches!(
 					a.action,
-					Command::SelectTab(_) | Command::CloseTab(_)
+					Command::Chrome(ChromeCommand::SelectTab(_))
+						| Command::Chrome(ChromeCommand::CloseTab(_))
 				) {
 					assert!(
 						a.widget().hit_rect().unwrap().y >= list.viewport.y

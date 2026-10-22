@@ -1,5 +1,6 @@
 use super::*;
 use crate::app::TOP;
+use crate::state::DocumentCommand;
 
 fn drawn(interaction: &InteractionState) -> crate::app::widgets::Drawn<'_> {
 	crate::app::widgets::Drawn::new(interaction, None)
@@ -95,18 +96,19 @@ fn tabbing_marks_the_row_keyboard_focus_lands_on() {
 	assert!(interaction.toggle_outline(entries.len(), Some(0)));
 	// Tab walks from the toolbar toggle onto the second entry row.
 	let buttons = [
-		Command::Outline,
-		Command::OutlineGoto(0),
-		Command::OutlineGoto(1),
-		Command::OutlineGoto(2),
+		Command::Document(DocumentCommand::Outline),
+		Command::Document(DocumentCommand::OutlineGoto(0)),
+		Command::Document(DocumentCommand::OutlineGoto(1)),
+		Command::Document(DocumentCommand::OutlineGoto(2)),
 	];
-	interaction.widgets.focus = Some(Command::Outline.widget_id());
+	interaction.widgets.focus =
+		Some(Command::Document(DocumentCommand::Outline).widget_id());
 	interaction
 		.tab_focus(&crate::app::widgets::command_layout(&buttons), false);
 	assert_eq!(
 		interaction
 			.tab_focus(&crate::app::widgets::command_layout(&buttons), false),
-		Some(Command::OutlineGoto(1))
+		Some(Command::Document(DocumentCommand::OutlineGoto(1)))
 	);
 	// The frame marks exactly the row that took the focus.
 	let draws = draw(
@@ -150,7 +152,9 @@ fn a_long_outline_only_offers_its_visible_rows() {
 		buttons(drawer, &entries, &OutlineTree::default(), max, Lang::En);
 	assert_eq!(
 		bottom.last().map(|b| b.action),
-		Some(Command::OutlineGoto(entries.len() - 1))
+		Some(Command::Document(DocumentCommand::OutlineGoto(
+			entries.len() - 1
+		)))
 	);
 	for button in bottom {
 		assert!(list.intersect(button.rect).is_some());
@@ -193,7 +197,10 @@ fn row_hit_targets_stop_at_the_list_viewport() {
 		"nothing below the list must activate a row"
 	);
 	// The half-visible first row is still clickable where it is drawn.
-	assert_eq!(rows[0].action, Command::OutlineGoto(0));
+	assert_eq!(
+		rows[0].action,
+		Command::Document(DocumentCommand::OutlineGoto(0))
+	);
 	assert!(rows[0].rect.contains(list.x + 5.0, list.y + 1.0));
 	assert_eq!(rows[0].rect.y, list.y);
 	assert!((rows[0].rect.h - scroll).abs() < 0.01);
@@ -227,8 +234,8 @@ fn a_shorter_document_pulls_the_drawer_back_into_range() {
 	assert!(!rows.is_empty(), "the shorter outline still shows rows");
 	let selected = interaction.overlays.outline.selection().unwrap();
 	assert!(
-		rows.iter()
-			.any(|b| b.action == Command::OutlineGoto(selected)),
+		rows.iter().any(|b| b.action
+			== Command::Document(DocumentCommand::OutlineGoto(selected))),
 		"the selection is a visible row"
 	);
 	// A document short enough to fit whole shows every row and scrolls back.
@@ -325,18 +332,20 @@ fn collapsed_outline_keeps_drawing_hits_and_navigation_in_sync() {
 	assert_eq!(
 		buttons.iter().map(|b| b.action).collect::<Vec<_>>(),
 		[
-			Command::OutlineToggle(0),
-			Command::OutlineGoto(0),
-			Command::OutlineToggle(1),
-			Command::OutlineGoto(1),
-			Command::OutlineGoto(3),
-			Command::OutlineGoto(4),
+			Command::Document(DocumentCommand::OutlineToggle(0)),
+			Command::Document(DocumentCommand::OutlineGoto(0)),
+			Command::Document(DocumentCommand::OutlineToggle(1)),
+			Command::Document(DocumentCommand::OutlineGoto(1)),
+			Command::Document(DocumentCommand::OutlineGoto(3)),
+			Command::Document(DocumentCommand::OutlineGoto(4)),
 		]
 	);
 	assert!(buttons[0].rect.x + buttons[0].rect.w <= buttons[1].rect.x);
 	let mut interaction = InteractionState {
 		widgets: markview_ui_core::Interaction {
-			focus: Some(Command::OutlineGoto(2).widget_id()),
+			focus: Some(
+				Command::Document(DocumentCommand::OutlineGoto(2)).widget_id(),
+			),
 			..Default::default()
 		},
 		..Default::default()
@@ -349,7 +358,7 @@ fn collapsed_outline_keeps_drawing_hits_and_navigation_in_sync() {
 	assert_eq!(interaction.overlays.outline.selection(), Some(1));
 	assert_eq!(
 		interaction.widgets.focus,
-		Some(Command::OutlineGoto(1).widget_id())
+		Some(Command::Document(DocumentCommand::OutlineGoto(1)).widget_id())
 	);
 	assert_eq!(interaction.overlays.outline.scroll_offset(), 0.0);
 	assert!(interaction.move_outline(1, &rows));
@@ -360,7 +369,7 @@ fn collapsed_outline_keeps_drawing_hits_and_navigation_in_sync() {
 				.filter(|b| b.enabled)
 				.map(|b| (b.id, b.action))
 		),
-		Some(Command::OutlineGoto(3))
+		Some(Command::Document(DocumentCommand::OutlineGoto(3)))
 	);
 	assert!(interaction.move_outline(-1, &rows));
 	assert_eq!(interaction.overlays.outline.selection(), Some(1));
@@ -408,8 +417,14 @@ fn bulk_controls_draw_in_the_header_and_collapse_every_level() {
 	)
 	.outline();
 	let controls = header_buttons(drawer, Lang::En);
-	assert_eq!(controls[0].action, Command::OutlineExpandAll);
-	assert_eq!(controls[1].action, Command::OutlineCollapseAll);
+	assert_eq!(
+		controls[0].action,
+		Command::Document(DocumentCommand::OutlineExpandAll)
+	);
+	assert_eq!(
+		controls[1].action,
+		Command::Document(DocumentCommand::OutlineCollapseAll)
+	);
 	assert!(controls[0].rect.x + controls[0].rect.w < controls[1].rect.x);
 	assert_eq!(
 		controls[1].rect.x + controls[1].rect.w,
@@ -417,7 +432,9 @@ fn bulk_controls_draw_in_the_header_and_collapse_every_level() {
 	);
 	let mut interaction = InteractionState {
 		widgets: markview_ui_core::Interaction {
-			focus: Some(Command::OutlineGoto(2).widget_id()),
+			focus: Some(
+				Command::Document(DocumentCommand::OutlineGoto(2)).widget_id(),
+			),
 			..Default::default()
 		},
 		..Default::default()
@@ -431,7 +448,7 @@ fn bulk_controls_draw_in_the_header_and_collapse_every_level() {
 	assert_eq!(interaction.overlays.outline.selection(), Some(0));
 	assert_eq!(
 		interaction.widgets.focus,
-		Some(Command::OutlineGoto(0).widget_id())
+		Some(Command::Document(DocumentCommand::OutlineGoto(0)).widget_id())
 	);
 	assert_eq!(interaction.overlays.outline.scroll_offset(), 0.0);
 	// Reopening a parent leaves its nested sections collapsed.

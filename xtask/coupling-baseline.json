@@ -1,6 +1,6 @@
 {
   "commands": {
-    "variants": 80
+    "variants": 6
   },
   "structs": {
     "App": 49,

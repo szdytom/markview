@@ -1,5 +1,8 @@
 use super::*;
 use crate::app::widgets::Drawn;
+use crate::state::{
+	ChromeCommand, DocumentCommand, ExportCommand, SettingsCommand,
+};
 use crate::{
 	app::chrome::{controls, export},
 	lang::Lang,
@@ -66,7 +69,11 @@ fn settings_labels_and_buttons_center_visible_text_in_their_bands() {
 				let draws = label(&mut ui, text, size, rect, C::Muted);
 				assert_centered(&draws, rect.y + rect.h / 2.0);
 			}
-			let b = button(text, Command::Open, Rect { h: CONTROL, ..rect });
+			let b = button(
+				text,
+				Command::Document(DocumentCommand::Open),
+				Rect { h: CONTROL, ..rect },
+			);
 			let draws = draw_button(
 				&mut ui,
 				&drawn(&InteractionState::default()),
@@ -201,7 +208,7 @@ fn button_feedback_distinguishes_hover_press_selection_and_keyboard_focus() {
 		] {
 			let mut b = button(
 				"On",
-				Command::Hyphens,
+				Command::Settings(SettingsCommand::Hyphens),
 				Rect {
 					x: 20.0,
 					y: 30.0,
@@ -338,16 +345,22 @@ fn settings_and_export_step_controls_draw_icons_without_font_glyphs() {
 		),
 	];
 	for command in [
-		Command::Smaller,
-		Command::Larger,
-		Command::Narrower,
-		Command::Wider,
-		Command::ScrollSpeed(-1),
-		Command::ScrollSpeed(1),
-		Command::SidebarWidth(crate::settings::Sidebar::Folder, -1),
-		Command::SidebarWidth(crate::settings::Sidebar::Folder, 1),
-		Command::ExportSize(-1),
-		Command::ExportSize(1),
+		Command::Settings(SettingsCommand::Smaller),
+		Command::Settings(SettingsCommand::Larger),
+		Command::Settings(SettingsCommand::Narrower),
+		Command::Settings(SettingsCommand::Wider),
+		Command::Settings(SettingsCommand::ScrollSpeed(-1)),
+		Command::Settings(SettingsCommand::ScrollSpeed(1)),
+		Command::Settings(SettingsCommand::SidebarWidth(
+			crate::settings::Sidebar::Folder,
+			-1,
+		)),
+		Command::Settings(SettingsCommand::SidebarWidth(
+			crate::settings::Sidebar::Folder,
+			1,
+		)),
+		Command::Export(ExportCommand::ExportSize(-1)),
+		Command::Export(ExportCommand::ExportSize(1)),
 	] {
 		let button = forms
 			.iter()
@@ -378,7 +391,11 @@ fn segmented_choices_draw_each_shared_edge_once() {
 					"Indent",
 					(0..4)
 						.map(|i| {
-							action("Choice", i == selected, Command::Indent(i))
+							action(
+								"Choice",
+								i == selected,
+								Command::Settings(SettingsCommand::Indent(i)),
+							)
 						})
 						.collect(),
 				)],
@@ -388,7 +405,11 @@ fn segmented_choices_draw_each_shared_edge_once() {
 			);
 			let state = InteractionState {
 				widgets: markview_ui_core::Interaction {
-					focus: focus.map(Command::Indent).map(Command::widget_id),
+					focus: focus
+						.map(|indent| {
+							Command::Settings(SettingsCommand::Indent(indent))
+						})
+						.map(Command::widget_id),
 					focus_visible: focus.is_some(),
 					..Default::default()
 				},
@@ -466,7 +487,11 @@ fn list_form_at(
 		.iter()
 		.enumerate()
 		.map(|(index, label)| {
-			action(*label, index == 0, Command::Indent(index as u8))
+			action(
+				*label,
+				index == 0,
+				Command::Settings(SettingsCommand::Indent(index as u8)),
+			)
 		})
 		.collect();
 	let mut rows: Vec<Row> = (0..fillers)
@@ -532,7 +557,10 @@ fn an_open_option_list_stays_inside_the_panel() {
 					.find(|b| {
 						matches!(
 							b.action,
-							Command::ToggleDropdown(DropdownId::Language, _)
+							Command::Chrome(ChromeCommand::ToggleDropdown(
+								DropdownId::Language,
+								_
+							))
 						)
 					})
 					.expect("the control that opens the list")
@@ -834,7 +862,7 @@ fn narrow_settings_fill_the_app_and_wide_settings_keep_the_dialog() {
 		let close = form
 			.visible_buttons()
 			.into_iter()
-			.find(|b| b.action == Command::Settings)
+			.find(|b| b.action == Command::Chrome(ChromeCommand::Settings))
 			.unwrap();
 		assert_eq!(close.rect.y, panel.y + 18.0);
 		assert_eq!(close.rect.x + close.rect.w, panel.x + panel.w - INSET);

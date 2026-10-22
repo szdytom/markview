@@ -1,5 +1,6 @@
 //! Export preferences are a component independent of reader preferences.
 use super::export::{MARGIN_PRESETS, PAPER_PRESETS, SCALE_PRESETS};
+use crate::state::ExportCommand;
 use crate::{
 	settings::{ExportFormat, ExportSettings},
 	state::Command,
@@ -19,13 +20,27 @@ pub enum Message {
 impl Message {
 	pub(super) fn from_command(command: Command) -> Option<Self> {
 		Some(match command {
-			Command::ExportFormat(value) => Self::Format(value),
-			Command::ExportSize(delta) => Self::Size(delta),
-			Command::ExportIndent(value) => Self::Indent(value),
-			Command::ExportPaper(value) => Self::Paper(value),
-			Command::ExportOrientation(value) => Self::Orientation(value),
-			Command::ExportMargin(value) => Self::Margin(value),
-			Command::ExportScale(value) => Self::Scale(value),
+			Command::Export(ExportCommand::ExportFormat(value)) => {
+				Self::Format(value)
+			}
+			Command::Export(ExportCommand::ExportSize(delta)) => {
+				Self::Size(delta)
+			}
+			Command::Export(ExportCommand::ExportIndent(value)) => {
+				Self::Indent(value)
+			}
+			Command::Export(ExportCommand::ExportPaper(value)) => {
+				Self::Paper(value)
+			}
+			Command::Export(ExportCommand::ExportOrientation(value)) => {
+				Self::Orientation(value)
+			}
+			Command::Export(ExportCommand::ExportMargin(value)) => {
+				Self::Margin(value)
+			}
+			Command::Export(ExportCommand::ExportScale(value)) => {
+				Self::Scale(value)
+			}
 			_ => return None,
 		})
 	}

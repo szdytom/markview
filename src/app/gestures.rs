@@ -1,4 +1,5 @@
 //! Route captured touch and touchpad gestures through shared scrolling and zoom.
+use crate::state::{ChromeCommand, DocumentCommand, ExportCommand};
 use std::time::{Duration, Instant};
 use winit::event::{Touch, TouchPhase};
 
@@ -133,9 +134,9 @@ impl<P: super::SendEvent> App<P> {
 		if self.interaction.panel_open() {
 			return (!self.pointer_in_panel()).then_some(Tap::Command(
 				if self.interaction.export_open() {
-					Command::Export
+					Command::Export(ExportCommand::Export)
 				} else {
-					Command::Settings
+					Command::Chrome(ChromeCommand::Settings)
 				},
 			));
 		}
@@ -143,10 +144,14 @@ impl<P: super::SendEvent> App<P> {
 			return None;
 		}
 		if let Some(index) = self.tab_close_at_cursor() {
-			return Some(Tap::Command(Command::CloseTab(index)));
+			return Some(Tap::Command(Command::Chrome(
+				ChromeCommand::CloseTab(index),
+			)));
 		}
 		if let Some(index) = self.tab_at_cursor() {
-			return Some(Tap::Command(Command::SelectTab(index)));
+			return Some(Tap::Command(Command::Chrome(
+				ChromeCommand::SelectTab(index),
+			)));
 		}
 		self.view_geometry()
 			.clip()
@@ -394,15 +399,15 @@ impl<P: super::SendEvent> App<P> {
 		if distance <= -64.0 {
 			self.cancel_gestures();
 			if self.interaction.panel == PanelPage::Tabs {
-				self.action(Command::Tabs);
+				self.action(Command::Chrome(ChromeCommand::Tabs));
 			} else if !self.interaction.overlays.outline.open() {
-				self.action(Command::Outline);
+				self.action(Command::Document(DocumentCommand::Outline));
 			}
 		} else if distance >= 64.0 && self.tab_strip.phone {
 			self.cancel_gestures();
 			self.interaction.close_outline();
 			if self.interaction.panel != PanelPage::Tabs {
-				self.action(Command::Tabs);
+				self.action(Command::Chrome(ChromeCommand::Tabs));
 			}
 		}
 	}

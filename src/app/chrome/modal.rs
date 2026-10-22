@@ -2,6 +2,7 @@
 use super::super::Button;
 use super::controls::{ICON_BUTTON, draw_button};
 use super::icons;
+use crate::state::ChromeCommand;
 use crate::{
 	app::modal::Modal,
 	lang::Lang,
@@ -217,9 +218,9 @@ pub(in crate::app) fn modal_buttons(
 	vec![
 		Button {
 			id: crate::app::widgets::id(if permission {
-				Command::ModalDismiss
+				Command::Chrome(ChromeCommand::ModalDismiss)
 			} else {
-				Command::ModalOpenFolder
+				Command::Chrome(ChromeCommand::ModalOpenFolder)
 			}),
 			clip: None,
 			label: cancel_label.into(),
@@ -229,9 +230,9 @@ pub(in crate::app) fn modal_buttons(
 			kind: Default::default(),
 			enabled: true,
 			action: if permission {
-				Command::ModalDismiss
+				Command::Chrome(ChromeCommand::ModalDismiss)
 			} else {
-				Command::ModalOpenFolder
+				Command::Chrome(ChromeCommand::ModalOpenFolder)
 			},
 			rect: Rect {
 				x: rect.x + rect.w - 20.0 - folder,
@@ -241,7 +242,9 @@ pub(in crate::app) fn modal_buttons(
 			},
 		},
 		Button {
-			id: crate::app::widgets::id(Command::ModalConfirm),
+			id: crate::app::widgets::id(Command::Chrome(
+				ChromeCommand::ModalConfirm,
+			)),
 			clip: None,
 			label: allow_label.into(),
 			icon: None,
@@ -249,7 +252,7 @@ pub(in crate::app) fn modal_buttons(
 			active: false,
 			kind: Default::default(),
 			enabled: true,
-			action: Command::ModalConfirm,
+			action: Command::Chrome(ChromeCommand::ModalConfirm),
 			rect: Rect {
 				x: rect.x + rect.w - 28.0 - folder - anyway,
 				y: row,
@@ -266,7 +269,7 @@ pub(in crate::app) fn modal_buttons(
 			active: false,
 			kind: Default::default(),
 			enabled: true,
-			action: Command::ModalDismiss,
+			action: Command::Chrome(ChromeCommand::ModalDismiss),
 			rect: Rect {
 				x: rect.x + rect.w - 20.0 - close,
 				y: rect.y + 14.0,
@@ -372,7 +375,7 @@ pub(in crate::app) fn draw_modal(
 		));
 	}
 	for mut button in modal_buttons(shaper, interaction, width, height, lang) {
-		if button.action == Command::ModalOpenFolder {
+		if button.action == Command::Chrome(ChromeCommand::ModalOpenFolder) {
 			button.kind = super::components::ButtonKind::Primary;
 		}
 		out.extend(draw_button(shaper, interaction, &button, true));
@@ -408,9 +411,9 @@ mod tests {
 				Lang::En,
 			);
 			for action in [
-				Command::ModalOpenFolder,
-				Command::ModalConfirm,
-				Command::ModalDismiss,
+				Command::Chrome(ChromeCommand::ModalOpenFolder),
+				Command::Chrome(ChromeCommand::ModalConfirm),
+				Command::Chrome(ChromeCommand::ModalDismiss),
 			] {
 				assert!(buttons.iter().any(|b| b.action == action));
 			}

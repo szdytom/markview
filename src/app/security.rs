@@ -1,6 +1,7 @@
 //! Reader-owned resource permission prompts and navigation provenance.
 use super::App;
 use super::modal::{Message, Modal, PermissionAction};
+use crate::state::ChromeCommand;
 use crate::{
 	security::{Resource, Security, Trust},
 	state::{Command, TabPlacement},
@@ -18,7 +19,7 @@ impl<P: super::SendEvent> App<P> {
 			.modal
 			.send(Message::Open(Modal::Permission { resource, resume }));
 		self.interaction.widgets.focus =
-			Some(Command::ModalDismiss.widget_id());
+			Some(Command::Chrome(ChromeCommand::ModalDismiss).widget_id());
 		self.refresh_hover();
 		self.redraw();
 	}

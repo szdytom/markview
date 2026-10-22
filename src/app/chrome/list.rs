@@ -203,13 +203,15 @@ mod tests {
 	/// one only where it is drawn.
 	#[test]
 	fn hit_testing_follows_the_clip() {
-		use crate::state::Command;
+		use crate::state::{Command, SettingsCommand};
 		let list = list(12, 500.0);
 		let buttons: Vec<Button> = (0..12)
 			.map(|index| {
 				let row = list.row_rect(index);
 				Button {
-					id: crate::app::widgets::id(Command::StyleToggle(index)),
+					id: crate::app::widgets::id(Command::Settings(
+						SettingsCommand::StyleToggle(index),
+					)),
 					clip: None,
 					label: ("Row").into(),
 					icon: None,
@@ -217,7 +219,9 @@ mod tests {
 					active: false,
 					kind: Default::default(),
 					enabled: true,
-					action: Command::StyleToggle(index),
+					action: Command::Settings(SettingsCommand::StyleToggle(
+						index,
+					)),
 					rect: Rect {
 						x: row.x + 40.0,
 						y: row.y + 4.0,
@@ -245,7 +249,7 @@ mod tests {
 		let reached: Vec<usize> = hit
 			.iter()
 			.map(|b| match b.action {
-				Command::StyleToggle(index) => index,
+				Command::Settings(SettingsCommand::StyleToggle(index)) => index,
 				other => panic!("unexpected action {other:?}"),
 			})
 			.collect();

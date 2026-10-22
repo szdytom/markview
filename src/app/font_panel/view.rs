@@ -15,6 +15,7 @@ use crate::app::chrome::components::{
 };
 use crate::app::chrome::list::List;
 use crate::app::dropdown::Dropdown;
+use crate::state::{ChromeCommand, SettingsCommand};
 use crate::{
 	lang::Lang,
 	layout::{Draw, Paint, Rect, TextShaper},
@@ -119,19 +120,19 @@ fn font_options(
 	let mut entries = vec![entry(
 		t.settings_font_default(),
 		settings.font_family(role).is_none(),
-		Command::FontFamily(role, None),
+		Command::Settings(SettingsCommand::FontFamily(role, None)),
 	)];
 	entries.extend(families.iter().enumerate().map(|(index, family)| {
 		entry(
 			family.clone(),
 			settings.font_family(role) == Some(family.as_ref()),
-			Command::FontFamily(
+			Command::Settings(SettingsCommand::FontFamily(
 				role,
 				Some(super::Selection {
 					catalog_generation: generation,
 					index,
 				}),
-			),
+			)),
 		)
 	}));
 	entries
@@ -172,9 +173,11 @@ fn chooser_button(
 		.find(|entry| entry.active)
 		.or_else(|| entries.first());
 	Button {
-		id: crate::app::widgets::id(Command::ToggleDropdown(
-			DropdownId::Font(role),
-			entries.iter().position(|entry| entry.active).unwrap_or(0),
+		id: crate::app::widgets::id(Command::Chrome(
+			ChromeCommand::ToggleDropdown(
+				DropdownId::Font(role),
+				entries.iter().position(|entry| entry.active).unwrap_or(0),
+			),
 		)),
 		clip: None,
 		label: chosen.map_or_else(|| "".into(), |entry| entry.label.clone()),
@@ -183,10 +186,10 @@ fn chooser_button(
 		active: false,
 		kind: Default::default(),
 		enabled: true,
-		action: Command::ToggleDropdown(
+		action: Command::Chrome(ChromeCommand::ToggleDropdown(
 			DropdownId::Font(role),
 			entries.iter().position(|entry| entry.active).unwrap_or(0),
-		),
+		)),
 		rect: Rect {
 			x: band.x + band.w - 24.0 - w,
 			y: band.y,
@@ -1176,7 +1179,10 @@ mod tests {
 			assert_eq!(
 				buttons.iter().any(|b| matches!(
 					b.action,
-					Command::ToggleDropdown(DropdownId::Font(_), _)
+					Command::Chrome(ChromeCommand::ToggleDropdown(
+						DropdownId::Font(_),
+						_
+					))
 				)),
 				choosers,
 				"the chooser rows belong to the Set step alone"
@@ -1311,9 +1317,8 @@ mod tests {
 			);
 			for tab in [PanelTab::Generic, PanelTab::Styles, PanelTab::Fonts] {
 				assert!(
-					buttons
-						.iter()
-						.any(|b| b.action == Command::SettingsTab(tab)),
+					buttons.iter().any(|b| b.action
+						== Command::Chrome(ChromeCommand::SettingsTab(tab))),
 					"{tab:?} is missing"
 				);
 			}
@@ -1618,7 +1623,10 @@ mod tests {
 			let entries = font_options(role, families, 1, &settings, t);
 			assert_eq!(entries.len(), 1 + families.len());
 			assert_eq!(entries[0].label, t.settings_font_default());
-			assert_eq!(entries[0].action, Command::FontFamily(role, None));
+			assert_eq!(
+				entries[0].action,
+				Command::Settings(SettingsCommand::FontFamily(role, None))
+			);
 			assert!(entries[0].active, "the stylesheet's chain is in force");
 			// Every family names itself, and none is in force yet.
 			for (index, (entry, family)) in
@@ -1627,13 +1635,13 @@ mod tests {
 				assert_eq!(entry.label, *family);
 				assert_eq!(
 					entry.action,
-					Command::FontFamily(
+					Command::Settings(SettingsCommand::FontFamily(
 						role,
 						Some(super::super::Selection {
 							catalog_generation: 1,
 							index
 						})
-					)
+					))
 				);
 				assert!(!entry.active);
 			}
@@ -1645,13 +1653,13 @@ mod tests {
 			assert!(entries[1].active);
 			assert_eq!(
 				entries[1].action,
-				Command::FontFamily(
+				Command::Settings(SettingsCommand::FontFamily(
 					role,
 					Some(super::super::Selection {
 						catalog_generation: 1,
 						index: 0
 					})
-				)
+				))
 			);
 		}
 	}
@@ -1691,10 +1699,10 @@ mod tests {
 			.find(|button| {
 				matches!(
 					button.action,
-					Command::ToggleDropdown(
+					Command::Chrome(ChromeCommand::ToggleDropdown(
 						DropdownId::Font(FontRole::Monospace),
 						_
-					)
+					))
 				)
 			})
 			.expect("the monospace chooser")
@@ -1708,7 +1716,9 @@ mod tests {
 		let row = control(&settings);
 		assert_eq!(row.label, families[0]);
 		assert!(row.marker.is_some(), "the chooser is marked");
-		let Command::ToggleDropdown(_, highlight) = row.action else {
+		let Command::Chrome(ChromeCommand::ToggleDropdown(_, highlight)) =
+			row.action
+		else {
 			unreachable!()
 		};
 		let entries =
@@ -1766,7 +1776,7 @@ mod tests {
 				(FontRole::MonospaceHan, han_mono),
 			] {
 				assert_eq!(
-					buttons.iter().any(|b| matches!(b.action, Command::ToggleDropdown(DropdownId::Font(shown), _) if shown == role)),
+					buttons.iter().any(|b| matches!(b.action, Command::Chrome(ChromeCommand::ToggleDropdown(DropdownId::Font(shown), _)) if shown == role)),
 					offered,
 					"{cjk_type:?}: {role:?} chooser"
 				);

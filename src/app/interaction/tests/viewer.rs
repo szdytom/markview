@@ -409,8 +409,12 @@ fn viewer_captures_search_input_and_middle_clicks() {
 	assert_ne!(
 		app.interaction.widgets.focus,
 		Some(
-			crate::state::Command::FocusInput(crate::state::TextField::Search)
-				.widget_id()
+			crate::state::Command::Chrome(
+				crate::state::ChromeCommand::FocusInput(
+					crate::state::TextField::Search
+				)
+			)
+			.widget_id()
 		)
 	);
 	event(&mut app, WindowEvent::Ime(Ime::Commit("changed".into())));

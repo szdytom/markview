@@ -4,6 +4,7 @@ use super::{
 	ui_appearance,
 };
 use crate::state::TextField;
+use crate::state::{ChromeCommand, DocumentCommand};
 use markview_layout::style::{ColorField as C, Condition};
 
 struct Layout {
@@ -103,7 +104,7 @@ fn layout(ui: &mut TextShaper, width: f32, height: f32, lang: Lang) -> Layout {
 	let web = sections[1].0;
 	let mut open = components::button(
 		lang.empty_open_file(),
-		Command::Open,
+		Command::Document(DocumentCommand::Open),
 		Rect {
 			x,
 			y: local.y + local.h - 36.0,
@@ -121,7 +122,7 @@ fn layout(ui: &mut TextShaper, width: f32, height: f32, lang: Lang) -> Layout {
 		open,
 		components::button(
 			lang.empty_url_placeholder(),
-			Command::FocusInput(TextField::Url),
+			Command::Chrome(ChromeCommand::FocusInput(TextField::Url)),
 			Rect {
 				x: web.x,
 				y: input_y,
@@ -131,7 +132,7 @@ fn layout(ui: &mut TextShaper, width: f32, height: f32, lang: Lang) -> Layout {
 		),
 		components::button(
 			lang.empty_open_url(),
-			Command::OpenUrl,
+			Command::Document(DocumentCommand::OpenUrl),
 			Rect {
 				x: web.x + section_w - button_w,
 				y: input_y,
@@ -257,7 +258,10 @@ pub(super) fn draw(
 		));
 	}
 	for button in l.buttons {
-		if !matches!(button.action, Command::FocusInput(_)) {
+		if !matches!(
+			button.action,
+			Command::Chrome(ChromeCommand::FocusInput(_))
+		) {
 			out.extend(components::draw_button(ui, interaction, &button, true));
 		}
 	}
@@ -299,9 +303,11 @@ mod tests {
 				assert_eq!(
 					controls.iter().map(|b| b.action).collect::<Vec<_>>(),
 					[
-						Command::Open,
-						Command::FocusInput(TextField::Url),
-						Command::OpenUrl,
+						Command::Document(DocumentCommand::Open),
+						Command::Chrome(ChromeCommand::FocusInput(
+							TextField::Url
+						)),
+						Command::Document(DocumentCommand::OpenUrl),
 					]
 				);
 				for (i, b) in controls.iter().enumerate() {
@@ -399,7 +405,10 @@ mod tests {
 					let interaction = InteractionState {
 						widgets: markview_ui_core::Interaction {
 							focus: focused.then_some(
-								Command::FocusInput(TextField::Url).widget_id(),
+								Command::Chrome(ChromeCommand::FocusInput(
+									TextField::Url,
+								))
+								.widget_id(),
 							),
 							..Default::default()
 						},

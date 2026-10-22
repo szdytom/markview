@@ -1,4 +1,5 @@
 //! Settings state transitions; persistence and reflow belong to the host.
+use crate::state::SettingsCommand;
 use crate::{
 	scroll::ScrollArea,
 	settings::{FontRole, ReaderSettings, Setting, TabStyle, WindowLayout},
@@ -85,26 +86,43 @@ impl Message {
 	)]
 	pub(super) fn from_command(command: Command) -> Option<Self> {
 		Some(match command {
-			Command::SettingsPreview => Self::TogglePreview,
-			Command::Smaller => Self::Size(-1),
-			Command::Larger => Self::Size(1),
-			Command::Narrower => Self::Width(-1),
-			Command::Wider => Self::Width(1),
-			Command::Align => Self::Align,
-			Command::Hyphens => Self::Hyphens,
-			Command::CodeWrap => Self::CodeWrap,
-			Command::Indent(em) => Self::Indent(em),
-			Command::CjkType(value) => Self::CjkType(value),
-			Command::Language(value) => Self::Language(value),
-			Command::WindowLayout(value) => Self::WindowLayout(value),
-			Command::TabStyle(value) => Self::TabStyle(value),
-			Command::SingleInstance => Self::SingleInstance,
-			Command::RestoreSession => Self::RestoreSession,
-			Command::FooterPath => Self::FooterPath,
-			Command::ScrollSpeed(delta) => Self::ScrollSpeed(delta),
-			Command::SidebarWidth(sidebar, delta) => {
-				Self::SidebarWidth(sidebar, delta)
+			Command::Settings(SettingsCommand::SettingsPreview) => {
+				Self::TogglePreview
 			}
+			Command::Settings(SettingsCommand::Smaller) => Self::Size(-1),
+			Command::Settings(SettingsCommand::Larger) => Self::Size(1),
+			Command::Settings(SettingsCommand::Narrower) => Self::Width(-1),
+			Command::Settings(SettingsCommand::Wider) => Self::Width(1),
+			Command::Settings(SettingsCommand::Align) => Self::Align,
+			Command::Settings(SettingsCommand::Hyphens) => Self::Hyphens,
+			Command::Settings(SettingsCommand::CodeWrap) => Self::CodeWrap,
+			Command::Settings(SettingsCommand::Indent(em)) => Self::Indent(em),
+			Command::Settings(SettingsCommand::CjkType(value)) => {
+				Self::CjkType(value)
+			}
+			Command::Settings(SettingsCommand::Language(value)) => {
+				Self::Language(value)
+			}
+			Command::Settings(SettingsCommand::WindowLayout(value)) => {
+				Self::WindowLayout(value)
+			}
+			Command::Settings(SettingsCommand::TabStyle(value)) => {
+				Self::TabStyle(value)
+			}
+			Command::Settings(SettingsCommand::SingleInstance) => {
+				Self::SingleInstance
+			}
+			Command::Settings(SettingsCommand::RestoreSession) => {
+				Self::RestoreSession
+			}
+			Command::Settings(SettingsCommand::FooterPath) => Self::FooterPath,
+			Command::Settings(SettingsCommand::ScrollSpeed(delta)) => {
+				Self::ScrollSpeed(delta)
+			}
+			Command::Settings(SettingsCommand::SidebarWidth(
+				sidebar,
+				delta,
+			)) => Self::SidebarWidth(sidebar, delta),
 			_ => return None,
 		})
 	}

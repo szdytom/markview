@@ -1,4 +1,5 @@
 //! Reader chrome built from borrowed display state, with no window or worker access.
+use crate::state::{ChromeCommand, DocumentCommand, SettingsCommand};
 pub(super) mod components;
 mod controls;
 mod empty;
@@ -80,7 +81,9 @@ fn banner_buttons(
 	let y = TOP + (BANNER - 22.0) / 2.0;
 	vec![
 		Button {
-			id: crate::app::widgets::id(Command::RemoteDismiss),
+			id: crate::app::widgets::id(Command::Document(
+				DocumentCommand::RemoteDismiss,
+			)),
 			clip: None,
 			label: (lang.notice_dismiss()).into(),
 			icon: None,
@@ -88,7 +91,7 @@ fn banner_buttons(
 			active: false,
 			kind: Default::default(),
 			enabled: true,
-			action: Command::RemoteDismiss,
+			action: Command::Document(DocumentCommand::RemoteDismiss),
 			rect: Rect {
 				x: width - 16.0 - dismiss - load - 8.0,
 				y,
@@ -97,7 +100,9 @@ fn banner_buttons(
 			},
 		},
 		Button {
-			id: crate::app::widgets::id(Command::RemoteLoadAll),
+			id: crate::app::widgets::id(Command::Document(
+				DocumentCommand::RemoteLoadAll,
+			)),
 			clip: None,
 			label: (lang.notice_load_all()).into(),
 			icon: None,
@@ -105,7 +110,7 @@ fn banner_buttons(
 			active: false,
 			kind: Default::default(),
 			enabled: true,
-			action: Command::RemoteLoadAll,
+			action: Command::Document(DocumentCommand::RemoteLoadAll),
 			rect: Rect {
 				x: width - 16.0 - load,
 				y,
@@ -153,7 +158,7 @@ fn draw_banner(
 		Paint::Styled(Condition::Statusbar, C::Color),
 	));
 	for mut button in buttons {
-		if button.action == Command::RemoteLoadAll {
+		if button.action == Command::Document(DocumentCommand::RemoteLoadAll) {
 			button.kind = components::ButtonKind::Primary;
 		}
 		out.extend(components::draw_button(shaper, interaction, &button, true));
@@ -278,7 +283,11 @@ impl<'a> Chrome<'a> {
 			footer::trailing(self.ui, &path, used + self.footer_inset(), size)?;
 		// The label holds the whole path, so a copy never depends on what fit.
 		let label: std::sync::Arc<str> = std::sync::Arc::from(&*path);
-		Some(components::button(label, Command::CopyPath, rect))
+		Some(components::button(
+			label,
+			Command::Document(DocumentCommand::CopyPath),
+			rect,
+		))
 	}
 
 	/// The open option list, measured against the page that holds its row.
@@ -578,12 +587,12 @@ impl<'a> Chrome<'a> {
 		buttons.retain_mut(|b| {
 			if matches!(
 				b.action,
-				Command::Folder
-					| Command::FolderRoot
-					| Command::FolderEntry(_)
-					| Command::OpenFolder
-					| Command::FolderRefresh
-					| Command::FolderCollapseAll
+				Command::Chrome(ChromeCommand::Folder)
+					| Command::Chrome(ChromeCommand::FolderRoot)
+					| Command::Chrome(ChromeCommand::FolderEntry(_))
+					| Command::Chrome(ChromeCommand::OpenFolder)
+					| Command::Chrome(ChromeCommand::FolderRefresh)
+					| Command::Chrome(ChromeCommand::FolderCollapseAll)
 			) {
 				return true;
 			}
@@ -600,7 +609,7 @@ impl<'a> Chrome<'a> {
 		if let Some(load) = self.resource_load {
 			if load.blocked() {
 				for button in buttons.iter_mut() {
-					if super::settings_load::dependent(button.action) {
+					if button.action.settings_dependent() {
 						button.enabled = false;
 					}
 				}
@@ -1074,7 +1083,7 @@ impl<'a> Chrome<'a> {
 		let viewport = self.resource_viewport();
 		components::button(
 			self.settings.lang().panel_retry(),
-			Command::RetrySettingsLoad,
+			Command::Settings(SettingsCommand::RetrySettingsLoad),
 			Rect {
 				x: if cached {
 					panel.x + panel.w - 100.
@@ -1209,8 +1218,14 @@ mod tests {
 		for width in [420.0, 500.0, 1200.0] {
 			let buttons = banner_buttons(&mut shaper, width, Lang::En);
 			assert_eq!(buttons.len(), 2);
-			assert_eq!(buttons[0].action, Command::RemoteDismiss);
-			assert_eq!(buttons[1].action, Command::RemoteLoadAll);
+			assert_eq!(
+				buttons[0].action,
+				Command::Document(DocumentCommand::RemoteDismiss)
+			);
+			assert_eq!(
+				buttons[1].action,
+				Command::Document(DocumentCommand::RemoteLoadAll)
+			);
 			for button in &buttons {
 				assert!(button.rect.x >= 0.0);
 				assert!(button.rect.x + button.rect.w <= width);

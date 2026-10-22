@@ -10,6 +10,7 @@ use crate::app::SendEvent;
 use crate::app::gestures::Inertia;
 use crate::app::window::Loop;
 use crate::layout::{LayoutEngine, LayoutOptions, LayoutSnapshot};
+use crate::state::{ChromeCommand, DocumentCommand, SettingsCommand};
 use crate::state::{Drag, Grain, HoveredLink, Point};
 use crate::worker::{ReaderSnapshot, Update};
 use markview_document::Document;
@@ -80,7 +81,7 @@ fn enabling_a_surviving_independent_window_registers_it_for_later_launches() {
 	);
 	app.instance_path = Some(lock.clone());
 	let started = Instant::now();
-	app.action(Command::SingleInstance);
+	app.action(Command::Settings(SettingsCommand::SingleInstance));
 	assert!(started.elapsed() < Duration::from_secs(1));
 	assert!(app.preferences.values.single_instance);
 	assert!(app.instance.is_none());
@@ -88,9 +89,9 @@ fn enabling_a_surviving_independent_window_registers_it_for_later_launches() {
 		original_rx.try_recv(),
 		Err(mpsc::TryRecvError::Empty)
 	));
-	app.action(Command::SingleInstance);
+	app.action(Command::Settings(SettingsCommand::SingleInstance));
 	drop(listener);
-	app.action(Command::SingleInstance);
+	app.action(Command::Settings(SettingsCommand::SingleInstance));
 	assert!(app.preferences.values.single_instance);
 	assert!(app.instance.is_some());
 	let path = dir.path().join("second.md");
@@ -140,7 +141,7 @@ fn follow_system_uses_desktop_updates_and_releases_explicit_styles() {
 
 	app.handle_user_event(&StubLoop, Event::SystemThemeChanged(Theme::Dark));
 	assert_eq!(background(&app), light);
-	app.action(Command::SystemTheme);
+	app.action(Command::Settings(SettingsCommand::SystemTheme));
 	assert_eq!(app.preferences.values.style, None);
 	assert_eq!(app.preferences.values.theme, Theme::Dark);
 	assert_eq!(background(&app), dark);
@@ -156,12 +157,12 @@ fn follow_system_uses_desktop_updates_and_releases_explicit_styles() {
 		.iter()
 		.position(|entry| entry.id == "light")
 		.unwrap();
-	app.action(Command::StyleToggle(index));
+	app.action(Command::Settings(SettingsCommand::StyleToggle(index)));
 	app.handle_user_event(&StubLoop, Event::SystemThemeChanged(Theme::Dark));
 	assert_eq!(background(&app), light);
-	app.action(Command::SystemTheme);
+	app.action(Command::Settings(SettingsCommand::SystemTheme));
 	assert_eq!(background(&app), dark);
-	app.action(Command::Reset);
+	app.action(Command::Settings(SettingsCommand::Reset));
 	assert_eq!(background(&app), dark);
 }
 
@@ -189,7 +190,7 @@ fn follow_system_reads_the_live_desktop_portal() {
 	eprintln!("Desktop portal appearance: {theme:?}");
 	let (mut app, _) = reader(SOURCE, 760.0);
 	app.handle_user_event(&StubLoop, Event::SystemThemeChanged(theme));
-	app.action(Command::SystemTheme);
+	app.action(Command::Settings(SettingsCommand::SystemTheme));
 	assert_eq!(app.preferences.values.theme, theme);
 	assert_eq!(
 		app.preferences
@@ -329,16 +330,16 @@ fn an_idle_footer_names_the_document_and_offers_its_whole_path() {
 	app.readers.session.path = Some(path.clone());
 	let (_, height, _) = app.dimensions();
 	let path_button = |app: &mut App<StubProxy>| {
-		app.buttons()
-			.into_iter()
-			.find(|button| button.action == Command::CopyPath)
+		app.buttons().into_iter().find(|button| {
+			button.action == Command::Document(DocumentCommand::CopyPath)
+		})
 	};
 
 	assert!(
 		path_button(&mut app).is_none(),
 		"the footer path is off by default"
 	);
-	app.action(Command::CopyPath);
+	app.action(Command::Document(DocumentCommand::CopyPath));
 	assert!(
 		app.status.message().is_empty(),
 		"the disabled path copies nothing"
@@ -369,11 +370,11 @@ fn an_idle_footer_names_the_document_and_offers_its_whole_path() {
 	app.status.clear();
 	app.readers.session.path = None;
 	assert!(path_button(&mut app).is_none());
-	app.action(Command::CopyPath);
+	app.action(Command::Document(DocumentCommand::CopyPath));
 	assert!(app.status.message().is_empty());
 
 	app.readers.session.path = Some(path);
-	app.action(Command::CopyPath);
+	app.action(Command::Document(DocumentCommand::CopyPath));
 	assert!(!app.status.message().is_empty());
 }
 
@@ -639,7 +640,11 @@ fn desktop_sidebar_toggle_requires_an_open_folder_independently_of_files() {
 		}
 		let base = app.frame_layout().tabs;
 		assert!(app.frame_layout().sidebar_toggle.is_none());
-		assert!(!app.buttons().iter().any(|b| b.action == Command::Folder));
+		assert!(
+			!app.buttons()
+				.iter()
+				.any(|b| b.action == Command::Chrome(ChromeCommand::Folder))
+		);
 
 		app.folder.tree =
 			Some(crate::app::folder::Tree::read(dir.path().into()).unwrap());
@@ -647,7 +652,7 @@ fn desktop_sidebar_toggle_requires_an_open_folder_independently_of_files() {
 		let button = app
 			.buttons()
 			.into_iter()
-			.find(|b| b.action == Command::Folder)
+			.find(|b| b.action == Command::Chrome(ChromeCommand::Folder))
 			.unwrap();
 		let icon = button.icon.unwrap();
 		let painted = |app: &mut App<StubProxy>| {
@@ -660,11 +665,19 @@ fn desktop_sidebar_toggle_requires_an_open_folder_independently_of_files() {
 
 		app.folder.tree = None;
 		assert_eq!(app.frame_layout().tabs, base);
-		assert!(!app.buttons().iter().any(|b| b.action == Command::Folder));
+		assert!(
+			!app.buttons()
+				.iter()
+				.any(|b| b.action == Command::Chrome(ChromeCommand::Folder))
+		);
 		assert!(!painted(&mut app));
 
 		app.tab_strip.phone = true;
-		assert!(app.buttons().iter().any(|b| b.action == Command::Tabs));
+		assert!(
+			app.buttons()
+				.iter()
+				.any(|b| b.action == Command::Chrome(ChromeCommand::Tabs))
+		);
 	}
 }
 
@@ -688,13 +701,17 @@ fn folder_collapse_all_clears_nested_expansion_and_scroll_on_both_layouts() {
 		assert_eq!(
 			buttons
 				.iter()
-				.filter(|b| b.action == Command::OpenFolder)
+				.filter(
+					|b| b.action == Command::Chrome(ChromeCommand::OpenFolder)
+				)
 				.count(),
 			usize::from(phone),
 		);
 		let collapse = buttons
 			.iter()
-			.find(|b| b.action == Command::FolderCollapseAll)
+			.find(|b| {
+				b.action == Command::Chrome(ChromeCommand::FolderCollapseAll)
+			})
 			.unwrap();
 		let path = app.readers.session.path.clone();
 		app.folder.scroll = 80.0.into();
@@ -715,9 +732,9 @@ fn folder_collapse_all_clears_nested_expansion_and_scroll_on_both_layouts() {
 		assert_eq!(app.readers.session.path, path);
 		assert_eq!(app.phone_folder_open(), phone);
 		assert_eq!(app.folder.open, !phone);
-		app.action(Command::FolderRoot);
+		app.action(Command::Chrome(ChromeCommand::FolderRoot));
 		assert_eq!(app.folder.tree.as_ref().unwrap().rows(), &[0]);
-		app.action(Command::FolderEntry(0));
+		app.action(Command::Chrome(ChromeCommand::FolderEntry(0)));
 		assert_eq!(app.folder.tree.as_ref().unwrap().rows(), &[0, 1]);
 	}
 }
@@ -742,9 +759,11 @@ fn phone_sidebar_shares_one_shell_and_keeps_each_list_and_selected_page() {
 		app.readers
 			.open(dir.path().join(format!("note-{i:02}.md")), Instant::now());
 	}
-	app.action(Command::Tabs);
+	app.action(Command::Chrome(ChromeCommand::Tabs));
 	let reveal = app.tabs_reveal();
-	app.action(Command::SidebarTab(SidebarTab::Folder));
+	app.action(Command::Chrome(ChromeCommand::SidebarTab(
+		SidebarTab::Folder,
+	)));
 	assert!(app.tabs_reveal() >= reveal);
 	assert!(app.tab_strip.animating());
 	assert!(!app.folder.animating());
@@ -765,7 +784,9 @@ fn phone_sidebar_shares_one_shell_and_keeps_each_list_and_selected_page() {
 		let button = app
 			.buttons()
 			.into_iter()
-			.find(|b| b.action == Command::SidebarTab(tab))
+			.find(|b| {
+				b.action == Command::Chrome(ChromeCommand::SidebarTab(tab))
+			})
 			.unwrap();
 		physical_click(
 			app,
@@ -785,15 +806,15 @@ fn phone_sidebar_shares_one_shell_and_keeps_each_list_and_selected_page() {
 	let buttons = app.buttons();
 	assert!(!buttons.iter().any(|b| matches!(
 		b.action,
-		Command::Folder
-			| Command::SelectTab(_)
-			| Command::CloseTab(_)
-			| Command::Open
+		Command::Chrome(ChromeCommand::Folder)
+			| Command::Chrome(ChromeCommand::SelectTab(_))
+			| Command::Chrome(ChromeCommand::CloseTab(_))
+			| Command::Document(DocumentCommand::Open)
 	)));
 	assert_eq!(
 		buttons
 			.iter()
-			.filter(|b| b.action == Command::OpenFolder)
+			.filter(|b| b.action == Command::Chrome(ChromeCommand::OpenFolder))
 			.count(),
 		1
 	);
@@ -807,7 +828,7 @@ fn phone_sidebar_shares_one_shell_and_keeps_each_list_and_selected_page() {
 	);
 	app.android_back();
 	assert_eq!(app.interaction.panel, PanelPage::Closed);
-	app.action(Command::Tabs);
+	app.action(Command::Chrome(ChromeCommand::Tabs));
 	assert!(app.phone_folder_open());
 	assert_eq!(app.folder.scroll.offset(), folder_scroll);
 	assert_eq!(app.tab_strip.drawer_scroll.offset(), tab_scroll);
@@ -820,7 +841,7 @@ fn phone_sidebar_shares_one_shell_and_keeps_each_list_and_selected_page() {
 		.iter()
 		.position(|e| e.path.ends_with("note-00.md"))
 		.unwrap();
-	app.action(Command::FolderEntry(file));
+	app.action(Command::Chrome(ChromeCommand::FolderEntry(file)));
 	assert_eq!(app.interaction.panel, PanelPage::Closed);
 	assert!(
 		app.readers
@@ -875,27 +896,34 @@ fn phone_sidebar_offers_folder_selection_before_a_tree_exists_and_stays_phone_on
 	use crate::state::{PanelPage, SidebarTab};
 	let (mut app, _) = reader(SOURCE, 320.);
 	app.tab_strip.phone = true;
-	app.action(Command::SidebarTab(SidebarTab::Folder));
+	app.action(Command::Chrome(ChromeCommand::SidebarTab(
+		SidebarTab::Folder,
+	)));
 	app.tab_strip.stop_animation();
 	assert!(app.phone_folder_open());
 	let buttons = app.buttons();
-	assert!(buttons.iter().any(|b| b.action == Command::OpenFolder));
+	assert!(
+		buttons
+			.iter()
+			.any(|b| b.action == Command::Chrome(ChromeCommand::OpenFolder))
+	);
 	assert!(!buttons.iter().any(|b| matches!(
 		b.action,
-		Command::FolderRoot | Command::FolderEntry(_) | Command::SelectTab(_)
+		Command::Chrome(ChromeCommand::FolderRoot)
+			| Command::Chrome(ChromeCommand::FolderEntry(_))
+			| Command::Chrome(ChromeCommand::SelectTab(_))
 	)));
 	assert!(!app.overlay().is_empty());
-	app.action(Command::Tabs);
+	app.action(Command::Chrome(ChromeCommand::Tabs));
 	app.tab_strip.phone = false;
-	app.action(Command::SidebarTab(SidebarTab::Tabs));
-	app.action(Command::Tabs);
+	app.action(Command::Chrome(ChromeCommand::SidebarTab(SidebarTab::Tabs)));
+	app.action(Command::Chrome(ChromeCommand::Tabs));
 	assert_eq!(app.interaction.panel, PanelPage::Closed);
-	assert!(
-		!app.buttons().iter().any(|b| matches!(
-			b.action,
-			Command::Tabs | Command::SidebarTab(_)
-		))
-	);
+	assert!(!app.buttons().iter().any(|b| matches!(
+		b.action,
+		Command::Chrome(ChromeCommand::Tabs)
+			| Command::Chrome(ChromeCommand::SidebarTab(_))
+	)));
 }
 
 #[test]
@@ -940,11 +968,17 @@ fn desktop_sidebar_drags_resize_independently_and_capture_the_release() {
 	physical_drag(&mut app, (320., 200.), (400., 200.));
 	assert_eq!(app.preferences.values.tabs_width, 400.);
 	assert_eq!(app.interaction.panel, PanelPage::Tabs);
-	assert!(app.buttons().iter().any(|b| b.action == Command::Tabs
-		&& b.label.is_empty()
-		&& b.rect.x == 400.));
+	assert!(
+		app.buttons()
+			.iter()
+			.any(|b| b.action == Command::Chrome(ChromeCommand::Tabs)
+				&& b.label.is_empty()
+				&& b.rect.x == 400.)
+	);
 	for sidebar in [Sidebar::Folder, Sidebar::Outline, Sidebar::Tabs] {
-		app.action(Command::SidebarWidth(sidebar, 1));
+		app.action(Command::Settings(SettingsCommand::SidebarWidth(
+			sidebar, 1,
+		)));
 	}
 	assert_eq!(app.preferences.values.folder_width, 380.);
 	assert_eq!(app.preferences.values.outline_width, 600.);
@@ -1256,14 +1290,16 @@ fn a_settings_page_round_trip_preserves_its_state_and_reopening_resets_it() {
 	app.preferences.settings_preview = true;
 	// Leaving for the Styles page and returning keeps both: they belong to
 	// the settings page model, not to the page being left.
-	app.action(Command::Styles);
-	app.action(Command::SettingsTab(crate::state::PanelTab::Generic));
+	app.action(Command::Settings(SettingsCommand::Styles));
+	app.action(Command::Chrome(ChromeCommand::SettingsTab(
+		crate::state::PanelTab::Generic,
+	)));
 	assert_eq!(app.preferences.settings_scroll().offset(), 120.0);
 	assert!(app.preferences.settings_preview);
 	// Closing and reopening starts a fresh visit.
-	app.action(Command::Settings);
+	app.action(Command::Chrome(ChromeCommand::Settings));
 	assert!(!app.interaction.panel_open());
-	app.action(Command::Settings);
+	app.action(Command::Chrome(ChromeCommand::Settings));
 	assert_eq!(app.preferences.settings_scroll().offset(), 0.0);
 	assert!(!app.preferences.settings_preview);
 }
@@ -1668,22 +1704,22 @@ fn drawer_animations_keep_outgoing_content_until_the_final_frame() {
 	for phone in [false, true] {
 		app.tab_strip.phone = phone;
 		let closed = app.outline_drawer();
-		app.action(Command::Outline);
+		app.action(Command::Document(DocumentCommand::Outline));
 		assert!(app.outline_drawer().x > closed.x - closed.w);
 		settle(&mut app);
 		let open = app.outline_drawer();
 		assert_eq!(open.x + open.w, app.dimensions().0);
 		assert!(has_drawer(app.overlay()));
-		app.action(Command::Outline);
+		app.action(Command::Document(DocumentCommand::Outline));
 		assert!(!app.interaction.overlays.outline.open());
 		assert!(has_drawer(app.overlay()));
 		settle(&mut app);
 		assert!(!has_drawer(app.overlay()));
 	}
-	app.action(Command::Tabs);
+	app.action(Command::Chrome(ChromeCommand::Tabs));
 	settle(&mut app);
 	assert!(has_drawer(app.overlay()));
-	app.action(Command::Tabs);
+	app.action(Command::Chrome(ChromeCommand::Tabs));
 	assert_eq!(app.interaction.panel, PanelPage::Closed);
 	assert!(has_drawer(app.overlay()));
 	settle(&mut app);
@@ -1764,19 +1800,24 @@ fn phone_uses_available_column_width_and_preserves_the_saved_width() {
 		app.preferences.values.width = saved;
 		app.tab_strip.phone = true;
 		assert_eq!(app.options().width, app.dimensions().0 - 40.0);
-		assert!(
-			!app.panel_form().unwrap().buttons.iter().any(|b| matches!(
-				b.action,
-				Command::Narrower | Command::Wider
-			))
-		);
-		for action in [Command::Narrower, Command::Wider] {
+		assert!(!app.panel_form().unwrap().buttons.iter().any(|b| matches!(
+			b.action,
+			Command::Settings(SettingsCommand::Narrower)
+				| Command::Settings(SettingsCommand::Wider)
+		)));
+		for action in [
+			Command::Settings(SettingsCommand::Narrower),
+			Command::Settings(SettingsCommand::Wider),
+		] {
 			app.action(action);
 			assert_eq!(app.preferences.values.width, saved);
 		}
 		app.tab_strip.phone = false;
 		assert_eq!(app.options().width, saved.min(app.dimensions().0 - 40.0));
-		for action in [Command::Narrower, Command::Wider] {
+		for action in [
+			Command::Settings(SettingsCommand::Narrower),
+			Command::Settings(SettingsCommand::Wider),
+		] {
 			assert!(
 				app.panel_form()
 					.unwrap()
@@ -1787,7 +1828,7 @@ fn phone_uses_available_column_width_and_preserves_the_saved_width() {
 		}
 	}
 	app.preferences.values.width = 300.0;
-	app.action(Command::Wider);
+	app.action(Command::Settings(SettingsCommand::Wider));
 	assert_eq!(app.options().width, 360.0);
 }
 
@@ -1803,13 +1844,13 @@ fn phone_drawer_switches_and_closes_shared_tabs_and_hides_tab_style() {
 	}
 	app.tab_strip.phone = true;
 	assert!(app.tab_layout().rects.is_empty());
-	app.action(Command::Tabs);
+	app.action(Command::Chrome(ChromeCommand::Tabs));
 	assert_eq!(app.interaction.panel, PanelPage::Tabs);
 	assert!(app.tab_strip.drawer_scroll.offset() > 0.);
 	assert!(
 		app.buttons()
 			.iter()
-			.any(|b| b.action == Command::SelectTab(29))
+			.any(|b| b.action == Command::Chrome(ChromeCommand::SelectTab(29)))
 	);
 	let before = app.readers.session.scrolling.offset;
 	app.scroll_panel(-f32::INFINITY);
@@ -1817,30 +1858,34 @@ fn phone_drawer_switches_and_closes_shared_tabs_and_hides_tab_style() {
 	assert!(
 		app.buttons()
 			.iter()
-			.any(|b| b.action == Command::SelectTab(0))
+			.any(|b| b.action == Command::Chrome(ChromeCommand::SelectTab(0)))
 	);
-	app.action(Command::SelectTab(0));
+	app.action(Command::Chrome(ChromeCommand::SelectTab(0)));
 	assert_eq!(app.readers.active(), 0);
 	assert_eq!(app.interaction.panel, PanelPage::Closed);
-	app.action(Command::Tabs);
-	app.action(Command::CloseTab(1));
+	app.action(Command::Chrome(ChromeCommand::Tabs));
+	app.action(Command::Chrome(ChromeCommand::CloseTab(1)));
 	assert_eq!(app.readers.entries().len(), 29);
 	assert_eq!(app.interaction.panel, PanelPage::Tabs);
-	app.action(Command::Tabs);
+	app.action(Command::Chrome(ChromeCommand::Tabs));
 	assert_eq!(app.interaction.panel, PanelPage::Closed);
 	app.show_panel(PanelPage::Settings(PanelTab::Generic));
 	assert!(!app.panel_form().unwrap().buttons.iter().any(|b| matches!(
 		b.action,
-		Command::ToggleDropdown(DropdownId::TabStyle, _)
+		Command::Chrome(ChromeCommand::ToggleDropdown(DropdownId::TabStyle, _))
 	)));
-	app.action(Command::TabStyle(TabStyle::Connected));
+	app.action(Command::Settings(SettingsCommand::TabStyle(
+		TabStyle::Connected,
+	)));
 	assert_eq!(app.preferences.values.tab_style, TabStyle::Underline);
 	app.tab_strip.phone = false;
 	assert!(app.panel_form().unwrap().buttons.iter().any(|b| matches!(
 		b.action,
-		Command::ToggleDropdown(DropdownId::TabStyle, _)
+		Command::Chrome(ChromeCommand::ToggleDropdown(DropdownId::TabStyle, _))
 	)));
-	app.action(Command::TabStyle(TabStyle::Connected));
+	app.action(Command::Settings(SettingsCommand::TabStyle(
+		TabStyle::Connected,
+	)));
 	assert_eq!(app.preferences.values.tab_style, TabStyle::Connected);
 	assert_eq!(app.tab_layout().rects.len(), 29);
 }
@@ -1871,7 +1916,8 @@ fn permission_modals_over_forms_keep_close_geometry_and_own_input() {
 		let buttons = app.buttons();
 		assert!(buttons.iter().all(|b| matches!(
 			b.action,
-			Command::ModalDismiss | Command::ModalConfirm
+			Command::Chrome(ChromeCommand::ModalDismiss)
+				| Command::Chrome(ChromeCommand::ModalConfirm)
 		)));
 		for (index, button) in buttons.iter().enumerate() {
 			assert!(
@@ -1931,17 +1977,26 @@ fn touch_drawer_distinguishes_same_path_tabs_and_keeps_ids_when_reordered() {
 	let ids = |buttons: &[crate::app::Button], action| {
 		buttons.iter().find(|b| b.action == action).unwrap().id
 	};
-	for action in [Command::SelectTab, Command::CloseTab] {
+	for action in [
+		|index| Command::Chrome(ChromeCommand::SelectTab(index)),
+		|index| Command::Chrome(ChromeCommand::CloseTab(index)),
+	] {
 		assert_ne!(ids(&before, action(0)), ids(&before, action(1)));
 	}
 	app.readers.move_tab(0, 1);
 	let moved = app.buttons();
-	for action in [Command::SelectTab, Command::CloseTab] {
+	for action in [
+		|index| Command::Chrome(ChromeCommand::SelectTab(index)),
+		|index| Command::Chrome(ChromeCommand::CloseTab(index)),
+	] {
 		assert_eq!(ids(&before, action(0)), ids(&moved, action(1)));
 		assert_eq!(ids(&before, action(1)), ids(&moved, action(0)));
 	}
 	app.readers.move_tab(1, 0);
-	for action in [Command::SelectTab(1), Command::CloseTab(1)] {
+	for action in [
+		Command::Chrome(ChromeCommand::SelectTab(1)),
+		Command::Chrome(ChromeCommand::CloseTab(1)),
+	] {
 		app.show_panel(PanelPage::Tabs);
 		app.tab_strip.stop_animation();
 		app.overlay();
@@ -1962,7 +2017,7 @@ fn touch_drawer_distinguishes_same_path_tabs_and_keeps_ids_when_reordered() {
 				),
 			});
 		}
-		if action == Command::SelectTab(1) {
+		if action == Command::Chrome(ChromeCommand::SelectTab(1)) {
 			assert_eq!(app.readers.active(), 1);
 			assert_eq!(
 				app.readers.session.security.origin.trust(),
@@ -1971,8 +2026,11 @@ fn touch_drawer_distinguishes_same_path_tabs_and_keeps_ids_when_reordered() {
 		} else {
 			assert_eq!(app.readers.entries().len(), 1);
 			assert_eq!(
-				ids(&app.buttons(), Command::SelectTab(0)),
-				ids(&before, Command::SelectTab(0))
+				ids(
+					&app.buttons(),
+					Command::Chrome(ChromeCommand::SelectTab(0))
+				),
+				ids(&before, Command::Chrome(ChromeCommand::SelectTab(0)))
 			);
 		}
 	}
@@ -1998,18 +2056,20 @@ fn only_window_layout_changes_replace_the_saved_hint_until_reverted() {
 	} else {
 		WindowLayout::Linux
 	};
-	app.action(Command::Settings);
+	app.action(Command::Chrome(ChromeCommand::Settings));
 	assert!(!app.chrome().restart_pending);
-	app.action(Command::SingleInstance);
+	app.action(Command::Settings(SettingsCommand::SingleInstance));
 	assert!(!app.chrome().restart_pending);
-	app.action(Command::SingleInstance);
+	app.action(Command::Settings(SettingsCommand::SingleInstance));
 	assert!(!app.chrome().restart_pending);
-	app.action(Command::ScrollSpeed(1));
+	app.action(Command::Settings(SettingsCommand::ScrollSpeed(1)));
 	assert!(!app.chrome().restart_pending);
-	app.action(Command::WindowLayout(initial));
+	app.action(Command::Settings(SettingsCommand::WindowLayout(initial)));
 	assert!(!app.chrome().restart_pending);
-	app.action(Command::WindowLayout(changed));
-	app.action(Command::Language(Some(crate::lang::Lang::ZhHans)));
+	app.action(Command::Settings(SettingsCommand::WindowLayout(changed)));
+	app.action(Command::Settings(SettingsCommand::Language(Some(
+		crate::lang::Lang::ZhHans,
+	))));
 	assert!(app.preferences.flush());
 	assert!(app.chrome().restart_pending);
 	let draws = app.overlay();
@@ -2042,14 +2102,14 @@ fn only_window_layout_changes_replace_the_saved_hint_until_reverted() {
 		.collect();
 	assert!(!warning_ids.is_empty());
 	assert_eq!(warning_ids, expected);
-	app.action(Command::SingleInstance);
+	app.action(Command::Settings(SettingsCommand::SingleInstance));
 	assert!(app.chrome().restart_pending);
-	app.action(Command::Settings);
-	app.action(Command::Settings);
+	app.action(Command::Chrome(ChromeCommand::Settings));
+	app.action(Command::Chrome(ChromeCommand::Settings));
 	assert!(app.chrome().restart_pending);
-	app.action(Command::WindowLayout(initial));
+	app.action(Command::Settings(SettingsCommand::WindowLayout(initial)));
 	assert!(!app.chrome().restart_pending);
-	app.action(Command::SingleInstance);
+	app.action(Command::Settings(SettingsCommand::SingleInstance));
 	assert!(!app.chrome().restart_pending);
 	assert!(!app.overlay().iter().any(|draw| matches!(draw,
 		Draw::Glyph(g) if g.paint == Paint::Styled(Condition::Panel, ColorField::Warning))));
@@ -2138,7 +2198,7 @@ fn opening_a_panel_cancels_the_press_and_hover() {
 		Some((0, 0)),
 	);
 
-	app.action(Command::Settings);
+	app.action(Command::Chrome(ChromeCommand::Settings));
 
 	assert!(app.interaction.panel_open());
 	assert!(app.interaction.pointer.drag().is_none());

@@ -3,6 +3,10 @@ use super::{
 	components::{self, Action, ButtonKind, Form, Row, action, button},
 	icons,
 };
+use crate::state::{
+	ChromeCommand, DocumentCommand, ExportCommand, SearchCommand,
+	SettingsCommand,
+};
 use crate::{
 	app::frame::{CONTROL_GAP, Layout},
 	lang::Lang,
@@ -36,13 +40,13 @@ fn language_options(t: Lang, settings: &ReaderSettings) -> Vec<Action> {
 	let mut entries = vec![action(
 		t.settings_language_system(),
 		settings.lang.is_none(),
-		Command::Language(None),
+		Command::Settings(SettingsCommand::Language(None)),
 	)];
 	entries.extend(Lang::ALL.iter().map(|lang| {
 		action(
 			lang.language_name(),
 			settings.lang == Some(*lang),
-			Command::Language(Some(*lang)),
+			Command::Settings(SettingsCommand::Language(Some(*lang))),
 		)
 	}));
 	entries
@@ -65,7 +69,7 @@ fn rows(settings: &ReaderSettings, phone: bool) -> Vec<Row> {
 					t.settings_off()
 				},
 				settings.footer_path,
-				Command::FooterPath,
+				Command::Settings(SettingsCommand::FooterPath),
 			)],
 		),
 	];
@@ -84,11 +88,15 @@ fn rows(settings: &ReaderSettings, phone: bool) -> Vec<Row> {
 					&[
 						(
 							t.settings_decrease(),
-							Command::SidebarWidth(sidebar, -1),
+							Command::Settings(SettingsCommand::SidebarWidth(
+								sidebar, -1,
+							)),
 						),
 						(
 							t.settings_increase(),
-							Command::SidebarWidth(sidebar, 1),
+							Command::Settings(SettingsCommand::SidebarWidth(
+								sidebar, 1,
+							)),
 						),
 					],
 					None,
@@ -105,8 +113,14 @@ fn rows(settings: &ReaderSettings, phone: bool) -> Vec<Row> {
 				t.settings_scroll_speed(),
 				choices(
 					&[
-						(t.settings_decrease(), Command::ScrollSpeed(-1)),
-						(t.settings_increase(), Command::ScrollSpeed(1)),
+						(
+							t.settings_decrease(),
+							Command::Settings(SettingsCommand::ScrollSpeed(-1)),
+						),
+						(
+							t.settings_increase(),
+							Command::Settings(SettingsCommand::ScrollSpeed(1)),
+						),
 					],
 					None,
 				),
@@ -121,14 +135,20 @@ fn rows(settings: &ReaderSettings, phone: bool) -> Vec<Row> {
 				&[
 					(
 						t.settings_tabs_underline(),
-						Command::TabStyle(TabStyle::Underline),
+						Command::Settings(SettingsCommand::TabStyle(
+							TabStyle::Underline,
+						)),
 					),
 					(
 						t.settings_tabs_connected(),
-						Command::TabStyle(TabStyle::Connected),
+						Command::Settings(SettingsCommand::TabStyle(
+							TabStyle::Connected,
+						)),
 					),
 				],
-				Some(Command::TabStyle(settings.tab_style)),
+				Some(Command::Settings(SettingsCommand::TabStyle(
+					settings.tab_style,
+				))),
 			),
 		));
 	}
@@ -140,16 +160,32 @@ fn rows(settings: &ReaderSettings, phone: bool) -> Vec<Row> {
 					&[
 						(
 							t.settings_language_system(),
-							Command::WindowLayout(WindowLayout::System),
+							Command::Settings(SettingsCommand::WindowLayout(
+								WindowLayout::System,
+							)),
 						),
-						("macOS", Command::WindowLayout(WindowLayout::Macos)),
+						(
+							"macOS",
+							Command::Settings(SettingsCommand::WindowLayout(
+								WindowLayout::Macos,
+							)),
+						),
 						(
 							"Windows",
-							Command::WindowLayout(WindowLayout::Windows),
+							Command::Settings(SettingsCommand::WindowLayout(
+								WindowLayout::Windows,
+							)),
 						),
-						("Linux", Command::WindowLayout(WindowLayout::Linux)),
+						(
+							"Linux",
+							Command::Settings(SettingsCommand::WindowLayout(
+								WindowLayout::Linux,
+							)),
+						),
 					],
-					Some(Command::WindowLayout(settings.window_layout)),
+					Some(Command::Settings(SettingsCommand::WindowLayout(
+						settings.window_layout,
+					))),
 				),
 			),
 			Row::new(
@@ -161,7 +197,7 @@ fn rows(settings: &ReaderSettings, phone: bool) -> Vec<Row> {
 						t.settings_off()
 					},
 					settings.restore_session,
-					Command::RestoreSession,
+					Command::Settings(SettingsCommand::RestoreSession),
 				)],
 			),
 			Row::new(
@@ -173,7 +209,7 @@ fn rows(settings: &ReaderSettings, phone: bool) -> Vec<Row> {
 						t.settings_off()
 					},
 					settings.single_instance,
-					Command::SingleInstance,
+					Command::Settings(SettingsCommand::SingleInstance),
 				)],
 			),
 		]);
@@ -183,8 +219,14 @@ fn rows(settings: &ReaderSettings, phone: bool) -> Vec<Row> {
 			t.settings_text_size(),
 			choices(
 				&[
-					(t.settings_decrease(), Command::Smaller),
-					(t.settings_increase(), Command::Larger),
+					(
+						t.settings_decrease(),
+						Command::Settings(SettingsCommand::Smaller),
+					),
+					(
+						t.settings_increase(),
+						Command::Settings(SettingsCommand::Larger),
+					),
 				],
 				None,
 			),
@@ -198,8 +240,14 @@ fn rows(settings: &ReaderSettings, phone: bool) -> Vec<Row> {
 				t.settings_column_width(),
 				choices(
 					&[
-						(t.settings_decrease(), Command::Narrower),
-						(t.settings_increase(), Command::Wider),
+						(
+							t.settings_decrease(),
+							Command::Settings(SettingsCommand::Narrower),
+						),
+						(
+							t.settings_increase(),
+							Command::Settings(SettingsCommand::Wider),
+						),
 					],
 					None,
 				),
@@ -217,35 +265,62 @@ fn rows(settings: &ReaderSettings, phone: bool) -> Vec<Row> {
 					t.settings_left_aligned()
 				},
 				settings.justify,
-				Command::Align,
+				Command::Settings(SettingsCommand::Align),
 			)],
 		),
 		Row::new(
 			t.settings_paragraph_indent(),
 			choices(
 				&[
-					(t.settings_indent_off(), Command::Indent(0)),
-					("1 em", Command::Indent(1)),
-					("2 em", Command::Indent(2)),
-					("3 em", Command::Indent(3)),
+					(
+						t.settings_indent_off(),
+						Command::Settings(SettingsCommand::Indent(0)),
+					),
+					("1 em", Command::Settings(SettingsCommand::Indent(1))),
+					("2 em", Command::Settings(SettingsCommand::Indent(2))),
+					("3 em", Command::Settings(SettingsCommand::Indent(3))),
 				],
 				(0..4)
 					.find(|n| {
 						(settings.paragraph_indent - f32::from(*n)).abs() < 0.01
 					})
-					.map(Command::Indent),
+					.map(|indent| {
+						Command::Settings(SettingsCommand::Indent(indent))
+					}),
 			),
 		),
 		Row::new(
 			t.settings_cjk_variant(),
 			choices(
 				&[
-					("SC", Command::CjkType(CjkType::Sc)),
-					("TC", Command::CjkType(CjkType::Tc)),
-					("JP", Command::CjkType(CjkType::Jp)),
-					(t.settings_cjk_none(), Command::CjkType(CjkType::None)),
+					(
+						"SC",
+						Command::Settings(SettingsCommand::CjkType(
+							CjkType::Sc,
+						)),
+					),
+					(
+						"TC",
+						Command::Settings(SettingsCommand::CjkType(
+							CjkType::Tc,
+						)),
+					),
+					(
+						"JP",
+						Command::Settings(SettingsCommand::CjkType(
+							CjkType::Jp,
+						)),
+					),
+					(
+						t.settings_cjk_none(),
+						Command::Settings(SettingsCommand::CjkType(
+							CjkType::None,
+						)),
+					),
 				],
-				Some(Command::CjkType(settings.cjk_type)),
+				Some(Command::Settings(SettingsCommand::CjkType(
+					settings.cjk_type,
+				))),
 			),
 		)
 		.section(t.section_language_code()),
@@ -258,7 +333,7 @@ fn rows(settings: &ReaderSettings, phone: bool) -> Vec<Row> {
 					t.settings_off()
 				},
 				settings.hyphenate,
-				Command::Hyphens,
+				Command::Settings(SettingsCommand::Hyphens),
 			)],
 		),
 		Row::new(
@@ -270,7 +345,7 @@ fn rows(settings: &ReaderSettings, phone: bool) -> Vec<Row> {
 					t.settings_off()
 				},
 				settings.codeblock_wrap,
-				Command::CodeWrap,
+				Command::Settings(SettingsCommand::CodeWrap),
 			)],
 		),
 	]);
@@ -299,7 +374,7 @@ fn reader_form(
 		height,
 		scroll,
 		rows(settings, phone),
-		Some(Command::Settings),
+		Some(Command::Chrome(ChromeCommand::Settings)),
 		true,
 		settings.lang(),
 	);
@@ -309,13 +384,13 @@ fn reader_form(
 	if !markview_platform::touch_layout() {
 		footer.push((
 			t.settings_open_config(),
-			Command::OpenConfig,
+			Command::Settings(SettingsCommand::OpenConfig),
 			ButtonKind::Standard,
 		));
 	}
 	footer.push((
 		t.settings_reset_defaults(),
-		Command::Reset,
+		Command::Settings(SettingsCommand::Reset),
 		ButtonKind::Quiet,
 	));
 	form.footer(ui, &footer);
@@ -408,20 +483,44 @@ pub(super) fn toolbar_controls_at(
 	lang: Lang,
 ) -> Vec<Button> {
 	[
-		(icons::PLUS, lang.toolbar_new_page(), Command::NewPage),
+		(
+			icons::PLUS,
+			lang.toolbar_new_page(),
+			Command::Document(DocumentCommand::NewPage),
+		),
 		if markview_platform::folder_reveal() {
-			(icons::REVEAL, lang.toolbar_reveal(), Command::RevealFolder)
+			(
+				icons::REVEAL,
+				lang.toolbar_reveal(),
+				Command::Chrome(ChromeCommand::RevealFolder),
+			)
 		} else {
 			(
 				icons::SEARCH,
 				lang.search_placeholder(),
-				Command::SearchOpen,
+				Command::Search(SearchCommand::SearchOpen),
 			)
 		},
-		(icons::OPEN, lang.toolbar_open(), Command::Open),
-		(icons::EXPORT, lang.toolbar_export(), Command::Export),
-		(icons::SETTINGS, lang.toolbar_settings(), Command::Settings),
-		(icons::OUTLINE, lang.toolbar_outline(), Command::Outline),
+		(
+			icons::OPEN,
+			lang.toolbar_open(),
+			Command::Document(DocumentCommand::Open),
+		),
+		(
+			icons::EXPORT,
+			lang.toolbar_export(),
+			Command::Export(ExportCommand::Export),
+		),
+		(
+			icons::SETTINGS,
+			lang.toolbar_settings(),
+			Command::Chrome(ChromeCommand::Settings),
+		),
+		(
+			icons::OUTLINE,
+			lang.toolbar_outline(),
+			Command::Document(DocumentCommand::Outline),
+		),
 	]
 	.into_iter()
 	.enumerate()
@@ -438,7 +537,7 @@ pub(super) fn toolbar_controls_at(
 				h: frame.toolbar_button_size,
 			},
 		);
-		if action == Command::NewPage {
+		if action == Command::Document(DocumentCommand::NewPage) {
 			b.rect = frame.new_page?;
 		}
 		b.icon = Some(icon);
@@ -449,7 +548,8 @@ pub(super) fn toolbar_controls_at(
 			h: super::TOP,
 		});
 		b.kind = ButtonKind::Quiet;
-		b.active = action == Command::Outline && outline_open;
+		b.active = action == Command::Document(DocumentCommand::Outline)
+			&& outline_open;
 		Some(b)
 	})
 	.collect()
@@ -502,14 +602,17 @@ pub(super) fn settings_form(
 			vec![],
 		)
 		.section(t.section_project()),
-		Row::link(env!("CARGO_PKG_REPOSITORY"), Command::OpenProject),
+		Row::link(
+			env!("CARGO_PKG_REPOSITORY"),
+			Command::Chrome(ChromeCommand::OpenProject),
+		),
 	]);
 	let mut form = Form::new(
 		width,
 		height,
 		page.settings_scroll().offset(),
 		rows,
-		Some(Command::Settings),
+		Some(Command::Chrome(ChromeCommand::Settings)),
 		false,
 		t,
 	);
@@ -517,7 +620,7 @@ pub(super) fn settings_form(
 		ui,
 		&[(
 			t.about_copy_diagnostics(),
-			Command::CopyDiagnostics,
+			Command::Chrome(ChromeCommand::CopyDiagnostics),
 			ButtonKind::Standard,
 		)],
 	);

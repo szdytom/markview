@@ -1,5 +1,6 @@
 //! Window integration for reusable single-line input fields.
 use super::{App, SendEvent};
+use crate::state::{ChromeCommand, DocumentCommand};
 use crate::{
 	layout::{Draw, Rect, TextShaper},
 	state::{Command, TextField},
@@ -245,11 +246,9 @@ impl<P: SendEvent> App<P> {
 			{
 				return None;
 			}
-			let button = self
-				.chrome()
-				.buttons()
-				.into_iter()
-				.find(|b| b.action == Command::FocusInput(id))?;
+			let button = self.chrome().buttons().into_iter().find(|b| {
+				b.action == Command::Chrome(ChromeCommand::FocusInput(id))
+			})?;
 			let (w, h, _) = self.dimensions();
 			return Some((
 				button.rect,
@@ -279,7 +278,9 @@ impl<P: SendEvent> App<P> {
 		let rect = form
 			.buttons
 			.iter()
-			.find(|b| b.action == Command::FocusInput(id))?
+			.find(|b| {
+				b.action == Command::Chrome(ChromeCommand::FocusInput(id))
+			})?
 			.rect;
 		Some((rect, form.viewport))
 	}
@@ -308,7 +309,11 @@ impl<P: SendEvent> App<P> {
 			return None;
 		}
 		form.buttons.iter().find_map(|b| match b.action {
-			Command::FocusInput(id) if b.rect.contains(x, y) => Some(id),
+			Command::Chrome(ChromeCommand::FocusInput(id))
+				if b.rect.contains(x, y) =>
+			{
+				Some(id)
+			}
 			_ => None,
 		})
 	}
@@ -331,7 +336,10 @@ impl<P: SendEvent> App<P> {
 			.into_iter()
 			.find(|field| {
 				self.interaction.widgets.focus
-					== Some(Command::FocusInput(*field).widget_id())
+					== Some(
+						Command::Chrome(ChromeCommand::FocusInput(*field))
+							.widget_id(),
+					)
 			})
 	}
 	pub(super) fn clear_input_focus(&mut self) {
@@ -502,8 +510,10 @@ impl<P: SendEvent> App<P> {
 				if let Some(id) = self.input_at_cursor() {
 					self.blur_input();
 					self.cancel_gestures();
-					self.interaction.widgets.focus =
-						Some(Command::FocusInput(id).widget_id());
+					self.interaction.widgets.focus = Some(
+						Command::Chrome(ChromeCommand::FocusInput(id))
+							.widget_id(),
+					);
 					self.interaction.widgets.focus_visible = false;
 					self.interaction.widgets.captured = None;
 					self.sync_input();
@@ -603,7 +613,7 @@ impl<P: SendEvent> App<P> {
 			),
 		};
 		if id == TextField::Url && outcome == Outcome::Submit {
-			self.action(Command::OpenUrl);
+			self.action(Command::Document(DocumentCommand::OpenUrl));
 			return Outcome::Consumed;
 		}
 		if id == TextField::Search {
@@ -682,7 +692,8 @@ impl<P: SendEvent> App<P> {
 		let placeholder =
 			self.preferences.values.lang().export_title_placeholder();
 		for button in &form.buttons {
-			if let Command::FocusInput(id) = button.action
+			if let Command::Chrome(ChromeCommand::FocusInput(id)) =
+				button.action
 				&& button.rect.intersect(form.viewport).is_some()
 			{
 				let focused = self.text_input.focused == Some(id);

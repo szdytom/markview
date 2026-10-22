@@ -230,32 +230,9 @@ pub(super) struct Completion {
 
 /// Keeps drawn and interactive button availability in agreement.
 pub(super) fn prepare_button(button: &mut super::Button, load: Option<&Load>) {
-	if load.is_some_and(Load::blocked) && dependent(button.action) {
+	if load.is_some_and(Load::blocked) && button.action.settings_dependent() {
 		button.enabled = false;
 	}
-}
-
-/// Commands that depend on positions or availability in the current catalogue.
-pub(super) fn dependent(command: Command) -> bool {
-	use super::font_panel::Command as Font;
-	matches!(
-		command,
-		Command::StyleToggle(_)
-			| Command::StyleUp(_)
-			| Command::StyleDown(_)
-			| Command::ExportStyleToggle(_)
-			| Command::ExportStyleUp(_)
-			| Command::ExportStyleDown(_)
-			| Command::SystemTheme
-			| Command::FontFamily(_, _)
-			| Command::ToggleDropdown(crate::state::DropdownId::Font(_), _)
-			| Command::Fonts(
-				Font::DownloadMissing
-					| Font::DownloadAll
-					| Font::DownloadOne(_)
-					| Font::RedownloadOne(_)
-			)
-	)
 }
 impl<P: SendEvent> App<P> {
 	pub(super) fn settings_kind(&self) -> Option<Kind> {
@@ -278,8 +255,9 @@ impl<P: SendEvent> App<P> {
 			.map(|kind| &self.settings_resources.loads[kind.index()])
 	}
 	pub(super) fn settings_action_enabled(&self, command: Command) -> bool {
-		!dependent(command)
-			|| self.settings_load().is_none_or(|load| !load.blocked())
+		command.settings_action_enabled(
+			self.settings_load().is_some_and(Load::blocked),
+		)
 	}
 	pub(super) fn refresh_settings_resources(&mut self, check: bool) {
 		let Some(kind) = self.settings_kind() else {

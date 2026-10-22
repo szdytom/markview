@@ -5,7 +5,7 @@
 //! the one GPU device lives. Nothing here changes the reader's layout options.
 use super::{App, Event, ExportOutcome};
 #[cfg(test)]
-use crate::state::Command;
+use crate::state::{Command, ExportCommand};
 use crate::{
 	export::{self, draw_tile, write_png},
 	layout::LayoutSnapshot,
@@ -730,7 +730,9 @@ mod tests {
 		] {
 			app.preferences.export.font_size = size;
 			app.preferences.export.validate().unwrap();
-			assert!(app.page_command(Command::ExportSize(delta)));
+			assert!(app.page_command(Command::Export(
+				ExportCommand::ExportSize(delta)
+			)));
 			assert_eq!(app.preferences.export.font_size, expected);
 			app.preferences.export.validate().unwrap();
 		}

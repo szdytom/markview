@@ -1,5 +1,6 @@
 //! Session search, asynchronous matching, navigation and bottom chrome.
 use super::{App, Button, SendEvent};
+use crate::state::{ChromeCommand, SearchCommand};
 use crate::{
 	layout::{Draw, Paint, Rect},
 	state::{Command, PanelPage, TextField},
@@ -234,8 +235,10 @@ impl<P: SendEvent> App<P> {
 				self.search_changed();
 			}
 		}
-		self.interaction.widgets.focus =
-			Some(Command::FocusInput(TextField::Search).widget_id());
+		self.interaction.widgets.focus = Some(
+			Command::Chrome(ChromeCommand::FocusInput(TextField::Search))
+				.widget_id(),
+		);
 		self.readers.session.search.input.select_all(&mut self.ui);
 		self.sync_input();
 		self.search_tick();
@@ -517,18 +520,36 @@ impl<P: SendEvent> App<P> {
 		let lang = self.preferences.values.lang();
 		let search = &self.readers.session.search;
 		let actions = [
-			("Aa", Command::SearchCase, search.options.case_sensitive),
+			(
+				"Aa",
+				Command::Search(SearchCommand::SearchCase),
+				search.options.case_sensitive,
+			),
 			(
 				lang.search_word(),
-				Command::SearchWord,
+				Command::Search(SearchCommand::SearchWord),
 				search.options.whole_word,
 			),
-			(lang.search_previous(), Command::SearchPrevious, false),
-			(lang.search_next(), Command::SearchNext, false),
-			(lang.panel_close(), Command::SearchClose, false),
+			(
+				lang.search_previous(),
+				Command::Search(SearchCommand::SearchPrevious),
+				false,
+			),
+			(
+				lang.search_next(),
+				Command::Search(SearchCommand::SearchNext),
+				false,
+			),
+			(
+				lang.panel_close(),
+				Command::Search(SearchCommand::SearchClose),
+				false,
+			),
 		];
 		std::iter::once(Button {
-			id: crate::app::widgets::id(Command::FocusInput(TextField::Search)),
+			id: crate::app::widgets::id(Command::Chrome(
+				ChromeCommand::FocusInput(TextField::Search),
+			)),
 			clip: None,
 			kind: super::chrome::components::ButtonKind::Quiet,
 			enabled: true,
@@ -537,7 +558,9 @@ impl<P: SendEvent> App<P> {
 			icon: None,
 			marker: None,
 			active: false,
-			action: Command::FocusInput(TextField::Search),
+			action: Command::Chrome(ChromeCommand::FocusInput(
+				TextField::Search,
+			)),
 		})
 		.chain(actions.into_iter().enumerate().map(
 			|(i, (label, action, active))| Button {
@@ -553,9 +576,15 @@ impl<P: SendEvent> App<P> {
 				},
 				label: label.into(),
 				icon: match action {
-					Command::SearchPrevious => Some(super::chrome::icons::UP),
-					Command::SearchNext => Some(super::chrome::icons::DOWN),
-					Command::SearchClose => Some(super::chrome::icons::CLOSE),
+					Command::Search(SearchCommand::SearchPrevious) => {
+						Some(super::chrome::icons::UP)
+					}
+					Command::Search(SearchCommand::SearchNext) => {
+						Some(super::chrome::icons::DOWN)
+					}
+					Command::Search(SearchCommand::SearchClose) => {
+						Some(super::chrome::icons::CLOSE)
+					}
 					_ => None,
 				},
 				marker: None,
@@ -616,7 +645,10 @@ impl<P: SendEvent> App<P> {
 			Paint::Styled(Condition::Statusbar, C::Color),
 		));
 		for button in self.search_buttons() {
-			if matches!(button.action, Command::FocusInput(_)) {
+			if matches!(
+				button.action,
+				Command::Chrome(ChromeCommand::FocusInput(_))
+			) {
 				continue;
 			}
 			out.extend(super::chrome::components::draw_button(

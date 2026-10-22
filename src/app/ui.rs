@@ -4,6 +4,7 @@ use super::{
 	chrome::{self, Chrome},
 };
 use crate::layout::{Draw, Scrollbar};
+use crate::state::{ExportCommand, SettingsCommand};
 use std::time::Instant;
 impl<P: super::SendEvent> App<P> {
 	pub(super) fn page_command(
@@ -15,12 +16,14 @@ impl<P: super::SendEvent> App<P> {
 		if self.tab_strip.phone
 			&& matches!(
 				action,
-				Command::Narrower | Command::Wider | Command::TabStyle(_)
+				Command::Settings(SettingsCommand::Narrower)
+					| Command::Settings(SettingsCommand::Wider)
+					| Command::Settings(SettingsCommand::TabStyle(_))
 			) {
 			return true;
 		}
 		let message = match action {
-			Command::Reset => {
+			Command::Settings(SettingsCommand::Reset) => {
 				let mut values = crate::settings::ReaderSettings::default();
 				if let Some(theme) = self.system_theme() {
 					values.theme = theme;
@@ -29,17 +32,17 @@ impl<P: super::SendEvent> App<P> {
 					Box::new(values),
 				)))
 			}
-			Command::StyleToggle(index)
-			| Command::StyleUp(index)
-			| Command::StyleDown(index)
-			| Command::ExportStyleToggle(index)
-			| Command::ExportStyleUp(index)
-			| Command::ExportStyleDown(index) => {
+			Command::Settings(SettingsCommand::StyleToggle(index))
+			| Command::Settings(SettingsCommand::StyleUp(index))
+			| Command::Settings(SettingsCommand::StyleDown(index))
+			| Command::Export(ExportCommand::ExportStyleToggle(index))
+			| Command::Export(ExportCommand::ExportStyleUp(index))
+			| Command::Export(ExportCommand::ExportStyleDown(index)) => {
 				let export = matches!(
 					action,
-					Command::ExportStyleToggle(_)
-						| Command::ExportStyleUp(_)
-						| Command::ExportStyleDown(_)
+					Command::Export(ExportCommand::ExportStyleToggle(_))
+						| Command::Export(ExportCommand::ExportStyleUp(_))
+						| Command::Export(ExportCommand::ExportStyleDown(_))
 				);
 				let entries = if export {
 					&self.settings_resources.export_entries
@@ -50,10 +53,12 @@ impl<P: super::SendEvent> App<P> {
 					return true;
 				};
 				let operation = match action {
-					Command::StyleToggle(_) | Command::ExportStyleToggle(_) => {
+					Command::Settings(SettingsCommand::StyleToggle(_))
+					| Command::Export(ExportCommand::ExportStyleToggle(_)) => {
 						super::style_edit::Operation::Toggle
 					}
-					Command::StyleUp(_) | Command::ExportStyleUp(_) => {
+					Command::Settings(SettingsCommand::StyleUp(_))
+					| Command::Export(ExportCommand::ExportStyleUp(_)) => {
 						super::style_edit::Operation::Up
 					}
 					_ => super::style_edit::Operation::Down,
@@ -69,7 +74,7 @@ impl<P: super::SendEvent> App<P> {
 					Message::Settings(settings_panel::Message::Style(edit))
 				})
 			}
-			Command::FontFamily(role, selection) => {
+			Command::Settings(SettingsCommand::FontFamily(role, selection)) => {
 				let family = if let Some(selection) = selection {
 					let Some(name) =
 						self.preferences.fonts.resolve(role, selection)
@@ -527,7 +532,9 @@ impl<P: super::SendEvent> App<P> {
 					.filter(|b| {
 						matches!(
 							b.action,
-							crate::state::Command::SettingsTab(_)
+							crate::state::Command::Chrome(
+								crate::state::ChromeCommand::SettingsTab(_)
+							)
 						)
 					})
 					.cloned(),

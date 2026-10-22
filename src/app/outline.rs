@@ -13,6 +13,7 @@
 use super::App;
 use crate::layout::Rect;
 use crate::scroll::ScrollArea;
+use crate::state::DocumentCommand;
 use crate::state::{Command, DrawerAnimation, InteractionState, OutlineTree};
 use markview_ui_core::{Component, Invalidation, Update};
 use std::time::Instant;
@@ -249,8 +250,10 @@ impl<P: super::SendEvent> App<P> {
 		}
 		self.readers.session.outline_tree.toggle(index);
 		self.interaction.overlays.outline.select(Some(index));
-		self.interaction.widgets.focus =
-			Some(Command::OutlineToggle(index).widget_id());
+		self.interaction.widgets.focus = Some(
+			Command::Document(DocumentCommand::OutlineToggle(index))
+				.widget_id(),
+		);
 		self.ensure_outline();
 		self.reveal_outline(index);
 		self.redraw();

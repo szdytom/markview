@@ -1,6 +1,7 @@
 use super::*;
 use crate::app::chrome::panel_rect;
 use crate::lang::Lang;
+use crate::state::{DocumentCommand, ExportCommand};
 use crate::state::{InteractionState, PanelPage};
 
 fn settings(format: ExportFormat) -> ExportSettings {
@@ -22,8 +23,16 @@ fn export_panel_buttons_fit_and_offer_the_run_action() {
 			height,
 			Lang::En,
 		);
-		assert!(buttons.iter().any(|b| b.action == Command::ExportRun));
-		assert!(buttons.iter().all(|b| b.action != Command::Open));
+		assert!(
+			buttons
+				.iter()
+				.any(|b| b.action == Command::Export(ExportCommand::ExportRun))
+		);
+		assert!(
+			buttons
+				.iter()
+				.all(|b| b.action != Command::Document(DocumentCommand::Open))
+		);
 		for button in &buttons {
 			assert!(panel.contains(button.rect.x, button.rect.y));
 			assert!(panel.contains(
@@ -70,7 +79,10 @@ fn the_panel_offers_the_export_styles() {
 		.find(|row| row.label.starts_with("Styles"))
 		.expect("styles row");
 	assert_eq!(styles.label, "Styles · print");
-	assert_eq!(styles.actions[0].action, Command::ExportStyles);
+	assert_eq!(
+		styles.actions[0].action,
+		Command::Export(ExportCommand::ExportStyles)
+	);
 	// Watching is an action, not a setting, so it has no row of its own.
 	assert!(!panel.iter().any(|row| row.label.starts_with("Watch")));
 }
@@ -87,12 +99,12 @@ fn the_plain_export_sits_right_of_the_watching_one() {
 	);
 	let watch = buttons
 		.iter()
-		.find(|b| b.action == Command::ExportAndWatch)
+		.find(|b| b.action == Command::Export(ExportCommand::ExportAndWatch))
 		.expect("watch button");
 	assert_eq!(watch.label, "Export and Watch…");
 	let run = buttons
 		.iter()
-		.find(|b| b.action == Command::ExportRun)
+		.find(|b| b.action == Command::Export(ExportCommand::ExportRun))
 		.expect("run button");
 	assert!(watch.rect.x + watch.rect.w <= run.rect.x);
 }

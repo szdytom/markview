@@ -12,6 +12,7 @@ use crate::cli::{LaunchOptions, Mode};
 use crate::lang::Lang;
 use crate::layout::Rect;
 use crate::settings::FontRole;
+use crate::state::{ChromeCommand, SettingsCommand};
 use crate::state::{Command, DropdownId, PanelPage, PanelTab};
 use std::cell::Cell;
 use winit::dpi::PhysicalPosition;
@@ -167,7 +168,8 @@ fn exposed_covered_point(
 		.filter(|button| {
 			!matches!(
 				button.action,
-				Command::Language(_) | Command::ToggleDropdown(..)
+				Command::Settings(SettingsCommand::Language(_))
+					| Command::Chrome(ChromeCommand::ToggleDropdown(..))
 			)
 		})
 		.find_map(|button| {
@@ -184,10 +186,14 @@ fn exposed_covered_point(
 #[test]
 fn a_release_over_an_open_option_commits_it() {
 	let mut app = app_with_panel();
-	app.action(Command::ToggleDropdown(DropdownId::Language, 0));
+	app.action(Command::Chrome(ChromeCommand::ToggleDropdown(
+		DropdownId::Language,
+		0,
+	)));
 	assert!(app.interaction.overlays.dropdown.is_open());
 
-	let target = Command::Language(Some(Lang::ZhHans));
+	let target =
+		Command::Settings(SettingsCommand::Language(Some(Lang::ZhHans)));
 	let (x, y) = option_centre(&mut app, target);
 	click(&mut app, x, y);
 
@@ -205,7 +211,9 @@ fn committing_a_language_relabels_the_front_matter() {
 	let mut app = app_with_panel();
 	// A request is only about a document, so the session needs one.
 	app.readers.session.path = Some(std::path::PathBuf::from("/tmp/a.md"));
-	app.action(Command::Language(Some(Lang::ZhHans)));
+	app.action(Command::Settings(SettingsCommand::Language(Some(
+		Lang::ZhHans,
+	))));
 
 	let options = app
 		.readers
@@ -221,8 +229,12 @@ fn committing_a_language_relabels_the_front_matter() {
 #[test]
 fn an_open_option_is_a_button_the_pointer_can_hit() {
 	let mut app = app_with_panel();
-	app.action(Command::ToggleDropdown(DropdownId::Language, 0));
-	let target = Command::Language(Some(Lang::ZhHans));
+	app.action(Command::Chrome(ChromeCommand::ToggleDropdown(
+		DropdownId::Language,
+		0,
+	)));
+	let target =
+		Command::Settings(SettingsCommand::Language(Some(Lang::ZhHans)));
 	assert!(
 		app.buttons().iter().any(|button| button.action == target),
 		"the open list's options are reachable as buttons"
@@ -239,21 +251,36 @@ fn tab_style_commits_from_keyboard_and_pointer_without_document_reflow() {
 	let frame = app.frame.layout;
 	let scroll = app.tab_strip.scroll.offset();
 	assert_eq!(app.preferences.values.tab_style, TabStyle::Underline);
-	app.action(Command::ToggleDropdown(DropdownId::TabStyle, 0));
+	app.action(Command::Chrome(ChromeCommand::ToggleDropdown(
+		DropdownId::TabStyle,
+		0,
+	)));
 	app.key_pressed(&Key::Named(NamedKey::ArrowDown));
 	assert_eq!(
 		highlighted(&mut app),
-		Command::TabStyle(TabStyle::Connected)
+		Command::Settings(SettingsCommand::TabStyle(TabStyle::Connected))
 	);
 	app.key_pressed(&Key::Named(NamedKey::Enter));
 	assert_eq!(app.preferences.values.tab_style, TabStyle::Connected);
 	assert!(!app.interaction.overlays.dropdown.is_open());
 	assert_eq!(
 		app.interaction.widgets.focus,
-		Some(Command::ToggleDropdown(DropdownId::TabStyle, 1).widget_id())
+		Some(
+			Command::Chrome(ChromeCommand::ToggleDropdown(
+				DropdownId::TabStyle,
+				1
+			))
+			.widget_id()
+		)
 	);
-	app.action(Command::ToggleDropdown(DropdownId::TabStyle, 1));
-	let at = option_centre(&mut app, Command::TabStyle(TabStyle::Underline));
+	app.action(Command::Chrome(ChromeCommand::ToggleDropdown(
+		DropdownId::TabStyle,
+		1,
+	)));
+	let at = option_centre(
+		&mut app,
+		Command::Settings(SettingsCommand::TabStyle(TabStyle::Underline)),
+	);
 	click(&mut app, at.0, at.1);
 	assert_eq!(app.preferences.values.tab_style, TabStyle::Underline);
 	assert!(!app.interaction.overlays.dropdown.is_open());
@@ -273,11 +300,14 @@ fn window_layout_commits_from_keyboard_and_pointer_for_next_launch() {
 	let mut app = app_with_panel();
 	let initial = app.frame.layout;
 	app.readers.session.path = Some("/tmp/layout.md".into());
-	app.action(Command::ToggleDropdown(DropdownId::WindowLayout, 0));
+	app.action(Command::Chrome(ChromeCommand::ToggleDropdown(
+		DropdownId::WindowLayout,
+		0,
+	)));
 	app.key_pressed(&Key::Named(NamedKey::ArrowDown));
 	assert_eq!(
 		highlighted(&mut app),
-		Command::WindowLayout(WindowLayout::Macos)
+		Command::Settings(SettingsCommand::WindowLayout(WindowLayout::Macos))
 	);
 	app.key_pressed(&Key::Named(NamedKey::Enter));
 	assert_eq!(app.preferences.values.window_layout, WindowLayout::Macos);
@@ -286,11 +316,22 @@ fn window_layout_commits_from_keyboard_and_pointer_for_next_launch() {
 	assert!(!app.interaction.overlays.dropdown.is_open());
 	assert_eq!(
 		app.interaction.widgets.focus,
-		Some(Command::ToggleDropdown(DropdownId::WindowLayout, 1).widget_id())
+		Some(
+			Command::Chrome(ChromeCommand::ToggleDropdown(
+				DropdownId::WindowLayout,
+				1
+			))
+			.widget_id()
+		)
 	);
-	app.action(Command::ToggleDropdown(DropdownId::WindowLayout, 1));
-	let at =
-		option_centre(&mut app, Command::WindowLayout(WindowLayout::Linux));
+	app.action(Command::Chrome(ChromeCommand::ToggleDropdown(
+		DropdownId::WindowLayout,
+		1,
+	)));
+	let at = option_centre(
+		&mut app,
+		Command::Settings(SettingsCommand::WindowLayout(WindowLayout::Linux)),
+	);
 	click(&mut app, at.0, at.1);
 	assert_eq!(app.preferences.values.window_layout, WindowLayout::Linux);
 	assert!(!app.interaction.overlays.dropdown.is_open());
@@ -300,12 +341,15 @@ fn window_layout_commits_from_keyboard_and_pointer_for_next_launch() {
 #[test]
 fn arrows_move_the_highlight_and_enter_commits_it() {
 	let mut app = app_with_panel();
-	app.action(Command::ToggleDropdown(DropdownId::Language, 0));
+	app.action(Command::Chrome(ChromeCommand::ToggleDropdown(
+		DropdownId::Language,
+		0,
+	)));
 
 	let options = [
-		Command::Language(None),
-		Command::Language(Some(Lang::En)),
-		Command::Language(Some(Lang::ZhHans)),
+		Command::Settings(SettingsCommand::Language(None)),
+		Command::Settings(SettingsCommand::Language(Some(Lang::En))),
+		Command::Settings(SettingsCommand::Language(Some(Lang::ZhHans))),
 	];
 
 	// Down steps to the next option and up steps back. The panel owns the
@@ -329,13 +373,16 @@ fn arrows_move_the_highlight_and_enter_commits_it() {
 #[test]
 fn an_arrow_under_an_open_list_stays_in_the_list() {
 	let mut app = app_with_panel();
-	app.action(Command::ToggleDropdown(DropdownId::Language, 0));
+	app.action(Command::Chrome(ChromeCommand::ToggleDropdown(
+		DropdownId::Language,
+		0,
+	)));
 	let before = app.readers.session.scrolling.offset;
 	app.key_pressed(&Key::Named(NamedKey::ArrowUp));
 	// The wrap lands on the other end of the list, whatever it holds.
 	assert_eq!(
 		highlighted(&mut app),
-		Command::Language(Lang::ALL.last().copied())
+		Command::Settings(SettingsCommand::Language(Lang::ALL.last().copied()))
 	);
 	assert!(app.interaction.overlays.dropdown.is_open());
 	assert_eq!(app.readers.session.scrolling.offset, before);
@@ -344,7 +391,10 @@ fn an_arrow_under_an_open_list_stays_in_the_list() {
 #[test]
 fn escape_closes_without_committing_and_tab_reaches_the_page() {
 	let mut app = app_with_panel();
-	app.action(Command::ToggleDropdown(DropdownId::Language, 0));
+	app.action(Command::Chrome(ChromeCommand::ToggleDropdown(
+		DropdownId::Language,
+		0,
+	)));
 
 	// Escape closes without committing anything.
 	app.key_pressed(&Key::Named(NamedKey::Escape));
@@ -352,7 +402,10 @@ fn escape_closes_without_committing_and_tab_reaches_the_page() {
 	assert_eq!(app.preferences.values.lang, None);
 
 	// Tab closes the list and hands the key on to the panel's own traversal.
-	app.action(Command::ToggleDropdown(DropdownId::Language, 0));
+	app.action(Command::Chrome(ChromeCommand::ToggleDropdown(
+		DropdownId::Language,
+		0,
+	)));
 	app.key_pressed(&Key::Named(NamedKey::Tab));
 	assert!(!app.interaction.overlays.dropdown.is_open());
 	assert!(app.interaction.widgets.focus.is_some());
@@ -364,7 +417,10 @@ fn escape_closes_without_committing_and_tab_reaches_the_page() {
 fn changing_the_page_closes_the_list() {
 	for page in [PanelPage::Settings(PanelTab::Styles), PanelPage::Closed] {
 		let mut app = app_with_panel();
-		app.action(Command::ToggleDropdown(DropdownId::Language, 0));
+		app.action(Command::Chrome(ChromeCommand::ToggleDropdown(
+			DropdownId::Language,
+			0,
+		)));
 		assert!(app.interaction.overlays.dropdown.is_open());
 
 		app.show_panel(page);
@@ -383,7 +439,10 @@ fn changing_the_page_closes_the_list() {
 #[test]
 fn a_press_outside_the_list_closes_it_without_reaching_the_page() {
 	let mut app = app_with_panel();
-	app.action(Command::ToggleDropdown(DropdownId::Language, 0));
+	app.action(Command::Chrome(ChromeCommand::ToggleDropdown(
+		DropdownId::Language,
+		0,
+	)));
 
 	// A control the open list covers: a press on it, on no option, must close
 	// the list and nothing more.
@@ -403,7 +462,13 @@ fn a_press_outside_the_list_closes_it_without_reaching_the_page() {
 	);
 	assert_eq!(
 		app.interaction.widgets.focus,
-		Some(Command::ToggleDropdown(DropdownId::Language, 0).widget_id()),
+		Some(
+			Command::Chrome(ChromeCommand::ToggleDropdown(
+				DropdownId::Language,
+				0
+			))
+			.widget_id()
+		),
 		"focus returns to the chooser the list belongs to"
 	);
 }
@@ -413,14 +478,20 @@ fn a_press_outside_the_list_closes_it_without_reaching_the_page() {
 #[test]
 fn clicking_the_control_again_closes_the_list_and_keeps_it_closed() {
 	let mut app = app_with_panel();
-	app.action(Command::ToggleDropdown(DropdownId::Language, 0));
+	app.action(Command::Chrome(ChromeCommand::ToggleDropdown(
+		DropdownId::Language,
+		0,
+	)));
 	let anchor = app
 		.buttons()
 		.into_iter()
 		.find(|button| {
 			matches!(
 				button.action,
-				Command::ToggleDropdown(DropdownId::Language, _)
+				Command::Chrome(ChromeCommand::ToggleDropdown(
+					DropdownId::Language,
+					_
+				))
 			)
 		})
 		.expect("the control that opens the list")
@@ -440,8 +511,12 @@ fn clicking_the_control_again_closes_the_list_and_keeps_it_closed() {
 #[test]
 fn a_touch_on_an_option_picks_it_like_a_click() {
 	let mut app = app_with_panel();
-	app.action(Command::ToggleDropdown(DropdownId::Language, 0));
-	let target = Command::Language(Some(Lang::ZhHans));
+	app.action(Command::Chrome(ChromeCommand::ToggleDropdown(
+		DropdownId::Language,
+		0,
+	)));
+	let target =
+		Command::Settings(SettingsCommand::Language(Some(Lang::ZhHans)));
 	let (x, y) = option_centre(&mut app, target);
 	touch(&mut app, x, y);
 	assert_eq!(app.preferences.values.lang, Some(Lang::ZhHans));
@@ -453,17 +528,25 @@ fn a_touch_on_an_option_picks_it_like_a_click() {
 #[test]
 fn a_touch_just_past_an_option_lands_on_the_next_one() {
 	let mut app = app_with_panel();
-	app.action(Command::ToggleDropdown(DropdownId::Language, 0));
+	app.action(Command::Chrome(ChromeCommand::ToggleDropdown(
+		DropdownId::Language,
+		0,
+	)));
 	let first = app
 		.buttons()
 		.into_iter()
-		.find(|b| b.action == Command::Language(None))
+		.find(|b| {
+			b.action == Command::Settings(SettingsCommand::Language(None))
+		})
 		.unwrap()
 		.rect;
 	let second = app
 		.buttons()
 		.into_iter()
-		.find(|b| b.action == Command::Language(Some(Lang::En)))
+		.find(|b| {
+			b.action
+				== Command::Settings(SettingsCommand::Language(Some(Lang::En)))
+		})
 		.unwrap()
 		.rect;
 	// The options are drawn at a fixed pitch, so the next one's own rectangle
@@ -481,7 +564,10 @@ fn a_touch_just_past_an_option_lands_on_the_next_one() {
 #[test]
 fn a_touch_clear_of_every_option_closes_the_list_without_picking() {
 	let mut app = app_with_panel();
-	app.action(Command::ToggleDropdown(DropdownId::Language, 0));
+	app.action(Command::Chrome(ChromeCommand::ToggleDropdown(
+		DropdownId::Language,
+		0,
+	)));
 	let menu = app.dropdown_menu().unwrap();
 	// Inside the list's frame but between its options and its edge.
 	let (x, y) = (menu.rect.x + menu.rect.w / 2.0, menu.rect.y + 1.0);
@@ -497,11 +583,17 @@ fn a_touch_clear_of_every_option_closes_the_list_without_picking() {
 fn a_click_on_an_option_over_a_covered_control_picks_the_option() {
 	let mut app = app_with_panel();
 	let page = app.buttons();
-	app.action(Command::ToggleDropdown(DropdownId::Language, 0));
+	app.action(Command::Chrome(ChromeCommand::ToggleDropdown(
+		DropdownId::Language,
+		0,
+	)));
 	let option = app
 		.buttons()
 		.into_iter()
-		.find(|button| button.action == Command::Language(Some(Lang::En)))
+		.find(|button| {
+			button.action
+				== Command::Settings(SettingsCommand::Language(Some(Lang::En)))
+		})
 		.expect("the option")
 		.rect;
 	let (x, y) = page
@@ -509,7 +601,8 @@ fn a_click_on_an_option_over_a_covered_control_picks_the_option() {
 		.filter(|button| {
 			!matches!(
 				button.action,
-				Command::Language(_) | Command::ToggleDropdown(..)
+				Command::Settings(SettingsCommand::Language(_))
+					| Command::Chrome(ChromeCommand::ToggleDropdown(..))
 			)
 		})
 		.find_map(|button| overlap(button.rect, option))
@@ -526,7 +619,10 @@ fn a_click_on_an_option_over_a_covered_control_picks_the_option() {
 #[test]
 fn a_touch_on_a_covered_control_dismisses_without_activating_it() {
 	let mut app = app_with_panel();
-	app.action(Command::ToggleDropdown(DropdownId::Language, 0));
+	app.action(Command::Chrome(ChromeCommand::ToggleDropdown(
+		DropdownId::Language,
+		0,
+	)));
 	let (_, x, y) = exposed_covered_point(&mut app)
 		.expect("the list covers a page control");
 	let before = app.preferences.values.clone();
@@ -544,7 +640,10 @@ fn a_touch_on_a_covered_control_dismisses_without_activating_it() {
 #[test]
 fn a_touch_on_the_list_padding_does_not_pick_the_nearest_option() {
 	let mut app = app_with_panel();
-	app.action(Command::ToggleDropdown(DropdownId::Language, 0));
+	app.action(Command::Chrome(ChromeCommand::ToggleDropdown(
+		DropdownId::Language,
+		0,
+	)));
 	let menu = app.dropdown_menu().unwrap();
 	let (x, y) = (
 		menu.rect.x + menu.rect.w / 2.0,
@@ -564,7 +663,10 @@ fn a_touch_on_the_list_padding_does_not_pick_the_nearest_option() {
 #[test]
 fn an_unmodified_q_with_the_list_open_does_not_quit() {
 	let mut app = app_with_panel();
-	app.action(Command::ToggleDropdown(DropdownId::Language, 0));
+	app.action(Command::Chrome(ChromeCommand::ToggleDropdown(
+		DropdownId::Language,
+		0,
+	)));
 	let quit = QuitLoop(Cell::new(false));
 
 	press(&mut app, &quit, Key::Character("q".into()));
@@ -613,7 +715,10 @@ fn the_wheel_does_not_scroll_the_page_behind_an_open_list() {
 	let mut app = app_with_panel();
 	let (_, max) = app.panel_scroll_range().expect("the page scrolls");
 	assert!(max > 0.0, "the test needs a page with somewhere to scroll");
-	app.action(Command::ToggleDropdown(DropdownId::Language, 0));
+	app.action(Command::Chrome(ChromeCommand::ToggleDropdown(
+		DropdownId::Language,
+		0,
+	)));
 	// The pointer is on the page the list covers.
 	app.interaction.pointer.move_to((700.0, 400.0));
 	let before = app.preferences.settings_scroll().offset();
@@ -651,7 +756,10 @@ fn opening_a_list_stops_the_page_ease() {
 	assert!(app.preferences.settings_scroll().animating());
 	let held = app.preferences.settings_scroll().offset();
 
-	app.action(Command::ToggleDropdown(DropdownId::Language, 0));
+	app.action(Command::Chrome(ChromeCommand::ToggleDropdown(
+		DropdownId::Language,
+		0,
+	)));
 	assert!(
 		app.dropdown_menu().is_some(),
 		"the list hangs from a row still on screen"
@@ -672,24 +780,45 @@ fn opening_a_list_stops_the_page_ease() {
 #[test]
 fn the_wheel_steps_the_highlight_like_the_arrow_keys() {
 	let mut app = app_with_panel();
-	app.action(Command::ToggleDropdown(DropdownId::Language, 0));
+	app.action(Command::Chrome(ChromeCommand::ToggleDropdown(
+		DropdownId::Language,
+		0,
+	)));
 	// The pointer rests on the page the list covers.
 	app.interaction.pointer.move_to((700.0, 400.0));
 	let before = app.preferences.settings_scroll().offset();
 
 	wheel(&mut app, MouseScrollDelta::LineDelta(0.0, -1.0));
-	assert_eq!(highlighted(&mut app), Command::Language(Some(Lang::En)));
+	assert_eq!(
+		highlighted(&mut app),
+		Command::Settings(SettingsCommand::Language(Some(Lang::En)))
+	);
 	wheel(&mut app, MouseScrollDelta::LineDelta(0.0, -1.0));
-	assert_eq!(highlighted(&mut app), Command::Language(Some(Lang::ZhHans)));
+	assert_eq!(
+		highlighted(&mut app),
+		Command::Settings(SettingsCommand::Language(Some(Lang::ZhHans)))
+	);
 	wheel(&mut app, MouseScrollDelta::LineDelta(0.0, -1.0));
-	assert_eq!(highlighted(&mut app), Command::Language(Some(Lang::ZhHant)));
+	assert_eq!(
+		highlighted(&mut app),
+		Command::Settings(SettingsCommand::Language(Some(Lang::ZhHant)))
+	);
 	wheel(&mut app, MouseScrollDelta::LineDelta(0.0, -1.0));
-	assert_eq!(highlighted(&mut app), Command::Language(Some(Lang::Ja)));
+	assert_eq!(
+		highlighted(&mut app),
+		Command::Settings(SettingsCommand::Language(Some(Lang::Ja)))
+	);
 	// The list wraps round, as the arrow keys do.
 	wheel(&mut app, MouseScrollDelta::LineDelta(0.0, -1.0));
-	assert_eq!(highlighted(&mut app), Command::Language(None));
+	assert_eq!(
+		highlighted(&mut app),
+		Command::Settings(SettingsCommand::Language(None))
+	);
 	wheel(&mut app, MouseScrollDelta::LineDelta(0.0, 1.0));
-	assert_eq!(highlighted(&mut app), Command::Language(Some(Lang::Ja)));
+	assert_eq!(
+		highlighted(&mut app),
+		Command::Settings(SettingsCommand::Language(Some(Lang::Ja)))
+	);
 
 	assert_eq!(
 		app.preferences.settings_scroll().offset(),
@@ -705,20 +834,29 @@ fn the_wheel_steps_the_highlight_like_the_arrow_keys() {
 #[test]
 fn a_trackpads_small_deltas_add_up_to_one_option_per_notch() {
 	let mut app = app_with_panel();
-	app.action(Command::ToggleDropdown(DropdownId::Language, 0));
+	app.action(Command::Chrome(ChromeCommand::ToggleDropdown(
+		DropdownId::Language,
+		0,
+	)));
 
 	// Half a notch's travel moves nothing yet.
 	wheel(
 		&mut app,
 		MouseScrollDelta::PixelDelta(PhysicalPosition::new(0.0, -20.0)),
 	);
-	assert_eq!(highlighted(&mut app), Command::Language(None));
+	assert_eq!(
+		highlighted(&mut app),
+		Command::Settings(SettingsCommand::Language(None))
+	);
 	// The rest of the notch steps the list once, and no further.
 	wheel(
 		&mut app,
 		MouseScrollDelta::PixelDelta(PhysicalPosition::new(0.0, -25.0)),
 	);
-	assert_eq!(highlighted(&mut app), Command::Language(Some(Lang::En)));
+	assert_eq!(
+		highlighted(&mut app),
+		Command::Settings(SettingsCommand::Language(Some(Lang::En)))
+	);
 }
 
 /// The highlight the wheel moved to is the one `Enter` commits, exactly as
@@ -726,9 +864,15 @@ fn a_trackpads_small_deltas_add_up_to_one_option_per_notch() {
 #[test]
 fn enter_commits_the_option_the_wheel_moved_to() {
 	let mut app = app_with_panel();
-	app.action(Command::ToggleDropdown(DropdownId::Language, 0));
+	app.action(Command::Chrome(ChromeCommand::ToggleDropdown(
+		DropdownId::Language,
+		0,
+	)));
 	wheel(&mut app, MouseScrollDelta::LineDelta(0.0, -2.0));
-	assert_eq!(highlighted(&mut app), Command::Language(Some(Lang::ZhHans)));
+	assert_eq!(
+		highlighted(&mut app),
+		Command::Settings(SettingsCommand::Language(Some(Lang::ZhHans)))
+	);
 
 	app.key_pressed(&Key::Named(NamedKey::Enter));
 	assert!(!app.interaction.overlays.dropdown.is_open());
@@ -742,18 +886,27 @@ fn enter_commits_the_option_the_wheel_moved_to() {
 #[test]
 fn a_report_that_moves_nothing_keeps_the_wheels_highlight() {
 	let mut app = app_with_panel();
-	app.action(Command::ToggleDropdown(DropdownId::Language, 0));
+	app.action(Command::Chrome(ChromeCommand::ToggleDropdown(
+		DropdownId::Language,
+		0,
+	)));
 	// The pointer rests on an option, whose hover owns the highlight.
-	let (x, y) = option_centre(&mut app, Command::Language(Some(Lang::En)));
+	let (x, y) = option_centre(
+		&mut app,
+		Command::Settings(SettingsCommand::Language(Some(Lang::En))),
+	);
 	move_to(&mut app, x, y);
-	assert_eq!(highlighted(&mut app), Command::Language(Some(Lang::En)));
+	assert_eq!(
+		highlighted(&mut app),
+		Command::Settings(SettingsCommand::Language(Some(Lang::En)))
+	);
 
 	// Every notch arrives behind a report of the same position, and each moves
 	// the highlight one option on from where the last left it.
 	for expected in [
-		Command::Language(Some(Lang::ZhHans)),
-		Command::Language(Some(Lang::ZhHant)),
-		Command::Language(Some(Lang::Ja)),
+		Command::Settings(SettingsCommand::Language(Some(Lang::ZhHans))),
+		Command::Settings(SettingsCommand::Language(Some(Lang::ZhHant))),
+		Command::Settings(SettingsCommand::Language(Some(Lang::Ja))),
 	] {
 		move_to(&mut app, x, y);
 		wheel(&mut app, MouseScrollDelta::LineDelta(0.0, -1.0));
@@ -773,14 +926,17 @@ fn a_report_that_moves_nothing_keeps_the_wheels_highlight() {
 #[test]
 fn a_modified_wheel_over_an_open_list_leaves_the_highlight() {
 	let mut app = app_with_panel();
-	app.action(Command::ToggleDropdown(DropdownId::Language, 0));
+	app.action(Command::Chrome(ChromeCommand::ToggleDropdown(
+		DropdownId::Language,
+		0,
+	)));
 	app.interaction.pointer.set_modifiers(ModifiersState::SUPER);
 	let before = app.preferences.settings_scroll().offset();
 
 	wheel(&mut app, MouseScrollDelta::LineDelta(0.0, -1.0));
 	assert_eq!(
 		highlighted(&mut app),
-		Command::Language(None),
+		Command::Settings(SettingsCommand::Language(None)),
 		"the chord left the list where it was"
 	);
 	assert_eq!(
@@ -796,7 +952,10 @@ fn a_modified_wheel_over_an_open_list_leaves_the_highlight() {
 #[test]
 fn closing_the_list_returns_focus_to_its_chooser() {
 	let mut app = app_with_panel();
-	app.action(Command::ToggleDropdown(DropdownId::Language, 0));
+	app.action(Command::Chrome(ChromeCommand::ToggleDropdown(
+		DropdownId::Language,
+		0,
+	)));
 	// Move the highlight so focus leaves the chooser for an option.
 	app.key_pressed(&Key::Named(NamedKey::ArrowDown));
 
@@ -805,7 +964,11 @@ fn closing_the_list_returns_focus_to_its_chooser() {
 	assert!(
 		app.interaction.widgets.focus
 			== Some(
-				Command::ToggleDropdown(DropdownId::Language, 0).widget_id()
+				Command::Chrome(ChromeCommand::ToggleDropdown(
+					DropdownId::Language,
+					0
+				))
+				.widget_id()
 			),
 		"focus returns to the chooser"
 	);
@@ -819,14 +982,23 @@ fn closing_the_list_returns_focus_to_its_chooser() {
 #[test]
 fn committing_an_option_returns_focus_to_its_chooser() {
 	let mut app = app_with_panel();
-	app.action(Command::ToggleDropdown(DropdownId::Language, 0));
+	app.action(Command::Chrome(ChromeCommand::ToggleDropdown(
+		DropdownId::Language,
+		0,
+	)));
 	app.key_pressed(&Key::Named(NamedKey::ArrowDown));
 
 	app.key_pressed(&Key::Named(NamedKey::Enter));
 	assert_eq!(app.preferences.values.lang, Some(Lang::En));
 	assert_eq!(
 		app.interaction.widgets.focus,
-		Some(Command::ToggleDropdown(DropdownId::Language, 1).widget_id()),
+		Some(
+			Command::Chrome(ChromeCommand::ToggleDropdown(
+				DropdownId::Language,
+				1
+			))
+			.widget_id()
+		),
 		"focus returns to the chooser"
 	);
 }
@@ -836,14 +1008,17 @@ fn committing_an_option_returns_focus_to_its_chooser() {
 #[test]
 fn tab_after_closing_the_list_advances_from_the_chooser() {
 	let mut app = app_with_panel();
-	app.action(Command::ToggleDropdown(DropdownId::Language, 0));
+	app.action(Command::Chrome(ChromeCommand::ToggleDropdown(
+		DropdownId::Language,
+		0,
+	)));
 	app.key_pressed(&Key::Named(NamedKey::ArrowDown));
 
 	app.key_pressed(&Key::Named(NamedKey::Tab));
 	assert!(!app.interaction.overlays.dropdown.is_open());
 	assert_eq!(
 		app.interaction.widgets.focus,
-		Some(Command::FooterPath.widget_id()),
+		Some(Command::Settings(SettingsCommand::FooterPath).widget_id()),
 		"traversal moved past the chooser, not back to the first control"
 	);
 }
@@ -876,7 +1051,7 @@ fn language_and_font_menus_are_drawn_once() {
 		(app_with_panel(), DropdownId::Language),
 		(app_with_pinned_fonts(), DropdownId::Font(FontRole::Serif)),
 	] {
-		app.action(Command::ToggleDropdown(id, 0));
+		app.action(Command::Chrome(ChromeCommand::ToggleDropdown(id, 0)));
 		let menu = app.dropdown_menu().expect("the chooser anchors its list");
 		let overlay = app.chrome().overlay();
 		assert_eq!(
@@ -901,7 +1076,10 @@ fn language_and_font_menus_are_drawn_once() {
 fn a_family_option_commits_and_the_default_restores_the_chain() {
 	let mut app = app_with_pinned_fonts();
 	// The Set step holds its first chooser row on screen as the page opens.
-	let chooser = Command::ToggleDropdown(DropdownId::Font(FontRole::Serif), 0);
+	let chooser = Command::Chrome(ChromeCommand::ToggleDropdown(
+		DropdownId::Font(FontRole::Serif),
+		0,
+	));
 	app.action(chooser);
 	assert!(app.interaction.overlays.dropdown.is_open());
 	// The list offers the machine's own families, so the pick is whatever the
@@ -910,7 +1088,10 @@ fn a_family_option_commits_and_the_default_restores_the_chain() {
 		.buttons()
 		.into_iter()
 		.find_map(|button| match button.action {
-			Command::FontFamily(FontRole::Serif, Some(name)) => Some((
+			Command::Settings(SettingsCommand::FontFamily(
+				FontRole::Serif,
+				Some(name),
+			)) => Some((
 				button.action,
 				app.preferences
 					.fonts
@@ -934,8 +1115,11 @@ fn a_family_option_commits_and_the_default_restores_the_chain() {
 	assert!(
 		app.interaction.widgets.focus
 			== Some(
-				Command::ToggleDropdown(DropdownId::Font(FontRole::Serif), 0)
-					.widget_id()
+				Command::Chrome(ChromeCommand::ToggleDropdown(
+					DropdownId::Font(FontRole::Serif),
+					0
+				))
+				.widget_id()
 			),
 		"focus returns to the row the list belongs to"
 	);
@@ -951,7 +1135,11 @@ fn a_family_option_commits_and_the_default_restores_the_chain() {
 		.buttons()
 		.into_iter()
 		.find(|button| {
-			button.action == Command::FontFamily(FontRole::Serif, None)
+			button.action
+				== Command::Settings(SettingsCommand::FontFamily(
+					FontRole::Serif,
+					None,
+				))
 		})
 		.expect("the default entry")
 		.rect;

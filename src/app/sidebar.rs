@@ -52,8 +52,12 @@ impl<P: super::SendEvent> App<P> {
 		self.folder.open = false;
 		self.folder.stop_animation();
 		self.show_panel(PanelPage::Tabs);
-		self.interaction.widgets.focus =
-			Some(crate::state::Command::SidebarTab(tab).widget_id());
+		self.interaction.widgets.focus = Some(
+			crate::state::Command::Chrome(
+				crate::state::ChromeCommand::SidebarTab(tab),
+			)
+			.widget_id(),
+		);
 		self.refresh_hover();
 		self.redraw();
 	}

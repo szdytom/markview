@@ -1,4 +1,5 @@
 use super::*;
+use crate::state::SettingsCommand;
 use crate::{
 	app::{
 		SendEvent,
@@ -143,23 +144,23 @@ fn lock_ownership_setting_linkage_debounce_and_shutdown_save() {
 	owner.session_tick(now + Duration::from_secs(1));
 	let original = fs::read(&path).unwrap();
 	let mut independent = app(dir.path());
-	independent.action(Command::RestoreSession);
+	independent.action(Command::Settings(SettingsCommand::RestoreSession));
 	independent.restore_session();
 	assert!(independent.preferences.values.single_instance);
 	assert!(independent.instance.is_none());
 	assert!(independent.readers.entries().is_empty());
 	independent.flush_session();
-	independent.action(Command::SingleInstance);
+	independent.action(Command::Settings(SettingsCommand::SingleInstance));
 	assert!(!independent.preferences.values.restore_session);
 	assert_eq!(fs::read(&path).unwrap(), original);
-	owner.action(Command::RestoreSession);
+	owner.action(Command::Settings(SettingsCommand::RestoreSession));
 	assert!(!owner.preferences.values.restore_session);
 	assert!(owner.preferences.values.single_instance);
 	assert!(!path.exists());
-	owner.action(Command::RestoreSession);
-	owner.action(Command::SingleInstance);
+	owner.action(Command::Settings(SettingsCommand::RestoreSession));
+	owner.action(Command::Settings(SettingsCommand::SingleInstance));
 	assert!(!owner.preferences.values.restore_session);
-	owner.action(Command::RestoreSession);
+	owner.action(Command::Settings(SettingsCommand::RestoreSession));
 	owner
 		.readers
 		.open(document(dir.path(), "b.md"), Instant::now());
@@ -182,7 +183,7 @@ fn damaged_and_future_sessions_are_ignored_and_reset_clears_session() {
 		let mut app = app(dir.path());
 		primary(&mut app);
 		assert!(app.readers.entries().is_empty());
-		app.action(Command::Reset);
+		app.action(Command::Settings(SettingsCommand::Reset));
 		assert!(!app.preferences.values.restore_session);
 		assert!(!path.exists());
 	}

@@ -3,6 +3,7 @@ use super::components::{CONTROL, SETTINGS_HEADER};
 use super::controls::{draw_button, panel_rect};
 use super::icons;
 use super::list::List;
+use crate::state::{ChromeCommand, ExportCommand, SettingsCommand};
 use crate::{
 	lang::Lang,
 	layout::{Draw, Paint, Rect, TextShaper},
@@ -21,32 +22,43 @@ pub(super) enum StylesTarget {
 impl StylesTarget {
 	fn toggle(self, index: usize) -> Command {
 		match self {
-			Self::Reader => Command::StyleToggle(index),
-			Self::Export => Command::ExportStyleToggle(index),
+			Self::Reader => {
+				Command::Settings(SettingsCommand::StyleToggle(index))
+			}
+			Self::Export => {
+				Command::Export(ExportCommand::ExportStyleToggle(index))
+			}
 		}
 	}
 	fn up(self, index: usize) -> Command {
 		match self {
-			Self::Reader => Command::StyleUp(index),
-			Self::Export => Command::ExportStyleUp(index),
+			Self::Reader => Command::Settings(SettingsCommand::StyleUp(index)),
+			Self::Export => {
+				Command::Export(ExportCommand::ExportStyleUp(index))
+			}
 		}
 	}
 	fn down(self, index: usize) -> Command {
 		match self {
-			Self::Reader => Command::StyleDown(index),
-			Self::Export => Command::ExportStyleDown(index),
+			Self::Reader => {
+				Command::Settings(SettingsCommand::StyleDown(index))
+			}
+			Self::Export => {
+				Command::Export(ExportCommand::ExportStyleDown(index))
+			}
 		}
 	}
 	/// The page's Back button returns to the panel that opened it.
 	fn back(self) -> Command {
 		match self {
-			Self::Reader => Command::Styles,
-			Self::Export => Command::ExportStyles,
+			Self::Reader => Command::Settings(SettingsCommand::Styles),
+			Self::Export => Command::Export(ExportCommand::ExportStyles),
 		}
 	}
 	/// Only the reader can follow the system theme.
 	fn system(self) -> Option<Command> {
-		(self == Self::Reader).then_some(Command::SystemTheme)
+		(self == Self::Reader)
+			.then_some(Command::Settings(SettingsCommand::SystemTheme))
 	}
 	fn summary(self, selected: Option<&[String]>, lang: Lang) -> &'static str {
 		match self {
@@ -158,7 +170,7 @@ pub(super) fn style_controls(
 			(
 				lang.styles_close(),
 				Some(icons::CLOSE),
-				Command::Settings,
+				Command::Chrome(ChromeCommand::Settings),
 				r.w - 24. - CONTROL,
 				CONTROL,
 			),
@@ -176,7 +188,7 @@ pub(super) fn style_controls(
 		headers.push((
 			lang.styles_open_folder(),
 			None,
-			Command::StylesFolder,
+			Command::Settings(SettingsCommand::StylesFolder),
 			24.,
 			146.,
 		));
@@ -197,7 +209,8 @@ pub(super) fn style_controls(
 			label: label.into(),
 			icon,
 			marker: None,
-			active: action == Command::SystemTheme && selected.is_none(),
+			active: action == Command::Settings(SettingsCommand::SystemTheme)
+				&& selected.is_none(),
 			kind: Default::default(),
 			enabled: true,
 			action,
@@ -205,7 +218,8 @@ pub(super) fn style_controls(
 				x: r.x + x,
 				y: if matches!(
 					action,
-					Command::StylesFolder | Command::SystemTheme
+					Command::Settings(SettingsCommand::StylesFolder)
+						| Command::Settings(SettingsCommand::SystemTheme)
 				) {
 					r.y + r.h - 48.
 				} else {
@@ -290,11 +304,16 @@ pub(super) fn style_rows(
 				out.push(Button {
 					id: crate::app::widgets::row_id(
 						match (target, action) {
-							(StylesTarget::Reader, Command::StyleUp(_)) => 4,
+							(
+								StylesTarget::Reader,
+								Command::Settings(SettingsCommand::StyleUp(_)),
+							) => 4,
 							(StylesTarget::Reader, _) => 5,
 							(
 								StylesTarget::Export,
-								Command::ExportStyleUp(_),
+								Command::Export(ExportCommand::ExportStyleUp(
+									_,
+								)),
 							) => 7,
 							(StylesTarget::Export, _) => 8,
 						},
@@ -748,7 +767,8 @@ mod stylesheet_tests {
 				}));
 				assert!(!buttons.iter().any(|b| matches!(
 					b.action,
-					Command::StyleToggle(1) | Command::ExportStyleToggle(1)
+					Command::Settings(SettingsCommand::StyleToggle(1))
+						| Command::Export(ExportCommand::ExportStyleToggle(1))
 				)));
 				if target == StylesTarget::Export {
 					let back = buttons
@@ -762,8 +782,9 @@ mod stylesheet_tests {
 				}
 
 				// Only the reader page offers the system theme.
-				let system =
-					buttons.iter().any(|b| b.action == Command::SystemTheme);
+				let system = buttons.iter().any(|b| {
+					b.action == Command::Settings(SettingsCommand::SystemTheme)
+				});
 				assert_eq!(system, target == StylesTarget::Reader);
 			}
 		}
@@ -784,8 +805,14 @@ mod stylesheet_tests {
 			top,
 			Lang::En,
 		));
-		assert!(rows.iter().any(|b| b.action == Command::StyleToggle(0)));
-		assert!(!rows.iter().any(|b| b.action == Command::StyleToggle(19)));
+		assert!(
+			rows.iter().any(|b| b.action
+				== Command::Settings(SettingsCommand::StyleToggle(0)))
+		);
+		assert!(
+			!rows.iter().any(|b| b.action
+				== Command::Settings(SettingsCommand::StyleToggle(19)))
+		);
 
 		let bottom = list(w, h, entries.len(), f32::MAX);
 		assert_eq!(bottom.scroll, top.max_scroll());
@@ -796,8 +823,14 @@ mod stylesheet_tests {
 			bottom,
 			Lang::En,
 		));
-		assert!(rows.iter().any(|b| b.action == Command::StyleToggle(19)));
-		assert!(!rows.iter().any(|b| b.action == Command::StyleToggle(0)));
+		assert!(
+			rows.iter().any(|b| b.action
+				== Command::Settings(SettingsCommand::StyleToggle(19)))
+		);
+		assert!(
+			!rows.iter().any(|b| b.action
+				== Command::Settings(SettingsCommand::StyleToggle(0)))
+		);
 	}
 
 	/// The page names itself through the settings tab row rather than a title.
@@ -811,8 +844,10 @@ mod stylesheet_tests {
 		);
 		assert_eq!(tabs.len(), 4);
 		assert!(tabs.iter().any(|b| {
-			b.action == Command::SettingsTab(crate::state::PanelTab::Styles)
-				&& b.active
+			b.action
+				== Command::Chrome(ChromeCommand::SettingsTab(
+					crate::state::PanelTab::Styles,
+				)) && b.active
 		}));
 		// Every tab stays on the panel it belongs to.
 		let panel = panel_rect(w, h);

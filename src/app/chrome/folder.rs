@@ -1,5 +1,6 @@
 //! The folder sidebar uses the same clipped rows for painting and input.
 use super::{components, icons, list::List};
+use crate::state::ChromeCommand;
 use crate::{
 	app::{Button, folder::Browser},
 	lang::Lang,
@@ -134,12 +135,12 @@ pub(super) fn buttons(
 	for (i, (label, action, icon)) in [
 		(
 			lang.folder_refresh(),
-			Command::FolderRefresh,
+			Command::Chrome(ChromeCommand::FolderRefresh),
 			icons::REDOWNLOAD,
 		),
 		(
 			lang.folder_collapse_all(),
-			Command::FolderCollapseAll,
+			Command::Chrome(ChromeCommand::FolderCollapseAll),
 			icons::COLLAPSE_ALL,
 		),
 	]
@@ -165,7 +166,7 @@ pub(super) fn buttons(
 	}
 	let mut root = components::button(
 		std::sync::Arc::<str>::from(tree.name.as_str()),
-		Command::FolderRoot,
+		Command::Chrome(ChromeCommand::FolderRoot),
 		Rect {
 			y: drawer.y + 38.,
 			h: 28.,
@@ -185,7 +186,7 @@ pub(super) fn buttons(
 				std::sync::Arc::<str>::from(
 					e.path.file_name().unwrap().to_string_lossy().as_ref(),
 				),
-				Command::FolderEntry(index),
+				Command::Chrome(ChromeCommand::FolderEntry(index)),
 				list.row_rect(row),
 			);
 			if list.max_scroll() > 0. {
@@ -261,7 +262,7 @@ pub(super) fn draw(
 	let mut header = Vec::new();
 	Row {
 		rect: root_rect,
-		action: Command::FolderRoot,
+		action: Command::Chrome(ChromeCommand::FolderRoot),
 		depth: 0,
 		collapsed: Some(tree.root_collapsed()),
 		name: &tree.name,
@@ -275,7 +276,8 @@ pub(super) fn draw(
 	for b in buttons(browser, drawer, lang).into_iter().filter(|b| {
 		matches!(
 			b.action,
-			Command::FolderCollapseAll | Command::FolderRefresh
+			Command::Chrome(ChromeCommand::FolderCollapseAll)
+				| Command::Chrome(ChromeCommand::FolderRefresh)
 		)
 	}) {
 		out.extend(components::draw_button(ui, interaction, &b, true));
@@ -302,7 +304,7 @@ pub(super) fn draw(
 		let e = &tree.entries[index];
 		Row {
 			rect: list.row_rect(row),
-			action: Command::FolderEntry(index),
+			action: Command::Chrome(ChromeCommand::FolderEntry(index)),
 			depth: e.depth + 1,
 			collapsed: e.directory.then(|| tree.collapsed(index)),
 			name: &e.path.file_name().unwrap().to_string_lossy(),
@@ -406,11 +408,14 @@ impl Row<'_> {
 }
 
 pub(in crate::app) fn toggle(rect: Rect, lang: Lang) -> Button {
-	let mut button =
-		components::button(lang.folder_toggle(), Command::Folder, rect);
+	let mut button = components::button(
+		lang.folder_toggle(),
+		Command::Chrome(ChromeCommand::Folder),
+		rect,
+	);
 	button.id = crate::app::widgets::row_id(
 		0x666f6c646572,
-		&Command::Folder.widget_id(),
+		&Command::Chrome(ChromeCommand::Folder).widget_id(),
 	);
 	button.icon = Some(icons::SIDEBAR);
 	button.kind = components::ButtonKind::Quiet;
@@ -463,7 +468,8 @@ mod tests {
 				},
 				Lang::En,
 			);
-			browser.labels.borrow().rows[&Command::FolderEntry(0).widget_id()]
+			browser.labels.borrow().rows
+				[&Command::Chrome(ChromeCommand::FolderEntry(0)).widget_id()]
 				.iter()
 				.find_map(|draw| match draw {
 					Draw::Glyph(glyph) => Some(glyph.font.data.clone()),
@@ -496,9 +502,15 @@ mod tests {
 				let drawer =
 					animated_rect(rect(1200., 800., 40., 24., width), reveal);
 				let buttons = buttons(&browser, drawer, Lang::En);
-				assert_eq!(buttons[0].action, Command::FolderRefresh);
+				assert_eq!(
+					buttons[0].action,
+					Command::Chrome(ChromeCommand::FolderRefresh)
+				);
 				let collapse_all = &buttons[1];
-				assert_eq!(collapse_all.action, Command::FolderCollapseAll);
+				assert_eq!(
+					collapse_all.action,
+					Command::Chrome(ChromeCommand::FolderCollapseAll)
+				);
 				assert_eq!(
 					collapse_all.rect.x + collapse_all.rect.w,
 					drawer.x + width - RIGHT_INSET

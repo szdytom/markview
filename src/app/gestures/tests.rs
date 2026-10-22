@@ -1,5 +1,6 @@
 use super::recognizer::Contact;
 use super::*;
+use crate::state::ChromeCommand;
 use winit::event::DeviceId;
 
 fn contact(id: u64) -> Contact {
@@ -188,7 +189,9 @@ fn native_touch_and_trackpad_route_through_reader_and_chrome() {
 	let settings = app
 		.buttons()
 		.into_iter()
-		.find(|button| button.action == Command::Settings)
+		.find(|button| {
+			button.action == Command::Chrome(ChromeCommand::Settings)
+		})
 		.unwrap()
 		.rect;
 	let (x, y) = (
