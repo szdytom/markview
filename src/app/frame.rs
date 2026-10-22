@@ -292,7 +292,7 @@ impl<P: super::SendEvent> App<P> {
 		);
 		if !self.tab_strip.phone && self.folder.tree.is_some() {
 			let drawer = self.folder_rect();
-			let reveal = self.interaction.folder_reveal(self.folder.open);
+			let reveal = self.folder.reveal();
 			layout = layout.with_sidebar(drawer.w, reveal);
 		}
 		let tab_end = self

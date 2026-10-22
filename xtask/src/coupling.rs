@@ -87,6 +87,18 @@ const WRITERS: &[&str] = &[
 	"settings_preview",
 	// A placed control layout is a draw product, so the host owns it.
 	"controls",
+	// `outline::Model` owns the drawer's four fields; the observation names
+	// the path through `InteractionState.overlays` so a direct write from the
+	// interaction state or the host still counts, while the model's own
+	// `self.<field>` writes stay out.
+	"overlays.outline.open",
+	"overlays.outline.scroll",
+	"overlays.outline.selection",
+	"overlays.outline.animation",
+	// `TabStrip` and `Browser` own their drawer animations; the observation
+	// names the path through `App` so only a direct host write counts.
+	"tab_strip.animation",
+	"folder.animation",
 ];
 
 const TOP_FUNCTIONS: usize = 20;
@@ -665,7 +677,7 @@ fn type_name(ty: &Type) -> String {
 fn writer_owner(field: &str) -> &'static str {
 	match field.split('.').next().unwrap_or(field) {
 		"status" | "export" | "controls" | "settings_scroll"
-		| "settings_preview" => "App",
+		| "settings_preview" | "tab_strip" | "folder" => "App",
 		_ => "InteractionState",
 	}
 }

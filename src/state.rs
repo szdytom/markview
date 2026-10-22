@@ -2,9 +2,9 @@
 use crate::{
 	document,
 	layout::{LayoutOptions, LayoutSnapshot},
-	scroll::ScrollArea,
 };
 use markview_layout::text::{TextCounts, TextSelection};
+use markview_ui_core::Component;
 use std::{
 	collections::{BTreeMap, HashMap},
 	path::PathBuf,
@@ -15,7 +15,7 @@ use winit::event::TouchPhase;
 
 mod drawer;
 mod outline;
-use drawer::DrawerAnimation;
+pub(crate) use drawer::DrawerAnimation;
 pub(crate) use outline::OutlineTree;
 
 pub(crate) use markview_layout::layout::scroll_limit;
@@ -189,13 +189,9 @@ impl InteractionState {
 		self.panel == PanelPage::ExportStyles
 	}
 
-	/// Changes pages without losing the parent form's scroll position.
+	/// Changes pages without losing the parent form's scroll position. The
+	/// tab strip's owner retargets its own drawer animation around this call.
 	pub(crate) fn show_panel(&mut self, page: PanelPage) {
-		DrawerAnimation::retarget(
-			&mut self.tabs_animation,
-			page == PanelPage::Tabs,
-			self.panel == PanelPage::Tabs,
-		);
 		self.panel = page;
 		self.widgets.focus = None;
 		self.widgets.captured = None;
@@ -642,14 +638,13 @@ impl ReaderTab {
 
 #[derive(Default)]
 pub(crate) struct InteractionState {
-	pub(crate) tabs_animation: Option<DrawerAnimation>,
-	pub(crate) outline_animation: Option<DrawerAnimation>,
-	pub(crate) folder_animation: Option<DrawerAnimation>,
 	pub(crate) selection_counts: Option<(TextSelection, TextCounts)>,
 	pub(crate) panel: PanelPage,
 	pub(crate) sidebar_tab: SidebarTab,
 	/// The panel shell's shared page offsets and its drags.
 	pub(crate) panels: crate::app::panels::Model,
+	/// The overlays drawn over the reading surface, each owning its state.
+	pub(crate) overlays: crate::app::overlays::Model,
 	pub(crate) selection: Option<TextSelection>,
 	pub(crate) widgets: markview_ui_core::Interaction,
 	/// The pointer's own state: presses, hover, modifiers and the wheel.
@@ -661,13 +656,6 @@ pub(crate) struct InteractionState {
 	/// An open option list. Like a confirmation it owns input while it is set:
 	/// a press outside it closes it without reaching the page behind.
 	pub(crate) dropdown: Option<Dropdown>,
-	/// The outline drawer is open. It is an overlay, not a modal panel: the
-	/// document keeps scrolling and selecting behind it.
-	pub(crate) outline_open: bool,
-	/// The drawer's own list offset.
-	pub(crate) outline_scroll: ScrollArea,
-	/// The entry the drawer's keyboard selection is on.
-	pub(crate) outline_selection: Option<usize>,
 }
 
 /// Which way a wheel gesture travels.
@@ -797,40 +785,31 @@ pub(crate) struct ScrollbarDrag {
 }
 
 impl InteractionState {
-	/// Toggles the outline drawer. Opening puts the keyboard selection on the
-	/// heading at the reading position, so Up/Down and Enter work at once.
+	/// Toggles the outline drawer. Opening seeds the keyboard selection from
+	/// the heading at the reading position only when nothing is remembered, so
+	/// Up/Down and Enter work at once and a closed drawer reopens where it was.
 	/// Returns whether the drawer is now open.
 	pub(crate) fn toggle_outline(
 		&mut self,
 		entries: usize,
 		current: Option<usize>,
 	) -> bool {
-		DrawerAnimation::retarget(
-			&mut self.outline_animation,
-			!self.outline_open,
-			self.outline_open,
-		);
-		self.outline_open = !self.outline_open;
-		if self.outline_open {
+		self.overlays
+			.outline
+			.update(crate::app::outline::Message::Toggle { entries, current });
+		let open = self.overlays.outline.open();
+		if open {
 			self.widgets.focus = None;
-			self.outline_scroll.reset();
-			self.outline_selection =
-				(entries > 0).then_some(current.unwrap_or(0));
-		} else {
-			self.outline_selection = None;
 		}
-		self.outline_open
+		open
 	}
 
-	/// Closes the drawer, as Escape and the toolbar toggle do.
+	/// Closes the drawer, as Escape and the toolbar toggle do. The drawer
+	/// remembers its scroll and selection for the next open.
 	pub(crate) fn close_outline(&mut self) {
-		DrawerAnimation::retarget(
-			&mut self.outline_animation,
-			false,
-			self.outline_open,
-		);
-		self.outline_open = false;
-		self.outline_selection = None;
+		self.overlays
+			.outline
+			.update(crate::app::outline::Message::Close);
 	}
 
 	/// Closes the drawer when a press lands outside it, except on its toggle.
@@ -839,7 +818,7 @@ impl InteractionState {
 		inside: bool,
 		on_toggle: bool,
 	) -> bool {
-		if self.outline_open && !inside && !on_toggle {
+		if self.overlays.outline.open() && !inside && !on_toggle {
 			self.close_outline();
 			true
 		} else {
@@ -854,7 +833,9 @@ impl InteractionState {
 	/// scrollbar drag and outside-click dismissal must keep working where they
 	/// overlap it.
 	pub(crate) fn outline_owns_input(&self) -> bool {
-		self.outline_open && !self.panel_open() && self.modal.is_none()
+		self.overlays.outline.open()
+			&& !self.panel_open()
+			&& self.modal.is_none()
 	}
 
 	/// Moves the drawer's selection by `delta` entries, clamped to the
@@ -864,22 +845,22 @@ impl InteractionState {
 		delta: isize,
 		rows: &[usize],
 	) -> bool {
-		if rows.is_empty() {
-			self.outline_selection = None;
-			self.widgets.focus = None;
-			return false;
-		}
-		let base = rows
-			.iter()
-			.position(|index| Some(*index) == self.outline_selection)
-			.unwrap_or(0) as isize;
-		let next =
-			rows[(base + delta).clamp(0, rows.len() as isize - 1) as usize];
-		self.outline_selection = Some(next);
+		self.overlays
+			.outline
+			.update(crate::app::outline::Message::Move {
+				delta,
+				rows: rows.to_vec(),
+			});
+		let moved = self.overlays.outline.selection().is_some();
 		// The visible selection is what Enter activates, so button focus has
 		// to follow it; a row clicked before the move must not outrank it.
-		self.widgets.focus = Some(Command::OutlineGoto(next).widget_id());
-		true
+		self.widgets.focus = self
+			.overlays
+			.outline
+			.selection()
+			.map(Command::OutlineGoto)
+			.map(Command::widget_id);
+		moved
 	}
 
 	/// The command Enter activates: the focused button while it is still on
@@ -897,7 +878,7 @@ impl InteractionState {
 			return Some(action);
 		}
 		self.outline_owns_input()
-			.then_some(self.outline_selection)
+			.then_some(self.overlays.outline.selection())
 			.flatten()
 			.map(Command::OutlineGoto)
 	}
@@ -905,21 +886,20 @@ impl InteractionState {
 	/// Scrolls the drawer's own list by `delta`, clamped to `max`.
 	#[cfg(test)]
 	pub(crate) fn scroll_outline(&mut self, delta: f32, max: f32) {
-		self.outline_scroll.set_max(max);
-		self.outline_scroll.by(delta);
+		self.overlays.outline.scroll_by(delta, max);
 	}
 
 	/// Advances eased scrolling on the shell's pages and the outline.
 	pub(crate) fn advance_scrolls(&mut self, now: Instant) {
 		self.panels.advance_scrolls(now);
-		self.outline_scroll.advance(now);
+		self.overlays.outline.advance_scroll(now);
 	}
 
 	/// The earliest frame the shell's pages or the outline need.
 	pub(crate) fn scroll_deadline(&self, now: Instant) -> Option<Instant> {
 		[
 			self.panels.scroll_deadline(now),
-			self.outline_scroll.deadline(now),
+			self.overlays.outline.scroll_deadline(now),
 		]
 		.into_iter()
 		.flatten()
@@ -928,7 +908,8 @@ impl InteractionState {
 
 	/// Whether the shell's pages or the outline still have motion in flight.
 	pub(crate) fn scroll_animating(&self) -> bool {
-		self.panels.scroll_animating() || self.outline_scroll.animating()
+		self.panels.scroll_animating()
+			|| self.overlays.outline.scroll_animating()
 	}
 
 	/// Advances keyboard focus to the next (or previous) button, wrapping at
@@ -948,7 +929,7 @@ impl InteractionState {
 		let action = self.widgets.focus.and_then(|id| layout.get(id))?.message;
 		if let Command::OutlineGoto(row) | Command::OutlineToggle(row) = action
 		{
-			self.outline_selection = Some(row);
+			self.overlays.outline.select(Some(row));
 		}
 		Some(action)
 	}

@@ -50,8 +50,8 @@ impl<P: super::SendEvent> App<P> {
 		}
 		self.interaction.sidebar_tab = tab;
 		self.folder.open = false;
-		self.interaction.folder_animation = None;
-		self.interaction.show_panel(PanelPage::Tabs);
+		self.folder.stop_animation();
+		self.show_panel(PanelPage::Tabs);
 		self.interaction.widgets.focus =
 			Some(crate::state::Command::SidebarTab(tab).widget_id());
 		self.refresh_hover();
@@ -65,7 +65,7 @@ impl<P: super::SendEvent> App<P> {
 		self.readers.session.cancel_scroll_animation();
 		self.tab_strip.cancel_drag();
 		if self.interaction.panel == PanelPage::Tabs {
-			self.interaction.show_panel(PanelPage::Closed);
+			self.show_panel(PanelPage::Closed);
 		} else {
 			self.switch_sidebar_tab(self.interaction.sidebar_tab);
 			if self.interaction.sidebar_tab == SidebarTab::Tabs
@@ -103,7 +103,7 @@ impl<P: super::SendEvent> App<P> {
 				chrome::tab_drawer::animated_rect(
 					width,
 					height,
-					self.interaction.tabs_reveal(),
+					self.tabs_reveal(),
 					self.preferences.values.tabs_width,
 				)
 			}
@@ -119,7 +119,7 @@ impl<P: super::SendEvent> App<P> {
 			return None;
 		}
 		let sidebar = if self.interaction.panel == PanelPage::Tabs {
-			(self.interaction.tabs_reveal() == 1.0).then_some(Sidebar::Tabs)
+			(self.tabs_reveal() == 1.0).then_some(Sidebar::Tabs)
 		} else if self.interaction.panel_open() {
 			None
 		} else {
@@ -129,15 +129,15 @@ impl<P: super::SendEvent> App<P> {
 	}
 
 	fn reading_sidebar_edge(&self) -> Option<Sidebar> {
-		if self.interaction.outline_open
-			&& self.interaction.outline_reveal() == 1.0
+		if self.interaction.overlays.outline.open()
+			&& self.interaction.overlays.outline.reveal() == 1.0
 			&& self.on_sidebar_edge(Sidebar::Outline)
 			&& !self.pointer_in_folder()
 		{
 			Some(Sidebar::Outline)
 		} else if self.folder.open
 			&& self.folder.tree.is_some()
-			&& self.interaction.folder_reveal(true) == 1.0
+			&& self.folder.reveal() == 1.0
 		{
 			Some(Sidebar::Folder)
 		} else {

@@ -382,13 +382,12 @@ fn an_image_press_that_drags_or_loses_focus_does_not_open() {
 	button(&mut app, MouseButton::Left, ElementState::Released);
 	assert!(app.interaction.viewer.is_none());
 	button(&mut app, MouseButton::Left, ElementState::Pressed);
-	app.interaction
-		.show_panel(crate::state::PanelPage::Settings(
-			crate::state::PanelTab::Generic,
-		));
+	app.show_panel(crate::state::PanelPage::Settings(
+		crate::state::PanelTab::Generic,
+	));
 	button(&mut app, MouseButton::Left, ElementState::Released);
 	assert!(app.interaction.viewer.is_none());
-	app.interaction.show_panel(crate::state::PanelPage::Closed);
+	app.show_panel(crate::state::PanelPage::Closed);
 	open(&mut app);
 }
 

@@ -710,34 +710,70 @@ fn a_footnote_reference_between_headings_keeps_the_later_heading_current() {
 fn the_outline_toggles_closes_and_moves_its_selection() {
 	let mut interaction = InteractionState::default();
 	assert!(interaction.toggle_outline(3, Some(1)));
-	assert!(interaction.outline_open);
-	assert_eq!(interaction.outline_selection, Some(1));
+	assert!(interaction.overlays.outline.open());
+	assert_eq!(interaction.overlays.outline.selection(), Some(1));
 	assert!(!interaction.toggle_outline(3, Some(1)));
-	assert!(!interaction.outline_open);
-	assert_eq!(interaction.outline_selection, None);
+	assert!(!interaction.overlays.outline.open());
+	// The drawer remembers its selection and offset while closed.
+	assert_eq!(interaction.overlays.outline.selection(), Some(1));
 	// Escape closes the drawer through the state, not through a panel.
 	interaction.toggle_outline(3, Some(0));
 	interaction.close_outline();
-	assert!(!interaction.outline_open);
-	assert_eq!(interaction.outline_selection, None);
+	assert!(!interaction.overlays.outline.open());
+	assert_eq!(interaction.overlays.outline.selection(), Some(1));
 	// Up/Down move and clamp the keyboard selection.
 	interaction.toggle_outline(3, Some(0));
 	assert!(interaction.move_outline(-1, &[0, 1, 2]));
-	assert_eq!(interaction.outline_selection, Some(0));
+	assert_eq!(interaction.overlays.outline.selection(), Some(0));
 	assert!(interaction.move_outline(1, &[0, 1, 2]));
-	assert_eq!(interaction.outline_selection, Some(1));
+	assert_eq!(interaction.overlays.outline.selection(), Some(1));
 	assert!(interaction.move_outline(9, &[0, 1, 2]));
-	assert_eq!(interaction.outline_selection, Some(2));
+	assert_eq!(interaction.overlays.outline.selection(), Some(2));
 	// A headingless document has nothing to select.
 	assert!(!interaction.move_outline(1, &[]));
-	assert_eq!(interaction.outline_selection, None);
+	assert_eq!(interaction.overlays.outline.selection(), None);
 	// The drawer's own wheel scroll stays inside its content.
 	interaction.scroll_outline(40.0, 100.0);
-	assert_eq!(interaction.outline_scroll.offset(), 40.0);
+	assert_eq!(interaction.overlays.outline.scroll_offset(), 40.0);
 	interaction.scroll_outline(500.0, 100.0);
-	assert_eq!(interaction.outline_scroll.offset(), 100.0);
+	assert_eq!(interaction.overlays.outline.scroll_offset(), 100.0);
 	interaction.scroll_outline(-500.0, 100.0);
-	assert_eq!(interaction.outline_scroll.offset(), 0.0);
+	assert_eq!(interaction.overlays.outline.scroll_offset(), 0.0);
+}
+
+#[test]
+fn closing_and_reopening_the_outline_retains_its_scroll_and_selection() {
+	let mut interaction = InteractionState::default();
+	assert!(interaction.toggle_outline(8, Some(0)));
+	interaction.scroll_outline(40.0, 100.0);
+	assert!(interaction.move_outline(3, &[0, 1, 2, 3, 4, 5, 6, 7]));
+	assert_eq!(interaction.overlays.outline.selection(), Some(3));
+	// Closing keeps the drawer's place.
+	interaction.close_outline();
+	assert!(!interaction.overlays.outline.open());
+	assert_eq!(interaction.overlays.outline.scroll_offset(), 40.0);
+	assert_eq!(interaction.overlays.outline.selection(), Some(3));
+	// Reopening shows the same offset and row instead of reseeding.
+	assert!(interaction.toggle_outline(8, Some(0)));
+	assert_eq!(interaction.overlays.outline.scroll_offset(), 40.0);
+	assert_eq!(interaction.overlays.outline.selection(), Some(3));
+}
+
+#[test]
+fn a_remembered_selection_is_clamped_to_a_shorter_outline() {
+	use crate::app::outline::Model;
+	let mut model = Model::default();
+	model.set_open(true);
+	model.select(Some(3));
+	model.normalize(&[0, 1, 2, 3, 4], 0.0);
+	assert_eq!(model.selection(), Some(3));
+	// A shorter outline keeps a selection it still shows.
+	model.normalize(&[0, 1, 3], 0.0);
+	assert_eq!(model.selection(), Some(3));
+	// A selection the outline no longer shows falls back to the last visible
+	// row before it.
+	model.normalize(&[0, 1], 0.0);
+	assert_eq!(model.selection(), Some(1));
 }
 
 #[test]
@@ -745,12 +781,12 @@ fn a_press_outside_the_outline_closes_it_but_its_toggle_does_not() {
 	let mut interaction = InteractionState::default();
 	assert!(interaction.toggle_outline(2, Some(0)));
 	assert!(!interaction.close_outline_if_outside(true, false));
-	assert!(interaction.outline_open);
+	assert!(interaction.overlays.outline.open());
 	assert!(!interaction.close_outline_if_outside(false, true));
-	assert!(interaction.outline_open);
+	assert!(interaction.overlays.outline.open());
 	assert!(interaction.close_outline_if_outside(false, false));
-	assert!(!interaction.outline_open);
-	assert_eq!(interaction.outline_selection, None);
+	assert!(!interaction.overlays.outline.open());
+	assert_eq!(interaction.overlays.outline.selection(), Some(0));
 }
 
 #[test]
@@ -772,7 +808,7 @@ fn enter_follows_the_outline_selection_after_a_click_and_a_step() {
 	// Down moves the visible selection, and button focus follows it, so Enter
 	// no longer jumps back to the row that was clicked.
 	assert!(interaction.move_outline(1, &[0, 1, 2]));
-	assert_eq!(interaction.outline_selection, Some(1));
+	assert_eq!(interaction.overlays.outline.selection(), Some(1));
 	assert_eq!(
 		interaction.widgets.focus,
 		Some(Command::OutlineGoto(1).widget_id())
@@ -796,7 +832,7 @@ fn enter_follows_the_outline_selection_after_a_click_and_a_step() {
 		Some(Command::OutlineGoto(1))
 	);
 	// With nothing to select, the drawer leaves the focused button alone.
-	interaction.outline_selection = None;
+	interaction.overlays.outline.select(None);
 	interaction.widgets.focus = Some(Command::Outline.widget_id());
 	assert_eq!(
 		interaction.enter_action(
@@ -825,27 +861,27 @@ fn tabbing_through_the_drawer_marks_the_row_focus_lands_on() {
 			.tab_focus(&crate::app::widgets::command_layout(&buttons), false),
 		Some(Command::OutlineGoto(0))
 	);
-	assert_eq!(interaction.outline_selection, Some(0));
+	assert_eq!(interaction.overlays.outline.selection(), Some(0));
 	// Tabbing onward moves the visible selection with the focused row.
 	assert_eq!(
 		interaction
 			.tab_focus(&crate::app::widgets::command_layout(&buttons), false),
 		Some(Command::OutlineGoto(1))
 	);
-	assert_eq!(interaction.outline_selection, Some(1));
+	assert_eq!(interaction.overlays.outline.selection(), Some(1));
 	assert_eq!(
 		interaction
 			.tab_focus(&crate::app::widgets::command_layout(&buttons), false),
 		Some(Command::OutlineGoto(2))
 	);
-	assert_eq!(interaction.outline_selection, Some(2));
+	assert_eq!(interaction.overlays.outline.selection(), Some(2));
 	// Shift+Tab walks back over the same rows.
 	assert_eq!(
 		interaction
 			.tab_focus(&crate::app::widgets::command_layout(&buttons), true),
 		Some(Command::OutlineGoto(1))
 	);
-	assert_eq!(interaction.outline_selection, Some(1));
+	assert_eq!(interaction.overlays.outline.selection(), Some(1));
 	// Tabbing onto a toolbar button leaves the drawer's selection where it is.
 	assert_eq!(
 		interaction
@@ -857,7 +893,7 @@ fn tabbing_through_the_drawer_marks_the_row_focus_lands_on() {
 			.tab_focus(&crate::app::widgets::command_layout(&buttons), true),
 		Some(Command::Outline)
 	);
-	assert_eq!(interaction.outline_selection, Some(0));
+	assert_eq!(interaction.overlays.outline.selection(), Some(0));
 }
 
 #[test]
@@ -1564,10 +1600,8 @@ fn a_page_away_from_the_settled_end_still_animates() {
 
 #[test]
 fn panel_navigation_preserves_parent_scroll_and_resets_new_visits() {
-	let mut interaction = InteractionState {
-		outline_open: true,
-		..Default::default()
-	};
+	let mut interaction = InteractionState::default();
+	interaction.overlays.outline.set_open(true);
 	interaction.toggle_settings();
 	assert_eq!(
 		interaction.widgets.focus,
@@ -1581,7 +1615,7 @@ fn panel_navigation_preserves_parent_scroll_and_resets_new_visits() {
 	assert!(interaction.panel_open());
 	interaction.toggle_settings();
 	assert!(!interaction.panel_open());
-	assert!(interaction.outline_open);
+	assert!(interaction.overlays.outline.open());
 	interaction.toggle_settings();
 	assert_eq!(
 		interaction.widgets.focus,

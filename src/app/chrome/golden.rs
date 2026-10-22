@@ -262,6 +262,7 @@ fn phone_sidebar_match_rendering_baselines() -> Result<()> {
 						20.,
 						&crate::app::widgets::Drawn::new(&interaction, None),
 						(360., 760.),
+						1.,
 						&settings,
 					)
 				} else {
@@ -271,6 +272,7 @@ fn phone_sidebar_match_rendering_baselines() -> Result<()> {
 						Some(&folder.join("chapter-02.md")),
 						&crate::app::widgets::Drawn::new(&interaction, None),
 						(360., 760.),
+						1.,
 						&settings,
 					)
 				};

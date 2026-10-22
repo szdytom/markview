@@ -543,7 +543,7 @@ fn new_page_preserves_tabs_and_opening_or_selecting_resumes_documents() {
 		dragged: false,
 	});
 	h.app.readers.session.scrolling.offset = 120.;
-	h.app.interaction.show_panel(crate::state::PanelPage::Tabs);
+	h.app.show_panel(crate::state::PanelPage::Tabs);
 	h.app.action(crate::state::Command::NewPage);
 	assert_eq!(h.app.readers.entries().len(), 1);
 	assert!(h.app.readers.session.path.is_none());
@@ -591,7 +591,7 @@ fn closing_last_parked_tab_releases_the_workers_document() {
 	assert_eq!(h.app.readers.entries().len(), 1);
 	assert!(h.app.readers.session.path.is_none());
 	assert!(document.upgrade().is_some());
-	h.app.interaction.show_panel(crate::state::PanelPage::Tabs);
+	h.app.show_panel(crate::state::PanelPage::Tabs);
 	h.app.close_tab(0);
 	assert!(h.app.readers.entries().is_empty());
 	assert!(h.app.readers.session.path.is_none());
@@ -950,12 +950,12 @@ fn folder_scan_completion_keeps_the_outline_when_the_folder_was_hidden() {
 		.folder_loaded(0, true, crate::app::folder::Tree::read(root.clone()));
 	h.wait_images(2);
 	h.app.toggle_outline();
-	assert!(h.app.folder.open && h.app.interaction.outline_open);
+	assert!(h.app.folder.open && h.app.interaction.overlays.outline.open());
 	let completion = crate::app::folder::Tree::read(root);
 	h.app.set_folder_open(false);
 	h.app.folder_loaded(0, false, completion);
 	assert!(!h.app.folder.open);
-	assert!(h.app.interaction.outline_open);
+	assert!(h.app.interaction.overlays.outline.open());
 }
 
 #[test]
@@ -1181,7 +1181,6 @@ fn folder_overlay_clips_empty_page_mouse_touch_and_focus_targets() {
 	h.app
 		.folder_loaded(0, true, crate::app::folder::Tree::read(empty));
 	h.app
-		.interaction
 		.advance_drawers(Instant::now() + Duration::from_secs(1));
 	assert!(h.app.readers.session.path.is_none());
 	for width in [360., 640., 1200.] {
@@ -1270,7 +1269,6 @@ fn folder_sidebar_geometry_keyboard_and_pointer_ownership() {
 		.folder_loaded(0, true, Tree::read(h.dir.path().into()));
 	h.wait_images(2);
 	h.app
-		.interaction
 		.advance_drawers(Instant::now() + Duration::from_secs(1));
 	assert_eq!(h.app.folder_inset(), 260.);
 	assert!(h.app.view_geometry().left >= 280.);
@@ -1365,7 +1363,6 @@ fn folder_sidebar_geometry_keyboard_and_pointer_ownership() {
 	// The top-left control owns a complete press and toggles both ways.
 	for open in [false, true] {
 		h.app
-			.interaction
 			.advance_drawers(Instant::now() + Duration::from_secs(1));
 		let buttons = h.app.buttons();
 		let toggle = buttons
@@ -1392,7 +1389,6 @@ fn folder_sidebar_geometry_keyboard_and_pointer_ownership() {
 	h.app.toggle_folder();
 	assert_eq!(h.app.folder_inset(), 0.);
 	h.app
-		.interaction
 		.advance_drawers(Instant::now() + Duration::from_secs(1));
 	assert!(h.app.view_geometry().left < 280.);
 }
@@ -1420,7 +1416,7 @@ fn folder_overlay_resize_keeps_search_and_its_focus() {
 		assert!(h.app.readers.session.search.open);
 		assert_eq!(h.app.focused_input(), Some(TextField::Search));
 		if !folder_open {
-			assert_eq!(h.app.interaction.folder_reveal(false), 0.);
+			assert_eq!(h.app.folder.reveal(), 0.);
 			assert!(!h.app.buttons().iter().any(|b| matches!(
 				b.action,
 				Command::FolderRoot | Command::FolderEntry(_)
@@ -1442,10 +1438,9 @@ fn folder_drawers_reconcile_on_resize_to_an_overlay() {
 	h.wait_images(2);
 	h.app.toggle_outline();
 	h.app
-		.interaction
 		.advance_drawers(Instant::now() + Duration::from_secs(1));
 	assert!(h.app.folder.open);
-	assert!(h.app.interaction.outline_open);
+	assert!(h.app.interaction.overlays.outline.open());
 	h.app.folder.grab = Some(0.);
 	h.app.interaction.widgets.focus = Some(Command::FolderRoot.widget_id());
 	h.app.interaction.widgets.captured = Some(Command::FolderRoot.widget_id());
@@ -1456,9 +1451,9 @@ fn folder_drawers_reconcile_on_resize_to_an_overlay() {
 			WindowEvent::Resized(PhysicalSize::new(width, 800)),
 		);
 		assert_eq!(h.app.folder.open, folder_open);
-		assert!(h.app.interaction.outline_open);
+		assert!(h.app.interaction.overlays.outline.open());
 		if width == 536 {
-			assert_eq!(h.app.interaction.folder_reveal(false), 0.);
+			assert_eq!(h.app.folder.reveal(), 0.);
 			assert!(h.app.folder.grab.is_none());
 			assert!(h.app.interaction.widgets.focus.is_none());
 			assert!(h.app.interaction.widgets.captured.is_none());
@@ -1480,10 +1475,9 @@ fn folder_sidebar_reuses_drawer_motion_and_keeps_outgoing_coverage() {
 	fs::create_dir(&empty).unwrap();
 	h.app
 		.folder_loaded(0, true, crate::app::folder::Tree::read(empty));
-	assert!(h.app.interaction.drawer_deadline(Instant::now()).is_some());
+	assert!(h.app.drawer_deadline(Instant::now()).is_some());
 	assert!(
 		h.app
-			.interaction
 			.advance_drawers(Instant::now() + Duration::from_secs(1))
 	);
 	let open = h.app.folder_rect();
@@ -1506,18 +1500,13 @@ fn folder_sidebar_reuses_drawer_motion_and_keeps_outgoing_coverage() {
 	};
 	assert!(has_sidebar(h.app.overlay()));
 	h.app.toggle_folder();
-	h.app
-		.interaction
-		.folder_animation
-		.as_mut()
-		.unwrap()
-		.freeze(Duration::from_millis(110));
+	h.app.folder.freeze_animation(Duration::from_millis(110));
 	assert!(!h.app.folder.open);
-	assert_eq!(h.app.interaction.folder_reveal(false), 0.125);
+	assert_eq!(h.app.folder.reveal(), 0.125);
 	let closing_toggle = toggle(&mut h.app);
 	assert_eq!(closing_toggle.id, open_toggle.id);
 	assert!(!closing_toggle.active);
-	assert!(h.app.interaction.drawer_deadline(Instant::now()).is_some());
+	assert!(h.app.drawer_deadline(Instant::now()).is_some());
 	assert!(has_sidebar(h.app.overlay()));
 	let drawer = h.app.folder_rect();
 	assert_eq!(drawer.x, -drawer.w * 0.875);
@@ -1536,16 +1525,14 @@ fn folder_sidebar_reuses_drawer_motion_and_keeps_outgoing_coverage() {
 	// Reversing a running close keeps using the shared animation and scheduler.
 	h.app.toggle_folder();
 	assert!(h.app.folder.open);
-	assert!(h.app.interaction.folder_animation.is_some());
+	assert!(h.app.folder.animating());
 	h.app
-		.interaction
 		.advance_drawers(Instant::now() + Duration::from_secs(1));
 	assert_eq!(h.app.folder_rect(), open);
 	h.app.toggle_folder();
 	h.app
-		.interaction
 		.advance_drawers(Instant::now() + Duration::from_secs(1));
-	assert!(h.app.interaction.drawer_deadline(Instant::now()).is_none());
+	assert!(h.app.drawer_deadline(Instant::now()).is_none());
 	assert!(!has_sidebar(h.app.overlay()));
 	assert_eq!(h.app.folder_rect().x + open.w, 0.);
 	assert!(!h.app.pointer_in_folder());
@@ -1572,13 +1559,12 @@ fn file_sidebar_owns_the_full_left_column_without_moving_the_outline() {
 		.folder_loaded(0, true, Tree::read(h.dir.path().into()));
 	h.wait_images(2);
 	h.app
-		.interaction
 		.advance_drawers(Instant::now() + Duration::from_secs(1));
 	let surface = h.app.folder_surface();
 	assert_eq!((surface.y, surface.h), (0., 800.));
 	assert!(h.app.frame_layout().tabs.x >= surface.w + 10.);
 	assert!(h.app.frame_layout().new_page.unwrap().x >= surface.w);
-	h.app.interaction.outline_open = true;
+	h.app.interaction.overlays.outline.set_open(true);
 	let body = h.app.folder_rect();
 	h.app.readers.session.search.open = true;
 	let outline = h.app.outline_drawer();
@@ -1621,7 +1607,6 @@ fn file_sidebar_owns_the_full_left_column_without_moving_the_outline() {
 	assert_eq!(h.app.outline_drawer(), outline);
 	h.app.toggle_folder();
 	h.app
-		.interaction
 		.advance_drawers(Instant::now() + Duration::from_secs(1));
 	assert_eq!(h.app.frame_layout().left_inset, 0.);
 	assert_eq!(h.app.outline_drawer(), outline);
@@ -1652,11 +1637,9 @@ fn folder_sidebar_renders_beside_the_document() -> anyhow::Result<()> {
 		.folder_loaded(0, true, crate::app::folder::Tree::read(root));
 	h.wait_images(0);
 	h.app
-		.interaction
 		.advance_drawers(Instant::now() + Duration::from_secs(1));
 	h.app.toggle_outline();
 	h.app
-		.interaction
 		.advance_drawers(Instant::now() + Duration::from_secs(1));
 	let mut renderer = pollster::block_on(Renderer::new(None))?;
 	let directory =
@@ -1668,7 +1651,6 @@ fn folder_sidebar_renders_beside_the_document() -> anyhow::Result<()> {
 		if h.app.folder.open != expanded {
 			h.app.toggle_folder();
 			h.app
-				.interaction
 				.advance_drawers(Instant::now() + Duration::from_secs(1));
 			h.wait_images(0);
 		}
@@ -1777,7 +1759,6 @@ fn folder_sidebar_repository_scroll_profile() {
 	h.app.folder_loaded(0, false, Ok(tree));
 	h.app.set_folder_open(true);
 	h.app
-		.interaction
 		.advance_drawers(Instant::now() + Duration::from_secs(1));
 	h.app.interaction.pointer.move_to((120., 250.));
 	let mut samples = Vec::new();
@@ -1811,7 +1792,6 @@ fn selecting_a_tab_opens_the_folder_onto_its_document() {
 		.folder_loaded(0, false, crate::app::folder::Tree::read(root.clone()));
 	h.app.set_folder_open(true);
 	h.app
-		.interaction
 		.advance_drawers(Instant::now() + Duration::from_secs(1));
 	let rows = |h: &Harness| -> Vec<PathBuf> {
 		let tree = h.app.folder.tree.as_ref().unwrap();

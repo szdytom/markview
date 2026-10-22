@@ -239,7 +239,7 @@ impl<P: SendEvent> App<P> {
 	) -> Option<(Rect, Rect)> {
 		if id == TextField::Url {
 			if self.interaction.panel_open()
-				|| self.interaction.outline_open
+				|| self.interaction.overlays.outline.open()
 				|| self.interaction.modal.is_some()
 				|| self.interaction.viewer.is_some()
 			{

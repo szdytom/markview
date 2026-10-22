@@ -64,7 +64,7 @@ impl<P: super::SendEvent> App<P> {
 
 			"column_width":self.preferences.values.width, "layout_width":session.snapshot.width,
 			"drawer_scroll":self.tab_strip.drawer_scroll.offset(),
-			"outline_open":self.interaction.outline_open,
+			"outline_open":self.interaction.overlays.outline.open(),
 			"folder_root":self.folder.tree.as_ref().map(|t| &t.root),
 			"folder_name":self.folder.tree.as_ref().map(|t| &t.name),
 			"folder_open":self.folder.open || self.phone_folder_open(),

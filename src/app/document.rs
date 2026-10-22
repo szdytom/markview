@@ -184,8 +184,8 @@ impl<P: super::SendEvent> App<P> {
 		self.search_worker.release();
 		self.watch = None;
 		self.interaction.clear_selection();
-		self.interaction.outline_open = false;
-		self.interaction.show_panel(crate::state::PanelPage::Closed);
+		self.interaction.overlays.outline.set_open(false);
+		self.show_panel(crate::state::PanelPage::Closed);
 		self.status.clear();
 		if let Some(window) = &self.window {
 			window.set_title("Markview");
@@ -259,7 +259,7 @@ impl<P: super::SendEvent> App<P> {
 			// export panel has nothing to export either.
 			self.worker.release();
 			self.search_worker.release();
-			self.interaction.show_panel(crate::state::PanelPage::Closed);
+			self.show_panel(crate::state::PanelPage::Closed);
 			if let Some(window) = &self.window {
 				window.set_title("Markview");
 			}

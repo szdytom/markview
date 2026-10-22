@@ -211,10 +211,10 @@ impl<P: SendEvent> App<P> {
 			self.tab_strip.phone,
 		) {
 			self.set_folder_open(false);
-			self.interaction.folder_animation = None;
+			self.folder.stop_animation();
 		}
 		self.clear_input_focus();
-		self.interaction.show_panel(PanelPage::Closed);
+		self.show_panel(PanelPage::Closed);
 		self.readers.session.search.open = true;
 		if fresh {
 			let search = &mut self.readers.session.search;

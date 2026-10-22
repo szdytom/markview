@@ -291,6 +291,7 @@ fn shell(
 	ui: &mut TextShaper,
 	interaction: &crate::app::widgets::Drawn<'_>,
 	size: (f32, f32),
+	reveal: f32,
 	settings: &ReaderSettings,
 	count: usize,
 ) -> Vec<Draw> {
@@ -298,7 +299,6 @@ fn shell(
 	let preferred_width = settings.tabs_width;
 	components::appearance(ui);
 	let (width, height) = size;
-	let reveal = interaction.tabs_reveal();
 	let mut list = list(width, height, count, 0., preferred_width);
 	let offset = animated_rect(width, height, reveal, preferred_width).x;
 	list.panel.x += offset;
@@ -388,6 +388,10 @@ fn shell(
 	out
 }
 
+#[expect(
+	clippy::too_many_arguments,
+	reason = "one drawer's explicit geometry and inputs"
+)]
 pub(super) fn draw(
 	ui: &mut TextShaper,
 	tabs: &[ReaderTab],
@@ -395,21 +399,16 @@ pub(super) fn draw(
 	scroll: f32,
 	interaction: &crate::app::widgets::Drawn<'_>,
 	size: (f32, f32),
+	reveal: f32,
 	settings: &ReaderSettings,
 ) -> Vec<Draw> {
 	let lang = settings.lang();
 	let mut list =
 		list(size.0, size.1, tabs.len(), scroll, settings.tabs_width);
-	let offset = animated_rect(
-		size.0,
-		size.1,
-		interaction.tabs_reveal(),
-		settings.tabs_width,
-	)
-	.x;
+	let offset = animated_rect(size.0, size.1, reveal, settings.tabs_width).x;
 	list.panel.x += offset;
 	list.viewport.x += offset;
-	let mut out = shell(ui, interaction, size, settings, tabs.len());
+	let mut out = shell(ui, interaction, size, reveal, settings, tabs.len());
 	let background = ui.stylesheet.color(Condition::Panel, C::Background);
 	let accent = ui.stylesheet.color(Condition::Panel, C::Accent);
 	let selected =
@@ -477,15 +476,11 @@ pub(super) fn draw_folder(
 	active: Option<&Path>,
 	interaction: &crate::app::widgets::Drawn<'_>,
 	size: (f32, f32),
+	reveal: f32,
 	settings: &ReaderSettings,
 ) -> Vec<Draw> {
-	let mut out = shell(ui, interaction, size, settings, 0);
-	let panel = animated_rect(
-		size.0,
-		size.1,
-		interaction.tabs_reveal(),
-		settings.tabs_width,
-	);
+	let mut out = shell(ui, interaction, size, reveal, settings, 0);
+	let panel = animated_rect(size.0, size.1, reveal, settings.tabs_width);
 	let body = folder_rect(panel);
 	if let Some(browser) = browser.filter(|b| b.tree.is_some()) {
 		out.push(Draw::Clipped {
@@ -688,6 +683,7 @@ mod tests {
 					None,
 				),
 				(320., 760.),
+				1.,
 				&ReaderSettings {
 					lang: Some(Lang::En),
 					..Default::default()
@@ -709,6 +705,7 @@ mod tests {
 					None,
 				),
 				(320., 760.),
+				1.,
 				&ReaderSettings {
 					lang: Some(Lang::En),
 					..Default::default()
@@ -791,6 +788,7 @@ mod tests {
 						None,
 					),
 					(width, 760.),
+					1.,
 					&ReaderSettings {
 						lang: Some(Lang::En),
 						..Default::default()

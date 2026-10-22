@@ -6,7 +6,7 @@
     "App": 49,
     "Chrome": 28,
     "Config": 26,
-    "InteractionState": 16,
+    "InteractionState": 11,
     "Markview": 35,
     "ReaderSession": 33,
     "ReaderSettings": 25
@@ -52,9 +52,29 @@
       "files": 1,
       "sites": 2
     },
+    "folder.animation": {
+      "files": 0,
+      "sites": 0
+    },
     "modal": {
       "files": 5,
       "sites": 10
+    },
+    "overlays.outline.animation": {
+      "files": 0,
+      "sites": 0
+    },
+    "overlays.outline.open": {
+      "files": 0,
+      "sites": 0
+    },
+    "overlays.outline.scroll": {
+      "files": 0,
+      "sites": 0
+    },
+    "overlays.outline.selection": {
+      "files": 0,
+      "sites": 0
     },
     "panels.export_scroll": {
       "files": 0,
@@ -137,6 +157,10 @@
       "sites": 0
     },
     "status.until": {
+      "files": 0,
+      "sites": 0
+    },
+    "tab_strip.animation": {
       "files": 0,
       "sites": 0
     },

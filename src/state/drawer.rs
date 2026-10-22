@@ -1,7 +1,5 @@
 use std::time::{Duration, Instant};
 
-use super::{InteractionState, PanelPage};
-
 const DURATION: Duration = Duration::from_millis(220);
 
 pub(crate) struct DrawerAnimation {
@@ -29,7 +27,7 @@ impl DrawerAnimation {
 		self.from + (self.to - self.from) * eased
 	}
 
-	pub(super) fn retarget(
+	pub(crate) fn retarget(
 		animation: &mut Option<Self>,
 		open: bool,
 		was_open: bool,
@@ -57,6 +55,20 @@ impl DrawerAnimation {
 			frozen_at: None,
 		});
 	}
+
+	/// The drawer's reveal at `now`, or its settled value while it rests.
+	pub(crate) fn reveal(
+		animation: &Option<Self>,
+		open: bool,
+		now: Instant,
+	) -> f32 {
+		position(animation, open, now)
+	}
+
+	/// Whether the animation has reached its target and may be dropped.
+	pub(crate) fn is_finished(&self, now: Instant) -> bool {
+		now >= self.started + self.duration
+	}
 }
 
 fn position(
@@ -67,52 +79,6 @@ fn position(
 	animation
 		.as_ref()
 		.map_or(u8::from(open) as f32, |a| a.position(now))
-}
-
-impl InteractionState {
-	pub(crate) fn tabs_reveal(&self) -> f32 {
-		position(
-			&self.tabs_animation,
-			self.panel == PanelPage::Tabs,
-			Instant::now(),
-		)
-	}
-
-	pub(crate) fn outline_reveal(&self) -> f32 {
-		position(&self.outline_animation, self.outline_open, Instant::now())
-	}
-
-	pub(crate) fn animate_folder(&mut self, open: bool, was_open: bool) {
-		DrawerAnimation::retarget(&mut self.folder_animation, open, was_open);
-	}
-
-	pub(crate) fn folder_reveal(&self, open: bool) -> f32 {
-		position(&self.folder_animation, open, Instant::now())
-	}
-
-	pub(crate) fn drawer_deadline(&self, now: Instant) -> Option<Instant> {
-		(self.tabs_animation.is_some()
-			|| self.outline_animation.is_some()
-			|| self.folder_animation.is_some())
-		.then_some(now + Duration::from_millis(16))
-	}
-
-	pub(crate) fn advance_drawers(&mut self, now: Instant) -> bool {
-		let active = self.drawer_deadline(now).is_some();
-		for animation in [
-			&mut self.tabs_animation,
-			&mut self.outline_animation,
-			&mut self.folder_animation,
-		] {
-			if animation
-				.as_ref()
-				.is_some_and(|a| now >= a.started + a.duration)
-			{
-				*animation = None;
-			}
-		}
-		active
-	}
 }
 
 #[cfg(test)]

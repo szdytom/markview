@@ -220,6 +220,12 @@ pub(super) struct Chrome<'a> {
 	pub(super) watching: bool,
 }
 impl<'a> Chrome<'a> {
+	/// The tabs drawer's slide reveal; the tab strip owns the animation.
+	fn tabs_reveal(&self) -> f32 {
+		self.tab_strip
+			.reveal(self.interaction.panel == crate::state::PanelPage::Tabs)
+	}
+
 	/// The active document's absolute path, or `None` when its session has no
 	/// document to name.
 	fn path(&self) -> Option<std::borrow::Cow<'a, str>> {
@@ -379,7 +385,7 @@ impl<'a> Chrome<'a> {
 				&mut buttons,
 				width,
 				height,
-				self.interaction.tabs_reveal(),
+				self.tabs_reveal(),
 				self.settings.tabs_width,
 			);
 			buttons
@@ -463,9 +469,7 @@ impl<'a> Chrome<'a> {
 	}
 
 	fn folder_drawer(&self) -> Rect {
-		let reveal = self
-			.folder
-			.map_or(0., |b| self.interaction.folder_reveal(b.open));
+		let reveal = self.folder.map_or(0., |b| b.reveal());
 		folder::animated_rect(
 			folder::rect(
 				self.width,
@@ -502,7 +506,7 @@ impl<'a> Chrome<'a> {
 		let (width, height) = (self.width, self.height);
 		let mut buttons = toolbar_controls_at(
 			self.frame,
-			self.interaction.outline_open,
+			self.interaction.overlays.outline.open(),
 			self.settings.lang(),
 		);
 		let clip = Rect {
@@ -550,7 +554,7 @@ impl<'a> Chrome<'a> {
 				self.settings.lang(),
 			));
 		}
-		if self.interaction.outline_open {
+		if self.interaction.overlays.outline.open() {
 			let lang = self.settings.lang();
 			buttons
 				.extend(outline::header_buttons(self.outline_drawer(), lang));
@@ -558,7 +562,7 @@ impl<'a> Chrome<'a> {
 				self.outline_drawer(),
 				self.session.outline_entries(),
 				&self.session.outline_tree,
-				self.interaction.outline_scroll.offset(),
+				self.interaction.overlays.outline.scroll_offset(),
 				lang,
 			));
 		}
@@ -919,9 +923,10 @@ impl<'a> Chrome<'a> {
 				),
 			));
 		}
-		if let Some(browser) = self.folder.filter(|b| {
-			!self.tab_strip.phone && self.interaction.folder_reveal(b.open) > 0.
-		}) {
+		if let Some(browser) = self
+			.folder
+			.filter(|b| !self.tab_strip.phone && b.reveal() > 0.)
+		{
 			out.extend(folder::draw(
 				self.ui,
 				browser,
@@ -942,7 +947,7 @@ impl<'a> Chrome<'a> {
 				true,
 			));
 		}
-		if self.interaction.outline_reveal() > 0.0 {
+		if self.interaction.overlays.outline.reveal() > 0.0 {
 			out.extend(outline::draw(
 				self.ui,
 				&self.interaction,
@@ -953,7 +958,7 @@ impl<'a> Chrome<'a> {
 				self.settings.lang(),
 			));
 		}
-		let tabs_reveal = self.interaction.tabs_reveal();
+		let tabs_reveal = self.tabs_reveal();
 		if tabs_reveal > 0.0 {
 			let draws = match self.interaction.sidebar_tab {
 				crate::state::SidebarTab::Tabs => tab_drawer::draw(
@@ -963,6 +968,7 @@ impl<'a> Chrome<'a> {
 					self.tab_strip.drawer_scroll.offset(),
 					&self.interaction,
 					(width, height),
+					tabs_reveal,
 					self.settings,
 				),
 				crate::state::SidebarTab::Folder => tab_drawer::draw_folder(
@@ -971,6 +977,7 @@ impl<'a> Chrome<'a> {
 					self.session.path.as_deref(),
 					&self.interaction,
 					(width, height),
+					tabs_reveal,
 					self.settings,
 				),
 			};
@@ -1182,7 +1189,8 @@ impl<'a> Chrome<'a> {
 			super::search::bottom(self.session.search.open),
 			self.settings.outline_width.min(self.width - inset),
 		);
-		drawer.x += drawer.w * (1.0 - self.interaction.outline_reveal());
+		drawer.x +=
+			drawer.w * (1.0 - self.interaction.overlays.outline.reveal());
 		drawer
 	}
 }

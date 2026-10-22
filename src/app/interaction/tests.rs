@@ -683,8 +683,7 @@ fn folder_collapse_all_clears_nested_expansion_and_scroll_on_both_layouts() {
 		assert_eq!(tree.rows().len(), 3);
 		app.folder.tree = Some(tree);
 		app.set_folder_open(true);
-		app.interaction
-			.advance_drawers(Instant::now() + Duration::from_secs(1));
+		app.advance_drawers(Instant::now() + Duration::from_secs(1));
 		let buttons = app.buttons();
 		assert_eq!(
 			buttons
@@ -744,13 +743,12 @@ fn phone_sidebar_shares_one_shell_and_keeps_each_list_and_selected_page() {
 			.open(dir.path().join(format!("note-{i:02}.md")), Instant::now());
 	}
 	app.action(Command::Tabs);
-	let reveal = app.interaction.tabs_reveal();
+	let reveal = app.tabs_reveal();
 	app.action(Command::SidebarTab(SidebarTab::Folder));
-	assert!(app.interaction.tabs_reveal() >= reveal);
-	assert!(app.interaction.tabs_animation.is_some());
-	assert!(app.interaction.folder_animation.is_none());
-	app.interaction
-		.advance_drawers(Instant::now() + Duration::from_secs(1));
+	assert!(app.tabs_reveal() >= reveal);
+	assert!(app.tab_strip.animating());
+	assert!(!app.folder.animating());
+	app.advance_drawers(Instant::now() + Duration::from_secs(1));
 	assert_eq!(app.folder_rect().w, 360.);
 	assert_eq!(
 		app.folder_rect(),
@@ -835,13 +833,50 @@ fn phone_sidebar_shares_one_shell_and_keeps_each_list_and_selected_page() {
 }
 
 #[test]
+fn android_configuration_closes_the_tabs_drawer_with_its_slide() {
+	use crate::state::PanelPage;
+	let (mut app, _) = reader(SOURCE, 760.0);
+
+	// A settled-open drawer closes from fully revealed.
+	app.show_panel(PanelPage::Tabs);
+	app.advance_drawers(Instant::now() + Duration::from_secs(1));
+	assert_eq!(app.tabs_reveal(), 1.0);
+	assert!(!app.tab_strip.animating());
+	app.handle_user_event(&StubLoop, Event::AndroidConfiguration);
+	assert_eq!(app.interaction.panel, PanelPage::Closed);
+	assert!(app.tab_strip.animating());
+	app.tab_strip.freeze_animation(Duration::from_millis(110));
+	assert!((app.tabs_reveal() - 0.125).abs() < 0.01);
+	app.advance_drawers(Instant::now() + Duration::from_secs(1));
+	assert_eq!(app.tabs_reveal(), 0.0);
+	assert!(!app.tab_strip.animating());
+
+	// A drawer caught mid-open retargets from the reveal on screen to zero.
+	app.show_panel(PanelPage::Tabs);
+	app.tab_strip.freeze_animation(Duration::from_millis(110));
+	let mid = app.tabs_reveal();
+	assert!((mid - 0.875).abs() < 0.01);
+	app.handle_user_event(&StubLoop, Event::AndroidConfiguration);
+	assert_eq!(app.interaction.panel, PanelPage::Closed);
+	assert!(app.tab_strip.animating());
+	assert!(
+		(app.tabs_reveal() - mid).abs() < 0.01,
+		"the close continues from the reveal already on screen"
+	);
+	app.tab_strip.freeze_animation(Duration::from_millis(96));
+	assert!(app.tabs_reveal() < mid);
+	app.advance_drawers(Instant::now() + Duration::from_secs(1));
+	assert_eq!(app.tabs_reveal(), 0.0);
+}
+
+#[test]
 fn phone_sidebar_offers_folder_selection_before_a_tree_exists_and_stays_phone_only()
  {
 	use crate::state::{PanelPage, SidebarTab};
 	let (mut app, _) = reader(SOURCE, 320.);
 	app.tab_strip.phone = true;
 	app.action(Command::SidebarTab(SidebarTab::Folder));
-	app.interaction.tabs_animation = None;
+	app.tab_strip.stop_animation();
 	assert!(app.phone_folder_open());
 	let buttons = app.buttons();
 	assert!(buttons.iter().any(|b| b.action == Command::OpenFolder));
@@ -882,11 +917,11 @@ fn desktop_sidebar_drags_resize_independently_and_capture_the_release() {
 	assert!(app.interaction.selection.is_none());
 	assert_eq!(app.readers.session.scrolling.offset, scroll);
 	assert_eq!(app.preferences.values.outline_width, 300.);
-	app.interaction.outline_open = true;
+	app.interaction.overlays.outline.set_open(true);
 	physical_drag(&mut app, (900., 200.), (820., 200.));
 	assert_eq!(app.preferences.values.outline_width, 380.);
 	assert_eq!(app.outline_drawer().w, 380.);
-	assert!(app.interaction.outline_open);
+	assert!(app.interaction.overlays.outline.open());
 	assert_eq!(app.preferences.values.folder_width, 360.);
 	physical_drag(&mut app, (820., 200.), (1500., 200.));
 	assert_eq!(app.preferences.values.outline_width, 200.);
@@ -920,7 +955,7 @@ fn desktop_sidebar_drags_resize_independently_and_capture_the_release() {
 fn sidebar_edges_yield_to_overlays_and_cancel_on_focus_loss() {
 	use crate::state::{PanelPage, PanelTab};
 	let (mut app, _) = reader(SOURCE, 760.);
-	app.interaction.outline_open = true;
+	app.interaction.overlays.outline.set_open(true);
 	app.interaction.pointer.move_to((900., 200.));
 	assert!(app.sidebar_edge().is_some());
 	app.interaction.panel = PanelPage::Settings(PanelTab::Generic);
@@ -1160,10 +1195,9 @@ fn wheel_travel_eases_the_settings_panel_and_tab_strip() {
 		},
 		StubProxy,
 	);
-	app.interaction
-		.show_panel(crate::state::PanelPage::Settings(
-			crate::state::PanelTab::Generic,
-		));
+	app.show_panel(crate::state::PanelPage::Settings(
+		crate::state::PanelTab::Generic,
+	));
 	app.interaction.pointer.move_to((700.0, 400.0));
 	let (_, max) = app.panel_scroll_range().expect("the page scrolls");
 	assert!(max > 0.0);
@@ -1179,7 +1213,7 @@ fn wheel_travel_eases_the_settings_panel_and_tab_strip() {
 	assert!(app.preferences.settings_scroll().offset() > 0.0);
 	assert!(!app.control_scroll_animating());
 
-	app.interaction.show_panel(crate::state::PanelPage::Closed);
+	app.show_panel(crate::state::PanelPage::Closed);
 	let now = Instant::now();
 	for index in 0..30 {
 		app.readers
@@ -1212,10 +1246,9 @@ fn a_settings_page_round_trip_preserves_its_state_and_reopening_resets_it() {
 		},
 		StubProxy,
 	);
-	app.interaction
-		.show_panel(crate::state::PanelPage::Settings(
-			crate::state::PanelTab::Generic,
-		));
+	app.show_panel(crate::state::PanelPage::Settings(
+		crate::state::PanelTab::Generic,
+	));
 	*app.preferences.settings_scroll_mut() = 120.0.into();
 	app.preferences.settings_preview = true;
 	// Leaving for the Styles page and returning keeps both: they belong to
@@ -1242,10 +1275,9 @@ fn grabbing_the_panel_thumb_stops_its_ease() {
 		},
 		StubProxy,
 	);
-	app.interaction
-		.show_panel(crate::state::PanelPage::Settings(
-			crate::state::PanelTab::Generic,
-		));
+	app.show_panel(crate::state::PanelPage::Settings(
+		crate::state::PanelTab::Generic,
+	));
 	app.overlay();
 	let (_, max) = app.panel_scroll_range().expect("the page scrolls");
 	assert!(max > 0.0);
@@ -1285,10 +1317,9 @@ fn touching_a_panel_stops_its_ease() {
 		},
 		StubProxy,
 	);
-	app.interaction
-		.show_panel(crate::state::PanelPage::Settings(
-			crate::state::PanelTab::Generic,
-		));
+	app.show_panel(crate::state::PanelPage::Settings(
+		crate::state::PanelTab::Generic,
+	));
 	app.overlay();
 	let (_, max) = app.panel_scroll_range().expect("the page scrolls");
 	assert!(max > 0.0);
@@ -1565,8 +1596,7 @@ fn touch_swipes_open_drawers_without_toggling_them_closed() {
 				force: None,
 			});
 		}
-		app.interaction
-			.advance_drawers(Instant::now() + Duration::from_secs(1));
+		app.advance_drawers(Instant::now() + Duration::from_secs(1));
 	};
 	for phone in [false, true] {
 		app.tab_strip.phone = phone;
@@ -1584,25 +1614,25 @@ fn touch_swipes_open_drawers_without_toggling_them_closed() {
 			assert_eq!(app.interaction.panel, PanelPage::Tabs);
 			swipe(&mut app, 220.0, 100.0);
 			assert_eq!(app.interaction.panel, PanelPage::Closed);
-			assert!(!app.interaction.outline_open);
+			assert!(!app.interaction.overlays.outline.open());
 			assert!(app.gestures.deadline(Instant::now()).is_none());
 			swipe(&mut app, 720.0, 600.0);
 		} else {
 			swipe(&mut app, 720.0, 600.0);
 		}
 		assert_eq!(app.interaction.panel, PanelPage::Closed);
-		assert!(app.interaction.outline_open);
+		assert!(app.interaction.overlays.outline.open());
 		assert_eq!(app.readers.session.outline_entries().len(), 1);
 		swipe(&mut app, 1100.0, 980.0);
-		assert!(app.interaction.outline_open);
+		assert!(app.interaction.overlays.outline.open());
 		assert_eq!(app.readers.session.scrolling.offset, 0.0);
 		assert!(app.gestures.deadline(Instant::now()).is_none());
 		if phone {
 			swipe(&mut app, 980.0, 1100.0);
 			assert_eq!(app.interaction.panel, PanelPage::Tabs);
-			assert!(!app.interaction.outline_open);
+			assert!(!app.interaction.overlays.outline.open());
 		}
-		app.interaction.show_panel(PanelPage::Closed);
+		app.show_panel(PanelPage::Closed);
 		app.interaction.close_outline();
 	}
 }
@@ -1625,11 +1655,8 @@ fn drawer_animations_keep_outgoing_content_until_the_final_frame() {
 		})
 	};
 	let settle = |app: &mut App<StubProxy>| {
-		assert!(
-			app.interaction
-				.advance_drawers(Instant::now() + Duration::from_secs(1))
-		);
-		assert!(app.interaction.drawer_deadline(Instant::now()).is_none());
+		assert!(app.advance_drawers(Instant::now() + Duration::from_secs(1)));
+		assert!(app.drawer_deadline(Instant::now()).is_none());
 	};
 	for phone in [false, true] {
 		app.tab_strip.phone = phone;
@@ -1641,7 +1668,7 @@ fn drawer_animations_keep_outgoing_content_until_the_final_frame() {
 		assert_eq!(open.x + open.w, app.dimensions().0);
 		assert!(has_drawer(app.overlay()));
 		app.action(Command::Outline);
-		assert!(!app.interaction.outline_open);
+		assert!(!app.interaction.overlays.outline.open());
 		assert!(has_drawer(app.overlay()));
 		settle(&mut app);
 		assert!(!has_drawer(app.overlay()));
@@ -1679,7 +1706,7 @@ fn drawer_swipes_reject_short_cancelled_multitouch_and_owned_input() {
 		app.handle_touch(touch(1, TouchPhase::Moved, end, 300.0));
 		app.handle_touch(touch(1, phase, end, 300.0));
 		assert_eq!(app.interaction.panel, PanelPage::Closed);
-		assert!(!app.interaction.outline_open);
+		assert!(!app.interaction.overlays.outline.open());
 	}
 	app.handle_touch(touch(1, TouchPhase::Started, 600.0, 300.0));
 	app.handle_touch(touch(1, TouchPhase::Moved, 650.0, 300.0));
@@ -1687,7 +1714,7 @@ fn drawer_swipes_reject_short_cancelled_multitouch_and_owned_input() {
 	app.handle_touch(touch(1, TouchPhase::Ended, 750.0, 300.0));
 	app.handle_touch(touch(2, TouchPhase::Ended, 800.0, 300.0));
 	assert_eq!(app.interaction.panel, PanelPage::Closed);
-	assert!(!app.interaction.outline_open);
+	assert!(!app.interaction.overlays.outline.open());
 	app.readers.session.snapshot.height = 5000.0;
 	app.handle_touch(touch(1, TouchPhase::Started, 600.0, 400.0));
 	app.handle_touch(touch(1, TouchPhase::Moved, 605.0, 300.0));
@@ -1700,7 +1727,7 @@ fn drawer_swipes_reject_short_cancelled_multitouch_and_owned_input() {
 	app.trackpad_scroll(0.0, 0.0, TouchPhase::Ended, Inertia::Native);
 	assert_eq!(app.interaction.panel, PanelPage::Closed);
 	for panel in [PanelPage::Closed, PanelPage::Settings(PanelTab::Generic)] {
-		app.interaction.show_panel(panel);
+		app.show_panel(panel);
 		if panel == PanelPage::Closed {
 			app.interaction.modal = Some(crate::state::Modal::OpenLocal {
 				path: PathBuf::from("/tmp/file.bin"),
@@ -1712,7 +1739,7 @@ fn drawer_swipes_reject_short_cancelled_multitouch_and_owned_input() {
 			app.handle_touch(touch(1, TouchPhase::Started, 600.0, 300.0));
 			app.handle_touch(touch(1, TouchPhase::Ended, end, 300.0));
 			assert_eq!(app.interaction.panel, panel);
-			assert!(!app.interaction.outline_open);
+			assert!(!app.interaction.overlays.outline.open());
 		}
 		app.interaction.modal = None;
 	}
@@ -1723,8 +1750,7 @@ fn phone_uses_available_column_width_and_preserves_the_saved_width() {
 	use crate::state::PanelTab;
 
 	let (mut app, _) = reader(SOURCE, 320.);
-	app.interaction
-		.show_panel(PanelPage::Settings(PanelTab::Generic));
+	app.show_panel(PanelPage::Settings(PanelTab::Generic));
 	for saved in [240.0, 1600.0] {
 		app.preferences.values.width = saved;
 		app.tab_strip.phone = true;
@@ -1793,8 +1819,7 @@ fn phone_drawer_switches_and_closes_shared_tabs_and_hides_tab_style() {
 	assert_eq!(app.interaction.panel, PanelPage::Tabs);
 	app.action(Command::Tabs);
 	assert_eq!(app.interaction.panel, PanelPage::Closed);
-	app.interaction
-		.show_panel(PanelPage::Settings(PanelTab::Generic));
+	app.show_panel(PanelPage::Settings(PanelTab::Generic));
 	assert!(!app.panel_form().unwrap().buttons.iter().any(|b| matches!(
 		b.action,
 		Command::ToggleDropdown(DropdownId::TabStyle, _)
@@ -1821,7 +1846,7 @@ fn permission_modals_over_forms_keep_close_geometry_and_own_input() {
 		PanelPage::Settings(PanelTab::About),
 	] {
 		let (mut app, _) = reader(SOURCE, 760.);
-		app.interaction.show_panel(page);
+		app.show_panel(page);
 		app.overlay();
 		app.interaction.modal = Some(Modal::Permission {
 			resource: crate::security::Resource::File(PathBuf::from(
@@ -1875,8 +1900,8 @@ fn touch_drawer_distinguishes_same_path_tabs_and_keeps_ids_when_reordered() {
 		Security::local(Trust::Untrusted)
 	));
 	app.tab_strip.phone = true;
-	app.interaction.show_panel(PanelPage::Tabs);
-	app.interaction.tabs_animation = None;
+	app.show_panel(PanelPage::Tabs);
+	app.tab_strip.stop_animation();
 	let before = app.buttons();
 	for (index, button) in before.iter().enumerate() {
 		assert!(
@@ -1904,8 +1929,8 @@ fn touch_drawer_distinguishes_same_path_tabs_and_keeps_ids_when_reordered() {
 	}
 	app.readers.move_tab(1, 0);
 	for action in [Command::SelectTab(1), Command::CloseTab(1)] {
-		app.interaction.show_panel(PanelPage::Tabs);
-		app.interaction.tabs_animation = None;
+		app.show_panel(PanelPage::Tabs);
+		app.tab_strip.stop_animation();
 		app.overlay();
 		let target = app
 			.buttons()

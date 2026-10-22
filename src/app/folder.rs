@@ -1,6 +1,9 @@
 //! A read-only folder tree shared by native entry points and the sidebar.
 use super::{App, Event, SendEvent};
-use crate::{scroll::ScrollArea, state::Command};
+use crate::{
+	scroll::ScrollArea,
+	state::{Command, DrawerAnimation},
+};
 use std::{
 	collections::HashSet,
 	fs,
@@ -270,6 +273,8 @@ pub(super) struct Browser {
 	pub open: bool,
 	pub scroll: ScrollArea,
 	pub grab: Option<f32>,
+	/// The drawer's slide when it opens or closes.
+	animation: Option<DrawerAnimation>,
 	pub labels: std::cell::RefCell<super::chrome::folder::Labels>,
 	pub navigation_revision: u64,
 	pending_root: Option<PathBuf>,
@@ -283,6 +288,43 @@ impl Browser {
 			.as_ref()
 			.map(|tree| &tree.root)
 			.or(self.pending_root.as_ref())
+	}
+
+	/// Retargets the drawer's slide between closed and open.
+	pub(super) fn animate(&mut self, open: bool) {
+		DrawerAnimation::retarget(&mut self.animation, open, self.open);
+	}
+
+	/// The drawer's slide reveal at `now`.
+	pub(super) fn reveal(&self) -> f32 {
+		DrawerAnimation::reveal(&self.animation, self.open, Instant::now())
+	}
+
+	pub(super) fn animating(&self) -> bool {
+		self.animation.is_some()
+	}
+
+	pub(super) fn advance_animation(&mut self, now: Instant) {
+		if self
+			.animation
+			.as_ref()
+			.is_some_and(|animation| animation.is_finished(now))
+		{
+			self.animation = None;
+		}
+	}
+
+	/// Drops the slide where it is, as a page change without animation does.
+	pub(super) fn stop_animation(&mut self) {
+		self.animation = None;
+	}
+
+	#[cfg(test)]
+	pub(super) fn freeze_animation(&mut self, elapsed: std::time::Duration) {
+		self.animation
+			.as_mut()
+			.expect("the folder drawer is animating")
+			.freeze(elapsed);
 	}
 }
 
@@ -533,11 +575,11 @@ impl<P: SendEvent> App<P> {
 	pub(super) fn set_folder_open(&mut self, open: bool) {
 		if self.tab_strip.phone {
 			self.folder.open = false;
-			self.interaction.folder_animation = None;
+			self.folder.stop_animation();
 			if open && !self.phone_folder_open() {
 				self.switch_sidebar_tab(crate::state::SidebarTab::Folder);
 			} else if !open && self.phone_folder_open() {
-				self.interaction.show_panel(crate::state::PanelPage::Closed);
+				self.show_panel(crate::state::PanelPage::Closed);
 			}
 			return;
 		}
@@ -549,7 +591,7 @@ impl<P: SendEvent> App<P> {
 			) {
 			self.close_search();
 		}
-		self.interaction.animate_folder(open, self.folder.open);
+		self.folder.animate(open);
 		self.folder.open = open;
 	}
 
@@ -560,7 +602,7 @@ impl<P: SendEvent> App<P> {
 				super::chrome::tab_drawer::animated_rect(
 					w,
 					h,
-					self.interaction.tabs_reveal(),
+					self.tabs_reveal(),
 					self.preferences.values.tabs_width,
 				),
 			);
@@ -573,7 +615,7 @@ impl<P: SendEvent> App<P> {
 				super::BOTTOM,
 				self.preferences.values.folder_width,
 			),
-			self.interaction.folder_reveal(self.folder.open),
+			self.folder.reveal(),
 		)
 	}
 
@@ -604,13 +646,13 @@ impl<P: SendEvent> App<P> {
 
 	pub(super) fn reconcile_drawers(&mut self, width: f32) {
 		if self.folder.open
-			&& (self.interaction.outline_open
+			&& (self.interaction.overlays.outline.open()
 				|| self.readers.session.search.open)
 			&& !super::chrome::folder::docked(width, self.tab_strip.phone)
 		{
 			// Close immediately so the drawers cannot overlap during a resize.
 			self.folder.open = false;
-			self.interaction.folder_animation = None;
+			self.folder.stop_animation();
 			self.folder.grab = None;
 			self.clear_folder_rows();
 		}
@@ -629,7 +671,7 @@ impl<P: SendEvent> App<P> {
 	}
 
 	pub(super) fn pointer_in_folder(&self) -> bool {
-		self.interaction.folder_reveal(self.folder.open) > 0.
+		self.folder.reveal() > 0.
 			&& self.folder.tree.is_some()
 			&& !self.interaction.panel_open()
 			&& self.interaction.modal.is_none()

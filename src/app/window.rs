@@ -66,7 +66,7 @@ impl<P: super::SendEvent> App<P> {
 			self.close_search();
 		} else if self.interaction.panel_open()
 			|| self.interaction.viewer.is_some()
-			|| self.interaction.outline_open
+			|| self.interaction.overlays.outline.open()
 			|| self.folder.open
 			|| self.interaction.modal.is_some()
 		{
@@ -834,7 +834,7 @@ impl<P: super::SendEvent> App<P> {
 		self.interaction.widgets.captured = None;
 		self.interaction.widgets.focus = None;
 		self.interaction.modal = None;
-		self.interaction.show_panel(crate::state::PanelPage::Closed);
+		self.show_panel(crate::state::PanelPage::Closed);
 		self.interaction.selection = None;
 		self.interaction.pointer.release();
 		self.interaction.pointer.set_auto_scroll_at(None);

@@ -232,7 +232,7 @@ impl<P: super::SendEvent> App<P> {
 		}
 		// The panel closes so the document and the status line stay visible
 		// while the file is written.
-		self.interaction.show_panel(crate::state::PanelPage::Closed);
+		self.show_panel(crate::state::PanelPage::Closed);
 		self.interaction.widgets.focus = None;
 		self.interaction.pointer.release();
 		self.dialog_open = true;

@@ -599,7 +599,7 @@ impl<P: super::SendEvent> App<P> {
 			chrome::tab_drawer::animated_rect(
 				width,
 				height,
-				self.interaction.tabs_reveal(),
+				self.tabs_reveal(),
 				self.preferences.values.tabs_width,
 			)
 		} else {

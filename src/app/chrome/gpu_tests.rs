@@ -542,17 +542,15 @@ fn tab_strip_frames_clip_overflow_at_fractional_dpi() -> Result<()> {
 			.collect();
 		let mut metrics = TabMetrics::default();
 		metrics.sync(&mut ui, &entries);
-		let strip = TabStrip {
-			scroll: scroll.into(),
-			drag: dragging.then_some(TabDrag {
-				index: 3,
-				start: 100.0,
-				grab: 20.0,
-				last: 150.0,
-				moving: true,
-			}),
-			..Default::default()
-		};
+		let mut strip = TabStrip::default();
+		strip.scroll = scroll.into();
+		strip.drag = dragging.then_some(TabDrag {
+			index: 3,
+			start: 100.0,
+			grab: 20.0,
+			last: 150.0,
+			moving: true,
+		});
 		let width = if count <= 3 { 800.0 } else { 500.0 };
 		let mut bar = tabs::TabBar {
 			style: settings.tab_style,
@@ -2254,11 +2252,9 @@ fn outline_drawer_frames() -> Result<()> {
 				&crate::test_support::fonts(),
 			),
 		);
-		let interaction = InteractionState {
-			outline_open: true,
-			outline_selection: Some(1),
-			..Default::default()
-		};
+		let mut interaction = InteractionState::default();
+		interaction.overlays.outline.set_open(true);
+		interaction.overlays.outline.select(Some(1));
 		let mut overlay = vec![
 			Draw::Rect(
 				Rect {

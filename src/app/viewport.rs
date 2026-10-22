@@ -18,7 +18,7 @@ impl<P: super::SendEvent> App<P> {
 	/// press grabs.
 	pub(super) fn document_scrollbar(&self) -> Option<Scrollbar> {
 		if self.interaction.panel_open()
-			|| self.interaction.outline_open
+			|| self.interaction.overlays.outline.open()
 			|| self.readers.session.layout_pending
 		{
 			return None;

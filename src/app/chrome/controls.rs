@@ -633,7 +633,7 @@ pub(super) fn draw_toolbar_at(
 	} else {
 		18.0
 	};
-	toolbar_controls_at(frame, interaction.outline_open, lang)
+	toolbar_controls_at(frame, interaction.overlays.outline.open(), lang)
 		.iter()
 		.flat_map(|b| components::draw_icon_button(ui, state, b, icon_size))
 		.collect()

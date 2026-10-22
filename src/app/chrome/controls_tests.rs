@@ -357,10 +357,8 @@ fn the_outline_button_carries_its_icon_and_toggled_state() {
 	assert!(!closed.active);
 	assert!(outline(true).active);
 	// The drawer state reaches the drawn toolbar through interaction state.
-	let outline_open = InteractionState {
-		outline_open: true,
-		..Default::default()
-	};
+	let mut outline_open = InteractionState::default();
+	outline_open.overlays.outline.set_open(true);
 	let draws = draw_toolbar(
 		&mut crate::test_support::shaper(),
 		&drawn(&outline_open),

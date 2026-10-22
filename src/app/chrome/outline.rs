@@ -207,15 +207,7 @@ pub(in crate::app) fn normalize(
 	interaction: &mut InteractionState,
 ) {
 	let max = max_scroll(drawer, rows.len());
-	interaction.outline_scroll.set_max(max);
-	interaction.outline_selection = rows
-		.iter()
-		.copied()
-		.take_while(|index| {
-			*index <= interaction.outline_selection.unwrap_or(0)
-		})
-		.last()
-		.or_else(|| rows.first().copied());
+	interaction.overlays.outline.normalize(rows, max);
 	if interaction.widgets.focus.is_some_and(|id| {
 		(id.scope == Command::OutlineGoto(0).widget_id().scope
 			|| id.scope == Command::OutlineToggle(0).widget_id().scope)
@@ -225,7 +217,9 @@ pub(in crate::app) fn normalize(
 			})
 	}) {
 		interaction.widgets.focus = interaction
-			.outline_selection
+			.overlays
+			.outline
+			.selection()
 			.map(Command::OutlineGoto)
 			.map(Command::widget_id);
 	}
@@ -298,9 +292,14 @@ pub(super) fn draw(
 	let current = current.and_then(|index| {
 		rows.iter().copied().take_while(|row| *row <= index).last()
 	});
-	for row in visible(list, rows.len(), interaction.outline_scroll.offset()) {
+	for row in visible(
+		list,
+		rows.len(),
+		interaction.overlays.outline.scroll_offset(),
+	) {
 		let index = rows[row];
-		let rect = row_rect(list, row, interaction.outline_scroll.offset());
+		let rect =
+			row_rect(list, row, interaction.overlays.outline.scroll_offset());
 		let entry = &entries[index];
 		let hovered = rect.contains(
 			interaction.pointer.cursor().0,
@@ -321,7 +320,7 @@ pub(super) fn draw(
 				Paint::Styled(Condition::Button, C::HoverBackground),
 			));
 		}
-		if interaction.outline_selection == Some(index) {
+		if interaction.overlays.outline.selection() == Some(index) {
 			body.push(Draw::Rect(
 				Rect {
 					x: rect.x,

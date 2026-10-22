@@ -160,7 +160,7 @@ impl<P: super::SendEvent> App<P> {
 			Command::SidebarTab(tab) => self.switch_sidebar_tab(tab),
 			Command::SelectTab(index) => {
 				if self.interaction.panel == PanelPage::Tabs {
-					self.interaction.show_panel(PanelPage::Closed);
+					self.show_panel(PanelPage::Closed);
 				}
 				self.select_tab(index);
 			}
@@ -222,7 +222,7 @@ impl<P: super::SendEvent> App<P> {
 			Command::Styles => {
 				self.readers.session.cancel_scroll_animation();
 				self.tab_strip.cancel_drag();
-				self.interaction.show_styles(false);
+				self.show_styles(false);
 				self.refresh_settings_resources(true);
 				self.interaction.widgets.focus = None;
 				self.redraw();
@@ -230,7 +230,7 @@ impl<P: super::SendEvent> App<P> {
 			Command::ExportStyles => {
 				self.readers.session.cancel_scroll_animation();
 				self.tab_strip.cancel_drag();
-				self.interaction.show_styles(true);
+				self.show_styles(true);
 				self.refresh_settings_resources(true);
 				self.interaction.widgets.focus = None;
 				self.redraw();
@@ -248,7 +248,7 @@ impl<P: super::SendEvent> App<P> {
 					);
 					return;
 				}
-				self.interaction.toggle_export();
+				self.toggle_export();
 				self.refresh_hover();
 				self.redraw();
 			}
@@ -289,7 +289,7 @@ impl<P: super::SendEvent> App<P> {
 				self.redraw();
 			}
 			Command::SettingsTab(tab) => {
-				self.interaction.show_panel(PanelPage::Settings(tab));
+				self.show_panel(PanelPage::Settings(tab));
 				self.refresh_settings_resources(true);
 				self.interaction.widgets.focus = None;
 				self.redraw();
@@ -384,7 +384,7 @@ impl<P: super::SendEvent> App<P> {
 			}
 			Command::Open => {
 				if self.interaction.panel == PanelPage::Tabs {
-					self.interaction.show_panel(PanelPage::Closed);
+					self.show_panel(PanelPage::Closed);
 					self.redraw();
 				}
 				if self.dialog_open {

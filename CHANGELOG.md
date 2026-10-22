@@ -28,6 +28,7 @@ at the same level, without `[brackets]`.
 ### Changed
 
 - Make the idle footer's document path and click-to-copy behavior an opt-in setting, off by default.
+- Keep the outline drawer's scroll position and selected entry when it is closed and reopened.
 
 ### Fixed
 

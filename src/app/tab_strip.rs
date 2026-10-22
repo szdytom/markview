@@ -1,5 +1,5 @@
 //! Tab strip geometry and transient gestures, independent of document sessions.
-use crate::{layout::Rect, scroll::ScrollArea};
+use crate::{layout::Rect, scroll::ScrollArea, state::DrawerAnimation};
 use std::time::Instant;
 
 pub(super) const GAP: f32 = 2.0;
@@ -12,6 +12,8 @@ pub(super) struct TabStrip {
 	pub drag: Option<TabDrag>,
 	pub reveal_active: bool,
 	pub scroll_at: Option<Instant>,
+	/// The drawer's slide when the tabs page opens or closes.
+	animation: Option<DrawerAnimation>,
 }
 #[derive(Clone, Copy)]
 pub(super) struct TabDrag {
@@ -49,6 +51,44 @@ impl TabDrag {
 	}
 }
 impl TabStrip {
+	/// Retargets the tabs drawer's slide between closed and open.
+	pub(super) fn animate(&mut self, open: bool, was_open: bool) {
+		DrawerAnimation::retarget(&mut self.animation, open, was_open);
+	}
+
+	/// The tabs drawer's slide reveal at `now`.
+	pub(super) fn reveal(&self, open: bool) -> f32 {
+		DrawerAnimation::reveal(&self.animation, open, Instant::now())
+	}
+
+	pub(super) fn animating(&self) -> bool {
+		self.animation.is_some()
+	}
+
+	pub(super) fn advance_animation(&mut self, now: Instant) {
+		if self
+			.animation
+			.as_ref()
+			.is_some_and(|animation| animation.is_finished(now))
+		{
+			self.animation = None;
+		}
+	}
+
+	/// Drops the slide where it is, as a page change without animation does.
+	#[cfg(test)]
+	pub(super) fn stop_animation(&mut self) {
+		self.animation = None;
+	}
+
+	#[cfg(test)]
+	pub(super) fn freeze_animation(&mut self, elapsed: std::time::Duration) {
+		self.animation
+			.as_mut()
+			.expect("the tabs drawer is animating")
+			.freeze(elapsed);
+	}
+
 	pub fn cancel_drag(&mut self) {
 		self.reveal_active |= self.drag.is_some_and(|drag| drag.moving);
 		self.drag = None;

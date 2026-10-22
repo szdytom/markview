@@ -129,7 +129,7 @@ fn tabbing_marks_the_row_keyboard_focus_lands_on() {
 		})
 		.collect();
 	assert_eq!(marked.len(), 1, "exactly one row carries the marker");
-	let row = row_rect(list, 1, interaction.outline_scroll.offset());
+	let row = row_rect(list, 1, interaction.overlays.outline.scroll_offset());
 	assert_eq!((marked[0].x, marked[0].y), (row.x, row.y + 3.0));
 }
 
@@ -207,24 +207,25 @@ fn a_shorter_document_pulls_the_drawer_back_into_range() {
 	let mut interaction = InteractionState::default();
 	assert!(interaction.toggle_outline(long, Some(0)));
 	// The drawer was scrolled to the bottom of a long outline.
-	interaction.outline_scroll = max_scroll(drawer, long).into();
-	interaction.outline_selection = Some(long - 1);
+	*interaction.overlays.outline.scroll_mut() =
+		max_scroll(drawer, long).into();
+	interaction.overlays.outline.select(Some(long - 1));
 	// A reload drops most headings, so the old offsets no longer fit.
 	let short = 100;
 	normalize(drawer, &(0..short).collect::<Vec<_>>(), &mut interaction);
 	assert_eq!(
-		interaction.outline_scroll.offset(),
+		interaction.overlays.outline.scroll_offset(),
 		max_scroll(drawer, short)
 	);
 	let rows = buttons(
 		drawer,
 		&vec![entry(1, "Heading"); short],
 		&OutlineTree::default(),
-		interaction.outline_scroll.offset(),
+		interaction.overlays.outline.scroll_offset(),
 		Lang::En,
 	);
 	assert!(!rows.is_empty(), "the shorter outline still shows rows");
-	let selected = interaction.outline_selection.unwrap();
+	let selected = interaction.overlays.outline.selection().unwrap();
 	assert!(
 		rows.iter()
 			.any(|b| b.action == Command::OutlineGoto(selected)),
@@ -233,13 +234,13 @@ fn a_shorter_document_pulls_the_drawer_back_into_range() {
 	// A document short enough to fit whole shows every row and scrolls back.
 	let tiny = 4;
 	normalize(drawer, &(0..tiny).collect::<Vec<_>>(), &mut interaction);
-	assert_eq!(interaction.outline_scroll.offset(), 0.0);
-	assert!(interaction.outline_selection.unwrap() < tiny);
+	assert_eq!(interaction.overlays.outline.scroll_offset(), 0.0);
+	assert!(interaction.overlays.outline.selection().unwrap() < tiny);
 	assert_eq!(visible(list, tiny, 0.0).len(), tiny);
 	// A headingless document has nothing to select.
 	normalize(drawer, &[], &mut interaction);
-	assert_eq!(interaction.outline_selection, None);
-	assert_eq!(interaction.outline_scroll.offset(), 0.0);
+	assert_eq!(interaction.overlays.outline.selection(), None);
+	assert_eq!(interaction.overlays.outline.scroll_offset(), 0.0);
 }
 
 #[test]
@@ -300,11 +301,11 @@ fn the_wheel_over_the_list_scrolls_it_and_not_the_document() {
 	let over = (drawer.x + 10.0, drawer.y + 60.0);
 	assert!(drawer.contains(over.0, over.1));
 	interaction.scroll_outline(42.0, max);
-	assert_eq!(interaction.outline_scroll.offset(), 42.0);
+	assert_eq!(interaction.overlays.outline.scroll_offset(), 42.0);
 	// A point beside it does not, so the document keeps its own scroll.
 	let beside = (drawer.x - 10.0, drawer.y + 60.0);
 	assert!(!drawer.contains(beside.0, beside.1));
-	assert_eq!(interaction.outline_scroll.offset(), 42.0);
+	assert_eq!(interaction.overlays.outline.scroll_offset(), 42.0);
 }
 
 #[test]
@@ -338,19 +339,19 @@ fn collapsed_outline_keeps_drawing_hits_and_navigation_in_sync() {
 			focus: Some(Command::OutlineGoto(2).widget_id()),
 			..Default::default()
 		},
-		outline_open: true,
-		outline_selection: Some(2),
-		outline_scroll: 900.0.into(),
 		..Default::default()
 	};
+	interaction.overlays.outline.set_open(true);
+	interaction.overlays.outline.select(Some(2));
+	*interaction.overlays.outline.scroll_mut() = 900.0.into();
 	let rows = tree.rows(&entries);
 	normalize(drawer, &rows, &mut interaction);
-	assert_eq!(interaction.outline_selection, Some(1));
+	assert_eq!(interaction.overlays.outline.selection(), Some(1));
 	assert_eq!(
 		interaction.widgets.focus,
 		Some(Command::OutlineGoto(1).widget_id())
 	);
-	assert_eq!(interaction.outline_scroll.offset(), 0.0);
+	assert_eq!(interaction.overlays.outline.scroll_offset(), 0.0);
 	assert!(interaction.move_outline(1, &rows));
 	assert_eq!(
 		interaction.enter_action(
@@ -362,7 +363,7 @@ fn collapsed_outline_keeps_drawing_hits_and_navigation_in_sync() {
 		Some(Command::OutlineGoto(3))
 	);
 	assert!(interaction.move_outline(-1, &rows));
-	assert_eq!(interaction.outline_selection, Some(1));
+	assert_eq!(interaction.overlays.outline.selection(), Some(1));
 	let mut ui = crate::test_support::shaper();
 	let draws = draw(
 		&mut ui,
@@ -419,20 +420,20 @@ fn bulk_controls_draw_in_the_header_and_collapse_every_level() {
 			focus: Some(Command::OutlineGoto(2).widget_id()),
 			..Default::default()
 		},
-		outline_open: true,
-		outline_selection: Some(2),
-		outline_scroll: 900.0.into(),
 		..Default::default()
 	};
+	interaction.overlays.outline.set_open(true);
+	interaction.overlays.outline.select(Some(2));
+	*interaction.overlays.outline.scroll_mut() = 900.0.into();
 	let mut tree = OutlineTree::all_collapsed(&entries);
 	assert_eq!(tree.rows(&entries), [0, 4]);
 	normalize(drawer, &tree.rows(&entries), &mut interaction);
-	assert_eq!(interaction.outline_selection, Some(0));
+	assert_eq!(interaction.overlays.outline.selection(), Some(0));
 	assert_eq!(
 		interaction.widgets.focus,
 		Some(Command::OutlineGoto(0).widget_id())
 	);
-	assert_eq!(interaction.outline_scroll.offset(), 0.0);
+	assert_eq!(interaction.overlays.outline.scroll_offset(), 0.0);
 	// Reopening a parent leaves its nested sections collapsed.
 	tree.toggle(0);
 	assert_eq!(tree.rows(&entries), [0, 1, 3, 4]);

@@ -58,8 +58,7 @@ fn app_with_panel() -> App<StubProxy> {
 		},
 		StubProxy,
 	);
-	app.interaction
-		.show_panel(PanelPage::Settings(PanelTab::Generic));
+	app.show_panel(PanelPage::Settings(PanelTab::Generic));
 	app
 }
 
@@ -837,8 +836,7 @@ fn app_with_pinned_fonts() -> App<StubProxy> {
 		},
 		StubProxy,
 	);
-	app.interaction
-		.show_panel(PanelPage::Settings(PanelTab::Fonts));
+	app.show_panel(PanelPage::Settings(PanelTab::Fonts));
 	// The chooser rows sit behind the page's own Set step, not with the
 	// catalogue the page opens on.
 	app.action(Command::Fonts(crate::app::font_panel::Command::Choosers));

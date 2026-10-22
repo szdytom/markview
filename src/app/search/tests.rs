@@ -178,11 +178,11 @@ fn slash_respects_panels_modals_and_modifier_chords() {
 		PanelPage::Settings(crate::state::PanelTab::Generic),
 		PanelPage::Export,
 	] {
-		h.app.interaction.show_panel(panel);
+		h.app.show_panel(panel);
 		assert!(h.app.key_pressed(&slash));
 		assert!(!h.app.readers.session.search.open);
 	}
-	h.app.interaction.show_panel(PanelPage::Closed);
+	h.app.show_panel(PanelPage::Closed);
 	h.app.interaction.modal = Some(Modal::OpenLocal {
 		path: "file.txt".into(),
 		dir: ".".into(),

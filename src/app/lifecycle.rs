@@ -182,8 +182,7 @@ impl<P: super::SendEvent> App<P> {
 				}
 				self.cancel_gestures();
 				if self.interaction.panel == crate::state::PanelPage::Tabs {
-					self.interaction
-						.show_panel(crate::state::PanelPage::Closed);
+					self.show_panel(crate::state::PanelPage::Closed);
 				}
 				self.tab_strip.reveal_active = true;
 				self.redraw();
@@ -515,7 +514,7 @@ impl<P: super::SendEvent> App<P> {
 		self.advance_scroll(now);
 		self.advance_control_scroll(now);
 		self.advance_gestures(now);
-		if self.interaction.advance_drawers(now) {
+		if self.advance_drawers(now) {
 			self.refresh_hover();
 			self.redraw();
 		}
@@ -599,7 +598,7 @@ impl<P: super::SendEvent> App<P> {
 			.chain(self.control_scroll_deadline(now))
 			.chain(self.preview.deadline())
 			.chain(self.gestures.deadline(now))
-			.chain(self.interaction.drawer_deadline(now))
+			.chain(self.drawer_deadline(now))
 			.chain(self.dm.as_ref().and_then(|dm| dm.deadline(now)))
 			.chain(self.readers.release_deadline())
 			.chain(

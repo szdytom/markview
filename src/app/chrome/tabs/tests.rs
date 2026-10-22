@@ -143,10 +143,8 @@ fn live_tab_style_switch_preserves_widths_scroll_and_hit_targets() {
 	let mut metrics = TabMetrics::default();
 	metrics.sync(&mut ui, &tabs);
 	let widths = metrics.widths.clone();
-	let strip = TabStrip {
-		scroll: 25.0.into(),
-		..Default::default()
-	};
+	let mut strip = TabStrip::default();
+	strip.scroll = 25.0.into();
 	let mut bar = TabBar {
 		style: TabStyle::default(),
 		ui: &mut ui,

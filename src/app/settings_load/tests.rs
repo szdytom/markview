@@ -92,7 +92,7 @@ fn styles_draw_feedback_before_work_and_refresh_without_losing_the_list() {
 	assert_eq!(app.preferences.fonts.view().choices.generation, 0);
 	app.action(Command::Styles);
 	let work = task(&tasks);
-	app.interaction.show_panel(PanelPage::Closed);
+	app.show_panel(PanelPage::Closed);
 	work.run();
 	app.settings_loaded(completion(&events));
 	assert!(

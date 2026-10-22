@@ -259,7 +259,7 @@ impl<P: super::SendEvent> App<P> {
 			let offset = chrome::tab_drawer::animated_rect(
 				width,
 				height,
-				self.interaction.tabs_reveal(),
+				self.tabs_reveal(),
 				self.preferences.values.tabs_width,
 			)
 			.x;
@@ -289,14 +289,67 @@ impl<P: super::SendEvent> App<P> {
 			None
 		}
 	}
+
+	/// Switches panel pages, retargeting the tab strip's drawer animation in
+	/// the owner that holds it.
+	fn switch_panel(
+		&mut self,
+		change: impl FnOnce(&mut crate::state::InteractionState),
+	) {
+		let was_tabs = self.interaction.panel == crate::state::PanelPage::Tabs;
+		change(&mut self.interaction);
+		self.tab_strip.animate(
+			self.interaction.panel == crate::state::PanelPage::Tabs,
+			was_tabs,
+		);
+	}
+
+	/// Changes pages without losing the parent form's scroll position.
+	pub(super) fn show_panel(&mut self, page: crate::state::PanelPage) {
+		self.switch_panel(|interaction| interaction.show_panel(page));
+	}
+
 	/// Opens or closes the settings page. The page clears its own offset and
 	/// preview when the host opens it.
 	pub(super) fn toggle_settings(&mut self) {
-		self.interaction.toggle_settings();
+		self.switch_panel(crate::state::InteractionState::toggle_settings);
 		if self.interaction.panel_open() {
 			self.preferences.reset_page();
 		}
 	}
+
+	pub(super) fn toggle_export(&mut self) {
+		self.switch_panel(crate::state::InteractionState::toggle_export);
+	}
+
+	pub(super) fn show_styles(&mut self, export: bool) {
+		self.switch_panel(|interaction| interaction.show_styles(export));
+	}
+
+	/// The tabs drawer's slide reveal; the tab strip owns the animation.
+	pub(super) fn tabs_reveal(&self) -> f32 {
+		self.tab_strip
+			.reveal(self.interaction.panel == crate::state::PanelPage::Tabs)
+	}
+
+	/// Advances the three drawer animations. Returns whether any was in
+	/// flight before this frame settled them.
+	pub(super) fn advance_drawers(&mut self, now: Instant) -> bool {
+		let active = self.drawer_deadline(now).is_some();
+		self.tab_strip.advance_animation(now);
+		self.interaction.overlays.outline.advance_animation(now);
+		self.folder.advance_animation(now);
+		active
+	}
+
+	/// The earliest frame one of the drawer animations needs.
+	pub(super) fn drawer_deadline(&self, now: Instant) -> Option<Instant> {
+		(self.tab_strip.animating()
+			|| self.interaction.overlays.outline.animating()
+			|| self.folder.animating())
+		.then_some(now + std::time::Duration::from_millis(16))
+	}
+
 	/// The offset and limit of whichever panel page scrolls, already clamped.
 	pub(super) fn panel_scroll_range(&mut self) -> Option<(f32, f32)> {
 		if let Some(form) = self.panel_form() {

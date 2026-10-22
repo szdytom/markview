@@ -29,7 +29,7 @@ fn app() -> App<Proxy> {
 		Proxy,
 	);
 	app.ui = crate::test_support::shaper();
-	app.interaction.show_panel(PanelPage::Export);
+	app.show_panel(PanelPage::Export);
 	app.interaction.widgets.focus =
 		Some(Command::FocusInput(TextField::ExportTitle).widget_id());
 	app.reveal_panel_focus();
@@ -58,7 +58,7 @@ fn slash_is_literal_text_in_export_and_search_inputs() {
 fn slash_followed_by_typing_starts_a_new_query() {
 	let mut app = app();
 	app.readers.session.path = Some("search.md".into());
-	app.interaction.show_panel(PanelPage::Closed);
+	app.show_panel(PanelPage::Closed);
 	app.readers
 		.session
 		.search
@@ -429,7 +429,7 @@ fn search_ime_defers_queries_enter_and_escape_until_composition_ends() {
 #[test]
 fn empty_page_url_input_accepts_text_and_submits_with_enter() {
 	let mut app = app();
-	app.interaction.show_panel(PanelPage::Closed);
+	app.show_panel(PanelPage::Closed);
 	app.args.offline = true;
 	let id = TextField::Url;
 	let rect = app.input_geometry(id).unwrap().0;
@@ -460,7 +460,7 @@ fn empty_page_url_input_accepts_text_and_submits_with_enter() {
 #[test]
 fn empty_page_link_button_and_focus_follow_page_visibility() {
 	let mut app = app();
-	app.interaction.show_panel(PanelPage::Closed);
+	app.show_panel(PanelPage::Closed);
 	app.args.offline = true;
 	assert!(
 		app.focus_buttons()
@@ -469,9 +469,9 @@ fn empty_page_link_button_and_focus_follow_page_visibility() {
 	);
 	app.action(Command::OpenUrl);
 	assert!(app.readers.session.path.is_none());
-	app.interaction.show_panel(PanelPage::Tabs);
+	app.show_panel(PanelPage::Tabs);
 	assert!(app.input_geometry(TextField::Url).is_none());
-	app.interaction.show_panel(PanelPage::Closed);
+	app.show_panel(PanelPage::Closed);
 	app.url_input
 		.set_text(&mut app.ui, "https://example.com/button");
 	app.action(Command::OpenUrl);

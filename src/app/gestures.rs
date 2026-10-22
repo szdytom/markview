@@ -254,7 +254,9 @@ impl<P: super::SendEvent> App<P> {
 		match surface {
 			Surface::Panel => self.cancel_panel_scroll(),
 			Surface::Folder => self.folder.scroll.cancel(),
-			Surface::Outline => self.interaction.outline_scroll.cancel(),
+			Surface::Outline => {
+				self.interaction.overlays.outline.cancel_scroll()
+			}
 			Surface::Tabs => self.tab_strip.scroll.cancel(),
 			Surface::None | Surface::Document | Surface::Overflow(..) => {}
 		}
@@ -392,7 +394,7 @@ impl<P: super::SendEvent> App<P> {
 			self.cancel_gestures();
 			if self.interaction.panel == PanelPage::Tabs {
 				self.action(Command::Tabs);
-			} else if !self.interaction.outline_open {
+			} else if !self.interaction.overlays.outline.open() {
 				self.action(Command::Outline);
 			}
 		} else if distance >= 64.0 && self.tab_strip.phone {
@@ -540,7 +542,9 @@ impl<P: super::SendEvent> App<P> {
 				self.readers.session.scrolling.offset,
 			),
 			Surface::Tabs => (self.tab_strip.scroll.offset(), 0.0),
-			Surface::Outline => (0.0, self.interaction.outline_scroll.offset()),
+			Surface::Outline => {
+				(0.0, self.interaction.overlays.outline.scroll_offset())
+			}
 			Surface::Folder => (0.0, self.folder.scroll.offset()),
 			Surface::Panel => (
 				0.0,

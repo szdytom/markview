@@ -162,8 +162,12 @@ source coordinate model.
 
 Panel navigation uses one `PanelPage` for closed, settings (general, styles or
 fonts), export and export styles. `InteractionState` owns transitions, clears
-transient input and preserves parent form offsets on page round trips. The
-outline and confirmation remain independent overlays.
+transient input and preserves parent form offsets on page round trips.
+`app::outline` owns the table-of-contents drawer as a component: its open flag,
+list offset, selected entry and slide animation. It remembers the offset and
+selection while closed, so reopening it shows the rows the reader left. The
+confirmation remains an independent overlay, and the tab strip and folder
+browser own their drawer animations.
 
 `app/font_panel` owns the font catalogue, filters, scroll, download progress,
 cancellation and notices, plus its view and typed commands. Chrome borrows one
