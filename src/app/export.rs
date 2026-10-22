@@ -74,12 +74,10 @@ pub(super) struct PngExport {
 }
 
 impl<P: super::SendEvent> App<P> {
-	/// Shows a transient status line; a zero `seconds` clears it.
+	/// Shows a transient status line; a zero `seconds` leaves it without a
+	/// deadline.
 	pub(super) fn notify(&mut self, message: &str, error: bool, seconds: u64) {
-		self.status = message.to_owned();
-		self.error = error;
-		self.status_until = (seconds > 0)
-			.then(|| Instant::now() + Duration::from_secs(seconds));
+		self.status.set(message, error, seconds);
 		self.redraw();
 	}
 
@@ -398,12 +396,13 @@ impl<P: super::SendEvent> App<P> {
 			rebuild,
 			plan,
 		});
-		self.status = self
-			.preferences
-			.values
-			.lang()
-			.status_exporting_png(0, self.tiles());
-		self.status_until = Some(Instant::now() + Duration::from_secs(3600));
+		self.status.set_timed(
+			self.preferences
+				.values
+				.lang()
+				.status_exporting_png(0, self.tiles()),
+			3600,
+		);
 		self.redraw();
 	}
 
@@ -460,13 +459,13 @@ impl<P: super::SendEvent> App<P> {
 		if job.next >= job.plan.tiles.len() {
 			self.finish_png_export(job);
 		} else {
-			self.status = self
-				.preferences
-				.values
-				.lang()
-				.status_exporting_png(job.next, job.plan.tiles.len());
-			self.status_until =
-				Some(Instant::now() + Duration::from_secs(3600));
+			self.status.set_timed(
+				self.preferences
+					.values
+					.lang()
+					.status_exporting_png(job.next, job.plan.tiles.len()),
+				3600,
+			);
 			self.png_export = Some(job);
 			self.redraw();
 		}

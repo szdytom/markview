@@ -275,7 +275,7 @@ fn cached_tab_refresh_defers_fragment_links_until_new_content_arrives() {
 			assert!(session.snapshot_complete);
 			assert_ne!(session.accepted_revision, session.content_version);
 			assert_eq!(session.pending_anchor.as_deref(), Some(anchor));
-			assert!(!h.app.error);
+			assert!(!h.app.status.is_error());
 			let deadline = Instant::now() + Duration::from_secs(10);
 			while h.app.readers.session.layout_pending {
 				let event = h
@@ -288,9 +288,9 @@ fn cached_tab_refresh_defers_fragment_links_until_new_content_arrives() {
 			}
 			assert!(h.app.readers.session.pending_anchor.is_none());
 			if anchor == "missing" {
-				assert!(h.app.error);
+				assert!(h.app.status.is_error());
 			} else {
-				assert!(!h.app.error);
+				assert!(!h.app.status.is_error());
 				let viewport = h.app.viewport();
 				let session = &mut h.app.readers.session;
 				let y = session.snapshot.anchor_y(anchor).unwrap().clamp(
@@ -773,7 +773,7 @@ fn folder_open_navigation_links_and_refresh_use_the_native_reader() {
 	h.wait_images(0);
 	h.app.apply_anchor();
 	assert!(h.app.readers.session.pending_anchor.is_none());
-	assert!(!h.app.error);
+	assert!(!h.app.status.is_error());
 	assert_eq!(h.app.readers.entries().len(), 2);
 	assert_eq!(
 		h.app.readers.session.path.as_ref(),
@@ -1087,7 +1087,7 @@ fn folder_wikilinks_open_literal_percent_names_even_with_a_decoded_match() {
 			Some(root.join(name)),
 			"{source}"
 		);
-		assert!(!h.app.error, "{source}");
+		assert!(!h.app.status.is_error(), "{source}");
 		assert!(h.app.readers.session.pending_anchor.is_none(), "{source}");
 	}
 }
@@ -1122,7 +1122,7 @@ fn reveal_folder_opens_the_active_document_directory_externally() {
 	};
 	let mut h = Harness::new();
 	h.app.action(Command::RevealFolder);
-	assert!(h.app.error);
+	assert!(h.app.status.is_error());
 	assert!(!std::path::Path::new(&output).exists());
 	let nested = h.dir.path().join("nested notes #1");
 	fs::create_dir(&nested).unwrap();

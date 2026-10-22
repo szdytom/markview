@@ -9,7 +9,7 @@
 //! `fnback:` fragment is answered here from where the reader jumped from.
 use super::App;
 use markview_document::footnote;
-use std::time::{Duration, Instant};
+use std::time::Instant;
 
 /// A link's document part, without its fragment.
 pub(super) fn link_target(link: &str) -> &str {
@@ -71,9 +71,7 @@ impl<P: super::SendEvent> App<P> {
 			} else {
 				self.readers.session.scrolling.offset = to;
 			}
-			self.error = false;
 			self.status.clear();
-			self.status_until = None;
 			self.after_scroll();
 			return;
 		}
@@ -109,20 +107,18 @@ impl<P: super::SendEvent> App<P> {
 					self.readers.session.scrolling.offset = before;
 					self.readers.session.animate_scroll_to(to, Instant::now());
 				}
-				self.error = false;
 				self.status.clear();
-				self.status_until = None;
 				self.after_scroll();
 			}
 			Err(anchor) => {
-				self.error = true;
-				self.status = self
-					.preferences
-					.values
-					.lang()
-					.status_heading_not_found(anchor);
-				self.status_until =
-					Some(Instant::now() + Duration::from_secs(4));
+				self.status.set(
+					self.preferences
+						.values
+						.lang()
+						.status_heading_not_found(anchor),
+					true,
+					4,
+				);
 			}
 		}
 		self.redraw();

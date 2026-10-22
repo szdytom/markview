@@ -821,15 +821,16 @@ impl<P: super::SendEvent> App<P> {
 
 	fn redraw_event(&mut self, event_loop: &impl Loop) {
 		if let Err(e) = self.render(event_loop) {
-			self.error = true;
-			self.status = self
+			let message = self
 				.preferences
 				.values
 				.lang()
 				.status_rendering_failed(format!("{e:#}"));
-			error!("{}", self.status);
+			self.status.set_error(true);
+			self.status.set_message(message.clone());
+			error!("{message}");
 			if self.args.mode == Mode::Smoke {
-				self.fatal = Some(self.status.clone());
+				self.fatal = Some(message);
 				event_loop.exit();
 			}
 		}

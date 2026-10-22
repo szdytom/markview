@@ -1,10 +1,7 @@
 use crate::state::Selection;
 use crate::{link, state};
 use markview_document::footnote;
-use std::{
-	path::PathBuf,
-	time::{Duration, Instant},
-};
+use std::{path::PathBuf, time::Instant};
 use winit::{event::MouseScrollDelta, window::CursorIcon};
 
 use super::{App, LINE_STEP, anchor, chrome};
@@ -508,11 +505,11 @@ impl<P: super::SendEvent> App<P> {
 				self.redraw();
 			}
 			None => {
-				self.error = true;
-				self.status =
-					self.preferences.values.lang().status_not_opened(url);
-				self.status_until =
-					Some(Instant::now() + Duration::from_secs(4));
+				self.status.set(
+					self.preferences.values.lang().status_not_opened(url),
+					true,
+					4,
+				);
 				self.redraw();
 			}
 		}
@@ -548,16 +545,12 @@ impl<P: super::SendEvent> App<P> {
 
 	/// Hands an already-approved target to the operating system.
 	pub(super) fn launch(&mut self, target: &str) {
-		self.error = false;
 		let lang = self.preferences.values.lang();
-		self.status = match markview_platform::open_external(target) {
-			Ok(()) => lang.status_opened(target),
-			Err(error) => {
-				self.error = true;
-				lang.status_cannot_open(target, error)
-			}
+		let (message, error) = match markview_platform::open_external(target) {
+			Ok(()) => (lang.status_opened(target), false),
+			Err(error) => (lang.status_cannot_open(target, error), true),
 		};
-		self.status_until = Some(Instant::now() + Duration::from_secs(4));
+		self.status.set(message, error, 4);
 		self.redraw();
 	}
 

@@ -356,7 +356,7 @@ impl<P: super::SendEvent> App<P> {
 							}
 							self.interaction.selection = rebased;
 						}
-						self.error = false;
+						self.status.set_error(false);
 						self.readers.session.load_error = None;
 						self.readers.session.displayed_version = update.version;
 						if complete && self.readers.session.select_all_pending {
@@ -368,7 +368,7 @@ impl<P: super::SendEvent> App<P> {
 						}
 						self.refresh_hover();
 						let lang = self.preferences.values.lang();
-						self.status = if !complete {
+						let message = if !complete {
 							lang.footer_loading().to_owned()
 						} else if self.readers.session.snapshot.math_errors > 0
 						{
@@ -378,6 +378,7 @@ impl<P: super::SendEvent> App<P> {
 						} else {
 							String::new()
 						};
+						self.status.set_message(message);
 						self.apply_anchor();
 						self.search_tick();
 						self.apply_search_navigation();
@@ -410,10 +411,13 @@ impl<P: super::SendEvent> App<P> {
 						self.readers.session.pending_anchor = None;
 						self.readers.session.select_all_pending = false;
 						self.readers.session.cancel_scroll_animation();
-						self.error = true;
-						self.status = error;
-						if self.args.mode == Mode::Smoke {
-							self.fatal = Some(self.status.clone());
+						let smoke = self.args.mode == Mode::Smoke;
+						if smoke {
+							self.fatal = Some(error.clone());
+						}
+						self.status.set_error(true);
+						self.status.set_message(error);
+						if smoke {
 							event_loop.exit();
 						}
 					}
@@ -524,10 +528,8 @@ impl<P: super::SendEvent> App<P> {
 		// One PNG strip per frame keeps the window responsive and the status
 		// line counting; the draw requests the next frame while work remains.
 		self.advance_png_export();
-		if self.status_until.is_some_and(|until| until <= now) {
-			self.status_until = None;
+		if self.status.deadline().is_some_and(|until| until <= now) {
 			self.status.clear();
-			self.error = false;
 			self.redraw();
 		}
 		if self.preferences.save_deadline().is_some_and(|d| d <= now) {
@@ -585,7 +587,7 @@ impl<P: super::SendEvent> App<P> {
 			.chain(self.retry_at)
 			.chain(self.prewarm_at)
 			.chain(self.watch_at)
-			.chain(self.status_until)
+			.chain(self.status.deadline())
 			.chain(self.preferences.save_deadline())
 			.chain(self.persistence.deadline)
 			.chain(self.interaction.drag_at)

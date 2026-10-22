@@ -28,10 +28,11 @@ impl<P: super::SendEvent> App<P> {
 			} else {
 				self.readers.session.coverage(self.viewport())
 			};
-			self.error = false;
-			self.status_until = None;
-			self.status =
-				self.preferences.values.lang().status_updating().into();
+			self.status.set(
+				self.preferences.values.lang().status_updating(),
+				false,
+				0,
+			);
 			self.worker.submit(request);
 			self.redraw();
 		}
@@ -156,8 +157,8 @@ impl<P: super::SendEvent> App<P> {
 		self.readers.session.security = security;
 		self.readers.session.web_loading = web_loading;
 		self.readers.session.layout_pending = true;
-		self.error = false;
-		self.status.clear();
+		self.status.clear_message();
+		self.status.set_error(false);
 		self.interaction.clear_selection();
 		if web_loading {
 			self.watch = None;
@@ -185,9 +186,7 @@ impl<P: super::SendEvent> App<P> {
 		self.interaction.clear_selection();
 		self.interaction.outline_open = false;
 		self.interaction.show_panel(crate::state::PanelPage::Closed);
-		self.error = false;
 		self.status.clear();
-		self.status_until = None;
 		if let Some(window) = &self.window {
 			window.set_title("Markview");
 		}
@@ -213,9 +212,7 @@ impl<P: super::SendEvent> App<P> {
 			self.worker.cancel();
 			self.close_search();
 			self.search_changed();
-			self.error = false;
 			self.status.clear();
-			self.status_until = None;
 			self.resume_document();
 		}
 		// The tree follows the clicked tab, so a collapsed branch cannot
@@ -275,9 +272,7 @@ impl<P: super::SendEvent> App<P> {
 		self.interaction.clear_selection();
 		self.close_search();
 		self.search_changed();
-		self.error = false;
 		self.status.clear();
-		self.status_until = None;
 		if !self.readers.entries().is_empty()
 			&& self.readers.session.path.is_some()
 		{

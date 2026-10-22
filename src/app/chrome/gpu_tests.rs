@@ -1114,6 +1114,7 @@ fn previewing_recedes_the_styles_and_fonts_pages() {
 					settings_preview: preview,
 					..Default::default()
 				};
+				let status = crate::app::status::Status::default();
 				let mut chrome = Chrome {
 					folder: None,
 					frame: crate::app::frame::Layout::new(
@@ -1160,9 +1161,7 @@ fn previewing_recedes_the_styles_and_fonts_pages() {
 					height,
 					scrollbar: None,
 					warning: None,
-					status: "",
-					status_until: None,
-					error: false,
+					status: &status,
 					hover_hint: None,
 					remote_notice: None,
 					watching: false,
@@ -1273,6 +1272,7 @@ fn the_fonts_page_draws_its_open_option_list() {
 		0,
 	));
 	let chrome_tabs: Vec<ReaderTab> = Vec::new();
+	let status = crate::app::status::Status::default();
 	let mut chrome = Chrome {
 		folder: None,
 		frame: crate::app::frame::Layout::new(
@@ -1318,9 +1318,7 @@ fn the_fonts_page_draws_its_open_option_list() {
 		height,
 		scrollbar: None,
 		warning: None,
-		status: "",
-		status_until: None,
-		error: false,
+		status: &status,
 		hover_hint: None,
 		remote_notice: None,
 		watching: false,
@@ -1376,6 +1374,7 @@ fn dismissed_pages_stop_drawing_and_answering_pointers() {
 			_ => PanelPage::Export,
 		});
 		interaction.show_panel(PanelPage::Closed);
+		let status = crate::app::status::Status::default();
 		let mut chrome = Chrome {
 			folder: None,
 			frame: crate::app::frame::Layout::new(
@@ -1421,9 +1420,7 @@ fn dismissed_pages_stop_drawing_and_answering_pointers() {
 			height,
 			scrollbar: None,
 			warning: None,
-			status: "",
-			status_until: None,
-			error: false,
+			status: &status,
 			hover_hint: None,
 			remote_notice: None,
 			watching: false,
@@ -1819,6 +1816,8 @@ fn redesigned_chrome_frames() -> Result<()> {
 					} else {
 						Vec::new()
 					};
+					let mut status = crate::app::status::Status::default();
+					status.set("File not found", page == "error", 0);
 					let mut chrome = Chrome {
 						folder: None,
 						frame,
@@ -1870,9 +1869,7 @@ fn redesigned_chrome_frames() -> Result<()> {
 						height,
 						scrollbar: None,
 						warning: None,
-						status: "File not found",
-						status_until: None,
-						error: page == "error",
+						status: &status,
 						hover_hint: None,
 						remote_notice: (page == "notice").then_some(37),
 						watching: false,

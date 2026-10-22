@@ -485,12 +485,13 @@ impl<P: SendEvent> App<P> {
 				self.request(false);
 			}
 			Err(error) => {
-				self.status = self
-					.preferences
-					.values
-					.lang()
-					.folder_error(error.to_string());
-				self.error = true;
+				self.status.set_message(
+					self.preferences
+						.values
+						.lang()
+						.folder_error(error.to_string()),
+				);
+				self.status.set_error(true);
 			}
 		}
 		self.refresh_hover();

@@ -207,9 +207,7 @@ pub(super) struct Chrome<'a> {
 	pub(super) height: f32,
 	pub(super) scrollbar: Option<Scrollbar>,
 	pub(super) warning: Option<std::borrow::Cow<'a, str>>,
-	pub(super) status: &'a str,
-	pub(super) status_until: Option<Instant>,
-	pub(super) error: bool,
+	pub(super) status: &'a super::status::Status,
 	/// The footer's hover hint: a link target, or an image title.
 	pub(super) hover_hint: Option<&'a str>,
 	/// Number of remote image sources the loader deferred, if any.
@@ -236,14 +234,11 @@ impl<'a> Chrome<'a> {
 		}
 	}
 
-	/// The footer's trailing label: a timed status, a hover hint, or — when
+	/// The footer's trailing label: a live status, a hover hint, or — when
 	/// enabled — the open document's absolute path.
 	fn secondary(&self) -> std::borrow::Cow<'a, str> {
-		if self
-			.status_until
-			.is_some_and(|until| until > Instant::now())
-		{
-			self.status.into()
+		if let Some(status) = self.status.current(Instant::now()) {
+			status.into()
 		} else if let Some(hint) = self.hover_hint {
 			hint.into()
 		} else {
@@ -255,9 +250,7 @@ impl<'a> Chrome<'a> {
 	/// press on the absolute path copies it, so the label is its own hit target.
 	fn path_button(&mut self) -> Option<Button> {
 		if self.session.search.open
-			|| self
-				.status_until
-				.is_some_and(|until| until > Instant::now())
+			|| self.status.current(Instant::now()).is_some()
 			|| self.hover_hint.is_some()
 		{
 			return None;
@@ -701,15 +694,12 @@ impl<'a> Chrome<'a> {
 				self.settings.lang(),
 			));
 		}
-		let warning = if self.error
-			&& self
-				.status_until
-				.is_none_or(|until| until <= Instant::now())
-		{
-			Some(self.status)
-		} else {
-			self.warning.as_deref()
-		};
+		// A failure that outlived its deadline takes the warning strip; a
+		// live line trails the counts instead.
+		let warning = self
+			.status
+			.warning(Instant::now())
+			.or(self.warning.as_deref());
 		if !self.session.search.open {
 			let secondary = self.secondary();
 			let inset = self.footer_inset();

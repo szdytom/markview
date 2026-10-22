@@ -56,6 +56,14 @@ so the active tab previews its title and path only. No screenshot or texture is
 cached between frames; a new target only adds a `Target` arm and its card
 content.
 
+The transient status line is owned by `app/status.rs::Status`, which holds the
+message, the error bit and the expiry deadline. The footer asks it for both
+lines: `current` returns the trailing message while its deadline is live, and
+`warning` returns a failure that outlived its deadline. A message-only write
+keeps the deadline it found, so replacing a live line does not shorten it.
+Other modules write only through the owner's methods; none of them touches the
+fields.
+
 `UiLayout` supplies visible controls, keyboard traversal and the measured form.
 Painting uses these placed control rectangles; the same clipped rectangles answer
 pointer input. A scrolling form keeps offscreen controls in keyboard order and

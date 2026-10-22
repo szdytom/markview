@@ -35,8 +35,18 @@ const STRUCTS: &[(&str, &str)] = &[
 /// Fields whose direct production writes the baseline ratchets.
 ///
 /// A name may be a path (for example `status.message`); a write site is an
-/// assignment whose accessed field chain contains that path.
-const WRITERS: &[&str] = &["status", "modal", "dropdown", "viewer"];
+/// assignment whose accessed field chain contains that path. `Status` owns its
+/// three fields, so the status observation names them instead of the whole
+/// `App.status`: the owner's `set`/`clear` calls from other modules are the
+/// sanctioned path, while a direct `self.status.<field>` write still counts.
+const WRITERS: &[&str] = &[
+	"status.message",
+	"status.error",
+	"status.until",
+	"modal",
+	"dropdown",
+	"viewer",
+];
 
 const TOP_FUNCTIONS: usize = 20;
 
@@ -791,7 +801,7 @@ mod tests {
 	#[test]
 	fn counts_assignments_and_clear_calls_but_not_comparisons_or_other_methods()
 	{
-		let audit = analyze_source(
+		let audit = analyze_with(
 			"src/app.rs",
 			r#"
 			impl App {
@@ -816,6 +826,7 @@ mod tests {
 			}
 		"#,
 			&[],
+			&["status", "modal", "dropdown", "viewer"],
 		);
 		assert_eq!(audit.writer("status"), (1, 2));
 		assert_eq!(audit.writer("modal"), (1, 2));
@@ -838,13 +849,34 @@ mod tests {
 		"#,
 			&[],
 		);
-		assert_eq!(audit.writer("status"), (1, 2));
+		assert_eq!(audit.writer("status.error"), (1, 1));
+		assert_eq!(audit.writer("status.message"), (1, 1));
+		assert_eq!(audit.writer("status.until"), (0, 0));
+	}
+
+	#[test]
+	fn the_status_observation_ignores_clears_and_catches_a_field_write() {
+		let audit = analyze_source(
+			"src/app.rs",
+			r#"
+			impl App {
+				fn update(&mut self) {
+					self.status.clear();
+					self.status.set("Saved", false, 3);
+					self.status.error = true;
+				}
+			}
+		"#,
+			&[],
+		);
+		assert_eq!(audit.writer("status.error"), (1, 1));
+		assert_eq!(audit.writer("status.message"), (0, 0));
 	}
 
 	#[test]
 	fn excludes_test_modules_test_items_and_nested_closures_are_outer_touches()
 	{
-		let audit = analyze_source(
+		let audit = analyze_with(
 			"src/app.rs",
 			r#"
 			struct App { status: String, modal: Option<()> }
@@ -876,6 +908,7 @@ mod tests {
 			}
 		"#,
 			&["Open"],
+			&["status", "modal"],
 		);
 		assert_eq!(audit.writer("status"), (1, 1));
 		assert_eq!(audit.command_references, 0);

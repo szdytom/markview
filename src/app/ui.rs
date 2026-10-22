@@ -226,8 +226,6 @@ impl<P: super::SendEvent> App<P> {
 			scrollbar,
 			warning,
 			status: &self.status,
-			status_until: self.status_until,
-			error: self.error,
 			hover_hint,
 			remote_notice,
 			watching: self.watch_export.is_some(),

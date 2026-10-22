@@ -621,21 +621,19 @@ impl<P: super::SendEvent> App<P> {
 		};
 		match self.clipboard.write(text) {
 			Ok(()) => {
-				self.status = self
-					.preferences
-					.values
-					.lang()
-					.status_copied_selection()
-					.into();
-				self.error = false;
+				self.status.set_message(
+					self.preferences.values.lang().status_copied_selection(),
+				);
+				self.status.set_error(false);
 			}
 			Err(e) => {
-				self.status = self
-					.preferences
-					.values
-					.lang()
-					.status_copy_failed(e.to_string());
-				self.error = true;
+				self.status.set_message(
+					self.preferences
+						.values
+						.lang()
+						.status_copy_failed(e.to_string()),
+				);
+				self.status.set_error(true);
 			}
 		}
 		self.redraw();
@@ -644,14 +642,14 @@ impl<P: super::SendEvent> App<P> {
 		let text = match self.clipboard.read() {
 			Ok(text) => text,
 			Err(error) => {
-				self.status = self
-					.preferences
-					.values
-					.lang()
-					.status_clipboard_unreadable(error.to_string());
-				self.error = true;
-				self.status_until =
-					Some(Instant::now() + Duration::from_secs(3));
+				self.status.set(
+					self.preferences
+						.values
+						.lang()
+						.status_clipboard_unreadable(error.to_string()),
+					true,
+					3,
+				);
 				self.redraw();
 				return;
 			}
@@ -684,13 +682,14 @@ impl<P: super::SendEvent> App<P> {
 			crate::paste::title_for(text, self.preferences.values.lang());
 		let path = self.temporary_path(&title);
 		if let Err(error) = std::fs::write(&path, text) {
-			self.status = self
-				.preferences
-				.values
-				.lang()
-				.status_paste_failed(error.to_string());
-			self.error = true;
-			self.status_until = Some(Instant::now() + Duration::from_secs(3));
+			self.status.set(
+				self.preferences
+					.values
+					.lang()
+					.status_paste_failed(error.to_string()),
+				true,
+				3,
+			);
 			self.redraw();
 			return None;
 		}

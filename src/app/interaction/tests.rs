@@ -336,7 +336,10 @@ fn an_idle_footer_names_the_document_and_offers_its_whole_path() {
 		"the footer path is off by default"
 	);
 	app.action(Command::CopyPath);
-	assert!(app.status.is_empty(), "the disabled path copies nothing");
+	assert!(
+		app.status.message().is_empty(),
+		"the disabled path copies nothing"
+	);
 	app.preferences.values.footer_path = true;
 	let found =
 		path_button(&mut app).expect("an idle footer with a document names it");
@@ -352,21 +355,19 @@ fn an_idle_footer_names_the_document_and_offers_its_whole_path() {
 	});
 	assert!(path_button(&mut app).is_none());
 	app.interaction.hover = None;
-	app.status = "Copied selection".into();
-	app.status_until = Some(Instant::now() + Duration::from_secs(3));
+	app.status.set("Copied selection", false, 3);
 	assert!(path_button(&mut app).is_none());
 
 	// A session with no document shows nothing, so there is nothing to copy.
 	app.status.clear();
-	app.status_until = None;
 	app.readers.session.path = None;
 	assert!(path_button(&mut app).is_none());
 	app.action(Command::CopyPath);
-	assert!(app.status.is_empty());
+	assert!(app.status.message().is_empty());
 
 	app.readers.session.path = Some(path);
 	app.action(Command::CopyPath);
-	assert!(!app.status.is_empty());
+	assert!(!app.status.message().is_empty());
 }
 
 #[test]

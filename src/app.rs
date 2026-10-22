@@ -29,6 +29,7 @@ mod settings_load;
 mod settings_panel;
 pub(crate) mod sidebar;
 mod single_instance;
+mod status;
 mod style_edit;
 mod surface;
 mod tab_metrics;
@@ -279,9 +280,7 @@ struct App<P = EventLoopProxy<Event>> {
 	paste_serial: u32,
 	/// A temporary document path, or `None` while its URL is downloading.
 	web_pages: std::collections::HashMap<String, PathBuf>,
-	status: String,
-	status_until: Option<Instant>,
-	error: bool,
+	status: status::Status,
 	dialog_open: bool,
 	reflow_at: Option<Instant>,
 	retry_at: Option<Instant>,
@@ -431,9 +430,7 @@ impl<P: SendEvent> App<P> {
 				.expect("create clipboard paste directory"),
 			paste_serial: 0,
 			web_pages: Default::default(),
-			status: String::new(),
-			status_until: None,
-			error: false,
+			status: status::Status::default(),
 			dialog_open: false,
 			reflow_at: None,
 			retry_at: None,

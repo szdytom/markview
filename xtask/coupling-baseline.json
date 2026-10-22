@@ -3,8 +3,8 @@
     "variants": 80
   },
   "structs": {
-    "App": 57,
-    "Chrome": 30,
+    "App": 55,
+    "Chrome": 28,
     "Config": 26,
     "InteractionState": 33,
     "Markview": 35,
@@ -20,9 +20,17 @@
       "files": 5,
       "sites": 10
     },
-    "status": {
-      "files": 8,
-      "sites": 22
+    "status.error": {
+      "files": 0,
+      "sites": 0
+    },
+    "status.message": {
+      "files": 0,
+      "sites": 0
+    },
+    "status.until": {
+      "files": 0,
+      "sites": 0
     },
     "viewer": {
       "files": 3,

@@ -81,7 +81,7 @@ impl<P: super::SendEvent> App<P> {
 			"dimensions":self.dimensions(), "insets":self.insets(),
 			"search_open":session.search.open, "matches":session.search.matches.len(),
 			"backend":self.renderer.as_ref().map(|r|format!("{:?}",r.backend)),
-			"status":self.status
+			"status":self.status.message()
 		});
 		snapshot["sidebar_tab"] =
 			format!("{:?}", self.interaction.sidebar_tab).into();
