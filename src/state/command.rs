@@ -148,6 +148,22 @@ pub(crate) enum SearchCommand {
 }
 
 impl Command {
+	/// The flat spelling the external debug snapshot has always exposed.
+	///
+	/// The domain enums are an implementation detail there: `Fonts` was
+	/// already a flat variant before the split, so it keeps its prefix.
+	#[cfg(any(debug_assertions, test))]
+	pub(crate) fn debug_name(self) -> String {
+		match self {
+			Self::Document(command) => format!("{command:?}"),
+			Self::Settings(command) => format!("{command:?}"),
+			Self::Export(command) => format!("{command:?}"),
+			Self::Chrome(command) => format!("{command:?}"),
+			Self::Search(command) => format!("{command:?}"),
+			Self::Fonts(command) => format!("Fonts({command:?})"),
+		}
+	}
+
 	pub(crate) fn widget_id(self) -> WidgetId {
 		let domain = std::mem::discriminant(&self);
 		match self {
@@ -237,5 +253,67 @@ impl ChromeCommand {
 impl SearchCommand {
 	fn widget_id(self, domain: &std::mem::Discriminant<Command>) -> WidgetId {
 		crate::app::widgets::identity(domain, &self, format!("{self:?}"))
+	}
+}
+
+#[cfg(test)]
+mod tests {
+	use super::*;
+
+	/// The strings below are the pre-split `Debug` spellings the Android
+	/// harness matches, so a new domain must not change them.
+	#[test]
+	fn debug_names_keep_the_flat_pre_split_spelling() {
+		assert_eq!(
+			Command::Document(DocumentCommand::Outline).debug_name(),
+			"Outline"
+		);
+		assert_eq!(
+			Command::Document(DocumentCommand::OpenUrl).debug_name(),
+			"OpenUrl"
+		);
+		assert_eq!(
+			Command::Chrome(ChromeCommand::Settings).debug_name(),
+			"Settings"
+		);
+		assert_eq!(
+			Command::Chrome(ChromeCommand::FocusInput(TextField::Url))
+				.debug_name(),
+			"FocusInput(Url)"
+		);
+		assert_eq!(
+			Command::Settings(SettingsCommand::TabStyle(
+				crate::settings::TabStyle::Underline
+			))
+			.debug_name(),
+			"TabStyle(Underline)"
+		);
+		assert_eq!(
+			Command::Search(SearchCommand::SearchNext).debug_name(),
+			"SearchNext"
+		);
+		assert_eq!(
+			Command::Export(ExportCommand::Export).debug_name(),
+			"Export"
+		);
+		assert_eq!(
+			Command::Fonts(font_panel::Command::Choosers).debug_name(),
+			"Fonts(Choosers)"
+		);
+		assert_eq!(
+			Command::Fonts(font_panel::Command::OpenFolder).debug_name(),
+			"Fonts(OpenFolder)"
+		);
+		let id = DropdownId::TabStyle;
+		assert_eq!(
+			Command::Chrome(ChromeCommand::ToggleDropdown(id, 2)).debug_name(),
+			format!("ToggleDropdown({id:?}, 2)")
+		);
+		let font = DropdownId::Font(crate::settings::FontRole::Serif);
+		assert_eq!(
+			Command::Chrome(ChromeCommand::ToggleDropdown(font, 2))
+				.debug_name(),
+			"ToggleDropdown(Font(Serif), 2)"
+		);
 	}
 }

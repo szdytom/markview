@@ -33,7 +33,7 @@ impl<P: super::SendEvent> App<P> {
 			.into_iter()
 			.map(|b| {
 				serde_json::json!({
-					"action": format!("{:?}", b.action), "enabled": b.enabled,
+					"action": b.action.debug_name(), "enabled": b.enabled,
 					"x": b.rect.x, "y": b.rect.y, "w": b.rect.w, "h": b.rect.h
 				})
 			})
