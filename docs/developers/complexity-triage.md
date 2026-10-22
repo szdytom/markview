@@ -2,7 +2,7 @@
 
 The original `artifacts/complexity-triage.csv` lists 83 functions and closures above the maximum of 15. The table records their disposition in commit order, from low-risk local changes to larger coupled pipelines. Each item has its own formatted, linted and tested commit.
 
-64 entries were refactored and 19 retain explicit function-level exceptions. The window-event extraction also marks three stateful input handlers, giving 22 measured exceptions in the completed source tree. Reasons live beside the functions and are printed by the audit; neither modules nor nested functions inherit an exception.
+64 entries were refactored and 19 retain explicit function-level exceptions. The window-event extraction also marks three stateful input handlers, and the settings field mapping adds `copy_field`, giving 23 measured exceptions in the completed source tree. Reasons live beside the functions and are printed by the audit; neither modules nor nested functions inherit an exception.
 
 Run `cargo run -p xtask --locked -- complexity` to audit every production workspace target and platform module. Tests, test support, examples and benchmarks are excluded; macro bodies are not expanded. CI runs this command unconditionally in the checks matrix and its failure propagates to the aggregate `ci` job.
 

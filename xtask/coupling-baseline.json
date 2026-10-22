@@ -1,0 +1,32 @@
+{
+  "commands": {
+    "variants": 80
+  },
+  "structs": {
+    "App": 57,
+    "Chrome": 30,
+    "Config": 26,
+    "InteractionState": 33,
+    "Markview": 35,
+    "ReaderSession": 33,
+    "ReaderSettings": 25
+  },
+  "writers": {
+    "dropdown": {
+      "files": 4,
+      "sites": 8
+    },
+    "modal": {
+      "files": 5,
+      "sites": 10
+    },
+    "status": {
+      "files": 8,
+      "sites": 22
+    },
+    "viewer": {
+      "files": 3,
+      "sites": 4
+    }
+  }
+}

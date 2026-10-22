@@ -29,14 +29,35 @@ impl Function {
 
 type Module = (PathBuf, PathBuf);
 
+/// A production workspace source file and its parsed syntax tree.
+pub(crate) struct Source {
+	pub path: PathBuf,
+	pub syntax: syn::File,
+}
+
+/// The counts printed by one complexity pass.
+#[derive(Clone, Copy)]
+pub(crate) struct Summary {
+	pub reports: usize,
+	pub functions: usize,
+	pub exemptions: usize,
+}
+
 pub fn run() -> Result<()> {
-	let root = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-		.parent()
-		.unwrap()
-		.to_owned();
+	let summary = audit(true)?;
+	ensure!(summary.reports == 0, "cyclomatic complexity check failed");
+	Ok(())
+}
+
+/// Audits the workspace without printing the individual findings.
+pub(crate) fn summary() -> Result<Summary> {
+	audit(false)
+}
+
+fn audit(verbose: bool) -> Result<Summary> {
 	let output = Command::new("cargo")
 		.args(["metadata", "--no-deps", "--format-version=1", "--locked"])
-		.current_dir(&root)
+		.current_dir(workspace_root())
 		.output()?;
 	ensure!(
 		output.status.success(),
@@ -47,28 +68,24 @@ pub fn run() -> Result<()> {
 	let limit = metadata["metadata"]["lint"]["cyclomatic-complexity-threshold"]
 		.as_u64()
 		.unwrap() as usize;
-	let mut pending = targets(&metadata);
-	let mut seen = BTreeSet::new();
+	let (root, sources) = workspace_sources()?;
 	let mut reports = Vec::new();
 	let mut exemptions = Vec::new();
 	let mut functions = 0;
-	while let Some((path, directory)) = pending.pop() {
-		if !seen.insert(path.clone()) {
-			continue;
-		}
-		let measured = measure(&path, directory, &mut pending)?;
+	for source in &sources {
+		let measured = measure(&source.path, &source.syntax, &mut Vec::new())?;
 		functions += measured.len();
 		for function in measured {
 			if function.exceeds(limit) {
 				reports.push((
-					path.strip_prefix(&root)?.to_owned(),
+					source.path.strip_prefix(&root)?.to_owned(),
 					function.line,
 					function.name,
 					function.score,
 				));
 			} else if let Some(reason) = function.exemption {
 				exemptions.push((
-					path.strip_prefix(&root)?.to_owned(),
+					source.path.strip_prefix(&root)?.to_owned(),
 					function.line,
 					function.name,
 					function.score,
@@ -78,48 +95,147 @@ pub fn run() -> Result<()> {
 		}
 	}
 	reports.sort();
-	for (path, line, name, score) in &reports {
-		println!(
-			"{}:{line}: {name}: cyclomatic complexity {score} > {limit}",
-			path.display()
-		);
-	}
 	exemptions.sort();
-	for (path, line, name, score, reason) in &exemptions {
+	if verbose {
+		for (path, line, name, score) in &reports {
+			println!(
+				"{}:{line}: {name}: cyclomatic complexity {score} > {limit}",
+				path.display()
+			);
+		}
+		for (path, line, name, score, reason) in &exemptions {
+			println!(
+				"{}:{line}: {name}: cyclomatic complexity {score}; exempt: {reason}",
+				path.display()
+			);
+		}
 		println!(
-			"{}:{line}: {name}: cyclomatic complexity {score}; exempt: {reason}",
-			path.display()
+			"{} reports / {functions} functions and closures; {} exemptions; maximum allowed: {limit}",
+			reports.len(),
+			exemptions.len()
 		);
 	}
-	println!(
-		"{} reports / {functions} functions and closures; {} exemptions; maximum allowed: {limit}",
-		reports.len(),
-		exemptions.len()
+	Ok(Summary {
+		reports: reports.len(),
+		functions,
+		exemptions: exemptions.len(),
+	})
+}
+
+fn workspace_root() -> PathBuf {
+	PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+		.parent()
+		.unwrap()
+		.to_owned()
+}
+
+/// Parses every production workspace target and its reachable modules.
+///
+/// Test-only targets and modules are skipped, as are test-only items at the
+/// root of a file. Inline test modules remain in the returned syntax tree;
+/// consumers visit items through [`test_only`] to exclude them.
+pub(crate) fn workspace_sources() -> Result<(PathBuf, Vec<Source>)> {
+	let root = workspace_root();
+	let output = Command::new("cargo")
+		.args(["metadata", "--no-deps", "--format-version=1", "--locked"])
+		.current_dir(&root)
+		.output()?;
+	ensure!(
+		output.status.success(),
+		"cargo metadata: {}",
+		String::from_utf8_lossy(&output.stderr)
 	);
-	if !reports.is_empty() {
-		bail!("cyclomatic complexity check failed");
+	let metadata: serde_json::Value = serde_json::from_slice(&output.stdout)?;
+	let mut pending = targets(&metadata);
+	let mut seen = BTreeSet::new();
+	let mut sources = Vec::new();
+	while let Some((path, directory)) = pending.pop() {
+		if !seen.insert(path.clone()) {
+			continue;
+		}
+		let source = fs::read_to_string(&path)
+			.with_context(|| path.display().to_string())?;
+		let syntax = syn::parse_file(&source)
+			.with_context(|| path.display().to_string())?;
+		discover(&syntax, directory, &mut pending);
+		if !test_only(&syntax.attrs) {
+			sources.push(Source { path, syntax });
+		}
 	}
-	Ok(())
+	Ok((root, sources))
+}
+
+fn discover(syntax: &syn::File, directory: PathBuf, pending: &mut Vec<Module>) {
+	let mut discover = Discover { directory, pending };
+	discover.visit_file(syntax);
+}
+
+/// Collects external modules without scoring anything.
+struct Discover<'a> {
+	directory: PathBuf,
+	pending: &'a mut Vec<Module>,
+}
+
+impl<'ast> Visit<'ast> for Discover<'_> {
+	fn visit_item_mod(&mut self, module: &'ast syn::ItemMod) {
+		if test_only(&module.attrs) {
+			return;
+		}
+		if let Some((_, items)) = &module.content {
+			let directory = self.directory.join(module.ident.to_string());
+			let previous = std::mem::replace(&mut self.directory, directory);
+			for item in items {
+				self.visit_item(item);
+			}
+			self.directory = previous;
+		} else {
+			self.pending.push(external_module(&self.directory, module));
+		}
+	}
+}
+
+fn external_module(directory: &Path, module: &syn::ItemMod) -> Module {
+	let module_directory = directory.join(module.ident.to_string());
+	let explicit = module.attrs.iter().find_map(|attr| {
+		if let Meta::NameValue(value) = &attr.meta
+			&& value.path.is_ident("path")
+			&& let Expr::Lit(literal) = &value.value
+			&& let syn::Lit::Str(path) = &literal.lit
+		{
+			return Some(directory.join(path.value()));
+		}
+		None
+	});
+	let flat = module_directory.with_extension("rs");
+	let path = explicit.clone().unwrap_or_else(|| {
+		if flat.exists() {
+			flat
+		} else {
+			module_directory.join("mod.rs")
+		}
+	});
+	let children = if explicit.is_some() {
+		path.parent().unwrap().to_owned()
+	} else {
+		module_directory
+	};
+	(path, children)
 }
 
 fn measure(
 	path: &Path,
-	directory: PathBuf,
+	syntax: &syn::File,
 	pending: &mut Vec<Module>,
 ) -> Result<Vec<Function>> {
-	let source =
-		fs::read_to_string(path).with_context(|| path.display().to_string())?;
-	let syntax =
-		syn::parse_file(&source).with_context(|| path.display().to_string())?;
 	let mut check = Check {
-		directory,
+		directory: path.parent().unwrap_or(Path::new("")).to_owned(),
 		pending,
 		scores: Vec::new(),
 		functions: Vec::new(),
 		error: None,
 	};
 	if !test_only(&syntax.attrs) {
-		check.visit_file(&syntax);
+		check.visit_file(syntax);
 	}
 	if let Some(error) = check.error {
 		bail!("{}:{}: {error}", path.display(), error.span().start().line);
@@ -198,7 +314,7 @@ fn targets(metadata: &serde_json::Value) -> Vec<Module> {
 	pending
 }
 
-fn test_only(attrs: &[Attribute]) -> bool {
+pub(crate) fn test_only(attrs: &[Attribute]) -> bool {
 	attrs.iter().any(|attr| {
 		attr.path()
 			.segments
@@ -274,38 +390,15 @@ impl<'ast> Visit<'ast> for Check<'_> {
 		if test_only(&module.attrs) {
 			return;
 		}
-		let directory = self.directory.join(module.ident.to_string());
 		if let Some((_, items)) = &module.content {
+			let directory = self.directory.join(module.ident.to_string());
 			let previous = std::mem::replace(&mut self.directory, directory);
 			for item in items {
 				self.visit_item(item);
 			}
 			self.directory = previous;
 		} else {
-			let explicit = module.attrs.iter().find_map(|attr| {
-				if let Meta::NameValue(value) = &attr.meta
-					&& value.path.is_ident("path")
-					&& let Expr::Lit(literal) = &value.value
-					&& let syn::Lit::Str(path) = &literal.lit
-				{
-					return Some(self.directory.join(path.value()));
-				}
-				None
-			});
-			let flat = directory.with_extension("rs");
-			let path = explicit.clone().unwrap_or_else(|| {
-				if flat.exists() {
-					flat
-				} else {
-					directory.join("mod.rs")
-				}
-			});
-			let children = if explicit.is_some() {
-				path.parent().unwrap().to_owned()
-			} else {
-				directory
-			};
-			self.pending.push((path, children));
+			self.pending.push(external_module(&self.directory, module));
 		}
 	}
 
@@ -534,9 +627,12 @@ mod tests {
 			"{}",
 			String::from_utf8_lossy(&output.stderr)
 		);
-		let functions =
-			measure(&source, directory.path().to_owned(), &mut Vec::new())
-				.unwrap();
+		let functions = measure(
+			&source,
+			&syn::parse_file(&fs::read_to_string(&source).unwrap()).unwrap(),
+			&mut Vec::new(),
+		)
+		.unwrap();
 		assert_eq!(
 			functions
 				.iter()
