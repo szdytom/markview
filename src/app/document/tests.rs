@@ -1248,8 +1248,8 @@ fn folder_overlay_clips_empty_page_mouse_touch_and_focus_targets() {
 	assert!(h.app.readers.session.path.is_none());
 	for width in [360., 640., 1200.] {
 		let mut chrome = h.app.chrome();
-		chrome.width = width;
-		chrome.height = 800.;
+		chrome.frame.width = width;
+		chrome.frame.height = 800.;
 		let drawer = crate::app::chrome::folder::rect(
 			width,
 			800.,

@@ -2182,21 +2182,21 @@ fn only_window_layout_changes_replace_the_saved_hint_until_reverted() {
 		WindowLayout::Linux
 	};
 	app.action(Command::Chrome(ChromeCommand::Settings));
-	assert!(!app.chrome().restart_pending);
+	assert!(!app.chrome().settings.restart_pending);
 	app.action(Command::Settings(SettingsCommand::SingleInstance));
-	assert!(!app.chrome().restart_pending);
+	assert!(!app.chrome().settings.restart_pending);
 	app.action(Command::Settings(SettingsCommand::SingleInstance));
-	assert!(!app.chrome().restart_pending);
+	assert!(!app.chrome().settings.restart_pending);
 	app.action(Command::Settings(SettingsCommand::ScrollSpeed(1)));
-	assert!(!app.chrome().restart_pending);
+	assert!(!app.chrome().settings.restart_pending);
 	app.action(Command::Settings(SettingsCommand::WindowLayout(initial)));
-	assert!(!app.chrome().restart_pending);
+	assert!(!app.chrome().settings.restart_pending);
 	app.action(Command::Settings(SettingsCommand::WindowLayout(changed)));
 	app.action(Command::Settings(SettingsCommand::Language(Some(
 		crate::lang::Lang::ZhHans,
 	))));
 	assert!(app.preferences.flush());
-	assert!(app.chrome().restart_pending);
+	assert!(app.chrome().settings.restart_pending);
 	let draws = app.overlay();
 	let warning_ids: Vec<_> = draws
 		.iter()
@@ -2228,14 +2228,14 @@ fn only_window_layout_changes_replace_the_saved_hint_until_reverted() {
 	assert!(!warning_ids.is_empty());
 	assert_eq!(warning_ids, expected);
 	app.action(Command::Settings(SettingsCommand::SingleInstance));
-	assert!(app.chrome().restart_pending);
+	assert!(app.chrome().settings.restart_pending);
 	app.action(Command::Chrome(ChromeCommand::Settings));
 	app.action(Command::Chrome(ChromeCommand::Settings));
-	assert!(app.chrome().restart_pending);
+	assert!(app.chrome().settings.restart_pending);
 	app.action(Command::Settings(SettingsCommand::WindowLayout(initial)));
-	assert!(!app.chrome().restart_pending);
+	assert!(!app.chrome().settings.restart_pending);
 	app.action(Command::Settings(SettingsCommand::SingleInstance));
-	assert!(!app.chrome().restart_pending);
+	assert!(!app.chrome().settings.restart_pending);
 	assert!(!app.overlay().iter().any(|draw| matches!(draw,
 		Draw::Glyph(g) if g.paint == Paint::Styled(Condition::Panel, ColorField::Warning))));
 }

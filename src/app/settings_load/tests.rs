@@ -122,7 +122,7 @@ fn a_fast_result_still_presents_feedback_before_shaping_the_first_list() {
 			.as_deref(),
 		Some("Loading…")
 	);
-	assert!(app.chrome().style_entries.is_empty());
+	assert!(app.chrome().settings.style_entries.is_empty());
 	assert!(!app.chrome().overlay().is_empty());
 	let kind = app.settings_kind();
 	assert!(
@@ -130,7 +130,7 @@ fn a_fast_result_still_presents_feedback_before_shaping_the_first_list() {
 		"the first feedback frame schedules the ready body"
 	);
 	assert!(!app.settings_load().unwrap().blocked());
-	assert!(!app.chrome().style_entries.is_empty());
+	assert!(!app.chrome().settings.style_entries.is_empty());
 	app.action(Command::Settings(SettingsCommand::Styles));
 	let work = task(&tasks);
 	assert_eq!(
@@ -140,7 +140,7 @@ fn a_fast_result_still_presents_feedback_before_shaping_the_first_list() {
 			.as_deref(),
 		Some("Refreshing…")
 	);
-	assert!(!app.chrome().style_entries.is_empty());
+	assert!(!app.chrome().settings.style_entries.is_empty());
 	work.run();
 	app.settings_loaded(completion(&events));
 }

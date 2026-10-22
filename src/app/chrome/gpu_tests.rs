@@ -1149,58 +1149,61 @@ fn previewing_recedes_the_styles_and_fonts_pages() {
 				settings_page.settings_preview = preview;
 				let status = crate::app::status::Status::default();
 				let mut chrome = Chrome {
-					folder: None,
-					frame: crate::app::frame::Layout::new(
-						crate::settings::WindowLayout::Macos,
-						true,
-						width,
-						height,
+					frame: FrameView::new(
+						crate::app::frame::Layout::new(
+							crate::settings::WindowLayout::Macos,
+							true,
+							width,
+							height,
+							false,
+							false,
+						),
+						(width, height),
+						None,
+						None,
+						None,
+					),
+					session: SessionView::new(
+						&session,
+						&tabs,
+						0,
+						&strip,
+						&metrics.widths,
+						None,
+						None,
+					),
+					settings: SettingsView::new(
+						&settings_page,
 						false,
+						&font_config,
+						&export,
+						&entries,
+						interaction.panels.styles_scroll().offset(),
+						(state != "ready").then_some(&load),
+						crate::app::font_panel::View {
+							choices: std::borrow::Cow::Owned({
+								let mut c =
+									crate::app::font_panel::Choices::default();
+								c.refresh(&crate::test_support::fonts());
+								c
+							}),
+							catalog: &catalog,
+							shown: shown.clone(),
+							jobs: &jobs,
+							scroll: 0.0,
+							note: None,
+							status_filter: None,
+							choosers: false,
+						},
 						false,
 					),
-					input_draws: Vec::new(),
-					backend: None,
-					ui: &mut ui,
-					session: &session,
-					tabs: &tabs,
-					active_tab: 0,
-					tab_strip: &strip,
-					tab_widths: &metrics.widths,
-					preview: None,
-					settings: &settings_page,
-					restart_pending: false,
-					font_config: &font_config,
-					export: &export,
+					status: StatusView::new(&status, None, None),
 					interaction: crate::app::widgets::Drawn::new(
 						&interaction,
 						None,
 					),
-					style_entries: &entries,
-					style_scroll: interaction.panels.styles_scroll().offset(),
-					resource_load: (state != "ready").then_some(&load),
-					fonts: crate::app::font_panel::View {
-						choices: std::borrow::Cow::Owned({
-							let mut c =
-								crate::app::font_panel::Choices::default();
-							c.refresh(&crate::test_support::fonts());
-							c
-						}),
-						catalog: &catalog,
-						shown: shown.clone(),
-						jobs: &jobs,
-						scroll: 0.0,
-						note: None,
-						status_filter: None,
-						choosers: false,
-					},
-					width,
-					height,
-					scrollbar: None,
-					warning: None,
-					status: &status,
-					hover_hint: None,
-					remote_notice: None,
-					watching: false,
+					ui: &mut ui,
+					input_draws: Vec::new(),
 				};
 				let overlay = chrome.overlay();
 				let panel = components::panel_rect(width, height);
@@ -1315,54 +1318,57 @@ fn the_fonts_page_draws_its_open_option_list() {
 		crate::app::settings_panel::Model::new(settings.clone());
 	let status = crate::app::status::Status::default();
 	let mut chrome = Chrome {
-		folder: None,
-		frame: crate::app::frame::Layout::new(
-			crate::settings::WindowLayout::Macos,
-			true,
-			width,
-			height,
+		frame: FrameView::new(
+			crate::app::frame::Layout::new(
+				crate::settings::WindowLayout::Macos,
+				true,
+				width,
+				height,
+				false,
+				false,
+			),
+			(width, height),
+			None,
+			None,
+			None,
+		),
+		session: SessionView::new(
+			&session,
+			&chrome_tabs,
+			0,
+			&strip,
+			&metrics.widths,
+			None,
+			None,
+		),
+		settings: SettingsView::new(
+			&settings_page,
 			false,
+			&font_config,
+			&export,
+			&entries,
+			interaction.panels.styles_scroll().offset(),
+			None,
+			crate::app::font_panel::View {
+				choices: std::borrow::Cow::Owned({
+					let mut c = crate::app::font_panel::Choices::default();
+					c.refresh(&crate::test_support::fonts());
+					c
+				}),
+				catalog: &[],
+				shown: Vec::new(),
+				jobs: &jobs,
+				scroll: 0.0,
+				note: None,
+				status_filter: None,
+				choosers: true,
+			},
 			false,
 		),
-		backend: None,
-		ui: &mut ui,
-		session: &session,
-		tabs: &chrome_tabs,
-		active_tab: 0,
-		tab_strip: &strip,
-		input_draws: Vec::new(),
-		tab_widths: &metrics.widths,
-		preview: None,
-		settings: &settings_page,
-		restart_pending: false,
-		font_config: &font_config,
-		export: &export,
+		status: StatusView::new(&status, None, None),
 		interaction: crate::app::widgets::Drawn::new(&interaction, None),
-		style_entries: &entries,
-		style_scroll: interaction.panels.styles_scroll().offset(),
-		resource_load: None,
-		fonts: crate::app::font_panel::View {
-			choices: std::borrow::Cow::Owned({
-				let mut c = crate::app::font_panel::Choices::default();
-				c.refresh(&crate::test_support::fonts());
-				c
-			}),
-			catalog: &[],
-			shown: Vec::new(),
-			jobs: &jobs,
-			scroll: 0.0,
-			note: None,
-			status_filter: None,
-			choosers: true,
-		},
-		width,
-		height,
-		scrollbar: None,
-		warning: None,
-		status: &status,
-		hover_hint: None,
-		remote_notice: None,
-		watching: false,
+		ui: &mut ui,
+		input_draws: Vec::new(),
 	};
 	let overlay = chrome.overlay();
 	// The list's own background is painted where it is measured, and it holds
@@ -1424,54 +1430,57 @@ fn dismissed_pages_stop_drawing_and_answering_pointers() {
 			crate::app::settings_panel::Model::new(settings.clone());
 		let status = crate::app::status::Status::default();
 		let mut chrome = Chrome {
-			folder: None,
-			frame: crate::app::frame::Layout::new(
-				crate::settings::WindowLayout::Macos,
-				true,
-				width,
-				height,
+			frame: FrameView::new(
+				crate::app::frame::Layout::new(
+					crate::settings::WindowLayout::Macos,
+					true,
+					width,
+					height,
+					false,
+					false,
+				),
+				(width, height),
+				None,
+				None,
+				None,
+			),
+			session: SessionView::new(
+				&session,
+				&tabs,
+				0,
+				&strip,
+				&metrics.widths,
+				None,
+				None,
+			),
+			settings: SettingsView::new(
+				&settings_page,
 				false,
+				&font_config,
+				&export,
+				&entries,
+				interaction.panels.styles_scroll().offset(),
+				None,
+				crate::app::font_panel::View {
+					choices: std::borrow::Cow::Owned({
+						let mut c = crate::app::font_panel::Choices::default();
+						c.refresh(&crate::test_support::fonts());
+						c
+					}),
+					catalog: &[],
+					shown: shown.clone(),
+					jobs: &jobs,
+					scroll: 0.0,
+					note: None,
+					status_filter: None,
+					choosers: false,
+				},
 				false,
 			),
-			input_draws: Vec::new(),
-			backend: None,
-			ui: &mut ui,
-			session: &session,
-			tabs: &tabs,
-			active_tab: 0,
-			tab_strip: &strip,
-			tab_widths: &metrics.widths,
-			preview: None,
-			settings: &settings_page,
-			restart_pending: false,
-			font_config: &font_config,
-			export: &export,
+			status: StatusView::new(&status, None, None),
 			interaction: crate::app::widgets::Drawn::new(&interaction, None),
-			style_entries: &entries,
-			style_scroll: interaction.panels.styles_scroll().offset(),
-			resource_load: None,
-			fonts: crate::app::font_panel::View {
-				choices: std::borrow::Cow::Owned({
-					let mut c = crate::app::font_panel::Choices::default();
-					c.refresh(&crate::test_support::fonts());
-					c
-				}),
-				catalog: &[],
-				shown: shown.clone(),
-				jobs: &jobs,
-				scroll: 0.0,
-				note: None,
-				status_filter: None,
-				choosers: false,
-			},
-			width,
-			height,
-			scrollbar: None,
-			warning: None,
-			status: &status,
-			hover_hint: None,
-			remote_notice: None,
-			watching: false,
+			ui: &mut ui,
+			input_draws: Vec::new(),
 		};
 		let buttons = chrome.buttons();
 		assert!(
@@ -1883,66 +1892,62 @@ fn redesigned_chrome_frames() -> Result<()> {
 					let mut status = crate::app::status::Status::default();
 					status.set("File not found", page == "error", 0);
 					let mut chrome = Chrome {
-						folder: None,
-						frame,
-						input_draws,
-						backend: None,
-						ui: &mut ui,
-						session,
-						tabs: &tabs,
-						active_tab: if page == "empty" {
-							usize::MAX
-						} else {
-							0
-						},
-						tab_strip: &strip,
-						tab_widths: &metrics.widths,
-						preview: None,
-						settings: &settings_page,
-						restart_pending: false,
-						font_config: &fonts,
-						export: &export,
+						frame: FrameView::new(
+							frame,
+							(width, height),
+							None,
+							(page == "notice").then_some(37),
+							None,
+						),
+						session: SessionView::new(
+							session,
+							&tabs,
+							if page == "empty" { usize::MAX } else { 0 },
+							&strip,
+							&metrics.widths,
+							None,
+							None,
+						),
+						settings: SettingsView::new(
+							&settings_page,
+							false,
+							&fonts,
+							&export,
+							&entries,
+							interaction.panels.styles_scroll().offset(),
+							pending.then_some(&load),
+							crate::app::font_panel::View {
+								choices: std::borrow::Cow::Owned({
+									let mut c =
+										crate::app::font_panel::Choices::default();
+									c.refresh(&crate::test_support::fonts());
+									c
+								}),
+								catalog: &catalog,
+								shown,
+								jobs: &jobs,
+								scroll: if page == "fonts-scrolled" {
+									f32::MAX
+								} else {
+									0.0
+								},
+								note: None,
+								status_filter: (page == "fonts-empty")
+									.then_some(crate::fonts::State::Downloaded),
+								choosers: matches!(
+									page,
+									"fonts-choosers" | "fonts-menu"
+								),
+							},
+							false,
+						),
+						status: StatusView::new(&status, None, None),
 						interaction: crate::app::widgets::Drawn::new(
 							&interaction,
 							None,
 						),
-						style_entries: &entries,
-						style_scroll: interaction
-							.panels
-							.styles_scroll()
-							.offset(),
-						resource_load: pending.then_some(&load),
-						fonts: crate::app::font_panel::View {
-							choices: std::borrow::Cow::Owned({
-								let mut c =
-									crate::app::font_panel::Choices::default();
-								c.refresh(&crate::test_support::fonts());
-								c
-							}),
-							catalog: &catalog,
-							shown,
-							jobs: &jobs,
-							scroll: if page == "fonts-scrolled" {
-								f32::MAX
-							} else {
-								0.0
-							},
-							note: None,
-							status_filter: (page == "fonts-empty")
-								.then_some(crate::fonts::State::Downloaded),
-							choosers: matches!(
-								page,
-								"fonts-choosers" | "fonts-menu"
-							),
-						},
-						width,
-						height,
-						scrollbar: None,
-						warning: None,
-						status: &status,
-						hover_hint: None,
-						remote_notice: (page == "notice").then_some(37),
-						watching: false,
+						ui: &mut ui,
+						input_draws,
 					};
 					let overlay = chrome.overlay();
 					// The toolbar's own icon buttons stay visible behind every

@@ -106,6 +106,32 @@ so the active tab previews its title and path only. No screenshot or texture is
 cached between frames; a new target only adds a `Target` arm and its card
 content.
 
+`app/chrome.rs` groups the painter's borrowed inputs into four read-only views —
+`FrameView`, `SessionView`, `SettingsView` and `StatusView` — plus the drawn
+interaction state, the shaper and the text input's pending draws. `Chrome::layers`
+declares the paint order once and `overlay_with_form` walks it, so each band
+draws only itself and never repeats a Z-order condition:
+
+| Layer | Paints |
+| --- | --- |
+| `Toolbar` | Top and bottom window bands |
+| `Tabs` | Tab strip or phone title, then the toolbar controls in the same band |
+| `Banner` | Remote-image notice strip |
+| `Footer` | Counts, status line, hover hint and copyable path |
+| `Status` | Empty, opening and load-error document states |
+| `Drawers` | Scrollbar, folder tree, outline and tab drawer |
+| `Preview` | Hover preview card and its reserved body |
+| `Panel` | Settings, export, styles and fonts pages, load feedback and text input |
+| `Dropdown` | Open option list above its page |
+| `Modal` | Confirmation dialog |
+| `Viewer` | Image viewer above the modal |
+| `Frame` | Window caption buttons |
+
+Adding an overlay means one `Layer` variant, one line in `layers` and one arm in
+`draw_layer`; the `layer_order_runs_back_to_front` test pins the sequence. The
+toolbar controls stay in the `Tabs` band after the tab strip because both share
+the top band and the shaper state they leave carries into the bands below.
+
 The transient status line is owned by `app/status.rs::Status`, which holds the
 message, the error bit and the expiry deadline. The footer asks it for both
 lines: `current` returns the trailing message while its deadline is live, and

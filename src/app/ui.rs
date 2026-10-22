@@ -261,45 +261,54 @@ impl<P: super::SendEvent> App<P> {
 			fonts.shown.clear();
 		}
 
-		Chrome {
-			folder: Some(&self.folder),
-			input_draws: Vec::new(),
-			backend: self.renderer.as_ref().map(|renderer| renderer.backend),
+		let style_entries: &[crate::stylesheet::Entry] = if !show_snapshot {
+			&[]
+		} else if self.interaction.export_styles_open() {
+			&self.settings_resources.export_entries
+		} else {
+			&self.preferences.style_entries
+		};
+		let resource_load =
+			resource_kind.map(|kind| self.settings_resources.load(kind));
+		let frame = chrome::FrameView::new(
 			frame,
-			ui: &mut self.ui,
-			session: &self.readers.session,
-			tabs: self.readers.entries(),
-			active_tab: self.readers.active(),
-			tab_strip: &self.tab_strip,
-			tab_widths: &self.tab_metrics.widths,
-			preview: self.preview.open(),
-			restart_pending: self.preferences.restart_pending(),
-			settings: view.settings,
-			font_config: &self.fonts_config,
-			export: view.export,
+			(width, height),
+			scrollbar,
+			remote_notice,
+			self.renderer.as_ref().map(|renderer| renderer.backend),
+		);
+		let session = chrome::SessionView::new(
+			&self.readers.session,
+			self.readers.entries(),
+			self.readers.active(),
+			&self.tab_strip,
+			&self.tab_metrics.widths,
+			self.preview.open(),
+			Some(&self.folder),
+		);
+		let settings = chrome::SettingsView::new(
+			view.settings,
+			self.preferences.restart_pending(),
+			&self.fonts_config,
+			view.export,
+			style_entries,
+			self.interaction.panels.styles_scroll().offset(),
+			resource_load,
+			fonts,
+			self.export.watching(),
+		);
+		let status = chrome::StatusView::new(&self.status, warning, hover_hint);
+		Chrome {
+			frame,
+			session,
+			settings,
+			status,
 			interaction: super::widgets::Drawn::new(
 				&self.interaction,
 				self.controls.as_ref(),
 			),
-			style_entries: if !show_snapshot {
-				&[]
-			} else if self.interaction.export_styles_open() {
-				&self.settings_resources.export_entries
-			} else {
-				&self.preferences.style_entries
-			},
-			resource_load: resource_kind
-				.map(|kind| self.settings_resources.load(kind)),
-			style_scroll: self.interaction.panels.styles_scroll().offset(),
-			fonts,
-			width,
-			height,
-			scrollbar,
-			warning,
-			status: &self.status,
-			hover_hint,
-			remote_notice,
-			watching: self.export.watching(),
+			ui: &mut self.ui,
+			input_draws: Vec::new(),
 		}
 	}
 	pub(super) fn panel_form(&mut self) -> Option<chrome::components::Form> {

@@ -21,6 +21,7 @@ pub(in crate::app) mod styles;
 pub(in crate::app) mod tab_drawer;
 mod tabs;
 mod viewer;
+mod views;
 use super::{BOTTOM, Button, TOP};
 #[cfg(test)]
 use crate::settings::ReaderSettings;
@@ -28,9 +29,14 @@ use crate::settings::ReaderSettings;
 use crate::state::InteractionState;
 use crate::{
 	lang::Lang,
-	layout::{Draw, Paint, Rect, Scrollbar, TextShaper},
+	layout::{Draw, Paint, Rect, TextShaper},
+	state::{Command, ScrollbarAxis},
+};
+#[cfg(test)]
+use crate::{
+	layout::Scrollbar,
 	settings::ExportSettings,
-	state::{Command, ReaderSession, ReaderTab, ScrollbarAxis},
+	state::{ReaderSession, ReaderTab},
 };
 pub(super) use components::panel_rect;
 #[cfg(test)]
@@ -38,12 +44,12 @@ use controls::draw_controls;
 use controls::toolbar_controls_at;
 use fonts::draw_fonts;
 use footer::draw_footer;
-use markview_layout::{
-	fonts::FontConfig,
-	style::{ColorField as C, Condition, TextAppearance},
-};
+use markview_layout::style::{ColorField as C, Condition, TextAppearance};
 use std::time::Instant;
 use styles::{StylesTarget, draw_styles, style_controls, style_rows};
+pub(in crate::app) use views::{
+	FrameView, SessionView, SettingsView, StatusView,
+};
 
 /// Height of the remote-image notice strip below the tab bar.
 pub(super) const BANNER: f32 = 34.0;
@@ -185,49 +191,58 @@ fn style_page_buttons(
 	buttons
 }
 
+/// One painted band of the chrome, ordered back to front.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(super) enum Layer {
+	Toolbar,
+	Tabs,
+	Banner,
+	Footer,
+	Status,
+	Drawers,
+	Preview,
+	Panel,
+	Dropdown,
+	Modal,
+	Viewer,
+	Frame,
+}
+
+/// The paint inputs, grouped by the state they describe.
 pub(super) struct Chrome<'a> {
-	pub folder: Option<&'a super::folder::Browser>,
-	pub(super) input_draws: Vec<Draw>,
-	pub(super) backend: Option<wgpu::Backend>,
-	pub(super) ui: &'a mut TextShaper,
-	pub(super) session: &'a ReaderSession,
-	pub(super) tabs: &'a [ReaderTab],
-	pub(super) active_tab: usize,
-	pub(super) tab_strip: &'a super::tab_strip::TabStrip,
-	pub(super) tab_widths: &'a [(f32, f32)],
-	/// The open hover preview, when one is painted.
-	pub(super) preview: Option<&'a super::preview::Open>,
-	pub(super) settings: &'a super::settings_panel::Model,
-	pub(super) restart_pending: bool,
-	/// The fonts the reader shapes with, which the family choosers describe.
-	pub(super) font_config: &'a FontConfig,
-	/// The export panel's own settings, drawn but never applied to the reader.
-	pub(super) export: &'a ExportSettings,
+	pub(super) frame: FrameView,
+	pub(super) session: SessionView<'a>,
+	pub(super) settings: SettingsView<'a>,
+	pub(super) status: StatusView<'a>,
 	/// The paint view of the interaction state: its fields plus the placed
 	/// control geometry from the last layout.
 	pub(super) interaction: crate::app::widgets::Drawn<'a>,
-	pub(super) style_entries: &'a [crate::stylesheet::Entry],
-	/// The Styles page's list offset.
-	pub(super) style_scroll: f32,
-	pub(super) resource_load: Option<&'a super::settings_load::Load>,
-	pub(super) fonts: super::font_panel::View<'a>,
-	pub(super) frame: super::frame::Layout,
-	pub(super) width: f32,
-	pub(super) height: f32,
-	pub(super) scrollbar: Option<Scrollbar>,
-	pub(super) warning: Option<std::borrow::Cow<'a, str>>,
-	pub(super) status: &'a super::status::Status,
-	/// The footer's hover hint: a link target, or an image title.
-	pub(super) hover_hint: Option<&'a str>,
-	/// Number of remote image sources the loader deferred, if any.
-	pub(super) remote_notice: Option<usize>,
-	/// Whether an export is rewriting its file on every document change.
-	pub(super) watching: bool,
+	pub(super) ui: &'a mut TextShaper,
+	pub(super) input_draws: Vec<Draw>,
 }
 impl<'a> Chrome<'a> {
+	/// The bands in paint order, back to front.
+	fn layers() -> &'static [Layer] {
+		&[
+			Layer::Toolbar,
+			Layer::Tabs,
+			Layer::Banner,
+			Layer::Footer,
+			Layer::Status,
+			Layer::Drawers,
+			Layer::Preview,
+			Layer::Panel,
+			Layer::Dropdown,
+			Layer::Modal,
+			Layer::Viewer,
+			Layer::Frame,
+		]
+	}
+
 	/// The tabs drawer's slide reveal; the tab strip owns the animation.
 	fn tabs_reveal(&self) -> f32 {
-		self.tab_strip
+		self.session
+			.strip
 			.reveal(self.interaction.panel == crate::state::PanelPage::Tabs)
 	}
 
@@ -235,6 +250,7 @@ impl<'a> Chrome<'a> {
 	/// document to name.
 	fn path(&self) -> Option<std::borrow::Cow<'a, str>> {
 		self.session
+			.doc
 			.path
 			.as_deref()
 			.map(|path| path.to_string_lossy())
@@ -242,7 +258,7 @@ impl<'a> Chrome<'a> {
 
 	/// The footer's opted-in document path.
 	fn footer_path(&self) -> Option<std::borrow::Cow<'a, str>> {
-		if self.settings.footer_path {
+		if self.settings.model.footer_path {
 			self.path()
 		} else {
 			None
@@ -252,9 +268,9 @@ impl<'a> Chrome<'a> {
 	/// The footer's trailing label: a live status, a hover hint, or — when
 	/// enabled — the open document's absolute path.
 	fn secondary(&self) -> std::borrow::Cow<'a, str> {
-		if let Some(status) = self.status.current(Instant::now()) {
+		if let Some(status) = self.status.line.current(Instant::now()) {
 			status.into()
-		} else if let Some(hint) = self.hover_hint {
+		} else if let Some(hint) = self.status.hover_hint {
 			hint.into()
 		} else {
 			self.footer_path().unwrap_or_default()
@@ -264,20 +280,21 @@ impl<'a> Chrome<'a> {
 	/// The footer's path as a control of its own, while the footer shows it: a
 	/// press on the absolute path copies it, so the label is its own hit target.
 	fn path_button(&mut self) -> Option<Button> {
-		if self.session.search.open
-			|| self.status.current(Instant::now()).is_some()
-			|| self.hover_hint.is_some()
+		if self.session.doc.search.open
+			|| self.status.line.current(Instant::now()).is_some()
+			|| self.status.hover_hint.is_some()
 		{
 			return None;
 		}
 		let path = self.footer_path()?;
-		let size = (self.width, self.height);
+		let size = (self.frame.width, self.frame.height);
 		let (_, used) = footer::counts_label(
 			self.ui,
-			(!self.session.layout_pending).then_some(self.session.counts),
+			(!self.session.doc.layout_pending)
+				.then_some(self.session.doc.counts),
 			self.interaction.selection_counts.map(|(_, counts)| counts),
-			self.width - self.footer_inset(),
-			self.settings.lang(),
+			self.frame.width - self.footer_inset(),
+			self.settings.model.lang(),
 		);
 		let (_, rect) =
 			footer::trailing(self.ui, &path, used + self.footer_inset(), size)?;
@@ -302,23 +319,23 @@ impl<'a> Chrome<'a> {
 		// are measured against the page itself; the anchor follows its scroll.
 		if self.interaction.fonts_open() {
 			return fonts::menu(
-				&self.fonts,
-				self.settings,
-				self.font_config,
+				&self.settings.fonts,
+				self.settings.model,
+				self.settings.font_config,
 				open,
-				(self.width, self.height),
+				(self.frame.width, self.frame.height),
 			);
 		}
 		let form = controls::settings_form(
 			self.ui,
 			&self.interaction,
-			self.settings,
-			self.width,
-			self.height,
-			self.backend,
-			self.tab_strip.phone,
+			self.settings.model,
+			self.frame.width,
+			self.frame.height,
+			self.frame.backend,
+			self.session.strip.phone,
 		);
-		form.menu(open, (self.width, self.height))
+		form.menu(open, (self.frame.width, self.frame.height))
 	}
 
 	pub(super) fn form(&mut self) -> Option<components::Form> {
@@ -334,24 +351,24 @@ impl<'a> Chrome<'a> {
 		Some(if self.interaction.export_open() {
 			export::form(
 				self.ui,
-				self.export,
+				self.settings.export,
 				self.interaction.panels.export_scroll().offset(),
-				self.width,
-				self.height,
-				self.settings.lang(),
+				self.frame.width,
+				self.frame.height,
+				self.settings.model.lang(),
 			)
 		} else {
 			controls::settings_form(
 				self.ui,
 				&self.interaction,
-				self.settings,
-				self.width,
-				self.height,
-				self.backend,
-				self.tab_strip.phone,
+				self.settings.model,
+				self.frame.width,
+				self.frame.height,
+				self.frame.backend,
+				self.session.strip.phone,
 			)
 			.without_header()
-			.preview(self.settings.settings_preview)
+			.preview(self.settings.model.settings_preview)
 		})
 	}
 
@@ -363,31 +380,35 @@ impl<'a> Chrome<'a> {
 		&mut self,
 		form: Option<&components::Form>,
 	) -> Vec<Button> {
-		let (width, height, _) = (self.width, self.height, 1.0);
+		let (width, height, _) = (self.frame.width, self.frame.height, 1.0);
 		let mut buttons = if self.interaction.overlays.modal_open() {
 			modal::modal_buttons(
 				self.ui,
 				&self.interaction,
 				width,
 				height,
-				self.settings.lang(),
+				self.settings.model.lang(),
 			)
 		} else if self.interaction.panel == crate::state::PanelPage::Tabs {
 			let mut buttons = match self.interaction.sidebar_tab {
 				crate::state::SidebarTab::Tabs => tab_drawer::buttons(
 					self.ui,
-					self.tabs,
-					self.active_tab,
-					self.tab_strip.drawer_scroll.offset(),
+					self.session.tabs,
+					self.session.active_tab,
+					self.session.strip.drawer_scroll.offset(),
 					(width, height),
-					self.settings.lang(),
-					self.settings.tabs_width,
+					self.settings.model.lang(),
+					self.settings.model.tabs_width,
 				),
 				crate::state::SidebarTab::Folder => tab_drawer::folder_buttons(
-					self.folder,
-					tab_drawer::rect(width, height, self.settings.tabs_width),
+					self.session.folder,
+					tab_drawer::rect(
+						width,
+						height,
+						self.settings.model.tabs_width,
+					),
 					width,
-					self.settings.lang(),
+					self.settings.model.lang(),
 				),
 			};
 			tab_drawer::slide_buttons(
@@ -395,7 +416,7 @@ impl<'a> Chrome<'a> {
 				width,
 				height,
 				self.tabs_reveal(),
-				self.settings.tabs_width,
+				self.settings.model.tabs_width,
 			);
 			buttons
 		} else if self.interaction.panel_open()
@@ -403,12 +424,12 @@ impl<'a> Chrome<'a> {
 		{
 			style_page_buttons(
 				StylesTarget::Export,
-				Some(self.export.style.as_slice()),
-				self.style_entries,
-				self.style_scroll,
+				Some(self.settings.export.style.as_slice()),
+				self.settings.style_entries,
+				self.settings.style_scroll,
 				false,
 				(width, height),
-				self.settings.lang(),
+				self.settings.model.lang(),
 			)
 		} else if self.interaction.panel_open()
 			&& self.interaction.export_open()
@@ -417,25 +438,25 @@ impl<'a> Chrome<'a> {
 		} else if self.interaction.panel_open() && self.interaction.fonts_open()
 		{
 			fonts::buttons(
-				&self.fonts,
-				self.settings,
-				self.font_config,
-				self.settings.settings_preview,
+				&self.settings.fonts,
+				self.settings.model,
+				self.settings.font_config,
+				self.settings.model.settings_preview,
 				width,
 				height,
-				self.settings.lang(),
+				self.settings.model.lang(),
 			)
 		} else if self.interaction.panel_open()
 			&& self.interaction.styles_open()
 		{
 			style_page_buttons(
 				StylesTarget::Reader,
-				self.settings.style.as_deref(),
-				self.style_entries,
-				self.style_scroll,
-				self.settings.settings_preview,
+				self.settings.model.style.as_deref(),
+				self.settings.style_entries,
+				self.settings.style_scroll,
+				self.settings.model.settings_preview,
 				(width, height),
-				self.settings.lang(),
+				self.settings.model.lang(),
 			)
 		} else if self.interaction.panel_open() {
 			let mut buttons = form.expect("settings form").visible_buttons();
@@ -449,8 +470,8 @@ impl<'a> Chrome<'a> {
 				} else {
 					crate::state::PanelTab::Generic
 				},
-				self.settings.settings_preview,
-				self.settings.lang(),
+				self.settings.model.settings_preview,
+				self.settings.model.lang(),
 			));
 			buttons
 		} else {
@@ -461,14 +482,14 @@ impl<'a> Chrome<'a> {
 	}
 	fn folder_toggle(&self) -> Option<Button> {
 		Some(folder::toggle(
-			self.frame.sidebar_toggle?,
-			self.settings.lang(),
+			self.frame.layout.sidebar_toggle?,
+			self.settings.model.lang(),
 		))
 	}
 
 	fn footer_inset(&self) -> f32 {
-		if !self.tab_strip.phone
-			&& self.folder.is_some_and(|b| b.tree.is_some())
+		if !self.session.strip.phone
+			&& self.session.folder.is_some_and(|b| b.tree.is_some())
 		{
 			let drawer = self.folder_drawer();
 			(drawer.x + drawer.w).max(0.)
@@ -478,14 +499,14 @@ impl<'a> Chrome<'a> {
 	}
 
 	fn folder_drawer(&self) -> Rect {
-		let reveal = self.folder.map_or(0., |b| b.reveal());
+		let reveal = self.session.folder.map_or(0., |b| b.reveal());
 		folder::animated_rect(
 			folder::rect(
-				self.width,
-				self.height,
+				self.frame.width,
+				self.frame.height,
 				TOP,
 				BOTTOM,
-				self.settings.folder_width,
+				self.settings.model.folder_width,
 			),
 			reveal,
 		)
@@ -494,83 +515,91 @@ impl<'a> Chrome<'a> {
 	/// The document controls cannot receive input through the folder overlay.
 	fn reading_clip(&self) -> Rect {
 		let left = self
+			.session
 			.folder
-			.filter(|b| !self.tab_strip.phone && b.tree.is_some())
+			.filter(|b| !self.session.strip.phone && b.tree.is_some())
 			.map_or(0., |_| {
 				let drawer = self.folder_drawer();
 				drawer.x + drawer.w
 			});
 		Rect {
 			x: left,
-			y: content_top(self.remote_notice.is_some()),
-			w: (self.width - left).max(0.),
-			h: (self.height
-				- content_top(self.remote_notice.is_some())
-				- super::search::bottom(self.session.search.open))
+			y: content_top(self.frame.remote_notice.is_some()),
+			w: (self.frame.width - left).max(0.),
+			h: (self.frame.height
+				- content_top(self.frame.remote_notice.is_some())
+				- super::search::bottom(self.session.doc.search.open))
 			.max(0.),
 		}
 	}
 
 	fn reading_buttons(&mut self) -> Vec<Button> {
-		let (width, height) = (self.width, self.height);
+		let (width, height) = (self.frame.width, self.frame.height);
 		let mut buttons = toolbar_controls_at(
-			self.frame,
+			self.frame.layout,
 			self.interaction.overlays.outline.open(),
-			self.settings.lang(),
+			self.settings.model.lang(),
 		);
 		let clip = Rect {
-			x: self.frame.left_inset,
+			x: self.frame.layout.left_inset,
 			y: 0.,
-			w: (width - self.frame.left_inset).max(0.),
-			h: self.height,
+			w: (width - self.frame.layout.left_inset).max(0.),
+			h: self.frame.height,
 		};
 		for button in &mut buttons {
 			button.clip = Some(clip);
 		}
 		buttons.extend(self.folder_toggle());
-		if let Some(browser) =
-			self.folder.filter(|b| !self.tab_strip.phone && b.open)
+		if let Some(browser) = self
+			.session
+			.folder
+			.filter(|b| !self.session.strip.phone && b.open)
 		{
 			buttons.extend(folder::buttons(
 				browser,
 				self.folder_drawer(),
-				self.settings.lang(),
+				self.settings.model.lang(),
 			));
 		}
-		if self.tab_strip.phone {
-			buttons.push(tab_drawer::toggle(self.settings.lang()));
+		if self.session.strip.phone {
+			buttons.push(tab_drawer::toggle(self.settings.model.lang()));
 		}
-		if self.session.path.is_none()
-			&& self.session.snapshot.blocks.is_empty()
+		if self.session.doc.path.is_none()
+			&& self.session.doc.snapshot.blocks.is_empty()
 		{
 			// Each `Open` control has its own identity and geometry.
 			let clip = self.reading_clip();
 			buttons.extend(
-				empty::buttons(self.ui, width, height, self.settings.lang())
-					.into_iter()
-					.filter_map(|mut button| {
-						button.rect.intersect(clip)?;
-						button.clip = Some(clip);
-						Some(button)
-					}),
+				empty::buttons(
+					self.ui,
+					width,
+					height,
+					self.settings.model.lang(),
+				)
+				.into_iter()
+				.filter_map(|mut button| {
+					button.rect.intersect(clip)?;
+					button.clip = Some(clip);
+					Some(button)
+				}),
 			);
 		}
 
-		if self.remote_notice.is_some() {
+		if self.frame.remote_notice.is_some() {
 			buttons.extend(banner_buttons(
 				self.ui,
 				width,
-				self.settings.lang(),
+				self.settings.model.lang(),
 			));
 		}
 		if self.interaction.overlays.outline.open() {
-			let lang = self.settings.lang();
+			let lang = self.settings.model.lang();
 			buttons
 				.extend(outline::header_buttons(self.outline_drawer(), lang));
 			buttons.extend(outline::buttons(
 				self.outline_drawer(),
-				self.session.outline_entries(),
-				&self.session.outline_tree,
+				self.session.doc.outline_entries(),
+				&self.session.doc.outline_tree,
 				self.interaction.overlays.outline.scroll_offset(),
 				lang,
 			));
@@ -579,9 +608,9 @@ impl<'a> Chrome<'a> {
 		// reading view reaches the band it sits in.
 		buttons.extend(self.path_button());
 		let main = Rect {
-			x: self.frame.left_inset,
+			x: self.frame.layout.left_inset,
 			y: 0.,
-			w: (width - self.frame.left_inset).max(0.),
+			w: (width - self.frame.layout.left_inset).max(0.),
 			h: height,
 		};
 		buttons.retain_mut(|b| {
@@ -606,7 +635,7 @@ impl<'a> Chrome<'a> {
 	}
 
 	fn apply_button_load_state(&self, buttons: &mut Vec<Button>) {
-		if let Some(load) = self.resource_load {
+		if let Some(load) = self.settings.resource_load {
 			if load.blocked() {
 				for button in buttons.iter_mut() {
 					if button.action.settings_dependent() {
@@ -632,29 +661,74 @@ impl<'a> Chrome<'a> {
 		&mut self,
 		form: Option<&components::Form>,
 	) -> (Vec<Draw>, Option<Rect>) {
-		let (width, height, _) = (self.width, self.height, 1.0);
-		let mut out = vec![
-			Draw::Rect(
-				Rect {
-					x: 0.0,
-					y: 0.0,
-					w: width,
-					h: TOP,
-				},
-				Paint::Styled(Condition::Toolbar, C::Background),
-			),
-			Draw::Rect(
-				Rect {
-					x: 0.0,
-					y: height - BOTTOM,
-					w: width,
-					h: BOTTOM,
-				},
-				Paint::Styled(Condition::Toolbar, C::Background),
-			),
-		];
-		if !self.tab_strip.phone
-			&& self.settings.tab_style == crate::settings::TabStyle::Underline
+		let mut out = Vec::new();
+		let mut body = None;
+		for &layer in Self::layers() {
+			if let Some(rect) = self.draw_layer(layer, &mut out, form) {
+				body = Some(rect);
+			}
+		}
+		(out, body)
+	}
+
+	/// Paints one band. The declared order carries the Z order, so no band
+	/// needs to know what lies behind it.
+	fn draw_layer(
+		&mut self,
+		layer: Layer,
+		out: &mut Vec<Draw>,
+		form: Option<&components::Form>,
+	) -> Option<Rect> {
+		match layer {
+			Layer::Toolbar => self.draw_bands(out),
+			Layer::Tabs => self.draw_tabs(out),
+			Layer::Banner => self.draw_banner(out),
+			Layer::Footer => self.draw_footer(out),
+			Layer::Status => self.draw_document_status(out),
+			Layer::Drawers => self.draw_drawers(out),
+			Layer::Preview => return self.draw_preview(out),
+			Layer::Panel => {
+				self.draw_panel_overlay(out, form);
+				self.draw_resource_feedback(out);
+				out.append(&mut self.input_draws);
+			}
+			Layer::Dropdown => self.draw_dropdown(out),
+			Layer::Modal => self.draw_modal(out),
+			Layer::Viewer => self.draw_viewer(out),
+			Layer::Frame => out.extend(frame::draw(self.frame.layout)),
+		}
+		None
+	}
+
+	/// The window bands. The top band's tab strip and toolbar controls follow
+	/// in `Tabs`.
+	fn draw_bands(&mut self, out: &mut Vec<Draw>) {
+		let (width, height) = (self.frame.width, self.frame.height);
+		out.push(Draw::Rect(
+			Rect {
+				x: 0.0,
+				y: 0.0,
+				w: width,
+				h: TOP,
+			},
+			Paint::Styled(Condition::Toolbar, C::Background),
+		));
+		out.push(Draw::Rect(
+			Rect {
+				x: 0.0,
+				y: height - BOTTOM,
+				w: width,
+				h: BOTTOM,
+			},
+			Paint::Styled(Condition::Toolbar, C::Background),
+		));
+	}
+
+	fn draw_tabs(&mut self, out: &mut Vec<Draw>) {
+		let width = self.frame.width;
+		if !self.session.strip.phone
+			&& self.settings.model.tab_style
+				== crate::settings::TabStyle::Underline
 		{
 			out.push(Draw::Rect(
 				Rect {
@@ -666,9 +740,9 @@ impl<'a> Chrome<'a> {
 				Paint::Styled(Condition::Toolbar, C::BorderColor),
 			));
 		}
-		if self.tab_strip.phone {
+		if self.session.strip.phone {
 			self.ui.appearance = ui_appearance(self.ui);
-			let toggle = tab_drawer::toggle(self.settings.lang());
+			let toggle = tab_drawer::toggle(self.settings.model.lang());
 			out.extend(components::draw_button(
 				self.ui,
 				&self.interaction,
@@ -677,14 +751,17 @@ impl<'a> Chrome<'a> {
 			));
 			let name = self
 				.session
+				.doc
 				.path
 				.as_deref()
 				.and_then(std::path::Path::file_name)
 				.map(|name| name.to_string_lossy())
 				.unwrap_or_else(|| "Markview".into());
-			let name =
-				self.ui
-					.fit(&name, 12., (self.frame.toolbar_x - 56.).max(0.));
+			let name = self.ui.fit(
+				&name,
+				12.,
+				(self.frame.layout.toolbar_x - 56.).max(0.),
+			);
 			out.extend(self.ui.label(
 				&name,
 				12.,
@@ -695,52 +772,58 @@ impl<'a> Chrome<'a> {
 		} else {
 			out.extend(self.tab_bar().draw_tabs());
 		}
+		// The toolbar controls share the top band with the tabs and follow
+		// them exactly as the flat painter ordered its calls, because the
+		// shaper state they leave carries into the bands below.
 		out.extend(controls::draw_toolbar_at(
 			self.ui,
 			&self.interaction,
-			self.frame,
-			self.settings.lang(),
+			self.frame.layout,
+			self.settings.model.lang(),
 		));
-		if let Some(deferred) = self.remote_notice {
+	}
+
+	fn draw_banner(&mut self, out: &mut Vec<Draw>) {
+		if let Some(deferred) = self.frame.remote_notice {
 			out.extend(draw_banner(
 				self.ui,
-				width,
+				self.frame.width,
 				deferred,
-				self.frame.left_inset,
+				self.frame.layout.left_inset,
 				&self.interaction,
-				self.settings.lang(),
+				self.settings.model.lang(),
 			));
 		}
+	}
+
+	fn draw_footer(&mut self, out: &mut Vec<Draw>) {
 		// A failure that outlived its deadline takes the warning strip; a
 		// live line trails the counts instead.
 		let warning = self
 			.status
+			.line
 			.warning(Instant::now())
-			.or(self.warning.as_deref());
-		if !self.session.search.open {
+			.or(self.status.warning.as_deref());
+		if !self.session.doc.search.open {
 			let secondary = self.secondary();
 			let inset = self.footer_inset();
 			out.extend(draw_footer(
 				self.ui,
 				(
-					(!self.session.layout_pending)
-						.then_some(self.session.counts),
+					(!self.session.doc.layout_pending)
+						.then_some(self.session.doc.counts),
 					self.interaction.selection_counts.map(|(_, counts)| counts),
 				),
 				warning,
 				&secondary,
-				(width, height),
+				(self.frame.width, self.frame.height),
 				inset,
-				self.settings.lang(),
+				self.settings.model.lang(),
 			));
 		}
-		self.draw_document_status(&mut out);
+	}
 
-		self.draw_drawers(&mut out);
-		let body = self.draw_preview(&mut out);
-		self.draw_panel_overlay(&mut out, form);
-		self.draw_resource_feedback(&mut out);
-		out.append(&mut self.input_draws);
+	fn draw_dropdown(&mut self, out: &mut Vec<Draw>) {
 		// An open option list floats over whichever page holds its row, so it
 		// goes on after everything the page draws. Measuring brings the
 		// highlight into the drawn window, on a copy: the state is corrected
@@ -754,37 +837,41 @@ impl<'a> Chrome<'a> {
 				&menu,
 			));
 		}
+	}
+
+	fn draw_modal(&mut self, out: &mut Vec<Draw>) {
 		// A confirmation owns the frame; nothing behind it is interactive.
 		if self.interaction.overlays.modal_open() {
 			out.extend(modal::draw_modal(
 				self.ui,
 				&self.interaction,
-				width,
-				height,
-				self.settings.lang(),
+				self.frame.width,
+				self.frame.height,
+				self.settings.model.lang(),
 			));
 		}
+	}
+
+	fn draw_viewer(&mut self, out: &mut Vec<Draw>) {
 		// The image viewer floats over everything, the modal included.
 		if let Some(viewer) = self.interaction.overlays.viewer() {
 			out.extend(viewer::draw_viewer(
 				viewer,
-				&self.session.snapshot,
-				(width, height),
+				&self.session.doc.snapshot,
+				(self.frame.width, self.frame.height),
 			));
 		}
-		out.extend(frame::draw(self.frame));
-		(out, body)
 	}
 
 	/// Paints the hover preview card below its anchor, returning the body
 	/// rectangle the renderer composes the target's scene into.
 	fn draw_preview(&mut self, out: &mut Vec<Draw>) -> Option<Rect> {
-		let preview = self.preview?;
+		let preview = self.session.preview?;
 		// A panel, list, confirmation or search owns the screen; the card must
 		// not float above them for the frame before the tick closes it.
-		if self.tab_strip.phone
+		if self.session.strip.phone
 			|| self.interaction.panel_open()
-			|| self.session.search.open
+			|| self.session.doc.search.open
 			|| self.interaction.overlays.modal_open()
 			|| self.interaction.overlays.dropdown_open()
 			|| self.interaction.overlays.viewer_open()
@@ -792,8 +879,11 @@ impl<'a> Chrome<'a> {
 			return None;
 		}
 		let anchor = self.preview_anchor(preview.target)?;
-		let layout =
-			preview::layout(&preview.card, anchor, (self.width, self.height));
+		let layout = preview::layout(
+			&preview.card,
+			anchor,
+			(self.frame.width, self.frame.height),
+		);
 		let body = layout.body;
 		out.extend(preview::draw(self.ui, &preview.card, &layout));
 		body
@@ -806,7 +896,8 @@ impl<'a> Chrome<'a> {
 	) -> Option<Rect> {
 		match target {
 			super::preview::Target::Tab(id) => {
-				let index = self.tabs.iter().position(|tab| tab.id == id)?;
+				let index =
+					self.session.tabs.iter().position(|tab| tab.id == id)?;
 				let layout = self.tab_bar().layout();
 				let tab = *layout.rects.get(index)?;
 				tab.intersect(layout.viewport)
@@ -817,45 +908,45 @@ impl<'a> Chrome<'a> {
 	fn resource_viewport(&self) -> Rect {
 		if self.interaction.fonts_open() {
 			fonts::list(
-				self.width,
-				self.height,
-				self.fonts.shown.len(),
-				self.fonts.scroll,
-				self.fonts.choosers,
-				fonts::roles(self.settings).len(),
+				self.frame.width,
+				self.frame.height,
+				self.settings.fonts.shown.len(),
+				self.settings.fonts.scroll,
+				self.settings.fonts.choosers,
+				fonts::roles(self.settings.model).len(),
 			)
 			.viewport
 		} else {
 			styles::list(
-				self.width,
-				self.height,
-				self.style_entries.len(),
-				self.style_scroll,
+				self.frame.width,
+				self.frame.height,
+				self.settings.style_entries.len(),
+				self.settings.style_scroll,
 			)
 			.viewport
 		}
 	}
 	fn draw_document_status(&mut self, out: &mut Vec<Draw>) {
-		let (width, height) = (self.width, self.height);
-		if self.session.path.is_none() {
+		let (width, height) = (self.frame.width, self.frame.height);
+		if self.session.doc.path.is_none() {
 			out.extend(empty::draw(
 				self.ui,
 				&self.interaction,
 				width,
 				height,
-				self.settings.lang(),
+				self.settings.model.lang(),
 			));
-		} else if self.session.snapshot.blocks.is_empty()
-			|| self.session.load_error.is_some()
+		} else if self.session.doc.snapshot.blocks.is_empty()
+			|| self.session.doc.load_error.is_some()
 		{
-			if self.session.load_error.is_some() {
+			if self.session.doc.load_error.is_some() {
 				out.push(Draw::Rect(
 					Rect {
 						x: 0.0,
-						y: content_top(self.remote_notice.is_some()),
+						y: content_top(self.frame.remote_notice.is_some()),
 						w: width,
 						h: (height
-							- content_top(self.remote_notice.is_some())
+							- content_top(self.frame.remote_notice.is_some())
 							- BOTTOM)
 							.max(0.0),
 					},
@@ -864,12 +955,12 @@ impl<'a> Chrome<'a> {
 			}
 			let x = ((width - 400.0) / 2.0).max(24.0);
 			let y = (height * 0.4).max(110.0);
-			let t = self.settings.lang();
+			let t = self.settings.model.lang();
 			let (title, detail) =
-				if let Some(error) = self.session.load_error.as_deref() {
+				if let Some(error) = self.session.doc.load_error.as_deref() {
 					(t.empty_unreadable_title(), error)
-				} else if self.session.layout_pending
-					|| self.session.document.is_none()
+				} else if self.session.doc.layout_pending
+					|| self.session.doc.document.is_none()
 				{
 					(t.empty_opening_title(), t.empty_opening_detail())
 				} else {
@@ -907,8 +998,8 @@ impl<'a> Chrome<'a> {
 	}
 
 	fn draw_drawers(&mut self, out: &mut Vec<Draw>) {
-		let (width, height) = (self.width, self.height);
-		if let Some(bar) = self.scrollbar {
+		let (width, height) = (self.frame.width, self.frame.height);
+		if let Some(bar) = self.frame.scrollbar {
 			let held = self
 				.interaction
 				.pointer
@@ -933,19 +1024,20 @@ impl<'a> Chrome<'a> {
 			));
 		}
 		if let Some(browser) = self
+			.session
 			.folder
-			.filter(|b| !self.tab_strip.phone && b.reveal() > 0.)
+			.filter(|b| !self.session.strip.phone && b.reveal() > 0.)
 		{
 			out.extend(folder::draw(
 				self.ui,
 				browser,
-				self.session.path.as_deref(),
+				self.session.doc.path.as_deref(),
 				&self.interaction,
 				folder::Pane {
 					body: self.folder_drawer(),
 					surface: folder::surface(self.folder_drawer(), height),
 				},
-				self.settings.lang(),
+				self.settings.model.lang(),
 			));
 		}
 		if let Some(button) = self.folder_toggle() {
@@ -960,11 +1052,11 @@ impl<'a> Chrome<'a> {
 			out.extend(outline::draw(
 				self.ui,
 				&self.interaction,
-				self.session.outline_entries(),
-				&self.session.outline_tree,
-				self.session.current_outline(),
+				self.session.doc.outline_entries(),
+				&self.session.doc.outline_tree,
+				self.session.doc.current_outline(),
 				self.outline_drawer(),
-				self.settings.lang(),
+				self.settings.model.lang(),
 			));
 		}
 		let tabs_reveal = self.tabs_reveal();
@@ -972,22 +1064,22 @@ impl<'a> Chrome<'a> {
 			let draws = match self.interaction.sidebar_tab {
 				crate::state::SidebarTab::Tabs => tab_drawer::draw(
 					self.ui,
-					self.tabs,
-					self.active_tab,
-					self.tab_strip.drawer_scroll.offset(),
+					self.session.tabs,
+					self.session.active_tab,
+					self.session.strip.drawer_scroll.offset(),
 					&self.interaction,
 					(width, height),
 					tabs_reveal,
-					self.settings,
+					self.settings.model,
 				),
 				crate::state::SidebarTab::Folder => tab_drawer::draw_folder(
 					self.ui,
-					self.folder,
-					self.session.path.as_deref(),
+					self.session.folder,
+					self.session.doc.path.as_deref(),
 					&self.interaction,
 					(width, height),
 					tabs_reveal,
-					self.settings,
+					self.settings.model,
 				),
 			};
 			out.extend(draws);
@@ -999,22 +1091,22 @@ impl<'a> Chrome<'a> {
 		out: &mut Vec<Draw>,
 		form: Option<&components::Form>,
 	) {
-		let (width, height) = (self.width, self.height);
+		let (width, height) = (self.frame.width, self.frame.height);
 		if self.interaction.panel_open()
 			&& self.interaction.export_styles_open()
 		{
 			out.extend(draw_styles(
 				self.ui,
 				StylesTarget::Export,
-				Some(&self.export.style),
+				Some(&self.settings.export.style),
 				&self.interaction,
-				self.style_entries,
-				self.style_scroll,
+				self.settings.style_entries,
+				self.settings.style_scroll,
 				false,
 				width,
 				height,
-				self.settings.lang(),
-				self.resource_load,
+				self.settings.model.lang(),
+				self.settings.resource_load,
 			));
 		} else if self.interaction.panel_open()
 			&& self.interaction.export_open()
@@ -1022,18 +1114,21 @@ impl<'a> Chrome<'a> {
 		{
 			let document = self
 				.session
+				.doc
 				.path
 				.as_deref()
 				.and_then(|path| path.file_name())
 				.map(|name| name.to_string_lossy().into_owned())
-				.unwrap_or_else(|| self.settings.lang().tabs_untitled().into());
+				.unwrap_or_else(|| {
+					self.settings.model.lang().tabs_untitled().into()
+				});
 			out.extend(export::draw_export_form(
 				self.ui,
-				self.export,
+				self.settings.export,
 				&self.interaction,
-				(&document, self.watching),
+				(&document, self.settings.watching),
 				(width, height),
-				self.settings.lang(),
+				self.settings.model.lang(),
 				form.expect("export form"),
 			));
 		} else if self.interaction.panel_open() && self.interaction.fonts_open()
@@ -1041,11 +1136,11 @@ impl<'a> Chrome<'a> {
 			out.extend(draw_fonts(
 				self.ui,
 				&self.interaction,
-				self.settings,
-				&self.fonts,
+				self.settings.model,
+				&self.settings.fonts,
 				width,
 				height,
-				self.resource_load,
+				self.settings.resource_load,
 			));
 		} else if self.interaction.panel_open()
 			&& self.interaction.styles_open()
@@ -1053,15 +1148,15 @@ impl<'a> Chrome<'a> {
 			out.extend(draw_styles(
 				self.ui,
 				StylesTarget::Reader,
-				self.settings.style.as_deref(),
+				self.settings.model.style.as_deref(),
 				&self.interaction,
-				self.style_entries,
-				self.style_scroll,
-				self.settings.settings_preview,
+				self.settings.style_entries,
+				self.settings.style_scroll,
+				self.settings.model.settings_preview,
 				width,
 				height,
-				self.settings.lang(),
-				self.resource_load,
+				self.settings.model.lang(),
+				self.settings.resource_load,
 			));
 		} else if self.interaction.panel_open()
 			&& self.interaction.panel != crate::state::PanelPage::Tabs
@@ -1070,19 +1165,19 @@ impl<'a> Chrome<'a> {
 			out.extend(controls::draw_controls_form(
 				self.ui,
 				&self.interaction,
-				self.settings,
+				self.settings.model,
 				(width, height),
-				self.restart_pending,
+				self.settings.restart_pending,
 				form.expect("settings form"),
 			));
 		}
 	}
 
 	fn resource_retry(&self, cached: bool) -> Button {
-		let panel = components::panel_rect(self.width, self.height);
+		let panel = components::panel_rect(self.frame.width, self.frame.height);
 		let viewport = self.resource_viewport();
 		components::button(
-			self.settings.lang().panel_retry(),
+			self.settings.model.lang().panel_retry(),
 			Command::Settings(SettingsCommand::RetrySettingsLoad),
 			Rect {
 				x: if cached {
@@ -1105,13 +1200,13 @@ impl<'a> Chrome<'a> {
 		)
 	}
 	fn draw_resource_feedback(&mut self, out: &mut Vec<Draw>) {
-		let Some(load) = self.resource_load else {
+		let Some(load) = self.settings.resource_load else {
 			return;
 		};
-		let Some(message) = load.message(self.settings.lang()) else {
+		let Some(message) = load.message(self.settings.model.lang()) else {
 			return;
 		};
-		let panel = components::panel_rect(self.width, self.height);
+		let panel = components::panel_rect(self.frame.width, self.frame.height);
 		let viewport = self.resource_viewport();
 		let failed =
 			matches!(load.status, super::settings_load::Status::Failed(_));
@@ -1159,7 +1254,7 @@ impl<'a> Chrome<'a> {
 				true,
 			));
 		}
-		if self.settings.settings_preview
+		if self.settings.model.settings_preview
 			&& (self.interaction.styles_open() || self.interaction.fonts_open())
 		{
 			components::fade(
@@ -1171,32 +1266,39 @@ impl<'a> Chrome<'a> {
 	}
 	pub(super) fn tab_bar(&mut self) -> tabs::TabBar<'_> {
 		tabs::TabBar {
-			style: self.settings.tab_style,
+			style: self.settings.model.tab_style,
 			ui: self.ui,
-			strip: self.tab_strip,
-			widths: self.tab_widths,
-			tabs: self.tabs,
-			active_tab: self.active_tab,
+			strip: self.session.strip,
+			widths: self.session.tab_widths,
+			tabs: self.session.tabs,
+			active_tab: self.session.active_tab,
 			cursor: self.interaction.pointer.cursor(),
-			viewport: self.frame.tabs,
+			viewport: self.frame.layout.tabs,
 		}
 	}
 
 	/// The outline drawer's rectangle for this window and notice strip.
 	pub(super) fn outline_drawer(&self) -> Rect {
-		let inset = if folder::docked(self.width, self.tab_strip.phone)
-			&& self.folder.is_some_and(|b| b.open && b.tree.is_some())
-		{
-			self.folder_drawer().w
-		} else {
-			0.
-		};
+		let inset =
+			if folder::docked(self.frame.width, self.session.strip.phone)
+				&& self
+					.session
+					.folder
+					.is_some_and(|b| b.open && b.tree.is_some())
+			{
+				self.folder_drawer().w
+			} else {
+				0.
+			};
 		let mut drawer = outline::rect_above(
-			self.width,
-			self.height,
-			content_top(self.remote_notice.is_some()),
-			super::search::bottom(self.session.search.open),
-			self.settings.outline_width.min(self.width - inset),
+			self.frame.width,
+			self.frame.height,
+			content_top(self.frame.remote_notice.is_some()),
+			super::search::bottom(self.session.doc.search.open),
+			self.settings
+				.model
+				.outline_width
+				.min(self.frame.width - inset),
 		);
 		drawer.x +=
 			drawer.w * (1.0 - self.interaction.overlays.outline.reveal());
@@ -1207,6 +1309,26 @@ impl<'a> Chrome<'a> {
 #[cfg(test)]
 mod tests {
 	use super::*;
+	#[test]
+	fn layer_order_runs_back_to_front() {
+		assert_eq!(
+			Chrome::layers(),
+			&[
+				Layer::Toolbar,
+				Layer::Tabs,
+				Layer::Banner,
+				Layer::Footer,
+				Layer::Status,
+				Layer::Drawers,
+				Layer::Preview,
+				Layer::Panel,
+				Layer::Dropdown,
+				Layer::Modal,
+				Layer::Viewer,
+				Layer::Frame,
+			],
+		);
+	}
 	#[test]
 	fn content_top_reserves_the_notice_strip() {
 		assert_eq!(content_top(false), TOP);
