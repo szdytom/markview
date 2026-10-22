@@ -1,3 +1,4 @@
+use super::store::Config;
 use super::*;
 use crate::lang::Lang;
 use std::fs;
@@ -761,4 +762,291 @@ fn http_overrides_survive_ui_saves_and_external_reload() {
 	let saved = fs::read_to_string(&path).unwrap();
 	assert!(!saved.contains("user-agent ="));
 	assert!(!saved.contains("accept-language ="));
+}
+
+fn settings_differing_from_default() -> ReaderSettings {
+	let default = ReaderSettings::default();
+	ReaderSettings {
+		window_layout: WindowLayout::Linux,
+		tab_style: TabStyle::Connected,
+		theme: Theme::Dark,
+		style: Some(vec!["dark".into()]),
+		lang: Some(Lang::Ja),
+		user_agent: Some("Fixture/1".into()),
+		accept_language: Some("ja,en;q=0.8".into()),
+		fontdef_overrides: vec![FontDefOverride {
+			id: "serif".into(),
+			replacement: "Fixture Serif".into(),
+		}],
+		font_size: 21.5,
+		width: 888.0,
+		folder_width: 321.0,
+		outline_width: 333.0,
+		tabs_width: 345.0,
+		justify: !default.justify,
+		hyphenate: !default.hyphenate,
+		justification: JustificationLimits {
+			spacing_min: 0.5,
+			spacing_max: 2.0,
+			tracking_min: -0.02,
+			tracking_max: 0.02,
+		},
+		paragraph_indent: 1.5,
+		cjk_type: CjkType::None,
+		codeblock_theme_override: Some("fixture".into()),
+		codeblock_wrap: !default.codeblock_wrap,
+		scroll_speed: 1.5,
+		single_instance: !default.single_instance,
+		restore_session: !default.restore_session,
+		footer_path: !default.footer_path,
+		..default
+	}
+}
+
+fn changed_fields(
+	before: &ReaderSettings,
+	after: &ReaderSettings,
+) -> Vec<&'static str> {
+	let mut changed = Vec::new();
+	macro_rules! changed {
+		($($field:ident),* $(,)?) => {
+			$(
+				if before.$field != after.$field {
+					changed.push(stringify!($field));
+				}
+			)*
+		};
+	}
+	changed!(
+		window_layout,
+		tab_style,
+		theme,
+		style,
+		lang,
+		user_agent,
+		accept_language,
+		fontdef_overrides,
+		stylesheet,
+		font_size,
+		width,
+		folder_width,
+		outline_width,
+		tabs_width,
+		justify,
+		hyphenate,
+		justification,
+		paragraph_indent,
+		cjk_type,
+		codeblock_theme_override,
+		codeblock_wrap,
+		scroll_speed,
+		single_instance,
+		restore_session,
+		footer_path,
+	);
+	changed
+}
+
+fn expected_changes(field: Setting) -> Vec<&'static str> {
+	match field {
+		Setting::WindowLayout => vec!["window_layout"],
+		Setting::TabStyle => vec!["tab_style"],
+		Setting::Theme => vec!["theme", "style"],
+		Setting::FontSize => vec!["font_size"],
+		Setting::Width => vec!["width"],
+		Setting::SidebarWidth(sidebar) => vec![match sidebar {
+			Sidebar::Folder => "folder_width",
+			Sidebar::Outline => "outline_width",
+			Sidebar::Tabs => "tabs_width",
+		}],
+		Setting::Justify => vec!["justify"],
+		Setting::Hyphenate => vec!["hyphenate"],
+		Setting::ParagraphIndent => vec!["paragraph_indent"],
+		Setting::CjkType => vec!["cjk_type"],
+		Setting::Language => vec!["lang"],
+		Setting::CodeblockWrap => vec!["codeblock_wrap"],
+		Setting::ScrollSpeed => vec!["scroll_speed"],
+		Setting::SingleInstance => vec!["single_instance"],
+		Setting::RestoreSession => vec!["restore_session"],
+		Setting::FooterPath => vec!["footer_path"],
+		Setting::FontFamily => vec!["fontdef_overrides"],
+	}
+}
+
+fn assert_copied(from: &ReaderSettings, to: &ReaderSettings, field: Setting) {
+	match field {
+		Setting::WindowLayout => {
+			assert_eq!(to.window_layout, from.window_layout)
+		}
+		Setting::TabStyle => assert_eq!(to.tab_style, from.tab_style),
+		Setting::Theme => {
+			assert_eq!(to.theme, from.theme);
+			assert_eq!(to.style, from.style);
+		}
+		Setting::FontSize => assert_eq!(to.font_size, from.font_size),
+		Setting::Width => assert_eq!(to.width, from.width),
+		Setting::SidebarWidth(sidebar) => {
+			assert_eq!(to.sidebar_width(sidebar), from.sidebar_width(sidebar));
+		}
+		Setting::Justify => assert_eq!(to.justify, from.justify),
+		Setting::Hyphenate => assert_eq!(to.hyphenate, from.hyphenate),
+		Setting::ParagraphIndent => {
+			assert_eq!(to.paragraph_indent, from.paragraph_indent);
+		}
+		Setting::CjkType => assert_eq!(to.cjk_type, from.cjk_type),
+		Setting::Language => assert_eq!(to.lang, from.lang),
+		Setting::CodeblockWrap => {
+			assert_eq!(to.codeblock_wrap, from.codeblock_wrap);
+		}
+		Setting::ScrollSpeed => assert_eq!(to.scroll_speed, from.scroll_speed),
+		Setting::SingleInstance => {
+			assert_eq!(to.single_instance, from.single_instance);
+		}
+		Setting::RestoreSession => {
+			assert_eq!(to.restore_session, from.restore_session);
+		}
+		Setting::FooterPath => assert_eq!(to.footer_path, from.footer_path),
+		Setting::FontFamily => {
+			assert_eq!(to.fontdef_overrides, from.fontdef_overrides);
+		}
+	}
+}
+
+#[test]
+fn setting_all_keeps_the_persisted_order_and_count() {
+	assert_eq!(Setting::COUNT, 17);
+	assert_eq!(
+		Setting::ALL,
+		[
+			Setting::WindowLayout,
+			Setting::TabStyle,
+			Setting::Theme,
+			Setting::FontSize,
+			Setting::Width,
+			Setting::SidebarWidth(Sidebar::Folder),
+			Setting::SidebarWidth(Sidebar::Outline),
+			Setting::SidebarWidth(Sidebar::Tabs),
+			Setting::Justify,
+			Setting::Hyphenate,
+			Setting::ParagraphIndent,
+			Setting::CjkType,
+			Setting::Language,
+			Setting::CodeblockWrap,
+			Setting::ScrollSpeed,
+			Setting::SingleInstance,
+			Setting::RestoreSession,
+			Setting::FooterPath,
+			Setting::FontFamily,
+		]
+	);
+}
+
+#[test]
+fn copy_field_changes_only_the_named_setting() {
+	let before = ReaderSettings::default();
+	let other = settings_differing_from_default();
+	for field in Setting::ALL {
+		let mut after = before.clone();
+		after.copy_field(&other, field);
+		assert_eq!(
+			changed_fields(&before, &after),
+			expected_changes(field),
+			"{field:?}"
+		);
+		assert_copied(&other, &after, field);
+	}
+}
+
+#[test]
+fn config_defaults_match_reader_defaults() {
+	assert_eq!(
+		Config::default().reader_settings(),
+		ReaderSettings::default()
+	);
+}
+
+#[test]
+fn reader_settings_round_trip_through_config_for_non_option_fields() {
+	let settings = settings_differing_from_default();
+	let back = Config::from_settings(&settings, ExportSettings::default())
+		.reader_settings();
+	assert_eq!(back.window_layout, settings.window_layout);
+	assert_eq!(back.tab_style, settings.tab_style);
+	assert_eq!(back.theme, settings.theme);
+	assert_eq!(back.fontdef_overrides, settings.fontdef_overrides);
+	assert_eq!(back.stylesheet, settings.stylesheet);
+	assert_eq!(back.font_size, settings.font_size);
+	assert_eq!(back.width, settings.width);
+	assert_eq!(back.folder_width, settings.folder_width);
+	assert_eq!(back.outline_width, settings.outline_width);
+	assert_eq!(back.tabs_width, settings.tabs_width);
+	assert_eq!(back.justify, settings.justify);
+	assert_eq!(back.hyphenate, settings.hyphenate);
+	assert_eq!(back.justification, settings.justification);
+	assert_eq!(back.paragraph_indent, settings.paragraph_indent);
+	assert_eq!(back.cjk_type, settings.cjk_type);
+	assert_eq!(back.codeblock_wrap, settings.codeblock_wrap);
+	assert_eq!(back.scroll_speed, settings.scroll_speed);
+	assert_eq!(back.single_instance, settings.single_instance);
+	assert_eq!(back.restore_session, settings.restore_session);
+	assert_eq!(back.footer_path, settings.footer_path);
+}
+
+#[test]
+fn version_one_fixture_honours_every_persisted_key() {
+	let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+		.join("tests/fixtures/settings-v1.toml");
+	let source = fs::read_to_string(&path).unwrap();
+	let raw: Config = toml_edit::de::from_str(&source).unwrap();
+	assert_eq!(raw.version, 1);
+	let (store, warning) = SettingsStore::load(Some(path));
+	assert!(warning.is_none(), "{warning:?}");
+	let settings = store.settings();
+	assert_eq!(settings.window_layout, WindowLayout::Macos);
+	assert_eq!(settings.tab_style, TabStyle::Connected);
+	assert_eq!(settings.theme, Theme::Dark);
+	assert_eq!(settings.style, Some(vec!["dark".into()]));
+	assert_eq!(store.theme_preference(), Some(Theme::Dark));
+	assert_eq!(settings.font_size, 21.0);
+	assert_eq!(settings.width, 900.0);
+	assert_eq!(settings.folder_width, 340.0);
+	assert_eq!(settings.outline_width, 360.0);
+	assert_eq!(settings.tabs_width, 380.0);
+	assert!(!settings.justify);
+	assert!(!settings.hyphenate);
+	assert_eq!(settings.paragraph_indent, 1.5);
+	assert_eq!(settings.cjk_type, CjkType::Jp);
+	assert_eq!(settings.lang, Some(Lang::Ja));
+	assert_eq!(settings.user_agent.as_deref(), Some("MarkviewFixture/1"));
+	assert_eq!(settings.accept_language.as_deref(), Some("ja,en;q=0.8"));
+	assert_eq!(
+		settings.codeblock_theme_override.as_deref(),
+		Some("fixture-code")
+	);
+	assert!(settings.codeblock_wrap);
+	assert_eq!(settings.scroll_speed, 1.5);
+	assert!(settings.single_instance);
+	assert!(settings.restore_session);
+	assert!(settings.footer_path);
+	assert_eq!(
+		settings.fontdef_overrides,
+		vec![FontDefOverride {
+			id: "serif".into(),
+			replacement: "Fixture Serif".into(),
+		}]
+	);
+	assert_eq!(settings.font_family(FontRole::Serif), Some("Fixture Serif"));
+	assert_eq!(settings.justification.spacing_min, 0.5);
+	assert_eq!(settings.justification.spacing_max, 2.0);
+	assert_eq!(settings.justification.tracking_min, -0.02);
+	assert_eq!(settings.justification.tracking_max, 0.02);
+	let export = store.export();
+	assert_eq!(export.format, ExportFormat::Png);
+	assert_eq!(export.font_size, 24.0);
+	assert_eq!(export.paragraph_indent, 1.0);
+	assert_eq!(export.paper, "letter");
+	assert!(export.landscape);
+	assert_eq!(export.margin, [10.0, 11.0, 12.0, 13.0]);
+	assert_eq!(export.scale, 1.0);
+	assert_eq!(export.style, vec!["print".to_owned(), "dark".to_owned()]);
 }

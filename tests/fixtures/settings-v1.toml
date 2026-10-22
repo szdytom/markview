@@ -1,0 +1,39 @@
+version = 1
+window-layout = "macos"
+tab-style = "connected"
+style = ["dark"]
+font_size = 21.0
+width = 900.0
+folder-width = 340.0
+outline-width = 360.0
+tabs-width = 380.0
+justify = false
+hyphenate = false
+paragraph_indent = 1.5
+cjk-type = "JP"
+language = "ja"
+user-agent = "MarkviewFixture/1"
+accept-language = "ja,en;q=0.8"
+codeblock-theme-override = "fixture-code"
+codeblock-wrap = true
+scroll-speed = 1.5
+single-instance = true
+restore-session = true
+footer-path = true
+fontdef-override = [{ id = "serif", override = "Fixture Serif" }]
+
+[justification]
+spacing_min = 0.5
+spacing_max = 2.0
+tracking_min = -0.02
+tracking_max = 0.02
+
+[export]
+format = "png"
+font_size = 24.0
+paragraph_indent = 1.0
+paper = "letter"
+landscape = true
+margin = [10.0, 11.0, 12.0, 13.0]
+scale = 1.0
+style = ["print", "dark"]

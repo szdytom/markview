@@ -5,6 +5,7 @@ use markview_layout::JustificationLimits;
 use markview_layout::style::CjkType;
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
+mod schema;
 mod store;
 pub use store::{SettingsStore, SettingsWarning};
 
@@ -382,50 +383,6 @@ impl ReaderSettings {
 				id: id.to_owned(),
 				replacement,
 			});
-		}
-	}
-
-	#[cfg_attr(
-		any(),
-		markview::allow_complexity(
-			reason = "Keep exhaustive per-field settings copying together so pending UI edits and launch overrides share one mapping."
-		)
-	)]
-	pub fn copy_field(&mut self, other: &Self, field: Setting) {
-		match field {
-			Setting::WindowLayout => self.window_layout = other.window_layout,
-			Setting::TabStyle => self.tab_style = other.tab_style,
-			Setting::Theme => {
-				self.theme = other.theme;
-				self.style = other.style.clone();
-			}
-			Setting::FontSize => self.font_size = other.font_size,
-			Setting::Width => self.width = other.width,
-			Setting::SidebarWidth(sidebar) => {
-				self.set_sidebar_width(sidebar, other.sidebar_width(sidebar));
-			}
-			Setting::Justify => self.justify = other.justify,
-			Setting::Hyphenate => self.hyphenate = other.hyphenate,
-			Setting::ParagraphIndent => {
-				self.paragraph_indent = other.paragraph_indent
-			}
-			Setting::CjkType => self.cjk_type = other.cjk_type,
-			Setting::Language => self.lang = other.lang,
-			Setting::CodeblockWrap => {
-				self.codeblock_wrap = other.codeblock_wrap
-			}
-			Setting::ScrollSpeed => self.scroll_speed = other.scroll_speed,
-			Setting::RestoreSession => {
-				self.restore_session = other.restore_session
-			}
-			Setting::SingleInstance => {
-				self.single_instance = other.single_instance
-			}
-			Setting::FooterPath => self.footer_path = other.footer_path,
-			// One role's change rewrites the whole list of overrides.
-			Setting::FontFamily => {
-				self.fontdef_overrides = other.fontdef_overrides.clone()
-			}
 		}
 	}
 }

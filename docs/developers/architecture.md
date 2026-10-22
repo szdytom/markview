@@ -289,7 +289,7 @@ Links are activated only on a matching, non-drag release. `src/link.rs` is the s
 
 A table-of-contents drawer lists a document's headings in reading order, built once per accepted document and cached with the session. It is an overlay rather than a modal panel: `PanelPage` remains closed, so the document keeps scrolling and selecting behind it, while the wheel over the drawer, the drawer's own rows, and Up/Down while it is open belong to the list. An entry jumps through the same fragment path as a `#anchor` link, and the entry holding the reading position is highlighted from the snapshot's heading anchors, resolved only while the drawer is open.
 
-Settings are layered as defaults, user TOML, then explicit command-line overrides. Interactive changes may persist user preferences; render, benchmark, and smoke modes never read the user's TOML, so a preference set in the window does not reach their output. Stylesheets are parsed and merged transactionally: an invalid update leaves the last effective stylesheet in place.
+Settings are layered as defaults, user TOML, then explicit command-line overrides. Interactive changes may persist user preferences; render, benchmark, and smoke modes never read the user's TOML, so a preference set in the window does not reach their output. Each persisted reader field is declared once in the settings field table (`src/settings/schema.rs`), which derives the default, the TOML mapping and `copy_field` together. Stylesheets are parsed and merged transactionally: an invalid update leaves the last effective stylesheet in place.
 
 ## Resource and performance boundaries
 

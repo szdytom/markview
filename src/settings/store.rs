@@ -1,7 +1,7 @@
 //! Transactional configuration reads, merging and durable writes.
 use super::{
-	ExportSettings, FontDefOverride, ReaderSettings, Setting, Sidebar,
-	TabStyle, WindowLayout, default_cjk_type,
+	ExportSettings, FontDefOverride, ReaderSettings, Setting, TabStyle,
+	WindowLayout,
 };
 use crate::lang::Lang;
 use crate::render::Theme;
@@ -68,152 +68,65 @@ impl SettingsWarning {
 
 #[derive(Serialize, Deserialize)]
 #[serde(default)]
-struct Config {
-	version: u32,
+pub(super) struct Config {
+	pub(super) version: u32,
 	#[serde(rename = "window-layout")]
-	window_layout: WindowLayout,
+	pub(super) window_layout: WindowLayout,
 	#[serde(rename = "tab-style")]
-	tab_style: TabStyle,
+	pub(super) tab_style: TabStyle,
 	/// Absent means "follow the system theme"; only a user choice is stored.
 	#[serde(skip_serializing_if = "Option::is_none")]
-	style: Option<Vec<String>>,
+	pub(super) style: Option<Vec<String>>,
 	#[serde(
 		rename = "fontdef-override",
 		default,
 		skip_serializing_if = "Vec::is_empty"
 	)]
-	fontdef_overrides: Vec<FontDefOverride>,
+	pub(super) fontdef_overrides: Vec<FontDefOverride>,
 	#[serde(skip_serializing_if = "Option::is_none")]
-	theme: Option<Theme>,
+	pub(super) theme: Option<Theme>,
 	/// Absent means "follow the system language"; only a user choice is
 	/// stored, so a locale change reaches the next launch.
 	#[serde(skip_serializing_if = "Option::is_none")]
-	language: Option<Lang>,
+	pub(super) language: Option<Lang>,
 	#[serde(rename = "user-agent", skip_serializing_if = "Option::is_none")]
-	user_agent: Option<String>,
+	pub(super) user_agent: Option<String>,
 	#[serde(
 		rename = "accept-language",
 		skip_serializing_if = "Option::is_none"
 	)]
-	accept_language: Option<String>,
-	font_size: f32,
-	width: f32,
+	pub(super) accept_language: Option<String>,
+	pub(super) font_size: f32,
+	pub(super) width: f32,
 	#[serde(rename = "folder-width")]
-	folder_width: f32,
+	pub(super) folder_width: f32,
 	#[serde(rename = "outline-width")]
-	outline_width: f32,
+	pub(super) outline_width: f32,
 	#[serde(rename = "tabs-width")]
-	tabs_width: f32,
-	justify: bool,
-	hyphenate: bool,
-	justification: JustificationLimits,
-	paragraph_indent: f32,
+	pub(super) tabs_width: f32,
+	pub(super) justify: bool,
+	pub(super) hyphenate: bool,
+	pub(super) justification: JustificationLimits,
+	pub(super) paragraph_indent: f32,
 	#[serde(rename = "cjk-type")]
-	cjk_type: Option<CjkType>,
+	pub(super) cjk_type: Option<CjkType>,
 	#[serde(
 		rename = "codeblock-theme-override",
 		skip_serializing_if = "Option::is_none"
 	)]
-	codeblock_theme_override: Option<String>,
+	pub(super) codeblock_theme_override: Option<String>,
 	#[serde(rename = "codeblock-wrap")]
-	codeblock_wrap: bool,
+	pub(super) codeblock_wrap: bool,
 	#[serde(rename = "scroll-speed")]
-	scroll_speed: f32,
+	pub(super) scroll_speed: f32,
 	#[serde(rename = "single-instance")]
-	single_instance: bool,
+	pub(super) single_instance: bool,
 	#[serde(rename = "restore-session")]
-	restore_session: bool,
+	pub(super) restore_session: bool,
 	#[serde(rename = "footer-path")]
-	footer_path: bool,
+	pub(super) footer_path: bool,
 	/// The reader's export preferences, kept apart from the reading view.
-	export: ExportSettings,
-}
-impl Default for Config {
-	fn default() -> Self {
-		let settings = ReaderSettings::default();
-		Self {
-			version: 1,
-			window_layout: settings.window_layout,
-			tab_style: settings.tab_style,
-			theme: None,
-			language: None,
-			user_agent: None,
-			accept_language: None,
-			style: None,
-			fontdef_overrides: Vec::new(),
-			font_size: settings.font_size,
-			width: settings.width,
-			folder_width: settings.folder_width,
-			outline_width: settings.outline_width,
-			tabs_width: settings.tabs_width,
-			justify: settings.justify,
-			hyphenate: settings.hyphenate,
-			justification: settings.justification,
-			paragraph_indent: settings.paragraph_indent,
-			cjk_type: Some(settings.cjk_type),
-			codeblock_theme_override: None,
-			codeblock_wrap: settings.codeblock_wrap,
-			scroll_speed: settings.scroll_speed,
-			single_instance: settings.single_instance,
-			restore_session: settings.restore_session,
-			footer_path: settings.footer_path,
-			export: ExportSettings::default(),
-		}
-	}
-}
-
-impl Config {
-	fn reader_settings(&self) -> ReaderSettings {
-		let style = self.style.clone().or_else(|| {
-			self.theme.map(|theme| {
-				vec![
-					if theme == Theme::Dark {
-						"dark"
-					} else {
-						"light"
-					}
-					.into(),
-				]
-			})
-		});
-		let theme = style
-			.as_ref()
-			.map(|ids| {
-				if ids.first().is_some_and(|id| id == "dark") {
-					Theme::Dark
-				} else {
-					Theme::Light
-				}
-			})
-			.unwrap_or_default();
-		ReaderSettings {
-			window_layout: self.window_layout,
-			tab_style: self.tab_style,
-			theme,
-			style,
-			fontdef_overrides: self.fontdef_overrides.clone(),
-			font_size: self.font_size,
-			width: self.width,
-			folder_width: self.folder_width,
-			outline_width: self.outline_width,
-			tabs_width: self.tabs_width,
-			justify: self.justify,
-			hyphenate: self.hyphenate,
-			justification: self.justification,
-			paragraph_indent: self.paragraph_indent,
-			cjk_type: self.cjk_type.unwrap_or_else(default_cjk_type),
-			lang: self.language,
-			user_agent: self.user_agent.clone(),
-			accept_language: self.accept_language.clone(),
-			codeblock_theme_override: self.codeblock_theme_override.clone(),
-			codeblock_wrap: self.codeblock_wrap,
-			scroll_speed: self.scroll_speed,
-			single_instance: self.single_instance || self.restore_session,
-			restore_session: self.restore_session,
-			footer_path: self.footer_path,
-			..Default::default()
-		}
-	}
+	pub(super) export: ExportSettings,
 }
 
 pub struct SettingsStore {
@@ -426,27 +339,7 @@ impl SettingsStore {
 				}
 			}
 			None => {
-				self.pending = vec![
-					Setting::WindowLayout,
-					Setting::TabStyle,
-					Setting::Theme,
-					Setting::FontSize,
-					Setting::Width,
-					Setting::SidebarWidth(Sidebar::Folder),
-					Setting::SidebarWidth(Sidebar::Outline),
-					Setting::SidebarWidth(Sidebar::Tabs),
-					Setting::Justify,
-					Setting::Hyphenate,
-					Setting::ParagraphIndent,
-					Setting::CjkType,
-					Setting::Language,
-					Setting::CodeblockWrap,
-					Setting::ScrollSpeed,
-					Setting::SingleInstance,
-					Setting::RestoreSession,
-					Setting::FooterPath,
-					Setting::FontFamily,
-				];
+				self.pending = Setting::ALL.to_vec();
 				self.saved = effective.clone();
 				self.saved.style = None;
 			}
@@ -482,37 +375,8 @@ impl SettingsStore {
 		Ok(())
 	}
 	fn encoded_settings(&self) -> Result<Vec<u8>> {
-		let config = Config {
-			version: 1,
-			window_layout: self.saved.window_layout,
-			tab_style: self.saved.tab_style,
-			theme: None,
-			style: self.saved.style.clone(),
-			fontdef_overrides: self.saved.fontdef_overrides.clone(),
-			font_size: self.saved.font_size,
-			width: self.saved.width,
-			folder_width: self.saved.folder_width,
-			outline_width: self.saved.outline_width,
-			tabs_width: self.saved.tabs_width,
-			justify: self.saved.justify,
-			hyphenate: self.saved.hyphenate,
-			justification: self.saved.justification,
-			paragraph_indent: self.saved.paragraph_indent,
-			cjk_type: Some(self.saved.cjk_type),
-			language: self.saved.lang,
-			user_agent: self.saved.user_agent.clone(),
-			accept_language: self.saved.accept_language.clone(),
-			codeblock_theme_override: self
-				.saved
-				.codeblock_theme_override
-				.clone(),
-			codeblock_wrap: self.saved.codeblock_wrap,
-			scroll_speed: self.saved.scroll_speed,
-			single_instance: self.saved.single_instance,
-			restore_session: self.saved.restore_session,
-			footer_path: self.saved.footer_path,
-			export: self.saved_export.clone(),
-		};
+		let config =
+			Config::from_settings(&self.saved, self.saved_export.clone());
 		let mut values = toml_edit::ser::to_document(&config)?;
 		// `[export]` reads as its own section; the serializer would otherwise
 		// write one long inline table.
