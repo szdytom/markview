@@ -199,7 +199,9 @@ impl InteractionState {
 		self.pointer.cancel();
 		self.panels.set_grab(None);
 		// An option list belongs to the page that opened it.
-		self.dropdown = None;
+		self.overlays
+			.dropdown
+			.send(crate::app::dropdown::Message::Close);
 	}
 
 	/// Toggles the settings page's visibility. The page model clears its own
@@ -408,51 +410,6 @@ pub(crate) enum DropdownId {
 	Font(crate::settings::FontRole),
 }
 
-/// The option list a control has open.
-#[derive(Clone, Copy, Debug, PartialEq)]
-pub(crate) struct Dropdown {
-	pub(crate) id: DropdownId,
-	/// The highlighted option, which `Enter` commits.
-	pub(crate) highlight: usize,
-	/// The first option drawn. It follows the highlight, so a list too long for
-	/// the window always shows the part the reader is on.
-	pub(crate) offset: usize,
-	/// Wheel travel held back until it adds up to one option, so a trackpad's
-	/// small deltas and a mouse's whole notches move the list alike.
-	pub(crate) wheel: f32,
-}
-impl Dropdown {
-	pub(crate) fn new(id: DropdownId, highlight: usize) -> Self {
-		Self {
-			id,
-			highlight,
-			offset: 0,
-			wheel: 0.0,
-		}
-	}
-	/// Moves the highlight by `steps`, wrapping round `count` options.
-	pub(crate) fn step(&mut self, steps: i8, count: usize) {
-		if count == 0 {
-			return;
-		}
-		if steps < 0 {
-			self.highlight = self.highlight.checked_sub(1).unwrap_or(count - 1);
-		} else if self.highlight + 1 == count {
-			self.highlight = 0;
-		} else {
-			self.highlight += 1;
-		}
-	}
-	/// Keeps the highlight inside a window of `capacity` drawn options.
-	pub(crate) fn follow(&mut self, capacity: usize) {
-		if capacity == 0 {
-			return;
-		}
-		let last = self.highlight.saturating_sub(capacity - 1);
-		self.offset = self.offset.min(self.highlight).max(last);
-	}
-}
-
 #[derive(Default, Clone)]
 pub(crate) struct ReaderSession {
 	pub(crate) security: crate::security::Security,
@@ -624,9 +581,6 @@ pub(crate) struct InteractionState {
 	pub(crate) pointer: crate::app::pointer::State,
 	/// The full-size image viewer; while it is set it owns input too.
 	pub(crate) viewer: Option<Viewer>,
-	/// An open option list. Like a confirmation it owns input while it is set:
-	/// a press outside it closes it without reaching the page behind.
-	pub(crate) dropdown: Option<Dropdown>,
 }
 
 /// Which way a wheel gesture travels.

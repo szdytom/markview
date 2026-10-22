@@ -114,7 +114,7 @@ impl<P: super::SendEvent> App<P> {
 		if markview_platform::touch_layout()
 			|| self.interaction.overlays.modal_open()
 			|| self.interaction.viewer.is_some()
-			|| self.interaction.dropdown.is_some()
+			|| self.interaction.overlays.dropdown_open()
 		{
 			return None;
 		}

@@ -1273,8 +1273,8 @@ fn previewing_recedes_the_styles_and_fonts_pages() {
 #[test]
 fn the_fonts_page_draws_its_open_option_list() {
 	use crate::app::{tab_metrics::TabMetrics, tab_strip::TabStrip};
+	use crate::state::DropdownId;
 	use crate::state::{Command as StateCommand, PanelPage, PanelTab};
-	use crate::state::{Dropdown, DropdownId};
 	let mut ui = crate::test_support::shaper();
 	let (width, height) = (820.0, 600.0);
 	let settings = ReaderSettings::default();
@@ -1287,10 +1287,13 @@ fn the_fonts_page_draws_its_open_option_list() {
 	let jobs = std::collections::HashMap::new();
 	let mut interaction = InteractionState::default();
 	interaction.show_panel(PanelPage::Settings(PanelTab::Fonts));
-	interaction.dropdown = Some(Dropdown::new(
-		DropdownId::Font(crate::settings::FontRole::Serif),
-		0,
-	));
+	interaction
+		.overlays
+		.dropdown
+		.send(crate::app::dropdown::Message::Open {
+			id: DropdownId::Font(crate::settings::FontRole::Serif),
+			highlight: 0,
+		});
 	let chrome_tabs: Vec<ReaderTab> = Vec::new();
 	let settings_page =
 		crate::app::settings_panel::Model::new(settings.clone());
@@ -1348,7 +1351,12 @@ fn the_fonts_page_draws_its_open_option_list() {
 	let overlay = chrome.overlay();
 	// The list's own background is painted where it is measured, and it holds
 	// the option the reader can commit.
-	let mut open = interaction.dropdown.unwrap();
+	let mut open = interaction
+		.overlays
+		.dropdown
+		.current()
+		.copied()
+		.expect("the list is open");
 	let menu = chrome
 		.dropdown_menu(&mut open)
 		.expect("the chooser anchors its list");
@@ -1717,13 +1725,14 @@ fn redesigned_chrome_frames() -> Result<()> {
 					// A chooser's option list open on the Fonts page, on its
 					// second option so the frame shows a moving highlight.
 					if page == "fonts-menu" {
-						interaction.dropdown =
-							Some(crate::state::Dropdown::new(
-								crate::state::DropdownId::Font(
+						interaction.overlays.dropdown.send(
+							crate::app::dropdown::Message::Open {
+								id: crate::state::DropdownId::Font(
 									crate::settings::FontRole::SansSerif,
 								),
-								1,
-							));
+								highlight: 1,
+							},
+						);
 					}
 					let empty = ReaderSession {
 						path: (page != "empty").then(|| "Missing.md".into()),

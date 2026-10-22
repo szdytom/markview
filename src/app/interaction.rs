@@ -276,7 +276,10 @@ impl<P: super::SendEvent> App<P> {
 					super::font_panel::Command::StatusFilter(_)
 						| super::font_panel::Command::Choosers
 				) {
-					self.interaction.dropdown = None;
+					self.interaction
+						.overlays
+						.dropdown
+						.send(super::dropdown::Message::Close);
 				}
 				self.font_message(super::font_panel::Message::Command {
 					command,
@@ -450,16 +453,22 @@ impl<P: super::SendEvent> App<P> {
 			| Command::Reset
 			| Command::SettingsPreview => unreachable!("page command handled above"),
 			Command::ToggleDropdown(id, highlight) => {
-				match self.interaction.dropdown {
-					Some(open) if open.id == id => self.close_dropdown(),
-					_ => {
-						// The list owns the page's scroll from here: freeze
-						// its anchor instead of easing it out from under the
-						// list.
-						self.cancel_panel_scroll();
-						self.interaction.dropdown =
-							Some(crate::state::Dropdown::new(id, highlight));
-					}
+				let same = self
+					.interaction
+					.overlays
+					.dropdown
+					.current()
+					.is_some_and(|open| open.id() == id);
+				if same {
+					self.close_dropdown();
+				} else {
+					// The list owns the page's scroll from here: freeze its
+					// anchor instead of easing it out from under the list.
+					self.cancel_panel_scroll();
+					self.interaction
+						.overlays
+						.dropdown
+						.send(super::dropdown::Message::Open { id, highlight });
 				}
 				self.redraw();
 			}

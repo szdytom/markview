@@ -116,7 +116,7 @@ impl<P: super::SendEvent> App<P> {
 						self.reload_styles()
 					}
 					settings_panel::Effect::CloseDropdown => {
-						self.close_dropdown()
+						self.select_dropdown()
 					}
 					settings_panel::Effect::SyncSession => {
 						self.sync_session_settings()
@@ -402,7 +402,7 @@ impl<P: super::SendEvent> App<P> {
 	pub(super) fn scroll_panel(&mut self, delta: f32) {
 		// The open list owns the wheel: the page keeps its scroll, so the row
 		// its list hangs from cannot move out from under it.
-		if self.interaction.dropdown.is_some() {
+		if self.interaction.overlays.dropdown_open() {
 			return;
 		}
 		let Some((scroll, max)) = self.panel_scroll_range() else {
@@ -414,7 +414,7 @@ impl<P: super::SendEvent> App<P> {
 	}
 	/// A wheel step over the open panel page, eased like the document's own.
 	pub(super) fn wheel_panel(&mut self, delta: f32) {
-		if self.interaction.dropdown.is_some() {
+		if self.interaction.overlays.dropdown_open() {
 			return;
 		}
 		let Some((_, max)) = self.panel_scroll_range() else {

@@ -1,10 +1,10 @@
 //! Shared, concrete chrome components. Geometry owns painting and input alike.
 use super::icons;
 use crate::{
-	app::{Button, Label},
+	app::{Button, Label, dropdown::Dropdown},
 	lang::Lang,
 	layout::{Draw, Paint, Rect, Scrollbar, ScrollbarMetrics, TextShaper},
-	state::{Command, Dropdown, DropdownId, InteractionState, PanelTab},
+	state::{Command, DropdownId, InteractionState, PanelTab},
 };
 use markview_layout::style::{
 	Color, ColorField as C, Condition, TextAppearance,
@@ -1296,7 +1296,7 @@ impl Form {
 		let anchor = self
 			.menus
 			.iter()
-			.find(|(id, _)| *id == dropdown.id)
+			.find(|(id, _)| *id == dropdown.id())
 			.map(|(_, rect)| *rect)
 			// A row the page scrolled away holds no list: its anchor is gone,
 			// so the list must not hang from where the control used to be.
@@ -1304,7 +1304,7 @@ impl Form {
 		let entries = self.rows.iter().find_map(|(row, _)| {
 			row.menu
 				.as_ref()
-				.filter(|menu| menu.id == dropdown.id)
+				.filter(|menu| menu.id == dropdown.id())
 				.map(|menu| menu.entries.as_slice())
 		})?;
 		Some(menu(anchor, entries, dropdown, size))
@@ -1345,7 +1345,7 @@ pub(in crate::app) fn menu(
 ) -> Menu {
 	let (rect, shown) = menu_rect(anchor, entries.len(), size);
 	dropdown.follow(shown);
-	let offset = dropdown.offset;
+	let offset = dropdown.offset();
 	// A list longer than its window keeps a strip clear for its scrollbar,
 	// so the bar never sits on an option's label.
 	let bar = if entries.len() > shown { MENU_BAR } else { 0.0 };
@@ -1371,7 +1371,7 @@ pub(in crate::app) fn menu(
 		rect,
 		buttons,
 		options: entries.len(),
-		highlight: dropdown.highlight,
+		highlight: dropdown.highlight(),
 		offset,
 	}
 }

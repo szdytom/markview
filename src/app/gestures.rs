@@ -109,7 +109,7 @@ impl<P: super::SendEvent> App<P> {
 		// dismisses it. The page controls under it and the 44-pixel expansion
 		// below stay out of reach, so reaching for a covered setting cannot
 		// activate it and the list's padding cannot commit a nearby option.
-		if self.interaction.dropdown.is_some() {
+		if self.interaction.overlays.dropdown_open() {
 			let buttons = self.dropdown_buttons();
 			let layout = super::widgets::layout(&buttons);
 			return Some(
@@ -162,7 +162,7 @@ impl<P: super::SendEvent> App<P> {
 		}
 		// The open list owns the gesture too: nothing behind it pans, so the
 		// row its list hangs from cannot move out from under it.
-		if self.interaction.dropdown.is_some() {
+		if self.interaction.overlays.dropdown_open() {
 			return Surface::None;
 		}
 		if self.interaction.panel_open() {

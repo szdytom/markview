@@ -1702,43 +1702,6 @@ fn outline_collapse_is_per_session_and_resets_on_new_content() {
 }
 
 #[test]
-fn an_option_list_highlight_wraps_and_stays_in_view() {
-	let mut open = Dropdown::new(DropdownId::Language, 0);
-	// Up from the first option lands on the last, and down from the last
-	// returns to the first.
-	open.step(-1, 3);
-	assert_eq!(open.highlight, 2);
-	open.step(1, 3);
-	assert_eq!(open.highlight, 0);
-
-	// A window two options tall carries the first option drawn with it, so
-	// that the highlight is always among the options on screen.
-	let mut open = Dropdown::new(DropdownId::Language, 0);
-	for _ in 0..2 {
-		open.step(1, 6);
-		open.follow(2);
-	}
-	assert_eq!(open.highlight, 2);
-	assert_eq!(open.offset, 1);
-	for _ in 0..4 {
-		open.step(-1, 6);
-		open.follow(2);
-	}
-	assert_eq!(open.highlight, 4);
-	assert_eq!(open.offset, 4);
-
-	// A window taller than the list never scrolls it.
-	let mut open = Dropdown::new(DropdownId::Language, 0);
-	open.follow(10);
-	assert_eq!(open.offset, 0);
-
-	// An empty list has nothing to move through.
-	let mut open = Dropdown::new(DropdownId::Language, 0);
-	open.step(1, 0);
-	assert_eq!(open.highlight, 0);
-}
-
-#[test]
 fn viewer_fits_without_upscaling_and_zoom_keeps_the_pointer_spot() {
 	let window = (1200., 800.);
 	// A tall picture fits the window; a native-size cap keeps small pictures

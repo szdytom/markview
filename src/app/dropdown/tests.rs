@@ -5,6 +5,7 @@
 //! commits it, an arrow moves its highlight, a press that misses the list
 //! closes it without reaching the control it covered, and a touch agrees with
 //! the list's own geometry.
+use super::Dropdown;
 use crate::app::window::Loop;
 use crate::app::{App, Event, SendEvent};
 use crate::cli::{LaunchOptions, Mode};
@@ -184,7 +185,7 @@ fn exposed_covered_point(
 fn a_release_over_an_open_option_commits_it() {
 	let mut app = app_with_panel();
 	app.action(Command::ToggleDropdown(DropdownId::Language, 0));
-	assert!(app.interaction.dropdown.is_some());
+	assert!(app.interaction.overlays.dropdown.is_open());
 
 	let target = Command::Language(Some(Lang::ZhHans));
 	let (x, y) = option_centre(&mut app, target);
@@ -192,7 +193,7 @@ fn a_release_over_an_open_option_commits_it() {
 
 	// The release finds the option in the button list and commits it.
 	assert_eq!(app.preferences.values.lang, Some(Lang::ZhHans));
-	assert!(app.interaction.dropdown.is_none());
+	assert!(!app.interaction.overlays.dropdown.is_open());
 }
 
 /// The language reaches the document as well as the chrome: the front matter
@@ -246,7 +247,7 @@ fn tab_style_commits_from_keyboard_and_pointer_without_document_reflow() {
 	);
 	app.key_pressed(&Key::Named(NamedKey::Enter));
 	assert_eq!(app.preferences.values.tab_style, TabStyle::Connected);
-	assert!(app.interaction.dropdown.is_none());
+	assert!(!app.interaction.overlays.dropdown.is_open());
 	assert_eq!(
 		app.interaction.widgets.focus,
 		Some(Command::ToggleDropdown(DropdownId::TabStyle, 1).widget_id())
@@ -255,7 +256,7 @@ fn tab_style_commits_from_keyboard_and_pointer_without_document_reflow() {
 	let at = option_centre(&mut app, Command::TabStyle(TabStyle::Underline));
 	click(&mut app, at.0, at.1);
 	assert_eq!(app.preferences.values.tab_style, TabStyle::Underline);
-	assert!(app.interaction.dropdown.is_none());
+	assert!(!app.interaction.overlays.dropdown.is_open());
 	assert!(app.readers.session.requested_options.is_none());
 	assert_eq!(app.options(), options);
 	assert!(std::sync::Arc::ptr_eq(
@@ -282,7 +283,7 @@ fn window_layout_commits_from_keyboard_and_pointer_for_next_launch() {
 	assert_eq!(app.preferences.values.window_layout, WindowLayout::Macos);
 	assert_eq!(app.frame.layout, initial);
 	assert!(app.readers.session.requested_options.is_none());
-	assert!(app.interaction.dropdown.is_none());
+	assert!(!app.interaction.overlays.dropdown.is_open());
 	assert_eq!(
 		app.interaction.widgets.focus,
 		Some(Command::ToggleDropdown(DropdownId::WindowLayout, 1).widget_id())
@@ -292,7 +293,7 @@ fn window_layout_commits_from_keyboard_and_pointer_for_next_launch() {
 		option_centre(&mut app, Command::WindowLayout(WindowLayout::Linux));
 	click(&mut app, at.0, at.1);
 	assert_eq!(app.preferences.values.window_layout, WindowLayout::Linux);
-	assert!(app.interaction.dropdown.is_none());
+	assert!(!app.interaction.overlays.dropdown.is_open());
 	assert_eq!(app.frame.layout, initial);
 }
 
@@ -319,7 +320,7 @@ fn arrows_move_the_highlight_and_enter_commits_it() {
 
 	// Enter closes the list and commits the option under the keyboard.
 	app.key_pressed(&Key::Named(NamedKey::Enter));
-	assert!(app.interaction.dropdown.is_none());
+	assert!(!app.interaction.overlays.dropdown.is_open());
 	assert_eq!(app.preferences.values.lang, Some(Lang::En));
 }
 
@@ -336,7 +337,7 @@ fn an_arrow_under_an_open_list_stays_in_the_list() {
 		highlighted(&mut app),
 		Command::Language(Lang::ALL.last().copied())
 	);
-	assert!(app.interaction.dropdown.is_some());
+	assert!(app.interaction.overlays.dropdown.is_open());
 	assert_eq!(app.readers.session.scrolling.offset, before);
 }
 
@@ -347,14 +348,36 @@ fn escape_closes_without_committing_and_tab_reaches_the_page() {
 
 	// Escape closes without committing anything.
 	app.key_pressed(&Key::Named(NamedKey::Escape));
-	assert!(app.interaction.dropdown.is_none());
+	assert!(!app.interaction.overlays.dropdown.is_open());
 	assert_eq!(app.preferences.values.lang, None);
 
 	// Tab closes the list and hands the key on to the panel's own traversal.
 	app.action(Command::ToggleDropdown(DropdownId::Language, 0));
 	app.key_pressed(&Key::Named(NamedKey::Tab));
-	assert!(app.interaction.dropdown.is_none());
+	assert!(!app.interaction.overlays.dropdown.is_open());
 	assert!(app.interaction.widgets.focus.is_some());
+}
+
+/// An option list belongs to the page that opened it: changing pages closes
+/// it, and the page change commits nothing.
+#[test]
+fn changing_the_page_closes_the_list() {
+	for page in [PanelPage::Settings(PanelTab::Styles), PanelPage::Closed] {
+		let mut app = app_with_panel();
+		app.action(Command::ToggleDropdown(DropdownId::Language, 0));
+		assert!(app.interaction.overlays.dropdown.is_open());
+
+		app.show_panel(page);
+
+		assert!(
+			!app.interaction.overlays.dropdown.is_open(),
+			"{page:?}: the list closed with the page it belonged to"
+		);
+		assert_eq!(
+			app.preferences.values.lang, None,
+			"{page:?}: the page change chose nothing"
+		);
+	}
 }
 
 #[test]
@@ -368,7 +391,7 @@ fn a_press_outside_the_list_closes_it_without_reaching_the_page() {
 		.expect("the list covers a page control");
 	let before = app.preferences.values.clone();
 	click(&mut app, x, y);
-	assert!(app.interaction.dropdown.is_none());
+	assert!(!app.interaction.overlays.dropdown.is_open());
 	assert_eq!(
 		app.preferences.values, before,
 		"the press must not reach the control the list covered"
@@ -408,7 +431,7 @@ fn clicking_the_control_again_closes_the_list_and_keeps_it_closed() {
 		anchor.y + anchor.h / 2.0,
 	);
 	assert!(
-		app.interaction.dropdown.is_none(),
+		!app.interaction.overlays.dropdown.is_open(),
 		"the list stays closed once its own control closes it"
 	);
 	assert_eq!(app.preferences.values.lang, None);
@@ -422,7 +445,7 @@ fn a_touch_on_an_option_picks_it_like_a_click() {
 	let (x, y) = option_centre(&mut app, target);
 	touch(&mut app, x, y);
 	assert_eq!(app.preferences.values.lang, Some(Lang::ZhHans));
-	assert!(app.interaction.dropdown.is_none());
+	assert!(!app.interaction.overlays.dropdown.is_open());
 }
 
 /// Just past one option's own rectangle is the next option, not a gap. The
@@ -463,7 +486,7 @@ fn a_touch_clear_of_every_option_closes_the_list_without_picking() {
 	// Inside the list's frame but between its options and its edge.
 	let (x, y) = (menu.rect.x + menu.rect.w / 2.0, menu.rect.y + 1.0);
 	touch(&mut app, x, y);
-	assert!(app.interaction.dropdown.is_none());
+	assert!(!app.interaction.overlays.dropdown.is_open());
 	assert_eq!(app.preferences.values.lang, None);
 }
 
@@ -494,7 +517,7 @@ fn a_click_on_an_option_over_a_covered_control_picks_the_option() {
 
 	click(&mut app, x, y);
 	assert_eq!(app.preferences.values.lang, Some(Lang::En));
-	assert!(app.interaction.dropdown.is_none());
+	assert!(!app.interaction.overlays.dropdown.is_open());
 }
 
 /// A tap on a page control the list covers still belongs to the list: it
@@ -509,7 +532,7 @@ fn a_touch_on_a_covered_control_dismisses_without_activating_it() {
 	let before = app.preferences.values.clone();
 
 	touch(&mut app, x, y);
-	assert!(app.interaction.dropdown.is_none());
+	assert!(!app.interaction.overlays.dropdown.is_open());
 	assert_eq!(
 		app.preferences.values, before,
 		"the covered control never took the tap"
@@ -529,7 +552,7 @@ fn a_touch_on_the_list_padding_does_not_pick_the_nearest_option() {
 	);
 
 	touch(&mut app, x, y);
-	assert!(app.interaction.dropdown.is_none());
+	assert!(!app.interaction.overlays.dropdown.is_open());
 	assert_eq!(
 		app.preferences.values.lang, None,
 		"the padding is not an option"
@@ -546,7 +569,10 @@ fn an_unmodified_q_with_the_list_open_does_not_quit() {
 
 	press(&mut app, &quit, Key::Character("q".into()));
 	assert!(!quit.0.get(), "the open list owns the key");
-	assert!(app.interaction.dropdown.is_some(), "and stays open");
+	assert!(
+		app.interaction.overlays.dropdown.is_open(),
+		"and stays open"
+	);
 }
 
 /// The settings panel guards unmodified keys, so `q` is its own while it is
@@ -670,7 +696,7 @@ fn the_wheel_steps_the_highlight_like_the_arrow_keys() {
 		before,
 		"the page behind the list kept its scroll"
 	);
-	assert!(app.interaction.dropdown.is_some());
+	assert!(app.interaction.overlays.dropdown.is_open());
 }
 
 /// A trackpad reports travel in small deltas: the list holds what is short of
@@ -705,7 +731,7 @@ fn enter_commits_the_option_the_wheel_moved_to() {
 	assert_eq!(highlighted(&mut app), Command::Language(Some(Lang::ZhHans)));
 
 	app.key_pressed(&Key::Named(NamedKey::Enter));
-	assert!(app.interaction.dropdown.is_none());
+	assert!(!app.interaction.overlays.dropdown.is_open());
 	assert_eq!(app.preferences.values.lang, Some(Lang::ZhHans));
 }
 
@@ -737,7 +763,7 @@ fn a_report_that_moves_nothing_keeps_the_wheels_highlight() {
 	// `Enter` commits the option the wheel moved to, not the one under the
 	// pointer.
 	app.key_pressed(&Key::Named(NamedKey::Enter));
-	assert!(app.interaction.dropdown.is_none());
+	assert!(!app.interaction.overlays.dropdown.is_open());
 	assert_eq!(app.preferences.values.lang, Some(Lang::Ja));
 }
 
@@ -762,7 +788,7 @@ fn a_modified_wheel_over_an_open_list_leaves_the_highlight() {
 		before,
 		"the page behind it kept its scroll too"
 	);
-	assert!(app.interaction.dropdown.is_some());
+	assert!(app.interaction.overlays.dropdown.is_open());
 }
 
 /// Closing the list returns focus to its chooser, so `Enter` opens the list
@@ -775,7 +801,7 @@ fn closing_the_list_returns_focus_to_its_chooser() {
 	app.key_pressed(&Key::Named(NamedKey::ArrowDown));
 
 	app.key_pressed(&Key::Named(NamedKey::Escape));
-	assert!(app.interaction.dropdown.is_none());
+	assert!(!app.interaction.overlays.dropdown.is_open());
 	assert!(
 		app.interaction.widgets.focus
 			== Some(
@@ -786,7 +812,7 @@ fn closing_the_list_returns_focus_to_its_chooser() {
 
 	// `Enter` reopens the list the focus now names.
 	app.key_pressed(&Key::Named(NamedKey::Enter));
-	assert!(app.interaction.dropdown.is_some());
+	assert!(app.interaction.overlays.dropdown.is_open());
 }
 
 /// Committing an option with `Enter` also leaves focus on the chooser.
@@ -814,7 +840,7 @@ fn tab_after_closing_the_list_advances_from_the_chooser() {
 	app.key_pressed(&Key::Named(NamedKey::ArrowDown));
 
 	app.key_pressed(&Key::Named(NamedKey::Tab));
-	assert!(app.interaction.dropdown.is_none());
+	assert!(!app.interaction.overlays.dropdown.is_open());
 	assert_eq!(
 		app.interaction.widgets.focus,
 		Some(Command::FooterPath.widget_id()),
@@ -877,7 +903,7 @@ fn a_family_option_commits_and_the_default_restores_the_chain() {
 	// The Set step holds its first chooser row on screen as the page opens.
 	let chooser = Command::ToggleDropdown(DropdownId::Font(FontRole::Serif), 0);
 	app.action(chooser);
-	assert!(app.interaction.dropdown.is_some());
+	assert!(app.interaction.overlays.dropdown.is_open());
 	// The list offers the machine's own families, so the pick is whatever the
 	// first one past the default entry is named.
 	let (target, family) = app
@@ -904,7 +930,7 @@ fn a_family_option_commits_and_the_default_restores_the_chain() {
 		app.preferences.values.font_family(FontRole::Serif),
 		Some(family.as_str())
 	);
-	assert!(app.interaction.dropdown.is_none());
+	assert!(!app.interaction.overlays.dropdown.is_open());
 	assert!(
 		app.interaction.widgets.focus
 			== Some(
@@ -940,4 +966,41 @@ fn a_family_option_commits_and_the_default_restores_the_chain() {
 		app.preferences.values.stylesheet.fontdefs["serif"].lookfor,
 		chain
 	);
+}
+
+#[test]
+fn an_option_list_highlight_wraps_and_stays_in_view() {
+	let mut open = Dropdown::new(DropdownId::Language, 0);
+	// Up from the first option lands on the last, and down from the last
+	// returns to the first.
+	open.step(-1, 3);
+	assert_eq!(open.highlight, 2);
+	open.step(1, 3);
+	assert_eq!(open.highlight, 0);
+
+	// A window two options tall carries the first option drawn with it, so
+	// that the highlight is always among the options on screen.
+	let mut open = Dropdown::new(DropdownId::Language, 0);
+	for _ in 0..2 {
+		open.step(1, 6);
+		open.follow(2);
+	}
+	assert_eq!(open.highlight, 2);
+	assert_eq!(open.offset, 1);
+	for _ in 0..4 {
+		open.step(-1, 6);
+		open.follow(2);
+	}
+	assert_eq!(open.highlight, 4);
+	assert_eq!(open.offset, 4);
+
+	// A window taller than the list never scrolls it.
+	let mut open = Dropdown::new(DropdownId::Language, 0);
+	open.follow(10);
+	assert_eq!(open.offset, 0);
+
+	// An empty list has nothing to move through.
+	let mut open = Dropdown::new(DropdownId::Language, 0);
+	open.step(1, 0);
+	assert_eq!(open.highlight, 0);
 }

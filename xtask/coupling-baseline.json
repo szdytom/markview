@@ -6,7 +6,7 @@
     "App": 49,
     "Chrome": 28,
     "Config": 26,
-    "InteractionState": 10,
+    "InteractionState": 9,
     "Markview": 35,
     "ReaderSession": 33,
     "ReaderSettings": 25
@@ -15,10 +15,6 @@
     "controls": {
       "files": 1,
       "sites": 1
-    },
-    "dropdown": {
-      "files": 4,
-      "sites": 8
     },
     "export.png": {
       "files": 1,
@@ -53,6 +49,10 @@
       "sites": 2
     },
     "folder.animation": {
+      "files": 0,
+      "sites": 0
+    },
+    "overlays.dropdown.open": {
       "files": 0,
       "sites": 0
     },

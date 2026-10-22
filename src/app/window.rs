@@ -339,7 +339,7 @@ impl<P: super::SendEvent> App<P> {
 		// nothing while the list is open, so it is put away here: the
 		// wheel event that follows the list's close starts a fresh
 		// page gesture instead of waking a stale one.
-		if self.interaction.dropdown.is_some()
+		if self.interaction.overlays.dropdown_open()
 			&& !self.interaction.pointer.modifiers().control_key()
 			&& !self.interaction.pointer.modifiers().super_key()
 		{
@@ -758,7 +758,7 @@ impl<P: super::SendEvent> App<P> {
 		}
 		// An open option list owns the keys while it is up. A key it hands
 		// back still reaches the page behind it.
-		if self.interaction.dropdown.is_some() && self.dropdown_key(key) {
+		if self.interaction.overlays.dropdown_open() && self.dropdown_key(key) {
 			self.redraw();
 			return true;
 		}

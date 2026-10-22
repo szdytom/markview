@@ -284,7 +284,7 @@ impl<'a> Chrome<'a> {
 	/// The open option list, measured against the page that holds its row.
 	pub(in crate::app) fn dropdown_menu(
 		&mut self,
-		open: &mut crate::state::Dropdown,
+		open: &mut crate::app::dropdown::Dropdown,
 	) -> Option<components::Menu> {
 		if !self.interaction.panel_open() {
 			return None;
@@ -736,7 +736,7 @@ impl<'a> Chrome<'a> {
 		// goes on after everything the page draws. Measuring brings the
 		// highlight into the drawn window, on a copy: the state is corrected
 		// the next time the input paths measure it.
-		if let Some(mut open) = self.interaction.dropdown
+		if let Some(mut open) = self.interaction.overlays.dropdown().copied()
 			&& let Some(menu) = self.dropdown_menu(&mut open)
 		{
 			out.extend(components::draw_menu(
@@ -777,7 +777,7 @@ impl<'a> Chrome<'a> {
 			|| self.interaction.panel_open()
 			|| self.session.search.open
 			|| self.interaction.overlays.modal_open()
-			|| self.interaction.dropdown.is_some()
+			|| self.interaction.overlays.dropdown_open()
 			|| self.interaction.viewer.is_some()
 		{
 			return None;

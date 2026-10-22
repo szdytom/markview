@@ -60,7 +60,10 @@ const WRITERS: &[&str] = &[
 	// from another module still counts, while the model's own
 	// `self.current` writes stay out.
 	"overlays.modal.current",
-	"dropdown",
+	// `dropdown::Model` owns the open list; the observation names the path
+	// through `InteractionState.overlays` so a direct write from another
+	// module still counts, while the model's own `self.open` writes stay out.
+	"overlays.dropdown.open",
 	"viewer",
 	// `pointer::State` owns the twelve pointer fields; the observation names
 	// the path through `InteractionState` so a direct write in any other

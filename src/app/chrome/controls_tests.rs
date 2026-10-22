@@ -148,7 +148,7 @@ fn window_layout_dropdown_exposes_all_layouts_and_marks_the_saved_choice() {
 		}));
 		let menu = form
 			.menu(
-				&mut crate::state::Dropdown::new(
+				&mut crate::app::dropdown::Dropdown::new(
 					DropdownId::WindowLayout,
 					index,
 				),

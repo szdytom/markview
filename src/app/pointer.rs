@@ -395,7 +395,7 @@ impl<P: super::SendEvent> App<P> {
 	/// same click, so the press is always the last word and the release that
 	/// follows has nothing left to dispatch.
 	fn press_dropdown(&mut self) -> bool {
-		if self.interaction.dropdown.is_none() {
+		if !self.interaction.overlays.dropdown_open() {
 			return false;
 		}
 		self.interaction.reset_clicks();

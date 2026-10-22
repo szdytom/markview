@@ -311,7 +311,10 @@ impl<P: SendEvent> App<P> {
 			return;
 		};
 		if kind == Kind::Choices {
-			self.interaction.dropdown = None;
+			self.interaction
+				.overlays
+				.dropdown
+				.send(crate::app::dropdown::Message::Close);
 		}
 		let cache = self.settings_resources.cache.clone();
 		let proxy = self.proxy.clone();

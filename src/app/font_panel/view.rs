@@ -14,11 +14,12 @@ use crate::app::chrome::components::{
 	draw_segmented_button, frame, line, menu as option_list, panel_rect,
 };
 use crate::app::chrome::list::List;
+use crate::app::dropdown::Dropdown;
 use crate::{
 	lang::Lang,
 	layout::{Draw, Paint, Rect, TextShaper},
 	settings::{FontRole, ReaderSettings},
-	state::{Command, Dropdown, DropdownId, InteractionState, PanelTab},
+	state::{Command, DropdownId, InteractionState, PanelTab},
 };
 use markview_layout::fonts::FontConfig;
 use markview_layout::style::{
@@ -206,7 +207,7 @@ pub(in crate::app) fn menu(
 	open: &mut Dropdown,
 	size: (f32, f32),
 ) -> Option<crate::app::chrome::components::Menu> {
-	let DropdownId::Font(role) = open.id else {
+	let DropdownId::Font(role) = open.id() else {
 		return None;
 	};
 	if !view.choosers {

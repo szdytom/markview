@@ -4,7 +4,7 @@ mod background;
 mod chrome;
 mod dm;
 mod document;
-mod dropdown;
+pub(crate) mod dropdown;
 mod export;
 mod export_panel;
 mod folder;
