@@ -146,7 +146,7 @@ pub fn run(options: Options) -> Result<()> {
 		let path = write_baseline(&root, &report)?;
 		let note = format!(
 			"baseline updated: {}\nnote: writer observation paths change as fields move into sub-models (for example `status.message`); the baseline records the new path.",
-			path.strip_prefix(&root).unwrap_or(&path).display()
+			relative_key(path.strip_prefix(&root).unwrap_or(&path))
 		);
 		if options.json {
 			eprintln!("{note}");
@@ -371,6 +371,16 @@ impl Report {
 	}
 }
 
+/// The portable key for a workspace-relative source path.
+///
+/// Cargo reports native separators, so Windows would otherwise key and print
+/// `src\app.rs` while [`STRUCTS`] spells `src/app.rs`. Every site that turns a
+/// source path into a string uses this helper, keeping struct lookup, writer
+/// files, JSON paths and printed paths identical on every host.
+fn relative_key(relative: &Path) -> String {
+	relative.to_string_lossy().replace('\\', "/")
+}
+
 fn analyze(
 	relative: &Path,
 	syntax: &syn::File,
@@ -381,7 +391,7 @@ fn analyze(
 ) {
 	let mut analyzer = Analyzer {
 		audit,
-		relative: relative.display().to_string(),
+		relative: relative_key(relative),
 		impl_type: None,
 		command_variants,
 		field_surface,
@@ -441,12 +451,9 @@ impl<'ast> Visit<'ast> for CommandFinder {
 fn field_surface(root: &Path, sources: &[complexity::Source]) -> FieldSurface {
 	let mut surface = FieldSurface::default();
 	for source in sources {
-		let relative = source
-			.path
-			.strip_prefix(root)
-			.unwrap_or(&source.path)
-			.display()
-			.to_string();
+		let relative = relative_key(
+			source.path.strip_prefix(root).unwrap_or(&source.path),
+		);
 		let mut finder = FieldFinder {
 			relative: &relative,
 			surface: &mut surface,
@@ -818,12 +825,15 @@ mod tests {
 		command_variants: &[&str],
 		writers: &[&'static str],
 	) -> Audit {
-		let syntax = syn::parse_file(source).unwrap();
-		let field_surface = source_field_surface(relative, &syntax);
+		let sources = [complexity::Source {
+			path: PathBuf::from(relative),
+			syntax: syn::parse_file(source).unwrap(),
+		}];
+		let field_surface = field_surface(Path::new(""), &sources);
 		let mut audit = Audit::default();
 		analyze(
 			Path::new(relative),
-			&syntax,
+			&sources[0].syntax,
 			&variants(command_variants),
 			&field_surface,
 			writers,
@@ -832,17 +842,50 @@ mod tests {
 		audit
 	}
 
-	fn source_field_surface(
-		relative: &str,
-		syntax: &syn::File,
-	) -> FieldSurface {
-		let mut surface = FieldSurface::default();
-		let mut finder = FieldFinder {
-			relative,
-			surface: &mut surface,
-		};
-		finder.visit_file(syntax);
-		surface
+	#[test]
+	fn relative_key_normalizes_windows_and_unix_separators() {
+		assert_eq!(relative_key(Path::new("src/app.rs")), "src/app.rs");
+		assert_eq!(relative_key(Path::new(r"src\app.rs")), "src/app.rs");
+		assert_eq!(
+			relative_key(Path::new(r"crates\markview-web\src\api.rs")),
+			"crates/markview-web/src/api.rs"
+		);
+	}
+
+	#[test]
+	fn windows_paths_resolve_structs_and_key_writes_like_unix_paths() {
+		let source = r#"
+			struct App { status: Status }
+			struct Status { message: String }
+			impl App {
+				fn update(&mut self) {
+					self.status.message = String::new();
+					self.status.message.clear();
+				}
+			}
+		"#;
+		let unix = analyze_with("src/app.rs", source, &[], &["status.message"]);
+		let windows =
+			analyze_with(r"src\app.rs", source, &[], &["status.message"]);
+
+		assert_eq!(windows.structs, unix.structs);
+		assert_eq!(windows.structs.get("App"), Some(&1));
+		assert_eq!(windows.writer("status.message"), (1, 2));
+		assert_eq!(
+			windows.writers["status.message"].files,
+			BTreeSet::from(["src/app.rs".to_owned()])
+		);
+		assert_eq!(windows.functions.len(), 1);
+		assert_eq!(windows.functions[0].path, "src/app.rs");
+		assert_eq!(windows.functions[0].fields, 1);
+
+		let sources = [complexity::Source {
+			path: PathBuf::from(r"src\app.rs"),
+			syntax: syn::parse_file(source).unwrap(),
+		}];
+		let surface = field_surface(Path::new(""), &sources);
+		assert!(surface.by_file.contains_key("src/app.rs"));
+		assert!(!surface.by_file.contains_key(r"src\app.rs"));
 	}
 
 	#[test]
