@@ -3,7 +3,7 @@
     "variants": 80
   },
   "structs": {
-    "App": 55,
+    "App": 48,
     "Chrome": 28,
     "Config": 26,
     "InteractionState": 33,
@@ -15,6 +15,38 @@
     "dropdown": {
       "files": 4,
       "sites": 8
+    },
+    "export.png": {
+      "files": 1,
+      "sites": 5
+    },
+    "export.rebuild": {
+      "files": 1,
+      "sites": 2
+    },
+    "export.running": {
+      "files": 1,
+      "sites": 7
+    },
+    "export.source": {
+      "files": 1,
+      "sites": 1
+    },
+    "export.thread": {
+      "files": 1,
+      "sites": 1
+    },
+    "export.watch": {
+      "files": 0,
+      "sites": 0
+    },
+    "export.watch_at": {
+      "files": 1,
+      "sites": 1
+    },
+    "export.watch_request": {
+      "files": 1,
+      "sites": 2
     },
     "modal": {
       "files": 5,

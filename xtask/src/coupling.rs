@@ -39,10 +39,22 @@ const STRUCTS: &[(&str, &str)] = &[
 /// three fields, so the status observation names them instead of the whole
 /// `App.status`: the owner's `set`/`clear` calls from other modules are the
 /// sanctioned path, while a direct `self.status.<field>` write still counts.
+/// `export::Session` owns the eight export fields, so those observations name
+/// `export.<field>`: the orchestrating `impl App` is the only direct writer,
+/// and any other file increases the writer count. The owner's own
+/// `self.<field>` writes stay out of the ratchet.
 const WRITERS: &[&str] = &[
 	"status.message",
 	"status.error",
 	"status.until",
+	"export.running",
+	"export.thread",
+	"export.source",
+	"export.png",
+	"export.watch",
+	"export.watch_at",
+	"export.rebuild",
+	"export.watch_request",
 	"modal",
 	"dropdown",
 	"viewer",
@@ -622,7 +634,7 @@ fn type_name(ty: &Type) -> String {
 
 fn writer_owner(field: &str) -> &'static str {
 	match field.split('.').next().unwrap_or(field) {
-		"status" => "App",
+		"status" | "export" => "App",
 		_ => "InteractionState",
 	}
 }
@@ -871,6 +883,31 @@ mod tests {
 		);
 		assert_eq!(audit.writer("status.error"), (1, 1));
 		assert_eq!(audit.writer("status.message"), (0, 0));
+	}
+
+	#[test]
+	fn the_export_observation_counts_app_writes_and_not_session_methods() {
+		let audit = analyze_with(
+			"src/app/export.rs",
+			r#"
+			struct Session { running: bool, watch: bool }
+			impl Session {
+				fn begin(&mut self) {
+					self.running = true;
+					self.watch = true;
+				}
+			}
+			impl App {
+				fn begin(&mut self) {
+					self.export.running = true;
+				}
+			}
+		"#,
+			&[],
+			&["export.running", "export.watch"],
+		);
+		assert_eq!(audit.writer("export.running"), (1, 1));
+		assert_eq!(audit.writer("export.watch"), (0, 0));
 	}
 
 	#[test]

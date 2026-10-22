@@ -569,8 +569,7 @@ impl<P: super::SendEvent> App<P> {
 			self.prewarm_at = None;
 			self.redraw();
 		}
-		if self.watch_at.is_some_and(|d| d <= now) {
-			self.watch_at = None;
+		if self.export.take_due_watch(now) {
 			self.start_watch_export();
 		}
 		if self.args.mode == Mode::Smoke
@@ -586,7 +585,7 @@ impl<P: super::SendEvent> App<P> {
 			.chain(self.text_input.deadline)
 			.chain(self.retry_at)
 			.chain(self.prewarm_at)
-			.chain(self.watch_at)
+			.chain(self.export.watch_deadline())
 			.chain(self.status.deadline())
 			.chain(self.preferences.save_deadline())
 			.chain(self.persistence.deadline)

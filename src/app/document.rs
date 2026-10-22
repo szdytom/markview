@@ -76,7 +76,7 @@ impl<P: super::SendEvent> App<P> {
 		session.cancel_scroll_animation();
 		self.search_changed();
 		self.request(follow);
-		self.schedule_watch_export(path);
+		self.export.schedule_watch_export(path);
 	}
 	fn resume_document(&mut self) {
 		self.observe_document();
@@ -240,11 +240,8 @@ impl<P: super::SendEvent> App<P> {
 		self.dismiss_preview();
 		let result = self.readers.close(index, Instant::now());
 		// A watched export belongs to the document and origin that chose it.
-		if self.watch_export.as_ref().is_some_and(|watch| {
-			watch.source == closed && watch.origin == origin
-		}) {
-			self.watch_export = None;
-			self.watch_at = None;
+		if self.export.watches_document(&closed, &origin) {
+			self.export.disarm_watch();
 		}
 		match result {
 			tabs::Closed::Missing => return,

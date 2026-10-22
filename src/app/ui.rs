@@ -228,7 +228,7 @@ impl<P: super::SendEvent> App<P> {
 			status: &self.status,
 			hover_hint,
 			remote_notice,
-			watching: self.watch_export.is_some(),
+			watching: self.export.watching(),
 		}
 	}
 	pub(super) fn panel_form(&mut self) -> Option<chrome::components::Form> {

@@ -117,7 +117,7 @@ fn form_focus_routes_typing_ime_and_tab_without_document_shortcuts() {
 		app.input_key(&Key::Named(NamedKey::Enter), None),
 		Outcome::Submit
 	);
-	assert!(!app.export_running);
+	assert!(!app.export.is_running());
 }
 
 #[test]

@@ -290,20 +290,8 @@ struct App<P = EventLoopProxy<Event>> {
 	first_frame: Option<Update>,
 	started: Instant,
 	fatal: Option<String>,
-	/// An export is being prepared or written; one at a time.
-	export_running: bool,
-	export_thread: Option<std::thread::JoinHandle<()>>,
-	export_source: Option<(PathBuf, crate::security::Origin)>,
-	/// A PNG layout waiting to be drawn, one strip per frame.
-	png_export: Option<export::PngExport>,
-	/// The file a live export keeps rewriting, while the watch toggle is on.
-	watch_export: Option<WatchExport>,
-	/// When a watched document change is due to become a rebuild.
-	watch_at: Option<Instant>,
-	/// The export in flight is a watch rebuild, which does not reopen the file.
-	export_rebuild: bool,
-	/// The export in flight was asked to keep watching its file.
-	export_watch_request: bool,
+	/// The one export in flight, the live watch target and the PNG strip loop.
+	export: export::Session,
 }
 impl<P> Drop for App<P> {
 	fn drop(&mut self) {
@@ -312,9 +300,7 @@ impl<P> Drop for App<P> {
 		self.services.handle.cancel.cancel();
 		self.worker.shutdown();
 		self.search_worker.shutdown();
-		if let Some(thread) = self.export_thread.take() {
-			let _ = thread.join();
-		}
+		self.export.shutdown();
 	}
 }
 
@@ -438,14 +424,7 @@ impl<P: SendEvent> App<P> {
 			first_frame: None,
 			started: Instant::now(),
 			fatal: None,
-			export_running: false,
-			export_thread: None,
-			export_source: None,
-			png_export: None,
-			watch_export: None,
-			watch_at: None,
-			export_rebuild: false,
-			export_watch_request: false,
+			export: export::Session::default(),
 		}
 	}
 	/// The desktop preference; `None` when the platform does not report one.
@@ -661,7 +640,7 @@ mod tests {
 		);
 		app.instance = Some(primary.listen(|_| true));
 		let (tx, rx) = std::sync::mpsc::channel();
-		app.export_thread = Some(std::thread::spawn(move || {
+		app.export.install_thread(std::thread::spawn(move || {
 			let deadline = Instant::now() + std::time::Duration::from_secs(2);
 			while Instant::now() < deadline {
 				if matches!(

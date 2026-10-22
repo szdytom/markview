@@ -73,6 +73,123 @@ pub(super) struct PngExport {
 	rebuild: bool,
 }
 
+/// The export bookkeeping: the one job in flight, the file a watch keeps
+/// rewriting, and the PNG strips waiting to be drawn.
+///
+/// The app owns the host I/O that starts and finishes a job; this type owns
+/// the state that spans events, so `App` carries one field instead of eight.
+#[derive(Default)]
+pub(super) struct Session {
+	running: bool,
+	thread: Option<std::thread::JoinHandle<()>>,
+	source: Option<(PathBuf, crate::security::Origin)>,
+	png: Option<PngExport>,
+	watch: Option<super::WatchExport>,
+	watch_at: Option<Instant>,
+	rebuild: bool,
+	watch_request: bool,
+}
+
+impl Session {
+	/// Whether a pending or in-flight export follows `path`.
+	fn watches_source(&self, path: &Path) -> bool {
+		self.watch
+			.as_ref()
+			.is_some_and(|watch| watch.source == path)
+			|| (self.running
+				&& self
+					.source
+					.as_ref()
+					.is_some_and(|(source, _)| source == path)
+				&& (self.watch_request
+					|| self.png.as_ref().is_some_and(|job| job.watch)))
+	}
+
+	/// Remembers a document change for an active or in-flight watch export.
+	pub(super) fn schedule_watch_export(&mut self, path: &Path) {
+		if self.watches_source(path) {
+			self.watch_at = Some(Instant::now() + Duration::from_millis(250));
+		}
+	}
+
+	/// Stops a live export; the file it wrote stays where it is.
+	pub(super) fn disarm_watch(&mut self) {
+		self.watch = None;
+		self.watch_at = None;
+	}
+
+	/// Points the live export at a file that was just written.
+	fn arm_watch(&mut self, output: &Path) {
+		let Some((source, origin)) = self.source.clone() else {
+			return;
+		};
+		self.watch = Some(super::WatchExport {
+			origin,
+			source,
+			output: output.to_path_buf(),
+		});
+		// Keep a rebuild queued by a save that arrived while this export was
+		// in flight; it still needs to run after the watch is armed.
+	}
+
+	fn tiles(&self) -> usize {
+		self.png.as_ref().map_or(0, |job| job.plan.tiles.len())
+	}
+
+	/// Whether the watch follows this document and origin.
+	pub(super) fn watches_document(
+		&self,
+		source: &Path,
+		origin: &crate::security::Origin,
+	) -> bool {
+		self.watch.as_ref().is_some_and(|watch| {
+			watch.source == source && &watch.origin == origin
+		})
+	}
+
+	/// Whether an export is being prepared or written.
+	pub(super) fn is_running(&self) -> bool {
+		self.running
+	}
+
+	/// Whether a live export keeps rewriting its file.
+	pub(super) fn watching(&self) -> bool {
+		self.watch.is_some()
+	}
+
+	/// When a watched document change becomes a rebuild, if one is queued.
+	pub(super) fn watch_deadline(&self) -> Option<Instant> {
+		self.watch_at
+	}
+
+	/// Consumes a queued rebuild once its deadline passes.
+	pub(super) fn take_due_watch(&mut self, now: Instant) -> bool {
+		if self.watch_at.is_some_and(|due| due <= now) {
+			self.watch_at = None;
+			true
+		} else {
+			false
+		}
+	}
+
+	/// Joins the export thread. The app's `Drop` calls this after cancelling
+	/// the services and shutting the workers down.
+	pub(super) fn shutdown(&mut self) {
+		if let Some(thread) = self.thread.take() {
+			let _ = thread.join();
+		}
+	}
+
+	/// Installs a joinable thread for the shutdown-order test.
+	#[cfg(test)]
+	pub(super) fn install_thread(
+		&mut self,
+		thread: std::thread::JoinHandle<()>,
+	) {
+		self.thread = Some(thread);
+	}
+}
+
 impl<P: super::SendEvent> App<P> {
 	/// Shows a transient status line; a zero `seconds` leaves it without a
 	/// deadline.
@@ -84,7 +201,7 @@ impl<P: super::SendEvent> App<P> {
 	/// Asks for a destination, then starts the export on a worker thread.
 	/// `watch` keeps rewriting the chosen file whenever the document changes.
 	pub(super) fn start_export(&mut self, watch: bool) {
-		if self.export_running || self.dialog_open {
+		if self.export.is_running() || self.dialog_open {
 			self.notify(
 				self.preferences.values.lang().status_export_running(),
 				true,
@@ -119,9 +236,9 @@ impl<P: super::SendEvent> App<P> {
 		self.interaction.widgets.focus = None;
 		self.interaction.pointer_down = None;
 		self.dialog_open = true;
-		self.export_rebuild = false;
-		self.export_watch_request = watch;
-		self.export_running = true;
+		self.export.rebuild = false;
+		self.export.watch_request = watch;
+		self.export.running = true;
 		self.notify(
 			self.preferences.values.lang().status_exporting(),
 			false,
@@ -140,13 +257,14 @@ impl<P: super::SendEvent> App<P> {
 
 	/// Re-exports a watched document to the file its first export chose.
 	pub(super) fn start_watch_export(&mut self) {
-		if self.export_running || self.dialog_open {
+		if self.export.is_running() || self.dialog_open {
 			// The save that arrived mid-export is not lost; it becomes the
 			// next rebuild once the current one is done.
-			self.watch_at = Some(Instant::now() + Duration::from_millis(250));
+			self.export.watch_at =
+				Some(Instant::now() + Duration::from_millis(250));
 			return;
 		}
-		let Some(watch) = &self.watch_export else {
+		let Some(watch) = &self.export.watch else {
 			return;
 		};
 		let (path, output) = (watch.source.clone(), watch.output.clone());
@@ -159,36 +277,15 @@ impl<P: super::SendEvent> App<P> {
 		if settings.validate().is_err() {
 			return;
 		}
-		self.export_rebuild = true;
-		self.export_watch_request = true;
-		self.export_running = true;
+		self.export.rebuild = true;
+		self.export.watch_request = true;
+		self.export.running = true;
 		self.notify(
 			self.preferences.values.lang().status_reexporting(),
 			false,
 			3600,
 		);
 		self.spawn_export(path, Destination::Path(output), settings);
-	}
-
-	/// Remembers a document change for an active or in-flight watch export.
-	pub(super) fn schedule_watch_export(&mut self, path: &Path) {
-		if self.watches_source(path) {
-			self.watch_at = Some(Instant::now() + Duration::from_millis(250));
-		}
-	}
-
-	/// Whether a pending or in-flight export follows `path`.
-	fn watches_source(&self, path: &Path) -> bool {
-		self.watch_export
-			.as_ref()
-			.is_some_and(|watch| watch.source == path)
-			|| (self.export_running
-				&& self
-					.export_source
-					.as_ref()
-					.is_some_and(|(source, _)| source == path)
-				&& (self.export_watch_request
-					|| self.png_export.as_ref().is_some_and(|job| job.watch)))
 	}
 
 	/// Spawns the export thread. It owns everything the job needs, including
@@ -202,7 +299,7 @@ impl<P: super::SendEvent> App<P> {
 		let proxy = self.proxy.clone();
 		let offline = self.args.offline;
 		let security = self.readers.session.security.clone();
-		self.export_source = Some((path.clone(), security.origin.clone()));
+		self.export.source = Some((path.clone(), security.origin.clone()));
 		// The reader's own font set, so the export shapes with the personal
 		// download directory exactly like the display does.
 		let fonts = self.fonts_config.clone();
@@ -224,10 +321,10 @@ impl<P: super::SendEvent> App<P> {
 			)),
 			Destination::Path(_) => None,
 		};
-		if let Some(thread) = self.export_thread.take() {
+		if let Some(thread) = self.export.thread.take() {
 			let _ = thread.join();
 		}
-		self.export_thread = Some(std::thread::spawn(move || {
+		self.export.thread = Some(std::thread::spawn(move || {
 			let outcome = match destination {
 				Destination::Ask { .. } => {
 					match output.unwrap().recv().ok().flatten() {
@@ -250,11 +347,11 @@ impl<P: super::SendEvent> App<P> {
 	/// Receives one export result on the event loop.
 	pub(super) fn export_finished(&mut self, outcome: ExportOutcome) {
 		self.dialog_open = false;
-		let rebuild = std::mem::take(&mut self.export_rebuild);
-		let watch = std::mem::take(&mut self.export_watch_request);
+		let rebuild = std::mem::take(&mut self.export.rebuild);
+		let watch = std::mem::take(&mut self.export.watch_request);
 		match outcome {
 			ExportOutcome::Written { path, detail } => {
-				self.export_running = false;
+				self.export.running = false;
 				let lang = self.preferences.values.lang();
 				let message = lang.status_exported(
 					detail,
@@ -277,9 +374,9 @@ impl<P: super::SendEvent> App<P> {
 					self.open_export(&path, message);
 				}
 				if watch {
-					self.arm_watch(&path);
+					self.export.arm_watch(&path);
 				} else {
-					self.disarm_watch();
+					self.export.disarm_watch();
 				}
 			}
 			ExportOutcome::PngReady {
@@ -293,7 +390,7 @@ impl<P: super::SendEvent> App<P> {
 				);
 			}
 			ExportOutcome::Failed(error) => {
-				self.export_running = false;
+				self.export.running = false;
 				self.notify(
 					&self.preferences.values.lang().status_export_failed(error),
 					true,
@@ -301,30 +398,10 @@ impl<P: super::SendEvent> App<P> {
 				);
 			}
 			ExportOutcome::Cancelled => {
-				self.export_running = false;
+				self.export.running = false;
 				self.notify("", false, 0);
 			}
 		}
-	}
-
-	/// Stops a live export; the file it wrote stays where it is.
-	fn disarm_watch(&mut self) {
-		self.watch_export = None;
-		self.watch_at = None;
-	}
-
-	/// Points the live export at a file that was just written.
-	fn arm_watch(&mut self, output: &Path) {
-		let Some((source, origin)) = self.export_source.clone() else {
-			return;
-		};
-		self.watch_export = Some(super::WatchExport {
-			origin,
-			source,
-			output: output.to_path_buf(),
-		});
-		// Keep a rebuild queued by a save that arrived while this export was
-		// in flight; it still needs to run after the watch is armed.
 	}
 
 	/// Hands a written export to the operating system, so the reader sees the
@@ -384,7 +461,7 @@ impl<P: super::SendEvent> App<P> {
 				}
 			};
 		let bytes = plan.width_px as usize * plan.height_px as usize * 4;
-		self.png_export = Some(PngExport {
+		self.export.png = Some(PngExport {
 			snapshot,
 			path,
 			stylesheet,
@@ -400,21 +477,15 @@ impl<P: super::SendEvent> App<P> {
 			self.preferences
 				.values
 				.lang()
-				.status_exporting_png(0, self.tiles()),
+				.status_exporting_png(0, self.export.tiles()),
 			3600,
 		);
 		self.redraw();
 	}
 
-	fn tiles(&self) -> usize {
-		self.png_export
-			.as_ref()
-			.map_or(0, |job| job.plan.tiles.len())
-	}
-
 	fn fail_png_export(&mut self, reason: &str) {
-		self.png_export = None;
-		self.export_running = false;
+		self.export.png = None;
+		self.export.running = false;
 		self.notify(
 			&self.preferences.values.lang().status_export_failed(reason),
 			true,
@@ -425,7 +496,7 @@ impl<P: super::SendEvent> App<P> {
 	/// Draws one strip of a waiting PNG. Called once per frame so the window
 	/// stays responsive and the status line can count the strips.
 	pub(super) fn advance_png_export(&mut self) {
-		let Some(mut job) = self.png_export.take() else {
+		let Some(mut job) = self.export.png.take() else {
 			return;
 		};
 		if job.next >= job.plan.tiles.len() {
@@ -433,7 +504,7 @@ impl<P: super::SendEvent> App<P> {
 			return;
 		}
 		let Some(renderer) = &mut self.renderer else {
-			self.png_export = Some(job);
+			self.export.png = Some(job);
 			let reason = self.preferences.values.lang().status_gpu_not_ready();
 			self.fail_png_export(reason);
 			return;
@@ -451,7 +522,7 @@ impl<P: super::SendEvent> App<P> {
 			theme,
 			&mut job.rgba,
 		) {
-			self.png_export = Some(job);
+			self.export.png = Some(job);
 			self.fail_png_export(&format!("{error:#}"));
 			return;
 		}
@@ -466,7 +537,7 @@ impl<P: super::SendEvent> App<P> {
 					.status_exporting_png(job.next, job.plan.tiles.len()),
 				3600,
 			);
-			self.png_export = Some(job);
+			self.export.png = Some(job);
 			self.redraw();
 		}
 	}
@@ -478,7 +549,7 @@ impl<P: super::SendEvent> App<P> {
 			job.plan.width_px,
 			job.plan.height_px,
 		);
-		self.export_running = false;
+		self.export.running = false;
 		let path = job.path.clone();
 		match outcome {
 			Ok(()) => {
@@ -505,9 +576,9 @@ impl<P: super::SendEvent> App<P> {
 					self.open_export(&path, message);
 				}
 				if job.watch {
-					self.arm_watch(&path);
+					self.export.arm_watch(&path);
 				} else {
-					self.disarm_watch();
+					self.export.disarm_watch();
 				}
 			}
 			Err(error) => self.notify(
@@ -711,7 +782,7 @@ mod tests {
 		);
 		app.preferences.export = ExportSettings::default();
 		app.export_finished(outcome);
-		let job = app.png_export.as_ref().unwrap();
+		let job = app.export.png.as_ref().unwrap();
 		let geometry = export::geometry(&settings).unwrap();
 		assert_eq!(job.scale, 3.0);
 		assert_eq!(job.left, geometry.margin_pt[3] / PT_PER_PX);
@@ -769,7 +840,7 @@ mod tests {
 				dropped,
 			},
 		);
-		app.export_thread = Some(std::thread::spawn(move || {
+		app.export.thread = Some(std::thread::spawn(move || {
 			assert!(output.recv().unwrap().is_none());
 		}));
 		started.recv_timeout(Duration::from_secs(5)).unwrap();
@@ -798,27 +869,29 @@ mod tests {
 		let output = PathBuf::from("document.pdf");
 		let origin =
 			crate::security::Origin::Local(crate::security::Trust::Trusted);
-		app.export_running = true;
-		app.export_watch_request = true;
-		app.export_source = Some((source.clone(), origin.clone()));
-		app.schedule_watch_export(&source);
+		app.export.running = true;
+		app.export.watch_request = true;
+		app.export.source = Some((source.clone(), origin.clone()));
+		app.export.schedule_watch_export(&source);
 		let first = app
+			.export
 			.watch_at
 			.expect("a save during the first export must queue a rebuild");
-		app.arm_watch(&output);
+		app.export.arm_watch(&output);
 		assert_eq!(
-			app.watch_at,
+			app.export.watch_at,
 			Some(first),
 			"arming the watch must not drop a save seen during the export"
 		);
-		app.watch_at = None;
-		app.schedule_watch_export(&source);
+		app.export.watch_at = None;
+		app.export.schedule_watch_export(&source);
 		let rebuild = app
+			.export
 			.watch_at
 			.expect("a save during a watch rebuild must queue another");
-		app.arm_watch(&output);
+		app.export.arm_watch(&output);
 		assert_eq!(
-			app.watch_at,
+			app.export.watch_at,
 			Some(rebuild),
 			"arming the watch must not drop a save seen during a rebuild"
 		);
@@ -966,9 +1039,9 @@ mod security_tests {
 			Proxy(send),
 		);
 		app.open_document(source.clone(), Security::local(Trust::Untrusted));
-		app.export_rebuild = true;
-		app.export_watch_request = true;
-		app.export_running = true;
+		app.export.rebuild = true;
+		app.export.watch_request = true;
+		app.export.running = true;
 		app.spawn_export(
 			source.clone(),
 			Destination::Path(dir.path().join("document.pdf")),
@@ -985,13 +1058,13 @@ mod security_tests {
 			}
 		}
 		assert_eq!(
-			app.watch_export.as_ref().unwrap().origin,
+			app.export.watch.as_ref().unwrap().origin,
 			crate::security::Origin::Local(Trust::Untrusted)
 		);
 		app.start_watch_export();
-		assert!(!app.export_running);
+		assert!(!app.export.running);
 		app.close_tab(app.readers.active());
-		assert!(app.watch_export.is_some());
+		assert!(app.export.watch.is_some());
 		assert_eq!(
 			app.readers.session.security.origin.trust(),
 			Trust::Untrusted
@@ -1001,14 +1074,14 @@ mod security_tests {
 		let counterpart = app.readers.active();
 		app.select_tab(owner);
 		app.close_tab(counterpart);
-		assert!(app.watch_export.is_some());
+		assert!(app.export.watch.is_some());
 		let output = dir.path().join("document.pdf");
 		let original = std::fs::read(&output).unwrap();
 		std::fs::write(&source, "# Revised document").unwrap();
-		app.schedule_watch_export(&source);
-		assert!(app.watch_at.is_some());
+		app.export.schedule_watch_export(&source);
+		assert!(app.export.watch_at.is_some());
 		app.start_watch_export();
-		assert!(app.export_running);
+		assert!(app.export.running);
 		loop {
 			if let Event::Exported(outcome) =
 				receive.recv_timeout(Duration::from_secs(10)).unwrap()
@@ -1022,7 +1095,7 @@ mod security_tests {
 		let owner = app.readers.active();
 		app.open(source);
 		app.close_tab(owner);
-		assert!(app.watch_export.is_none());
-		assert!(app.watch_at.is_none());
+		assert!(app.export.watch.is_none());
+		assert!(app.export.watch_at.is_none());
 	}
 }
