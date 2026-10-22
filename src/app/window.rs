@@ -11,6 +11,7 @@ use winit::{
 };
 
 use super::modal::Message;
+use super::viewer::Message as ViewerMessage;
 use super::{App, frame::Caption};
 
 /// What the app asks of the loop it runs under.
@@ -66,7 +67,7 @@ impl<P: super::SendEvent> App<P> {
 		if self.readers.session.search.open {
 			self.close_search();
 		} else if self.interaction.panel_open()
-			|| self.interaction.viewer.is_some()
+			|| self.interaction.overlays.viewer_open()
 			|| self.interaction.overlays.outline.open()
 			|| self.folder.open
 			|| self.interaction.overlays.modal_open()
@@ -618,7 +619,7 @@ impl<P: super::SendEvent> App<P> {
 	}
 	/// The viewer captures input after window controls.
 	fn viewer_event(&mut self, event: &WindowEvent) -> bool {
-		if self.interaction.viewer.is_none() {
+		if !self.interaction.overlays.viewer_open() {
 			return false;
 		}
 		if matches!(event, WindowEvent::Touch(_)) {
@@ -627,20 +628,25 @@ impl<P: super::SendEvent> App<P> {
 		self.refresh_viewer();
 		let (width, height, scale) = self.dimensions();
 		let insets = self.insets();
-		let viewer = self.interaction.viewer.as_mut().unwrap();
 		match event {
 			WindowEvent::CursorMoved { position, .. } => {
 				self.interaction.pointer.move_to((
 					position.x as f32 / scale - insets[0],
 					position.y as f32 / scale - insets[1],
 				));
-				viewer.move_pointer(
-					self.interaction.pointer.cursor(),
-					(width, height),
-				);
+				let pointer = self.interaction.pointer.cursor();
+				self.interaction.overlays.viewer.send(ViewerMessage::Pan {
+					pointer,
+					window: (width, height),
+				});
 			}
 			WindowEvent::CursorLeft { .. } => {
-				if viewer.grab.is_none() {
+				let grabbing = self
+					.interaction
+					.overlays
+					.viewer()
+					.is_some_and(|viewer| viewer.grabbing());
+				if !grabbing {
 					self.interaction
 						.pointer
 						.move_to((f32::NEG_INFINITY, f32::NEG_INFINITY));
@@ -652,12 +658,17 @@ impl<P: super::SendEvent> App<P> {
 				..
 			} => match state {
 				ElementState::Pressed => {
-					viewer.begin_press(self.interaction.pointer.cursor())
+					let pointer = self.interaction.pointer.cursor();
+					self.interaction
+						.overlays
+						.viewer
+						.send(ViewerMessage::Press { pointer });
 				}
 				ElementState::Released => {
-					if viewer.finish_press() {
-						self.interaction.viewer = None;
-					}
+					self.interaction
+						.overlays
+						.viewer
+						.send(ViewerMessage::Release);
 				}
 			},
 			WindowEvent::MouseWheel { delta, .. } => {
@@ -667,11 +678,12 @@ impl<P: super::SendEvent> App<P> {
 						(p.y as f32 / 240.).exp()
 					}
 				};
-				viewer.zoom_at(
+				let pointer = self.interaction.pointer.cursor();
+				self.interaction.overlays.viewer.send(ViewerMessage::Zoom {
 					factor,
-					self.interaction.pointer.cursor(),
-					(width, height),
-				);
+					pointer,
+					window: (width, height),
+				});
 			}
 			WindowEvent::KeyboardInput { event, .. } => {
 				if event.state == ElementState::Pressed {
@@ -685,7 +697,7 @@ impl<P: super::SendEvent> App<P> {
 			| WindowEvent::RotationGesture { .. }
 			| WindowEvent::DoubleTapGesture { .. } => return true,
 			WindowEvent::Focused(false) => {
-				viewer.cancel_press();
+				self.interaction.overlays.viewer.cancel_press();
 				return false;
 			}
 			_ => return false,
@@ -748,9 +760,9 @@ impl<P: super::SendEvent> App<P> {
 		true
 	}
 	fn overlay_key(&mut self, key: &Key) -> bool {
-		if self.interaction.viewer.is_some() {
+		if self.interaction.overlays.viewer_open() {
 			if key == &Key::Named(NamedKey::Escape) {
-				self.interaction.viewer = None;
+				self.interaction.overlays.viewer.send(ViewerMessage::Close);
 				self.refresh_hover();
 				self.redraw();
 			}

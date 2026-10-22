@@ -64,7 +64,11 @@ const WRITERS: &[&str] = &[
 	// through `InteractionState.overlays` so a direct write from another
 	// module still counts, while the model's own `self.open` writes stay out.
 	"overlays.dropdown.open",
-	"viewer",
+	// `viewer::Model` owns the picture on show and its zoom, pan and press;
+	// the observation names the path through `InteractionState.overlays` so
+	// a direct write from another module still counts, while the model's own
+	// `self.current` writes stay out.
+	"overlays.viewer.current",
 	// `pointer::State` owns the twelve pointer fields; the observation names
 	// the path through `InteractionState` so a direct write in any other
 	// module still counts, while writes inside the owner stay out.

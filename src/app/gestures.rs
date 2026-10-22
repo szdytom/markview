@@ -101,7 +101,7 @@ impl<P: super::SendEvent> App<P> {
 		if let Some(caption) = self.frame_layout().caption_at(x, y) {
 			return Some(Tap::Caption(caption));
 		}
-		if self.interaction.viewer.is_some() {
+		if self.interaction.overlays.viewer_open() {
 			return None;
 		}
 		// An open option list owns the tap the way it owns a press: only its
@@ -156,7 +156,7 @@ impl<P: super::SendEvent> App<P> {
 
 	fn touch_surface(&mut self) -> Surface {
 		if self.interaction.overlays.modal_open()
-			|| self.interaction.viewer.is_some()
+			|| self.interaction.overlays.viewer_open()
 		{
 			return Surface::None;
 		}
@@ -497,9 +497,9 @@ impl<P: super::SendEvent> App<P> {
 				&& self.interaction.pointer.dragged())
 			|| self
 				.interaction
-				.viewer
-				.as_ref()
-				.is_some_and(|viewer| viewer.grab.is_some())
+				.overlays
+				.viewer()
+				.is_some_and(|viewer| viewer.grabbing())
 	}
 
 	/// Abandons the viewport: the OS cancels its running gesture and the

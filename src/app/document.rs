@@ -6,6 +6,7 @@ use std::{
 };
 
 use super::modal::Message;
+use super::viewer::Message as ViewerMessage;
 use super::{App, Event};
 use crate::state::Selection;
 impl<P: super::SendEvent> App<P> {
@@ -180,7 +181,7 @@ impl<P: super::SendEvent> App<P> {
 		self.tab_strip.reveal_active = false;
 		self.close_search();
 		self.readers.new_page(Instant::now());
-		self.interaction.viewer = None;
+		self.interaction.overlays.viewer.send(ViewerMessage::Close);
 		self.worker.cancel();
 		self.search_worker.release();
 		self.watch = None;
@@ -206,6 +207,9 @@ impl<P: super::SendEvent> App<P> {
 		self.tab_strip.cancel_drag();
 		self.tab_strip.reveal_active = true;
 		if self.readers.select(index, Instant::now()) {
+			// The viewer showed the page that was active, so a tab switch
+			// closes it rather than leaving the new document under it.
+			self.interaction.overlays.viewer.send(ViewerMessage::Close);
 			// A card describes the tab it was opened for, so a new active tab
 			// closes it; the resting pointer re-arms it on its next move.
 			self.dismiss_preview();

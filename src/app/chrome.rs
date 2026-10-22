@@ -756,7 +756,7 @@ impl<'a> Chrome<'a> {
 			));
 		}
 		// The image viewer floats over everything, the modal included.
-		if let Some(viewer) = &self.interaction.viewer {
+		if let Some(viewer) = self.interaction.overlays.viewer() {
 			out.extend(viewer::draw_viewer(
 				viewer,
 				&self.session.snapshot,
@@ -778,7 +778,7 @@ impl<'a> Chrome<'a> {
 			|| self.session.search.open
 			|| self.interaction.overlays.modal_open()
 			|| self.interaction.overlays.dropdown_open()
-			|| self.interaction.viewer.is_some()
+			|| self.interaction.overlays.viewer_open()
 		{
 			return None;
 		}

@@ -1,5 +1,5 @@
 //! The full-size image viewer: a scrim over the window and the picture.
-use crate::state::Viewer;
+use crate::app::viewer::Viewer;
 use markview_layout::scene::{Draw, Paint, Rect};
 
 /// The version the page currently knows the picture by, so the viewer shows
@@ -30,8 +30,8 @@ pub(in crate::app) fn draw_viewer(
 			Paint::Scrim,
 		),
 		Draw::Image {
-			src: viewer.src.clone(),
-			version: version(snapshot, &viewer.src),
+			src: viewer.src().to_owned(),
+			version: version(snapshot, viewer.src()),
 			rect: viewer.rect(window),
 			title: String::new(),
 		},

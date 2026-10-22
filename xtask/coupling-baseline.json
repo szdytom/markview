@@ -6,7 +6,7 @@
     "App": 49,
     "Chrome": 28,
     "Config": 26,
-    "InteractionState": 9,
+    "InteractionState": 8,
     "Markview": 35,
     "ReaderSession": 33,
     "ReaderSettings": 25
@@ -73,6 +73,10 @@
       "sites": 0
     },
     "overlays.outline.selection": {
+      "files": 0,
+      "sites": 0
+    },
+    "overlays.viewer.current": {
       "files": 0,
       "sites": 0
     },
@@ -163,10 +167,6 @@
     "tab_strip.animation": {
       "files": 0,
       "sites": 0
-    },
-    "viewer": {
-      "files": 3,
-      "sites": 4
     }
   }
 }

@@ -82,11 +82,14 @@ fn image_reader(source: &str, src: &str, loaded: bool) -> App<StubProxy> {
 fn open(app: &mut App<StubProxy>) {
 	button(app, MouseButton::Left, ElementState::Pressed);
 	button(app, MouseButton::Left, ElementState::Released);
-	assert!(app.interaction.viewer.is_some(), "a click opens the viewer");
+	assert!(
+		app.interaction.overlays.viewer_open(),
+		"a click opens the viewer"
+	);
 }
 
 fn viewer_image(app: &mut App<StubProxy>) -> (Rect, u64) {
-	let source = app.interaction.viewer.as_ref().unwrap().src.clone();
+	let source = app.interaction.overlays.viewer().unwrap().src().to_owned();
 	app.overlay()
 		.into_iter()
 		.find_map(|draw| match draw {
@@ -154,33 +157,26 @@ fn window_controls_remain_above_the_image_viewer() {
 			);
 			button(&mut app, MouseButton::Left, ElementState::Pressed);
 			assert_eq!(app.frame.pressed, Some(caption));
-			assert!(app.interaction.viewer.as_ref().unwrap().grab.is_none());
+			assert!(!app.interaction.overlays.viewer().unwrap().grabbing());
 			move_to(&mut app, content);
 			let before = actions.1.borrow().len();
 			release(&mut app);
 			assert_eq!(actions.1.borrow().len(), before);
 			assert!(app.frame.pressed.is_none());
-			assert!(app.interaction.viewer.is_some());
+			assert!(app.interaction.overlays.viewer_open());
 			move_to(&mut app, at);
 			button(&mut app, MouseButton::Left, ElementState::Pressed);
 			release(&mut app);
 			assert_eq!(actions.1.borrow().len(), before + 1);
 			assert_eq!(actions.1.borrow().last(), Some(&caption));
-			assert!(app.interaction.viewer.is_some());
+			assert!(app.interaction.overlays.viewer_open());
 		}
 		let at = (layout.drag.x + layout.drag.w / 2., 20.);
 		move_to(&mut app, at);
 		button(&mut app, MouseButton::Left, ElementState::Pressed);
-		assert!(
-			app.interaction
-				.viewer
-				.as_ref()
-				.unwrap()
-				.pressed_at
-				.is_none()
-		);
+		assert!(!app.interaction.overlays.viewer().unwrap().pressing());
 		button(&mut app, MouseButton::Left, ElementState::Released);
-		assert!(app.interaction.viewer.is_some());
+		assert!(app.interaction.overlays.viewer_open());
 		assert_eq!(actions.0.get(), usize::from(!layout.native_buttons));
 	}
 }
@@ -245,7 +241,7 @@ fn caption_taps_do_not_reach_covered_controls_or_activate_after_a_drag() {
 					before + usize::from(caption == Caption::Close)
 				);
 				assert!(!app.interaction.panel_open());
-				assert_eq!(app.interaction.viewer.is_some(), viewer);
+				assert_eq!(app.interaction.overlays.viewer_open(), viewer);
 				assert!(app.frame.pressed.is_none());
 			}
 		}
@@ -325,12 +321,12 @@ fn touch_window_drags_start_on_contact_and_never_pan_the_reader_or_viewer() {
 				send(&mut app, 1, TouchPhase::Ended, at);
 				assert_eq!(app.readers.session.scrolling.offset, offset);
 				assert_eq!(app.tab_strip.scroll.offset(), tab_scroll);
-				assert_eq!(app.interaction.viewer.is_some(), viewer);
+				assert_eq!(app.interaction.overlays.viewer_open(), viewer);
 				assert!(
 					app.interaction
-						.viewer
-						.as_ref()
-						.is_none_or(|viewer| viewer.pan == (0.0, 0.0))
+						.overlays
+						.viewer()
+						.is_none_or(|viewer| viewer.pan() == (0.0, 0.0))
 				);
 				assert!(app.frame.pressed.is_none());
 			}
@@ -357,14 +353,14 @@ fn loaded_images_without_selectable_text_open_on_click() {
 		let mut app = image_reader(&source, &src, true);
 		assert!(app.text_at_cursor().is_none());
 		open(&mut app);
-		assert_eq!(app.interaction.viewer.as_ref().unwrap().src, src);
+		assert_eq!(app.interaction.overlays.viewer().unwrap().src(), src);
 	}
 	let mut app =
 		image_reader("[![](a.png)](#target)\n\n# Target", "a.png", true);
 	let at = app.interaction.pointer.cursor();
 	physical_click(&mut app, at);
 	assert!(
-		app.interaction.viewer.is_none(),
+		!app.interaction.overlays.viewer_open(),
 		"an image link keeps its action"
 	);
 }
@@ -377,17 +373,17 @@ fn an_image_press_that_drags_or_loses_focus_does_not_open() {
 	move_to(&mut app, (at.0 + 20., at.1));
 	move_to(&mut app, at);
 	button(&mut app, MouseButton::Left, ElementState::Released);
-	assert!(app.interaction.viewer.is_none());
+	assert!(!app.interaction.overlays.viewer_open());
 	button(&mut app, MouseButton::Left, ElementState::Pressed);
 	event(&mut app, WindowEvent::Focused(false));
 	button(&mut app, MouseButton::Left, ElementState::Released);
-	assert!(app.interaction.viewer.is_none());
+	assert!(!app.interaction.overlays.viewer_open());
 	button(&mut app, MouseButton::Left, ElementState::Pressed);
 	app.show_panel(crate::state::PanelPage::Settings(
 		crate::state::PanelTab::Generic,
 	));
 	button(&mut app, MouseButton::Left, ElementState::Released);
-	assert!(app.interaction.viewer.is_none());
+	assert!(!app.interaction.overlays.viewer_open());
 	app.show_panel(crate::state::PanelPage::Closed);
 	open(&mut app);
 }
@@ -409,7 +405,7 @@ fn viewer_captures_search_input_and_middle_clicks() {
 	let rect = app.search_input_rect();
 	move_to(&mut app, (rect.x + 10., rect.y + rect.h / 2.));
 	button(&mut app, MouseButton::Left, ElementState::Pressed);
-	assert!(app.interaction.viewer.as_ref().unwrap().grab.is_some());
+	assert!(app.interaction.overlays.viewer().unwrap().grabbing());
 	assert_ne!(
 		app.interaction.widgets.focus,
 		Some(
@@ -424,7 +420,7 @@ fn viewer_captures_search_input_and_middle_clicks() {
 	assert!(app.tab_at_cursor().is_some());
 	button(&mut app, MouseButton::Middle, ElementState::Pressed);
 	assert_eq!(app.readers.entries().len(), 1);
-	assert!(app.interaction.viewer.is_some());
+	assert!(app.interaction.overlays.viewer_open());
 	let scroll = app.readers.session.scrolling.offset;
 	app.key_pressed(&Key::Named(NamedKey::PageDown));
 	assert_eq!(app.readers.session.scrolling.offset, scroll);
@@ -437,7 +433,7 @@ fn viewer_captures_search_input_and_middle_clicks() {
 		},
 	));
 	app.key_pressed(&Key::Named(NamedKey::Escape));
-	assert!(app.interaction.viewer.is_none());
+	assert!(!app.interaction.overlays.viewer_open());
 	assert!(app.readers.session.search.open);
 	assert!(
 		app.interaction.overlays.modal_open(),
@@ -454,10 +450,13 @@ fn viewer_drag_stays_a_drag_after_returning_to_the_press_point() {
 	move_to(&mut app, (at.0 + 20., at.1));
 	move_to(&mut app, (at.0 + 1., at.1));
 	button(&mut app, MouseButton::Left, ElementState::Released);
-	assert!(app.interaction.viewer.is_some());
+	assert!(app.interaction.overlays.viewer_open());
 	button(&mut app, MouseButton::Left, ElementState::Pressed);
 	button(&mut app, MouseButton::Left, ElementState::Released);
-	assert!(app.interaction.viewer.is_none(), "the next click closes");
+	assert!(
+		!app.interaction.overlays.viewer_open(),
+		"the next click closes"
+	);
 }
 
 #[test]
@@ -474,14 +473,14 @@ fn viewer_focus_loss_cancels_the_drag_and_ignores_an_orphan_release() {
 	);
 	button(&mut app, MouseButton::Left, ElementState::Pressed);
 	event(&mut app, WindowEvent::Focused(false));
-	let viewer = app.interaction.viewer.as_ref().unwrap();
-	assert!(viewer.grab.is_none() && viewer.pressed_at.is_none());
-	let pan = viewer.pan;
+	let viewer = app.interaction.overlays.viewer().unwrap();
+	assert!(!viewer.grabbing() && !viewer.pressing());
+	let pan = viewer.pan();
 	event(&mut app, WindowEvent::Focused(true));
 	move_to(&mut app, (800., 500.));
-	assert_eq!(app.interaction.viewer.as_ref().unwrap().pan, pan);
+	assert_eq!(app.interaction.overlays.viewer().unwrap().pan(), pan);
 	button(&mut app, MouseButton::Left, ElementState::Released);
-	assert!(app.interaction.viewer.is_some());
+	assert!(app.interaction.overlays.viewer_open());
 }
 
 #[test]
@@ -531,7 +530,7 @@ fn a_touchpad_stream_pans_nothing_while_the_viewer_is_open() {
 	assert_eq!(app.readers.session.scrolling.offset, 0.0);
 	// With the viewer gone, the page pans again.
 	app.key_pressed(&Key::Named(NamedKey::Escape));
-	assert!(app.interaction.viewer.is_none());
+	assert!(!app.interaction.overlays.viewer_open());
 	app.trackpad_scroll(0.0, -40.0, TouchPhase::Started, Inertia::Native);
 	app.trackpad_scroll(0.0, -60.0, TouchPhase::Moved, Inertia::Native);
 	assert!(app.readers.session.scrolling.offset > 0.0);

@@ -1546,18 +1546,22 @@ fn a_scrollbar_a_selection_or_a_viewer_drag_owns_the_pan_input() {
 		});
 	assert!(app.pointer_owns_input(), "a scrollbar drag owns it");
 	app.interaction.pointer.end_scrollbar();
-	app.interaction.viewer = Some(crate::state::Viewer {
-		src: String::new(),
-		pixels: (10.0, 10.0),
-		scale: 1.0,
-		zoom: 1.0,
-		pan: (0.0, 0.0),
-		grab: Some((5.0, 5.0)),
-		pressed_at: None,
-		dragged: false,
-	});
+	app.interaction
+		.overlays
+		.viewer
+		.send(crate::app::viewer::Message::Open {
+			src: String::new(),
+			pixels: (10.0, 10.0),
+			scale: 1.0,
+		});
+	app.interaction
+		.overlays
+		.viewer
+		.send(crate::app::viewer::Message::Press {
+			pointer: (5.0, 5.0),
+		});
 	assert!(app.pointer_owns_input(), "a viewer grab owns it");
-	app.interaction.viewer.as_mut().unwrap().grab = None;
+	app.interaction.overlays.viewer.cancel_press();
 	assert!(!app.pointer_owns_input(), "a viewer at rest does not");
 }
 

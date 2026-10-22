@@ -457,7 +457,7 @@ impl<P: super::SendEvent> App<P> {
 		if !offered.is_empty()
 			&& !held && !self.interaction.overlays.modal_open()
 			&& !self.interaction.overlays.dropdown_open()
-			&& self.interaction.viewer.is_none()
+			&& !self.interaction.overlays.viewer_open()
 			&& let Some(viewport) = self.dm.as_mut()
 		{
 			for pointer in offered {

@@ -29,6 +29,7 @@ at the same level, without `[brackets]`.
 
 - Make the idle footer's document path and click-to-copy behavior an opt-in setting, off by default.
 - Keep the outline drawer's scroll position and selected entry when it is closed and reopened.
+- Close the image viewer when the active tab changes, so the new document never shows the previous picture.
 
 ### Fixed
 

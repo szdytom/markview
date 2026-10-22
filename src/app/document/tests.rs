@@ -532,16 +532,15 @@ fn new_page_preserves_tabs_and_opening_or_selecting_resumes_documents() {
 	let mut h = Harness::new();
 	h.open("README.md", 2);
 	let first = h.app.readers.session.path.clone();
-	h.app.interaction.viewer = Some(crate::state::Viewer {
-		src: "first.png".into(),
-		pixels: (512., 512.),
-		scale: 1.,
-		zoom: 1.,
-		pan: (0., 0.),
-		grab: None,
-		pressed_at: None,
-		dragged: false,
-	});
+	h.app
+		.interaction
+		.overlays
+		.viewer
+		.send(crate::app::viewer::Message::Open {
+			src: "first.png".into(),
+			pixels: (512., 512.),
+			scale: 1.,
+		});
 	h.app.readers.session.scrolling.offset = 120.;
 	h.app.show_panel(crate::state::PanelPage::Tabs);
 	h.app.action(crate::state::Command::NewPage);
@@ -549,7 +548,7 @@ fn new_page_preserves_tabs_and_opening_or_selecting_resumes_documents() {
 	assert!(h.app.readers.session.path.is_none());
 	assert!(h.app.readers.session.snapshot.blocks.is_empty());
 	assert!(h.app.watch.is_none());
-	assert!(h.app.interaction.viewer.is_none());
+	assert!(!h.app.interaction.overlays.viewer_open());
 	assert_eq!(h.app.interaction.panel, crate::state::PanelPage::Closed);
 	assert!(
 		h.app
@@ -574,6 +573,52 @@ fn new_page_preserves_tabs_and_opening_or_selecting_resumes_documents() {
 	h.wait_images(2);
 	assert_eq!(h.app.readers.entries().len(), 1);
 	assert_eq!(h.app.readers.session.path, first);
+}
+
+#[test]
+fn switching_tabs_closes_the_viewer_and_resets_zoom() {
+	let mut h = Harness::new();
+	h.open("README.md", 2);
+	h.open("README.zh-cn.md", 1);
+	let window = (1200., 800.);
+	let open = |app: &mut App<Proxy>| {
+		app.interaction.overlays.viewer.send(
+			crate::app::viewer::Message::Open {
+				src: "first.png".into(),
+				pixels: (512., 512.),
+				scale: 1.,
+			},
+		);
+	};
+	open(&mut h.app);
+	let fitted = h.app.interaction.overlays.viewer().unwrap().rect(window);
+	h.app
+		.interaction
+		.overlays
+		.viewer
+		.send(crate::app::viewer::Message::Zoom {
+			factor: 2.,
+			pointer: (300., 300.),
+			window,
+		});
+	let viewer = h.app.interaction.overlays.viewer().unwrap();
+	let zoomed = viewer.rect(window);
+	let zoom_pan = viewer.pan();
+	assert!(zoomed.w > fitted.w, "the wheel zoomed the picture");
+	assert_ne!(zoom_pan, (0., 0.), "zooming off centre panned it");
+	// Selecting the tab that is already active changes no document, so the
+	// viewer stays as it is.
+	h.app.select_tab(1);
+	let same = h.app.interaction.overlays.viewer().unwrap();
+	assert_eq!(same.rect(window).w, zoomed.w);
+	assert_eq!(same.pan(), zoom_pan);
+	// A real switch closes it, like every other overlay the page owns.
+	h.app.select_tab(0);
+	assert!(!h.app.interaction.overlays.viewer_open());
+	open(&mut h.app);
+	let reopened = h.app.interaction.overlays.viewer().unwrap();
+	assert_eq!(reopened.rect(window), fitted, "a new open starts fitted");
+	assert_eq!(reopened.pan(), (0., 0.), "and keeps no old pan");
 }
 
 #[test]

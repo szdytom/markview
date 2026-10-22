@@ -7,6 +7,7 @@
 
 use super::dropdown::Dropdown;
 use super::modal::Modal;
+use super::viewer::Viewer;
 
 /// The overlay models; a new overlay adds one field here.
 #[derive(Default)]
@@ -14,6 +15,7 @@ pub(crate) struct Model {
 	pub(crate) outline: super::outline::Model,
 	pub(crate) modal: super::modal::Model,
 	pub(crate) dropdown: super::dropdown::Model,
+	pub(crate) viewer: super::viewer::Model,
 }
 
 impl Model {
@@ -35,5 +37,15 @@ impl Model {
 	/// The open option list, if any.
 	pub(crate) fn dropdown(&self) -> Option<&Dropdown> {
 		self.dropdown.current()
+	}
+
+	/// Whether the image viewer currently owns input.
+	pub(crate) fn viewer_open(&self) -> bool {
+		self.viewer.is_open()
+	}
+
+	/// The picture on show, if any.
+	pub(crate) fn viewer(&self) -> Option<&Viewer> {
+		self.viewer.current()
 	}
 }

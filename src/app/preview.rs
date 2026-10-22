@@ -206,7 +206,7 @@ impl<P: super::SendEvent> App<P> {
 			&& !self.readers.session.search.open
 			&& !self.interaction.overlays.modal_open()
 			&& !self.interaction.overlays.dropdown_open()
-			&& self.interaction.viewer.is_none()
+			&& !self.interaction.overlays.viewer_open()
 			&& self.tab_strip.drag.is_none()
 			&& self.interaction.pointer.drag().is_none()
 	}

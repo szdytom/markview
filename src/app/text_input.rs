@@ -241,7 +241,7 @@ impl<P: SendEvent> App<P> {
 			if self.interaction.panel_open()
 				|| self.interaction.overlays.outline.open()
 				|| self.interaction.overlays.modal_open()
-				|| self.interaction.viewer.is_some()
+				|| self.interaction.overlays.viewer_open()
 			{
 				return None;
 			}
@@ -286,7 +286,7 @@ impl<P: SendEvent> App<P> {
 	pub(super) fn input_at_cursor(&mut self) -> Option<TextField> {
 		if self.interaction.overlays.modal_open()
 			|| self.interaction.overlays.dropdown_open()
-			|| self.interaction.viewer.is_some()
+			|| self.interaction.overlays.viewer_open()
 		{
 			return None;
 		}
@@ -374,7 +374,7 @@ impl<P: SendEvent> App<P> {
 			&& !self.dialog_open
 			&& !self.interaction.overlays.modal_open()
 			&& !self.interaction.overlays.dropdown_open()
-			&& self.interaction.viewer.is_none()
+			&& !self.interaction.overlays.viewer_open()
 		{
 			match focus {
 				Some(id) if self.input_geometry(id).is_some() => Some(id),

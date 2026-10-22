@@ -42,6 +42,7 @@ mod tabs;
 mod text_input;
 mod ui;
 mod ui_model;
+pub(crate) mod viewer;
 mod viewport;
 mod web_page;
 pub(crate) mod widgets;

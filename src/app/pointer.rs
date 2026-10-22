@@ -12,6 +12,7 @@ use winit::{
 };
 
 use super::modal::{Message, Modal, PermissionAction};
+use super::viewer::Message as ViewerMessage;
 use super::{App, LINE_STEP, TOP, anchor, chrome};
 use markview_platform::{WheelAmount, WheelNotch};
 
@@ -738,10 +739,15 @@ impl<P: super::SendEvent> App<P> {
 
 	/// Hover state follows scrolling and reflow, not only pointer motion.
 	pub(super) fn refresh_hover(&mut self) {
-		if let Some(viewer) = &self.interaction.viewer {
+		if self.interaction.overlays.viewer_open() {
+			let grabbing = self
+				.interaction
+				.overlays
+				.viewer()
+				.is_some_and(|viewer| viewer.grabbing());
 			self.interaction.pointer.clear_hover();
 			if let Some(w) = &self.window {
-				w.set_cursor(if viewer.grab.is_some() {
+				w.set_cursor(if grabbing {
 					CursorIcon::Grabbing
 				} else {
 					self.frame_cursor().unwrap_or(CursorIcon::Default)
@@ -883,7 +889,7 @@ impl<P: super::SendEvent> App<P> {
 
 	/// Opens the full-size viewer over the image under the cursor, if any.
 	pub(super) fn open_viewer_at_cursor(&mut self) {
-		if self.interaction.viewer.is_some() {
+		if self.interaction.overlays.viewer_open() {
 			return;
 		}
 		let Some((src, rect)) = self.image_at_cursor() else {
@@ -906,15 +912,10 @@ impl<P: super::SendEvent> App<P> {
 			.map(|p| (p.width as f32, p.height as f32))
 			.unwrap_or((rect.w.max(1.), rect.h.max(1.)));
 		let scale = self.dimensions().2;
-		self.interaction.viewer = Some(crate::state::Viewer {
+		self.interaction.overlays.viewer.send(ViewerMessage::Open {
 			src,
 			pixels,
 			scale,
-			zoom: 1.,
-			pan: (0., 0.),
-			grab: None,
-			pressed_at: None,
-			dragged: false,
 		});
 		self.cancel_gestures();
 		// Opening the viewer replaces the view, so the viewport's gesture
@@ -929,19 +930,22 @@ impl<P: super::SendEvent> App<P> {
 	/// Decoded pixels can arrive while the viewer is already open.
 	pub(super) fn refresh_viewer(&mut self) {
 		let (width, height, scale) = self.dimensions();
-		let Some(viewer) = self.interaction.viewer.as_mut() else {
+		if !self.interaction.overlays.viewer_open() {
 			return;
-		};
-		let images = &self.readers.session.snapshot.images;
-		if let Some(pixels) = images
-			.entries
-			.get(&viewer.src)
-			.and_then(|info| images.pixels.get(&viewer.src, info.version))
-		{
-			viewer.pixels = (pixels.width as f32, pixels.height as f32);
 		}
-		viewer.scale = scale;
-		viewer.pan_by((0., 0.), (width, height));
+		let images = &self.readers.session.snapshot.images;
+		let pixels = self.interaction.overlays.viewer().and_then(|viewer| {
+			images
+				.entries
+				.get(viewer.src())
+				.and_then(|info| images.pixels.get(viewer.src(), info.version))
+				.map(|pixels| (pixels.width as f32, pixels.height as f32))
+		});
+		self.interaction.overlays.viewer.refresh(
+			pixels,
+			scale,
+			(width, height),
+		);
 	}
 
 	pub(super) fn open_link(&mut self, url: &str, background: bool) {
