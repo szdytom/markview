@@ -417,7 +417,7 @@ pub(crate) fn block_of(
 	}
 }
 
-fn details_block_of(
+pub(crate) fn details_block_of(
 	source: &str,
 	open: bool,
 	ordinal: u32,

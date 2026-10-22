@@ -1,7 +1,8 @@
 //! Semantic Markdown; raw HTML is limited to a small supported subset.
 use crate::{
 	container::{
-		ContainerHost, ContainerStack, block_of, clamp_range, opaque_len,
+		ContainerHost, ContainerStack, block_of, clamp_range, details_block_of,
+		opaque_len,
 	},
 	html,
 };
@@ -198,6 +199,9 @@ impl Reader<'_> {
 		// that the matching closing tag ends; unsupported markup stays source.
 		let mut style = style.clone();
 		let mut scopes: Vec<(String, TextStyle)> = Vec::new();
+		// Set while the previous sibling was a hidden `%%` comment, so the
+		// doubled whitespace it leaves behind collapses like Obsidian's.
+		let mut after_comment = false;
 		for child in node.children() {
 			let source = self.range(child);
 			if from > 0 && source.end <= from {
@@ -365,6 +369,15 @@ impl Reader<'_> {
 					child_style.mark = true;
 					None
 				}
+				// A hidden `%%inline%%` comment contributes no run; inside a
+				// code scope it stays visible source instead.
+				NodeValue::CommentInline(comment) => {
+					if !style.code {
+						after_comment = true;
+						continue;
+					}
+					Some(InlineKind::Text(format!("%%{}%%", comment.literal)))
+				}
 				NodeValue::Link(l) => {
 					child_style.link =
 						Some(Link::new(l.url.clone(), source.start));
@@ -393,7 +406,17 @@ impl Reader<'_> {
 				}
 				_ => None,
 			};
-			if let Some(kind) = kind {
+			if let Some(mut kind) = kind {
+				// Obsidian collapses the doubled whitespace a hidden comment
+				// leaves: one space of the pair goes with the comment.
+				if after_comment
+					&& let InlineKind::Text(text) = &mut kind
+					&& matches!(text.as_bytes().first(), Some(b' ' | b'\t'))
+					&& Self::comment_gap_collapses(out)
+				{
+					text.remove(0);
+				}
+				after_comment = false;
 				out.push(Inline {
 					kind,
 					style: child_style,
@@ -410,6 +433,54 @@ impl Reader<'_> {
 				);
 			}
 		}
+		if after_comment
+			&& depth == 0
+			&& let Some(Inline {
+				kind: InlineKind::Text(text),
+				..
+			}) = out.last_mut()
+			&& matches!(text.as_bytes().last(), Some(b' ' | b'\t'))
+		{
+			text.pop();
+		}
+	}
+
+	/// Whether a leading space after a hidden comment collapses: the run
+	/// stands at the paragraph's start or follows another space.
+	fn comment_gap_collapses(out: &RichText) -> bool {
+		out.last().is_none_or(|inline| {
+			matches!(&inline.kind, InlineKind::Text(text)
+				if matches!(text.as_bytes().last(), Some(b' ' | b'\t')))
+		})
+	}
+
+	/// The node's source with hidden `%%` comment spans cut out, for the
+	/// depth-limit fallback that embeds raw Markdown.
+	fn visible_source<'a>(&self, node: &'a AstNode<'a>) -> String {
+		let whole = self.range(node);
+		let mut hidden: Vec<Range<usize>> = node
+			.descendants()
+			.filter(|descendant| {
+				matches!(
+					descendant.data.borrow().value,
+					NodeValue::CommentInline(_)
+						| NodeValue::MultilineComment(_)
+				)
+			})
+			.map(|descendant| self.range(descendant))
+			.collect();
+		if hidden.is_empty() {
+			return self.source[whole.clone()].to_string();
+		}
+		hidden.sort_by_key(|range| range.start);
+		let mut text = String::new();
+		let mut cursor = whole.start;
+		for range in hidden {
+			text.push_str(&self.source[cursor..range.start]);
+			cursor = range.end;
+		}
+		text.push_str(&self.source[cursor..whole.end]);
+		text
 	}
 
 	fn text_after(
@@ -720,6 +791,12 @@ impl Reader<'_> {
 		}
 	}
 
+	#[cfg_attr(
+		any(),
+		markview::allow_complexity(
+			reason = "Keep the block-kind dispatch with the hidden-comment paragraph and block-comment skips in one ordered walk; the same source ranges feed fingerprints and anchors."
+		)
+	)]
 	fn child_block<'a>(
 		&mut self,
 		child: &'a AstNode<'a>,
@@ -730,7 +807,7 @@ impl Reader<'_> {
 		let kind = if depth >= self.limits.block_depth {
 			BlockKind::Code {
 				language: "nested Markdown".into(),
-				text: self.source[source.clone()].to_string(),
+				text: self.visible_source(child),
 			}
 		} else {
 			match &data.value {
@@ -742,7 +819,18 @@ impl Reader<'_> {
 					};
 					kind
 				}
-				NodeValue::Paragraph => BlockKind::Paragraph(self.rich(child)),
+				// A line-start `%%` comment is a block of its own whose whole
+				// span stays hidden.
+				NodeValue::MultilineComment(_) => return Child::Skip,
+				NodeValue::Paragraph => {
+					let text = self.rich(child);
+					// A paragraph can hold only a hidden `%%` comment; the
+					// source line then reads as no paragraph at all.
+					if text.is_empty() && self.dialect.ofm {
+						return Child::Skip;
+					}
+					BlockKind::Paragraph(text)
+				}
 				NodeValue::Heading(h) => {
 					let text = self.rich(child);
 					BlockKind::Heading {
@@ -1339,6 +1427,10 @@ pub fn parse(source: impl Into<Arc<str>>) -> Document {
 /// The document `source` describes when read in `dialect`.
 pub fn parse_with(source: impl Into<Arc<str>>, dialect: Dialect) -> Document {
 	let source = source.into();
+	parse_unmasked(source, dialect)
+}
+
+fn parse_unmasked(source: Arc<str>, dialect: Dialect) -> Document {
 	let arena = Arena::new();
 	let root = parse_document(&arena, &source, &markdown_options(dialect));
 	let lines = line_starts(&source);
@@ -1437,7 +1529,7 @@ pub fn parse_with(source: impl Into<Arc<str>>, dialect: Dialect) -> Document {
 /// The comrak configuration every Markdown parse shares, including the body
 /// of a `<details>` element. The dialect's extensions are on; the defaults
 /// every dialect shares are declared here once.
-fn markdown_options(dialect: Dialect) -> Options<'static> {
+pub(super) fn markdown_options(dialect: Dialect) -> Options<'static> {
 	let mut options = Options::default();
 	options.extension.table = true;
 	options.extension.wikilinks_title_after_pipe = true;
@@ -1455,6 +1547,8 @@ fn markdown_options(dialect: Dialect) -> Options<'static> {
 	// GitHub alerts know five types; the Obsidian dialect reads every
 	// `> [!type]` quote as a callout itself instead. See `callout_header`.
 	options.extension.alerts = !dialect.ofm;
+	// `%%` comments parse as skipped nodes with original source positions.
+	options.extension.ofm_comments = dialect.ofm;
 	options.extension.math_dollars = true;
 	options.extension.math_latex = true;
 	options.extension.math_code = true;

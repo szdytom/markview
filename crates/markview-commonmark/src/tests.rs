@@ -2521,3 +2521,794 @@ fn editing_around_callouts_matches_a_full_parse() {
 		assert_eq!(got.content_id, expected.content_id);
 	}
 }
+
+/// The plain reading text of the document's blocks.
+fn reading(doc: &Document) -> String {
+	let mut out = String::new();
+	fn walk(blocks: &[Block], out: &mut String) {
+		for block in blocks {
+			match &block.kind {
+				BlockKind::Paragraph(text)
+				| BlockKind::Heading { text, .. } => {
+					out.push_str(&plain_text(text));
+					out.push('\n');
+				}
+				BlockKind::Code { text, .. } => {
+					out.push_str(text);
+					out.push('\n');
+				}
+				BlockKind::Quote { blocks, .. }
+				| BlockKind::Footnote { blocks, .. }
+				| BlockKind::Details { blocks, .. }
+				| BlockKind::FrontMatter { blocks, .. } => walk(blocks, out),
+				BlockKind::List { items, .. } => {
+					for item in items {
+						walk(&item.blocks, out);
+					}
+				}
+				BlockKind::Table { rows, .. } => {
+					for row in rows {
+						for cell in row {
+							out.push_str(&plain_text(cell));
+							out.push('\t');
+						}
+						out.push('\n');
+					}
+				}
+				BlockKind::Rule => out.push('\n'),
+			}
+		}
+	}
+	walk(&doc.blocks, &mut out);
+	out
+}
+
+/// Every image spec in the document, in source order.
+fn images(doc: &Document) -> Vec<String> {
+	let mut out = Vec::new();
+	fn walk(blocks: &[Block], out: &mut Vec<String>) {
+		for block in blocks {
+			match &block.kind {
+				BlockKind::Paragraph(text)
+				| BlockKind::Heading { text, .. } => {
+					for inline in text {
+						if let InlineKind::Image(image) = &inline.kind {
+							out.push(image.src.to_string());
+						}
+					}
+				}
+				BlockKind::Quote { blocks, .. }
+				| BlockKind::Footnote { blocks, .. } => walk(blocks, out),
+				BlockKind::Details {
+					summary, blocks, ..
+				} => {
+					for inline in summary {
+						if let InlineKind::Image(image) = &inline.kind {
+							out.push(image.src.to_string());
+						}
+					}
+					walk(blocks, out);
+				}
+				BlockKind::FrontMatter { blocks, .. } => walk(blocks, out),
+				BlockKind::List { items, .. } => {
+					for item in items {
+						walk(&item.blocks, out);
+					}
+				}
+				BlockKind::Table { rows, .. } => {
+					for row in rows {
+						for cell in row {
+							for inline in cell {
+								if let InlineKind::Image(image) = &inline.kind {
+									out.push(image.src.to_string());
+								}
+							}
+						}
+					}
+				}
+				_ => {}
+			}
+		}
+	}
+	walk(&doc.blocks, &mut out);
+	out
+}
+
+#[test]
+fn ofm_hides_inline_comments_everywhere() {
+	for source in [
+		"Heading %%note%% text\n",
+		"# Heading %%note%% text\n",
+		"- item %%note%% two\n",
+		"**bold %%note%% tail**\n",
+		"> quoted %%note%% text\n",
+		"| a %%note%% | b |\n|---|---|\n| c | d %%x%% |\n",
+		"%%%%\n",
+	] {
+		let doc = parse_with(source, ofm());
+		let text = reading(&doc);
+		assert!(!text.contains('%'), "{source}: {text:?}");
+		assert!(!text.contains("note"), "{source}: {text:?}");
+	}
+	// An empty comment leaves no paragraph behind.
+	assert!(parse_with("%%%%\n", ofm()).blocks.is_empty());
+	// Trailing Markdown after a comment still parses.
+	let doc = parse_with("%%comment%% _italic_\n", ofm());
+	let BlockKind::Paragraph(p) = &doc.blocks[0].kind else {
+		panic!("{:?}", doc.blocks[0].kind);
+	};
+	assert_eq!(plain_text(p), "italic");
+	assert!(p.iter().any(|i| i.style.italic));
+}
+
+#[test]
+fn ofm_inline_comment_spacing_keeps_words_apart() {
+	let doc = parse_with("A %%note%% B\n", ofm());
+	let BlockKind::Paragraph(p) = &doc.blocks[0].kind else {
+		panic!();
+	};
+	assert_eq!(plain_text(p), "A B");
+	// Obsidian joins text that the comment glued together.
+	let doc = parse_with("word%%note%%word\n", ofm());
+	let BlockKind::Paragraph(p) = &doc.blocks[0].kind else {
+		panic!();
+	};
+	assert_eq!(plain_text(p), "wordword");
+}
+
+#[test]
+fn gfm_keeps_percent_markers_literal() {
+	let source = "A %%note%% B\n\n%%\nblock\n%%\ntail\n";
+	let doc = parse(source);
+	let text = reading(&doc);
+	assert!(text.contains("%%note%%"), "{text:?}");
+	assert!(text.contains("%%"), "{text:?}");
+	assert_eq!(doc.blocks, parse_with(source, Dialect::default()).blocks);
+}
+
+#[test]
+fn ofm_block_comments_span_blank_lines_and_blocks() {
+	let source = "Intro.\n\n%%\n# Hidden\n\n[hidden]: https://hidden.test\n\n![hidden](hidden.png)\n\n$$x$$\n\n<div id=\"hidden-anchor\">hidden</div>\n%% Visible tail\n\nOutro.\n";
+	let doc = parse_with(source, ofm());
+	let text = reading(&doc);
+	assert!(!text.contains("Hidden"), "{text:?}");
+	assert!(!text.contains("hidden.test"), "{text:?}");
+	assert!(!text.contains("hidden.png"), "{text:?}");
+	assert!(text.contains("Visible tail"), "{text:?}");
+	assert!(text.contains("Outro."), "{text:?}");
+	assert_eq!(images(&doc), Vec::<String>::new());
+	assert!(doc.blocks.iter().all(|block| block.anchors.is_empty()));
+	// The hidden refdef does not resolve; the link stays literal text.
+	let doc = parse_with("%% [x]: https://hidden.test\n%%\n\n[x]\n", ofm());
+	let BlockKind::Paragraph(p) = &doc.blocks[0].kind else {
+		panic!();
+	};
+	assert_eq!(plain_text(p), "[x]");
+	assert!(p.iter().all(|i| i.style.link_url().is_none()));
+}
+
+#[test]
+fn ofm_unclosed_block_comment_hides_the_rest() {
+	let doc = parse_with(
+		"Visible.\n\n%%\neverything below\n# Hidden heading\n",
+		ofm(),
+	);
+	let text = reading(&doc);
+	assert_eq!(text, "Visible.\n");
+}
+
+#[test]
+fn ofm_unpaired_inline_marker_stays_literal() {
+	let doc = parse_with("A %% note continues\n\nnext paragraph\n", ofm());
+	let text = reading(&doc);
+	assert!(text.contains("%%"), "{text:?}");
+	assert!(text.contains("next paragraph"), "{text:?}");
+	// An escaped marker never opens a comment.
+	let doc = parse_with("A \\%% literal %% and text\n", ofm());
+	let text = reading(&doc);
+	assert!(text.contains("%%"), "{text:?}");
+}
+
+#[test]
+fn ofm_comments_in_code_stay_literal() {
+	// Inline code, single and multi backtick.
+	for source in ["`%%code%%` text\n", "``a `%%x%%` b`` text\n"] {
+		let doc = parse_with(source, ofm());
+		let BlockKind::Paragraph(p) = &doc.blocks[0].kind else {
+			panic!("{source}");
+		};
+		assert!(plain_text(p).contains("%%"), "{source}");
+		assert!(p.iter().any(|i| i.style.code), "{source}");
+	}
+	// Fenced code, backtick and tilde.
+	for source in ["```\n%%code%%\n```\n", "~~~\n%%code%%\n~~~\n"] {
+		let doc = parse_with(source, ofm());
+		let BlockKind::Code { text, .. } = &doc.blocks[0].kind else {
+			panic!("{source}: {:?}", doc.blocks[0].kind);
+		};
+		assert!(text.contains("%%"), "{source}");
+	}
+	// Indented code.
+	let doc = parse_with("para.\n\n    %%code%%\n", ofm());
+	let BlockKind::Code { text, .. } = &doc.blocks[1].kind else {
+		panic!("{:?}", doc.blocks[1].kind);
+	};
+	assert!(text.contains("%%"));
+	// Code inside a comment does not swallow the closing delimiter.
+	let doc = parse_with("%%\n```\nfence inside\n%%\nVisible text.\n", ofm());
+	let text = reading(&doc);
+	assert_eq!(text, "Visible text.\n");
+	assert!(
+		!doc.blocks
+			.iter()
+			.any(|b| matches!(b.kind, BlockKind::Code { .. })),
+		"a hidden fence must not become a real code block"
+	);
+	// A comment inside a quote-nested fence stays code.
+	let doc = parse_with("> [!note] Title\n> ```\n> %%stay%%\n> ```\n", ofm());
+	let BlockKind::Quote { blocks, .. } = &doc.blocks[0].kind else {
+		panic!();
+	};
+	let BlockKind::Code { text, .. } = &blocks[0].kind else {
+		panic!("{:?}", blocks[0].kind);
+	};
+	assert!(text.contains("%%stay%%"));
+}
+
+#[test]
+fn ofm_comments_keep_source_positions_and_bytes() {
+	let source = "a %%隐藏note%% 中文\n\nb %%x%% c\n";
+	let doc = parse_with(source, ofm());
+	assert_eq!(&*doc.source, source);
+	let BlockKind::Paragraph(p) = &doc.blocks[0].kind else {
+		panic!();
+	};
+	assert_eq!(plain_text(p), "a 中文");
+	// A range may cover the hidden span the way a quote's range covers its
+	// markers, but it must stay on UTF-8 boundaries of the original source
+	// and start and end on the visible bytes.
+	let visible = &doc.source[p[0].source.clone()];
+	assert!(
+		visible.starts_with("a ") && visible.ends_with("中文"),
+		"{visible:?}"
+	);
+	let BlockKind::Paragraph(p) = &doc.blocks[1].kind else {
+		panic!();
+	};
+	assert_eq!(plain_text(p), "b c");
+	assert_eq!(&doc.source[p[0].source.clone()], "b %%x%% c");
+	// CRLF sources keep whole ranges too.
+	let doc = parse_with("a %%x%%\r\nb\r\n", ofm());
+	let BlockKind::Paragraph(p) = &doc.blocks[0].kind else {
+		panic!();
+	};
+	assert_eq!(plain_text(p), "a b");
+}
+
+#[test]
+fn ofm_hidden_constructs_do_not_alter_numbering_or_anchors() {
+	// A hidden footnote reference and heading leave visible numbering and
+	// anchors untouched.
+	let source = "Visible one[^a].\n\n%% Hidden [^b] and # Hidden heading %%\n\nVisible two[^b].\n\n[^a]: Note A\n[^b]: Note B\n";
+	let doc = parse_with(source, ofm());
+	let BlockKind::Paragraph(p) = &doc.blocks[0].kind else {
+		panic!();
+	};
+	let refs: Vec<_> = p
+		.iter()
+		.filter_map(|i| match &i.kind {
+			InlineKind::FootnoteRef(n) => Some(*n),
+			_ => None,
+		})
+		.collect();
+	assert_eq!(refs, vec![1]);
+	let BlockKind::Paragraph(p) = &doc.blocks[1].kind else {
+		panic!("{:?}", doc.blocks[1].kind);
+	};
+	let refs: Vec<_> = p
+		.iter()
+		.filter_map(|i| match &i.kind {
+			InlineKind::FootnoteRef(n) => Some(*n),
+			_ => None,
+		})
+		.collect();
+	assert_eq!(refs, vec![2], "hidden note must not take a number");
+	// Headings after a hidden one keep clean slugs.
+	let doc = parse_with("%% # Heading %%\n\n# 中文 Heading\n", ofm());
+	let BlockKind::Heading { anchor, .. } = &doc.blocks[0].kind else {
+		panic!("{:?}", doc.blocks[0].kind);
+	};
+	assert!(!anchor.is_empty());
+	assert!(!doc.blocks[0].anchors.iter().any(|a| a.contains("hidden")));
+}
+
+#[test]
+fn ofm_front_matter_with_markers_is_metadata() {
+	let source =
+		"---\ntitle: %%not a comment%%\n---\n\nBody %%hidden%% text.\n";
+	let doc = parse_with(source, ofm());
+	let BlockKind::FrontMatter { blocks, .. } = &doc.blocks[0].kind else {
+		panic!("{:?}", doc.blocks[0].kind);
+	};
+	let BlockKind::Code { text, .. } = &blocks[0].kind else {
+		panic!();
+	};
+	assert!(text.contains("%%not a comment%%"));
+	let BlockKind::Paragraph(p) = &doc.blocks[1].kind else {
+		panic!();
+	};
+	assert_eq!(plain_text(p), "Body text.");
+}
+
+#[test]
+fn ofm_comments_inside_details_and_callouts() {
+	let source = "<details>\n<summary>Summary %%hidden%%</summary>\n\nBody %%gone%% here.\n\n</details>\n";
+	let doc = parse_with(source, ofm());
+	let BlockKind::Details {
+		summary, blocks, ..
+	} = &doc.blocks[0].kind
+	else {
+		panic!("{:?}", doc.blocks[0].kind);
+	};
+	assert_eq!(plain_text(summary), "Summary");
+	let BlockKind::Paragraph(p) = &blocks[0].kind else {
+		panic!("{:?}", blocks[0].kind);
+	};
+	assert_eq!(plain_text(p), "Body here.");
+	// Callout bodies hide comments too.
+	let doc = parse_with("> [!tip] Title\n> Body %%gone%% kept.\n", ofm());
+	let (callout, blocks) = callout_of(&doc.blocks[0]);
+	assert_eq!(callout.title, "Title");
+	let BlockKind::Paragraph(p) = &blocks[0].kind else {
+		panic!();
+	};
+	assert_eq!(plain_text(p), "Body kept.");
+}
+
+#[test]
+fn ofm_comment_edits_match_a_full_parse() {
+	let before = "# T\n\nIntro.\n\n%%\nhidden block\n%%\n\nOutro.\n";
+	for after in [
+		"# T\n\nIntro, edited.\n\n%%\nhidden block\n%%\n\nOutro.\n",
+		"# T\n\nIntro.\n\n%%\nhidden changed\n%%\n\nOutro.\n",
+		"# T\n\nIntro.\n\nOutro.\n",
+		"# T\n\nIntro.\n\n%%\nunclosed now\n",
+	] {
+		let previous = parse_with(before, ofm());
+		// Comment documents leave the incremental fast path.
+		assert!(
+			parse_incremental(&previous, Arc::from(after), ofm()).is_none()
+		);
+		let got = reparse_with(&previous, Arc::from(after), ofm());
+		let expected = parse_with(after, ofm());
+		assert_eq!(got.blocks, expected.blocks, "{after:?}");
+		assert_eq!(got.content_id, expected.content_id);
+	}
+}
+
+#[test]
+fn ofm_comment_prefixes_never_expose_hidden_text() {
+	let source: Arc<str> =
+		Arc::from("Intro.\n\n%%\nhidden across\n\nlines\n%%\n\nTail.\n");
+	let full = parse_with(source.as_ref(), ofm());
+	// A cut before the comment shows only the blocks the full parse has.
+	assert!(parse_prefix_with(&source, 8, ofm()).is_none());
+	assert_eq!(plain_text_of(&full.blocks[0]), "Intro.");
+	// A cut inside the comment refuses a prefix: no transient exposure.
+	assert!(parse_prefix_with(&source, 20, ofm()).is_none());
+	let source: Arc<str> = Arc::from("Intro. %%hidden tail\n");
+	let full = parse_with(source.as_ref(), ofm());
+	// An unclosed inline marker stays literal, so the prefix still matches.
+	assert!(parse_prefix_with(&source, 9, ofm()).is_none());
+	assert!(reading(&full).contains("%%hidden tail"));
+}
+
+/// `plain_text` over one block's first paragraph-level rich text.
+fn plain_text_of(block: &Block) -> String {
+	match &block.kind {
+		BlockKind::Paragraph(p) | BlockKind::Heading { text: p, .. } => {
+			plain_text(p)
+		}
+		_ => String::new(),
+	}
+}
+
+#[test]
+fn ofm_comments_review_code_boundaries() {
+	for source in [
+		"`first\n%%KEEP%%\nlast`\n",
+		"> ```\n> %%KEEP%%\n> ```\n",
+		"- ```\n  %%KEEP%%\n  ```\n",
+	] {
+		assert!(
+			reading(&parse_with(source, ofm())).contains("%%KEEP%%"),
+			"{source}"
+		);
+	}
+	for source in [
+		"\\` %%SECRET%% \\`\n",
+		"> ```\n> literal\n\n%%SECRET%%\n\nVisible\n",
+		"- ```\n  literal\n\n%%SECRET%%\n\nVisible\n",
+		"%% ` fake %% Visible\n",
+		"%%\n```\n%%\n`%%KEEP%%` Visible\n",
+	] {
+		let text = reading(&parse_with(source, ofm()));
+		assert!(!text.contains("SECRET"), "{source}: {text}");
+		if source.contains("Visible") {
+			assert!(text.contains("Visible"), "{source}: {text}");
+		}
+		if source.contains("KEEP") {
+			assert!(text.contains("%%KEEP%%"), "{source}: {text}");
+		}
+	}
+}
+
+#[test]
+fn ofm_comments_review_single_scan_and_opaque() {
+	assert_eq!(
+		reading(&parse_with("%%closed%% %% unclosed\n\nVisible", ofm())),
+		"%% unclosed\nVisible\n"
+	);
+	for source in [
+		"$a%%KEEP%%b$",
+		"$$\na%%KEEP%%b\n$$",
+		"<code>%%KEEP%%</code>",
+		"<pre>%%KEEP%%</pre>",
+	] {
+		assert_eq!(
+			parse_with(source, ofm()).blocks,
+			parse_with(
+				source,
+				Dialect {
+					ofm: false,
+					..ofm()
+				}
+			)
+			.blocks,
+			"{source}"
+		);
+	}
+	let doc = parse_with(
+		"%%\n[x]: https://hidden.test\n%%\n\n<details><summary>S</summary>\n\n[label][x] %%SECRET%%\n\n</details>",
+		ofm(),
+	);
+	assert!(reading(&doc).contains("[label][x]"));
+	assert!(!reading(&doc).contains("SECRET"));
+}
+
+#[test]
+fn ofm_comments_remain_hidden_in_depth_fallbacks() {
+	let source = format!(
+		"{}Visible %%SECRET%% text.\n\n{}",
+		"<details><summary>S</summary>\n\n".repeat(300),
+		"</details>\n\n".repeat(300)
+	);
+	let doc = parse_with(source.as_str(), ofm());
+	assert!(!reading(&doc).contains("SECRET"));
+	fn check(blocks: &[Block], source: &str) {
+		for block in blocks {
+			assert!(source.get(block.source.clone()).is_some());
+			match &block.kind {
+				BlockKind::Paragraph(text)
+				| BlockKind::Heading { text, .. } => {
+					for inline in text {
+						assert!(source.get(inline.source.clone()).is_some());
+					}
+				}
+				BlockKind::Details {
+					summary, blocks, ..
+				} => {
+					for inline in summary {
+						assert!(source.get(inline.source.clone()).is_some());
+					}
+					check(blocks, source);
+				}
+				BlockKind::Quote { blocks, .. }
+				| BlockKind::FrontMatter { blocks, .. }
+				| BlockKind::Footnote { blocks, .. } => check(blocks, source),
+				BlockKind::List { items, .. } => {
+					for item in items {
+						check(&item.blocks, source);
+					}
+				}
+				BlockKind::Table { rows, .. } => {
+					for row in rows {
+						for cell in row {
+							for inline in cell {
+								assert!(
+									source.get(inline.source.clone()).is_some()
+								);
+							}
+						}
+					}
+				}
+				_ => {}
+			}
+		}
+	}
+	check(&doc.blocks, source.as_str());
+	let source = "> [!note] 标题\r\n> 中文 %%隐藏%% tail\r\n\r\n<details><summary>中文 %%隐藏%%</summary>\r\n\r\n中文 %%隐藏%% tail\r\n\r\n</details>\r\n";
+	let doc = parse_with(source, ofm());
+	check(&doc.blocks, source);
+	assert_eq!(&*doc.source, source);
+	assert!(!reading(&doc).contains("隐藏"));
+}
+
+#[test]
+fn ofm_comments_protect_code_in_html_snippets() {
+	// A fenced block and a backtick span both protect `%%` markers when the
+	// body reads as Markdown, because comrak scans the code span closed
+	// before the comment handler runs.
+	let source =
+		"<details>\n<summary>S</summary>\n\n```\n%%KEEP%%\n```\n\n</details>\n";
+	assert!(
+		reading(&parse_with(source, ofm())).contains("%%KEEP%%"),
+		"{source}"
+	);
+	let source = "<details>\n<summary>S</summary>\n\n`first\n%%KEEP%%\nlast`\n\n</details>\n";
+	assert!(
+		reading(&parse_with(source, ofm())).contains("%%KEEP%%"),
+		"{source}"
+	);
+	// A one-line `<details>` keeps its body as HTML spans, where a comment
+	// hides without Markdown code semantics.
+	let source =
+		"<details><summary>S</summary>\n`first\n%%GONE%%\nlast`\n</details>";
+	let text = reading(&parse_with(source, ofm()));
+	assert!(!text.contains("GONE"), "{source}: {text}");
+	assert!(text.contains("first"), "{source}: {text}");
+}
+
+#[test]
+fn ofm_block_comments_follow_nested_list_content_lines() {
+	let source =
+		"- outer\n  - inner\n\n    %%\n    SECRET\n\n    %%\n    Visible\n";
+	let text = reading(&parse_with(source, ofm()));
+	assert!(!text.contains("SECRET"), "{text}");
+	assert!(text.contains("Visible"), "{text}");
+}
+
+#[test]
+fn ofm_comments_respect_escaped_html_and_paragraph_code_boundaries() {
+	for source in [
+		"\\<code> %%SECRET%% </code>",
+		"`unpaired\n\n%%SECRET%%\n\nVisible `",
+	] {
+		let text = reading(&parse_with(source, ofm()));
+		assert!(!text.contains("SECRET"), "{source}: {text}");
+	}
+}
+
+#[test]
+fn ofm_comments_do_not_let_hidden_html_own_visible_code() {
+	// A fenced comment block ends at its `%%` close; the code span and the
+	// text after it stay visible.
+	let source = "%%\n<script>\n%%\n`%%KEEP%%` Visible";
+	let text = reading(&parse_with(source, ofm()));
+	assert!(text.contains("%%KEEP%%"), "{source}: {text}");
+	assert!(text.contains("Visible"), "{source}: {text}");
+	// An inline comment on the first line leaves the ``` mid-line, so it
+	// reads as literal text rather than opening a fence; the `%%KEEP%%` on
+	// its own line is another inline comment and hides with it.
+	let source = "%%x%% ```\n%%KEEP%%\n```\nVisible";
+	let text = reading(&parse_with(source, ofm()));
+	assert!(!text.contains("KEEP"), "{source}: {text}");
+	assert!(text.contains("Visible"), "{source}: {text}");
+}
+
+#[test]
+fn ofm_review02_html_code_context() {
+	for source in [
+		"`<code>`\n\n%%SECRET%%\n\n</code>\n",
+		"<!-- <code> -->\n\n%%SECRET%%\n\n</code>\n",
+	] {
+		let text = reading(&parse_with(source, ofm()));
+		assert!(!text.contains("SECRET"), "{source}: {text}");
+	}
+}
+
+#[test]
+fn ofm_review02_html_code_closures() {
+	for source in [
+		"<code>%%KEEP%%</code >\n",
+		"<code>%%KEEP%%\n",
+		"<pre>\n%%KEEP%%\n",
+		"<CODE>%%KEEP%%</CODE \t>\n",
+	] {
+		let doc = parse_with(source, ofm());
+		assert!(
+			reading(&doc).contains("%%KEEP%%"),
+			"{source}: {}",
+			reading(&doc)
+		);
+		assert_eq!(
+			doc.blocks,
+			parse_with(
+				source,
+				Dialect {
+					ofm: false,
+					..ofm()
+				}
+			)
+			.blocks,
+			"{source}"
+		);
+	}
+}
+
+#[test]
+fn ofm_review02_many_comments_preserve_visible_code() {
+	for unit in [
+		"text %%SECRET%% ",
+		"`%%KEEP%%` text %%SECRET%%\n",
+		"%%SECRET%%\n",
+		"%%\nSECRET plain text\n%%\n\n",
+	] {
+		let source = unit.repeat(2000);
+		let text = reading(&parse_with(source.as_str(), ofm()));
+		assert!(!text.contains("SECRET"));
+		assert_eq!(
+			text.matches("%%KEEP%%").count(),
+			if unit.contains("KEEP") { 2000 } else { 0 }
+		);
+	}
+}
+
+#[test]
+fn ofm_review02_html_code_scope_boundaries() {
+	let source = "<code>%%KEEP%%\n\n%%SECRET%%\n";
+	let text = reading(&parse_with(source, ofm()));
+	assert!(text.contains("%%KEEP%%"), "{text}");
+	assert!(!text.contains("SECRET"), "{text}");
+	let source = "<code><!-- </code> -->%%KEEP%%</code>\n";
+	assert!(reading(&parse_with(source, ofm())).contains("%%KEEP%%"));
+}
+
+#[test]
+fn ofm_review02_plain_block_exposes_indented_code() {
+	let source = "%%\nplain hidden words\n%% \n    %%KEEP%%\n";
+	let text = reading(&parse_with(source, ofm()));
+	assert!(text.contains("%%KEEP%%"), "{text}");
+}
+
+#[test]
+fn ofm_inline_html_code_ignores_markdown_code_closers() {
+	for source in [
+		"<code>`</code>` %%KEEP%%</code>\n",
+		"<code><code>`</code>`</code > %%KEEP%%</code>\n",
+		"<code>`</code>` %%KEEP%%\n",
+		"<code><!-- </code> --> %%KEEP%%</code>\r\n",
+	] {
+		let dialect = ofm();
+		let control = parse_with(
+			source,
+			Dialect {
+				ofm: false,
+				..dialect
+			},
+		);
+		let text = reading(&control);
+		assert!(text.contains("%%KEEP%%"), "control: {source}: {text}");
+		let doc = parse_with(source, dialect);
+		assert_eq!(doc.blocks, control.blocks, "{source}");
+		assert_eq!(&*doc.source, source);
+	}
+	let source = "<code>`</code>` %%KEEP%%</code > %%SECRET%%\n";
+	let doc = parse_with(source, ofm());
+	let text = reading(&doc);
+	assert!(text.contains("%%KEEP%%"), "{text}");
+	assert!(!text.contains("SECRET"), "{text}");
+}
+
+#[test]
+fn ofm_html_code_scopes_follow_markdown_recursion_child_open() {
+	for (open, close) in [
+		("*", "*"),
+		("**", "**"),
+		("~~", "~~"),
+		("[", "](https://example.test)"),
+	] {
+		let dialect = ofm();
+		let control_dialect = Dialect {
+			ofm: false,
+			..dialect
+		};
+		let source = format!("{open}<code>inside{close} %%SECRET%%\n");
+		let control = parse_with(source.as_str(), control_dialect);
+		let text = reading(&control);
+		assert!(text.contains("%%SECRET%%"), "{source}: {text}");
+		let BlockKind::Paragraph(inlines) = &control.blocks[0].kind else {
+			panic!();
+		};
+		assert!(inlines.iter().any(|inline| matches!(&inline.kind, InlineKind::Text(text) if text.contains("SECRET")) && !inline.style.code), "{source}: {inlines:?}");
+		let doc = parse_with(source.as_str(), dialect);
+		let expected =
+			parse_with(source.replace("%%SECRET%%", ""), control_dialect);
+		assert_eq!(reading(&doc), reading(&expected), "{source}");
+		assert!(!reading(&doc).contains("SECRET"), "{source}");
+		assert_eq!(&*doc.source, source);
+	}
+}
+
+#[test]
+fn ofm_html_code_scopes_follow_markdown_recursion_child_close() {
+	for (open, close) in [
+		("*", "*"),
+		("**", "**"),
+		("~~", "~~"),
+		("[", "](https://example.test)"),
+	] {
+		let dialect = ofm();
+		let control_dialect = Dialect {
+			ofm: false,
+			..dialect
+		};
+		let source = format!("<code>{open}inside </code>{close} %%KEEP%%\n");
+		let control = parse_with(source.as_str(), control_dialect);
+		let BlockKind::Paragraph(inlines) = &control.blocks[0].kind else {
+			panic!();
+		};
+		assert!(inlines.iter().any(|inline| matches!(&inline.kind, InlineKind::Text(text) if text.contains("KEEP")) && inline.style.code), "{source}: {inlines:?}");
+		let doc = parse_with(source.as_str(), dialect);
+		assert_eq!(doc.blocks, control.blocks, "{source}");
+		assert_eq!(&*doc.source, source);
+	}
+}
+
+#[test]
+fn ofm_comments_preserve_upstream_wikilinks() {
+	let source = "Before %%SECRET%% [[Notes/A#A heading|Visible]] after.\n";
+	for dialect in [Dialect::default(), ofm()] {
+		let doc = parse_with(source, dialect);
+		let BlockKind::Paragraph(text) = &doc.blocks[0].kind else {
+			panic!()
+		};
+		assert_eq!(
+			text.iter()
+				.filter_map(|span| span.style.link_url())
+				.collect::<Vec<_>>(),
+			["Notes/A#a-heading"]
+		);
+		assert_eq!(plain_text(text).contains("SECRET"), !dialect.ofm);
+		assert!(plain_text(text).contains("Visible"));
+		assert_eq!(&*doc.source, source);
+		for span in text {
+			assert!(source.get(span.source.clone()).is_some());
+		}
+	}
+}
+
+#[test]
+fn ofm_comments_restore_link_occurrences_to_original_bytes() {
+	for (body, marker) in [
+		("[one **bold**](/same) [two](/same)", "["),
+		(
+			"<p><a href=\"/same\">one <b>bold</b></a> <a href=\"/same\">two</a></p>",
+			"<a ",
+		),
+		("[[same|one]] [[same|two]]", "[["),
+	] {
+		for prefix in ["中文 %%隐藏%%\r\n\r\n", "%%隐藏%% "] {
+			let source = format!("{prefix}{body}\n");
+			let doc = parse_with(source.as_str(), ofm());
+			let expected = source
+				.match_indices(marker)
+				.map(|(at, _)| at)
+				.collect::<Vec<_>>();
+			let mut origins = Vec::new();
+			for block in &doc.blocks {
+				let BlockKind::Paragraph(text) = &block.kind else {
+					continue;
+				};
+				for span in text {
+					if let Some(link) = &span.style.link
+						&& origins.last() != Some(&link.origin())
+					{
+						origins.push(link.origin());
+					}
+				}
+			}
+			assert_eq!(origins, expected, "{source}");
+		}
+	}
+}

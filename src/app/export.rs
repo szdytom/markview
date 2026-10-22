@@ -921,10 +921,10 @@ mod tests {
 		let dir = tempfile::tempdir().unwrap();
 		let source = dir.path().join("dialect.md");
 		// `[!example]` is no GitHub alert type, so only OFM lite reads it as a
-		// callout; GFM keeps the marker literal.
+		// callout; GFM keeps the marker literal. `+` puts its title in reading text.
 		std::fs::write(
 			&source,
-			"Soft wrapped\nline one.\n\n> [!example] Callout title\n> ==marked== body\n",
+			"Soft wrapped\nline one.\n\n> [!example]+ Callout title\n> ==marked== body\n\nVisible %%SECRET%% text.\n\n`%%CODEKEEP%%`\n",
 		)
 		.unwrap();
 		let source = std::fs::canonicalize(source).unwrap();
@@ -948,6 +948,15 @@ mod tests {
 				"\n",
 				true,
 				false,
+			),
+			(
+				crate::settings::MarkdownFlavor::OfmLite,
+				true,
+				false,
+				ExportFormat::Png,
+				" ",
+				true,
+				true,
 			),
 			(
 				// The stored toggles are stale under OFM lite: the preset
@@ -1004,6 +1013,11 @@ mod tests {
 				ExportOutcome::PngReady { snapshot, .. } => {
 					assert_eq!(format, ExportFormat::Png);
 					let text = snapshot.full_reading_text();
+					assert_eq!(text.contains("SECRET"), !callout, "{text}");
+					assert!(
+						text.contains("Visible")
+							&& text.contains("%%CODEKEEP%%")
+					);
 					assert!(
 						text.contains(&format!("Soft wrapped{join}line one.")),
 						"dialect lost: {text:?}"
@@ -1029,6 +1043,9 @@ mod tests {
 					assert_eq!(format, ExportFormat::Pdf);
 					let pdf = lopdf::Document::load(&path).unwrap();
 					let text = pdf.extract_text(&[1]).unwrap();
+					assert!(!text.contains("SECRET"), "{text}");
+					assert!(text.contains("Visible"), "{text}");
+					assert!(text.contains("CODEKEEP"), "{text}");
 					assert!(!text.contains("=="), "dialect lost: {text:?}");
 					assert!(text.contains("marked"), "{text:?}");
 					// The callout title itself extracts as unmapped glyphs, so

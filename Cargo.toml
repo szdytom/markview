@@ -80,7 +80,7 @@ log = "0.4"
 memmap2 = "0.9"
 bytemuck = { version = "1", features = ["derive"] }
 codex = { version = "0.3", default-features = false, features = ["numeral-systems"] }
-comrak = { version = "0.56", default-features = false }
+comrak = { version = "0.57", default-features = false }
 syntect = { version = "5.3", default-features = false, features = ["parsing", "regex-fancy"] }
 two-face = { version = "0.5.1", default-features = false, features = ["syntect-fancy"] }
 hypher = { version = "0.1.7", default-features = false, features = ["english", "alloc"] }

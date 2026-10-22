@@ -3826,3 +3826,27 @@ fn a_callout_draws_its_family_color_and_header() {
 	// A plain quote keeps the quote box.
 	assert_eq!(boxed(1).1, Condition::Blockquote);
 }
+
+#[test]
+fn ofm_comments_are_absent_from_reading_copy_and_search() {
+	let source = "Visible %%SECRET%% text.\n\n%%\n# SECRET\n![SECRET](https://hidden.test/x.png)\n%%\n\n`%%CODEKEEP%%`\n";
+	for ofm in [false, true] {
+		let doc = markview_commonmark::parse_with(
+			source,
+			markview_commonmark::Dialect {
+				ofm,
+				..Default::default()
+			},
+		);
+		let snapshot =
+			LayoutEngine::new().layout(&doc, &LayoutOptions::default());
+		for text in [snapshot.full_reading_text(), reading_text(&snapshot)] {
+			assert_eq!(text.contains("SECRET"), !ofm, "{text}");
+			assert!(text.contains("Visible"));
+			assert!(text.contains("%%CODEKEEP%%"));
+		}
+		let index = crate::search::SearchIndex::new(&doc);
+		assert_eq!(index.find("SECRET", Default::default()).is_empty(), ofm);
+		assert!(!index.find("CODEKEEP", Default::default()).is_empty());
+	}
+}
