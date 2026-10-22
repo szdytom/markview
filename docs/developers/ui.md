@@ -67,6 +67,13 @@ keeps the deadline it found, so replacing a live line does not shorten it.
 Other modules write only through the owner's methods; none of them touches the
 fields.
 
+The confirmation is a component, not an `InteractionState` field. `app/modal.rs`
+owns the pending question in `modal::Model`; its `current` question is private,
+the host opens or dismisses it with `Message::Open` and `Message::Dismiss`, and
+drawing and input ownership read it through `interaction.overlays.modal()` and
+`interaction.overlays.modal_open()`. Navigation paths dismiss it by sending a
+message, so no host module writes the field.
+
 `UiLayout` supplies visible controls, keyboard traversal and the measured form.
 Painting uses these placed control rectangles; the same clipped rectangles answer
 pointer input. A scrolling form keeps offscreen controls in keyboard order and

@@ -11,6 +11,7 @@ use winit::{
 	window::CursorIcon,
 };
 
+use super::modal::{Message, Modal, PermissionAction};
 use super::{App, LINE_STEP, TOP, anchor, chrome};
 use markview_platform::{WheelAmount, WheelNotch};
 
@@ -378,7 +379,7 @@ impl<P: super::SendEvent> App<P> {
 
 	/// A confirmation owns input: only its buttons answer.
 	fn press_modal(&mut self) -> bool {
-		if self.interaction.modal.is_none() {
+		if !self.interaction.overlays.modal_open() {
 			return false;
 		}
 		self.interaction.reset_clicks();
@@ -572,7 +573,7 @@ impl<P: super::SendEvent> App<P> {
 			self.redraw();
 			return;
 		}
-		if self.interaction.modal.is_some() {
+		if self.interaction.overlays.modal_open() {
 			self.redraw();
 			return;
 		}
@@ -764,7 +765,7 @@ impl<P: super::SendEvent> App<P> {
 			|| self.pointer_in_folder()
 			|| self.sidebar_edge().is_some();
 		let idle = !self.interaction.panel_open()
-			&& self.interaction.modal.is_none()
+			&& !self.interaction.overlays.modal_open()
 			&& !holding
 			&& !over_outline;
 		let document_hover = if idle {
@@ -891,10 +892,7 @@ impl<P: super::SendEvent> App<P> {
 		if let Some(resource) =
 			self.readers.session.blocked_images.get(&src).cloned()
 		{
-			self.ask_permission(
-				resource,
-				crate::state::PermissionAction::Images,
-			);
+			self.ask_permission(resource, PermissionAction::Images);
 			return;
 		}
 		// The pixels the renderer already holds cap the fitting, so the
@@ -998,7 +996,7 @@ impl<P: super::SendEvent> App<P> {
 						.unwrap();
 					self.ask_permission(
 						required.0.clone(),
-						state::PermissionAction::Markdown {
+						PermissionAction::Markdown {
 							path,
 							anchor: fragment,
 							placement,
@@ -1022,11 +1020,14 @@ impl<P: super::SendEvent> App<P> {
 					.parent()
 					.filter(|p| !p.as_os_str().is_empty())
 					.map_or_else(|| PathBuf::from("."), PathBuf::from);
-				self.interaction.modal = Some(state::Modal::OpenLocal {
-					path,
-					dir,
-					document_dir: directory.map(std::path::Path::to_path_buf),
-				});
+				self.interaction.overlays.modal.send(Message::Open(
+					Modal::OpenLocal {
+						path,
+						dir,
+						document_dir: directory
+							.map(std::path::Path::to_path_buf),
+					},
+				));
 				// "Open folder" is the default, and Enter activates it.
 				self.interaction.widgets.focus =
 					Some(state::Command::ModalOpenFolder.widget_id());

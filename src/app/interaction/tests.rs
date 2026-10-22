@@ -961,13 +961,16 @@ fn sidebar_edges_yield_to_overlays_and_cancel_on_focus_loss() {
 	app.interaction.panel = PanelPage::Settings(PanelTab::Generic);
 	assert!(!app.begin_sidebar_resize());
 	app.interaction.panel = PanelPage::Closed;
-	app.interaction.modal = Some(Modal::OpenLocal {
-		path: "unknown".into(),
-		dir: "".into(),
-		document_dir: None,
-	});
+	app.interaction
+		.overlays
+		.modal
+		.send(Message::Open(Modal::OpenLocal {
+			path: "unknown".into(),
+			dir: "".into(),
+			document_dir: None,
+		}));
 	assert!(!app.begin_sidebar_resize());
-	app.interaction.modal = None;
+	app.interaction.overlays.modal.send(Message::Dismiss);
 	assert!(app.begin_sidebar_resize());
 	app.handle_window_event(
 		&StubLoop,
@@ -1729,11 +1732,13 @@ fn drawer_swipes_reject_short_cancelled_multitouch_and_owned_input() {
 	for panel in [PanelPage::Closed, PanelPage::Settings(PanelTab::Generic)] {
 		app.show_panel(panel);
 		if panel == PanelPage::Closed {
-			app.interaction.modal = Some(crate::state::Modal::OpenLocal {
-				path: PathBuf::from("/tmp/file.bin"),
-				dir: PathBuf::from("/tmp"),
-				document_dir: None,
-			});
+			app.interaction.overlays.modal.send(Message::Open(
+				Modal::OpenLocal {
+					path: PathBuf::from("/tmp/file.bin"),
+					dir: PathBuf::from("/tmp"),
+					document_dir: None,
+				},
+			));
 		}
 		for end in [480.0, 720.0] {
 			app.handle_touch(touch(1, TouchPhase::Started, 600.0, 300.0));
@@ -1741,7 +1746,7 @@ fn drawer_swipes_reject_short_cancelled_multitouch_and_owned_input() {
 			assert_eq!(app.interaction.panel, panel);
 			assert!(!app.interaction.overlays.outline.open());
 		}
-		app.interaction.modal = None;
+		app.interaction.overlays.modal.send(Message::Dismiss);
 	}
 }
 
@@ -1838,8 +1843,9 @@ fn phone_drawer_switches_and_closes_shared_tabs_and_hides_tab_style() {
 
 #[test]
 fn permission_modals_over_forms_keep_close_geometry_and_own_input() {
+	use crate::app::modal::{Message, Modal, PermissionAction};
 	use crate::layout::Draw;
-	use crate::state::{Modal, PanelPage, PanelTab, PermissionAction};
+	use crate::state::{PanelPage, PanelTab};
 	for page in [
 		PanelPage::Export,
 		PanelPage::Settings(PanelTab::Generic),
@@ -1848,12 +1854,15 @@ fn permission_modals_over_forms_keep_close_geometry_and_own_input() {
 		let (mut app, _) = reader(SOURCE, 760.);
 		app.show_panel(page);
 		app.overlay();
-		app.interaction.modal = Some(Modal::Permission {
-			resource: crate::security::Resource::File(PathBuf::from(
-				"resource.png",
-			)),
-			resume: PermissionAction::Images,
-		});
+		app.interaction
+			.overlays
+			.modal
+			.send(Message::Open(Modal::Permission {
+				resource: crate::security::Resource::File(PathBuf::from(
+					"resource.png",
+				)),
+				resume: PermissionAction::Images,
+			}));
 		let draws = app.overlay();
 		let buttons = app.buttons();
 		assert!(buttons.iter().all(|b| matches!(
@@ -1878,7 +1887,7 @@ fn permission_modals_over_forms_keep_close_geometry_and_own_input() {
 		assert_eq!(app.interaction.widgets.captured, Some(close.id));
 		let action = app.release_widget().unwrap();
 		app.action(action);
-		assert!(app.interaction.modal.is_none());
+		assert!(!app.interaction.overlays.modal_open());
 		assert_eq!(app.interaction.panel, page);
 		app.overlay();
 	}

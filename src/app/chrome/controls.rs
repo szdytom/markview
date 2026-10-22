@@ -623,7 +623,8 @@ pub(super) fn draw_toolbar_at(
 	components::appearance(ui);
 	let idle = InteractionState::default();
 	let idle = crate::app::widgets::Drawn::new(&idle, None);
-	let state = if interaction.panel_open() || interaction.modal.is_some() {
+	let state = if interaction.panel_open() || interaction.overlays.modal_open()
+	{
 		&idle
 	} else {
 		interaction

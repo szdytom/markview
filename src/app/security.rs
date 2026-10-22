@@ -1,8 +1,9 @@
 //! Reader-owned resource permission prompts and navigation provenance.
 use super::App;
+use super::modal::{Message, Modal, PermissionAction};
 use crate::{
 	security::{Resource, Security, Trust},
-	state::{Command, Modal, PermissionAction, TabPlacement},
+	state::{Command, TabPlacement},
 };
 use std::path::PathBuf;
 
@@ -12,7 +13,10 @@ impl<P: super::SendEvent> App<P> {
 		resource: Resource,
 		resume: PermissionAction,
 	) {
-		self.interaction.modal = Some(Modal::Permission { resource, resume });
+		self.interaction
+			.overlays
+			.modal
+			.send(Message::Open(Modal::Permission { resource, resume }));
 		self.interaction.widgets.focus =
 			Some(Command::ModalDismiss.widget_id());
 		self.refresh_hover();

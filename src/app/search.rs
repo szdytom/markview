@@ -201,7 +201,7 @@ impl<P: SendEvent> App<P> {
 		self.open_search_with(true);
 	}
 	fn open_search_with(&mut self, fresh: bool) {
-		if self.interaction.modal.is_some()
+		if self.interaction.overlays.modal_open()
 			|| self.readers.session.path.is_none()
 		{
 			return;
@@ -508,7 +508,7 @@ impl<P: SendEvent> App<P> {
 	}
 	pub(super) fn search_buttons(&self) -> Vec<Button> {
 		if !self.readers.session.search.open
-			|| self.interaction.modal.is_some()
+			|| self.interaction.overlays.modal_open()
 			|| self.interaction.panel_open()
 		{
 			return vec![];

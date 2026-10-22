@@ -455,7 +455,7 @@ impl<P: super::SendEvent> App<P> {
 		// always has.
 		let offered = dm::DirectManipulation::take_offered_pointers();
 		if !offered.is_empty()
-			&& !held && self.interaction.modal.is_none()
+			&& !held && !self.interaction.overlays.modal_open()
 			&& self.interaction.dropdown.is_none()
 			&& self.interaction.viewer.is_none()
 			&& let Some(viewport) = self.dm.as_mut()

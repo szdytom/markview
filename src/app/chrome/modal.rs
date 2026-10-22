@@ -3,9 +3,10 @@ use super::super::Button;
 use super::controls::{ICON_BUTTON, draw_button};
 use super::icons;
 use crate::{
+	app::modal::Modal,
 	lang::Lang,
 	layout::{Draw, Paint, Rect, TextShaper},
-	state::{Command, InteractionState, Modal},
+	state::{Command, InteractionState},
 };
 use markview_layout::style::{ColorField as C, Condition, TextAppearance};
 use std::path::{Component, Path, PathBuf};
@@ -193,13 +194,13 @@ pub(in crate::app) fn modal_buttons(
 	height: f32,
 	lang: Lang,
 ) -> Vec<Button> {
-	if interaction.modal.is_none() {
+	if !interaction.overlays.modal_open() {
 		return Vec::new();
 	}
 	let rect = modal_rect(width, height);
 	let close = ICON_BUTTON;
 	let permission =
-		matches!(interaction.modal, Some(Modal::Permission { .. }));
+		matches!(interaction.overlays.modal(), Some(Modal::Permission { .. }));
 	let cancel_label = if permission {
 		lang.permission_cancel()
 	} else {
@@ -283,7 +284,9 @@ pub(in crate::app) fn draw_modal(
 	height: f32,
 	lang: Lang,
 ) -> Vec<Draw> {
-	if let Some(Modal::Permission { resource, .. }) = &interaction.modal {
+	if let Some(Modal::Permission { resource, .. }) =
+		interaction.overlays.modal()
+	{
 		shaper.appearance = panel_appearance(shaper);
 		let rect = modal_rect(width, height);
 		let text = Paint::Styled(Condition::Panel, C::Color);
@@ -324,7 +327,7 @@ pub(in crate::app) fn draw_modal(
 	}
 	let Some(Modal::OpenLocal {
 		path, document_dir, ..
-	}) = &interaction.modal
+	}) = interaction.overlays.modal()
 	else {
 		return Vec::new();
 	};
@@ -384,14 +387,15 @@ mod tests {
 	#[test]
 	fn modal_offers_all_three_answers_inside_its_panel() {
 		let mut shaper = crate::test_support::shaper();
-		let interaction = InteractionState {
-			modal: Some(Modal::OpenLocal {
+		let mut interaction = InteractionState::default();
+		interaction
+			.overlays
+			.modal
+			.send(crate::app::modal::Message::Open(Modal::OpenLocal {
 				path: PathBuf::from("/tmp/archive/untrusted.pdf"),
 				dir: PathBuf::from("/tmp/archive"),
 				document_dir: None,
-			}),
-			..Default::default()
-		};
+			}));
 		for (width, height) in [(500.0, 300.0), (600.0, 400.0), (1200.0, 800.0)]
 		{
 			let rect = modal_rect(width, height);

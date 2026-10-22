@@ -1,5 +1,6 @@
 use super::*;
 use crate::app::frame::Caption;
+use crate::app::modal::Message;
 use crate::layout::{Draw, Rect};
 use markview_layout::image::{ImageInfo, ImageSnapshot, Pixels};
 use winit::event::{Ime, MouseScrollDelta, TouchPhase};
@@ -428,16 +429,18 @@ fn viewer_captures_search_input_and_middle_clicks() {
 	app.key_pressed(&Key::Named(NamedKey::PageDown));
 	assert_eq!(app.readers.session.scrolling.offset, scroll);
 	assert!(!app.readers.session.scroll_animating());
-	app.interaction.modal = Some(crate::state::Modal::OpenLocal {
-		path: PathBuf::from("/tmp/viewer.bin"),
-		dir: PathBuf::from("/tmp"),
-		document_dir: None,
-	});
+	app.interaction.overlays.modal.send(Message::Open(
+		crate::app::modal::Modal::OpenLocal {
+			path: PathBuf::from("/tmp/viewer.bin"),
+			dir: PathBuf::from("/tmp"),
+			document_dir: None,
+		},
+	));
 	app.key_pressed(&Key::Named(NamedKey::Escape));
 	assert!(app.interaction.viewer.is_none());
 	assert!(app.readers.session.search.open);
 	assert!(
-		app.interaction.modal.is_some(),
+		app.interaction.overlays.modal_open(),
 		"Escape only closes the viewer"
 	);
 }

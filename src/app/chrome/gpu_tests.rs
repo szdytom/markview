@@ -1,4 +1,5 @@
-use crate::state::{Command, Modal};
+use crate::app::modal::{Message, Modal, PermissionAction};
+use crate::state::Command;
 use crate::state::{PanelPage, PanelTab};
 use crate::{
 	layout::LayoutEngine,
@@ -374,60 +375,62 @@ fn notice_strip_and_confirmation_frames() -> Result<()> {
 		// sits under the open document, so the short relative form is shown.
 		let root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("artifacts");
 		let targets = root.join("manual-test/targets");
-		let relative = InteractionState {
+		let mut relative = InteractionState {
 			widgets: markview_ui_core::Interaction {
 				focus_visible: true,
 				focus: Some(Command::ModalOpenFolder.widget_id()),
 				..Default::default()
 			},
-			modal: Some(Modal::OpenLocal {
-				path: targets.join("payload.desktop"),
-				dir: targets.clone(),
-				document_dir: Some(root.join("manual-test")),
-			}),
 			pointer: crate::app::pointer::State::at((620.0, 300.0)),
 			..Default::default()
 		};
-		let permission = InteractionState {
+		relative
+			.overlays
+			.modal
+			.send(Message::Open(Modal::OpenLocal {
+				path: targets.join("payload.desktop"),
+				dir: targets.clone(),
+				document_dir: Some(root.join("manual-test")),
+			}));
+		let mut permission = InteractionState {
 			widgets: markview_ui_core::Interaction {
 				focus_visible: true,
 				focus: Some(Command::ModalDismiss.widget_id()),
 				..Default::default()
 			},
-			modal: Some(Modal::Permission {
+			..Default::default()
+		};
+		permission
+			.overlays
+			.modal
+			.send(Message::Open(Modal::Permission {
 				resource: crate::security::Resource::Network {
 					origin: "http://localhost:8080".into(),
 					class: crate::security::AddressClass::Loopback,
 				},
-				resume: crate::state::PermissionAction::Images,
-			}),
+				resume: PermissionAction::Images,
+			}));
+		// A far target has no short relative form; its front is elided.
+		let mut long = InteractionState {
+			widgets: markview_ui_core::Interaction {
+				focus_visible: true,
+				focus: Some(Command::ModalOpenFolder.widget_id()),
+				..Default::default()
+			},
+			pointer: crate::app::pointer::State::at((620.0, 300.0)),
 			..Default::default()
 		};
+		long.overlays.modal.send(Message::Open(Modal::OpenLocal {
+			path: PathBuf::from(
+				"/srv/data/archive/2026/exports/nightly/release-candidates/marketing/payload.desktop",
+			),
+			dir: PathBuf::from("/srv/data/archive/2026/exports/nightly"),
+			document_dir: Some(root.join("manual-test")),
+		}));
 		for (interaction, name) in [
 			(&permission, "resource-permission"),
 			(&relative, "confirm-modal"),
-			// A far target has no short relative form; its front is elided.
-			(
-				&InteractionState {
-					widgets: markview_ui_core::Interaction {
-						focus_visible: true,
-						focus: Some(Command::ModalOpenFolder.widget_id()),
-						..Default::default()
-					},
-					modal: Some(Modal::OpenLocal {
-						path: PathBuf::from(
-							"/srv/data/archive/2026/exports/nightly/release-candidates/marketing/payload.desktop",
-						),
-						dir: PathBuf::from(
-							"/srv/data/archive/2026/exports/nightly",
-						),
-						document_dir: Some(root.join("manual-test")),
-					}),
-					pointer: crate::app::pointer::State::at((620.0, 300.0)),
-					..Default::default()
-				},
-				"confirm-modal-long",
-			),
+			(&long, "confirm-modal-long"),
 		] {
 			let mut overlay = toolbar(&mut ui);
 			overlay.extend(modal::draw_modal(
@@ -450,20 +453,20 @@ fn notice_strip_and_confirmation_frames() -> Result<()> {
 			)?;
 		}
 		for lang in [Lang::En, Lang::ZhHans, Lang::ZhHant, Lang::Ja] {
-			let narrow = InteractionState {
+			let mut narrow = InteractionState {
 				widgets: markview_ui_core::Interaction {
 					focus_visible: true,
 					focus: Some(Command::ModalDismiss.widget_id()),
 					..Default::default()
 				},
-				modal: Some(Modal::Permission {
-					resource: crate::security::Resource::SelectImage(
-						"image.png".into(),
-					),
-					resume: crate::state::PermissionAction::Images,
-				}),
 				..Default::default()
 			};
+			narrow.overlays.modal.send(Message::Open(Modal::Permission {
+				resource: crate::security::Resource::SelectImage(
+					"image.png".into(),
+				),
+				resume: PermissionAction::Images,
+			}));
 			let overlay = modal::draw_modal(
 				&mut ui,
 				&crate::app::widgets::Drawn::new(&narrow, None),
@@ -1701,11 +1704,13 @@ fn redesigned_chrome_frames() -> Result<()> {
 							| "fonts-failed-preview"
 					);
 					if page == "confirmation" {
-						interaction.modal = Some(Modal::OpenLocal {
-							path: "/tmp/example.desktop".into(),
-							dir: "/tmp".into(),
-							document_dir: None,
-						});
+						interaction.overlays.modal.send(Message::Open(
+							Modal::OpenLocal {
+								path: "/tmp/example.desktop".into(),
+								dir: "/tmp".into(),
+								document_dir: None,
+							},
+						));
 						interaction.widgets.focus =
 							Some(Command::ModalOpenFolder.widget_id());
 					}

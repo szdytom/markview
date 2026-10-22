@@ -5,6 +5,7 @@ use std::{
 	time::Instant,
 };
 
+use super::modal::Message;
 use super::{App, Event};
 use crate::state::Selection;
 impl<P: super::SendEvent> App<P> {
@@ -59,7 +60,7 @@ impl<P: super::SendEvent> App<P> {
 		session.content_version += 1;
 		session.security.revoke();
 		session.blocked_images.clear();
-		self.interaction.modal = None;
+		self.interaction.overlays.modal.send(Message::Dismiss);
 		session.load_error = None;
 		session.parse_complete = false;
 		session.search.retained = session
@@ -132,7 +133,7 @@ impl<P: super::SendEvent> App<P> {
 	) {
 		self.restore_session();
 		self.folder.navigation_revision += 1;
-		self.interaction.modal = None;
+		self.interaction.overlays.modal.send(Message::Dismiss);
 		self.clear_input_focus();
 		self.cancel_gestures();
 		self.abandon_dm();
@@ -171,7 +172,7 @@ impl<P: super::SendEvent> App<P> {
 	pub(super) fn new_page(&mut self) {
 		self.restore_session();
 		self.folder.navigation_revision += 1;
-		self.interaction.modal = None;
+		self.interaction.overlays.modal.send(Message::Dismiss);
 		self.clear_input_focus();
 		self.cancel_gestures();
 		self.abandon_dm();
@@ -198,7 +199,7 @@ impl<P: super::SendEvent> App<P> {
 		if self.folder_inset() == 0. {
 			self.set_folder_open(false);
 		}
-		self.interaction.modal = None;
+		self.interaction.overlays.modal.send(Message::Dismiss);
 		self.clear_input_focus();
 		self.cancel_gestures();
 		self.abandon_dm();
@@ -222,7 +223,7 @@ impl<P: super::SendEvent> App<P> {
 		self.redraw();
 	}
 	pub(super) fn close_tab(&mut self, index: usize) {
-		self.interaction.modal = None;
+		self.interaction.overlays.modal.send(Message::Dismiss);
 		self.clear_input_focus();
 		self.cancel_gestures();
 		self.abandon_dm();

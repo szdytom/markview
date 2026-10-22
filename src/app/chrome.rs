@@ -315,7 +315,7 @@ impl<'a> Chrome<'a> {
 	pub(super) fn form(&mut self) -> Option<components::Form> {
 		if !self.interaction.panel_open()
 			|| self.interaction.panel == crate::state::PanelPage::Tabs
-			|| self.interaction.modal.is_some()
+			|| self.interaction.overlays.modal_open()
 			|| self.interaction.styles_open()
 			|| self.interaction.fonts_open()
 			|| self.interaction.export_styles_open()
@@ -355,7 +355,7 @@ impl<'a> Chrome<'a> {
 		form: Option<&components::Form>,
 	) -> Vec<Button> {
 		let (width, height, _) = (self.width, self.height, 1.0);
-		let mut buttons = if self.interaction.modal.is_some() {
+		let mut buttons = if self.interaction.overlays.modal_open() {
 			modal::modal_buttons(
 				self.ui,
 				&self.interaction,
@@ -746,7 +746,7 @@ impl<'a> Chrome<'a> {
 			));
 		}
 		// A confirmation owns the frame; nothing behind it is interactive.
-		if self.interaction.modal.is_some() {
+		if self.interaction.overlays.modal_open() {
 			out.extend(modal::draw_modal(
 				self.ui,
 				&self.interaction,
@@ -776,7 +776,7 @@ impl<'a> Chrome<'a> {
 		if self.tab_strip.phone
 			|| self.interaction.panel_open()
 			|| self.session.search.open
-			|| self.interaction.modal.is_some()
+			|| self.interaction.overlays.modal_open()
 			|| self.interaction.dropdown.is_some()
 			|| self.interaction.viewer.is_some()
 		{
@@ -1009,7 +1009,7 @@ impl<'a> Chrome<'a> {
 			));
 		} else if self.interaction.panel_open()
 			&& self.interaction.export_open()
-			&& self.interaction.modal.is_none()
+			&& !self.interaction.overlays.modal_open()
 		{
 			let document = self
 				.session
@@ -1056,7 +1056,7 @@ impl<'a> Chrome<'a> {
 			));
 		} else if self.interaction.panel_open()
 			&& self.interaction.panel != crate::state::PanelPage::Tabs
-			&& self.interaction.modal.is_none()
+			&& !self.interaction.overlays.modal_open()
 		{
 			out.extend(controls::draw_controls_form(
 				self.ui,

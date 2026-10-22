@@ -610,8 +610,9 @@ fn closing_last_parked_tab_releases_the_workers_document() {
 fn untrusted_local_navigation_and_images_need_grants_without_reusing_trusted_tabs()
  {
 	use crate::{
+		app::modal::Modal,
 		security::{Origin, Security, Trust},
-		state::{Command, Modal},
+		state::Command,
 	};
 	let mut h = Harness::new();
 	h.open("README.zh-cn.md", 1);
@@ -628,7 +629,7 @@ fn untrusted_local_navigation_and_images_need_grants_without_reusing_trusted_tab
 	);
 	let resource = h.app.readers.session.blocked_images["first.png"].clone();
 	h.app
-		.ask_permission(resource, crate::state::PermissionAction::Images);
+		.ask_permission(resource, crate::app::modal::PermissionAction::Images);
 	h.app.action(Command::ModalConfirm);
 	h.wait_images(1);
 	h.app.action(Command::RemoteLoadAll);
@@ -647,7 +648,7 @@ fn untrusted_local_navigation_and_images_need_grants_without_reusing_trusted_tab
 	h.app.open_link("README.zh-cn.md", false);
 	assert_eq!(h.app.readers.entries().len(), 2);
 	assert!(matches!(
-		h.app.interaction.modal,
+		h.app.interaction.overlays.modal(),
 		Some(Modal::Permission { .. })
 	));
 	h.app.action(Command::ModalConfirm);
@@ -1044,7 +1045,7 @@ fn folder_links_preserve_native_paths_with_url_delimiters() {
 		)
 		.to_string();
 		h.app.open_link(&url, false);
-		assert!(h.app.interaction.modal.is_none(), "{name}");
+		assert!(!h.app.interaction.overlays.modal_open(), "{name}");
 		assert_eq!(
 			h.app.readers.session.path,
 			Some(root.join(name).canonicalize().unwrap())
@@ -1053,8 +1054,8 @@ fn folder_links_preserve_native_paths_with_url_delimiters() {
 	}
 	fs::write(root.join("Attachment.bin"), "data").unwrap();
 	h.app.open_link("Attachment.bin", false);
-	assert!(matches!(&h.app.interaction.modal,
-		Some(crate::state::Modal::OpenLocal { path, .. })
+	assert!(matches!(h.app.interaction.overlays.modal(),
+		Some(crate::app::modal::Modal::OpenLocal { path, .. })
 		if *path == root.join("Attachment.bin").canonicalize().unwrap()));
 }
 
@@ -1378,14 +1379,16 @@ fn folder_sidebar_geometry_keyboard_and_pointer_ownership() {
 		h.app.action(action);
 		assert_eq!(h.app.folder.open, open);
 	}
-	h.app.interaction.modal = Some(crate::state::Modal::OpenLocal {
-		path: "unknown".into(),
-		dir: "".into(),
-		document_dir: None,
-	});
+	h.app.interaction.overlays.modal.send(Message::Open(
+		crate::app::modal::Modal::OpenLocal {
+			path: "unknown".into(),
+			dir: "".into(),
+			document_dir: None,
+		},
+	));
 	assert!(!h.app.pointer_in_folder());
 	assert!(!h.app.folder_key(&Key::Named(NamedKey::ArrowDown)));
-	h.app.interaction.modal = None;
+	h.app.interaction.overlays.modal.send(Message::Dismiss);
 	h.app.toggle_folder();
 	assert_eq!(h.app.folder_inset(), 0.);
 	h.app
@@ -1844,4 +1847,48 @@ fn selecting_a_tab_opens_the_folder_onto_its_document() {
 	h.app.set_folder_open(false);
 	h.app.action(Command::SelectTab(0));
 	assert!(!h.app.folder.open);
+}
+
+#[test]
+fn every_navigation_path_closes_the_confirmation() {
+	use crate::app::modal::Modal;
+	use crate::security::{Security, Trust};
+
+	type Navigation = fn(&mut Harness);
+	let paths: [(&str, Navigation); 5] = [
+		("reload", |h| {
+			h.app
+				.reload_document(&h.dir.path().join("README.zh-cn.md"), false);
+		}),
+		("open", |h| {
+			h.app.open_document(
+				h.dir.path().join("README.md"),
+				Security::local(Trust::Trusted),
+			);
+		}),
+		("new page", |h| h.app.new_page()),
+		("select tab", |h| h.app.select_tab(0)),
+		("close tab", |h| h.app.close_tab(1)),
+	];
+	for (name, navigate) in paths {
+		let mut h = Harness::new();
+		h.open("README.md", 2);
+		h.open("README.zh-cn.md", 1);
+		h.app.interaction.overlays.modal.send(Message::Open(
+			Modal::OpenLocal {
+				path: "local.bin".into(),
+				dir: ".".into(),
+				document_dir: None,
+			},
+		));
+		assert!(
+			h.app.interaction.overlays.modal_open(),
+			"{name}: the confirmation did not open"
+		);
+		navigate(&mut h);
+		assert!(
+			!h.app.interaction.overlays.modal_open(),
+			"{name}: the confirmation stayed open"
+		);
+	}
 }

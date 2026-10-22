@@ -55,7 +55,11 @@ const WRITERS: &[&str] = &[
 	"export.watch_at",
 	"export.rebuild",
 	"export.watch_request",
-	"modal",
+	// `modal::Model` owns the confirmation's pending question; the observation
+	// names the path through `InteractionState.overlays` so a direct write
+	// from another module still counts, while the model's own
+	// `self.current` writes stay out.
+	"overlays.modal.current",
 	"dropdown",
 	"viewer",
 	// `pointer::State` owns the twelve pointer fields; the observation names

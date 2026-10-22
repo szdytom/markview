@@ -358,7 +358,7 @@ impl<P: SendEvent> App<P> {
 		use winit::keyboard::{Key, NamedKey};
 		if (!self.folder.open || self.interaction.panel_open())
 			&& !self.phone_folder_open()
-			|| self.interaction.modal.is_some()
+			|| self.interaction.overlays.modal_open()
 		{
 			return false;
 		}
@@ -674,7 +674,7 @@ impl<P: SendEvent> App<P> {
 		self.folder.reveal() > 0.
 			&& self.folder.tree.is_some()
 			&& !self.interaction.panel_open()
-			&& self.interaction.modal.is_none()
+			&& !self.interaction.overlays.modal_open()
 			&& self.folder_surface().contains(
 				self.interaction.pointer.cursor().0,
 				self.interaction.pointer.cursor().1,

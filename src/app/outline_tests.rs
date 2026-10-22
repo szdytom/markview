@@ -1,5 +1,5 @@
 use super::*;
-use crate::state::Modal;
+use crate::app::modal::{Message, Modal};
 
 fn drawer() -> Rect {
 	crate::app::chrome::outline::rect(800.0, 600.0, crate::app::TOP)
@@ -24,14 +24,17 @@ fn an_open_panel_takes_the_presses_the_drawer_covers() {
 	assert!(!claims_pointer(&interaction, drawer, over.0, over.1));
 	// A confirmation owns input in the same way.
 	interaction.show_panel(crate::state::PanelPage::Closed);
-	interaction.modal = Some(Modal::OpenLocal {
-		path: "local.bin".into(),
-		dir: ".".into(),
-		document_dir: None,
-	});
+	interaction
+		.overlays
+		.modal
+		.send(Message::Open(Modal::OpenLocal {
+			path: "local.bin".into(),
+			dir: ".".into(),
+			document_dir: None,
+		}));
 	assert!(!claims_pointer(&interaction, drawer, over.0, over.1));
 	// A point beside the drawer is never its press, open or not.
-	interaction.modal = None;
+	interaction.overlays.modal.send(Message::Dismiss);
 	assert!(!claims_pointer(
 		&interaction,
 		drawer,

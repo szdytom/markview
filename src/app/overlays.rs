@@ -5,8 +5,23 @@
 //! overlay model owns the fields only it writes, so its owner file can be
 //! found by search.
 
+use super::modal::Modal;
+
 /// The overlay models; a new overlay adds one field here.
 #[derive(Default)]
 pub(crate) struct Model {
 	pub(crate) outline: super::outline::Model,
+	pub(crate) modal: super::modal::Model,
+}
+
+impl Model {
+	/// Whether a confirmation currently owns input.
+	pub(crate) fn modal_open(&self) -> bool {
+		self.modal.open()
+	}
+
+	/// The confirmation awaiting an answer, if any.
+	pub(crate) fn modal(&self) -> Option<&Modal> {
+		self.modal.current()
+	}
 }

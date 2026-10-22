@@ -16,6 +16,7 @@ mod gestures;
 mod interaction;
 mod launch;
 mod lifecycle;
+pub(crate) mod modal;
 mod open_document;
 pub(crate) mod outline;
 pub(crate) mod overlays;

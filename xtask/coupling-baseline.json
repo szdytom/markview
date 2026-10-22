@@ -6,7 +6,7 @@
     "App": 49,
     "Chrome": 28,
     "Config": 26,
-    "InteractionState": 11,
+    "InteractionState": 10,
     "Markview": 35,
     "ReaderSession": 33,
     "ReaderSettings": 25
@@ -56,9 +56,9 @@
       "files": 0,
       "sites": 0
     },
-    "modal": {
-      "files": 5,
-      "sites": 10
+    "overlays.modal.current": {
+      "files": 0,
+      "sites": 0
     },
     "overlays.outline.animation": {
       "files": 0,

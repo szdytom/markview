@@ -240,7 +240,7 @@ impl<P: SendEvent> App<P> {
 		if id == TextField::Url {
 			if self.interaction.panel_open()
 				|| self.interaction.overlays.outline.open()
-				|| self.interaction.modal.is_some()
+				|| self.interaction.overlays.modal_open()
 				|| self.interaction.viewer.is_some()
 			{
 				return None;
@@ -284,7 +284,7 @@ impl<P: SendEvent> App<P> {
 		Some((rect, form.viewport))
 	}
 	pub(super) fn input_at_cursor(&mut self) -> Option<TextField> {
-		if self.interaction.modal.is_some()
+		if self.interaction.overlays.modal_open()
 			|| self.interaction.dropdown.is_some()
 			|| self.interaction.viewer.is_some()
 		{
@@ -372,7 +372,7 @@ impl<P: SendEvent> App<P> {
 		if self.text_input.window_active
 			&& self.text_input.window_visible
 			&& !self.dialog_open
-			&& self.interaction.modal.is_none()
+			&& !self.interaction.overlays.modal_open()
 			&& self.interaction.dropdown.is_none()
 			&& self.interaction.viewer.is_none()
 		{

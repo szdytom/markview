@@ -10,6 +10,7 @@ use winit::{
 	window::{Fullscreen, Window, WindowId},
 };
 
+use super::modal::Message;
 use super::{App, frame::Caption};
 
 /// What the app asks of the loop it runs under.
@@ -68,7 +69,7 @@ impl<P: super::SendEvent> App<P> {
 			|| self.interaction.viewer.is_some()
 			|| self.interaction.overlays.outline.open()
 			|| self.folder.open
-			|| self.interaction.modal.is_some()
+			|| self.interaction.overlays.modal_open()
 		{
 			self.key_pressed(&Key::Named(NamedKey::Escape));
 		} else if let Err(error) =
@@ -154,7 +155,7 @@ impl<P: super::SendEvent> App<P> {
 		if self.frame_event(event_loop, event) || self.viewer_event(event) {
 			return true;
 		}
-		if self.interaction.modal.is_none()
+		if !self.interaction.overlays.modal_open()
 			&& let WindowEvent::KeyboardInput { event, .. } = event
 			&& event.state == ElementState::Pressed
 			&& self.search_window_key(event)
@@ -267,7 +268,7 @@ impl<P: super::SendEvent> App<P> {
 	fn middle_pressed(&mut self) {
 		self.dismiss_preview();
 		if !self.interaction.panel_open()
-			&& self.interaction.modal.is_none()
+			&& !self.interaction.overlays.modal_open()
 			&& !self.pointer_in_outline()
 			&& !self.pointer_in_folder()
 		{
@@ -324,7 +325,7 @@ impl<P: super::SendEvent> App<P> {
 		{
 			return;
 		}
-		if self.interaction.modal.is_some() {
+		if self.interaction.overlays.modal_open() {
 			return;
 		}
 		// An open option list owns the wheel wherever the pointer
@@ -477,7 +478,7 @@ impl<P: super::SendEvent> App<P> {
 		let command = self.interaction.pointer.modifiers().control_key()
 			|| self.interaction.pointer.modifiers().super_key();
 		// A confirmation answers to Tab, Enter and Escape only.
-		if self.interaction.modal.is_some()
+		if self.interaction.overlays.modal_open()
 			&& (command
 				|| !matches!(
 					event.logical_key,
@@ -822,7 +823,7 @@ impl<P: super::SendEvent> App<P> {
 			native.cancel();
 		}
 		if !self.interaction.panel_open()
-			&& self.interaction.modal.is_none()
+			&& !self.interaction.overlays.modal_open()
 			&& let Some(window) = &self.window
 			&& window.fullscreen().is_some()
 		{
@@ -833,7 +834,7 @@ impl<P: super::SendEvent> App<P> {
 		self.tab_strip.cancel_drag();
 		self.interaction.widgets.captured = None;
 		self.interaction.widgets.focus = None;
-		self.interaction.modal = None;
+		self.interaction.overlays.modal.send(Message::Dismiss);
 		self.show_panel(crate::state::PanelPage::Closed);
 		self.interaction.selection = None;
 		self.interaction.pointer.release();

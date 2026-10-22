@@ -157,7 +157,7 @@ fn slash_opens_empty_search_without_using_selection_or_previous_results() {
 
 #[test]
 fn slash_respects_panels_modals_and_modifier_chords() {
-	use crate::state::Modal;
+	use crate::app::modal::{Message, Modal};
 	use winit::keyboard::{Key, ModifiersState};
 	let mut h = Harness::new("needle");
 	let slash = Key::Character("/".into());
@@ -183,15 +183,19 @@ fn slash_respects_panels_modals_and_modifier_chords() {
 		assert!(!h.app.readers.session.search.open);
 	}
 	h.app.show_panel(PanelPage::Closed);
-	h.app.interaction.modal = Some(Modal::OpenLocal {
-		path: "file.txt".into(),
-		dir: ".".into(),
-		document_dir: None,
-	});
+	h.app
+		.interaction
+		.overlays
+		.modal
+		.send(Message::Open(Modal::OpenLocal {
+			path: "file.txt".into(),
+			dir: ".".into(),
+			document_dir: None,
+		}));
 	h.app.key_pressed(&slash);
 	assert!(!h.app.readers.session.search.open);
-	assert!(h.app.interaction.modal.is_some());
-	h.app.interaction.modal = None;
+	assert!(h.app.interaction.overlays.modal_open());
+	h.app.interaction.overlays.modal.send(Message::Dismiss);
 	h.app.readers.session.path = None;
 	h.app.key_pressed(&slash);
 	assert!(!h.app.readers.session.search.open);

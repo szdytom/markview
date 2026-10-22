@@ -112,7 +112,7 @@ impl<P: super::SendEvent> App<P> {
 
 	pub(super) fn sidebar_edge(&self) -> Option<Sidebar> {
 		if markview_platform::touch_layout()
-			|| self.interaction.modal.is_some()
+			|| self.interaction.overlays.modal_open()
 			|| self.interaction.viewer.is_some()
 			|| self.interaction.dropdown.is_some()
 		{

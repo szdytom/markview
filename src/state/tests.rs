@@ -1,4 +1,5 @@
 use super::*;
+use crate::app::modal::{Message, Modal};
 use markview_layout::image::raster_size;
 use markview_layout::text::{Affinity, TextPosition};
 use markview_selection::{
@@ -940,11 +941,14 @@ fn a_panel_or_a_confirmation_stops_enter_from_reaching_the_outline() {
 	// A confirmation owns input in the same way.
 	interaction.widgets.focus = None;
 	interaction.show_panel(crate::state::PanelPage::Closed);
-	interaction.modal = Some(Modal::OpenLocal {
-		path: "local.bin".into(),
-		dir: ".".into(),
-		document_dir: None,
-	});
+	interaction
+		.overlays
+		.modal
+		.send(Message::Open(Modal::OpenLocal {
+			path: "local.bin".into(),
+			dir: ".".into(),
+			document_dir: None,
+		}));
 	assert_eq!(
 		interaction.enter_action(
 			visible()
@@ -954,7 +958,7 @@ fn a_panel_or_a_confirmation_stops_enter_from_reaching_the_outline() {
 		None
 	);
 	// With both gone, Enter reaches the drawer again.
-	interaction.modal = None;
+	interaction.overlays.modal.send(Message::Dismiss);
 	assert_eq!(
 		interaction.enter_action(
 			visible()

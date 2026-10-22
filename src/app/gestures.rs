@@ -127,7 +127,7 @@ impl<P: super::SendEvent> App<P> {
 			return widget.enabled.then_some(Tap::Widget(widget.id));
 		}
 
-		if self.interaction.modal.is_some() {
+		if self.interaction.overlays.modal_open() {
 			return None;
 		}
 		if self.interaction.panel_open() {
@@ -155,7 +155,8 @@ impl<P: super::SendEvent> App<P> {
 	}
 
 	fn touch_surface(&mut self) -> Surface {
-		if self.interaction.modal.is_some() || self.interaction.viewer.is_some()
+		if self.interaction.overlays.modal_open()
+			|| self.interaction.viewer.is_some()
 		{
 			return Surface::None;
 		}

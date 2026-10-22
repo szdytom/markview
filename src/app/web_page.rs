@@ -113,7 +113,7 @@ impl<P: super::SendEvent> App<P> {
 					) {
 					self.ask_permission(
 						required.0.clone(),
-						crate::state::PermissionAction::Web(url),
+						crate::app::modal::PermissionAction::Web(url),
 					);
 				}
 				let message = self

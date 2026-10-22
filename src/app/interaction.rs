@@ -1,10 +1,11 @@
 //! Commands, selection gestures and clipboard actions.
 use crate::cli::Mode;
 use crate::settings::Setting;
-use crate::state::{Command, Modal, PanelPage, ScrollbarAxis, ScrollbarDrag};
+use crate::state::{Command, PanelPage, ScrollbarAxis, ScrollbarDrag};
 use markview_layout::text::TextPosition;
 use std::time::{Duration, Instant};
 
+use super::modal::{Message, Modal};
 use super::{App, Event, TOP};
 
 use crate::state::Selection;
@@ -165,22 +166,22 @@ impl<P: super::SendEvent> App<P> {
 				self.select_tab(index);
 			}
 			Command::ModalDismiss => {
-				self.interaction.modal = None;
+				self.interaction.overlays.modal.send(Message::Dismiss);
 				self.interaction.widgets.focus = None;
 				self.refresh_hover();
 				self.redraw();
 			}
 			Command::ModalOpenFolder => {
 				if let Some(Modal::OpenLocal { dir, .. }) =
-					self.interaction.modal.clone()
+					self.interaction.overlays.modal().cloned()
 				{
-					self.interaction.modal = None;
+					self.interaction.overlays.modal.send(Message::Dismiss);
 					self.interaction.widgets.focus = None;
 					self.launch(&dir.display().to_string());
 				}
 			}
 			Command::ModalConfirm => {
-				if let Some(modal) = self.interaction.modal.take() {
+				if let Some(modal) = self.interaction.overlays.modal.take() {
 					self.interaction.widgets.focus = None;
 					match modal {
 						Modal::OpenLocal { path, .. } => {

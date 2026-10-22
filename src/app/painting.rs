@@ -91,7 +91,7 @@ impl<P: super::SendEvent> App<P> {
 		renderer.set_ui_origin((insets[0], insets[1]));
 		renderer.set_pointer(
 			(!self.interaction.panel_open()
-				&& self.interaction.modal.is_none())
+				&& !self.interaction.overlays.modal_open())
 			.then_some((
 				self.interaction.pointer.cursor().0 + insets[0],
 				self.interaction.pointer.cursor().1 + insets[1],

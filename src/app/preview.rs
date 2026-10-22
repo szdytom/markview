@@ -204,7 +204,7 @@ impl<P: super::SendEvent> App<P> {
 		!self.tab_strip.phone
 			&& self.interaction.panel == crate::state::PanelPage::Closed
 			&& !self.readers.session.search.open
-			&& self.interaction.modal.is_none()
+			&& !self.interaction.overlays.modal_open()
 			&& self.interaction.dropdown.is_none()
 			&& self.interaction.viewer.is_none()
 			&& self.tab_strip.drag.is_none()

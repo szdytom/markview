@@ -255,33 +255,6 @@ pub(crate) enum PanelTab {
 	About,
 }
 
-/// A blocking question awaiting the reader's answer.
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) enum Modal {
-	Permission {
-		resource: crate::security::Resource,
-		resume: PermissionAction,
-	},
-	/// A local file whose type is not on the inert allowlist.
-	OpenLocal {
-		path: PathBuf,
-		/// The file's directory, for the "open folder" action.
-		dir: PathBuf,
-		/// The open document's directory, for a shorter relative display.
-		document_dir: Option<PathBuf>,
-	},
-}
-
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) enum PermissionAction {
-	Images,
-	Markdown {
-		path: PathBuf,
-		anchor: Option<String>,
-		placement: TabPlacement,
-	},
-	Web(String),
-}
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum TabPlacement {
 	Foreground,
@@ -649,8 +622,6 @@ pub(crate) struct InteractionState {
 	pub(crate) widgets: markview_ui_core::Interaction,
 	/// The pointer's own state: presses, hover, modifiers and the wheel.
 	pub(crate) pointer: crate::app::pointer::State,
-	/// A pending local-file confirmation; while it is set it owns input.
-	pub(crate) modal: Option<Modal>,
 	/// The full-size image viewer; while it is set it owns input too.
 	pub(crate) viewer: Option<Viewer>,
 	/// An open option list. Like a confirmation it owns input while it is set:
@@ -835,7 +806,7 @@ impl InteractionState {
 	pub(crate) fn outline_owns_input(&self) -> bool {
 		self.overlays.outline.open()
 			&& !self.panel_open()
-			&& self.modal.is_none()
+			&& !self.overlays.modal_open()
 	}
 
 	/// Moves the drawer's selection by `delta` entries, clamped to the
