@@ -52,6 +52,24 @@ fn images(offline: bool) -> Images {
 	Images::with_cache(offline, None)
 }
 
+/// One scheduler entry drawn under `theme`, as the pure scheduling inputs see
+/// it.
+fn themed_entry(aliases: &[&str], svg: bool, theme: u64) -> Entry {
+	Entry {
+		cancel: CancellationToken::new(),
+		target: None,
+		pdf: None,
+		ticket: 0,
+		aliases: aliases.iter().map(|alias| (*alias).to_owned()).collect(),
+		info: ImageInfo::default(),
+		stamp: None,
+		busy: false,
+		svg,
+		raster: None,
+		theme,
+	}
+}
+
 /// Renders one Mermaid fence through the image scheduler and returns the
 /// scheduler with the fence's image source key.
 fn fence_images(code: &str) -> (Images, String) {
@@ -563,6 +581,80 @@ fn a_new_diagram_theme_redraws_the_diagram() {
 	assert_ne!(light, dark);
 	// The diagram paints its own background over the whole canvas.
 	assert_eq!(&dark[..4], &[0x10, 0x18, 0x20, 255]);
+}
+
+#[test]
+fn a_theme_generation_change_invalidates_only_the_affected_entries() {
+	let diagram = Source::Diagram("graph TD\n A-->B\n".into());
+	let svg = Source::File("a.svg".into());
+	let bitmap = Source::File("a.png".into());
+	let (diagram_theme, svg_theme) = (10, 20);
+	let changed = |source: &Source, svg: bool, rendered: u64| {
+		theme_generation_changed(
+			source,
+			svg,
+			rendered,
+			diagram_theme,
+			svg_theme,
+		)
+	};
+	// A diagram follows the diagram generation alone.
+	assert!(changed(&diagram, false, 9));
+	assert!(!changed(&diagram, false, 10));
+	assert!(changed(&diagram, false, svg_theme));
+	// A standalone SVG follows the generic SVG generation alone.
+	assert!(changed(&svg, true, 19));
+	assert!(!changed(&svg, true, 20));
+	assert!(changed(&svg, true, diagram_theme));
+	// Neither generation invalidates a bitmap.
+	assert!(!changed(&bitmap, false, 0));
+	assert!(!changed(&bitmap, false, diagram_theme));
+	assert!(!changed(&bitmap, false, svg_theme));
+	// A source that has not decoded as an SVG carries no themed pixels.
+	assert!(!changed(&svg, false, 0));
+}
+
+#[test]
+fn schedule_key_keeps_demand_priority_apart_from_theme_invalidation() {
+	use markview_layout::image::ImageDemand;
+	let source = Source::File("a.svg".into());
+	let demand = HashMap::from([(
+		"a.svg".into(),
+		ImageDemand {
+			size: (40, 20),
+			needs_pixels: false,
+		},
+	)]);
+	let requested = |rendered| {
+		schedule_key(
+			&source,
+			&themed_entry(&["a.svg"], true, rendered),
+			&demand,
+			3,
+			7,
+		)
+	};
+	let current = requested(7);
+	assert_eq!(current.requested, demand.get("a.svg").copied());
+	assert_eq!(current.theme, 7);
+	assert!(!current.stale);
+	assert!(!current.priority(), "a demanded entry sorts first");
+	// Staleness is independent of priority: the same demand keeps its rank
+	// while only `stale` flips.
+	let stale = requested(6);
+	assert_eq!(stale.requested, current.requested);
+	assert_eq!(stale.priority(), current.priority());
+	assert!(stale.stale);
+	// Without demand the same stale entry sorts last.
+	let undemanded = schedule_key(
+		&source,
+		&themed_entry(&["a.svg"], true, 6),
+		&HashMap::new(),
+		3,
+		7,
+	);
+	assert_ne!(undemanded.requested, current.requested);
+	assert!(undemanded.priority());
 }
 
 #[test]

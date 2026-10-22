@@ -205,6 +205,81 @@ fn rasterizer_fonts<'a>(
 	}
 }
 
+/// The pure inputs one scheduling pass needs for an entry. `requested` is
+/// priority: a demanded source sorts first. `theme` and `stale` are
+/// invalidation: the generation its pixels must carry and whether they carry
+/// an older one. `schedule` sorts on `requested` alone, so invalidation never
+/// reorders a pass.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+struct ScheduleKey {
+	requested: Option<markview_layout::image::ImageDemand>,
+	theme: u64,
+	stale: bool,
+}
+
+impl ScheduleKey {
+	/// `false` sorts before `true`, so a demanded entry wins a free slot.
+	fn priority(&self) -> bool {
+		self.requested.is_none()
+	}
+}
+
+/// The theme generation that governs `source` in this pass. A diagram is
+/// drawn from the diagram theme; every other source is compared against the
+/// standalone-SVG mappings, which only an SVG actually carries.
+fn theme_generation(source: &Source, diagram: u64, svg: u64) -> u64 {
+	match source {
+		Source::Diagram(_) => diagram,
+		_ => svg,
+	}
+}
+
+/// Whether the generation an entry was drawn under, `rendered`, is out of
+/// date. A bitmap carries no theme-drawn pixels, so a theme change never
+/// invalidates it.
+fn theme_generation_changed(
+	source: &Source,
+	svg: bool,
+	rendered: u64,
+	diagram: u64,
+	svg_generic: u64,
+) -> bool {
+	if !matches!(source, Source::Diagram(_)) && !svg {
+		return false;
+	}
+	theme_generation(source, diagram, svg_generic) != rendered
+}
+
+/// Folds published demand and theme invalidation into one pure key. Demand
+/// merges in alias order, as the scheduling pass always has.
+fn schedule_key(
+	source: &Source,
+	entry: &Entry,
+	demand: &HashMap<String, markview_layout::image::ImageDemand>,
+	diagram: u64,
+	svg_generic: u64,
+) -> ScheduleKey {
+	let requested = entry
+		.aliases
+		.iter()
+		.filter_map(|alias| demand.get(alias).copied())
+		.reduce(|mut a, b| {
+			a.merge(b);
+			a
+		});
+	ScheduleKey {
+		requested,
+		theme: theme_generation(source, diagram, svg_generic),
+		stale: theme_generation_changed(
+			source,
+			entry.svg,
+			entry.theme,
+			diagram,
+			svg_generic,
+		),
+	}
+}
+
 pub(crate) fn cache_directory() -> Option<PathBuf> {
 	cache::directory()
 }
@@ -602,77 +677,78 @@ impl Images {
 		{
 			self.demand = demand;
 		}
-		let demand = &self.demand;
-		let pixels = &self.resident;
-		let theme = self.theme_key;
-		let svg_theme = self.svg_theme_key;
+		let mut keys: Vec<_> = self
+			.entries
+			.iter()
+			.map(|(source, entry)| {
+				(
+					source.clone(),
+					schedule_key(
+						source,
+						entry,
+						&self.demand,
+						self.theme_key,
+						self.svg_theme_key,
+					),
+				)
+			})
+			.collect();
+		// Priority is demand alone; theme invalidation travels in the key
+		// but never reorders a pass.
+		keys.sort_by_key(|(_, key)| key.priority());
 		let mut running = self.entries.values().filter(|e| e.busy).count();
-		let mut keys: Vec<_> = self.entries.keys().cloned().collect();
-		keys.sort_by_key(|s| {
-			!self.entries[s]
-				.aliases
-				.iter()
-				.any(|a| demand.contains_key(a))
-		});
-		for s in keys {
-			let e = self.entries.get_mut(&s).unwrap();
-			let requested = e
-				.aliases
-				.iter()
-				.filter_map(|a| demand.get(a).copied())
-				.reduce(|mut a, b| {
-					a.merge(b);
-					a
-				});
-			let target = requested.map(|d| d.size);
-			let resident = e.aliases.iter().any(|a| pixels.contains_key(a));
-			let resize = e.svg
-				&& target
-					.is_some_and(|t| e.raster.is_none_or(|r| outgrows(t, r)));
-			// A diagram drawn under another theme is stale even though its
-			// size and pixels are already here. Keeping them lets the old
-			// drawing stand until the new one is ready, so nothing reflows
-			// through a placeholder.
-			let source_theme = if matches!(s, Source::Diagram(_)) {
-				theme
-			} else {
-				svg_theme
+		for (source, key) in keys {
+			self.schedule_entry(source, key, &mut running);
+		}
+	}
+
+	fn schedule_entry(
+		&mut self,
+		source: Source,
+		key: ScheduleKey,
+		running: &mut usize,
+	) {
+		let pixels = &self.resident;
+		let e = self.entries.get_mut(&source).unwrap();
+		let requested = key.requested;
+		let target = requested.map(|d| d.size);
+		let resident = e.aliases.iter().any(|a| pixels.contains_key(a));
+		let resize = e.svg
+			&& target.is_some_and(|t| e.raster.is_none_or(|r| outgrows(t, r)));
+		// A diagram or SVG drawn under another theme is stale even though
+		// its size and pixels are already here. Keeping them lets the old
+		// drawing stand until the new one is ready, so nothing reflows
+		// through a placeholder.
+		if e.cancel_stale_job(key.stale, target) {
+			*running -= 1;
+		}
+		// A failure the old theme caused — a drawing past the pixel limit,
+		// say — does not survive it, or the working theme that follows could
+		// never bring the diagram back.
+		if key.stale && e.info.error.is_some() {
+			e.info.error = None;
+		}
+		if *running < 4 && e.needs_job(key.stale, resize, requested, resident) {
+			e.ticket = VERSION.fetch_add(1, Ordering::Relaxed);
+			e.busy = true;
+			e.theme = key.theme;
+			e.target = if e.svg { target } else { None };
+			*running += 1;
+			e.cancel.cancel();
+			e.cancel = self.services.cancel.child_token();
+			let job = Job {
+				cancel: e.cancel.clone(),
+				pdf: self.pdf,
+				ticket: e.ticket,
+				source: source.clone(),
+				generation: self.generation,
+				target: e.target,
+				theme: self.theme.clone(),
+				diagram: matches!(source, Source::Diagram(_))
+					.then(|| self.diagram.clone())
+					.flatten(),
 			};
-			let stale = source_theme != e.theme
-				&& (matches!(s, Source::Diagram(_)) || e.svg);
-			// A failure the old theme caused — a drawing past the pixel
-			// limit, say — does not survive it, or the working theme that
-			// follows could never bring the diagram back. A job still in
-			// flight is cancelled before the next theme is scheduled, unless
-			// the demand has only wobbled within the redraw band.
-			if e.cancel_stale_job(stale, target) {
-				running -= 1;
-			}
-			if stale && e.info.error.is_some() {
-				e.info.error = None;
-			}
-			if running < 4 && e.needs_job(stale, resize, requested, resident) {
-				e.ticket = VERSION.fetch_add(1, Ordering::Relaxed);
-				e.busy = true;
-				e.theme = source_theme;
-				e.target = if e.svg { target } else { None };
-				running += 1;
-				e.cancel.cancel();
-				e.cancel = self.services.cancel.child_token();
-				let job = Job {
-					cancel: e.cancel.clone(),
-					pdf: self.pdf,
-					ticket: e.ticket,
-					source: s.clone(),
-					generation: self.generation,
-					target: e.target,
-					theme: self.theme.clone(),
-					diagram: matches!(s, Source::Diagram(_))
-						.then(|| self.diagram.clone())
-						.flatten(),
-				};
-				self.start(job);
-			}
+			self.start(job);
 		}
 	}
 
@@ -808,82 +884,107 @@ impl Images {
 	}
 
 	pub fn poll(&mut self) -> bool {
+		let mut changed = self.reclaim_finished();
+		changed |= self.expire_stale();
+		self.reschedule();
+		changed
+	}
+
+	/// Takes every completion the workers have posted for the current
+	/// document and publishes the ones whose ticket still names their job.
+	fn reclaim_finished(&mut self) -> bool {
 		let mut changed = false;
 		while let Ok(done) = self.recv.try_recv() {
-			if done.generation != self.generation {
-				continue;
-			}
-			let Some(e) = self.entries.get_mut(&done.source) else {
-				continue;
-			};
-			if e.ticket != done.ticket {
-				continue;
-			}
-			e.busy = false;
-			// A failed job is progress too: it frees its pipeline slot for the
-			// queue behind it, so only a pipeline that reports nothing at all
-			// is jammed.
-			self.completed += 1;
-			e.info.version = VERSION.fetch_add(1, Ordering::Relaxed);
-			match done.result {
-				Ok(decoded) => {
-					for alias in &e.aliases {
-						self.blocked.remove(alias);
-					}
-					e.info.size = Some(decoded.intrinsic);
-					e.info.error = None;
-					e.svg = decoded.svg;
-					e.raster = Some(decoded.raster);
-					e.pdf = decoded.pdf;
-					if let Some(incoming) = decoded.pixels {
-						let pixels = &mut self.resident;
-						let demand = &self.demand;
-						cache_pixels(
-							pixels, &e.aliases, incoming, demand, CPU_BUDGET,
-						);
-					}
-				}
-				Err(error) => {
-					if let Some(required) = error
-						.downcast_ref::<crate::security::PermissionRequired>(
-					) {
-						for alias in &e.aliases {
-							self.blocked
-								.insert(alias.clone(), required.0.clone());
-						}
-					}
-					e.pdf = None;
-					e.info.error = Some(error.to_string());
-					self.resident.retain(|s, _| !e.aliases.contains(s));
-				}
-			}
-			for alias in &e.aliases {
-				self.snapshot.entries.insert(alias.clone(), e.info.clone());
-			}
-			changed = true;
+			changed |= self.apply_finished(done);
 		}
 		if changed {
 			self.publish_pixels();
 		}
-		if Instant::now() >= self.poll_at {
-			self.poll_at = Instant::now() + Duration::from_millis(500);
-			for (s, e) in &mut self.entries {
-				let next = stamp(s);
-				if next != e.stamp {
-					if e.busy {
-						e.cancel.cancel();
-						e.ticket = VERSION.fetch_add(1, Ordering::Relaxed);
-						e.busy = false;
-					}
-					e.stamp = next;
-					e.info.error = None;
-					e.info.size = None;
-					changed = true;
+		changed
+	}
+
+	/// Applies one completion whose document generation and ticket are still
+	/// current, publishing its info under every alias.
+	fn apply_finished(&mut self, done: Finished) -> bool {
+		if done.generation != self.generation {
+			return false;
+		}
+		let Some(e) = self.entries.get_mut(&done.source) else {
+			return false;
+		};
+		if e.ticket != done.ticket {
+			return false;
+		}
+		e.busy = false;
+		// A failed job is progress too: it frees its pipeline slot for the
+		// queue behind it, so only a pipeline that reports nothing at all is
+		// jammed.
+		self.completed += 1;
+		e.info.version = VERSION.fetch_add(1, Ordering::Relaxed);
+		match done.result {
+			Ok(decoded) => {
+				for alias in &e.aliases {
+					self.blocked.remove(alias);
+				}
+				e.info.size = Some(decoded.intrinsic);
+				e.info.error = None;
+				e.svg = decoded.svg;
+				e.raster = Some(decoded.raster);
+				e.pdf = decoded.pdf;
+				if let Some(incoming) = decoded.pixels {
+					let pixels = &mut self.resident;
+					let demand = &self.demand;
+					cache_pixels(
+						pixels, &e.aliases, incoming, demand, CPU_BUDGET,
+					);
 				}
 			}
+			Err(error) => {
+				if let Some(required) =
+					error.downcast_ref::<crate::security::PermissionRequired>()
+				{
+					for alias in &e.aliases {
+						self.blocked.insert(alias.clone(), required.0.clone());
+					}
+				}
+				e.pdf = None;
+				e.info.error = Some(error.to_string());
+				self.resident.retain(|s, _| !e.aliases.contains(s));
+			}
 		}
-		self.schedule();
+		for alias in &e.aliases {
+			self.snapshot.entries.insert(alias.clone(), e.info.clone());
+		}
+		true
+	}
+
+	/// Polls source stamps and invalidates entries whose file changed.
+	fn expire_stale(&mut self) -> bool {
+		if Instant::now() < self.poll_at {
+			return false;
+		}
+		self.poll_at = Instant::now() + Duration::from_millis(500);
+		let mut changed = false;
+		for (source, entry) in &mut self.entries {
+			let next = stamp(source);
+			if next != entry.stamp {
+				if entry.busy {
+					entry.cancel.cancel();
+					entry.ticket = VERSION.fetch_add(1, Ordering::Relaxed);
+					entry.busy = false;
+				}
+				entry.stamp = next;
+				entry.info.error = None;
+				entry.info.size = None;
+				changed = true;
+			}
+		}
 		changed
+	}
+
+	/// Runs scheduling after completions and expiry have changed entries.
+	fn reschedule(&mut self) {
+		self.schedule();
 	}
 
 	/// Only encoded resources survive a PDF load, shared by all source aliases.
