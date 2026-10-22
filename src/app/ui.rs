@@ -173,14 +173,13 @@ impl<P: super::SendEvent> App<P> {
 		let warning = style_warning.or(settings_warning);
 		// An internal footnote jump has no external target to name, so the
 		// footer stays empty while the pointer is over one.
-		let hover_hint =
-			self.interaction.hover_image.as_deref().or_else(|| {
-				self.interaction
-					.hover
-					.as_ref()
-					.map(|link| link.url.as_str())
-					.filter(|url| !super::anchor::footnote_link(url))
-			});
+		let hover_hint = self.interaction.pointer.hover_image().or_else(|| {
+			self.interaction
+				.pointer
+				.hover()
+				.map(|link| link.url.as_str())
+				.filter(|url| !super::anchor::footnote_link(url))
+		});
 		let resource_kind = self.settings_kind();
 		let show_snapshot = resource_kind.is_none_or(|kind| {
 			let load = self.settings_resources.load(kind);
@@ -382,7 +381,7 @@ impl<P: super::SendEvent> App<P> {
 		let Some(bar) = self.panel_bar() else {
 			return false;
 		};
-		let (x, y) = self.interaction.cursor;
+		let (x, y) = self.interaction.pointer.cursor();
 		if !bar.hit(x, y) {
 			return false;
 		}
@@ -403,7 +402,7 @@ impl<P: super::SendEvent> App<P> {
 		if let Some(grab) = self.interaction.panel_grab
 			&& let Some(bar) = self.panel_bar()
 		{
-			let (x, y) = self.interaction.cursor;
+			let (x, y) = self.interaction.pointer.cursor();
 			self.set_panel_scroll(bar.scroll_for(x, y, grab), bar.max_scroll());
 			self.redraw();
 		}

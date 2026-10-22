@@ -165,7 +165,9 @@ impl<P: super::SendEvent> App<P> {
 	/// once the delay elapses. Returns whether the painted card changed.
 	pub(super) fn hover_preview(&mut self, now: Instant) -> bool {
 		// Pointer motion in the document never reaches hover targets.
-		if !self.preview.tracking() && self.interaction.cursor.1 >= TOP {
+		if !self.preview.tracking()
+			&& self.interaction.pointer.cursor().1 >= TOP
+		{
 			return false;
 		}
 		let target = if self.preview_allowed() {
@@ -206,11 +208,11 @@ impl<P: super::SendEvent> App<P> {
 			&& self.interaction.dropdown.is_none()
 			&& self.interaction.viewer.is_none()
 			&& self.tab_strip.drag.is_none()
-			&& self.interaction.pointer_down.is_none()
+			&& self.interaction.pointer.drag().is_none()
 	}
 
 	fn target_at_cursor(&mut self) -> Option<Target> {
-		if self.interaction.cursor.1 >= TOP {
+		if self.interaction.pointer.cursor().1 >= TOP {
 			return None;
 		}
 		self.tab_at_cursor()

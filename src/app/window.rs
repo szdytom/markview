@@ -1,7 +1,5 @@
 use crate::cli::Mode;
-use crate::state::{
-	Command, Grain, Selection, WheelAxis, WheelGesture, WheelStep,
-};
+use crate::state::{Command, Selection, WheelAxis, WheelStep};
 use log::{error, info};
 use std::time::{Duration, Instant};
 use winit::{
@@ -9,10 +7,10 @@ use winit::{
 	event::{ElementState, MouseButton, MouseScrollDelta, WindowEvent},
 	event_loop::ActiveEventLoop,
 	keyboard::{Key, NamedKey},
-	window::{CursorIcon, Fullscreen, Window, WindowId},
+	window::{Fullscreen, Window, WindowId},
 };
 
-use super::{App, TOP, frame::Caption};
+use super::{App, frame::Caption};
 
 /// What the app asks of the loop it runs under.
 ///
@@ -100,7 +98,7 @@ impl<P: super::SendEvent> App<P> {
 			}
 			WindowEvent::DroppedFile(path) => self.open(path),
 			WindowEvent::ModifiersChanged(m) => {
-				self.interaction.modifiers = m.state()
+				self.interaction.pointer.set_modifiers(m.state());
 			}
 			WindowEvent::CursorMoved { position, .. } => {
 				self.pointer_moved(position);
@@ -168,10 +166,10 @@ impl<P: super::SendEvent> App<P> {
 
 	fn search_window_key(&mut self, event: &winit::event::KeyEvent) -> bool {
 		let primary = if markview_platform::command_key() {
-			self.interaction.modifiers.super_key()
+			self.interaction.pointer.modifiers().super_key()
 		} else {
-			self.interaction.modifiers.control_key()
-				&& !self.interaction.modifiers.alt_key()
+			self.interaction.pointer.modifiers().control_key()
+				&& !self.interaction.pointer.modifiers().alt_key()
 		};
 		if primary
 			&& matches!(&event.logical_key, Key::Character(c) if c.eq_ignore_ascii_case("f"))
@@ -183,7 +181,9 @@ impl<P: super::SendEvent> App<P> {
 			&& !self.readers.session.search.input.is_composing()
 		{
 			if event.logical_key == Key::Named(NamedKey::F3) {
-				self.navigate_search(self.interaction.modifiers.shift_key());
+				self.navigate_search(
+					self.interaction.pointer.modifiers().shift_key(),
+				);
 				return true;
 			}
 			if event.logical_key == Key::Named(NamedKey::Escape) {
@@ -264,78 +264,6 @@ impl<P: super::SendEvent> App<P> {
 		self.redraw();
 	}
 
-	fn pointer_moved(&mut self, position: winit::dpi::PhysicalPosition<f64>) {
-		let scale = self.dimensions().2;
-		let insets = self.insets();
-		let point = (
-			position.x as f32 / scale - insets[0],
-			position.y as f32 / scale - insets[1],
-		);
-		// The macOS backend reports the pointer's position again
-		// before every wheel event, hand still or not. A report that
-		// moves nothing is not motion, and every handler below
-		// answers motion — the open list's hover, most urgently,
-		// must not claim the highlight back from the wheel the
-		// report precedes.
-		if point != self.interaction.cursor {
-			let old = self.interaction.cursor;
-			let was_button = self.button_at_cursor();
-			self.interaction.cursor = point;
-			if let Some((_, (px, py))) = self.interaction.pressed_image.as_ref()
-				&& (point.0 - px).hypot(point.1 - py) > 3.
-			{
-				self.interaction.pressed_image = None;
-			}
-			self.hover_dropdown();
-			self.drag_sidebar();
-			self.move_tab_drag();
-			self.drag_scrollbar();
-			self.drag_panel();
-			self.drag_folder();
-			self.update_drag();
-			self.refresh_hover();
-			let now = Instant::now();
-			if self.hover_preview(now) {
-				self.redraw();
-			}
-			if self.interaction.panel_open()
-				|| was_button
-				|| self.button_at_cursor()
-				|| old.1 < TOP
-				|| point.1 < TOP
-				|| old.0 >= self.dimensions().0 - 16.
-				|| point.0 >= self.dimensions().0 - 16.
-			{
-				self.redraw();
-			}
-		}
-	}
-
-	fn pointer_left(&mut self) {
-		if self.tab_strip.drag.is_none()
-			&& self.interaction.scrollbar.is_none()
-			&& self.interaction.panel_grab.is_none()
-			&& self.folder.grab.is_none()
-			&& self.interaction.sidebar_drag.is_none()
-		{
-			self.interaction.cursor = (f32::NEG_INFINITY, f32::NEG_INFINITY);
-		}
-		// A scrollbar drag survives leaving the window: the implicit
-		// pointer grab still reports motion and the release, so the
-		// thumb keeps following the pointer past the edges. The text
-		// selection gesture still ends here.
-		self.interaction.pointer_down = None;
-		self.interaction.pressed_image = None;
-		self.interaction.drag_at = None;
-		self.interaction.hover = None;
-		self.interaction.hover_overflow = None;
-		self.dismiss_preview();
-		if let Some(w) = &self.window {
-			w.set_cursor(CursorIcon::Default);
-		}
-		self.redraw();
-	}
-
 	fn middle_pressed(&mut self) {
 		self.dismiss_preview();
 		if !self.interaction.panel_open()
@@ -345,215 +273,13 @@ impl<P: super::SendEvent> App<P> {
 		{
 			if let Some(index) = self.tab_at_cursor() {
 				self.action(Command::CloseTab(index));
-			} else if let Some(link) = self
-				.link_at(self.interaction.cursor.0, self.interaction.cursor.1)
-			{
+			} else if let Some(link) = self.link_at(
+				self.interaction.pointer.cursor().0,
+				self.interaction.pointer.cursor().1,
+			) {
 				self.open_link(&link, true);
 			}
 		}
-	}
-
-	#[cfg_attr(
-		any(),
-		markview::allow_complexity(
-			reason = "Keep press ownership and capture transitions ordered across modal, dropdown, tab, scrollbar, outline and selection targets; the first owner consumes the press."
-		)
-	)]
-	fn pointer_pressed(&mut self) {
-		self.dismiss_preview();
-		self.cancel_gestures();
-		self.tab_strip.cancel_drag();
-		self.interaction.widgets.focus_visible = false;
-		self.interaction.widgets.captured = None;
-		self.interaction.pressed_image = None;
-		self.readers.session.select_all_pending = false;
-		// A new press always ends a drag left over from a release the
-		// platform swallowed outside the window.
-		self.interaction.scrollbar = None;
-		self.interaction.panel_grab = None;
-		self.folder.grab = None;
-		self.interaction.sidebar_drag = None;
-		// A confirmation owns input: only its buttons answer.
-		if self.interaction.modal.is_some() {
-			self.interaction.reset_clicks();
-			let buttons = self.buttons();
-			self.press_widget(&buttons);
-			self.redraw();
-			return;
-		}
-		// An open option list owns input the way a confirmation does: a
-		// press on one of its own options picks it, and a press anywhere
-		// else closes it without reaching the page it covered. Nothing
-		// behind it answers the same click, so the press is always the
-		// last word and the release that follows has nothing left to
-		// dispatch.
-		if self.interaction.dropdown.is_some() {
-			self.interaction.reset_clicks();
-			let buttons = self.dropdown_buttons();
-			self.press_widget(&buttons);
-			if self.interaction.widgets.captured.is_none() {
-				self.close_dropdown();
-			}
-			self.redraw();
-			return;
-		}
-		if self.begin_sidebar_resize() {
-			return;
-		}
-		let (x, y) = self.interaction.cursor;
-		let on_outline_toggle = self.buttons().into_iter().any(|button| {
-			button.action == Command::Outline && button.rect.contains(x, y)
-		});
-		if self.interaction.close_outline_if_outside(
-			self.pointer_in_outline(),
-			on_outline_toggle,
-		) {
-			self.redraw();
-		}
-		if self.pointer_in_folder() && self.begin_folder_drag() {
-			return;
-		}
-		if let Some(index) = (!self.interaction.panel_open())
-			.then(|| self.tab_close_at_cursor())
-			.flatten()
-		{
-			self.interaction.reset_clicks();
-			self.interaction.widgets.focus = None;
-			self.action(Command::CloseTab(index));
-		} else if let Some(index) = (!self.interaction.panel_open())
-			.then(|| self.tab_at_cursor())
-			.flatten()
-		{
-			self.interaction.reset_clicks();
-			self.interaction.widgets.focus = None;
-			self.begin_tab_drag(index);
-		} else if self.button_at_cursor() {
-			self.interaction.reset_clicks();
-			let buttons = self.buttons();
-			self.press_widget(&buttons);
-			self.redraw();
-		} else if self.interaction.panel_open() {
-			// A panel draws over the drawer, so it answers first: its
-			// scrollbar drag and its outside-click dismissal must work
-			// where the two overlap.
-			if self.begin_panel_drag() {
-				self.redraw();
-				return;
-			}
-			self.interaction.reset_clicks();
-			if !self.pointer_in_panel() {
-				self.action(Command::Settings);
-			}
-		} else if self.pointer_in_folder() || self.pointer_in_outline() {
-			// The drawer owns presses inside it; one between its rows
-			// must not start a document selection underneath.
-			self.interaction.reset_clicks();
-		} else if !self.pointer_in_panel() {
-			self.interaction.widgets.focus = None;
-			if self.begin_scrollbar_drag() {
-				self.redraw();
-			} else if self.interaction.cursor.1 >= self.content_top() + 10.0
-				&& self.interaction.cursor.1
-					< self.dimensions().1 - self.bottom() - 10.0
-			{
-				let link = self.link_at(
-					self.interaction.cursor.0,
-					self.interaction.cursor.1,
-				);
-				self.interaction.pressed_image = self
-					.image_at_cursor()
-					.map(|(src, _)| (src, self.interaction.cursor));
-				self.interaction.dragged = false;
-				if let Some(position) = self.text_at_cursor() {
-					let click_count = if self.interaction.modifiers.shift_key()
-					{
-						self.interaction.reset_clicks();
-						1
-					} else {
-						self.interaction.click_count(Instant::now())
-					};
-					match click_count {
-						2 => {
-							let selection = self
-								.readers
-								.session
-								.snapshot
-								.select_word_at(position);
-							if !self
-								.interaction
-								.begin_grain_selection(selection, Grain::Word)
-							{
-								self.interaction
-									.begin_selection(position, link);
-							}
-						}
-						3 => {
-							let selection = self
-								.readers
-								.session
-								.snapshot
-								.select_block_at(position);
-							if !self
-								.interaction
-								.begin_grain_selection(selection, Grain::Block)
-							{
-								self.interaction
-									.begin_selection(position, link);
-							}
-						}
-						_ => self.interaction.begin_selection(position, link),
-					}
-				} else if let Some(link) = link {
-					// A summary line's marker carries no text, but the
-					// whole line is still its control.
-					self.interaction.begin_link_press(link);
-				}
-				self.redraw();
-			}
-		}
-	}
-
-	fn pointer_released(&mut self) {
-		if self.interaction.sidebar_drag.take().is_some() {
-			self.refresh_hover();
-			self.redraw();
-			return;
-		}
-		self.tab_strip.cancel_drag();
-		let pressed_image = self.interaction.pressed_image.take();
-		let was_pressed = self.interaction.widgets.captured.is_some();
-		let action = self.release_widget();
-		self.interaction.scrollbar = None;
-		self.interaction.panel_grab = None;
-		self.folder.grab = None;
-		self.interaction.sidebar_drag = None;
-		if was_pressed {
-			if let Some(action) = action {
-				self.action(action);
-			}
-			self.refresh_hover();
-			self.redraw();
-			return;
-		}
-		if self.interaction.modal.is_some() {
-			self.redraw();
-			return;
-		}
-		let link =
-			self.link_at(self.interaction.cursor.0, self.interaction.cursor.1);
-		if let Some(link) = self.interaction.finish_selection(link.as_deref()) {
-			self.open_link(&link, false);
-		} else if !self.interaction.dragged
-			&& pressed_image.is_some_and(|(src, _)| {
-				self.image_at_cursor()
-					.is_some_and(|(released, _)| released == src)
-			}) {
-			// A click that selected nothing and hit no link opens the
-			// viewer when it landed on an image.
-			self.open_viewer_at_cursor();
-		}
-		self.refresh_hover();
-		self.redraw();
 	}
 
 	fn window_unfocused(&mut self) {
@@ -571,14 +297,11 @@ impl<P: super::SendEvent> App<P> {
 		self.interaction.widgets.focus_visible = false;
 		self.tab_strip.cancel_drag();
 		self.interaction.widgets.captured = None;
-		self.interaction.pointer_down = None;
-		self.interaction.pressed_image = None;
-		self.interaction.drag_at = None;
-		self.interaction.scrollbar = None;
+		self.interaction.pointer.cancel();
 		self.interaction.panel_grab = None;
 		self.folder.grab = None;
 		self.interaction.sidebar_drag = None;
-		self.interaction.modifiers = Default::default();
+		self.interaction.pointer.set_modifiers(Default::default());
 		self.dismiss_preview();
 		self.refresh_hover();
 		self.redraw();
@@ -596,7 +319,8 @@ impl<P: super::SendEvent> App<P> {
 		phase: winit::event::TouchPhase,
 	) {
 		if self.readers.session.search.open
-			&& self.interaction.cursor.1 >= self.dimensions().1 - self.bottom()
+			&& self.interaction.pointer.cursor().1
+				>= self.dimensions().1 - self.bottom()
 		{
 			return;
 		}
@@ -615,10 +339,10 @@ impl<P: super::SendEvent> App<P> {
 		// wheel event that follows the list's close starts a fresh
 		// page gesture instead of waking a stale one.
 		if self.interaction.dropdown.is_some()
-			&& !self.interaction.modifiers.control_key()
-			&& !self.interaction.modifiers.super_key()
+			&& !self.interaction.pointer.modifiers().control_key()
+			&& !self.interaction.pointer.modifiers().super_key()
 		{
-			self.interaction.wheel = WheelGesture::default();
+			self.interaction.pointer.reset_wheel();
 			// One detent is one option, so a line delta counts
 			// options directly: the desktop's lines-per-notch value
 			// sizes the page's scroll, not the list's highlight, and
@@ -649,8 +373,8 @@ impl<P: super::SendEvent> App<P> {
 			self.viewport_size(),
 		);
 		if matches!(delta, MouseScrollDelta::PixelDelta(_)) {
-			if self.interaction.modifiers.control_key()
-				|| self.interaction.modifiers.super_key()
+			if self.interaction.pointer.modifiers().control_key()
+				|| self.interaction.pointer.modifiers().super_key()
 			{
 				// TODO: implement viewport zoom without changing the document layout.
 			} else {
@@ -684,8 +408,8 @@ impl<P: super::SendEvent> App<P> {
 		if self.scroll_tabs(if dx.abs() > dy.abs() { -dx } else { -dy }) {
 			return;
 		}
-		if self.interaction.modifiers.control_key()
-			|| self.interaction.modifiers.super_key()
+		if self.interaction.pointer.modifiers().control_key()
+			|| self.interaction.pointer.modifiers().super_key()
 		{
 			self.action(if dy > 0.0 {
 				Command::Larger
@@ -694,7 +418,7 @@ impl<P: super::SendEvent> App<P> {
 			});
 		} else {
 			let now = Instant::now();
-			let shift = self.interaction.modifiers.shift_key();
+			let shift = self.interaction.pointer.modifiers().shift_key();
 			// Windows hands a touchpad's inertia over in packets the
 			// reader has to give momentum of its own; a whole-detent
 			// wheel, and every other desktop's stream, is one eased
@@ -709,7 +433,11 @@ impl<P: super::SendEvent> App<P> {
 			} else {
 				Self::scroll_wheel
 			};
-			match self.interaction.wheel.feed(dx, dy, now, shift, phase) {
+			match self
+				.interaction
+				.pointer
+				.feed_wheel(dx, dy, now, shift, phase)
+			{
 				// Nothing to move: the direction is not decided yet,
 				// or the event carried no motion.
 				WheelStep::Pending => {}
@@ -746,8 +474,8 @@ impl<P: super::SendEvent> App<P> {
 	) {
 		self.cancel_gestures();
 		self.interaction.widgets.focus_visible = true;
-		let command = self.interaction.modifiers.control_key()
-			|| self.interaction.modifiers.super_key();
+		let command = self.interaction.pointer.modifiers().control_key()
+			|| self.interaction.pointer.modifiers().super_key();
 		// A confirmation answers to Tab, Enter and Escape only.
 		if self.interaction.modal.is_some()
 			&& (command
@@ -786,7 +514,7 @@ impl<P: super::SendEvent> App<P> {
 					"b" if !self.panel_has_focus() => {
 						self.action(Command::Outline)
 					}
-					"o" if self.interaction.modifiers.shift_key()
+					"o" if self.interaction.pointer.modifiers().shift_key()
 						&& !self.panel_has_focus() =>
 					{
 						self.action(Command::OpenFolder)
@@ -795,9 +523,12 @@ impl<P: super::SendEvent> App<P> {
 						self.action(Command::Open)
 					}
 					"r" if markview_platform::folder_reveal()
-						&& self.interaction.modifiers.alt_key()
-						&& !self.interaction.modifiers.shift_key()
-						&& !self.panel_has_focus() =>
+						&& self.interaction.pointer.modifiers().alt_key()
+						&& !self
+							.interaction
+							.pointer
+							.modifiers()
+							.shift_key() && !self.panel_has_focus() =>
 					{
 						self.action(Command::RevealFolder)
 					}
@@ -898,16 +629,20 @@ impl<P: super::SendEvent> App<P> {
 		let viewer = self.interaction.viewer.as_mut().unwrap();
 		match event {
 			WindowEvent::CursorMoved { position, .. } => {
-				self.interaction.cursor = (
+				self.interaction.pointer.move_to((
 					position.x as f32 / scale - insets[0],
 					position.y as f32 / scale - insets[1],
+				));
+				viewer.move_pointer(
+					self.interaction.pointer.cursor(),
+					(width, height),
 				);
-				viewer.move_pointer(self.interaction.cursor, (width, height));
 			}
 			WindowEvent::CursorLeft { .. } => {
 				if viewer.grab.is_none() {
-					self.interaction.cursor =
-						(f32::NEG_INFINITY, f32::NEG_INFINITY);
+					self.interaction
+						.pointer
+						.move_to((f32::NEG_INFINITY, f32::NEG_INFINITY));
 				}
 			}
 			WindowEvent::MouseInput {
@@ -916,7 +651,7 @@ impl<P: super::SendEvent> App<P> {
 				..
 			} => match state {
 				ElementState::Pressed => {
-					viewer.begin_press(self.interaction.cursor)
+					viewer.begin_press(self.interaction.pointer.cursor())
 				}
 				ElementState::Released => {
 					if viewer.finish_press() {
@@ -933,7 +668,7 @@ impl<P: super::SendEvent> App<P> {
 				};
 				viewer.zoom_at(
 					factor,
-					self.interaction.cursor,
+					self.interaction.pointer.cursor(),
 					(width, height),
 				);
 			}
@@ -974,9 +709,9 @@ impl<P: super::SendEvent> App<P> {
 		match key {
 			Key::Character(c)
 				if c == "/"
-					&& !self.interaction.modifiers.control_key()
-					&& !self.interaction.modifiers.super_key()
-					&& !self.interaction.modifiers.alt_key() =>
+					&& !self.interaction.pointer.modifiers().control_key()
+					&& !self.interaction.pointer.modifiers().super_key()
+					&& !self.interaction.pointer.modifiers().alt_key() =>
 			{
 				self.open_new_search();
 			}
@@ -1067,7 +802,7 @@ impl<P: super::SendEvent> App<P> {
 	}
 
 	fn navigate_focus(&mut self) {
-		let backward = self.interaction.modifiers.shift_key();
+		let backward = self.interaction.pointer.modifiers().shift_key();
 		if let Some(action) = self.navigate_widgets(backward) {
 			if let Command::OutlineGoto(index) | Command::OutlineToggle(index) =
 				action
@@ -1101,9 +836,9 @@ impl<P: super::SendEvent> App<P> {
 		self.interaction.modal = None;
 		self.interaction.show_panel(crate::state::PanelPage::Closed);
 		self.interaction.selection = None;
-		self.interaction.pointer_down = None;
-		self.interaction.drag_at = None;
-		self.interaction.scrollbar = None;
+		self.interaction.pointer.release();
+		self.interaction.pointer.set_auto_scroll_at(None);
+		self.interaction.pointer.end_scrollbar();
 		self.interaction.panel_grab = None;
 		self.folder.grab = None;
 		self.interaction.sidebar_drag = None;

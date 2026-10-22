@@ -536,14 +536,19 @@ impl<P: super::SendEvent> App<P> {
 			self.flush_settings();
 			self.redraw();
 		}
-		if self.interaction.drag_at.is_some_and(|d| d <= now) {
-			self.interaction.drag_at = None;
-			if self.interaction.pointer_down.is_some() {
+		if self
+			.interaction
+			.pointer
+			.auto_scroll_at()
+			.is_some_and(|d| d <= now)
+		{
+			self.interaction.pointer.set_auto_scroll_at(None);
+			if self.interaction.pointer.drag().is_some() {
 				// `scroll_by` re-derives the selection and re-arms this
 				// deadline through `after_scroll`, because the pointer stays
 				// where it is while the text moves under it.
 				self.scroll_by(markview_selection::selection_scroll(
-					self.interaction.cursor.1,
+					self.interaction.pointer.cursor().1,
 					TOP,
 					self.dimensions().1 - self.bottom(),
 					self.readers.session.scrolling.offset,
@@ -589,7 +594,7 @@ impl<P: super::SendEvent> App<P> {
 			.chain(self.status.deadline())
 			.chain(self.preferences.save_deadline())
 			.chain(self.persistence.deadline)
-			.chain(self.interaction.drag_at)
+			.chain(self.interaction.pointer.auto_scroll_at())
 			.chain(self.readers.session.scroll_animation_deadline(now))
 			.chain(self.control_scroll_deadline(now))
 			.chain(self.preview.deadline())

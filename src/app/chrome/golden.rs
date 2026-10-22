@@ -58,7 +58,7 @@ fn ui_styles_match_rendering_baselines() -> Result<()> {
 			};
 			let interaction = InteractionState {
 				panel: PanelPage::Settings(PanelTab::Generic),
-				cursor: (-1., -1.),
+				pointer: crate::app::pointer::State::at((-1., -1.)),
 				..Default::default()
 			};
 			let mut ui = crate::test_support::shaper();
@@ -103,11 +103,13 @@ fn ui_styles_match_rendering_baselines() -> Result<()> {
 						focus_visible: *state == "focus",
 						..Default::default()
 					},
-					cursor: if matches!(*state, "hover" | "pressed") {
-						(rect.x + 5., rect.y + 5.)
-					} else {
-						(-1., -1.)
-					},
+					pointer: crate::app::pointer::State::at(
+						if matches!(*state, "hover" | "pressed") {
+							(rect.x + 5., rect.y + 5.)
+						} else {
+							(-1., -1.)
+						},
+					),
 					..Default::default()
 				};
 				draws
@@ -245,7 +247,7 @@ fn phone_sidebar_match_rendering_baselines() -> Result<()> {
 				let interaction = InteractionState {
 					panel: PanelPage::Tabs,
 					sidebar_tab: tab,
-					cursor: (-1., -1.),
+					pointer: crate::app::pointer::State::at((-1., -1.)),
 					..Default::default()
 				};
 				let draws = if tab == SidebarTab::Tabs {

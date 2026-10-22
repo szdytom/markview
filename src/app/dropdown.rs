@@ -108,7 +108,7 @@ impl<P: super::SendEvent> App<P> {
 		let Some(menu) = self.dropdown_menu() else {
 			return;
 		};
-		let (x, y) = self.interaction.cursor;
+		let (x, y) = self.interaction.pointer.cursor();
 		let Some(slot) = menu
 			.buttons
 			.iter()
@@ -165,7 +165,9 @@ impl<P: super::SendEvent> App<P> {
 				return false;
 			}
 			// A chord with a modifier belongs to the reader, menus or not.
-			_ if self.interaction.modifiers.control_key() => return false,
+			_ if self.interaction.pointer.modifiers().control_key() => {
+				return false;
+			}
 			// Nothing behind the list answers while it is up.
 			_ => return true,
 		}

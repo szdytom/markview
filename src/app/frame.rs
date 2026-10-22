@@ -370,7 +370,7 @@ impl<P: super::SendEvent> App<P> {
 				state: ElementState::Pressed,
 				..
 			} => {
-				let (x, y) = self.interaction.cursor;
+				let (x, y) = self.interaction.pointer.cursor();
 				if self.frame_layout().draggable(x, y) {
 					if let Some(window) = &self.window {
 						window.show_window_menu(
@@ -389,16 +389,16 @@ impl<P: super::SendEvent> App<P> {
 		self.tab_strip.cancel_drag();
 		self.interaction.reset_clicks();
 		self.interaction.widgets.captured = None;
-		self.interaction.pointer_down = None;
-		self.interaction.drag_at = None;
-		self.interaction.scrollbar = None;
+		self.interaction.pointer.release();
+		self.interaction.pointer.set_auto_scroll_at(None);
+		self.interaction.pointer.end_scrollbar();
 		self.interaction.panel_grab = None;
 	}
 	pub(super) fn frame_press(&mut self) -> bool {
 		// A new press cancels a caption release swallowed outside the window.
 		self.frame.pressed = None;
 		self.tab_metrics.sync(&mut self.ui, self.readers.entries());
-		let (x, y) = self.interaction.cursor;
+		let (x, y) = self.interaction.pointer.cursor();
 		let layout = self.frame_layout();
 		if markview_platform::client_resize()
 			&& let Some(direction) = layout.resize_at(x, y)
@@ -449,7 +449,7 @@ impl<P: super::SendEvent> App<P> {
 		let Some(caption) = self.frame.pressed.take() else {
 			return false;
 		};
-		let (x, y) = self.interaction.cursor;
+		let (x, y) = self.interaction.pointer.cursor();
 		if self.frame_layout().caption_at(x, y) == Some(caption) {
 			event_loop.window_action(self.window.as_deref(), caption);
 		}
@@ -457,8 +457,10 @@ impl<P: super::SendEvent> App<P> {
 		true
 	}
 	pub(super) fn frame_cursor(&self) -> Option<CursorIcon> {
-		self.frame_layout()
-			.cursor_at(self.interaction.cursor.0, self.interaction.cursor.1)
+		self.frame_layout().cursor_at(
+			self.interaction.pointer.cursor().0,
+			self.interaction.pointer.cursor().1,
+		)
 	}
 }
 

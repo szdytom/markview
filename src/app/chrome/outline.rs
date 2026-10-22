@@ -302,7 +302,10 @@ pub(super) fn draw(
 		let index = rows[row];
 		let rect = row_rect(list, row, interaction.outline_scroll.offset());
 		let entry = &entries[index];
-		let hovered = rect.contains(interaction.cursor.0, interaction.cursor.1);
+		let hovered = rect.contains(
+			interaction.pointer.cursor().0,
+			interaction.pointer.cursor().1,
+		);
 		let pressed = hovered
 			&& interaction.widgets.captured
 				== Some(Command::OutlineGoto(index).widget_id());

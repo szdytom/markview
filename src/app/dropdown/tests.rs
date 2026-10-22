@@ -590,7 +590,7 @@ fn the_wheel_does_not_scroll_the_page_behind_an_open_list() {
 	assert!(max > 0.0, "the test needs a page with somewhere to scroll");
 	app.action(Command::ToggleDropdown(DropdownId::Language, 0));
 	// The pointer is on the page the list covers.
-	app.interaction.cursor = (700.0, 400.0);
+	app.interaction.pointer.move_to((700.0, 400.0));
 	let before = app.interaction.settings_scroll.offset();
 
 	app.handle_window_event(
@@ -621,7 +621,7 @@ fn opening_a_list_stops_the_page_ease() {
 	app.overlay();
 	let (_, max) = app.panel_scroll_range().expect("the page scrolls");
 	assert!(max > 0.0, "the test needs a page with somewhere to scroll");
-	app.interaction.cursor = (700.0, 400.0);
+	app.interaction.pointer.move_to((700.0, 400.0));
 	wheel(&mut app, MouseScrollDelta::LineDelta(0.0, -1.0));
 	assert!(app.interaction.settings_scroll.animating());
 	let held = app.interaction.settings_scroll.offset();
@@ -649,7 +649,7 @@ fn the_wheel_steps_the_highlight_like_the_arrow_keys() {
 	let mut app = app_with_panel();
 	app.action(Command::ToggleDropdown(DropdownId::Language, 0));
 	// The pointer rests on the page the list covers.
-	app.interaction.cursor = (700.0, 400.0);
+	app.interaction.pointer.move_to((700.0, 400.0));
 	let before = app.interaction.settings_scroll.offset();
 
 	wheel(&mut app, MouseScrollDelta::LineDelta(0.0, -1.0));
@@ -749,7 +749,7 @@ fn a_report_that_moves_nothing_keeps_the_wheels_highlight() {
 fn a_modified_wheel_over_an_open_list_leaves_the_highlight() {
 	let mut app = app_with_panel();
 	app.action(Command::ToggleDropdown(DropdownId::Language, 0));
-	app.interaction.modifiers = ModifiersState::SUPER;
+	app.interaction.pointer.set_modifiers(ModifiersState::SUPER);
 	let before = app.interaction.settings_scroll.offset();
 
 	wheel(&mut app, MouseScrollDelta::LineDelta(0.0, -1.0));

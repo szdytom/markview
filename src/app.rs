@@ -19,7 +19,7 @@ mod lifecycle;
 mod open_document;
 mod outline;
 mod painting;
-mod pointer;
+pub(crate) mod pointer;
 mod preferences;
 mod preview;
 pub(crate) mod search;

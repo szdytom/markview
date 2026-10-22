@@ -633,9 +633,10 @@ impl<P: SendEvent> App<P> {
 			&& self.folder.tree.is_some()
 			&& !self.interaction.panel_open()
 			&& self.interaction.modal.is_none()
-			&& self
-				.folder_surface()
-				.contains(self.interaction.cursor.0, self.interaction.cursor.1)
+			&& self.folder_surface().contains(
+				self.interaction.pointer.cursor().0,
+				self.interaction.pointer.cursor().1,
+			)
 	}
 
 	pub(super) fn folder_bar(&self) -> Option<crate::layout::Scrollbar> {
@@ -652,7 +653,7 @@ impl<P: SendEvent> App<P> {
 		let Some(bar) = self.folder_bar() else {
 			return false;
 		};
-		let (x, y) = self.interaction.cursor;
+		let (x, y) = self.interaction.pointer.cursor();
 		if !bar.hit(x, y) {
 			return false;
 		}
@@ -685,7 +686,7 @@ impl<P: SendEvent> App<P> {
 		if let Some(grab) = self.folder.grab
 			&& let Some(bar) = self.folder_bar()
 		{
-			let (x, y) = self.interaction.cursor;
+			let (x, y) = self.interaction.pointer.cursor();
 			self.folder.scroll.set(bar.scroll_for(x, y, grab));
 			self.redraw();
 		}

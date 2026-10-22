@@ -50,7 +50,10 @@ fn platform_toolbars_keep_hover_targets_and_caption_groups_separate() {
 				let buttons = toolbar_controls_at(frame, false, Lang::En);
 				let first = &buttons[0];
 				let interaction = InteractionState {
-					cursor: (first.rect.x + first.rect.w / 2.0, TOP / 2.0),
+					pointer: crate::app::pointer::State::at((
+						first.rect.x + first.rect.w / 2.0,
+						TOP / 2.0,
+					)),
 					..Default::default()
 				};
 				let draws =

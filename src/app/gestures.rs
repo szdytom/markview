@@ -97,7 +97,7 @@ impl<P: super::SendEvent> App<P> {
 	}
 
 	fn touch_tap(&mut self) -> Option<Tap> {
-		let (x, y) = self.interaction.cursor;
+		let (x, y) = self.interaction.pointer.cursor();
 		if let Some(caption) = self.frame_layout().caption_at(x, y) {
 			return Some(Tap::Caption(caption));
 		}
@@ -114,14 +114,16 @@ impl<P: super::SendEvent> App<P> {
 			let layout = super::widgets::layout(&buttons);
 			return Some(
 				layout
-					.hit(self.interaction.cursor)
+					.hit(self.interaction.pointer.cursor())
 					.filter(|w| w.enabled)
 					.map_or(Tap::DismissDropdown, |w| Tap::Widget(w.id)),
 			);
 		}
 		let buttons = self.buttons();
 		let layout = super::widgets::layout(&buttons);
-		if let Some(widget) = layout.hit_touch(self.interaction.cursor, 44.0) {
+		if let Some(widget) =
+			layout.hit_touch(self.interaction.pointer.cursor(), 44.0)
+		{
 			return widget.enabled.then_some(Tap::Widget(widget.id));
 		}
 
@@ -175,7 +177,7 @@ impl<P: super::SendEvent> App<P> {
 		if self.pointer_in_outline() {
 			return Surface::Outline;
 		}
-		let (x, y) = self.interaction.cursor;
+		let (x, y) = self.interaction.pointer.cursor();
 		if self.tab_layout().viewport.contains(x, y) {
 			return Surface::Tabs;
 		}
@@ -216,7 +218,7 @@ impl<P: super::SendEvent> App<P> {
 		}
 		self.gestures.mouse_after =
 			Some(Instant::now() + Duration::from_millis(500));
-		self.interaction.cursor = point;
+		self.interaction.pointer.move_to(point);
 		self.frame.pressed = None;
 		let window_action = if touch.phase == TouchPhase::Started {
 			self.start_touch_contact(id, point)
@@ -238,7 +240,9 @@ impl<P: super::SendEvent> App<P> {
 		}
 		if self.gestures.gesture.contacts.is_empty() {
 			self.interaction.widgets.captured = None;
-			self.interaction.cursor = (f32::NEG_INFINITY, f32::NEG_INFINITY);
+			self.interaction
+				.pointer
+				.move_to((f32::NEG_INFINITY, f32::NEG_INFINITY));
 		}
 		self.refresh_hover();
 		self.redraw();
@@ -268,10 +272,10 @@ impl<P: super::SendEvent> App<P> {
 		self.gestures.trackpad = None;
 		self.readers.session.cancel_scroll_animation();
 		self.tab_strip.cancel_drag();
-		self.interaction.pointer_down = None;
-		self.interaction.pressed_image = None;
-		self.interaction.drag_at = None;
-		self.interaction.scrollbar = None;
+		self.interaction.pointer.release();
+		self.interaction.pointer.clear_pressed_image();
+		self.interaction.pointer.set_auto_scroll_at(None);
+		self.interaction.pointer.end_scrollbar();
 		self.interaction.panel_grab = None;
 		self.interaction.sidebar_drag = None;
 		self.interaction.widgets.focus_visible = false;
@@ -414,7 +418,7 @@ impl<P: super::SendEvent> App<P> {
 		let now = Instant::now();
 		if phase == TouchPhase::Cancelled {
 			self.cancel_gestures();
-			self.interaction.wheel = Default::default();
+			self.interaction.pointer.reset_wheel();
 			return;
 		}
 		let new = phase == TouchPhase::Started
@@ -424,7 +428,7 @@ impl<P: super::SendEvent> App<P> {
 		if new {
 			self.cancel_gestures();
 			self.readers.session.cancel_scroll_animation();
-			self.interaction.wheel = Default::default();
+			self.interaction.pointer.reset_wheel();
 			let surface = self.touch_surface();
 			self.gestures.trackpad = Some((surface, now));
 			if inertia == Inertia::Synthesized {
@@ -441,8 +445,11 @@ impl<P: super::SendEvent> App<P> {
 			})
 			.unwrap();
 		self.gestures.coasting = false;
-		let shift = self.interaction.modifiers.shift_key();
-		let step = self.interaction.wheel.feed(dx, dy, now, shift, phase);
+		let shift = self.interaction.pointer.modifiers().shift_key();
+		let step = self
+			.interaction
+			.pointer
+			.feed_wheel(dx, dy, now, shift, phase);
 		let delta = match step {
 			WheelStep::Pending => (0.0, 0.0),
 			WheelStep::Travel(WheelAxis::Vertical, _, dy) => {
@@ -481,10 +488,10 @@ impl<P: super::SendEvent> App<P> {
 	/// Manipulation's stream yields to it: two inputs must never fight over
 	/// the offset.
 	pub(super) fn pointer_owns_input(&self) -> bool {
-		self.interaction.scrollbar.is_some()
+		self.interaction.pointer.scrollbar().is_some()
 			|| self.interaction.sidebar_drag.is_some()
-			|| (self.interaction.pointer_down.is_some()
-				&& self.interaction.dragged)
+			|| (self.interaction.pointer.drag().is_some()
+				&& self.interaction.pointer.dragged())
 			|| self
 				.interaction
 				.viewer

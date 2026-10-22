@@ -5,6 +5,7 @@ use markview_selection::{
 	SCROLL_MAX, SCROLL_MIN, ScrollAnimation, ease_out_cubic,
 };
 use winit::event::TouchPhase;
+use winit::keyboard::ModifiersState;
 fn position(offset: usize) -> TextPosition {
 	TextPosition {
 		revision: 1,
@@ -31,16 +32,16 @@ fn click_opens_only_on_release_and_drag_never_opens_link() {
 	let mut interaction = InteractionState::default();
 	interaction
 		.begin_selection(position(0), Some("https://example.com".into()));
-	assert!(interaction.pointer_down.is_some());
+	assert!(interaction.pointer.drag().is_some());
 	assert_eq!(
 		interaction.finish_selection(Some("https://example.com")),
 		Some("https://example.com".into())
 	);
 	interaction
 		.begin_selection(position(0), Some("https://example.com".into()));
-	interaction.cursor = (8.0, 0.0);
+	interaction.pointer.move_to((8.0, 0.0));
 	interaction.move_selection(Some(position(4)), &snapshot);
-	interaction.cursor = (0.0, 0.0);
+	interaction.pointer.move_to((0.0, 0.0));
 	interaction.move_selection(Some(position(0)), &snapshot);
 	assert!(
 		interaction
@@ -57,16 +58,16 @@ fn word_and_block_drag_extend_from_the_multi_click_base() {
 	let base = snapshot.select_word_at(position(7)).unwrap();
 	assert_eq!(snapshot.extract_text(base, 1), "中文");
 	let mut interaction = InteractionState {
-		cursor: (0.0, 0.0),
+		pointer: crate::app::pointer::State::at((0.0, 0.0)),
 		..Default::default()
 	};
 	assert!(interaction.begin_grain_selection(Some(base), Grain::Word));
 	// Below the drag threshold the double-clicked word stays selected.
-	interaction.cursor = (2.0, 0.0);
+	interaction.pointer.move_to((2.0, 0.0));
 	interaction.move_selection(Some(position(17)), &snapshot);
 	assert_eq!(interaction.selection.unwrap(), base);
 	// Right of the base word, the far edge follows the word under the pointer.
-	interaction.cursor = (60.0, 0.0);
+	interaction.pointer.move_to((60.0, 0.0));
 	interaction.move_selection(Some(position(17)), &snapshot);
 	assert_eq!(
 		snapshot.extract_text(interaction.selection.unwrap(), 1),
@@ -82,11 +83,11 @@ fn word_and_block_drag_extend_from_the_multi_click_base() {
 	let blocks = snapshot_of("First paragraph.\n\nSecond paragraph.");
 	let base = blocks.select_block_at(position(2)).unwrap();
 	let mut interaction = InteractionState {
-		cursor: (0.0, 0.0),
+		pointer: crate::app::pointer::State::at((0.0, 0.0)),
 		..Default::default()
 	};
 	assert!(interaction.begin_grain_selection(Some(base), Grain::Block));
-	interaction.cursor = (60.0, 0.0);
+	interaction.pointer.move_to((60.0, 0.0));
 	interaction.move_selection(Some(position_in(1, 2)), &blocks);
 	assert_eq!(
 		blocks.extract_text(interaction.selection.unwrap(), 1),
@@ -105,7 +106,7 @@ fn triple_click_drag_extends_by_cells_inside_one_table() {
 	assert_eq!(snapshot.extract_text(base, 1), "Middle");
 	let mut interaction = InteractionState::default();
 	assert!(interaction.begin_grain_selection(Some(base), Grain::Block));
-	interaction.cursor = (60.0, 0.0);
+	interaction.pointer.move_to((60.0, 0.0));
 	interaction.move_selection(Some(cell(5)), &snapshot);
 	assert_eq!(
 		snapshot.extract_text(interaction.selection.unwrap(), 1),
@@ -124,7 +125,7 @@ fn triple_click_drag_extends_by_cells_inside_one_table() {
 fn move_selection_reports_whether_the_selection_moved() {
 	let snapshot = LayoutSnapshot::default();
 	let mut interaction = InteractionState {
-		cursor: (0.0, 0.0),
+		pointer: crate::app::pointer::State::at((0.0, 0.0)),
 		..Default::default()
 	};
 	// A hover with no press in flight has nothing to extend.
@@ -132,10 +133,10 @@ fn move_selection_reports_whether_the_selection_moved() {
 	interaction.begin_selection(position(0), None);
 	// Below the drag threshold the press is still a click, and the selection
 	// stays where it was.
-	interaction.cursor = (2.0, 0.0);
+	interaction.pointer.move_to((2.0, 0.0));
 	assert!(!interaction.move_selection(Some(position(4)), &snapshot));
 	// Past the threshold the focus follows the reading position...
-	interaction.cursor = (8.0, 0.0);
+	interaction.pointer.move_to((8.0, 0.0));
 	assert!(interaction.move_selection(Some(position(4)), &snapshot));
 	assert_eq!(interaction.selection.unwrap().focus, position(4));
 	// ...and landing on a position already selected is not a change either.
@@ -146,7 +147,7 @@ fn shift_extends_original_anchor_and_reload_clears_gesture() {
 	let mut interaction = InteractionState::default();
 	interaction.begin_selection(position(2), None);
 	interaction.finish_selection(None);
-	interaction.modifiers = ModifiersState::SHIFT;
+	interaction.pointer.set_modifiers(ModifiersState::SHIFT);
 	interaction
 		.begin_selection(position(10), Some("https://example.com".into()));
 	assert_eq!(interaction.selection.unwrap().anchor.offset, 2);
@@ -158,12 +159,12 @@ fn shift_extends_original_anchor_and_reload_clears_gesture() {
 	);
 	interaction.clear_selection();
 	assert!(interaction.selection.is_none());
-	assert!(interaction.drag_at.is_none());
+	assert!(interaction.pointer.auto_scroll_at().is_none());
 }
 #[test]
 fn repeated_presses_within_the_interval_cycle_word_and_block_click() {
 	let mut interaction = InteractionState {
-		cursor: (40.0, 40.0),
+		pointer: crate::app::pointer::State::at((40.0, 40.0)),
 		..Default::default()
 	};
 	let start = Instant::now();
@@ -182,7 +183,7 @@ fn repeated_presses_within_the_interval_cycle_word_and_block_click() {
 	);
 	// A pause, a pointer move or a toolbar press starts a new single click.
 	assert_eq!(interaction.click_count(start + Duration::from_secs(2)), 1);
-	interaction.cursor = (60.0, 40.0);
+	interaction.pointer.move_to((60.0, 40.0));
 	assert_eq!(
 		interaction.click_count(
 			start + Duration::from_secs(2) + Duration::from_millis(100)
@@ -1620,14 +1621,14 @@ fn every_panel_transition_clears_transient_input() {
 				..Default::default()
 			},
 			panel_grab: Some(10.0),
-			drag_at: Some(Instant::now()),
 			..Default::default()
 		};
+		interaction.pointer.set_auto_scroll_at(Some(Instant::now()));
 		interaction.show_panel(page);
 		assert_eq!(interaction.widgets.focus, None);
 		assert_eq!(interaction.widgets.captured, None);
 		assert_eq!(interaction.panel_grab, None);
-		assert_eq!(interaction.drag_at, None);
+		assert_eq!(interaction.pointer.auto_scroll_at(), None);
 	}
 }
 

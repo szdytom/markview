@@ -7,11 +7,11 @@ use std::time::{Duration, Instant};
 
 impl<P: super::SendEvent> App<P> {
 	pub(super) fn tab_at_cursor(&mut self) -> Option<usize> {
-		let (x, y) = self.interaction.cursor;
+		let (x, y) = self.interaction.pointer.cursor();
 		self.tab_layout().hit(x, y)
 	}
 	pub(super) fn tab_close_at_cursor(&mut self) -> Option<usize> {
-		let (x, y) = self.interaction.cursor;
+		let (x, y) = self.interaction.pointer.cursor();
 		let layout = self.tab_layout();
 		layout
 			.hit(x, y)
@@ -29,7 +29,7 @@ impl<P: super::SendEvent> App<P> {
 	}
 	pub(super) fn scroll_tabs(&mut self, delta: f32) -> bool {
 		let layout = self.tab_layout();
-		let (x, y) = self.interaction.cursor;
+		let (x, y) = self.interaction.pointer.cursor();
 		if x < layout.viewport.x
 			|| x > layout.viewport.x + layout.viewport.w
 			|| !(0.0..super::TOP).contains(&y)
@@ -49,7 +49,7 @@ impl<P: super::SendEvent> App<P> {
 		self.action(crate::state::Command::SelectTab(index));
 		self.normalize_tab_scroll();
 		let layout = self.tab_layout();
-		let x = self.interaction.cursor.0;
+		let x = self.interaction.pointer.cursor().0;
 		self.tab_strip.drag = Some(TabDrag {
 			index,
 			start: x,
@@ -64,7 +64,7 @@ impl<P: super::SendEvent> App<P> {
 		};
 		let layout = self.tab_layout();
 		let from = drag.index;
-		drag.update(&layout, self.interaction.cursor.0);
+		drag.update(&layout, self.interaction.pointer.cursor().0);
 		if !drag.moving {
 			return;
 		}
@@ -75,7 +75,7 @@ impl<P: super::SendEvent> App<P> {
 	}
 	fn schedule_tab_scroll(&mut self, layout: &TabLayout) {
 		self.tab_strip.scroll_at =
-			(layout.edge_scroll(self.interaction.cursor.0) != 0.0)
+			(layout.edge_scroll(self.interaction.pointer.cursor().0) != 0.0)
 				.then(|| Instant::now() + Duration::from_millis(16));
 	}
 	pub(super) fn auto_scroll_tabs(&mut self, now: Instant) {
@@ -89,8 +89,9 @@ impl<P: super::SendEvent> App<P> {
 		let layout = self.tab_layout();
 		self.tab_strip.scroll.set_max(layout.max_scroll);
 		self.tab_strip.scroll.set(
-			(layout.scroll + layout.edge_scroll(self.interaction.cursor.0))
-				.clamp(0.0, layout.max_scroll),
+			(layout.scroll
+				+ layout.edge_scroll(self.interaction.pointer.cursor().0))
+			.clamp(0.0, layout.max_scroll),
 		);
 		self.move_tab_drag();
 	}

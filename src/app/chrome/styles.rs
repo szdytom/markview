@@ -397,14 +397,16 @@ pub(super) fn draw_styles(
 	// footer, so the body only sees the cursor while it is inside the clip.
 	let body_interaction = InteractionState {
 		widgets: interaction.widgets,
-		cursor: if list
-			.viewport
-			.contains(interaction.cursor.0, interaction.cursor.1)
-		{
-			interaction.cursor
-		} else {
-			(f32::NEG_INFINITY, f32::NEG_INFINITY)
-		},
+		pointer: crate::app::pointer::State::at(
+			if list.viewport.contains(
+				interaction.pointer.cursor().0,
+				interaction.pointer.cursor().1,
+			) {
+				interaction.pointer.cursor()
+			} else {
+				(f32::NEG_INFINITY, f32::NEG_INFINITY)
+			},
+		),
 		controls: interaction.controls.clone(),
 		..Default::default()
 	};

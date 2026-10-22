@@ -388,10 +388,10 @@ impl ButtonVisual {
 		let enabled = placed.map_or(b.enabled, |w| w.enabled);
 		let hovered = enabled
 			&& interaction.controls.as_ref().map_or_else(
-				|| b.contains(interaction.cursor),
+				|| b.contains(interaction.pointer.cursor()),
 				|layout| {
 					layout
-						.hit(interaction.cursor)
+						.hit(interaction.pointer.cursor())
 						.is_some_and(|w| w.id == b.id && w.enabled)
 				},
 			);
@@ -1060,7 +1060,10 @@ impl Form {
 			draws: body,
 		});
 		if let Some(bar) = self.scrollbar(ui) {
-			let hovered = bar.hit(interaction.cursor.0, interaction.cursor.1);
+			let hovered = bar.hit(
+				interaction.pointer.cursor().0,
+				interaction.pointer.cursor().1,
+			);
 			let (track, thumb) =
 				bar.bars(hovered || interaction.panel_grab.is_some());
 			out.push(line(track, Condition::Scrollbar, C::Track));
@@ -1180,14 +1183,16 @@ impl Form {
 	) {
 		let body_interaction = InteractionState {
 			widgets: interaction.widgets,
-			cursor: if self
-				.viewport
-				.contains(interaction.cursor.0, interaction.cursor.1)
-			{
-				interaction.cursor
-			} else {
-				(f32::NEG_INFINITY, f32::NEG_INFINITY)
-			},
+			pointer: crate::app::pointer::State::at(
+				if self.viewport.contains(
+					interaction.pointer.cursor().0,
+					interaction.pointer.cursor().1,
+				) {
+					interaction.pointer.cursor()
+				} else {
+					(f32::NEG_INFINITY, f32::NEG_INFINITY)
+				},
+			),
 			controls: interaction.controls.clone(),
 			..Default::default()
 		};
@@ -1425,7 +1430,7 @@ pub(in crate::app) fn draw_menu(
 			focus_visible: true,
 			..Default::default()
 		},
-		cursor: interaction.cursor,
+		pointer: crate::app::pointer::State::at(interaction.pointer.cursor()),
 		controls: interaction.controls.clone(),
 		..Default::default()
 	};

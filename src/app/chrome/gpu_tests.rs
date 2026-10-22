@@ -383,7 +383,7 @@ fn notice_strip_and_confirmation_frames() -> Result<()> {
 				dir: targets.clone(),
 				document_dir: Some(root.join("manual-test")),
 			}),
-			cursor: (620.0, 300.0),
+			pointer: crate::app::pointer::State::at((620.0, 300.0)),
 			..Default::default()
 		};
 		let permission = InteractionState {
@@ -421,7 +421,7 @@ fn notice_strip_and_confirmation_frames() -> Result<()> {
 						),
 						document_dir: Some(root.join("manual-test")),
 					}),
-					cursor: (620.0, 300.0),
+					pointer: crate::app::pointer::State::at((620.0, 300.0)),
 					..Default::default()
 				},
 				"confirm-modal-long",
@@ -1783,10 +1783,10 @@ fn redesigned_chrome_frames() -> Result<()> {
 						frame.hover = Some(crate::app::frame::Caption::Expand);
 					}
 					if page == "window-toolbar-hover" {
-						interaction.cursor = (
+						interaction.pointer.move_to((
 							frame.toolbar_x + frame.toolbar_button_size / 2.0,
 							TOP / 2.0,
-						);
+						));
 					} else if page == "window-tab-hover" {
 						let layout = crate::app::tab_strip::TabLayout::new(
 							frame.tabs,
@@ -1794,7 +1794,9 @@ fn redesigned_chrome_frames() -> Result<()> {
 							0.0,
 						);
 						let tab = layout.rects[1];
-						interaction.cursor = (tab.x + tab.w / 2.0, TOP / 2.0);
+						interaction
+							.pointer
+							.move_to((tab.x + tab.w / 2.0, TOP / 2.0));
 					}
 					frame = frame.with_tab_end(
 						metrics.end(frame.tabs, strip.scroll.offset()),
@@ -2030,11 +2032,13 @@ fn button_feedback_frames() -> Result<()> {
 							captured: (column == 2).then_some(b.id),
 							..Default::default()
 						},
-						cursor: if matches!(column, 1 | 2 | 4) {
-							(x + 5.0, y + 5.0)
-						} else {
-							(0.0, 0.0)
-						},
+						pointer: crate::app::pointer::State::at(
+							if matches!(column, 1 | 2 | 4) {
+								(x + 5.0, y + 5.0)
+							} else {
+								(0.0, 0.0)
+							},
+						),
 						..Default::default()
 					};
 					draws.extend(draw_button(&mut ui, &interaction, &b, true));

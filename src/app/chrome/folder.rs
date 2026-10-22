@@ -343,8 +343,11 @@ impl Row<'_> {
 		let focused = interaction.widgets.focus == Some(action.widget_id());
 		let background = Paint::Styled(Condition::Panel, C::Background);
 		let ink = Paint::Styled(Condition::Panel, C::Color);
-		if selected || rect.contains(interaction.cursor.0, interaction.cursor.1)
-		{
+		if selected
+			|| rect.contains(
+				interaction.pointer.cursor().0,
+				interaction.pointer.cursor().1,
+			) {
 			out.push(Draw::Rect(
 				rect,
 				components::mix(

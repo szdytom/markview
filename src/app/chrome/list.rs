@@ -137,7 +137,10 @@ impl List {
 		let Some(bar) = self.scrollbar(ui) else {
 			return;
 		};
-		let hovered = bar.hit(interaction.cursor.0, interaction.cursor.1);
+		let hovered = bar.hit(
+			interaction.pointer.cursor().0,
+			interaction.pointer.cursor().1,
+		);
 		let (track, thumb) =
 			bar.bars(hovered || interaction.panel_grab.is_some());
 		out.push(super::components::line(

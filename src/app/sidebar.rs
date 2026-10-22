@@ -128,7 +128,7 @@ impl<P: super::SendEvent> App<P> {
 		} else {
 			rect.x + rect.w
 		};
-		let (x, y) = self.interaction.cursor;
+		let (x, y) = self.interaction.pointer.cursor();
 		(x - edge).abs() <= 4.0 && y >= rect.y && y < rect.y + rect.h
 	}
 
@@ -137,11 +137,11 @@ impl<P: super::SendEvent> App<P> {
 			return false;
 		};
 		self.interaction.reset_clicks();
-		self.interaction.pointer_down = None;
+		self.interaction.pointer.release();
 		self.interaction.widgets.focus = None;
 		self.interaction.sidebar_drag = Some(Drag {
 			sidebar,
-			start_x: self.interaction.cursor.0,
+			start_x: self.interaction.pointer.cursor().0,
 			start_width: self.sidebar_rect(sidebar).w,
 		});
 		self.refresh_hover();
@@ -152,7 +152,7 @@ impl<P: super::SendEvent> App<P> {
 		let Some(drag) = self.interaction.sidebar_drag else {
 			return;
 		};
-		let delta = self.interaction.cursor.0 - drag.start_x;
+		let delta = self.interaction.pointer.cursor().0 - drag.start_x;
 		let direction = if drag.sidebar == Sidebar::Outline {
 			-1.0
 		} else {

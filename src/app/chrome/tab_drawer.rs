@@ -543,10 +543,10 @@ mod tests {
 		let open = toolbar.iter().find(|b| b.action == Command::Open).unwrap();
 		let interaction = InteractionState {
 			controls: Some(crate::app::widgets::layout(&toolbar)),
-			cursor: (
+			pointer: crate::app::pointer::State::at((
 				open.rect.x + open.rect.w / 2.,
 				open.rect.y + open.rect.h / 2.,
-			),
+			)),
 			..Default::default()
 		};
 		// Freeze outgoing geometry at several points after input returns to the toolbar.

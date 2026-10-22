@@ -360,7 +360,7 @@ fn loaded_images_without_selectable_text_open_on_click() {
 	}
 	let mut app =
 		image_reader("[![](a.png)](#target)\n\n# Target", "a.png", true);
-	let at = app.interaction.cursor;
+	let at = app.interaction.pointer.cursor();
 	physical_click(&mut app, at);
 	assert!(
 		app.interaction.viewer.is_none(),
@@ -371,7 +371,7 @@ fn loaded_images_without_selectable_text_open_on_click() {
 #[test]
 fn an_image_press_that_drags_or_loses_focus_does_not_open() {
 	let mut app = image_reader("![](a.png)", "a.png", true);
-	let at = app.interaction.cursor;
+	let at = app.interaction.pointer.cursor();
 	button(&mut app, MouseButton::Left, ElementState::Pressed);
 	move_to(&mut app, (at.0 + 20., at.1));
 	move_to(&mut app, at);
@@ -447,7 +447,7 @@ fn viewer_captures_search_input_and_middle_clicks() {
 fn viewer_drag_stays_a_drag_after_returning_to_the_press_point() {
 	let mut app = image_reader("![](a.png)", "a.png", false);
 	open(&mut app);
-	let at = app.interaction.cursor;
+	let at = app.interaction.pointer.cursor();
 	button(&mut app, MouseButton::Left, ElementState::Pressed);
 	move_to(&mut app, (at.0 + 20., at.1));
 	move_to(&mut app, (at.0 + 1., at.1));

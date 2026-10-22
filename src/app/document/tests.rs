@@ -1278,7 +1278,7 @@ fn folder_sidebar_geometry_keyboard_and_pointer_ownership() {
 		h.app.options().width
 			<= h.app.dimensions().0 - h.app.folder_inset() - 40.
 	);
-	h.app.interaction.cursor = (20., 150.);
+	h.app.interaction.pointer.move_to((20., 150.));
 	assert!(h.app.pointer_in_folder());
 	h.app.folder.scroll.reset();
 	h.app.wheel_folder(100.);
@@ -1289,7 +1289,10 @@ fn folder_sidebar_geometry_keyboard_and_pointer_ownership() {
 	);
 	assert!(h.app.folder.scroll.animating());
 	let (_, thumb) = h.app.folder_bar().expect("the tree scrolls").bars(false);
-	h.app.interaction.cursor = (thumb.x + thumb.w / 2., thumb.y + thumb.h / 2.);
+	h.app
+		.interaction
+		.pointer
+		.move_to((thumb.x + thumb.w / 2., thumb.y + thumb.h / 2.));
 	assert!(h.app.begin_folder_drag());
 	assert!(
 		!h.app.folder.scroll.animating(),
@@ -1304,7 +1307,7 @@ fn folder_sidebar_geometry_keyboard_and_pointer_ownership() {
 		"the thumb stayed under the held pointer"
 	);
 	h.app.folder.grab = None;
-	h.app.interaction.cursor = (20., 150.);
+	h.app.interaction.pointer.move_to((20., 150.));
 	h.app.wheel_folder(100.);
 	assert!(h.app.folder.scroll.animating());
 	h.app
@@ -1315,7 +1318,10 @@ fn folder_sidebar_geometry_keyboard_and_pointer_ownership() {
 	assert!(h.app.folder.scroll.offset() > 0.);
 	let document_scroll = h.app.readers.session.scrolling.offset;
 	let (track, _) = h.app.folder_bar().unwrap().bars(false);
-	h.app.interaction.cursor = (track.x + track.w / 2., track.y + 5.);
+	h.app
+		.interaction
+		.pointer
+		.move_to((track.x + track.w / 2., track.y + 5.));
 	assert!(h.app.begin_folder_drag());
 	assert_eq!(h.app.readers.session.scrolling.offset, document_scroll);
 	h.app.folder.grab = None;
@@ -1366,7 +1372,10 @@ fn folder_sidebar_geometry_keyboard_and_pointer_ownership() {
 			.iter()
 			.find(|b| b.action == Command::Folder)
 			.unwrap();
-		h.app.interaction.cursor = (toggle.rect.x + 14., toggle.rect.y + 14.);
+		h.app
+			.interaction
+			.pointer
+			.move_to((toggle.rect.x + 14., toggle.rect.y + 14.));
 		h.app.press_widget(&buttons);
 		let action = h.app.release_widget().unwrap();
 		h.app.action(action);
@@ -1602,9 +1611,10 @@ fn file_sidebar_owns_the_full_left_column_without_moving_the_outline() {
 		.unwrap();
 	let toolbar_layer = draws.iter().position(|draw| matches!(draw, Draw::Rect(rect, _) if rect.y == 0. && rect.w == 1200. && rect.h == crate::app::TOP)).unwrap();
 	assert!(file_layer > toolbar_layer);
-	h.app.interaction.cursor = (surface.w, 20.);
+	h.app.interaction.pointer.move_to((surface.w, 20.));
 	assert!(h.app.begin_sidebar_resize());
-	h.app.interaction.cursor.0 += 60.;
+	let (x, y) = h.app.interaction.pointer.cursor();
+	h.app.interaction.pointer.move_to((x + 60., y));
 	h.app.drag_sidebar();
 	h.app.interaction.sidebar_drag = None;
 	assert_eq!(h.app.frame_layout().left_inset, surface.w + 60.);
@@ -1769,7 +1779,7 @@ fn folder_sidebar_repository_scroll_profile() {
 	h.app
 		.interaction
 		.advance_drawers(Instant::now() + Duration::from_secs(1));
-	h.app.interaction.cursor = (120., 250.);
+	h.app.interaction.pointer.move_to((120., 250.));
 	let mut samples = Vec::new();
 	for step in 0..100 {
 		let started = Instant::now();

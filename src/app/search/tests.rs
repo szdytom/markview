@@ -166,11 +166,14 @@ fn slash_respects_panels_modals_and_modifier_chords() {
 		ModifiersState::SUPER,
 		ModifiersState::ALT,
 	] {
-		h.app.interaction.modifiers = modifiers;
+		h.app.interaction.pointer.set_modifiers(modifiers);
 		assert!(!h.app.key_pressed(&slash));
 		assert!(!h.app.readers.session.search.open);
 	}
-	h.app.interaction.modifiers = ModifiersState::empty();
+	h.app
+		.interaction
+		.pointer
+		.set_modifiers(ModifiersState::empty());
 	for panel in [
 		PanelPage::Settings(crate::state::PanelTab::Generic),
 		PanelPage::Export,

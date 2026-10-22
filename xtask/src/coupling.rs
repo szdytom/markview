@@ -58,6 +58,21 @@ const WRITERS: &[&str] = &[
 	"modal",
 	"dropdown",
 	"viewer",
+	// `pointer::State` owns the twelve pointer fields; the observation names
+	// the path through `InteractionState` so a direct write in any other
+	// module still counts, while writes inside the owner stay out.
+	"pointer.pointer_down",
+	"pointer.pressed_image",
+	"pointer.dragged",
+	"pointer.drag_at",
+	"pointer.modifiers",
+	"pointer.cursor",
+	"pointer.hover",
+	"pointer.hover_image",
+	"pointer.hover_overflow",
+	"pointer.scrollbar",
+	"pointer.last_click",
+	"pointer.wheel",
 ];
 
 const TOP_FUNCTIONS: usize = 20;

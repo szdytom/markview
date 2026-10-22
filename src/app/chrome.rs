@@ -890,9 +890,10 @@ impl<'a> Chrome<'a> {
 		if let Some(bar) = self.scrollbar {
 			let held = self
 				.interaction
-				.scrollbar
+				.pointer
+				.scrollbar()
 				.is_some_and(|drag| drag.target == ScrollbarAxis::Document);
-			let (x, y) = self.interaction.cursor;
+			let (x, y) = self.interaction.pointer.cursor();
 			let (track, thumb) = bar.bars(false);
 			out.push(Draw::Rect(
 				track,
@@ -1152,7 +1153,7 @@ impl<'a> Chrome<'a> {
 			widths: self.tab_widths,
 			tabs: self.tabs,
 			active_tab: self.active_tab,
-			cursor: self.interaction.cursor,
+			cursor: self.interaction.pointer.cursor(),
 			viewport: self.frame.tabs,
 		}
 	}

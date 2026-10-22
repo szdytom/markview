@@ -1,11 +1,215 @@
-use crate::state::Selection;
+use crate::state::{
+	Command, Drag, Grain, HoveredLink, ScrollbarDrag, Selection, WheelGesture,
+	WheelStep,
+};
 use crate::{link, state};
 use markview_document::footnote;
 use std::{path::PathBuf, time::Instant};
-use winit::{event::MouseScrollDelta, window::CursorIcon};
+use winit::{
+	event::{MouseScrollDelta, TouchPhase},
+	keyboard::ModifiersState,
+	window::CursorIcon,
+};
 
-use super::{App, LINE_STEP, anchor, chrome};
+use super::{App, LINE_STEP, TOP, anchor, chrome};
 use markview_platform::{WheelAmount, WheelNotch};
+
+/// Everything the pointer owns between events: the press in flight, what it
+/// hovers, the scrollbar grab and the wheel gesture.
+///
+/// The input hot paths call these methods directly; no message queue stands
+/// between the event and the state. The fields stay private so every direct
+/// write has exactly one owner, and every other module reads and writes
+/// through the methods.
+#[derive(Default)]
+pub(crate) struct State {
+	/// The press the selection machine is extending, if any.
+	pointer_down: Option<Drag>,
+	/// An image press, independent of whether the page has selectable text.
+	pressed_image: Option<(String, (f32, f32))>,
+	dragged: bool,
+	drag_at: Option<Instant>,
+	modifiers: ModifiersState,
+	cursor: (f32, f32),
+	hover: Option<HoveredLink>,
+	hover_image: Option<String>,
+	/// The wide block whose horizontal scrollbar the pointer is over.
+	hover_overflow: Option<(usize, usize)>,
+	scrollbar: Option<ScrollbarDrag>,
+	last_click: Option<(Instant, (f32, f32), u8)>,
+	/// The axis of the wheel gesture in flight.
+	wheel: WheelGesture,
+}
+
+impl State {
+	/// A pointer state that only carries a position, for the throwaway
+	/// interaction values the chrome draws with.
+	pub(crate) fn at(cursor: (f32, f32)) -> Self {
+		Self {
+			cursor,
+			..Default::default()
+		}
+	}
+
+	pub(crate) fn cursor(&self) -> (f32, f32) {
+		self.cursor
+	}
+
+	pub(crate) fn move_to(&mut self, point: (f32, f32)) {
+		self.cursor = point;
+	}
+
+	/// The pointer left the window or the surface that reported it.
+	pub(crate) fn leave(&mut self) {
+		self.cursor = (f32::NEG_INFINITY, f32::NEG_INFINITY);
+	}
+
+	pub(crate) fn modifiers(&self) -> ModifiersState {
+		self.modifiers
+	}
+
+	pub(crate) fn set_modifiers(&mut self, modifiers: ModifiersState) {
+		self.modifiers = modifiers;
+	}
+
+	pub(crate) fn drag(&self) -> Option<&Drag> {
+		self.pointer_down.as_ref()
+	}
+
+	pub(crate) fn press(&mut self, drag: Drag) {
+		self.pointer_down = Some(drag);
+	}
+
+	pub(crate) fn release(&mut self) -> Option<Drag> {
+		self.pointer_down.take()
+	}
+
+	pub(crate) fn dragged(&self) -> bool {
+		self.dragged
+	}
+
+	pub(crate) fn set_dragged(&mut self, dragged: bool) {
+		self.dragged = dragged;
+	}
+
+	pub(crate) fn auto_scroll_at(&self) -> Option<Instant> {
+		self.drag_at
+	}
+
+	pub(crate) fn set_auto_scroll_at(&mut self, at: Option<Instant>) {
+		self.drag_at = at;
+	}
+
+	pub(crate) fn pressed_image(&self) -> Option<&(String, (f32, f32))> {
+		self.pressed_image.as_ref()
+	}
+
+	pub(crate) fn set_pressed_image(
+		&mut self,
+		image: Option<(String, (f32, f32))>,
+	) {
+		self.pressed_image = image;
+	}
+
+	pub(crate) fn take_pressed_image(
+		&mut self,
+	) -> Option<(String, (f32, f32))> {
+		self.pressed_image.take()
+	}
+
+	pub(crate) fn clear_pressed_image(&mut self) {
+		self.pressed_image = None;
+	}
+
+	pub(crate) fn hover(&self) -> Option<&HoveredLink> {
+		self.hover.as_ref()
+	}
+
+	pub(crate) fn hover_image(&self) -> Option<&str> {
+		self.hover_image.as_deref()
+	}
+
+	pub(crate) fn hover_overflow(&self) -> Option<(usize, usize)> {
+		self.hover_overflow
+	}
+
+	pub(crate) fn set_hover(
+		&mut self,
+		hover: Option<HoveredLink>,
+		image: Option<String>,
+		overflow: Option<(usize, usize)>,
+	) {
+		self.hover = hover;
+		self.hover_image = image;
+		self.hover_overflow = overflow;
+	}
+
+	pub(crate) fn clear_hover(&mut self) {
+		self.set_hover(None, None, None);
+	}
+
+	/// The document hover ends while the image hint stays, which is what a
+	/// pointer leaving the window has always left behind.
+	pub(crate) fn clear_document_hover(&mut self) {
+		self.hover = None;
+		self.hover_overflow = None;
+	}
+
+	pub(crate) fn scrollbar(&self) -> Option<ScrollbarDrag> {
+		self.scrollbar
+	}
+
+	pub(crate) fn begin_scrollbar(&mut self, drag: ScrollbarDrag) {
+		self.scrollbar = Some(drag);
+	}
+
+	pub(crate) fn end_scrollbar(&mut self) {
+		self.scrollbar = None;
+	}
+
+	pub(crate) fn last_click(&self) -> Option<(Instant, (f32, f32), u8)> {
+		self.last_click
+	}
+
+	pub(crate) fn set_last_click(
+		&mut self,
+		click: Option<(Instant, (f32, f32), u8)>,
+	) {
+		self.last_click = click;
+	}
+
+	pub(crate) fn feed_wheel(
+		&mut self,
+		dx: f32,
+		dy: f32,
+		now: Instant,
+		horizontal_only: bool,
+		phase: TouchPhase,
+	) -> WheelStep {
+		self.wheel.feed(dx, dy, now, horizontal_only, phase)
+	}
+
+	pub(crate) fn reset_wheel(&mut self) {
+		self.wheel = WheelGesture::default();
+	}
+
+	/// Ends an unfinished press: the drag, the image target, the auto-scroll
+	/// deadline and the scrollbar grab. Hover and click history are not a
+	/// press and stay.
+	pub(crate) fn cancel(&mut self) {
+		self.pointer_down = None;
+		self.pressed_image = None;
+		self.drag_at = None;
+		self.scrollbar = None;
+	}
+
+	/// A new press ends what a swallowed release left behind: the previous
+	/// image target and scrollbar grab go before the new owner runs.
+	pub(crate) fn reset_press(&mut self) {
+		self.pressed_image = None;
+		self.scrollbar = None;
+	}
+}
 
 /// The logical pixels one notch of `amount` travels along an axis `extent` long.
 ///
@@ -67,6 +271,328 @@ fn eases(dy: f32) -> bool {
 }
 
 impl<P: super::SendEvent> App<P> {
+	pub(super) fn pointer_moved(
+		&mut self,
+		position: winit::dpi::PhysicalPosition<f64>,
+	) {
+		let scale = self.dimensions().2;
+		let insets = self.insets();
+		let point = (
+			position.x as f32 / scale - insets[0],
+			position.y as f32 / scale - insets[1],
+		);
+		// The macOS backend reports the pointer's position again
+		// before every wheel event, hand still or not. A report that
+		// moves nothing is not motion, and every handler below
+		// answers motion — the open list's hover, most urgently,
+		// must not claim the highlight back from the wheel the
+		// report precedes.
+		if point != self.interaction.pointer.cursor() {
+			let old = self.interaction.pointer.cursor();
+			let was_button = self.button_at_cursor();
+			self.interaction.pointer.move_to(point);
+			if let Some((_, (px, py))) =
+				self.interaction.pointer.pressed_image()
+				&& (point.0 - px).hypot(point.1 - py) > 3.
+			{
+				self.interaction.pointer.clear_pressed_image();
+			}
+			self.hover_dropdown();
+			self.drag_sidebar();
+			self.move_tab_drag();
+			self.drag_scrollbar();
+			self.drag_panel();
+			self.drag_folder();
+			self.update_drag();
+			self.refresh_hover();
+			let now = Instant::now();
+			if self.hover_preview(now) {
+				self.redraw();
+			}
+			if self.interaction.panel_open()
+				|| was_button
+				|| self.button_at_cursor()
+				|| old.1 < TOP
+				|| point.1 < TOP
+				|| old.0 >= self.dimensions().0 - 16.
+				|| point.0 >= self.dimensions().0 - 16.
+			{
+				self.redraw();
+			}
+		}
+	}
+
+	pub(super) fn pointer_left(&mut self) {
+		if self.tab_strip.drag.is_none()
+			&& self.interaction.pointer.scrollbar().is_none()
+			&& self.interaction.panel_grab.is_none()
+			&& self.folder.grab.is_none()
+			&& self.interaction.sidebar_drag.is_none()
+		{
+			self.interaction.pointer.leave();
+		}
+		// A scrollbar drag survives leaving the window: the implicit
+		// pointer grab still reports motion and the release, so the
+		// thumb keeps following the pointer past the edges. The text
+		// selection gesture still ends here.
+		self.interaction.pointer.release();
+		self.interaction.pointer.clear_pressed_image();
+		self.interaction.pointer.set_auto_scroll_at(None);
+		self.interaction.pointer.clear_document_hover();
+		self.dismiss_preview();
+		if let Some(w) = &self.window {
+			w.set_cursor(CursorIcon::Default);
+		}
+		self.redraw();
+	}
+
+	pub(super) fn pointer_pressed(&mut self) {
+		self.prepare_press();
+		if self.press_modal()
+			|| self.press_dropdown()
+			|| self.begin_sidebar_resize()
+			|| self.press_drawer()
+			|| self.press_tab()
+			|| self.press_button()
+			|| self.press_panel()
+		{
+			return;
+		}
+		self.press_page();
+	}
+
+	/// Readies the pointer for the press about to land: the previous gesture
+	/// ends and the capture a swallowed release may have left starts clean.
+	fn prepare_press(&mut self) {
+		self.dismiss_preview();
+		self.cancel_gestures();
+		self.tab_strip.cancel_drag();
+		self.interaction.widgets.focus_visible = false;
+		self.interaction.widgets.captured = None;
+		self.interaction.pointer.reset_press();
+		self.readers.session.select_all_pending = false;
+		self.interaction.panel_grab = None;
+		self.folder.grab = None;
+		self.interaction.sidebar_drag = None;
+	}
+
+	/// A confirmation owns input: only its buttons answer.
+	fn press_modal(&mut self) -> bool {
+		if self.interaction.modal.is_none() {
+			return false;
+		}
+		self.interaction.reset_clicks();
+		let buttons = self.buttons();
+		self.press_widget(&buttons);
+		self.redraw();
+		true
+	}
+
+	/// An open option list owns input the way a confirmation does: a press on
+	/// one of its own options picks it, and a press anywhere else closes it
+	/// without reaching the page it covered. Nothing behind it answers the
+	/// same click, so the press is always the last word and the release that
+	/// follows has nothing left to dispatch.
+	fn press_dropdown(&mut self) -> bool {
+		if self.interaction.dropdown.is_none() {
+			return false;
+		}
+		self.interaction.reset_clicks();
+		let buttons = self.dropdown_buttons();
+		self.press_widget(&buttons);
+		if self.interaction.widgets.captured.is_none() {
+			self.close_dropdown();
+		}
+		self.redraw();
+		true
+	}
+
+	/// The drawer answers a press inside it; a press outside closes the
+	/// outline unless it landed on its toggle. Returns whether a folder drag
+	/// consumed the press.
+	fn press_drawer(&mut self) -> bool {
+		let (x, y) = self.interaction.pointer.cursor();
+		let on_outline_toggle = self.buttons().into_iter().any(|button| {
+			button.action == Command::Outline && button.rect.contains(x, y)
+		});
+		if self.interaction.close_outline_if_outside(
+			self.pointer_in_outline(),
+			on_outline_toggle,
+		) {
+			self.redraw();
+		}
+		self.pointer_in_folder() && self.begin_folder_drag()
+	}
+
+	/// A press on a tab answers before the toolbar buttons under it.
+	fn press_tab(&mut self) -> bool {
+		if self.interaction.panel_open() {
+			return false;
+		}
+		if let Some(index) = self.tab_close_at_cursor() {
+			self.interaction.reset_clicks();
+			self.interaction.widgets.focus = None;
+			self.action(Command::CloseTab(index));
+			return true;
+		}
+		let Some(index) = self.tab_at_cursor() else {
+			return false;
+		};
+		self.interaction.reset_clicks();
+		self.interaction.widgets.focus = None;
+		self.begin_tab_drag(index);
+		true
+	}
+
+	fn press_button(&mut self) -> bool {
+		if !self.button_at_cursor() {
+			return false;
+		}
+		self.interaction.reset_clicks();
+		let buttons = self.buttons();
+		self.press_widget(&buttons);
+		self.redraw();
+		true
+	}
+
+	/// A panel draws over the drawer, so it answers first: its scrollbar drag
+	/// and its outside-click dismissal must work where the two overlap.
+	fn press_panel(&mut self) -> bool {
+		if !self.interaction.panel_open() {
+			return false;
+		}
+		if self.begin_panel_drag() {
+			self.redraw();
+			return true;
+		}
+		self.interaction.reset_clicks();
+		if !self.pointer_in_panel() {
+			self.action(Command::Settings);
+		}
+		true
+	}
+
+	/// The page behind every overlay: the drawer takes a press inside it, the
+	/// scrollbar next, and only then the text selection.
+	fn press_page(&mut self) {
+		if self.pointer_in_folder() || self.pointer_in_outline() {
+			// The drawer owns presses inside it; one between its rows must not
+			// start a document selection underneath.
+			self.interaction.reset_clicks();
+			return;
+		}
+		if self.pointer_in_panel() {
+			return;
+		}
+		self.interaction.widgets.focus = None;
+		if self.press_scrollbar() {
+			return;
+		}
+		self.press_selection();
+	}
+
+	fn press_scrollbar(&mut self) -> bool {
+		if !self.begin_scrollbar_drag() {
+			return false;
+		}
+		self.redraw();
+		true
+	}
+
+	fn press_selection(&mut self) {
+		let (x, y) = self.interaction.pointer.cursor();
+		if y < self.content_top() + 10.0
+			|| y >= self.dimensions().1 - self.bottom() - 10.0
+		{
+			return;
+		}
+		let link = self.link_at(x, y);
+		self.interaction.pointer.set_pressed_image(
+			self.image_at_cursor().map(|(src, _)| (src, (x, y))),
+		);
+		self.interaction.pointer.set_dragged(false);
+		if let Some(position) = self.text_at_cursor() {
+			let click_count =
+				if self.interaction.pointer.modifiers().shift_key() {
+					self.interaction.reset_clicks();
+					1
+				} else {
+					self.interaction.click_count(Instant::now())
+				};
+			match click_count {
+				2 => {
+					let selection =
+						self.readers.session.snapshot.select_word_at(position);
+					if !self
+						.interaction
+						.begin_grain_selection(selection, Grain::Word)
+					{
+						self.interaction.begin_selection(position, link);
+					}
+				}
+				3 => {
+					let selection =
+						self.readers.session.snapshot.select_block_at(position);
+					if !self
+						.interaction
+						.begin_grain_selection(selection, Grain::Block)
+					{
+						self.interaction.begin_selection(position, link);
+					}
+				}
+				_ => self.interaction.begin_selection(position, link),
+			}
+		} else if let Some(link) = link {
+			// A summary line's marker carries no text, but the whole line is
+			// still its control.
+			self.interaction.begin_link_press(link);
+		}
+		self.redraw();
+	}
+
+	pub(super) fn pointer_released(&mut self) {
+		if self.interaction.sidebar_drag.take().is_some() {
+			self.refresh_hover();
+			self.redraw();
+			return;
+		}
+		self.tab_strip.cancel_drag();
+		let pressed_image = self.interaction.pointer.take_pressed_image();
+		let was_pressed = self.interaction.widgets.captured.is_some();
+		let action = self.release_widget();
+		self.interaction.pointer.end_scrollbar();
+		self.interaction.panel_grab = None;
+		self.folder.grab = None;
+		self.interaction.sidebar_drag = None;
+		if was_pressed {
+			if let Some(action) = action {
+				self.action(action);
+			}
+			self.refresh_hover();
+			self.redraw();
+			return;
+		}
+		if self.interaction.modal.is_some() {
+			self.redraw();
+			return;
+		}
+		let (x, y) = self.interaction.pointer.cursor();
+		let link = self.link_at(x, y);
+		if let Some(link) = self.interaction.finish_selection(link.as_deref()) {
+			self.open_link(&link, false);
+		} else if !self.interaction.pointer.dragged()
+			&& pressed_image.is_some_and(|(src, _)| {
+				self.image_at_cursor()
+					.is_some_and(|(released, _)| released == src)
+			}) {
+			// A click that selected nothing and hit no link opens the
+			// viewer when it landed on an image.
+			self.open_viewer_at_cursor();
+		}
+		self.refresh_hover();
+		self.redraw();
+	}
+
 	pub(super) fn pointer_in_panel(&self) -> bool {
 		let (width, height, _) = self.dimensions();
 		let rect = if self.interaction.panel == crate::state::PanelPage::Tabs {
@@ -80,8 +606,10 @@ impl<P: super::SendEvent> App<P> {
 			chrome::panel_rect(width, height)
 		};
 		self.interaction.panel_open()
-			&& rect
-				.contains(self.interaction.cursor.0, self.interaction.cursor.1)
+			&& rect.contains(
+				self.interaction.pointer.cursor().0,
+				self.interaction.pointer.cursor().1,
+			)
 	}
 	pub(super) fn panel_has_focus(&self) -> bool {
 		self.interaction.panel_open()
@@ -183,7 +711,7 @@ impl<P: super::SendEvent> App<P> {
 	/// pointer never moved, which is why every path that moves the offset has
 	/// to say it instead.
 	fn follow_scroll(&mut self) {
-		if self.interaction.pointer_down.is_some() {
+		if self.interaction.pointer.drag().is_some() {
 			self.update_drag();
 		}
 	}
@@ -196,13 +724,13 @@ impl<P: super::SendEvent> App<P> {
 	pub(super) fn button_at_cursor(&mut self) -> bool {
 		let buttons = self.buttons();
 		super::widgets::layout(&buttons)
-			.hit(self.interaction.cursor)
+			.hit(self.interaction.pointer.cursor())
 			.is_some()
 	}
 
 	fn holding_pointer(&self) -> bool {
-		self.interaction.pointer_down.is_some()
-			|| self.interaction.scrollbar.is_some()
+		self.interaction.pointer.drag().is_some()
+			|| self.interaction.pointer.scrollbar().is_some()
 			|| self.tab_strip.drag.is_some()
 			|| self.interaction.sidebar_drag.is_some()
 	}
@@ -210,9 +738,7 @@ impl<P: super::SendEvent> App<P> {
 	/// Hover state follows scrolling and reflow, not only pointer motion.
 	pub(super) fn refresh_hover(&mut self) {
 		if let Some(viewer) = &self.interaction.viewer {
-			self.interaction.hover = None;
-			self.interaction.hover_image = None;
-			self.interaction.hover_overflow = None;
+			self.interaction.pointer.clear_hover();
 			if let Some(w) = &self.window {
 				w.set_cursor(if viewer.grab.is_some() {
 					CursorIcon::Grabbing
@@ -225,9 +751,12 @@ impl<P: super::SendEvent> App<P> {
 		let controls = self.ui_layout();
 		self.interaction.widgets.handle(
 			&controls.hit,
-			markview_ui_core::Input::Move(self.interaction.cursor),
+			markview_ui_core::Input::Move(self.interaction.pointer.cursor()),
 		);
-		let over_control = controls.hit.hit(self.interaction.cursor).is_some();
+		let over_control = controls
+			.hit
+			.hit(self.interaction.pointer.cursor())
+			.is_some();
 		let holding = self.holding_pointer();
 		// The drawer covers document content, so it must not inherit the link
 		// or image hover underneath it.
@@ -241,8 +770,8 @@ impl<P: super::SendEvent> App<P> {
 		let document_hover = if idle {
 			self.document_interaction().hover(
 				markview_selection::Point::new(
-					self.interaction.cursor.0,
-					self.interaction.cursor.1,
+					self.interaction.pointer.cursor().0,
+					self.interaction.pointer.cursor().1,
 				),
 				false,
 				true,
@@ -264,14 +793,14 @@ impl<P: super::SendEvent> App<P> {
 		let hover = document_hover.link;
 		let hover_overflow = document_hover.overflow;
 
-		let hover_changed = hover != self.interaction.hover
-			|| hover_overflow != self.interaction.hover_overflow;
+		let hover_changed = hover.as_ref() != self.interaction.pointer.hover()
+			|| hover_overflow != self.interaction.pointer.hover_overflow();
 		let hover_image = document_hover.image_title;
-		let hover_changed =
-			hover_changed || hover_image != self.interaction.hover_image;
-		self.interaction.hover_image = hover_image;
-		self.interaction.hover = hover;
-		self.interaction.hover_overflow = hover_overflow;
+		let hover_changed = hover_changed
+			|| hover_image.as_deref() != self.interaction.pointer.hover_image();
+		self.interaction
+			.pointer
+			.set_hover(hover, hover_image, hover_overflow);
 		if let Some(w) = &self.window {
 			w.set_cursor(cursor);
 		}
@@ -295,9 +824,9 @@ impl<P: super::SendEvent> App<P> {
 			CursorIcon::Text
 		} else if self.tab_strip.drag.is_some_and(|d| d.moving) {
 			CursorIcon::Grabbing
-		} else if self.interaction.scrollbar.is_some() {
+		} else if self.interaction.pointer.scrollbar().is_some() {
 			CursorIcon::Default
-		} else if self.interaction.pointer_down.is_some() {
+		} else if self.interaction.pointer.drag().is_some() {
 			if self.text_under_cursor() {
 				CursorIcon::Text
 			} else {
@@ -324,8 +853,8 @@ impl<P: super::SendEvent> App<P> {
 		} else {
 			self.document_interaction().cursor(
 				markview_selection::Point::new(
-					self.interaction.cursor.0,
-					self.interaction.cursor.1,
+					self.interaction.pointer.cursor().0,
+					self.interaction.pointer.cursor().1,
 				),
 				false,
 				true,
@@ -345,8 +874,8 @@ impl<P: super::SendEvent> App<P> {
 	) -> Option<(String, markview_layout::scene::Rect)> {
 		self.document_interaction()
 			.image(markview_selection::Point::new(
-				self.interaction.cursor.0,
-				self.interaction.cursor.1,
+				self.interaction.pointer.cursor().0,
+				self.interaction.pointer.cursor().1,
 			))
 			.map(|(src, rect, _)| (src.to_owned(), rect))
 	}
@@ -562,8 +1091,8 @@ impl<P: super::SendEvent> App<P> {
 			self.view_geometry(),
 			&mut self.readers.session.horizontal,
 			markview_selection::Point::new(
-				self.interaction.cursor.0,
-				self.interaction.cursor.1,
+				self.interaction.pointer.cursor().0,
+				self.interaction.pointer.cursor().1,
 			),
 			dx,
 		);

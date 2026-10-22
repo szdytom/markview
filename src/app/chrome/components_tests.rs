@@ -214,7 +214,7 @@ fn button_feedback_distinguishes_hover_press_selection_and_keyboard_focus() {
 					focus: Some(b.action.widget_id()),
 					..Default::default()
 				},
-				cursor: (24.0, 34.0),
+				pointer: crate::app::pointer::State::at((24.0, 34.0)),
 				..Default::default()
 			};
 			let held = InteractionState {
@@ -223,7 +223,7 @@ fn button_feedback_distinguishes_hover_press_selection_and_keyboard_focus() {
 					focus: Some(b.action.widget_id()),
 					..Default::default()
 				},
-				cursor: hover.cursor,
+				pointer: crate::app::pointer::State::at(hover.pointer.cursor()),
 				..Default::default()
 			};
 			let mut fills = Vec::new();
@@ -721,7 +721,7 @@ fn painted_options_keep_their_gap_after_the_layout_resolves() {
 			focus_visible: true,
 			..Default::default()
 		},
-		cursor,
+		pointer: crate::app::pointer::State::at(cursor),
 		controls: Some(controls),
 		..Default::default()
 	};

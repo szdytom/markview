@@ -484,16 +484,16 @@ impl<P: super::SendEvent> App<P> {
 	pub(super) fn text_at_cursor(&self) -> Option<TextPosition> {
 		self.document_interaction()
 			.position(markview_selection::Point::new(
-				self.interaction.cursor.0,
-				self.interaction.cursor.1,
+				self.interaction.pointer.cursor().0,
+				self.interaction.pointer.cursor().1,
 			))
 	}
 
 	pub(super) fn text_under_cursor(&self) -> bool {
 		self.document_interaction().contains_text(
 			markview_selection::Point::new(
-				self.interaction.cursor.0,
-				self.interaction.cursor.1,
+				self.interaction.pointer.cursor().0,
+				self.interaction.pointer.cursor().1,
 			),
 		)
 	}
@@ -502,7 +502,7 @@ impl<P: super::SendEvent> App<P> {
 	/// keeps it under the pointer; a press on the empty track jumps the thumb
 	/// there first, so the same gesture continues as a drag.
 	pub(super) fn begin_scrollbar_drag(&mut self) -> bool {
-		let (x, y) = self.interaction.cursor;
+		let (x, y) = self.interaction.pointer.cursor();
 		if let Some(bar) = self.document_scrollbar()
 			&& bar.hit(x, y)
 		{
@@ -520,7 +520,7 @@ impl<P: super::SendEvent> App<P> {
 				0.0
 			};
 			self.interaction.reset_clicks();
-			self.interaction.scrollbar = Some(ScrollbarDrag {
+			self.interaction.pointer.begin_scrollbar(ScrollbarDrag {
 				target: ScrollbarAxis::Document,
 				grab,
 			});
@@ -539,7 +539,7 @@ impl<P: super::SendEvent> App<P> {
 				0.0
 			};
 			self.interaction.reset_clicks();
-			self.interaction.scrollbar = Some(ScrollbarDrag {
+			self.interaction.pointer.begin_scrollbar(ScrollbarDrag {
 				target: ScrollbarAxis::Overflow { block, overflow },
 				grab,
 			});
@@ -551,10 +551,10 @@ impl<P: super::SendEvent> App<P> {
 
 	/// Applies an in-flight scrollbar drag to the pointer's new position.
 	pub(super) fn drag_scrollbar(&mut self) {
-		let Some(drag) = self.interaction.scrollbar else {
+		let Some(drag) = self.interaction.pointer.scrollbar() else {
 			return;
 		};
-		let (x, y) = self.interaction.cursor;
+		let (x, y) = self.interaction.pointer.cursor();
 		match drag.target {
 			ScrollbarAxis::Document => {
 				self.readers.session.saved_reading = None;
@@ -579,25 +579,28 @@ impl<P: super::SendEvent> App<P> {
 	}
 
 	pub(super) fn update_drag(&mut self) {
-		let position = if self.interaction.pointer_down.is_some() {
+		let position = if self.interaction.pointer.drag().is_some() {
 			self.text_at_cursor()
 		} else {
 			None
 		};
 		self.interaction
 			.move_selection(position, &self.readers.session.snapshot);
-		if self.interaction.pointer_down.is_some() && self.interaction.dragged {
+		if self.interaction.pointer.drag().is_some()
+			&& self.interaction.pointer.dragged()
+		{
 			let (_, height, _) = self.dimensions();
 			let can_scroll = markview_selection::selection_scroll(
-				self.interaction.cursor.1,
+				self.interaction.pointer.cursor().1,
 				TOP,
 				height - self.bottom(),
 				self.readers.session.scrolling.offset,
 				(self.readers.session.snapshot.height - self.viewport())
 					.max(0.0),
 			) != 0.0;
-			self.interaction.drag_at =
-				can_scroll.then(|| Instant::now() + Duration::from_millis(16));
+			self.interaction.pointer.set_auto_scroll_at(
+				can_scroll.then(|| Instant::now() + Duration::from_millis(16)),
+			);
 			self.redraw();
 		}
 	}

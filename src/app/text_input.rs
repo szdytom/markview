@@ -290,7 +290,7 @@ impl<P: SendEvent> App<P> {
 		{
 			return None;
 		}
-		let (x, y) = self.interaction.cursor;
+		let (x, y) = self.interaction.pointer.cursor();
 		if self.readers.session.search.open
 			&& self.search_input_rect().contains(x, y)
 		{
@@ -303,7 +303,7 @@ impl<P: SendEvent> App<P> {
 			return Some(TextField::Url);
 		}
 		let form = self.panel_form()?;
-		let (x, y) = self.interaction.cursor;
+		let (x, y) = self.interaction.pointer.cursor();
 		if !form.viewport.contains(x, y) {
 			return None;
 		}
@@ -447,7 +447,7 @@ impl<P: SendEvent> App<P> {
 		if let Some(id) = self.text_input.focused
 			&& let Some((rect, _)) = self.input_geometry(id)
 		{
-			let point = self.interaction.cursor;
+			let point = self.interaction.pointer.cursor();
 			let (input, ui) = self.input(id);
 			input.point(ui, rect, (point.0, rect.y + rect.h / 2.0), true, 1);
 		}
@@ -484,8 +484,10 @@ impl<P: SendEvent> App<P> {
 				if self.text_input.dragging =>
 			{
 				let scale = self.dimensions().2 as f64;
-				self.interaction.cursor =
-					((position.x / scale) as f32, (position.y / scale) as f32);
+				self.interaction.pointer.move_to((
+					(position.x / scale) as f32,
+					(position.y / scale) as f32,
+				));
 				self.drag_input();
 				self.reset_input_blink();
 				self.text_input.deadline =
@@ -508,9 +510,10 @@ impl<P: SendEvent> App<P> {
 					let (rect, _) = self
 						.input_geometry(id)
 						.expect("hit input has geometry");
-					let point = self.interaction.cursor;
+					let point = self.interaction.pointer.cursor();
 					let clicks = self.interaction.click_count(Instant::now());
-					let extend = self.interaction.modifiers.shift_key();
+					let extend =
+						self.interaction.pointer.modifiers().shift_key();
 					let (input, ui) = self.input(id);
 					input.point(ui, rect, point, extend, clicks);
 					self.text_input.dragging = true;
@@ -570,7 +573,7 @@ impl<P: SendEvent> App<P> {
 
 	fn input_key(&mut self, logical: &Key, text: Option<&str>) -> Outcome {
 		let id = self.text_input.focused.expect("focused input owns key");
-		let mods = self.interaction.modifiers;
+		let mods = self.interaction.pointer.modifiers();
 		let before = (id == TextField::Search)
 			.then(|| self.readers.session.search.input.text().to_owned());
 		let outcome = match id {

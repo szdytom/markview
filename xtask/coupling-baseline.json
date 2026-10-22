@@ -6,7 +6,7 @@
     "App": 48,
     "Chrome": 28,
     "Config": 26,
-    "InteractionState": 33,
+    "InteractionState": 22,
     "Markview": 35,
     "ReaderSession": 33,
     "ReaderSettings": 25
@@ -51,6 +51,54 @@
     "modal": {
       "files": 5,
       "sites": 10
+    },
+    "pointer.cursor": {
+      "files": 0,
+      "sites": 0
+    },
+    "pointer.drag_at": {
+      "files": 0,
+      "sites": 0
+    },
+    "pointer.dragged": {
+      "files": 0,
+      "sites": 0
+    },
+    "pointer.hover": {
+      "files": 0,
+      "sites": 0
+    },
+    "pointer.hover_image": {
+      "files": 0,
+      "sites": 0
+    },
+    "pointer.hover_overflow": {
+      "files": 0,
+      "sites": 0
+    },
+    "pointer.last_click": {
+      "files": 0,
+      "sites": 0
+    },
+    "pointer.modifiers": {
+      "files": 0,
+      "sites": 0
+    },
+    "pointer.pointer_down": {
+      "files": 0,
+      "sites": 0
+    },
+    "pointer.pressed_image": {
+      "files": 0,
+      "sites": 0
+    },
+    "pointer.scrollbar": {
+      "files": 0,
+      "sites": 0
+    },
+    "pointer.wheel": {
+      "files": 0,
+      "sites": 0
     },
     "status.error": {
       "files": 0,

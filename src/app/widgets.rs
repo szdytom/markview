@@ -66,13 +66,14 @@ impl<P: super::SendEvent> App<P> {
 		let layout = layout(buttons);
 		self.interaction
 			.widgets
-			.handle(&layout, Input::Press(self.interaction.cursor));
+			.handle(&layout, Input::Press(self.interaction.pointer.cursor()));
 	}
 	pub(super) fn release_widget(&mut self) -> Option<Command> {
 		let buttons = self.buttons();
-		self.interaction
-			.widgets
-			.handle(&layout(&buttons), Input::Release(self.interaction.cursor))
+		self.interaction.widgets.handle(
+			&layout(&buttons),
+			Input::Release(self.interaction.pointer.cursor()),
+		)
 	}
 	pub(super) fn navigate_widgets(
 		&mut self,

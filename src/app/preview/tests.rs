@@ -159,7 +159,7 @@ fn a_resting_pointer_opens_the_card_after_the_delay() {
 	app.readers.open(second.clone(), Instant::now());
 	let layout = app.tab_layout();
 	let cursor = (layout.rects[0].x + 20.0, 20.0);
-	app.interaction.cursor = cursor;
+	app.interaction.pointer.move_to(cursor);
 	let now = Instant::now();
 
 	assert!(!app.hover_preview(now));
@@ -186,12 +186,12 @@ fn a_resting_pointer_opens_the_card_after_the_delay() {
 	app.interaction.panel = crate::state::PanelPage::Closed;
 
 	// Opening again and moving off the strip closes the card at once.
-	app.interaction.cursor = cursor;
+	app.interaction.pointer.move_to(cursor);
 	app.hover_preview(now + Duration::from_secs(2));
 	let at = now + Duration::from_secs(2) + SHOW_DELAY;
 	app.preview_tick(at);
 	assert!(app.preview.open().is_some());
-	app.interaction.cursor = (400.0, 300.0);
+	app.interaction.pointer.move_to((400.0, 300.0));
 	assert!(app.hover_preview(at + Duration::from_millis(1)));
 	assert!(app.preview.open().is_none());
 }
@@ -215,7 +215,9 @@ fn the_active_tab_opens_a_text_only_card() {
 
 	let layout = app.tab_layout();
 	let now = Instant::now();
-	app.interaction.cursor = (layout.rects[1].x + 5.0, 20.0);
+	app.interaction
+		.pointer
+		.move_to((layout.rects[1].x + 5.0, 20.0));
 	app.hover_preview(now);
 	app.preview_tick(now + SHOW_DELAY);
 	let open = app
@@ -230,7 +232,9 @@ fn the_active_tab_opens_a_text_only_card() {
 	assert_eq!(app.preview.body(), None);
 
 	// The inactive tab still previews its rendered page.
-	app.interaction.cursor = (layout.rects[0].x + 5.0, 20.0);
+	app.interaction
+		.pointer
+		.move_to((layout.rects[0].x + 5.0, 20.0));
 	app.hover_preview(now + Duration::from_secs(1));
 	app.preview_tick(now + Duration::from_secs(1) + SHOW_DELAY);
 	let open = app

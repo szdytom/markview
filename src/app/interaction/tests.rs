@@ -304,9 +304,12 @@ fn document_scrollbar_keeps_its_edge_inset_and_width_while_dragging() {
 	}
 	assert!(!bar.hit(track.x - 1.0, thumb.y + 10.0));
 	assert!(!bar.hit(track.x + track.w + 1.0, thumb.y + 10.0));
-	app.interaction.cursor = (thumb.x + thumb.w / 2.0, thumb.y + 10.0);
+	app.interaction
+		.pointer
+		.move_to((thumb.x + thumb.w / 2.0, thumb.y + 10.0));
 	assert!(app.begin_scrollbar_drag());
-	app.interaction.cursor.1 += 100.0;
+	let (x, y) = app.interaction.pointer.cursor();
+	app.interaction.pointer.move_to((x, y + 100.0));
 	app.drag_scrollbar();
 	assert!(app.readers.session.scrolling.offset > 0.0);
 	let (dragged_track, dragged_thumb) =
@@ -348,13 +351,17 @@ fn an_idle_footer_names_the_document_and_offers_its_whole_path() {
 	assert_eq!(found.rect.y, height - super::super::BOTTOM);
 
 	// A hover hint and a timed status each take the slot back.
-	app.interaction.hover = Some(HoveredLink {
-		url: "https://example.com".into(),
-		block: 0,
-		id: LinkId::Inline(0),
-	});
+	app.interaction.pointer.set_hover(
+		Some(HoveredLink {
+			url: "https://example.com".into(),
+			block: 0,
+			id: LinkId::Inline(0),
+		}),
+		None,
+		None,
+	);
 	assert!(path_button(&mut app).is_none());
-	app.interaction.hover = None;
+	app.interaction.pointer.clear_hover();
 	app.status.set("Copied selection", false, 3);
 	assert!(path_button(&mut app).is_none());
 
@@ -547,18 +554,18 @@ fn dragging_into_the_margin_asks_for_a_tick_and_a_tick_scrolls_one_step() {
 	// travel.
 	app.readers.session.scrolling.offset = 100.0;
 	app.interaction.selection = Some(selection(position(0, 0), position(0, 4)));
-	app.interaction.pointer_down = Some(Drag {
+	app.interaction.pointer.press(Drag {
 		start: Point::new(100.0, 100.0),
 		link: None,
 		grain: Grain::Char,
 		base: None,
 	});
-	app.interaction.dragged = true;
-	app.interaction.cursor = (100.0, TOP + 4.0);
+	app.interaction.pointer.set_dragged(true);
+	app.interaction.pointer.move_to((100.0, TOP + 4.0));
 
 	app.update_drag();
 	assert!(
-		app.interaction.drag_at.is_some(),
+		app.interaction.pointer.auto_scroll_at().is_some(),
 		"a drag inside the top margin must arm the auto-scroll tick"
 	);
 
@@ -570,14 +577,14 @@ fn dragging_into_the_margin_asks_for_a_tick_and_a_tick_scrolls_one_step() {
 		"one tick travels one step towards the pointer's edge"
 	);
 	assert!(
-		app.interaction.drag_at.is_some(),
+		app.interaction.pointer.auto_scroll_at().is_some(),
 		"the tick re-arms while the pointer stays in the margin"
 	);
 
 	// Out of the margin and short of the text, nothing more is scheduled.
-	app.interaction.cursor = (100.0, 400.0);
+	app.interaction.pointer.move_to((100.0, 400.0));
 	app.update_drag();
-	assert!(app.interaction.drag_at.is_none());
+	assert!(app.interaction.pointer.auto_scroll_at().is_none());
 }
 
 /// The window point at the centre of the first cluster of `block`, as the
@@ -870,7 +877,7 @@ fn desktop_sidebar_drags_resize_independently_and_capture_the_release() {
 	assert_eq!(app.folder_inset(), 360.);
 	assert_eq!(app.chrome().outline_drawer().w, 300.);
 	assert!(app.options().width <= 800.);
-	assert!(app.interaction.pointer_down.is_none());
+	assert!(app.interaction.pointer.drag().is_none());
 	assert!(app.interaction.sidebar_drag.is_none());
 	assert!(app.interaction.selection.is_none());
 	assert_eq!(app.readers.session.scrolling.offset, scroll);
@@ -886,9 +893,9 @@ fn desktop_sidebar_drags_resize_independently_and_capture_the_release() {
 	physical_drag(&mut app, (1000., 200.), (-500., 200.));
 	assert_eq!(app.preferences.values.outline_width, 600.);
 	app.preferences.values.folder_width = 600.;
-	app.interaction.cursor = (598., 200.);
+	app.interaction.pointer.move_to((598., 200.));
 	assert_eq!(app.sidebar_edge(), Some(Sidebar::Folder));
-	app.interaction.cursor = (602., 200.);
+	app.interaction.pointer.move_to((602., 200.));
 	assert_eq!(app.sidebar_edge(), Some(Sidebar::Outline));
 	physical_drag(&mut app, (598., 200.), (558., 200.));
 	assert_eq!(app.preferences.values.folder_width, 560.);
@@ -914,7 +921,7 @@ fn sidebar_edges_yield_to_overlays_and_cancel_on_focus_loss() {
 	use crate::state::{PanelPage, PanelTab};
 	let (mut app, _) = reader(SOURCE, 760.);
 	app.interaction.outline_open = true;
-	app.interaction.cursor = (900., 200.);
+	app.interaction.pointer.move_to((900., 200.));
 	assert!(app.sidebar_edge().is_some());
 	app.interaction.panel = PanelPage::Settings(PanelTab::Generic);
 	assert!(!app.begin_sidebar_resize());
@@ -941,7 +948,7 @@ fn sidebar_edges_yield_to_overlays_and_cancel_on_focus_loss() {
 		WindowEvent::Focused(false),
 	);
 	assert!(app.interaction.sidebar_drag.is_none());
-	app.interaction.cursor = (800., 200.);
+	app.interaction.pointer.move_to((800., 200.));
 	app.drag_sidebar();
 	assert_eq!(app.preferences.values.outline_width, 300.);
 	app.preferences.values.folder_width = 600.;
@@ -1025,7 +1032,7 @@ fn a_shift_click_extends_from_where_the_press_landed() {
 	physical_click(&mut app, at);
 	let split = app.readers.session.snapshot.select_all(1).unwrap();
 	app.interaction.selection = Some(split);
-	app.interaction.modifiers = ModifiersState::SHIFT;
+	app.interaction.pointer.set_modifiers(ModifiersState::SHIFT);
 	let next = point_over(&app, 1);
 	physical_click(&mut app, next);
 	let selection = app.interaction.selection.expect("shift extends");
@@ -1039,11 +1046,11 @@ fn a_shift_click_extends_from_where_the_press_landed() {
 #[test]
 fn scrolling_moves_what_a_held_press_covers() {
 	let (mut app, _) = reader(&"Body line.\n\n".repeat(200), 760.0);
-	app.interaction.cursor = (100.0, 200.0);
+	app.interaction.pointer.move_to((100.0, 200.0));
 	let pressed = app.text_at_cursor().expect("text under the pointer");
 	app.interaction.begin_selection(pressed, None);
 	// Far enough that the press counts as a drag rather than a click.
-	app.interaction.cursor = (160.0, 260.0);
+	app.interaction.pointer.move_to((160.0, 260.0));
 	app.update_drag();
 	let held = app.interaction.selection.expect("a drag selects");
 	assert_eq!(held.anchor, pressed, "the anchor is where the press landed");
@@ -1157,7 +1164,7 @@ fn wheel_travel_eases_the_settings_panel_and_tab_strip() {
 		.show_panel(crate::state::PanelPage::Settings(
 			crate::state::PanelTab::Generic,
 		));
-	app.interaction.cursor = (700.0, 400.0);
+	app.interaction.pointer.move_to((700.0, 400.0));
 	let (_, max) = app.panel_scroll_range().expect("the page scrolls");
 	assert!(max > 0.0);
 	assert_eq!(app.interaction.settings_scroll.offset(), 0.0);
@@ -1179,7 +1186,9 @@ fn wheel_travel_eases_the_settings_panel_and_tab_strip() {
 			.open(PathBuf::from(format!("/tmp/wheel-tab-{index}.md")), now);
 	}
 	let layout = app.frame_layout();
-	app.interaction.cursor = (layout.tabs.x + layout.tabs.w / 2.0, 10.0);
+	app.interaction
+		.pointer
+		.move_to((layout.tabs.x + layout.tabs.w / 2.0, 10.0));
 	assert_eq!(app.tab_strip.scroll.offset(), 0.0);
 	wheel(&mut app);
 	assert_eq!(
@@ -1210,7 +1219,7 @@ fn grabbing_the_panel_thumb_stops_its_ease() {
 	app.overlay();
 	let (_, max) = app.panel_scroll_range().expect("the page scrolls");
 	assert!(max > 0.0);
-	app.interaction.cursor = (700.0, 400.0);
+	app.interaction.pointer.move_to((700.0, 400.0));
 	app.handle_window_event(
 		&StubLoop,
 		WindowId::dummy(),
@@ -1222,7 +1231,9 @@ fn grabbing_the_panel_thumb_stops_its_ease() {
 	);
 	assert!(app.interaction.settings_scroll.animating());
 	let (_, thumb) = app.panel_bar().expect("the page scrolls").bars(false);
-	app.interaction.cursor = (thumb.x + thumb.w / 2.0, thumb.y + thumb.h / 2.0);
+	app.interaction
+		.pointer
+		.move_to((thumb.x + thumb.w / 2.0, thumb.y + thumb.h / 2.0));
 	assert!(app.begin_panel_drag());
 	assert!(!app.interaction.settings_scroll.animating());
 	let held = app.interaction.settings_scroll.offset();
@@ -1251,7 +1262,7 @@ fn touching_a_panel_stops_its_ease() {
 	app.overlay();
 	let (_, max) = app.panel_scroll_range().expect("the page scrolls");
 	assert!(max > 0.0);
-	app.interaction.cursor = (700.0, 400.0);
+	app.interaction.pointer.move_to((700.0, 400.0));
 	app.handle_window_event(
 		&StubLoop,
 		WindowId::dummy(),
@@ -1293,7 +1304,9 @@ fn a_scrolling_strip_carries_the_dragged_tab_with_it() {
 		.hit(viewport.x + viewport.w / 2.0, viewport.y + viewport.h / 2.0)
 		.expect("the strip shows a tab in the middle");
 	let tab = layout.rects[start];
-	app.interaction.cursor = (tab.x + tab.w / 2.0, tab.y + tab.h / 2.0);
+	app.interaction
+		.pointer
+		.move_to((tab.x + tab.w / 2.0, tab.y + tab.h / 2.0));
 	app.begin_tab_drag(start);
 	app.tab_strip.drag.as_mut().unwrap().moving = true;
 
@@ -1323,7 +1336,7 @@ fn a_scrolling_strip_carries_the_dragged_tab_with_it() {
 #[test]
 fn a_fractional_line_wheel_coasts_on_windows_and_eases_elsewhere() {
 	let (mut app, _) = reader(&"A scrolling paragraph.\n\n".repeat(100), 760.0);
-	app.interaction.cursor = point_over(&app, 0);
+	app.interaction.pointer.move_to(point_over(&app, 0));
 	let feed = |app: &mut App<StubProxy>, lines| {
 		app.handle_window_event(
 			&StubLoop,
@@ -1339,7 +1352,7 @@ fn a_fractional_line_wheel_coasts_on_windows_and_eases_elsewhere() {
 	let whole = app.readers.session.scrolling.target.unwrap();
 	assert!(app.readers.session.scrolling.animation.is_some());
 	app.readers.session.cancel_scroll_animation();
-	app.interaction.wheel = Default::default();
+	app.interaction.pointer.reset_wheel();
 	feed(&mut app, -0.5);
 	assert_eq!(app.readers.session.scrolling.target, Some(whole * 0.5));
 	if markview_platform::wheel_packets() {
@@ -1369,7 +1382,7 @@ fn pixel_scroll(
 #[test]
 fn a_native_pixel_stream_follows_contact_and_stops_where_the_hand_stops() {
 	let (mut app, _) = reader(&"A scrolling paragraph.\n\n".repeat(100), 760.0);
-	app.interaction.cursor = point_over(&app, 0);
+	app.interaction.pointer.move_to(point_over(&app, 0));
 	let mut feed = pixel_scroll(Inertia::Native);
 	feed(&mut app, -40.0, TouchPhase::Started);
 	feed(&mut app, -60.0, TouchPhase::Moved);
@@ -1395,7 +1408,7 @@ fn a_native_pixel_stream_follows_contact_and_stops_where_the_hand_stops() {
 #[test]
 fn a_native_pixel_stream_reverses_with_the_first_opposite_delta() {
 	let (mut app, _) = reader(&"A scrolling paragraph.\n\n".repeat(100), 760.0);
-	app.interaction.cursor = point_over(&app, 0);
+	app.interaction.pointer.move_to(point_over(&app, 0));
 	let mut feed = pixel_scroll(Inertia::Native);
 	feed(&mut app, -50.0, TouchPhase::Started);
 	feed(&mut app, -30.0, TouchPhase::Moved);
@@ -1414,7 +1427,7 @@ fn a_native_stream_start_cancels_a_running_wheel_momentum() {
 		app.viewport(),
 	);
 	assert!(app.readers.session.scroll_animating());
-	app.interaction.cursor = point_over(&app, 0);
+	app.interaction.pointer.move_to(point_over(&app, 0));
 	app.trackpad_scroll(0.0, -10.0, TouchPhase::Started, Inertia::Native);
 	let resting = app.readers.session.scrolling.offset;
 	assert!(resting > 0.0, "the momentum had already moved the page");
@@ -1429,7 +1442,7 @@ fn a_native_stream_start_cancels_a_running_wheel_momentum() {
 #[test]
 fn a_pixel_stream_without_native_inertia_still_coasts_on_release() {
 	let (mut app, _) = reader(&"A scrolling paragraph.\n\n".repeat(100), 760.0);
-	app.interaction.cursor = point_over(&app, 0);
+	app.interaction.pointer.move_to(point_over(&app, 0));
 	let mut feed = pixel_scroll(Inertia::Synthesized);
 	feed(&mut app, -40.0, TouchPhase::Started);
 	for _ in 0..4 {
@@ -1450,23 +1463,25 @@ fn a_scrollbar_a_selection_or_a_viewer_drag_owns_the_pan_input() {
 	assert!(!app.pointer_owns_input());
 	// A press that has not crossed the drag threshold is only a click in
 	// waiting; the stream it would interrupt is left alone.
-	app.interaction.pointer_down = Some(Drag {
+	app.interaction.pointer.press(Drag {
 		start: Point::new(40.0, 40.0),
 		link: None,
 		grain: Grain::Char,
 		base: None,
 	});
 	assert!(!app.pointer_owns_input());
-	app.interaction.dragged = true;
+	app.interaction.pointer.set_dragged(true);
 	assert!(app.pointer_owns_input(), "a text selection drag owns it");
-	app.interaction.pointer_down = None;
-	app.interaction.dragged = false;
-	app.interaction.scrollbar = Some(crate::state::ScrollbarDrag {
-		target: crate::state::ScrollbarAxis::Document,
-		grab: 0.0,
-	});
+	app.interaction.pointer.release();
+	app.interaction.pointer.set_dragged(false);
+	app.interaction
+		.pointer
+		.begin_scrollbar(crate::state::ScrollbarDrag {
+			target: crate::state::ScrollbarAxis::Document,
+			grab: 0.0,
+		});
 	assert!(app.pointer_owns_input(), "a scrollbar drag owns it");
-	app.interaction.scrollbar = None;
+	app.interaction.pointer.end_scrollbar();
 	app.interaction.viewer = Some(crate::state::Viewer {
 		src: String::new(),
 		pixels: (10.0, 10.0),
@@ -1650,7 +1665,7 @@ fn drawer_swipes_reject_short_cancelled_multitouch_and_owned_input() {
 	assert_eq!(app.readers.session.scrolling.offset, 120.0);
 	assert_eq!(app.interaction.panel, PanelPage::Closed);
 	app.cancel_gestures();
-	app.interaction.cursor = (600.0, 300.0);
+	app.interaction.pointer.move_to((600.0, 300.0));
 	app.trackpad_scroll(120.0, 0.0, TouchPhase::Started, Inertia::Native);
 	app.trackpad_scroll(0.0, 0.0, TouchPhase::Ended, Inertia::Native);
 	assert_eq!(app.interaction.panel, PanelPage::Closed);
@@ -1800,10 +1815,10 @@ fn permission_modals_over_forms_keep_close_geometry_and_own_input() {
 		let close = buttons.iter().find(|b| b.icon.is_some()).unwrap();
 		assert!(draws.iter().any(|draw| matches!(draw, Draw::Icon { x, y, size, .. }
 			if *x == close.rect.x + (close.rect.w - size) / 2.0 && *y == close.rect.y + (close.rect.h - size) / 2.0)));
-		app.interaction.cursor = (
+		app.interaction.pointer.move_to((
 			close.rect.x + close.rect.w / 2.0,
 			close.rect.y + close.rect.h / 2.0,
-		);
+		));
 		app.press_widget(&buttons);
 		assert_eq!(app.interaction.widgets.captured, Some(close.id));
 		let action = app.release_widget().unwrap();
@@ -1991,11 +2006,15 @@ fn document_thumb_drag_cancels_restoration_during_reflow() {
 		session.snapshot_complete = false;
 		session.layout_pending = loading;
 		session.scrolling.offset = 0.0;
-		app.interaction.scrollbar = Some(crate::state::ScrollbarDrag {
-			target: crate::state::ScrollbarAxis::Document,
-			grab: 10.0,
-		});
-		app.interaction.cursor = (thumb.x + thumb.w / 2.0, thumb.y + 110.0);
+		app.interaction
+			.pointer
+			.begin_scrollbar(crate::state::ScrollbarDrag {
+				target: crate::state::ScrollbarAxis::Document,
+				grab: 10.0,
+			});
+		app.interaction
+			.pointer
+			.move_to((thumb.x + thumb.w / 2.0, thumb.y + 110.0));
 		app.drag_scrollbar();
 		assert!(app.readers.session.saved_reading.is_none());
 		let dragged = app.readers.session.scrolling.offset;
@@ -2018,4 +2037,47 @@ fn document_thumb_drag_cancels_restoration_during_reflow() {
 		);
 		assert!((app.readers.session.scrolling.offset - dragged).abs() < 0.01);
 	}
+}
+
+#[test]
+fn opening_a_panel_cancels_the_press_and_hover() {
+	let (mut app, _) = reader(SOURCE, 760.0);
+	app.interaction.pointer.press(Drag {
+		start: Point::new(100.0, 100.0),
+		link: None,
+		grain: Grain::Char,
+		base: None,
+	});
+	app.interaction
+		.pointer
+		.set_pressed_image(Some(("picture.png".into(), (100.0, 100.0))));
+	app.interaction
+		.pointer
+		.set_auto_scroll_at(Some(Instant::now()));
+	app.interaction
+		.pointer
+		.begin_scrollbar(crate::state::ScrollbarDrag {
+			target: crate::state::ScrollbarAxis::Document,
+			grab: 0.0,
+		});
+	app.interaction.pointer.set_hover(
+		Some(HoveredLink {
+			url: "https://example.com".into(),
+			block: 0,
+			id: LinkId::Inline(0),
+		}),
+		Some("picture.png".into()),
+		Some((0, 0)),
+	);
+
+	app.action(Command::Settings);
+
+	assert!(app.interaction.panel_open());
+	assert!(app.interaction.pointer.drag().is_none());
+	assert!(app.interaction.pointer.pressed_image().is_none());
+	assert!(app.interaction.pointer.auto_scroll_at().is_none());
+	assert!(app.interaction.pointer.scrollbar().is_none());
+	assert!(app.interaction.pointer.hover().is_none());
+	assert!(app.interaction.pointer.hover_image().is_none());
+	assert!(app.interaction.pointer.hover_overflow().is_none());
 }

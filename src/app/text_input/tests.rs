@@ -109,7 +109,7 @@ fn form_focus_routes_typing_ime_and_tab_without_document_shortcuts() {
 		Some(actions[(at + 1) % actions.len()].action.widget_id())
 	);
 	assert_eq!(app.text_input.focused, None);
-	app.interaction.modifiers = ModifiersState::SHIFT;
+	app.interaction.pointer.set_modifiers(ModifiersState::SHIFT);
 	app.key_pressed(&Key::Named(NamedKey::Tab));
 	app.sync_input();
 	assert_eq!(app.text_input.focused, Some(TextField::ExportTitle));
@@ -140,7 +140,7 @@ fn pointer_drag_and_focus_loss_cancel_composition_without_losing_committed_text(
 	event(&mut app, WindowEvent::Focused(true));
 	let (rect, viewport) = app.input_geometry(TextField::ExportTitle).unwrap();
 	assert!(rect.intersect(viewport).is_some());
-	app.interaction.cursor = (rect.x + 9., rect.y + 16.);
+	app.interaction.pointer.move_to((rect.x + 9., rect.y + 16.));
 	event(
 		&mut app,
 		WindowEvent::MouseInput {
@@ -150,7 +150,9 @@ fn pointer_drag_and_focus_loss_cancel_composition_without_losing_committed_text(
 		},
 	);
 	assert!(app.text_input.dragging);
-	app.interaction.cursor = (rect.x + rect.w + 30., rect.y + 16.);
+	app.interaction
+		.pointer
+		.move_to((rect.x + rect.w + 30., rect.y + 16.));
 	app.drag_input();
 	event(
 		&mut app,
@@ -431,7 +433,9 @@ fn empty_page_url_input_accepts_text_and_submits_with_enter() {
 	app.args.offline = true;
 	let id = TextField::Url;
 	let rect = app.input_geometry(id).unwrap().0;
-	app.interaction.cursor = (rect.x + 8.0, rect.y + 16.0);
+	app.interaction
+		.pointer
+		.move_to((rect.x + 8.0, rect.y + 16.0));
 	assert_eq!(app.input_at_cursor(), Some(id));
 	app.action(Command::FocusInput(id));
 	assert_eq!(app.text_input.focused, Some(id));

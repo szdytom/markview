@@ -234,7 +234,7 @@ impl<P: super::SendEvent> App<P> {
 		// while the file is written.
 		self.interaction.show_panel(crate::state::PanelPage::Closed);
 		self.interaction.widgets.focus = None;
-		self.interaction.pointer_down = None;
+		self.interaction.pointer.release();
 		self.dialog_open = true;
 		self.export.rebuild = false;
 		self.export.watch_request = watch;

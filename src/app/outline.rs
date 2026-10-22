@@ -86,8 +86,8 @@ impl<P: super::SendEvent> App<P> {
 		claims_pointer(
 			&self.interaction,
 			self.outline_drawer(),
-			self.interaction.cursor.0,
-			self.interaction.cursor.1,
+			self.interaction.pointer.cursor().0,
+			self.interaction.pointer.cursor().1,
 		)
 	}
 

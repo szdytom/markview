@@ -68,11 +68,11 @@ impl<P: super::SendEvent> App<P> {
 			horizontal: &self.readers.session.horizontal,
 			hovered_link: self
 				.interaction
-				.hover
-				.as_ref()
+				.pointer
+				.hover()
 				.map(|link| link.link_ref()),
-			hovered_overflow: self.interaction.hover_overflow,
-			held_overflow: self.interaction.scrollbar.and_then(
+			hovered_overflow: self.interaction.pointer.hover_overflow(),
+			held_overflow: self.interaction.pointer.scrollbar().and_then(
 				|drag| match drag.target {
 					ScrollbarAxis::Overflow { block, overflow } => {
 						Some((block, overflow))
@@ -93,8 +93,8 @@ impl<P: super::SendEvent> App<P> {
 			(!self.interaction.panel_open()
 				&& self.interaction.modal.is_none())
 			.then_some((
-				self.interaction.cursor.0 + insets[0],
-				self.interaction.cursor.1 + insets[1],
+				self.interaction.pointer.cursor().0 + insets[0],
+				self.interaction.pointer.cursor().1 + insets[1],
 			)),
 		);
 		let (frame, suboptimal) = match renderer.acquire()? {

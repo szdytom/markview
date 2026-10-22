@@ -11,7 +11,7 @@ use std::{
 	sync::Arc,
 	time::{Duration, Instant},
 };
-use winit::{event::TouchPhase, keyboard::ModifiersState};
+use winit::event::TouchPhase;
 
 mod drawer;
 mod outline;
@@ -199,10 +199,8 @@ impl InteractionState {
 		self.panel = page;
 		self.widgets.focus = None;
 		self.widgets.captured = None;
-		self.pointer_down = None;
-		self.pressed_image = None;
-		self.drag_at = None;
-		self.scrollbar = None;
+		// Opening a panel cancels the pointer gesture the document had.
+		self.pointer.cancel();
 		self.panel_grab = None;
 		// An option list belongs to the page that opened it.
 		self.dropdown = None;
@@ -661,20 +659,9 @@ pub(crate) struct InteractionState {
 	/// it: no two pages of the panel are ever open at once.
 	pub(crate) styles_scroll: ScrollArea,
 	pub(crate) selection: Option<TextSelection>,
-	pub(crate) pointer_down: Option<Drag>,
-	/// An image press, independent of whether the page has selectable text.
-	pub(crate) pressed_image: Option<(String, (f32, f32))>,
-	pub(crate) dragged: bool,
-	pub(crate) drag_at: Option<Instant>,
-	pub(crate) modifiers: ModifiersState,
-	pub(crate) cursor: (f32, f32),
-	pub(crate) hover: Option<HoveredLink>,
-	pub(crate) hover_image: Option<String>,
-	/// The wide block whose horizontal scrollbar the pointer is over.
-	pub(crate) hover_overflow: Option<(usize, usize)>,
 	pub(crate) widgets: markview_ui_core::Interaction,
-	pub(crate) scrollbar: Option<ScrollbarDrag>,
-	pub(crate) last_click: Option<(Instant, (f32, f32), u8)>,
+	/// The pointer's own state: presses, hover, modifiers and the wheel.
+	pub(crate) pointer: crate::app::pointer::State,
 	/// A pending local-file confirmation; while it is set it owns input.
 	pub(crate) modal: Option<Modal>,
 	/// The full-size image viewer; while it is set it owns input too.
@@ -682,8 +669,6 @@ pub(crate) struct InteractionState {
 	/// An open option list. Like a confirmation it owns input while it is set:
 	/// a press outside it closes it without reaching the page behind.
 	pub(crate) dropdown: Option<Dropdown>,
-	/// The axis of the wheel gesture in flight.
-	pub(crate) wheel: WheelGesture,
 	/// The outline drawer is open. It is an overlay, not a modal panel: the
 	/// document keeps scrolling and selecting behind it.
 	pub(crate) outline_open: bool,
@@ -1286,14 +1271,16 @@ impl ReaderSession {
 /// all read the same pointer, and a chord is a chord wherever it lands.
 impl Host for InteractionState {
 	fn cursor(&self) -> Point {
-		Point::new(self.cursor.0, self.cursor.1)
+		let (x, y) = self.pointer.cursor();
+		Point::new(x, y)
 	}
 	fn modifiers(&self) -> Modifiers {
+		let modifiers = self.pointer.modifiers();
 		Modifiers {
-			shift: self.modifiers.shift_key(),
-			control: self.modifiers.control_key(),
-			alt: self.modifiers.alt_key(),
-			meta: self.modifiers.super_key(),
+			shift: modifiers.shift_key(),
+			control: modifiers.control_key(),
+			alt: modifiers.alt_key(),
+			meta: modifiers.super_key(),
 		}
 	}
 	fn selection(&self) -> Option<TextSelection> {
@@ -1303,40 +1290,46 @@ impl Host for InteractionState {
 		self.selection = selection;
 	}
 	fn drag(&self) -> Option<&Drag> {
-		self.pointer_down.as_ref()
+		self.pointer.drag()
 	}
 	fn set_drag(&mut self, drag: Option<Drag>) {
-		self.pointer_down = drag;
+		if let Some(drag) = drag {
+			self.pointer.press(drag);
+		} else {
+			self.pointer.release();
+		}
 	}
 	fn take_drag(&mut self) -> Option<Drag> {
-		self.pointer_down.take()
+		self.pointer.release()
 	}
 	fn dragged(&self) -> bool {
-		self.dragged
+		self.pointer.dragged()
 	}
 	fn set_dragged(&mut self, dragged: bool) {
-		self.dragged = dragged;
+		self.pointer.set_dragged(dragged);
 	}
 	fn auto_scroll_at(&self) -> Option<Instant> {
-		self.drag_at
+		self.pointer.auto_scroll_at()
 	}
 	fn set_auto_scroll_at(&mut self, at: Option<Instant>) {
-		self.drag_at = at;
+		self.pointer.set_auto_scroll_at(at);
 	}
 	fn last_click(&self) -> Option<(Instant, Point, u8)> {
-		self.last_click
+		self.pointer
+			.last_click()
 			.map(|(at, (x, y), count)| (at, Point::new(x, y), count))
 	}
 	fn set_last_click(&mut self, click: Option<(Instant, Point, u8)>) {
-		self.last_click =
-			click.map(|(at, point, count)| (at, (point.x, point.y), count));
+		self.pointer.set_last_click(
+			click.map(|(at, point, count)| (at, (point.x, point.y), count)),
+		);
 	}
 	fn blur(&mut self) {
 		self.widgets.focus = None;
 	}
 	fn release_pointer(&mut self) {
-		self.pressed_image = None;
-		self.scrollbar = None;
+		self.pointer.clear_pressed_image();
+		self.pointer.end_scrollbar();
 	}
 }
 
