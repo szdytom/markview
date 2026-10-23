@@ -576,7 +576,7 @@ impl<P: super::SendEvent> App<P> {
 		}
 	}
 
-	fn redraw_event(&mut self, event_loop: &impl Loop) {
+	pub(super) fn redraw_event(&mut self, event_loop: &impl Loop) {
 		if let Err(e) = self.render(event_loop) {
 			let message = self
 				.preferences

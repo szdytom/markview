@@ -82,6 +82,7 @@ impl<P: super::SendEvent> ApplicationHandler<Event> for App<P> {
 				self.open_web_page(url);
 			}
 			self.redraw();
+			self.reveal_first_frame(event_loop);
 			Ok(())
 		})();
 		if let Err(e) = result {
@@ -125,6 +126,19 @@ impl<P: super::SendEvent> ApplicationHandler<Event> for App<P> {
 }
 
 impl<P: super::SendEvent> App<P> {
+	/// Draws the first frame of a window this platform created hidden, then
+	/// reveals it. A hidden window receives no redraw event, so the frame has
+	/// to be drawn here or the window would stay blank until the next one.
+	fn reveal_first_frame(&mut self, event_loop: &impl super::window::Loop) {
+		if !markview_platform::starts_hidden() {
+			return;
+		}
+		self.redraw_event(event_loop);
+		if let Some(window) = &self.window {
+			markview_platform::reveal(window);
+		}
+	}
+
 	fn create_window(
 		&self,
 		event_loop: &ActiveEventLoop,
