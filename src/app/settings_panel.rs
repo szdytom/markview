@@ -316,7 +316,8 @@ mod tests {
 	fn dialect_messages_persist_as_one_setting_and_reflow() {
 		let mut model = Model {
 			values: ReaderSettings::default(),
-			preview: false,
+			settings_preview: false,
+			..Default::default()
 		};
 		let update =
 			model.update(Message::MarkdownFlavor(MarkdownFlavor::OfmLite));

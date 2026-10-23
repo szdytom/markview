@@ -893,17 +893,23 @@ fn markdown_dialect_preset_lists_gfm_and_ofm_lite() {
 			..Default::default()
 		};
 		let scroll = form(&mut shaper, &settings, 0.0, 1200.0, 800.0).reveal(
-			Command::ToggleDropdown(DropdownId::MarkdownFlavor, index)
-				.widget_id(),
+			Command::Chrome(crate::state::ChromeCommand::ToggleDropdown(
+				DropdownId::MarkdownFlavor,
+				index,
+			))
+			.widget_id(),
 		);
 		let form = form(&mut shaper, &settings, scroll, 1200.0, 800.0);
 		assert!(form.buttons.iter().any(|button| {
 			button.action
-				== Command::ToggleDropdown(DropdownId::MarkdownFlavor, index)
+				== Command::Chrome(crate::state::ChromeCommand::ToggleDropdown(
+					DropdownId::MarkdownFlavor,
+					index,
+				))
 		}));
 		let menu = form
 			.menu(
-				&mut crate::state::Dropdown::new(
+				&mut crate::app::dropdown::Dropdown::new(
 					DropdownId::MarkdownFlavor,
 					index,
 				),
@@ -911,7 +917,12 @@ fn markdown_dialect_preset_lists_gfm_and_ofm_lite() {
 			)
 			.unwrap();
 		assert_eq!(menu.options, 2);
-		assert_eq!(menu.chosen(), Some(Command::MarkdownFlavor(selected)));
+		assert_eq!(
+			menu.chosen(),
+			Some(Command::Settings(
+				crate::state::SettingsCommand::MarkdownFlavor(selected)
+			))
+		);
 		assert_eq!(menu.buttons[0].label, "GFM (GitHub Flavored Markdown)");
 		assert_eq!(
 			menu.buttons[1].label,
@@ -932,16 +943,16 @@ fn dialect_toggles_stay_visible_and_disable_under_ofm_lite() {
 	let hard = gfm_form
 		.buttons
 		.iter()
-		.find(|b| b.action == Command::HardBreaks)
+		.find(|b| {
+			b.action
+				== Command::Settings(crate::state::SettingsCommand::HardBreaks)
+		})
 		.expect("hard breaks");
 	assert!(hard.enabled);
 	assert_eq!(hard.label, "Off");
-	assert!(
-		gfm_form
-			.buttons
-			.iter()
-			.any(|b| b.action == Command::HighlightMarks && b.enabled)
-	);
+	assert!(gfm_form.buttons.iter().any(|b| b.action
+		== Command::Settings(crate::state::SettingsCommand::HighlightMarks)
+		&& b.enabled));
 
 	let ofm = ReaderSettings {
 		markdown_flavor: MarkdownFlavor::OfmLite,
@@ -954,29 +965,47 @@ fn dialect_toggles_stay_visible_and_disable_under_ofm_lite() {
 	let hard = ofm_form
 		.buttons
 		.iter()
-		.find(|b| b.action == Command::HardBreaks)
+		.find(|b| {
+			b.action
+				== Command::Settings(crate::state::SettingsCommand::HardBreaks)
+		})
 		.expect("hard breaks stay visible");
 	assert!(!hard.enabled);
 	assert_eq!(hard.label, "Off");
 	let highlight = ofm_form
 		.buttons
 		.iter()
-		.find(|b| b.action == Command::HighlightMarks)
+		.find(|b| {
+			b.action
+				== Command::Settings(
+					crate::state::SettingsCommand::HighlightMarks,
+				)
+		})
 		.expect("highlight stays visible");
 	assert!(!highlight.enabled);
 	assert_eq!(highlight.label, "On");
 	// Disabled toggles remain in the hit list once scrolled into view, so hover
 	// can explain the force without letting a tap change them.
-	let scroll = ofm_form.reveal(Command::HardBreaks.widget_id());
+	let scroll = ofm_form.reveal(
+		Command::Settings(crate::state::SettingsCommand::HardBreaks)
+			.widget_id(),
+	);
 	assert!(
 		form(&mut shaper, &ofm, scroll, 1200.0, 800.0)
 			.visible_buttons()
 			.iter()
-			.any(|b| b.action == Command::HardBreaks && !b.enabled)
+			.any(|b| b.action
+				== Command::Settings(
+					crate::state::SettingsCommand::HardBreaks
+				) && !b.enabled)
 	);
 	// The preset control remains, labelled as OFM lite.
 	let scroll = ofm_form.reveal(
-		Command::ToggleDropdown(DropdownId::MarkdownFlavor, 1).widget_id(),
+		Command::Chrome(crate::state::ChromeCommand::ToggleDropdown(
+			DropdownId::MarkdownFlavor,
+			1,
+		))
+		.widget_id(),
 	);
 	let control = form(&mut shaper, &ofm, scroll, 1200.0, 800.0)
 		.visible_buttons()
@@ -984,7 +1013,10 @@ fn dialect_toggles_stay_visible_and_disable_under_ofm_lite() {
 		.find(|b| {
 			matches!(
 				b.action,
-				Command::ToggleDropdown(DropdownId::MarkdownFlavor, _)
+				Command::Chrome(crate::state::ChromeCommand::ToggleDropdown(
+					DropdownId::MarkdownFlavor,
+					_
+				))
 			)
 		})
 		.expect("dialect preset");
@@ -1039,7 +1071,10 @@ fn dialect_preset_exposes_icon_help_control() {
 	let help = form
 		.buttons
 		.iter()
-		.find(|b| b.action == Command::DialectHelp)
+		.find(|b| {
+			b.action
+				== Command::Chrome(crate::state::ChromeCommand::DialectHelp)
+		})
 		.expect("dialect help");
 	assert!(help.label.is_empty());
 	assert!(help.icon.is_some());

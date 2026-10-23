@@ -357,17 +357,29 @@ fn rows(settings: &ReaderSettings, phone: bool) -> Vec<Row> {
 					&[
 						(
 							t.settings_flavor_gfm(),
-							Command::MarkdownFlavor(MarkdownFlavor::Gfm),
+							Command::Settings(
+								crate::state::SettingsCommand::MarkdownFlavor(
+									MarkdownFlavor::Gfm,
+								),
+							),
 						),
 						(
 							t.settings_flavor_ofm_lite(),
-							Command::MarkdownFlavor(MarkdownFlavor::OfmLite),
+							Command::Settings(
+								crate::state::SettingsCommand::MarkdownFlavor(
+									MarkdownFlavor::OfmLite,
+								),
+							),
 						),
 					],
-					Some(Command::MarkdownFlavor(settings.markdown_flavor)),
+					Some(Command::Settings(
+						crate::state::SettingsCommand::MarkdownFlavor(
+							settings.markdown_flavor,
+						),
+					)),
 				),
 			)
-			.help(Command::DialectHelp),
+			.help(Command::Chrome(crate::state::ChromeCommand::DialectHelp)),
 	]);
 	// Hard-break and highlight toggles always sit under the dialect preset.
 	// OFM lite forces highlight on and hard breaks off through
@@ -385,7 +397,7 @@ fn rows(settings: &ReaderSettings, phone: bool) -> Vec<Row> {
 					t.settings_off()
 				},
 				dialect.hard_breaks,
-				Command::HardBreaks,
+				Command::Settings(crate::state::SettingsCommand::HardBreaks),
 			)],
 		)
 		.nested()
@@ -399,7 +411,9 @@ fn rows(settings: &ReaderSettings, phone: bool) -> Vec<Row> {
 					t.settings_off()
 				},
 				dialect.highlight_marks,
-				Command::HighlightMarks,
+				Command::Settings(
+					crate::state::SettingsCommand::HighlightMarks,
+				),
 			)],
 		)
 		.nested()

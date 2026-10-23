@@ -110,7 +110,7 @@ impl<P: super::SendEvent> App<P> {
 			ChromeCommand::OpenProject => {
 				self.launch(env!("CARGO_PKG_REPOSITORY"));
 			}
-			Command::DialectHelp => {
+			ChromeCommand::DialectHelp => {
 				let root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"));
 				let localized = match self.preferences.values.lang() {
 					crate::lang::Lang::ZhHans => {

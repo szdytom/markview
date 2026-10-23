@@ -776,14 +776,15 @@ impl<P: super::SendEvent> App<P> {
 		let ofm = self.preferences.values.markdown_flavor
 			!= crate::settings::MarkdownFlavor::Gfm;
 		let hover_control = over.and_then(|widget| match &widget.message {
-			state::Command::DialectHelp => {
-				Some(lang.settings_dialect_tooltip())
-			}
-			state::Command::HardBreaks | state::Command::HighlightMarks
-				if ofm =>
-			{
-				Some(lang.settings_dialect_ofm_forced())
-			}
+			state::Command::Chrome(
+				crate::state::ChromeCommand::DialectHelp,
+			) => Some(lang.settings_dialect_tooltip()),
+			state::Command::Settings(
+				crate::state::SettingsCommand::HardBreaks,
+			)
+			| state::Command::Settings(
+				crate::state::SettingsCommand::HighlightMarks,
+			) if ofm => Some(lang.settings_dialect_ofm_forced()),
 			_ => None,
 		});
 		let holding = self.holding_pointer();

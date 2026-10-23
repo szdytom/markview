@@ -969,6 +969,9 @@ fn settings_differing_from_default() -> ReaderSettings {
 		cjk_type: CjkType::None,
 		codeblock_theme_override: Some("fixture".into()),
 		codeblock_wrap: !default.codeblock_wrap,
+		markdown_flavor: MarkdownFlavor::OfmLite,
+		hard_breaks: !default.hard_breaks,
+		highlight_marks: !default.highlight_marks,
 		scroll_speed: 1.5,
 		single_instance: !default.single_instance,
 		restore_session: !default.restore_session,
@@ -1013,6 +1016,9 @@ fn changed_fields(
 		cjk_type,
 		codeblock_theme_override,
 		codeblock_wrap,
+		markdown_flavor,
+		hard_breaks,
+		highlight_marks,
 		scroll_speed,
 		single_instance,
 		restore_session,
@@ -1039,6 +1045,9 @@ fn expected_changes(field: Setting) -> Vec<&'static str> {
 		Setting::CjkType => vec!["cjk_type"],
 		Setting::Language => vec!["lang"],
 		Setting::CodeblockWrap => vec!["codeblock_wrap"],
+		Setting::Dialect => {
+			vec!["markdown_flavor", "hard_breaks", "highlight_marks"]
+		}
 		Setting::ScrollSpeed => vec!["scroll_speed"],
 		Setting::SingleInstance => vec!["single_instance"],
 		Setting::RestoreSession => vec!["restore_session"],
@@ -1072,6 +1081,11 @@ fn assert_copied(from: &ReaderSettings, to: &ReaderSettings, field: Setting) {
 		Setting::CodeblockWrap => {
 			assert_eq!(to.codeblock_wrap, from.codeblock_wrap);
 		}
+		Setting::Dialect => {
+			assert_eq!(to.markdown_flavor, from.markdown_flavor);
+			assert_eq!(to.hard_breaks, from.hard_breaks);
+			assert_eq!(to.highlight_marks, from.highlight_marks);
+		}
 		Setting::ScrollSpeed => assert_eq!(to.scroll_speed, from.scroll_speed),
 		Setting::SingleInstance => {
 			assert_eq!(to.single_instance, from.single_instance);
@@ -1088,7 +1102,7 @@ fn assert_copied(from: &ReaderSettings, to: &ReaderSettings, field: Setting) {
 
 #[test]
 fn setting_all_keeps_the_persisted_order_and_count() {
-	assert_eq!(Setting::COUNT, 17);
+	assert_eq!(Setting::COUNT, 18);
 	assert_eq!(
 		Setting::ALL,
 		[
@@ -1106,6 +1120,7 @@ fn setting_all_keeps_the_persisted_order_and_count() {
 			Setting::CjkType,
 			Setting::Language,
 			Setting::CodeblockWrap,
+			Setting::Dialect,
 			Setting::ScrollSpeed,
 			Setting::SingleInstance,
 			Setting::RestoreSession,

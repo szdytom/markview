@@ -742,13 +742,13 @@ impl Row {
 		};
 		let mut control = button(
 			chosen.label.clone(),
-			Command::ToggleDropdown(
+			Command::Chrome(crate::state::ChromeCommand::ToggleDropdown(
 				menu.id,
 				menu.entries
 					.iter()
 					.position(|entry| entry.active)
 					.unwrap_or(0),
-			),
+			)),
 			rect,
 		);
 		control.marker = Some(icons::CHEVRON);
