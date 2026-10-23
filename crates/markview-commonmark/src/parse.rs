@@ -8,7 +8,9 @@ use crate::{
 };
 use comrak::{
 	Arena, Options,
-	nodes::{AstNode, ListType, NodeValue, TableAlignment},
+	nodes::{
+		AstNode, CalloutFold, ListType, NodeCallout, NodeValue, TableAlignment,
+	},
 	parse_document,
 };
 use std::{
@@ -530,6 +532,7 @@ impl Reader<'_> {
 				NodeValue::Code(c) => {
 					text.push_str(&self.text_after(&c.literal, source, from))
 				}
+				NodeValue::CodeBlock(c) => text.push_str(&c.literal),
 				NodeValue::Math(m) => {
 					text.push_str(&self.text_after(&m.literal, source, from))
 				}
@@ -749,23 +752,31 @@ impl Reader<'_> {
 			})
 	}
 
-	/// A block quote, or in the Obsidian dialect a callout when its first
-	/// line carries a `[!type]` marker.
-	fn quote_kind<'a>(
+	/// Comrak's callout metadata, plain-text title and body.
+	fn callout_kind<'a>(
 		&mut self,
-		quote: &'a AstNode<'a>,
+		node: &'a AstNode<'a>,
+		metadata: &NodeCallout,
 		source: &Range<usize>,
 		depth: usize,
 	) -> BlockKind {
-		let callout = self
-			.dialect
-			.ofm
-			.then(|| callout_header(self, quote))
-			.flatten();
-		let mut blocks = self.blocks(quote, depth + 1);
-		if let Some(callout) = &callout
-			&& let Some(open) = callout.fold
-		{
+		let title = node.children().find(|child| {
+			matches!(child.data.borrow().value, NodeValue::CalloutTitle)
+		});
+		let callout = Callout {
+			kind: CalloutKind::parse(&metadata.callout_type),
+			title: title.map_or_else(
+				|| metadata.default_title(),
+				|title| self.flattened_from(title, 0).trim().to_owned(),
+			),
+			fold: match metadata.fold {
+				CalloutFold::None => None,
+				CalloutFold::Expanded => Some(true),
+				CalloutFold::Collapsed => Some(false),
+			},
+		};
+		let mut blocks = self.blocks(node, depth + 1);
+		if let Some(open) = callout.fold {
 			// A foldable callout's body is one disclosure, so it toggles like
 			// a `<details>` element.
 			let ordinal = self.details_ordinal;
@@ -786,7 +797,7 @@ impl Reader<'_> {
 		}
 		BlockKind::Quote {
 			label: None,
-			callout,
+			callout: Some(callout),
 			blocks,
 		}
 	}
@@ -804,6 +815,9 @@ impl Reader<'_> {
 	) -> Child {
 		let source = self.range(child);
 		let data = child.data.borrow();
+		if matches!(data.value, NodeValue::CalloutTitle) {
+			return Child::Skip;
+		}
 		let kind = if depth >= self.limits.block_depth {
 			BlockKind::Code {
 				language: "nested Markdown".into(),
@@ -854,7 +868,14 @@ impl Reader<'_> {
 					kind
 				}
 				NodeValue::ThematicBreak => BlockKind::Rule,
-				NodeValue::BlockQuote => self.quote_kind(child, &source, depth),
+				NodeValue::BlockQuote => BlockKind::Quote {
+					label: None,
+					callout: None,
+					blocks: self.blocks(child, depth + 1),
+				},
+				NodeValue::Callout(callout) => {
+					self.callout_kind(child, callout, &source, depth)
+				}
 				NodeValue::Alert(a) => BlockKind::Quote {
 					label: Some(format!("{:?}", a.alert_type)),
 					callout: None,
@@ -1303,9 +1324,9 @@ fn container_markers<'a>(node: &'a AstNode<'a>) -> Vec<ContainerMarker> {
 			NodeValue::FootnoteDefinition(_) => {
 				markers.push(ContainerMarker::Indent(4))
 			}
-			NodeValue::BlockQuote | NodeValue::Alert(_) => {
-				markers.push(ContainerMarker::Quote)
-			}
+			NodeValue::BlockQuote
+			| NodeValue::Alert(_)
+			| NodeValue::Callout(_) => markers.push(ContainerMarker::Quote),
 			_ => {}
 		}
 	}
@@ -1427,10 +1448,6 @@ pub fn parse(source: impl Into<Arc<str>>) -> Document {
 /// The document `source` describes when read in `dialect`.
 pub fn parse_with(source: impl Into<Arc<str>>, dialect: Dialect) -> Document {
 	let source = source.into();
-	parse_unmasked(source, dialect)
-}
-
-fn parse_unmasked(source: Arc<str>, dialect: Dialect) -> Document {
 	let arena = Arena::new();
 	let root = parse_document(&arena, &source, &markdown_options(dialect));
 	let lines = line_starts(&source);
@@ -1529,7 +1546,7 @@ fn parse_unmasked(source: Arc<str>, dialect: Dialect) -> Document {
 /// The comrak configuration every Markdown parse shares, including the body
 /// of a `<details>` element. The dialect's extensions are on; the defaults
 /// every dialect shares are declared here once.
-pub(super) fn markdown_options(dialect: Dialect) -> Options<'static> {
+fn markdown_options(dialect: Dialect) -> Options<'static> {
 	let mut options = Options::default();
 	options.extension.table = true;
 	options.extension.wikilinks_title_after_pipe = true;
@@ -1544,9 +1561,9 @@ pub(super) fn markdown_options(dialect: Dialect) -> Options<'static> {
 	options.extension.tasklist = true;
 	options.extension.autolink = true;
 	options.extension.footnotes = true;
-	// GitHub alerts know five types; the Obsidian dialect reads every
-	// `> [!type]` quote as a callout itself instead. See `callout_header`.
+	// OFM callouts and GFM alerts share syntax but have different semantics.
 	options.extension.alerts = !dialect.ofm;
+	options.extension.ofm_callouts = dialect.ofm;
 	// `%%` comments parse as skipped nodes with original source positions.
 	options.extension.ofm_comments = dialect.ofm;
 	options.extension.math_dollars = true;
@@ -1789,105 +1806,4 @@ fn html_block_kind(
 			BlockKind::Paragraph(html_rich(text, source))
 		}
 	})
-}
-
-/// Splits an Obsidian callout header, `[!type]` with an optional fold sign
-/// and title, off the first line of a block quote. The header's inline nodes
-/// leave the tree, so the quote's blocks are the callout body alone. The
-/// marker must stand verbatim in the source; flattened inlines read an
-/// escaped, coded or styled `[!` just like a real one.
-fn callout_header<'a>(
-	reader: &Reader<'_>,
-	quote: &'a AstNode<'a>,
-) -> Option<Callout> {
-	let paragraph = quote.first_child()?;
-	if !matches!(paragraph.data.borrow().value, NodeValue::Paragraph) {
-		return None;
-	}
-	let mut line = Vec::new();
-	let mut line_end = None;
-	for node in paragraph.children() {
-		if matches!(
-			node.data.borrow().value,
-			NodeValue::SoftBreak | NodeValue::LineBreak
-		) {
-			line_end = Some(node);
-			break;
-		}
-		line.push(node);
-	}
-	let mut text = String::new();
-	for node in &line {
-		plain_inline(node, &mut text);
-	}
-	let (name, fold, title) = callout_marker(&text)?;
-	// Comrak starts escaped text after its backslash. Require a literal
-	// marker at the first inline's source; `name.len()` includes every UTF-8
-	// byte, so adding the delimiters keeps the slice on a character boundary.
-	let marker_end = name.len() + 3 + usize::from(fold.is_some());
-	let start = reader.range(line.first()?).start;
-	if reader.source[..start].ends_with('\\')
-		|| !reader.source[start..].starts_with(&text[..marker_end])
-	{
-		return None;
-	}
-	for node in line.into_iter().chain(line_end) {
-		node.detach();
-	}
-	if paragraph.first_child().is_none() {
-		paragraph.detach();
-	}
-	Some(Callout {
-		kind: CalloutKind::parse(name),
-		title,
-		fold,
-	})
-}
-
-/// The type name, fold state and title of a `[!type]± title` header line.
-/// Without a title the type name, capitalized, stands in.
-fn callout_marker(line: &str) -> Option<(&str, Option<bool>, String)> {
-	let rest = line.strip_prefix("[!")?;
-	let (name, mut after) = rest.split_once(']')?;
-	let word = |c: char| c.is_alphanumeric() || c == '-' || c == '_';
-	if name.is_empty() || !name.chars().all(word) {
-		return None;
-	}
-	let fold = match after.as_bytes().first() {
-		Some(b'+') => Some(true),
-		Some(b'-') => Some(false),
-		_ => None,
-	};
-	if fold.is_some() {
-		after = &after[1..];
-	}
-	if !after.is_empty() && !after.starts_with(char::is_whitespace) {
-		return None;
-	}
-	let title = match after.trim() {
-		"" => {
-			let mut chars = name.chars();
-			chars
-				.next()
-				.map(|c| c.to_uppercase().chain(chars).collect())
-				.unwrap_or_default()
-		}
-		title => title.to_owned(),
-	};
-	Some((name, fold, title))
-}
-
-/// The reading text of one inline node, markup dropped.
-fn plain_inline<'a>(node: &'a AstNode<'a>, out: &mut String) {
-	match &node.data.borrow().value {
-		NodeValue::Text(t) => out.push_str(t),
-		NodeValue::Code(c) => out.push_str(&c.literal),
-		NodeValue::Math(m) => out.push_str(&m.literal),
-		NodeValue::HtmlInline(_) => {}
-		_ => {
-			for child in node.children() {
-				plain_inline(child, out);
-			}
-		}
-	}
 }

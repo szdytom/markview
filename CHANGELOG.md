@@ -23,11 +23,14 @@ at the same level, without `[brackets]`.
 
 ### Added
 
+- Hide `%%` inline and block comments in OFM lite across reading, copy, search and reader exports, preserving code and original source positions.
+- Read Obsidian callouts in the OFM lite preset: built-in types and aliases, nesting and foldable bodies, with plain-text titles.
 - Synchronize scrolling between the VS Code Markdown editor and Markview preview.
 - Export saved or unsaved Markdown from VS Code to PDF or PNG using built-in or custom templates.
 
 ### Changed
 
+- Use upstream Comrak callout parsing and keep `%%` comment markers literal in raw HTML blocks and summaries, matching Obsidian.
 - Make the idle footer's document path and click-to-copy behavior an opt-in setting, off by default.
 - Keep the outline drawer's scroll position and selected entry when it is closed and reopened.
 - Close the image viewer when the active tab changes, so the new document never shows the previous picture.
@@ -63,13 +66,10 @@ at the same level, without `[brackets]`.
 - Parse Obsidian wikilinks with labels and heading targets, preserving literal percent characters in note paths.
 - Add a dedicated serial/parallel layout fuzz differential covering retained scenes, progressive cancellation, cache reuse and reflows with verified worker execution.
 - Add native block layout workers with ordered publication and bounded prefetch, enabled automatically in the GUI after its first readable GPU frame; retain serial Web layout and formula budgets.
-- Hide `%%` inline and block comments in OFM lite across reading, copy, search and reader exports, preserving code and original source positions.
-- Changed: OFM `%%` comments follow comrak's Obsidian semantics exactly: an inline comment no longer promotes a same-line code fence, and comments hide in one-line HTML block bodies.
 - Store a markdown flavor preset, GFM or OFM lite, with GFM-only hard-break and highlight-mark toggles in reader settings, resolved for parsing through `effective_dialect()`.
 - Render single newlines inside a paragraph as line breaks when the effective GFM hard-break toggle is on, reparsing the open document when the setting changes.
 - Render `==highlight==` marks on a themeable `mark` background when the effective highlight dialect is on, staying literal otherwise; OFM lite always highlights.
 - Style `sub` and `mark` and read `u`, `ins`, `small` inline HTML tags as plain text in the OFM lite preset.
-- Read Obsidian callouts in the OFM lite preset: built-in types and aliases, nesting and foldable bodies, with plain-text titles.
 - Add a Rust cyclomatic complexity check with a configurable maximum of 15, excluding tests and test support, with reasoned function-level exemptions and mandatory CI enforcement.
 - Add editor-side system and downloaded font indexing, family matching, and cancellable native process transport.
 - Add template font requirements as JSON and editor-managed downloads to the existing `fonts` CLI commands.

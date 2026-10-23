@@ -2433,7 +2433,7 @@ fn gfm_keeps_github_alerts_and_plain_quotes() {
 	let (callout, _) = callout_of(&doc.blocks[0]);
 	assert_eq!(
 		(callout.kind, callout.title.as_str()),
-		(CalloutKind::Note, "NOTE")
+		(CalloutKind::Note, "Note")
 	);
 }
 
@@ -2850,7 +2850,7 @@ fn ofm_comments_inside_details_and_callouts() {
 	else {
 		panic!("{:?}", doc.blocks[0].kind);
 	};
-	assert_eq!(plain_text(summary), "Summary");
+	assert_eq!(plain_text(summary), "Summary %%hidden%%");
 	let BlockKind::Paragraph(p) = &blocks[0].kind else {
 		panic!("{:?}", blocks[0].kind);
 	};
@@ -3050,12 +3050,11 @@ fn ofm_comments_protect_code_in_html_snippets() {
 		reading(&parse_with(source, ofm())).contains("%%KEEP%%"),
 		"{source}"
 	);
-	// A one-line `<details>` keeps its body as HTML spans, where a comment
-	// hides without Markdown code semantics.
+	// A one-line `<details>` keeps its body as raw HTML, including `%%`.
 	let source =
 		"<details><summary>S</summary>\n`first\n%%GONE%%\nlast`\n</details>";
 	let text = reading(&parse_with(source, ofm()));
-	assert!(!text.contains("GONE"), "{source}: {text}");
+	assert!(text.contains("%%GONE%%"), "{source}: {text}");
 	assert!(text.contains("first"), "{source}: {text}");
 }
 

@@ -445,7 +445,6 @@ pub(crate) fn block_from(
 	let mut containers = 0;
 	let mut rule = false;
 	for token in tokenize(source, anchor_from) {
-		let token = commented_text(token, ofm, &style);
 		let Some((fragment, discover, origin)) =
 			append_html_token(token, &mut spans, &style)
 		else {
@@ -902,48 +901,6 @@ pub(crate) fn tag_len(source: &str) -> Option<usize> {
 		}
 	}
 	None
-}
-
-/// A summary or leaf-paragraph text run hides `%%` comments the same way the
-/// Markdown path does; a code scope keeps them source.
-fn commented_text(token: Token, ofm: bool, style: &Style) -> Token {
-	match token {
-		Token::Text(t) if ofm && !style.code => Token::Text(hide_comments(&t)),
-		token => token,
-	}
-}
-
-/// Cuts closed `%%comment%%` spans from one raw text run; an unclosed or
-/// escaped marker stays literal, matching the Markdown path's reading.
-fn hide_comments(text: &str) -> String {
-	if !text.contains("%%") {
-		return text.to_string();
-	}
-	let bytes = text.as_bytes();
-	let mut out = String::with_capacity(text.len());
-	let mut cursor = 0;
-	while let Some(at) = text[cursor..].find("%%") {
-		let start = cursor + at;
-		let escaped = bytes[..start]
-			.iter()
-			.rev()
-			.take_while(|byte| **byte == b'\\')
-			.count() % 2
-			== 1;
-		if escaped {
-			out.push_str(&text[cursor..start + 1]);
-			cursor = start + 1;
-			continue;
-		}
-		let Some(close) = text[start + 2..].find("%%") else {
-			out.push_str(&text[cursor..]);
-			return out;
-		};
-		out.push_str(&text[cursor..start]);
-		cursor = start + 2 + close + 2;
-	}
-	out.push_str(&text[cursor..]);
-	out
 }
 
 fn push_text(spans: &mut Vec<Span>, text: &str, style: &Style) {

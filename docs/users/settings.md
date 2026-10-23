@@ -105,8 +105,15 @@ For example, `word%%note%%word` reads as `wordword`. Code spans/blocks, atomic
 math, supported HTML code/pre elements and front matter metadata stay protected;
 `\%%` escapes a marker. GFM keeps comment markers literal.
 
+Raw HTML blocks and `<summary>` contents keep `%%` markers literal, as in
+Obsidian. Markdown paragraphs between HTML blocks, separated by blank lines,
+still hide comments; inline HTML tags in a Markdown paragraph do not prevent
+comment parsing.
+
 Callout titles are plain text, and an escaped, coded or styled `[!type]`
 marker leaves the quote an ordinary quote.
+Callout recognition, type normalization and default titles follow Comrak's
+upstream OFM extension.
 
 ```markdown
 > [!warning]- Folded by default

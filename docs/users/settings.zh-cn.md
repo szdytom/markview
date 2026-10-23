@@ -35,7 +35,11 @@
 代码、独立解析的数学内容、支持的 HTML code/pre 元素及 front matter 元数据保持原样；
 `\%%` 转义标记。GFM 保留注释标记。
 
+与 Obsidian 一致，原始 HTML 块和 `<summary>` 内容保留 `%%` 标记。
+用空行与 HTML 块分隔的 Markdown 段落仍会隐藏注释；Markdown 段落中的内联 HTML 标签不会阻止注释解析。
+
 标注框标题为纯文本；被转义、代码包裹或加样式的 `[!type]` 标记仍按普通引用阅读。
+标注框识别、类型规范化与默认标题直接遵循 Comrak 上游的 OFM 扩展。
 
 ```markdown
 > [!warning]- 默认折叠

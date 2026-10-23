@@ -1,7 +1,9 @@
 # Third-party components
 
 The application depends on the versions pinned in `Cargo.lock`. Dependency
-source and original license texts are available in Cargo's registry packages.
+source and original license texts are available in Cargo's registry packages
+or the pinned Git repositories. Comrak currently uses an upstream commit for
+OFM callouts pending the next release.
 
 | Component | Role | License |
 | --- | --- | --- |
