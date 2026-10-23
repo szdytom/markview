@@ -791,12 +791,16 @@ public class Smoke extends Instrumentation {
         }
     }
     private void requireTabletColumnWidthControls() throws Exception {
-        for (int i = 0; i < 8 && button(state(), "Wider") == null; i++) {
-            JSONArray panel = state().getJSONArray("panel_rect");
-            float x = (float)(panel.getDouble(0) + panel.getDouble(2) / 2);
-            float bottom = (float)(panel.getDouble(1) + panel.getDouble(3) - 56);
-            float top = (float)(panel.getDouble(1) + 96);
-            swipe(x, bottom, x, top);
+        // Small steps keep the width row visible; stop inertia after each step.
+        for (int direction : new int[] {1, -1}) {
+            for (int i = 0; i < 16 && button(state(), "Wider") == null; i++) {
+                JSONArray panel = state().getJSONArray("panel_rect");
+                float x = (float)(panel.getDouble(0) + panel.getDouble(2) / 2);
+                float middle = (float)(panel.getDouble(1) + panel.getDouble(3) / 2);
+                float end = middle - direction * 88;
+                swipe(x, middle, x, end);
+                swipe(x, end, x, end);
+            }
         }
         JSONObject current = state();
         require(button(current, "Narrower") != null && button(current, "Wider") != null, "Column width controls are offered only on tablets");

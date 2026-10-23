@@ -34,6 +34,7 @@ at the same level, without `[brackets]`.
 
 ### Fixed
 
+- Keep Android tablet settings checks from scrolling past column-width controls.
 - Show the taskbar button's icon from the first frame on Windows, where the shell draws it from an image the window never advertised (#19).
 - Ease wheel scrolling in the tab strip, settings and export panels, folder tree and outline like the document's own.
 - Let dropdown options answer the pointer edge to edge, closing the gap that belonged to no option between two entries.
