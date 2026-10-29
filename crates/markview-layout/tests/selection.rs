@@ -9,6 +9,7 @@
 use markview_layout::{
 	fonts::FontConfig,
 	layout::{LayoutEngine, LayoutOptions, LayoutSnapshot},
+	scene::Draw,
 	text::Affinity,
 };
 
@@ -261,6 +262,34 @@ fn a_ligature_is_picked_apart_at_its_letters() {
 		assert!((rect.x - cluster.rect.x).abs() < 0.01);
 		assert!((rect.w - cluster.rect.w).abs() < 0.01);
 	}
+}
+
+/// A formula's depth belongs to the line box, not to the baseline of the
+/// prose beside it. Otherwise a shared line lifts all its text and leaves the
+/// selection row with a gap below.
+#[test]
+fn a_formula_descender_does_not_lift_the_text_it_shares_a_line_with() {
+	let baseline = |source: &str| {
+		let snapshot = layout(source);
+		let placed = &snapshot.blocks[0];
+		let row = placed.layout.text[0].clusters[0].rect.y;
+		let glyph = placed
+			.layout
+			.draws
+			.iter()
+			.find_map(|draw| match draw {
+				Draw::Glyph(glyph) => Some(glyph.y),
+				_ => None,
+			})
+			.expect("the prose draws glyphs");
+		glyph - row
+	};
+	let plain = baseline("Uniform text\n");
+	let formula = baseline("Uniform $(a,b)$ text\n");
+	assert!(
+		(plain - formula).abs() < 0.01,
+		"the formula moved the baseline from {plain} to {formula}"
+	);
 }
 
 /// A formula reads as its source but draws as one box, so the pointer only

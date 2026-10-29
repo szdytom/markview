@@ -300,7 +300,7 @@ impl BlockContext<'_> {
 				line.hyphen = false;
 				lines.clear();
 			}
-			let (ascent, descent) = if clusters.is_empty() {
+			let ink = if clusters.is_empty() {
 				self.shaper.empty_metrics(size)
 			} else {
 				(
@@ -308,10 +308,31 @@ impl BlockContext<'_> {
 					clusters.iter().map(|c| c.descent).fold(0., f32::max),
 				)
 			};
+			// A formula or picture can reach below the text it shares a line
+			// with. Center the text when it fits, so that depth does not lift
+			// every other glyph; only a box taller than the line owns the
+			// baseline.
+			let mut text_metrics: Option<(f32, f32)> = None;
+			for cluster in clusters.iter().filter(|c| {
+				!p.math.contains_key(&c.range.start)
+					&& !p.images.contains_key(&c.range.start)
+			}) {
+				let (a, d) = text_metrics.get_or_insert((0., 0.));
+				*a = (*a).max(cluster.ascent);
+				*d = (*d).max(cluster.descent);
+			}
 			let mut height = (size * self.shaper.appearance.line_height)
-				.max(ascent + descent + size * 0.18);
-			let baseline =
+				.max(ink.0 + ink.1 + size * 0.18);
+			let (ascent, descent) = text_metrics.unwrap_or(ink);
+			let mut baseline =
 				y_cursor + (height - ascent - descent) * 0.5 + ascent;
+			// A box that reaches past the line still centers the ink it
+			// shares it with.
+			if baseline - ink.0 < y_cursor
+				|| baseline + ink.1 > y_cursor + height
+			{
+				baseline = y_cursor + (height - ink.0 - ink.1) * 0.5 + ink.0;
+			}
 			// Justification spends the word spaces and the tracking first, then
 			// shares whatever is left over between the clusters that can take
 			// it. Solving it here from the same totals the break search used
