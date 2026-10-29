@@ -59,6 +59,14 @@ yay -S markview-bin
 
 AUR 也提供[源码构建包](https://aur.archlinux.org/packages/markview)。
 
+**macOS (Apple Silicon) — [Homebrew](https://github.com/Stevvven777/homebrew-tap)**
+
+```sh
+brew install --cask Stevvven777/tap/markview
+```
+
+出于成本考虑，我们目前尚未加入付费的 Apple Developer Program。若 macOS 阻止打开应用，请自行前往**系统设置 → 隐私与安全性**，点击**仍要打开**。
+
 **桌面版：**打开 Markdown 文件，或在**打开方式**中选择 Markview。
 **Android：**打开或分享文档时选择**在 Markview 中阅读**。如果文档包含本地图片或相邻章节，请导入所在文件夹。
 

@@ -21,6 +21,10 @@ at the same level, without `[brackets]`.
 
 ## Unreleased
 
+### Documentation
+
+- Document Homebrew installation for Apple Silicon Macs through the community tap.
+
 ### Added
 
 - Center a picture that fits the reading area vertically, while taller pictures keep scrolling.
