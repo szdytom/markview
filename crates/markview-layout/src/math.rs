@@ -1,4 +1,4 @@
-use crate::limits::Limits;
+use crate::{limits::Limits, style::TextAppearance};
 use ratex_types::{DisplayList, MathStyle};
 use std::{collections::HashMap, sync::Arc};
 
@@ -9,11 +9,15 @@ pub struct MathBox {
 	pub descent: f32,
 	pub size: f32,
 	pub display: DisplayList,
+	/// The resolved `[math]` appearance for a missing KaTeX face.
+	pub appearance: TextAppearance,
 }
+
+type CacheKey = (String, bool, u32, u64);
 
 #[derive(Default)]
 pub struct MathEngine {
-	cache: HashMap<(String, bool, u32), Result<Arc<MathBox>, String>>,
+	cache: HashMap<CacheKey, Result<Arc<MathBox>, String>>,
 	limits: Limits,
 	/// Formula bytes laid out since `set_limits`, which resets per pass.
 	used: usize,
@@ -32,8 +36,10 @@ impl MathEngine {
 		latex: &str,
 		display: bool,
 		size: f32,
+		appearance: &TextAppearance,
 	) -> Result<Arc<MathBox>, String> {
-		let key = (latex.to_string(), display, size.to_bits());
+		let key =
+			(latex.to_string(), display, size.to_bits(), appearance.key());
 		if let Some(value) = self.cache.get(&key) {
 			return value.clone();
 		}
@@ -78,6 +84,7 @@ impl MathEngine {
 					descent,
 					size,
 					display: commands,
+					appearance: appearance.clone(),
 				}))
 			})
 			.unwrap_or_else(|_| Err("Formula could not be laid out".into()))
@@ -104,13 +111,29 @@ mod tests {
 	#[test]
 	fn baseline_and_errors() {
 		let mut e = MathEngine::default();
-		let m = e.layout(r"\frac{x_1}{\sqrt{y}}", false, 18.0).unwrap();
+		let m = e
+			.layout(
+				r"\frac{x_1}{\sqrt{y}}",
+				false,
+				18.0,
+				&TextAppearance::default(),
+			)
+			.unwrap();
 		assert!(m.width > 0.0 && m.ascent > 0.0 && m.descent > 0.0);
 		assert!(!m.display.items.is_empty());
-		assert!(e.layout(r"\frac{", false, 18.0).is_err());
+		assert!(
+			e.layout(r"\frac{", false, 18.0, &TextAppearance::default())
+				.is_err()
+		);
 		assert!(Arc::ptr_eq(
 			&m,
-			&e.layout(r"\frac{x_1}{\sqrt{y}}", false, 18.0).unwrap()
+			&e.layout(
+				r"\frac{x_1}{\sqrt{y}}",
+				false,
+				18.0,
+				&TextAppearance::default()
+			)
+			.unwrap()
 		));
 	}
 	#[test]
@@ -119,7 +142,10 @@ mod tests {
 		let latex =
 			format!(r"\frac{{x_1}}{{\sqrt{{y}}}}{}", " + z".repeat(2_500));
 		assert!(latex.len() > 10_000);
-		assert!(e.layout(&latex, false, 18.0).is_ok());
+		assert!(
+			e.layout(&latex, false, 18.0, &TextAppearance::default())
+				.is_ok()
+		);
 	}
 	#[test]
 	fn formula_budgets_reject_without_sticking_in_the_cache() {
@@ -128,16 +154,28 @@ mod tests {
 			math_formula_bytes: 2,
 			..Default::default()
 		});
-		assert!(e.layout("xxxx", false, 18.0).is_err());
+		assert!(
+			e.layout("xxxx", false, 18.0, &TextAppearance::default())
+				.is_err()
+		);
 		e.set_limits(Limits {
 			math_bytes: 0,
 			..Default::default()
 		});
-		assert!(e.layout("x", false, 18.0).is_err());
+		assert!(
+			e.layout("x", false, 18.0, &TextAppearance::default())
+				.is_err()
+		);
 		// A new pass gets a fresh allowance, so a resize can still succeed.
 		e.set_limits(Limits::default());
-		assert!(e.layout("x", false, 18.0).is_ok());
-		assert!(e.layout("xxxx", false, 18.0).is_ok());
+		assert!(
+			e.layout("x", false, 18.0, &TextAppearance::default())
+				.is_ok()
+		);
+		assert!(
+			e.layout("xxxx", false, 18.0, &TextAppearance::default())
+				.is_ok()
+		);
 	}
 	/// `ratex-parser` 0.1.14 overflows `i64` while accumulating a wide
 	/// `\char` literal (`macro_expander.rs:823`). With overflow checks on —
@@ -147,7 +185,23 @@ mod tests {
 	#[test]
 	fn overlong_char_literal_is_an_error_not_a_crash() {
 		let mut e = MathEngine::default();
-		assert!(e.layout(r"\char9999999999999999999", false, 18.0).is_err());
-		assert!(e.layout(r#"\char"FFFFFFFFFFFFFFFF"#, false, 18.0).is_err());
+		assert!(
+			e.layout(
+				r"\char9999999999999999999",
+				false,
+				18.0,
+				&TextAppearance::default()
+			)
+			.is_err()
+		);
+		assert!(
+			e.layout(
+				r#"\char"FFFFFFFFFFFFFFFF"#,
+				false,
+				18.0,
+				&TextAppearance::default()
+			)
+			.is_err()
+		);
 	}
 }

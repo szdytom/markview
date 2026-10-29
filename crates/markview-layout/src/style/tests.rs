@@ -228,6 +228,66 @@ fn bundled_emoji_definition_is_marked_as_the_emoji_face() {
 	assert!(Stylesheet::bundled_print().fontdefs["emoji"].emoji);
 }
 #[test]
+fn a_chain_packs_every_condition() {
+	// The vocabulary must stay inside the slot width; a truncated id silently
+	// drops the condition from its own rule chain.
+	for &(condition, name) in Condition::ALL {
+		let set = chain_set(condition.chain());
+		assert_eq!(set.iter().last(), Some(condition), "{name}");
+	}
+}
+#[test]
+fn a_full_chain_keeps_every_condition() {
+	let conditions: Vec<_> = Condition::ALL
+		.iter()
+		.take(MAX_CHAIN)
+		.map(|(condition, _)| *condition)
+		.collect();
+	let set = chain_set(chain_of(&conditions));
+	assert!(
+		conditions.iter().all(|condition| set.contains(*condition)),
+		"{set:?}"
+	);
+}
+#[test]
+fn math_sets_the_formula_fallback_font() {
+	for sheet in [Stylesheet::bundled(false), Stylesheet::bundled_print()] {
+		let appearance = sheet.math_fallback(&TextAppearance::default());
+		assert_eq!(
+			appearance
+				.font
+				.iter()
+				.map(|font| font.family.as_str())
+				.collect::<Vec<_>>(),
+			["sans-serif", "sans-serif[cjk]", "emoji"]
+		);
+	}
+	// A theme may name its own face for the text a formula borrows.
+	let mut sheet = (*Stylesheet::builtin()).clone();
+	sheet.merge(
+		&Stylesheet::parse(
+			"format_version=2\nversion=1\n[[rule]]\nwhen=['math']\nfont=[{family='monospace'}]"
+		)
+		.unwrap(),
+	);
+	let appearance = sheet.math_fallback(&TextAppearance::default());
+	assert_eq!(appearance.font[0].family, "monospace");
+}
+#[test]
+fn math_error_text_keeps_the_code_font() {
+	let sheet = Stylesheet::bundled(false);
+	let body = sheet.text(&TextAppearance::default(), Condition::Body);
+	let run = sheet.inline(
+		&body,
+		&crate::document::TextStyle {
+			code: true,
+			math_error: true,
+			..Default::default()
+		},
+	);
+	assert_eq!(run.font[0].family, "monospace");
+}
+#[test]
 fn strict_schema() {
 	for bad in [
 		"[body]\ncolor='#ffffff'",
@@ -241,7 +301,7 @@ fn strict_schema() {
 		"format_version=2\nversion=1\n[[rule]]\nwhen=['body']\nbackground='#ffffff00'",
 		"format_version=2\nversion=1\n[[rule]]\nwhen=['em']\ncolorz='#ffffff'",
 		"format_version=2\nversion=1\n[[rule]]\nwhen=['ui']\npadding=2",
-		"format_version=2\nversion=1\n[[rule]]\nwhen=['math']\nfont=[{family='serif'}]",
+		"format_version=2\nversion=1\n[[rule]]\nwhen=['math']\nline_height=2.0",
 		"format_version=2\nversion=1\n[em]\ncolor='#ffffff'",
 		"format_version=2\nversion=1\n[[rule]]\nwhen=['em']",
 		"format_version=2\nversion=1\n[[rule]]\ncolor='#ffffff'",

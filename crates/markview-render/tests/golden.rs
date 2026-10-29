@@ -133,6 +133,7 @@ fn markdown_matches_rendering_baselines() -> Result<()> {
 		}
 		options.fonts = fonts.clone();
 		renderer.set_stylesheet(options.stylesheet.clone());
+		renderer.set_fonts(options.fonts.clone());
 		let mut engine =
 			LayoutEngine::with_executor(Arc::new(Direct), Arc::new(|| {}));
 		if matches!(

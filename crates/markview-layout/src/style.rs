@@ -26,6 +26,7 @@ pub use types::{
 	SYNTHETIC_ITALIC_ANGLE_DEG, SvgStyle, TextAlign, TextEdge, TextMetric,
 	Variant, chain_of, chain_push, chain_set, parse_paper_size,
 };
+use types::{CHAIN_BITS, CHAIN_MASK};
 
 /// The inline conditions this style activates, in application order.
 pub fn text_conditions(style: &TextStyle) -> impl Iterator<Item = Condition> {
@@ -38,9 +39,9 @@ pub fn text_conditions(style: &TextStyle) -> impl Iterator<Item = Condition> {
 		style.superscript.then_some(C::Sup),
 		style.subscript.then_some(C::Sub),
 		style.footnote_ref.then_some(C::FootnoteRef),
+		style.math_error.then_some(C::Math),
 		style.code.then_some(C::Code),
 		style.mark.then_some(C::Mark),
-		style.math_error.then_some(C::Math),
 		style.math_error.then_some(C::Error),
 	]
 	.into_iter()
@@ -245,8 +246,8 @@ impl Stylesheet {
 		let mut count = 0;
 		let mut remaining = chain;
 		while remaining != 0 {
-			let id = (remaining & 63) as usize;
-			remaining >>= 6;
+			let id = (remaining & CHAIN_MASK) as usize;
+			remaining >>= CHAIN_BITS;
 			if let Some((c, _)) =
 				id.checked_sub(1).and_then(|i| Condition::ALL.get(i))
 				&& count < MAX_CHAIN
@@ -310,8 +311,8 @@ impl Stylesheet {
 		let set = chain_set(chain);
 		let mut remaining = chain;
 		while remaining != 0 {
-			let id = (remaining & 63) as usize;
-			remaining >>= 6;
+			let id = (remaining & CHAIN_MASK) as usize;
+			remaining >>= CHAIN_BITS;
 			let Some(condition) =
 				id.checked_sub(1).and_then(|i| Condition::ALL.get(i))
 			else {
@@ -823,6 +824,14 @@ impl Stylesheet {
 	) -> TextAppearance {
 		self.enter(parent, condition)
 	}
+	/// The appearance a formula uses for characters its KaTeX face lacks, in
+	/// the context `parent` describes. The caller supplies the formula's
+	/// absolute size, so `[math]`'s multiplier is not kept here.
+	pub fn math_fallback(&self, parent: &TextAppearance) -> TextAppearance {
+		let mut math = self.text(parent, Condition::Math);
+		math.size = 1.;
+		math
+	}
 	pub fn has_child_rules(&self) -> bool {
 		[Condition::FirstChild, Condition::LastChild]
 			.into_iter()
@@ -844,16 +853,16 @@ impl Stylesheet {
 		out.chain = 0;
 		let mut shift = 0;
 		while chain != 0 {
-			let id = (chain & 63) as usize;
+			let id = (chain & CHAIN_MASK) as usize;
 			let condition = Condition::ALL[id - 1].0;
 			if !matches!(
 				condition,
 				Condition::FirstChild | Condition::LastChild
 			) {
 				out.chain |= (id as u128) << shift;
-				shift += 6;
+				shift += CHAIN_BITS;
 			}
-			chain >>= 6;
+			chain >>= CHAIN_BITS;
 		}
 		if index == 0 {
 			out = self.enter(&out, Condition::FirstChild);

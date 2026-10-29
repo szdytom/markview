@@ -165,6 +165,21 @@ fn print() -> Arc<Stylesheet> {
 	Arc::new(sheet)
 }
 
+/// The base names of the first page's embedded faces.
+fn base_font_names(exported: &Exported) -> Vec<String> {
+	let page = exported.pdf.get_pages()[&1];
+	exported
+		.pdf
+		.get_page_fonts(page)
+		.unwrap()
+		.values()
+		.filter_map(|font| {
+			let name = font.get(b"BaseFont").ok()?.as_name().ok()?;
+			Some(String::from_utf8_lossy(name).into_owned())
+		})
+		.collect()
+}
+
 #[test]
 fn top_bands_repeat_without_moving_text_or_page_furniture() {
 	for (landscape, margin, height) in [(false, 18.0, 4.5), (true, 0.0, 2000.0)]
@@ -937,6 +952,50 @@ fn cjk_inside_a_formula_falls_back_to_the_document_fonts() {
 		.filter(|c| ('\u{4e00}'..='\u{9fff}').contains(c))
 		.collect();
 	assert_eq!(cjk, "车到达的时间", "extracted {text:?}");
+}
+
+#[test]
+fn math_rule_selects_the_formula_fallback_face() {
+	// A formula does not borrow the UI or body face implicitly; `[math]`
+	// names the one it borrows, and a theme can replace it.
+	let mut sheet = (*print()).clone();
+	sheet.merge(
+		&Stylesheet::parse(
+			"format_version=2\nversion=1\n[[rule]]\nwhen=['math']\nfont=[{family='serif[cjk]'}]"
+		)
+		.unwrap(),
+	);
+	let exported = export("$$\\text{中文}$$\n", Arc::new(sheet), true);
+	let names = base_font_names(&exported);
+	assert!(
+		names.iter().any(|name| name.contains("NotoSerifCJK")),
+		"{names:?}"
+	);
+	assert!(
+		!names.iter().any(|name| name.contains("NotoSansCJK")),
+		"{names:?}"
+	);
+}
+
+#[test]
+fn scoped_math_keeps_the_formula_block_context() {
+	let mut sheet = (*print()).clone();
+	sheet.merge(
+		&Stylesheet::parse(
+			"format_version=2\nversion=1\n[[rule]]\nwhen=['blockquote','math']\nfont=[{family='serif[cjk]'}]"
+		)
+		.unwrap(),
+	);
+	let exported = export("> $$\\text{中文}$$\n", Arc::new(sheet), true);
+	let names = base_font_names(&exported);
+	assert!(
+		names.iter().any(|name| name.contains("NotoSerifCJK")),
+		"{names:?}"
+	);
+	assert!(
+		!names.iter().any(|name| name.contains("NotoSansCJK")),
+		"{names:?}"
+	);
 }
 
 #[test]

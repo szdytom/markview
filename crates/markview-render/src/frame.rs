@@ -348,9 +348,13 @@ impl Renderer {
 		stylesheet: Arc<markview_layout::style::Stylesheet>,
 	) -> Result<wgpu::SubmissionIndex> {
 		let previous = self.stylesheet.replace(stylesheet);
+		// The fallback shaper caches the stylesheet it was built with, so a
+		// temporary one must not survive the frame or leak into it.
+		let fallback = self.fallback.take();
 		let result =
 			self.render_layers(snapshot, view, underlay, overlay, target);
 		self.stylesheet = previous;
+		self.fallback = fallback;
 		result
 	}
 	pub fn render(

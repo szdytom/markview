@@ -31,7 +31,7 @@ use markview_layout::{
 	},
 	scene::Rect as LocalRect,
 	shaping::TextShaper,
-	style::{ColorField, Condition, Stylesheet},
+	style::{ColorField, Condition, Stylesheet, TextAppearance},
 };
 use parley::FontData;
 use ratex_types::{Color as MathColor, DisplayItem, PathCommand};
@@ -921,7 +921,13 @@ impl Painter<'_> {
 					let Some(math_font) = self.math_font(font).cloned() else {
 						self.flush_math_run(surface, &mut run);
 						self.math_fallback(
-							surface, character, glyph_size, point, color, alpha,
+							surface,
+							character,
+							glyph_size,
+							point,
+							color,
+							alpha,
+							&math.appearance,
 						);
 						continue;
 					};
@@ -1095,6 +1101,10 @@ impl Painter<'_> {
 	/// the CJK and emoji a `\text{…}` group can hold, with the document's own
 	/// fonts. The shaped glyphs carry their byte ranges, so the characters stay
 	/// searchable and copyable like the rest of the page's text.
+	#[expect(
+		clippy::too_many_arguments,
+		reason = "The fallback glyph's face, size, position and paint are independent inputs"
+	)]
 	fn math_fallback(
 		&mut self,
 		surface: &mut Surface<'_>,
@@ -1103,15 +1113,12 @@ impl Painter<'_> {
 		point: Point,
 		color: rgb::Color,
 		alpha: f32,
+		appearance: &TextAppearance,
 	) {
 		let text = text.to_string();
-		let (draws, ranges, _) = self.shaper.label_runs_measured(
-			&text,
-			size,
-			point.x,
-			point.y,
-			Paint::Text,
-		);
+		let (draws, ranges, _) = self
+			.shaper
+			.math_fallback(&text, size, point.x, point.y, appearance);
 		surface.set_fill(Some(Fill {
 			paint: KrillaPaint::from(color),
 			opacity: NormalizedF32::new(alpha).unwrap_or(NormalizedF32::ONE),

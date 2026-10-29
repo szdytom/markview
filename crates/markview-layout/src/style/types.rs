@@ -380,8 +380,12 @@ impl From<Condition> for ConditionSet {
 	}
 }
 
+/// Bits per condition slot in a packed chain. Six bits hold every nonzero
+/// id, leaving 21 slots in a `u128`.
+pub(crate) const CHAIN_BITS: u32 = 6;
+pub(crate) const CHAIN_MASK: u128 = (1 << CHAIN_BITS) - 1;
 /// A condition chain packs six bits per slot into a `u128`.
-pub const MAX_CHAIN: usize = 21;
+pub const MAX_CHAIN: usize = 128 / CHAIN_BITS as usize;
 
 /// Append a condition to an ordered chain. A repeated condition replaces its
 /// earlier occurrence, which keeps deeply nested containers compact.
@@ -391,14 +395,14 @@ pub fn chain_push(chain: u128, condition: Condition) -> u128 {
 	let mut compact = 0;
 	let mut shift = 0;
 	while remaining != 0 {
-		let slot = remaining & 63;
-		remaining >>= 6;
+		let slot = remaining & CHAIN_MASK;
+		remaining >>= CHAIN_BITS;
 		if slot != id {
 			compact |= slot << shift;
-			shift += 6;
+			shift += CHAIN_BITS;
 		}
 	}
-	(compact << 6) | id
+	(compact << CHAIN_BITS) | id
 }
 pub fn chain_of(conditions: &[Condition]) -> u128 {
 	conditions.iter().fold(0, |chain, c| chain_push(chain, *c))
@@ -408,8 +412,8 @@ pub fn chain_set(chain: u128) -> ConditionSet {
 	let mut set = ConditionSet::EMPTY;
 	let mut remaining = chain;
 	while remaining != 0 {
-		let id = (remaining & 63) as usize;
-		remaining >>= 6;
+		let id = (remaining & CHAIN_MASK) as usize;
+		remaining >>= CHAIN_BITS;
 		if let Some((condition, _)) =
 			id.checked_sub(1).and_then(|i| Condition::ALL.get(i))
 		{

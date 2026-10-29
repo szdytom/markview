@@ -594,6 +594,9 @@ impl<P: SendEvent> App<P> {
 		}
 		let config = self.fonts_config.clone();
 		self.ui.set_fonts(&config);
+		if let Some(renderer) = &mut self.renderer {
+			renderer.set_fonts(config);
+		}
 		self.request(false);
 	}
 }

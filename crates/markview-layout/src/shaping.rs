@@ -1169,6 +1169,19 @@ impl TextShaper {
 		self.label_runs(text, size, x, baseline, &appearance, paint, background)
 	}
 
+	/// Shapes one character a formula cannot draw with its KaTeX face, such as
+	/// CJK or emoji, in the formula's own `[math]` appearance.
+	pub fn math_fallback(
+		&mut self,
+		text: &str,
+		size: f32,
+		x: f32,
+		baseline: f32,
+		appearance: &TextAppearance,
+	) -> (Vec<Draw>, Vec<Range<usize>>, f32) {
+		self.label_runs(text, size, x, baseline, appearance, Paint::Text, None)
+	}
+
 	/// Shape a label with an appearance that the caller already resolved, so a
 	/// text element keeps its own typography instead of the UI default.
 	#[expect(

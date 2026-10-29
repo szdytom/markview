@@ -529,6 +529,7 @@ impl Markview {
 		self.renderer.set_pointer(self.cursor);
 		self.renderer
 			.set_stylesheet(self.published_stylesheet.clone());
+		self.renderer.set_fonts(self.options.fonts.clone());
 		let status = self
 			.renderer
 			.acquire()

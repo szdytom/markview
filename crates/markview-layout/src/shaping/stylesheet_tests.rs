@@ -816,3 +816,27 @@ fn scanned_choices_do_not_retain_long_text() {
 	assert!(shaper.font_sets[set].choices.is_empty());
 	assert!(shaper.fallbacks.is_empty());
 }
+
+#[test]
+fn math_fallback_does_not_apply_the_math_size_twice() {
+	let mut s = TextShaper::new();
+	let mut style = (*Stylesheet::bundled(false)).clone();
+	style.merge(
+		&Stylesheet::parse(
+			"format_version=2\nversion=1\n[[rule]]\nwhen=['math']\nsize=2",
+		)
+		.unwrap(),
+	);
+	s.set_stylesheet(Arc::new(style));
+	let appearance = s.stylesheet.math_fallback(&s.appearance);
+	// The caller already multiplied the formula's size by `[math]`'s.
+	let (draws, _, _) = s.math_fallback("车", 40.0, 0.0, 0.0, &appearance);
+	let glyph = draws
+		.iter()
+		.find_map(|draw| match draw {
+			Draw::Glyph(glyph) => Some(glyph),
+			_ => None,
+		})
+		.expect("the pinned CJK face draws the character");
+	assert!((glyph.size - 40.0).abs() < 0.01, "{}", glyph.size);
+}

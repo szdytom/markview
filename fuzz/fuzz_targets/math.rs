@@ -35,7 +35,12 @@ fuzz_target!(|data: &[u8]| {
 	};
 	let mut engine = MathEngine::default();
 	engine.set_limits(limits);
-	if let Ok(box_) = engine.layout(&latex, display, size) {
+	if let Ok(box_) = engine.layout(
+		&latex,
+		display,
+		size,
+		&markview_layout::style::TextAppearance::default(),
+	) {
 		oracle::assert_bounded("math.width", box_.width);
 		oracle::assert_bounded("math.ascent", box_.ascent);
 		oracle::assert_bounded("math.descent", box_.descent);

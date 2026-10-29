@@ -382,15 +382,27 @@ impl Renderer {
 								let ch = char::from_u32(*char_code)
 									.unwrap_or('\u{fffd}')
 									.to_string();
+								if self.fallback.is_none() {
+									let mut shaper = TextShaper::with_fonts(
+										self.fonts.clone(),
+									);
+									if let Some(stylesheet) =
+										self.stylesheet.clone()
+									{
+										shaper.set_stylesheet(stylesheet);
+									}
+									self.fallback = Some(shaper);
+								}
 								let fallback = self
 									.fallback
-									.get_or_insert_with(TextShaper::new);
-								let glyphs = fallback.label(
+									.as_mut()
+									.expect("a shaper was just built");
+								let (glyphs, _, _) = fallback.math_fallback(
 									&ch,
 									size * *scale as f32,
 									x + *gx as f32 * size,
 									y + *gy as f32 * size,
-									Paint::Text,
+									&math.appearance,
 								);
 								for g in glyphs {
 									if let Draw::Glyph(g) = g {

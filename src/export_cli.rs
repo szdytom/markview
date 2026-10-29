@@ -149,6 +149,7 @@ impl Command {
 		let (resource_path, text) = input;
 		let scale = prepared.scale;
 		let sheet = prepared.options.stylesheet.clone();
+		let fonts = prepared.options.fonts.clone();
 		let geometry = prepared.geometry;
 		let snapshot = export::png_snapshot_text(
 			resource_path,
@@ -162,6 +163,7 @@ impl Command {
 		let mut renderer =
 			pollster::block_on(crate::render::Renderer::new(None))?;
 		renderer.set_stylesheet(sheet.clone());
+		renderer.set_fonts(fonts);
 		let plan = export::plan(
 			&geometry,
 			snapshot.height,

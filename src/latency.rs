@@ -462,6 +462,7 @@ pub fn run(
 		});
 	let mut renderer = pollster::block_on(Renderer::new(None))?;
 	renderer.set_stylesheet(options.stylesheet.clone());
+	renderer.set_fonts(options.fonts.clone());
 	let after_init = memory();
 	let initialization_ms = millis(process_start);
 	let texture = renderer.offscreen(width, height);

@@ -130,6 +130,12 @@ impl BlockContext<'_> {
 					p.text.push('\n');
 				}
 				InlineKind::Math { latex, display } => {
+					let formula = self
+						.shaper
+						.stylesheet
+						.inline(&self.shaper.appearance, &style);
+					let fallback =
+						self.shaper.stylesheet.math_fallback(&formula);
 					let laid_out = crate::profile::span(
 						crate::profile::Stage::Math,
 						|| {
@@ -142,6 +148,7 @@ impl BlockContext<'_> {
 									.rule(Condition::Math)
 									.size
 									.unwrap_or(1.),
+								&fallback,
 							)
 						},
 					);

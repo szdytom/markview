@@ -202,6 +202,7 @@ impl<P: super::SendEvent> App<P> {
 		let surface = self.window.clone().map(super::surface::target);
 		let mut renderer = pollster::block_on(Renderer::new(surface))?;
 		renderer.set_stylesheet(self.preferences.values.stylesheet.clone());
+		renderer.set_fonts(self.fonts_config.clone());
 		let proxy = self.proxy.clone();
 		renderer.on_device_lost(move || {
 			proxy.send(Event::DeviceLost);

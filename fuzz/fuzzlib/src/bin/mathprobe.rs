@@ -384,7 +384,12 @@ fn run_one(label: &str, latex: &str) {
 
 	// The reader's own entry point: what Markview actually calls.
 	let mut engine = markview_layout::math::MathEngine::default();
-	let (result, m) = measure(bytes, || engine.layout(latex, true, 18.0));
+	let (result, m) = measure(bytes, || engine.layout(
+		latex,
+		true,
+		18.0,
+		&markview_layout::style::TextAppearance::default(),
+	));
 	println!("   MathEngine::layout   {}", summary(&m));
 	match &result {
 		Ok(b) => {

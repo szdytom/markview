@@ -10,6 +10,7 @@ mod raster;
 use anyhow::Context;
 use anyhow::Result;
 use markview_layout::{
+	fonts::FontConfig,
 	scene::{Paint, Rect},
 	shaping::TextShaper,
 };
@@ -136,6 +137,9 @@ pub struct Renderer {
 	/// [`frame::RejectedPreview`].
 	preview_rejected: Option<frame::RejectedPreview>,
 	stylesheet: Option<Arc<markview_layout::style::Stylesheet>>,
+	/// The reader's font sources, so a formula's fallback glyphs use the same
+	/// faces as the document rather than a shaper built from defaults.
+	fonts: FontConfig,
 	fallback: Option<TextShaper>,
 	pub adapter_name: String,
 	pub backend: wgpu::Backend,
@@ -166,7 +170,23 @@ impl Renderer {
 		&mut self,
 		style: Arc<markview_layout::style::Stylesheet>,
 	) {
+		if self
+			.stylesheet
+			.as_ref()
+			.is_some_and(|current| Arc::ptr_eq(current, &style))
+		{
+			return;
+		}
 		self.stylesheet = Some(style);
+		self.fallback = None;
+	}
+	/// Replaces the font sources formula fallbacks shape with. The reader hands
+	/// the same configuration to its layout engine.
+	pub fn set_fonts(&mut self, fonts: FontConfig) {
+		if self.fonts != fonts {
+			self.fonts = fonts;
+			self.fallback = None;
+		}
 	}
 	fn color(&self, paint: Paint, theme: Theme) -> [f32; 4] {
 		self.stylesheet
@@ -211,6 +231,7 @@ impl Renderer {
 			guest: false,
 			preview_rejected: None,
 			stylesheet: None,
+			fonts: FontConfig::default(),
 			fallback: None,
 		})
 	}

@@ -594,6 +594,13 @@ background = "#FAFAF8"
 font = [{ family = "serif" }, { family = "serif[cjk]", min_weight = 500 }, { family = "serif[cjk]" }, { family = "emoji", weight = 400 }]
 line_height = 1.65
 
+# A formula draws CJK, emoji and other characters its KaTeX faces lack with a
+# document face. Keep that text apart from the body serif so it reads as
+# annotation beside the math axis.
+[[rule]]
+when = ["math"]
+font = [{ family = "sans-serif" }, { family = "sans-serif[cjk]" }, { family = "emoji", weight = 400 }]
+
 [[rule]]
 when = ["p"]
 space_after = 0.8

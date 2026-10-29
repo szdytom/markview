@@ -197,6 +197,7 @@ fn render_preview(args: LaunchOptions) -> Result<()> {
 	}
 	let mut renderer = pollster::block_on(Renderer::new(None))?;
 	renderer.set_stylesheet(args.options.stylesheet.clone());
+	renderer.set_fonts(args.options.fonts.clone());
 	let services = std::sync::Arc::new(crate::services::Services::new(4));
 	let mut engine = LayoutEngine::with_executor(
 		services.handle.cpu.clone(),

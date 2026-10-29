@@ -147,6 +147,7 @@ pub fn run(
 	let init = Instant::now();
 	let mut renderer = pollster::block_on(Renderer::new(None))?;
 	renderer.set_stylesheet(options.stylesheet.clone());
+	renderer.set_fonts(options.fonts.clone());
 	let services = std::sync::Arc::new(crate::services::Services::new(4));
 	let mut engine = LayoutEngine::with_executor(
 		services.handle.cpu.clone(),

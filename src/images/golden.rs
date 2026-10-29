@@ -70,6 +70,7 @@ fn diagrams_match_rendering_baselines() -> Result<()> {
 		sheet.merge(&Stylesheet::parse(&rules)?);
 		let sheet = Arc::new(sheet);
 		renderer.set_stylesheet(sheet.clone());
+		renderer.set_fonts(fonts.clone());
 		for kind in ["flowchart", "sequence", "git", "pie", "svg"] {
 			let name = format!("{kind}-{preset}");
 			let path = root.join(format!("tests/fixtures/diagrams/{kind}.md"));

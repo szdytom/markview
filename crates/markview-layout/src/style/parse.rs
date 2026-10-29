@@ -609,7 +609,7 @@ fn validate_field(conditions: ConditionSet, key: &str) -> Result<()> {
 			"color" | "border_width" | "space_before" | "space_after"
 		)
 	} else if has(K::Math) && !has(K::Error) {
-		matches!(key, "color" | "size")
+		matches!(key, "color" | "font" | "weight" | "size")
 	} else if has(K::Page)
 		&& !has(K::PageHeader)
 		&& !has(K::PageFooter)
