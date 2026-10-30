@@ -849,6 +849,7 @@ fn clicking_tabs_preserves_the_focused_search_box() {
 	let one = h.app.readers.entries()[0].path.clone();
 	let two = h.dir.path().join("two.md");
 	std::fs::write(&two, "second needle").unwrap();
+	let two = std::fs::canonicalize(two).unwrap();
 	h.app.open(two.clone());
 	h.app.select_tab(0);
 	assert_eq!(h.app.focused_input(), Some(TextField::Search));
@@ -899,6 +900,7 @@ fn keyboard_switches_do_not_restore_stale_search_focus() {
 	let one = h.app.readers.entries()[0].path.clone();
 	let two = h.dir.path().join("two.md");
 	std::fs::write(&two, "second needle").unwrap();
+	let two = std::fs::canonicalize(two).unwrap();
 	h.app.open(two.clone());
 	let two = h.app.readers.find(&two).unwrap();
 	h.app.select_tab(0);
