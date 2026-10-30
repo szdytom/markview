@@ -959,6 +959,7 @@ impl BlockContext<'_> {
 					// Only an ordered number is reading text. Bullets and task
 					// checkboxes are drawn, so nothing about them is selectable.
 					let numbered = item.checked.is_none() && start.is_some();
+					let marker_start = out.draws.len();
 					if numbered {
 						let label = numbering
 							.number(enum_depth, (start.unwrap() + i) as u64);
@@ -967,7 +968,7 @@ impl BlockContext<'_> {
 								&label,
 								opts.font_size,
 								item_x,
-								top + size * 1.15,
+								0.,
 								&bullet,
 								bullet.paint,
 								Some(Paint::Scoped(
@@ -1033,15 +1034,11 @@ impl BlockContext<'_> {
 					}
 					let first_child = out.text.len();
 					if let Some(checked) = item.checked {
-						// The box centers on the item's first line, whose
-						// height the line-height sets.
-						let line_height =
-							size * self.shaper.appearance.line_height;
 						let center = [
 							item_x
 								+ marker_offset(task_align, column, task_side)
 								+ task_side * 0.5,
-							top + line_height * 0.5,
+							0.,
 						];
 						// The box keeps the surface fill; a completed one
 						// paints the accent over it and draws its check in
@@ -1086,14 +1083,12 @@ impl BlockContext<'_> {
 								bullet_side,
 							);
 						out.draws.push(Draw::Polygon {
-							center: [
-								left + bullet_side / 2.,
-								top + size * 0.88,
-							],
+							center: [left + bullet_side / 2., 0.],
 							points: bullet_points.clone(),
 							paint: bullet.paint,
 						});
 					}
+					let marker_end = out.draws.len();
 					let child_height = self.children(
 						&item.blocks,
 						item_x + column,
@@ -1103,6 +1098,28 @@ impl BlockContext<'_> {
 						size * 0.6,
 						out,
 					);
+					let first_line =
+						out.first_text_rect(first_child).unwrap_or(Rect {
+							x: item_x + column,
+							y: top,
+							w: 0.,
+							h: size * item_appearance.line_height,
+						});
+					let center_y = first_line.y + first_line.h * 0.5;
+					let marker = &mut out.draws[marker_start..marker_end];
+					if numbered {
+						self.shaper.center_draws(marker, center_y);
+						for cluster in &mut out.text[first_child - 1].clusters {
+							cluster.rect.y = first_line.y;
+							cluster.rect.h = first_line.h;
+						}
+					} else {
+						for draw in marker {
+							if let Draw::Polygon { center, .. } = draw {
+								center[1] = center_y;
+							}
+						}
+					}
 					// The list owns its closing space; retain child spacing only
 					// between items, so nested tails do not accumulate.
 					let trailing = if i + 1 == items.len()

@@ -1505,6 +1505,181 @@ fn a_theme_aligns_list_markers_in_their_column() {
 }
 
 #[test]
+fn list_markers_center_on_the_actual_first_line() {
+	use skrifa::{GlyphId, MetadataProvider, instance::Size};
+
+	for prefix in ["-", "1.", "- [x]"] {
+		for body in [
+			"plain text",
+			"first $\\dfrac{1}{\\dfrac{2}{3}}$ line  \n   last line",
+			"first line  \n   last $\\dfrac{1}{\\dfrac{2}{3}}$ line",
+		] {
+			let mut engine = LayoutEngine::new();
+			let source = format!("{prefix} {body}\n{prefix} tail\n");
+			let mut options = LayoutOptions::default();
+			Arc::make_mut(&mut options.stylesheet).merge(
+				&crate::style::Stylesheet::parse(
+					"format_version=2\nversion=1\n[[rule]]\nwhen=['list_item']\npadding=0.3\n[[rule]]\nwhen=['p']\nspace_before=0.4",
+				).unwrap(),
+			);
+			engine
+				.layout(&markview_commonmark::parse(source.as_str()), &options);
+			// Editing a sibling reuses the first item's paragraph geometry.
+			let edited = markview_commonmark::parse(
+				source.replace("tail", "edited tail"),
+			);
+			let cached = engine.layout(&edited, &options);
+			assert!(cached.blocks[0].layout.scene.reused_leaves > 0);
+			for snapshot in
+				[cached, LayoutEngine::new().layout(&edited, &options)]
+			{
+				assert_eq!(snapshot.math_errors, 0);
+				let snapshot = snapshot.flattened();
+				let layout = &snapshot.blocks[0].layout;
+				let numbered = prefix == "1.";
+				let text = &layout.text[usize::from(numbered)];
+				let line = text.clusters[0].rect;
+				let expected = line.y + line.h * 0.5;
+				if body.starts_with("first $") {
+					assert!(line.h > options.font_size * 2.0);
+				}
+				if numbered {
+					let marker = &layout.text[0];
+					let mut top = f32::INFINITY;
+					let mut bottom = f32::NEG_INFINITY;
+					for cluster in &marker.clusters {
+						assert_eq!(cluster.rect.y, line.y);
+						assert_eq!(cluster.rect.h, line.h);
+						let Draw::Glyph(glyph) = &layout.draws[cluster.command]
+						else {
+							panic!("numbering must be a glyph");
+						};
+						let font = skrifa::FontRef::from_index(
+							glyph.font.data.data(),
+							glyph.font.index,
+						)
+						.unwrap();
+						let coords: Vec<_> = glyph
+							.coords
+							.iter()
+							.map(|&v| {
+								skrifa::instance::NormalizedCoord::from_bits(v)
+							})
+							.collect();
+						let bounds = font
+							.glyph_metrics(Size::new(glyph.size), &coords[..])
+							.bounds(GlyphId::new(u32::from(glyph.id)))
+							.unwrap();
+						top = top.min(glyph.y - bounds.y_max);
+						bottom = bottom.max(glyph.y - bounds.y_min);
+					}
+					assert!(((top + bottom) * 0.5 - expected).abs() < 0.01);
+				} else {
+					let center = layout
+						.draws
+						.iter()
+						.find_map(|draw| match draw {
+							Draw::Polygon { center, .. } => Some(center[1]),
+							_ => None,
+						})
+						.unwrap();
+					assert!(
+						(center - expected).abs() < 0.01,
+						"{prefix}: {body}"
+					);
+				}
+			}
+		}
+	}
+}
+
+#[test]
+fn list_markers_center_on_an_image_only_first_line() {
+	use crate::image::{ImageInfo, ImageSnapshot};
+
+	let mut images = ImageSnapshot::default();
+	images.entries.insert(
+		"big.png".into(),
+		ImageInfo {
+			version: 1,
+			size: Some((200, 200)),
+			error: None,
+		},
+	);
+	for prefix in ["-", "1."] {
+		let source = format!("{prefix} ![](big.png)  \n   continued text\n");
+		let snapshot = LayoutEngine::new()
+			.layout_with_images(
+				&markview_commonmark::parse(source.as_str()),
+				&LayoutOptions::default(),
+				&images,
+			)
+			.flattened();
+		let layout = &snapshot.blocks[0].layout;
+		let text = &layout.text[usize::from(prefix == "1.")];
+		let image = text.source_images[0].1.rect;
+		let expected = image.y + image.h * 0.5;
+		let continued = text.clusters[0].rect;
+		assert!(expected < continued.y + continued.h * 0.5);
+		let center = if prefix == "1." {
+			let marker = &layout.text[0].clusters[0].rect;
+			marker.y + marker.h * 0.5
+		} else {
+			layout
+				.draws
+				.iter()
+				.find_map(|draw| match draw {
+					Draw::Polygon { center, .. } => Some(center[1]),
+					_ => None,
+				})
+				.unwrap()
+		};
+		assert!(
+			(center - expected).abs() < 0.01,
+			"{prefix}: {center} {expected}"
+		);
+		// Text sharing the image's line owns the line geometry, not the
+		// smaller image box.
+		let source = format!("{prefix} ![alt](big.png) continued text\n");
+		let snapshot = LayoutEngine::new()
+			.layout_with_images(
+				&markview_commonmark::parse(source.as_str()),
+				&LayoutOptions::default(),
+				&images,
+			)
+			.flattened();
+		let layout = &snapshot.blocks[0].layout;
+		let text = &layout.text[usize::from(prefix == "1.")];
+		let line = text
+			.clusters
+			.iter()
+			.find(|cluster| {
+				matches!(layout.draws[cluster.command], Draw::Glyph(_))
+			})
+			.unwrap()
+			.rect;
+		let expected = line.y + line.h * 0.5;
+		let center = if prefix == "1." {
+			let marker = &layout.text[0].clusters[0].rect;
+			marker.y + marker.h * 0.5
+		} else {
+			layout
+				.draws
+				.iter()
+				.find_map(|draw| match draw {
+					Draw::Polygon { center, .. } => Some(center[1]),
+					_ => None,
+				})
+				.unwrap()
+		};
+		assert!(
+			(center - expected).abs() < 0.01,
+			"{prefix}: {center} {expected}"
+		);
+	}
+}
+
+#[test]
 fn a_bullet_is_drawn_and_never_copied() {
 	let snapshot = LayoutEngine::new().layout(
 		&markview_commonmark::parse("- one\n- [x] two\n"),

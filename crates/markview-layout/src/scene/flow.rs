@@ -182,6 +182,47 @@ impl BlockLayout {
 			});
 	}
 
+	/// The first reading box in builder coordinates, including reused leaves.
+	pub(crate) fn first_text_rect(&self, start: usize) -> Option<Rect> {
+		for (text, node) in self.text.iter().enumerate().skip(start) {
+			let mut rect: Option<Rect> = None;
+			for cluster in node
+				.clusters
+				.iter()
+				.chain(node.source_images.iter().map(|(_, cluster)| cluster))
+			{
+				let candidate = cluster.rect;
+				// An image with alt text has a reading cluster whose box is the
+				// image, not its line. The line's own text cluster shares the
+				// line top and is taller, so prefer it there.
+				if rect.is_none_or(|rect| {
+					candidate.y < rect.y - 0.01
+						|| ((candidate.y - rect.y).abs() <= 0.01
+							&& candidate.h > rect.h)
+				}) {
+					rect = Some(candidate);
+				}
+			}
+			let Some(mut rect) = rect else {
+				continue;
+			};
+			let index = self
+				.scene
+				.spans
+				.partition_point(|span| span.text.end <= text);
+			if let Some(span) = self.scene.spans.get(index)
+				&& span.local
+				&& span.text.contains(&text)
+			{
+				let [x, y] = self.scene.nodes[span.node].offset;
+				rect.x += x;
+				rect.y += y;
+			}
+			return Some(rect);
+		}
+		None
+	}
+
 	pub(crate) fn retain_footnote(
 		&mut self,
 		body: Range<usize>,

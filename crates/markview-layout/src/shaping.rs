@@ -1096,8 +1096,14 @@ impl TextShaper {
 		paint: Paint,
 	) -> Vec<Draw> {
 		let mut draws = self.label(text, size, x, 0.0, paint);
+		self.center_draws(&mut draws, center_y);
+		draws
+	}
+
+	/// Center a shaped label's visible glyph bounds on `center_y`.
+	pub(crate) fn center_draws(&mut self, draws: &mut [Draw], center_y: f32) {
 		let mut bounds: Option<(f32, f32)> = None;
-		for draw in &draws {
+		for draw in draws.iter() {
 			if let Draw::Glyph(g) = draw
 				&& let Some((lo, hi)) =
 					self.glyph_bounds(&g.font, &g.coords, g.id)
@@ -1110,10 +1116,9 @@ impl TextShaper {
 			}
 		}
 		let offset = center_y - bounds.map_or(0.0, |(a, b)| (a + b) / 2.0);
-		for draw in &mut draws {
+		for draw in draws {
 			draw.translate(0.0, offset);
 		}
-		draws
 	}
 
 	/// A label together with the advance width it occupies, so a caller that

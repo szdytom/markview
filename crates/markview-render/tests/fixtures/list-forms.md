@@ -28,4 +28,13 @@
 - [ ] Pending task
 - [x] Complete task
 
+- First line with $\dfrac{1}{\dfrac{2}{3}}$ and text.
+  The continuation belongs to the same item.
+
+1. First line with $\dfrac{1}{\dfrac{2}{3}}$ and text.
+2. Plain first line.\
+   Tall formula $\dfrac{1}{\dfrac{2}{3}}$ on the next line.
+
+- [x] First line with $\dfrac{1}{\dfrac{2}{3}}$ and text.
+
 Text after the final list.

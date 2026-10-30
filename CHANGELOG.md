@@ -38,6 +38,10 @@ at the same level, without `[brackets]`.
 - Keep prose baselines steady when inline math or pictures fit the line, so selection rows keep their gap below text.
 - Extend folder sidebar rows down to the footer band instead of stopping a band early.
 
+### Fixed
+
+- Center list bullets, numbering and task checkboxes on the actual first line, including lines enlarged by inline math.
+
 ## 0.4.2 - 2026-10-28
 
 **Highlights**:
