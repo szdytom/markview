@@ -1,9 +1,11 @@
 """Check that the README composites reproduce from their real captures."""
 
+import json
 import shutil
 import subprocess
 import sys
 import tempfile
+import tomllib
 import unittest
 from pathlib import Path
 from unittest.mock import patch
@@ -182,22 +184,38 @@ class ReadmeImagesTest(unittest.TestCase):
             live.mkdir(parents=True)
             settings = (
                 "single-instance = true\nrestore-session = true\nfont_size = 18.0\n"
+                'window-layout = "linux"\nlanguage = "ja"\n[export]\nformat = "pdf"\n'
             )
             (live / "settings.toml").write_text(settings)
             (live / "fonts").mkdir()
             (live / "fonts/custom.otf").write_bytes(b"font resource")
-            capture = root / "capture"
-            capture.mkdir()
-            with patch.dict("os.environ", {"XDG_CONFIG_HOME": str(live.parent)}):
-                capture_profile(capture)
+            for language, folder in (("en", False), ("zh", True)):
+                capture = root / language
+                capture.mkdir()
+                with patch.dict("os.environ", {"XDG_CONFIG_HOME": str(live.parent)}):
+                    capture_profile(capture, language, folder)
+                copied = tomllib.loads((capture / "markview/settings.toml").read_text())
+                self.assertEqual(copied["single-instance"], folder)
+                self.assertEqual(copied["restore-session"], folder)
+                self.assertEqual(copied["tab-style"], "connected")
+                self.assertEqual(copied["window-layout"], "windows")
+                self.assertEqual(
+                    copied["language"], "en" if language == "en" else "zh-hans"
+                )
+                self.assertEqual(copied["markdown-flavor"], "obsidian")
+                self.assertFalse(copied["footer-path"])
+                self.assertEqual(copied["font_size"], 18.0)
+                self.assertEqual(copied["export"], {"format": "pdf"})
+                self.assertEqual(
+                    (capture / "markview/fonts/custom.otf").read_bytes(), b"font resource"
+                )
+                if folder:
+                    session = json.loads((capture / "markview/session.json").read_text())
+                    self.assertTrue(session["folder_open"])
+                    self.assertTrue(Path(session["folder"]).is_dir())
+                    for tab in session["tabs"]:
+                        self.assertTrue(Path(tab["path"]).is_file())
             self.assertEqual((live / "settings.toml").read_text(), settings)
-            copied = (capture / "markview/settings.toml").read_text()
-            self.assertIn("single-instance = false", copied)
-            self.assertIn("restore-session = false", copied)
-            self.assertIn("font_size = 18.0", copied)
-            self.assertEqual(
-                (capture / "markview/fonts/custom.otf").read_bytes(), b"font resource"
-            )
 
     def test_recompose_from_desktop_and_android_captures(self):
         with tempfile.TemporaryDirectory() as directory:

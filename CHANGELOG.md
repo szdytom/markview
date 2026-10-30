@@ -24,6 +24,7 @@ at the same level, without `[brackets]`.
 ### Documentation
 
 - Document Homebrew installation for Apple Silicon Macs through the community tap.
+- Refresh README screenshots with Connected tabs and Windows controls, and highlight folder libraries and Obsidian vault reading in both languages.
 
 ### Added
 

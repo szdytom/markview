@@ -64,14 +64,12 @@ The AUR also offers a [source build](https://aur.archlinux.org/packages/markview
 brew install --cask Stevvven777/tap/markview
 ```
 
-For cost reasons, we currently do not have a paid Apple Developer Program membership.
-If macOS blocks the app, allow it in **System Settings → Privacy & Security → Open Anyway**.
-
 **Desktop:** open a Markdown file, or choose Markview from **Open with**.
 **Android:** open or share a document to **Read in Markview**. Import its folder
 when you want to read linked chapters and local images together.
 
-The macOS app is unsigned. After moving it to Applications, run:
+**macOS:** after moving Markview to Applications, allow it in
+**System Settings → Privacy & Security → Open Anyway**, or run:
 
 ```sh
 xattr -d com.apple.quarantine /Applications/Markview.app
@@ -95,13 +93,14 @@ browser's default left-aligned layout and Markview's justified layout.
 
 Careful CJK punctuation and native LaTeX keep text and mathematics readable,
 with no separate TeX installation. Tables, highlighted code, footnotes, GitHub alerts, images and Mermaid diagrams
-belong on the same page. Markdown is rendered directly to the screen, without a
-browser or WebView. The native app is read-only: your source stays yours.
+belong on the same page. Enjoy a focused reading space while your Markdown
+files stay exactly as you wrote them.
 
 ## Read across different kinds of documents
 
-Long-form articles, technical manuals, mathematics—and web articles brought
-into the native reader. These previews come from real documents.
+From a favorite essay to a technical handbook or a chapter full of mathematics,
+give every document a page worth settling into. Bring web articles into the
+same focused reading experience.
 
 | Long-form reading · Paragraphs and rhythm | Technical documents · Code, links and tables |
 | --- | --- |
@@ -114,18 +113,39 @@ into the native reader. These previews come from real documents.
 | [OpenStax Calculus Volume 3](https://openstax.org/books/calculus-volume-3/pages/6-7-stokes-theorem) · §6.7 Stokes’ Theorem | [Wikipedia: Webb’s First Deep Field](https://en.wikipedia.org/wiki/Webb%27s_First_Deep_Field) |
 
 [Excerpts, translations and image credits](docs/screenshots/source/showcase/README.md).
-Web reading is experimental.
+
+## Your whole library, beautifully connected
+
+Open a folder and turn a collection of Markdown files into your personal reading
+room. Browse notes, chapters and images in the file tree, keep related documents
+open in tabs, and pick up where you left off. From a project handbook to years
+of reading notes, everything stays within reach.
+
+Already have an **Obsidian vault**? Open it directly in Markview. Follow
+`[[wikilinks]]` between notes and headings, enjoy image embeds, highlighted
+passages and rich callouts, and rediscover your knowledge library with
+publication-quality typography. Your folders and notes stay right where they are.
+Obsidian compatibility is usable today and under active development, with
+support continuing to grow and improve.
+
+<p align="center">
+  <img src="docs/screenshots/readme/en-library.png" alt="A folder of reading notes in Markview, with a file tree, connected tabs, wikilinks, highlights and an Obsidian callout" width="900">
+</p>
+
+Press **Ctrl+Shift+O** to open a folder on desktop. On Android, import your
+vault's folder and take your reading library with you.
+[Folder and vault guide](docs/users/reading.md#folders-and-obsidian-vaults)
 
 ## Make it your page
 
 Choose a quiet light theme, a dark reading surface, or a little more character.
-Light and Dark share the same page layout, joined along a single diagonal below.
+Find the atmosphere that makes you want to read one more page.
 
 <p align="center">
   <img src="docs/screenshots/readme/en-themes.png" alt="The same page split diagonally between Light on the left and Dark on the right" width="900">
 </p>
 
-Adjust fonts and text size, or customize line spacing and more with an MVSS theme.
+Adjust fonts and text size, customize line spacing, or create your own theme.
 Themes and font settings are available on desktop and Android.
 [Explore the theme gallery](docs/users/themes.md) · [Reading settings](docs/users/settings.md) · [Theme guide](docs/users/stylesheets.md)
 
@@ -135,9 +155,8 @@ Themes and font settings are available on desktop and Android.
 - **Read across chapters.** Follow Markdown links in tabs and return to saved reading positions.
 - **Take something with you.** Copy text, code or formulas; export to PDF or PNG.
 - **Read on your phone or tablet.** Android shares the native typesetting and themes, with touch scrolling, a phone tab drawer and tablet tabs.
-- **Stay up to date.** Desktop file watching refreshes an open document after changes; on Android, reopen a file or folder to import changes.
+- **Stay in the flow.** Edit in your favorite app and watch your open document refresh on desktop.
 
-Experimental web reading can also open static articles in native reader tabs.
 See the [reading guide](docs/users/reading.md) for controls and supported content.
 
 ## Publication-quality PDF export
@@ -147,53 +166,42 @@ paragraphs, mathematics and highlighted code, with thoughtful page breaks.
 Choose paper size, margins and a print theme; add headers, footers and page
 numbers. Text stays selectable, and links remain clickable.
 
-Press **Ctrl+E** on desktop, or run `markview pdf document.md -o document.pdf`.
+Press **Ctrl+E** on desktop to prepare your document for sharing or printing.
 [PDF and image export guide](docs/users/export.md)
 
-## Security taken seriously
+## Read with peace of mind
 
-Opening a document should be a routine act. Markview treats document content as
-untrusted and publishes the boundaries behind its protections.
+Your documents open in a native reader that keeps your source files untouched.
+Document scripts cannot run, and links that could launch a local program ask
+for your confirmation. Extensive automated testing helps keep reading smooth
+and dependable, down to the fonts and formulas on the page.
 
-- **An explicit threat model.** Documents cannot execute scripts. Resource budgets limit expensive processing, and potentially executable local link targets require confirmation. The [threat model](docs/developers/security.md) explains filesystem, network and OS-handler policies, along with their limits.
-- **Fuzzing beyond crashes.** Fifteen libFuzzer targets exercise parsing, incremental updates, layout, mathematics, fonts and PDF export, with structured mutations, differential checks and per-input time and allocation budgets. The [fuzzing framework](fuzz/README.md) documents coverage and reproducible campaigns; [verification status](docs/developers/security-verification.md) records remaining gaps.
-- **Fixes that reach upstream.** Markview's fuzzing has helped find and fix multiple defects in Comrak, its Markdown parser. Merged fixes include [multiline inline source positions](https://github.com/kivikakk/comrak/pull/855), [front-matter carriage returns](https://github.com/kivikakk/comrak/pull/861) and [paragraph ranges before CRLF tables](https://github.com/kivikakk/comrak/pull/864).
-
-To report a vulnerability privately, use [GitHub Security Advisories](https://github.com/szdytom/markview/security/advisories/new).
+[Security details](docs/developers/security.md) ·
+[Report a vulnerability](https://github.com/szdytom/markview/security/advisories/new)
 
 ## Lightweight, with measurements to match
 
 | Measure | Recorded result |
 | --- | --- |
-| First readable GPU frame | About **100 ms**, from a 10 KiB note to a 1 MiB document |
+| Opens ready to read | About **100 ms**, from a short note to a 1 MiB document |
 | Resident memory | About **50 MiB** for an ordinary note |
-| Release downloads | **Under 20 MB**, including the Android APK, in v0.2.0 |
 
 <p align="center">
   <a href="docs/developers/comparison.md"><img src="docs/screenshots/readme/en-performance-comparison.png" alt="Four measured documents: Markview opens in 0.101–0.115 seconds and uses 50.7–53.8 MiB RSS; MarkText 0.19.1 opens in 0.957–2.863 seconds and uses 693.2–1147.6 MiB" width="900"></a>
 </p>
 
-The comparison shows cold starts and total reader-process RSS for four fixtures,
-using medians of three runs on the same Linux laptop on September 22–23, 2026.
-MarkText is an editor with a preview; this comparison measures document reading.
-
-Latency and memory are recorded Linux desktop measurements from an Intel Core
-Ultra 5 125H laptop with integrated Intel Arc, Vulkan and the `performance`
-power profile. First-frame timing includes process startup and initialization,
-but excludes compositor presentation. Results vary with hardware, fonts and
-power settings; these figures are not Android benchmarks.
+Spend your attention on the page. Markview opens quickly and keeps its memory
+footprint small, even as your documents grow. The chart compares opening time
+and memory across four document sizes, measured on the same Linux laptop.
 
 [Measurement method and baselines](docs/developers/performance.md#native-baseline-on-the-performance-profile) ·
 [Reader and PDF comparisons](docs/developers/comparison.md) ·
-[v0.2.0 downloads](https://github.com/szdytom/markview/releases/tag/v0.2.0)
+[Latest downloads](https://github.com/szdytom/markview/releases/latest)
 
 ## Documentation and contributing
 
 [User guides](docs/users/README.md) · [Android](docs/users/android.md) ·
 [Build and contribute](CONTRIBUTING.md) · [Developer guides](docs/developers/README.md)
-
-For embedding in a web application, the separate [Web/TypeScript components](docs/library/README.md)
-provide a WASM viewer and CodeMirror split editor.
 
 Markview is open source under the [MIT license](LICENSE).
 [Third-party notices](THIRD_PARTY.md) · [All documentation](docs/README.md)

@@ -7,6 +7,7 @@ configured emulator with Markview installed. Omit capture flags to recompose.
 """
 
 import argparse
+import json
 import os
 import re
 import shlex
@@ -27,36 +28,73 @@ def save(canvas, name):
     canvas.save(OUTPUT / name, optimize=True)
 
 
-def capture_profile(directory):
+def capture_profile(directory, language, folder=False):
     current = (
         Path(os.environ.get("XDG_CONFIG_HOME", Path.home() / ".config")) / "markview"
     )
     profile = directory / "markview"
     profile.mkdir()
     settings = (current / "settings.toml").read_text()
-    settings = re.sub(
-        r"(?m)^(single-instance|restore-session)\s*=.*$", r"\1 = false", settings
+    overrides = {
+        "single-instance": str(folder).lower(),
+        "restore-session": str(folder).lower(),
+        "tab-style": '"connected"',
+        "window-layout": '"windows"',
+        "language": '"en"' if language == "en" else '"zh-hans"',
+        "markdown-flavor": '"obsidian"',
+        "footer-path": "false",
+    }
+    settings = re.sub(rf"(?m)^({'|'.join(overrides)})\s*=.*\n?", "", settings)
+    (profile / "settings.toml").write_text(
+        "".join(f"{key} = {value}\n" for key, value in overrides.items()) + settings
     )
-    (profile / "settings.toml").write_text(settings)
     for resource in ("fonts", "styles"):
         if (current / resource).is_dir():
             (profile / resource).symlink_to(
                 current / resource, target_is_directory=True
             )
+    if folder:
+        root = (
+            ROOT
+            / f"docs/screenshots/source/{language}"
+            / ("Field notes" if language == "en" else "阅读笔记")
+        )
+        names = (
+            ("Welcome.md", "Reading list.md", "Connected ideas.md")
+            if language == "en"
+            else ("从这里开始.md", "阅读清单.md", "让笔记连成一片.md")
+        )
+        position = dict(
+            block=0, occurrence=0, source=0, node=None, byte=0, local=0, fallback=0
+        )
+        session = dict(
+            version=1,
+            folder=str(root),
+            folder_open=True,
+            active=2,
+            tabs=[
+                dict(
+                    path=str(root / name),
+                    reading=dict(content=0, position=position, details={}),
+                )
+                for name in names
+            ],
+        )
+        (profile / "session.json").write_text(json.dumps(session))
 
 
 def capture(binary):
     for language in ("en", "zh"):
         source = ROOT / f"docs/screenshots/source/{language}/reading.md"
         views = [(theme, 1440, theme) for theme in THEMES] + [
-            ("light", 1440, "desktop")
+            ("light", 1440, "desktop"),
+            ("light", 1440, "library"),
         ]
         for theme, width, name in views:
             destination = OUTPUT / f"{language}-{name}.png"
             command = [
                 str(binary),
                 "--foreground",
-                str(source),
                 "--offline",
                 "--style",
                 theme,
@@ -67,11 +105,13 @@ def capture(binary):
                 "--column",
                 "850",
                 "--font-size",
-                "20",
+                "18" if name == "library" else "20",
             ]
+            if name != "library":
+                command.append(str(source))
             with tempfile.TemporaryDirectory() as temporary:
                 shot_path = Path(temporary) / "window.png"
-                capture_profile(Path(temporary))
+                capture_profile(Path(temporary), language, folder=name == "library")
                 environment = os.environ | {
                     "XDG_CONFIG_HOME": temporary,
                     "XDG_DATA_HOME": temporary,
@@ -98,6 +138,7 @@ def capture(binary):
                             .getbbox()
                         )
                         shot.crop(frame).save(destination, optimize=True)
+                        print(f"Captured {destination.name}", flush=True)
                     finally:
                         reader.terminate()
                         reader.wait()

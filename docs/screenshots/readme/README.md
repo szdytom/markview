@@ -13,11 +13,18 @@ column width and body text size (1440 × 900 logical pixels, 850 px column,
 Blueprint and 8-bit individually. Capture waits for syntax highlighting before taking the
 active window through Spectacle on KDE/Wayland.
 
-The capture configuration copies the live `settings.toml`, disabling only
-single-instance forwarding and session restoration. Its font and stylesheet
+The capture configuration copies the live `settings.toml`, selects Connected
+tabs, Windows window controls, the Obsidian preset and the matching interface
+language. It hides the footer path and disables single-instance forwarding and
+session restoration for single-page captures. Its font and stylesheet
 directories link to the live resources, so downloaded/custom fonts remain
 available. Capture runs offline and does not modify the live settings. The Light/Dark split uses matching typography. Other themes retain their own
 fonts and layout in separate complete screenshots.
+
+The localized `*-library.png` windows open the sample [English folder](../source/en/Field%20notes/Welcome.md)
+and [Chinese folder](../source/zh/阅读笔记/从这里开始.md). An isolated saved session
+restores three real note tabs and the folder sidebar, with 18 px body text. These captures show
+wikilinks, highlighting and an Obsidian callout using the default Obsidian preset.
 
 Android inputs (`android-*.png`, `tablet-*.png`) show those same examples shared
 to the real app on headless API 35 Pixel 6 and Pixel Tablet emulators. These are
