@@ -36,6 +36,10 @@ pub(crate) struct SearchState {
 	pub content: Option<u64>,
 	pub query: String,
 	pub preparing: bool,
+	/// The search input had focus when its tab was switched away from.
+	pub focused: bool,
+	/// A restored query still needs to be put into the text editor.
+	pub needs_query: bool,
 }
 pub(super) struct Result {
 	path: PathBuf,
@@ -246,6 +250,7 @@ impl<P: SendEvent> App<P> {
 		self.clear_input_focus();
 		self.show_panel(PanelPage::Closed);
 		self.readers.session.search.open = true;
+		self.readers.session.search.focused = true;
 		// The bar shrinks the reading area, which changes what a centered
 		// picture has to fit into.
 		self.reflow_at = Some(Instant::now());
@@ -279,10 +284,44 @@ impl<P: SendEvent> App<P> {
 	pub(super) fn close_search(&mut self) {
 		self.clear_input_focus();
 		self.readers.session.search.open = false;
+		self.readers.session.search.focused = false;
 		self.readers.session.search.pending_navigation = false;
 		self.reflow_at = Some(Instant::now());
 		self.readers.session.search.queued_navigation = None;
 		self.redraw();
+	}
+	/// Saves whether the search box owns the keyboard before a tab switch.
+	pub(super) fn capture_search_focus(&mut self) {
+		self.readers.session.search.focused =
+			self.focused_input() == Some(TextField::Search);
+	}
+	/// Re-arms the stored search focus without touching the query.
+	pub(super) fn restore_search_focus(&mut self) {
+		let focused = self.readers.session.search.open
+			&& self.readers.session.search.focused
+			&& !self.panel_has_focus();
+		if focused {
+			self.interaction.widgets.focus = Some(
+				Command::Chrome(ChromeCommand::FocusInput(TextField::Search))
+					.widget_id(),
+			);
+		}
+		self.sync_input();
+	}
+	/// Applies the active tab's own search bar after a switch or restore.
+	pub(super) fn restore_search(&mut self) {
+		if self.readers.session.search.needs_query {
+			self.readers.session.search.needs_query = false;
+			let query = self.readers.session.search.query.clone();
+			self.readers
+				.session
+				.search
+				.input
+				.set_text(&mut self.ui, &query);
+		}
+		self.reflow_at = Some(Instant::now());
+		self.restore_search_focus();
+		self.search_changed();
 	}
 	pub(super) fn search_changed(&mut self) {
 		let sequence = self.search_worker.cancel();

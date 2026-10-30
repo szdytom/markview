@@ -89,6 +89,8 @@ impl<P: super::SendEvent> App<P> {
 		_: WindowId,
 		event: WindowEvent,
 	) {
+		self.capture_focus_before_input(&event);
+		self.interrupt_tab_cycle(&event);
 		if self.before_window_input(event_loop, &event)
 			|| self.window_state_event(event_loop, &event)
 		{
@@ -143,6 +145,26 @@ impl<P: super::SendEvent> App<P> {
 			_ => {}
 		}
 	}
+	/// Keeps the focused search box with its tab before input clears it.
+	fn capture_focus_before_input(&mut self, event: &WindowEvent) {
+		let pressed = matches!(
+			event,
+			WindowEvent::MouseInput {
+				state: ElementState::Pressed,
+				..
+			} | WindowEvent::KeyboardInput {
+				event: winit::event::KeyEvent {
+					state: ElementState::Pressed,
+					..
+				},
+				..
+			}
+		);
+		if pressed {
+			self.capture_search_focus();
+		}
+	}
+
 	fn before_window_input(
 		&mut self,
 		event_loop: &impl Loop,
@@ -466,6 +488,61 @@ impl<P: super::SendEvent> App<P> {
 		}
 	}
 
+	pub(super) fn tab_cycle_chord(&self, key: &Key) -> bool {
+		let modifiers = self.interaction.pointer.modifiers();
+		modifiers.control_key()
+			&& !modifiers.alt_key()
+			&& !modifiers.super_key()
+			&& *key == Key::Named(NamedKey::Tab)
+	}
+
+	pub(super) fn tab_cycle_keeps_cycle(&self, key: &Key) -> bool {
+		self.tab_cycle_chord(key)
+			|| matches!(
+				key,
+				Key::Named(
+					NamedKey::Shift
+						| NamedKey::Control
+						| NamedKey::Alt | NamedKey::Super
+				)
+			)
+	}
+
+	fn interrupt_tab_cycle(&mut self, event: &WindowEvent) {
+		if !self.readers.cycling() {
+			return;
+		}
+		match event {
+			WindowEvent::ModifiersChanged(modifiers)
+				if !modifiers.state().control_key() =>
+			{
+				self.readers.commit_cycle();
+			}
+			WindowEvent::KeyboardInput { event, .. }
+				if event.state == ElementState::Pressed =>
+			{
+				if !self.tab_cycle_keeps_cycle(&event.logical_key) {
+					self.readers.commit_cycle();
+				}
+			}
+			WindowEvent::MouseInput { .. }
+			| WindowEvent::MouseWheel { .. }
+			| WindowEvent::Touch(_)
+			| WindowEvent::DroppedFile(_)
+			| WindowEvent::Focused(false) => self.readers.commit_cycle(),
+			_ => {}
+		}
+	}
+
+	pub(super) fn cycle_tab(&mut self, backwards: bool) {
+		let Some(index) = self.readers.cycle(!backwards) else {
+			return;
+		};
+		if !self.select_tab_untracked(index) {
+			self.restore_search_focus();
+		}
+	}
+
 	#[cfg_attr(
 		any(),
 		markview::allow_complexity(
@@ -490,6 +567,14 @@ impl<P: super::SendEvent> App<P> {
 						NamedKey::Tab | NamedKey::Enter | NamedKey::Escape
 					)
 				)) {
+			return;
+		}
+		if self.tab_cycle_chord(&event.logical_key) {
+			if !self.panel_has_focus() {
+				let backwards =
+					self.interaction.pointer.modifiers().shift_key();
+				self.cycle_tab(backwards);
+			}
 			return;
 		}
 		if command {

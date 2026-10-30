@@ -130,12 +130,25 @@ fn legacy_origin() -> crate::security::Origin {
 	crate::security::Origin::Local(crate::security::Trust::Trusted)
 }
 
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+pub(super) struct SavedSearch {
+	#[serde(default)]
+	open: bool,
+	#[serde(default)]
+	query: String,
+	#[serde(default)]
+	case_sensitive: bool,
+	#[serde(default)]
+	whole_word: bool,
+}
 #[derive(Debug, PartialEq, Serialize, Deserialize)]
 pub(super) struct SavedTab {
 	#[serde(default = "legacy_origin")]
 	origin: crate::security::Origin,
 	path: PathBuf,
 	reading: Reading,
+	#[serde(default)]
+	search: SavedSearch,
 }
 #[derive(Debug, PartialEq, Serialize, Deserialize)]
 pub(super) struct Session {
@@ -146,6 +159,8 @@ pub(super) struct Session {
 	version: u32,
 	active: usize,
 	tabs: Vec<SavedTab>,
+	#[serde(default)]
+	recent: Vec<usize>,
 }
 impl Session {
 	fn read(path: &Path) -> anyhow::Result<Self> {
@@ -191,27 +206,44 @@ impl Tabs {
 	fn capture_session(&self, paste: &Path) -> Session {
 		let paste = paste.canonicalize().unwrap_or_else(|_| paste.to_owned());
 		let mut active: usize = 0;
-		let tabs = self
-			.entries()
-			.iter()
-			.enumerate()
-			.filter_map(|(index, tab)| {
-				if tab.path.starts_with(&paste) {
-					return None;
-				}
-				if index <= self.active() {
-					active += 1;
-				}
-				let session = if index == self.active() {
-					&self.session
-				} else {
-					&tab.session
-				};
-				Some(SavedTab {
-					origin: session.security.origin.clone(),
-					path: tab.path.clone(),
-					reading: Reading::capture(session),
-				})
+		let mut tabs = Vec::new();
+		let mut saved = vec![None; self.entries().len()];
+		for (index, tab) in self.entries().iter().enumerate() {
+			if tab.path.starts_with(&paste) {
+				continue;
+			}
+			if index <= self.active() {
+				active += 1;
+			}
+			let session = if index == self.active() {
+				&self.session
+			} else {
+				&tab.session
+			};
+			saved[index] = Some(tabs.len());
+			tabs.push(SavedTab {
+				origin: session.security.origin.clone(),
+				path: tab.path.clone(),
+				reading: Reading::capture(session),
+				search: SavedSearch {
+					open: session.search.open,
+					query: if session.search.needs_query {
+						session.search.query.clone()
+					} else {
+						session.search.input.text().to_owned()
+					},
+					case_sensitive: session.search.options.case_sensitive,
+					whole_word: session.search.options.whole_word,
+				},
+			});
+		}
+		let recent = self
+			.recent_order()
+			.into_iter()
+			.filter_map(|id| {
+				let index =
+					self.entries().iter().position(|tab| tab.id == id)?;
+				saved[index]
 			})
 			.collect();
 		Session {
@@ -220,12 +252,14 @@ impl Tabs {
 			version: 1,
 			active: active.saturating_sub(1),
 			tabs,
+			recent,
 		}
 	}
 	fn signature(&self) -> u64 {
 		use std::hash::{Hash, Hasher};
 		let mut hash = std::hash::DefaultHasher::new();
 		self.active().hash(&mut hash);
+		self.recent_order().hash(&mut hash);
 		for (index, tab) in self.entries().iter().enumerate() {
 			tab.path.hash(&mut hash);
 			let session = if index == self.active() {
@@ -237,11 +271,18 @@ impl Tabs {
 			session.details_open.hash(&mut hash);
 			session.security.origin.hash(&mut hash);
 			session.accepted_content_id.hash(&mut hash);
+			session.search.open.hash(&mut hash);
+			session.search.input.text().hash(&mut hash);
+			session.search.options.case_sensitive.hash(&mut hash);
+			session.search.options.whole_word.hash(&mut hash);
 		}
 		hash.finish()
 	}
 	fn restore_session(&mut self, session: Session) {
 		let selected = session.active;
+		let count = session.tabs.len();
+		let recent = session.recent;
+		let mut restored = vec![None; count];
 		let mut closest = None;
 		for (index, tab) in session.tabs.into_iter().enumerate() {
 			let Ok(path) = fs::canonicalize(&tab.path) else {
@@ -253,17 +294,45 @@ impl Tabs {
 			{
 				continue;
 			}
+			let search = tab.search;
+			let origin = tab.origin;
 			let entry = self.restore_tab(path, tab.reading);
-			self.session_mut(entry).security.origin = tab.origin;
+			let session = self.session_mut(entry);
+			session.security.origin = origin;
+			session.search.open = search.open;
+			session.search.query = search.query;
+			session.search.options.case_sensitive = search.case_sensitive;
+			session.search.options.whole_word = search.whole_word;
+			session.search.needs_query = true;
+			restored[index] = Some(entry);
 			if closest
 				.is_none_or(|(distance, _)| index.abs_diff(selected) < distance)
 			{
 				closest = Some((index.abs_diff(selected), entry));
 			}
 		}
-		if let Some((_, index)) = closest {
+		let order: Vec<_> = recent
+			.into_iter()
+			.filter_map(|index| {
+				let entry = (*restored.get(index)?)?;
+				Some(self.entries()[entry].id)
+			})
+			.collect();
+		let first_recent = order.first().copied();
+		self.set_recent(order);
+		let chosen = restored
+			.get(selected)
+			.and_then(|entry| *entry)
+			.or_else(|| {
+				first_recent.and_then(|id| {
+					self.entries().iter().position(|tab| tab.id == id)
+				})
+			})
+			.or_else(|| closest.map(|(_, entry)| entry));
+		if let Some(index) = chosen {
 			self.select(index, Instant::now());
 		}
+		self.remember_active();
 	}
 }
 
@@ -322,6 +391,7 @@ impl<P: super::SendEvent> App<P> {
 				}
 			}
 		}
+		self.restore_search();
 		if self.readers.session.path.is_some() {
 			self.observe_document();
 			self.request(false);

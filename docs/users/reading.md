@@ -18,11 +18,15 @@
 | `Ctrl+[` / `Ctrl+]` | Narrower or wider reading column |
 | `Ctrl+V` | Read Markdown or an HTTP(S) web article from the clipboard in a new tab |
 | `Ctrl+W` | Close the tab |
+| `Ctrl+Tab` / `Ctrl+Shift+Tab` | Switch tabs in recently-used order |
 | `Ctrl+A` / `Ctrl+C` | Select the document, or copy the selection |
 | Wheel, arrows, `Page Up`/`Page Down`, `Space`, `Home`/`End` | Scroll |
 
-macOS uses Command in place of Ctrl. The reading column defaults to 760 logical
-pixels and the type to 18.
+macOS uses Command in place of Ctrl, except for `Ctrl+Tab` and `Ctrl+Shift+Tab`,
+which stay on Control so they do not collide with the system app switcher. Each
+tab keeps its own search bar, query, match options and input focus; the session
+restores them on startup. The reading column defaults to 760 logical pixels and
+the type to 18.
 
 `markview`, `markview FILE`, and `markview web URL` open the reader in the
 background and return control to the shell immediately. Use `--foreground`
@@ -39,7 +43,10 @@ reports these errors in the terminal instead.
 
 - **Tabs behave.** Drag a tab to reorder it, close one with its × button or
   the middle mouse button, and scroll an overflowing strip with the wheel.
-  Choose the tab appearance in [settings](settings.md).
+  Closing the active tab returns to the one you used before it. Hold Ctrl and
+  press Tab repeatedly to walk the recent order without committing until Ctrl
+  is released; Ctrl+Shift+Tab walks the other way. Choose the tab appearance in
+  [settings](settings.md).
 
 - **Links open where they should.** Web, mail and local files go to the
   operating system's default handler; links to other `.md` files open in a new

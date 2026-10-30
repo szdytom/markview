@@ -196,7 +196,9 @@ impl<P: super::SendEvent> App<P> {
 		self.restore_session();
 		self.folder.navigation_revision += 1;
 		self.interaction.overlays.modal.send(Message::Dismiss);
-		self.clear_input_focus();
+		if self.focused_input().is_some() {
+			self.capture_search_focus();
+		}
 		self.cancel_gestures();
 		self.abandon_dm();
 		self.tab_strip.cancel_drag();
@@ -214,7 +216,7 @@ impl<P: super::SendEvent> App<P> {
 			}
 			return;
 		}
-		self.close_search();
+		self.clear_input_focus();
 		self.worker.cancel();
 		self.readers.open(path, Instant::now());
 		self.readers.session.security = security;
@@ -223,6 +225,7 @@ impl<P: super::SendEvent> App<P> {
 		self.status.clear_message();
 		self.status.set_error(false);
 		self.interaction.clear_selection();
+		self.restore_search();
 		if web_loading {
 			self.watch = None;
 			self.redraw();
@@ -235,15 +238,18 @@ impl<P: super::SendEvent> App<P> {
 		self.restore_session();
 		self.folder.navigation_revision += 1;
 		self.interaction.overlays.modal.send(Message::Dismiss);
+		if self.focused_input().is_some() {
+			self.capture_search_focus();
+		}
 		self.clear_input_focus();
 		self.cancel_gestures();
 		self.abandon_dm();
 		self.tab_strip.cancel_drag();
 		self.tab_strip.reveal_active = false;
-		self.close_search();
 		self.readers.new_page(Instant::now());
 		self.interaction.overlays.viewer.send(ViewerMessage::Close);
 		self.worker.cancel();
+		self.restore_search();
 		self.search_worker.release();
 		self.watch = None;
 		self.interaction.clear_selection();
@@ -257,17 +263,31 @@ impl<P: super::SendEvent> App<P> {
 		self.redraw();
 	}
 	pub(super) fn select_tab(&mut self, index: usize) {
+		self.select_tab_with(index, true);
+	}
+	pub(super) fn select_tab_untracked(&mut self, index: usize) -> bool {
+		self.select_tab_with(index, false)
+	}
+	fn select_tab_with(&mut self, index: usize, track: bool) -> bool {
 		self.folder.navigation_revision += 1;
 		if self.folder_inset() == 0. {
 			self.set_folder_open(false);
 		}
 		self.interaction.overlays.modal.send(Message::Dismiss);
+		if self.focused_input().is_some() {
+			self.capture_search_focus();
+		}
 		self.clear_input_focus();
 		self.cancel_gestures();
 		self.abandon_dm();
 		self.tab_strip.cancel_drag();
 		self.tab_strip.reveal_active = true;
-		if self.readers.select(index, Instant::now()) {
+		let switched = if track {
+			self.readers.select(index, Instant::now())
+		} else {
+			self.readers.select_untracked(index, Instant::now())
+		};
+		if switched {
 			// The viewer showed the page that was active, so a tab switch
 			// closes it rather than leaving the new document under it.
 			self.interaction.overlays.viewer.send(ViewerMessage::Close);
@@ -276,19 +296,24 @@ impl<P: super::SendEvent> App<P> {
 			self.dismiss_preview();
 			self.interaction.clear_selection();
 			self.worker.cancel();
-			self.close_search();
-			self.search_changed();
+			self.restore_search();
 			self.status.clear();
 			self.resume_document();
+		} else {
+			self.restore_search_focus();
 		}
 		// The tree follows the clicked tab, so a collapsed branch cannot
 		// hide its entry.
 		self.expand_folder_to_tab();
 		self.apply_anchor();
 		self.redraw();
+		switched
 	}
 	pub(super) fn close_tab(&mut self, index: usize) {
 		self.interaction.overlays.modal.send(Message::Dismiss);
+		if self.focused_input().is_some() {
+			self.capture_search_focus();
+		}
 		self.clear_input_focus();
 		self.cancel_gestures();
 		self.abandon_dm();
@@ -335,8 +360,7 @@ impl<P: super::SendEvent> App<P> {
 			self.worker.cancel();
 		}
 		self.interaction.clear_selection();
-		self.close_search();
-		self.search_changed();
+		self.restore_search();
 		self.status.clear();
 		if !self.readers.entries().is_empty()
 			&& self.readers.session.path.is_some()

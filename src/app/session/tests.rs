@@ -110,7 +110,7 @@ fn roundtrip_tabs_order_active_dedup_close_empty_and_invalid_files() {
 }
 
 #[test]
-fn active_missing_selects_closest_and_clipboard_tabs_are_excluded() {
+fn missing_active_falls_back_to_recent_and_clipboard_tabs_are_excluded() {
 	let dir = tempfile::tempdir().unwrap();
 	let mut tabs = Tabs::default();
 	for name in ["a.md", "gone.md", "b.md"] {
@@ -121,12 +121,13 @@ fn active_missing_selects_closest_and_clipboard_tabs_are_excluded() {
 	fs::remove_file(dir.path().join("gone.md")).unwrap();
 	let mut restored = Tabs::default();
 	restored.restore_session(saved);
-	assert_eq!(restored.active(), 0);
+	assert_eq!(restored.active(), 1);
+	assert_eq!(restored.session.path, Some(document(dir.path(), "b.md")));
 	let paste = tempfile::tempdir().unwrap();
 	restored.open(document(paste.path(), "clipboard.md"), Instant::now());
 	let saved = restored.capture_session(paste.path());
 	assert_eq!(saved.tabs.len(), 2);
-	assert_eq!(saved.active, 0);
+	assert_eq!(saved.active, 1);
 }
 
 #[test]
@@ -343,7 +344,9 @@ fn disclosures_apply_before_layout_and_changed_content_discards_overrides() {
 			origin: legacy_origin(),
 			path: path.clone(),
 			reading: saved,
+			search: SavedSearch::default(),
 		}],
+		recent: Vec::new(),
 	});
 	assert_eq!(tabs.session.details_open.get(&id), Some(&true));
 	let mut restored_options = crate::test_support::options();
@@ -424,13 +427,16 @@ fn external_open_before_window_creation_restores_then_selects_the_requested_tab(
 				origin: legacy_origin(),
 				path: a,
 				reading: Reading::default(),
+				search: SavedSearch::default(),
 			},
 			SavedTab {
 				origin: legacy_origin(),
 				path: b.clone(),
 				reading: Reading::default(),
+				search: SavedSearch::default(),
 			},
 		],
+		recent: Vec::new(),
 	}
 	.write(&dir.path().join("session.json"))
 	.unwrap();
@@ -540,6 +546,7 @@ fn pending_folder_restoration_survives_autosave_and_exit() {
 			version: 1,
 			active: 0,
 			tabs: vec![],
+			recent: Vec::new(),
 		}
 		.write(&path)
 		.unwrap();
@@ -615,4 +622,60 @@ fn folder_root_is_saved_with_the_browsing_session() {
 			.unwrap()
 			.folder_open
 	);
+}
+
+#[test]
+fn recent_order_and_each_tabs_search_state_roundtrip() {
+	let dir = tempfile::tempdir().unwrap();
+	let a = document(dir.path(), "a.md");
+	let b = document(dir.path(), "b.md");
+	{
+		let mut app = app(dir.path());
+		app.ui = crate::test_support::shaper();
+		primary(&mut app);
+		app.readers.open(a.clone(), Instant::now());
+		app.open_search();
+		app.readers
+			.session
+			.search
+			.input
+			.set_text(&mut app.ui, "needle");
+		app.readers.session.search.options.case_sensitive = true;
+		app.readers.session.search.options.whole_word = true;
+		app.search_changed();
+		app.readers.open(b.clone(), Instant::now());
+		app.readers.session_mut(1).search.query = "second".into();
+		app.readers
+			.session_mut(1)
+			.search
+			.input
+			.set_text(&mut app.ui, "second");
+		app.readers.select(0, Instant::now());
+		app.flush_session();
+	}
+	let saved = Session::read(&dir.path().join("session.json")).unwrap();
+	assert_eq!(saved.recent, vec![0, 1]);
+	assert!(saved.tabs[0].search.open);
+	assert_eq!(saved.tabs[0].search.query, "needle");
+	assert!(saved.tabs[0].search.case_sensitive);
+	assert!(saved.tabs[0].search.whole_word);
+	assert!(!saved.tabs[1].search.open);
+	assert_eq!(saved.tabs[1].search.query, "second");
+
+	let mut restored = app(dir.path());
+	restored.ui = crate::test_support::shaper();
+	primary(&mut restored);
+	assert_eq!(restored.readers.session.path, Some(a));
+	assert!(restored.readers.session.search.open);
+	assert_eq!(restored.readers.session.search.input.text(), "needle");
+	assert!(restored.readers.session.search.options.case_sensitive);
+	assert!(restored.readers.session.search.options.whole_word);
+	assert_eq!(restored.focused_input(), None);
+	// A restored inactive query still has no text yet, but saving it again
+	// must not replace it with the empty editor.
+	restored.flush_session();
+	let saved = Session::read(&dir.path().join("session.json")).unwrap();
+	assert_eq!(saved.tabs[1].search.query, "second");
+	restored.close_tab(restored.readers.active());
+	assert_eq!(restored.readers.session.path, Some(b));
 }

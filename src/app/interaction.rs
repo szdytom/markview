@@ -82,6 +82,11 @@ impl<P: super::SendEvent> App<P> {
 			Command::Search(SearchCommand::SearchNext)
 				| Command::Search(SearchCommand::SearchPrevious)
 		) {
+			if matches!(command, Command::Chrome(ChromeCommand::SelectTab(_)))
+				&& self.focused_input().is_some()
+			{
+				self.capture_search_focus();
+			}
 			self.blur_input();
 			if self.focused_input().is_some() {
 				self.interaction.widgets.focus = None;

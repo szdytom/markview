@@ -477,7 +477,7 @@ fn search_state_belongs_to_each_tab_and_panels_preserve_query() {
 	assert!(h.app.readers.session.search.input.text().is_empty());
 	let first = h.app.readers.find(&one).unwrap();
 	h.app.select_tab(first);
-	assert!(!h.app.readers.session.search.open);
+	assert!(h.app.readers.session.search.open);
 	assert_eq!(h.app.readers.session.search.input.text(), "needle");
 	assert!(h.app.readers.session.search.options.whole_word);
 	assert_eq!(h.app.readers.session.search.current, Some(0));
@@ -498,7 +498,7 @@ fn search_state_belongs_to_each_tab_and_panels_preserve_query() {
 	assert_eq!(h.app.readers.session.search.input.text(), "needle");
 }
 #[test]
-fn document_switches_close_search_and_keep_each_query() {
+fn document_switches_keep_each_tabs_search_state() {
 	let mut h = Harness::new("needle");
 	h.query("needle");
 	let one = h.app.readers.session.path.clone().unwrap();
@@ -511,20 +511,20 @@ fn document_switches_close_search_and_keep_each_query() {
 	assert!(!h.app.readers.session.search.open);
 	h.query("second");
 	h.app.open(one.clone());
-	assert!(!h.app.readers.session.search.open);
+	assert!(h.app.readers.session.search.open);
 	assert_eq!(h.app.readers.session.search.input.text(), "needle");
-	assert!(h.app.interaction.widgets.focus.is_none());
-	assert!(h.app.draw_search_highlights().is_empty());
+	assert_eq!(h.app.focused_input(), Some(TextField::Search));
+	assert!(!h.app.draw_search_highlights().is_empty());
 	h.app.open_search();
 	h.settle();
 	assert_eq!(h.app.readers.session.search.matches.len(), 1);
 	h.app.select_tab(h.app.readers.find(&two).unwrap());
-	assert!(!h.app.readers.session.search.open);
+	assert!(h.app.readers.session.search.open);
 	assert_eq!(h.app.readers.session.search.input.text(), "second");
 	h.app.open_search();
 	h.app.close_tab(h.app.readers.active());
 	assert_eq!(h.app.readers.session.path.as_ref(), Some(&one));
-	assert!(!h.app.readers.session.search.open);
+	assert!(h.app.readers.session.search.open);
 	assert_eq!(h.app.readers.session.search.input.text(), "needle");
 	h.app.open_search();
 	let background = h.dir.path().join("background.md");
@@ -779,4 +779,153 @@ fn search_navigation_cancels_restoration_before_later_layouts_arrive() {
 			(h.app.readers.session.scrolling.offset - navigated).abs() < 0.01
 		);
 	}
+}
+
+#[test]
+fn ctrl_tab_cycles_a_fixed_recent_snapshot_and_commits_only_the_end() {
+	use winit::keyboard::{Key, ModifiersState, NamedKey};
+	let mut h = Harness::new("needle");
+	let one = h.app.readers.session.path.clone().unwrap();
+	let mut paths = vec![one.clone()];
+	for name in ["two.md", "three.md"] {
+		let path = h.dir.path().join(name);
+		std::fs::write(&path, "needle").unwrap();
+		h.app.open(path);
+		paths.push(h.app.readers.session.path.clone().unwrap());
+	}
+	let [one, two, three] = paths.as_slice() else {
+		unreachable!()
+	};
+	h.app
+		.interaction
+		.pointer
+		.set_modifiers(ModifiersState::CONTROL);
+	let tab = Key::Named(NamedKey::Tab);
+	assert!(h.app.tab_cycle_chord(&tab));
+	assert!(h.app.tab_cycle_keeps_cycle(&Key::Named(NamedKey::Shift)));
+	assert!(!h.app.tab_cycle_keeps_cycle(&Key::Character("x".into())));
+	h.app
+		.interaction
+		.pointer
+		.set_modifiers(ModifiersState::CONTROL | ModifiersState::SHIFT);
+	assert!(h.app.tab_cycle_chord(&tab));
+	for modifiers in [
+		ModifiersState::CONTROL | ModifiersState::ALT,
+		ModifiersState::SUPER,
+		ModifiersState::SHIFT,
+	] {
+		h.app.interaction.pointer.set_modifiers(modifiers);
+		assert!(!h.app.tab_cycle_chord(&tab));
+	}
+	h.app
+		.interaction
+		.pointer
+		.set_modifiers(ModifiersState::CONTROL);
+	h.app.cycle_tab(false);
+	assert_eq!(h.app.readers.session.path.as_ref(), Some(two));
+	h.app.cycle_tab(false);
+	assert_eq!(h.app.readers.session.path.as_ref(), Some(one));
+	h.app.cycle_tab(false);
+	assert_eq!(h.app.readers.session.path.as_ref(), Some(three));
+	h.app.readers.commit_cycle();
+	h.app.close_tab(h.app.readers.active());
+	assert_eq!(h.app.readers.session.path.as_ref(), Some(two));
+}
+
+#[test]
+fn clicking_tabs_preserves_the_focused_search_box() {
+	use crate::state::TextField;
+	use winit::{
+		dpi::PhysicalPosition,
+		event::{DeviceId, ElementState, MouseButton, WindowEvent},
+		window::WindowId,
+	};
+	struct Loop;
+	impl crate::app::window::Loop for Loop {
+		fn exit(&self) {}
+	}
+	let mut h = Harness::new("needle");
+	h.query("needle");
+	let one = h.app.readers.entries()[0].path.clone();
+	let two = h.dir.path().join("two.md");
+	std::fs::write(&two, "second needle").unwrap();
+	h.app.open(two.clone());
+	h.app.select_tab(0);
+	assert_eq!(h.app.focused_input(), Some(TextField::Search));
+	let click = |h: &mut Harness, index: usize| {
+		let scale = h.app.dimensions().2;
+		let rect = h.app.tab_layout().rects[index];
+		let at = PhysicalPosition::new(
+			((rect.x + rect.w / 2.0) * scale) as f64,
+			((rect.y + rect.h / 2.0) * scale) as f64,
+		);
+		for event in [
+			WindowEvent::CursorMoved {
+				device_id: DeviceId::dummy(),
+				position: at,
+			},
+			WindowEvent::MouseInput {
+				device_id: DeviceId::dummy(),
+				state: ElementState::Pressed,
+				button: MouseButton::Left,
+			},
+		] {
+			h.app.handle_window_event(&Loop, WindowId::dummy(), event);
+		}
+		h.app.handle_window_event(
+			&Loop,
+			WindowId::dummy(),
+			WindowEvent::MouseInput {
+				device_id: DeviceId::dummy(),
+				state: ElementState::Released,
+				button: MouseButton::Left,
+			},
+		);
+	};
+	let two_index = h.app.readers.find(&two).unwrap();
+	click(&mut h, two_index);
+	assert_eq!(h.app.readers.session.path.as_ref(), Some(&two));
+	assert_eq!(h.app.focused_input(), None);
+	click(&mut h, 0);
+	assert_eq!(h.app.readers.session.path.as_ref(), Some(&one));
+	assert_eq!(h.app.focused_input(), Some(TextField::Search));
+}
+
+#[test]
+fn keyboard_switches_do_not_restore_stale_search_focus() {
+	use crate::state::TextField;
+	let mut h = Harness::new("needle");
+	h.query("needle");
+	let one = h.app.readers.entries()[0].path.clone();
+	let two = h.dir.path().join("two.md");
+	std::fs::write(&two, "second needle").unwrap();
+	h.app.open(two.clone());
+	let two = h.app.readers.find(&two).unwrap();
+	h.app.select_tab(0);
+	assert_eq!(h.app.focused_input(), Some(TextField::Search));
+	// The reader leaves the query for the document, then switches with keys.
+	h.app.clear_input_focus();
+	h.app.capture_search_focus();
+	h.app.select_tab(two);
+	h.app.select_tab(0);
+	assert_eq!(h.app.readers.session.path.as_ref(), Some(&one));
+	assert!(h.app.readers.session.search.open);
+	assert_eq!(h.app.focused_input(), None);
+}
+
+#[test]
+fn new_page_keeps_the_search_focus_captured_before_dispatch() {
+	use crate::state::TextField;
+	let mut h = Harness::new("needle");
+	h.query("needle");
+	let one = h.app.readers.session.path.clone().unwrap();
+	assert_eq!(h.app.focused_input(), Some(TextField::Search));
+	// The event path captures the input, then the command path clears it.
+	h.app.capture_search_focus();
+	h.app.clear_input_focus();
+	h.app.new_page();
+	h.app.open(one.clone());
+	assert_eq!(h.app.readers.session.path.as_ref(), Some(&one));
+	assert!(h.app.readers.session.search.open);
+	assert_eq!(h.app.focused_input(), Some(TextField::Search));
 }

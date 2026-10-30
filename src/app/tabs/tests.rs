@@ -277,3 +277,68 @@ fn empty_page_keeps_parked_sessions_available_to_background_updates() {
 	assert_eq!(tabs.session.path, Some("renamed.md".into()));
 	assert_eq!(tabs.session.pending_anchor.as_deref(), Some("heading"));
 }
+
+#[test]
+fn closing_active_tab_returns_to_the_most_recently_used_tab() {
+	let mut tabs = Tabs::default();
+	let now = Instant::now();
+	for name in ["a.md", "b.md", "c.md"] {
+		tabs.open(PathBuf::from(name), now);
+	}
+	assert!(tabs.select(0, now));
+	assert!(tabs.select(2, now));
+	assert!(matches!(tabs.close(2, now), super::Closed::Active));
+	assert_eq!(tabs.session.path, Some(PathBuf::from("a.md")));
+	assert!(matches!(tabs.close(0, now), super::Closed::Active));
+	assert_eq!(tabs.session.path, Some(PathBuf::from("b.md")));
+}
+
+#[test]
+fn ctrl_tab_walks_a_fixed_recent_snapshot_and_commits_only_its_end() {
+	let mut tabs = Tabs::default();
+	let now = Instant::now();
+	for name in ["a.md", "b.md", "c.md", "d.md"] {
+		tabs.open(PathBuf::from(name), now);
+	}
+	assert!(tabs.select(0, now));
+	let step = |tabs: &mut Tabs, path: &str| {
+		let index = tabs.cycle(true).unwrap();
+		assert!(tabs.select_untracked(index, now));
+		assert_eq!(tabs.session.path, Some(PathBuf::from(path)));
+	};
+	step(&mut tabs, "d.md");
+	step(&mut tabs, "c.md");
+	step(&mut tabs, "b.md");
+	step(&mut tabs, "a.md");
+	tabs.commit_cycle();
+	assert_eq!(
+		tabs.recent_order()
+			.into_iter()
+			.map(|id| tabs
+				.entries()
+				.iter()
+				.find(|tab| tab.id == id)
+				.unwrap()
+				.path
+				.clone())
+			.collect::<Vec<_>>(),
+		["a.md", "d.md", "c.md", "b.md"].map(PathBuf::from)
+	);
+}
+
+#[test]
+fn ctrl_shift_tab_reverses_and_unvisited_background_tabs_close_the_cycle() {
+	let mut tabs = Tabs::default();
+	let now = Instant::now();
+	tabs.open(PathBuf::from("a.md"), now);
+	assert!(tabs.open_background(PathBuf::from("b.md"), None));
+	assert!(tabs.open_background(PathBuf::from("c.md"), None));
+	let index = tabs.cycle(false).unwrap();
+	assert!(tabs.select_untracked(index, now));
+	assert_eq!(tabs.session.path, Some(PathBuf::from("b.md")));
+	let index = tabs.cycle(false).unwrap();
+	assert!(tabs.select_untracked(index, now));
+	assert_eq!(tabs.session.path, Some(PathBuf::from("c.md")));
+	tabs.commit_cycle();
+	assert_eq!(tabs.recent_order().len(), 3);
+}

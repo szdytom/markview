@@ -27,6 +27,8 @@ at the same level, without `[brackets]`.
 
 ### Added
 
+- Switch tabs with Ctrl+Tab and Ctrl+Shift+Tab in a held recently-used cycle, and return to the previous tab when closing the active one.
+- Keep each tab's search bar, query and match options across tab switches and session restoration.
 - Center a picture that fits the reading area vertically, while taller pictures keep scrolling.
 - Style the document face a formula borrows for CJK and emoji with `font` on the `math` rule, defaulting to `sans-serif`, `sans-serif[cjk]` and the emoji face.
 

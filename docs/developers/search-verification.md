@@ -8,8 +8,9 @@ panels, option lists and image viewers keep keyboard priority. Queries are liter
 ignore case by default, and use ICU word boundaries when **Word** is enabled.
 Editing a query immediately submits a cancellable background search without
 moving the reader or opening disclosures. IME preedit does not submit queries. Navigation wraps and opens only the target's ancestors.
-Switching documents closes the search bar. Query, options and current result
-belong to a tab and are retained when reopening with Ctrl/Cmd+F, but are not saved on exit.
+Each tab keeps its search bar, query, match options and input focus across tab
+switches. The browsing session saves the bar visibility, query and match
+options, and restores them on startup; input focus is not restored after a restart.
 
 ## Automated checks
 

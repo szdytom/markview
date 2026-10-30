@@ -16,6 +16,16 @@ pub(super) struct Tabs {
 	entries: Vec<ReaderTab>,
 	active: usize,
 	request_serial: u64,
+	/// Recently used tab ids, most recent first.
+	mru: Vec<u64>,
+	/// The fixed MRU snapshot a held Ctrl+Tab is walking through.
+	cycle: Option<TabCycle>,
+}
+
+#[derive(Default)]
+struct TabCycle {
+	order: Vec<u64>,
+	index: usize,
 }
 
 pub(super) enum Closed {
@@ -46,6 +56,88 @@ impl Tabs {
 	pub(super) fn entries(&self) -> &[ReaderTab] {
 		&self.entries
 	}
+	fn entry_index(&self, id: u64) -> Option<usize> {
+		self.entries.iter().position(|tab| tab.id == id)
+	}
+	fn active_id(&self) -> Option<u64> {
+		self.entries.get(self.active()).map(|tab| tab.id)
+	}
+	/// Moves `id` to the front of the recent order.
+	fn remember(&mut self, id: u64) {
+		self.mru.retain(|recent| *recent != id);
+		self.mru.insert(0, id);
+	}
+	/// Every tab in MRU order, with the active tab first and tabs never used
+	/// appended in strip order for the Ctrl+Tab cycle.
+	pub(super) fn recent_order(&self) -> Vec<u64> {
+		let mut order = Vec::with_capacity(self.entries.len());
+		if let Some(id) = self.active_id() {
+			order.push(id);
+		}
+		for id in &self.mru {
+			if self.entry_index(*id).is_some() && !order.contains(id) {
+				order.push(*id);
+			}
+		}
+		for tab in &self.entries {
+			if !order.contains(&tab.id) {
+				order.push(tab.id);
+			}
+		}
+		order
+	}
+	/// Restores a saved recent order and appends tabs it did not mention.
+	pub(super) fn set_recent(&mut self, ids: Vec<u64>) {
+		let mut order = Vec::with_capacity(self.entries.len());
+		for id in ids {
+			if self.entry_index(id).is_some() && !order.contains(&id) {
+				order.push(id);
+			}
+		}
+		for tab in &self.entries {
+			if !order.contains(&tab.id) {
+				order.push(tab.id);
+			}
+		}
+		self.mru = order;
+		self.cycle = None;
+	}
+	pub(super) fn remember_active(&mut self) {
+		if let Some(id) = self.active_id() {
+			self.remember(id);
+		}
+	}
+	/// Advances the held Ctrl+Tab cycle and returns its next tab.
+	pub(super) fn cycle(&mut self, forward: bool) -> Option<usize> {
+		if self.entries.len() < 2 || self.active_id().is_none() {
+			return None;
+		}
+		let order = self
+			.cycle
+			.as_ref()
+			.map_or_else(|| self.recent_order(), |cycle| cycle.order.clone());
+		if order.len() < 2 {
+			return None;
+		}
+		let current = self.cycle.as_ref().map_or(0, |cycle| cycle.index);
+		let index = if forward {
+			(current + 1) % order.len()
+		} else {
+			(current + order.len() - 1) % order.len()
+		};
+		let target = self.entry_index(order[index])?;
+		self.cycle = Some(TabCycle { order, index });
+		Some(target)
+	}
+	pub(super) fn cycling(&self) -> bool {
+		self.cycle.is_some()
+	}
+	/// Ends a held cycle and records only the tab it settled on.
+	pub(super) fn commit_cycle(&mut self) {
+		if self.cycle.take().is_some() {
+			self.remember_active();
+		}
+	}
 	pub(super) fn session_mut(&mut self, index: usize) -> &mut ReaderSession {
 		if index == self.active() {
 			&mut self.session
@@ -66,6 +158,7 @@ impl Tabs {
 		}
 	}
 	pub(super) fn new_page(&mut self, now: Instant) {
+		self.cycle = None;
 		self.session.cancel_scroll_animation();
 		if self.session.path.is_some() {
 			self.entries[self.active].preview =
@@ -145,6 +238,8 @@ impl Tabs {
 		};
 		self.entries.insert(index, ReaderTab::new(path.clone()));
 		self.active = index;
+		self.remember(self.entries[index].id);
+		self.cycle = None;
 		self.session.path = Some(path);
 		self.session.security =
 			crate::security::Security::local(crate::security::Trust::Trusted);
@@ -211,6 +306,16 @@ impl Tabs {
 		session.pending_anchor = anchor;
 	}
 	pub(super) fn select(&mut self, index: usize, now: Instant) -> bool {
+		self.activate(index, now, true)
+	}
+	pub(super) fn select_untracked(
+		&mut self,
+		index: usize,
+		now: Instant,
+	) -> bool {
+		self.activate(index, now, false)
+	}
+	fn activate(&mut self, index: usize, now: Instant, track: bool) -> bool {
 		if index >= self.entries.len() || index == self.active() {
 			return false;
 		}
@@ -230,12 +335,19 @@ impl Tabs {
 		if self.session.path.is_none() {
 			self.session.path = Some(self.entries[index].path.clone());
 		}
+		if track {
+			self.cycle = None;
+			self.remember(self.entries[index].id);
+		}
 		true
 	}
 	pub(super) fn close(&mut self, index: usize, now: Instant) -> Closed {
 		if index >= self.entries.len() {
 			return Closed::Missing;
 		}
+		let closed = self.entries[index].id;
+		self.mru.retain(|id| *id != closed);
+		self.cycle = None;
 		if index != self.active() {
 			self.entries.remove(index);
 			if index < self.active {
@@ -248,13 +360,21 @@ impl Tabs {
 		if self.entries.is_empty() {
 			self.active = 0;
 			self.session = ReaderSession::default();
+			self.mru.clear();
 		} else {
-			self.active = index.min(self.entries.len() - 1);
+			self.mru
+				.retain(|id| self.entries.iter().any(|tab| tab.id == *id));
+			self.active = self
+				.mru
+				.first()
+				.and_then(|id| self.entry_index(*id))
+				.unwrap_or_else(|| index.min(self.entries.len() - 1));
 			self.entries[self.active].preview = None;
 			self.session =
 				std::mem::take(&mut self.entries[self.active].session);
 			self.session.cancel_scroll_animation();
 			self.entries[self.active].last_active = now;
+			self.remember(self.entries[self.active].id);
 		}
 		Closed::Active
 	}
