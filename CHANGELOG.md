@@ -32,6 +32,7 @@ at the same level, without `[brackets]`.
 
 ### Changed
 
+- Open new tabs to the right of the active tab instead of at the end of the strip.
 - Draw a padded rule between the tab hover card's path and its page preview.
 - Keep prose baselines steady when inline math or pictures fit the line, so selection rows keep their gap below text.
 - Extend folder sidebar rows down to the footer band instead of stopping a band early.

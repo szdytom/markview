@@ -163,6 +163,9 @@ fn background_open_preserves_active_reading_and_deduplicates_tabs() {
 	assert!(!tabs.open_background(PathBuf::from("b.md"), None));
 	assert!(!tabs.open_background(PathBuf::from("a.md"), None));
 	assert_eq!(tabs.entries().len(), 3);
+	let paths: Vec<_> =
+		tabs.entries().iter().map(|tab| tab.path.clone()).collect();
+	assert_eq!(paths, ["a.md", "c.md", "b.md"].map(PathBuf::from));
 	assert_eq!(tabs.active(), 0);
 	assert_eq!(tabs.session.path, Some(PathBuf::from("a.md")));
 	assert_eq!(tabs.session.version, request.version);
@@ -173,7 +176,7 @@ fn background_open_preserves_active_reading_and_deduplicates_tabs() {
 		tabs.session.document.as_ref().unwrap(),
 		&document
 	));
-	assert!(tabs.select(1, now));
+	assert!(tabs.select(2, now));
 	assert_eq!(tabs.session.path, Some(PathBuf::from("b.md")));
 	assert!(tabs.session.document.is_none());
 	assert_eq!(tabs.session.pending_anchor.as_deref(), Some("intro"));
@@ -195,14 +198,45 @@ fn background_tabs_can_be_reordered_closed_or_activated_by_closing_current() {
 	assert!(matches!(tabs.close(2, now), super::Closed::Inactive));
 	assert_eq!(tabs.session.path, Some(PathBuf::from("a.md")));
 	assert!(matches!(tabs.close(0, now), super::Closed::Active));
-	assert_eq!(tabs.session.path, Some(PathBuf::from("c.md")));
+	assert_eq!(tabs.session.path, Some(PathBuf::from("b.md")));
 	assert!(tabs.session.document.is_none());
 	assert_eq!(
 		tabs.request(crate::test_support::options(), false)
 			.unwrap()
 			.path,
-		PathBuf::from("c.md")
+		PathBuf::from("b.md")
 	);
+}
+
+#[test]
+fn new_tabs_open_to_the_right_of_the_active_tab() {
+	let mut tabs = Tabs::default();
+	let now = Instant::now();
+	for name in ["a.md", "b.md", "c.md"] {
+		tabs.open(PathBuf::from(name), now);
+	}
+	assert!(tabs.select(1, now));
+	tabs.open(PathBuf::from("d.md"), now);
+	let paths = |tabs: &Tabs| {
+		tabs.entries()
+			.iter()
+			.map(|tab| tab.path.clone())
+			.collect::<Vec<_>>()
+	};
+	assert_eq!(
+		paths(&tabs),
+		["a.md", "b.md", "d.md", "c.md"].map(PathBuf::from)
+	);
+	assert_eq!(tabs.session.path, Some(PathBuf::from("d.md")));
+	assert_eq!(tabs.active(), 2);
+	assert!(tabs.select(0, now));
+	assert!(tabs.open_background(PathBuf::from("e.md"), None));
+	assert!(tabs.open_background(PathBuf::from("f.md"), None));
+	assert_eq!(
+		paths(&tabs),
+		["a.md", "f.md", "e.md", "b.md", "d.md", "c.md"].map(PathBuf::from)
+	);
+	assert_eq!(tabs.session.path, Some(PathBuf::from("a.md")));
 }
 
 #[test]

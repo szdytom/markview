@@ -126,7 +126,7 @@ fn active_missing_selects_closest_and_clipboard_tabs_are_excluded() {
 	restored.open(document(paste.path(), "clipboard.md"), Instant::now());
 	let saved = restored.capture_session(paste.path());
 	assert_eq!(saved.tabs.len(), 2);
-	assert_eq!(saved.active, 1);
+	assert_eq!(saved.active, 0);
 }
 
 #[test]

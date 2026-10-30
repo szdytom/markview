@@ -129,7 +129,7 @@ impl Tabs {
 	pub(super) fn open(&mut self, path: PathBuf, now: Instant) {
 		// A switch ends whatever scroll was in flight in the old document.
 		self.session.cancel_scroll_animation();
-		if let Some(current) = self.session.path.clone() {
+		let index = if let Some(current) = self.session.path.clone() {
 			if self.entries.is_empty() {
 				self.entries.push(ReaderTab::new(current));
 			} else {
@@ -139,12 +139,12 @@ impl Tabs {
 					std::mem::take(&mut self.session);
 				self.entries[self.active].last_active = now;
 			}
-			self.entries.push(ReaderTab::new(path.clone()));
-			self.active = self.entries.len() - 1;
+			self.active + 1
 		} else {
-			self.entries.push(ReaderTab::new(path.clone()));
-			self.active = self.entries.len() - 1;
-		}
+			self.entries.len()
+		};
+		self.entries.insert(index, ReaderTab::new(path.clone()));
+		self.active = index;
 		self.session.path = Some(path);
 		self.session.security =
 			crate::security::Security::local(crate::security::Trust::Trusted);
@@ -188,7 +188,8 @@ impl Tabs {
 		tab.session.remote_notice_dismissed = false;
 		tab.session.pending_anchor = anchor;
 		tab.session.security = security;
-		self.entries.push(tab);
+		let index = self.active + 1;
+		self.entries.insert(index, tab);
 		true
 	}
 	/// Replace the heading anchor a tab will apply when it is next displayed.
