@@ -21,6 +21,16 @@ at the same level, without `[brackets]`.
 
 ## Unreleased
 
+## 0.4.3 - 2026-10-31
+
+**Highlights**:
+
+- Switch tabs with Ctrl+Tab in recently used order and return to the previous tab when closing the active tab.
+- Keep each tab's search query and match options across switches and session restoration.
+- View smaller pictures centered vertically in the reading area.
+- Expand and collapse folder directories and outline headings with smooth animations.
+- Read prose on steady baselines beside inline math, with list markers centered on the first line.
+
 ### Documentation
 
 - Document Homebrew installation for Apple Silicon Macs through the community tap.

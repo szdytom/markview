@@ -1,6 +1,6 @@
 {
   "name": "@markview/scroll-sync",
-  "version": "0.4.2",
+  "version": "0.4.3",
   "description": "Editor-independent source anchors and bidirectional scroll coordination",
   "license": "MIT",
   "type": "module",
