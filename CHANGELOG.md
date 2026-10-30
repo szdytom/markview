@@ -43,6 +43,7 @@ at the same level, without `[brackets]`.
 
 ### Fixed
 
+- Return to the originating document when closing a folder tab inserted before an existing tab.
 - Center list bullets, numbering and task checkboxes on the actual first line, including lines enlarged by inline math.
 
 ## 0.4.2 - 2026-10-28

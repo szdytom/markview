@@ -884,6 +884,49 @@ fn folder_open_navigation_links_and_refresh_use_the_native_reader() {
 }
 
 #[test]
+fn closing_a_folder_tab_returns_to_its_opener_with_a_right_neighbor() {
+	use crate::state::Command;
+	for phone in [false, true] {
+		let mut h = Harness::new();
+		h.app.tab_strip.phone = phone;
+		let root = h.dir.path().canonicalize().unwrap();
+		fs::write(root.join("chapter.md"), "# Chapter").unwrap();
+		h.open("README.md", 2);
+		h.open("README.zh-cn.md", 1);
+		h.app.select_tab(0);
+		h.wait_images(2);
+		h.app.folder_loaded(
+			0,
+			true,
+			crate::app::folder::Tree::read(root.clone()),
+		);
+		let chapter = h
+			.app
+			.folder
+			.tree
+			.as_ref()
+			.unwrap()
+			.entries
+			.iter()
+			.position(|entry| entry.path == root.join("chapter.md"))
+			.unwrap();
+		h.app
+			.action(Command::Chrome(ChromeCommand::FolderEntry(chapter)));
+		h.wait_images(0);
+		assert_eq!(h.app.readers.active(), 1);
+		assert_eq!(
+			h.app.readers.entries()[2].path,
+			root.join("README.zh-cn.md")
+		);
+		h.app.action(Command::Chrome(ChromeCommand::CloseTab(1)));
+		assert_eq!(h.app.readers.session.path, Some(root.join("README.md")));
+		h.wait_images(2);
+		assert_eq!(h.app.readers.active(), 0);
+		assert_eq!(h.app.readers.entries().len(), 2);
+	}
+}
+
+#[test]
 fn folder_image_entries_open_a_single_image_tab() {
 	use crate::state::Command;
 	let mut h = Harness::new();
