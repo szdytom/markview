@@ -1,30 +1,14 @@
+use super::{Easing, Tween};
 use std::time::{Duration, Instant};
 
 const DURATION: Duration = Duration::from_millis(220);
 
-pub(crate) struct DrawerAnimation {
-	from: f32,
-	to: f32,
-	started: Instant,
-	duration: Duration,
-	#[cfg(test)]
-	frozen_at: Option<Instant>,
-}
+pub(crate) struct DrawerAnimation(Tween);
 
 impl DrawerAnimation {
 	#[cfg(test)]
 	pub(crate) fn freeze(&mut self, elapsed: Duration) {
-		self.frozen_at = Some(self.started + elapsed);
-	}
-
-	fn position(&self, now: Instant) -> f32 {
-		#[cfg(test)]
-		let now = self.frozen_at.unwrap_or(now);
-		let t = (now.saturating_duration_since(self.started).as_secs_f32()
-			/ self.duration.as_secs_f32())
-		.clamp(0.0, 1.0);
-		let eased = 1.0 - (1.0 - t).powi(3);
-		self.from + (self.to - self.from) * eased
+		self.0.freeze(elapsed);
 	}
 
 	pub(crate) fn retarget(
@@ -46,13 +30,14 @@ impl DrawerAnimation {
 		}
 		let from = position(animation, was_open, now);
 		let to = u8::from(open) as f32;
-		*animation = (from != to).then_some(Self {
-			from,
-			to,
-			started: now,
-			duration: DURATION.mul_f32((to - from).abs()),
-			#[cfg(test)]
-			frozen_at: None,
+		*animation = (from != to).then(|| {
+			Self(Tween::new(
+				from,
+				to,
+				now,
+				DURATION.mul_f32((to - from).abs()),
+				Easing::CubicOut,
+			))
 		});
 	}
 
@@ -67,7 +52,7 @@ impl DrawerAnimation {
 
 	/// Whether the animation has reached its target and may be dropped.
 	pub(crate) fn is_finished(&self, now: Instant) -> bool {
-		now >= self.started + self.duration
+		self.0.is_finished(now)
 	}
 }
 
@@ -78,7 +63,7 @@ fn position(
 ) -> f32 {
 	animation
 		.as_ref()
-		.map_or(u8::from(open) as f32, |a| a.position(now))
+		.map_or(u8::from(open) as f32, |animation| animation.0.value(now))
 }
 
 #[cfg(test)]

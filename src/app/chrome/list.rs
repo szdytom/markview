@@ -79,10 +79,14 @@ impl List {
 
 	/// Where one row's band sits at the current offset, in window coordinates.
 	pub(in crate::app) fn row_rect(&self, index: usize) -> Rect {
+		self.slot_rect(index as f32)
+	}
+
+	/// Where a fractional row slot sits during a slide.
+	pub(in crate::app) fn slot_rect(&self, slot: f32) -> Rect {
 		Rect {
 			x: self.viewport.x,
-			y: self.viewport.y + self.lead + index as f32 * self.row
-				- self.scroll,
+			y: self.viewport.y + self.lead + slot * self.row - self.scroll,
 			w: self.viewport.w,
 			h: self.row,
 		}

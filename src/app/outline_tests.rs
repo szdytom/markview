@@ -6,6 +6,29 @@ fn drawer() -> Rect {
 }
 
 #[test]
+fn a_document_change_drops_outgoing_row_indices() {
+	let now = Instant::now();
+	let mut model = Model::default();
+	model.settle_rows(1, &[0, 1, 2]);
+	model.retarget_rows(&[0, 1, 2], &[0], now);
+	assert!(model.rows(&[0]).iter().any(|row| row.index == 1));
+	model.settle_rows(2, &[0]);
+	let rows = model.rows(&[0]);
+	assert_eq!(rows.iter().map(|row| row.index).collect::<Vec<_>>(), [0]);
+}
+
+#[test]
+fn closing_the_drawer_still_drops_outgoing_rows_on_a_new_document() {
+	let now = Instant::now();
+	let mut model = Model::default();
+	model.settle_rows(1, &[0, 1, 2]);
+	model.retarget_rows(&[0, 1, 2], &[0], now);
+	model.settle_content(2);
+	let rows = model.rows(&[0]);
+	assert_eq!(rows.iter().map(|row| row.index).collect::<Vec<_>>(), [0]);
+}
+
+#[test]
 fn an_open_panel_takes_the_presses_the_drawer_covers() {
 	let drawer = drawer();
 	// A point on the drawer, inside the region a centred panel also covers.

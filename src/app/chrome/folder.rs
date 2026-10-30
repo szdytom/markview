@@ -1,6 +1,6 @@
 //! The folder sidebar uses the same clipped rows for painting and input.
 use super::{components, icons, list::List};
-use crate::state::ChromeCommand;
+use crate::state::{ChromeCommand, Row};
 use crate::{
 	app::{Button, folder::Browser},
 	lang::Lang,
@@ -164,25 +164,26 @@ pub(super) fn buttons(
 		b.clip = Some(drawer);
 		buttons.push(b);
 	}
-	let rows = tree.rows();
-	let list = list(drawer, rows.len(), browser.scroll.offset());
-	let row_buttons = list
-		.visible()
-		.map(|row| {
-			let index = rows[row];
-			let e = &tree.entries[index];
+	let list = list(drawer, tree.rows().len(), browser.scroll.offset());
+	let row_buttons = browser
+		.list_rows(&list)
+		.into_iter()
+		.filter_map(|row| {
+			let e = &tree.entries[row.index];
+			let rect = band_rect(&list, row);
+			rect.intersect(list.viewport)?;
 			let mut b = components::button(
 				std::sync::Arc::<str>::from(
 					e.path.file_name().unwrap().to_string_lossy().as_ref(),
 				),
-				Command::Chrome(ChromeCommand::FolderEntry(index)),
-				list.row_rect(row),
+				Command::Chrome(ChromeCommand::FolderEntry(row.index)),
+				rect,
 			);
 			if list.max_scroll() > 0. {
 				b.rect.w = (b.rect.w - 16.).max(0.);
 			}
 			b.kind = components::ButtonKind::Quiet;
-			b
+			Some(b)
 		})
 		.collect();
 	buttons.extend(list.hit(row_buttons));
@@ -252,8 +253,7 @@ pub(super) fn draw(
 	}) {
 		out.extend(components::draw_button(ui, interaction, &b, true));
 	}
-	let rows = tree.rows();
-	let list = list(drawer, rows.len(), browser.scroll.offset());
+	let list = list(drawer, tree.rows().len(), browser.scroll.offset());
 	let mut body = Vec::new();
 	if tree.entries.is_empty() {
 		body.extend(components::label(
@@ -269,26 +269,53 @@ pub(super) fn draw(
 			C::Muted,
 		));
 	}
-	for row in list.visible() {
-		let index = rows[row];
-		let e = &tree.entries[index];
-		Row {
-			rect: list.row_rect(row),
-			action: Command::Chrome(ChromeCommand::FolderEntry(index)),
+	for row in browser.list_rows(&list) {
+		let e = &tree.entries[row.index];
+		let rect = list.slot_rect(row.slot);
+		if !rect
+			.intersect(list.viewport)
+			.is_some_and(|_| row.band > 0.0)
+		{
+			continue;
+		}
+		let mut draws = Vec::new();
+		TreeRow {
+			rect,
+			action: Command::Chrome(ChromeCommand::FolderEntry(row.index)),
 			depth: e.depth,
-			collapsed: e.directory.then(|| tree.collapsed(index)),
+			collapsed: e.directory.then(|| tree.collapsed(row.index)),
 			image: crate::file::is_image(&e.path),
 			name: &e.path.file_name().unwrap().to_string_lossy(),
 			selected: active == Some(e.path.as_path()),
 		}
-		.draw(ui, &mut labels, &mut body, interaction);
+		.draw(ui, &mut labels, &mut draws, interaction);
+		clip_row(&mut body, &list, row, draws);
 	}
 	out.push(list.clip(body));
 	list.draw_bar(&mut out, ui, interaction);
 	out
 }
 
-struct Row<'a> {
+fn band_rect(list: &crate::app::chrome::list::List, row: Row) -> Rect {
+	let mut rect = list.slot_rect(row.slot);
+	rect.h *= row.band;
+	rect
+}
+
+fn clip_row(
+	out: &mut Vec<Draw>,
+	list: &crate::app::chrome::list::List,
+	row: Row,
+	draws: Vec<Draw>,
+) {
+	if row.band >= 0.999 {
+		out.extend(draws);
+	} else if let Some(rect) = band_rect(list, row).intersect(list.viewport) {
+		out.push(Draw::Clipped { rect, draws });
+	}
+}
+
+struct TreeRow<'a> {
 	rect: Rect,
 	action: Command,
 	depth: usize,
@@ -298,7 +325,7 @@ struct Row<'a> {
 	selected: bool,
 }
 
-impl Row<'_> {
+impl TreeRow<'_> {
 	fn draw(
 		self,
 		ui: &mut TextShaper,

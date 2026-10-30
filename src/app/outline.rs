@@ -14,7 +14,9 @@ use super::App;
 use crate::layout::Rect;
 use crate::scroll::ScrollArea;
 use crate::state::DocumentCommand;
-use crate::state::{Command, DrawerAnimation, InteractionState, OutlineTree};
+use crate::state::{
+	Command, DrawerAnimation, InteractionState, OutlineTree, Row, RowSlide,
+};
 use markview_ui_core::{Component, Invalidation, Update};
 use std::time::Instant;
 
@@ -31,6 +33,8 @@ pub(crate) struct Model {
 	scroll: ScrollArea,
 	selection: Option<usize>,
 	animation: Option<DrawerAnimation>,
+	rows: RowSlide,
+	content: Option<u64>,
 }
 
 /// The drawer's control-flow transitions.
@@ -190,7 +194,7 @@ impl Model {
 	}
 
 	pub(crate) fn animating(&self) -> bool {
-		self.animation.is_some()
+		self.animation.is_some() || self.rows.animating()
 	}
 
 	pub(crate) fn advance_animation(&mut self, now: Instant) {
@@ -201,6 +205,47 @@ impl Model {
 		{
 			self.animation = None;
 		}
+		self.rows.advance(now);
+	}
+
+	pub(crate) fn retarget_rows(
+		&mut self,
+		from: &[usize],
+		to: &[usize],
+		now: Instant,
+	) {
+		self.rows.retarget(from, to, now);
+	}
+
+	/// Drops row motion when the document changes while the drawer closes.
+	pub(crate) fn settle_content(&mut self, content: u64) {
+		if self.content != Some(content) {
+			self.content = Some(content);
+			self.rows.reset(&[]);
+		}
+	}
+
+	/// Snaps rows to a document that was replaced rather than toggled.
+	pub(crate) fn settle_rows(&mut self, content: u64, rows: &[usize]) {
+		if self.content != Some(content) {
+			self.content = Some(content);
+			self.rows.reset(rows);
+		} else if !self.rows.animating()
+			&& self.rows.animated(rows, Instant::now()).is_none()
+		{
+			self.rows.reset(rows);
+		}
+	}
+
+	pub(crate) fn rows(&self, current: &[usize]) -> Vec<Row> {
+		self.rows
+			.animated(current, Instant::now())
+			.unwrap_or_else(|| Row::sequential(current))
+	}
+
+	#[cfg(test)]
+	pub(crate) fn freeze_rows(&mut self, elapsed: std::time::Duration) {
+		self.rows.freeze(elapsed);
 	}
 }
 
@@ -220,12 +265,18 @@ pub(super) fn claims_pointer(
 
 impl<P: super::SendEvent> App<P> {
 	pub(super) fn set_outline_collapsed(&mut self, collapsed: bool) {
-		self.readers.session.ensure_outline();
+		self.ensure_outline();
+		let before = self.outline_rows();
 		self.readers.session.outline_tree = if collapsed {
 			OutlineTree::all_collapsed(self.readers.session.outline_entries())
 		} else {
 			OutlineTree::default()
 		};
+		self.interaction.overlays.outline.retarget_rows(
+			&before,
+			&self.outline_rows(),
+			Instant::now(),
+		);
 		self.ensure_outline();
 		if let Some(index) = self.interaction.overlays.outline.selection() {
 			self.reveal_outline(index);
@@ -241,18 +292,24 @@ impl<P: super::SendEvent> App<P> {
 	}
 
 	pub(super) fn toggle_outline_entry(&mut self, index: usize) {
-		self.readers.session.ensure_outline();
+		self.ensure_outline();
 		if !OutlineTree::has_children(
 			self.readers.session.outline_entries(),
 			index,
 		) {
 			return;
 		}
+		let before = self.outline_rows();
 		self.readers.session.outline_tree.toggle(index);
 		self.interaction.overlays.outline.select(Some(index));
 		self.interaction.widgets.focus = Some(
 			Command::Document(DocumentCommand::OutlineToggle(index))
 				.widget_id(),
+		);
+		self.interaction.overlays.outline.retarget_rows(
+			&before,
+			&self.outline_rows(),
+			Instant::now(),
 		);
 		self.ensure_outline();
 		self.reveal_outline(index);
@@ -292,12 +349,18 @@ impl<P: super::SendEvent> App<P> {
 	/// drawer's scroll and selection inside it. While the drawer is closed
 	/// this is one branch and no document walk.
 	pub(super) fn ensure_outline(&mut self) {
+		let content = self.readers.session.accepted_content_id;
 		if !self.interaction.overlays.outline.open() {
+			self.interaction.overlays.outline.settle_content(content);
 			return;
 		}
 		self.readers.session.ensure_outline();
 		let drawer = self.outline_drawer();
 		let rows = self.outline_rows();
+		self.interaction
+			.overlays
+			.outline
+			.settle_rows(content, &rows);
 		super::chrome::outline::normalize(drawer, &rows, &mut self.interaction);
 	}
 

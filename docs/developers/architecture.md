@@ -169,7 +169,9 @@ transient input and preserves parent form offsets on page round trips.
 list offset, selected entry and slide animation. It remembers the offset and
 selection while closed, so reopening it shows the rows the reader left. The
 confirmation remains an independent overlay, and the tab strip and folder
-browser own their drawer animations.
+browser own their drawer animations. A shared tween drives every drawer, while
+the folder tree and outline list use one row-slide model: rows leave toward
+their parent, arrive out of it, and settle on the same expo-out curve.
 
 `app/font_panel` owns the font catalogue, filters, scroll, download progress,
 cancellation and notices, plus its view and typed commands. Chrome borrows one

@@ -9,7 +9,7 @@ use crate::state::DocumentCommand;
 use crate::{
 	lang::Lang,
 	layout::{Draw, Paint, Rect, TextShaper},
-	state::{Command, InteractionState, OutlineTree},
+	state::{Command, InteractionState, OutlineTree, Row},
 };
 use markview_document::OutlineEntry;
 use markview_layout::style::{ColorField as C, Condition};
@@ -104,16 +104,29 @@ pub(in crate::app) fn max_scroll(drawer: Rect, entries: usize) -> f32 {
 }
 
 /// The row one entry occupies at `scroll`, in window coordinates.
+#[cfg(test)]
 fn row_rect(list: Rect, index: usize, scroll: f32) -> Rect {
+	slot_rect(list, index as f32, scroll)
+}
+
+/// A fractional row slot while the list expands or collapses.
+fn slot_rect(list: Rect, slot: f32, scroll: f32) -> Rect {
 	Rect {
 		x: list.x,
-		y: list.y + index as f32 * ROW - scroll,
+		y: list.y + slot * ROW - scroll,
 		w: list.w,
 		h: ROW,
 	}
 }
 
+fn band_rect(list: Rect, row: Row, scroll: f32) -> Rect {
+	let mut rect = slot_rect(list, row.slot, scroll);
+	rect.h *= row.band;
+	rect
+}
+
 /// The entries intersecting the list viewport at `scroll`.
+#[cfg(test)]
 fn visible(list: Rect, entries: usize, scroll: f32) -> std::ops::Range<usize> {
 	if entries == 0 || list.h <= 0.0 {
 		return 0..0;
@@ -152,6 +165,7 @@ fn disclosure_rect(row: Rect, level: u8) -> Rect {
 }
 
 /// The clickable entry rows, already clipped to the list viewport.
+#[cfg(test)]
 pub(super) fn buttons(
 	drawer: Rect,
 	entries: &[OutlineEntry],
@@ -159,12 +173,26 @@ pub(super) fn buttons(
 	scroll: f32,
 	lang: Lang,
 ) -> Vec<Button> {
+	let rows = Row::sequential(&tree.rows(entries));
+	buttons_with_rows(drawer, entries, tree, &rows, scroll, lang)
+}
+
+pub(super) fn buttons_with_rows(
+	drawer: Rect,
+	entries: &[OutlineEntry],
+	tree: &OutlineTree,
+	rows: &[Row],
+	scroll: f32,
+	lang: Lang,
+) -> Vec<Button> {
 	let list = viewport(drawer);
-	let rows = tree.rows(entries);
 	let mut buttons = Vec::new();
-	for row in visible(list, rows.len(), scroll) {
-		let index = rows[row];
-		let rect = row_rect(list, row, scroll);
+	for row in rows {
+		let index = row.index;
+		let rect = band_rect(list, *row, scroll);
+		if rect.h <= 0.0 || rect.intersect(list).is_none() {
+			continue;
+		}
 		let disclosure = disclosure_rect(rect, entries[index].level);
 		let mut heading = rect;
 		if OutlineTree::has_children(entries, index) {
@@ -238,6 +266,7 @@ pub(in crate::app) fn normalize(
 /// `current` is the entry holding the reading position; it is filled with the
 /// button condition's active background. The keyboard selection gets an accent
 /// bar, so the two never have to be confused.
+#[cfg(test)]
 pub(super) fn draw(
 	ui: &mut TextShaper,
 	interaction: &crate::app::widgets::Drawn<'_>,
@@ -247,6 +276,40 @@ pub(super) fn draw(
 	drawer: Rect,
 	lang: Lang,
 ) -> Vec<Draw> {
+	let rows = Row::sequential(&tree.rows(entries));
+	draw_with_rows(
+		ui,
+		interaction,
+		Body {
+			entries,
+			tree,
+			rows: &rows,
+		},
+		current,
+		drawer,
+		lang,
+	)
+}
+
+pub(super) struct Body<'a> {
+	pub entries: &'a [OutlineEntry],
+	pub tree: &'a OutlineTree,
+	pub rows: &'a [Row],
+}
+
+pub(super) fn draw_with_rows(
+	ui: &mut TextShaper,
+	interaction: &crate::app::widgets::Drawn<'_>,
+	body: Body<'_>,
+	current: Option<usize>,
+	drawer: Rect,
+	lang: Lang,
+) -> Vec<Draw> {
+	let Body {
+		entries,
+		tree,
+		rows,
+	} = body;
 	components::appearance(ui);
 	let list = viewport(drawer);
 	let mut out = vec![
@@ -296,18 +359,19 @@ pub(super) fn draw(
 		return out;
 	}
 	let mut body = Vec::new();
-	let rows = tree.rows(entries);
+	let scroll = interaction.overlays.outline.scroll_offset();
 	let current = current.and_then(|index| {
-		rows.iter().copied().take_while(|row| *row <= index).last()
+		tree.rows(entries)
+			.into_iter()
+			.take_while(|row| *row <= index)
+			.last()
 	});
-	for row in visible(
-		list,
-		rows.len(),
-		interaction.overlays.outline.scroll_offset(),
-	) {
-		let index = rows[row];
-		let rect =
-			row_rect(list, row, interaction.overlays.outline.scroll_offset());
+	for row in rows {
+		let index = row.index;
+		let rect = slot_rect(list, row.slot, scroll);
+		if !rect.intersect(list).is_some_and(|_| row.band > 0.0) {
+			continue;
+		}
 		let entry = &entries[index];
 		let hovered = rect.contains(
 			interaction.pointer.cursor().0,
@@ -320,19 +384,20 @@ pub(super) fn draw(
 						.widget_id(),
 				);
 		let active = current == Some(index);
+		let mut draws = Vec::new();
 		if active {
-			body.push(Draw::Rect(
+			draws.push(Draw::Rect(
 				rect,
 				Paint::Styled(Condition::Button, C::ActiveBackground),
 			));
 		} else if pressed || hovered {
-			body.push(Draw::Rect(
+			draws.push(Draw::Rect(
 				rect,
 				Paint::Styled(Condition::Button, C::HoverBackground),
 			));
 		}
 		if interaction.overlays.outline.selection() == Some(index) {
-			body.push(Draw::Rect(
+			draws.push(Draw::Rect(
 				Rect {
 					x: rect.x,
 					y: rect.y + 3.0,
@@ -347,7 +412,7 @@ pub(super) fn draw(
 			+ DISCLOSURE;
 		if OutlineTree::has_children(entries, index) {
 			let disclosure = disclosure_rect(rect, entry.level);
-			body.push(Draw::Polygon {
+			draws.push(Draw::Polygon {
 				center: [
 					disclosure.x + DISCLOSURE / 2.0,
 					disclosure.y + ROW / 2.0,
@@ -362,7 +427,7 @@ pub(super) fn draw(
 		}
 		let text =
 			ui.fit(&entry.text, SIZE, (rect.w - indent - INSET).max(0.0));
-		body.extend(ui.label(
+		draws.extend(ui.label(
 			&text,
 			SIZE,
 			rect.x + indent,
@@ -372,6 +437,12 @@ pub(super) fn draw(
 				if active { C::Color } else { C::Muted },
 			),
 		));
+		if row.band >= 0.999 {
+			body.extend(draws);
+		} else if let Some(rect) = band_rect(list, *row, scroll).intersect(list)
+		{
+			body.push(Draw::Clipped { rect, draws });
+		}
 	}
 	out.push(Draw::Clipped {
 		rect: list,

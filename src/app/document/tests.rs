@@ -1549,6 +1549,91 @@ fn folder_drawers_reconcile_on_resize_to_an_overlay() {
 }
 
 #[test]
+fn folder_and_outline_rows_slide_when_a_branch_opens() {
+	use crate::state::{ChromeCommand, Command};
+	let mut h = Harness::new();
+	fs::create_dir(h.dir.path().join("Notes")).unwrap();
+	fs::write(h.dir.path().join("Notes/Child.md"), "# Child").unwrap();
+	fs::write(
+		h.dir.path().join("README.md"),
+		"# One\n\n## Two\n\n### Three\n",
+	)
+	.unwrap();
+	h.app.folder_loaded(
+		0,
+		true,
+		crate::app::folder::Tree::read(h.dir.path().into()),
+	);
+	h.wait_images(0);
+	h.app
+		.advance_drawers(Instant::now() + Duration::from_secs(1));
+	let folder = h.app.folder.tree.as_ref().unwrap();
+	let directory = folder
+		.entries
+		.iter()
+		.position(|entry| entry.path.ends_with("Notes"))
+		.unwrap();
+	let child = folder
+		.entries
+		.iter()
+		.position(|entry| entry.path.ends_with("Child.md"))
+		.unwrap();
+	h.app
+		.action(Command::Chrome(ChromeCommand::FolderEntry(directory)));
+	assert!(h.app.folder.animating());
+	assert!(h.app.drawer_deadline(Instant::now()).is_some());
+	h.app.folder.freeze_rows(Duration::from_millis(40));
+	let list = crate::app::chrome::folder::list(
+		h.app.folder_rect(),
+		h.app.folder.tree.as_ref().unwrap().rows().len(),
+		h.app.folder.scroll.offset(),
+	);
+	let rows = h.app.folder.list_rows(&list);
+	let arriving = rows.iter().find(|row| row.index == child).unwrap();
+	assert!(arriving.band < 1.0, "the child grows out of its parent");
+	h.app
+		.advance_drawers(Instant::now() + Duration::from_secs(1));
+	assert!(!h.app.folder.animating());
+
+	h.app.toggle_outline();
+	h.app
+		.advance_drawers(Instant::now() + Duration::from_secs(1));
+	let (parent, child) = {
+		let entries = h.app.readers.session.outline_entries();
+		(
+			entries
+				.iter()
+				.position(|entry| entry.text == "One")
+				.unwrap(),
+			entries
+				.iter()
+				.position(|entry| entry.text == "Two")
+				.unwrap(),
+		)
+	};
+	h.app.toggle_outline_entry(parent);
+	assert!(h.app.interaction.overlays.outline.animating());
+	h.app
+		.interaction
+		.overlays
+		.outline
+		.freeze_rows(Duration::from_millis(40));
+	let rows = {
+		let entries = h.app.readers.session.outline_entries();
+		h.app
+			.interaction
+			.overlays
+			.outline
+			.rows(&h.app.readers.session.outline_tree.rows(entries))
+	};
+	let leaving = rows.iter().find(|row| row.index == child).unwrap();
+	assert!(leaving.band < 1.0, "the child shrinks into its parent");
+	h.app
+		.advance_drawers(Instant::now() + Duration::from_secs(1));
+	assert!(!h.app.interaction.overlays.outline.animating());
+}
+
+#[test]
 fn folder_sidebar_reuses_drawer_motion_and_keeps_outgoing_coverage() {
 	use crate::layout::Draw;
 	use crate::state::Command;
@@ -1924,6 +2009,8 @@ fn selecting_a_tab_opens_the_folder_onto_its_document() {
 		assert!(opened.contains(&PathBuf::from(name)), "{opened:?}");
 	}
 	// The row lands inside the clip, not just somewhere in the tree.
+	h.app
+		.advance_drawers(Instant::now() + Duration::from_secs(1));
 	assert!(reachable(&mut h).contains(&PathBuf::from("zoo/deep/Zeta.md")));
 	assert!(
 		h.app.folder.scroll.offset() > 0.,

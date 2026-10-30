@@ -3,7 +3,7 @@ use super::{App, Event, SendEvent};
 use crate::state::ChromeCommand;
 use crate::{
 	scroll::ScrollArea,
-	state::{Command, DrawerAnimation},
+	state::{Command, DrawerAnimation, Row, RowSlide},
 };
 use std::{
 	collections::HashSet,
@@ -268,6 +268,8 @@ pub(super) struct Browser {
 	pub grab: Option<f32>,
 	/// The drawer's slide when it opens or closes.
 	animation: Option<DrawerAnimation>,
+	/// The rows sliding when a directory expands or collapses.
+	rows: RowSlide,
 	pub labels: std::cell::RefCell<super::chrome::folder::Labels>,
 	pub navigation_revision: u64,
 	pending_root: Option<PathBuf>,
@@ -294,7 +296,7 @@ impl Browser {
 	}
 
 	pub(super) fn animating(&self) -> bool {
-		self.animation.is_some()
+		self.animation.is_some() || self.rows.animating()
 	}
 
 	pub(super) fn advance_animation(&mut self, now: Instant) {
@@ -305,11 +307,59 @@ impl Browser {
 		{
 			self.animation = None;
 		}
+		self.rows.advance(now);
 	}
 
 	/// Drops the slide where it is, as a page change without animation does.
 	pub(super) fn stop_animation(&mut self) {
 		self.animation = None;
+		self.rows
+			.reset(self.tree.as_ref().map_or(&[], |tree| tree.rows()));
+	}
+
+	/// Starts the accordion between the tree's rows `from` and its current rows.
+	pub(super) fn retarget_rows(&mut self, from: &[usize], now: Instant) {
+		let Some(tree) = &self.tree else {
+			self.rows.reset(&[]);
+			return;
+		};
+		self.rows.retarget(from, tree.rows(), now);
+	}
+
+	/// Snaps the rows to a tree that was replaced rather than toggled.
+	pub(super) fn reset_rows(&mut self) {
+		self.rows
+			.reset(self.tree.as_ref().map_or(&[], |tree| tree.rows()));
+	}
+
+	/// The rows the list paints: the visible slice at rest, or every moving row.
+	pub(super) fn list_rows(
+		&self,
+		list: &super::chrome::list::List,
+	) -> Vec<Row> {
+		let Some(tree) = &self.tree else {
+			return Vec::new();
+		};
+		self.rows.animated(tree.rows(), Instant::now()).map_or_else(
+			|| {
+				list.visible()
+					.map(|row| Row {
+						index: tree.rows()[row],
+						slot: row as f32,
+						band: 1.0,
+					})
+					.collect()
+			},
+			|rows| {
+				rows.into_iter()
+					.filter(|row| {
+						list.slot_rect(row.slot)
+							.intersect(list.viewport)
+							.is_some()
+					})
+					.collect()
+			},
+		)
 	}
 
 	#[cfg(test)]
@@ -318,6 +368,11 @@ impl Browser {
 			.as_mut()
 			.expect("the folder drawer is animating")
 			.freeze(elapsed);
+	}
+
+	#[cfg(test)]
+	pub(super) fn freeze_rows(&mut self, elapsed: std::time::Duration) {
+		self.rows.freeze(elapsed);
 	}
 }
 
@@ -400,11 +455,17 @@ impl<P: SendEvent> App<P> {
 		let Some(path) = self.readers.session.path.clone() else {
 			return;
 		};
+		let before = self
+			.folder
+			.tree
+			.as_ref()
+			.map_or_else(Vec::new, |tree| tree.rows().to_vec());
 		let Some(index) =
 			self.folder.tree.as_mut().and_then(|t| t.expand_to(&path))
 		else {
 			return;
 		};
+		self.folder.retarget_rows(&before, Instant::now());
 		self.reveal_folder(index);
 	}
 
@@ -479,6 +540,7 @@ impl<P: SendEvent> App<P> {
 				let reveal =
 					select || self.folder.open || self.phone_folder_open();
 				self.folder.tree = Some(tree);
+				self.folder.reset_rows();
 				*self.folder.labels.get_mut() = Default::default();
 				self.set_folder_open(reveal);
 				self.folder.scroll.reset();
@@ -742,7 +804,9 @@ impl<P: SendEvent> App<P> {
 			return;
 		};
 		if entry.directory {
+			let before = tree.rows().to_vec();
 			tree.toggle(index);
+			self.folder.retarget_rows(&before, Instant::now());
 			self.scroll_folder(0.);
 		} else {
 			let path = entry.path.clone();

@@ -594,12 +594,19 @@ impl<'a> Chrome<'a> {
 		}
 		if self.interaction.overlays.outline.open() {
 			let lang = self.settings.model.lang();
+			let entries = self.session.doc.outline_entries();
+			let rows = self
+				.interaction
+				.overlays
+				.outline
+				.rows(&self.session.doc.outline_tree.rows(entries));
 			buttons
 				.extend(outline::header_buttons(self.outline_drawer(), lang));
-			buttons.extend(outline::buttons(
+			buttons.extend(outline::buttons_with_rows(
 				self.outline_drawer(),
-				self.session.doc.outline_entries(),
+				entries,
 				&self.session.doc.outline_tree,
+				&rows,
 				self.interaction.overlays.outline.scroll_offset(),
 				lang,
 			));
@@ -1048,11 +1055,20 @@ impl<'a> Chrome<'a> {
 			));
 		}
 		if self.interaction.overlays.outline.reveal() > 0.0 {
-			out.extend(outline::draw(
+			let entries = self.session.doc.outline_entries();
+			let rows = self
+				.interaction
+				.overlays
+				.outline
+				.rows(&self.session.doc.outline_tree.rows(entries));
+			out.extend(outline::draw_with_rows(
 				self.ui,
 				&self.interaction,
-				self.session.doc.outline_entries(),
-				&self.session.doc.outline_tree,
+				outline::Body {
+					entries,
+					tree: &self.session.doc.outline_tree,
+					rows: &rows,
+				},
 				self.session.doc.current_outline(),
 				self.outline_drawer(),
 				self.settings.model.lang(),

@@ -203,8 +203,14 @@ impl<P: super::SendEvent> App<P> {
 				self.activate_folder_entry(index)
 			}
 			ChromeCommand::FolderCollapseAll => {
+				let before = self
+					.folder
+					.tree
+					.as_ref()
+					.map_or_else(Vec::new, |tree| tree.rows().to_vec());
 				if let Some(tree) = &mut self.folder.tree {
 					tree.collapse_all();
+					self.folder.retarget_rows(&before, Instant::now());
 					self.folder.grab = None;
 					self.scroll_folder(0.);
 					self.refresh_hover();

@@ -15,10 +15,14 @@ use winit::event::TouchPhase;
 
 mod command;
 mod drawer;
+mod motion;
 mod outline;
+mod rows;
 pub(crate) use command::*;
 pub(crate) use drawer::DrawerAnimation;
+pub(crate) use motion::{Easing, Tween};
 pub(crate) use outline::OutlineTree;
+pub(crate) use rows::{Row, RowSlide};
 
 #[cfg(test)]
 pub(crate) use markview_layout::layout::scroll_limit;
