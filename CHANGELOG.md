@@ -21,6 +21,10 @@ at the same level, without `[brackets]`.
 
 ## Unreleased
 
+### Added
+
+- Support tapping images to open the touch image viewer and pinching to zoom it.
+
 ### Fixed
 
 - Keep repeated clicks on disclosure titles toggling instead of selecting text, while preserving drag selection.

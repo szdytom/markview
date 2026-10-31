@@ -91,19 +91,43 @@ impl Viewer {
 		pointer: (f32, f32),
 		window: (f32, f32),
 	) {
+		self.zoom_and_pan(factor, pointer, (0., 0.), window);
+	}
+
+	/// Applies a pinch as one transform so its midpoint stays anchored.
+	fn pinch(
+		&mut self,
+		factor: f32,
+		centre: (f32, f32),
+		pan: (f32, f32),
+		window: (f32, f32),
+	) {
+		self.zoom_and_pan(factor, centre, pan, window);
+	}
+
+	fn zoom_and_pan(
+		&mut self,
+		factor: f32,
+		pointer: (f32, f32),
+		delta: (f32, f32),
+		window: (f32, f32),
+	) {
 		let zoom = (self.zoom * factor).clamp(1., 8.);
 		let ratio = zoom / self.zoom;
-		if (ratio - 1.).abs() <= f32::EPSILON {
-			return;
+		if (ratio - 1.).abs() > f32::EPSILON {
+			self.zoom = zoom;
+			// The point under the pointer keeps its distance from the picture's
+			// centre, which scales with the picture.
+			let centre = (window.0 / 2., window.1 / 2.);
+			self.pan = (
+				pointer.0
+					- centre.0 - (pointer.0 - centre.0 - self.pan.0) * ratio,
+				pointer.1
+					- centre.1 - (pointer.1 - centre.1 - self.pan.1) * ratio,
+			);
 		}
-		self.zoom = zoom;
-		// The point under the pointer keeps its distance from the picture's
-		// centre, which scales with the picture.
-		let centre = (window.0 / 2., window.1 / 2.);
-		self.pan = (
-			pointer.0 - centre.0 - (pointer.0 - centre.0 - self.pan.0) * ratio,
-			pointer.1 - centre.1 - (pointer.1 - centre.1 - self.pan.1) * ratio,
-		);
+		self.pan.0 += delta.0;
+		self.pan.1 += delta.1;
 		self.clamp_pan(window);
 	}
 
@@ -190,6 +214,13 @@ pub(crate) enum Message {
 		pointer: (f32, f32),
 		window: (f32, f32),
 	},
+	/// Zoom and follow the midpoint of a two-finger touch gesture.
+	Pinch {
+		factor: f32,
+		centre: (f32, f32),
+		pan: (f32, f32),
+		window: (f32, f32),
+	},
 	/// Follow the pointer, panning while a press is in flight.
 	Pan {
 		pointer: (f32, f32),
@@ -223,6 +254,16 @@ impl Component for Model {
 			} => {
 				if let Some(viewer) = self.current.as_mut() {
 					viewer.zoom_at(factor, pointer, window);
+				}
+			}
+			Message::Pinch {
+				factor,
+				centre,
+				pan,
+				window,
+			} => {
+				if let Some(viewer) = self.current.as_mut() {
+					viewer.pinch(factor, centre, pan, window);
 				}
 			}
 			Message::Pan { pointer, window } => {

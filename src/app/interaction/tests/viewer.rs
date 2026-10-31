@@ -31,6 +31,19 @@ fn move_to(app: &mut App<StubProxy>, at: (f32, f32)) {
 	);
 }
 
+fn touch(app: &mut App<StubProxy>, id: u64, phase: TouchPhase, at: (f32, f32)) {
+	event(
+		app,
+		WindowEvent::Touch(winit::event::Touch {
+			device_id: DeviceId::dummy(),
+			id,
+			phase,
+			force: None,
+			location: PhysicalPosition::new(f64::from(at.0), f64::from(at.1)),
+		}),
+	);
+}
+
 fn image_reader(source: &str, src: &str, loaded: bool) -> App<StubProxy> {
 	let (mut app, document) = reader(source, 760.);
 	if loaded {
@@ -366,6 +379,52 @@ fn loaded_images_without_selectable_text_open_on_click() {
 }
 
 #[test]
+fn touch_taps_open_and_close_images_without_taking_image_links() {
+	let mut app = image_reader("![](a.png)", "a.png", true);
+	let at = app.interaction.pointer.cursor();
+	touch(&mut app, 1, TouchPhase::Started, at);
+	touch(&mut app, 1, TouchPhase::Ended, at);
+	assert!(app.interaction.overlays.viewer_open());
+	touch(&mut app, 1, TouchPhase::Started, (600.0, 400.0));
+	touch(&mut app, 1, TouchPhase::Ended, (600.0, 400.0));
+	assert!(!app.interaction.overlays.viewer_open());
+
+	let mut app =
+		image_reader("[![](a.png)](#target)\n\n# Target", "a.png", true);
+	let at = app.interaction.pointer.cursor();
+	touch(&mut app, 1, TouchPhase::Started, at);
+	touch(&mut app, 1, TouchPhase::Ended, at);
+	assert!(!app.interaction.overlays.viewer_open());
+}
+
+#[test]
+fn touch_pinch_zooms_about_its_midpoint_without_closing_on_release() {
+	let mut app = image_reader("![](a.png)", "a.png", true);
+	open(&mut app);
+	let before = viewer_image(&mut app).0;
+	touch(&mut app, 1, TouchPhase::Started, (550.0, 400.0));
+	touch(&mut app, 2, TouchPhase::Started, (650.0, 400.0));
+	touch(&mut app, 2, TouchPhase::Moved, (950.0, 400.0));
+	let after = viewer_image(&mut app).0;
+	assert!((after.w - before.w * 4.0).abs() < 0.01);
+	assert!((after.h - before.h * 4.0).abs() < 0.01);
+	let covered =
+		((600.0 - before.x) / before.w, (400.0 - before.y) / before.h);
+	let now = ((750.0 - after.x) / after.w, (400.0 - after.y) / after.h);
+	assert!((covered.0 - now.0).abs() < 0.01);
+	assert!((covered.1 - now.1).abs() < 0.01);
+
+	touch(&mut app, 2, TouchPhase::Moved, (750.0, 400.0));
+	assert!((viewer_image(&mut app).0.w - before.w * 2.0).abs() < 0.01);
+	touch(&mut app, 2, TouchPhase::Ended, (750.0, 400.0));
+	touch(&mut app, 1, TouchPhase::Ended, (550.0, 400.0));
+	assert!(app.interaction.overlays.viewer_open());
+	touch(&mut app, 1, TouchPhase::Started, (600.0, 400.0));
+	touch(&mut app, 1, TouchPhase::Ended, (600.0, 400.0));
+	assert!(!app.interaction.overlays.viewer_open());
+}
+
+#[test]
 fn failed_images_neither_open_nor_keep_the_viewer() {
 	let failed = || ImageInfo {
 		version: 1,
@@ -515,6 +574,24 @@ fn viewer_focus_loss_cancels_the_drag_and_ignores_an_orphan_release() {
 	move_to(&mut app, (800., 500.));
 	assert_eq!(app.interaction.overlays.viewer().unwrap().pan(), pan);
 	button(&mut app, MouseButton::Left, ElementState::Released);
+	assert!(app.interaction.overlays.viewer_open());
+}
+
+#[test]
+fn cancelling_touch_gestures_releases_the_viewer_drag() {
+	let mut app = image_reader("![](a.png)", "a.png", false);
+	open(&mut app);
+	touch(&mut app, 1, TouchPhase::Started, (600.0, 400.0));
+	touch(&mut app, 1, TouchPhase::Moved, (650.0, 400.0));
+	assert!(app.interaction.overlays.viewer().unwrap().grabbing());
+	app.cancel_gestures();
+	let viewer = app.interaction.overlays.viewer().unwrap();
+	assert!(!viewer.grabbing() && !viewer.pressing());
+	let pan = viewer.pan();
+	touch(&mut app, 1, TouchPhase::Ended, (650.0, 400.0));
+	app.gestures.allow_mouse();
+	move_to(&mut app, (800.0, 500.0));
+	assert_eq!(app.interaction.overlays.viewer().unwrap().pan(), pan);
 	assert!(app.interaction.overlays.viewer_open());
 }
 

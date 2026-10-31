@@ -84,13 +84,17 @@ fn horizontal_drag_keeps_its_captured_surface_and_includes_release_motion() {
 }
 
 #[test]
-fn additional_contacts_cancel_the_tap_and_drag() {
+fn additional_contacts_pinch_without_becoming_a_tap_or_drag() {
 	let mut input = Recognizer::default();
 	input.begin(contact(1), (10.0, 10.0), "first");
 	input.begin(contact(2), (10.0, 110.0), "second");
 	assert_eq!(
 		input.update(contact(2), TouchPhase::Moved, (10.0, 160.0)),
-		None
+		Some(Gesture::Pinch {
+			factor: 1.5,
+			centre: (10.0, 60.0),
+			pan: (0.0, 25.0),
+		})
 	);
 	assert_eq!(
 		input.update(contact(2), TouchPhase::Ended, (10.0, 160.0)),

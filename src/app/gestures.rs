@@ -24,13 +24,15 @@ enum Tap {
 	Command(Command),
 	Widget(markview_ui_core::WidgetId),
 	Link(String),
+	Image(String),
+	CloseViewer,
 	ClearSelection,
 	/// A tap the open option list owns but that lands on none of its options:
 	/// it closes the list and reaches nothing behind it.
 	DismissDropdown,
 }
 
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum Surface {
 	None,
 	Document,
@@ -39,6 +41,7 @@ enum Surface {
 	Outline,
 	Folder,
 	Tabs,
+	Viewer,
 }
 
 #[derive(Clone)]
@@ -86,6 +89,7 @@ impl GestureState {
 impl<P: super::SendEvent> App<P> {
 	pub(super) fn cancel_gestures(&mut self) {
 		self.interaction.panels.sidebar_mut().clear();
+		self.interaction.overlays.viewer.cancel_press();
 		self.frame.pressed = None;
 		if !self.gestures.gesture.contacts.is_empty() {
 			self.interaction.widgets.captured = None;
@@ -103,7 +107,7 @@ impl<P: super::SendEvent> App<P> {
 			return Some(Tap::Caption(caption));
 		}
 		if self.interaction.overlays.viewer_open() {
-			return None;
+			return Some(Tap::CloseViewer);
 		}
 		// An open option list owns the tap the way it owns a press: only its
 		// own exact option rectangles answer, and a tap anywhere else only
@@ -153,16 +157,23 @@ impl<P: super::SendEvent> App<P> {
 				ChromeCommand::SelectTab(index),
 			)));
 		}
-		self.view_geometry()
-			.clip()
-			.contains(x, y)
-			.then(|| self.link_at(x, y).map_or(Tap::ClearSelection, Tap::Link))
+		if !self.view_geometry().clip().contains(x, y) {
+			return None;
+		}
+		if let Some(link) = self.link_at(x, y) {
+			return Some(Tap::Link(link));
+		}
+		if let Some((src, _)) = self.image_at_cursor() {
+			return Some(Tap::Image(src));
+		}
+		Some(Tap::ClearSelection)
 	}
 
 	fn touch_surface(&mut self) -> Surface {
-		if self.interaction.overlays.modal_open()
-			|| self.interaction.overlays.viewer_open()
-		{
+		if self.interaction.overlays.viewer_open() {
+			return Surface::Viewer;
+		}
+		if self.interaction.overlays.modal_open() {
 			return Surface::None;
 		}
 		// The open list owns the gesture too: nothing behind it pans, so the
@@ -246,6 +257,7 @@ impl<P: super::SendEvent> App<P> {
 		}
 		if self.gestures.gesture.contacts.is_empty() {
 			self.interaction.widgets.captured = None;
+			self.interaction.overlays.viewer.cancel_press();
 			self.interaction
 				.pointer
 				.move_to((f32::NEG_INFINITY, f32::NEG_INFINITY));
@@ -264,7 +276,10 @@ impl<P: super::SendEvent> App<P> {
 				self.interaction.overlays.outline.cancel_scroll()
 			}
 			Surface::Tabs => self.tab_strip.scroll.cancel(),
-			Surface::None | Surface::Document | Surface::Overflow(..) => {}
+			Surface::None
+			| Surface::Document
+			| Surface::Overflow(..)
+			| Surface::Viewer => {}
 		}
 	}
 
@@ -324,8 +339,20 @@ impl<P: super::SendEvent> App<P> {
 			Some(Tap::Command(command)) => Some(command.widget_id()),
 			_ => None,
 		};
-		self.gestures.motion =
-			Some((capture.surface, Motion::new(Instant::now())));
+		if capture.surface == Surface::Viewer
+			&& matches!(&capture.tap, Some(Tap::CloseViewer))
+		{
+			if self.gestures.gesture.contacts.is_empty() {
+				self.interaction
+					.overlays
+					.viewer
+					.send(super::viewer::Message::Press { pointer: point });
+			} else {
+				self.interaction.overlays.viewer.cancel_press();
+			}
+		}
+		self.gestures.motion = (capture.surface != Surface::Viewer)
+			.then_some((capture.surface, Motion::new(Instant::now())));
 		self.gestures.gesture.begin(id, point, capture);
 		if self.gestures.gesture.drag.is_none() {
 			self.gestures.motion = None;
@@ -341,50 +368,116 @@ impl<P: super::SendEvent> App<P> {
 		phase: TouchPhase,
 		point: Point,
 	) -> Option<TouchAction> {
-		let mut window_action = None;
 		match self.gestures.gesture.update(id, phase, point) {
-			Some(Gesture::Tap(capture)) => {
-				self.interaction.widgets.captured = None;
-				if capture.tap == self.touch_tap() {
-					match capture.tap {
-						Some(Tap::Caption(caption)) => {
-							window_action = Some(TouchAction::Caption(caption));
-						}
-						Some(Tap::Command(command)) => self.action(command),
-						Some(Tap::Widget(id)) => {
-							let buttons = self.buttons();
-							if let Some(button) =
-								buttons.iter().find(|b| b.id == id && b.enabled)
-							{
-								self.action(button.action);
-							}
-						}
-						Some(Tap::Link(link)) => self.open_link(&link, false),
-						Some(Tap::ClearSelection) => {
-							self.interaction.clear_selection();
-							self.interaction.close_outline();
-						}
-						Some(Tap::DismissDropdown) => {
-							self.close_dropdown();
-						}
-						None => {}
-					}
-				}
-			}
+			Some(Gesture::Tap(capture)) => self.activate_tap(capture),
 			Some(Gesture::Pan(capture, delta)) => {
-				self.interaction.widgets.captured = None;
-				self.gestures.swipe_distance += delta.0;
-				if let Some((_, motion)) = &mut self.gestures.motion {
-					motion.sample(delta, Instant::now());
-				}
-				self.pan_gesture(capture.surface, delta);
-				if phase == TouchPhase::Ended {
-					self.open_swipe_drawer(capture.surface);
-				}
+				self.pan_contact(capture, delta, phase, point);
+				None
 			}
-			None => {}
+			Some(Gesture::Pinch {
+				factor,
+				centre,
+				pan,
+			}) => {
+				self.pinch_viewer(factor, centre, pan);
+				None
+			}
+			None => None,
 		}
-		window_action
+	}
+
+	fn activate_tap(&mut self, capture: Capture) -> Option<TouchAction> {
+		self.interaction.widgets.captured = None;
+		if capture.tap != self.touch_tap() {
+			return None;
+		}
+		match capture.tap {
+			Some(Tap::Caption(caption)) => Some(TouchAction::Caption(caption)),
+			Some(Tap::Command(command)) => {
+				self.action(command);
+				None
+			}
+			Some(Tap::Widget(id)) => {
+				let buttons = self.buttons();
+				if let Some(button) =
+					buttons.iter().find(|b| b.id == id && b.enabled)
+				{
+					self.action(button.action);
+				}
+				None
+			}
+			Some(Tap::Link(link)) => {
+				self.open_link(&link, false);
+				None
+			}
+			Some(Tap::Image(_)) => {
+				self.open_viewer_at_cursor();
+				None
+			}
+			Some(Tap::CloseViewer) => {
+				self.interaction
+					.overlays
+					.viewer
+					.send(super::viewer::Message::Close);
+				None
+			}
+			Some(Tap::ClearSelection) => {
+				self.interaction.clear_selection();
+				self.interaction.close_outline();
+				None
+			}
+			Some(Tap::DismissDropdown) => {
+				self.close_dropdown();
+				None
+			}
+			None => None,
+		}
+	}
+
+	fn pan_contact(
+		&mut self,
+		capture: Capture,
+		delta: Point,
+		phase: TouchPhase,
+		point: Point,
+	) {
+		self.interaction.widgets.captured = None;
+		if capture.surface == Surface::Viewer {
+			let (width, height, _) = self.dimensions();
+			self.interaction.overlays.viewer.send(
+				super::viewer::Message::Pan {
+					pointer: point,
+					window: (width, height),
+				},
+			);
+			return;
+		}
+		self.gestures.swipe_distance += delta.0;
+		if let Some((_, motion)) = &mut self.gestures.motion {
+			motion.sample(delta, Instant::now());
+		}
+		self.pan_gesture(capture.surface, delta);
+		if phase == TouchPhase::Ended {
+			self.open_swipe_drawer(capture.surface);
+		}
+	}
+
+	fn pinch_viewer(&mut self, factor: f32, centre: Point, pan: Point) {
+		self.gestures.motion = None;
+		if !self.interaction.overlays.viewer_open() {
+			return;
+		}
+		self.interaction.overlays.viewer.cancel_press();
+		let (width, height, _) = self.dimensions();
+		self.interaction
+			.overlays
+			.viewer
+			.send(super::viewer::Message::Pinch {
+				factor,
+				centre,
+				pan,
+				window: (width, height),
+			});
 	}
 
 	fn open_swipe_drawer(&mut self, surface: Surface) {
@@ -536,7 +629,7 @@ impl<P: super::SendEvent> App<P> {
 
 	fn touch_offset(&mut self, surface: Surface) -> Point {
 		match surface {
-			Surface::None => (0.0, 0.0),
+			Surface::None | Surface::Viewer => (0.0, 0.0),
 			Surface::Document => (0.0, self.readers.session.scrolling.offset),
 			Surface::Overflow(bi, oi) => (
 				*self
@@ -561,7 +654,7 @@ impl<P: super::SendEvent> App<P> {
 
 	fn pan_gesture(&mut self, surface: Surface, (dx, dy): Point) {
 		match surface {
-			Surface::None => {}
+			Surface::None | Surface::Viewer => {}
 			Surface::Panel => self.scroll_panel(-dy),
 			Surface::Outline => self.scroll_outline(-dy),
 			Surface::Folder => self.scroll_folder(-dy),

@@ -74,6 +74,17 @@ fn viewer_fits_without_upscaling_and_zoom_keeps_the_pointer_spot() {
 	assert!(!viewer.finish_press());
 }
 
+#[test]
+fn pinch_clamps_after_combining_zoom_and_midpoint_pan() {
+	let window = (1200., 800.);
+	let mut viewer = Viewer::new("picture".into(), (400., 400.), 1.);
+	viewer.zoom = 4.;
+	viewer.pan = (150., 0.);
+	viewer.pinch(0.8, (600., 400.), (-100., 0.), window);
+	assert_eq!(viewer.pan, (20., 0.));
+	assert_eq!(viewer.rect(window).x, -20.);
+}
+
 /// Wheeling in asks for a raster the size of the picture on screen, which is
 /// what the viewer then fits, so the loop from rect to raster and back has to
 /// keep the proportions at every zoom level, past the cap included. Each level
