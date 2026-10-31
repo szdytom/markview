@@ -37,6 +37,8 @@ public class Smoke extends Instrumentation {
     @Override public void onStart() {
         Bundle result = new Bundle();
         try {
+            // App startup must work without a writable system temporary directory.
+            android.system.Os.setenv("TMPDIR", "/proc/markview-unwritable", true);
             // The emulator's `vulkan.ranchu` crashes when naming swapchain views.
             // Keep validation enabled, but disable driver debug labels in tests.
             android.system.Os.setenv("WGPU_DEBUG", "0", true);

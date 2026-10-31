@@ -420,7 +420,7 @@ impl<P: SendEvent> App<P> {
 			clipboard: Default::default(),
 			text_input: Default::default(),
 			url_input: Default::default(),
-			paste_dir: tempfile::tempdir()
+			paste_dir: markview_platform::tempdir()
 				.expect("create clipboard paste directory"),
 			paste_serial: 0,
 			web_pages: Default::default(),

@@ -1,6 +1,20 @@
 //! Native file access and permissions; callers validate contents and own transactions.
 use std::{fs, io, path::Path};
 
+/// Create temporary storage writable by the application on this platform.
+pub fn tempdir() -> io::Result<tempfile::TempDir> {
+	#[cfg(target_os = "android")]
+	{
+		tempfile::tempdir_in(
+			crate::android::data_path().expect("Android data directory"),
+		)
+	}
+	#[cfg(not(target_os = "android"))]
+	{
+		tempfile::tempdir()
+	}
+}
+
 /// The native display name of a folder, including Android's imported tree name.
 pub fn folder_name(root: &Path) -> String {
 	#[cfg(not(target_os = "android"))]

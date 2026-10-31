@@ -21,6 +21,10 @@ at the same level, without `[brackets]`.
 
 ## Unreleased
 
+### Fixed
+
+- Create clipboard temporary storage inside Android's private app directory to prevent startup crashes when the system temporary directory is inaccessible.
+
 ## 0.4.3 - 2026-10-31
 
 **Highlights**:
