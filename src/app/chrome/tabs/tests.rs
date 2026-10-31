@@ -119,12 +119,17 @@ fn tab_hover_match_rendering_baselines() -> anyhow::Result<()> {
 		.map(|i| ReaderTab::new(format!("{i}.md").into()))
 		.collect();
 	let widths = vec![(100.0, 50.0); tabs.len()];
-	for dark in [false, true] {
+	for (dark, style, name) in [
+		(false, TabStyle::Connected, "light"),
+		(true, TabStyle::Connected, "dark"),
+		(false, TabStyle::Underline, "underline-light"),
+		(true, TabStyle::Underline, "underline-dark"),
+	] {
 		let sheet = markview_layout::style::Stylesheet::bundled(dark);
 		ui.set_stylesheet(sheet.clone());
 		renderer.set_stylesheet(sheet);
 		let mut bar = TabBar {
-			style: TabStyle::Connected,
+			style,
 			ui: &mut ui,
 			strip: &strip,
 			widths: &widths,
@@ -169,10 +174,7 @@ fn tab_hover_match_rendering_baselines() -> anyhow::Result<()> {
 			overlay.extend(draws.clone());
 			let image =
 				capture(&mut renderer, &Default::default(), &view, &overlay)?;
-			baselines.record(
-				&format!("{}-{scale}x", if dark { "dark" } else { "light" }),
-				&image,
-			)?;
+			baselines.record(&format!("{name}-{scale}x"), &image)?;
 			if scale == 2.0 {
 				let border = bar
 					.ui
@@ -231,24 +233,24 @@ fn tab_hover_match_rendering_baselines() -> anyhow::Result<()> {
 				cursor: (150.0, 20.0),
 				style: bar.style,
 				tabs: bar.tabs,
-				active_tab: bar.active_tab,
+				active_tab: 0,
 				viewport: bar.viewport,
 			};
 			overlay.truncate(1);
 			overlay.extend(drag_bar.draw_tabs());
 			let image =
 				capture(&mut renderer, &Default::default(), &view, &overlay)?;
-			baselines.record(
-				&format!(
-					"drag-{}-{scale}x",
-					if dark { "dark" } else { "light" }
-				),
-				&image,
-			)?;
+			baselines.record(&format!("drag-{name}-{scale}x"), &image)?;
+			let active_fill = match style {
+				TabStyle::Connected => Paint::Background,
+				TabStyle::Underline => {
+					Paint::Styled(Condition::Panel, C::Background)
+				}
+			};
 			let fill = drag_bar
 				.ui
 				.stylesheet
-				.paint(Paint::Styled(Condition::Button, C::HoverBackground))
+				.paint(active_fill)
 				.map(|channel| (channel * 255.0).round() as u8);
 			for x in (340.0 * scale) as u32..(365.0 * scale) as u32 {
 				assert_eq!(

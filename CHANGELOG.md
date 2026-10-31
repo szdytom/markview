@@ -23,7 +23,7 @@ at the same level, without `[brackets]`.
 
 ### Fixed
 
-- Center tab separators in their gaps and hide both beside a hovered tab to keep its highlight symmetric.
+- Center tab separators in their gaps and hide both beside a hovered tab to keep its highlight symmetric in both tab styles.
 - Create clipboard temporary storage inside Android's private app directory to prevent startup crashes when the system temporary directory is inaccessible.
 
 ## 0.4.3 - 2026-10-31

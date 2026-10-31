@@ -20,7 +20,7 @@ observed Mesa rounding difference without allowing a percentage of bad pixels.
 | --- | --- | --- |
 | Markdown, MVSS and PDF pages | `crates/markview-render/tests/goldens/` | `artifacts/render-goldens/` |
 | Native settings and button states | `tests/goldens/ui/` | `artifacts/ui-goldens/` |
-| Tab hover symmetry and drag overlap at 100%, 125% and 200% DPI | `tests/goldens/tabs/` | `artifacts/tab-goldens/` |
+| Both tab styles: hover symmetry and active-tab drag overlap at 100%, 125% and 200% DPI | `tests/goldens/tabs/` | `artifacts/tab-goldens/` |
 | Mermaid and inline SVG | `tests/goldens/diagrams/` | `artifacts/diagram-goldens/` |
 | Search and text selection | `tests/goldens/search/` | `artifacts/search/` |
 

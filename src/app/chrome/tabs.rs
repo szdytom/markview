@@ -46,6 +46,7 @@ impl TabBar<'_> {
 		let old = self.ui.appearance.clone();
 		self.ui.appearance = crate::app::tab_metrics::tab_appearance(self.ui);
 		let mut out = Vec::new();
+		// Separators overlay inactive fills but stay below active or dragged tabs.
 		let mut separators = Vec::new();
 		let dragged = self.strip.drag.filter(|d| d.moving);
 		let mut indices: Vec<_> = (0..self.tabs.len())
