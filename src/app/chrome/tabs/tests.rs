@@ -96,6 +96,173 @@ fn hovered_labels_mix_current_theme_colors_and_keep_the_background_highlight() {
 }
 
 #[test]
+fn tab_hover_match_rendering_baselines() -> anyhow::Result<()> {
+	use crate::render::{Renderer, Theme, View};
+	use crate::test_support::render_goldens::{Baselines, capture};
+	if !markview_platform::test_support::desktop_goldens() {
+		return Ok(());
+	}
+	let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"));
+	let mut baselines = Baselines::new(
+		root.join("tests/goldens/tabs"),
+		root.join("artifacts/tab-goldens"),
+	)?;
+	let mut renderer = pollster::block_on(Renderer::new(None))?;
+	anyhow::ensure!(
+		renderer.adapter_name.starts_with("llvmpipe")
+			&& renderer.adapter_name.ends_with("(Vulkan, Cpu)"),
+		"Tab baselines require Lavapipe"
+	);
+	let mut ui = crate::test_support::shaper();
+	let strip = TabStrip::default();
+	let tabs: Vec<_> = (0..5)
+		.map(|i| ReaderTab::new(format!("{i}.md").into()))
+		.collect();
+	let widths = vec![(100.0, 50.0); tabs.len()];
+	for dark in [false, true] {
+		let sheet = markview_layout::style::Stylesheet::bundled(dark);
+		ui.set_stylesheet(sheet.clone());
+		renderer.set_stylesheet(sheet);
+		let mut bar = TabBar {
+			style: TabStyle::Connected,
+			ui: &mut ui,
+			strip: &strip,
+			widths: &widths,
+			tabs: &tabs,
+			active_tab: 4,
+			cursor: (264.0, 20.0),
+			viewport: Rect {
+				x: 10.0,
+				y: 4.0,
+				w: 600.0,
+				h: 36.0,
+			},
+		};
+		let draws = bar.draw_tabs();
+		for scale in [1.0, 1.25, 2.0] {
+			let horizontal = Default::default();
+			let view = View {
+				width: (620.0 * scale) as u32,
+				height: (48.0 * scale) as u32,
+				scale,
+				left: 0.0,
+				top: 0.0,
+				bottom: 0.0,
+				scroll: 0.0,
+				theme: if dark { Theme::Dark } else { Theme::Light },
+				horizontal: &horizontal,
+				selection: None,
+				revision: 0,
+				hovered_link: None,
+				hovered_overflow: None,
+				held_overflow: None,
+			};
+			let mut overlay = vec![Draw::Rect(
+				Rect {
+					x: 0.0,
+					y: 0.0,
+					w: 620.0,
+					h: 48.0,
+				},
+				Paint::Styled(Condition::Toolbar, C::Background),
+			)];
+			overlay.extend(draws.clone());
+			let image =
+				capture(&mut renderer, &Default::default(), &view, &overlay)?;
+			baselines.record(
+				&format!("{}-{scale}x", if dark { "dark" } else { "light" }),
+				&image,
+			)?;
+			if scale == 2.0 {
+				let border = bar
+					.ui
+					.stylesheet
+					.paint(Paint::Styled(Condition::Toolbar, C::BorderColor))
+					.map(|channel| (channel * 255.0).round() as u8);
+				for x in [221, 222] {
+					assert_eq!(
+						image.get_pixel(x, 40).0,
+						border,
+						"separator must retain both pixels at 200% DPI"
+					);
+				}
+			}
+			let center = (264.0 * scale) as u32;
+			let background = image.get_pixel(0, 0);
+			// The upper edge includes both separators but stays above the label.
+			for y in (4.0 * scale) as u32..(16.0 * scale) as u32 {
+				let highlighted: Vec<_> = ((208.0 * scale) as u32
+					..(320.0 * scale) as u32)
+					.filter(|x| {
+						image
+							.get_pixel(*x, y)
+							.0
+							.iter()
+							.zip(background.0)
+							.any(|(a, b)| a.abs_diff(b) > 8)
+					})
+					.collect();
+				let left = highlighted.first().expect("hover has a left edge");
+				let right = highlighted.last().unwrap();
+				assert!(
+					(left + right + 1).abs_diff(center * 2) <= 1,
+					"asymmetric hover bounds {left}..={right} at y={y}, scale {scale}, dark {dark}"
+				);
+			}
+			let mut drag_strip = TabStrip::default();
+			drag_strip.drag = Some(crate::app::tab_strip::TabDrag {
+				index: 0,
+				start: 100.0,
+				grab: 20.0,
+				last: 150.0,
+				moving: true,
+			});
+			let drag_widths = [
+				(280.0, 280.0),
+				(60.0, 60.0),
+				(60.0, 60.0),
+				(60.0, 60.0),
+				(60.0, 60.0),
+			];
+			let mut drag_bar = TabBar {
+				strip: &drag_strip,
+				widths: &drag_widths,
+				ui: &mut *bar.ui,
+				cursor: (150.0, 20.0),
+				style: bar.style,
+				tabs: bar.tabs,
+				active_tab: bar.active_tab,
+				viewport: bar.viewport,
+			};
+			overlay.truncate(1);
+			overlay.extend(drag_bar.draw_tabs());
+			let image =
+				capture(&mut renderer, &Default::default(), &view, &overlay)?;
+			baselines.record(
+				&format!(
+					"drag-{}-{scale}x",
+					if dark { "dark" } else { "light" }
+				),
+				&image,
+			)?;
+			let fill = drag_bar
+				.ui
+				.stylesheet
+				.paint(Paint::Styled(Condition::Button, C::HoverBackground))
+				.map(|channel| (channel * 255.0).round() as u8);
+			for x in (340.0 * scale) as u32..(365.0 * scale) as u32 {
+				assert_eq!(
+					image.get_pixel(x, (14.0 * scale) as u32).0,
+					fill,
+					"separator crossed the dragged tab at x={x}, scale {scale}"
+				);
+			}
+		}
+	}
+	baselines.finish()
+}
+
+#[test]
 fn cached_tab_end_follows_scroll_theme_and_document_changes() {
 	let mut ui = crate::test_support::shaper();
 	let mut metrics = TabMetrics::default();
@@ -279,31 +446,47 @@ fn separators_only_divide_neighboring_inactive_tabs() {
 			let layout = bar.layout();
 			for active in 0..count {
 				bar.active_tab = active;
-				let draws = bar.draw_tabs();
-				let Draw::Clipped { draws, .. } = &draws[0] else {
-					unreachable!()
-				};
-				let separators: Vec<_> = draws
-					.iter()
-					.filter_map(|draw| match draw {
-						Draw::Rect(
-							rect,
-							Paint::Styled(Condition::Toolbar, C::BorderColor),
-						) => Some(rect.x),
-						_ => None,
-					})
-					.collect();
-				let expected: Vec<_> = layout
-					.rects
-					.windows(2)
-					.enumerate()
-					.filter(|(i, _)| *i != active && *i + 1 != active)
-					.map(|(_, pair)| pair[0].x + pair[0].w - 1.0)
-					.collect();
-				assert_eq!(
-					separators, expected,
-					"{style:?}: active tab {active} of {count}"
-				);
+				for hovered in std::iter::once(None).chain((0..count).map(Some))
+				{
+					bar.cursor = hovered.map_or((0.0, 0.0), |i| {
+						let rect = layout.rects[i];
+						(rect.x + rect.w / 2.0, rect.y + rect.h / 2.0)
+					});
+					let draws = bar.draw_tabs();
+					let Draw::Clipped { draws, .. } = &draws[0] else {
+						unreachable!()
+					};
+					let separators: Vec<_> = draws
+						.iter()
+						.filter_map(|draw| match draw {
+							Draw::Rect(
+								rect,
+								Paint::Styled(
+									Condition::Toolbar,
+									C::BorderColor,
+								),
+							) => Some(rect.x + rect.w / 2.0),
+							_ => None,
+						})
+						.collect();
+					let expected: Vec<_> = layout
+						.rects
+						.windows(2)
+						.enumerate()
+						.filter(|(i, _)| {
+							*i != active
+								&& *i + 1 != active && hovered != Some(*i)
+								&& hovered != Some(*i + 1)
+						})
+						.map(|(_, pair)| {
+							(pair[0].x + pair[0].w + pair[1].x) / 2.0
+						})
+						.collect();
+					assert_eq!(
+						separators, expected,
+						"{style:?}: active {active}, hovered {hovered:?} of {count}"
+					);
+				}
 			}
 		}
 	}

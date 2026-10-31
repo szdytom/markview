@@ -40,9 +40,13 @@ impl TabBar<'_> {
 		let close = self.strip.rects(&layout);
 		let rects = close.as_deref().unwrap_or(&layout.rects);
 		let style = self.style;
+		let hovered_tab = rects
+			.iter()
+			.position(|rect| rect.contains(self.cursor.0, self.cursor.1));
 		let old = self.ui.appearance.clone();
 		self.ui.appearance = crate::app::tab_metrics::tab_appearance(self.ui);
 		let mut out = Vec::new();
+		let mut separators = Vec::new();
 		let dragged = self.strip.drag.filter(|d| d.moving);
 		let mut indices: Vec<_> = (0..self.tabs.len())
 			.filter(|i| dragged.is_none_or(|d| d.index != *i))
@@ -65,13 +69,21 @@ impl TabBar<'_> {
 			}
 			let active = index == self.active_tab;
 			let hovered = rect.contains(self.cursor.0, self.cursor.1);
+			let dragging = dragged.is_some_and(|drag| drag.index == index);
+			if active || dragging {
+				out.append(&mut separators);
+			}
 			draw_tab_surface(&mut out, style, rect, active, hovered);
-			if index + 1 < self.tabs.len()
-				&& !active && index + 1 != self.active_tab
-			{
-				out.push(Draw::Rect(
+			if !dragging
+				&& separator_visible(
+					index,
+					self.tabs.len(),
+					self.active_tab,
+					hovered_tab,
+				) {
+				separators.push(Draw::Rect(
 					Rect {
-						x: rect.x + rect.w - 1.0,
+						x: rect.x + rect.w + GAP / 2.0 - 0.5,
 						y: rect.y + 8.0,
 						w: 1.0,
 						h: rect.h - 16.0,
@@ -113,6 +125,7 @@ impl TabBar<'_> {
 				size: 16.0,
 			});
 		}
+		out.extend(separators);
 		self.ui.appearance = old;
 		let padding =
 			if style == TabStyle::Connected && layout.max_scroll == 0.0 {
@@ -146,6 +159,19 @@ impl TabBar<'_> {
 		}
 		draws
 	}
+}
+
+fn separator_visible(
+	index: usize,
+	count: usize,
+	active: usize,
+	hovered: Option<usize>,
+) -> bool {
+	index + 1 < count
+		&& index != active
+		&& index + 1 != active
+		&& hovered != Some(index)
+		&& hovered != Some(index + 1)
 }
 
 fn draw_tab_surface(
