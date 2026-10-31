@@ -23,6 +23,7 @@ at the same level, without `[brackets]`.
 
 ### Fixed
 
+- Keep repeated clicks on disclosure titles toggling instead of selecting text, while preserving drag selection.
 - Center tab separators in their gaps and hide both beside a hovered tab to keep its highlight symmetric in both tab styles.
 - Create clipboard temporary storage inside Android's private app directory to prevent startup crashes when the system temporary directory is inaccessible.
 

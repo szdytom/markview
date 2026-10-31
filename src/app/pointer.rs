@@ -546,6 +546,15 @@ impl<P: super::SendEvent> App<P> {
 				} else {
 					self.interaction.click_count(Instant::now())
 				};
+			let click_count = if link
+				.as_deref()
+				.and_then(markview_document::details_id)
+				.is_some()
+			{
+				1
+			} else {
+				click_count
+			};
 			match click_count {
 				2 => {
 					let selection =

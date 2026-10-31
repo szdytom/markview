@@ -224,6 +224,14 @@ fn selection(anchor: TextPosition, focus: TextPosition) -> TextSelection {
 /// at `width`, and the reader is showing that layout. The document is returned
 /// so a test can lay it out again at another width.
 fn reader(source: &str, width: f32) -> (App<StubProxy>, Arc<Document>) {
+	reader_with_dialect(source, width, markview_commonmark::Dialect::default())
+}
+
+fn reader_with_dialect(
+	source: &str,
+	width: f32,
+	dialect: markview_commonmark::Dialect,
+) -> (App<StubProxy>, Arc<Document>) {
 	let mut app = App::new(
 		crate::cli::LaunchOptions {
 			mode: Mode::Smoke,
@@ -234,7 +242,7 @@ fn reader(source: &str, width: f32) -> (App<StubProxy>, Arc<Document>) {
 	);
 	app.ui = crate::test_support::shaper();
 	app.preferences.values = crate::settings::ReaderSettings::default();
-	let document = Arc::new(markview_commonmark::parse(source));
+	let document = Arc::new(markview_commonmark::parse_with(source, dialect));
 	let options = LayoutOptions {
 		width,
 		..app.options()
@@ -1192,6 +1200,53 @@ fn a_double_click_selects_the_word_and_a_triple_click_the_paragraph() {
 		paragraph.contains("First one here."),
 		"the whole block: {paragraph:?}"
 	);
+}
+
+#[test]
+fn repeated_clicks_toggle_disclosure_titles_but_dragging_selects_them() {
+	for (source, title, ofm) in [
+		(
+			"<details open>\n<summary>Disclosure title</summary>\n\nHidden words.\n\n</details>",
+			"Disclosure title",
+			false,
+		),
+		(
+			"> [!note]+ Foldable title\n> Hidden words.",
+			"Foldable title",
+			true,
+		),
+	] {
+		let dialect = markview_commonmark::Dialect {
+			ofm,
+			..Default::default()
+		};
+		let (mut app, _) = reader_with_dialect(source, 760.0, dialect);
+		let at = point_over(&app, 0);
+		let id = app.readers.session.snapshot.blocks[0]
+			.layout
+			.links
+			.iter()
+			.find_map(|link| markview_document::details_id(&link.url))
+			.expect("a disclosure target");
+		for (click, open) in [(1, false), (2, true), (3, false)] {
+			physical_click(&mut app, at);
+			assert_eq!(
+				app.readers.session.details_open.get(&id),
+				Some(&open),
+				"{title}: click {click} toggles"
+			);
+			assert_eq!(
+				app.selected_text(),
+				None,
+				"{title}: click {click} does not select"
+			);
+		}
+
+		physical_drag(&mut app, at, (at.0 + 50.0, at.1));
+		let selected = app.selected_text().expect("a title drag selects text");
+		assert!(title.contains(&selected), "{title}: selected {selected:?}");
+		assert_eq!(app.readers.session.details_open.get(&id), Some(&false));
+	}
 }
 
 #[test]
