@@ -20,18 +20,20 @@ pub(super) fn unpremultiply(rgba: &mut [u8]) {
 pub(super) struct ColorAtlas {
 	texture: wgpu::Texture,
 	pub(super) bind_group: wgpu::BindGroup,
+	size: u32,
 	shelf: (u32, u32, u32),
 }
 impl ColorAtlas {
 	pub(super) fn new(
 		device: &wgpu::Device,
 		pipeline: &wgpu::RenderPipeline,
+		size: u32,
 	) -> Self {
 		let texture = device.create_texture(&wgpu::TextureDescriptor {
-			label: Some("1 MiB color glyph atlas"),
+			label: Some("color glyph atlas"),
 			size: wgpu::Extent3d {
-				width: SIZE,
-				height: SIZE,
+				width: size,
+				height: size,
 				depth_or_array_layers: 1,
 			},
 			mip_level_count: 1,
@@ -66,6 +68,7 @@ impl ColorAtlas {
 		Self {
 			texture,
 			bind_group,
+			size,
 			shelf: (0, 0, 0),
 		}
 	}
@@ -79,12 +82,12 @@ impl ColorAtlas {
 		rgba: &[u8],
 	) -> Option<Entry> {
 		let (w, h) = (entry.w + 2, entry.h + 2);
-		if self.shelf.0 + w > SIZE {
+		if self.shelf.0 + w > self.size {
 			self.shelf.0 = 0;
 			self.shelf.1 += self.shelf.2;
 			self.shelf.2 = 0;
 		}
-		if w > SIZE || self.shelf.1 + h > SIZE {
+		if w > self.size || self.shelf.1 + h > self.size {
 			return None;
 		}
 		let mut padded = vec![0; (w * h * 4) as usize];

@@ -285,7 +285,7 @@ impl Renderer {
 		Ok(())
 	}
 	pub fn gpu_bytes(&self) -> u64 {
-		(raster::ATLAS_SIZE * raster::ATLAS_SIZE) as u64
+		self.raster.mask_bytes()
 			+ self.raster.color_bytes()
 			+ self.geometry.capacity_bytes()
 			+ self.images.bytes()

@@ -99,8 +99,11 @@ fn color_glyphs_preserve_rgb_and_share_paint_order() {
 	use markview_layout::scene::{Draw, Glyph, LayoutSnapshot, Paint, Rect};
 	let mut renderer = pollster::block_on(Renderer::new(None)).unwrap();
 	assert_eq!(renderer.raster.color_bytes(), 0);
-	let mut atlas =
-		ColorAtlas::new(&renderer.gpu.device, &renderer.images.pipeline);
+	let mut atlas = ColorAtlas::new(
+		&renderer.gpu.device,
+		&renderer.images.pipeline,
+		super::COLOR_ATLAS_SIZE,
+	);
 	let large = Entry {
 		w: 510,
 		h: 510,
@@ -513,4 +516,17 @@ fn scrolling_icons_reuse_rasters_at_every_device_pixel_phase() {
 			}
 		}
 	}
+}
+
+#[test]
+fn high_dpi_uses_a_larger_atlas_when_the_adapter_allows_it() {
+	assert_eq!(
+		super::atlas_sizes(1.0, 8192),
+		(super::ATLAS_SIZE, super::COLOR_ATLAS_SIZE)
+	);
+	assert_eq!(super::atlas_sizes(2.0, 8192), (4096, 1024));
+	assert_eq!(
+		super::atlas_sizes(2.0, 2048),
+		(super::ATLAS_SIZE, super::COLOR_ATLAS_SIZE)
+	);
 }

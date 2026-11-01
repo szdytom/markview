@@ -82,6 +82,18 @@ impl Renderer {
 		underlay: &[Draw],
 		overlay: &[Draw],
 	) {
+		let (mask, color) = crate::raster::atlas_sizes(
+			view.scale,
+			self.gpu.device.limits().max_texture_dimension_2d,
+		);
+		self.raster.ensure_size(
+			&self.gpu.device,
+			&self.gpu.queue,
+			&self.pipeline,
+			mask,
+			color,
+		);
+		self.geometry.set_uv_scale(mask as f32);
 		self.geometry.clear();
 		self.geometry.set_emitting(!self.prewarming);
 		if !self.prewarming {

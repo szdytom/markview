@@ -44,6 +44,7 @@ at the same level, without `[brackets]`.
 - Snap formula rules and vector paths to whole device pixels so fractions, radicals and stretchy delimiters stay crisp at fractional DPI.
 - Keep a tab's hover preview returning after the wheel scrolls the tab strip under a resting pointer.
 - Keep start-page search state and control layout updates within their owners so the application coupling CI check passes.
+- Scale the glyph atlas with high-DPI displays so a full reading frame is not re-rasterized after the atlas fills.
 - Keep repeated clicks on disclosure titles toggling instead of selecting text, while preserving drag selection.
 - Center tab separators in their gaps and hide both beside a hovered tab to keep its highlight symmetric in both tab styles.
 - Create clipboard temporary storage inside Android's private app directory to prevent startup crashes when the system temporary directory is inaccessible.

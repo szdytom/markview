@@ -1,7 +1,4 @@
-use crate::{
-	Renderer, Theme, View, intersect,
-	raster::{ATLAS_SIZE, COLOR_ATLAS_SIZE, GlyphOrigin},
-};
+use crate::{Renderer, Theme, View, intersect, raster::GlyphOrigin};
 use markview_layout::{
 	scene::{Draw, Glyph, Paint, Rect},
 	shaping::TextShaper,
@@ -78,7 +75,7 @@ impl Renderer {
 		{
 			let start = self.geometry.len();
 			let uv_scale = if e.color {
-				ATLAS_SIZE as f32 / COLOR_ATLAS_SIZE as f32
+				self.raster.mask_size() as f32 / self.raster.color_size() as f32
 			} else {
 				1.
 			};
@@ -185,13 +182,14 @@ impl Renderer {
 					return;
 				};
 				let start = self.geometry.len();
+				let uv_scale = self.raster.mask_size() as f32;
 				self.geometry.quad(
 					rect,
 					Rect {
 						x: 0.,
 						y: 0.,
-						w: ATLAS_SIZE as f32,
-						h: ATLAS_SIZE as f32,
+						w: uv_scale,
+						h: uv_scale,
 					},
 					[1.; 4],
 					clip,
