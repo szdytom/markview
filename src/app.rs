@@ -304,6 +304,9 @@ struct App<P = EventLoopProxy<Event>> {
 	prewarm_at: Option<Instant>,
 	first_frame: Option<Update>,
 	started: Instant,
+	/// When reading-area scrolling last moved, so idle maintenance waits for a
+	/// genuinely stationary reader.
+	last_scroll_at: Instant,
 	fatal: Option<String>,
 	/// The one export in flight, the live watch target and the PNG strip loop.
 	export: export::Session,
@@ -445,6 +448,7 @@ impl<P: SendEvent> App<P> {
 			prewarm_at: None,
 			first_frame: None,
 			started: Instant::now(),
+			last_scroll_at: Instant::now(),
 			fatal: None,
 			export: export::Session::default(),
 		}

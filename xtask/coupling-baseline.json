@@ -3,7 +3,7 @@
     "variants": 6
   },
   "structs": {
-    "App": 49,
+    "App": 50,
     "Chrome": 7,
     "Config": 29,
     "InteractionState": 8,

@@ -16,6 +16,7 @@ use markview_layout::{
 };
 pub use raster::RasterStats;
 use std::{collections::HashMap, sync::Arc, time::Duration};
+use web_time::Instant;
 
 /// A render target the host owns.
 ///
@@ -143,7 +144,16 @@ pub struct Renderer {
 	fallback: Option<TextShaper>,
 	pub adapter_name: String,
 	pub backend: wgpu::Backend,
+	/// When a same-position idle repack may run again, and the scroll it ran at.
+	repack_at: Option<Instant>,
+	repack_scroll: Option<f32>,
 }
+
+/// The fill at which an idle prewarm rebuilds the mask atlas around the
+/// screen in view, before a scroll frame would have to reset it.
+const REPACK_FILL_PERCENT: u8 = 90;
+/// A same-position idle repack waits this long before it may run again.
+const REPACK_INTERVAL: Duration = Duration::from_secs(2);
 
 /// A rendered texture read back as tightly packed, non-premultiplied sRGB RGBA8.
 #[cfg(feature = "readback")]
@@ -233,6 +243,8 @@ impl Renderer {
 			stylesheet: None,
 			fonts: FontConfig::default(),
 			fallback: None,
+			repack_at: None,
+			repack_scroll: None,
 		})
 	}
 	pub fn acquire(&mut self) -> Result<FrameStatus> {
@@ -312,25 +324,66 @@ impl Renderer {
 		view: &View<'_>,
 		budget: Duration,
 	) -> bool {
+		let height = view.viewport().clip().h.max(1.0);
 		let ahead = View {
-			scroll: view.scroll + view.viewport().clip().h,
+			scroll: view.scroll + height,
+			selection: None,
+			..view.clone()
+		};
+		let before = View {
+			scroll: (view.scroll - height).max(0.0),
 			selection: None,
 			..view.clone()
 		};
 		// An atlas without room would evict the frame the reader is looking
 		// at, so glyph prewarming declines rather than forcing that rebuild.
 		// Images are independent of glyph pressure and get their own pass.
-		let glyph_more = if self.raster.has_room() {
+		let mut glyph_more = false;
+		if self.raster.has_room() {
 			self.prewarming = true;
 			self.raster.begin_budget(budget);
 			self.prepare(snapshot, &ahead, &[], &[]);
+			if view.scroll > 0.0 {
+				self.prepare(snapshot, &before, &[], &[]);
+			}
 			self.prewarming = false;
-			self.raster.finish_budget()
-		} else {
-			false
-		};
+			glyph_more |= self.raster.finish_budget();
+		}
 		let image_more = self.images.prewarm(snapshot, view, &self.gpu);
 		glyph_more || image_more
+	}
+
+	/// Whether the atlas is full enough to benefit from idle maintenance.
+	pub fn needs_maintenance(&self) -> bool {
+		self.raster.stats().fill_percent >= REPACK_FILL_PERCENT
+	}
+
+	/// Rebuilds the mask atlas around the screen in view while the reader is
+	/// stationary. The caller supplies the stationarity decision; this only
+	/// checks atlas pressure and its own cooldown. The current viewport is
+	/// rebuilt without a budget so a partial pass cannot push its glyphs back
+	/// into the next foreground frame.
+	pub fn maintain(
+		&mut self,
+		snapshot: &markview_layout::scene::LayoutSnapshot,
+		view: &View<'_>,
+	) -> bool {
+		let now = Instant::now();
+		if self.repack_scroll != Some(view.scroll) {
+			self.repack_scroll = Some(view.scroll);
+			self.repack_at = None;
+		}
+		if self.repack_at.is_some_and(|at| now < at)
+			|| self.raster.stats().fill_percent < REPACK_FILL_PERCENT
+		{
+			return false;
+		}
+		self.raster.reset_mask(&self.gpu.queue);
+		self.prewarming = true;
+		self.prepare(snapshot, view, &[], &[]);
+		self.prewarming = false;
+		self.repack_at = Some(now + REPACK_INTERVAL);
+		true
 	}
 }
 fn intersect(a: Rect, b: Rect) -> Option<Rect> {

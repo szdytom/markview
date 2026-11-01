@@ -747,6 +747,7 @@ impl<P: super::SendEvent> App<P> {
 			return;
 		}
 		if self.readers.session.advance_scroll(now, self.viewport()) {
+			self.last_scroll_at = now;
 			self.worker
 				.prioritize(self.readers.session.coverage(self.viewport()));
 		}
@@ -757,6 +758,7 @@ impl<P: super::SendEvent> App<P> {
 	/// Re-prioritizes the worker, follows the pointer and repaints after the
 	/// offset moved.
 	pub(super) fn after_scroll(&mut self) {
+		self.last_scroll_at = Instant::now();
 		self.follow_scroll();
 		self.worker
 			.prioritize(self.readers.session.coverage(self.viewport()));
