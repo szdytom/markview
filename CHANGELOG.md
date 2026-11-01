@@ -23,6 +23,7 @@ at the same level, without `[brackets]`.
 
 ### Added
 
+- Update folder trees automatically, preserve browsing state on refresh, and offer on-demand browsing of excluded entries.
 - Support tapping images to open the touch image viewer and pinching to zoom it.
 
 ### Changed

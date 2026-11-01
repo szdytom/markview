@@ -327,6 +327,12 @@ public class Smoke extends Instrumentation {
             require(folder.optBoolean("folder_open") && folder.optString("folder_root").equals(directory.toString()), "Folder import retains its root and opens the file tree");
             require(folder.optString("folder_name").equals("Research notes"), "Folder tree displays the imported folder's name");
             screenshot("folder");
+            require(button(folder, "FolderShowExcluded") != null && !folder.optBoolean("folder_show_excluded"), "Excluded entries start hidden");
+            tap("FolderShowExcluded");
+            waitFor(s -> s.optBoolean("folder_show_excluded"));
+            tap("FolderShowExcluded");
+            waitFor(s -> !s.optBoolean("folder_show_excluded"));
+            pass("Folder header toggles excluded entries on demand");
             if (phone) {
                 require(folder.optString("panel").equals("Tabs") && folder.optString("sidebar_tab").equals("Folder"), "Folder imports open the combined sidebar's folder page");
                 require(button(folder, "SidebarTab(Tabs)") != null && button(folder, "SidebarTab(Folder)") != null, "Both sidebar pages share their switcher");
@@ -752,7 +758,7 @@ public class Smoke extends Instrumentation {
     private int folderEntry(JSONObject current, String name) throws Exception {
         JSONArray entries = current.getJSONArray("folder_entries");
         for (int i = 0; i < entries.length(); i++) {
-            if (entries.getJSONObject(i).getString("path").endsWith("/" + name)) return i;
+            if (entries.getJSONObject(i).getString("path").endsWith("/" + name)) return entries.getJSONObject(i).getInt("id");
         }
         throw new AssertionError("Missing folder entry: " + name);
     }

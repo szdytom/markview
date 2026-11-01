@@ -308,6 +308,8 @@ folder_files = "文件夹"
 folder_toggle = "展开／折叠侧边栏"
 folder_empty = "此文件夹中没有 Markdown 文档"
 folder_refresh = "刷新文件夹"
+folder_show_excluded = "显示排除条目"
+folder_excluded = "已排除"
 folder_collapse_all = "全部折叠"
 folder_error = "无法打开文件夹：{error}"
 

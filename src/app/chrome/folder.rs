@@ -23,12 +23,21 @@ pub(in crate::app) struct Labels {
 	sheet: Option<Arc<Stylesheet>>,
 	fonts: Option<FontConfig>,
 	width: f32,
-	rows: HashMap<markview_ui_core::WidgetId, Vec<Draw>>,
+	lang: Option<Lang>,
+	rows: HashMap<usize, Vec<Draw>>,
 }
 
 impl Labels {
-	fn prepare(&mut self, ui: &TextShaper, width: f32) {
-		if self.width != width
+	pub(in crate::app) fn retain(
+		&mut self,
+		entries: &crate::app::folder::Entries,
+	) {
+		self.rows.retain(|id, _| entries.get(*id).is_some());
+	}
+
+	fn prepare(&mut self, ui: &TextShaper, width: f32, lang: Lang) {
+		if self.lang != Some(lang)
+			|| self.width != width
 			|| self.fonts.as_ref() != Some(ui.font_config())
 			|| self
 				.sheet
@@ -37,6 +46,7 @@ impl Labels {
 		{
 			self.rows.clear();
 			self.width = width;
+			self.lang = Some(lang);
 			self.sheet = Some(ui.stylesheet.clone());
 			self.fonts = Some(ui.font_config().clone());
 		}
@@ -50,9 +60,12 @@ impl Labels {
 		name: &str,
 		rect: Rect,
 	) {
-		let id = action.widget_id();
+		let Command::Chrome(ChromeCommand::FolderEntry(id)) = action else {
+			unreachable!()
+		};
 		if self.rows.len() >= 128 && !self.rows.contains_key(&id) {
-			self.rows.clear();
+			let evicted = *self.rows.keys().next().unwrap();
+			self.rows.remove(&evicted);
 		}
 		let draws = self.rows.entry(id).or_insert_with(|| {
 			components::label(
@@ -139,6 +152,15 @@ pub(super) fn buttons(
 			icons::REDOWNLOAD,
 		),
 		(
+			lang.folder_show_excluded(),
+			Command::Chrome(ChromeCommand::FolderShowExcluded),
+			if tree.show_excluded {
+				icons::EYE
+			} else {
+				icons::EYE_OFF
+			},
+		),
+		(
 			lang.folder_collapse_all(),
 			Command::Chrome(ChromeCommand::FolderCollapseAll),
 			icons::COLLAPSE_ALL,
@@ -152,7 +174,7 @@ pub(super) fn buttons(
 			action,
 			Rect {
 				x: drawer.x + drawer.w
-					- RIGHT_INSET - (2 - i) as f32 * HEADER_BUTTON,
+					- RIGHT_INSET - (3 - i) as f32 * HEADER_BUTTON,
 				y: drawer.y + (38. - HEADER_BUTTON) / 2.,
 				w: HEADER_BUTTON,
 				h: HEADER_BUTTON,
@@ -212,7 +234,7 @@ pub(super) fn draw(
 	};
 	components::appearance(ui);
 	let mut labels = browser.labels.borrow_mut();
-	labels.prepare(ui, drawer.w);
+	labels.prepare(ui, drawer.w, lang);
 	let background = components::mix(
 		ui,
 		Paint::Styled(Condition::Panel, C::Background),
@@ -238,7 +260,7 @@ pub(super) fn draw(
 		Rect {
 			x: drawer.x + 16.,
 			y: drawer.y,
-			w: (drawer.w - 88.).max(0.),
+			w: (drawer.w - 116.).max(0.),
 			h: 38.,
 		},
 		C::Color,
@@ -248,6 +270,7 @@ pub(super) fn draw(
 		matches!(
 			b.action,
 			Command::Chrome(ChromeCommand::FolderCollapseAll)
+				| Command::Chrome(ChromeCommand::FolderShowExcluded)
 				| Command::Chrome(ChromeCommand::FolderRefresh)
 		)
 	}) {
@@ -255,10 +278,10 @@ pub(super) fn draw(
 	}
 	let list = list(drawer, tree.rows().len(), browser.scroll.offset());
 	let mut body = Vec::new();
-	if tree.entries.is_empty() {
+	if tree.entries.is_empty() || tree.error.is_some() {
 		body.extend(components::label(
 			ui,
-			lang.folder_empty(),
+			tree.error.as_deref().unwrap_or(lang.folder_empty()),
 			12.,
 			Rect {
 				x: drawer.x + 16.,
@@ -279,13 +302,19 @@ pub(super) fn draw(
 			continue;
 		}
 		let mut draws = Vec::new();
+		let name = e.path.file_name().unwrap().to_string_lossy();
+		let name = if e.excluded {
+			format!("{name} ({})", lang.folder_excluded())
+		} else {
+			name.into_owned()
+		};
 		TreeRow {
 			rect,
 			action: Command::Chrome(ChromeCommand::FolderEntry(row.index)),
 			depth: e.depth,
 			collapsed: e.directory.then(|| tree.collapsed(row.index)),
 			image: crate::file::is_image(&e.path),
-			name: &e.path.file_name().unwrap().to_string_lossy(),
+			name: &name,
 			selected: active == Some(e.path.as_path()),
 		}
 		.draw(ui, &mut labels, &mut draws, interaction);
@@ -469,8 +498,7 @@ mod tests {
 				},
 				Lang::En,
 			);
-			browser.labels.borrow().rows
-				[&Command::Chrome(ChromeCommand::FolderEntry(0)).widget_id()]
+			browser.labels.borrow().rows[&0]
 				.iter()
 				.find_map(|draw| match draw {
 					Draw::Glyph(glyph) => Some(glyph.font.data.clone()),
@@ -528,7 +556,7 @@ mod tests {
 					buttons[0].action,
 					Command::Chrome(ChromeCommand::FolderRefresh)
 				);
-				let collapse_all = &buttons[1];
+				let collapse_all = &buttons[2];
 				assert_eq!(
 					collapse_all.action,
 					Command::Chrome(ChromeCommand::FolderCollapseAll)

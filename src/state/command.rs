@@ -115,6 +115,7 @@ pub(crate) enum ChromeCommand {
 	Folder,
 	FolderEntry(usize),
 	FolderRefresh,
+	FolderShowExcluded,
 	FolderCollapseAll,
 	/// Reveal the active document's folder in the file manager.
 	RevealFolder,

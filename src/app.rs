@@ -115,6 +115,10 @@ enum Event {
 	SettingsChanged,
 	StylesChanged,
 	Open(Option<PathBuf>),
+	FolderUpdated {
+		generation: u64,
+		update: folder::observe::Update,
+	},
 	FolderLoaded {
 		generation: u64,
 		select: bool,

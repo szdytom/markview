@@ -626,6 +626,7 @@ impl<'a> Chrome<'a> {
 				Command::Chrome(ChromeCommand::Folder)
 					| Command::Chrome(ChromeCommand::FolderEntry(_))
 					| Command::Chrome(ChromeCommand::OpenFolder)
+					| Command::Chrome(ChromeCommand::FolderShowExcluded)
 					| Command::Chrome(ChromeCommand::FolderRefresh)
 					| Command::Chrome(ChromeCommand::FolderCollapseAll)
 			) {

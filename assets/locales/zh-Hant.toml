@@ -310,6 +310,8 @@ folder_files = "資料夾"
 folder_toggle = "展開／收合側邊欄"
 folder_empty = "此資料夾中沒有 Markdown 文件"
 folder_refresh = "重新整理資料夾"
+folder_show_excluded = "顯示排除項目"
+folder_excluded = "已排除"
 folder_collapse_all = "全部收合"
 folder_error = "無法開啟資料夾：{error}"
 

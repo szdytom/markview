@@ -81,17 +81,30 @@ button opens the current document's folder in the system file manager.
 Markview lists `.md`, `.markdown` and
 `.mdown` files in a left sidebar, preserving subfolders. Click a directory to
 expand or collapse it and a file to read it in a tab. Subfolders start
-collapsed; refreshing preserves the folders you expanded. Existing tabs are
+collapsed; automatic updates and **Refresh** preserve expansion, scroll position
+and keyboard focus while their paths exist. Existing tabs are
 reused. With the sidebar open, picking a tab expands the folders around its
 document and scrolls that row into view. The sidebar scrolls independently; Tab
 focuses its controls, arrow keys move between file rows, and Enter opens the
 selected row. Its header shows the open folder's name and can collapse all
-folders or refresh the tree after files are added, moved or deleted.
+folders, refresh the tree, or **Show excluded entries**. Files added, moved or
+deleted externally update automatically, normally in a 100 ms batch plus disk
+reading time. Missed events are recovered by background checks; **Refresh**
+requests an immediate check.
 **Collapse all** also clears nested expansion and returns the tree to the open
 folder's top-level entries, which stay visible; use **Ctrl+Shift+O** to choose
 another folder.
-Hidden entries such as `.obsidian` and `.git`, and symbolic links, are omitted.
-Inaccessible subfolders are skipped; an unreadable root reports an error.
+Hidden entries such as `.obsidian` and `.git`, and directories named
+`node_modules`, `target`, `vendor`, and `__pycache__`, are excluded by default.
+**Show excluded entries** reveals them with an excluded label. Excluded directories
+load one level only when explicitly expanded, and release their loaded descendants
+and watches when collapsed. The toggle resets when choosing a folder; it does not
+add other file types or follow symbolic links. These name-based rules do not read
+`.gitignore`.
+Inaccessible subfolders are skipped; an unreadable, moved or deleted root reports
+an error and clears stale entries. The original root path is checked for recovery;
+use **Ctrl+Shift+O** to follow a folder moved elsewhere. On Android these checks
+observe the imported copy; reimport the folder to receive source changes.
 
 The file sidebar spans the full left edge on desktop and tablets; tabs and
 the main toolbar start to its right, while the outline keeps its right-side
@@ -102,7 +115,7 @@ top-left sidebar button expands or collapses the file tree and stays to the
 left of all tabs when collapsed. Session restoration retains the folder as
 well as open documents
 and reading positions.
-An empty folder stays open so it can be refreshed after documents are added.
+An empty folder stays open and updates when documents are added.
 When both drawers are open, narrowing the window keeps the outline and closes
 the file sidebar.
 

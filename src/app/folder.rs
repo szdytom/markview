@@ -1,12 +1,14 @@
 //! A read-only folder tree shared by native entry points and the sidebar.
+pub(super) mod observe;
 use super::{App, Event, SendEvent};
 use crate::state::ChromeCommand;
 use crate::{
 	scroll::ScrollArea,
 	state::{Command, DrawerAnimation, Row, RowSlide},
 };
+use observe::Observer;
 use std::{
-	collections::HashSet,
+	collections::{BTreeMap, HashMap, HashSet},
 	fs,
 	path::{Path, PathBuf},
 	sync::{
@@ -16,20 +18,106 @@ use std::{
 	time::Instant,
 };
 
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(super) struct Child {
+	path: PathBuf,
+	directory: bool,
+	excluded: bool,
+}
+
+fn excluded(path: &Path, directory: bool) -> bool {
+	let name = path.file_name().unwrap().to_string_lossy();
+	name.starts_with('.')
+		|| (directory
+			&& ["node_modules", "target", "vendor", "__pycache__"]
+				.contains(&name.as_ref()))
+}
+
+fn list(
+	path: &Path,
+	cancelled: &dyn Fn() -> bool,
+	show: bool,
+) -> anyhow::Result<Vec<Child>> {
+	let mut children = Vec::new();
+	for child in fs::read_dir(path)?.flatten() {
+		anyhow::ensure!(!cancelled(), "Folder scan cancelled");
+		let Ok(kind) = child.file_type() else {
+			continue;
+		};
+		let path = child.path();
+		let directory = kind.is_dir();
+		let excluded = excluded(&path, directory);
+		if (!excluded || show)
+			&& (directory
+				|| (kind.is_file()
+					&& (markdown(&path) || crate::file::is_image(&path))))
+		{
+			children.push(Child {
+				path,
+				directory,
+				excluded,
+			});
+		}
+	}
+	children.sort_by_key(|child| {
+		(
+			!child.directory,
+			child
+				.path
+				.file_name()
+				.unwrap()
+				.to_string_lossy()
+				.to_lowercase(),
+			child.path.clone(),
+		)
+	});
+	Ok(children)
+}
+
+/// Stable slots survive sibling insertions; removed identities are never reused.
+#[derive(Debug)]
+pub(super) struct Entries(BTreeMap<usize, Entry>);
+impl Entries {
+	pub fn iter(&self) -> impl Iterator<Item = &Entry> {
+		self.0.values()
+	}
+	pub fn get(&self, id: usize) -> Option<&Entry> {
+		self.0.get(&id)
+	}
+	#[cfg(test)]
+	pub fn len(&self) -> usize {
+		self.0.len()
+	}
+	pub fn is_empty(&self) -> bool {
+		self.0.is_empty()
+	}
+}
+impl std::ops::Index<usize> for Entries {
+	type Output = Entry;
+	fn index(&self, id: usize) -> &Entry {
+		&self.0[&id]
+	}
+}
+
 #[derive(Debug)]
 pub(super) struct Entry {
+	pub id: usize,
 	pub path: PathBuf,
 	pub depth: usize,
 	pub directory: bool,
-	/// The first entry after this directory's descendants.
-	subtree_end: usize,
+	pub excluded: bool,
 }
 
 #[derive(Debug)]
 pub(super) struct Tree {
 	pub root: PathBuf,
 	pub name: String,
-	pub entries: Vec<Entry>,
+	pub entries: Entries,
+	children: HashMap<PathBuf, Vec<usize>>,
+	paths: HashMap<PathBuf, usize>,
+	next_id: usize,
+	pub show_excluded: bool,
+	pub error: Option<String>,
 	expanded: HashSet<PathBuf>,
 	visible: Vec<usize>,
 }
@@ -48,25 +136,10 @@ impl Tree {
 		anyhow::ensure!(root.is_dir(), "Not a folder: {}", root.display());
 		let name = markview_platform::folder_name(&root);
 		Self::scan(root, name, cancelled, |path, cancelled| {
-			let mut children = Vec::new();
-			for child in fs::read_dir(path)?.flatten() {
-				anyhow::ensure!(!cancelled(), "Folder scan cancelled");
-				let Ok(kind) = child.file_type() else {
-					continue;
-				};
-				if child.file_name().to_string_lossy().starts_with('.') {
-					continue;
-				}
-				let directory = kind.is_dir();
-				let path = child.path();
-				if directory
-					|| (kind.is_file()
-						&& (markdown(&path) || crate::file::is_image(&path)))
-				{
-					children.push((path, directory));
-				}
-			}
-			Ok(children)
+			Ok(list(path, cancelled, false)?
+				.into_iter()
+				.map(|child| (child.path, child.directory))
+				.collect())
 		})
 	}
 
@@ -88,7 +161,8 @@ impl Tree {
 					directory,
 					path: path.clone(),
 					depth: depth - 1,
-					subtree_end: 0,
+					id: entries.len(),
+					excluded: excluded(&path, directory),
 				});
 			}
 			if !directory {
@@ -112,19 +186,37 @@ impl Tree {
 					path.clone(),
 				)
 			});
-			// A directory's descendants follow it in the flat tree.
+			// Initial identities follow the directory traversal order.
 			for (path, directory) in children.into_iter().rev() {
 				pending.push((path, depth + 1, directory));
 			}
 		}
+		let next_id = entries.len();
+		let mut children: HashMap<PathBuf, Vec<usize>> = HashMap::new();
+		let paths = entries
+			.iter()
+			.map(|entry| (entry.path.clone(), entry.id))
+			.collect();
+		for entry in &entries {
+			children
+				.entry(entry.path.parent().unwrap().to_owned())
+				.or_default()
+				.push(entry.id);
+		}
 		let mut tree = Self {
 			root,
 			name,
-			entries,
+			entries: Entries(
+				entries.into_iter().map(|entry| (entry.id, entry)).collect(),
+			),
+			children,
+			paths,
+			next_id,
+			show_excluded: false,
+			error: None,
 			expanded: HashSet::new(),
 			visible: Vec::new(),
 		};
-		tree.index_subtrees();
 		tree.rebuild_rows();
 		Ok(tree)
 	}
@@ -133,34 +225,108 @@ impl Tree {
 		&self.visible
 	}
 
-	fn index_subtrees(&mut self) {
-		let mut parents = Vec::<usize>::new();
-		for index in 0..self.entries.len() {
-			while parents.last().is_some_and(|parent| {
-				self.entries[*parent].depth >= self.entries[index].depth
-			}) {
-				self.entries[parents.pop().unwrap()].subtree_end = index;
+	fn append_rows(&self, path: &Path, out: &mut Vec<usize>) {
+		if let Some(children) = self.children.get(path) {
+			for id in children {
+				out.push(*id);
+				if self.entries[*id].directory
+					&& self.expanded.contains(&self.entries[*id].path)
+				{
+					self.append_rows(&self.entries[*id].path, out);
+				}
 			}
-			if self.entries[index].directory {
-				parents.push(index);
-			}
-		}
-		for parent in parents {
-			self.entries[parent].subtree_end = self.entries.len();
 		}
 	}
 
 	fn rebuild_rows(&mut self) {
-		self.visible.clear();
-		let mut index = 0;
-		while let Some(entry) = self.entries.get(index) {
-			self.visible.push(index);
-			index = if self.collapsed(index) {
-				entry.subtree_end
-			} else {
-				index + 1
-			};
+		let mut rows = Vec::new();
+		self.append_rows(&self.root, &mut rows);
+		self.visible = rows;
+	}
+
+	fn remove(&mut self, id: usize) {
+		let entry = self.entries.0.remove(&id).unwrap();
+		self.paths.remove(&entry.path);
+		self.expanded.remove(&entry.path);
+		if let Some(children) = self.children.remove(&entry.path) {
+			for child in children {
+				self.remove(child);
+			}
 		}
+	}
+
+	fn patch(&mut self, path: &Path, children: Vec<Child>) {
+		if path != self.root && !self.paths.contains_key(path) {
+			return;
+		}
+		let depth = self
+			.paths
+			.get(path)
+			.map_or(0, |id| self.entries[*id].depth + 1);
+		// Capture the old visible range before removing descendants.
+		let range = if path == self.root {
+			Some(0..self.visible.len())
+		} else {
+			self.paths
+				.get(path)
+				.and_then(|id| self.visible.iter().position(|row| row == id))
+				.map(|start| {
+					let mut end = start + 1;
+					while end < self.visible.len()
+						&& self.entries[self.visible[end]].depth >= depth
+					{
+						end += 1;
+					}
+					start + 1..end
+				})
+		};
+		let previous = self.children.remove(path).unwrap_or_default();
+		let mut remaining: HashMap<_, _> = previous
+			.into_iter()
+			.map(|id| (self.entries[id].path.clone(), id))
+			.collect();
+		let mut ids = Vec::new();
+		for child in children {
+			let id = if let Some(id) = remaining.remove(&child.path) {
+				if self.entries[id].directory == child.directory {
+					id
+				} else {
+					self.remove(id);
+					self.insert(child, depth)
+				}
+			} else {
+				self.insert(child, depth)
+			};
+			ids.push(id);
+		}
+		for id in remaining.into_values() {
+			self.remove(id);
+		}
+		self.children.insert(path.to_owned(), ids);
+		if let Some(range) = range {
+			let mut rows = Vec::new();
+			if path == self.root || self.expanded.contains(path) {
+				self.append_rows(path, &mut rows);
+			}
+			self.visible.splice(range, rows);
+		}
+	}
+
+	fn insert(&mut self, child: Child, depth: usize) -> usize {
+		let id = self.next_id;
+		self.next_id += 1;
+		self.paths.insert(child.path.clone(), id);
+		self.entries.0.insert(
+			id,
+			Entry {
+				id,
+				path: child.path,
+				depth,
+				directory: child.directory,
+				excluded: child.excluded,
+			},
+		);
+		id
 	}
 
 	pub fn collapsed(&self, index: usize) -> bool {
@@ -183,17 +349,12 @@ impl Tree {
 
 	/// Open every collapsed ancestor of `path`, and return its entry index.
 	pub fn expand_to(&mut self, path: &Path) -> Option<usize> {
-		let index = self.entries.iter().position(|e| e.path == path)?;
-		let depth = self.entries[index].depth;
-		self.expanded.extend(
-			(0..index)
-				.filter(|j| {
-					self.entries[*j].directory
-						&& self.entries[*j].depth < depth
-						&& index < self.entries[*j].subtree_end
-				})
-				.map(|j| self.entries[j].path.clone()),
-		);
+		let index = *self.paths.get(path)?;
+		let mut parent = path.parent();
+		while let Some(path) = parent.filter(|path| *path != self.root) {
+			self.expanded.insert(path.to_owned());
+			parent = path.parent();
+		}
 		self.rebuild_rows();
 		Some(index)
 	}
@@ -275,9 +436,21 @@ pub(super) struct Browser {
 	pending_root: Option<PathBuf>,
 	scan_navigation_revision: u64,
 	generation: Arc<AtomicU64>,
+	observer: Option<Observer>,
+	revision: u64,
+	view_revision: u64,
+	pending_reveal: Option<PathBuf>,
 }
 
 impl Browser {
+	pub(super) fn updating(&self) -> bool {
+		self.pending_root.is_some()
+			|| self
+				.observer
+				.as_ref()
+				.is_some_and(|observer| observer.pending(self.revision))
+	}
+
 	pub(super) fn root(&self) -> Option<&PathBuf> {
 		self.tree
 			.as_ref()
@@ -323,7 +496,12 @@ impl Browser {
 			self.rows.reset(&[]);
 			return;
 		};
-		self.rows.retarget(from, tree.rows(), now);
+		let from: Vec<_> = from
+			.iter()
+			.copied()
+			.filter(|id| tree.entries.get(*id).is_some())
+			.collect();
+		self.rows.retarget(&from, tree.rows(), now);
 	}
 
 	/// Snaps the rows to a tree that was replaced rather than toggled.
@@ -455,13 +633,31 @@ impl<P: SendEvent> App<P> {
 		let Some(path) = self.readers.session.path.clone() else {
 			return;
 		};
+		if self.folder.updating() {
+			self.folder.pending_reveal = Some(path);
+			return;
+		}
+		self.folder.pending_reveal = None;
+		self.expand_folder_to_path(&path);
+	}
+
+	fn replay_folder_reveal(&mut self) {
+		if let Some(path) = self.folder.pending_reveal.take()
+			&& self.readers.session.path.as_ref() == Some(&path)
+			&& (self.folder.open || self.phone_folder_open())
+		{
+			self.expand_folder_to_path(&path);
+		}
+	}
+
+	fn expand_folder_to_path(&mut self, path: &Path) {
 		let before = self
 			.folder
 			.tree
 			.as_ref()
 			.map_or_else(Vec::new, |tree| tree.rows().to_vec());
 		let Some(index) =
-			self.folder.tree.as_mut().and_then(|t| t.expand_to(&path))
+			self.folder.tree.as_mut().and_then(|t| t.expand_to(path))
 		else {
 			return;
 		};
@@ -493,6 +689,10 @@ impl<P: SendEvent> App<P> {
 	}
 
 	pub(super) fn open_folder(&mut self, root: PathBuf, select: bool) {
+		self.folder.observer = None;
+		self.folder.revision = 0;
+		self.folder.view_revision = 0;
+		self.folder.pending_reveal = None;
 		self.sync_instance_folder(Some(&root));
 		self.folder.pending_root = Some(root.clone());
 		self.folder.scan_navigation_revision = self.folder.navigation_revision;
@@ -530,10 +730,25 @@ impl<P: SendEvent> App<P> {
 				== self.folder.navigation_revision;
 		match result {
 			Ok(mut tree) => {
+				let same_root = self
+					.folder
+					.tree
+					.as_ref()
+					.is_some_and(|previous| previous.root == tree.root);
+				let focus = self.folder_focus();
 				if let Some(previous) = &self.folder.tree
 					&& previous.root == tree.root
 				{
-					tree.expanded = previous.expanded.clone();
+					tree.expanded = previous
+						.expanded
+						.iter()
+						.filter(|path| {
+							tree.paths
+								.get(*path)
+								.is_some_and(|id| tree.entries[*id].directory)
+						})
+						.cloned()
+						.collect();
 					tree.rebuild_rows();
 				}
 				let initial = tree.initial();
@@ -543,9 +758,20 @@ impl<P: SendEvent> App<P> {
 				self.folder.reset_rows();
 				*self.folder.labels.get_mut() = Default::default();
 				self.set_folder_open(reveal);
-				self.folder.scroll.reset();
+				if !same_root {
+					self.folder.scroll.reset();
+					self.clear_folder_rows();
+				} else if let Some((path, row)) = focus {
+					self.restore_folder_focus(&path, row);
+				}
 				self.folder.grab = None;
-				self.clear_folder_rows();
+				self.interaction.widgets.captured =
+					self.interaction.widgets.captured.filter(|id| {
+						id.scope
+							!= Command::Chrome(ChromeCommand::FolderEntry(0))
+								.widget_id()
+								.scope
+					});
 				if reveal && self.folder_inset() == 0. {
 					self.interaction.close_outline();
 				}
@@ -553,6 +779,9 @@ impl<P: SendEvent> App<P> {
 					self.open(path);
 				}
 				self.set_folder_open(reveal);
+				if self.folder.pending_reveal.is_some() {
+					self.expand_folder_to_tab();
+				}
 				self.request(false);
 			}
 			Err(error) => {
@@ -565,9 +794,233 @@ impl<P: SendEvent> App<P> {
 				self.status.set_error(true);
 			}
 		}
+		self.start_folder_observer();
 		let root = self.folder.root().cloned();
 		self.sync_instance_folder(root.as_deref());
+		self.refresh_folder_hover();
+		self.redraw();
+	}
+
+	fn refresh_folder_hover(&mut self) {
+		let focus = self.interaction.widgets.focus.filter(|id| {
+			id.scope
+				== Command::Chrome(ChromeCommand::FolderEntry(0))
+					.widget_id()
+					.scope && ((self.folder.open && !self.interaction.panel_open())
+				|| self.phone_folder_open())
+				&& !self.interaction.overlays.modal_open()
+		});
 		self.refresh_hover();
+		if focus.is_some() {
+			self.interaction.widgets.focus = focus;
+		}
+	}
+
+	fn folder_focus(&self) -> Option<(PathBuf, usize)> {
+		let focus = self.interaction.widgets.focus?;
+		let tree = self.folder.tree.as_ref()?;
+		tree.rows()
+			.iter()
+			.enumerate()
+			.find(|(_, id)| {
+				Command::Chrome(ChromeCommand::FolderEntry(**id)).widget_id()
+					== focus
+			})
+			.map(|(row, id)| (tree.entries[*id].path.clone(), row))
+	}
+
+	fn restore_folder_focus(&mut self, path: &Path, neighbor: usize) {
+		let tree = self.folder.tree.as_ref().unwrap();
+		let mut ancestor = Some(path);
+		let mut target = None;
+		while let Some(path) = ancestor {
+			target = tree
+				.paths
+				.get(path)
+				.copied()
+				.filter(|id| tree.rows().contains(id));
+			if target.is_some() {
+				break;
+			}
+			ancestor = path.parent();
+		}
+		self.interaction.widgets.focus = target
+			.or_else(|| {
+				tree.rows()
+					.get(neighbor.min(tree.rows().len().saturating_sub(1)))
+					.copied()
+			})
+			.map(|id| {
+				Command::Chrome(ChromeCommand::FolderEntry(id)).widget_id()
+			});
+	}
+
+	fn start_folder_observer(&mut self) {
+		if self.folder.observer.is_some() {
+			return;
+		}
+		let Some(tree) = &self.folder.tree else {
+			return;
+		};
+		let root = tree.root.clone();
+		let show = tree.show_excluded;
+		let generation = self.folder.generation.load(Ordering::Relaxed);
+		let proxy = self.proxy.clone();
+		let observer = Observer::new(root, move |update| {
+			proxy.send(Event::FolderUpdated { generation, update });
+		});
+		// A pending scan can receive view commands before its observer exists.
+		if show || self.folder.view_revision != 0 {
+			self.folder.view_revision += 1;
+			observer.view(
+				self.folder.tree.as_ref().unwrap(),
+				self.folder.view_revision,
+			);
+		}
+		self.folder.observer = Some(observer);
+	}
+
+	pub(super) fn refresh_folder(&mut self) {
+		if let Some(observer) = &self.folder.observer {
+			observer.refresh();
+		}
+	}
+
+	pub(super) fn folder_view_changed(&mut self) {
+		self.folder.view_revision += 1;
+		if let Some(tree) = &mut self.folder.tree {
+			let prune: Vec<_> = tree
+				.children
+				.keys()
+				.filter(|path| {
+					*path != &tree.root
+						&& path
+							.strip_prefix(&tree.root)
+							.unwrap()
+							.components()
+							.any(|part| {
+								excluded(Path::new(part.as_os_str()), true)
+							}) && (!tree.show_excluded
+						|| !tree.expanded.contains(*path))
+				})
+				.cloned()
+				.collect();
+			for path in prune {
+				tree.patch(&path, Vec::new());
+			}
+			if let Some(observer) = &self.folder.observer {
+				observer.view(tree, self.folder.view_revision);
+			}
+		}
+		self.folder.reset_rows();
+	}
+
+	pub(super) fn toggle_folder_excluded(&mut self) {
+		let focus = self.folder_focus();
+		if let Some(tree) = &mut self.folder.tree {
+			tree.show_excluded = !tree.show_excluded;
+			if !tree.show_excluded {
+				let parents: Vec<_> = tree.children.keys().cloned().collect();
+				for path in parents {
+					let children = tree
+						.children
+						.get(&path)
+						.into_iter()
+						.flatten()
+						.filter_map(|id| {
+							let entry = &tree.entries[*id];
+							(!entry.excluded).then(|| Child {
+								path: entry.path.clone(),
+								directory: entry.directory,
+								excluded: false,
+							})
+						})
+						.collect();
+					tree.patch(&path, children);
+				}
+			}
+		}
+		self.folder_view_changed();
+		self.folder.reset_rows();
+		if let Some((path, row)) = focus {
+			self.restore_folder_focus(&path, row);
+		}
+		self.scroll_folder(0.);
+		self.refresh_folder_hover();
+		self.redraw();
+	}
+
+	pub(super) fn folder_updated(
+		&mut self,
+		generation: u64,
+		update: observe::Update,
+	) {
+		if generation != self.folder.generation.load(Ordering::Relaxed)
+			|| update.revision <= self.folder.revision
+			|| update.view_revision != self.folder.view_revision
+		{
+			return;
+		}
+		let focus = self.folder_focus();
+		let Some(tree) = &mut self.folder.tree else {
+			return;
+		};
+		self.folder.revision = update.revision;
+		if update.directories.is_empty() && tree.error == update.error {
+			if self.folder.pending_reveal.is_some() {
+				self.replay_folder_reveal();
+				self.redraw();
+			}
+			return;
+		}
+		if let Some(error) = &tree.error
+			&& update.error.is_none()
+			&& self.status.message()
+				== self.preferences.values.lang().folder_error(error.clone())
+		{
+			self.status.clear();
+		}
+		for (path, children) in update.directories {
+			tree.patch(&path, children);
+		}
+		tree.error = update.error;
+		if let Some(error) = &tree.error {
+			self.status.set_message(
+				self.preferences.values.lang().folder_error(error.clone()),
+			);
+			self.status.set_error(true);
+		}
+		self.folder.labels.get_mut().retain(&tree.entries);
+		self.folder.reset_rows();
+		if let Some((path, row)) = focus {
+			self.restore_folder_focus(&path, row);
+		}
+		let scope = Command::Chrome(ChromeCommand::FolderEntry(0))
+			.widget_id()
+			.scope;
+		if self.interaction.widgets.captured.is_some_and(|id| {
+			id.scope == scope
+				&& !self.folder.tree.as_ref().unwrap().rows().iter().any(
+					|row| {
+						Command::Chrome(ChromeCommand::FolderEntry(*row))
+							.widget_id() == id
+					},
+				)
+		}) {
+			self.interaction.widgets.captured = None;
+		}
+		let count = self.folder.tree.as_ref().unwrap().rows().len();
+		let max = super::chrome::folder::list(
+			self.folder_rect(),
+			count,
+			self.folder.scroll.offset(),
+		)
+		.max_scroll();
+		self.folder.scroll.set_max(max);
+		if self.folder.pending_reveal.is_some() {
+			self.replay_folder_reveal();
+		}
+		self.refresh_folder_hover();
 		self.redraw();
 	}
 
@@ -805,7 +1258,17 @@ impl<P: SendEvent> App<P> {
 		};
 		if entry.directory {
 			let before = tree.rows().to_vec();
+			let lazy = tree.show_excluded
+				&& tree.entries[index]
+					.path
+					.strip_prefix(&tree.root)
+					.unwrap()
+					.components()
+					.any(|part| excluded(Path::new(part.as_os_str()), true));
 			tree.toggle(index);
+			if lazy {
+				self.folder_view_changed();
+			}
 			self.folder.retarget_rows(&before, Instant::now());
 			self.scroll_folder(0.);
 		} else {

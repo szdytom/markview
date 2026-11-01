@@ -173,6 +173,23 @@ browser own their drawer animations. A shared tween drives every drawer, while
 the folder tree and outline list use one row-slide model: rows leave toward
 their parent, arrive out of it, and settle on the same expo-out curve.
 
+The native folder browser owns a directory snapshot worker separately from
+`FileWatch` and document reloads. Non-recursive watches cover participating
+directories and the root's parent; excluded subtrees receive no watches until
+explicitly opened. Fixed 100 ms event batches reconcile direct children, scan
+new normal subtrees, and publish directory deltas tagged with root generation,
+view revision, and scan revision. Stable row IDs preserve unrelated nodes and
+filename caches; the UI splices visible ranges and replays pending tab reveals
+after an update. Manual Refresh uses the same reconciliation.
+Two-second metadata checks detect missed events; directories without working
+watches use two-second child snapshots. Thirty-second snapshot audits cover
+unchanged timestamps, with five-second watch retries and root recovery checks.
+These intervals exclude filesystem work. A bounded event queue falls back to an
+audit on overflow. Hidden entries and `node_modules`, `target`, `vendor`, and
+`__pycache__` are excluded by name; the session-only visibility toggle enables
+one-level, explicitly expanded browsing inside them. Android observes imported
+copies rather than the source document provider.
+
 `app/font_panel` owns the font catalogue, filters, scroll, download progress,
 cancellation and notices, plus its view and typed commands. Chrome borrows one
 `View`; the application routes `Command::Fonts` and adapts download messages to

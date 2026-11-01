@@ -127,6 +127,7 @@ impl<P: super::SendEvent> App<P> {
 			| ChromeCommand::Folder
 			| ChromeCommand::FolderEntry(_)
 			| ChromeCommand::FolderCollapseAll
+			| ChromeCommand::FolderShowExcluded
 			| ChromeCommand::FolderRefresh
 			| ChromeCommand::RevealFolder => self.chrome_folder_command(command),
 			ChromeCommand::ToggleDropdown(id, highlight) => {
@@ -215,6 +216,14 @@ impl<P: super::SendEvent> App<P> {
 					.map_or_else(Vec::new, |tree| tree.rows().to_vec());
 				if let Some(tree) = &mut self.folder.tree {
 					tree.collapse_all();
+					if self
+						.folder
+						.tree
+						.as_ref()
+						.is_some_and(|tree| tree.show_excluded)
+					{
+						self.folder_view_changed();
+					}
 					self.folder.retarget_rows(&before, Instant::now());
 					self.folder.grab = None;
 					self.scroll_folder(0.);
@@ -222,11 +231,8 @@ impl<P: super::SendEvent> App<P> {
 					self.redraw();
 				}
 			}
-			ChromeCommand::FolderRefresh => {
-				if let Some(tree) = &self.folder.tree {
-					self.open_folder(tree.root.clone(), false);
-				}
-			}
+			ChromeCommand::FolderRefresh => self.refresh_folder(),
+			ChromeCommand::FolderShowExcluded => self.toggle_folder_excluded(),
 			ChromeCommand::RevealFolder => {
 				let dir = self
 					.readers

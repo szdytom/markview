@@ -68,7 +68,7 @@ impl<P: super::SendEvent> App<P> {
 			"folder_root":self.folder.tree.as_ref().map(|t| &t.root),
 			"folder_name":self.folder.tree.as_ref().map(|t| &t.name),
 			"folder_open":self.folder.open || self.phone_folder_open(),
-			"folder_entries":self.folder.tree.as_ref().map(|t| t.entries.iter().map(|e| serde_json::json!({"path":e.path,"directory":e.directory,"depth":e.depth})).collect::<Vec<_>>()),
+			"folder_entries":self.folder.tree.as_ref().map(|t| t.entries.iter().map(|e| serde_json::json!({"id":e.id,"path":e.path,"directory":e.directory,"depth":e.depth})).collect::<Vec<_>>()),
 			"tab_style":format!("{:?}", self.preferences.values.tab_style),
 			"instance_listener":self.instance.is_some(),
 			"theme": self.preferences.values.theme, "font_size":self.preferences.values.font_size,
@@ -83,6 +83,12 @@ impl<P: super::SendEvent> App<P> {
 			"backend":self.renderer.as_ref().map(|r|format!("{:?}",r.backend)),
 			"status":self.status.message()
 		});
+		snapshot["folder_show_excluded"] = self
+			.folder
+			.tree
+			.as_ref()
+			.is_some_and(|tree| tree.show_excluded)
+			.into();
 		snapshot["sidebar_tab"] =
 			format!("{:?}", self.interaction.sidebar_tab).into();
 		snapshot["sidebar_widths"] = serde_json::json!({

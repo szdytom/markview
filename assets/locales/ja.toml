@@ -310,6 +310,8 @@ folder_files = "フォルダー"
 folder_toggle = "サイドバーの表示を切り替え"
 folder_empty = "このフォルダーには Markdown 文書がありません"
 folder_refresh = "フォルダーを更新"
+folder_show_excluded = "除外項目を表示"
+folder_excluded = "除外"
 folder_collapse_all = "すべてのフォルダーを折りたたむ"
 folder_error = "フォルダーを開けません：{error}"
 

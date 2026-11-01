@@ -271,6 +271,9 @@ impl<P: super::SendEvent> App<P> {
 					window.focus_window();
 				}
 			}
+			Event::FolderUpdated { generation, update } => {
+				self.folder_updated(generation, update)
+			}
 			Event::FolderLoaded {
 				generation,
 				select,

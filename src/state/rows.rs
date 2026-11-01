@@ -100,13 +100,12 @@ impl RowSlide {
 		now: Instant,
 	) -> Option<Vec<Row>> {
 		let tween = self.tween.as_ref().filter(|_| self.target == current)?;
+		if tween.is_finished(now) {
+			return Some(Row::sequential(current));
+		}
 		let mut rows: Vec<Row> = self
 			.shifts
 			.iter()
-			.filter(|shift| {
-				!tween.is_finished(now)
-					|| self.target.binary_search(&shift.index).is_ok()
-			})
 			.map(|shift| {
 				let t = tween.progress(now);
 				Row {
@@ -278,5 +277,24 @@ mod tests {
 		assert!(leaving.slot < 1.5);
 		let settled = rows(&slide, &[0, 2, 3], start + DURATION);
 		assert!(settled.iter().all(|row| row.index != 1));
+	}
+	#[test]
+	fn finished_slides_keep_unordered_identities_and_retarget_from_their_slots()
+	{
+		let start = Instant::now();
+		let mut slide = RowSlide::default();
+		slide.retarget(&[2, 0], &[2, 3, 0], start);
+		let settled = start + DURATION;
+		assert_eq!(
+			slide.animated(&[2, 3, 0], settled),
+			Some(Row::sequential(&[2, 3, 0]))
+		);
+		slide.retarget(&[2, 3, 0], &[2, 0], settled);
+		let rows = slide.animated(&[2, 0], settled).unwrap();
+		assert_eq!(rows.iter().find(|row| row.index == 0).unwrap().slot, 2.);
+		assert_eq!(
+			slide.animated(&[2, 0], settled + DURATION),
+			Some(Row::sequential(&[2, 0]))
+		);
 	}
 }

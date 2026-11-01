@@ -68,6 +68,28 @@ impl Harness {
 		self.wait_images(count);
 	}
 
+	fn settle_folder(&mut self) {
+		self.app.refresh_folder();
+		let deadline = Instant::now() + Duration::from_secs(10);
+		loop {
+			let event = self
+				.events
+				.recv_timeout(
+					deadline.saturating_duration_since(Instant::now()),
+				)
+				.expect("folder did not settle");
+			if matches!(
+				event,
+				Event::FolderUpdated { .. } | Event::FolderLoaded { .. }
+			) {
+				self.app.handle_user_event(&StubLoop, event);
+				if !self.app.folder.updating() {
+					break;
+				}
+			}
+		}
+	}
+
 	fn wait_images(&mut self, count: usize) {
 		let deadline = Instant::now() + Duration::from_secs(10);
 		while self.app.readers.session.layout_pending
@@ -1054,7 +1076,15 @@ fn folder_scan_completion_preserves_newer_input_and_capture() {
 			false,
 			crate::app::folder::Tree::read(root.clone()),
 		);
-		assert!(h.app.interaction.widgets.focus.is_none());
+		let valid = h
+			.app
+			.buttons()
+			.iter()
+			.any(|button| button.id == command.widget_id());
+		assert_eq!(
+			h.app.interaction.widgets.focus,
+			valid.then(|| command.widget_id())
+		);
 		assert!(h.app.interaction.widgets.captured.is_none());
 		h.app.tab_strip.phone = true;
 		h.app.set_folder_open(true);
@@ -2005,6 +2035,7 @@ fn selecting_a_tab_opens_the_folder_onto_its_document() {
 	h.app
 		.folder_loaded(0, false, crate::app::folder::Tree::read(root.clone()));
 	h.app.set_folder_open(true);
+	h.settle_folder();
 	h.app
 		.advance_drawers(Instant::now() + Duration::from_secs(1));
 	let rows = |h: &Harness| -> Vec<PathBuf> {
@@ -2107,4 +2138,379 @@ fn every_navigation_path_closes_the_confirmation() {
 			"{name}: the confirmation stayed open"
 		);
 	}
+}
+
+#[test]
+fn folder_changes_and_manual_refresh_preserve_identity_scroll_focus_and_expansion()
+ {
+	use crate::state::Command;
+	let mut h = Harness::new();
+	let root = h.dir.path().canonicalize().unwrap();
+	fs::create_dir_all(root.join("branch/deep")).unwrap();
+	fs::write(root.join("branch/deep/Note.md"), "note").unwrap();
+	for index in 0..60 {
+		fs::write(root.join(format!("note-{index:02}.md")), "note").unwrap();
+	}
+	h.app
+		.folder_loaded(0, false, crate::app::folder::Tree::read(root.clone()));
+	h.app.set_folder_open(true);
+	h.settle_folder();
+	h.app
+		.folder
+		.tree
+		.as_mut()
+		.unwrap()
+		.expand_to(&root.join("branch/deep/Note.md"));
+	h.app.folder.reset_rows();
+	h.app
+		.advance_drawers(Instant::now() + Duration::from_secs(1));
+	let id = h
+		.app
+		.folder
+		.tree
+		.as_ref()
+		.unwrap()
+		.entries
+		.iter()
+		.find(|entry| entry.path == root.join("note-20.md"))
+		.unwrap()
+		.id;
+	let focus = Command::Chrome(ChromeCommand::FolderEntry(id)).widget_id();
+	h.app.reveal_folder(id);
+	let scroll = h.app.folder.scroll.offset();
+	assert!(scroll > 0.);
+	assert!(
+		h.app.buttons().iter().any(|button| button.id == focus),
+		"focused row is visible before update: scroll={scroll}"
+	);
+	h.app.interaction.widgets.focus = Some(focus);
+	fs::write(root.join("branch/deep/New.md"), "note").unwrap();
+	let deadline = Instant::now() + Duration::from_secs(8);
+	while !h
+		.app
+		.folder
+		.tree
+		.as_ref()
+		.unwrap()
+		.entries
+		.iter()
+		.any(|entry| entry.path == root.join("branch/deep/New.md"))
+	{
+		let event = h
+			.events
+			.recv_timeout(deadline.saturating_duration_since(Instant::now()))
+			.unwrap();
+		if matches!(event, Event::FolderUpdated { .. }) {
+			h.app.handle_user_event(&StubLoop, event);
+		}
+	}
+	assert_eq!(
+		h.app.folder.tree.as_ref().unwrap().entries[id].path,
+		root.join("note-20.md")
+	);
+	assert_eq!(h.app.folder.scroll.offset(), scroll);
+	assert_eq!(h.app.interaction.widgets.focus, Some(focus));
+	h.settle_folder();
+	assert_eq!(h.app.folder.scroll.offset(), scroll);
+	assert_eq!(h.app.interaction.widgets.focus, Some(focus));
+	let tree = h.app.folder.tree.as_ref().unwrap();
+	assert!(
+		tree.rows().iter().any(
+			|id| tree.entries[*id].path == root.join("branch/deep/Note.md")
+		)
+	);
+	fs::rename(root.join("branch"), root.join("renamed")).unwrap();
+	h.settle_folder();
+	let tree = h.app.folder.tree.as_ref().unwrap();
+	assert!(
+		!tree
+			.entries
+			.iter()
+			.any(|entry| entry.path.starts_with(root.join("branch")))
+	);
+	assert!(!tree.rows().iter().any(|id| {
+		tree.entries[*id]
+			.path
+			.starts_with(root.join("renamed/deep"))
+	}));
+	fs::remove_file(root.join("note-20.md")).unwrap();
+	h.settle_folder();
+	let next = h
+		.app
+		.folder
+		.tree
+		.as_ref()
+		.unwrap()
+		.entries
+		.iter()
+		.find(|entry| entry.path == root.join("note-21.md"))
+		.unwrap()
+		.id;
+	assert_eq!(
+		h.app.interaction.widgets.focus,
+		Some(Command::Chrome(ChromeCommand::FolderEntry(next)).widget_id())
+	);
+	h.app.open_folder(root.join("missing"), false);
+	h.settle_folder();
+	fs::write(root.join("Still observed.md"), "note").unwrap();
+	h.settle_folder();
+	assert!(
+		h.app
+			.folder
+			.tree
+			.as_ref()
+			.unwrap()
+			.entries
+			.iter()
+			.any(|entry| entry.path == root.join("Still observed.md"))
+	);
+}
+
+#[test]
+fn excluded_folder_button_loads_on_demand_on_desktop_and_phone() {
+	use crate::state::Command;
+	for phone in [false, true] {
+		let mut h = Harness::new();
+		let root = h.dir.path().canonicalize().unwrap();
+		fs::create_dir_all(root.join("node_modules/pkg/deep")).unwrap();
+		fs::write(root.join("node_modules/pkg/Note.md"), "note").unwrap();
+		h.app.tab_strip.phone = phone;
+		h.app.folder_loaded(
+			0,
+			false,
+			crate::app::folder::Tree::read(root.clone()),
+		);
+		h.app.set_folder_open(true);
+		h.settle_folder();
+		assert!(h.app.buttons().iter().any(|button| button.action
+			== Command::Chrome(ChromeCommand::FolderShowExcluded)));
+		h.app
+			.action(Command::Chrome(ChromeCommand::FolderShowExcluded));
+		h.settle_folder();
+		let find = |h: &Harness, name: &str| {
+			h.app
+				.folder
+				.tree
+				.as_ref()
+				.unwrap()
+				.entries
+				.iter()
+				.find(|entry| entry.path == root.join(name))
+				.map(|entry| entry.id)
+		};
+		let excluded = find(&h, "node_modules").unwrap();
+		assert!(find(&h, "node_modules/pkg").is_none());
+		h.app.activate_folder_entry(excluded);
+		h.settle_folder();
+		let package = find(&h, "node_modules/pkg").unwrap();
+		assert!(find(&h, "node_modules/pkg/Note.md").is_none());
+		h.app.activate_folder_entry(package);
+		h.settle_folder();
+		assert!(find(&h, "node_modules/pkg/Note.md").is_some());
+		h.app.activate_folder_entry(excluded);
+		std::hint::black_box(h.app.overlay());
+		h.settle_folder();
+		assert!(find(&h, "node_modules/pkg").is_none());
+		h.app
+			.action(Command::Chrome(ChromeCommand::FolderShowExcluded));
+		h.settle_folder();
+		assert!(find(&h, "node_modules").is_none());
+	}
+}
+
+#[test]
+fn folder_refresh_replays_tab_reveal_and_rejects_stale_deltas() {
+	use crate::state::Command;
+	let mut h = Harness::new();
+	let root = h.dir.path().canonicalize().unwrap();
+	fs::create_dir_all(root.join("deep/nested")).unwrap();
+	fs::write(root.join("deep/nested/Note.md"), "note").unwrap();
+	h.open("README.md", 2);
+	h.open("deep/nested/Note.md", 0);
+	h.app
+		.folder_loaded(0, false, crate::app::folder::Tree::read(root.clone()));
+	h.app.set_folder_open(true);
+	h.settle_folder();
+	h.app
+		.action(Command::Chrome(ChromeCommand::FolderCollapseAll));
+	h.app.action(Command::Chrome(ChromeCommand::SelectTab(0)));
+	h.app.refresh_folder();
+	h.app.action(Command::Chrome(ChromeCommand::SelectTab(1)));
+	assert!(
+		!h.app.folder.tree.as_ref().unwrap().rows().iter().any(|id| h
+			.app
+			.folder
+			.tree
+			.as_ref()
+			.unwrap()
+			.entries[*id]
+			.path
+			== root.join("deep/nested/Note.md"))
+	);
+	loop {
+		let event = h.events.recv_timeout(Duration::from_secs(8)).unwrap();
+		if let Event::FolderUpdated { generation, update } = event {
+			h.app.refresh_folder();
+			h.app.folder_updated(generation, update);
+			let tree = h.app.folder.tree.as_ref().unwrap();
+			assert!(
+				tree.rows().iter().any(|id| tree.entries[*id].path
+					== root.join("deep/nested/Note.md")),
+				"the applied batch replays the reveal even with another refresh queued"
+			);
+			break;
+		}
+	}
+
+	h.settle_folder();
+	let tree = h.app.folder.tree.as_ref().unwrap();
+	assert!(
+		tree.rows().iter().any(
+			|id| tree.entries[*id].path == root.join("deep/nested/Note.md")
+		)
+	);
+	h.app.refresh_folder();
+	let (generation, revision, view_revision) = loop {
+		let event = h.events.recv_timeout(Duration::from_secs(8)).unwrap();
+		if let Event::FolderUpdated { generation, update } = event {
+			let revision = update.revision;
+			let view_revision = update.view_revision;
+			h.app.folder_updated(generation, update);
+			if !h.app.folder.updating() {
+				break (generation, revision, view_revision);
+			}
+		}
+	};
+	for (generation, revision, view_revision) in [
+		(generation, revision, view_revision),
+		(generation + 1, revision + 1, view_revision),
+		(generation, revision + 1, view_revision + 1),
+	] {
+		h.app.folder_updated(
+			generation,
+			crate::app::folder::observe::Update {
+				revision,
+				view_revision,
+				directories: vec![(root.clone(), Vec::new())],
+				error: None,
+			},
+		);
+		assert!(!h.app.folder.tree.as_ref().unwrap().entries.is_empty());
+	}
+	fs::rename(&root, root.with_extension("moved")).unwrap();
+	h.settle_folder();
+	assert!(h.app.folder.tree.as_ref().unwrap().entries.is_empty());
+	assert!(h.app.folder.tree.as_ref().unwrap().error.is_some());
+	fs::rename(root.with_extension("moved"), &root).unwrap();
+	h.settle_folder();
+	assert!(!h.app.folder.tree.as_ref().unwrap().entries.is_empty());
+	assert!(h.app.folder.tree.as_ref().unwrap().error.is_none());
+}
+
+#[test]
+fn folder_collapse_all_prunes_running_parent_animation() {
+	use crate::state::Command;
+	let mut h = Harness::new();
+	let root = h.dir.path().canonicalize().unwrap();
+	fs::create_dir_all(root.join("branch/node_modules")).unwrap();
+	fs::write(root.join("branch/node_modules/Note.md"), "note").unwrap();
+	h.app
+		.folder_loaded(0, false, crate::app::folder::Tree::read(root.clone()));
+	h.app.set_folder_open(true);
+	h.settle_folder();
+	h.app.toggle_folder_excluded();
+	h.settle_folder();
+	let find = |h: &Harness, name: &str| {
+		h.app
+			.folder
+			.tree
+			.as_ref()
+			.unwrap()
+			.entries
+			.iter()
+			.find(|e| e.path == root.join(name))
+			.unwrap()
+			.id
+	};
+	h.app.activate_folder_entry(find(&h, "branch"));
+	h.app.activate_folder_entry(find(&h, "branch/node_modules"));
+	h.settle_folder();
+	h.app
+		.advance_drawers(Instant::now() + Duration::from_secs(1));
+	h.app.activate_folder_entry(find(&h, "branch"));
+	h.app
+		.action(Command::Chrome(ChromeCommand::FolderCollapseAll));
+	std::hint::black_box(h.app.overlay());
+}
+
+#[test]
+fn folder_visibility_change_during_scan_keeps_observer_working() {
+	let mut h = Harness::new();
+	let root = h.dir.path().canonicalize().unwrap();
+	h.app
+		.folder_loaded(0, false, crate::app::folder::Tree::read(root.clone()));
+	h.app.set_folder_open(true);
+	h.settle_folder();
+	h.app.open_folder(root.clone(), false);
+	let completion = loop {
+		let e = h.events.recv_timeout(Duration::from_secs(5)).unwrap();
+		if matches!(e, Event::FolderLoaded { .. }) {
+			break e;
+		}
+	};
+	h.app.toggle_folder_excluded();
+	h.app.handle_user_event(&StubLoop, completion);
+	fs::write(root.join("Added.md"), "note").unwrap();
+	h.settle_folder();
+	assert!(
+		h.app
+			.folder
+			.tree
+			.as_ref()
+			.unwrap()
+			.entries
+			.iter()
+			.any(|e| e.path == root.join("Added.md"))
+	);
+}
+
+#[test]
+fn folder_same_root_replacement_clears_reused_row_capture() {
+	use crate::state::Command;
+	let mut h = Harness::new();
+	let root = h.dir.path().canonicalize().unwrap();
+	fs::remove_file(root.join("README.md")).unwrap();
+	fs::remove_file(root.join("README.zh-cn.md")).unwrap();
+	h.app
+		.folder_loaded(0, false, crate::app::folder::Tree::read(root.clone()));
+	h.app.set_folder_open(true);
+	h.settle_folder();
+	h.app
+		.advance_drawers(Instant::now() + Duration::from_secs(1));
+	let old_path = h.app.folder.tree.as_ref().unwrap().entries[0].path.clone();
+	h.app.open_folder(root.clone(), true);
+	// A queued completion can reflect filesystem edits not yet reconciled by the old tree.
+	fs::write(root.join("000.png"), "new").unwrap();
+	let generation = loop {
+		if let Event::FolderLoaded { generation, .. } =
+			h.events.recv_timeout(Duration::from_secs(5)).unwrap()
+		{
+			break generation;
+		}
+	};
+	let command = Command::Chrome(ChromeCommand::FolderEntry(0));
+	h.app.interaction.widgets.captured = Some(command.widget_id());
+	h.app.folder_loaded(
+		generation,
+		true,
+		crate::app::folder::Tree::read(root.clone()),
+	);
+	assert_ne!(
+		h.app.folder.tree.as_ref().unwrap().entries[0].path,
+		old_path
+	);
+	assert!(
+		h.app.interaction.widgets.captured.is_none(),
+		"capture retained while ID now names a different file"
+	);
 }
