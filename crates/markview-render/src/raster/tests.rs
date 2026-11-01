@@ -358,7 +358,18 @@ fn prewarming_leaves_the_visible_image_demand_alone() {
 
 	let mut renderer = pollster::block_on(Renderer::new(None)).unwrap();
 	let pixels = Arc::new(ImagePixels::default());
-	let entries = ["on-screen.png", "below.png"]
+	for source in ["above.png", "below.png"] {
+		pixels.insert(
+			source.into(),
+			1,
+			Arc::new(markview_layout::image::Pixels {
+				width: 40,
+				height: 40,
+				rgba: vec![255; 40 * 40 * 4].into(),
+			}),
+		);
+	}
+	let entries = ["above.png", "on-screen.png", "below.png"]
 		.into_iter()
 		.map(|src| {
 			(
@@ -401,10 +412,11 @@ fn prewarming_leaves_the_visible_image_demand_alone() {
 			..Default::default()
 		},
 		blocks: vec![
-			image_block("on-screen.png", 0.),
-			image_block("below.png", 60.),
+			image_block("above.png", 0.),
+			image_block("on-screen.png", 60.),
+			image_block("below.png", 120.),
 		],
-		height: 120.,
+		height: 180.,
 		width: 120.,
 		..Default::default()
 	};
@@ -415,7 +427,7 @@ fn prewarming_leaves_the_visible_image_demand_alone() {
 		width: 120,
 		height: 60,
 		scale: 1.,
-		scroll: 0.,
+		scroll: 60.,
 		left: 0.,
 		top: 0.,
 		bottom: 0.,
@@ -443,7 +455,13 @@ fn prewarming_leaves_the_visible_image_demand_alone() {
 	assert_eq!(demanded(&pixels), ["on-screen.png"]);
 	// A prewarm pass builds the frame below, which must not replace the image
 	// demand of the frame the reader is looking at.
+	let above = (snapshot.images.generation, "above.png".to_string(), 1);
+	let below = (snapshot.images.generation, "below.png".to_string(), 1);
+	assert!(!renderer.images.contains(&above));
+	assert!(!renderer.images.contains(&below));
 	while renderer.prewarm(&snapshot, &view, Duration::from_millis(50)) {}
+	assert!(renderer.images.contains(&above));
+	assert!(renderer.images.contains(&below));
 	assert_eq!(demanded(&pixels), ["on-screen.png"]);
 }
 

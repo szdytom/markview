@@ -2,7 +2,7 @@
 use crate::gpu::Gpu;
 use markview_layout::{
 	image::{ImageDemand, ImageInfo, ImageSnapshot, raster_size},
-	scene::Rect,
+	scene::{Draw, LayoutSnapshot, Rect},
 };
 use std::{
 	collections::{HashMap, HashSet},
@@ -104,6 +104,11 @@ impl ImageTextures {
 			std::mem::take(&mut self.demand),
 		);
 	}
+	#[cfg(test)]
+	pub(super) fn contains(&self, key: &ImageKey) -> bool {
+		self.cache.contains_key(key)
+	}
+
 	pub(super) fn bytes(&self) -> u64 {
 		self.cache.values().map(|(_, bytes)| bytes).sum()
 	}
@@ -125,6 +130,89 @@ impl ImageTextures {
 		}
 		self.runs.push((range, None));
 	}
+	/// Makes the texture for one image, without recording paint demand.
+	fn ensure(
+		&mut self,
+		src: &String,
+		version: u64,
+		gpu: &Gpu,
+		allow_evict: bool,
+	) -> Option<ImageKey> {
+		let key = (self.images.generation, src.clone(), version);
+		if self.cache.contains_key(&key) {
+			return Some(key);
+		}
+		let pixels = self.images.pixels.get(src, version)?;
+		if pixels.width > gpu.device.limits().max_texture_dimension_2d
+			|| pixels.height > gpu.device.limits().max_texture_dimension_2d
+		{
+			return None;
+		}
+		let bytes = pixels.rgba.len() as u64;
+		if self.bytes() + bytes > IMAGE_BUDGET {
+			if !allow_evict {
+				return None;
+			}
+			// Keep the current frame and this pass's already drawn images;
+			// a prefetch must never displace the frame on screen.
+			let mut pinned = self.frame_keys.clone();
+			pinned
+				.extend(self.runs.iter().filter_map(|(_, used)| used.clone()));
+			self.cache.retain(|key, _| pinned.contains(key));
+		}
+		if self.bytes() + bytes > IMAGE_BUDGET {
+			return None;
+		}
+		let texture = gpu.device.create_texture(&wgpu::TextureDescriptor {
+			label: Some("document image"),
+			size: wgpu::Extent3d {
+				width: pixels.width,
+				height: pixels.height,
+				depth_or_array_layers: 1,
+			},
+			mip_level_count: 1,
+			sample_count: 1,
+			dimension: wgpu::TextureDimension::D2,
+			format: wgpu::TextureFormat::Rgba8UnormSrgb,
+			usage: wgpu::TextureUsages::TEXTURE_BINDING
+				| wgpu::TextureUsages::COPY_DST,
+			view_formats: &[],
+		});
+		gpu.queue.write_texture(
+			texture.as_image_copy(),
+			&pixels.rgba,
+			wgpu::TexelCopyBufferLayout {
+				offset: 0,
+				bytes_per_row: Some(pixels.width * 4),
+				rows_per_image: Some(pixels.height),
+			},
+			texture.size(),
+		);
+		let sampler = gpu.device.create_sampler(&wgpu::SamplerDescriptor {
+			mag_filter: wgpu::FilterMode::Linear,
+			min_filter: wgpu::FilterMode::Linear,
+			..Default::default()
+		});
+		let group = gpu.device.create_bind_group(&wgpu::BindGroupDescriptor {
+			label: Some("document image"),
+			layout: &self.pipeline.get_bind_group_layout(0),
+			entries: &[
+				wgpu::BindGroupEntry {
+					binding: 0,
+					resource: wgpu::BindingResource::TextureView(
+						&texture.create_view(&Default::default()),
+					),
+				},
+				wgpu::BindGroupEntry {
+					binding: 1,
+					resource: wgpu::BindingResource::Sampler(&sampler),
+				},
+			],
+		});
+		self.cache.insert(key.clone(), (group, bytes));
+		Some(key)
+	}
+
 	pub(super) fn prepare(
 		&mut self,
 		src: &String,
@@ -142,83 +230,59 @@ impl ImageTextures {
 			.entry(src.clone())
 			.and_modify(|d| d.merge(demand))
 			.or_insert(demand);
-		if !self.cache.contains_key(&key) {
-			let pixels = self.images.pixels.get(src, version);
-			let pixels = pixels?;
-			if pixels.width > gpu.device.limits().max_texture_dimension_2d
-				|| pixels.height > gpu.device.limits().max_texture_dimension_2d
-			{
-				return None;
-			}
-			let bytes = pixels.rgba.len() as u64;
-			if self.bytes() + bytes > IMAGE_BUDGET {
-				// Keep what this pass has already drawn and what the main
-				// frame published demand for; evict everything else.
-				let pinned = &self.frame_keys;
-				self.cache.retain(|key, _| {
-					pinned.contains(key)
-						|| self
-							.runs
-							.iter()
-							.any(|(_, used)| used.as_ref() == Some(key))
-				});
-			}
-			if self.bytes() + bytes > IMAGE_BUDGET {
-				// A preview declines rather than displacing the main frame,
-				// whose demand is already published as resident.
-				return None;
-			}
-			let texture = gpu.device.create_texture(&wgpu::TextureDescriptor {
-				label: Some("document image"),
-				size: wgpu::Extent3d {
-					width: pixels.width,
-					height: pixels.height,
-					depth_or_array_layers: 1,
-				},
-				mip_level_count: 1,
-				sample_count: 1,
-				dimension: wgpu::TextureDimension::D2,
-				format: wgpu::TextureFormat::Rgba8UnormSrgb,
-				usage: wgpu::TextureUsages::TEXTURE_BINDING
-					| wgpu::TextureUsages::COPY_DST,
-				view_formats: &[],
-			});
-			gpu.queue.write_texture(
-				texture.as_image_copy(),
-				&pixels.rgba,
-				wgpu::TexelCopyBufferLayout {
-					offset: 0,
-					bytes_per_row: Some(pixels.width * 4),
-					rows_per_image: Some(pixels.height),
-				},
-				texture.size(),
-			);
-			let sampler = gpu.device.create_sampler(&wgpu::SamplerDescriptor {
-				mag_filter: wgpu::FilterMode::Linear,
-				min_filter: wgpu::FilterMode::Linear,
-				..Default::default()
-			});
-			let group =
-				gpu.device.create_bind_group(&wgpu::BindGroupDescriptor {
-					label: Some("document image"),
-					layout: &self.pipeline.get_bind_group_layout(0),
-					entries: &[
-						wgpu::BindGroupEntry {
-							binding: 0,
-							resource: wgpu::BindingResource::TextureView(
-								&texture.create_view(&Default::default()),
-							),
-						},
-						wgpu::BindGroupEntry {
-							binding: 1,
-							resource: wgpu::BindingResource::Sampler(&sampler),
-						},
-					],
-				});
-			self.cache.insert(key.clone(), (group, bytes));
-		}
+		let key = self.ensure(src, version, gpu, true)?;
 		self.demand.get_mut(src).unwrap().needs_pixels = false;
 		Some(key)
+	}
+
+	/// Uploads one image in the current, next, or previous screenful that is
+	/// not cached yet. It records no paint demand, so the visible frame's
+	/// published demand is untouched.
+	pub(super) fn prewarm(
+		&mut self,
+		snapshot: &LayoutSnapshot,
+		view: &crate::View<'_>,
+		gpu: &Gpu,
+	) -> bool {
+		if self.images.generation != snapshot.images.generation {
+			return false;
+		}
+		let height = view.viewport().clip().h.max(1.0);
+		let regions = [
+			(view.scroll, view.scroll + height),
+			(view.scroll + height, view.scroll + 2.0 * height),
+			((view.scroll - height).max(0.0), view.scroll),
+		];
+		for (start, end) in regions {
+			let first = snapshot
+				.blocks
+				.partition_point(|b| b.y + b.height() < start);
+			for block in snapshot.blocks.iter().skip(first) {
+				if block.y > end {
+					break;
+				}
+				for (_, draw, position) in block.draws() {
+					let Draw::Image {
+						src, version, rect, ..
+					} = draw
+					else {
+						continue;
+					};
+					let top = block.y + position[1] + rect.y;
+					if top > end || top + rect.h < start {
+						continue;
+					}
+					let key = (self.images.generation, src.clone(), *version);
+					if self.cache.contains_key(&key) {
+						continue;
+					}
+					if self.ensure(src, *version, gpu, false).is_some() {
+						return true;
+					}
+				}
+			}
+		}
+		false
 	}
 }
 

@@ -312,21 +312,25 @@ impl Renderer {
 		view: &View<'_>,
 		budget: Duration,
 	) -> bool {
-		// An atlas without room would evict the frame the reader is looking
-		// at, so a prewarm declines rather than forcing that rebuild.
-		if !self.raster.has_room() {
-			return false;
-		}
 		let ahead = View {
 			scroll: view.scroll + view.viewport().clip().h,
 			selection: None,
 			..view.clone()
 		};
-		self.prewarming = true;
-		self.raster.begin_budget(budget);
-		self.prepare(snapshot, &ahead, &[], &[]);
-		self.prewarming = false;
-		self.raster.finish_budget()
+		// An atlas without room would evict the frame the reader is looking
+		// at, so glyph prewarming declines rather than forcing that rebuild.
+		// Images are independent of glyph pressure and get their own pass.
+		let glyph_more = if self.raster.has_room() {
+			self.prewarming = true;
+			self.raster.begin_budget(budget);
+			self.prepare(snapshot, &ahead, &[], &[]);
+			self.prewarming = false;
+			self.raster.finish_budget()
+		} else {
+			false
+		};
+		let image_more = self.images.prewarm(snapshot, view, &self.gpu);
+		glyph_more || image_more
 	}
 }
 fn intersect(a: Rect, b: Rect) -> Option<Rect> {
