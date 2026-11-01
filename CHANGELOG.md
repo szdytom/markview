@@ -25,6 +25,7 @@ at the same level, without `[brackets]`.
 
 - Update folder trees automatically, preserve browsing state on refresh, and offer on-demand browsing of excluded entries.
 - Support tapping images to open the touch image viewer and pinching to zoom it.
+- Document installing the `markview` command from source with `cargo install --git`.
 
 ### Changed
 

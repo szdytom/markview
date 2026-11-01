@@ -35,13 +35,12 @@ Choose your platform from the [latest release](https://github.com/szdytom/markvi
 | Linux | `.deb`, AppImage or `.tar.gz` | See the [runtime requirements](docs/users/installation.md#runtime-requirements) |
 | Android | `.apk` | Android 9+; ARM64 phones and tablets |
 
-Or install the `markview` command with a script:
+Or install the `markview` command:
 
-**Linux / macOS — Shell**
+**Windows / macOS / Linux — Cargo**
 
 ```sh
-curl --proto '=https' --tlsv1.2 -LsSf \
-  https://github.com/szdytom/markview/releases/latest/download/markview-installer.sh | sh
+cargo install --git https://github.com/szdytom/markview --locked
 ```
 
 **Windows — PowerShell**

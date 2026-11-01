@@ -36,13 +36,12 @@
 | Linux | `.deb`、AppImage 或 `.tar.gz` | 请查看[运行要求](docs/users/installation.md#runtime-requirements) |
 | Android | `.apk` | Android 9+；ARM64 手机与平板 |
 
-也可以通过脚本安装 `markview` 命令：
+也可以安装 `markview` 命令：
 
-**Linux / macOS — Shell**
+**Windows / macOS / Linux — Cargo**
 
 ```sh
-curl --proto '=https' --tlsv1.2 -LsSf \
-  https://github.com/szdytom/markview/releases/latest/download/markview-installer.sh | sh
+cargo install --git https://github.com/szdytom/markview --locked
 ```
 
 **Windows — PowerShell**
