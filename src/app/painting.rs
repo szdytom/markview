@@ -120,7 +120,7 @@ impl<P: super::SendEvent> App<P> {
 		let prepared_ms = started.elapsed().as_secs_f64() * 1000.0;
 		let rasterized = renderer.raster_stats().rasterized - rasterized_before;
 		window.pre_present_notify();
-		frame.present();
+		renderer.present(frame);
 		// Publish a ready body only after the first loading frame has been presented.
 		if self.settings_resources.presented(settings_kind) {
 			window.request_redraw();

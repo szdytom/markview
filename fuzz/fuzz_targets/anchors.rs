@@ -38,7 +38,7 @@ use markview_layout::{
 	layout::LayoutSnapshot,
 	paginate::{PageGeometry, paginate},
 };
-use mvfuzz::{budget, mutators, oracle, pipeline, ratex, seam};
+use mvfuzz::{budget, mutators, oracle, pipeline, seam};
 
 fuzz_mutator! { |data: &mut [u8], size: usize, max_size: usize, seed: u32| {
 	mutators::markdown(data, size, max_size, seed)
@@ -70,8 +70,6 @@ fuzz_target!(|data: &[u8]| {
 	if md.len() > 64 * 1024 {
 		return;
 	}
-	// A formula in the document reaches ratex; see `mvfuzz::ratex`.
-	ratex::allow_char_overflow();
 	pipeline::warmup();
 	let guard = budget::InputGuard::new();
 	let doc = markview_commonmark::parse(md.to_string());

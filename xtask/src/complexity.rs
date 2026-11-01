@@ -471,7 +471,11 @@ impl<'ast> Visit<'ast> for Check<'_> {
 			}
 			Expr::Match(expr) => {
 				expr.arms.len().saturating_sub(1)
-					+ expr.arms.iter().filter(|arm| arm.guard.is_some()).count()
+					+ expr
+						.arms
+						.iter()
+						.filter(|arm| matches!(arm.pat, syn::Pat::Guard(_)))
+						.count()
 			}
 			_ => 0,
 		};

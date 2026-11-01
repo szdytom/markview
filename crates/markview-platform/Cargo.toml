@@ -34,11 +34,11 @@ rfd.workspace = true
 
 [target.'cfg(target_os = "android")'.dependencies]
 winit = { workspace = true, features = ["android-native-activity"] }
-jni = "0.21"
+jni = "0.22"
 android_logger = "0.15"
 
 [target.'cfg(target_os = "windows")'.dependencies]
-ico = "0.5"
+ico = "0.6"
 same-file = "1"
 # Direct Manipulation pans a precision touchpad with the OS's own inertia;
 # winit initializes the COM apartment the viewport assembles in. The event
@@ -66,7 +66,7 @@ windows-sys = { version = "0.61", features = [
 
 
 [target.'cfg(target_os = "linux")'.dependencies]
-ashpd = { version = "0.11", default-features = false, features = ["async-std"] }
+ashpd = { version = "0.13", default-features = false, features = ["async-io", "settings"] }
 wayland-client = { version = "0.31", features = ["system", "dlopen"] }
 wayland-protocols = { version = "0.32", features = ["client"] }
 

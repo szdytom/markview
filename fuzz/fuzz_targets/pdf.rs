@@ -6,7 +6,7 @@
 #![no_main]
 
 use libfuzzer_sys::fuzz_target;
-use mvfuzz::{budget, pdf_oracle, pipeline, ratex};
+use mvfuzz::{budget, pdf_oracle, pipeline};
 
 fuzz_target!(|data: &[u8]| {
 	let budget = budget::Budget::pdf().from_env();
@@ -14,9 +14,6 @@ fuzz_target!(|data: &[u8]| {
 	if md.len() > 48 * 1024 {
 		return;
 	}
-	// An exported document lays out its formulas through ratex; see
-	// `mvfuzz::ratex`.
-	ratex::allow_char_overflow();
 	let guard = budget::InputGuard::new();
 	let (a, _, snapshot, pagination, geometry) = pipeline::export_pdf(&md);
 	let (b, ..) = pipeline::export_pdf(&md);

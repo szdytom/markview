@@ -6,7 +6,7 @@
 use libfuzzer_sys::fuzz_target;
 use markview_layout::limits::Limits;
 use markview_layout::math::MathEngine;
-use mvfuzz::{budget, mutators, oracle, ratex};
+use mvfuzz::{budget, mutators, oracle};
 
 fuzz_target!(|data: &[u8]| {
 	let budget = budget::Budget::parse().from_env();
@@ -14,10 +14,6 @@ fuzz_target!(|data: &[u8]| {
 	if latex.len() > 256 * 1024 {
 		return;
 	}
-	// `ratex` 0.1.14 overflows `i64` on a wide `\char` literal; the reader
-	// never sees the panic but libFuzzer's abort hook makes it fatal here.
-	// See `mvfuzz::ratex`, including how to remove this allowance.
-	ratex::allow_char_overflow();
 	let guard = budget::InputGuard::new();
 	let seed = oracle::derive(data);
 	// Sizes vary normally, and one in eight takes a raw bit pattern: tiny,

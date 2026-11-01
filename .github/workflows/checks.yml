@@ -4,6 +4,16 @@ on:
 permissions:
   contents: read
 jobs:
+  msrv:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v6
+      - uses: dtolnay/rust-toolchain@1.96.0
+      - uses: Swatinem/rust-cache@v2
+      - name: Install native libraries
+        run: bash scripts/ci_install_packages.sh libfontconfig1-dev libxkbcommon-dev libwayland-dev
+      - run: cargo check --workspace --locked --all-targets
+
   check:
     strategy:
       fail-fast: false

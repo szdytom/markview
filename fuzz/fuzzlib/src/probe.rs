@@ -7,7 +7,7 @@
 //! of live bytes.
 //!
 //! A probe that drives an amplification must be bounded by the OS, not by
-//! this process: the only lever ratex 0.1.14 exposes is the input, so run the
+//! this process: the only lever ratex 0.1.15 exposes is the input, so run the
 //! binary under `ulimit -v` (or `slot.sh`'s RSS cap) and treat an
 //! allocation-failure abort as a data point rather than a lost run.
 

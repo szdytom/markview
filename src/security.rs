@@ -1,10 +1,20 @@
 //! Document provenance and explicit, session-scoped resource authority.
+
 use serde::{Deserialize, Serialize};
+use sha2::{Digest, Sha256};
 use std::{
-	fmt,
+	fmt::{self, Write},
 	net::IpAddr,
 	path::{Path, PathBuf},
 };
+
+fn hex_digest(bytes: &[u8]) -> String {
+	let mut hex = String::with_capacity(64);
+	for byte in Sha256::digest(bytes) {
+		write!(hex, "{byte:02x}").unwrap();
+	}
+	hex
+}
 
 #[derive(
 	Clone,
@@ -188,11 +198,9 @@ impl Security {
 		security
 	}
 	fn source_key(source: &str) -> String {
-		use sha2::{Digest, Sha256};
-		format!("{:x}", Sha256::digest(source.as_bytes()))
+		hex_digest(source.as_bytes())
 	}
 	pub(crate) fn cache_key(&self) -> String {
-		use sha2::{Digest, Sha256};
 		#[derive(Serialize)]
 		struct Key<'a> {
 			origin: &'a Origin,
@@ -223,7 +231,7 @@ impl Security {
 			grants,
 			content: &self.content,
 		};
-		format!("{:x}", Sha256::digest(serde_json::to_vec(&key).unwrap()))
+		hex_digest(&serde_json::to_vec(&key).unwrap())
 	}
 	pub fn check_file(&self, path: &Path) -> anyhow::Result<()> {
 		let resource = Resource::File(path.to_owned());
@@ -263,6 +271,18 @@ impl Security {
 #[cfg(test)]
 mod tests {
 	use super::*;
+
+	#[test]
+	fn source_keys_keep_the_existing_sha256_hex_format() {
+		assert_eq!(
+			Security::source_key("abc"),
+			"ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad"
+		);
+		assert_eq!(
+			hex_digest(b""),
+			"e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+		);
+	}
 
 	#[test]
 	fn grants_do_not_expand_trust_origin_address_class_or_content() {

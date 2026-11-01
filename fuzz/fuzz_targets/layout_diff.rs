@@ -4,7 +4,7 @@
 #![no_main]
 
 use libfuzzer_sys::fuzz_target;
-use mvfuzz::{budget, oracle, pipeline, ratex};
+use mvfuzz::{budget, oracle, pipeline};
 
 fuzz_target!(|data: &[u8]| {
 	let budget = budget::Budget::layout().from_env();
@@ -12,8 +12,6 @@ fuzz_target!(|data: &[u8]| {
 	if md.len() > 64 * 1024 {
 		return;
 	}
-	// A formula in the document reaches ratex; see `mvfuzz::ratex`.
-	ratex::allow_char_overflow();
 	pipeline::warmup();
 	let guard = budget::InputGuard::new();
 	let doc = markview_commonmark::parse(md.to_string());

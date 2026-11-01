@@ -40,7 +40,7 @@ parley.workspace = true
 # The canvas surface is built here, so the front end names the GPU API the
 # renderer hides behind `SurfaceSource`.
 wgpu = { workspace = true, features = ["webgl"] }
-wasm-bindgen = "=0.2.129"
+wasm-bindgen = "=0.2.130"
 wasm-bindgen-futures = "0.4"
 js-sys = "0.3"
 console_error_panic_hook = "0.1"

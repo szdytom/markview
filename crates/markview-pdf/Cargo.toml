@@ -28,7 +28,7 @@ markview-layout = { path = "../markview-layout", features = ["font-directories"]
 markview-commonmark = { path = "../markview-commonmark" }
 markview-document = { path = "../markview-document" }
 tempfile.workspace = true
-lopdf = { version = "0.45", default-features = false }
+lopdf = { version = "0.46", default-features = false }
 
 [lints]
 workspace = true

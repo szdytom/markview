@@ -196,12 +196,6 @@ a tree against an independent scan of the same bytes.
   character after an undrawable glyph, because `lopdf`'s `/ToUnicode` decoder
   matches greedily without consulting `codespacerange` — an extractor limit,
   not an export defect.
-- `ratex.rs` — the `\char` overflow allowance. `ratex-parser` 0.1.14
-  accumulates the argument without a width check, and `libfuzzer-sys` aborts
-  on the panic before the `catch_unwind` in `markview-layout` can absorb it, so
-  the targets that reach ratex call `allow_char_overflow()`, which swaps
-  that one hook for a non-aborting one. Every other panic still aborts, so the
-  oracle stays strict.
 - `probe.rs` — `measure`/`Measured`, so a one-off probe reports the same
   window-peak allocation `budget::InputGuard` meters; used by
   `bin/mathprobe` and `bin/warmcheck`.

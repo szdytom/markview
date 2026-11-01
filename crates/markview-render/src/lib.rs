@@ -244,6 +244,10 @@ impl Renderer {
 	pub fn on_device_lost(&self, callback: impl Fn() + Send + 'static) {
 		self.gpu.on_device_lost(callback);
 	}
+	/// Presents a surface frame on the renderer's queue.
+	pub fn present(&self, frame: wgpu::SurfaceTexture) {
+		self.gpu.queue.present(frame);
+	}
 	/// Waits for submitted work to complete.
 	#[cfg(feature = "readback")]
 	pub fn wait(&self, index: Option<wgpu::SubmissionIndex>) -> Result<()> {

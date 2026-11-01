@@ -2,7 +2,7 @@
 name = "markview-fuzz"
 version = "0.0.0"
 edition = "2024"
-rust-version = "1.92"
+rust-version = "1.96"
 publish = false
 
 [package.metadata]
@@ -18,7 +18,7 @@ markview-commonmark = { path = "../crates/markview-commonmark" }
 markview-document = { path = "../crates/markview-document" }
 libfuzzer-sys = "0.4"
 arbitrary = { version = "1", features = ["derive"] }
-lopdf = { version = "0.45", default-features = false }
+lopdf = { version = "0.46", default-features = false }
 markview-layout = { path = "../crates/markview-layout", features = ["fuzz"] }
 markview-pdf = { path = "../crates/markview-pdf", features = ["fuzz"] }
 markview-render = { path = "../crates/markview-render", features = ["fuzz"] }

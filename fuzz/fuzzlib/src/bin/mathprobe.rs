@@ -14,7 +14,7 @@
 //! mathprobe list                         # available generators
 //! ```
 //!
-//! **Bound it from outside.** Nothing in ratex 0.1.14 bounds an expansion, so
+//! **Bound it from outside.** Nothing in ratex 0.1.15 bounds an expansion, so
 //! a generator can allocate without limit; run it as
 //! `bash -c 'ulimit -v <kB> && exec mathprobe gen ...'` (a plain Rust binary,
 //! so `ulimit -v` works — an ASAN build reserves terabytes of shadow space

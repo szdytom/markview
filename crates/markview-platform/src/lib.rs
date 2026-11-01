@@ -296,7 +296,7 @@ pub fn open_external(
 	target: impl AsRef<std::ffi::OsStr>,
 ) -> anyhow::Result<()> {
 	#[cfg(not(target_os = "android"))]
-	open::that_detached(target)?;
+	open::that_detached_with_timeout(target, std::time::Duration::ZERO)?;
 	#[cfg(target_os = "android")]
 	android::call_string("openExternal", &target.as_ref().to_string_lossy())?;
 	Ok(())

@@ -2,7 +2,7 @@
 #![no_main]
 
 use libfuzzer_sys::{fuzz_mutator, fuzz_target};
-use mvfuzz::{budget, mutators, parallel, pipeline, ratex};
+use mvfuzz::{budget, mutators, parallel, pipeline};
 
 fuzz_mutator! { |data: &mut [u8], size: usize, max_size: usize, seed: u32| {
 	mutators::markdown(data, size, max_size, seed)
@@ -13,7 +13,6 @@ fuzz_target!(|data: &[u8]| {
 	if md.len() > 32 * 1024 {
 		return;
 	}
-	ratex::allow_char_overflow();
 	pipeline::warmup();
 	// Five paired passes retain both snapshots and exercise independent shapers.
 	let baseline = budget::Budget::layout();

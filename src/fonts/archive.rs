@@ -221,7 +221,7 @@ fn unpack_zip(
 		{
 			continue;
 		}
-		let name = entry.name().replace('\\', "/");
+		let name = entry.name()?.replace('\\', "/");
 		if !patterns.iter().any(|pattern| glob_match(pattern, &name)) {
 			continue;
 		}
@@ -335,7 +335,7 @@ mod tests {
 		let dir = tempfile::tempdir().unwrap();
 		let path = dir.keep().join("a.zip");
 		let mut writer = zip::ZipWriter::new(fs::File::create(&path).unwrap());
-		let options: zip::write::FileOptions<'_, ()> =
+		let options: zip::write::FileOptions<'_, '_, ()> =
 			zip::write::FileOptions::default();
 		for (name, bytes) in members {
 			writer.start_file(*name, options).unwrap();

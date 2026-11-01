@@ -177,11 +177,7 @@ mod tests {
 				.is_ok()
 		);
 	}
-	/// `ratex-parser` 0.1.14 overflows `i64` while accumulating a wide
-	/// `\char` literal (`macro_expander.rs:823`). With overflow checks on —
-	/// this build, and the fuzz profile — that is a panic, which the
-	/// `catch_unwind` above must turn into `Err`. A release build wraps the
-	/// multiply instead and reaches `Err` through a failed `\@char` parse.
+	/// An oversized `\\char` literal must return an error.
 	#[test]
 	fn overlong_char_literal_is_an_error_not_a_crash() {
 		let mut e = MathEngine::default();

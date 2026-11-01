@@ -114,6 +114,7 @@ impl Gpu {
 				power_preference: wgpu::PowerPreference::LowPower,
 				compatible_surface: handle.as_ref(),
 				force_fallback_adapter: false,
+				apply_limit_buckets: false,
 			})
 			.await
 			.context("No compatible GPU adapter (try WGPU_BACKEND=gl)")?;
@@ -155,6 +156,7 @@ impl Gpu {
 				desired_maximum_frame_latency: 1,
 				alpha_mode: caps.alpha_modes[0],
 				view_formats: vec![],
+				color_space: wgpu::SurfaceColorSpace::Auto,
 			};
 			handle.configure(&device, &config);
 			Surface {
@@ -245,7 +247,7 @@ impl Gpu {
 		});
 		self.wait(None)?;
 		rx.recv()??;
-		let mapped = buffer.slice(..).get_mapped_range();
+		let mapped = buffer.slice(..).get_mapped_range()?;
 		let mut rgba = vec![0u8; (w as usize) * (h as usize) * 4];
 		for (src, dst) in mapped
 			.chunks_exact(pitch as usize)

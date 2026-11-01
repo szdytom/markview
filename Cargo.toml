@@ -51,8 +51,8 @@ resolver = "3"
 [workspace.package]
 version = "0.4.3"
 edition = "2024"
-# `krilla` sets the floor: the PDF backend needs newer standard-library items.
-rust-version = "1.92"
+# Minimum supported toolchain for the workspace.
+rust-version = "1.96"
 license = "MIT"
 readme = "README.md"
 authors = ["szdytom"]
@@ -88,14 +88,14 @@ icu_properties = "2.3"
 icu_segmenter = "2.3"
 krilla = { version = "0.8", default-features = false, features = ["raster-images", "rayon"] }
 notify = "8.2"
-open = "5.4"
+open = "5.4.5"
 parley = { version = "0.12.0", features = ["complex-scripts"] }
-pollster = "0.4"
-ratex-parser = "=0.1.14"
-ratex-layout = "=0.1.14"
-ratex-types = "=0.1.14"
-ratex-font = "=0.1.14"
-ratex-katex-fonts = "=0.1.14"
+pollster = "1"
+ratex-parser = "=0.1.15"
+ratex-layout = "=0.1.15"
+ratex-types = "=0.1.15"
+ratex-font = "=0.1.15"
+ratex-katex-fonts = "=0.1.15"
 # `ratex-katex-fonts` otherwise reads the build machine's files in debug builds.
 rust-embed = { version = "8.11", features = ["debug-embed"] }
 rfd = "0.16"
@@ -104,23 +104,23 @@ serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 skrifa = "0.42"
 swash = "0.2.9"
-tiny-skia = "0.11"
+tiny-skia = "0.12"
 # `std::time::Instant::now` panics on `wasm32-unknown-unknown`, so a library a
 # browser drives takes its clock from here instead. On every other target
 # this is `std::time` re-exported, so nothing changes there.
 web-time = "1.1"
 # Archive readers for downloadable font families. `zip` and `tar` are pure
 # Rust; `zstd` compiles its own C sources, which the tree already does.
-zip = { version = "8", default-features = false, features = ["deflate"] }
+zip = { version = "9", default-features = false, features = ["deflate"] }
 tar = "0.4"
 flate2 = "1"
-zstd = { version = "0.13", default-features = false }
-sha2 = "0.10"
+zstd = { version = "0.14", default-features = false }
+sha2 = "0.11"
 # The download path needs a read timeout while it streams, which only the
 # async `reqwest` client offers; one small runtime drives it.
 tokio = { version = "1", default-features = false, features = ["rt", "time", "macros", "sync", "fs", "io-util", "net"] }
 clap = { version = "4", features = ["derive"] }
-wgpu = { version = "29.0.4", default-features = false, features = ["std", "parking_lot", "wgsl"] }
+wgpu = { version = "30.0.1", default-features = false, features = ["std", "parking_lot", "wgsl"] }
 # The reader draws its own caption; do not initialize Adwaita decorations.
 winit = { version = "0.30.13", default-features = false, features = ["rwh_06", "x11", "wayland", "wayland-dlopen"] }
 
@@ -131,12 +131,12 @@ parallel-layout = ["markview-layout/parallel"]
 [dependencies]
 markview-commonmark = { path = "crates/markview-commonmark" }
 markview-document = { path = "crates/markview-document" }
-dom_smoothie = "0.18.2"
-dom_query = "0.28"
+dom_smoothie = "0.19"
+dom_query = "0.29"
 comrak.workspace = true
 unicode-segmentation.workspace = true
 image = { version = "0.25.9", default-features = false, features = ["png", "jpeg", "gif", "webp", "bmp", "ico"] }
-resvg = "0.45"
+resvg = "0.49"
 # Roboto Flex on Android needs more than `ttf-parser`'s 32 stack tuples.
 ttf-parser = { version = "0.25", features = ["gvar-alloc"] }
 # Library only: the default `cli` and `png` features would add a second
@@ -147,7 +147,7 @@ futures-util = "0.3"
 tokio-util = { version = "0.7", features = ["rt"] }
 url = "2"
 percent-encoding = "2"
-base64 = "0.22"
+base64 = "0.23"
 getrandom = { version = "0.4", features = ["std"] }
 toml_edit = { version = "0.25", features = ["serde"] }
 parley.workspace = true
@@ -180,7 +180,7 @@ tempfile.workspace = true
 
 [dev-dependencies]
 markview-platform = { path = "crates/markview-platform", features = ["test-support"] }
-lopdf = { version = "0.45", default-features = false }
+lopdf = { version = "0.46", default-features = false }
 
 [target.'cfg(target_os = "android")'.dependencies]
 wgpu = { workspace = true, features = ["vulkan", "gles"] }

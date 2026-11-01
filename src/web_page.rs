@@ -444,12 +444,18 @@ mod tests {
 		);
 		assert!(!markdown.contains("Navigation link"));
 		assert!(!markdown.contains("alert("));
-		assert!(markdown.contains("&#40;`rustup default beta`&#41;"));
 		assert!(markdown.contains(r"\(keep code\)"));
-		assert!(markdown.contains("&#91;literal brackets&#93;"));
 		let document = markview_commonmark::parse(markdown.clone());
 		assert_eq!(document.source.as_ref(), markdown);
 		assert!(!document.blocks.is_empty());
+		assert!(document.blocks.iter().any(|block| {
+			let crate::document::BlockKind::Paragraph(inlines) = &block.kind
+			else {
+				return false;
+			};
+			crate::document::plain_text(inlines)
+				== "中文 Try (rustup default beta) with [literal brackets] in prose."
+		}));
 		for block in &document.blocks {
 			if let crate::document::BlockKind::Paragraph(inlines) = &block.kind
 			{

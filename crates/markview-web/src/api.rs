@@ -544,7 +544,7 @@ impl Markview {
 			.render(&self.published.snapshot, &view, &[], &target)
 			.map_err(|error| fail(format!("{error:#}")))?;
 		self.glyphs += self.renderer.raster_stats().rasterized - before;
-		frame.present();
+		self.renderer.present(frame);
 		self.frames += 1;
 		if suboptimal {
 			self.renderer.resize(width, height);

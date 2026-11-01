@@ -25,6 +25,10 @@ at the same level, without `[brackets]`.
 
 - Support tapping images to open the touch image viewer and pinching to zoom it.
 
+### Changed
+
+- Raise the minimum Rust version to 1.96 and upgrade native, rendering, math, procedural macro and WASM dependencies.
+
 ### Fixed
 
 - Keep repeated clicks on disclosure titles toggling instead of selecting text, while preserving drag selection.

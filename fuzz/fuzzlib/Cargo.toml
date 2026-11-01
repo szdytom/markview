@@ -2,7 +2,7 @@
 name = "mvfuzz"
 version = "0.0.0"
 edition = "2024"
-rust-version = "1.92"
+rust-version = "1.96"
 publish = false
 
 
@@ -19,7 +19,7 @@ markview-layout = { path = "../../crates/markview-layout", features = ["fuzz", "
 markview-pdf = { path = "../../crates/markview-pdf", features = ["fuzz"] }
 # The PDF targets re-parse Markview's own output; the reader dependency carries
 # the same version, so the harness checks what a viewer would see.
-lopdf = { version = "0.45", default-features = false }
+lopdf = { version = "0.46", default-features = false }
 # The PDF link oracle decodes an in-document anchor the same way
 # `markview-pdf::link` does before looking it up in the pagination.
 percent-encoding = "2"
@@ -31,6 +31,6 @@ swash = "0.2.9"
 # it needs the three crates the reader pins. Same versions as the root
 # workspace; a divergence here would measure a different ratex than the app
 # ships.
-ratex-parser = "=0.1.14"
-ratex-layout = "=0.1.14"
-ratex-types = "=0.1.14"
+ratex-parser = "=0.1.15"
+ratex-layout = "=0.1.15"
+ratex-types = "=0.1.15"

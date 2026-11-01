@@ -26,17 +26,19 @@ OFM callouts pending the next release.
 | open | Opening links with the system browser | MIT |
 | rfd | Native file dialogs | MIT |
 | arboard / wl-clipboard-rs | Platform clipboard integration | MIT OR Apache-2.0 |
+| jni | Android Java interoperability | MIT OR Apache-2.0 |
 | windows-sys | Attaching to the console that launched the reader | MIT OR Apache-2.0 |
 | clap | Command-line parsing and help | MIT OR Apache-2.0 |
-| zip / tar / flate2 / zstd | Reading the archives a font mirror publishes | MIT (zip, zstd), MIT OR Apache-2.0 (tar, flate2) |
+| zip / tar / flate2 / zstd | Reading the archives a font mirror publishes | MIT (zip), BSD-3-Clause (zstd), MIT OR Apache-2.0 (tar, flate2) |
 | sha2 | Verifying a declared font digest | MIT OR Apache-2.0 |
 | tokio / tokio-socks | Streaming downloads with a stall timeout, through SOCKS when asked | MIT |
 | unicode-segmentation | Grapheme boundaries for reading selections | MIT OR Apache-2.0 |
 | tempfile | Atomic settings replacement and tests | MIT OR Apache-2.0 |
 | wuff / brotli-decompressor | Optional Web WOFF/WOFF2 decoding | MIT / BSD-3-Clause OR MIT |
 | CodeMirror | Web editor state, input and Markdown editing | MIT |
-| usvg | Compile-time parsing of the SVG icon sources | Apache-2.0 OR MIT |
-| ttf-parser | OpenType glyph outlines for SVG and Mermaid text | Apache-2.0 OR MIT |
+| resvg / usvg | SVG rendering and compile-time parsing of icon sources | Apache-2.0 OR MIT |
+| harfrust | OpenType shaping for SVG text | Apache-2.0 OR MIT |
+| ttf-parser | OpenType glyph outlines for Mermaid text | Apache-2.0 OR MIT |
 | Lucide | Geometry of the `folder-open`, `close`, `minus` and `plus` icons in `assets/ui` | ISC |
 
 KaTeX mathematical fonts are embedded by `ratex-katex-fonts`. Their SIL Open

@@ -10,5 +10,4 @@ pub mod parallel;
 pub mod pdf_oracle;
 pub mod pipeline;
 pub mod probe;
-pub mod ratex;
 pub mod seam;

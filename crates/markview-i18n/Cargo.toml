@@ -14,7 +14,7 @@ proc-macro = true
 # ever read. The proc macro runs on the host, so resolver 3 keeps this separate
 # from the runtime dependencies of the reader.
 toml_edit = { version = "0.25", default-features = false, features = ["parse"] }
-syn = "2"
+syn = "3"
 quote = "1"
 proc-macro2 = "1"
 
