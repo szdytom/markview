@@ -25,7 +25,13 @@ pub(super) struct File {
 }
 impl File {
 	pub fn new(id: usize, root: &Path, path: &Path) -> Arc<Self> {
-		let relative = path.strip_prefix(root).unwrap();
+		// Opened files outside a workspace search by name alone; their absolute
+		// ancestors must not turn an unrelated query into a fuzzy match.
+		let relative = if root.as_os_str().is_empty() {
+			Path::new(path.file_name().unwrap())
+		} else {
+			path.strip_prefix(root).unwrap()
+		};
 		Arc::new(Self {
 			id,
 			path: path.to_owned(),
@@ -186,6 +192,23 @@ mod tests {
 	use super::*;
 	use nucleo_matcher::Config;
 	use std::time::Instant;
+
+	#[test]
+	fn opened_files_outside_a_workspace_match_by_name_not_ancestors() {
+		let root = Path::new("");
+		let files = [
+			File::new(0, root, Path::new("/outside/notes.md")),
+			File::new(1, root, Path::new("/outside/readme.md")),
+		];
+		let mut matcher = Matcher::new(Config::DEFAULT.match_paths());
+		let (matches, _) =
+			find(&mut matcher, &files, "outside", || false).unwrap();
+		assert!(matches.is_empty());
+		let (matches, snippets) =
+			find(&mut matcher, &files, "notes", || false).unwrap();
+		assert_eq!(matches.len(), 1);
+		assert_eq!(snippets[&0].text, "notes.md");
+	}
 
 	#[test]
 	fn match_snippets_preserve_graphemes_and_skip_long_unmatched_prefixes() {
