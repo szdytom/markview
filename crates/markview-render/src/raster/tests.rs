@@ -591,3 +591,100 @@ fn resetting_one_atlas_keeps_the_other_cache() {
 	renderer.raster.reset_mask(&renderer.gpu.queue);
 	assert!(!renderer.raster.cache.contains_key(&mask));
 }
+
+#[test]
+fn idle_repack_rebuilds_the_current_screen_without_a_scroll_frame() {
+	use crate::{Renderer, Theme, View};
+	use markview_layout::scene::{
+		BlockLayout, Draw, Glyph, LayoutSnapshot, Paint, PlacedBlock,
+	};
+	use std::{collections::HashMap, sync::Arc, time::Duration};
+	let mut renderer = pollster::block_on(Renderer::new(None)).unwrap();
+	let font = parley::FontData::new(
+		ratex_katex_fonts::ttf_bytes("KaTeX_Main-Regular.ttf")
+			.unwrap()
+			.into_owned()
+			.into(),
+		0,
+	);
+	let charmap = swash::FontRef::from_index(font.data.data(), 0)
+		.unwrap()
+		.charmap();
+	let screenful = |letters: &str, y: f32| PlacedBlock {
+		flow: Default::default(),
+		id: y as u64,
+		source: 0..0,
+		y,
+		layout: Arc::new(BlockLayout {
+			draws: letters
+				.chars()
+				.enumerate()
+				.map(|(i, ch)| {
+					Draw::Glyph(Glyph {
+						font: font.clone(),
+						coords: Vec::new().into(),
+						id: charmap.map(ch),
+						size: 12.0,
+						x: (i % 8) as f32 * 14.0,
+						y: (i / 8) as f32 * 14.0,
+						synthetic_italic: false,
+						paint: Paint::Text,
+					})
+				})
+				.collect(),
+			height: 60.0,
+			width: 120.0,
+			..Default::default()
+		}),
+	};
+	let snapshot = LayoutSnapshot {
+		blocks: vec![
+			screenful("ABCDEFGHIJKLMNOPQRSTUVWX", 0.0),
+			screenful("abcdefghijklmnopqrstuvwx", 60.0),
+		],
+		height: 120.0,
+		width: 120.0,
+		..Default::default()
+	};
+	let horizontal = HashMap::new();
+	let view = View {
+		selection: None,
+		revision: 0,
+		width: 120,
+		height: 60,
+		scale: 1.,
+		scroll: 0.,
+		left: 0.,
+		top: 0.,
+		bottom: 0.,
+		theme: Theme::Light,
+		horizontal: &horizontal,
+		hovered_link: None,
+		hovered_overflow: None,
+		held_overflow: None,
+	};
+	let target = renderer.offscreen(120, 60);
+	let submission = renderer
+		.render(
+			&snapshot,
+			&view,
+			&[],
+			&target.create_view(&Default::default()),
+		)
+		.unwrap();
+	renderer.wait(Some(submission)).unwrap();
+	let before = renderer.raster_stats();
+	// Simulate the shelf having reached the repack threshold.
+	renderer.raster.shelf = (2, super::ATLAS_SIZE * 95 / 100, 2);
+	renderer.maintain(&snapshot, &view);
+	while renderer.prewarm(&snapshot, &view, Duration::from_millis(50)) {}
+	let after = renderer.raster_stats();
+	assert!(
+		after.resets > before.resets,
+		"idle repack did not run: {before:?} -> {after:?}"
+	);
+	assert!(
+		after.entries >= before.entries,
+		"idle repack lost the current screen: {before:?} -> {after:?}"
+	);
+}

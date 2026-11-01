@@ -6,7 +6,7 @@ use crate::{
 };
 use anyhow::Result;
 use log::{debug, info};
-use std::time::Instant;
+use std::time::{Duration, Instant};
 
 use super::{App, Event};
 /// How long one glyph prewarm pass may spend before yielding to the next
@@ -20,6 +20,8 @@ const PREWARM_INTERVAL: std::time::Duration =
 /// A frame slower than this means the reader is moving through content that
 /// is not prepared yet, so prewarming waits instead of competing with it.
 const PREWARM_QUIET_MS: f64 = 3.0;
+/// How long the reader must stay still before the atlas may be repacked.
+const MAINTENANCE_QUIET: Duration = Duration::from_millis(250);
 impl<P: super::SendEvent> App<P> {
 	#[cfg_attr(
 		any(),
@@ -180,6 +182,16 @@ impl<P: super::SendEvent> App<P> {
 		// unprepared content, so its glyphs are rasterized before the scroll
 		// frame that needs them rather than inside it.
 		let idle = prepared_ms < PREWARM_QUIET_MS;
+		let stationary = Instant::now().duration_since(self.last_scroll_at)
+			>= MAINTENANCE_QUIET;
+		if idle && stationary {
+			renderer.maintain(&self.readers.session.snapshot, &view);
+		} else if !stationary && renderer.needs_maintenance() {
+			// The final scroll frame is still within the quiet window. Wake
+			// once it expires so a high-pressure atlas is repacked even when
+			// no glyph or image prewarm has work left to schedule itself.
+			self.prewarm_at = Some(self.last_scroll_at + MAINTENANCE_QUIET);
+		}
 		let more = if idle {
 			renderer.prewarm(
 				&self.readers.session.snapshot,
