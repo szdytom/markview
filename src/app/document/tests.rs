@@ -2397,11 +2397,13 @@ fn folder_refresh_replays_tab_reveal_and_rejects_stale_deltas() {
 		);
 		assert!(!h.app.folder.tree.as_ref().unwrap().entries.is_empty());
 	}
-	fs::rename(&root, root.with_extension("moved")).unwrap();
+	h.app.action(Command::Chrome(ChromeCommand::SelectTab(0)));
+	fs::remove_dir_all(&root).unwrap();
 	h.settle_folder();
 	assert!(h.app.folder.tree.as_ref().unwrap().entries.is_empty());
 	assert!(h.app.folder.tree.as_ref().unwrap().error.is_some());
-	fs::rename(root.with_extension("moved"), &root).unwrap();
+	fs::create_dir(&root).unwrap();
+	fs::write(root.join("Restored.md"), "note").unwrap();
 	h.settle_folder();
 	assert!(!h.app.folder.tree.as_ref().unwrap().entries.is_empty());
 	assert!(h.app.folder.tree.as_ref().unwrap().error.is_none());
