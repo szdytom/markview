@@ -952,6 +952,26 @@ impl<P: super::SendEvent> App<P> {
 			.map(|(src, rect, _)| (src.to_owned(), rect))
 	}
 
+	/// The picture's bounds for viewer fitting. A downsampled bitmap reports
+	/// its intrinsic size; a vector reports whichever of the intrinsic and the
+	/// rendered raster is larger. Both keep the viewer from opening a large
+	/// picture at a thumbnail size.
+	fn viewer_pixels(
+		images: &markview_layout::image::ImageSnapshot,
+		src: &str,
+	) -> Option<(f32, f32)> {
+		let info = images.entries.get(src)?;
+		let decoded = images
+			.pixels
+			.get(src, info.version)
+			.map(|pixels| (pixels.width as f32, pixels.height as f32));
+		if info.svg {
+			decoded.or_else(|| info.size.map(|(w, h)| (w as f32, h as f32)))
+		} else {
+			info.size.map(|(w, h)| (w as f32, h as f32)).or(decoded)
+		}
+	}
+
 	/// Opens the full-size viewer over the image under the cursor, if any.
 	pub(super) fn open_viewer_at_cursor(&mut self) {
 		if self.interaction.overlays.viewer_open() {
@@ -975,14 +995,11 @@ impl<P: super::SendEvent> App<P> {
 		{
 			return;
 		}
-		// The pixels the renderer already holds cap the fitting, so the
-		// viewer never promises a sharper picture than exists. A picture
-		// still decoding fits its laid-out rect instead.
-		let pixels = images
-			.entries
-			.get(&src)
-			.and_then(|info| images.pixels.get(&src, info.version))
-			.map(|p| (p.width as f32, p.height as f32))
+		// The intrinsic size caps the fit; the decoded raster may be smaller
+		// because it was downsampled for the reading column. The viewer's own
+		// demand then asks for the larger raster it needs. A picture still
+		// decoding fits its laid-out rect instead.
+		let pixels = Self::viewer_pixels(images, &src)
 			.unwrap_or((rect.w.max(1.), rect.h.max(1.)));
 		let scale = self.dimensions().2;
 		self.interaction.overlays.viewer.send(ViewerMessage::Open {
@@ -1021,11 +1038,7 @@ impl<P: super::SendEvent> App<P> {
 			self.interaction.overlays.viewer.send(ViewerMessage::Close);
 			return;
 		}
-		let pixels = images
-			.entries
-			.get(&src)
-			.and_then(|info| images.pixels.get(&src, info.version))
-			.map(|pixels| (pixels.width as f32, pixels.height as f32));
+		let pixels = Self::viewer_pixels(images, &src);
 		self.interaction.overlays.viewer.refresh(
 			pixels,
 			scale,

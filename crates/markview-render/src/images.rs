@@ -255,6 +255,7 @@ mod tests {
 						version: 1,
 						size: Some((800, 600)),
 						error: None,
+						svg: false,
 					},
 				)]),
 				pixels: pixels.clone(),

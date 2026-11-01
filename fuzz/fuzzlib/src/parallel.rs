@@ -53,6 +53,7 @@ pub fn check(md: &str) {
 					1 + ((seed >> 32) as u32 % 600),
 				)),
 				error: None,
+				svg: false,
 			},
 		);
 	}

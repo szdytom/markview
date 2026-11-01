@@ -216,6 +216,7 @@ fn render_preview(args: LaunchOptions) -> Result<()> {
 	images.set_standalone_image(
 		crate::file::is_picture(path).then(|| path.to_path_buf()),
 	);
+	images.set_initial_width(args.options.width);
 	images.prepare(
 		&doc,
 		path,

@@ -206,6 +206,7 @@ fn synthetic_images(snapshot: &LayoutSnapshot) -> ImageSnapshot {
 				version: 0,
 				size: Some((1, 1)),
 				error: None,
+				svg: false,
 			},
 		);
 		pixels.insert(

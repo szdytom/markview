@@ -52,6 +52,7 @@ fn target_after_an_image_and_newline_resolves() {
 						version: 1,
 						size: Some((100, 140)),
 						error: None,
+						svg: false,
 					},
 				);
 			}

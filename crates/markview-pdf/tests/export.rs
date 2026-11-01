@@ -1055,6 +1055,7 @@ fn missing_image_pixels_abort_export_with_the_source_and_reason() {
 			version: 7,
 			size: Some((200, 100)),
 			error: None,
+			svg: false,
 		},
 	);
 	let options = LayoutOptions {

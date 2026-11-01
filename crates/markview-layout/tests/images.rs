@@ -16,6 +16,7 @@ fn resources() -> ImageSnapshot {
 			version: 1,
 			size: Some((100, 140)),
 			error: None,
+			svg: false,
 		},
 	);
 	images
@@ -120,6 +121,7 @@ fn a_diagram_copies_its_placeholder_message_not_its_source() {
 			version: 1,
 			size: Some((120, 60)),
 			error: None,
+			svg: false,
 		},
 	);
 	let shown = engine.layout_with_images(&doc, &options, &resources);
@@ -134,6 +136,7 @@ fn a_diagram_copies_its_placeholder_message_not_its_source() {
 				version: 1,
 				size: None,
 				error: None,
+				svg: false,
 			},
 			"Loading image…",
 		),
@@ -142,6 +145,7 @@ fn a_diagram_copies_its_placeholder_message_not_its_source() {
 				version: 2,
 				size: None,
 				error: Some("Mermaid: broken".into()),
+				svg: false,
 			},
 			"Mermaid: broken",
 		),

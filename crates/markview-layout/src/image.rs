@@ -24,6 +24,8 @@ pub struct ImageInfo {
 	pub version: u64,
 	pub size: Option<(u32, u32)>,
 	pub error: Option<String>,
+	/// Whether the source is vector content rendered at a requested size.
+	pub svg: bool,
 }
 
 /// Versioned pixels and the latest complete frame, shared with rendering.
