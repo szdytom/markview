@@ -45,6 +45,7 @@ at the same level, without `[brackets]`.
 - Snap formula rules and vector paths to whole device pixels so fractions, radicals and stretchy delimiters stay crisp at fractional DPI.
 - Keep a tab's hover preview returning after the wheel scrolls the tab strip under a resting pointer.
 - Keep start-page search state and control layout updates within their owners so the application coupling CI check passes.
+- Reuse CPU-side glyph bitmaps after an atlas reset instead of rasterizing the same glyphs again.
 - Repack the glyph atlas around the current screen during idle, and prewarm the previous screen as well as the next one.
 - Prefetch nearby pictures during idle frames, including the previous screen, so scrolling into them does not upload a texture in the reading frame.
 - Decode raster pictures at their display size so large photos no longer upload full-resolution textures on first sight.

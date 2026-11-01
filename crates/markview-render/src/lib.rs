@@ -309,6 +309,7 @@ impl Renderer {
 	}
 	pub fn clear_raster_cache(&mut self) {
 		self.raster.reset_atlas(&self.gpu.queue);
+		self.raster.clear_bitmaps();
 	}
 	/// Rasterization counters since this renderer was created.
 	pub fn raster_stats(&self) -> RasterStats {
