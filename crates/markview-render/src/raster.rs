@@ -101,7 +101,8 @@ pub(super) struct RasterCache {
 	shelf: (u32, u32, u32),
 	scaler: ScaleContext,
 	math_fonts: HashMap<String, FontData>,
-	atlas_full: bool,
+	mask_full: bool,
+	color_full: bool,
 	color_atlas: Option<color::ColorAtlas>,
 	rasterized: u64,
 	resets: u64,
@@ -171,7 +172,8 @@ impl RasterCache {
 			shelf: (2, 0, 2),
 			scaler: ScaleContext::new(),
 			math_fonts: HashMap::new(),
-			atlas_full: false,
+			mask_full: false,
+			color_full: false,
 			color_atlas: None,
 			rasterized: 0,
 			resets: 0,
@@ -204,7 +206,8 @@ impl RasterCache {
 		(self.atlas, self.bind_group) = atlas_texture(device, pipeline, mask);
 		self.cache.clear();
 		self.shelf = (2, 0, 2);
-		self.atlas_full = false;
+		self.mask_full = false;
+		self.color_full = false;
 		self.color_atlas = None;
 		self.upload(queue, 0, 0, 1, 1, &[255]);
 	}
@@ -215,16 +218,25 @@ impl RasterCache {
 		self.color_size
 	}
 	pub(super) fn full(&self) -> bool {
-		self.atlas_full
+		self.mask_full || self.color_full
+	}
+	pub(super) fn mask_full(&self) -> bool {
+		self.mask_full
+	}
+	pub(super) fn color_full(&self) -> bool {
+		self.color_full
 	}
 	/// Forgets an exhaustion an earlier pass reported, so a frame that only
 	/// reuses cached entries never evicts them for another pass's content.
 	pub(super) fn begin_frame(&mut self) {
-		self.atlas_full = false;
+		self.mask_full = false;
+		self.color_full = false;
 	}
 	/// True while new entries still fit without evicting the atlas.
 	pub(super) fn has_room(&self) -> bool {
-		!self.atlas_full && self.shelf.1 + self.shelf.2 < self.mask_size * 3 / 4
+		!self.mask_full
+			&& !self.color_full
+			&& self.shelf.1 + self.shelf.2 < self.mask_size * 3 / 4
 	}
 	/// Rasterizes only until `budget` elapses, so a pass that prepares a
 	/// screenful the reader has not reached yet cannot spend a whole frame.
@@ -291,11 +303,29 @@ impl RasterCache {
 		self.resets += 1;
 		self.cache.clear();
 		self.shelf = (2, 0, 2);
-		self.atlas_full = false;
+		self.mask_full = false;
+		self.color_full = false;
 		if let Some(atlas) = &mut self.color_atlas {
 			atlas.reset();
 		}
 		self.upload(queue, 0, 0, 1, 1, &[255]);
+	}
+	/// Evicts mask entries only, keeping color glyphs and their atlas intact.
+	pub(super) fn reset_mask(&mut self, queue: &wgpu::Queue) {
+		self.resets += 1;
+		self.cache.retain(|_, entry| entry.color);
+		self.shelf = (2, 0, 2);
+		self.mask_full = false;
+		self.upload(queue, 0, 0, 1, 1, &[255]);
+	}
+	/// Evicts color entries only, keeping ordinary text glyphs intact.
+	pub(super) fn reset_color(&mut self) {
+		self.resets += 1;
+		self.cache.retain(|_, entry| !entry.color);
+		self.color_full = false;
+		if let Some(atlas) = &mut self.color_atlas {
+			atlas.reset();
+		}
 	}
 	fn upload(
 		&self,
@@ -346,7 +376,7 @@ impl RasterCache {
 			self.shelf.2 = 0;
 		}
 		if w > self.mask_size || self.shelf.1 + h > self.mask_size {
-			self.atlas_full = true;
+			self.mask_full = true;
 			return None;
 		}
 		entry.x = self.shelf.0 + 1;
@@ -445,7 +475,7 @@ impl RasterCache {
 				});
 				let Some(entry) = atlas.insert(queue, entry, &image.data)
 				else {
-					self.atlas_full = true;
+					self.color_full = true;
 					return None;
 				};
 				self.cache.insert(key, entry);

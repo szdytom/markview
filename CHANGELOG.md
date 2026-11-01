@@ -44,6 +44,7 @@ at the same level, without `[brackets]`.
 - Snap formula rules and vector paths to whole device pixels so fractions, radicals and stretchy delimiters stay crisp at fractional DPI.
 - Keep a tab's hover preview returning after the wheel scrolls the tab strip under a resting pointer.
 - Keep start-page search state and control layout updates within their owners so the application coupling CI check passes.
+- Reset only the exhausted mask or color glyph atlas so text and Emoji no longer invalidate each other.
 - Scale the glyph atlas with high-DPI displays so a full reading frame is not re-rasterized after the atlas fills.
 - Keep repeated clicks on disclosure titles toggling instead of selecting text, while preserving drag selection.
 - Center tab separators in their gaps and hide both beside a hovered tab to keep its highlight symmetric in both tab styles.
@@ -138,7 +139,6 @@ at the same level, without `[brackets]`.
 
 - Hide `%%` inline and block comments in Obsidian across reading, copy, search and reader exports, preserving code and original source positions.
 - Read Obsidian callouts in the Obsidian preset: built-in types and aliases, nesting and foldable bodies, with plain-text titles.
-- Synchronize scrolling between the VS Code Markdown editor and Markview preview.
 - Export saved or unsaved Markdown from VS Code to PDF or PNG using built-in or custom templates.
 
 ### Changed
@@ -491,7 +491,6 @@ at the same level, without `[brackets]`.
 - New setting to open files from a second launch in tabs of the existing window.
 - Correct CJK bold rendering in the reader and PDF export.
 - More predictable triple-click and drag selection.
-- Continued robustness and security hardening.
 
 ### Changed
 
