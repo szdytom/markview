@@ -256,7 +256,7 @@ impl<P: SendEvent> App<P> {
 		{
 			return None;
 		}
-		if id == TextField::Files && self.folder.root().is_none() {
+		if id == TextField::Files && !self.folder.file_search_available() {
 			return None;
 		}
 		let mut g = self.chrome().start_geometry();
@@ -282,6 +282,14 @@ impl<P: SendEvent> App<P> {
 		&mut self,
 		id: TextField,
 	) -> Option<(Rect, Rect)> {
+		if self.interaction.overlays.quick_open.open() {
+			return (id == TextField::Files
+				&& self.folder.file_search_available())
+			.then(|| {
+				let g = self.quick_open_geometry();
+				(g.input, g.panel)
+			});
+		}
 		if matches!(id, TextField::Url | TextField::Files) {
 			if self.interaction.panel_open()
 				|| self.interaction.overlays.outline.open()
@@ -625,6 +633,9 @@ impl<P: SendEvent> App<P> {
 	}
 
 	fn input_key(&mut self, logical: &Key, text: Option<&str>) -> Outcome {
+		if self.quick_open_key(logical) {
+			return Outcome::Consumed;
+		}
 		let id = self.text_input.focused.expect("focused input owns key");
 		let mods = self.interaction.pointer.modifiers();
 		let before = self.input(id).0.text().to_owned();

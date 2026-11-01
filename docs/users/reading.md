@@ -16,6 +16,7 @@ workspace list and web-reading input; scroll to reach content below the viewport
 | Keys | Action |
 |:--|:--|
 | `Ctrl+O` | Open a file |
+| `Ctrl+P` | Search workspace and open-tab files; use ↑/↓ to select, Enter to open, Esc to close |
 | `Ctrl+Shift+O` | Open a folder |
 | `Ctrl+Alt+R` | Show the active document's folder in the file manager |
 | `/` | Start an empty document search |

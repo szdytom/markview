@@ -439,6 +439,51 @@ fn search_ime_defers_queries_enter_and_escape_until_composition_ends() {
 }
 
 #[test]
+fn quick_open_routes_text_and_ime_to_shared_file_search_while_reading() {
+	let dir = tempfile::tempdir().unwrap();
+	std::fs::write(dir.path().join("阅读.md"), "# Note").unwrap();
+	let mut app = app();
+	app.folder_loaded(
+		0,
+		false,
+		crate::app::folder::Tree::read(dir.path().into()),
+	);
+	app.readers.session.path = Some(dir.path().join("阅读.md"));
+	let opened = app.readers.session.path.clone();
+	app.open_quick_open();
+	assert_eq!(app.text_input.focused, Some(TextField::Files));
+	assert!(!app.interaction.panel_open());
+	let (rect, viewport) = app.input_geometry(TextField::Files).unwrap();
+	assert!(viewport.contains(rect.x, rect.y));
+	assert!(!app.draw_inputs().is_empty());
+	app.input_key(&Key::Character("read".into()), Some("read"));
+	assert_eq!(app.folder.start.input.text(), "read");
+	assert!(app.folder.start.pending);
+	assert!(!app.readers.session.search.open);
+	app.folder.start.input.select_all(&mut app.ui);
+	event(&mut app, WindowEvent::Ime(Ime::Enabled));
+	event(
+		&mut app,
+		WindowEvent::Ime(Ime::Preedit("yue".into(), Some((3, 3)))),
+	);
+	app.input_key(&Key::Named(NamedKey::ArrowDown), None);
+	app.input_key(&Key::Named(NamedKey::Enter), None);
+	assert!(app.folder.start.input.is_composing());
+	assert_eq!(app.readers.session.path, opened);
+	app.input_key(&Key::Named(NamedKey::Escape), None);
+	assert!(!app.folder.start.input.is_composing());
+	assert!(app.interaction.overlays.quick_open.open());
+	event(&mut app, WindowEvent::Ime(Ime::Commit("阅读".into())));
+	assert_eq!(app.folder.start.input.text(), "阅读");
+	assert!(app.folder.start.pending);
+	app.input_key(&Key::Named(NamedKey::Escape), None);
+	assert!(!app.interaction.overlays.quick_open.open());
+	assert_eq!(app.text_input.focused, None);
+	assert_eq!(app.readers.session.path, opened);
+	assert_eq!(app.folder.start.input.text(), "阅读");
+}
+
+#[test]
 fn empty_page_url_input_accepts_text_and_submits_with_enter() {
 	let mut app = app();
 	app.show_panel(PanelPage::Closed);

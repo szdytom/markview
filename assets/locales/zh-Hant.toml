@@ -332,3 +332,8 @@ empty_recent_now = "剛剛"
 empty_recent_hours = "{count} 小時前"
 empty_recent_days = "{count} 天前"
 empty_local_workspace = "本機工作區"
+
+# The floating workspace file picker.
+quick_open_hint = "選擇 · Enter 開啟 · Esc 關閉"
+quick_open_no_workspace = "開啟資料夾以搜尋其中的檔案。"
+quick_open_tabs = "已開啟的檔案"

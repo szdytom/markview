@@ -93,6 +93,7 @@ impl<P: super::SendEvent> App<P> {
 					}
 				} else {
 					self.readers.open_background_secure(path, anchor, security);
+					self.refresh_start_files();
 				}
 				self.redraw();
 			}

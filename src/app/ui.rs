@@ -608,7 +608,9 @@ impl<P: super::SendEvent> App<P> {
 		let mut buttons = self.dropdown_buttons();
 		let form = self.panel_form();
 		buttons.extend(self.chrome().buttons_for(form.as_ref()));
-		buttons.extend(self.search_buttons());
+		if !self.interaction.overlays.quick_open.open() {
+			buttons.extend(self.search_buttons());
+		}
 		let mut focus = Vec::new();
 		if let Some(form) = &form {
 			focus.extend(

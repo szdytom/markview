@@ -375,6 +375,7 @@ impl<P: super::SendEvent> App<P> {
 	pub(super) fn pointer_pressed(&mut self) {
 		self.prepare_press();
 		if self.press_modal()
+			|| self.press_quick_open()
 			|| self.press_dropdown()
 			|| self.begin_sidebar_resize()
 			|| self.press_drawer()
@@ -609,7 +610,9 @@ impl<P: super::SendEvent> App<P> {
 			self.redraw();
 			return;
 		}
-		if self.interaction.overlays.modal_open() {
+		if self.interaction.overlays.modal_open()
+			|| self.interaction.overlays.quick_open.open()
+		{
 			self.redraw();
 			return;
 		}
@@ -650,6 +653,7 @@ impl<P: super::SendEvent> App<P> {
 	}
 	pub(super) fn panel_has_focus(&self) -> bool {
 		self.interaction.panel_open()
+			|| self.interaction.overlays.quick_open.open()
 	}
 	/// The reader's scroll-speed multiplier over the desktop's own speed.
 	pub(super) fn scroll_speed(&self) -> f32 {
@@ -828,7 +832,7 @@ impl<P: super::SendEvent> App<P> {
 		let over_outline = self.pointer_in_outline()
 			|| self.pointer_in_folder()
 			|| self.sidebar_edge().is_some();
-		let idle = !self.interaction.panel_open()
+		let idle = !self.panel_has_focus()
 			&& !self.interaction.overlays.modal_open()
 			&& !holding
 			&& !over_outline;

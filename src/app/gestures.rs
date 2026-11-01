@@ -26,6 +26,7 @@ enum Tap {
 	Link(String),
 	Image(String),
 	CloseViewer,
+	CloseQuickOpen,
 	ClearSelection,
 	/// A tap the open option list owns but that lands on none of its options:
 	/// it closes the list and reaches nothing behind it.
@@ -109,6 +110,9 @@ impl<P: super::SendEvent> App<P> {
 		if self.interaction.overlays.viewer_open() {
 			return Some(Tap::CloseViewer);
 		}
+		if self.interaction.overlays.quick_open.open() {
+			return self.quick_open_tap();
+		}
 		// An open option list owns the tap the way it owns a press: only its
 		// own exact option rectangles answer, and a tap anywhere else only
 		// dismisses it. The page controls under it and the 44-pixel expansion
@@ -147,16 +151,10 @@ impl<P: super::SendEvent> App<P> {
 		if self.pointer_in_outline() || self.pointer_in_folder() {
 			return None;
 		}
-		if let Some(index) = self.tab_close_at_cursor() {
-			return Some(Tap::Command(Command::Chrome(
-				ChromeCommand::CloseTab(index),
-			)));
+		if let Some(tap) = self.touch_tab() {
+			return Some(tap);
 		}
-		if let Some(index) = self.tab_at_cursor() {
-			return Some(Tap::Command(Command::Chrome(
-				ChromeCommand::SelectTab(index),
-			)));
-		}
+
 		if !self.view_geometry().clip().contains(x, y) {
 			return None;
 		}
@@ -169,11 +167,38 @@ impl<P: super::SendEvent> App<P> {
 		Some(Tap::ClearSelection)
 	}
 
+	fn touch_tab(&mut self) -> Option<Tap> {
+		if let Some(index) = self.tab_close_at_cursor() {
+			return Some(Tap::Command(Command::Chrome(
+				ChromeCommand::CloseTab(index),
+			)));
+		}
+		self.tab_at_cursor().map(|index| {
+			Tap::Command(Command::Chrome(ChromeCommand::SelectTab(index)))
+		})
+	}
+
+	fn quick_open_tap(&mut self) -> Option<Tap> {
+		let point = self.interaction.pointer.cursor();
+		let buttons = self.buttons();
+		let layout = super::widgets::layout(&buttons);
+		layout
+			.hit(point)
+			.filter(|widget| widget.enabled)
+			.map(|widget| Tap::Widget(widget.id))
+			.or_else(|| {
+				(!self.quick_open_geometry().panel.contains(point.0, point.1))
+					.then_some(Tap::CloseQuickOpen)
+			})
+	}
+
 	fn touch_surface(&mut self) -> Surface {
 		if self.interaction.overlays.viewer_open() {
 			return Surface::Viewer;
 		}
-		if self.interaction.overlays.modal_open() {
+		if self.interaction.overlays.modal_open()
+			|| self.interaction.overlays.quick_open.open()
+		{
 			return Surface::None;
 		}
 		// The open list owns the gesture too: nothing behind it pans, so the
@@ -412,6 +437,10 @@ impl<P: super::SendEvent> App<P> {
 			}
 			Some(Tap::Image(_)) => {
 				self.open_viewer_at_cursor();
+				None
+			}
+			Some(Tap::CloseQuickOpen) => {
+				self.close_quick_open();
 				None
 			}
 			Some(Tap::CloseViewer) => {

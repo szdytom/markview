@@ -332,3 +332,8 @@ empty_recent_now = "Just now"
 empty_recent_hours = "{count}h ago"
 empty_recent_days = "{count}d ago"
 empty_local_workspace = "Local workspace"
+
+# The floating workspace file picker.
+quick_open_hint = "Select · Enter to open · Esc to close"
+quick_open_no_workspace = "Open a folder to search its files."
+quick_open_tabs = "Open files"

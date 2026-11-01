@@ -317,6 +317,7 @@ impl<P: super::SendEvent> App<P> {
 			&& self.interaction.panel == crate::state::PanelPage::Closed
 			&& !self.readers.session.search.open
 			&& !self.interaction.overlays.modal_open()
+			&& !self.interaction.overlays.quick_open.open()
 			&& !self.interaction.overlays.dropdown_open()
 			&& !self.interaction.overlays.viewer_open()
 			&& self.tab_strip.drag.is_none()

@@ -51,6 +51,7 @@ impl<P: super::SendEvent> App<P> {
 			self.focus_input(field);
 			return;
 		}
+		self.close_quick_open();
 		self.prepare_command(command);
 		match command {
 			Command::Document(command) => self.document_command(command),

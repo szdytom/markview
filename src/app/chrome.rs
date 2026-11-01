@@ -17,6 +17,7 @@ pub(in crate::app) mod list;
 mod modal;
 pub(in crate::app) mod outline;
 pub(in crate::app) mod preview;
+pub(in crate::app) mod quick_open;
 pub(in crate::app) mod styles;
 pub(in crate::app) mod tab_drawer;
 mod tabs;
@@ -203,6 +204,7 @@ pub(super) enum Layer {
 	Preview,
 	Panel,
 	Dropdown,
+	QuickOpen,
 	Modal,
 	Viewer,
 	Frame,
@@ -233,6 +235,7 @@ impl<'a> Chrome<'a> {
 			Layer::Preview,
 			Layer::Panel,
 			Layer::Dropdown,
+			Layer::QuickOpen,
 			Layer::Modal,
 			Layer::Viewer,
 			Layer::Frame,
@@ -342,6 +345,7 @@ impl<'a> Chrome<'a> {
 		if !self.interaction.panel_open()
 			|| self.interaction.panel == crate::state::PanelPage::Tabs
 			|| self.interaction.overlays.modal_open()
+			|| self.interaction.overlays.quick_open.open()
 			|| self.interaction.styles_open()
 			|| self.interaction.fonts_open()
 			|| self.interaction.export_styles_open()
@@ -388,6 +392,13 @@ impl<'a> Chrome<'a> {
 				&self.interaction,
 				width,
 				height,
+				self.settings.model.lang(),
+			)
+		} else if self.interaction.overlays.quick_open.open() {
+			quick_open::buttons(
+				self.session.folder.unwrap(),
+				&self.interaction.overlays.quick_open,
+				(width, height),
 				self.settings.model.lang(),
 			)
 		} else if self.interaction.panel == crate::state::PanelPage::Tabs {
@@ -705,9 +716,23 @@ impl<'a> Chrome<'a> {
 			Layer::Panel => {
 				self.draw_panel_overlay(out, form);
 				self.draw_resource_feedback(out);
-				out.append(&mut self.input_draws);
+				if !self.interaction.overlays.quick_open.open() {
+					out.append(&mut self.input_draws);
+				}
 			}
 			Layer::Dropdown => self.draw_dropdown(out),
+			Layer::QuickOpen => {
+				if self.interaction.overlays.quick_open.open() {
+					out.extend(quick_open::draw(
+						self.ui,
+						&self.interaction,
+						self.session.folder.unwrap(),
+						(self.frame.width, self.frame.height),
+						self.settings.model.lang(),
+					));
+					out.append(&mut self.input_draws);
+				}
+			}
 			Layer::Modal => self.draw_modal(out),
 			Layer::Viewer => self.draw_viewer(out),
 			Layer::Frame => out.extend(frame::draw(self.frame.layout)),
@@ -887,6 +912,7 @@ impl<'a> Chrome<'a> {
 		if self.session.strip.phone
 			|| self.interaction.panel_open()
 			|| self.session.doc.search.open
+			|| self.interaction.overlays.quick_open.open()
 			|| self.interaction.overlays.modal_open()
 			|| self.interaction.overlays.dropdown_open()
 			|| self.interaction.overlays.viewer_open()
@@ -1351,6 +1377,7 @@ mod tests {
 				Layer::Preview,
 				Layer::Panel,
 				Layer::Dropdown,
+				Layer::QuickOpen,
 				Layer::Modal,
 				Layer::Viewer,
 				Layer::Frame,

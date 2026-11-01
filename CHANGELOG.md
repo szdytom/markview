@@ -23,6 +23,7 @@ at the same level, without `[brackets]`.
 
 ### Added
 
+- Search workspace and open-tab files in a floating picker with Ctrl+P (⌘P on macOS), sharing fuzzy path search and match snippets with the start page.
 - Redesign the start page for desktop and mobile with direct file and folder opening, recent workspaces, and asynchronous fuzzy file search with bold match snippets.
 - Update folder trees automatically, preserve browsing state on refresh, and offer on-demand browsing of excluded entries.
 - Support tapping images to open the touch image viewer and pinching to zoom it.

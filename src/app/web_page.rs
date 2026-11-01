@@ -100,6 +100,7 @@ impl<P: super::SendEvent> App<P> {
 		match result {
 			Ok(loaded_path) => {
 				self.readers.rename(index, loaded_path.clone());
+				self.refresh_start_files();
 				self.web_pages.insert(url, loaded_path);
 				if index == self.readers.active() {
 					self.observe_document();

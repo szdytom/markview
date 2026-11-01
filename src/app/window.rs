@@ -67,7 +67,9 @@ impl Loop for ActiveEventLoop {
 
 impl<P: super::SendEvent> App<P> {
 	pub(super) fn android_back(&mut self) {
-		if self.readers.session.search.open {
+		if self.interaction.overlays.quick_open.open() {
+			self.close_quick_open();
+		} else if self.readers.session.search.open {
 			self.close_search();
 		} else if self.interaction.panel_open()
 			|| self.interaction.overlays.viewer_open()
@@ -184,7 +186,10 @@ impl<P: super::SendEvent> App<P> {
 		if !self.interaction.overlays.modal_open()
 			&& let WindowEvent::KeyboardInput { event, .. } = event
 			&& event.state == ElementState::Pressed
-			&& self.search_window_key(event)
+			&& (self.quick_open_shortcut(&event.logical_key)
+				|| self.quick_open_key(&event.logical_key)
+				|| (!self.interaction.overlays.quick_open.open()
+					&& self.search_window_key(event)))
 		{
 			return true;
 		}
@@ -345,6 +350,17 @@ impl<P: super::SendEvent> App<P> {
 		delta: MouseScrollDelta,
 		phase: winit::event::TouchPhase,
 	) {
+		if self.interaction.overlays.quick_open.open() {
+			let (_, dy) = super::pointer::wheel_pixels(
+				delta,
+				self.wheel_notch,
+				1.0,
+				self.dimensions().2,
+				self.viewport_size(),
+			);
+			self.scroll_quick_open(-dy);
+			return;
+		}
 		if self.readers.session.search.open
 			&& self.interaction.pointer.cursor().1
 				>= self.dimensions().1 - self.bottom()
@@ -594,9 +610,7 @@ impl<P: super::SendEvent> App<P> {
 						self.redraw();
 					}
 					"c" if !self.panel_has_focus() => self.copy_selection(),
-					"v" if !self.interaction.panel_open() => {
-						self.paste_markdown()
-					}
+					"v" if !self.panel_has_focus() => self.paste_markdown(),
 					"w" if !self.panel_has_focus() => {
 						self.action(Command::Chrome(ChromeCommand::CloseTab(
 							self.readers.active(),
@@ -869,6 +883,10 @@ impl<P: super::SendEvent> App<P> {
 		true
 	}
 	fn overlay_key(&mut self, key: &Key) -> bool {
+		if self.interaction.overlays.quick_open.open() {
+			self.quick_open_key(key);
+			return true;
+		}
 		if self.interaction.overlays.viewer_open() {
 			if key == &Key::Named(NamedKey::Escape) {
 				self.interaction.overlays.viewer.send(ViewerMessage::Close);

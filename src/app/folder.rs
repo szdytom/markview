@@ -106,7 +106,7 @@ pub(super) struct Entry {
 	pub depth: usize,
 	pub directory: bool,
 	pub excluded: bool,
-	pub file: Option<Arc<super::start::File>>,
+	pub file: Option<Arc<super::file_search::File>>,
 }
 
 #[derive(Debug)]
@@ -160,7 +160,11 @@ impl Tree {
 			if path != root {
 				entries.push(Entry {
 					file: (!directory).then(|| {
-						super::start::File::new(entries.len(), &root, &path)
+						super::file_search::File::new(
+							entries.len(),
+							&root,
+							&path,
+						)
 					}),
 					directory,
 					path: path.clone(),
@@ -324,7 +328,7 @@ impl Tree {
 			id,
 			Entry {
 				file: (!child.directory).then(|| {
-					super::start::File::new(id, &self.root, &child.path)
+					super::file_search::File::new(id, &self.root, &child.path)
 				}),
 				id,
 				path: child.path,
@@ -451,6 +455,9 @@ pub(super) struct Browser {
 }
 
 impl Browser {
+	pub fn file_search_available(&self) -> bool {
+		self.root().is_some() || self.start.has_files()
+	}
 	pub(super) fn updating(&self) -> bool {
 		self.pending_root.is_some()
 			|| self

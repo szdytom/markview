@@ -423,6 +423,9 @@ impl<P: super::SendEvent> App<P> {
 			self.redraw();
 			return true;
 		}
+		if self.interaction.overlays.quick_open.open() {
+			return false;
+		}
 		if !layout.draggable(x, y) {
 			self.frame.last_click = None;
 			return false;

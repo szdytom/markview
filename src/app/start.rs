@@ -1,16 +1,15 @@
-//! Workspace history and cancellable file matching for the start page.
-use super::{App, Event, SendEvent};
-use markview_layout::text_input::TextInput;
-use nucleo_matcher::{
-	Config, Matcher, Utf32String,
-	pattern::{CaseMatching, Normalization, Pattern},
+//! Workspace history and shared asynchronous file-search orchestration.
+use super::{
+	App, Event, SendEvent,
+	file_search::{File, Snippet, find},
 };
+use markview_layout::text_input::TextInput;
+use nucleo_matcher::{Config, Matcher};
 use serde::{Deserialize, Serialize};
 use std::{
 	collections::HashMap,
 	fs,
 	io::Write,
-	ops::Range,
 	path::{Path, PathBuf},
 	sync::{
 		Arc, Condvar, Mutex,
@@ -18,87 +17,8 @@ use std::{
 	},
 	time::{SystemTime, UNIX_EPOCH},
 };
-use unicode_segmentation::UnicodeSegmentation;
 
 const RECENTS: usize = 8;
-const RESULTS: usize = 64;
-
-#[derive(Debug)]
-pub(super) struct File {
-	pub id: usize,
-	pub name: Arc<str>,
-	pub parent: Arc<str>,
-	text: Utf32String,
-	depth: usize,
-}
-impl File {
-	pub fn new(id: usize, root: &Path, path: &Path) -> Arc<Self> {
-		let relative = path.strip_prefix(root).unwrap();
-		Arc::new(Self {
-			id,
-			name: path.file_name().unwrap().to_string_lossy().as_ref().into(),
-			parent: relative
-				.parent()
-				.unwrap()
-				.to_string_lossy()
-				.as_ref()
-				.into(),
-			text: relative
-				.to_string_lossy()
-				.replace('\\', "/")
-				.as_str()
-				.into(),
-			depth: relative.components().count(),
-		})
-	}
-	fn relative(&self) -> String {
-		if self.parent.is_empty() {
-			self.name.to_string()
-		} else {
-			format!("{}/{}", self.parent, self.name).replace('\\', "/")
-		}
-	}
-}
-
-#[derive(Debug)]
-pub(super) struct Snippet {
-	pub text: String,
-	/// UTF-8 byte ranges covering whole matched graphemes.
-	pub matched: Vec<Range<usize>>,
-}
-impl Snippet {
-	fn new(path: &str, indices: &[u32]) -> Self {
-		let graphemes: Vec<_> = path.graphemes(true).collect();
-		let start = (indices[0] as usize).saturating_sub(6);
-		let end = (indices.last().unwrap() + 13) as usize;
-		let end = end.min(graphemes.len()).min(start + 96);
-		let mut text = if start > 0 {
-			"…".into()
-		} else {
-			String::new()
-		};
-		let mut matched: Vec<Range<usize>> = Vec::new();
-		for (index, grapheme) in
-			graphemes.iter().enumerate().take(end).skip(start)
-		{
-			let byte = text.len();
-			text.push_str(grapheme);
-			if indices.binary_search(&(index as u32)).is_ok() {
-				if let Some(previous) = matched.last_mut()
-					&& previous.end == byte
-				{
-					previous.end = text.len();
-				} else {
-					matched.push(byte..text.len());
-				}
-			}
-		}
-		if end < graphemes.len() {
-			text.push('…');
-		}
-		Self { text, matched }
-	}
-}
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub(super) struct Recent {
@@ -124,6 +44,9 @@ pub(super) struct State {
 	writer: Arc<Mutex<()>>,
 }
 impl State {
+	pub fn has_files(&self) -> bool {
+		!self.catalog.is_empty()
+	}
 	pub fn load(path: Option<PathBuf>) -> Self {
 		let recent = path
 			.as_ref()
@@ -207,7 +130,6 @@ pub(super) struct Result {
 	matches: Arc<[Arc<File>]>,
 	snippets: HashMap<usize, Snippet>,
 }
-type Matches = (Arc<[Arc<File>]>, HashMap<usize, Snippet>);
 type Inbox = crate::mailbox::Inbox<Request>;
 struct Worker {
 	inbox: Arc<(Mutex<Inbox>, Condvar)>,
@@ -285,90 +207,35 @@ impl Drop for Worker {
 	}
 }
 
-fn find(
-	matcher: &mut Matcher,
-	catalog: &[Arc<File>],
-	query: &str,
-	cancelled: impl Fn() -> bool,
-) -> Option<Matches> {
-	let query = query.replace('\\', "/");
-	let pattern = Pattern::new(
-		&query,
-		CaseMatching::Ignore,
-		Normalization::Smart,
-		nucleo_matcher::pattern::AtomKind::Fuzzy,
-	);
-	let mut scored = Vec::new();
-	for (index, file) in catalog.iter().enumerate() {
-		if index % 128 == 0 && cancelled() {
-			return None;
-		}
-		if let Some(score) = pattern.score(file.text.slice(..), matcher) {
-			scored.push((score, index));
-		}
-	}
-	let order = |a: &(u32, usize), b: &(u32, usize)| {
-		b.0.cmp(&a.0)
-			.then_with(|| catalog[a.1].depth.cmp(&catalog[b.1].depth))
-			.then_with(|| catalog[a.1].name.cmp(&catalog[b.1].name))
-			.then_with(|| a.1.cmp(&b.1))
-	};
-	let limit = if query.trim().is_empty() { 3 } else { RESULTS };
-	if scored.len() > limit {
-		scored.select_nth_unstable_by(limit, order);
-		scored.truncate(limit);
-	}
-	scored.sort_unstable_by(order);
-	let mut matches = Vec::with_capacity(scored.len());
-	let mut snippets = HashMap::new();
-	let mut indices = Vec::new();
-	for (_, index) in scored {
-		if cancelled() {
-			return None;
-		}
-		let file = &catalog[index];
-		if !query.trim().is_empty() {
-			indices.clear();
-			pattern
-				.indices(file.text.slice(..), matcher, &mut indices)
-				.unwrap();
-			indices.sort_unstable();
-			indices.dedup();
-			let name_start =
-				file.text.len() - file.name.graphemes(true).count();
-			let snippet = if indices[0] as usize >= name_start {
-				for index in &mut indices {
-					*index -= name_start as u32;
-				}
-				Snippet::new(&file.name, &indices)
-			} else {
-				Snippet::new(&file.relative(), &indices)
-			};
-			snippets.insert(file.id, snippet);
-		}
-		matches.push(file.clone());
-	}
-	Some((matches.into(), snippets))
-}
-
 impl<P: SendEvent> App<P> {
 	pub(super) fn refresh_start_files(&mut self) {
-		let Some(tree) = &self.folder.tree else {
-			return;
-		};
+		let tree = self.folder.tree.as_ref();
+		let root = tree.map(|tree| tree.root.clone());
+		let catalog = super::file_search::catalog(
+			tree.into_iter()
+				.flat_map(|tree| tree.entries.iter())
+				.filter_map(|entry| entry.file.clone()),
+			self.readers.entries().iter().map(|tab| tab.path.as_path()),
+		);
 		let state = &mut self.folder.start;
-		if state.root.as_ref() != Some(&tree.root) {
-			state.root = Some(tree.root.clone());
+		let changed_root = state.root != root;
+		if changed_root {
+			state.root = root;
 			state.input.set_text(&mut self.ui, "");
 			state.scroll = 0.0;
 			state.matches = Arc::default();
 			state.snippets.clear();
 		}
-		state.catalog = tree
-			.entries
-			.iter()
-			.filter_map(|entry| entry.file.clone())
-			.collect();
+		if !changed_root
+			&& state
+				.catalog
+				.iter()
+				.map(|file| (file.id, &file.path))
+				.eq(catalog.iter().map(|file| (file.id, &file.path)))
+		{
+			return;
+		}
+		state.catalog = catalog;
 		self.start_search_changed();
 	}
 	pub(super) fn start_search_changed(&mut self) {
@@ -381,6 +248,7 @@ impl<P: SendEvent> App<P> {
 			worker.submit(state.catalog.clone(), state.input.text().to_owned());
 		state.pending = true;
 		state.scroll = 0.0;
+		self.interaction.overlays.quick_open.reset();
 		self.redraw();
 	}
 	pub(super) fn start_files_ready(&mut self, result: Result) {
@@ -390,6 +258,7 @@ impl<P: SendEvent> App<P> {
 		self.folder.start.pending = false;
 		self.folder.start.matches = result.matches;
 		self.folder.start.snippets = result.snippets;
+		self.interaction.overlays.quick_open.reset();
 		let scope = crate::state::Command::Chrome(
 			crate::state::ChromeCommand::StartFile(0),
 		)
@@ -409,14 +278,21 @@ impl<P: SendEvent> App<P> {
 		}
 	}
 	pub(super) fn open_start_file(&mut self, id: usize) {
-		if let Some(file) = self
-			.folder
-			.tree
-			.as_ref()
-			.and_then(|tree| tree.entries.get(id))
-			.filter(|entry| !entry.directory)
+		let Some(file) =
+			self.folder.start.matches.iter().find(|file| file.id == id)
+		else {
+			return;
+		};
+		let path = file.path.clone();
+		if let Some(index) = self
+			.readers
+			.entries()
+			.iter()
+			.position(|tab| tab.path == path)
 		{
-			self.open(file.path.clone());
+			self.select_tab(index);
+		} else {
+			self.open(path);
 		}
 	}
 	pub(super) fn scroll_start(&mut self, delta: f32) -> bool {
@@ -579,6 +455,72 @@ mod tests {
 	}
 
 	#[test]
+	fn quick_open_searches_open_tabs_with_and_without_a_workspace() {
+		use crate::state::{DocumentCommand, TextField};
+		use winit::keyboard::{Key, NamedKey};
+		let dir = tempfile::tempdir().unwrap();
+		let root = dir.path().canonicalize().unwrap();
+		fs::create_dir(root.join("workspace")).unwrap();
+		for name in ["outside.md", "another.md", "workspace/inside.md"] {
+			fs::write(root.join(name), "# Note").unwrap();
+		}
+		let (tx, events) = mpsc::channel();
+		let mut app = App::new(
+			LaunchOptions {
+				mode: Mode::Smoke,
+				options: crate::test_support::options(),
+				..Default::default()
+			},
+			Proxy(tx),
+		);
+		app.ui = crate::test_support::shaper();
+		app.open(root.join("outside.md"));
+		app.open(root.join("another.md"));
+		app.action(Command::Document(DocumentCommand::NewPage));
+		assert!(app.folder.root().is_none());
+		assert!(app.input_geometry(TextField::Files).is_some());
+		app.open_quick_open();
+		settle(&mut app, &events, |app| !app.folder.start.pending);
+		assert_eq!(app.folder.start.matches.len(), 2);
+		app.folder.start.input.set_text(&mut app.ui, "outside");
+		app.start_search_changed();
+		settle(&mut app, &events, |app| !app.folder.start.pending);
+		assert_eq!(app.folder.start.matches.len(), 1);
+		app.key_pressed(&Key::Named(NamedKey::Enter));
+		assert_eq!(app.readers.session.path, Some(root.join("outside.md")));
+		assert_eq!(app.readers.entries().len(), 2);
+
+		app.folder_loaded(
+			0,
+			false,
+			crate::app::folder::Tree::read(root.join("workspace")),
+		);
+		app.open_quick_open();
+		settle(&mut app, &events, |app| !app.folder.start.pending);
+		assert_eq!(app.folder.start.catalog.len(), 3);
+		for query in ["inside", "outside", "outside"] {
+			app.folder.start.input.set_text(&mut app.ui, query);
+			app.start_search_changed();
+			settle(&mut app, &events, |app| !app.folder.start.pending);
+			assert_eq!(app.folder.start.matches.len(), 1);
+			let path = app.folder.start.matches[0].path.clone();
+			app.key_pressed(&Key::Named(NamedKey::Enter));
+			assert_eq!(app.readers.session.path, Some(path));
+			assert_eq!(app.readers.entries().len(), 3);
+			app.open_quick_open();
+			settle(&mut app, &events, |app| !app.folder.start.pending);
+			assert_eq!(app.folder.start.catalog.len(), 3);
+		}
+		app.close_quick_open();
+		let outside = app.readers.find(&root.join("outside.md")).unwrap();
+		app.close_tab(outside);
+		app.open_quick_open();
+		settle(&mut app, &events, |app| !app.folder.start.pending);
+		assert!(app.folder.start.matches.is_empty());
+		assert_eq!(app.folder.start.catalog.len(), 2);
+	}
+
+	#[test]
 	fn history_keeps_a_bounded_unique_recent_order_and_survives_restart() {
 		let dir = tempfile::tempdir().unwrap();
 		let path = dir.path().join("workspaces.json");
@@ -616,67 +558,101 @@ mod tests {
 	}
 
 	#[test]
-	fn match_snippets_preserve_graphemes_and_skip_long_unmatched_prefixes() {
-		let root = Path::new("workspace");
-		let mut matcher = Matcher::new(Config::DEFAULT.match_paths());
-		for (name, query, expected) in [
-			("cafe\u{301}-notes.md", "cafe", "cafe\u{301}"),
-			("阅读-notes.md", "阅读", "阅读"),
-			("CHANGELOG.md", "chlg", "CHLG"),
-		] {
-			let file = File::new(
-				0,
-				root,
-				&root
-					.join("a-long-unmatched-parent-directory/nested")
-					.join(name),
-			);
-			let (_, snippets) =
-				find(&mut matcher, &[file], query, || false).unwrap();
-			let snippet = &snippets[&0];
-			assert!(!snippet.text.contains("unmatched-parent"));
-			let matched = snippet
-				.matched
-				.iter()
-				.map(|range| &snippet.text[range.clone()])
-				.collect::<String>();
-			assert_eq!(matched, expected);
-			assert!(snippet.text.graphemes(true).count() <= 98);
+	fn quick_open_shares_workspace_results_scrolls_selection_and_opens_a_file()
+	{
+		use crate::state::TextField;
+		use winit::keyboard::{Key, ModifiersState, NamedKey};
+		let dir = tempfile::tempdir().unwrap();
+		for index in 0..20 {
+			fs::write(dir.path().join(format!("note-{index:02}.md")), "# Note")
+				.unwrap();
 		}
-	}
+		let (tx, events) = mpsc::channel();
+		let mut app = App::new(
+			LaunchOptions {
+				mode: Mode::Smoke,
+				options: crate::test_support::options(),
+				..Default::default()
+			},
+			Proxy(tx),
+		);
+		app.ui = crate::test_support::shaper();
+		app.folder_loaded(
+			0,
+			false,
+			crate::app::folder::Tree::read(dir.path().into()),
+		);
+		settle(&mut app, &events, |app| !app.folder.start.pending);
+		app.folder.start.input.set_text(&mut app.ui, "note");
+		app.start_search_changed();
+		settle(&mut app, &events, |app| !app.folder.start.pending);
+		let matches = app.folder.start.matches.clone();
+		app.open_start_file(matches[0].id);
+		app.interaction.pointer.set_modifiers(
+			if markview_platform::command_key() {
+				ModifiersState::SUPER
+			} else {
+				ModifiersState::CONTROL
+			},
+		);
+		assert!(app.quick_open_shortcut(&Key::Character("p".into())));
+		app.interaction
+			.pointer
+			.set_modifiers(ModifiersState::empty());
+		assert_eq!(app.focused_input(), Some(TextField::Files));
+		assert!(Arc::ptr_eq(&matches, &app.folder.start.matches));
+		assert_eq!(app.folder.start.snippets.len(), 20);
+		assert!(app.input_geometry(TextField::Files).is_some());
+		assert!(app.input_geometry(TextField::Url).is_none());
+		let query = app.folder.start.input.text().to_owned();
+		for _ in 0..12 {
+			assert!(app.key_pressed(&Key::Named(NamedKey::ArrowDown)));
+		}
+		assert_eq!(app.interaction.overlays.quick_open.selected(), 12);
+		assert!(app.interaction.overlays.quick_open.scroll() > 0.0);
+		assert_eq!(app.folder.start.input.text(), query);
+		let id = matches[12].id;
+		app.overlay();
+		let rows = &app.controls.as_ref().unwrap().widgets;
+		assert!(rows.iter().any(|widget| widget.message
+			== Command::Chrome(ChromeCommand::StartFile(id))));
+		assert!(rows.iter().all(|widget| matches!(
+			widget.message,
+			Command::Chrome(
+				ChromeCommand::StartFile(_)
+					| ChromeCommand::FocusInput(TextField::Files)
+			)
+		)));
+		assert!(app.key_pressed(&Key::Named(NamedKey::Enter)));
+		assert_eq!(
+			app.readers.session.path.as_ref().unwrap(),
+			&dir.path().join("note-12.md")
+		);
+		assert!(!app.interaction.overlays.quick_open.open());
+		assert!(app.input_geometry(TextField::Files).is_none());
 
-	#[test]
-	#[ignore = "manual file matching performance measurement"]
-	fn workspace_search_performance() {
-		let root = Path::new("workspace");
-		let started = Instant::now();
-		let files: Vec<_> = (0..100_000)
-			.map(|index| {
-				File::new(
-					index,
-					root,
-					&root.join(format!(
-						"docs/group-{}/reading-{index}.md",
-						index % 100
-					)),
-				)
-			})
-			.collect();
-		eprintln!("Prepare 100000 paths: {:?}", started.elapsed());
-		let mut matcher = Matcher::new(Config::DEFAULT.match_paths());
-		for query in
-			["", "r", "read", "group-19", "read99999", "no_match_at_all"]
-		{
-			let started = Instant::now();
-			let (result, _) =
-				find(&mut matcher, &files, query, || false).unwrap();
-			eprintln!(
-				"{query:?}: {:?}, {} results",
-				started.elapsed(),
-				result.len()
-			);
-			assert!(result.len() <= RESULTS);
-		}
-		assert!(find(&mut matcher, &files, "read", || true).is_none());
+		app.open_quick_open();
+		let opened = app.readers.session.path.clone();
+		app.folder.start.input.set_text(&mut app.ui, "no-such-note");
+		app.start_search_changed();
+		app.key_pressed(&Key::Named(NamedKey::Enter));
+		assert_eq!(app.readers.session.path, opened);
+		assert!(app.interaction.overlays.quick_open.open());
+		settle(&mut app, &events, |app| !app.folder.start.pending);
+		assert!(app.folder.start.matches.is_empty());
+		assert_eq!(app.interaction.overlays.quick_open.selected(), 0);
+		app.key_pressed(&Key::Named(NamedKey::Enter));
+		assert!(app.interaction.overlays.quick_open.open());
+		app.key_pressed(&Key::Named(NamedKey::Escape));
+		assert!(!app.interaction.overlays.quick_open.open());
+		assert_eq!(app.readers.session.path, opened);
+
+		app.open_quick_open();
+		app.interaction.pointer.move_to((5.0, 300.0));
+		app.pointer_pressed();
+		assert!(!app.interaction.overlays.quick_open.open());
+		assert!(app.interaction.widgets.captured.is_none());
+		app.pointer_released();
+		assert_eq!(app.readers.session.path, opened);
 	}
 }

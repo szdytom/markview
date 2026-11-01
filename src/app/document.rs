@@ -219,6 +219,7 @@ impl<P: super::SendEvent> App<P> {
 		self.clear_input_focus();
 		self.worker.cancel();
 		self.readers.open(path, Instant::now());
+		self.refresh_start_files();
 		self.readers.session.security = security;
 		self.readers.session.web_loading = web_loading;
 		self.readers.session.layout_pending = true;
@@ -247,6 +248,7 @@ impl<P: super::SendEvent> App<P> {
 		self.tab_strip.cancel_drag();
 		self.tab_strip.reveal_active = false;
 		self.readers.new_page(Instant::now());
+		self.refresh_start_files();
 		self.interaction.overlays.viewer.send(ViewerMessage::Close);
 		self.worker.cancel();
 		self.restore_search();
@@ -332,6 +334,7 @@ impl<P: super::SendEvent> App<P> {
 		let origin = self.readers.session_mut(index).security.origin.clone();
 		self.dismiss_preview();
 		let result = self.readers.close(index, Instant::now());
+		self.refresh_start_files();
 		// A watched export belongs to the document and origin that chose it.
 		if self.export.watches_document(&closed, &origin) {
 			self.export.disarm_watch();

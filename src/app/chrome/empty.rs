@@ -17,7 +17,8 @@ pub(in crate::app) struct View<'a> {
 }
 impl View<'_> {
 	fn workspace(self) -> bool {
-		self.browser.is_some_and(|browser| browser.root().is_some())
+		self.browser
+			.is_some_and(|browser| browser.file_search_available())
 	}
 	fn rows(self) -> usize {
 		self.browser.map_or(0, |browser| {
@@ -382,12 +383,12 @@ fn draw_workspace(
 	lang: Lang,
 ) {
 	if let Some(browser) = view.browser
-		&& browser.root().is_some()
+		&& browser.file_search_available()
 	{
 		let name = browser
 			.tree
 			.as_ref()
-			.map_or(lang.empty_local_workspace(), |tree| tree.name.as_str());
+			.map_or(lang.quick_open_tabs(), |tree| tree.name.as_str());
 		label(
 			ui,
 			out,
@@ -474,7 +475,7 @@ fn draw_open(
 	);
 }
 
-fn draw_row(
+pub(super) fn draw_row(
 	ui: &mut TextShaper,
 	out: &mut Vec<Draw>,
 	interaction: &crate::app::widgets::Drawn<'_>,
@@ -592,7 +593,7 @@ fn draw_row(
 fn draw_snippet(
 	ui: &mut TextShaper,
 	out: &mut Vec<Draw>,
-	snippet: &start::Snippet,
+	snippet: &crate::app::file_search::Snippet,
 	(x, y, width): (f32, f32, f32),
 ) {
 	let appearance = ui_appearance(ui);
@@ -853,7 +854,7 @@ mod tests {
 		for (text, matched) in
 			[("docs/README.md", 5..9), ("docs/阅读.md", 5..11)]
 		{
-			let snippet = start::Snippet {
+			let snippet = crate::app::file_search::Snippet {
 				text: text.into(),
 				matched: std::iter::once(matched).collect(),
 			};
@@ -908,7 +909,7 @@ mod tests {
 				let id = browser.start.matches[0].id;
 				browser.start.snippets.insert(
 					id,
-					start::Snippet {
+					crate::app::file_search::Snippet {
 						text: "README.md".into(),
 						matched: std::iter::once(0..4).collect(),
 					},

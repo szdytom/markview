@@ -12,6 +12,7 @@ use super::viewer::Viewer;
 /// The overlay models; a new overlay adds one field here.
 #[derive(Default)]
 pub(crate) struct Model {
+	pub(crate) quick_open: super::quick_open::Model,
 	pub(crate) outline: super::outline::Model,
 	pub(crate) modal: super::modal::Model,
 	pub(crate) dropdown: super::dropdown::Model,

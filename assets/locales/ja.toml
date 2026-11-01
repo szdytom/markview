@@ -332,3 +332,8 @@ empty_recent_now = "たった今"
 empty_recent_hours = "{count} 時間前"
 empty_recent_days = "{count} 日前"
 empty_local_workspace = "ローカルワークスペース"
+
+# The floating workspace file picker.
+quick_open_hint = "選択 · Enter 開く · Esc 閉じる"
+quick_open_no_workspace = "フォルダーを開いてファイルを検索します。"
+quick_open_tabs = "開いているファイル"

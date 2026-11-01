@@ -330,3 +330,8 @@ empty_recent_now = "刚刚"
 empty_recent_hours = "{count} 小时前"
 empty_recent_days = "{count} 天前"
 empty_local_workspace = "本地工作区"
+
+# The floating workspace file picker.
+quick_open_hint = "选择 · 回车打开 · Esc 关闭"
+quick_open_no_workspace = "打开文件夹以搜索其中的文件。"
+quick_open_tabs = "已打开的文件"
