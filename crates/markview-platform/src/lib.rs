@@ -274,7 +274,7 @@ pub fn pick_folder(
 	#[cfg(not(target_os = "android"))]
 	std::thread::spawn(move || done(rfd::FileDialog::new().pick_folder()));
 	#[cfg(target_os = "android")]
-	android::pick_document(done);
+	android::pick_folder(done);
 }
 
 pub fn pick_document(

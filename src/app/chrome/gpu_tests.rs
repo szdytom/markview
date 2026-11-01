@@ -1875,17 +1875,39 @@ fn redesigned_chrome_frames() -> Result<()> {
 					let input_draws = if page == "empty" {
 						let buttons = empty::buttons(
 							&mut ui,
-							width,
-							height,
+							empty::View {
+								rect: Rect {
+									x: 0.0,
+									y: TOP,
+									w: width,
+									h: height - TOP - BOTTOM,
+								},
+								phone: width < 600.0,
+								browser: None,
+							},
 							settings.lang(),
 						);
-						markview_layout::text_input::TextInput::default().draw(
-							&mut ui,
-							buttons[1].rect,
-							false,
-							false,
-							settings.lang().empty_url_placeholder(),
-						)
+						buttons
+							.iter()
+							.find(|b| {
+								b.action
+									== Command::Chrome(
+										ChromeCommand::FocusInput(
+											crate::state::TextField::Url,
+										),
+									)
+							})
+							.map_or_else(Vec::new, |button| {
+								markview_layout::text_input::TextInput::default(
+								)
+								.draw(
+									&mut ui,
+									button.rect,
+									false,
+									false,
+									settings.lang().empty_url_placeholder(),
+								)
+							})
 					} else {
 						Vec::new()
 					};

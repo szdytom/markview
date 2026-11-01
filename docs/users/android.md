@@ -8,7 +8,10 @@ same native typography, settings, fonts, themes and image cache as the desktop r
 
 ## Read and customize
 
-Tap **Open** to choose a file or a folder. Folder imports preserve relative
+On the start page, tap **Open file…** or **Open folder…** to go directly to the
+corresponding system picker. Recent workspaces reopen imported folders; with a
+workspace open, Quick access searches its files by name or relative path.
+Folder imports preserve relative
 images and Markdown links; `README.md` is preferred as the first document.
 The left file tree shows every Markdown document and its subfolders. Tap a
 file to switch documents, and use the folder icon to reopen the tree on a

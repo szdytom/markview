@@ -192,6 +192,7 @@ impl<P: super::SendEvent> App<P> {
 				self.settings_loaded(*completion)
 			}
 			Event::SearchReady(result) => self.search_ready(result),
+			Event::FilesReady(result) => self.start_files_ready(result),
 			Event::ImageSelected {
 				document,
 				revision,

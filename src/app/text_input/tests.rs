@@ -470,6 +470,98 @@ fn empty_page_url_input_accepts_text_and_submits_with_enter() {
 }
 
 #[test]
+fn focused_start_inputs_stop_revealing_at_the_scroll_limit() {
+	use crate::app::{chrome::empty, folder};
+	let dir = tempfile::tempdir().unwrap();
+	std::fs::write(dir.path().join("README.md"), "# Reading").unwrap();
+	let mut browser = folder::Browser::default();
+	browser.tree = Some(folder::Tree::read(dir.path().into()).unwrap());
+	browser.start.matches = browser
+		.tree
+		.as_ref()
+		.unwrap()
+		.entries
+		.iter()
+		.filter_map(|entry| entry.file.clone())
+		.collect();
+	for id in [TextField::Files, TextField::Url] {
+		for height in [180.0, 240.0, 350.0] {
+			browser.start.scroll = 0.0;
+			let geometry = |browser: &folder::Browser| {
+				empty::geometry(empty::View {
+					rect: Rect {
+						x: 0.0,
+						y: 40.0,
+						w: 360.0,
+						h: height,
+					},
+					phone: true,
+					browser: Some(browser),
+				})
+			};
+			let input = |g: &empty::Geometry| {
+				if id == TextField::Files {
+					g.search
+				} else {
+					g.url
+				}
+			};
+			let before = geometry(&browser);
+			browser.start.scroll =
+				start_input_scroll(&before, input(&before), id).unwrap();
+			let after = geometry(&browser);
+			assert_eq!(start_input_scroll(&after, input(&after), id), None);
+			assert!(after.scroll <= after.max_scroll);
+		}
+	}
+}
+
+#[test]
+fn workspace_search_ime_commit_filters_and_enter_opens_a_local_file() {
+	let dir = tempfile::tempdir().unwrap();
+	let path = dir.path().join("阅读.md");
+	std::fs::write(&path, "# 阅读").unwrap();
+	let mut app = app();
+	app.show_panel(PanelPage::Closed);
+	app.folder_loaded(
+		0,
+		false,
+		crate::app::folder::Tree::read(dir.path().into()),
+	);
+	app.action(Command::Chrome(ChromeCommand::FocusInput(TextField::Files)));
+	assert_eq!(app.text_input.focused, Some(TextField::Files));
+	app.scroll_by(0.0);
+	assert_eq!(app.text_input.focused, Some(TextField::Files));
+	app.folder.start.pending = false;
+	event(
+		&mut app,
+		WindowEvent::Ime(Ime::Preedit("yue".into(), Some((3, 3)))),
+	);
+	assert!(!app.folder.start.pending);
+	assert!(app.folder.start.input.is_composing());
+	event(&mut app, WindowEvent::Ime(Ime::Commit("阅读".into())));
+	assert_eq!(app.folder.start.input.text(), "阅读");
+	assert!(app.folder.start.pending);
+	assert!(!app.folder.start.input.is_composing());
+	app.folder.start.matches = app
+		.folder
+		.tree
+		.as_ref()
+		.unwrap()
+		.entries
+		.iter()
+		.filter_map(|entry| entry.file.clone())
+		.collect();
+	app.folder.start.pending = false;
+	assert_eq!(
+		app.input_key(&Key::Named(NamedKey::Enter), None),
+		Outcome::Consumed
+	);
+	assert_eq!(app.readers.session.path, Some(path));
+	assert!(app.input_geometry(TextField::Files).is_none());
+}
+
+#[test]
 fn empty_page_link_button_and_focus_follow_page_visibility() {
 	let mut app = app();
 	app.show_panel(PanelPage::Closed);

@@ -660,11 +660,17 @@ impl<P: super::SendEvent> App<P> {
 		LINE_STEP * self.scroll_speed()
 	}
 	pub(super) fn scroll_by(&mut self, dy: f32) {
+		if self.scroll_start(dy) {
+			return;
+		}
 		self.readers.session.scroll_by(dy, self.viewport());
 		self.after_scroll();
 	}
 	/// A discrete scroll step, eased to its destination.
 	pub(super) fn scroll_step(&mut self, dy: f32) {
+		if self.scroll_start(dy) {
+			return;
+		}
 		if eases(dy) {
 			self.readers.session.animate_scroll_by(dy, Instant::now());
 		} else {
@@ -674,6 +680,9 @@ impl<P: super::SendEvent> App<P> {
 	}
 	/// A wheel travel, eased like a discrete step.
 	pub(super) fn scroll_wheel(&mut self, dy: f32) {
+		if self.scroll_start(dy) {
+			return;
+		}
 		if eases(dy) {
 			self.readers.session.animate_wheel_by(dy, Instant::now());
 		} else {
@@ -683,6 +692,9 @@ impl<P: super::SendEvent> App<P> {
 	}
 	/// A wheel travel from a high-resolution device, which arrives in packets.
 	pub(super) fn scroll_wheel_packet(&mut self, dy: f32) {
+		if self.scroll_start(dy) {
+			return;
+		}
 		if eases(dy) {
 			self.readers.session.coast_wheel_by(dy, Instant::now());
 		} else {
@@ -694,6 +706,13 @@ impl<P: super::SendEvent> App<P> {
 	/// zero; the end is only a number once the snapshot is complete, and until
 	/// then the existing infinite target waits for the final height.
 	pub(super) fn scroll_bound(&mut self, to_end: bool) {
+		if self.scroll_start(if to_end {
+			f32::INFINITY
+		} else {
+			f32::NEG_INFINITY
+		}) {
+			return;
+		}
 		let destination = if to_end {
 			(self.readers.session.snapshot_complete
 				&& !self.readers.session.layout_pending)

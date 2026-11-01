@@ -112,6 +112,8 @@ pub(crate) enum ExportCommand {
 pub(crate) enum ChromeCommand {
 	FocusInput(TextField),
 	OpenFolder,
+	RecentWorkspace(usize),
+	StartFile(usize),
 	Folder,
 	FolderEntry(usize),
 	FolderRefresh,

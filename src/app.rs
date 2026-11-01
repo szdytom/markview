@@ -32,6 +32,7 @@ mod settings_load;
 mod settings_panel;
 pub(crate) mod sidebar;
 mod single_instance;
+mod start;
 mod status;
 mod style_edit;
 mod surface;
@@ -106,6 +107,7 @@ enum Event {
 	FrameFeedback,
 	Ready(Box<Update>),
 	SearchReady(search::Result),
+	FilesReady(start::Result),
 	Parsed {
 		path: PathBuf,
 		content_version: u64,
@@ -270,6 +272,7 @@ struct App<P = EventLoopProxy<Event>> {
 	renderer: Option<Renderer>,
 	worker: Worker,
 	search_worker: search::Worker,
+	start_worker: Option<start::Worker>,
 	watch: Option<FileWatch>,
 	_settings_watch: Option<FileWatch>,
 	_styles_watch: Option<FileWatch>,
@@ -381,6 +384,12 @@ impl<P: SendEvent> App<P> {
 			})
 		});
 
+		let mut folder = folder::Browser::default();
+		folder.start = start::State::load(
+			preferences
+				.path()
+				.map(|path| path.with_file_name("workspaces.json")),
+		);
 		Self {
 			surface_insets: [0.0; 4],
 			frame: frame::State::new(preferences.values.window_layout),
@@ -391,7 +400,7 @@ impl<P: SendEvent> App<P> {
 			controls: None,
 			gestures: gestures::GestureState::default(),
 			readers: tabs::Tabs::default(),
-			folder: Default::default(),
+			folder,
 			tab_strip: Default::default(),
 			tab_metrics: Default::default(),
 			preview: Default::default(),
@@ -411,6 +420,7 @@ impl<P: SendEvent> App<P> {
 			renderer: None,
 			worker,
 			search_worker,
+			start_worker: None,
 			watch: None,
 			_settings_watch: settings_watch,
 			_styles_watch: styles_watch,

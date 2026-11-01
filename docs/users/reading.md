@@ -2,6 +2,17 @@
 
 [User documentation](README.md) · [Documentation](../README.md)
 
+The start page has separate **Open file…** and **Open folder…** actions. When no
+workspace is open, **Recent workspaces** reopens a previously used folder in one
+click. With a workspace open, **Quick access** finds its files by name or relative
+path using fuzzy matching; press Enter to open the first result. Search results
+show a nearby filename or path fragment with matching characters in bold. The search reuses
+the folder tree and follows its exclusions. Recent workspace history is retained
+even when restoring the last browsing session is disabled.
+
+Wide windows use two columns. Phones and narrow windows stack the opening actions,
+workspace list and web-reading input; scroll to reach content below the viewport.
+
 | Keys | Action |
 |:--|:--|
 | `Ctrl+O` | Open a file |

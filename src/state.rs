@@ -33,6 +33,7 @@ pub(crate) use markview_selection::{
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum TextField {
 	Url,
+	Files,
 	Search,
 	ExportTitle,
 }

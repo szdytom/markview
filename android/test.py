@@ -104,7 +104,7 @@ def main():
     (artifacts / "integration.txt").write_text(report)
     print(report)
     success = result.returncode == 0 and "MARKVIEW_ANDROID_INTEGRATION_OK" in report
-    screenshots = ["reader", "dark-reader", "mermaid-dark", "settings", "fonts", "font-choices", "dark-styles", "diagnostics", "search", "resumed", "folder"] + (["tab-drawer", "tab-drawer-light"] if args.layout == "phone" else ["tablet-tabs", "landscape", "landscape-settings"])
+    screenshots = ["reader", "dark-reader", "mermaid-dark", "settings", "fonts", "font-choices", "dark-styles", "diagnostics", "search", "resumed", "folder", "start-search"] + (["tab-drawer", "tab-drawer-light"] if args.layout == "phone" else ["tablet-tabs", "landscape", "landscape-settings"])
     if args.mermaid_only:
         screenshots = ["mermaid-light", "mermaid-dark"]
     if args.layout_only:

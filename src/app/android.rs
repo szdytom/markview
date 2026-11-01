@@ -83,6 +83,11 @@ impl<P: super::SendEvent> App<P> {
 			"backend":self.renderer.as_ref().map(|r|format!("{:?}",r.backend)),
 			"status":self.status.message()
 		});
+		snapshot["file_query"] =
+			serde_json::json!(self.folder.start.input.text());
+		snapshot["file_search_pending"] =
+			serde_json::json!(self.folder.start.pending);
+
 		snapshot["folder_show_excluded"] = self
 			.folder
 			.tree

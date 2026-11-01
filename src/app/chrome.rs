@@ -2,7 +2,7 @@
 use crate::state::{ChromeCommand, DocumentCommand, SettingsCommand};
 pub(super) mod components;
 mod controls;
-mod empty;
+pub(in crate::app) mod empty;
 mod export;
 use super::font_panel::view as fonts;
 pub(in crate::app) mod folder;
@@ -372,6 +372,7 @@ impl<'a> Chrome<'a> {
 		})
 	}
 
+	#[cfg(test)]
 	pub(super) fn buttons(&mut self) -> Vec<Button> {
 		let form = self.form();
 		self.buttons_for(form.as_ref())
@@ -513,6 +514,13 @@ impl<'a> Chrome<'a> {
 	}
 
 	/// The document controls cannot receive input through the folder overlay.
+	pub(super) fn start_geometry(&self) -> empty::Geometry {
+		empty::geometry(empty::View {
+			rect: self.reading_clip(),
+			phone: self.session.strip.phone,
+			browser: self.session.folder,
+		})
+	}
 	fn reading_clip(&self) -> Rect {
 		let left = self
 			.session
@@ -569,19 +577,19 @@ impl<'a> Chrome<'a> {
 		{
 			// Each `Open` control has its own identity and geometry.
 			let clip = self.reading_clip();
+			let view = empty::View {
+				rect: clip,
+				phone: self.session.strip.phone,
+				browser: self.session.folder,
+			};
 			buttons.extend(
-				empty::buttons(
-					self.ui,
-					width,
-					height,
-					self.settings.model.lang(),
-				)
-				.into_iter()
-				.filter_map(|mut button| {
-					button.rect.intersect(clip)?;
-					button.clip = Some(clip);
-					Some(button)
-				}),
+				empty::buttons(self.ui, view, self.settings.model.lang())
+					.into_iter()
+					.filter_map(|mut button| {
+						button.rect.intersect(clip)?;
+						button.clip = Some(clip);
+						Some(button)
+					}),
 			);
 		}
 
@@ -936,11 +944,15 @@ impl<'a> Chrome<'a> {
 	fn draw_document_status(&mut self, out: &mut Vec<Draw>) {
 		let (width, height) = (self.frame.width, self.frame.height);
 		if self.session.doc.path.is_none() {
+			let view = empty::View {
+				rect: self.reading_clip(),
+				phone: self.session.strip.phone,
+				browser: self.session.folder,
+			};
 			out.extend(empty::draw(
 				self.ui,
 				&self.interaction,
-				width,
-				height,
+				view,
 				self.settings.model.lang(),
 			));
 		} else if self.session.doc.snapshot.blocks.is_empty()

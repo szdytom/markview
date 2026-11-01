@@ -23,6 +23,7 @@ at the same level, without `[brackets]`.
 
 ### Added
 
+- Redesign the start page for desktop and mobile with direct file and folder opening, recent workspaces, and asynchronous fuzzy file search with bold match snippets.
 - Update folder trees automatically, preserve browsing state on refresh, and offer on-demand browsing of excluded entries.
 - Support tapping images to open the touch image viewer and pinching to zoom it.
 - Document installing the `markview` command from source with `cargo install --git`.

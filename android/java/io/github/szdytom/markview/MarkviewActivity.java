@@ -1,7 +1,6 @@
 package io.github.szdytom.markview;
 
 import android.app.NativeActivity;
-import android.app.AlertDialog;
 import android.content.ClipData;
 import android.content.ClipboardManager;
 import android.content.Intent;
@@ -122,13 +121,18 @@ public class MarkviewActivity extends NativeActivity {
         return "http".equalsIgnoreCase(uri.getScheme()) || "https".equalsIgnoreCase(uri.getScheme());
     }
     public void pickDocument(String ignored) {
-        runOnUiThread(() -> new AlertDialog.Builder(this).setTitle("Markview")
-            .setItems(new String[]{"Open file", "Open folder with images and linked documents"}, (dialog, which) -> {
-                Intent intent = new Intent(which == 0 ? Intent.ACTION_OPEN_DOCUMENT : Intent.ACTION_OPEN_DOCUMENT_TREE);
-                if (which == 0) { intent.addCategory(Intent.CATEGORY_OPENABLE); intent.setType("*/*"); }
-                intent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION | Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION);
-                startActivityForResult(intent, which == 0 ? OPEN : TREE);
-            }).setOnCancelListener(dialog -> deliver(0, null)).show());
+        pick(false);
+    }
+    public void pickFolder(String ignored) {
+        pick(true);
+    }
+    private void pick(boolean folder) {
+        runOnUiThread(() -> {
+            Intent intent = new Intent(folder ? Intent.ACTION_OPEN_DOCUMENT_TREE : Intent.ACTION_OPEN_DOCUMENT);
+            if (!folder) { intent.addCategory(Intent.CATEGORY_OPENABLE); intent.setType("*/*"); }
+            intent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION | Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION);
+            startActivityForResult(intent, folder ? TREE : OPEN);
+        });
     }
     private void importAssets(File directory) {
         assetDirectory = directory;

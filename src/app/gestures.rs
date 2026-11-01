@@ -630,7 +630,16 @@ impl<P: super::SendEvent> App<P> {
 	fn touch_offset(&mut self, surface: Surface) -> Point {
 		match surface {
 			Surface::None | Surface::Viewer => (0.0, 0.0),
-			Surface::Document => (0.0, self.readers.session.scrolling.offset),
+			Surface::Document => (
+				0.0,
+				if self.readers.session.path.is_none()
+					&& self.readers.session.snapshot.blocks.is_empty()
+				{
+					self.folder.start.scroll
+				} else {
+					self.readers.session.scrolling.offset
+				},
+			),
 			Surface::Overflow(bi, oi) => (
 				*self
 					.readers

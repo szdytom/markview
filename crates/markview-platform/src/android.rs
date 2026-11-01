@@ -152,8 +152,14 @@ pub extern "system" fn bridge_references_released(
 	}
 }
 pub fn pick_document(done: impl FnOnce(Option<PathBuf>) + Send + 'static) {
+	pick("pickDocument", done);
+}
+pub fn pick_folder(done: impl FnOnce(Option<PathBuf>) + Send + 'static) {
+	pick("pickFolder", done);
+}
+fn pick(method: &str, done: impl FnOnce(Option<PathBuf>) + Send + 'static) {
 	REQUESTS.lock().unwrap().picked = Some(Box::new(done));
-	if let Err(error) = call_string("pickDocument", "") {
+	if let Err(error) = call_string(method, "") {
 		log::error!("File picker: {error:#}");
 		if let Some(done) = REQUESTS.lock().unwrap().picked.take() {
 			done(None);

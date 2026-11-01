@@ -106,6 +106,7 @@ pub(super) struct Entry {
 	pub depth: usize,
 	pub directory: bool,
 	pub excluded: bool,
+	pub file: Option<Arc<super::start::File>>,
 }
 
 #[derive(Debug)]
@@ -158,6 +159,9 @@ impl Tree {
 			anyhow::ensure!(!cancelled(), "Folder scan cancelled");
 			if path != root {
 				entries.push(Entry {
+					file: (!directory).then(|| {
+						super::start::File::new(entries.len(), &root, &path)
+					}),
 					directory,
 					path: path.clone(),
 					depth: depth - 1,
@@ -319,6 +323,9 @@ impl Tree {
 		self.entries.0.insert(
 			id,
 			Entry {
+				file: (!child.directory).then(|| {
+					super::start::File::new(id, &self.root, &child.path)
+				}),
 				id,
 				path: child.path,
 				depth,
@@ -423,6 +430,7 @@ pub(super) fn markdown(path: &Path) -> bool {
 
 #[derive(Default)]
 pub(super) struct Browser {
+	pub start: super::start::State,
 	pub tree: Option<Tree>,
 	pub open: bool,
 	pub scroll: ScrollArea,
@@ -752,9 +760,13 @@ impl<P: SendEvent> App<P> {
 					tree.rebuild_rows();
 				}
 				let initial = tree.initial();
+				self.folder
+					.start
+					.record(tree.root.clone(), tree.name.clone());
 				let reveal =
 					select || self.folder.open || self.phone_folder_open();
 				self.folder.tree = Some(tree);
+				self.refresh_start_files();
 				self.folder.reset_rows();
 				*self.folder.labels.get_mut() = Default::default();
 				self.set_folder_open(reveal);
@@ -941,6 +953,7 @@ impl<P: SendEvent> App<P> {
 			}
 		}
 		self.folder_view_changed();
+		self.refresh_start_files();
 		self.folder.reset_rows();
 		if let Some((path, row)) = focus {
 			self.restore_folder_focus(&path, row);
@@ -991,6 +1004,7 @@ impl<P: SendEvent> App<P> {
 			self.status.set_error(true);
 		}
 		self.folder.labels.get_mut().retain(&tree.entries);
+		self.refresh_start_files();
 		self.folder.reset_rows();
 		if let Some((path, row)) = focus {
 			self.restore_folder_focus(&path, row);

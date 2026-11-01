@@ -56,6 +56,21 @@ enum Outcome {
 	Application,
 }
 
+fn start_input_scroll(
+	g: &super::chrome::empty::Geometry,
+	input: Rect,
+	id: TextField,
+) -> Option<f32> {
+	let delta =
+		if input.y < g.clip.y || (id == TextField::Files && g.clip.h < 400.0) {
+			input.y - g.clip.y - 16.0
+		} else {
+			(input.y + input.h - g.clip.y - g.clip.h).max(0.0)
+		};
+	let scroll = (g.scroll + delta).clamp(0.0, g.max_scroll);
+	(scroll != g.scroll).then_some(scroll)
+}
+
 trait InputClipboard {
 	fn read(&mut self) -> anyhow::Result<String>;
 	fn write(&mut self, text: String) -> anyhow::Result<()>;
@@ -226,6 +241,7 @@ impl<P: SendEvent> App<P> {
 	fn input(&mut self, id: TextField) -> (&mut TextInput, &mut TextShaper) {
 		match id {
 			TextField::Url => (&mut self.url_input, &mut self.ui),
+			TextField::Files => (&mut self.folder.start.input, &mut self.ui),
 			TextField::Search => {
 				(&mut self.readers.session.search.input, &mut self.ui)
 			}
@@ -234,11 +250,39 @@ impl<P: SendEvent> App<P> {
 			}
 		}
 	}
+	fn start_input_geometry(&mut self, id: TextField) -> Option<(Rect, Rect)> {
+		if self.readers.session.path.is_some()
+			|| !self.readers.session.snapshot.blocks.is_empty()
+		{
+			return None;
+		}
+		if id == TextField::Files && self.folder.root().is_none() {
+			return None;
+		}
+		let mut g = self.chrome().start_geometry();
+		let rect = |g: &super::chrome::empty::Geometry| {
+			if id == TextField::Files {
+				g.search
+			} else {
+				g.url
+			}
+		};
+		let input = rect(&g);
+		if self.focused_input() == Some(id)
+			&& let Some(scroll) = start_input_scroll(&g, input, id)
+		{
+			self.folder.start.scroll = scroll;
+			g = self.chrome().start_geometry();
+			self.redraw();
+		}
+		Some((rect(&g), g.clip))
+	}
+
 	pub(super) fn input_geometry(
 		&mut self,
 		id: TextField,
 	) -> Option<(Rect, Rect)> {
-		if id == TextField::Url {
+		if matches!(id, TextField::Url | TextField::Files) {
 			if self.interaction.panel_open()
 				|| self.interaction.overlays.outline.open()
 				|| self.interaction.overlays.modal_open()
@@ -246,20 +290,9 @@ impl<P: SendEvent> App<P> {
 			{
 				return None;
 			}
-			let button = self.chrome().buttons().into_iter().find(|b| {
-				b.action == Command::Chrome(ChromeCommand::FocusInput(id))
-			})?;
-			let (w, h, _) = self.dimensions();
-			return Some((
-				button.rect,
-				button.clip.unwrap_or(Rect {
-					x: 0.0,
-					y: super::TOP,
-					w,
-					h: (h - super::TOP - self.bottom()).max(0.0),
-				}),
-			));
+			return self.start_input_geometry(id);
 		}
+
 		if id == TextField::Search {
 			return self.readers.session.search.open.then(|| {
 				let (w, h, _) = self.dimensions();
@@ -297,11 +330,13 @@ impl<P: SendEvent> App<P> {
 		{
 			return Some(TextField::Search);
 		}
-		if let Some((rect, clip)) = self.input_geometry(TextField::Url)
-			&& rect.contains(x, y)
-			&& clip.contains(x, y)
-		{
-			return Some(TextField::Url);
+		for field in [TextField::Url, TextField::Files] {
+			if let Some((rect, clip)) = self.input_geometry(field)
+				&& rect.contains(x, y)
+				&& clip.contains(x, y)
+			{
+				return Some(field);
+			}
 		}
 		let form = self.panel_form()?;
 		let (x, y) = self.interaction.pointer.cursor();
@@ -332,15 +367,20 @@ impl<P: SendEvent> App<P> {
 		self.text_input.deadline = None;
 	}
 	pub(super) fn focused_input(&self) -> Option<TextField> {
-		[TextField::Url, TextField::Search, TextField::ExportTitle]
-			.into_iter()
-			.find(|field| {
-				self.interaction.widgets.focus
-					== Some(
-						Command::Chrome(ChromeCommand::FocusInput(*field))
-							.widget_id(),
-					)
-			})
+		[
+			TextField::Url,
+			TextField::Files,
+			TextField::Search,
+			TextField::ExportTitle,
+		]
+		.into_iter()
+		.find(|field| {
+			self.interaction.widgets.focus
+				== Some(
+					Command::Chrome(ChromeCommand::FocusInput(*field))
+						.widget_id(),
+				)
+		})
 	}
 	pub(super) fn clear_input_focus(&mut self) {
 		self.blur_input();
@@ -574,6 +614,9 @@ impl<P: SendEvent> App<P> {
 					if id == TextField::Search {
 						self.search_changed();
 					}
+					if id == TextField::Files {
+						self.start_search_changed();
+					}
 				}
 			}
 			self.reset_input_blink();
@@ -584,11 +627,18 @@ impl<P: SendEvent> App<P> {
 	fn input_key(&mut self, logical: &Key, text: Option<&str>) -> Outcome {
 		let id = self.text_input.focused.expect("focused input owns key");
 		let mods = self.interaction.pointer.modifiers();
-		let before = (id == TextField::Search)
-			.then(|| self.readers.session.search.input.text().to_owned());
+		let before = self.input(id).0.text().to_owned();
 		let outcome = match id {
 			TextField::Url => key(
 				&mut self.url_input,
+				&mut self.ui,
+				&mut self.clipboard,
+				logical,
+				text,
+				mods,
+			),
+			TextField::Files => key(
+				&mut self.folder.start.input,
 				&mut self.ui,
 				&mut self.clipboard,
 				logical,
@@ -616,10 +666,13 @@ impl<P: SendEvent> App<P> {
 			self.action(Command::Document(DocumentCommand::OpenUrl));
 			return Outcome::Consumed;
 		}
+		if id == TextField::Files && self.files_input_outcome(&before, &outcome)
+		{
+			return Outcome::Consumed;
+		}
+
 		if id == TextField::Search {
-			if before.as_deref()
-				!= Some(self.readers.session.search.input.text())
-			{
+			if before != self.readers.session.search.input.text() {
 				self.search_changed();
 			}
 			match outcome {
@@ -647,6 +700,29 @@ impl<P: SendEvent> App<P> {
 		}
 		outcome
 	}
+	fn files_input_outcome(&mut self, before: &str, outcome: &Outcome) -> bool {
+		if before != self.folder.start.input.text() {
+			self.start_search_changed();
+		}
+		match outcome {
+			Outcome::Submit => {
+				if !self.folder.start.pending
+					&& let Some(file) = self.folder.start.matches.first()
+				{
+					self.action(Command::Chrome(ChromeCommand::StartFile(
+						file.id,
+					)));
+				}
+				true
+			}
+			Outcome::Cancel => {
+				self.clear_input_focus();
+				true
+			}
+			_ => false,
+		}
+	}
+
 	pub(super) fn draw_search_input(&mut self) -> Vec<Draw> {
 		self.sync_input();
 		let rect = self.search_input_rect();
@@ -671,19 +747,26 @@ impl<P: SendEvent> App<P> {
 		form: Option<&super::chrome::components::Form>,
 	) -> Vec<Draw> {
 		self.sync_input();
-		if let Some((rect, viewport)) = self.input_geometry(TextField::Url) {
-			let placeholder =
-				self.preferences.values.lang().empty_url_placeholder();
-			return vec![Draw::Clipped {
-				rect: viewport,
-				draws: self.url_input.draw(
-					&mut self.ui,
-					rect,
-					self.text_input.focused == Some(TextField::Url),
-					self.text_input.caret,
-					placeholder,
-				),
-			}];
+		let mut start_inputs = Vec::new();
+		for field in [TextField::Url, TextField::Files] {
+			if let Some((rect, viewport)) = self.input_geometry(field) {
+				let lang = self.preferences.values.lang();
+				let placeholder = if field == TextField::Files {
+					lang.empty_search_placeholder()
+				} else {
+					lang.empty_url_placeholder()
+				};
+				let focused = self.text_input.focused == Some(field);
+				let caret = self.text_input.caret;
+				let (input, ui) = self.input(field);
+				start_inputs.push(Draw::Clipped {
+					rect: viewport,
+					draws: input.draw(ui, rect, focused, caret, placeholder),
+				});
+			}
+		}
+		if !start_inputs.is_empty() {
+			return start_inputs;
 		}
 		let Some(form) = form else {
 			return vec![];

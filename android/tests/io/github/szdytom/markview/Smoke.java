@@ -303,16 +303,13 @@ public class Smoke extends Instrumentation {
 
             tap("Open");
             SystemClock.sleep(350);
-            require(!getUiAutomation().getRootInActiveWindow().findAccessibilityNodeInfosByText("Markview").isEmpty(), "Markview document picker title");
-            clickText("Open file");
             waitSystem("documentsui");
             sendKeyDownUpSync(KeyEvent.KEYCODE_BACK);
             waitFor(s -> s.optString("backend").length() > 0 && s.optJSONArray("tabs").length() == 2);
             waitSystem(getTargetContext().getPackageName());
             stableLayout();
             pass("Android Storage Access Framework picker and cancellation");
-            tap("Open");
-            clickText("Open folder with images");
+            runOnMainSync(() -> ((MarkviewActivity)activity).pickFolder(""));
             waitSystem("documentsui");
             sendKeyDownUpSync(KeyEvent.KEYCODE_BACK);
             waitFor(s -> s.optString("backend").length() > 0);
@@ -376,6 +373,19 @@ public class Smoke extends Instrumentation {
             try { activity.getContentResolver().openFileDescriptor(grant, "w"); } catch (java.io.FileNotFoundException expected) { refused = true; }
             require(refused, "Provider rejects writes");
             pass("Folder import, relative SVG resources and read-only file grants");
+            if (!state().optString("panel").equals("Closed")) sendKeyDownUpSync(KeyEvent.KEYCODE_BACK);
+            if (phone) { tap("Tabs"); tap("SidebarTab(Tabs)"); }
+            tap("NewPage");
+            waitFor(s -> button(s, "FocusInput(Files)") != null && !s.optBoolean("file_search_pending"));
+            tap("FocusInput(Files)");
+            sendStringSync("readme");
+            int readmeFile = folderEntry(state(), "README.md");
+            JSONObject quick = waitFor(s -> s.optString("file_query").equals("readme") && !s.optBoolean("file_search_pending") && button(s, "StartFile(" + readmeFile + ")") != null);
+            require(button(quick, "StartFile(" + folderEntry(quick, "chapter.md") + ")") == null, "Workspace search filters file names");
+            screenshot("start-search");
+            tap("StartFile(" + readmeFile + ")");
+            waitFor(s -> s.optBoolean("ready") && s.optString("path").endsWith("README.md") && loadedImages(s) == 1);
+            pass("Start page searches workspace file names and opens a matching document");
             byte[] imported = Files.readAllBytes(new File(directory, "README.md").toPath());
             configureFolder(tree, true, true);
             reimportFolder(tree);
@@ -475,7 +485,6 @@ public class Smoke extends Instrumentation {
                 waitFor(s -> s.optString("panel").equals("Closed"));
                 tap("Tabs");
                 tap("Open");
-                clickText("Open file");
                 waitSystem("documentsui");
                 sendKeyDownUpSync(KeyEvent.KEYCODE_BACK);
                 waitFor(s -> s.optString("panel").equals("Closed"));
