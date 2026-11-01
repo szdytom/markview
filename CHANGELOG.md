@@ -37,6 +37,7 @@ at the same level, without `[brackets]`.
 
 ### Fixed
 
+- Match open tabs outside a workspace by file name so ancestor directory letters cannot create false quick-open results.
 - Watch Windows folders through one recursive native handle so an open folder tree no longer blocks renaming its directories.
 - Include the MPL-2.0 license for the quick-open matcher in the third-party notices.
 - Keep a tab's hover preview returning after the wheel scrolls the tab strip under a resting pointer.
