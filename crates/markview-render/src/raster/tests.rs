@@ -367,6 +367,7 @@ fn prewarming_leaves_the_visible_image_demand_alone() {
 					version: 1,
 					size: Some((40, 40)),
 					error: None,
+					svg: false,
 				},
 			)
 		})

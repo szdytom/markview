@@ -50,6 +50,7 @@ fn markdown_matches_rendering_baselines() -> Result<()> {
 			version: 1,
 			size: Some(tiles.dimensions()),
 			error: None,
+			svg: false,
 		},
 	);
 	images.pixels.insert(
@@ -66,6 +67,7 @@ fn markdown_matches_rendering_baselines() -> Result<()> {
 		ImageInfo {
 			version: 1,
 			error: Some("Image is unavailable".into()),
+			svg: false,
 			size: None,
 		},
 	);

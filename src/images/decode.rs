@@ -146,13 +146,14 @@ fn has_svg_text(bytes: &[u8]) -> bool {
 pub(super) fn decode(
 	bytes: &[u8],
 	target: Option<(u32, u32)>,
+	initial_width: Option<f32>,
 	fonts: Option<(&std::sync::Arc<super::fonts::DiagramFonts>, &str)>,
 	generic_families: &[(String, Vec<String>)],
 ) -> Result<Decoded> {
 	let Some(format) = image::guess_format(bytes).ok() else {
 		return decode_svg(bytes, target, fonts, generic_families);
 	};
-	decode_bitmap(bytes, format)
+	decode_bitmap(bytes, format, target, initial_width)
 }
 
 fn decode_svg(
@@ -207,7 +208,12 @@ fn decode_svg(
 	})
 }
 
-fn decode_bitmap(bytes: &[u8], format: image::ImageFormat) -> Result<Decoded> {
+fn decode_bitmap(
+	bytes: &[u8],
+	format: image::ImageFormat,
+	target: Option<(u32, u32)>,
+	initial_width: Option<f32>,
+) -> Result<Decoded> {
 	let mut reader =
 		image::ImageReader::with_format(Cursor::new(bytes), format);
 	let mut limits = image::Limits::default();
@@ -220,6 +226,41 @@ fn decode_bitmap(bytes: &[u8], format: image::ImageFormat) -> Result<Decoded> {
 	let mut bitmap = decode_first_frame(bytes, format, limits, decoder)?;
 	bitmap.apply_orientation(orientation);
 	let intrinsic = (bitmap.width(), bitmap.height());
+	let target = target.or_else(|| {
+		initial_width
+			.map(|width| super::initial_bitmap_target(intrinsic, width))
+	});
+	if let Some(target) = target {
+		let width = target.0.min(intrinsic.0).max(1);
+		let height = target.1.min(intrinsic.1).max(1);
+		if (width, height) != intrinsic {
+			// `imageops` filters premultiplied channels. Convert to straight
+			// alpha again before the pixels enter the renderer.
+			let mut rgba = bitmap.to_rgba8();
+			for p in rgba.as_mut().as_chunks_mut::<4>().0 {
+				let a = u32::from(p[3]);
+				for c in &mut p[..3] {
+					*c = (u32::from(*c) * a / 255) as u8;
+				}
+			}
+			let mut resized = image::imageops::resize(
+				&rgba,
+				width,
+				height,
+				image::imageops::FilterType::Triangle,
+			);
+			for p in resized.as_mut().as_chunks_mut::<4>().0 {
+				let a = u32::from(p[3]);
+				for c in &mut p[..3] {
+					*c = ((u32::from(*c) * 255 + a / 2)
+						.checked_div(a)
+						.unwrap_or(0))
+					.min(255) as u8;
+				}
+			}
+			bitmap = image::DynamicImage::ImageRgba8(resized);
+		}
+	}
 	// Stay within the baseline WebGPU 8192-pixel texture dimension.
 	if bitmap.width() > 8192 || bitmap.height() > 8192 {
 		bitmap =
@@ -326,7 +367,7 @@ mod tests {
 			);
 		}
 		const SVG: &[u8] = br#"<svg xmlns="http://www.w3.org/2000/svg" width="60" height="24"><text x="2" y="18" font-family="sans-serif" font-size="16">Ab</text></svg>"#;
-		let decoded = super::decode(SVG, None, None, &mappings).unwrap();
+		let decoded = super::decode(SVG, None, None, None, &mappings).unwrap();
 		assert!(decoded.pixels.rgba.chunks(4).any(|pixel| pixel[3] > 0));
 	}
 

@@ -54,6 +54,7 @@ fn image_reader(source: &str, src: &str, loaded: bool) -> App<StubProxy> {
 				version: 1,
 				size: Some((400, 400)),
 				error: None,
+				svg: false,
 			},
 		);
 		images.pixels.insert(
@@ -430,6 +431,7 @@ fn failed_images_neither_open_nor_keep_the_viewer() {
 		version: 1,
 		size: Some((400, 400)),
 		error: Some("Cannot open image".into()),
+		svg: false,
 	};
 	let mut app = image_reader("![](a.png)", "a.png", false);
 	app.readers
@@ -622,12 +624,92 @@ fn decoding_refreshes_the_viewer_dimensions_and_texture_version() {
 				version: 2,
 				size: Some((400, 400)),
 				error: None,
+				svg: false,
 			},
 		);
 		let (rect, version) = viewer_image(&mut app);
 		assert_eq!((rect.w, rect.h), (400., 400.));
 		assert_eq!(version, 2);
 	}
+}
+
+#[test]
+fn a_rendered_vector_raster_keeps_its_device_pixel_size() {
+	let mut app = image_reader("![](a.png)", "a.png", false);
+	open(&mut app);
+	app.readers.session.snapshot.images.entries.insert(
+		"a.png".into(),
+		ImageInfo {
+			version: 2,
+			size: Some((400, 200)),
+			error: None,
+			svg: true,
+		},
+	);
+	app.readers.session.snapshot.images.pixels.insert(
+		"a.png".into(),
+		2,
+		Arc::new(Pixels {
+			width: 800,
+			height: 400,
+			rgba: vec![255; 800 * 400 * 4].into(),
+		}),
+	);
+	let (rect, _) = viewer_image(&mut app);
+	assert_eq!((rect.w, rect.h), (800., 400.));
+}
+
+#[test]
+fn a_vector_with_explicit_display_proportions_keeps_one_aspect_ratio() {
+	let mut app = image_reader("![](a.png)", "a.png", false);
+	open(&mut app);
+	app.readers.session.snapshot.images.entries.insert(
+		"a.png".into(),
+		ImageInfo {
+			version: 2,
+			size: Some((400, 200)),
+			error: None,
+			svg: true,
+		},
+	);
+	app.readers.session.snapshot.images.pixels.insert(
+		"a.png".into(),
+		2,
+		Arc::new(Pixels {
+			width: 200,
+			height: 400,
+			rgba: vec![255; 200 * 400 * 4].into(),
+		}),
+	);
+	let (rect, _) = viewer_image(&mut app);
+	assert_eq!((rect.w, rect.h), (200., 400.));
+}
+
+#[test]
+fn a_downsampled_page_raster_still_opens_at_the_intrinsic_size() {
+	let mut app = image_reader("![](a.png)", "a.png", false);
+	open(&mut app);
+	app.readers.session.snapshot.images.entries.insert(
+		"a.png".into(),
+		ImageInfo {
+			version: 2,
+			size: Some((400, 200)),
+			error: None,
+			svg: false,
+		},
+	);
+	app.readers.session.snapshot.images.pixels.insert(
+		"a.png".into(),
+		2,
+		Arc::new(Pixels {
+			width: 100,
+			height: 50,
+			rgba: vec![255; 100 * 50 * 4].into(),
+		}),
+	);
+	let (rect, version) = viewer_image(&mut app);
+	assert_eq!((rect.w, rect.h), (400., 200.));
+	assert_eq!(version, 2);
 }
 
 #[test]

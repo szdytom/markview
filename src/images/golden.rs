@@ -163,7 +163,7 @@ fn svg_snapshot(
 		let source = super::source::source(&spec.src, path)?;
 		let bytes = super::source::fetch(&source, true, None, &theme)?;
 		let decoded =
-			super::decode(&bytes, None, Some((&fonts, "")), &mappings)?;
+			super::decode(&bytes, None, None, Some((&fonts, "")), &mappings)?;
 		let key = spec.resource_key().into_owned();
 		snapshot.entries.insert(
 			key.clone(),
@@ -171,6 +171,7 @@ fn svg_snapshot(
 				version: 1,
 				size: Some(decoded.intrinsic),
 				error: None,
+				svg: false,
 			},
 		);
 		snapshot.pixels.insert(key, 1, decoded.pixels);

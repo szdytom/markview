@@ -195,6 +195,7 @@ pub fn run(
 		images.set_security(crate::security::Security::local(
 			crate::security::Trust::Trusted,
 		));
+		images.set_initial_width(options.width);
 		images.prepare(
 			&doc,
 			path,

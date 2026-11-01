@@ -137,6 +137,7 @@ fn parallel_geometry_matches_serial_through_reflows_edits_and_cache_reuse() {
 				version,
 				size,
 				error: None,
+				svg: false,
 			},
 		);
 		equivalent(

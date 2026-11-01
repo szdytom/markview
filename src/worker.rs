@@ -316,6 +316,9 @@ impl Worker {
 											images.set_security(
 												request.security.clone(),
 											);
+											images.set_initial_width(
+												request.options.width,
+											);
 											images.prepare(
 												&prefix,
 												&request.path,
@@ -426,6 +429,7 @@ impl Worker {
 								)
 								.map_err(|e| format!("Fonts: {e:#}"))?;
 							images.set_security(request.security.clone());
+							images.set_initial_width(request.options.width);
 							images.prepare(
 								&document,
 								&request.path,

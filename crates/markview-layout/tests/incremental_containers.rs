@@ -208,6 +208,7 @@ fn inherited_child_styles_resources_and_width_invalidate_nested_geometry() {
 				version: width as u64,
 				size: Some(size),
 				error: None,
+				svg: false,
 			},
 		);
 		let doc = markview_commonmark::parse(source);

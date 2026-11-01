@@ -128,6 +128,7 @@ fn preview_budget_eviction_keeps_the_main_frame_textures() -> anyhow::Result<()>
 				version: 1,
 				size: Some((SIDE, SIDE)),
 				error: None,
+				svg: false,
 			},
 		);
 		main_blocks.push(image_block(
@@ -154,6 +155,7 @@ fn preview_budget_eviction_keeps_the_main_frame_textures() -> anyhow::Result<()>
 				version: 1,
 				size: Some((SIDE, SIDE)),
 				error: None,
+				svg: false,
 			},
 		);
 		preview_blocks.push(image_block(
@@ -263,6 +265,7 @@ fn preview_reloads_of_the_active_tab_do_not_accumulate_textures()
 					version,
 					size: Some((512, 512)),
 					error: None,
+					svg: false,
 				},
 			)]),
 			200.0,

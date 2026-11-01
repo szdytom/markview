@@ -10,7 +10,7 @@ use std::{fs, io::Cursor};
 
 /// Decodes with the pinned SVG font database, as a standalone image does.
 fn decode(bytes: &[u8], target: Option<(u32, u32)>) -> Result<Decoded> {
-	decode_image(bytes, target, None, &[])
+	decode_image(bytes, target, None, None, &[])
 }
 
 /// The diagram theme a test that never switches stylesheets renders with.
@@ -508,7 +508,8 @@ fn a_generic_family_still_draws_in_a_diagram() {
 	let config = crate::test_support::fonts();
 	let fonts = DiagramFonts::get(&config, &[]);
 	let decoded =
-		decode_image(SVG, None, Some((&fonts, "sans-serif")), &[]).unwrap();
+		decode_image(SVG, None, None, Some((&fonts, "sans-serif")), &[])
+			.unwrap();
 	assert!(
 		decoded.pixels.rgba.chunks(4).any(|pixel| pixel[3] > 0),
 		"no ink for {config:?}"
@@ -975,6 +976,44 @@ fn svg_renders_at_the_intrinsic_and_requested_size() {
 	assert_eq!(scaled.intrinsic, (40, 20));
 	assert_eq!((scaled.pixels.width, scaled.pixels.height), (80, 40));
 	assert!(decode(b"not an image", None).is_err());
+}
+
+#[test]
+fn downsampling_transparency_keeps_straight_alpha_color() {
+	let mut bytes = Vec::new();
+	image::DynamicImage::ImageRgba8(
+		RgbaImage::from_raw(2, 1, vec![255, 255, 255, 255, 0, 0, 0, 0])
+			.unwrap(),
+	)
+	.write_to(&mut Cursor::new(&mut bytes), image::ImageFormat::Png)
+	.unwrap();
+	let decoded = decode(&bytes, Some((1, 1))).unwrap();
+	let pixel = &decoded.pixels.rgba[..4];
+	assert_eq!(&pixel[..3], &[255, 255, 255]);
+	assert!(pixel[3] == 127 || pixel[3] == 128, "{pixel:?}");
+}
+
+#[test]
+fn an_initial_bitmap_raster_fits_the_column_at_a_two_x_display() {
+	assert_eq!(
+		super::initial_bitmap_target((4000, 3000), 760.),
+		(1520, 1140)
+	);
+	assert_eq!(super::initial_bitmap_target((320, 200), 760.), (320, 200));
+}
+
+#[test]
+fn bitmap_rasters_follow_the_requested_size_without_upscaling() {
+	let bytes = png(40, 20, [1, 2, 3, 255]);
+	let decoded = decode(&bytes, Some((20, 10))).unwrap();
+	assert_eq!(decoded.intrinsic, (40, 20));
+	assert_eq!((decoded.pixels.width, decoded.pixels.height), (20, 10));
+	let not_upscaled = decode(&bytes, Some((80, 40))).unwrap();
+	assert_eq!(not_upscaled.intrinsic, (40, 20));
+	assert_eq!(
+		(not_upscaled.pixels.width, not_upscaled.pixels.height),
+		(40, 20)
+	);
 }
 
 #[test]

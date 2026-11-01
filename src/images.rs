@@ -58,6 +58,8 @@ struct Job {
 	source: Source,
 	generation: u64,
 	target: Option<(u32, u32)>,
+	/// A column width for a bitmap whose first decode starts before demand.
+	initial_width: Option<f32>,
 	/// The diagram theme this job renders with; other sources ignore it.
 	theme: Arc<diagram::DiagramTheme>,
 	/// The faces the rasterizer draws a diagram with, absent while the
@@ -172,6 +174,20 @@ impl Drop for Entry {
 	fn drop(&mut self) {
 		self.cancel.cancel();
 	}
+}
+
+/// The initial raster for a bitmap before a frame publishes its display
+/// demand. The column width is the largest place the document can show it;
+/// twice that covers a 2x display without decoding a full camera image.
+pub(super) fn initial_bitmap_target(
+	intrinsic: (u32, u32),
+	column: f32,
+) -> (u32, u32) {
+	let scale = (column * 2.0 / intrinsic.0.max(1) as f32).min(1.0);
+	(
+		((intrinsic.0 as f32 * scale).round().max(1.0)) as u32,
+		((intrinsic.1 as f32 * scale).round().max(1.0)) as u32,
+	)
 }
 
 /// Redraw when proportions change beyond pixel rounding, an axis grows by
@@ -327,6 +343,9 @@ pub struct Images {
 	/// document holds a diagram, so a document without one never scans the
 	/// reader's font collection.
 	diagram: Option<DiagramRequest>,
+	/// The layout column width, so a fresh bitmap can be decoded at a display
+	/// size before the first frame publishes pixel demand.
+	initial_width: Option<f32>,
 }
 
 impl Images {
@@ -428,6 +447,7 @@ impl Images {
 			completed: 0,
 			theme_key: 0,
 			svg_theme_key: 0,
+			initial_width: None,
 			theme: Arc::new(diagram::resolve(&Stylesheet::default(), None)),
 			diagram: None,
 			fonts,
@@ -468,6 +488,13 @@ impl Images {
 	/// faces the body text now uses. A resolved theme change redraws every
 	/// diagram from the source it already parsed; resolving per request also
 	/// follows the sheet's font definitions and the CJK variant it selected.
+	/// Sets the logical column width used before the first demand arrives.
+	pub fn set_initial_width(&mut self, width: f32) {
+		if width.is_finite() && width > 0.0 {
+			self.initial_width = Some(width);
+		}
+	}
+
 	pub fn prepare(
 		&mut self,
 		doc: &Document,
@@ -748,10 +775,32 @@ impl Images {
 		let pixels = &self.resident;
 		let e = self.entries.get_mut(&source).unwrap();
 		let requested = key.requested;
-		let target = requested.map(|d| d.size);
+		let initial =
+			(!self.pdf && !e.svg && requested.is_none() && e.raster.is_none())
+				.then_some(self.initial_width)
+				.flatten()
+				.and_then(|width| {
+					e.info.size.map(|intrinsic| {
+						initial_bitmap_target(intrinsic, width)
+					})
+				});
+		let target =
+			requested.map(|d| d.size).or(initial).filter(|_| !self.pdf);
+		let target = target.map(|target| {
+			if e.svg {
+				target
+			} else if let Some(intrinsic) = e.info.size {
+				(
+					target.0.min(intrinsic.0).max(1),
+					target.1.min(intrinsic.1).max(1),
+				)
+			} else {
+				target
+			}
+		});
 		let resident = e.aliases.iter().any(|a| pixels.contains_key(a));
-		let resize = e.svg
-			&& target.is_some_and(|t| e.raster.is_none_or(|r| outgrows(t, r)));
+		let resize =
+			target.is_some_and(|t| e.raster.is_none_or(|r| outgrows(t, r)));
 		// A diagram or SVG drawn under another theme is stale even though
 		// its size and pixels are already here. Keeping them lets the old
 		// drawing stand until the new one is ready, so nothing reflows
@@ -769,7 +818,7 @@ impl Images {
 			e.ticket = VERSION.fetch_add(1, Ordering::Relaxed);
 			e.busy = true;
 			e.theme = key.theme;
-			e.target = if e.svg { target } else { None };
+			e.target = target;
 			*running += 1;
 			e.cancel.cancel();
 			e.cancel = self.services.cancel.child_token();
@@ -780,6 +829,9 @@ impl Images {
 				source: source.clone(),
 				generation: self.generation,
 				target: e.target,
+				initial_width: (!self.pdf && !e.svg && e.target.is_none())
+					.then_some(self.initial_width)
+					.flatten(),
 				theme: self.theme.clone(),
 				diagram: matches!(source, Source::Diagram(_))
 					.then(|| self.diagram.clone())
@@ -877,6 +929,7 @@ impl Images {
 						let decoded = decode(
 							&bytes,
 							job.target,
+							job.initial_width,
 							rasterizer_fonts(
 								&job.source,
 								diagram.as_ref(),
@@ -965,6 +1018,7 @@ impl Images {
 				}
 				e.info.size = Some(decoded.intrinsic);
 				e.info.error = None;
+				e.info.svg = decoded.svg;
 				e.svg = decoded.svg;
 				e.raster = Some(decoded.raster);
 				e.pdf = decoded.pdf;
@@ -986,6 +1040,7 @@ impl Images {
 				}
 				e.pdf = None;
 				e.info.error = Some(error.to_string());
+				e.info.svg = false;
 				self.resident.retain(|s, _| !e.aliases.contains(s));
 			}
 		}

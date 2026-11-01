@@ -335,6 +335,7 @@ fn an_inactive_tab_pins_only_its_visible_image_pixels() {
 				version: 7,
 				size: Some((1, 1)),
 				error: None,
+				svg: false,
 			},
 		);
 		images.pixels.insert(alias.into(), 7, pixels.clone());
@@ -381,6 +382,7 @@ fn a_centered_picture_keeps_its_block_and_pixels_in_the_tab_preview() {
 			version: 1,
 			size: Some((100, 140)),
 			error: None,
+			svg: false,
 		},
 	);
 	images.pixels.insert(
@@ -438,6 +440,7 @@ fn overflowing_table_previews_pin_only_images_in_the_scrolled_clip() {
 				version: 1,
 				size: Some((100, 100)),
 				error: None,
+				svg: false,
 			},
 		);
 		images.pixels.insert(

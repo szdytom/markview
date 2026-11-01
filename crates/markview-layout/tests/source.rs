@@ -59,6 +59,7 @@ fn scroll_anchor_batches_cover_visible_lines_and_complete_atomic_ranges() {
 			version: 1,
 			size: Some((80, 1200)),
 			error: None,
+			svg: false,
 		},
 	);
 	let snapshot =
@@ -467,6 +468,7 @@ fn empty_alt_images_keep_atomic_source_geometry_across_resource_updates() {
 					version: 1,
 					size: state,
 					error: None,
+					svg: false,
 				},
 			);
 			let snapshot = engine.layout_with_images(&doc, &opts, &resources);
@@ -613,6 +615,7 @@ fn atomic_image_source_geometry_uses_the_table_scroll_offset() {
 			version: 1,
 			size: Some((100, 140)),
 			error: None,
+			svg: false,
 		},
 	);
 	let snapshot =
