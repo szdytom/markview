@@ -345,6 +345,16 @@ fn prewarm_prepares_the_next_screenful_before_the_frame_needs_it() {
 		prepared,
 		"the scroll frame rasterized glyphs prewarming should have prepared"
 	);
+
+	// An atlas reset can upload the same bitmaps again without asking Swash
+	// to rasterize them a second time.
+	renderer.raster.reset_mask(&renderer.gpu.queue);
+	draw(&mut renderer, &view);
+	assert_eq!(
+		stats(&renderer).rasterized,
+		prepared,
+		"a reset re-rasterized glyphs that were still in the CPU cache"
+	);
 }
 
 #[test]

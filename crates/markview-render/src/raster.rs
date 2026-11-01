@@ -3,7 +3,11 @@ use markview_document::fingerprint;
 use markview_layout::{scene::Glyph, style::SYNTHETIC_ITALIC_ANGLE_DEG};
 use parley::FontData;
 use serde::Serialize;
-use std::{collections::HashMap, time::Duration};
+use std::{
+	collections::{HashMap, VecDeque},
+	sync::Arc,
+	time::Duration,
+};
 use swash::{
 	FontRef,
 	scale::{Render, ScaleContext, Source},
@@ -68,6 +72,13 @@ enum RasterKey {
 	},
 }
 
+#[derive(Clone)]
+struct CachedBitmap {
+	entry: Entry,
+	data: Arc<[u8]>,
+	bytes: usize,
+}
+
 #[derive(Clone, Copy, Default)]
 pub(super) struct Entry {
 	pub(super) color: bool,
@@ -111,6 +122,10 @@ pub(super) struct RasterCache {
 	budget: Option<Instant>,
 	/// Rasterizations a prewarm pass left undone.
 	skipped: u64,
+	/// Rasterized bitmaps kept across atlas resets, bounded by bytes.
+	bitmaps: HashMap<RasterKey, CachedBitmap>,
+	bitmap_order: VecDeque<RasterKey>,
+	bitmap_bytes: usize,
 }
 fn atlas_texture(
 	device: &wgpu::Device,
@@ -179,6 +194,9 @@ impl RasterCache {
 			resets: 0,
 			budget: None,
 			skipped: 0,
+			bitmaps: HashMap::new(),
+			bitmap_order: VecDeque::new(),
+			bitmap_bytes: 0,
 		};
 		cache.upload(queue, 0, 0, 1, 1, &[255]);
 		cache
@@ -299,6 +317,13 @@ impl RasterCache {
 			0
 		}
 	}
+	/// Drops the CPU-side glyph bitmaps, as a cold benchmark requests.
+	pub(super) fn clear_bitmaps(&mut self) {
+		self.bitmaps.clear();
+		self.bitmap_order.clear();
+		self.bitmap_bytes = 0;
+	}
+
 	pub(super) fn reset_atlas(&mut self, queue: &wgpu::Queue) {
 		self.resets += 1;
 		self.cache.clear();
@@ -360,10 +385,20 @@ impl RasterCache {
 		&mut self,
 		queue: &wgpu::Queue,
 		key: RasterKey,
-		mut entry: Entry,
+		entry: Entry,
 		data: &[u8],
 	) -> Option<Entry> {
 		self.rasterized += 1;
+		self.insert_uncounted(queue, key, entry, data)
+	}
+
+	fn insert_uncounted(
+		&mut self,
+		queue: &wgpu::Queue,
+		key: RasterKey,
+		mut entry: Entry,
+		data: &[u8],
+	) -> Option<Entry> {
 		if entry.w == 0 || entry.h == 0 {
 			self.cache.insert(key, entry);
 			return Some(entry);
@@ -397,6 +432,63 @@ impl RasterCache {
 		Some(entry)
 	}
 
+	fn remember(&mut self, key: RasterKey, entry: Entry, data: &[u8]) {
+		const BITMAP_BUDGET: usize = 8 * 1024 * 1024;
+		let bytes = data.len();
+		if bytes > BITMAP_BUDGET {
+			return;
+		}
+		let replaced = if let Some(old) = self.bitmaps.remove(&key) {
+			self.bitmap_bytes = self.bitmap_bytes.saturating_sub(old.bytes);
+			true
+		} else {
+			false
+		};
+		if replaced {
+			self.bitmap_order.retain(|queued| queued != &key);
+		}
+		self.bitmaps.insert(
+			key.clone(),
+			CachedBitmap {
+				entry,
+				data: Arc::from(data),
+				bytes,
+			},
+		);
+		self.bitmap_order.push_back(key);
+		self.bitmap_bytes += bytes;
+		while self.bitmap_bytes > BITMAP_BUDGET {
+			let Some(old) = self.bitmap_order.pop_front() else {
+				break;
+			};
+			if let Some(bitmap) = self.bitmaps.remove(&old) {
+				self.bitmap_bytes -= bitmap.bytes;
+			}
+		}
+	}
+
+	fn cached_glyph(
+		&mut self,
+		queue: &wgpu::Queue,
+		key: &RasterKey,
+	) -> Option<Entry> {
+		let cached = self.bitmaps.get(key)?.clone();
+		if cached.entry.color {
+			let atlas = self.color_atlas.as_mut()?;
+			let entry = atlas.insert(queue, cached.entry, &cached.data)?;
+			self.cache.insert(key.clone(), entry);
+			Some(entry)
+		} else {
+			let entry = self.insert_uncounted(
+				queue,
+				key.clone(),
+				cached.entry,
+				&cached.data,
+			)?;
+			Some(entry)
+		}
+	}
+
 	pub(super) fn glyph(
 		&mut self,
 		device: &wgpu::Device,
@@ -421,6 +513,9 @@ impl RasterCache {
 		}
 		if self.prewarm_declines() {
 			return None;
+		}
+		if let Some(entry) = self.cached_glyph(queue, &key) {
+			return Some(entry);
 		}
 		let font =
 			FontRef::from_index(g.font.data.data(), g.font.index as usize)?;
@@ -465,6 +560,9 @@ impl RasterCache {
 				if matches!(image.source, Source::ColorOutline(_)) {
 					color::unpremultiply(&mut image.data);
 				}
+				let mut cached = entry;
+				cached.color = true;
+				self.remember(key.clone(), cached, &image.data);
 				self.rasterized += 1;
 				let atlas = self.color_atlas.get_or_insert_with(|| {
 					color::ColorAtlas::new(
@@ -489,6 +587,7 @@ impl RasterCache {
 				.map(|p| p[0].max(p[1]).max(p[2]))
 				.collect(),
 		};
+		self.remember(key.clone(), entry, &data);
 		self.insert(queue, key, entry, &data)
 	}
 

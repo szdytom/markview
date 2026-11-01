@@ -133,12 +133,12 @@ impl ImageTextures {
 	/// Makes the texture for one image, without recording paint demand.
 	fn ensure(
 		&mut self,
-		src: &String,
+		src: &str,
 		version: u64,
 		gpu: &Gpu,
 		allow_evict: bool,
 	) -> Option<ImageKey> {
-		let key = (self.images.generation, src.clone(), version);
+		let key = (self.images.generation, src.to_owned(), version);
 		if self.cache.contains_key(&key) {
 			return Some(key);
 		}
