@@ -9,6 +9,20 @@ use markview_layout::{
 use ratex_types::DisplayItem;
 use std::sync::Arc;
 use swash::FontRef;
+
+/// Puts an image's edges on the device pixel grid. A raster decodes at the
+/// rounded display size, so a fractional position or width would make the
+/// sampler interpolate every texel with its neighbour, which blurs text drawn
+/// inside a diagram or SVG far more than pixel-snapped body glyphs.
+fn device_aligned(rect: Rect, scale: f32) -> Rect {
+	Rect {
+		x: (rect.x * scale).round() / scale,
+		y: (rect.y * scale).round() / scale,
+		w: (rect.w * scale).round().max(1.0) / scale,
+		h: (rect.h * scale).round().max(1.0) / scale,
+	}
+}
+
 impl Renderer {
 	pub(super) fn glyph_quad(
 		&mut self,
@@ -121,11 +135,14 @@ impl Renderer {
 				if self.prewarming {
 					return;
 				}
-				let rect = Rect {
-					x: rect.x + dx,
-					y: rect.y + dy,
-					..*rect
-				};
+				let rect = device_aligned(
+					Rect {
+						x: rect.x + dx,
+						y: rect.y + dy,
+						..*rect
+					},
+					view.scale,
+				);
 				if rect.intersect(clip).is_none() {
 					return;
 				}
@@ -491,5 +508,42 @@ impl Renderer {
 				}
 			}
 		}
+	}
+}
+
+#[cfg(test)]
+mod tests {
+	use super::*;
+
+	/// A picture at a fractional DPR covers exactly the whole texel grid its
+	/// raster decodes to, so no sampling phase blurs it.
+	#[test]
+	fn images_land_on_whole_device_pixels_at_fractional_dpr() {
+		let rect = Rect {
+			x: 10.2,
+			y: 4.6,
+			w: 40.3,
+			h: 20.1,
+		};
+		let aligned = device_aligned(rect, 1.5);
+		let whole = |pixels: f32| (pixels - pixels.round()).abs() < 1e-4;
+		assert!(whole(aligned.x * 1.5));
+		assert!(whole(aligned.y * 1.5));
+		assert!(whole(aligned.w * 1.5));
+		assert!(whole(aligned.h * 1.5));
+		assert!(whole((aligned.x + aligned.w) * 1.5));
+		assert!(whole((aligned.y + aligned.h) * 1.5));
+	}
+
+	/// Whole-pixel layouts at 1x keep their exact geometry.
+	#[test]
+	fn images_keep_whole_pixel_geometry_at_1x() {
+		let rect = Rect {
+			x: 8.,
+			y: 12.,
+			w: 40.,
+			h: 20.,
+		};
+		assert_eq!(device_aligned(rect, 1.), rect);
 	}
 }
