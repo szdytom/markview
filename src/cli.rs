@@ -330,6 +330,9 @@ struct SmokeArgs {
 struct BenchArgs {
 	/// The document to measure.
 	file: PathBuf,
+	/// Device scale the diagnostic renders at.
+	#[arg(long, value_name = "N")]
+	scale: Option<f32>,
 	/// How many layout passes to run.
 	#[arg(long, value_name = "N", default_value_t = 100)]
 	iterations: usize,
@@ -640,14 +643,14 @@ fn apply_command(out: &mut LaunchOptions, command: Command) -> Result<()> {
 			out.path = Some(args.file);
 			out.output = args.output;
 			out.iterations = args.iterations.clamp(1, 10_000);
-			apply_screen_reading(out, &args.reading)
+			apply_bench_reading(out, args.scale, &args.reading)
 		}
 		Command::Latency(args) => {
 			out.mode = Mode::Latency;
 			out.path = Some(args.file);
 			out.output = args.output;
 			out.iterations = args.iterations.clamp(1, 10_000);
-			apply_screen_reading(out, &args.reading)
+			apply_bench_reading(out, args.scale, &args.reading)
 		}
 		Command::Pdf(args) => apply_pdf_command(out, args),
 		Command::Ss { action } => {
@@ -737,6 +740,18 @@ fn apply_screen_reading(
 		out.overrides.push(Setting::Width);
 	}
 	Ok(())
+}
+
+fn apply_bench_reading(
+	out: &mut LaunchOptions,
+	scale: Option<f32>,
+	reading: &ScreenReading,
+) -> Result<()> {
+	if let Some(scale) = scale {
+		check_number("--scale", scale)?;
+		out.scale = scale.clamp(0.5, 4.0);
+	}
+	apply_screen_reading(out, reading)
 }
 
 fn apply_render_command(
@@ -1586,10 +1601,19 @@ mod tests {
 
 	#[test]
 	fn bench_keeps_its_iterations_and_output() {
-		let args =
-			parse(&["bench", "a.md", "--iterations", "7", "-o", "m.json"]);
+		let args = parse(&[
+			"bench",
+			"a.md",
+			"--iterations",
+			"7",
+			"--scale",
+			"2",
+			"-o",
+			"m.json",
+		]);
 		assert!(args.mode == Mode::Bench);
 		assert_eq!(args.iterations, 7);
+		assert_eq!(args.scale, 2.0);
 		assert_eq!(args.output.as_deref(), Some(Path::new("m.json")));
 		assert!(!args.mode.wraps_code_blocks());
 
