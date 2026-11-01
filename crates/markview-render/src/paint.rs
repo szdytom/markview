@@ -23,6 +23,26 @@ fn device_aligned(rect: Rect, scale: f32) -> Rect {
 	}
 }
 
+/// Snaps one logical coordinate to the nearest whole device pixel.
+fn device_snap(value: f32, scale: f32) -> f32 {
+	(value * scale).round() / scale
+}
+
+/// Snaps a one-pixel rule to whole device pixels. A rule must not shrink
+/// below one device pixel, but rounding thin formula rules down would make
+/// them thinner at a higher DPR than at 1x, so its thickness rounds up.
+fn device_aligned_rule(rect: Rect, scale: f32) -> Rect {
+	let left = (rect.x * scale).round();
+	let top = (rect.y * scale).round();
+	let right = ((rect.x + rect.w) * scale).round().max(left + 1.0);
+	Rect {
+		x: left / scale,
+		y: top / scale,
+		w: (right - left) / scale,
+		h: (rect.h * scale).ceil().max(1.0) / scale,
+	}
+}
+
 impl Renderer {
 	pub(super) fn glyph_quad(
 		&mut self,
@@ -438,27 +458,30 @@ impl Renderer {
 							color,
 							dashed,
 						} => {
-							let rect = Rect {
-								x: x + *lx as f32 * size,
-								y: y + *ly as f32 * size,
-								w: *width as f32 * size,
-								h: (*thickness as f32 * size).max(0.6),
-							};
+							let rect = device_aligned_rule(
+								Rect {
+									x: x + *lx as f32 * size,
+									y: y + *ly as f32 * size,
+									w: *width as f32 * size,
+									h: (*thickness as f32 * size).max(0.6),
+								},
+								view.scale,
+							);
 							let color =
 								self.math_color(*color, view.theme, *paint);
 							if *dashed {
 								let mut left = 0.0;
 								while left < rect.w {
-									self.geometry.solid(
+									let dash = device_aligned_rule(
 										Rect {
 											x: rect.x + left,
 											w: (rect.w - left).min(size * 0.3),
 											..rect
 										},
-										color,
-										clip,
-										view,
+										view.scale,
 									);
+									self.geometry
+										.solid(dash, color, clip, view);
 									left += size * 0.5;
 								}
 							} else {
@@ -472,12 +495,15 @@ impl Renderer {
 							height,
 							color,
 						} => self.geometry.solid(
-							Rect {
-								x: x + *rx as f32 * size,
-								y: y + *ry as f32 * size,
-								w: *width as f32 * size,
-								h: *height as f32 * size,
-							},
+							device_aligned(
+								Rect {
+									x: x + *rx as f32 * size,
+									y: y + *ry as f32 * size,
+									w: *width as f32 * size,
+									h: *height as f32 * size,
+								},
+								view.scale,
+							),
 							self.math_color(*color, view.theme, *paint),
 							clip,
 							view,
@@ -496,8 +522,8 @@ impl Renderer {
 								&mut self.geometry,
 								commands,
 								*fill,
-								x + *px as f32 * size,
-								y + *py as f32 * size,
+								device_snap(x + *px as f32 * size, view.scale),
+								device_snap(y + *py as f32 * size, view.scale),
 								size,
 								color,
 								clip,
@@ -545,5 +571,36 @@ mod tests {
 			h: 20.,
 		};
 		assert_eq!(device_aligned(rect, 1.), rect);
+	}
+
+	/// Formula rules cover whole pixels and do not get thinner when the
+	/// display scale rises.
+	#[test]
+	fn formula_rules_round_outward_to_whole_device_pixels() {
+		let rect = Rect {
+			x: 10.2,
+			y: 4.6,
+			w: 40.3,
+			h: 0.6,
+		};
+		let one = device_aligned_rule(rect, 1.);
+		let two = device_aligned_rule(rect, 2.);
+		let whole = |pixels: f32| (pixels - pixels.round()).abs() < 1e-4;
+		for (scale, rule) in [(1., one), (2., two)] {
+			assert!(whole(rule.x * scale));
+			assert!(whole(rule.y * scale));
+			assert!(whole((rule.x + rule.w) * scale));
+			assert!(whole((rule.y + rule.h) * scale));
+		}
+		assert!(one.h <= two.h * 2.);
+		assert!(two.h * 2. >= 1.2);
+	}
+
+	/// A formula path's origin lands on a whole device pixel, so its atlas
+	/// entry is sampled one texel per pixel.
+	#[test]
+	fn formula_path_origins_land_on_whole_device_pixels() {
+		assert_eq!(device_snap(10.2, 1.5) * 1.5, 15.);
+		assert_eq!(device_snap(4.6, 2.5) * 2.5, 12.);
 	}
 }

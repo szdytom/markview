@@ -149,6 +149,11 @@ pub fn cases() -> Vec<Case> {
 	dark.scale = 1.25;
 	dark.cjk = CjkType::None;
 	cases.push(dark);
+	let mut math = Case::new("math", 640.);
+	math.name = "math-125".into();
+	math.scale = 1.25;
+	math.cjk = CjkType::None;
+	cases.push(math);
 	for (fixture, height) in [
 		("headings", 960.),
 		("inline", 800.),

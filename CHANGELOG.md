@@ -41,6 +41,7 @@ at the same level, without `[brackets]`.
 - Watch Windows folders through one recursive native handle so an open folder tree no longer blocks renaming its directories.
 - Include the MPL-2.0 license for the quick-open matcher in the third-party notices.
 - Snap pictures to the device pixel grid so text inside SVGs and Mermaid diagrams stays as sharp as body text on fractional-DPI displays.
+- Snap formula rules and vector paths to whole device pixels so fractions, radicals and stretchy delimiters stay crisp at fractional DPI.
 - Keep a tab's hover preview returning after the wheel scrolls the tab strip under a resting pointer.
 - Keep start-page search state and control layout updates within their owners so the application coupling CI check passes.
 - Keep repeated clicks on disclosure titles toggling instead of selecting text, while preserving drag selection.
