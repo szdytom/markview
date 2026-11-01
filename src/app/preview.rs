@@ -312,7 +312,8 @@ impl<P: super::SendEvent> App<P> {
 	}
 
 	fn preview_allowed(&self) -> bool {
-		!self.tab_strip.phone
+		self.frame.focused
+			&& !self.tab_strip.phone
 			&& self.interaction.panel == crate::state::PanelPage::Closed
 			&& !self.readers.session.search.open
 			&& !self.interaction.overlays.modal_open()

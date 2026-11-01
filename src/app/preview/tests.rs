@@ -485,3 +485,68 @@ fn overflowing_table_previews_pin_only_images_in_the_scrolled_clip() {
 		assert_eq!(retained.contains_key("image-19.png"), offset != 0.0);
 	}
 }
+
+/// The wheel slides tabs under a resting pointer, so the card closes and its
+/// hover follows the tab that arrives without waiting for pointer motion.
+#[test]
+fn scrolling_the_tab_strip_rearms_the_hover() {
+	let (mut app, _events) = app();
+	let now = Instant::now();
+	for index in 0..30 {
+		app.readers
+			.open(PathBuf::from(format!("/tmp/scroll-tab-{index}.md")), now);
+	}
+	let layout = app.tab_layout();
+	assert!(layout.max_scroll > 0.0);
+	app.interaction
+		.pointer
+		.move_to((layout.rects[0].x + 5.0, 20.0));
+	app.hover_preview(now);
+	app.preview_tick(now + SHOW_DELAY);
+	let before = app.preview.open().expect("the card did not open").target;
+
+	assert!(app.scroll_tabs(200.0));
+	assert!(
+		app.preview.open().is_none(),
+		"the card must close while tabs slide under it"
+	);
+	assert!(
+		app.preview.deadline().is_some(),
+		"the strip must re-arm the hover without motion"
+	);
+	app.advance_control_scroll(Instant::now() + Duration::from_secs(1));
+	assert!(!app.control_scroll_animating());
+	let target = app
+		.target_at_cursor()
+		.expect("a tab rests under the pointer");
+	assert_ne!(target, before, "the strip scrolled to another tab");
+	app.preview_tick(Instant::now() + Duration::from_secs(2));
+	assert_eq!(app.preview.open().map(|open| open.target), Some(target));
+}
+
+/// Losing focus dismisses the card, and a strip still easing must not arm it
+/// again in the inactive window.
+#[test]
+fn scrolling_does_not_reopen_the_card_in_an_unfocused_window() {
+	let (mut app, _events) = app();
+	let now = Instant::now();
+	for index in 0..30 {
+		app.readers
+			.open(PathBuf::from(format!("/tmp/unfocused-tab-{index}.md")), now);
+	}
+	let layout = app.tab_layout();
+	app.interaction
+		.pointer
+		.move_to((layout.rects[0].x + 5.0, 20.0));
+	app.hover_preview(now);
+	app.preview_tick(now + SHOW_DELAY);
+	assert!(app.preview.open().is_some());
+
+	app.scroll_tabs(200.0);
+	app.frame.focused = false;
+	app.dismiss_preview();
+	app.advance_control_scroll(Instant::now() + Duration::from_secs(1));
+	assert!(!app.preview.tracking());
+	app.preview_tick(Instant::now() + Duration::from_secs(2));
+	assert!(app.preview.open().is_none());
+}

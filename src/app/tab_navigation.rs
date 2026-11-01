@@ -40,10 +40,11 @@ impl<P: super::SendEvent> App<P> {
 		}
 		self.tab_strip.scroll.set_max(layout.max_scroll);
 		self.tab_strip.scroll.wheel(delta, Instant::now());
-		// Tabs slide under the resting pointer; the next motion re-arms the
-		// preview for whichever one arrives there.
+		// Tabs slide under the resting pointer; the card closes, and the hover
+		// re-arms for whichever tab arrives there without waiting for motion.
 		self.dismiss_preview();
 		self.move_tab_drag();
+		self.hover_preview(Instant::now());
 		self.redraw();
 		true
 	}

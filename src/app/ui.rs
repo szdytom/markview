@@ -564,10 +564,14 @@ impl<P: super::SendEvent> App<P> {
 		self.folder.scroll.advance(now);
 		let strip_moving = self.tab_strip.scroll.animating();
 		self.tab_strip.advance_scrolls(now);
-		if strip_moving && self.tab_strip.drag.is_some() {
-			// Tabs have moved under the held pointer; recompute the drop slot
-			// before the next frame is drawn.
-			self.move_tab_drag();
+		if strip_moving {
+			if self.tab_strip.drag.is_some() {
+				// Tabs have moved under the held pointer; recompute the drop
+				// slot before the next frame is drawn.
+				self.move_tab_drag();
+			}
+			// The resting pointer now names a different tab.
+			self.hover_preview(now);
 		}
 		self.preferences.fonts.advance_scroll(now);
 		self.refresh_hover();
