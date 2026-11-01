@@ -1,5 +1,5 @@
 //! Clipped quads and reusable frame vertex storage.
-use crate::{View, intersect, raster::ATLAS_SIZE};
+use crate::{View, intersect};
 use bytemuck::{Pod, Zeroable};
 use markview_layout::scene::Rect;
 #[repr(C)]
@@ -17,6 +17,8 @@ pub(super) struct Geometry {
 	/// Whether the current pass builds a frame. A prewarm pass fills the
 	/// atlases for a frame it throws away, so it emits no vertices.
 	emitting: bool,
+	/// The atlas dimension UVs are normalized against.
+	uv_scale: f32,
 }
 impl Geometry {
 	pub(super) fn decorated(
@@ -166,6 +168,9 @@ impl Geometry {
 	pub(super) fn clear(&mut self) {
 		self.vertices.clear();
 	}
+	pub(super) fn set_uv_scale(&mut self, scale: f32) {
+		self.uv_scale = scale;
+	}
 	/// A pass that only prepares atlases builds no frame; its vertices would
 	/// be thrown away, so it must not pay to append them.
 	pub(super) fn set_emitting(&mut self, emitting: bool) {
@@ -214,6 +219,7 @@ impl Geometry {
 			vertex_buffer,
 			vertex_capacity,
 			emitting: true,
+			uv_scale: crate::raster::ATLAS_SIZE as f32,
 		}
 	}
 	pub(super) fn rounded(
@@ -357,7 +363,7 @@ impl Geometry {
 		let y1 = 1.0 - (r.y + r.h) * view.scale / view.height as f32 * 2.0;
 		let v = |x, y, u, v| Vertex {
 			position: [x, y],
-			uv: [u / ATLAS_SIZE as f32, v / ATLAS_SIZE as f32],
+			uv: [u / self.uv_scale, v / self.uv_scale],
 			color,
 		};
 		let a = v(x0, y0, uv.x, uv.y);

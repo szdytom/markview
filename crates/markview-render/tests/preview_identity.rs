@@ -78,10 +78,12 @@ fn layout(
 /// Distinct CJK glyphs at every heading size, enough to exhaust one mask
 /// atlas even in a card-sized slice.
 const CJK: &str = concat!(
-	"一丁七三上下不与且世丙両两並个中义之乙九也书了事二于五亚些交",
-	"享人介仍付代以件任份优会但位体余作你使例供依侧便保信個倍候値",
-	"值停側備傳像優儲允元充先免入內全八公六共关其典内再写准减凑出",
-	"分切划列则初删利到制刷前剪副力加务动効動匀包化匯區十华单単占",
+	"一丁七三上下不与且世丙両两並个中义之乙九也书了事二于五亚些交享人介仍付代以件任份",
+	"优会但位体余作你使例供依侧便保信個倍候値值停側備傳像優儲允元充先免入內全八公六共",
+	"关其典内再写准减凑出分切划列则初删利到制刷前剪副力加务动効動匀包化匯區十华单単占",
+	"即压原参及发取变叠口句可台右号合同名后向吗含启命和品唯問啟單嗎器四回囲国图圖在地",
+	"均块坡型執基報場塊填增墨壓处备変复外多够大失头夹夾好如始子字存学它守完官定实実家",
+	"容宽實寬对导将將專尋對小少尚就尾局展嵌工左已布常幅平并広序应底度建开式引张張强当"
 );
 
 /// The review's oversized preview shape: one heading per stylesheet size plus
@@ -95,7 +97,13 @@ fn preview_source(text: &str) -> String {
 		source.push_str("\n\n");
 	}
 	source.push_str(text);
-	source.push('\n');
+	source.push_str("\n\n**");
+	source.push_str(text);
+	source.push_str("**\n\n*");
+	source.push_str(text);
+	source.push_str("*\n\n`");
+	source.push_str(text);
+	source.push_str("`\n");
 	source
 }
 
@@ -207,8 +215,8 @@ fn a_different_preview_with_the_same_shape_is_tried_again() -> anyhow::Result<()
 	let rect = Rect {
 		x: 40.0,
 		y: 40.0,
-		w: 80.0,
-		h: 480.0,
+		w: 60.0,
+		h: 1000.0,
 	};
 	let oversized_preview = Preview {
 		snapshot: &oversized,

@@ -13,6 +13,17 @@ use web_time::Instant;
 pub(super) const ATLAS_SIZE: u32 = 2048;
 mod color;
 pub(super) const COLOR_ATLAS_SIZE: u32 = color::SIZE;
+const LARGE_ATLAS_SIZE: u32 = 4096;
+const LARGE_COLOR_ATLAS_SIZE: u32 = 1024;
+
+/// The atlas sizes a view at `scale` needs, bounded by the adapter.
+pub(super) fn atlas_sizes(scale: f32, max_texture: u32) -> (u32, u32) {
+	if scale >= 1.5 && max_texture >= LARGE_ATLAS_SIZE {
+		(LARGE_ATLAS_SIZE, LARGE_COLOR_ATLAS_SIZE.min(max_texture))
+	} else {
+		(ATLAS_SIZE, COLOR_ATLAS_SIZE.min(max_texture))
+	}
+}
 
 /// Keep layout advances fractional, but bake horizontal subpixel coverage into
 /// the raster itself. Atlas texels must land on physical pixels one-to-one:
@@ -84,6 +95,8 @@ pub struct RasterStats {
 pub(super) struct RasterCache {
 	atlas: wgpu::Texture,
 	bind_group: wgpu::BindGroup,
+	mask_size: u32,
+	color_size: u32,
 	cache: HashMap<RasterKey, Entry>,
 	shelf: (u32, u32, u32),
 	scaler: ScaleContext,
@@ -98,52 +111,62 @@ pub(super) struct RasterCache {
 	/// Rasterizations a prewarm pass left undone.
 	skipped: u64,
 }
+fn atlas_texture(
+	device: &wgpu::Device,
+	pipeline: &wgpu::RenderPipeline,
+	size: u32,
+) -> (wgpu::Texture, wgpu::BindGroup) {
+	let atlas = device.create_texture(&wgpu::TextureDescriptor {
+		label: Some("glyph mask atlas"),
+		size: wgpu::Extent3d {
+			width: size,
+			height: size,
+			depth_or_array_layers: 1,
+		},
+		mip_level_count: 1,
+		sample_count: 1,
+		dimension: wgpu::TextureDimension::D2,
+		format: wgpu::TextureFormat::R8Unorm,
+		usage: wgpu::TextureUsages::TEXTURE_BINDING
+			| wgpu::TextureUsages::COPY_DST,
+		view_formats: &[],
+	});
+	let sampler = device.create_sampler(&wgpu::SamplerDescriptor {
+		label: None,
+		mag_filter: wgpu::FilterMode::Linear,
+		min_filter: wgpu::FilterMode::Linear,
+		..Default::default()
+	});
+	let bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
+		label: None,
+		layout: &pipeline.get_bind_group_layout(0),
+		entries: &[
+			wgpu::BindGroupEntry {
+				binding: 0,
+				resource: wgpu::BindingResource::TextureView(
+					&atlas.create_view(&Default::default()),
+				),
+			},
+			wgpu::BindGroupEntry {
+				binding: 1,
+				resource: wgpu::BindingResource::Sampler(&sampler),
+			},
+		],
+	});
+	(atlas, bind_group)
+}
 impl RasterCache {
 	pub(super) fn new(
 		device: &wgpu::Device,
 		queue: &wgpu::Queue,
 		pipeline: &wgpu::RenderPipeline,
 	) -> Self {
-		let atlas = device.create_texture(&wgpu::TextureDescriptor {
-			label: Some("4 MiB glyph mask atlas"),
-			size: wgpu::Extent3d {
-				width: ATLAS_SIZE,
-				height: ATLAS_SIZE,
-				depth_or_array_layers: 1,
-			},
-			mip_level_count: 1,
-			sample_count: 1,
-			dimension: wgpu::TextureDimension::D2,
-			format: wgpu::TextureFormat::R8Unorm,
-			usage: wgpu::TextureUsages::TEXTURE_BINDING
-				| wgpu::TextureUsages::COPY_DST,
-			view_formats: &[],
-		});
-		let sampler = device.create_sampler(&wgpu::SamplerDescriptor {
-			label: None,
-			mag_filter: wgpu::FilterMode::Linear,
-			min_filter: wgpu::FilterMode::Linear,
-			..Default::default()
-		});
-		let bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
-			label: None,
-			layout: &pipeline.get_bind_group_layout(0),
-			entries: &[
-				wgpu::BindGroupEntry {
-					binding: 0,
-					resource: wgpu::BindingResource::TextureView(
-						&atlas.create_view(&Default::default()),
-					),
-				},
-				wgpu::BindGroupEntry {
-					binding: 1,
-					resource: wgpu::BindingResource::Sampler(&sampler),
-				},
-			],
-		});
-		let mut cache = Self {
+		let (atlas, bind_group) = atlas_texture(device, pipeline, ATLAS_SIZE);
+		let cache = Self {
 			atlas,
 			bind_group,
+			mask_size: ATLAS_SIZE,
+			color_size: COLOR_ATLAS_SIZE,
 			cache: HashMap::new(),
 			shelf: (2, 0, 2),
 			scaler: ScaleContext::new(),
@@ -155,10 +178,41 @@ impl RasterCache {
 			budget: None,
 			skipped: 0,
 		};
-		cache.reset_atlas(queue);
-		// The first fill is not an eviction.
-		cache.resets = 0;
+		cache.upload(queue, 0, 0, 1, 1, &[255]);
 		cache
+	}
+	/// Rebuilds the atlas when the view's DPR asks for another size.
+	pub(super) fn ensure_size(
+		&mut self,
+		device: &wgpu::Device,
+		queue: &wgpu::Queue,
+		pipeline: &wgpu::RenderPipeline,
+		mask: u32,
+		color: u32,
+	) {
+		if self.mask_size == mask && self.color_size == color {
+			return;
+		}
+		// A replaced atlas invalidates preview rejection keys, which use this
+		// counter as their generation. The first frame has nothing cached, so
+		// its size selection is not an eviction.
+		if !self.cache.is_empty() {
+			self.resets += 1;
+		}
+		self.mask_size = mask;
+		self.color_size = color;
+		(self.atlas, self.bind_group) = atlas_texture(device, pipeline, mask);
+		self.cache.clear();
+		self.shelf = (2, 0, 2);
+		self.atlas_full = false;
+		self.color_atlas = None;
+		self.upload(queue, 0, 0, 1, 1, &[255]);
+	}
+	pub(super) fn mask_size(&self) -> u32 {
+		self.mask_size
+	}
+	pub(super) fn color_size(&self) -> u32 {
+		self.color_size
 	}
 	pub(super) fn full(&self) -> bool {
 		self.atlas_full
@@ -170,7 +224,7 @@ impl RasterCache {
 	}
 	/// True while new entries still fit without evicting the atlas.
 	pub(super) fn has_room(&self) -> bool {
-		!self.atlas_full && self.shelf.1 + self.shelf.2 < ATLAS_SIZE * 3 / 4
+		!self.atlas_full && self.shelf.1 + self.shelf.2 < self.mask_size * 3 / 4
 	}
 	/// Rasterizes only until `budget` elapses, so a pass that prepares a
 	/// screenful the reader has not reached yet cannot spend a whole frame.
@@ -209,7 +263,7 @@ impl RasterCache {
 			rasterized: self.rasterized,
 			resets: self.resets,
 			entries: self.cache.len(),
-			fill_percent: ((self.shelf.1 + self.shelf.2) * 100 / ATLAS_SIZE)
+			fill_percent: ((self.shelf.1 + self.shelf.2) * 100 / self.mask_size)
 				.min(100) as u8,
 		}
 	}
@@ -223,9 +277,12 @@ impl RasterCache {
 			.expect("prepared color glyph atlas")
 			.bind_group
 	}
+	pub(super) fn mask_bytes(&self) -> u64 {
+		u64::from(self.mask_size).pow(2)
+	}
 	pub(super) fn color_bytes(&self) -> u64 {
 		if self.color_atlas.is_some() {
-			u64::from(COLOR_ATLAS_SIZE).pow(2) * 4
+			u64::from(self.color_size).pow(2) * 4
 		} else {
 			0
 		}
@@ -283,12 +340,12 @@ impl RasterCache {
 		}
 		let w = entry.w + 2;
 		let h = entry.h + 2;
-		if self.shelf.0 + w > ATLAS_SIZE {
+		if self.shelf.0 + w > self.mask_size {
 			self.shelf.0 = 0;
 			self.shelf.1 += self.shelf.2;
 			self.shelf.2 = 0;
 		}
-		if w > ATLAS_SIZE || self.shelf.1 + h > ATLAS_SIZE {
+		if w > self.mask_size || self.shelf.1 + h > self.mask_size {
 			self.atlas_full = true;
 			return None;
 		}
@@ -380,7 +437,11 @@ impl RasterCache {
 				}
 				self.rasterized += 1;
 				let atlas = self.color_atlas.get_or_insert_with(|| {
-					color::ColorAtlas::new(device, color_pipeline)
+					color::ColorAtlas::new(
+						device,
+						color_pipeline,
+						self.color_size,
+					)
 				});
 				let Some(entry) = atlas.insert(queue, entry, &image.data)
 				else {
