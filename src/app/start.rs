@@ -118,6 +118,7 @@ pub(super) struct State {
 	catalog: Arc<[Arc<File>]>,
 	root: Option<PathBuf>,
 	sequence: u64,
+	worker: Option<Worker>,
 	history: Option<PathBuf>,
 	saved: Arc<AtomicU64>,
 	writer: Arc<Mutex<()>>,
@@ -208,7 +209,7 @@ pub(super) struct Result {
 }
 type Matches = (Arc<[Arc<File>]>, HashMap<usize, Snippet>);
 type Inbox = crate::mailbox::Inbox<Request>;
-pub(super) struct Worker {
+struct Worker {
 	inbox: Arc<(Mutex<Inbox>, Condvar)>,
 	sequence: Arc<AtomicU64>,
 	handle: Option<std::thread::JoinHandle<()>>,
@@ -371,11 +372,11 @@ impl<P: SendEvent> App<P> {
 		self.start_search_changed();
 	}
 	pub(super) fn start_search_changed(&mut self) {
-		let worker = self.start_worker.get_or_insert_with(|| {
+		let state = &mut self.folder.start;
+		let worker = state.worker.get_or_insert_with(|| {
 			let proxy = self.proxy.clone();
 			Worker::new(move |result| proxy.send(Event::FilesReady(result)))
 		});
-		let state = &mut self.folder.start;
 		state.sequence =
 			worker.submit(state.catalog.clone(), state.input.text().to_owned());
 		state.pending = true;
@@ -389,7 +390,6 @@ impl<P: SendEvent> App<P> {
 		self.folder.start.pending = false;
 		self.folder.start.matches = result.matches;
 		self.folder.start.snippets = result.snippets;
-		self.controls = None;
 		let scope = crate::state::Command::Chrome(
 			crate::state::ChromeCommand::StartFile(0),
 		)
@@ -432,7 +432,6 @@ impl<P: SendEvent> App<P> {
 			return true;
 		}
 		self.clear_input_focus();
-		self.controls = None;
 		self.interaction.widgets.captured = None;
 		self.refresh_hover();
 		self.redraw();
@@ -508,6 +507,10 @@ mod tests {
 		assert_eq!(app.folder.start.recent.len(), 1);
 		assert_eq!(app.folder.start.matches.len(), 2);
 		assert!(app.folder.start.snippets.is_empty());
+		app.overlay();
+		let first = app.folder.start.matches[0].id;
+		app.interaction.widgets.captured =
+			Some(Command::Chrome(ChromeCommand::StartFile(first)).widget_id());
 		for query in ["no-such-file", "readme", "docs 阅读"] {
 			app.folder.start.input.set_text(&mut app.ui, query);
 			app.start_search_changed();
@@ -515,6 +518,18 @@ mod tests {
 		settle(&mut app, &events, |app| !app.folder.start.pending);
 		assert_eq!(app.folder.start.matches.len(), 1);
 		assert_eq!(&*app.folder.start.matches[0].name, "阅读.md");
+		assert!(app.interaction.widgets.captured.is_none());
+		app.overlay();
+		let controls = app.controls.as_ref().unwrap();
+		let files: Vec<_> = controls
+			.widgets
+			.iter()
+			.filter_map(|widget| match widget.message {
+				Command::Chrome(ChromeCommand::StartFile(id)) => Some(id),
+				_ => None,
+			})
+			.collect();
+		assert_eq!(files, [app.folder.start.matches[0].id]);
 		let snippet =
 			&app.folder.start.snippets[&app.folder.start.matches[0].id];
 		assert_eq!(
