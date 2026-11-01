@@ -12,7 +12,7 @@ from unittest.mock import patch
 
 import numpy as np
 from generate_readme_comparison import SOURCE, draw, measurements
-from generate_readme_images import capture_profile
+from generate_readme_images import capture_profile, override_settings
 from generate_readme_showcase import KINDS, SOURCES, compose_credit, extract_web
 from PIL import Image, ImageChops
 from readme_fonts import font, save_chart
@@ -216,6 +216,13 @@ class ReadmeImagesTest(unittest.TestCase):
                     for tab in session["tabs"]:
                         self.assertTrue(Path(tab["path"]).is_file())
             self.assertEqual((live / "settings.toml").read_text(), settings)
+
+    def test_android_settings_override_top_level_only(self):
+        source = 'font_size = 19.0\nwidth = 240\n[export]\nfont_size = 16.0\n'
+        self.assertEqual(
+            override_settings(source, {"font_size": "18.0", "width": "760.0"}),
+            'font_size = 18.0\nwidth = 760.0\n[export]\nfont_size = 16.0\n',
+        )
 
     def test_recompose_from_desktop_and_android_captures(self):
         with tempfile.TemporaryDirectory() as directory:

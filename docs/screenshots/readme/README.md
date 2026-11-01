@@ -29,10 +29,10 @@ wikilinks, highlighting and an Obsidian callout using the default Obsidian prese
 Android inputs (`android-*.png`, `tablet-*.png`) show those same examples shared
 to the real app on headless API 35 Pixel 6 and Pixel Tablet emulators. These are
 separate captures, not desktop screenshots reshaped into mobile devices. Both
-use host Vulkan and pass their layout integration tests before capture. Body
-text is 16 px, the tablet reading width is 760 px, and the same downloaded font
-resources are available in each app's private `markview/fonts` directory.
-System bars remain in the capture.
+use host Vulkan and pass their layout integration tests before capture. The
+capture profile selects Light, Connected tabs, 18 px body text and a 760 px
+tablet reading width. System bars remain in the capture. The same downloaded
+font resources are available in each app's private `markview/fonts` directory.
 
 Chinese captions, credits and chart labels use Noto Sans CJK SC, including the
 SC face index when the font is installed as a collection. Reader captures keep
@@ -70,18 +70,19 @@ closed after each screenshot. Source captures remain here so compositions can
 be reproduced without a desktop or an emulator.
 
 To capture Android directly instead of supplying PNGs, first install and verify
-the app with `android/test.py --serial SERIAL --layout phone --layout-only`.
-Choose Light and 16 px body text in the emulator's app settings, then run:
+the app with `android/test.py --serial SERIAL --layout phone --layout-only`, then
+run:
 
 ```sh
 python3 scripts/generate_readme_images.py --android-serial SERIAL
 ```
 
-This shares each localized example through Android's normal text-sharing path,
-returns to the document start and captures the screen using `adb`. Use a
+This applies Light, Connected tabs and 18 px body text to the app's private
+settings, shares each localized example through Android's normal text-sharing
+path, returns to the document start and captures the screen using `adb`. Use a
 dedicated headless emulator; this changes its open document and reading position.
-For a tablet, verify with `--layout tablet --layout-only`, choose a 760 px reading
-width and capture with `--tablet-serial SERIAL`. Place its installed fonts in
-the app's private `files/markview/fonts` directory before capture. Existing
-`tablet-en.png` and `tablet-zh.png` inputs are retained when refreshing only
-desktop or phone captures.
+For a tablet, verify with `--layout tablet --layout-only` and capture with
+`--tablet-serial SERIAL`; the capture also applies the 760 px reading width. Place
+its installed fonts in the app's private `files/markview/fonts` directory before
+capture. Existing `tablet-en.png` and `tablet-zh.png` inputs are retained when
+refreshing only desktop or phone captures.

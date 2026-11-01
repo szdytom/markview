@@ -30,6 +30,7 @@ at the same level, without `[brackets]`.
 ### Changed
 
 - Raise the minimum Rust version to 1.96 and upgrade native, rendering, math, procedural macro and WASM dependencies.
+- Refresh the README hero tablet capture with Connected tabs and the current Android reader layout.
 
 ### Fixed
 

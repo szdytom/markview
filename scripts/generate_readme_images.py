@@ -22,10 +22,27 @@ from PIL import Image, ImageDraw, ImageFilter
 ROOT = Path(__file__).resolve().parents[1]
 OUTPUT = ROOT / "docs/screenshots/readme"
 THEMES = ("light", "dark", "celadon", "rosewood", "blueprint", "8-bit")
+ANDROID_PACKAGE = "io.github.szdytom.markview"
+ANDROID_SETTINGS = "files/markview/settings.toml"
 
 
 def save(canvas, name):
     canvas.save(OUTPUT / name, optimize=True)
+
+
+def override_settings(source, overrides):
+    """Replace top-level overrides in `source` and prepend the whole set."""
+    section = re.search(r"(?m)^\[", source)
+    if section:
+        head, tail = source[: section.start()], source[section.start() :]
+    else:
+        head, tail = source, ""
+    head = re.sub(rf"(?m)^({'|'.join(overrides)})\s*=.*\n?", "", head)
+    return (
+        "".join(f"{key} = {value}\n" for key, value in overrides.items())
+        + head
+        + tail
+    )
 
 
 def capture_profile(directory, language, folder=False):
@@ -44,10 +61,7 @@ def capture_profile(directory, language, folder=False):
         "markdown-flavor": '"obsidian"',
         "footer-path": "false",
     }
-    settings = re.sub(rf"(?m)^({'|'.join(overrides)})\s*=.*\n?", "", settings)
-    (profile / "settings.toml").write_text(
-        "".join(f"{key} = {value}\n" for key, value in overrides.items()) + settings
-    )
+    (profile / "settings.toml").write_text(override_settings(settings, overrides))
     for resource in ("fonts", "styles"):
         if (current / resource).is_dir():
             (profile / resource).symlink_to(
@@ -232,8 +246,39 @@ def compose(language):
     save(light, f"{language}-themes.png")
 
 
+def android_profile(adb, overrides):
+    """Apply overrides to the app's private profile and stop it before capture."""
+    subprocess.run(adb + ["shell", "am", "force-stop", ANDROID_PACKAGE], check=True)
+    current = subprocess.run(
+        adb + ["exec-out", "run-as", ANDROID_PACKAGE, "cat", ANDROID_SETTINGS],
+        capture_output=True,
+        text=True,
+    )
+    source = current.stdout if current.returncode == 0 else ""
+    subprocess.run(
+        adb + ["shell", "run-as", ANDROID_PACKAGE, "mkdir", "-p", "files/markview"],
+        check=True,
+    )
+    subprocess.run(
+        adb + ["shell", "run-as", ANDROID_PACKAGE, "tee", ANDROID_SETTINGS],
+        input=override_settings(source, overrides),
+        text=True,
+        capture_output=True,
+        check=True,
+    )
+
+
 def capture_android(serial, kind="android"):
     adb = ["adb", "-s", serial]
+    android_profile(
+        adb,
+        {
+            "tab-style": '"connected"',
+            "style": '["light"]',
+            "font_size": "18.0",
+            "width": "760.0",
+        },
+    )
     for language in ("en", "zh"):
         source = (ROOT / f"docs/screenshots/source/{language}/reading.md").read_text()
         command = shlex.join(
