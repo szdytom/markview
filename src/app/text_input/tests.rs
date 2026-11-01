@@ -564,15 +564,12 @@ fn focused_start_inputs_stop_revealing_at_the_scroll_limit() {
 #[test]
 fn workspace_search_ime_commit_filters_and_enter_opens_a_local_file() {
 	let dir = tempfile::tempdir().unwrap();
-	let path = dir.path().join("阅读.md");
+	let root = dir.path().canonicalize().unwrap();
+	let path = root.join("阅读.md");
 	std::fs::write(&path, "# 阅读").unwrap();
 	let mut app = app();
 	app.show_panel(PanelPage::Closed);
-	app.folder_loaded(
-		0,
-		false,
-		crate::app::folder::Tree::read(dir.path().into()),
-	);
+	app.folder_loaded(0, false, crate::app::folder::Tree::read(root));
 	app.action(Command::Chrome(ChromeCommand::FocusInput(TextField::Files)));
 	assert_eq!(app.text_input.focused, Some(TextField::Files));
 	app.scroll_by(0.0);

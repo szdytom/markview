@@ -358,11 +358,12 @@ mod tests {
 	fn workspace_search_cancels_old_queries_updates_from_the_tree_and_opens_files()
 	 {
 		let dir = tempfile::tempdir().unwrap();
-		fs::create_dir_all(dir.path().join("docs/笔记")).unwrap();
-		fs::create_dir(dir.path().join("node_modules")).unwrap();
+		let root = dir.path().canonicalize().unwrap();
+		fs::create_dir_all(root.join("docs/笔记")).unwrap();
+		fs::create_dir(root.join("node_modules")).unwrap();
 		for name in ["README.md", "docs/笔记/阅读.md", "node_modules/hidden.md"]
 		{
-			fs::write(dir.path().join(name), "# Reading").unwrap();
+			fs::write(root.join(name), "# Reading").unwrap();
 		}
 		let (tx, events) = mpsc::channel();
 		let mut app = App::new(
@@ -377,7 +378,7 @@ mod tests {
 		app.folder_loaded(
 			0,
 			false,
-			crate::app::folder::Tree::read(dir.path().into()),
+			crate::app::folder::Tree::read(root.clone()),
 		);
 		settle(&mut app, &events, |app| !app.folder.start.pending);
 		assert_eq!(app.folder.start.recent.len(), 1);
@@ -433,8 +434,8 @@ mod tests {
 		assert_eq!(snippet.matched.len(), 1);
 		assert_eq!(snippet.matched[0], 0..6);
 
-		fs::remove_file(dir.path().join("README.md")).unwrap();
-		fs::write(dir.path().join("README-new.md"), "# New").unwrap();
+		fs::remove_file(root.join("README.md")).unwrap();
+		fs::write(root.join("README-new.md"), "# New").unwrap();
 		app.refresh_folder();
 		settle(&mut app, &events, |app| {
 			!app.folder.start.pending
@@ -449,7 +450,7 @@ mod tests {
 		app.action(Command::Chrome(ChromeCommand::StartFile(id)));
 		assert_eq!(
 			app.readers.session.path.as_ref().unwrap(),
-			&dir.path().join("README-new.md")
+			&root.join("README-new.md")
 		);
 		assert!(app.input_geometry(crate::state::TextField::Files).is_none());
 	}
@@ -563,8 +564,9 @@ mod tests {
 		use crate::state::TextField;
 		use winit::keyboard::{Key, ModifiersState, NamedKey};
 		let dir = tempfile::tempdir().unwrap();
+		let root = dir.path().canonicalize().unwrap();
 		for index in 0..20 {
-			fs::write(dir.path().join(format!("note-{index:02}.md")), "# Note")
+			fs::write(root.join(format!("note-{index:02}.md")), "# Note")
 				.unwrap();
 		}
 		let (tx, events) = mpsc::channel();
@@ -580,7 +582,7 @@ mod tests {
 		app.folder_loaded(
 			0,
 			false,
-			crate::app::folder::Tree::read(dir.path().into()),
+			crate::app::folder::Tree::read(root.clone()),
 		);
 		settle(&mut app, &events, |app| !app.folder.start.pending);
 		app.folder.start.input.set_text(&mut app.ui, "note");
@@ -626,7 +628,7 @@ mod tests {
 		assert!(app.key_pressed(&Key::Named(NamedKey::Enter)));
 		assert_eq!(
 			app.readers.session.path.as_ref().unwrap(),
-			&dir.path().join("note-12.md")
+			&root.join("note-12.md")
 		);
 		assert!(!app.interaction.overlays.quick_open.open());
 		assert!(app.input_geometry(TextField::Files).is_none());
