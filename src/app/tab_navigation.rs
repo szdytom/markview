@@ -3,18 +3,20 @@ use super::{
 	App,
 	tab_strip::{TabDrag, TabLayout},
 };
+use crate::layout::Rect;
 use std::time::{Duration, Instant};
 
 impl<P: super::SendEvent> App<P> {
 	pub(super) fn tab_at_cursor(&mut self) -> Option<usize> {
 		let (x, y) = self.interaction.pointer.cursor();
-		self.tab_layout().hit(x, y)
+		let layout = self.tab_layout();
+		layout.hit_over(x, y, self.readers.active())
 	}
 	pub(super) fn tab_close_at_cursor(&mut self) -> Option<usize> {
 		let (x, y) = self.interaction.pointer.cursor();
 		let layout = self.tab_layout();
 		layout
-			.hit(x, y)
+			.hit_over(x, y, self.readers.active())
 			.filter(|i| x >= layout.rects[*i].x + layout.rects[*i].w - 24.0)
 	}
 	pub(super) fn normalize_tab_scroll(&mut self) {
@@ -56,8 +58,8 @@ impl<P: super::SendEvent> App<P> {
 			index,
 			start: x,
 			grab: x - layout.rects[index].x,
-			last: x + layout.scroll,
 			moving: false,
+			slot: None,
 		});
 	}
 	pub(super) fn move_tab_drag(&mut self) {
@@ -65,15 +67,45 @@ impl<P: super::SendEvent> App<P> {
 			return;
 		};
 		let layout = self.tab_layout();
-		let from = drag.index;
 		drag.update(&layout, self.interaction.pointer.cursor().0);
-		if !drag.moving {
+		self.tab_strip.drag = Some(drag);
+		if drag.moving {
+			self.schedule_tab_scroll(&layout);
+			self.redraw();
+		}
+	}
+	/// Drops the held tab where the pointer indicates, sliding it and its
+	/// neighbors into their new places.
+	pub(super) fn finish_tab_drag(&mut self) {
+		let Some(drag) = self.tab_strip.drag else {
+			return;
+		};
+		let Some(to) = drag.drop_index() else {
+			return;
+		};
+		let layout = self.tab_layout();
+		if drag.index >= layout.rects.len() || to >= layout.rects.len() {
 			return;
 		}
-		self.readers.move_tab(from, drag.index);
-		self.tab_strip.drag = Some(drag);
-		self.schedule_tab_scroll(&layout);
-		self.redraw();
+		let x = self.interaction.pointer.cursor().0;
+		let dragged = Rect {
+			x: (x - drag.grab).clamp(
+				layout.viewport.x,
+				(layout.viewport.x + layout.viewport.w
+					- layout.rects[drag.index].w)
+					.max(layout.viewport.x),
+			),
+			..layout.rects[drag.index]
+		};
+		if self.readers.move_tab(drag.index, to) {
+			self.tab_strip.begin_reorder(
+				&layout.rects,
+				drag.index,
+				to,
+				dragged,
+			);
+			self.redraw();
+		}
 	}
 	fn schedule_tab_scroll(&mut self, layout: &TabLayout) {
 		self.tab_strip.scroll_at =
@@ -96,5 +128,6 @@ impl<P: super::SendEvent> App<P> {
 			.clamp(0.0, layout.max_scroll),
 		);
 		self.move_tab_drag();
+		self.redraw();
 	}
 }

@@ -216,8 +216,8 @@ fn tab_hover_match_rendering_baselines() -> anyhow::Result<()> {
 				index: 0,
 				start: 100.0,
 				grab: 20.0,
-				last: 150.0,
 				moving: true,
+				slot: Some(5),
 			});
 			let drag_widths = [
 				(280.0, 280.0),
@@ -492,4 +492,62 @@ fn separators_only_divide_neighboring_inactive_tabs() {
 			}
 		}
 	}
+}
+
+#[test]
+fn endpoint_drop_indicators_stay_inside_the_viewport() {
+	let viewport = Rect {
+		x: 10.0,
+		y: 4.0,
+		w: 300.0,
+		h: 32.0,
+	};
+	let drag = |slot, index| crate::app::tab_strip::TabDrag {
+		index,
+		start: 0.0,
+		grab: 0.0,
+		moving: true,
+		slot: Some(slot),
+	};
+	let left = [
+		Rect {
+			x: 10.0,
+			w: 100.0,
+			..viewport
+		},
+		Rect {
+			x: 112.0,
+			w: 100.0,
+			..viewport
+		},
+	];
+	let Some(Draw::Rect(rect, _)) =
+		drop_indicator(Some(drag(0, 1)), &left, viewport)
+	else {
+		panic!("the leading boundary has an indicator")
+	};
+	assert_eq!(rect.x, viewport.x);
+	let right = [
+		Rect {
+			x: 110.0,
+			w: 100.0,
+			..viewport
+		},
+		Rect {
+			x: 210.0,
+			w: 100.0,
+			..viewport
+		},
+	];
+	let Some(Draw::Rect(rect, _)) =
+		drop_indicator(Some(drag(2, 0)), &right, viewport)
+	else {
+		panic!("the trailing boundary has an indicator")
+	};
+	assert_eq!(rect.x + rect.w, viewport.x + viewport.w);
+	let narrow = Rect { w: 1.0, ..viewport };
+	assert!(
+		drop_indicator(Some(drag(2, 0)), &right, narrow).is_none(),
+		"a viewport too narrow for the line gets no indicator"
+	);
 }

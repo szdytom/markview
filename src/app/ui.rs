@@ -565,8 +565,8 @@ impl<P: super::SendEvent> App<P> {
 		let strip_moving = self.tab_strip.scroll.animating();
 		self.tab_strip.advance_scrolls(now);
 		if strip_moving && self.tab_strip.drag.is_some() {
-			// Tabs have moved under the held pointer; keep the dragged tab
-			// where the pointer now sits before the next frame is drawn.
+			// Tabs have moved under the held pointer; recompute the drop slot
+			// before the next frame is drawn.
 			self.move_tab_drag();
 		}
 		self.preferences.fonts.advance_scroll(now);

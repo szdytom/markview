@@ -563,8 +563,8 @@ fn tab_strip_frames_clip_overflow_at_fractional_dpi() -> Result<()> {
 			index: 3,
 			start: 100.0,
 			grab: 20.0,
-			last: 150.0,
 			moving: true,
+			slot: Some(5),
 		});
 		let width = if count <= 3 { 800.0 } else { 500.0 };
 		let mut bar = tabs::TabBar {

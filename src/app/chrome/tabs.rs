@@ -1,5 +1,5 @@
 use super::components::mix;
-use crate::app::tab_strip::{GAP, TabLayout, TabStrip};
+use crate::app::tab_strip::{GAP, TabDrag, TabLayout, TabStrip};
 use crate::layout::{Draw, Paint, Rect, TextShaper};
 use crate::settings::TabStyle;
 use crate::state::ReaderTab;
@@ -37,8 +37,8 @@ impl TabBar<'_> {
 
 	pub(super) fn draw_tabs(&mut self) -> Vec<Draw> {
 		let layout = self.layout();
-		let close = self.strip.rects(&layout);
-		let rects = close.as_deref().unwrap_or(&layout.rects);
+		let slid = self.strip.rects(&layout);
+		let rects = slid.as_deref().unwrap_or(&layout.rects);
 		let style = self.style;
 		let hovered_tab = rects
 			.iter()
@@ -127,6 +127,7 @@ impl TabBar<'_> {
 			});
 		}
 		out.extend(separators);
+		out.extend(drop_indicator(dragged, rects, layout.viewport));
 		self.ui.appearance = old;
 		let padding =
 			if style == TabStyle::Connected && layout.max_scroll == 0.0 {
@@ -160,6 +161,36 @@ impl TabBar<'_> {
 		}
 		draws
 	}
+}
+
+/// The line marking the boundary a drop lands on, above the floating tab.
+fn drop_indicator(
+	dragged: Option<TabDrag>,
+	rects: &[Rect],
+	viewport: Rect,
+) -> Option<Draw> {
+	let drag = dragged?;
+	drag.drop_index()?;
+	let slot = drag.slot?;
+	if viewport.w < 2.0 {
+		return None;
+	}
+	let edge = rects.get(slot).map_or_else(
+		|| rects.last().map_or(viewport.x, |rect| rect.x + rect.w) + GAP / 2.0,
+		|rect| rect.x - GAP / 2.0,
+	);
+	let (y, h) = rects.first().map_or((viewport.y, viewport.h), |rect| {
+		(rect.y + 6.0, rect.h - 12.0)
+	});
+	Some(Draw::Rect(
+		Rect {
+			x: (edge - 1.0).clamp(viewport.x, viewport.x + viewport.w - 2.0),
+			y,
+			w: 2.0,
+			h,
+		},
+		Paint::Styled(Condition::Toolbar, C::Accent),
+	))
 }
 
 fn separator_visible(

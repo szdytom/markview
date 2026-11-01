@@ -592,6 +592,7 @@ impl<P: super::SendEvent> App<P> {
 			self.redraw();
 			return;
 		}
+		self.finish_tab_drag();
 		self.tab_strip.cancel_drag();
 		let pressed_image = self.interaction.pointer.take_pressed_image();
 		let was_pressed = self.interaction.widgets.captured.is_some();

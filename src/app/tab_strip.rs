@@ -14,11 +14,11 @@ pub(super) struct TabStrip {
 	pub scroll_at: Option<Instant>,
 	/// The drawer's slide when the tabs page opens or closes.
 	animation: Option<DrawerAnimation>,
-	/// The tabs sliding left after one of them closes.
-	close: Option<TabClose>,
+	/// Tabs sliding to new positions after a close or a drop.
+	slide: Option<TabSlide>,
 }
-struct TabClose {
-	/// Where each surviving tab stood when the close started.
+struct TabSlide {
+	/// Where each tab stood when the slide started, in its new order.
 	from: Vec<Rect>,
 	/// The old right edge of the whole strip.
 	end: f32,
@@ -26,37 +26,25 @@ struct TabClose {
 }
 #[derive(Clone, Copy)]
 pub(super) struct TabDrag {
+	/// The tab's index while the strip still rests.
 	pub index: usize,
 	pub start: f32,
 	pub grab: f32,
-	pub last: f32,
 	pub moving: bool,
+	/// The boundary the pointer would insert the tab at, in resting order.
+	pub slot: Option<usize>,
 }
 impl TabDrag {
 	pub fn update(&mut self, layout: &TabLayout, x: f32) {
 		self.moving |= (x - self.start).abs() >= 5.0;
-		if !self.moving {
-			return;
-		}
-		let content_x = x + layout.scroll;
-		// Only cross neighbors in the direction of travel: unequal tab widths
-		// must not cause a stationary pointer to swap back after a reorder.
-		if content_x > self.last {
-			while self.index + 1 < layout.rects.len()
-				&& x > layout.rects[self.index + 1].x
-					+ layout.rects[self.index + 1].w / 2.0
-			{
-				self.index += 1;
-			}
-		} else if content_x < self.last {
-			while self.index > 0
-				&& x < layout.rects[self.index - 1].x
-					+ layout.rects[self.index - 1].w / 2.0
-			{
-				self.index -= 1;
-			}
-		}
-		self.last = content_x;
+		self.slot = self.moving.then(|| layout.slot(x));
+	}
+
+	/// The index the tab would take if dropped now, if that is a move.
+	pub fn drop_index(&self) -> Option<usize> {
+		let slot = self.slot?;
+		let index = slot - usize::from(slot > self.index);
+		(index != self.index).then_some(index)
 	}
 }
 impl TabStrip {
@@ -73,9 +61,9 @@ impl TabStrip {
 	pub(super) fn animating(&self) -> bool {
 		self.animation.is_some()
 			|| self
-				.close
+				.slide
 				.as_ref()
-				.is_some_and(|close| close.animation.is_some())
+				.is_some_and(|slide| slide.animation.is_some())
 	}
 
 	pub(super) fn advance_animation(&mut self, now: Instant) {
@@ -86,14 +74,14 @@ impl TabStrip {
 		{
 			self.animation = None;
 		}
-		let settled = self.close.as_ref().is_some_and(|close| {
-			close
+		let settled = self.slide.as_ref().is_some_and(|slide| {
+			slide
 				.animation
 				.as_ref()
 				.is_some_and(|animation| animation.is_finished(now))
 		});
 		if settled {
-			self.close = None;
+			self.slide = None;
 		}
 	}
 
@@ -104,49 +92,71 @@ impl TabStrip {
 		if index >= from.len() {
 			return;
 		}
-		let end = from.last().map_or(0.0, |rect| rect.x + rect.w);
 		from.remove(index);
+		self.begin_slide(rects, from);
+	}
+
+	/// Starts every tab at its resting or dragged rect and slides it to the
+	/// layout that follows moving the tab at `from` to `to`.
+	pub(super) fn begin_reorder(
+		&mut self,
+		rects: &[Rect],
+		from: usize,
+		to: usize,
+		dragged: Rect,
+	) {
+		if from >= rects.len() || to >= rects.len() || from == to {
+			return;
+		}
+		let mut moved = rects.to_vec();
+		moved.remove(from);
+		moved.insert(to, dragged);
+		self.begin_slide(rects, moved);
+	}
+
+	fn begin_slide(&mut self, rects: &[Rect], from: Vec<Rect>) {
+		let end = rects.last().map_or(0.0, |rect| rect.x + rect.w);
 		let mut animation = None;
 		DrawerAnimation::retarget(&mut animation, false, true);
-		self.close = animation.map(|animation| TabClose {
+		self.slide = animation.map(|animation| TabSlide {
 			from,
 			end,
 			animation: Some(animation),
 		});
 	}
 
-	/// The right edge of the tabs, including the close slide.
+	/// The right edge of the tabs, including a slide.
 	pub(super) fn end(&self, end: f32, tabs: usize) -> f32 {
-		self.close_slide(tabs)
-			.map_or(end, |(t, close)| close.end + (end - close.end) * t)
+		self.slide_at(tabs)
+			.map_or(end, |(t, slide)| slide.end + (end - slide.end) * t)
 	}
 
-	/// The tabs' rects with the close slide applied, or none at rest.
+	/// The tabs' rects with a slide applied, or none at rest.
 	pub(super) fn rects(&self, layout: &TabLayout) -> Option<Vec<Rect>> {
-		let (t, close) = self.close_slide(layout.rects.len())?;
+		let (t, slide) = self.slide_at(layout.rects.len())?;
 		let mut rects = layout.rects.clone();
-		for (rect, from) in rects.iter_mut().zip(&close.from) {
+		for (rect, from) in rects.iter_mut().zip(&slide.from) {
 			rect.x = from.x + (rect.x - from.x) * t;
 			rect.w = from.w + (rect.w - from.w) * t;
 		}
 		Some(rects)
 	}
 
-	fn close_slide(&self, tabs: usize) -> Option<(f32, &TabClose)> {
-		let close = self.close.as_ref()?;
-		if close.from.len() != tabs {
+	fn slide_at(&self, tabs: usize) -> Option<(f32, &TabSlide)> {
+		let slide = self.slide.as_ref()?;
+		if slide.from.len() != tabs {
 			return None;
 		}
 		let t = 1.0
-			- DrawerAnimation::reveal(&close.animation, false, Instant::now());
-		Some((t, close))
+			- DrawerAnimation::reveal(&slide.animation, false, Instant::now());
+		Some((t, slide))
 	}
 
 	/// Drops the slide where it is, as a page change without animation does.
 	#[cfg(test)]
 	pub(super) fn stop_animation(&mut self) {
 		self.animation = None;
-		self.close = None;
+		self.slide = None;
 	}
 
 	#[cfg(test)]
@@ -158,11 +168,11 @@ impl TabStrip {
 	}
 
 	#[cfg(test)]
-	pub(super) fn freeze_close(&mut self, elapsed: std::time::Duration) {
-		self.close
+	pub(super) fn freeze_slide(&mut self, elapsed: std::time::Duration) {
+		self.slide
 			.as_mut()
-			.and_then(|close| close.animation.as_mut())
-			.expect("a tab close is animating")
+			.and_then(|slide| slide.animation.as_mut())
+			.expect("a tab slide is animating")
 			.freeze(elapsed);
 	}
 
@@ -249,6 +259,25 @@ impl TabLayout {
 			.contains(x, y)
 			.then(|| self.rects.iter().position(|r| r.contains(x, y)))
 			.flatten()
+	}
+	/// The tab at `(x, y)` as painted: the active tab lies above the rest.
+	pub fn hit_over(&self, x: f32, y: f32, active: usize) -> Option<usize> {
+		if self.viewport.contains(x, y)
+			&& self
+				.rects
+				.get(active)
+				.is_some_and(|rect| rect.contains(x, y))
+		{
+			return Some(active);
+		}
+		self.hit(x, y)
+	}
+	/// The boundary before the tab whose center is past `x`.
+	pub fn slot(&self, x: f32) -> usize {
+		self.rects
+			.iter()
+			.position(|rect| x < rect.x + rect.w / 2.0)
+			.unwrap_or(self.rects.len())
 	}
 	pub fn reveal(&self, index: usize) -> f32 {
 		let Some(rect) = self.rects.get(index) else {

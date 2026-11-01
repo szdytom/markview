@@ -1554,7 +1554,7 @@ fn tab_hits_follow_the_close_slide() {
 	let last = app.readers.entries().len() - 2;
 	app.action(Command::Chrome(ChromeCommand::CloseTab(1)));
 	assert!(app.tab_strip.animating());
-	app.tab_strip.freeze_close(Duration::ZERO);
+	app.tab_strip.freeze_slide(Duration::ZERO);
 	let at = (before.x + before.w - 4.0, before.y + before.h / 2.0);
 	app.interaction.pointer.move_to(at);
 	assert_eq!(app.tab_close_at_cursor(), Some(last));
@@ -1565,7 +1565,7 @@ fn tab_hits_follow_the_close_slide() {
 }
 
 #[test]
-fn a_scrolling_strip_carries_the_dragged_tab_with_it() {
+fn a_scrolling_strip_moves_the_drop_slot_with_it() {
 	let (mut app, _) = reader(SOURCE, 760.0);
 	let now = Instant::now();
 	for index in 0..30 {
@@ -1601,10 +1601,34 @@ fn a_scrolling_strip_carries_the_dragged_tab_with_it() {
 		"the ease has not moved the strip yet"
 	);
 	app.advance_control_scroll(Instant::now() + Duration::from_secs(1));
+	let drag = app.tab_strip.drag.unwrap();
+	assert_eq!(drag.index, start, "scrolling must not reorder the strip");
 	assert!(
-		app.tab_strip.drag.unwrap().index > start,
-		"the dragged tab followed the tabs sliding under the pointer"
+		drag.drop_index().is_some_and(|to| to > start),
+		"the drop slot followed the tabs sliding under the pointer"
 	);
+}
+
+#[test]
+fn dragging_a_tab_reorders_only_when_released() {
+	let (mut app, _) = reader(SOURCE, 900.0);
+	let now = Instant::now();
+	let paths: Vec<_> = (0..3)
+		.map(|index| PathBuf::from(format!("/tmp/drop-tab-{index}.md")))
+		.collect();
+	for path in &paths {
+		app.readers.open(path.clone(), now);
+	}
+	let layout = app.tab_layout();
+	let first = layout.rects[0];
+	let last = layout.rects[2];
+	physical_drag(
+		&mut app,
+		(first.x + first.w / 2.0, first.y + first.h / 2.0),
+		(last.x + last.w - 2.0, last.y + last.h / 2.0),
+	);
+	assert_eq!(app.readers.entries()[2].path, paths[0]);
+	assert!(app.tab_strip.animating());
 }
 
 #[test]

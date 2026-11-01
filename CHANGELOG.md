@@ -29,6 +29,7 @@ at the same level, without `[brackets]`.
 
 ### Changed
 
+- Redesign tab dragging to keep the strip still, show a drop indicator, and slide tabs into place on release.
 - Raise the minimum Rust version to 1.96 and upgrade native, rendering, math, procedural macro and WASM dependencies.
 - Refresh the README hero tablet capture with Connected tabs and the current Android reader layout.
 
