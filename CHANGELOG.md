@@ -21,6 +21,17 @@ at the same level, without `[brackets]`.
 
 ## Unreleased
 
+## 0.4.4 - 2026-11-02
+
+**Highlights**:
+
+- Open workspace and tab files from a floating quick-open picker with Ctrl+P (⌘P on macOS).
+- Browse a redesigned start page with recent workspaces, direct file and folder opening, and fuzzy search.
+- Scroll large documents more smoothly as glyph atlases and nearby pictures prepare during idle time.
+- Read crisp pictures and formulas on fractional-DPI displays, with edges snapped to device pixels.
+- Tap images to open a zoomable viewer, and keep folder trees current while expanding excluded entries.
+- Rename watched folders on Windows without blocking, and drag tabs with a clear drop indicator.
+
 ### Added
 
 - Search workspace and open-tab files in a floating picker with Ctrl+P (⌘P on macOS), sharing fuzzy path search and match snippets with the start page.
