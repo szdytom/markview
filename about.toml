@@ -36,3 +36,8 @@ accepted = ["MPL-2.0"]
 
 [selectors]
 accepted = ["MPL-2.0"]
+
+# The quick-open palette uses this unmodified MPL-2.0 matcher. The notices
+# include its license text and a link to the exact published source package.
+[nucleo-matcher]
+accepted = ["MPL-2.0"]
