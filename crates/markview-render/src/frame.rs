@@ -392,14 +392,20 @@ impl Renderer {
 		// rebuild of the frame the reader is looking at.
 		self.raster.begin_frame();
 		self.prepare(snapshot, view, underlay, overlay);
-		if self.raster.full() {
-			// Evict previous frames, then rebuild the entire current frame; never reuse stale UVs.
-			self.raster.reset_atlas(&self.gpu.queue);
+		let mask_full = self.raster.mask_full();
+		let color_full = self.raster.color_full();
+		if mask_full || color_full {
+			// Evict only the exhausted atlas, then rebuild the frame; the other
+			// atlas keeps its cached entries and is reused by the second pass.
+			if mask_full {
+				self.raster.reset_mask(&self.gpu.queue);
+			}
+			if color_full {
+				self.raster.reset_color();
+			}
 			self.prepare(snapshot, view, underlay, overlay);
 			if self.raster.full() {
-				bail!(
-					"Visible content exceeds the glyph atlases (4 MiB masks / 1 MiB color); reduce zoom"
-				);
+				bail!("Visible content exceeds the glyph atlases; reduce zoom");
 			}
 		}
 		self.geometry.upload(&self.gpu.device, &self.gpu.queue);

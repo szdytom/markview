@@ -530,3 +530,45 @@ fn high_dpi_uses_a_larger_atlas_when_the_adapter_allows_it() {
 		(super::ATLAS_SIZE, super::COLOR_ATLAS_SIZE)
 	);
 }
+
+#[test]
+fn resetting_one_atlas_keeps_the_other_cache() {
+	use super::{Entry, RasterKey};
+	use crate::Renderer;
+	let mut renderer = pollster::block_on(Renderer::new(None)).unwrap();
+	let mask = RasterKey::Path {
+		path: 1,
+		size: 8,
+		tx: 0,
+		ty: 0,
+		w: 1,
+		h: 1,
+	};
+	let color = RasterKey::Path {
+		path: 2,
+		size: 8,
+		tx: 0,
+		ty: 0,
+		w: 1,
+		h: 1,
+	};
+	renderer.raster.cache.insert(
+		mask.clone(),
+		Entry {
+			color: false,
+			..Default::default()
+		},
+	);
+	renderer.raster.cache.insert(
+		color.clone(),
+		Entry {
+			color: true,
+			..Default::default()
+		},
+	);
+	renderer.raster.reset_color();
+	assert!(renderer.raster.cache.contains_key(&mask));
+	assert!(!renderer.raster.cache.contains_key(&color));
+	renderer.raster.reset_mask(&renderer.gpu.queue);
+	assert!(!renderer.raster.cache.contains_key(&mask));
+}
