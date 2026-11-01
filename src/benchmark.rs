@@ -68,6 +68,8 @@ pub struct ScrollPass {
 	/// document needs more glyphs than the atlas can keep.
 	pub atlas_fill_percent: u8,
 	pub atlas_entries: usize,
+	/// Scroll offsets whose frame crossed an atlas reset.
+	pub reset_offsets: Vec<f32>,
 }
 
 /// Scrolling is what a reader does most, so the frame it costs is measured
@@ -327,6 +329,7 @@ fn measure_scroll(
 		}
 		let before = renderer.raster_stats();
 		let mut in_frame = 0;
+		let mut reset_offsets = Vec::new();
 		let (mut prepare, mut total) = (
 			Vec::with_capacity(offsets.len()),
 			Vec::with_capacity(offsets.len()),
@@ -341,12 +344,16 @@ fn measure_scroll(
 				}
 			}
 			let frame_before = renderer.raster_stats().rasterized;
+			let resets_before = renderer.raster_stats().resets;
 			let start = Instant::now();
 			let submission = renderer.render(latest, view, &[], target)?;
 			in_frame += renderer.raster_stats().rasterized - frame_before;
 			prepare.push(start.elapsed().as_secs_f64() * 1000.0);
 			renderer.wait(Some(submission))?;
 			total.push(start.elapsed().as_secs_f64() * 1000.0);
+			if renderer.raster_stats().resets > resets_before {
+				reset_offsets.push(offset);
+			}
 		}
 		let after = renderer.raster_stats();
 		passes.push(ScrollPass {
@@ -359,6 +366,7 @@ fn measure_scroll(
 			atlas_resets: after.resets - before.resets,
 			atlas_fill_percent: after.fill_percent,
 			atlas_entries: after.entries,
+			reset_offsets,
 		});
 	}
 	Ok(ScrollPacing {

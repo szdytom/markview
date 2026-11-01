@@ -218,6 +218,8 @@ warm reflows alone hide font fallback initialization costs. For a stage breakdow
 
 ```sh
 MARKVIEW_PROFILE=1 target/release/markview bench tests/fixtures/emoji-fallback.md --iterations 3 --output artifacts/emoji-profile.json
+
+Use `--scale 2` on `bench` or `latency` to measure the native high-DPI path; the scroll report lists the offsets whose frames crossed an atlas reset.
 ```
 
 `layout.font_resolve_ms` measures configured candidate resolution/loading;
