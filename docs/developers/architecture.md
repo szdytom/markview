@@ -174,11 +174,13 @@ the folder tree and outline list use one row-slide model: rows leave toward
 their parent, arrive out of it, and settle on the same expo-out curve.
 
 The native folder browser owns a directory snapshot worker separately from
-`FileWatch` and document reloads. Non-recursive watches cover participating
-directories and the root's parent; excluded subtrees receive no watches until
-explicitly opened. Fixed 100 ms event batches reconcile direct children, scan
-new normal subtrees, and publish directory deltas tagged with root generation,
-view revision, and scan revision. Stable row IDs preserve unrelated nodes and
+`FileWatch` and document reloads. `markview-platform` owns the native watch
+strategy: Windows uses one recursive watch on the root so an open tree does not
+block renaming its directories, while other platforms cover participating
+directories and the root's parent non-recursively and leave excluded subtrees
+unwatched until explicitly opened. Fixed 100 ms event batches reconcile direct
+children, scan new normal subtrees, and publish directory deltas tagged with
+root generation, view revision, and scan revision. Stable row IDs preserve unrelated nodes and
 filename caches; the UI splices visible ranges and replays pending tab reveals
 after an update. Manual Refresh uses the same reconciliation.
 Two-second metadata checks detect missed events; directories without working

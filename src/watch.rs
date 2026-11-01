@@ -1,7 +1,7 @@
 //! Parent-directory observation, bounded debouncing, and latest-request wins.
 #[cfg(test)]
 use crate::file::read_document;
-use notify::{RecommendedWatcher, RecursiveMode, Watcher};
+use markview_platform::watch::{EventKind, Watcher as PlatformWatcher};
 use std::{
 	fs,
 	path::{Path, PathBuf},
@@ -44,7 +44,7 @@ impl Debounce {
 }
 
 pub struct FileWatch {
-	_watcher: Option<RecommendedWatcher>,
+	_watcher: Option<PlatformWatcher>,
 	stop: Arc<AtomicBool>,
 	thread: Option<thread::JoinHandle<()>>,
 }
@@ -66,40 +66,36 @@ impl FileWatch {
 		let stop = Arc::new(AtomicBool::new(false));
 		let (tx, rx) = mpsc::sync_channel(64);
 		let target = path.clone();
-		let mut watcher = notify::recommended_watcher(
-			move |event: notify::Result<notify::Event>| {
-				if let Ok(event) = event {
-					if matches!(event.kind, notify::EventKind::Access(_)) {
-						return;
-					}
-					if event.paths.is_empty()
-						|| event.paths.iter().any(|p| {
-							p == &target
-								|| (directory && p.starts_with(&target))
-								|| p.file_name() == target.file_name()
-						}) {
-						let _ = tx.try_send(());
-					}
-				} else {
+		let mut watcher = PlatformWatcher::new(move |event| {
+			if let Ok(event) = event {
+				if event.kind == EventKind::Access {
+					return;
+				}
+				if event.paths.is_empty()
+					|| event.paths.iter().any(|p| {
+						p == &target
+							|| (directory && p.starts_with(&target))
+							|| p.file_name() == target.file_name()
+					}) {
 					let _ = tx.try_send(());
 				}
-			},
-		)
-		.ok();
-		if let Some(w) = &mut watcher
-			&& w.watch(
-				path.parent()
-					.filter(|p| !p.as_os_str().is_empty())
-					.unwrap_or(Path::new(".")),
-				if directory {
-					RecursiveMode::Recursive
-				} else {
-					RecursiveMode::NonRecursive
-				},
-			)
-			.is_err()
-		{
-			watcher = None;
+			} else {
+				let _ = tx.try_send(());
+			}
+		});
+		let parent = path
+			.parent()
+			.filter(|p| !p.as_os_str().is_empty())
+			.unwrap_or(Path::new("."));
+		if let Some(w) = &mut watcher {
+			let watched = if directory {
+				w.watch_recursive(parent)
+			} else {
+				w.watch_directory(parent)
+			};
+			if !watched {
+				watcher = None;
+			}
 		}
 		let polling = watcher.is_none();
 		let mut stamp = observed_stamp(&path, directory);

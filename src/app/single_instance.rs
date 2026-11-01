@@ -642,7 +642,6 @@ mod tests {
 			return;
 		}
 		use markview_platform::test_support::symlink;
-		use notify::Watcher;
 
 		let tmp = tempfile::tempdir().unwrap();
 		let directory = tmp.path().join("settings");
@@ -652,13 +651,12 @@ mod tests {
 		symlink(&directory, &alias).unwrap();
 		markview_platform::test_support::set_mode(&directory, 0o755).unwrap();
 		let (tx, rx) = mpsc::channel();
-		let mut watcher = notify::recommended_watcher(move |event| {
-			tx.send(event).unwrap();
-		})
-		.unwrap();
-		watcher
-			.watch(&directory, notify::RecursiveMode::NonRecursive)
+		let mut watcher =
+			markview_platform::watch::Watcher::new(move |event| {
+				tx.send(event).unwrap();
+			})
 			.unwrap();
+		assert!(watcher.watch_directory(&directory));
 		let lock = alias.join("instance.lock");
 		let Start::Primary(primary) = start(&lock, true, None).unwrap() else {
 			panic!()

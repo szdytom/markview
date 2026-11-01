@@ -162,7 +162,6 @@ markview-ui-core = { path = "crates/markview-ui-core" }
 anyhow.workspace = true
 env_logger.workspace = true
 log.workspace = true
-notify.workspace = true
 pollster.workspace = true
 clap.workspace = true
 flate2.workspace = true

@@ -1,11 +1,11 @@
 //! Directory snapshots, bounded event batches, and watcher recovery.
 use super::{Child, Tree, excluded, list};
-use notify::{RecommendedWatcher, RecursiveMode, Watcher};
+use markview_platform::watch::{self, EventKind, TreeWatcher};
 use std::{
 	collections::{HashMap, HashSet},
 	path::{Path, PathBuf},
 	sync::{
-		Arc,
+		Arc, Mutex,
 		atomic::{AtomicBool, AtomicU64, AtomicUsize, Ordering},
 		mpsc,
 	},
@@ -26,7 +26,7 @@ pub(in crate::app) struct Update {
 }
 
 enum Request {
-	Event(notify::Result<notify::Event>),
+	Event(watch::Result),
 	Refresh,
 	View {
 		revision: u64,
@@ -36,12 +36,19 @@ enum Request {
 	Stop,
 }
 
+#[derive(Default)]
+struct Visibility {
+	show: bool,
+	opened: HashSet<PathBuf>,
+}
+
 pub(super) struct Observer {
 	tx: mpsc::Sender<Request>,
 	stop: Arc<AtomicBool>,
 	queued: Arc<AtomicUsize>,
 	active: Arc<AtomicBool>,
 	latest: Arc<AtomicU64>,
+	visible: Arc<Mutex<Visibility>>,
 }
 
 impl Observer {
@@ -67,11 +74,13 @@ impl Observer {
 		let latest = Arc::new(AtomicU64::new(0));
 		let produced = latest.clone();
 		let flag = Arc::new(AtomicBool::new(false));
+		let visible = Arc::new(Mutex::new(Visibility::default()));
 		let events = Events {
 			root: root.clone(),
 			tx: tx.clone(),
 			queued: queued.clone(),
 			overflow: flag.clone(),
+			visible: visible.clone(),
 		};
 		let watcher = if polling { None } else { events.watcher() };
 		// The worker owns its watcher; cancellation cannot wait on filesystem I/O.
@@ -115,6 +124,7 @@ impl Observer {
 			queued,
 			active,
 			latest,
+			visible,
 		}
 	}
 
@@ -130,6 +140,10 @@ impl Observer {
 	}
 	pub fn view(&self, tree: &Tree, revision: u64) {
 		self.active.store(true, Ordering::Release);
+		*self.visible.lock().unwrap() = Visibility {
+			show: tree.show_excluded,
+			opened: tree.expanded.clone(),
+		};
 		self.send(Request::View {
 			revision,
 			show: tree.show_excluded,
@@ -158,26 +172,45 @@ struct Events {
 	tx: mpsc::Sender<Request>,
 	queued: Arc<AtomicUsize>,
 	overflow: Arc<AtomicBool>,
+	visible: Arc<Mutex<Visibility>>,
 }
 
 impl Events {
-	fn watcher(&self) -> Option<RecommendedWatcher> {
+	fn watcher(&self) -> Option<TreeWatcher> {
 		let events = self.clone();
-		notify::recommended_watcher(
-			move |event: notify::Result<notify::Event>| events.send(event),
-		)
-		.ok()
+		TreeWatcher::new(self.root.clone(), move |event| events.send(event))
 	}
 
-	fn send(&self, event: notify::Result<notify::Event>) {
+	fn relevant(&self, path: &Path) -> bool {
+		let Ok(relative) = path.strip_prefix(&self.root) else {
+			return false;
+		};
+		let mut parts = relative.components().peekable();
+		while let Some(part) = parts.next() {
+			let std::path::Component::Normal(name) = part else {
+				return false;
+			};
+			if !excluded(Path::new(name), true) {
+				continue;
+			}
+			if parts.peek().is_none() {
+				return true;
+			}
+			let visible = self.visible.lock().unwrap();
+			return visible.show
+				&& visible.opened.iter().any(|opened| {
+					path == opened || path.parent() == Some(opened.as_path())
+				});
+		}
+		true
+	}
+
+	fn send(&self, event: watch::Result) {
 		if event.as_ref().is_ok_and(|event| {
-			matches!(event.kind, notify::EventKind::Access(_))
+			event.kind == EventKind::Access
 				|| (!event.need_rescan()
 					&& !event.paths.is_empty()
-					&& !event
-						.paths
-						.iter()
-						.any(|path| path.starts_with(&self.root)))
+					&& !event.paths.iter().any(|path| self.relevant(path)))
 		}) {
 			return;
 		}
@@ -269,12 +302,10 @@ impl Schedule {
 		}
 	}
 
-	fn paths_changed(&mut self, state: &mut State, event: notify::Event) {
+	fn paths_changed(&mut self, state: &mut State, event: watch::Event) {
 		let structural = matches!(
 			event.kind,
-			notify::EventKind::Create(_)
-				| notify::EventKind::Remove(_)
-				| notify::EventKind::Modify(notify::event::ModifyKind::Name(_))
+			EventKind::Create | EventKind::Remove | EventKind::Rename
 		);
 		for path in event.paths {
 			if structural && state.snapshots.contains_key(&path) {
@@ -324,7 +355,7 @@ impl Schedule {
 
 struct State {
 	root: PathBuf,
-	watcher: Option<RecommendedWatcher>,
+	watcher: Option<TreeWatcher>,
 	events: Option<Events>,
 	watched: HashSet<PathBuf>,
 	snapshots: HashMap<PathBuf, Vec<Child>>,
@@ -348,13 +379,11 @@ fn stamp(path: &Path) -> Option<SystemTime> {
 impl State {
 	fn new(
 		root: PathBuf,
-		mut watcher: Option<RecommendedWatcher>,
+		mut watcher: Option<TreeWatcher>,
 		stop: Arc<AtomicBool>,
 	) -> Self {
-		if let Some(parent) = root.parent()
-			&& let Some(watcher) = &mut watcher
-		{
-			let _ = watcher.watch(parent, RecursiveMode::NonRecursive);
+		if let Some(watcher) = &mut watcher {
+			watcher.watch_parent();
 		}
 		Self {
 			root,
@@ -376,12 +405,32 @@ impl State {
 		}
 	}
 
-	fn read(&mut self, path: &Path) -> Vec<Child> {
-		if !self.watched.contains(path)
-			&& let Some(watcher) = &mut self.watcher
-			&& watcher.watch(path, RecursiveMode::NonRecursive).is_ok()
-		{
+	fn watch(&mut self, path: &Path) {
+		let is_root = path == self.root;
+		let Some(watcher) = &mut self.watcher else {
+			return;
+		};
+		let watched = if is_root {
+			watcher.watch_root()
+		} else {
+			watcher.watch_dir(path)
+		};
+		if watched {
 			self.watched.insert(path.to_owned());
+		}
+	}
+
+	fn unwatch(&mut self, path: &Path) {
+		if self.watched.remove(path)
+			&& let Some(watcher) = &mut self.watcher
+		{
+			let _ = watcher.unwatch(path);
+		}
+	}
+
+	fn read(&mut self, path: &Path) -> Vec<Child> {
+		if !self.watched.contains(path) {
+			self.watch(path);
 		}
 		#[cfg(test)]
 		self.reads.push(path.to_owned());
@@ -393,11 +442,7 @@ impl State {
 				children
 			}
 			Err(error) => {
-				if self.watched.remove(path)
-					&& let Some(watcher) = &mut self.watcher
-				{
-					let _ = watcher.unwatch(path);
-				}
+				self.unwatch(path);
 				if path == self.root {
 					self.error = Some(error.to_string());
 				} else {
@@ -442,11 +487,7 @@ impl State {
 						.map(|child| child.path),
 				);
 				self.stamps.remove(&path);
-				if self.watched.remove(&path)
-					&& let Some(watcher) = &mut self.watcher
-				{
-					let _ = watcher.unwatch(&path);
-				}
+				self.unwatch(&path);
 				removed.push(path);
 			}
 		}
@@ -465,11 +506,7 @@ impl State {
 						.map(|child| child.path.clone()),
 				);
 			}
-			if self.watched.remove(&path)
-				&& let Some(watcher) = &mut self.watcher
-			{
-				let _ = watcher.unwatch(&path);
-			}
+			self.unwatch(&path);
 			invalidated.push(path);
 		}
 		invalidated
@@ -489,18 +526,17 @@ impl State {
 			&& let Some(events) = &self.events
 		{
 			self.watcher = events.watcher();
-			if let Some(watcher) = &mut self.watcher
-				&& let Some(parent) = self.root.parent()
-			{
-				let _ = watcher.watch(parent, RecursiveMode::NonRecursive);
+			if let Some(watcher) = &mut self.watcher {
+				watcher.watch_parent();
 			}
 		}
-		if let Some(watcher) = &mut self.watcher {
-			for path in self.snapshots.keys() {
-				if !self.watched.contains(path)
-					&& watcher.watch(path, RecursiveMode::NonRecursive).is_ok()
-				{
-					self.watched.insert(path.clone());
+		if self.watcher.is_some() {
+			let paths: Vec<_> = std::iter::once(self.root.clone())
+				.chain(self.snapshots.keys().cloned())
+				.collect();
+			for path in paths {
+				if !self.watched.contains(&path) {
+					self.watch(&path);
 				}
 			}
 		}
@@ -662,6 +698,32 @@ mod tests {
 	}
 
 	#[test]
+	fn excluded_subtree_events_are_dropped_until_opened() {
+		let root = PathBuf::from("/root");
+		let (tx, _rx) = mpsc::channel();
+		let visible = Arc::new(Mutex::new(Visibility::default()));
+		let events = Events {
+			root: root.clone(),
+			tx,
+			queued: Arc::default(),
+			overflow: Arc::default(),
+			visible: visible.clone(),
+		};
+		assert!(events.relevant(&root.join("Note.md")));
+		assert!(events.relevant(&root.join("node_modules")));
+		assert!(!events.relevant(&root.join("node_modules/pkg/Note.md")));
+		visible.lock().unwrap().show = true;
+		visible
+			.lock()
+			.unwrap()
+			.opened
+			.insert(root.join("node_modules/pkg"));
+		assert!(events.relevant(&root.join("node_modules/pkg/Note.md")));
+		assert!(!events.relevant(&root.join("node_modules/other/Note.md")));
+		assert!(!events.relevant(&root.join("..")));
+	}
+
+	#[test]
 	fn replaced_directories_restore_native_watches_for_surviving_paths() {
 		let dir = tempfile::tempdir().unwrap();
 		let root = dir.path().canonicalize().unwrap();
@@ -669,7 +731,7 @@ mod tests {
 		let nested = branch.join("nested");
 		fs::create_dir_all(&nested).unwrap();
 		let (tx, rx) = mpsc::channel();
-		let watcher = notify::recommended_watcher(move |event| {
+		let watcher = TreeWatcher::new(root.clone(), move |event| {
 			let _ = tx.send(event);
 		})
 		.unwrap();
@@ -684,10 +746,9 @@ mod tests {
 		let mut schedule = Schedule::new(root.clone());
 		schedule.request(
 			&mut state,
-			Request::Event(Ok(notify::Event::new(notify::EventKind::Remove(
-				notify::event::RemoveKind::Folder,
-			))
-			.add_path(branch.clone()))),
+			Request::Event(Ok(
+				watch::Event::new(EventKind::Remove).add_path(branch.clone())
+			)),
 			&AtomicBool::new(false),
 		);
 		assert!(state.watched.contains(&root));
@@ -701,7 +762,7 @@ mod tests {
 		fs::write(&note, "note").unwrap();
 		let deadline = Instant::now() + Duration::from_secs(3);
 		loop {
-			let event: notify::Result<notify::Event> = rx
+			let event: watch::Result = rx
 				.recv_timeout(
 					deadline.saturating_duration_since(Instant::now()),
 				)
@@ -824,8 +885,7 @@ mod tests {
 		});
 		// An explicit rescan signal also recovers an event with no usable path.
 		fs::write(root.join("deep/Lost.md"), "note").unwrap();
-		observer
-			.send(Request::Event(Err(notify::Error::generic("lost event"))));
+		observer.send(Request::Event(Err(watch::Error::new("lost event"))));
 		receive_until(&rx, |update| {
 			update.directories.iter().any(|(_, children)| {
 				children.iter().any(|child| child.path.ends_with("Lost.md"))

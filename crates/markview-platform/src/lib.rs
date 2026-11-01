@@ -1,5 +1,7 @@
 //! OS effects stay outside the reading core.
 
+pub mod watch;
+
 #[cfg(target_os = "android")]
 #[path = "android.rs"]
 pub mod android;
