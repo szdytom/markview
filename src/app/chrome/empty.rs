@@ -527,7 +527,7 @@ pub(super) fn draw_row(
 	} else if crate::file::is_image(std::path::Path::new(&*b.label)) {
 		icons::TREE_IMAGE
 	} else {
-		icons::DOCUMENT
+		icons::TREE_MARKDOWN
 	};
 	out.push(Draw::Icon {
 		paths: icon,
@@ -883,6 +883,65 @@ mod tests {
 					matches!(draws.as_slice(), [Draw::Clipped { rect, .. }] if rect.w == width)
 				);
 			}
+		}
+	}
+
+	#[test]
+	fn quick_access_rows_use_the_sidebar_icons() {
+		let mut ui = crate::test_support::shaper();
+		let (dir, mut browser) = browser();
+		std::fs::write(dir.path().join("cover.png"), b"png").unwrap();
+		browser.tree =
+			Some(crate::app::folder::Tree::read(dir.path().into()).unwrap());
+		browser.start.matches = browser
+			.tree
+			.as_ref()
+			.unwrap()
+			.entries
+			.iter()
+			.filter_map(|entry| entry.file.clone())
+			.collect();
+		let v = view(1200.0, 800.0, &browser);
+		let interaction = InteractionState::default();
+		let drawn = crate::app::widgets::Drawn::new(&interaction, None);
+		for (name, expected) in [
+			("README.md", icons::TREE_MARKDOWN),
+			("cover.png", icons::TREE_IMAGE),
+		] {
+			let file = browser
+				.start
+				.matches
+				.iter()
+				.find(|file| &*file.name == name)
+				.unwrap();
+			let button = components::button(
+				file.name.clone(),
+				Command::Chrome(ChromeCommand::StartFile(file.id)),
+				Rect {
+					x: 0.0,
+					y: 0.0,
+					w: 400.0,
+					h: 60.0,
+				},
+			);
+			let mut out = Vec::new();
+			draw_row(
+				&mut ui,
+				&mut out,
+				&drawn,
+				&button,
+				v,
+				&browser.start.search,
+				Lang::En,
+			);
+			let icon = out
+				.iter()
+				.find_map(|draw| match draw {
+					Draw::Icon { paths, .. } => Some(*paths),
+					_ => None,
+				})
+				.unwrap();
+			assert_eq!(format!("{icon:?}"), format!("{expected:?}"), "{name}");
 		}
 	}
 
