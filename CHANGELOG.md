@@ -36,6 +36,7 @@ at the same level, without `[brackets]`.
 - Use the folder sidebar's Markdown and image icons for Quick Access file rows.
 - Print the build commit alongside the version in `markview --version`.
 - Bind Ctrl+T to a new blank page and drop the Ctrl+N and Ctrl+T stylesheet shortcuts.
+- Draw the start page headings in the UI font instead of the document serif.
 
 ### Removed
 

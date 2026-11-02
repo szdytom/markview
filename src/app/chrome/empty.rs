@@ -274,11 +274,7 @@ pub(super) fn draw(
 	let g = geometry(view);
 	ui.appearance = ui_appearance(ui);
 	let mut out = Vec::new();
-	let mut heading = ui.appearance.clone();
-	heading.font = ui
-		.stylesheet
-		.text(&Default::default(), Condition::Body)
-		.font;
+	let mut heading = ui_appearance(ui);
 	heading.weight = 600;
 	ui.appearance = heading.clone();
 	label(
