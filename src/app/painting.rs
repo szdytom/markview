@@ -1,9 +1,6 @@
 use crate::cli::Mode;
+use crate::render::{Renderer, View};
 use crate::state::ScrollbarAxis;
-use crate::{
-	benchmark,
-	render::{Renderer, View},
-};
 use anyhow::Result;
 use log::{debug, info};
 use std::time::{Duration, Instant};
@@ -148,7 +145,7 @@ impl<P: super::SendEvent> App<P> {
 				info!(
 					"process app entry→readable GPU frame: {:.2} ms; memory {}",
 					self.started.elapsed().as_secs_f64() * 1000.0,
-					serde_json::to_string(&benchmark::memory())?
+					serde_json::to_string(&crate::memory::memory())?
 				);
 				if let Some(output) = &self.args.output {
 					if let Some(parent) =

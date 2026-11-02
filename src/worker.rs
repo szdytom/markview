@@ -114,6 +114,7 @@ impl Worker {
 	pub fn new(done: impl Fn(Update) + Send + 'static) -> Self {
 		Self::with_images(true, crate::test_support::fonts(), done)
 	}
+	#[cfg(any(test, feature = "diagnostics"))]
 	pub fn with_images(
 		offline: bool,
 		fonts: markview_layout::fonts::FontConfig,
@@ -121,6 +122,7 @@ impl Worker {
 	) -> Self {
 		Self::with_images_and_parsed(offline, fonts, done, |_, _, _| {})
 	}
+	#[cfg(any(test, feature = "diagnostics"))]
 	pub fn with_images_and_parsed(
 		offline: bool,
 		fonts: markview_layout::fonts::FontConfig,

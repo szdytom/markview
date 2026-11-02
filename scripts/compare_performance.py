@@ -4,6 +4,7 @@
 Run on an idle desktop with the same fonts/backend for both binaries. Reports
 retain raw samples; a failed or unstable comparison needs investigation, not a
 larger threshold. No personal settings are loaded by Markview's benchmark mode.
+Both binaries must be built with `--features diagnostics`.
 """
 import argparse
 import hashlib

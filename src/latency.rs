@@ -15,10 +15,10 @@
 //!
 //! Per-iteration RSS samples also expose long-term growth across reloads.
 use crate::{
-	benchmark::{Memory, memory},
 	document,
 	file::read_document,
 	layout::{LayoutOptions, LayoutSnapshot},
+	memory::{Memory, memory},
 	render::{Renderer, Theme, View},
 	worker::{ReaderSnapshot, Request, Update, Worker},
 };

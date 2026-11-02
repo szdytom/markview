@@ -127,6 +127,8 @@ winit = { version = "0.30.13", default-features = false, features = ["rwh_06", "
 [features]
 default = ["parallel-layout"]
 parallel-layout = ["markview-layout/parallel"]
+# Developer-only measurement subcommands: bench, latency and smoke.
+diagnostics = []
 
 [dependencies]
 markview-commonmark = { path = "crates/markview-commonmark" }

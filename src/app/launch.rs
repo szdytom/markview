@@ -1,7 +1,8 @@
 //! Window and deterministic diagnostic entry points.
+#[cfg(feature = "diagnostics")]
+use crate::benchmark;
 use crate::cli::{LaunchOptions, Mode, arguments};
 use crate::{
-	benchmark,
 	file::read_markdown,
 	layout::LayoutEngine,
 	render::{Renderer, Theme, View},
@@ -158,7 +159,9 @@ fn run_diagnostic(mut args: LaunchOptions) -> Result<()> {
 		.width
 		.min(args.width as f32 / args.scale - 32.0)
 		.max(80.0);
+	#[cfg(feature = "diagnostics")]
 	let path = args.path.as_ref().unwrap();
+	#[cfg(feature = "diagnostics")]
 	if args.mode == Mode::Bench {
 		return benchmark::run(
 			path,
@@ -172,6 +175,7 @@ fn run_diagnostic(mut args: LaunchOptions) -> Result<()> {
 			args.offline,
 		);
 	}
+	#[cfg(feature = "diagnostics")]
 	if args.mode == Mode::Latency {
 		return crate::latency::run(
 			path,

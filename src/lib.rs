@@ -3,6 +3,7 @@ pub use markview_document as document;
 pub use markview_layout::{layout, paginate, profile};
 pub use markview_render as render;
 pub mod app;
+#[cfg(feature = "diagnostics")]
 mod benchmark;
 mod cli;
 mod diagnostics;
@@ -12,10 +13,12 @@ mod file;
 mod fonts;
 mod images;
 mod lang;
+#[cfg(feature = "diagnostics")]
 mod latency;
 mod link;
 mod logging;
 mod mailbox;
+mod memory;
 mod net;
 mod paste;
 mod pdf;

@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 """Aggregate `markview latency` reports across independent processes.
 
-`markview latency` is a one-process measurement: the headline first-frame number
+The binary must be built with `--features diagnostics`. `markview latency` is a
+one-process measurement: the headline first-frame number
 is a cold-start sample that cannot be repeated inside a process, and the edit
 distribution is only as wide as one process's iterations. This driver runs the
 binary several times per fixture and reports the median (and worst) across

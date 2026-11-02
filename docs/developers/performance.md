@@ -131,7 +131,8 @@ change: `ordinary-10k` moved from the 109.2 ms the pre-change build recorded to
 Reproduce the latency column with `RUST_LOG=info target/release/markview
 smoke FIXTURE --width 1200 --height 800 --offline`, once per process; the
 two memory columns with `latency FIXTURE --iterations 20 --offline` and
-`bench FIXTURE --iterations 10 --offline`. The raw reports and the generated
+`bench FIXTURE --iterations 10 --offline`. Build these measurement commands
+with `--features diagnostics`. The raw reports and the generated
 megabyte fixture are under `artifacts/readme-baseline/` (ignored by Git).
 
 ## Large-document reference

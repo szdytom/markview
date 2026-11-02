@@ -48,6 +48,7 @@ Linux x86_64, Intel Core Ultra 5 125H with Intel Arc (MTL) through Vulkan, Rust
 processes; edit distributions are medians over 8–50 edits per process.
 
 ```sh
+# Build the diagnostic commands first: cargo build --release --features diagnostics
 # First frame, edit-to-frame, edit-to-complete and per-edit RSS, one process:
 target/release/markview latency FILE [--iterations N]
 
@@ -68,13 +69,13 @@ python3 scripts/smoke_watch.py target/release/markview \
 `latency` drives the real `Worker`, progressive prefix publication,
 block cache, image scheduler and GPU renderer; only the presentation target is
 offscreen, so window creation, chrome shaping and compositor presentation are
-excluded. `smoke-test` reports the true process-entry first frame since this
+excluded. `smoke` reports the true process-entry first frame since this
 analysis (`src/app/painting.rs`), and `scripts/smoke_watch.py` now accepts
 `--fixture`/`--edit` for large-document end-to-end edit timing.
 
 ## Metric 1: first readable frame
 
-Native `smoke-test`, DPR 2, alternating processes per fixture:
+Native `smoke`, DPR 2, alternating processes per fixture:
 
 | Fixture | Bytes | Process entry (ms) | Document open (ms) |
 | --- | ---: | ---: | ---: |
@@ -127,7 +128,7 @@ The tables below are the earlier analysis that introduced the shared font
 collection and progressive publication; they are kept for the reasoning, not as
 current numbers.
 
-Native `smoke-test`, process entry, before and after sharing the font
+Native `smoke`, process entry, before and after sharing the font
 collection:
 
 | Fixture | Bytes | Blocks | Before (ms) | After font sharing (ms) |

@@ -13,6 +13,7 @@ use anyhow::{Context, Result, bail};
 use clap::{Args, CommandFactory, FromArgMatches, Parser, Subcommand};
 use std::{ffi::OsString, path::PathBuf};
 
+#[allow(dead_code, reason = "the measurement commands may not be built")]
 #[derive(Default, PartialEq, Eq)]
 pub(crate) enum Mode {
 	#[default]
@@ -119,6 +120,7 @@ pub(crate) struct LaunchOptions {
 	pub(crate) export_command: Option<crate::export_cli::Command>,
 	pub(crate) export_style_file: Option<PathBuf>,
 	pub(crate) export_font_files: Vec<PathBuf>,
+	#[allow(dead_code, reason = "read only by the measurement commands")]
 	pub(crate) iterations: usize,
 	pub(crate) options: LayoutOptions,
 	pub(crate) overrides: Vec<Setting>,
@@ -281,10 +283,13 @@ enum Command {
 	/// Export an in-memory document to PDF or PNG.
 	Export(crate::export_cli::Command),
 	/// Measure layout throughput.
+	#[cfg(feature = "diagnostics")]
 	Bench(BenchArgs),
 	/// Measure first-frame latency.
+	#[cfg(feature = "diagnostics")]
 	Latency(BenchArgs),
 	/// Render the window once and save it.
+	#[cfg(feature = "diagnostics")]
 	Smoke(SmokeArgs),
 	/// Manage installed stylesheets.
 	Ss {
@@ -315,6 +320,7 @@ struct RenderArgs {
 	reading: ScreenReading,
 }
 
+#[cfg(feature = "diagnostics")]
 #[derive(Args)]
 struct SmokeArgs {
 	/// The document to draw.
@@ -326,6 +332,7 @@ struct SmokeArgs {
 	reading: ScreenReading,
 }
 
+#[cfg(feature = "diagnostics")]
 #[derive(Args)]
 struct BenchArgs {
 	/// The document to measure.
@@ -536,6 +543,10 @@ fn legacy_hint(args: &[OsString]) -> Option<String> {
 			"--smoke-test" => "smoke",
 			_ => continue,
 		};
+		#[cfg(not(feature = "diagnostics"))]
+		if matches!(sub, "bench" | "latency" | "smoke") {
+			continue;
+		}
 		return Some(format!(
 			"{text} is a subcommand now: write `markview {sub} FILE ...`; run `markview {sub} --help`"
 		));
@@ -632,12 +643,14 @@ fn apply_command(out: &mut LaunchOptions, command: Command) -> Result<()> {
 			apply_screen_reading(out, &reading)
 		}
 		Command::Render(args) => apply_render_command(out, args),
+		#[cfg(feature = "diagnostics")]
 		Command::Smoke(args) => {
 			out.mode = Mode::Smoke;
 			out.path = Some(args.file);
 			out.output = args.output;
 			apply_screen_reading(out, &args.reading)
 		}
+		#[cfg(feature = "diagnostics")]
 		Command::Bench(args) => {
 			out.mode = Mode::Bench;
 			out.path = Some(args.file);
@@ -645,6 +658,7 @@ fn apply_command(out: &mut LaunchOptions, command: Command) -> Result<()> {
 			out.iterations = args.iterations.clamp(1, 10_000);
 			apply_bench_reading(out, args.scale, &args.reading)
 		}
+		#[cfg(feature = "diagnostics")]
 		Command::Latency(args) => {
 			out.mode = Mode::Latency;
 			out.path = Some(args.file);
@@ -742,6 +756,7 @@ fn apply_screen_reading(
 	Ok(())
 }
 
+#[cfg(feature = "diagnostics")]
 fn apply_bench_reading(
 	out: &mut LaunchOptions,
 	scale: Option<f32>,
@@ -1128,6 +1143,19 @@ mod tests {
 			.expect("a command")
 	}
 
+	/// The measurement subcommands exist only in a `diagnostics` build.
+	fn diagnostic_commands() -> Vec<Vec<&'static str>> {
+		if cfg!(feature = "diagnostics") {
+			vec![
+				vec!["smoke", "a.md"],
+				vec!["bench", "a.md"],
+				vec!["latency", "a.md"],
+			]
+		} else {
+			Vec::new()
+		}
+	}
+
 	#[test]
 	fn reader_foreground_flag_works_for_empty_files_and_web_launches() {
 		if !markview_platform::desktop_cli() {
@@ -1263,14 +1291,27 @@ mod tests {
 	}
 
 	#[test]
+	fn measurement_subcommands_follow_the_diagnostics_feature() {
+		for name in ["bench", "latency", "smoke"] {
+			assert_eq!(
+				cli_command().find_subcommand(name).is_some(),
+				cfg!(feature = "diagnostics"),
+				"{name}"
+			);
+		}
+	}
+
+	#[test]
 	fn a_legacy_mode_flag_names_the_subcommand_that_replaced_it() {
-		for (flag, sub) in [
-			("--render", "render"),
-			("--pdf", "pdf"),
-			("--bench", "bench"),
-			("--bench-latency", "latency"),
-			("--smoke-test", "smoke"),
-		] {
+		let mut cases = vec![("--render", "render"), ("--pdf", "pdf")];
+		if cfg!(feature = "diagnostics") {
+			cases.extend([
+				("--bench", "bench"),
+				("--bench-latency", "latency"),
+				("--smoke-test", "smoke"),
+			]);
+		}
+		for (flag, sub) in cases {
 			let text = match parse_arguments([flag, "a.md"].map(OsString::from))
 			{
 				Ok(_) => panic!("{flag} is rejected"),
@@ -1331,13 +1372,10 @@ mod tests {
 				)
 				.is_err()
 			);
-			for mut args in [
-				vec!["a.md"],
-				vec!["render", "a.md", "-o", "out.png"],
-				vec!["smoke", "a.md"],
-				vec!["bench", "a.md"],
-				vec!["latency", "a.md"],
-			] {
+			let mut commands =
+				vec![vec!["a.md"], vec!["render", "a.md", "-o", "out.png"]];
+			commands.extend(diagnostic_commands());
+			for mut args in commands {
 				args.push(flag);
 				assert!(parse(&args).theme == Some(theme), "{args:?}");
 			}
@@ -1349,16 +1387,19 @@ mod tests {
 
 	#[test]
 	fn geometry_and_scroll_options_only_appear_where_used() {
-		for (command, flags) in [
+		let mut commands = vec![
 			(
 				vec!["pdf", "a.md", "-o", "out.pdf"],
 				vec!["--width", "--height", "--column", "--scroll"],
 			),
 			(vec![], vec!["--scroll"]),
-			(vec!["smoke", "a.md"], vec!["--scroll"]),
-			(vec!["bench", "a.md"], vec!["--scroll"]),
-			(vec!["latency", "a.md"], vec!["--scroll"]),
-		] {
+		];
+		commands.extend(
+			diagnostic_commands()
+				.into_iter()
+				.map(|command| (command, vec!["--scroll"])),
+		);
+		for (command, flags) in commands {
 			let mut args = vec!["markview"];
 			args.extend(&command);
 			args.push("--help");
@@ -1377,13 +1418,12 @@ mod tests {
 				);
 			}
 		}
-		for mut args in [
+		let mut commands = vec![
 			vec!["a.md"],
 			vec!["render", "a.md", "-o", "out.png", "--scroll", "250"],
-			vec!["smoke", "a.md"],
-			vec!["bench", "a.md"],
-			vec!["latency", "a.md"],
-		] {
+		];
+		commands.extend(diagnostic_commands());
+		for mut args in commands {
 			args.extend([
 				"--width", "900", "--height", "600", "--column", "500",
 			]);
@@ -1405,15 +1445,14 @@ mod tests {
 
 	#[test]
 	fn reader_arguments_cannot_leak_into_subcommands() {
-		for command in [
+		let mut commands = vec![
 			vec!["pdf", "a.md", "-o", "out.pdf"],
 			vec!["render", "a.md", "-o", "out.png"],
-			vec!["smoke", "a.md"],
-			vec!["bench", "a.md"],
-			vec!["latency", "a.md"],
 			vec!["ss", "list"],
 			vec!["fonts", "list"],
-		] {
+		];
+		commands.extend(diagnostic_commands());
+		for command in commands {
 			for prefix in [
 				vec!["--dark"],
 				vec!["--width", "900"],
@@ -1599,6 +1638,7 @@ mod tests {
 		);
 	}
 
+	#[cfg(feature = "diagnostics")]
 	#[test]
 	fn bench_keeps_its_iterations_and_output() {
 		let args = parse(&[

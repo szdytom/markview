@@ -13,6 +13,14 @@ cargo clippy --workspace --all-targets --locked -- -D warnings
 cargo build --release --locked
 ```
 
+The `smoke`, `bench` and `latency` subcommands are developer diagnostics behind
+the off-by-default `diagnostics` feature; release builds do not include them.
+Build a binary with them when a task needs one:
+
+```sh
+cargo build --release --locked --features diagnostics
+```
+
 Run the Rust cyclomatic complexity audit before every push; CI runs it across
 the platform matrix and fails on an unmarked violation:
 
@@ -137,13 +145,14 @@ see the [packaging guide](packaging.md). After changing `assets/markview-icon-co
 cargo run -p xtask -- icons
 ```
 
-For visual or timing changes, also use the real pipelines:
+For visual or timing changes, also use the real diagnostics build
+(`--features diagnostics`):
 
 ```sh
 target/release/markview render examples/welcome.md --output artifacts/welcome.png
 target/release/markview render examples/mermaid.md --output artifacts/mermaid.png
 target/release/markview pdf examples/welcome.md --output artifacts/welcome.pdf
-target/release/markview smoke-test examples/welcome.md --output artifacts/window.png
+target/release/markview smoke examples/welcome.md --output artifacts/window.png
 target/release/markview bench tests/fixtures/ordinary-10k.md --output artifacts/ordinary.json
 target/release/markview latency tests/fixtures/ordinary-10k.md --output artifacts/latency.json
 python3 scripts/smoke_watch.py target/release/markview
@@ -249,7 +258,7 @@ quiet.
 
 The reader and layout engine log through the `log` facade, and the binary writes
 `LEVEL message` lines to stderr. A plain window run defaults to `warn`, so the
-lifecycle and timing lines stay quiet; `render`, `bench` and `smoke-test`
+lifecycle and timing lines stay quiet; `render`, `bench` and `smoke`
 default their own targets to `debug` so the diagnostics below are visible. Set
 `RUST_LOG` to override either, for example `RUST_LOG=info` for the display metrics
 or `RUST_LOG=debug` to include dependency logs.
@@ -260,7 +269,7 @@ debugging or supervising the reader, for example
 
 The render and benchmark modes use the GPU offscreen and do not load personal settings. The watch smoke test writes only temporary documents and closes the window it starts.
 
-Window layout publishes a readable prefix before completion. Native `smoke-test`
+Window layout publishes a readable prefix before completion. Native `smoke`
 logs `process entry→readable GPU frame` (true process entry) and
 `process app entry→readable GPU frame` (after command-line and stylesheet setup)
 for that first frame and `full layout complete` separately, then waits for the

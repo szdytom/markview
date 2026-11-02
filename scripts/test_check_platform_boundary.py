@@ -14,6 +14,17 @@ class PlatformBoundaryTests(unittest.TestCase):
         self.assertEqual(list(violations(link, main=True)), [])
         self.assertTrue(list(violations(link)))
 
+    def test_only_the_diagnostics_feature_may_condition_the_cli(self):
+        self.assertEqual(
+            list(violations('#[cfg(feature = "diagnostics")]')), []
+        )
+        self.assertEqual(
+            list(violations('#[cfg(any(test, feature = "diagnostics"))]')), []
+        )
+        self.assertTrue(
+            list(violations('#[cfg(feature = "other")]'))
+        )
+
 
     def test_source_only_complexity_markers_do_not_introduce_platform_conditions(self):
         for reason in ('Keep the mapping together', 'Keep a ) literal', 'Keep #[cfg(windows)] as literal text'):

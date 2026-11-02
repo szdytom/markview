@@ -23,6 +23,7 @@ at the same level, without `[brackets]`.
 
 ### Changed
 
+- Move the `bench`, `latency` and `smoke` subcommands behind the off-by-default `diagnostics` feature, so release builds no longer include them.
 - Rename the Linux window layout to Breeze; `window-layout` now accepts `"breeze"` while still reading `"linux"`.
 - Remove the tab-style setting and always draw Connected tabs.
 - Flush the document scrollbar against the reading area's right edge, and show it only briefly after the pointer moves over the reader.

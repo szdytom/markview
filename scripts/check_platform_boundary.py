@@ -5,7 +5,9 @@ import re
 
 ROOT = Path(__file__).resolve().parents[1]
 CONDITIONS = re.compile(r"#\s*!?\s*\[\s*cfg(?:_attr)?\s*\(|\bcfg!\s*\(")
-ALLOWED = {"test", "debug_assertions", "not", "all", "any", "(", ")", ","}
+ALLOWED = {"test", "debug_assertions", "not", "all", "any", "(", ")", ",", "=", '"'}
+# `diagnostics` selects an optional CLI surface, not a platform condition.
+ALLOWED_FEATURES = {"diagnostics"}
 RUST_STRING = re.compile(r'"(?:\\.|[^"\\])*"')
 COMPLEXITY_MARKER = re.compile(
     r'any\s*\(\s*\)\s*,\s*markview\s*::\s*allow_complexity\s*\('
@@ -32,7 +34,18 @@ def violations(source, main=False):
         condition = re.sub(r"\s+", " ", source[start:end - 1]).strip()
         tokens = set(re.findall(r"[A-Za-z_]\w*|[^\s]", condition))
         complexity_marker = "cfg_attr" in match.group() and COMPLEXITY_MARKER.fullmatch(condition)
-        if tokens <= ALLOWED or (main and condition == LINK_ATTRIBUTE) or complexity_marker:
+        feature_tokens = tokens - ALLOWED - {"feature"}
+        is_allowed_feature = (
+            "feature" in tokens
+            and feature_tokens
+            and feature_tokens <= ALLOWED_FEATURES
+        )
+        if (
+            tokens <= ALLOWED
+            or is_allowed_feature
+            or (main and condition == LINK_ATTRIBUTE)
+            or complexity_marker
+        ):
             continue
         yield source.count("\n", 0, match.start()) + 1, condition
 
