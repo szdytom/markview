@@ -352,6 +352,13 @@ fn hash_draw(draw: &Draw, h: &mut Hashers) {
 		Draw::Rect(r, paint) => {
 			hash3(h, &(3u8, hash_rect(*r), *paint));
 		}
+		Draw::FadedRect {
+			rect,
+			paint,
+			opacity,
+		} => {
+			hash3(h, &(8u8, hash_rect(*rect), *paint, F::new(*opacity)));
+		}
 		Draw::Box {
 			rect,
 			chain,
@@ -490,6 +497,10 @@ fn assert_draw_finite(draw: &Draw) {
 			assert_bounded("glyph.size", g.size);
 		}
 		Draw::Rect(r, _) => assert_rect4("rect", *r),
+		Draw::FadedRect { rect, opacity, .. } => {
+			assert_rect4("faded", *rect);
+			assert_bounded("faded.opacity", *opacity);
+		}
 		Draw::Box {
 			rect,
 			radius,
