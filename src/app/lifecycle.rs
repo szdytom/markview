@@ -291,6 +291,12 @@ impl<P: super::SendEvent> App<P> {
 					self.route_open(path);
 				}
 			}
+			Event::Picked(path) => {
+				self.dialog_open = false;
+				if let Some(path) = path {
+					self.open(path);
+				}
+			}
 			Event::AndroidOpenUrl(url) => self.open_web_page(url),
 			Event::AndroidShared(path) => {
 				self.open_document(path, crate::security::Security::default());

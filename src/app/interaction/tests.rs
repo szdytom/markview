@@ -2054,7 +2054,7 @@ fn forwarded_files_open_tabs_and_reuse_existing_tabs() {
 }
 
 #[test]
-fn picked_files_follow_folder_windows_and_reuse_the_local_folder_free_window() {
+fn picked_files_stay_here_while_desktop_requests_follow_folder_windows() {
 	use crate::app::single_instance::{Start, start};
 	use std::sync::mpsc;
 	use std::time::Duration;
@@ -2079,16 +2079,20 @@ fn picked_files_follow_folder_windows_and_reuse_the_local_folder_free_window() {
 	app.instance_path = Some(lock.clone());
 	app.preferences.values.single_instance = true;
 	app.register_instance();
-	let original = app.readers.session.path.clone();
 	let inside = root.join("inside.md");
-	app.handle_user_event(&StubLoop, Event::Open(Some(inside.clone())));
+	app.handle_user_event(&StubLoop, Event::Picked(Some(inside.clone())));
+	assert_eq!(app.readers.session.path.as_ref(), Some(&inside));
+	assert!(rx.try_recv().is_err());
+	let outside = dir.path().join("outside.md");
+	app.handle_user_event(&StubLoop, Event::Picked(Some(outside.clone())));
+	assert_eq!(app.readers.session.path.as_ref(), Some(&outside));
+	assert!(rx.try_recv().is_err());
+	let desktop = root.join("desktop.md");
+	app.handle_user_event(&StubLoop, Event::Open(Some(desktop.clone())));
 	assert_eq!(
 		rx.recv_timeout(Duration::from_secs(2)).unwrap(),
-		Some(inside)
+		Some(desktop)
 	);
-	assert_eq!(app.readers.session.path, original);
-	let outside = dir.path().join("outside.md");
-	app.handle_user_event(&StubLoop, Event::Open(Some(outside.clone())));
 	assert_eq!(app.readers.session.path.as_ref(), Some(&outside));
 	let other = dir.path().join("other");
 	std::fs::create_dir(&other).unwrap();

@@ -1117,7 +1117,7 @@ impl<P: SendEvent> App<P> {
 		self.dialog_open = true;
 		let proxy = self.proxy.clone();
 		markview_platform::pick_folder(move |path| {
-			proxy.send(Event::Open(path))
+			proxy.send(Event::Picked(path))
 		});
 	}
 

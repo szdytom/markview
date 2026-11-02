@@ -35,6 +35,7 @@ at the same level, without `[brackets]`.
 - Add a scrollbar and eased wheel scrolling to the Ctrl+P quick-open picker.
 - Unify document and chrome scrolling on one time-driven `Scroll` with a cached extent, and give the start page eased wheel travel.
 - Use the folder sidebar's Markdown and image icons for Quick Access file rows.
+- Open files and folders chosen from the reader's own dialogs in the current window instead of routing them to another single-instance window.
 - Print the build commit alongside the version in `markview --version`.
 - Bind Ctrl+T to a new blank page and drop the Ctrl+N and Ctrl+T stylesheet shortcuts.
 - Draw the start page headings in the UI font instead of the document serif.

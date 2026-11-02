@@ -119,7 +119,10 @@ enum Event {
 	Changed(PathBuf),
 	SettingsChanged,
 	StylesChanged,
+	/// A desktop or native open request, routed by the single-instance policy.
 	Open(Option<PathBuf>),
+	/// A path chosen in this window, always opened here.
+	Picked(Option<PathBuf>),
 	FolderUpdated {
 		generation: u64,
 		update: folder::observe::Update,
