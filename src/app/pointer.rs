@@ -339,6 +339,11 @@ impl<P: super::SendEvent> App<P> {
 			} else if self.interaction.pointer.scrollbar().is_none() {
 				self.hide_document_scrollbar(now);
 			}
+			if self.pointer_in_folder() {
+				self.folder.show_scrollbar(now);
+			} else if self.folder.grab.is_none() {
+				self.folder.hide_scrollbar(now);
+			}
 			// Visibility gates the right resize edge, so the cursor follows it.
 			self.refresh_hover();
 			if self.hover_preview(now) {

@@ -521,6 +521,7 @@ impl<P: super::SendEvent> App<P> {
 		self.advance_control_scroll(now);
 		self.advance_gestures(now);
 		self.scrollbar_tick(now);
+		self.folder_scrollbar_tick(now);
 		if self.advance_drawers(now) {
 			self.refresh_hover();
 			self.redraw();
@@ -599,6 +600,7 @@ impl<P: super::SendEvent> App<P> {
 			.chain(self.export.watch_deadline())
 			.chain(self.status.deadline())
 			.chain(self.scrollbar_deadline(now))
+			.chain(self.folder.scrollbar_deadline(now))
 			.chain(self.preferences.save_deadline())
 			.chain(self.persistence.deadline)
 			.chain(self.interaction.pointer.auto_scroll_at())

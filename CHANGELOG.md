@@ -31,6 +31,7 @@ at the same level, without `[brackets]`.
 - Rename the Linux window layout to Breeze; `window-layout` now accepts `"breeze"` while still reading `"linux"`.
 - Remove the tab-style setting and always draw Connected tabs.
 - Flush the document scrollbar against the reading area's right edge, show it only briefly after the pointer moves over the reader, and fade it out through one shared timer.
+- Flush the folder sidebar's scrollbar against its right edge, fade it like the document's, and keep the reader's bar limited to the reading area.
 - Add a scrollbar and eased wheel scrolling to the Ctrl+P quick-open picker.
 - Unify document and chrome scrolling on one time-driven `Scroll` with a cached extent, and give the start page eased wheel travel.
 - Use the folder sidebar's Markdown and image icons for Quick Access file rows.

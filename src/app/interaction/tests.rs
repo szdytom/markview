@@ -487,6 +487,7 @@ fn leaving_a_folder_sidebar_repaints_its_hover() {
 	app.folder.tree = Some(Tree::read(dir.path().into()).unwrap());
 	app.set_folder_open(true);
 	app.advance_drawers(Instant::now() + std::time::Duration::from_secs(1));
+	app.folder.show_scrollbar(Instant::now());
 	let (_, thumb) = app.folder_bar().unwrap().bars();
 	let hover = (thumb.x + thumb.w / 2.0, thumb.y + thumb.h / 2.0);
 	app.interaction.pointer.move_to(hover);
@@ -508,6 +509,58 @@ fn leaving_a_folder_sidebar_repaints_its_hover() {
 	assert!(app.pointer_move_repaints(hover, false));
 	app.interaction.pointer.move_to(hover);
 	assert!(app.pointer_move_repaints(reading, false));
+}
+
+#[test]
+fn folder_scrollbar_hugs_the_right_edge_and_fades_apart_from_the_reader_bar() {
+	use crate::app::folder::Tree;
+	let dir = tempfile::tempdir().unwrap();
+	for i in 0..40 {
+		std::fs::write(dir.path().join(format!("note-{i:02}.md")), SOURCE)
+			.unwrap();
+	}
+	let (mut app, _) = reader(&"Body line.\n\n".repeat(100), 1000.0);
+	app.folder.tree = Some(Tree::read(dir.path().into()).unwrap());
+	app.set_folder_open(true);
+	app.advance_drawers(Instant::now() + std::time::Duration::from_secs(1));
+	let drawer = app.folder_rect();
+	let inside = (drawer.x + drawer.w / 2.0, drawer.y + drawer.h / 2.0);
+	app.pointer_moved(PhysicalPosition::new(
+		f64::from(inside.0),
+		f64::from(inside.1),
+	));
+	assert!(
+		app.document_scrollbar().is_none(),
+		"motion over the folder does not reveal the reader bar"
+	);
+	let bar = app.folder_bar().expect("the tree overflows");
+	let (track, thumb) = bar.bars();
+	assert_eq!(track.x + track.w, drawer.x + drawer.w);
+	app.interaction
+		.pointer
+		.move_to((thumb.x + thumb.w / 2.0, thumb.y + thumb.h / 2.0));
+	assert_eq!(app.sidebar_edge(), None);
+	assert!(!app.begin_sidebar_resize());
+	app.pointer_pressed();
+	assert!(app.interaction.panels.sidebar().drag().is_none());
+	assert!(app.folder.grab.is_some());
+	app.folder.grab = None;
+	let start = Instant::now();
+	app.folder.show_scrollbar(start);
+	let linger = start + super::super::viewport::SCROLLBAR_LINGER;
+	assert_eq!(app.folder.scrollbar_opacity_at(linger), 1.0);
+	let halfway = linger + super::super::viewport::SCROLLBAR_FADE / 2;
+	assert!(app.folder.scrollbar_opacity_at(halfway) > 0.0);
+	assert!(app.folder.scrollbar_opacity_at(halfway) < 1.0);
+	app.folder_scrollbar_tick(halfway);
+	assert!(app.folder_bar().is_some());
+	app.folder_scrollbar_tick(linger + super::super::viewport::SCROLLBAR_FADE);
+	assert!(app.folder_bar().is_none());
+	app.scroll_folder(100.0);
+	assert!(app.folder_bar().is_some());
+	let reading = (f64::from(drawer.x + drawer.w + 100.0), 400.0);
+	app.pointer_moved(PhysicalPosition::new(reading.0, reading.1));
+	assert!(app.document_scrollbar().is_some());
 }
 
 #[test]

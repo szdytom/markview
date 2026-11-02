@@ -129,6 +129,12 @@ impl<P: super::SendEvent> App<P> {
 		} else {
 			self.reading_sidebar_edge()
 		}?;
+		let (x, y) = self.interaction.pointer.cursor();
+		if sidebar == Sidebar::Folder
+			&& self.folder_bar().is_some_and(|bar| bar.hit(x, y))
+		{
+			return None;
+		}
 		self.on_sidebar_edge(sidebar).then_some(sidebar)
 	}
 

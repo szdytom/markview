@@ -1079,6 +1079,7 @@ impl<'a> Chrome<'a> {
 				folder::Pane {
 					body: self.folder_drawer(),
 					surface: folder::surface(self.folder_drawer(), height),
+					bar_opacity: browser.scrollbar_opacity(),
 				},
 				self.settings.model.lang(),
 			));

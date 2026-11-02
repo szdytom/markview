@@ -4,7 +4,7 @@ use crate::state::{ChromeCommand, Row};
 use crate::{
 	app::{Button, folder::Browser},
 	lang::Lang,
-	layout::{Draw, Paint, Rect, TextShaper},
+	layout::{Draw, Paint, Rect, Scrollbar, TextShaper},
 	state::Command,
 };
 use markview_layout::{
@@ -136,6 +136,64 @@ pub(in crate::app) fn animated_rect(mut drawer: Rect, reveal: f32) -> Rect {
 	drawer
 }
 
+/// The tree's bar, painted flush with the drawer's right edge.
+pub(in crate::app) fn scrollbar(
+	list: &List,
+	ui: &TextShaper,
+) -> Option<Scrollbar> {
+	let metrics = ui.stylesheet.scrollbar_metrics();
+	Scrollbar::vertical(
+		Rect {
+			x: list.panel.x + list.panel.w - metrics.thickness,
+			w: metrics.thickness,
+			..list.viewport
+		},
+		list.scroll,
+		list.viewport.h + list.max_scroll(),
+		list.viewport.h,
+		metrics,
+	)
+}
+
+fn draw_scrollbar(
+	out: &mut Vec<Draw>,
+	list: &List,
+	ui: &TextShaper,
+	interaction: &crate::app::widgets::Drawn<'_>,
+	opacity: f32,
+) {
+	if opacity <= 0.0 {
+		return;
+	}
+	let Some(bar) = scrollbar(list, ui) else {
+		return;
+	};
+	let hovered = bar.hit(
+		interaction.pointer.cursor().0,
+		interaction.pointer.cursor().1,
+	);
+	let (track, thumb) = bar.bars();
+	let faded = |rect, paint| {
+		if opacity < 1.0 {
+			Draw::FadedRect {
+				rect,
+				paint,
+				opacity,
+			}
+		} else {
+			Draw::Rect(rect, paint)
+		}
+	};
+	out.push(faded(track, Paint::Styled(Condition::Scrollbar, C::Track)));
+	out.push(faded(
+		thumb,
+		Paint::Styled(
+			Condition::Scrollbar,
+			if hovered { C::ThumbHover } else { C::Thumb },
+		),
+	));
+}
+
 pub(super) fn buttons(
 	browser: &Browser,
 	drawer: Rect,
@@ -213,6 +271,7 @@ pub(super) fn buttons(
 pub(super) struct Pane {
 	pub body: Rect,
 	pub surface: Rect,
+	pub bar_opacity: f32,
 }
 
 pub(super) fn draw(
@@ -226,6 +285,7 @@ pub(super) fn draw(
 	let Pane {
 		body: drawer,
 		surface,
+		bar_opacity,
 	} = pane;
 	let Some(tree) = &browser.tree else {
 		return Vec::new();
@@ -319,7 +379,7 @@ pub(super) fn draw(
 		clip_row(&mut body, &list, row, draws);
 	}
 	out.push(list.clip(body));
-	list.draw_bar(&mut out, ui, interaction);
+	draw_scrollbar(&mut out, &list, ui, interaction, bar_opacity);
 	out
 }
 
@@ -493,6 +553,7 @@ mod tests {
 				Pane {
 					body: drawer,
 					surface: drawer,
+					bar_opacity: 1.0,
 				},
 				Lang::En,
 			);
@@ -586,6 +647,7 @@ mod tests {
 					Pane {
 						body: drawer,
 						surface: drawer,
+						bar_opacity: 1.0,
 					},
 					Lang::En,
 				);

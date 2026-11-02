@@ -437,6 +437,8 @@ pub(super) struct Browser {
 	pub open: bool,
 	pub scroll: Scroll,
 	pub grab: Option<f32>,
+	/// When the tree scrollbar hides again after pointer motion.
+	scrollbar_visible_until: Option<Instant>,
 	/// The drawer's slide when it opens or closes.
 	animation: Option<DrawerAnimation>,
 	/// The rows sliding when a directory expands or collapses.
@@ -479,6 +481,71 @@ impl Browser {
 	/// The drawer's slide reveal at `now`.
 	pub(super) fn reveal(&self) -> f32 {
 		DrawerAnimation::reveal(&self.animation, self.open, Instant::now())
+	}
+
+	pub(super) fn scrollbar_opacity(&self) -> f32 {
+		self.scrollbar_opacity_at(Instant::now())
+	}
+
+	pub(super) fn scrollbar_opacity_at(&self, now: Instant) -> f32 {
+		if self.grab.is_some() {
+			return 1.0;
+		}
+		let Some(until) = self.scrollbar_visible_until else {
+			return 0.0;
+		};
+		let faded = now.saturating_duration_since(until);
+		if faded.is_zero() {
+			1.0
+		} else {
+			(1.0 - faded.as_secs_f32()
+				/ super::viewport::SCROLLBAR_FADE.as_secs_f32())
+			.max(0.0)
+		}
+	}
+
+	pub(super) fn show_scrollbar(&mut self, now: Instant) {
+		self.scrollbar_visible_until =
+			Some(now + super::viewport::SCROLLBAR_LINGER);
+	}
+
+	pub(super) fn hide_scrollbar(&mut self, now: Instant) {
+		if self
+			.scrollbar_visible_until
+			.is_some_and(|until| until > now)
+		{
+			self.scrollbar_visible_until = Some(now);
+		}
+	}
+
+	pub(super) fn scrollbar_deadline(&self, now: Instant) -> Option<Instant> {
+		let until = self.scrollbar_visible_until?;
+		if until > now {
+			Some(until)
+		} else {
+			let end = until + super::viewport::SCROLLBAR_FADE;
+			(end > now)
+				.then(|| (now + super::viewport::SCROLLBAR_FRAME).min(end))
+		}
+	}
+
+	/// Expires the tree bar's linger, or keeps it alive under a drag. Returns
+	/// whether paint changed.
+	pub(super) fn scrollbar_tick(&mut self, now: Instant) -> bool {
+		if self.grab.is_some() {
+			self.show_scrollbar(now);
+			return false;
+		}
+		let Some(until) = self.scrollbar_visible_until else {
+			return false;
+		};
+		let end = until + super::viewport::SCROLLBAR_FADE;
+		if now >= end {
+			self.scrollbar_visible_until = None;
+			true
+		} else {
+			now >= until
+		}
 	}
 
 	pub(super) fn animating(&self) -> bool {
@@ -1187,13 +1254,26 @@ impl<P: SendEvent> App<P> {
 	}
 
 	pub(super) fn folder_bar(&self) -> Option<crate::layout::Scrollbar> {
+		if self.folder.grab.is_none() && self.folder.scrollbar_opacity() <= 0.0
+		{
+			return None;
+		}
 		let rows = self.folder.tree.as_ref()?.rows().len();
-		super::chrome::folder::list(
-			self.folder_rect(),
-			rows,
-			self.folder.scroll.offset(),
+		super::chrome::folder::scrollbar(
+			&super::chrome::folder::list(
+				self.folder_rect(),
+				rows,
+				self.folder.scroll.offset(),
+			),
+			&self.ui,
 		)
-		.scrollbar(&self.ui)
+	}
+
+	pub(super) fn folder_scrollbar_tick(&mut self, now: Instant) {
+		if self.folder.scrollbar_tick(now) {
+			self.refresh_hover();
+			self.redraw();
+		}
 	}
 
 	pub(super) fn begin_folder_drag(&mut self) -> bool {
@@ -1240,6 +1320,7 @@ impl<P: SendEvent> App<P> {
 	}
 
 	pub(super) fn scroll_folder(&mut self, delta: f32) {
+		self.folder.show_scrollbar(Instant::now());
 		let count = self.folder.tree.as_ref().map_or(0, |t| t.rows().len());
 		let list = super::chrome::folder::list(
 			self.folder_rect(),
@@ -1256,6 +1337,8 @@ impl<P: SendEvent> App<P> {
 
 	/// A wheel step over the tree, eased like the document's own.
 	pub(super) fn wheel_folder(&mut self, delta: f32) {
+		let now = Instant::now();
+		self.folder.show_scrollbar(now);
 		let count = self.folder.tree.as_ref().map_or(0, |t| t.rows().len());
 		let list = super::chrome::folder::list(
 			self.folder_rect(),
@@ -1265,7 +1348,7 @@ impl<P: SendEvent> App<P> {
 		self.folder.scroll.set_max(list.max_scroll());
 		self.folder.scroll.wheel(
 			delta,
-			Instant::now(),
+			now,
 			markview_selection::WheelMode::Detent,
 		);
 		self.interaction.widgets.captured = None;

@@ -502,6 +502,7 @@ pub(super) fn draw_folder(
 				super::folder::Pane {
 					body,
 					surface: body,
+					bar_opacity: 1.0,
 				},
 				settings.lang(),
 			),

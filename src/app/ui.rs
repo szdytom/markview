@@ -449,7 +449,12 @@ impl<P: super::SendEvent> App<P> {
 		if let Some(form) = self.panel_form() {
 			return form.scrollbar(&self.ui);
 		}
-		self.panel_list()?.scrollbar(&self.ui)
+		let list = self.panel_list()?;
+		if self.phone_folder_open() {
+			chrome::folder::scrollbar(&list, &self.ui)
+		} else {
+			list.scrollbar(&self.ui)
+		}
 	}
 	/// The offset owner of whichever panel page scrolls.
 	fn panel_scroll_area(&mut self) -> Option<&mut markview_selection::Scroll> {

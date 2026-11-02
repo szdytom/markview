@@ -4,12 +4,12 @@ use std::time::{Duration, Instant};
 
 /// How long the document scrollbar stays on screen after the pointer moves
 /// over the reading area.
-const SCROLLBAR_LINGER: Duration = Duration::from_millis(1200);
+pub(super) const SCROLLBAR_LINGER: Duration = Duration::from_millis(1200);
 /// How long the document scrollbar takes to fade once its linger expires.
 /// VS Code fades a hidden scrollbar over 800ms.
 pub(super) const SCROLLBAR_FADE: Duration = Duration::from_millis(800);
 /// One fade frame. The fade is an animation, so it asks for the next tick.
-const SCROLLBAR_FRAME: Duration = Duration::from_millis(16);
+pub(super) const SCROLLBAR_FRAME: Duration = Duration::from_millis(16);
 
 impl<P: super::SendEvent> App<P> {
 	pub(super) fn document_interaction(
@@ -99,7 +99,7 @@ impl<P: super::SendEvent> App<P> {
 	/// belongs to.
 	pub(super) fn reading_area_contains(&self, x: f32, y: f32) -> bool {
 		let (width, height, _) = self.dimensions();
-		x >= 0.0
+		x >= self.folder_chrome_inset()
 			&& x <= width
 			&& y >= self.content_top()
 			&& y < height - self.bottom()
