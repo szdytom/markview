@@ -478,6 +478,7 @@ fn compiled_icons_stay_inside_the_unit_box() {
 		icons::DOWNLOAD,
 		icons::REDOWNLOAD,
 		icons::SETTINGS,
+		icons::SETTINGS_MINUS,
 		icons::OUTLINE,
 		icons::CLOSE,
 		icons::BACK,

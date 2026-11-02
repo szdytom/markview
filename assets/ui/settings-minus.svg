@@ -1,0 +1,6 @@
+<!-- A settings hexagon with an inset minus badge. -->
+<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+  <path d="M20.66 10.684V7L12 2 3.34 7v10l5.831 3.367"/>
+  <path d="M8.302 13.526A4 4 0 0 1 14.184 8.649"/>
+  <path stroke="none" fill="currentColor" d="M21.4 16.1a6 6 0 1 1-12 0 6 6 0 1 1 12 0ZM12.65 15.25a.85.85 0 0 0 0 1.7h5.5a.85.85 0 0 0 0-1.7Z"/>
+</svg>

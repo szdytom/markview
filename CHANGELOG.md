@@ -23,6 +23,7 @@ at the same level, without `[brackets]`.
 
 ### Changed
 
+- Use a settings-minus icon for the folder sidebar's exclusion toggle, highlighted while excluded entries are hidden.
 - Add a local check runner for the fast static checks and compilation.
 - Draw icon buttons in muted gray at rest and the bright default color on hover or while active, with no click, hover or selection background; tab close icons brighten on hover.
 - Move the `bench`, `latency` and `smoke` subcommands behind the off-by-default `diagnostics` feature, so release builds no longer include them.

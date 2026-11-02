@@ -99,7 +99,7 @@ reused. With the sidebar open, picking a tab expands the folders around its
 document and scrolls that row into view. The sidebar scrolls independently; Tab
 focuses its controls, arrow keys move between file rows, and Enter opens the
 selected row. Its header shows the open folder's name and can collapse all
-folders, refresh the tree, or **Show excluded entries**. Files added, moved or
+folders, refresh the tree, or toggle **Hide excluded entries**. Files added, moved or
 deleted externally update automatically, normally in a 100 ms batch plus disk
 reading time. Missed events are recovered by background checks; **Refresh**
 requests an immediate check.
@@ -108,7 +108,8 @@ folder's top-level entries, which stay visible; use **Ctrl+Shift+O** to choose
 another folder.
 Hidden entries such as `.obsidian` and `.git`, and directories named
 `node_modules`, `target`, `vendor`, and `__pycache__`, are excluded by default.
-**Show excluded entries** reveals them with an excluded label. Excluded directories
+The settings-minus button is highlighted while **Hide excluded entries** is enabled.
+Turn it off to reveal them with an excluded label. Excluded directories
 load one level only when explicitly expanded, and release their loaded descendants
 and watches when collapsed. The toggle resets when choosing a folder; it does not
 add other file types or follow symbolic links. These name-based rules do not read

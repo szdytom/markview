@@ -2284,11 +2284,25 @@ fn excluded_folder_button_loads_on_demand_on_desktop_and_phone() {
 		);
 		h.app.set_folder_open(true);
 		h.settle_folder();
-		assert!(h.app.buttons().iter().any(|button| button.action
-			== Command::Chrome(ChromeCommand::FolderShowExcluded)));
+		let toggle = |h: &mut Harness| {
+			h.app
+				.buttons()
+				.into_iter()
+				.find(|button| {
+					button.action
+						== Command::Chrome(ChromeCommand::FolderShowExcluded)
+				})
+				.unwrap()
+		};
+		let hidden = toggle(&mut h);
+		assert!(hidden.active);
+		let icon = hidden.icon.unwrap();
 		h.app
 			.action(Command::Chrome(ChromeCommand::FolderShowExcluded));
 		h.settle_folder();
+		let shown = toggle(&mut h);
+		assert!(!shown.active);
+		assert!(std::ptr::eq(shown.icon.unwrap(), icon));
 		let find = |h: &Harness, name: &str| {
 			h.app
 				.folder
@@ -2317,6 +2331,9 @@ fn excluded_folder_button_loads_on_demand_on_desktop_and_phone() {
 			.action(Command::Chrome(ChromeCommand::FolderShowExcluded));
 		h.settle_folder();
 		assert!(find(&h, "node_modules").is_none());
+		let hidden_again = toggle(&mut h);
+		assert!(hidden_again.active);
+		assert!(std::ptr::eq(hidden_again.icon.unwrap(), icon));
 	}
 }
 

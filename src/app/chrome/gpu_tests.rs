@@ -764,6 +764,49 @@ fn sidebar_icon_has_a_solid_left_pane() -> Result<()> {
 	Ok(())
 }
 
+#[test]
+fn exclusion_icon_keeps_its_minus_cutout_transparent() -> Result<()> {
+	let mut renderer = pollster::block_on(Renderer::new(None))?;
+	let horizontal = HashMap::new();
+	for scale in [2.0_f32, 10.0] {
+		let view = View {
+			width: (24.0 * scale) as u32,
+			height: (24.0 * scale) as u32,
+			scale,
+			left: 0.,
+			top: 0.,
+			bottom: 0.,
+			scroll: 0.,
+			theme: Theme::Light,
+			horizontal: &horizontal,
+			selection: None,
+			revision: 0,
+			hovered_link: None,
+			held_overflow: None,
+		};
+		let image = crate::test_support::render_goldens::capture(
+			&mut renderer,
+			&Default::default(),
+			&view,
+			&[Draw::Icon {
+				paths: icons::SETTINGS_MINUS,
+				paint: Paint::Text,
+				x: 0.,
+				y: 0.,
+				size: 24.,
+			}],
+		)?;
+		let pixel = |x: f32, y: f32| {
+			*image.get_pixel((x * scale) as u32, (y * scale) as u32)
+		};
+		let background = pixel(0., 0.);
+		assert_eq!(pixel(15., 16.), background);
+		assert_ne!(pixel(15., 13.), background);
+		assert_ne!(pixel(15., 19.), background);
+	}
+	Ok(())
+}
+
 /// A vector icon keeps its optical centre inside its button at any device
 /// phase. The icon bakes its subpixel position into the raster, so it must
 /// stay centred on a button that sits on a half device pixel instead of

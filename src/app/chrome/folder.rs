@@ -152,13 +152,9 @@ pub(super) fn buttons(
 			icons::REDOWNLOAD,
 		),
 		(
-			lang.folder_show_excluded(),
+			lang.folder_hide_excluded(),
 			Command::Chrome(ChromeCommand::FolderShowExcluded),
-			if tree.show_excluded {
-				icons::EYE
-			} else {
-				icons::EYE_OFF
-			},
+			icons::SETTINGS_MINUS,
 		),
 		(
 			lang.folder_collapse_all(),
@@ -183,6 +179,8 @@ pub(super) fn buttons(
 		b.id = crate::app::widgets::row_id(0x666f6c646572, &action.widget_id());
 		b.kind = components::ButtonKind::Quiet;
 		b.icon = Some(icon);
+		b.active = action == Command::Chrome(ChromeCommand::FolderShowExcluded)
+			&& !tree.show_excluded;
 		b.clip = Some(drawer);
 		buttons.push(b);
 	}

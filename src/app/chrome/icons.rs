@@ -29,6 +29,8 @@ pub(super) const EXPORT: &[IconPath] =
 	markview_icon::icon!("assets/ui/export.svg");
 pub(super) const SETTINGS: &[IconPath] =
 	markview_icon::icon!("assets/ui/settings.svg");
+pub(super) const SETTINGS_MINUS: &[IconPath] =
+	markview_icon::icon!("assets/ui/settings-minus.svg");
 pub(super) const OUTLINE: &[IconPath] =
 	markview_icon::icon!("assets/ui/outline.svg");
 pub(super) const EXPAND_ALL: &[IconPath] =
