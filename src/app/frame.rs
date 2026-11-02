@@ -95,9 +95,9 @@ impl Layout {
 		} else {
 			CONTROL_SIZE
 		};
-		// Five controls follow the New page button on every platform, and the
+		// Four controls follow the New page button on every platform, and the
 		// toolbar's left edge reserves exactly their span.
-		let count = 5.0;
+		let count = 4.0;
 		let toolbar_x =
 			right - (count * toolbar_button_size + (count - 1.0) * CONTROL_GAP);
 		let drag_width = if markview_platform::touch_layout() {

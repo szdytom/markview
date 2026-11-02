@@ -32,6 +32,7 @@ at the same level, without `[brackets]`.
 ### Removed
 
 - Remove scrollbar hover thickening and its `thickness_hover` and `overflow_thickness_hover` stylesheet fields.
+- Remove the toolbar's open button; use Ctrl+O or the empty page's open controls instead.
 
 ### Fixed
 

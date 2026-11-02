@@ -1371,7 +1371,7 @@ fn folder_overlay_clips_empty_page_mouse_touch_and_focus_targets() {
 				(drawer.y as usize..(drawer.y + drawer.h) as usize).step_by(4)
 			{
 				let point = (x as f32, y as f32);
-				// The toolbar's own `Open` button lives outside the drawer.
+				// The empty page's `Open` controls live outside the drawer.
 				assert!(
 					!layout
 						.hit(point)

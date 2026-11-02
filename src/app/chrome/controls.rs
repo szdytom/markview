@@ -539,11 +539,6 @@ pub(super) fn toolbar_controls_at(
 			)
 		},
 		(
-			icons::OPEN,
-			lang.toolbar_open(),
-			Command::Document(DocumentCommand::Open),
-		),
-		(
 			icons::EXPORT,
 			lang.toolbar_export(),
 			Command::Export(ExportCommand::Export),

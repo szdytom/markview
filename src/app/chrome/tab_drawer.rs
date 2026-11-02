@@ -547,7 +547,7 @@ mod tests {
 		toolbar.push(toggle(Lang::En));
 		let open = toolbar
 			.iter()
-			.find(|b| b.action == Command::Document(DocumentCommand::Open))
+			.find(|b| b.action == Command::Chrome(ChromeCommand::Settings))
 			.unwrap();
 		let interaction = InteractionState {
 			pointer: crate::app::pointer::State::at((

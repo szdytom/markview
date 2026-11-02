@@ -295,7 +295,6 @@ fn controls_fit_minimum_window_and_panel_focus_has_no_document_actions() {
 			Command::Search(SearchCommand::SearchOpen)
 		});
 		expected.extend([
-			Command::Document(DocumentCommand::Open),
 			Command::Export(ExportCommand::Export),
 			Command::Chrome(ChromeCommand::Settings),
 			Command::Document(DocumentCommand::Outline),
