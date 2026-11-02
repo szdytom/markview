@@ -280,9 +280,6 @@ panel_refreshing = "Refreshing…"
 panel_load_failed = "Unable to load: {error}"
 panel_retry = "Retry"
 
-settings_tab_style = "Tab style"
-settings_tabs_underline = "Underline"
-settings_tabs_connected = "Connected"
 settings_window_layout = "Window layout"
 
 settings_restore_session = "Keep last browsing session"

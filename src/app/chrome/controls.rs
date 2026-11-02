@@ -11,9 +11,7 @@ use crate::{
 	app::frame::{CONTROL_GAP, Layout},
 	lang::Lang,
 	layout::{Draw, Rect, TextShaper},
-	settings::{
-		MarkdownFlavor, ReaderSettings, Sidebar, TabStyle, WindowLayout,
-	},
+	settings::{MarkdownFlavor, ReaderSettings, Sidebar, WindowLayout},
 	state::{Command, DropdownId, InteractionState, PanelPage, PanelTab},
 };
 pub(super) use components::{draw_button, panel_rect};
@@ -129,30 +127,6 @@ fn rows(settings: &ReaderSettings, phone: bool) -> Vec<Row> {
 			)
 			.value(format!("{:.2}×", settings.scroll_speed)),
 		);
-	}
-	if !phone {
-		rows.push(Row::new(t.settings_tab_style(), vec![]).menu(
-			DropdownId::TabStyle,
-			choices(
-				&[
-					(
-						t.settings_tabs_underline(),
-						Command::Settings(SettingsCommand::TabStyle(
-							TabStyle::Underline,
-						)),
-					),
-					(
-						t.settings_tabs_connected(),
-						Command::Settings(SettingsCommand::TabStyle(
-							TabStyle::Connected,
-						)),
-					),
-				],
-				Some(Command::Settings(SettingsCommand::TabStyle(
-					settings.tab_style,
-				))),
-			),
-		));
 	}
 	if !markview_platform::touch_layout() {
 		rows.extend([

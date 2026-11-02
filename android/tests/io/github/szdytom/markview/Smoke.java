@@ -98,7 +98,6 @@ public class Smoke extends Instrumentation {
                 screenshot("reader");
                 tap("Settings");
                 waitFor(s -> s.optString("panel").equals("Settings(Generic)"));
-                require((button(state(), "ToggleDropdown(TabStyle") == null) == phone, "Tab style matches sw600dp");
                 requireSettingsLayout();
                 screenshot("settings");
                 if (!phone) {
@@ -184,12 +183,6 @@ public class Smoke extends Instrumentation {
             JSONObject settingsState = state();
             require(button(settingsState, "ToggleDropdown(WindowLayout") == null && button(settingsState, "SingleInstance") == null && button(settingsState, "RestoreSession") == null,
                 "Desktop-only window and instance controls are absent");
-            require((button(settingsState, "ToggleDropdown(TabStyle") == null) == phone, "Tab style is offered only on tablets");
-            if (!phone) {
-                tap("ToggleDropdown(TabStyle");
-                tap("TabStyle(Connected)");
-                waitFor(s -> s.optString("tab_style").equals("Connected"));
-            }
             screenshot("settings");
             for (String sidebar : new String[] {phone ? "Tabs" : "Folder", "Outline"}) {
                 String key = sidebar.toLowerCase(java.util.Locale.ROOT);

@@ -24,6 +24,7 @@ at the same level, without `[brackets]`.
 ### Changed
 
 - Rename the Linux window layout to Breeze; `window-layout` now accepts `"breeze"` while still reading `"linux"`.
+- Remove the tab-style setting and always draw Connected tabs.
 
 ## 0.4.4 - 2026-11-02
 

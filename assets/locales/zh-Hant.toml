@@ -280,9 +280,6 @@ panel_refreshing = "重新整理中…"
 panel_load_failed = "載入失敗：{error}"
 panel_retry = "重試"
 
-settings_tab_style = "分頁風格"
-settings_tabs_underline = "底線"
-settings_tabs_connected = "連頁"
 settings_window_layout = "視窗配置"
 
 settings_restore_session = "保留上次瀏覽狀態"

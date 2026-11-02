@@ -82,11 +82,11 @@ macro_rules! settings_schema {
 	) => {
 		impl Setting {
 			/// Every persisted setting, in the order the settings page resets.
-			pub const ALL: [Self; 20] =
+			pub const ALL: [Self; 19] =
 				[ $( Setting::$variant $(($arg))? ),* ];
 			/// The number of `Setting` variants.
 			#[allow(dead_code, reason = "The settings tests assert this count.")]
-			pub const COUNT: usize = 18;
+			pub const COUNT: usize = 17;
 		}
 		impl ReaderSettings {
 			pub fn copy_field(&mut self, other: &Self, field: Setting) {
@@ -145,7 +145,6 @@ macro_rules! settings_schema {
 settings_schema! {
 	settings {
 		WindowLayout => window_layout : window_layout, copy;
-		TabStyle => tab_style : tab_style, copy;
 		Theme => theme : theme, copy, special: copy_theme;
 		FontSize => font_size : font_size, copy;
 		Width => width : width, copy;

@@ -1,6 +1,6 @@
 # Stylesheet guide
 
-Markview stylesheets are UTF-8 TOML files with the `.mvss.toml` suffix. They define portable visual themes. Personal reading preferences—font size, column width, alignment, hyphenation, first-line paragraph indent, and tab style—belong in `settings.toml`, not in a stylesheet.
+Markview stylesheets are UTF-8 TOML files with the `.mvss.toml` suffix. They define portable visual themes. Personal reading preferences—font size, column width, alignment, hyphenation, and first-line paragraph indent—belong in `settings.toml`, not in a stylesheet.
 
 ## Install and select a style
 
@@ -271,19 +271,13 @@ A document may open with `---` fenced YAML front matter. It is drawn as a collap
 
 `page` accepts only `background`. The furniture conditions accept the text fields, so a page number can be smaller or greyer than the header text beside it.
 
-Special properties include `theme` on `["code_block"]` alone (`theme = "none"` disables syntax colors and uses the code block text color), scrollbar colors and thicknesses on `["scrollbar"]`, `muted`/`accent`/`warning`/`error`/`shadow`/`scrim` on `["ui"]`, `accent` on `["task_marker"]`, and `hover_background`/`active_background`/`disabled_color`/`focus_color` on `["ui", "button"]`. `warning` colors the settings hint when launch-dependent options differ from their values at startup. UI properties control colors and typography; the tab silhouette is a user setting.
+Special properties include `theme` on `["code_block"]` alone (`theme = "none"` disables syntax colors and uses the code block text color), scrollbar colors and thicknesses on `["scrollbar"]`, `muted`/`accent`/`warning`/`error`/`shadow`/`scrim` on `["ui"]`, `accent` on `["task_marker"]`, and `hover_background`/`active_background`/`disabled_color`/`focus_color` on `["ui", "button"]`. `warning` colors the settings hint when launch-dependent options differ from their values at startup. UI properties control colors and typography; the tab silhouette is fixed to connected tabs.
 
-### Reader tab style
+### Reader tabs
 
-Choose **Underline** (the default rectangular tabs with an accent underline and separators) or **Connected** (rounded tabs joined to the page) in **Settings → Generic → Interface → Tab style**, or set the top-level `tab-style` field in `settings.toml`:
+Tabs use the Connected silhouette: rounded tabs joined to the page. Colors come from MVSS; an active tab uses the page background. The shape is independent of the selected themes and window-control layout, and does not affect PDF or PNG exports.
 
-```toml
-tab-style = "underline" # or "connected"
-```
-
-The choice applies immediately, preserving open tabs, their order and scroll position without reflowing the document. It is independent of the selected themes and window-control layout, and does not affect PDF or PNG exports. Colors still come from MVSS: connected active tabs use the page background; underlined active tabs use the panel background and toolbar accent.
-
-MVSS no longer accepts `tab_style`. Remove it from toolbar rules and use the user setting above. The former Classic Tabs overlay is no longer needed; remove it from the selected styles.
+MVSS does not accept `tab_style`. Remove it from toolbar rules and from selected styles.
 
 Colors are sRGB `#RRGGBB` or `#RRGGBBAA`; `body.background` must be opaque. Sizes and spacing are positive or non-negative finite values. `size` is relative to the reader's base size, `line_height` is a multiple of the condition's size, block spacing and padding use base-size units, and an inline code chip's padding scales with the text around it. Border width and radius use logical pixels. Unknown conditions, fields, types, and enum values are errors.
 

@@ -28,9 +28,6 @@ Android stores settings in its private app files directory; see
   `tabs-width` controls the combined phone sidebar. Narrow windows limit the
   displayed width without changing the saved preference.
 
-- **Tab style.** General settings offer Underline (default) and Connected tab styles, applied
-  immediately. `tab-style` in `settings.toml` accepts `"underline"` or `"connected"`.
-
 - **Window layout follows your preference.** General settings offer a dropdown
   with System, macOS, Windows and Breeze layouts, applied next launch.
   The `window-layout` setting in `settings.toml` accepts `"system"`, `"macos"`,

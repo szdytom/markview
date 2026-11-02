@@ -278,9 +278,6 @@ panel_refreshing = "刷新中…"
 panel_load_failed = "加载失败：{error}"
 panel_retry = "重试"
 
-settings_tab_style = "标签页风格"
-settings_tabs_underline = "下划线"
-settings_tabs_connected = "连页"
 settings_window_layout = "窗口布局"
 
 settings_restore_session = "保留上次浏览状态"

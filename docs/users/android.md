@@ -60,10 +60,10 @@ Below 640 logical pixels,
 settings occupy the entire app content area; wider screens retain the centered dialog. Narrow forms stack labels above
 controls. The device's smallest width selects phone or tablet mode:
 
-| Device configuration | Tab management | Orientation | Tab-style setting |
-|---|---|---|---|
-| Smallest width below 600 dp | One sidebar with Tabs and Folders pages | Portrait | Hidden and ignored |
-| Smallest width at least 600 dp | Shared desktop tab strip | Portrait or landscape | Available |
+| Device configuration | Tab management | Orientation |
+|---|---|---|
+| Smallest width below 600 dp | One sidebar with Tabs and Folders pages | Portrait |
+| Smallest width at least 600 dp | Shared desktop tab strip | Portrait or landscape |
 
 Phone mode fills the available reading width with 20 logical pixels of margin
 on each side and hides the column-width setting; tablets retain adjustable

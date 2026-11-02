@@ -39,7 +39,6 @@ pub(crate) enum DocumentCommand {
 pub(crate) enum SettingsCommand {
 	RetrySettingsLoad,
 	WindowLayout(crate::settings::WindowLayout),
-	TabStyle(crate::settings::TabStyle),
 	Smaller,
 	Larger,
 	Narrower,
@@ -287,11 +286,12 @@ mod tests {
 			"FocusInput(Url)"
 		);
 		assert_eq!(
-			Command::Settings(SettingsCommand::TabStyle(
-				crate::settings::TabStyle::Underline
+			Command::Chrome(ChromeCommand::ToggleDropdown(
+				DropdownId::WindowLayout,
+				2
 			))
 			.debug_name(),
-			"TabStyle(Underline)"
+			"ToggleDropdown(WindowLayout, 2)"
 		);
 		assert_eq!(
 			Command::Search(SearchCommand::SearchNext).debug_name(),
@@ -309,7 +309,7 @@ mod tests {
 			Command::Fonts(font_panel::Command::OpenFolder).debug_name(),
 			"Fonts(OpenFolder)"
 		);
-		let id = DropdownId::TabStyle;
+		let id = DropdownId::WindowLayout;
 		assert_eq!(
 			Command::Chrome(ChromeCommand::ToggleDropdown(id, 2)).debug_name(),
 			format!("ToggleDropdown({id:?}, 2)")

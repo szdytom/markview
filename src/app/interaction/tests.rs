@@ -2082,9 +2082,8 @@ fn phone_uses_available_column_width_and_preserves_the_saved_width() {
 }
 
 #[test]
-fn phone_drawer_switches_and_closes_shared_tabs_and_hides_tab_style() {
-	use crate::settings::TabStyle;
-	use crate::state::{DropdownId, PanelPage, PanelTab};
+fn phone_drawer_switches_and_closes_shared_tabs() {
+	use crate::state::{PanelPage, PanelTab};
 	let (mut app, _) = reader(SOURCE, 320.);
 	let now = Instant::now();
 	for index in 0..30 {
@@ -2119,23 +2118,7 @@ fn phone_drawer_switches_and_closes_shared_tabs_and_hides_tab_style() {
 	app.action(Command::Chrome(ChromeCommand::Tabs));
 	assert_eq!(app.interaction.panel, PanelPage::Closed);
 	app.show_panel(PanelPage::Settings(PanelTab::Generic));
-	assert!(!app.panel_form().unwrap().buttons.iter().any(|b| matches!(
-		b.action,
-		Command::Chrome(ChromeCommand::ToggleDropdown(DropdownId::TabStyle, _))
-	)));
-	app.action(Command::Settings(SettingsCommand::TabStyle(
-		TabStyle::Connected,
-	)));
-	assert_eq!(app.preferences.values.tab_style, TabStyle::Underline);
 	app.tab_strip.phone = false;
-	assert!(app.panel_form().unwrap().buttons.iter().any(|b| matches!(
-		b.action,
-		Command::Chrome(ChromeCommand::ToggleDropdown(DropdownId::TabStyle, _))
-	)));
-	app.action(Command::Settings(SettingsCommand::TabStyle(
-		TabStyle::Connected,
-	)));
-	assert_eq!(app.preferences.values.tab_style, TabStyle::Connected);
 	assert_eq!(app.tab_layout().rects.len(), 29);
 }
 
@@ -2239,7 +2222,7 @@ fn each_domain_observes_the_shared_preamble_while_a_confirmation_owns_input() {
 		),
 		(
 			Command::Chrome(ChromeCommand::ToggleDropdown(
-				DropdownId::TabStyle,
+				DropdownId::WindowLayout,
 				0,
 			)),
 			"chrome",

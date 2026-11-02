@@ -147,8 +147,8 @@ python3 android/test.py --serial emulator-5554 --layout phone
 
 For tablet verification, create an AVD with `--device pixel_tablet`, boot it on
 a separate port, and run `python3 android/test.py --serial emulator-5556 --layout tablet`.
-`--layout-only` checks resource selection, orientation policy and tab-style
-visibility for boundary configurations such as `sw599dp` and `sw600dp`.
+`--layout-only` checks resource selection and orientation policy for boundary
+configurations such as `sw599dp` and `sw600dp`.
 
 The test APK supplies external content URIs and exercises real touch and key
 input in the rendered reader. It checks multilingual Markdown, mathematics,

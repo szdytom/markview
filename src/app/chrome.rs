@@ -765,21 +765,6 @@ impl<'a> Chrome<'a> {
 	}
 
 	fn draw_tabs(&mut self, out: &mut Vec<Draw>) {
-		let width = self.frame.width;
-		if !self.session.strip.phone
-			&& self.settings.model.tab_style
-				== crate::settings::TabStyle::Underline
-		{
-			out.push(Draw::Rect(
-				Rect {
-					x: 0.0,
-					y: TOP - 1.0,
-					w: width,
-					h: 1.0,
-				},
-				Paint::Styled(Condition::Toolbar, C::BorderColor),
-			));
-		}
 		if self.session.strip.phone {
 			self.ui.appearance = ui_appearance(self.ui);
 			let toggle = tab_drawer::toggle(self.settings.model.lang());
@@ -1320,7 +1305,6 @@ impl<'a> Chrome<'a> {
 	}
 	pub(super) fn tab_bar(&mut self) -> tabs::TabBar<'_> {
 		tabs::TabBar {
-			style: self.settings.model.tab_style,
 			ui: self.ui,
 			strip: self.session.strip,
 			widths: self.session.tab_widths,

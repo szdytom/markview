@@ -528,19 +528,9 @@ fn tab_strip_frames_clip_overflow_at_fractional_dpi() -> Result<()> {
 		(5, 1, 0.0, false, false, "compressed.png"),
 		(30, 1, 25.0, false, false, "overflow.png"),
 		(30, 3, 125.0, true, true, "drag-dark.png"),
-		(3, 1, 0.0, false, false, "underline-normal.png"),
-		(3, 1, 0.0, false, true, "underline-dark.png"),
-		(30, 1, 25.0, false, false, "underline-overflow.png"),
-		(30, 3, 125.0, true, true, "underline-drag-dark.png"),
 	] {
-		let underline = filename.starts_with("underline-");
 		let settings = ReaderSettings {
 			theme: if dark { Theme::Dark } else { Theme::Light },
-			tab_style: if underline {
-				crate::settings::TabStyle::Underline
-			} else {
-				crate::settings::TabStyle::Connected
-			},
 			stylesheet: markview_layout::style::Stylesheet::bundled(dark),
 			..Default::default()
 		};
@@ -568,7 +558,6 @@ fn tab_strip_frames_clip_overflow_at_fractional_dpi() -> Result<()> {
 		});
 		let width = if count <= 3 { 800.0 } else { 500.0 };
 		let mut bar = tabs::TabBar {
-			style: settings.tab_style,
 			ui: &mut ui,
 			strip: &strip,
 			widths: &metrics.widths,
@@ -586,11 +575,7 @@ fn tab_strip_frames_clip_overflow_at_fractional_dpi() -> Result<()> {
 			.tabs,
 		};
 		let layout = bar.layout();
-		let padding = if !underline && layout.max_scroll == 0.0 {
-			9.0
-		} else {
-			0.0
-		};
+		let padding = if layout.max_scroll == 0.0 { 9.0 } else { 0.0 };
 		let viewport = Rect {
 			x: layout.viewport.x - padding,
 			w: layout.viewport.w + padding * 2.0,
@@ -676,26 +661,6 @@ fn tab_strip_frames_clip_overflow_at_fractional_dpi() -> Result<()> {
 		}
 		if count <= 3 {
 			let image = &images[1];
-			if underline {
-				let accent = settings
-					.stylesheet
-					.paint(Paint::Styled(Condition::Toolbar, C::Accent))
-					.map(|channel| (channel * 255.0).round() as u8);
-				let x = ((active.x + active.w / 2.0) * view.scale) as u32;
-				let y = ((active.y + active.h - 1.0) * view.scale) as u32;
-				assert_eq!(
-					image.get_pixel(x, y).0,
-					accent,
-					"active tab underline: {filename}"
-				);
-				let y = (38.0 * view.scale) as u32;
-				assert_eq!(
-					image.get_pixel(x, y),
-					images[0].get_pixel(x, y),
-					"underline tab must remain separate from the page: {filename}"
-				);
-				continue;
-			}
 			let page = image.get_pixel(view.width / 2, 65);
 			for (index, rect) in layout.rects.iter().enumerate() {
 				if index == active_tab {

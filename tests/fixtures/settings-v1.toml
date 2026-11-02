@@ -1,6 +1,5 @@
 version = 1
 window-layout = "macos"
-tab-style = "connected"
 style = ["dark"]
 font_size = 21.0
 width = 900.0

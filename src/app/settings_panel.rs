@@ -3,8 +3,7 @@ use crate::state::SettingsCommand;
 use crate::{
 	scroll::ScrollArea,
 	settings::{
-		FontRole, MarkdownFlavor, ReaderSettings, Setting, TabStyle,
-		WindowLayout,
+		FontRole, MarkdownFlavor, ReaderSettings, Setting, WindowLayout,
 	},
 	state::Command,
 };
@@ -76,7 +75,6 @@ pub(super) enum Message {
 	Language(Option<crate::lang::Lang>),
 	FontFamily(FontRole, Option<String>),
 	WindowLayout(WindowLayout),
-	TabStyle(TabStyle),
 	SingleInstance,
 	RestoreSession,
 	FooterPath,
@@ -118,9 +116,6 @@ impl Message {
 			}
 			Command::Settings(SettingsCommand::WindowLayout(value)) => {
 				Self::WindowLayout(value)
-			}
-			Command::Settings(SettingsCommand::TabStyle(value)) => {
-				Self::TabStyle(value)
 			}
 			Command::Settings(SettingsCommand::SingleInstance) => {
 				Self::SingleInstance
@@ -256,10 +251,6 @@ impl Component for Model {
 				self.values.window_layout = value;
 				Setting::WindowLayout
 			}
-			Message::TabStyle(value) => {
-				self.values.tab_style = value;
-				Setting::TabStyle
-			}
 			Message::ScrollSpeed(delta) => {
 				self.values.step_scroll_speed(delta);
 				Setting::ScrollSpeed
@@ -294,7 +285,7 @@ impl Component for Model {
 					.effects
 					.extend([Effect::ReloadStyles, Effect::CloseDropdown]);
 			}
-			Setting::WindowLayout | Setting::TabStyle => {
+			Setting::WindowLayout => {
 				update.effects.push(Effect::CloseDropdown);
 			}
 			Setting::Language | Setting::Dialect => {

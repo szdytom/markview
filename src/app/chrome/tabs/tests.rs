@@ -29,7 +29,6 @@ fn hovered_labels_mix_current_theme_colors_and_keep_the_background_highlight() {
 			tabs: &tabs,
 			active_tab: 0,
 			cursor: (0.0, 0.0),
-			style: TabStyle::Underline,
 			viewport: Rect {
 				x: 10.0,
 				y: 4.0,
@@ -37,60 +36,57 @@ fn hovered_labels_mix_current_theme_colors_and_keep_the_background_highlight() {
 				h: 36.0,
 			},
 		};
-		for style in [TabStyle::Underline, TabStyle::Connected] {
-			bar.style = style;
-			let layout = bar.layout();
-			for hovered in [None, Some(0), Some(1)] {
-				bar.cursor = hovered
-					.map_or((0.0, 0.0), |i| (layout.rects[i].x + 20.0, 20.0));
-				let draws = bar.draw_tabs();
-				let Draw::Clipped { draws, .. } = &draws[0] else {
-					unreachable!()
+		let layout = bar.layout();
+		for hovered in [None, Some(0), Some(1)] {
+			bar.cursor = hovered
+				.map_or((0.0, 0.0), |i| (layout.rects[i].x + 20.0, 20.0));
+			let draws = bar.draw_tabs();
+			let Draw::Clipped { draws, .. } = &draws[0] else {
+				unreachable!()
+			};
+			for (i, rect) in layout.rects.iter().enumerate() {
+				let expected = if i == 0 {
+					active
+				} else if hovered == Some(i) {
+					mixed
+				} else {
+					muted
 				};
-				for (i, rect) in layout.rects.iter().enumerate() {
-					let expected = if i == 0 {
-						active
-					} else if hovered == Some(i) {
-						mixed
-					} else {
-						muted
-					};
-					let glyphs: Vec<_> = draws
-						.iter()
-						.filter_map(|draw| match draw {
-							Draw::Glyph(glyph)
-								if rect.contains(glyph.x, glyph.y) =>
-							{
-								Some(glyph)
-							}
-							_ => None,
-						})
-						.collect();
-					assert!(!glyphs.is_empty());
-					for glyph in glyphs {
-						let actual = bar.ui.stylesheet.paint(glyph.paint);
-						assert!(actual.iter().zip(expected).all(|(a, b)| {
-							(a - b).abs() <= 0.5 / 255.0 + 0.00001
-						}));
-					}
-				}
-				let hover_fills = draws
+				let glyphs: Vec<_> = draws
 					.iter()
-					.filter(|draw| {
-						matches!(
-							draw,
-							Draw::Rect(
-								_,
-								Paint::Styled(
-									Condition::Button,
-									C::HoverBackground
-								)
+					.filter_map(|draw| match draw {
+						Draw::Glyph(glyph)
+							if rect.contains(glyph.x, glyph.y) =>
+						{
+							Some(glyph)
+						}
+						_ => None,
+					})
+					.collect();
+				assert!(!glyphs.is_empty());
+				for glyph in glyphs {
+					let actual = bar.ui.stylesheet.paint(glyph.paint);
+					assert!(actual.iter().zip(expected).all(|(a, b)| {
+						(a - b).abs() <= 0.5 / 255.0 + 0.00001
+					}));
+				}
+			}
+			let hover_fills = draws
+				.iter()
+				.filter(|draw| {
+					matches!(
+						draw,
+						Draw::Rect(
+							_,
+							Paint::Styled(
+								Condition::Button,
+								C::HoverBackground
 							)
 						)
-					})
-					.count();
-				assert_eq!(hover_fills > 0, hovered == Some(1));
-			}
+					)
+				})
+				.count();
+			assert_eq!(hover_fills > 0, hovered == Some(1));
 		}
 	}
 }
@@ -119,17 +115,11 @@ fn tab_hover_match_rendering_baselines() -> anyhow::Result<()> {
 		.map(|i| ReaderTab::new(format!("{i}.md").into()))
 		.collect();
 	let widths = vec![(100.0, 50.0); tabs.len()];
-	for (dark, style, name) in [
-		(false, TabStyle::Connected, "light"),
-		(true, TabStyle::Connected, "dark"),
-		(false, TabStyle::Underline, "underline-light"),
-		(true, TabStyle::Underline, "underline-dark"),
-	] {
+	for (dark, name) in [(false, "light"), (true, "dark")] {
 		let sheet = markview_layout::style::Stylesheet::bundled(dark);
 		ui.set_stylesheet(sheet.clone());
 		renderer.set_stylesheet(sheet);
 		let mut bar = TabBar {
-			style,
 			ui: &mut ui,
 			strip: &strip,
 			widths: &widths,
@@ -231,7 +221,6 @@ fn tab_hover_match_rendering_baselines() -> anyhow::Result<()> {
 				widths: &drag_widths,
 				ui: &mut *bar.ui,
 				cursor: (150.0, 20.0),
-				style: bar.style,
 				tabs: bar.tabs,
 				active_tab: 0,
 				viewport: bar.viewport,
@@ -241,12 +230,7 @@ fn tab_hover_match_rendering_baselines() -> anyhow::Result<()> {
 			let image =
 				capture(&mut renderer, &Default::default(), &view, &overlay)?;
 			baselines.record(&format!("drag-{name}-{scale}x"), &image)?;
-			let active_fill = match style {
-				TabStyle::Connected => Paint::Background,
-				TabStyle::Underline => {
-					Paint::Styled(Condition::Panel, C::Background)
-				}
-			};
+			let active_fill = Paint::Background;
 			let fill = drag_bar
 				.ui
 				.stylesheet
@@ -304,7 +288,7 @@ fn cached_tab_end_follows_scroll_theme_and_document_changes() {
 }
 
 #[test]
-fn live_tab_style_switch_preserves_widths_scroll_and_hit_targets() {
+fn tab_layout_preserves_widths_scroll_and_hit_targets() {
 	let mut ui = crate::test_support::shaper();
 	let tabs: Vec<_> = (0..30)
 		.map(|i| ReaderTab::new(format!("document{i}.md").into()))
@@ -315,7 +299,6 @@ fn live_tab_style_switch_preserves_widths_scroll_and_hit_targets() {
 	let mut strip = TabStrip::default();
 	strip.scroll = 25.0.into();
 	let mut bar = TabBar {
-		style: TabStyle::default(),
 		ui: &mut ui,
 		strip: &strip,
 		widths: &widths,
@@ -332,31 +315,23 @@ fn live_tab_style_switch_preserves_widths_scroll_and_hit_targets() {
 		)
 		.tabs,
 	};
-	let original = bar.layout();
-	for (style, height) in
-		[(TabStyle::Underline, 32.0), (TabStyle::Connected, 36.0)]
-	{
-		bar.style = style;
-		let layout = bar.layout();
-		assert_eq!(layout.scroll, original.scroll);
-		for (rect, before) in layout.rects.iter().zip(&original.rects) {
-			assert_eq!((rect.x, rect.w, rect.h), (before.x, before.w, height));
-		}
-		let active = layout.rects[1];
-		assert_eq!(layout.hit(active.x + active.w / 2.0, 20.0), Some(1));
-		assert_eq!(layout.hit(active.x + active.w - 16.0, 20.0), Some(1));
-		let draws = bar.draw_tabs();
-		let Draw::Clipped { draws, .. } = &draws[0] else {
-			panic!("tab clip missing")
-		};
-		let underline = draws.iter().any(|draw| {
-			matches!(
-				draw,
-				Draw::Rect(_, Paint::Styled(Condition::Toolbar, C::Accent))
-			)
-		});
-		assert_eq!(underline, style == TabStyle::Underline);
+	let layout = bar.layout();
+	for rect in &layout.rects {
+		assert_eq!(rect.h, 36.0);
 	}
+	let active = layout.rects[1];
+	assert_eq!(layout.hit(active.x + active.w / 2.0, 20.0), Some(1));
+	assert_eq!(layout.hit(active.x + active.w - 16.0, 20.0), Some(1));
+	let draws = bar.draw_tabs();
+	let Draw::Clipped { draws, .. } = &draws[0] else {
+		panic!("tab clip missing")
+	};
+	assert!(!draws.iter().any(|draw| {
+		matches!(
+			draw,
+			Draw::Rect(_, Paint::Styled(Condition::Toolbar, C::Accent))
+		)
+	}));
 	metrics.sync(bar.ui, &tabs);
 	assert_eq!(metrics.widths, widths);
 }
@@ -386,7 +361,6 @@ fn measured_tabs_fit_minimum_window_and_styles_invalidate_widths() {
 	let old = metrics.widths.clone();
 	let strip = TabStrip::default();
 	let mut bar = TabBar {
-		style: TabStyle::default(),
 		ui: &mut ui,
 		strip: &strip,
 		widths: &metrics.widths,
@@ -435,7 +409,6 @@ fn separators_only_divide_neighboring_inactive_tabs() {
 			tabs: &tabs,
 			active_tab: 0,
 			cursor: (0.0, 0.0),
-			style: TabStyle::Underline,
 			viewport: Rect {
 				x: 10.0,
 				y: 4.0,
@@ -443,52 +416,43 @@ fn separators_only_divide_neighboring_inactive_tabs() {
 				h: 36.0,
 			},
 		};
-		for style in [TabStyle::Underline, TabStyle::Connected] {
-			bar.style = style;
-			let layout = bar.layout();
-			for active in 0..count {
-				bar.active_tab = active;
-				for hovered in std::iter::once(None).chain((0..count).map(Some))
-				{
-					bar.cursor = hovered.map_or((0.0, 0.0), |i| {
-						let rect = layout.rects[i];
-						(rect.x + rect.w / 2.0, rect.y + rect.h / 2.0)
-					});
-					let draws = bar.draw_tabs();
-					let Draw::Clipped { draws, .. } = &draws[0] else {
-						unreachable!()
-					};
-					let separators: Vec<_> = draws
-						.iter()
-						.filter_map(|draw| match draw {
-							Draw::Rect(
-								rect,
-								Paint::Styled(
-									Condition::Toolbar,
-									C::BorderColor,
-								),
-							) => Some(rect.x + rect.w / 2.0),
-							_ => None,
-						})
-						.collect();
-					let expected: Vec<_> = layout
-						.rects
-						.windows(2)
-						.enumerate()
-						.filter(|(i, _)| {
-							*i != active
-								&& *i + 1 != active && hovered != Some(*i)
-								&& hovered != Some(*i + 1)
-						})
-						.map(|(_, pair)| {
-							(pair[0].x + pair[0].w + pair[1].x) / 2.0
-						})
-						.collect();
-					assert_eq!(
-						separators, expected,
-						"{style:?}: active {active}, hovered {hovered:?} of {count}"
-					);
-				}
+		let layout = bar.layout();
+		for active in 0..count {
+			bar.active_tab = active;
+			for hovered in std::iter::once(None).chain((0..count).map(Some)) {
+				bar.cursor = hovered.map_or((0.0, 0.0), |i| {
+					let rect = layout.rects[i];
+					(rect.x + rect.w / 2.0, rect.y + rect.h / 2.0)
+				});
+				let draws = bar.draw_tabs();
+				let Draw::Clipped { draws, .. } = &draws[0] else {
+					unreachable!()
+				};
+				let separators: Vec<_> = draws
+					.iter()
+					.filter_map(|draw| match draw {
+						Draw::Rect(
+							rect,
+							Paint::Styled(Condition::Toolbar, C::BorderColor),
+						) => Some(rect.x + rect.w / 2.0),
+						_ => None,
+					})
+					.collect();
+				let expected: Vec<_> = layout
+					.rects
+					.windows(2)
+					.enumerate()
+					.filter(|(i, _)| {
+						*i != active
+							&& *i + 1 != active && hovered != Some(*i)
+							&& hovered != Some(*i + 1)
+					})
+					.map(|(_, pair)| (pair[0].x + pair[0].w + pair[1].x) / 2.0)
+					.collect();
+				assert_eq!(
+					separators, expected,
+					"active {active}, hovered {hovered:?} of {count}"
+				);
 			}
 		}
 	}

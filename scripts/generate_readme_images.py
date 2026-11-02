@@ -55,7 +55,6 @@ def capture_profile(directory, language, folder=False):
     overrides = {
         "single-instance": str(folder).lower(),
         "restore-session": str(folder).lower(),
-        "tab-style": '"connected"',
         "window-layout": '"windows"',
         "language": '"en"' if language == "en" else '"zh-hans"',
         "markdown-flavor": '"obsidian"',
@@ -273,7 +272,6 @@ def capture_android(serial, kind="android"):
     android_profile(
         adb,
         {
-            "tab-style": '"connected"',
             "style": '["light"]',
             "font_size": "18.0",
             "width": "760.0",

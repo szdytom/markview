@@ -52,17 +52,6 @@ impl WindowLayout {
 	}
 }
 
-/// The reader tab silhouette, independent of document layout and themes.
-#[derive(
-	Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize,
-)]
-#[serde(rename_all = "lowercase")]
-pub enum TabStyle {
-	#[default]
-	Underline,
-	Connected,
-}
-
 /// The Markdown dialect a document is read in.
 ///
 /// Obsidian always reads with highlight marks, while GFM leaves them to the
@@ -93,7 +82,6 @@ pub struct EffectiveDialect {
 #[derive(Clone, Debug, PartialEq)]
 pub struct ReaderSettings {
 	pub window_layout: WindowLayout,
-	pub tab_style: TabStyle,
 	pub theme: Theme,
 	pub style: Option<Vec<String>>,
 	/// The interface language; absent means "follow the system", so a locale
@@ -139,7 +127,6 @@ impl Default for ReaderSettings {
 	fn default() -> Self {
 		Self {
 			window_layout: WindowLayout::System,
-			tab_style: TabStyle::default(),
 			theme: Theme::default(),
 			style: None,
 			lang: None,
@@ -218,7 +205,6 @@ impl FontRole {
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Setting {
 	WindowLayout,
-	TabStyle,
 	Theme,
 	FontSize,
 	Width,

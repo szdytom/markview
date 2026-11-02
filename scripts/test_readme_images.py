@@ -197,7 +197,6 @@ class ReadmeImagesTest(unittest.TestCase):
                 copied = tomllib.loads((capture / "markview/settings.toml").read_text())
                 self.assertEqual(copied["single-instance"], folder)
                 self.assertEqual(copied["restore-session"], folder)
-                self.assertEqual(copied["tab-style"], "connected")
                 self.assertEqual(copied["window-layout"], "windows")
                 self.assertEqual(
                     copied["language"], "en" if language == "en" else "zh-hans"

@@ -88,7 +88,6 @@ impl Preferences {
 		}
 		let explicit = ReaderSettings {
 			window_layout: settings.window_layout,
-			tab_style: settings.tab_style,
 			fontdef_overrides: settings.fontdef_overrides.clone(),
 			style: args.style.clone().or_else(|| {
 				args.theme.map(|t| {

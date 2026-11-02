@@ -83,42 +83,6 @@ fn external_edits_merge_pending_ui_fields_and_preserve_comments() {
 }
 
 #[test]
-fn tab_style_round_trips_reloads_and_merges_pending_changes() {
-	let dir = tempfile::tempdir().unwrap();
-	let path = dir.path().join("settings.toml");
-	fs::write(&path, "# Reader\nfont_size = 20\n").unwrap();
-	let (mut store, warning) = SettingsStore::load(Some(path.clone()));
-	assert!(warning.is_none());
-	assert_eq!(store.settings().tab_style, TabStyle::Underline);
-	for style in [TabStyle::Connected, TabStyle::Underline] {
-		let mut settings = store.settings();
-		settings.tab_style = style;
-		store.changed(&settings, Some(Setting::TabStyle));
-		fs::write(&path, "# Reader\nfont_size = 24\n").unwrap();
-		store.flush().unwrap();
-		let (loaded, warning) = SettingsStore::load(Some(path.clone()));
-		assert!(warning.is_none());
-		assert_eq!(loaded.settings().tab_style, style);
-		assert_eq!(loaded.settings().font_size, 24.0);
-		assert_eq!(loaded.theme_preference(), None);
-		assert!(fs::read_to_string(&path).unwrap().contains("# Reader"));
-	}
-	fs::write(&path, "tab-style = 'connected'\n").unwrap();
-	assert!(store.reload().unwrap());
-	assert_eq!(store.settings().tab_style, TabStyle::Connected);
-	fs::write(&path, "tab-style = 'unknown'\n").unwrap();
-	assert!(store.reload().is_err());
-	assert_eq!(store.settings().tab_style, TabStyle::Connected);
-	fs::write(&path, "tab-style = 'connected'\n").unwrap();
-	store.changed(&ReaderSettings::default(), None);
-	store.flush().unwrap();
-	assert_eq!(
-		SettingsStore::load(Some(path)).0.settings().tab_style,
-		TabStyle::Underline
-	);
-}
-
-#[test]
 fn window_layout_round_trips_and_merges_without_pinning_the_theme() {
 	let dir = tempfile::tempdir().unwrap();
 	let path = dir.path().join("settings.toml");
@@ -973,7 +937,6 @@ fn settings_differing_from_default() -> ReaderSettings {
 	let default = ReaderSettings::default();
 	ReaderSettings {
 		window_layout: WindowLayout::Breeze,
-		tab_style: TabStyle::Connected,
 		theme: Theme::Dark,
 		style: Some(vec!["dark".into()]),
 		lang: Some(Lang::Ja),
@@ -1027,7 +990,6 @@ fn changed_fields(
 	}
 	changed!(
 		window_layout,
-		tab_style,
 		theme,
 		style,
 		lang,
@@ -1061,7 +1023,6 @@ fn changed_fields(
 fn expected_changes(field: Setting) -> Vec<&'static str> {
 	match field {
 		Setting::WindowLayout => vec!["window_layout"],
-		Setting::TabStyle => vec!["tab_style"],
 		Setting::Theme => vec!["theme", "style"],
 		Setting::FontSize => vec!["font_size"],
 		Setting::Width => vec!["width"],
@@ -1092,7 +1053,6 @@ fn assert_copied(from: &ReaderSettings, to: &ReaderSettings, field: Setting) {
 		Setting::WindowLayout => {
 			assert_eq!(to.window_layout, from.window_layout)
 		}
-		Setting::TabStyle => assert_eq!(to.tab_style, from.tab_style),
 		Setting::Theme => {
 			assert_eq!(to.theme, from.theme);
 			assert_eq!(to.style, from.style);
@@ -1133,12 +1093,11 @@ fn assert_copied(from: &ReaderSettings, to: &ReaderSettings, field: Setting) {
 
 #[test]
 fn setting_all_keeps_the_persisted_order_and_count() {
-	assert_eq!(Setting::COUNT, 18);
+	assert_eq!(Setting::COUNT, 17);
 	assert_eq!(
 		Setting::ALL,
 		[
 			Setting::WindowLayout,
-			Setting::TabStyle,
 			Setting::Theme,
 			Setting::FontSize,
 			Setting::Width,
@@ -1191,7 +1150,6 @@ fn reader_settings_round_trip_through_config_for_non_option_fields() {
 	let back = Config::from_settings(&settings, ExportSettings::default())
 		.reader_settings();
 	assert_eq!(back.window_layout, settings.window_layout);
-	assert_eq!(back.tab_style, settings.tab_style);
 	assert_eq!(back.theme, settings.theme);
 	assert_eq!(back.fontdef_overrides, settings.fontdef_overrides);
 	assert_eq!(back.stylesheet, settings.stylesheet);
@@ -1223,7 +1181,6 @@ fn version_one_fixture_honours_every_persisted_key() {
 	assert!(warning.is_none(), "{warning:?}");
 	let settings = store.settings();
 	assert_eq!(settings.window_layout, WindowLayout::Macos);
-	assert_eq!(settings.tab_style, TabStyle::Connected);
 	assert_eq!(settings.theme, Theme::Dark);
 	assert_eq!(settings.style, Some(vec!["dark".into()]));
 	assert_eq!(store.theme_preference(), Some(Theme::Dark));

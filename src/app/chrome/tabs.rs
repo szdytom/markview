@@ -1,7 +1,6 @@
 use super::components::mix;
 use crate::app::tab_strip::{GAP, TabDrag, TabLayout, TabStrip};
 use crate::layout::{Draw, Paint, Rect, TextShaper};
-use crate::settings::TabStyle;
 use crate::state::ReaderTab;
 use markview_layout::style::{ColorField as C, Condition};
 use unicode_segmentation::UnicodeSegmentation;
@@ -17,7 +16,6 @@ const ACTIVE_RIGHT: &[markview_layout::scene::IconPath] =
 const RADIUS: f32 = 8.0;
 
 pub(in crate::app) struct TabBar<'a> {
-	pub(super) style: TabStyle,
 	pub(super) ui: &'a mut TextShaper,
 	pub(super) strip: &'a TabStrip,
 	pub(super) widths: &'a [(f32, f32)],
@@ -28,18 +26,13 @@ pub(in crate::app) struct TabBar<'a> {
 }
 impl TabBar<'_> {
 	pub(in crate::app) fn layout(&mut self) -> TabLayout {
-		let mut viewport = self.viewport;
-		if self.style == TabStyle::Underline {
-			viewport.h -= 4.0;
-		}
-		TabLayout::new(viewport, self.widths, self.strip.scroll.offset())
+		TabLayout::new(self.viewport, self.widths, self.strip.scroll.offset())
 	}
 
 	pub(super) fn draw_tabs(&mut self) -> Vec<Draw> {
 		let layout = self.layout();
 		let slid = self.strip.rects(&layout);
 		let rects = slid.as_deref().unwrap_or(&layout.rects);
-		let style = self.style;
 		let hovered_tab = rects
 			.iter()
 			.position(|rect| rect.contains(self.cursor.0, self.cursor.1));
@@ -74,7 +67,7 @@ impl TabBar<'_> {
 			if active || dragging {
 				out.append(&mut separators);
 			}
-			draw_tab_surface(&mut out, style, rect, active, hovered);
+			draw_tab_surface(&mut out, rect, active, hovered);
 			if !dragging
 				&& separator_visible(
 					index,
@@ -129,12 +122,11 @@ impl TabBar<'_> {
 		out.extend(separators);
 		out.extend(drop_indicator(dragged, rects, layout.viewport));
 		self.ui.appearance = old;
-		let padding =
-			if style == TabStyle::Connected && layout.max_scroll == 0.0 {
-				RADIUS + GAP / 2.0
-			} else {
-				0.0
-			};
+		let padding = if layout.max_scroll == 0.0 {
+			RADIUS + GAP / 2.0
+		} else {
+			0.0
+		};
 		let mut draws = vec![Draw::Clipped {
 			rect: Rect {
 				x: layout.viewport.x - padding,
@@ -208,39 +200,18 @@ fn separator_visible(
 
 fn draw_tab_surface(
 	out: &mut Vec<Draw>,
-	style: TabStyle,
 	rect: Rect,
 	active: bool,
 	hovered: bool,
 ) {
 	let fill = if active {
-		match style {
-			TabStyle::Underline => {
-				Paint::Styled(Condition::Panel, C::Background)
-			}
-			TabStyle::Connected => Paint::Background,
-		}
+		Paint::Background
 	} else if hovered {
 		Paint::Styled(Condition::Button, C::HoverBackground)
 	} else {
 		Paint::Styled(Condition::Toolbar, C::Background)
 	};
-	match style {
-		TabStyle::Connected => draw_connected(out, rect, fill, active),
-		TabStyle::Underline => {
-			out.push(Draw::Rect(rect, fill));
-			if active {
-				out.push(Draw::Rect(
-					Rect {
-						y: rect.y + rect.h - 2.0,
-						h: 2.0,
-						..rect
-					},
-					Paint::Styled(Condition::Toolbar, C::Accent),
-				));
-			}
-		}
-	}
+	draw_connected(out, rect, fill, active);
 }
 
 fn draw_connected(out: &mut Vec<Draw>, rect: Rect, fill: Paint, active: bool) {

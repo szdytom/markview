@@ -1,7 +1,7 @@
 //! Transactional configuration reads, merging and durable writes.
 use super::{
 	ExportSettings, FontDefOverride, MarkdownFlavor, ReaderSettings, Setting,
-	TabStyle, WindowLayout,
+	WindowLayout,
 };
 use crate::lang::Lang;
 use crate::render::Theme;
@@ -72,8 +72,6 @@ pub(super) struct Config {
 	pub(super) version: u32,
 	#[serde(rename = "window-layout")]
 	pub(super) window_layout: WindowLayout,
-	#[serde(rename = "tab-style")]
-	pub(super) tab_style: TabStyle,
 	/// Absent means "follow the system theme"; only a user choice is stored.
 	#[serde(skip_serializing_if = "Option::is_none")]
 	pub(super) style: Option<Vec<String>>,

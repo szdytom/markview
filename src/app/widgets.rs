@@ -152,7 +152,7 @@ mod tests {
 	use super::*;
 	use crate::{
 		app::font_panel,
-		settings::{ExportFormat, FontRole, Sidebar, TabStyle, WindowLayout},
+		settings::{ExportFormat, FontRole, Sidebar, WindowLayout},
 		state::{
 			DropdownId, ExportCommand, PanelTab, SearchCommand,
 			SettingsCommand, SidebarTab, TextField,
@@ -175,7 +175,6 @@ mod tests {
 			Command::Settings(SettingsCommand::WindowLayout(
 				WindowLayout::System,
 			)),
-			Command::Settings(SettingsCommand::TabStyle(TabStyle::Underline)),
 			Command::Document(DocumentCommand::OpenUrl),
 			Command::Document(DocumentCommand::NewPage),
 			Command::Document(DocumentCommand::Open),
@@ -265,7 +264,7 @@ mod tests {
 	#[test]
 	fn every_flat_command_has_a_unique_scope() {
 		let commands = every_command();
-		assert_eq!(commands.len(), 80);
+		assert_eq!(commands.len(), 79);
 		let mut scopes = std::collections::HashSet::new();
 		for command in &commands {
 			assert!(

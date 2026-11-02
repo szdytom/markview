@@ -85,7 +85,6 @@ impl<P: super::SendEvent> App<P> {
 				action,
 				Command::Settings(SettingsCommand::Narrower)
 					| Command::Settings(SettingsCommand::Wider)
-					| Command::Settings(SettingsCommand::TabStyle(_))
 			) {
 			return true;
 		}

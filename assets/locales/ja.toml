@@ -280,9 +280,6 @@ panel_refreshing = "更新中…"
 panel_load_failed = "読み込めません：{error}"
 panel_retry = "再試行"
 
-settings_tab_style = "タブスタイル"
-settings_tabs_underline = "下線"
-settings_tabs_connected = "ページ接続"
 settings_window_layout = "ウィンドウ配置"
 
 settings_restore_session = "前回の閲覧状態を保持"

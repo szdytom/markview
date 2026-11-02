@@ -162,7 +162,6 @@ pub(crate) enum TabPlacement {
 pub(crate) enum DropdownId {
 	Language,
 	WindowLayout,
-	TabStyle,
 	/// The Markdown dialect preset (GFM or Obsidian).
 	MarkdownFlavor,
 	/// One font role's family chooser.

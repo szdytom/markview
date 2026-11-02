@@ -69,7 +69,6 @@ impl<P: super::SendEvent> App<P> {
 			"folder_name":self.folder.tree.as_ref().map(|t| &t.name),
 			"folder_open":self.folder.open || self.phone_folder_open(),
 			"folder_entries":self.folder.tree.as_ref().map(|t| t.entries.iter().map(|e| serde_json::json!({"id":e.id,"path":e.path,"directory":e.directory,"depth":e.depth})).collect::<Vec<_>>()),
-			"tab_style":format!("{:?}", self.preferences.values.tab_style),
 			"instance_listener":self.instance.is_some(),
 			"theme": self.preferences.values.theme, "font_size":self.preferences.values.font_size,
 			"font_catalog": self.preferences.fonts.view().catalog.len(),
