@@ -2421,10 +2421,10 @@ fn only_window_layout_changes_replace_the_saved_hint_until_reverted() {
 		StubProxy,
 	);
 	let initial = app.preferences.values.window_layout;
-	let changed = if initial == WindowLayout::Linux {
+	let changed = if initial == WindowLayout::Breeze {
 		WindowLayout::Windows
 	} else {
-		WindowLayout::Linux
+		WindowLayout::Breeze
 	};
 	app.action(Command::Chrome(ChromeCommand::Settings));
 	assert!(!app.chrome().settings.restart_pending);

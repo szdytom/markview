@@ -139,7 +139,7 @@ fn window_controls_remain_above_the_image_viewer() {
 	for style in [
 		WindowLayout::Macos,
 		WindowLayout::Windows,
-		WindowLayout::Linux,
+		WindowLayout::Breeze,
 	] {
 		let mut app = image_reader("![](a.png)", "a.png", false);
 		app.frame.layout = style;
@@ -202,7 +202,7 @@ fn caption_taps_do_not_reach_covered_controls_or_activate_after_a_drag() {
 	for style in [
 		WindowLayout::Macos,
 		WindowLayout::Windows,
-		WindowLayout::Linux,
+		WindowLayout::Breeze,
 	] {
 		for viewer in [false, true] {
 			let mut app = image_reader("![](a.png)", "a.png", false);
@@ -284,7 +284,7 @@ fn touch_window_drags_start_on_contact_and_never_pan_the_reader_or_viewer() {
 		}
 	}
 	for style in [
-		WindowLayout::Linux,
+		WindowLayout::Breeze,
 		WindowLayout::Windows,
 		WindowLayout::Macos,
 	] {
@@ -602,7 +602,7 @@ fn decoding_refreshes_the_viewer_dimensions_and_texture_version() {
 	for layout in [
 		crate::settings::WindowLayout::Macos,
 		crate::settings::WindowLayout::Windows,
-		crate::settings::WindowLayout::Linux,
+		crate::settings::WindowLayout::Breeze,
 	] {
 		let mut app = image_reader("![](a.png)", "a.png", false);
 		app.frame.layout = layout;

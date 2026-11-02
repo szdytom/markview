@@ -52,7 +52,7 @@ fn platform_toolbars_keep_hover_targets_and_caption_groups_separate() {
 		for style in [
 			WindowLayout::Macos,
 			WindowLayout::Windows,
-			WindowLayout::Linux,
+			WindowLayout::Breeze,
 		] {
 			for fullscreen in [false, true] {
 				let frame =
@@ -139,7 +139,7 @@ fn window_layout_dropdown_exposes_all_layouts_and_marks_the_saved_choice() {
 		WindowLayout::System,
 		WindowLayout::Macos,
 		WindowLayout::Windows,
-		WindowLayout::Linux,
+		WindowLayout::Breeze,
 	];
 	for (index, selected) in layouts.into_iter().enumerate() {
 		let settings = ReaderSettings {

@@ -330,10 +330,10 @@ fn window_layout_commits_from_keyboard_and_pointer_for_next_launch() {
 	)));
 	let at = option_centre(
 		&mut app,
-		Command::Settings(SettingsCommand::WindowLayout(WindowLayout::Linux)),
+		Command::Settings(SettingsCommand::WindowLayout(WindowLayout::Breeze)),
 	);
 	click(&mut app, at.0, at.1);
-	assert_eq!(app.preferences.values.window_layout, WindowLayout::Linux);
+	assert_eq!(app.preferences.values.window_layout, WindowLayout::Breeze);
 	assert!(!app.interaction.overlays.dropdown.is_open());
 	assert_eq!(app.frame.layout, initial);
 }

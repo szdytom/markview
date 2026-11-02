@@ -1163,7 +1163,7 @@ fn desktop_folder_toggle_is_hidden_before_loading_a_tree() {
 			h.open("README.md", 2);
 		}
 		for style in [
-			WindowLayout::Linux,
+			WindowLayout::Breeze,
 			WindowLayout::Windows,
 			WindowLayout::Macos,
 		] {

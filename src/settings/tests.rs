@@ -129,7 +129,7 @@ fn window_layout_round_trips_and_merges_without_pinning_the_theme() {
 	for layout in [
 		WindowLayout::Macos,
 		WindowLayout::Windows,
-		WindowLayout::Linux,
+		WindowLayout::Breeze,
 		WindowLayout::System,
 	] {
 		let mut settings = store.settings();
@@ -972,7 +972,7 @@ fn http_overrides_survive_ui_saves_and_external_reload() {
 fn settings_differing_from_default() -> ReaderSettings {
 	let default = ReaderSettings::default();
 	ReaderSettings {
-		window_layout: WindowLayout::Linux,
+		window_layout: WindowLayout::Breeze,
 		tab_style: TabStyle::Connected,
 		theme: Theme::Dark,
 		style: Some(vec!["dark".into()]),
@@ -1269,4 +1269,14 @@ fn version_one_fixture_honours_every_persisted_key() {
 	assert_eq!(export.margin, [10.0, 11.0, 12.0, 13.0]);
 	assert_eq!(export.scale, 1.0);
 	assert_eq!(export.style, vec!["print".to_owned(), "dark".to_owned()]);
+}
+
+#[test]
+fn legacy_linux_window_layout_loads_as_breeze() {
+	let dir = tempfile::tempdir().unwrap();
+	let path = dir.path().join("settings.toml");
+	fs::write(&path, "window-layout = \"linux\"\n").unwrap();
+	let (store, warning) = SettingsStore::load(Some(path));
+	assert!(warning.is_none());
+	assert_eq!(store.settings().window_layout, WindowLayout::Breeze);
 }

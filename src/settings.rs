@@ -36,7 +36,8 @@ pub enum WindowLayout {
 	System,
 	Macos,
 	Windows,
-	Linux,
+	#[serde(alias = "linux")]
+	Breeze,
 }
 impl WindowLayout {
 	pub fn resolved(self) -> Self {
@@ -46,7 +47,7 @@ impl WindowLayout {
 		match markview_platform::window_buttons() {
 			markview_platform::WindowButtons::Windows => Self::Windows,
 			markview_platform::WindowButtons::Macos => Self::Macos,
-			markview_platform::WindowButtons::Linux => Self::Linux,
+			markview_platform::WindowButtons::Linux => Self::Breeze,
 		}
 	}
 }

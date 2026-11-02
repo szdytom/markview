@@ -179,9 +179,9 @@ fn rows(settings: &ReaderSettings, phone: bool) -> Vec<Row> {
 							)),
 						),
 						(
-							"Linux",
+							"Breeze",
 							Command::Settings(SettingsCommand::WindowLayout(
-								WindowLayout::Linux,
+								WindowLayout::Breeze,
 							)),
 						),
 					],

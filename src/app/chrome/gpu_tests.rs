@@ -1661,9 +1661,9 @@ fn redesigned_chrome_frames() -> Result<()> {
 					"confirmation",
 					"window-macos",
 					"window-windows",
-					"window-linux",
-					"window-linux-maximized",
-					"window-linux-maximize-hover",
+					"window-breeze",
+					"window-breeze-maximized",
+					"window-breeze-maximize-hover",
 					"window-toolbar-hover",
 					"window-tab-hover",
 					"window-maximized",
@@ -1834,8 +1834,8 @@ fn redesigned_chrome_frames() -> Result<()> {
 						crate::app::settings_load::Status::Loading
 					};
 					let mut frame = crate::app::frame::Layout::new(
-						if page.starts_with("window-linux") {
-							crate::settings::WindowLayout::Linux
+						if page.starts_with("window-breeze") {
+							crate::settings::WindowLayout::Breeze
 						} else if page.starts_with("window-")
 							&& page != "window-macos"
 						{
@@ -1850,7 +1850,7 @@ fn redesigned_chrome_frames() -> Result<()> {
 						page.ends_with("-maximized"),
 					);
 					frame.focused = page != "window-inactive";
-					if page == "window-linux-maximize-hover" {
+					if page == "window-breeze-maximize-hover" {
 						frame.hover = Some(crate::app::frame::Caption::Expand);
 					}
 					if page == "window-toolbar-hover" {

@@ -508,7 +508,7 @@ mod tests {
 	use super::*;
 	#[test]
 	fn wide_sidebar_toggle_reserves_caption_space_throughout_its_animation() {
-		for style in [WindowLayout::Windows, WindowLayout::Linux] {
+		for style in [WindowLayout::Windows, WindowLayout::Breeze] {
 			for window_width in [536., 600., 759.] {
 				let width = super::super::chrome::folder::rect(
 					window_width,
@@ -544,7 +544,7 @@ mod tests {
 		for style in [
 			WindowLayout::Macos,
 			WindowLayout::Windows,
-			WindowLayout::Linux,
+			WindowLayout::Breeze,
 		] {
 			for fullscreen in [false, true] {
 				let base =
@@ -585,7 +585,7 @@ mod tests {
 		for style in [
 			WindowLayout::Macos,
 			WindowLayout::Windows,
-			WindowLayout::Linux,
+			WindowLayout::Breeze,
 		] {
 			for inset in [260., 400., 600.] {
 				let layout =
@@ -632,7 +632,7 @@ mod tests {
 		for style in [
 			WindowLayout::Windows,
 			WindowLayout::Macos,
-			WindowLayout::Linux,
+			WindowLayout::Breeze,
 		] {
 			for scale in [1.0, 1.5, 2.0] {
 				let metrics = FrameMetrics {
@@ -708,7 +708,7 @@ mod tests {
 		for style in [
 			WindowLayout::Macos,
 			WindowLayout::Windows,
-			WindowLayout::Linux,
+			WindowLayout::Breeze,
 		] {
 			let layout = Layout::new(style, false, 800.0, 500.0, false, false);
 			for (_, rect) in layout.captions() {
@@ -731,7 +731,7 @@ mod tests {
 		for style in [
 			WindowLayout::Macos,
 			WindowLayout::Windows,
-			WindowLayout::Linux,
+			WindowLayout::Breeze,
 		] {
 			for width in [536.0, 800.0, 1200.0] {
 				let base =
@@ -807,7 +807,7 @@ mod tests {
 		for style in [
 			WindowLayout::Macos,
 			WindowLayout::Windows,
-			WindowLayout::Linux,
+			WindowLayout::Breeze,
 		] {
 			for native in [false, true] {
 				for width in [536.0, 800.0, 1200.0] {
@@ -832,7 +832,7 @@ mod tests {
 		for style in [
 			WindowLayout::Macos,
 			WindowLayout::Windows,
-			WindowLayout::Linux,
+			WindowLayout::Breeze,
 		] {
 			let normal = Layout::new(style, false, 500.0, 300.0, false, false);
 			assert_eq!(

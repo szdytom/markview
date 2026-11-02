@@ -21,6 +21,10 @@ at the same level, without `[brackets]`.
 
 ## Unreleased
 
+### Changed
+
+- Rename the Linux window layout to Breeze; `window-layout` now accepts `"breeze"` while still reading `"linux"`.
+
 ## 0.4.4 - 2026-11-02
 
 **Highlights**:

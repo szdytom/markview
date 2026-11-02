@@ -17,13 +17,13 @@ const MAXIMIZE: &[IconPath] =
 const RESTORE: &[IconPath] =
 	markview_icon::icon!("assets/ui/window-restore.svg");
 const CIRCLE: &[IconPath] = markview_icon::icon!("assets/ui/window-circle.svg");
-const LINUX_MINIMIZE: &[IconPath] =
+const BREEZE_MINIMIZE: &[IconPath] =
 	markview_icon::icon!("assets/ui/window-chevron-down.svg");
-const LINUX_MAXIMIZE: &[IconPath] =
+const BREEZE_MAXIMIZE: &[IconPath] =
 	markview_icon::icon!("assets/ui/window-chevron-up.svg");
-const LINUX_RESTORE: &[IconPath] =
+const BREEZE_RESTORE: &[IconPath] =
 	markview_icon::icon!("assets/ui/window-diamond.svg");
-const LINUX_CLOSE: &[IconPath] =
+const BREEZE_CLOSE: &[IconPath] =
 	markview_icon::icon!("assets/ui/window-cross.svg");
 
 pub(super) fn draw(layout: Layout) -> Vec<Draw> {
@@ -55,18 +55,18 @@ pub(super) fn draw(layout: Layout) -> Vec<Draw> {
 
 fn caption_paths(layout: Layout, caption: Caption) -> &'static [IconPath] {
 	match caption {
-		Caption::Close if layout.style == WindowLayout::Linux => LINUX_CLOSE,
+		Caption::Close if layout.style == WindowLayout::Breeze => BREEZE_CLOSE,
 		Caption::Close => icons::CLOSE,
-		Caption::Minimize if layout.style == WindowLayout::Linux => {
-			LINUX_MINIMIZE
+		Caption::Minimize if layout.style == WindowLayout::Breeze => {
+			BREEZE_MINIMIZE
 		}
 		Caption::Expand
-			if layout.style == WindowLayout::Linux && layout.maximized =>
+			if layout.style == WindowLayout::Breeze && layout.maximized =>
 		{
-			LINUX_RESTORE
+			BREEZE_RESTORE
 		}
-		Caption::Expand if layout.style == WindowLayout::Linux => {
-			LINUX_MAXIMIZE
+		Caption::Expand if layout.style == WindowLayout::Breeze => {
+			BREEZE_MAXIMIZE
 		}
 		Caption::Minimize => MINIMIZE,
 		Caption::Expand if layout.maximized => RESTORE,
