@@ -24,7 +24,7 @@ The directory is next to `settings.toml`:
 
 The filename without `.mvss.toml` is the style ID. Only the first directory level is scanned. The bundled IDs `light`, `dark`, `celadon`, `blueprint`, `rosewood`, `8-bit`, `print`, `monochrome`, `qibaishi`, `vangogh`, `mondrian`, and `builtin` are reserved (including case variants).
 
-In the Settings panel's **Styles** tab (**Ctrl+T**) you can enable, disable, and reorder styles. The leftmost selected style has the highest priority. `--style` replaces the session's selected list and is not saved. It cannot be combined with `--light` or `--dark`.
+In the Settings panel's **Styles** tab you can enable, disable, and reorder styles. The leftmost selected style has the highest priority. `--style` replaces the session's selected list and is not saved. It cannot be combined with `--light` or `--dark`.
 
 ## Output targets
 

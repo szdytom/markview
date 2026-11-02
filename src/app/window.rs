@@ -652,11 +652,8 @@ impl<P: super::SendEvent> App<P> {
 							ChromeCommand::RevealFolder,
 						))
 					}
-					"n" => {
-						self.action(Command::Document(DocumentCommand::NewPage))
-					}
 					"t" => {
-						self.action(Command::Settings(SettingsCommand::Styles))
+						self.action(Command::Document(DocumentCommand::NewPage))
 					}
 					"e" => self.action(Command::Export(ExportCommand::Export)),
 					"-" => {

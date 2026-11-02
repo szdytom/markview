@@ -908,7 +908,7 @@ fn tabbing_through_the_drawer_marks_the_row_focus_lands_on() {
 fn a_panel_or_a_confirmation_stops_enter_from_reaching_the_outline() {
 	let mut interaction = InteractionState::default();
 	assert!(interaction.toggle_outline(3, Some(2)));
-	// Ctrl+T opens Styles and clears button focus, leaving the selection
+	// Opening a panel clears button focus, leaving the selection
 	// behind the panel intact.
 	interaction.widgets.focus = None;
 	let visible = || {

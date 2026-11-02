@@ -32,6 +32,7 @@ at the same level, without `[brackets]`.
 - Add a scrollbar and eased wheel scrolling to the Ctrl+P quick-open picker.
 - Use the folder sidebar's Markdown and image icons for Quick Access file rows.
 - Print the build commit alongside the version in `markview --version`.
+- Bind Ctrl+T to a new blank page and drop the Ctrl+N and Ctrl+T stylesheet shortcuts.
 
 ### Removed
 

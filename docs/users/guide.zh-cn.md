@@ -73,7 +73,7 @@ APK 安装、导入文档与移动端操作见 [Android 使用指南](android.md
 | `/` / `Ctrl+F` | 查找文档内容 |
 | `Enter` / `Shift+Enter`、`F3` / `Shift+F3` | 下一个 / 上一个搜索结果 |
 | `Ctrl+B` | 打开目录 |
-| `Ctrl+T` | 选择样式表 |
+| `Ctrl+T` | 打开空白页 |
 | `Ctrl+E` | 导出文档 |
 | `Ctrl+,` | 打开设置 |
 | `Ctrl++` / `Ctrl+-` | 放大 / 缩小字号 |

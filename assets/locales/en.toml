@@ -25,7 +25,7 @@ panel_settings = "Settings"
 
 # The toolbar's icon buttons.
 toolbar_export = "Export"
-toolbar_new_page = "New page (Ctrl-N)"
+toolbar_new_page = "New page (Ctrl-T)"
 toolbar_open = "Open"
 toolbar_reveal = "Reveal"
 toolbar_tabs = "Tabs"

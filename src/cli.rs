@@ -501,7 +501,7 @@ struct Selection {
 }
 
 const AFTER_HELP: &str = "\
-Keyboard: Ctrl+O open · Ctrl+P quick open · Ctrl+B outline · Ctrl+T styles · Ctrl+E export
+Keyboard: Ctrl+O open · Ctrl+P quick open · Ctrl+B outline · Ctrl+T new page · Ctrl+E export
           Ctrl+ , settings · Ctrl+ +/- font size · Ctrl+[ / ] column width
           Ctrl+L alignment · Ctrl+H hyphenation
 
