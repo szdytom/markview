@@ -51,7 +51,7 @@ def main():
     profile = "release" if args.release else "debug"
     for abi in TARGETS if selected_abi == "all" else [selected_abi]:
         target = TARGETS[abi]
-        clang = llvm / f"{target}28-clang"
+        clang = llvm / f"{target}30-clang"
         env = dict(os.environ)
         env[f"CARGO_TARGET_{target.upper().replace('-', '_')}_LINKER"] = str(clang)
         env[f"CARGO_TARGET_{target.upper().replace('-', '_')}_RUSTFLAGS"] = "-C link-arg=-Wl,-z,max-page-size=16384"
@@ -68,7 +68,7 @@ def main():
     run("javac", "--release", "8", "-Xlint:deprecation", "-classpath", android, "-d", classes, *sorted((ROOT / "android/java").rglob("*.java")))
     dex = build / "dex"
     dex.mkdir(exist_ok=True)
-    run(tools / "d8", "--min-api", "28", "--lib", android, "--output", dex, *sorted(classes.rglob("*.class")))
+    run(tools / "d8", "--min-api", "30", "--lib", android, "--output", dex, *sorted(classes.rglob("*.class")))
     resources = build / "resources.zip"
     run(tools / "aapt2", "compile", "--dir", ROOT / "android/res", "-o", resources)
     unaligned = build / "markview-android-unaligned.apk"

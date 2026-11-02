@@ -1,5 +1,5 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android" package="io.github.szdytom.markview.test">
-    <uses-sdk android:minSdkVersion="28" android:targetSdkVersion="35" />
+    <uses-sdk android:minSdkVersion="30" android:targetSdkVersion="35" />
     <application android:debuggable="true">
         <provider android:name="io.github.szdytom.markview.FixtureProvider" android:authorities="io.github.szdytom.markview.test.fixtures" android:exported="true" android:grantUriPermissions="true" />
         <activity android:name="io.github.szdytom.markview.ShareTarget" android:exported="true" android:label="Test share target">

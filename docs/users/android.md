@@ -2,17 +2,19 @@
 
 [User documentation](README.md) · [Documentation](../README.md)
 
-Markview for Android supports Android 9 (API 28) and newer. Download the APK
+Markview for Android supports Android 11 (API 30) and newer. Download the APK
 from [Releases](https://github.com/szdytom/markview/releases). The app uses the
 same native typography, settings, fonts, themes and image cache as the desktop reader.
 
 ## Read and customize
 
 On the start page, tap **Open file…** or **Open folder…** to go directly to the
-corresponding system picker. Recent workspaces reopen imported folders; with a
-workspace open, Quick access searches its files by name or relative path.
-Folder imports preserve relative
-images and Markdown links; `README.md` is preferred as the first document.
+corresponding system picker. Opening a folder first asks for **All files
+access**, then reads the chosen directory on internal storage or an SD card in
+place. Recent workspaces reopen that real folder; with a workspace open, Quick
+access searches its files by name or relative path. Relative images and
+Markdown links keep working, and `README.md` is preferred as the first
+document.
 The left file tree shows every Markdown document and its subfolders. Tap a
 file to switch documents, and use the folder icon to reopen the tree on a
 phone. The same [folder and Obsidian link support](reading.md#folders-and-obsidian-vaults)
@@ -45,14 +47,14 @@ Downloaded fonts use the existing catalogue and font-family selectors.
 Export uses Android's system save dialog and passes the written result to an
 installed viewer. Repeated watched exports update the selected destination.
 
-Documents are imported copies. Reopen a file or folder to import external
-changes. Reimporting a folder removes files deleted at the source and retains
-the previous copy if importing fails. Tabs survive rotations and activity
-suspension; saved tabs and reading positions are restored after activity
-destruction or a process restart. Folder imports copy
-the chosen tree, so choose the document's own folder rather than a large
-archive. Android limits access to sibling files when only one file is granted;
-use folder import for local images and neighbouring Markdown files.
+Folders are read directly from shared storage, so changes made by other apps,
+including MGit and Syncthing, appear in the open tree as they happen. Files
+opened one at a time are still imported copies because Android grants access to
+a single document rather than its directory; reopen such a file to refresh it.
+Tabs survive rotations and activity suspension; saved tabs and reading
+positions are restored after activity destruction or a process restart. Android
+limits access to sibling files when only one file is granted; open its folder
+for local images and neighbouring Markdown files.
 
 ## Phone and tablet controls
 

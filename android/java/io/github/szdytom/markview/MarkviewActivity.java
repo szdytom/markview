@@ -7,8 +7,13 @@ import android.content.Intent;
 import android.database.Cursor;
 import android.net.Uri;
 import android.os.Bundle;
+import android.os.Environment;
+import android.os.storage.StorageManager;
+import android.os.storage.StorageVolume;
 import android.provider.OpenableColumns;
 import android.provider.DocumentsContract;
+import android.provider.MediaStore;
+import android.provider.Settings;
 import java.util.ArrayList;
 import java.util.List;
 import android.widget.Toast;
@@ -18,8 +23,6 @@ import java.io.OutputStream;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.StandardCopyOption;
-import java.nio.file.Path;
-import java.util.Comparator;
 import java.security.MessageDigest;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.Map;
@@ -29,7 +32,7 @@ import java.util.concurrent.Executors;
 /** Android permissions and document handoff; Rust owns the complete reader UI. */
 public class MarkviewActivity extends NativeActivity {
     static { System.loadLibrary("markview"); }
-    private static final int OPEN = 10, SAVE = 11, TREE = 12, ASSETS = 13;
+    private static final int OPEN = 10, SAVE = 11, TREE = 12, ASSETS = 13, ALL_FILES = 14;
     private final ExecutorService io = Executors.newSingleThreadExecutor();
     private final Map<String, Uri> exports = new ConcurrentHashMap<>();
     private boolean destroyed;
@@ -128,11 +131,22 @@ public class MarkviewActivity extends NativeActivity {
     }
     private void pick(boolean folder) {
         runOnUiThread(() -> {
-            Intent intent = new Intent(folder ? Intent.ACTION_OPEN_DOCUMENT_TREE : Intent.ACTION_OPEN_DOCUMENT);
-            if (!folder) { intent.addCategory(Intent.CATEGORY_OPENABLE); intent.setType("*/*"); }
-            intent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION | Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION);
-            startActivityForResult(intent, folder ? TREE : OPEN);
+            if (folder && !Environment.isExternalStorageManager()) {
+                Intent intent = new Intent(Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION, Uri.parse("package:" + getPackageName()));
+                try { startActivityForResult(intent, ALL_FILES); }
+                catch (android.content.ActivityNotFoundException error) {
+                    startActivityForResult(new Intent(Settings.ACTION_MANAGE_ALL_FILES_ACCESS_PERMISSION), ALL_FILES);
+                }
+                return;
+            }
+            launchPicker(folder);
         });
+    }
+    private void launchPicker(boolean folder) {
+        Intent intent = new Intent(folder ? Intent.ACTION_OPEN_DOCUMENT_TREE : Intent.ACTION_OPEN_DOCUMENT);
+        if (!folder) { intent.addCategory(Intent.CATEGORY_OPENABLE); intent.setType("*/*"); }
+        intent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION | Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION);
+        startActivityForResult(intent, folder ? TREE : OPEN);
     }
     private void importAssets(File directory) {
         assetDirectory = directory;
@@ -152,6 +166,14 @@ public class MarkviewActivity extends NativeActivity {
     }
     @Override public void onActivityResult(int request, int result, Intent data) {
         super.onActivityResult(request, result, data);
+        if (request == ALL_FILES) {
+            if (Environment.isExternalStorageManager()) launchPicker(true);
+            else {
+                Toast.makeText(this, "All files access is required to read a folder", Toast.LENGTH_LONG).show();
+                deliver(0, null);
+            }
+            return;
+        }
         if (request != OPEN && request != SAVE && request != TREE && request != ASSETS) return;
         int kind = request == SAVE ? 1 : 0;
         if (request == ASSETS) {
@@ -185,7 +207,7 @@ public class MarkviewActivity extends NativeActivity {
         if (request == OPEN || request == TREE) {
             try { getContentResolver().takePersistableUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION); }
             catch (SecurityException ignored) { /* Some providers offer only a temporary grant. */ }
-            if (request == TREE) importTree(uri);
+            if (request == TREE) openTree(uri);
             else importDocument(uri);
         } else if (request == SAVE) {
             File file = new File(getFilesDir(), "exports/" + outputName);
@@ -226,57 +248,75 @@ public class MarkviewActivity extends NativeActivity {
         }
         Files.move(temporary.toPath(), file.toPath(), StandardCopyOption.REPLACE_EXISTING);
     }
-    private void importTree(Uri tree) {
+    private void openTree(Uri tree) {
         io.execute(() -> {
-            try {
-                Path directory = documentDirectory(tree).toPath();
-                Files.createDirectories(directory.getParent());
-                Path temporary = Files.createTempDirectory(directory.getParent(), ".import-");
-                try {
-                    copyTree(tree, DocumentsContract.getTreeDocumentId(tree), temporary.toFile(), 0);
-                    Uri root = DocumentsContract.buildDocumentUriUsingTree(tree, DocumentsContract.getTreeDocumentId(tree));
-                    Files.write(temporary.resolve(".markview-folder-name"), displayName(root).getBytes(StandardCharsets.UTF_8));
-                    replaceDirectory(temporary, directory);
-                    deliver(0, directory.toString());
-                } finally {
-                    if (Files.exists(temporary)) deleteTree(temporary);
-                }
-            } catch (Exception error) { fail(error, 0); }
+            try { deliver(0, treePath(tree).getAbsolutePath()); }
+            catch (Exception error) { fail(error, 0); }
         });
     }
-    private void replaceDirectory(Path temporary, Path directory) throws Exception {
-        Path previous = null;
-        if (Files.exists(directory)) {
-            previous = Files.createTempDirectory(directory.getParent(), ".previous-");
-            Files.move(directory, previous, StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING);
+    private File treePath(Uri tree) throws Exception {
+        String authority = tree.getAuthority();
+        String id = DocumentsContract.getTreeDocumentId(tree);
+        if ("com.android.providers.downloads.documents".equals(authority)) {
+            if (id.startsWith("raw:")) return localFolder(new File(id.substring(4)));
+            if (id.startsWith("msd:")) return mediaFolder(id.substring(4));
+            throw new java.io.IOException("Choose a folder on internal storage or an SD card");
         }
+        if (!"com.android.externalstorage.documents".equals(authority))
+            throw new java.io.IOException("Choose a folder on internal storage or an SD card");
+        int colon = id.indexOf(':');
+        if (colon < 0) throw new java.io.IOException("Unsupported folder location");
+        File root = volumeRoot(id.substring(0, colon)).getCanonicalFile();
+        String relative = id.substring(colon + 1);
+        File path = (relative.isEmpty() ? root : new File(root, relative)).getCanonicalFile();
+        if (!path.toPath().startsWith(root.toPath())) throw new java.io.IOException("Unsupported folder location");
+        if (!path.isDirectory()) throw new java.io.IOException("Not a folder: " + path);
+        return path;
+    }
+    private File mediaFolder(String id) throws Exception {
+        try (Cursor cursor = getContentResolver().query(
+            MediaStore.Downloads.EXTERNAL_CONTENT_URI,
+            new String[]{MediaStore.MediaColumns.DATA},
+            MediaStore.MediaColumns._ID + "=?",
+            new String[]{Long.toString(Long.parseLong(id))},
+            null)) {
+            if (cursor != null && cursor.moveToFirst() && cursor.getString(0) != null)
+                return localFolder(new File(cursor.getString(0)));
+        }
+        throw new java.io.IOException("Choose a folder on internal storage or an SD card");
+    }
+    private File localFolder(File file) throws Exception {
+        File path = file.getCanonicalFile();
+        ArrayList<File> roots = new ArrayList<>();
+        roots.add(Environment.getExternalStorageDirectory());
+        for (StorageVolume storage : ((StorageManager)getSystemService(STORAGE_SERVICE)).getStorageVolumes()) {
+            File directory = storage.getDirectory();
+            if (directory != null) roots.add(directory);
+        }
+        for (File root : roots) {
+            if (!path.toPath().startsWith(root.getCanonicalFile().toPath())) continue;
+            if (!path.isDirectory()) throw new java.io.IOException("Not a folder: " + path);
+            return path;
+        }
+        throw new java.io.IOException("Choose a folder on internal storage or an SD card");
+    }
+    private File volumeRoot(String volume) throws Exception {
+        for (StorageVolume storage : ((StorageManager)getSystemService(STORAGE_SERVICE)).getStorageVolumes()) {
+            boolean primary = "primary".equalsIgnoreCase(volume);
+            File directory = storage.getDirectory();
+            if (directory != null && (primary ? storage.isPrimary() : volume.equalsIgnoreCase(storage.getUuid()))) return directory;
+        }
+        if ("primary".equalsIgnoreCase(volume)) return Environment.getExternalStorageDirectory();
+        if (!volume.matches("[A-Za-z0-9_-]+")) throw new java.io.IOException("Unsupported storage volume");
+        File directory = new File("/storage", volume);
+        if (directory.isDirectory()) return directory;
+        throw new java.io.IOException("Unsupported storage volume");
+    }
+    static boolean assetDirectory(android.content.Context context, File target) {
         try {
-            Files.move(temporary, directory, StandardCopyOption.ATOMIC_MOVE);
-        } catch (Exception error) {
-            if (previous != null) Files.move(previous, directory, StandardCopyOption.ATOMIC_MOVE);
-            throw error;
-        }
-        if (previous != null) deleteTree(previous);
-    }
-    private void deleteTree(Path directory) throws Exception {
-        try (java.util.stream.Stream<Path> paths = Files.walk(directory)) {
-            java.util.Iterator<Path> entries = paths.sorted(Comparator.reverseOrder()).iterator();
-            while (entries.hasNext()) Files.delete(entries.next());
-        }
-    }
-    private void copyTree(Uri tree, String id, File directory, int depth) throws Exception {
-        if (depth > 32) throw new java.io.IOException("Folder nesting is too deep");
-        Files.createDirectories(directory.toPath());
-        Uri children = DocumentsContract.buildChildDocumentsUriUsingTree(tree, id);
-        try (Cursor cursor = getContentResolver().query(children, new String[]{DocumentsContract.Document.COLUMN_DOCUMENT_ID, DocumentsContract.Document.COLUMN_MIME_TYPE}, null, null, null)) {
-            if (cursor == null) throw new java.io.IOException("Cannot read folder contents");
-            while (cursor.moveToNext()) {
-                Uri child = DocumentsContract.buildDocumentUriUsingTree(tree, cursor.getString(0));
-                File file = new File(directory, displayName(child));
-                if (DocumentsContract.Document.MIME_TYPE_DIR.equals(cursor.getString(1))) copyTree(tree, cursor.getString(0), file, depth + 1);
-                else copyDocument(child, file);
-            }
-        }
+            String base = context.getFilesDir().getCanonicalPath() + "/";
+            return target.getCanonicalPath().startsWith(base);
+        } catch (Exception error) { return false; }
     }
     public void publishExport(String target) {
         io.execute(() -> {
@@ -303,6 +343,10 @@ public class MarkviewActivity extends NativeActivity {
     }
     public void openExternal(String target) {
         if (new File(target).isDirectory()) {
+            if (!assetDirectory(this, new File(target))) {
+                runOnUiThread(() -> Toast.makeText(this, "Only Markview's own asset folders accept imports", Toast.LENGTH_LONG).show());
+                return;
+            }
             runOnUiThread(() -> importAssets(new File(target)));
             return;
         }

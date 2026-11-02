@@ -84,7 +84,7 @@ class ReleaseNotesTest(unittest.TestCase):
                         "x64 Windows",
                         "x64 Windows (Portable)",
                         "x64 Linux",
-                        "Android 9+ (ARM64)",
+                        "Android 11+ (ARM64)",
                     ),
                 ):
                     self.assertEqual(

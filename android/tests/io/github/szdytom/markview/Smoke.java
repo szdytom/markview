@@ -3,12 +3,16 @@ package io.github.szdytom.markview;
 import android.app.Activity;
 import android.app.Instrumentation;
 import android.content.Intent;
+import android.database.Cursor;
 import android.graphics.Bitmap;
 import android.graphics.Color;
 import android.graphics.Rect;
 import android.net.Uri;
 import android.os.Bundle;
+import android.os.Environment;
 import android.os.SystemClock;
+import android.provider.DocumentsContract;
+import android.provider.MediaStore;
 import android.view.InputDevice;
 import android.view.KeyEvent;
 import android.view.MotionEvent;
@@ -315,14 +319,41 @@ public class Smoke extends Instrumentation {
             waitFor(s -> s.optString("backend").length() > 0);
             waitSystem(getTargetContext().getPackageName());
             stableLayout();
-            Uri tree = Uri.parse("content://io.github.szdytom.markview.test.fixtures/tree/root");
-            configureFolder(tree, true, false);
+
+            // Folder browsing reads shared storage directly, so MGit, Syncthing
+            // and other external writers appear without reimporting.
+            File downloadsDirectory = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS);
+            File directory = new File(downloadsDirectory, "Markview integration");
+            File rawDirectory = new File(downloadsDirectory, "Markview raw integration");
+            File mediaDirectory = new File(downloadsDirectory, "Markview media integration");
+            for (File folder : new File[]{directory, rawDirectory, mediaDirectory}) deleteTree(folder);
+            require(directory.mkdirs() && rawDirectory.mkdirs() && mediaDirectory.mkdirs(), "Create shared-storage folders");
+            require(!MarkviewActivity.assetDirectory(getTargetContext(), directory), "Shared folders reject asset imports");
+            require(MarkviewActivity.assetDirectory(getTargetContext(), new File(activity.getFilesDir(), "markview/fonts")), "Private font folders accept asset imports");
+            copyAsset("folder.md", new File(directory, "README.md"));
+            copyAsset("second.md", new File(directory, "chapter.md"));
+            copyAsset("logo.svg", new File(directory, "images/logo.svg"));
+            copyAsset("folder.md", new File(rawDirectory, "README.md"));
+            copyAsset("folder.md", new File(mediaDirectory, "README.md"));
+            String root = directory.getCanonicalPath();
+            Uri tree = DocumentsContract.buildTreeDocumentUri("com.android.externalstorage.documents", "primary:Download/" + directory.getName());
             runOnMainSync(() -> ((MarkviewActivity)activity).onActivityResult(12, Activity.RESULT_OK, new Intent().setData(tree)));
             JSONObject folder = waitFor(s -> s.optBoolean("ready") && s.optString("path").endsWith("README.md") && loadedImages(s) == 1);
-            File directory = new File(folder.getString("path")).getParentFile();
-            require(new File(directory, "images/logo.svg").isFile() && new File(directory, "chapter.md").isFile(), "Relative resources preserved");
-            require(folder.optBoolean("folder_open") && folder.optString("folder_root").equals(directory.toString()), "Folder import retains its root and opens the file tree");
-            require(folder.optString("folder_name").equals("Research notes"), "Folder tree displays the imported folder's name");
+            require(new File(folder.getString("path")).getParentFile().getCanonicalPath().equals(root), "Folder opens its shared-storage path");
+            require(folder.optBoolean("folder_open") && folder.optString("folder_root").equals(root), "Folder retains its shared-storage root and opens the file tree");
+            require(folder.optString("folder_name").equals(directory.getName()), "Folder tree displays the real directory name");
+            String rawRoot = rawDirectory.getCanonicalPath();
+            Uri downloads = DocumentsContract.buildTreeDocumentUri("com.android.providers.downloads.documents", "raw:" + rawRoot);
+            runOnMainSync(() -> ((MarkviewActivity)activity).onActivityResult(12, Activity.RESULT_OK, new Intent().setData(downloads)));
+            folder = waitFor(s -> s.optBoolean("ready") && s.optString("path").endsWith("README.md") && rawRoot.equals(s.optString("folder_root")));
+            require(folder.optString("folder_name").equals(rawDirectory.getName()), "Downloads folders resolve to their shared-storage directory");
+            String mediaRoot = mediaDirectory.getCanonicalPath();
+            Uri media = DocumentsContract.buildTreeDocumentUri("com.android.providers.downloads.documents", "msd:" + mediaId(mediaDirectory));
+            runOnMainSync(() -> ((MarkviewActivity)activity).onActivityResult(12, Activity.RESULT_OK, new Intent().setData(media)));
+            folder = waitFor(s -> s.optBoolean("ready") && s.optString("path").endsWith("README.md") && mediaRoot.equals(s.optString("folder_root")));
+            require(folder.optString("folder_name").equals(mediaDirectory.getName()), "MediaStore-backed Downloads folders resolve to their directory");
+            runOnMainSync(() -> ((MarkviewActivity)activity).onActivityResult(12, Activity.RESULT_OK, new Intent().setData(tree)));
+            folder = waitFor(s -> s.optBoolean("ready") && s.optString("path").endsWith("README.md") && root.equals(s.optString("folder_root")) && loadedImages(s) == 1);
             screenshot("folder");
             require(button(folder, "FolderShowExcluded") != null && !folder.optBoolean("folder_show_excluded"), "Excluded entries start hidden");
             tap("FolderShowExcluded");
@@ -331,7 +362,7 @@ public class Smoke extends Instrumentation {
             waitFor(s -> !s.optBoolean("folder_show_excluded"));
             pass("Folder header toggles excluded entries on demand");
             if (phone) {
-                require(folder.optString("panel").equals("Tabs") && folder.optString("sidebar_tab").equals("Folder"), "Folder imports open the combined sidebar's folder page");
+                require(folder.optString("panel").equals("Tabs") && folder.optString("sidebar_tab").equals("Folder"), "Folder opens the combined sidebar's folder page");
                 require(button(folder, "SidebarTab(Tabs)") != null && button(folder, "SidebarTab(Folder)") != null, "Both sidebar pages share their switcher");
                 require(button(folder, "OpenFolder") != null && button(folder, "SelectTab(") == null, "Folder controls replace tab rows");
                 tap("SidebarTab(Tabs)");
@@ -372,7 +403,7 @@ public class Smoke extends Instrumentation {
             boolean refused = false;
             try { activity.getContentResolver().openFileDescriptor(grant, "w"); } catch (java.io.FileNotFoundException expected) { refused = true; }
             require(refused, "Provider rejects writes");
-            pass("Folder import, relative SVG resources and read-only file grants");
+            pass("Folder browsing, relative SVG resources and read-only file grants");
             if (!state().optString("panel").equals("Closed")) sendKeyDownUpSync(KeyEvent.KEYCODE_BACK);
             if (phone) { tap("Tabs"); tap("SidebarTab(Tabs)"); }
             tap("NewPage");
@@ -386,26 +417,19 @@ public class Smoke extends Instrumentation {
             tap("StartFile(" + readmeFile + ")");
             waitFor(s -> s.optBoolean("ready") && s.optString("path").endsWith("README.md") && loadedImages(s) == 1);
             pass("Start page searches workspace file names and opens a matching document");
-            byte[] imported = Files.readAllBytes(new File(directory, "README.md").toPath());
-            configureFolder(tree, true, true);
-            reimportFolder(tree);
-            require(java.util.Arrays.equals(imported, Files.readAllBytes(new File(directory, "README.md").toPath())) && new File(directory, "chapter.md").isFile(), "Failed folder import preserves the previous copy");
-            configureFolder(tree, false, false);
-            reimportFolder(tree);
-            require(!new File(directory, "chapter.md").exists() && new File(directory, "images/logo.svg").isFile(), "Folder reimport removes deleted source files and retains current resources");
-            for (File file : directory.getParentFile().listFiles()) require(!file.getName().startsWith(".import-") && !file.getName().startsWith(".previous-"), "Folder import removes temporary copies");
-            Bundle deletedImage = new Bundle();
-            deletedImage.putBoolean("chapter", false);
-            deletedImage.putBoolean("image", false);
-            getContext().getContentResolver().call(tree, "folder", null, deletedImage);
-            reimportFolder(tree);
-            require(!new File(directory, "images/logo.svg").exists(), "Folder reimport removes deleted source images");
-            require(new File(directory, "images").isDirectory(), "Folder import preserves empty subdirectories");
-            configureFolder(tree, false, false);
-            reimportFolder(tree);
-            waitFor(s -> s.optBoolean("ready") && loadedImages(s) == 1);
-            pass("Folder reimport removes deleted documents and images and preserves the old copy on failure");
-            if (phone && state().optString("panel").equals("Tabs")) sendKeyDownUpSync(KeyEvent.KEYCODE_BACK);
+
+            // A source-side change appears in the open tree without reopening it.
+            File chapterFile = new File(directory, "chapter.md");
+            Files.write(chapterFile.toPath(), "# Rewritten\n".getBytes(StandardCharsets.UTF_8));
+            File synced = new File(directory, "Synced.md");
+            File removed = new File(directory, "Removed.md");
+            Files.write(synced.toPath(), "# Synced\n".getBytes(StandardCharsets.UTF_8));
+            Files.write(removed.toPath(), "# Removed\n".getBytes(StandardCharsets.UTF_8));
+            waitFor(s -> hasFolderEntry(s, "Synced.md") && hasFolderEntry(s, "Removed.md"));
+            require(new String(Files.readAllBytes(chapterFile.toPath()), StandardCharsets.UTF_8).equals("# Rewritten\n"), "Folder keeps externally rewritten documents");
+            Files.delete(removed.toPath());
+            waitFor(s -> !hasFolderEntry(s, "Removed.md"));
+            pass("Folder watcher reflects external writes and removals in real time");
 
             // Intercept export previews so third-party viewers cannot steal test input.
             android.content.IntentFilter previews = new android.content.IntentFilter(Intent.ACTION_VIEW);
@@ -699,7 +723,7 @@ public class Smoke extends Instrumentation {
         org.json.JSONArray openedTabs = state().getJSONArray("tabs");
         for (int i = 0; i < openedTabs.length(); i++) {
             String path = openedTabs.getString(i);
-            if (path.contains("/files/documents/") || path.contains("/files/shared/")) retained.put(path);
+            if (path.contains("/files/documents/") || path.contains("/files/shared/") || path.startsWith(Environment.getExternalStorageDirectory().getPath() + "/")) retained.put(path);
         }
         int pid = android.os.Process.myPid();
         double fontSize = state().getDouble("font_size");
@@ -758,11 +782,13 @@ public class Smoke extends Instrumentation {
         require(!text[0].contains("Smallest width:") && !text[0].contains("sw600dp:") && !text[0].contains("phone_layout:"), "Diagnostics omit separate layout rows");
         pass("Copied diagnostics include a single Mobile Mode line");
     }
-    private void configureFolder(Uri tree, boolean chapter, boolean failCopy) {
-        Bundle options = new Bundle();
-        options.putBoolean("chapter", chapter);
-        options.putBoolean("failCopy", failCopy);
-        getContext().getContentResolver().call(tree, "folder", null, options);
+    private boolean hasFolderEntry(JSONObject current, String name) throws Exception {
+        JSONArray entries = current.optJSONArray("folder_entries");
+        if (entries == null) return false;
+        for (int i = 0; i < entries.length(); i++) {
+            if (entries.getJSONObject(i).getString("path").endsWith("/" + name)) return true;
+        }
+        return false;
     }
     private int folderEntry(JSONObject current, String name) throws Exception {
         JSONArray entries = current.getJSONArray("folder_entries");
@@ -771,12 +797,29 @@ public class Smoke extends Instrumentation {
         }
         throw new AssertionError("Missing folder entry: " + name);
     }
-    private void reimportFolder(Uri tree) throws Exception {
-        runOnMainSync(() -> ((MarkviewActivity)activity).onActivityResult(12, Activity.RESULT_OK, new Intent().setData(tree)));
-        java.lang.reflect.Field field = MarkviewActivity.class.getDeclaredField("io");
-        field.setAccessible(true);
-        ((java.util.concurrent.ExecutorService)field.get(activity)).submit(() -> {}).get(20, java.util.concurrent.TimeUnit.SECONDS);
-        stableLayout();
+    private String mediaId(File file) throws Exception {
+        try (Cursor cursor = getContext().getContentResolver().query(
+            MediaStore.Downloads.EXTERNAL_CONTENT_URI,
+            new String[]{MediaStore.MediaColumns._ID},
+            MediaStore.MediaColumns.DATA + "=?",
+            new String[]{file.getCanonicalPath()},
+            null)) {
+            require(cursor != null && cursor.moveToFirst(), "Downloads media entry");
+            return Long.toString(cursor.getLong(0));
+        }
+    }
+    private void copyAsset(String asset, File file) throws Exception {
+        file.getParentFile().mkdirs();
+        try (java.io.InputStream input = getContext().getAssets().open(asset); FileOutputStream output = new FileOutputStream(file)) {
+            byte[] buffer = new byte[8192];
+            int count;
+            while ((count = input.read(buffer)) > 0) output.write(buffer, 0, count);
+        }
+    }
+    private void deleteTree(File file) {
+        File[] children = file.listFiles();
+        if (children != null) for (File child : children) deleteTree(child);
+        file.delete();
     }
     private void checkToolbar() throws Exception {
         JSONObject current = state();

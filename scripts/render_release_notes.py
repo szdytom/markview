@@ -36,7 +36,7 @@ def render(plan, release):
         ),
         (
             f"markview-{version}-android.apk",
-            "Android 9+ (ARM64)",
+            "Android 11+ (ARM64)",
         ),
     ]
     assets = {asset["name"]: asset for asset in release["assets"]}

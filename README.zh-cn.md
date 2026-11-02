@@ -34,7 +34,7 @@
 | Windows | `.msi` 安装包或便携 `.zip` | Windows 10+；安装包添加 Markdown 文件关联 |
 | macOS | 打包为 zip 的 `.app` | Apple Silicon、macOS 11+；未签名应用的设置见下方 |
 | Linux | `.deb`、AppImage 或 `.tar.gz` | 请查看[运行要求](docs/users/installation.md#runtime-requirements) |
-| Android | `.apk` | Android 9+；ARM64 手机与平板 |
+| Android | `.apk` | Android 11+；ARM64 手机与平板 |
 
 也可以安装 `markview` 命令：
 

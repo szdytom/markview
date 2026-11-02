@@ -61,7 +61,7 @@ double-clicked in Finder, or chosen under **Open with**, opens in the reader,
 and so does one dropped on the app's icon.
 
 The Android APK is available from [Releases](https://github.com/szdytom/markview/releases).
-See [Android reading](android.md) for document imports and mobile controls.
+See [Android reading](android.md) for document handling and mobile controls.
 
 ## Runtime requirements
 

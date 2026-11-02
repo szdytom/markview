@@ -3,7 +3,7 @@
 [Developer documentation](README.md) · [Android user guide](../users/android.md)
 
 **MV4A — MarkView as a Android App** runs Markview's desktop application on
-Android 9 (API 28) and newer. It uses the existing Rust `App`, native typography
+Android 11 (API 30) and newer. It uses the existing Rust `App`, native typography
 and GPU renderer. Android supplies the activity, system file pickers, clipboard
 and URI permissions.
 
@@ -77,7 +77,9 @@ CI allows ten minutes per full instrumentation run for software rendering;
 local runs keep the three-minute default, adjustable with `--timeout`.
 CI emulators use four cores and 4 GiB RAM. AOSP images omit Google services.
 Instrumentation closes ANR dialogs from Quickstep or Pixel Launcher and waits
-for Markview to regain focus before reader touches.
+for Markview to regain focus before reader touches. The test runner grants the
+app All files access with `appops` and writes its folder fixture under shared
+storage.
 CI explicitly selects gesture navigation on both devices.
 Device tests wait for viewport and reading-width layout to settle before assertions.
 Native inspection retries empty replies while rendering or resuming; system-bar
@@ -155,7 +157,7 @@ input in the rendered reader. It checks multilingual Markdown, mathematics,
 Mermaid and image decoding, scrolling and cached tabs, shared settings, font
 catalogue pages, theme selection, search input, phone portrait lock,
 phone drawer operations, tablet rotation, background/resume, durable preferences,
-the system picker, folder refresh and failed imports, read-only grants, PDF saving,
+the system picker, direct shared-storage folder reads and live external changes, read-only grants, PDF saving,
 GPU PNG export, and repeated Activity destruction/recreation in the same process.
 Use `--lifecycle-only` to run just the Activity checks, including Android
 **Don't keep activities**. Run both devices headlessly with `-no-window`, as shown above.

@@ -6,26 +6,42 @@ import android.content.Context;
 import android.database.Cursor;
 import android.database.MatrixCursor;
 import android.net.Uri;
+import android.os.Environment;
 import android.os.ParcelFileDescriptor;
+import android.os.storage.StorageManager;
+import android.os.storage.StorageVolume;
 import android.provider.OpenableColumns;
 import android.webkit.MimeTypeMap;
 import java.io.File;
 import java.io.FileNotFoundException;
 import java.io.IOException;
+import java.util.ArrayList;
 
-/** Read-only grants to exports and settings inside the private app directory. */
+/** Read-only grants to app files and folders opened on shared storage. */
 public class ReaderProvider extends ContentProvider {
     static Uri uri(Context context, File file) throws IOException {
-        String base = context.getFilesDir().getCanonicalPath() + "/";
         String path = file.getCanonicalPath();
-        if (!path.startsWith(base)) throw new IOException("File outside the app directory");
-        return new Uri.Builder().scheme("content").authority("io.github.szdytom.markview.files").path(path.substring(base.length())).build();
+        if (!allowed(context, path)) throw new IOException("File outside the readable directories");
+        return new Uri.Builder().scheme("content").authority("io.github.szdytom.markview.files").path(path).build();
+    }
+    private static boolean allowed(Context context, String path) throws IOException {
+        ArrayList<File> roots = new ArrayList<>();
+        roots.add(context.getFilesDir());
+        roots.add(Environment.getExternalStorageDirectory());
+        for (StorageVolume volume : ((StorageManager)context.getSystemService(Context.STORAGE_SERVICE)).getStorageVolumes()) {
+            File directory = volume.getDirectory();
+            if (directory != null) roots.add(directory);
+        }
+        for (File root : roots) {
+            String base = root.getCanonicalPath();
+            if (path.equals(base) || path.startsWith(base + "/")) return true;
+        }
+        return false;
     }
     private File file(Uri uri) throws FileNotFoundException {
         try {
-            File file = new File(getContext().getFilesDir(), uri.getPath());
-            String base = getContext().getFilesDir().getCanonicalPath() + "/";
-            if (!file.getCanonicalPath().startsWith(base)) throw new FileNotFoundException("Invalid file path");
+            File file = new File(uri.getPath());
+            if (!allowed(getContext(), file.getCanonicalPath())) throw new FileNotFoundException("Invalid file path");
             return file;
         } catch (IOException error) { throw new FileNotFoundException(error.getMessage()); }
     }

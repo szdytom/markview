@@ -33,7 +33,7 @@ Choose your platform from the [latest release](https://github.com/szdytom/markvi
 | Windows | `.msi` installer or portable `.zip` | Windows 10+; the installer adds Markdown file associations |
 | macOS | Zipped `.app` | Apple Silicon, macOS 11+; see the unsigned-app setup below |
 | Linux | `.deb`, AppImage or `.tar.gz` | See the [runtime requirements](docs/users/installation.md#runtime-requirements) |
-| Android | `.apk` | Android 9+; ARM64 phones and tablets |
+| Android | `.apk` | Android 11+; ARM64 phones and tablets |
 
 Or install the `markview` command:
 

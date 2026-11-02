@@ -120,7 +120,7 @@ add other file types or follow symbolic links. These name-based rules do not rea
 Inaccessible subfolders are skipped; an unreadable, moved or deleted root reports
 an error and clears stale entries. The original root path is checked for recovery;
 use **Ctrl+Shift+O** to follow a folder moved elsewhere. On Android these checks
-observe the imported copy; reimport the folder to receive source changes.
+observe the real shared-storage folder, so external changes arrive as they happen.
 
 The file sidebar spans the full left edge on desktop and tablets; tabs and
 the main toolbar start to its right, while the outline keeps its right-side

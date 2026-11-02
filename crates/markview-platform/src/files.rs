@@ -15,20 +15,16 @@ pub fn tempdir() -> io::Result<tempfile::TempDir> {
 	}
 }
 
-/// The native display name of a folder, including Android's imported tree name.
+/// The native display name of a folder.
 pub fn folder_name(root: &Path) -> String {
-	#[cfg(not(target_os = "android"))]
-	{
-		root.file_name()
-			.unwrap_or(root.as_os_str())
-			.to_string_lossy()
-			.into_owned()
-	}
 	#[cfg(target_os = "android")]
-	{
-		fs::read_to_string(root.join(".markview-folder-name"))
-			.unwrap_or_default()
+	if let Ok(name) = fs::read_to_string(root.join(".markview-folder-name")) {
+		return name;
 	}
+	root.file_name()
+		.unwrap_or(root.as_os_str())
+		.to_string_lossy()
+		.into_owned()
 }
 
 #[cfg(unix)]
@@ -144,19 +140,14 @@ mod tests {
 		let dir = tempfile::tempdir().unwrap();
 		let root = dir.path().join("local-folder");
 		fs::create_dir(&root).unwrap();
+		assert_eq!(folder_name(&root), "local-folder");
 		fs::write(root.join(".markview-folder-name"), "Imported folder")
 			.unwrap();
-		#[cfg(not(target_os = "android"))]
-		{
-			assert_eq!(folder_name(&root), "local-folder");
-			let root = root.ancestors().last().unwrap();
-			assert_eq!(folder_name(root), root.as_os_str().to_string_lossy());
-		}
 		#[cfg(target_os = "android")]
-		{
-			assert_eq!(folder_name(&root), "Imported folder");
-			fs::remove_file(root.join(".markview-folder-name")).unwrap();
-			assert_eq!(folder_name(&root), "");
-		}
+		assert_eq!(folder_name(&root), "Imported folder");
+		#[cfg(not(target_os = "android"))]
+		assert_eq!(folder_name(&root), "local-folder");
+		let root = root.ancestors().last().unwrap();
+		assert_eq!(folder_name(root), root.as_os_str().to_string_lossy());
 	}
 }

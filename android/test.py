@@ -39,7 +39,7 @@ def main():
     run("javac", "--release", "8", "-Xlint:-options", "-classpath", str(android) + os.pathsep + str(build / "classes"), "-d", classes, *sorted((ROOT / "android/tests").rglob("*.java")))
     dex = build / "test-dex"
     dex.mkdir(exist_ok=True)
-    run(tools / "d8", "--min-api", "28", "--lib", android, "--classpath", build / "classes", "--output", dex, *sorted(classes.rglob("*.class")))
+    run(tools / "d8", "--min-api", "30", "--lib", android, "--classpath", build / "classes", "--output", dex, *sorted(classes.rglob("*.class")))
     unsigned = build / "markview-android-tests-unaligned.apk"
     run(tools / "aapt2", "link", "-I", android, "--manifest", ROOT / "android/tests/AndroidManifest.xml", "-o", unsigned)
     with zipfile.ZipFile(unsigned, "a", compression=zipfile.ZIP_DEFLATED) as apk:
@@ -52,6 +52,7 @@ def main():
     run(tools / "apksigner", "sign", "--ks", build / "debug.keystore", "--ks-pass", "pass:android", apk)
     adb("install", "--no-incremental", "-r", build / "markview-android-debug.apk")
     adb("install", "--no-incremental", "-r", apk)
+    adb("shell", "appops", "set", "io.github.szdytom.markview", "MANAGE_EXTERNAL_STORAGE", "allow")
     if args.links_only:
         adb("shell", "am", "force-stop", "io.github.szdytom.markview")
     adb("shell", "run-as", "io.github.szdytom.markview", "rm", "-rf", "files/test-artifacts")
