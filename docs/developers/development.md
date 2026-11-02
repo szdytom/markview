@@ -13,6 +13,17 @@ cargo clippy --workspace --all-targets --locked -- -D warnings
 cargo build --release --locked
 ```
 
+For the fast local checks, run:
+
+```sh
+python3 scripts/check_local.py
+```
+
+It runs the formatting, structural and repository-metadata checks that need no
+GPU, emulator, network or packaging tools. Add `--compile` for `cargo check` and
+clippy, `--icons` for the committed icon assets, `--dist` when `dist` is
+installed, and `--full` for the workspace tests and Linux PDF regressions.
+
 The `smoke`, `bench` and `latency` subcommands are developer diagnostics behind
 the off-by-default `diagnostics` feature; release builds do not include them.
 Build a binary with them when a task needs one:

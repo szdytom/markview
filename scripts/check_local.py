@@ -1,0 +1,355 @@
+#!/usr/bin/env python3
+"""Run Markview's local checks, from the fast defaults to the full test suite."""
+
+from __future__ import annotations
+
+import argparse
+from dataclasses import dataclass, field
+import os
+from pathlib import Path
+import shlex
+import shutil
+import subprocess
+import sys
+import time
+from typing import Mapping
+
+ROOT = Path(__file__).resolve().parents[1]
+SHELL_PATTERNS = (
+    "scripts/package_*.sh",
+    "scripts/verify_*.sh",
+    "scripts/ci_*.sh",
+    "scripts/test_render_goldens.sh",
+    "android/ci-test.sh",
+)
+
+
+def python(*args: str) -> tuple[str, ...]:
+    return (sys.executable, *args)
+
+
+def test_environment() -> dict[str, str]:
+    """Return the font and software-rendering variables used by CI."""
+    environment = {}
+    fontconfig = ROOT / "tests/fontconfig.conf"
+    if fontconfig.exists():
+        environment["FONTCONFIG_FILE"] = str(fontconfig)
+    drivers = sorted(Path("/usr/share/vulkan/icd.d").glob("lvp_icd*.json"))
+    if drivers:
+        environment["VK_DRIVER_FILES"] = str(drivers[0])
+        environment["WGPU_BACKEND"] = "vulkan"
+        environment["LP_NUM_THREADS"] = "1"
+    return environment
+
+
+def shellcheck_command() -> tuple[str, ...]:
+    files = []
+    for pattern in SHELL_PATTERNS:
+        files.extend(sorted(ROOT.glob(pattern)))
+    return ("shellcheck", *(str(path.relative_to(ROOT)) for path in files))
+
+
+@dataclass(frozen=True)
+class Check:
+    name: str
+    command: tuple[str, ...]
+    group: str
+    env: Mapping[str, str] = field(default_factory=dict)
+    requires: str | None = None
+    platform: str | None = None
+
+
+CHECKS = (
+    Check("format", ("cargo", "fmt", "--all", "--check"), "light"),
+    Check(
+        "complexity",
+        ("cargo", "run", "-p", "xtask", "--locked", "--", "complexity"),
+        "light",
+    ),
+    Check(
+        "coupling",
+        ("cargo", "run", "-p", "xtask", "--locked", "--", "coupling", "--check"),
+        "light",
+    ),
+    Check(
+        "platform boundary",
+        python("scripts/check_platform_boundary.py"),
+        "light",
+    ),
+    Check(
+        "platform boundary tests",
+        python(
+            "-m",
+            "unittest",
+            "discover",
+            "-s",
+            "scripts",
+            "-p",
+            "test_check_platform_boundary.py",
+        ),
+        "light",
+    ),
+    Check("documentation", python("scripts/test_documentation.py"), "light"),
+    Check(
+        "rendering coverage",
+        python("scripts/check_render_coverage.py"),
+        "light",
+    ),
+    Check("changelog", python("scripts/check_changelog.py"), "light"),
+    Check(
+        "changelog tests",
+        python(
+            "-m",
+            "unittest",
+            "discover",
+            "-s",
+            "scripts",
+            "-p",
+            "test_check_changelog.py",
+        ),
+        "light",
+    ),
+    Check(
+        "release note tests",
+        python(
+            "-m",
+            "unittest",
+            "discover",
+            "-s",
+            "scripts",
+            "-p",
+            "test_render_release_notes.py",
+        ),
+        "light",
+    ),
+    Check(
+        "CI infrastructure tests",
+        python(
+            "-m",
+            "unittest",
+            "discover",
+            "-s",
+            "scripts",
+            "-p",
+            "test_ci_infrastructure.py",
+        ),
+        "light",
+    ),
+    Check(
+        "Android orchestration tests",
+        python("-m", "unittest", "discover", "-s", "android", "-p", "test_build.py"),
+        "light",
+    ),
+    Check(
+        "Web orchestration tests",
+        python("scripts/test_build_web.py"),
+        "light",
+    ),
+    Check(
+        "icons",
+        ("cargo", "run", "-p", "xtask", "--locked", "--", "icons", "--check"),
+        "assets",
+    ),
+    Check(
+        "cargo check",
+        ("cargo", "check", "--workspace", "--locked", "--all-targets"),
+        "compile",
+    ),
+    Check(
+        "clippy",
+        (
+            "cargo",
+            "clippy",
+            "--workspace",
+            "--locked",
+            "--all-targets",
+            "--",
+            "-D",
+            "warnings",
+        ),
+        "compile",
+    ),
+    Check(
+        "dist configuration",
+        ("dist", "generate", "--check"),
+        "release",
+        requires="dist",
+    ),
+    Check(
+        "shellcheck",
+        shellcheck_command(),
+        "shell",
+        requires="shellcheck",
+    ),
+    Check(
+        "workspace tests",
+        ("cargo", "test", "--workspace", "--locked", "--all-targets"),
+        "full",
+        env=test_environment(),
+    ),
+    Check(
+        "PDF viewer regressions",
+        (
+            "cargo",
+            "test",
+            "-p",
+            "markview-pdf",
+            "--locked",
+            "--test",
+            "export",
+            "--",
+            "--ignored",
+        ),
+        "full",
+        env=test_environment(),
+        requires="pdftoppm",
+        platform="linux",
+    ),
+)
+
+GROUPS = ("light", "assets", "compile", "release", "shell", "full")
+
+
+def selected_checks(args: argparse.Namespace) -> list[Check]:
+    groups = {"light"}
+    if args.all:
+        groups.update(GROUPS)
+    if args.icons:
+        groups.add("assets")
+    if args.compile:
+        groups.add("compile")
+    if args.dist:
+        groups.add("release")
+    if args.shell:
+        groups.add("shell")
+    if args.full:
+        groups.add("full")
+    return [check for check in CHECKS if check.group in groups]
+
+
+def command_line(command: tuple[str, ...]) -> str:
+    return " ".join(shlex.quote(part) for part in command)
+
+
+def skip_reason(check: Check) -> str | None:
+    if check.platform and not sys.platform.startswith(check.platform):
+        return f"{check.platform} only"
+    if check.requires and shutil.which(check.requires) is None:
+        return f"{check.requires} not installed"
+    return None
+
+
+def run(check: Check, *, verbose: bool) -> tuple[bool, float]:
+    if reason := skip_reason(check):
+        print(f"  skip  {check.name} ({reason})")
+        return True, 0.0
+    print(f"  run   {check.name}")
+    sys.stdout.flush()
+    environment = os.environ.copy()
+    environment.update(check.env)
+    started = time.monotonic()
+    try:
+        if verbose:
+            result = subprocess.run(check.command, cwd=ROOT, env=environment)
+        else:
+            result = subprocess.run(
+                check.command,
+                cwd=ROOT,
+                env=environment,
+                capture_output=True,
+                text=True,
+                encoding="utf-8",
+                errors="replace",
+            )
+    except FileNotFoundError:
+        print(f"  fail  {check.name} (command not found)")
+        return False, time.monotonic() - started
+    elapsed = time.monotonic() - started
+    if result.returncode == 0:
+        print(f"  ok    {check.name} ({elapsed:.2f}s)")
+        return True, elapsed
+    if not verbose:
+        sys.stdout.write(result.stdout)
+        sys.stderr.write(result.stderr)
+    print(f"  fail  {check.name} (exit {result.returncode}, {elapsed:.2f}s)")
+    return False, elapsed
+
+
+def main(argv: list[str] | None = None) -> int:
+    parser = argparse.ArgumentParser(
+        description=__doc__,
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
+    parser.add_argument(
+        "--compile",
+        action="store_true",
+        help="also run cargo check and clippy",
+    )
+    parser.add_argument(
+        "--icons",
+        action="store_true",
+        help="also verify committed icons against their SVG sources",
+    )
+    parser.add_argument(
+        "--dist",
+        action="store_true",
+        help="also verify cargo-dist generated files (needs dist)",
+    )
+    parser.add_argument(
+        "--shell",
+        action="store_true",
+        help="also lint shell scripts (needs shellcheck)",
+    )
+    parser.add_argument(
+        "--full",
+        action="store_true",
+        help="also run the workspace tests and Linux PDF viewer regressions",
+    )
+    parser.add_argument(
+        "--all",
+        action="store_true",
+        help="run every group, including the full test suite",
+    )
+    parser.add_argument(
+        "--list",
+        action="store_true",
+        help="list the checks that would run, then exit",
+    )
+    parser.add_argument(
+        "--keep-going",
+        action="store_true",
+        help="continue after a failure and report every result",
+    )
+    parser.add_argument(
+        "-v",
+        "--verbose",
+        action="store_true",
+        help="stream command output instead of capturing it",
+    )
+    args = parser.parse_args(argv)
+    checks = selected_checks(args)
+    if args.list:
+        for check in checks:
+            print(f"{check.group:8} {check.name:30} {command_line(check.command)}")
+        return 0
+    if args.full and "VK_DRIVER_FILES" not in test_environment():
+        print("warning: Lavapipe was not found; GPU rendering tests may fail")
+    print(f"Running {len(checks)} checks from {ROOT}")
+    failures = []
+    started = time.monotonic()
+    for check in checks:
+        ok, _ = run(check, verbose=args.verbose)
+        if not ok:
+            failures.append(check.name)
+            if not args.keep_going:
+                break
+    elapsed = time.monotonic() - started
+    if failures:
+        print(f"\nFailed: {', '.join(failures)} ({elapsed:.2f}s total)")
+        return 1
+    print(f"\nAll checks passed ({elapsed:.2f}s total)")
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
