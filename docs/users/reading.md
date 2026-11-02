@@ -4,9 +4,12 @@
 
 The start page has separate **Open file…** and **Open folder…** actions. When no
 workspace is open, **Recent workspaces** reopens a previously used folder in one
-click. With a workspace open, **Quick access** finds its files by name or relative
-path using fuzzy matching; press Enter to open the first result. Search results
-show a nearby filename or path fragment with matching characters in bold. The search reuses
+click. With a workspace open, **Quick access** lists the three most recently
+visited documents that are not open in a tab, completed by other workspace files
+when there are fewer, and finds its files by name or relative
+path using fuzzy matching once you type; press Enter to open the first result.
+Search results show a nearby filename or path fragment with matching characters
+in bold. The search reuses
 the folder tree and follows its exclusions. Recent workspace history is retained
 even when restoring the last browsing session is disabled.
 
@@ -16,7 +19,7 @@ workspace list and web-reading input; scroll to reach content below the viewport
 | Keys | Action |
 |:--|:--|
 | `Ctrl+O` | Open a file |
-| `Ctrl+P` | Search workspace and open-tab files; use ↑/↓ to select, Enter to open, Esc to close |
+| `Ctrl+P` | List the open tabs, or search workspace and open-tab files once you type; use ↑/↓ to select, Enter to open, Esc to close |
 | `Ctrl+Shift+O` | Open a folder |
 | `Ctrl+Alt+R` | Show the active document's folder in the file manager |
 | `/` | Start an empty document search |

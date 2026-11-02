@@ -23,6 +23,8 @@ at the same level, without `[brackets]`.
 
 ### Changed
 
+- List up to three recently visited documents on the start page's Quick Access, skipping open tabs and filling the rows from the workspace.
+- List the open tabs in Ctrl+P until a query is typed, scrolling when there are more than a few.
 - Slide the other tabs aside while a tab is dragged, following Firefox's 200 ms tab-drag motion instead of drawing an insertion line.
 - Use a settings-minus icon for the folder sidebar's exclusion toggle, highlighted while excluded entries are hidden.
 - Add a local check runner for the fast static checks and compilation.

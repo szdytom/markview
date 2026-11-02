@@ -208,7 +208,11 @@ impl<P: super::SendEvent> App<P> {
 		} else {
 			std::env::current_dir().unwrap_or_default().join(path)
 		};
+		// The tree canonicalizes its root, so visits must be canonical too.
 		let path = std::fs::canonicalize(&path).unwrap_or(path);
+		if !web_loading {
+			self.folder.start.visit(path.clone());
+		}
 		if let Some(index) = self.readers.find_origin(&path, &security.origin) {
 			self.select_tab(index);
 			if self.readers.session.load_error.take().is_some() {
@@ -267,6 +271,12 @@ impl<P: super::SendEvent> App<P> {
 	pub(super) fn select_tab(&mut self, index: usize) {
 		self.select_tab_with(index, true);
 	}
+	/// Records the active document as the most recently visited.
+	pub(super) fn visit_active(&mut self) {
+		if let Some(path) = self.readers.session.path.clone() {
+			self.folder.start.visit(path);
+		}
+	}
 	pub(super) fn select_tab_untracked(&mut self, index: usize) -> bool {
 		self.select_tab_with(index, false)
 	}
@@ -290,6 +300,10 @@ impl<P: super::SendEvent> App<P> {
 			self.readers.select_untracked(index, Instant::now())
 		};
 		if switched {
+			// A held Ctrl+Tab cycle records only the tab it settles on.
+			if track {
+				self.visit_active();
+			}
 			// The viewer showed the page that was active, so a tab switch
 			// closes it rather than leaving the new document under it.
 			self.interaction.overlays.viewer.send(ViewerMessage::Close);
@@ -334,6 +348,8 @@ impl<P: super::SendEvent> App<P> {
 		let origin = self.readers.session_mut(index).security.origin.clone();
 		self.dismiss_preview();
 		let result = self.readers.close(index, Instant::now());
+		// Closing the active tab may put another document on screen.
+		self.visit_active();
 		self.refresh_start_files();
 		// A watched export belongs to the document and origin that chose it.
 		if self.export.watches_document(&closed, &origin) {

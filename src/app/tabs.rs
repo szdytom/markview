@@ -86,6 +86,13 @@ impl Tabs {
 		}
 		order
 	}
+	/// Every open tab's index in recent-use order.
+	pub(super) fn recent_indices(&self) -> Vec<usize> {
+		self.recent_order()
+			.into_iter()
+			.filter_map(|id| self.entry_index(id))
+			.collect()
+	}
 	/// Restores a saved recent order and appends tabs it did not mention.
 	pub(super) fn set_recent(&mut self, ids: Vec<u64>) {
 		let mut order = Vec::with_capacity(self.entries.len());

@@ -524,22 +524,28 @@ impl<P: super::SendEvent> App<P> {
 			WindowEvent::ModifiersChanged(modifiers)
 				if !modifiers.state().control_key() =>
 			{
-				self.readers.commit_cycle();
+				self.commit_tab_cycle();
 			}
 			WindowEvent::KeyboardInput { event, .. }
 				if event.state == ElementState::Pressed =>
 			{
 				if !self.tab_cycle_keeps_cycle(&event.logical_key) {
-					self.readers.commit_cycle();
+					self.commit_tab_cycle();
 				}
 			}
 			WindowEvent::MouseInput { .. }
 			| WindowEvent::MouseWheel { .. }
 			| WindowEvent::Touch(_)
 			| WindowEvent::DroppedFile(_)
-			| WindowEvent::Focused(false) => self.readers.commit_cycle(),
+			| WindowEvent::Focused(false) => self.commit_tab_cycle(),
 			_ => {}
 		}
+	}
+
+	/// Ends a held cycle and records the tab it settled on.
+	fn commit_tab_cycle(&mut self) {
+		self.readers.commit_cycle();
+		self.visit_active();
 	}
 
 	pub(super) fn cycle_tab(&mut self, backwards: bool) {

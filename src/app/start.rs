@@ -8,7 +8,7 @@ use markview_selection::Scroll;
 use nucleo_matcher::{Config, Matcher};
 use serde::{Deserialize, Serialize};
 use std::{
-	collections::HashMap,
+	collections::{HashMap, HashSet},
 	fs,
 	io::Write,
 	path::{Path, PathBuf},
@@ -20,6 +20,10 @@ use std::{
 };
 
 const RECENTS: usize = 8;
+/// Recently visited documents kept for the start page.
+const VISITED: usize = 12;
+/// Rows a blank start-page query fills.
+const START_FILES: usize = 3;
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub(super) struct Recent {
@@ -36,6 +40,8 @@ pub(super) struct Search {
 	pub snippets: HashMap<usize, Snippet>,
 	pub pending: bool,
 	pub scroll: Scroll,
+	/// Rows that open one specific tab, keyed by their file id.
+	tabs: HashMap<usize, usize>,
 	catalog: Arc<[Arc<File>]>,
 	root: Option<PathBuf>,
 	sequence: u64,
@@ -44,6 +50,26 @@ pub(super) struct Search {
 impl Search {
 	pub fn has_files(&self) -> bool {
 		!self.catalog.is_empty()
+	}
+	/// Whether the query should list local rows instead of searching.
+	fn blank_query(&self) -> bool {
+		self.input.text().trim().is_empty()
+	}
+	/// Replaces the results with a list computed on the UI thread, dropping
+	/// whatever a worker may still deliver for an earlier query.
+	fn set_list(
+		&mut self,
+		matches: Arc<[Arc<File>]>,
+		tabs: HashMap<usize, usize>,
+	) {
+		if let Some(worker) = &self.worker {
+			self.sequence = worker.cancel();
+		}
+		self.pending = false;
+		self.matches = matches;
+		self.tabs = tabs;
+		self.snippets.clear();
+		self.scroll.reset();
 	}
 	/// Returns whether the catalog changed and a fresh query is required.
 	fn apply_catalog(
@@ -78,6 +104,8 @@ impl Search {
 pub(super) struct State {
 	pub search: Search,
 	pub recent: Vec<Recent>,
+	/// Recently visited documents, most recent first.
+	visited: Vec<PathBuf>,
 	history: Option<PathBuf>,
 	saved: Arc<AtomicU64>,
 	writer: Arc<Mutex<()>>,
@@ -94,6 +122,15 @@ impl std::ops::DerefMut for State {
 	}
 }
 impl State {
+	pub fn visited(&self) -> &[PathBuf] {
+		&self.visited
+	}
+	/// Records `path` as the most recently visited document.
+	pub fn visit(&mut self, path: PathBuf) {
+		self.visited.retain(|visited| *visited != path);
+		self.visited.insert(0, path);
+		self.visited.truncate(VISITED);
+	}
 	pub fn load(path: Option<PathBuf>) -> Self {
 		let recent = path
 			.as_ref()
@@ -240,6 +277,10 @@ impl Worker {
 		wake.notify_one();
 		sequence
 	}
+	/// Invalidates in-flight results without queueing another request.
+	fn cancel(&self) -> u64 {
+		self.sequence.fetch_add(1, Ordering::Relaxed) + 1
+	}
 }
 impl Drop for Worker {
 	fn drop(&mut self) {
@@ -255,6 +296,62 @@ impl Drop for Worker {
 }
 
 impl<P: SendEvent> App<P> {
+	/// The start page's blank-query rows: recently visited documents without
+	/// open tabs, then other workspace files that fill the list.
+	fn start_files(&self) -> Arc<[Arc<File>]> {
+		let catalog = &self.folder.start.search.catalog;
+		let open: HashSet<&Path> = self
+			.readers
+			.entries()
+			.iter()
+			.map(|tab| tab.path.as_path())
+			.collect();
+		let mut rows: Vec<Arc<File>> = Vec::with_capacity(START_FILES);
+		for path in self.folder.start.visited() {
+			if rows.len() == START_FILES {
+				break;
+			}
+			if open.contains(path.as_path())
+				|| rows.iter().any(|file| file.path == *path)
+			{
+				continue;
+			}
+			if let Some(file) = catalog.iter().find(|file| file.path == *path) {
+				rows.push(file.clone());
+			}
+		}
+		for file in catalog.iter() {
+			if rows.len() == START_FILES {
+				break;
+			}
+			if !open.contains(file.path.as_path())
+				&& !rows.iter().any(|row| row.path == file.path)
+			{
+				rows.push(file.clone());
+			}
+		}
+		rows.into()
+	}
+	/// The picker's blank-query rows: every open tab, most recent first, each
+	/// opening that exact tab.
+	fn picker_files(&self) -> (Arc<[Arc<File>]>, HashMap<usize, usize>) {
+		let catalog = &self.interaction.overlays.quick_open.search.catalog;
+		let entries = self.readers.entries();
+		let mut tabs = HashMap::new();
+		let mut rows = Vec::new();
+		for index in self.readers.recent_indices() {
+			let Some(file) =
+				catalog.iter().find(|file| file.path == entries[index].path)
+			else {
+				continue;
+			};
+			// Ids beyond the catalog's own range keep same-path tabs apart.
+			let id = usize::MAX - index;
+			tabs.insert(id, index);
+			rows.push(file.with_id(id));
+		}
+		(rows.into(), tabs)
+	}
 	pub(super) fn refresh_start_files(&mut self) {
 		let tree = self.folder.tree.as_ref();
 		let root = tree.map(|tree| tree.root.clone());
@@ -269,19 +366,27 @@ impl<P: SendEvent> App<P> {
 			catalog.clone(),
 			&mut self.ui,
 		);
-		if start_changed {
+		// A blank query lists open tabs and visits, which change without the
+		// catalog itself.
+		if start_changed || self.folder.start.search.blank_query() {
 			self.start_search_changed();
 		}
-		if self.interaction.overlays.quick_open.open()
-			&& self.interaction.overlays.quick_open.search.apply_catalog(
-				root,
-				catalog,
-				&mut self.ui,
-			) {
-			self.quick_open_search_changed();
+		if self.interaction.overlays.quick_open.open() {
+			let picker = &mut self.interaction.overlays.quick_open;
+			let changed =
+				picker.search.apply_catalog(root, catalog, &mut self.ui);
+			if changed || picker.search.blank_query() {
+				self.quick_open_search_changed();
+			}
 		}
 	}
 	pub(super) fn start_search_changed(&mut self) {
+		if self.folder.start.search.blank_query() {
+			let rows = self.start_files();
+			self.folder.start.search.set_list(rows, HashMap::new());
+			self.redraw();
+			return;
+		}
 		let state = &mut self.folder.start.search;
 		let worker = state.worker.get_or_insert_with(|| {
 			let proxy = self.proxy.clone();
@@ -294,6 +399,17 @@ impl<P: SendEvent> App<P> {
 		self.redraw();
 	}
 	pub(super) fn quick_open_search_changed(&mut self) {
+		if self.interaction.overlays.quick_open.search.blank_query() {
+			let (rows, tabs) = self.picker_files();
+			self.interaction
+				.overlays
+				.quick_open
+				.search
+				.set_list(rows, tabs);
+			self.interaction.overlays.quick_open.reset();
+			self.redraw();
+			return;
+		}
 		let state = &mut self.interaction.overlays.quick_open.search;
 		let worker = state.worker.get_or_insert_with(|| {
 			let proxy = self.proxy.clone();
@@ -316,6 +432,7 @@ impl<P: SendEvent> App<P> {
 		self.interaction.overlays.quick_open.search.pending = false;
 		self.interaction.overlays.quick_open.search.matches = result.matches;
 		self.interaction.overlays.quick_open.search.snippets = result.snippets;
+		self.interaction.overlays.quick_open.search.tabs.clear();
 		self.interaction.overlays.quick_open.reset();
 		self.clear_file_capture(true);
 		self.refresh_hover();
@@ -364,6 +481,18 @@ impl<P: SendEvent> App<P> {
 		self.open_start_path(path);
 	}
 	pub(super) fn open_quick_open_file(&mut self, id: usize) {
+		if let Some(index) = self
+			.interaction
+			.overlays
+			.quick_open
+			.search
+			.tabs
+			.get(&id)
+			.copied()
+		{
+			self.select_tab(index);
+			return;
+		}
 		let Some(path) = self
 			.interaction
 			.overlays
@@ -648,13 +777,11 @@ mod tests {
 		settle(&mut app, &events, |app| {
 			!app.interaction.overlays.quick_open.search.pending
 		});
-		assert!(
-			app.interaction
-				.overlays
-				.quick_open
-				.search
-				.matches
-				.is_empty()
+		// A blank picker lists the open tabs instead of searching.
+		assert_eq!(app.interaction.overlays.quick_open.search.matches.len(), 2);
+		assert_eq!(
+			app.interaction.overlays.quick_open.search.matches[0].path,
+			root.join("workspace/inside.md")
 		);
 		assert_eq!(app.interaction.overlays.quick_open.search.catalog.len(), 2);
 	}
@@ -702,6 +829,204 @@ mod tests {
 		assert_eq!(
 			app.readers.session.path.as_ref().unwrap(),
 			&root.join("note-15.md")
+		);
+	}
+
+	#[test]
+	fn start_page_lists_recent_visits_before_unused_files_and_skips_open_tabs()
+	{
+		use crate::state::DocumentCommand;
+		let dir = tempfile::tempdir().unwrap();
+		let root = dir.path().canonicalize().unwrap();
+		for index in 0..6 {
+			fs::write(root.join(format!("note-{index}.md")), "# Note").unwrap();
+		}
+		let (tx, events) = mpsc::channel();
+		let mut app = App::new(
+			LaunchOptions {
+				mode: Mode::Smoke,
+				options: crate::test_support::options(),
+				..Default::default()
+			},
+			Proxy(tx),
+		);
+		app.ui = crate::test_support::shaper();
+		app.folder_loaded(
+			0,
+			false,
+			crate::app::folder::Tree::read(root.clone()),
+		);
+		settle(&mut app, &events, |app| !app.folder.start.pending);
+		// Nothing visited yet, so workspace files fill the three rows.
+		assert_eq!(app.folder.start.matches.len(), 3);
+
+		app.open(root.join("note-3.md"));
+		app.open(root.join("note-1.md"));
+		app.action(Command::Document(DocumentCommand::NewPage));
+		// Both visits are open tabs, so unused files fill the rows instead.
+		assert_eq!(app.folder.start.matches.len(), 3);
+		assert!(
+			app.folder
+				.start
+				.matches
+				.iter()
+				.all(|file| file.path != root.join("note-1.md")
+					&& file.path != root.join("note-3.md"))
+		);
+
+		let older = app.readers.find(&root.join("note-1.md")).unwrap();
+		app.close_tab(older);
+		// The most recent visit that is no longer a tab leads the list.
+		assert_eq!(app.folder.start.matches[0].path, root.join("note-1.md"));
+		assert_eq!(app.folder.start.matches.len(), 3);
+	}
+
+	#[test]
+	fn start_page_records_visits_from_tab_switches() {
+		let dir = tempfile::tempdir().unwrap();
+		let root = dir.path().canonicalize().unwrap();
+		for index in 0..3 {
+			fs::write(root.join(format!("note-{index}.md")), "# Note").unwrap();
+		}
+		let (tx, events) = mpsc::channel();
+		let mut app = App::new(
+			LaunchOptions {
+				mode: Mode::Smoke,
+				options: crate::test_support::options(),
+				..Default::default()
+			},
+			Proxy(tx),
+		);
+		app.ui = crate::test_support::shaper();
+		app.folder_loaded(
+			0,
+			false,
+			crate::app::folder::Tree::read(root.clone()),
+		);
+		settle(&mut app, &events, |app| !app.folder.start.pending);
+		app.open(root.join("note-0.md"));
+		app.open(root.join("note-1.md"));
+		let first = app.readers.find(&root.join("note-0.md")).unwrap();
+		app.select_tab(first);
+		let second = app.readers.find(&root.join("note-1.md")).unwrap();
+		app.close_tab(second);
+		app.close_tab(first);
+		assert!(app.readers.entries().is_empty());
+		// Returning to `note-0.md` made it the most recent visit.
+		assert_eq!(app.folder.start.matches[0].path, root.join("note-0.md"));
+		assert_eq!(app.folder.start.matches[1].path, root.join("note-1.md"));
+	}
+
+	#[test]
+	fn start_page_matches_a_visit_opened_with_dotdot() {
+		use crate::state::DocumentCommand;
+		let dir = tempfile::tempdir().unwrap();
+		let root = dir.path().canonicalize().unwrap();
+		fs::create_dir(root.join("docs")).unwrap();
+		fs::write(root.join("notes.md"), "# Note").unwrap();
+		let (tx, events) = mpsc::channel();
+		let mut app = App::new(
+			LaunchOptions {
+				mode: Mode::Smoke,
+				options: crate::test_support::options(),
+				..Default::default()
+			},
+			Proxy(tx),
+		);
+		app.ui = crate::test_support::shaper();
+		app.folder_loaded(
+			0,
+			false,
+			crate::app::folder::Tree::read(root.clone()),
+		);
+		settle(&mut app, &events, |app| !app.folder.start.pending);
+		app.open(root.join("docs/../notes.md"));
+		app.action(Command::Document(DocumentCommand::NewPage));
+		// The visited file is the open tab, so no row is left.
+		assert!(app.folder.start.matches.is_empty());
+		app.close_tab(0);
+		assert_eq!(app.folder.start.matches[0].path, root.join("notes.md"));
+	}
+
+	#[test]
+	fn start_page_records_the_document_a_close_activates() {
+		let dir = tempfile::tempdir().unwrap();
+		let root = dir.path().canonicalize().unwrap();
+		for index in 0..3 {
+			fs::write(root.join(format!("note-{index}.md")), "# Note").unwrap();
+		}
+		let (tx, events) = mpsc::channel();
+		let mut app = App::new(
+			LaunchOptions {
+				mode: Mode::Smoke,
+				options: crate::test_support::options(),
+				..Default::default()
+			},
+			Proxy(tx),
+		);
+		app.ui = crate::test_support::shaper();
+		app.folder_loaded(
+			0,
+			false,
+			crate::app::folder::Tree::read(root.clone()),
+		);
+		settle(&mut app, &events, |app| !app.folder.start.pending);
+		app.open(root.join("note-0.md"));
+		app.open(root.join("note-1.md"));
+		let second = app.readers.find(&root.join("note-1.md")).unwrap();
+		app.close_tab(second);
+		let first = app.readers.find(&root.join("note-0.md")).unwrap();
+		app.close_tab(first);
+		// `note-0.md` was on screen last, after the close selected it.
+		assert_eq!(app.folder.start.matches[0].path, root.join("note-0.md"));
+		assert_eq!(app.folder.start.matches[1].path, root.join("note-1.md"));
+	}
+
+	#[test]
+	fn quick_open_lists_same_path_tabs_separately_and_opens_each() {
+		use crate::{
+			security::{Security, Trust},
+			state::DocumentCommand,
+		};
+		let dir = tempfile::tempdir().unwrap();
+		let root = dir.path().canonicalize().unwrap();
+		fs::write(root.join("shared.md"), "# Note").unwrap();
+		let (tx, events) = mpsc::channel();
+		let mut app = App::new(
+			LaunchOptions {
+				mode: Mode::Smoke,
+				options: crate::test_support::options(),
+				..Default::default()
+			},
+			Proxy(tx),
+		);
+		app.ui = crate::test_support::shaper();
+		app.folder_loaded(
+			0,
+			false,
+			crate::app::folder::Tree::read(root.clone()),
+		);
+		settle(&mut app, &events, |app| !app.folder.start.pending);
+		app.open(root.join("shared.md"));
+		assert!(app.readers.open_background_secure(
+			root.join("shared.md"),
+			None,
+			Security::local(Trust::Untrusted),
+		));
+		app.action(Command::Document(DocumentCommand::NewPage));
+		app.open_quick_open();
+		let search = &app.interaction.overlays.quick_open.search;
+		assert_eq!(search.matches.len(), 2);
+		assert_ne!(search.matches[0].id, search.matches[1].id);
+		let untrusted = search
+			.tabs
+			.iter()
+			.find_map(|(id, index)| (*index == 1).then_some(*id))
+			.expect("the second tab needs its own row");
+		app.open_quick_open_file(untrusted);
+		assert_eq!(
+			app.readers.session.security.origin,
+			Security::local(Trust::Untrusted).origin
 		);
 	}
 
@@ -792,7 +1117,12 @@ mod tests {
 		assert!(Arc::ptr_eq(&matches, &app.folder.start.matches));
 		assert_eq!(app.folder.start.snippets.len(), 20);
 		assert_eq!(app.interaction.overlays.quick_open.search.input.text(), "");
-		assert_eq!(app.interaction.overlays.quick_open.search.matches.len(), 3);
+		// The blank picker lists the open tabs.
+		assert_eq!(app.interaction.overlays.quick_open.search.matches.len(), 1);
+		assert_eq!(
+			app.interaction.overlays.quick_open.search.matches[0].path,
+			root.join("note-00.md")
+		);
 		app.interaction
 			.overlays
 			.quick_open

@@ -73,6 +73,7 @@ impl<P: SendEvent> App<P> {
 			let picker = &mut self.interaction.overlays.quick_open;
 			picker.open = true;
 			picker.previous_focus = previous_focus;
+			picker.search.input.set_text(&mut self.ui, "");
 			picker.reset();
 			self.refresh_start_files();
 		}

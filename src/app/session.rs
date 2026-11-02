@@ -379,6 +379,7 @@ impl<P: super::SendEvent> App<P> {
 					let folder = session.folder.clone();
 					self.folder.open = session.folder_open;
 					self.readers.restore_session(session);
+					self.visit_active();
 					if let Some(root) = folder {
 						self.open_folder(root, false);
 					}

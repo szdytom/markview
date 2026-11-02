@@ -57,6 +57,17 @@ impl File {
 			format!("{}/{}", self.parent, self.name).replace('\\', "/")
 		}
 	}
+	/// The same entry under another id, for rows that target one tab.
+	pub fn with_id(&self, id: usize) -> Arc<Self> {
+		Arc::new(Self {
+			id,
+			path: self.path.clone(),
+			name: self.name.clone(),
+			parent: self.parent.clone(),
+			text: self.text.clone(),
+			depth: self.depth,
+		})
+	}
 }
 
 /// Workspace entries retain their IDs; open files add unique paths after them.
@@ -149,7 +160,7 @@ pub(super) fn find(
 			.then_with(|| catalog[a.1].name.cmp(&catalog[b.1].name))
 			.then_with(|| a.1.cmp(&b.1))
 	};
-	let limit = if query.trim().is_empty() { 3 } else { RESULTS };
+	let limit = RESULTS;
 	if scored.len() > limit {
 		scored.select_nth_unstable_by(limit, order);
 		scored.truncate(limit);
