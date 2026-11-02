@@ -43,3 +43,8 @@ web/app/vsc-ext/vscode/LICENSE
 artifacts/
 web/app/vsc-ext/test-results/
 web/app/vsc-ext/playwright-report/
+
+# Worktrunk configs
+.config/wt.toml
+.worktreeinclude
+
