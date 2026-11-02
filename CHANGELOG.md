@@ -30,6 +30,7 @@ at the same level, without `[brackets]`.
 - Flush the document scrollbar against the reading area's right edge, and show it only briefly after the pointer moves over the reader.
 - Add a scrollbar and eased wheel scrolling to the Ctrl+P quick-open picker.
 - Use the folder sidebar's Markdown and image icons for Quick Access file rows.
+- Print the build commit alongside the version in `markview --version`.
 
 ### Removed
 

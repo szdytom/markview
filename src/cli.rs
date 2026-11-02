@@ -171,7 +171,12 @@ impl Default for LaunchOptions {
 #[derive(Parser)]
 #[command(
 	name = "markview",
-	version,
+	version = concat!(
+		env!("CARGO_PKG_VERSION"),
+		" (",
+		env!("MARKVIEW_COMMIT"),
+		")"
+	),
 	about = "Native Markdown reading",
 	long_about = None,
 	after_help = AFTER_HELP
@@ -1154,6 +1159,17 @@ mod tests {
 		} else {
 			Vec::new()
 		}
+	}
+
+	#[test]
+	fn version_names_the_commit_it_was_built_from() {
+		let error = Cli::try_parse_from(["markview", "--version"])
+			.err()
+			.expect("--version exits early");
+		assert_eq!(error.kind(), clap::error::ErrorKind::DisplayVersion);
+		let text = error.to_string();
+		assert!(text.contains(env!("CARGO_PKG_VERSION")), "{text}");
+		assert!(text.contains(env!("MARKVIEW_COMMIT")), "{text}");
 	}
 
 	#[test]
