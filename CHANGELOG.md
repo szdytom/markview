@@ -31,6 +31,10 @@ at the same level, without `[brackets]`.
 
 - Remove scrollbar hover thickening and its `thickness_hover` and `overflow_thickness_hover` stylesheet fields.
 
+### Fixed
+
+- Keep the Ctrl+P quick-open query independent from the start page's quick access search.
+
 ## 0.4.4 - 2026-11-02
 
 **Highlights**:

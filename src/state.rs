@@ -34,6 +34,7 @@ pub(crate) use markview_selection::{
 pub(crate) enum TextField {
 	Url,
 	Files,
+	QuickOpen,
 	Search,
 	ExportTitle,
 }

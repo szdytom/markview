@@ -242,6 +242,10 @@ impl<P: SendEvent> App<P> {
 		match id {
 			TextField::Url => (&mut self.url_input, &mut self.ui),
 			TextField::Files => (&mut self.folder.start.input, &mut self.ui),
+			TextField::QuickOpen => (
+				&mut self.interaction.overlays.quick_open.search.input,
+				&mut self.ui,
+			),
 			TextField::Search => {
 				(&mut self.readers.session.search.input, &mut self.ui)
 			}
@@ -283,7 +287,7 @@ impl<P: SendEvent> App<P> {
 		id: TextField,
 	) -> Option<(Rect, Rect)> {
 		if self.interaction.overlays.quick_open.open() {
-			return (id == TextField::Files
+			return (id == TextField::QuickOpen
 				&& self.folder.file_search_available())
 			.then(|| {
 				let g = self.quick_open_geometry();
@@ -338,7 +342,7 @@ impl<P: SendEvent> App<P> {
 		{
 			return Some(TextField::Search);
 		}
-		for field in [TextField::Url, TextField::Files] {
+		for field in [TextField::Url, TextField::Files, TextField::QuickOpen] {
 			if let Some((rect, clip)) = self.input_geometry(field)
 				&& rect.contains(x, y)
 				&& clip.contains(x, y)
@@ -378,6 +382,7 @@ impl<P: SendEvent> App<P> {
 		[
 			TextField::Url,
 			TextField::Files,
+			TextField::QuickOpen,
 			TextField::Search,
 			TextField::ExportTitle,
 		]
@@ -625,6 +630,9 @@ impl<P: SendEvent> App<P> {
 					if id == TextField::Files {
 						self.start_search_changed();
 					}
+					if id == TextField::QuickOpen {
+						self.quick_open_search_changed();
+					}
 				}
 			}
 			self.reset_input_blink();
@@ -639,45 +647,17 @@ impl<P: SendEvent> App<P> {
 		let id = self.text_input.focused.expect("focused input owns key");
 		let mods = self.interaction.pointer.modifiers();
 		let before = self.input(id).0.text().to_owned();
-		let outcome = match id {
-			TextField::Url => key(
-				&mut self.url_input,
-				&mut self.ui,
-				&mut self.clipboard,
-				logical,
-				text,
-				mods,
-			),
-			TextField::Files => key(
-				&mut self.folder.start.input,
-				&mut self.ui,
-				&mut self.clipboard,
-				logical,
-				text,
-				mods,
-			),
-			TextField::Search => key(
-				&mut self.readers.session.search.input,
-				&mut self.ui,
-				&mut self.clipboard,
-				logical,
-				text,
-				mods,
-			),
-			TextField::ExportTitle => key(
-				&mut self.readers.session.export_title,
-				&mut self.ui,
-				&mut self.clipboard,
-				logical,
-				text,
-				mods,
-			),
-		};
+		let outcome = self.dispatch_input_key(id, logical, text, mods);
 		if id == TextField::Url && outcome == Outcome::Submit {
 			self.action(Command::Document(DocumentCommand::OpenUrl));
 			return Outcome::Consumed;
 		}
 		if id == TextField::Files && self.files_input_outcome(&before, &outcome)
+		{
+			return Outcome::Consumed;
+		}
+		if id == TextField::QuickOpen
+			&& self.quick_open_input_outcome(&before, &outcome)
 		{
 			return Outcome::Consumed;
 		}
@@ -710,6 +690,76 @@ impl<P: SendEvent> App<P> {
 			Outcome::Consumed => self.reset_input_blink(),
 		}
 		outcome
+	}
+	fn dispatch_input_key(
+		&mut self,
+		id: TextField,
+		logical: &Key,
+		text: Option<&str>,
+		mods: ModifiersState,
+	) -> Outcome {
+		match id {
+			TextField::Url => key(
+				&mut self.url_input,
+				&mut self.ui,
+				&mut self.clipboard,
+				logical,
+				text,
+				mods,
+			),
+			TextField::Files => key(
+				&mut self.folder.start.input,
+				&mut self.ui,
+				&mut self.clipboard,
+				logical,
+				text,
+				mods,
+			),
+			TextField::QuickOpen => key(
+				&mut self.interaction.overlays.quick_open.search.input,
+				&mut self.ui,
+				&mut self.clipboard,
+				logical,
+				text,
+				mods,
+			),
+			TextField::Search => key(
+				&mut self.readers.session.search.input,
+				&mut self.ui,
+				&mut self.clipboard,
+				logical,
+				text,
+				mods,
+			),
+			TextField::ExportTitle => key(
+				&mut self.readers.session.export_title,
+				&mut self.ui,
+				&mut self.clipboard,
+				logical,
+				text,
+				mods,
+			),
+		}
+	}
+	fn quick_open_input_outcome(
+		&mut self,
+		before: &str,
+		outcome: &Outcome,
+	) -> bool {
+		if before != self.interaction.overlays.quick_open.search.input.text() {
+			self.quick_open_search_changed();
+		}
+		match outcome {
+			Outcome::Submit => {
+				self.submit_quick_open();
+				true
+			}
+			Outcome::Cancel => {
+				self.close_quick_open();
+				true
+			}
+			_ => false,
+		}
 	}
 	fn files_input_outcome(&mut self, before: &str, outcome: &Outcome) -> bool {
 		if before != self.folder.start.input.text() {
@@ -759,13 +809,14 @@ impl<P: SendEvent> App<P> {
 	) -> Vec<Draw> {
 		self.sync_input();
 		let mut start_inputs = Vec::new();
-		for field in [TextField::Url, TextField::Files] {
+		for field in [TextField::Url, TextField::Files, TextField::QuickOpen] {
 			if let Some((rect, viewport)) = self.input_geometry(field) {
 				let lang = self.preferences.values.lang();
-				let placeholder = if field == TextField::Files {
-					lang.empty_search_placeholder()
-				} else {
-					lang.empty_url_placeholder()
+				let placeholder = match field {
+					TextField::Files | TextField::QuickOpen => {
+						lang.empty_search_placeholder()
+					}
+					_ => lang.empty_url_placeholder(),
 				};
 				let focused = self.text_input.focused == Some(field);
 				let caret = self.text_input.caret;

@@ -27,10 +27,10 @@ pub(super) struct Recent {
 	#[serde(default)]
 	pub name: String,
 }
+/// One independent query over the shared workspace catalog.
 #[derive(Default)]
-pub(super) struct State {
+pub(super) struct Search {
 	pub input: TextInput,
-	pub recent: Vec<Recent>,
 	pub matches: Arc<[Arc<File>]>,
 	pub snippets: HashMap<usize, Snippet>,
 	pub pending: bool,
@@ -39,14 +39,60 @@ pub(super) struct State {
 	root: Option<PathBuf>,
 	sequence: u64,
 	worker: Option<Worker>,
+}
+impl Search {
+	pub fn has_files(&self) -> bool {
+		!self.catalog.is_empty()
+	}
+	/// Returns whether the catalog changed and a fresh query is required.
+	fn apply_catalog(
+		&mut self,
+		root: Option<PathBuf>,
+		catalog: Arc<[Arc<File>]>,
+		ui: &mut crate::layout::TextShaper,
+	) -> bool {
+		let changed_root = self.root != root;
+		if changed_root {
+			self.root = root;
+			self.input.set_text(ui, "");
+			self.scroll = 0.0;
+			self.matches = Arc::default();
+			self.snippets.clear();
+		}
+		if !changed_root
+			&& self
+				.catalog
+				.iter()
+				.map(|file| (file.id, &file.path))
+				.eq(catalog.iter().map(|file| (file.id, &file.path)))
+		{
+			return false;
+		}
+		self.catalog = catalog;
+		true
+	}
+}
+
+#[derive(Default)]
+pub(super) struct State {
+	pub search: Search,
+	pub recent: Vec<Recent>,
 	history: Option<PathBuf>,
 	saved: Arc<AtomicU64>,
 	writer: Arc<Mutex<()>>,
 }
-impl State {
-	pub fn has_files(&self) -> bool {
-		!self.catalog.is_empty()
+impl std::ops::Deref for State {
+	type Target = Search;
+	fn deref(&self) -> &Search {
+		&self.search
 	}
+}
+impl std::ops::DerefMut for State {
+	fn deref_mut(&mut self) -> &mut Search {
+		&mut self.search
+	}
+}
+impl State {
 	pub fn load(path: Option<PathBuf>) -> Self {
 		let recent = path
 			.as_ref()
@@ -217,29 +263,25 @@ impl<P: SendEvent> App<P> {
 				.filter_map(|entry| entry.file.clone()),
 			self.readers.entries().iter().map(|tab| tab.path.as_path()),
 		);
-		let state = &mut self.folder.start;
-		let changed_root = state.root != root;
-		if changed_root {
-			state.root = root;
-			state.input.set_text(&mut self.ui, "");
-			state.scroll = 0.0;
-			state.matches = Arc::default();
-			state.snippets.clear();
+		let start_changed = self.folder.start.apply_catalog(
+			root.clone(),
+			catalog.clone(),
+			&mut self.ui,
+		);
+		if start_changed {
+			self.start_search_changed();
 		}
-		if !changed_root
-			&& state
-				.catalog
-				.iter()
-				.map(|file| (file.id, &file.path))
-				.eq(catalog.iter().map(|file| (file.id, &file.path)))
-		{
-			return;
+		if self.interaction.overlays.quick_open.open()
+			&& self.interaction.overlays.quick_open.search.apply_catalog(
+				root,
+				catalog,
+				&mut self.ui,
+			) {
+			self.quick_open_search_changed();
 		}
-		state.catalog = catalog;
-		self.start_search_changed();
 	}
 	pub(super) fn start_search_changed(&mut self) {
-		let state = &mut self.folder.start;
+		let state = &mut self.folder.start.search;
 		let worker = state.worker.get_or_insert_with(|| {
 			let proxy = self.proxy.clone();
 			Worker::new(move |result| proxy.send(Event::FilesReady(result)))
@@ -248,8 +290,48 @@ impl<P: SendEvent> App<P> {
 			worker.submit(state.catalog.clone(), state.input.text().to_owned());
 		state.pending = true;
 		state.scroll = 0.0;
+		self.redraw();
+	}
+	pub(super) fn quick_open_search_changed(&mut self) {
+		let state = &mut self.interaction.overlays.quick_open.search;
+		let worker = state.worker.get_or_insert_with(|| {
+			let proxy = self.proxy.clone();
+			Worker::new(move |result| {
+				proxy.send(Event::QuickOpenFilesReady(result))
+			})
+		});
+		state.sequence =
+			worker.submit(state.catalog.clone(), state.input.text().to_owned());
+		state.pending = true;
 		self.interaction.overlays.quick_open.reset();
 		self.redraw();
+	}
+	pub(super) fn quick_open_files_ready(&mut self, result: Result) {
+		if result.sequence
+			!= self.interaction.overlays.quick_open.search.sequence
+		{
+			return;
+		}
+		self.interaction.overlays.quick_open.search.pending = false;
+		self.interaction.overlays.quick_open.search.matches = result.matches;
+		self.interaction.overlays.quick_open.search.snippets = result.snippets;
+		self.interaction.overlays.quick_open.reset();
+		self.clear_file_capture(true);
+		self.refresh_hover();
+		self.redraw();
+	}
+	fn clear_file_capture(&mut self, quick_open: bool) {
+		let command = if quick_open {
+			crate::state::ChromeCommand::QuickOpenFile(0)
+		} else {
+			crate::state::ChromeCommand::StartFile(0)
+		};
+		let scope = crate::state::Command::Chrome(command).widget_id().scope;
+		self.interaction.widgets.captured = self
+			.interaction
+			.widgets
+			.captured
+			.filter(|id| id.scope != scope);
 	}
 	pub(super) fn start_files_ready(&mut self, result: Result) {
 		if result.sequence != self.folder.start.sequence {
@@ -258,17 +340,7 @@ impl<P: SendEvent> App<P> {
 		self.folder.start.pending = false;
 		self.folder.start.matches = result.matches;
 		self.folder.start.snippets = result.snippets;
-		self.interaction.overlays.quick_open.reset();
-		let scope = crate::state::Command::Chrome(
-			crate::state::ChromeCommand::StartFile(0),
-		)
-		.widget_id()
-		.scope;
-		self.interaction.widgets.captured = self
-			.interaction
-			.widgets
-			.captured
-			.filter(|id| id.scope != scope);
+		self.clear_file_capture(false);
 		self.refresh_hover();
 		self.redraw();
 	}
@@ -278,12 +350,34 @@ impl<P: SendEvent> App<P> {
 		}
 	}
 	pub(super) fn open_start_file(&mut self, id: usize) {
-		let Some(file) =
-			self.folder.start.matches.iter().find(|file| file.id == id)
+		let Some(path) = self
+			.folder
+			.start
+			.matches
+			.iter()
+			.find(|file| file.id == id)
+			.map(|file| file.path.clone())
 		else {
 			return;
 		};
-		let path = file.path.clone();
+		self.open_start_path(path);
+	}
+	pub(super) fn open_quick_open_file(&mut self, id: usize) {
+		let Some(path) = self
+			.interaction
+			.overlays
+			.quick_open
+			.search
+			.matches
+			.iter()
+			.find(|file| file.id == id)
+			.map(|file| file.path.clone())
+		else {
+			return;
+		};
+		self.open_start_path(path);
+	}
+	fn open_start_path(&mut self, path: PathBuf) {
 		if let Some(index) = self
 			.readers
 			.entries()
@@ -481,12 +575,21 @@ mod tests {
 		assert!(app.folder.root().is_none());
 		assert!(app.input_geometry(TextField::Files).is_some());
 		app.open_quick_open();
-		settle(&mut app, &events, |app| !app.folder.start.pending);
-		assert_eq!(app.folder.start.matches.len(), 2);
-		app.folder.start.input.set_text(&mut app.ui, "outside");
-		app.start_search_changed();
-		settle(&mut app, &events, |app| !app.folder.start.pending);
-		assert_eq!(app.folder.start.matches.len(), 1);
+		settle(&mut app, &events, |app| {
+			!app.interaction.overlays.quick_open.search.pending
+		});
+		assert_eq!(app.interaction.overlays.quick_open.search.matches.len(), 2);
+		app.interaction
+			.overlays
+			.quick_open
+			.search
+			.input
+			.set_text(&mut app.ui, "outside");
+		app.quick_open_search_changed();
+		settle(&mut app, &events, |app| {
+			!app.interaction.overlays.quick_open.search.pending
+		});
+		assert_eq!(app.interaction.overlays.quick_open.search.matches.len(), 1);
 		app.key_pressed(&Key::Named(NamedKey::Enter));
 		assert_eq!(app.readers.session.path, Some(root.join("outside.md")));
 		assert_eq!(app.readers.entries().len(), 2);
@@ -497,28 +600,102 @@ mod tests {
 			crate::app::folder::Tree::read(root.join("workspace")),
 		);
 		app.open_quick_open();
-		settle(&mut app, &events, |app| !app.folder.start.pending);
-		assert_eq!(app.folder.start.catalog.len(), 3);
+		settle(&mut app, &events, |app| {
+			!app.interaction.overlays.quick_open.search.pending
+		});
+		assert_eq!(app.interaction.overlays.quick_open.search.catalog.len(), 3);
 		for query in ["inside", "outside", "outside"] {
-			app.folder.start.input.set_text(&mut app.ui, query);
-			app.start_search_changed();
-			settle(&mut app, &events, |app| !app.folder.start.pending);
-			assert_eq!(app.folder.start.matches.len(), 1);
-			let path = app.folder.start.matches[0].path.clone();
+			app.interaction
+				.overlays
+				.quick_open
+				.search
+				.input
+				.set_text(&mut app.ui, query);
+			app.quick_open_search_changed();
+			settle(&mut app, &events, |app| {
+				!app.interaction.overlays.quick_open.search.pending
+			});
+			assert_eq!(
+				app.interaction.overlays.quick_open.search.matches.len(),
+				1
+			);
+			let path = app.interaction.overlays.quick_open.search.matches[0]
+				.path
+				.clone();
 			app.key_pressed(&Key::Named(NamedKey::Enter));
 			assert_eq!(app.readers.session.path, Some(path));
 			assert_eq!(app.readers.entries().len(), 3);
 			app.open_quick_open();
-			settle(&mut app, &events, |app| !app.folder.start.pending);
-			assert_eq!(app.folder.start.catalog.len(), 3);
+			settle(&mut app, &events, |app| {
+				!app.interaction.overlays.quick_open.search.pending
+			});
+			assert_eq!(
+				app.interaction.overlays.quick_open.search.catalog.len(),
+				3
+			);
 		}
 		app.close_quick_open();
 		let outside = app.readers.find(&root.join("outside.md")).unwrap();
 		app.close_tab(outside);
 		app.open_quick_open();
+		settle(&mut app, &events, |app| {
+			!app.interaction.overlays.quick_open.search.pending
+		});
+		assert!(
+			app.interaction
+				.overlays
+				.quick_open
+				.search
+				.matches
+				.is_empty()
+		);
+		assert_eq!(app.interaction.overlays.quick_open.search.catalog.len(), 2);
+	}
+
+	#[test]
+	fn quick_open_opens_a_file_absent_from_the_start_page_results() {
+		use winit::keyboard::{Key, NamedKey};
+		let dir = tempfile::tempdir().unwrap();
+		let root = dir.path().canonicalize().unwrap();
+		for index in 0..20 {
+			fs::write(root.join(format!("note-{index:02}.md")), "# Note")
+				.unwrap();
+		}
+		let (tx, events) = mpsc::channel();
+		let mut app = App::new(
+			LaunchOptions {
+				mode: Mode::Smoke,
+				options: crate::test_support::options(),
+				..Default::default()
+			},
+			Proxy(tx),
+		);
+		app.ui = crate::test_support::shaper();
+		app.folder_loaded(
+			0,
+			false,
+			crate::app::folder::Tree::read(root.clone()),
+		);
 		settle(&mut app, &events, |app| !app.folder.start.pending);
-		assert!(app.folder.start.matches.is_empty());
-		assert_eq!(app.folder.start.catalog.len(), 2);
+		assert_eq!(app.folder.start.matches.len(), 3);
+		app.open_quick_open();
+		app.interaction
+			.overlays
+			.quick_open
+			.search
+			.input
+			.set_text(&mut app.ui, "note-15");
+		app.quick_open_search_changed();
+		settle(&mut app, &events, |app| {
+			!app.interaction.overlays.quick_open.search.pending
+		});
+		let id = app.interaction.overlays.quick_open.search.matches[0].id;
+		assert!(app.folder.start.matches.iter().all(|file| file.id != id));
+		assert!(app.key_pressed(&Key::Named(NamedKey::Enter)));
+		assert_eq!(
+			app.readers.session.path.as_ref().unwrap(),
+			&root.join("note-15.md")
+		);
 	}
 
 	#[test]
@@ -559,8 +736,7 @@ mod tests {
 	}
 
 	#[test]
-	fn quick_open_shares_workspace_results_scrolls_selection_and_opens_a_file()
-	{
+	fn quick_open_searches_independently_scrolls_selection_and_opens_a_file() {
 		use crate::state::TextField;
 		use winit::keyboard::{Key, ModifiersState, NamedKey};
 		let dir = tempfile::tempdir().unwrap();
@@ -601,28 +777,61 @@ mod tests {
 		app.interaction
 			.pointer
 			.set_modifiers(ModifiersState::empty());
-		assert_eq!(app.focused_input(), Some(TextField::Files));
+		settle(&mut app, &events, |app| {
+			!app.interaction.overlays.quick_open.search.pending
+		});
+		assert_eq!(app.focused_input(), Some(TextField::QuickOpen));
+		assert_eq!(app.folder.start.input.text(), "note");
 		assert!(Arc::ptr_eq(&matches, &app.folder.start.matches));
 		assert_eq!(app.folder.start.snippets.len(), 20);
-		assert!(app.input_geometry(TextField::Files).is_some());
+		assert_eq!(app.interaction.overlays.quick_open.search.input.text(), "");
+		assert_eq!(app.interaction.overlays.quick_open.search.matches.len(), 3);
+		app.interaction
+			.overlays
+			.quick_open
+			.search
+			.input
+			.set_text(&mut app.ui, "note");
+		app.quick_open_search_changed();
+		settle(&mut app, &events, |app| {
+			!app.interaction.overlays.quick_open.search.pending
+		});
+		assert_eq!(
+			app.interaction.overlays.quick_open.search.matches.len(),
+			20
+		);
+		assert!(app.input_geometry(TextField::QuickOpen).is_some());
+		assert!(app.input_geometry(TextField::Files).is_none());
 		assert!(app.input_geometry(TextField::Url).is_none());
-		let query = app.folder.start.input.text().to_owned();
+		let query = app
+			.interaction
+			.overlays
+			.quick_open
+			.search
+			.input
+			.text()
+			.to_owned();
 		for _ in 0..12 {
 			assert!(app.key_pressed(&Key::Named(NamedKey::ArrowDown)));
 		}
 		assert_eq!(app.interaction.overlays.quick_open.selected(), 12);
 		assert!(app.interaction.overlays.quick_open.scroll() > 0.0);
-		assert_eq!(app.folder.start.input.text(), query);
-		let id = matches[12].id;
+		assert_eq!(
+			app.interaction.overlays.quick_open.search.input.text(),
+			query
+		);
+		assert_eq!(app.folder.start.input.text(), "note");
+		assert_eq!(app.folder.start.matches.len(), 20);
+		let id = app.interaction.overlays.quick_open.search.matches[12].id;
 		app.overlay();
 		let rows = &app.controls.as_ref().unwrap().widgets;
 		assert!(rows.iter().any(|widget| widget.message
-			== Command::Chrome(ChromeCommand::StartFile(id))));
+			== Command::Chrome(ChromeCommand::QuickOpenFile(id))));
 		assert!(rows.iter().all(|widget| matches!(
 			widget.message,
 			Command::Chrome(
-				ChromeCommand::StartFile(_)
-					| ChromeCommand::FocusInput(TextField::Files)
+				ChromeCommand::QuickOpenFile(_)
+					| ChromeCommand::FocusInput(TextField::QuickOpen)
 			)
 		)));
 		assert!(app.key_pressed(&Key::Named(NamedKey::Enter)));
@@ -631,18 +840,36 @@ mod tests {
 			&root.join("note-12.md")
 		);
 		assert!(!app.interaction.overlays.quick_open.open());
+		assert!(app.input_geometry(TextField::QuickOpen).is_none());
 		assert!(app.input_geometry(TextField::Files).is_none());
+		assert_eq!(app.folder.start.input.text(), "note");
 
 		app.open_quick_open();
 		let opened = app.readers.session.path.clone();
-		app.folder.start.input.set_text(&mut app.ui, "no-such-note");
-		app.start_search_changed();
+		app.interaction
+			.overlays
+			.quick_open
+			.search
+			.input
+			.set_text(&mut app.ui, "no-such-note");
+		app.quick_open_search_changed();
 		app.key_pressed(&Key::Named(NamedKey::Enter));
 		assert_eq!(app.readers.session.path, opened);
 		assert!(app.interaction.overlays.quick_open.open());
-		settle(&mut app, &events, |app| !app.folder.start.pending);
-		assert!(app.folder.start.matches.is_empty());
+		settle(&mut app, &events, |app| {
+			!app.interaction.overlays.quick_open.search.pending
+		});
+		assert!(
+			app.interaction
+				.overlays
+				.quick_open
+				.search
+				.matches
+				.is_empty()
+		);
 		assert_eq!(app.interaction.overlays.quick_open.selected(), 0);
+		assert_eq!(app.folder.start.input.text(), "note");
+		assert_eq!(app.folder.start.matches.len(), 20);
 		app.key_pressed(&Key::Named(NamedKey::Enter));
 		assert!(app.interaction.overlays.quick_open.open());
 		app.key_pressed(&Key::Named(NamedKey::Escape));

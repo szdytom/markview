@@ -438,7 +438,7 @@ fn search_ime_defers_queries_enter_and_escape_until_composition_ends() {
 }
 
 #[test]
-fn quick_open_routes_text_and_ime_to_shared_file_search_while_reading() {
+fn quick_open_routes_text_and_ime_to_its_own_search_while_reading() {
 	let dir = tempfile::tempdir().unwrap();
 	std::fs::write(dir.path().join("阅读.md"), "# Note").unwrap();
 	let mut app = app();
@@ -447,19 +447,30 @@ fn quick_open_routes_text_and_ime_to_shared_file_search_while_reading() {
 		false,
 		crate::app::folder::Tree::read(dir.path().into()),
 	);
+	app.folder.start.input.set_text(&mut app.ui, "start");
 	app.readers.session.path = Some(dir.path().join("阅读.md"));
 	let opened = app.readers.session.path.clone();
 	app.open_quick_open();
-	assert_eq!(app.text_input.focused, Some(TextField::Files));
+	assert_eq!(app.text_input.focused, Some(TextField::QuickOpen));
 	assert!(!app.interaction.panel_open());
-	let (rect, viewport) = app.input_geometry(TextField::Files).unwrap();
+	let (rect, viewport) = app.input_geometry(TextField::QuickOpen).unwrap();
 	assert!(viewport.contains(rect.x, rect.y));
+	assert!(app.input_geometry(TextField::Files).is_none());
 	assert!(!app.draw_inputs().is_empty());
 	app.input_key(&Key::Character("read".into()), Some("read"));
-	assert_eq!(app.folder.start.input.text(), "read");
-	assert!(app.folder.start.pending);
+	assert_eq!(
+		app.interaction.overlays.quick_open.search.input.text(),
+		"read"
+	);
+	assert!(app.interaction.overlays.quick_open.search.pending);
+	assert_eq!(app.folder.start.input.text(), "start");
 	assert!(!app.readers.session.search.open);
-	app.folder.start.input.select_all(&mut app.ui);
+	app.interaction
+		.overlays
+		.quick_open
+		.search
+		.input
+		.select_all(&mut app.ui);
 	event(&mut app, WindowEvent::Ime(Ime::Enabled));
 	event(
 		&mut app,
@@ -467,19 +478,40 @@ fn quick_open_routes_text_and_ime_to_shared_file_search_while_reading() {
 	);
 	app.input_key(&Key::Named(NamedKey::ArrowDown), None);
 	app.input_key(&Key::Named(NamedKey::Enter), None);
-	assert!(app.folder.start.input.is_composing());
+	assert!(
+		app.interaction
+			.overlays
+			.quick_open
+			.search
+			.input
+			.is_composing()
+	);
 	assert_eq!(app.readers.session.path, opened);
 	app.input_key(&Key::Named(NamedKey::Escape), None);
-	assert!(!app.folder.start.input.is_composing());
+	assert!(
+		!app.interaction
+			.overlays
+			.quick_open
+			.search
+			.input
+			.is_composing()
+	);
 	assert!(app.interaction.overlays.quick_open.open());
 	event(&mut app, WindowEvent::Ime(Ime::Commit("阅读".into())));
-	assert_eq!(app.folder.start.input.text(), "阅读");
-	assert!(app.folder.start.pending);
+	assert_eq!(
+		app.interaction.overlays.quick_open.search.input.text(),
+		"阅读"
+	);
+	assert!(app.interaction.overlays.quick_open.search.pending);
 	app.input_key(&Key::Named(NamedKey::Escape), None);
 	assert!(!app.interaction.overlays.quick_open.open());
 	assert_eq!(app.text_input.focused, None);
 	assert_eq!(app.readers.session.path, opened);
-	assert_eq!(app.folder.start.input.text(), "阅读");
+	assert_eq!(
+		app.interaction.overlays.quick_open.search.input.text(),
+		"阅读"
+	);
+	assert_eq!(app.folder.start.input.text(), "start");
 }
 
 #[test]

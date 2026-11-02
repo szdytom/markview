@@ -365,7 +365,15 @@ pub(super) fn draw(
 			}
 			Command::Chrome(
 				ChromeCommand::StartFile(_) | ChromeCommand::RecentWorkspace(_),
-			) => draw_row(ui, &mut out, interaction, &b, view, lang),
+			) => draw_row(
+				ui,
+				&mut out,
+				interaction,
+				&b,
+				view,
+				&view.browser.unwrap().start.search,
+				lang,
+			),
 			_ => out.extend(components::draw_button(ui, interaction, &b, true)),
 		}
 	}
@@ -481,18 +489,17 @@ pub(super) fn draw_row(
 	interaction: &crate::app::widgets::Drawn<'_>,
 	b: &Button,
 	view: View<'_>,
+	search: &start::Search,
 	lang: Lang,
 ) {
 	background(ui, out, interaction, b);
 	let browser = view.browser.unwrap();
 	let (path, recent) = match b.action {
-		Command::Chrome(ChromeCommand::StartFile(id)) => {
-			let file = browser
-				.start
-				.matches
-				.iter()
-				.find(|file| file.id == id)
-				.unwrap();
+		Command::Chrome(
+			ChromeCommand::StartFile(id) | ChromeCommand::QuickOpenFile(id),
+		) => {
+			let file =
+				search.matches.iter().find(|file| file.id == id).unwrap();
 			(
 				if file.parent.is_empty() {
 					lang.empty_workspace_root()
@@ -558,8 +565,10 @@ pub(super) fn draw_row(
 		(b.rect.x + 44.0, b.rect.y + 24.0, text_w),
 		C::Color,
 	);
-	if let Command::Chrome(ChromeCommand::StartFile(id)) = b.action
-		&& let Some(snippet) = browser.start.snippets.get(&id)
+	if let Command::Chrome(
+		ChromeCommand::StartFile(id) | ChromeCommand::QuickOpenFile(id),
+	) = b.action
+		&& let Some(snippet) = search.snippets.get(&id)
 	{
 		draw_snippet(
 			ui,

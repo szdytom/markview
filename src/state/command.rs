@@ -113,6 +113,7 @@ pub(crate) enum ChromeCommand {
 	OpenFolder,
 	RecentWorkspace(usize),
 	StartFile(usize),
+	QuickOpenFile(usize),
 	Folder,
 	FolderEntry(usize),
 	FolderRefresh,

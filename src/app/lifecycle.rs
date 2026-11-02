@@ -195,6 +195,9 @@ impl<P: super::SendEvent> App<P> {
 			}
 			Event::SearchReady(result) => self.search_ready(result),
 			Event::FilesReady(result) => self.start_files_ready(result),
+			Event::QuickOpenFilesReady(result) => {
+				self.quick_open_files_ready(result)
+			}
 			Event::ImageSelected {
 				document,
 				revision,

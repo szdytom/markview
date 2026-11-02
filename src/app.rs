@@ -110,6 +110,7 @@ enum Event {
 	Ready(Box<Update>),
 	SearchReady(search::Result),
 	FilesReady(start::Result),
+	QuickOpenFilesReady(start::Result),
 	Parsed {
 		path: PathBuf,
 		content_version: u64,

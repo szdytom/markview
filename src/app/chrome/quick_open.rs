@@ -55,7 +55,7 @@ pub(super) fn buttons(
 	size: (f32, f32),
 	lang: Lang,
 ) -> Vec<Button> {
-	let g = geometry(size, browser.start.matches.len(), picker.scroll());
+	let g = geometry(size, picker.search.matches.len(), picker.scroll());
 	if !browser.file_search_available() {
 		return g.list.hit(vec![components::button(
 			lang.empty_open_folder(),
@@ -70,10 +70,10 @@ pub(super) fn buttons(
 	}
 	let mut buttons = vec![components::button(
 		lang.empty_search_placeholder(),
-		Command::Chrome(ChromeCommand::FocusInput(TextField::Files)),
+		Command::Chrome(ChromeCommand::FocusInput(TextField::QuickOpen)),
 		g.input,
 	)];
-	if browser.start.pending {
+	if picker.search.pending {
 		return buttons;
 	}
 	buttons.extend(
@@ -81,14 +81,14 @@ pub(super) fn buttons(
 			g.list
 				.visible()
 				.map(|index| {
-					let file = &browser.start.matches[index];
+					let file = &picker.search.matches[index];
 					let mut button = components::button(
 						file.name.clone(),
-						Command::Chrome(ChromeCommand::StartFile(file.id)),
+						Command::Chrome(ChromeCommand::QuickOpenFile(file.id)),
 						g.list.row_rect(index),
 					);
 					button.kind = components::ButtonKind::Quiet;
-					button.enabled = !browser.start.pending;
+					button.enabled = !picker.search.pending;
 					button.active = index == picker.selected();
 					button
 				})
@@ -101,12 +101,12 @@ pub(super) fn buttons(
 pub(super) fn draw(
 	ui: &mut TextShaper,
 	interaction: &Drawn<'_>,
+	picker: &Model,
 	browser: &Browser,
 	size: (f32, f32),
 	lang: Lang,
 ) -> Vec<Draw> {
-	let picker = &interaction.overlays.quick_open;
-	let g = geometry(size, browser.start.matches.len(), picker.scroll());
+	let g = geometry(size, picker.search.matches.len(), picker.scroll());
 	ui.appearance = super::ui_appearance(ui);
 	let mut out = components::frame(g.panel, size.0, size.1);
 	let title =
@@ -141,8 +141,10 @@ pub(super) fn draw(
 	));
 	let mut rows = Vec::new();
 	for button in buttons(browser, picker, size, lang) {
-		if matches!(button.action, Command::Chrome(ChromeCommand::StartFile(_)))
-		{
+		if matches!(
+			button.action,
+			Command::Chrome(ChromeCommand::QuickOpenFile(_))
+		) {
 			empty::draw_row(
 				ui,
 				&mut rows,
@@ -153,6 +155,7 @@ pub(super) fn draw(
 					phone: false,
 					browser: Some(browser),
 				},
+				&picker.search,
 				lang,
 			);
 		} else if button.action == Command::Chrome(ChromeCommand::OpenFolder) {
@@ -166,9 +169,9 @@ pub(super) fn draw(
 	}
 	let message = if !browser.file_search_available() {
 		Some(lang.quick_open_no_workspace())
-	} else if browser.start.pending {
+	} else if picker.search.pending {
 		Some(lang.empty_searching())
-	} else if browser.start.matches.is_empty() {
+	} else if picker.search.matches.is_empty() {
 		Some(lang.empty_no_files())
 	} else {
 		None
@@ -216,7 +219,8 @@ mod tests {
 			.filter_map(|entry| entry.file.clone())
 			.collect();
 		let mut matcher = Matcher::new(Config::DEFAULT.match_paths());
-		(browser.start.matches, browser.start.snippets) =
+		let mut picker = Model::default();
+		(picker.search.matches, picker.search.snippets) =
 			file_search::find(&mut matcher, &files, "read", || false).unwrap();
 		let output = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
 			.join("artifacts/quick-open");
@@ -235,10 +239,11 @@ mod tests {
 			let interaction = InteractionState::default();
 			let drawn = Drawn::new(&interaction, None);
 			let size = (width as f32, height as f32);
-			let mut overlay = draw(&mut ui, &drawn, &browser, size, lang);
-			let g = geometry(size, browser.start.matches.len(), 0.0);
-			browser.start.input.set_text(&mut ui, "read");
-			overlay.extend(browser.start.input.draw(
+			picker.search.input.set_text(&mut ui, "read");
+			let mut overlay =
+				draw(&mut ui, &drawn, &picker, &browser, size, lang);
+			let g = geometry(size, picker.search.matches.len(), 0.0);
+			overlay.extend(picker.search.input.draw(
 				&mut ui,
 				g.input,
 				true,
@@ -271,7 +276,7 @@ mod tests {
 			)?;
 			assert!(g.panel.x >= 0.0 && g.panel.y + g.panel.h <= height as f32);
 			assert!(
-				buttons(&browser, &interaction.overlays.quick_open, size, lang)
+				buttons(&browser, &picker, size, lang)
 					.iter()
 					.all(|button| button.widget().hit_rect().is_some())
 			);

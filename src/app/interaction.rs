@@ -121,6 +121,7 @@ impl<P: super::SendEvent> App<P> {
 				self.open_recent_workspace(index)
 			}
 			ChromeCommand::StartFile(id) => self.open_start_file(id),
+			ChromeCommand::QuickOpenFile(id) => self.open_quick_open_file(id),
 			ChromeCommand::Tabs
 			| ChromeCommand::SidebarTab(_)
 			| ChromeCommand::SelectTab(_)

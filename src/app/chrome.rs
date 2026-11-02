@@ -726,6 +726,7 @@ impl<'a> Chrome<'a> {
 					out.extend(quick_open::draw(
 						self.ui,
 						&self.interaction,
+						&self.interaction.overlays.quick_open,
 						self.session.folder.unwrap(),
 						(self.frame.width, self.frame.height),
 						self.settings.model.lang(),

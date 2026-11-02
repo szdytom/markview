@@ -1,4 +1,4 @@
-//! The floating file picker shares the start page's search session.
+//! The floating file picker owns its workspace search session.
 use super::{App, SendEvent, chrome};
 use crate::state::{ChromeCommand, Command, PanelPage, TextField};
 use markview_ui_core::WidgetId;
@@ -10,6 +10,7 @@ pub(crate) struct Model {
 	selected: usize,
 	scroll: f32,
 	previous_focus: Option<WidgetId>,
+	pub(in crate::app) search: super::start::Search,
 }
 impl Model {
 	pub(in crate::app) fn open(&self) -> bool {
@@ -44,17 +45,21 @@ impl<P: SendEvent> App<P> {
 			self.readers.session.cancel_scroll_animation();
 			self.tab_strip.cancel_drag();
 			self.show_panel(PanelPage::Closed);
+			let picker = &mut self.interaction.overlays.quick_open;
+			picker.open = true;
+			picker.previous_focus = previous_focus;
+			picker.reset();
 			self.refresh_start_files();
-			self.interaction.overlays.quick_open = Model {
-				open: true,
-				previous_focus,
-				..Default::default()
-			};
 		}
 		self.action(Command::Chrome(ChromeCommand::FocusInput(
-			TextField::Files,
+			TextField::QuickOpen,
 		)));
-		self.folder.start.input.select_all(&mut self.ui);
+		self.interaction
+			.overlays
+			.quick_open
+			.search
+			.input
+			.select_all(&mut self.ui);
 		self.refresh_hover();
 		self.redraw();
 	}
@@ -64,9 +69,9 @@ impl<P: SendEvent> App<P> {
 			return;
 		}
 		self.clear_input_focus();
-		let previous =
-			std::mem::take(&mut self.interaction.overlays.quick_open)
-				.previous_focus;
+		let picker = &mut self.interaction.overlays.quick_open;
+		picker.open = false;
+		let previous = picker.previous_focus.take();
 		self.interaction.widgets.captured = None;
 		self.interaction.widgets.focus = previous.filter(|id| {
 			self.buttons()
@@ -99,7 +104,13 @@ impl<P: SendEvent> App<P> {
 
 	pub(super) fn quick_open_key(&mut self, key: &Key) -> bool {
 		if !self.interaction.overlays.quick_open.open()
-			|| self.folder.start.input.is_composing()
+			|| self
+				.interaction
+				.overlays
+				.quick_open
+				.search
+				.input
+				.is_composing()
 		{
 			return false;
 		}
@@ -109,7 +120,7 @@ impl<P: SendEvent> App<P> {
 			Key::Named(NamedKey::ArrowDown) => self.move_quick_open(1),
 			Key::Named(NamedKey::ArrowUp) => self.move_quick_open(-1),
 			Key::Named(NamedKey::Tab) => self.action(Command::Chrome(
-				ChromeCommand::FocusInput(TextField::Files),
+				ChromeCommand::FocusInput(TextField::QuickOpen),
 			)),
 			_ => return false,
 		}
@@ -117,16 +128,16 @@ impl<P: SendEvent> App<P> {
 	}
 
 	fn move_quick_open(&mut self, delta: isize) {
-		if self.folder.start.pending || self.folder.start.matches.is_empty() {
+		let search = &self.interaction.overlays.quick_open.search;
+		if search.pending || search.matches.is_empty() {
 			return;
 		}
+		let len = search.matches.len();
 		self.interaction.widgets.captured = None;
 		let list = self.quick_open_geometry().list;
 		let picker = &mut self.interaction.overlays.quick_open;
-		picker.selected = picker
-			.selected
-			.saturating_add_signed(delta)
-			.min(self.folder.start.matches.len() - 1);
+		picker.selected =
+			picker.selected.saturating_add_signed(delta).min(len - 1);
 		let row = list.row_rect(picker.selected);
 		let correction = if row.y < list.viewport.y {
 			row.y - list.viewport.y
@@ -141,14 +152,16 @@ impl<P: SendEvent> App<P> {
 	pub(super) fn submit_quick_open(&mut self) {
 		if !self.folder.file_search_available() {
 			self.action(Command::Chrome(ChromeCommand::OpenFolder));
-		} else if !self.folder.start.pending
+		} else if !self.interaction.overlays.quick_open.search.pending
 			&& let Some(file) = self
-				.folder
-				.start
+				.interaction
+				.overlays
+				.quick_open
+				.search
 				.matches
 				.get(self.interaction.overlays.quick_open.selected())
 		{
-			self.action(Command::Chrome(ChromeCommand::StartFile(file.id)));
+			self.action(Command::Chrome(ChromeCommand::QuickOpenFile(file.id)));
 		}
 	}
 
@@ -156,7 +169,7 @@ impl<P: SendEvent> App<P> {
 		let (width, height, _) = self.dimensions();
 		chrome::quick_open::geometry(
 			(width, height),
-			self.folder.start.matches.len(),
+			self.interaction.overlays.quick_open.search.matches.len(),
 			self.interaction.overlays.quick_open.scroll(),
 		)
 	}
