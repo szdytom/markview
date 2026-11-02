@@ -1,8 +1,16 @@
 //! Tab strip geometry and transient gestures, independent of document sessions.
-use crate::{layout::Rect, scroll::ScrollArea, state::DrawerAnimation};
-use std::time::Instant;
+use crate::{
+	layout::Rect,
+	scroll::ScrollArea,
+	state::{DrawerAnimation, Easing, Tween},
+};
+use std::time::{Duration, Instant};
 
 pub(super) const GAP: f32 = 2.0;
+/// Firefox's `--tab-dragover-transition`.
+const DRAG_MOTION: Duration = Duration::from_millis(200);
+/// The close slide's duration, matching the tabs drawer.
+const CLOSE_MOTION: Duration = Duration::from_millis(220);
 
 #[derive(Default)]
 pub(super) struct TabStrip {
@@ -16,13 +24,53 @@ pub(super) struct TabStrip {
 	animation: Option<DrawerAnimation>,
 	/// Tabs sliding to new positions after a close or a drop.
 	slide: Option<TabSlide>,
+	/// The other tabs sliding aside to leave the dragged tab's gap.
+	shift: Option<TabShift>,
 }
 struct TabSlide {
 	/// Where each tab stood when the slide started, in its new order.
 	from: Vec<Rect>,
 	/// The old right edge of the whole strip.
 	end: f32,
-	animation: Option<DrawerAnimation>,
+	animation: Option<Tween>,
+}
+/// The horizontal offsets the strip shows while a drag opens a gap.
+struct TabShift {
+	from: Vec<f32>,
+	to: Vec<f32>,
+	animation: Option<Tween>,
+}
+impl TabShift {
+	fn offsets(&self, now: Instant) -> Vec<f32> {
+		self.animation.as_ref().map_or_else(
+			|| self.to.clone(),
+			|animation| {
+				let t = animation.progress(now);
+				self.from
+					.iter()
+					.zip(&self.to)
+					.map(|(from, to)| from + (to - from) * t)
+					.collect()
+			},
+		)
+	}
+
+	/// Continues from where the offsets are now, Firefox switching the
+	/// transition target mid-flight.
+	fn retarget(&mut self, to: Vec<f32>, now: Instant) {
+		self.from = self.offsets(now);
+		self.to = to;
+		self.animation = self
+			.from
+			.iter()
+			.zip(&self.to)
+			.any(|(from, to)| (from - to).abs() > 0.01)
+			.then(|| Tween::new(0.0, 1.0, now, DRAG_MOTION, Easing::TabDrag));
+	}
+
+	fn settled(&self) -> bool {
+		self.animation.is_none()
+	}
 }
 #[derive(Clone, Copy)]
 pub(super) struct TabDrag {
@@ -46,6 +94,44 @@ impl TabDrag {
 		let index = slot - usize::from(slot > self.index);
 		(index != self.index).then_some(index)
 	}
+
+	/// Where each tab goes to open the gap a drop at `slot` leaves.
+	fn shift_targets(
+		&self,
+		layout: &TabLayout,
+		widths: &[(f32, f32)],
+	) -> Vec<f32> {
+		let count = layout.rects.len();
+		let mut targets = vec![0.0; count];
+		let Some(slot) = self.slot else {
+			return targets;
+		};
+		let to = slot - usize::from(slot > self.index);
+		if to == self.index || widths.len() != count {
+			return targets;
+		}
+		let mut order: Vec<_> = (0..count).collect();
+		order.remove(self.index);
+		order.insert(to, self.index);
+		let mut reordered = widths.to_vec();
+		let dragged = reordered.remove(self.index);
+		reordered.insert(to, dragged);
+		let preview =
+			TabLayout::new(layout.viewport, &reordered, layout.scroll);
+		// Offsets stay relative to the resting strip, so a slide in flight
+		// cannot bake its own motion into them.
+		let resting = TabLayout::new(layout.viewport, widths, layout.scroll);
+		let mut position = vec![0; count];
+		for (at, index) in order.into_iter().enumerate() {
+			position[index] = at;
+		}
+		for (index, target) in targets.iter_mut().enumerate() {
+			*target = preview.rects[position[index]].x - resting.rects[index].x;
+		}
+		// The dragged tab follows the pointer instead.
+		targets[self.index] = 0.0;
+		targets
+	}
 }
 impl TabStrip {
 	/// Retargets the tabs drawer's slide between closed and open.
@@ -64,6 +150,7 @@ impl TabStrip {
 				.slide
 				.as_ref()
 				.is_some_and(|slide| slide.animation.is_some())
+			|| self.shift.as_ref().is_some_and(|shift| !shift.settled())
 	}
 
 	pub(super) fn advance_animation(&mut self, now: Instant) {
@@ -83,17 +170,36 @@ impl TabStrip {
 		if settled {
 			self.slide = None;
 		}
+		let closed = self.shift.as_mut().is_some_and(|shift| {
+			if shift
+				.animation
+				.as_ref()
+				.is_some_and(|animation| animation.is_finished(now))
+			{
+				shift.animation = None;
+			}
+			shift.settled() && shift.to.iter().all(|offset| *offset == 0.0)
+		});
+		if closed {
+			self.shift = None;
+		}
 	}
 
-	/// Starts the surviving tabs at `rects` and slides them into the layout
-	/// that follows the close. `index` is the tab about to leave.
+	/// Starts the surviving tabs at their displayed rects and slides them into
+	/// the layout that follows the close. `index` is the tab about to leave.
 	pub(super) fn begin_close(&mut self, rects: &[Rect], index: usize) {
 		let mut from = rects.to_vec();
 		if index >= from.len() {
 			return;
 		}
+		if let Some(offsets) = self.drag_offsets(Instant::now()) {
+			for (rect, offset) in from.iter_mut().zip(offsets) {
+				rect.x += offset;
+			}
+		}
+		self.shift = None;
 		from.remove(index);
-		self.begin_slide(rects, from);
+		self.begin_slide(rects, from, CLOSE_MOTION, Easing::CubicOut);
 	}
 
 	/// Starts every tab at its resting or dragged rect and slides it to the
@@ -101,27 +207,95 @@ impl TabStrip {
 	pub(super) fn begin_reorder(
 		&mut self,
 		rects: &[Rect],
+		shown: &[Rect],
 		from: usize,
 		to: usize,
 		dragged: Rect,
 	) {
-		if from >= rects.len() || to >= rects.len() || from == to {
+		if from >= shown.len() || to >= shown.len() || from == to {
 			return;
 		}
-		let mut moved = rects.to_vec();
+		self.shift = None;
+		let mut moved = shown.to_vec();
 		moved.remove(from);
 		moved.insert(to, dragged);
-		self.begin_slide(rects, moved);
+		self.begin_slide(rects, moved, DRAG_MOTION, Easing::TabDrag);
 	}
 
-	fn begin_slide(&mut self, rects: &[Rect], from: Vec<Rect>) {
+	/// Slides the other tabs toward the gap the dragged tab would drop into.
+	pub(super) fn retarget_shift(
+		&mut self,
+		layout: &TabLayout,
+		widths: &[(f32, f32)],
+	) {
+		let Some(drag) = self.drag else {
+			return;
+		};
+		let targets = drag.shift_targets(layout, widths);
+		let now = Instant::now();
+		match self.shift.as_mut() {
+			Some(shift) if shift.to.len() == targets.len() => {
+				if !shift
+					.to
+					.iter()
+					.zip(&targets)
+					.any(|(old, new)| (old - new).abs() > 0.01)
+				{
+					return;
+				}
+				shift.retarget(targets, now);
+			}
+			_ if targets.iter().all(|offset| *offset == 0.0) => {
+				self.shift = None;
+			}
+			_ => {
+				let mut shift = TabShift {
+					from: vec![0.0; targets.len()],
+					to: vec![0.0; targets.len()],
+					animation: None,
+				};
+				shift.retarget(targets, now);
+				self.shift = Some(shift);
+			}
+		}
+	}
+
+	/// The offsets the strip's tabs show while a drag opens a gap.
+	pub(super) fn drag_offsets(&self, now: Instant) -> Option<Vec<f32>> {
+		self.shift.as_ref().map(|shift| shift.offsets(now))
+	}
+
+	/// Freezes a gap that is still closing, so a new drag starts from what
+	/// the strip paints instead of chasing the old animation.
+	pub(super) fn hold_shift(&mut self) {
+		let now = Instant::now();
+		if let Some(shift) = &mut self.shift
+			&& shift.animation.is_some()
+		{
+			shift.from = shift.offsets(now);
+			shift.to = shift.from.clone();
+			shift.animation = None;
+		}
+	}
+
+	fn begin_slide(
+		&mut self,
+		rects: &[Rect],
+		from: Vec<Rect>,
+		duration: Duration,
+		easing: Easing,
+	) {
 		let end = rects.last().map_or(0.0, |rect| rect.x + rect.w);
-		let mut animation = None;
-		DrawerAnimation::retarget(&mut animation, false, true);
-		self.slide = animation.map(|animation| TabSlide {
+		self.slide = Some(TabSlide {
 			from,
 			end,
-			animation: Some(animation),
+			animation: Some(Tween::new(
+				0.0,
+				1.0,
+				Instant::now(),
+				duration,
+				easing,
+			)),
 		});
 	}
 
@@ -147,8 +321,10 @@ impl TabStrip {
 		if slide.from.len() != tabs {
 			return None;
 		}
-		let t = 1.0
-			- DrawerAnimation::reveal(&slide.animation, false, Instant::now());
+		let t = slide
+			.animation
+			.as_ref()
+			.map_or(1.0, |animation| animation.progress(Instant::now()));
 		Some((t, slide))
 	}
 
@@ -176,10 +352,22 @@ impl TabStrip {
 			.freeze(elapsed);
 	}
 
+	#[cfg(test)]
+	pub(super) fn freeze_shift(&mut self, elapsed: std::time::Duration) {
+		self.shift
+			.as_mut()
+			.and_then(|shift| shift.animation.as_mut())
+			.expect("a tab shift is animating")
+			.freeze(elapsed);
+	}
+
 	pub fn cancel_drag(&mut self) {
 		self.reveal_active |= self.drag.is_some_and(|drag| drag.moving);
 		self.drag = None;
 		self.scroll_at = None;
+		if let Some(shift) = &mut self.shift {
+			shift.retarget(vec![0.0; shift.to.len()], Instant::now());
+		}
 	}
 	/// Advances eased wheel motion on the strip and its drawer.
 	pub(super) fn advance_scrolls(&mut self, now: Instant) {

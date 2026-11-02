@@ -1667,6 +1667,79 @@ fn tab_hits_follow_the_close_slide() {
 }
 
 #[test]
+fn tab_hits_follow_the_gap_that_closes_after_a_drag() {
+	let (mut app, _) = reader(SOURCE, 900.0);
+	let now = Instant::now();
+	for index in 0..3 {
+		app.readers
+			.open(PathBuf::from(format!("/tmp/shift-tab-{index}.md")), now);
+	}
+	let layout = app.tab_layout();
+	let held = layout.rects[1];
+	app.tab_strip.drag = Some(crate::app::tab_strip::TabDrag {
+		index: 1,
+		start: held.x,
+		grab: held.w / 2.0,
+		moving: true,
+		slot: Some(0),
+	});
+	app.tab_strip
+		.retarget_shift(&layout, &app.tab_metrics.widths);
+	app.tab_strip.freeze_shift(Duration::from_secs(1));
+	app.tab_strip.cancel_drag();
+	let at = (held.x + 10.0, held.y + held.h / 2.0);
+	app.interaction.pointer.move_to(at);
+	assert_eq!(
+		app.tab_at_cursor(),
+		Some(0),
+		"the gap-closing tab answers where it is painted"
+	);
+}
+
+#[test]
+fn a_new_drag_grabs_the_tab_where_it_is_painted() {
+	let (mut app, _) = reader(SOURCE, 900.0);
+	let now = Instant::now();
+	for index in 0..3 {
+		app.readers
+			.open(PathBuf::from(format!("/tmp/grab-tab-{index}.md")), now);
+	}
+	let layout = app.tab_layout();
+	let held = layout.rects[1];
+	app.tab_strip.drag = Some(crate::app::tab_strip::TabDrag {
+		index: 1,
+		start: held.x,
+		grab: held.w / 2.0,
+		moving: true,
+		slot: Some(0),
+	});
+	app.tab_strip
+		.retarget_shift(&layout, &app.tab_metrics.widths);
+	app.tab_strip.freeze_shift(Duration::from_secs(1));
+	app.tab_strip.cancel_drag();
+	app.tab_strip.freeze_shift(Duration::ZERO);
+	let at = (held.x + 20.0, held.y + held.h / 2.0);
+	app.interaction.pointer.move_to(at);
+	app.begin_tab_drag(0);
+	let grab = app.tab_strip.drag.unwrap().grab;
+	let painted = app.displayed_tab_layout();
+	assert_ne!(
+		painted.rects[0].x,
+		app.tab_layout().rects[0].x,
+		"the new drag catches the tab mid-close"
+	);
+	assert_eq!(
+		grab,
+		at.0 - painted.rects[0].x,
+		"the grab keeps its distance to the painted tab"
+	);
+	// `hold_shift` freezes the closing gap, so later frames paint the tab
+	// where the grab measured it.
+	app.advance_drawers(Instant::now() + Duration::from_secs(1));
+	assert_eq!(painted.rects, app.displayed_tab_layout().rects);
+}
+
+#[test]
 fn a_scrolling_strip_moves_the_drop_slot_with_it() {
 	let (mut app, _) = reader(SOURCE, 760.0);
 	let now = Instant::now();

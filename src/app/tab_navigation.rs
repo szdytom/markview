@@ -9,12 +9,12 @@ use std::time::{Duration, Instant};
 impl<P: super::SendEvent> App<P> {
 	pub(super) fn tab_at_cursor(&mut self) -> Option<usize> {
 		let (x, y) = self.interaction.pointer.cursor();
-		let layout = self.tab_layout();
+		let layout = self.displayed_tab_layout();
 		layout.hit_over(x, y, self.readers.active())
 	}
 	pub(super) fn tab_close_at_cursor(&mut self) -> Option<usize> {
 		let (x, y) = self.interaction.pointer.cursor();
-		let layout = self.tab_layout();
+		let layout = self.displayed_tab_layout();
 		layout
 			.hit_over(x, y, self.readers.active())
 			.filter(|i| x >= layout.rects[*i].x + layout.rects[*i].w - 24.0)
@@ -53,7 +53,8 @@ impl<P: super::SendEvent> App<P> {
 			crate::state::ChromeCommand::SelectTab(index),
 		));
 		self.normalize_tab_scroll();
-		let layout = self.tab_layout();
+		self.tab_strip.hold_shift();
+		let layout = self.displayed_tab_layout();
 		let x = self.interaction.pointer.cursor().0;
 		self.tab_strip.drag = Some(TabDrag {
 			index,
@@ -71,6 +72,8 @@ impl<P: super::SendEvent> App<P> {
 		drag.update(&layout, self.interaction.pointer.cursor().0);
 		self.tab_strip.drag = Some(drag);
 		if drag.moving {
+			self.tab_strip
+				.retarget_shift(&layout, &self.tab_metrics.widths);
 			self.schedule_tab_scroll(&layout);
 			self.redraw();
 		}
@@ -88,6 +91,12 @@ impl<P: super::SendEvent> App<P> {
 		if drag.index >= layout.rects.len() || to >= layout.rects.len() {
 			return;
 		}
+		let mut shown = layout.rects.clone();
+		if let Some(offsets) = self.tab_strip.drag_offsets(Instant::now()) {
+			for (rect, offset) in shown.iter_mut().zip(offsets) {
+				rect.x += offset;
+			}
+		}
 		let x = self.interaction.pointer.cursor().0;
 		let dragged = Rect {
 			x: (x - drag.grab).clamp(
@@ -101,6 +110,7 @@ impl<P: super::SendEvent> App<P> {
 		if self.readers.move_tab(drag.index, to) {
 			self.tab_strip.begin_reorder(
 				&layout.rects,
+				&shown,
 				drag.index,
 				to,
 				dragged,

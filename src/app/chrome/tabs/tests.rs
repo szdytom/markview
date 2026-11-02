@@ -1,5 +1,6 @@
 use super::*;
 use crate::app::tab_metrics::TabMetrics;
+use std::time::Duration;
 
 #[test]
 fn hovered_labels_mix_current_theme_colors_and_keep_the_background_highlight() {
@@ -498,59 +499,241 @@ fn separators_only_divide_neighboring_inactive_tabs() {
 }
 
 #[test]
-fn endpoint_drop_indicators_stay_inside_the_viewport() {
+fn overlapping_tabs_hover_the_one_painted_on_top() {
+	let rect = Rect {
+		x: 10.0,
+		y: 4.0,
+		w: 100.0,
+		h: 32.0,
+	};
+	let rects = [rect, Rect { x: 50.0, ..rect }];
+	assert_eq!(
+		hovered_tab(&rects, None, (60.0, 10.0), 1),
+		Some(1),
+		"the active tab covers the lower one"
+	);
+	assert_eq!(hovered_tab(&rects, None, (60.0, 10.0), 9), Some(0));
+}
+
+#[test]
+fn a_shifted_tab_keeps_the_separator_before_it_during_a_drag() {
+	use crate::app::tab_strip::{TabDrag, TabLayout, TabStrip};
+	// `1 2 3 4` with `2` dragged past `3` shows `1 3 (2) 4`: the joined `1 3`
+	// still needs its separator, while the floating tab splits `3` and `4`.
+	let mut ui = crate::test_support::shaper();
+	let tabs: Vec<_> = (0..4)
+		.map(|i| ReaderTab::new(format!("{i}.md").into()))
+		.collect();
+	let widths = vec![(100.0, 50.0); 4];
 	let viewport = Rect {
 		x: 10.0,
 		y: 4.0,
-		w: 300.0,
+		w: 700.0,
 		h: 32.0,
 	};
-	let drag = |slot, index| crate::app::tab_strip::TabDrag {
-		index,
+	let layout = TabLayout::new(viewport, &widths, 0.0);
+	let mut strip = TabStrip::default();
+	strip.drag = Some(TabDrag {
+		index: 1,
+		start: layout.rects[1].x,
+		grab: 10.0,
+		moving: true,
+		slot: Some(3),
+	});
+	strip.retarget_shift(&layout, &widths);
+	strip.freeze_shift(Duration::from_secs(1));
+	let cursor = (layout.rects[2].x + 20.0, 20.0);
+	let mut bar = TabBar {
+		ui: &mut ui,
+		strip: &strip,
+		widths: &widths,
+		tabs: &tabs,
+		active_tab: 1,
+		cursor,
+		viewport,
+	};
+	let draws = bar.draw_tabs();
+	let Draw::Clipped { draws, .. } = &draws[0] else {
+		unreachable!()
+	};
+	let separators: Vec<_> = draws
+		.iter()
+		.filter_map(|draw| match draw {
+			Draw::Rect(
+				rect,
+				Paint::Styled(Condition::Toolbar, C::BorderColor),
+			) => Some(rect.x),
+			_ => None,
+		})
+		.collect();
+	assert_eq!(
+		separators,
+		[layout.rects[0].x + layout.rects[0].w + GAP / 2.0 - 0.5],
+		"the shifted tab keeps the line it shares with its new neighbor"
+	);
+}
+
+#[test]
+fn a_separator_never_floats_beside_an_open_gap() {
+	use crate::app::tab_strip::{TabDrag, TabLayout, TabStrip};
+	let mut ui = crate::test_support::shaper();
+	let tabs: Vec<_> = (0..3)
+		.map(|i| ReaderTab::new(format!("{i}.md").into()))
+		.collect();
+	let widths = vec![(100.0, 50.0); 3];
+	let viewport = Rect {
+		x: 10.0,
+		y: 4.0,
+		w: 500.0,
+		h: 32.0,
+	};
+	let layout = TabLayout::new(viewport, &widths, 0.0);
+	let mut strip = TabStrip::default();
+	strip.drag = Some(TabDrag {
+		index: 0,
+		start: layout.rects[0].x,
+		grab: 10.0,
+		moving: true,
+		slot: Some(2),
+	});
+	strip.retarget_shift(&layout, &widths);
+	strip.freeze_shift(Duration::from_secs(1));
+	let cursor = (layout.rects[2].x + 20.0, 20.0);
+	let mut bar = TabBar {
+		ui: &mut ui,
+		strip: &strip,
+		widths: &widths,
+		tabs: &tabs,
+		active_tab: 0,
+		cursor,
+		viewport,
+	};
+	let draws = bar.draw_tabs();
+	let Draw::Clipped { draws, .. } = &draws[0] else {
+		unreachable!()
+	};
+	let separators = draws
+		.iter()
+		.filter(|draw| {
+			matches!(
+				draw,
+				Draw::Rect(
+					_,
+					Paint::Styled(Condition::Toolbar, C::BorderColor)
+				)
+			)
+		})
+		.count();
+	assert_eq!(separators, 0, "the shifted tab has no neighbor to divide");
+}
+
+#[test]
+fn a_moving_drag_hovers_only_the_tab_it_carries() {
+	use crate::app::tab_strip::{TabDrag, TabLayout, TabStrip};
+	let mut ui = crate::test_support::shaper();
+	let tabs: Vec<_> = (0..3)
+		.map(|i| ReaderTab::new(format!("{i}.md").into()))
+		.collect();
+	let widths = vec![(100.0, 50.0); 3];
+	let viewport = Rect {
+		x: 10.0,
+		y: 4.0,
+		w: 400.0,
+		h: 32.0,
+	};
+	let layout = TabLayout::new(viewport, &widths, 0.0);
+	let mut strip = TabStrip::default();
+	strip.drag = Some(TabDrag {
+		index: 0,
+		start: layout.rects[0].x,
+		grab: 10.0,
+		moving: true,
+		slot: Some(1),
+	});
+	let cursor = (layout.rects[1].x + 20.0, 20.0);
+	let mut bar = TabBar {
+		ui: &mut ui,
+		strip: &strip,
+		widths: &widths,
+		tabs: &tabs,
+		active_tab: 0,
+		cursor,
+		viewport,
+	};
+	let draws = bar.draw_tabs();
+	let Draw::Clipped { draws, .. } = &draws[0] else {
+		unreachable!()
+	};
+	let hover_fills = draws
+		.iter()
+		.filter(|draw| {
+			matches!(
+				draw,
+				Draw::Rect(
+					_,
+					Paint::Styled(Condition::Button, C::HoverBackground)
+				)
+			)
+		})
+		.count();
+	assert_eq!(hover_fills, 0, "the covered tab does not take the hover");
+}
+
+#[test]
+fn dragging_paints_the_tabs_where_the_drop_will_put_them() {
+	use crate::app::tab_strip::{TabDrag, TabLayout, TabStrip};
+	let mut ui = crate::test_support::shaper();
+	let tabs: Vec<_> = (0..3)
+		.map(|i| ReaderTab::new(format!("{i}.md").into()))
+		.collect();
+	let widths = vec![(100.0, 50.0); 3];
+	let viewport = Rect {
+		x: 10.0,
+		y: 4.0,
+		w: 400.0,
+		h: 32.0,
+	};
+	let layout = TabLayout::new(viewport, &widths, 0.0);
+	let mut strip = TabStrip::default();
+	strip.drag = Some(TabDrag {
+		index: 0,
 		start: 0.0,
 		grab: 0.0,
 		moving: true,
-		slot: Some(slot),
+		slot: Some(2),
+	});
+	strip.retarget_shift(&layout, &widths);
+	strip.freeze_shift(std::time::Duration::from_secs(1));
+	let mut bar = TabBar {
+		ui: &mut ui,
+		strip: &strip,
+		widths: &widths,
+		tabs: &tabs,
+		active_tab: 0,
+		cursor: (0.0, 0.0),
+		viewport,
 	};
-	let left = [
-		Rect {
-			x: 10.0,
-			w: 100.0,
-			..viewport
-		},
-		Rect {
-			x: 112.0,
-			w: 100.0,
-			..viewport
-		},
-	];
-	let Some(Draw::Rect(rect, _)) =
-		drop_indicator(Some(drag(0, 1)), &left, viewport)
-	else {
-		panic!("the leading boundary has an indicator")
+	let draws = bar.draw_tabs();
+	let Draw::Clipped { draws, .. } = &draws[0] else {
+		unreachable!()
 	};
-	assert_eq!(rect.x, viewport.x);
-	let right = [
-		Rect {
-			x: 110.0,
-			w: 100.0,
-			..viewport
-		},
-		Rect {
-			x: 210.0,
-			w: 100.0,
-			..viewport
-		},
-	];
-	let Some(Draw::Rect(rect, _)) =
-		drop_indicator(Some(drag(2, 0)), &right, viewport)
-	else {
-		panic!("the trailing boundary has an indicator")
-	};
-	assert_eq!(rect.x + rect.w, viewport.x + viewport.w);
-	let narrow = Rect { w: 1.0, ..viewport };
-	assert!(
-		drop_indicator(Some(drag(2, 0)), &right, narrow).is_none(),
-		"a viewport too narrow for the line gets no indicator"
+	let mut bodies: Vec<_> = draws
+		.iter()
+		.filter_map(|draw| match draw {
+			Draw::Rect(
+				rect,
+				Paint::Styled(Condition::Toolbar, C::Background),
+			) => Some(rect.x),
+			_ => None,
+		})
+		.collect();
+	bodies.sort_by(f32::total_cmp);
+	let preview = TabLayout::new(viewport, &[(100.0, 50.0); 3], 0.0);
+	assert_eq!(
+		bodies,
+		[
+			preview.rects[0].x - GAP / 2.0 + RADIUS - 1.0,
+			preview.rects[2].x - GAP / 2.0 + RADIUS - 1.0
+		]
 	);
 }

@@ -23,6 +23,7 @@ at the same level, without `[brackets]`.
 
 ### Changed
 
+- Slide the other tabs aside while a tab is dragged, following Firefox's 200 ms tab-drag motion instead of drawing an insertion line.
 - Use a settings-minus icon for the folder sidebar's exclusion toggle, highlighted while excluded entries are hidden.
 - Add a local check runner for the fast static checks and compilation.
 - Draw icon buttons in muted gray at rest and the bright default color on hover or while active, with no click, hover or selection background; tab close icons brighten on hover.

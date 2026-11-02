@@ -734,6 +734,20 @@ impl<P: super::SendEvent> App<P> {
 		layout
 	}
 
+	/// The tabs at their drawn positions, including a close slide and any gap
+	/// a drag leaves behind.
+	pub(super) fn displayed_tab_layout(
+		&mut self,
+	) -> super::tab_strip::TabLayout {
+		let mut layout = self.tab_layout();
+		if let Some(offsets) = self.tab_strip.drag_offsets(Instant::now()) {
+			for (rect, offset) in layout.rects.iter_mut().zip(offsets) {
+				rect.x += offset;
+			}
+		}
+		layout
+	}
+
 	/// The tabs where they settle, for scroll bounds that outlast a slide.
 	pub(super) fn resting_tab_layout(&mut self) -> super::tab_strip::TabLayout {
 		self.tab_metrics.sync(&mut self.ui, self.readers.entries());

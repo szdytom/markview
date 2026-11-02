@@ -112,7 +112,7 @@ fn a_dropped_tab_slides_from_the_pointer_into_its_new_place() {
 		..layout.rects[0]
 	};
 	let mut strip = TabStrip::default();
-	strip.begin_reorder(&layout.rects, 0, 2, dragged);
+	strip.begin_reorder(&layout.rects, &layout.rects, 0, 2, dragged);
 	let after = TabLayout::new(
 		viewport(),
 		&[(60.0, 60.0), (80.0, 60.0), (100.0, 60.0)],
@@ -151,6 +151,64 @@ fn closing_a_tab_slides_the_following_tabs_left_and_settles() {
 	strip.advance_animation(Instant::now() + Duration::from_secs(1));
 	assert!(!strip.animating());
 	assert!(strip.rects(&settled).is_none());
+}
+
+#[test]
+fn dragging_opens_a_gap_that_matches_the_reordered_layout() {
+	let widths = [(100.0, 60.0), (60.0, 60.0), (80.0, 60.0)];
+	let layout = TabLayout::new(viewport(), &widths, 0.0);
+	let mut strip = TabStrip {
+		drag: Some(TabDrag {
+			index: 0,
+			start: 10.0,
+			grab: 5.0,
+			moving: true,
+			slot: Some(2),
+		}),
+		..Default::default()
+	};
+	strip.retarget_shift(&layout, &widths);
+	strip.freeze_shift(Duration::from_secs(1));
+	let offsets = strip.drag_offsets(Instant::now()).unwrap();
+	let reordered = [(60.0, 60.0), (100.0, 60.0), (80.0, 60.0)];
+	let preview = TabLayout::new(viewport(), &reordered, 0.0);
+	assert_eq!(offsets[0], 0.0);
+	assert_eq!(layout.rects[1].x + offsets[1], preview.rects[0].x);
+	assert_eq!(layout.rects[2].x + offsets[2], preview.rects[2].x);
+	strip.cancel_drag();
+	assert!(
+		strip.drag_offsets(Instant::now()).unwrap()[1] < 0.0,
+		"releasing without a drop closes the gap from where it was"
+	);
+}
+
+#[test]
+fn closing_mid_drag_starts_the_slide_from_the_shifted_tabs() {
+	let widths = [(100.0, 60.0); 3];
+	let layout = TabLayout::new(viewport(), &widths, 0.0);
+	let mut strip = TabStrip {
+		drag: Some(TabDrag {
+			index: 0,
+			start: 10.0,
+			grab: 5.0,
+			moving: true,
+			slot: Some(2),
+		}),
+		..Default::default()
+	};
+	strip.retarget_shift(&layout, &widths);
+	strip.freeze_shift(Duration::from_secs(1));
+	strip.begin_close(&layout.rects, 0);
+	let after = [(100.0, 60.0); 2];
+	let settled = TabLayout::new(viewport(), &after, 0.0);
+	strip.freeze_slide(Duration::ZERO);
+	let start = strip.rects(&settled).unwrap();
+	assert_eq!(start[0].x, layout.rects[0].x);
+	assert_eq!(start[1].x, layout.rects[2].x);
+	assert!(
+		strip.drag_offsets(Instant::now()).is_none(),
+		"the close slide owns the tabs' positions"
+	);
 }
 
 #[test]
