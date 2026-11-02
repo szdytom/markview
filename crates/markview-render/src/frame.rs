@@ -190,6 +190,7 @@ impl Renderer {
 					| Draw::Icon { .. }
 					| Draw::Math { .. } => scratch.foreground.push(staged),
 					Draw::Rect(..)
+					| Draw::FadedRect { .. }
 					| Draw::Box { .. }
 					| Draw::Polygon { .. } => scratch.backgrounds.push(staged),
 				}

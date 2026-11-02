@@ -188,7 +188,9 @@ fn bands(layout: &BlockLayout) -> Vec<Band> {
 			Draw::Glyph(glyph) => {
 				Some((glyph.y - glyph.size * 0.9, glyph.y + glyph.size * 0.25))
 			}
-			Draw::Rect(rect, _) => Some((rect.y, rect.y + rect.h)),
+			Draw::Rect(rect, _) | Draw::FadedRect { rect, .. } => {
+				Some((rect.y, rect.y + rect.h))
+			}
 			Draw::Polygon { center, points, .. } => {
 				let top =
 					points.iter().map(|p| p[1]).fold(f32::INFINITY, f32::min);

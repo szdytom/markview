@@ -1038,11 +1038,23 @@ impl<'a> Chrome<'a> {
 				.is_some_and(|drag| drag.target == ScrollbarAxis::Document);
 			let (x, y) = self.interaction.pointer.cursor();
 			let (track, thumb) = bar.bars();
-			out.push(Draw::Rect(
+			let opacity = self.frame.scrollbar_opacity;
+			let faded = |rect, paint| {
+				if opacity < 1.0 {
+					Draw::FadedRect {
+						rect,
+						paint,
+						opacity,
+					}
+				} else {
+					Draw::Rect(rect, paint)
+				}
+			};
+			out.push(faded(
 				track,
 				Paint::Styled(Condition::Scrollbar, C::Track),
 			));
-			out.push(Draw::Rect(
+			out.push(faded(
 				thumb,
 				Paint::Styled(
 					Condition::Scrollbar,

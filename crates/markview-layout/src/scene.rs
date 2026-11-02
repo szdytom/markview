@@ -89,6 +89,12 @@ pub enum Draw {
 	},
 	Glyph(Glyph),
 	Rect(Rect, Paint),
+	/// A filled rectangle whose resolved color is scaled by `opacity`.
+	FadedRect {
+		rect: Rect,
+		paint: Paint,
+		opacity: f32,
+	},
 	Box {
 		rect: Rect,
 		/// The condition chain the box was laid out in.
@@ -198,6 +204,7 @@ impl Draw {
 				g.y += y;
 			}
 			Self::Rect(r, _)
+			| Self::FadedRect { rect: r, .. }
 			| Self::Box { rect: r, .. }
 			| Self::Image { rect: r, .. } => {
 				r.x += x;

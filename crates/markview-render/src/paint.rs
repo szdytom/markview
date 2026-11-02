@@ -229,6 +229,24 @@ impl Renderer {
 				clip,
 				view,
 			),
+			Draw::FadedRect {
+				rect,
+				paint,
+				opacity,
+			} => {
+				let mut color = self.color(*paint, view.theme);
+				color[3] *= opacity;
+				self.geometry.solid(
+					Rect {
+						x: rect.x + dx,
+						y: rect.y + dy,
+						..*rect
+					},
+					color,
+					clip,
+					view,
+				);
+			}
 			Draw::Box {
 				rect,
 				chain,

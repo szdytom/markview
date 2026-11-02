@@ -22,6 +22,7 @@ pub(in crate::app) struct FrameView {
 	pub(in crate::app) width: f32,
 	pub(in crate::app) height: f32,
 	pub(in crate::app) scrollbar: Option<Scrollbar>,
+	pub(in crate::app) scrollbar_opacity: f32,
 	pub(in crate::app) remote_notice: Option<usize>,
 	pub(in crate::app) backend: Option<wgpu::Backend>,
 }
@@ -39,9 +40,17 @@ impl FrameView {
 			width,
 			height,
 			scrollbar,
+			scrollbar_opacity: 1.0,
 			remote_notice,
 			backend,
 		}
+	}
+	pub(in crate::app) fn with_scrollbar_opacity(
+		mut self,
+		opacity: f32,
+	) -> Self {
+		self.scrollbar_opacity = opacity;
+		self
 	}
 }
 

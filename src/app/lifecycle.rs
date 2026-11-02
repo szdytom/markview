@@ -598,7 +598,7 @@ impl<P: super::SendEvent> App<P> {
 			.chain(self.prewarm_at)
 			.chain(self.export.watch_deadline())
 			.chain(self.status.deadline())
-			.chain(self.scrollbar_visible_until)
+			.chain(self.scrollbar_deadline(now))
 			.chain(self.preferences.save_deadline())
 			.chain(self.persistence.deadline)
 			.chain(self.interaction.pointer.auto_scroll_at())

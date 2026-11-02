@@ -280,7 +280,8 @@ impl<P: super::SendEvent> App<P> {
 			scrollbar,
 			remote_notice,
 			self.renderer.as_ref().map(|renderer| renderer.backend),
-		);
+		)
+		.with_scrollbar_opacity(self.scrollbar_opacity());
 		let session = chrome::SessionView::new(
 			&self.readers.session,
 			self.readers.entries(),

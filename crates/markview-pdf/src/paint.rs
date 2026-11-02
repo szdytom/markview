@@ -695,7 +695,7 @@ impl Painter<'_> {
 					surface.set_stroke(None);
 				}
 			}
-			Draw::Rect(rect, paint) => {
+			Draw::Rect(rect, paint) | Draw::FadedRect { rect, paint, .. } => {
 				if let Some(rect) = frame.rect(*rect) {
 					self.solid(surface, rect, *paint);
 				}
@@ -1273,7 +1273,7 @@ fn visible(cluster: Option<&Cluster>, draw: &Draw, item: &PageItem) -> bool {
 				glyph.y + glyph.size * 0.25,
 			))
 		}
-		Draw::Rect(rect, _) => cluster
+		Draw::Rect(rect, _) | Draw::FadedRect { rect, .. } => cluster
 			.and_then(|cluster| cluster.span)
 			.unwrap_or((rect.y, rect.y + rect.h)),
 		Draw::Polygon { center, points, .. } => {

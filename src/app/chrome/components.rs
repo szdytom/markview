@@ -1513,6 +1513,7 @@ pub(in crate::app) fn fade(draws: &mut [Draw], ui: &TextShaper, opacity: f32) {
 			}
 			Draw::Glyph(glyph) => &mut glyph.paint,
 			Draw::Rect(_, paint)
+			| Draw::FadedRect { paint, .. }
 			| Draw::Icon { paint, .. }
 			| Draw::Polygon { paint, .. }
 			| Draw::Math { paint, .. } => paint,

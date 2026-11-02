@@ -377,14 +377,36 @@ fn document_scrollbar_appears_only_on_motion_over_the_reader() {
 	// Motion in the reading area reveals it.
 	app.pointer_moved(PhysicalPosition::new(500.0, 400.0));
 	assert!(app.document_scrollbar().is_some());
-	// Moving back to the toolbar puts it away at once.
+	// Moving back to the toolbar starts the same fade rather than cutting
+	// the bar off instantly.
 	app.pointer_moved(PhysicalPosition::new(500.0, 10.0));
+	let until = app.scrollbar_visible_until.unwrap();
+	let half = until + super::super::viewport::SCROLLBAR_FADE / 2;
+	app.scrollbar_tick(half);
+	assert!(app.document_scrollbar().is_some());
+	let opacity = app.scrollbar_opacity_at(half);
+	assert!(opacity > 0.0 && opacity < 1.0);
+	app.scrollbar_tick(until + super::super::viewport::SCROLLBAR_FADE);
 	assert!(app.document_scrollbar().is_none());
-	// Without further motion it hides when its linger expires.
+	// Without further motion it fades out when its linger expires.
 	app.pointer_moved(PhysicalPosition::new(500.0, 400.0));
 	let until = app.scrollbar_visible_until.unwrap();
-	app.scrollbar_tick(until);
+	app.scrollbar_tick(until + super::super::viewport::SCROLLBAR_FADE / 2);
+	assert!(app.document_scrollbar().is_some());
+	app.scrollbar_tick(until + super::super::viewport::SCROLLBAR_FADE);
 	assert!(app.document_scrollbar().is_none());
+}
+
+#[test]
+fn pointer_motion_restores_a_faded_document_scrollbar() {
+	let (mut app, _) = reader(&"Body line.\n\n".repeat(100), 760.0);
+	app.show_document_scrollbar(Instant::now());
+	let until = app.scrollbar_visible_until.unwrap();
+	let halfway = until + super::super::viewport::SCROLLBAR_FADE / 2;
+	app.scrollbar_tick(halfway);
+	assert!(app.scrollbar_opacity_at(halfway) < 1.0);
+	app.pointer_moved(PhysicalPosition::new(500.0, 400.0));
+	assert_eq!(app.scrollbar_opacity(), 1.0);
 }
 
 #[test]
@@ -439,7 +461,7 @@ fn scrollbar_visibility_keeps_the_window_edge_cursor_current() {
 		"the visible bar owns the edge"
 	);
 	let until = app.scrollbar_visible_until.unwrap();
-	app.scrollbar_tick(until);
+	app.scrollbar_tick(until + super::super::viewport::SCROLLBAR_FADE);
 	assert!(app.document_scrollbar().is_none());
 	assert_eq!(
 		app.frame_cursor(),

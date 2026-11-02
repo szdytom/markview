@@ -299,6 +299,7 @@ impl<P: super::SendEvent> App<P> {
 			let old = self.interaction.pointer.cursor();
 			let was_button = self.button_at_cursor();
 			let was_scrollbar = self.document_scrollbar().is_some();
+			let was_scrollbar_opacity = self.scrollbar_opacity();
 			self.interaction.pointer.move_to(point);
 			if let Some((_, (px, py))) =
 				self.interaction.pointer.pressed_image()
@@ -321,15 +322,19 @@ impl<P: super::SendEvent> App<P> {
 			if over_reader {
 				self.show_document_scrollbar(now);
 			} else if self.interaction.pointer.scrollbar().is_none() {
-				self.hide_document_scrollbar();
+				self.hide_document_scrollbar(now);
 			}
 			// Visibility gates the right resize edge, so the cursor follows it.
 			self.refresh_hover();
 			if self.hover_preview(now) {
 				self.redraw();
 			}
-			let scrollbar_changed =
-				was_scrollbar != self.document_scrollbar().is_some();
+			// Revealing a partially faded bar changes its opacity even though
+			// it was already present, so its paint still needs a frame.
+			let scrollbar_changed = was_scrollbar
+				!= self.document_scrollbar().is_some()
+				|| (was_scrollbar_opacity - self.scrollbar_opacity()).abs()
+					> 0.001;
 			if self.pointer_move_repaints(old, was_button) || scrollbar_changed
 			{
 				self.redraw();
@@ -384,7 +389,8 @@ impl<P: super::SendEvent> App<P> {
 			&& self.interaction.panels.sidebar().drag().is_none()
 		{
 			self.interaction.pointer.leave();
-			self.hide_document_scrollbar();
+			// Leaving the window does not cut the bar's linger short; the
+			// same timer fades it.
 		}
 		// A scrollbar drag survives leaving the window: the implicit
 		// pointer grab still reports motion and the release, so the
