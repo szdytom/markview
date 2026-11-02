@@ -563,6 +563,8 @@ fn new_page_preserves_tabs_and_opening_or_selecting_resumes_documents() {
 		.send(crate::app::viewer::Message::Open {
 			src: "first.png".into(),
 			pixels: (512., 512.),
+			intrinsic: Some((512, 512)),
+			decoded: true,
 			scale: 1.,
 		});
 	h.app.readers.session.scrolling.offset = 120.;
@@ -612,6 +614,8 @@ fn switching_tabs_closes_the_viewer_and_resets_zoom() {
 			crate::app::viewer::Message::Open {
 				src: "first.png".into(),
 				pixels: (512., 512.),
+				intrinsic: Some((512, 512)),
+				decoded: true,
 				scale: 1.,
 			},
 		);

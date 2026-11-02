@@ -45,6 +45,17 @@ fn touch(app: &mut App<StubProxy>, id: u64, phase: TouchPhase, at: (f32, f32)) {
 }
 
 fn image_reader(source: &str, src: &str, loaded: bool) -> App<StubProxy> {
+	image_reader_like(source, src, loaded, false, (400, 400), (400, 400))
+}
+
+fn image_reader_like(
+	source: &str,
+	src: &str,
+	loaded: bool,
+	svg: bool,
+	intrinsic: (u32, u32),
+	raster: (u32, u32),
+) -> App<StubProxy> {
 	let (mut app, document) = reader(source, 760.);
 	if loaded {
 		let mut images = ImageSnapshot::default();
@@ -52,18 +63,19 @@ fn image_reader(source: &str, src: &str, loaded: bool) -> App<StubProxy> {
 			src.into(),
 			ImageInfo {
 				version: 1,
-				size: Some((400, 400)),
+				size: Some(intrinsic),
 				error: None,
-				svg: false,
+				svg,
 			},
 		);
 		images.pixels.insert(
 			src.into(),
 			1,
 			Arc::new(Pixels {
-				width: 400,
-				height: 400,
-				rgba: vec![255; 400 * 400 * 4].into(),
+				width: raster.0,
+				height: raster.1,
+				rgba: vec![255; raster.0 as usize * raster.1 as usize * 4]
+					.into(),
 			}),
 		);
 		app.readers.session.snapshot = LayoutEngine::new().layout_with_images(
@@ -423,6 +435,120 @@ fn touch_pinch_zooms_about_its_midpoint_without_closing_on_release() {
 	touch(&mut app, 1, TouchPhase::Started, (600.0, 400.0));
 	touch(&mut app, 1, TouchPhase::Ended, (600.0, 400.0));
 	assert!(!app.interaction.overlays.viewer_open());
+}
+
+#[test]
+fn wheel_zoom_ignores_larger_vector_rasters() {
+	let mut app = image_reader_like(
+		"![](a.png)",
+		"a.png",
+		true,
+		true,
+		(400, 200),
+		(800, 400),
+	);
+	open(&mut app);
+	let before = viewer_image(&mut app).0;
+	assert_eq!((before.w, before.h), (800., 400.));
+
+	let factor = (0.2f32 * 7.).exp();
+	event(
+		&mut app,
+		WindowEvent::MouseWheel {
+			device_id: DeviceId::dummy(),
+			delta: MouseScrollDelta::LineDelta(0., 7.),
+			phase: TouchPhase::Moved,
+		},
+	);
+	let zoomed = viewer_image(&mut app).0;
+	assert!((zoomed.w - before.w * factor).abs() < 0.01);
+	assert!((zoomed.h - before.h * factor).abs() < 0.01);
+
+	// The page asked for a sharper raster after the zoom. It must not feed
+	// back into the viewer's fitted size.
+	app.readers.session.snapshot.images.entries.insert(
+		"a.png".into(),
+		ImageInfo {
+			version: 2,
+			size: Some((400, 200)),
+			error: None,
+			svg: true,
+		},
+	);
+	app.readers.session.snapshot.images.pixels.insert(
+		"a.png".into(),
+		2,
+		Arc::new(Pixels {
+			width: 1600,
+			height: 800,
+			rgba: vec![255; 1600 * 800 * 4].into(),
+		}),
+	);
+	let stable = viewer_image(&mut app).0;
+	assert_eq!((stable.w, stable.h), (zoomed.w, zoomed.h));
+
+	event(
+		&mut app,
+		WindowEvent::MouseWheel {
+			device_id: DeviceId::dummy(),
+			delta: MouseScrollDelta::LineDelta(0., -7.),
+			phase: TouchPhase::Moved,
+		},
+	);
+	let restored = viewer_image(&mut app).0;
+	assert!((restored.w - before.w).abs() < 0.01);
+	assert!((restored.h - before.h).abs() < 0.01);
+}
+
+#[test]
+fn touch_pinch_ignores_larger_vector_rasters() {
+	let mut app = image_reader_like(
+		"![](a.png)",
+		"a.png",
+		true,
+		true,
+		(400, 200),
+		(800, 400),
+	);
+	open(&mut app);
+	let before = viewer_image(&mut app).0;
+	assert_eq!((before.w, before.h), (800., 400.));
+	touch(&mut app, 1, TouchPhase::Started, (550.0, 400.0));
+	touch(&mut app, 2, TouchPhase::Started, (650.0, 400.0));
+	touch(&mut app, 2, TouchPhase::Moved, (950.0, 400.0));
+	let zoomed = viewer_image(&mut app).0;
+	assert!((zoomed.w - before.w * 4.0).abs() < 0.01);
+	assert!((zoomed.h - before.h * 4.0).abs() < 0.01);
+
+	app.readers.session.snapshot.images.entries.insert(
+		"a.png".into(),
+		ImageInfo {
+			version: 2,
+			size: Some((400, 200)),
+			error: None,
+			svg: true,
+		},
+	);
+	app.readers.session.snapshot.images.pixels.insert(
+		"a.png".into(),
+		2,
+		Arc::new(Pixels {
+			width: 3200,
+			height: 1600,
+			rgba: vec![255; 3200 * 1600 * 4].into(),
+		}),
+	);
+	let stable = viewer_image(&mut app).0;
+	assert_eq!((stable.w, stable.h), (zoomed.w, zoomed.h));
+
+	// Pinching back to the opening distance restores the opening size.
+	touch(&mut app, 2, TouchPhase::Moved, (650.0, 400.0));
+	let restored = viewer_image(&mut app).0;
+	assert!((restored.w - before.w).abs() < 0.01);
+	assert!((restored.h - before.h).abs() < 0.01);
+	touch(&mut app, 2, TouchPhase::Ended, (650.0, 400.0));
+	touch(&mut app, 1, TouchPhase::Ended, (550.0, 400.0));
+	assert!(app.interaction.overlays.viewer_open());
 }
 
 #[test]

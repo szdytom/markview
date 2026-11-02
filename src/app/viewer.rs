@@ -17,8 +17,15 @@ const VIEWER_MARGIN: f32 = 48.0;
 pub(crate) struct Viewer {
 	/// The image's alias, as the page's `Draw::Image` spells it.
 	src: String,
-	/// The raster's pixel size, which caps how far fitting may upscale.
+	/// The size the viewer fits and zooms, fixed when the page's raster is
+	/// known, so later sharpening requests never move the picture.
 	pixels: (f32, f32),
+	/// The image's intrinsic size, which tells a content change from a
+	/// resolution-only re-raster.
+	intrinsic: Option<(u32, u32)>,
+	/// Whether `pixels` came from the page's laid-out rect while the real
+	/// raster was still decoding.
+	provisional: bool,
 	/// The window scale, which puts the pixels in logical units.
 	scale: f32,
 	/// Zoom over the fitted size, `1.0` showing the whole image.
@@ -34,10 +41,18 @@ pub(crate) struct Viewer {
 }
 
 impl Viewer {
-	fn new(src: String, pixels: (f32, f32), scale: f32) -> Self {
+	fn new(
+		src: String,
+		pixels: (f32, f32),
+		intrinsic: Option<(u32, u32)>,
+		decoded: bool,
+		scale: f32,
+	) -> Self {
 		Self {
 			src,
 			pixels,
+			intrinsic,
+			provisional: !decoded,
 			scale,
 			zoom: 1.,
 			pan: (0., 0.),
@@ -47,6 +62,32 @@ impl Viewer {
 		}
 	}
 
+	/// Adopts a first decoded raster or a changed intrinsic size, never a
+	/// sharper copy the viewer's own zoom demand produced.
+	fn refresh(
+		&mut self,
+		pixels: Option<(f32, f32)>,
+		intrinsic: Option<(u32, u32)>,
+		decoded: bool,
+		scale: f32,
+		window: (f32, f32),
+	) {
+		if self.intrinsic != intrinsic {
+			self.intrinsic = intrinsic;
+			if let Some(pixels) = pixels {
+				self.pixels = pixels;
+			}
+			self.provisional = !decoded;
+		} else if self.provisional && decoded {
+			if let Some(pixels) = pixels {
+				self.pixels = pixels;
+			}
+			self.provisional = false;
+		}
+		self.scale = scale;
+		self.pan_by((0., 0.), window);
+	}
+
 	/// The image's alias, as the page's `Draw::Image` spells it.
 	pub(crate) fn src(&self) -> &str {
 		&self.src
@@ -54,8 +95,8 @@ impl Viewer {
 
 	/// The picture's displayed size at the current zoom.
 	fn displayed(&self, window: (f32, f32)) -> (f32, f32) {
-		// Fitting shows everything without upscaling past the pixels the
-		// rasterizer produced, so the fitted size is never blurry.
+		// Fitting shows everything without upscaling past the source pixels
+		// the page already rendered, so the opened size stays sharp.
 		let fit = ((window.0 - VIEWER_MARGIN) / self.pixels.0.max(1.))
 			.min((window.1 - VIEWER_MARGIN) / self.pixels.1.max(1.))
 			.min(1. / self.scale.max(1.));
@@ -201,9 +242,14 @@ pub(crate) struct Model {
 /// The viewer's control-flow transitions.
 pub(crate) enum Message {
 	/// Show `src` over the window, fitted from `pixels` at `scale`.
+	///
+	/// `intrinsic` and `decoded` tell `refresh` whether a later raster is a
+	/// content change or only a sharper copy of the same picture.
 	Open {
 		src: String,
 		pixels: (f32, f32),
+		intrinsic: Option<(u32, u32)>,
+		decoded: bool,
 		scale: f32,
 	},
 	/// Close the viewer, whatever it was showing.
@@ -243,8 +289,15 @@ impl Component for Model {
 
 	fn update(&mut self, message: Message) -> Update<()> {
 		match message {
-			Message::Open { src, pixels, scale } => {
-				self.current = Some(Viewer::new(src, pixels, scale));
+			Message::Open {
+				src,
+				pixels,
+				intrinsic,
+				decoded,
+				scale,
+			} => {
+				self.current =
+					Some(Viewer::new(src, pixels, intrinsic, decoded, scale));
 			}
 			Message::Close => self.current = None,
 			Message::Zoom {
@@ -305,20 +358,21 @@ impl Model {
 	}
 
 	/// Re-fits the picture after decoded pixels or the window scale arrive.
+	///
+	/// Only the first decoded raster and a change of the image's intrinsic
+	/// size may move the fitted geometry. A raster the viewer itself demanded
+	/// at a larger resolution must not feed back into its own size.
 	pub(crate) fn refresh(
 		&mut self,
 		pixels: Option<(f32, f32)>,
+		intrinsic: Option<(u32, u32)>,
+		decoded: bool,
 		scale: f32,
 		window: (f32, f32),
 	) {
-		let Some(viewer) = self.current.as_mut() else {
-			return;
-		};
-		if let Some(pixels) = pixels {
-			viewer.pixels = pixels;
+		if let Some(viewer) = self.current.as_mut() {
+			viewer.refresh(pixels, intrinsic, decoded, scale, window);
 		}
-		viewer.scale = scale;
-		viewer.pan_by((0., 0.), window);
 	}
 
 	/// Drops the press in flight without treating it as a click.

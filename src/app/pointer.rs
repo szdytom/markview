@@ -272,6 +272,12 @@ fn eases(dy: f32) -> bool {
 	dy.is_finite() && dy != 0.0
 }
 
+struct ViewerFit {
+	pixels: (f32, f32),
+	intrinsic: Option<(u32, u32)>,
+	decoded: bool,
+}
+
 impl<P: super::SendEvent> App<P> {
 	pub(super) fn pointer_moved(
 		&mut self,
@@ -969,24 +975,30 @@ impl<P: super::SendEvent> App<P> {
 			.map(|(src, rect, _)| (src.to_owned(), rect))
 	}
 
-	/// The picture's bounds for viewer fitting. A downsampled bitmap reports
-	/// its intrinsic size; a vector reports whichever of the intrinsic and the
-	/// rendered raster is larger. Both keep the viewer from opening a large
-	/// picture at a thumbnail size.
-	fn viewer_pixels(
+	/// The picture's bounds and provenance for viewer fitting. A downsampled
+	/// bitmap reports its intrinsic size; a vector reports the rendered raster
+	/// so an explicitly displayed aspect wins. `intrinsic` and `decoded` let
+	/// the viewer tell a content change from a sharper copy of the same image.
+	fn viewer_fit(
 		images: &markview_layout::image::ImageSnapshot,
 		src: &str,
-	) -> Option<(f32, f32)> {
+	) -> Option<ViewerFit> {
 		let info = images.entries.get(src)?;
-		let decoded = images
-			.pixels
-			.get(src, info.version)
+		let decoded = images.pixels.get(src, info.version);
+		let raster = decoded
+			.as_ref()
 			.map(|pixels| (pixels.width as f32, pixels.height as f32));
-		if info.svg {
-			decoded.or_else(|| info.size.map(|(w, h)| (w as f32, h as f32)))
+		let intrinsic = info.size;
+		let pixels = if info.svg {
+			raster.or_else(|| intrinsic.map(|(w, h)| (w as f32, h as f32)))?
 		} else {
-			info.size.map(|(w, h)| (w as f32, h as f32)).or(decoded)
-		}
+			intrinsic.map(|(w, h)| (w as f32, h as f32)).or(raster)?
+		};
+		Some(ViewerFit {
+			pixels,
+			intrinsic,
+			decoded: decoded.is_some(),
+		})
 	}
 
 	/// Opens the full-size viewer over the image under the cursor, if any.
@@ -1012,16 +1024,19 @@ impl<P: super::SendEvent> App<P> {
 		{
 			return;
 		}
-		// The intrinsic size caps the fit; the decoded raster may be smaller
-		// because it was downsampled for the reading column. The viewer's own
-		// demand then asks for the larger raster it needs. A picture still
-		// decoding fits its laid-out rect instead.
-		let pixels = Self::viewer_pixels(images, &src)
-			.unwrap_or((rect.w.max(1.), rect.h.max(1.)));
+		// The fitted size is fixed once the page's raster is known. A picture
+		// still decoding fits its laid-out rect first and adopts the decoded
+		// raster when it arrives.
+		let (pixels, intrinsic, decoded) = Self::viewer_fit(images, &src)
+			.map_or(((rect.w.max(1.), rect.h.max(1.)), None, false), |fit| {
+				(fit.pixels, fit.intrinsic, fit.decoded)
+			});
 		let scale = self.dimensions().2;
 		self.interaction.overlays.viewer.send(ViewerMessage::Open {
 			src,
 			pixels,
+			intrinsic,
+			decoded,
 			scale,
 		});
 		self.cancel_gestures();
@@ -1055,9 +1070,11 @@ impl<P: super::SendEvent> App<P> {
 			self.interaction.overlays.viewer.send(ViewerMessage::Close);
 			return;
 		}
-		let pixels = Self::viewer_pixels(images, &src);
+		let fit = Self::viewer_fit(images, &src);
 		self.interaction.overlays.viewer.refresh(
-			pixels,
+			fit.as_ref().map(|fit| fit.pixels),
+			fit.as_ref().and_then(|fit| fit.intrinsic),
+			fit.is_some_and(|fit| fit.decoded),
 			scale,
 			(width, height),
 		);

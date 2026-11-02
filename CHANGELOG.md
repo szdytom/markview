@@ -38,6 +38,7 @@ at the same level, without `[brackets]`.
 ### Fixed
 
 - Keep the Ctrl+P quick-open query independent from the start page's quick access search.
+- Keep image-viewer zoom stable as sharper rasters arrive, so wheel and pinch zoom return to the opening size.
 
 ## 0.4.4 - 2026-11-02
 

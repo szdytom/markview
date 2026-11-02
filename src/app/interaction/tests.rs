@@ -1866,6 +1866,8 @@ fn a_scrollbar_a_selection_or_a_viewer_drag_owns_the_pan_input() {
 		.send(crate::app::viewer::Message::Open {
 			src: String::new(),
 			pixels: (10.0, 10.0),
+			intrinsic: None,
+			decoded: true,
 			scale: 1.0,
 		});
 	app.interaction

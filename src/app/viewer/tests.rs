@@ -9,6 +9,8 @@ fn viewer_fits_without_upscaling_and_zoom_keeps_the_pointer_spot() {
 	let mut viewer = Viewer {
 		src: "mermaid:x".into(),
 		pixels: (1000., 4000.),
+		intrinsic: None,
+		provisional: false,
 		scale: 2.,
 		zoom: 1.,
 		pan: (0., 0.),
@@ -77,7 +79,8 @@ fn viewer_fits_without_upscaling_and_zoom_keeps_the_pointer_spot() {
 #[test]
 fn pinch_clamps_after_combining_zoom_and_midpoint_pan() {
 	let window = (1200., 800.);
-	let mut viewer = Viewer::new("picture".into(), (400., 400.), 1.);
+	let mut viewer =
+		Viewer::new("picture".into(), (400., 400.), None, true, 1.);
 	viewer.zoom = 4.;
 	viewer.pan = (150., 0.);
 	viewer.pinch(0.8, (600., 400.), (-100., 0.), window);
@@ -85,110 +88,66 @@ fn pinch_clamps_after_combining_zoom_and_midpoint_pan() {
 	assert_eq!(viewer.rect(window).x, -20.);
 }
 
-/// Wheeling in asks for a raster the size of the picture on screen, which is
-/// what the viewer then fits, so the loop from rect to raster and back has to
-/// keep the proportions at every zoom level, past the cap included. Each level
-/// feeds the raster back several times, the way redraws keep arriving while
-/// the zoom stands still.
+/// Wheeling in asks for a raster the size of the picture on screen. The
+/// viewer must not fit that raster back: otherwise every sharper copy moves
+/// the picture, and wheeling out cannot return to the size it opened at.
 #[test]
-fn zooming_past_the_raster_cap_keeps_the_diagrams_proportions() {
+fn a_sharper_vector_raster_never_moves_the_fitted_picture() {
 	let window = (1200., 800.);
-	// A 4:3 diagram the page shows at 800x600 device pixels.
-	let mut viewer = Viewer {
-		src: "mermaid:x".into(),
-		pixels: (800., 600.),
-		scale: 2.,
-		zoom: 1.,
-		pan: (0., 0.),
-		grab: None,
-		pressed_at: None,
-		dragged: false,
-	};
-	for zoom in [1., 2., 4., 8., 16.] {
-		viewer.zoom = zoom;
-		let mut last = (0, 0);
-		for update in 0..5 {
-			let rect = viewer.rect(window);
-			assert!(
-				(rect.w / rect.h - 4. / 3.).abs() < 0.01,
-				"{rect:?} at zoom {zoom} update {update}"
-			);
-			// The renderer asks for the rect at the device scale, capped; the
-			// viewer fits whatever raster comes back.
-			let size =
-				raster_size(rect.w * viewer.scale, rect.h * viewer.scale);
-			// Wheeling in may sharpen the raster in doubling steps, but the
-			// updates settle instead of changing it forever.
-			if update > 2 {
-				assert_eq!(size, last, "zoom {zoom} update {update}");
-			}
-			last = size;
-			viewer.pixels = (size.0 as f32, size.1 as f32);
-		}
-	}
-	// Wheeling back to the default size restores the proportions rather than
-	// keeping the capped raster's.
-	viewer.zoom = 1.;
-	for update in 0..3 {
-		let rect = viewer.rect(window);
-		assert!(
-			(rect.w / rect.h - 4. / 3.).abs() < 0.01,
-			"{rect:?} update {update}"
+	let scale = 2.;
+	let intrinsic = Some((800, 600));
+	let mut viewer =
+		Viewer::new("mermaid:x".into(), (800., 600.), intrinsic, true, scale);
+	let fitted = viewer.rect(window);
+	assert_eq!((fitted.w, fitted.h), (400., 300.));
+
+	viewer.zoom_at(2., (600., 400.), window);
+	let zoomed = viewer.rect(window);
+	assert_eq!((zoomed.w, zoomed.h), (800., 600.));
+	for _ in 0..5 {
+		let size = raster_size(zoomed.w * scale, zoomed.h * scale);
+		viewer.refresh(
+			Some((size.0 as f32, size.1 as f32)),
+			intrinsic,
+			true,
+			scale,
+			window,
 		);
-		let size = raster_size(rect.w * viewer.scale, rect.h * viewer.scale);
-		viewer.pixels = (size.0 as f32, size.1 as f32);
+		let rect = viewer.rect(window);
+		assert_eq!((rect.w, rect.h), (zoomed.w, zoomed.h));
+	}
+
+	viewer.zoom_at(0.5, (600., 400.), window);
+	for _ in 0..5 {
+		let rect = viewer.rect(window);
+		let size = raster_size(rect.w * scale, rect.h * scale);
+		viewer.refresh(
+			Some((size.0 as f32, size.1 as f32)),
+			intrinsic,
+			true,
+			scale,
+			window,
+		);
+		let rect = viewer.rect(window);
+		assert!((rect.w - fitted.w).abs() < 0.01);
+		assert!((rect.h - fitted.h).abs() < 0.01);
 	}
 }
 
-/// Repeated updates at a fixed zoom have to settle on one raster that keeps
-/// the picture's proportions. The viewer fits whatever raster arrives and the
-/// renderer asks for the fit back, so a sizing rule that shaves a sub-pixel
-/// per round trip re-rasterizes forever and walks the aspect away: 150%
-/// display scaling at 8x zoom used to shed a pixel of height per update.
 #[test]
-fn repeated_updates_at_a_fixed_zoom_settle_on_the_original_proportions() {
-	for window in [(1200., 800.), (1280., 720.)] {
-		let mut viewer = Viewer {
-			src: "mermaid:x".into(),
-			pixels: (800., 600.),
-			scale: 1.5,
-			zoom: 8.,
-			pan: (0., 0.),
-			grab: None,
-			pressed_at: None,
-			dragged: false,
-		};
-		let mut last = (0, 0);
-		for update in 0..8 {
-			let rect = viewer.rect(window);
-			let size =
-				raster_size(rect.w * viewer.scale, rect.h * viewer.scale);
-			assert!(
-				(size.0 as f32 / size.1 as f32 - 4. / 3.).abs() < 0.01,
-				"{size:?} at {window:?} update {update}"
-			);
-			if update > 0 {
-				assert_eq!(size, last, "{window:?} update {update}");
-			}
-			last = size;
-			viewer.pixels = (size.0 as f32, size.1 as f32);
-		}
-		// Wheeling back out restores the proportions rather than keeping the
-		// capped raster's, and settles there too.
-		viewer.zoom = 1.;
-		for update in 0..4 {
-			let rect = viewer.rect(window);
-			let size =
-				raster_size(rect.w * viewer.scale, rect.h * viewer.scale);
-			assert!(
-				(size.0 as f32 / size.1 as f32 - 4. / 3.).abs() < 0.01,
-				"{size:?} at {window:?} zoomed out update {update}"
-			);
-			if update > 1 {
-				assert_eq!(size, last, "{window:?} zoomed out update {update}");
-			}
-			last = size;
-			viewer.pixels = (size.0 as f32, size.1 as f32);
-		}
-	}
+fn a_first_decoded_raster_sets_the_fit_and_later_sharpening_does_not() {
+	let window = (1200., 800.);
+	let intrinsic = Some((400, 200));
+	let mut viewer =
+		Viewer::new("vector:x".into(), (400., 200.), intrinsic, false, 1.);
+	assert_eq!((viewer.rect(window).w, viewer.rect(window).h), (400., 200.));
+
+	viewer.refresh(Some((800., 400.)), intrinsic, true, 1., window);
+	assert_eq!((viewer.rect(window).w, viewer.rect(window).h), (800., 400.));
+	viewer.refresh(Some((1600., 800.)), intrinsic, true, 1., window);
+	assert_eq!((viewer.rect(window).w, viewer.rect(window).h), (800., 400.));
+
+	// A real content change carries a new intrinsic size and may move the fit.
+	viewer.refresh(Some((600., 300.)), Some((300, 150)), true, 1., window);
+	assert_eq!((viewer.rect(window).w, viewer.rect(window).h), (600., 300.));
 }
