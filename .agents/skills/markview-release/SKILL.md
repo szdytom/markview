@@ -20,6 +20,9 @@ If any of these preconditions are not met, stop and report the problem to the us
 
 1. **Version.** Set `version` in `[workspace.package]` in `Cargo.toml`, then
    `cargo update --workspace --offline` to update the workspace members in `Cargo.lock`.
+   Refresh the separate fuzz workspace too with
+   `cargo update --workspace --offline --manifest-path fuzz/Cargo.toml`, so its
+   lockfile does not drift behind the new version.
    Discover all publishable packages in the `web/` pnpm workspace and set their
    `package.json` versions to the same release version; skip private packages.
    Then run `pnpm --dir web install --lockfile-only --offline` to refresh the pnpm lockfile if needed.
