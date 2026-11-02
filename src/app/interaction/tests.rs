@@ -450,6 +450,11 @@ fn overflow_thumb_hover_repaints_without_thickening() {
 
 #[test]
 fn scrollbar_visibility_keeps_the_window_edge_cursor_current() {
+	// Only the Linux frame resizes through the client area, so only it hands
+	// the edge back as a cursor.
+	if !markview_platform::client_resize() {
+		return;
+	}
 	let (mut app, _) = reader(&"Body line.\n\n".repeat(100), 760.0);
 	let width = app.dimensions().0;
 	let point = (f64::from(width - 4.0), 400.0);
