@@ -78,10 +78,6 @@ pub struct View<'a> {
 	pub theme: Theme,
 	pub horizontal: &'a HashMap<(usize, usize), f32>,
 	pub hovered_link: Option<markview_layout::scene::LinkRef<'a>>,
-	/// The wide block whose horizontal bar the pointer is over. Tracked by the
-	/// application, which owns the redraw, so the bar thickens on hover even
-	/// though pointer motion elsewhere does not repaint.
-	pub hovered_overflow: Option<(usize, usize)>,
 	/// The wide block whose horizontal bar the reader is currently dragging.
 	pub held_overflow: Option<(usize, usize)>,
 }

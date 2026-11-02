@@ -73,7 +73,6 @@ impl<P: super::SendEvent> App<P> {
 				.pointer
 				.hover()
 				.map(|link| link.link_ref()),
-			hovered_overflow: self.interaction.pointer.hover_overflow(),
 			held_overflow: self.interaction.pointer.scrollbar().and_then(
 				|drag| match drag.target {
 					ScrollbarAxis::Overflow { block, overflow } => {

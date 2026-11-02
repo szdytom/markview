@@ -156,7 +156,6 @@ fn settings_and_selection_frame() -> Result<()> {
 		let view = View {
 			hovered_link: None,
 			held_overflow: None,
-			hovered_overflow: None,
 			width: (width * 1.25) as u32,
 			height: (height * 1.25) as u32,
 			scale: 1.25,
@@ -344,7 +343,6 @@ fn notice_strip_and_confirmation_frames() -> Result<()> {
 			selection: None,
 			revision: 1,
 			hovered_link: None,
-			hovered_overflow: None,
 			held_overflow: None,
 		};
 		let target =
@@ -618,7 +616,6 @@ fn tab_strip_frames_clip_overflow_at_fractional_dpi() -> Result<()> {
 			selection: None,
 			revision: 0,
 			hovered_link: None,
-			hovered_overflow: None,
 			held_overflow: None,
 		};
 		let snapshot = Default::default();
@@ -734,7 +731,6 @@ fn sidebar_icon_has_a_solid_left_pane() -> Result<()> {
 			selection: None,
 			revision: 0,
 			hovered_link: None,
-			hovered_overflow: None,
 			held_overflow: None,
 		};
 		let image = crate::test_support::render_goldens::capture(
@@ -804,7 +800,6 @@ fn icons_keep_their_optical_centre_at_fractional_dpi() -> Result<()> {
 			selection: None,
 			revision: 0,
 			hovered_link: None,
-			hovered_overflow: None,
 			held_overflow: None,
 		};
 		let overlay = draw_controls(
@@ -1053,7 +1048,6 @@ fn export_panel_frames() -> Result<()> {
 			theme,
 			horizontal: &HashMap::new(),
 			hovered_link: None,
-			hovered_overflow: None,
 			held_overflow: None,
 		};
 		let target = renderer.offscreen(width as u32, height as u32);
@@ -1974,7 +1968,6 @@ fn redesigned_chrome_frames() -> Result<()> {
 						selection: None,
 						revision: 1,
 						hovered_link: None,
-						hovered_overflow: None,
 						held_overflow: None,
 					};
 					let target = renderer.offscreen(view.width, view.height);
@@ -2126,7 +2119,6 @@ fn button_feedback_frames() -> Result<()> {
 				selection: None,
 				revision: 0,
 				hovered_link: None,
-				hovered_overflow: None,
 				held_overflow: None,
 			};
 			let target = renderer.offscreen(view.width, view.height);
@@ -2228,7 +2220,6 @@ fn cjk_ui_weight_comparison() -> Result<()> {
 				selection: None,
 				revision: 0,
 				hovered_link: None,
-				hovered_overflow: None,
 				held_overflow: None,
 			};
 			let target = renderer.offscreen(view.width, view.height);
@@ -2331,7 +2322,6 @@ fn outline_drawer_frames() -> Result<()> {
 			theme: settings.theme,
 			horizontal: &horizontal,
 			hovered_link: None,
-			hovered_overflow: None,
 			held_overflow: None,
 		};
 		let target = renderer.offscreen(width as u32, height as u32);
@@ -2436,7 +2426,6 @@ fn preview_card_frame() -> Result<()> {
 				selection: None,
 				revision: 0,
 				hovered_link: None,
-				hovered_overflow: None,
 				held_overflow: None,
 			};
 			let background = Draw::Rect(

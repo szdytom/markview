@@ -349,29 +349,22 @@ impl Stylesheet {
 			_ => Color(0).rgba(),
 		}
 	}
-	/// Thicknesses of the reader's vertical scrollbar.
+	/// Thickness of the reader's vertical scrollbar.
 	pub fn scrollbar_metrics(&self) -> ScrollbarMetrics {
 		let rule = self.rule(Condition::Scrollbar);
 		ScrollbarMetrics {
 			thickness: rule
 				.thickness
 				.unwrap_or(ScrollbarMetrics::DOCUMENT.thickness),
-			thickness_hover: rule
-				.thickness_hover
-				.unwrap_or(ScrollbarMetrics::DOCUMENT.thickness_hover),
 		}
 	}
-	/// Thicknesses of a wide block's horizontal scrollbar. Setting both fields
-	/// to the same value disables the thickening on hover.
+	/// Thickness of a wide block's horizontal scrollbar.
 	pub fn overflow_scrollbar_metrics(&self) -> ScrollbarMetrics {
 		let rule = self.rule(Condition::Scrollbar);
 		ScrollbarMetrics {
 			thickness: rule
 				.overflow_thickness
 				.unwrap_or(ScrollbarMetrics::OVERFLOW.thickness),
-			thickness_hover: rule
-				.overflow_thickness_hover
-				.unwrap_or(ScrollbarMetrics::OVERFLOW.thickness_hover),
 		}
 	}
 	/// Space an overflowing block reserves below its content for its

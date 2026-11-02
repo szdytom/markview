@@ -69,7 +69,7 @@ const WRITERS: &[&str] = &[
 	// a direct write from another module still counts, while the model's own
 	// `self.current` writes stay out.
 	"overlays.viewer.current",
-	// `pointer::State` owns the twelve pointer fields; the observation names
+	// `pointer::State` owns the eleven pointer fields; the observation names
 	// the path through `InteractionState` so a direct write in any other
 	// module still counts, while writes inside the owner stay out.
 	"pointer.pointer_down",
@@ -80,7 +80,6 @@ const WRITERS: &[&str] = &[
 	"pointer.cursor",
 	"pointer.hover",
 	"pointer.hover_image",
-	"pointer.hover_overflow",
 	"pointer.scrollbar",
 	"pointer.last_click",
 	"pointer.wheel",

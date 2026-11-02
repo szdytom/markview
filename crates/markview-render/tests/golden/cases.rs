@@ -308,7 +308,7 @@ pub fn cases() -> Vec<Case> {
 	scrollbars.name = "mvss-scrollbars".into();
 	scrollbars.variant = "scrolled";
 	scrollbars.width = 320.;
-	scrollbars.rules = "[[rule]]\nwhen=['scrollbar']\ntrack='#B4C4AF'\nthumb='#527760'\nthumb_hover='#BB3850'\noverflow_thickness=4\noverflow_thickness_hover=10\ngutter=15".into();
+	scrollbars.rules = "[[rule]]\nwhen=['scrollbar']\ntrack='#B4C4AF'\nthumb='#527760'\nthumb_hover='#BB3850'\noverflow_thickness=10\ngutter=15".into();
 	cases.push(scrollbars);
 	for (platform, device) in [
 		(Media::Linux, Media::Desktop),

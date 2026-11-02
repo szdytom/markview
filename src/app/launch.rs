@@ -241,7 +241,6 @@ fn render_preview(args: LaunchOptions) -> Result<()> {
 		selection: None,
 		hovered_link: None,
 		held_overflow: None,
-		hovered_overflow: None,
 		scroll: args.scroll,
 		horizontal: &horizontal,
 		revision: 0,

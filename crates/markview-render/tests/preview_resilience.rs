@@ -69,7 +69,6 @@ fn view<'a>(
 		selection: None,
 		revision: 1,
 		hovered_link: None,
-		hovered_overflow: None,
 		held_overflow: None,
 	}
 }

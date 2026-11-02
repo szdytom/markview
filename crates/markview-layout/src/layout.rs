@@ -19,9 +19,8 @@ pub(crate) use table::Table;
 mod tests;
 pub use crate::scene::{
 	BlockLayout, Draw, Glyph, HeadingAnchor, LayoutSnapshot, LinkRect,
-	Overflow, Paint, PlacedBlock, Rect, SCROLLBAR_GUTTER,
-	SCROLLBAR_HOVER_THICKNESS, SCROLLBAR_MIN_THUMB, SCROLLBAR_THICKNESS,
-	Scrollbar, ScrollbarMetrics, Viewport,
+	Overflow, Paint, PlacedBlock, Rect, SCROLLBAR_GUTTER, SCROLLBAR_MIN_THUMB,
+	SCROLLBAR_THICKNESS, Scrollbar, ScrollbarMetrics, Viewport,
 };
 pub use crate::shaping::TextShaper;
 use crate::{

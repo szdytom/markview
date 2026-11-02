@@ -97,7 +97,6 @@ fn view<'a>(
 		theme: Theme::Light,
 		horizontal,
 		hovered_link: None,
-		hovered_overflow: None,
 		held_overflow: None,
 	}
 }

@@ -1036,7 +1036,7 @@ impl<'a> Chrome<'a> {
 				.scrollbar()
 				.is_some_and(|drag| drag.target == ScrollbarAxis::Document);
 			let (x, y) = self.interaction.pointer.cursor();
-			let (track, thumb) = bar.bars(false);
+			let (track, thumb) = bar.bars();
 			out.push(Draw::Rect(
 				track,
 				Paint::Styled(Condition::Scrollbar, C::Track),

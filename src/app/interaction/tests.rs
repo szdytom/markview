@@ -308,6 +308,7 @@ fn reading_viewport_meets_chrome_and_scrollbar_edges() {
 			app.readers.session.search.open = search;
 			let geometry = app.view_geometry();
 			let clip = geometry.clip();
+			app.show_document_scrollbar(Instant::now());
 			let bar = app.document_scrollbar().unwrap();
 			assert_eq!(clip.y, super::super::chrome::content_top(notice));
 			assert_eq!(
@@ -325,47 +326,126 @@ fn reading_viewport_meets_chrome_and_scrollbar_edges() {
 }
 
 #[test]
-fn document_scrollbar_keeps_its_edge_inset_and_width_while_dragging() {
+fn document_scrollbar_hugs_the_right_edge_and_keeps_its_width_while_dragging() {
 	use markview_layout::style::Stylesheet;
 	let (mut app, _) = reader(&"Body line.\n\n".repeat(100), 760.0);
 	app.preferences.values.stylesheet = Arc::new(
 		Stylesheet::parse(
-			"format_version=2\nversion=1\n[[rule]]\nwhen=['scrollbar']\nthickness=6.0\nthickness_hover=14.0",
+			"format_version=2\nversion=1\n[[rule]]\nwhen=['scrollbar']\nthickness=6.0",
 		)
 		.unwrap(),
 	);
 	let width = app.dimensions().0;
-	let inset = if markview_platform::touch_inset() {
-		0.0
-	} else {
-		6.0
-	};
+	app.show_document_scrollbar(Instant::now());
 	let bar = app.document_scrollbar().unwrap();
-	let (track, thumb) = bar.bars(false);
+	let (track, thumb) = bar.bars();
 	let rect = |r: crate::layout::Rect| (r.x, r.y, r.w, r.h);
 	assert_eq!(track.w, 6.0);
-	assert_eq!(track.x + track.w, width - inset);
+	assert_eq!(track.x + track.w, width);
 	assert_eq!(rect(bar.track), rect(track));
-	let (hovered_track, hovered_thumb) = bar.bars(true);
-	assert_eq!(rect(hovered_track), rect(track));
-	assert_eq!(rect(hovered_thumb), rect(thumb));
-	for x in [track.x, track.x + track.w] {
-		assert!(app.frame_layout().resize_at(x, thumb.y + 10.0).is_none());
-	}
-	assert!(!bar.hit(track.x - 1.0, thumb.y + 10.0));
-	assert!(!bar.hit(track.x + track.w + 1.0, thumb.y + 10.0));
+	// Hovering no longer thickens the bar.
 	app.interaction
 		.pointer
 		.move_to((thumb.x + thumb.w / 2.0, thumb.y + 10.0));
+	assert_eq!(rect(bar.bars().0), rect(track));
+	assert_eq!(rect(bar.bars().1), rect(thumb));
+	assert!(
+		app.frame_layout()
+			.resize_at(track.x, thumb.y + 10.0)
+			.is_none()
+	);
+	assert!(!bar.hit(track.x - 1.0, thumb.y + 10.0));
+	assert!(!bar.hit(track.x + track.w + 1.0, thumb.y + 10.0));
 	assert!(app.begin_scrollbar_drag());
 	let (x, y) = app.interaction.pointer.cursor();
 	app.interaction.pointer.move_to((x, y + 100.0));
 	app.drag_scrollbar();
 	assert!(app.readers.session.scrolling.offset > 0.0);
 	let (dragged_track, dragged_thumb) =
-		app.document_scrollbar().unwrap().bars(true);
+		app.document_scrollbar().unwrap().bars();
 	assert_eq!(rect(dragged_track), rect(track));
 	assert_eq!((dragged_thumb.x, dragged_thumb.w), (thumb.x, thumb.w));
+}
+
+#[test]
+fn document_scrollbar_appears_only_on_motion_over_the_reader() {
+	let (mut app, _) = reader(&"Body line.\n\n".repeat(100), 760.0);
+	assert!(app.document_scrollbar().is_none());
+	// Motion in the toolbar leaves it hidden.
+	app.pointer_moved(PhysicalPosition::new(500.0, 10.0));
+	assert!(app.document_scrollbar().is_none());
+	// Motion in the reading area reveals it.
+	app.pointer_moved(PhysicalPosition::new(500.0, 400.0));
+	assert!(app.document_scrollbar().is_some());
+	// Moving back to the toolbar puts it away at once.
+	app.pointer_moved(PhysicalPosition::new(500.0, 10.0));
+	assert!(app.document_scrollbar().is_none());
+	// Without further motion it hides when its linger expires.
+	app.pointer_moved(PhysicalPosition::new(500.0, 400.0));
+	let until = app.scrollbar_visible_until.unwrap();
+	app.scrollbar_tick(until);
+	assert!(app.document_scrollbar().is_none());
+}
+
+#[test]
+fn overflow_thumb_hover_repaints_without_thickening() {
+	let long = "x".repeat(400);
+	let (mut app, _) = reader(
+		&format!("```text\n{long}\n```\n\n```text\n{long}\n```\n"),
+		240.0,
+	);
+	let blocks: Vec<_> = app
+		.readers
+		.session
+		.snapshot
+		.blocks
+		.iter()
+		.enumerate()
+		.filter(|(_, block)| !block.layout.overflow.is_empty())
+		.map(|(index, _)| index)
+		.take(2)
+		.collect();
+	assert_eq!(blocks.len(), 2, "both long lines overflow");
+	let first = app.overflow_scrollbar(blocks[0], 0).unwrap();
+	let second = app.overflow_scrollbar(blocks[1], 0).unwrap();
+	let empty = (first.track.x + first.track.w - 1.0, first.thumb.y + 1.0);
+	let first_thumb = (first.thumb.x + 1.0, first.thumb.y + 1.0);
+	let second_thumb = (second.thumb.x + 1.0, second.thumb.y + 1.0);
+	assert!(first.on_thumb(first_thumb.0, first_thumb.1));
+	assert!(!first.on_thumb(empty.0, empty.1));
+	assert!(second.on_thumb(second_thumb.0, second_thumb.1));
+	assert!(
+		app.overflow_scrollbar_at(second_thumb.0, second_thumb.1)
+			.is_some()
+	);
+	app.interaction.pointer.move_to(empty);
+	assert!(app.pointer_move_repaints(first_thumb, false));
+	app.interaction.pointer.move_to(first_thumb);
+	assert!(app.pointer_move_repaints(empty, false));
+	app.interaction.pointer.move_to(second_thumb);
+	assert!(app.pointer_move_repaints(first_thumb, false));
+}
+
+#[test]
+fn scrollbar_visibility_keeps_the_window_edge_cursor_current() {
+	let (mut app, _) = reader(&"Body line.\n\n".repeat(100), 760.0);
+	let width = app.dimensions().0;
+	let point = (f64::from(width - 4.0), 400.0);
+	app.pointer_moved(PhysicalPosition::new(point.0, point.1));
+	assert!(app.document_scrollbar().is_some());
+	assert_ne!(
+		app.frame_cursor(),
+		Some(winit::window::CursorIcon::EwResize),
+		"the visible bar owns the edge"
+	);
+	let until = app.scrollbar_visible_until.unwrap();
+	app.scrollbar_tick(until);
+	assert!(app.document_scrollbar().is_none());
+	assert_eq!(
+		app.frame_cursor(),
+		Some(winit::window::CursorIcon::EwResize),
+		"the hidden bar gives the edge back"
+	);
 }
 
 #[test]
@@ -380,7 +460,7 @@ fn leaving_a_folder_sidebar_repaints_its_hover() {
 	app.folder.tree = Some(Tree::read(dir.path().into()).unwrap());
 	app.set_folder_open(true);
 	app.advance_drawers(Instant::now() + std::time::Duration::from_secs(1));
-	let (_, thumb) = app.folder_bar().unwrap().bars(false);
+	let (_, thumb) = app.folder_bar().unwrap().bars();
 	let hover = (thumb.x + thumb.w / 2.0, thumb.y + thumb.h / 2.0);
 	app.interaction.pointer.move_to(hover);
 	assert!(
@@ -414,7 +494,9 @@ fn a_wide_document_scrollbar_repaints_from_its_whole_track() {
 		.unwrap(),
 	);
 	let width = app.dimensions().0;
-	let (track, _) = app.document_scrollbar().unwrap().bars(false);
+	app.show_document_scrollbar(Instant::now());
+	let (track, _) = app.document_scrollbar().unwrap().bars();
+	assert_eq!(track.x + track.w, width);
 	let hover = (track.x + 1.0, track.y + 10.0);
 	let reading = (500.0, 400.0);
 	assert!(
@@ -468,7 +550,6 @@ fn an_idle_footer_names_the_document_and_offers_its_whole_path() {
 			id: LinkId::Inline(0),
 		}),
 		None,
-		None,
 	);
 	assert!(path_button(&mut app).is_none());
 	app.interaction.pointer.clear_hover();
@@ -513,7 +594,6 @@ fn scrolled_content_paints_to_both_viewport_edges() -> anyhow::Result<()> {
 					selection: None,
 					revision: 1,
 					hovered_link: None,
-					hovered_overflow: None,
 					held_overflow: None,
 				};
 				let target = renderer.offscreen(view.width, view.height);
@@ -1483,7 +1563,7 @@ fn grabbing_the_panel_thumb_stops_its_ease() {
 		},
 	);
 	assert!(app.preferences.settings_scroll().animating());
-	let (_, thumb) = app.panel_bar().expect("the page scrolls").bars(false);
+	let (_, thumb) = app.panel_bar().expect("the page scrolls").bars();
 	app.interaction
 		.pointer
 		.move_to((thumb.x + thumb.w / 2.0, thumb.y + thumb.h / 2.0));
@@ -2472,8 +2552,9 @@ fn only_window_layout_changes_replace_the_saved_hint_until_reverted() {
 fn document_thumb_drag_cancels_restoration_during_reflow() {
 	let (mut app, document) = reader(&"Paragraph.\n\n".repeat(200), 760.0);
 	let full = app.readers.session.snapshot.clone();
+	app.show_document_scrollbar(Instant::now());
 	let bar = app.document_scrollbar().unwrap();
-	let (_, thumb) = bar.bars(false);
+	let (_, thumb) = bar.bars();
 	for loading in [false, true] {
 		let session = &mut app.readers.session;
 		session.saved_reading = None;
@@ -2548,7 +2629,6 @@ fn opening_a_panel_cancels_the_press_and_hover() {
 			id: LinkId::Inline(0),
 		}),
 		Some("picture.png".into()),
-		Some((0, 0)),
 	);
 
 	app.action(Command::Chrome(ChromeCommand::Settings));
@@ -2560,5 +2640,4 @@ fn opening_a_panel_cancels_the_press_and_hover() {
 	assert!(app.interaction.pointer.scrollbar().is_none());
 	assert!(app.interaction.pointer.hover().is_none());
 	assert!(app.interaction.pointer.hover_image().is_none());
-	assert!(app.interaction.pointer.hover_overflow().is_none());
 }

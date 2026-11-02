@@ -345,7 +345,6 @@ pub(crate) fn draw_tile(
 		theme,
 		horizontal: &horizontal,
 		hovered_link: None,
-		hovered_overflow: None,
 		held_overflow: None,
 	};
 	let target = renderer.offscreen(plan.width_px, tile.height_px);

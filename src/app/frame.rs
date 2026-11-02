@@ -12,6 +12,8 @@ pub(super) const CONTROL_SIZE: f32 = 32.0;
 pub(super) const CONTROL_GAP: f32 = 4.0;
 const RIGHT_INSET: f32 = 8.0;
 const CAPTION_WIDTH: f32 = 3.0 * CONTROL_SIZE + 2.0 * CONTROL_GAP;
+/// The outer strip of a visible scrollbar that still resizes the window.
+const SCROLLBAR_RESIZE_EDGE: f32 = 2.0;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum Caption {
@@ -62,6 +64,9 @@ pub(crate) struct Layout {
 	pub drag: Rect,
 	pub width: f32,
 	pub height: f32,
+	/// The document scrollbar, while visible, whose grab area defers to the
+	/// reader instead of the window's resize edge.
+	pub scrollbar: Option<Rect>,
 }
 impl Layout {
 	pub fn new(
@@ -135,7 +140,12 @@ impl Layout {
 			drag,
 			width,
 			height,
+			scrollbar: None,
 		}
+	}
+	pub fn with_scrollbar(mut self, scrollbar: Option<Rect>) -> Self {
+		self.scrollbar = scrollbar;
+		self
 	}
 	pub fn with_left_inset(mut self, inset: f32) -> Self {
 		self.left_inset = inset;
@@ -247,10 +257,9 @@ impl Layout {
 	pub fn resize_at(self, x: f32, y: f32) -> Option<ResizeDirection> {
 		if self.maximized
 			|| self.fullscreen
-			|| x < 0.0
-			|| y < 0.0
-			|| x > self.width
-			|| y > self.height
+			|| !(0.0..=self.width).contains(&x)
+			|| !(0.0..=self.height).contains(&y)
+			|| self.scrollbar_owns(x, y)
 		{
 			return None;
 		}
@@ -269,6 +278,12 @@ impl Layout {
 			(_, _, _, true) => Some(ResizeDirection::South),
 			_ => None,
 		}
+	}
+	/// A visible document bar owns its grab area, leaving only a thin outer
+	/// strip for the window's east resize edge.
+	fn scrollbar_owns(self, x: f32, y: f32) -> bool {
+		x < self.width - SCROLLBAR_RESIZE_EDGE
+			&& self.scrollbar.is_some_and(|bar| bar.contains(x, y))
 	}
 }
 
@@ -301,6 +316,9 @@ impl<P: super::SendEvent> App<P> {
 			self.readers.entries().len(),
 		);
 		layout = layout.with_tab_end(tab_end);
+		layout = layout.with_scrollbar(
+			self.document_scrollbar().map(|scrollbar| scrollbar.track),
+		);
 		if self.tab_strip.phone {
 			layout.new_page = None;
 		}
@@ -330,6 +348,7 @@ impl<P: super::SendEvent> App<P> {
 					self.readers.entries().len(),
 				),
 			)));
+			self.native_scrollbar.set(layout.scrollbar);
 		}
 	}
 	/// Window input precedes viewer, text-field and document input.
@@ -476,6 +495,7 @@ impl<P: super::SendEvent> App<P> {
 pub(super) fn native_hit_test(
 	style: WindowLayout,
 	tabs: Option<(f32, f32)>,
+	scrollbar: Option<Rect>,
 	metrics: markview_platform::FrameMetrics,
 	x: f32,
 	y: f32,
@@ -492,6 +512,7 @@ pub(super) fn native_hit_test(
 	let layout = tabs.map_or(layout, |(inset, end)| {
 		layout.with_left_inset(inset).with_tab_end(end)
 	});
+	let layout = layout.with_scrollbar(scrollbar);
 	if let Some(edge) = layout.resize_at(x, y) {
 		HitTest::Resize(edge)
 	} else if layout.caption_at(x, y) == Some(Caption::Expand) {
@@ -606,6 +627,7 @@ mod tests {
 					native_hit_test(
 						style,
 						Some((inset, inset + 100.)),
+						None,
 						metrics,
 						inset - 10.,
 						20.
@@ -616,6 +638,7 @@ mod tests {
 					native_hit_test(
 						style,
 						Some((inset, inset + 100.)),
+						None,
 						metrics,
 						layout.drag.x + 10.,
 						20.
@@ -652,7 +675,14 @@ mod tests {
 				)
 				.with_tab_end(180.0);
 				let hit = |x, y| {
-					native_hit_test(style, Some((0., 180.0)), metrics, x, y)
+					native_hit_test(
+						style,
+						Some((0., 180.0)),
+						None,
+						metrics,
+						x,
+						y,
+					)
 				};
 				assert_eq!(
 					hit(1.0, 1.0),
@@ -673,10 +703,37 @@ mod tests {
 					hit(expand.x + expand.w / 2.0, 20.0),
 					HitTest::Maximize
 				);
+				// A visible scrollbar owns its grab area, except for the thin
+				// outer strip that still resizes the window.
+				let scrollbar = Rect {
+					x: metrics.width - 8.0,
+					y: 40.0,
+					w: 8.0,
+					h: 400.0,
+				};
+				let hit_bar = |x, y| {
+					native_hit_test(
+						style,
+						Some((0., 180.0)),
+						Some(scrollbar),
+						metrics,
+						x,
+						y,
+					)
+				};
+				assert_eq!(
+					hit_bar(metrics.width - 4.0, 200.0),
+					HitTest::Client
+				);
+				assert_eq!(
+					hit_bar(metrics.width - 1.0, 200.0),
+					HitTest::Resize(ResizeDirection::East)
+				);
 				assert_eq!(
 					native_hit_test(
 						style,
 						Some((0., 180.0)),
+						None,
 						FrameMetrics {
 							fullscreen: true,
 							..metrics
@@ -689,6 +746,7 @@ mod tests {
 				assert_eq!(
 					native_hit_test(
 						style,
+						None,
 						None,
 						FrameMetrics {
 							maximized: true,

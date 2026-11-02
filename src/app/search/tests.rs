@@ -649,7 +649,6 @@ fn search_states_match_rendering_baselines() -> anyhow::Result<()> {
 			theme: if dark { Theme::Dark } else { Theme::Light },
 			horizontal: &session.horizontal,
 			hovered_link: None,
-			hovered_overflow: None,
 			held_overflow: None,
 		};
 		let mut renderer = pollster::block_on(Renderer::new(None))?;

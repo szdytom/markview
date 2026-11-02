@@ -507,7 +507,6 @@ fn gpu_restored_tabs_draw_images_after_switching_or_closing()
 		selection: None,
 		revision: 1,
 		hovered_link: None,
-		hovered_overflow: None,
 		held_overflow: None,
 	};
 	for close in [false, true] {
@@ -1444,7 +1443,7 @@ fn folder_sidebar_geometry_keyboard_and_pointer_ownership() {
 		"the wheel eases the tree instead of jumping"
 	);
 	assert!(h.app.folder.scroll.animating());
-	let (_, thumb) = h.app.folder_bar().expect("the tree scrolls").bars(false);
+	let (_, thumb) = h.app.folder_bar().expect("the tree scrolls").bars();
 	h.app
 		.interaction
 		.pointer
@@ -1473,7 +1472,7 @@ fn folder_sidebar_geometry_keyboard_and_pointer_ownership() {
 	h.app.scroll_folder(10000.);
 	assert!(h.app.folder.scroll.offset() > 0.);
 	let document_scroll = h.app.readers.session.scrolling.offset;
-	let (track, _) = h.app.folder_bar().unwrap().bars(false);
+	let (track, _) = h.app.folder_bar().unwrap().bars();
 	h.app
 		.interaction
 		.pointer
@@ -1920,7 +1919,6 @@ fn folder_sidebar_renders_beside_the_document() -> anyhow::Result<()> {
 			selection: None,
 			revision: h.app.readers.session.accepted_revision,
 			hovered_link: None,
-			hovered_overflow: None,
 			held_overflow: None,
 		};
 		let target = renderer.offscreen(view.width, view.height);

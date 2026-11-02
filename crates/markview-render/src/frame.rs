@@ -286,10 +286,9 @@ impl Renderer {
 				continue;
 			};
 			let held = view.held_overflow == Some((index, oi));
-			let hovered = held || view.hovered_overflow == Some((index, oi));
 			let on_thumb =
 				held || self.pointer.is_some_and(|(x, y)| bar.on_thumb(x, y));
-			let (track, thumb) = bar.bars(hovered);
+			let (track, thumb) = bar.bars();
 			scratch.tracks.push((
 				track,
 				self.color(
@@ -586,7 +585,6 @@ fn preview_view<'a>(
 		theme: preview.theme,
 		horizontal: preview.horizontal,
 		hovered_link: None,
-		hovered_overflow: None,
 		held_overflow: None,
 	};
 	let viewport = [

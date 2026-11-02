@@ -448,11 +448,8 @@ impl LayoutSnapshot {
 	}
 }
 
-/// Default painted thickness of a scrollbar at rest, in logical pixels.
+/// Default painted thickness of a scrollbar, in logical pixels.
 pub const SCROLLBAR_THICKNESS: f32 = 8.0;
-/// Default painted thickness of a hovered or dragged thumb. The interactive
-/// band is at least this wide, so the grab zone is what the reader sees.
-pub const SCROLLBAR_HOVER_THICKNESS: f32 = 14.0;
 /// Default space an overflowing block reserves below its content for its
 /// horizontal scrollbar, keeping the bar clear of the last line of text.
 pub const SCROLLBAR_GUTTER: f32 = 8.0;
@@ -460,14 +457,11 @@ pub const SCROLLBAR_GUTTER: f32 = 8.0;
 /// grabbable.
 pub const SCROLLBAR_MIN_THUMB: f32 = 24.0;
 
-/// The thicknesses one scrollbar is painted at. A stylesheet may set both to
-/// the same value, which disables the thickening on hover.
+/// The thickness one scrollbar is painted at.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct ScrollbarMetrics {
-	/// Painted thickness at rest.
+	/// Painted thickness.
 	pub thickness: f32,
-	/// Painted thickness of the thumb while hovered or dragged.
-	pub thickness_hover: f32,
 }
 
 impl Default for ScrollbarMetrics {
@@ -477,29 +471,23 @@ impl Default for ScrollbarMetrics {
 }
 
 impl ScrollbarMetrics {
-	/// The reader's vertical bar: thin at rest, thick while held.
+	/// The reader's vertical bar.
 	pub const DOCUMENT: Self = Self {
 		thickness: SCROLLBAR_THICKNESS,
-		thickness_hover: SCROLLBAR_HOVER_THICKNESS,
 	};
-	/// A wide block's horizontal bar, which does not thicken by default.
+	/// A wide block's horizontal bar.
 	pub const OVERFLOW: Self = Self {
 		thickness: SCROLLBAR_THICKNESS,
-		thickness_hover: SCROLLBAR_THICKNESS,
 	};
-	/// The interactive band: the widest the bar is ever painted.
-	pub fn band(&self) -> f32 {
-		self.thickness.max(self.thickness_hover)
-	}
 	/// The band a wide block's bar occupies below its content: the reserved
 	/// gutter, or at least the bar itself when no gutter is configured.
 	pub fn overflow_band(&self, gutter: f32) -> f32 {
-		gutter.max(self.band())
+		gutter.max(self.thickness)
 	}
 }
 
-/// A scrollbar track: where the thumb sits, what it maps to, and the two
-/// thicknesses it is painted at. Both the reader's document bar and every wide
+/// A scrollbar track: where the thumb sits, what it maps to, and the
+/// thickness it is painted at. Both the reader's document bar and every wide
 /// block's bar use this, so drawing and pointer handling cannot disagree.
 #[derive(Clone, Copy, Debug)]
 pub struct Scrollbar {
@@ -515,7 +503,7 @@ pub struct Scrollbar {
 	travel: f32,
 	/// Thumb length along the track.
 	thumb_len: f32,
-	/// Thicknesses this bar is painted at.
+	/// Thickness this bar is painted at.
 	metrics: ScrollbarMetrics,
 }
 
@@ -585,17 +573,11 @@ impl Scrollbar {
 		})
 	}
 
-	/// The track and thumb to paint. The track stays at its rest thickness; a
-	/// hovered or dragged thumb may thicken, up to the interactive band.
-	pub fn bars(&self, expanded: bool) -> (Rect, Rect) {
-		let thickness = if expanded {
-			self.metrics.thickness_hover
-		} else {
-			self.metrics.thickness
-		};
+	/// The track and thumb to paint.
+	pub fn bars(&self) -> (Rect, Rect) {
 		(
 			self.paint(self.track, self.metrics.thickness),
-			self.paint(self.thumb, thickness),
+			self.paint(self.thumb, self.metrics.thickness),
 		)
 	}
 

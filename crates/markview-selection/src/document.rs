@@ -60,7 +60,6 @@ impl HoveredLink {
 pub struct Hover {
 	pub link: Option<HoveredLink>,
 	pub image_title: Option<String>,
-	pub overflow: Option<(usize, usize)>,
 	pub cursor: Cursor,
 }
 impl DocumentInteraction<'_> {
@@ -188,7 +187,6 @@ impl DocumentInteraction<'_> {
 		point: Point,
 		holding: bool,
 		images_clickable: bool,
-		metrics: ScrollbarMetrics,
 	) -> Hover {
 		if holding {
 			return Hover {
@@ -206,8 +204,6 @@ impl DocumentInteraction<'_> {
 			id: link.id,
 		});
 		let image = self.image(point);
-		let overflow =
-			self.overflow_bar_at(point, metrics).map(|(b, o, _)| (b, o));
 		let cursor = if link.is_some() || (images_clickable && image.is_some())
 		{
 			Cursor::Pointer
@@ -222,7 +218,6 @@ impl DocumentInteraction<'_> {
 				.map(|(_, _, title)| title)
 				.filter(|title| !title.is_empty())
 				.map(str::to_owned),
-			overflow,
 			cursor,
 		}
 	}

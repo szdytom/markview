@@ -1068,7 +1068,6 @@ fn gpu_frame_draws_decoded_images() -> Result<()> {
 		theme: crate::render::Theme::Light,
 		horizontal: &horizontal,
 		hovered_link: None,
-		hovered_overflow: None,
 		held_overflow: None,
 	};
 	// A frame republishes demand and reloads pixels after interrupted cache updates.

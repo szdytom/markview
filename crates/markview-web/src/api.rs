@@ -523,7 +523,6 @@ impl Markview {
 			theme: self.theme(),
 			horizontal: &self.horizontal,
 			hovered_link: hover.link.as_ref().map(|link| link.link_ref()),
-			hovered_overflow: hover.overflow,
 			held_overflow: self.overflow_drag.map(|(b, o, _)| (b, o)),
 		};
 		self.renderer.set_pointer(self.cursor);
@@ -1002,7 +1001,6 @@ impl Markview {
 			Point::new(x, y),
 			self.pointer.drag().is_some() || self.overflow_drag.is_some(),
 			self.images_clickable,
-			self.published_stylesheet.overflow_scrollbar_metrics(),
 		)
 	}
 	fn follow_pointer(&mut self) {

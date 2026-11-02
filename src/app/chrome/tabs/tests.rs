@@ -149,7 +149,6 @@ fn tab_hover_match_rendering_baselines() -> anyhow::Result<()> {
 				selection: None,
 				revision: 0,
 				hovered_link: None,
-				hovered_overflow: None,
 				held_overflow: None,
 			};
 			let mut overlay = vec![Draw::Rect(

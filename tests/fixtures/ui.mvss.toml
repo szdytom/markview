@@ -41,7 +41,5 @@ track = "#B4C4AF"
 thumb = "#527760"
 thumb_hover = "#BB3850"
 thickness = 5.0
-thickness_hover = 11.0
 overflow_thickness = 4.0
-overflow_thickness_hover = 10.0
 gutter = 15.0

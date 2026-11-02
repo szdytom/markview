@@ -189,7 +189,6 @@ fn color_glyphs_preserve_rgb_and_share_paint_order() {
 		theme: Theme::Light,
 		horizontal: &horizontal,
 		hovered_link: None,
-		hovered_overflow: None,
 		held_overflow: None,
 	};
 	for dark in [false, true] {
@@ -312,7 +311,6 @@ fn prewarm_prepares_the_next_screenful_before_the_frame_needs_it() {
 		theme: Theme::Light,
 		horizontal: &horizontal,
 		hovered_link: None,
-		hovered_overflow: None,
 		held_overflow: None,
 	};
 	let stats = |r: &Renderer| -> RasterStats { r.raster_stats() };
@@ -444,7 +442,6 @@ fn prewarming_leaves_the_visible_image_demand_alone() {
 		theme: Theme::Light,
 		horizontal: &horizontal,
 		hovered_link: None,
-		hovered_overflow: None,
 		held_overflow: None,
 	};
 	let demanded = |pixels: &ImagePixels| {
@@ -504,7 +501,6 @@ fn scrolling_icons_reuse_rasters_at_every_device_pixel_phase() {
 				selection: None,
 				revision: 0,
 				hovered_link: None,
-				hovered_overflow: None,
 				held_overflow: None,
 			};
 			let clip = Rect {
@@ -670,7 +666,6 @@ fn idle_repack_rebuilds_the_current_screen_without_a_scroll_frame() {
 		theme: Theme::Light,
 		horizontal: &horizontal,
 		hovered_link: None,
-		hovered_overflow: None,
 		held_overflow: None,
 	};
 	let target = renderer.offscreen(120, 60);

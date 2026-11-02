@@ -476,23 +476,17 @@ fn scrollbar_sizes_are_configurable_and_validated() {
 	let mut sheet = (*Stylesheet::bundled(false)).clone();
 	sheet.merge(
 		&Stylesheet::parse(
-			"format_version=2\nversion=1\n[[rule]]\nwhen=['scrollbar']\nthickness=3.0\nthickness_hover=9.0\noverflow_thickness=4.0\noverflow_thickness_hover=4.0\ngutter=12.0",
+			"format_version=2\nversion=1\n[[rule]]\nwhen=['scrollbar']\nthickness=3.0\noverflow_thickness=4.0\ngutter=12.0",
 		)
 		.unwrap(),
 	);
 	assert_eq!(
 		sheet.scrollbar_metrics(),
-		ScrollbarMetrics {
-			thickness: 3.0,
-			thickness_hover: 9.0
-		}
+		ScrollbarMetrics { thickness: 3.0 }
 	);
 	assert_eq!(
 		sheet.overflow_scrollbar_metrics(),
-		ScrollbarMetrics {
-			thickness: 4.0,
-			thickness_hover: 4.0
-		}
+		ScrollbarMetrics { thickness: 4.0 }
 	);
 	assert_eq!(sheet.scrollbar_gutter(), 12.0);
 	// A theme that only overrides colors keeps the bundled sizes.
@@ -506,7 +500,6 @@ fn scrollbar_sizes_are_configurable_and_validated() {
 	assert_eq!(sheet.scrollbar_gutter(), 12.0);
 	for bad in [
 		"format_version=2\nversion=1\n[[rule]]\nwhen=['scrollbar']\nthickness=0.0",
-		"format_version=2\nversion=1\n[[rule]]\nwhen=['scrollbar']\nthickness_hover=-1.0",
 		"format_version=2\nversion=1\n[[rule]]\nwhen=['scrollbar']\noverflow_thickness=0.0",
 		"format_version=2\nversion=1\n[[rule]]\nwhen=['scrollbar']\ngutter=-1.0",
 		"format_version=2\nversion=1\n[[rule]]\nwhen=['scrollbar']\ngutter=nan",

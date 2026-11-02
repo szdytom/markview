@@ -349,7 +349,6 @@ mod tests {
 			theme: Theme::Light,
 			horizontal: &HashMap::new(),
 			hovered_link: None,
-			hovered_overflow: None,
 			held_overflow: None,
 		};
 		let target = renderer.offscreen(view.width, view.height);

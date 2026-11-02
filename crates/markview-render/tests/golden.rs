@@ -245,7 +245,6 @@ fn markdown_matches_rendering_baselines() -> Result<()> {
 			selection,
 			revision: 1,
 			hovered_link,
-			hovered_overflow: (case.variant == "scrolled").then_some((1, 0)),
 			held_overflow: None,
 		};
 		assert!(

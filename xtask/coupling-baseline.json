@@ -3,7 +3,7 @@
     "variants": 6
   },
   "structs": {
-    "App": 50,
+    "App": 52,
     "Chrome": 7,
     "Config": 29,
     "InteractionState": 8,
@@ -109,10 +109,6 @@
       "sites": 0
     },
     "pointer.hover_image": {
-      "files": 0,
-      "sites": 0
-    },
-    "pointer.hover_overflow": {
       "files": 0,
       "sites": 0
     },

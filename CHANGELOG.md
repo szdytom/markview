@@ -25,6 +25,11 @@ at the same level, without `[brackets]`.
 
 - Rename the Linux window layout to Breeze; `window-layout` now accepts `"breeze"` while still reading `"linux"`.
 - Remove the tab-style setting and always draw Connected tabs.
+- Flush the document scrollbar against the reading area's right edge, and show it only briefly after the pointer moves over the reader.
+
+### Removed
+
+- Remove scrollbar hover thickening and its `thickness_hover` and `overflow_thickness_hover` stylesheet fields.
 
 ## 0.4.4 - 2026-11-02
 

@@ -916,9 +916,7 @@ track = "#D8DEE3"
 thumb = "#69747E"
 thumb_hover = "#315D86"
 thickness = 6.0
-thickness_hover = 8.0
 overflow_thickness = 6.0
-overflow_thickness_hover = 8.0
 gutter = 8.0
 
 [[rule]]

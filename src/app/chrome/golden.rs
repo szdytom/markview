@@ -131,7 +131,7 @@ fn ui_styles_match_rendering_baselines() -> Result<()> {
 				964.,
 				Paint::Styled(Condition::Ui, C::Warning),
 			));
-			for (i, expanded) in [false, true].into_iter().enumerate() {
+			for (i, hovered) in [false, true].into_iter().enumerate() {
 				let bar = Scrollbar::vertical(
 					Rect {
 						x: 762. + i as f32 * 18.,
@@ -145,7 +145,7 @@ fn ui_styles_match_rendering_baselines() -> Result<()> {
 					sheet.scrollbar_metrics(),
 				)
 				.unwrap();
-				let (track, thumb) = bar.bars(expanded);
+				let (track, thumb) = bar.bars();
 				draws.push(Draw::Rect(
 					track,
 					Paint::Styled(Condition::Scrollbar, C::Track),
@@ -154,7 +154,7 @@ fn ui_styles_match_rendering_baselines() -> Result<()> {
 					thumb,
 					Paint::Styled(
 						Condition::Scrollbar,
-						if expanded { C::ThumbHover } else { C::Thumb },
+						if hovered { C::ThumbHover } else { C::Thumb },
 					),
 				));
 			}
@@ -192,7 +192,6 @@ fn ui_styles_match_rendering_baselines() -> Result<()> {
 				selection: None,
 				revision: 1,
 				hovered_link: None,
-				hovered_overflow: None,
 				held_overflow: None,
 			};
 			let actual =
@@ -294,7 +293,6 @@ fn phone_sidebar_match_rendering_baselines() -> Result<()> {
 					selection: None,
 					revision: 1,
 					hovered_link: None,
-					hovered_overflow: None,
 					held_overflow: None,
 				};
 				let actual =

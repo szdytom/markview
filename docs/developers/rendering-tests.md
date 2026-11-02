@@ -84,7 +84,7 @@ python3 scripts/check_render_coverage.py
 | Collapsed/separate table borders and compound row styling | `table`, `mvss-boxes`, PDF custom |
 | Caption title/alt/fallback/none, placement, image padding/background/borders and placeholders | `mvss-caption-*`, `mvss-boxes`, `diagnostics` |
 | Code highlighting presets/none, label visibility, wrapped/scrolled blocks; error/front-matter visibility | Code, overflow, custom boxes, `mvss-hide-*` |
-| Scrollbar track/thumb/hover colors, rest/hover thickness and overflow gutter | Custom UI, `mvss-scrollbars`, scrolled overflow |
+| Scrollbar track/thumb/hover colors, thickness and overflow gutter | Custom UI, `mvss-scrollbars`, scrolled overflow |
 | UI surfaces, typography, muted/accent/warning/error, shadow/scrim and button rest/hover/pressed/selected/disabled/focus | UI settings and button sampler |
 | Selection, current/other search matches, hovered links | Search suite, `inline-selected`, `inline-hovered` |
 | Paper dimensions, orientation, asymmetric margins, all six furniture slots, rule colors/widths and page styles | PDF custom |

@@ -320,7 +320,6 @@ fn text_input_frames() -> anyhow::Result<()> {
 			selection: None,
 			revision: 0,
 			hovered_link: None,
-			hovered_overflow: None,
 			held_overflow: None,
 		};
 		let target = renderer.offscreen(view.width, view.height);

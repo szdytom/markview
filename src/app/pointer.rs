@@ -37,8 +37,6 @@ pub(crate) struct State {
 	hover: Option<HoveredLink>,
 	hover_image: Option<String>,
 	hover_control: Option<&'static str>,
-	/// The wide block whose horizontal scrollbar the pointer is over.
-	hover_overflow: Option<(usize, usize)>,
 	scrollbar: Option<ScrollbarDrag>,
 	last_click: Option<(Instant, (f32, f32), u8)>,
 	/// The axis of the wheel gesture in flight.
@@ -133,19 +131,13 @@ impl State {
 		self.hover_image.as_deref()
 	}
 
-	pub(crate) fn hover_overflow(&self) -> Option<(usize, usize)> {
-		self.hover_overflow
-	}
-
 	pub(crate) fn set_hover(
 		&mut self,
 		hover: Option<HoveredLink>,
 		image: Option<String>,
-		overflow: Option<(usize, usize)>,
 	) {
 		self.hover = hover;
 		self.hover_image = image;
-		self.hover_overflow = overflow;
 	}
 
 	pub(crate) fn hover_control(&self) -> Option<&'static str> {
@@ -156,14 +148,13 @@ impl State {
 	}
 	pub(crate) fn clear_hover(&mut self) {
 		self.hover_control = None;
-		self.set_hover(None, None, None);
+		self.set_hover(None, None);
 	}
 
 	/// The document hover ends while the image hint stays, which is what a
 	/// pointer leaving the window has always left behind.
 	pub(crate) fn clear_document_hover(&mut self) {
 		self.hover = None;
-		self.hover_overflow = None;
 	}
 
 	pub(crate) fn scrollbar(&self) -> Option<ScrollbarDrag> {
@@ -301,6 +292,7 @@ impl<P: super::SendEvent> App<P> {
 		if point != self.interaction.pointer.cursor() {
 			let old = self.interaction.pointer.cursor();
 			let was_button = self.button_at_cursor();
+			let was_scrollbar = self.document_scrollbar().is_some();
 			self.interaction.pointer.move_to(point);
 			if let Some((_, (px, py))) =
 				self.interaction.pointer.pressed_image()
@@ -315,12 +307,25 @@ impl<P: super::SendEvent> App<P> {
 			self.drag_panel();
 			self.drag_folder();
 			self.update_drag();
-			self.refresh_hover();
 			let now = Instant::now();
+			// The document bar is an overlay: motion over the reading area
+			// reveals it for a moment, and motion elsewhere puts it away.
+			let over_reader = self.document_scrollbar_geometry().is_some()
+				&& self.reading_area_contains(point.0, point.1);
+			if over_reader {
+				self.show_document_scrollbar(now);
+			} else if self.interaction.pointer.scrollbar().is_none() {
+				self.hide_document_scrollbar();
+			}
+			// Visibility gates the right resize edge, so the cursor follows it.
+			self.refresh_hover();
 			if self.hover_preview(now) {
 				self.redraw();
 			}
-			if self.pointer_move_repaints(old, was_button) {
+			let scrollbar_changed =
+				was_scrollbar != self.document_scrollbar().is_some();
+			if self.pointer_move_repaints(old, was_button) || scrollbar_changed
+			{
 				self.redraw();
 			}
 		}
@@ -335,15 +340,25 @@ impl<P: super::SendEvent> App<P> {
 		was_button: bool,
 	) -> bool {
 		let point = self.interaction.pointer.cursor();
-		let scrollbar = self.document_scrollbar().is_some_and(|bar| {
+		let scrollbar = self.document_scrollbar_geometry().is_some_and(|bar| {
 			bar.hit(old.0, old.1) || bar.hit(point.0, point.1)
 		});
+		// An overflowing block's thumb still changes color under the pointer,
+		// so entering, leaving or crossing between them must ask for a frame.
+		let overflow_thumb = |x, y| {
+			self.overflow_scrollbar_at(x, y)
+				.filter(|(_, _, bar)| bar.on_thumb(x, y))
+				.map(|(block, overflow, _)| (block, overflow))
+		};
+		let overflow =
+			overflow_thumb(old.0, old.1) != overflow_thumb(point.0, point.1);
 		self.interaction.panel_open()
 			|| was_button
 			|| self.button_at_cursor()
 			|| old.1 < TOP
 			|| point.1 < TOP
 			|| scrollbar
+			|| overflow
 			|| self.pointer_over_drawer(old)
 			|| self.pointer_over_drawer(point)
 	}
@@ -356,6 +371,7 @@ impl<P: super::SendEvent> App<P> {
 			&& self.interaction.panels.sidebar().drag().is_none()
 		{
 			self.interaction.pointer.leave();
+			self.hide_document_scrollbar();
 		}
 		// A scrollbar drag survives leaving the window: the implicit
 		// pointer grab still reports motion and the release, so the
@@ -846,10 +862,6 @@ impl<P: super::SendEvent> App<P> {
 				),
 				false,
 				true,
-				self.preferences
-					.values
-					.stylesheet
-					.overflow_scrollbar_metrics(),
 			)
 		} else {
 			markview_selection::Hover::default()
@@ -862,19 +874,15 @@ impl<P: super::SendEvent> App<P> {
 			idle,
 		);
 		let hover = document_hover.link;
-		let hover_overflow = document_hover.overflow;
 
-		let hover_changed = hover.as_ref() != self.interaction.pointer.hover()
-			|| hover_overflow != self.interaction.pointer.hover_overflow();
+		let hover_changed = hover.as_ref() != self.interaction.pointer.hover();
 		let hover_image = document_hover.image_title;
 		let hover_changed = hover_changed
 			|| hover_image.as_deref() != self.interaction.pointer.hover_image();
 		let hover_changed = hover_changed
 			|| hover_control != self.interaction.pointer.hover_control();
 		self.interaction.pointer.set_hover_control(hover_control);
-		self.interaction
-			.pointer
-			.set_hover(hover, hover_image, hover_overflow);
+		self.interaction.pointer.set_hover(hover, hover_image);
 		if let Some(w) = &self.window {
 			w.set_cursor(cursor);
 		}

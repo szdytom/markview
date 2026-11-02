@@ -28,12 +28,14 @@ impl<P: super::SendEvent> ApplicationHandler<Event> for App<P> {
 			let proxy = self.proxy.clone();
 			let style = self.frame.layout;
 			let tab_end = self.native_tab_end.clone();
+			let scrollbar = self.native_scrollbar.clone();
 			self.native_frame = markview_platform::NativeFrame::new(
 				&window,
 				move |metrics, x, y| {
 					super::frame::native_hit_test(
 						style,
 						tab_end.get(),
+						scrollbar.get(),
 						metrics,
 						x,
 						y,
@@ -515,6 +517,7 @@ impl<P: super::SendEvent> App<P> {
 		self.advance_scroll(now);
 		self.advance_control_scroll(now);
 		self.advance_gestures(now);
+		self.scrollbar_tick(now);
 		if self.advance_drawers(now) {
 			self.refresh_hover();
 			self.redraw();
@@ -592,6 +595,7 @@ impl<P: super::SendEvent> App<P> {
 			.chain(self.prewarm_at)
 			.chain(self.export.watch_deadline())
 			.chain(self.status.deadline())
+			.chain(self.scrollbar_visible_until)
 			.chain(self.preferences.save_deadline())
 			.chain(self.persistence.deadline)
 			.chain(self.interaction.pointer.auto_scroll_at())

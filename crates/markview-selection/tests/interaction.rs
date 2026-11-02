@@ -71,25 +71,13 @@ fn hover_and_hits_follow_viewport_and_horizontal_motion() {
 		horizontal: &horizontal,
 		revision: 1,
 	};
-	assert_eq!(
-		context.hover(point, false, false, metrics).cursor,
-		Cursor::Pointer
-	);
-	assert!(context.hover(point, true, true, metrics).link.is_none());
+	assert_eq!(context.hover(point, false, false).cursor, Cursor::Pointer);
+	assert!(context.hover(point, true, true).link.is_none());
 	let image = Point::new(80.0, 15.0);
+	assert_eq!(context.hover(image, false, false).cursor, Cursor::Default);
+	assert_eq!(context.hover(image, false, true).cursor, Cursor::Pointer);
 	assert_eq!(
-		context.hover(image, false, false, metrics).cursor,
-		Cursor::Default
-	);
-	assert_eq!(
-		context.hover(image, false, true, metrics).cursor,
-		Cursor::Pointer
-	);
-	assert_eq!(
-		context
-			.hover(image, false, true, metrics)
-			.image_title
-			.as_deref(),
+		context.hover(image, false, true).image_title.as_deref(),
 		Some("Image title")
 	);
 	let bar = context.overflow_bar(0, 0, metrics).unwrap();
@@ -98,10 +86,6 @@ fn hover_and_hits_follow_viewport_and_horizontal_motion() {
 		bar.track.y + bar.track.h * 0.5,
 	);
 	assert!(context.overflow_bar_at(hit, metrics).is_some());
-	assert_eq!(
-		context.hover(hit, false, false, metrics).overflow,
-		Some((0, 0))
-	);
 	assert!(context.link(Point::new(25.0, 5.0)).is_none());
 	assert!(horizontal_by(
 		&snapshot,

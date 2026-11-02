@@ -1101,8 +1101,7 @@ impl Form {
 				interaction.pointer.cursor().0,
 				interaction.pointer.cursor().1,
 			);
-			let (track, thumb) =
-				bar.bars(hovered || interaction.panels.grab().is_some());
+			let (track, thumb) = bar.bars();
 			out.push(line(track, Condition::Scrollbar, C::Track));
 			out.push(line(
 				thumb,
@@ -1305,14 +1304,13 @@ impl Menu {
 			self.offset as f32,
 			self.options as f32,
 			shown as f32,
-			// The bar is a report, not a control: it never thickens for the
-			// pointer, because the pointer never grabs it.
+			// The bar is a report, not a control, so it paints at one
+			// thickness whatever the pointer does.
 			ScrollbarMetrics {
 				thickness: MENU_BAR,
-				thickness_hover: MENU_BAR,
 			},
 		)
-		.map(|bar| bar.bars(false))
+		.map(|bar| bar.bars())
 	}
 }
 

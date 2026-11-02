@@ -1,5 +1,11 @@
 use super::App;
 use crate::layout::{Rect, Scrollbar};
+use std::time::{Duration, Instant};
+
+/// How long the document scrollbar stays on screen after the pointer moves
+/// over the reading area.
+const SCROLLBAR_LINGER: Duration = Duration::from_millis(1200);
+
 impl<P: super::SendEvent> App<P> {
 	pub(super) fn document_interaction(
 		&self,
@@ -16,6 +22,23 @@ impl<P: super::SendEvent> App<P> {
 	/// handling share this geometry, so the thumb always agrees with what a
 	/// press grabs.
 	pub(super) fn document_scrollbar(&self) -> Option<Scrollbar> {
+		let dragging =
+			self.interaction.pointer.scrollbar().is_some_and(|drag| {
+				drag.target == crate::state::ScrollbarAxis::Document
+			});
+		let visible = self
+			.scrollbar_visible_until
+			.is_some_and(|until| until > Instant::now());
+		if !dragging && !visible {
+			return None;
+		}
+		self.document_scrollbar_geometry()
+	}
+
+	/// The document scrollbar wherever it can exist, regardless of whether it
+	/// is currently shown. Pointer motion uses this to decide what may reveal
+	/// it.
+	pub(super) fn document_scrollbar_geometry(&self) -> Option<Scrollbar> {
 		if self.interaction.panel_open()
 			|| self.interaction.overlays.outline.open()
 			|| self.readers.session.layout_pending
@@ -23,21 +46,12 @@ impl<P: super::SendEvent> App<P> {
 			return None;
 		}
 		let (width, height, _) = self.dimensions();
-		let mut metrics =
-			self.preferences.values.stylesheet.scrollbar_metrics();
-		// Keep the document bar's painted width and grab zone fixed.
-		metrics.thickness_hover = metrics.thickness;
-		let band = metrics.band();
-		let inset = if markview_platform::touch_inset() {
-			0.0
-		} else {
-			6.0
-		};
+		let metrics = self.preferences.values.stylesheet.scrollbar_metrics();
 		let top = self.content_top();
 		let track = Rect {
-			x: width - band - inset,
+			x: width - metrics.thickness,
 			y: top,
-			w: band,
+			w: metrics.thickness,
 			h: (height - top - self.bottom()).max(0.0),
 		};
 		let viewport = self.viewport();
@@ -52,6 +66,42 @@ impl<P: super::SendEvent> App<P> {
 			viewport,
 			metrics,
 		)
+	}
+
+	/// Whether a window point lies in the reading area the document bar
+	/// belongs to.
+	pub(super) fn reading_area_contains(&self, x: f32, y: f32) -> bool {
+		let (width, height, _) = self.dimensions();
+		x >= 0.0
+			&& x <= width
+			&& y >= self.content_top()
+			&& y < height - self.bottom()
+	}
+
+	pub(super) fn show_document_scrollbar(&mut self, now: Instant) {
+		self.scrollbar_visible_until = Some(now + SCROLLBAR_LINGER);
+	}
+
+	pub(super) fn hide_document_scrollbar(&mut self) {
+		self.scrollbar_visible_until = None;
+	}
+
+	/// Expires the document bar's linger, or keeps it alive under a drag.
+	pub(super) fn scrollbar_tick(&mut self, now: Instant) {
+		let dragging =
+			self.interaction.pointer.scrollbar().is_some_and(|drag| {
+				drag.target == crate::state::ScrollbarAxis::Document
+			});
+		if dragging {
+			self.show_document_scrollbar(now);
+		} else if self
+			.scrollbar_visible_until
+			.is_some_and(|until| until <= now)
+		{
+			self.scrollbar_visible_until = None;
+			self.refresh_hover();
+			self.redraw();
+		}
 	}
 
 	/// The horizontal scrollbar of one overflowing block, in window

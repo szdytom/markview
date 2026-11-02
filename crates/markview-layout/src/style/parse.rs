@@ -507,13 +507,7 @@ fn validate_numbers(name: &str, rule: &Rule) -> Result<()> {
 		("border_width", rule.border_width, false),
 		("radius", rule.radius, false),
 		("thickness", rule.thickness, true),
-		("thickness_hover", rule.thickness_hover, true),
 		("overflow_thickness", rule.overflow_thickness, true),
-		(
-			"overflow_thickness_hover",
-			rule.overflow_thickness_hover,
-			true,
-		),
 		("gutter", rule.gutter, false),
 	] {
 		if value.is_some_and(|v| {
@@ -571,9 +565,7 @@ fn validate_field(conditions: ConditionSet, key: &str) -> Result<()> {
 			"track"
 				| "thumb" | "thumb_hover"
 				| "thickness"
-				| "thickness_hover"
 				| "overflow_thickness"
-				| "overflow_thickness_hover"
 				| "gutter"
 		)
 	} else if has(K::Selection) {

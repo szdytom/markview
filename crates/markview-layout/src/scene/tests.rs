@@ -58,7 +58,7 @@ fn scrollbar_thumb_spans_the_track_and_maps_to_the_scroll_range() {
 	let track = Rect {
 		x: 786.0,
 		y: 40.0,
-		w: metrics.band(),
+		w: metrics.thickness,
 		h: 732.0,
 	};
 	// A document that fits the viewport shows no scrollbar at all.
@@ -81,33 +81,26 @@ fn scrollbar_thumb_spans_the_track_and_maps_to_the_scroll_range() {
 	assert_eq!(top.scroll_for(800.0, 40.0 + travel, 0.0), 1500.0);
 }
 #[test]
-fn scrollbar_grab_zone_is_the_band_and_the_thumb_thickens_on_hover() {
+fn scrollbar_grab_zone_is_the_band_and_the_thumb_keeps_its_thickness() {
 	let metrics = ScrollbarMetrics::DOCUMENT;
 	let band = Rect {
 		x: 786.0,
 		y: 40.0,
-		w: metrics.band(),
+		w: metrics.thickness,
 		h: 700.0,
 	};
 	let vertical =
 		Scrollbar::vertical(band, 0.0, 2000.0, 500.0, metrics).unwrap();
 	assert!(vertical.hit(786.0, 80.0));
-	assert!(vertical.hit(799.0, 80.0));
+	assert!(vertical.hit(786.0 + metrics.thickness - 1.0, 80.0));
 	assert!(!vertical.hit(785.0, 80.0));
 	assert!(!vertical.hit(790.0, 35.0));
 	assert!(!vertical.hit(790.0, 745.0));
-	// At rest the bar is centred and thin; the hovered thumb fills the
-	// band while the track keeps its rest thickness.
-	let (track, thumb) = vertical.bars(false);
+	// The track and thumb both fill the interactive band.
+	let (track, thumb) = vertical.bars();
 	assert_eq!(track.w, metrics.thickness);
-	assert_eq!(track.x, band.x + (band.w - metrics.thickness) * 0.5);
+	assert_eq!(track.x, band.x);
 	assert_eq!(thumb.w, metrics.thickness);
-	let (expanded_track, expanded_thumb) = vertical.bars(true);
-	assert_eq!(expanded_track.x, track.x);
-	assert_eq!(expanded_track.w, metrics.thickness);
-	assert_eq!(expanded_thumb.y, vertical.thumb.y);
-	assert_eq!(expanded_thumb.x, band.x);
-	assert_eq!(expanded_thumb.w, metrics.thickness_hover);
 	// Anywhere across the band at the thumb's own extent grabs the thumb,
 	// so a press that looks like it landed on the bar never jumps.
 	assert!(vertical.on_thumb(band.x, band.y + 1.0));
@@ -135,16 +128,11 @@ fn horizontal_scrollbar_uses_the_block_gutter_and_keeps_its_thickness() {
 	// The band is the reserved gutter, or the bar itself without one.
 	assert_eq!(metrics.overflow_band(SCROLLBAR_GUTTER), SCROLLBAR_GUTTER);
 	assert_eq!(metrics.overflow_band(30.0), 30.0);
-	assert_eq!(metrics.overflow_band(0.0), metrics.band());
-	let (track, thumb) = bar.bars(false);
+	assert_eq!(metrics.overflow_band(0.0), metrics.thickness);
+	let (track, thumb) = bar.bars();
 	assert_eq!(track.h, metrics.thickness);
 	assert_eq!(track.y, band.y + (band.h - metrics.thickness) * 0.5);
 	assert_eq!(thumb.h, metrics.thickness);
-	// The wide block's bar does not thicken: both states paint the same.
-	let (expanded_track, expanded_thumb) = bar.bars(true);
-	assert_eq!(expanded_track.h, metrics.thickness);
-	assert_eq!(expanded_thumb.h, metrics.thickness_hover);
-	assert_eq!(expanded_thumb.y, thumb.y);
 	assert!(bar.hit(100.0, 300.0));
 	assert!(bar.hit(100.0, 307.0));
 	assert!(!bar.hit(100.0, 309.0));

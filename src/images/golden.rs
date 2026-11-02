@@ -121,7 +121,6 @@ fn diagrams_match_rendering_baselines() -> Result<()> {
 				selection: None,
 				revision: 1,
 				hovered_link: None,
-				hovered_overflow: None,
 				held_overflow: None,
 			};
 			let actual = capture(&mut renderer, &snapshot, &view, &[])?;

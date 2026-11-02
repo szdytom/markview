@@ -249,6 +249,7 @@ struct App<P = EventLoopProxy<Event>> {
 	frame: frame::State,
 	native_frame: Option<markview_platform::NativeFrame>,
 	native_tab_end: std::rc::Rc<std::cell::Cell<Option<(f32, f32)>>>,
+	native_scrollbar: std::rc::Rc<std::cell::Cell<Option<Rect>>>,
 	touch_frame: Option<markview_platform::TouchFrame>,
 	interaction: InteractionState,
 	/// The placed control geometry from the last layout: a paint product, not
@@ -307,6 +308,9 @@ struct App<P = EventLoopProxy<Event>> {
 	/// When reading-area scrolling last moved, so idle maintenance waits for a
 	/// genuinely stationary reader.
 	last_scroll_at: Instant,
+	/// When the document scrollbar hides again after pointer motion over the
+	/// reading area; `None` keeps it hidden.
+	scrollbar_visible_until: Option<Instant>,
 	fatal: Option<String>,
 	/// The one export in flight, the live watch target and the PNG strip loop.
 	export: export::Session,
@@ -399,6 +403,7 @@ impl<P: SendEvent> App<P> {
 			frame: frame::State::new(preferences.values.window_layout),
 			native_frame: None,
 			native_tab_end: Default::default(),
+			native_scrollbar: Default::default(),
 			touch_frame: None,
 			interaction: InteractionState::default(),
 			controls: None,
@@ -449,6 +454,7 @@ impl<P: SendEvent> App<P> {
 			first_frame: None,
 			started: Instant::now(),
 			last_scroll_at: Instant::now(),
+			scrollbar_visible_until: None,
 			fatal: None,
 			export: export::Session::default(),
 		}
