@@ -559,6 +559,7 @@ impl<P: super::SendEvent> App<P> {
 			return;
 		}
 		self.interaction.advance_scrolls(now);
+		self.interaction.overlays.quick_open.advance_scroll(now);
 		self.preferences.advance_scroll(now);
 		self.folder.scroll.advance(now);
 		let strip_moving = self.tab_strip.scroll.animating();
@@ -582,6 +583,7 @@ impl<P: super::SendEvent> App<P> {
 			|| self.folder.scroll.animating()
 			|| self.tab_strip.scroll_animating()
 			|| self.preferences.fonts.scroll_area_ref().animating()
+			|| self.interaction.overlays.quick_open.scroll_animating()
 	}
 	/// The earliest frame any control surface needs.
 	pub(super) fn control_scroll_deadline(
@@ -599,6 +601,7 @@ impl<P: super::SendEvent> App<P> {
 			.chain(self.folder.scroll.deadline(now))
 			.chain(self.tab_strip.scroll_deadline(now))
 			.chain(self.preferences.fonts.scroll_deadline(now))
+			.chain(self.interaction.overlays.quick_open.scroll_deadline(now))
 			.min()
 	}
 

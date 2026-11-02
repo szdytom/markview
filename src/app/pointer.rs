@@ -352,6 +352,12 @@ impl<P: super::SendEvent> App<P> {
 		};
 		let overflow =
 			overflow_thumb(old.0, old.1) != overflow_thumb(point.0, point.1);
+		// The picker's bar is interactive too, so its thumb changes color
+		// when the pointer crosses it.
+		let quick_open = self.interaction.overlays.quick_open.open()
+			&& self.quick_open_scrollbar().is_some_and(|bar| {
+				bar.hit(old.0, old.1) || bar.hit(point.0, point.1)
+			});
 		self.interaction.panel_open()
 			|| was_button
 			|| self.button_at_cursor()
@@ -359,6 +365,7 @@ impl<P: super::SendEvent> App<P> {
 			|| point.1 < TOP
 			|| scrollbar
 			|| overflow
+			|| quick_open
 			|| self.pointer_over_drawer(old)
 			|| self.pointer_over_drawer(point)
 	}

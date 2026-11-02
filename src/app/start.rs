@@ -800,6 +800,7 @@ mod tests {
 			app.interaction.overlays.quick_open.search.matches.len(),
 			20
 		);
+		assert!(app.quick_open_scrollbar().is_some());
 		assert!(app.input_geometry(TextField::QuickOpen).is_some());
 		assert!(app.input_geometry(TextField::Files).is_none());
 		assert!(app.input_geometry(TextField::Url).is_none());

@@ -54,6 +54,16 @@ impl ScrollArea {
 	pub(crate) fn wheel(&mut self, delta: f32, now: Instant) {
 		self.state.wheel_by(delta, now);
 	}
+	/// Feeds one packet of a high-resolution wheel stream, which carries its
+	/// own momentum instead of a single eased step.
+	pub(crate) fn wheel_packet(&mut self, delta: f32, now: Instant) {
+		self.state.coast_wheel_by(delta, now);
+	}
+	/// Whether a high-resolution stream is live enough to adopt a whole
+	/// detent.
+	pub(crate) fn wheel_stream_alive(&self, now: Instant) -> bool {
+		self.state.wheel_stream_alive(now)
+	}
 	/// Advances eased motion. Returns whether another frame is due.
 	pub(crate) fn advance(&mut self, now: Instant) -> bool {
 		self.state.advance(now, self.bounds())

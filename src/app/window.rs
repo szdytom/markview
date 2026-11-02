@@ -358,7 +358,17 @@ impl<P: super::SendEvent> App<P> {
 				self.dimensions().2,
 				self.viewport_size(),
 			);
-			self.scroll_quick_open(-dy);
+			// The list takes whole detents as eased steps and a high-resolution
+			// stream as momentum, as every other scrolling surface does.
+			let now = Instant::now();
+			let packets = markview_platform::wheel_packets()
+				&& (super::pointer::high_resolution(delta)
+					|| self
+						.interaction
+						.overlays
+						.quick_open
+						.wheel_stream_alive(now));
+			self.wheel_quick_open(-dy, packets);
 			return;
 		}
 		if self.readers.session.search.open

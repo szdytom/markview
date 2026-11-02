@@ -78,7 +78,7 @@ impl<P: super::SendEvent> App<P> {
 					ScrollbarAxis::Overflow { block, overflow } => {
 						Some((block, overflow))
 					}
-					ScrollbarAxis::Document => None,
+					ScrollbarAxis::Document | ScrollbarAxis::QuickOpen => None,
 				},
 			),
 		};

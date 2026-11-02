@@ -1,14 +1,16 @@
 //! The floating file picker owns its workspace search session.
 use super::{App, SendEvent, chrome};
-use crate::state::{ChromeCommand, Command, PanelPage, TextField};
+use crate::scroll::ScrollArea;
+use crate::state::{ChromeCommand, Command, PanelPage, Selection, TextField};
 use markview_ui_core::WidgetId;
+use std::time::Instant;
 use winit::keyboard::{Key, NamedKey};
 
 #[derive(Default)]
 pub(crate) struct Model {
 	open: bool,
 	selected: usize,
-	scroll: f32,
+	scroll: ScrollArea,
 	previous_focus: Option<WidgetId>,
 	pub(in crate::app) search: super::start::Search,
 }
@@ -20,11 +22,41 @@ impl Model {
 		self.selected
 	}
 	pub(in crate::app) fn scroll(&self) -> f32 {
-		self.scroll
+		self.scroll.offset()
+	}
+	pub(in crate::app) fn set_scroll_max(&mut self, max: f32) {
+		self.scroll.set_max(max);
+	}
+	pub(in crate::app) fn set_scroll(&mut self, offset: f32) {
+		self.scroll.set(offset);
+	}
+	pub(in crate::app) fn cancel_scroll(&mut self) {
+		self.scroll.cancel();
+	}
+	pub(in crate::app) fn wheel(&mut self, delta: f32, now: Instant) {
+		self.scroll.wheel(delta, now);
+	}
+	pub(in crate::app) fn wheel_packet(&mut self, delta: f32, now: Instant) {
+		self.scroll.wheel_packet(delta, now);
+	}
+	pub(in crate::app) fn wheel_stream_alive(&self, now: Instant) -> bool {
+		self.scroll.wheel_stream_alive(now)
+	}
+	pub(in crate::app) fn advance_scroll(&mut self, now: Instant) -> bool {
+		self.scroll.advance(now)
+	}
+	pub(in crate::app) fn scroll_deadline(
+		&self,
+		now: Instant,
+	) -> Option<Instant> {
+		self.scroll.deadline(now)
+	}
+	pub(in crate::app) fn scroll_animating(&self) -> bool {
+		self.scroll.animating()
 	}
 	pub(in crate::app) fn reset(&mut self) {
 		self.selected = 0;
-		self.scroll = 0.0;
+		self.scroll.reset();
 	}
 }
 
@@ -71,6 +103,7 @@ impl<P: SendEvent> App<P> {
 		self.clear_input_focus();
 		let picker = &mut self.interaction.overlays.quick_open;
 		picker.open = false;
+		picker.cancel_scroll();
 		let previous = picker.previous_focus.take();
 		self.interaction.widgets.captured = None;
 		self.interaction.widgets.focus = previous.filter(|id| {
@@ -134,7 +167,7 @@ impl<P: SendEvent> App<P> {
 		}
 		let len = search.matches.len();
 		self.interaction.widgets.captured = None;
-		let list = self.quick_open_geometry().list;
+		let list = self.quick_open_list();
 		let picker = &mut self.interaction.overlays.quick_open;
 		picker.selected =
 			picker.selected.saturating_add_signed(delta).min(len - 1);
@@ -144,8 +177,9 @@ impl<P: SendEvent> App<P> {
 		} else {
 			(row.y + row.h - list.viewport.y - list.viewport.h).max(0.0)
 		};
-		picker.scroll =
-			(list.scroll + correction).clamp(0.0, list.max_scroll());
+		picker.set_scroll(
+			(list.scroll + correction).clamp(0.0, list.max_scroll()),
+		);
 		self.redraw();
 	}
 
@@ -174,13 +208,65 @@ impl<P: SendEvent> App<P> {
 		)
 	}
 
-	pub(super) fn scroll_quick_open(&mut self, delta: f32) {
+	/// The picker's list, with the scroll area's bound refreshed to match.
+	pub(super) fn quick_open_list(&mut self) -> chrome::list::List {
 		let list = self.quick_open_geometry().list;
-		self.interaction.overlays.quick_open.scroll =
-			(list.scroll + delta).clamp(0.0, list.max_scroll());
+		self.interaction
+			.overlays
+			.quick_open
+			.set_scroll_max(list.max_scroll());
+		list
+	}
+
+	pub(super) fn quick_open_scrollbar(
+		&mut self,
+	) -> Option<crate::layout::Scrollbar> {
+		if self.interaction.overlays.quick_open.search.pending {
+			return None;
+		}
+		self.quick_open_list().scrollbar(&self.ui)
+	}
+
+	pub(super) fn wheel_quick_open(&mut self, delta: f32, packets: bool) {
+		self.quick_open_list();
+		let now = Instant::now();
+		let picker = &mut self.interaction.overlays.quick_open;
+		if packets {
+			picker.wheel_packet(delta, now);
+		} else {
+			picker.wheel(delta, now);
+		}
 		self.interaction.widgets.captured = None;
 		self.refresh_hover();
 		self.redraw();
+	}
+
+	/// Starts dragging the picker's scrollbar when a press lands on it.
+	fn begin_quick_open_drag(&mut self) -> bool {
+		let Some(bar) = self.quick_open_scrollbar() else {
+			return false;
+		};
+		let (x, y) = self.interaction.pointer.cursor();
+		if !bar.hit(x, y) {
+			return false;
+		}
+		let picker = &mut self.interaction.overlays.quick_open;
+		let grab = if bar.on_thumb(x, y) {
+			picker.cancel_scroll();
+			bar.grab(x, y)
+		} else {
+			picker.set_scroll(bar.scroll_for(x, y, 0.0));
+			0.0
+		};
+		self.interaction.reset_clicks();
+		self.interaction
+			.pointer
+			.begin_scrollbar(crate::state::ScrollbarDrag {
+				target: crate::state::ScrollbarAxis::QuickOpen,
+				grab,
+			});
+		self.refresh_hover();
+		true
 	}
 
 	pub(super) fn press_quick_open(&mut self) -> bool {
@@ -189,12 +275,50 @@ impl<P: SendEvent> App<P> {
 		}
 		let (x, y) = self.interaction.pointer.cursor();
 		if self.quick_open_geometry().panel.contains(x, y) {
-			let buttons = self.buttons();
-			self.press_widget(&buttons);
+			if !self.begin_quick_open_drag() {
+				let buttons = self.buttons();
+				self.press_widget(&buttons);
+			}
 		} else {
 			self.close_quick_open();
 		}
 		self.redraw();
 		true
+	}
+}
+
+#[cfg(test)]
+mod tests {
+	use super::*;
+	use std::time::Duration;
+
+	#[test]
+	fn wheel_scrolling_eases_and_stops_at_the_bound() {
+		let start = Instant::now();
+		let mut picker = Model::default();
+		picker.set_scroll_max(600.0);
+		picker.wheel(120.0, start);
+		assert!(picker.scroll_animating());
+		assert_eq!(picker.scroll(), 0.0);
+		assert!(picker.advance_scroll(start + Duration::from_millis(60)));
+		assert!(picker.scroll() > 0.0 && picker.scroll() < 120.0);
+		assert!(!picker.advance_scroll(start + Duration::from_secs(1)));
+		assert!((picker.scroll() - 120.0).abs() < 0.01);
+
+		picker.wheel(10_000.0, start);
+		picker.advance_scroll(start + Duration::from_secs(1));
+		assert!((picker.scroll() - 600.0).abs() < 0.01);
+	}
+
+	#[test]
+	fn resetting_the_picker_stops_motion_and_returns_to_the_top() {
+		let start = Instant::now();
+		let mut picker = Model::default();
+		picker.set_scroll_max(600.0);
+		picker.wheel(120.0, start);
+		picker.advance_scroll(start + Duration::from_millis(40));
+		picker.reset();
+		assert_eq!(picker.scroll(), 0.0);
+		assert!(!picker.scroll_animating());
 	}
 }

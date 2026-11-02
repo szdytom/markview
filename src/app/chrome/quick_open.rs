@@ -76,16 +76,21 @@ pub(super) fn buttons(
 	if picker.search.pending {
 		return buttons;
 	}
+	let overflows = g.list.max_scroll() > 0.0;
 	buttons.extend(
 		g.list.hit(
 			g.list
 				.visible()
 				.map(|index| {
 					let file = &picker.search.matches[index];
+					let mut rect = g.list.row_rect(index);
+					if overflows {
+						rect.w = (rect.w - 16.0).max(0.0);
+					}
 					let mut button = components::button(
 						file.name.clone(),
 						Command::Chrome(ChromeCommand::QuickOpenFile(file.id)),
-						g.list.row_rect(index),
+						rect,
 					);
 					button.kind = components::ButtonKind::Quiet;
 					button.enabled = !picker.search.pending;
@@ -188,6 +193,9 @@ pub(super) fn draw(
 		));
 	}
 	out.push(g.list.clip(rows));
+	if !picker.search.pending {
+		g.list.draw_bar(&mut out, ui, interaction);
+	}
 	out
 }
 
@@ -280,6 +288,8 @@ mod tests {
 					.iter()
 					.all(|button| button.widget().hit_rect().is_some())
 			);
+			assert!(geometry(size, 20, 0.0).list.scrollbar(&ui).is_some());
+			assert!(geometry(size, 1, 0.0).list.scrollbar(&ui).is_none());
 		}
 		Ok(())
 	}

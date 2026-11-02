@@ -508,6 +508,17 @@ impl<P: super::SendEvent> App<P> {
 					self.redraw();
 				}
 			}
+			ScrollbarAxis::QuickOpen => {
+				if let Some(bar) = self.quick_open_scrollbar() {
+					// The thumb follows the pointer; nothing eases under a drag.
+					self.interaction.overlays.quick_open.cancel_scroll();
+					self.interaction
+						.overlays
+						.quick_open
+						.set_scroll(bar.scroll_for(x, y, drag.grab));
+					self.redraw();
+				}
+			}
 		}
 	}
 

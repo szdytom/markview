@@ -458,6 +458,8 @@ pub(crate) enum ScrollbarAxis {
 	Document,
 	/// The horizontal scrollbar of one overflowing block.
 	Overflow { block: usize, overflow: usize },
+	/// The quick-open picker's list scrollbar.
+	QuickOpen,
 }
 
 /// An in-flight scrollbar drag: the grabbed bar and how far inside its thumb

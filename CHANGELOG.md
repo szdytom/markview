@@ -26,6 +26,7 @@ at the same level, without `[brackets]`.
 - Rename the Linux window layout to Breeze; `window-layout` now accepts `"breeze"` while still reading `"linux"`.
 - Remove the tab-style setting and always draw Connected tabs.
 - Flush the document scrollbar against the reading area's right edge, and show it only briefly after the pointer moves over the reader.
+- Add a scrollbar and eased wheel scrolling to the Ctrl+P quick-open picker.
 
 ### Removed
 
