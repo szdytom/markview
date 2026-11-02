@@ -1,7 +1,7 @@
 //! Document interaction, with no windowing toolkit in the way.
 //!
 //! [`DocumentInteraction`] shares hit testing, hover and cursor decisions;
-//! [`ScrollState`] shares eased offsets and pending layout destinations;
+//! [`Scroll`] shares eased offsets, extents and pending layout destinations;
 //! [`Motion`] shares gesture release inertia; [`PanFeed`] folds a Direct
 //! Manipulation viewport's feed into pan phases and deltas. Hosts own platform
 //! events, motion-source policy, repainting and document activation side
@@ -301,7 +301,7 @@ impl<T: Host> Selection for T {}
 
 mod scroll;
 pub use scroll::{
-	SCROLL_MAX, SCROLL_MIN, ScrollAnimation, ScrollBounds, ScrollState,
+	SCROLL_MAX, SCROLL_MIN, Scroll, ScrollAnimation, ScrollBounds, WheelMode,
 	ease_out_cubic, selection_scroll,
 };
 

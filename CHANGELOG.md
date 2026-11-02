@@ -32,6 +32,7 @@ at the same level, without `[brackets]`.
 - Remove the tab-style setting and always draw Connected tabs.
 - Flush the document scrollbar against the reading area's right edge, show it only briefly after the pointer moves over the reader, and fade it out through one shared timer.
 - Add a scrollbar and eased wheel scrolling to the Ctrl+P quick-open picker.
+- Unify document and chrome scrolling on one time-driven `Scroll` with a cached extent, and give the start page eased wheel travel.
 - Use the folder sidebar's Markdown and image icons for Quick Access file rows.
 - Print the build commit alongside the version in `markview --version`.
 - Bind Ctrl+T to a new blank page and drop the Ctrl+N and Ctrl+T stylesheet shortcuts.

@@ -562,7 +562,7 @@ fn focused_start_inputs_stop_revealing_at_the_scroll_limit() {
 		.collect();
 	for id in [TextField::Files, TextField::Url] {
 		for height in [180.0, 240.0, 350.0] {
-			browser.start.scroll = 0.0;
+			browser.start.scroll.reset();
 			let geometry = |browser: &folder::Browser| {
 				empty::geometry(empty::View {
 					rect: Rect {
@@ -583,8 +583,11 @@ fn focused_start_inputs_stop_revealing_at_the_scroll_limit() {
 				}
 			};
 			let before = geometry(&browser);
-			browser.start.scroll =
-				start_input_scroll(&before, input(&before), id).unwrap();
+			browser.start.scroll.set_max(before.max_scroll);
+			browser
+				.start
+				.scroll
+				.set(start_input_scroll(&before, input(&before), id).unwrap());
 			let after = geometry(&browser);
 			assert_eq!(start_input_scroll(&after, input(&after), id), None);
 			assert!(after.scroll <= after.max_scroll);

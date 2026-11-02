@@ -12,11 +12,11 @@
 //! first, and `outline_owns_input` makes every drawer path stand down.
 use super::App;
 use crate::layout::Rect;
-use crate::scroll::ScrollArea;
 use crate::state::DocumentCommand;
 use crate::state::{
 	Command, DrawerAnimation, InteractionState, OutlineTree, Row, RowSlide,
 };
+use markview_selection::Scroll;
 use markview_ui_core::{Component, Invalidation, Update};
 use std::time::Instant;
 
@@ -30,7 +30,7 @@ use std::time::Instant;
 #[derive(Default)]
 pub(crate) struct Model {
 	open: bool,
-	scroll: ScrollArea,
+	scroll: Scroll,
 	selection: Option<usize>,
 	animation: Option<DrawerAnimation>,
 	rows: RowSlide,
@@ -87,9 +87,12 @@ impl Model {
 		self.scroll.offset()
 	}
 
-	#[cfg(test)]
-	pub(crate) fn scroll_mut(&mut self) -> &mut ScrollArea {
+	pub(crate) fn scroll_mut(&mut self) -> &mut Scroll {
 		&mut self.scroll
+	}
+
+	pub(crate) fn scroll_ref(&self) -> &Scroll {
+		&self.scroll
 	}
 
 	fn toggle(&mut self, entries: usize, current: Option<usize>) -> bool {
@@ -167,25 +170,19 @@ impl Model {
 		self.scroll.by(delta);
 	}
 
-	pub(crate) fn wheel(&mut self, delta: f32, max: f32, now: Instant) {
+	pub(crate) fn wheel(
+		&mut self,
+		delta: f32,
+		max: f32,
+		now: Instant,
+		mode: markview_selection::WheelMode,
+	) {
 		self.scroll.set_max(max);
-		self.scroll.wheel(delta, now);
+		self.scroll.wheel(delta, now, mode);
 	}
 
 	pub(crate) fn cancel_scroll(&mut self) {
 		self.scroll.cancel();
-	}
-
-	pub(crate) fn advance_scroll(&mut self, now: Instant) {
-		self.scroll.advance(now);
-	}
-
-	pub(crate) fn scroll_deadline(&self, now: Instant) -> Option<Instant> {
-		self.scroll.deadline(now)
-	}
-
-	pub(crate) fn scroll_animating(&self) -> bool {
-		self.scroll.animating()
 	}
 
 	/// The drawer's slide reveal at `now`.
@@ -419,6 +416,7 @@ impl<P: super::SendEvent> App<P> {
 			delta,
 			max,
 			std::time::Instant::now(),
+			markview_selection::WheelMode::Detent,
 		);
 		self.redraw();
 	}

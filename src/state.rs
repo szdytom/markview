@@ -194,7 +194,7 @@ pub(crate) struct ReaderSession {
 	/// Reader-chosen `<details>` collapse state, keyed by block id, overriding
 	/// what the source declared. It is layout input, and a reload drops it.
 	pub(crate) details_open: Arc<BTreeMap<u64, bool>>,
-	pub(crate) scrolling: markview_selection::ScrollState,
+	pub(crate) scrolling: markview_selection::Scroll,
 	pub(crate) horizontal: HashMap<(usize, usize), f32>,
 	pub(crate) follow_update: bool,
 	pub(crate) layout_pending: bool,
@@ -577,15 +577,17 @@ impl InteractionState {
 
 	/// Advances eased scrolling on the shell's pages and the outline.
 	pub(crate) fn advance_scrolls(&mut self, now: Instant) {
-		self.panels.advance_scrolls(now);
-		self.overlays.outline.advance_scroll(now);
+		self.panels.export_scroll_mut().advance(now);
+		self.panels.styles_scroll_mut().advance(now);
+		self.overlays.outline.scroll_mut().advance(now);
 	}
 
 	/// The earliest frame the shell's pages or the outline need.
 	pub(crate) fn scroll_deadline(&self, now: Instant) -> Option<Instant> {
 		[
-			self.panels.scroll_deadline(now),
-			self.overlays.outline.scroll_deadline(now),
+			self.panels.export_scroll().deadline(now),
+			self.panels.styles_scroll().deadline(now),
+			self.overlays.outline.scroll_ref().deadline(now),
 		]
 		.into_iter()
 		.flatten()
@@ -594,8 +596,9 @@ impl InteractionState {
 
 	/// Whether the shell's pages or the outline still have motion in flight.
 	pub(crate) fn scroll_animating(&self) -> bool {
-		self.panels.scroll_animating()
-			|| self.overlays.outline.scroll_animating()
+		self.panels.export_scroll().animating()
+			|| self.panels.styles_scroll().animating()
+			|| self.overlays.outline.scroll_ref().animating()
 	}
 
 	/// Advances keyboard focus to the next (or previous) button, wrapping at
@@ -684,47 +687,44 @@ impl ReaderSession {
 			complete: !self.layout_pending,
 		}
 	}
-	pub(crate) fn scroll_by(&mut self, dy: f32, viewport: f32) {
-		if dy != 0.0 {
-			self.saved_reading = None;
-			self.pending_anchor = None;
-			self.follow_update = false;
-		}
-		self.scrolling.by(dy, self.scroll_bounds(viewport));
-	}
-	pub(crate) fn animate_scroll_by(&mut self, dy: f32, now: Instant) {
-		if dy != 0.0 {
-			self.saved_reading = None;
-			self.pending_anchor = None;
-			self.follow_update = false;
-		}
-		self.scrolling.animate_by(dy, now);
-	}
-	pub(crate) fn animate_wheel_by(&mut self, dy: f32, now: Instant) {
-		if dy != 0.0 {
-			self.saved_reading = None;
-			self.pending_anchor = None;
-			self.follow_update = false;
-		}
-		self.scrolling.wheel_by(dy, now);
-	}
-	pub(crate) fn coast_wheel_by(&mut self, dy: f32, now: Instant) {
-		if dy != 0.0 {
-			self.saved_reading = None;
-			self.pending_anchor = None;
-			self.follow_update = false;
-		}
-		self.scrolling.coast_wheel_by(dy, now);
-	}
-	/// Whether a wheel packet stream is live enough to adopt a whole-detent
-	/// event, which the OS rounds out of a fractional stream mid-gesture.
-	pub(crate) fn wheel_stream_alive(&self, now: Instant) -> bool {
-		self.scrolling.wheel_stream_alive(now)
-	}
-	pub(crate) fn animate_scroll_to(&mut self, target: f32, now: Instant) {
+	/// Clears the reading position a reader-driven scroll abandons.
+	fn clear_reading_position(&mut self) {
 		self.saved_reading = None;
 		self.pending_anchor = None;
 		self.follow_update = false;
+	}
+	fn leave_reading_position(&mut self, dy: f32) {
+		if dy != 0.0 {
+			self.clear_reading_position();
+		}
+	}
+	pub(crate) fn scroll_by(&mut self, dy: f32, viewport: f32) {
+		self.leave_reading_position(dy);
+		self.resolve_scroll(viewport);
+		self.scrolling.by(dy);
+	}
+	pub(crate) fn animate_scroll_by(&mut self, dy: f32, now: Instant) {
+		self.leave_reading_position(dy);
+		self.scrolling.animate_by(dy, now);
+	}
+	#[cfg(test)]
+	pub(crate) fn animate_wheel_by(&mut self, dy: f32, now: Instant) {
+		self.leave_reading_position(dy);
+		self.scrolling.wheel_by(dy, now);
+	}
+	pub(crate) fn wheel(
+		&mut self,
+		dy: f32,
+		now: Instant,
+		viewport: f32,
+		mode: markview_selection::WheelMode,
+	) {
+		self.leave_reading_position(dy);
+		self.resolve_scroll(viewport);
+		self.scrolling.wheel(dy, now, mode);
+	}
+	pub(crate) fn animate_scroll_to(&mut self, target: f32, now: Instant) {
+		self.clear_reading_position();
 		self.scrolling.animate_to(target, now);
 	}
 	pub(crate) fn advance_scroll(
@@ -732,7 +732,8 @@ impl ReaderSession {
 		now: Instant,
 		viewport: f32,
 	) -> bool {
-		self.scrolling.advance(now, self.scroll_bounds(viewport))
+		self.resolve_scroll(viewport);
+		self.scrolling.advance(now)
 	}
 	pub(crate) fn cancel_scroll_animation(&mut self) {
 		self.scrolling.cancel();
@@ -747,7 +748,7 @@ impl ReaderSession {
 		self.scrolling.deadline(now)
 	}
 	pub(crate) fn resolve_scroll(&mut self, viewport: f32) {
-		self.scrolling.resolve(self.scroll_bounds(viewport));
+		self.scrolling.fit(self.scroll_bounds(viewport));
 	}
 	pub(crate) fn coverage(&self, viewport: f32) -> f32 {
 		self.scrolling

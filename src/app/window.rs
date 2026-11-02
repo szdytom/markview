@@ -360,15 +360,7 @@ impl<P: super::SendEvent> App<P> {
 			);
 			// The list takes whole detents as eased steps and a high-resolution
 			// stream as momentum, as every other scrolling surface does.
-			let now = Instant::now();
-			let packets = markview_platform::wheel_packets()
-				&& (super::pointer::high_resolution(delta)
-					|| self
-						.interaction
-						.overlays
-						.quick_open
-						.wheel_stream_alive(now));
-			self.wheel_quick_open(-dy, packets);
+			self.wheel_quick_open(-dy, super::pointer::wheel_mode(delta));
 			return;
 		}
 		if self.readers.session.search.open
@@ -472,20 +464,10 @@ impl<P: super::SendEvent> App<P> {
 		} else {
 			let now = Instant::now();
 			let shift = self.interaction.pointer.modifiers().shift_key();
-			// Windows hands a touchpad's inertia over in packets the
-			// reader has to give momentum of its own; a whole-detent
-			// wheel, and every other desktop's stream, is one eased
-			// step per event. A whole detent inside a live stream is
-			// the OS rounding a packet, not a wheel: the stream
-			// adopts it, or easing it would kill the momentum.
-			let packets = markview_platform::wheel_packets()
-				&& (super::pointer::high_resolution(delta)
-					|| self.readers.session.wheel_stream_alive(now));
-			let travel = if packets {
-				Self::scroll_wheel_packet
-			} else {
-				Self::scroll_wheel
-			};
+			// A whole detent inside a live stream is the OS rounding a
+			// packet, not a wheel: the scroll adopts it, or easing it
+			// would kill the momentum.
+			let mode = super::pointer::wheel_mode(delta);
 			match self
 				.interaction
 				.pointer
@@ -495,7 +477,7 @@ impl<P: super::SendEvent> App<P> {
 				// or the event carried no motion.
 				WheelStep::Pending => {}
 				WheelStep::Travel(WheelAxis::Vertical, _, dy) => {
-					travel(self, -dy);
+					self.scroll_wheel(-dy, mode);
 				}
 				WheelStep::Travel(WheelAxis::Horizontal, dx, dy) => {
 					// A sideways gesture pans the block under the
@@ -507,7 +489,7 @@ impl<P: super::SendEvent> App<P> {
 					// target nor vertical motion to apply.
 					let pan = if dx.abs() >= dy.abs() { -dx } else { -dy };
 					if !self.horizontal_by(pan) {
-						travel(self, -dy);
+						self.scroll_wheel(-dy, mode);
 					}
 				}
 			}

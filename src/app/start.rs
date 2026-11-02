@@ -4,6 +4,7 @@ use super::{
 	file_search::{File, Snippet, find},
 };
 use markview_layout::text_input::TextInput;
+use markview_selection::Scroll;
 use nucleo_matcher::{Config, Matcher};
 use serde::{Deserialize, Serialize};
 use std::{
@@ -15,7 +16,7 @@ use std::{
 		Arc, Condvar, Mutex,
 		atomic::{AtomicU64, Ordering},
 	},
-	time::{SystemTime, UNIX_EPOCH},
+	time::{Instant, SystemTime, UNIX_EPOCH},
 };
 
 const RECENTS: usize = 8;
@@ -34,7 +35,7 @@ pub(super) struct Search {
 	pub matches: Arc<[Arc<File>]>,
 	pub snippets: HashMap<usize, Snippet>,
 	pub pending: bool,
-	pub scroll: f32,
+	pub scroll: Scroll,
 	catalog: Arc<[Arc<File>]>,
 	root: Option<PathBuf>,
 	sequence: u64,
@@ -55,7 +56,7 @@ impl Search {
 		if changed_root {
 			self.root = root;
 			self.input.set_text(ui, "");
-			self.scroll = 0.0;
+			self.scroll.reset();
 			self.matches = Arc::default();
 			self.snippets.clear();
 		}
@@ -289,7 +290,7 @@ impl<P: SendEvent> App<P> {
 		state.sequence =
 			worker.submit(state.catalog.clone(), state.input.text().to_owned());
 		state.pending = true;
-		state.scroll = 0.0;
+		state.scroll.reset();
 		self.redraw();
 	}
 	pub(super) fn quick_open_search_changed(&mut self) {
@@ -389,16 +390,22 @@ impl<P: SendEvent> App<P> {
 			self.open(path);
 		}
 	}
-	pub(super) fn scroll_start(&mut self, delta: f32) -> bool {
+	pub(super) fn scroll_start(
+		&mut self,
+		delta: f32,
+		mode: markview_selection::WheelMode,
+	) -> bool {
 		if self.readers.session.path.is_some()
 			|| !self.readers.session.snapshot.blocks.is_empty()
 		{
 			return false;
 		}
 		let g = self.chrome().start_geometry();
-		let next = (g.scroll + delta).clamp(0.0, g.max_scroll);
-		self.folder.start.scroll = next;
-		if next == g.scroll {
+		let scroll = &mut self.folder.start.scroll;
+		scroll.set_max(g.max_scroll);
+		let before = scroll.offset();
+		scroll.wheel(delta, Instant::now(), mode);
+		if !scroll.animating() && scroll.offset() == before {
 			return true;
 		}
 		self.clear_input_focus();

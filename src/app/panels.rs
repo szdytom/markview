@@ -5,15 +5,14 @@
 //! the shell shares. `ExportSettings` is persisted configuration, so its
 //! page offset never lives there.
 use super::sidebar;
-use crate::scroll::ScrollArea;
-use std::time::Instant;
+use markview_selection::Scroll;
 
 #[derive(Default)]
 pub(crate) struct Model {
-	export_scroll: ScrollArea,
+	export_scroll: Scroll,
 	/// The Styles page's list offset. The export's stylesheet chooser shares
 	/// it: no two pages of the panel are ever open at once.
-	styles_scroll: ScrollArea,
+	styles_scroll: Scroll,
 	/// Offset from the centre of the panel scrollbar thumb while dragging.
 	grab: Option<f32>,
 	/// The resize drag on a sidebar's edge.
@@ -21,19 +20,19 @@ pub(crate) struct Model {
 }
 
 impl Model {
-	pub(crate) fn export_scroll(&self) -> &ScrollArea {
+	pub(crate) fn export_scroll(&self) -> &Scroll {
 		&self.export_scroll
 	}
 
-	pub(crate) fn export_scroll_mut(&mut self) -> &mut ScrollArea {
+	pub(crate) fn export_scroll_mut(&mut self) -> &mut Scroll {
 		&mut self.export_scroll
 	}
 
-	pub(crate) fn styles_scroll(&self) -> &ScrollArea {
+	pub(crate) fn styles_scroll(&self) -> &Scroll {
 		&self.styles_scroll
 	}
 
-	pub(crate) fn styles_scroll_mut(&mut self) -> &mut ScrollArea {
+	pub(crate) fn styles_scroll_mut(&mut self) -> &mut Scroll {
 		&mut self.styles_scroll
 	}
 
@@ -51,25 +50,5 @@ impl Model {
 
 	pub(crate) fn sidebar_mut(&mut self) -> &mut sidebar::State {
 		&mut self.sidebar
-	}
-
-	/// Advances eased scrolling on both page offsets.
-	pub(crate) fn advance_scrolls(&mut self, now: Instant) {
-		self.export_scroll.advance(now);
-		self.styles_scroll.advance(now);
-	}
-
-	pub(crate) fn scroll_deadline(&self, now: Instant) -> Option<Instant> {
-		[
-			self.export_scroll.deadline(now),
-			self.styles_scroll.deadline(now),
-		]
-		.into_iter()
-		.flatten()
-		.min()
-	}
-
-	pub(crate) fn scroll_animating(&self) -> bool {
-		self.export_scroll.animating() || self.styles_scroll.animating()
 	}
 }

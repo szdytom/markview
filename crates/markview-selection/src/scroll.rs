@@ -1,4 +1,5 @@
-//! Time-driven document scrolling; the host supplies bounds and a clock.
+//! Time-driven scrolling shared by the document and the chrome; the host
+//! supplies an extent and a clock.
 use std::time::Duration;
 use web_time::Instant;
 
@@ -49,6 +50,19 @@ const STREAM_WINDOW: f32 = 0.5;
 pub fn ease_out_cubic(t: f32) -> f32 {
 	let remaining = 1.0 - t.clamp(0.0, 1.0);
 	1.0 - remaining * remaining * remaining
+}
+
+/// How one wheel event should move the offset.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum WheelMode {
+	/// A whole-detent step, eased to its destination.
+	#[default]
+	Detent,
+	/// A packet from a high-resolution stream, which carries its own momentum.
+	Packet,
+	/// Input that already carries the whole motion, such as a native stream or
+	/// a pointer pan. It is applied without easing or a coast.
+	Direct,
 }
 
 /// A time-driven scroll from one offset to another.
@@ -103,6 +117,15 @@ pub struct ScrollBounds {
 	pub complete: bool,
 }
 
+impl Default for ScrollBounds {
+	fn default() -> Self {
+		Self {
+			max: 0.0,
+			complete: true,
+		}
+	}
+}
+
 /// The momentum of a high-resolution wheel stream, in logical pixels and
 /// seconds.
 ///
@@ -124,35 +147,58 @@ struct Momentum {
 	gap_ema: f32,
 }
 
-/// Scroll offset, deferred destination and animation for one document.
+/// One scrollable surface: offset, extent, deferred destination and animation.
+///
+/// The extent is stored rather than passed on every call, so every surface —
+/// the document, a drawer or a list — advances through one clock, one wheel
+/// path and one set of bounds.
 #[derive(Clone, Debug, Default)]
-pub struct ScrollState {
-	/// Absolute requests may exceed incomplete bounds; `visible` clamps them.
+pub struct Scroll {
+	/// Absolute requests may exceed incomplete bounds; `offset` clamps them.
 	pub offset: f32,
 	pub target: Option<f32>,
 	pub animation: Option<ScrollAnimation>,
+	bounds: ScrollBounds,
 	momentum: Option<Momentum>,
 }
-impl ScrollState {
-	pub fn visible(&self, bounds: ScrollBounds) -> f32 {
-		self.offset.clamp(0.0, bounds.max)
+
+impl Scroll {
+	/// Replaces the available geometry, clamping a resting offset to it.
+	pub fn fit(&mut self, bounds: ScrollBounds) {
+		self.bounds = ScrollBounds {
+			max: bounds.max.max(0.0),
+			complete: bounds.complete,
+		};
+		self.resolve();
+	}
+	/// Replaces the bound of a surface whose whole geometry is known.
+	pub fn set_max(&mut self, max: f32) {
+		self.fit(ScrollBounds {
+			max,
+			complete: true,
+		});
+	}
+	/// The offset actually on screen.
+	pub fn offset(&self) -> f32 {
+		self.offset.clamp(0.0, self.bounds.max)
 	}
 	/// Whether an eased step or a stream's momentum owns the displayed offset.
 	pub fn animating(&self) -> bool {
 		self.animation.is_some() || self.momentum.is_some()
 	}
-	pub fn resolve(&mut self, bounds: ScrollBounds) {
+	/// Resolves a deferred destination against the stored extent.
+	pub fn resolve(&mut self) {
 		if self.animating() {
 			return;
 		}
 		if let Some(target) = self.target
-			&& (bounds.complete || target <= bounds.max)
+			&& (self.bounds.complete || target <= self.bounds.max)
 		{
-			self.offset = target.clamp(0.0, bounds.max);
+			self.offset = target.clamp(0.0, self.bounds.max);
 			self.target = None;
 		}
-		if bounds.complete {
-			self.offset = self.offset.clamp(0.0, bounds.max);
+		if self.bounds.complete {
+			self.offset = self.offset.clamp(0.0, self.bounds.max);
 		}
 	}
 	pub fn cancel(&mut self) {
@@ -165,29 +211,39 @@ impl ScrollState {
 			self.target = None;
 		}
 	}
-	pub fn set(&mut self, offset: f32, bounds: ScrollBounds) {
+	pub fn reset(&mut self) {
+		self.cancel();
+		self.offset = 0.0;
+		self.target = None;
+	}
+	pub fn set(&mut self, offset: f32) {
 		self.cancel();
 		self.target = Some(offset.max(0.0));
-		// Keep the absolute request while `visible` clamps it to each prefix.
+		// Keep the absolute request while `offset` clamps it to each prefix.
 		self.offset = offset.max(0.0);
-		self.resolve(bounds);
+		self.resolve();
 	}
-	pub fn by(&mut self, delta: f32, bounds: ScrollBounds) {
+	pub fn by(&mut self, delta: f32) {
 		self.cancel();
 		if delta == 0.0 {
 			self.target.get_or_insert(self.offset);
-			self.resolve(bounds);
+			self.resolve();
 			return;
 		}
 		let base = self.target.filter(|v| v.is_finite()).unwrap_or(self.offset);
 		self.target = Some((base + delta).max(0.0));
-		self.resolve(bounds);
+		self.resolve();
 	}
 	pub fn animate_to(&mut self, target: f32, now: Instant) {
 		self.momentum = None;
-		self.target = Some(target.max(0.0));
-		self.animation =
-			Some(ScrollAnimation::new(self.offset, target.max(0.0), now));
+		let target = target.max(0.0);
+		if target == self.offset {
+			self.animation = None;
+			self.target = None;
+			return;
+		}
+		self.target = Some(target);
+		self.animation = Some(ScrollAnimation::new(self.offset, target, now));
 	}
 	pub fn animate_by(&mut self, delta: f32, now: Instant) {
 		if delta == 0.0 {
@@ -209,19 +265,20 @@ impl ScrollState {
 		}
 		self.animate_by(delta, now);
 	}
-	/// A wheel travel from a high-resolution device, which Windows delivers in
-	/// batches rather than as a stream.
-	///
-	/// The packet is distance the hand has already travelled, so the page takes
-	/// its speed from how long the packet took to arrive and keeps it for the
-	/// packets still to come. A flush that follows a silence continues the
-	/// stream too, but its distance is what the OS accumulated in the silence,
-	/// so `distance / gap` names an absurd speed the hand never had: the
-	/// decaying speed stays, and the chase pays the flush as a glide. Only a
-	/// packet against the stream's own speed is a new gesture: the speed it
-	/// reverses is spent, and its own rate, not a blend with what it undoes,
-	/// moves the page. Nothing here changes a wheel that reports whole detents
-	/// on its own: those keep the eased step in `wheel_by`.
+	/// One wheel event, in the mode the host read from the device.
+	pub fn wheel(&mut self, delta: f32, now: Instant, mode: WheelMode) {
+		let mode = match mode {
+			WheelMode::Detent if self.wheel_stream_alive(now) => {
+				WheelMode::Packet
+			}
+			mode => mode,
+		};
+		match mode {
+			WheelMode::Detent => self.wheel_by(delta, now),
+			WheelMode::Packet => self.coast_wheel_by(delta, now),
+			WheelMode::Direct => self.by(delta),
+		}
+	}
 	/// A wheel travel from a high-resolution device, which Windows delivers in
 	/// batches rather than as a stream.
 	///
@@ -311,7 +368,7 @@ impl ScrollState {
 	/// rate, so a hand that halts on the pad stills the page within a beat
 	/// while a lift's flush, arriving later, finds speed left to continue.
 	/// Returns whether another frame is due.
-	fn advance_momentum(&mut self, now: Instant, bounds: ScrollBounds) -> bool {
+	fn advance_momentum(&mut self, now: Instant) -> bool {
 		let Some(momentum) = self.momentum.as_mut() else {
 			return false;
 		};
@@ -366,7 +423,7 @@ impl ScrollState {
 		};
 		self.offset = (self.offset + used * dt)
 			.clamp(low, high)
-			.clamp(0.0, bounds.max);
+			.clamp(0.0, self.bounds.max);
 		let decay = if quiet { QUIET_DECAY } else { COAST };
 		momentum.velocity *= (-dt / decay).exp();
 		// Spent once the speed has died with nothing still owed in the
@@ -377,7 +434,7 @@ impl ScrollState {
 		// layout was growing is spent as well.
 		let settled = debt == 0.0
 			|| (self.offset - received).abs() < 0.5
-			|| (forward && self.offset >= bounds.max);
+			|| (forward && self.offset >= self.bounds.max);
 		if momentum.velocity.abs() <= 4.0 && settled {
 			self.target = None;
 			self.momentum = None;
@@ -395,22 +452,22 @@ impl ScrollState {
 				<= STREAM_WINDOW
 		})
 	}
-	pub fn advance(&mut self, now: Instant, bounds: ScrollBounds) -> bool {
+	pub fn advance(&mut self, now: Instant) -> bool {
 		if self.momentum.is_some() {
-			return self.advance_momentum(now, bounds);
+			return self.advance_momentum(now);
 		}
 		let Some(animation) = self.animation else {
 			return false;
 		};
-		self.offset = animation.offset_at(now).clamp(0.0, bounds.max);
-		let at_end = bounds.complete
-			&& animation.to >= bounds.max - 0.5
-			&& self.offset >= bounds.max - 0.5;
+		self.offset = animation.offset_at(now).clamp(0.0, self.bounds.max);
+		let at_end = self.bounds.complete
+			&& animation.to >= self.bounds.max - 0.5
+			&& self.offset >= self.bounds.max - 0.5;
 		if !animation.finished(now) && !at_end {
 			return true;
 		}
 		self.animation = None;
-		self.resolve(bounds);
+		self.resolve();
 		false
 	}
 	pub fn deadline(&self, now: Instant) -> Option<Instant> {
@@ -418,6 +475,18 @@ impl ScrollState {
 			return Some((now + SCROLL_FRAME).min(animation.end()));
 		}
 		self.momentum.is_some().then_some(now + SCROLL_FRAME)
+	}
+}
+
+impl From<f32> for Scroll {
+	fn from(offset: f32) -> Self {
+		let mut scroll = Self::default();
+		scroll.fit(ScrollBounds {
+			max: f32::MAX,
+			complete: false,
+		});
+		scroll.offset = offset.max(0.0);
+		scroll
 	}
 }
 

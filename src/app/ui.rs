@@ -452,7 +452,7 @@ impl<P: super::SendEvent> App<P> {
 		self.panel_list()?.scrollbar(&self.ui)
 	}
 	/// The offset owner of whichever panel page scrolls.
-	fn panel_scroll_area(&mut self) -> Option<&mut crate::scroll::ScrollArea> {
+	fn panel_scroll_area(&mut self) -> Option<&mut markview_selection::Scroll> {
 		if self.phone_folder_open() {
 			Some(&mut self.folder.scroll)
 		} else if self.interaction.panel == crate::state::PanelPage::Tabs {
@@ -508,7 +508,11 @@ impl<P: super::SendEvent> App<P> {
 		};
 		if let Some(area) = self.panel_scroll_area() {
 			area.set_max(max);
-			area.wheel(delta, Instant::now());
+			area.wheel(
+				delta,
+				Instant::now(),
+				markview_selection::WheelMode::Detent,
+			);
 		}
 		self.interaction.widgets.captured = None;
 		self.redraw();
@@ -560,11 +564,17 @@ impl<P: super::SendEvent> App<P> {
 			return;
 		}
 		self.interaction.advance_scrolls(now);
-		self.interaction.overlays.quick_open.advance_scroll(now);
-		self.preferences.advance_scroll(now);
+		self.interaction
+			.overlays
+			.quick_open
+			.scroll_mut()
+			.advance(now);
+		self.preferences.settings_scroll_mut().advance(now);
 		self.folder.scroll.advance(now);
+		self.folder.start.scroll.advance(now);
 		let strip_moving = self.tab_strip.scroll.animating();
-		self.tab_strip.advance_scrolls(now);
+		self.tab_strip.scroll.advance(now);
+		self.tab_strip.drawer_scroll.advance(now);
 		if strip_moving {
 			if self.tab_strip.drag.is_some() {
 				// Tabs have moved under the held pointer; recompute the drop
@@ -574,17 +584,24 @@ impl<P: super::SendEvent> App<P> {
 			// The resting pointer now names a different tab.
 			self.hover_preview(now);
 		}
-		self.preferences.fonts.advance_scroll(now);
+		self.preferences.fonts.scroll_area().advance(now);
 		self.refresh_hover();
 		self.redraw();
 	}
 	pub(super) fn control_scroll_animating(&self) -> bool {
 		self.interaction.scroll_animating()
-			|| self.preferences.scroll_animating()
+			|| self.preferences.settings_scroll().animating()
 			|| self.folder.scroll.animating()
-			|| self.tab_strip.scroll_animating()
+			|| self.folder.start.scroll.animating()
+			|| self.tab_strip.scroll.animating()
+			|| self.tab_strip.drawer_scroll.animating()
 			|| self.preferences.fonts.scroll_area_ref().animating()
-			|| self.interaction.overlays.quick_open.scroll_animating()
+			|| self
+				.interaction
+				.overlays
+				.quick_open
+				.scroll_ref()
+				.animating()
 	}
 	/// The earliest frame any control surface needs.
 	pub(super) fn control_scroll_deadline(
@@ -595,14 +612,23 @@ impl<P: super::SendEvent> App<P> {
 			.scroll_deadline(now)
 			.into_iter()
 			.chain(
-				[self.preferences.scroll_deadline(now)]
+				[self.preferences.settings_scroll().deadline(now)]
 					.into_iter()
 					.flatten(),
 			)
 			.chain(self.folder.scroll.deadline(now))
-			.chain(self.tab_strip.scroll_deadline(now))
-			.chain(self.preferences.fonts.scroll_deadline(now))
-			.chain(self.interaction.overlays.quick_open.scroll_deadline(now))
+			.chain(self.folder.start.scroll.deadline(now))
+			.chain(self.tab_strip.scroll.deadline(now))
+			.chain(self.tab_strip.drawer_scroll.deadline(now))
+			.chain(self.tab_strip.scroll_at)
+			.chain(self.preferences.fonts.scroll_area_ref().deadline(now))
+			.chain(
+				self.interaction
+					.overlays
+					.quick_open
+					.scroll_ref()
+					.deadline(now),
+			)
 			.min()
 	}
 

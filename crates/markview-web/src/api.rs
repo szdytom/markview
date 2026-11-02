@@ -23,8 +23,8 @@ use markview_layout::{
 };
 use markview_render::{FrameStatus, Renderer, SurfaceSource, Theme, View};
 use markview_selection::{
-	DocumentInteraction, Horizontal, Host, Hover, Modifiers, Point,
-	ScrollBounds, ScrollState, Selection,
+	DocumentInteraction, Horizontal, Host, Hover, Modifiers, Point, Scroll,
+	ScrollBounds, Selection, WheelMode,
 };
 use serde::Deserialize;
 use std::{sync::Arc, time::Duration};
@@ -157,7 +157,7 @@ pub async fn create(
 		logical,
 		dpr,
 		scale,
-		scrolling: ScrollState::default(),
+		scrolling: Scroll::default(),
 		horizontal: Horizontal::default(),
 		internal_scroll: true,
 		images_clickable: false,
@@ -207,7 +207,7 @@ pub struct Markview {
 	/// lowered until both logical edges fit the device limit. Sharing it with
 	/// the drawn view keeps rendering and hit testing on one viewport.
 	scale: f32,
-	scrolling: ScrollState,
+	scrolling: Scroll,
 	horizontal: Horizontal,
 	internal_scroll: bool,
 	images_clickable: bool,
@@ -641,7 +641,8 @@ impl Markview {
 	pub fn scroll_to_end(&mut self) {
 		self.pending_anchor = None;
 		self.scrolling.offset = self.visible_scroll();
-		self.scrolling.by(f32::INFINITY, self.scroll_bounds());
+		self.scrolling.fit(self.scroll_bounds());
+		self.scrolling.by(f32::INFINITY);
 		self.follow_pointer();
 	}
 
@@ -861,7 +862,8 @@ impl Markview {
 			if external {
 				self.scroll_by(f64::from(delta));
 			} else {
-				self.scrolling.wheel_by(delta, Instant::now());
+				self.scrolling
+					.wheel(delta, Instant::now(), WheelMode::Detent);
 			}
 		}
 		self.follow_pointer();
@@ -1020,7 +1022,8 @@ impl Markview {
 		}
 	}
 	fn advance_interaction(&mut self, now: Instant) {
-		self.scrolling.advance(now, self.scroll_bounds());
+		self.scrolling.fit(self.scroll_bounds());
+		self.scrolling.advance(now);
 		if self.pointer.drag().is_some()
 			&& self.pointer.dragged()
 			&& let Some((_, y)) = self.cursor
@@ -1035,7 +1038,8 @@ impl Markview {
 			if delta != 0.0
 				&& self.pointer.auto_scroll_at().is_none_or(|at| at <= now)
 			{
-				self.scrolling.by(delta, self.scroll_bounds());
+				self.scrolling.fit(self.scroll_bounds());
+				self.scrolling.by(delta);
 				self.pointer
 					.set_auto_scroll_at(Some(now + Duration::from_millis(16)));
 			}
@@ -1155,7 +1159,8 @@ impl Markview {
 			return;
 		}
 		if let Some(y) = self.published.snapshot.anchor_y(anchor) {
-			self.scrolling.set(y, self.scroll_bounds());
+			self.scrolling.fit(self.scroll_bounds());
+			self.scrolling.set(y);
 			self.pending_anchor = None;
 		} else if self.pending.is_none() {
 			self.pending_anchor = None;
@@ -1221,7 +1226,7 @@ impl Markview {
 	/// a temporary height, so the requested offset is held above it rather than
 	/// clamped away: later prefixes put the reader back where they were.
 	fn visible_scroll(&self) -> f32 {
-		self.scrolling.visible(self.scroll_bounds())
+		self.scrolling.offset.clamp(0.0, self.scroll_range())
 	}
 	fn scroll_bounds(&self) -> ScrollBounds {
 		ScrollBounds {
@@ -1246,12 +1251,13 @@ impl Markview {
 	}
 
 	fn clamp_scroll(&mut self) {
-		self.scrolling.resolve(self.scroll_bounds());
+		self.scrolling.fit(self.scroll_bounds());
 		self.apply_anchor();
 		self.follow_pointer();
 	}
 	fn hold_scroll(&mut self, y: f32) {
-		self.scrolling.set(y, self.scroll_bounds());
+		self.scrolling.fit(self.scroll_bounds());
+		self.scrolling.set(y);
 	}
 	fn cancel_scroll_animation(&mut self) {
 		// Animated travel hands off its displayed offset; held requests survive.

@@ -1,7 +1,7 @@
 //! The floating file picker owns its workspace search session.
 use super::{App, SendEvent, chrome};
-use crate::scroll::ScrollArea;
 use crate::state::{ChromeCommand, Command, PanelPage, Selection, TextField};
+use markview_selection::{Scroll, WheelMode};
 use markview_ui_core::WidgetId;
 use std::time::Instant;
 use winit::keyboard::{Key, NamedKey};
@@ -10,7 +10,7 @@ use winit::keyboard::{Key, NamedKey};
 pub(crate) struct Model {
 	open: bool,
 	selected: usize,
-	scroll: ScrollArea,
+	scroll: Scroll,
 	previous_focus: Option<WidgetId>,
 	pub(in crate::app) search: super::start::Search,
 }
@@ -24,6 +24,12 @@ impl Model {
 	pub(in crate::app) fn scroll(&self) -> f32 {
 		self.scroll.offset()
 	}
+	pub(in crate::app) fn scroll_mut(&mut self) -> &mut Scroll {
+		&mut self.scroll
+	}
+	pub(in crate::app) fn scroll_ref(&self) -> &Scroll {
+		&self.scroll
+	}
 	pub(in crate::app) fn set_scroll_max(&mut self, max: f32) {
 		self.scroll.set_max(max);
 	}
@@ -33,26 +39,13 @@ impl Model {
 	pub(in crate::app) fn cancel_scroll(&mut self) {
 		self.scroll.cancel();
 	}
-	pub(in crate::app) fn wheel(&mut self, delta: f32, now: Instant) {
-		self.scroll.wheel(delta, now);
-	}
-	pub(in crate::app) fn wheel_packet(&mut self, delta: f32, now: Instant) {
-		self.scroll.wheel_packet(delta, now);
-	}
-	pub(in crate::app) fn wheel_stream_alive(&self, now: Instant) -> bool {
-		self.scroll.wheel_stream_alive(now)
-	}
-	pub(in crate::app) fn advance_scroll(&mut self, now: Instant) -> bool {
-		self.scroll.advance(now)
-	}
-	pub(in crate::app) fn scroll_deadline(
-		&self,
+	pub(in crate::app) fn wheel(
+		&mut self,
+		delta: f32,
 		now: Instant,
-	) -> Option<Instant> {
-		self.scroll.deadline(now)
-	}
-	pub(in crate::app) fn scroll_animating(&self) -> bool {
-		self.scroll.animating()
+		mode: WheelMode,
+	) {
+		self.scroll.wheel(delta, now, mode);
 	}
 	pub(in crate::app) fn reset(&mut self) {
 		self.selected = 0;
@@ -227,15 +220,16 @@ impl<P: SendEvent> App<P> {
 		self.quick_open_list().scrollbar(&self.ui)
 	}
 
-	pub(super) fn wheel_quick_open(&mut self, delta: f32, packets: bool) {
+	pub(super) fn wheel_quick_open(
+		&mut self,
+		delta: f32,
+		mode: markview_selection::WheelMode,
+	) {
 		self.quick_open_list();
-		let now = Instant::now();
-		let picker = &mut self.interaction.overlays.quick_open;
-		if packets {
-			picker.wheel_packet(delta, now);
-		} else {
-			picker.wheel(delta, now);
-		}
+		self.interaction
+			.overlays
+			.quick_open
+			.wheel(delta, Instant::now(), mode);
 		self.interaction.widgets.captured = None;
 		self.refresh_hover();
 		self.redraw();
@@ -297,16 +291,20 @@ mod tests {
 		let start = Instant::now();
 		let mut picker = Model::default();
 		picker.set_scroll_max(600.0);
-		picker.wheel(120.0, start);
-		assert!(picker.scroll_animating());
+		picker.wheel(120.0, start, WheelMode::Detent);
+		assert!(picker.scroll_ref().animating());
 		assert_eq!(picker.scroll(), 0.0);
-		assert!(picker.advance_scroll(start + Duration::from_millis(60)));
+		assert!(
+			picker
+				.scroll_mut()
+				.advance(start + Duration::from_millis(60))
+		);
 		assert!(picker.scroll() > 0.0 && picker.scroll() < 120.0);
-		assert!(!picker.advance_scroll(start + Duration::from_secs(1)));
+		assert!(!picker.scroll_mut().advance(start + Duration::from_secs(1)));
 		assert!((picker.scroll() - 120.0).abs() < 0.01);
 
-		picker.wheel(10_000.0, start);
-		picker.advance_scroll(start + Duration::from_secs(1));
+		picker.wheel(10_000.0, start, WheelMode::Detent);
+		picker.scroll_mut().advance(start + Duration::from_secs(1));
 		assert!((picker.scroll() - 600.0).abs() < 0.01);
 	}
 
@@ -315,10 +313,12 @@ mod tests {
 		let start = Instant::now();
 		let mut picker = Model::default();
 		picker.set_scroll_max(600.0);
-		picker.wheel(120.0, start);
-		picker.advance_scroll(start + Duration::from_millis(40));
+		picker.wheel(120.0, start, WheelMode::Detent);
+		picker
+			.scroll_mut()
+			.advance(start + Duration::from_millis(40));
 		picker.reset();
 		assert_eq!(picker.scroll(), 0.0);
-		assert!(!picker.scroll_animating());
+		assert!(!picker.scroll_ref().animating());
 	}
 }

@@ -267,6 +267,21 @@ pub(super) fn high_resolution(delta: MouseScrollDelta) -> bool {
 	}
 }
 
+/// How this wheel event should move a scroll.
+///
+/// A fractional line on a platform that reports wheel packets names a
+/// high-resolution stream; everything else is a whole detent, which the
+/// scroll itself upgrades when a stream is still live.
+pub(super) fn wheel_mode(
+	delta: MouseScrollDelta,
+) -> markview_selection::WheelMode {
+	if markview_platform::wheel_packets() && high_resolution(delta) {
+		markview_selection::WheelMode::Packet
+	} else {
+		markview_selection::WheelMode::Detent
+	}
+}
+
 /// Whether a `dy` of input has a finite distance to ease over.
 fn eases(dy: f32) -> bool {
 	dy.is_finite() && dy != 0.0
@@ -699,7 +714,7 @@ impl<P: super::SendEvent> App<P> {
 		LINE_STEP * self.scroll_speed()
 	}
 	pub(super) fn scroll_by(&mut self, dy: f32) {
-		if self.scroll_start(dy) {
+		if self.scroll_start(dy, markview_selection::WheelMode::Direct) {
 			return;
 		}
 		self.readers.session.scroll_by(dy, self.viewport());
@@ -707,35 +722,38 @@ impl<P: super::SendEvent> App<P> {
 	}
 	/// A discrete scroll step, eased to its destination.
 	pub(super) fn scroll_step(&mut self, dy: f32) {
-		if self.scroll_start(dy) {
+		let mode = if eases(dy) {
+			markview_selection::WheelMode::Detent
+		} else {
+			markview_selection::WheelMode::Direct
+		};
+		if self.scroll_start(dy, mode) {
 			return;
 		}
 		if eases(dy) {
+			self.readers.session.resolve_scroll(self.viewport());
 			self.readers.session.animate_scroll_by(dy, Instant::now());
 		} else {
 			self.readers.session.scroll_by(dy, self.viewport());
 		}
 		self.after_scroll();
 	}
-	/// A wheel travel, eased like a discrete step.
-	pub(super) fn scroll_wheel(&mut self, dy: f32) {
-		if self.scroll_start(dy) {
+	/// A wheel travel in whichever mode the device supplied.
+	pub(super) fn scroll_wheel(
+		&mut self,
+		dy: f32,
+		mode: markview_selection::WheelMode,
+	) {
+		if self.scroll_start(dy, mode) {
 			return;
 		}
 		if eases(dy) {
-			self.readers.session.animate_wheel_by(dy, Instant::now());
-		} else {
-			self.readers.session.scroll_by(dy, self.viewport());
-		}
-		self.after_scroll();
-	}
-	/// A wheel travel from a high-resolution device, which arrives in packets.
-	pub(super) fn scroll_wheel_packet(&mut self, dy: f32) {
-		if self.scroll_start(dy) {
-			return;
-		}
-		if eases(dy) {
-			self.readers.session.coast_wheel_by(dy, Instant::now());
+			self.readers.session.wheel(
+				dy,
+				Instant::now(),
+				self.viewport(),
+				mode,
+			);
 		} else {
 			self.readers.session.scroll_by(dy, self.viewport());
 		}
@@ -745,11 +763,14 @@ impl<P: super::SendEvent> App<P> {
 	/// zero; the end is only a number once the snapshot is complete, and until
 	/// then the existing infinite target waits for the final height.
 	pub(super) fn scroll_bound(&mut self, to_end: bool) {
-		if self.scroll_start(if to_end {
-			f32::INFINITY
-		} else {
-			f32::NEG_INFINITY
-		}) {
+		if self.scroll_start(
+			if to_end {
+				f32::INFINITY
+			} else {
+				f32::NEG_INFINITY
+			},
+			markview_selection::WheelMode::Direct,
+		) {
 			return;
 		}
 		let destination = if to_end {
@@ -764,6 +785,7 @@ impl<P: super::SendEvent> App<P> {
 		if let Some(destination) = destination
 			&& (destination - self.readers.session.scrolling.offset).abs() > 0.5
 		{
+			self.readers.session.resolve_scroll(self.viewport());
 			self.readers
 				.session
 				.animate_scroll_to(destination, Instant::now());

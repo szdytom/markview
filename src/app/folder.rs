@@ -2,10 +2,8 @@
 pub(super) mod observe;
 use super::{App, Event, SendEvent};
 use crate::state::ChromeCommand;
-use crate::{
-	scroll::ScrollArea,
-	state::{Command, DrawerAnimation, Row, RowSlide},
-};
+use crate::state::{Command, DrawerAnimation, Row, RowSlide};
+use markview_selection::Scroll;
 use observe::Observer;
 use std::{
 	collections::{BTreeMap, HashMap, HashSet},
@@ -437,7 +435,7 @@ pub(super) struct Browser {
 	pub start: super::start::State,
 	pub tree: Option<Tree>,
 	pub open: bool,
-	pub scroll: ScrollArea,
+	pub scroll: Scroll,
 	pub grab: Option<f32>,
 	/// The drawer's slide when it opens or closes.
 	animation: Option<DrawerAnimation>,
@@ -1265,7 +1263,11 @@ impl<P: SendEvent> App<P> {
 			self.folder.scroll.offset(),
 		);
 		self.folder.scroll.set_max(list.max_scroll());
-		self.folder.scroll.wheel(delta, Instant::now());
+		self.folder.scroll.wheel(
+			delta,
+			Instant::now(),
+			markview_selection::WheelMode::Detent,
+		);
 		self.interaction.widgets.captured = None;
 		self.redraw();
 	}

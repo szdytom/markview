@@ -1894,7 +1894,7 @@ fn a_native_pixel_stream_reverses_with_the_first_opposite_delta() {
 fn a_native_stream_start_cancels_a_running_wheel_momentum() {
 	let (mut app, _) = reader(&"A scrolling paragraph.\n\n".repeat(100), 760.0);
 	// The packet path owns the offset and coasts under momentum of its own.
-	app.scroll_wheel_packet(30.0);
+	app.scroll_wheel(30.0, markview_selection::WheelMode::Packet);
 	app.readers.session.advance_scroll(
 		Instant::now() + Duration::from_millis(100),
 		app.viewport(),

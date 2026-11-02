@@ -275,7 +275,8 @@ impl<P: SendEvent> App<P> {
 		if self.focused_input() == Some(id)
 			&& let Some(scroll) = start_input_scroll(&g, input, id)
 		{
-			self.folder.start.scroll = scroll;
+			self.folder.start.scroll.set_max(g.max_scroll);
+			self.folder.start.scroll.set(scroll);
 			g = self.chrome().start_geometry();
 			self.redraw();
 		}

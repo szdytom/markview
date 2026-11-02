@@ -39,7 +39,11 @@ impl<P: super::SendEvent> App<P> {
 			return false;
 		}
 		self.tab_strip.scroll.set_max(layout.max_scroll);
-		self.tab_strip.scroll.wheel(delta, Instant::now());
+		self.tab_strip.scroll.wheel(
+			delta,
+			Instant::now(),
+			markview_selection::WheelMode::Detent,
+		);
 		// Tabs slide under the resting pointer; the card closes, and the hover
 		// re-arms for whichever tab arrives there without waiting for motion.
 		self.dismiss_preview();

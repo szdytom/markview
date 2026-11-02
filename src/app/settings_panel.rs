@@ -1,21 +1,21 @@
 //! Settings state transitions; persistence and reflow belong to the host.
 use crate::state::SettingsCommand;
 use crate::{
-	scroll::ScrollArea,
 	settings::{
 		FontRole, MarkdownFlavor, ReaderSettings, Setting, WindowLayout,
 	},
 	state::Command,
 };
+use markview_selection::Scroll;
 use markview_ui_core::{Component, Invalidation, Update};
-use std::{ops::Deref, time::Instant};
+use std::ops::Deref;
 
 #[derive(Default)]
 pub(super) struct Model {
 	pub values: ReaderSettings,
 	pub settings_preview: bool,
 	/// The settings page's own list offset.
-	settings_scroll: ScrollArea,
+	settings_scroll: Scroll,
 }
 impl Model {
 	pub(super) fn new(values: ReaderSettings) -> Self {
@@ -25,11 +25,11 @@ impl Model {
 		}
 	}
 
-	pub(super) fn settings_scroll(&self) -> &ScrollArea {
+	pub(super) fn settings_scroll(&self) -> &Scroll {
 		&self.settings_scroll
 	}
 
-	pub(super) fn settings_scroll_mut(&mut self) -> &mut ScrollArea {
+	pub(super) fn settings_scroll_mut(&mut self) -> &mut Scroll {
 		&mut self.settings_scroll
 	}
 
@@ -37,18 +37,6 @@ impl Model {
 	pub(super) fn reset_page(&mut self) {
 		self.settings_scroll.reset();
 		self.settings_preview = false;
-	}
-
-	pub(super) fn advance_scroll(&mut self, now: Instant) {
-		self.settings_scroll.advance(now);
-	}
-
-	pub(super) fn scroll_deadline(&self, now: Instant) -> Option<Instant> {
-		self.settings_scroll.deadline(now)
-	}
-
-	pub(super) fn scroll_animating(&self) -> bool {
-		self.settings_scroll.animating()
 	}
 }
 impl Deref for Model {

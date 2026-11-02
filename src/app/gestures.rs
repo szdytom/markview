@@ -301,10 +301,8 @@ impl<P: super::SendEvent> App<P> {
 				self.interaction.overlays.outline.cancel_scroll()
 			}
 			Surface::Tabs => self.tab_strip.scroll.cancel(),
-			Surface::None
-			| Surface::Document
-			| Surface::Overflow(..)
-			| Surface::Viewer => {}
+			Surface::Document => self.folder.start.scroll.cancel(),
+			Surface::None | Surface::Overflow(..) | Surface::Viewer => {}
 		}
 	}
 
@@ -664,7 +662,7 @@ impl<P: super::SendEvent> App<P> {
 				if self.readers.session.path.is_none()
 					&& self.readers.session.snapshot.blocks.is_empty()
 				{
-					self.folder.start.scroll
+					self.folder.start.scroll.offset()
 				} else {
 					self.readers.session.scrolling.offset
 				},

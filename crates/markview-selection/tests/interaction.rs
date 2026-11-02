@@ -3,11 +3,47 @@ use markview_layout::scene::{
 	Rect, ScrollbarMetrics, Viewport,
 };
 use markview_selection::{
-	Cursor, DocumentInteraction, Horizontal, Motion, Point, ScrollBounds,
-	ScrollState, horizontal_by, selection_scroll,
+	Cursor, DocumentInteraction, Horizontal, Motion, Point, Scroll,
+	ScrollBounds, WheelMode, horizontal_by, selection_scroll,
 };
 use std::{sync::Arc, time::Duration};
 use web_time::Instant;
+
+/// Test syntax for the old bounds-at-every-call API, now that [`Scroll`]
+/// stores its own extent.
+#[derive(Default)]
+struct ScrollState(Scroll);
+impl std::ops::Deref for ScrollState {
+	type Target = Scroll;
+	fn deref(&self) -> &Scroll {
+		&self.0
+	}
+}
+impl std::ops::DerefMut for ScrollState {
+	fn deref_mut(&mut self) -> &mut Scroll {
+		&mut self.0
+	}
+}
+impl ScrollState {
+	fn advance(&mut self, now: Instant, bounds: ScrollBounds) -> bool {
+		self.0.fit(bounds);
+		self.0.advance(now)
+	}
+	fn by(&mut self, delta: f32, bounds: ScrollBounds) {
+		self.0.fit(bounds);
+		self.0.by(delta);
+	}
+	fn set(&mut self, offset: f32, bounds: ScrollBounds) {
+		self.0.fit(bounds);
+		self.0.set(offset);
+	}
+	fn visible(&self, bounds: ScrollBounds) -> f32 {
+		self.0.offset.clamp(0.0, bounds.max)
+	}
+	fn resolve(&mut self, bounds: ScrollBounds) {
+		self.0.fit(bounds);
+	}
+}
 
 fn snapshot() -> LayoutSnapshot {
 	let rect = Rect {
@@ -151,6 +187,26 @@ fn external_input_takes_over_and_pending_targets_survive_layout() {
 	assert_eq!(scroll.target, Some(f32::INFINITY));
 	scroll.resolve(bounds);
 	assert_eq!(scroll.offset, 1000.0);
+}
+
+#[test]
+fn direct_wheel_follows_the_finger_and_a_detent_eases() {
+	let start = Instant::now();
+	let mut direct = Scroll::default();
+	direct.set_max(1000.0);
+	direct.wheel(80.0, start, WheelMode::Direct);
+	assert_eq!(direct.offset, 80.0);
+	assert!(!direct.animating());
+	let mut detent = Scroll::default();
+	detent.set_max(1000.0);
+	detent.wheel(80.0, start, WheelMode::Detent);
+	assert_eq!(detent.offset, 0.0);
+	assert!(detent.animating());
+	// A wheel outward at the top asks for the place it is already at.
+	let mut edge = Scroll::default();
+	edge.set_max(1000.0);
+	edge.wheel(-80.0, start, WheelMode::Detent);
+	assert!(!edge.animating());
 }
 
 #[test]
