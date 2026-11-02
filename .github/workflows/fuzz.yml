@@ -18,6 +18,11 @@ jobs:
           key: ${{ github.ref }}-fuzz
       - name: Linux native development libraries
         run: bash scripts/ci_install_packages.sh libfontconfig1-dev libxkbcommon-dev libwayland-dev
+      # The fuzz crate is its own workspace with its own lockfile, so a stale
+      # `fuzz/Cargo.lock` must fail here instead of being rewritten by the build.
+      - name: Verify the fuzz lockfile
+        working-directory: fuzz
+        run: cargo +nightly metadata --locked --format-version 1 > /dev/null
       # The `fuzz` feature must stay a visibility relaxation only: it
       # compiles in every configuration the libraries support (F5).
       - run: cargo check -p markview-commonmark -p markview-document -p markview-layout -p markview-pdf -p markview-render --features fuzz --locked

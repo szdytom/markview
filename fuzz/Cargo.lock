@@ -1241,7 +1241,7 @@ dependencies = [
 
 [[package]]
 name = "markview-commonmark"
-version = "0.4.3"
+version = "0.4.4"
 dependencies = [
  "comrak",
  "html-escape",
@@ -1251,7 +1251,7 @@ dependencies = [
 
 [[package]]
 name = "markview-document"
-version = "0.4.3"
+version = "0.4.4"
 dependencies = [
  "serde",
 ]
@@ -1274,11 +1274,11 @@ dependencies = [
 
 [[package]]
 name = "markview-geometry"
-version = "0.4.3"
+version = "0.4.4"
 
 [[package]]
 name = "markview-layout"
-version = "0.4.3"
+version = "0.4.4"
 dependencies = [
  "anyhow",
  "codex",
@@ -1308,7 +1308,7 @@ dependencies = [
 
 [[package]]
 name = "markview-pdf"
-version = "0.4.3"
+version = "0.4.4"
 dependencies = [
  "anyhow",
  "krilla",
@@ -1326,7 +1326,7 @@ dependencies = [
 
 [[package]]
 name = "markview-render"
-version = "0.4.3"
+version = "0.4.4"
 dependencies = [
  "anyhow",
  "bytemuck",

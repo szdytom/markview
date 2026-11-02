@@ -136,6 +136,19 @@ CHECKS = (
         "light",
     ),
     Check(
+        "fuzz lock",
+        (
+            "cargo",
+            "metadata",
+            "--locked",
+            "--format-version",
+            "1",
+            "--manifest-path",
+            "fuzz/Cargo.toml",
+        ),
+        "light",
+    ),
+    Check(
         "Android orchestration tests",
         python("-m", "unittest", "discover", "-s", "android", "-p", "test_build.py"),
         "light",
