@@ -1,6 +1,7 @@
 use super::*;
 use crate::app::TOP;
 use crate::lang::Lang;
+use crate::layout::Paint;
 use crate::state::{
 	ChromeCommand, DocumentCommand, ExportCommand, SearchCommand,
 	SettingsCommand,
@@ -72,8 +73,32 @@ fn platform_toolbars_keep_hover_targets_and_caption_groups_separate() {
 					frame,
 					Lang::En,
 				);
-				assert!(draws.iter().any(|draw| matches!(draw,
-					Draw::Rect(rect, crate::layout::Paint::Styled(Condition::Button, C::HoverBackground)) if (rect.x, rect.y, rect.w, rect.h) == (first.rect.x, first.rect.y, first.rect.w, first.rect.h))));
+				let idle = InteractionState {
+					pointer: crate::app::pointer::State::at((-1.0, -1.0)),
+					..Default::default()
+				};
+				let rest =
+					draw_toolbar_at(&mut ui, &drawn(&idle), frame, Lang::En);
+				let icon_size = if style == WindowLayout::Macos {
+					20.0
+				} else {
+					18.0
+				};
+				let ink = |draws: &[Draw]| {
+					let x = first.rect.x + (first.rect.w - icon_size) / 2.0;
+					draws.iter().find_map(|draw| match draw {
+						Draw::Icon {
+							paint: Paint::Styled(Condition::Button, color),
+							x: icon_x,
+							..
+						} if (*icon_x - x).abs() < 0.001 => Some(*color),
+						_ => None,
+					})
+				};
+				assert!(!draws.iter().any(|draw| matches!(draw,
+					Draw::Rect(rect, Paint::Styled(Condition::Button, C::HoverBackground)) if (rect.x, rect.y, rect.w, rect.h) == (first.rect.x, first.rect.y, first.rect.w, first.rect.h))));
+				assert_eq!(ink(&rest), Some(C::Muted));
+				assert_eq!(ink(&draws), Some(C::Color));
 				let icons: Vec<_> = draws
 					.iter()
 					.filter_map(|draw| match draw {
@@ -83,14 +108,7 @@ fn platform_toolbars_keep_hover_targets_and_caption_groups_separate() {
 					.collect();
 				assert_eq!(icons.len(), buttons.len());
 				for (b, &(x, y, size)) in buttons.iter().zip(&icons) {
-					assert_eq!(
-						size,
-						if style == WindowLayout::Macos {
-							20.0
-						} else {
-							18.0
-						}
-					);
+					assert_eq!(size, icon_size);
 					assert_eq!(x + size / 2.0, b.rect.x + b.rect.w / 2.0);
 					assert_eq!(y + size / 2.0, TOP / 2.0);
 					assert!(b.rect.intersect(frame.tabs).is_none());

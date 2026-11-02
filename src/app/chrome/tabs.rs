@@ -111,9 +111,15 @@ impl TabBar<'_> {
 				rect.y + rect.h / 2.0 + 5.0,
 				label,
 			));
+			// Hovering the close affordance brightens it like any other icon.
+			let close_hovered =
+				hovered && self.cursor.0 >= rect.x + rect.w - 24.0;
 			out.push(Draw::Icon {
 				paths: super::icons::CLOSE,
-				paint: Paint::Styled(Condition::Toolbar, C::Muted),
+				paint: Paint::Styled(
+					Condition::Toolbar,
+					if close_hovered { C::Color } else { C::Muted },
+				),
 				x: rect.x + rect.w - 22.0,
 				y: rect.y + (rect.h - 16.0) / 2.0,
 				size: 16.0,

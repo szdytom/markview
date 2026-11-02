@@ -24,6 +24,7 @@ at the same level, without `[brackets]`.
 ### Changed
 
 - Add a local check runner for the fast static checks and compilation.
+- Draw icon buttons in muted gray at rest and the bright default color on hover or while active, with no click, hover or selection background; tab close icons brighten on hover.
 - Move the `bench`, `latency` and `smoke` subcommands behind the off-by-default `diagnostics` feature, so release builds no longer include them.
 - Rename the Linux window layout to Breeze; `window-layout` now accepts `"breeze"` while still reading `"linux"`.
 - Remove the tab-style setting and always draw Connected tabs.

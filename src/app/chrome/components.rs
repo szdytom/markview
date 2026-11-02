@@ -381,6 +381,7 @@ struct ButtonVisual {
 	quiet: bool,
 	focused: bool,
 	selected: bool,
+	quiet_icon: bool,
 }
 
 impl ButtonVisual {
@@ -408,6 +409,8 @@ impl ButtonVisual {
 			enabled && interaction.widgets.captured == Some(b.id) && hovered;
 		let primary = enabled && b.kind == ButtonKind::Primary;
 		let link = b.kind == ButtonKind::Link;
+		// Toolbar and sidebar icons read as bare glyphs on the panel surface.
+		let quiet_icon = b.icon.is_some() && b.kind == ButtonKind::Quiet;
 		let quiet = matches!(b.kind, ButtonKind::Quiet | ButtonKind::Link)
 			|| b.icon.is_some()
 			|| !panel;
@@ -425,6 +428,7 @@ impl ButtonVisual {
 			quiet,
 			focused,
 			selected,
+			quiet_icon,
 		}
 	}
 
@@ -434,6 +438,7 @@ impl ButtonVisual {
 			pressed,
 			hovered,
 			selected,
+			quiet_icon,
 			..
 		} = *self;
 		let styled = |field| Paint::Styled(Condition::Button, field);
@@ -448,7 +453,7 @@ impl ButtonVisual {
 			} else {
 				styled(C::Accent)
 			}
-		} else if selected && (pressed || hovered) {
+		} else if selected && (pressed || (hovered && !quiet_icon)) {
 			mix(
 				ui,
 				styled(C::ActiveBackground),
@@ -457,7 +462,7 @@ impl ButtonVisual {
 			)
 		} else if pressed || selected {
 			styled(C::ActiveBackground)
-		} else if hovered {
+		} else if hovered && !quiet_icon {
 			styled(C::HoverBackground)
 		} else {
 			styled(C::Background)
@@ -473,11 +478,16 @@ impl ButtonVisual {
 			hovered,
 			quiet,
 			focused,
+			quiet_icon,
 			..
 		} = *self;
 		let fill = self.fill(ui);
 		let mut out = Vec::new();
-		if primary || selected || pressed || hovered || !quiet {
+		// Bare icons mark hover and selection with ink, not a fill.
+		if primary
+			|| (!quiet_icon && (selected || pressed || hovered))
+			|| !quiet
+		{
 			out.push(Draw::Rect(rect, fill));
 		}
 		// A single edge carries focus, replacing the resting border instead of stacking rings.
@@ -512,6 +522,10 @@ impl ButtonVisual {
 			enabled,
 			primary,
 			link,
+			quiet_icon,
+			hovered,
+			focused,
+			selected,
 			..
 		} = *self;
 		let color = if !enabled {
@@ -520,6 +534,8 @@ impl ButtonVisual {
 			C::Background
 		} else if link {
 			C::Accent
+		} else if quiet_icon && !(hovered || focused || selected) {
+			C::Muted
 		} else {
 			C::Color
 		};

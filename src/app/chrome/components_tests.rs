@@ -196,6 +196,58 @@ fn every_form_action_is_reachable_without_clicking_through_the_clip() {
 }
 
 #[test]
+fn selected_icon_buttons_stay_bright_without_a_background() {
+	let mut ui = crate::test_support::shaper();
+	let mut b = button(
+		"Close",
+		Command::Chrome(ChromeCommand::CloseTab(0)),
+		Rect {
+			x: 20.0,
+			y: 30.0,
+			w: 32.0,
+			h: 32.0,
+		},
+	);
+	b.icon = Some(icons::CLOSE);
+	b.kind = ButtonKind::Quiet;
+	b.active = true;
+	let rest = InteractionState::default();
+	let cursor = (24.0, 34.0);
+	let hover = InteractionState {
+		pointer: crate::app::pointer::State::at(cursor),
+		..Default::default()
+	};
+	let pressed = InteractionState {
+		widgets: markview_ui_core::Interaction {
+			captured: Some(b.id),
+			..Default::default()
+		},
+		pointer: crate::app::pointer::State::at(cursor),
+		..Default::default()
+	};
+	for state in [&rest, &hover, &pressed] {
+		let draws = draw_button(&mut ui, &drawn(state), &b, true);
+		assert!(
+			!draws.iter().any(|draw| match draw {
+				Draw::Rect(rect, _) =>
+					(rect.x, rect.y, rect.w, rect.h)
+						== (b.rect.x, b.rect.y, b.rect.w, b.rect.h),
+				_ => false,
+			}),
+			"bare icons paint no background while selected, hovered or held"
+		);
+		let ink = draws.iter().find_map(|draw| match draw {
+			Draw::Icon {
+				paint: Paint::Styled(Condition::Button, color),
+				..
+			} => Some(*color),
+			_ => None,
+		});
+		assert_eq!(ink, Some(C::Color), "selected bare icons stay bright");
+	}
+}
+
+#[test]
 fn button_feedback_distinguishes_hover_press_selection_and_keyboard_focus() {
 	for dark in [false, true] {
 		let mut ui = crate::test_support::shaper();

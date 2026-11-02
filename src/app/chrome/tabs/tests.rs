@@ -92,6 +92,46 @@ fn hovered_labels_mix_current_theme_colors_and_keep_the_background_highlight() {
 }
 
 #[test]
+fn hovering_the_close_icon_brightens_it_like_any_other_icon() {
+	let mut ui = crate::test_support::shaper();
+	let strip = TabStrip::default();
+	let tabs = vec![ReaderTab::new("0.md".into())];
+	let widths = vec![(100.0, 50.0)];
+	let mut bar = TabBar {
+		ui: &mut ui,
+		strip: &strip,
+		widths: &widths,
+		tabs: &tabs,
+		active_tab: 0,
+		cursor: (0.0, 0.0),
+		viewport: Rect {
+			x: 10.0,
+			y: 4.0,
+			w: 700.0,
+			h: 36.0,
+		},
+	};
+	let rect = bar.layout().rects[0];
+	fn close_ink(bar: &mut TabBar) -> Option<C> {
+		let draws = bar.draw_tabs();
+		let Draw::Clipped { draws, .. } = &draws[0] else {
+			unreachable!()
+		};
+		draws.iter().find_map(|draw| match draw {
+			Draw::Icon {
+				paint: Paint::Styled(Condition::Toolbar, color),
+				..
+			} => Some(*color),
+			_ => None,
+		})
+	}
+	bar.cursor = (rect.x + 20.0, 20.0);
+	assert_eq!(close_ink(&mut bar), Some(C::Muted));
+	bar.cursor = (rect.x + rect.w - 20.0, 20.0);
+	assert_eq!(close_ink(&mut bar), Some(C::Color));
+}
+
+#[test]
 fn tab_hover_match_rendering_baselines() -> anyhow::Result<()> {
 	use crate::render::{Renderer, Theme, View};
 	use crate::test_support::render_goldens::{Baselines, capture};
