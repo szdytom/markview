@@ -238,6 +238,9 @@ impl<P: super::SendEvent> App<P> {
 			self.observe_document();
 			self.request(false);
 		}
+		// The tree follows a document opened in a new tab, like a tab switch.
+		self.expand_folder_to_tab();
+		self.redraw();
 	}
 	pub(super) fn new_page(&mut self) {
 		self.restore_session();

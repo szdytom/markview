@@ -98,14 +98,14 @@ Markview lists `.md`, `.markdown` and
 expand or collapse it and a file to read it in a tab. Subfolders start
 collapsed; automatic updates and **Refresh** preserve expansion, scroll position
 and keyboard focus while their paths exist. Existing tabs are
-reused. With the sidebar open, picking a tab expands the folders around its
-document and scrolls that row into view. The sidebar scrolls independently; Tab
-focuses its controls, arrow keys move between file rows, and Enter opens the
-selected row. Its header shows the open folder's name and can collapse all
-folders, refresh the tree, or toggle **Hide excluded entries**. Files added, moved or
-deleted externally update automatically, normally in a 100 ms batch plus disk
-reading time. Missed events are recovered by background checks; **Refresh**
-requests an immediate check.
+reused. With the sidebar open, opening a document in a new tab or picking a tab
+expands the folders around its document and scrolls that row into view. The
+sidebar scrolls independently; Tab focuses its controls, arrow keys move between
+file rows, and Enter opens the selected row. Its header shows the open folder's
+name and can collapse all folders, refresh the tree, or toggle **Hide excluded
+entries**. Files added, moved or deleted externally update automatically,
+normally in a 100 ms batch plus disk reading time. Missed events are recovered by
+background checks; **Refresh** requests an immediate check.
 **Collapse all** also clears nested expansion and returns the tree to the open
 folder's top-level entries, which stay visible; use **Ctrl+Shift+O** to choose
 another folder.

@@ -2099,6 +2099,49 @@ fn selecting_a_tab_opens_the_folder_onto_its_document() {
 }
 
 #[test]
+fn opening_a_linked_document_expands_the_folder_onto_its_row() {
+	use crate::state::Command;
+	let mut h = Harness::new();
+	let root = h.dir.path().canonicalize().unwrap();
+	fs::create_dir_all(root.join("deep/nested")).unwrap();
+	fs::write(root.join("deep/nested/Note.md"), "# Note").unwrap();
+	h.open("README.md", 2);
+	h.app
+		.folder_loaded(0, false, crate::app::folder::Tree::read(root.clone()));
+	h.app.set_folder_open(true);
+	h.settle_folder();
+	h.app
+		.action(Command::Chrome(ChromeCommand::FolderCollapseAll));
+	let collapsed = h.app.folder.tree.as_ref().unwrap();
+	assert!(
+		!collapsed.rows().iter().any(|id| collapsed.entries[*id].path
+			== root.join("deep/nested/Note.md"))
+	);
+	h.app.open_link("deep/nested/Note.md", false);
+	h.wait_images(0);
+	let note = root.join("deep/nested/Note.md");
+	let tree = h.app.folder.tree.as_ref().unwrap();
+	for path in [root.join("deep"), root.join("deep/nested"), note.clone()] {
+		assert!(
+			tree.rows().iter().any(|id| tree.entries[*id].path == path),
+			"{path:?} stays hidden"
+		);
+	}
+	assert_eq!(h.app.readers.session.path.as_ref(), Some(&note));
+	h.app
+		.advance_drawers(Instant::now() + Duration::from_secs(1));
+	// The row lands inside the clip, not just somewhere in the tree.
+	let buttons = h.app.buttons();
+	let tree = h.app.folder.tree.as_ref().unwrap();
+	assert!(
+		buttons.iter().any(|b| matches!(b.action,
+			Command::Chrome(ChromeCommand::FolderEntry(i))
+				if tree.entries[i].path == note)),
+		"the revealed row is not on screen"
+	);
+}
+
+#[test]
 fn every_navigation_path_closes_the_confirmation() {
 	use crate::app::modal::Modal;
 	use crate::security::{Security, Trust};
