@@ -27,6 +27,7 @@ at the same level, without `[brackets]`.
 - List the open tabs in Ctrl+P until a query is typed, scrolling when there are more than a few.
 - Read Android folders directly from internal storage or an SD card after granting All files access, with external writes visible immediately; raise the Android minimum to 11.
 - Slide the other tabs aside while a tab is dragged, following Firefox's 200 ms tab-drag motion instead of drawing an insertion line.
+- Grow a newly opened tab from its slot and ease the tabs after it aside, mirroring the close slide.
 - Use a settings-minus icon for the folder sidebar's exclusion toggle, highlighted while excluded entries are hidden.
 - Add a local check runner for the fast static checks and compilation.
 - Draw icon buttons in muted gray at rest and the bright default color on hover or while active, with no click, hover or selection background; tab close icons brighten on hover.

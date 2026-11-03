@@ -3,6 +3,7 @@ use super::{
 	App,
 	tab_strip::{TabDrag, TabLayout},
 };
+use crate::app::tab_metrics::CLOSE_HOVER;
 use crate::layout::Rect;
 use std::time::{Duration, Instant};
 
@@ -15,9 +16,9 @@ impl<P: super::SendEvent> App<P> {
 	pub(super) fn tab_close_at_cursor(&mut self) -> Option<usize> {
 		let (x, y) = self.interaction.pointer.cursor();
 		let layout = self.displayed_tab_layout();
-		layout
-			.hit_over(x, y, self.readers.active())
-			.filter(|i| x >= layout.rects[*i].x + layout.rects[*i].w - 24.0)
+		layout.hit_over(x, y, self.readers.active()).filter(|i| {
+			x >= layout.rects[*i].x + layout.rects[*i].w - CLOSE_HOVER
+		})
 	}
 	pub(super) fn normalize_tab_scroll(&mut self) {
 		let layout = self.resting_tab_layout();
@@ -53,6 +54,7 @@ impl<P: super::SendEvent> App<P> {
 		true
 	}
 	pub(super) fn begin_tab_drag(&mut self, index: usize) {
+		self.tab_strip.clear_slide();
 		self.action(crate::state::Command::Chrome(
 			crate::state::ChromeCommand::SelectTab(index),
 		));

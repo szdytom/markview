@@ -852,6 +852,8 @@ fn clicking_tabs_preserves_the_focused_search_box() {
 	h.app.open(two.clone());
 	h.app.select_tab(0);
 	assert_eq!(h.app.focused_input(), Some(TextField::Search));
+	// The clicks read the resting tab rects, not a slide still in flight.
+	h.app.tab_strip.stop_animation();
 	let click = |h: &mut Harness, index: usize| {
 		let scale = h.app.dimensions().2;
 		let rect = h.app.tab_layout().rects[index];

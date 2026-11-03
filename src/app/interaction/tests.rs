@@ -1725,6 +1725,102 @@ fn tab_hits_follow_the_close_slide() {
 }
 
 #[test]
+fn opening_a_tab_grows_its_card_from_the_slot() {
+	use crate::security::{Security, Trust};
+	use crate::state::TabPlacement;
+	let dir = tempfile::tempdir().unwrap();
+	let (mut app, _) = reader(SOURCE, 900.0);
+	let now = Instant::now();
+	for index in 0..3 {
+		let path = dir.path().join(format!("tab-{index}.md"));
+		std::fs::write(&path, SOURCE).unwrap();
+		app.readers.open(path, now);
+	}
+	// A foreground open inserts after the selected tab, so tab 0 leaves room
+	// at the middle of the strip.
+	app.select_tab(0);
+	app.normalize_tab_scroll();
+	let before = app.tab_layout().rects.clone();
+	let path = dir.path().join("opened.md");
+	std::fs::write(&path, SOURCE).unwrap();
+	app.open_document(path, Security::local(Trust::Trusted));
+	assert!(app.tab_strip.animating());
+	app.tab_strip.freeze_slide(Duration::ZERO);
+	assert_eq!(app.readers.active(), 1);
+	let shown = app.tab_layout().rects.clone();
+	assert_eq!(shown.len(), 4);
+	assert_eq!(shown[1].w, 0.0);
+	assert_eq!(shown[1].x, before[1].x);
+	assert_eq!(shown[0], before[0]);
+	assert_eq!(shown[2], before[1], "the displaced tab starts where it was");
+	assert_eq!(shown[3], before[2]);
+
+	// A background open inserts in the same slot without switching tabs.
+	app.tab_strip.stop_animation();
+	app.select_tab(0);
+	app.normalize_tab_scroll();
+	let before = app.tab_layout().rects.clone();
+	let path = dir.path().join("background.md");
+	std::fs::write(&path, SOURCE).unwrap();
+	app.open_markdown(
+		path,
+		None,
+		TabPlacement::Background,
+		Security::local(Trust::Trusted),
+	);
+	assert!(app.tab_strip.animating());
+	app.tab_strip.freeze_slide(Duration::ZERO);
+	assert_eq!(app.readers.active(), 0);
+	let shown = app.tab_layout().rects.clone();
+	assert_eq!(shown.len(), before.len() + 1);
+	assert_eq!(shown[1].w, 0.0);
+	assert_eq!(shown[1].x, before[1].x);
+	assert_eq!(shown[2], before[1]);
+	assert_eq!(shown[3], before[2]);
+}
+
+/// A drag started mid-open or mid-close snaps the strip to rest before it
+/// measures the grab, so the gap it opens starts from one stable layout instead
+/// of chasing the slide.
+#[test]
+fn starting_a_tab_drag_clears_the_open_slide() {
+	use crate::security::{Security, Trust};
+	let dir = tempfile::tempdir().unwrap();
+	let (mut app, _) = reader(SOURCE, 900.0);
+	let now = Instant::now();
+	for index in 0..3 {
+		let path = dir.path().join(format!("slide-tab-{index}.md"));
+		std::fs::write(&path, SOURCE).unwrap();
+		app.readers.open(path, now);
+	}
+	app.select_tab(0);
+	app.normalize_tab_scroll();
+	let path = dir.path().join("opened.md");
+	std::fs::write(&path, SOURCE).unwrap();
+	app.open_document(path, Security::local(Trust::Trusted));
+	assert!(app.tab_strip.animating(), "the open slide is in flight");
+	app.tab_strip.freeze_slide(Duration::from_millis(10));
+	// The displaced tab still sits near where it was before the open, so a
+	// press there would grab it from a position its drag never keeps.
+	let mid_slide = app.tab_layout().rects[2];
+	let at = (mid_slide.x + 10.0, mid_slide.y + mid_slide.h / 2.0);
+	app.interaction.pointer.move_to(at);
+	app.begin_tab_drag(2);
+	let drag = app.tab_strip.drag.expect("the press grabs the tab");
+	let resting = app.displayed_tab_layout().rects[2].x;
+	assert_eq!(
+		drag.grab,
+		at.0 - resting,
+		"the grab keeps its distance to the tab at rest"
+	);
+	assert!(
+		(drag.grab - (at.0 - mid_slide.x)).abs() > 1.0,
+		"the grab comes from the resting layout, not the slide"
+	);
+	assert!(!app.tab_strip.animating(), "the open slide is gone");
+}
+
+#[test]
 fn tab_hits_follow_the_gap_that_closes_after_a_drag() {
 	let (mut app, _) = reader(SOURCE, 900.0);
 	let now = Instant::now();

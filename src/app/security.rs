@@ -92,7 +92,17 @@ impl<P: super::SendEvent> App<P> {
 						self.apply_anchor();
 					}
 				} else {
-					self.readers.open_background_secure(path, anchor, security);
+					let before = self.tab_layout();
+					if self
+						.readers
+						.open_background_secure(path, anchor, security)
+					{
+						// The dragged index is stale once the tab lands at
+						// `active + 1`; `begin_open` consumes the gap offsets.
+						self.tab_strip.cancel_drag();
+						self.tab_strip
+							.begin_open(&before, self.readers.active() + 1);
+					}
 					self.refresh_start_files();
 				}
 				self.redraw();

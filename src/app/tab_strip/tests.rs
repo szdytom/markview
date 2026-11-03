@@ -154,6 +154,48 @@ fn closing_a_tab_slides_the_following_tabs_left_and_settles() {
 }
 
 #[test]
+fn opening_a_tab_grows_it_from_its_slot_and_settles() {
+	let widths = [(100.0, 60.0); 2];
+	let layout = TabLayout::new(viewport(), &widths, 0.0);
+	let mut strip = TabStrip::default();
+	let end = layout.rects[1].x + layout.rects[1].w;
+	strip.begin_open(&layout, 1);
+	assert!(strip.animating());
+	let after = [(100.0, 60.0); 3];
+	let settled = TabLayout::new(viewport(), &after, 0.0);
+	let settled_end = settled.rects[2].x + settled.rects[2].w;
+	strip.freeze_slide(Duration::ZERO);
+	let start = strip.rects(&settled).unwrap();
+	assert_eq!(start[0], layout.rects[0]);
+	assert_eq!(start[1].x, layout.rects[1].x);
+	assert_eq!(start[1].w, 0.0);
+	assert_eq!(start[2], layout.rects[1]);
+	assert_eq!(strip.end(settled_end, 3), end);
+	strip.freeze_slide(Duration::from_millis(110));
+	let halfway = strip.rects(&settled).unwrap();
+	assert!(halfway[1].w > 0.0 && halfway[1].w < settled.rects[1].w);
+	assert!(halfway[2].x > layout.rects[1].x);
+	assert!(halfway[2].x < settled.rects[2].x);
+	let halfway_end = strip.end(settled_end, 3);
+	assert!(halfway_end > end && halfway_end < settled_end);
+	strip.advance_animation(Instant::now() + Duration::from_secs(1));
+	assert!(!strip.animating());
+	assert!(strip.rects(&settled).is_none());
+	// An appended tab grows out of the old right edge.
+	strip.begin_open(&layout, 2);
+	strip.freeze_slide(Duration::ZERO);
+	let appended = strip.rects(&settled).unwrap();
+	assert_eq!(
+		appended[2],
+		Rect {
+			x: layout.rects[1].x + layout.rects[1].w,
+			w: 0.0,
+			..layout.rects[1]
+		}
+	);
+}
+
+#[test]
 fn dragging_opens_a_gap_that_matches_the_reordered_layout() {
 	let widths = [(100.0, 60.0), (60.0, 60.0), (80.0, 60.0)];
 	let layout = TabLayout::new(viewport(), &widths, 0.0);
@@ -209,6 +251,112 @@ fn closing_mid_drag_starts_the_slide_from_the_shifted_tabs() {
 		strip.drag_offsets(Instant::now()).is_none(),
 		"the close slide owns the tabs' positions"
 	);
+}
+
+#[test]
+fn opening_mid_drag_starts_the_slide_from_the_shifted_tabs() {
+	let widths = [(100.0, 60.0); 3];
+	let layout = TabLayout::new(viewport(), &widths, 0.0);
+	let mut strip = TabStrip {
+		drag: Some(TabDrag {
+			index: 0,
+			start: 10.0,
+			grab: 5.0,
+			moving: true,
+			slot: Some(2),
+		}),
+		..Default::default()
+	};
+	strip.retarget_shift(&layout, &widths);
+	strip.freeze_shift(Duration::from_secs(1));
+	let mut shown = layout.rects.clone();
+	for (rect, offset) in shown
+		.iter_mut()
+		.zip(strip.drag_offsets(Instant::now()).unwrap())
+	{
+		rect.x += offset;
+	}
+	// The strip still rests, so the open has to pick up the live gap itself.
+	strip.begin_open(&layout, 1);
+	let after = [(100.0, 60.0); 4];
+	let settled = TabLayout::new(viewport(), &after, 0.0);
+	strip.freeze_slide(Duration::ZERO);
+	let start = strip.rects(&settled).unwrap();
+	assert_eq!(start[0], shown[0]);
+	assert_eq!(start[1].x, shown[1].x);
+	assert_eq!(start[1].w, 0.0);
+	assert_eq!(start[2], shown[1]);
+	assert_eq!(start[3], shown[2]);
+	assert!(
+		strip.drag_offsets(Instant::now()).is_none(),
+		"the open slide owns the tabs' positions"
+	);
+}
+
+#[test]
+fn opening_mid_close_starts_from_the_tabs_as_painted() {
+	let widths = [(100.0, 60.0); 3];
+	let layout = TabLayout::new(viewport(), &widths, 0.0);
+	let mut strip = TabStrip::default();
+	strip.begin_close(&layout.rects, 0);
+	let closing_widths = [(100.0, 60.0); 2];
+	let closing = TabLayout::new(viewport(), &closing_widths, 0.0);
+	strip.freeze_slide(Duration::from_millis(110));
+	let shown = strip.rects(&closing).unwrap();
+	let mut shown_layout = TabLayout::new(viewport(), &closing_widths, 0.0);
+	shown_layout.rects = shown.clone();
+	strip.begin_open(&shown_layout, 1);
+	assert!(strip.animating());
+	strip.freeze_slide(Duration::ZERO);
+	let mut start = strip.rects(&layout).unwrap();
+	// The one tab that is new takes the slot the other two left behind.
+	start.remove(1);
+	assert_eq!(start, shown);
+}
+
+#[test]
+fn clearing_a_slide_leaves_the_tabs_at_rest() {
+	let layout = TabLayout::new(viewport(), &[(100.0, 60.0); 2], 0.0);
+	let mut strip = TabStrip::default();
+	strip.begin_open(&layout, 1);
+	assert!(strip.animating());
+	strip.clear_slide();
+	let after = TabLayout::new(viewport(), &[(100.0, 60.0); 3], 0.0);
+	assert!(!strip.animating());
+	assert!(strip.rects(&after).is_none());
+}
+
+#[test]
+fn the_first_tab_of_an_empty_strip_opens_from_the_viewport_edge() {
+	let empty = TabLayout::new(viewport(), &[], 0.0);
+	let mut strip = TabStrip::default();
+	strip.begin_open(&empty, 0);
+	assert!(strip.animating());
+	let after = TabLayout::new(viewport(), &[(100.0, 60.0)], 0.0);
+	strip.freeze_slide(Duration::ZERO);
+	assert_eq!(
+		strip.rects(&after).unwrap()[0],
+		Rect {
+			w: 0.0,
+			..viewport()
+		}
+	);
+	assert_eq!(
+		strip.end(after.rects[0].x + after.rects[0].w, 1),
+		viewport().x
+	);
+	// Phone mode hides the strip, so there is no tab to grow.
+	let hidden = TabLayout::new(
+		Rect {
+			w: 0.0,
+			..viewport()
+		},
+		&[],
+		0.0,
+	);
+	let mut hidden_strip = TabStrip::default();
+	hidden_strip.begin_open(&hidden, 0);
+	assert!(!hidden_strip.animating());
 }
 
 #[test]

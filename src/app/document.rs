@@ -222,7 +222,9 @@ impl<P: super::SendEvent> App<P> {
 		}
 		self.clear_input_focus();
 		self.worker.cancel();
+		let before = self.tab_layout();
 		self.readers.open(path, Instant::now());
+		self.tab_strip.begin_open(&before, self.readers.active());
 		self.refresh_start_files();
 		self.readers.session.security = security;
 		self.readers.session.web_loading = web_loading;

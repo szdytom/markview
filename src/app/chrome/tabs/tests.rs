@@ -133,6 +133,166 @@ fn hovering_the_close_icon_brightens_it_like_any_other_icon() {
 }
 
 #[test]
+fn a_growing_tab_clips_only_its_label_and_controls() {
+	let mut ui = crate::test_support::shaper();
+	let tabs: Vec<_> = (0..4)
+		.map(|i| ReaderTab::new(format!("{i}.md").into()))
+		.collect();
+	let widths = vec![(100.0, 50.0); tabs.len()];
+	let viewport = Rect {
+		x: 10.0,
+		y: 4.0,
+		w: 700.0,
+		h: 36.0,
+	};
+	let before = TabLayout::new(viewport, &widths[..3], 0.0);
+	let mut strip = TabStrip::default();
+	strip.begin_open(&before, 1);
+	strip.freeze_slide(Duration::ZERO);
+	let slot = Rect {
+		w: 0.0,
+		..before.rects[1]
+	};
+	let body = body(slot);
+	// A zero-width tab paints its caps from the widened body, so the surface
+	// does not collapse onto its slot.
+	let widened = painted_body(slot);
+	// The active cap reaches a radius left of the body to join it seamlessly.
+	for (active_tab, left) in [(0, widened.x), (1, widened.x - RADIUS)] {
+		let mut bar = TabBar {
+			ui: &mut ui,
+			strip: &strip,
+			widths: &widths,
+			tabs: &tabs,
+			active_tab,
+			cursor: (0.0, 0.0),
+			viewport,
+		};
+		let draws = bar.draw_tabs();
+		let Draw::Clipped { draws, .. } = &draws[0] else {
+			panic!("tab clip missing")
+		};
+		let groups: Vec<_> = draws
+			.iter()
+			.filter_map(|draw| match draw {
+				Draw::Clipped { rect, draws } => Some((*rect, draws)),
+				_ => None,
+			})
+			.collect();
+		assert_eq!(groups.len(), 1, "only the growing tab clips its content");
+		assert_eq!(groups[0].0, body, "the clip is the growing tab's body");
+		let clip = draws
+			.iter()
+			.position(|draw| matches!(draw, Draw::Clipped { .. }))
+			.expect("the growing tab clips its content");
+		let caps: Vec<_> = draws[clip - 2..clip]
+			.iter()
+			.filter_map(|draw| match draw {
+				Draw::Icon { x, .. } => Some(*x),
+				_ => None,
+			})
+			.collect();
+		assert_eq!(
+			caps,
+			[left, widened.x + widened.w - RADIUS],
+			"exactly the two caps of the growing tab, its right cap starting \
+			 at the slot, with active {active_tab}"
+		);
+		let content = groups[0].1;
+		assert!(content.iter().any(|draw| matches!(draw, Draw::Glyph(_))));
+		assert_eq!(
+			content
+				.iter()
+				.filter(|draw| matches!(draw, Draw::Icon { .. }))
+				.count(),
+			1,
+			"the close icon travels with the label"
+		);
+	}
+}
+
+/// Whether a tab clips its content follows its painted width alone, so any tab
+/// left too narrow by an animation clips, not just the one an open started.
+#[test]
+fn a_narrow_tab_clips_its_content_and_a_resting_one_does_not() {
+	let mut ui = crate::test_support::shaper();
+	let tabs: Vec<_> = (0..3)
+		.map(|i| ReaderTab::new(format!("{i}.md").into()))
+		.collect();
+	let widths = vec![(100.0, 50.0); tabs.len()];
+	let viewport = Rect {
+		x: 10.0,
+		y: 4.0,
+		w: 700.0,
+		h: 36.0,
+	};
+	let before = TabLayout::new(viewport, &widths[..2], 0.0);
+	let after = TabLayout::new(viewport, &widths, 0.0);
+	let clips = |ui: &mut TextShaper, strip: &TabStrip| {
+		let mut bar = TabBar {
+			ui,
+			strip,
+			widths: &widths,
+			tabs: &tabs,
+			active_tab: 0,
+			cursor: (0.0, 0.0),
+			viewport,
+		};
+		let draws = bar.draw_tabs();
+		let Draw::Clipped { draws, .. } = &draws[0] else {
+			panic!("tab clip missing")
+		};
+		draws
+			.iter()
+			.filter_map(|draw| match draw {
+				Draw::Clipped { rect, .. } => Some(*rect),
+				_ => None,
+			})
+			.collect::<Vec<_>>()
+	};
+	let mut strip = TabStrip::default();
+	strip.begin_open(&before, 1);
+	// The probes follow `TAB_MOTION` 220 ms under `CubicOut`, so they assert
+	// phases either side of `CLOSE_INSET`, not exact widths.
+	strip.freeze_slide(Duration::from_millis(10));
+	let shown = strip.rects(&after).expect("the open slide is in flight");
+	assert!(
+		shown[1].w > 0.0 && shown[1].w < CLOSE_INSET,
+		"the growing tab is far narrower than its label"
+	);
+	assert_eq!(
+		clips(&mut ui, &strip),
+		[body(shown[1])],
+		"only the overflowing tab clips its label and close icon"
+	);
+
+	// Past the close control the tab is still too narrow for its label alone.
+	let mut strip = TabStrip::default();
+	strip.begin_open(&before, 1);
+	strip.freeze_slide(Duration::from_millis(35));
+	let shown = strip.rects(&after).expect("the open slide is in flight");
+	assert!(
+		shown[1].w > CLOSE_INSET && shown[1].w < widths[1].0,
+		"the growing tab outgrew its close control without reaching rest"
+	);
+	assert!(
+		ui.text_width("1.md", 12.0) > shown[1].w - TAB_CHROME,
+		"the full label no longer fits its space"
+	);
+	assert_eq!(
+		clips(&mut ui, &strip),
+		[body(shown[1])],
+		"the overflowing label alone makes a tab clip"
+	);
+
+	let resting = TabStrip::default();
+	assert!(
+		clips(&mut ui, &resting).is_empty(),
+		"tabs wide enough for their content allocate no clip"
+	);
+}
+
+#[test]
 fn tab_hover_match_rendering_baselines() -> anyhow::Result<()> {
 	use crate::render::{Renderer, Theme, View};
 	use crate::test_support::render_goldens::{Baselines, capture};
@@ -384,9 +544,13 @@ fn compact_labels_keep_two_whole_graphemes_and_fit_the_measured_space() {
 	{
 		let prefix: String = name.graphemes(true).take(2).collect();
 		let width = ui.text_width(&prefix, 12.0);
-		let fitted = fit_label(&mut ui, name, width);
+		let (fitted, overflowed) = fit_label(&mut ui, name, width);
 		assert_eq!(fitted, prefix);
-		assert!(ui.text_width(&fitted, 12.0) <= width + 0.001);
+		assert!(!overflowed, "a prefix of exactly its own width fits");
+		let (fitted, overflowed) = fit_label(&mut ui, name, width - 0.5);
+		assert_eq!(fitted, prefix);
+		assert!(overflowed, "the two-grapheme fallback still overflows");
+		assert!(ui.text_width(&fitted, 12.0) > width - 0.5);
 	}
 }
 

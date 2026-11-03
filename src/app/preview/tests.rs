@@ -217,6 +217,9 @@ fn the_active_tab_opens_a_text_only_card() {
 	assert!(!app.readers.session.snapshot.blocks.is_empty());
 	assert!(!app.readers.entries()[0].session.snapshot.blocks.is_empty());
 
+	// Hovering a tab inside a slot the open slide has not filled yet would
+	// miss it, so read the strip at rest.
+	app.tab_strip.stop_animation();
 	let layout = app.tab_layout();
 	let now = Instant::now();
 	app.interaction

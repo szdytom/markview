@@ -756,7 +756,7 @@ impl<P: super::SendEvent> App<P> {
 		}
 		out
 	}
-	/// The tabs at their drawn positions, including a close slide.
+	/// The tabs at their drawn positions, including a tab slide.
 	pub(super) fn tab_layout(&mut self) -> super::tab_strip::TabLayout {
 		let mut layout = self.resting_tab_layout();
 		if let Some(rects) = self.tab_strip.rects(&layout) {
@@ -765,8 +765,8 @@ impl<P: super::SendEvent> App<P> {
 		layout
 	}
 
-	/// The tabs at their drawn positions, including a close slide and any gap
-	/// a drag leaves behind.
+	/// The tabs at their drawn positions, including a tab slide and any gap a
+	/// drag leaves behind.
 	pub(super) fn displayed_tab_layout(
 		&mut self,
 	) -> super::tab_strip::TabLayout {

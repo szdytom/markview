@@ -9,8 +9,8 @@ use std::time::{Duration, Instant};
 pub(super) const GAP: f32 = 2.0;
 /// Firefox's `--tab-dragover-transition`.
 const DRAG_MOTION: Duration = Duration::from_millis(200);
-/// The close slide's duration, matching the tabs drawer.
-const CLOSE_MOTION: Duration = Duration::from_millis(220);
+/// The opening and closing tab slide's duration, matching the tabs drawer.
+const TAB_MOTION: Duration = Duration::from_millis(220);
 
 #[derive(Default)]
 pub(super) struct TabStrip {
@@ -22,7 +22,7 @@ pub(super) struct TabStrip {
 	pub scroll_at: Option<Instant>,
 	/// The drawer's slide when the tabs page opens or closes.
 	animation: Option<DrawerAnimation>,
-	/// Tabs sliding to new positions after a close or a drop.
+	/// Tabs sliding to new positions after an open, a close, or a drop.
 	slide: Option<TabSlide>,
 	/// The other tabs sliding aside to leave the dragged tab's gap.
 	shift: Option<TabShift>,
@@ -185,6 +185,40 @@ impl TabStrip {
 		}
 	}
 
+	/// Starts a new tab at zero width in its slot and slides the tabs after it
+	/// right, the reverse of a close. Pass `layout` without the drag gap; the gap
+	/// is baked in here.
+	pub(super) fn begin_open(&mut self, layout: &TabLayout, index: usize) {
+		// Phone mode hides the strip, so there is no tab to grow.
+		if layout.viewport.w <= 0.0 || index > layout.rects.len() {
+			return;
+		}
+		let mut rects = layout.rects.clone();
+		if let Some(offsets) = self.drag_offsets(Instant::now()) {
+			for (rect, offset) in rects.iter_mut().zip(offsets) {
+				rect.x += offset;
+			}
+		}
+		let x = rects
+			.last()
+			.map_or(layout.viewport.x, |last| last.x + last.w);
+		let slot = rects.get(index).copied().unwrap_or(Rect {
+			x,
+			..layout.viewport
+		});
+		let mut from = rects.clone();
+		from.insert(index, Rect { w: 0.0, ..slot });
+		// A drag's gap would shift the new tab on top of the slide.
+		self.shift = None;
+		self.begin_slide(&rects, from, TAB_MOTION, Easing::CubicOut);
+		// An empty strip ends at the viewport's left edge, not at zero.
+		if let Some(slide) = &mut self.slide
+			&& rects.is_empty()
+		{
+			slide.end = layout.viewport.x;
+		}
+	}
+
 	/// Starts the surviving tabs at their displayed rects and slides them into
 	/// the layout that follows the close. `index` is the tab about to leave.
 	pub(super) fn begin_close(&mut self, rects: &[Rect], index: usize) {
@@ -199,7 +233,7 @@ impl TabStrip {
 		}
 		self.shift = None;
 		from.remove(index);
-		self.begin_slide(rects, from, CLOSE_MOTION, Easing::CubicOut);
+		self.begin_slide(rects, from, TAB_MOTION, Easing::CubicOut);
 	}
 
 	/// Starts every tab at its resting or dragged rect and slides it to the
@@ -326,6 +360,12 @@ impl TabStrip {
 			.as_ref()
 			.map_or(1.0, |animation| animation.progress(Instant::now()));
 		Some((t, slide))
+	}
+
+	/// Drops an in-flight slide so the tabs paint at rest before a drag
+	/// measures its gap.
+	pub(super) fn clear_slide(&mut self) {
+		self.slide = None;
 	}
 
 	/// Drops the slide where it is, as a page change without animation does.
