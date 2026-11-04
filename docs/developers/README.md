@@ -13,6 +13,7 @@ Start with [contributing](../../CONTRIBUTING.md) and the development guide.
 - [Web component development](web.md): WASM/TypeScript workspace, demo, builds and verification.
 - [Android development](android.md): platform implementation, APK builds and headless emulator tests.
 - [Packaging and releases](packaging.md): release assets, configuration and release procedures.
+- [Markview Integration delivery](integration-release.md): extension upgrade compatibility, acceptance and publishing boundaries.
 
 ## Measure and verify
 
