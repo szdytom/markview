@@ -106,6 +106,7 @@ def main():
         print(f"{name:42} {os.path.getsize(path) / 1024:8.1f} KiB")
     print(f"{'total':42} {total / 1024:8.1f} KiB")
     render_regional_fonts(options)
+    render_synthetic_bold_font(options)
 
 
 def render_regional_fonts(options):
@@ -127,6 +128,38 @@ def render_regional_fonts(options):
                 name = f"Noto{family}CJK{region}-{weight}-subset.otf"
                 font.save(os.path.join(out, name))
                 print(f"{name:42} {os.path.getsize(os.path.join(out, name)) / 1024:8.1f} KiB")
+
+
+def render_synthetic_bold_font(options):
+    """Pin one face under a unique family for deterministic synthetic bold."""
+    out = "crates/markview-render/tests/fonts"
+    fixture = "crates/markview-render/tests/fixtures/synthetic-bold.md"
+    with open(fixture, encoding="utf-8") as source:
+        text = source.read()
+    text += "".join(chr(c) for c in range(0x20, 0x7F))
+    font = TTFont(f"{NOTO_CJK}/NotoSansCJK-Medium.ttc", fontNumber=2)
+    subsetter = subset.Subsetter(options=options)
+    subsetter.populate(text=text)
+    subsetter.subset(font)
+    # The source family also ships a bold face. A unique typographic family
+    # makes the single Medium face the only match at every requested weight.
+    family = "Markview No Bold CJK"
+    names = font["name"]
+    for platform, encoding, language in {
+        (record.platformID, record.platEncID, record.langID)
+        for record in names.names
+    }:
+        names.setName(family, 1, platform, encoding, language)
+        names.setName("Regular", 2, platform, encoding, language)
+        names.setName(family, 4, platform, encoding, language)
+        names.setName(
+            family.replace(" ", ""), 6, platform, encoding, language
+        )
+        names.setName(family, 16, platform, encoding, language)
+        names.setName("Regular", 17, platform, encoding, language)
+    path = os.path.join(out, "MarkviewNoBoldCJK-subset.otf")
+    font.save(path)
+    print(f"{os.path.basename(path):42} {os.path.getsize(path) / 1024:8.1f} KiB")
 
 
 if __name__ == "__main__":

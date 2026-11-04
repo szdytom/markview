@@ -1,0 +1,32 @@
+format_version = 2
+version = 1
+
+# `Markview No Bold CJK` is the pinned Medium face under a unique
+# family, so no real bold face can satisfy the weight.
+[[fontdef]]
+id = "medium"
+lookfor = ["Markview No Bold CJK"]
+
+[[fontdef]]
+id = "realbold"
+lookfor = ["Noto Sans CJK SC"]
+
+[[rule]]
+when = ["body"]
+font = [{ family = "medium", synthetic_bold = true }, { family = "emoji", weight = 400 }]
+
+[[rule]]
+when = ["strong"]
+weight = 700
+
+[[rule]]
+when = ["em"]
+font = [{ family = "medium", variant = "italic", synthetic_italic = true, synthetic_bold = true }, { family = "emoji", weight = 400 }]
+
+[[rule]]
+when = ["blockquote"]
+font = [{ family = "medium" }, { family = "emoji", weight = 400 }]
+
+[[rule]]
+when = ["h2"]
+font = [{ family = "realbold" }, { family = "emoji", weight = 400 }]

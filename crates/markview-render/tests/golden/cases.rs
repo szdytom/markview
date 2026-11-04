@@ -240,6 +240,7 @@ pub fn cases() -> Vec<Case> {
 	}
 	for (fixture, variant, height) in [
 		("inline", "mvss-text", 1000.),
+		("synthetic-bold", "mvss-synthetic-bold", 760.),
 		("theme-sampler", "mvss-boxes", 2400.),
 		("mvss-markers", "mvss-markers", 1000.),
 		("theme-sampler", "mvss-page", 2400.),

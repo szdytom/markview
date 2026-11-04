@@ -76,7 +76,7 @@ python3 scripts/check_render_coverage.py
 
 | Configuration | Visual cases |
 | --- | --- |
-| Font candidates, fallback, weight/minimum weight, real italic, synthetic oblique, size, color, underline/strike, tracking | `mvss-text`, `inline`, regional typography, UI |
+| Font candidates, fallback, weight/minimum weight, real italic, synthetic oblique, synthetic bold, size, color, underline/strike, tracking | `mvss-text`, `synthetic-bold`, `inline`, regional typography, UI |
 | Layout/background text edges, named metrics/numeric values and positive/negative baseline shifts | `mvss-text`, `mvss-edges-*`, bundled inline code |
 | Padding, spacing, line height, borders, per-edge widths, radii/corners, heading markers, first/last-child compound rules | `mvss-boxes`, theme sampler, PDF custom |
 | All six bullet shapes and cycling, marker columns, list indentation, three marker alignments, decimal/alphabetic/Roman/Chinese/circled numbering | `mvss-markers*`, `mvss-numbering-*` |
@@ -115,7 +115,8 @@ without hyphenation and intentionally wide tables also retain the expected
 paragraph fallback behavior. The Noto subsets derive from the installed Noto
 TTF/TTC families; the [SIL Open Font License](../../licenses/Noto-OFL.txt) is
 retained. `scripts/generate_test_fonts.py` regenerates the shared SC/Latin/emoji
-faces and the render-only TC/JP subsets.
+faces, the render-only TC/JP subsets, and the single-face family that exercises
+synthetic bold.
 
 ## Reviewing a baseline change
 
