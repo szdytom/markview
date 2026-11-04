@@ -11,3 +11,6 @@ markview-geometry = { path = "../markview-geometry" }
 
 [lints]
 workspace = true
+
+[dev-dependencies]
+proptest.workspace = true

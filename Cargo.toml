@@ -70,6 +70,7 @@ unsafe_code = "deny"
 cyclomatic-complexity-threshold = 15
 
 [workspace.dependencies]
+proptest = { version = "1.12", default-features = false, features = ["std"] }
 regex = "1"
 regex-automata = "0.4"
 arboard = { version = "3.6", default-features = false, features = ["wayland-data-control"] }

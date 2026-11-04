@@ -52,6 +52,7 @@ fuzz = []
 workspace = true
 
 [dev-dependencies]
+proptest.workspace = true
 markview-commonmark = { path = "../markview-commonmark" }
 # The tests shape with the committed subset faces, so they need the
 # directory scanning that production builds leave to the caller.

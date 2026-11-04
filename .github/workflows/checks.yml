@@ -80,6 +80,14 @@ jobs:
         env:
           # Linux sees no installed fonts, so missing test configuration fails.
           FONTCONFIG_FILE: ${{ github.workspace }}/tests/fontconfig.conf
+      - name: Upload property test regressions
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: proptest-regressions-${{ runner.os }}
+          path: '**/proptest-regressions/**'
+          if-no-files-found: ignore
+          retention-days: 14
       - name: Upload rendered test frames
         if: failure()
         uses: actions/upload-artifact@v7
