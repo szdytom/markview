@@ -4,7 +4,6 @@ use crate::state::{
 	WheelStep,
 };
 use crate::{link, state};
-use markview_document::footnote;
 use std::{path::PathBuf, time::Instant};
 use winit::{
 	event::{MouseScrollDelta, TouchPhase},
@@ -15,6 +14,7 @@ use winit::{
 use super::modal::{Message, Modal, PermissionAction};
 use super::viewer::Message as ViewerMessage;
 use super::{App, LINE_STEP, TOP, anchor, chrome};
+use markview_layout::scene::LinkTarget;
 use markview_platform::{WheelAmount, WheelNotch};
 
 /// Everything the pointer owns between events: the press in flight, what it
@@ -578,7 +578,7 @@ impl<P: super::SendEvent> App<P> {
 		{
 			return;
 		}
-		let link = self.link_at(x, y);
+		let link = self.link_target_at(x, y);
 		self.interaction.pointer.set_pressed_image(
 			self.image_at_cursor().map(|(src, _)| (src, (x, y))),
 		);
@@ -591,15 +591,12 @@ impl<P: super::SendEvent> App<P> {
 				} else {
 					self.interaction.click_count(Instant::now())
 				};
-			let click_count = if link
-				.as_deref()
-				.and_then(markview_document::details_id)
-				.is_some()
-			{
-				1
-			} else {
-				click_count
-			};
+			let click_count =
+				if matches!(link.as_ref(), Some(LinkTarget::Disclosure(_))) {
+					1
+				} else {
+					click_count
+				};
 			match click_count {
 				2 => {
 					let selection =
@@ -608,7 +605,8 @@ impl<P: super::SendEvent> App<P> {
 						.interaction
 						.begin_grain_selection(selection, Grain::Word)
 					{
-						self.interaction.begin_selection(position, link);
+						self.interaction
+							.begin_selection(position, link.clone());
 					}
 				}
 				3 => {
@@ -618,10 +616,11 @@ impl<P: super::SendEvent> App<P> {
 						.interaction
 						.begin_grain_selection(selection, Grain::Block)
 					{
-						self.interaction.begin_selection(position, link);
+						self.interaction
+							.begin_selection(position, link.clone());
 					}
 				}
-				_ => self.interaction.begin_selection(position, link),
+				_ => self.interaction.begin_selection(position, link.clone()),
 			}
 		} else if let Some(link) = link {
 			// A summary line's marker carries no text, but the whole line is
@@ -661,9 +660,9 @@ impl<P: super::SendEvent> App<P> {
 			return;
 		}
 		let (x, y) = self.interaction.pointer.cursor();
-		let link = self.link_at(x, y);
-		if let Some(link) = self.interaction.finish_selection(link.as_deref()) {
-			self.open_link(&link, false);
+		let link = self.link_target_at(x, y);
+		if let Some(link) = self.interaction.finish_selection(link.as_ref()) {
+			self.open_link_target(&link, false);
 		} else if !self.interaction.pointer.dragged()
 			&& pressed_image.is_some_and(|(src, _)| {
 				self.image_at_cursor()
@@ -827,11 +826,14 @@ impl<P: super::SendEvent> App<P> {
 			self.update_drag();
 		}
 	}
-	/// The link under a window point, using the same origin as the renderer.
-	pub(super) fn link_at(&self, px: f32, py: f32) -> Option<String> {
+	pub(super) fn link_target_at(
+		&self,
+		px: f32,
+		py: f32,
+	) -> Option<LinkTarget> {
 		self.document_interaction()
-			.link(markview_interaction::Point::new(px, py))
-			.map(str::to_owned)
+			.link_ref(markview_interaction::Point::new(px, py))
+			.map(|link| link.target.clone())
 	}
 	pub(super) fn button_at_cursor(&mut self) -> bool {
 		let buttons = self.buttons();
@@ -1104,23 +1106,33 @@ impl<P: super::SendEvent> App<P> {
 		);
 	}
 
+	pub(super) fn open_link_target(
+		&mut self,
+		target: &LinkTarget,
+		background: bool,
+	) {
+		match target {
+			LinkTarget::Url(url) => self.open_link(url, background),
+			LinkTarget::Disclosure(id) => self.toggle_details(*id),
+			LinkTarget::FootnoteDefinition(id) => {
+				self.goto_target(
+					markview_document::AnchorId::FootnoteDefinition(id.clone()),
+				);
+			}
+			LinkTarget::FootnoteReturn(id) => {
+				self.return_from_footnote(id);
+			}
+		}
+	}
+
 	pub(super) fn open_link(&mut self, url: &str, background: bool) {
 		// Activating a link is direct input, so nothing keeps easing behind it.
 		self.readers.session.cancel_scroll_animation();
-		// A `<details>` summary is hit like a link but toggles its element.
-		if let Some(id) = markview_document::details_id(url) {
-			self.toggle_details(id);
-			return;
-		}
 		let fragment = anchor::link_fragment(url);
 		if anchor::link_target(url).is_empty() {
 			// A bare fragment addresses the current document.
 			if let Some(fragment) = fragment {
-				if let Some(label) = footnote::back_label(&fragment) {
-					self.return_from_footnote(label);
-				} else {
-					self.goto_anchor(fragment);
-				}
+				self.goto_anchor(fragment);
 			}
 			return;
 		}
@@ -1215,7 +1227,7 @@ impl<P: super::SendEvent> App<P> {
 	}
 
 	/// Toggles presentation while keeping the worker's retained geometry.
-	pub(super) fn toggle_details(&mut self, id: u64) {
+	pub(super) fn toggle_details(&mut self, id: markview_document::BlockId) {
 		let declared = self
 			.readers
 			.session

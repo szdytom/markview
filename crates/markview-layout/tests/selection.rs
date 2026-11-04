@@ -124,9 +124,9 @@ fn a_partial_selection_marks_nothing_it_does_not_cover() {
 		layout("First block here.\n\nSecond block here.\n\nThird block here.");
 	assert_eq!(snapshot.blocks.len(), 3, "three paragraphs");
 	let mut partial = snapshot.select_all(1).unwrap();
-	partial.focus.block = 0;
-	partial.focus.node = 0;
-	partial.focus.offset = 5;
+	partial.focus = snapshot
+		.semantic_at(0, 0, 5, markview_layout::text::Affinity::After)
+		.unwrap();
 	assert_eq!(snapshot.extract_text(partial, 1), "First");
 
 	let rects = snapshot.selection_rects(partial, &Default::default(), 1);

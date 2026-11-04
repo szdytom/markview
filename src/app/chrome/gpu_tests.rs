@@ -543,8 +543,9 @@ fn tab_strip_frames_clip_overflow_at_fractional_dpi() -> Result<()> {
 				)
 			})
 			.collect();
+		let labels = strip_labels(&entries);
 		let mut metrics = TabMetrics::default();
-		metrics.sync(&mut ui, &entries);
+		metrics.sync(&mut ui, &labels);
 		let mut strip = TabStrip::default();
 		strip.scroll = scroll.into();
 		strip.drag = dragging.then_some(TabDrag {
@@ -559,7 +560,7 @@ fn tab_strip_frames_clip_overflow_at_fractional_dpi() -> Result<()> {
 			ui: &mut ui,
 			strip: &strip,
 			widths: &metrics.widths,
-			tabs: &entries,
+			labels: &labels,
 			active_tab,
 			cursor: if dragging { (150.0, 20.0) } else { (0.0, 0.0) },
 			viewport: crate::app::frame::Layout::new(
@@ -1171,6 +1172,7 @@ fn previewing_recedes_the_styles_and_fonts_pages() {
 						0,
 						&strip,
 						&metrics.widths,
+						metrics.labels(),
 						None,
 						None,
 					),
@@ -1340,6 +1342,7 @@ fn the_fonts_page_draws_its_open_option_list() {
 			0,
 			&strip,
 			&metrics.widths,
+			metrics.labels(),
 			None,
 			None,
 		),
@@ -1452,6 +1455,7 @@ fn dismissed_pages_stop_drawing_and_answering_pointers() {
 				0,
 				&strip,
 				&metrics.widths,
+				metrics.labels(),
 				None,
 				None,
 			),
@@ -1603,8 +1607,9 @@ fn redesigned_chrome_frames() -> Result<()> {
 		let mut ui = crate::test_support::shaper();
 		ui.set_stylesheet(sheet.clone());
 		renderer.set_stylesheet(sheet);
+		let labels = strip_labels(&tabs);
 		let mut metrics = TabMetrics::default();
-		metrics.sync(&mut ui, &tabs);
+		metrics.sync(&mut ui, &labels);
 		let mut entries = crate::stylesheet::catalog(None, None);
 		// A catalogue past the fold, so the scrolled styles frame scrolls.
 		for (id, name) in [("journal", "Journal"), ("contrast", "Contrast")] {
@@ -1625,7 +1630,9 @@ fn redesigned_chrome_frames() -> Result<()> {
 			let session = ReaderSession {
 				path: Some("Typography 排版.md".into()),
 				snapshot,
-				document: Some(std::sync::Arc::new(document.clone())),
+				document: Some(crate::loaded::LoadedDocument::markdown(
+					std::sync::Arc::new(document.clone()),
+				)),
 				..Default::default()
 			};
 			for scale in [1.0, 1.25, 2.0] {
@@ -1929,6 +1936,7 @@ fn redesigned_chrome_frames() -> Result<()> {
 							if page == "empty" { usize::MAX } else { 0 },
 							&strip,
 							&metrics.widths,
+							metrics.labels(),
 							None,
 							None,
 						),
@@ -2524,4 +2532,17 @@ fn preview_card_frame() -> Result<()> {
 		}
 	}
 	Ok(())
+}
+
+/// The strip labels of tabs that carry no front-end title.
+fn strip_labels(tabs: &[ReaderTab]) -> Vec<String> {
+	tabs.iter()
+		.map(|tab| {
+			tab.path
+				.file_name()
+				.unwrap_or(tab.path.as_os_str())
+				.to_string_lossy()
+				.into_owned()
+		})
+		.collect()
 }

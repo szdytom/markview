@@ -619,21 +619,22 @@ public class Smoke extends Instrumentation {
                 .addCategory(Intent.CATEGORY_BROWSABLE).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
             if (cold) activity = startActivitySync(view);
             else getTargetContext().startActivity(view);
-            JSONObject page = waitFor(s -> s.optBoolean("ready") && s.optString("path").contains("First web article"));
+            String second = url.replace("/first", "/second");
+            JSONObject page = waitFor(s -> s.optBoolean("ready") && s.optString("path").equals(url));
             String path = page.getString("path");
-            require(new String(Files.readAllBytes(new File(path).toPath()), StandardCharsets.UTF_8).contains(url), "Web article imports its source URL");
+            require(path.equals(url), "Web article keeps its source URL");
             int tabs = page.getJSONArray("tabs").length();
             Intent share = new Intent(Intent.ACTION_SEND).setType("text/plain").setPackage(getTargetContext().getPackageName())
-                .putExtra(Intent.EXTRA_TEXT, new android.text.SpannableString("  " + url.replace("/first", "/second") + "  ")).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+                .putExtra(Intent.EXTRA_TEXT, new android.text.SpannableString("  " + second + "  ")).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
             getTargetContext().startActivity(share);
-            page = waitFor(s -> s.optBoolean("ready") && s.optString("path").contains("Second web article"));
+            page = waitFor(s -> s.optBoolean("ready") && s.optString("path").equals(second));
             require(page.getJSONArray("tabs").length() == tabs + 1, "URL share opens another web tab");
             share.putExtra(Intent.EXTRA_TEXT, "Article title\n" + url);
             getTargetContext().startActivity(share);
             waitFor(s -> s.optBoolean("ready") && s.optString("path").equals(path));
             require(state().getJSONArray("tabs").length() == tabs + 1, "Title and URL sharing reuses the existing tab");
-            getTargetContext().startActivity(view.setData(Uri.parse(url.replace("/first", "/second"))));
-            waitFor(s -> s.optBoolean("ready") && s.optString("path").contains("Second web article"));
+            getTargetContext().startActivity(view.setData(Uri.parse(second)));
+            waitFor(s -> s.optBoolean("ready") && s.optString("path").equals(second));
             view.setData(Uri.parse(url));
             getTargetContext().startActivity(view);
             waitFor(s -> s.optBoolean("ready") && s.optString("path").equals(path));
@@ -804,7 +805,9 @@ public class Smoke extends Instrumentation {
         org.json.JSONArray openedTabs = state().getJSONArray("tabs");
         for (int i = 0; i < openedTabs.length(); i++) {
             String path = openedTabs.getString(i);
-            if (path.contains("/files/documents/") || path.contains("/files/shared/") || path.startsWith(Environment.getExternalStorageDirectory().getPath() + "/")) retained.put(path);
+            if (path.contains("/files/documents/") || path.contains("/files/shared/")
+                || path.startsWith(Environment.getExternalStorageDirectory().getPath() + "/")
+                || path.startsWith("http://") || path.startsWith("https://")) retained.put(path);
         }
         int pid = android.os.Process.myPid();
         double fontSize = state().getDouble("font_size");

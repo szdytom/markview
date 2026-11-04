@@ -28,7 +28,7 @@ pub fn check(md: &str) {
 	let mut options = pipeline::options_for(md);
 	let mut images = ImageSnapshot::default();
 	let document = markview_commonmark::parse(format!("{OPENING}{md}"));
-	let sample = 1 + seed as usize % (document.blocks.len() - 1);
+	let sample = 1 + seed as usize % (document.blocks().len() - 1);
 	pair.pass(&document, &options, &images, sample, false);
 	assert!(
 		pair.worked.load(Ordering::Relaxed),
@@ -40,12 +40,15 @@ pub fn check(md: &str) {
 	options.stylesheet = Stylesheet::bundled(true);
 	options.force_open = !options.force_open;
 	let mut sources = Vec::new();
-	for block in &document.blocks {
+	for block in document.blocks() {
 		block.images(&mut sources);
 	}
 	for image in sources {
+		images
+			.keys
+			.insert(image.source.clone(), image.address().to_owned());
 		images.entries.insert(
-			image.src.clone(),
+			image.address().to_owned(),
 			ImageInfo {
 				version: 1,
 				size: Some((
@@ -72,7 +75,7 @@ pub fn check(md: &str) {
 	for engine in &mut pair.engines {
 		engine.clear_document_cache();
 	}
-	let stop = 2 + seed as usize % (edited.blocks.len() - 2);
+	let stop = 2 + seed as usize % (edited.blocks().len() - 2);
 	pair.pass(&edited, &options, &images, stop, true);
 	pair.pass(&edited, &options, &images, stop, false);
 }

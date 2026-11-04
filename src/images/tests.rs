@@ -52,6 +52,32 @@ fn images(offline: bool) -> Images {
 	Images::with_cache(offline, None)
 }
 
+fn key_for(images: &Images, address: &str) -> String {
+	images
+		.snapshot
+		.keys
+		.iter()
+		.find(|(source, _)| {
+			source
+				.resource()
+				.is_some_and(|resource| resource.address == address)
+		})
+		.map(|(_, key)| key.clone())
+		.expect("a resource key")
+}
+
+fn resource_key(
+	spec: &markview_layout::image::ImageSpec,
+	path: &Path,
+) -> String {
+	source::key(
+		&spec.source,
+		path,
+		None,
+		&crate::security::Security::local(crate::security::Trust::Trusted),
+	)
+}
+
 /// One scheduler entry drawn under `theme`, as the pure scheduling inputs see
 /// it.
 fn themed_entry(aliases: &[&str], svg: bool, theme: u64) -> Entry {
@@ -75,10 +101,10 @@ fn themed_entry(aliases: &[&str], svg: bool, theme: u64) -> Entry {
 fn fence_images(code: &str) -> (Images, String) {
 	let doc = markview_commonmark::parse(format!("```mermaid\n{code}\n```\n"));
 	let mut specs = Vec::new();
-	for block in &doc.blocks {
+	for block in doc.blocks() {
 		block.images(&mut specs);
 	}
-	let src = specs[0].src.clone();
+	let src = resource_key(specs[0], Path::new("note.md"));
 	let mut images = images(true);
 	images.prepare(
 		&doc,
@@ -180,12 +206,12 @@ fn document_and_vault_images_with_the_same_source_stay_separate() {
 		},
 	);
 	let mut specs = Vec::new();
-	for block in &doc.blocks {
+	for block in doc.blocks() {
 		block.images(&mut specs);
 	}
 	let keys: Vec<_> = specs
 		.iter()
-		.map(|spec| spec.resource_key().into_owned())
+		.map(|spec| resource_key(spec, Path::new("note.md")))
 		.collect();
 	assert_eq!(keys, ["picture.png", "vault:picture.png"]);
 	let mut images = images(true);
@@ -293,11 +319,11 @@ fn mermaid_fences_render_through_the_image_scheduler() {
 	let source = "```mermaid\ngraph TD\n A[Start] --> B[End]\n```\n";
 	let doc = markview_commonmark::parse(source);
 	let mut specs = Vec::new();
-	for block in &doc.blocks {
+	for block in doc.blocks() {
 		block.images(&mut specs);
 	}
-	let src = specs[0].src.clone();
-	assert!(src.starts_with(markview_layout::image::MERMAID_SCHEME));
+	let src = resource_key(specs[0], Path::new("note.md"));
+	assert!(specs[0].source.diagram().is_some());
 	let mut images = images(true);
 	images.prepare(
 		&doc,
@@ -432,7 +458,10 @@ fn only_a_diagram_uses_the_readers_faces() {
 			"{source:?}"
 		);
 	}
-	let diagram = Source::Diagram("graph TD\n A-->B\n".into());
+	let diagram = Source::Diagram {
+		language: "mermaid".into(),
+		source: "graph TD\n A-->B\n".into(),
+	};
 	assert!(
 		rasterizer_fonts(&diagram, Some(&fonts), &theme).is_some(),
 		"a diagram kept the system resolver"
@@ -483,10 +512,10 @@ fn a_private_font_directory_draws_a_diagram() {
 		"```mermaid\ngraph TD\n A[Wide label] --> B[Serif test]\n```\n",
 	);
 	let mut specs = Vec::new();
-	for block in &doc.blocks {
+	for block in doc.blocks() {
 		block.images(&mut specs);
 	}
-	let src = specs[0].src.clone();
+	let src = resource_key(specs[0], Path::new("note.md"));
 	let mut images = Images::with_cache_and_fonts(true, None, config.clone());
 	images.prepare(&doc, Path::new("note.md"), 1, false, &sheet, &config);
 	images.wait();
@@ -568,11 +597,11 @@ fn a_new_font_configuration_reaches_the_diagrams() {
 		"```mermaid\ngraph TD\n A[Start] --> B[End]\n```\n",
 	);
 	let mut specs = Vec::new();
-	for block in &doc.blocks {
+	for block in doc.blocks() {
 		block.images(&mut specs);
 	}
-	let src = specs[0].src.clone();
 	let path = Path::new("note.md");
+	let src = resource_key(specs[0], path);
 	let sheet = Stylesheet::default();
 	let mut images = Images::with_cache_and_fonts(true, None, initial.clone());
 	images.prepare(&doc, path, 1, false, &sheet, &initial);
@@ -582,7 +611,13 @@ fn a_new_font_configuration_reaches_the_diagrams() {
 		crate::document::fingerprint(&pixels[&src].rgba.to_vec())
 	};
 	let before = painted(&images);
-	let key = source(&specs[0].src, path).unwrap();
+	let key = super::source::resolve(
+		&specs[0].source,
+		path,
+		None,
+		&crate::security::Security::local(crate::security::Trust::Trusted),
+	)
+	.unwrap();
 	let faces = images
 		.diagram
 		.as_ref()
@@ -617,10 +652,10 @@ fn a_new_diagram_theme_redraws_the_diagram() {
 		"```mermaid\ngraph TD\n A[Start] --> B[End]\n```\n",
 	);
 	let mut specs = Vec::new();
-	for block in &doc.blocks {
+	for block in doc.blocks() {
 		block.images(&mut specs);
 	}
-	let src = specs[0].src.clone();
+	let src = resource_key(specs[0], Path::new("note.md"));
 	let mut images = images(true);
 	images.prepare(
 		&doc,
@@ -658,7 +693,10 @@ fn a_new_diagram_theme_redraws_the_diagram() {
 
 #[test]
 fn a_theme_generation_change_invalidates_only_the_affected_entries() {
-	let diagram = Source::Diagram("graph TD\n A-->B\n".into());
+	let diagram = Source::Diagram {
+		language: "mermaid".into(),
+		source: "graph TD\n A-->B\n".into(),
+	};
 	let svg = Source::File("a.svg".into());
 	let bitmap = Source::File("a.png".into());
 	let (diagram_theme, svg_theme) = (10, 20);
@@ -737,10 +775,10 @@ fn a_diagram_failure_does_not_outlive_its_theme() {
 		"```mermaid\ngraph TD\n A[Start] --> B[End]\n```\n",
 	);
 	let mut specs = Vec::new();
-	for block in &doc.blocks {
+	for block in doc.blocks() {
 		block.images(&mut specs);
 	}
-	let src = specs[0].src.clone();
+	let src = resource_key(specs[0], Path::new("note.md"));
 	let mut images = images(true);
 	let huge = Stylesheet::parse(
 		"format_version=2\nversion=1\n[mermaid]\nfont_size=4000",
@@ -783,12 +821,17 @@ fn a_failure_from_the_previous_theme_is_retried() {
 	images.recv = recv;
 	let doc = markview_commonmark::parse("```mermaid\ngraph TD\n A-->B\n```\n");
 	let mut specs = Vec::new();
-	for block in &doc.blocks {
+	for block in doc.blocks() {
 		block.images(&mut specs);
 	}
 	let path = Path::new("note.md");
-	let alias = specs[0].src.clone();
-	let src = source(&alias, path).unwrap();
+	let src = super::source::resolve(
+		&specs[0].source,
+		path,
+		None,
+		&crate::security::Security::local(crate::security::Trust::Trusted),
+	)
+	.unwrap();
 	images.prepare(
 		&doc,
 		path,
@@ -834,10 +877,10 @@ fn broken_mermaid_diagram_becomes_an_error_placeholder() {
 	let source = "```mermaid\nflowchart LR\n subgraph S\n  A-->B\n```\n";
 	let doc = markview_commonmark::parse(source);
 	let mut specs = Vec::new();
-	for block in &doc.blocks {
+	for block in doc.blocks() {
 		block.images(&mut specs);
 	}
-	let src = specs[0].src.clone();
+	let src = resource_key(specs[0], Path::new("note.md"));
 	let mut images = images(false);
 	images.prepare(
 		&doc,
@@ -855,7 +898,7 @@ fn broken_mermaid_diagram_becomes_an_error_placeholder() {
 	let doc =
 		markview_commonmark::parse("```mermaid\nflowchart LR\n A-->B\n```\n");
 	let mut specs = Vec::new();
-	for block in &doc.blocks {
+	for block in doc.blocks() {
 		block.images(&mut specs);
 	}
 	images.prepare(
@@ -867,8 +910,9 @@ fn broken_mermaid_diagram_becomes_an_error_placeholder() {
 		&crate::test_support::fonts(),
 	);
 	images.wait();
-	assert!(images.snapshot.entries[&specs[0].src].error.is_none());
-	assert!(images.snapshot.decoded().contains_key(&specs[0].src));
+	let key = resource_key(specs[0], Path::new("note.md"));
+	assert!(images.snapshot.entries[&key].error.is_none());
+	assert!(images.snapshot.decoded().contains_key(&key));
 }
 
 #[test]
@@ -1695,8 +1739,9 @@ fn non_utf8_grants_preserve_remote_image_loading_and_cache_isolation() {
 			&crate::test_support::fonts(),
 		);
 		images.wait();
-		assert!(images.snapshot.entries[url].error.is_none());
-		assert_eq!(images.snapshot.decoded()[url].width, 5);
+		let key = key_for(&images, url);
+		assert!(images.snapshot.entries[&key].error.is_none());
+		assert_eq!(images.snapshot.decoded()[&key].width, 5);
 		let mut security = Security::default();
 		security.grant(grant(other.clone()));
 		images.set_security(security);
@@ -1709,9 +1754,48 @@ fn non_utf8_grants_preserve_remote_image_loading_and_cache_isolation() {
 			&crate::test_support::fonts(),
 		);
 		images.wait();
+		let key = key_for(&images, url);
 		assert!(images.snapshot.decoded().is_empty());
-		assert!(images.snapshot.entries[url].error.is_some());
+		assert!(images.snapshot.entries[&key].error.is_some());
 	}
+}
+
+#[test]
+fn resource_keys_include_resolution_and_authority_context() {
+	let doc = markview_commonmark::parse("![a](pictures/a.png)");
+	let mut specs = Vec::new();
+	for block in doc.blocks() {
+		block.images(&mut specs);
+	}
+	let image = &specs[0].source;
+	let key = |document: &Path, security| {
+		source::key(image, document, None, security)
+	};
+	let path = Path::new("/notes/note.md");
+	let first = crate::security::Security::web(
+		"https://first.example/posts/one".into(),
+	);
+	let second = crate::security::Security::web(
+		"https://second.example/posts/one".into(),
+	);
+	assert_ne!(key(path, &first), key(path, &second));
+	// Two web pages can show the same relative address; their cache keys stay
+	// apart because each page's synthetic path participates.
+	assert_ne!(
+		key(Path::new("web:first"), &first),
+		key(Path::new("web:second"), &first)
+	);
+	let mut allowed = first.clone();
+	allowed.grant(crate::security::Resource::File(PathBuf::from(
+		"/notes/pictures/a.png",
+	)));
+	assert_ne!(key(path, &first), key(path, &allowed));
+	let untrusted =
+		crate::security::Security::local(crate::security::Trust::Untrusted);
+	assert_ne!(
+		key(Path::new("/first/note.md"), &untrusted),
+		key(Path::new("/second/note.md"), &untrusted)
+	);
 }
 
 #[test]
@@ -1789,6 +1873,7 @@ fn released_image_jobs_cannot_publish_into_a_reopened_document() {
 		)
 	};
 	prepare(&mut images);
+	let key = key_for(&images, &src);
 	let old = recv.recv_timeout(Duration::from_secs(5)).unwrap();
 	let generation = images.snapshot.generation;
 	images.release();
@@ -1802,9 +1887,9 @@ fn released_image_jobs_cannot_publish_into_a_reopened_document() {
 	current.run();
 	woke.recv_timeout(Duration::from_secs(5)).unwrap();
 	images.poll();
-	assert_eq!(images.snapshot.decoded()[&src].width, 2);
+	assert_eq!(images.snapshot.decoded()[&key].width, 2);
 	let snapshot = images.snapshot.clone();
-	let released = Arc::downgrade(&snapshot.decoded()[&src]);
+	let released = Arc::downgrade(&snapshot.decoded()[&key]);
 	images.release();
 	assert!(snapshot.decoded().is_empty());
 	assert!(released.upgrade().is_none());
@@ -1829,7 +1914,8 @@ fn repeated_document_release_reclaims_pixels_with_shared_services() {
 		);
 		images.wait();
 		let snapshot = images.snapshot.clone();
-		let weak = Arc::downgrade(&snapshot.decoded()[&src]);
+		let key = key_for(&images, &src);
+		let weak = Arc::downgrade(&snapshot.decoded()[&key]);
 		images.release();
 		assert!(weak.upgrade().is_none());
 		assert!(snapshot.decoded().is_empty());
@@ -2111,7 +2197,8 @@ fn standalone_pictures_canonicalize_before_matching_grants() {
 		&crate::test_support::fonts(),
 	);
 	images.wait();
-	let entry = &images.snapshot.entries[crate::file::STANDALONE_IMAGE_SOURCE];
+	let key = key_for(&images, crate::file::STANDALONE_IMAGE_SOURCE);
+	let entry = &images.snapshot.entries[&key];
 	assert!(entry.error.is_none(), "{entry:?}");
 	assert_eq!(entry.size, Some((5, 3)));
 }
@@ -2127,19 +2214,21 @@ fn resource_authority_controls_local_reads_and_cached_bodies_including_offline()
 	fs::write(&file, &bytes).unwrap();
 	let file = fs::canonicalize(file).unwrap();
 	let mut untrusted = Security::local(Trust::Untrusted);
-	assert!(super::source::resolve("picture.png", &path, &untrusted).is_err());
+	assert!(
+		super::source::resolve_at("picture.png", &path, &untrusted).is_err()
+	);
 	untrusted.grant(Resource::File(file));
 	assert!(matches!(
-		super::source::resolve("picture.png", &path, &untrusted),
+		super::source::resolve_at("picture.png", &path, &untrusted),
 		Ok(Source::File(_))
 	));
 	assert!(
-		super::source::resolve("picture.png", &path, &Security::default())
+		super::source::resolve_at("picture.png", &path, &Security::default())
 			.is_err()
 	);
 	let web = Security::web("https://example.org/articles/intro".into());
 	assert!(
-		matches!(super::source::resolve("../picture.png", &path, &web), Ok(Source::Http(url)) if url == "https://example.org/picture.png")
+		matches!(super::source::resolve_at("../picture.png", &path, &web), Ok(Source::Http(url)) if url == "https://example.org/picture.png")
 	);
 	assert_eq!(web.origin.trust(), Trust::Untrusted);
 
@@ -2160,7 +2249,8 @@ fn resource_authority_controls_local_reads_and_cached_bodies_including_offline()
 		&crate::test_support::fonts(),
 	);
 	images.wait();
-	assert_eq!(images.snapshot.entries[url].size, Some((5, 3)));
+	let key = key_for(&images, url);
+	assert_eq!(images.snapshot.entries[&key].size, Some((5, 3)));
 	images.set_security(Security::default());
 	images.prepare(
 		&document,
@@ -2171,8 +2261,9 @@ fn resource_authority_controls_local_reads_and_cached_bodies_including_offline()
 		&crate::test_support::fonts(),
 	);
 	images.wait();
+	let key = key_for(&images, url);
 	assert!(images.snapshot.decoded().is_empty());
-	assert!(images.snapshot.entries[url].error.is_some());
+	assert!(images.snapshot.entries[&key].error.is_some());
 	let mut granted = Security::default();
 	granted.grant(Resource::Network {
 		origin: "http://127.0.0.1:8080".into(),
@@ -2193,6 +2284,7 @@ fn resource_authority_controls_local_reads_and_cached_bodies_including_offline()
 		&crate::test_support::fonts(),
 	);
 	images.wait();
-	assert_eq!(images.snapshot.entries[url].size, Some((5, 3)));
+	let key = key_for(&images, url);
+	assert_eq!(images.snapshot.entries[&key].size, Some((5, 3)));
 	assert_eq!(images.security.origin, Origin::Clipboard);
 }

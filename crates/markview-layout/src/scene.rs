@@ -242,11 +242,42 @@ pub struct Overflow {
 /// while separate links with the same address keep different ids.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum LinkId {
-	/// The origin of a styled or footnote link occurrence, shared by every
-	/// fragment the link produces across paragraph splits.
-	Inline(usize),
+	/// The occurrence of a styled or footnote link, shared by every fragment
+	/// the link produces across paragraph splits.
+	Inline(markview_document::LinkOccurrenceId),
 	/// A summary or backlink whose link is not part of the inline text.
 	Special(usize),
+}
+
+/// What activating one link fragment does.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum LinkTarget {
+	/// An address the application resolves, including fragments.
+	Url(Arc<str>),
+	/// A footnote definition, addressed by its semantic identity.
+	FootnoteDefinition(markview_document::FootnoteId),
+	/// A footnote definition's number returning to the reference it was opened
+	/// from, or to its first reference.
+	FootnoteReturn(markview_document::FootnoteId),
+	/// A `<details>` summary toggling its own block.
+	Disclosure(markview_document::BlockId),
+}
+
+impl LinkTarget {
+	/// The legacy address form, used only at display and serialization
+	/// boundaries. Activation uses the typed variant.
+	pub fn display_url(&self) -> Arc<str> {
+		match self {
+			Self::Url(url) => url.clone(),
+			Self::FootnoteDefinition(id) => {
+				Arc::from(format!("#{}", crate::footnote::anchor(id.as_str())))
+			}
+			Self::FootnoteReturn(id) => {
+				Arc::from(format!("#{}", crate::footnote::back(id.as_str())))
+			}
+			Self::Disclosure(id) => Arc::from(format!("details:{id}")),
+		}
+	}
 }
 
 /// One clickable link fragment, in block-local coordinates.
@@ -261,22 +292,24 @@ pub struct LinkRect {
 	/// Shared with the style the run came from, so one address costs one
 	/// allocation however many line fragments point at it.
 	pub url: Arc<str>,
+	pub target: LinkTarget,
 }
 
 /// A link under a point: its address, owning block and occurrence id.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct LinkRef<'a> {
 	pub url: &'a str,
-	/// The source start of the block, which stays stable across reflows and
+	pub target: &'a LinkTarget,
+	/// The semantic block identity, which stays stable across reflows and
 	/// distinguishes blocks with identical text.
-	pub block: usize,
+	pub block: markview_document::BlockId,
 	pub id: LinkId,
 }
 
-/// A heading's anchor and its retained node-local y.
+/// A document anchor and its retained node-local y.
 #[derive(Clone, Debug, PartialEq)]
 pub struct HeadingAnchor {
-	pub anchor: String,
+	pub anchor: markview_document::AnchorId,
 	pub y: f32,
 }
 
@@ -298,7 +331,7 @@ pub struct BlockLayout {
 	/// Every inline link occurrence prepared in this block, in reading order,
 	/// including runs that line breaking discarded. Cache reuse rebinds its
 	/// ids from this list rather than from the painted fragments alone.
-	pub link_occurrences: Vec<usize>,
+	pub link_occurrences: Vec<markview_document::LinkOccurrenceId>,
 	/// Headings laid out inside this block, in reading order.
 	pub anchors: Vec<HeadingAnchor>,
 	pub degraded: usize,
@@ -317,8 +350,8 @@ pub struct PageConstraint {
 
 #[derive(Clone, Debug)]
 pub struct PlacedBlock {
-	pub id: u64,
-	pub source: Range<usize>,
+	pub id: markview_document::BlockId,
+	pub content: markview_document::ContentKey,
 	pub y: f32,
 	pub layout: Arc<BlockLayout>,
 	/// Resolved visibility and positions, shared independently of geometry.
@@ -331,7 +364,8 @@ pub struct LayoutSnapshot {
 	pub presentation_key: u64,
 	/// Semantic identity of the reading text; a changed document or edit
 	/// changes it, while cached geometry keeps it stable across passes.
-	pub content_id: u64,
+	pub content_id: markview_document::ContentKey,
+	pub revision: markview_document::DocumentRevision,
 	pub images: crate::image::ImageSnapshot,
 	pub document_box: Option<Draw>,
 	pub blocks: Vec<PlacedBlock>,
@@ -356,16 +390,25 @@ impl LayoutSnapshot {
 			crate::layout::scroll_limit(self.height, viewport)
 		}
 	}
-	/// The document y a link to a heading anchor should scroll to, once that
-	/// heading has been laid out. A prefix snapshot only answers for the
-	/// headings it already contains.
-	pub fn anchor_y(&self, anchor: &str) -> Option<f32> {
+	/// The document y a typed anchor should scroll to, once it has been laid
+	/// out. A prefix snapshot only answers for anchors it already contains.
+	pub fn anchor_target_y(
+		&self,
+		anchor: &markview_document::AnchorId,
+	) -> Option<f32> {
 		self.blocks.iter().find_map(|block| {
 			block
 				.anchor_positions()
 				.find(|(name, _)| *name == anchor)
 				.map(|(_, y)| block.y + y)
 		})
+	}
+
+	/// The document y an HTML fragment anchor should scroll to.
+	pub fn anchor_y(&self, anchor: &str) -> Option<f32> {
+		self.anchor_target_y(&markview_document::AnchorId::Fragment(
+			anchor.to_owned(),
+		))
 	}
 	pub fn image_title_at(
 		&self,
@@ -447,7 +490,8 @@ impl LayoutSnapshot {
 				if rect.contains(x, y) {
 					return Some(LinkRef {
 						url: link.url.as_ref(),
-						block: block.source.start,
+						target: &link.target,
+						block: block.id,
 						id: link.id,
 					});
 				}

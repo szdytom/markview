@@ -10,6 +10,12 @@ use markview_layout::{
 
 fn resources() -> ImageSnapshot {
 	let mut images = ImageSnapshot::default();
+	images.keys.insert(
+		markview_layout::image::ImageSource::Resource(
+			markview_layout::image::ResourceRef::document("test.png"),
+		),
+		"test.png".into(),
+	);
 	images.entries.insert(
 		"test.png".into(),
 		ImageInfo {
@@ -106,15 +112,17 @@ fn caption_wraps_and_toggling_it_keeps_reading_positions() {
 fn a_diagram_copies_its_placeholder_message_not_its_source() {
 	let doc = markview_commonmark::parse("```mermaid\ngraph TD\n A-->B\n```\n");
 	let mut specs = Vec::new();
-	for block in &doc.blocks {
+	for block in doc.blocks() {
 		block.images(&mut specs);
 	}
-	let src = specs[0].src.clone();
+	let source = specs[0].source.clone();
+	let src = specs[0].address().to_owned();
 	let mut engine = LayoutEngine::new();
 	// The caption asks for `alt`, which a diagram keeps empty.
 	let options =
 		styled("[[rule]]\nwhen=['img','caption']\nsource='alt'", 400.);
 	let mut resources = ImageSnapshot::default();
+	resources.keys.insert(source, src.clone());
 	resources.entries.insert(
 		src.clone(),
 		ImageInfo {
@@ -151,6 +159,7 @@ fn a_diagram_copies_its_placeholder_message_not_its_source() {
 		),
 	] {
 		let mut resources = ImageSnapshot::default();
+		resources.keys.insert(specs[0].source.clone(), src.clone());
 		resources.entries.insert(src.clone(), info);
 		let snapshot = engine.layout_with_images(&doc, &options, &resources);
 		assert_eq!(
@@ -164,12 +173,13 @@ fn a_diagram_copies_its_placeholder_message_not_its_source() {
 fn caption_sources_and_image_fields_are_strict_and_cascade() {
 	use markview_layout::style::{CaptionSource, Stylesheet};
 	let mut spec = markview_layout::image::ImageSpec {
-		src: "test.png".into(),
+		source: markview_layout::image::ImageSource::Resource(
+			markview_layout::image::ResourceRef::document("test.png"),
+		),
 		alt: "alt".into(),
 		title: "title".into(),
 		width: None,
 		height: None,
-		base: markview_layout::image::ImageBase::Document,
 	};
 	assert_eq!(CaptionSource::TitleOrAlt.text(&spec), Some("title"));
 	spec.title = "  ".into();
@@ -293,7 +303,7 @@ fn a_drawn_image_is_one_atomic_box_for_the_pointer() {
 /// express the partial offsets the selection was made of.
 #[test]
 fn a_selection_inside_a_loaded_image_keeps_its_highlight() {
-	use markview_layout::text::{Affinity, TextPosition};
+	use markview_layout::text::Affinity;
 	let doc = markview_commonmark::parse("![alternative text](test.png)");
 	let options = LayoutOptions {
 		width: 400.,
@@ -305,13 +315,7 @@ fn a_selection_inside_a_loaded_image_keeps_its_highlight() {
 	// is selectable on its own.
 	let pending = engine.layout(&doc, &options);
 	let selection = pending
-		.select_word_at(TextPosition {
-			revision: 7,
-			block: 0,
-			node: 0,
-			offset: 0,
-			affinity: Affinity::Before,
-		})
+		.select_word_at(pending.semantic_at(0, 0, 0, Affinity::Before).unwrap())
 		.expect("a word selection");
 	assert_eq!(pending.extract_text(selection, 7), "alternative");
 	// The image loads into one atomic box over the whole `alt`.
@@ -351,8 +355,14 @@ fn drag_node(
 		anchor: hit(first, false),
 		focus: hit(last, true),
 	};
-	assert_eq!(selection.anchor.node, node);
-	assert_eq!(selection.focus.node, node);
+	assert_eq!(
+		snapshot.resolve_position(selection.anchor).unwrap().node,
+		node
+	);
+	assert_eq!(
+		snapshot.resolve_position(selection.focus).unwrap().node,
+		node
+	);
 	assert!(
 		!snapshot
 			.selection_rects(selection, &Default::default(), 7)
@@ -513,7 +523,7 @@ fn placeholder_hyphenates_like_body_text() {
 #[test]
 fn placeholder_updates_preserve_surrounding_text_selection_but_clear_changed_text()
  {
-	use markview_layout::text::{Affinity, TextPosition, TextSelection};
+	use markview_layout::text::{Affinity, TextSelection};
 	let doc = markview_commonmark::parse("![alt](test.png) trailing words");
 	let options =
 		styled("[[rule]]\nwhen=['img','caption']\nsource='none'", 500.);
@@ -521,13 +531,8 @@ fn placeholder_updates_preserve_surrounding_text_selection_but_clear_changed_tex
 	let pending = engine.layout(&doc, &options);
 	let text = &pending.blocks[0].layout.text[0].text;
 	let start = text.find("trailing").unwrap();
-	let position = |offset| TextPosition {
-		revision: 7,
-		block: 0,
-		node: 0,
-		offset,
-		affinity: Affinity::Before,
-	};
+	let position =
+		|offset| pending.semantic_at(0, 0, offset, Affinity::Before).unwrap();
 	let selected = TextSelection {
 		anchor: position(start),
 		focus: position(text.len()),
@@ -586,21 +591,21 @@ fn markdown_references_and_html_preserve_image_semantics() {
 		"[![**alt**][pic]](https://example.com)\n\n[pic]: test.png \"Title\"\n\n<img title='src=wrong' src='a&amp;b.png' alt='&lt;图&gt;' width='120' height='0'>",
 	);
 	let mut images = Vec::new();
-	for b in &doc.blocks {
+	for b in doc.blocks() {
 		b.images(&mut images);
 	}
 	assert_eq!(images.len(), 2);
 	assert_eq!(images[0].alt, "alt");
 	assert_eq!(images[0].title, "Title");
-	assert_eq!(images[1].src, "a&b.png");
+	assert_eq!(images[1].address(), "a&b.png");
 	assert_eq!(images[1].alt, "<图>");
 	assert_eq!(images[1].width, Some(120));
 	assert_eq!(images[1].height, None);
-	let BlockKind::Paragraph(rich) = &doc.blocks[0].kind else {
+	let BlockKind::Paragraph(rich) = doc.blocks()[0].kind() else {
 		panic!()
 	};
 	assert!(matches!(rich[0].kind, InlineKind::Image(_)));
-	assert_eq!(rich[0].style.link_url(), Some("https://example.com"));
+	assert_eq!(rich[0].link_url(), Some("https://example.com"));
 }
 
 #[test]

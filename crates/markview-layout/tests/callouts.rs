@@ -4,6 +4,7 @@ use markview_layout::{
 	fonts::FontConfig,
 	layout::{LayoutEngine, LayoutOptions},
 	scene::Draw,
+	search::{SearchIndex, SearchOptions},
 	style::{Condition, Stylesheet},
 };
 use std::{path::Path, sync::Arc};
@@ -71,7 +72,7 @@ fn both_dialects_draw_vector_types_and_keep_icons_out_of_copy() {
 				let BlockKind::Quote {
 					callout: Some(callout),
 					..
-				} = &doc.blocks[0].kind
+				} = doc.blocks()[0].kind()
 				else {
 					panic!("expected callout");
 				};
@@ -96,7 +97,15 @@ fn both_dialects_draw_vector_types_and_keep_icons_out_of_copy() {
 				let selection = snapshot.select_all(1).unwrap();
 				assert_eq!(
 					snapshot.extract_text(selection, 1),
-					format!("{}\n\nBody.", plain_text(&callout.title))
+					format!(
+						"{}\n\nBody.",
+						plain_text(
+							callout
+								.title
+								.as_ref()
+								.expect("a plain callout owns its title")
+						)
+					)
 				);
 			}
 		}
@@ -153,15 +162,15 @@ fn folded_headers_wrap_toggle_and_share_the_unfolded_title_style() {
 		.layout
 		.links
 		.iter()
-		.find(|l| l.url.starts_with(markview_document::DETAILS_SCHEME))
+		.find(|l| l.url.starts_with("details:"))
 		.unwrap();
 	assert!(link.rect.h > options.font_size * 2.);
 	let selection = closed.select_all(1).unwrap();
 	assert!(!closed.extract_text(selection, 1).contains("Hidden"));
-	let BlockKind::Quote { blocks, .. } = &doc.blocks[1].kind else {
+	let BlockKind::Quote { blocks, .. } = doc.blocks()[1].kind() else {
 		panic!();
 	};
-	options.details_open = Arc::new([(blocks[0].id, true)].into());
+	options.details_open = Arc::new([(blocks[0].id(), true)].into());
 	let opened = engine.layout(&doc, &options);
 	let text = opened.extract_text(opened.select_all(1).unwrap(), 1);
 	assert!(
@@ -290,6 +299,22 @@ fn callouts_inherit_quote_line_widths_across_themes_and_mvss_overrides() {
 			}
 		}
 	}
+}
+
+#[test]
+fn plain_callout_titles_are_searchable_fields() {
+	let doc = parse_with(
+		"> [!note] Heading Words\n> Body.\n",
+		Dialect {
+			ofm: true,
+			..Default::default()
+		},
+	);
+	let index = SearchIndex::new(&doc.document);
+	assert_eq!(
+		index.find("Heading Words", SearchOptions::default()).len(),
+		1
+	);
 }
 
 #[test]

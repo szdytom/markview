@@ -6,23 +6,23 @@ fn gfm_and_raw_html() {
 	let doc = parse(
 		"# 中文\n\n- [x] done\n- [ ] todo\n\n| A | B |\n|:-|--:|\n| x | $x^2$ |\n\n~~gone~~ https://example.com <b>raw</b>\n",
 	);
-	assert_eq!(doc.blocks.len(), 4);
-	let BlockKind::List { items, .. } = &doc.blocks[1].kind else {
+	assert_eq!(doc.blocks().len(), 4);
+	let BlockKind::List { items, .. } = doc.blocks()[1].kind() else {
 		panic!()
 	};
 	assert_eq!(items[0].checked, Some(true));
 	assert_eq!(items[1].checked, Some(false));
-	let BlockKind::Table { align, .. } = &doc.blocks[2].kind else {
+	let BlockKind::Table(table) = doc.blocks()[2].kind() else {
 		panic!()
 	};
-	assert_eq!(align[1], CellAlign::Right);
-	let BlockKind::Paragraph(p) = &doc.blocks[3].kind else {
+	assert_eq!(table.columns[1].align, Some(CellAlign::Right));
+	let BlockKind::Paragraph(p) = doc.blocks()[3].kind() else {
 		panic!()
 	};
 	assert!(p.iter().any(|s| s.style.strike));
 	assert!(
 		p.iter()
-			.any(|s| s.style.link_url() == Some("https://example.com"))
+			.any(|s| s.link_url() == Some("https://example.com"))
 	);
 	assert!(p.iter().any(|s| s.style.bold
 		&& matches!(&s.kind, InlineKind::Text(t) if t == "raw")));
@@ -32,7 +32,7 @@ fn html_comments_disappear_and_attributes_are_ignored() {
 	let doc = parse(
 		"A <!-- hidden --> B <b class=\"x\" style=\"y\">bold</b> <em>i</em> <del>d</del> <code>c</code> <sup>s</sup> <a href=\"/u\">l</a>.\n",
 	);
-	let BlockKind::Paragraph(p) = &doc.blocks[0].kind else {
+	let BlockKind::Paragraph(p) = doc.blocks()[0].kind() else {
 		panic!()
 	};
 	assert_eq!(plain_text(p), "A B bold i d c s l.");
@@ -48,34 +48,34 @@ fn html_comments_disappear_and_attributes_are_ignored() {
 	assert!(style("d").strike);
 	assert!(style("c").code);
 	assert!(style("s").superscript);
-	assert_eq!(style("l").link_url(), Some("/u"));
+	assert!(p.iter().any(|i| i.link_url() == Some("/u")));
 }
 #[test]
 fn html_blocks_become_rule_heading_and_paragraph() {
 	let doc = parse(
 		"<h2>Title <em>here</em></h2>\n\n<hr>\n\n<p>Body</p>\n\n<!-- gone -->\n",
 	);
-	assert_eq!(doc.blocks.len(), 3);
-	let BlockKind::Heading { level, text, .. } = &doc.blocks[0].kind else {
+	assert_eq!(doc.blocks().len(), 3);
+	let BlockKind::Heading { level, text, .. } = doc.blocks()[0].kind() else {
 		panic!()
 	};
 	assert_eq!(*level, 2);
 	assert_eq!(plain_text(text), "Title here");
 	assert!(text.iter().any(|s| s.style.italic));
-	assert!(matches!(doc.blocks[1].kind, BlockKind::Rule));
+	assert!(matches!(doc.blocks()[1].kind(), BlockKind::Rule));
 	assert!(
-		matches!(&doc.blocks[2].kind, BlockKind::Paragraph(p) if plain_text(p) == "Body")
+		matches!(doc.blocks()[2].kind(), BlockKind::Paragraph(p) if plain_text(p) == "Body")
 	);
 }
 #[test]
 fn unsupported_html_keeps_the_source() {
 	let doc = parse("<div class=\"x\">\n\nspan <span>s</span>\n");
 	assert!(matches!(
-		&doc.blocks[0].kind,
+		doc.blocks()[0].kind(),
 		BlockKind::Code { language, text }
 			if language == "HTML source" && text.contains("div")
 	));
-	let BlockKind::Paragraph(p) = &doc.blocks[1].kind else {
+	let BlockKind::Paragraph(p) = doc.blocks()[1].kind() else {
 		panic!()
 	};
 	assert!(plain_text(p).contains("<span>s</span>"));
@@ -84,15 +84,18 @@ fn unsupported_html_keeps_the_source() {
 #[test]
 fn a_transparent_container_renders_its_markdown_body_in_place() {
 	let doc = parse("<div>\n\n**Hello**\n\n</div>\n");
-	assert_eq!(doc.blocks.len(), 1);
-	let BlockKind::Paragraph(text) = &doc.blocks[0].kind else {
+	assert_eq!(doc.blocks().len(), 1);
+	let BlockKind::Paragraph(text) = doc.blocks()[0].kind() else {
 		panic!("expected a paragraph")
 	};
 	assert!(text.iter().any(|t| t.style.bold));
 	assert_eq!(plain_text(text), "Hello");
 	// The body keeps its own range; the group adds nothing.
 	let start = doc.source.find("**Hello**").unwrap();
-	assert_eq!(doc.blocks[0].source, start..start + "**Hello**".len());
+	assert_eq!(
+		doc.block_source(&doc.blocks()[0]).unwrap(),
+		start..start + "**Hello**".len()
+	);
 }
 
 #[test]
@@ -100,13 +103,13 @@ fn transparent_containers_nest_and_resolve_document_references() {
 	let doc = parse(
 		"<div>\n\n<section>\n\n[link][ref]\n\n</section>\n\n</div>\n\n[ref]: https://example.com\n",
 	);
-	assert_eq!(doc.blocks.len(), 1);
-	let BlockKind::Paragraph(text) = &doc.blocks[0].kind else {
+	assert_eq!(doc.blocks().len(), 1);
+	let BlockKind::Paragraph(text) = doc.blocks()[0].kind() else {
 		panic!("expected a paragraph")
 	};
 	assert!(
 		text.iter()
-			.any(|i| i.style.link_url() == Some("https://example.com"))
+			.any(|i| i.link_url() == Some("https://example.com"))
 	);
 }
 
@@ -114,11 +117,11 @@ fn transparent_containers_nest_and_resolve_document_references() {
 fn an_unclosed_transparent_container_keeps_the_html_source() {
 	let doc = parse("<div>\n\nBody\n");
 	assert!(matches!(
-		&doc.blocks[0].kind,
+		doc.blocks()[0].kind(),
 		BlockKind::Code { language, text }
 			if language == "HTML source" && text.contains("<div>")
 	));
-	let BlockKind::Paragraph(body) = &doc.blocks[1].kind else {
+	let BlockKind::Paragraph(body) = doc.blocks()[1].kind() else {
 		panic!("expected the body paragraph")
 	};
 	assert_eq!(plain_text(body), "Body");
@@ -127,8 +130,8 @@ fn an_unclosed_transparent_container_keeps_the_html_source() {
 #[test]
 fn a_single_block_transparent_tag_renders_its_text() {
 	let doc = parse("<div>raw</div>\n");
-	assert_eq!(doc.blocks.len(), 1);
-	let BlockKind::Paragraph(text) = &doc.blocks[0].kind else {
+	assert_eq!(doc.blocks().len(), 1);
+	let BlockKind::Paragraph(text) = doc.blocks()[0].kind() else {
 		panic!("expected a paragraph")
 	};
 	assert_eq!(plain_text(text), "raw");
@@ -137,12 +140,12 @@ fn a_single_block_transparent_tag_renders_its_text() {
 #[test]
 fn a_quoted_transparent_container_is_not_quoted_again() {
 	let doc = parse("> <div>\n>\n> Body\n>\n> </div>\n");
-	assert_eq!(doc.blocks.len(), 1);
-	let BlockKind::Quote { blocks, .. } = &doc.blocks[0].kind else {
+	assert_eq!(doc.blocks().len(), 1);
+	let BlockKind::Quote { blocks, .. } = doc.blocks()[0].kind() else {
 		panic!("expected the enclosing quote")
 	};
 	assert_eq!(blocks.len(), 1);
-	let BlockKind::Paragraph(body) = &blocks[0].kind else {
+	let BlockKind::Paragraph(body) = &blocks[0].kind() else {
 		panic!("expected the body paragraph")
 	};
 	assert_eq!(plain_text(body), "Body");
@@ -154,8 +157,8 @@ fn deeply_nested_emphasis_is_bounded_and_keeps_the_text() {
 	// builds this AST iteratively, but Markview used to walk it recursively.
 	let n = 6000;
 	let doc = parse(format!("{}a{}", "*".repeat(n), "*".repeat(n)));
-	assert_eq!(doc.blocks.len(), 1);
-	let BlockKind::Paragraph(text) = &doc.blocks[0].kind else {
+	assert_eq!(doc.blocks().len(), 1);
+	let BlockKind::Paragraph(text) = doc.blocks()[0].kind() else {
 		panic!("expected a paragraph")
 	};
 	assert_eq!(plain_text(text), "a");
@@ -177,9 +180,9 @@ fn headings_carry_anchors_and_repeats_get_suffixes() {
 	let doc = parse(
 		"# Getting Started\n\n## Getting Started\n\n### 中文 标题\n\n> ## Nested Heading\n",
 	);
-	let anchors: Vec<&str> = doc.blocks[..3]
+	let anchors: Vec<&str> = doc.blocks()[..3]
 		.iter()
-		.map(|b| match &b.kind {
+		.map(|b| match &b.kind() {
 			BlockKind::Heading { anchor, .. } => anchor.as_str(),
 			_ => panic!("expected a top-level heading"),
 		})
@@ -188,10 +191,10 @@ fn headings_carry_anchors_and_repeats_get_suffixes() {
 		anchors,
 		["getting-started", "getting-started-1", "中文-标题"]
 	);
-	let BlockKind::Quote { blocks, .. } = &doc.blocks[3].kind else {
+	let BlockKind::Quote { blocks, .. } = doc.blocks()[3].kind() else {
 		panic!()
 	};
-	let BlockKind::Heading { anchor, .. } = &blocks[0].kind else {
+	let BlockKind::Heading { anchor, .. } = &blocks[0].kind() else {
 		panic!()
 	};
 	assert_eq!(anchor, "nested-heading");
@@ -199,9 +202,9 @@ fn headings_carry_anchors_and_repeats_get_suffixes() {
 	// already ends in a number does not steal the next suffix.
 	let doc = parse("# Same\n\n# Same\n\n# Same\n\n# Same-1\n");
 	let anchors: Vec<&str> = doc
-		.blocks
+		.blocks()
 		.iter()
-		.map(|b| match &b.kind {
+		.map(|b| match &b.kind() {
 			BlockKind::Heading { anchor, .. } => anchor.as_str(),
 			_ => panic!("expected a top-level heading"),
 		})
@@ -229,10 +232,10 @@ fn the_outline_lists_every_heading_in_reading_order() {
 		]
 	);
 	// A heading nested in a container carries the anchor links resolve.
-	let BlockKind::Quote { blocks, .. } = &doc.blocks[1].kind else {
+	let BlockKind::Quote { blocks, .. } = doc.blocks()[1].kind() else {
 		panic!("expected a quote")
 	};
-	let BlockKind::Heading { anchor, .. } = &blocks[0].kind else {
+	let BlockKind::Heading { anchor, .. } = &blocks[0].kind() else {
 		panic!("expected a quoted heading")
 	};
 	assert_eq!(outline[1].anchor, *anchor);
@@ -243,31 +246,41 @@ fn the_outline_lists_every_heading_in_reading_order() {
 #[test]
 fn content_id_tracks_semantics_not_source_spelling() {
 	assert_eq!(
-		parse("Hello **world**\n").content_id,
-		parse("Hello __world__\n").content_id
+		parse("Hello **world**\n").content_key(),
+		parse("Hello __world__\n").content_key()
 	);
 	assert_ne!(
-		parse("Hello\n").content_id,
-		parse("Hello there\n").content_id
+		parse("Hello\n").content_key(),
+		parse("Hello there\n").content_key()
 	);
-	assert_ne!(parse("A\n\nB\n").content_id, parse("B\n\nA\n").content_id);
+	assert_ne!(
+		parse("A\n\nB\n").content_key(),
+		parse("B\n\nA\n").content_key()
+	);
 }
 #[test]
-fn identity_survives_insertion_and_ranges_are_utf8() {
-	let a = parse("你好 **world**\n");
-	let b = parse("New paragraph.\n\n你好 **world**\n");
-	assert_eq!(a.blocks[0].id, b.blocks[1].id);
-	assert_eq!(&b.source[b.blocks[1].source.clone()], "你好 **world**");
+fn identity_survives_incremental_edits_and_ranges_are_utf8() {
+	let a = parse("你好 **world**\n\nSecond.\n");
+	let b =
+		reparse(&a, std::sync::Arc::from("你好 **world**\n\nSecond edit.\n"));
+	// The untouched block keeps the identity it had, and its source range
+	// still addresses the original UTF-8 bytes.
+	assert_eq!(a.blocks()[0].id(), b.blocks()[0].id());
+	assert_eq!(
+		&b.source[b.block_source(&b.blocks()[0]).unwrap()],
+		"你好 **world**"
+	);
 }
+
 #[test]
 fn incomplete_fence_and_math_do_not_drop_text() {
 	let d = parse("```rust\nlet x = 1;\n");
 	assert!(
-		matches!(&d.blocks[0].kind, BlockKind::Code { text, .. } if text.contains("let x"))
+		matches!(d.blocks()[0].kind(), BlockKind::Code { text, .. } if text.contains("let x"))
 	);
 	let d = parse("Cost \\$5, unfinished $x\n");
 	assert!(
-		matches!(&d.blocks[0].kind, BlockKind::Paragraph(p) if plain_text(p).contains("$x"))
+		matches!(d.blocks()[0].kind(), BlockKind::Paragraph(p) if plain_text(p).contains("$x"))
 	);
 }
 #[test]
@@ -278,10 +291,10 @@ fn tab_indented_fence_in_a_list_keeps_its_columns() {
 	let d = parse(
 		"- item:\n\n\t```text\n\t<type>: <short, lowercase summary>\n\t```\n",
 	);
-	let BlockKind::List { items, .. } = &d.blocks[0].kind else {
+	let BlockKind::List { items, .. } = d.blocks()[0].kind() else {
 		panic!("expected a list")
 	};
-	let BlockKind::Code { text, .. } = &items[0].blocks[1].kind else {
+	let BlockKind::Code { text, .. } = &items[0].blocks[1].kind() else {
 		panic!("expected a code block")
 	};
 	assert_eq!(text, "<type>: <short, lowercase summary>\n");
@@ -293,9 +306,9 @@ fn mermaid_fences_become_diagram_images_for_both_fence_styles() {
 	let d = parse(
 		"```mermaid title=\"x\"\ngraph TD\n A-->B\n```\n\n~~~mermaid\nsequenceDiagram\n~~~\n",
 	);
-	assert_eq!(d.blocks.len(), 2);
-	for block in &d.blocks {
-		let BlockKind::Paragraph(text) = &block.kind else {
+	assert_eq!(d.blocks().len(), 2);
+	for block in d.blocks() {
+		let BlockKind::Paragraph(text) = &block.kind() else {
 			panic!("expected a diagram paragraph")
 		};
 		let [
@@ -307,21 +320,21 @@ fn mermaid_fences_become_diagram_images_for_both_fence_styles() {
 		else {
 			panic!("expected one image")
 		};
-		assert!(image.src.starts_with(crate::image::MERMAID_SCHEME));
+		assert!(image.source.diagram().is_some());
 	}
-	let BlockKind::Paragraph(first) = &d.blocks[0].kind else {
+	let BlockKind::Paragraph(first) = d.blocks()[0].kind() else {
 		panic!()
 	};
 	let InlineKind::Image(image) = &first[0].kind else {
 		panic!()
 	};
-	assert!(image.src.contains("A-->B"));
+	assert!(image.address().contains("A-->B"));
 }
 
 #[test]
 fn fences_that_merely_mention_mermaid_stay_code() {
 	let d = parse("```mermaidish\nnot a diagram\n```\n");
-	let BlockKind::Code { language, text } = &d.blocks[0].kind else {
+	let BlockKind::Code { language, text } = d.blocks()[0].kind() else {
 		panic!("expected a code block")
 	};
 	assert_eq!(language, "mermaidish");
@@ -331,7 +344,7 @@ fn fences_that_merely_mention_mermaid_stay_code() {
 #[test]
 fn latex_delimiters_produce_math() {
 	let d = parse("Inline \\(a+b\\) and display \\[c+d\\].\n");
-	let BlockKind::Paragraph(p) = &d.blocks[0].kind else {
+	let BlockKind::Paragraph(p) = d.blocks()[0].kind() else {
 		panic!()
 	};
 	assert!(p.iter().any(|s| matches!(
@@ -346,7 +359,7 @@ fn latex_delimiters_produce_math() {
 #[test]
 fn cjk_friendly_emphasis_closes_next_to_cjk_text() {
 	let d = parse("**この文は重要です。**但这句话并不重要。\n");
-	let BlockKind::Paragraph(p) = &d.blocks[0].kind else {
+	let BlockKind::Paragraph(p) = d.blocks()[0].kind() else {
 		panic!()
 	};
 	assert_eq!(
@@ -363,23 +376,23 @@ fn cjk_friendly_emphasis_closes_next_to_cjk_text() {
 fn resolved_references_invalidate_semantics_and_footnotes_use_numbers() {
 	let a = parse("A [link][id].\n\n[id]: https://one.example\n");
 	let b = parse("A [link][id].\n\n[id]: https://two.example\n");
-	assert_eq!(a.blocks[0].id, b.blocks[0].id);
-	assert_ne!(a.blocks[0].content_key, b.blocks[0].content_key);
+	assert_eq!(a.blocks()[0].id(), b.blocks()[0].id());
+	assert_ne!(a.blocks()[0].content_key(), b.blocks()[0].content_key());
 	let d = parse("See [^name].\n\n[^name]: The footnote.\n");
-	let BlockKind::Paragraph(p) = &d.blocks[0].kind else {
+	let BlockKind::Paragraph(p) = d.blocks()[0].kind() else {
 		panic!()
 	};
 	assert!(plain_text(p).contains("[1]"));
 	// The reference is a footnote jump, not a link, so it keeps its own look.
 	let reference = p
 		.iter()
-		.find(|i| matches!(i.kind, InlineKind::FootnoteRef(1)))
+		.find(|i| matches!(&i.kind, InlineKind::FootnoteRef(reference) if reference.number == 1))
 		.expect("footnote reference");
-	assert_eq!(reference.style.link_url(), Some("#fn:1"));
-	assert!(reference.style.footnote_ref && reference.style.superscript);
+	assert_eq!(reference.link_url(), None);
+	assert!(reference.style.superscript);
 
-	assert!(d.blocks.iter().any(
-		|b| matches!(&b.kind, BlockKind::Footnote { label, .. } if label == "1")
+	assert!(d.blocks().iter().any(
+		|b| matches!(&b.kind(), BlockKind::Footnote { number, .. } if *number == 1)
 	));
 }
 
@@ -389,30 +402,26 @@ fn a_line_break_survives_as_a_break_not_as_text() {
 	// copying a document keeps the line the author wrote.
 	use crate::document::plain_text;
 	let doc = parse("one  \ntwo<br>three\n");
-	let BlockKind::Paragraph(rich) = &doc.blocks[0].kind else {
+	let BlockKind::Paragraph(rich) = doc.blocks()[0].kind() else {
 		panic!("not a paragraph");
 	};
 	assert_eq!(plain_text(rich), "one\ntwo\nthree");
 	// Breaking is not the same as writing the character.
-	assert!(
-		rich.iter().any(|i| matches!(
-			&i.kind,
-			InlineKind::LineBreak { justify: false }
-		))
-	);
-	assert!(
-		rich.iter().any(|i| matches!(
-			&i.kind,
-			InlineKind::LineBreak { justify: true }
-		))
-	);
+	assert!(rich.iter().any(|i| matches!(
+		&i.kind,
+		InlineKind::LineBreak(crate::LineBreak::Hard)
+	)));
+	assert!(rich.iter().any(|i| matches!(
+		&i.kind,
+		InlineKind::LineBreak(crate::LineBreak::Forced)
+	)));
 }
 
 #[test]
 fn a_single_newline_breaks_only_in_the_hard_break_dialect() {
 	use crate::document::plain_text;
 	fn paragraph(doc: &Document) -> &RichText {
-		let BlockKind::Paragraph(rich) = &doc.blocks[0].kind else {
+		let BlockKind::Paragraph(rich) = doc.blocks()[0].kind() else {
 			panic!("not a paragraph");
 		};
 		rich
@@ -434,12 +443,10 @@ fn a_single_newline_breaks_only_in_the_hard_break_dialect() {
 		},
 	);
 	assert_eq!(plain_text(paragraph(&hard)), "one\ntwo");
-	assert!(
-		paragraph(&hard).iter().any(|i| matches!(
-			&i.kind,
-			InlineKind::LineBreak { justify: false }
-		))
-	);
+	assert!(paragraph(&hard).iter().any(|i| matches!(
+		&i.kind,
+		InlineKind::LineBreak(crate::LineBreak::Hard)
+	)));
 }
 
 #[test]
@@ -452,10 +459,10 @@ fn a_disclosure_body_keeps_the_documents_hard_break_dialect() {
 			..Dialect::default()
 		},
 	);
-	let BlockKind::Details { blocks, .. } = &doc.blocks[0].kind else {
+	let BlockKind::Details { blocks, .. } = doc.blocks()[0].kind() else {
 		panic!("not a disclosure");
 	};
-	let BlockKind::Paragraph(rich) = &blocks[0].kind else {
+	let BlockKind::Paragraph(rich) = &blocks[0].kind() else {
 		panic!("not a paragraph");
 	};
 	assert_eq!(plain_text(rich), "one\ntwo");
@@ -464,7 +471,7 @@ fn a_disclosure_body_keeps_the_documents_hard_break_dialect() {
 #[test]
 fn a_highlight_mark_parses_only_in_the_dialect() {
 	fn paragraph(doc: &Document) -> &RichText {
-		let BlockKind::Paragraph(rich) = &doc.blocks[0].kind else {
+		let BlockKind::Paragraph(rich) = doc.blocks()[0].kind() else {
 			panic!("not a paragraph");
 		};
 		rich
@@ -492,6 +499,36 @@ fn a_highlight_mark_parses_only_in_the_dialect() {
 	);
 }
 
+/// Asserts that `prefix` repeats the first `len` blocks of `full`.
+///
+/// `Block` equality covers anchors and kind only, so the source ranges are
+/// compared explicitly: a shifted range must not pass as a matching prefix.
+fn assert_prefix_blocks(
+	prefix: &MarkdownParse,
+	full: &MarkdownParse,
+	len: usize,
+) {
+	assert_eq!(prefix.blocks(), &full.blocks()[..len]);
+	for (i, (kept, whole)) in prefix
+		.blocks()
+		.iter()
+		.zip(&full.blocks()[..len])
+		.enumerate()
+	{
+		assert_eq!(
+			prefix.block_source(kept).unwrap(),
+			full.block_source(whole).unwrap(),
+			"prefix block {i} has a different source range from the full \
+			 parse"
+		);
+	}
+}
+
+fn assert_blocks_match(prefix: &MarkdownParse, full: &MarkdownParse) {
+	assert_eq!(prefix.blocks().len(), full.blocks().len());
+	assert_prefix_blocks(prefix, full, full.blocks().len());
+}
+
 /// An edit the incremental path must handle: the result has to equal a full
 /// parse block for block, source range for source range, in either dialect.
 fn assert_incremental(before: &str, after: &str) {
@@ -507,11 +544,13 @@ fn assert_incremental(before: &str, after: &str) {
 			});
 		let expected = parse_with(after, dialect);
 		assert_eq!(
-			got.content_id, expected.content_id,
+			got.content_key(),
+			expected.content_key(),
 			"{before:?} -> {after:?} (hard breaks: {hard_breaks})"
 		);
 		assert_eq!(
-			got.blocks, expected.blocks,
+			got.blocks(),
+			expected.blocks(),
 			"{before:?} -> {after:?} (hard breaks: {hard_breaks})"
 		);
 	}
@@ -529,11 +568,13 @@ fn assert_edit(before: &str, after: &str) {
 			.unwrap_or_else(|| parse_with(after, dialect));
 		let expected = parse_with(after, dialect);
 		assert_eq!(
-			got.content_id, expected.content_id,
+			got.content_key(),
+			expected.content_key(),
 			"{before:?} -> {after:?} (hard breaks: {hard_breaks})"
 		);
 		assert_eq!(
-			got.blocks, expected.blocks,
+			got.blocks(),
+			expected.blocks(),
 			"{before:?} -> {after:?} (hard breaks: {hard_breaks})"
 		);
 	}
@@ -544,11 +585,46 @@ fn reparse_reuses_the_fast_path_and_falls_back_to_a_full_parse() {
 	let previous = parse(PARAGRAPHS);
 	let edited = PARAGRAPHS.replace("beta", "betaX");
 	let got = reparse(&previous, Arc::from(edited.as_str()));
-	assert_eq!(got.blocks, parse(edited.as_str()).blocks);
+	assert_blocks_match(&got, &parse(edited.as_str()));
 	// A list keeps its meaning across blank lines, so the edit takes the full
 	// parse and still matches one.
 	let replaced = reparse(&parse("- one\n- two\n"), Arc::from(PARAGRAPHS));
-	assert_eq!(replaced.blocks, parse(PARAGRAPHS).blocks);
+	assert_blocks_match(&replaced, &parse(PARAGRAPHS));
+}
+
+#[test]
+fn incremental_rebases_link_occurrences_to_document_offsets() {
+	fn link_origins(doc: &MarkdownParse) -> Vec<usize> {
+		let mut out = Vec::new();
+		for block in doc.blocks() {
+			visit_fields(
+				block,
+				&mut Vec::new(),
+				&|| false,
+				&mut |_, _, text, _| {
+					let FieldText::Rich(rich) = text else {
+						return;
+					};
+					for inline in rich {
+						if let Some(link) = &inline.link {
+							out.push(link.occurrence().get() as usize - 1);
+						}
+					}
+				},
+			);
+		}
+		out
+	}
+	let before = "First paragraph.\n\nA [link](https://a.example) here.\n\nLast paragraph.\n";
+	let after = "First paragraph.\n\nA [link](https://b.example) here.\n\nLast paragraph.\n";
+	let got =
+		parse_incremental(&parse(before), Arc::from(after), Dialect::default())
+			.expect("the edit stays on the fast path");
+	// The replaced window parsed as its own document, so its occurrence ids
+	// started at the window's origin rather than the document's.
+	let expected = parse(after);
+	assert_eq!(link_origins(&got), link_origins(&expected));
+	assert_eq!(link_origins(&got), vec![after.find("[link]").unwrap()]);
 }
 
 #[test]
@@ -572,23 +648,41 @@ fn multiline_inline_ranges_use_their_closing_lines_indent() {
 							" ".repeat(last_indent),
 						);
 						let doc = parse(source.as_str());
-						let block = match &doc.blocks[0].kind {
+						let block = match doc.blocks()[0].kind() {
 							BlockKind::Quote { blocks, .. } => &blocks[0],
 							BlockKind::List { items, .. } => {
 								&items[0].blocks[0]
 							}
-							_ => &doc.blocks[0],
+							_ => &doc.blocks()[0],
 						};
-						let BlockKind::Paragraph(rich) = &block.kind else {
+						let BlockKind::Paragraph(rich) = &block.kind() else {
 							panic!("not a paragraph: {source:?}");
 						};
 						let start = source.find(open).unwrap();
 						let end = source.find(close).unwrap() + close.len();
 						let inline = rich
 							.iter()
-							.find(|i| i.source.start == start)
-							.unwrap();
-						assert_eq!(inline.source, start..end, "{source:?}");
+							.find(|i| {
+								doc.inline_source(block, i).unwrap().start
+									== start
+							})
+							.unwrap_or_else(|| {
+								panic!(
+									"no inline for {source:?}: {:?}",
+									rich.iter()
+										.map(|i| (
+											doc.inline_source(block, i)
+												.unwrap(),
+											i.kind.clone()
+										))
+										.collect::<Vec<_>>()
+								)
+							});
+						assert_eq!(
+							doc.inline_source(block, inline).unwrap(),
+							start..end,
+							"{source:?}"
+						);
 					}
 				}
 			}
@@ -657,23 +751,24 @@ fn thematic_break_ranges_exclude_trailing_blank_lines() {
 	for newline in ["\n", "\r\n", "\r"] {
 		for marker in ["----", "***", "___", "- - -", "  ---- "] {
 			let before = format!("a{newline}{newline}{marker}");
-			let expected = parse(before.as_str()).blocks.pop().unwrap();
-			assert!(matches!(expected.kind, BlockKind::Rule));
+			let parsed = parse(before.as_str());
+			let expected = parsed.blocks().last().unwrap();
+			assert!(matches!(expected.kind(), BlockKind::Rule));
 			assert_eq!(
-				&before[expected.source.clone()],
+				&before[parsed.block_source(expected).unwrap()],
 				marker.trim_start_matches(' ')
 			);
 			for blank in ["", " ", "  ", "\t", " \t", newline] {
 				let source = format!("{before}{newline}{blank}");
 				let full = parse(source.as_str());
 				assert_eq!(
-					full.blocks.last().unwrap(),
-					&expected,
+					full.blocks().last().unwrap(),
+					expected,
 					"{source:?}"
 				);
 				let prefix =
 					parse_prefix(&Arc::from(source), before.len()).unwrap();
-				assert_eq!(prefix.blocks, full.blocks);
+				assert_blocks_match(&prefix, &full);
 			}
 		}
 	}
@@ -724,15 +819,19 @@ fn a_lone_carriage_return_keeps_source_ranges_on_the_right_line() {
 	let before = "\r\0  $   \0li\0\n";
 	let doc = parse(before);
 	assert!(
-		doc.blocks.iter().all(|b| b.source.start < b.source.end),
+		doc.blocks().iter().all(|b| {
+			let range = doc.block_source(b).unwrap();
+			range.start < range.end
+		}),
 		"every block keeps a nonempty range: {:?}",
-		doc.blocks
+		doc.blocks()
 			.iter()
-			.map(|b| b.source.clone())
+			.map(|b| doc.block_source(b).unwrap())
 			.collect::<Vec<_>>()
 	);
 	assert_eq!(
-		doc.blocks[0].source.start, 1,
+		doc.block_source(&doc.blocks()[0]).unwrap().start,
+		1,
 		"the range starts after the \\r"
 	);
 	assert_edit(before, &format!("{before}## heading now\n"));
@@ -750,7 +849,7 @@ fn a_quoted_details_body_survives_a_lone_carriage_return() {
 	let quotes = |doc: &Document| {
 		fn count(blocks: &[Block], n: &mut usize) {
 			for block in blocks {
-				match &block.kind {
+				match &block.kind() {
 					BlockKind::Quote { blocks, .. } => {
 						*n += 1;
 						count(blocks, n);
@@ -761,7 +860,7 @@ fn a_quoted_details_body_survives_a_lone_carriage_return() {
 			}
 		}
 		let mut n = 0;
-		count(&doc.blocks, &mut n);
+		count(doc.blocks(), &mut n);
 		n
 	};
 	let from_cr = quotes(&parse(cr));
@@ -783,7 +882,7 @@ fn a_reference_behind_a_lone_carriage_return_still_resolves_in_a_prefix() {
 	for (tag, src) in [("lf", lf), ("cr", cr)] {
 		let source: Arc<str> = Arc::from(src);
 		let prefix = parse_prefix(&source, 10).expect("prefix");
-		let inline = format!("{:?}", prefix.blocks[0].kind);
+		let inline = format!("{:?}", prefix.blocks()[0].kind());
 		assert!(
 			!inline.contains("\"[x]\""),
 			"{tag}: the prefix kept an unresolved reference: {inline}"
@@ -945,13 +1044,20 @@ fn prefix_parse_matches_the_start_of_a_full_parse() {
 	let full = parse(source.as_ref());
 	let prefix = parse_prefix(&source, 20).expect("a prefix");
 	assert!(
-		!prefix.blocks.is_empty() && prefix.blocks.len() < full.blocks.len()
+		!prefix.blocks().is_empty()
+			&& prefix.blocks().len() < full.blocks().len()
 	);
-	assert_eq!(prefix.blocks, full.blocks[..prefix.blocks.len()]);
+	assert_prefix_blocks(&prefix, &full, prefix.blocks().len());
 	assert_eq!(&*prefix.source, &*source);
-	assert_eq!(prefix.content_id, content_identity(&prefix.blocks));
+	assert_eq!(
+		prefix.content_key(),
+		markview_document::content_identity(prefix.blocks())
+	);
 	// A cut inside the first heading still yields that heading alone.
-	assert_eq!(parse_prefix(&source, 7).unwrap().blocks, full.blocks[..1]);
+	assert_eq!(
+		parse_prefix(&source, 7).unwrap().blocks(),
+		&full.blocks()[..1]
+	);
 	// The whole source is not a prefix.
 	assert!(parse_prefix(&source, source.len()).is_none());
 	assert!(parse_prefix(&source, 0).is_none());
@@ -964,9 +1070,10 @@ fn assert_prefix_matches(source: &str, bytes: usize) {
 	let full = parse(source.as_ref());
 	let prefix = parse_prefix(&source, bytes).expect("a prefix");
 	assert!(
-		!prefix.blocks.is_empty() && prefix.blocks.len() < full.blocks.len()
+		!prefix.blocks().is_empty()
+			&& prefix.blocks().len() < full.blocks().len()
 	);
-	assert_eq!(prefix.blocks, full.blocks[..prefix.blocks.len()]);
+	assert_prefix_blocks(&prefix, &full, prefix.blocks().len());
 }
 
 #[test]
@@ -985,8 +1092,8 @@ fn prefix_parse_resolves_definitions_that_follow_the_cut() {
 	let fenced: Arc<str> = Arc::from("Text.\n\n```\ncode\n\nmore\n");
 	let full = parse(fenced.as_ref());
 	let prefix = parse_prefix(&fenced, 12).expect("a prefix");
-	assert_eq!(prefix.blocks[0], full.blocks[0]);
-	assert!(matches!(prefix.blocks[1].kind, BlockKind::Code { .. }));
+	assert_eq!(prefix.blocks()[0], full.blocks()[0]);
+	assert!(matches!(prefix.blocks()[1].kind(), BlockKind::Code { .. }));
 }
 
 #[test]
@@ -1014,7 +1121,7 @@ fn prefix_parse_keeps_a_rejected_definition_from_swallowing_the_next() {
 	let source: Arc<str> = Arc::from(source);
 	let full = parse(source.as_ref());
 	let prefix = parse_prefix(&source, 6).expect("a prefix");
-	assert_eq!(prefix.blocks, full.blocks[..prefix.blocks.len()]);
+	assert_prefix_blocks(&prefix, &full, prefix.blocks().len());
 }
 
 #[test]
@@ -1025,12 +1132,38 @@ fn prefix_parse_accepts_containers_and_cuts_them_at_a_boundary() {
 	let full = parse(source.as_ref());
 	// A cut inside the list group still yields the whole list.
 	let prefix = parse_prefix(&source, 12).expect("a prefix");
-	assert_eq!(prefix.blocks, full.blocks[..prefix.blocks.len()]);
-	assert!(matches!(prefix.blocks[1].kind, BlockKind::List { .. }));
+	assert_prefix_blocks(&prefix, &full, prefix.blocks().len());
+	assert!(matches!(prefix.blocks()[1].kind(), BlockKind::List { .. }));
 	// A cut inside the fence yields the part of the code block that exists.
 	let prefix = parse_prefix(&source, 30).expect("a prefix");
-	assert_eq!(prefix.blocks[..2], full.blocks[..2]);
-	assert!(matches!(prefix.blocks[2].kind, BlockKind::Code { .. }));
+	assert_eq!(&prefix.blocks()[..2], &full.blocks()[..2]);
+	assert!(matches!(prefix.blocks()[2].kind(), BlockKind::Code { .. }));
+}
+
+#[test]
+fn prefix_parse_keeps_the_map_entries_of_nested_blocks() {
+	// A kept container is cloned with its children, so the map entries of
+	// those children must be kept too: keeping only the top-level ids dropped
+	// them and the prefix oracle found a block with no source.
+	let source = "- a\n  - b\n  - c\n\n<details><summary>S</summary>\n\nbody\n\n</details>\n\n| A | B |\n|---|---|\n| x | y |\n\nTail one.\n\nTail two.\n";
+	let source: Arc<str> = Arc::from(source);
+	let cut = source.find("Tail one.").unwrap() + 3;
+	let prefix = parse_prefix(&source, cut).expect("a prefix");
+	assert_eq!(prefix.blocks().len(), 4, "the cut ends inside `Tail one.`");
+	let mut ids = Vec::new();
+	for block in prefix.blocks() {
+		markview_document::visit_blocks(block, &mut |block| {
+			ids.push(block.id());
+		});
+	}
+	assert!(ids.len() > prefix.blocks().len(), "expected nested blocks");
+	for id in ids {
+		assert!(prefix.map.block(id).is_some(), "no map entry for {id:?}");
+	}
+	prefix
+		.map
+		.validate(&prefix.source, &prefix.document)
+		.expect("a valid map");
 }
 
 #[test]
@@ -1093,26 +1226,26 @@ fn incremental_parse_keeps_unicode_space_lines_in_their_paragraph() {
 /// The summary rich text and body blocks of the only `<details>` in `doc`.
 fn details(document: &Document) -> (bool, String, &[Block]) {
 	let BlockKind::Details {
-		open,
+		default_open,
 		summary,
 		blocks,
 		..
-	} = &document.blocks[0].kind
+	} = document.blocks()[0].kind()
 	else {
 		panic!("expected a details block")
 	};
-	(*open, plain_text(summary), blocks)
+	(*default_open, plain_text(summary), blocks)
 }
 
 #[test]
 fn details_inline_form() {
 	let doc = parse("<details><summary>Title</summary>Body</details>\n");
-	assert_eq!(doc.blocks.len(), 1);
+	assert_eq!(doc.blocks().len(), 1);
 	let (open, summary, blocks) = details(&doc);
 	assert!(!open);
 	assert_eq!(summary, "Title");
 	assert_eq!(blocks.len(), 1);
-	let BlockKind::Paragraph(body) = &blocks[0].kind else {
+	let BlockKind::Paragraph(body) = &blocks[0].kind() else {
 		panic!("expected a paragraph body")
 	};
 	assert_eq!(plain_text(body), "Body");
@@ -1129,7 +1262,7 @@ fn a_details_body_with_a_lone_carriage_return_keeps_its_ranges() {
 	let (_, _, blocks) = details(&doc);
 	assert_eq!(blocks.len(), 2);
 	assert_eq!(
-		blocks[1].source.start,
+		doc.block_source(&blocks[1]).unwrap().start,
 		doc.source.find("Second").unwrap(),
 		"the second block starts after the lone \\r line"
 	);
@@ -1142,7 +1275,7 @@ fn an_indented_details_closer_keeps_the_element_range_on_the_tag() {
 	// element's end must be measured through the literal or an indented
 	// `</details>` drags the range past the tag and out of the source.
 	let doc = parse("<details open>\n\n  </details>\n");
-	assert_eq!(doc.blocks[0].source, 0..28);
+	assert_eq!(doc.block_source(&doc.blocks()[0]).unwrap(), 0..28);
 	let (open, summary, blocks) = details(&doc);
 	assert!(open);
 	assert!(summary.is_empty());
@@ -1155,7 +1288,7 @@ fn an_inline_details_body_is_not_markdown() {
 	// markers stay literal; only a body after a blank line is Markdown.
 	let doc = parse("<details><summary>S</summary>**Bold**</details>\n");
 	let (_, _, blocks) = details(&doc);
-	let BlockKind::Paragraph(body) = &blocks[0].kind else {
+	let BlockKind::Paragraph(body) = &blocks[0].kind() else {
 		panic!("expected a paragraph body")
 	};
 	assert_eq!(plain_text(body), "**Bold**");
@@ -1170,7 +1303,7 @@ fn a_commented_summary_closer_is_not_markup() {
 	);
 	let (_, summary, blocks) = details(&doc);
 	assert_eq!(summary, "Hello");
-	let BlockKind::Paragraph(body) = &blocks[0].kind else {
+	let BlockKind::Paragraph(body) = &blocks[0].kind() else {
 		panic!("expected a body paragraph")
 	};
 	assert_eq!(plain_text(body), "Body");
@@ -1180,24 +1313,24 @@ fn a_commented_summary_closer_is_not_markup() {
 fn a_stray_close_does_not_replay_the_whole_block() {
 	// Only the unmatched fragment falls back; later containers still render.
 	let doc = parse("<div>one</div></section><details>two</details>\n");
-	assert_eq!(doc.blocks.len(), 3);
-	let BlockKind::Paragraph(one) = &doc.blocks[0].kind else {
+	assert_eq!(doc.blocks().len(), 3);
+	let BlockKind::Paragraph(one) = doc.blocks()[0].kind() else {
 		panic!("expected the first paragraph")
 	};
 	assert_eq!(plain_text(one), "one");
 	assert!(matches!(
-		&doc.blocks[1].kind,
+		doc.blocks()[1].kind(),
 		BlockKind::Code { language, text }
 			if language == "HTML source" && text.trim() == "</section>"
 	));
 	let BlockKind::Details {
 		summary, blocks, ..
-	} = &doc.blocks[2].kind
+	} = doc.blocks()[2].kind()
 	else {
 		panic!("expected the second disclosure")
 	};
 	assert_eq!(plain_text(summary), "");
-	let BlockKind::Paragraph(two) = &blocks[0].kind else {
+	let BlockKind::Paragraph(two) = &blocks[0].kind() else {
 		panic!("expected the second body")
 	};
 	assert_eq!(plain_text(two), "two");
@@ -1220,7 +1353,7 @@ fn nested_html_containers_stop_at_the_block_depth_limit() {
 	fn depth(blocks: &[Block]) -> usize {
 		blocks
 			.iter()
-			.map(|block| match &block.kind {
+			.map(|block| match &block.kind() {
 				BlockKind::Details { blocks, .. } => 1 + depth(blocks),
 				_ => 1,
 			})
@@ -1228,7 +1361,7 @@ fn nested_html_containers_stop_at_the_block_depth_limit() {
 			.unwrap_or(0)
 	}
 	let limit = crate::limits::Limits::default().block_depth;
-	assert!(depth(&doc.blocks) <= limit + 1, "{}", depth(&doc.blocks));
+	assert!(depth(doc.blocks()) <= limit + 1, "{}", depth(doc.blocks()));
 }
 
 #[test]
@@ -1244,14 +1377,14 @@ fn details_multiblock_body_is_markdown() {
 	let doc = parse(
 		"<details>\n<summary>More</summary>\n\nMarkdown **body** with a list:\n\n- one\n- two\n\n</details>\n",
 	);
-	assert_eq!(doc.blocks.len(), 1);
+	assert_eq!(doc.blocks().len(), 1);
 	let (open, summary, blocks) = details(&doc);
 	assert!(!open);
 	assert_eq!(summary, "More");
-	assert!(matches!(&blocks[0].kind, BlockKind::Paragraph(p)
+	assert!(matches!(&blocks[0].kind(), BlockKind::Paragraph(p)
 			if p.iter().any(|i| i.style.bold)));
 	assert!(
-		matches!(&blocks[1].kind, BlockKind::List { items, .. } if items.len() == 2)
+		matches!(&blocks[1].kind(), BlockKind::List { items, .. } if items.len() == 2)
 	);
 }
 
@@ -1271,23 +1404,23 @@ fn details_nest() {
 	let doc = parse(
 		"<details>\n<summary>Outer</summary>\n\n<details>\n<summary>Inner</summary>\n\nDeep\n\n</details>\n\n</details>\n",
 	);
-	assert_eq!(doc.blocks.len(), 1);
+	assert_eq!(doc.blocks().len(), 1);
 	let (_, summary, blocks) = details(&doc);
 	assert_eq!(summary, "Outer");
 	assert_eq!(blocks.len(), 1);
 	let BlockKind::Details {
 		summary,
 		blocks,
-		open,
+		default_open,
 		..
-	} = &blocks[0].kind
+	} = &blocks[0].kind()
 	else {
 		panic!("expected a nested details block")
 	};
-	assert!(!open);
+	assert!(!default_open);
 	assert_eq!(plain_text(summary), "Inner");
 	assert_eq!(blocks.len(), 1);
-	let BlockKind::Paragraph(deep) = &blocks[0].kind else {
+	let BlockKind::Paragraph(deep) = &blocks[0].kind() else {
 		panic!("expected the nested body")
 	};
 	assert_eq!(plain_text(deep), "Deep");
@@ -1301,18 +1434,18 @@ fn nested_openers_in_the_opening_block_still_nest() {
 	let doc = parse(
 		"<details>\n<summary>Outer</summary>\n<details>\n<summary>Inner</summary>\n\nDeep\n\n</details>\n</details>\n",
 	);
-	assert_eq!(doc.blocks.len(), 1);
+	assert_eq!(doc.blocks().len(), 1);
 	let (_, summary, blocks) = details(&doc);
 	assert_eq!(summary, "Outer");
 	assert_eq!(blocks.len(), 1);
 	let BlockKind::Details {
 		summary, blocks, ..
-	} = &blocks[0].kind
+	} = &blocks[0].kind()
 	else {
 		panic!("expected the nested details")
 	};
 	assert_eq!(plain_text(summary), "Inner");
-	let BlockKind::Paragraph(deep) = &blocks[0].kind else {
+	let BlockKind::Paragraph(deep) = &blocks[0].kind() else {
 		panic!("expected the nested body")
 	};
 	assert_eq!(plain_text(deep), "Deep");
@@ -1326,20 +1459,20 @@ fn a_quoted_details_body_is_not_quoted_again() {
 	let doc = parse(
 		"> <details>\n> <summary>More</summary>\n>\n> Body\n>\n> </details>\n",
 	);
-	assert_eq!(doc.blocks.len(), 1);
-	let BlockKind::Quote { blocks, .. } = &doc.blocks[0].kind else {
+	assert_eq!(doc.blocks().len(), 1);
+	let BlockKind::Quote { blocks, .. } = doc.blocks()[0].kind() else {
 		panic!("expected the enclosing quote")
 	};
 	assert_eq!(blocks.len(), 1);
 	let BlockKind::Details {
 		summary, blocks, ..
-	} = &blocks[0].kind
+	} = &blocks[0].kind()
 	else {
 		panic!("expected the details element")
 	};
 	assert_eq!(plain_text(summary), "More");
 	assert_eq!(blocks.len(), 1);
-	let BlockKind::Paragraph(body) = &blocks[0].kind else {
+	let BlockKind::Paragraph(body) = &blocks[0].kind() else {
 		panic!("expected a direct paragraph body")
 	};
 	assert_eq!(plain_text(body), "Body");
@@ -1347,16 +1480,16 @@ fn a_quoted_details_body_is_not_quoted_again() {
 	let doc = parse(
 		"> <details>\n> <summary>More</summary>\n>\n> > Quoted\n>\n> </details>\n",
 	);
-	let BlockKind::Quote { blocks, .. } = &doc.blocks[0].kind else {
+	let BlockKind::Quote { blocks, .. } = doc.blocks()[0].kind() else {
 		panic!("expected the enclosing quote")
 	};
-	let BlockKind::Details { blocks, .. } = &blocks[0].kind else {
+	let BlockKind::Details { blocks, .. } = &blocks[0].kind() else {
 		panic!("expected the details element")
 	};
-	let BlockKind::Quote { blocks, .. } = &blocks[0].kind else {
+	let BlockKind::Quote { blocks, .. } = &blocks[0].kind() else {
 		panic!("expected the quote inside the body")
 	};
-	let BlockKind::Paragraph(quoted) = &blocks[0].kind else {
+	let BlockKind::Paragraph(quoted) = &blocks[0].kind() else {
 		panic!("expected the quoted paragraph")
 	};
 	assert_eq!(plain_text(quoted), "Quoted");
@@ -1371,14 +1504,14 @@ fn a_details_body_resolves_document_wide_references() {
 	);
 	let (_, summary, blocks) = details(&doc);
 	assert_eq!(summary, "Link");
-	let BlockKind::Paragraph(body) = &blocks[0].kind else {
+	let BlockKind::Paragraph(body) = &blocks[0].kind() else {
 		panic!("expected the body paragraph")
 	};
 	let link = body
 		.iter()
-		.find(|inline| inline.style.link.is_some())
+		.find(|inline| inline.link.is_some())
 		.expect("the reference link");
-	assert_eq!(link.style.link_url(), Some("https://example.com"));
+	assert_eq!(link.link_url(), Some("https://example.com"));
 	let image = body
 		.iter()
 		.find_map(|inline| match &inline.kind {
@@ -1386,7 +1519,7 @@ fn a_details_body_resolves_document_wide_references() {
 			_ => None,
 		})
 		.expect("the reference image");
-	assert_eq!(image.src, "https://example.com");
+	assert_eq!(image.address(), "https://example.com");
 	assert_eq!(image.alt, "img");
 }
 
@@ -1398,69 +1531,69 @@ fn a_details_body_resolves_document_wide_footnotes() {
 		"<details>\n<summary>Note</summary>\n\nBody[^n]\n\n</details>\n\n[^n]: The note.\n",
 	);
 	let (_, _, blocks) = details(&doc);
-	let BlockKind::Paragraph(body) = &blocks[0].kind else {
+	let BlockKind::Paragraph(body) = &blocks[0].kind() else {
 		panic!("expected the body paragraph")
 	};
 	assert!(
 		body.iter()
-			.any(|inline| matches!(inline.kind, InlineKind::FootnoteRef(1)))
+			.any(|inline| matches!(&inline.kind, InlineKind::FootnoteRef(reference) if reference.number == 1))
 	);
-	let BlockKind::Footnote { label, .. } = &doc.blocks[1].kind else {
+	let BlockKind::Footnote { number, .. } = doc.blocks()[1].kind() else {
 		panic!("expected the note")
 	};
-	assert_eq!(label, "1");
+	assert_eq!(*number, 1);
 	// The body's note keeps the number the whole document gave it, not the
 	// first number the snippet alone would assign.
 	let doc = parse(
 		"First[^a]\n\n<details>\n<summary>Note</summary>\n\nBody[^b]\n\n</details>\n\n[^a]: A.\n[^b]: B.\n",
 	);
-	let BlockKind::Details { blocks, .. } = &doc.blocks[1].kind else {
+	let BlockKind::Details { blocks, .. } = doc.blocks()[1].kind() else {
 		panic!("expected the details element")
 	};
-	let BlockKind::Paragraph(body) = &blocks[0].kind else {
+	let BlockKind::Paragraph(body) = &blocks[0].kind() else {
 		panic!("expected the body paragraph")
 	};
 	assert!(
 		body.iter()
-			.any(|inline| matches!(inline.kind, InlineKind::FootnoteRef(2)))
+			.any(|inline| matches!(&inline.kind, InlineKind::FootnoteRef(reference) if reference.number == 2))
 	);
-	let BlockKind::Footnote { label, .. } = &doc.blocks[3].kind else {
+	let BlockKind::Footnote { number, .. } = doc.blocks()[3].kind() else {
 		panic!("expected the second note")
 	};
-	assert_eq!(label, "2");
+	assert_eq!(*number, 2);
 	// A note the body declares appears once at the end of the document,
 	// and a reference outside it resolves to that note.
 	let doc = parse(
 		"Outside[^n]\n\n<details>\n<summary>Note</summary>\n\n[^n]: Declared in the body.\n\n</details>\n",
 	);
-	let BlockKind::Paragraph(outside) = &doc.blocks[0].kind else {
+	let BlockKind::Paragraph(outside) = doc.blocks()[0].kind() else {
 		panic!("expected the outside paragraph")
 	};
 	assert!(
 		outside
 			.iter()
-			.any(|inline| matches!(inline.kind, InlineKind::FootnoteRef(1)))
+			.any(|inline| matches!(&inline.kind, InlineKind::FootnoteRef(reference) if reference.number == 1))
 	);
-	let BlockKind::Details { blocks, .. } = &doc.blocks[1].kind else {
+	let BlockKind::Details { blocks, .. } = doc.blocks()[1].kind() else {
 		panic!("expected the details element")
 	};
 	assert!(blocks.is_empty());
-	let BlockKind::Footnote { label, .. } = &doc.blocks[2].kind else {
+	let BlockKind::Footnote { number, .. } = doc.blocks()[2].kind() else {
 		panic!("expected the declared note")
 	};
-	assert_eq!(label, "1");
+	assert_eq!(*number, 1);
 }
 
 #[test]
 fn unmatched_details_keeps_the_html_source() {
 	let doc = parse("<details>\n<summary>More</summary>\n\nBody\n");
-	let BlockKind::Code { language, text } = &doc.blocks[0].kind else {
+	let BlockKind::Code { language, text } = doc.blocks()[0].kind() else {
 		panic!("expected the literal fallback")
 	};
 	assert_eq!(language, "HTML source");
 	assert!(text.contains("<summary>More</summary>"));
-	assert_eq!(doc.blocks.len(), 2);
-	let BlockKind::Paragraph(body) = &doc.blocks[1].kind else {
+	assert_eq!(doc.blocks().len(), 2);
+	let BlockKind::Paragraph(body) = doc.blocks()[1].kind() else {
 		panic!("expected the body paragraph")
 	};
 	assert_eq!(plain_text(body), "Body");
@@ -1469,7 +1602,7 @@ fn unmatched_details_keeps_the_html_source() {
 #[test]
 fn stray_details_close_keeps_the_html_source() {
 	let doc = parse("</details>\n");
-	let BlockKind::Code { language, text } = &doc.blocks[0].kind else {
+	let BlockKind::Code { language, text } = doc.blocks()[0].kind() else {
 		panic!("expected the literal fallback")
 	};
 	assert_eq!(language, "HTML source");
@@ -1480,17 +1613,22 @@ fn stray_details_close_keeps_the_html_source() {
 fn details_id_is_stable_and_unique_per_element() {
 	let source = "<details>\n<summary>One</summary>\n\nA\n\n</details>\n\n<details>\n<summary>Two</summary>\n\nB\n\n</details>\n";
 	let doc = parse(source);
-	assert_eq!(doc.blocks.len(), 2);
-	let first = doc.blocks[0].id;
-	let second = doc.blocks[1].id;
+	assert_eq!(doc.blocks().len(), 2);
+	let first = doc.blocks()[0].id();
+	let second = doc.blocks()[1].id();
 	assert_ne!(first, second);
 	// Re-parsing identical text keeps the identity, which the cache needs.
 	let again = parse(source);
-	assert_eq!(again.blocks[0].id, first);
-	assert_eq!(again.blocks[1].id, second);
+	assert_eq!(again.blocks()[0].id(), first);
+	assert_eq!(again.blocks()[1].id(), second);
 	assert_eq!(again.details_declared(first), Some(false));
 	assert_eq!(again.details_declared(second), Some(false));
-	assert_eq!(again.details_declared(first + 1), None);
+	assert_eq!(
+		again.details_declared(
+			markview_document::BlockId::new(first.get() + 1).unwrap()
+		),
+		None
+	);
 }
 
 #[test]
@@ -1498,11 +1636,11 @@ fn details_enclosing_names_the_containers_of_a_hidden_anchor() {
 	let doc = parse(
 		"# Intro\n\n<details>\n<summary>Outer</summary>\n\n<details>\n<summary>Inner</summary>\n\n### Deep\n\n</details>\n\n</details>\n\n# Later\n",
 	);
-	let outer = doc.blocks[1].id;
-	let BlockKind::Details { blocks, .. } = &doc.blocks[1].kind else {
+	let outer = doc.blocks()[1].id();
+	let BlockKind::Details { blocks, .. } = doc.blocks()[1].kind() else {
 		panic!("expected the outer details")
 	};
-	let inner = blocks[0].id;
+	let inner = blocks[0].id();
 	// Outermost first, so opening them in order expands the whole path.
 	assert_eq!(doc.details_enclosing("deep"), [outer, inner]);
 	// A heading outside every disclosure names none, and so does a missing one.
@@ -1524,13 +1662,13 @@ fn a_footnote_defined_in_details_has_no_disclosure_chain() {
 fn identical_details_get_independent_identities() {
 	let source = "<details>\n<summary>Same</summary>\n\nBody\n\n</details>\n\n<details>\n<summary>Same</summary>\n\nBody\n\n</details>\n";
 	let doc = parse(source);
-	assert_eq!(doc.blocks.len(), 2);
-	assert_ne!(doc.blocks[0].id, doc.blocks[1].id);
+	assert_eq!(doc.blocks().len(), 2);
+	assert_ne!(doc.blocks()[0].id(), doc.blocks()[1].id());
 	// Identical reading content still shares its semantic layout identity.
-	assert_eq!(doc.blocks[0].content_key, doc.blocks[1].content_key);
+	assert_eq!(doc.blocks()[0].content_key(), doc.blocks()[1].content_key());
 	let again = parse(source);
-	assert_eq!(again.blocks[0].id, doc.blocks[0].id);
-	assert_eq!(again.blocks[1].id, doc.blocks[1].id);
+	assert_eq!(again.blocks()[0].id(), doc.blocks()[0].id());
+	assert_eq!(again.blocks()[1].id(), doc.blocks()[1].id());
 }
 
 #[test]
@@ -1538,18 +1676,18 @@ fn details_keeps_adjacent_elements_in_one_block() {
 	let doc = parse(
 		"<details><summary>One</summary>A</details>\n<details><summary>Two</summary>B</details>\n",
 	);
-	assert_eq!(doc.blocks.len(), 2);
+	assert_eq!(doc.blocks().len(), 2);
 	let (_, first, _) = details(&doc);
 	assert_eq!(first, "One");
 	// The second element is parsed from the remainder of the same block.
 	let BlockKind::Details {
 		summary, blocks, ..
-	} = &doc.blocks[1].kind
+	} = doc.blocks()[1].kind()
 	else {
 		panic!("expected the second details block")
 	};
 	assert_eq!(plain_text(summary), "Two");
-	let BlockKind::Paragraph(body) = &blocks[0].kind else {
+	let BlockKind::Paragraph(body) = &blocks[0].kind() else {
 		panic!("expected the second body")
 	};
 	assert_eq!(plain_text(body), "B");
@@ -1560,15 +1698,15 @@ fn an_inline_nested_details_keeps_the_outer_remainder() {
 	let doc = parse(
 		"<details>\n<summary>Outer</summary>\n<details><summary>Inner</summary>Deep</details>\nTail\n</details>\n",
 	);
-	assert_eq!(doc.blocks.len(), 1);
+	assert_eq!(doc.blocks().len(), 1);
 	let (_, summary, blocks) = details(&doc);
 	assert_eq!(summary, "Outer");
 	assert_eq!(blocks.len(), 2);
-	let BlockKind::Details { summary, .. } = &blocks[0].kind else {
+	let BlockKind::Details { summary, .. } = &blocks[0].kind() else {
 		panic!("expected the nested details")
 	};
 	assert_eq!(plain_text(summary), "Inner");
-	let BlockKind::Paragraph(tail) = &blocks[1].kind else {
+	let BlockKind::Paragraph(tail) = &blocks[1].kind() else {
 		panic!("expected the text after the nested element")
 	};
 	assert_eq!(plain_text(tail), "Tail");
@@ -1579,7 +1717,7 @@ fn an_inline_nested_details_keeps_the_outer_remainder() {
 fn all_text(blocks: &[Block]) -> String {
 	let mut out = String::new();
 	for block in blocks {
-		match &block.kind {
+		match &block.kind() {
 			BlockKind::Details {
 				summary, blocks, ..
 			} => {
@@ -1613,18 +1751,18 @@ fn nested_details_render_when_their_closing_tags_share_a_block() {
 	let doc = parse(
 		"<details>\n<summary>Outer</summary>\n\n<details>\n<summary>Inner</summary>\n\nDeep\n\n</details>\n</details>\n",
 	);
-	assert_eq!(doc.blocks.len(), 1);
+	assert_eq!(doc.blocks().len(), 1);
 	let (_, summary, blocks) = details(&doc);
 	assert_eq!(summary, "Outer");
 	assert_eq!(blocks.len(), 1);
 	let BlockKind::Details {
 		summary, blocks, ..
-	} = &blocks[0].kind
+	} = &blocks[0].kind()
 	else {
 		panic!("expected the nested details")
 	};
 	assert_eq!(plain_text(summary), "Inner");
-	let BlockKind::Paragraph(deep) = &blocks[0].kind else {
+	let BlockKind::Paragraph(deep) = &blocks[0].kind() else {
 		panic!("expected the nested body")
 	};
 	assert_eq!(plain_text(deep), "Deep");
@@ -1637,18 +1775,18 @@ fn an_inline_element_sharing_the_outer_close_block_still_nests() {
 	let doc = parse(
 		"<details>\n<summary>Outer</summary>\n\n<details><summary>Inner</summary>Deep</details>\n</details>\n",
 	);
-	assert_eq!(doc.blocks.len(), 1);
+	assert_eq!(doc.blocks().len(), 1);
 	let (_, summary, blocks) = details(&doc);
 	assert_eq!(summary, "Outer");
 	assert_eq!(blocks.len(), 1);
 	let BlockKind::Details {
 		summary, blocks, ..
-	} = &blocks[0].kind
+	} = &blocks[0].kind()
 	else {
 		panic!("expected the nested details")
 	};
 	assert_eq!(plain_text(summary), "Inner");
-	let BlockKind::Paragraph(deep) = &blocks[0].kind else {
+	let BlockKind::Paragraph(deep) = &blocks[0].kind() else {
 		panic!("expected the nested body")
 	};
 	assert_eq!(plain_text(deep), "Deep");
@@ -1661,14 +1799,14 @@ fn content_after_a_closing_tag_is_kept() {
 	let doc = parse(
 		"<details>\n<summary>Outer</summary>\n\nBody\n\n</details> trailing\n",
 	);
-	assert_eq!(doc.blocks.len(), 2);
+	assert_eq!(doc.blocks().len(), 2);
 	let (_, summary, blocks) = details(&doc);
 	assert_eq!(summary, "Outer");
-	let BlockKind::Paragraph(body) = &blocks[0].kind else {
+	let BlockKind::Paragraph(body) = &blocks[0].kind() else {
 		panic!("expected the body")
 	};
 	assert_eq!(plain_text(body), "Body");
-	let BlockKind::Paragraph(tail) = &doc.blocks[1].kind else {
+	let BlockKind::Paragraph(tail) = doc.blocks()[1].kind() else {
 		panic!("expected the trailing text")
 	};
 	assert_eq!(plain_text(tail), "trailing");
@@ -1681,21 +1819,21 @@ fn a_summary_belongs_to_its_own_details_element() {
 	let doc = parse(
 		"<details>A</details>\n<details><summary>B</summary>C</details>\n",
 	);
-	assert_eq!(doc.blocks.len(), 2);
+	assert_eq!(doc.blocks().len(), 2);
 	let (_, summary, blocks) = details(&doc);
 	assert_eq!(summary, "");
-	let BlockKind::Paragraph(a) = &blocks[0].kind else {
+	let BlockKind::Paragraph(a) = &blocks[0].kind() else {
 		panic!("expected the first body")
 	};
 	assert_eq!(plain_text(a), "A");
 	let BlockKind::Details {
 		summary, blocks, ..
-	} = &doc.blocks[1].kind
+	} = doc.blocks()[1].kind()
 	else {
 		panic!("expected the second details")
 	};
 	assert_eq!(plain_text(summary), "B");
-	let BlockKind::Paragraph(c) = &blocks[0].kind else {
+	let BlockKind::Paragraph(c) = &blocks[0].kind() else {
 		panic!("expected the second body")
 	};
 	assert_eq!(plain_text(c), "C");
@@ -1713,16 +1851,16 @@ fn a_nested_summary_is_not_the_outer_summary() {
 		summary,
 		blocks: inner,
 		..
-	} = &blocks[0].kind
+	} = &blocks[0].kind()
 	else {
 		panic!("expected the nested details")
 	};
 	assert_eq!(plain_text(summary), "Inner");
-	let BlockKind::Paragraph(deep) = &inner[0].kind else {
+	let BlockKind::Paragraph(deep) = &inner[0].kind() else {
 		panic!("expected the nested body")
 	};
 	assert_eq!(plain_text(deep), "Deep");
-	let BlockKind::Paragraph(tail) = &blocks[1].kind else {
+	let BlockKind::Paragraph(tail) = &blocks[1].kind() else {
 		panic!("expected the tail")
 	};
 	assert_eq!(plain_text(tail), "Tail");
@@ -1761,7 +1899,7 @@ fn nested_and_adjacent_details_never_merge_or_drop_content() {
 		),
 	] {
 		let doc = parse(source);
-		let text = all_text(&doc.blocks);
+		let text = all_text(doc.blocks());
 		for fragment in fragments {
 			assert!(
 				text.contains(fragment),
@@ -1770,7 +1908,7 @@ fn nested_and_adjacent_details_never_merge_or_drop_content() {
 		}
 		// No element fell back to literal HTML source.
 		assert!(
-			!has_html_source(&doc.blocks),
+			!has_html_source(doc.blocks()),
 			"{source:?}: literal HTML remained"
 		);
 	}
@@ -1778,7 +1916,7 @@ fn nested_and_adjacent_details_never_merge_or_drop_content() {
 
 /// Whether any block in the tree is the literal raw-HTML fallback.
 fn has_html_source(blocks: &[Block]) -> bool {
-	blocks.iter().any(|block| match &block.kind {
+	blocks.iter().any(|block| match &block.kind() {
 		BlockKind::Code { language, .. } => language == "HTML source",
 		BlockKind::Details { blocks, .. }
 		| BlockKind::Quote { blocks, .. }
@@ -1802,10 +1940,10 @@ fn many_adjacent_details_do_not_reach_the_nesting_limit() {
 		));
 	}
 	let doc = parse(source.as_str());
-	assert_eq!(doc.blocks.len(), count);
-	for (i, block) in doc.blocks.iter().enumerate() {
-		let BlockKind::Details { summary, .. } = &block.kind else {
-			panic!("element {i} rendered as {:?}", block.kind)
+	assert_eq!(doc.blocks().len(), count);
+	for (i, block) in doc.blocks().iter().enumerate() {
+		let BlockKind::Details { summary, .. } = &block.kind() else {
+			panic!("element {i} rendered as {:?}", block.kind())
 		};
 		assert_eq!(plain_text(summary), format!("S{i}"));
 	}
@@ -1816,58 +1954,61 @@ fn front_matter_is_a_collapsed_yaml_source_block() {
 	let doc = parse(
 		"---\ntitle: Notes\ncount: 3\ntags: [a, b]\ndraft: false\n---\n\nBody\n",
 	);
-	assert_eq!(doc.blocks.len(), 2);
-	let BlockKind::FrontMatter { open, blocks } = &doc.blocks[0].kind else {
-		panic!("{:?}", doc.blocks[0].kind)
+	assert_eq!(doc.blocks().len(), 2);
+	let BlockKind::FrontMatter {
+		default_open,
+		blocks,
+	} = doc.blocks()[0].kind()
+	else {
+		panic!("{:?}", doc.blocks()[0].kind())
 	};
-	// Metadata is not prose, so it starts collapsed.
-	assert!(!open);
+	// Metadata is not prose, so its default is collapsed.
+	assert!(!default_open);
 	// Nothing read the YAML: the delimiters are gone and the rest is source,
 	// whatever shape it has.
-	let [
-		Block {
-			kind: BlockKind::Code { language, text },
-			source,
-			..
-		},
-	] = blocks.as_slice()
-	else {
+	let [block] = blocks.as_slice() else {
+		panic!("{:?}", blocks)
+	};
+	let BlockKind::Code { language, text } = block.kind() else {
 		panic!("{:?}", blocks)
 	};
 	assert_eq!(language, "yaml");
 	assert_eq!(text, "title: Notes\ncount: 3\ntags: [a, b]\ndraft: false");
 	// The block is code to the highlighter, so it starts a highlight job.
 	let mut code = Vec::new();
-	doc.blocks[0].code_blocks(&mut code);
+	doc.blocks()[0].code_blocks(&mut code);
 	assert_eq!(code, [("yaml", text.as_str())]);
 	// The source block is nested in the front matter rather than parsed on its
 	// own, so it has an identity of its own to be cached under.
-	assert_eq!(source.start, doc.blocks[0].source.start);
-	assert!(blocks[0].id != 0 && blocks[0].id != doc.blocks[0].id);
+	assert_eq!(
+		doc.block_source(&blocks[0]).unwrap().start,
+		doc.block_source(&doc.blocks()[0]).unwrap().start
+	);
+	assert!(blocks[0].id() != doc.blocks()[0].id());
 }
 
 #[test]
 fn a_nested_front_matter_stays_source() {
 	let doc = parse("---\ntitle: Notes\nauthor:\n  name: A\n---\n\nBody\n");
-	assert_eq!(doc.blocks.len(), 2);
-	let BlockKind::FrontMatter { blocks, .. } = &doc.blocks[0].kind else {
-		panic!("{:?}", doc.blocks[0].kind)
+	assert_eq!(doc.blocks().len(), 2);
+	let BlockKind::FrontMatter { blocks, .. } = doc.blocks()[0].kind() else {
+		panic!("{:?}", doc.blocks()[0].kind())
 	};
-	let BlockKind::Code { text, .. } = &blocks[0].kind else {
-		panic!("{:?}", blocks[0].kind)
+	let BlockKind::Code { text, .. } = &blocks[0].kind() else {
+		panic!("{:?}", blocks[0].kind())
 	};
 	assert_eq!(text.trim(), "title: Notes\nauthor:\n  name: A");
 	// It is drawn as a `yaml` code block, so it is code to the highlighter.
 	let mut code = Vec::new();
-	doc.blocks[0].code_blocks(&mut code);
+	doc.blocks()[0].code_blocks(&mut code);
 	assert_eq!(code, [("yaml", text.as_str())]);
 	// Not a mapping at all is source too.
 	let doc = parse("---\n- one\n- two\n---\n\nBody\n");
-	let BlockKind::FrontMatter { blocks, .. } = &doc.blocks[0].kind else {
-		panic!("{:?}", doc.blocks[0].kind)
+	let BlockKind::FrontMatter { blocks, .. } = doc.blocks()[0].kind() else {
+		panic!("{:?}", doc.blocks()[0].kind())
 	};
-	let BlockKind::Code { text, .. } = &blocks[0].kind else {
-		panic!("{:?}", blocks[0].kind)
+	let BlockKind::Code { text, .. } = &blocks[0].kind() else {
+		panic!("{:?}", blocks[0].kind())
 	};
 	assert_eq!(text, "- one\n- two");
 }
@@ -1876,20 +2017,23 @@ fn a_nested_front_matter_stays_source() {
 fn front_matter_only_opens_a_document() {
 	// An unclosed fence is an ordinary rule, not metadata.
 	let doc = parse("---\ntitle: Notes\n\nBody\n");
-	assert!(!matches!(doc.blocks[0].kind, BlockKind::FrontMatter { .. }));
+	assert!(!matches!(
+		doc.blocks()[0].kind(),
+		BlockKind::FrontMatter { .. }
+	));
 	// Dashes further down stay a rule.
 	let doc = parse("Body\n\n---\n\ntitle: Notes\n");
 	assert!(
-		!doc.blocks
+		!doc.blocks()
 			.iter()
-			.any(|b| matches!(b.kind, BlockKind::FrontMatter { .. }))
+			.any(|b| matches!(b.kind(), BlockKind::FrontMatter { .. }))
 	);
 	// An empty block draws nothing.
 	let doc = parse("---\n\n---\nBody\n");
 	assert!(
-		!doc.blocks
+		!doc.blocks()
 			.iter()
-			.any(|b| matches!(b.kind, BlockKind::FrontMatter { .. }))
+			.any(|b| matches!(b.kind(), BlockKind::FrontMatter { .. }))
 	);
 }
 
@@ -1900,21 +2044,21 @@ fn only_a_delimiter_line_closes_front_matter() {
 	// the YAML, so the line between the delimiters is never lost.
 	let source = "---\ntitle: a\n---extra\n---\n\nBody\n";
 	let doc = parse(source);
-	let BlockKind::FrontMatter { blocks, .. } = &doc.blocks[0].kind else {
-		panic!("{:?}", doc.blocks[0].kind)
+	let BlockKind::FrontMatter { blocks, .. } = doc.blocks()[0].kind() else {
+		panic!("{:?}", doc.blocks()[0].kind())
 	};
-	let BlockKind::Code { text, .. } = &blocks[0].kind else {
-		panic!("{:?}", blocks[0].kind)
+	let BlockKind::Code { text, .. } = &blocks[0].kind() else {
+		panic!("{:?}", blocks[0].kind())
 	};
 	assert_eq!(text, "title: a\n---extra");
 	assert!(source.contains(text.as_str()));
 	// A value that opens with dashes mid-line is content as well.
 	let doc = parse("---\ntitle: a\n---\n\nBody\n");
-	let BlockKind::FrontMatter { blocks, .. } = &doc.blocks[0].kind else {
-		panic!("{:?}", doc.blocks[0].kind)
+	let BlockKind::FrontMatter { blocks, .. } = doc.blocks()[0].kind() else {
+		panic!("{:?}", doc.blocks()[0].kind())
 	};
-	let BlockKind::Code { text, .. } = &blocks[0].kind else {
-		panic!("{:?}", blocks[0].kind)
+	let BlockKind::Code { text, .. } = &blocks[0].kind() else {
+		panic!("{:?}", blocks[0].kind())
 	};
 	assert_eq!(text, "title: a");
 }
@@ -1924,11 +2068,11 @@ fn a_closing_delimiter_at_the_end_of_the_file_still_closes() {
 	// The file ends on the delimiter, so no trailing line ending remains to
 	// cut the body at. Dropping the metadata here would be silent.
 	let doc = parse("---\ntitle: Notes\n---");
-	let BlockKind::FrontMatter { blocks, .. } = &doc.blocks[0].kind else {
-		panic!("{:?}", doc.blocks[0].kind)
+	let BlockKind::FrontMatter { blocks, .. } = doc.blocks()[0].kind() else {
+		panic!("{:?}", doc.blocks()[0].kind())
 	};
-	let BlockKind::Code { text, .. } = &blocks[0].kind else {
-		panic!("{:?}", blocks[0].kind)
+	let BlockKind::Code { text, .. } = &blocks[0].kind() else {
+		panic!("{:?}", blocks[0].kind())
 	};
 	assert_eq!(text, "title: Notes");
 }
@@ -1939,7 +2083,7 @@ fn the_reader_owns_the_front_matter_disclosure_state() {
 	// reader's own choice, which lives in the layout options, is what opens
 	// it. A `<details>` element with no `open` attribute is the same shape.
 	let doc = parse("---\ntitle: Notes\n---\n\nBody\n");
-	assert_eq!(doc.details_declared(doc.blocks[0].id), Some(false));
+	assert_eq!(doc.details_declared(doc.blocks()[0].id()), Some(false));
 }
 
 #[test]
@@ -1954,8 +2098,8 @@ fn an_edit_inside_front_matter_keeps_it_metadata() {
 	let updated = reparse(&parse(before), edited.clone());
 	let full = parse(edited);
 	let metadata = |doc: &Document| {
-		doc.blocks.iter().find_map(|block| match &block.kind {
-			BlockKind::FrontMatter { blocks, .. } => match &blocks[0].kind {
+		doc.blocks().iter().find_map(|block| match &block.kind() {
+			BlockKind::FrontMatter { blocks, .. } => match &blocks[0].kind() {
 				BlockKind::Code { text, .. } => Some(text.clone()),
 				_ => None,
 			},
@@ -1971,8 +2115,8 @@ fn an_attribute_after_a_stray_slash_does_not_split_a_character() {
 	// A fuzz finding: `<details /\u{a0}open>` reaches `has_attribute` and
 	// `<p><img /\u{a0}src=x>` reaches `attribute`; both split the two-byte
 	// space the stripped `/` exposed.
-	assert!(parse("<details /\u{a0}open>\n").blocks.iter().all(|b| {
-		match &b.kind {
+	assert!(parse("<details /\u{a0}open>\n").blocks().iter().all(|b| {
+		match &b.kind() {
 			BlockKind::Paragraph(text) => text.iter().all(
 				|i| !matches!(&i.kind, InlineKind::Text(t) if t.contains('\u{a0}')),
 			),
@@ -1981,73 +2125,85 @@ fn an_attribute_after_a_stray_slash_does_not_split_a_character() {
 	}));
 	let doc = parse("<p><img /\u{a0}src=x>\n");
 	let mut images = Vec::new();
-	for block in &doc.blocks {
+	for block in doc.blocks() {
 		block.images(&mut images);
 	}
 	let [image] = images.as_slice() else {
 		panic!("expected the image the raw block declares")
 	};
-	assert_eq!(image.src, "x");
+	assert_eq!(image.address(), "x");
 }
 
 #[test]
 fn inline_source_ranges_never_run_backwards() {
 	// A fuzz finding: comrak reports the paragraph after a link reference
-	// definition at the definition's own columns, so a `SoftBreak` span can
+	// definition at the definition's own columns, so a SoftBreak span can
 	// end before the text before it starts; merging used to move the merged
 	// range's end backwards and leave `17..16`.
-	fn check(blocks: &[Block]) {
+	fn check(doc: &MarkdownParse, blocks: &[Block]) {
 		for block in blocks {
-			let text: &RichText = match &block.kind {
+			let text: &RichText = match block.kind() {
 				BlockKind::Paragraph(text)
 				| BlockKind::Heading { text, .. } => text,
 				BlockKind::Quote { blocks, .. }
 				| BlockKind::Footnote { blocks, .. }
 				| BlockKind::FrontMatter { blocks, .. } => {
-					check(blocks);
+					check(doc, blocks);
 					continue;
 				}
 				BlockKind::Details {
 					summary, blocks, ..
 				} => {
 					for inline in summary {
-						assert!(inline.source.start <= inline.source.end);
+						let r = doc.inline_source(block, inline).unwrap();
+						assert!(r.start <= r.end);
 					}
-					check(blocks);
+					check(doc, blocks);
 					continue;
 				}
 				BlockKind::List { items, .. } => {
 					for item in items {
-						check(&item.blocks);
+						check(doc, &item.blocks);
 					}
 					continue;
 				}
-				BlockKind::Table { rows, .. } => {
-					for row in rows {
-						for cell in row {
-							for inline in cell {
-								assert!(
-									inline.source.start <= inline.source.end
-								);
-							}
+				BlockKind::Table(table) => {
+					for child in table.cell_blocks() {
+						check(doc, std::slice::from_ref(child));
+					}
+					continue;
+				}
+				BlockKind::DefinitionList(items) => {
+					for item in items {
+						for blocks in &item.definitions {
+							check(doc, blocks);
 						}
 					}
+					continue;
+				}
+				BlockKind::Figure { blocks, .. } => {
+					check(doc, blocks);
 					continue;
 				}
 				BlockKind::Code { .. } | BlockKind::Rule => continue,
 			};
 			for inline in text {
+				let r = doc.inline_source(block, inline).unwrap();
 				assert!(
-					inline.source.start <= inline.source.end,
-					"inverted inline range {:?} in {:?}",
-					inline.source,
-					block.source
+					r.start <= r.end,
+					"inverted inline range {r:?} in {:?}",
+					block.kind(),
 				);
 			}
 		}
 	}
-	let doc = parse("[foo]: d\n   d\n[foo]: d\nc\n[foo]: d");
-	check(&doc.blocks);
+	for source in [
+		"[x]: /a\n&gt;\n\nparagraph\n",
+		"> [x]: /a\n\nparagraph\n",
+		"\r\0  $   \0li\0\n",
+	] {
+		check(&parse(source), parse(source).blocks());
+	}
 }
 
 #[test]
@@ -2057,12 +2213,12 @@ fn a_definition_line_inside_a_paragraph_is_not_a_definition() {
 	// the document never had — in the prefix path and in a `<details>` body.
 	let source: Arc<str> = Arc::from("Foo\n[bar]: /baz\n\n[bar]\n");
 	let full = parse(source.as_ref());
-	let BlockKind::Paragraph(first) = &full.blocks[0].kind else {
+	let BlockKind::Paragraph(first) = full.blocks()[0].kind() else {
 		panic!("expected a paragraph")
 	};
-	assert!(first.iter().all(|i| i.style.link.is_none()));
+	assert!(first.iter().all(|i| i.link.is_none()));
 	let prefix = parse_prefix(&source, source.len() - 1).expect("a prefix");
-	assert_eq!(prefix.blocks, full.blocks);
+	assert_blocks_match(&prefix, &full);
 }
 
 #[test]
@@ -2073,11 +2229,160 @@ fn a_definition_after_a_leaf_block_still_counts() {
 	let source: Arc<str> = Arc::from("See [x].\n\n# H\n[x]: url\n");
 	let full = parse(source.as_ref());
 	let prefix = parse_prefix(&source, 8).expect("a prefix");
-	assert_eq!(prefix.blocks, full.blocks[..prefix.blocks.len()]);
-	let BlockKind::Paragraph(text) = &prefix.blocks[0].kind else {
+	assert_prefix_blocks(&prefix, &full, prefix.blocks().len());
+	let BlockKind::Paragraph(text) = prefix.blocks()[0].kind() else {
 		panic!("expected a paragraph")
 	};
-	assert!(text.iter().any(|i| i.style.link_url() == Some("url")));
+	assert!(text.iter().any(|i| i.link_url() == Some("url")));
+}
+
+#[test]
+fn source_map_validation_reports_invalid_fields() {
+	use markview_document::{
+		BlockSource, FieldSource, SourceMap, SourceMapError, SourceSpan,
+	};
+	let doc = parse("text\n");
+	let block = &doc.blocks()[0];
+	let bad = SourceMap::new(
+		doc.document.revision(),
+		vec![BlockSource {
+			block: block.id(),
+			source: Some(doc.block_source(block).unwrap()),
+			fields: vec![FieldSource {
+				field: markview_document::FieldId::from_index(0),
+				spans: vec![SourceSpan {
+					semantic: 0..100,
+					source: 0..1,
+					exact: true,
+				}],
+				covers: Vec::new(),
+			}],
+		}],
+	);
+	assert!(matches!(
+		bad.validate(&doc.source, &doc.document),
+		Err(SourceMapError::OutOfBounds(_))
+	));
+	let bad = SourceMap::new(
+		doc.document.revision(),
+		vec![BlockSource {
+			block: block.id(),
+			source: Some(doc.block_source(block).unwrap()),
+			fields: vec![FieldSource {
+				field: markview_document::FieldId::from_index(0),
+				spans: vec![SourceSpan {
+					semantic: 0..1,
+					source: 0..doc.source.len() + 1,
+					exact: true,
+				}],
+				covers: Vec::new(),
+			}],
+		}],
+	);
+	assert!(bad.validate(&doc.source, &doc.document).is_err());
+}
+
+#[test]
+fn source_map_validation_reports_invalid_covers() {
+	use markview_document::{
+		BlockSource, FieldSource, SourceMap, SourceMapError, SourceSpan,
+	};
+	// `inline_source` consults a cover before any span, so a cover that is out
+	// of bounds or off a boundary must fail validation even though the spans
+	// are empty.
+	let doc = parse("中\n");
+	let block = &doc.blocks()[0];
+	let with_cover = |cover: SourceSpan| {
+		SourceMap::new(
+			doc.document.revision(),
+			vec![BlockSource {
+				block: block.id(),
+				source: Some(doc.block_source(block).unwrap()),
+				fields: vec![FieldSource {
+					field: markview_document::FieldId::from_index(0),
+					spans: Vec::new(),
+					covers: vec![cover],
+				}],
+			}],
+		)
+	};
+	assert!(matches!(
+		with_cover(SourceSpan {
+			semantic: 0..9,
+			source: 0..1,
+			exact: true,
+		})
+		.validate(&doc.source, &doc.document),
+		Err(SourceMapError::OutOfBounds(_))
+	));
+	assert!(matches!(
+		with_cover(SourceSpan {
+			semantic: 0..1,
+			source: 1..3,
+			exact: true,
+		})
+		.validate(&doc.source, &doc.document),
+		Err(SourceMapError::NotCharBoundary(1))
+	));
+	assert!(
+		with_cover(SourceSpan {
+			semantic: 0..3,
+			source: 0..doc.source.len(),
+			exact: true,
+		})
+		.validate(&doc.source, &doc.document)
+		.is_ok()
+	);
+}
+
+#[test]
+fn source_map_validation_rejects_unknown_field_ids() {
+	use markview_document::{
+		BlockSource, FieldSource, SourceMap, SourceMapError, SourceSpan,
+	};
+	// Removing an entry is how a front end leaves a field unmapped, but an id
+	// no field of the block reaches is a stale or forged mapping.
+	let doc = parse("text\n");
+	let block = &doc.blocks()[0];
+	let bad = SourceMap::new(
+		doc.document.revision(),
+		vec![BlockSource {
+			block: block.id(),
+			source: Some(doc.block_source(block).unwrap()),
+			fields: vec![FieldSource {
+				field: markview_document::FieldId::from_index(1),
+				spans: vec![SourceSpan {
+					semantic: 0..1,
+					source: 0..1,
+					exact: true,
+				}],
+				covers: Vec::new(),
+			}],
+		}],
+	);
+	assert_eq!(
+		bad.validate(&doc.source, &doc.document),
+		Err(SourceMapError::UnknownField(
+			markview_document::FieldId::from_index(1)
+		))
+	);
+}
+
+#[test]
+fn empty_anchor_blocks_keep_field_ordinals_aligned() {
+	let doc = parse("> <div id=\"foo\"></div>\n>\n> word\n");
+	assert!(doc.map.validate(&doc.source, &doc.document).is_ok());
+}
+
+#[test]
+fn code_fence_mapping_skips_the_info_string() {
+	let doc = parse("```rust\nrust\n```\n");
+	let block = &doc.blocks()[0];
+	let field = doc
+		.map
+		.field(block.id(), markview_document::FieldId::from_index(0))
+		.unwrap();
+	assert_eq!(field.spans[0].source, 8..13);
 }
 
 #[test]
@@ -2089,7 +2394,7 @@ fn a_prefix_never_cuts_through_front_matter() {
 	assert!(parse_prefix(&source, 3).is_none());
 	let full = parse(source.as_ref());
 	let prefix = parse_prefix(&source, 5).expect("a prefix past the closer");
-	assert_eq!(prefix.blocks, full.blocks);
+	assert_blocks_match(&prefix, &full);
 }
 
 #[test]
@@ -2101,12 +2406,15 @@ fn a_prefix_never_cuts_through_front_matter_whose_second_line_is_a_delimiter() {
 	for source in ["---\n---\n\n---\n", "---\n---\n---\n"] {
 		let source: Arc<str> = Arc::from(source);
 		let full = parse(source.as_ref());
-		assert!(matches!(full.blocks[0].kind, BlockKind::FrontMatter { .. }));
+		assert!(matches!(
+			full.blocks()[0].kind(),
+			BlockKind::FrontMatter { .. }
+		));
 		for cut in 1..source.len() {
 			if let Some(prefix) = parse_prefix(&source, cut) {
 				assert_eq!(
-					prefix.blocks,
-					full.blocks[..prefix.blocks.len()],
+					prefix.blocks(),
+					&full.blocks()[..prefix.blocks().len()],
 					"cut {cut}"
 				);
 			}
@@ -2124,7 +2432,7 @@ fn a_prefix_never_cuts_through_an_open_container() {
 	let full = parse(source.as_ref());
 	let prefix = parse_prefix(&source, source.len() - 1)
 		.expect("a prefix past the closer");
-	assert_eq!(prefix.blocks, full.blocks);
+	assert_blocks_match(&prefix, &full);
 }
 
 #[test]
@@ -2135,10 +2443,10 @@ fn a_stray_container_close_does_not_hide_a_later_opener() {
 		Arc::from("</div>\n\n<div>\n\nHello\n\nWorld\n\n</div>\n");
 	assert!(parse_prefix(&source, 15).is_none());
 	let full = parse(source.as_ref());
-	assert_eq!(full.blocks.len(), 3);
+	assert_eq!(full.blocks().len(), 3);
 	let prefix = parse_prefix(&source, source.len() - 1)
 		.expect("a prefix past the closer");
-	assert_eq!(prefix.blocks, full.blocks);
+	assert_blocks_match(&prefix, &full);
 }
 
 #[test]
@@ -2147,8 +2455,8 @@ fn a_commented_container_tag_is_not_markup() {
 	// container, which would otherwise steal the wrapper's closer.
 	for body in ["<!-- <div> -->", "<!-- </div> -->"] {
 		let doc = parse(format!("<div>\n\n{body}\n\nHello\n\n</div>\n"));
-		assert_eq!(doc.blocks.len(), 1);
-		let BlockKind::Paragraph(text) = &doc.blocks[0].kind else {
+		assert_eq!(doc.blocks().len(), 1);
+		let BlockKind::Paragraph(text) = doc.blocks()[0].kind() else {
 			panic!("expected the body paragraph")
 		};
 		assert_eq!(plain_text(text), "Hello");
@@ -2168,15 +2476,15 @@ fn opaque_elements_hide_their_contents_from_container_matching() {
 	] {
 		let doc = parse(format!("<div>\n\n{body}\n\nHello\n\n</div>\n"));
 		assert!(
-			!doc.blocks.iter().any(|b| matches!(
-				&b.kind,
+			!doc.blocks().iter().any(|b| matches!(
+				&b.kind(),
 				BlockKind::Code { text, .. } if text.trim() == "<div>"
 			)),
 			"{body}: the outer container fell back to source"
 		);
 		assert!(
-			doc.blocks.iter().any(|b| matches!(
-				&b.kind,
+			doc.blocks().iter().any(|b| matches!(
+				&b.kind(),
 				BlockKind::Paragraph(t) if plain_text(t) == "Hello"
 			)),
 			"{body}: the body is missing"
@@ -2186,12 +2494,12 @@ fn opaque_elements_hide_their_contents_from_container_matching() {
 	let doc = parse(
 		"<details>\n<summary>S</summary>\n\n<script></details></script>\n\nBody\n\n</details>\n",
 	);
-	assert_eq!(doc.blocks.len(), 1);
-	let BlockKind::Details { blocks, .. } = &doc.blocks[0].kind else {
+	assert_eq!(doc.blocks().len(), 1);
+	let BlockKind::Details { blocks, .. } = doc.blocks()[0].kind() else {
 		panic!("expected the details element")
 	};
 	assert!(blocks.iter().any(|b| matches!(
-		&b.kind,
+		&b.kind(),
 		BlockKind::Paragraph(t) if plain_text(t) == "Body"
 	)));
 }
@@ -2201,16 +2509,16 @@ fn unmatched_container_openers_keep_the_html_source() {
 	// No closer follows either opener, so both stay literal and the text
 	// between them still renders.
 	let doc = parse("<div>\n\n<div>\n\nText\n");
-	assert_eq!(doc.blocks.len(), 3);
+	assert_eq!(doc.blocks().len(), 3);
 	assert!(matches!(
-		&doc.blocks[0].kind,
+		doc.blocks()[0].kind(),
 		BlockKind::Code { language, .. } if language == "HTML source"
 	));
 	assert!(matches!(
-		&doc.blocks[1].kind,
+		doc.blocks()[1].kind(),
 		BlockKind::Code { language, .. } if language == "HTML source"
 	));
-	let BlockKind::Paragraph(text) = &doc.blocks[2].kind else {
+	let BlockKind::Paragraph(text) = doc.blocks()[2].kind() else {
 		panic!("expected the body paragraph")
 	};
 	assert_eq!(plain_text(text), "Text");
@@ -2222,35 +2530,34 @@ fn a_prefix_keeps_the_line_ending_a_list_marker_needs() {
 	// empty ordered item the document has.
 	let source: Arc<str> = Arc::from("1.\n");
 	let full = parse(source.as_ref());
-	assert!(matches!(full.blocks[0].kind, BlockKind::List { .. }));
+	assert!(matches!(full.blocks()[0].kind(), BlockKind::List { .. }));
 	let prefix = parse_prefix(&source, 1).expect("a prefix");
-	assert_eq!(prefix.blocks, full.blocks);
+	assert_blocks_match(&prefix, &full);
 }
 
 #[test]
 fn obsidian_wikilinks_keep_labels_sources_and_heading_targets() {
 	let source = "[[Notes/First note|First]] [[Second.md#A heading|Section]] [[#本节]] `[[code]]`\n";
 	let doc = parse(source);
-	let BlockKind::Paragraph(text) = &doc.blocks[0].kind else {
+	let BlockKind::Paragraph(text) = doc.blocks()[0].kind() else {
 		panic!()
 	};
 	assert_eq!(plain_text(text), "First Section #本节 [[code]]");
-	let links: Vec<_> = text
-		.iter()
-		.filter_map(|span| span.style.link_url())
-		.collect();
+	let links: Vec<_> =
+		text.iter().filter_map(|span| span.link_url()).collect();
 	assert_eq!(links, ["Notes/First note", "Second.md#a-heading", "#本节"]);
 	for span in text {
-		assert!(source.is_char_boundary(span.source.start));
-		assert!(span.source.end <= source.len());
+		let range = doc.inline_source(&doc.blocks()[0], span).unwrap();
+		assert!(source.is_char_boundary(range.start));
+		assert!(range.end <= source.len());
 	}
-	assert!(text.last().unwrap().style.link_url().is_none());
+	assert!(text.last().unwrap().link_url().is_none());
 	let changed =
 		reparse(&doc, source.replace("First note", "Other note").into());
-	let BlockKind::Paragraph(text) = &changed.blocks[0].kind else {
+	let BlockKind::Paragraph(text) = changed.blocks()[0].kind() else {
 		panic!()
 	};
-	assert_eq!(text[0].style.link_url(), Some("Notes/Other note"));
+	assert_eq!(text[0].link_url(), Some("Notes/Other note"));
 }
 
 #[test]
@@ -2258,14 +2565,12 @@ fn wikilinks_escape_literal_percents_without_changing_markdown_urls() {
 	let doc = parse(
 		"[[Note %41]] [[Note %41.md#A heading|Section]] [[Note %2541]] [Markdown](Note%20%41.md)",
 	);
-	let BlockKind::Paragraph(text) = &doc.blocks[0].kind else {
+	let BlockKind::Paragraph(text) = doc.blocks()[0].kind() else {
 		panic!()
 	};
 	assert_eq!(plain_text(text), "Note %41 Section Note %2541 Markdown");
-	let links: Vec<_> = text
-		.iter()
-		.filter_map(|span| span.style.link_url())
-		.collect();
+	let links: Vec<_> =
+		text.iter().filter_map(|span| span.link_url()).collect();
 	assert_eq!(
 		links,
 		[
@@ -2291,11 +2596,25 @@ fn callout_of(block: &Block) -> (&Callout, &[Block]) {
 		callout: Some(callout),
 		blocks,
 		..
-	} = &block.kind
+	} = &block.kind()
 	else {
-		panic!("not a callout: {:?}", block.kind);
+		panic!("not a callout: {:?}", block.kind());
 	};
 	(callout, blocks)
+}
+
+/// A plain callout owns its title; a foldable one owns it as the nested
+/// disclosure's summary.
+fn callout_title<'a>(
+	callout: &'a Callout,
+	blocks: &'a [Block],
+) -> &'a RichText {
+	callout.title.as_ref().unwrap_or_else(|| {
+		let BlockKind::Details { summary, .. } = &blocks[0].kind() else {
+			panic!("a foldable callout has no disclosure: {blocks:?}");
+		};
+		summary
+	})
 }
 
 #[test]
@@ -2332,11 +2651,11 @@ fn obsidian_callouts_read_every_type_and_alias() {
 	];
 	for (name, kind) in cases {
 		let doc = parse_with(format!("> [!{name}] Title\n> Body\n"), ofm());
-		let (callout, blocks) = callout_of(&doc.blocks[0]);
+		let (callout, blocks) = callout_of(&doc.blocks()[0]);
 		assert_eq!(callout.kind, kind, "{name}");
-		assert_eq!(plain_text(&callout.title), "Title");
+		assert_eq!(plain_text(callout_title(callout, blocks)), "Title");
 		assert_eq!(callout.fold, None);
-		let BlockKind::Paragraph(body) = &blocks[0].kind else {
+		let BlockKind::Paragraph(body) = &blocks[0].kind() else {
 			panic!("{name}: body {:?}", blocks);
 		};
 		assert_eq!(plain_text(body), "Body");
@@ -2346,14 +2665,17 @@ fn obsidian_callouts_read_every_type_and_alias() {
 #[test]
 fn a_callout_without_a_title_uses_its_type_name() {
 	let doc = parse_with("> [!info]\n> Default title.\n", ofm());
-	let (callout, blocks) = callout_of(&doc.blocks[0]);
-	assert_eq!(plain_text(&callout.title), "Info");
+	let (callout, blocks) = callout_of(&doc.blocks()[0]);
+	assert_eq!(plain_text(callout_title(callout, blocks)), "Info");
 	assert_eq!(blocks.len(), 1);
 	// A marker alone in its paragraph leaves no empty paragraph behind.
 	let doc = parse_with("> [!faq]\n>\n> Body.\n", ofm());
-	let (callout, blocks) = callout_of(&doc.blocks[0]);
+	let (callout, blocks) = callout_of(&doc.blocks()[0]);
 	assert_eq!(
-		(callout.kind, plain_text(&callout.title).as_str()),
+		(
+			callout.kind,
+			plain_text(callout_title(callout, blocks)).as_str()
+		),
 		(CalloutKind::Question, "Faq")
 	);
 	assert_eq!(blocks.len(), 1);
@@ -2365,27 +2687,31 @@ fn a_foldable_callout_wraps_its_body_in_a_disclosure() {
 		"> [!faq]- Folded\n> Hidden.\n> - one\n\n> [!tip]+ Open\n> Shown.\n",
 		ofm(),
 	);
-	let (folded, blocks) = callout_of(&doc.blocks[0]);
+	let (folded, blocks) = callout_of(&doc.blocks()[0]);
 	assert_eq!(folded.fold, Some(false));
 	let BlockKind::Details {
-		open,
+		default_open,
 		summary,
 		blocks: body,
 		..
-	} = &blocks[0].kind
+	} = &blocks[0].kind()
 	else {
 		panic!("no disclosure: {blocks:?}");
 	};
-	assert!(!open);
+	assert!(!default_open);
+	assert!(folded.title.is_none());
 	assert!(plain_text(summary).ends_with("Folded"));
 	assert_eq!(body.len(), 2);
-	let (open_callout, blocks) = callout_of(&doc.blocks[1]);
+	let (open_callout, blocks) = callout_of(&doc.blocks()[1]);
 	assert_eq!(open_callout.fold, Some(true));
 	assert!(matches!(
-		blocks[0].kind,
-		BlockKind::Details { open: true, .. }
+		blocks[0].kind(),
+		BlockKind::Details {
+			default_open: true,
+			..
+		}
 	));
-	assert_eq!(doc.details_declared(blocks[0].id), Some(true));
+	assert_eq!(doc.details_declared(blocks[0].id()), Some(true));
 }
 
 #[test]
@@ -2394,15 +2720,15 @@ fn callouts_nest_and_keep_inline_markup_in_the_body() {
 		"> [!note] Outer\n> Outer text.\n> > [!warning] Inner\n> > **bold** ==mark==\n",
 		ofm(),
 	);
-	let (outer, blocks) = callout_of(&doc.blocks[0]);
-	assert_eq!(plain_text(&outer.title), "Outer");
+	let (outer, blocks) = callout_of(&doc.blocks()[0]);
+	assert_eq!(plain_text(callout_title(outer, blocks)), "Outer");
 	let inner = blocks
 		.iter()
-		.find(|b| matches!(b.kind, BlockKind::Quote { .. }))
+		.find(|b| matches!(b.kind(), BlockKind::Quote { .. }))
 		.expect("nested callout");
 	let (inner, body) = callout_of(inner);
 	assert_eq!(inner.kind, CalloutKind::Warning);
-	let BlockKind::Paragraph(text) = &body[0].kind else {
+	let BlockKind::Paragraph(text) = &body[0].kind() else {
 		panic!()
 	};
 	assert!(text.iter().any(|i| i.style.bold));
@@ -2413,25 +2739,28 @@ fn callouts_nest_and_keep_inline_markup_in_the_body() {
 fn gfm_keeps_github_alerts_and_plain_quotes() {
 	let doc = parse("> [!NOTE]\n> Alert.\n\n> [!faq] Not an alert\n> Quote.\n");
 	assert!(matches!(
-		&doc.blocks[0].kind,
-		BlockKind::Quote { callout: Some(c), .. } if c.kind == CalloutKind::Note && plain_text(&c.title) == "Note"
+		doc.blocks()[0].kind(),
+		BlockKind::Quote { callout: Some(c), blocks } if c.kind == CalloutKind::Note && plain_text(callout_title(c, blocks)) == "Note"
 	));
 	let BlockKind::Quote {
 		callout: None,
 		blocks,
-	} = &doc.blocks[1].kind
+	} = doc.blocks()[1].kind()
 	else {
 		panic!()
 	};
-	let BlockKind::Paragraph(text) = &blocks[0].kind else {
+	let BlockKind::Paragraph(text) = &blocks[0].kind() else {
 		panic!()
 	};
 	assert!(plain_text(text).starts_with("[!faq] Not an alert"));
 	// In Obsidian a GitHub alert is just another callout type.
 	let doc = parse_with("> [!NOTE]\n> Alert.\n", ofm());
-	let (callout, _) = callout_of(&doc.blocks[0]);
+	let (callout, _) = callout_of(&doc.blocks()[0]);
 	assert_eq!(
-		(callout.kind, plain_text(&callout.title).as_str()),
+		(
+			callout.kind,
+			plain_text(callout_title(callout, blocks)).as_str()
+		),
 		(CalloutKind::Note, "Note")
 	);
 }
@@ -2442,7 +2771,7 @@ fn a_quote_that_only_looks_like_a_callout_stays_a_quote() {
 		let doc = parse_with(source, ofm());
 		assert!(
 			matches!(
-				doc.blocks[0].kind,
+				doc.blocks()[0].kind(),
 				BlockKind::Quote { callout: None, .. }
 			),
 			"{source}"
@@ -2462,11 +2791,11 @@ fn escaped_or_styled_callout_markers_stay_quotes() {
 			callout: None,
 			blocks,
 			..
-		} = &doc.blocks[0].kind
+		} = doc.blocks()[0].kind()
 		else {
 			panic!("became a callout: {source}");
 		};
-		let BlockKind::Paragraph(text) = &blocks[0].kind else {
+		let BlockKind::Paragraph(text) = &blocks[0].kind() else {
 			panic!("{source}: {blocks:?}");
 		};
 		assert!(plain_text(text).contains("[!note]"), "{source}");
@@ -2476,8 +2805,8 @@ fn escaped_or_styled_callout_markers_stay_quotes() {
 #[test]
 fn obsidian_html_tags_style_only_in_the_dialect() {
 	fn paragraph(doc: &Document) -> &RichText {
-		let BlockKind::Paragraph(rich) = &doc.blocks[0].kind else {
-			panic!("not a paragraph: {:?}", doc.blocks[0].kind);
+		let BlockKind::Paragraph(rich) = doc.blocks()[0].kind() else {
+			panic!("not a paragraph: {:?}", doc.blocks()[0].kind());
 		};
 		rich
 	}
@@ -2516,8 +2845,8 @@ fn editing_around_callouts_matches_a_full_parse() {
 		let previous = parse_with(before, ofm());
 		let got = reparse_with(&previous, Arc::from(after), ofm());
 		let expected = parse_with(after, ofm());
-		assert_eq!(got.blocks, expected.blocks, "{after:?}");
-		assert_eq!(got.content_id, expected.content_id);
+		assert_eq!(got.blocks(), expected.blocks(), "{after:?}");
+		assert_eq!(got.content_key(), expected.content_key());
 	}
 }
 
@@ -2526,7 +2855,7 @@ fn reading(doc: &Document) -> String {
 	let mut out = String::new();
 	fn walk(blocks: &[Block], out: &mut String) {
 		for block in blocks {
-			match &block.kind {
+			match &block.kind() {
 				BlockKind::Paragraph(text)
 				| BlockKind::Heading { text, .. } => {
 					out.push_str(&plain_text(text));
@@ -2539,26 +2868,48 @@ fn reading(doc: &Document) -> String {
 				BlockKind::Quote { blocks, .. }
 				| BlockKind::Footnote { blocks, .. }
 				| BlockKind::Details { blocks, .. }
-				| BlockKind::FrontMatter { blocks, .. } => walk(blocks, out),
+				| BlockKind::FrontMatter { blocks, .. }
+				| BlockKind::Figure { blocks, .. } => walk(blocks, out),
 				BlockKind::List { items, .. } => {
 					for item in items {
 						walk(&item.blocks, out);
 					}
 				}
-				BlockKind::Table { rows, .. } => {
-					for row in rows {
-						for cell in row {
-							out.push_str(&plain_text(cell));
-							out.push('\t');
+				BlockKind::Table(table) => {
+					for group in &table.groups {
+						for row in &group.rows {
+							for cell in &row.cells {
+								for block in &cell.blocks {
+									match block.kind() {
+										BlockKind::Paragraph(text)
+										| BlockKind::Heading { text, .. } => {
+											out.push_str(&plain_text(text));
+										}
+										_ => {}
+									}
+								}
+								out.push('\t');
+							}
+							out.push('\n');
 						}
-						out.push('\n');
+					}
+				}
+				BlockKind::DefinitionList(items) => {
+					for item in items {
+						for terms in &item.terms {
+							out.push_str(&plain_text(terms));
+							out.push('\n');
+						}
+						for blocks in &item.definitions {
+							walk(blocks, out);
+						}
 					}
 				}
 				BlockKind::Rule => out.push('\n'),
 			}
 		}
 	}
-	walk(&doc.blocks, &mut out);
+	walk(doc.blocks(), &mut out);
 	out
 }
 
@@ -2567,12 +2918,12 @@ fn images(doc: &Document) -> Vec<String> {
 	let mut out = Vec::new();
 	fn walk(blocks: &[Block], out: &mut Vec<String>) {
 		for block in blocks {
-			match &block.kind {
+			match &block.kind() {
 				BlockKind::Paragraph(text)
 				| BlockKind::Heading { text, .. } => {
 					for inline in text {
 						if let InlineKind::Image(image) = &inline.kind {
-							out.push(image.src.to_string());
+							out.push(image.address().to_owned());
 						}
 					}
 				}
@@ -2583,7 +2934,7 @@ fn images(doc: &Document) -> Vec<String> {
 				} => {
 					for inline in summary {
 						if let InlineKind::Image(image) = &inline.kind {
-							out.push(image.src.to_string());
+							out.push(image.address().to_owned());
 						}
 					}
 					walk(blocks, out);
@@ -2594,22 +2945,22 @@ fn images(doc: &Document) -> Vec<String> {
 						walk(&item.blocks, out);
 					}
 				}
-				BlockKind::Table { rows, .. } => {
-					for row in rows {
-						for cell in row {
-							for inline in cell {
-								if let InlineKind::Image(image) = &inline.kind {
-									out.push(image.src.to_string());
-								}
-							}
-						}
+				BlockKind::Table(table) => {
+					for child in table.cell_blocks() {
+						let mut images = Vec::new();
+						child.images(&mut images);
+						out.extend(
+							images
+								.into_iter()
+								.map(|image| image.address().to_owned()),
+						);
 					}
 				}
 				_ => {}
 			}
 		}
 	}
-	walk(&doc.blocks, &mut out);
+	walk(doc.blocks(), &mut out);
 	out
 }
 
@@ -2630,11 +2981,11 @@ fn ofm_hides_inline_comments_everywhere() {
 		assert!(!text.contains("note"), "{source}: {text:?}");
 	}
 	// An empty comment leaves no paragraph behind.
-	assert!(parse_with("%%%%\n", ofm()).blocks.is_empty());
+	assert!(parse_with("%%%%\n", ofm()).blocks().is_empty());
 	// Trailing Markdown after a comment still parses.
 	let doc = parse_with("%%comment%% _italic_\n", ofm());
-	let BlockKind::Paragraph(p) = &doc.blocks[0].kind else {
-		panic!("{:?}", doc.blocks[0].kind);
+	let BlockKind::Paragraph(p) = doc.blocks()[0].kind() else {
+		panic!("{:?}", doc.blocks()[0].kind());
 	};
 	assert_eq!(plain_text(p), "italic");
 	assert!(p.iter().any(|i| i.style.italic));
@@ -2643,13 +2994,13 @@ fn ofm_hides_inline_comments_everywhere() {
 #[test]
 fn ofm_inline_comment_spacing_keeps_words_apart() {
 	let doc = parse_with("A %%note%% B\n", ofm());
-	let BlockKind::Paragraph(p) = &doc.blocks[0].kind else {
+	let BlockKind::Paragraph(p) = doc.blocks()[0].kind() else {
 		panic!();
 	};
 	assert_eq!(plain_text(p), "A B");
 	// Obsidian joins text that the comment glued together.
 	let doc = parse_with("word%%note%%word\n", ofm());
-	let BlockKind::Paragraph(p) = &doc.blocks[0].kind else {
+	let BlockKind::Paragraph(p) = doc.blocks()[0].kind() else {
 		panic!();
 	};
 	assert_eq!(plain_text(p), "wordword");
@@ -2662,7 +3013,10 @@ fn gfm_keeps_percent_markers_literal() {
 	let text = reading(&doc);
 	assert!(text.contains("%%note%%"), "{text:?}");
 	assert!(text.contains("%%"), "{text:?}");
-	assert_eq!(doc.blocks, parse_with(source, Dialect::default()).blocks);
+	assert_eq!(
+		doc.blocks(),
+		parse_with(source, Dialect::default()).blocks()
+	);
 }
 
 #[test]
@@ -2676,14 +3030,14 @@ fn ofm_block_comments_span_blank_lines_and_blocks() {
 	assert!(text.contains("Visible tail"), "{text:?}");
 	assert!(text.contains("Outro."), "{text:?}");
 	assert_eq!(images(&doc), Vec::<String>::new());
-	assert!(doc.blocks.iter().all(|block| block.anchors.is_empty()));
+	assert!(doc.blocks().iter().all(|block| block.anchors().is_empty()));
 	// The hidden refdef does not resolve; the link stays literal text.
 	let doc = parse_with("%% [x]: https://hidden.test\n%%\n\n[x]\n", ofm());
-	let BlockKind::Paragraph(p) = &doc.blocks[0].kind else {
+	let BlockKind::Paragraph(p) = doc.blocks()[0].kind() else {
 		panic!();
 	};
 	assert_eq!(plain_text(p), "[x]");
-	assert!(p.iter().all(|i| i.style.link_url().is_none()));
+	assert!(p.iter().all(|i| i.link_url().is_none()));
 }
 
 #[test]
@@ -2713,7 +3067,7 @@ fn ofm_comments_in_code_stay_literal() {
 	// Inline code, single and multi backtick.
 	for source in ["`%%code%%` text\n", "``a `%%x%%` b`` text\n"] {
 		let doc = parse_with(source, ofm());
-		let BlockKind::Paragraph(p) = &doc.blocks[0].kind else {
+		let BlockKind::Paragraph(p) = doc.blocks()[0].kind() else {
 			panic!("{source}");
 		};
 		assert!(plain_text(p).contains("%%"), "{source}");
@@ -2722,15 +3076,15 @@ fn ofm_comments_in_code_stay_literal() {
 	// Fenced code, backtick and tilde.
 	for source in ["```\n%%code%%\n```\n", "~~~\n%%code%%\n~~~\n"] {
 		let doc = parse_with(source, ofm());
-		let BlockKind::Code { text, .. } = &doc.blocks[0].kind else {
-			panic!("{source}: {:?}", doc.blocks[0].kind);
+		let BlockKind::Code { text, .. } = doc.blocks()[0].kind() else {
+			panic!("{source}: {:?}", doc.blocks()[0].kind());
 		};
 		assert!(text.contains("%%"), "{source}");
 	}
 	// Indented code.
 	let doc = parse_with("para.\n\n    %%code%%\n", ofm());
-	let BlockKind::Code { text, .. } = &doc.blocks[1].kind else {
-		panic!("{:?}", doc.blocks[1].kind);
+	let BlockKind::Code { text, .. } = doc.blocks()[1].kind() else {
+		panic!("{:?}", doc.blocks()[1].kind());
 	};
 	assert!(text.contains("%%"));
 	// Code inside a comment does not swallow the closing delimiter.
@@ -2738,18 +3092,18 @@ fn ofm_comments_in_code_stay_literal() {
 	let text = reading(&doc);
 	assert_eq!(text, "Visible text.\n");
 	assert!(
-		!doc.blocks
+		!doc.blocks()
 			.iter()
-			.any(|b| matches!(b.kind, BlockKind::Code { .. })),
+			.any(|b| matches!(b.kind(), BlockKind::Code { .. })),
 		"a hidden fence must not become a real code block"
 	);
 	// A comment inside a quote-nested fence stays code.
 	let doc = parse_with("> [!note] Title\n> ```\n> %%stay%%\n> ```\n", ofm());
-	let BlockKind::Quote { blocks, .. } = &doc.blocks[0].kind else {
+	let BlockKind::Quote { blocks, .. } = doc.blocks()[0].kind() else {
 		panic!();
 	};
-	let BlockKind::Code { text, .. } = &blocks[0].kind else {
-		panic!("{:?}", blocks[0].kind);
+	let BlockKind::Code { text, .. } = &blocks[0].kind() else {
+		panic!("{:?}", blocks[0].kind());
 	};
 	assert!(text.contains("%%stay%%"));
 }
@@ -2759,26 +3113,30 @@ fn ofm_comments_keep_source_positions_and_bytes() {
 	let source = "a %%隐藏note%% 中文\n\nb %%x%% c\n";
 	let doc = parse_with(source, ofm());
 	assert_eq!(&*doc.source, source);
-	let BlockKind::Paragraph(p) = &doc.blocks[0].kind else {
+	let BlockKind::Paragraph(p) = doc.blocks()[0].kind() else {
 		panic!();
 	};
 	assert_eq!(plain_text(p), "a 中文");
 	// A range may cover the hidden span the way a quote's range covers its
 	// markers, but it must stay on UTF-8 boundaries of the original source
 	// and start and end on the visible bytes.
-	let visible = &doc.source[p[0].source.clone()];
+	let visible =
+		&doc.source[doc.inline_source(&doc.blocks()[0], &p[0]).unwrap()];
 	assert!(
 		visible.starts_with("a ") && visible.ends_with("中文"),
 		"{visible:?}"
 	);
-	let BlockKind::Paragraph(p) = &doc.blocks[1].kind else {
+	let BlockKind::Paragraph(p) = doc.blocks()[1].kind() else {
 		panic!();
 	};
 	assert_eq!(plain_text(p), "b c");
-	assert_eq!(&doc.source[p[0].source.clone()], "b %%x%% c");
+	assert_eq!(
+		&doc.source[doc.inline_source(&doc.blocks()[1], &p[0]).unwrap()],
+		"b %%x%% c"
+	);
 	// CRLF sources keep whole ranges too.
 	let doc = parse_with("a %%x%%\r\nb\r\n", ofm());
-	let BlockKind::Paragraph(p) = &doc.blocks[0].kind else {
+	let BlockKind::Paragraph(p) = doc.blocks()[0].kind() else {
 		panic!();
 	};
 	assert_eq!(plain_text(p), "a b");
@@ -2790,35 +3148,40 @@ fn ofm_hidden_constructs_do_not_alter_numbering_or_anchors() {
 	// anchors untouched.
 	let source = "Visible one[^a].\n\n%% Hidden [^b] and # Hidden heading %%\n\nVisible two[^b].\n\n[^a]: Note A\n[^b]: Note B\n";
 	let doc = parse_with(source, ofm());
-	let BlockKind::Paragraph(p) = &doc.blocks[0].kind else {
+	let BlockKind::Paragraph(p) = doc.blocks()[0].kind() else {
 		panic!();
 	};
 	let refs: Vec<_> = p
 		.iter()
 		.filter_map(|i| match &i.kind {
-			InlineKind::FootnoteRef(n) => Some(*n),
+			InlineKind::FootnoteRef(reference) => Some(reference.number),
 			_ => None,
 		})
 		.collect();
 	assert_eq!(refs, vec![1]);
-	let BlockKind::Paragraph(p) = &doc.blocks[1].kind else {
-		panic!("{:?}", doc.blocks[1].kind);
+	let BlockKind::Paragraph(p) = doc.blocks()[1].kind() else {
+		panic!("{:?}", doc.blocks()[1].kind());
 	};
 	let refs: Vec<_> = p
 		.iter()
 		.filter_map(|i| match &i.kind {
-			InlineKind::FootnoteRef(n) => Some(*n),
+			InlineKind::FootnoteRef(reference) => Some(reference.number),
 			_ => None,
 		})
 		.collect();
 	assert_eq!(refs, vec![2], "hidden note must not take a number");
 	// Headings after a hidden one keep clean slugs.
 	let doc = parse_with("%% # Heading %%\n\n# 中文 Heading\n", ofm());
-	let BlockKind::Heading { anchor, .. } = &doc.blocks[0].kind else {
-		panic!("{:?}", doc.blocks[0].kind);
+	let BlockKind::Heading { anchor, .. } = doc.blocks()[0].kind() else {
+		panic!("{:?}", doc.blocks()[0].kind());
 	};
 	assert!(!anchor.is_empty());
-	assert!(!doc.blocks[0].anchors.iter().any(|a| a.contains("hidden")));
+	assert!(
+		!doc.blocks()[0]
+			.anchors()
+			.iter()
+			.any(|a| a.contains("hidden"))
+	);
 }
 
 #[test]
@@ -2826,14 +3189,14 @@ fn ofm_front_matter_with_markers_is_metadata() {
 	let source =
 		"---\ntitle: %%not a comment%%\n---\n\nBody %%hidden%% text.\n";
 	let doc = parse_with(source, ofm());
-	let BlockKind::FrontMatter { blocks, .. } = &doc.blocks[0].kind else {
-		panic!("{:?}", doc.blocks[0].kind);
+	let BlockKind::FrontMatter { blocks, .. } = doc.blocks()[0].kind() else {
+		panic!("{:?}", doc.blocks()[0].kind());
 	};
-	let BlockKind::Code { text, .. } = &blocks[0].kind else {
+	let BlockKind::Code { text, .. } = &blocks[0].kind() else {
 		panic!();
 	};
 	assert!(text.contains("%%not a comment%%"));
-	let BlockKind::Paragraph(p) = &doc.blocks[1].kind else {
+	let BlockKind::Paragraph(p) = doc.blocks()[1].kind() else {
 		panic!();
 	};
 	assert_eq!(plain_text(p), "Body text.");
@@ -2845,20 +3208,20 @@ fn ofm_comments_inside_details_and_callouts() {
 	let doc = parse_with(source, ofm());
 	let BlockKind::Details {
 		summary, blocks, ..
-	} = &doc.blocks[0].kind
+	} = doc.blocks()[0].kind()
 	else {
-		panic!("{:?}", doc.blocks[0].kind);
+		panic!("{:?}", doc.blocks()[0].kind());
 	};
 	assert_eq!(plain_text(summary), "Summary %%hidden%%");
-	let BlockKind::Paragraph(p) = &blocks[0].kind else {
-		panic!("{:?}", blocks[0].kind);
+	let BlockKind::Paragraph(p) = &blocks[0].kind() else {
+		panic!("{:?}", blocks[0].kind());
 	};
 	assert_eq!(plain_text(p), "Body here.");
 	// Callout bodies hide comments too.
 	let doc = parse_with("> [!tip] Title\n> Body %%gone%% kept.\n", ofm());
-	let (callout, blocks) = callout_of(&doc.blocks[0]);
-	assert_eq!(plain_text(&callout.title), "Title");
-	let BlockKind::Paragraph(p) = &blocks[0].kind else {
+	let (callout, blocks) = callout_of(&doc.blocks()[0]);
+	assert_eq!(plain_text(callout_title(callout, blocks)), "Title");
+	let BlockKind::Paragraph(p) = &blocks[0].kind() else {
 		panic!();
 	};
 	assert_eq!(plain_text(p), "Body kept.");
@@ -2880,8 +3243,8 @@ fn ofm_comment_edits_match_a_full_parse() {
 		);
 		let got = reparse_with(&previous, Arc::from(after), ofm());
 		let expected = parse_with(after, ofm());
-		assert_eq!(got.blocks, expected.blocks, "{after:?}");
-		assert_eq!(got.content_id, expected.content_id);
+		assert_eq!(got.blocks(), expected.blocks(), "{after:?}");
+		assert_eq!(got.content_key(), expected.content_key());
 	}
 }
 
@@ -2892,7 +3255,7 @@ fn ofm_comment_prefixes_never_expose_hidden_text() {
 	let full = parse_with(source.as_ref(), ofm());
 	// A cut before the comment shows only the blocks the full parse has.
 	assert!(parse_prefix_with(&source, 8, ofm()).is_none());
-	assert_eq!(plain_text_of(&full.blocks[0]), "Intro.");
+	assert_eq!(plain_text_of(&full.blocks()[0]), "Intro.");
 	// A cut inside the comment refuses a prefix: no transient exposure.
 	assert!(parse_prefix_with(&source, 20, ofm()).is_none());
 	let source: Arc<str> = Arc::from("Intro. %%hidden tail\n");
@@ -2904,7 +3267,7 @@ fn ofm_comment_prefixes_never_expose_hidden_text() {
 
 /// `plain_text` over one block's first paragraph-level rich text.
 fn plain_text_of(block: &Block) -> String {
-	match &block.kind {
+	match &block.kind() {
 		BlockKind::Paragraph(p) | BlockKind::Heading { text: p, .. } => {
 			plain_text(p)
 		}
@@ -2955,7 +3318,7 @@ fn ofm_comments_review_single_scan_and_opaque() {
 		"<pre>%%KEEP%%</pre>",
 	] {
 		assert_eq!(
-			parse_with(source, ofm()).blocks,
+			parse_with(source, ofm()).blocks(),
 			parse_with(
 				source,
 				Dialect {
@@ -2963,7 +3326,7 @@ fn ofm_comments_review_single_scan_and_opaque() {
 					..ofm()
 				}
 			)
-			.blocks,
+			.blocks(),
 			"{source}"
 		);
 	}
@@ -2984,51 +3347,53 @@ fn ofm_comments_remain_hidden_in_depth_fallbacks() {
 	);
 	let doc = parse_with(source.as_str(), ofm());
 	assert!(!reading(&doc).contains("SECRET"));
-	fn check(blocks: &[Block], source: &str) {
+	fn check(doc: &MarkdownParse, blocks: &[Block], source: &str) {
 		for block in blocks {
-			assert!(source.get(block.source.clone()).is_some());
-			match &block.kind {
+			assert!(source.get(doc.block_source(block).unwrap()).is_some());
+			match block.kind() {
 				BlockKind::Paragraph(text)
 				| BlockKind::Heading { text, .. } => {
 					for inline in text {
-						assert!(source.get(inline.source.clone()).is_some());
+						assert!(
+							source
+								.get(doc.inline_source(block, inline).unwrap())
+								.is_some()
+						);
 					}
 				}
 				BlockKind::Details {
 					summary, blocks, ..
 				} => {
 					for inline in summary {
-						assert!(source.get(inline.source.clone()).is_some());
+						assert!(
+							source
+								.get(doc.inline_source(block, inline).unwrap())
+								.is_some()
+						);
 					}
-					check(blocks, source);
+					check(doc, blocks, source);
 				}
 				BlockKind::Quote { blocks, .. }
 				| BlockKind::FrontMatter { blocks, .. }
-				| BlockKind::Footnote { blocks, .. } => check(blocks, source),
+				| BlockKind::Footnote { blocks, .. } => check(doc, blocks, source),
 				BlockKind::List { items, .. } => {
 					for item in items {
-						check(&item.blocks, source);
+						check(doc, &item.blocks, source);
 					}
 				}
-				BlockKind::Table { rows, .. } => {
-					for row in rows {
-						for cell in row {
-							for inline in cell {
-								assert!(
-									source.get(inline.source.clone()).is_some()
-								);
-							}
-						}
+				BlockKind::Table(table) => {
+					for child in table.cell_blocks() {
+						check(doc, std::slice::from_ref(child), source);
 					}
 				}
 				_ => {}
 			}
 		}
 	}
-	check(&doc.blocks, source.as_str());
+	check(&doc, doc.blocks(), source.as_str());
 	let source = "> [!note] 标题\r\n> 中文 %%隐藏%% tail\r\n\r\n<details><summary>中文 %%隐藏%%</summary>\r\n\r\n中文 %%隐藏%% tail\r\n\r\n</details>\r\n";
 	let doc = parse_with(source, ofm());
-	check(&doc.blocks, source);
+	check(&doc, doc.blocks(), source);
 	assert_eq!(&*doc.source, source);
 	assert!(!reading(&doc).contains("隐藏"));
 }
@@ -3120,7 +3485,7 @@ fn ofm_review02_html_code_closures() {
 			reading(&doc)
 		);
 		assert_eq!(
-			doc.blocks,
+			doc.blocks(),
 			parse_with(
 				source,
 				Dialect {
@@ -3128,7 +3493,7 @@ fn ofm_review02_html_code_closures() {
 					..ofm()
 				}
 			)
-			.blocks,
+			.blocks(),
 			"{source}"
 		);
 	}
@@ -3188,7 +3553,7 @@ fn ofm_inline_html_code_ignores_markdown_code_closers() {
 		let text = reading(&control);
 		assert!(text.contains("%%KEEP%%"), "control: {source}: {text}");
 		let doc = parse_with(source, dialect);
-		assert_eq!(doc.blocks, control.blocks, "{source}");
+		assert_eq!(doc.blocks(), control.blocks(), "{source}");
 		assert_eq!(&*doc.source, source);
 	}
 	let source = "<code>`</code>` %%KEEP%%</code > %%SECRET%%\n";
@@ -3215,7 +3580,7 @@ fn ofm_html_code_scopes_follow_markdown_recursion_child_open() {
 		let control = parse_with(source.as_str(), control_dialect);
 		let text = reading(&control);
 		assert!(text.contains("%%SECRET%%"), "{source}: {text}");
-		let BlockKind::Paragraph(inlines) = &control.blocks[0].kind else {
+		let BlockKind::Paragraph(inlines) = control.blocks()[0].kind() else {
 			panic!();
 		};
 		assert!(inlines.iter().any(|inline| matches!(&inline.kind, InlineKind::Text(text) if text.contains("SECRET")) && !inline.style.code), "{source}: {inlines:?}");
@@ -3243,12 +3608,12 @@ fn ofm_html_code_scopes_follow_markdown_recursion_child_close() {
 		};
 		let source = format!("<code>{open}inside </code>{close} %%KEEP%%\n");
 		let control = parse_with(source.as_str(), control_dialect);
-		let BlockKind::Paragraph(inlines) = &control.blocks[0].kind else {
+		let BlockKind::Paragraph(inlines) = control.blocks()[0].kind() else {
 			panic!();
 		};
 		assert!(inlines.iter().any(|inline| matches!(&inline.kind, InlineKind::Text(text) if text.contains("KEEP")) && inline.style.code), "{source}: {inlines:?}");
 		let doc = parse_with(source.as_str(), dialect);
-		assert_eq!(doc.blocks, control.blocks, "{source}");
+		assert_eq!(doc.blocks(), control.blocks(), "{source}");
 		assert_eq!(&*doc.source, source);
 	}
 }
@@ -3258,12 +3623,12 @@ fn ofm_comments_preserve_upstream_wikilinks() {
 	let source = "Before %%SECRET%% [[Notes/A#A heading|Visible]] after.\n";
 	for dialect in [Dialect::default(), ofm()] {
 		let doc = parse_with(source, dialect);
-		let BlockKind::Paragraph(text) = &doc.blocks[0].kind else {
+		let BlockKind::Paragraph(text) = doc.blocks()[0].kind() else {
 			panic!()
 		};
 		assert_eq!(
 			text.iter()
-				.filter_map(|span| span.style.link_url())
+				.filter_map(|span| span.link_url())
 				.collect::<Vec<_>>(),
 			["Notes/A#a-heading"]
 		);
@@ -3271,7 +3636,11 @@ fn ofm_comments_preserve_upstream_wikilinks() {
 		assert!(plain_text(text).contains("Visible"));
 		assert_eq!(&*doc.source, source);
 		for span in text {
-			assert!(source.get(span.source.clone()).is_some());
+			assert!(
+				source
+					.get(doc.inline_source(&doc.blocks()[0], span).unwrap())
+					.is_some()
+			);
 		}
 	}
 }
@@ -3294,19 +3663,27 @@ fn ofm_comments_restore_link_occurrences_to_original_bytes() {
 				.map(|(at, _)| at)
 				.collect::<Vec<_>>();
 			let mut origins = Vec::new();
-			for block in &doc.blocks {
-				let BlockKind::Paragraph(text) = &block.kind else {
+			for block in doc.blocks() {
+				let BlockKind::Paragraph(text) = &block.kind() else {
 					continue;
 				};
 				for span in text {
-					if let Some(link) = &span.style.link
-						&& origins.last() != Some(&link.origin())
+					if let Some(link) = &span.link
+						&& origins.last() != Some(&link.occurrence())
 					{
-						origins.push(link.origin());
+						origins.push(link.occurrence());
 					}
 				}
 			}
-			assert_eq!(origins, expected, "{source}");
+			assert_eq!(origins.len(), expected.len(), "{source}");
+			assert_eq!(
+				origins
+					.iter()
+					.collect::<std::collections::HashSet<_>>()
+					.len(),
+				origins.len(),
+				"{source}"
+			);
 		}
 	}
 }
@@ -3317,19 +3694,19 @@ fn callout_titles_keep_inline_markup_and_math() {
 		"> [!note] $a^2$ **bold** %%hidden%%\n> Body.\n\n> [!note]- $b$\n> Hidden.\n",
 		ofm(),
 	);
-	for block in &doc.blocks {
-		let (callout, _) = callout_of(block);
+	for block in doc.blocks() {
+		let (callout, blocks) = callout_of(block);
 		assert!(
-			callout
-				.title
+			callout_title(callout, blocks)
 				.iter()
 				.any(|span| matches!(span.kind, InlineKind::Math { .. }))
 		);
 	}
-	let (callout, _) = callout_of(&doc.blocks[0]);
-	assert!(callout.title.iter().any(|span| span.style.bold
+	let (callout, blocks) = callout_of(&doc.blocks()[0]);
+	let title = callout_title(callout, blocks);
+	assert!(title.iter().any(|span| span.style.bold
 		&& matches!(&span.kind, InlineKind::Text(text) if text == "bold")));
-	assert_eq!(plain_text(&callout.title), "a^2 bold");
+	assert_eq!(plain_text(title), "a^2 bold");
 }
 
 #[test]
@@ -3340,11 +3717,11 @@ fn callout_title_images_are_discovered_once() {
 	] {
 		let doc = parse_with(source, ofm());
 		let mut images = Vec::new();
-		for block in &doc.blocks {
+		for block in doc.blocks() {
 			block.images(&mut images);
 		}
 		assert_eq!(images.len(), 1, "{source}");
-		assert_eq!(images[0].src, "icon.png");
+		assert_eq!(images[0].address(), "icon.png");
 	}
 }
 
@@ -3355,10 +3732,11 @@ fn callout_title_trimming_keeps_edge_anchors() {
 		("> [!note] Title<a id='end'></a>\n> Body.\n", "end"),
 	] {
 		let doc = parse_with(source, ofm());
-		let (callout, _) = callout_of(&doc.blocks[0]);
-		assert_eq!(plain_text(&callout.title), "Title");
+		let (callout, blocks) = callout_of(&doc.blocks()[0]);
+		let title = callout_title(callout, blocks);
+		assert_eq!(plain_text(title), "Title");
 		assert!(
-			callout.title.iter().any(
+			title.iter().any(
 				|span| matches!(&span.kind, InlineKind::Anchor(a) if a == anchor)
 			),
 			"{source}"
@@ -3372,7 +3750,94 @@ fn callout_title_anchors_name_their_enclosing_disclosure() {
 		"<details>\n<summary>S</summary>\n\n> [!note] <a id='target'></a>Title[^f]\n> Body.\n\n[^f]: note\n\n</details>\n",
 		ofm(),
 	);
-	let outer = doc.blocks[0].id;
+	let outer = doc.blocks()[0].id();
 	assert_eq!(doc.details_enclosing("target"), [outer]);
-	assert_eq!(doc.details_enclosing("fnref:1"), [outer]);
+	let mut reference = None;
+	markview_document::visit_blocks(&doc.blocks()[0], &mut |block| {
+		if let BlockKind::Quote {
+			callout: Some(callout),
+			..
+		} = &block.kind()
+		{
+			reference = callout
+				.title
+				.as_ref()
+				.expect("a plain callout has a title")
+				.iter()
+				.find_map(|inline| match &inline.kind {
+					InlineKind::FootnoteRef(reference) => {
+						Some(reference.clone())
+					}
+					_ => None,
+				});
+		}
+	});
+	let reference = reference.expect("a footnote reference");
+	assert_eq!(
+		doc.details_enclosing(markview_document::AnchorId::FootnoteReference {
+			definition: reference.definition.clone(),
+			occurrence: reference.occurrence,
+		}),
+		[outer]
+	);
+}
+
+#[test]
+fn an_image_alt_reads_as_the_whole_image_source() {
+	// The alt text is a projection of the image, not a character-aligned copy
+	// of `![alt](src)`, so a reading position inside it names the image.
+	let source = "Before.\n\n![long alt](tall.png)\n\nAfter.\n";
+	let parsed = parse(source);
+	let markdown = "![long alt](tall.png)";
+	let block = &parsed.blocks()[1];
+	let BlockKind::Paragraph(text) = block.kind() else {
+		panic!("not an image paragraph");
+	};
+	let image = text
+		.iter()
+		.find(|inline| matches!(inline.kind, InlineKind::Image(_)))
+		.expect("an image");
+	let expected = Some(
+		source.find(markdown).unwrap()
+			..source.find(markdown).unwrap() + markdown.len(),
+	);
+	assert_eq!(parsed.inline_source(block, image), expected);
+	assert_eq!(
+		parsed
+			.map
+			.semantic_to_source(
+				block.id(),
+				markview_document::FieldId::from_index(0),
+				0..1,
+			)
+			.map(|target| target.source),
+		expected
+	);
+}
+
+#[test]
+fn entities_and_escapes_map_to_their_own_source_range() {
+	// An entity and a backslash escape keep their place in the source: the run
+	// covers them about as written, and the run after it still starts at its
+	// own byte.
+	let source = "A &amp; B \\*literal\\* and `code`.";
+	let parsed = parse(source);
+	let block = &parsed.blocks()[0];
+	let BlockKind::Paragraph(text) = block.kind() else {
+		panic!("not a paragraph");
+	};
+	let ranges: Vec<_> = text
+		.iter()
+		.map(|inline| {
+			let range = parsed
+				.inline_source(block, inline)
+				.unwrap_or_else(|| panic!("no source for {inline:?}"));
+			&source[range]
+		})
+		.collect();
+	assert_eq!(
+		ranges,
+		["A &amp; B \\*literal\\* and ", "`code`", "."],
+		"{text:?}"
+	);
 }

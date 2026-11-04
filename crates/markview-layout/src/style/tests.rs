@@ -277,13 +277,15 @@ fn math_sets_the_formula_fallback_font() {
 fn math_error_text_keeps_the_code_font() {
 	let sheet = Stylesheet::bundled(false);
 	let body = sheet.text(&TextAppearance::default(), Condition::Body);
-	let run = sheet.inline(
+	let run = sheet.inline_run(
 		&body,
 		&crate::document::TextStyle {
 			code: true,
-			math_error: true,
 			..Default::default()
 		},
+		true,
+		false,
+		false,
 	);
 	assert_eq!(run.font[0].family, "monospace");
 }
@@ -1132,7 +1134,7 @@ fn a_numbering_that_grows_with_the_number_stops_at_a_marker() {
 	assert_eq!(roman.enum_numbering().number(0, 999_999_999), "999999999.");
 	for sheet in [&symbols, &hebrew, &roman] {
 		assert!(
-			sheet.enum_numbering().number(0, u64::MAX).len() <= 24,
+			sheet.enum_numbering().number(0, i64::MAX).len() <= 24,
 			"a numeral cannot outgrow a marker"
 		);
 	}
@@ -1367,13 +1369,15 @@ fn math_error_text_carries_both_conditions() {
 	)
 	.unwrap();
 	let body = sheet.text(&TextAppearance::default(), Condition::Body);
-	let run = sheet.inline(
+	let run = sheet.inline_run(
 		&body,
 		&crate::document::TextStyle {
 			code: true,
-			math_error: true,
 			..Default::default()
 		},
+		true,
+		false,
+		false,
 	);
 	assert_eq!(sheet.paint(run.paint), Color(0xff0000ff).rgba());
 }
@@ -1682,7 +1686,8 @@ fn warning_colors_cascade_to_panels_and_stay_out_of_document_rules() {
 fn a_diagram_draws_no_caption_and_copies_no_source() {
 	use crate::style::CaptionSource;
 	let d = markview_commonmark::parse("```mermaid\ngraph TD\n A-->B\n```\n");
-	let markview_document::BlockKind::Paragraph(p) = &d.blocks[0].kind else {
+	let markview_document::BlockKind::Paragraph(p) = d.blocks()[0].kind()
+	else {
 		panic!("expected a diagram paragraph")
 	};
 	let markview_document::InlineKind::Image(image) = &p[0].kind else {
@@ -1705,20 +1710,24 @@ fn a_diagram_draws_no_caption_and_copies_no_source() {
 fn footnote_references_use_their_own_style_conditions() {
 	let doc =
 		markview_commonmark::parse("A[^note].\n\n[^note]: Footnote body.\n");
-	let markview_document::BlockKind::Paragraph(text) = &doc.blocks[0].kind
+	let markview_document::BlockKind::Paragraph(text) = doc.blocks()[0].kind()
 	else {
 		panic!()
 	};
 	let reference = text
 		.iter()
 		.find(|inline| {
-			matches!(inline.kind, markview_document::InlineKind::FootnoteRef(1))
+			matches!(
+				&inline.kind,
+				markview_document::InlineKind::FootnoteRef(reference)
+					if reference.number == 1
+			)
 		})
 		.unwrap();
-	assert!(
-		!text_conditions(&reference.style)
-			.any(|c| c == crate::style::Condition::Link)
-	);
+	let conditions: Vec<_> =
+		text_conditions(&reference.style, reference.link.is_some()).collect();
+	assert!(!conditions.contains(&crate::style::Condition::Link));
+	assert!(!conditions.contains(&crate::style::Condition::FootnoteRef));
 }
 
 #[test]

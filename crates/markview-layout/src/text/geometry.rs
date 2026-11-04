@@ -2,15 +2,17 @@
 use crate::layout::{LayoutSnapshot, Rect};
 use std::{collections::HashMap, ops::Range};
 
-use super::{Affinity, TextCluster, TextNode, TextPosition, TextSelection};
+use super::{
+	Affinity, GeometryPosition, GeometrySelection, TextCluster, TextNode,
+};
 impl LayoutSnapshot {
-	pub fn hit_test_text(
+	pub(crate) fn geometry_hit_test_text(
 		&self,
 		x: f32,
 		y: f32,
 		horizontal: &HashMap<(usize, usize), f32>,
 		revision: u64,
-	) -> Option<TextPosition> {
+	) -> Option<GeometryPosition> {
 		let mut best = None;
 		let mut distance = f32::INFINITY;
 		// Blocks are ordered by y: only the one above the cursor's block can
@@ -61,7 +63,7 @@ impl LayoutSnapshot {
 							if cluster.rtl { 1.0 - along } else { along };
 						let parts = node.parts(cluster);
 						let part = (along * parts as f32).round() as usize;
-						best = Some(TextPosition {
+						best = Some(GeometryPosition {
 							revision,
 							block: bi,
 							node: ni,
@@ -79,7 +81,7 @@ impl LayoutSnapshot {
 		best
 	}
 	/// Returns whether a point is inside the laid-out bounds of a text cluster.
-	/// Unlike `hit_test_text`, this does not snap through line spacing to the
+	/// Unlike `geometry_hit_test_text`, this does not snap through line spacing to the
 	/// nearest cluster.
 	pub fn contains_text(
 		&self,
@@ -135,13 +137,14 @@ impl LayoutSnapshot {
 		rect.y += block.y;
 		Some(rect)
 	}
-	pub fn selection_rects(
+	#[cfg(test)]
+	pub(crate) fn geometry_selection_rects(
 		&self,
-		selection: TextSelection,
+		selection: GeometrySelection,
 		horizontal: &HashMap<(usize, usize), f32>,
 		revision: u64,
 	) -> Vec<Rect> {
-		self.selection_rects_in(
+		self.geometry_selection_rects_in(
 			selection,
 			horizontal,
 			revision,
@@ -173,9 +176,9 @@ impl LayoutSnapshot {
 			})
 			.sum()
 	}
-	pub fn selection_rects_in(
+	pub(crate) fn geometry_selection_rects_in(
 		&self,
-		selection: TextSelection,
+		selection: GeometrySelection,
 		horizontal: &HashMap<(usize, usize), f32>,
 		revision: u64,
 		visible_y: Range<f32>,

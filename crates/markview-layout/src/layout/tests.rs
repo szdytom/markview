@@ -3,6 +3,19 @@ use crate::document;
 use crate::document::{Inline, InlineKind, Link, TextStyle};
 use crate::style::Condition;
 
+const DETAILS_SCHEME: &str = "details:";
+
+fn details_url(id: markview_document::BlockId) -> String {
+	format!("{DETAILS_SCHEME}{id}")
+}
+
+fn details_id(url: &str) -> Option<markview_document::BlockId> {
+	url.strip_prefix(DETAILS_SCHEME)?
+		.parse()
+		.ok()
+		.and_then(markview_document::BlockId::new)
+}
+
 #[test]
 fn tables_are_truncated_to_the_configured_limits() {
 	let mut source =
@@ -139,7 +152,7 @@ fn a_resumed_pass_never_revisits_a_block() {
 #[test]
 fn a_zero_budget_still_advances_one_block() {
 	let doc = markview_commonmark::parse("One.\n\nTwo.\n\nThree.\n");
-	let total = doc.blocks.len();
+	let total = doc.blocks().len();
 	assert!(total >= 2, "the test needs more than one block");
 	let options = LayoutOptions::default();
 	let mut engine = LayoutEngine::new();
@@ -245,7 +258,7 @@ fn a_cancelled_pass_keeps_the_last_completed_geometry() {
 		}
 		assert_eq!(
 			engine.layout(&first, &options).reused,
-			first.blocks.len(),
+			first.blocks().len(),
 			"cancelling after {blocks} blocks dropped completed geometry"
 		);
 	}
@@ -276,7 +289,7 @@ fn an_abandoned_reuse_does_not_evict_completed_geometry() {
 	drop(cancelled);
 	assert_eq!(
 		engine.layout(&doc, &options).reused,
-		doc.blocks.len(),
+		doc.blocks().len(),
 		"abandoned reuse erased completed geometry"
 	);
 }
@@ -305,7 +318,7 @@ fn a_prefix_body_box_covers_the_blocks_it_published() {
 		prefixes += 1;
 		engine.advance(&mut layout, &doc, std::time::Duration::ZERO);
 	}
-	assert_eq!(prefixes, doc.blocks.len());
+	assert_eq!(prefixes, doc.blocks().len());
 }
 
 /// A pass carries the stylesheet, fonts and math limits it began with and
@@ -397,7 +410,7 @@ fn same_address_links_hit_their_own_occurrence() {
 			)
 			.unwrap();
 		assert_eq!(hit.url, "target");
-		assert_eq!(hit.block, block.source.start);
+		assert_eq!(hit.block, block.id);
 		assert_eq!(hit.id, link.id);
 	}
 }
@@ -550,40 +563,31 @@ fn discarded_leading_link_does_not_shift_occurrence_remapping() {
 /// their distinct origins still keep the adjacent runs apart.
 #[test]
 fn semantic_links_with_shared_address_keep_distinct_origins() {
-	let source: Arc<str> = Arc::from("onetwo");
-	let first = Link::new("target", 0);
-	let second = first.clone().rebase(3);
+	let first = Link::new(
+		"target",
+		markview_document::LinkOccurrenceId::new(1).unwrap(),
+	);
+	let second = Link::new(
+		"target",
+		markview_document::LinkOccurrenceId::new(4).unwrap(),
+	);
 	let rich = vec![
 		Inline {
+			link: Some(first),
 			kind: InlineKind::Text("one".into()),
-			style: TextStyle {
-				link: Some(first),
-				..Default::default()
-			},
-			source: 0..3,
+			style: TextStyle::default(),
 		},
 		Inline {
+			link: Some(second),
 			kind: InlineKind::Text("two".into()),
-			style: TextStyle {
-				link: Some(second),
-				..Default::default()
-			},
-			source: 3..6,
+			style: TextStyle::default(),
 		},
 	];
 	let kind = document::BlockKind::Paragraph(rich);
-	let blocks = vec![document::Block {
-		anchors: Vec::new(),
-		id: document::fingerprint(&kind),
-		content_key: document::semantic_key(&kind),
-		source: 0..source.len(),
-		kind,
-	}];
-	let document = document::Document {
-		source,
-		content_id: document::content_identity(&blocks),
-		blocks,
-	};
+	let mut builder =
+		document::DocumentBuilder::new(document::DocumentRevision::new(1));
+	let block = builder.block(Vec::new(), kind);
+	let document = builder.finish(vec![block]);
 	let snapshot = LayoutEngine::new().layout(
 		&document,
 		&LayoutOptions {
@@ -747,9 +751,42 @@ fn footnote_links_reach_the_note_and_its_number_returns() {
 		 [^b]: Beta note.\n",
 	);
 	let snapshot = engine.layout(&doc, &opts);
-	let first_ref = snapshot.anchor_y("fnref:1").unwrap();
-	let note = snapshot.anchor_y("fn:1").unwrap();
-	let second_note = snapshot.anchor_y("fn:2").unwrap();
+	let note_y = |label: &str| {
+		snapshot
+			.anchor_target_y(&document::AnchorId::FootnoteDefinition(
+				document::FootnoteId::new(label),
+			))
+			.unwrap()
+	};
+	let first_reference =
+		snapshot
+			.blocks
+			.iter()
+			.flat_map(|b| b.anchor_positions())
+			.find_map(|(anchor, _)| match anchor {
+				document::AnchorId::FootnoteReference {
+					definition, ..
+				} if definition.as_str() == "a" => Some(anchor.clone()),
+				_ => None,
+			})
+			.expect("the first reference anchor");
+	let first_ref = snapshot.anchor_target_y(&first_reference).unwrap();
+	let reference_count = snapshot
+		.blocks
+		.iter()
+		.flat_map(|b| b.anchor_positions())
+		.filter(|(anchor, _)| {
+			matches!(
+				anchor,
+				document::AnchorId::FootnoteReference {
+					definition, ..
+				} if definition.as_str() == "a"
+			)
+		})
+		.count();
+	assert_eq!(reference_count, 2);
+	let note = note_y("a");
+	let second_note = note_y("b");
 	// The fallback return goes to the first reference, and the notes follow
 	// the paragraph that cites them.
 	assert!(first_ref < note && note < second_note);
@@ -758,10 +795,10 @@ fn footnote_links_reach_the_note_and_its_number_returns() {
 		.iter()
 		.flat_map(|b| b.layout.links.iter().map(|l| &*l.url))
 		.collect();
-	assert_eq!(links.iter().filter(|u| **u == "#fn:1").count(), 2);
-	assert!(links.contains(&"#fn:2"));
-	assert!(links.contains(&"#fnback:1"));
-	assert!(links.contains(&"#fnback:2"));
+	assert_eq!(links.iter().filter(|u| **u == "#fn:a").count(), 2);
+	assert!(links.contains(&"#fn:b"));
+	assert!(links.contains(&"#fnback:a"));
+	assert!(links.contains(&"#fnback:b"));
 	// Both the reference and the note's number are hit-testable.
 	let empty = HashMap::new();
 	let hit = |url: &str| {
@@ -774,10 +811,10 @@ fn footnote_links_reach_the_note_and_its_number_returns() {
 			))
 		})
 	};
-	let (x, y) = hit("#fn:1").unwrap();
-	assert_eq!(snapshot.link_at(x, y, &empty), Some("#fn:1"));
-	let (x, y) = hit("#fnback:1").unwrap();
-	assert_eq!(snapshot.link_at(x, y, &empty), Some("#fnback:1"));
+	let (x, y) = hit("#fn:a").unwrap();
+	assert_eq!(snapshot.link_at(x, y, &empty), Some("#fn:a"));
+	let (x, y) = hit("#fnback:a").unwrap();
+	assert_eq!(snapshot.link_at(x, y, &empty), Some("#fnback:a"));
 }
 #[test]
 fn consecutive_footnote_references_merge_into_one_clickable_group() {
@@ -797,10 +834,25 @@ fn consecutive_footnote_references_merge_into_one_clickable_group() {
 	let block = &snapshot.blocks[0];
 	assert!(block.layout.text[0].text.contains("[1,2]"));
 	let links: Vec<&str> = block.layout.links.iter().map(|l| &*l.url).collect();
-	assert_eq!(links, ["#fn:1", "#fn:2"]);
+	assert_eq!(links, ["#fn:a", "#fn:b"]);
 	// Both numbers register the anchor a scrolled-to note returns to.
-	assert!(snapshot.anchor_y("fnref:1").is_some());
-	assert!(snapshot.anchor_y("fnref:2").is_some());
+	let references = |label: &str| {
+		snapshot
+			.blocks
+			.iter()
+			.flat_map(|b| b.anchor_positions())
+			.filter(|(anchor, _)| {
+				matches!(
+					anchor,
+					document::AnchorId::FootnoteReference {
+						definition, ..
+					} if definition.as_str() == label
+				)
+			})
+			.count()
+	};
+	assert_eq!(references("a"), 1);
+	assert_eq!(references("b"), 1);
 	// Only the numbers are hit targets; the brackets and comma are not.
 	let reading = &block.layout.text[0].text;
 	let clusters = &block.layout.text[0].clusters;
@@ -820,9 +872,9 @@ fn consecutive_footnote_references_merge_into_one_clickable_group() {
 		snapshot.link_at(x, y, &empty)
 	};
 	assert_eq!(hit("["), None);
-	assert_eq!(hit("1"), Some("#fn:1"));
+	assert_eq!(hit("1"), Some("#fn:a"));
 	assert_eq!(hit(","), None);
-	assert_eq!(hit("2"), Some("#fn:2"));
+	assert_eq!(hit("2"), Some("#fn:b"));
 	assert_eq!(hit("]"), None);
 }
 #[test]
@@ -892,11 +944,18 @@ fn every_digit_of_a_grouped_number_is_clickable() {
 			.layout
 			.anchors
 			.iter()
-			.filter(|a| a.anchor == label)
+			.filter(|anchor| {
+				matches!(
+					&anchor.anchor,
+					document::AnchorId::FootnoteReference {
+						definition, ..
+					} if definition.as_str() == label
+				)
+			})
 			.count()
 	};
-	assert_eq!(anchors("fnref:10"), 1);
-	assert_eq!(anchors("fnref:11"), 1);
+	assert_eq!(anchors("10"), 1);
+	assert_eq!(anchors("11"), 1);
 }
 #[test]
 fn a_lone_footnote_reference_stays_whole_clickable() {
@@ -924,7 +983,7 @@ fn a_lone_footnote_reference_stays_whole_clickable() {
 	let empty = HashMap::new();
 	assert_eq!(
 		snapshot.link_at(bracket.rect.x + 1.0, y, &empty),
-		Some("#fn:1")
+		Some("#fn:a")
 	);
 }
 #[test]
@@ -1088,21 +1147,22 @@ fn cjk_boundaries_and_hyphenation() {
 	let mut e = LayoutEngine::new();
 	let mut out = BlockLayout::default();
 	let rich = vec![Inline {
+		link: None,
 		kind: InlineKind::Text("（中文），排版。 extraordinary".into()),
 		style: TextStyle::default(),
-		source: 0..0,
 	}];
 	let images = Default::default();
 	let mut context = BlockContext {
 		nested: None,
 		cancelled: &|| false,
-		search_fields: Default::default(),
+		fields: Default::default(),
 		shaper: &mut e.shaper,
 		math: &mut e.math,
 		images: &images,
 		highlight_cache: e.highlights.results(),
 		marker_depth: 0,
 		enum_depth: 0,
+		footnote_column: 1,
 	};
 	let p = context.prepare(&rich, 18.0, &mut out);
 	let units = context.units(&p, 18.0, false, true, 760.0, Default::default());
@@ -1148,8 +1208,8 @@ fn anchor_follows_content_and_only_follows_bottom_when_requested() {
 				.enumerate()
 				.map(|(i, &id)| PlacedBlock {
 					flow: Default::default(),
-					id,
-					source: 0..0,
+					id: document::BlockId::new(id as u32 + 1).unwrap(),
+					content: document::ContentKey::default(),
 					y: i as f32 * 120.0,
 					layout: Arc::new(BlockLayout {
 						height: 120.0,
@@ -1375,7 +1435,7 @@ fn indent_applies_to_text_leading_paragraphs_and_whole_lists() {
 			},
 		)
 		.flattened();
-	assert_eq!(again.reused, doc.blocks.len());
+	assert_eq!(again.reused, doc.blocks().len());
 	let changed = e
 		.layout(
 			&doc,
@@ -1595,9 +1655,13 @@ fn list_markers_center_on_the_actual_first_line() {
 
 #[test]
 fn list_markers_center_on_an_image_only_first_line() {
-	use crate::image::{ImageInfo, ImageSnapshot};
+	use crate::image::{ImageInfo, ImageSnapshot, ImageSource, ResourceRef};
 
 	let mut images = ImageSnapshot::default();
+	images.keys.insert(
+		ImageSource::Resource(ResourceRef::document("big.png")),
+		"big.png".into(),
+	);
 	images.entries.insert(
 		"big.png".into(),
 		ImageInfo {
@@ -2781,33 +2845,34 @@ fn typst_hyphenation_can_be_turned_off_for_a_passage() {
 	// not hyphenate — inline code or a link — is left whole. Typst reads the
 	// same behaviour off a reference image; here the hyphenation points are read
 	// straight out of the measured units.
-	let points = |styled: Option<TextStyle>| {
+	let points = |styled: Option<(TextStyle, Option<Link>)>| {
 		let mut e = LayoutEngine::new();
 		let mut out = BlockLayout::default();
-		let style = styled.unwrap_or_default();
+		let (style, link) = styled.unwrap_or_default();
 		let rich = vec![
 			Inline {
+				link,
 				kind: InlineKind::Text("networks".into()),
 				style,
-				source: 0..0,
 			},
 			Inline {
+				link: None,
 				kind: InlineKind::Text(" networks,".into()),
 				style: TextStyle::default(),
-				source: 0..0,
 			},
 		];
 		let images = Default::default();
 		let mut context = BlockContext {
 			nested: None,
 			cancelled: &|| false,
-			search_fields: Default::default(),
+			fields: Default::default(),
 			shaper: &mut e.shaper,
 			math: &mut e.math,
 			images: &images,
 			highlight_cache: e.highlights.results(),
 			marker_depth: 0,
 			enum_depth: 0,
+			footnote_column: 1,
 		};
 		let p = context.prepare(&rich, 18.0, &mut out);
 		let units =
@@ -2833,14 +2898,20 @@ fn typst_hyphenation_can_be_turned_off_for_a_passage() {
 
 	// The same word set as a link, or as inline code, keeps its hyphenation.
 	for style in [
-		TextStyle {
-			link: Some(Link::new("http://example.com", 0)),
-			..Default::default()
-		},
-		TextStyle {
-			code: true,
-			..Default::default()
-		},
+		(
+			TextStyle::default(),
+			Some(Link::new(
+				"http://example.com",
+				markview_document::LinkOccurrenceId::new(1).unwrap(),
+			)),
+		),
+		(
+			TextStyle {
+				code: true,
+				..Default::default()
+			},
+			None,
+		),
 	] {
 		let (text, styled) = points(Some(style));
 		assert!(
@@ -2892,7 +2963,7 @@ fn inline_code_breaks_for_free_at_word_edges_and_cheaply_inside_a_word() {
 	let doc = markview_commonmark::parse(
 		"Plain `foo=bar()+quz(1,2)` and `code_span`, `baz`) end.\n",
 	);
-	let rich = match &doc.blocks[0].kind {
+	let rich = match doc.blocks()[0].kind() {
 		document::BlockKind::Paragraph(rich) => rich,
 		other => panic!("expected a paragraph, found {other:?}"),
 	};
@@ -2902,13 +2973,14 @@ fn inline_code_breaks_for_free_at_word_edges_and_cheaply_inside_a_word() {
 	let mut context = BlockContext {
 		nested: None,
 		cancelled: &|| false,
-		search_fields: Default::default(),
+		fields: Default::default(),
 		shaper: &mut e.shaper,
 		math: &mut e.math,
 		images: &images,
 		highlight_cache: e.highlights.results(),
 		marker_depth: 0,
 		enum_depth: 0,
+		footnote_column: 1,
 	};
 	let p = context.prepare(rich, 18.0, &mut out);
 	let breaks: Vec<(usize, f64, f32)> = context
@@ -3022,21 +3094,22 @@ fn typst_curly_quotes_break_like_cjk_brackets() {
 		let mut e = LayoutEngine::new();
 		let mut out = BlockLayout::default();
 		let rich = vec![Inline {
+			link: None,
 			kind: InlineKind::Text(text.into()),
 			style: TextStyle::default(),
-			source: 0..0,
 		}];
 		let images = Default::default();
 		let mut context = BlockContext {
 			nested: None,
 			cancelled: &|| false,
-			search_fields: Default::default(),
+			fields: Default::default(),
 			shaper: &mut e.shaper,
 			math: &mut e.math,
 			images: &images,
 			highlight_cache: e.highlights.results(),
 			marker_depth: 0,
 			enum_depth: 0,
+			footnote_column: 1,
 		};
 		let p = context.prepare(&rich, 18.0, &mut out);
 		context
@@ -3170,21 +3243,22 @@ fn a_hyphen_near_a_word_edge_costs_more_than_one_in_the_middle() {
 	let mut e = LayoutEngine::new();
 	let mut out = BlockLayout::default();
 	let rich = vec![Inline {
+		link: None,
 		kind: InlineKind::Text("hyphenation".into()),
 		style: TextStyle::default(),
-		source: 0..0,
 	}];
 	let images = Default::default();
 	let mut context = BlockContext {
 		nested: None,
 		cancelled: &|| false,
-		search_fields: Default::default(),
+		fields: Default::default(),
 		shaper: &mut e.shaper,
 		math: &mut e.math,
 		images: &images,
 		highlight_cache: e.highlights.results(),
 		marker_depth: 0,
 		enum_depth: 0,
+		footnote_column: 1,
 	};
 	let p = context.prepare(&rich, 18.0, &mut out);
 	let found: Vec<(usize, f64)> = context
@@ -3401,21 +3475,21 @@ fn syntax_colors_settle_without_thrashing_the_block_cache() {
 	assert_eq!(engine.layout(&doc, &opts).reused, 0);
 	// Keep colors out of the first pass regardless of worker scheduling.
 	let tasks = std::mem::take(&mut *executor.0.lock().unwrap());
-	assert_eq!(tasks.len(), doc.blocks.len());
+	assert_eq!(tasks.len(), doc.blocks().len());
 	for task in tasks {
 		task.run();
 	}
 	assert!(engine.wait_highlights(), "highlight jobs must report");
 	// Each block gains its colors once, then keeps them across passes.
 	assert_eq!(engine.layout(&doc, &opts).reused, 0);
-	assert_eq!(engine.layout(&doc, &opts).reused, doc.blocks.len());
+	assert_eq!(engine.layout(&doc, &opts).reused, doc.blocks().len());
 	assert!(executor.0.lock().unwrap().is_empty());
 }
 
 /// Layout options that force the `<details>` block with `id` to `open`.
 fn with_details(
 	mut options: LayoutOptions,
-	id: u64,
+	id: document::BlockId,
 	open: bool,
 ) -> LayoutOptions {
 	let mut map = std::collections::BTreeMap::new();
@@ -3437,7 +3511,7 @@ const DETAILS_DOC: &str = "<details>\n<summary>More</summary>\n\nHidden **body**
 #[test]
 fn collapsed_details_retains_hidden_geometry() {
 	let doc = markview_commonmark::parse(DETAILS_DOC);
-	let id = doc.blocks[0].id;
+	let id = doc.blocks()[0].id();
 	let mut engine = LayoutEngine::new();
 	let collapsed = engine.layout(&doc, &LayoutOptions::default());
 	assert!(reading_text(&collapsed).contains("More"));
@@ -3458,7 +3532,7 @@ fn collapsed_details_retains_hidden_geometry() {
 #[test]
 fn details_toggle_is_stable_and_reuses_all_geometry() {
 	let doc = markview_commonmark::parse(DETAILS_DOC);
-	let id = doc.blocks[0].id;
+	let id = doc.blocks()[0].id();
 	let closed = LayoutOptions::default();
 	let mut engine = LayoutEngine::new();
 	let collapsed = engine.layout(&doc, &closed);
@@ -3479,8 +3553,8 @@ fn details_toggle_is_stable_and_reuses_all_geometry() {
 #[test]
 fn details_summary_is_hit_testable_but_the_body_is_not() {
 	let doc = markview_commonmark::parse(DETAILS_DOC);
-	let id = doc.blocks[0].id;
-	let url = document::details_url(id);
+	let id = doc.blocks()[0].id();
+	let url = details_url(id);
 	let none = HashMap::new();
 	let mut engine = LayoutEngine::new();
 	let collapsed = engine.layout(&doc, &LayoutOptions::default());
@@ -3515,7 +3589,7 @@ fn anchors_after_a_collapsed_details_resolve() {
 	let doc = markview_commonmark::parse(
 		"<details>\n<summary>More</summary>\n\nHidden body.\n\n</details>\n\n# Later\n",
 	);
-	let id = doc.blocks[0].id;
+	let id = doc.blocks()[0].id();
 	let mut engine = LayoutEngine::new();
 	let collapsed = engine.layout(&doc, &LayoutOptions::default());
 	assert_eq!(collapsed.blocks.len(), 2);
@@ -3535,7 +3609,7 @@ fn a_details_open_attribute_starts_expanded() {
 	let doc = markview_commonmark::parse(
 		"<details open>\n<summary>More</summary>\n\nShown body.\n\n</details>\n",
 	);
-	let id = doc.blocks[0].id;
+	let id = doc.blocks()[0].id();
 	let mut engine = LayoutEngine::new();
 	let snapshot = engine.layout(&doc, &LayoutOptions::default());
 	assert!(reading_text(&snapshot).contains("Shown body"));
@@ -3551,11 +3625,11 @@ fn nested_details_toggle_reuses_its_container() {
 	let doc = markview_commonmark::parse(
 		"<details open>\n<summary>Outer</summary>\n\n<details><summary>Inner</summary>Deep</details>\n\n</details>\n\nAfter.\n",
 	);
-	let document::BlockKind::Details { blocks, .. } = &doc.blocks[0].kind
+	let document::BlockKind::Details { blocks, .. } = doc.blocks()[0].kind()
 	else {
 		panic!("expected the outer details")
 	};
-	let inner = blocks[0].id;
+	let inner = blocks[0].id();
 	let mut engine = LayoutEngine::new();
 	let collapsed = engine.layout(&doc, &LayoutOptions::default());
 	assert!(!reading_text(&collapsed).contains("Deep"));
@@ -3575,8 +3649,8 @@ fn nested_details_toggle_reuses_its_container() {
 fn identical_details_toggle_independently() {
 	let source = "<details>\n<summary>Same</summary>\n\nBody\n\n</details>\n\n<details>\n<summary>Same</summary>\n\nBody\n\n</details>\n";
 	let doc = markview_commonmark::parse(source);
-	let first = doc.blocks[0].id;
-	let second = doc.blocks[1].id;
+	let first = doc.blocks()[0].id();
+	let second = doc.blocks()[1].id();
 	assert_ne!(first, second);
 	let mut engine = LayoutEngine::new();
 	let one = engine
@@ -3605,7 +3679,7 @@ fn identical_details_links_point_at_the_element_that_was_hit() {
 	let mut engine = LayoutEngine::new();
 	let options = LayoutOptions {
 		details_open: Arc::new(
-			[(doc.blocks[0].id, true), (doc.blocks[1].id, true)]
+			[(doc.blocks()[0].id(), true), (doc.blocks()[1].id(), true)]
 				.into_iter()
 				.collect(),
 		),
@@ -3618,9 +3692,9 @@ fn identical_details_links_point_at_the_element_that_was_hit() {
 			.layout
 			.links
 			.iter()
-			.find(|link| link.url.starts_with(document::DETAILS_SCHEME))
+			.find(|link| link.url.starts_with(DETAILS_SCHEME))
 			.unwrap_or_else(|| panic!("block {i} has no summary link"));
-		assert_eq!(document::details_id(&link.url), Some(doc.blocks[i].id));
+		assert_eq!(details_id(&link.url), Some(doc.blocks()[i].id()));
 		let rect = link.rect;
 		let hit = snapshot.link_at(
 			rect.x + rect.w * 0.5,
@@ -3628,8 +3702,8 @@ fn identical_details_links_point_at_the_element_that_was_hit() {
 			&empty,
 		);
 		assert_eq!(
-			hit.and_then(document::details_id),
-			Some(doc.blocks[i].id),
+			hit.and_then(details_id),
+			Some(doc.blocks()[i].id()),
 			"clicking block {i} must toggle block {i}"
 		);
 	}
@@ -3640,11 +3714,12 @@ fn identical_nested_details_bind_their_own_summaries() {
 	let source = "<details open>\n<summary>Outer</summary>\n\n<details open><summary>Inner</summary>Deep</details>\n\n</details>\n\n<details open>\n<summary>Outer</summary>\n\n<details open><summary>Inner</summary>Deep</details>\n\n</details>\n";
 	let doc = markview_commonmark::parse(source);
 	let nested = |i: usize| {
-		let document::BlockKind::Details { blocks, .. } = &doc.blocks[i].kind
+		let document::BlockKind::Details { blocks, .. } =
+			doc.blocks()[i].kind()
 		else {
 			panic!("expected an outer details")
 		};
-		blocks[0].id
+		blocks[0].id()
 	};
 	let snapshot = LayoutEngine::new().layout(&doc, &LayoutOptions::default());
 	for i in [0, 1] {
@@ -3654,9 +3729,9 @@ fn identical_nested_details_bind_their_own_summaries() {
 			.iter()
 			.map(|link| &*link.url)
 			.collect();
-		let own = document::details_url(doc.blocks[i].id);
-		let inner = document::details_url(nested(i));
-		let other = document::details_url(nested(1 - i));
+		let own = details_url(doc.blocks()[i].id());
+		let inner = details_url(nested(i));
+		let other = details_url(nested(1 - i));
 		assert!(urls.contains(&own.as_str()), "{urls:?}");
 		assert!(urls.contains(&inner.as_str()), "{urls:?}");
 		assert!(!urls.contains(&other.as_str()), "{urls:?}");
@@ -3708,11 +3783,11 @@ fn disclosure_hover_stops_before_nested_content() {
 	let doc = markview_commonmark::parse(
 		"<details open>\n<summary>Summary <a href=\"https://example.com/s\">inner</a></summary>\n\nBody [link](https://example.com/b).\n\n</details>\n",
 	);
-	let id = doc.blocks[0].id;
+	let id = doc.blocks()[0].id();
 	let snapshot = LayoutEngine::new()
 		.layout(&doc, &with_details(LayoutOptions::default(), id, true));
 	let block = &snapshot.blocks[0];
-	let summary_url = document::details_url(id);
+	let summary_url = details_url(id);
 	let summary_link = block
 		.layout
 		.links
@@ -3753,7 +3828,7 @@ fn a_details_body_reference_link_lays_out_as_a_link() {
 	let doc = markview_commonmark::parse(
 		"<details open>\n<summary>Summary</summary>\n\nBody [link][ref].\n\n</details>\n\n[ref]: https://example.com/b\n",
 	);
-	let id = doc.blocks[0].id;
+	let id = doc.blocks()[0].id();
 	let snapshot = LayoutEngine::new()
 		.layout(&doc, &with_details(LayoutOptions::default(), id, true));
 	let urls: Vec<&str> = snapshot.blocks[0]
@@ -3818,7 +3893,7 @@ fn a_front_matter_drawn_as_source_is_highlighted() {
 		format!("---\n{yaml}\n---\n\nBody\n").as_str(),
 	);
 	let options =
-		with_details(LayoutOptions::default(), doc.blocks[0].id, true);
+		with_details(LayoutOptions::default(), doc.blocks()[0].id(), true);
 	let front = glyph_colors_of(&doc, options);
 	assert!(!front.is_empty(), "the front matter drew no colors");
 	let fence = glyph_colors(&format!("Body\n\n```yaml\n{yaml}\n```\n"));
@@ -3829,7 +3904,7 @@ fn a_front_matter_drawn_as_source_is_highlighted() {
 fn front_matter_is_a_labelled_disclosure() {
 	let source = "---\ntitle: N\n---\n\nBody\n";
 	let doc = markview_commonmark::parse(source);
-	let id = doc.blocks[0].id;
+	let id = doc.blocks()[0].id();
 	let mut engine = LayoutEngine::new();
 	let collapsed = engine.layout(&doc, &LayoutOptions::default());
 	let text = reading_text(&collapsed);
@@ -3935,8 +4010,8 @@ fn glyph_colors_of(
 fn a_lone_cr_in_a_code_block_cannot_break_the_shaper() {
 	let src = "```\n~\u{0}\u{0}\u{0}M\r\u{8e0d}f2I\n```\n";
 	let doc = markview_commonmark::parse(src);
-	assert_eq!(1, doc.blocks.len());
-	let code = match &doc.blocks[0].kind {
+	assert_eq!(1, doc.blocks().len());
+	let code = match doc.blocks()[0].kind() {
 		BlockKind::Code { text, .. } => text.clone(),
 		other => panic!("expected code block, got {other:?}"),
 	};
@@ -4025,4 +4100,56 @@ fn ofm_comments_are_absent_from_reading_copy_and_search() {
 		assert_eq!(index.find("SECRET", Default::default()).is_empty(), ofm);
 		assert!(!index.find("CODEKEEP", Default::default()).is_empty());
 	}
+}
+
+#[test]
+fn a_reused_definition_body_takes_the_current_field_id() {
+	fn rich(text: &str) -> document::RichText {
+		vec![document::Inline {
+			link: None,
+			kind: InlineKind::Text(text.into()),
+			style: TextStyle::default(),
+		}]
+	}
+	fn build(terms: &[&str]) -> document::Document {
+		let mut builder =
+			document::DocumentBuilder::new(document::DocumentRevision::new(1));
+		let body = builder
+			.block(Vec::new(), document::BlockKind::Paragraph(rich("reused")));
+		let list = builder.block(
+			Vec::new(),
+			document::BlockKind::DefinitionList(vec![
+				document::DefinitionItem {
+					terms: terms.iter().map(|text| rich(text)).collect(),
+					definitions: vec![vec![body]],
+				},
+			]),
+		);
+		builder.finish(vec![list])
+	}
+
+	let first = build(&["term"]);
+	let second = build(&["term", "extra"]);
+	let opts = LayoutOptions {
+		width: 400.0,
+		..Default::default()
+	};
+	let mut engine = LayoutEngine::new();
+	engine.layout(&first, &opts);
+	let reused = engine.layout(&second, &opts);
+	assert!(
+		reused.blocks[0].layout.scene.reused_leaves > 0,
+		"the definition body geometry is reused"
+	);
+	let node = reused
+		.blocks
+		.iter()
+		.flat_map(|block| block.layout.text.iter())
+		.find(|node| node.text == "reused")
+		.expect("the reused body is laid out");
+	assert_eq!(
+		node.search_field,
+		Some(markview_document::FieldId::from_index(2)),
+		"the reused leaf binds the current document's field id"
+	);
 }

@@ -1,10 +1,11 @@
 //! Semantic Markdown; raw HTML is limited to a small supported subset.
 use crate::{
-	container::{
-		ContainerHost, ContainerStack, block_of, clamp_range, details_block_of,
-		opaque_len,
-	},
+	container::{ContainerHost, ContainerStack, clamp_range, opaque_len},
 	html,
+	make::{Made, Producer},
+	rich::{
+		RunStyle as TextStyle, SpannedText, source_link, source_occurrence,
+	},
 };
 use comrak::{
 	Arena, Options,
@@ -24,10 +25,12 @@ use std::{
 };
 
 use super::{
-	Block, BlockKind, Callout, CalloutKind, CellAlign, Document, Inline,
-	InlineKind, Link, ListItem, RichText, TextStyle, content_identity,
-	fingerprint, front_matter, incremental, plain_text, semantic_key,
+	Block, BlockKind, Callout, CalloutKind, CellAlign, CellKind, FootnoteId,
+	FootnoteReference, Inline, InlineKind, ListItem, MarkdownParse, RichText,
+	Table, TableCell, TableColumn, TableGroup, TableGroupKind, TableRow,
+	front_matter, incremental, plain_text,
 };
+use markview_document::{DocumentRevision, SourceSpan};
 
 /// The reading dialect a parse uses: which Markdown extensions are on and
 /// how ambiguous source reads.
@@ -59,11 +62,8 @@ struct Reader<'s> {
 	footnote_blocks: HashMap<String, Block>,
 	/// Appended definitions resolve references but never emit note bodies.
 	snippet_end: Option<usize>,
-	/// Digit columns every note reserves for its number; see
-	/// [`BlockKind::Footnote`].
-	footnote_column: u32,
-	/// How many `<details>` elements this document has already numbered.
-	details_ordinal: u32,
+	/// Allocates identities and records source spans for this parse.
+	producer: Rc<RefCell<Producer>>,
 	/// The document's reference and footnote definitions, which resolve inside
 	/// a snippet the same way they do in a full parse.
 	definitions: &'s str,
@@ -178,7 +178,7 @@ impl Reader<'_> {
 		&self,
 		node: &'a AstNode<'a>,
 		style: &TextStyle,
-		out: &mut RichText,
+		out: &mut SpannedText,
 		depth: usize,
 		mut from: usize,
 		opaque_until: &mut usize,
@@ -189,12 +189,11 @@ impl Reader<'_> {
 		if depth >= self.limits.inline_depth {
 			let text = self.flattened_from(node, from);
 			if !text.is_empty() {
-				out.push(Inline {
-					kind: InlineKind::Text(text),
-					style: style.clone(),
-					source: self.range(node).start.max(from)
-						..self.range(node).end,
-				});
+				out.push(
+					InlineKind::Text(text),
+					style.clone(),
+					self.range(node).start.max(from)..self.range(node).end,
+				);
 			}
 			return;
 		}
@@ -223,17 +222,17 @@ impl Reader<'_> {
 					.into_iter()
 					.filter(|_| source.start >= *opaque_until)
 				{
-					out.push(Inline {
-						kind: InlineKind::Anchor(anchor),
-						style: style.clone(),
-						source: source.clone(),
-					});
+					out.push(
+						InlineKind::Anchor(anchor),
+						style.clone(),
+						source.clone(),
+					);
 				}
-				out.push(Inline {
-					kind: InlineKind::Image(image),
-					style: style.clone(),
-					source: source.start..end,
-				});
+				out.push(
+					InlineKind::Image(image),
+					style.clone(),
+					source.start..end,
+				);
 				from = end;
 				continue;
 			}
@@ -241,11 +240,11 @@ impl Reader<'_> {
 				&& let NodeValue::HtmlInline(t) = &child.data.borrow().value
 			{
 				for anchor in html::anchors(t) {
-					out.push(Inline {
-						kind: InlineKind::Anchor(anchor),
-						style: style.clone(),
-						source: source.clone(),
-					});
+					out.push(
+						InlineKind::Anchor(anchor),
+						style.clone(),
+						source.clone(),
+					);
 				}
 				if let Some(tag_len) = html::tag_len(t)
 					&& let Some(end) = self.open_opaque(source.start, tag_len)
@@ -262,12 +261,12 @@ impl Reader<'_> {
 					from,
 				))),
 				NodeValue::SoftBreak => Some(if self.dialect.hard_breaks {
-					InlineKind::LineBreak { justify: false }
+					InlineKind::LineBreak(super::LineBreak::Hard)
 				} else {
 					InlineKind::Text(" ".into())
 				}),
 				NodeValue::LineBreak => {
-					Some(InlineKind::LineBreak { justify: false })
+					Some(InlineKind::LineBreak(super::LineBreak::Hard))
 				}
 				NodeValue::Code(c) => {
 					child_style.code = true;
@@ -295,9 +294,9 @@ impl Reader<'_> {
 							Some(InlineKind::Image(image))
 						}
 						html::Inline::Ignore => continue,
-						html::Inline::Break => {
-							Some(InlineKind::LineBreak { justify: true })
-						}
+						html::Inline::Break => Some(InlineKind::LineBreak(
+							super::LineBreak::Forced,
+						)),
 						html::Inline::Open { name, patch } => {
 							if scopes.len() >= self.limits.html_scopes {
 								// Past the budget the tag stays source, like any
@@ -332,14 +331,12 @@ impl Reader<'_> {
 					display: m.display_math,
 				}),
 				NodeValue::FootnoteReference(f) => {
-					let label = f.ix.to_string();
 					child_style.superscript = true;
-					child_style.footnote_ref = true;
-					child_style.link = Some(Link::new(
-						super::footnote::url(&label),
-						source.start,
-					));
-					Some(InlineKind::FootnoteRef(f.ix))
+					Some(InlineKind::FootnoteRef(FootnoteReference {
+						definition: FootnoteId::new(note_key(&f.name)),
+						number: f.ix,
+						occurrence: source_occurrence(source.start),
+					}))
 				}
 				NodeValue::Strong => {
 					child_style.bold = true;
@@ -370,16 +367,19 @@ impl Reader<'_> {
 							String::new()
 						};
 						Some(InlineKind::Image(crate::image::ImageSpec {
-							src: wikilink_asset_url(l),
+							source: crate::image::ImageSource::Resource(
+								crate::image::ResourceRef::vault(
+									wikilink_asset_url(l),
+								),
+							),
 							alt,
 							title: String::new(),
 							width: None,
 							height: None,
-							base: crate::image::ImageBase::Vault,
 						}))
 					} else {
 						let url = wikilink_url(l);
-						child_style.link = Some(Link::new(url, source.start));
+						child_style.link = Some(source_link(url, source.start));
 						None
 					}
 				}
@@ -398,17 +398,20 @@ impl Reader<'_> {
 				}
 				NodeValue::Link(l) => {
 					child_style.link =
-						Some(Link::new(l.url.clone(), source.start));
+						Some(source_link(l.url.clone(), source.start));
 					None
 				}
 				NodeValue::Image(link) => {
 					Some(InlineKind::Image(crate::image::ImageSpec {
-						src: link.url.clone(),
+						source: crate::image::ImageSource::Resource(
+							crate::image::ResourceRef::document(
+								link.url.clone(),
+							),
+						),
 						alt: self.alt_text(child, depth + 1, from),
 						title: link.title.clone(),
 						width: None,
 						height: None,
-						base: crate::image::ImageBase::Document,
 					}))
 				}
 				_ => None,
@@ -424,11 +427,7 @@ impl Reader<'_> {
 					text.remove(0);
 				}
 				after_comment = false;
-				out.push(Inline {
-					kind,
-					style: child_style,
-					source: source.start.max(from)..source.end,
-				});
+				out.push(kind, child_style, source.start.max(from)..source.end);
 			} else {
 				self.inlines(
 					child,
@@ -442,10 +441,13 @@ impl Reader<'_> {
 		}
 		if after_comment
 			&& depth == 0
-			&& let Some(Inline {
-				kind: InlineKind::Text(text),
-				..
-			}) = out.last_mut()
+			&& let Some((
+				Inline {
+					kind: InlineKind::Text(text),
+					..
+				},
+				_,
+			)) = out.last_mut()
 			&& matches!(text.as_bytes().last(), Some(b' ' | b'\t'))
 		{
 			text.pop();
@@ -459,7 +461,7 @@ impl Reader<'_> {
 		depth: usize,
 		from: usize,
 	) -> String {
-		let mut alt = Vec::new();
+		let mut alt = SpannedText::new();
 		let mut opaque_until = usize::MAX;
 		self.inlines(
 			node,
@@ -469,13 +471,13 @@ impl Reader<'_> {
 			from,
 			&mut opaque_until,
 		);
-		plain_text(&alt)
+		plain_text(&alt.inlines)
 	}
 
 	/// Whether a leading space after a hidden comment collapses: the run
 	/// stands at the paragraph's start or follows another space.
-	fn comment_gap_collapses(out: &RichText) -> bool {
-		out.last().is_none_or(|inline| {
+	fn comment_gap_collapses(out: &SpannedText) -> bool {
+		out.inlines.last().is_none_or(|inline| {
 			matches!(&inline.kind, InlineKind::Text(text)
 				if matches!(text.as_bytes().last(), Some(b' ' | b'\t')))
 		})
@@ -571,8 +573,8 @@ impl Reader<'_> {
 		text
 	}
 
-	fn rich<'a>(&self, node: &'a AstNode<'a>) -> RichText {
-		let mut text = Vec::new();
+	fn rich<'a>(&self, node: &'a AstNode<'a>) -> SpannedText {
+		let mut text = SpannedText::new();
 		let mut opaque_until = self.opaque_until(self.range(node).start);
 		self.inlines(
 			node,
@@ -582,7 +584,7 @@ impl Reader<'_> {
 			0,
 			&mut opaque_until,
 		);
-		merge_text(text)
+		text.merged()
 	}
 
 	fn blocks<'a>(
@@ -710,25 +712,25 @@ impl Reader<'_> {
 			let raw = HtmlSource::new(&self.source[begin..end], &markers);
 			let (_, image) = html::svg(&raw.text)?;
 			let source = begin..end;
-			let kind = BlockKind::Paragraph(vec![Inline {
-				kind: InlineKind::Image(image),
-				style: TextStyle::default(),
-				source: source.clone(),
-			}]);
-			out.push(Block {
-				anchors: html::block_anchors_from(
-					&self.source[source.clone()],
-					self.opaque_until(source.start)
-						.saturating_sub(source.start),
-				),
-				id: fingerprint(&(
-					std::mem::discriminant(&kind),
-					&self.source[source.clone()],
-				)),
-				content_key: semantic_key(&kind),
+			let mut text = SpannedText::new();
+			text.push(
+				InlineKind::Image(image),
+				TextStyle::default(),
+				source.clone(),
+			);
+			let (inlines, spans, covers) = text.into_parts(self.source);
+			let anchors = html::block_anchors_from(
+				&self.source[source.clone()],
+				self.opaque_until(source.start).saturating_sub(source.start),
+			);
+			let block = self.make(
+				anchors,
+				BlockKind::Paragraph(inlines),
 				source,
-				kind,
-			});
+				vec![spans],
+				vec![covers],
+			);
+			out.push(block);
 			let tail_end = self.range(children[close]).end;
 			let mut rest = &self.source[end..tail_end];
 			loop {
@@ -777,6 +779,21 @@ impl Reader<'_> {
 			})
 	}
 
+	fn callout_fields(
+		kind: &BlockKind,
+		source: &Range<usize>,
+	) -> Vec<SourceSpan> {
+		match kind {
+			BlockKind::Quote {
+				callout: Some(callout),
+				..
+			} => callout.title.as_ref().map_or_else(Vec::new, |title| {
+				uniform_spans(title, source.clone())
+			}),
+			_ => Vec::new(),
+		}
+	}
+
 	/// Comrak's callout metadata, inline title and body.
 	fn callout_kind<'a>(
 		&mut self,
@@ -789,36 +806,43 @@ impl Reader<'_> {
 			matches!(child.data.borrow().value, NodeValue::CalloutTitle)
 		});
 		let title = title.map_or_else(
-			|| plain_rich(metadata.default_title(), source.clone()),
-			|title| trim_text(self.rich(title)),
+			|| plain_rich(metadata.default_title(), source.clone()).inlines,
+			|title| self.rich(title).trimmed().inlines,
 		);
-		let callout = Callout {
-			kind: CalloutKind::parse(&metadata.callout_type),
-			title,
-			fold: match metadata.fold {
-				CalloutFold::None => None,
-				CalloutFold::Expanded => Some(true),
-				CalloutFold::Collapsed => Some(false),
-			},
+		let fold = match metadata.fold {
+			CalloutFold::None => None,
+			CalloutFold::Expanded => Some(true),
+			CalloutFold::Collapsed => Some(false),
 		};
 		let mut blocks = self.blocks(node, depth + 1);
-		if let Some(open) = callout.fold {
+		let title = if let Some(default_open) = fold {
 			// A foldable callout's body is one disclosure, so it toggles like
-			// a `<details>` element.
-			let ordinal = self.details_ordinal;
-			self.details_ordinal += 1;
-			let summary = callout.title.clone();
-			blocks = vec![details_block_of(
-				self.source,
-				open,
-				ordinal,
-				summary,
-				blocks,
-				source.clone(),
-			)];
-		}
+			// a `<details>` element. The disclosure owns the title as its
+			// summary; the callout keeps only its type and fold state.
+			let fields = vec![uniform_spans(&title, source.clone())];
+			let made = Made {
+				kind: BlockKind::Details {
+					default_open,
+					summary: title,
+					blocks,
+				},
+				anchors: Vec::new(),
+				source: source.clone(),
+				fields: fields.clone(),
+				covers: fields,
+			};
+			blocks = vec![self.producer.borrow_mut().block(made)];
+			None
+		} else {
+			Some(title)
+		};
 		BlockKind::Quote {
-			callout: Some(callout),
+			callout: Some(Callout {
+				kind: CalloutKind::parse(&metadata.callout_type),
+				name: metadata.callout_type.clone(),
+				title,
+				fold,
+			}),
 			blocks,
 		}
 	}
@@ -839,20 +863,58 @@ impl Reader<'_> {
 		if matches!(data.value, NodeValue::CalloutTitle) {
 			return Child::Skip;
 		}
-		let kind = if depth >= self.limits.block_depth {
-			BlockKind::Code {
-				language: "nested Markdown".into(),
-				text: self.visible_source(child),
-			}
+		let (kind, fields, covers) = if depth >= self.limits.block_depth {
+			let text = self.visible_source(child);
+			(
+				BlockKind::Code {
+					language: "nested Markdown".into(),
+					text: text.clone(),
+				},
+				vec![vec![SourceSpan {
+					semantic: 0..text.len(),
+					source: source.clone(),
+					exact: false,
+				}]],
+				vec![vec![SourceSpan {
+					semantic: 0..text.len(),
+					source: source.clone(),
+					exact: false,
+				}]],
+			)
 		} else {
 			match &data.value {
 				NodeValue::FrontMatter(text) => {
-					let Some(kind) =
-						front_matter_kind(text, &source, self.source)
+					let Some(yaml) = front_matter::parse(text).into_yaml()
 					else {
 						return Child::Skip;
 					};
-					kind
+					let code_source = source.clone();
+					let inner = self.make(
+						Vec::new(),
+						BlockKind::Code {
+							language: front_matter::LANGUAGE.into(),
+							text: yaml.clone(),
+						},
+						code_source.clone(),
+						vec![vec![SourceSpan {
+							semantic: 0..yaml.len(),
+							source: code_source.clone(),
+							exact: false,
+						}]],
+						vec![vec![SourceSpan {
+							semantic: 0..yaml.len(),
+							source: code_source,
+							exact: false,
+						}]],
+					);
+					(
+						BlockKind::FrontMatter {
+							default_open: false,
+							blocks: vec![inner],
+						},
+						Vec::new(),
+						Vec::new(),
+					)
 				}
 				// A line-start `%%` comment is a block of its own whose whole
 				// span stays hidden.
@@ -864,19 +926,34 @@ impl Reader<'_> {
 					if text.is_empty() && self.dialect.ofm {
 						return Child::Skip;
 					}
-					BlockKind::Paragraph(text)
+					let (inlines, spans, covers) = text.into_parts(self.source);
+					(BlockKind::Paragraph(inlines), vec![spans], vec![covers])
 				}
 				NodeValue::Heading(h) => {
 					let text = self.rich(child);
-					BlockKind::Heading {
-						level: h.level,
-						text,
-						anchor: String::new(),
-					}
+					let (inlines, spans, covers) = text.into_parts(self.source);
+					(
+						BlockKind::Heading {
+							level: h.level,
+							text: inlines,
+							anchor: String::new(),
+						},
+						vec![spans],
+						vec![covers],
+					)
 				}
 				// The info string's first word is the language; trailing
 				// words are metadata, so `mermaid title="x"` still renders.
-				NodeValue::CodeBlock(c) => code_block_kind(c, &source),
+				NodeValue::CodeBlock(c) => {
+					let kind = code_block_kind(c, &source);
+					let fields = match &kind {
+						BlockKind::Code { text, .. } => {
+							vec![code_spans(self.source, &source, text)]
+						}
+						_ => own_spans(&kind, &source),
+					};
+					(kind, fields.clone(), fields)
+				}
 				NodeValue::HtmlBlock(h) => {
 					let Some(kind) = html_block_kind(
 						&h.literal,
@@ -886,74 +963,153 @@ impl Reader<'_> {
 					) else {
 						return Child::Skip;
 					};
-					kind
+					let fields = own_spans(&kind, &source);
+					(kind, fields.clone(), fields)
 				}
-				NodeValue::ThematicBreak => BlockKind::Rule,
-				NodeValue::BlockQuote => BlockKind::Quote {
-					callout: None,
-					blocks: self.blocks(child, depth + 1),
-				},
+				NodeValue::ThematicBreak => {
+					(BlockKind::Rule, Vec::new(), Vec::new())
+				}
+				NodeValue::BlockQuote => (
+					BlockKind::Quote {
+						callout: None,
+						blocks: self.blocks(child, depth + 1),
+					},
+					Vec::new(),
+					Vec::new(),
+				),
 				NodeValue::Callout(callout) => {
-					self.callout_kind(child, callout, &source, depth)
+					let kind =
+						self.callout_kind(child, callout, &source, depth);
+					let fields = Self::callout_fields(&kind, &source);
+					(kind, vec![fields.clone()], vec![fields])
 				}
-				NodeValue::Alert(a) => BlockKind::Quote {
-					callout: Some(Callout {
-						kind: match a.alert_type {
-							comrak::nodes::AlertType::Note => CalloutKind::Note,
-							comrak::nodes::AlertType::Tip => CalloutKind::Tip,
-							comrak::nodes::AlertType::Important => {
-								CalloutKind::Important
-							}
-							comrak::nodes::AlertType::Warning => {
-								CalloutKind::Warning
-							}
-							comrak::nodes::AlertType::Caution => {
-								CalloutKind::Caution
-							}
-						},
-						title: plain_rich(
-							format!("{:?}", a.alert_type),
-							source.clone(),
-						),
-						fold: None,
-					}),
-					blocks: self.blocks(child, depth + 1),
-				},
-				NodeValue::List(l) => BlockKind::List {
-					start: (l.list_type == ListType::Ordered)
-						.then_some(l.start),
-					tight: l.tight,
-					items: child
-						.children()
-						.map(|item| {
-							let checked = match &item.data.borrow().value {
-								NodeValue::TaskItem(t) => {
-									Some(t.symbol.is_some())
+				NodeValue::Alert(a) => {
+					let kind = BlockKind::Quote {
+						callout: Some(Callout {
+							name: format!("{:?}", a.alert_type)
+								.to_ascii_lowercase(),
+							kind: match a.alert_type {
+								comrak::nodes::AlertType::Note => {
+									CalloutKind::Note
 								}
-								_ => None,
-							};
-							ListItem {
-								checked,
-								blocks: self.blocks(item, depth + 1),
-							}
-						})
-						.collect(),
-				},
-				NodeValue::Table(t) => BlockKind::Table {
-					align: t
+								comrak::nodes::AlertType::Tip => {
+									CalloutKind::Tip
+								}
+								comrak::nodes::AlertType::Important => {
+									CalloutKind::Important
+								}
+								comrak::nodes::AlertType::Warning => {
+									CalloutKind::Warning
+								}
+								comrak::nodes::AlertType::Caution => {
+									CalloutKind::Caution
+								}
+							},
+							title: Some(
+								plain_rich(
+									format!("{:?}", a.alert_type),
+									source.clone(),
+								)
+								.inlines,
+							),
+							fold: None,
+						}),
+						blocks: self.blocks(child, depth + 1),
+					};
+					let fields = Self::callout_fields(&kind, &source);
+					(kind, vec![fields.clone()], vec![fields])
+				}
+				NodeValue::List(l) => (
+					BlockKind::List {
+						start: (l.list_type == ListType::Ordered)
+							.then_some(l.start as isize),
+						reversed: false,
+						tight: l.tight,
+						items: child
+							.children()
+							.map(|item| {
+								let checked = match &item.data.borrow().value {
+									NodeValue::TaskItem(t) => {
+										Some(t.symbol.is_some())
+									}
+									_ => None,
+								};
+								ListItem {
+									checked,
+									number: None,
+									blocks: self.blocks(item, depth + 1),
+								}
+							})
+							.collect(),
+					},
+					Vec::new(),
+					Vec::new(),
+				),
+				NodeValue::Table(t) => {
+					let columns: Vec<TableColumn> = t
 						.alignments
 						.iter()
-						.map(|a| match a {
-							TableAlignment::Center => CellAlign::Center,
-							TableAlignment::Right => CellAlign::Right,
-							_ => CellAlign::Left,
+						.map(|a| TableColumn {
+							align: Some(match a {
+								TableAlignment::Center => CellAlign::Center,
+								TableAlignment::Right => CellAlign::Right,
+								_ => CellAlign::Left,
+							}),
 						})
-						.collect(),
-					rows: child
-						.children()
-						.map(|r| r.children().map(|c| self.rich(c)).collect())
-						.collect(),
-				},
+						.collect();
+					let mut groups: Vec<TableGroup> = Vec::new();
+					for (index, row) in child.children().enumerate() {
+						let kind = if index == 0 {
+							TableGroupKind::Head
+						} else {
+							TableGroupKind::Body
+						};
+						let mut cells = Vec::new();
+						for cell_node in row.children() {
+							let range = self.range(cell_node);
+							let text = self.rich(cell_node);
+							let (inlines, spans, covers) =
+								text.into_parts(self.source);
+							let block = self.make(
+								Vec::new(),
+								BlockKind::Paragraph(inlines),
+								range,
+								vec![spans],
+								vec![covers],
+							);
+							cells.push(TableCell {
+								kind: if index == 0 {
+									CellKind::Header
+								} else {
+									CellKind::Data
+								},
+								rowspan: 1,
+								colspan: 1,
+								align: None,
+								blocks: vec![block],
+							});
+						}
+						if let Some(group) = groups.last_mut()
+							&& group.kind == kind
+						{
+							group.rows.push(TableRow { cells });
+						} else {
+							groups.push(TableGroup {
+								kind,
+								rows: vec![TableRow { cells }],
+							});
+						}
+					}
+					(
+						BlockKind::Table(Table {
+							caption: None,
+							columns,
+							groups,
+						}),
+						Vec::new(),
+						Vec::new(),
+					)
+				}
 				NodeValue::FootnoteDefinition(f) => {
 					if self.unused_footnote(
 						&f.name,
@@ -962,33 +1118,27 @@ impl Reader<'_> {
 					) {
 						return Child::Skip;
 					}
-					BlockKind::Footnote {
-						label: self
-							.footnotes
-							.get(&note_key(&f.name))
-							.map_or_else(|| f.name.clone(), u32::to_string),
-						column: self.footnote_column,
-						blocks: self.blocks(child, depth + 1),
-					}
+					let key = note_key(&f.name);
+					(
+						BlockKind::Footnote {
+							id: FootnoteId::new(key.clone()),
+							number: self
+								.footnotes
+								.get(&key)
+								.copied()
+								.unwrap_or(0),
+							blocks: self.blocks(child, depth + 1),
+						},
+						Vec::new(),
+						Vec::new(),
+					)
 				}
 				_ => {
 					return Child::Flatten;
 				}
 			}
 		};
-		// Content identity deliberately excludes source offsets, which shift on append/insert.
-		let id = fingerprint(&(
-			std::mem::discriminant(&kind),
-			&self.source[source.clone()],
-		));
-		let content_key = semantic_key(&kind);
-		let block = Block {
-			anchors: Vec::new(),
-			id,
-			content_key,
-			source,
-			kind,
-		};
+		let block = self.make(Vec::new(), kind, source, fields, covers);
 		if let NodeValue::FootnoteDefinition(f) = &data.value {
 			// Snippet-only definitions also belong at the document's end.
 			self.footnote_blocks.insert(note_key(&f.name), block);
@@ -996,6 +1146,24 @@ impl Reader<'_> {
 		} else {
 			Child::Block(block)
 		}
+	}
+
+	/// Allocates one built block and records its own field spans.
+	fn make(
+		&mut self,
+		anchors: Vec<String>,
+		kind: BlockKind,
+		source: Range<usize>,
+		fields: Vec<Vec<SourceSpan>>,
+		covers: Vec<Vec<SourceSpan>>,
+	) -> Block {
+		self.producer.borrow_mut().block(Made {
+			kind,
+			anchors,
+			source,
+			fields,
+			covers,
+		})
 	}
 
 	/// Restore snippet coordinates after removing disclosure tags and quote prefixes.
@@ -1009,61 +1177,7 @@ impl Reader<'_> {
 		let opaque_until = offsets
 			.partition_point(|offset| *offset < self.opaque_until(offsets[0]));
 		let mut blocks = self.markdown_blocks(text, depth, opaque_until);
-		fn range(range: &mut Range<usize>, offsets: &[usize]) {
-			let start = offsets[range.start.min(offsets.len() - 1)];
-			let end = if range.end > range.start {
-				offsets[(range.end - 1).min(offsets.len() - 1)] + 1
-			} else {
-				start
-			};
-			*range = start..end.max(start);
-		}
-		fn rich(text: &mut RichText, offsets: &[usize]) {
-			for inline in text {
-				range(&mut inline.source, offsets);
-				if let Some(link) = inline.style.link.take() {
-					let at = link.origin().min(offsets.len() - 1);
-					inline.style.link = Some(link.rebase(offsets[at]));
-				}
-			}
-		}
-		fn walk(blocks: &mut [Block], offsets: &[usize]) {
-			for block in blocks {
-				range(&mut block.source, offsets);
-				match &mut block.kind {
-					BlockKind::Paragraph(text)
-					| BlockKind::Heading { text, .. } => rich(text, offsets),
-					BlockKind::Details {
-						summary, blocks, ..
-					} => {
-						rich(summary, offsets);
-						walk(blocks, offsets);
-					}
-					BlockKind::Quote { callout, blocks } => {
-						if let Some(callout) = callout {
-							rich(&mut callout.title, offsets);
-						}
-						walk(blocks, offsets);
-					}
-					BlockKind::Footnote { blocks, .. }
-					| BlockKind::FrontMatter { blocks, .. } => walk(blocks, offsets),
-					BlockKind::List { items, .. } => {
-						for item in items {
-							walk(&mut item.blocks, offsets);
-						}
-					}
-					BlockKind::Table { rows, .. } => {
-						for row in rows {
-							for cell in row {
-								rich(cell, offsets);
-							}
-						}
-					}
-					_ => {}
-				}
-			}
-		}
-		walk(&mut blocks, &offsets);
+		self.producer.borrow_mut().remap(&mut blocks, &offsets);
 		blocks
 	}
 
@@ -1101,20 +1215,25 @@ impl Reader<'_> {
 		joined.push_str(text);
 		joined.push_str("\n\n");
 		joined.push_str(&definitions);
-		let blocks = self.snippet(&joined, depth, Some(text), opaque_until);
+		let mut blocks = self.snippet(&joined, depth, Some(text), opaque_until);
 		// An unclosed fence or HTML block can swallow the appended
 		// definitions; then the bare snippet parses to what the full document
 		// puts there.
-		if blocks
-			.iter()
-			.any(|b| b.source.start < text.len() && b.source.end > text.len())
-		{
+		if blocks.iter().any(|b| {
+			self.producer
+				.borrow()
+				.block_range(b)
+				.is_some_and(|r| r.start < text.len() && r.end > text.len())
+		}) {
 			return self.snippet(text, depth, None, opaque_until);
 		}
+		blocks.retain(|b| {
+			self.producer
+				.borrow()
+				.block_range(b)
+				.is_some_and(|r| r.start < text.len())
+		});
 		blocks
-			.into_iter()
-			.filter(|b| b.source.start < text.len())
-			.collect()
 	}
 
 	/// `text` parsed by the ordinary pipeline, falling back to `bare` when a
@@ -1189,8 +1308,7 @@ impl Reader<'_> {
 			document_footnotes: self.document_footnotes,
 			footnote_blocks: std::mem::take(&mut self.footnote_blocks),
 			snippet_end: Some(bare.map_or(text.len(), str::len)),
-			footnote_column: self.footnote_column,
-			details_ordinal: std::mem::take(&mut self.details_ordinal),
+			producer: Rc::clone(&self.producer),
 			definitions: self.definitions,
 			limits: self.limits,
 			reparse_used: Rc::clone(&self.reparse_used),
@@ -1199,15 +1317,14 @@ impl Reader<'_> {
 		let blocks = reader.blocks(root, depth);
 		self.footnotes = reader.footnotes;
 		self.footnote_blocks = reader.footnote_blocks;
-		self.details_ordinal = reader.details_ordinal;
 		blocks
 	}
 
 	/// The summary's rich text. GFM keeps raw HTML inside `<summary>` and
 	/// does not parse Markdown, so `**Bold**` stays literal.
-	fn summary_rich(&self, text: &str, source: &Range<usize>) -> RichText {
+	fn summary_rich(&self, text: &str, source: &Range<usize>) -> SpannedText {
 		if text.trim().is_empty() {
-			return RichText::new();
+			return SpannedText::new();
 		}
 		let opaque_until = self.opaque_until(source.start);
 		let anchor_from = if opaque_until > source.start {
@@ -1224,55 +1341,67 @@ impl Reader<'_> {
 			self.dialect.ofm,
 		) {
 			html::Block::Paragraph(spans) => html_rich(spans, source),
-			_ => RichText::new(),
+			_ => SpannedText::new(),
 		};
 		if out.is_empty() {
 			for anchor in html::block_anchors_from(text, anchor_from) {
-				out.push(Inline {
-					kind: InlineKind::Anchor(anchor),
-					style: TextStyle::default(),
-					source: source.clone(),
-				});
+				out.push(
+					InlineKind::Anchor(anchor),
+					TextStyle::default(),
+					source.clone(),
+				);
 			}
-			out.push(Inline {
-				kind: InlineKind::Text(text.trim().to_string()),
-				style: TextStyle::default(),
-				source: source.clone(),
-			});
+			out.push(
+				InlineKind::Text(text.trim().to_string()),
+				TextStyle::default(),
+				source.clone(),
+			);
 		}
-		merge_text(out)
+		out.merged()
 	}
 }
 
 impl ContainerHost for Reader<'_> {
+	fn make(&mut self, made: Made) -> Block {
+		Reader::make(
+			self,
+			made.anchors,
+			made.kind,
+			made.source,
+			made.fields,
+			made.covers,
+		)
+	}
+
 	fn leaf(
 		&mut self,
 		text: &str,
 		range: Range<usize>,
 		opaque_until: usize,
 	) -> Option<Block> {
-		html_leaf_block(
+		let made = html_leaf_block(
 			self.source,
 			text,
 			range,
 			self.limits.html_scopes,
 			opaque_until,
 			self.dialect.ofm,
-		)
+		)?;
+		Some(self.make(
+			made.anchors,
+			made.kind,
+			made.source,
+			made.fields,
+			made.covers,
+		))
 	}
 
-	fn summary(&mut self, text: &str, source: &Range<usize>) -> RichText {
+	fn summary(&mut self, text: &str, source: &Range<usize>) -> SpannedText {
 		Reader::summary_rich(self, text, source)
 	}
 
 	fn opaque_until(&self, at: usize) -> usize {
 		Reader::opaque_until(self, at)
-	}
-
-	fn next_details_ordinal(&mut self) -> u32 {
-		let ordinal = self.details_ordinal;
-		self.details_ordinal += 1;
-		ordinal
 	}
 }
 
@@ -1292,7 +1421,7 @@ fn html_leaf_block(
 	scope_limit: usize,
 	opaque_until: usize,
 	ofm: bool,
-) -> Option<Block> {
+) -> Option<Made> {
 	let range = clamp_range(source, range);
 	let anchor_from = if opaque_until > range.start {
 		source_offsets(text, source, range.clone())
@@ -1300,26 +1429,51 @@ fn html_leaf_block(
 	} else {
 		0
 	};
-	let kind = match html::block_from(
+	let (kind, fields, covers) = match html::block_from(
 		text,
 		scope_limit,
 		anchor_from,
 		range.start,
 		ofm,
 	) {
-		html::Block::Unsupported => BlockKind::Code {
-			language: "HTML source".into(),
-			text: text.to_string(),
-		},
+		html::Block::Unsupported => {
+			let code = text.to_string();
+			(
+				BlockKind::Code {
+					language: "HTML source".into(),
+					text: code.clone(),
+				},
+				vec![vec![SourceSpan {
+					semantic: 0..code.len(),
+					source: range.clone(),
+					exact: false,
+				}]],
+				vec![vec![SourceSpan {
+					semantic: 0..code.len(),
+					source: range.clone(),
+					exact: false,
+				}]],
+			)
+		}
 		html::Block::Empty => return None,
-		html::Block::Rule => BlockKind::Rule,
-		html::Block::Heading { level, text } => BlockKind::Heading {
-			level,
-			text: html_rich(text, &range),
-			anchor: String::new(),
-		},
+		html::Block::Rule => (BlockKind::Rule, Vec::new(), Vec::new()),
+		html::Block::Heading { level, text } => {
+			let (inlines, spans, covers) =
+				html_rich(text, &range).into_parts(source);
+			(
+				BlockKind::Heading {
+					level,
+					text: inlines,
+					anchor: String::new(),
+				},
+				vec![spans],
+				vec![covers],
+			)
+		}
 		html::Block::Paragraph(text) => {
-			BlockKind::Paragraph(html_rich(text, &range))
+			let (inlines, spans, covers) =
+				html_rich(text, &range).into_parts(source);
+			(BlockKind::Paragraph(inlines), vec![spans], vec![covers])
 		}
 	};
 	let anchors = if matches!(kind, BlockKind::Code { .. } | BlockKind::Rule) {
@@ -1327,9 +1481,13 @@ fn html_leaf_block(
 	} else {
 		Vec::new()
 	};
-	let mut block = block_of(source, kind, range);
-	block.anchors = anchors;
-	Some(block)
+	Some(Made {
+		kind,
+		anchors,
+		source: range,
+		fields,
+		covers,
+	})
 }
 
 /// What one AST child contributes to its parent's block list.
@@ -1484,105 +1642,122 @@ fn note_key(name: &str) -> String {
 
 /// The document `source` describes in the default dialect, reading single
 /// newlines inside a paragraph as spaces and `==` as literal text.
-pub fn parse(source: impl Into<Arc<str>>) -> Document {
+pub fn parse(source: impl Into<Arc<str>>) -> MarkdownParse {
 	parse_with(source, Dialect::default())
 }
 
 /// The document `source` describes when read in `dialect`.
-pub fn parse_with(source: impl Into<Arc<str>>, dialect: Dialect) -> Document {
+pub fn parse_with(
+	source: impl Into<Arc<str>>,
+	dialect: Dialect,
+) -> MarkdownParse {
+	parse_with_seed(source, dialect, None, None)
+}
+
+/// [`parse_with`] continuing an existing identity space.
+pub(crate) fn parse_with_seed(
+	source: impl Into<Arc<str>>,
+	dialect: Dialect,
+	revision: Option<DocumentRevision>,
+	after: Option<markview_document::BlockId>,
+) -> MarkdownParse {
 	let source = source.into();
-	let arena = Arena::new();
-	let root = parse_document(&arena, &source, &markdown_options(dialect));
-	let lines = line_starts(&source);
-	let footnotes: HashMap<String, u32> = root
-		.descendants()
-		.filter_map(|n| match &n.data.borrow().value {
-			NodeValue::FootnoteReference(f) => Some((note_key(&f.name), f.ix)),
-			_ => None,
-		})
-		.collect();
-	let document_footnotes: HashSet<String> = root
-		.descendants()
-		.filter_map(|node| {
-			if let NodeValue::FootnoteDefinition(note) =
-				&node.data.borrow().value
-				&& note.total_references > 0
-			{
-				Some(note_key(&note.name))
-			} else {
-				None
-			}
-		})
-		.collect();
-	let footnote_column = footnotes
-		.values()
-		.copied()
-		.max()
-		.unwrap_or(1)
-		.to_string()
-		.len() as u32;
-	let definitions = if incremental::definition_free(&source) {
-		String::new()
-	} else {
-		incremental::definitions(&source)
-	};
-	let mut reader = Reader {
-		opaque: RefCell::new(BTreeMap::new()),
-		source: &source,
-		dialect,
-		lines,
-		footnotes,
-		document_footnotes: &document_footnotes,
-		footnote_blocks: HashMap::new(),
-		snippet_end: None,
-		footnote_column,
-		details_ordinal: 0,
-		definitions: &definitions,
-		limits: crate::limits::Limits::default(),
-		reparse_used: Rc::new(Cell::new(0)),
-		reparse_limit: source.len().saturating_mul(8).clamp(1 << 20, 64 << 20),
-	};
-	let mut blocks = reader.blocks(root, 0);
-	let column = reader
-		.footnotes
-		.values()
-		.copied()
-		.max()
-		.unwrap_or(1)
-		.to_string()
-		.len() as u32;
-	let mut notes: Vec<_> = reader
-		.footnote_blocks
-		.into_iter()
-		.filter(|(name, _)| {
-			reader.footnotes.contains_key(name)
-				|| document_footnotes.contains(name)
-		})
-		.collect();
-	notes.sort_by(|(left, _), (right, _)| {
-		(reader.footnotes.get(left), left)
-			.cmp(&(reader.footnotes.get(right), right))
-	});
-	for (name, mut note) in notes {
-		if let BlockKind::Footnote {
-			label,
-			column: note_column,
-			..
-		} = &mut note.kind
-		{
-			if let Some(number) = reader.footnotes.get(&name) {
-				*label = number.to_string();
-			}
-			*note_column = column;
+	let revision = revision.unwrap_or_else(DocumentRevision::fresh);
+	let (blocks, producer) = {
+		let arena = Arena::new();
+		let root = parse_document(&arena, &source, &markdown_options(dialect));
+		let lines = line_starts(&source);
+		let footnotes: HashMap<String, u32> = root
+			.descendants()
+			.filter_map(|n| match &n.data.borrow().value {
+				NodeValue::FootnoteReference(f) => {
+					Some((note_key(&f.name), f.ix))
+				}
+				_ => None,
+			})
+			.collect();
+		let document_footnotes: HashSet<String> = root
+			.descendants()
+			.filter_map(|node| {
+				if let NodeValue::FootnoteDefinition(note) =
+					&node.data.borrow().value
+					&& note.total_references > 0
+				{
+					Some(note_key(&note.name))
+				} else {
+					None
+				}
+			})
+			.collect();
+		let definitions = if incremental::definition_free(&source) {
+			String::new()
+		} else {
+			incremental::definitions(&source)
+		};
+		let mut reader = Reader {
+			opaque: RefCell::new(BTreeMap::new()),
+			source: &source,
+			dialect,
+			lines,
+			footnotes,
+			document_footnotes: &document_footnotes,
+			footnote_blocks: HashMap::new(),
+			snippet_end: None,
+			producer: Rc::new(RefCell::new(match after {
+				Some(after) => Producer::continuing(revision, Some(after)),
+				None => Producer::new(revision),
+			})),
+			definitions: &definitions,
+			limits: crate::limits::Limits::default(),
+			reparse_used: Rc::new(Cell::new(0)),
+			reparse_limit: source
+				.len()
+				.saturating_mul(8)
+				.clamp(1 << 20, 64 << 20),
+		};
+		let mut blocks = reader.blocks(root, 0);
+		let mut notes: Vec<_> = reader
+			.footnote_blocks
+			.drain()
+			.filter(|(name, _)| {
+				reader.footnotes.contains_key(name)
+					|| document_footnotes.contains(name)
+			})
+			.collect();
+		notes.sort_by(|(left, _), (right, _)| {
+			(reader.footnotes.get(left), left)
+				.cmp(&(reader.footnotes.get(right), right))
+		});
+		for (name, note) in notes {
+			let BlockKind::Footnote {
+				id,
+				number,
+				blocks: body,
+			} = note.kind().clone()
+			else {
+				continue;
+			};
+			let number = reader.footnotes.get(&name).copied().unwrap_or(number);
+			let note = note.with_kind(BlockKind::Footnote {
+				id,
+				number,
+				blocks: body,
+			});
+			blocks.push(note);
 		}
-		note.content_key = semantic_key(&note.kind);
-		blocks.push(note);
-	}
-	incremental::relabel_headings(&mut blocks);
-	Document {
+		incremental::relabel_headings(&mut blocks);
+		let producer = Rc::try_unwrap(reader.producer)
+			.ok()
+			.expect("snippet readers are dropped")
+			.into_inner();
+		(blocks, producer)
+	};
+	let (document, map) = producer.finish(blocks);
+	MarkdownParse {
+		document,
 		source,
-		content_id: content_identity(&blocks),
-		blocks,
+		map,
+		dialect,
 	}
 }
 
@@ -1686,7 +1861,7 @@ fn apply_patch(patch: &html::Patch, style: &mut TextStyle, origin: usize) {
 		html::Patch::Subscript => style.subscript = true,
 		html::Patch::Mark => style.mark = true,
 		html::Patch::Link(url) => {
-			style.link = Some(Link::new(url.as_str(), origin));
+			style.link = Some(source_link(url.as_str(), origin));
 		}
 		html::Patch::None => {}
 	}
@@ -1726,183 +1901,141 @@ fn source_offsets(
 	offsets
 }
 
-fn html_rich(spans: Vec<html::Span>, source: &Range<usize>) -> RichText {
-	spans
-		.into_iter()
-		.map(|span| Inline {
-			kind: if let Some(anchor) = span.anchor {
-				InlineKind::Anchor(anchor)
-			} else {
-				span.image.map_or_else(
-					|| InlineKind::Text(span.text),
-					InlineKind::Image,
-				)
-			},
-			style: TextStyle {
-				bold: span.style.bold,
-				italic: span.style.italic,
-				strike: span.style.strike,
-				code: span.style.code,
-				superscript: span.style.superscript,
-				subscript: span.style.subscript,
-				mark: span.style.mark,
-				link: span.style.link,
-				..TextStyle::default()
-			},
-			source: source.clone(),
-		})
-		.collect()
+fn html_rich(spans: Vec<html::Span>, source: &Range<usize>) -> SpannedText {
+	SpannedText::from_html_spans(spans, source)
 }
 
-/// Merge neighboring runs that share a style so a dropped comment or tag does
-/// not leave a double space behind.
-/// Text runs merge only when they carry one style and one link occurrence.
-fn mergeable_style(left: &TextStyle, right: &TextStyle) -> bool {
-	left == right && left.shares_link_occurrence(right)
+fn plain_rich(text: String, source: Range<usize>) -> SpannedText {
+	SpannedText::plain(text, source)
 }
 
-fn merge_text(text: RichText) -> RichText {
-	let mut out: RichText = Vec::with_capacity(text.len());
-	let mut previous_text: Option<usize> = None;
-	for mut span in text {
-		let InlineKind::Text(t) = &mut span.kind else {
-			if !matches!(span.kind, InlineKind::Anchor(_)) {
-				previous_text = None;
-			}
-			out.push(span);
-			continue;
-		};
-		if let Some(index) = previous_text
-			&& index + 1 < out.len()
-			&& mergeable_style(&out[index].style, &span.style)
-			&& let InlineKind::Text(prev) = &out[index].kind
-			&& prev.ends_with(char::is_whitespace)
-			&& t.starts_with(char::is_whitespace)
-		{
-			let leading = t.len() - t.trim_start().len();
-			t.drain(..leading);
-			if t.is_empty() {
-				continue;
-			}
+/// The field spans a block's own rich text contributes, with the whole block
+/// source as its approximate coverage.
+/// Maps a code block's literal body onto its source range.
+fn code_spans(
+	source_text: &str,
+	source: &Range<usize>,
+	text: &str,
+) -> Vec<SourceSpan> {
+	let raw = source_text.get(source.clone());
+	let body = raw.map_or(0, |raw| {
+		let trimmed = raw.trim_start();
+		if trimmed.starts_with("```") || trimmed.starts_with("~~~") {
+			raw.find('\n').map_or(raw.len(), |at| at + 1)
+		} else {
+			0
 		}
-		let mut merged = false;
-		if let Some(last) = out.last_mut()
-			&& mergeable_style(&last.style, &span.style)
-			&& let InlineKind::Text(prev) = &mut last.kind
-		{
-			append_merged_text(prev, t);
-			// Comrak's source positions can run backwards across siblings — a
-			// paragraph that follows a link reference definition keeps the
-			// definition line's columns — so taking the second span's end
-			// verbatim can invert the merged range. The end only ever grows.
-			last.source.end = last.source.end.max(span.source.end);
-			merged = true;
-		}
-		if !merged {
-			out.push(span);
-		}
-		previous_text = Some(out.len() - 1);
+	});
+	if let Some(raw) = raw
+		&& let Some(at) = raw[body..].find(text)
+	{
+		let at = body + at;
+		return vec![SourceSpan {
+			semantic: 0..text.len(),
+			source: source.start + at..source.start + at + text.len(),
+			exact: true,
+		}];
 	}
-	out
-}
-
-fn plain_rich(text: String, source: Range<usize>) -> RichText {
-	vec![Inline {
-		kind: InlineKind::Text(text),
-		style: TextStyle::default(),
-		source,
-	}]
-}
-
-fn trim_text(mut text: RichText) -> RichText {
-	fn trim_edge(text: &mut RichText, end: bool) {
-		let mut leading = true;
-		text.retain(|inline| {
-			if !leading {
-				return true;
+	// Indented and normalized code is not a contiguous slice. Align each
+	// character with the next matching character in the source, preserving
+	// line and column navigation instead of collapsing to one covering span.
+	let Some(raw) = source_text.get(source.clone()) else {
+		return vec![SourceSpan {
+			semantic: 0..text.len(),
+			source: source.clone(),
+			exact: false,
+		}];
+	};
+	let mut spans: Vec<SourceSpan> = Vec::new();
+	let mut cursor = body;
+	for (offset, ch) in text.char_indices() {
+		let mapped = raw[cursor..].find(ch).map(|found| {
+			let start = cursor + found;
+			cursor = start + ch.len_utf8();
+			source.start + start..source.start + cursor
+		});
+		let semantic = offset..offset + ch.len_utf8();
+		match (mapped, spans.last_mut()) {
+			(Some(source), Some(previous))
+				if previous.semantic.end == semantic.start
+					&& previous.source.end == source.start =>
+			{
+				previous.semantic.end = semantic.end;
+				previous.source.end = source.end;
 			}
-			match &inline.kind {
-				InlineKind::Anchor(_) => true,
-				InlineKind::Text(t) if t.trim().is_empty() => false,
-				_ => {
-					leading = false;
-					true
+			(Some(source), _) => spans.push(SourceSpan {
+				semantic,
+				source,
+				exact: true,
+			}),
+			(None, _) => {
+				if let Some(previous) = spans.last_mut() {
+					previous.semantic.end = semantic.end;
+				} else {
+					spans.push(SourceSpan {
+						semantic: semantic.clone(),
+						source: source.clone(),
+						exact: false,
+					});
 				}
 			}
+		}
+	}
+	if spans.is_empty() {
+		spans.push(SourceSpan {
+			semantic: 0..text.len(),
+			source: source.clone(),
+			exact: false,
 		});
-		if let Some(Inline {
-			kind: InlineKind::Text(t),
-			..
-		}) = text.iter_mut().find(|inline| match &inline.kind {
-			InlineKind::Anchor(_) => false,
-			InlineKind::Text(t) => !t.trim().is_empty(),
-			_ => true,
-		}) {
-			if end {
-				t.truncate(t.trim_end().len());
-			} else {
-				t.drain(..t.len() - t.trim_start().len());
-			}
-		}
 	}
-	trim_edge(&mut text, false);
-	text.reverse();
-	trim_edge(&mut text, true);
-	text.reverse();
-	text
+	spans
 }
 
-fn append_merged_text(previous: &mut String, text: &str) {
-	if previous.ends_with(char::is_whitespace)
-		&& text.starts_with(char::is_whitespace)
-	{
-		let len = previous.trim_end().len();
-		previous.truncate(len);
-		previous.push(' ');
-		previous.push_str(text.trim_start());
-	} else {
-		previous.push_str(text);
+fn uniform_spans(text: &RichText, source: Range<usize>) -> Vec<SourceSpan> {
+	let mut spans = Vec::with_capacity(text.len());
+	let mut semantic = 0;
+	for inline in text {
+		let projection = plain_text(std::slice::from_ref(inline));
+		let end = semantic + projection.len();
+		spans.push(SourceSpan {
+			semantic: semantic..end,
+			source: source.clone(),
+			exact: false,
+		});
+		semantic = end;
 	}
+	spans
 }
 
-fn front_matter_kind(
-	text: &str,
-	source: &Range<usize>,
-	original: &str,
-) -> Option<BlockKind> {
-	match front_matter::parse(text) {
-		front_matter::Content::Empty => None,
-		front_matter::Content::Source(yaml) => {
-			let code = BlockKind::Code {
-				language: front_matter::LANGUAGE.into(),
-				text: yaml,
-			};
-			let id = fingerprint(&(
-				std::mem::discriminant(&code),
-				&original[source.clone()],
-			));
-			Some(BlockKind::FrontMatter {
-				open: false,
-				blocks: vec![Block {
-					anchors: Vec::new(),
-					id,
-					content_key: semantic_key(&code),
-					source: source.clone(),
-					kind: code,
-				}],
-			})
+/// The field spans of a block whose fields are all plain rich text or code.
+fn own_spans(kind: &BlockKind, source: &Range<usize>) -> Vec<Vec<SourceSpan>> {
+	match kind {
+		BlockKind::Paragraph(text) | BlockKind::Heading { text, .. } => {
+			vec![uniform_spans(text, source.clone())]
 		}
+		BlockKind::Code { text, .. } => vec![vec![SourceSpan {
+			semantic: 0..text.len(),
+			source: source.clone(),
+			exact: false,
+		}]],
+		_ => Vec::new(),
 	}
 }
 
 fn code_block_kind(
 	c: &comrak::nodes::NodeCodeBlock,
-	source: &Range<usize>,
+	_source: &Range<usize>,
 ) -> BlockKind {
 	if c.info.split_whitespace().next() == Some("mermaid") {
 		BlockKind::Paragraph(vec![Inline {
+			link: None,
 			kind: InlineKind::Image(crate::image::ImageSpec {
-				src: crate::image::mermaid_source(&c.literal),
+				source: crate::image::ImageSource::Diagram(
+					crate::image::Diagram {
+						language: "mermaid".into(),
+						source: c.literal.clone(),
+					},
+				),
 				// An empty `alt` draws no caption and keeps the
 				// fence source out of the reading text, so only
 				// the placeholder message is selectable.
@@ -1910,19 +2043,17 @@ fn code_block_kind(
 				title: String::new(),
 				width: None,
 				height: None,
-				base: crate::image::ImageBase::Document,
 			}),
-			style: TextStyle::default(),
-			source: source.clone(),
+			style: markview_document::TextStyle::default(),
 		}])
 	} else if c.info.trim() == "math" {
 		BlockKind::Paragraph(vec![Inline {
+			link: None,
 			kind: InlineKind::Math {
 				latex: c.literal.clone(),
 				display: true,
 			},
-			style: TextStyle::default(),
-			source: source.clone(),
+			style: markview_document::TextStyle::default(),
 		}])
 	} else {
 		BlockKind::Code {
@@ -1947,11 +2078,11 @@ fn html_block_kind(
 		html::Block::Rule => BlockKind::Rule,
 		html::Block::Heading { level, text } => BlockKind::Heading {
 			level,
-			text: html_rich(text, source),
+			text: html_rich(text, source).inlines,
 			anchor: String::new(),
 		},
 		html::Block::Paragraph(text) => {
-			BlockKind::Paragraph(html_rich(text, source))
+			BlockKind::Paragraph(html_rich(text, source).inlines)
 		}
 	})
 }

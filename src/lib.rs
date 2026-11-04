@@ -16,6 +16,7 @@ mod lang;
 #[cfg(feature = "diagnostics")]
 mod latency;
 mod link;
+pub(crate) mod loaded;
 mod logging;
 mod mailbox;
 mod memory;

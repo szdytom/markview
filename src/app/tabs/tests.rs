@@ -72,9 +72,13 @@ fn closing_tabs_preserves_active_state_and_releases_only_inactive_documents() {
 	let mut tabs = Tabs::default();
 	let now = Instant::now();
 	tabs.open(PathBuf::from("a.md"), now);
-	tabs.session.document = Some(Arc::new(markview_commonmark::parse("a")));
+	tabs.session.document = Some(crate::loaded::LoadedDocument::markdown(
+		Arc::new(markview_commonmark::parse("a")),
+	));
 	tabs.open(PathBuf::from("b.md"), now);
-	tabs.session.document = Some(Arc::new(markview_commonmark::parse("b")));
+	tabs.session.document = Some(crate::loaded::LoadedDocument::markdown(
+		Arc::new(markview_commonmark::parse("b")),
+	));
 	tabs.release_inactive(now + Duration::from_secs(21));
 	assert!(tabs.entries()[0].session.document.is_none());
 	assert!(tabs.session.document.is_some());
@@ -152,8 +156,9 @@ fn background_open_preserves_active_reading_and_deduplicates_tabs() {
 	let mut tabs = Tabs::default();
 	let now = Instant::now();
 	tabs.open(PathBuf::from("a.md"), now);
-	tabs.session.document =
-		Some(Arc::new(markview_commonmark::parse("current")));
+	tabs.session.document = Some(crate::loaded::LoadedDocument::markdown(
+		Arc::new(markview_commonmark::parse("current")),
+	));
 	let document = tabs.session.document.clone().unwrap();
 	tabs.session.scrolling.offset = 123.0;
 	tabs.session.horizontal.insert((0, 0), 42.0);
@@ -179,7 +184,14 @@ fn background_open_preserves_active_reading_and_deduplicates_tabs() {
 	assert!(tabs.select(2, now));
 	assert_eq!(tabs.session.path, Some(PathBuf::from("b.md")));
 	assert!(tabs.session.document.is_none());
-	assert_eq!(tabs.session.pending_anchor.as_deref(), Some("intro"));
+	assert_eq!(
+		tabs.session
+			.pending_anchor
+			.as_ref()
+			.map(|pending| &pending.target)
+			.and_then(markview_document::AnchorId::fragment),
+		Some("intro")
+	);
 	let next = tabs.request(crate::test_support::options(), false).unwrap();
 	assert_eq!(next.version, request.version + 1);
 	assert_eq!(next.path, PathBuf::from("b.md"));
@@ -275,7 +287,14 @@ fn empty_page_keeps_parked_sessions_available_to_background_updates() {
 	);
 	assert!(tabs.select(0, now));
 	assert_eq!(tabs.session.path, Some("renamed.md".into()));
-	assert_eq!(tabs.session.pending_anchor.as_deref(), Some("heading"));
+	assert_eq!(
+		tabs.session
+			.pending_anchor
+			.as_ref()
+			.map(|pending| &pending.target)
+			.and_then(markview_document::AnchorId::fragment),
+		Some("heading")
+	);
 }
 
 #[test]
@@ -341,4 +360,97 @@ fn ctrl_shift_tab_reverses_and_unvisited_background_tabs_close_the_cycle() {
 	assert_eq!(tabs.session.path, Some(PathBuf::from("c.md")));
 	tabs.commit_cycle();
 	assert_eq!(tabs.recent_order().len(), 3);
+}
+
+#[test]
+fn web_tab_labels_never_expose_the_synthetic_path() {
+	let mut tabs = Tabs::default();
+	let now = Instant::now();
+	let url = "https://example.org/blog/post";
+	tabs.open(crate::app::web_page::web_path(url), now);
+	tabs.session.security = crate::security::Security::web(url.to_owned());
+	assert_eq!(tabs.label(0), "example.org");
+	assert!(!tabs.label(0).contains("web:"));
+	assert_eq!(
+		tabs.card_labels(0),
+		("example.org".to_owned(), url.to_owned())
+	);
+	tabs.set_title(0, "Article".into());
+	assert_eq!(tabs.label(0), "Article");
+	assert_eq!(tabs.card_labels(0).0, "Article");
+}
+
+#[test]
+fn the_strip_and_the_drawer_read_the_same_titles() {
+	// Both surfaces share one rule, so the only thing that may differ between
+	// them is which session they call active.
+	let mut tabs = Tabs::default();
+	let now = Instant::now();
+	let url = "https://example.org/blog/post";
+	tabs.open(PathBuf::from("local.md"), now);
+	tabs.open(crate::app::web_page::web_path(url), now);
+	tabs.open_background(PathBuf::from("background.md"), None);
+	// The active tab's session lives outside its entry, so a label read from
+	// the entry alone would show the synthetic web path.
+	tabs.session.security = crate::security::Security::web(url.to_owned());
+	tabs.set_title(1, "Article".into());
+	let labels = tabs.labels();
+	let strip = crate::app::tab_strip::TabStrip::default();
+	let view = crate::app::chrome::SessionView::new(
+		&tabs.session,
+		tabs.entries(),
+		tabs.active(),
+		&strip,
+		&[],
+		&labels,
+		None,
+		None,
+	);
+	assert_eq!(
+		view.labels(),
+		["local.md", "Article", "background.md"].map(str::to_owned)
+	);
+	assert_eq!(view.labels(), labels);
+	assert_eq!(view.label(3), "");
+}
+
+#[test]
+fn the_strip_and_its_metrics_measure_the_readable_label() {
+	let mut tabs = Tabs::default();
+	let url = "https://example.org/blog/post";
+	tabs.open(crate::app::web_page::web_path(url), Instant::now());
+	tabs.session.security = crate::security::Security::web(url.to_owned());
+	// The page title has not arrived yet, so the fallback path decides.
+	assert_eq!(tabs.entries()[0].page_title, None);
+	assert_eq!(tabs.labels(), ["example.org"]);
+	let mut ui = crate::test_support::shaper();
+	let mut measured = crate::app::tab_metrics::TabMetrics::default();
+	measured.sync(&mut ui, &tabs.labels());
+	let mut readable = crate::app::tab_metrics::TabMetrics::default();
+	readable.sync(&mut ui, &["example.org".to_owned()]);
+	assert_eq!(measured.widths, readable.widths);
+}
+
+#[test]
+fn only_local_tabs_offer_a_path_to_the_file_catalog() {
+	let mut tabs = Tabs::default();
+	let now = Instant::now();
+	tabs.open(PathBuf::from("local.md"), now);
+	let url = "https://example.org/blog/post";
+	tabs.open(crate::app::web_page::web_path(url), now);
+	tabs.session.security = crate::security::Security::web(url.to_owned());
+	assert_eq!(
+		tabs.local_paths().collect::<Vec<_>>(),
+		[std::path::Path::new("local.md")]
+	);
+	// A background local tab stays in the catalogue while a web tab is active.
+	tabs.open(PathBuf::from("second.md"), now);
+	assert!(tabs.select(0, now));
+	assert_eq!(
+		tabs.local_paths().collect::<Vec<_>>(),
+		[
+			std::path::Path::new("local.md"),
+			std::path::Path::new("second.md")
+		]
+	);
 }

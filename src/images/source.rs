@@ -1,7 +1,7 @@
 //! Source resolution and bounded reads; independent of decoding and scheduling.
 use anyhow::{Context, Result, bail};
 use base64::Engine;
-use markview_layout::image::ImageBase;
+use markview_layout::image::{ImageSource, ResourceBase, ResourceRef};
 use std::{
 	fs,
 	io::Read,
@@ -15,41 +15,98 @@ pub(super) enum Source {
 	File(PathBuf),
 	Http(String),
 	Data(String),
-	/// Mermaid diagram source, rendered locally instead of fetched.
-	Diagram(String),
+	/// Diagram source, rendered locally instead of fetched.
+	Diagram {
+		language: String,
+		source: String,
+	},
+}
+
+/// The application cache key for one semantic source.
+pub(super) fn key(
+	source: &ImageSource,
+	document: &Path,
+	workspace: Option<&Path>,
+	security: &crate::security::Security,
+) -> String {
+	match source {
+		ImageSource::Diagram(diagram) => format!(
+			"diagram:{}:{:x}",
+			diagram.language,
+			crate::document::fingerprint(&diagram.source)
+		),
+		ImageSource::Resource(resource) => {
+			let prefix = match resource.base {
+				ResourceBase::Document => "",
+				ResourceBase::Vault => "vault:",
+			};
+			let mut key = format!("{prefix}{}", resource.address);
+			if !matches!(
+				security.origin,
+				crate::security::Origin::Local(crate::security::Trust::Trusted)
+			) {
+				let base = match resource.base {
+					ResourceBase::Document => document,
+					ResourceBase::Vault => workspace
+						.or_else(|| document.parent())
+						.unwrap_or(document),
+				};
+				key.push('#');
+				key.push_str(&format!(
+					"{:x}",
+					crate::document::fingerprint(&(base, security.cache_key()))
+				));
+			}
+			key
+		}
+	}
 }
 
 #[cfg(test)]
 pub(super) fn source(src: &str, document: &Path) -> Result<Source> {
-	resolve(
-		src,
+	resolve_resource(
+		&ResourceRef::document(src),
 		document,
+		None,
 		&crate::security::Security::local(crate::security::Trust::Trusted),
 	)
 }
 
 #[cfg(test)]
-pub(super) fn resolve(
+pub(super) fn resolve_at(
 	src: &str,
 	document: &Path,
 	security: &crate::security::Security,
 ) -> Result<Source> {
-	resolve_in(src, ImageBase::Document, document, None, security)
+	resolve_resource(&ResourceRef::document(src), document, None, security)
 }
 
-pub(super) fn resolve_in(
-	src: &str,
-	base: ImageBase,
+pub(super) fn resolve(
+	source: &ImageSource,
 	document: &Path,
 	workspace: Option<&Path>,
 	security: &crate::security::Security,
 ) -> Result<Source> {
+	match source {
+		ImageSource::Diagram(diagram) => Ok(Source::Diagram {
+			language: diagram.language.clone(),
+			source: diagram.source.clone(),
+		}),
+		ImageSource::Resource(resource) => {
+			resolve_resource(resource, document, workspace, security)
+		}
+	}
+}
+
+fn resolve_resource(
+	resource: &ResourceRef,
+	document: &Path,
+	workspace: Option<&Path>,
+	security: &crate::security::Security,
+) -> Result<Source> {
+	let src = resource.address.as_str();
 	if src.is_empty() {
 		bail!("Missing image source");
-	}
-	if let Some(code) = src.strip_prefix(markview_layout::image::MERMAID_SCHEME)
-	{
-		return Ok(Source::Diagram(code.to_owned()));
 	}
 	if let Ok(url) = url::Url::parse(src) {
 		return match url.scheme() {
@@ -84,11 +141,11 @@ pub(super) fn resolve_in(
 	if rooted(path) {
 		bail!("Absolute image paths are not allowed");
 	}
-	let base = match base {
-		ImageBase::Vault => workspace
+	let base = match resource.base {
+		ResourceBase::Vault => workspace
 			.or_else(|| document.parent())
 			.unwrap_or(Path::new(".")),
-		ImageBase::Document => document.parent().unwrap_or(Path::new(".")),
+		ResourceBase::Document => document.parent().unwrap_or(Path::new(".")),
 	};
 	let path = base.join(path);
 	let path = fs::canonicalize(&path).unwrap_or(path);
@@ -152,8 +209,11 @@ pub(super) fn fetch(
 			unreachable!("HTTP sources are read by the I/O service")
 		}
 		// The rendered SVG feeds the same rasterizer as an SVG file.
-		Source::Diagram(code) => {
-			Ok(super::diagram::svg(code, theme)?.as_bytes().to_vec())
+		Source::Diagram { language, source } => {
+			if language != "mermaid" {
+				bail!("Unsupported diagram language: {language}");
+			}
+			Ok(super::diagram::svg(source, theme)?.as_bytes().to_vec())
 		}
 		Source::Data(uri) => {
 			let (header, data) =

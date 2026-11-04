@@ -1,51 +1,89 @@
 //! Semantic image sources, before resource loading or layout.
-use std::borrow::Cow;
 
-/// Prefix that marks an image source as a Mermaid diagram rather than a path
-/// or URL. The scheduler strips it and renders the remainder as diagram source.
-pub const MERMAID_SCHEME: &str = "mermaid:";
-
-/// Prefix that keeps a vault-resolved image from colliding with a
-/// document-relative image that spells the same source.
-const VAULT_KEY_PREFIX: &str = "vault:";
-
-/// The directory a relative image source resolves against.
+/// The directory a relative resource address resolves against.
 #[derive(Clone, Copy, Debug, Default, Hash, PartialEq, Eq)]
-pub enum ImageBase {
-	/// The directory of the Markdown document that contains the image.
+pub enum ResourceBase {
+	/// The directory of the document that contains the resource.
 	#[default]
 	Document,
 	/// The open folder's root, as an Obsidian vault embed expects.
 	Vault,
 }
 
+/// One address together with the base it resolves against.
+#[derive(Clone, Debug, Hash, PartialEq, Eq)]
+pub struct ResourceRef {
+	pub address: String,
+	pub base: ResourceBase,
+}
+
+impl ResourceRef {
+	pub fn document(address: impl Into<String>) -> Self {
+		Self {
+			address: address.into(),
+			base: ResourceBase::Document,
+		}
+	}
+
+	pub fn vault(address: impl Into<String>) -> Self {
+		Self {
+			address: address.into(),
+			base: ResourceBase::Vault,
+		}
+	}
+}
+
+/// A diagram language and its source, rendered by an application renderer.
+#[derive(Clone, Debug, Hash, PartialEq, Eq)]
+pub struct Diagram {
+	pub language: String,
+	pub source: String,
+}
+
+/// What an image displays: a resource address or diagram source.
+#[derive(Clone, Debug, Hash, PartialEq, Eq)]
+pub enum ImageSource {
+	Resource(ResourceRef),
+	Diagram(Diagram),
+}
+
+impl ImageSource {
+	pub fn resource(&self) -> Option<&ResourceRef> {
+		match self {
+			Self::Resource(resource) => Some(resource),
+			Self::Diagram(_) => None,
+		}
+	}
+
+	pub fn diagram(&self) -> Option<&Diagram> {
+		match self {
+			Self::Diagram(diagram) => Some(diagram),
+			Self::Resource(_) => None,
+		}
+	}
+}
+
 /// One Markdown or HTML image as the document sees it, before any I/O.
 #[derive(Clone, Debug, Hash, PartialEq, Eq)]
 pub struct ImageSpec {
-	pub src: String,
+	pub source: ImageSource,
 	pub alt: String,
 	pub title: String,
 	/// Explicit `width` / `height` attributes; `None` keeps the aspect ratio.
 	pub width: Option<u32>,
 	pub height: Option<u32>,
-	/// The directory a relative `src` resolves against.
-	pub base: ImageBase,
 }
 
 impl ImageSpec {
-	/// The resource key for snapshot entries, pixel aliases and draw commands.
-	pub fn resource_key(&self) -> Cow<'_, str> {
-		match self.base {
-			ImageBase::Document => Cow::Borrowed(&self.src),
-			ImageBase::Vault => {
-				Cow::Owned(format!("{VAULT_KEY_PREFIX}{}", self.src))
-			}
+	pub fn resource(&self) -> Option<&ResourceRef> {
+		self.source.resource()
+	}
+
+	/// The resource address, or a diagram's source text.
+	pub fn address(&self) -> &str {
+		match &self.source {
+			ImageSource::Resource(resource) => &resource.address,
+			ImageSource::Diagram(diagram) => &diagram.source,
 		}
 	}
-}
-
-/// The image source for a Mermaid fence's code, so a diagram travels through
-/// the image scheduler like any other source.
-pub fn mermaid_source(code: &str) -> String {
-	format!("{MERMAID_SCHEME}{code}")
 }

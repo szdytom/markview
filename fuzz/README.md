@@ -17,10 +17,10 @@ a tree against an independent scan of the same bytes.
 ### G1 — parsing and document structure
 
 - **`parse`** — looks for a panic, an overflow, a budget overrun, or a source
-  range that is unordered or out of bounds. How: one input goes through the full
-  parse, `assert_source_ranges`, the outline / `details_enclosing` / image
-  walks, four prefix cuts, `parse_incremental` and `reparse`, all under one
-  `InputGuard`.
+  range that is unordered, out of bounds or off a character boundary. How: one
+  input goes through the full parse, `assert_source_ranges`, the outline /
+  `details_enclosing` / image walks, four prefix cuts, `parse_incremental` and
+  `reparse`, all under one `InputGuard`.
 - **`reparse`** — looks for the incremental fast path disagreeing with a full
   parse after a deterministic edit. How: both documents are fingerprinted
   *recursively* — every nested block's range and every inline's kind, style and
@@ -41,7 +41,8 @@ a tree against an independent scan of the same bytes.
 - **`sourcepos_content`** — looks for a range that is ordered and in bounds yet
   still not a real place for the node that stores it. How: a containment walk
   (nested block inside its parent, inline inside its block, cell inline inside
-  the table) plus "a block that reports reading text owns a non-empty range".
+  the table) through the separate `SourceMap`; reading blocks must have a
+  mapping, including legitimate zero-width mappings.
 - **`details_structure`** — looks for the `<details>` tree disagreeing with the
   tags the source wrote. How: the disclosure chain is rebuilt from the tree and
   compared with `Document::details_enclosing`, and every element's declared
@@ -49,8 +50,8 @@ a tree against an independent scan of the same bytes.
 - **`anchors`** — looks for a fragment jump that is unreachable or lands on the
   wrong block. How: `seam::fragment_targets` rebuilds the registry of every
   target the tree declares — a raw-HTML `id`/`name` on a block or inline, a
-  heading slug, a footnote's `fn:` and `fnref:` — with the disclosure chain
-  framing each one. The target then demands that `details_enclosing` names that
+  heading slug, typed footnote definitions and distinct reference occurrences —
+  with the disclosure chain framing each one. The target then demands that `details_enclosing` names that
   chain, that expanding it makes the name resolvable, that the first block a
   jump reaches is the block declaring the name first (with the reader's own
   toggles, the first declaration the source left open), that the layout invents
@@ -167,15 +168,17 @@ a tree against an independent scan of the same bytes.
   the targets share. `document` fingerprints the whole block tree —
   nested blocks' source ranges and every inline's kind, style and range —
   so a reparse that shifts a nested range is caught even when the reading
-  text is unchanged. `assert_source_ranges` walks the document and demands
-  every range be ordered and in bounds; `assert_prefix_consistent` is the
-  `prefix` target's differential (a prefix may truncate its last block, but
-  no earlier one may differ, and the last must stay the same construct).
-  Character boundaries are deliberately not asserted: a `<details>` body and
-  the blocks its closing block spills to the top level are parsed as
-  snippets, so their ranges are snippet-relative by construction. Layout
-  options **pin the committed test fonts** (`crates/markview-layout/tests/fonts`),
-  never the host's font set, so snapshots compare equal across machines.
+  text is unchanged. `assert_source_ranges` demands the contract
+  `SourceMap::validate` states — every range ordered, in bounds and on a
+  character boundary, with every semantic offset inside its field — which
+  holds for a re-parsed `<details>` body too, because a snippet's offsets are
+  remapped onto the document's. `inline_source` wraps the inline lookup so a
+  run with reading text that lost its range cannot fingerprint as an empty
+  `0..0`. `assert_prefix_consistent` is the `prefix` target's differential (a
+  prefix may truncate its last block, but no earlier one may differ, and the
+  last must stay the same construct). Layout options **pin the committed test
+  fonts** (`crates/markview-layout/tests/fonts`), never the host's font set,
+  so snapshots compare equal across machines.
   Font content fingerprints are memoized by blob identity within a comparison;
   only the content fingerprint enters the digest, keeping worker identities
   irrelevant without rehashing a whole font for every glyph.

@@ -135,8 +135,10 @@ pub struct PageItem {
 #[derive(Clone, Debug, Default)]
 pub struct Pagination {
 	pub pages: Vec<Vec<PageItem>>,
-	/// Heading anchor to the page and page-local y (layout pixels) it names.
+	/// HTML fragment destinations, in page and page-local layout pixels.
 	pub anchors: HashMap<String, (usize, f32)>,
+	/// Typed internal destinations, including footnote anchors.
+	pub targets: HashMap<markview_document::AnchorId, (usize, f32)>,
 }
 
 /// Adds one drawn line to the band list, joining the line it sits in or
@@ -264,7 +266,7 @@ fn needs(bands: &[Band]) -> Vec<f32> {
 /// until it fits, so no cell is silently cut off.
 fn table_scale(block: Option<&Block>, layout: &BlockLayout) -> f32 {
 	let width = block
-		.map(|block| matches!(block.kind, BlockKind::Table { .. }))
+		.map(|block| matches!(block.kind(), BlockKind::Table { .. }))
 		.unwrap_or(false);
 	if !width {
 		return 1.0;
@@ -281,7 +283,7 @@ fn table_scale(block: Option<&Block>, layout: &BlockLayout) -> f32 {
 /// scaled to the page rather than cut.
 fn only_image(block: Option<&Block>) -> bool {
 	block
-		.map(|block| match &block.kind {
+		.map(|block| match &block.kind() {
 			BlockKind::Paragraph(rich) => {
 				let mut images = 0;
 				for inline in rich {
@@ -320,14 +322,16 @@ fn prepare(
 		scale = MIN_SCALE;
 	}
 	if scale < 1.0 {
-		let at = block.map(|block| block.source.start).unwrap_or_default();
+		let at = block
+			.map(|block| block.id().to_string())
+			.unwrap_or_default();
 		log::warn!(
-			"Page: block at byte {at} scaled to {:.0}% to fit the page",
+			"Page: block {at} scaled to {:.0}% to fit the page",
 			scale * 100.0
 		);
 		if scale < READABLE_SCALE {
 			log::warn!(
-				"Page: block at byte {at} is below the readable size after scaling; \
+				"Page: block {at} is below the readable size after scaling; \
 				 split or restyle the source to print it"
 			);
 		}
@@ -344,7 +348,7 @@ fn prepare(
 		need,
 		scale,
 		keep_with_next: block
-			.map(|block| matches!(block.kind, BlockKind::Heading { .. }))
+			.map(|block| matches!(block.kind(), BlockKind::Heading { .. }))
 			.unwrap_or(false),
 	}
 }
@@ -401,7 +405,7 @@ pub fn paginate(
 		.iter()
 		.enumerate()
 		.map(|(index, placed)| {
-			prepare(document.blocks.get(index), &placed.layout, content)
+			prepare(document.blocks().get(index), &placed.layout, content)
 		})
 		.collect();
 	let mut pages: Vec<Vec<PageItem>> = Vec::new();
@@ -501,8 +505,12 @@ pub fn paginate(
 	// A fragment knows whether it opens or closes its block, which is what
 	// decides where a container paints its edges.
 	mark_fragment_edges(&mut pages, &prepared);
-	let anchors = collect_anchors(snapshot, &prepared, &pages);
-	Pagination { pages, anchors }
+	let (anchors, targets) = collect_anchors(snapshot, &prepared, &pages);
+	Pagination {
+		pages,
+		anchors,
+		targets,
+	}
 }
 
 fn mark_fragment_edges(pages: &mut [Vec<PageItem>], prepared: &[Prepared]) {
@@ -515,13 +523,17 @@ fn mark_fragment_edges(pages: &mut [Vec<PageItem>], prepared: &[Prepared]) {
 	}
 }
 
+/// An anchor's page and page-local y.
+type AnchorPages = HashMap<markview_document::AnchorId, (usize, f32)>;
+
 /// Maps every heading anchor to the page and page-local y a link reaches.
 fn collect_anchors(
 	snapshot: &LayoutSnapshot,
 	prepared: &[Prepared],
 	pages: &[Vec<PageItem>],
-) -> HashMap<String, (usize, f32)> {
+) -> (HashMap<String, (usize, f32)>, AnchorPages) {
 	let mut out = HashMap::new();
+	let mut targets = HashMap::new();
 	for (index, placed) in snapshot.blocks.iter().enumerate() {
 		for anchor in &placed.layout.anchors {
 			// An anchor sits at its container's top edge, which can be above
@@ -552,7 +564,7 @@ fn collect_anchors(
 						})
 					});
 				if let Some(target) = target {
-					out.entry(anchor.anchor.clone()).or_insert(target);
+					record_anchor(&mut out, &mut targets, anchor, target);
 				}
 				continue;
 			}
@@ -566,12 +578,24 @@ fn collect_anchors(
 					+ (prepared[index].bands[band].top
 						- prepared[index].bands[item.bands.start].top)
 						* item.scale;
-				out.entry(anchor.anchor.clone()).or_insert((page, y));
+				record_anchor(&mut out, &mut targets, anchor, (page, y));
 				break;
 			}
 		}
 	}
-	out
+	(out, targets)
+}
+
+fn record_anchor(
+	anchors: &mut HashMap<String, (usize, f32)>,
+	targets: &mut HashMap<markview_document::AnchorId, (usize, f32)>,
+	anchor: &crate::scene::HeadingAnchor,
+	target: (usize, f32),
+) {
+	if let markview_document::AnchorId::Fragment(fragment) = &anchor.anchor {
+		anchors.entry(fragment.clone()).or_insert(target);
+	}
+	targets.entry(anchor.anchor.clone()).or_insert(target);
 }
 
 /// Re-exported so the painter and the stylesheet validator agree on what a

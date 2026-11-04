@@ -5,6 +5,37 @@ use markview_layout::{
 };
 use std::sync::Arc;
 
+fn first_footnote_reference(
+	doc: &document::Document,
+) -> document::FootnoteReference {
+	let mut found = None;
+	for block in doc.blocks() {
+		let mut enclosing = Vec::new();
+		document::visit_fields(
+			block,
+			&mut enclosing,
+			&|| false,
+			&mut |_, _, field, _| {
+				if found.is_some() {
+					return;
+				}
+				if let document::FieldText::Rich(text) = field {
+					found = text.iter().find_map(|inline| match &inline.kind {
+						document::InlineKind::FootnoteRef(reference) => {
+							Some(reference.clone())
+						}
+						_ => None,
+					});
+				}
+			},
+		);
+		if found.is_some() {
+			break;
+		}
+	}
+	found.expect("a footnote reference")
+}
+
 fn test_options() -> LayoutOptions {
 	LayoutOptions {
 		fonts: FontConfig {
@@ -37,7 +68,7 @@ fn target_after_an_image_and_newline_resolves() {
 		let doc = markview_commonmark::parse(source);
 		let baseline =
 			markview_commonmark::parse(source.replace(" id='a'", ""));
-		let BlockKind::Paragraph(rich) = &doc.blocks[0].kind else {
+		let BlockKind::Paragraph(rich) = doc.blocks()[0].kind() else {
 			panic!("expected a paragraph");
 		};
 		assert!(rich.iter().all(|inline| {
@@ -46,6 +77,12 @@ fn target_after_an_image_and_newline_resolves() {
 		for loaded in [false, true] {
 			let mut images = ImageSnapshot::default();
 			if loaded {
+				images.keys.insert(
+					markview_layout::image::ImageSource::Resource(
+						markview_layout::image::ResourceRef::document(""),
+					),
+					String::new(),
+				);
 				images.entries.insert(
 					String::new(),
 					ImageInfo {
@@ -142,23 +179,36 @@ fn targets_inside_nested_details_report_the_disclosures_to_expand() {
 #[test]
 fn a_footnote_reference_hidden_by_details_reports_its_disclosure() {
 	// The definition is hoisted out of the body, so only the reference sits
-	// under the disclosure and only `fnref:<number>` names it.
+	// under the disclosure.
 	let doc = markview_commonmark::parse(
 		"<details><summary>S</summary>\n\nText[^f]\n\n</details>\n\n[^f]: note\n",
 	);
-	let enclosing = doc.details_enclosing("fnref:1");
+	use document::AnchorId;
+	let reference = first_footnote_reference(&doc);
+	let reference_anchor = AnchorId::FootnoteReference {
+		definition: reference.definition.clone(),
+		occurrence: reference.occurrence,
+	};
+	let definition_anchor =
+		AnchorId::FootnoteDefinition(reference.definition.clone());
+	let enclosing = doc.details_enclosing(reference_anchor.clone());
 	assert_eq!(enclosing.len(), 1);
-	assert!(doc.details_enclosing("fn:1").is_empty());
+	assert!(doc.details_enclosing(definition_anchor).is_empty());
 	let mut engine = LayoutEngine::new();
 	let collapsed = engine.layout(&doc, &test_options());
-	assert!(collapsed.anchor_y("fnref:1").is_none());
+	assert!(collapsed.anchor_target_y(&reference_anchor).is_none());
 	let options = LayoutOptions {
 		details_open: Arc::new(
 			enclosing.into_iter().map(|id| (id, true)).collect(),
 		),
 		..test_options()
 	};
-	assert!(engine.layout(&doc, &options).anchor_y("fnref:1").is_some());
+	assert!(
+		engine
+			.layout(&doc, &options)
+			.anchor_target_y(&reference_anchor)
+			.is_some()
+	);
 }
 
 #[test]
@@ -293,7 +343,7 @@ fn invisible_targets_preserve_normalized_whitespace() {
 		assert!(layout.anchor_y("target").is_some(), "{source}");
 	}
 	let doc = markview_commonmark::parse("<p>one <a id='target'></a> two</p>");
-	let document::BlockKind::Paragraph(text) = &doc.blocks[0].kind else {
+	let document::BlockKind::Paragraph(text) = doc.blocks()[0].kind() else {
 		panic!("expected paragraph")
 	};
 	assert_eq!(document::plain_text(text), "one two");
@@ -382,7 +432,7 @@ fn standalone_and_additional_summaries_keep_their_element_targets() {
 		let layout = LayoutEngine::new().layout(&doc, &options);
 		assert!(layout.anchor_y("target").is_some(), "{source}");
 		let mut code = Vec::new();
-		for block in &doc.blocks {
+		for block in doc.blocks() {
 			block.code_blocks(&mut code);
 		}
 		assert!(
@@ -646,7 +696,7 @@ fn opaque_html_edits_match_full_parses() {
 				Arc::from(changed.clone()),
 			);
 			let full = markview_commonmark::parse(changed);
-			assert_eq!(reparsed.content_id, full.content_id, "{tag}");
+			assert_eq!(reparsed.content_key(), full.content_key(), "{tag}");
 			let mut engine = LayoutEngine::new();
 			let options = test_options();
 			let updated = engine.layout(&reparsed, &options);
@@ -682,7 +732,8 @@ fn image_alt_html_does_not_change_document_targets() {
 		assert!(layout.anchor_y("alt").is_none(), "{tag}");
 		assert!(layout.anchor_y("after").is_some(), "{tag}");
 		assert!(layout.anchor_y("later").is_some(), "{tag}");
-		let document::BlockKind::Paragraph(text) = &doc.blocks[0].kind else {
+		let document::BlockKind::Paragraph(text) = doc.blocks()[0].kind()
+		else {
 			panic!("expected paragraph")
 		};
 		assert!(text.iter().any(|i| matches!(&i.kind, document::InlineKind::Image(image) if image.alt == format!("<{tag} id='alt'>"))));
@@ -1005,33 +1056,34 @@ fn svg_snippets_preserve_original_opaque_extents() {
 }
 
 #[test]
-fn footnote_targets_win_collisions_with_descendants() {
+fn real_html_fragment_does_not_hijack_a_footnote_target() {
+	use document::AnchorId;
 	use markview_layout::paginate::{PageGeometry, paginate};
 	let source = "Text[^a]\n\n[^a]: First<br>second<a id='fn:1'></a>";
 	let doc = markview_commonmark::parse(source);
 	let baseline = markview_commonmark::parse(source.replace(" id='fn:1'", ""));
+	let reference = first_footnote_reference(&doc);
+	let definition = AnchorId::FootnoteDefinition(reference.definition.clone());
 	let mut engine = LayoutEngine::new();
 	let options = test_options();
 	let layout = engine.layout(&doc, &options);
 	let plain = engine.layout(&baseline, &options);
-	assert_eq!(layout.anchor_y("fn:1"), plain.anchor_y("fn:1"));
-	let targets: Vec<_> = layout
-		.blocks
-		.iter()
-		.flat_map(|b| &b.layout.anchors)
-		.filter(|a| a.anchor == "fn:1")
-		.collect();
-	assert_eq!(targets.len(), 2);
-	assert!(targets[0].y < targets[1].y);
+	// The real `id="fn:1"` is an HTML fragment, while the definition is a
+	// typed target with its own identity.
+	assert!(layout.anchor_y("fn:1").is_some());
+	assert!(plain.anchor_y("fn:1").is_none());
+	assert!(layout.anchor_target_y(&definition).is_some());
+	assert!(plain.anchor_target_y(&definition).is_some());
 	let geometry = PageGeometry {
 		width_pt: 595.,
 		height_pt: 842.,
 		margin_pt: [40.; 4],
 	};
-	assert_eq!(
-		paginate(&doc, &layout, &geometry).anchors["fn:1"],
-		paginate(&baseline, &plain, &geometry).anchors["fn:1"]
-	);
+	let pages = paginate(&doc, &layout, &geometry);
+	let plain_pages = paginate(&baseline, &plain, &geometry);
+	assert!(pages.anchors.contains_key("fn:1"));
+	assert!(!plain_pages.anchors.contains_key("fn:1"));
+	assert_eq!(pages.targets[&definition], plain_pages.targets[&definition]);
 }
 
 #[test]

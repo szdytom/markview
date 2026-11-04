@@ -41,6 +41,8 @@ EXCEPTIONS = {
     "crates/markview-web/src/lib.rs": {
         'target_arch = "wasm32"', 'not(target_arch = "wasm32"), allow(dead_code)',
     },
+    # Benchmark metadata records the layout feature used by the executable.
+    "examples/webpage_bench.rs": {'feature = "parallel-layout"'},
     # Pixel baselines use the Linux software renderer.
     "crates/markview-render/tests/golden.rs": {'target_os = "linux"'},
 }

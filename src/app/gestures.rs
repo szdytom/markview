@@ -24,7 +24,7 @@ enum Tap {
 	Command(Command),
 	Widget(markview_ui_core::WidgetId),
 	Input(TextField),
-	Link(String),
+	Link(markview_layout::scene::LinkTarget),
 	Image(String),
 	CloseViewer,
 	CloseQuickOpen,
@@ -170,7 +170,7 @@ impl<P: super::SendEvent> App<P> {
 		if !self.view_geometry().clip().contains(x, y) {
 			return None;
 		}
-		if let Some(link) = self.link_at(x, y) {
+		if let Some(link) = self.link_target_at(x, y) {
 			return Some(Tap::Link(link));
 		}
 		if let Some((src, _)) = self.image_at_cursor() {
@@ -353,7 +353,7 @@ impl<P: super::SendEvent> App<P> {
 		let capture = if markview_platform::client_resize()
 			&& self.gestures.gesture.contacts.is_empty()
 		{
-			self.tab_metrics.sync(&mut self.ui, self.readers.entries());
+			self.tab_metrics.sync(&mut self.ui, &self.readers.labels());
 			let layout = self.frame_layout();
 			let direction = layout.resize_at(point.0, point.1);
 			if direction.is_some() || layout.draggable(point.0, point.1) {
@@ -456,7 +456,7 @@ impl<P: super::SendEvent> App<P> {
 				None
 			}
 			Some(Tap::Link(link)) => {
-				self.open_link(&link, false);
+				self.open_link_target(&link, false);
 				None
 			}
 			Some(Tap::Image(_)) => {

@@ -98,8 +98,11 @@ impl BlockContext<'_> {
 			// plain means highlighting cannot affect font selection, shaping,
 			// line breaking, or any geometry used by selection.
 			let spans = [Span {
+				link: None,
 				range: 0..line.len(),
 				style: TextStyle::default(),
+				math_error: false,
+				footnote_ref: false,
 			}];
 			let clusters = self.shaper.shape(&line, &spans, size, false);
 			let (line_ascent, line_descent) = if clusters.is_empty() {

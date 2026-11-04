@@ -326,8 +326,8 @@ mod tests {
 				..Default::default()
 			},
 			blocks: vec![PlacedBlock {
-				id: 0,
-				source: 0..0,
+				id: markview_layout::document::BlockId::new(1).unwrap(),
+				content: Default::default(),
 				y: 0.,
 				flow: Arc::new(layout.resolve_flow(&Default::default(), false)),
 				layout,

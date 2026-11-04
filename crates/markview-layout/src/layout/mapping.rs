@@ -17,7 +17,7 @@ pub(super) struct Prepared {
 	pub(super) link_ids: Vec<Option<LinkId>>,
 	/// Every inline link occurrence the paragraph prepares, in reading order,
 	/// including runs that line breaking discards.
-	pub(super) link_occurrences: Vec<usize>,
+	pub(super) link_occurrences: Vec<markview_document::LinkOccurrenceId>,
 	/// The inline code chip padding for each span, in logical pixels, in the
 	/// canonical top, right, bottom, left order.
 	pub(super) padding: Vec<[f32; 4]>,
@@ -25,7 +25,11 @@ pub(super) struct Prepared {
 	/// Footnote references by the offset of their first digit, each with the
 	/// offset just past its last one and its link occurrence, so a link covers
 	/// every digit.
-	pub(super) notes: BTreeMap<usize, (u32, usize, LinkId)>,
+	pub(super) notes:
+		BTreeMap<usize, (markview_document::FootnoteReference, usize, LinkId)>,
+	/// A lone reference's whole `[n]` span, keyed by its start.
+	pub(super) note_spans:
+		BTreeMap<usize, markview_document::FootnoteReference>,
 	/// The text offsets of the forced breaks that asked to be justified.
 	pub(super) breaks: BTreeSet<usize>,
 }
@@ -34,10 +38,13 @@ impl Prepared {
 	/// The reference whose digits cover `offset`, and whether `offset` is their
 	/// first one. Only the first digit registers the return anchor; every digit
 	/// stays part of the link.
-	pub(super) fn note_at(&self, offset: usize) -> Option<(u32, bool)> {
-		let (&start, &(number, end, _)) =
+	pub(super) fn note_at(
+		&self,
+		offset: usize,
+	) -> Option<(&markview_document::FootnoteReference, bool)> {
+		let (&start, (reference, end, _)) =
 			self.notes.range(..=offset).next_back()?;
-		(offset < end).then_some((number, offset == start))
+		(offset < *end).then_some((reference, offset == start))
 	}
 
 	/// The link occurrence covering `offset`, if any. `span` is the index of

@@ -31,7 +31,7 @@
 //!    page map, and the map invents nothing.
 #![no_main]
 
-use std::{collections::BTreeMap, sync::Arc};
+use std::{collections::HashMap, sync::Arc};
 
 use libfuzzer_sys::{fuzz_mutator, fuzz_target};
 use markview_layout::{
@@ -46,11 +46,13 @@ fuzz_mutator! { |data: &mut [u8], size: usize, max_size: usize, seed: u32| {
 
 /// The first block that resolves each name, so a name's position can be read
 /// off a layout.
-fn layout_targets(snapshot: &LayoutSnapshot) -> BTreeMap<String, usize> {
-	let mut out = BTreeMap::new();
+fn layout_targets(
+	snapshot: &LayoutSnapshot,
+) -> HashMap<markview_document::AnchorId, usize> {
+	let mut out = HashMap::new();
 	for (index, block) in snapshot.blocks.iter().enumerate() {
 		for (anchor, _) in block.anchor_positions() {
-			out.entry(anchor.to_owned()).or_insert(index);
+			out.entry(anchor.clone()).or_insert(index);
 		}
 	}
 	out
@@ -76,10 +78,15 @@ fuzz_target!(|data: &[u8]| {
 	oracle::assert_source_ranges(&doc);
 
 	let targets = seam::fragment_targets(&doc);
-	let mut by_name: BTreeMap<&str, Vec<&seam::FragmentTarget>> =
-		BTreeMap::new();
+	let mut by_name: HashMap<
+		markview_document::AnchorId,
+		Vec<&seam::FragmentTarget>,
+	> = HashMap::new();
 	for target in &targets {
-		by_name.entry(&target.name).or_default().push(target);
+		by_name
+			.entry(target.anchor.clone())
+			.or_default()
+			.push(target);
 	}
 
 	// The reader starts with no `<details>` toggled, so a fresh document shows
@@ -112,7 +119,7 @@ fuzz_target!(|data: &[u8]| {
 	// 2. Expanding exactly those chains must make every target resolvable.
 	for name in by_name.keys() {
 		assert!(
-			opened.anchor_y(name).is_some(),
+			opened.anchor_target_y(name).is_some(),
 			"{name:?} is declared but unreachable with its disclosure chain \
 			 expanded"
 		);
@@ -123,19 +130,21 @@ fuzz_target!(|data: &[u8]| {
 	// these options select) hides the front-matter label, a nested block, so a
 	// top-level block is never dropped.
 	assert_eq!(
-		doc.blocks.len(),
+		doc.blocks().len(),
 		base.blocks.len(),
 		"the layout placed {} of the tree's {} top-level blocks",
 		base.blocks.len(),
-		doc.blocks.len()
+		doc.blocks().len()
 	);
 	for (index, (tree, placed)) in
-		doc.blocks.iter().zip(&base.blocks).enumerate()
+		doc.blocks().iter().zip(&base.blocks).enumerate()
 	{
 		assert_eq!(
-			tree.id, placed.id,
+			tree.id(),
+			placed.id,
 			"top-level block {index} is not the tree's ({:#x} vs {:#x})",
-			tree.id, placed.id
+			tree.id().get(),
+			placed.id.get()
 		);
 	}
 
@@ -146,11 +155,11 @@ fuzz_target!(|data: &[u8]| {
 	//    untouched, it is the first declaration whose chain is open.
 	for (name, list) in &by_name {
 		assert_eq!(
-			opened_at.get(*name).copied(),
+			opened_at.get(name).copied(),
 			Some(list[0].block),
 			"{name:?} reaches block {:?} with everything expanded, but the \
 			 tree declares it first in block {}",
-			opened_at.get(*name),
+			opened_at.get(name),
 			list[0].block
 		);
 		let visible = list.iter().find(|target| {
@@ -160,11 +169,11 @@ fuzz_target!(|data: &[u8]| {
 				.all(|id| doc.details_declared(*id) == Some(true))
 		});
 		assert_eq!(
-			base_at.get(*name).copied(),
+			base_at.get(name).copied(),
 			visible.map(|target| target.block),
 			"{name:?} reaches block {:?} untouched, the source leaves the \
 			 first open declaration in block {:?}",
-			base_at.get(*name),
+			base_at.get(name),
 			visible.map(|target| target.block)
 		);
 	}
@@ -172,7 +181,7 @@ fuzz_target!(|data: &[u8]| {
 	// 4. No anchor may come from anywhere but the tree.
 	for name in base_at.keys() {
 		assert!(
-			by_name.contains_key(name.as_str()),
+			by_name.contains_key(name),
 			"the layout resolves {name:?}, which the tree never declares"
 		);
 	}
@@ -206,12 +215,12 @@ fuzz_target!(|data: &[u8]| {
 	if pages.pages.iter().any(|page| !page.is_empty()) {
 		for name in base_at.keys() {
 			assert!(
-				pages.anchors.contains_key(name),
+				pages.targets.contains_key(name),
 				"{name:?} has a layout position but no page"
 			);
 		}
 	}
-	for name in pages.anchors.keys() {
+	for name in pages.targets.keys() {
 		assert!(
 			base_at.contains_key(name),
 			"the page map resolves {name:?}, which no block anchors"

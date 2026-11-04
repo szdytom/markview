@@ -180,7 +180,7 @@ fn lock_ownership_setting_linkage_debounce_and_shutdown_save() {
 fn damaged_and_future_sessions_are_ignored_and_reset_clears_session() {
 	let dir = tempfile::tempdir().unwrap();
 	let path = dir.path().join("session.json");
-	for bytes in ["broken", r#"{"version":2,"active":0,"tabs":[]}"#] {
+	for bytes in ["broken", r#"{"version":3,"active":0,"tabs":[]}"#] {
 		fs::write(&path, bytes).unwrap();
 		let mut app = app(dir.path());
 		primary(&mut app);
@@ -191,13 +191,75 @@ fn damaged_and_future_sessions_are_ignored_and_reset_clears_session() {
 	}
 }
 
+#[test]
+fn a_version_one_session_keeps_its_tab_and_scroll_fallback() {
+	let dir = tempfile::tempdir().unwrap();
+	let path = document(dir.path(), "legacy.md");
+	let session_path = dir.path().join("session.json");
+	fs::write(
+		&session_path,
+		serde_json::json!({
+			"version": 1,
+			"active": 0,
+			"tabs": [{
+				"path": path.clone(),
+				"reading": {
+					"content": 9,
+					"position": {
+						"content": 7,
+						"occurrence": 2,
+						"node": 5,
+						"byte": 31,
+						"local": 12.5,
+						"fallback": 345.0
+					},
+					"details": {"42": true}
+				},
+				"search": {
+					"open": true,
+					"query": "needle",
+					"case_sensitive": true,
+					"whole_word": false
+				}
+			}],
+			"recent": [0]
+		})
+		.to_string(),
+	)
+	.unwrap();
+	let session = Session::read(&session_path).unwrap();
+	assert_eq!(session.version, 4);
+	assert_eq!(session.tabs.len(), 1);
+	let tab = &session.tabs[0];
+	// Version 1 stored source-derived identities that the semantic kernel no
+	// longer defines: the migration drops those structure fields and the
+	// collapse ids, and keeps the tab, its search and its scroll fallback.
+	assert_eq!(tab.reading.position.fallback, 345.0);
+	assert_eq!(tab.reading.position.input, 0);
+	assert_eq!(tab.reading.position.frontend, 0);
+	assert!(tab.reading.position.path.is_empty());
+	assert_eq!(tab.reading.position.field, None);
+	assert_eq!(tab.reading.position.byte, 0);
+	assert_eq!(tab.reading.position.local, 0.0);
+	assert!(tab.reading.details.0.is_empty());
+	assert_eq!(tab.search.query, "needle");
+	let mut tabs = Tabs::default();
+	tabs.restore_session(session);
+	assert_eq!(tabs.session.path.as_ref(), Some(&path));
+	let restored = tabs.session.saved_reading.as_ref().unwrap();
+	assert_eq!(restored.position.fallback, 345.0);
+	assert_eq!(restored.position.field, None);
+}
+
 fn accept(
 	session: &mut ReaderSession,
 	source: &str,
 	options: &LayoutOptions,
 	complete: bool,
 ) {
-	let doc = Arc::new(markview_commonmark::parse(source));
+	let doc = crate::loaded::LoadedDocument::markdown(Arc::new(
+		markview_commonmark::parse(source),
+	));
 	let mut layout = LayoutEngine::new().layout(&doc, options);
 	if !complete {
 		layout.blocks.truncate(2);
@@ -288,7 +350,10 @@ fn text_position_survives_width_font_changes_progressive_layout_and_release() {
 		assert!(restored.saved_reading.is_some());
 		accept(&mut restored, &source, &options, true);
 		assert!(restored.saved_reading.is_none());
-		let target = saved.position.resolve(&restored.snapshot).unwrap();
+		let target = saved
+			.position
+			.resolve(&restored.snapshot, restored.document.as_deref())
+			.unwrap();
 		assert!((restored.scrolling.offset - target).abs() < 0.01);
 		assert!(restored.scrolling.offset > original.scrolling.offset);
 	}
@@ -315,15 +380,17 @@ fn disclosures_apply_before_layout_and_changed_content_discards_overrides() {
 		fn exit(&self) {}
 	}
 	let source = "<details>\n<summary>Summary</summary>\n\nHidden paragraph.\n\n</details>\n\nFollowing paragraph.";
-	let parsed = Arc::new(markview_commonmark::parse(source));
+	let parsed = crate::loaded::LoadedDocument::markdown(Arc::new(
+		markview_commonmark::parse(source),
+	));
 	let id = parsed
-		.blocks
+		.blocks()
 		.iter()
-		.find(|b| matches!(b.kind, BlockKind::Details { .. }))
+		.find(|b| matches!(b.kind(), BlockKind::Details { .. }))
 		.unwrap()
-		.id;
+		.id();
 	let mut original = ReaderSession {
-		accepted_content_id: parsed.content_id,
+		accepted_content_id: parsed.document().content_key().get(),
 		details_open: Arc::new(BTreeMap::from([(id, true)])),
 		..Default::default()
 	};
@@ -348,6 +415,11 @@ fn disclosures_apply_before_layout_and_changed_content_discards_overrides() {
 		}],
 		recent: Vec::new(),
 	});
+	assert!(tabs.session.details_open.is_empty());
+	let loaded = crate::loaded::LoadedDocument::markdown(Arc::new(
+		markview_commonmark::parse(source),
+	));
+	assert!(tabs.session.restore_disclosures(&loaded));
 	assert_eq!(tabs.session.details_open.get(&id), Some(&true));
 	let mut restored_options = crate::test_support::options();
 	restored_options.details_open = tabs.session.details_open.clone();
@@ -369,7 +441,9 @@ fn disclosures_apply_before_layout_and_changed_content_discards_overrides() {
 		Event::Parsed {
 			path,
 			content_version: app.readers.session.content_version,
-			document: Arc::new(markview_commonmark::parse("Changed content.")),
+			document: crate::loaded::LoadedDocument::markdown(Arc::new(
+				markview_commonmark::parse("Changed content."),
+			)),
 		},
 	);
 	assert!(app.readers.session.details_open.is_empty());
@@ -392,11 +466,24 @@ fn repeated_blocks_restore_the_correct_occurrence() {
 	let mut session = ReaderSession::default();
 	accept(&mut session, source, &options, true);
 	session.scrolling.offset = session.snapshot.blocks[2].y;
-	let position =
-		Position::capture(&session.snapshot, session.scrolling.offset);
-	assert_eq!(position.occurrence, 2);
+	let position = Position::capture(
+		&session.snapshot,
+		session.document.as_deref(),
+		session.scrolling.offset,
+	);
+	// The structural path selects the third identical paragraph.
+	let expected = session
+		.document
+		.as_deref()
+		.unwrap()
+		.path_of(session.snapshot.blocks[2].id)
+		.unwrap();
 	assert_eq!(
-		position.resolve(&session.snapshot),
+		position.path,
+		expected.iter().map(|i| *i as u32).collect::<Vec<_>>()
+	);
+	assert_eq!(
+		position.resolve(&session.snapshot, session.document.as_deref()),
 		Some(session.scrolling.offset)
 	);
 }
@@ -407,8 +494,11 @@ fn pending_positions_keep_current_disclosure_choices() {
 		saved_reading: Some(Reading::default()),
 		..Default::default()
 	};
-	session.details_open = Arc::new(BTreeMap::from([(42, true)]));
-	assert_eq!(Reading::capture(&session).details.get(&42), Some(&true));
+	session.details_open = Arc::new(BTreeMap::from([(
+		markview_document::BlockId::new(42).unwrap(),
+		true,
+	)]));
+	assert!(Reading::capture(&session).details.0.is_empty());
 }
 
 #[test]
@@ -490,7 +580,7 @@ fn block_relative_and_text_positions_roundtrip_without_shifting() {
 	{
 		session.scrolling.offset = scroll;
 		let saved = Reading::capture(&session);
-		assert_eq!(saved.position.node.is_some(), text_anchor);
+		assert_eq!(saved.position.field.is_some(), text_anchor);
 		let saved: Reading =
 			serde_json::from_slice(&serde_json::to_vec(&saved).unwrap())
 				.unwrap();
@@ -678,4 +768,46 @@ fn recent_order_and_each_tabs_search_state_roundtrip() {
 	assert_eq!(saved.tabs[1].search.query, "second");
 	restored.close_tab(restored.readers.active());
 	assert_eq!(restored.readers.session.path, Some(b));
+}
+
+#[test]
+fn restored_web_tabs_carry_a_readable_label() {
+	// The strip and its metrics read `page_title`, so a restored web tab that
+	// is not fetched until selected must already have one.
+	let dir = tempfile::tempdir().unwrap();
+	let mut app = app(dir.path());
+	let urls = [
+		"https://example.org/blog/post",
+		"https://news.example.com/story",
+	];
+	let tabs = urls
+		.iter()
+		.map(|url| SavedTab {
+			origin: crate::security::Origin::Web((*url).to_owned()),
+			path: PathBuf::from("web-page"),
+			reading: Reading::default(),
+			search: SavedSearch::default(),
+		})
+		.collect();
+	app.readers.restore_session(Session {
+		folder: None,
+		folder_open: false,
+		version: 2,
+		active: 0,
+		tabs,
+		recent: vec![0, 1],
+	});
+	assert_eq!(app.readers.entries().len(), 2);
+	assert_eq!(
+		app.readers.entries()[0].page_title.as_deref(),
+		Some("example.org")
+	);
+	assert_eq!(
+		app.readers.entries()[1].page_title.as_deref(),
+		Some("news.example.com")
+	);
+	for index in 0..2 {
+		let label = app.readers.label(index);
+		assert!(!label.contains("web:"));
+	}
 }

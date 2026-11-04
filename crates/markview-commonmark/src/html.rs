@@ -84,7 +84,7 @@ pub struct Span {
 /// nest. Keeping the tags instead made every run carry a snapshot that grew
 /// with the nesting depth. The link is shared so that copying the state — once
 /// per run and once per open tag — never copies the URL.
-#[derive(Clone, Debug, Default, PartialEq, Eq)]
+#[derive(Clone, Debug, Default)]
 pub struct Style {
 	pub bold: bool,
 	pub italic: bool,
@@ -94,6 +94,36 @@ pub struct Style {
 	pub subscript: bool,
 	pub mark: bool,
 	pub link: Option<crate::document::Link>,
+}
+
+impl PartialEq for Style {
+	fn eq(&self, other: &Self) -> bool {
+		self.bold == other.bold
+			&& self.italic == other.italic
+			&& self.strike == other.strike
+			&& self.code == other.code
+			&& self.superscript == other.superscript
+			&& self.subscript == other.subscript
+			&& self.mark == other.mark
+			&& match (&self.link, &other.link) {
+				(Some(a), Some(b)) => a.same_address(b),
+				(None, None) => true,
+				_ => false,
+			}
+	}
+}
+
+impl Eq for Style {}
+
+impl Style {
+	/// Whether both runs carry the same link occurrence, if any.
+	fn shares_link_occurrence(&self, other: &Self) -> bool {
+		match (&self.link, &other.link) {
+			(Some(a), Some(b)) => a.same_occurrence(b),
+			(None, None) => true,
+			_ => false,
+		}
+	}
 }
 
 impl Style {
@@ -107,8 +137,7 @@ impl Style {
 			Patch::Subscript => self.subscript = true,
 			Patch::Mark => self.mark = true,
 			Patch::Link(url) => {
-				self.link =
-					Some(crate::document::Link::new(url.as_str(), origin))
+				self.link = Some(crate::rich::source_link(url.as_str(), origin))
 			}
 			Patch::None => {}
 		}
@@ -599,12 +628,15 @@ fn classify(fragment: &str, ofm: bool) -> Tag {
 				.filter(|v| *v > 0)
 		};
 		return Tag::Image(crate::image::ImageSpec {
-			src: attribute(attrs, "src").unwrap_or_default(),
+			source: crate::image::ImageSource::Resource(
+				crate::image::ResourceRef::document(
+					attribute(attrs, "src").unwrap_or_default(),
+				),
+			),
 			alt: attribute(attrs, "alt").unwrap_or_default(),
 			title: attribute(attrs, "title").unwrap_or_default(),
 			width: dimension("width"),
 			height: dimension("height"),
-			base: crate::image::ImageBase::Document,
 		});
 	}
 	if let Some(patch) = patch(&name, attrs, ofm) {
@@ -863,17 +895,18 @@ pub(crate) fn svg(source: &str) -> Option<(usize, crate::image::ImageSpec)> {
 	Some((
 		end,
 		crate::image::ImageSpec {
-			src: format!(
-				"data:image/svg+xml,{}",
-				percent_encoding::utf8_percent_encode(
-					&xml,
-					percent_encoding::NON_ALPHANUMERIC
-				)
+			source: crate::image::ImageSource::Resource(
+				crate::image::ResourceRef::document(format!(
+					"data:image/svg+xml,{}",
+					percent_encoding::utf8_percent_encode(
+						&xml,
+						percent_encoding::NON_ALPHANUMERIC
+					)
+				)),
 			),
 			alt: String::new(),
 			title: String::new(),
 			width: attribute(attrs, "width").and_then(|v| v.parse().ok()),
-			base: crate::image::ImageBase::Document,
 			height: attribute(attrs, "height").and_then(|v| v.parse().ok()),
 		},
 	))
@@ -933,6 +966,7 @@ fn push_span(spans: &mut Vec<Span>, text: String, style: &Style) {
 		&& last.image.is_none()
 		&& last.anchor.is_none()
 		&& &last.style == style
+		&& last.style.shares_link_occurrence(style)
 	{
 		let text = if last.text.ends_with(' ') {
 			text.trim_start_matches(' ')
@@ -981,6 +1015,7 @@ fn normalize(spans: Vec<Span>) -> Vec<Span> {
 			&& last.image.is_none()
 			&& last.anchor.is_none()
 			&& last.style == span.style
+			&& last.style.shares_link_occurrence(&span.style)
 		{
 			last.text.push_str(text);
 			merged = true;

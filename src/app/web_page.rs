@@ -1,21 +1,52 @@
-//! Background loading and temporary tabs for experimental web reading.
+//! Background loading and in-memory tabs for web reading.
 use super::{App, Event};
+use crate::loaded::LoadedDocument;
 use std::path::PathBuf;
+use std::sync::Arc;
+
+/// A readable label for a web page: its host when the URL parses, else the URL.
+pub(super) fn web_label(url: &str) -> String {
+	url::Url::parse(url)
+		.ok()
+		.and_then(|url| url.host_str().map(str::to_owned))
+		.unwrap_or_else(|| url.to_owned())
+}
+
+/// The stable session path a web tab uses. It is never written as a file or
+/// watched; the session store keeps it only to identify the tab.
+pub(crate) fn web_path(url: &str) -> PathBuf {
+	let mut path = String::with_capacity(4 + url.len() * 2);
+	path.push_str("web:");
+	for byte in url.bytes() {
+		use std::fmt::Write;
+		let _ = write!(path, "{byte:02x}");
+	}
+	PathBuf::from(path)
+}
 
 impl<P: super::SendEvent> App<P> {
 	pub(super) fn open_web_page(&mut self, url: String) {
+		// A requested URL that redirected before is the same tab as its final
+		// URL, so opening either must not start a duplicate.
+		let url = self.web_pages.alias(&url).unwrap_or(url);
 		let validated = crate::web_page::validate_url(&url);
 		let url = validated.as_ref().map_or(url, ToString::to_string);
-		let title = validated
-			.as_ref()
-			.ok()
-			.and_then(|url| url.host_str())
-			.unwrap_or(&url);
-		let path = if let Some(path) = self.web_pages.get(&url).cloned()
-			&& let Some(index) = self.readers.find_web(&path)
-		{
+		let label = web_label(&url);
+		let path = web_path(&url);
+		if let Some(index) = self.readers.find_web(&path) {
 			self.select_tab(index);
-			if self.readers.session.load_error.is_none() {
+			if self.readers.entries()[index].page_title.is_none() {
+				self.readers.set_title(index, label.clone());
+			}
+			if self.readers.session.load_error.is_none()
+				&& self.readers.session.document.is_some()
+			{
+				if self.readers.session.layout_pending {
+					self.request(false);
+				}
+				return;
+			}
+			if self.readers.session.web_loading {
 				return;
 			}
 			self.readers.session.load_error = None;
@@ -23,23 +54,26 @@ impl<P: super::SendEvent> App<P> {
 			self.readers.session.layout_pending = true;
 			self.watch = None;
 			self.redraw();
-			path
 		} else {
-			let path = self.temporary_path(title);
 			self.open_pending(
 				path.clone(),
 				crate::security::Security::web(url.clone()),
 			);
-			path
-		};
-		self.web_pages.insert(url.clone(), path.clone());
+			self.readers.set_title(self.readers.active(), label);
+		}
+		let generation = self.web_pages.insert(url.clone(), path.clone());
 		if let Err(error) = validated {
-			self.web_page_loaded(url, path, Err(error));
+			self.web_page_loaded(url, path, generation, Err(error));
 			return;
 		}
 		if self.args.offline {
 			let message = self.preferences.values.lang().status_web_offline();
-			self.web_page_loaded(url, path, Err(anyhow::anyhow!(message)));
+			self.web_page_loaded(
+				url,
+				path,
+				generation,
+				Err(anyhow::anyhow!(message)),
+			);
 			return;
 		}
 		let security = self.readers.session.security.clone();
@@ -62,12 +96,13 @@ impl<P: super::SendEvent> App<P> {
 			tokio::select! {
 				biased;
 				_ = cancel.cancelled() => {},
-				result = result => proxy.send(Event::WebLoaded { url, path, result }),
+				result = result => proxy.send(Event::WebLoaded { url, path, generation, result: Box::new(result) }),
 			}
 		}) {
 			self.web_page_loaded(
 				fallback_url,
 				fallback_path,
+				generation,
 				Err(anyhow::anyhow!("Network service closed")),
 			);
 		}
@@ -77,31 +112,44 @@ impl<P: super::SendEvent> App<P> {
 		&mut self,
 		url: String,
 		path: PathBuf,
+		generation: u64,
 		result: anyhow::Result<crate::web_page::Article>,
 	) {
-		if self.web_pages.get(&url) != Some(&path) {
+		if !self.web_pages.matches(&url, &path, generation) {
 			return;
 		}
 		let Some(index) = self.readers.find_web(&path) else {
 			return;
 		};
-		let result = result.and_then(|article| {
-			let markdown = article.markdown;
-			self.readers.session_mut(index).security = article.security;
-			let title = crate::paste::title_for(
-				&markdown,
-				self.preferences.values.lang(),
+		let result = result.map(|article| {
+			let input = article.article.input_fingerprint;
+			let frontend = 100 + markview_webpage::PROFILE_VERSION;
+			let loaded = LoadedDocument::semantic_with_versions(
+				Arc::new(article.article.document),
+				input,
+				frontend,
 			);
-			let loaded_path = self.temporary_path(&title);
-			std::fs::write(&loaded_path, markdown)?;
-			Ok(loaded_path)
+			self.readers
+				.set_title(index, article.article.metadata.title.clone());
+			let final_url = match &article.security.origin {
+				crate::security::Origin::Web(url) => Some(url.clone()),
+				_ => None,
+			};
+			{
+				let session = self.readers.session_mut(index);
+				session.discard_stale_disclosures(input, frontend);
+				session.security = article.security;
+				session.document = Some(loaded.clone());
+				session.web_loading = false;
+				session.content_version += 1;
+				session.layout_pending = true;
+			}
+			self.retarget_web_tab(index, &url, final_url.as_deref(), &path);
+			loaded
 		});
 		self.readers.session_mut(index).web_loading = false;
 		match result {
-			Ok(loaded_path) => {
-				self.readers.rename(index, loaded_path.clone());
-				self.refresh_start_files();
-				self.web_pages.insert(url, loaded_path);
+			Ok(_) => {
 				if index == self.readers.active() {
 					self.observe_document();
 					self.request(false);
@@ -128,5 +176,30 @@ impl<P: super::SendEvent> App<P> {
 			}
 		}
 		self.redraw();
+	}
+
+	/// Keeps a redirected web tab identified by the URL it ended at.
+	///
+	/// The load rewrites the tab's origin to the final URL, so the session path
+	/// and the load record follow it: opening that URL again then selects this
+	/// tab instead of a duplicate, and a restored session computes the same
+	/// path.
+	fn retarget_web_tab(
+		&mut self,
+		index: usize,
+		requested: &str,
+		final_url: Option<&str>,
+		path: &std::path::Path,
+	) {
+		let Some(final_url) = final_url else {
+			return;
+		};
+		let retargeted = web_path(final_url);
+		if retargeted.as_path() == path {
+			return;
+		}
+		self.readers.rename(index, retargeted.clone());
+		self.web_pages
+			.rekey(requested, final_url.to_owned(), retargeted);
 	}
 }

@@ -1,39 +1,29 @@
 //! Bounded parses: reusing the blocks a small edit did not touch, and parsing
 //! only a prefix of a document that is opened for the first time.
 //!
-//! A change confined to one top-level block leaves every other block's bytes
-//! and meaning identical, so only that block needs comrak. The rest is reused
-//! by cloning it and shifting the source ranges of the blocks after the change,
-//! which makes the cost of an edit follow the block it changed rather than the
-//! document. This path only accepts documents whose top-level blocks are leaf
-//! blocks separated by blank lines: lists, quotes, footnotes, fenced, indented
-//! and HTML code, tables and reference definitions can span a blank line or
-//! carry meaning outside the block that holds them, so a document with any of
-//! them takes a full [`super::parse`].
-//!
-//! A prefix can tolerate more, because the complete parse follows and corrects
-//! it: the only constructs a cut cannot leave half-resolved are reference
-//! definitions and footnotes, whose meaning lives outside the block that names
-//! them. A prefix that ends inside a code block or a list simply shows the part
-//! of it that exists.
-use super::{
-	Anchors, Block, BlockKind, Callout, Dialect, Document, RichText,
-	content_identity, plain_text, semantic_key,
+//! Source positions belong to the [`MarkdownParse`]'s map, so reusing a block
+//! no longer shifts anything inside it: the map entries move instead.
+use super::{Anchors, Block, BlockKind, Dialect, MarkdownParse, plain_text};
+use markview_document::{
+	BlockId, BlockSource, DocumentBuilder, DocumentRevision, SourceMap,
+	visit_blocks,
 };
-use std::{ops::Range, sync::Arc};
+use std::{collections::HashSet, ops::Range, sync::Arc};
 
 /// The document that `source` describes, reusing `previous`'s blocks where the
 /// edit did not touch them, or `None` when the change or the document is
 /// outside the fast path and the caller must [`super::parse`] instead.
-///
-/// `dialect` must be the one `previous` was parsed with, or reused blocks and
-/// re-parsed ones would disagree about what the source reads as.
+#[cfg_attr(
+	any(),
+	markview::allow_complexity(
+		reason = "Keep the incremental window, identity reuse, source-map shifting and fallback conditions in one auditable place; each early return is an out-of-fast-path decision."
+	)
+)]
 pub fn parse_incremental(
-	previous: &Document,
+	previous: &MarkdownParse,
 	source: Arc<str>,
 	dialect: Dialect,
-) -> Option<Document> {
-	// A comment edit can change blocks or definitions outside the edit window.
+) -> Option<MarkdownParse> {
 	if [&*previous.source, &*source]
 		.into_iter()
 		.any(|text| comments_need_full_parse(text, dialect))
@@ -42,32 +32,27 @@ pub fn parse_incremental(
 	}
 	if !leaf_only(&previous.source)
 		|| !leaf_only(&source)
-		|| previous.blocks.is_empty()
+		|| previous.document.blocks().is_empty()
 	{
 		return None;
 	}
-	// A block with an empty source range cannot be positioned against the
-	// change window, so the ranges it would be shifted by are untrustworthy;
-	// the full parse is the correct answer.
-	if previous.blocks.iter().any(|block| block.source.is_empty()) {
+	let ranges: Vec<Range<usize>> = previous
+		.document
+		.blocks()
+		.iter()
+		.map(|block| block_range(&previous.map, block.id()))
+		.collect::<Option<Vec<_>>>()?;
+	if ranges.iter().any(Range::is_empty) {
 		return None;
 	}
 	let changed = changed_range(&previous.source, &source);
-
 	let delta = source.len() as isize - previous.source.len() as isize;
-	// The window is the blank-line-delimited groups the change touches, so a
-	// block that merges with its neighbour across the change is re-parsed with
-	// it. Within those bounds `leaf_only` makes the old block boundaries hold.
 	let origin = group_start(&previous.source, changed.start);
 	let end_old =
 		line_end(&previous.source, group_end(&previous.source, changed.end));
 	let end = (end_old as isize + delta) as usize;
-	let first = previous
-		.blocks
-		.partition_point(|block| block.source.end <= origin);
-	let last = previous
-		.blocks
-		.partition_point(|block| block.source.start < end_old);
+	let first = ranges.partition_point(|range| range.end <= origin);
+	let last = ranges.partition_point(|range| range.start < end_old);
 	if first > last
 		|| origin > end
 		|| end > source.len()
@@ -76,89 +61,117 @@ pub fn parse_incremental(
 	{
 		return None;
 	}
-	// The changed window's bytes are replaced; everything before it is
-	// unchanged and everything after it shifted by `delta`.
-	let mut blocks = Vec::with_capacity(previous.blocks.len());
-	blocks.extend(previous.blocks[..first].iter().cloned());
 	let window = &source[origin..end];
-	// The window is parsed as its own document, and a parser drops a BOM only
-	// at the very start of a document. A window opening on a mid-document BOM
-	// would parse its first block shorter than the full parse does, so the
-	// BOM is an out-of-fast-path marker like any other.
-	let replaced = if window.starts_with('\u{feff}') {
-		None
-	} else {
-		Some(super::parse_with(window.to_owned(), dialect).blocks)
-	};
-	let mut replaced = replaced?;
-	for block in &mut replaced {
-		shift(block, origin as isize);
+	if window.starts_with('\u{feff}') {
+		return None;
 	}
-	blocks.append(&mut replaced);
-	for mut block in previous.blocks[last..].iter().cloned() {
-		shift(&mut block, delta);
+	let after = previous
+		.document
+		.blocks()
+		.iter()
+		.flat_map(|block| {
+			let mut ids = Vec::new();
+			visit_blocks(block, &mut |block| ids.push(block.id()));
+			ids
+		})
+		.max();
+	let parsed =
+		super::parse::parse_with_seed(window.to_owned(), dialect, None, after);
+	let mut blocks = Vec::with_capacity(previous.document.blocks().len());
+	let mut map = Vec::new();
+	for block in &previous.document.blocks()[..first] {
+		blocks.push(block.clone());
+		if let Some(entry) = previous.map.block(block.id()) {
+			map.push(entry.clone());
+		}
+	}
+	for block in parsed.document.blocks() {
+		let mut block = block.clone();
+		// The window parsed as its own document, so its link occurrences are
+		// window-local offsets. Move them onto the document's source.
+		super::make::rebase_links(&mut block, &|range| {
+			shift_range(&range, origin as isize)
+		});
 		blocks.push(block);
 	}
+	for entry in parsed.map.blocks() {
+		map.push(shifted(entry, origin as isize));
+	}
+	for block in &previous.document.blocks()[last..] {
+		let mut block = block.clone();
+		// Suffix blocks keep their identity but move on the source, so their
+		// occurrences move with the map.
+		if delta != 0 {
+			super::make::rebase_links(&mut block, &|range| {
+				shift_range(&range, delta)
+			});
+		}
+		let id = block.id();
+		blocks.push(block);
+		if let Some(entry) = previous.map.block(id) {
+			map.push(shifted(entry, delta));
+		}
+	}
 	relabel_headings(&mut blocks);
-	Some(Document {
+	let revision = DocumentRevision::fresh();
+	let document = DocumentBuilder::new(revision).finish(blocks);
+	Some(MarkdownParse {
+		document,
 		source,
-		content_id: content_identity(&blocks),
-		blocks,
+		map: SourceMap::new(revision, map),
+		dialect,
 	})
 }
 
-fn changed_range(previous: &str, source: &str) -> std::ops::Range<usize> {
-	let (old, new) = (previous.as_bytes(), source.as_bytes());
-	// A byte-wise prefix can end inside a UTF-8 character, so pull both ends
-	// back to a character boundary.
-	let mut prefix = common_prefix(old, new);
-	while !previous.is_char_boundary(prefix) {
-		prefix -= 1;
+fn shifted(entry: &BlockSource, delta: isize) -> BlockSource {
+	let mut entry = entry.clone();
+	entry.source = entry.source.as_ref().map(|range| shift_range(range, delta));
+	for field in &mut entry.fields {
+		for span in &mut field.spans {
+			span.source = shift_range(&span.source, delta);
+		}
+		for cover in &mut field.covers {
+			cover.source = shift_range(&cover.source, delta);
+		}
 	}
-	let mut suffix = common_suffix(&old[prefix..], &new[prefix..]);
-	while !previous.is_char_boundary(old.len() - suffix)
-		|| !source.is_char_boundary(new.len() - suffix)
-	{
-		suffix -= 1;
-	}
-	prefix..old.len() - suffix
+	entry
+}
+
+fn shift_range(range: &Range<usize>, delta: isize) -> Range<usize> {
+	let at = |value: usize| (value as isize + delta).max(0) as usize;
+	at(range.start)..at(range.end)
+}
+
+fn block_range(map: &SourceMap, block: BlockId) -> Option<Range<usize>> {
+	map.block(block).and_then(|entry| entry.source.clone())
 }
 
 /// The document `source` describes, reusing `previous`'s untouched blocks when
-/// it can and taking a full parse otherwise. A reader and a one-shot export
-/// share one policy here, so neither can drift from the fast path.
-pub fn reparse(previous: &Document, source: Arc<str>) -> Document {
+/// it can and taking a full parse otherwise.
+pub fn reparse(previous: &MarkdownParse, source: Arc<str>) -> MarkdownParse {
 	reparse_with(previous, source, Dialect::default())
 }
 
-/// [`reparse`] with the dialect named: `dialect` must be the one `previous`
-/// was parsed with.
 pub fn reparse_with(
-	previous: &Document,
+	previous: &MarkdownParse,
 	source: Arc<str>,
 	dialect: Dialect,
-) -> Document {
+) -> MarkdownParse {
 	parse_incremental(previous, source.clone(), dialect)
 		.unwrap_or_else(|| super::parse_with(source, dialect))
 }
 
 /// The blocks at the start of `source` that `bytes` reaches, as a document over
 /// the whole source, or `None` when `bytes` already covers it.
-///
-/// Every block before the cut is exactly the one a full parse would place
-/// there, so a reader can show the opening viewport of a large file without
-/// waiting for the whole parse, and the complete parse reuses their geometry.
-pub fn parse_prefix(source: &Arc<str>, bytes: usize) -> Option<Document> {
+pub fn parse_prefix(source: &Arc<str>, bytes: usize) -> Option<MarkdownParse> {
 	parse_prefix_with(source, bytes, Dialect::default())
 }
 
-/// [`parse_prefix`] in the dialect `dialect` names.
 pub fn parse_prefix_with(
 	source: &Arc<str>,
 	bytes: usize,
 	dialect: Dialect,
-) -> Option<Document> {
-	// A prefix can split a comment or a multiline code span protecting one.
+) -> Option<MarkdownParse> {
 	if comments_need_full_parse(source, dialect) {
 		return None;
 	}
@@ -173,30 +186,18 @@ pub fn parse_prefix_with(
 	if end == 0 {
 		return None;
 	}
-	// The slice must end the line it cuts: a bare list marker with no line
-	// ending parses as a paragraph where the document's own line ends a list
-	// item.
 	let end = line_end(source, end);
 	if unread_footnotes_affect_details(source, end) {
-		// Later references can reserve numbers before a disclosure snippet.
 		return None;
 	}
-	// Front matter is one block however many blank lines it holds, and comrak
-	// only recognizes it once the closing delimiter arrives. A cut inside it
-	// would parse the opening `---` as a thematic break, which the document
-	// never puts there.
 	if let Some(close) = front_matter_close(source)
 		&& end < close
 	{
 		return None;
 	}
-	// A raw HTML block is read to its closing token, not to the cut: without
-	// the token the slice parses to ordinary text where the document has one
-	// block, or none at all.
 	if ends_in_open_html(&source[..end]) {
 		return None;
 	}
-	// An SVG image is atomic even when blank lines split its raw HTML nodes.
 	let mut at = 0;
 	while let Some(open) = source[at..end].find("<svg") {
 		let open = at + open;
@@ -209,17 +210,58 @@ pub fn parse_prefix_with(
 			at = open + 4;
 		}
 	}
-	let mut blocks = prefix_blocks(source, end, dialect);
-	if end < source.len() {
-		// Notes belong after all body content, including the unread suffix.
-		blocks
-			.retain(|block| !matches!(block.kind, BlockKind::Footnote { .. }));
+	let parsed = prefix_blocks(source, end, dialect);
+	let kept: Vec<&Block> = parsed
+		.document
+		.blocks()
+		.iter()
+		.filter(|block| {
+			block_range(&parsed.map, block.id())
+				.is_some_and(|range| range.start < end)
+		})
+		.filter(|block| {
+			end >= source.len()
+				|| !matches!(block.kind(), BlockKind::Footnote { .. })
+		})
+		.collect();
+	// A kept container clones its children, so the map entries of those
+	// children must stay too: keeping only the top-level ids dropped them.
+	let mut keep: HashSet<BlockId> = HashSet::new();
+	for block in &kept {
+		visit_blocks(block, &mut |block| {
+			keep.insert(block.id());
+		});
 	}
-	Some(Document {
+	let blocks: Vec<Block> = kept.into_iter().cloned().collect();
+	let map: Vec<BlockSource> = parsed
+		.map
+		.blocks()
+		.iter()
+		.filter(|entry| keep.contains(&entry.block))
+		.cloned()
+		.collect();
+	let revision = DocumentRevision::fresh();
+	Some(MarkdownParse {
+		document: DocumentBuilder::new(revision).finish(blocks),
 		source: source.clone(),
-		content_id: content_identity(&blocks),
-		blocks,
+		map: SourceMap::new(revision, map),
+		dialect,
 	})
+}
+
+fn changed_range(previous: &str, source: &str) -> Range<usize> {
+	let (old, new) = (previous.as_bytes(), source.as_bytes());
+	let mut prefix = common_prefix(old, new);
+	while !previous.is_char_boundary(prefix) {
+		prefix -= 1;
+	}
+	let mut suffix = common_suffix(&old[prefix..], &new[prefix..]);
+	while !previous.is_char_boundary(old.len() - suffix)
+		|| !source.is_char_boundary(new.len() - suffix)
+	{
+		suffix -= 1;
+	}
+	prefix..old.len() - suffix
 }
 
 fn comments_need_full_parse(source: &str, dialect: Dialect) -> bool {
@@ -236,31 +278,28 @@ fn unread_footnotes_affect_details(source: &str, end: usize) -> bool {
 
 /// The blocks of `source[..end]`, with every reference or note resolved from
 /// the definitions that follow the cut.
-fn prefix_blocks(source: &str, end: usize, dialect: Dialect) -> Vec<Block> {
+fn prefix_blocks(source: &str, end: usize, dialect: Dialect) -> MarkdownParse {
 	let bare = &source[..end];
 	if !bare.contains('[') {
-		return super::parse_with(bare.to_owned(), dialect).blocks;
+		return super::parse_with(bare.to_owned(), dialect);
 	}
 	let definitions = missing_definitions(source, bare);
 	if definitions.is_empty() {
-		return super::parse_with(bare.to_owned(), dialect).blocks;
+		return super::parse_with(bare.to_owned(), dialect);
 	}
 	let mut slice = bare.to_owned();
 	slice.push_str("\n\n");
 	slice.push_str(&definitions);
-	let parsed = super::parse_with(slice, dialect).blocks;
+	let parsed = super::parse_with(slice, dialect);
 	// An open fence or HTML block can swallow the appended text; then only the
 	// bare prefix parses to what the full parse would put there.
-	if parsed
-		.iter()
-		.any(|block| block.source.start < end && block.source.end > end)
-	{
-		return super::parse_with(bare.to_owned(), dialect).blocks;
+	if parsed.document.blocks().iter().any(|block| {
+		block_range(&parsed.map, block.id())
+			.is_some_and(|range| range.start < end && range.end > end)
+	}) {
+		return super::parse_with(bare.to_owned(), dialect);
 	}
 	parsed
-		.into_iter()
-		.filter(|block| block.source.start < end)
-		.collect()
 }
 
 /// The definitions of `source` that `bare` does not already hold.
@@ -731,80 +770,11 @@ fn mask_inline_code(line: &str, masked: &mut String) {
 	}
 }
 
-fn shift_range(range: &mut Range<usize>, delta: isize) {
-	range.start = (range.start as isize + delta) as usize;
-	range.end = (range.end as isize + delta) as usize;
-}
-
-fn shift_rich(ranges: &mut RichText, delta: isize) {
-	for inline in ranges {
-		shift_range(&mut inline.source, delta);
-	}
-}
-
-fn shift_quote(
-	callout: &mut Option<Callout>,
-	blocks: &mut [Block],
-	delta: isize,
-) {
-	if let Some(callout) = callout {
-		shift_rich(&mut callout.title, delta);
-	}
-	for block in blocks {
-		shift(block, delta);
-	}
-}
-
-fn shift(block: &mut Block, delta: isize) {
-	shift_range(&mut block.source, delta);
-	match &mut block.kind {
-		BlockKind::Paragraph(text) | BlockKind::Heading { text, .. } => {
-			shift_rich(text, delta)
-		}
-		BlockKind::Quote { callout, blocks } => {
-			shift_quote(callout, blocks, delta)
-		}
-		BlockKind::Footnote { blocks, .. } => {
-			for block in blocks {
-				shift(block, delta);
-			}
-		}
-		BlockKind::Details {
-			summary, blocks, ..
-		} => {
-			shift_rich(summary, delta);
-			for block in blocks {
-				shift(block, delta);
-			}
-		}
-		BlockKind::FrontMatter { blocks, .. } => {
-			for block in blocks {
-				shift(block, delta);
-			}
-		}
-		BlockKind::List { items, .. } => {
-			for item in items {
-				for block in &mut item.blocks {
-					shift(block, delta);
-				}
-			}
-		}
-		BlockKind::Table { rows, .. } => {
-			for row in rows {
-				for cell in row {
-					shift_rich(cell, delta);
-				}
-			}
-		}
-		BlockKind::Code { .. } | BlockKind::Rule => {}
-	}
-}
-
-/// Assigns heading anchors in final reading order, updating affected caches.
+/// Assigns heading anchors in final reading order.
 pub(super) fn relabel_headings(blocks: &mut [Block]) {
 	fn walk(blocks: &mut [Block], anchors: &mut Anchors) {
 		for block in blocks {
-			match &mut block.kind {
+			match block.kind_mut() {
 				BlockKind::Heading { text, anchor, .. } => {
 					*anchor = anchors.unique(&plain_text(text))
 				}
@@ -819,12 +789,6 @@ pub(super) fn relabel_headings(blocks: &mut [Block]) {
 				}
 				_ => {}
 			}
-			let key = semantic_key(&block.kind);
-			block.content_key = if block.anchors.is_empty() {
-				key
-			} else {
-				super::fingerprint(&(key, &block.anchors))
-			};
 		}
 	}
 	walk(blocks, &mut Anchors::default());

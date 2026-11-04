@@ -43,6 +43,7 @@ members = [
 	"crates/markview-platform",
 	"crates/markview-render",
 	"crates/markview-ui-core",
+	"crates/markview-webpage",
 	"crates/markview-web",
 	"xtask",
 ]
@@ -96,6 +97,10 @@ ratex-layout = "=0.1.15"
 ratex-types = "=0.1.15"
 ratex-font = "=0.1.15"
 ratex-katex-fonts = "=0.1.15"
+# The pinned fork adds the non-serializing `Readability::extract` entry point
+# and re-exports `dom_query`, so both the webpage front end and the benchmark
+# use one versioned DOM API.
+dom_smoothie = "0.19"
 # `ratex-katex-fonts` otherwise reads the build machine's files in debug builds.
 rust-embed = { version = "8.11", features = ["debug-embed"] }
 rfd = "0.16"
@@ -133,8 +138,6 @@ diagnostics = []
 [dependencies]
 markview-commonmark = { path = "crates/markview-commonmark" }
 markview-document = { path = "crates/markview-document" }
-dom_smoothie = "0.19"
-dom_query = "0.29"
 comrak.workspace = true
 unicode-segmentation.workspace = true
 image = { version = "0.25.9", default-features = false, features = ["png", "jpeg", "gif", "webp", "bmp", "ico"] }
@@ -154,6 +157,7 @@ getrandom = { version = "0.4", features = ["std"] }
 toml_edit = { version = "0.25", features = ["serde"] }
 parley.workspace = true
 markview-layout = { path = "crates/markview-layout", features = ["font-directories"] }
+markview-webpage = { path = "crates/markview-webpage" }
 markview-i18n = { path = "crates/markview-i18n" }
 markview-icon = { path = "crates/markview-icon" }
 markview-interaction = { path = "crates/markview-interaction" }
@@ -183,6 +187,9 @@ nucleo-matcher = "0.3.1"
 [dev-dependencies]
 markview-platform = { path = "crates/markview-platform", features = ["test-support"] }
 lopdf = { version = "0.46", default-features = false }
+# `examples/webpage_bench.rs` replays the old Readability-to-Markdown pipeline;
+# production code lowers the processed DOM through `markview-webpage`.
+dom_smoothie.workspace = true
 
 [target.'cfg(target_os = "android")'.dependencies]
 wgpu = { workspace = true, features = ["vulkan", "gles"] }
@@ -213,6 +220,10 @@ name = "markview"
 path = "src/main.rs"
 
 [patch.crates-io]
+# `dom_smoothie` 0.19.0 plus the non-serializing DOM extraction API on the
+# fork's `feat/extract-dom` branch. Remove this patch once a locked upstream
+# release provides the same API; see `docs/developers/webpage-extraction.md`.
+dom_smoothie = { git = "https://github.com/szdytom/dom_smoothie", rev = "66efad3292bedb89d4510da057260ffc9f6d83da" }
 # Android activity destruction must exit the loop and permit its recreation.
 winit = { git = "https://github.com/szdytom/winit", rev = "9299a76998fd8975afb97c5a1d81495845ab8ec8" }
 # Our fork adds `LayoutConfig::metrics`, which lets Markview measure diagram

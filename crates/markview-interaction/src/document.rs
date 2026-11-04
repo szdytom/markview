@@ -2,8 +2,11 @@
 use crate::Point;
 use markview_layout::{
 	layout::LayoutSnapshot,
-	scene::{LinkId, LinkRef, Rect, Scrollbar, ScrollbarMetrics, Viewport},
-	text::TextPosition,
+	scene::{
+		LinkId, LinkRef, LinkTarget, Rect, Scrollbar, ScrollbarMetrics,
+		Viewport,
+	},
+	text::SemanticPosition,
 };
 use std::collections::HashMap;
 
@@ -40,8 +43,9 @@ impl Cursor {
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct HoveredLink {
 	pub url: String,
-	/// The source start of the owning block.
-	pub block: usize,
+	pub target: LinkTarget,
+	/// The identity of the owning block.
+	pub block: markview_layout::document::BlockId,
 	pub id: LinkId,
 }
 
@@ -50,6 +54,7 @@ impl HoveredLink {
 	pub fn link_ref(&self) -> LinkRef<'_> {
 		LinkRef {
 			url: &self.url,
+			target: &self.target,
 			block: self.block,
 			id: self.id,
 		}
@@ -66,7 +71,7 @@ impl DocumentInteraction<'_> {
 	pub fn contains(&self, point: Point) -> bool {
 		self.viewport.clip().contains(point.x, point.y)
 	}
-	pub fn position(&self, point: Point) -> Option<TextPosition> {
+	pub fn position(&self, point: Point) -> Option<SemanticPosition> {
 		let (x, y) = self.viewport.document_point(point.x, point.y);
 		self.snapshot
 			.hit_test_text(x, y, self.horizontal, self.revision)
@@ -200,6 +205,7 @@ impl DocumentInteraction<'_> {
 		}
 		let link = self.link_ref(point).map(|link| HoveredLink {
 			url: link.url.to_owned(),
+			target: link.target.clone(),
 			block: link.block,
 			id: link.id,
 		});

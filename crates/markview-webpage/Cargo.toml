@@ -1,0 +1,16 @@
+[package]
+name = "markview-webpage"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish = false
+
+[dependencies]
+markview-document = { path = "../markview-document" }
+dom_smoothie.workspace = true
+url = "2"
+percent-encoding = "2"
+
+[lints]
+workspace = true

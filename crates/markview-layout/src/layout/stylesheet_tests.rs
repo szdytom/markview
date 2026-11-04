@@ -54,7 +54,7 @@ border_edges = [0, 0, 2, 0]
 			..options.clone()
 		},
 	);
-	assert_eq!(recolored.reused, document.blocks.len());
+	assert_eq!(recolored.reused, document.blocks().len());
 	assert_eq!(first.height, recolored.height);
 	let mut marker = false;
 	for draw in &first.blocks[1].layout.draws {
@@ -157,7 +157,7 @@ fn live_colors_follow_semantics_without_reflow() {
 			..Default::default()
 		},
 	);
-	assert_eq!(second.reused, doc.blocks.len());
+	assert_eq!(second.reused, doc.blocks().len());
 	assert_eq!(first.height, second.height);
 	let glyph = second.blocks[0]
 		.layout

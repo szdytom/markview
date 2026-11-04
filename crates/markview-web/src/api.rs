@@ -11,8 +11,8 @@ use crate::{
 	state::{Published, SelectionLength},
 	stylesheets::Stylesheets,
 };
+use markview_commonmark::MarkdownParse;
 use markview_commonmark::{Dialect, parse_with};
-use markview_document::Document;
 use markview_interaction::{
 	DocumentInteraction, Horizontal, Host, Hover, Modifiers, Point, Scroll,
 	ScrollBounds, Selection, WheelMode, selection_scroll_speed,
@@ -21,7 +21,7 @@ use markview_layout::{
 	fonts::FontConfig,
 	image::Pixels,
 	layout::{LayoutEngine, LayoutOptions, ProgressiveLayout, Viewport},
-	scene::Rect,
+	scene::{LinkTarget, Rect},
 	source::{SourceIndex, SourcePosition, byte_to_utf16, utf16_to_byte},
 	style::{MediaContext, StyleTarget, Stylesheet},
 };
@@ -146,7 +146,11 @@ pub async fn create(
 		published: Published::default(),
 		pointer: Pointer::default(),
 		published_document: document.clone(),
-		source_index: SourceIndex::new(&document),
+		source_index: SourceIndex::new(
+			document.source.clone(),
+			&document.document,
+			&document.map,
+		),
 		source_text: document.source.clone(),
 		document_version: 0,
 		document,
@@ -191,9 +195,9 @@ pub struct Markview {
 	published_stylesheet: Arc<Stylesheet>,
 	published: Published,
 	pointer: Pointer,
-	document: Arc<Document>,
+	document: Arc<MarkdownParse>,
 	/// The document backing the snapshot currently on screen.
-	published_document: Arc<Document>,
+	published_document: Arc<MarkdownParse>,
 	/// The document `begin_update` parsed, until its layout completes.
 	pending: Option<Pending>,
 	images: Images,
@@ -216,8 +220,8 @@ pub struct Markview {
 	images_clickable: bool,
 	pressed_image: Option<(String, Point)>,
 	overflow_drag: Option<(usize, usize, f32)>,
-	pending_anchor: Option<String>,
-	jump_origin: Option<(String, f32)>,
+	pending_anchor: Option<markview_layout::document::AnchorId>,
+	jump_origin: Option<(markview_layout::document::AnchorId, f32)>,
 	parse_ms: f64,
 	layout_ms: f64,
 	frame_ms: f64,
@@ -236,10 +240,17 @@ impl Markview {
 			.as_ref()
 			.and_then(|p| p.parsed.as_ref())
 			.unwrap_or(&self.document);
-		let entries: Vec<_> = document.outline().into_iter().map(|entry| serde_json::json!({
-			"text": entry.text, "level": entry.level, "anchor": entry.anchor,
-			"source": { "start": byte_to_utf16(&document.source, entry.source.start), "end": byte_to_utf16(&document.source, entry.source.end) },
-		})).collect();
+		let entries: Vec<_> = document.outline().into_iter().map(|entry| {
+			let range = document
+				.map
+				.block(entry.block)
+				.and_then(|block| block.source.clone())
+				.unwrap_or(0..0);
+			serde_json::json!({
+				"text": entry.text, "level": entry.level, "anchor": entry.anchor,
+				"source": { "start": byte_to_utf16(&document.source, range.start), "end": byte_to_utf16(&document.source, range.end) },
+			})
+		}).collect();
 		serde_json::json!({ "documentVersion": self.document_version, "entries": entries }).to_string()
 	}
 
@@ -761,17 +772,25 @@ impl Markview {
 		}
 		self.pointer_move(x, y);
 		let point = Point::new(x as f32, y as f32);
-		let link = self.context().link(point).map(str::to_owned);
-		let activated = self.pointer.release(point.x, point.y, link.as_deref());
+		let link = self
+			.context()
+			.link_ref(point)
+			.map(|link| (link.url.to_owned(), link.target.clone()));
+		let activated = self.pointer.release(
+			point.x,
+			point.y,
+			link.as_ref().map(|(_, target)| target),
+		);
 		self.selection_chars.forget();
-		if let Some(link) = activated {
+		if let Some(target) = activated {
 			self.pressed_image = None;
 			let previous_pass =
 				self.pending.as_ref().map(|p| p.layout.pass_id());
-			if self.activate_document_link(&link) {
+			if self.activate_target(&target) {
 				return serde_json::json!({"kind":"document", "reflowed":previous_pass != self.pending.as_ref().map(|p| p.layout.pass_id())}).to_string();
 			}
-			return self.action_json("link", &link);
+			let url = target.display_url();
+			return self.action_json("link", &url);
 		}
 		if let Some((src, _)) = self.pressed_image.take()
 			&& !self.pointer.dragged()
@@ -1086,21 +1105,42 @@ impl Markview {
 		self.clamp_scroll();
 	}
 
+	fn activate_target(&mut self, target: &LinkTarget) -> bool {
+		self.scrolling.cancel();
+		match target {
+			LinkTarget::Url(url) => self.activate_document_link(url),
+			LinkTarget::Disclosure(id) => {
+				let id = *id;
+				let expanded =
+					self.options.details_open.get(&id).copied().unwrap_or_else(
+						|| {
+							self.published_document
+								.details_declared(id)
+								.unwrap_or(false)
+						},
+					);
+				Arc::make_mut(&mut self.options.details_open)
+					.insert(id, !expanded);
+				self.present_disclosures();
+				true
+			}
+			LinkTarget::FootnoteDefinition(id) => {
+				self.goto_anchor(
+					markview_layout::document::AnchorId::FootnoteDefinition(
+						id.clone(),
+					),
+				);
+				true
+			}
+			LinkTarget::FootnoteReturn(id) => {
+				self.return_from_footnote(id);
+				true
+			}
+		}
+	}
+
 	fn activate_document_link(&mut self, link: &str) -> bool {
 		self.scrolling.cancel();
-		if let Some(id) = markview_document::details_id(link) {
-			let expanded =
-				self.options.details_open.get(&id).copied().unwrap_or_else(
-					|| {
-						self.published_document
-							.details_declared(id)
-							.unwrap_or(false)
-					},
-				);
-			Arc::make_mut(&mut self.options.details_open).insert(id, !expanded);
-			self.present_disclosures();
-			return true;
-		}
 		let Some(fragment) = link.strip_prefix('#') else {
 			return false;
 		};
@@ -1111,30 +1151,22 @@ impl Markview {
 			self.set_scroll(0.0);
 			return true;
 		}
-		if let Some(label) = markview_document::footnote::back_label(&fragment)
-		{
-			if let Some((origin, offset)) = &self.jump_origin
-				&& markview_document::footnote::label(origin) == Some(label)
-			{
-				let offset = *offset;
-				self.set_scroll(f64::from(offset));
-				return true;
-			}
-			self.pending_anchor =
-				Some(markview_document::footnote::reference(label));
-		} else {
-			self.jump_origin = Some((fragment.clone(), self.visible_scroll()));
-			self.pending_anchor = Some(fragment);
-		}
+		self.goto_anchor(markview_layout::document::AnchorId::Fragment(
+			fragment,
+		));
+		true
+	}
+
+	fn goto_anchor(&mut self, anchor: markview_layout::document::AnchorId) {
+		self.jump_origin = Some((anchor.clone(), self.visible_scroll()));
+		self.pending_anchor = Some(anchor);
 		// A pending source must become the document before its anchors are inspected.
 		if self.pending.as_ref().is_some_and(|p| p.parsed.is_some()) {
 			self.reflow();
 		}
+		let anchor = self.pending_anchor.clone().unwrap();
 		let mut expanded = false;
-		for id in self
-			.document
-			.details_enclosing(self.pending_anchor.as_deref().unwrap())
-		{
+		for id in self.document.details_enclosing(anchor) {
 			if !self.options.details_open.get(&id).copied().unwrap_or_else(
 				|| self.document.details_declared(id).unwrap_or(false),
 			) {
@@ -1146,10 +1178,48 @@ impl Markview {
 			self.present_disclosures();
 		}
 		self.apply_anchor();
-		true
 	}
+
+	fn return_from_footnote(
+		&mut self,
+		id: &markview_layout::document::FootnoteId,
+	) {
+		if let Some((origin, offset)) = &self.jump_origin
+			&& matches!(
+				origin,
+				markview_layout::document::AnchorId::FootnoteDefinition(note)
+					if note == id
+			) {
+			let offset = *offset;
+			self.pending_anchor = None;
+			self.set_scroll(f64::from(offset));
+			return;
+		}
+		let first = self
+			.published
+			.snapshot
+			.blocks
+			.iter()
+			.flat_map(|block| block.anchor_positions())
+			.find_map(|(anchor, _)| match anchor {
+				markview_layout::document::AnchorId::FootnoteReference {
+					definition,
+					occurrence,
+				} if definition == id => Some(
+					markview_layout::document::AnchorId::FootnoteReference {
+						definition: definition.clone(),
+						occurrence: *occurrence,
+					},
+				),
+				_ => None,
+			});
+		if let Some(first) = first {
+			self.goto_anchor(first);
+		}
+	}
+
 	fn apply_anchor(&mut self) {
-		let Some(anchor) = self.pending_anchor.as_deref() else {
+		let Some(anchor) = self.pending_anchor.clone() else {
 			return;
 		};
 		// Old geometry cannot resolve a target while its replacement is publishing.
@@ -1160,7 +1230,7 @@ impl Markview {
 			) {
 			return;
 		}
-		if let Some(y) = self.published.snapshot.anchor_y(anchor) {
+		if let Some(y) = self.published.snapshot.anchor_target_y(&anchor) {
 			self.scrolling.fit(self.scroll_bounds());
 			self.scrolling.set(y);
 			self.pending_anchor = None;
@@ -1186,9 +1256,13 @@ impl Markview {
 		}
 	}
 
-	fn replace_source(&mut self, document: Arc<Document>) {
+	fn replace_source(&mut self, document: Arc<MarkdownParse>) {
 		self.document_version += 1;
-		self.source_index = SourceIndex::new(&document);
+		self.source_index = SourceIndex::new(
+			document.source.clone(),
+			&document.document,
+			&document.map,
+		);
 		self.source_text = document.source.clone();
 	}
 	fn current_source_geometry(&self) -> bool {
@@ -1331,8 +1405,7 @@ impl Markview {
 				// The prefix of a pass already on screen only adds blocks, so
 				// it is appended rather than copied whole.
 				self.published.extend(prefix, &mut self.pointer);
-				// `extend` only re-stamps the selection, which reads the same
-				// text, so the cached character count still holds here.
+				// Appending geometry preserves the selection and its cached count.
 			} else if prefix.height >= self.scrolling.offset
 				&& self.published.covers_interaction(
 					&document.source,
@@ -1395,7 +1468,7 @@ struct Pending {
 	/// The document `begin_update` parsed, when the pass is over text newer
 	/// than [`Markview::document`] holds. A reflow re-uses the accepted
 	/// document instead, which is why this is optional.
-	parsed: Option<Arc<Document>>,
+	parsed: Option<Arc<MarkdownParse>>,
 	/// The suspended pass. It holds everything the layout needs between calls,
 	/// so a step never re-measures a block an earlier step already laid out.
 	layout: ProgressiveLayout,

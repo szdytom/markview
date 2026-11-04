@@ -124,6 +124,11 @@ pub(crate) struct Span {
 	/// Spans are sorted, non-overlapping byte ranges; gaps inherit the base style.
 	pub(crate) range: Range<usize>,
 	pub(crate) style: TextStyle,
+	pub(crate) link: Option<crate::document::Link>,
+	/// Set when a math run fell back to literal text.
+	pub(crate) math_error: bool,
+	/// Layout derives this from a footnote reference node, not from `style`.
+	pub(crate) footnote_ref: bool,
 }
 #[derive(Clone)]
 pub(crate) struct Cluster {
@@ -719,7 +724,15 @@ impl TextShaper {
 	) -> (parley::Layout<usize>, Vec<TextAppearance>, FaceChoices) {
 		let appearances: Vec<_> = spans
 			.iter()
-			.map(|span| self.stylesheet.inline(base, &span.style))
+			.map(|span| {
+				self.stylesheet.inline_run(
+					base,
+					&span.style,
+					span.math_error,
+					span.footnote_ref,
+					span.link.is_some(),
+				)
+			})
 			.collect();
 		let (base_fonts, span_fonts) =
 			crate::profile::span(crate::profile::Stage::FontResolve, || {

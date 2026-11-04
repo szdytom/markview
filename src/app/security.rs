@@ -45,8 +45,10 @@ impl<P: super::SendEvent> App<P> {
 			return;
 		}
 		self.readers.session.security.grant(resource);
-		if let Some(document) = &self.readers.session.document {
-			self.readers.session.security.bind(&document.source);
+		if let Some(document) = &self.readers.session.document
+			&& let Some(source) = document.source()
+		{
+			self.readers.session.security.bind(source);
 		}
 		match resume {
 			PermissionAction::Images => self.request(false),

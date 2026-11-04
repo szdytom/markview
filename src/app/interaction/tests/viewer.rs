@@ -57,8 +57,15 @@ fn image_reader_like(
 	raster: (u32, u32),
 ) -> App<StubProxy> {
 	let (mut app, document) = reader(source, 760.);
+	let mut images = ImageSnapshot::default();
+	let mut specs = Vec::new();
+	for block in document.blocks() {
+		block.images(&mut specs);
+	}
+	for spec in specs {
+		images.keys.insert(spec.source.clone(), src.into());
+	}
 	if loaded {
-		let mut images = ImageSnapshot::default();
 		images.entries.insert(
 			src.into(),
 			ImageInfo {
@@ -78,12 +85,12 @@ fn image_reader_like(
 					.into(),
 			}),
 		);
-		app.readers.session.snapshot = LayoutEngine::new().layout_with_images(
-			&document,
-			&app.options(),
-			&images,
-		);
 	}
+	app.readers.session.snapshot = LayoutEngine::new().layout_with_images(
+		&document,
+		&app.options(),
+		&images,
+	);
 	let geometry = app.view_geometry();
 	let at = app
 		.readers
@@ -373,7 +380,10 @@ fn loaded_images_without_selectable_text_open_on_click() {
 		("![](a.png)".to_owned(), "a.png".to_owned()),
 		(
 			format!("```mermaid\n{code}```"),
-			markview_layout::image::mermaid_source(code),
+			format!(
+				"diagram:mermaid:{:x}",
+				crate::document::fingerprint(&code)
+			),
 		),
 	] {
 		let mut app = image_reader(&source, &src, true);

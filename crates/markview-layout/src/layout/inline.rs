@@ -23,6 +23,17 @@ const HYPHEN_PENALTY: f64 = 50.0;
 /// ordinary word space or a hyphenation point still wins when one is available.
 pub(super) const CODE_BREAK_PENALTY: f64 = 10.0;
 
+/// What the inline being prepared contributes to its styled run.
+#[derive(Clone, Copy, Default)]
+struct SpanFlags {
+	/// The inline carries text, so it may join the run before it.
+	text: bool,
+	/// The inline before this one carried text.
+	previous_text: bool,
+	/// The run is a footnote reference's label.
+	footnote_ref: bool,
+}
+
 /// Demerits for a hyphenation break, graded by how close it lands to either
 /// edge of the word. A hyphen a character or two from the start or end reads as
 /// a mistake rather than a convenience, so it should be worth avoiding even
@@ -53,6 +64,7 @@ impl BlockContext<'_> {
 			padding: Vec::new(),
 			math: BTreeMap::new(),
 			notes: BTreeMap::new(),
+			note_spans: BTreeMap::new(),
 			breaks: std::collections::BTreeSet::new(),
 		};
 		let mut semantic_offset = 0;
@@ -100,6 +112,7 @@ impl BlockContext<'_> {
 				&mut semantic_offset,
 			);
 			let mut style = inline.style.clone();
+			let mut math_error_span = false;
 			match &inline.kind {
 				InlineKind::Anchor(_) => unreachable!(),
 				InlineKind::Image(image) => {
@@ -108,32 +121,33 @@ impl BlockContext<'_> {
 					p.text.push('\u{fffc}');
 				}
 				InlineKind::Text(t) => p.text.push_str(t),
-				InlineKind::FootnoteRef(n) => {
-					let label = n.to_string();
+				InlineKind::FootnoteRef(reference) => {
+					let label = reference.number.to_string();
 					// The whole label is one link; `notes` carries only the
 					// number's own range, which registers the return anchor.
 					let at = start + 1;
-					let id =
-						style.link.as_ref().map_or(
-							LinkId::Inline(inline.source.start),
-							|link| LinkId::Inline(link.origin()),
-						);
-					p.notes.insert(at, (*n, at + label.len(), id));
+					let id = LinkId::Inline(reference.occurrence);
+					p.notes
+						.insert(at, (reference.clone(), at + label.len(), id));
+					p.note_spans.insert(start, reference.clone());
 					p.text.push('[');
 					p.text.push_str(&label);
 					p.text.push(']');
 				}
-				InlineKind::LineBreak { justify } => {
-					if *justify {
+				InlineKind::LineBreak(kind) => {
+					if *kind == crate::document::LineBreak::Forced {
 						p.breaks.insert(start);
 					}
 					p.text.push('\n');
 				}
 				InlineKind::Math { latex, display } => {
-					let formula = self
-						.shaper
-						.stylesheet
-						.inline(&self.shaper.appearance, &style);
+					let formula = self.shaper.stylesheet.inline_run(
+						&self.shaper.appearance,
+						&style,
+						false,
+						false,
+						inline.link.is_some(),
+					);
 					let fallback =
 						self.shaper.stylesheet.math_fallback(&formula);
 					let laid_out = crate::profile::span(
@@ -158,6 +172,7 @@ impl BlockContext<'_> {
 							p.text.push('\u{fffc}');
 						}
 						Err(error) => {
+							let mut math_error = false;
 							p.text.push_str(latex);
 							// `["error"]` and `["math", "error"]` both apply.
 							let show_error = self
@@ -177,10 +192,11 @@ impl BlockContext<'_> {
 									format!(" [Math error: {error}]");
 								p.reading.push_str(&diagnostic);
 								p.text.push_str(&diagnostic);
-								style.math_error = true;
+								math_error = true;
 							}
 							style.code = true;
 							out.math_errors += 1;
+							math_error_span = math_error;
 						}
 					}
 				}
@@ -197,11 +213,21 @@ impl BlockContext<'_> {
 			self.push_inline_span(
 				&mut p,
 				style,
+				inline.link.clone(),
 				start,
 				size,
-				text,
-				previous_text,
+				SpanFlags {
+					text,
+					previous_text,
+					footnote_ref: matches!(
+						inline.kind,
+						InlineKind::FootnoteRef(_)
+					),
+				},
 			);
+			if math_error_span && let Some(span) = p.spans.last_mut() {
+				span.math_error = true;
+			}
 			previous_text = text;
 			i += 1;
 		}
@@ -227,8 +253,8 @@ impl BlockContext<'_> {
 			),
 			InlineKind::Text(t) => p.reading.push_str(t),
 			InlineKind::Math { latex, .. } => p.reading.push_str(latex),
-			InlineKind::FootnoteRef(n) => {
-				p.reading.push_str(&format!("[{n}]"));
+			InlineKind::FootnoteRef(reference) => {
+				p.reading.push_str(&format!("[{}]", reference.number));
 			}
 			InlineKind::LineBreak { .. } => p.reading.push('\n'),
 		}
@@ -250,25 +276,37 @@ impl BlockContext<'_> {
 		&self,
 		p: &mut Prepared,
 		style: TextStyle,
+		link: Option<crate::document::Link>,
 		start: usize,
 		size: f32,
-		text: bool,
-		previous_text: bool,
+		flags: SpanFlags,
 	) {
+		let SpanFlags {
+			text,
+			previous_text,
+			footnote_ref,
+		} = flags;
 		// Invisible targets do not split a styled text run, but adjacent links
 		// stay separate even when their addresses match.
 		if text
 			&& previous_text
 			&& let Some(last) = p.spans.last_mut()
 			&& last.style == style
-			&& last.style.shares_link_occurrence(&style)
-		{
+			&& match (&last.link, &link) {
+				(Some(a), Some(b)) => a.same_occurrence(b),
+				(None, None) => true,
+				_ => false,
+			} {
 			last.range.end = p.text.len();
+			last.footnote_ref |= footnote_ref;
 		} else {
-			let padding = self.code_padding(&style, size);
+			let padding = self.code_padding(&style, size, link.is_some());
 			p.spans.push(Span {
 				range: start..p.text.len(),
 				style,
+				link,
+				math_error: false,
+				footnote_ref,
 			});
 			p.padding.push(padding);
 		}
@@ -277,12 +315,17 @@ impl BlockContext<'_> {
 	/// The padding an inline code chip adds around its run, in logical pixels
 	/// in the canonical top, right, bottom, left order. Only rules that name
 	/// `code` apply, so a containing block's own padding never reaches a chip.
-	fn code_padding(&self, style: &TextStyle, size: f32) -> [f32; 4] {
+	fn code_padding(
+		&self,
+		style: &TextStyle,
+		size: f32,
+		linked: bool,
+	) -> [f32; 4] {
 		if !style.code {
 			return [0.0; 4];
 		}
 		let mut chain = self.shaper.appearance.chain;
-		for condition in crate::style::text_conditions(style) {
+		for condition in crate::style::text_conditions(style, linked) {
 			chain = crate::style::chain_push(chain, condition);
 		}
 		self.shaper
@@ -456,6 +499,9 @@ impl BlockContext<'_> {
 				(start < end).then(|| Span {
 					range: start - range.start..end - range.start,
 					style: s.style.clone(),
+					link: s.link.clone(),
+					math_error: s.math_error,
+					footnote_ref: s.footnote_ref,
 				})
 			})
 			.collect();
@@ -515,16 +561,15 @@ impl BlockContext<'_> {
 }
 
 /// The link occurrence of each span. Every span of one link, including its
-/// bold, code or image runs, shares the occurrence's source origin; a
+/// bold, code or image runs, shares the occurrence's identity; a
 /// different link starts a new occurrence even when the address is identical.
 fn collect_link_ids(spans: &[Span]) -> Vec<Option<LinkId>> {
 	spans
 		.iter()
 		.map(|span| {
-			span.style
-				.link
+			span.link
 				.as_ref()
-				.map(|link| LinkId::Inline(link.origin()))
+				.map(|link| LinkId::Inline(link.occurrence()))
 		})
 		.collect()
 }
@@ -632,11 +677,7 @@ fn footnote_run(rich: &[Inline], start: usize) -> usize {
 /// Whether two references read alike apart from the note they point at, which
 /// is what lets them share one bracket pair.
 fn same_note_style(a: &TextStyle, b: &TextStyle) -> bool {
-	let clear = |s: &TextStyle| TextStyle {
-		link: None,
-		..s.clone()
-	};
-	clear(a) == clear(b)
+	a == b
 }
 
 /// Draw a run of references as one `[1,2]` group: every number is its own link,
@@ -648,12 +689,12 @@ fn footnote_group(p: &mut Prepared, run: &[Inline]) {
 	p.reading.push('[');
 	let mut first = true;
 	for inline in run {
-		let number = match &inline.kind {
+		let reference = match &inline.kind {
 			InlineKind::Anchor(anchor) => {
 				p.anchors.push((p.text.len(), anchor.clone()));
 				continue;
 			}
-			InlineKind::FootnoteRef(number) => *number,
+			InlineKind::FootnoteRef(reference) => reference,
 			_ => continue,
 		};
 		if !first {
@@ -661,16 +702,11 @@ fn footnote_group(p: &mut Prepared, run: &[Inline]) {
 			p.reading.push(',');
 		}
 		first = false;
-		let label = number.to_string();
+		let label = reference.number.to_string();
 		let at = p.text.len();
-		let id = inline
-			.style
-			.link
-			.as_ref()
-			.map_or(LinkId::Inline(inline.source.start), |link| {
-				LinkId::Inline(link.origin())
-			});
-		p.notes.insert(at, (number, at + label.len(), id));
+		let id = LinkId::Inline(reference.occurrence);
+		p.notes
+			.insert(at, (reference.clone(), at + label.len(), id));
 		p.text.push_str(&label);
 		p.reading.push_str(&label);
 	}
@@ -678,10 +714,10 @@ fn footnote_group(p: &mut Prepared, run: &[Inline]) {
 	p.reading.push(']');
 	p.spans.push(Span {
 		range: start..p.text.len(),
-		style: TextStyle {
-			link: None,
-			..run[0].style.clone()
-		},
+		style: run[0].style.clone(),
+		link: None,
+		math_error: false,
+		footnote_ref: true,
 	});
 }
 
@@ -705,7 +741,7 @@ fn hyphenation_candidates(
 				if word.len() >= 6
 					&& !p.spans.iter().any(|s| {
 						s.range.contains(&start)
-							&& (s.style.code || s.style.link.is_some())
+							&& (s.style.code || s.link.is_some())
 					}) {
 					let mut offset = start;
 					for syllable in

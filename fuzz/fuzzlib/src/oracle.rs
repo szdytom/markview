@@ -11,7 +11,8 @@ use std::{
 	hash::{Hash, Hasher},
 };
 
-use markview_document::{Block, BlockKind, Document, Inline};
+use markview_commonmark::MarkdownParse;
+use markview_document::{Block, BlockKind, Inline};
 use markview_layout::scene::{BlockLayout, Draw, LayoutSnapshot, Rect};
 
 /// A three-way field digest used by the differential targets.
@@ -69,36 +70,64 @@ impl F {
 /// fields a reparse has to shift — a nested block's or an inline's source
 /// range — because `content_key` is position-independent: the reading text
 /// would compare equal while the ranges drifted.
-pub fn document(doc: &Document) -> Fingerprint {
-	fn rich(h: &mut Hashers, text: &[Inline]) {
+pub fn document(doc: &MarkdownParse) -> Fingerprint {
+	fn rich(
+		h: &mut Hashers,
+		doc: &MarkdownParse,
+		block: &Block,
+		text: &[Inline],
+	) {
 		for inline in text {
-			hash3(h, &(&inline.kind, &inline.style, &inline.source));
+			hash3(
+				h,
+				&(
+					&inline.kind,
+					&inline.style,
+					inline
+						.link
+						.as_ref()
+						.map(|link| (link.as_str(), link.occurrence())),
+					inline_source(doc, block, inline),
+				),
+			);
 		}
 	}
-	fn hash_blocks(h: &mut Hashers, list: &[Block]) {
+	fn hash_blocks(h: &mut Hashers, doc: &MarkdownParse, list: &[Block]) {
 		for block in list {
-			hash3(h, &(block.id, &block.source, block.content_key));
-			match &block.kind {
-				BlockKind::Paragraph(text) => rich(h, text),
-				BlockKind::Heading { text, .. } => rich(h, text),
+			hash3(h, &(doc.block_source(block), block.content_key()));
+			match block.kind() {
+				BlockKind::Paragraph(text) => rich(h, doc, block, text),
+				BlockKind::Heading { text, .. } => rich(h, doc, block, text),
 				BlockKind::Quote { blocks, .. }
-				| BlockKind::Footnote { blocks, .. } => hash_blocks(h, blocks),
+				| BlockKind::Footnote { blocks, .. } => hash_blocks(h, doc, blocks),
 				BlockKind::Details {
 					summary, blocks, ..
 				} => {
-					rich(h, summary);
-					hash_blocks(h, blocks);
+					rich(h, doc, block, summary);
+					hash_blocks(h, doc, blocks);
 				}
-				BlockKind::FrontMatter { blocks, .. } => hash_blocks(h, blocks),
+				BlockKind::FrontMatter { blocks, .. }
+				| BlockKind::Figure { blocks, .. } => hash_blocks(h, doc, blocks),
 				BlockKind::List { items, .. } => {
 					for item in items {
-						hash_blocks(h, &item.blocks);
+						hash_blocks(h, doc, &item.blocks);
 					}
 				}
-				BlockKind::Table { rows, .. } => {
-					for row in rows {
-						for cell in row {
-							rich(h, cell);
+				BlockKind::Table(table) => {
+					if let Some(caption) = &table.caption {
+						rich(h, doc, block, caption);
+					}
+					for child in table.cell_blocks() {
+						hash_blocks(h, doc, std::slice::from_ref(child));
+					}
+				}
+				BlockKind::DefinitionList(items) => {
+					for item in items {
+						for terms in &item.terms {
+							rich(h, doc, block, terms);
+						}
+						for blocks in &item.definitions {
+							hash_blocks(h, doc, blocks);
 						}
 					}
 				}
@@ -107,67 +136,55 @@ pub fn document(doc: &Document) -> Fingerprint {
 		}
 	}
 	let mut h = hashers();
-	hash3(&mut h, &doc.content_id);
-	hash_blocks(&mut h, &doc.blocks);
+	hash3(&mut h, &doc.document.content_key());
+	hash_blocks(&mut h, doc, doc.document.blocks());
 	finish(h)
 }
 
-/// Every source range a document carries must be ordered and in bounds, so
-/// that the range addresses its source and a downstream `&source[range]` is
-/// sound.
+/// Every source range a document carries must be ordered, in bounds and on a
+/// character boundary, so that the range addresses its source and a downstream
+/// `&source[range]` is sound.
 ///
-/// The character-boundary half of that contract is deliberately not asserted:
-/// a `<details>` body and the blocks its closing block spills into the top
-/// level are parsed as snippets of their own, so their ranges are relative to
-/// the snippet rather than to the document (the crate's own
-/// `a_details_body_with_a_lone_carriage_return_keeps_its_ranges` pins that).
-/// A byte offset that is off a boundary for *this* source is therefore not a
-/// defect by itself, while an inverted or out-of-range one is.
-pub fn assert_source_ranges(doc: &Document) {
-	fn check(what: &str, r: &std::ops::Range<usize>, len: usize) {
-		assert!(r.start <= r.end, "{what} range is inverted: {r:?}");
-		assert!(
-			r.end <= len,
-			"{what} range {r:?} runs past the {len}-byte source"
-		);
+/// This is [`markview_document::SourceMap::validate`]'s contract, and the
+/// parser keeps it even where a range is derived from a re-parsed snippet:
+/// `<details>` bodies and the blocks a closing tag spills into the top level
+/// are remapped onto document offsets, so an offset off a boundary for *this*
+/// source is a defect rather than an artifact of the snippet.
+///
+/// The Markdown producer records every parsed block, including generated
+/// blocks with no source. A present zero-width range is a valid position.
+pub fn assert_source_ranges(doc: &MarkdownParse) {
+	doc.map
+		.validate(&doc.source, &doc.document)
+		.expect("source map is valid");
+	for block in doc.document.blocks() {
+		markview_document::visit_blocks(block, &mut |block| {
+			assert!(
+				doc.map.block(block.id()).is_some(),
+				"parsed block {} has no source-map record",
+				block.id()
+			);
+		});
 	}
-	fn rich(what: &str, text: &[Inline], len: usize) {
-		for inline in text {
-			check(what, &inline.source, len);
-		}
-	}
-	fn walk(blocks: &[Block], len: usize) {
-		for block in blocks {
-			check("block", &block.source, len);
-			match &block.kind {
-				BlockKind::Paragraph(text) => rich("inline", text, len),
-				BlockKind::Heading { text, .. } => rich("inline", text, len),
-				BlockKind::Quote { blocks, .. }
-				| BlockKind::Footnote { blocks, .. }
-				| BlockKind::FrontMatter { blocks, .. } => walk(blocks, len),
-				BlockKind::Details {
-					summary, blocks, ..
-				} => {
-					rich("summary", summary, len);
-					walk(blocks, len);
-				}
-				BlockKind::List { items, .. } => {
-					for item in items {
-						walk(&item.blocks, len);
-					}
-				}
-				BlockKind::Table { rows, .. } => {
-					for row in rows {
-						for cell in row {
-							rich("cell", cell, len);
-						}
-					}
-				}
-				BlockKind::Code { .. } | BlockKind::Rule => {}
-			}
-		}
-	}
-	walk(&doc.blocks, doc.source.len());
+}
+
+/// The source range of one inline run.
+///
+/// Source-derived oracles require a mapped Markdown inline. Absence is
+/// explicit; a zero-width source position remains valid.
+pub fn inline_source(
+	doc: &MarkdownParse,
+	block: &Block,
+	inline: &Inline,
+) -> std::ops::Range<usize> {
+	let range = doc
+		.inline_source(block, inline)
+		.expect("source-backed Markdown inline");
+	assert!(
+		range.start <= range.end,
+		"inline range {range:?} is inverted"
+	);
+	range
 }
 
 /// A prefix parse must be the opening of the full parse: every block it
@@ -175,38 +192,64 @@ pub fn assert_source_ranges(doc: &Document) {
 /// field for field (id, source range, content key, kind). The last may differ
 /// because it is the block the cut lands inside, which a prefix is allowed to
 /// show up to the cut.
-pub fn assert_prefix_consistent(full: &Document, prefix: &Document) {
+pub fn assert_prefix_consistent(full: &MarkdownParse, prefix: &MarkdownParse) {
 	assert!(
-		prefix.blocks.len() <= full.blocks.len(),
+		prefix.document.blocks().len() <= full.document.blocks().len(),
 		"prefix has {} blocks, the full parse {}",
-		prefix.blocks.len(),
-		full.blocks.len()
+		prefix.document.blocks().len(),
+		full.document.blocks().len()
 	);
-	if prefix.blocks.is_empty() {
+	if prefix.document.blocks().is_empty() {
 		return;
 	}
-	let keep = prefix.blocks.len() - 1;
+	let keep = prefix.document.blocks().len() - 1;
 	for i in 0..keep {
+		let from_prefix = &prefix.document.blocks()[i];
+		let from_full = &full.document.blocks()[i];
 		assert_eq!(
-			prefix.blocks[i], full.blocks[i],
+			prefix.block_source(from_prefix),
+			full.block_source(from_full),
+			"prefix block {i} of {keep} has a different source range than the \
+			 full parse"
+		);
+		assert_eq!(
+			from_prefix.id(),
+			from_full.id(),
+			"prefix block {i} of {keep} has a different id than the full parse"
+		);
+		assert_eq!(
+			from_prefix.content_key(),
+			from_full.content_key(),
+			"prefix block {i} of {keep} has a different content key than the \
+			 full parse"
+		);
+		assert_eq!(
+			kind_tag(from_prefix.kind()),
+			kind_tag(from_full.kind()),
+			"prefix block {i} of {keep} is a different construct than the full \
+			 parse: {:?} versus {:?}",
+			from_prefix.kind(),
+			from_full.kind()
+		);
+		assert_eq!(
+			from_prefix, from_full,
 			"prefix block {i} of {keep} diverges from the full parse"
 		);
 	}
-	// The last block is the one the cut landed inside, so it may be truncated,
-	// but it must still be the same construct the full parse continues: a
-	// prefix that turns a YAML front matter opener into a thematic break, or
-	// a document's only block into a different kind, is not a truncation.
-	if let Some(next) = full.blocks.get(keep)
-		&& prefix.blocks[keep].source.end > next.source.start
-	{
-		assert_eq!(
-			kind_tag(&prefix.blocks[keep].kind),
-			kind_tag(&next.kind),
-			"the prefix's last block is a different construct than the full \
-			 parse puts there: {:?} versus {:?}",
-			prefix.blocks[keep].kind,
-			next.kind
-		);
+	if let Some(next) = full.document.blocks().get(keep) {
+		let last = &prefix.document.blocks()[keep];
+		if prefix.block_source(last).expect("parsed prefix block").end
+			> full.block_source(next).expect("parsed full block").start
+		{
+			assert_eq!(
+				kind_tag(last.kind()),
+				kind_tag(next.kind()),
+				"the prefix's last block is a different construct than the full \
+				 parse puts there: {:?} versus {:?}",
+				last.kind(),
+				next.kind()
+			);
+		}
 	}
 }
 
@@ -224,6 +267,8 @@ fn kind_tag(kind: &BlockKind) -> u8 {
 		BlockKind::Details { .. } => 7,
 		BlockKind::Rule => 8,
 		BlockKind::FrontMatter { .. } => 9,
+		BlockKind::DefinitionList(_) => 10,
+		BlockKind::Figure { .. } => 11,
 	}
 }
 
@@ -247,7 +292,7 @@ pub fn layout(snapshot: &LayoutSnapshot) -> Fingerprint {
 		hash_draw(draw, &mut h);
 	}
 	for block in &snapshot.blocks {
-		hash3(&mut h, &(block.id, &block.source, F::new(block.y)));
+		hash3(&mut h, &(block.id, block.content, F::new(block.y)));
 		block_layout(&block.layout, &mut h);
 	}
 	finish(h)
@@ -624,6 +669,7 @@ pub fn f32_unit(v: u32) -> f32 {
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use std::panic::{AssertUnwindSafe, catch_unwind};
 
 	/// Different seeds must produce at least one different `Limits` field,
 	/// so the degradation paths do not collapse onto one fixed point.
@@ -640,5 +686,77 @@ mod tests {
 	#[test]
 	fn shrunk_limits_uses_high_seed_bits() {
 		assert!(shrunk_limits(u128::MAX).highlight_line_bytes > 64);
+	}
+
+	/// Every block a real parse produces has a mapping record, including
+	/// generated blocks and valid zero-width source positions.
+	#[test]
+	fn every_parsed_block_has_a_source_map_record() {
+		for source in [
+			"| a | b |\n| - | - |\n| c | d |\n",
+			"Term\n\n: definition\n",
+			"> quote\n\n- item\n",
+			"<details><summary>s</summary>body</details>\n",
+			"<details></details>\n",
+			"| | |\n| - | - |\n| | |\n",
+			"![ref]\n\n[ref]: /url\n",
+			"```rust\ncode\n```\n\n---\n",
+			"![img](a.png)\n\n<figure>\n\n![in](b.png)\n\n</figure>\n",
+		] {
+			assert_source_ranges(&markview_commonmark::parse(source));
+		}
+	}
+
+	/// A forgotten Markdown mapping record must remain distinguishable from a
+	/// generated block or a real zero-width source position.
+	#[test]
+	fn an_omitted_block_source_record_is_caught() {
+		let mut doc = markview_commonmark::parse("First.\n\nSecond.\n");
+		assert_source_ranges(&doc);
+		let first = doc.document.blocks()[0].id();
+		let mut blocks = doc.map.blocks().to_vec();
+		blocks.retain(|block| block.block != first);
+		doc.map =
+			markview_document::SourceMap::new(doc.document.revision(), blocks);
+		assert!(
+			catch_unwind(AssertUnwindSafe(|| assert_source_ranges(&doc)))
+				.is_err()
+		);
+	}
+
+	/// `Block` equality ignores ids and source ranges, so the prefix oracle must
+	/// compare them itself: a prefix that shifted a block would otherwise pass.
+	#[test]
+	fn a_shifted_prefix_source_range_is_caught() {
+		let source: std::sync::Arc<str> =
+			std::sync::Arc::from("First.\n\nSecond.\n\nThird.\n");
+		let full = markview_commonmark::parse(&*source);
+		let prefix = markview_commonmark::parse_prefix(&source, 15)
+			.expect("a prefix inside `Second.`");
+		assert!(prefix.document.blocks().len() >= 2);
+		assert_prefix_consistent(&full, &prefix);
+		let first = prefix.document.blocks()[0].id();
+		let mut blocks = prefix.map.blocks().to_vec();
+		let entry = blocks
+			.iter_mut()
+			.find(|block| block.block == first)
+			.expect("the first block has an entry");
+		entry.source = Some(1..entry.source.as_ref().unwrap().end + 1);
+		let spliced = MarkdownParse {
+			document: prefix.document,
+			source: prefix.source,
+			map: markview_document::SourceMap::new(
+				markview_document::DocumentRevision::new(1),
+				blocks,
+			),
+			dialect: prefix.dialect,
+		};
+		let caught = catch_unwind(AssertUnwindSafe(|| {
+			assert_prefix_consistent(&full, &spliced)
+		}));
+		assert!(
+			caught.is_err(),
+			"a prefix with a shifted source range must be caught"
+		);
 	}
 }

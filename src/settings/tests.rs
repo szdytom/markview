@@ -351,7 +351,7 @@ fn dialect_fixture_matrix_covers_independent_hard_breaks() {
 	fn paragraph(
 		doc: &markview_document::Document,
 	) -> &markview_document::RichText {
-		let BlockKind::Paragraph(rich) = &doc.blocks[0].kind else {
+		let BlockKind::Paragraph(rich) = doc.blocks()[0].kind() else {
 			panic!("expected a paragraph");
 		};
 		rich
@@ -368,6 +368,7 @@ fn dialect_fixture_matrix_covers_independent_hard_breaks() {
 				ofm: dialect.ofm,
 			},
 		)
+		.document
 	}
 	fn has_hard_break(rich: &markview_document::RichText) -> bool {
 		rich.iter()

@@ -13,7 +13,7 @@ from unittest.mock import patch
 import numpy as np
 from generate_readme_comparison import SOURCE, draw, measurements
 from generate_readme_images import capture_profile, override_settings
-from generate_readme_showcase import KINDS, SOURCES, compose_credit, extract_web
+from generate_readme_showcase import KINDS, SOURCES, compose_credit
 from PIL import Image, ImageChops
 from readme_fonts import font, save_chart
 from render_typography_comparison import (
@@ -65,22 +65,6 @@ class ReadmeImagesTest(unittest.TestCase):
             with Image.open(target) as chart:
                 self.assertGreater(len(chart.getcolors(100000)), 100)
         plt.close(figure)
-
-    def test_web_previews_replay_the_production_extractor(self):
-        expected = {
-            language: (SOURCES / language / "web-extracted.md").read_text()
-            for language in ("en", "zh")
-        }
-        extract_web()
-        for language in ("en", "zh"):
-            self.assertEqual(
-                (SOURCES / language / "web-extracted.md").read_text(),
-                expected[language],
-            )
-            display = (
-                (SOURCES / language / "web.md").read_text().split("\n\n", 1)[1].strip()
-            )
-            self.assertIn(display, expected[language])
 
     def test_showcase_sources_and_generated_frames(self):
         for language in ("en", "zh"):

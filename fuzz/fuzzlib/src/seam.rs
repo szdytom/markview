@@ -8,8 +8,9 @@
 
 use std::ops::Range;
 
+use markview_commonmark::MarkdownParse;
 use markview_document::{
-	Block, BlockKind, Document, Inline, InlineKind, RichText,
+	AnchorId, Block, BlockId, BlockKind, Inline, InlineKind, RichText,
 };
 
 /// Which line endings a source uses, so a sweep can rebuild the same document
@@ -83,33 +84,54 @@ pub fn quote_depth_at(source: &str, at: usize) -> usize {
 
 /// The raw HTML block literal of an element's opener, when the document's
 /// first block begins with `<details` — the tag scanner's input.
-pub fn raw_opener_block(doc: &Document) -> Option<&str> {
-	doc.blocks.iter().find_map(|block| match &block.kind {
-		BlockKind::Code { language, text } if language == "HTML source" => {
-			text.starts_with("<details").then_some(text.as_str())
-		}
-		_ => None,
-	})
+pub fn raw_opener_block(doc: &MarkdownParse) -> Option<&str> {
+	doc.document
+		.blocks()
+		.iter()
+		.find_map(|block| match block.kind() {
+			BlockKind::Code { language, text } if language == "HTML source" => {
+				text.starts_with("<details").then_some(text.as_str())
+			}
+			_ => None,
+		})
 }
 
-/// Every `<details>` element the document built, as
-/// `(block id, ordinal, source range)`.
-pub fn details_elements(doc: &Document) -> Vec<(u64, u32, Range<usize>)> {
-	fn walk(blocks: &[Block], out: &mut Vec<(u64, u32, Range<usize>)>) {
+/// Every `<details>` element the document built and its source range.
+pub fn details_elements(doc: &MarkdownParse) -> Vec<(BlockId, Range<usize>)> {
+	fn walk(
+		doc: &MarkdownParse,
+		blocks: &[Block],
+		out: &mut Vec<(BlockId, Range<usize>)>,
+	) {
 		for block in blocks {
-			match &block.kind {
-				BlockKind::Details {
-					ordinal, blocks, ..
-				} => {
-					out.push((block.id, *ordinal, block.source.clone()));
-					walk(blocks, out);
+			match block.kind() {
+				BlockKind::Details { blocks, .. } => {
+					out.push((
+						block.id(),
+						doc.block_source(block)
+							.expect("source-backed Markdown block"),
+					));
+					walk(doc, blocks, out);
 				}
 				BlockKind::Quote { blocks, .. }
 				| BlockKind::Footnote { blocks, .. }
-				| BlockKind::FrontMatter { blocks, .. } => walk(blocks, out),
+				| BlockKind::FrontMatter { blocks, .. }
+				| BlockKind::Figure { blocks, .. } => walk(doc, blocks, out),
 				BlockKind::List { items, .. } => {
 					for item in items {
-						walk(&item.blocks, out);
+						walk(doc, &item.blocks, out);
+					}
+				}
+				BlockKind::Table(table) => {
+					for child in table.cell_blocks() {
+						walk(doc, std::slice::from_ref(child), out);
+					}
+				}
+				BlockKind::DefinitionList(items) => {
+					for item in items {
+						for blocks in &item.definitions {
+							walk(doc, blocks, out);
+						}
 					}
 				}
 				_ => {}
@@ -117,47 +139,68 @@ pub fn details_elements(doc: &Document) -> Vec<(u64, u32, Range<usize>)> {
 		}
 	}
 	let mut out = Vec::new();
-	walk(&doc.blocks, &mut out);
+	walk(doc, doc.document.blocks(), &mut out);
 	out
 }
 
-/// Every inline in the tree, in document order, with its kind, source range
-/// and the block range it was stored under.
-pub fn inlines(doc: &Document) -> Vec<(&Inline, &Range<usize>)> {
+/// Every inline in the tree, in document order, with its source range and the
+/// block it was stored under.
+pub fn inlines(doc: &MarkdownParse) -> Vec<(&Inline, Range<usize>)> {
 	fn walk<'a>(
+		doc: &'a MarkdownParse,
 		blocks: &'a [Block],
-		out: &mut Vec<(&'a Inline, &'a Range<usize>)>,
+		out: &mut Vec<(&'a Inline, Range<usize>)>,
 	) {
 		for block in blocks {
-			match &block.kind {
+			match block.kind() {
 				BlockKind::Paragraph(text)
 				| BlockKind::Heading { text, .. } => {
 					for inline in text {
-						out.push((inline, &block.source));
+						out.push((
+							inline,
+							crate::oracle::inline_source(doc, block, inline),
+						));
 					}
 				}
 				BlockKind::Details {
 					summary, blocks, ..
 				} => {
 					for inline in summary {
-						out.push((inline, &block.source));
+						out.push((
+							inline,
+							crate::oracle::inline_source(doc, block, inline),
+						));
 					}
-					walk(blocks, out);
+					walk(doc, blocks, out);
 				}
 				BlockKind::Quote { blocks, .. }
 				| BlockKind::Footnote { blocks, .. }
-				| BlockKind::FrontMatter { blocks, .. } => walk(blocks, out),
+				| BlockKind::FrontMatter { blocks, .. }
+				| BlockKind::Figure { blocks, .. } => walk(doc, blocks, out),
 				BlockKind::List { items, .. } => {
 					for item in items {
-						walk(&item.blocks, out);
+						walk(doc, &item.blocks, out);
 					}
 				}
-				BlockKind::Table { rows, .. } => {
-					for row in rows {
-						for cell in row {
-							for inline in cell {
-								out.push((inline, &block.source));
+				BlockKind::Table(table) => {
+					for child in table.cell_blocks() {
+						walk(doc, std::slice::from_ref(child), out);
+					}
+				}
+				BlockKind::DefinitionList(items) => {
+					for item in items {
+						for terms in &item.terms {
+							for inline in terms {
+								out.push((
+									inline,
+									crate::oracle::inline_source(
+										doc, block, inline,
+									),
+								));
 							}
+						}
+						for blocks in &item.definitions {
+							walk(doc, blocks, out);
 						}
 					}
 				}
@@ -166,21 +209,21 @@ pub fn inlines(doc: &Document) -> Vec<(&Inline, &Range<usize>)> {
 		}
 	}
 	let mut out = Vec::new();
-	walk(&doc.blocks, &mut out);
+	walk(doc, doc.document.blocks(), &mut out);
 	out
 }
 
 /// Every link destination and image source with the text it was applied to, so
 /// a caller can compare two documents' resolution of the same source.
-pub fn resolved_urls(doc: &Document) -> Vec<(String, String)> {
+pub fn resolved_urls(doc: &MarkdownParse) -> Vec<(String, String)> {
 	let mut out = Vec::new();
-	for (inline, _) in inlines(doc) {
+	for (inline, _range) in inlines(doc) {
 		match &inline.kind {
 			InlineKind::Image(image) => {
-				out.push((image.alt.clone(), image.src.clone()))
+				out.push((image.alt.clone(), image.address().to_owned()))
 			}
 			InlineKind::Text(text) => {
-				if let Some(url) = &inline.style.link {
+				if let Some(url) = &inline.link {
 					out.push((text.clone(), url.as_str().to_owned()));
 				}
 			}
@@ -562,43 +605,54 @@ pub fn line_end(source: &str, end: usize) -> usize {
 /// containment fired on those, so it measured this helper's guesses rather
 /// than the parser. What survives is the one direction that is still sound:
 /// a block that reports *some* reading text must own *some* source, so a
-/// range that collapsed to nothing while the text survived is a real defect.
+/// missing mapping is distinct from a valid zero-width source position.
 ///
 /// Emptiness of the text is not a defect: `### `, `[](./a.md)`, an empty list
 /// item and a marker-only table cell all legitimately yield no inline.
-pub fn assert_rich_text_covered(doc: &Document) {
-	fn check(what: &str, block: &Block, text: &RichText) {
+pub fn assert_rich_text_covered(doc: &MarkdownParse) {
+	fn check(doc: &MarkdownParse, what: &str, block: &Block, text: &RichText) {
 		if plain_text(text).trim().is_empty() {
 			return;
 		}
 		assert!(
-			!block.source.is_empty() || !doc_owned(block),
-			"{what} reports reading text but has an empty source range"
+			doc.block_source(block).is_some(),
+			"{what} reports reading text but has no source coverage"
 		);
 	}
-	fn walk(blocks: &[Block]) {
+	fn walk(doc: &MarkdownParse, blocks: &[Block]) {
 		for block in blocks {
-			match &block.kind {
-				BlockKind::Paragraph(text) => check("block", block, text),
-				BlockKind::Heading { text, .. } => check("block", block, text),
+			match block.kind() {
+				BlockKind::Paragraph(text) => check(doc, "block", block, text),
+				BlockKind::Heading { text, .. } => {
+					check(doc, "block", block, text)
+				}
 				BlockKind::Details {
 					summary, blocks, ..
 				} => {
-					check("summary", block, summary);
-					walk(blocks);
+					check(doc, "summary", block, summary);
+					walk(doc, blocks);
 				}
 				BlockKind::Quote { blocks, .. }
 				| BlockKind::Footnote { blocks, .. }
-				| BlockKind::FrontMatter { blocks, .. } => walk(blocks),
+				| BlockKind::FrontMatter { blocks, .. }
+				| BlockKind::Figure { blocks, .. } => walk(doc, blocks),
 				BlockKind::List { items, .. } => {
 					for item in items {
-						walk(&item.blocks);
+						walk(doc, &item.blocks);
 					}
 				}
-				BlockKind::Table { rows, .. } => {
-					for row in rows {
-						for cell in row {
-							check("cell", block, cell);
+				BlockKind::Table(table) => {
+					for child in table.cell_blocks() {
+						walk(doc, std::slice::from_ref(child));
+					}
+				}
+				BlockKind::DefinitionList(items) => {
+					for item in items {
+						for terms in &item.terms {
+							check(doc, "term", block, terms);
+						}
+						for blocks in &item.definitions {
+							walk(doc, blocks);
 						}
 					}
 				}
@@ -606,14 +660,7 @@ pub fn assert_rich_text_covered(doc: &Document) {
 			}
 		}
 	}
-	walk(&doc.blocks);
-}
-
-/// Whether a block's range addresses the document rather than a snippet. A
-/// `<details>` body is parsed as its own document, so its ranges are
-/// snippet-relative and an empty one there carries no meaning for this check.
-fn doc_owned(block: &Block) -> bool {
-	block.source.start <= block.source.end
+	walk(doc, doc.document.blocks());
 }
 
 /// A reference link's own label, as written, from a `[text][label]`,
@@ -792,8 +839,8 @@ fn span_contains(range: &Range<usize>, span: &Range<usize>) -> bool {
 /// against a neighbouring label.
 fn run_text_in_source(source: &str, range: &Range<usize>, text: &str) -> bool {
 	let Some(slice) = source.get(range.clone()) else {
-		// A range off a character boundary is a snippet-relative one; it
-		// cannot be validated against this source.
+		// A range that does not address this source cannot be read against it;
+		// `assert_source_ranges` rejects one before any oracle runs.
 		return false;
 	};
 	let compact = |s: &str| -> String {
@@ -900,7 +947,7 @@ pub fn unescape(text: &str) -> String {
 ///   incomplete table proves nothing by absence.
 ///
 /// Passing the document's own source keeps both sides on the same text.
-pub fn assert_reference_resolution(doc: &Document) {
+pub fn assert_reference_resolution(doc: &MarkdownParse) {
 	let scan = definition_scan(&doc.source);
 	let definitions = &scan.definitions;
 	// A definition is `value` (possibly `url "title"`); the URL is its first
@@ -926,29 +973,22 @@ pub fn assert_reference_resolution(doc: &Document) {
 	// Every place the tree applied a link destination to a run of text that
 	// the source spells as a reference rather than an inline link.
 	let references = reference_scan(&doc.source);
-	for (inline, _) in inlines(doc) {
+	for (inline, range) in inlines(doc) {
 		let (text, url) = match &inline.kind {
-			InlineKind::Image(image) => {
-				(image.alt.as_str(), image.src.as_str())
-			}
-			InlineKind::Text(text) => match &inline.style.link {
+			InlineKind::Image(image) => (image.alt.as_str(), image.address()),
+			InlineKind::Text(text) => match &inline.link {
 				Some(url) => (text.as_str(), url.as_str()),
 				None => continue,
 			},
 			_ => continue,
 		};
-		// Footnote references carry a synthetic `#fn:` destination that no
-		// definition holds; they are checked by the footnote oracle instead.
-		if inline.style.footnote_ref || url.starts_with("#fn:") {
-			continue;
-		}
 		// A run inside an inline link was resolved by that link's own
 		// destination, even when an enclosing bracket pair also reads as a
 		// shortcut reference (`[a [b](c)]`, `[a][b](c)`).
 		if references
 			.inline_links
 			.iter()
-			.any(|link| span_contains(&inline.source, link))
+			.any(|link| span_contains(&range, link))
 		{
 			continue;
 		}
@@ -956,8 +996,8 @@ pub fn assert_reference_resolution(doc: &Document) {
 		// actually holds the run's text. Containment, not the opener offset,
 		// because a label run starts inside the brackets.
 		let Some(use_) = references.uses.iter().find(|u| {
-			reference_contains(u, &inline.source)
-				&& run_text_in_source(&doc.source, &inline.source, text)
+			reference_contains(u, &range)
+				&& run_text_in_source(&doc.source, &range, text)
 		}) else {
 			continue;
 		};
@@ -1023,35 +1063,41 @@ pub fn assert_reference_resolution(doc: &Document) {
 ///
 /// Both are source-derived: they read the tag text and the tree, never a
 /// rendering.
-pub fn assert_details_structure(doc: &Document, source: &str) {
+pub fn assert_details_structure(doc: &MarkdownParse, source: &str) {
 	// Every element's range must be inside the source and ordered.
 	//
-	// Two checks that look obvious are deliberately absent. The slice is taken
-	// through `get` because a range need not fall on a character boundary:
-	// a `<details>` body is parsed as a snippet of its own, so its ranges are
-	// snippet-relative by construction (`fuzz/README.md` pins that contract),
-	// and a byte offset that is off a boundary for *this* source is not a
-	// defect. For the same reason the range is not required to begin at a
-	// literal `<details` byte: an element built from a body snippet has no
-	// tag at its own start. The invariant that *is* asserted — enclosure and
-	// identity — is checked below.
-	for (_, ordinal, range) in details_elements(doc) {
+	// Character boundaries are not this check's business: a `<details>` body is
+	// parsed as a snippet of its own and remapped onto document offsets, so
+	// `oracle::assert_source_ranges` already rejects an offset that is not a
+	// boundary for *this* source. Equally, the range need not begin at a
+	// literal `<details` byte — an element built from a body snippet carries
+	// the snippet's remapped span, and which byte it starts at is `opener_at`'s
+	// question, not this one's. The invariant that *is* asserted here —
+	// enclosure — is checked below.
+	for (_, range) in details_elements(doc) {
 		assert!(
 			range.start <= range.end && range.end <= source.len(),
-			"details {ordinal} range {range:?} does not fit the {}-byte \
-			 source",
+			"details range {range:?} does not fit the {}-byte source",
 			source.len()
 		);
 	}
-	// Elements must be numbered once each, in the order their ranges begin.
-	// The ordinal is the identity a summary link toggles, so a collision means
-	// two elements share one disclosure state.
+	// Two element ranges may nest (an element inside another element's body)
+	// or be disjoint, but a partial overlap would give two elements a share of
+	// one span.
 	let elements = details_elements(doc);
-	for (i, (_, ordinal, range)) in elements.iter().enumerate() {
-		for (_, other_ordinal, other_range) in &elements[i + 1..] {
-			assert_ne!(
-				ordinal, other_ordinal,
-				"two details elements share ordinal {ordinal}: {range:?} and \
+	for (i, (_, range)) in elements.iter().enumerate() {
+		for (_, other_range) in &elements[i + 1..] {
+			let nested = (range.start <= other_range.start
+				&& other_range.end <= range.end)
+				|| (other_range.start <= range.start
+					&& range.end <= other_range.end);
+			assert!(
+				nested
+					|| range.start >= other_range.end
+					|| other_range.start >= range.end
+					|| range.is_empty()
+					|| other_range.is_empty(),
+				"details ranges overlap without nesting: {range:?} and \
 				 {other_range:?}"
 			);
 		}
@@ -1059,25 +1105,43 @@ pub fn assert_details_structure(doc: &Document, source: &str) {
 	// A summary's rich text is attributed to the whole element, so it must sit
 	// inside it.
 	fn summaries(
+		doc: &MarkdownParse,
 		blocks: &[Block],
 		out: &mut Vec<(Range<usize>, Range<usize>)>,
 	) {
 		for block in blocks {
-			match &block.kind {
+			match &block.kind() {
 				BlockKind::Details {
 					summary, blocks, ..
 				} => {
 					for inline in summary {
-						out.push((block.source.clone(), inline.source.clone()));
+						out.push((
+							doc.block_source(block)
+								.expect("source-backed Markdown block"),
+							crate::oracle::inline_source(doc, block, inline),
+						));
 					}
-					summaries(blocks, out);
+					summaries(doc, blocks, out);
 				}
 				BlockKind::Quote { blocks, .. }
 				| BlockKind::Footnote { blocks, .. }
-				| BlockKind::FrontMatter { blocks, .. } => summaries(blocks, out),
+				| BlockKind::FrontMatter { blocks, .. }
+				| BlockKind::Figure { blocks, .. } => summaries(doc, blocks, out),
 				BlockKind::List { items, .. } => {
 					for item in items {
-						summaries(&item.blocks, out);
+						summaries(doc, &item.blocks, out);
+					}
+				}
+				BlockKind::Table(table) => {
+					for child in table.cell_blocks() {
+						summaries(doc, std::slice::from_ref(child), out);
+					}
+				}
+				BlockKind::DefinitionList(items) => {
+					for item in items {
+						for blocks in &item.definitions {
+							summaries(doc, blocks, out);
+						}
 					}
 				}
 				_ => {}
@@ -1085,7 +1149,7 @@ pub fn assert_details_structure(doc: &Document, source: &str) {
 		}
 	}
 	let mut found = Vec::new();
-	summaries(&doc.blocks, &mut found);
+	summaries(doc, doc.document.blocks(), &mut found);
 	for (element, summary) in found {
 		assert!(
 			element.start <= summary.start && summary.end <= element.end,
@@ -1100,13 +1164,13 @@ pub fn assert_details_structure(doc: &Document, source: &str) {
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct FragmentTarget {
 	/// The fragment a `#name` link spells.
-	pub name: String,
+	pub anchor: AnchorId,
 	/// Index into `Document::blocks` of the top-level block whose subtree
 	/// declares it.
 	pub block: usize,
 	/// The `<details>` ids framing the declaration, outermost first. The
 	/// declaration is unreachable until all of them are expanded.
-	pub chain: Vec<u64>,
+	pub chain: Vec<BlockId>,
 }
 
 /// Every fragment target the tree declares, in document order.
@@ -1116,44 +1180,64 @@ pub struct FragmentTarget {
 /// target, while only the tree can say what a jump would reach. The names
 /// collected are exactly the ones layout turns into anchors — `Block::anchors`,
 /// an invisible `InlineKind::Anchor`, a heading slug, a footnote definition's
-/// `fn:<label>`, and a reference's `fnref:<label>` — so a name that reaches
+/// typed identity, and each reference's own typed occurrence — so a name that reaches
 /// only one side is a finding in either direction.
 ///
 /// `chain` follows the walk `Document::details_enclosing` documents: an
 /// element's own targets and its summary sit in the *outer* chain, because a
 /// summary is drawn even when the body is collapsed, while the body's targets
 /// add the element's own id.
-pub fn fragment_targets(doc: &Document) -> Vec<FragmentTarget> {
-	fn rich(text: &RichText, out: &mut Vec<String>) {
+pub fn fragment_targets(doc: &MarkdownParse) -> Vec<FragmentTarget> {
+	fn rich(text: &RichText, out: &mut Vec<AnchorId>) {
 		for inline in text {
 			match &inline.kind {
-				InlineKind::Anchor(name) => out.push(name.clone()),
-				// A reference registers the anchor its own number returns to,
-				// and the number is the one the layout will use.
-				InlineKind::FootnoteRef(n) => {
-					out.push(format!("fnref:{n}"));
+				InlineKind::Anchor(name) => {
+					out.push(AnchorId::Fragment(name.clone()))
+				}
+				InlineKind::FootnoteRef(reference) => {
+					out.push(AnchorId::FootnoteReference {
+						definition: reference.definition.clone(),
+						occurrence: reference.occurrence,
+					})
 				}
 				_ => {}
 			}
 		}
 	}
-	/// The names the block itself declares, excluding the blocks it contains.
-	fn direct(block: &Block, out: &mut Vec<String>) {
-		out.extend(block.anchors.iter().cloned());
-		match &block.kind {
+	/// The targets the block owns; children are visited by `walk`.
+	fn direct(block: &Block, out: &mut Vec<AnchorId>) {
+		out.extend(block.anchors().iter().cloned().map(AnchorId::Fragment));
+		match block.kind() {
 			BlockKind::Paragraph(text) => rich(text, out),
 			BlockKind::Heading { text, anchor, .. } => {
 				rich(text, out);
-				out.push(anchor.clone());
+				out.push(AnchorId::Fragment(anchor.clone()));
 			}
-			BlockKind::Footnote { label, .. } => {
-				out.push(format!("fn:{label}"));
+			BlockKind::Footnote { id, .. } => {
+				out.push(AnchorId::FootnoteDefinition(id.clone()))
 			}
 			BlockKind::Details { summary, .. } => rich(summary, out),
-			BlockKind::Table { rows, .. } => {
-				for row in rows {
-					for cell in row {
-						rich(cell, out);
+			BlockKind::Quote { callout, .. } => {
+				if let Some(title) =
+					callout.as_ref().and_then(|c| c.title.as_ref())
+				{
+					rich(title, out);
+				}
+			}
+			BlockKind::Table(table) => {
+				if let Some(caption) = &table.caption {
+					rich(caption, out);
+				}
+			}
+			BlockKind::Figure { caption, .. } => {
+				if let Some(caption) = caption {
+					rich(caption, out);
+				}
+			}
+			BlockKind::DefinitionList(items) => {
+				for item in items {
+					for term in &item.terms {
+						rich(term, out);
 					}
 				}
 			}
@@ -1163,7 +1247,7 @@ pub fn fragment_targets(doc: &Document) -> Vec<FragmentTarget> {
 	fn walk(
 		blocks: &[Block],
 		top: usize,
-		open: &mut Vec<u64>,
+		open: &mut Vec<BlockId>,
 		out: &mut Vec<FragmentTarget>,
 	) {
 		for block in blocks {
@@ -1171,23 +1255,39 @@ pub fn fragment_targets(doc: &Document) -> Vec<FragmentTarget> {
 			direct(block, &mut names);
 			for name in names {
 				out.push(FragmentTarget {
-					name,
+					anchor: name,
 					block: top,
 					chain: open.clone(),
 				});
 			}
-			let disclosure = matches!(block.kind, BlockKind::Details { .. });
+			let disclosure = matches!(
+				block.kind(),
+				BlockKind::Details { .. } | BlockKind::FrontMatter { .. }
+			);
 			if disclosure {
-				open.push(block.id);
+				open.push(block.id());
 			}
-			match &block.kind {
+			match &block.kind() {
 				BlockKind::Details { blocks, .. }
 				| BlockKind::Quote { blocks, .. }
 				| BlockKind::Footnote { blocks, .. }
-				| BlockKind::FrontMatter { blocks, .. } => walk(blocks, top, open, out),
+				| BlockKind::FrontMatter { blocks, .. }
+				| BlockKind::Figure { blocks, .. } => walk(blocks, top, open, out),
 				BlockKind::List { items, .. } => {
 					for item in items {
 						walk(&item.blocks, top, open, out);
+					}
+				}
+				BlockKind::Table(table) => {
+					for child in table.cell_blocks() {
+						walk(std::slice::from_ref(child), top, open, out);
+					}
+				}
+				BlockKind::DefinitionList(items) => {
+					for item in items {
+						for blocks in &item.definitions {
+							walk(blocks, top, open, out);
+						}
 					}
 				}
 				_ => {}
@@ -1199,7 +1299,7 @@ pub fn fragment_targets(doc: &Document) -> Vec<FragmentTarget> {
 	}
 	let mut out = Vec::new();
 	let mut open = Vec::new();
-	for (top, block) in doc.blocks.iter().enumerate() {
+	for (top, block) in doc.document.blocks().iter().enumerate() {
 		walk(std::slice::from_ref(block), top, &mut open, &mut out);
 	}
 	out
@@ -1232,21 +1332,6 @@ pub fn declared_open(tag: &str) -> Option<bool> {
 	}))
 }
 
-/// A borrow of one inline's source range, so a structural walk can check
-/// containment without cloning the inline.
-#[derive(Clone, Debug)]
-pub struct InlineRef {
-	pub source: Range<usize>,
-}
-
-impl InlineRef {
-	pub fn of(inline: &Inline) -> Self {
-		Self {
-			source: inline.source.clone(),
-		}
-	}
-}
-
 /// The plain reading text of a rich run — the same projection
 /// `markview_document::plain_text` performs, re-exported here so the
 /// targets do not each import it.
@@ -1272,7 +1357,7 @@ pub fn plain_text(text: &[Inline]) -> String {
 /// which is the precondition the caller's comment always claimed and never
 /// checked.
 pub fn opener_at<'a>(
-	doc: &'a Document,
+	doc: &'a MarkdownParse,
 	range: &Range<usize>,
 ) -> Option<&'a str> {
 	let source = doc.source.as_ref();
@@ -1312,9 +1397,9 @@ mod tests {
 	use std::sync::Arc;
 
 	use super::*;
-	use markview_document::Link;
+	use markview_document::{ImageSource, ResourceRef};
 
-	fn parse(source: &str) -> Document {
+	fn parse(source: &str) -> MarkdownParse {
 		markview_commonmark::parse(Arc::from(source))
 	}
 
@@ -1350,36 +1435,15 @@ mod tests {
 	}
 
 	/// The first run the tree attributed a destination to, text or image.
-	fn linked_run(doc: &Document) -> Range<usize> {
+	fn linked_run(doc: &MarkdownParse) -> Range<usize> {
 		inlines(doc)
 			.into_iter()
-			.find_map(|(inline, _)| match &inline.kind {
-				InlineKind::Image(_) => Some(inline.source.clone()),
-				InlineKind::Text(_) if inline.style.link.is_some() => {
-					Some(inline.source.clone())
-				}
+			.find_map(|(inline, range)| match &inline.kind {
+				InlineKind::Image(_) => Some(range),
+				InlineKind::Text(_) if inline.link.is_some() => Some(range),
 				_ => None,
 			})
 			.expect("a linked run")
-	}
-
-	/// Point every link and image destination in the tree at `url`.
-	fn set_destinations(doc: &mut Document, url: &str) {
-		for block in &mut doc.blocks {
-			let BlockKind::Paragraph(text) = &mut block.kind else {
-				continue;
-			};
-			for inline in text {
-				match &mut inline.kind {
-					InlineKind::Image(image) => image.src = url.to_string(),
-					InlineKind::Text(_) if inline.style.link.is_some() => {
-						inline.style.link =
-							Some(Link::new(url, inline.source.start))
-					}
-					_ => {}
-				}
-			}
-		}
 	}
 
 	/// Bug 3: the opener offset never equals the run's start, so every
@@ -1407,30 +1471,6 @@ mod tests {
 				run.start
 			);
 		}
-	}
-
-	/// Bug 3, the property the offset match silently lost: a resolved
-	/// destination the definition contradicts is caught.
-	#[test]
-	fn a_wrong_resolved_url_is_caught() {
-		let mut doc = parse("[ref]\n\n[ref]: /url\n");
-		set_destinations(&mut doc, "/wrong");
-		let caught = catch_unwind(AssertUnwindSafe(|| {
-			assert_reference_resolution(&doc)
-		}));
-		assert!(caught.is_err(), "a wrong resolved URL must not pass");
-	}
-
-	/// Bug 4: the quoted definition the scan now reads keeps the equality
-	/// assertion live, so a wrong URL there is still caught.
-	#[test]
-	fn a_wrong_url_behind_a_quoted_definition_is_caught() {
-		let mut doc = parse("![ref]\n\n>   [ref]: /url\n");
-		set_destinations(&mut doc, "/wrong");
-		let caught = catch_unwind(AssertUnwindSafe(|| {
-			assert_reference_resolution(&doc)
-		}));
-		assert!(caught.is_err(), "a wrong quoted URL must not pass");
 	}
 
 	/// A run inside an inline link belongs to that link, even when an
@@ -1556,35 +1596,124 @@ mod tests {
 		assert!(caught.is_err(), "an unexplained resolution must be caught");
 	}
 
+	/// A disclosure inside another element's body has a range contained in its
+	/// container's, which is nesting, not the overlap two siblings would be
+	/// indicted for.
+	#[test]
+	fn a_nested_disclosure_range_is_contained_rather_than_overlapping() {
+		let source = "<details id='outer'><summary>O</summary>\n\n\
+			 <details id='inner'><summary>I</summary>body</details>\n\n\
+			 </details>\n";
+		let doc = parse(source);
+		let elements = details_elements(&doc);
+		assert_eq!(elements.len(), 2, "{elements:?}");
+		let (outer, inner) = (elements[0].1.clone(), elements[1].1.clone());
+		assert!(
+			outer.start <= inner.start && inner.end <= outer.end,
+			"the inner element {inner:?} is not inside the outer {outer:?}"
+		);
+		assert_details_structure(&doc, source);
+	}
+
+	/// A destination the tree resolved but no definition declares must fail the
+	/// equality check; the untouched document is the control that keeps the
+	/// check from passing vacuously.
+	#[test]
+	fn a_wrong_resolved_url_is_caught() {
+		fn with_destination(source: &str, destination: &str) -> MarkdownParse {
+			let parsed = parse(source);
+			let mut builder = markview_document::DocumentBuilder::new(
+				parsed.document.revision(),
+			);
+			let mut blocks = Vec::new();
+			let mut expected = Vec::new();
+			for block in parsed.document.blocks() {
+				let mut kind = block.kind().clone();
+				if let BlockKind::Paragraph(text) = &mut kind {
+					for inline in text.iter_mut() {
+						if let InlineKind::Image(image) = &mut inline.kind {
+							image.source = ImageSource::Resource(
+								ResourceRef::document(destination),
+							);
+						}
+					}
+				}
+				let rebuilt = builder.block(block.anchors().to_vec(), kind);
+				expected.push((rebuilt.id(), parsed.block_source(block)));
+				blocks.push(rebuilt);
+			}
+			// The rebuilt document allocates new block ids, so the cloned map
+			// only speaks about the rebuilt blocks while each id still resolves
+			// to the parsed block's source range. Without this, the URL check
+			// could pass because every range fell back to `0..0`.
+			for (id, range) in expected {
+				assert_eq!(
+					parsed.map.block(id).map(|entry| entry.source.clone()),
+					Some(range),
+					"the rebuilt block {id} does not keep the parsed source range"
+				);
+			}
+			MarkdownParse {
+				document: builder.finish(blocks),
+				source: parsed.source.clone(),
+				map: parsed.map.clone(),
+				dialect: parsed.dialect,
+			}
+		}
+		let source = "![ref]\n\n[ref]: /real\n";
+		assert_reference_resolution(&parse(source));
+		// Build the mutated document outside the catch, so a misaligned map
+		// fails the test instead of being mistaken for the expected panic.
+		let wrong = with_destination(source, "/wrong");
+		let caught = catch_unwind(AssertUnwindSafe(|| {
+			assert_reference_resolution(&wrong)
+		}));
+		assert!(
+			caught.is_err(),
+			"a destination no definition declares must be caught"
+		);
+	}
+
 	/// The registry's chain is the property the `anchors` target compares
 	/// against `details_enclosing`, so the walk itself is pinned: a summary and
 	/// the element's own target are drawn while the body is collapsed, and both
-	/// spellings of a footnote target are collected.
+	/// typed footnote identities are collected.
 	#[test]
 	fn fragment_targets_carry_the_disclosure_chain_of_each_declaration() {
 		let doc = parse(
 			"<details id='a'><summary id='s'>S</summary>\n\n\
-			 <div id='b'>\n\nText <a name='hidden'></a>[^f]\n\n</div>\n\n\
-			 </details>\n\n[^f]: note",
+			 <div id='b'>\n\nText <a name='hidden'></a>[^1] and again[^1] <a id='fn:1'></a>\n\n</div>\n\n\
+			 </details>\n\n[^1]: note",
 		);
 		let targets = fragment_targets(&doc);
-		let chain = |name: &str| {
+		let chain = |anchor: AnchorId| {
 			targets
 				.iter()
-				.find(|target| target.name == name)
-				.unwrap_or_else(|| panic!("{name:?} is not registered"))
+				.find(|target| target.anchor == anchor)
+				.unwrap_or_else(|| panic!("{anchor:?} is not registered"))
 				.chain
 				.clone()
 		};
-		let element = doc.blocks[0].id;
+		let element = doc.document.blocks()[0].id();
 		// The element's own id and its summary are reachable while collapsed.
-		assert!(chain("a").is_empty());
-		assert!(chain("s").is_empty());
+		assert!(chain("a".into()).is_empty());
+		assert!(chain("s".into()).is_empty());
 		// The body's declarations are not.
-		assert_eq!(chain("b"), [element]);
-		assert_eq!(chain("hidden"), [element]);
-		assert_eq!(chain("fnref:1"), [element]);
-		// The definition is hoisted to the top level, so its `fn:` is not.
-		assert!(chain("fn:1").is_empty());
+		assert_eq!(chain("b".into()), [element]);
+		assert_eq!(chain("hidden".into()), [element]);
+		let references: Vec<_> = targets.iter().filter(|t| matches!(&t.anchor, AnchorId::FootnoteReference {definition,..} if definition.as_str() == "1")).map(|t| t.anchor.clone()).collect();
+		assert_eq!(references.len(), 2);
+		assert_ne!(references[0], references[1]);
+		for reference in references {
+			assert_eq!(chain(reference), [element]);
+		}
+		assert_eq!(chain(AnchorId::Fragment("fn:1".into())), [element]);
+		// The definition is hoisted to the top level.
+		assert!(
+			chain(AnchorId::FootnoteDefinition(
+				markview_document::FootnoteId::new("1")
+			))
+			.is_empty()
+		);
 	}
 }

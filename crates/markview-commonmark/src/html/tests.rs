@@ -304,7 +304,7 @@ fn block_style_follows_the_open_tags() {
 #[test]
 fn block_links_nest_and_images_carry_the_run_style() {
 	let linked = |url: &str| Style {
-		link: Some(crate::document::Link::new(url, 0)),
+		link: Some(crate::rich::source_link(url, 0)),
 		..Style::default()
 	};
 	// A nested link overrides the outer one, which comes back on its close.

@@ -17,14 +17,22 @@ pub fn anchored_scroll(
 		.partition_point(|b| b.y <= scroll)
 		.saturating_sub(1);
 	if let Some(anchor) = old.blocks.get(index) {
+		let same = |a: &crate::scene::PlacedBlock,
+		            b: &crate::scene::PlacedBlock| {
+			if old.revision == new.revision {
+				a.id == b.id
+			} else {
+				a.content == b.content
+			}
+		};
 		let occurrence = old.blocks[..index]
 			.iter()
-			.filter(|b| b.id == anchor.id)
+			.filter(|b| same(b, anchor))
 			.count();
 		if let Some(b) = new
 			.blocks
 			.iter()
-			.filter(|b| b.id == anchor.id)
+			.filter(|b| same(b, anchor))
 			.nth(occurrence)
 		{
 			if old.images.entries != new.images.entries
@@ -66,8 +74,15 @@ pub fn anchored_scroll(
 		}
 		// Index each identity's first occurrence once for all fallback neighbors.
 		let mut first = HashMap::new();
+		let key = |block: &crate::scene::PlacedBlock| {
+			if old.revision == new.revision {
+				block.id.get() as u64
+			} else {
+				block.content.get()
+			}
+		};
 		for block in &new.blocks {
-			first.entry(block.id).or_insert(block);
+			first.entry(key(block)).or_insert(block);
 		}
 		for delta in 1..=old.blocks.len() {
 			for neighbor in [
@@ -78,7 +93,7 @@ pub fn anchored_scroll(
 			.flatten()
 			{
 				let a = &old.blocks[neighbor];
-				if let Some(b) = first.get(&a.id) {
+				if let Some(b) = first.get(&key(a)).filter(|b| same(b, a)) {
 					return (b.y + scroll - a.y).clamp(0.0, max);
 				}
 			}

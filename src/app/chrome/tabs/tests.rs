@@ -1,6 +1,20 @@
 use super::*;
 use crate::app::tab_metrics::TabMetrics;
+use crate::state::ReaderTab;
 use std::time::Duration;
+
+/// The strip labels of tabs that carry no front-end title.
+fn labels(tabs: &[ReaderTab]) -> Vec<String> {
+	tabs.iter()
+		.map(|tab| {
+			tab.path
+				.file_name()
+				.unwrap_or(tab.path.as_os_str())
+				.to_string_lossy()
+				.into_owned()
+		})
+		.collect()
+}
 
 #[test]
 fn hovered_labels_mix_current_theme_colors_and_keep_the_background_highlight() {
@@ -23,11 +37,12 @@ fn hovered_labels_mix_current_theme_colors_and_keep_the_background_highlight() {
 		let mixed = std::array::from_fn::<_, 4, _>(|i| {
 			muted[i] * 0.3 + active[i] * 0.7
 		});
+		let labels = labels(&tabs);
 		let mut bar = TabBar {
 			ui: &mut ui,
 			strip: &strip,
 			widths: &widths,
-			tabs: &tabs,
+			labels: &labels,
 			active_tab: 0,
 			cursor: (0.0, 0.0),
 			viewport: Rect {
@@ -98,11 +113,12 @@ fn hovering_the_close_icon_brightens_it_like_any_other_icon() {
 	let strip = TabStrip::default();
 	let tabs = vec![ReaderTab::new("0.md".into())];
 	let widths = vec![(100.0, 50.0)];
+	let names = labels(&tabs);
 	let mut bar = TabBar {
 		ui: &mut ui,
 		strip: &strip,
 		widths: &widths,
-		tabs: &tabs,
+		labels: &names,
 		active_tab: 0,
 		cursor: (0.0, 0.0),
 		viewport: Rect {
@@ -163,7 +179,7 @@ fn a_growing_tab_clips_only_its_label_and_controls() {
 			ui: &mut ui,
 			strip: &strip,
 			widths: &widths,
-			tabs: &tabs,
+			labels: &labels(&tabs),
 			active_tab,
 			cursor: (0.0, 0.0),
 			viewport,
@@ -233,7 +249,7 @@ fn a_narrow_tab_clips_its_content_and_a_resting_one_does_not() {
 			ui,
 			strip,
 			widths: &widths,
-			tabs: &tabs,
+			labels: &labels(&tabs),
 			active_tab: 0,
 			cursor: (0.0, 0.0),
 			viewport,
@@ -320,11 +336,12 @@ fn tab_hover_match_rendering_baselines() -> anyhow::Result<()> {
 		let sheet = markview_layout::style::Stylesheet::bundled(dark);
 		ui.set_stylesheet(sheet.clone());
 		renderer.set_stylesheet(sheet);
+		let labels = labels(&tabs);
 		let mut bar = TabBar {
 			ui: &mut ui,
 			strip: &strip,
 			widths: &widths,
-			tabs: &tabs,
+			labels: &labels,
 			active_tab: 4,
 			cursor: (264.0, 20.0),
 			viewport: Rect {
@@ -421,7 +438,7 @@ fn tab_hover_match_rendering_baselines() -> anyhow::Result<()> {
 				widths: &drag_widths,
 				ui: &mut *bar.ui,
 				cursor: (150.0, 20.0),
-				tabs: bar.tabs,
+				labels: bar.labels,
 				active_tab: 0,
 				viewport: bar.viewport,
 			};
@@ -463,7 +480,7 @@ fn cached_tab_end_follows_scroll_theme_and_document_changes() {
 			))
 			.unwrap();
 			ui.set_stylesheet(std::sync::Arc::new(sheet));
-			metrics.sync(&mut ui, &tabs);
+			metrics.sync(&mut ui, &labels(&tabs));
 			for width in [150.0, 500.5, 1200.0] {
 				for scroll in [-10.0, 0.0, 25.5, 10000.0] {
 					let viewport = Rect {
@@ -494,15 +511,16 @@ fn tab_layout_preserves_widths_scroll_and_hit_targets() {
 		.map(|i| ReaderTab::new(format!("document{i}.md").into()))
 		.collect();
 	let mut metrics = TabMetrics::default();
-	metrics.sync(&mut ui, &tabs);
+	metrics.sync(&mut ui, &labels(&tabs));
 	let widths = metrics.widths.clone();
 	let mut strip = TabStrip::default();
 	strip.scroll = 25.0.into();
+	let names = labels(&tabs);
 	let mut bar = TabBar {
 		ui: &mut ui,
 		strip: &strip,
 		widths: &widths,
-		tabs: &tabs,
+		labels: &names,
 		active_tab: 1,
 		cursor: (0.0, 0.0),
 		viewport: crate::app::frame::Layout::new(
@@ -532,7 +550,7 @@ fn tab_layout_preserves_widths_scroll_and_hit_targets() {
 			Draw::Rect(_, Paint::Styled(Condition::Toolbar, C::Accent))
 		)
 	}));
-	metrics.sync(bar.ui, &tabs);
+	metrics.sync(bar.ui, &labels(&tabs));
 	assert_eq!(metrics.widths, widths);
 }
 
@@ -561,14 +579,15 @@ fn measured_tabs_fit_minimum_window_and_styles_invalidate_widths() {
 	let tabs: Vec<_> = (0..30)
 		.map(|i| ReaderTab::new(format!("中文文档{i}.md").into()))
 		.collect();
-	metrics.sync(&mut ui, &tabs);
+	metrics.sync(&mut ui, &labels(&tabs));
 	let old = metrics.widths.clone();
 	let strip = TabStrip::default();
+	let names = labels(&tabs);
 	let mut bar = TabBar {
 		ui: &mut ui,
 		strip: &strip,
 		widths: &metrics.widths,
-		tabs: &tabs,
+		labels: &names,
 		active_tab: 0,
 		cursor: (0.0, 0.0),
 		viewport: crate::app::frame::Layout::new(
@@ -591,7 +610,7 @@ fn measured_tabs_fit_minimum_window_and_styles_invalidate_widths() {
 	)
 	.unwrap();
 	ui.set_stylesheet(std::sync::Arc::new(sheet));
-	metrics.sync(&mut ui, &tabs);
+	metrics.sync(&mut ui, &labels(&tabs));
 	assert!(metrics.widths[0].1 > old[0].1);
 	metrics.sync(&mut ui, &[]);
 	assert!(metrics.widths.is_empty());
@@ -606,11 +625,12 @@ fn separators_only_divide_neighboring_inactive_tabs() {
 			.map(|i| ReaderTab::new(format!("{i}.md").into()))
 			.collect();
 		let widths = vec![(100.0, 50.0); count];
+		let labels = labels(&tabs);
 		let mut bar = TabBar {
 			ui: &mut ui,
 			strip: &strip,
 			widths: &widths,
-			tabs: &tabs,
+			labels: &labels,
 			active_tab: 0,
 			cursor: (0.0, 0.0),
 			viewport: Rect {
@@ -711,7 +731,7 @@ fn a_shifted_tab_keeps_the_separator_before_it_during_a_drag() {
 		ui: &mut ui,
 		strip: &strip,
 		widths: &widths,
-		tabs: &tabs,
+		labels: &labels(&tabs),
 		active_tab: 1,
 		cursor,
 		viewport,
@@ -767,7 +787,7 @@ fn a_separator_never_floats_beside_an_open_gap() {
 		ui: &mut ui,
 		strip: &strip,
 		widths: &widths,
-		tabs: &tabs,
+		labels: &labels(&tabs),
 		active_tab: 0,
 		cursor,
 		viewport,
@@ -819,7 +839,7 @@ fn a_moving_drag_hovers_only_the_tab_it_carries() {
 		ui: &mut ui,
 		strip: &strip,
 		widths: &widths,
-		tabs: &tabs,
+		labels: &labels(&tabs),
 		active_tab: 0,
 		cursor,
 		viewport,
@@ -872,7 +892,7 @@ fn dragging_paints_the_tabs_where_the_drop_will_put_them() {
 		ui: &mut ui,
 		strip: &strip,
 		widths: &widths,
-		tabs: &tabs,
+		labels: &labels(&tabs),
 		active_tab: 0,
 		cursor: (0.0, 0.0),
 		viewport,

@@ -15,7 +15,7 @@ use fonts::DiagramFonts;
 use markview_document::Document;
 use markview_layout::{
 	fonts::FontConfig,
-	image::{ImageInfo, ImageSnapshot},
+	image::{ImageInfo, ImageSnapshot, ImageSource},
 	style::Stylesheet,
 };
 use pixels::cache_pixels;
@@ -214,7 +214,7 @@ fn rasterizer_fonts<'a>(
 	theme: &'a diagram::DiagramTheme,
 ) -> Option<(&'a Arc<DiagramFonts>, &'a str)> {
 	match (source, diagram) {
-		(Source::Diagram(_), Some(diagram)) => {
+		(Source::Diagram { .. }, Some(diagram)) => {
 			Some((diagram, theme.font_family()))
 		}
 		_ => None,
@@ -245,7 +245,7 @@ impl ScheduleKey {
 /// standalone-SVG mappings, which only an SVG actually carries.
 fn theme_generation(source: &Source, diagram: u64, svg: u64) -> u64 {
 	match source {
-		Source::Diagram(_) => diagram,
+		Source::Diagram { .. } => diagram,
 		_ => svg,
 	}
 }
@@ -260,7 +260,7 @@ fn theme_generation_changed(
 	diagram: u64,
 	svg_generic: u64,
 ) -> bool {
-	if !matches!(source, Source::Diagram(_)) && !svg {
+	if !matches!(source, Source::Diagram { .. }) && !svg {
 		return false;
 	}
 	theme_generation(source, diagram, svg_generic) != rendered
@@ -508,14 +508,14 @@ impl Images {
 			self.fonts = fonts.clone();
 		}
 		let mut specs = Vec::new();
-		for b in &doc.blocks {
+		for b in doc.blocks() {
 			b.images(&mut specs);
 		}
 		// A document without a diagram never pays for the reader's font
 		// collection, which a diagram's measurement and drawing need.
-		let has_diagram = specs.iter().any(|spec| {
-			spec.src.starts_with(markview_layout::image::MERMAID_SCHEME)
-		});
+		let has_diagram = specs
+			.iter()
+			.any(|spec| matches!(spec.source, ImageSource::Diagram(_)));
 		let han: Vec<String> = sheet
 			.cjk_families()
 			.into_iter()
@@ -576,6 +576,7 @@ impl Images {
 			e.aliases.clear();
 		}
 		self.snapshot.entries.clear();
+		self.snapshot.keys.clear();
 		let wanted = self.prepare_sources(specs, path, load_all, reload, theme);
 		self.entries.retain(|s, _| wanted.contains(s));
 		self.blocked
@@ -633,18 +634,24 @@ impl Images {
 		// order, so the same document always defers the same images.
 		let mut remote_seen = 0usize;
 		for spec in specs {
-			let key = spec.resource_key().into_owned();
+			let key = source::key(
+				&spec.source,
+				path,
+				self.workspace.as_deref(),
+				&self.security,
+			);
+			self.snapshot.keys.insert(spec.source.clone(), key.clone());
 			let source = match &self.standalone {
 				Some(standalone)
-					if spec.src == crate::file::STANDALONE_IMAGE_SOURCE =>
+					if spec.address()
+						== crate::file::STANDALONE_IMAGE_SOURCE =>
 				{
 					self.security
 						.check_file(standalone)
 						.map(|()| Source::File(standalone.clone()))
 				}
-				_ => source::resolve_in(
-					&spec.src,
-					spec.base,
+				_ => source::resolve(
+					&spec.source,
 					path,
 					self.workspace.as_deref(),
 					&self.security,
@@ -833,7 +840,7 @@ impl Images {
 					.then_some(self.initial_width)
 					.flatten(),
 				theme: self.theme.clone(),
-				diagram: matches!(source, Source::Diagram(_))
+				diagram: matches!(source, Source::Diagram { .. })
 					.then(|| self.diagram.clone())
 					.flatten(),
 			};
@@ -863,7 +870,7 @@ impl Images {
 					permit = pipelines.acquire_owned() => permit?,
 				};
 				let bytes = match &job.source {
-					Source::Diagram(_) => None,
+					Source::Diagram { .. } => None,
 					Source::Http(url) => Some(
 						cache::fetch_http(
 							url,
@@ -888,7 +895,7 @@ impl Images {
 				};
 				let input_bytes = bytes.as_ref().map_or_else(
 					|| match &job.source {
-						Source::Diagram(code) => code.len(),
+						Source::Diagram { source, .. } => source.len(),
 						_ => 0,
 					},
 					Vec::len,

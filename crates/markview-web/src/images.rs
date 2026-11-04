@@ -2,7 +2,7 @@
 
 use markview_document::Document;
 use markview_layout::{
-	image::{ImageInfo, ImageSnapshot, MERMAID_SCHEME, Pixels},
+	image::{ImageInfo, ImageSnapshot, ImageSource, Pixels, ResourceBase},
 	scene::{Draw, LayoutSnapshot, Rect},
 };
 use serde::Serialize;
@@ -43,17 +43,17 @@ impl Images {
 		*self = Self::default();
 		self.snapshot.generation = generation;
 		let mut specs = Vec::new();
-		for block in &document.blocks {
+		for block in document.blocks() {
 			block.images(&mut specs);
 		}
 		for spec in specs {
-			if !spec.src.starts_with(MERMAID_SCHEME)
-				&& !self.snapshot.entries.contains_key(&spec.src)
-			{
-				self.sources.push(spec.src.clone());
-				self.snapshot
-					.entries
-					.insert(spec.src.clone(), ImageInfo::default());
+			let Some(key) = key(&spec.source) else {
+				continue;
+			};
+			self.snapshot.keys.insert(spec.source.clone(), key.clone());
+			if !self.snapshot.entries.contains_key(&key) {
+				self.sources.push(key.clone());
+				self.snapshot.entries.insert(key, ImageInfo::default());
 			}
 		}
 	}
@@ -204,6 +204,17 @@ impl Images {
 	}
 }
 
+/// The browser host receives the semantic address; a vault base must stay
+/// distinct from the same path relative to the document.
+fn key(source: &ImageSource) -> Option<String> {
+	let resource = source.resource()?;
+	let prefix = match resource.base {
+		ResourceBase::Document => "",
+		ResourceBase::Vault => "vault:",
+	};
+	Some(format!("{prefix}{}", resource.address))
+}
+
 fn collect(
 	draw: &Draw,
 	position: [f32; 2],
@@ -305,8 +316,8 @@ mod tests {
 		};
 		let block = |draws| PlacedBlock {
 			flow: Default::default(),
-			id: 1,
-			source: 0..0,
+			id: markview_layout::document::BlockId::new(1).unwrap(),
+			content: Default::default(),
 			y: 0.,
 			layout: Arc::new(BlockLayout {
 				draws,
@@ -366,8 +377,8 @@ mod tests {
 			images: images.snapshot.clone(),
 			blocks: vec![PlacedBlock {
 				flow: Default::default(),
-				id: 1,
-				source: 0..0,
+				id: markview_layout::document::BlockId::new(1).unwrap(),
+				content: Default::default(),
 				y: 30.,
 				layout: Arc::new(BlockLayout {
 					draws: vec![

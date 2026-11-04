@@ -41,7 +41,9 @@ impl Harness {
 		app.ui = crate::test_support::shaper();
 		app.preferences.values = crate::settings::ReaderSettings::default();
 		app.readers.open(path, Instant::now());
-		let document = Arc::new(markview_commonmark::parse(source));
+		let document = crate::loaded::LoadedDocument::markdown(Arc::new(
+			markview_commonmark::parse(source),
+		));
 		let options = app.options();
 		let mut engine = LayoutEngine::new();
 		let mut snapshot = engine.layout(&document, &options);
@@ -382,10 +384,13 @@ fn horizontal_navigation_reveals_code_and_table_targets() {
 				.selection_rects(selection, &session.horizontal, 1);
 		assert!(!rects.is_empty());
 		assert!(
-			session
-				.horizontal
-				.iter()
-				.any(|((b, _), offset)| *b == hit.block && *offset > 0.0)
+			session.horizontal.iter().any(|((b, _), offset)| session
+				.snapshot
+				.blocks[*b]
+				.id == selection
+				.anchor
+				.block && *offset
+				> 0.0)
 		);
 	}
 }
@@ -404,12 +409,13 @@ fn horizontal_navigation_reveals_rtl_anchor() {
 	let session = &h.app.readers.session;
 	let hit = &session.search.matches[0];
 	let selection = session.snapshot.search_selection(hit, 1).unwrap();
-	let block = &session.snapshot.blocks[selection.anchor.block];
-	let node = &block.layout.text[selection.anchor.node];
+	let resolved = session.snapshot.resolve_position(selection.anchor).unwrap();
+	let block = &session.snapshot.blocks[resolved.block];
+	let node = &block.layout.text[resolved.node];
 	let anchor = node
 		.clusters
 		.iter()
-		.find(|c| c.range.contains(&selection.anchor.offset))
+		.find(|c| c.range.contains(&resolved.offset))
 		.unwrap();
 	assert!(anchor.rtl);
 	let (oi, overflow) = block
@@ -421,7 +427,7 @@ fn horizontal_navigation_reveals_rtl_anchor() {
 		.unwrap();
 	let offset = session
 		.horizontal
-		.get(&(hit.block, oi))
+		.get(&(resolved.block, oi))
 		.copied()
 		.unwrap_or_default();
 	assert!(offset > 0.0);
@@ -456,7 +462,9 @@ fn parsed_full_document_searches_before_layout_and_rejects_stale_results() {
 	}
 	h.app.readers.session.content_version += 1;
 	assert!(h.app.draw_search_highlights().is_empty());
-	let document = Arc::new(markview_commonmark::parse("needle needle"));
+	let document = crate::loaded::LoadedDocument::markdown(Arc::new(
+		markview_commonmark::parse("needle needle"),
+	));
 	h.app.readers.session.search.document = Some(document);
 	h.app.search_changed();
 	h.app.search_tick();
@@ -541,8 +549,9 @@ fn worker_latest_request_wins_after_cancellation() {
 	let worker = Worker::new(move |result| {
 		let _ = tx.send(result);
 	});
-	let document =
-		Arc::new(markview_commonmark::parse("needle ".repeat(20000)));
+	let document = crate::loaded::LoadedDocument::markdown(Arc::new(
+		markview_commonmark::parse("needle ".repeat(20000)),
+	));
 	let old = worker.cancel();
 	worker.submit(Request {
 		path: "one".into(),
@@ -583,7 +592,9 @@ fn worker_latest_request_wins_after_cancellation() {
 		path: "one".into(),
 		content: 2,
 		sequence: reloaded,
-		document: Arc::new(markview_commonmark::parse("needle")),
+		document: crate::loaded::LoadedDocument::markdown(Arc::new(
+			markview_commonmark::parse("needle"),
+		)),
 		query: "needle".into(),
 		options: SearchOptions::default(),
 	});
@@ -704,7 +715,9 @@ fn poisoned_search_inbox_accepts_new_requests_and_shuts_down() {
 		path: PathBuf::from("note.md"),
 		content: 1,
 		sequence: worker.cancel(),
-		document: Arc::new(markview_commonmark::parse("A recovered search.")),
+		document: crate::loaded::LoadedDocument::markdown(Arc::new(
+			markview_commonmark::parse("A recovered search."),
+		)),
 		query: "recovered".into(),
 		options: SearchOptions::default(),
 	});

@@ -422,7 +422,7 @@ impl<P: super::SendEvent> App<P> {
 	pub(super) fn frame_press(&mut self) -> bool {
 		// A new press cancels a caption release swallowed outside the window.
 		self.frame.pressed = None;
-		self.tab_metrics.sync(&mut self.ui, self.readers.entries());
+		self.tab_metrics.sync(&mut self.ui, &self.readers.labels());
 		let (x, y) = self.interaction.pointer.cursor();
 		let layout = self.frame_layout();
 		if markview_platform::client_resize()

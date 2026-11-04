@@ -9,23 +9,54 @@ use krilla::{
 	destination::{Destination, XyzDestination},
 	geom::{Point, Rect},
 };
-use markview_layout::paginate::{PT_PER_PX, PageGeometry, Pagination};
+use markview_layout::{
+	document::AnchorId,
+	paginate::{PT_PER_PX, PageGeometry, Pagination},
+	scene::LinkTarget,
+};
 
 /// The annotation for one link, or `None` when the target cannot be reached.
 /// `rect` is in page points, y measured down from the page's top edge.
 pub fn annotation(
 	rect: Rect,
+	target: &LinkTarget,
 	url: &str,
 	pagination: &Pagination,
 	geometry: &PageGeometry,
 ) -> Option<Annotation> {
-	let target = if let Some(anchor) = url.strip_prefix('#') {
+	let destination = match target {
+		LinkTarget::Url(url) => url
+			.strip_prefix('#')
+			.map(|fragment| AnchorId::Fragment(fragment.to_owned())),
+		LinkTarget::FootnoteDefinition(id) => {
+			Some(AnchorId::FootnoteDefinition(id.clone()))
+		}
+		LinkTarget::FootnoteReturn(id) => pagination
+			.targets
+			.keys()
+			.find(|anchor| {
+				matches!(
+					anchor,
+					AnchorId::FootnoteReference { definition, .. }
+						if definition == id
+				)
+			})
+			.cloned()
+			.or_else(|| Some(AnchorId::FootnoteDefinition(id.clone()))),
+		LinkTarget::Disclosure(_) => None,
+	};
+	let target = if let Some(anchor) = destination {
+		let (page, y) = match &anchor {
+			AnchorId::Fragment(fragment) => {
+				let fragment = percent_encoding::percent_decode_str(fragment)
+					.decode_utf8_lossy();
+				pagination.anchors.get(fragment.as_ref())?
+			}
+			_ => pagination.targets.get(&anchor)?,
+		};
 		// An anchor is a layout pixel offset inside the text area; a
 		// destination is a page point, so it needs both the top margin and the
 		// pixel-to-point conversion.
-		let anchor =
-			percent_encoding::percent_decode_str(anchor).decode_utf8_lossy();
-		let (page, y) = pagination.anchors.get(anchor.as_ref())?;
 		let [left, top, _, _] = geometry.text_pt();
 		Target::Destination(Destination::Xyz(XyzDestination::new(
 			*page,

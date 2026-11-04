@@ -214,6 +214,12 @@ fn inherited_child_styles_resources_and_width_invalidate_nested_geometry() {
 		(source.to_owned(), 240., (120, 80)),
 	] {
 		opts.width = width;
+		images.keys.insert(
+			markview_layout::image::ImageSource::Resource(
+				markview_layout::image::ResourceRef::document("test.png"),
+			),
+			"test.png".into(),
+		);
 		images.entries.insert(
 			"test.png".into(),
 			ImageInfo {

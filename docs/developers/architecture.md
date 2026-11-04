@@ -7,28 +7,53 @@ This document explains what the major parts of Markview own and why the boundari
 Markview separates source parsing, semantic representation and layout:
 
 ```text
-Markdown → markview-commonmark → markview-document::Document
-                                      │
-                                      ▼
-                               markview-layout
-                                      │
-                               LayoutSnapshot
-                                      │
-                   ┌──────────────────┴──────────────────┐
-             markview-render                       markview-pdf
-                GPU frame                           PDF pages
+Markdown/editor text → markview-commonmark → MarkdownParse
+                                               ├─ Document
+                                               ├─ SourceMap + original text
+                                               └─ dialect + incremental state
+
+HTTP response → markview-webpage → WebArticle
+                                    ├─ Document
+                                    └─ ArticleMetadata
+
+Document ─→ markview-layout → LayoutSnapshot → markview-render / markview-pdf
+SourceMap + original text ─→ source navigation adapter (optional)
 ```
 
 `markview-document` owns semantic blocks, inline content, links, image source
-specifications, colors and stable reading identities. It depends only on the
-standard library and `serde` for the existing color representation. It contains
-no source parser, font engine or drawing geometry.
+specifications, colors, table geometry, definition lists, figures and stable
+reading identities. A `DocumentBuilder` allocates typed `BlockId` values,
+derives semantic content keys and seals the tree. `FieldId` values are numbered
+by the document's own field traversal, and a `LinkOccurrenceId` comes from where
+the link was declared: the Markdown source offset, or a counter in the HTML
+lowering.
+`SourceMap` is a separate module: a front end supplies it when original text
+exists, and a document never points back at it. The crate contains no source
+parser, font engine or drawing geometry.
+
+An image's `ImageSpec.source` is either
+`ImageSource::Resource(ResourceRef { address, base })` or
+`ImageSource::Diagram(Diagram { language, source })`. `ResourceBase` is
+`Document` or `Vault`; a Mermaid fence is a `Diagram`, not a fake image URL.
+The document does not resolve addresses, authorize reads or build cache keys.
+The application does that in `src/images/source.rs`: `key` combines the
+address and base with the document or workspace path and the receiving
+`Security` context, so equal relative addresses on different pages or under
+different authority do not share an entry. Layout consumes that mapping through
+`ImageSnapshot::keys`; it never derives a resource key itself.
 
 `markview-commonmark` converts CommonMark, Markview's extensions and the
-supported embedded HTML subset into that document. It owns full, prefix and
-incremental parsing, front matter and heading anchor assignment. Within it,
-`html.rs` only lexes tags, `container.rs` owns the raw-HTML container stack,
-and `parse.rs` keeps the source coordinates and the reader cursor.
+supported embedded HTML subset into that document. It returns `MarkdownParse`,
+which owns the `Document`, the original text, the `SourceMap` and the dialect.
+It owns full, prefix and incremental parsing, front matter and heading anchor
+assignment. Within it, `html.rs` only lexes tags, `container.rs` owns the
+raw-HTML container stack, and `parse.rs` keeps the source coordinates and the
+reader cursor.
+
+`markview-webpage` lowers Readability's processed DOM directly into a
+`Document`. It never produces body HTML, Markdown or plain text as an
+intermediate, and its public API does not expose `dom_query` types. See
+[web page extraction](webpage-extraction.md).
 
 `markview-layout` consumes a document with layout options and resource metadata.
 It shapes text, lays out paragraphs, measures math and images, and exposes
@@ -37,8 +62,8 @@ and drawing instructions. Its bundled themes, fonts and immutable snapshots
 remain window- and GPU-independent.
 
 The Cargo production dependency graph is `markview-commonmark →
-markview-document ← markview-layout`. Both transformations depend on the same
-representation; neither depends on the other. Layout tests use CommonMark as a
+markview-document ← markview-layout` and `markview-webpage → markview-document`.
+Both front ends produce the same representation; neither depends on the other. Layout tests use CommonMark as a
 development dependency. The renderer, PDF backend and selection engine have no
 production dependency on the CommonMark parser.
 
@@ -161,9 +186,9 @@ block before publication; measure first-prefix latency and memory as well as
 throughput before enabling them in a reader.
 
 A future input crate can produce the same `Document` for the host to pass into
-layout. The current experimental web article reader still converts extracted
-content into Markdown; this split preserves its behavior and the existing
-source coordinate model.
+layout. The experimental web article reader already does: `markview-webpage`
+lowers extracted content straight into a `Document`, and the reader lays it out
+without an intermediate Markdown text or source coordinate model.
 
 ## Application feature boundaries
 
@@ -226,11 +251,82 @@ and retains the job's captured geometry and scale.
 
 Parsing produces a `Document` made of blocks and rich inline content. A block keeps its source range for diagnostics and a semantic identity for cache reuse. Source positions are not used as identity: inserting text above a block must not make every later block appear to be a different kind of content.
 
-A reload re-parses the whole file, but a small edit to a document whose top-level blocks are plain leaves separated by blank lines re-parses only the block the edit fell in and reuses the rest, shifting the source ranges of the blocks after it. Documents with containers, code, tables or reference definitions take the full parse, because those can span a blank line or carry meaning outside their own block.
+A `Link` deliberately has no `Eq`. `same_address` compares navigation targets,
+while `same_occurrence` compares the shared `LinkOccurrenceId` and the address;
+each run and open scope of one link carries the same occurrence, and adjacent
+links stay distinct even when their addresses match. A footnote definition has
+a `FootnoteId`; `FootnoteReference { definition, number, occurrence }` keeps a
+reference's display number and occurrence separate. `AnchorId` distinguishes
+`Fragment`, `FootnoteDefinition` and `FootnoteReference`, so HTML ids do not
+share a namespace with internal footnote targets. Navigation lives in
+`Inline::link`; `TextStyle` contains visual properties only. Inline equality
+compares addresses separately, run merging also compares occurrences, and
+semantic cache keys normalize link groups. CommonMark owns source-offset
+allocation; HTML lowering allocates explicit occurrence ids. Legacy `fn:`,
+`fnref:` and `fnback:` spelling lives in `markview_layout::footnote` for display
+and external-fragment compatibility. Internal actions use typed targets.
+
+A reading position is one `SemanticPosition { revision, block, field, offset,
+affinity, projection }`. `block` is a `BlockId`, `field` is the `FieldId` numbered
+by the document's `visit_fields` traversal, and `offset` names a UTF-8 boundary
+in that field. `projection` optionally names a byte boundary in the field's
+reading text when generated labels, captions, placeholders or diagnostics have
+no exact semantic byte boundary. It never stores layout indices. Generated
+labels belong to the following field, or the preceding field at a block's end.
+
+`TextSelection`, hit results, drag bases, native state and Web state all use
+these positions. Layout resolves them on each query against the current
+snapshot. Geometry positions and selections are crate-private. The borrowed
+`ResolvedPosition<'_>` adapter exists for immediate source/scroll queries; its
+indices belong only to the borrowed snapshot and must not be saved across
+events. Comparisons resolve reading order rather than sorting allocated ids.
+Width, font, theme and disclosure changes retain semantic revisions. A different
+revision is rejected; `rebase_selection` explicitly maps surviving reading text
+between revisions and rejects a changed selected span. Publication counters are
+separate from semantic revisions and never retag a selection.
+
+When the builder seals the tree it also builds `index::build`: structural
+`paths` for every `BlockId`, the outline, each disclosure's `default_open`, and
+the disclosures enclosing every registered `AnchorId`. `Document::path_of`,
+`block_at_path`, `details_declared`, `details_enclosing` and
+`outline_entries` read that index. `BlockKind::Details` and
+`BlockKind::FrontMatter` store only the source's `default_open`; the reader's
+actual open state lives in the session.
 
 Layout produces an immutable `LayoutSnapshot`. A snapshot contains final geometry, logical reading text, text clusters, link hit regions, overflow information, and drawing instructions. The renderer and interaction code can therefore read the same result without mutating the layout engine or rebuilding text for copying.
 
 The reading index is deliberately separate from glyphs. Grapheme boundaries, shaping clusters, formula ranges, image fallback text, and code whitespace all need a stable logical mapping even when visual layout inserts hyphens, expands tabs, or replaces an unavailable asset with a placeholder. Selection and copying operate on that logical mapping, so reflow changes rectangles but not the meaning of a selection.
+
+## Session persistence
+
+`src/app/session.rs` owns the browsing session. Its current schema is version
+4. A `SavedTab` records the document origin, path, `Reading` and search state;
+resource grants are never saved. `Reading` contains a `Position` and
+`SavedDetails`.
+
+A `Position` stores the input digest, the front-end version, the structural
+child-index path to the block, an optional field index, the UTF-8 offset inside
+that field, a local pixel offset, an absolute scroll fallback and a scroll
+ratio. The input digest is `stable_fingerprint` of the source bytes, or the
+input identity a semantic front end supplies; the front-end version includes
+the Markdown dialect flags or the web `PROFILE_VERSION`. `SavedDetails` stores
+`(path, open)` pairs for reader overrides, again as structural paths.
+
+Restoration resolves a position only when the input digest and front-end
+version match and the path still names a block. It constructs a
+`SemanticPosition` with the current revision and resolves it through
+`LayoutSnapshot::resolve_position`; a missing path, changed input or changed front-end version
+falls back to the scroll ratio and then the absolute offset. Disclosure
+overrides are applied only for matching input and front end. On the first
+changed parse or web load they are dropped, so an old reader choice cannot
+attach to another block.
+
+`Session::read` accepts versions 1 through 4. A version older than 4 stored
+layout text-node ordinals, raw block ids and allocated disclosure ids; the
+migration keeps the tab, its search state and its absolute/ratio scroll
+fallback, discards the structural position and closes the disclosures, then
+writes schema 4. A session file whose version is outside that range, or whose
+data is damaged, is ignored by the application rather than restored.
 
 ## Versions and asynchronous work
 

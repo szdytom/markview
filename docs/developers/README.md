@@ -8,6 +8,7 @@ Start with [contributing](../../CONTRIBUTING.md) and the development guide.
 - [Development guide](development.md): build, test, choose a layer and change behavior.
 - [Changelog conventions](changelog.md): entry format, release headings and automated checks.
 - [Architecture](architecture.md): pipeline, ownership, snapshots, versions and resource boundaries.
+- [Web page extraction](webpage-extraction.md): HTML-to-document lowering, extraction profile and DOM patch.
 - [Native UI](ui.md): pure component updates, host effects and shared widget geometry.
 - [Web component development](web.md): WASM/TypeScript workspace, demo, builds and verification.
 - [Android development](android.md): platform implementation, APK builds and headless emulator tests.

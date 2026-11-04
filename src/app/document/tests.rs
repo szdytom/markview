@@ -127,6 +127,263 @@ impl crate::app::window::Loop for StubLoop {
 	fn exit(&self) {}
 }
 
+fn web_article(url: &str, markdown: &str) -> crate::web_page::Article {
+	crate::web_page::Article {
+		article: markview_webpage::WebArticle {
+			document: markview_commonmark::parse(markdown).document,
+			metadata: Default::default(),
+			input_fingerprint: markview_document::stable_fingerprint(
+				markdown.as_bytes(),
+			),
+		},
+		security: crate::security::Security::web(url.to_owned()),
+	}
+}
+
+#[test]
+fn web_tabs_show_a_readable_label_before_loading() {
+	let mut h = Harness::new();
+	let url = "https://example.org/blog/post".to_string();
+	h.app.open_web_page(url.clone());
+	let index = h.app.readers.active();
+	let label = h.app.readers.label(index);
+	assert_eq!(label, "example.org");
+	assert!(!label.contains("web:"));
+	let (title, detail) = h.app.readers.card_labels(index);
+	assert_eq!(
+		(title.as_str(), detail.as_str()),
+		("example.org", url.as_str())
+	);
+	assert!(!title.contains("web:"));
+	assert!(!detail.contains("web:"));
+}
+
+#[test]
+fn a_web_title_reaches_the_tab_strip_without_a_pointer_event() {
+	let mut h = Harness::new();
+	h.app
+		.open_web_page("https://example.org/blog/post".to_string());
+	assert_eq!(h.app.chrome().session.tab_labels, &["example.org"]);
+	// The extracted article renames the tab; no pointer or gesture follows it.
+	h.app
+		.readers
+		.set_title(h.app.readers.active(), "Article".to_owned());
+	assert_eq!(h.app.chrome().session.tab_labels, &["Article"]);
+}
+
+#[test]
+fn a_phone_title_band_never_paints_a_web_tabs_synthetic_path() {
+	let mut h = Harness::new();
+	h.app.tab_strip.phone = true;
+	let url = "https://example.org/blog/post".to_string();
+	h.app.open_web_page(url);
+	let chrome = h.app.chrome();
+	let name = chrome.phone_title();
+	assert_eq!(name, "example.org");
+	assert!(!name.contains("web:"));
+}
+
+#[test]
+fn a_phone_title_band_keeps_local_names_and_the_product_fallback() {
+	let mut h = Harness::new();
+	h.app.tab_strip.phone = true;
+	h.open("README.md", 2);
+	assert_eq!(h.app.chrome().phone_title(), "README.md");
+	h.app
+		.action(crate::state::Command::Document(DocumentCommand::NewPage));
+	assert_eq!(h.app.chrome().phone_title(), "Markview");
+}
+
+#[test]
+fn reopening_a_loaded_web_page_keeps_its_title() {
+	let mut h = Harness::new();
+	h.app.args.offline = false;
+	let permit = h
+		.app
+		.services
+		.handle
+		.transfers
+		.clone()
+		.try_acquire_many_owned(4)
+		.unwrap();
+	let url = "https://example.org/blog/post".to_string();
+	h.app.open_web_page(url.clone());
+	let path = h.app.readers.session.path.clone().unwrap();
+	let generation = h.app.web_pages.generation(&url).unwrap();
+	let mut article = web_article(&url, "# Web article\n\nBody text.\n");
+	article.article.metadata.title = "A better title".to_owned();
+	h.app
+		.web_page_loaded(url.clone(), path, generation, Ok(article));
+	let index = h.app.readers.active();
+	assert_eq!(h.app.readers.label(index), "A better title");
+	// Opening it again must not fall back to naming the host.
+	h.app.open_web_page(url);
+	assert_eq!(h.app.readers.active(), index);
+	assert_eq!(h.app.readers.label(index), "A better title");
+	drop(h);
+	drop(permit);
+}
+
+#[test]
+fn a_reloaded_web_page_drops_disclosures_saved_for_other_content() {
+	let mut h = Harness::new();
+	h.app.args.offline = false;
+	let permit = h
+		.app
+		.services
+		.handle
+		.transfers
+		.clone()
+		.try_acquire_many_owned(4)
+		.unwrap();
+	let url = "https://example.org/blog/post".to_string();
+	h.app.open_web_page(url.clone());
+	let path = h.app.readers.session.path.clone().unwrap();
+	let generation = h.app.web_pages.generation(&url).unwrap();
+	let id = markview_document::BlockId::new(1).unwrap();
+	h.app.readers.session.details_open =
+		std::sync::Arc::new([(id, true)].into());
+	let mut reading = crate::app::session::Reading::default();
+	reading.position.input = u64::MAX;
+	reading.position.frontend = u64::MAX;
+	reading.details = vec![(vec![0], true)].into();
+	h.app.readers.session.saved_reading = Some(reading);
+	h.app.web_page_loaded(
+		url,
+		path,
+		generation,
+		Ok(web_article(
+			"https://example.org/blog/post",
+			"# Web article\n\nNew body text.\n",
+		)),
+	);
+	assert!(h.app.readers.session.details_open.is_empty());
+	assert!(
+		h.app
+			.readers
+			.session
+			.saved_reading
+			.as_ref()
+			.unwrap()
+			.details
+			.is_empty()
+	);
+	drop(h);
+	drop(permit);
+}
+
+#[test]
+fn closed_web_tabs_release_their_load_records() {
+	let mut h = Harness::new();
+	let first = "https://example.org/first".to_string();
+	let second = "https://example.org/second".to_string();
+	h.app.open_web_page(first.clone());
+	h.app.open_web_page(second.clone());
+	let first_index = h
+		.app
+		.readers
+		.find_web(&crate::app::web_page::web_path(&first))
+		.unwrap();
+	assert!(h.app.web_pages.contains_key(&first));
+	assert!(h.app.web_pages.contains_key(&second));
+	h.app.close_tab(first_index);
+	assert!(
+		!h.app.web_pages.contains_key(&first),
+		"a closed tab's load record must not outlive it"
+	);
+	assert!(h.app.web_pages.contains_key(&second));
+	// Reopening allocates a fresh record, so a late completion for the closed
+	// load still fails its generation check.
+	h.app.open_web_page(first.clone());
+	assert!(h.app.web_pages.contains_key(&first));
+}
+
+#[test]
+fn a_redirected_web_tab_releases_its_load_record() {
+	let mut h = Harness::new();
+	h.app.args.offline = false;
+	let permit = h
+		.app
+		.services
+		.handle
+		.transfers
+		.clone()
+		.try_acquire_many_owned(4)
+		.unwrap();
+	let requested = "https://example.org/old".to_string();
+	let final_url = "https://example.org/new".to_string();
+	h.app.open_web_page(requested.clone());
+	let path = h.app.readers.session.path.clone().unwrap();
+	let generation = h.app.web_pages.generation(&requested).unwrap();
+	h.app.web_page_loaded(
+		requested.clone(),
+		path,
+		generation,
+		Ok(web_article(&final_url, "# Moved\n\nBody text.\n")),
+	);
+	// The load rewrites the tab's origin and path to the final URL, while the
+	// session store keeps the tab under the URL it ended at.
+	assert_eq!(
+		h.app.readers.session.security.origin,
+		crate::security::Origin::Web(final_url)
+	);
+	h.app.close_tab(0);
+	assert!(
+		!h.app.web_pages.contains_key(&requested),
+		"a redirected tab's load record must not outlive it"
+	);
+	drop(h);
+	drop(permit);
+}
+
+#[test]
+fn a_redirected_web_tab_is_identified_by_its_final_url() {
+	let mut h = Harness::new();
+	h.app.args.offline = false;
+	let permit = h
+		.app
+		.services
+		.handle
+		.transfers
+		.clone()
+		.try_acquire_many_owned(4)
+		.unwrap();
+	let requested = "https://example.org/old".to_string();
+	let final_url = "https://example.org/new".to_string();
+	h.app.open_web_page(requested.clone());
+	let path = h.app.readers.session.path.clone().unwrap();
+	let generation = h.app.web_pages.generation(&requested).unwrap();
+	h.app.web_page_loaded(
+		requested.clone(),
+		path,
+		generation,
+		Ok(web_article(&final_url, "# Moved\n\nBody text.\n")),
+	);
+	// The tab path follows the final URL, so opening it again selects this tab
+	// instead of starting a duplicate.
+	assert_eq!(
+		h.app.readers.session.path.clone().unwrap(),
+		crate::app::web_page::web_path(&final_url)
+	);
+	assert!(!h.app.web_pages.contains_key(&requested));
+	assert!(h.app.web_pages.contains_key(&final_url));
+	h.app.open_web_page(final_url.clone());
+	assert_eq!(
+		h.app.readers.entries().len(),
+		1,
+		"the final URL must select the redirected tab"
+	);
+	// Opening the pre-redirect address again resolves to the same tab.
+	h.app.open_web_page(requested.clone());
+	assert_eq!(
+		h.app.readers.entries().len(),
+		1,
+		"a redirect alias must select the redirected tab"
+	);
+	drop(h);
+	drop(permit);
+}
+
 #[test]
 fn web_tabs_open_immediately_and_complete_without_stealing_focus() {
 	let mut h = Harness::new();
@@ -151,13 +408,12 @@ fn web_tabs_open_immediately_and_complete_without_stealing_focus() {
 	h.open("README.md", 2);
 	let active_path = h.app.readers.session.path.clone();
 	let markdown = "# Web article\n\nNative article text.\n";
+	let generation = h.app.web_pages.generation(&url).unwrap();
 	h.app.web_page_loaded(
 		url.clone(),
-		pending_path,
-		Ok(crate::web_page::Article {
-			markdown: markdown.into(),
-			security: crate::security::Security::web(url.clone()),
-		}),
+		pending_path.clone(),
+		generation,
+		Ok(web_article(&url, markdown)),
 	);
 	assert_eq!(h.app.readers.session.path, active_path);
 	assert_eq!(h.app.readers.active(), 1);
@@ -165,15 +421,8 @@ fn web_tabs_open_immediately_and_complete_without_stealing_focus() {
 	assert_eq!(h.app.readers.active(), 0);
 	h.wait_images(0);
 	let loaded_path = h.app.readers.session.path.clone().unwrap();
-	assert!(loaded_path.starts_with(h.app.paste_dir.path()));
-	assert!(
-		loaded_path
-			.file_name()
-			.unwrap()
-			.to_string_lossy()
-			.contains("Web article")
-	);
-	assert_eq!(fs::read_to_string(loaded_path).unwrap(), markdown);
+	assert_eq!(loaded_path, pending_path);
+	assert!(!loaded_path.exists(), "web tabs never create a file");
 	assert!(!h.app.readers.session.web_loading);
 	assert!(!h.app.readers.session.snapshot.blocks.is_empty());
 	drop(h);
@@ -199,26 +448,23 @@ fn failed_tabs_keep_their_errors_and_closed_web_tabs_ignore_completions() {
 	h.app.select_tab(0);
 	assert_eq!(h.app.readers.session.load_error.as_ref(), Some(&error));
 	assert!(!h.app.readers.session.layout_pending);
+	let first_generation = h.app.web_pages.generation(&url).unwrap();
 	h.app.close_tab(0);
 	h.app.web_page_loaded(
 		url.clone(),
 		first_path.clone(),
-		Ok(crate::web_page::Article {
-			markdown: "# Closed article".into(),
-			security: crate::security::Security::web(url.clone()),
-		}),
+		first_generation,
+		Ok(web_article(&url, "# Closed article")),
 	);
 	assert_eq!(h.app.readers.entries().len(), 1);
 	h.app.open_web_page(url.clone());
 	let second_path = h.app.readers.session.path.clone().unwrap();
-	assert_ne!(first_path, second_path);
+	assert_eq!(first_path, second_path);
 	h.app.web_page_loaded(
 		url.clone(),
-		first_path,
-		Ok(crate::web_page::Article {
-			markdown: "# Stale article".into(),
-			security: crate::security::Security::web(url.clone()),
-		}),
+		first_path.clone(),
+		first_generation,
+		Ok(web_article(&url, "# Stale article")),
 	);
 	assert_eq!(h.app.readers.session.path.as_ref(), Some(&second_path));
 	assert!(h.app.readers.session.load_error.is_some());
@@ -236,9 +482,11 @@ fn failed_tabs_keep_their_errors_and_closed_web_tabs_ignore_completions() {
 	assert_eq!(h.app.readers.entries().len(), 2);
 	assert!(h.app.readers.session.web_loading);
 	assert!(h.app.readers.session.load_error.is_none());
+	let generation = h.app.web_pages.generation(&url).unwrap();
 	h.app.web_page_loaded(
 		url,
 		second_path,
+		generation,
 		Err(anyhow::anyhow!("download failed")),
 	);
 	assert!(
@@ -299,7 +547,14 @@ fn cached_tab_refresh_defers_fragment_links_until_new_content_arrives() {
 			assert!(session.layout_pending);
 			assert!(session.snapshot_complete);
 			assert_ne!(session.accepted_revision, session.content_version);
-			assert_eq!(session.pending_anchor.as_deref(), Some(anchor));
+			assert_eq!(
+				session
+					.pending_anchor
+					.as_ref()
+					.map(|pending| &pending.target)
+					.and_then(markview_document::AnchorId::fragment),
+				Some(anchor)
+			);
 			assert!(!h.app.status.is_error());
 			let deadline = Instant::now() + Duration::from_secs(10);
 			while h.app.readers.session.layout_pending {
@@ -357,8 +612,9 @@ fn cached_text_tabs_refresh_background_edits_on_every_activation_path() {
 		));
 		h.app.readers.session.load_all_images = true;
 		h.app.readers.session.remote_notice_dismissed = true;
-		h.app.readers.session.details_open =
-			std::sync::Arc::new([(1, true)].into());
+		h.app.readers.session.details_open = std::sync::Arc::new(
+			[(markview_document::BlockId::new(1).unwrap(), true)].into(),
+		);
 		h.app.readers.session.security.grant(
 			crate::security::Resource::SelectedImage {
 				source: "chosen.png".into(),
@@ -415,8 +671,8 @@ fn cached_text_tabs_refresh_background_edits_on_every_activation_path() {
 				.document
 				.as_ref()
 				.unwrap()
-				.source
-				.as_ref(),
+				.source()
+				.unwrap(),
 			fs::read_to_string(&path).unwrap(),
 		);
 	}
@@ -451,8 +707,8 @@ fn cached_text_tabs_notice_background_deletion_and_recreation() {
 			.document
 			.as_ref()
 			.unwrap()
-			.source
-			.as_ref(),
+			.source()
+			.unwrap(),
 		"Recreated text.",
 	);
 }
@@ -690,19 +946,22 @@ fn untrusted_local_navigation_and_images_need_grants_without_reusing_trusted_tab
 		state::Command,
 	};
 	let mut h = Harness::new();
+	let key = |h: &Harness, name: &str| {
+		h.app
+			.readers
+			.session
+			.blocked_images
+			.keys()
+			.find(|key| key.starts_with(name))
+			.cloned()
+	};
 	h.open("README.zh-cn.md", 1);
 	let source = fs::canonicalize(h.dir.path().join("README.md")).unwrap();
 	h.app
 		.open_document(source.clone(), Security::local(Trust::Untrusted));
 	h.wait_images(0);
-	assert!(
-		h.app
-			.readers
-			.session
-			.blocked_images
-			.contains_key("first.png")
-	);
-	let resource = h.app.readers.session.blocked_images["first.png"].clone();
+	let first = key(&h, "first.png").expect("the first image is blocked");
+	let resource = h.app.readers.session.blocked_images[&first].clone();
 	h.app
 		.ask_permission(resource, crate::app::modal::PermissionAction::Images);
 	h.app.action(Command::Chrome(ChromeCommand::ModalConfirm));
@@ -710,13 +969,7 @@ fn untrusted_local_navigation_and_images_need_grants_without_reusing_trusted_tab
 	h.app
 		.action(Command::Document(DocumentCommand::RemoteLoadAll));
 	h.wait_images(1);
-	assert!(
-		h.app
-			.readers
-			.session
-			.blocked_images
-			.contains_key("diagram.svg")
-	);
+	assert!(key(&h, "diagram.svg").is_some());
 	assert_eq!(
 		h.app.readers.session.security.origin.trust(),
 		Trust::Untrusted
@@ -734,24 +987,12 @@ fn untrusted_local_navigation_and_images_need_grants_without_reusing_trusted_tab
 		h.app.readers.session.security.origin,
 		Origin::Local(Trust::Untrusted)
 	);
-	assert!(
-		h.app
-			.readers
-			.session
-			.blocked_images
-			.contains_key("second.png")
-	);
+	assert!(key(&h, "second.png").is_some());
 	h.app.select_tab(1);
 	h.wait_images(1);
 	h.app.handle_user_event(&StubLoop, Event::Changed(source));
 	h.wait_images(0);
-	assert!(
-		h.app
-			.readers
-			.session
-			.blocked_images
-			.contains_key("first.png")
-	);
+	assert!(key(&h, "first.png").is_some());
 }
 
 #[test]
@@ -764,8 +1005,17 @@ fn clipboard_images_use_selected_files_and_web_relative_images_use_the_url() {
 	h.app.open_text("# Pasted\n\n![image](first.png)");
 	h.wait_images(0);
 	assert_eq!(h.app.readers.session.security.origin, Origin::Clipboard);
+	let key = h
+		.app
+		.readers
+		.session
+		.blocked_images
+		.keys()
+		.find(|key| key.starts_with("first.png"))
+		.unwrap()
+		.clone();
 	assert_eq!(
-		h.app.readers.session.blocked_images["first.png"],
+		h.app.readers.session.blocked_images[&key],
 		Resource::SelectImage("first.png".into())
 	);
 	let document = h.app.readers.session.path.clone();
@@ -844,11 +1094,12 @@ fn folder_open_navigation_links_and_refresh_use_the_native_reader() {
 	h.wait_images(2);
 	let note_link =
 		markview_commonmark::parse("[[Other note#A heading|Section]]");
-	let crate::document::BlockKind::Paragraph(text) = &note_link.blocks[0].kind
+	let crate::document::BlockKind::Paragraph(text) =
+		note_link.blocks()[0].kind()
 	else {
 		panic!()
 	};
-	h.app.open_link(text[0].style.link_url().unwrap(), false);
+	h.app.open_link(text[0].link_url().unwrap(), false);
 	h.wait_images(0);
 	h.app.apply_anchor();
 	assert!(h.app.readers.session.pending_anchor.is_none());
@@ -1238,11 +1489,12 @@ fn folder_wikilinks_open_literal_percent_names_even_with_a_decoded_match() {
 		("[Markdown](Note%20%41.md)", "Note A.md"),
 	] {
 		let doc = markview_commonmark::parse(source);
-		let crate::document::BlockKind::Paragraph(text) = &doc.blocks[0].kind
+		let crate::document::BlockKind::Paragraph(text) =
+			doc.blocks()[0].kind()
 		else {
 			panic!()
 		};
-		h.app.open_link(text[0].style.link_url().unwrap(), false);
+		h.app.open_link(text[0].link_url().unwrap(), false);
 		h.wait_images(0);
 		h.app.apply_anchor();
 		assert_eq!(
@@ -2574,4 +2826,67 @@ fn folder_same_root_replacement_clears_reused_row_capture() {
 		h.app.interaction.widgets.captured.is_none(),
 		"capture retained while ID now names a different file"
 	);
+}
+
+#[test]
+fn multiple_footnote_references_return_to_the_one_that_was_opened() {
+	let mut h = Harness::new();
+	let mut source = String::from("Intro.\n\n");
+	source.push_str(&"Leading paragraph.\n\n".repeat(24));
+	source.push_str("First[^a] reference.\n\n");
+	source.push_str(&"Middle paragraph.\n\n".repeat(24));
+	source.push_str("Second[^a] reference.\n\n");
+	source.push_str(&"Closing paragraph.\n\n".repeat(12));
+	source.push_str("[^a]: The note.\n");
+	fs::write(h.dir.path().join("notes.md"), source).unwrap();
+	h.open("notes.md", 0);
+	let references: Vec<_> = h
+		.app
+		.readers
+		.session
+		.snapshot
+		.blocks
+		.iter()
+		.flat_map(|block| {
+			block
+				.anchor_positions()
+				.filter_map(move |(anchor, y)| match anchor {
+					markview_document::AnchorId::FootnoteReference {
+						definition,
+						occurrence,
+					} => Some((
+						markview_document::AnchorId::FootnoteReference {
+							definition: definition.clone(),
+							occurrence: *occurrence,
+						},
+						block.y + y,
+					)),
+					_ => None,
+				})
+		})
+		.collect();
+	assert_eq!(references.len(), 2);
+	let id = match &references[0].0 {
+		markview_document::AnchorId::FootnoteReference {
+			definition, ..
+		} => definition.clone(),
+		_ => unreachable!(),
+	};
+	for (_, expected) in &references {
+		h.app.readers.session.scrolling.offset = *expected;
+		h.app.open_link_target(
+			&markview_layout::scene::LinkTarget::FootnoteDefinition(id.clone()),
+			false,
+		);
+		h.app.readers.session.advance_scroll(
+			Instant::now() + Duration::from_secs(1),
+			h.app.viewport(),
+		);
+		h.app.return_from_footnote(&id);
+		let viewport = h.app.viewport();
+		let session = &mut h.app.readers.session;
+		session
+			.advance_scroll(Instant::now() + Duration::from_secs(1), viewport);
+		assert!((session.scrolling.offset - expected).abs() < 0.01);
+	}
 }

@@ -80,7 +80,8 @@ fn hit_testing_only_lands_on_grapheme_boundaries() {
 			let y = block.y
 				+ node.clusters[0].rect.y
 				+ node.clusters[0].rect.h * 0.5;
-			let Some(hit) = snapshot.hit_test_text(x, y, &HashMap::new(), 1)
+			let Some(hit) =
+				snapshot.geometry_hit_test_text(x, y, &HashMap::new(), 1)
 			else {
 				continue;
 			};
@@ -99,14 +100,15 @@ fn copies_reading_text_code_tables_and_atomic_math() {
 		"# Title\n\nA **bold** [link](https://example.com) $x^2$.\n\n```rust\n\tlet x = 1;\n\n```\n\n| A | B |\n|---|---|\n| 中 | 文 |\n\n- one\n- [x] two",
 		300.0,
 	);
-	let text = snapshot.extract_text(snapshot.select_all(9).unwrap(), 9);
+	let text = snapshot
+		.geometry_extract_text(snapshot.geometry_select_all(9).unwrap(), 9);
 	assert_eq!(
 		text,
 		"Title\n\nA bold link x^2.\n\n\tlet x = 1;\n\n\n\nA\tB\n中\t文\none\ntwo"
 	);
 	assert!(
 		snapshot
-			.extract_text(snapshot.select_all(9).unwrap(), 10)
+			.geometry_extract_text(snapshot.geometry_select_all(9).unwrap(), 10)
 			.is_empty()
 	);
 }
@@ -114,7 +116,7 @@ fn copies_reading_text_code_tables_and_atomic_math() {
 fn double_and_triple_click_ranges_follow_reading_text() {
 	let snapshot = layout("First word here.\n\nSecond paragraph.", 300.0);
 	let word = snapshot
-		.select_word_at(TextPosition {
+		.geometry_select_word_at(GeometryPosition {
 			revision: 1,
 			block: 0,
 			node: 0,
@@ -122,9 +124,9 @@ fn double_and_triple_click_ranges_follow_reading_text() {
 			affinity: Affinity::Before,
 		})
 		.unwrap();
-	assert_eq!(snapshot.extract_text(word, 1), "word");
+	assert_eq!(snapshot.geometry_extract_text(word, 1), "word");
 	let block = snapshot
-		.select_block_at(TextPosition {
+		.geometry_select_block_at(GeometryPosition {
 			revision: 1,
 			block: 1,
 			node: 0,
@@ -132,13 +134,16 @@ fn double_and_triple_click_ranges_follow_reading_text() {
 			affinity: Affinity::Before,
 		})
 		.unwrap();
-	assert_eq!(snapshot.extract_text(block, 1), "Second paragraph.");
+	assert_eq!(
+		snapshot.geometry_extract_text(block, 1),
+		"Second paragraph."
+	);
 }
 /// Extracts the double-click selection at `offset` in the first block.
 fn word_at(source: &str, offset: usize, affinity: Affinity) -> String {
 	let snapshot = layout(source, 400.0);
 	let selection = snapshot
-		.select_word_at(TextPosition {
+		.geometry_select_word_at(GeometryPosition {
 			revision: 1,
 			block: 0,
 			node: 0,
@@ -146,7 +151,7 @@ fn word_at(source: &str, offset: usize, affinity: Affinity) -> String {
 			affinity,
 		})
 		.expect("a word selection");
-	snapshot.extract_text(selection, 1)
+	snapshot.geometry_extract_text(selection, 1)
 }
 #[test]
 fn double_click_uses_dictionary_segmentation_for_cjk() {
@@ -175,7 +180,7 @@ fn double_click_prefers_adjacent_word_over_whitespace() {
 fn double_click_never_splits_a_grapheme() {
 	let snapshot = layout("Cafe\u{301} shop", 400.0);
 	let selection = snapshot
-		.select_word_at(TextPosition {
+		.geometry_select_word_at(GeometryPosition {
 			revision: 1,
 			block: 0,
 			node: 0,
@@ -183,7 +188,7 @@ fn double_click_never_splits_a_grapheme() {
 			affinity: Affinity::Before,
 		})
 		.unwrap();
-	assert_eq!(snapshot.extract_text(selection, 1), "Cafe\u{301}");
+	assert_eq!(snapshot.geometry_extract_text(selection, 1), "Cafe\u{301}");
 }
 #[test]
 fn pointer_hit_inside_a_cjk_word_selects_that_word() {
@@ -197,22 +202,22 @@ fn pointer_hit_inside_a_cjk_word_selects_that_word() {
 		.find(|c| c.range.start >= 6)
 		.unwrap();
 	let position = snapshot
-		.hit_test_text(
+		.geometry_hit_test_text(
 			cluster.rect.x + cluster.rect.w * 0.75,
 			block.y + cluster.rect.y + cluster.rect.h * 0.5,
 			&horizontal,
 			1,
 		)
 		.unwrap();
-	let selection = snapshot.select_word_at(position).unwrap();
-	assert_eq!(snapshot.extract_text(selection, 1), "文字");
+	let selection = snapshot.geometry_select_word_at(position).unwrap();
+	assert_eq!(snapshot.geometry_extract_text(selection, 1), "文字");
 	// The highlight covers exactly the two glyphs of the word.
 	let word_clusters: Vec<_> = block.layout.text[0]
 		.clusters
 		.iter()
 		.filter(|c| c.range.start >= 6 && c.range.end <= 12)
 		.collect();
-	let rects = snapshot.selection_rects(selection, &horizontal, 1);
+	let rects = snapshot.geometry_selection_rects(selection, &horizontal, 1);
 	assert_eq!(rects.len(), word_clusters.len());
 	for (rect, cluster) in rects.iter().zip(word_clusters) {
 		assert!((rect.x - cluster.rect.x).abs() < 0.01);
@@ -226,15 +231,15 @@ fn selection_survives_reflow_and_repeated_blocks_are_distinct() {
 	);
 	let mut engine = LayoutEngine::new();
 	let wide = engine.layout(&doc, &LayoutOptions::default());
-	let selection = TextSelection {
-		anchor: TextPosition {
+	let selection = GeometrySelection {
+		anchor: GeometryPosition {
 			revision: 1,
 			block: 0,
 			node: 0,
 			offset: 2,
 			affinity: Affinity::Before,
 		},
-		focus: TextPosition {
+		focus: GeometryPosition {
 			revision: 1,
 			block: 1,
 			node: 0,
@@ -251,16 +256,16 @@ fn selection_survives_reflow_and_repeated_blocks_are_distinct() {
 		},
 	);
 	assert_eq!(
-		wide.extract_text(selection, 1),
-		narrow.extract_text(selection, 1)
+		wide.geometry_extract_text(selection, 1),
+		narrow.geometry_extract_text(selection, 1)
 	);
 	assert_eq!(
-		wide.extract_text(wide.select_all(1).unwrap(), 1),
-		narrow.extract_text(narrow.select_all(1).unwrap(), 1)
+		wide.geometry_extract_text(wide.geometry_select_all(1).unwrap(), 1),
+		narrow.geometry_extract_text(narrow.geometry_select_all(1).unwrap(), 1)
 	);
 	assert!(
 		!narrow
-			.selection_rects(selection, &HashMap::new(), 1)
+			.geometry_selection_rects(selection, &HashMap::new(), 1)
 			.is_empty()
 	);
 }
@@ -285,10 +290,10 @@ fn hit_testing_respects_graphemes_tabs_and_overflow_clip() {
 	assert_eq!(tab.range, 0..1);
 	let mut horizontal = HashMap::new();
 	horizontal.insert((1, 0), 80.0);
-	let all = snapshot.select_all(1).unwrap();
+	let all = snapshot.geometry_select_all(1).unwrap();
 	let overflow = &snapshot.blocks[1].layout.overflow[0];
 	for rect in snapshot
-		.selection_rects(all, &horizontal, 1)
+		.geometry_selection_rects(all, &horizontal, 1)
 		.iter()
 		.filter(|r| r.y >= snapshot.blocks[1].y)
 	{
@@ -299,7 +304,7 @@ fn hit_testing_respects_graphemes_tabs_and_overflow_clip() {
 	}
 	let c = &node.clusters[0];
 	let hit = snapshot
-		.hit_test_text(
+		.geometry_hit_test_text(
 			c.rect.x + 0.1,
 			c.rect.y + c.rect.h / 2.0,
 			&horizontal,
@@ -319,7 +324,7 @@ fn hit_testing_prunes_far_blocks_but_keeps_the_nearest_cluster() {
 	let first = &snapshot.blocks[0];
 	let cluster = &first.layout.text[0].clusters[0];
 	let hit = snapshot
-		.hit_test_text(
+		.geometry_hit_test_text(
 			cluster.rect.x + 0.5,
 			first.y + cluster.rect.y + cluster.rect.h * 0.5,
 			&none,
@@ -331,7 +336,7 @@ fn hit_testing_prunes_far_blocks_but_keeps_the_nearest_cluster() {
 	let last = &snapshot.blocks[index];
 	let cluster = &last.layout.text[0].clusters[0];
 	let hit = snapshot
-		.hit_test_text(
+		.geometry_hit_test_text(
 			cluster.rect.x + 0.5,
 			last.y + cluster.rect.y + cluster.rect.h * 0.5,
 			&none,
@@ -349,7 +354,8 @@ fn formula_mapping_does_not_depend_on_success_and_hyphens_are_visual_only() {
 	);
 	let node = &snapshot.blocks[0].layout.text[0];
 	assert_eq!(
-		snapshot.extract_text(snapshot.select_all(1).unwrap(), 1),
+		snapshot
+			.geometry_extract_text(snapshot.geometry_select_all(1).unwrap(), 1),
 		"x^2 \\notacommand{x} [Math error: ParseError at position 0: Undefined control sequence: \\notacommand] internationalization representation"
 	);
 	assert!(node.clusters.iter().any(|c| c.range == (0..3)));

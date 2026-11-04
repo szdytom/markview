@@ -8,7 +8,8 @@
 //! references and a note's number use the same fragments; the number's
 //! `fnback:` fragment is answered here from where the reader jumped from.
 use super::App;
-use markview_document::footnote;
+use markview_document as document;
+use markview_layout::footnote;
 use std::time::Instant;
 
 /// A link's document part, without its fragment.
@@ -39,23 +40,37 @@ pub(super) fn footnote_link(link: &str) -> bool {
 }
 
 impl<P: super::SendEvent> App<P> {
-	/// Queues an anchor and applies it as soon as it is laid out.
+	/// Queues an HTML fragment and applies it as soon as it is laid out.
 	pub(super) fn goto_anchor(&mut self, anchor: String) {
+		self.goto_target(document::AnchorId::Fragment(anchor));
+	}
+
+	/// Queues a typed document target and applies it as soon as it is laid out.
+	pub(super) fn goto_target(&mut self, target: document::AnchorId) {
 		self.readers.session.saved_reading = None;
 		// A jump is direct input, so any easing for the previous destination
 		// ends here.
 		self.readers.session.cancel_scroll_animation();
 		// Remember where the reader was, so a footnote's number can return.
 		self.readers.session.jump_origin =
-			Some((anchor.clone(), self.readers.session.scrolling.offset));
-		self.readers.session.pending_anchor = Some(anchor);
+			Some((target.clone(), self.readers.session.scrolling.offset));
+		// A jump inside a settled document belongs to this revision. A jump
+		// queued while another parse or layout is in flight must wait for
+		// whatever revision that work publishes.
+		let session = &self.readers.session;
+		let settled = session.accepted_revision == session.content_version
+			&& session.snapshot_complete
+			&& !session.layout_pending;
+		let revision = settled.then_some(session.snapshot.revision);
+		self.readers.session.pending_anchor =
+			Some(crate::state::PendingAnchor { target, revision });
 		self.apply_anchor();
 	}
 
 	/// Returns a footnote's number to the reference that opened it, or to the
 	/// first reference when the note was reached by scrolling.
-	pub(super) fn return_from_footnote(&mut self, label: &str) {
-		if let Some(scroll) = self.readers.session.footnote_return(label) {
+	pub(super) fn return_from_footnote(&mut self, id: &document::FootnoteId) {
+		if let Some(scroll) = self.readers.session.footnote_return(id) {
 			self.readers.session.pending_anchor = None;
 			self.readers.session.scrolling.target = None;
 			self.readers.session.follow_update = false;
@@ -73,7 +88,39 @@ impl<P: super::SendEvent> App<P> {
 			return;
 		}
 		// No reference to return to: fall back to the first one.
-		self.goto_anchor(footnote::reference(label));
+		let first =
+			self.readers
+				.session
+				.snapshot
+				.blocks
+				.iter()
+				.find_map(|block| {
+					block.anchor_positions().find_map(
+						|(anchor, _)| match anchor {
+							document::AnchorId::FootnoteReference {
+								definition,
+								occurrence,
+							} if definition == id => Some(document::AnchorId::FootnoteReference {
+								definition: definition.clone(),
+								occurrence: *occurrence,
+							}),
+							_ => None,
+						},
+					)
+				});
+		if let Some(first) = first {
+			self.goto_target(first);
+		} else {
+			self.status.set(
+				self.preferences
+					.values
+					.lang()
+					.status_heading_not_found(footnote::reference(id.as_str())),
+				true,
+				4,
+			);
+			self.redraw();
+		}
 	}
 
 	/// Applies a queued anchor, reporting a heading the finished layout lacks.
@@ -84,8 +131,17 @@ impl<P: super::SendEvent> App<P> {
 		{
 			return;
 		}
+		if !self.readers.session.pending_anchor_is_current() {
+			self.readers.session.pending_anchor = None;
+			return;
+		}
 		// Reveal the retained target before resolving its visible position.
-		if let Some(anchor) = self.readers.session.pending_anchor.clone()
+		if let Some(anchor) = self
+			.readers
+			.session
+			.pending_anchor
+			.as_ref()
+			.map(|pending| pending.target.clone())
 			&& self.readers.session.open_enclosing_details(&anchor)
 		{
 			self.present_disclosures();
@@ -108,11 +164,21 @@ impl<P: super::SendEvent> App<P> {
 				self.after_scroll();
 			}
 			Err(anchor) => {
+				let name = match anchor {
+					document::AnchorId::Fragment(fragment) => fragment,
+					document::AnchorId::FootnoteDefinition(id) => {
+						footnote::anchor(id.as_str())
+					}
+					document::AnchorId::FootnoteReference {
+						definition,
+						..
+					} => footnote::reference(definition.as_str()),
+				};
 				self.status.set(
 					self.preferences
 						.values
 						.lang()
-						.status_heading_not_found(anchor),
+						.status_heading_not_found(name),
 					true,
 					4,
 				);

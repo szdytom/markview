@@ -1,0 +1,26 @@
+<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"><title>Formula-heavy article</title></head>
+<body>
+<article>
+<h1>Formula-heavy article</h1>
+<p>The extractor must keep mathematical text distinct from prose, code and page punctuation. This paragraph gives the readability pass enough surrounding prose to select the article body without relying on a serialized text fallback.</p>
+<p>Euler's identity is <span class="math inline">\(e^{i\pi}+1=0\)</span>, and the quadratic form is <span class="math inline">\(ax^2+bx+c\)</span>. A literal dollar sign remains prose: $5 and $10. A literal backslash remains prose: C:\tmp.</p>
+<div class="math display">\[\int_{-\infty}^{\infty} e^{-x^2}\,dx=\sqrt{\pi}\]</div>
+<p>The normalized probability is <span class="math inline">\(p(x)=\frac{1}{\sigma\sqrt{2\pi}}e^{-(x-\mu)^2/(2\sigma^2)}\)</span>, where the symbols keep their own source spelling.</p>
+<p>Inline code keeps formula-looking text literal: <code>\(x+y\)</code>. A second run of math follows: <span class="math inline">\(\|A\|_2=\sqrt{\lambda_{\max}(A^\top A)}\)</span>.</p>
+<div class="math display">\[A=\begin{pmatrix}a&amp;b\\c&amp;d\end{pmatrix},\qquad \det A=ad-bc\]</div>
+<p>Static MathJax scripts are retained too: <script type="math/tex">\nabla f(x)</script> and a display script below.</p>
+<script type="math/tex; mode=display">\sum_{k=1}^{n} k = \frac{n(n+1)}{2}</script>
+<p>Repeated inline expressions keep their spacing and delimiters: <span class="math inline">\(\alpha+\beta\)</span>, <span class="math inline">\(\gamma-\delta\)</span>, <span class="math inline">\(\epsilon\cdot\zeta\)</span>, and <span class="math inline">\(\eta/\theta\)</span>.</p>
+<p>Nested groups exercise the math parser: <span class="math inline">\(\frac{\partial}{\partial x}\left(\frac{x}{1+x^2}\right)\)</span> and <span class="math inline">\(\sqrt{a+\sqrt{b+\sqrt{c}}}\)</span>.</p>
+<p>Matrices and cases are common in articles. <span class="math inline">\(\begin{cases}x+y=1\\x-y=0\end{cases}\)</span> has two aligned rows, while <span class="math inline">\(\lvert x\rvert\)</span> uses vertical bars inside a formula.</p>
+<div class="math display">\[\mathcal{L}\{f\}(s)=\int_0^\infty e^{-st}f(t)\,dt\]</div>
+<p>Text after a display formula should remain a separate block. This paragraph is ordinary prose with an inline sum <span class="math inline">\(\sum_i x_i\)</span> and an ordinary parenthesis pair (not math).</p>
+<p>Another display formula checks that surrounding text is not merged:</p>
+<div class="math display">\[f(x)=\sum_{n=0}^{\infty} a_n x^n\]</div>
+<p>Final prose paragraph. The fixture is intentionally formula-dense but still contains enough plain text for extraction and comparison.</p>
+</article>
+<script>alert('unwanted script')</script>
+</body>
+</html>

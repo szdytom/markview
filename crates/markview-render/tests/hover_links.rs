@@ -69,7 +69,8 @@ fn links<'a>(snapshot: &'a LayoutSnapshot, url: &str) -> Vec<LinkRef<'a>> {
 				.filter(|link| &*link.url == url)
 				.map(|link| LinkRef {
 					url: link.url.as_ref(),
-					block: block.source.start,
+					target: &link.target,
+					block: block.id,
 					id: link.id,
 				})
 		})
@@ -80,16 +81,12 @@ fn links<'a>(snapshot: &'a LayoutSnapshot, url: &str) -> Vec<LinkRef<'a>> {
 fn marked(
 	snapshot: &LayoutSnapshot,
 	target: LinkRef<'_>,
-) -> BTreeSet<(usize, usize)> {
+) -> BTreeSet<(markview_layout::document::BlockId, usize)> {
 	let mut marked = BTreeSet::new();
-	for block in snapshot
-		.blocks
-		.iter()
-		.filter(|b| b.source.start == target.block)
-	{
+	for block in snapshot.blocks.iter().filter(|b| b.id == target.block) {
 		for command in 0..block.layout.draws.len() {
 			if block.layout.link_hovered(command, target.url, target.id) {
-				marked.insert((block.source.start, command));
+				marked.insert((block.id, command));
 			}
 		}
 	}
@@ -100,16 +97,12 @@ fn marked(
 fn expected(
 	snapshot: &LayoutSnapshot,
 	target: LinkRef<'_>,
-) -> BTreeSet<(usize, usize)> {
+) -> BTreeSet<(markview_layout::document::BlockId, usize)> {
 	let mut expected = BTreeSet::new();
-	for block in snapshot
-		.blocks
-		.iter()
-		.filter(|b| b.source.start == target.block)
-	{
+	for block in snapshot.blocks.iter().filter(|b| b.id == target.block) {
 		for link in block.layout.links.iter().filter(|l| l.id == target.id) {
 			for command in link.commands.clone() {
-				expected.insert((block.source.start, command));
+				expected.insert((block.id, command));
 			}
 		}
 	}
@@ -223,14 +216,15 @@ fn every_fragment_of_a_wrapped_link_shares_an_occurrence() {
 	);
 	let target = LinkRef {
 		url: links[0].url.as_ref(),
-		block: snapshot.blocks[0].source.start,
+		target: &links[0].target,
+		block: snapshot.blocks[0].id,
 		id: links[0].id,
 	};
 	let marked = marked(&snapshot, target);
 	assert_eq!(marked, expected(&snapshot, target));
 	assert!(
 		links.iter().all(|link| marked
-			.contains(&(snapshot.blocks[0].source.start, link.commands.start))),
+			.contains(&(snapshot.blocks[0].id, link.commands.start))),
 		"every wrapped fragment must hover together"
 	);
 }

@@ -63,7 +63,7 @@ impl LayoutEngine {
 		};
 		let mut jobs: Vec<BlockJob<'_>> = Vec::new();
 		let mut visible_index = layout.visible_index;
-		for block in document.blocks[layout.index..]
+		for block in document.blocks()[layout.index..]
 			.iter()
 			.take(parallel.threads() * 4)
 		{
@@ -146,12 +146,15 @@ fn has_math(block: &Block) -> bool {
 		text.iter()
 			.any(|inline| matches!(inline.kind, InlineKind::Math { .. }))
 	};
-	match &block.kind {
+	match &block.kind() {
 		BlockKind::Paragraph(text) | BlockKind::Heading { text, .. } => {
 			rich(text)
 		}
 		BlockKind::Quote { callout, blocks } => {
-			callout.as_ref().is_some_and(|callout| rich(&callout.title))
+			callout
+				.as_ref()
+				.and_then(|callout| callout.title.as_ref())
+				.is_some_and(rich)
 				|| blocks.iter().any(has_math)
 		}
 		BlockKind::Footnote { blocks, .. }
@@ -162,7 +165,20 @@ fn has_math(block: &Block) -> bool {
 		BlockKind::List { items, .. } => {
 			items.iter().any(|item| item.blocks.iter().any(has_math))
 		}
-		BlockKind::Table { rows, .. } => rows.iter().flatten().any(rich),
+		BlockKind::Table(table) => {
+			table.caption.as_ref().is_some_and(rich)
+				|| table.cell_blocks().any(has_math)
+		}
+		BlockKind::DefinitionList(items) => items.iter().any(|item| {
+			item.terms.iter().any(rich)
+				|| item
+					.definitions
+					.iter()
+					.any(|blocks| blocks.iter().any(has_math))
+		}),
+		BlockKind::Figure { blocks, caption } => {
+			caption.as_ref().is_some_and(rich) || blocks.iter().any(has_math)
+		}
 		BlockKind::Code { .. } | BlockKind::Rule => false,
 	}
 }
@@ -248,7 +264,7 @@ mod tests {
 				..Default::default()
 			},
 		);
-		assert!(has_math(&document.blocks[0]));
+		assert!(has_math(&document.blocks()[0]));
 	}
 
 	#[test]

@@ -180,10 +180,13 @@ fn a_different_preview_with_the_same_shape_is_tried_again() -> anyhow::Result<()
 	// The old key fields collide: same presentation, width, block count and
 	// height. Only the content identity differs.
 	assert!(
-		oversized.content_id != 0,
+		oversized.content_id.get() != 0,
 		"engine layouts carry a content id"
 	);
-	assert!(fitted.content_id != 0, "engine layouts carry a content id");
+	assert!(
+		fitted.content_id.get() != 0,
+		"engine layouts carry a content id"
+	);
 	assert_ne!(
 		oversized.content_id, fitted.content_id,
 		"replacing the preview text must change the content id"

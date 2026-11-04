@@ -587,6 +587,123 @@ fn compact_text_rows_export_once_across_page_breaks() {
 }
 
 #[test]
+fn a_table_exports_every_cell_text_once_across_pages() {
+	let columns = 6;
+	let rows = 60;
+	let mut source = String::from("|");
+	for column in 0..columns {
+		source.push_str(&format!(" h{column} |"));
+	}
+	source.push_str("\n|");
+	for _ in 0..columns {
+		source.push_str("---|");
+	}
+	source.push('\n');
+	for row in 0..rows {
+		source.push('|');
+		for column in 0..columns {
+			source.push_str(&format!(" r{row:02}c{column} |"));
+		}
+		source.push('\n');
+	}
+	let geometry = PageGeometry {
+		width_pt: 340.0,
+		height_pt: 120.0,
+		margin_pt: [12.0; 4],
+	};
+	let exported =
+		export_at(&source, print(), false, Metadata::default(), geometry);
+	assert!(exported.pages > 1, "the table must cross pages");
+	for (number, id) in exported.pdf.get_pages() {
+		let content = exported.pdf.get_page_content(id);
+		let content = String::from_utf8_lossy(&content);
+		let (lines, text) = horizontal_fills_and_text(&content);
+		assert!(!lines.is_empty(), "page {number} has no table borders");
+		for (left, top, right, bottom) in lines {
+			for (x, baseline, size) in &text {
+				let overlaps_y = baseline - size < bottom && *baseline > top;
+				let overlaps_x = *x < right && *x + size * 6.0 > left;
+				assert!(
+					!(overlaps_y && overlaps_x),
+					"page {number}: a border {left}..{right} x {top}..{bottom} crosses text at {x},{baseline}"
+				);
+			}
+		}
+	}
+	let all: String = (1..=exported.pages as u32)
+		.map(|page| exported.pdf.extract_text(&[page]).unwrap())
+		.collect();
+	for row in 0..rows {
+		for column in 0..columns {
+			let token = format!("r{row:02}c{column}");
+			assert_eq!(
+				all.matches(&token).count(),
+				1,
+				"{token} must be exported exactly once: {all:?}"
+			);
+		}
+	}
+}
+
+/// A filled rectangle's left, bottom, width and height.
+type Fill = (f32, f32, f32, f32);
+/// A text baseline's x, y and size.
+type Baseline = (f32, f32, f32);
+
+/// Thin filled horizontal rectangles (table borders) and text baselines, in
+/// the page coordinate space the content stream writes.
+fn horizontal_fills_and_text(content: &str) -> (Vec<Fill>, Vec<Baseline>) {
+	let mut fills = Vec::new();
+	let mut text = Vec::new();
+	let mut numbers = Vec::new();
+	let mut points = Vec::new();
+	let mut size = 0.0;
+	for token in content.split_whitespace() {
+		if let Ok(number) = token.parse::<f32>() {
+			numbers.push(number);
+			continue;
+		}
+		match token {
+			"m" | "l" if numbers.len() >= 2 => {
+				let y = numbers.pop().unwrap();
+				let x = numbers.pop().unwrap();
+				points.push((x, y));
+			}
+			"f" => {
+				if let (Some(min_x), Some(max_x)) = (
+					points.iter().map(|p| p.0).reduce(f32::min),
+					points.iter().map(|p| p.0).reduce(f32::max),
+				) {
+					let min_y =
+						points.iter().map(|p| p.1).reduce(f32::min).unwrap();
+					let max_y =
+						points.iter().map(|p| p.1).reduce(f32::max).unwrap();
+					if max_y - min_y <= 2.0 && max_x - min_x > 20.0 {
+						fills.push((min_x, min_y, max_x, max_y));
+					}
+				}
+				points.clear();
+			}
+			"Tf" => {
+				if let Some(value) = numbers.last() {
+					size = *value;
+				}
+			}
+			"Tm" if numbers.len() >= 6 => {
+				text.push((
+					numbers[numbers.len() - 1],
+					numbers[numbers.len() - 2],
+					size,
+				));
+			}
+			_ => {}
+		}
+		numbers.clear();
+	}
+	(fills, text)
+}
+
+#[test]
 fn inline_background_padding_keeps_text_and_decorations_on_their_page() {
 	let geometry = PageGeometry {
 		width_pt: 200.0,
@@ -1049,6 +1166,12 @@ fn missing_image_pixels_abort_export_with_the_source_and_reason() {
 	let document =
 		markview_commonmark::parse("![Question 7](Q07.png)".to_owned());
 	let mut images = ImageSnapshot::default();
+	images.keys.insert(
+		markview_layout::image::ImageSource::Resource(
+			markview_layout::image::ResourceRef::document("Q07.png"),
+		),
+		"Q07.png".into(),
+	);
 	images.entries.insert(
 		"Q07.png".into(),
 		ImageInfo {

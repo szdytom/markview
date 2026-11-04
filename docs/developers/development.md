@@ -323,7 +323,7 @@ document and print typography are independent.
 
 ## Choose the layer
 
-1. Put source conversion in `markview-commonmark`, semantic nodes and identities in `markview-document`, and reading text, geometry, hit testing and selection mapping in `markview-layout`.
+1. Put source conversion in `markview-commonmark`, HTML article extraction in `markview-webpage` (it lowers a page to the same semantic nodes without a source map), semantic nodes and identities in `markview-document`, and reading text, geometry, hit testing and selection mapping in `markview-layout`.
 2. Put the pointer-driven selection machine, which holds no reading text and no events of its own, in `crates/markview-interaction`.
 3. Put GPU resources, clipping, rasterization, and frame assembly in `crates/markview-render`.
 4. Put files, settings, watching, image I/O, platform effects, commands, and window interaction in the root crate.

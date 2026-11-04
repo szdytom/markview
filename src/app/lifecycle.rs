@@ -220,15 +220,20 @@ impl<P: super::SendEvent> App<P> {
 							path,
 						},
 					);
-					if let Some(document) = &self.readers.session.document {
-						self.readers.session.security.bind(&document.source);
+					if let Some(document) = &self.readers.session.document
+						&& let Some(source) = document.source()
+					{
+						self.readers.session.security.bind(source);
 					}
 					self.request(false);
 				}
 			}
-			Event::WebLoaded { url, path, result } => {
-				self.web_page_loaded(url, path, result)
-			}
+			Event::WebLoaded {
+				url,
+				path,
+				generation,
+				result,
+			} => self.web_page_loaded(url, path, generation, *result),
 			Event::Parsed {
 				path,
 				content_version,
@@ -236,22 +241,12 @@ impl<P: super::SendEvent> App<P> {
 			} if self.readers.session.path.as_ref() == Some(&path)
 				&& self.readers.session.content_version == content_version =>
 			{
-				if self
-					.readers
-					.session
-					.saved_reading
-					.as_ref()
-					.is_some_and(|saved| saved.content != document.content_id)
-					&& !self.readers.session.details_open.is_empty()
+				let stale = self.readers.session.discard_stale_disclosures(
+					document.input_fingerprint(),
+					document.frontend_version(),
+				);
+				if self.readers.session.restore_disclosures(&document) || stale
 				{
-					self.readers.session.details_open = Default::default();
-					self.readers
-						.session
-						.saved_reading
-						.as_mut()
-						.unwrap()
-						.details
-						.clear();
 					self.request(false);
 				}
 				self.readers.session.parse_complete = true;
@@ -331,8 +326,7 @@ impl<P: super::SendEvent> App<P> {
 						);
 						if !reader.complete
 							&& self.interaction.selection.is_some_and(|s| {
-								s.anchor.block.max(s.focus.block)
-									>= reader.layout.blocks.len()
+								!reader.layout.contains_selection(s)
 							}) {
 							return;
 						}
@@ -402,14 +396,9 @@ impl<P: super::SendEvent> App<P> {
 						self.search_tick();
 						self.apply_search_navigation();
 						if let Some(w) = &self.window {
-							w.set_title(&format!(
-								"{} — Markview",
-								update
-									.path
-									.file_name()
-									.unwrap_or_default()
-									.to_string_lossy()
-							));
+							let label =
+								self.readers.label(self.readers.active());
+							w.set_title(&format!("{label} — Markview"));
 						}
 						if complete {
 							debug!(

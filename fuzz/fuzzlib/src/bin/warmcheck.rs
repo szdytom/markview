@@ -11,13 +11,14 @@ fn main() {
 	let latex = args.join(" ");
 	for round in 1..=3 {
 		let mut engine = markview_layout::math::MathEngine::default();
-		let (result, m) =
-			measure(latex.len(), || engine.layout(
+		let (result, m) = measure(latex.len(), || {
+			engine.layout(
 				&latex,
 				true,
 				18.0,
 				&markview_layout::style::TextAppearance::default(),
-			));
+			)
+		});
 		println!(
 			"round {round}: peak={:>10} B  {:>9.3} s  {}",
 			m.peak_bytes,

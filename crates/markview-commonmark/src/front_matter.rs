@@ -17,6 +17,16 @@ pub(super) enum Content {
 }
 
 /// Read the payload comrak hands over, delimiters included.
+impl Content {
+	/// The YAML payload, if there is one.
+	pub(super) fn into_yaml(self) -> Option<String> {
+		match self {
+			Self::Empty => None,
+			Self::Source(yaml) => Some(yaml),
+		}
+	}
+}
+
 pub(super) fn parse(source: &str) -> Content {
 	let yaml = strip(source).trim_end();
 	if yaml.trim().is_empty() {

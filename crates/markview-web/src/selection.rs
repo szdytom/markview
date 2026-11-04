@@ -8,8 +8,8 @@ use markview_interaction::{DocumentInteraction, Horizontal};
 use markview_interaction::{Drag, Grain, Host, Modifiers, Point, Selection};
 use markview_layout::{
 	layout::LayoutSnapshot,
-	scene::Viewport,
-	text::{TextPosition, TextSelection},
+	scene::{LinkTarget, Viewport},
+	text::{SemanticPosition, TextSelection},
 };
 use web_time::Instant;
 
@@ -31,7 +31,7 @@ impl Reading<'_> {
 	}
 
 	/// The reading position under a canvas-local point, if any text is near.
-	fn position(&self, x: f32, y: f32) -> Option<TextPosition> {
+	fn position(&self, x: f32, y: f32) -> Option<SemanticPosition> {
 		self.context().position(Point::new(x, y))
 	}
 }
@@ -59,7 +59,10 @@ impl Pointer {
 		if !reading.context().contains(self.cursor) {
 			return;
 		}
-		let link = reading.context().link(self.cursor).map(str::to_owned);
+		let link = reading
+			.context()
+			.link_ref(self.cursor)
+			.map(|link| link.target.clone());
 		let Some(position) = reading.position(x, y) else {
 			if let Some(link) = link {
 				self.begin_link_press(link);
@@ -109,8 +112,8 @@ impl Pointer {
 		&mut self,
 		x: f32,
 		y: f32,
-		link: Option<&str>,
-	) -> Option<String> {
+		link: Option<&LinkTarget>,
+	) -> Option<LinkTarget> {
 		self.cursor = Point::new(x, y);
 		self.finish_selection(link)
 	}
@@ -156,40 +159,8 @@ impl Pointer {
 			drag.base = previous.rebase_selection(next, base, from, to);
 		}
 	}
-	/// Moves the selection and the drag base onto `to`. A pass only appends
-	/// blocks, so every reading position survives unchanged and only the
-	/// revision has to follow; a position still stamped with another revision
-	/// is left alone.
-	pub(crate) fn retag(&mut self, from: u64, to: u64) {
-		if let Some(selection) = self.selection
-			&& selection.anchor.revision == from
-			&& selection.focus.revision == from
-		{
-			self.selection = Some(restamped(selection, to));
-		}
-		if let Some(drag) = &mut self.drag
-			&& let Some(base) = drag.base
-			&& base.anchor.revision == from
-			&& base.focus.revision == from
-		{
-			drag.base = Some(restamped(base, to));
-		}
-	}
 }
 
-/// The same reading positions, stamped with another revision.
-fn restamped(selection: TextSelection, revision: u64) -> TextSelection {
-	TextSelection {
-		anchor: TextPosition {
-			revision,
-			..selection.anchor
-		},
-		focus: TextPosition {
-			revision,
-			..selection.focus
-		},
-	}
-}
 impl Host for Pointer {
 	fn cursor(&self) -> Point {
 		self.cursor

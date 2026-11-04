@@ -359,7 +359,7 @@ impl<P: SendEvent> App<P> {
 			tree.into_iter()
 				.flat_map(|tree| tree.entries.iter())
 				.filter_map(|entry| entry.file.clone()),
-			self.readers.entries().iter().map(|tab| tab.path.as_path()),
+			self.readers.local_paths(),
 		);
 		let start_changed = self.folder.start.apply_catalog(
 			root.clone(),
@@ -826,6 +826,87 @@ mod tests {
 			root.join("workspace/inside.md")
 		);
 		assert_eq!(app.interaction.overlays.quick_open.search.catalog.len(), 2);
+	}
+
+	#[test]
+	fn a_web_tab_is_never_a_start_page_or_quick_open_row() {
+		let dir = tempfile::tempdir().unwrap();
+		let root = dir.path().canonicalize().unwrap();
+		fs::write(root.join("local.md"), "# Local").unwrap();
+		fs::write(root.join("open.md"), "# Open").unwrap();
+		let (tx, events) = mpsc::channel();
+		let mut app = App::new(
+			LaunchOptions {
+				mode: Mode::Smoke,
+				offline: true,
+				options: crate::test_support::options(),
+				..Default::default()
+			},
+			Proxy(tx),
+		);
+		app.ui = crate::test_support::shaper();
+		app.folder_loaded(
+			0,
+			false,
+			crate::app::folder::Tree::read(root.clone()),
+		);
+		app.open(root.join("open.md"));
+		let url = "https://example.org/blog/post";
+		app.open_web_page(url.to_owned());
+		let web_path = crate::app::web_page::web_path(url);
+		assert!(app.readers.entries().iter().any(|tab| tab.path == web_path));
+		assert!(
+			app.folder
+				.start
+				.catalog
+				.iter()
+				.all(|file| file.path != web_path),
+			"a web tab must be excluded before asynchronous folder updates"
+		);
+		settle(&mut app, &events, |app| !app.folder.start.pending);
+		assert!(
+			app.folder
+				.start
+				.matches
+				.iter()
+				.any(|file| &*file.name == "local.md")
+		);
+		assert!(
+			app.folder
+				.start
+				.matches
+				.iter()
+				.all(|file| !file.name.contains("web:")),
+			"{:?}",
+			app.folder
+				.start
+				.matches
+				.iter()
+				.map(|file| &*file.name)
+				.collect::<Vec<_>>()
+		);
+		app.open_quick_open();
+		settle(&mut app, &events, |app| {
+			!app.interaction.overlays.quick_open.search.pending
+		});
+		assert!(
+			app.interaction
+				.overlays
+				.quick_open
+				.search
+				.catalog
+				.iter()
+				.all(|file| file.path != web_path)
+		);
+		assert!(
+			app.interaction
+				.overlays
+				.quick_open
+				.search
+				.matches
+				.iter()
+				.all(|file| !file.name.contains("web:")),
+		);
 	}
 
 	#[test]

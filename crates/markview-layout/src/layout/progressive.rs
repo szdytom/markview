@@ -44,9 +44,8 @@ pub struct ProgressiveLayout {
 	/// Positions used by child selectors exclude invisible target blocks.
 	visible_index: usize,
 	visible_count: usize,
-	/// The source of the document this pass belongs to. It is the same `Arc`
-	/// the document holds, so the two compare by identity on every call.
-	source: Arc<str>,
+	/// The revision this pass belongs to; the pass must be advanced with it.
+	revision: markview_document::DocumentRevision,
 	#[cfg(all(feature = "parallel", not(target_arch = "wasm32")))]
 	pending: std::collections::VecDeque<(CacheKey, Arc<BlockLayout>)>,
 }
@@ -70,13 +69,15 @@ struct Pass {
 	box_template: Draw,
 	/// The pass stamp cache entries carry.
 	id: u64,
+	/// Digits reserved by the widest footnote number in this document.
+	footnote_column: u32,
 }
 
 impl ProgressiveLayout {
 	/// Changes presentation while continuing the same geometry pass.
 	pub fn set_disclosures(
 		&mut self,
-		open: Arc<std::collections::BTreeMap<u64, bool>>,
+		open: Arc<std::collections::BTreeMap<markview_document::BlockId, bool>>,
 		force_open: bool,
 	) {
 		self.result.set_disclosures(&open, force_open);
@@ -132,8 +133,8 @@ impl LayoutEngine {
 		let content_width = (options.width - pad[1] - pad[3]).max(1.);
 		crate::profile::span(crate::profile::Stage::Highlights, || {
 			self.highlights.prepare(
-				document.content_id,
-				&document.blocks,
+				document.content_key().get(),
+				document.blocks(),
 				options,
 			)
 		});
@@ -153,7 +154,7 @@ impl LayoutEngine {
 		// document request, not to each block's cache lookup. The fonts are part
 		// of it: geometry measured with other faces is stale.
 		let style_key = document
-			.blocks
+			.blocks()
 			.first()
 			.map(|_| {
 				crate::document::fingerprint(&(
@@ -215,13 +216,15 @@ impl LayoutEngine {
 				+ body.space_after.unwrap_or(0.) * options.font_size,
 			box_template,
 			id: self.pass,
+			footnote_column: footnote_column(document),
 		};
 		let mut result = LayoutSnapshot {
 			presentation_key: crate::document::fingerprint(&(
 				&options.details_open,
 				options.force_open,
 			)),
-			content_id: document.content_id,
+			content_id: document.content_key(),
+			revision: document.revision(),
 			images: images.clone(),
 			width: options.width,
 			height: opening,
@@ -232,15 +235,15 @@ impl LayoutEngine {
 			result,
 			pass,
 			index: 0,
-			count: document.blocks.len(),
+			count: document.blocks().len(),
 			picture_only: single_picture(document),
 			visible_index: 0,
 			visible_count: document
-				.blocks
+				.blocks()
 				.iter()
 				.filter(|b| !anchor_only(b))
 				.count(),
-			source: document.source.clone(),
+			revision: document.revision(),
 			#[cfg(all(feature = "parallel", not(target_arch = "wasm32")))]
 			pending: Default::default(),
 		};
@@ -278,13 +281,14 @@ impl LayoutEngine {
 		// with another document would read past the end or silently lay out a
 		// mixture of the two. The source `Arc` is the document's identity, and
 		// the check holds in release as well as in debug.
-		assert!(
-			Arc::ptr_eq(&layout.source, &document.source),
+		assert_eq!(
+			layout.revision,
+			document.revision(),
 			"a pass must be advanced with the document it began on"
 		);
 		assert_eq!(
 			layout.count,
-			document.blocks.len(),
+			document.blocks().len(),
 			"a pass must be advanced with the document it began on"
 		);
 		// The pass also carries the stylesheet, fonts and math limits that were
@@ -323,7 +327,7 @@ impl LayoutEngine {
 		cancelled: &(dyn Fn() -> bool + Sync),
 		_prefetch: bool,
 	) {
-		let block = &document.blocks[layout.index];
+		let block = &document.blocks()[layout.index];
 		let job = layout.pass.job(
 			block,
 			layout.visible_index,
@@ -442,10 +446,10 @@ fn figure_bounds(block: &BlockLayout) -> Option<(f32, f32)> {
 /// Whether `document` is exactly one paragraph holding one picture and nothing
 /// else, which the reader can center on its own.
 fn single_picture(document: &Document) -> bool {
-	let [block] = document.blocks.as_slice() else {
+	let [block] = document.blocks() else {
 		return false;
 	};
-	let crate::document::BlockKind::Paragraph(rich) = &block.kind else {
+	let crate::document::BlockKind::Paragraph(rich) = &block.kind() else {
 		return false;
 	};
 	let mut pictures = 0;
@@ -494,7 +498,7 @@ impl Pass {
 				self.codeblock_theme.as_deref(),
 				options,
 			),
-			content: block.content_key,
+			content: block.content_key(),
 			width: options.width.to_bits(),
 			size: options.font_size.to_bits(),
 			justify: options.justify,
@@ -505,6 +509,7 @@ impl Pass {
 			codeblock_wrap: options.codeblock_wrap,
 			codeblock_theme: self.codeblock_theme_key,
 			style: self.style_key,
+			footnote_column: self.footnote_column,
 		};
 		BlockJob {
 			block,
@@ -547,13 +552,14 @@ impl Measurement<'_> {
 					base: &job.key,
 				}),
 				cancelled: self.cancelled,
-				search_fields: crate::search::layout_fields(job.block),
+				fields: super::blocks::FieldCursor::new(job.block),
 				shaper,
 				math,
 				images: &self.pass.images,
 				highlight_cache: self.highlights,
 				marker_depth: 0,
 				enum_depth: 0,
+				footnote_column: self.pass.footnote_column,
 			}
 			.block(
 				job.block,
@@ -599,8 +605,8 @@ impl ProgressiveLayout {
 		result.degraded += geometry.degraded;
 		result.math_errors += geometry.math_errors;
 		result.blocks.push(PlacedBlock {
-			id: block.id,
-			source: block.source.clone(),
+			id: block.id(),
+			content: block.content_key(),
 			y,
 			flow,
 			layout: geometry,
@@ -611,4 +617,19 @@ impl ProgressiveLayout {
 		self.index += 1;
 		self.visible_index += usize::from(!anchor_only(block));
 	}
+}
+
+/// The digit width of the widest footnote number in `document`.
+fn footnote_column(document: &Document) -> u32 {
+	let mut widest = 1;
+	for block in document.blocks() {
+		markview_document::visit_blocks(block, &mut |block| {
+			if let markview_document::BlockKind::Footnote { number, .. } =
+				block.kind()
+			{
+				widest = widest.max(number.to_string().chars().count() as u32);
+			}
+		});
+	}
+	widest
 }

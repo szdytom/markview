@@ -233,6 +233,16 @@ fn phone_sidebar_match_rendering_baselines() -> Result<()> {
 	let tabs: Vec<_> = (0..20)
 		.map(|i| ReaderTab::new(format!("notes/chapter-{i:02}.md").into()))
 		.collect();
+	let labels: Vec<_> = tabs
+		.iter()
+		.map(|tab| {
+			tab.path
+				.file_name()
+				.unwrap_or(tab.path.as_os_str())
+				.to_string_lossy()
+				.into_owned()
+		})
+		.collect();
 	let horizontal = HashMap::new();
 	for dark in [false, true] {
 		let mut sheet = (*Stylesheet::bundled(dark)).clone();
@@ -262,6 +272,7 @@ fn phone_sidebar_match_rendering_baselines() -> Result<()> {
 					tab_drawer::draw(
 						&mut ui,
 						&tabs,
+						&labels,
 						8,
 						20.,
 						&crate::app::widgets::Drawn::new(&interaction, None),

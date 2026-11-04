@@ -63,6 +63,10 @@ pub(crate) fn export_with_services(
 	args: &PdfRequest,
 	services: Arc<crate::services::Services>,
 ) -> Result<ExportStats> {
+	if let Some(loaded) = &args.loaded {
+		let exporter = Exporter::with_services(args, services)?;
+		return exporter.export_loaded(loaded.clone());
+	}
 	let text = read_markdown(&args.path)?;
 	export_text(args, &text, services, || Ok(()))
 }
@@ -140,7 +144,7 @@ struct Exporter {
 	/// one, leaves it set, so the next save of the same content retries instead
 	/// of being skipped as unchanged.
 	dirty: bool,
-	document: Option<Arc<document::Document>>,
+	document: Option<Arc<markview_commonmark::MarkdownParse>>,
 	revision: u64,
 }
 
@@ -253,10 +257,39 @@ impl Exporter {
 			.as_ref()
 			.expect("a document is parsed before a layout")
 			.clone();
-		self.images
-			.set_security(self.security.for_content(&document.source));
-		self.images.prepare(
+		self.prepare_images(
 			&document,
+			self.security.for_content(&document.source),
+		);
+		Ok(Some(self.write(&document, started, before_write)?))
+	}
+
+	/// Writes a document that already has no source text, such as a web page.
+	fn export_loaded(
+		mut self,
+		loaded: Arc<crate::loaded::LoadedDocument>,
+	) -> Result<ExportStats> {
+		anyhow::ensure!(
+			!crate::file::same_file(&self.path, &self.output),
+			"Cannot export over the source file: {}",
+			self.path.display()
+		);
+		let started = Instant::now();
+		let document = loaded.document();
+		self.revision += 1;
+		self.prepare_images(document, self.security.clone());
+		self.write(document, started, || Ok(()))
+	}
+
+	/// Resolves the document's images and waits for every decode.
+	fn prepare_images(
+		&mut self,
+		document: &markview_document::Document,
+		security: crate::security::Security,
+	) {
+		self.images.set_security(security);
+		self.images.prepare(
+			document,
 			&self.path,
 			self.revision,
 			false,
@@ -269,8 +302,17 @@ impl Exporter {
 				warn!("Image {src:?}: {error}");
 			}
 		}
+	}
+
+	/// Lays the document out at the export measure and writes the PDF.
+	fn write(
+		&mut self,
+		document: &markview_document::Document,
+		started: Instant,
+		before_write: impl Fn() -> Result<()>,
+	) -> Result<ExportStats> {
 		let mut snapshot = self.engine.layout_with_images(
-			&document,
+			document,
 			&self.options,
 			&self.images.snapshot,
 		);
@@ -278,13 +320,13 @@ impl Exporter {
 		// loop to lay out again when it does, so wait for it and keep the colors.
 		if self.engine.wait_highlights() {
 			snapshot = self.engine.layout_with_images(
-				&document,
+				document,
 				&self.options,
 				&self.images.snapshot,
 			);
 		}
-		let pagination = paginate(&document, &snapshot, &self.geometry);
-		let metadata = metadata_of(&self.metadata, &document, &self.path);
+		let pagination = paginate(document, &snapshot, &self.geometry);
+		let metadata = self.metadata_of(document);
 		let bytes = self.renderer.export(&Export {
 			snapshot: &snapshot,
 			images: &self.images.snapshot,
@@ -293,7 +335,7 @@ impl Exporter {
 			geometry: &self.geometry,
 			pagination: &pagination,
 			metadata: metadata.clone(),
-			path: self.path.display().to_string(),
+			path: self.document_path(),
 			body_size_px: self.options.font_size,
 			links: self.links,
 			fonts: self.options.fonts.clone(),
@@ -327,12 +369,39 @@ impl Exporter {
 		if let Some(title) = &metadata.title {
 			log::debug!("PDF title: {title}");
 		}
-		Ok(Some(stats))
+		Ok(stats)
 	}
 
 	/// Whether the picture or a local image the document references changed.
 	fn image_changed(&mut self) -> bool {
 		self.refresh_standalone_source() || self.images.poll()
+	}
+
+	/// What the information dictionary holds: the flags win, then the document's
+	/// first heading, then the URL or file's name.
+	fn metadata_of(
+		&self,
+		document: &markview_document::Document,
+	) -> markview_pdf::Metadata {
+		let title = self
+			.metadata
+			.title
+			.clone()
+			.or_else(|| title_of(document, &self.security, &self.path))
+			.filter(|title| !title.trim().is_empty())
+			.map(|title| title.trim().to_owned());
+		markview_pdf::Metadata {
+			title,
+			authors: self.metadata.authors.clone(),
+			subject: self.metadata.subject.clone(),
+			keywords: self.metadata.keywords.clone(),
+			language: self.metadata.language.clone(),
+			creator: self.metadata.creator.clone(),
+		}
+	}
+
+	fn document_path(&self) -> String {
+		document_path(&self.security, &self.path)
 	}
 }
 
@@ -342,37 +411,16 @@ fn write_pdf(output: &Path, bytes: &[u8]) -> Result<()> {
 	crate::export::write_atomic(output, bytes)
 }
 
-/// What the information dictionary holds: the flags win, then the document's
-/// first heading, then the file's name. Anything the user did not ask for is
-/// left out rather than invented.
-fn metadata_of(
-	overrides: &MetadataOverrides,
-	document: &markview_document::Document,
-	path: &Path,
-) -> markview_pdf::Metadata {
-	let title = overrides
-		.title
-		.clone()
-		.or_else(|| title_of(document, path))
-		.filter(|title| !title.trim().is_empty())
-		.map(|title| title.trim().to_owned());
-	markview_pdf::Metadata {
-		title,
-		authors: overrides.authors.clone(),
-		subject: overrides.subject.clone(),
-		keywords: overrides.keywords.clone(),
-		language: overrides.language.clone(),
-		creator: overrides.creator.clone(),
-	}
-}
-
-/// The document's own title: its first heading, or the file's name.
+/// The document's own title: its first heading, else a web page's URL, else the
+/// file's name. Anything the user did not ask for is left out rather than
+/// invented, and a web page's synthetic session path is never one of them.
 fn title_of(
 	document: &markview_document::Document,
+	security: &crate::security::Security,
 	path: &Path,
 ) -> Option<String> {
-	for block in &document.blocks {
-		if let markview_document::BlockKind::Heading { text, .. } = &block.kind
+	for block in document.blocks() {
+		if let markview_document::BlockKind::Heading { text, .. } = block.kind()
 		{
 			let title = document::plain_text(text);
 			if !title.trim().is_empty() {
@@ -380,9 +428,22 @@ fn title_of(
 			}
 		}
 	}
-	path.file_stem()
-		.map(|stem| stem.to_string_lossy().into_owned())
-		.filter(|stem| !stem.is_empty())
+	match &security.origin {
+		crate::security::Origin::Web(url) => Some(url.clone()),
+		_ => path
+			.file_stem()
+			.map(|stem| stem.to_string_lossy().into_owned())
+			.filter(|stem| !stem.is_empty()),
+	}
+}
+
+/// How the PDF names this document: a web page's URL, never its synthetic
+/// session path.
+fn document_path(security: &crate::security::Security, path: &Path) -> String {
+	match &security.origin {
+		crate::security::Origin::Web(url) => url.clone(),
+		_ => path.display().to_string(),
+	}
 }
 
 #[cfg(test)]
@@ -409,6 +470,58 @@ mod tests {
 		fs::write(&path, source).unwrap();
 		let exporter = Exporter::new(&options(&path, &output)).unwrap();
 		(path, output, exporter)
+	}
+
+	/// A request for a document that arrived as a web page, with page furniture
+	/// that names both its title and its path.
+	fn web_request(
+		dir: &Path,
+		url: &str,
+	) -> (PdfRequest, PathBuf, Arc<crate::loaded::LoadedDocument>) {
+		let path = crate::app::web_page::web_path(url);
+		let output = dir.join("article.pdf");
+		let mut request = options(&path, &output);
+		request.security = crate::security::Security::web(url.to_owned());
+		let mut sheet = (*request.options.stylesheet).clone();
+		sheet.page.header_left = Some("{path}".into());
+		sheet.page.footer_center = Some("{title}".into());
+		request.options.stylesheet = Arc::new(sheet);
+		let loaded = crate::loaded::LoadedDocument::semantic(Arc::new(
+			markview_commonmark::parse("Body without a heading.\n").document,
+		));
+		request.loaded = Some(loaded.clone());
+		(request, output, loaded)
+	}
+
+	#[test]
+	fn web_exports_name_the_url_and_never_the_session_path() {
+		let dir = tempfile::tempdir().unwrap();
+		let url = "https://example.org/article";
+		let (request, output, _) = web_request(dir.path(), url);
+		export_with_services(
+			&request,
+			Arc::new(crate::services::Services::new(2)),
+		)
+		.unwrap();
+		let bytes = fs::read(&output).unwrap();
+		let pdf = lopdf::Document::load(&output).unwrap();
+		let mut text = String::new();
+		for page in 1..=pdf.get_pages().len() as u32 {
+			text.push_str(&pdf.extract_text(&[page]).unwrap());
+		}
+		assert!(text.contains("Body without a heading"), "{text:?}");
+		assert!(
+			!text.contains("web:"),
+			"page furniture leaked the synthetic session path: {text:?}"
+		);
+		assert!(
+			!String::from_utf8_lossy(&bytes).contains("web:"),
+			"the information dictionary leaked the synthetic session path"
+		);
+		assert!(
+			String::from_utf8_lossy(&bytes).contains(&format!("/Title({url})")),
+			"a web page without a heading is titled by its URL"
+		);
 	}
 
 	#[test]

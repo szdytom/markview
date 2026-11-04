@@ -285,6 +285,7 @@ settings_restore_session = "保留上次浏览状态"
 status_web_loading = "正在加载网页：{url}"
 status_web_failed = "无法加载网页：{error}"
 status_web_offline = "离线：无法加载网页"
+status_web_not_loaded = "页面尚未加载完成"
 
 empty_paste_hint = "{shortcut}  粘贴 Markdown 文本或链接"
 empty_url_placeholder = "https://…"

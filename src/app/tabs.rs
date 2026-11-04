@@ -1,7 +1,7 @@
 //! Tab ownership and request identity, independent of windows and file watchers.
 use crate::{
 	layout::LayoutOptions,
-	state::{ReaderSession, ReaderTab},
+	state::{PendingAnchor, ReaderSession, ReaderTab},
 	worker::Request,
 };
 use std::{
@@ -9,6 +9,57 @@ use std::{
 	time::{Duration, Instant},
 };
 const RELEASE_AFTER: Duration = Duration::from_secs(20);
+
+/// A tab's readable title: the page title, else a web host, else the file name.
+pub(super) fn readable_label(
+	path: &std::path::Path,
+	page_title: Option<&str>,
+	origin: &crate::security::Origin,
+) -> String {
+	if let Some(title) = page_title {
+		return title.to_owned();
+	}
+	match origin {
+		crate::security::Origin::Web(url) => super::web_page::web_label(url),
+		_ => path
+			.file_name()
+			.unwrap_or(path.as_os_str())
+			.to_string_lossy()
+			.into_owned(),
+	}
+}
+
+/// The readable title of the tab at `index`.
+///
+/// The active tab's session lives outside its own entry, so it is passed in
+/// rather than read from `tabs`.
+pub(super) fn tab_label(
+	tabs: &[ReaderTab],
+	active_tab: usize,
+	active: &ReaderSession,
+	index: usize,
+) -> String {
+	let Some(tab) = tabs.get(index) else {
+		return String::new();
+	};
+	let origin = if index == active_tab {
+		&active.security.origin
+	} else {
+		&tab.session.security.origin
+	};
+	readable_label(&tab.path, tab.page_title.as_deref(), origin)
+}
+
+/// Every tab's readable title, in strip order.
+pub(super) fn tab_labels(
+	tabs: &[ReaderTab],
+	active_tab: usize,
+	active: &ReaderSession,
+) -> Vec<String> {
+	(0..tabs.len())
+		.map(|index| tab_label(tabs, active_tab, active, index))
+		.collect()
+}
 
 #[derive(Default)]
 pub(super) struct Tabs {
@@ -44,7 +95,6 @@ impl Tabs {
 			crate::security::Security::local(crate::security::Trust::Trusted);
 		tab.session.path = Some(path);
 		tab.session.content_version = 1;
-		tab.session.details_open = std::sync::Arc::new(reading.details.clone());
 		tab.session.saved_reading = Some(reading);
 		self.entries.push(tab);
 		if self.entries.len() == 1 {
@@ -55,6 +105,50 @@ impl Tabs {
 
 	pub(super) fn entries(&self) -> &[ReaderTab] {
 		&self.entries
+	}
+	/// The session that owns the tab at `index`, including the active one.
+	fn session_at(&self, index: usize) -> Option<&ReaderSession> {
+		self.entries.get(index).map(|tab| {
+			if index == self.active() {
+				&self.session
+			} else {
+				&tab.session
+			}
+		})
+	}
+	/// Whether the tab at `index` reads a web page rather than a local file.
+	fn is_web(&self, index: usize) -> bool {
+		self.session_at(index).is_some_and(|session| {
+			matches!(session.security.origin, crate::security::Origin::Web(_))
+		})
+	}
+	/// Every open tab's local path, in strip order; a web tab has none.
+	pub(super) fn local_paths(&self) -> impl Iterator<Item = &std::path::Path> {
+		(0..self.entries.len())
+			.filter(|index| !self.is_web(*index))
+			.map(|index| self.entries[index].path.as_path())
+	}
+	/// A readable title: the page title, else a web host, else the file name.
+	pub(super) fn label(&self, index: usize) -> String {
+		tab_label(&self.entries, self.active(), &self.session, index)
+	}
+	/// Every tab's readable title, in strip order.
+	pub(super) fn labels(&self) -> Vec<String> {
+		tab_labels(&self.entries, self.active(), &self.session)
+	}
+	/// The title and detail lines of a tab's hover card.
+	pub(super) fn card_labels(&self, index: usize) -> (String, String) {
+		let Some(tab) = self.entries.get(index) else {
+			return (String::new(), String::new());
+		};
+		let detail = self
+			.session_at(index)
+			.and_then(|session| match &session.security.origin {
+				crate::security::Origin::Web(url) => Some(url.clone()),
+				_ => None,
+			})
+			.unwrap_or_else(|| tab.path.to_string_lossy().into_owned());
+		(self.label(index), detail)
 	}
 	fn entry_index(&self, id: u64) -> Option<usize> {
 		self.entries.iter().position(|tab| tab.id == id)
@@ -151,10 +245,6 @@ impl Tabs {
 		} else {
 			&mut self.entries[index].session
 		}
-	}
-	pub(super) fn rename(&mut self, index: usize, path: PathBuf) {
-		self.entries[index].path = path.clone();
-		self.session_mut(index).path = Some(path);
 	}
 	/// `usize::MAX` leaves every tab unselected on the empty page.
 	pub(super) fn active(&self) -> usize {
@@ -288,12 +378,28 @@ impl Tabs {
 		tab.session.content_version = 1;
 		tab.session.load_all_images = false;
 		tab.session.remote_notice_dismissed = false;
-		tab.session.pending_anchor = anchor;
+		tab.session.pending_anchor = anchor.map(|anchor| PendingAnchor {
+			target: markview_document::AnchorId::Fragment(anchor),
+			revision: None,
+		});
 		tab.session.security = security;
 		let index = self.active + 1;
 		self.entries.insert(index, tab);
 		true
 	}
+	/// Points one tab, and the session that owns it, at a path it was moved to.
+	pub(super) fn rename(&mut self, index: usize, path: PathBuf) {
+		self.entries[index].path = path.clone();
+		self.session_mut(index).path = Some(path);
+	}
+
+	/// The front-end title of one tab, when it supplied one.
+	pub(super) fn set_title(&mut self, index: usize, title: String) {
+		if let Some(tab) = self.entries.get_mut(index) {
+			tab.page_title = Some(title);
+		}
+	}
+
 	/// Replace the heading anchor a tab will apply when it is next displayed.
 	pub(super) fn queue_anchor(
 		&mut self,
@@ -310,7 +416,10 @@ impl Tabs {
 		if anchor.is_some() {
 			session.saved_reading = None;
 		}
-		session.pending_anchor = anchor;
+		session.pending_anchor = anchor.map(|anchor| PendingAnchor {
+			target: markview_document::AnchorId::Fragment(anchor),
+			revision: None,
+		});
 	}
 	pub(super) fn select(&mut self, index: usize, now: Instant) -> bool {
 		self.activate(index, now, true)
@@ -404,6 +513,12 @@ impl Tabs {
 			version: self.session.version,
 			content_version: self.session.content_version,
 			path,
+			loaded: matches!(
+				self.session.security.origin,
+				crate::security::Origin::Web(_)
+			)
+			.then(|| self.session.document.clone())
+			.flatten(),
 			workspace: None,
 			options,
 			requested: Instant::now(),
@@ -417,6 +532,10 @@ impl Tabs {
 			if index != active
 				&& now.duration_since(tab.last_active) >= RELEASE_AFTER
 				&& tab.session.document.is_some()
+				&& (!matches!(
+					tab.session.security.origin,
+					crate::security::Origin::Web(_)
+				) || !tab.session.snapshot.blocks.is_empty())
 			{
 				tab.session.release_heavy();
 			}
@@ -425,7 +544,13 @@ impl Tabs {
 	pub(super) fn release_deadline(&self) -> Option<Instant> {
 		self.entries
 			.iter()
-			.filter(|tab| tab.session.document.is_some())
+			.filter(|tab| {
+				tab.session.document.is_some()
+					&& (!matches!(
+						tab.session.security.origin,
+						crate::security::Origin::Web(_)
+					) || !tab.session.snapshot.blocks.is_empty())
+			})
 			.map(|tab| tab.last_active + RELEASE_AFTER)
 			.min()
 	}

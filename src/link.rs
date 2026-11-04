@@ -49,6 +49,14 @@ pub(super) fn resolve_for(
 	security: &crate::security::Security,
 ) -> Option<Target> {
 	match &security.origin {
+		// A page's own `file:` destination is not a trusted local input, so it
+		// never reaches path classification.
+		crate::security::Origin::Web(_)
+			if url::Url::parse(link)
+				.is_ok_and(|url| url.scheme() == "file") =>
+		{
+			None
+		}
 		crate::security::Origin::Web(base)
 			if url::Url::parse(link).is_err() =>
 		{
@@ -171,6 +179,23 @@ mod tests {
 		assert!(matches!(
 			resolve(url.as_str(), None),
 			Some(Target::Confirm(_))
+		));
+	}
+
+	#[test]
+	fn web_pages_cannot_open_local_file_urls() {
+		let security = crate::security::Security::web(
+			"https://example.org/article".to_owned(),
+		);
+		let missing =
+			std::env::temp_dir().join("markview-web-no-such-file.pdf");
+		let url = url::Url::from_file_path(&missing).unwrap().to_string();
+		assert_eq!(resolve_for(&url, None, &security), None);
+		assert_eq!(resolve_for("file:///etc/passwd", None, &security), None);
+		// A root-relative path still resolves against the page's base.
+		assert!(matches!(
+			resolve_for("/files/a.pdf", None, &security),
+			Some(Target::Remote(_))
 		));
 	}
 

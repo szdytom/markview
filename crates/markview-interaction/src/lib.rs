@@ -19,7 +19,7 @@
 //! and a front end owns the events.
 
 use markview_layout::layout::LayoutSnapshot;
-use markview_layout::text::{TextPosition, TextSelection};
+use markview_layout::text::{SemanticPosition, TextSelection};
 use std::time::Duration;
 use web_time::Instant;
 
@@ -83,7 +83,7 @@ pub enum Grain {
 #[derive(Clone, Debug)]
 pub struct Drag {
 	pub start: Point,
-	pub link: Option<String>,
+	pub link: Option<markview_layout::scene::LinkTarget>,
 	pub grain: Grain,
 	/// The word or block a multi-click press selected, kept as the drag base.
 	pub base: Option<TextSelection>,
@@ -121,15 +121,24 @@ pub trait Host {
 fn extend(
 	base: TextSelection,
 	unit: TextSelection,
-	position: TextPosition,
+	position: SemanticPosition,
+	snapshot: &LayoutSnapshot,
 ) -> TextSelection {
-	let (first, last) = base.ordered();
-	if position.cmp_reading(first).is_lt() {
+	let Some((first, last)) = base.ordered(snapshot) else {
+		return unit;
+	};
+	if snapshot
+		.compare_positions(position, first)
+		.is_some_and(|o| o.is_lt())
+	{
 		TextSelection {
 			anchor: last,
 			focus: unit.anchor,
 		}
-	} else if position.cmp_reading(last).is_gt() {
+	} else if snapshot
+		.compare_positions(position, last)
+		.is_some_and(|o| o.is_gt())
+	{
 		TextSelection {
 			anchor: first,
 			focus: unit.focus,
@@ -165,8 +174,8 @@ pub trait Selection: Host {
 
 	fn begin_selection(
 		&mut self,
-		position: TextPosition,
-		link: Option<String>,
+		position: SemanticPosition,
+		link: Option<markview_layout::scene::LinkTarget>,
 	) {
 		let anchor = if self.modifiers().shift_key() {
 			self.selection().map_or(position, |s| s.anchor)
@@ -214,7 +223,7 @@ pub trait Selection: Host {
 
 	/// Starts a press that has no text under it, so only a link-like target
 	/// can activate on release. A `<details>` marker is such a target.
-	fn begin_link_press(&mut self, link: String) {
+	fn begin_link_press(&mut self, link: markview_layout::scene::LinkTarget) {
 		self.set_drag(Some(Drag {
 			start: self.cursor(),
 			link: Some(link),
@@ -230,7 +239,7 @@ pub trait Selection: Host {
 	/// position already selected, leaves the selection exactly as it was.
 	fn move_selection(
 		&mut self,
-		position: Option<TextPosition>,
+		position: Option<SemanticPosition>,
 		snapshot: &LayoutSnapshot,
 	) -> bool {
 		let Some(drag) = self.drag() else {
@@ -256,13 +265,13 @@ pub trait Selection: Host {
 			},
 			(Grain::Word, Some(base)) => {
 				match snapshot.select_word_at(position) {
-					Some(word) => extend(base, word, position),
+					Some(word) => extend(base, word, position, snapshot),
 					None => selection,
 				}
 			}
 			(Grain::Block, Some(base)) => {
 				match snapshot.select_block_at(position) {
-					Some(block) => extend(base, block, position),
+					Some(block) => extend(base, block, position, snapshot),
 					None => selection,
 				}
 			}
@@ -278,12 +287,11 @@ pub trait Selection: Host {
 	/// and only when the pointer never dragged away from it.
 	fn finish_selection(
 		&mut self,
-		release_link: Option<&str>,
-	) -> Option<String> {
+		release_link: Option<&markview_layout::scene::LinkTarget>,
+	) -> Option<markview_layout::scene::LinkTarget> {
 		let drag = self.take_drag()?;
-		drag.link.filter(|link| {
-			!self.dragged() && release_link == Some(link.as_str())
-		})
+		drag.link
+			.filter(|link| !self.dragged() && release_link == Some(link))
 	}
 
 	fn clear_selection(&mut self) {

@@ -249,14 +249,33 @@ impl<'a> Chrome<'a> {
 		)
 	}
 
-	/// The active document's absolute path, or `None` when its session has no
-	/// document to name.
+	/// The active document's absolute path — or, for a web page, its URL — or
+	/// `None` when its session has no document to name.
 	fn path(&self) -> Option<std::borrow::Cow<'a, str>> {
+		if let crate::security::Origin::Web(url) =
+			&self.session.doc.security.origin
+		{
+			return Some(std::borrow::Cow::Borrowed(url.as_str()));
+		}
 		self.session
 			.doc
 			.path
 			.as_deref()
 			.map(|path| path.to_string_lossy())
+	}
+
+	/// The open document's name, never a web tab's synthetic session path.
+	pub(in crate::app) fn document_name(&self) -> std::borrow::Cow<'a, str> {
+		self.session.document_name().unwrap_or_else(|| {
+			self.settings.model.lang().tabs_untitled().into()
+		})
+	}
+
+	/// The phone title band's text: the document's name, else the product's.
+	pub(in crate::app) fn phone_title(&self) -> std::borrow::Cow<'a, str> {
+		self.session
+			.document_name()
+			.unwrap_or_else(|| "Markview".into())
 	}
 
 	/// The footer's opted-in document path.
@@ -402,10 +421,12 @@ impl<'a> Chrome<'a> {
 				self.settings.model.lang(),
 			)
 		} else if self.interaction.panel == crate::state::PanelPage::Tabs {
+			let labels = self.session.labels();
 			let mut buttons = match self.interaction.sidebar_tab {
 				crate::state::SidebarTab::Tabs => tab_drawer::buttons(
 					self.ui,
 					self.session.tabs,
+					&labels,
 					self.session.active_tab,
 					self.session.strip.drawer_scroll.offset(),
 					(width, height),
@@ -779,14 +800,7 @@ impl<'a> Chrome<'a> {
 				&toggle,
 				true,
 			));
-			let name = self
-				.session
-				.doc
-				.path
-				.as_deref()
-				.and_then(std::path::Path::file_name)
-				.map(|name| name.to_string_lossy())
-				.unwrap_or_else(|| "Markview".into());
+			let name = self.phone_title();
 			let name = self.ui.fit(
 				&name,
 				12.,
@@ -1117,10 +1131,12 @@ impl<'a> Chrome<'a> {
 		}
 		let tabs_reveal = self.tabs_reveal();
 		if tabs_reveal > 0.0 {
+			let labels = self.session.labels();
 			let draws = match self.interaction.sidebar_tab {
 				crate::state::SidebarTab::Tabs => tab_drawer::draw(
 					self.ui,
 					self.session.tabs,
+					&labels,
 					self.session.active_tab,
 					self.session.strip.drawer_scroll.offset(),
 					&self.interaction,
@@ -1169,16 +1185,7 @@ impl<'a> Chrome<'a> {
 			&& self.interaction.export_open()
 			&& !self.interaction.overlays.modal_open()
 		{
-			let document = self
-				.session
-				.doc
-				.path
-				.as_deref()
-				.and_then(|path| path.file_name())
-				.map(|name| name.to_string_lossy().into_owned())
-				.unwrap_or_else(|| {
-					self.settings.model.lang().tabs_untitled().into()
-				});
+			let document = self.document_name();
 			out.extend(export::draw_export_form(
 				self.ui,
 				self.settings.export,
@@ -1321,12 +1328,12 @@ impl<'a> Chrome<'a> {
 			);
 		}
 	}
-	pub(super) fn tab_bar(&mut self) -> tabs::TabBar<'_> {
+	pub(super) fn tab_bar(&mut self) -> tabs::TabBar<'_, '_> {
 		tabs::TabBar {
 			ui: self.ui,
 			strip: self.session.strip,
 			widths: self.session.tab_widths,
-			tabs: self.session.tabs,
+			labels: self.session.tab_labels,
 			active_tab: self.session.active_tab,
 			cursor: self.interaction.pointer.cursor(),
 			viewport: self.frame.layout.tabs,

@@ -14,7 +14,6 @@ mod progressive;
 mod stylesheet_tests;
 mod table;
 pub use progressive::ProgressiveLayout;
-pub(crate) use table::Table;
 #[cfg(test)]
 mod tests;
 pub use crate::scene::{
@@ -86,19 +85,17 @@ fn external_key(
 	// The front matter is the only block that reads the reader's own options:
 	// it draws the reader's interface label, and an export hides it entirely.
 	// Neither belongs to the source, so both belong to the block's key.
-	let front_matter = matches!(block.kind, BlockKind::FrontMatter { .. })
+	let front_matter = matches!(block.kind(), BlockKind::FrontMatter { .. })
 		.then(|| (&options.front_matter_label, options.hide_front_matter));
 	crate::document::fingerprint(&(
 		specs
 			.iter()
 			.map(|s| {
-				let key = s.resource_key();
+				let key = images.key(&s.source);
 				(
-					s.base,
-					&s.src,
-					images
-						.entries
-						.get(key.as_ref())
+					&s.source,
+					key,
+					key.and_then(|key| images.entries.get(key))
 						.map(|i| (i.version, i.size, &i.error)),
 				)
 			})
@@ -121,28 +118,48 @@ fn external_key(
 
 /// Binds summary targets and source defaults independently of reader state.
 fn disclosure_identities(block: &Block, out: &mut Vec<(u64, bool)>) {
-	match &block.kind {
-		BlockKind::Details { open, blocks, .. }
-		| BlockKind::FrontMatter { open, blocks } => {
-			out.push((block.id, *open));
-			for block in blocks {
-				disclosure_identities(block, out);
-			}
+	match &block.kind() {
+		BlockKind::Details {
+			default_open,
+			blocks,
+			..
+		}
+		| BlockKind::FrontMatter {
+			default_open,
+			blocks,
+			..
+		} => {
+			out.push((block.id().get() as u64, *default_open));
+			disclosures(blocks, out);
 		}
 		BlockKind::Quote { blocks, .. }
-		| BlockKind::Footnote { blocks, .. } => {
-			for block in blocks {
-				disclosure_identities(block, out);
-			}
-		}
+		| BlockKind::Footnote { blocks, .. }
+		| BlockKind::Figure { blocks, .. } => disclosures(blocks, out),
 		BlockKind::List { items, .. } => {
 			for item in items {
-				for block in &item.blocks {
-					disclosure_identities(block, out);
+				disclosures(&item.blocks, out);
+			}
+		}
+		BlockKind::Table(table) => {
+			for child in table.cell_blocks() {
+				disclosure_identities(child, out);
+			}
+		}
+		BlockKind::DefinitionList(items) => {
+			for item in items {
+				for blocks in &item.definitions {
+					disclosures(blocks, out);
 				}
 			}
 		}
 		_ => {}
+	}
+}
+
+/// Collects the disclosures of one subtree in reading order.
+fn disclosures(blocks: &[Block], out: &mut Vec<(u64, bool)>) {
+	for block in blocks {
+		disclosure_identities(block, out);
 	}
 }
 
@@ -178,7 +195,8 @@ pub struct LayoutOptions {
 	/// semantic id. A block absent from the map uses the state its source
 	/// declared, so a fresh document starts there. Presentation state does not
 	/// invalidate cached geometry.
-	pub details_open: Arc<std::collections::BTreeMap<u64, bool>>,
+	pub details_open:
+		Arc<std::collections::BTreeMap<markview_document::BlockId, bool>>,
 	/// Render every `<details>` expanded regardless of the map. Exports set
 	/// this: a printed page has no pointer to open a collapsed body with.
 	pub force_open: bool,
@@ -270,7 +288,7 @@ impl LayoutOptions {
 struct BlockContext<'a> {
 	nested: Option<cache::NestedCache<'a>>,
 	cancelled: &'a dyn Fn() -> bool,
-	search_fields: HashMap<usize, crate::search::SearchField>,
+	fields: blocks::FieldCursor,
 	shaper: &'a mut TextShaper,
 	math: &'a mut MathEngine,
 	images: &'a crate::image::ImageSnapshot,
@@ -281,6 +299,8 @@ struct BlockContext<'a> {
 	/// How many ordered lists enclose the block being laid out. A numbering
 	/// pattern gives each level its own counting symbol.
 	enum_depth: usize,
+	/// Digits reserved by the widest footnote number in this document.
+	footnote_column: u32,
 }
 pub struct LayoutEngine {
 	shaper: TextShaper,
@@ -317,7 +337,7 @@ struct CacheEntry {
 struct CacheKey {
 	position: u8,
 	external: u64,
-	content: u64,
+	content: markview_document::ContentKey,
 	width: u32,
 	size: u32,
 	justify: bool,
@@ -330,6 +350,7 @@ struct CacheKey {
 	/// block of a pass.
 	codeblock_theme: u64,
 	style: u64,
+	footnote_column: u32,
 }
 impl Default for LayoutEngine {
 	fn default() -> Self {

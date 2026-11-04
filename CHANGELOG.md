@@ -21,6 +21,56 @@ at the same level, without `[brackets]`.
 
 ## Unreleased
 
+### Added
+
+- Add the `markview-webpage` front end, which lowers Readability's processed DOM directly into a semantic document without a body Markdown round trip.
+- Support complex table grids with row groups, captions, block cells, rowspan/colspan and shared borders across the reader and PDF export.
+- Preserve definition lists and figures as semantic blocks, and support HTML list start, reversed and per-item values.
+- Keep web tabs in memory with a stable web identity, metadata title, request generation and session restoration instead of temporary Markdown files.
+
+### Changed
+
+- Move navigation to semantic inlines and keep selection endpoints in revisioned fields, resolving layout geometry for each query.
+- Store images as typed `ResourceRef` references or `Diagram` sources, and build cache keys in the application from the address, base and authorization context.
+- Build block, outline, disclosure and anchor indexes once when a document is sealed, after checking the construction budget.
+- Restore saved readings in session schema 4 by input digest, front-end version, structural block path, field offset and scroll-ratio fallback, discarding old layout ordinals and block ids.
+- Type disclosure, footnote-return and URL link targets at the layout boundary, and preserve custom callout type names.
+- Separate link addresses, occurrences and visual styles from footnote definition, number and reference identities, so same-address links and multiple references stay independent.
+- Store source mappings as optional ranges so generated content has no fake `0..0` position.
+- Remove the public `Link::rebase` API and make link occurrence equality independent of allocation sharing.
+- Name a disclosure's source state `default_open` and let a foldable callout's summary own the title, so the reader state never enters the document.
+- Read a web page's declared canonical link before falling back to the Open Graph URL.
+- Split semantic documents from source text: blocks and inlines now carry stable typed identities, while original text and source ranges live in a separately supplied `SourceMap`.
+- Build documents through a central builder that allocates block identities and derives cache keys, and make `markview-commonmark` return a `MarkdownParse` that owns the text, map and dialect.
+- Pin the `dom_smoothie` fork by commit so the web front end can read Readability's processed DOM without serializing it, replacing the local vendor copy.
+- Replace source-offset link origins with explicit link occurrence ids derived from where the link was declared, and resolve text source positions through the shared semantic traversal.
+
+### Fixed
+
+- Remove a needless borrow in callout title hashing so Clippy passes on Rust 1.99.
+- Set a web tab's origin before refreshing file search so its internal identity never appears among local files.
+- Seal webpage documents once and hash semantic content without cloning text, reducing conversion allocations while preserving link groups and indexes.
+- Lower each KaTeX or MathJax formula once by skipping `aria-hidden` and `role="presentation"` copies of it.
+- Map an image's alt text back to the whole image source, so editor and reader positions agree on the line an image starts.
+- Keep web checklist state, article title level and block-formula display through Readability's rewritten DOM.
+- Check the element budget before the web adapter's pre-passes and mark checklist state in one walk, so deeply nested lists cannot make extraction quadratic.
+- Keep web `aria-hidden` captions, summaries and terms hidden, later `h1` headings as content, overlapping table spans and TeX formula delimiters intact.
+- Keep hidden web definition wrappers and table row groups out of the article, strip TeX delimiters from MathML `alttext`, and emit table groups as head, then bodies, then foot.
+- Keep a table caption's formula on the coordinator's ordered math budget, and share the layout search field walk with the document traversal.
+- Bind layout fields from the document traversal instead of memory addresses, and reject source, search and outline positions from another revision.
+- Ignore page-supplied internal markers and saved web disclosure state that belongs to other content.
+- Refuse `file:` link destinations from web pages, and count encoded inline SVG and table rows against their document budgets.
+- Include plain callout titles in search and keep a caption on a table that has no cells.
+- Keep an older redirected web load from replacing a newer load for its final URL, and count formula LaTeX and image alternatives toward the text budget.
+- Name a web page's URL in PDF metadata and page furniture instead of its synthetic `web:` session path.
+- Label web tabs in the strip and its cached metrics with the same readable label the drawer uses.
+- Forget a web page's load record when its last tab closes, including after a redirect, and allocate document revisions from one shared counter.
+- Lay out, paginate and write PDF exports through one path for file and in-memory documents.
+
+### Documentation
+
+- Document semantic link and selection boundaries, viewport/RSS benchmark methods, and reproducible refactor validation.
+
 ## 0.4.5 - 2026-11-05
 
 **Highlights**:

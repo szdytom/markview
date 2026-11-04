@@ -25,7 +25,7 @@ Physical access, kernel or driver defects in themselves, dependency supply-chain
 
 **Trusted** is the default for a local document the user opens through the file picker, file manager, or command line. **Untrusted** is the default for clipboard content and loaded web articles, including shared text and URLs. Trust grants resource access; it does not assert that the document's bytes are harmless. Attacker-controlled input remains possible in both modes.
 
-Classification follows how content enters the reader, not where its bytes happen to be stored. The reader assigns the mode; document text and response headers cannot select it. Clipboard text and extracted articles remain Untrusted after being written to temporary `.md` files or cached. Being on disk alone, residing in a familiar directory, or having a friendly link label grants no extra authority.
+Classification follows how content enters the reader, not where its bytes happen to be stored. The reader assigns the mode; document text and response headers cannot select it. Clipboard text staged into a temporary `.md` file and extracted articles held in a reading session remain Untrusted. Being on disk alone, residing in a familiar directory, or having a friendly link label grants no extra authority.
 
 | Entry or navigation | Resulting mode |
 | --- | --- |
@@ -116,7 +116,7 @@ Document rendering does not grant content authority to alter reader controls. Li
 
 Local image sources must be relative paths. Absolute paths and `file:` image URLs are refused. Relative paths may contain `../` and may follow symlinks outside the document directory: directory containment is deliberately not a security boundary, because neighbouring image directories are an ordinary use case.
 
-These reads are automatic only for Trusted documents. Untrusted content needs the user to identify and authorize the local resource, subject to the same path rules. A clipboard paste has no implicit local resource base; its temporary storage directory must not supply one. Relative web resource URLs resolve against the page URL, not its staged file's directory. Clicking a blocked image asks for the identified file or network target. For a relative clipboard image, the user selects the actual file with the file picker; the source spelling does not grant access to the staging directory.
+These reads are automatic only for Trusted documents. Untrusted content needs the user to identify and authorize the local resource, subject to the same path rules. A clipboard paste has no implicit local resource base; its temporary storage directory must not supply one. Relative web resource URLs resolve against the page URL, because a web article is never staged as a file. Clicking a blocked image asks for the identified file or network target. For a relative clipboard image, the user selects the actual file with the file picker; the source spelling does not grant access to the staging directory.
 
 Local image reads do not feed file contents into remote URLs. Remote HTTP(S) images and bounded `data:image/` sources are separate supported source types; SVG images cannot load additional resources through their image-href resolver.
 
@@ -150,7 +150,7 @@ Personal headless exports preserve the source document's mode. A local document 
 
 #### Current implementation
 
-`src/security.rs` defines `Trust`, `Origin`, `AddressClass`, and `Resource` enums. Each session, worker request, and export carries a `Security` context. Clipboard and web staging preserve Untrusted origin; directly opened local files use Trusted defaults. Untrusted local Markdown links require read confirmation and retain their mode. Session restoration saves origin without resource grants.
+`src/security.rs` defines `Trust`, `Origin`, `AddressClass`, and `Resource` enums. Each session, worker request, and export carries a `Security` context. Clipboard staging and web page loads preserve Untrusted origin; directly opened local files use Trusted defaults. Untrusted local Markdown links require read confirmation and retain their mode. Session restoration saves origin without resource grants.
 
 The shared HTTP client checks every resolved address against this context, pins direct connections, and repeats scheme, port, credential, and address authorization on each redirect. Explicit page and font jobs authorize only the selected origin and its resolved address classes. System HTTP/SOCKS proxies are disabled so they cannot override the checked route. Invalid destinations and browser unsafe ports remain refused in either mode; Trusted defaults do not cover link-local targets.
 

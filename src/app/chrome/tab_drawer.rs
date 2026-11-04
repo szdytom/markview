@@ -102,6 +102,7 @@ pub(super) fn toggle(lang: Lang) -> Button {
 fn row_buttons(
 	ui: &mut TextShaper,
 	tabs: &[ReaderTab],
+	labels: &[String],
 	active: usize,
 	list: List,
 	lang: Lang,
@@ -109,12 +110,7 @@ fn row_buttons(
 	let mut rows = Vec::new();
 	for index in list.visible() {
 		let row = list.row_rect(index);
-		let path = &tabs[index].path;
-		let name = path
-			.file_name()
-			.unwrap_or(path.as_os_str())
-			.to_string_lossy();
-		let name = ui.fit(&name, 14., (row.w - 72.).max(0.));
+		let name = ui.fit(&labels[index], 14., (row.w - 72.).max(0.));
 		let mut select = button(
 			std::sync::Arc::<str>::from(name),
 			Command::Chrome(ChromeCommand::SelectTab(index)),
@@ -235,9 +231,14 @@ fn controls(
 	buttons.push(scrim);
 	buttons
 }
+#[expect(
+	clippy::too_many_arguments,
+	reason = "one drawer's explicit geometry and inputs"
+)]
 pub(super) fn buttons(
 	ui: &mut TextShaper,
 	tabs: &[ReaderTab],
+	labels: &[String],
 	active: usize,
 	scroll: f32,
 	size: (f32, f32),
@@ -246,7 +247,8 @@ pub(super) fn buttons(
 ) -> Vec<Button> {
 	components::appearance(ui);
 	let list = list(size.0, size.1, tabs.len(), scroll, preferred_width);
-	let mut buttons = list.hit(row_buttons(ui, tabs, active, list, lang));
+	let mut buttons =
+		list.hit(row_buttons(ui, tabs, labels, active, list, lang));
 	buttons.extend(controls(list.panel, size.0, lang, SidebarTab::Tabs));
 	buttons
 }
@@ -404,6 +406,7 @@ fn shell(
 pub(super) fn draw(
 	ui: &mut TextShaper,
 	tabs: &[ReaderTab],
+	labels: &[String],
 	active: usize,
 	scroll: f32,
 	interaction: &crate::app::widgets::Drawn<'_>,
@@ -426,7 +429,7 @@ pub(super) fn draw(
 				.round() as u8
 		}))));
 	let mut rows = Vec::new();
-	for b in row_buttons(ui, tabs, active, list, lang) {
+	for b in row_buttons(ui, tabs, labels, active, list, lang) {
 		if matches!(b.action, Command::Chrome(ChromeCommand::SelectTab(_))) {
 			if b.active {
 				rows.push(Draw::Rect(
@@ -546,6 +549,19 @@ mod tests {
 	use super::*;
 	use crate::state::InteractionState;
 
+	/// The drawer labels of tabs that carry no front-end title.
+	fn labels(tabs: &[ReaderTab]) -> Vec<String> {
+		tabs.iter()
+			.map(|tab| {
+				tab.path
+					.file_name()
+					.unwrap_or(tab.path.as_os_str())
+					.to_string_lossy()
+					.into_owned()
+			})
+			.collect()
+	}
+
 	#[test]
 	fn outgoing_controls_keep_drawer_geometry_when_the_toolbar_owns_input() {
 		let mut ui = crate::test_support::shaper();
@@ -605,13 +621,48 @@ mod tests {
 	}
 
 	#[test]
+	fn drawer_rows_show_the_labels_their_caller_reads() {
+		// A web tab's session path is synthetic, so the row shows the readable
+		// label the caller derived instead of that path's file name.
+		let mut ui = crate::test_support::shaper();
+		let tabs = [ReaderTab::new(crate::app::web_page::web_path(
+			"https://example.org/blog/post",
+		))];
+		let labels = ["example.org".to_owned()];
+		let buttons = buttons(
+			&mut ui,
+			&tabs,
+			&labels,
+			0,
+			0.,
+			(320., 760.),
+			Lang::En,
+			320.,
+		);
+		let select = buttons
+			.iter()
+			.find(|b| b.action == Command::Chrome(ChromeCommand::SelectTab(0)))
+			.unwrap();
+		assert_eq!(&*select.label, "example.org");
+	}
+
+	#[test]
 	fn animated_rows_hit_inside_the_translated_clip() {
 		let mut ui = crate::test_support::shaper();
 		let tabs = [ReaderTab::new("tab.md".into())];
+		let labels = labels(&tabs);
 		let (width, height) = (320., 760.);
 		for reveal in [0.25, 0.5, 0.75, 1.0] {
-			let mut buttons =
-				buttons(&mut ui, &tabs, 0, 0., (width, height), Lang::En, 320.);
+			let mut buttons = buttons(
+				&mut ui,
+				&tabs,
+				&labels,
+				0,
+				0.,
+				(width, height),
+				Lang::En,
+				320.,
+			);
 			slide_buttons(&mut buttons, width, height, reveal, 320.);
 			let target = buttons
 				.iter()
@@ -651,9 +702,18 @@ mod tests {
 	#[test]
 	fn moving_buttons_and_scrim_follow_the_visible_drawer() {
 		let mut ui = crate::test_support::shaper();
+		let labels = labels(&[]);
 		for reveal in [0.0, 0.25, 0.875, 1.0] {
-			let mut buttons =
-				buttons(&mut ui, &[], 0, 0., (400., 760.), Lang::En, 320.);
+			let mut buttons = buttons(
+				&mut ui,
+				&[],
+				&labels,
+				0,
+				0.,
+				(400., 760.),
+				Lang::En,
+				320.,
+			);
 			slide_buttons(&mut buttons, 400., 760., reveal, 320.);
 			let panel = animated_rect(400., 760., reveal, 320.);
 			let scrim = buttons.last().unwrap();
@@ -674,6 +734,7 @@ mod tests {
 		let tabs: Vec<_> = (0..30)
 			.map(|i| ReaderTab::new(format!("{i}-document.md").into()))
 			.collect();
+		let labels = labels(&tabs);
 		let first_label = |draws: Vec<Draw>| {
 			draws
 				.into_iter()
@@ -695,6 +756,7 @@ mod tests {
 			let resting = first_label(draw(
 				&mut ui,
 				&tabs,
+				&labels,
 				0,
 				0.,
 				&crate::app::widgets::Drawn::new(
@@ -717,6 +779,7 @@ mod tests {
 			let scrolled = first_label(draw(
 				&mut ui,
 				&tabs,
+				&labels,
 				0,
 				17.,
 				&crate::app::widgets::Drawn::new(
@@ -739,8 +802,16 @@ mod tests {
 			assert_eq!(resting.0, 32.);
 			assert_eq!(scrolled.0, resting.0);
 			assert_eq!(resting.1 - scrolled.1, 17.);
-			let buttons =
-				buttons(&mut ui, &tabs, 0, 17., (320., 760.), Lang::En, 320.);
+			let buttons = buttons(
+				&mut ui,
+				&tabs,
+				&labels,
+				0,
+				17.,
+				(320., 760.),
+				Lang::En,
+				320.,
+			);
 			let select = buttons
 				.iter()
 				.find(|b| {
@@ -761,6 +832,7 @@ mod tests {
 				ReaderTab::new(format!("{i}-中文-long-document.md").into())
 			})
 			.collect();
+		let labels = labels(&tabs);
 		for width in [320., 411., 599.] {
 			let list = list(width, 760., tabs.len(), f32::INFINITY, 320.);
 			assert_eq!(list.scroll, list.max_scroll());
@@ -768,6 +840,7 @@ mod tests {
 			let buttons = buttons(
 				&mut ui,
 				&tabs,
+				&labels,
 				29,
 				list.scroll,
 				(width, 760.),
@@ -807,6 +880,7 @@ mod tests {
 				draw(
 					&mut ui,
 					&tabs,
+					&labels,
 					29,
 					list.scroll,
 					&crate::app::widgets::Drawn::new(

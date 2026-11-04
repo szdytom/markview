@@ -137,6 +137,12 @@ fn visible_clusters_survive_multiline_image_placeholders() {
 		let mut opts = options();
 		opts.width = 640.0;
 		let mut images = markview_layout::image::ImageSnapshot::default();
+		images.keys.insert(
+			markview_layout::image::ImageSource::Resource(
+				markview_layout::image::ResourceRef::document("missing.png"),
+			),
+			"missing.png".into(),
+		);
 		images.entries.insert(
 			"missing.png".to_owned(),
 			markview_layout::image::ImageInfo {
@@ -233,10 +239,17 @@ fn contiguous_scan_preserves_field_boundaries_and_literal_order() {
 						}
 					}
 				}
+				let ids: Vec<_> =
+					doc.blocks().iter().map(|block| block.id()).collect();
 				let actual: Vec<_> = index
 					.find(query, options)
 					.into_iter()
-					.map(|hit| (hit.block, hit.range))
+					.map(|hit| {
+						(
+							ids.iter().position(|id| *id == hit.block).unwrap(),
+							hit.range,
+						)
+					})
 					.collect();
 				assert_eq!(
 					actual, expected,

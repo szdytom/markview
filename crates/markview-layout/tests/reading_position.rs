@@ -13,8 +13,8 @@ fn snapshot(ids: impl IntoIterator<Item = u64>) -> LayoutSnapshot {
 		.enumerate()
 		.map(|(i, id)| PlacedBlock {
 			flow: Default::default(),
-			id,
-			source: 0..0,
+			id: markview_document::BlockId::new(id as u32 + 1).unwrap(),
+			content: markview_document::ContentKey::default(),
 			y: i as f32 * 120.0,
 			layout: layout.clone(),
 		})

@@ -25,10 +25,10 @@ fn nested_toggles_keep_geometry_reading_positions_and_hidden_hits_isolated() {
 	let document = markview_commonmark::parse(
 		"<details open>\n<summary>Outer</summary>\n\n<details>\n<summary>Inner</summary>\n\nHidden [target](https://example.invalid).\n\n</details>\n\nAfter inner.\n\n</details>\n\n# Following\n",
 	);
-	let BlockKind::Details { blocks, .. } = &document.blocks[0].kind else {
+	let BlockKind::Details { blocks, .. } = document.blocks()[0].kind() else {
 		panic!("details");
 	};
-	let inner = blocks[0].id;
+	let inner = blocks[0].id();
 	let mut snapshot = LayoutEngine::new().layout(&document, &options());
 	let geometry = snapshot.blocks[0].layout.clone();
 	let full = snapshot.full_reading_text();
@@ -97,7 +97,7 @@ fn presentation_changes_continue_an_existing_progressive_pass() {
 	let id = pass.pass_id();
 	let geometry = pass.snapshot().blocks[0].layout.clone();
 	pass.set_disclosures(
-		Arc::new(BTreeMap::from([(document.blocks[1].id, true)])),
+		Arc::new(BTreeMap::from([(document.blocks()[1].id(), true)])),
 		false,
 	);
 	engine.advance(&mut pass, &document, Duration::MAX);
@@ -117,15 +117,15 @@ fn footnote_markers_follow_visible_baselines_through_nested_disclosures() {
 		let document = markview_commonmark::parse(format!(
 			"Text[^a] and next[^b].\n\n[^a]: <details>\n    <summary></summary>\n\n    <details>\n    <summary></summary>\n\n    Hidden paragraph.\n\n    </details>\n\n    </details>\n{tail}\n[^b]: Next note.\n"
 		));
-		let BlockKind::Footnote { blocks, .. } = &document.blocks[1].kind
+		let BlockKind::Footnote { blocks, .. } = document.blocks()[1].kind()
 		else {
 			panic!("footnote");
 		};
-		let outer = blocks[0].id;
-		let BlockKind::Details { blocks, .. } = &blocks[0].kind else {
+		let outer = blocks[0].id();
+		let BlockKind::Details { blocks, .. } = &blocks[0].kind() else {
 			panic!("outer disclosure");
 		};
-		let inner = blocks[0].id;
+		let inner = blocks[0].id();
 		let mut snapshot = LayoutEngine::new().layout(&document, &options());
 		let geometry = snapshot.blocks[1].layout.clone();
 		for (open, force) in [

@@ -169,6 +169,15 @@ pub(crate) enum DropdownId {
 	Font(crate::settings::FontRole),
 }
 
+/// A queued anchor, with the revision it was queued on.
+#[derive(Clone, Debug)]
+pub(crate) struct PendingAnchor {
+	pub(crate) target: document::AnchorId,
+	/// `None` for a target a tab queued before its document was loaded, which
+	/// any layout may serve.
+	pub(crate) revision: Option<document::DocumentRevision>,
+}
+
 #[derive(Default, Clone)]
 pub(crate) struct ReaderSession {
 	pub(crate) security: crate::security::Security,
@@ -185,7 +194,7 @@ pub(crate) struct ReaderSession {
 	pub(crate) accepted_content_id: u64,
 	pub(crate) version: u64,
 	pub(crate) content_version: u64,
-	pub(crate) document: Option<Arc<document::Document>>,
+	pub(crate) document: Option<Arc<crate::loaded::LoadedDocument>>,
 	/// The outline built for `accepted_content_id`, cached so a frame or an
 	/// event never walks the document again. It is built on first demand.
 	pub(crate) outline: Option<(u64, Arc<[document::OutlineEntry]>)>,
@@ -193,19 +202,19 @@ pub(crate) struct ReaderSession {
 	pub(crate) requested_options: Option<LayoutOptions>,
 	/// Reader-chosen `<details>` collapse state, keyed by block id, overriding
 	/// what the source declared. It is layout input, and a reload drops it.
-	pub(crate) details_open: Arc<BTreeMap<u64, bool>>,
+	pub(crate) details_open: Arc<BTreeMap<document::BlockId, bool>>,
 	pub(crate) scrolling: markview_interaction::Scroll,
 	pub(crate) horizontal: HashMap<(usize, usize), f32>,
 	pub(crate) follow_update: bool,
 	pub(crate) layout_pending: bool,
 	pub(crate) web_loading: bool,
 	pub(crate) load_error: Option<String>,
-	/// A heading anchor waiting for its heading to be laid out.
-	pub(crate) pending_anchor: Option<String>,
+	/// A document anchor waiting for its target to be laid out.
+	pub(crate) pending_anchor: Option<PendingAnchor>,
 	pub(crate) saved_reading: Option<crate::app::session::Reading>,
-	/// The internal fragment the reader last jumped to, with the scroll offset
-	/// it left, so a footnote's number can return to its reference.
-	pub(crate) jump_origin: Option<(String, f32)>,
+	/// The typed target the reader last jumped to, with the scroll offset it
+	/// left, so a footnote's number can return to its reference.
+	pub(crate) jump_origin: Option<(document::AnchorId, f32)>,
 	pub(crate) select_all_pending: bool,
 	pub(crate) displayed_version: u64,
 	pub(crate) snapshot_complete: bool,
@@ -229,9 +238,16 @@ impl ReaderSession {
 
 	/// The scroll offset a footnote's number returns to, when the reader
 	/// jumped there from one of its references.
-	pub(crate) fn footnote_return(&self, label: &str) -> Option<f32> {
-		let (fragment, scroll) = self.jump_origin.as_ref()?;
-		(document::footnote::label(fragment) == Some(label)).then_some(*scroll)
+	pub(crate) fn footnote_return(
+		&self,
+		id: &document::FootnoteId,
+	) -> Option<f32> {
+		let (target, scroll) = self.jump_origin.as_ref()?;
+		matches!(
+			target,
+			document::AnchorId::FootnoteDefinition(origin) if origin == id
+		)
+		.then_some(*scroll)
 	}
 
 	/// The cached outline. Empty until the drawer first asks for it.
@@ -282,13 +298,13 @@ impl ReaderSession {
 		let mut current = None;
 		'blocks: for block in &self.snapshot.blocks {
 			for (anchor, y) in block.anchor_positions() {
-				// A footnote definition and a reference both register layout
-				// anchors. Neither is in the outline, so treating one as a
+				// Footnoted anchors are not headings, so treating one as a
 				// heading would advance the scan past every later entry.
-				if document::footnote::is_anchor(anchor) {
+				let document::AnchorId::Fragment(anchor) = anchor else {
 					continue;
-				}
-				while index < outline.len() && outline[index].anchor != anchor {
+				};
+				while index < outline.len() && outline[index].anchor != *anchor
+				{
 					index += 1;
 				}
 				if index >= outline.len()
@@ -308,6 +324,8 @@ pub(crate) struct ReaderTab {
 	/// Lifetime identity, retained across renames and reordering.
 	pub(crate) id: u64,
 	pub(crate) path: PathBuf,
+	/// A title supplied by a front end, such as web metadata.
+	pub(crate) page_title: Option<String>,
 	pub(crate) session: ReaderSession,
 	pub(crate) preview: Option<crate::app::preview::Page>,
 	pub(crate) last_active: Instant,
@@ -320,6 +338,7 @@ impl ReaderTab {
 		Self {
 			id: NEXT_ID.fetch_add(1, Ordering::Relaxed),
 			path,
+			page_title: None,
 			session: ReaderSession::default(),
 			preview: None,
 			last_active: Instant::now(),
@@ -621,7 +640,8 @@ impl ReaderSession {
 		reader: &crate::worker::ReaderSnapshot,
 	) -> bool {
 		!self.snapshot_complete
-			&& self.accepted_content_id == reader.document.content_id
+			&& self.accepted_content_id
+				== reader.document.document().content_key().get()
 			&& self.snapshot.blocks.len() <= reader.layout.blocks.len()
 			&& self
 				.snapshot
@@ -754,9 +774,11 @@ impl ReaderSession {
 		self.counts = TextCounts::default();
 		self.snapshot = LayoutSnapshot::default();
 		self.snapshot_complete = false;
-		self.document = None;
-		self.search.document = None;
-		self.parse_complete = false;
+		if !matches!(self.security.origin, crate::security::Origin::Web(_)) {
+			self.document = None;
+			self.search.document = None;
+			self.parse_complete = false;
+		}
 		self.outline = None;
 		self.outline_tree = OutlineTree::default();
 		self.requested_options = None;
@@ -784,11 +806,14 @@ impl ReaderSession {
 	///
 	/// A heading or footnote inside a collapsed body has retained geometry.
 	/// Opening its enclosing disclosures makes that anchor visible to flow.
-	pub(crate) fn open_enclosing_details(&mut self, anchor: &str) -> bool {
+	pub(crate) fn open_enclosing_details(
+		&mut self,
+		anchor: impl document::ToAnchor,
+	) -> bool {
 		let Some(document) = self.document.clone() else {
 			return false;
 		};
-		let closed: Vec<u64> = document
+		let closed: Vec<document::BlockId> = document
 			.details_enclosing(anchor)
 			.into_iter()
 			.filter(|id| {
@@ -811,12 +836,24 @@ impl ReaderSession {
 	/// `None` means the heading has not been laid out yet and the anchor stays
 	/// queued; `Some(Ok(()))` means the scroll offset moved; `Some(Err(anchor))`
 	/// means the complete layout has no such heading.
+	pub(crate) fn pending_anchor_is_current(&self) -> bool {
+		self.pending_anchor.as_ref().is_none_or(|pending| {
+			pending
+				.revision
+				.is_none_or(|revision| revision == self.snapshot.revision)
+		})
+	}
+
 	pub(crate) fn resolve_anchor(
 		&mut self,
 		viewport: f32,
-	) -> Option<Result<(), String>> {
-		let anchor = self.pending_anchor.clone()?;
-		if let Some(y) = self.snapshot.anchor_y(&anchor) {
+	) -> Option<Result<(), document::AnchorId>> {
+		let anchor = self.pending_anchor.as_ref()?.target.clone();
+		if !self.pending_anchor_is_current() {
+			self.pending_anchor = None;
+			return Some(Err(anchor));
+		}
+		if let Some(y) = self.snapshot.anchor_target_y(&anchor) {
 			self.pending_anchor = None;
 			self.scrolling.target = None;
 			self.follow_update = false;
@@ -840,7 +877,8 @@ impl ReaderSession {
 		// A metadata-only change re-reads identical bytes; only a real content
 		// change may invalidate reading positions. The reading counts arrive
 		// with the update, computed off the event loop.
-		let changed = reader.document.content_id != self.accepted_content_id;
+		let changed = reader.document.document().content_key().get()
+			!= self.accepted_content_id;
 		if let Some(counts) = counts {
 			self.counts = counts;
 		}
@@ -868,10 +906,13 @@ impl ReaderSession {
 				self.follow_update,
 			)
 		};
-		if reader.parse_complete {
-			self.security = self.security.for_content(&reader.document.source);
+		if reader.parse_complete
+			&& let Some(source) = reader.document.source()
+		{
+			self.security = self.security.for_content(source);
 		}
-		self.accepted_content_id = reader.document.content_id;
+		self.accepted_content_id =
+			reader.document.document().content_key().get();
 		self.document = Some(reader.document);
 		self.snapshot = reader.layout;
 		self.layout_pending = !reader.complete;

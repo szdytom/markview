@@ -17,7 +17,6 @@ use crate::state::{
 };
 use crate::state::{Drag, Grain, HoveredLink, Point};
 use crate::worker::{ReaderSnapshot, Update};
-use markview_document::Document;
 use markview_layout::scene::LinkId;
 use markview_layout::text::{Affinity, TextSelection};
 use std::path::PathBuf;
@@ -206,24 +205,30 @@ fn follow_system_reads_the_live_desktop_portal() {
 	);
 }
 
-fn position(block: usize, offset: usize) -> TextPosition {
-	TextPosition {
-		revision: 1,
-		block,
-		node: 0,
-		offset,
-		affinity: Affinity::Before,
-	}
+fn position(
+	snapshot: &LayoutSnapshot,
+	block: usize,
+	offset: usize,
+) -> SemanticPosition {
+	snapshot
+		.semantic_at(block, 0, offset, Affinity::Before)
+		.unwrap()
 }
 
-fn selection(anchor: TextPosition, focus: TextPosition) -> TextSelection {
+fn selection(
+	anchor: SemanticPosition,
+	focus: SemanticPosition,
+) -> TextSelection {
 	TextSelection { anchor, focus }
 }
 
 /// A settled reader: `source` is the accepted document at revision 1, laid out
 /// at `width`, and the reader is showing that layout. The document is returned
 /// so a test can lay it out again at another width.
-fn reader(source: &str, width: f32) -> (App<StubProxy>, Arc<Document>) {
+fn reader(
+	source: &str,
+	width: f32,
+) -> (App<StubProxy>, Arc<crate::loaded::LoadedDocument>) {
 	reader_with_dialect(source, width, markview_commonmark::Dialect::default())
 }
 
@@ -231,7 +236,7 @@ fn reader_with_dialect(
 	source: &str,
 	width: f32,
 	dialect: markview_commonmark::Dialect,
-) -> (App<StubProxy>, Arc<Document>) {
+) -> (App<StubProxy>, Arc<crate::loaded::LoadedDocument>) {
 	let mut app = App::new(
 		crate::cli::LaunchOptions {
 			mode: Mode::Smoke,
@@ -242,7 +247,9 @@ fn reader_with_dialect(
 	);
 	app.ui = crate::test_support::shaper();
 	app.preferences.values = crate::settings::ReaderSettings::default();
-	let document = Arc::new(markview_commonmark::parse_with(source, dialect));
+	let document = crate::loaded::LoadedDocument::markdown(Arc::new(
+		markview_commonmark::parse_with(source, dialect),
+	));
 	let options = LayoutOptions {
 		width,
 		..app.options()
@@ -252,7 +259,7 @@ fn reader_with_dialect(
 	session.document = Some(document.clone());
 	// Equal ids mean equal reading positions, which is what lets an update
 	// rebase a selection instead of clearing it.
-	session.accepted_content_id = document.content_id;
+	session.accepted_content_id = document.document().content_key().get();
 	session.snapshot = snapshot;
 	session.content_version = 1;
 	session.accepted_revision = 1;
@@ -627,8 +634,13 @@ fn an_idle_footer_names_the_document_and_offers_its_whole_path() {
 	app.interaction.pointer.set_hover(
 		Some(HoveredLink {
 			url: "https://example.com".into(),
-			block: 0,
-			id: LinkId::Inline(0),
+			target: markview_layout::scene::LinkTarget::Url(
+				"https://example.com".into(),
+			),
+			block: markview_document::BlockId::new(1).unwrap(),
+			id: LinkId::Inline(
+				markview_document::LinkOccurrenceId::new(1).unwrap(),
+			),
 		}),
 		None,
 	);
@@ -647,6 +659,15 @@ fn an_idle_footer_names_the_document_and_offers_its_whole_path() {
 	app.readers.session.path = Some(path);
 	app.action(Command::Document(DocumentCommand::CopyPath));
 	assert!(!app.status.message().is_empty());
+
+	// A web page is named by its URL; its session path is synthetic.
+	app.status.clear();
+	let url = "https://example.org/blog/post";
+	app.readers.session.path = Some(crate::app::web_page::web_path(url));
+	app.readers.session.security =
+		crate::security::Security::web(url.to_owned());
+	let found = path_button(&mut app).expect("a web page names its URL");
+	assert_eq!(&*found.label, url);
 }
 
 #[test]
@@ -720,7 +741,7 @@ fn scrolled_content_paints_to_both_viewport_edges() -> anyhow::Result<()> {
 /// An update the reader will accept: same path, same version, complete.
 fn update(
 	path: PathBuf,
-	document: Arc<Document>,
+	document: Arc<crate::loaded::LoadedDocument>,
 	layout: LayoutSnapshot,
 	content_version: u64,
 ) -> Event {
@@ -755,7 +776,7 @@ fn disclosure_toggles_keep_geometry_and_survive_an_old_worker_publication() {
 	app.readers.session.version = 1;
 	let stale = app.readers.session.snapshot.clone();
 	let geometry = stale.blocks[0].layout.clone();
-	let id = document.blocks[0].id;
+	let id = document.blocks()[0].id();
 	app.toggle_details(id);
 	assert_eq!(app.readers.session.version, 1);
 	assert!(Arc::ptr_eq(
@@ -786,24 +807,29 @@ fn a_copy_takes_the_reading_text_and_a_stale_selection_takes_nothing() {
 	let (mut app, _) = reader(SOURCE, 760.0);
 	assert_eq!(app.selected_text(), None, "nothing is selected yet");
 
-	app.interaction.selection =
-		Some(selection(position(0, 0), position(0, 16)));
+	app.interaction.selection = Some(selection(
+		position(&app.readers.session.snapshot, 0, 0),
+		position(&app.readers.session.snapshot, 0, 16),
+	));
 	assert_eq!(app.selected_text().as_deref(), Some("First paragraph."));
 
 	// An empty selection names a position but covers no character.
-	app.interaction.selection = Some(selection(position(0, 5), position(0, 5)));
+	app.interaction.selection = Some(selection(
+		position(&app.readers.session.snapshot, 0, 5),
+		position(&app.readers.session.snapshot, 0, 5),
+	));
 	assert_eq!(app.selected_text(), None);
 
 	// The layout rejects a selection tagged with a revision it never produced,
 	// so a stale one copies nothing rather than the wrong reading text.
 	app.interaction.selection = Some(selection(
-		TextPosition {
-			revision: 2,
-			..position(0, 0)
+		SemanticPosition {
+			revision: markview_document::DocumentRevision::fresh(),
+			..position(&app.readers.session.snapshot, 0, 0)
 		},
-		TextPosition {
-			revision: 2,
-			..position(0, 16)
+		SemanticPosition {
+			revision: markview_document::DocumentRevision::fresh(),
+			..position(&app.readers.session.snapshot, 0, 16)
 		},
 	));
 	assert_eq!(app.selected_text(), None);
@@ -824,7 +850,10 @@ fn dragging_into_the_margin_scrolls_at_a_frame_rate_independent_speed() {
 	// Scrolled away from the top, so dragging above the text has somewhere to
 	// travel.
 	app.readers.session.scrolling.offset = 100.0;
-	app.interaction.selection = Some(selection(position(0, 0), position(0, 4)));
+	app.interaction.selection = Some(selection(
+		position(&app.readers.session.snapshot, 0, 0),
+		position(&app.readers.session.snapshot, 0, 4),
+	));
 	app.interaction.pointer.press(Drag {
 		start: Point::new(100.0, 100.0),
 		link: None,
@@ -1380,7 +1409,10 @@ fn repeated_clicks_toggle_disclosure_titles_but_dragging_selects_them() {
 			.layout
 			.links
 			.iter()
-			.find_map(|link| markview_document::details_id(&link.url))
+			.find_map(|link| match link.target {
+				markview_layout::scene::LinkTarget::Disclosure(id) => Some(id),
+				_ => None,
+			})
 			.expect("a disclosure target");
 		for (click, open) in [(1, false), (2, true), (3, false)] {
 			physical_click(&mut app, at);
@@ -1415,10 +1447,13 @@ fn a_shift_click_extends_from_where_the_press_landed() {
 	physical_click(&mut app, next);
 	let selection = app.interaction.selection.expect("shift extends");
 	assert_eq!(
-		selection.anchor.block, 0,
+		selection.anchor.block, app.readers.session.snapshot.blocks[0].id,
 		"the earlier press keeps the anchor"
 	);
-	assert_eq!(selection.focus.block, 1, "the shift click moves the focus");
+	assert_eq!(
+		selection.focus.block, app.readers.session.snapshot.blocks[1].id,
+		"the shift click moves the focus"
+	);
 }
 
 #[test]
@@ -2892,8 +2927,13 @@ fn opening_a_panel_cancels_the_press_and_hover() {
 	app.interaction.pointer.set_hover(
 		Some(HoveredLink {
 			url: "https://example.com".into(),
-			block: 0,
-			id: LinkId::Inline(0),
+			target: markview_layout::scene::LinkTarget::Url(
+				"https://example.com".into(),
+			),
+			block: markview_document::BlockId::new(1).unwrap(),
+			id: LinkId::Inline(
+				markview_document::LinkOccurrenceId::new(1).unwrap(),
+			),
 		}),
 		Some("picture.png".into()),
 	);

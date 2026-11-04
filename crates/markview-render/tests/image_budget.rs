@@ -51,8 +51,8 @@ fn image_block(
 	});
 	PlacedBlock {
 		flow: Arc::new(layout.resolve_flow(&Default::default(), false)),
-		id,
-		source: 0..0,
+		id: markview_layout::document::BlockId::new(id as u32 + 1).unwrap(),
+		content: Default::default(),
 		y,
 		layout,
 	}
@@ -69,6 +69,7 @@ fn snapshot(
 	LayoutSnapshot {
 		images: ImageSnapshot {
 			generation,
+			keys: HashMap::new(),
 			entries,
 			pixels: pixels.clone(),
 		},

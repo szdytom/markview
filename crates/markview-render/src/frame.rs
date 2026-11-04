@@ -56,7 +56,7 @@ impl RejectedPreview {
 	fn new(preview: &crate::Preview<'_>, dpi: f32, atlas: u64) -> Self {
 		let rect = preview.rect;
 		Self {
-			content: preview.snapshot.content_id,
+			content: preview.snapshot.content_id.get(),
 			presentation: preview.snapshot.presentation_key,
 			scroll: preview.scroll.to_bits(),
 			rect: [
@@ -144,7 +144,7 @@ impl Renderer {
 			}
 			for (i, draw, position) in block.draws() {
 				let hovered = view.hovered_link.is_some_and(|link| {
-					link.block == block.source.start
+					link.block == block.id
 						&& block.layout.link_hovered(i, link.url, link.id)
 				});
 				let (offset, local_clip) =

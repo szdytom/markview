@@ -4,13 +4,12 @@ use crate::{
 	linebreak::{self},
 	microtype,
 	scene::{
-		BlockLayout, Draw, HeadingAnchor, LinkId, LinkRect, Overflow, Paint,
-		Rect,
+		BlockLayout, Draw, HeadingAnchor, LinkId, LinkRect, LinkTarget,
+		Overflow, Paint, Rect,
 	},
 	style::{ColorField, Condition, Decoration},
 	text::{TextCluster, TextNode},
 };
-use std::sync::Arc;
 impl BlockContext<'_> {
 	#[expect(
 		clippy::too_many_arguments,
@@ -76,7 +75,10 @@ impl BlockContext<'_> {
 		}
 		if p.text.is_empty() {
 			for (_, anchor) in p.anchors {
-				out.anchors.push(HeadingAnchor { anchor, y });
+				out.anchors.push(HeadingAnchor {
+					anchor: crate::document::AnchorId::Fragment(anchor),
+					y,
+				});
 			}
 			return if rich
 				.iter()
@@ -139,7 +141,9 @@ impl BlockContext<'_> {
 					&p.anchors[anchor_index..anchor_index + count]
 				{
 					out.anchors.push(HeadingAnchor {
-						anchor: anchor.clone(),
+						anchor: crate::document::AnchorId::Fragment(
+							anchor.clone(),
+						),
 						y,
 					});
 				}
@@ -385,7 +389,7 @@ impl BlockContext<'_> {
 			// The third and fourth fields are the run's first draw and its
 			// occurrence; the range closes at the URL change, so it never
 			// borrows a neighbor's draws.
-			let mut link: Option<(Arc<str>, f32, usize, LinkId)> = None;
+			let mut link: Option<(LinkTarget, f32, usize, LinkId)> = None;
 			// Consecutive clusters that share a background paint it as one
 			// rectangle. Pushing one per cluster made the export emit a
 			// rectangle per glyph and, because a rectangle interrupts a run,
@@ -403,11 +407,12 @@ impl BlockContext<'_> {
 				// its first digit does, and the first one in reading order
 				// wins, because that is what `anchor_y` finds first.
 				let note = p.note_at(c.range.start);
-				if let Some((number, true)) = note {
+				if let Some((reference, true)) = note {
 					out.anchors.push(HeadingAnchor {
-						anchor: crate::document::footnote::reference(
-							&number.to_string(),
-						),
+						anchor: crate::document::AnchorId::FootnoteReference {
+							definition: reference.definition.clone(),
+							occurrence: reference.occurrence,
+						},
 						y: y_cursor,
 					});
 				}
@@ -451,9 +456,8 @@ impl BlockContext<'_> {
 						.position(|s| s.range.contains(&c.range.start));
 					let link_id = p.link_id(c.range.start, span);
 					let link_url = span
-						.map(|index| &p.spans[index].style)
-						.and_then(|style| style.link.as_ref())
-						.map(|link| link.shared().clone());
+						.and_then(|index| p.spans[index].link.as_ref())
+						.map(|link| LinkTarget::Url(link.shared().clone()));
 					for mut cluster in
 						self.draw_image(image, rect, size, width, opts, out)
 					{
@@ -461,12 +465,13 @@ impl BlockContext<'_> {
 						cluster.range.end += range.start;
 						out.text[node].push(cluster);
 					}
-					if let (Some(url), Some(id)) = (link_url, link_id) {
+					if let (Some(target), Some(id)) = (link_url, link_id) {
 						out.links.push(LinkRect {
 							commands: command..out.draws.len(),
 							id,
 							rect,
-							url,
+							url: target.display_url(),
+							target,
 						});
 					}
 					cursor += c.width;
@@ -522,22 +527,35 @@ impl BlockContext<'_> {
 					.spans
 					.iter()
 					.position(|s| s.range.contains(&c.range.start));
-				let style = span.map(|index| &p.spans[index].style);
-				let link_id = p.link_id(c.range.start, span);
-				// A lone reference carries its link in the style; every number
-				// of a merged group shares the group's style, so it resolves
-				// through `notes` instead.
-				let note_url = note.map(|(number, _)| {
-					crate::document::footnote::url(&number.to_string())
+				let mut link_id = p.link_id(c.range.start, span);
+				// A lone reference keeps its brackets in the hit target; every
+				// number of a merged group resolves through `notes` instead.
+				let span_note = span.and_then(|index| {
+					p.note_spans.get(&p.spans[index].range.start)
 				});
-				let url = style
-					.and_then(|s| s.link.as_ref())
-					.map(|link| link.shared().clone())
-					.or_else(|| note_url.map(Arc::from));
+				let link_target = span
+					.and_then(|index| p.spans[index].link.as_ref())
+					.map(|link| LinkTarget::Url(link.shared().clone()))
+					.or_else(|| {
+						note.map(|(reference, _)| reference).or(span_note).map(
+							|reference| {
+								LinkTarget::FootnoteDefinition(
+									reference.definition.clone(),
+								)
+							},
+						)
+					});
+				if link_id.is_none()
+					&& let Some(reference) = span_note
+				{
+					link_id = Some(LinkId::Inline(reference.occurrence));
+				}
 				// A link wraps as one run per line, so hit testing stays tight.
-				let target = url.as_deref().zip(link_id);
-				if link.as_ref().map(|(u, _, _, id)| (&**u, *id)) != target {
-					if let Some((url, x0, command, id)) = link.take() {
+				let link_pair = link_target.as_ref().zip(link_id);
+				if link.as_ref().map(|(target, _, _, id)| (target, *id))
+					!= link_pair
+				{
+					if let Some((target, x0, command, id)) = link.take() {
 						out.links.push(LinkRect {
 							commands: command..out.draws.len(),
 							id,
@@ -549,18 +567,24 @@ impl BlockContext<'_> {
 								w: cursor - x0,
 								h: height,
 							},
-							url,
+							url: target.display_url(),
+							target,
 						});
 					}
-					if let (Some(url), Some(id)) = (url, link_id) {
-						link = Some((url, cursor, out.draws.len(), id));
+					if let (Some(target), Some(id)) = (link_target, link_id) {
+						link = Some((target, cursor, out.draws.len(), id));
 					}
 				}
-				let appearance = style
-					.map(|s| {
-						self.shaper
-							.stylesheet
-							.inline(&self.shaper.appearance, s)
+				let appearance = span
+					.map(|index| {
+						let span = &p.spans[index];
+						self.shaper.stylesheet.inline_run(
+							&self.shaper.appearance,
+							&span.style,
+							span.math_error,
+							span.footnote_ref,
+							span.link.is_some(),
+						)
 					})
 					.unwrap_or_else(|| self.shaper.appearance.clone());
 				if let Some(paint) = appearance.background {
@@ -641,7 +665,7 @@ impl BlockContext<'_> {
 				}
 				cursor += advance;
 			}
-			if let Some((url, x0, command, id)) = link {
+			if let Some((target, x0, command, id)) = link {
 				out.links.push(LinkRect {
 					commands: command..out.draws.len(),
 					id,
@@ -653,7 +677,8 @@ impl BlockContext<'_> {
 						w: cursor - x0,
 						h: height,
 					},
-					url,
+					url: target.display_url(),
+					target,
 				});
 			}
 			if actual > target + 0.5 {
@@ -696,9 +721,9 @@ impl BlockContext<'_> {
 				let mut decoration = BlockLayout::default();
 				y_cursor += self.paragraph(
 					&[Inline {
+						link: None,
 						kind: InlineKind::Text(caption.to_owned()),
 						style: TextStyle::default(),
-						source: 0..0,
 					}],
 					x,
 					y_cursor,

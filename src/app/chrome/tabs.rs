@@ -4,7 +4,6 @@ use crate::app::tab_metrics::{
 };
 use crate::app::tab_strip::{GAP, TabDrag, TabLayout, TabStrip};
 use crate::layout::{Draw, Paint, Rect, TextShaper};
-use crate::state::ReaderTab;
 use markview_layout::style::{ColorField as C, Condition};
 use std::time::Instant;
 use unicode_segmentation::UnicodeSegmentation;
@@ -19,16 +18,17 @@ const ACTIVE_RIGHT: &[markview_layout::scene::IconPath] =
 	markview_icon::icon!("assets/ui/tab-active-right.svg");
 const RADIUS: f32 = 8.0;
 
-pub(in crate::app) struct TabBar<'a> {
+pub(in crate::app) struct TabBar<'a, 'b> {
 	pub(super) ui: &'a mut TextShaper,
 	pub(super) strip: &'a TabStrip,
 	pub(super) widths: &'a [(f32, f32)],
-	pub(super) tabs: &'a [ReaderTab],
+	/// Each tab's readable title, in strip order.
+	pub(super) labels: &'b [String],
 	pub(super) active_tab: usize,
 	pub(super) cursor: (f32, f32),
 	pub(super) viewport: Rect,
 }
-impl TabBar<'_> {
+impl TabBar<'_, '_> {
 	pub(in crate::app) fn layout(&mut self) -> TabLayout {
 		TabLayout::new(self.viewport, self.widths, self.strip.scroll.offset())
 	}
@@ -57,13 +57,13 @@ impl TabBar<'_> {
 		let mut out = Vec::new();
 		// Inactive tabs first, so separators sit above their fills.
 		let active_tab = self.active_tab;
-		for index in (0..self.tabs.len())
+		for index in (0..self.labels.len())
 			.filter(|index| *index != active_tab && Some(*index) != dragged)
 		{
 			self.draw_tab(&mut out, index, &layout, &rects, hovered_tab);
 		}
 		out.extend(separators(&rects, self.active_tab, dragged, hovered_tab));
-		if active_tab < self.tabs.len() && dragged != Some(active_tab) {
+		if active_tab < self.labels.len() && dragged != Some(active_tab) {
 			self.draw_tab(&mut out, active_tab, &layout, &rects, hovered_tab);
 		}
 		if let Some(index) = dragged {
@@ -137,13 +137,9 @@ impl TabBar<'_> {
 		hovered: bool,
 		dragging: bool,
 	) {
-		let name = self.tabs[index]
-			.path
-			.file_name()
-			.unwrap_or(self.tabs[index].path.as_os_str())
-			.to_string_lossy();
+		let name = &self.labels[index];
 		let (fitted, overflowed) =
-			fit_label(self.ui, &name, rect.w - TAB_CHROME);
+			fit_label(self.ui, name, rect.w - TAB_CHROME);
 		let mut content = Vec::new();
 		let target = if overflowed { &mut content } else { &mut *out };
 		let label = if active {

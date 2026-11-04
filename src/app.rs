@@ -48,7 +48,7 @@ mod ui;
 mod ui_model;
 pub(crate) mod viewer;
 mod viewport;
-mod web_page;
+pub(crate) mod web_page;
 pub(crate) mod widgets;
 mod window;
 use crate::cli::LaunchOptions;
@@ -61,7 +61,11 @@ use crate::{
 };
 use anyhow::Result;
 use markview_layout::fonts::FontConfig;
-use std::{path::PathBuf, sync::Arc, time::Instant};
+use std::{
+	path::{Path, PathBuf},
+	sync::Arc,
+	time::Instant,
+};
 use winit::{event_loop::EventLoopProxy, window::Window};
 
 /// How the reader hands an event to its own loop.
@@ -105,7 +109,8 @@ enum Event {
 	WebLoaded {
 		url: String,
 		path: PathBuf,
-		result: anyhow::Result<crate::web_page::Article>,
+		generation: u64,
+		result: Box<anyhow::Result<crate::web_page::Article>>,
 	},
 	FrameFeedback,
 	Ready(Box<Update>),
@@ -115,7 +120,7 @@ enum Event {
 	Parsed {
 		path: PathBuf,
 		content_version: u64,
-		document: Arc<markview_document::Document>,
+		document: Arc<crate::loaded::LoadedDocument>,
 	},
 	Changed(PathBuf),
 	SettingsChanged,
@@ -255,6 +260,79 @@ fn register_font_dir(
 	true
 }
 
+/// Web tabs by URL, with the request generation that owns each load.
+#[derive(Default)]
+pub(crate) struct WebPages {
+	map: std::collections::HashMap<String, (PathBuf, u64)>,
+	/// Requested URL to the final URL a redirect selected.
+	aliases: std::collections::HashMap<String, String>,
+	serial: u64,
+}
+
+impl WebPages {
+	#[cfg(test)]
+	pub(crate) fn generation(&self, url: &str) -> Option<u64> {
+		self.map.get(url).map(|(_, generation)| *generation)
+	}
+
+	#[cfg(test)]
+	pub(crate) fn contains_key(&self, url: &str) -> bool {
+		self.map.contains_key(url)
+	}
+
+	pub(crate) fn matches(
+		&self,
+		url: &str,
+		path: &PathBuf,
+		generation: u64,
+	) -> bool {
+		self.map.get(url).is_some_and(|(saved, serial)| {
+			saved == path && *serial == generation
+		})
+	}
+
+	/// The final URL a requested URL redirected to, when one is known.
+	pub(crate) fn alias(&self, url: &str) -> Option<String> {
+		self.aliases.get(url).cloned()
+	}
+
+	pub(crate) fn insert(&mut self, url: String, path: PathBuf) -> u64 {
+		self.serial = self.serial.wrapping_add(1);
+		self.map.insert(url, (path, self.serial));
+		self.serial
+	}
+
+	/// Rekeys a redirected load to the URL it ended at, keeping its generation
+	/// so a stale completion for the requested URL still fails its check. A
+	/// newer load for the final URL keeps ownership instead of being replaced
+	/// by the older redirected one.
+	pub(crate) fn rekey(&mut self, from: &str, to: String, path: PathBuf) {
+		if let Some((_, generation)) = self.map.remove(from) {
+			self.aliases.insert(from.to_owned(), to.clone());
+			let newer = self
+				.map
+				.get(&to)
+				.is_some_and(|(_, current)| *current > generation);
+			if !newer {
+				self.map.insert(to, (path, generation));
+			}
+		}
+	}
+
+	/// Forgets every record for the tab at `path`. A load still in flight for it
+	/// then fails its generation check and is dropped with the closed tab.
+	pub(crate) fn release_path(&mut self, path: &Path) {
+		let closed: std::collections::HashSet<String> = self
+			.map
+			.iter()
+			.filter(|(_, (saved, _))| saved == path)
+			.map(|(url, _)| url.clone())
+			.collect();
+		self.aliases.retain(|_, target| !closed.contains(target));
+		self.map.retain(|_, (saved, _)| saved != path);
+	}
+}
+
 struct App<P = EventLoopProxy<Event>> {
 	surface_insets: [f32; 4],
 	frame: frame::State,
@@ -306,8 +384,7 @@ struct App<P = EventLoopProxy<Event>> {
 	url_input: markview_layout::text_input::TextInput,
 	paste_dir: tempfile::TempDir,
 	paste_serial: u32,
-	/// A temporary document path, or `None` while its URL is downloading.
-	web_pages: std::collections::HashMap<String, PathBuf>,
+	web_pages: WebPages,
 	status: status::Status,
 	dialog_open: bool,
 	reflow_at: Option<Instant>,
@@ -737,5 +814,20 @@ mod tests {
 		assert!(register_font_dir(&mut config, dir.clone(), 2));
 		assert_eq!(config.directories, vec![dir]);
 		assert_eq!(config.revision, 2);
+	}
+
+	#[test]
+	fn a_stale_redirect_keeps_the_newer_final_url_load() {
+		let mut pages = WebPages::default();
+		let requested = "https://example.org/a";
+		let final_url = "https://example.org/b";
+		let requested_path = PathBuf::from("web:a");
+		let final_path = PathBuf::from("web:b");
+		let redirected = pages.insert(requested.into(), requested_path);
+		let direct = pages.insert(final_url.into(), final_path.clone());
+		assert!(direct > redirected);
+		pages.rekey(requested, final_url.into(), final_path.clone());
+		assert_eq!(pages.generation(final_url), Some(direct));
+		assert_eq!(pages.alias(requested).as_deref(), Some(final_url));
 	}
 }

@@ -47,14 +47,17 @@ fn scroll_anchor_batches_cover_visible_lines_and_complete_atomic_ranges() {
 		"word ".repeat(160)
 	);
 	let doc = markview_commonmark::parse(source.clone());
-	let index = SourceIndex::new(&doc);
+	let index = SourceIndex::new(doc.source.clone(), &doc.document, &doc.map);
 	let mut images = Vec::new();
-	for block in &doc.blocks {
+	for block in doc.blocks() {
 		block.images(&mut images);
 	}
 	let mut resources = markview_layout::image::ImageSnapshot::default();
+	resources
+		.keys
+		.insert(images[0].source.clone(), images[0].address().to_owned());
 	resources.entries.insert(
-		images[0].src.clone(),
+		images[0].address().to_owned(),
 		markview_layout::image::ImageInfo {
 			version: 1,
 			size: Some((80, 1200)),
@@ -109,7 +112,8 @@ fn scroll_anchors_preserve_original_lines_across_all_markdown_line_endings() {
 		"# 中文😀\r\rParagraph e\u{301}\r\n\r\n# Two\n\nLast 😀\r".to_owned(),
 	)) {
 		let doc = markview_commonmark::parse(source.clone());
-		let index = SourceIndex::new(&doc);
+		let index =
+			SourceIndex::new(doc.source.clone(), &doc.document, &doc.map);
 		let snapshot = LayoutEngine::new().layout(&doc, &options());
 		let anchors = index.scroll_anchors(&snapshot, &Default::default(), 0);
 		let expected: Vec<_> =
@@ -142,7 +146,8 @@ fn text_free_collapsed_containers_anchor_only_their_opening_line() {
 		"> <details>\r> <summary></summary>\r>\r> hidden 中文😀 body\r>\r> </details>\r\r# After",
 	] {
 		let doc = markview_commonmark::parse(source);
-		let index = SourceIndex::new(&doc);
+		let index =
+			SourceIndex::new(doc.source.clone(), &doc.document, &doc.map);
 		let mut engine = LayoutEngine::new();
 		let mut opts = options();
 		let snapshot = engine.layout(&doc, &opts);
@@ -182,7 +187,8 @@ fn scroll_anchors_exclude_relocated_footnotes_but_preserve_direct_navigation() {
 				format!("# Start[^note]\n\n{prose}{note}")
 			};
 			let doc = markview_commonmark::parse(source.clone());
-			let index = SourceIndex::new(&doc);
+			let index =
+				SourceIndex::new(doc.source.clone(), &doc.document, &doc.map);
 			let snapshot = LayoutEngine::new().layout(&doc, &options());
 			let anchors =
 				index.scroll_anchors(&snapshot, &Default::default(), 0);
@@ -219,7 +225,7 @@ fn incremental_scroll_anchor_batches_match_a_complete_geometry_traversal() {
 	let source = "# Start[^note]\n\n[^note]: 中文😀 footnote.\n\n".to_owned()
 		+ &"中文😀 paragraph.\n\n".repeat(120);
 	let doc = markview_commonmark::parse(source);
-	let index = SourceIndex::new(&doc);
+	let index = SourceIndex::new(doc.source.clone(), &doc.document, &doc.map);
 	let mut engine = LayoutEngine::new();
 	let mut layout = engine.begin_layout(&doc, &options(), &Default::default());
 	let mut blocks = 0;
@@ -258,7 +264,7 @@ fn mapping_follows_wrapped_lines_nested_cells_and_reused_geometry() {
 		"word ".repeat(160)
 	);
 	let doc = markview_commonmark::parse(source.clone());
-	let index = SourceIndex::new(&doc);
+	let index = SourceIndex::new(doc.source.clone(), &doc.document, &doc.map);
 	let mut engine = LayoutEngine::new();
 	let opts = options();
 	let snapshot = engine.layout(&doc, &opts);
@@ -306,7 +312,11 @@ fn mapping_follows_wrapped_lines_nested_cells_and_reused_geometry() {
 	assert!(third.rect.y > first.rect.y + 20.);
 	let new_source = format!("prefix\n\n{source}");
 	let new_doc = markview_commonmark::parse(new_source.clone());
-	let new_index = SourceIndex::new(&new_doc);
+	let new_index = SourceIndex::new(
+		new_doc.source.clone(),
+		&new_doc.document,
+		&new_doc.map,
+	);
 	let new_snapshot = engine.layout(&new_doc, &opts);
 	assert!(new_snapshot.reused > 0);
 	let offset = new_source.find("target").unwrap();
@@ -323,7 +333,7 @@ fn mapping_follows_wrapped_lines_nested_cells_and_reused_geometry() {
 fn progressive_targets_wait_and_disclosures_use_visible_content() {
 	let source = "# same\n\n<details>\n<summary>closed</summary>\n\n### 中文\n\nhidden body\n\n</details>\n\n# same\n\nend";
 	let doc = markview_commonmark::parse(source);
-	let index = SourceIndex::new(&doc);
+	let index = SourceIndex::new(doc.source.clone(), &doc.document, &doc.map);
 	let opts = options();
 	let mut engine = LayoutEngine::new();
 	let pending = engine.begin_layout(&doc, &opts, &Default::default());
@@ -349,7 +359,16 @@ fn progressive_targets_wait_and_disclosures_use_visible_content() {
 	assert_eq!(outline.len(), 3);
 	assert_eq!(outline[0].anchor, "same");
 	assert_eq!(outline[2].anchor, "same-1");
-	assert_eq!(&source[outline[1].source.clone()], "### 中文");
+	assert_eq!(
+		&source[doc
+			.map
+			.block(outline[1].block)
+			.unwrap()
+			.source
+			.clone()
+			.unwrap()],
+		"### 中文"
+	);
 	assert!(markview_commonmark::parse("plain").outline().is_empty());
 }
 
@@ -369,7 +388,17 @@ fn disclosure_ranges_cover_original_nested_and_quoted_headings() {
 			} else {
 				"## repeat"
 			};
-			assert_eq!(&source[entry.source.clone()], expected, "{source}");
+			assert_eq!(
+				&source[doc
+					.map
+					.block(entry.block)
+					.unwrap()
+					.source
+					.clone()
+					.unwrap()],
+				expected,
+				"{source}"
+			);
 		}
 		let mut options = options();
 		let mut engine = LayoutEngine::new();
@@ -379,10 +408,17 @@ fn disclosure_ranges_cover_original_nested_and_quoted_headings() {
 			}
 		}
 		let snapshot = engine.layout(&doc, &options);
-		let index = SourceIndex::new(&doc);
+		let index =
+			SourceIndex::new(doc.source.clone(), &doc.document, &doc.map);
 		for heading in doc.outline() {
-			let offset =
-				heading.source.start + if heading.level == 3 { 4 } else { 3 };
+			let offset = doc
+				.map
+				.block(heading.block)
+				.unwrap()
+				.source
+				.as_ref()
+				.unwrap()
+				.start + if heading.level == 3 { 4 } else { 3 };
 			let mapped = index
 				.source_to_preview(&snapshot, &Default::default(), offset)
 				.unwrap();
@@ -418,7 +454,16 @@ fn adjacent_quoted_disclosures_map_unicode_bodies_and_trailing_text() {
 		for (heading, expected) in
 			outline.iter().zip(["# first", "# 中文", "# 中文 tail"])
 		{
-			assert_eq!(&source[heading.source.clone()], expected);
+			assert_eq!(
+				&source[doc
+					.map
+					.block(heading.block)
+					.unwrap()
+					.source
+					.clone()
+					.unwrap()],
+				expected
+			);
 		}
 		let mut opts = options();
 		for heading in &outline {
@@ -427,9 +472,17 @@ fn adjacent_quoted_disclosures_map_unicode_bodies_and_trailing_text() {
 			}
 		}
 		let snapshot = LayoutEngine::new().layout(&doc, &opts);
-		let index = SourceIndex::new(&doc);
+		let index =
+			SourceIndex::new(doc.source.clone(), &doc.document, &doc.map);
 		for heading in outline {
-			let offset = heading.source.start + 2;
+			let offset = doc
+				.map
+				.block(heading.block)
+				.unwrap()
+				.source
+				.as_ref()
+				.unwrap()
+				.start + 2;
 			let mapped = index
 				.source_to_preview(&snapshot, &Default::default(), offset)
 				.unwrap();
@@ -452,18 +505,23 @@ fn empty_alt_images_keep_atomic_source_geometry_across_resource_updates() {
 		"<details open><summary>images</summary>\n\n![](test.png)\n\n</details>",
 	] {
 		let doc = markview_commonmark::parse(source);
-		let index = SourceIndex::new(&doc);
+		let index =
+			SourceIndex::new(doc.source.clone(), &doc.document, &doc.map);
 		let opts = options();
 		let mut engine = LayoutEngine::new();
 		for state in [None, Some((100, 140))] {
 			let mut resources =
 				markview_layout::image::ImageSnapshot::default();
 			let mut images = Vec::new();
-			for block in &doc.blocks {
+			for block in doc.blocks() {
 				block.images(&mut images);
 			}
+			resources.keys.insert(
+				images[0].source.clone(),
+				images[0].address().to_owned(),
+			);
 			resources.entries.insert(
-				images[0].src.clone(),
+				images[0].address().to_owned(),
 				markview_layout::image::ImageInfo {
 					version: 1,
 					size: state,
@@ -523,13 +581,17 @@ fn empty_alt_images_keep_atomic_source_geometry_across_resource_updates() {
 				let shifted_snapshot =
 					engine.layout_with_images(&shifted, &opts, &resources);
 				assert!(shifted_snapshot.reused > 0);
-				let mapped = SourceIndex::new(&shifted)
-					.source_to_preview(
-						&shifted_snapshot,
-						&Default::default(),
-						image.source.start + 8,
-					)
-					.unwrap();
+				let mapped = SourceIndex::new(
+					shifted.source.clone(),
+					&shifted.document,
+					&shifted.map,
+				)
+				.source_to_preview(
+					&shifted_snapshot,
+					&Default::default(),
+					image.source.start + 8,
+				)
+				.unwrap();
 				assert_eq!(
 					mapped.source,
 					image.source.start + 8..image.source.end + 8
@@ -548,7 +610,8 @@ fn source_geometry_follows_horizontal_code_and_table_panning() {
 	] {
 		let doc = markview_commonmark::parse(source.as_str());
 		let snapshot = LayoutEngine::new().layout(&doc, &options());
-		let index = SourceIndex::new(&doc);
+		let index =
+			SourceIndex::new(doc.source.clone(), &doc.document, &doc.map);
 		let block = &snapshot.blocks[0];
 		let overflow = &block.layout.overflow[0];
 		let node = &block.layout.text[0];
@@ -635,7 +698,7 @@ fn atomic_image_source_geometry_uses_the_table_scroll_offset() {
 		.min(overflow.content_width - overflow.rect.w);
 	let horizontal = std::collections::HashMap::from([((0, 0), pan)]);
 	let offset = source.find("![]").unwrap();
-	let index = SourceIndex::new(&doc);
+	let index = SourceIndex::new(doc.source.clone(), &doc.document, &doc.map);
 	let mapped = index
 		.source_to_preview(&snapshot, &horizontal, offset)
 		.unwrap();
@@ -648,5 +711,42 @@ fn atomic_image_source_geometry_uses_the_table_scroll_offset() {
 			.unwrap()
 			.source,
 		mapped.source
+	);
+}
+
+#[test]
+fn a_snapshot_from_another_revision_is_rejected() {
+	let source = "# Heading\n\nParagraph.\n";
+	let doc = markview_commonmark::parse(source);
+	let index = SourceIndex::new(doc.source.clone(), &doc.document, &doc.map);
+	let snapshot = LayoutEngine::new().layout(&doc, &options());
+	let offset = source.find("Paragraph").unwrap();
+	assert!(
+		index
+			.source_to_preview(&snapshot, &Default::default(), offset)
+			.is_some()
+	);
+
+	let mut stale = snapshot.clone();
+	stale.revision = markview_layout::document::DocumentRevision::new(
+		snapshot.revision.get() + 1,
+	);
+	assert!(
+		index
+			.source_to_preview(&stale, &Default::default(), offset)
+			.is_none(),
+		"source navigation rejects another revision"
+	);
+	assert!(
+		index
+			.preview_to_source(&stale, &Default::default(), 0.0)
+			.is_none(),
+		"preview navigation rejects another revision"
+	);
+	assert!(
+		index
+			.scroll_anchors(&stale, &Default::default(), 0)
+			.is_empty(),
+		"scroll anchors reject another revision"
 	);
 }

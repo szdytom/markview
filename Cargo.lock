@@ -1086,8 +1086,7 @@ dependencies = [
 [[package]]
 name = "dom_smoothie"
 version = "0.19.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "22343bf0885f3841bc1cc4cdfad8d3d1dd1658f4718bd1b17092f0bb9436d893"
+source = "git+https://github.com/szdytom/dom_smoothie?rev=66efad3292bedb89d4510da057260ffc9f6d83da#66efad3292bedb89d4510da057260ffc9f6d83da"
 dependencies = [
  "dom_query",
  "flagset",
@@ -2487,7 +2486,6 @@ dependencies = [
  "base64 0.23.1",
  "clap",
  "comrak",
- "dom_query",
  "dom_smoothie",
  "env_logger",
  "flate2",
@@ -2506,6 +2504,7 @@ dependencies = [
  "markview-platform",
  "markview-render",
  "markview-ui-core",
+ "markview-webpage",
  "mermaid-rs-renderer",
  "nucleo-matcher",
  "parley",
@@ -2726,6 +2725,16 @@ dependencies = [
  "web-time",
  "wgpu",
  "wuff",
+]
+
+[[package]]
+name = "markview-webpage"
+version = "0.4.5"
+dependencies = [
+ "dom_smoothie",
+ "markview-document",
+ "percent-encoding",
+ "url",
 ]
 
 [[package]]

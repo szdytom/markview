@@ -1,11 +1,11 @@
 //! Session search, asynchronous matching, navigation and bottom chrome.
 use super::{App, Button, SendEvent};
+use crate::loaded::LoadedDocument;
 use crate::state::{ChromeCommand, SearchCommand};
 use crate::{
 	layout::{Draw, Paint, Rect},
 	state::{Command, PanelPage, TextField},
 };
-use markview_document::Document;
 use markview_layout::{
 	search::{SearchIndex, SearchMatch, SearchOptions},
 	text_input::TextInput,
@@ -23,7 +23,7 @@ pub(super) fn bottom(open: bool) -> f32 {
 #[derive(Default, Clone)]
 pub(crate) struct SearchState {
 	pub input: TextInput,
-	pub document: Option<Arc<Document>>,
+	pub document: Option<Arc<LoadedDocument>>,
 	pub open: bool,
 	pub options: SearchOptions,
 	pub matches: Arc<[SearchMatch]>,
@@ -51,7 +51,7 @@ struct Request {
 	path: PathBuf,
 	content: u64,
 	sequence: u64,
-	document: Arc<Document>,
+	document: Arc<LoadedDocument>,
 	query: String,
 	options: SearchOptions,
 }
@@ -428,18 +428,25 @@ impl<P: SendEvent> App<P> {
 						.snapshot
 						.search_selection(m, session.accepted_revision)
 						.and_then(|s| {
-							let b = &session.snapshot.blocks[s.anchor.block];
-							b.layout.text[s.anchor.node]
+							let anchor =
+								session.snapshot.resolve_position(s.anchor)?;
+							let b = &session.snapshot.blocks[anchor.block];
+							b.layout.text[anchor.node]
 								.clusters
 								.iter()
-								.find(|c| c.range.contains(&s.anchor.offset))
+								.find(|c| c.range.contains(&anchor.offset))
 								.and_then(|c| {
 									b.rect(c.command, c.rect)
 										.map(|rect| b.y + rect.y)
 								})
 						})
 						.or_else(|| {
-							session.snapshot.blocks.get(m.block).map(|b| b.y)
+							session
+								.snapshot
+								.blocks
+								.iter()
+								.find(|b| b.id == m.block)
+								.map(|b| b.y)
 						})
 						.unwrap_or(f32::INFINITY)
 				};
@@ -510,12 +517,21 @@ impl<P: SendEvent> App<P> {
 			self.worker.prioritize(f32::INFINITY);
 			return;
 		};
-		let block = &session.snapshot.blocks[selection.anchor.block];
-		let node = &block.layout.text[selection.anchor.node];
+		let Some(anchor) = session.snapshot.resolve_position(selection.anchor)
+		else {
+			return;
+		};
+		let Some(focus) = session.snapshot.resolve_position(selection.focus)
+		else {
+			return;
+		};
+		let block_index = anchor.block;
+		let block = &session.snapshot.blocks[block_index];
+		let node = &block.layout.text[anchor.node];
 		let Some(cluster) = node
 			.clusters
 			.iter()
-			.find(|c| c.range.contains(&selection.anchor.offset))
+			.find(|c| c.range.contains(&anchor.offset))
 		else {
 			search.pending_navigation = false;
 			return;
@@ -525,14 +541,14 @@ impl<P: SendEvent> App<P> {
 				let rect = block.overflow_rect(oi).unwrap();
 				let origin = block.command_offset(cluster.command).unwrap()[0];
 				let offset =
-					session.horizontal.entry((hit.block, oi)).or_default();
+					session.horizontal.entry((block_index, oi)).or_default();
 				let x = cluster.rect.x + origin;
-				let end = if selection.anchor.node == selection.focus.node {
+				let end = if anchor.node == focus.node {
 					node.clusters
 						.iter()
 						.filter(|c| {
-							c.range.start < selection.focus.offset
-								&& c.range.end > selection.anchor.offset
+							c.range.start < focus.offset
+								&& c.range.end > anchor.offset
 								&& (c.rect.y - cluster.rect.y).abs() < 0.5
 						})
 						.map(|c| c.rect.x + c.rect.w + origin)

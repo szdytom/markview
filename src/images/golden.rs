@@ -154,16 +154,20 @@ fn svg_snapshot(
 	let fonts = DiagramFonts::get_for(config, &[], &families, &mappings);
 	let theme = super::diagram::resolve(sheet, None);
 	let mut specs = Vec::new();
-	for block in &doc.blocks {
+	for block in doc.blocks() {
 		block.images(&mut specs);
 	}
 	let mut snapshot = ImageSnapshot::default();
+	let security =
+		crate::security::Security::local(crate::security::Trust::Trusted);
 	for spec in specs {
-		let source = super::source::source(&spec.src, path)?;
+		let source =
+			super::source::resolve(&spec.source, path, None, &security)?;
 		let bytes = super::source::fetch(&source, true, None, &theme)?;
 		let decoded =
 			super::decode(&bytes, None, None, Some((&fonts, "")), &mappings)?;
-		let key = spec.resource_key().into_owned();
+		let key = super::source::key(&spec.source, path, None, &security);
+		snapshot.keys.insert(spec.source.clone(), key.clone());
 		snapshot.entries.insert(
 			key.clone(),
 			ImageInfo {

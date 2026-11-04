@@ -67,6 +67,8 @@ pub(crate) struct PdfRequest {
 	pub(crate) offline: bool,
 	/// The open folder root, used by Obsidian vault image embeds.
 	pub(crate) workspace: Option<PathBuf>,
+	/// A document already parsed by a front end, such as a web page.
+	pub(crate) loaded: Option<Arc<crate::loaded::LoadedDocument>>,
 }
 
 /// A single PNG never allocates more pixels than this. At four bytes each the
@@ -158,11 +160,6 @@ pub(crate) fn png_snapshot_text_with_workspace(
 	security: crate::security::Security,
 	workspace: Option<PathBuf>,
 ) -> Result<LayoutSnapshot> {
-	let mut engine = LayoutEngine::with_executor(
-		services.handle.cpu.clone(),
-		std::sync::Arc::new(|| {}),
-	);
-	engine.validate_stylesheet(&options.stylesheet)?;
 	let document = markview_commonmark::parse_with(
 		text.to_owned(),
 		markview_commonmark::Dialect {
@@ -171,14 +168,50 @@ pub(crate) fn png_snapshot_text_with_workspace(
 			ofm: options.ofm,
 		},
 	);
+	let security = security.for_content(&document.source);
+	png_snapshot_document(
+		&document, path, options, offline, services, security, workspace,
+	)
+}
+
+/// Lays out a pre-parsed document for a PNG export.
+pub(crate) fn png_snapshot_loaded(
+	loaded: Arc<crate::loaded::LoadedDocument>,
+	path: &Path,
+	options: LayoutOptions,
+	offline: bool,
+	services: Arc<crate::services::Services>,
+	security: crate::security::Security,
+	workspace: Option<PathBuf>,
+) -> Result<LayoutSnapshot> {
+	png_snapshot_document(
+		&loaded, path, options, offline, services, security, workspace,
+	)
+}
+
+/// Lays out one already-parsed document for a PNG export.
+fn png_snapshot_document(
+	document: &markview_document::Document,
+	path: &Path,
+	options: LayoutOptions,
+	offline: bool,
+	services: Arc<crate::services::Services>,
+	security: crate::security::Security,
+	workspace: Option<PathBuf>,
+) -> Result<LayoutSnapshot> {
+	let mut engine = LayoutEngine::with_executor(
+		services.handle.cpu.clone(),
+		std::sync::Arc::new(|| {}),
+	);
+	engine.validate_stylesheet(&options.stylesheet)?;
 	let mut images = Images::shared(offline, options.fonts.clone(), &services);
-	images.set_security(security.for_content(&document.source));
+	images.set_security(security);
 	images.set_workspace(workspace);
 	images.set_standalone_image(
 		crate::file::is_picture(path).then(|| path.to_path_buf()),
 	);
 	images.prepare(
-		&document,
+		document,
 		path,
 		1,
 		false,
@@ -192,12 +225,12 @@ pub(crate) fn png_snapshot_text_with_workspace(
 		}
 	}
 	let mut snapshot =
-		engine.layout_with_images(&document, &options, &images.snapshot);
+		engine.layout_with_images(document, &options, &images.snapshot);
 	// Highlighting arrives from a worker; an export has no later frame to
 	// settle it, so it waits and keeps the colors.
 	if engine.wait_highlights() {
 		snapshot =
-			engine.layout_with_images(&document, &options, &images.snapshot);
+			engine.layout_with_images(document, &options, &images.snapshot);
 	}
 	Ok(snapshot)
 }

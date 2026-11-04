@@ -7,7 +7,7 @@ use crate::state::{
 	ChromeCommand, ExportCommand, SearchCommand, SettingsCommand,
 };
 use crate::state::{Command, PanelPage, ScrollbarAxis, ScrollbarDrag};
-use markview_layout::text::TextPosition;
+use markview_layout::text::SemanticPosition;
 #[cfg(test)]
 use std::time::Duration;
 use std::time::Instant;
@@ -418,7 +418,7 @@ impl<P: super::SendEvent> App<P> {
 		session.search.matches = Default::default();
 		self.search_changed();
 	}
-	pub(super) fn text_at_cursor(&self) -> Option<TextPosition> {
+	pub(super) fn text_at_cursor(&self) -> Option<SemanticPosition> {
 		self.document_interaction()
 			.position(markview_interaction::Point::new(
 				self.interaction.pointer.cursor().0,

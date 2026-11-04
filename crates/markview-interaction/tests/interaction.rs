@@ -57,8 +57,8 @@ fn snapshot() -> LayoutSnapshot {
 		width: 100.0,
 		blocks: vec![PlacedBlock {
 			flow: Default::default(),
-			id: 1,
-			source: 0..0,
+			id: markview_layout::document::BlockId::new(1).unwrap(),
+			content: Default::default(),
 			y: 0.0,
 			layout: Arc::new(BlockLayout {
 				height: 100.0,
@@ -71,8 +71,14 @@ fn snapshot() -> LayoutSnapshot {
 				links: vec![LinkRect {
 					rect: Rect { w: 30.0, ..rect },
 					url: "https://example.com".into(),
+					target: markview_layout::scene::LinkTarget::Url(
+						"https://example.com".into(),
+					),
 					commands: 0..1,
-					id: LinkId::Inline(0),
+					id: LinkId::Inline(
+						markview_layout::document::LinkOccurrenceId::new(1)
+							.unwrap(),
+					),
 				}],
 				overflow: vec![Overflow {
 					rect,

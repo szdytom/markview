@@ -67,7 +67,11 @@ impl<P: super::SendEvent> App<P> {
 			return;
 		};
 		let lang = self.preferences.values.lang();
-		let text = path.to_string_lossy().into_owned();
+		// The footer names a web page by its URL, never by its session path.
+		let text = match &self.readers.session.security.origin {
+			crate::security::Origin::Web(url) => url.clone(),
+			_ => path.to_string_lossy().into_owned(),
+		};
 		match self.clipboard.write(text) {
 			Ok(()) => self.notify(lang.status_copied_path(), false, 3),
 			Err(error) => self.notify(
@@ -114,7 +118,13 @@ impl<P: super::SendEvent> App<P> {
 			.session
 			.path
 			.clone()
-			.filter(|_| !self.readers.session.web_loading)
+			.filter(|_| {
+				!self.readers.session.web_loading
+					&& !matches!(
+						self.readers.session.security.origin,
+						crate::security::Origin::Web(_)
+					)
+			})
 			.map(|path| {
 				let proxy = self.proxy.clone();
 				let observed = path.clone();
@@ -142,10 +152,18 @@ impl<P: super::SendEvent> App<P> {
 		self.export.schedule_watch_export(path);
 	}
 	fn resume_document(&mut self) {
+		if let crate::security::Origin::Web(url) =
+			self.readers.session.security.origin.clone()
+		{
+			// A web page has no file behind it, so the previous document's
+			// watcher must not outlive the switch.
+			self.watch = None;
+			self.resume_web_document(url);
+			return;
+		}
 		self.observe_document();
 		let session = &self.readers.session;
-		if !session.web_loading
-			&& let Some(path) = session.path.clone()
+		if let Some(path) = session.path.clone()
 			&& session
 				.source_stamp
 				.is_some_and(|stamp| stamp != file_stamp(&path))
@@ -153,14 +171,38 @@ impl<P: super::SendEvent> App<P> {
 			self.reload_document(&path, false);
 			return;
 		}
-		// The worker releases inactive pixels, so image tabs must resume loading.
-		if session.document.is_none()
-			|| session.layout_pending
-			|| !session.snapshot.images.entries.is_empty()
-			|| session.requested_options.as_ref() != Some(&self.options())
+		if self.needs_request() {
+			self.request(false);
+		}
+	}
+	/// Resumes a web tab: fetch what never loaded, re-layout what did.
+	fn resume_web_document(&mut self, url: String) {
+		if !self.readers.session.web_loading
+			&& self.readers.session.document.is_none()
+		{
+			self.open_web_page(url);
+			return;
+		}
+		let session = &self.readers.session;
+		if !session.web_loading
+			&& session.document.is_some()
+			&& (session.layout_pending
+				|| session.snapshot.blocks.is_empty()
+				|| !session.snapshot.images.entries.is_empty()
+				|| session.requested_options.as_ref() != Some(&self.options()))
 		{
 			self.request(false);
 		}
+	}
+	/// Whether the session has no current layout of its last request.
+	///
+	/// The worker releases inactive pixels, so image tabs must resume loading.
+	fn needs_request(&self) -> bool {
+		let session = &self.readers.session;
+		session.document.is_none()
+			|| session.layout_pending
+			|| !session.snapshot.images.entries.is_empty()
+			|| session.requested_options.as_ref() != Some(&self.options())
 	}
 	pub(super) fn open(&mut self, path: PathBuf) {
 		if path.is_dir() {
@@ -203,14 +245,18 @@ impl<P: super::SendEvent> App<P> {
 		self.abandon_dm();
 		self.tab_strip.cancel_drag();
 		self.tab_strip.reveal_active = true;
-		let path = if path.is_absolute() {
+		let path = if matches!(security.origin, crate::security::Origin::Web(_))
+		{
 			path
 		} else {
-			std::env::current_dir().unwrap_or_default().join(path)
+			let path = if path.is_absolute() {
+				path
+			} else {
+				std::env::current_dir().unwrap_or_default().join(path)
+			};
+			std::fs::canonicalize(&path).unwrap_or(path)
 		};
-		// The tree canonicalizes its root, so visits must be canonical too.
-		let path = std::fs::canonicalize(&path).unwrap_or(path);
-		if !web_loading {
+		if !matches!(security.origin, crate::security::Origin::Web(_)) {
 			self.folder.start.visit(path.clone());
 		}
 		if let Some(index) = self.readers.find_origin(&path, &security.origin) {
@@ -225,10 +271,10 @@ impl<P: super::SendEvent> App<P> {
 		let before = self.tab_layout();
 		self.readers.open(path, Instant::now());
 		self.tab_strip.begin_open(&before, self.readers.active());
-		self.refresh_start_files();
 		self.readers.session.security = security;
 		self.readers.session.web_loading = web_loading;
 		self.readers.session.layout_pending = true;
+		self.refresh_start_files();
 		self.status.clear_message();
 		self.status.set_error(false);
 		self.interaction.clear_selection();
@@ -355,6 +401,9 @@ impl<P: super::SendEvent> App<P> {
 		let result = self.readers.close(index, Instant::now());
 		// Closing the active tab may put another document on screen.
 		self.visit_active();
+		if self.readers.find_web(&closed).is_none() {
+			self.web_pages.release_path(&closed);
+		}
 		self.refresh_start_files();
 		// A watched export belongs to the document and origin that chose it.
 		if self.export.watches_document(&closed, &origin) {

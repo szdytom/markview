@@ -32,7 +32,7 @@ their original spelling.
 - English: [Webb's First Deep Field](https://en.wikipedia.org/wiki/Webb%27s_First_Deep_Field).
 - Chinese: [韋伯的首次深空](https://zh.wikipedia.org/wiki/%E9%9F%8B%E4%BC%AF%E7%9A%84%E9%A6%96%E6%AC%A1%E6%B7%B1%E7%A9%BA), fetched as the `zh-cn` simplified-Chinese variant, retaining its regional terminology.
 - `en/web.html` and `zh/web.html` retain Wikipedia's `action=render` article HTML, retrieved on 2026-10-07. A UTF-8 wrapper adds the page title omitted by that endpoint. Content and source links are retained.
-- `web-extracted.md` is the full result from the production functions in `src/web_page.rs`, with the production text check from `src/paste.rs`. The regeneration script compiles those functions in a temporary Cargo driver, without editing application code. `web.md` selects the lead and first subsection from that actual result. Generated source metadata and the Chinese infobox are omitted from the **display excerpt**, while all full extraction output remains available for inspection. The prose and its hyperlinks are not rewritten; infobox images dropped by the actual extractor are not added back.
+- `web-extracted.md` is a frozen record of the retired Markdown-serializing extractor: the current extractor lowers the article into a semantic document instead. `web.md` selects the lead and first subsection from that record. Generated source metadata and the Chinese infobox are omitted from the **display excerpt**, while all full extraction output remains available for inspection. The prose and its hyperlinks are not rewritten; infobox images dropped by the extractor are not added back.
 - Wikipedia contributors retain copyright. Text, adaptations and corresponding `*-showcase-web.png` previews are under [CC BY-SA 4.0](https://creativecommons.org/licenses/by-sa/4.0/), **not** the repository's MIT license. The original pages and their histories provide contributor attribution.
 
 ## Regeneration
@@ -43,16 +43,6 @@ previews with a release binary and GPU access:
 ```sh
 python3 scripts/generate_readme_showcase.py
 ```
-
-To replay the stored web pages through the production extractor as well:
-
-```sh
-python3 scripts/generate_readme_showcase.py --extract-web
-```
-
-The latter requires Cargo with the repository's dependency versions cached; its
-build artifacts live in `target/readme-web-extractor`. It refreshes the full
-`web-extracted.md` files, while the curated `web.md` excerpts stay editable.
 
 Rendered frames are 1440 × 1600 physical pixels at scale 2, with a 650-logical-pixel
 reading column. Body type is 18 px, or 14 px for the technical page so its code

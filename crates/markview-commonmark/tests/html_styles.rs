@@ -107,9 +107,9 @@ fn parse_measured(source: String) -> (String, usize, Duration) {
 	let elapsed = start.elapsed();
 	let peak = PEAK.load(Ordering::Relaxed).saturating_sub(baseline);
 	let text = document
-		.blocks
+		.blocks()
 		.iter()
-		.flat_map(|block| match &block.kind {
+		.flat_map(|block| match &block.kind() {
 			BlockKind::Paragraph(rich) => rich.as_slice(),
 			_ => &[],
 		})
@@ -184,12 +184,12 @@ fn one_link_holds_one_address() {
 	);
 	let document = parse(source);
 	let mut addresses: Vec<usize> = Vec::new();
-	for block in &document.blocks {
-		let BlockKind::Paragraph(rich) = &block.kind else {
+	for block in document.blocks() {
+		let BlockKind::Paragraph(rich) = &block.kind() else {
 			continue;
 		};
 		for inline in rich {
-			if let Some(link) = &inline.style.link {
+			if let Some(link) = &inline.link {
 				addresses
 					.push(Arc::as_ptr(link.shared()) as *const u8 as usize);
 			}

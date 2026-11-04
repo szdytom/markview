@@ -1,6 +1,7 @@
 //! Logical reading text and its final layout geometry. No clipboard or input APIs.
 use crate::layout::{LayoutSnapshot, Rect};
 use icu_segmenter::{WordSegmenter, WordSegmenterBorrowed};
+pub use markview_document::Affinity;
 use std::{ops::Range, sync::OnceLock};
 use unicode_segmentation::UnicodeSegmentation;
 
@@ -95,21 +96,70 @@ impl TextCounts {
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum Affinity {
-	Before,
-	After,
-}
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub struct TextPosition {
+pub(crate) struct GeometryPosition {
 	pub revision: u64,
 	pub block: usize,
 	pub node: usize,
 	pub offset: usize,
 	pub affinity: Affinity,
 }
-impl TextPosition {
+impl GeometryPosition {
 	fn key(self) -> (usize, usize, usize) {
 		(self.block, self.node, self.offset)
+	}
+
+	/// The semantic field position this layout position names.
+	pub fn semantic(
+		self,
+		snapshot: &LayoutSnapshot,
+	) -> Option<SemanticPosition> {
+		if self.revision != snapshot.revision.get() {
+			return None;
+		}
+		let block = snapshot.blocks.get(self.block)?;
+		let node = block.layout.text.get(self.node)?;
+		if !node.text.is_char_boundary(self.offset) {
+			return None;
+		}
+		let field = field_for_node(&block.layout.text, self.node)?;
+		let offset =
+			reading_to_semantic(node, self.offset).unwrap_or_else(|| {
+				block
+					.layout
+					.text
+					.iter()
+					.filter(|n| n.search_field == Some(field))
+					.flat_map(|n| &n.search_ranges)
+					.map(|(s, _)| s.end)
+					.max()
+					.unwrap_or(0)
+			});
+		let mut position = SemanticPosition {
+			revision: markview_document::DocumentRevision::new(self.revision),
+			block: block.id,
+			field,
+			offset,
+			affinity: self.affinity,
+			projection: None,
+		};
+		if text_position(snapshot, position)
+			.is_none_or(|p| p.node != self.node || p.offset != self.offset)
+		{
+			position.projection = Some(
+				block
+					.layout
+					.text
+					.iter()
+					.enumerate()
+					.take(self.node)
+					.filter(|(i, _)| {
+						field_for_node(&block.layout.text, *i) == Some(field)
+					})
+					.map(|(_, n)| n.text.len())
+					.sum::<usize>() + self.offset,
+			);
+		}
+		Some(position)
 	}
 	/// Reading order of two positions, ignoring revision and affinity. Repeated
 	/// blocks and nodes order by their occurrence.
@@ -117,13 +167,128 @@ impl TextPosition {
 		self.key().cmp(&other.key())
 	}
 }
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub struct TextSelection {
-	pub anchor: TextPosition,
-	pub focus: TextPosition,
+pub use markview_document::SemanticPosition;
+
+/// The layout position of a semantic field offset.
+pub(crate) fn text_position(
+	snapshot: &LayoutSnapshot,
+	position: SemanticPosition,
+) -> Option<GeometryPosition> {
+	if position.revision != snapshot.revision {
+		return None;
+	}
+	let (bi, block) = snapshot
+		.blocks
+		.iter()
+		.enumerate()
+		.find(|(_, block)| block.id == position.block)?;
+	if let Some(mut offset) = position.projection {
+		let mut boundary = None;
+		for (ni, node) in block.layout.text.iter().enumerate() {
+			if field_for_node(&block.layout.text, ni) != Some(position.field) {
+				continue;
+			}
+			if offset <= node.text.len() {
+				if !node.text.is_char_boundary(offset) {
+					return None;
+				}
+				let resolved = GeometryPosition {
+					revision: position.revision.get(),
+					block: bi,
+					node: ni,
+					offset,
+					affinity: position.affinity,
+				};
+				if offset < node.text.len()
+					|| position.affinity == Affinity::After
+				{
+					return Some(resolved);
+				}
+				boundary = Some(resolved);
+			}
+			offset = offset.saturating_sub(node.text.len());
+		}
+		return boundary;
+	}
+	for (ni, node) in block.layout.text.iter().enumerate() {
+		if node.search_field != Some(position.field) {
+			continue;
+		}
+		let Some(offset) = semantic_to_reading(node, position.offset) else {
+			continue;
+		};
+		return Some(GeometryPosition {
+			revision: position.revision.get(),
+			block: bi,
+			node: ni,
+			offset,
+			affinity: position.affinity,
+		});
+	}
+	None
 }
-impl TextSelection {
-	pub fn ordered(self) -> (TextPosition, TextPosition) {
+
+/// Maps a field offset to the reading offset of one layout node.
+pub(crate) fn semantic_to_reading(
+	node: &TextNode,
+	offset: usize,
+) -> Option<usize> {
+	let index = node
+		.search_ranges
+		.partition_point(|(semantic, _)| semantic.end < offset);
+	for (semantic, reading) in node.search_ranges.iter().skip(index) {
+		if offset < semantic.start {
+			break;
+		}
+		if offset > semantic.end {
+			continue;
+		}
+		if semantic.len() == reading.len() {
+			return Some(reading.start + offset - semantic.start);
+		}
+		return Some(if offset == semantic.start {
+			reading.start
+		} else {
+			reading.end
+		});
+	}
+	None
+}
+
+/// Maps a reading offset of one layout node to its field offset.
+pub(crate) fn reading_to_semantic(
+	node: &TextNode,
+	offset: usize,
+) -> Option<usize> {
+	let index = node
+		.search_ranges
+		.partition_point(|(_, reading)| reading.end < offset);
+	for (semantic, reading) in node.search_ranges.iter().skip(index) {
+		if offset < reading.start {
+			break;
+		}
+		if offset > reading.end {
+			continue;
+		}
+		if semantic.len() == reading.len() {
+			return Some(semantic.start + offset - reading.start);
+		}
+		return Some(if offset == reading.start {
+			semantic.start
+		} else {
+			semantic.end
+		});
+	}
+	None
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) struct GeometrySelection {
+	pub anchor: GeometryPosition,
+	pub focus: GeometryPosition,
+}
+impl GeometrySelection {
+	pub fn ordered(self) -> (GeometryPosition, GeometryPosition) {
 		if self.anchor.key() <= self.focus.key() {
 			(self.anchor, self.focus)
 		} else {
@@ -136,7 +301,7 @@ impl TextSelection {
 }
 #[derive(Clone, Debug)]
 pub struct TextNode {
-	pub search_field: Option<crate::search::SearchField>,
+	pub search_field: Option<markview_document::FieldId>,
 	/// Pairs of semantic and reading byte ranges; diagnostics have no pair.
 	pub search_ranges: Vec<(Range<usize>, Range<usize>)>,
 	/// Image geometry bound by inline ordinal, independent of reading text.
@@ -314,9 +479,9 @@ impl LayoutSnapshot {
 		}
 		result.replace('\u{ad}', "")
 	}
-	pub fn extract_text(
+	pub(crate) fn geometry_extract_text(
 		&self,
-		selection: TextSelection,
+		selection: GeometrySelection,
 		revision: u64,
 	) -> String {
 		if selection.anchor.revision != revision
@@ -378,3 +543,18 @@ pub(crate) fn changed_span(old: &str, new: &str) -> (usize, usize, usize) {
 
 #[cfg(all(test, feature = "font-directories"))]
 mod tests;
+
+mod semantic;
+pub use semantic::{ResolvedPosition, TextSelection};
+
+/// Generated labels belong to the following semantic field, or the preceding
+/// field at the end of a block. Their reading offsets remain field-relative.
+fn field_for_node(
+	nodes: &[TextNode],
+	index: usize,
+) -> Option<markview_document::FieldId> {
+	nodes[index..]
+		.iter()
+		.find_map(|n| n.search_field)
+		.or_else(|| nodes[..index].iter().rev().find_map(|n| n.search_field))
+}

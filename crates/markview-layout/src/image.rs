@@ -5,7 +5,7 @@ use std::{
 };
 
 pub use markview_document::image::{
-	ImageBase, ImageSpec, MERMAID_SCHEME, mermaid_source,
+	Diagram, ImageSource, ImageSpec, ResourceBase, ResourceRef,
 };
 
 /// Decoded pixels in the one layout the renderer consumes.
@@ -153,12 +153,19 @@ pub fn raster_size(w: f32, h: f32) -> (u32, u32) {
 #[derive(Clone, Debug, Default)]
 pub struct ImageSnapshot {
 	pub generation: u64,
-	/// Metadata by alias, including the error for an unusable source.
+	/// Application resource keys for each semantic image source.
+	pub keys: HashMap<ImageSource, String>,
+	/// Metadata by key, including the error for an unusable source.
 	pub entries: HashMap<String, ImageInfo>,
 	pub pixels: Arc<ImagePixels>,
 }
 
 impl ImageSnapshot {
+	/// The application resource key for a semantic source.
+	pub fn key(&self, source: &ImageSource) -> Option<&str> {
+		self.keys.get(source).map(String::as_str)
+	}
+
 	/// A diagnostic view containing only pixels belonging to this snapshot.
 	pub fn decoded(&self) -> HashMap<String, Arc<Pixels>> {
 		self.entries
@@ -205,6 +212,7 @@ mod tests {
 		pixels.insert("same".into(), 1, first);
 		let old = ImageSnapshot {
 			generation: 1,
+			keys: HashMap::new(),
 			entries: HashMap::from([(
 				"same".into(),
 				ImageInfo {

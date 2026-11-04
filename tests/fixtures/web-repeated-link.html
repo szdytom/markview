@@ -1,0 +1,18 @@
+<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"><title>Repeated link article</title></head>
+<body>
+<article>
+<h1>Repeated link article</h1>
+<p>Repeated references are normal in prose. Read the <a href="/handbook">handbook</a>, then read the <a href="/handbook">handbook</a> again. These are two occurrences of one address and must keep separate identities.</p>
+<p>A single link can span styles: <a href="/guide"><strong>the</strong> <em>complete</em> guide</a>. Its fragments share one occurrence even though their styling differs.</p>
+<p>Adjacent links with the same address remain distinct: <a href="/faq">FAQ</a><a href="/faq">FAQ</a>. Text between them does not merge them: <a href="/api">API</a> and <a href="/api">API reference</a>.</p>
+<p>External and relative links coexist: <a href="https://example.org/one">external</a>, <a href="/local/one">local</a>, <a href="https://example.org/one">external again</a>, and <a href="/local/one">local again</a>.</p>
+<p>Repeated paragraph. <a href="/repeat">repeat link</a> appears in the same words and should still create a new occurrence when it appears in a new block.</p>
+<p>Repeated paragraph. <a href="/repeat">repeat link</a> appears in the same words and should still create a new occurrence when it appears in a new block.</p>
+<p>Links inside emphasis keep their address and occurrence: <em><a href="/styled">styled link</a></em>, <strong><a href="/styled">styled link</a></strong>.</p>
+<p>An image and a link can share a sentence: <a href="/figure"><img src="figure.png" alt="Figure link"></a> followed by <a href="/figure">the same target</a>.</p>
+<p>The final paragraph repeats the first address once more: <a href="/handbook">handbook</a>. The comparison must count occurrences, not merely unique addresses.</p>
+</article>
+</body>
+</html>

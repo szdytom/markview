@@ -25,7 +25,8 @@
 use std::sync::Arc;
 
 use libfuzzer_sys::{fuzz_mutator, fuzz_target};
-use markview_document::{Block, BlockKind, Document, InlineKind, RichText};
+use markview_commonmark::MarkdownParse;
+use markview_document::{Block, BlockKind, InlineKind, RichText};
 use mvfuzz::{budget, mutators, oracle, seam};
 
 fuzz_mutator! { |data: &mut [u8], size: usize, max_size: usize, seed: u32| {
@@ -54,7 +55,7 @@ fuzz_mutator! { |data: &mut [u8], size: usize, max_size: usize, seed: u32| {
 /// - **text**: the reading text of each rich run with all whitespace removed,
 ///   searched for the marker. Concatenating first is what makes a marker split
 ///   across inlines detectable.
-fn marker_visible(doc: &Document, len: usize) -> bool {
+fn marker_visible(doc: &MarkdownParse, len: usize) -> bool {
 	// The search key is the marker's *label stem*, not the whole marker: a
 	// crash file minimized from an earlier run already contains that run's
 	// marker text, and matching on the full spelling — which embeds the input
@@ -75,27 +76,40 @@ fn marker_visible(doc: &Document, len: usize) -> bool {
 			.collect();
 		joined.contains(needle)
 	}
-	fn walk(blocks: &[Block], needle: &str, len: usize) -> bool {
+	fn walk(
+		doc: &MarkdownParse,
+		blocks: &[Block],
+		needle: &str,
+		len: usize,
+	) -> bool {
 		for block in blocks {
-			if block.source.end > len {
+			if doc.block_source(block).is_some_and(|range| range.end > len) {
 				return true;
 			}
-			let hit = match &block.kind {
+			let hit = match &block.kind() {
 				BlockKind::Paragraph(text)
 				| BlockKind::Heading { text, .. } => rich_has(text, needle),
 				BlockKind::Code { text, .. } => text.contains(needle),
 				BlockKind::Details {
 					summary, blocks, ..
-				} => rich_has(summary, needle) || walk(blocks, needle, len),
+				} => rich_has(summary, needle) || walk(doc, blocks, needle, len),
 				BlockKind::Quote { blocks, .. }
 				| BlockKind::Footnote { blocks, .. }
-				| BlockKind::FrontMatter { blocks, .. } => walk(blocks, needle, len),
-				BlockKind::List { items, .. } => {
-					items.iter().any(|item| walk(&item.blocks, needle, len))
-				}
-				BlockKind::Table { rows, .. } => rows
+				| BlockKind::FrontMatter { blocks, .. }
+				| BlockKind::Figure { blocks, .. } => walk(doc, blocks, needle, len),
+				BlockKind::List { items, .. } => items
 					.iter()
-					.any(|row| row.iter().any(|cell| rich_has(cell, needle))),
+					.any(|item| walk(doc, &item.blocks, needle, len)),
+				BlockKind::Table(table) => table.cell_blocks().any(|child| {
+					walk(doc, std::slice::from_ref(child), needle, len)
+				}),
+				BlockKind::DefinitionList(items) => items.iter().any(|item| {
+					item.terms.iter().any(|terms| rich_has(terms, needle))
+						|| item
+							.definitions
+							.iter()
+							.any(|blocks| walk(doc, blocks, needle, len))
+				}),
 				BlockKind::Rule => false,
 			};
 			if hit {
@@ -104,7 +118,7 @@ fn marker_visible(doc: &Document, len: usize) -> bool {
 		}
 		false
 	}
-	walk(&doc.blocks, NEEDLE, len)
+	walk(doc, doc.document.blocks(), NEEDLE, len)
 }
 
 fuzz_target!(|data: &[u8]| {
@@ -174,19 +188,23 @@ fuzz_target!(|data: &[u8]| {
 	//    bare marker and the open HTML block both own the end of the source,
 	//    a container is excluded by kind, and the `[fo\x05o]` case is
 	//    excluded because its paragraph also owns the source end.
-	let Some(last) = doc.blocks.last() else {
+	let Some(last) = doc.document.blocks().last() else {
 		guard.finish(&budget, len);
 		return;
 	};
 	let leaf = matches!(
-		last.kind,
+		last.kind(),
 		BlockKind::Paragraph(_) | BlockKind::Heading { .. }
 	);
-	// A snippet-relative range (a `<details>` body) can land off a character
-	// boundary for this source, so the tail is only taken when it is a real
-	// boundary here.
-	let end = last.source.end.min(len);
-	if !leaf || last.source.is_empty() || !md.is_char_boundary(end) {
+	// The range is a real one for this source: `assert_source_ranges` above
+	// holds every block range in bounds and on a character boundary, so the
+	// tail can be sliced as it stands.
+	let Some(range) = doc.block_source(last) else {
+		guard.finish(&budget, len);
+		return;
+	};
+	let end = range.end.min(len);
+	if !leaf || range.is_empty() {
 		guard.finish(&budget, len);
 		return;
 	}
@@ -241,7 +259,7 @@ fuzz_target!(|data: &[u8]| {
 	// keeps the count while altering an existing block is the defect this
 	// differential looks for: the definition rendered no node, yet an earlier
 	// block's resolution moved.
-	if with_suffix.blocks.len() != doc.blocks.len() {
+	if with_suffix.document.blocks().len() != doc.document.blocks().len() {
 		guard.finish(&budget, len);
 		return;
 	}
@@ -251,7 +269,7 @@ fuzz_target!(|data: &[u8]| {
 	// not in a way this differential can attribute. A code block whose text
 	// moved therefore takes the differential out of scope rather than
 	// reporting a change the append did not cause.
-	if code_text_changed(&doc.blocks, &with_suffix.blocks) {
+	if code_text_changed(doc.document.blocks(), with_suffix.document.blocks()) {
 		guard.finish(&budget, len);
 		return;
 	}
@@ -266,14 +284,16 @@ fuzz_target!(|data: &[u8]| {
 	// anchors actually moved stands down: the differential is about a block's
 	// text and range, neither of which an anchor counter can legitimately
 	// change.
-	if anchors_of(&doc.blocks) != anchors_of(&with_suffix.blocks) {
+	if anchors_of(doc.document.blocks())
+		!= anchors_of(with_suffix.document.blocks())
+	{
 		guard.finish(&budget, len);
 		return;
 	}
-	for i in 0..doc.blocks.len() {
+	for i in 0..doc.document.blocks().len() {
 		assert_eq!(
-			without_anchors(&doc.blocks[i]),
-			without_anchors(&with_suffix.blocks[i]),
+			without_anchors(&doc.document.blocks()[i]),
+			without_anchors(&with_suffix.document.blocks()[i]),
 			"block {i} changed when an unreferenced definition was appended \
 			 after a closed block"
 		);
@@ -287,7 +307,7 @@ fuzz_target!(|data: &[u8]| {
 fn code_text_changed(before: &[Block], after: &[Block]) -> bool {
 	fn collect(blocks: &[Block], out: &mut Vec<String>) {
 		for block in blocks {
-			match &block.kind {
+			match &block.kind() {
 				BlockKind::Code { text, .. } => out.push(text.clone()),
 				BlockKind::Details { blocks, .. }
 				| BlockKind::Quote { blocks, .. }
@@ -313,7 +333,7 @@ fn code_text_changed(before: &[Block], after: &[Block]) -> bool {
 fn anchors_of(blocks: &[Block]) -> Vec<String> {
 	fn walk(blocks: &[Block], out: &mut Vec<String>) {
 		for block in blocks {
-			match &block.kind {
+			match &block.kind() {
 				BlockKind::Heading { anchor, .. } => out.push(anchor.clone()),
 				BlockKind::Details { blocks, .. }
 				| BlockKind::Quote { blocks, .. }
@@ -338,11 +358,11 @@ fn anchors_of(blocks: &[Block]) -> Vec<String> {
 fn without_anchors(block: &Block) -> String {
 	let mut clone = block.clone();
 	blank_anchors(&mut clone);
-	format!("{:?}", clone.kind)
+	format!("{:?}", clone.kind())
 }
 
 fn blank_anchors(block: &mut Block) {
-	match &mut block.kind {
+	match block.kind_mut() {
 		BlockKind::Heading { anchor, .. } => anchor.clear(),
 		BlockKind::Details { blocks, .. }
 		| BlockKind::Quote { blocks, .. }

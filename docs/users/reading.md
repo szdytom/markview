@@ -174,8 +174,9 @@ scrolls on its own.
 
 Experimental web reading is available with `markview web https://example.org/article`
 (or paste an HTTP(S) URL with Ctrl+V). It downloads static UTF-8 HTML in the
-background, extracts the article as Markdown, and opens
-it in a temporary native reader tab created immediately with a loading message.
+background, converts the article into the reader's semantic document, and
+opens it in a temporary native reader tab created immediately with a loading
+message.
 Loading errors stay in the tab’s reading area; background completions update
 their original tabs without changing focus or reopening closed tabs.
 Links and images resolve against the final

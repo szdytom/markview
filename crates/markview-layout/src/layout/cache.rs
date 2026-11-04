@@ -28,29 +28,33 @@ impl BlockContext<'_> {
 		out: &mut BlockLayout,
 	) -> f32 {
 		let [x, y] = position;
-		let locator = match &block.kind {
-			BlockKind::Paragraph(text) | BlockKind::Heading { text, .. } => {
-				Some(text.as_ptr() as usize)
+		match &block.kind() {
+			BlockKind::Paragraph(_)
+			| BlockKind::Heading { .. }
+			| BlockKind::Code { .. }
+			| BlockKind::Rule => {}
+			// A table's scene is a subtree: its framed cells open scenes of
+			// their own, so the block owns several spans and leaves, while a
+			// cache entry retains exactly one leaf span of one node. Reusing a
+			// table would need a subtree entry that copies every node, span and
+			// leaf below it, re-translates their local coordinates, rebinds the
+			// link occurrences to the current block, and lets
+			// `retain_children` record a leaf list rather than one index. Until
+			// that exists a progressive pass re-shapes every table.
+			BlockKind::Table(_) => {
+				return self.block(block, x, y, width, opts, out);
 			}
-			BlockKind::Code { text, .. } => Some(text.as_ptr() as usize),
-			BlockKind::Table { rows, .. } => rows
-				.iter()
-				.flatten()
-				.next()
-				.map(|text| text.as_ptr() as usize),
-			BlockKind::Rule => None,
 			_ => return self.block(block, x, y, width, opts, out),
-		};
+		}
 		let Some(cache) = &self.nested else {
 			return self.block(block, x, y, width, opts, out);
 		};
 		if (self.cancelled)() {
 			return 0.;
 		}
-		let field = locator.and_then(|p| self.search_fields.get(&p).copied());
 		let mut key = cache.base.clone();
 		key.position = 0;
-		key.content = block.content_key;
+		key.content = block.content_key();
 		key.width = width.to_bits();
 		key.paragraph_indent = opts.paragraph_indent.to_bits();
 		let theme = opts.codeblock_theme_override.as_deref().or_else(|| {
@@ -61,8 +65,19 @@ impl BlockContext<'_> {
 		});
 		key.external =
 			external_key(block, self.images, self.highlight_cache, theme, opts);
-		let key = fingerprint(&(&key, self.shaper.appearance.key()));
+		let key = fingerprint(&(
+			&key,
+			self.shaper.appearance.key(),
+			self.footnote_column,
+		));
 		if let Some(entry) = cache.entries.get(&key) {
+			let field = match block.kind() {
+				BlockKind::Paragraph(_)
+				| BlockKind::Heading { .. }
+				| BlockKind::Code { .. } => self.fields.next(block.id()),
+				BlockKind::Rule => None,
+				_ => unreachable!("only cached leaf kinds reach reuse"),
+			};
 			let origins = block_link_origins(block, &opts.limits);
 			return out.reuse_leaf(
 				&entry.layout,
@@ -75,8 +90,11 @@ impl BlockContext<'_> {
 		}
 		let degraded = out.degraded;
 		let math_errors = out.math_errors;
+		let first_text = out.text.len();
 		let height = self.block(block, x, y, width, opts, out);
 		if !(self.cancelled)() {
+			let field =
+				out.text.get(first_text).and_then(|node| node.search_field);
 			out.retain_leaf(
 				key,
 				height,
@@ -143,6 +161,15 @@ pub(super) fn remap_link_ids(
 			link.id = LinkId::Inline(origin);
 		}
 	}
+	for anchor in &mut layout.anchors {
+		if let markview_document::AnchorId::FootnoteReference {
+			occurrence, ..
+		} = &mut anchor.anchor
+			&& let Some(&origin) = remap.get(occurrence)
+		{
+			*occurrence = origin;
+		}
+	}
 	layout.link_occurrences = current;
 	Arc::new(layout)
 }
@@ -152,29 +179,35 @@ pub(super) fn remap_link_ids(
 pub(super) fn block_link_origins(
 	block: &Block,
 	limits: &crate::limits::Limits,
-) -> Vec<usize> {
+) -> Vec<markview_document::LinkOccurrenceId> {
 	fn quote(
 		callout: &Option<crate::document::Callout>,
 		blocks: &[Block],
 		limits: &crate::limits::Limits,
-		out: &mut Vec<usize>,
+		out: &mut Vec<markview_document::LinkOccurrenceId>,
 	) {
 		// A foldable title is already the disclosed summary.
-		if let Some(callout) = callout
-			&& callout.fold.is_none()
+		if let Some(title) =
+			callout.as_ref().and_then(|callout| callout.title.as_ref())
 		{
-			out.extend(crate::document::inline_link_origins(&callout.title));
+			out.extend(crate::document::inline_link_origins(title));
 		}
 		for block in blocks {
 			walk(block, limits, out);
 		}
 	}
+	#[cfg_attr(
+		any(),
+		markview::allow_complexity(
+			reason = "Keep the exhaustive block-kind link walk in one place so cached links cannot miss a container."
+		)
+	)]
 	fn walk(
 		block: &Block,
 		limits: &crate::limits::Limits,
-		out: &mut Vec<usize>,
+		out: &mut Vec<markview_document::LinkOccurrenceId>,
 	) {
-		match &block.kind {
+		match &block.kind() {
 			BlockKind::Paragraph(text) => {
 				out.extend(crate::document::inline_link_origins(text));
 			}
@@ -198,21 +231,27 @@ pub(super) fn block_link_origins(
 					}
 				}
 			}
-			BlockKind::Table { align, rows, .. } => {
-				// Both layout loops cap the columns, then the rows and the
-				// cell total, so only the cells they draw carry links.
-				let columns = align.len().min(limits.table_columns);
-				if columns == 0 {
-					return;
-				}
-				let rows = &rows[..rows
-					.len()
-					.min(limits.table_rows)
-					.min((limits.table_cells / columns).max(1))];
-				for row in rows {
-					for cell in row.iter().take(columns) {
-						out.extend(crate::document::inline_link_origins(cell));
+			// Tables never enter the single-leaf reuse path, so collecting
+			// their origins would describe geometry that cannot be reused.
+			BlockKind::Table(_) => {}
+			BlockKind::DefinitionList(items) => {
+				for item in items {
+					for terms in &item.terms {
+						out.extend(crate::document::inline_link_origins(terms));
 					}
+					for blocks in &item.definitions {
+						for block in blocks {
+							walk(block, limits, out);
+						}
+					}
+				}
+			}
+			BlockKind::Figure { blocks, caption } => {
+				if let Some(caption) = caption {
+					out.extend(crate::document::inline_link_origins(caption));
+				}
+				for block in blocks {
+					walk(block, limits, out);
 				}
 			}
 			BlockKind::Details {
@@ -250,7 +289,7 @@ mod tests {
 				},
 			);
 			assert_eq!(
-				block_link_origins(&doc.blocks[0], &limits).len(),
+				block_link_origins(&doc.blocks()[0], &limits).len(),
 				2,
 				"{source}"
 			);

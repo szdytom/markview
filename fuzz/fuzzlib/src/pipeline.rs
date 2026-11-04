@@ -11,7 +11,7 @@ use std::{
 	sync::{Arc, Once},
 };
 
-use markview_document as document;
+use markview_commonmark::MarkdownParse;
 use markview_layout::{
 	fonts::FontConfig,
 	image::ImageSnapshot,
@@ -99,7 +99,7 @@ pub fn warmup() {
 /// asynchronous highlight pass so the geometry is the settled one.
 pub fn parse_layout(
 	md: &str,
-) -> (document::Document, LayoutOptions, LayoutSnapshot) {
+) -> (MarkdownParse, LayoutOptions, LayoutSnapshot) {
 	let doc = markview_commonmark::parse(md.to_string());
 	let options = options_for(md);
 	let mut engine = LayoutEngine::new();
@@ -116,7 +116,7 @@ pub fn export_pdf(
 	md: &str,
 ) -> (
 	Vec<u8>,
-	document::Document,
+	MarkdownParse,
 	LayoutSnapshot,
 	Pagination,
 	PageGeometry,
@@ -221,6 +221,7 @@ fn synthetic_images(snapshot: &LayoutSnapshot) -> ImageSnapshot {
 	}
 	ImageSnapshot {
 		generation: 0,
+		keys: std::collections::HashMap::new(),
 		entries,
 		pixels,
 	}

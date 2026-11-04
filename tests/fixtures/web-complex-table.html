@@ -1,0 +1,45 @@
+<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"><title>Complex table capability</title></head>
+<body>
+<article>
+<h1>Complex table capability</h1>
+<p>This capability case is intentionally outside the old Markdown table model. It has a caption, multiple header rows, row and column spans, a rowspan of zero, links, code, math and enough rows to be tall as well as ten columns wide. The old round-trip pipeline is not expected to preserve every one of these properties.</p>
+<table>
+<caption>Complex coverage matrix</caption>
+<thead>
+<tr><th rowspan="2">Region</th><th colspan="4">Measurements</th><th rowspan="2">Notes</th><th colspan="4">Samples</th></tr>
+<tr><th>A</th><th>B</th><th>C</th><th>D</th><th>S1</th><th>S2</th><th>S3</th><th>S4</th></tr>
+</thead>
+<tbody>
+<tr><td rowspan="0">All rows</td><td>R0C1</td><td>R0C2</td><td>R0C3</td><td>R0C4</td><td>R0C5</td><td>R0C6</td><td>R0C7</td><td>R0C8</td><td><a href="/matrix/row/0">row 0</a></td></tr>
+<tr><td colspan="2">wide R1</td><td>R1C2</td><td>R1C3</td><td>R1C4</td><td>R1C5</td><td>R1C6</td><td>R1C7</td><td>R1C8</td><td><code>r1</code></td></tr>
+<tr><td>R2C0</td><td><span class="math inline">\(x_2\)</span></td><td>R2C2</td><td>R2C3</td><td>R2C4</td><td>R2C5</td><td>R2C6</td><td>R2C7</td><td>R2C8</td><td><strong>note</strong></td></tr>
+<tr><td>R3C0</td><td>R3C1</td><td>R3C2</td><td>R3C3</td><td>R3C4</td><td>R3C5</td><td>R3C6</td><td>R3C7</td><td>R3C8</td><td>note 3</td></tr>
+<tr><td>R4C0</td><td>R4C1</td><td>R4C2</td><td>R4C3</td><td>R4C4</td><td>R4C5</td><td>R4C6</td><td>R4C7</td><td>R4C8</td><td>note 4</td></tr>
+<tr><td>R5C0</td><td>R5C1</td><td>R5C2</td><td>R5C3</td><td>R5C4</td><td>R5C5</td><td>R5C6</td><td>R5C7</td><td>R5C8</td><td>note 5</td></tr>
+<tr><td>R6C0</td><td>R6C1</td><td>R6C2</td><td>R6C3</td><td>R6C4</td><td>R6C5</td><td>R6C6</td><td>R6C7</td><td>R6C8</td><td>note 6</td></tr>
+<tr><td colspan="2">wide R7</td><td>R7C2</td><td>R7C3</td><td>R7C4</td><td>R7C5</td><td>R7C6</td><td>R7C7</td><td>R7C8</td><td><code>r1</code></td></tr>
+<tr><td>R8C0</td><td><span class="math inline">\(x_8\)</span></td><td>R8C2</td><td>R8C3</td><td>R8C4</td><td>R8C5</td><td>R8C6</td><td>R8C7</td><td>R8C8</td><td><strong>note</strong></td></tr>
+<tr><td>R9C0</td><td>R9C1</td><td>R9C2</td><td>R9C3</td><td>R9C4</td><td>R9C5</td><td>R9C6</td><td>R9C7</td><td>R9C8</td><td>note 9</td></tr>
+<tr><td>R10C0</td><td>R10C1</td><td>R10C2</td><td>R10C3</td><td>R10C4</td><td>R10C5</td><td>R10C6</td><td>R10C7</td><td>R10C8</td><td>note 10</td></tr>
+<tr><td>R11C0</td><td>R11C1</td><td>R11C2</td><td>R11C3</td><td>R11C4</td><td>R11C5</td><td>R11C6</td><td>R11C7</td><td>R11C8</td><td>note 11</td></tr>
+<tr><td>R12C0</td><td>R12C1</td><td>R12C2</td><td>R12C3</td><td>R12C4</td><td>R12C5</td><td>R12C6</td><td>R12C7</td><td>R12C8</td><td>note 12</td></tr>
+<tr><td colspan="2">wide R13</td><td>R13C2</td><td>R13C3</td><td>R13C4</td><td>R13C5</td><td>R13C6</td><td>R13C7</td><td>R13C8</td><td><code>r1</code></td></tr>
+<tr><td>R14C0</td><td><span class="math inline">\(x_14\)</span></td><td>R14C2</td><td>R14C3</td><td>R14C4</td><td>R14C5</td><td>R14C6</td><td>R14C7</td><td>R14C8</td><td><strong>note</strong></td></tr>
+<tr><td>R15C0</td><td>R15C1</td><td>R15C2</td><td>R15C3</td><td>R15C4</td><td>R15C5</td><td>R15C6</td><td>R15C7</td><td>R15C8</td><td>note 15</td></tr>
+<tr><td>R16C0</td><td>R16C1</td><td>R16C2</td><td>R16C3</td><td>R16C4</td><td>R16C5</td><td>R16C6</td><td>R16C7</td><td>R16C8</td><td>note 16</td></tr>
+<tr><td>R17C0</td><td>R17C1</td><td>R17C2</td><td>R17C3</td><td>R17C4</td><td>R17C5</td><td>R17C6</td><td>R17C7</td><td>R17C8</td><td>note 17</td></tr>
+<tr><td>R18C0</td><td>R18C1</td><td>R18C2</td><td>R18C3</td><td>R18C4</td><td>R18C5</td><td>R18C6</td><td>R18C7</td><td>R18C8</td><td>note 18</td></tr>
+<tr><td colspan="2">wide R19</td><td>R19C2</td><td>R19C3</td><td>R19C4</td><td>R19C5</td><td>R19C6</td><td>R19C7</td><td>R19C8</td><td><code>r1</code></td></tr>
+<tr><td>R20C0</td><td><span class="math inline">\(x_20\)</span></td><td>R20C2</td><td>R20C3</td><td>R20C4</td><td>R20C5</td><td>R20C6</td><td>R20C7</td><td>R20C8</td><td><strong>note</strong></td></tr>
+<tr><td>R21C0</td><td>R21C1</td><td>R21C2</td><td>R21C3</td><td>R21C4</td><td>R21C5</td><td>R21C6</td><td>R21C7</td><td>R21C8</td><td>note 21</td></tr>
+<tr><td>R22C0</td><td>R22C1</td><td>R22C2</td><td>R22C3</td><td>R22C4</td><td>R22C5</td><td>R22C6</td><td>R22C7</td><td>R22C8</td><td>note 22</td></tr>
+<tr><td>R23C0</td><td>R23C1</td><td>R23C2</td><td>R23C3</td><td>R23C4</td><td>R23C5</td><td>R23C6</td><td>R23C7</td><td>R23C8</td><td>note 23</td></tr>
+</tbody>
+<tfoot><tr><td colspan="10">Totals cover every row in the body group.</td></tr></tfoot>
+</table>
+<p>The closing paragraph makes the article readable and gives the capability table a normal following block.</p>
+</article>
+</body>
+</html>

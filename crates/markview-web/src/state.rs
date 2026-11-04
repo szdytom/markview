@@ -24,13 +24,13 @@ impl Published {
 	/// Reflow retained geometry and invalidate published coordinate caches.
 	pub(crate) fn present_disclosures(
 		&mut self,
-		open: &BTreeMap<u64, bool>,
+		open: &BTreeMap<markview_document::BlockId, bool>,
 		force_open: bool,
-		pointer: &mut Pointer,
+		_pointer: &mut Pointer,
 	) {
 		self.snapshot.set_disclosures(open, force_open);
 		let revision = self.revision.wrapping_add(1);
-		pointer.retag(self.revision, revision);
+
 		self.revision = revision;
 		self.pass = None;
 	}
@@ -56,10 +56,7 @@ impl Published {
 		]
 		.into_iter()
 		.flatten()
-		.all(|selection| {
-			selection.anchor.block.max(selection.focus.block)
-				< prefix.blocks.len()
-		})
+		.all(|selection| prefix.contains_selection(selection))
 	}
 
 	/// Accepts `next` as a whole new snapshot, moving the selection onto it
@@ -97,7 +94,7 @@ impl Published {
 	pub(crate) fn extend(
 		&mut self,
 		prefix: &LayoutSnapshot,
-		pointer: &mut Pointer,
+		_pointer: &mut Pointer,
 	) -> bool {
 		let published = self.snapshot.blocks.len();
 		if prefix.blocks.len() < published {
@@ -116,9 +113,8 @@ impl Published {
 		self.snapshot.math_errors = prefix.math_errors;
 		self.snapshot.images = prefix.images.clone();
 		let revision = self.revision.wrapping_add(1);
-		// Only blocks were added, so every reading position still means what it
-		// meant and the gesture in flight keeps extending from the same base.
-		pointer.retag(self.revision, revision);
+		// Appending geometry preserves semantic positions and the drag base.
+
 		self.revision = revision;
 		true
 	}

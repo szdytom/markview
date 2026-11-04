@@ -220,6 +220,9 @@ impl<P: super::SendEvent> App<P> {
 	}
 
 	pub(super) fn chrome(&mut self) -> Chrome<'_> {
+		// A web page's title arrives without a pointer or gesture event, so the
+		// strip measures the titles it is about to draw on every build.
+		self.tab_metrics.sync(&mut self.ui, &self.readers.labels());
 		let (width, height, _) = self.dimensions();
 		let frame = self.frame_layout();
 		let scrollbar = self.document_scrollbar();
@@ -288,6 +291,7 @@ impl<P: super::SendEvent> App<P> {
 			self.readers.active(),
 			&self.tab_strip,
 			&self.tab_metrics.widths,
+			self.tab_metrics.labels(),
 			self.preview.open(),
 			Some(&self.folder),
 		)
@@ -681,8 +685,8 @@ impl<P: super::SendEvent> App<P> {
 		let session = &self.readers.session;
 		let selection = self.interaction.selection.filter(|s| {
 			!s.is_empty()
-				&& s.anchor.revision == session.accepted_revision
-				&& s.focus.revision == session.accepted_revision
+				&& s.anchor.revision == session.snapshot.revision
+				&& s.focus.revision == session.snapshot.revision
 		});
 		if self.interaction.selection_counts.map(|(s, _)| s) != selection {
 			self.interaction.selection_counts = selection.map(|s| {
@@ -761,7 +765,7 @@ impl<P: super::SendEvent> App<P> {
 
 	/// The tabs where they settle, for scroll bounds that outlast a slide.
 	pub(super) fn resting_tab_layout(&mut self) -> super::tab_strip::TabLayout {
-		self.tab_metrics.sync(&mut self.ui, self.readers.entries());
+		self.tab_metrics.sync(&mut self.ui, &self.readers.labels());
 		if self.tab_strip.phone {
 			return super::tab_strip::TabLayout::new(
 				crate::layout::Rect {

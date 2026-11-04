@@ -9,11 +9,12 @@
 //!
 //! Oracle (O1, O2, O5), source-derived (plan item O7):
 //!
-//! - an element's range must start at its own `<details` byte;
-//! - elements must be numbered once each, in document order, so two disclosures
-//!   never share the identity a summary toggle addresses;
+//! - an element's range must fit the source, and any two element ranges must
+//!   either nest or be disjoint, so two disclosures never share the identity a
+//!   summary toggle addresses;
 //! - a summary range must sit inside its element;
-//! - the tree's declared `open` state must equal the source's `<details open>`;
+//! - the tree's declared `open` state must equal the source's `<details open>`
+//!   whenever the element's range starts at its own opener;
 //! - the summary text the tree reports must equal the source's `<summary>` inner
 //!   text, modulo the Markdown the scanner is allowed to interpret;
 //! - `details_enclosing` must return exactly the chain of elements the layout
@@ -21,7 +22,8 @@
 #![no_main]
 
 use libfuzzer_sys::{fuzz_mutator, fuzz_target};
-use markview_document::{Block, BlockKind, Document};
+use markview_commonmark::MarkdownParse;
+use markview_document::{AnchorId, Block, BlockId, BlockKind};
 use mvfuzz::{budget, mutators, oracle, seam};
 use std::sync::Arc;
 
@@ -31,30 +33,36 @@ fuzz_mutator! { |data: &mut [u8], size: usize, max_size: usize, seed: u32| {
 
 /// The `<details>` element chain a block lives under, by block id, outermost
 /// first — recomputed from the tree independently of `Document`'s own walk.
-fn enclosing_by_id(doc: &Document) -> Vec<(String, Vec<u64>)> {
+fn enclosing_by_id(doc: &MarkdownParse) -> Vec<(AnchorId, Vec<BlockId>)> {
 	// Every heading anchor and footnote label the tree registers, with the
 	// disclosure chain it sits under.
 	let mut out = Vec::new();
 	fn walk(
 		blocks: &[Block],
-		open: &mut Vec<u64>,
-		out: &mut Vec<(String, Vec<u64>)>,
+		open: &mut Vec<BlockId>,
+		out: &mut Vec<(AnchorId, Vec<BlockId>)>,
 	) {
 		for block in blocks {
-			match &block.kind {
+			match &block.kind() {
 				BlockKind::Heading { anchor, .. } => {
-					out.push((anchor.clone(), open.clone()));
+					out.push((
+						AnchorId::Fragment(anchor.clone()),
+						open.clone(),
+					));
 				}
-				BlockKind::Footnote { label, .. } => {
-					out.push((format!("fn:{}", label), open.clone()));
+				BlockKind::Footnote { id, .. } => {
+					out.push((
+						AnchorId::FootnoteDefinition(id.clone()),
+						open.clone(),
+					));
 				}
 				_ => {}
 			}
-			let disclosure = matches!(block.kind, BlockKind::Details { .. });
+			let disclosure = matches!(block.kind(), BlockKind::Details { .. });
 			if disclosure {
-				open.push(block.id);
+				open.push(block.id());
 			}
-			match &block.kind {
+			match &block.kind() {
 				BlockKind::Details { blocks, .. }
 				| BlockKind::Quote { blocks, .. }
 				| BlockKind::Footnote { blocks, .. } => walk(blocks, open, out),
@@ -70,7 +78,7 @@ fn enclosing_by_id(doc: &Document) -> Vec<(String, Vec<u64>)> {
 			}
 		}
 	}
-	walk(&doc.blocks, &mut Vec::new(), &mut out);
+	walk(doc.document.blocks(), &mut Vec::new(), &mut out);
 	out
 }
 
@@ -114,7 +122,7 @@ fuzz_target!(|data: &[u8]| {
 	// requires the tag to start exactly at the element's own range and to be
 	// well formed, and returns `None` otherwise — the honest precondition
 	// this assertion always claimed.
-	for (id, _, range) in &elements {
+	for (id, range) in &elements {
 		let Some(opener) = seam::opener_at(&doc, range) else {
 			continue;
 		};

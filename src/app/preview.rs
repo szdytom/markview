@@ -345,13 +345,9 @@ impl<P: super::SendEvent> App<P> {
 		else {
 			return false;
 		};
-		let path = self.readers.entries()[index].path.clone();
-		let name = path
-			.file_name()
-			.unwrap_or(path.as_os_str())
-			.to_string_lossy();
+		let (name, detail) = self.readers.card_labels(index);
 		let title = card::title_lines(&mut self.ui, &name);
-		let detail = card::detail_line(&mut self.ui, &path.to_string_lossy());
+		let detail = card::detail_line(&mut self.ui, &detail);
 		let active = index == self.readers.active();
 		let session = if active {
 			&self.readers.session

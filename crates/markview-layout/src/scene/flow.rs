@@ -1,5 +1,6 @@
 //! Retained local geometry and its inexpensive presentation index.
 use super::{BlockLayout, Draw, PlacedBlock, Rect};
+use markview_document::FieldId;
 use std::{
 	collections::{BTreeMap, HashMap},
 	ops::Range,
@@ -24,7 +25,7 @@ struct Leaf {
 	height: f32,
 	degraded: usize,
 	math_errors: usize,
-	field: Option<crate::search::SearchField>,
+	field: Option<markview_document::FieldId>,
 	separator: Option<&'static str>,
 }
 
@@ -38,6 +39,8 @@ struct Node {
 	minimum: f32,
 	boxes: Vec<usize>,
 	disclosure: Option<Disclosure>,
+	/// Placed at the parent's origin rather than stacked after its siblings.
+	parallel: bool,
 }
 
 #[derive(Clone, Debug)]
@@ -50,7 +53,7 @@ struct Footnote {
 
 #[derive(Clone, Debug)]
 struct Disclosure {
-	id: u64,
+	id: crate::document::BlockId,
 	declared: bool,
 	marker: usize,
 	body: f32,
@@ -147,11 +150,20 @@ impl BlockLayout {
 			minimum: f32::NEG_INFINITY,
 			boxes: Vec::new(),
 			disclosure: None,
+			parallel: false,
 		});
 		if let Some(parent) = parent {
 			self.scene.nodes[parent].children.push(index);
 		}
 		self.scene.active = Some(index);
+	}
+
+	/// Opens a scene region placed at the parent's origin, so sibling regions
+	/// such as table cells do not stack vertically.
+	pub(crate) fn begin_parallel_scene(&mut self) {
+		self.begin_scene(0., 0.);
+		let active = self.scene.active.expect("a scene was just opened");
+		self.scene.nodes[active].parallel = true;
 	}
 
 	pub(crate) fn end_scene(&mut self, height: f32, minimum: f32) {
@@ -167,7 +179,7 @@ impl BlockLayout {
 
 	pub(crate) fn retain_disclosure(
 		&mut self,
-		id: u64,
+		id: crate::document::BlockId,
 		declared: bool,
 		marker: usize,
 		body: f32,
@@ -299,12 +311,15 @@ impl BlockLayout {
 		// Children become relative to their parent and the preceding sibling's end.
 		for parent in (0..self.scene.nodes.len()).rev() {
 			let [x, mut y] = self.scene.nodes[parent].offset;
+			let base = y;
 			for child in self.scene.nodes[parent].children.clone() {
 				let node = &mut self.scene.nodes[child];
 				let next = node.offset[1] + node.height;
 				node.offset[0] -= x;
-				node.offset[1] -= y;
-				y = next;
+				node.offset[1] -= if node.parallel { base } else { y };
+				if !node.parallel {
+					y = next;
+				}
 			}
 		}
 	}
@@ -319,7 +334,7 @@ impl BlockLayout {
 		height: f32,
 		degraded: usize,
 		math_errors: usize,
-		field: Option<crate::search::SearchField>,
+		field: Option<markview_document::FieldId>,
 	) {
 		self.scene.leaves.push(Leaf {
 			key,
@@ -343,8 +358,8 @@ impl BlockLayout {
 		leaf: usize,
 		position: [f32; 2],
 		width: f32,
-		field: Option<crate::search::SearchField>,
-		origins: &[usize],
+		field: Option<markview_document::FieldId>,
+		origins: &[markview_document::LinkOccurrenceId],
 	) -> f32 {
 		let leaf = &previous.scene.leaves[leaf];
 		let span = &previous.scene.spans[leaf.span];
@@ -378,8 +393,8 @@ impl BlockLayout {
 					if let (Some(old), Some(new), Some(current)) =
 						(leaf.field, field, text.search_field)
 					{
-						text.search_field = Some(crate::search::SearchField(
-							new.0 + current.0 - old.0,
+						text.search_field = Some(FieldId::from_index(
+							new.get() + current.get() - old.get(),
 						));
 					}
 					text
@@ -421,8 +436,21 @@ impl BlockLayout {
 					overflow
 				}),
 		);
-		self.anchors
-			.extend_from_slice(&previous.anchors[span.anchors.clone()]);
+		self.anchors.extend(
+			previous.anchors[span.anchors.clone()].iter().cloned().map(
+				|mut anchor| {
+					if let markview_document::AnchorId::FootnoteReference {
+						occurrence,
+						..
+					} = &mut anchor.anchor
+						&& let Some(&origin) = remap.get(occurrence)
+					{
+						*occurrence = origin;
+					}
+					anchor
+				},
+			),
+		);
 		self.page_constraints.extend_from_slice(
 			&previous.page_constraints[span.constraints.clone()],
 		);
@@ -452,7 +480,7 @@ impl BlockLayout {
 
 	pub fn resolve_flow(
 		&self,
-		open: &BTreeMap<u64, bool>,
+		open: &BTreeMap<crate::document::BlockId, bool>,
 		force_open: bool,
 	) -> FlowIndex {
 		let mut index = FlowIndex {
@@ -537,7 +565,7 @@ impl Scene {
 		&self,
 		node: usize,
 		parent: [f32; 2],
-		open: &BTreeMap<u64, bool>,
+		open: &BTreeMap<crate::document::BlockId, bool>,
 		force: bool,
 		index: &mut FlowIndex,
 	) -> f32 {
@@ -551,10 +579,22 @@ impl Scene {
 		if expanded {
 			let mut y = offset[1];
 			for &child in &current.children {
+				let node = &self.nodes[child];
+				if node.parallel {
+					let measured = self.place(
+						child,
+						[offset[0], offset[1]],
+						open,
+						force,
+						index,
+					);
+					height = height.max(node.offset[1] + measured);
+					continue;
+				}
 				let measured =
 					self.place(child, [offset[0], y], open, force, index);
-				y += self.nodes[child].offset[1] + measured;
-				height += measured - self.nodes[child].height;
+				y += node.offset[1] + measured;
+				height += measured - node.height;
 			}
 			height = height.max(current.minimum);
 		} else {
@@ -584,12 +624,9 @@ impl PlacedBlock {
 		self.layout
 			.links
 			.iter()
-			.filter(move |link| {
-				!(link.url.is_empty()
-					|| (self.flow.force_open
-						&& link
-							.url
-							.starts_with(crate::document::DETAILS_SCHEME)))
+			.filter(move |link| match &link.target {
+				super::LinkTarget::Disclosure(_) => !self.flow.force_open,
+				_ => !link.url.is_empty(),
 			})
 			.filter_map(move |link| {
 				self.rect(link.commands.start, link.rect)
@@ -678,7 +715,7 @@ impl PlacedBlock {
 		out.anchors = self
 			.anchor_positions()
 			.map(|(anchor, y)| super::HeadingAnchor {
-				anchor: anchor.into(),
+				anchor: anchor.clone(),
 				y,
 			})
 			.collect();
@@ -762,14 +799,16 @@ impl PlacedBlock {
 		retained.chain(identity)
 	}
 
-	pub fn anchor_positions(&self) -> impl Iterator<Item = (&str, f32)> {
+	pub fn anchor_positions(
+		&self,
+	) -> impl Iterator<Item = (&markview_document::AnchorId, f32)> {
 		self.layout
 			.anchors
 			.iter()
 			.enumerate()
 			.filter_map(|(i, anchor)| {
 				self.placement(self.layout.scene.owner(i, |span| &span.anchors))
-					.map(|p| (anchor.anchor.as_str(), p[1] + anchor.y))
+					.map(|p| (&anchor.anchor, p[1] + anchor.y))
 			})
 	}
 
@@ -835,7 +874,7 @@ impl super::LayoutSnapshot {
 	/// Rebuild presentation from retained geometry without invoking a text engine.
 	pub fn set_disclosures(
 		&mut self,
-		open: &BTreeMap<u64, bool>,
+		open: &BTreeMap<crate::document::BlockId, bool>,
 		force_open: bool,
 	) {
 		let key = crate::document::fingerprint(&(open, force_open));

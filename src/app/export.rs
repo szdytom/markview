@@ -219,6 +219,20 @@ impl<P: super::SendEvent> App<P> {
 			);
 			return;
 		};
+		// A web tab has a path before its page exists, and the path is synthetic:
+		// exporting it would only report the unreadable `web:` name.
+		if self.readers.session.document.is_none()
+			&& matches!(
+				self.readers.session.security.origin,
+				crate::security::Origin::Web(_)
+			) {
+			self.notify(
+				self.preferences.values.lang().status_web_not_loaded(),
+				true,
+				4,
+			);
+			return;
+		}
 		let settings = self.preferences.export.clone();
 		if let Err(error) = settings.validate() {
 			self.notify(
@@ -249,7 +263,18 @@ impl<P: super::SendEvent> App<P> {
 		self.refresh_hover();
 
 		let directory = path.parent().map(Path::to_path_buf);
-		let stem = suggested_stem(&path, settings.format);
+		let stem = if matches!(
+			self.readers.session.security.origin,
+			crate::security::Origin::Web(_)
+		) {
+			self.readers
+				.entries()
+				.get(self.readers.active())
+				.and_then(|tab| tab.page_title.as_deref())
+				.map_or_else(|| "web-article".into(), safe_stem)
+		} else {
+			suggested_stem(&path, settings.format)
+		};
 		self.spawn_export(path, Destination::Ask { stem, directory }, settings);
 	}
 
@@ -297,6 +322,12 @@ impl<P: super::SendEvent> App<P> {
 		let proxy = self.proxy.clone();
 		let offline = self.args.offline;
 		let security = self.readers.session.security.clone();
+		let loaded = matches!(
+			self.readers.session.security.origin,
+			crate::security::Origin::Web(_)
+		)
+		.then(|| self.readers.session.document.clone())
+		.flatten();
 		let workspace = self.folder.root().cloned();
 		self.export.source = Some((path.clone(), security.origin.clone()));
 		// The reader's own font set, so the export shapes with the personal
@@ -344,13 +375,14 @@ impl<P: super::SendEvent> App<P> {
 							services,
 							security,
 							workspace.clone(),
+							loaded,
 						),
 						None => ExportOutcome::Cancelled,
 					}
 				}
 				Destination::Path(output) => run(
 					&path, &output, &settings, dialect, metadata, fonts, cjk,
-					&overrides, offline, services, security, workspace,
+					&overrides, offline, services, security, workspace, loaded,
 				),
 			};
 			proxy.send(Event::Exported(Box::new(outcome)));
@@ -607,6 +639,54 @@ impl<P: super::SendEvent> App<P> {
 	}
 }
 
+fn safe_stem(title: &str) -> String {
+	let mut out = String::new();
+	for c in title.chars() {
+		let c = if c.is_control() || "<>:/\\|?*\"".contains(c) {
+			'-'
+		} else {
+			c
+		};
+		if out.len() + c.len_utf8() > 96 {
+			break;
+		}
+		out.push(c);
+	}
+	let out = out.trim().trim_matches('.').trim();
+	if out.is_empty() {
+		"web-article".into()
+	} else if reserved_device_name(out) {
+		format!("_{out}")
+	} else {
+		out.into()
+	}
+}
+
+/// Whether Windows reads this stem as a device name, which no file may use.
+///
+/// The device is the part before the first dot, ignoring trailing dots, spaces
+/// and digits, so `CON`, `NUL.txt` and `COM1` are all reserved while a leading
+/// underscore is not.
+fn reserved_device_name(stem: &str) -> bool {
+	let base = stem
+		.split('.')
+		.next()
+		.unwrap_or_default()
+		.trim_end_matches([' ', '.'])
+		.to_ascii_lowercase();
+	let named = base.trim_end_matches(|c: char| c.is_ascii_digit());
+	matches!(named, "con" | "prn" | "aux" | "nul")
+		|| base
+			.strip_prefix("com")
+			.or_else(|| base.strip_prefix("lpt"))
+			.is_some_and(|port| {
+				matches!(
+					port,
+					"1" | "2" | "3" | "4" | "5" | "6" | "7" | "8" | "9"
+				)
+			})
+}
+
 /// The suggested output stem, kept distinct from the input when the format
 /// would otherwise propose the input file itself.
 fn suggested_stem(path: &Path, format: ExportFormat) -> String {
@@ -687,7 +767,18 @@ fn run(
 	services: Arc<crate::services::Services>,
 	security: crate::security::Security,
 	workspace: Option<PathBuf>,
+	loaded: Option<std::sync::Arc<crate::loaded::LoadedDocument>>,
 ) -> ExportOutcome {
+	// A web tab's path is synthetic and names no file, so an export without its
+	// document must not fall back to reading it: the error would repeat the
+	// unreadable `web:` name back to the reader.
+	if loaded.is_none()
+		&& matches!(security.origin, crate::security::Origin::Web(_))
+	{
+		// The UI refuses this case before spawning; this remains a path-free
+		// post-precondition invariant if a direct job bypasses it.
+		return ExportOutcome::Failed("The web page is not loaded".to_owned());
+	}
 	if crate::file::same_file(path, output) {
 		return ExportOutcome::Failed(format!(
 			"Cannot export over the source file: {}",
@@ -709,6 +800,7 @@ fn run(
 				prepared.pdf_request(path.into(), output.into(), offline);
 			args.metadata = metadata;
 			args.security = security;
+			args.loaded = loaded;
 			match crate::pdf::export_with_services(&args, services) {
 				Ok(stats) => ExportOutcome::Written {
 					path: output.to_path_buf(),
@@ -726,14 +818,27 @@ fn run(
 			let scale = prepared.scale;
 			let stylesheet = prepared.options.stylesheet.clone();
 			let workspace = prepared.workspace;
-			match export::png_snapshot_with_services_and_workspace(
-				path,
-				prepared.options,
-				offline,
-				services,
-				security,
-				workspace,
-			) {
+			let snapshot = if let Some(loaded) = loaded {
+				export::png_snapshot_loaded(
+					loaded,
+					path,
+					prepared.options,
+					offline,
+					services,
+					security,
+					workspace,
+				)
+			} else {
+				export::png_snapshot_with_services_and_workspace(
+					path,
+					prepared.options,
+					offline,
+					services,
+					security,
+					workspace,
+				)
+			};
+			match snapshot {
 				Ok(snapshot) => ExportOutcome::PngReady {
 					snapshot: Box::new(snapshot),
 					path: output.to_path_buf(),
@@ -819,6 +924,7 @@ mod tests {
 			true,
 			Arc::new(crate::services::Services::new(2)),
 			crate::security::Security::local(crate::security::Trust::Trusted),
+			None,
 			None,
 		);
 		assert!(matches!(outcome, ExportOutcome::PngReady { .. }));
@@ -1131,6 +1237,7 @@ mod tests {
 					crate::security::Trust::Trusted,
 				),
 				None,
+				None,
 			);
 			assert!(matches!(result, ExportOutcome::Written { .. }));
 			let bytes = std::fs::read(&output).unwrap();
@@ -1156,6 +1263,62 @@ mod tests {
 	}
 
 	#[test]
+	fn an_unloaded_web_page_exports_without_naming_its_synthetic_path() {
+		let dir = tempfile::tempdir().unwrap();
+		let url = "https://example.org/article";
+		let outcome = run(
+			&crate::app::web_page::web_path(url),
+			&dir.path().join("out.pdf"),
+			&ExportSettings::default(),
+			crate::settings::ReaderSettings::default().effective_dialect(),
+			Default::default(),
+			crate::test_support::fonts(),
+			CjkType::Sc,
+			&[],
+			true,
+			Arc::new(crate::services::Services::new(2)),
+			crate::security::Security::web(url.into()),
+			None,
+			None,
+		);
+		let ExportOutcome::Failed(error) = outcome else {
+			panic!("an unloaded web page cannot export");
+		};
+		assert!(!error.contains("web:"), "{error:?}");
+		assert_eq!(error, "The web page is not loaded");
+	}
+
+	#[test]
+	fn exporting_a_page_before_it_loads_reports_no_synthetic_path() {
+		#[derive(Clone)]
+		struct Proxy;
+		impl super::super::SendEvent for Proxy {
+			fn try_send(&self, _: Event) -> bool {
+				true
+			}
+		}
+		let mut app = App::new(
+			crate::cli::LaunchOptions {
+				mode: crate::cli::Mode::Smoke,
+				options: crate::test_support::options(),
+				..Default::default()
+			},
+			Proxy,
+		);
+		let url = "https://example.org/article";
+		app.open_web_page(url.to_owned());
+		assert!(app.readers.session.document.is_none());
+		app.start_export(false);
+		let status = app.status.message();
+		assert!(!status.contains("web:"), "{status:?}");
+		assert_eq!(
+			status,
+			app.preferences.values.lang().status_web_not_loaded()
+		);
+		assert!(!app.export.running, "nothing must be spawned");
+	}
+
+	#[test]
 	fn exports_refuse_to_replace_their_source() {
 		let dir = tempfile::tempdir().unwrap();
 		let source = dir.path().join("picture.png");
@@ -1175,6 +1338,7 @@ mod tests {
 			true,
 			Arc::new(crate::services::Services::new(4)),
 			crate::security::Security::local(crate::security::Trust::Trusted),
+			None,
 			None,
 		);
 		assert!(matches!(
@@ -1227,6 +1391,7 @@ mod security_tests {
 				true,
 				Arc::new(crate::services::Services::new(4)),
 				security.clone(),
+				None,
 				None,
 			);
 			if expected_images == 0 {
@@ -1298,6 +1463,7 @@ mod security_tests {
 			Arc::new(crate::services::Services::new(4)),
 			Security::local(Trust::Trusted),
 			Some(root.clone()),
+			None,
 		);
 		assert!(matches!(outcome, ExportOutcome::Written { .. }));
 		let snapshot = export::png_snapshot_with_services_and_workspace(
@@ -1321,6 +1487,47 @@ mod security_tests {
 	}
 
 	#[test]
+	fn mermaid_diagrams_export_as_pictures() {
+		let dir = tempfile::tempdir().unwrap();
+		let source = dir.path().join("diagram.md");
+		std::fs::write(
+			&source,
+			"```mermaid\ngraph TD\n A[Start] --> B[End]\n```\n",
+		)
+		.unwrap();
+		let output = dir.path().join("diagram.pdf");
+		let outcome = run(
+			&source,
+			&output,
+			&ExportSettings::default(),
+			crate::settings::ReaderSettings::default().effective_dialect(),
+			Default::default(),
+			crate::test_support::fonts(),
+			CjkType::Sc,
+			&[],
+			true,
+			Arc::new(crate::services::Services::new(4)),
+			Security::local(Trust::Trusted),
+			None,
+			None,
+		);
+		assert!(matches!(outcome, ExportOutcome::Written { .. }));
+		let pdf = lopdf::Document::load(&output).unwrap();
+		let images = pdf
+			.objects
+			.values()
+			.filter(|object| {
+				object.as_stream().ok().is_some_and(|stream| {
+					stream.dict.get(b"Subtype").is_ok_and(|value| {
+						value.as_name().is_ok_and(|name| name == b"Image")
+					})
+				})
+			})
+			.count();
+		assert_eq!(images, 1);
+	}
+
+	#[test]
 	fn standalone_pictures_export_as_pictures() {
 		let dir = tempfile::tempdir().unwrap();
 		let image_path = dir.path().join("picture.png");
@@ -1340,6 +1547,7 @@ mod security_tests {
 			true,
 			Arc::new(crate::services::Services::new(4)),
 			Security::local(Trust::Trusted),
+			None,
 			None,
 		);
 		assert!(matches!(outcome, ExportOutcome::Written { .. }));
@@ -1435,5 +1643,99 @@ mod security_tests {
 		app.close_tab(owner);
 		assert!(app.export.watch.is_none());
 		assert!(app.export.watch_at.is_none());
+	}
+	#[test]
+	fn extracted_web_articles_export_to_pdf_and_png() {
+		let dir = tempfile::tempdir().unwrap();
+		let url = "https://example.org/article";
+		let article = markview_webpage::extract(
+			include_str!("../../tests/fixtures/web-plain-article.html"),
+			url,
+		)
+		.unwrap();
+		let loaded = crate::loaded::LoadedDocument::semantic(
+			std::sync::Arc::new(article.document),
+		);
+		for (format, name) in [
+			(crate::settings::ExportFormat::Pdf, "out.pdf"),
+			(crate::settings::ExportFormat::Png, "out.png"),
+		] {
+			let output = dir.path().join(name);
+			let settings = ExportSettings {
+				format,
+				..Default::default()
+			};
+			let outcome = run(
+				&crate::app::web_page::web_path(url),
+				&output,
+				&settings,
+				crate::settings::ReaderSettings::default().effective_dialect(),
+				Default::default(),
+				crate::test_support::fonts(),
+				CjkType::Sc,
+				&[],
+				true,
+				Arc::new(crate::services::Services::new(2)),
+				crate::security::Security::web(url.into()),
+				None,
+				Some(loaded.clone()),
+			);
+			match (&outcome, format) {
+				(
+					ExportOutcome::Written { .. },
+					crate::settings::ExportFormat::Pdf,
+				) => {
+					let pdf = lopdf::Document::load(&output).unwrap();
+					let mut text = String::new();
+					for page in 1..=pdf.get_pages().len() as u32 {
+						text.push_str(&pdf.extract_text(&[page]).unwrap());
+					}
+					assert!(text.contains("Typography"), "{text:?}");
+					assert!(!text.contains("web:"), "{text:?}");
+				}
+				(
+					ExportOutcome::PngReady { snapshot, .. },
+					crate::settings::ExportFormat::Png,
+				) => {
+					let text = snapshot.full_reading_text();
+					assert!(
+						text.contains("Reading without images"),
+						"{text:?}"
+					);
+					assert!(text.contains("Typography"), "{text:?}");
+					assert!(!text.contains("web:"), "{text:?}");
+				}
+				(ExportOutcome::Failed(error), _) => {
+					panic!("{format:?} export failed: {error}")
+				}
+				_ => panic!("unexpected outcome for {format:?}"),
+			}
+		}
+	}
+
+	#[test]
+	fn reserved_device_names_are_prefixed_and_ordinary_titles_are_not() {
+		for title in [
+			"CON",
+			"con",
+			"NUL.txt",
+			"PRN",
+			"AUX ",
+			"COM1",
+			"com9.tar.gz",
+			"LPT1",
+			"CON1",
+		] {
+			assert!(
+				safe_stem(title).starts_with('_'),
+				"{title:?} is a device name"
+			);
+		}
+		for title in [
+			"Console", "COM0", "COM10", "LPT", "Nullify", "_CON", "Article",
+		] {
+			assert_eq!(safe_stem(title), title, "{title:?} is a file name");
+		}
+		assert_eq!(safe_stem("..."), "web-article");
 	}
 }

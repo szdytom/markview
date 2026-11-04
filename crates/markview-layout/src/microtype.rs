@@ -885,11 +885,14 @@ mod tests {
 		// so the gap would only add space that is not needed.
 		let (text, mut clusters) = per_char("中1中", 18.0);
 		let spans = vec![Span {
+			link: None,
 			range: clusters[1].range.clone(),
 			style: TextStyle {
 				superscript: true,
 				..Default::default()
 			},
+			math_error: false,
+			footnote_ref: false,
 		}];
 		space_mixed_scripts(&mut clusters, &text, &spans, 18.0);
 		assert_eq!(clusters[0].width, 18.0);

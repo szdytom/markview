@@ -47,9 +47,18 @@ impl<P: super::SendEvent> App<P> {
 		let session = &self.readers.session;
 		let (width, height, _) = self.dimensions();
 		let panel = super::chrome::panel_rect(width, height);
+		// A web tab's path is a synthetic `web:` name, so the snapshot reports
+		// the URL it stands for instead.
+		let path = match &session.security.origin {
+			crate::security::Origin::Web(url) => serde_json::json!(url),
+			_ => serde_json::json!(session.path),
+		};
+		let tabs: Vec<String> = (0..self.readers.entries().len())
+			.map(|index| self.readers.card_labels(index).1)
+			.collect();
 		let mut snapshot = serde_json::json!({
-			"tabs": self.readers.entries().iter().map(|tab| tab.path.display().to_string()).collect::<Vec<_>>(),
-			"active": self.readers.active(), "path": session.path,
+			"tabs": tabs,
+			"active": self.readers.active(), "path": path,
 			"trust": format!("{:?}", session.security.origin.trust()),
 			"ready": session.snapshot_complete, "blocks": session.snapshot.blocks.len(),
 			"math_errors": session.snapshot.math_errors,

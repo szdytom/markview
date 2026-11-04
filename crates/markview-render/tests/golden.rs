@@ -14,10 +14,10 @@ use markview_document as document;
 use markview_layout::{
 	background::Direct,
 	fonts::FontConfig,
-	image::{ImageInfo, ImageSnapshot, Pixels},
+	image::{ImageInfo, ImageSnapshot, ImageSource, Pixels, ResourceRef},
 	layout::LayoutEngine,
 	scene::LinkRef,
-	text::{Affinity, TextPosition, TextSelection},
+	text::{Affinity, TextSelection},
 };
 use markview_render::{Renderer, Theme, View};
 use std::{collections::HashMap, fs, path::Path, sync::Arc};
@@ -44,6 +44,10 @@ fn markdown_matches_rendering_baselines() -> Result<()> {
 	let tiles = image::load_from_memory(include_bytes!("fixtures/tiles.png"))?
 		.into_rgba8();
 	let mut images = ImageSnapshot::default();
+	images.keys.insert(
+		ImageSource::Resource(ResourceRef::document("tiles.png")),
+		"tiles.png".into(),
+	);
 	images.entries.insert(
 		"tiles.png".into(),
 		ImageInfo {
@@ -61,6 +65,10 @@ fn markdown_matches_rendering_baselines() -> Result<()> {
 			height: tiles.height(),
 			rgba: tiles.into_raw().into(),
 		}),
+	);
+	images.keys.insert(
+		ImageSource::Resource(ResourceRef::document("failed.png")),
+		"failed.png".into(),
 	);
 	images.entries.insert(
 		"failed.png".into(),
@@ -108,11 +116,14 @@ fn markdown_matches_rendering_baselines() -> Result<()> {
 		);
 		let mut options = case.options(root)?;
 		if let Some(states) = case.disclosures {
-			fn disclosures(blocks: &[document::Block], ids: &mut Vec<u64>) {
+			fn disclosures(
+				blocks: &[document::Block],
+				ids: &mut Vec<document::BlockId>,
+			) {
 				for block in blocks {
-					match &block.kind {
+					match &block.kind() {
 						document::BlockKind::Details { blocks, .. } => {
-							ids.push(block.id);
+							ids.push(block.id());
 							disclosures(blocks, ids);
 						}
 						document::BlockKind::Quote { blocks, .. } => {
@@ -128,7 +139,7 @@ fn markdown_matches_rendering_baselines() -> Result<()> {
 				}
 			}
 			let mut ids = Vec::new();
-			disclosures(&doc.blocks, &mut ids);
+			disclosures(doc.blocks(), &mut ids);
 			assert_eq!(ids.len(), states.len());
 			options.details_open =
 				Arc::new(ids.into_iter().zip(states.iter().copied()).collect());
@@ -190,27 +201,18 @@ fn markdown_matches_rendering_baselines() -> Result<()> {
 			}
 			assert!(!horizontal.is_empty(), "{name}: nothing overflows");
 		}
-		let selection =
-			if case.fixture == "details-flow" && case.variant == "selected" {
-				snapshot.select_all(1)
-			} else {
-				(case.variant == "selected").then_some(TextSelection {
-					anchor: TextPosition {
-						revision: 1,
-						block: 1,
-						node: 0,
-						offset: 0,
-						affinity: Affinity::Before,
-					},
-					focus: TextPosition {
-						revision: 1,
-						block: 2,
-						node: 0,
-						offset: 10,
-						affinity: Affinity::After,
-					},
-				})
-			};
+		let selection = if case.fixture == "details-flow"
+			&& case.variant == "selected"
+		{
+			snapshot.select_all(1)
+		} else {
+			(case.variant == "selected").then(|| TextSelection {
+				anchor: snapshot
+					.semantic_at(1, 0, 0, Affinity::Before)
+					.unwrap(),
+				focus: snapshot.semantic_at(2, 0, 10, Affinity::After).unwrap(),
+			})
+		};
 		// Hover one occurrence, not every link carrying this address.
 		let hovered_link = if case.variant == "hovered" {
 			snapshot.blocks.iter().find_map(|block| {
@@ -221,7 +223,8 @@ fn markdown_matches_rendering_baselines() -> Result<()> {
 					.find(|link| &*link.url == "https://example.invalid")
 					.map(|link| LinkRef {
 						url: link.url.as_ref(),
-						block: block.source.start,
+						target: &link.target,
+						block: block.id,
 						id: link.id,
 					})
 			})

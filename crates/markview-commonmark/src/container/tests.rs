@@ -6,7 +6,6 @@ use crate::html::BlockEvent;
 #[derive(Default)]
 struct Host {
 	opaque: Vec<Range<usize>>,
-	ordinal: u32,
 	leaves: Vec<String>,
 }
 
@@ -21,8 +20,15 @@ impl ContainerHost for Host {
 		None
 	}
 
-	fn summary(&mut self, _text: &str, _source: &Range<usize>) -> RichText {
-		RichText::new()
+	fn make(&mut self, made: Made) -> Block {
+		markview_document::DocumentBuilder::new(
+			markview_document::DocumentRevision::new(1),
+		)
+		.block(made.anchors, made.kind)
+	}
+
+	fn summary(&mut self, _text: &str, _source: &Range<usize>) -> SpannedText {
+		SpannedText::new()
 	}
 
 	fn opaque_until(&self, at: usize) -> usize {
@@ -31,17 +37,11 @@ impl ContainerHost for Host {
 			.find(|range| range.start <= at && at < range.end)
 			.map_or(0, |range| range.end)
 	}
-
-	fn next_details_ordinal(&mut self) -> u32 {
-		let ordinal = self.ordinal;
-		self.ordinal += 1;
-		ordinal
-	}
 }
 
 fn open(stack: &mut ContainerStack, name: &str) {
 	let raw = format!("<{name}>");
-	stack.open(name, false, 0, Vec::new(), raw, 0);
+	stack.open(name, false, Vec::new(), raw, 0);
 }
 
 fn no_container_events(events: &[BlockEvent]) -> bool {

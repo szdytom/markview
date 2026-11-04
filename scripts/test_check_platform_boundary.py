@@ -114,6 +114,13 @@ class WorkspaceBoundaryTests(unittest.TestCase):
         self.write("tests/native.rs", '#[cfg(feature = "parallel-layout")]')
         self.assertEqual(len(check(self.root)), 1)
 
+    def test_webpage_benchmark_may_report_the_layout_feature(self):
+        self.write("Cargo.toml", '[package]\nname = "reader"\nversion = "0.1.0"\n[workspace]\nmembers = []\n[features]\nparallel-layout = []\n')
+        self.write("examples/webpage_bench.rs", 'cfg!(feature = "parallel-layout")')
+        self.assertEqual(check(self.root), [])
+        self.write("examples/other.rs", 'cfg!(feature = "parallel-layout")')
+        self.assertEqual(len(check(self.root)), 1)
+
     def test_target_exceptions_are_scoped_to_files_and_complete_conditions(self):
         self.package("markview-web")
         self.write("crates/markview-web/src/lib.rs", '#[cfg(target_arch = "wasm32")]\n#![cfg_attr(not(target_arch = "wasm32"), allow(dead_code))]')

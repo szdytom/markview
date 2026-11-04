@@ -7,36 +7,64 @@ use std::{
 	fs,
 	io::Write,
 	path::{Path, PathBuf},
+	sync::Arc,
 	time::{Duration, Instant},
 };
 
 #[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
 pub(crate) struct Position {
-	block: u64,
-	occurrence: usize,
-	source: usize,
-	node: Option<usize>,
+	/// Digest of the input bytes this position was captured on.
+	#[serde(default)]
+	pub(super) input: u64,
+	/// Front-end and parse-option version that produced that input.
+	#[serde(default)]
+	pub(super) frontend: u64,
+	/// Structural child-index path from the document root to the block.
+	#[serde(default)]
+	path: Vec<u32>,
+	/// The semantic field inside that block, absent above text.
+	#[serde(default)]
+	field: Option<u32>,
+	/// UTF-8 offset inside the field named by `field`.
 	byte: usize,
 	local: f32,
+	/// Absolute pixel fallback for an input that no longer matches.
 	fallback: f32,
+	/// Scroll fraction fallback, which survives height changes.
+	#[serde(default)]
+	fallback_ratio: f32,
 }
 impl Position {
-	fn capture(snapshot: &LayoutSnapshot, scroll: f32) -> Self {
+	fn capture(
+		snapshot: &LayoutSnapshot,
+		document: Option<&crate::loaded::LoadedDocument>,
+		scroll: f32,
+	) -> Self {
 		let mut position = Self {
 			fallback: scroll,
+			fallback_ratio: if snapshot.height > 0.0 {
+				scroll / snapshot.height
+			} else {
+				0.0
+			},
 			..Self::default()
 		};
+		if let Some(document) = document {
+			position.input = document.input_fingerprint();
+			position.frontend = document.frontend_version();
+		}
 		let index = snapshot
 			.blocks
 			.partition_point(|b| b.y <= scroll)
 			.saturating_sub(1);
-		if let Some(block) = snapshot.blocks.get(index) {
-			position.block = block.id;
-			position.source = block.source.start;
-			position.occurrence = snapshot.blocks[..index]
-				.iter()
-				.filter(|b| b.id == block.id)
-				.count();
+		if let Some((index, block)) =
+			snapshot.blocks.iter().enumerate().nth(index)
+		{
+			if let Some(document) = document
+				&& let Some(path) = document.path_of(block.id)
+			{
+				position.path = path.iter().map(|i| *i as u32).collect();
+			}
 			position.local = scroll - block.y;
 			if let Some((node, cluster, rect)) = block
 				.clusters()
@@ -46,69 +74,228 @@ impl Position {
 						.abs()
 						.total_cmp(&(b.y - position.local).abs())
 				}) {
-				position.node = Some(node);
-				position.byte = cluster.range.start;
+				if let Some(semantic) = snapshot.semantic_at(
+					index,
+					node,
+					cluster.range.start,
+					markview_layout::text::Affinity::Before,
+				) {
+					position.field = Some(semantic.field.get());
+					position.byte = semantic.offset;
+				}
 				position.local -= rect.y;
 			}
 		}
 		position
 	}
-	fn resolve(&self, snapshot: &LayoutSnapshot) -> Option<f32> {
-		let block = snapshot
-			.blocks
-			.iter()
-			.filter(|b| b.id == self.block)
-			.nth(self.occurrence)?;
-		let y = match self.node {
-			Some(node) => {
-				let c = block
+	fn resolve(
+		&self,
+		snapshot: &LayoutSnapshot,
+		document: Option<&crate::loaded::LoadedDocument>,
+	) -> Option<f32> {
+		let document = document?;
+		if document.input_fingerprint() != self.input
+			|| document.frontend_version() != self.frontend
+			|| self.path.is_empty()
+		{
+			return None;
+		}
+		let path: Vec<usize> = self.path.iter().map(|i| *i as usize).collect();
+		let block = document.block_at_path(&path)?;
+		let placed = snapshot.blocks.iter().find(|b| b.id == block.id())?;
+		let y = match self.field {
+			Some(field) => {
+				let semantic = markview_document::SemanticPosition {
+					projection: None,
+					revision: document.document().revision(),
+					block: block.id(),
+					field: markview_document::FieldId::from_index(field),
+					offset: self.byte,
+					affinity: markview_document::Affinity::Before,
+				};
+				let geometry = snapshot.resolve_position(semantic)?;
+				let c = placed
 					.layout
 					.text
-					.get(node)?
+					.get(geometry.node)?
 					.clusters
 					.iter()
-					.find(|c| c.range.contains(&self.byte))?;
-				block
+					.filter(|c| c.range.start <= geometry.offset)
+					.max_by_key(|c| c.range.start)?;
+				placed
 					.rect(c.command, c.rect)
 					.map(|r| r.y)
-					.or_else(|| block.visible_ancestor_y(c.command))?
+					.or_else(|| placed.visible_ancestor_y(c.command))?
 			}
 			None => 0.0,
 		};
-		Some(block.y + y + self.local)
+		Some(placed.y + y + self.local)
+	}
+}
+
+/// Collapse choices saved as structural paths, not as allocated block ids.
+#[derive(Clone, Debug, Default, PartialEq)]
+pub(super) struct SavedDetails(Vec<(Vec<u32>, bool)>);
+impl SavedDetails {
+	#[cfg(test)]
+	pub(super) fn is_empty(&self) -> bool {
+		self.0.is_empty()
+	}
+}
+impl From<Vec<(Vec<u32>, bool)>> for SavedDetails {
+	fn from(details: Vec<(Vec<u32>, bool)>) -> Self {
+		Self(details)
+	}
+}
+impl Serialize for SavedDetails {
+	fn serialize<S: serde::Serializer>(
+		&self,
+		serializer: S,
+	) -> Result<S::Ok, S::Error> {
+		self.0.serialize(serializer)
+	}
+}
+impl<'de> Deserialize<'de> for SavedDetails {
+	fn deserialize<D: serde::Deserializer<'de>>(
+		deserializer: D,
+	) -> Result<Self, D::Error> {
+		#[derive(Deserialize)]
+		#[serde(untagged)]
+		enum Repr {
+			Paths(Vec<(Vec<u32>, bool)>),
+			Ids(BTreeMap<String, bool>),
+		}
+		Ok(match Repr::deserialize(deserializer)? {
+			Repr::Paths(paths) => Self(paths),
+			// Older sessions named allocated ids; their version migration clears
+			// these, because an id can point at another node after a restart.
+			Repr::Ids(ids) => {
+				let _ = ids;
+				Self::default()
+			}
+		})
 	}
 }
 
 #[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
 pub(crate) struct Reading {
-	pub(super) content: u64,
-	position: Position,
-	pub(super) details: BTreeMap<u64, bool>,
+	pub(super) position: Position,
+	pub(super) details: SavedDetails,
 }
 impl Reading {
 	pub(crate) fn capture(session: &ReaderSession) -> Self {
 		if let Some(saved) = &session.saved_reading {
+			let details = session
+				.document
+				.as_deref()
+				.map(|document| details_of(document, &session.details_open))
+				.unwrap_or_else(|| saved.details.clone());
 			return Self {
-				details: (*session.details_open).clone(),
+				details,
 				..saved.clone()
 			};
 		}
 		Self {
-			content: session.accepted_content_id,
 			position: Position::capture(
 				&session.snapshot,
+				session.document.as_deref(),
 				session.scrolling.offset,
 			),
-			details: (*session.details_open).clone(),
+			details: session
+				.document
+				.as_deref()
+				.map(|document| details_of(document, &session.details_open))
+				.unwrap_or_default(),
 		}
 	}
 }
+
+/// The collapse state as a saved session stores it.
+fn details_of(
+	document: &crate::loaded::LoadedDocument,
+	open: &BTreeMap<markview_document::BlockId, bool>,
+) -> SavedDetails {
+	SavedDetails(
+		open.iter()
+			.filter_map(|(id, open)| {
+				Some((
+					document
+						.path_of(*id)?
+						.iter()
+						.map(|index| *index as u32)
+						.collect(),
+					*open,
+				))
+			})
+			.collect(),
+	)
+}
+
+/// A saved session's collapse state resolved against the current document.
+pub(super) fn saved_details(
+	document: &markview_document::Document,
+	details: &SavedDetails,
+) -> BTreeMap<markview_document::BlockId, bool> {
+	details
+		.0
+		.iter()
+		.filter_map(|(path, open)| {
+			let path: Vec<usize> = path.iter().map(|i| *i as usize).collect();
+			let block = document.block_at_path(&path)?;
+			Some((block.id(), *open))
+		})
+		.collect()
+}
 impl ReaderSession {
+	/// Resolves saved collapse paths against the document they were saved on.
+	pub(crate) fn restore_disclosures(
+		&mut self,
+		document: &crate::loaded::LoadedDocument,
+	) -> bool {
+		let Some(saved) = self.saved_reading.as_mut() else {
+			return false;
+		};
+		let matches = saved.position.input == document.input_fingerprint()
+			&& saved.position.frontend == document.frontend_version();
+		let details = if matches {
+			saved_details(document.document(), &saved.details)
+		} else {
+			Default::default()
+		};
+		let had_saved = !saved.details.0.is_empty();
+		saved.details = SavedDetails::default();
+		let changed = self.details_open.as_ref() != &details;
+		self.details_open = Arc::new(details);
+		changed || had_saved
+	}
+
+	/// Drops saved disclosure choices when the loaded content no longer
+	/// matches what they were made on.
+	pub(crate) fn discard_stale_disclosures(
+		&mut self,
+		input: u64,
+		frontend: u64,
+	) -> bool {
+		let stale = self.saved_reading.as_ref().is_some_and(|saved| {
+			saved.position.input != input || saved.position.frontend != frontend
+		});
+		if !stale || self.details_open.is_empty() {
+			return false;
+		}
+		self.details_open = Default::default();
+		if let Some(saved) = self.saved_reading.as_mut() {
+			saved.details = SavedDetails::default();
+		}
+		true
+	}
+
 	pub(crate) fn restore_reading(&mut self, viewport: f32) {
 		let Some(saved) = &self.saved_reading else {
 			return;
 		};
-		let target = saved.position.resolve(&self.snapshot);
+		let target = saved
+			.position
+			.resolve(&self.snapshot, self.document.as_deref());
 		let target = match target {
 			Some(y)
 				if self.snapshot_complete
@@ -116,7 +303,14 @@ impl ReaderSession {
 			{
 				y
 			}
-			_ if self.snapshot_complete => saved.position.fallback,
+			_ if self.snapshot_complete => {
+				if saved.position.fallback_ratio > 0.0 {
+					saved.position.fallback_ratio
+						* self.snapshot.scroll_limit(viewport)
+				} else {
+					saved.position.fallback
+				}
+			}
 			_ => return,
 		};
 		self.scrolling.offset =
@@ -164,9 +358,9 @@ pub(super) struct Session {
 }
 impl Session {
 	fn read(path: &Path) -> anyhow::Result<Self> {
-		let session: Self = serde_json::from_slice(&fs::read(path)?)?;
+		let mut session: Self = serde_json::from_slice(&fs::read(path)?)?;
 		anyhow::ensure!(
-			session.version == 1,
+			matches!(session.version, 1..=4),
 			"Unsupported session version {}",
 			session.version
 		);
@@ -176,6 +370,19 @@ impl Session {
 					&& tab.reading.position.fallback.is_finite(),
 				"Invalid session position"
 			);
+		}
+		if session.version < 4 {
+			// Older versions stored layout node ordinals and raw block ids.
+			// Keep only the scroll fallbacks and discard the stale structure.
+			for tab in &mut session.tabs {
+				tab.reading.position = Position {
+					fallback: tab.reading.position.fallback,
+					fallback_ratio: tab.reading.position.fallback_ratio,
+					..Position::default()
+				};
+				tab.reading.details = SavedDetails::default();
+			}
+			session.version = 4;
 		}
 		Ok(session)
 	}
@@ -249,7 +456,7 @@ impl Tabs {
 		Session {
 			folder: None,
 			folder_open: false,
-			version: 1,
+			version: 4,
 			active: active.saturating_sub(1),
 			tabs,
 			recent,
@@ -285,25 +492,45 @@ impl Tabs {
 		let mut restored = vec![None; count];
 		let mut closest = None;
 		for (index, tab) in session.tabs.into_iter().enumerate() {
-			let Ok(path) = fs::canonicalize(&tab.path) else {
-				continue;
+			let web = match &tab.origin {
+				crate::security::Origin::Web(url) => Some(url.clone()),
+				_ => None,
 			};
-			if !path.is_file()
-				|| crate::file::open_regular(&path).is_err()
-				|| self.find_origin(&path, &tab.origin).is_some()
-			{
+			let path = if let Some(url) = &web {
+				super::web_page::web_path(url)
+			} else {
+				let Ok(path) = fs::canonicalize(&tab.path) else {
+					continue;
+				};
+				if !path.is_file()
+					|| crate::file::open_regular(&path).is_err()
+					|| self.find_origin(&path, &tab.origin).is_some()
+				{
+					continue;
+				}
+				path
+			};
+			if self.find_origin(&path, &tab.origin).is_some() {
 				continue;
 			}
 			let search = tab.search;
 			let origin = tab.origin;
 			let entry = self.restore_tab(path, tab.reading);
 			let session = self.session_mut(entry);
+			if let Some(url) = &web {
+				session.security = crate::security::Security::web(url.clone());
+			}
 			session.security.origin = origin;
 			session.search.open = search.open;
 			session.search.query = search.query;
 			session.search.options.case_sensitive = search.case_sensitive;
 			session.search.options.whole_word = search.whole_word;
 			session.search.needs_query = true;
+			if let Some(url) = &web {
+				// Only the selected web tab is fetched now, so every other one
+				// keeps this label until it is opened.
+				self.set_title(entry, super::web_page::web_label(url));
+			}
 			restored[index] = Some(entry);
 			if closest
 				.is_none_or(|(distance, _)| index.abs_diff(selected) < distance)
@@ -393,6 +620,13 @@ impl<P: super::SendEvent> App<P> {
 			}
 		}
 		self.restore_search();
+		if let crate::security::Origin::Web(url) =
+			self.readers.session.security.origin.clone()
+			&& self.readers.session.document.is_none()
+		{
+			self.open_web_page(url);
+			return;
+		}
 		if self.readers.session.path.is_some() {
 			self.observe_document();
 			self.request(false);

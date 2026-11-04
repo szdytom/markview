@@ -287,6 +287,7 @@ settings_restore_session = "保留上次瀏覽狀態"
 status_web_loading = "正在載入網頁：{url}"
 status_web_failed = "無法載入網頁：{error}"
 status_web_offline = "離線：無法載入網頁"
+status_web_not_loaded = "頁面尚未載入完成"
 
 empty_paste_hint = "{shortcut}  貼上 Markdown 文字或連結"
 empty_url_placeholder = "https://…"

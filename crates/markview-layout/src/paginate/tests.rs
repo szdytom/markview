@@ -34,7 +34,10 @@ use crate::{
 	style::Stylesheet,
 };
 
-fn layout(source: &str, width: f32) -> (Document, LayoutSnapshot) {
+fn layout(
+	source: &str,
+	width: f32,
+) -> (markview_commonmark::MarkdownParse, LayoutSnapshot) {
 	layout_with(source, width, &Default::default())
 }
 
@@ -42,7 +45,7 @@ fn layout_with(
 	source: &str,
 	width: f32,
 	images: &ImageSnapshot,
-) -> (Document, LayoutSnapshot) {
+) -> (markview_commonmark::MarkdownParse, LayoutSnapshot) {
 	let document = markview_commonmark::parse(source);
 	let options = LayoutOptions {
 		width,
@@ -133,7 +136,7 @@ fn a_split_paragraph_keeps_two_lines_on_each_side() {
 	let geometry = geometry(200.0);
 	let pagination = paginate(&document, &snapshot, &geometry);
 	assert_fragments_are_sound(&pagination, &geometry);
-	for block in 0..document.blocks.len() {
+	for block in 0..document.blocks().len() {
 		let items = items_of(&pagination, block);
 		if items.len() > 1 {
 			assert!(items[0].1.bands.len() >= 2, "{:?}", items[0].1.bands);
@@ -258,6 +261,12 @@ fn a_table_wider_than_the_page_is_scaled() {
 #[test]
 fn an_image_taller_than_the_page_is_scaled_to_fit() {
 	let mut images = ImageSnapshot::default();
+	images.keys.insert(
+		markview_layout::image::ImageSource::Resource(
+			markview_layout::image::ResourceRef::document("big.png"),
+		),
+		"big.png".into(),
+	);
 	images.entries.insert(
 		"big.png".into(),
 		ImageInfo {

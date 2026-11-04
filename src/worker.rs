@@ -1,6 +1,5 @@
 //! Latest-request-wins document processing, independent of file observation.
 use crate::{
-	document,
 	file::read_markdown,
 	layout::{LayoutEngine, LayoutOptions, LayoutSnapshot},
 };
@@ -19,7 +18,7 @@ const PREFIX_BYTES: usize = 64 * 1024;
 pub struct ReaderSnapshot {
 	pub blocked_images:
 		std::collections::HashMap<String, crate::security::Resource>,
-	pub document: Arc<document::Document>,
+	pub document: Arc<crate::loaded::LoadedDocument>,
 	pub layout: LayoutSnapshot,
 	pub content_version: u64,
 	pub complete: bool,
@@ -33,6 +32,8 @@ pub struct Request {
 	pub version: u64,
 	pub content_version: u64,
 	pub path: PathBuf,
+	/// A document already parsed by its front end, when no file is read.
+	pub loaded: Option<Arc<crate::loaded::LoadedDocument>>,
 	/// The open folder root, used by Obsidian vault image embeds.
 	pub workspace: Option<PathBuf>,
 	pub options: LayoutOptions,
@@ -127,7 +128,9 @@ impl Worker {
 		offline: bool,
 		fonts: markview_layout::fonts::FontConfig,
 		done: impl Fn(Update) + Send + 'static,
-		parsed: impl Fn(PathBuf, u64, Arc<document::Document>) + Send + 'static,
+		parsed: impl Fn(PathBuf, u64, Arc<crate::loaded::LoadedDocument>)
+		+ Send
+		+ 'static,
 	) -> Self {
 		Self::with_services_and_parsed(
 			Arc::new(crate::services::Services::new(4)),
@@ -142,7 +145,9 @@ impl Worker {
 		offline: bool,
 		fonts: markview_layout::fonts::FontConfig,
 		done: impl Fn(Update) + Send + 'static,
-		parsed: impl Fn(PathBuf, u64, Arc<document::Document>) + Send + 'static,
+		parsed: impl Fn(PathBuf, u64, Arc<crate::loaded::LoadedDocument>)
+		+ Send
+		+ 'static,
 	) -> Self {
 		let inbox = Arc::new((Mutex::new(Inbox::default()), Condvar::new()));
 		let thread_inbox = inbox.clone();
@@ -194,7 +199,7 @@ impl Worker {
 					PathBuf,
 					u64,
 					markview_commonmark::Dialect,
-					Arc<document::Document>,
+					Arc<markview_commonmark::MarkdownParse>,
 				)> = None;
 				loop {
 					let Some((request, release)) = wait_for_request(&thread_inbox, images.poll_deadline()) else {
@@ -251,14 +256,23 @@ impl Worker {
 								highlight_marks: request.options.highlight_marks,
 								ofm: request.options.ofm,
 							};
-							let document = if let Some(
-								(path, revision, cached_dialect, doc),
-							) = &cached
+							let document = if let Some(loaded) =
+								&request.loaded
+							{
+								loaded.clone()
+							} else if let Some((
+								path,
+								revision,
+								cached_dialect,
+								doc,
+							)) = &cached
 								&& (path, revision, cached_dialect) == (&request.path, &request.content_version, &dialect)
 							{
 								request.security =
 									request.security.for_content(&doc.source);
-								doc.clone()
+								crate::loaded::LoadedDocument::markdown(
+									doc.clone(),
+								)
 							} else {
 								let start = Instant::now();
 								let text = read_markdown(&request.path)
@@ -376,8 +390,8 @@ impl Worker {
 														blocked_images: images
 															.blocked
 															.clone(),
-														document: Arc::new(
-															prefix,
+														document: crate::loaded::LoadedDocument::markdown(
+															Arc::new(prefix),
 														),
 														layout,
 														content_version:
@@ -412,7 +426,7 @@ impl Worker {
 									dialect,
 									doc.clone(),
 								));
-								doc
+								crate::loaded::LoadedDocument::markdown(doc)
 							};
 							if current.sequence.load(Ordering::Relaxed)
 								!= request.version
@@ -441,14 +455,16 @@ impl Worker {
 								&request.options.fonts,
 							);
 							// Small documents publish on completion; avoid starting workers
-							// before that first readable snapshot.
-							engine.set_parallel_start(if document.source.len() < 32 * 1024 {
+							// before that first readable snapshot. A web page has no source
+							// text, so the estimate comes from its semantic text.
+							let size = document.size();
+							engine.set_parallel_start(if size < 32 * 1024 {
 								f32::INFINITY
 							} else {
 								request.coverage
 							});
 							let mut publication =
-								PrefixPublication::new(document.source.len());
+								PrefixPublication::new(size);
 							let layout = engine
 								.layout_progressive_cancellable(
 									&document,
@@ -505,7 +521,7 @@ impl Worker {
 								start.elapsed().as_secs_f64() * 1000.0;
 							Ok(ReaderSnapshot {
 								blocked_images: images.blocked.clone(),
-								document,
+								document: document.clone(),
 								layout,
 								content_version: request.content_version,
 								complete: true,
@@ -529,7 +545,7 @@ impl Worker {
 							Some(Ok(reader)) if reader.complete => {
 								match counted {
 									Some((id, counts))
-										if id == reader.document.content_id =>
+										if id == reader.document.document().content_key().get() =>
 									{
 										Some(counts)
 									}
@@ -541,7 +557,7 @@ impl Worker {
 										(!pending).then(|| {
 											let counts = markview_layout::text::TextCounts::of(&reader.layout.full_reading_text());
 											counted = Some((
-												reader.document.content_id,
+												reader.document.document().content_key().get(),
 												counts,
 											));
 											counts
@@ -660,6 +676,26 @@ fn wait_for_request(
 }
 
 #[cfg(test)]
+fn same_document(
+	a: &Arc<crate::loaded::LoadedDocument>,
+	b: &Arc<crate::loaded::LoadedDocument>,
+) -> bool {
+	use crate::loaded::LoadedDocument;
+	// A reflow wraps the same parse in a new handle, so identity is the
+	// document the handle names, not the handle itself.
+	match (a.as_ref(), b.as_ref()) {
+		(LoadedDocument::Markdown(a), LoadedDocument::Markdown(b)) => {
+			Arc::ptr_eq(a, b)
+		}
+		(
+			LoadedDocument::Semantic { document: a, .. },
+			LoadedDocument::Semantic { document: b, .. },
+		) => Arc::ptr_eq(a, b),
+		_ => false,
+	}
+}
+
+#[cfg(test)]
 mod tests {
 	use super::*;
 	use std::{
@@ -684,6 +720,7 @@ mod tests {
 			version: 1,
 			content_version: 1,
 			path,
+			loaded: None,
 			workspace: None,
 			options: crate::test_support::options(),
 			requested: Instant::now(),
@@ -721,6 +758,29 @@ mod tests {
 		assert!(fast.publish(2, 900., 600., Duration::from_millis(1)));
 	}
 	#[test]
+	fn a_semantic_document_measures_its_own_text_for_the_large_path() {
+		// A web page keeps no source text, so a size taken from `source()` would
+		// leave every article on the small-document path.
+		let body = "Article paragraph. ".repeat(2_000);
+		let text = vec![markview_document::Inline {
+			link: None,
+			kind: markview_document::InlineKind::Text(body.clone()),
+			style: Default::default(),
+		}];
+		let mut builder = markview_document::DocumentBuilder::new(
+			markview_document::DocumentRevision::new(1),
+		);
+		let block = builder
+			.block(Vec::new(), markview_document::BlockKind::Paragraph(text));
+		let document = builder.finish(vec![block]);
+		let loaded =
+			crate::loaded::LoadedDocument::semantic(Arc::new(document));
+		assert_eq!(loaded.source(), None);
+		assert_eq!(loaded.size(), body.len());
+		let mut publication = PrefixPublication::new(loaded.size());
+		assert!(publication.publish(2, 900., 600., Duration::from_millis(1)));
+	}
+	#[test]
 	fn progressive_worker_chases_target_and_cancels_changed_file() {
 		let dir = tempfile::tempdir().unwrap();
 		let path = dir.path().join("read.md");
@@ -748,6 +808,7 @@ mod tests {
 			version: 1,
 			content_version: 1,
 			path: path.clone(),
+			loaded: None,
 			workspace: None,
 			options: crate::test_support::options(),
 			requested: Instant::now(),
@@ -763,7 +824,7 @@ mod tests {
 			.unwrap();
 		assert!(!first.complete);
 		assert!(first.layout.height >= 600.);
-		assert!(first.layout.blocks.len() < first.document.blocks.len());
+		assert!(first.layout.blocks.len() < first.document.blocks().len());
 		worker.prioritize(6000.);
 		resume.send(()).unwrap();
 		let next = rx
@@ -792,7 +853,7 @@ mod tests {
 		assert_eq!(update.version, 2);
 		let final_reader = update.result.unwrap().unwrap();
 		assert!(final_reader.complete);
-		assert_eq!(&*final_reader.document.source, "Replacement");
+		assert_eq!(final_reader.document.source().unwrap(), "Replacement");
 		assert!(rx.recv_timeout(Duration::from_millis(100)).is_err());
 	}
 
@@ -816,6 +877,7 @@ mod tests {
 			version: 1,
 			content_version: 1,
 			path,
+			loaded: None,
 			workspace: None,
 			options: crate::test_support::options(),
 			requested: Instant::now(),
@@ -862,6 +924,7 @@ mod tests {
 			version,
 			content_version: 1,
 			path: path.clone(),
+			loaded: None,
 			workspace: None,
 			options: LayoutOptions {
 				hard_breaks,
@@ -880,9 +943,9 @@ mod tests {
 			}
 		};
 		let line_broken = |reader: &ReaderSnapshot| {
-			reader.document.blocks.iter().any(|b| {
+			reader.document.blocks().iter().any(|b| {
 				matches!(
-					&b.kind,
+					b.kind(),
 					markview_document::BlockKind::Paragraph(text)
 						if text.iter().any(|i| matches!(
 							i.kind,
@@ -898,12 +961,12 @@ mod tests {
 		// of the document the worker kept.
 		worker.submit(request(2, true));
 		let hard = complete(2);
-		assert!(!Arc::ptr_eq(&soft.document, &hard.document));
+		assert!(!same_document(&soft.document, &hard.document));
 		assert!(line_broken(&hard));
 		// The same dialect again reuses the retained parse, like any reflow.
 		worker.submit(request(3, true));
 		let reused = complete(3);
-		assert!(Arc::ptr_eq(&hard.document, &reused.document));
+		assert!(same_document(&hard.document, &reused.document));
 	}
 
 	#[test]
@@ -922,6 +985,7 @@ mod tests {
 			version,
 			content_version: 1,
 			path: path.clone(),
+			loaded: None,
 			workspace: None,
 			options: LayoutOptions {
 				highlight_marks,
@@ -940,9 +1004,9 @@ mod tests {
 			}
 		};
 		let marked = |reader: &ReaderSnapshot| {
-			reader.document.blocks.iter().any(|b| {
+			reader.document.blocks().iter().any(|b| {
 				matches!(
-					&b.kind,
+					b.kind(),
 					markview_document::BlockKind::Paragraph(text)
 						if text.iter().any(|i| i.style.mark)
 				)
@@ -955,12 +1019,12 @@ mod tests {
 		// of the document the worker kept.
 		worker.submit(request(2, true));
 		let highlighted = complete(2);
-		assert!(!Arc::ptr_eq(&literal.document, &highlighted.document));
+		assert!(!same_document(&literal.document, &highlighted.document));
 		assert!(marked(&highlighted));
 		// The same dialect again reuses the retained parse, like any reflow.
 		worker.submit(request(3, true));
 		let reused = complete(3);
-		assert!(Arc::ptr_eq(&highlighted.document, &reused.document));
+		assert!(same_document(&highlighted.document, &reused.document));
 	}
 
 	#[test]
@@ -980,6 +1044,7 @@ mod tests {
 				version,
 				content_version: 1,
 				path: path.clone(),
+				loaded: None,
 				workspace: None,
 				options: LayoutOptions {
 					width: 250.0 + version as f32,
@@ -1023,6 +1088,7 @@ mod reflow_tests {
 				version,
 				content_version,
 				path: path.clone(),
+				loaded: None,
 				workspace: None,
 				options: crate::test_support::options(),
 				requested: Instant::now(),
@@ -1042,7 +1108,7 @@ mod reflow_tests {
 		let reflow = rx.recv_timeout(Duration::from_secs(5)).unwrap();
 		assert_eq!(reflow.read_ms, 0.0);
 		assert_eq!(reflow.parse_ms, 0.0);
-		assert!(Arc::ptr_eq(
+		assert!(same_document(
 			&first.document,
 			&reflow.result.unwrap().unwrap().document
 		));
@@ -1061,13 +1127,13 @@ mod reflow_tests {
 			let update = rx.recv_timeout(Duration::from_secs(5)).unwrap();
 			if update.version == 5 {
 				assert_eq!(
-					&*update.result.unwrap().unwrap().document.source,
+					update.result.unwrap().unwrap().document.source().unwrap(),
 					"Second"
 				);
 				break;
 			}
 		}
-		assert_eq!(&*first.document.source, "First");
+		assert_eq!(first.document.source().unwrap(), "First");
 	}
 
 	#[test]
@@ -1086,6 +1152,7 @@ mod reflow_tests {
 			version,
 			content_version: 1,
 			path: path.clone(),
+			loaded: None,
 			workspace: None,
 			options: crate::test_support::options(),
 			requested: Instant::now(),
@@ -1099,7 +1166,7 @@ mod reflow_tests {
 			.result
 			.unwrap()
 			.unwrap();
-		assert_eq!(&*first.document.source, "First");
+		assert_eq!(first.document.source().unwrap(), "First");
 		// The same content version reuses the retained parse.
 		fs::write(&path, "Second").unwrap();
 		worker.submit(request(2));
@@ -1109,7 +1176,7 @@ mod reflow_tests {
 			.result
 			.unwrap()
 			.unwrap();
-		assert_eq!(&*reused.document.source, "First");
+		assert_eq!(reused.document.source().unwrap(), "First");
 		// Once nothing holds the document, the worker reads it again.
 		worker.release();
 		worker.submit(request(3));
@@ -1119,7 +1186,7 @@ mod reflow_tests {
 			.result
 			.unwrap()
 			.unwrap();
-		assert_eq!(&*reread.document.source, "Second");
+		assert_eq!(reread.document.source().unwrap(), "Second");
 	}
 
 	#[test]
@@ -1144,6 +1211,7 @@ mod reflow_tests {
 				version,
 				content_version: 1,
 				path: path.clone(),
+				loaded: None,
 				workspace: None,
 				options: crate::test_support::options(),
 				requested: Instant::now(),

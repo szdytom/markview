@@ -274,7 +274,7 @@ impl ExportReading {
 	reason = "one parsed command, then dropped"
 )]
 enum Command {
-	/// Read a web article as Markdown (experimental).
+	/// Read a web article (experimental).
 	Web {
 		/// The HTTP(S) page to load.
 		url: String,

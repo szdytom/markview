@@ -12,7 +12,8 @@ use std::ops::Range;
 
 use crate::html;
 
-use super::{Block, BlockKind, RichText, fingerprint, semantic_key};
+use super::{Block, BlockKind};
+use crate::{make::Made, rich::SpannedText};
 
 /// Elements whose content is not markup for the reader: raw text, RCDATA,
 /// foreign content, and `<pre>`, which the reader shows as literal source.
@@ -97,7 +98,6 @@ enum FrameKind {
 	},
 	Details {
 		open: bool,
-		ordinal: u32,
 		summary: Option<(String, Range<usize>)>,
 	},
 }
@@ -111,12 +111,12 @@ pub(crate) trait ContainerHost {
 		range: Range<usize>,
 		opaque_until: usize,
 	) -> Option<Block>;
+	/// Build one block from semantic input.
+	fn make(&mut self, made: Made) -> Block;
 	/// Render one `<summary>` body.
-	fn summary(&mut self, text: &str, source: &Range<usize>) -> RichText;
+	fn summary(&mut self, text: &str, source: &Range<usize>) -> SpannedText;
 	/// The end of the opaque interval containing `at`, or `0`.
 	fn opaque_until(&self, at: usize) -> usize;
-	/// Allocate the next document-wide `<details>` ordinal.
-	fn next_details_ordinal(&mut self) -> u32;
 }
 
 /// The open raw-HTML containers of one sibling list.
@@ -155,7 +155,6 @@ impl ContainerStack {
 		&mut self,
 		name: &str,
 		open: bool,
-		ordinal: u32,
 		anchors: Vec<String>,
 		raw: String,
 		start: usize,
@@ -163,7 +162,6 @@ impl ContainerStack {
 		let kind = if name == "details" {
 			FrameKind::Details {
 				open,
-				ordinal,
 				summary: None,
 			}
 		} else {
@@ -218,40 +216,42 @@ impl ContainerStack {
 			FrameKind::Transparent { .. } => {
 				let anchors = frame.anchors;
 				if !anchors.is_empty() {
-					let mut block = block_of(
-						source,
-						BlockKind::Paragraph(Vec::new()),
-						frame.start..frame.start + frame.raw.len(),
-					);
-					block.anchors = anchors;
+					let block = host.make(Made {
+						kind: BlockKind::Paragraph(Vec::new()),
+						anchors: anchors.clone(),
+						source: frame.start..frame.start + frame.raw.len(),
+						fields: vec![Vec::new()],
+						covers: vec![Vec::new()],
+					});
 					if let Some(first) = frame.blocks.first_mut() {
-						first.anchors.splice(0..0, block.anchors);
+						let mut merged = anchors;
+						merged.extend(first.anchors().iter().cloned());
+						first.relabel(merged);
 					} else {
 						frame.blocks.push(block);
 					}
 				}
 				self.extend_blocks(out, frame.blocks);
 			}
-			FrameKind::Details {
-				open,
-				ordinal,
-				summary,
-			} => {
+			FrameKind::Details { open, summary } => {
 				let span = frame.start..end.max(frame.start);
 				let summary = summary
 					.as_ref()
-					.map_or_else(RichText::new, |(text, source)| {
+					.map_or_else(SpannedText::new, |(text, source)| {
 						host.summary(text, source)
 					});
-				let mut block = details_block_of(
-					source,
-					open,
-					ordinal,
-					summary,
-					frame.blocks,
-					span,
-				);
-				block.anchors = frame.anchors;
+				let (summary, fields, covers) = summary.into_parts(source);
+				let block = host.make(Made {
+					kind: BlockKind::Details {
+						default_open: open,
+						summary,
+						blocks: frame.blocks,
+					},
+					anchors: frame.anchors,
+					source: span,
+					fields: vec![fields],
+					covers: vec![covers],
+				});
 				self.push_block(out, block);
 			}
 		}
@@ -304,15 +304,9 @@ impl ContainerStack {
 					} else {
 						Vec::new()
 					};
-					let ordinal = if name == "details" {
-						host.next_details_ordinal()
-					} else {
-						0
-					};
 					self.open(
 						name,
 						*open,
-						ordinal,
 						anchors,
 						text[range.clone()].to_owned(),
 						at.start,
@@ -398,52 +392,6 @@ pub(crate) fn clamp_range(source: &str, range: Range<usize>) -> Range<usize> {
 		end -= 1;
 	}
 	start..end.max(start)
-}
-
-pub(crate) fn block_of(
-	source: &str,
-	kind: BlockKind,
-	range: Range<usize>,
-) -> Block {
-	let range = clamp_range(source, range);
-	let id =
-		fingerprint(&(std::mem::discriminant(&kind), &source[range.clone()]));
-	Block {
-		anchors: Vec::new(),
-		id,
-		content_key: semantic_key(&kind),
-		source: range,
-		kind,
-	}
-}
-
-pub(crate) fn details_block_of(
-	source: &str,
-	open: bool,
-	ordinal: u32,
-	summary: RichText,
-	blocks: Vec<Block>,
-	range: Range<usize>,
-) -> Block {
-	let range = clamp_range(source, range);
-	let kind = BlockKind::Details {
-		open,
-		ordinal,
-		summary,
-		blocks,
-	};
-	let id = fingerprint(&(
-		std::mem::discriminant(&kind),
-		&source[range.clone()],
-		ordinal,
-	));
-	Block {
-		anchors: Vec::new(),
-		id,
-		content_key: semantic_key(&kind),
-		source: range,
-		kind,
-	}
 }
 
 #[cfg(test)]

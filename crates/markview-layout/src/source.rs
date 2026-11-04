@@ -1,12 +1,19 @@
 //! Source navigation over semantic fields and cached rendering geometry.
+//!
+//! The source text and its mapping belong to the front end; this adapter
+//! combines them with layout geometry only when a source-navigation query is
+//! actually made.
 use crate::{
-	document::{BlockKind, Document, InlineKind, plain_text},
+	document::{
+		BlockId, BlockKind, Document, FieldId, InlineKind, SourceMap,
+		visit_fields,
+	},
 	scene::{LayoutSnapshot, Rect},
-	search::{FieldText, visit_fields},
 };
 use std::{
 	collections::{BTreeMap, HashMap},
 	ops::Range,
+	sync::Arc,
 };
 
 /// A rendered source unit, in UTF-8 bytes and document logical pixels.
@@ -36,15 +43,30 @@ struct FieldSpans {
 
 /// Source bindings belong to a parsed document, independent of cached geometry.
 pub struct SourceIndex {
+	source: Arc<str>,
+	revision: markview_document::DocumentRevision,
+	block_ids: HashMap<BlockId, usize>,
+	blocks: Vec<Option<Range<usize>>>,
 	fields: Vec<Vec<FieldSpans>>,
-	blocks: Vec<Range<usize>>,
 	relocated_footnotes: Vec<bool>,
 	lines: Vec<SourceLine>,
 }
+
 impl SourceIndex {
-	pub fn new(document: &Document) -> Self {
+	pub fn new(source: Arc<str>, document: &Document, map: &SourceMap) -> Self {
+		let ids: Vec<BlockId> =
+			document.blocks().iter().map(|block| block.id()).collect();
+		let block_ids = ids
+			.iter()
+			.enumerate()
+			.map(|(index, id)| (*id, index))
+			.collect();
+		let blocks = ids
+			.iter()
+			.map(|id| map.block(*id).and_then(|b| b.source.clone()))
+			.collect::<Vec<_>>();
 		let fields = document
-			.blocks
+			.blocks()
 			.iter()
 			.map(|block| {
 				let mut fields = Vec::new();
@@ -52,74 +74,42 @@ impl SourceIndex {
 					block,
 					&mut Vec::new(),
 					&|| false,
-					&mut |text, _| {
-						let mut spans = Vec::new();
-						let mut images = Vec::new();
-						match text {
-							FieldText::Rich(rich) => {
-								let mut semantic = 0;
-								for (index, inline) in rich.iter().enumerate() {
-									if matches!(
-										inline.kind,
-										InlineKind::Image(_)
-									) {
-										images.push((
-											index,
-											inline.source.clone(),
-										));
-									}
-									let text = plain_text(
-										std::slice::from_ref(inline),
-									);
-									if matches!(
-										inline.kind,
-										InlineKind::Text(_)
-									) {
-										align(
-											&text,
-											&document.source,
-											inline.source.clone(),
-											semantic,
-											&mut spans,
-										);
-									} else if !matches!(
-										inline.kind,
-										InlineKind::Image(_)
-									) {
-										spans.push((
-											semantic..semantic + text.len(),
-											inline.source.clone(),
-										));
-									}
-									semantic += text.len();
-								}
-							}
-							FieldText::Code(text, block) => {
-								let mut source = block.source.clone();
-								let raw = &document.source[source.clone()];
-								let first = raw
-									.lines()
-									.next()
-									.unwrap_or("")
-									.trim_start();
-								if first.starts_with("```")
-									|| first.starts_with("~~~")
-								{
-									source.start += raw
-										.find('\n')
-										.map_or(raw.len(), |i| i + 1);
-								}
-								align(
-									text,
-									&document.source,
-									source,
-									0,
-									&mut spans,
-								);
-							}
-						}
+					&mut |_, field: FieldId, text, _| {
+						let entry = map.block(block.id()).and_then(|entry| {
+							entry
+								.fields
+								.iter()
+								.find(|entry| entry.field == field)
+						});
+						let spans = entry
+							.map(|entry| entry.spans.as_slice())
+							.unwrap_or(&[]);
+						let mapped: Vec<_> = spans
+							.iter()
+							.map(|span| {
+								(span.semantic.clone(), span.source.clone())
+							})
+							.collect();
+						let covers = entry
+							.map(|entry| entry.covers.as_slice())
+							.unwrap_or(&[]);
+						let images = match text {
+							crate::document::FieldText::Rich(rich) => rich
+								.iter()
+								.enumerate()
+								.filter(|(_, inline)| {
+									matches!(inline.kind, InlineKind::Image(_))
+								})
+								.filter_map(|(index, _)| {
+									covers.get(index).map(|cover| {
+										(index, cover.source.clone())
+									})
+								})
+								.collect(),
+							crate::document::FieldText::Code(_) => Vec::new(),
+						};
 						fields.push(FieldSpans {
-							text: spans,
+							text: mapped,
 							images,
 						});
 					},
@@ -127,42 +117,51 @@ impl SourceIndex {
 				fields
 			})
 			.collect();
+		let relocated_footnotes = document
+			.blocks()
+			.iter()
+			.enumerate()
+			.scan(0, |end, (index, block)| {
+				let Some(range) = &blocks[index] else {
+					return Some(false);
+				};
+				let relocated =
+					matches!(block.kind(), BlockKind::Footnote { .. })
+						&& range.start < *end;
+				*end = (*end).max(range.end);
+				Some(relocated)
+			})
+			.collect();
+		let lines = {
+			let mut lines = Vec::new();
+			let mut byte = 0;
+			let mut utf16 = 0;
+			while byte < source.len() {
+				let rest = &source[byte..];
+				let end = rest.find(['\r', '\n']).unwrap_or(rest.len());
+				let units = rest[..end].encode_utf16().count();
+				lines.push(SourceLine {
+					bytes: byte..byte + end,
+					utf16: utf16..utf16 + units,
+				});
+				let newline = if rest[end..].starts_with("\r\n") {
+					2
+				} else {
+					usize::from(end < rest.len())
+				};
+				byte += end + newline;
+				utf16 += units + newline;
+			}
+			lines
+		};
 		Self {
+			source,
+			revision: document.revision(),
+			block_ids,
+			blocks,
 			fields,
-			blocks: document.blocks.iter().map(|b| b.source.clone()).collect(),
-			relocated_footnotes: document
-				.blocks
-				.iter()
-				.scan(0, |end, block| {
-					let relocated =
-						matches!(block.kind, BlockKind::Footnote { .. })
-							&& block.source.start < *end;
-					*end = (*end).max(block.source.end);
-					Some(relocated)
-				})
-				.collect(),
-			lines: {
-				let mut lines = Vec::new();
-				let mut byte = 0;
-				let mut utf16 = 0;
-				while byte < document.source.len() {
-					let rest = &document.source[byte..];
-					let end = rest.find(['\r', '\n']).unwrap_or(rest.len());
-					let units = rest[..end].encode_utf16().count();
-					lines.push(SourceLine {
-						bytes: byte..byte + end,
-						utf16: utf16..utf16 + units,
-					});
-					let newline = if rest[end..].starts_with("\r\n") {
-						2
-					} else {
-						usize::from(end < rest.len())
-					};
-					byte += end + newline;
-					utf16 += units + newline;
-				}
-				lines
-			},
+			relocated_footnotes,
+			lines,
 		}
 	}
 
@@ -173,13 +172,14 @@ impl SourceIndex {
 		horizontal: &HashMap<(usize, usize), f32>,
 		from_block: usize,
 	) -> Vec<SourceScrollAnchor> {
-		let Some(first_block) = snapshot.blocks.get(from_block) else {
+		let Some(first_block) = self.snapshot_block(snapshot, from_block)
+		else {
 			return Vec::new();
 		};
 		let mut lines = BTreeMap::<usize, SourceScrollAnchor>::new();
 		let mut seen = vec![false; snapshot.blocks.len() - from_block];
 		let mut collect = |position: SourcePosition| {
-			if position.source.is_empty() {
+			if position.source.is_empty() || self.lines.is_empty() {
 				return;
 			}
 			let first = self.lines.partition_point(|line| {
@@ -209,7 +209,10 @@ impl SourceIndex {
 			snapshot,
 			horizontal,
 			first_block.y..snapshot.height,
-			|block, position| {
+			|id, position| {
+				let Some(block) = self.block_ids.get(&id).copied() else {
+					return;
+				};
 				if block >= from_block && !self.relocated_footnotes[block] {
 					seen[block - from_block] = true;
 					collect(position);
@@ -221,12 +224,20 @@ impl SourceIndex {
 			snapshot.blocks.iter().enumerate().skip(from_block)
 		{
 			if !seen[block - from_block] && !self.relocated_footnotes[block] {
-				let line = self.lines.partition_point(|line| {
-					line.bytes.start <= placed.source.start
-				}) - 1;
+				let Some(source) = self.blocks.get(block).cloned().flatten()
+				else {
+					continue;
+				};
+				if self.lines.is_empty() {
+					continue;
+				}
+				let line = self
+					.lines
+					.partition_point(|line| line.bytes.start <= source.start)
+					- 1;
 				collect(SourcePosition {
-					source: placed.source.start
-						..placed.source.end.min(self.lines[line].bytes.end),
+					source: source.start
+						..source.end.min(self.lines[line].bytes.end),
 					rect: Rect {
 						x: 0.,
 						y: placed.y,
@@ -258,10 +269,17 @@ impl SourceIndex {
 		horizontal: &HashMap<(usize, usize), f32>,
 		offset: usize,
 	) -> Option<SourcePosition> {
+		self.current(snapshot)?;
 		let block = self
 			.blocks
 			.iter()
 			.enumerate()
+			.filter(|(i, range)| {
+				range.is_some()
+					|| self.fields[*i].iter().any(|field| {
+						!field.text.is_empty() || !field.images.is_empty()
+					})
+			})
 			.min_by_key(|(i, range)| {
 				self.fields[*i]
 					.iter()
@@ -272,7 +290,11 @@ impl SourceIndex {
 					})
 					.map(|source| distance(source, offset))
 					.min()
-					.unwrap_or_else(|| distance(range, offset))
+					.unwrap_or_else(|| {
+						range
+							.as_ref()
+							.map_or(usize::MAX, |range| distance(range, offset))
+					})
 			})?
 			.0;
 		let placed = snapshot.blocks.get(block)?;
@@ -281,8 +303,8 @@ impl SourceIndex {
 			snapshot,
 			horizontal,
 			placed.y..placed.y + placed.height(),
-			|bi, position| {
-				if bi != block {
+			|id, position| {
+				if self.block_ids.get(&id).copied() != Some(block) {
 					return;
 				}
 				let d = distance(&position.source, offset);
@@ -296,7 +318,7 @@ impl SourceIndex {
 		);
 		best.map(|(_, p)| p).or_else(|| {
 			Some(SourcePosition {
-				source: placed.source.clone(),
+				source: self.blocks.get(block)?.clone()?,
 				rect: Rect {
 					x: 0.,
 					y: placed.y,
@@ -314,6 +336,7 @@ impl SourceIndex {
 		horizontal: &HashMap<(usize, usize), f32>,
 		y: f32,
 	) -> Option<SourcePosition> {
+		self.current(snapshot)?;
 		let placed =
 			snapshot.blocks.iter().min_by(|a, b| {
 				vertical_distance(a.y, a.height(), y)
@@ -342,7 +365,7 @@ impl SourceIndex {
 		);
 		best.or_else(|| {
 			Some(SourcePosition {
-				source: placed.source.clone(),
+				source: self.block_source(placed.id)?,
 				rect: Rect {
 					x: 0.,
 					y: placed.y,
@@ -353,21 +376,37 @@ impl SourceIndex {
 		})
 	}
 
+	fn current(&self, snapshot: &LayoutSnapshot) -> Option<()> {
+		(snapshot.revision == self.revision).then_some(())
+	}
+
+	fn snapshot_block<'a>(
+		&self,
+		snapshot: &'a LayoutSnapshot,
+		index: usize,
+	) -> Option<&'a crate::scene::PlacedBlock> {
+		self.current(snapshot)?;
+		snapshot.blocks.get(index)
+	}
+
 	fn visit(
 		&self,
 		snapshot: &LayoutSnapshot,
 		horizontal: &HashMap<(usize, usize), f32>,
 		visible: Range<f32>,
-		mut visit: impl FnMut(usize, SourcePosition),
+		mut visit: impl FnMut(BlockId, SourcePosition),
 	) {
 		snapshot.visit_search_clusters(
 			horizontal,
 			visible.clone(),
-			|block, field, semantic, rect| {
+			|id, field, semantic, rect| {
+				let Some(block) = self.block_ids.get(&id).copied() else {
+					return;
+				};
 				let Some(spans) = self
 					.fields
 					.get(block)
-					.and_then(|fields| fields.get(field.0))
+					.and_then(|fields| fields.get(field.get() as usize))
 				else {
 					return;
 				};
@@ -387,7 +426,7 @@ impl SourceIndex {
 					} else {
 						source.clone()
 					};
-					visit(block, SourcePosition { source, rect });
+					visit(id, SourcePosition { source, rect });
 				}
 			},
 		);
@@ -405,12 +444,19 @@ impl SourceIndex {
 				let Some(field) = node.search_field else {
 					continue;
 				};
-				let images = &self.fields[bi][field.0].images;
+				let Some(block_index) = self.block_ids.get(&block.id).copied()
+				else {
+					continue;
+				};
+				let images =
+					&self.fields[block_index][field.get() as usize].images;
 				for (index, cluster) in &node.source_images {
-					let source = &images[images
-						.binary_search_by_key(index, |(i, _)| *i)
-						.unwrap()]
-					.1;
+					let Ok(found) =
+						images.binary_search_by_key(index, |(i, _)| *i)
+					else {
+						continue;
+					};
+					let source = &images[found].1;
 					let Some(rect) =
 						snapshot.text_rect(bi, cluster, horizontal)
 					else {
@@ -419,7 +465,7 @@ impl SourceIndex {
 					if rect.y + rect.h >= visible.start && rect.y <= visible.end
 					{
 						visit(
-							bi,
+							block.id,
 							SourcePosition {
 								source: source.clone(),
 								rect,
@@ -429,6 +475,16 @@ impl SourceIndex {
 				}
 			}
 		}
+	}
+
+	/// The source at the start of `id`, for callers that need a block range.
+	pub fn block_source(&self, id: BlockId) -> Option<Range<usize>> {
+		let index = *self.block_ids.get(&id)?;
+		self.blocks.get(index).cloned().flatten()
+	}
+
+	pub fn source_text(&self) -> &str {
+		&self.source
 	}
 }
 
@@ -443,43 +499,6 @@ fn distance(range: &Range<usize>, offset: usize) -> usize {
 }
 fn vertical_distance(top: f32, height: f32, y: f32) -> f32 {
 	(top - y).max(y - top - height).max(0.)
-}
-
-/// Exact runs stay compact; parser transformations use ordered character matches.
-fn align(
-	text: &str,
-	source: &str,
-	range: Range<usize>,
-	semantic: usize,
-	spans: &mut Vec<(Range<usize>, Range<usize>)>,
-) {
-	let raw = &source[range.clone()];
-	if raw == text {
-		spans.push((semantic..semantic + text.len(), range));
-		return;
-	}
-	let mut cursor = 0;
-	for (i, ch) in text.char_indices() {
-		let mapped = if let Some(found) = raw[cursor..].find(ch) {
-			let start = cursor + found;
-			cursor = start + ch.len_utf8();
-			range.start + start..range.start + cursor
-		} else {
-			range.clone()
-		};
-		let reading = semantic + i..semantic + i + ch.len_utf8();
-		if let Some((previous, original)) = spans.last_mut()
-			&& previous.end == reading.start
-			&& original.end == mapped.start
-			&& previous.len() == original.len()
-			&& reading.len() == mapped.len()
-		{
-			previous.end = reading.end;
-			original.end = mapped.end;
-		} else {
-			spans.push((reading, mapped));
-		}
-	}
 }
 
 /// Converts original-source UTF-8 bytes to JavaScript UTF-16 code units.
@@ -500,4 +519,55 @@ pub fn utf16_to_byte(source: &str, offset: usize) -> usize {
 		}
 	}
 	source.len()
+}
+
+#[cfg(test)]
+mod tests {
+	use super::*;
+	use crate::document::{
+		BlockKind, BlockSource, DefinitionItem, DocumentBuilder,
+		DocumentRevision, FieldId, FieldSource, Inline, InlineKind, SourceSpan,
+		TextStyle,
+	};
+
+	fn term(text: &str) -> Vec<Inline> {
+		vec![Inline {
+			link: None,
+			kind: InlineKind::Text(text.to_owned()),
+			style: TextStyle::default(),
+		}]
+	}
+
+	#[test]
+	fn omitted_field_entries_do_not_shift_later_fields() {
+		let mut builder = DocumentBuilder::new(DocumentRevision::new(1));
+		let block = builder.block(
+			Vec::new(),
+			BlockKind::DefinitionList(vec![DefinitionItem {
+				terms: vec![term("first"), term("second")],
+				definitions: Vec::new(),
+			}]),
+		);
+		let document = builder.finish(vec![block]);
+		let id = document.blocks()[0].id();
+		let map = SourceMap::new(
+			document.revision(),
+			vec![BlockSource {
+				block: id,
+				source: Some(0..11),
+				fields: vec![FieldSource {
+					field: FieldId::from_index(1),
+					spans: vec![SourceSpan {
+						semantic: 0..6,
+						source: 5..11,
+						exact: true,
+					}],
+					covers: Vec::new(),
+				}],
+			}],
+		);
+		let index = SourceIndex::new("firstsecond".into(), &document, &map);
+		assert!(index.fields[0][0].text.is_empty());
+		assert_eq!(index.fields[0][1].text, [(0..6, 5..11)]);
+	}
 }

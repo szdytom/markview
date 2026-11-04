@@ -1,13 +1,9 @@
 //! Full-document literal search over semantic reading fields.
-use crate::document::{Block, BlockKind, Document, RichText, plain_text};
+use crate::document::{Document, FieldId, plain_text};
 use std::{
 	ops::Range,
 	sync::{Arc, OnceLock},
 };
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
-/// A field occurrence within one top-level semantic block, including hidden fields.
-pub struct SearchField(pub usize);
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub struct SearchOptions {
@@ -16,19 +12,21 @@ pub struct SearchOptions {
 }
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct SearchMatch {
-	pub field: SearchField,
+	pub revision: markview_document::DocumentRevision,
+	pub field: FieldId,
 	pub range: Range<usize>,
-	pub block: usize,
-	pub enclosing: Arc<[u64]>,
+	pub block: markview_document::BlockId,
+	pub enclosing: Arc<[markview_document::BlockId]>,
 }
 struct Field {
 	boundaries: OnceLock<Vec<usize>>,
-	id: SearchField,
+	id: FieldId,
 	range: Range<usize>,
-	block: usize,
-	enclosing: Arc<[u64]>,
+	block: markview_document::BlockId,
+	enclosing: Arc<[markview_document::BlockId]>,
 }
 pub struct SearchIndex {
+	revision: markview_document::DocumentRevision,
 	text: Box<str>,
 	fields: Box<[Field]>,
 }
@@ -42,28 +40,26 @@ impl SearchIndex {
 	) -> Option<Self> {
 		let mut fields = Vec::new();
 		let mut reading = String::new();
-		let empty: Arc<[u64]> = Arc::from([]);
-		for (i, block) in document.blocks.iter().enumerate() {
-			let mut ordinal = 0;
-			visit_fields(
+		let empty: Arc<[markview_document::BlockId]> = Arc::from([]);
+		for block in document.blocks() {
+			markview_document::visit_fields(
 				block,
 				&mut Vec::new(),
 				&cancelled,
-				&mut |text, enclosing| {
+				&mut |_, id, text, enclosing| {
 					let start = reading.len();
-					reading.push_str(&text.reading());
+					reading.push_str(&field_reading(text));
 					fields.push(Field {
 						boundaries: OnceLock::new(),
-						id: SearchField(ordinal),
+						id,
 						range: start..reading.len(),
-						block: i,
+						block: block.id(),
 						enclosing: if enclosing.is_empty() {
 							empty.clone()
 						} else {
 							Arc::from(enclosing)
 						},
 					});
-					ordinal += 1;
 				},
 			);
 			if cancelled() {
@@ -71,6 +67,7 @@ impl SearchIndex {
 			}
 		}
 		Some(Self {
+			revision: document.revision(),
 			text: reading.into_boxed_str(),
 			fields: fields.into_boxed_slice(),
 		})
@@ -163,6 +160,7 @@ impl SearchIndex {
 				}
 			}
 			found.push(SearchMatch {
+				revision: self.revision,
 				field: field.id,
 				range,
 				block: field.block,
@@ -189,103 +187,11 @@ impl SearchIndex {
 				.sum::<usize>()
 	}
 }
-pub(crate) enum FieldText<'a> {
-	Rich(&'a RichText),
-	Code(&'a str, &'a Block),
-}
-impl FieldText<'_> {
-	fn locator(&self) -> usize {
-		match self {
-			Self::Rich(t) => t.as_ptr() as usize,
-			Self::Code(t, _) => t.as_ptr() as usize,
-		}
+fn field_reading(text: markview_document::FieldText<'_>) -> String {
+	match text {
+		markview_document::FieldText::Rich(rich) => plain_text(rich),
+		markview_document::FieldText::Code(code) => code.to_owned(),
 	}
-	fn reading(&self) -> String {
-		match self {
-			Self::Rich(t) => plain_text(t),
-			Self::Code(t, _) => (*t).to_owned(),
-		}
-	}
-}
-/// The same complete semantic traversal binds indexing and cached layout fields.
-pub(crate) fn visit_fields(
-	block: &Block,
-	enclosing: &mut Vec<u64>,
-	cancelled: &impl Fn() -> bool,
-	visit: &mut impl FnMut(FieldText<'_>, &[u64]),
-) {
-	if cancelled() {
-		return;
-	}
-	match &block.kind {
-		BlockKind::Paragraph(t) | BlockKind::Heading { text: t, .. } => {
-			visit(FieldText::Rich(t), enclosing)
-		}
-		BlockKind::Code { text, .. } => {
-			visit(FieldText::Code(text, block), enclosing)
-		}
-		BlockKind::Table { rows, .. } => {
-			visit_table_fields(rows, enclosing, cancelled, visit);
-		}
-		BlockKind::Details {
-			summary, blocks, ..
-		} => {
-			visit(FieldText::Rich(summary), enclosing);
-			enclosing.push(block.id);
-			for child in blocks {
-				visit_fields(child, enclosing, cancelled, visit);
-			}
-			enclosing.pop();
-		}
-		BlockKind::FrontMatter { blocks, .. } => {
-			enclosing.push(block.id);
-			for child in blocks {
-				visit_fields(child, enclosing, cancelled, visit);
-			}
-			enclosing.pop();
-		}
-		BlockKind::Quote { blocks, .. }
-		| BlockKind::Footnote { blocks, .. } => {
-			for child in blocks {
-				visit_fields(child, enclosing, cancelled, visit);
-			}
-		}
-		BlockKind::List { items, .. } => {
-			for item in items {
-				for child in &item.blocks {
-					visit_fields(child, enclosing, cancelled, visit);
-				}
-			}
-		}
-		BlockKind::Rule => {}
-	}
-}
-fn visit_table_fields(
-	rows: &[Vec<RichText>],
-	enclosing: &[u64],
-	cancelled: &impl Fn() -> bool,
-	visit: &mut impl FnMut(FieldText<'_>, &[u64]),
-) {
-	for row in rows {
-		for cell in row {
-			if cancelled() {
-				return;
-			}
-			visit(FieldText::Rich(cell), enclosing);
-		}
-	}
-}
-
-pub(crate) fn layout_fields(
-	block: &Block,
-) -> std::collections::HashMap<usize, SearchField> {
-	let mut fields = std::collections::HashMap::new();
-	let mut ordinal = 0;
-	visit_fields(block, &mut Vec::new(), &|| false, &mut |text, _| {
-		fields.insert(text.locator(), SearchField(ordinal));
-		ordinal += 1;
-	});
-	fields
 }
 
 impl crate::layout::LayoutSnapshot {
@@ -294,7 +200,12 @@ impl crate::layout::LayoutSnapshot {
 		&self,
 		horizontal: &std::collections::HashMap<(usize, usize), f32>,
 		visible: Range<f32>,
-		mut visit: impl FnMut(usize, SearchField, Range<usize>, crate::layout::Rect),
+		mut visit: impl FnMut(
+			markview_document::BlockId,
+			FieldId,
+			Range<usize>,
+			crate::layout::Rect,
+		),
 	) {
 		let first = self
 			.blocks
@@ -338,20 +249,27 @@ impl crate::layout::LayoutSnapshot {
 									+ cluster.range.end.min(reading.end)
 									- reading.start
 						};
-						visit(bi, field, range, rect);
+						visit(block.id, field, range, rect);
 					}
 				}
 			}
 		}
 	}
 
-	pub fn search_selection(
+	pub(crate) fn geometry_search_selection(
 		&self,
 		hit: &SearchMatch,
 		revision: u64,
-	) -> Option<crate::text::TextSelection> {
-		use crate::text::{Affinity, TextPosition, TextSelection};
-		let block = self.blocks.get(hit.block)?;
+	) -> Option<crate::text::GeometrySelection> {
+		use crate::text::{Affinity, GeometryPosition, GeometrySelection};
+		if hit.revision != self.revision {
+			return None;
+		}
+		let (bi, block) = self
+			.blocks
+			.iter()
+			.enumerate()
+			.find(|(_, block)| block.id == hit.block)?;
 		let mut start = None;
 		let mut end = None;
 		for (ni, node) in block.layout.text.iter().enumerate() {
@@ -368,9 +286,9 @@ impl crate::layout::LayoutSnapshot {
 					continue;
 				}
 				let atomic = semantic.len() != reading.len();
-				start.get_or_insert(TextPosition {
+				start.get_or_insert(GeometryPosition {
 					revision,
-					block: hit.block,
+					block: bi,
 					node: ni,
 					offset: if atomic {
 						reading.start
@@ -379,9 +297,9 @@ impl crate::layout::LayoutSnapshot {
 					},
 					affinity: Affinity::Before,
 				});
-				end = Some(TextPosition {
+				end = Some(GeometryPosition {
 					revision,
-					block: hit.block,
+					block: bi,
 					node: ni,
 					offset: if atomic {
 						reading.end
@@ -392,7 +310,7 @@ impl crate::layout::LayoutSnapshot {
 				});
 			}
 		}
-		Some(TextSelection {
+		Some(GeometrySelection {
 			anchor: start?,
 			focus: end?,
 		})

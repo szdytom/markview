@@ -150,6 +150,7 @@ impl Prepared {
 			links: true,
 			offline,
 			workspace: self.workspace,
+			loaded: None,
 		}
 	}
 }

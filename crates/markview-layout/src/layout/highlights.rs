@@ -292,8 +292,8 @@ mod tests {
 				Highlights::new(executor.clone(), Arc::new(|| {}));
 			let start = Instant::now();
 			highlights.prepare(
-				document.content_id,
-				&document.blocks,
+				document.content_key().get(),
+				document.blocks(),
 				&LayoutOptions::default(),
 			);
 			eprintln!(
@@ -303,8 +303,8 @@ mod tests {
 			assert_eq!(highlights.pending.len(), count);
 			assert_eq!(highlights.pending_keys.len(), count);
 			highlights.prepare(
-				document.content_id,
-				&document.blocks,
+				document.content_key().get(),
+				document.blocks(),
 				&LayoutOptions {
 					width: 100.,
 					..LayoutOptions::default()
@@ -331,11 +331,15 @@ mod tests {
 			"---\ntitle: N\n---\n\n```rust\nlet n = 1;\n```\n",
 		);
 		let options = LayoutOptions::default();
-		highlights.prepare(doc.content_id, &doc.blocks, &options);
+		highlights.prepare(
+			doc.document.content_key().get(),
+			doc.blocks(),
+			&options,
+		);
 		assert_eq!(executor.tasks.lock().unwrap().len(), 2);
 		highlights.prepare(
-			doc.content_id,
-			&doc.blocks,
+			doc.document.content_key().get(),
+			doc.blocks(),
 			&LayoutOptions {
 				width: 100.,
 				..options.clone()
@@ -345,7 +349,11 @@ mod tests {
 		let old_epoch = highlights.epoch;
 		let old_key = *highlights.current.iter().next().unwrap();
 		highlights.clear();
-		highlights.prepare(doc.content_id, &doc.blocks, &options);
+		highlights.prepare(
+			doc.document.content_key().get(),
+			doc.blocks(),
+			&options,
+		);
 		highlights
 			.tx
 			.send((old_epoch, old_key, Some(Arc::new(Vec::new()))))
@@ -363,11 +371,15 @@ mod tests {
 			codeblock_theme_override: Some("none".into()),
 			..options.clone()
 		};
-		highlights.prepare(doc.content_id, &doc.blocks, &theme);
+		highlights.prepare(
+			doc.document.content_key().get(),
+			doc.blocks(),
+			&theme,
+		);
 		assert!(highlights.cache.is_empty());
 		highlights.prepare(
-			doc.content_id,
-			&doc.blocks,
+			doc.document.content_key().get(),
+			doc.blocks(),
 			&LayoutOptions {
 				limits: crate::limits::Limits {
 					highlight_line_bytes: 1,
@@ -385,8 +397,8 @@ mod tests {
 		let mut highlights = Highlights::new(executor.clone(), Arc::new(|| {}));
 		let doc = markview_commonmark::parse("```rust\nfn main() {}\n```\n");
 		highlights.prepare(
-			doc.content_id,
-			&doc.blocks,
+			doc.document.content_key().get(),
+			doc.blocks(),
 			&LayoutOptions::default(),
 		);
 		assert_eq!(highlights.pending.len(), 1);
@@ -398,8 +410,8 @@ mod tests {
 		assert!(!highlights.poll());
 		assert!(highlights.inflight.is_empty());
 		highlights.prepare(
-			doc.content_id,
-			&doc.blocks,
+			doc.document.content_key().get(),
+			doc.blocks(),
 			&LayoutOptions::default(),
 		);
 		assert_eq!(executor.tasks.lock().unwrap().len(), 1);

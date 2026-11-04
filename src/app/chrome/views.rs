@@ -61,18 +61,25 @@ pub(in crate::app) struct SessionView<'a> {
 	pub(in crate::app) active_tab: usize,
 	pub(in crate::app) strip: &'a tab_strip::TabStrip,
 	pub(in crate::app) tab_widths: &'a [(f32, f32)],
+	/// Each tab's readable title, as the strip and the drawer show it.
+	pub(in crate::app) tab_labels: &'a [String],
 	pub(in crate::app) preview: Option<&'a preview::Open>,
 	pub(in crate::app) folder: Option<&'a folder::Browser>,
 	pub(in crate::app) now: std::time::Instant,
 }
 
 impl<'a> SessionView<'a> {
+	#[expect(
+		clippy::too_many_arguments,
+		reason = "one borrowed field per reader surface the chrome draws"
+	)]
 	pub(in crate::app) fn new(
 		doc: &'a ReaderSession,
 		tabs: &'a [ReaderTab],
 		active_tab: usize,
 		strip: &'a tab_strip::TabStrip,
 		tab_widths: &'a [(f32, f32)],
+		tab_labels: &'a [String],
 		preview: Option<&'a preview::Open>,
 		folder: Option<&'a folder::Browser>,
 	) -> Self {
@@ -82,6 +89,7 @@ impl<'a> SessionView<'a> {
 			active_tab,
 			strip,
 			tab_widths,
+			tab_labels,
 			preview,
 			folder,
 			now: std::time::Instant::now(),
@@ -91,6 +99,30 @@ impl<'a> SessionView<'a> {
 	pub(in crate::app) fn with_now(mut self, now: std::time::Instant) -> Self {
 		self.now = now;
 		self
+	}
+
+	/// The readable title of the tab at `index`; the active tab's session is
+	/// `doc`, every other tab carries its own.
+	pub(in crate::app) fn label(&self, index: usize) -> String {
+		crate::app::tabs::tab_label(self.tabs, self.active_tab, self.doc, index)
+	}
+
+	/// Every tab's readable title, in strip order.
+	pub(in crate::app) fn labels(&self) -> Vec<String> {
+		crate::app::tabs::tab_labels(self.tabs, self.active_tab, self.doc)
+	}
+
+	/// The open document's name: a web page's readable label, else its file
+	/// name. `None` when the session has no document to name.
+	pub(in crate::app) fn document_name(&self) -> Option<Cow<'a, str>> {
+		if matches!(self.doc.security.origin, crate::security::Origin::Web(_)) {
+			return Some(self.label(self.active_tab).into());
+		}
+		self.doc
+			.path
+			.as_deref()?
+			.file_name()
+			.map(|name| name.to_string_lossy())
 	}
 }
 

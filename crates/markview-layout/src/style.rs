@@ -29,20 +29,20 @@ pub use types::{
 use types::{CHAIN_BITS, CHAIN_MASK};
 
 /// The inline conditions this style activates, in application order.
-pub fn text_conditions(style: &TextStyle) -> impl Iterator<Item = Condition> {
+pub fn text_conditions(
+	style: &TextStyle,
+	linked: bool,
+) -> impl Iterator<Item = Condition> {
 	use self::Condition as C;
 	[
 		style.italic.then_some(C::Em),
 		style.bold.then_some(C::Strong),
-		(style.link.is_some() && !style.footnote_ref).then_some(C::Link),
+		linked.then_some(C::Link),
 		style.strike.then_some(C::Del),
 		style.superscript.then_some(C::Sup),
 		style.subscript.then_some(C::Sub),
-		style.footnote_ref.then_some(C::FootnoteRef),
-		style.math_error.then_some(C::Math),
 		style.code.then_some(C::Code),
 		style.mark.then_some(C::Mark),
-		style.math_error.then_some(C::Error),
 	]
 	.into_iter()
 	.flatten()
@@ -870,11 +870,32 @@ impl Stylesheet {
 		parent: &TextAppearance,
 		s: &TextStyle,
 	) -> TextAppearance {
+		self.inline_run(parent, s, false, false, false)
+	}
+
+	/// Resolves an inline run with layout-only conditions.
+	pub fn inline_run(
+		&self,
+		parent: &TextAppearance,
+		s: &TextStyle,
+		math_error: bool,
+		footnote_ref: bool,
+		linked: bool,
+	) -> TextAppearance {
 		let mut out = parent.clone();
 		out.size = 1.;
 		out.background = None;
-		for condition in text_conditions(s) {
+		if math_error {
+			out = self.enter(&out, Condition::Math);
+		}
+		for condition in text_conditions(s, linked) {
 			out = self.enter(&out, condition);
+		}
+		if footnote_ref {
+			out = self.enter(&out, Condition::FootnoteRef);
+		}
+		if math_error {
+			out = self.enter(&out, Condition::Error);
 		}
 		if let Some(color) = s.color {
 			out.paint = Paint::Color(color);

@@ -8,7 +8,7 @@ fn drawn(interaction: &InteractionState) -> crate::app::widgets::Drawn<'_> {
 
 fn entry(level: u8, text: &str) -> OutlineEntry {
 	OutlineEntry {
-		source: 0..0,
+		block: markview_document::BlockId::new(level as u32 + 1).unwrap(),
 		level,
 		text: text.into(),
 		anchor: text.to_lowercase(),

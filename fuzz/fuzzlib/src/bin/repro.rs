@@ -19,26 +19,37 @@ fn main() {
 
 	println!(
 		"content_id full={:#x} incr={:#x}",
-		full.content_id, incr.content_id
+		full.document.content_key().get(),
+		incr.document.content_key().get()
 	);
 	println!(
 		"blocks: full={} incr={}",
-		full.blocks.len(),
-		incr.blocks.len()
+		full.document.blocks().len(),
+		incr.document.blocks().len()
 	);
-	for (i, (f, x)) in full.blocks.iter().zip(&incr.blocks).enumerate() {
+	for (i, (f, x)) in full
+		.document
+		.blocks()
+		.iter()
+		.zip(incr.document.blocks())
+		.enumerate()
+	{
 		if f != x {
 			println!("block {i} differs:");
 			println!(
 				"  full: id={:#x} source={:?} key={:#x}",
-				f.id, f.source, f.content_key
+				f.id().get(),
+				full.block_source(f),
+				f.content_key().get()
 			);
 			println!(
 				"  incr: id={:#x} source={:?} key={:#x}",
-				x.id, x.source, x.content_key
+				x.id().get(),
+				incr.block_source(x),
+				x.content_key().get()
 			);
-			println!("  full kind: {:?}", f.kind);
-			println!("  incr kind: {:?}", x.kind);
+			println!("  full kind: {:?}", f.kind());
+			println!("  incr kind: {:?}", x.kind());
 		}
 	}
 }

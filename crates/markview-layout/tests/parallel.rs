@@ -74,10 +74,7 @@ fn equivalent(a: &LayoutSnapshot, b: &LayoutSnapshot) {
 	let b = b.flattened();
 	assert_eq!(a.blocks.len(), b.blocks.len());
 	for (a, b) in a.blocks.iter().zip(&b.blocks) {
-		assert_eq!(
-			(a.id, &a.source, a.y, a.height()),
-			(b.id, &b.source, b.y, b.height())
-		);
+		assert_eq!((a.id, a.y, a.height()), (b.id, b.y, b.height()));
 		assert_eq!(draws(&a.layout.draws), draws(&b.layout.draws));
 		assert_eq!(
 			format!(
@@ -132,6 +129,12 @@ fn parallel_geometry_matches_serial_through_reflows_edits_and_cache_reuse() {
 		[(1, None), (2, Some((120, 80))), (3, Some((240, 100)))]
 	{
 		let mut images = markview_layout::image::ImageSnapshot::default();
+		images.keys.insert(
+			markview_layout::image::ImageSource::Resource(
+				markview_layout::image::ResourceRef::document("image.png"),
+			),
+			"image.png".into(),
+		);
 		images.entries.insert(
 			"image.png".into(),
 			markview_layout::image::ImageInfo {
@@ -242,11 +245,71 @@ fn nested_formulas_preserve_ordered_document_budgets() {
 		&serial.layout(&document, &options),
 		&parallel.layout(&document, &options),
 	);
+	// A table caption is a later field of the same block, so its formula must
+	// also keep the coordinator's ordered math budget.
+	let caption = caption_table_document();
+	let first = parallel.layout(&caption, &options);
+	assert!(first.math_errors > 0);
+	equivalent(&serial.layout(&caption, &options), &first);
 	options.width = 240.;
 	equivalent(
 		&serial.layout(&document, &options),
 		&parallel.layout(&document, &options),
 	);
+	equivalent(
+		&serial.layout(&caption, &options),
+		&parallel.layout(&caption, &options),
+	);
+}
+
+fn caption_table_document() -> markview_document::Document {
+	use markview_document::{
+		BlockKind, CellKind, DocumentBuilder, DocumentRevision, Inline,
+		InlineKind, Table, TableCell, TableColumn, TableGroup, TableGroupKind,
+		TableRow, TextStyle,
+	};
+	let paragraph = |value: &str| {
+		vec![Inline {
+			link: None,
+			kind: InlineKind::Text(value.to_owned()),
+			style: TextStyle::default(),
+		}]
+	};
+	let mut builder = DocumentBuilder::new(DocumentRevision::new(1));
+	let opening =
+		builder.block(Vec::new(), BlockKind::Paragraph(paragraph("Opening")));
+	let second =
+		builder.block(Vec::new(), BlockKind::Paragraph(paragraph("Second")));
+	let cell =
+		builder.block(Vec::new(), BlockKind::Paragraph(paragraph("Cell")));
+	let caption = vec![Inline {
+		link: None,
+		kind: InlineKind::Math {
+			latex: "caption".into(),
+			display: false,
+		},
+		style: TextStyle::default(),
+	}];
+	let table = builder.block(
+		Vec::new(),
+		BlockKind::Table(Table {
+			caption: Some(caption),
+			columns: vec![TableColumn { align: None }],
+			groups: vec![TableGroup {
+				kind: TableGroupKind::Body,
+				rows: vec![TableRow {
+					cells: vec![TableCell {
+						kind: CellKind::Data,
+						rowspan: 1,
+						colspan: 1,
+						align: None,
+						blocks: vec![cell],
+					}],
+				}],
+			}],
+		}),
+	);
+	builder.finish(vec![opening, second, table])
 }
 
 #[cfg(all(feature = "parallel", not(target_arch = "wasm32")))]

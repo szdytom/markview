@@ -6,19 +6,19 @@ use std::sync::Arc;
 fn details_after_front_matter_with_lone_carriage_returns() {
 	let source = "---\n\r\r\r\u{fffd}\n---\n<details>\n<d\u{fffd}\u{fffd}\u{fffd}\n\r\r</details>";
 	let doc = markview_commonmark::parse(source);
-	assert_eq!(doc.blocks.len(), 2);
-	let block = &doc.blocks[1];
-	assert!(matches!(block.kind, BlockKind::Details { .. }));
+	assert_eq!(doc.blocks().len(), 2);
+	let block = &doc.blocks()[1];
+	assert!(matches!(block.kind(), BlockKind::Details { .. }));
 	assert_eq!(
-		block.source,
+		doc.block_source(block).unwrap(),
 		source.find("<details>").unwrap()..source.len()
 	);
 	assert_eq!(
-		&source[doc.blocks[0].source.clone()],
+		&source[doc.block_source(&doc.blocks()[0]).unwrap().clone()],
 		"---\n\r\r\r\u{fffd}\n---"
 	);
 	let reparsed = markview_commonmark::reparse(&doc, Arc::from(source));
-	assert_eq!(reparsed.content_id, doc.content_id);
+	assert_eq!(reparsed.content_key(), doc.content_key());
 	let source: Arc<str> = Arc::from(source);
 	for cut in 1..source.len() {
 		let _ = markview_commonmark::parse_prefix(&source, cut);
@@ -35,29 +35,34 @@ fn details_closing_range_uses_original_html_bytes() {
 				);
 				let doc = markview_commonmark::parse(source.clone());
 				let blocks = if marker.is_empty() {
-					&doc.blocks
+					doc.blocks()
 				} else {
-					let BlockKind::Quote { blocks, .. } = &doc.blocks[0].kind
+					let BlockKind::Quote { blocks, .. } =
+						doc.blocks()[0].kind()
 					else {
 						panic!("expected a quote: {source:?}");
 					};
 					blocks
 				};
 				assert!(
-					matches!(blocks[0].kind, BlockKind::Details { .. }),
+					matches!(blocks[0].kind(), BlockKind::Details { .. }),
 					"{source:?}"
 				);
 				let end =
 					source.rfind("</details>").unwrap() + "</details>".len();
-				assert_eq!(blocks[0].source, marker.len()..end, "{source:?}");
 				assert_eq!(
-					&source[blocks[0].source.clone()],
+					doc.block_source(&blocks[0]).unwrap(),
+					marker.len()..end,
+					"{source:?}"
+				);
+				assert_eq!(
+					&source[doc.block_source(&blocks[0]).unwrap().clone()],
 					&source[marker.len()..end]
 				);
-				let BlockKind::Paragraph(tail) = &blocks[1].kind else {
+				let BlockKind::Paragraph(tail) = &blocks[1].kind() else {
 					panic!("expected trailing text: {source:?}");
 				};
-				assert_eq!(document::plain_text(tail), "é");
+				assert_eq!(document::plain_text(tail.as_slice()), "é");
 			}
 		}
 	}
@@ -72,10 +77,10 @@ fn adjacent_details_have_their_own_source_ranges_and_open_states() {
 				"{marker}<details open><summary>One</summary>é\0A</details>{newline}{continuation}<details openn><summary>Two</summary>B</details>{newline}"
 			);
 			let doc = markview_commonmark::parse(source.clone());
-			let blocks = match &doc.blocks[0].kind {
+			let blocks = match doc.blocks()[0].kind() {
 				BlockKind::Quote { blocks, .. } => blocks,
 				BlockKind::List { items, .. } => &items[0].blocks,
-				_ => &doc.blocks,
+				_ => doc.blocks(),
 			};
 			assert_eq!(blocks.len(), 2, "{source:?}");
 			for (i, (block, opener)) in blocks
@@ -87,17 +92,20 @@ fn adjacent_details_have_their_own_source_ranges_and_open_states() {
 				let end = start
 					+ source[start..].find("</details>").unwrap()
 					+ "</details>".len();
-				assert_eq!(block.source, start..end, "{source:?}");
-				assert_eq!(doc.details_declared(block.id), Some(i == 0));
-				let BlockKind::Details { summary, .. } = &block.kind else {
+				assert_eq!(
+					doc.block_source(block).unwrap(),
+					start..end,
+					"{source:?}"
+				);
+				assert_eq!(doc.details_declared(block.id()), Some(i == 0));
+				let BlockKind::Details { summary, .. } = &block.kind() else {
 					panic!("expected details");
 				};
-				assert!(
-					summary.iter().all(|inline| &source[inline.source.clone()]
-						== ["One", "Two"][i])
-				);
+				assert!(summary.iter().all(|inline| &source
+					[doc.inline_source(block, inline).unwrap()]
+					== ["One", "Two"][i]));
 			}
-			assert_ne!(blocks[0].id, blocks[1].id);
+			assert_ne!(blocks[0].id(), blocks[1].id());
 		}
 	}
 }
@@ -132,11 +140,12 @@ fn details_footnotes_appear_once_at_the_end_of_the_document() {
 	];
 	fn references(blocks: &[Block], out: &mut Vec<u32>) {
 		for block in blocks {
-			match &block.kind {
+			match &block.kind() {
 				BlockKind::Paragraph(text) => {
 					out.extend(text.iter().filter_map(|inline| {
-						if let InlineKind::FootnoteRef(number) = inline.kind {
-							Some(number)
+						if let InlineKind::FootnoteRef(reference) = &inline.kind
+						{
+							Some(reference.number)
 						} else {
 							None
 						}
@@ -144,7 +153,7 @@ fn details_footnotes_appear_once_at_the_end_of_the_document() {
 				}
 				BlockKind::Details { blocks, .. } => {
 					assert!(blocks.iter().all(|block| !matches!(
-						block.kind,
+						block.kind(),
 						BlockKind::Footnote { .. }
 					)));
 					references(blocks, out);
@@ -157,19 +166,24 @@ fn details_footnotes_appear_once_at_the_end_of_the_document() {
 	for (source, expected) in sources {
 		let doc = markview_commonmark::parse(source);
 		let mut refs = Vec::new();
-		references(&doc.blocks, &mut refs);
+		references(doc.blocks(), &mut refs);
 		assert!(!refs.is_empty(), "{source:?}");
 		refs.sort_unstable();
 		refs.dedup();
-		let notes = &doc.blocks[doc.blocks.len() - refs.len()..];
+		let notes = &doc.blocks()[doc.blocks().len() - refs.len()..];
 		assert_eq!(notes.len(), expected.len(), "{source:?}");
 		for ((note, number), expected) in notes.iter().zip(refs).zip(expected) {
-			let BlockKind::Footnote { label, blocks, .. } = &note.kind else {
+			let BlockKind::Footnote {
+				number: note_number,
+				blocks,
+				..
+			} = note.kind()
+			else {
 				panic!("expected a note at the document's end: {source:?}");
 			};
-			assert_eq!(label, &number.to_string(), "{source:?}");
+			assert_eq!(*note_number, number, "{source:?}");
 			assert!(
-				blocks.iter().any(|block| match &block.kind {
+				blocks.iter().any(|block| match &block.kind() {
 					BlockKind::Paragraph(text)
 					| BlockKind::Heading { text, .. } =>
 						document::plain_text(text).contains(expected),
@@ -177,23 +191,27 @@ fn details_footnotes_appear_once_at_the_end_of_the_document() {
 				}),
 				"{source:?}"
 			);
-			assert!(doc.details_enclosing(&format!("fn:{label}")).is_empty());
+			assert!(doc.details_enclosing("fn:1").is_empty());
 		}
 		assert!(
-			doc.blocks[..doc.blocks.len() - notes.len()]
-				.iter()
-				.all(|block| !matches!(block.kind, BlockKind::Footnote { .. }))
+			&doc.blocks()[..doc.blocks().len() - notes.len()].iter().all(
+				|block| !matches!(block.kind(), BlockKind::Footnote { .. })
+			)
 		);
 		let reparsed = markview_commonmark::reparse(&doc, Arc::from(source));
-		assert_eq!(doc.content_id, reparsed.content_id);
+		assert_eq!(doc.content_key(), reparsed.content_key());
 		if source.contains("# Note title") {
 			assert_eq!(doc.outline()[0].anchor, "note-title");
 		}
 	}
 }
 
+/// Notes hoisted out of disclosures are numbered with the document's own.
+///
+/// The marker column those numbers need is a layout concern, pinned by
+/// `footnote_bodies_share_the_same_left_edge` in `markview-layout`.
 #[test]
-fn notes_discovered_in_details_share_document_numbering_and_column_width() {
+fn notes_discovered_in_details_share_document_numbering() {
 	let mut source =
 		String::from("First[^outside]\n\n[^outside]: Outside note.\n\n");
 	for i in 0..9 {
@@ -202,26 +220,25 @@ fn notes_discovered_in_details_share_document_numbering_and_column_width() {
 		));
 	}
 	let doc = markview_commonmark::parse(source);
-	let notes = &doc.blocks[doc.blocks.len() - 10..];
+	let notes = &doc.blocks()[doc.blocks().len() - 10..];
 	for (i, note) in notes.iter().enumerate() {
-		let BlockKind::Footnote { label, column, .. } = &note.kind else {
+		let BlockKind::Footnote { number, .. } = note.kind() else {
 			panic!("expected a note");
 		};
-		assert_eq!(label, &(i + 1).to_string());
-		assert_eq!(*column, 2);
+		assert_eq!(*number, (i + 1) as u32);
 	}
-	for (i, block) in doc.blocks[1..10].iter().enumerate() {
-		let BlockKind::Details { blocks, .. } = &block.kind else {
+	for (i, block) in doc.blocks()[1..10].iter().enumerate() {
+		let BlockKind::Details { blocks, .. } = &block.kind() else {
 			panic!("expected details");
 		};
-		let BlockKind::Paragraph(text) = &blocks[0].kind else {
+		let BlockKind::Paragraph(text) = &blocks[0].kind() else {
 			panic!("expected a paragraph");
 		};
-		assert!(
-			text.iter()
-				.any(|inline| inline.kind
-					== InlineKind::FootnoteRef(i as u32 + 2))
-		);
+		assert!(text.iter().any(|inline| matches!(
+			&inline.kind,
+			InlineKind::FootnoteRef(reference)
+				if reference.number == i as u32 + 2
+		)));
 	}
 }
 
@@ -231,16 +248,16 @@ fn a_note_can_retain_its_source_label_after_its_reference_is_removed() {
 		"[^unused]: hi[^x]\n\n[^x]: note[^y]\n\n[^y]: end\n",
 	);
 	let labels: Vec<_> = doc
-		.blocks
+		.blocks()
 		.iter()
 		.map(|block| {
-			let BlockKind::Footnote { label, .. } = &block.kind else {
+			let BlockKind::Footnote { id, number, .. } = &block.kind() else {
 				panic!("expected a note");
 			};
-			label.as_str()
+			(id.as_str(), *number)
 		})
 		.collect();
-	assert_eq!(labels, ["x", "2"]);
+	assert_eq!(labels, [("x", 0), ("y", 2)]);
 }
 
 #[test]
@@ -249,19 +266,19 @@ fn incomplete_prefixes_defer_hoisted_notes() {
 		Arc::from("<details>\nBody[^a]\n[^a]: Note.\n</details>\n\nTail\n");
 	let full = markview_commonmark::parse(source.clone());
 	let prefix = markview_commonmark::parse_prefix(&source, 10).unwrap();
-	assert_eq!(prefix.blocks, full.blocks[..1]);
+	assert_eq!(prefix.blocks(), &full.blocks()[..1]);
 	for cut in 1..source.find("Tail").unwrap() {
 		if let Some(prefix) = markview_commonmark::parse_prefix(&source, cut) {
 			assert_eq!(
-				prefix.blocks,
-				full.blocks[..prefix.blocks.len()],
+				prefix.blocks(),
+				&full.blocks()[..prefix.blocks().len()],
 				"cut={cut}"
 			);
 		}
 	}
 	let complete =
 		markview_commonmark::parse_prefix(&source, source.len() - 1).unwrap();
-	assert_eq!(complete.blocks, full.blocks);
+	assert_eq!(complete.blocks(), full.blocks());
 }
 
 #[test]
@@ -282,8 +299,8 @@ fn hoisted_note_headings_follow_final_reading_order() {
 			"Body[^a]\n\n{quote}# Topic\n\n[^a]:\n    {quote}# Topic\n"
 		));
 		assert_eq!(
-			doc.blocks.last().unwrap().content_key,
-			expected.blocks.last().unwrap().content_key
+			doc.blocks().last().unwrap().content_key(),
+			expected.blocks().last().unwrap().content_key()
 		);
 	}
 }
@@ -303,16 +320,16 @@ fn quoted_multiline_details_tags_keep_original_offsets() {
 						"{marker}<details>{newline}{separator}{marker}{body}{newline}{separator}{marker}</details{newline}{marker}>{newline}"
 					);
 					let doc = markview_commonmark::parse(source.clone());
-					let mut block = &doc.blocks[0];
-					while let BlockKind::Quote { blocks, .. } = &block.kind {
+					let mut block = &doc.blocks()[0];
+					while let BlockKind::Quote { blocks, .. } = &block.kind() {
 						block = &blocks[0];
 					}
 					assert!(
-						matches!(block.kind, BlockKind::Details { .. }),
+						matches!(block.kind(), BlockKind::Details { .. }),
 						"{source:?}"
 					);
 					assert_eq!(
-						block.source,
+						doc.block_source(block).unwrap(),
 						marker.len()..source.rfind('>').unwrap() + 1,
 						"{source:?}"
 					);
@@ -332,9 +349,9 @@ fn quoted_details_in_wide_list_items_are_not_duplicated_or_lost() {
 				"{prefix}<details>A</details>{newline}{continuation}<details>B</details>{newline}"
 			);
 			let doc = markview_commonmark::parse(source.clone());
-			let mut blocks = doc.blocks.as_slice();
+			let mut blocks = doc.blocks();
 			loop {
-				match &blocks[0].kind {
+				match &blocks[0].kind() {
 					BlockKind::List { items, .. } => blocks = &items[0].blocks,
 					BlockKind::Quote {
 						blocks: children, ..
@@ -344,16 +361,16 @@ fn quoted_details_in_wide_list_items_are_not_duplicated_or_lost() {
 			}
 			assert_eq!(blocks.len(), 2, "{source:?}");
 			for (block, text) in blocks.iter().zip(["A", "B"]) {
-				let BlockKind::Details { blocks: body, .. } = &block.kind
+				let BlockKind::Details { blocks: body, .. } = &block.kind()
 				else {
 					panic!("expected details: {source:?}");
 				};
-				let BlockKind::Paragraph(content) = &body[0].kind else {
+				let BlockKind::Paragraph(content) = &body[0].kind() else {
 					panic!("expected body text");
 				};
 				assert_eq!(document::plain_text(content), text);
 				assert_eq!(
-					&source[block.source.clone()],
+					&source[doc.block_source(block).unwrap().clone()],
 					format!("<details>{text}</details>")
 				);
 			}
@@ -373,13 +390,13 @@ fn a_note_defined_in_one_disclosure_can_be_referenced_from_another() {
 		};
 		let source: Arc<str> = Arc::from(source);
 		let doc = markview_commonmark::parse(source.clone());
-		assert_eq!(doc.blocks.len(), 3);
-		let BlockKind::Footnote { label, blocks, .. } = &doc.blocks[2].kind
+		assert_eq!(doc.blocks().len(), 3);
+		let BlockKind::Footnote { number, blocks, .. } = doc.blocks()[2].kind()
 		else {
 			panic!("expected a final note");
 		};
-		assert_eq!(label, "1");
-		let BlockKind::Paragraph(text) = &blocks[0].kind else {
+		assert_eq!(*number, 1);
+		let BlockKind::Paragraph(text) = &blocks[0].kind() else {
 			panic!("expected note text");
 		};
 		assert_eq!(document::plain_text(text), "Note.");
@@ -387,14 +404,17 @@ fn a_note_defined_in_one_disclosure_can_be_referenced_from_another() {
 			if let Some(prefix) =
 				markview_commonmark::parse_prefix(&source, cut)
 			{
-				assert_eq!(prefix.blocks, doc.blocks[..prefix.blocks.len()]);
+				assert_eq!(
+					prefix.blocks(),
+					&doc.blocks()[..prefix.blocks().len()]
+				);
 			}
 		}
 	}
 	let unused = markview_commonmark::parse(
 		"<details>\n\n[^n]: Unused.\n\n</details>\n",
 	);
-	assert_eq!(unused.blocks.len(), 1);
+	assert_eq!(unused.blocks().len(), 1);
 }
 
 #[test]
@@ -408,7 +428,10 @@ fn a_prefix_defers_when_later_references_can_renumber_disclosure_notes() {
 			if let Some(prefix) =
 				markview_commonmark::parse_prefix(&source, cut)
 			{
-				assert_eq!(prefix.blocks, full.blocks[..prefix.blocks.len()]);
+				assert_eq!(
+					prefix.blocks(),
+					&full.blocks()[..prefix.blocks().len()]
+				);
 			}
 		}
 	}
@@ -417,11 +440,11 @@ fn a_prefix_defers_when_later_references_can_renumber_disclosure_notes() {
 /// Collects every footnote reference number in reading order.
 fn footnote_refs(blocks: &[Block], out: &mut Vec<u32>) {
 	for block in blocks {
-		match &block.kind {
+		match &block.kind() {
 			BlockKind::Paragraph(text) => {
 				out.extend(text.iter().filter_map(|inline| {
-					if let InlineKind::FootnoteRef(number) = inline.kind {
-						Some(number)
+					if let InlineKind::FootnoteRef(reference) = &inline.kind {
+						Some(reference.number)
 					} else {
 						None
 					}
@@ -453,26 +476,27 @@ fn case_folded_footnote_labels_share_one_number() {
 	for (source, expected) in sources {
 		let doc = markview_commonmark::parse(source);
 		let notes: Vec<_> = doc
-			.blocks
+			.blocks()
 			.iter()
-			.filter(|block| matches!(block.kind, BlockKind::Footnote { .. }))
+			.filter(|block| matches!(block.kind(), BlockKind::Footnote { .. }))
 			.collect();
 		assert_eq!(notes.len(), 1, "{source:?}");
-		let BlockKind::Footnote { label, blocks, .. } = &notes[0].kind else {
+		let BlockKind::Footnote { number, blocks, .. } = &notes[0].kind()
+		else {
 			panic!("expected a note: {source:?}");
 		};
-		assert_eq!(label, "1", "{source:?}");
-		let BlockKind::Paragraph(text) = &blocks[0].kind else {
+		assert_eq!(*number, 1, "{source:?}");
+		let BlockKind::Paragraph(text) = &blocks[0].kind() else {
 			panic!("expected note text: {source:?}");
 		};
 		assert_eq!(document::plain_text(text), expected, "{source:?}");
 		let mut refs = Vec::new();
-		footnote_refs(&doc.blocks, &mut refs);
+		footnote_refs(doc.blocks(), &mut refs);
 		refs.sort_unstable();
 		refs.dedup();
 		assert_eq!(refs, [1], "{source:?}");
 		let reparsed = markview_commonmark::reparse(&doc, Arc::from(source));
-		assert_eq!(reparsed.content_id, doc.content_id, "{source:?}");
+		assert_eq!(reparsed.content_key(), doc.content_key(), "{source:?}");
 	}
 }
 
@@ -488,7 +512,7 @@ fn prefixes_ignore_details_inside_code() {
 		let cut = source.find(cut).unwrap();
 		let prefix = markview_commonmark::parse_prefix(&source, cut)
 			.expect("code is not raw HTML");
-		assert_eq!(prefix.blocks, full.blocks[..prefix.blocks.len()]);
+		assert_eq!(prefix.blocks(), &full.blocks()[..prefix.blocks().len()]);
 		for cut in 1..source.len() {
 			if !source.is_char_boundary(cut) {
 				continue;
@@ -497,8 +521,8 @@ fn prefixes_ignore_details_inside_code() {
 				markview_commonmark::parse_prefix(&source, cut)
 			{
 				assert_eq!(
-					prefix.blocks,
-					full.blocks[..prefix.blocks.len()],
+					prefix.blocks(),
+					&full.blocks()[..prefix.blocks().len()],
 					"{source:?} cut={cut}"
 				);
 			}

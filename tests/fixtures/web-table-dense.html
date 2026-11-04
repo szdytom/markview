@@ -1,0 +1,61 @@
+<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"><title>Dense table article</title></head>
+<body>
+<article>
+<h1>Dense table article</h1>
+<p>This article is dominated by simple tables without spans. It exercises table construction, field ordering and layout for many rows while staying inside the old Markdown table model, so both pipelines should agree on the grid.</p>
+<table>
+<thead><tr><th>Day</th><th>Requests</th><th>Errors</th><th>Median latency</th></tr></thead>
+<tbody>
+<tr><td>Monday</td><td>1200</td><td>3</td><td>18 ms</td></tr>
+<tr><td>Tuesday</td><td>1380</td><td>1</td><td>17 ms</td></tr>
+<tr><td>Wednesday</td><td>1420</td><td>2</td><td>19 ms</td></tr>
+<tr><td>Thursday</td><td>1510</td><td>0</td><td>18 ms</td></tr>
+<tr><td>Friday</td><td>1670</td><td>4</td><td>21 ms</td></tr>
+<tr><td>Saturday</td><td>980</td><td>2</td><td>16 ms</td></tr>
+<tr><td>Sunday</td><td>870</td><td>1</td><td>15 ms</td></tr>
+<tr><td>Week</td><td>10030</td><td>13</td><td>18 ms</td></tr>
+</tbody>
+</table>
+<p>The next table records the same kind of data with different headings and a plain-text note.</p>
+<table>
+<thead><tr><th>Region</th><th>Readers</th><th>Articles</th><th>Minutes</th></tr></thead>
+<tbody>
+<tr><td>North</td><td>420</td><td>91</td><td>3100</td></tr>
+<tr><td>South</td><td>380</td><td>84</td><td>2800</td></tr>
+<tr><td>East</td><td>510</td><td>105</td><td>3900</td></tr>
+<tr><td>West</td><td>460</td><td>97</td><td>3400</td></tr>
+<tr><td>Central</td><td>295</td><td>66</td><td>2100</td></tr>
+<tr><td>Coastal</td><td>330</td><td>70</td><td>2300</td></tr>
+<tr><td>Island</td><td>120</td><td>31</td><td>900</td></tr>
+<tr><td>Remote</td><td>95</td><td>24</td><td>700</td></tr>
+</tbody>
+</table>
+<div class="math display">\[\text{total}=\sum_{r=1}^{8} readers_r\]</div>
+<p>A third table contains links and emphasis inside ordinary cells.</p>
+<table>
+<thead><tr><th>Item</th><th>Owner</th><th>Status</th><th>Reference</th></tr></thead>
+<tbody>
+<tr><td>Extraction</td><td>Ada</td><td><strong>Done</strong></td><td><a href="/notes/extraction">note</a></td></tr>
+<tr><td>Lowering</td><td>Lin</td><td><strong>Done</strong></td><td><a href="/notes/lowering">note</a></td></tr>
+<tr><td>Layout</td><td>Mira</td><td>Active</td><td><a href="/notes/layout">note</a></td></tr>
+<tr><td>Search</td><td>Noah</td><td>Active</td><td><a href="/notes/search">note</a></td></tr>
+<tr><td>Selection</td><td>Omar</td><td>Active</td><td><a href="/notes/selection">note</a></td></tr>
+<tr><td>Export</td><td>Pia</td><td>Planned</td><td><a href="/notes/export">note</a></td></tr>
+</tbody>
+</table>
+<table>
+<thead><tr><th>Metric</th><th>Before</th><th>After</th><th>Change</th></tr></thead>
+<tbody>
+<tr><td>Allocations</td><td>100</td><td>60</td><td>-40%</td></tr>
+<tr><td>Bytes</td><td>1000</td><td>650</td><td>-35%</td></tr>
+<tr><td>Blocks</td><td>20</td><td>20</td><td>0%</td></tr>
+<tr><td>Links</td><td>8</td><td>8</td><td>0%</td></tr>
+<tr><td>Images</td><td>2</td><td>2</td><td>0%</td></tr>
+</tbody>
+</table>
+<p>Closing prose keeps the article above the extractor threshold and gives the layout engine a normal paragraph after the tables.</p>
+</article>
+</body>
+</html>

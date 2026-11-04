@@ -1216,6 +1216,7 @@ impl Painter<'_> {
 			};
 			if let Some(annotation) = link::annotation(
 				page_rect,
+				&link_rect.target,
 				&link_rect.url,
 				self.pagination,
 				self.geometry,

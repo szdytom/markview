@@ -32,15 +32,20 @@ fn svg_elements_are_atomic_images_with_original_source_ranges() {
 			let mut images = Vec::new();
 			fn visit<'a>(
 				blocks: &'a [markview_document::Block],
-				out: &mut Vec<&'a markview_document::Inline>,
+				out: &mut Vec<(
+					&'a markview_document::Block,
+					&'a markview_document::Inline,
+				)>,
 			) {
 				for block in blocks {
-					match &block.kind {
-						BlockKind::Paragraph(rich) => {
-							out.extend(rich.iter().filter(|i| {
-								matches!(i.kind, InlineKind::Image(_))
-							}))
-						}
+					match &block.kind() {
+						BlockKind::Paragraph(rich) => out.extend(
+							rich.iter()
+								.filter(|i| {
+									matches!(i.kind, InlineKind::Image(_))
+								})
+								.map(|i| (block, i)),
+						),
 						BlockKind::Quote { blocks, .. } => visit(blocks, out),
 						BlockKind::List { items, .. } => {
 							for item in items {
@@ -51,15 +56,15 @@ fn svg_elements_are_atomic_images_with_original_source_ranges() {
 					}
 				}
 			}
-			visit(&doc.blocks, &mut images);
+			visit(doc.blocks(), &mut images);
 			assert_eq!(images.len(), 1, "{source}");
-			let inline = images[0];
+			let (image_block, inline) = images[0];
 			let InlineKind::Image(image) = &inline.kind else {
 				unreachable!()
 			};
 			assert_eq!(image.width, Some(120));
 			let xml = percent_encoding::percent_decode_str(
-				image.src.strip_prefix("data:image/svg+xml,").unwrap(),
+				image.address().strip_prefix("data:image/svg+xml,").unwrap(),
 			)
 			.decode_utf8()
 			.unwrap();
@@ -68,7 +73,7 @@ fn svg_elements_are_atomic_images_with_original_source_ranges() {
 			assert!(!xml.contains("\n>"));
 			assert!(!xml.contains("\r>"));
 			assert!(!xml.contains("  >"));
-			let raw = &source[inline.source.clone()];
+			let raw = &source[doc.inline_source(image_block, inline).unwrap()];
 			assert!(raw.starts_with("<svg"));
 			assert!(raw.ends_with("</svg>"));
 			assert!(!raw.contains("# after"));
@@ -82,14 +87,17 @@ fn svg_snippets_translate_link_origins_to_document_offsets() {
 		"> [one](target)\n> <svg>\n> <rect/>\n> </svg>\n> [two](target)\n";
 	let doc = parse(source);
 	let mut origins = Vec::new();
-	fn visit(blocks: &[markview_document::Block], out: &mut Vec<usize>) {
+	fn visit(
+		blocks: &[markview_document::Block],
+		out: &mut Vec<markview_document::LinkOccurrenceId>,
+	) {
 		for block in blocks {
-			match &block.kind {
+			match &block.kind() {
 				BlockKind::Paragraph(rich) => {
 					out.extend(
 						rich.iter()
-							.filter_map(|inline| inline.style.link.as_ref())
-							.map(|link| link.origin()),
+							.filter_map(|inline| inline.link.as_ref())
+							.map(|link| link.occurrence()),
 					);
 				}
 				BlockKind::Quote { blocks, .. } => visit(blocks, out),
@@ -102,11 +110,15 @@ fn svg_snippets_translate_link_origins_to_document_offsets() {
 			}
 		}
 	}
-	visit(&doc.blocks, &mut origins);
+	visit(doc.blocks(), &mut origins);
 	assert_eq!(origins.len(), 2);
+	// Each occurrence keeps the original byte offset of the link it belongs
+	// to, so two links to the same target stay distinguishable.
+	for (occurrence, marker) in origins.iter().zip(["[one]", "[two]"]) {
+		let offset = source.find(marker).expect("a link marker") as u32;
+		assert_eq!(occurrence.get(), offset + 1, "{marker}");
+	}
 	assert_ne!(origins[0], origins[1]);
-	assert!(source[origins[0]..].starts_with("[one](target)"));
-	assert!(source[origins[1]..].starts_with("[two](target)"));
 }
 
 #[test]
@@ -119,7 +131,7 @@ fn editing_and_prefix_parsing_keep_svg_atomic() {
 	let changed = source.replace("中文😀", "Updated 中文😀");
 	let edited = reparse(&old, std::sync::Arc::from(changed.as_str()));
 	let full = parse(changed);
-	assert_eq!(edited.blocks, full.blocks);
+	assert_eq!(edited.blocks(), full.blocks());
 }
 
 #[test]
@@ -128,21 +140,24 @@ fn svg_siblings_html_wrappers_and_unclosed_fallback_preserve_content() {
 	let doc = parse(source);
 	assert_eq!(doc.outline().len(), 1);
 	let mut images = Vec::new();
-	for block in &doc.blocks {
+	for block in doc.blocks() {
 		block.images(&mut images);
 	}
 	assert_eq!(images.len(), 3);
-	let last = doc.blocks.last().unwrap();
+	let last = doc.blocks().last().unwrap();
 	assert!(
-		matches!(&last.kind,BlockKind::Paragraph(rich) if rich.iter().any(|i| matches!(i.kind,InlineKind::Image(_))))
+		matches!(&last.kind(),BlockKind::Paragraph(rich) if rich.iter().any(|i| matches!(i.kind,InlineKind::Image(_))))
 	);
 	let incomplete = parse("<svg>\n<rect/>\n");
 	let mut images = Vec::new();
-	for block in &incomplete.blocks {
+	for block in incomplete.blocks() {
 		block.images(&mut images);
 	}
 	assert!(images.is_empty());
-	assert!(matches!(incomplete.blocks[0].kind, BlockKind::Code { .. }));
+	assert!(matches!(
+		incomplete.blocks()[0].kind(),
+		BlockKind::Code { .. }
+	));
 }
 
 #[test]
@@ -178,7 +193,7 @@ fn inline_svg_keeps_text_in_overlapping_markdown_nodes() {
 		),
 	] {
 		let doc = parse(source);
-		let BlockKind::Paragraph(rich) = &doc.blocks[0].kind else {
+		let BlockKind::Paragraph(rich) = doc.blocks()[0].kind() else {
 			panic!("expected paragraph")
 		};
 		assert_eq!(markview_document::plain_text(rich), expected, "{source}");
@@ -194,7 +209,10 @@ fn inline_svg_keeps_text_in_overlapping_markdown_nodes() {
 				|i| matches!(&i.kind, InlineKind::Text(t) if t.contains("after")),
 			)
 			.unwrap();
-		assert!(source[after.source.clone()].contains("after"));
+		assert!(
+			source[doc.inline_source(&doc.blocks()[0], after).unwrap()]
+				.contains("after")
+		);
 	}
 }
 
@@ -205,20 +223,20 @@ fn thousands_of_svg_siblings_parse_without_recursive_suffixes() {
 		let source = format!("{}\n# after", svg.repeat(3000));
 		let doc = parse(source.as_str());
 		let blocks = if prefix.is_empty() {
-			&doc.blocks
+			doc.blocks()
 		} else {
-			let BlockKind::Quote { blocks, .. } = &doc.blocks[0].kind else {
+			let BlockKind::Quote { blocks, .. } = doc.blocks()[0].kind() else {
 				panic!("expected quote")
 			};
-			let BlockKind::Quote { blocks, .. } = &blocks[0].kind else {
+			let BlockKind::Quote { blocks, .. } = &blocks[0].kind() else {
 				panic!("expected nested quote")
 			};
 			blocks
 		};
-		assert_eq!(blocks.iter().filter(|b| matches!(&b.kind, BlockKind::Paragraph(rich) if rich.iter().any(|i| matches!(i.kind, InlineKind::Image(_))))).count(), 3000);
+		assert_eq!(blocks.iter().filter(|b| matches!(&b.kind(), BlockKind::Paragraph(rich) if rich.iter().any(|i| matches!(i.kind, InlineKind::Image(_))))).count(), 3000);
 		for block in blocks.iter().take(3000) {
 			assert_eq!(
-				&source[block.source.clone()],
+				&source[doc.block_source(block).unwrap()],
 				svg.trim_start_matches(prefix).trim_end()
 			);
 		}
@@ -233,7 +251,7 @@ fn inline_svg_clips_overlapping_math_literals_and_source_ranges() {
 		"before <svg><text>$x\ny</text></svg> after$ tail",
 	] {
 		let doc = parse(source);
-		let BlockKind::Paragraph(rich) = &doc.blocks[0].kind else {
+		let BlockKind::Paragraph(rich) = doc.blocks()[0].kind() else {
 			panic!("expected paragraph")
 		};
 		assert_eq!(markview_document::plain_text(rich), "before  after tail");
@@ -245,6 +263,9 @@ fn inline_svg_clips_overlapping_math_literals_and_source_ranges() {
 			unreachable!()
 		};
 		assert_eq!(latex, " after");
-		assert_eq!(&source[math.source.clone()], " after$");
+		assert_eq!(
+			&source[doc.inline_source(&doc.blocks()[0], math).unwrap()],
+			" after$"
+		);
 	}
 }

@@ -1,6 +1,6 @@
 //! Window-independent document layout and reading geometry.
 pub mod background;
-use markview_document as document;
+pub use markview_document as document;
 pub mod fonts;
 mod highlight;
 #[cfg(feature = "fuzz")]
@@ -23,3 +23,6 @@ pub mod text;
 pub mod text_input;
 
 pub use microtype::JustificationLimits;
+
+/// External fragment compatibility; semantic navigation uses typed targets.
+pub mod footnote;

@@ -3,59 +3,77 @@ use crate::app::modal::{Message, Modal};
 use markview_interaction::{
 	SCROLL_MAX, SCROLL_MIN, ScrollAnimation, ease_out_cubic,
 };
-use markview_layout::text::{Affinity, TextPosition};
+use markview_layout::text::{Affinity, SemanticPosition};
 use winit::event::TouchPhase;
 use winit::keyboard::ModifiersState;
-fn position(offset: usize) -> TextPosition {
-	TextPosition {
-		revision: 1,
-		block: 0,
-		node: 0,
-		offset,
-		affinity: Affinity::Before,
-	}
+fn position(snapshot: &LayoutSnapshot, offset: usize) -> SemanticPosition {
+	snapshot
+		.semantic_at(0, 0, offset, Affinity::Before)
+		.unwrap_or(SemanticPosition {
+			projection: None,
+			revision: snapshot.revision,
+			block: markview_document::BlockId::new(1).unwrap(),
+			field: markview_document::FieldId::from_index(0),
+			offset,
+			affinity: Affinity::Before,
+		})
 }
-fn position_in(block: usize, offset: usize) -> TextPosition {
-	TextPosition {
-		block,
-		..position(offset)
-	}
+fn position_in(
+	snapshot: &LayoutSnapshot,
+	block: usize,
+	offset: usize,
+) -> SemanticPosition {
+	snapshot
+		.semantic_at(block, 0, offset, Affinity::Before)
+		.unwrap()
 }
 fn snapshot_of(source: &str) -> LayoutSnapshot {
-	let document = Arc::new(markview_commonmark::parse(source));
+	let document = crate::loaded::LoadedDocument::markdown(Arc::new(
+		markview_commonmark::parse(source),
+	));
 	crate::layout::LayoutEngine::new()
 		.layout(&document, &crate::test_support::options())
 }
+fn link(url: &str) -> markview_layout::scene::LinkTarget {
+	markview_layout::scene::LinkTarget::Url(url.into())
+}
+
 #[test]
 fn click_opens_only_on_release_and_drag_never_opens_link() {
 	let snapshot = LayoutSnapshot::default();
 	let mut interaction = InteractionState::default();
-	interaction
-		.begin_selection(position(0), Some("https://example.com".into()));
+	interaction.begin_selection(
+		position(&snapshot, 0),
+		Some(link("https://example.com")),
+	);
 	assert!(interaction.pointer.drag().is_some());
 	assert_eq!(
-		interaction.finish_selection(Some("https://example.com")),
-		Some("https://example.com".into())
+		interaction.finish_selection(Some(&link("https://example.com"))),
+		Some(link("https://example.com"))
 	);
-	interaction
-		.begin_selection(position(0), Some("https://example.com".into()));
+	interaction.begin_selection(
+		position(&snapshot, 0),
+		Some(link("https://example.com")),
+	);
 	interaction.pointer.move_to((8.0, 0.0));
-	interaction.move_selection(Some(position(4)), &snapshot);
+	interaction.move_selection(Some(position(&snapshot, 4)), &snapshot);
 	interaction.pointer.move_to((0.0, 0.0));
-	interaction.move_selection(Some(position(0)), &snapshot);
+	interaction.move_selection(Some(position(&snapshot, 0)), &snapshot);
 	assert!(
 		interaction
-			.finish_selection(Some("https://example.com"))
+			.finish_selection(Some(&link("https://example.com")))
 			.is_none()
 	);
-	interaction
-		.begin_selection(position(0), Some("https://example.com".into()));
+	interaction.begin_selection(
+		position(&snapshot, 0),
+		Some(link("https://example.com")),
+	);
 	assert!(interaction.finish_selection(None).is_none());
 }
 #[test]
 fn word_and_block_drag_extend_from_the_multi_click_base() {
 	let snapshot = snapshot_of("测试 中文 一下");
-	let base = snapshot.select_word_at(position(7)).unwrap();
+	let base = snapshot.select_word_at(position(&snapshot, 7)).unwrap();
 	assert_eq!(snapshot.extract_text(base, 1), "中文");
 	let mut interaction = InteractionState {
 		pointer: crate::app::pointer::State::at((0.0, 0.0)),
@@ -64,31 +82,31 @@ fn word_and_block_drag_extend_from_the_multi_click_base() {
 	assert!(interaction.begin_grain_selection(Some(base), Grain::Word));
 	// Below the drag threshold the double-clicked word stays selected.
 	interaction.pointer.move_to((2.0, 0.0));
-	interaction.move_selection(Some(position(17)), &snapshot);
+	interaction.move_selection(Some(position(&snapshot, 17)), &snapshot);
 	assert_eq!(interaction.selection.unwrap(), base);
 	// Right of the base word, the far edge follows the word under the pointer.
 	interaction.pointer.move_to((60.0, 0.0));
-	interaction.move_selection(Some(position(17)), &snapshot);
+	interaction.move_selection(Some(position(&snapshot, 17)), &snapshot);
 	assert_eq!(
 		snapshot.extract_text(interaction.selection.unwrap(), 1),
 		"中文 一下"
 	);
 	// Left of the base word, the anchor moves and the base end stays fixed.
-	interaction.move_selection(Some(position(0)), &snapshot);
+	interaction.move_selection(Some(position(&snapshot, 0)), &snapshot);
 	assert_eq!(
 		snapshot.extract_text(interaction.selection.unwrap(), 1),
 		"测试 中文"
 	);
 	// Triple-click drags whole blocks.
 	let blocks = snapshot_of("First paragraph.\n\nSecond paragraph.");
-	let base = blocks.select_block_at(position(2)).unwrap();
+	let base = blocks.select_block_at(position(&blocks, 2)).unwrap();
 	let mut interaction = InteractionState {
 		pointer: crate::app::pointer::State::at((0.0, 0.0)),
 		..Default::default()
 	};
 	assert!(interaction.begin_grain_selection(Some(base), Grain::Block));
 	interaction.pointer.move_to((60.0, 0.0));
-	interaction.move_selection(Some(position_in(1, 2)), &blocks);
+	interaction.move_selection(Some(position_in(&blocks, 1, 2)), &blocks);
 	assert_eq!(
 		blocks.extract_text(interaction.selection.unwrap(), 1),
 		"First paragraph.\n\nSecond paragraph."
@@ -98,10 +116,8 @@ fn word_and_block_drag_extend_from_the_multi_click_base() {
 fn triple_click_drag_extends_by_cells_inside_one_table() {
 	let snapshot =
 		snapshot_of("| A | B | C |\n|---|---|---|\n| First | Middle | Last |");
-	let cell = |node| TextPosition {
-		node,
-		..position(2)
-	};
+	let cell =
+		|node| snapshot.semantic_at(0, node, 2, Affinity::Before).unwrap();
 	let base = snapshot.select_block_at(cell(4)).unwrap();
 	assert_eq!(snapshot.extract_text(base, 1), "Middle");
 	let mut interaction = InteractionState::default();
@@ -129,32 +145,43 @@ fn move_selection_reports_whether_the_selection_moved() {
 		..Default::default()
 	};
 	// A hover with no press in flight has nothing to extend.
-	assert!(!interaction.move_selection(Some(position(4)), &snapshot));
-	interaction.begin_selection(position(0), None);
+	assert!(
+		!interaction.move_selection(Some(position(&snapshot, 4)), &snapshot)
+	);
+	interaction.begin_selection(position(&snapshot, 0), None);
 	// Below the drag threshold the press is still a click, and the selection
 	// stays where it was.
 	interaction.pointer.move_to((2.0, 0.0));
-	assert!(!interaction.move_selection(Some(position(4)), &snapshot));
+	assert!(
+		!interaction.move_selection(Some(position(&snapshot, 4)), &snapshot)
+	);
 	// Past the threshold the focus follows the reading position...
 	interaction.pointer.move_to((8.0, 0.0));
-	assert!(interaction.move_selection(Some(position(4)), &snapshot));
-	assert_eq!(interaction.selection.unwrap().focus, position(4));
+	assert!(
+		interaction.move_selection(Some(position(&snapshot, 4)), &snapshot)
+	);
+	assert_eq!(interaction.selection.unwrap().focus, position(&snapshot, 4));
 	// ...and landing on a position already selected is not a change either.
-	assert!(!interaction.move_selection(Some(position(4)), &snapshot));
+	assert!(
+		!interaction.move_selection(Some(position(&snapshot, 4)), &snapshot)
+	);
 }
 #[test]
 fn shift_extends_original_anchor_and_reload_clears_gesture() {
+	let snapshot = LayoutSnapshot::default();
 	let mut interaction = InteractionState::default();
-	interaction.begin_selection(position(2), None);
+	interaction.begin_selection(position(&snapshot, 2), None);
 	interaction.finish_selection(None);
 	interaction.pointer.set_modifiers(ModifiersState::SHIFT);
-	interaction
-		.begin_selection(position(10), Some("https://example.com".into()));
+	interaction.begin_selection(
+		position(&snapshot, 10),
+		Some(link("https://example.com")),
+	);
 	assert_eq!(interaction.selection.unwrap().anchor.offset, 2);
 	assert_eq!(interaction.selection.unwrap().focus.offset, 10);
 	assert!(
 		interaction
-			.finish_selection(Some("https://example.com"))
+			.finish_selection(Some(&link("https://example.com")))
 			.is_none()
 	);
 	interaction.clear_selection();
@@ -199,7 +226,9 @@ fn repeated_presses_within_the_interval_cycle_word_and_block_click() {
 }
 #[test]
 fn identical_content_with_a_new_version_keeps_the_selection() {
-	let document = Arc::new(markview_commonmark::parse("Hello"));
+	let document = crate::loaded::LoadedDocument::markdown(Arc::new(
+		markview_commonmark::parse("Hello"),
+	));
 	let mut engine = crate::layout::LayoutEngine::new();
 	let mut session = ReaderSession::default();
 	let layout = engine.layout(&document, &crate::test_support::options());
@@ -294,8 +323,10 @@ fn scrolling_past_the_end_keeps_two_thirds_of_a_page_blank() {
 fn heading_anchors_queue_until_their_heading_is_laid_out() {
 	let mut engine = crate::layout::LayoutEngine::new();
 	let options = crate::test_support::options();
-	let document = Arc::new(markview_commonmark::parse(
-		"# Intro\n\nParagraph.\n\n# Details\n\nMore.\n",
+	let document = crate::loaded::LoadedDocument::markdown(Arc::new(
+		markview_commonmark::parse(
+			"# Intro\n\nParagraph.\n\n# Details\n\nMore.\n",
+		),
 	));
 	let layout = engine.layout(&document, &options);
 	let details = layout.anchor_y("details").unwrap();
@@ -313,15 +344,21 @@ fn heading_anchors_queue_until_their_heading_is_laid_out() {
 		300.,
 		None,
 	);
-	session.pending_anchor = Some("details".into());
+	session.pending_anchor = Some(PendingAnchor {
+		target: "details".into(),
+		revision: None,
+	});
 	assert_eq!(session.resolve_anchor(300.), Some(Ok(())));
-	assert_eq!(session.pending_anchor, None);
+	assert!(session.pending_anchor.is_none());
 	let max = scroll_limit(layout.height, 300.);
 	assert_eq!(session.scrolling.offset, details.clamp(0., max));
 	// A heading the finished document lacks is reported once.
-	session.pending_anchor = Some("missing".into());
+	session.pending_anchor = Some(PendingAnchor {
+		target: "missing".into(),
+		revision: None,
+	});
 	assert_eq!(session.resolve_anchor(300.), Some(Err("missing".into())));
-	assert_eq!(session.pending_anchor, None);
+	assert!(session.pending_anchor.is_none());
 	// An unfinished prefix keeps the anchor queued.
 	let mut prefix = layout.clone();
 	prefix.blocks.truncate(1);
@@ -339,20 +376,32 @@ fn heading_anchors_queue_until_their_heading_is_laid_out() {
 		300.,
 		None,
 	);
-	session.pending_anchor = Some("details".into());
+	session.pending_anchor = Some(PendingAnchor {
+		target: "details".into(),
+		revision: None,
+	});
 	assert_eq!(session.resolve_anchor(300.), None);
-	assert_eq!(session.pending_anchor.as_deref(), Some("details"));
+	assert_eq!(
+		session
+			.pending_anchor
+			.as_ref()
+			.map(|pending| &pending.target)
+			.and_then(markview_document::AnchorId::fragment),
+		Some("details")
+	);
 	// A deliberate scroll abandons the queued anchor.
 	session.scroll_by(40., 300.);
-	assert_eq!(session.pending_anchor, None);
+	assert!(session.pending_anchor.is_none());
 }
 
 #[test]
 fn a_jump_into_a_collapsed_body_expands_its_containers_first() {
-	let document = Arc::new(markview_commonmark::parse(
-		"# Intro\n\n<details>\n<summary>More</summary>\n\n## Hidden\n\n</details>\n",
+	let document = crate::loaded::LoadedDocument::markdown(Arc::new(
+		markview_commonmark::parse(
+			"# Intro\n\n<details>\n<summary>More</summary>\n\n## Hidden\n\n</details>\n",
+		),
 	));
-	let id = document.blocks[1].id;
+	let id = document.blocks()[1].id();
 	let collapsed = crate::layout::LayoutEngine::new()
 		.layout(&document, &crate::test_support::options());
 	// A collapsed body's retained anchor is excluded from visible flow.
@@ -396,7 +445,10 @@ fn a_jump_into_a_collapsed_body_expands_its_containers_first() {
 		300.,
 		None,
 	);
-	session.pending_anchor = Some("hidden".into());
+	session.pending_anchor = Some(PendingAnchor {
+		target: "hidden".into(),
+		revision: None,
+	});
 	assert_eq!(session.resolve_anchor(300.), Some(Ok(())));
 	assert_eq!(
 		session.scrolling.offset,
@@ -413,8 +465,9 @@ fn a_jump_into_a_collapsed_body_expands_its_containers_first() {
 fn partial_reload_waits_for_anchor_and_keeps_the_old_snapshot() {
 	let mut engine = crate::layout::LayoutEngine::new();
 	let options = crate::test_support::options();
-	let document =
-		Arc::new(markview_commonmark::parse("Paragraph.\n\n".repeat(100)));
+	let document = crate::loaded::LoadedDocument::markdown(Arc::new(
+		markview_commonmark::parse("Paragraph.\n\n".repeat(100)),
+	));
 	let full = engine.layout(&document, &options);
 	let mut session = ReaderSession::default();
 	session.accept(
@@ -450,8 +503,9 @@ fn partial_reload_waits_for_anchor_and_keeps_the_old_snapshot() {
 
 #[test]
 fn completing_a_prefix_preserves_scroll_and_selection_and_finishes_counts() {
-	let document =
-		Arc::new(markview_commonmark::parse("Paragraph.\n\n".repeat(100)));
+	let document = crate::loaded::LoadedDocument::markdown(Arc::new(
+		markview_commonmark::parse("Paragraph.\n\n".repeat(100)),
+	));
 	let mut engine = crate::layout::LayoutEngine::new();
 	let mut prefix = None;
 	let layout = engine
@@ -511,7 +565,9 @@ fn completing_a_prefix_preserves_scroll_and_selection_and_finishes_counts() {
 }
 #[test]
 fn text_and_layout_are_accepted_together_and_reflow_is_not_new_content() {
-	let document = Arc::new(markview_commonmark::parse("Hello"));
+	let document = crate::loaded::LoadedDocument::markdown(Arc::new(
+		markview_commonmark::parse("Hello"),
+	));
 	let mut engine = crate::layout::LayoutEngine::new();
 	let mut session = ReaderSession::default();
 	let reader = crate::worker::ReaderSnapshot {
@@ -565,25 +621,35 @@ fn the_remote_notice_is_per_session_and_per_content() {
 
 #[test]
 fn a_footnote_returns_to_the_reference_it_was_opened_from() {
+	let note = |label: &str| {
+		markview_document::AnchorId::FootnoteDefinition(
+			markview_document::FootnoteId::new(label),
+		)
+	};
+	let two = markview_document::FootnoteId::new("2");
+	let one = markview_document::FootnoteId::new("1");
 	let mut session = ReaderSession {
-		jump_origin: Some(("fn:2".into(), 640.)),
+		jump_origin: Some((note("2"), 640.)),
 		..Default::default()
 	};
-	assert_eq!(session.footnote_return("2"), Some(640.));
+	assert_eq!(session.footnote_return(&two), Some(640.));
 	// Another note, and a heading jump, have no reference to return to.
-	assert_eq!(session.footnote_return("1"), None);
-	session.jump_origin = Some(("details".into(), 120.));
-	assert_eq!(session.footnote_return("2"), None);
+	assert_eq!(session.footnote_return(&one), None);
+	session.jump_origin = Some((
+		markview_document::AnchorId::Fragment("details".into()),
+		120.,
+	));
+	assert_eq!(session.footnote_return(&two), None);
 	// Releasing the heavy layout drops the origin with it.
-	session.jump_origin = Some(("fn:2".into(), 640.));
+	session.jump_origin = Some((note("2"), 640.));
 	session.release_heavy();
-	assert_eq!(session.footnote_return("2"), None);
+	assert_eq!(session.footnote_return(&two), None);
 }
 
 #[test]
 fn the_outline_caches_per_document_and_its_entries_queue_heading_anchors() {
-	let document = Arc::new(markview_commonmark::parse(
-		"# One\n\nBody.\n\n> ## Two\n\n# Three\n",
+	let document = crate::loaded::LoadedDocument::markdown(Arc::new(
+		markview_commonmark::parse("# One\n\nBody.\n\n> ## Two\n\n# Three\n"),
 	));
 	let layout = crate::layout::LayoutEngine::new()
 		.layout(&document, &crate::test_support::options());
@@ -620,7 +686,10 @@ fn the_outline_caches_per_document_and_its_entries_queue_heading_anchors() {
 	assert_eq!(session.current_outline(), Some(1));
 	// An entry feeds the very anchor path a `#fragment` link uses.
 	let third = session.outline_anchor(2).map(str::to_owned);
-	session.pending_anchor = third;
+	session.pending_anchor = third.map(|target| PendingAnchor {
+		target: target.into(),
+		revision: None,
+	});
 	assert_eq!(session.resolve_anchor(300.0), Some(Ok(())));
 	let three = layout.anchor_y("three").unwrap();
 	assert_eq!(
@@ -644,7 +713,9 @@ fn an_outline_jump_into_the_reserved_blank_lifts_the_heading() {
 			width: 600.0,
 			..crate::test_support::options()
 		};
-		let document = Arc::new(markview_commonmark::parse(source.as_str()));
+		let document = crate::loaded::LoadedDocument::markdown(Arc::new(
+			markview_commonmark::parse(source.as_str()),
+		));
 		let layout =
 			crate::layout::LayoutEngine::new().layout(&document, &options);
 		let y = layout.anchor_y("last").unwrap();
@@ -669,7 +740,10 @@ fn an_outline_jump_into_the_reserved_blank_lifts_the_heading() {
 		viewport,
 		None,
 	);
-	session.pending_anchor = Some("last".into());
+	session.pending_anchor = Some(PendingAnchor {
+		target: "last".into(),
+		revision: None,
+	});
 	assert_eq!(session.resolve_anchor(viewport), Some(Ok(())));
 	// The heading lands at the top, using the blank every other scroll path
 	// already reaches.
@@ -678,8 +752,10 @@ fn an_outline_jump_into_the_reserved_blank_lifts_the_heading() {
 
 #[test]
 fn a_footnote_reference_between_headings_keeps_the_later_heading_current() {
-	let document = Arc::new(markview_commonmark::parse(
-		"# One\n\nBody[^a].\n\n# Two\n\n[^a]: Note.\n",
+	let document = crate::loaded::LoadedDocument::markdown(Arc::new(
+		markview_commonmark::parse(
+			"# One\n\nBody[^a].\n\n# Two\n\n[^a]: Note.\n",
+		),
 	));
 	let layout = crate::layout::LayoutEngine::new()
 		.layout(&document, &crate::test_support::options());
@@ -986,7 +1062,9 @@ fn a_long_outline_resolves_the_reading_position_in_one_pass() {
 	let source: String = (0..1000)
 		.map(|i| format!("# Heading {i}\n\nBody {i}.\n\n"))
 		.collect();
-	let document = Arc::new(markview_commonmark::parse(source));
+	let document = crate::loaded::LoadedDocument::markdown(Arc::new(
+		markview_commonmark::parse(source),
+	));
 	let layout = crate::layout::LayoutEngine::new()
 		.layout(&document, &crate::test_support::options());
 	let mut session = ReaderSession::default();
@@ -1018,8 +1096,9 @@ fn a_long_outline_resolves_the_reading_position_in_one_pass() {
 
 #[test]
 fn a_heading_nested_in_a_container_is_part_of_the_outline() {
-	let document =
-		Arc::new(markview_commonmark::parse("- ### Listed\n\n> ## Quoted\n"));
+	let document = crate::loaded::LoadedDocument::markdown(Arc::new(
+		markview_commonmark::parse("- ### Listed\n\n> ## Quoted\n"),
+	));
 	let mut session = ReaderSession {
 		document: Some(document),
 		..Default::default()
@@ -1695,8 +1774,8 @@ fn every_panel_transition_clears_transient_input() {
 #[test]
 fn outline_collapse_is_per_session_and_resets_on_new_content() {
 	let mut session = ReaderSession {
-		document: Some(Arc::new(markview_commonmark::parse(
-			"# Parent\n## Child\n# Next\n",
+		document: Some(crate::loaded::LoadedDocument::markdown(Arc::new(
+			markview_commonmark::parse("# Parent\n## Child\n# Next\n"),
 		))),
 		accepted_content_id: 1,
 		..Default::default()
@@ -1719,4 +1798,39 @@ fn outline_collapse_is_per_session_and_resets_on_new_content() {
 		session.outline_tree.rows(session.outline_entries()),
 		[0, 1, 2]
 	);
+}
+
+#[test]
+fn an_anchor_queued_on_another_revision_is_rejected() {
+	let document = crate::loaded::LoadedDocument::markdown(Arc::new(
+		markview_commonmark::parse("# Intro\n\nParagraph.\n"),
+	));
+	let layout = crate::layout::LayoutEngine::new()
+		.layout(&document, &crate::test_support::options());
+	let mut session = ReaderSession::default();
+	session.accept(
+		crate::worker::ReaderSnapshot {
+			blocked_images: Default::default(),
+			document,
+			layout,
+			content_version: 1,
+			complete: true,
+			parse_complete: true,
+			remote_deferred: 0,
+		},
+		300.,
+		None,
+	);
+	session.pending_anchor = Some(PendingAnchor {
+		target: "intro".into(),
+		revision: Some(markview_document::DocumentRevision::new(
+			session.snapshot.revision.get() + 1,
+		)),
+	});
+	assert_eq!(
+		session.resolve_anchor(300.),
+		Some(Err("intro".into())),
+		"an anchor from another revision is reported, not clamped"
+	);
+	assert!(session.pending_anchor.is_none());
 }

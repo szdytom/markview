@@ -130,7 +130,7 @@ Controls include: `unsafe_code` forbidden workspace-wide; ratex pinned to an exa
 
 ### Document origin and mode
 
-The [Trusted and Untrusted modes](security.md#document-trust-modes) are represented by the `Trust` and `Origin` enums in `src/security.rs`. `src/app/interaction.rs` writes pasted text to a temporary file before opening it, and `src/app/web_page.rs` stages extracted articles as temporary Markdown too. A local path therefore cannot identify a Trusted entry.
+The [Trusted and Untrusted modes](security.md#document-trust-modes) are represented by the `Trust` and `Origin` enums in `src/security.rs`. `src/app/interaction.rs` writes pasted text to a temporary file before opening it, while a web article is lowered into a semantic document held in its tab. A local path therefore cannot identify a Trusted entry.
 
 Origin and mode travel with the reading session into navigation, image jobs, cache access, session restoration, and PDF export. Local Markdown links inherit the initiating mode; an Untrusted local link also needs read authorization, and web loads always enter Untrusted mode. Tab reuse includes origin identity; staging does not promote trust. Grants bind to the document source digest and are dropped on changed content and restoration. Target grants authorize resources without changing document mode. Verification belongs to the [follow-up plan](security-verification.md#network-authorization-follow-up).
 
@@ -138,18 +138,24 @@ Origin and mode travel with the reading session into navigation, image jobs, cac
 
 Implementation: `src/images/source.rs`.
 
-The resolver receives the document security context. Web relative URLs use the page URL; clipboard relative sources need user-selected files. Local documents use the path rules below, with `Security::check_file` before content reads. Explicitly selected clipboard files are reader-chosen resources; authored absolute or `file:` image sources remain refused.
+An image carries an `ImageSource`: either `Resource(ResourceRef { address, base })`, where `base` is `ResourceBase::Document` or `ResourceBase::Vault`, or `Diagram(Diagram { language, source })`. The web front end stores each image as a `ResourceRef::document` whose address is already absolute against the page URL; a Mermaid block is a `Diagram`, not a resource. The document model performs no resolution, authorization or cache-key construction.
+
+The resolver receives the document security context. `resolve` turns the semantic source into `Source::{File, Http, Data, Diagram}`, and `key` builds the application cache key used by image scheduling and `ImageSnapshot::keys`. A resource key starts with the address, prefixed by `vault:` for `ResourceBase::Vault`; in an Untrusted context it also hashes the resolution base (document path or workspace) together with `Security::cache_key()`. A diagram key is its language and source. Two pages therefore cannot share a relative or vault-relative resource merely because the address text matches, and changed authority cannot reuse an old entry.
+
+Web relative URLs use the page URL; clipboard relative sources need user-selected files. Local documents use the path rules below, with `Security::check_file` before content reads. Explicitly selected clipboard files are reader-chosen resources; authored absolute or `file:` image sources remain refused.
 
 ```text
-1. Reject an empty src.
-2. Parse as a URL. Accept http and https only. Keep data:image/ with its size
-   cap. There is no file: branch.
-3. Otherwise treat as a path:
+1. Reject an empty address.
+2. Parse it as a URL. Accept http and https only. A data: URI is accepted here;
+   content fetch still requires the data:image/ prefix and its size cap. There
+   is no file: branch. A diagram never reaches this resolver.
+3. Otherwise treat it as a path:
    a. Percent-decode.
    b. Reject if it is absolute, if its first component is a root, or, on
       Windows, if it is a prefix (C:foo) or rooted without a drive (\foo).
-   c. Join it to the document directory. Canonicalize when the target exists,
-      for alias deduplication and the identified permission target.
+   c. Join it to the resource base: the document directory, or the workspace
+      for ResourceBase::Vault. Canonicalize when the target exists, for alias
+      deduplication and the identified permission target.
    d. Require Trusted mode or a grant for that file before reading it.
 4. Do not confine the result to the document directory. `..` is allowed.
 ```
@@ -173,7 +179,7 @@ The document-mode policy requires authorization for an Untrusted link to local M
 
 ### Network and font downloads
 
-Implementation: `src/images.rs` (cap, notice state), `src/net.rs` (resolution, pinning, and the streaming download client), `src/web_page.rs` (explicit article fetch and extraction), `src/images/cache.rs` (bounded disk cache) and `src/fonts.rs` (the explicit font download); the strip is drawn from `src/app/chrome.rs` and the catalogue from `src/app/font_panel/view.rs`, with `markview fonts` in `src/app/fonts_command.rs`.
+Implementation: `src/images.rs` (cap, notice state), `src/net.rs` (resolution, pinning, and the streaming download client), `src/web_page.rs` (explicit article fetch, UTF-8 decode and origin binding) with `crates/markview-webpage` (DOM extraction and semantic lowering; see [Web page extraction](webpage-extraction.md)), `src/images/cache.rs` (bounded disk cache) and `src/fonts.rs` (the explicit font download); the strip is drawn from `src/app/chrome.rs` and the catalogue from `src/app/font_panel/view.rs`, with `markview fonts` in `src/app/fonts_command.rs`.
 
 `src/security.rs` supplies mode and target authority. Local files opened directly are Trusted, pasted text and web articles are Untrusted, and explicit requests authorize the identified origin and resolved address classes for their job.
 
@@ -183,7 +189,7 @@ Implementation: `src/images.rs` (cap, notice state), `src/net.rs` (resolution, p
 4. A fetched body is stored under `cache/images` beside `settings.toml`, keyed by the absolute URL and a SHA-256 partition of the receiving security context, bounded at 128 MiB with least-recently-used eviction, and installed by rename so a partial body is never served. Authority changes cannot reuse decoded pixels or another cache partition. A fresh entry needs no HTTP request; online reads still check DNS authorization; a stale one revalidates with the stored `ETag`/`Last-Modified`. `--offline` never calls the client but serves a cached body whether or not it is fresh, deliberately overriding `no-cache` and `must-revalidate` because there is no network to revalidate against.
 5. A font family a stylesheet declares under `[[font-family]]` is fetched only by an explicit action on the reader's Fonts page or by `markview fonts download`. Both use a streaming async client with the same resolution and pinning as the image client, but authority scoped to each explicitly selected source or probe. Local redirects outside that origin require separate authority and therefore fail in the noninteractive job. Transfers stream to a file with no whole-request limit, a 5 s connect limit and a 60 s silence limit, and a `User-Agent` naming the reader, because a mirror may refuse an anonymous client. HTTPS is preferred; plain `http` is accepted because a mirror may serve only that, and the cost is transport privacy for a URL the user chose. A family's sources are mirrors ordered by a one-time latency measurement per host — the declared order only breaks ties — each a set of files or one archive; the container is recognized from its own leading bytes, extraction refuses directories, symlinks, hard links and any path outside the download directory, and is bounded at 2 GiB and 4096 members. A font file is capped at 64 MiB, an archive at 2 GiB, a declared `sha256` must match, and the body is verified as a font (every table record inside it, the tables a drawable face needs — outlines, or a color emoji face's `CBDT`/`sbix` bitmap strikes — and a nonempty character map) before it is renamed into place, so a partial transfer is never registered. A failed source's own files are removed before the next mirror runs. Nothing is cached by the image cache; the verified files in `fonts/` are their own cache. `--offline` refuses the job with a message. The directory is a personal resource: the reader, its export jobs, and the drawing subcommands load it by default, while the measurement modes and `--ignore-system-fonts` keep the configured set, so a download cannot change a pinned export.
 
-Web-page loads use the same client, the document byte limit, and a 30 s download deadline. Extraction accepts UTF-8 HTML and limits parsed elements to 100,000 before handing Markdown to the native pipeline. `--offline` refuses web-page loads. No extracted article scripts execute.
+Web-page loads use the same client, the document byte limit, and a 30 s download deadline. Extraction accepts UTF-8 HTML and limits parsed elements to 100,000 before lowering the article into a semantic document. `--offline` refuses web-page loads. No extracted article scripts execute.
 
 ## Historical findings
 

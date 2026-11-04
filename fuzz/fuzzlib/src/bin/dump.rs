@@ -16,21 +16,21 @@ fn main() {
 	eprintln!(
 		"full parse ({} bytes): {} blocks",
 		md0.len(),
-		doc0.blocks.len()
+		doc0.document.blocks().len()
 	);
-	for b in &doc0.blocks {
-		eprintln!("  src={:?} id={:016x}", b.source, b.id);
+	for b in doc0.document.blocks() {
+		eprintln!("  src={:?} id={:016x}", doc0.block_source(b), b.id().get());
 	}
 
 	// Same source through reparse (no edit): must be identical.
 	let same = markview_commonmark::reparse(&doc0, Arc::from(md0.clone()));
 	eprintln!(
 		"reparse(same): {} blocks, same content id: {}",
-		same.blocks.len(),
-		same.content_id == doc0.content_id
+		same.document.blocks().len(),
+		same.document.content_key() == doc0.document.content_key()
 	);
-	for b in &same.blocks {
-		eprintln!("  src={:?} id={:016x}", b.source, b.id);
+	for b in same.document.blocks() {
+		eprintln!("  src={:?} id={:016x}", same.block_source(b), b.id().get());
 	}
 
 	// The deterministic edit the `reparse` target applies.
@@ -41,11 +41,11 @@ fn main() {
 	eprintln!(
 		"edit ({}): full={} incremental={} equal={}",
 		edit.description,
-		full.blocks.len(),
-		incr.blocks.len(),
-		full.content_id == incr.content_id
+		full.document.blocks().len(),
+		incr.document.blocks().len(),
+		full.document.content_key() == incr.document.content_key()
 	);
-	for b in &incr.blocks {
-		eprintln!("  src={:?} id={:016x}", b.source, b.id);
+	for b in incr.document.blocks() {
+		eprintln!("  src={:?} id={:016x}", incr.block_source(b), b.id().get());
 	}
 }

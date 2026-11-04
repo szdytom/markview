@@ -332,6 +332,12 @@ fn an_inactive_tab_pins_only_its_visible_image_pixels() {
 		rgba: Arc::from([0, 0, 0, 255]),
 	});
 	for alias in ["visible.png", "offscreen.png"] {
+		images.keys.insert(
+			markview_layout::image::ImageSource::Resource(
+				markview_layout::image::ResourceRef::document(alias),
+			),
+			alias.into(),
+		);
 		images.entries.insert(
 			alias.into(),
 			ImageInfo {
@@ -349,7 +355,8 @@ fn an_inactive_tab_pins_only_its_visible_image_pixels() {
 			&crate::test_support::options(),
 			&images,
 		);
-	app.readers.session.document = Some(document);
+	app.readers.session.document =
+		Some(crate::loaded::LoadedDocument::markdown(document));
 	app.readers.open("/tmp/second.md".into(), now);
 	images.pixels.replace(Default::default());
 	app.readers.release_inactive(now + Duration::from_secs(21));
@@ -379,6 +386,12 @@ fn a_centered_picture_keeps_its_block_and_pixels_in_the_tab_preview() {
 
 	let document = Arc::new(markview_commonmark::parse("![](picture.png)"));
 	let mut images = ImageSnapshot::default();
+	images.keys.insert(
+		markview_layout::image::ImageSource::Resource(
+			markview_layout::image::ResourceRef::document("picture.png"),
+		),
+		"picture.png".into(),
+	);
 	images.entries.insert(
 		"picture.png".into(),
 		ImageInfo {
@@ -410,7 +423,8 @@ fn a_centered_picture_keeps_its_block_and_pixels_in_the_tab_preview() {
 	let now = Instant::now();
 	app.readers.open("/tmp/picture.md".into(), now);
 	app.readers.session.snapshot = snapshot;
-	app.readers.session.document = Some(document);
+	app.readers.session.document =
+		Some(crate::loaded::LoadedDocument::markdown(document));
 	app.readers.open("/tmp/second.md".into(), now);
 	app.readers.release_inactive(now + Duration::from_secs(21));
 
@@ -437,6 +451,12 @@ fn overflowing_table_previews_pin_only_images_in_the_scrolled_clip() {
 	let mut images = ImageSnapshot::default();
 	for i in 0..20 {
 		let alias = format!("image-{i}.png");
+		images.keys.insert(
+			markview_layout::image::ImageSource::Resource(
+				markview_layout::image::ResourceRef::document(alias.clone()),
+			),
+			alias.clone(),
+		);
 		images.entries.insert(
 			alias.clone(),
 			ImageInfo {
@@ -475,7 +495,8 @@ fn overflowing_table_previews_pin_only_images_in_the_scrolled_clip() {
 		let now = Instant::now();
 		app.readers.open("/tmp/table.md".into(), now);
 		app.readers.session.snapshot = snapshot.clone();
-		app.readers.session.document = Some(document.clone());
+		app.readers.session.document =
+			Some(crate::loaded::LoadedDocument::markdown(document.clone()));
 		app.readers.session.scrolling.offset = table.y;
 		app.readers
 			.session

@@ -20,7 +20,7 @@ fn an_unused_reference_definition_keeps_preceding_details_unchanged() {
 					"{source}{newline}[unused]: /unused{newline}"
 				));
 				// The test owns the details block, not whatever follows it.
-				assert_eq!(before.blocks[0], after.blocks[0], "{source:?}");
+				assert_eq!(before.blocks()[0], after.blocks()[0], "{source:?}");
 			}
 		}
 	}
@@ -35,11 +35,18 @@ fn an_unused_reference_definition_keeps_preceding_table_unchanged() {
 		let after = markview_commonmark::parse(format!(
 			"{source}{newline}[unused]: /unused{newline}"
 		));
-		assert_eq!(before.blocks, after.blocks);
-		let BlockKind::Table { rows, .. } = &before.blocks[1].kind else {
+		assert_eq!(before.blocks(), after.blocks());
+		let BlockKind::Table(table) = before.blocks()[1].kind() else {
 			panic!("expected the table")
 		};
-		let cell = &rows[1][2][0];
-		assert_eq!(&source[cell.source.clone()], "---");
+		let cell = &table.groups[1].rows[0].cells[2];
+		let BlockKind::Paragraph(rich) = cell.blocks[0].kind() else {
+			panic!("expected a cell paragraph")
+		};
+		assert_eq!(
+			&source
+				[before.inline_source(&before.blocks()[1], &rich[0]).unwrap()],
+			"---"
+		);
 	}
 }

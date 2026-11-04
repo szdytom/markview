@@ -33,7 +33,7 @@ impl NumberingPattern {
 	/// that piece. A numeral system that cannot represent the number—an
 	/// alphabetic zero, a circled number past fifty—falls back to decimal, as
 	/// does one whose numeral would outgrow a marker.
-	pub fn number(&self, depth: usize, number: u64) -> String {
+	pub fn number(&self, depth: usize, number: i64) -> String {
 		let (prefix, _) = &self.pieces[0];
 		let (_, system) = self
 			.pieces
@@ -43,7 +43,11 @@ impl NumberingPattern {
 				"a numbering pattern declares at least one counting symbol",
 			);
 		let mut out = prefix.clone();
-		out.push_str(&numeral(*system, number));
+		out.push_str(&if number < 0 {
+			format!("-{}", numeral(*system, number.unsigned_abs()))
+		} else {
+			numeral(*system, number as u64)
+		});
 		out.push_str(&self.suffix);
 		out
 	}

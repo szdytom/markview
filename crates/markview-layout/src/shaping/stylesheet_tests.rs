@@ -68,6 +68,9 @@ fn candidates_have_independent_real_faces_and_cluster_coverage() {
 	let clusters = s.shape(
 		&text,
 		&[Span {
+			link: None,
+			math_error: false,
+			footnote_ref: false,
 			range: 0..text.len(),
 			style: crate::document::TextStyle {
 				italic: true,
@@ -216,7 +219,10 @@ fn cached_choices_preserve_contextual_shaping() {
 			set.choices.clear();
 		}
 		let spans = [Span {
+			link: None,
 			range: 0..text.len(),
+			math_error: false,
+			footnote_ref: false,
 			style: TextStyle {
 				italic: true,
 				..Default::default()

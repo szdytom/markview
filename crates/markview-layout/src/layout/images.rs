@@ -15,10 +15,13 @@ impl BlockContext<'_> {
 		size: f32,
 	) -> (f32, f32) {
 		let inset = self.image_insets(size, available);
-		let key = image.resource_key();
+		let info = self
+			.images
+			.key(&image.source)
+			.and_then(|key| self.images.entries.get(key));
 		let (w, h) = crate::image::image_size(
 			image,
-			self.images.entries.get(key.as_ref()),
+			info,
 			(available - inset[1] - inset[3]).max(1.),
 		);
 		(w + inset[1] + inset[3], h + inset[0] + inset[2])
@@ -28,8 +31,11 @@ impl BlockContext<'_> {
 		&self,
 		image: &crate::image::ImageSpec,
 	) -> Option<String> {
-		let key = image.resource_key();
-		let message = match self.images.entries.get(key.as_ref()) {
+		let info = self
+			.images
+			.key(&image.source)
+			.and_then(|key| self.images.entries.get(key));
+		let message = match info {
 			Some(i) if i.size.is_some() && i.error.is_none() => return None,
 			Some(i) if i.error.is_some() => i.error.as_deref().unwrap(),
 			_ => "Loading image…",
@@ -67,8 +73,8 @@ impl BlockContext<'_> {
 		out: &mut BlockLayout,
 	) -> Vec<TextCluster> {
 		let mut text_clusters = Vec::new();
-		let key = image.resource_key();
-		let info = self.images.entries.get(key.as_ref());
+		let key = self.images.key(&image.source).unwrap_or_default();
+		let info = self.images.entries.get(key);
 		let inset = self.image_insets(size, available);
 		let content = Rect {
 			x: rect.x + inset[3],
@@ -77,7 +83,7 @@ impl BlockContext<'_> {
 			h: (rect.h - inset[0] - inset[2]).max(1.),
 		};
 		out.draws.push(Draw::Image {
-			src: key.into_owned(),
+			src: key.to_owned(),
 			version: info.map_or(0, |i| i.version),
 			rect: content,
 			title: image.title.clone(),
@@ -126,9 +132,9 @@ impl BlockContext<'_> {
 				let mut decoration = BlockLayout::default();
 				self.paragraph_bounded(
 					&[Inline {
+						link: None,
 						kind: InlineKind::Text(text),
 						style: TextStyle::default(),
-						source: 0..0,
 					}],
 					rect.x + pad,
 					rect.y + pad,

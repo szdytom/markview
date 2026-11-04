@@ -7,7 +7,7 @@ use crate::state::{Published, SelectionLength};
 use markview_interaction::Host;
 use markview_layout::layout::LayoutSnapshot;
 use markview_layout::scene::{BlockLayout, PlacedBlock};
-use markview_layout::text::{TextPosition, TextSelection};
+use markview_layout::text::{SemanticPosition, TextSelection};
 use std::cell::RefCell;
 use std::rc::Rc;
 use std::sync::Arc;
@@ -17,19 +17,26 @@ fn snapshot(text: &str) -> LayoutSnapshot {
 	LayoutSnapshot {
 		blocks: vec![PlacedBlock {
 			flow: Default::default(),
-			id: 1,
-			source: 0..0,
+			id: markview_layout::document::BlockId::new(1).unwrap(),
+			content: Default::default(),
 			y: 0.0,
 			layout: Arc::new(BlockLayout {
 				height: 100.0,
-				text: vec![markview_layout::text::TextNode::new(
-					text.to_string(),
-					"\n",
-				)],
+				text: vec![{
+					let mut node = markview_layout::text::TextNode::new(
+						text.to_string(),
+						"\n",
+					);
+					node.search_field =
+						Some(markview_document::FieldId::from_index(0));
+					node.search_ranges = vec![(0..text.len(), 0..text.len())];
+					node
+				}],
 				..Default::default()
 			}),
 		}],
 		height: 100.0,
+		revision: markview_document::DocumentRevision::new(1),
 		..Default::default()
 	}
 }
@@ -46,17 +53,19 @@ fn pointer_with(selection: Option<TextSelection>) -> Pointer {
 
 fn selection_over(start: usize, end: usize) -> TextSelection {
 	TextSelection {
-		anchor: TextPosition {
-			revision: 1,
-			block: 0,
-			node: 0,
+		anchor: SemanticPosition {
+			projection: None,
+			revision: markview_document::DocumentRevision::new(1),
+			block: markview_document::BlockId::new(1).unwrap(),
+			field: markview_document::FieldId::from_index(0),
 			offset: start,
 			affinity: markview_layout::text::Affinity::Before,
 		},
-		focus: TextPosition {
-			revision: 1,
-			block: 0,
-			node: 0,
+		focus: SemanticPosition {
+			projection: None,
+			revision: markview_document::DocumentRevision::new(1),
+			block: markview_document::BlockId::new(1).unwrap(),
+			field: markview_document::FieldId::from_index(0),
 			offset: end,
 			affinity: markview_layout::text::Affinity::After,
 		},
@@ -121,17 +130,19 @@ fn published_and_selected(
 	published.accept(snapshot(text), source.clone(), None, &mut pointer);
 	// The reader selects over the snapshot now on screen.
 	let selection = TextSelection {
-		anchor: TextPosition {
-			revision: published.revision,
-			block: 0,
-			node: 0,
+		anchor: SemanticPosition {
+			projection: None,
+			revision: published.snapshot.revision,
+			block: markview_document::BlockId::new(1).unwrap(),
+			field: markview_document::FieldId::from_index(0),
 			offset: start,
 			affinity: markview_layout::text::Affinity::Before,
 		},
-		focus: TextPosition {
-			revision: published.revision,
-			block: 0,
-			node: 0,
+		focus: SemanticPosition {
+			projection: None,
+			revision: published.snapshot.revision,
+			block: markview_document::BlockId::new(1).unwrap(),
+			field: markview_document::FieldId::from_index(0),
 			offset: end,
 			affinity: markview_layout::text::Affinity::After,
 		},
@@ -147,7 +158,7 @@ fn accept_moves_the_selection_onto_the_new_revision() {
 	published.accept(snapshot("hello"), Arc::from("a"), None, &mut pointer);
 	assert_eq!(published.revision, from + 1);
 	let selection = pointer.selection().expect("the same text keeps it");
-	assert_eq!(selection.anchor.revision, published.revision);
+	assert_eq!(selection.anchor.revision, published.snapshot.revision);
 	assert_eq!(
 		pointer.selected_text(&published.snapshot, published.revision),
 		"hello"
@@ -185,7 +196,7 @@ fn extend_appends_only_new_blocks_and_keeps_positions() {
 	assert_eq!(published.snapshot.blocks.len(), 2);
 	assert_eq!(published.snapshot.height, 200.0);
 	let selection = pointer.selection().expect("retag keeps it");
-	assert_eq!(selection.anchor.revision, published.revision);
+	assert_eq!(selection.anchor.revision, published.snapshot.revision);
 	assert_eq!(
 		pointer.selected_text(&published.snapshot, published.revision),
 		"first"
@@ -222,7 +233,11 @@ fn disclosure_publication_invalidates_coordinates_and_retags_selection() {
 	let document = markview_commonmark::parse(
 		"<details>\n<summary>Summary</summary>\n\nHidden paragraph.\n\n</details>\n\nFollowing paragraph.\n",
 	);
-	let source_index = SourceIndex::new(&document);
+	let source_index = SourceIndex::new(
+		document.source.clone(),
+		&document.document,
+		&document.map,
+	);
 	let options = LayoutOptions {
 		fonts: FontConfig::from_faces(
 			0x776562,
@@ -255,7 +270,7 @@ fn disclosure_publication_invalidates_coordinates_and_retags_selection() {
 		&Default::default(),
 		0,
 	);
-	let open = BTreeMap::from([(document.blocks[0].id, true)]);
+	let open = BTreeMap::from([(document.blocks()[0].id(), true)]);
 	published.present_disclosures(&open, false, &mut pointer);
 	assert_eq!(published.revision, old_revision + 1);
 	assert_eq!(published.pass, None);
@@ -263,7 +278,7 @@ fn disclosure_publication_invalidates_coordinates_and_retags_selection() {
 	assert!(Arc::ptr_eq(&geometry, &published.snapshot.blocks[0].layout));
 	assert_eq!(
 		pointer.selection().unwrap().anchor.revision,
-		published.revision
+		published.snapshot.revision
 	);
 	assert!(
 		pointer
@@ -297,8 +312,8 @@ fn two_block_prefix() -> LayoutSnapshot {
 		blocks: vec![
 			PlacedBlock {
 				flow: Default::default(),
-				id: 1,
-				source: 0..0,
+				id: markview_layout::document::BlockId::new(1).unwrap(),
+				content: Default::default(),
 				y: 0.0,
 				layout: Arc::new(BlockLayout {
 					height: 100.0,
@@ -311,8 +326,8 @@ fn two_block_prefix() -> LayoutSnapshot {
 			},
 			PlacedBlock {
 				flow: Default::default(),
-				id: 2,
-				source: 0..0,
+				id: markview_layout::document::BlockId::new(2).unwrap(),
+				content: Default::default(),
 				y: 100.0,
 				layout: Arc::new(BlockLayout {
 					height: 100.0,

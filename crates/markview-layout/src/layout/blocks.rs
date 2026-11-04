@@ -1,9 +1,9 @@
-use super::{BlockContext, LayoutOptions, Table};
+use super::{BlockContext, LayoutOptions};
 use crate::text::{TextCluster, TextNode};
 use crate::{
 	document::{
 		Block, BlockKind, CalloutKind, CellAlign, Inline, InlineKind, RichText,
-		TextStyle, footnote,
+		TextStyle,
 	},
 	scene::{BlockLayout, Draw, HeadingAnchor, LinkId, LinkRect, Paint, Rect},
 	style::{ColorField, Condition, MarkerShape, TextAlign, TextAppearance},
@@ -239,7 +239,7 @@ pub(crate) fn callout_family(kind: CalloutKind) -> Condition {
 
 /// The element a block's box belongs to.
 fn block_role(block: &Block) -> Condition {
-	match &block.kind {
+	match &block.kind() {
 		BlockKind::Paragraph(_) => Condition::P,
 		BlockKind::Heading { level, .. } => Condition::heading(*level),
 		BlockKind::Code { .. } => Condition::CodeBlock,
@@ -255,7 +255,9 @@ fn block_role(block: &Block) -> Condition {
 				Condition::List
 			}
 		}
-		BlockKind::Table { .. } => Condition::Table,
+		BlockKind::Table(_) => Condition::Table,
+		BlockKind::Figure { .. } => Condition::Image,
+		BlockKind::DefinitionList(_) => Condition::P,
 		BlockKind::Footnote { .. } => Condition::Footnote,
 		BlockKind::Details { .. } => Condition::Details,
 		BlockKind::FrontMatter { .. } => Condition::FrontMatter,
@@ -282,7 +284,7 @@ fn block_rule(
 }
 
 pub(super) fn anchor_only(block: &Block) -> bool {
-	matches!(&block.kind, BlockKind::Paragraph(text) if text.iter().all(|i| matches!(i.kind, InlineKind::Anchor(_))))
+	matches!(&block.kind(), BlockKind::Paragraph(text) if text.iter().all(|i| matches!(i.kind, InlineKind::Anchor(_))))
 }
 
 /// The spacing a block reserves outside its box, given the appearance its
@@ -334,6 +336,7 @@ impl BlockContext<'_> {
 	)]
 	pub(super) fn rich(
 		&mut self,
+		owner: Option<markview_document::BlockId>,
 		rich: &RichText,
 		x: f32,
 		y: f32,
@@ -348,8 +351,8 @@ impl BlockContext<'_> {
 	) -> f32 {
 		crate::profile::span(crate::profile::Stage::Rich, || {
 			self.rich_inner(
-				rich, x, y, width, size, sans, align, justify, indent, opts,
-				out,
+				owner, rich, x, y, width, size, sans, align, justify, indent,
+				opts, out,
 			)
 		})
 	}
@@ -360,6 +363,7 @@ impl BlockContext<'_> {
 	)]
 	fn rich_inner(
 		&mut self,
+		owner: Option<markview_document::BlockId>,
 		rich: &RichText,
 		x: f32,
 		y: f32,
@@ -372,6 +376,7 @@ impl BlockContext<'_> {
 		opts: &LayoutOptions,
 		out: &mut BlockLayout,
 	) -> f32 {
+		let field = owner.and_then(|owner| self.fields.next(owner));
 		let first_node = out.text.len();
 		let mut start = 0;
 		let mut cursor = y;
@@ -392,15 +397,7 @@ impl BlockContext<'_> {
 						opts,
 						out,
 					);
-					bind_rich_source(
-						out,
-						search_node,
-						rich,
-						start,
-						self.search_fields
-							.get(&(rich.as_ptr() as usize))
-							.copied(),
-					);
+					bind_rich_source(out, search_node, rich, start, field);
 					cursor += h;
 				}
 				cursor += size * 0.5;
@@ -418,13 +415,7 @@ impl BlockContext<'_> {
 					opts,
 					out,
 				);
-				bind_rich_source(
-					out,
-					search_node,
-					rich,
-					i,
-					self.search_fields.get(&(rich.as_ptr() as usize)).copied(),
-				);
+				bind_rich_source(out, search_node, rich, i, field);
 				cursor += h;
 				cursor += size * 0.5;
 				start = i + 1;
@@ -445,13 +436,7 @@ impl BlockContext<'_> {
 				opts,
 				out,
 			);
-			bind_rich_source(
-				out,
-				search_node,
-				rich,
-				start,
-				self.search_fields.get(&(rich.as_ptr() as usize)).copied(),
-			);
+			bind_rich_source(out, search_node, rich, start, field);
 			cursor += h;
 		}
 		if let Some(node) = out.text.get_mut(first_node) {
@@ -560,7 +545,7 @@ impl BlockContext<'_> {
 		// An export draws the document's text, and front matter is the reader's
 		// aid, so it takes no page there.
 		if opts.hide_front_matter
-			&& matches!(block.kind, BlockKind::FrontMatter { .. })
+			&& matches!(block.kind(), BlockKind::FrontMatter { .. })
 		{
 			return 0.;
 		}
@@ -610,23 +595,25 @@ impl BlockContext<'_> {
 			left_only,
 			decoration,
 		});
-		for anchor in &block.anchors {
+		for anchor in block.anchors() {
 			out.anchors.push(HeadingAnchor {
-				anchor: anchor.clone(),
+				anchor: crate::document::AnchorId::Fragment(anchor.clone()),
 				y: y + before,
 			});
 		}
-		if let BlockKind::Heading { anchor, .. } = &block.kind {
+		if let BlockKind::Heading { anchor, .. } = &block.kind() {
 			// A link to this heading lands on the top of its box.
 			out.anchors.push(HeadingAnchor {
-				anchor: anchor.clone(),
+				anchor: crate::document::AnchorId::Fragment(anchor.clone()),
 				y: y + before,
 			});
 		}
-		if let BlockKind::Footnote { label, .. } = &block.kind {
+		if let BlockKind::Footnote { id, .. } = &block.kind() {
 			// A footnote reference lands on the top of the note's box.
 			out.anchors.push(HeadingAnchor {
-				anchor: footnote::anchor(label),
+				anchor: crate::document::AnchorId::FootnoteDefinition(
+					id.clone(),
+				),
 				y: y + before,
 			});
 		}
@@ -707,8 +694,9 @@ impl BlockContext<'_> {
 	) -> f32 {
 		let size = opts.font_size * self.shaper.appearance.size;
 		let width = width.max(40.0);
-		let height = match &block.kind {
+		let height = match &block.kind() {
 			BlockKind::Paragraph(text) => self.rich(
+				Some(block.id()),
 				text,
 				x,
 				y,
@@ -722,6 +710,7 @@ impl BlockContext<'_> {
 				out,
 			),
 			BlockKind::Heading { text, .. } => self.rich(
+				Some(block.id()),
 				text,
 				x,
 				y,
@@ -756,8 +745,7 @@ impl BlockContext<'_> {
 			BlockKind::Code { language, text } => {
 				let node = out.text.len();
 				let h = self.code(language, text, x, y, width, size, opts, out);
-				out.text[node].search_field =
-					self.search_fields.get(&(text.as_ptr() as usize)).copied();
+				out.text[node].search_field = self.fields.next(block.id());
 				out.text[node].search_ranges =
 					vec![(0..text.len(), 0..text.len())];
 				h
@@ -766,12 +754,12 @@ impl BlockContext<'_> {
 			// appearance and the highlighter takes the block from there.
 			BlockKind::FrontMatter { blocks, .. } => {
 				let label = RichText::from([Inline {
+					link: None,
 					kind: InlineKind::Text(opts.front_matter_label.clone()),
 					style: TextStyle::default(),
-					source: block.source.clone(),
 				}]);
 				self.disclosure(
-					block, &label, blocks, None, x, y, width, opts, out,
+					block, None, &label, blocks, None, x, y, width, opts, out,
 				)
 			}
 			BlockKind::Quote { callout, blocks } => {
@@ -783,12 +771,13 @@ impl BlockContext<'_> {
 					let disclosure = &blocks[0];
 					let BlockKind::Details {
 						summary, blocks, ..
-					} = &disclosure.kind
+					} = disclosure.kind()
 					else {
 						unreachable!("foldable callouts contain a disclosure");
 					};
 					return self.disclosure(
 						disclosure,
+						Some(disclosure.id()),
 						summary,
 						blocks,
 						Some(callout.kind),
@@ -800,8 +789,12 @@ impl BlockContext<'_> {
 					);
 				}
 				let header = self.callout_header(
+					Some(block.id()),
 					callout.kind,
-					&callout.title,
+					callout
+						.title
+						.as_ref()
+						.expect("a plain callout has a title"),
 					x,
 					y,
 					width,
@@ -825,6 +818,7 @@ impl BlockContext<'_> {
 			}
 			BlockKind::List {
 				start,
+				reversed,
 				tight: _,
 				items,
 			} => {
@@ -917,13 +911,33 @@ impl BlockContext<'_> {
 						gap,
 					));
 				}
-				if let Some(start) = *start {
+				let values: Vec<isize> = if let Some(start) = *start {
+					let mut value = start;
+					items
+						.iter()
+						.map(|item| {
+							if let Some(number) = item.number {
+								value = number;
+							}
+							let current = value;
+							value = if *reversed {
+								value.saturating_sub(1)
+							} else {
+								value.saturating_add(1)
+							};
+							current
+						})
+						.collect()
+				} else {
+					Vec::new()
+				};
+				if start.is_some() {
 					for (i, item) in items.iter().enumerate() {
 						if item.checked.is_some() {
 							continue;
 						}
 						let label =
-							numbering.number(enum_depth, (start + i) as u64);
+							numbering.number(enum_depth, values[i] as i64);
 						let (_, width) = self.shaper.label_with(
 							&label,
 							opts.font_size,
@@ -961,8 +975,8 @@ impl BlockContext<'_> {
 					let numbered = item.checked.is_none() && start.is_some();
 					let marker_start = out.draws.len();
 					if numbered {
-						let label = numbering
-							.number(enum_depth, (start.unwrap() + i) as u64);
+						let label =
+							numbering.number(enum_depth, values[i] as i64);
 						let (mut draws, ranges, width) =
 							self.shaper.label_runs(
 								&label,
@@ -1193,24 +1207,80 @@ impl BlockContext<'_> {
 				self.shaper.appearance = list_appearance;
 				top - y
 			}
-			BlockKind::Table { align, rows } => self.table(
-				&Table {
-					align,
-					headed: true,
-					rows,
-				},
-				x,
-				y,
-				width,
-				opts,
-				out,
-			),
+			BlockKind::Table(table) => {
+				self.table(block.id(), table, [x, y], width, opts, out)
+			}
+			BlockKind::DefinitionList(items) => {
+				let indent = (opts.font_size * 1.5).min(width * 0.5);
+				let mut top = y;
+				for item in items {
+					for terms in &item.terms {
+						top += self.rich(
+							Some(block.id()),
+							terms,
+							x,
+							top,
+							width,
+							size,
+							false,
+							CellAlign::Left,
+							false,
+							false,
+							opts,
+							out,
+						);
+					}
+					for blocks in &item.definitions {
+						top += self.children(
+							blocks,
+							x + indent,
+							top,
+							(width - indent).max(1.0),
+							opts,
+							0.,
+							out,
+						);
+					}
+				}
+				top - y
+			}
+			BlockKind::Figure { blocks, caption } => {
+				let parent = self.shaper.appearance.clone();
+				let mut top = y;
+				for block in blocks {
+					top += self.cached_child(block, [x, top], width, opts, out);
+				}
+				if let Some(caption) = caption {
+					self.shaper.appearance =
+						opts.stylesheet.text(&parent, Condition::Caption);
+					let caption_size =
+						opts.font_size * self.shaper.appearance.size;
+					let gap = caption_size * 0.5;
+					top += gap;
+					top += self.rich(
+						Some(block.id()),
+						caption,
+						x,
+						top,
+						width,
+						caption_size,
+						false,
+						CellAlign::Center,
+						false,
+						false,
+						opts,
+						out,
+					);
+					self.shaper.appearance = parent;
+				}
+				top - y
+			}
 			BlockKind::Footnote {
-				label,
-				column,
+				id: note_id,
+				number,
 				blocks,
 			} => {
-				let text = format!("[{label}]");
+				let text = format!("[{number}]");
 				let paint =
 					Paint::Styled(Condition::FootnoteRef, ColorField::Color);
 				// Every note reserves the same marker column, so their bodies
@@ -1224,7 +1294,8 @@ impl BlockContext<'_> {
 					0.0,
 					paint,
 				);
-				let reserved = format!("[{}]", "0".repeat(*column as usize));
+				let reserved =
+					format!("[{}]", "0".repeat(self.footnote_column as usize));
 				let (_, column_width) = self.shaper.label_measured(
 					&reserved,
 					opts.font_size,
@@ -1262,8 +1333,10 @@ impl BlockContext<'_> {
 					baseline,
 				);
 				// The number is the way back to the reference that opened the
-				// note, so it is a link with the note's own label.
+				// note, so it is a link with the note's own identity.
 				let id = LinkId::Special(out.links.len());
+				let target =
+					crate::scene::LinkTarget::FootnoteReturn(note_id.clone());
 				out.links.push(LinkRect {
 					commands,
 					id,
@@ -1273,14 +1346,24 @@ impl BlockContext<'_> {
 						w: label_width.max(1.0),
 						h: size * 1.4,
 					},
-					url: Arc::from(footnote::back_url(label)),
+					url: target.display_url(),
+					target,
 				});
 				body
 			}
 			BlockKind::Details {
 				summary, blocks, ..
 			} => self.disclosure(
-				block, summary, blocks, None, x, y, width, opts, out,
+				block,
+				Some(block.id()),
+				summary,
+				blocks,
+				None,
+				x,
+				y,
+				width,
+				opts,
+				out,
 			),
 		};
 		out.height = out.height.max(y + height);
@@ -1294,6 +1377,7 @@ impl BlockContext<'_> {
 	)]
 	fn callout_header(
 		&mut self,
+		owner: Option<markview_document::BlockId>,
 		kind: CalloutKind,
 		title: &RichText,
 		x: f32,
@@ -1336,6 +1420,7 @@ impl BlockContext<'_> {
 		let column = size * 1.45;
 		let height = self
 			.rich(
+				owner,
 				title,
 				x + column,
 				y,
@@ -1362,6 +1447,7 @@ impl BlockContext<'_> {
 	fn disclosure(
 		&mut self,
 		block: &Block,
+		summary_owner: Option<markview_document::BlockId>,
 		summary: &RichText,
 		blocks: &[Block],
 		icon: Option<CalloutKind>,
@@ -1371,9 +1457,9 @@ impl BlockContext<'_> {
 		opts: &LayoutOptions,
 		out: &mut BlockLayout,
 	) -> f32 {
-		let open = match &block.kind {
-			BlockKind::Details { open, .. }
-			| BlockKind::FrontMatter { open, .. } => *open,
+		let open = match &block.kind() {
+			BlockKind::Details { default_open, .. }
+			| BlockKind::FrontMatter { default_open, .. } => *default_open,
 			_ => false,
 		};
 		let parent = self.shaper.appearance.clone();
@@ -1402,6 +1488,7 @@ impl BlockContext<'_> {
 		let mut height = if let Some(kind) = icon {
 			self.shaper.appearance = parent.clone();
 			self.callout_header(
+				summary_owner,
 				kind,
 				summary,
 				x + column,
@@ -1412,6 +1499,7 @@ impl BlockContext<'_> {
 			)
 		} else {
 			self.rich(
+				summary_owner,
 				summary,
 				x + column,
 				y,
@@ -1440,6 +1528,7 @@ impl BlockContext<'_> {
 			.min()
 			.unwrap_or(out.draws.len());
 		let id = LinkId::Special(out.links.len());
+		let target = crate::scene::LinkTarget::Disclosure(block.id());
 		out.links.push(LinkRect {
 			commands: marker..summary_end,
 			id,
@@ -1449,7 +1538,8 @@ impl BlockContext<'_> {
 				w: width,
 				h: summary_height,
 			},
-			url: Arc::from(crate::document::details_url(block.id)),
+			url: target.display_url(),
+			target,
 		});
 		let body = size * DETAILS_GAP
 			+ self.framed_children(
@@ -1460,9 +1550,57 @@ impl BlockContext<'_> {
 				opts,
 				out,
 			);
-		out.retain_disclosure(block.id, open, marker, body);
+		out.retain_disclosure(block.id(), open, marker, body);
 		height += body;
 		height
+	}
+}
+
+/// The field ids one top-level block's traversal produced, per owning block.
+///
+/// Layout asks each owning block for its fields in traversal order, so a
+/// container that paints its own field before or after its children still
+/// binds the id the semantic walk assigned.
+#[derive(Default)]
+pub(super) struct FieldCursor {
+	fields: std::collections::HashMap<
+		markview_document::BlockId,
+		(Vec<markview_document::FieldId>, usize),
+	>,
+}
+
+impl FieldCursor {
+	pub(super) fn new(block: &Block) -> Self {
+		let mut fields = Self::default();
+		markview_document::visit_fields(
+			block,
+			&mut Vec::new(),
+			&|| false,
+			&mut |owner, id, _, _| {
+				fields.fields.entry(owner).or_default().0.push(id);
+			},
+		);
+		fields
+	}
+
+	/// The next field id for `owner`, or `None` once it has consumed them all.
+	pub(super) fn next(
+		&mut self,
+		owner: markview_document::BlockId,
+	) -> Option<markview_document::FieldId> {
+		let consumed = self.fields.get_mut(&owner);
+		debug_assert!(
+			consumed.is_some(),
+			"block {owner} consumes a field its traversal never produced"
+		);
+		let (fields, next) = consumed?;
+		let id = fields.get(*next).copied();
+		debug_assert!(
+			id.is_some(),
+			"block {owner} consumes more fields than its traversal produced"
+		);
+		*next += usize::from(id.is_some());
+		id
 	}
 }
 
@@ -1471,7 +1609,7 @@ fn bind_rich_source(
 	node: usize,
 	rich: &RichText,
 	start: usize,
-	field: Option<crate::search::SearchField>,
+	field: Option<markview_document::FieldId>,
 ) {
 	if let Some(node) = out.text.get_mut(node) {
 		node.search_field = field;
@@ -1487,18 +1625,19 @@ fn bind_rich_source(
 }
 
 fn append_anchor_only(block: &Block, y: f32, out: &mut BlockLayout) -> bool {
-	if let BlockKind::Paragraph(text) = &block.kind
+	if let BlockKind::Paragraph(text) = &block.kind()
 		&& anchor_only(block)
 	{
-		for anchor in block.anchors.iter().chain(text.iter().filter_map(|i| {
-			if let InlineKind::Anchor(a) = &i.kind {
-				Some(a)
-			} else {
-				None
-			}
-		})) {
+		for anchor in
+			block.anchors().iter().chain(text.iter().filter_map(|i| {
+				if let InlineKind::Anchor(a) = &i.kind {
+					Some(a)
+				} else {
+					None
+				}
+			})) {
 			out.anchors.push(HeadingAnchor {
-				anchor: anchor.clone(),
+				anchor: crate::document::AnchorId::Fragment(anchor.clone()),
 				y,
 			});
 		}

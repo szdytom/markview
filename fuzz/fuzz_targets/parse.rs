@@ -31,7 +31,7 @@ fuzz_target!(|data: &[u8]| {
 	let _ = doc.outline();
 	let _ = doc.details_enclosing("x");
 	let mut images = Vec::new();
-	for block in &doc.blocks {
+	for block in doc.document.blocks() {
 		block.images(&mut images);
 	}
 	// The incremental entries over several cut and reuse points.

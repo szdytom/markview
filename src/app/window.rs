@@ -305,11 +305,11 @@ impl<P: super::SendEvent> App<P> {
 		{
 			if let Some(index) = self.tab_at_cursor() {
 				self.action(Command::Chrome(ChromeCommand::CloseTab(index)));
-			} else if let Some(link) = self.link_at(
+			} else if let Some(link) = self.link_target_at(
 				self.interaction.pointer.cursor().0,
 				self.interaction.pointer.cursor().1,
 			) {
-				self.open_link(&link, true);
+				self.open_link_target(&link, true);
 			}
 		}
 	}

@@ -1,25 +1,33 @@
-//! Anchors for headings, matching the slugs GitHub gives a rendered heading.
+//! Heading anchors shared by every document front end.
 //!
-//! A link such as `#getting-started` or `other.md#getting-started` names a
-//! heading by its anchor: the heading text lowercased, punctuation and symbols
-//! dropped, ASCII spaces replaced by hyphens, and a repeated heading suffixed
-//! `-1`, `-2`, and so on in document order.
-
+//! A Markdown heading uses GitHub's slug: lowercased text with punctuation
+//! dropped, spaces turned into hyphens, and repeats suffixed. Raw HTML may
+//! declare its own `id`; an explicit id is reserved first and later automatic
+//! slugs avoid it, while duplicate explicit ids keep the first occurrence.
 use std::collections::{HashMap, HashSet};
 
 /// Per-document anchor uniqueness, assigned in reading order.
 #[derive(Default)]
-pub(crate) struct Anchors {
+pub struct Anchors {
 	used: HashSet<String>,
-	/// The next suffix to try for a base slug. A document may repeat one
-	/// heading many times, and without this the suffix scan would restart at
-	/// one every time, making anchor assignment quadratic.
+	/// The next suffix to try for a base slug, so repeated headings do not
+	/// restart the scan.
 	next: HashMap<String, u32>,
 }
 
 impl Anchors {
+	/// Reserves an explicit id; later slugs avoid it.
+	pub fn reserve(&mut self, anchor: String) {
+		self.used.insert(anchor);
+	}
+
+	/// Whether `anchor` is already taken.
+	pub fn contains(&self, anchor: &str) -> bool {
+		self.used.contains(anchor)
+	}
+
 	/// The anchor for one heading.
-	pub(crate) fn unique(&mut self, text: &str) -> String {
+	pub fn unique(&mut self, text: &str) -> String {
 		let base = heading_slug(text);
 		if self.used.insert(base.clone()) {
 			return base;

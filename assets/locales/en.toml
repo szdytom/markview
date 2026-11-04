@@ -287,6 +287,7 @@ settings_restore_session = "Keep last browsing session"
 status_web_loading = "Loading web page: {url}"
 status_web_failed = "Cannot load web page: {error}"
 status_web_offline = "Offline: cannot load web pages"
+status_web_not_loaded = "The page is not loaded yet"
 
 empty_paste_hint = "{shortcut}  Paste Markdown text or a link"
 empty_url_placeholder = "https://…"
