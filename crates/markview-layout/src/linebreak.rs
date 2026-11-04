@@ -638,3 +638,6 @@ mod tests {
 		assert_eq!(s.lines.last().unwrap().units.end, u.len());
 	}
 }
+
+#[cfg(test)]
+mod proptests;
