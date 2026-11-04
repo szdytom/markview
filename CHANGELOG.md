@@ -59,6 +59,7 @@ at the same level, without `[brackets]`.
 
 ### Fixed
 
+- Check platform boundaries across workspace crates, tests and build scripts, with scoped feature and target exceptions.
 - Reduce fullscreen scrolling stalls on macOS by allowing a third Metal drawable.
 - Support Android keyboard clipboard input, surrounding-text deletion and a long-press Paste menu in search, URL and other text fields.
 - Expand the open folder tree onto a document opened in a new tab.

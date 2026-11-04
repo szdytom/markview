@@ -74,9 +74,14 @@ physical transforms; the application retains `PanFeed`, subpixel accumulation,
 cancellation and input ownership. Native document, share, back and configuration
 events use a platform event type and a callback. Android's entry registration
 macro emits the final library's ABI exports, while platform code owns JNI,
-startup event queuing and shutdown cleanup. Application sources and tests may
-only use test/debug conditional compilation; the final executable's subsystem
-attribute is exempt. CI enforces this with
+startup event queuing and shutdown cleanup. CI checks Rust sources, tests,
+examples, benchmarks and build scripts across workspace members. Outside
+`markview-platform`, conditions may use test/debug flags and the package's
+declared features; the root application only permits `diagnostics`. GPU policy
+uses the actual backend rather than OS conditions. File-specific exceptions in
+the checker cover Wasm entry points and threading, native MVSS defaults, Linux
+pixel baselines and executable build/link settings. Exceptions name complete
+conditions, so additional platform branches still fail. CI enforces this with
 [`check_platform_boundary.py`](../../scripts/check_platform_boundary.py).
 
 The separation matters because the same document layout is used by the interactive window, the renderer tests, and the offscreen render and benchmark modes.

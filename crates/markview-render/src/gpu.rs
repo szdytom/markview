@@ -154,7 +154,9 @@ impl Gpu {
 				height: height.max(1),
 				present_mode: wgpu::PresentMode::AutoVsync,
 				// A third Metal drawable gives the compositor another frame of headroom.
-				desired_maximum_frame_latency: if cfg!(target_os = "macos") {
+				desired_maximum_frame_latency: if info.backend
+					== wgpu::Backend::Metal
+				{
 					2
 				} else {
 					1
