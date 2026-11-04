@@ -85,6 +85,8 @@ impl ImagePixels {
 			wake();
 		}
 	}
+	/// Consumes the latest complete frame, including when its generation mismatches.
+	/// A matching frame is returned once; publication replaces any older frame.
 	pub fn take_demand(
 		&self,
 		generation: u64,
@@ -110,6 +112,7 @@ pub struct ImageDemand {
 	pub needs_pixels: bool,
 }
 impl ImageDemand {
+	/// Joins independent axis maxima and the pixel requirement; order is irrelevant.
 	pub fn merge(&mut self, other: Self) {
 		self.size.0 = self.size.0.max(other.size.0);
 		self.size.1 = self.size.1.max(other.size.1);
@@ -297,3 +300,6 @@ mod tests {
 		}
 	}
 }
+
+#[cfg(test)]
+mod proptests;
