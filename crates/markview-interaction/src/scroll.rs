@@ -201,6 +201,8 @@ impl Scroll {
 			self.offset = self.offset.clamp(0.0, self.bounds.max);
 		}
 	}
+	/// Stops motion at the current offset. Cancelling a discrete animation clears
+	/// its destination; a resting deferred request survives cancellation.
 	pub fn cancel(&mut self) {
 		if self.momentum.take().is_some() {
 			self.target = None;
@@ -223,6 +225,8 @@ impl Scroll {
 		self.offset = offset.max(0.0);
 		self.resolve();
 	}
+	/// Adds to the pending destination, or the resting offset. An unreachable
+	/// destination under incomplete bounds stays pending without moving the offset.
 	pub fn by(&mut self, delta: f32) {
 		self.cancel();
 		if delta == 0.0 {
@@ -513,3 +517,6 @@ pub fn selection_scroll_speed(
 		0.0
 	}
 }
+
+#[cfg(test)]
+mod proptests;
