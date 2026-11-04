@@ -27,6 +27,7 @@ at the same level, without `[brackets]`.
 
 ### Changed
 
+- Run CI source audits, three-platform linting and tests in parallel, omit redundant compilation checks, and disable CI debug info to reduce disk usage.
 - List up to three recently visited documents on the start page's Quick Access, skipping open tabs and filling the rows from the workspace.
 - List the open tabs in Ctrl+P until a query is typed, scrolling when there are more than a few.
 - Read Android folders directly from internal storage or an SD card after granting All files access, with external writes visible immediately; raise the Android minimum to 11.

@@ -32,8 +32,13 @@ Build a binary with them when a task needs one:
 cargo build --release --locked --features diagnostics
 ```
 
-Run the Rust cyclomatic complexity audit before every push; CI runs it across
-the platform matrix and fails on an unmarked violation:
+CI runs MSRV checks, source audits, three-platform Clippy and three-platform
+tests as independent jobs. CI disables incremental compilation and debug info
+for development and test builds to keep artifacts small; local profiles are
+unchanged.
+
+Run the Rust cyclomatic complexity audit before every push; CI runs it once on
+Linux, inspecting all platform branches, and fails on an unmarked violation:
 
 ```sh
 cargo run -p xtask --locked -- complexity
@@ -50,8 +55,8 @@ Each function or closure starts at 1. `if`, `while`, `for`, `?`, `&&` and `||`
 add 1; a `match` adds its arm count minus 1, plus 1 for each guard. Nested
 functions and closures are measured separately. This is a source AST check:
 macro bodies and expansions are not analyzed. Clippy's `cognitive_complexity`
-uses a different metric. CI runs the audit unconditionally on Linux, Windows
-and macOS; an unmarked violation or malformed exception fails the aggregate
+uses a different metric. CI runs the audit unconditionally in the source-audit
+job; an unmarked violation or malformed exception fails the aggregate
 `ci` check. The [triage record](complexity-triage.md) links each existing violation
 to its refactor or explicit exception.
 
