@@ -585,6 +585,48 @@ mod tests {
 	}
 
 	#[test]
+	fn start_page_and_quick_open_prefer_markdown_in_search_results() {
+		let dir = tempfile::tempdir().unwrap();
+		let root = dir.path().canonicalize().unwrap();
+		for name in ["guide-a.png", "guide-b.md"] {
+			fs::write(root.join(name), "# Guide").unwrap();
+		}
+		let (tx, events) = mpsc::channel();
+		let mut app = App::new(
+			LaunchOptions {
+				mode: Mode::Smoke,
+				options: crate::test_support::options(),
+				..Default::default()
+			},
+			Proxy(tx),
+		);
+		app.ui = crate::test_support::shaper();
+		app.folder_loaded(0, false, super::super::folder::Tree::read(root));
+		app.folder.start.input.set_text(&mut app.ui, "guide");
+		app.start_search_changed();
+		app.open_quick_open();
+		app.interaction
+			.overlays
+			.quick_open
+			.search
+			.input
+			.set_text(&mut app.ui, "guide");
+		app.quick_open_search_changed();
+		settle(&mut app, &events, |app| {
+			!app.folder.start.pending
+				&& !app.interaction.overlays.quick_open.search.pending
+		});
+		for search in [
+			&app.folder.start.search,
+			&app.interaction.overlays.quick_open.search,
+		] {
+			assert_eq!(search.matches.len(), 2);
+			assert_eq!(&*search.matches[0].name, "guide-b.md");
+			assert_eq!(&*search.matches[1].name, "guide-a.png");
+		}
+	}
+
+	#[test]
 	fn workspace_search_cancels_old_queries_updates_from_the_tree_and_opens_files()
 	 {
 		let dir = tempfile::tempdir().unwrap();

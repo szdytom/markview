@@ -14,6 +14,17 @@ use unicode_segmentation::UnicodeSegmentation;
 const RESULTS: usize = 64;
 pub(super) type Matches = (Arc<[Arc<File>]>, HashMap<usize, Snippet>);
 
+/// Relative to `4`: Markdown gets a 25% boost, images a 25% penalty.
+fn score_weight(path: &Path) -> u32 {
+	if super::folder::markdown(path) {
+		5
+	} else if crate::file::is_image(path) {
+		3
+	} else {
+		4
+	}
+}
+
 #[derive(Debug)]
 pub(super) struct File {
 	pub id: usize,
@@ -22,6 +33,7 @@ pub(super) struct File {
 	pub parent: Arc<str>,
 	text: Utf32String,
 	depth: usize,
+	score_weight: u32,
 }
 impl File {
 	pub fn new(id: usize, root: &Path, path: &Path) -> Arc<Self> {
@@ -48,6 +60,7 @@ impl File {
 				.as_str()
 				.into(),
 			depth: relative.components().count(),
+			score_weight: score_weight(path),
 		})
 	}
 	fn relative(&self) -> String {
@@ -66,6 +79,7 @@ impl File {
 			parent: self.parent.clone(),
 			text: self.text.clone(),
 			depth: self.depth,
+			score_weight: self.score_weight,
 		})
 	}
 }
@@ -151,7 +165,7 @@ pub(super) fn find(
 			return None;
 		}
 		if let Some(score) = pattern.score(file.text.slice(..), matcher) {
-			scored.push((score, index));
+			scored.push((score * file.score_weight, index));
 		}
 	}
 	let order = |a: &(u32, usize), b: &(u32, usize)| {
@@ -203,6 +217,41 @@ mod tests {
 	use super::*;
 	use nucleo_matcher::Config;
 	use std::time::Instant;
+
+	#[test]
+	fn search_boosts_markdown_and_penalizes_images_without_adding_matches() {
+		let root = Path::new("workspace");
+		let files: Vec<_> = [
+			"bmp", "gif", "ico", "jpeg", "jpg", "PNG", "svg", "webp", "txt",
+			"md", "MARKDOWN", "mdown",
+		]
+		.into_iter()
+		.enumerate()
+		.map(|(id, extension)| {
+			File::new(id, root, &root.join(format!("guide.{extension}")))
+		})
+		.collect();
+		let mut matcher = Matcher::new(Config::DEFAULT.match_paths());
+		let (matches, _) =
+			find(&mut matcher, &files, "guide", || false).unwrap();
+		assert_eq!(matches.len(), files.len());
+		assert!(
+			matches[..3]
+				.iter()
+				.all(|file| super::super::folder::markdown(&file.path))
+		);
+		assert_eq!(&*matches[3].name, "guide.txt");
+		assert!(
+			matches[4..]
+				.iter()
+				.all(|file| crate::file::is_image(&file.path))
+		);
+		let (matches, snippets) =
+			find(&mut matcher, &files, "guide.svg", || false).unwrap();
+		assert_eq!(matches.len(), 1);
+		assert_eq!(&*matches[0].name, "guide.svg");
+		assert_eq!(snippets[&matches[0].id].text, "guide.svg");
+	}
 
 	#[test]
 	fn opened_files_outside_a_workspace_match_by_name_not_ancestors() {
