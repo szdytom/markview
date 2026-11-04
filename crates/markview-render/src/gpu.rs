@@ -153,7 +153,12 @@ impl Gpu {
 				width: width.max(1),
 				height: height.max(1),
 				present_mode: wgpu::PresentMode::AutoVsync,
-				desired_maximum_frame_latency: 1,
+				// A third Metal drawable gives the compositor another frame of headroom.
+				desired_maximum_frame_latency: if cfg!(target_os = "macos") {
+					2
+				} else {
+					1
+				},
 				alpha_mode: caps.alpha_modes[0],
 				view_formats: vec![],
 				color_space: wgpu::SurfaceColorSpace::Auto,
