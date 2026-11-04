@@ -21,6 +21,17 @@ at the same level, without `[brackets]`.
 
 ## Unreleased
 
+## 0.4.5 - 2026-11-05
+
+**Highlights**:
+
+- Find Markdown files faster with prioritized Quick Access results, recent documents, and open tabs in Ctrl+P.
+- Move between tabs with animated opening and dragging, and scroll smoothly through the start page and quick-open picker.
+- Browse Android folders directly from internal storage or an SD card, with file changes visible immediately.
+- Place the caret by touch and paste into Android text fields with a long press.
+- Read synthetic bold and bold italic text with MVSS font candidates that have no bold faces.
+- Scroll fullscreen documents more smoothly on macOS and zoom pictures without jumps as sharper rasters arrive.
+
 ### Added
 
 - Allow MVSS font candidates to opt into synthetic bold for families without bold faces, including combined bold italic text.

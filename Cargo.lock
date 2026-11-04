@@ -2481,7 +2481,7 @@ dependencies = [
 
 [[package]]
 name = "markview"
-version = "0.4.4"
+version = "0.4.5"
 dependencies = [
  "anyhow",
  "base64 0.23.1",
@@ -2534,7 +2534,7 @@ dependencies = [
 
 [[package]]
 name = "markview-commonmark"
-version = "0.4.4"
+version = "0.4.5"
 dependencies = [
  "comrak",
  "html-escape",
@@ -2544,18 +2544,18 @@ dependencies = [
 
 [[package]]
 name = "markview-document"
-version = "0.4.4"
+version = "0.4.5"
 dependencies = [
  "serde",
 ]
 
 [[package]]
 name = "markview-geometry"
-version = "0.4.4"
+version = "0.4.5"
 
 [[package]]
 name = "markview-i18n"
-version = "0.4.4"
+version = "0.4.5"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -2565,7 +2565,7 @@ dependencies = [
 
 [[package]]
 name = "markview-icon"
-version = "0.4.4"
+version = "0.4.5"
 dependencies = [
  "quote",
  "syn 3.0.9",
@@ -2574,7 +2574,7 @@ dependencies = [
 
 [[package]]
 name = "markview-interaction"
-version = "0.4.4"
+version = "0.4.5"
 dependencies = [
  "markview-layout",
  "web-time",
@@ -2582,7 +2582,7 @@ dependencies = [
 
 [[package]]
 name = "markview-layout"
-version = "0.4.4"
+version = "0.4.5"
 dependencies = [
  "anyhow",
  "codex",
@@ -2616,7 +2616,7 @@ dependencies = [
 
 [[package]]
 name = "markview-pdf"
-version = "0.4.4"
+version = "0.4.5"
 dependencies = [
  "anyhow",
  "krilla",
@@ -2638,7 +2638,7 @@ dependencies = [
 
 [[package]]
 name = "markview-platform"
-version = "0.4.4"
+version = "0.4.5"
 dependencies = [
  "android_logger",
  "anyhow",
@@ -2672,7 +2672,7 @@ dependencies = [
 
 [[package]]
 name = "markview-render"
-version = "0.4.4"
+version = "0.4.5"
 dependencies = [
  "anyhow",
  "bytemuck",
@@ -2698,14 +2698,14 @@ dependencies = [
 
 [[package]]
 name = "markview-ui-core"
-version = "0.4.4"
+version = "0.4.5"
 dependencies = [
  "markview-geometry",
 ]
 
 [[package]]
 name = "markview-web"
-version = "0.4.4"
+version = "0.4.5"
 dependencies = [
  "anyhow",
  "console_error_panic_hook",
@@ -6332,7 +6332,7 @@ checksum = "9440ea3e5aeabb0ac63af70daf835274065238cdd0cec83418f417eae38bacee"
 
 [[package]]
 name = "xtask"
-version = "0.4.4"
+version = "0.4.5"
 dependencies = [
  "anyhow",
  "ico",
