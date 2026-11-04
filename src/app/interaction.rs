@@ -1,4 +1,6 @@
 //! Commands, selection gestures and clipboard actions.
+#[cfg(test)]
+use super::TOP;
 use crate::cli::Mode;
 use crate::settings::Setting;
 use crate::state::{
@@ -6,10 +8,12 @@ use crate::state::{
 };
 use crate::state::{Command, PanelPage, ScrollbarAxis, ScrollbarDrag};
 use markview_layout::text::TextPosition;
-use std::time::{Duration, Instant};
+#[cfg(test)]
+use std::time::Duration;
+use std::time::Instant;
 
+use super::App;
 use super::modal::{Message, Modal};
-use super::{App, TOP};
 
 use crate::state::Selection;
 fn sanitize_filename(title: &str, lang: crate::lang::Lang) -> String {
@@ -533,18 +537,6 @@ impl<P: super::SendEvent> App<P> {
 		if self.interaction.pointer.drag().is_some()
 			&& self.interaction.pointer.dragged()
 		{
-			let (_, height, _) = self.dimensions();
-			let can_scroll = markview_selection::selection_scroll(
-				self.interaction.pointer.cursor().1,
-				TOP,
-				height - self.bottom(),
-				self.readers.session.scrolling.offset,
-				(self.readers.session.snapshot.height - self.viewport())
-					.max(0.0),
-			) != 0.0;
-			self.interaction.pointer.set_auto_scroll_at(
-				can_scroll.then(|| Instant::now() + Duration::from_millis(16)),
-			);
 			self.redraw();
 		}
 	}

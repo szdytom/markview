@@ -1,5 +1,5 @@
 //! Row insertion and collapse motion shared by the folder and outline lists.
-use super::{Easing, Tween};
+use super::{Animation, Easing, Tween};
 use std::{
 	collections::{BTreeSet, HashMap},
 	time::{Duration, Instant},
@@ -153,6 +153,12 @@ impl RowSlide {
 			.as_mut()
 			.expect("the row slide is animating")
 			.freeze(elapsed);
+	}
+}
+
+impl Animation for RowSlide {
+	fn advance(&mut self, now: Instant) -> bool {
+		self.tween.advance(now)
 	}
 }
 

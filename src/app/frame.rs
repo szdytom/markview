@@ -307,13 +307,14 @@ impl<P: super::SendEvent> App<P> {
 		);
 		if !self.tab_strip.phone && self.folder.tree.is_some() {
 			let drawer = self.folder_rect();
-			let reveal = self.folder.reveal();
+			let reveal = self.folder.reveal(self.frame_now());
 			layout = layout.with_sidebar(drawer.w, reveal);
 		}
-		let tab_end = self.tab_strip.end(
+		let tab_end = self.tab_strip.end_at(
 			self.tab_metrics
 				.end(layout.tabs, self.tab_strip.scroll.offset()),
 			self.readers.entries().len(),
+			self.frame_now(),
 		);
 		layout = layout.with_tab_end(tab_end);
 		layout = layout.with_scrollbar(
@@ -342,10 +343,11 @@ impl<P: super::SendEvent> App<P> {
 			native.set_fullscreen(layout.fullscreen);
 			self.native_tab_end.set(Some((
 				layout.left_inset,
-				self.tab_strip.end(
+				self.tab_strip.end_at(
 					self.tab_metrics
 						.end(layout.tabs, self.tab_strip.scroll.offset()),
 					self.readers.entries().len(),
+					self.frame_now(),
 				),
 			)));
 			self.native_scrollbar.set(layout.scrollbar);
@@ -414,7 +416,6 @@ impl<P: super::SendEvent> App<P> {
 		self.interaction.reset_clicks();
 		self.interaction.widgets.captured = None;
 		self.interaction.pointer.release();
-		self.interaction.pointer.set_auto_scroll_at(None);
 		self.interaction.pointer.end_scrollbar();
 		self.interaction.panels.set_grab(None);
 	}

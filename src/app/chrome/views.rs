@@ -63,6 +63,7 @@ pub(in crate::app) struct SessionView<'a> {
 	pub(in crate::app) tab_widths: &'a [(f32, f32)],
 	pub(in crate::app) preview: Option<&'a preview::Open>,
 	pub(in crate::app) folder: Option<&'a folder::Browser>,
+	pub(in crate::app) now: std::time::Instant,
 }
 
 impl<'a> SessionView<'a> {
@@ -83,7 +84,13 @@ impl<'a> SessionView<'a> {
 			tab_widths,
 			preview,
 			folder,
+			now: std::time::Instant::now(),
 		}
+	}
+
+	pub(in crate::app) fn with_now(mut self, now: std::time::Instant) -> Self {
+		self.now = now;
+		self
 	}
 }
 

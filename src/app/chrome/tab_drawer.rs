@@ -471,14 +471,19 @@ pub(super) fn folder_buttons(
 	panel: Rect,
 	width: f32,
 	lang: Lang,
+	now: std::time::Instant,
 ) -> Vec<Button> {
 	let mut buttons = browser.map_or_else(Vec::new, |browser| {
-		super::folder::buttons(browser, folder_rect(panel), lang)
+		super::folder::buttons(browser, folder_rect(panel), lang, now)
 	});
 	buttons.extend(controls(panel, width, lang, SidebarTab::Folder));
 	buttons
 }
 
+#[expect(
+	clippy::too_many_arguments,
+	reason = "one drawer view's borrowed inputs"
+)]
 pub(super) fn draw_folder(
 	ui: &mut TextShaper,
 	browser: Option<&Browser>,
@@ -487,6 +492,7 @@ pub(super) fn draw_folder(
 	size: (f32, f32),
 	reveal: f32,
 	settings: &ReaderSettings,
+	now: std::time::Instant,
 ) -> Vec<Draw> {
 	let mut out = shell(ui, interaction, size, reveal, settings, 0);
 	let panel = animated_rect(size.0, size.1, reveal, settings.tabs_width);
@@ -505,6 +511,7 @@ pub(super) fn draw_folder(
 					bar_opacity: 1.0,
 				},
 				settings.lang(),
+				now,
 			),
 		});
 	} else {

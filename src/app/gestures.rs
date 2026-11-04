@@ -70,6 +70,7 @@ pub(super) struct GestureState {
 }
 
 impl GestureState {
+	#[cfg(test)]
 	pub(super) fn deadline(&self, now: Instant) -> Option<Instant> {
 		self.coasting.then_some(now + Duration::from_millis(16))
 	}
@@ -320,7 +321,6 @@ impl<P: super::SendEvent> App<P> {
 		self.tab_strip.cancel_drag();
 		self.interaction.pointer.release();
 		self.interaction.pointer.clear_pressed_image();
-		self.interaction.pointer.set_auto_scroll_at(None);
 		self.interaction.pointer.end_scrollbar();
 		self.interaction.panels.set_grab(None);
 		self.interaction.panels.sidebar_mut().clear();
@@ -636,9 +636,9 @@ impl<P: super::SendEvent> App<P> {
 		}
 	}
 
-	pub(super) fn advance_gestures(&mut self, now: Instant) {
+	pub(super) fn advance_gestures(&mut self, now: Instant) -> bool {
 		if !self.gestures.coasting {
-			return;
+			return false;
 		}
 		let next =
 			self.gestures.motion.as_mut().and_then(|(surface, motion)| {
@@ -652,6 +652,7 @@ impl<P: super::SendEvent> App<P> {
 		} else {
 			self.gestures.coasting = false;
 		}
+		self.gestures.coasting
 	}
 
 	fn touch_offset(&mut self, surface: Surface) -> Point {

@@ -380,7 +380,7 @@ fn document_scrollbar_appears_only_on_motion_over_the_reader() {
 	// Moving back to the toolbar starts the same fade rather than cutting
 	// the bar off instantly.
 	app.pointer_moved(PhysicalPosition::new(500.0, 10.0));
-	let until = app.scrollbar_visible_until.unwrap();
+	let until = app.scrollbar_reveal.linger_until().unwrap();
 	let half = until + super::super::viewport::SCROLLBAR_FADE / 2;
 	app.scrollbar_tick(half);
 	assert!(app.document_scrollbar().is_some());
@@ -390,7 +390,7 @@ fn document_scrollbar_appears_only_on_motion_over_the_reader() {
 	assert!(app.document_scrollbar().is_none());
 	// Without further motion it fades out when its linger expires.
 	app.pointer_moved(PhysicalPosition::new(500.0, 400.0));
-	let until = app.scrollbar_visible_until.unwrap();
+	let until = app.scrollbar_reveal.linger_until().unwrap();
 	app.scrollbar_tick(until + super::super::viewport::SCROLLBAR_FADE / 2);
 	assert!(app.document_scrollbar().is_some());
 	app.scrollbar_tick(until + super::super::viewport::SCROLLBAR_FADE);
@@ -401,7 +401,7 @@ fn document_scrollbar_appears_only_on_motion_over_the_reader() {
 fn pointer_motion_restores_a_faded_document_scrollbar() {
 	let (mut app, _) = reader(&"Body line.\n\n".repeat(100), 760.0);
 	app.show_document_scrollbar(Instant::now());
-	let until = app.scrollbar_visible_until.unwrap();
+	let until = app.scrollbar_reveal.linger_until().unwrap();
 	let halfway = until + super::super::viewport::SCROLLBAR_FADE / 2;
 	app.scrollbar_tick(halfway);
 	assert!(app.scrollbar_opacity_at(halfway) < 1.0);
@@ -465,7 +465,7 @@ fn scrollbar_visibility_keeps_the_window_edge_cursor_current() {
 		Some(winit::window::CursorIcon::EwResize),
 		"the visible bar owns the edge"
 	);
-	let until = app.scrollbar_visible_until.unwrap();
+	let until = app.scrollbar_reveal.linger_until().unwrap();
 	app.scrollbar_tick(until + super::super::viewport::SCROLLBAR_FADE);
 	assert!(app.document_scrollbar().is_none());
 	assert_eq!(
@@ -549,6 +549,7 @@ fn folder_scrollbar_hugs_the_right_edge_and_fades_apart_from_the_reader_bar() {
 	app.folder.show_scrollbar(start);
 	let linger = start + super::super::viewport::SCROLLBAR_LINGER;
 	assert_eq!(app.folder.scrollbar_opacity_at(linger), 1.0);
+	app.folder_scrollbar_tick(linger);
 	let halfway = linger + super::super::viewport::SCROLLBAR_FADE / 2;
 	assert!(app.folder.scrollbar_opacity_at(halfway) > 0.0);
 	assert!(app.folder.scrollbar_opacity_at(halfway) < 1.0);
@@ -818,7 +819,7 @@ fn a_copy_takes_the_reading_text_and_a_stale_selection_takes_nothing() {
 }
 
 #[test]
-fn dragging_into_the_margin_asks_for_a_tick_and_a_tick_scrolls_one_step() {
+fn dragging_into_the_margin_scrolls_at_a_frame_rate_independent_speed() {
 	let (mut app, _) = reader(&"Body line.\n\n".repeat(200), 760.0);
 	// Scrolled away from the top, so dragging above the text has somewhere to
 	// travel.
@@ -834,27 +835,20 @@ fn dragging_into_the_margin_asks_for_a_tick_and_a_tick_scrolls_one_step() {
 	app.interaction.pointer.move_to((100.0, TOP + 4.0));
 
 	app.update_drag();
-	assert!(
-		app.interaction.pointer.auto_scroll_at().is_some(),
-		"a drag inside the top margin must arm the auto-scroll tick"
-	);
-
 	let scroll = app.readers.session.scrolling.offset;
-	app.tick(&StubLoop, Instant::now() + Duration::from_millis(32));
+	let now = Instant::now();
+	assert!(app.advance_animations(now, Duration::from_millis(16)));
 	assert_eq!(
 		app.readers.session.scrolling.offset,
 		scroll - 14.0,
-		"one tick travels one step towards the pointer's edge"
+		"16 ms at 875 px/s travels one 14 px step"
 	);
-	assert!(
-		app.interaction.pointer.auto_scroll_at().is_some(),
-		"the tick re-arms while the pointer stays in the margin"
-	);
+	assert!(app.advance_animations(now, Duration::from_millis(16)));
 
-	// Out of the margin and short of the text, nothing more is scheduled.
+	// Out of the margin and short of the text, motion stops.
 	app.interaction.pointer.move_to((100.0, 400.0));
 	app.update_drag();
-	assert!(app.interaction.pointer.auto_scroll_at().is_none());
+	assert!(!app.advance_animations(now, Duration::from_millis(16)));
 }
 
 /// The window point at the centre of the first cluster of `block`, as the
@@ -1894,6 +1888,27 @@ fn a_new_drag_grabs_the_tab_where_it_is_painted() {
 }
 
 #[test]
+fn a_stationary_tab_press_does_not_edge_scroll() {
+	let (mut app, _) = reader(SOURCE, 760.0);
+	let now = Instant::now();
+	for index in 0..30 {
+		app.readers
+			.open(PathBuf::from(format!("/tmp/drag-tab-{index}.md")), now);
+	}
+	app.begin_tab_drag(0);
+	let layout = app.tab_layout();
+	let viewport = app.frame_layout().tabs;
+	app.tab_strip.scroll.set_max(layout.max_scroll);
+	app.tab_strip.scroll.set(100.0);
+	app.interaction
+		.pointer
+		.move_to((viewport.x + 5.0, viewport.y + viewport.h / 2.0));
+	let before = app.tab_strip.scroll.offset();
+	app.advance_animations(now, Duration::from_millis(16));
+	assert_eq!(app.tab_strip.scroll.offset(), before);
+}
+
+#[test]
 fn a_scrolling_strip_moves_the_drop_slot_with_it() {
 	let (mut app, _) = reader(SOURCE, 760.0);
 	let now = Instant::now();
@@ -2282,7 +2297,7 @@ fn drawer_animations_keep_outgoing_content_until_the_final_frame() {
 		})
 	};
 	let settle = |app: &mut App<StubProxy>| {
-		assert!(app.advance_drawers(Instant::now() + Duration::from_secs(1)));
+		app.advance_drawers(Instant::now() + Duration::from_secs(1));
 		assert!(app.drawer_deadline(Instant::now()).is_none());
 	};
 	for phone in [false, true] {
@@ -2870,9 +2885,6 @@ fn opening_a_panel_cancels_the_press_and_hover() {
 		.set_pressed_image(Some(("picture.png".into(), (100.0, 100.0))));
 	app.interaction
 		.pointer
-		.set_auto_scroll_at(Some(Instant::now()));
-	app.interaction
-		.pointer
 		.begin_scrollbar(crate::state::ScrollbarDrag {
 			target: crate::state::ScrollbarAxis::Document,
 			grab: 0.0,
@@ -2891,7 +2903,6 @@ fn opening_a_panel_cancels_the_press_and_hover() {
 	assert!(app.interaction.panel_open());
 	assert!(app.interaction.pointer.drag().is_none());
 	assert!(app.interaction.pointer.pressed_image().is_none());
-	assert!(app.interaction.pointer.auto_scroll_at().is_none());
 	assert!(app.interaction.pointer.scrollbar().is_none());
 	assert!(app.interaction.pointer.hover().is_none());
 	assert!(app.interaction.pointer.hover_image().is_none());

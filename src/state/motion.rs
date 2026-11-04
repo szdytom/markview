@@ -1,6 +1,15 @@
 //! Time-based motion shared by the chrome's drawers and list rows.
 use std::time::{Duration, Instant};
 
+/// A continuous visual animation advanced by the frame driver.
+///
+/// `advance` returns whether another frame is needed. The value itself is
+/// sampled separately at the frame time, so an animation that has reached its
+/// end is not sampled again.
+pub(crate) trait Animation {
+	fn advance(&mut self, now: Instant) -> bool;
+}
+
 #[derive(Clone, Copy, Debug)]
 pub(crate) enum Easing {
 	CubicOut,
@@ -97,10 +106,89 @@ impl Tween {
 	}
 }
 
+impl Animation for Tween {
+	fn advance(&mut self, now: Instant) -> bool {
+		!self.is_finished(now)
+	}
+}
+
+impl Animation for Option<Tween> {
+	fn advance(&mut self, now: Instant) -> bool {
+		let Some(tween) = self else {
+			return false;
+		};
+		if tween.advance(now) {
+			true
+		} else {
+			*self = None;
+			false
+		}
+	}
+}
+
+/// A linear opacity fade, used by the scrollbars after their linger expires.
+pub(crate) struct Fade {
+	from: f32,
+	to: f32,
+	started: Instant,
+	duration: Duration,
+}
+
+impl Fade {
+	pub(crate) fn new(
+		from: f32,
+		to: f32,
+		now: Instant,
+		duration: Duration,
+	) -> Self {
+		Self {
+			from,
+			to,
+			started: now,
+			duration,
+		}
+	}
+
+	pub(crate) fn value(&self, now: Instant) -> f32 {
+		let t = now.saturating_duration_since(self.started).as_secs_f32()
+			/ self.duration.as_secs_f32();
+		self.from + (self.to - self.from) * t.clamp(0.0, 1.0)
+	}
+
+	pub(crate) fn is_finished(&self, now: Instant) -> bool {
+		now >= self.started + self.duration
+	}
+}
+
+impl Animation for Fade {
+	fn advance(&mut self, now: Instant) -> bool {
+		now < self.started + self.duration
+	}
+}
+
 #[cfg(test)]
 mod tests {
 	use super::*;
 
+	#[test]
+	fn a_finished_tween_clears_and_a_fade_samples_linearly() {
+		let start = Instant::now();
+		let mut tween = Some(Tween::new(
+			0.0,
+			1.0,
+			start,
+			Duration::from_millis(100),
+			Easing::CubicOut,
+		));
+		assert!(tween.advance(start + Duration::from_millis(50)));
+		assert!(!tween.advance(start + Duration::from_millis(100)));
+		assert!(tween.is_none());
+
+		let fade = Fade::new(1.0, 0.0, start, Duration::from_millis(100));
+		assert_eq!(fade.value(start), 1.0);
+		assert_eq!(fade.value(start + Duration::from_millis(50)), 0.5);
+		assert_eq!(fade.value(start + Duration::from_millis(100)), 0.0);
+	}
 	#[test]
 	fn firefox_easing_leaves_fast_and_settles() {
 		assert_eq!(Easing::TabDrag.ease(0.0), 0.0);

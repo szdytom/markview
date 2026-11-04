@@ -437,8 +437,8 @@ pub(super) struct Browser {
 	pub open: bool,
 	pub scroll: Scroll,
 	pub grab: Option<f32>,
-	/// When the tree scrollbar hides again after pointer motion.
-	scrollbar_visible_until: Option<Instant>,
+	/// The tree scrollbar's linger or fade after pointer motion.
+	scrollbar_reveal: super::viewport::ScrollbarReveal,
 	/// The drawer's slide when it opens or closes.
 	animation: Option<DrawerAnimation>,
 	/// The rows sliding when a directory expands or collapses.
@@ -479,77 +479,42 @@ impl Browser {
 	}
 
 	/// The drawer's slide reveal at `now`.
-	pub(super) fn reveal(&self) -> f32 {
-		DrawerAnimation::reveal(&self.animation, self.open, Instant::now())
-	}
-
-	pub(super) fn scrollbar_opacity(&self) -> f32 {
-		self.scrollbar_opacity_at(Instant::now())
+	pub(super) fn reveal(&self, now: Instant) -> f32 {
+		DrawerAnimation::reveal(&self.animation, self.open, now)
 	}
 
 	pub(super) fn scrollbar_opacity_at(&self, now: Instant) -> f32 {
 		if self.grab.is_some() {
-			return 1.0;
-		}
-		let Some(until) = self.scrollbar_visible_until else {
-			return 0.0;
-		};
-		let faded = now.saturating_duration_since(until);
-		if faded.is_zero() {
 			1.0
 		} else {
-			(1.0 - faded.as_secs_f32()
-				/ super::viewport::SCROLLBAR_FADE.as_secs_f32())
-			.max(0.0)
+			self.scrollbar_reveal.opacity(now)
 		}
 	}
 
 	pub(super) fn show_scrollbar(&mut self, now: Instant) {
-		self.scrollbar_visible_until =
-			Some(now + super::viewport::SCROLLBAR_LINGER);
+		self.scrollbar_reveal.show(now);
 	}
 
 	pub(super) fn hide_scrollbar(&mut self, now: Instant) {
-		if self
-			.scrollbar_visible_until
-			.is_some_and(|until| until > now)
-		{
-			self.scrollbar_visible_until = Some(now);
-		}
+		self.scrollbar_reveal.hide(now);
 	}
 
 	pub(super) fn scrollbar_deadline(&self, now: Instant) -> Option<Instant> {
-		let until = self.scrollbar_visible_until?;
-		if until > now {
-			Some(until)
-		} else {
-			let end = until + super::viewport::SCROLLBAR_FADE;
-			(end > now)
-				.then(|| (now + super::viewport::SCROLLBAR_FRAME).min(end))
-		}
+		self.scrollbar_reveal.deadline(now)
 	}
 
 	/// Expires the tree bar's linger, or keeps it alive under a drag. Returns
 	/// whether paint changed.
 	pub(super) fn scrollbar_tick(&mut self, now: Instant) -> bool {
-		if self.grab.is_some() {
-			self.show_scrollbar(now);
-			return false;
-		}
-		let Some(until) = self.scrollbar_visible_until else {
-			return false;
-		};
-		let end = until + super::viewport::SCROLLBAR_FADE;
-		if now >= end {
-			self.scrollbar_visible_until = None;
-			true
-		} else {
-			now >= until
-		}
+		self.scrollbar_reveal.tick(now, self.grab.is_some())
 	}
 
 	pub(super) fn animating(&self) -> bool {
 		self.animation.is_some() || self.rows.animating()
+	}
+
+	pub(super) fn advance_scrollbar(&mut self, now: Instant) -> bool {
+		self.scrollbar_reveal.advance(now)
 	}
 
 	pub(super) fn advance_animation(&mut self, now: Instant) {
@@ -594,11 +559,12 @@ impl Browser {
 	pub(super) fn list_rows(
 		&self,
 		list: &super::chrome::list::List,
+		now: Instant,
 	) -> Vec<Row> {
 		let Some(tree) = &self.tree else {
 			return Vec::new();
 		};
-		self.rows.animated(tree.rows(), Instant::now()).map_or_else(
+		self.rows.animated(tree.rows(), now).map_or_else(
 			|| {
 				list.visible()
 					.map(|row| Row {
@@ -1185,7 +1151,7 @@ impl<P: SendEvent> App<P> {
 				super::BOTTOM,
 				self.preferences.values.folder_width,
 			),
-			self.folder.reveal(),
+			self.folder.reveal(self.frame_now()),
 		)
 	}
 
@@ -1243,7 +1209,7 @@ impl<P: SendEvent> App<P> {
 	}
 
 	pub(super) fn pointer_in_folder(&self) -> bool {
-		self.folder.reveal() > 0.
+		self.folder.reveal(self.frame_now()) > 0.
 			&& self.folder.tree.is_some()
 			&& !self.interaction.panel_open()
 			&& !self.interaction.overlays.modal_open()
@@ -1254,7 +1220,8 @@ impl<P: SendEvent> App<P> {
 	}
 
 	pub(super) fn folder_bar(&self) -> Option<crate::layout::Scrollbar> {
-		if self.folder.grab.is_none() && self.folder.scrollbar_opacity() <= 0.0
+		if self.folder.grab.is_none()
+			&& self.folder.scrollbar_opacity_at(self.frame_now()) <= 0.0
 		{
 			return None;
 		}

@@ -42,6 +42,8 @@ at the same level, without `[brackets]`.
 - Flush the folder sidebar's scrollbar against its right edge, fade it like the document's, and keep the reader's bar limited to the reading area.
 - Add a scrollbar and eased wheel scrolling to the Ctrl+P quick-open picker.
 - Unify document and chrome scrolling on one time-driven `Scroll` with a cached extent, and give the start page eased wheel travel.
+- Drive every continuous animation from one frame clock, advancing once per presented frame and redrawing only while motion is active.
+- Make selection and tab edge auto-scroll speed-based in logical pixels per second, so travel is identical at any refresh rate.
 - Use the folder sidebar's Markdown and image icons for Quick Access file rows.
 - Open files and folders chosen from the reader's own dialogs in the current window instead of routing them to another single-instance window.
 - Print the build commit alongside the version in `markview --version`.

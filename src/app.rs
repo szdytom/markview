@@ -1,5 +1,6 @@
 mod anchor;
 pub(crate) mod android;
+mod animation;
 mod background;
 mod chrome;
 mod dm;
@@ -251,6 +252,7 @@ fn register_font_dir(
 struct App<P = EventLoopProxy<Event>> {
 	surface_insets: [f32; 4],
 	frame: frame::State,
+	animations: animation::FrameDriver,
 	native_frame: Option<markview_platform::NativeFrame>,
 	native_tab_end: std::rc::Rc<std::cell::Cell<Option<(f32, f32)>>>,
 	native_scrollbar: std::rc::Rc<std::cell::Cell<Option<Rect>>>,
@@ -312,9 +314,8 @@ struct App<P = EventLoopProxy<Event>> {
 	/// When reading-area scrolling last moved, so idle maintenance waits for a
 	/// genuinely stationary reader.
 	last_scroll_at: Instant,
-	/// When the document scrollbar hides again after pointer motion over the
-	/// reading area; `None` keeps it hidden.
-	scrollbar_visible_until: Option<Instant>,
+	/// The document scrollbar's linger or fade after pointer motion.
+	scrollbar_reveal: viewport::ScrollbarReveal,
 	fatal: Option<String>,
 	/// The one export in flight, the live watch target and the PNG strip loop.
 	export: export::Session,
@@ -405,6 +406,7 @@ impl<P: SendEvent> App<P> {
 		Self {
 			surface_insets: [0.0; 4],
 			frame: frame::State::new(preferences.values.window_layout),
+			animations: Default::default(),
 			native_frame: None,
 			native_tab_end: Default::default(),
 			native_scrollbar: Default::default(),
@@ -458,7 +460,7 @@ impl<P: SendEvent> App<P> {
 			first_frame: None,
 			started: Instant::now(),
 			last_scroll_at: Instant::now(),
-			scrollbar_visible_until: None,
+			scrollbar_reveal: Default::default(),
 			fatal: None,
 			export: export::Session::default(),
 		}
@@ -581,6 +583,9 @@ impl<P: SendEvent> App<P> {
 		(clip.w.max(1.0), clip.h.max(1.0))
 	}
 	pub(super) fn redraw(&self) {
+		if self.animations.is_advancing() {
+			return;
+		}
 		if let Some(w) = &self.window {
 			w.request_redraw();
 		}

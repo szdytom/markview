@@ -1,11 +1,8 @@
 //! Adapt tab gestures to session order without involving document layout workers.
-use super::{
-	App,
-	tab_strip::{TabDrag, TabLayout},
-};
+use super::{App, tab_strip::TabDrag};
 use crate::app::tab_metrics::CLOSE_HOVER;
 use crate::layout::Rect;
-use std::time::{Duration, Instant};
+use std::time::Instant;
 
 impl<P: super::SendEvent> App<P> {
 	pub(super) fn tab_at_cursor(&mut self) -> Option<usize> {
@@ -80,7 +77,6 @@ impl<P: super::SendEvent> App<P> {
 		if drag.moving {
 			self.tab_strip
 				.retarget_shift(&layout, &self.tab_metrics.widths);
-			self.schedule_tab_scroll(&layout);
 			self.redraw();
 		}
 	}
@@ -123,28 +119,5 @@ impl<P: super::SendEvent> App<P> {
 			);
 			self.redraw();
 		}
-	}
-	fn schedule_tab_scroll(&mut self, layout: &TabLayout) {
-		self.tab_strip.scroll_at =
-			(layout.edge_scroll(self.interaction.pointer.cursor().0) != 0.0)
-				.then(|| Instant::now() + Duration::from_millis(16));
-	}
-	pub(super) fn auto_scroll_tabs(&mut self, now: Instant) {
-		if self.tab_strip.scroll_at.is_none_or(|d| d > now) {
-			return;
-		}
-		self.tab_strip.scroll_at = None;
-		if self.tab_strip.drag.is_none() {
-			return;
-		}
-		let layout = self.tab_layout();
-		self.tab_strip.scroll.set_max(layout.max_scroll);
-		self.tab_strip.scroll.set(
-			(layout.scroll
-				+ layout.edge_scroll(self.interaction.pointer.cursor().0))
-			.clamp(0.0, layout.max_scroll),
-		);
-		self.move_tab_drag();
-		self.redraw();
 	}
 }

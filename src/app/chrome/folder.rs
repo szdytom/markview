@@ -198,6 +198,7 @@ pub(super) fn buttons(
 	browser: &Browser,
 	drawer: Rect,
 	lang: Lang,
+	now: std::time::Instant,
 ) -> Vec<Button> {
 	let Some(tree) = &browser.tree else {
 		return Vec::new();
@@ -244,7 +245,7 @@ pub(super) fn buttons(
 	}
 	let list = list(drawer, tree.rows().len(), browser.scroll.offset());
 	let row_buttons = browser
-		.list_rows(&list)
+		.list_rows(&list, now)
 		.into_iter()
 		.filter_map(|row| {
 			let e = &tree.entries[row.index];
@@ -281,6 +282,7 @@ pub(super) fn draw(
 	interaction: &crate::app::widgets::Drawn<'_>,
 	pane: Pane,
 	lang: Lang,
+	now: std::time::Instant,
 ) -> Vec<Draw> {
 	let Pane {
 		body: drawer,
@@ -324,7 +326,7 @@ pub(super) fn draw(
 		C::Color,
 	));
 	components::appearance(ui);
-	for b in buttons(browser, drawer, lang).into_iter().filter(|b| {
+	for b in buttons(browser, drawer, lang, now).into_iter().filter(|b| {
 		matches!(
 			b.action,
 			Command::Chrome(ChromeCommand::FolderCollapseAll)
@@ -350,7 +352,7 @@ pub(super) fn draw(
 			C::Muted,
 		));
 	}
-	for row in browser.list_rows(&list) {
+	for row in browser.list_rows(&list, now) {
 		let e = &tree.entries[row.index];
 		let rect = list.slot_rect(row.slot);
 		if !rect
@@ -556,6 +558,7 @@ mod tests {
 					bar_opacity: 1.0,
 				},
 				Lang::En,
+				std::time::Instant::now(),
 			);
 			browser.labels.borrow().rows[&0]
 				.iter()
@@ -610,7 +613,12 @@ mod tests {
 			for reveal in [0., 0.25, 0.5, 0.75, 1.] {
 				let drawer =
 					animated_rect(rect(1200., 800., 40., 24., width), reveal);
-				let buttons = buttons(&browser, drawer, Lang::En);
+				let buttons = buttons(
+					&browser,
+					drawer,
+					Lang::En,
+					std::time::Instant::now(),
+				);
 				assert_eq!(
 					buttons[0].action,
 					Command::Chrome(ChromeCommand::FolderRefresh)
@@ -650,6 +658,7 @@ mod tests {
 						bar_opacity: 1.0,
 					},
 					Lang::En,
+					std::time::Instant::now(),
 				);
 				let Draw::Clipped { draws, .. } = &draws[draws.len() - 1]
 				else {

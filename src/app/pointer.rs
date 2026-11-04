@@ -31,7 +31,6 @@ pub(crate) struct State {
 	/// An image press, independent of whether the page has selectable text.
 	pressed_image: Option<(String, (f32, f32))>,
 	dragged: bool,
-	drag_at: Option<Instant>,
 	modifiers: ModifiersState,
 	cursor: (f32, f32),
 	hover: Option<HoveredLink>,
@@ -92,14 +91,6 @@ impl State {
 
 	pub(crate) fn set_dragged(&mut self, dragged: bool) {
 		self.dragged = dragged;
-	}
-
-	pub(crate) fn auto_scroll_at(&self) -> Option<Instant> {
-		self.drag_at
-	}
-
-	pub(crate) fn set_auto_scroll_at(&mut self, at: Option<Instant>) {
-		self.drag_at = at;
 	}
 
 	pub(crate) fn pressed_image(&self) -> Option<&(String, (f32, f32))> {
@@ -201,7 +192,6 @@ impl State {
 	pub(crate) fn cancel(&mut self) {
 		self.pointer_down = None;
 		self.pressed_image = None;
-		self.drag_at = None;
 		self.scrollbar = None;
 	}
 
@@ -418,7 +408,6 @@ impl<P: super::SendEvent> App<P> {
 		// selection gesture still ends here.
 		self.interaction.pointer.release();
 		self.interaction.pointer.clear_pressed_image();
-		self.interaction.pointer.set_auto_scroll_at(None);
 		self.interaction.pointer.clear_document_hover();
 		self.dismiss_preview();
 		if let Some(w) = &self.window {
@@ -804,11 +793,12 @@ impl<P: super::SendEvent> App<P> {
 		});
 	}
 	/// Steps a running scroll animation and asks for the next frame.
-	pub(super) fn advance_scroll(&mut self, now: Instant) {
+	pub(super) fn advance_scroll(&mut self, now: Instant) -> bool {
 		if !self.readers.session.scroll_animating() {
-			return;
+			return false;
 		}
-		if self.readers.session.advance_scroll(now, self.viewport()) {
+		let active = self.readers.session.advance_scroll(now, self.viewport());
+		if active {
 			self.last_scroll_at = now;
 			self.worker
 				.prioritize(self.readers.session.coverage(self.viewport()));
@@ -816,6 +806,7 @@ impl<P: super::SendEvent> App<P> {
 		self.follow_scroll();
 		self.refresh_hover();
 		self.redraw();
+		active
 	}
 	/// Re-prioritizes the worker, follows the pointer and repaints after the
 	/// offset moved.

@@ -48,6 +48,27 @@ impl<P: super::SendEvent> App<P> {
 		// A pass only survives a frame that completes; an occluded or retried
 		// frame must not leave a deadline that wakes the loop forever.
 		self.prewarm_at = None;
+		let (frame, suboptimal) = {
+			let Some(renderer) = &mut self.renderer else {
+				return Ok(());
+			};
+			match renderer.acquire()? {
+				crate::render::FrameStatus::Ready(frame, suboptimal) => {
+					(frame, suboptimal)
+				}
+				crate::render::FrameStatus::Retry(delay) => {
+					self.retry_at = Some(Instant::now() + delay);
+					return Ok(());
+				}
+				crate::render::FrameStatus::Occluded => return Ok(()),
+			}
+		};
+		let now = Instant::now();
+		self.animations.begin(now);
+		self.animations.set_advancing(true);
+		let active = self.advance_animations(now, self.animations.dt());
+		self.animations.set_advancing(false);
+		self.animations.set_active(active);
 		let overlay = self.overlay();
 		self.sync_native_frame();
 		let (_, _, scale) = self.dimensions();
@@ -95,16 +116,6 @@ impl<P: super::SendEvent> App<P> {
 				self.interaction.pointer.cursor().1 + insets[1],
 			)),
 		);
-		let (frame, suboptimal) = match renderer.acquire()? {
-			crate::render::FrameStatus::Ready(frame, suboptimal) => {
-				(frame, suboptimal)
-			}
-			crate::render::FrameStatus::Retry(delay) => {
-				self.retry_at = Some(Instant::now() + delay);
-				return Ok(());
-			}
-			crate::render::FrameStatus::Occluded => return Ok(()),
-		};
 		let target = frame.texture.create_view(&Default::default());
 		let rasterized_before = renderer.raster_stats().rasterized;
 		let started = Instant::now();
@@ -119,6 +130,9 @@ impl<P: super::SendEvent> App<P> {
 		let rasterized = renderer.raster_stats().rasterized - rasterized_before;
 		window.pre_present_notify();
 		renderer.present(frame);
+		if self.animations.presented(Instant::now()) {
+			window.request_redraw();
+		}
 		// Publish a ready body only after the first loading frame has been presented.
 		if self.settings_resources.presented(settings_kind) {
 			window.request_redraw();

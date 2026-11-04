@@ -159,7 +159,6 @@ fn shift_extends_original_anchor_and_reload_clears_gesture() {
 	);
 	interaction.clear_selection();
 	assert!(interaction.selection.is_none());
-	assert!(interaction.pointer.auto_scroll_at().is_none());
 }
 #[test]
 fn repeated_presses_within_the_interval_cycle_word_and_block_click() {
@@ -1686,12 +1685,10 @@ fn every_panel_transition_clears_transient_input() {
 			..Default::default()
 		};
 		interaction.panels.set_grab(Some(10.0));
-		interaction.pointer.set_auto_scroll_at(Some(Instant::now()));
 		interaction.show_panel(page);
 		assert_eq!(interaction.widgets.focus, None);
 		assert_eq!(interaction.widgets.captured, None);
 		assert_eq!(interaction.panels.grab(), None);
-		assert_eq!(interaction.pointer.auto_scroll_at(), None);
 	}
 }
 

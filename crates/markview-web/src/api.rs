@@ -24,7 +24,7 @@ use markview_layout::{
 use markview_render::{FrameStatus, Renderer, SurfaceSource, Theme, View};
 use markview_selection::{
 	DocumentInteraction, Horizontal, Host, Hover, Modifiers, Point, Scroll,
-	ScrollBounds, Selection, WheelMode,
+	ScrollBounds, Selection, WheelMode, selection_scroll_speed,
 };
 use serde::Deserialize;
 use std::{sync::Arc, time::Duration};
@@ -154,6 +154,7 @@ pub async fn create(
 		images: Images::default(),
 		images_dirty: false,
 		cursor: None,
+		last_advance: None,
 		logical,
 		dpr,
 		scale,
@@ -199,6 +200,8 @@ pub struct Markview {
 	images_dirty: bool,
 	/// The last canvas-local point the page reported, in CSS pixels.
 	cursor: Option<(f32, f32)>,
+	/// When the previous interaction frame ran, for speed integration.
+	last_advance: Option<Instant>,
 	/// The canvas box in CSS pixels, which hit testing and scrolling use.
 	logical: (f32, f32),
 	/// The device pixel ratio the page asked for.
@@ -684,7 +687,6 @@ impl Markview {
 		self.pending_anchor = None;
 		self.pointer.set_drag(None);
 		self.pointer.set_dragged(false);
-		self.pointer.set_auto_scroll_at(None);
 		self.pressed_image = None;
 		let point = Point::new(x as f32, y as f32);
 		if let Some((b, o, bar)) = self.context().overflow_bar_at(
@@ -794,7 +796,6 @@ impl Markview {
 	pub fn cancel_pointer(&mut self) {
 		self.pointer.reset_clicks();
 		self.pointer.set_drag(None);
-		self.pointer.set_auto_scroll_at(None);
 		self.overflow_drag = None;
 		self.pressed_image = None;
 		self.cursor = None;
@@ -1022,26 +1023,27 @@ impl Markview {
 		}
 	}
 	fn advance_interaction(&mut self, now: Instant) {
+		let dt = self
+			.last_advance
+			.map_or(Duration::ZERO, |last| now.saturating_duration_since(last))
+			.min(Duration::from_millis(100));
+		self.last_advance = Some(now);
 		self.scrolling.fit(self.scroll_bounds());
 		self.scrolling.advance(now);
 		if self.pointer.drag().is_some()
 			&& self.pointer.dragged()
 			&& let Some((_, y)) = self.cursor
 		{
-			let delta = markview_selection::selection_scroll(
+			let speed = selection_scroll_speed(
 				y,
 				INSET,
 				self.logical.1 - INSET,
 				self.visible_scroll(),
 				self.scroll_range(),
 			);
-			if delta != 0.0
-				&& self.pointer.auto_scroll_at().is_none_or(|at| at <= now)
-			{
+			if speed != 0.0 {
 				self.scrolling.fit(self.scroll_bounds());
-				self.scrolling.by(delta);
-				self.pointer
-					.set_auto_scroll_at(Some(now + Duration::from_millis(16)));
+				self.scrolling.by(speed * dt.as_secs_f32());
 			}
 		}
 		self.follow_pointer();

@@ -71,24 +71,24 @@ fn edge_scroll_aims_at_later_tabs_without_moving_any() {
 		moving: true,
 		slot: None,
 	};
-	assert_eq!(layout.edge_scroll(10.0), 0.0);
+	assert_eq!(layout.edge_scroll_speed(10.0), 0.0);
 	for _ in 0..200 {
 		layout = TabLayout::new(
 			viewport(),
 			&widths,
-			layout.scroll + layout.edge_scroll(310.0),
+			layout.scroll + layout.edge_scroll_speed(310.0) * 0.016,
 		);
 		drag.update(&layout, 310.0);
 	}
 	assert_eq!(drag.index, 0);
 	assert_eq!(drag.drop_index(), Some(19));
-	assert_eq!(layout.edge_scroll(310.0), 0.0);
+	assert_eq!(layout.edge_scroll_speed(310.0) * 0.016, 0.0);
 	assert_eq!(layout.scroll, layout.max_scroll);
 	for _ in 0..200 {
 		layout = TabLayout::new(
 			viewport(),
 			&widths,
-			layout.scroll + layout.edge_scroll(10.0),
+			layout.scroll + layout.edge_scroll_speed(10.0) * 0.016,
 		);
 		drag.update(&layout, 10.0);
 	}
@@ -96,11 +96,10 @@ fn edge_scroll_aims_at_later_tabs_without_moving_any() {
 	assert_eq!(layout.scroll, 0.0);
 	let mut strip = TabStrip {
 		drag: Some(drag),
-		scroll_at: Some(Instant::now()),
 		..Default::default()
 	};
 	strip.cancel_drag();
-	assert!(strip.drag.is_none() && strip.scroll_at.is_none());
+	assert!(strip.drag.is_none());
 }
 
 #[test]

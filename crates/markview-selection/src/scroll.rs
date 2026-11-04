@@ -490,8 +490,15 @@ impl From<f32> for Scroll {
 	}
 }
 
-/// A selection near a viewport edge asks for a fixed scroll step.
-pub fn selection_scroll(
+/// How fast a selection drag scrolls the document when it reaches an edge,
+/// in logical pixels per second.
+const SELECTION_SCROLL_SPEED: f32 = 875.0;
+
+/// The scroll speed a selection drag asks for, in logical pixels per second.
+///
+/// A host integrates this over the frame time, so the same drag travels at
+/// the same speed on any refresh rate.
+pub fn selection_scroll_speed(
 	y: f32,
 	top: f32,
 	bottom: f32,
@@ -499,9 +506,9 @@ pub fn selection_scroll(
 	max: f32,
 ) -> f32 {
 	if y < top + 24.0 && offset > 0.0 {
-		-14.0
+		-SELECTION_SCROLL_SPEED
 	} else if y > bottom - 24.0 && offset < max {
-		14.0
+		SELECTION_SCROLL_SPEED
 	} else {
 		0.0
 	}

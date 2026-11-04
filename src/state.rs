@@ -20,7 +20,7 @@ mod outline;
 mod rows;
 pub(crate) use command::*;
 pub(crate) use drawer::DrawerAnimation;
-pub(crate) use motion::{Easing, Tween};
+pub(crate) use motion::{Animation, Easing, Fade, Tween};
 pub(crate) use outline::OutlineTree;
 pub(crate) use rows::{Row, RowSlide};
 
@@ -582,18 +582,6 @@ impl InteractionState {
 		self.overlays.outline.scroll_mut().advance(now);
 	}
 
-	/// The earliest frame the shell's pages or the outline need.
-	pub(crate) fn scroll_deadline(&self, now: Instant) -> Option<Instant> {
-		[
-			self.panels.export_scroll().deadline(now),
-			self.panels.styles_scroll().deadline(now),
-			self.overlays.outline.scroll_ref().deadline(now),
-		]
-		.into_iter()
-		.flatten()
-		.min()
-	}
-
 	/// Whether the shell's pages or the outline still have motion in flight.
 	pub(crate) fn scroll_animating(&self) -> bool {
 		self.panels.export_scroll().animating()
@@ -741,6 +729,8 @@ impl ReaderSession {
 	pub(crate) fn scroll_animating(&self) -> bool {
 		self.scrolling.animating()
 	}
+
+	#[cfg(test)]
 	pub(crate) fn scroll_animation_deadline(
 		&self,
 		now: Instant,
@@ -953,12 +943,6 @@ impl Host for InteractionState {
 	}
 	fn set_dragged(&mut self, dragged: bool) {
 		self.pointer.set_dragged(dragged);
-	}
-	fn auto_scroll_at(&self) -> Option<Instant> {
-		self.pointer.auto_scroll_at()
-	}
-	fn set_auto_scroll_at(&mut self, at: Option<Instant>) {
-		self.pointer.set_auto_scroll_at(at);
 	}
 	fn last_click(&self) -> Option<(Instant, Point, u8)> {
 		self.pointer

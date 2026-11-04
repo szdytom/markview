@@ -173,6 +173,8 @@ browser own their drawer animations. A shared tween drives every drawer, while
 the folder tree and outline list use one row-slide model: rows leave toward
 their parent, arrive out of it, and settle on the same expo-out curve.
 
+The native reader advances every continuous animation from one `FrameDriver`: `render` samples one frame time after acquiring the surface, advances each `Animation` exactly once, and requests the next redraw only while motion remains. The monitor refresh interval is a floor for backends whose presentation does not block.
+
 The native folder browser owns a directory snapshot worker separately from
 `FileWatch` and document reloads. `markview-platform` owns the native watch
 strategy: Windows uses one recursive watch on the root so an open tree does not

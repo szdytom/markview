@@ -1,4 +1,4 @@
-use super::{Easing, Tween};
+use super::{Animation, Easing, Tween};
 use std::time::{Duration, Instant};
 
 const DURATION: Duration = Duration::from_millis(220);
@@ -53,6 +53,26 @@ impl DrawerAnimation {
 	/// Whether the animation has reached its target and may be dropped.
 	pub(crate) fn is_finished(&self, now: Instant) -> bool {
 		self.0.is_finished(now)
+	}
+}
+
+impl Animation for DrawerAnimation {
+	fn advance(&mut self, now: Instant) -> bool {
+		self.0.advance(now)
+	}
+}
+
+impl Animation for Option<DrawerAnimation> {
+	fn advance(&mut self, now: Instant) -> bool {
+		let Some(animation) = self else {
+			return false;
+		};
+		if animation.advance(now) {
+			true
+		} else {
+			*self = None;
+			false
+		}
 	}
 }
 

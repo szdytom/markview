@@ -105,9 +105,6 @@ pub trait Host {
 	fn take_drag(&mut self) -> Option<Drag>;
 	fn dragged(&self) -> bool;
 	fn set_dragged(&mut self, dragged: bool);
-	/// When the drag past an edge next asks for a scroll step.
-	fn auto_scroll_at(&self) -> Option<Instant>;
-	fn set_auto_scroll_at(&mut self, at: Option<Instant>);
 	fn last_click(&self) -> Option<(Instant, Point, u8)>;
 	fn set_last_click(&mut self, click: Option<(Instant, Point, u8)>);
 
@@ -283,7 +280,6 @@ pub trait Selection: Host {
 		&mut self,
 		release_link: Option<&str>,
 	) -> Option<String> {
-		self.set_auto_scroll_at(None);
 		let drag = self.take_drag()?;
 		drag.link.filter(|link| {
 			!self.dragged() && release_link == Some(link.as_str())
@@ -293,7 +289,6 @@ pub trait Selection: Host {
 	fn clear_selection(&mut self) {
 		self.set_selection(None);
 		self.set_drag(None);
-		self.set_auto_scroll_at(None);
 		self.release_pointer();
 	}
 }
@@ -302,7 +297,7 @@ impl<T: Host> Selection for T {}
 mod scroll;
 pub use scroll::{
 	SCROLL_MAX, SCROLL_MIN, Scroll, ScrollAnimation, ScrollBounds, WheelMode,
-	ease_out_cubic, selection_scroll,
+	ease_out_cubic, selection_scroll_speed,
 };
 
 mod motion;

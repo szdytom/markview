@@ -44,7 +44,6 @@ pub(crate) struct Pointer {
 	selection: Option<TextSelection>,
 	drag: Option<Drag>,
 	dragged: bool,
-	auto_scroll_at: Option<Instant>,
 	last_click: Option<(Instant, Point, u8)>,
 }
 impl Pointer {
@@ -218,12 +217,6 @@ impl Host for Pointer {
 	}
 	fn set_dragged(&mut self, dragged: bool) {
 		self.dragged = dragged;
-	}
-	fn auto_scroll_at(&self) -> Option<Instant> {
-		self.auto_scroll_at
-	}
-	fn set_auto_scroll_at(&mut self, at: Option<Instant>) {
-		self.auto_scroll_at = at;
 	}
 	fn last_click(&self) -> Option<(Instant, Point, u8)> {
 		self.last_click

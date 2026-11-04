@@ -186,8 +186,8 @@ impl Model {
 	}
 
 	/// The drawer's slide reveal at `now`.
-	pub(crate) fn reveal(&self) -> f32 {
-		DrawerAnimation::reveal(&self.animation, self.open, Instant::now())
+	pub(crate) fn reveal(&self, now: Instant) -> f32 {
+		DrawerAnimation::reveal(&self.animation, self.open, now)
 	}
 
 	pub(crate) fn animating(&self) -> bool {
@@ -223,20 +223,25 @@ impl Model {
 	}
 
 	/// Snaps rows to a document that was replaced rather than toggled.
-	pub(crate) fn settle_rows(&mut self, content: u64, rows: &[usize]) {
+	pub(crate) fn settle_rows(
+		&mut self,
+		content: u64,
+		rows: &[usize],
+		now: Instant,
+	) {
 		if self.content != Some(content) {
 			self.content = Some(content);
 			self.rows.reset(rows);
 		} else if !self.rows.animating()
-			&& self.rows.animated(rows, Instant::now()).is_none()
+			&& self.rows.animated(rows, now).is_none()
 		{
 			self.rows.reset(rows);
 		}
 	}
 
-	pub(crate) fn rows(&self, current: &[usize]) -> Vec<Row> {
+	pub(crate) fn rows(&self, current: &[usize], now: Instant) -> Vec<Row> {
 		self.rows
-			.animated(current, Instant::now())
+			.animated(current, now)
 			.unwrap_or_else(|| Row::sequential(current))
 	}
 
@@ -326,8 +331,9 @@ impl<P: super::SendEvent> App<P> {
 				.outline_width
 				.min(width - self.folder_inset()),
 		);
-		drawer.x +=
-			drawer.w * (1.0 - self.interaction.overlays.outline.reveal());
+		drawer.x += drawer.w
+			* (1.0
+				- self.interaction.overlays.outline.reveal(self.frame_now()));
 		drawer
 	}
 
@@ -354,10 +360,11 @@ impl<P: super::SendEvent> App<P> {
 		self.readers.session.ensure_outline();
 		let drawer = self.outline_drawer();
 		let rows = self.outline_rows();
-		self.interaction
-			.overlays
-			.outline
-			.settle_rows(content, &rows);
+		self.interaction.overlays.outline.settle_rows(
+			content,
+			&rows,
+			self.frame_now(),
+		);
 		super::chrome::outline::normalize(drawer, &rows, &mut self.interaction);
 	}
 

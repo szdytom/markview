@@ -290,7 +290,8 @@ impl<P: super::SendEvent> App<P> {
 			&self.tab_metrics.widths,
 			self.preview.open(),
 			Some(&self.folder),
-		);
+		)
+		.with_now(self.frame_now());
 		let settings = chrome::SettingsView::new(
 			view.settings,
 			self.preferences.restart_pending(),
@@ -414,21 +415,24 @@ impl<P: super::SendEvent> App<P> {
 
 	/// The tabs drawer's slide reveal; the tab strip owns the animation.
 	pub(super) fn tabs_reveal(&self) -> f32 {
-		self.tab_strip
-			.reveal(self.interaction.panel == crate::state::PanelPage::Tabs)
+		self.tab_strip.reveal(
+			self.interaction.panel == crate::state::PanelPage::Tabs,
+			self.frame_now(),
+		)
 	}
 
-	/// Advances the three drawer animations. Returns whether any was in
-	/// flight before this frame settled them.
+	/// Advances the three drawer animations. Returns whether any is still in
+	/// flight after this frame.
 	pub(super) fn advance_drawers(&mut self, now: Instant) -> bool {
-		let active = self.drawer_deadline(now).is_some();
 		self.tab_strip.advance_animation(now);
 		self.interaction.overlays.outline.advance_animation(now);
 		self.folder.advance_animation(now);
-		active
+		self.tab_strip.animating()
+			|| self.interaction.overlays.outline.animating()
+			|| self.folder.animating()
 	}
 
-	/// The earliest frame one of the drawer animations needs.
+	#[cfg(test)]
 	pub(super) fn drawer_deadline(&self, now: Instant) -> Option<Instant> {
 		(self.tab_strip.animating()
 			|| self.interaction.overlays.outline.animating()
@@ -563,10 +567,11 @@ impl<P: super::SendEvent> App<P> {
 			self.redraw();
 		}
 	}
-	/// Advances eased scroll on every control surface.
-	pub(super) fn advance_control_scroll(&mut self, now: Instant) {
+	/// Advances eased scroll on every control surface. Returns whether any
+	/// surface still has motion after this frame.
+	pub(super) fn advance_control_scroll(&mut self, now: Instant) -> bool {
 		if !self.control_scroll_animating() {
-			return;
+			return false;
 		}
 		self.interaction.advance_scrolls(now);
 		self.interaction
@@ -592,6 +597,7 @@ impl<P: super::SendEvent> App<P> {
 		self.preferences.fonts.scroll_area().advance(now);
 		self.refresh_hover();
 		self.redraw();
+		self.control_scroll_animating()
 	}
 	pub(super) fn control_scroll_animating(&self) -> bool {
 		self.interaction.scroll_animating()
@@ -608,35 +614,6 @@ impl<P: super::SendEvent> App<P> {
 				.scroll_ref()
 				.animating()
 	}
-	/// The earliest frame any control surface needs.
-	pub(super) fn control_scroll_deadline(
-		&self,
-		now: Instant,
-	) -> Option<Instant> {
-		self.interaction
-			.scroll_deadline(now)
-			.into_iter()
-			.chain(
-				[self.preferences.settings_scroll().deadline(now)]
-					.into_iter()
-					.flatten(),
-			)
-			.chain(self.folder.scroll.deadline(now))
-			.chain(self.folder.start.scroll.deadline(now))
-			.chain(self.tab_strip.scroll.deadline(now))
-			.chain(self.tab_strip.drawer_scroll.deadline(now))
-			.chain(self.tab_strip.scroll_at)
-			.chain(self.preferences.fonts.scroll_area_ref().deadline(now))
-			.chain(
-				self.interaction
-					.overlays
-					.quick_open
-					.scroll_ref()
-					.deadline(now),
-			)
-			.min()
-	}
-
 	pub(super) fn ui_layout(&mut self) -> super::widgets::UiLayout {
 		self.ensure_outline();
 		let mut buttons = self.dropdown_buttons();
@@ -759,7 +736,8 @@ impl<P: super::SendEvent> App<P> {
 	/// The tabs at their drawn positions, including a tab slide.
 	pub(super) fn tab_layout(&mut self) -> super::tab_strip::TabLayout {
 		let mut layout = self.resting_tab_layout();
-		if let Some(rects) = self.tab_strip.rects(&layout) {
+		if let Some(rects) = self.tab_strip.rects_at(&layout, self.frame_now())
+		{
 			layout.rects = rects;
 		}
 		layout
@@ -771,7 +749,7 @@ impl<P: super::SendEvent> App<P> {
 		&mut self,
 	) -> super::tab_strip::TabLayout {
 		let mut layout = self.tab_layout();
-		if let Some(offsets) = self.tab_strip.drag_offsets(Instant::now()) {
+		if let Some(offsets) = self.tab_strip.drag_offsets(self.frame_now()) {
 			for (rect, offset) in layout.rects.iter_mut().zip(offsets) {
 				rect.x += offset;
 			}

@@ -278,6 +278,7 @@ fn phone_sidebar_match_rendering_baselines() -> Result<()> {
 						(360., 760.),
 						1.,
 						&settings,
+						std::time::Instant::now(),
 					)
 				};
 				let view = View {

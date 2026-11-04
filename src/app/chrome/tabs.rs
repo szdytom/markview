@@ -33,9 +33,14 @@ impl TabBar<'_> {
 		TabLayout::new(self.viewport, self.widths, self.strip.scroll.offset())
 	}
 
+	#[cfg(test)]
 	pub(super) fn draw_tabs(&mut self) -> Vec<Draw> {
+		self.draw_tabs_at(Instant::now())
+	}
+
+	pub(super) fn draw_tabs_at(&mut self, now: Instant) -> Vec<Draw> {
 		let layout = self.layout();
-		let mut rects = displayed(self.strip, &layout, Instant::now());
+		let mut rects = displayed(self.strip, &layout, now);
 		let dragged = self.strip.drag.filter(|d| d.moving);
 		let floating =
 			floating_tab(dragged, &rects, layout.viewport, self.cursor.0);
@@ -185,7 +190,9 @@ impl TabBar<'_> {
 }
 
 fn displayed(strip: &TabStrip, layout: &TabLayout, now: Instant) -> Vec<Rect> {
-	let mut rects = strip.rects(layout).unwrap_or_else(|| layout.rects.clone());
+	let mut rects = strip
+		.rects_at(layout, now)
+		.unwrap_or_else(|| layout.rects.clone());
 	if let Some(offsets) = strip.drag_offsets(now) {
 		for (rect, offset) in rects.iter_mut().zip(offsets) {
 			rect.x += offset;

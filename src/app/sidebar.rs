@@ -140,14 +140,14 @@ impl<P: super::SendEvent> App<P> {
 
 	fn reading_sidebar_edge(&self) -> Option<Sidebar> {
 		if self.interaction.overlays.outline.open()
-			&& self.interaction.overlays.outline.reveal() == 1.0
+			&& self.interaction.overlays.outline.reveal(self.frame_now()) == 1.0
 			&& self.on_sidebar_edge(Sidebar::Outline)
 			&& !self.pointer_in_folder()
 		{
 			Some(Sidebar::Outline)
 		} else if self.folder.open
 			&& self.folder.tree.is_some()
-			&& self.folder.reveal() == 1.0
+			&& self.folder.reveal(self.frame_now()) == 1.0
 		{
 			Some(Sidebar::Folder)
 		} else {
@@ -159,8 +159,10 @@ impl<P: super::SendEvent> App<P> {
 	/// pointer directly instead of through a widget.
 	pub(super) fn pointer_over_drawer(&self, point: (f32, f32)) -> bool {
 		let visible = |sidebar| match sidebar {
-			Sidebar::Folder => self.folder.reveal() > 0.,
-			Sidebar::Outline => self.interaction.overlays.outline.reveal() > 0.,
+			Sidebar::Folder => self.folder.reveal(self.frame_now()) > 0.,
+			Sidebar::Outline => {
+				self.interaction.overlays.outline.reveal(self.frame_now()) > 0.
+			}
 			Sidebar::Tabs => self.tabs_reveal() > 0.,
 		};
 		[Sidebar::Folder, Sidebar::Outline, Sidebar::Tabs]

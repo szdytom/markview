@@ -1,5 +1,6 @@
 use super::App;
 use crate::layout::{Rect, Scrollbar};
+use crate::state::{Animation, Fade};
 use std::time::{Duration, Instant};
 
 /// How long the document scrollbar stays on screen after the pointer moves
@@ -8,8 +9,88 @@ pub(super) const SCROLLBAR_LINGER: Duration = Duration::from_millis(1200);
 /// How long the document scrollbar takes to fade once its linger expires.
 /// VS Code fades a hidden scrollbar over 800ms.
 pub(super) const SCROLLBAR_FADE: Duration = Duration::from_millis(800);
-/// One fade frame. The fade is an animation, so it asks for the next tick.
-pub(super) const SCROLLBAR_FRAME: Duration = Duration::from_millis(16);
+
+/// The document or folder scrollbar's reveal state: hidden, lingering after
+/// pointer motion, or fading out.
+#[derive(Default)]
+pub(super) enum ScrollbarReveal {
+	#[default]
+	Hidden,
+	Linger(Instant),
+	Fade(Fade),
+}
+
+impl ScrollbarReveal {
+	pub(super) fn opacity(&self, now: Instant) -> f32 {
+		match self {
+			Self::Hidden => 0.0,
+			Self::Linger(until) => f32::from(now <= *until),
+			Self::Fade(fade) => fade.value(now),
+		}
+	}
+
+	pub(super) fn show(&mut self, now: Instant) {
+		*self = Self::Linger(now + SCROLLBAR_LINGER);
+	}
+
+	pub(super) fn hide(&mut self, now: Instant) {
+		if let Self::Linger(until) = self
+			&& *until > now
+		{
+			*self = Self::Linger(now);
+		}
+	}
+
+	pub(super) fn deadline(&self, now: Instant) -> Option<Instant> {
+		match self {
+			Self::Linger(until) if *until > now => Some(*until),
+			_ => None,
+		}
+	}
+
+	/// Expires the linger and starts the fade. Returns whether the paint
+	/// changed.
+	pub(super) fn tick(&mut self, now: Instant, dragging: bool) -> bool {
+		if let Self::Fade(fade) = self
+			&& fade.is_finished(now)
+		{
+			*self = Self::Hidden;
+		}
+		if dragging {
+			self.show(now);
+			return false;
+		}
+		if let Self::Linger(until) = *self
+			&& now >= until
+		{
+			let fade = Fade::new(1.0, 0.0, until, SCROLLBAR_FADE);
+			*self = if fade.is_finished(now) {
+				Self::Hidden
+			} else {
+				Self::Fade(fade)
+			};
+			return true;
+		}
+		false
+	}
+
+	pub(super) fn advance(&mut self, now: Instant) -> bool {
+		if let Self::Fade(fade) = self
+			&& !fade.advance(now)
+		{
+			*self = Self::Hidden;
+		}
+		matches!(self, Self::Fade(_))
+	}
+
+	#[cfg(test)]
+	pub(super) fn linger_until(&self) -> Option<Instant> {
+		match self {
+			Self::Linger(until) => Some(*until),
+			_ => None,
+		}
+	}
+}
 
 impl<P: super::SendEvent> App<P> {
 	pub(super) fn document_interaction(
@@ -28,7 +109,7 @@ impl<P: super::SendEvent> App<P> {
 	/// press grabs.
 	pub(super) fn document_scrollbar(&self) -> Option<Scrollbar> {
 		if !self.scrollbar_dragging()
-			&& self.scrollbar_opacity_at(Instant::now()) <= 0.0
+			&& self.scrollbar_opacity_at(self.frame_now()) <= 0.0
 		{
 			return None;
 		}
@@ -38,7 +119,7 @@ impl<P: super::SendEvent> App<P> {
 	/// The document scrollbar's opacity, from full while lingering to zero at
 	/// the end of the fade. A drag keeps it fully opaque.
 	pub(super) fn scrollbar_opacity(&self) -> f32 {
-		self.scrollbar_opacity_at(Instant::now())
+		self.scrollbar_opacity_at(self.frame_now())
 	}
 
 	fn scrollbar_dragging(&self) -> bool {
@@ -51,15 +132,7 @@ impl<P: super::SendEvent> App<P> {
 		if self.scrollbar_dragging() {
 			return 1.0;
 		}
-		let Some(until) = self.scrollbar_visible_until else {
-			return 0.0;
-		};
-		let faded = now.saturating_duration_since(until);
-		if faded.is_zero() {
-			1.0
-		} else {
-			(1.0 - faded.as_secs_f32() / SCROLLBAR_FADE.as_secs_f32()).max(0.0)
-		}
+		self.scrollbar_reveal.opacity(now)
 	}
 
 	/// The document scrollbar wherever it can exist, regardless of whether it
@@ -106,43 +179,24 @@ impl<P: super::SendEvent> App<P> {
 	}
 
 	pub(super) fn show_document_scrollbar(&mut self, now: Instant) {
-		self.scrollbar_visible_until = Some(now + SCROLLBAR_LINGER);
+		self.scrollbar_reveal.show(now);
 	}
 
 	/// Starts the document bar's fade now, or leaves it hidden.
 	pub(super) fn hide_document_scrollbar(&mut self, now: Instant) {
-		if self
-			.scrollbar_visible_until
-			.is_some_and(|until| until > now)
-		{
-			self.scrollbar_visible_until = Some(now);
-		}
+		self.scrollbar_reveal.hide(now);
 	}
 
-	/// The next frame the document bar's linger or fade needs.
+	/// The document bar's linger expiry, which starts its fade.
 	pub(super) fn scrollbar_deadline(&self, now: Instant) -> Option<Instant> {
-		let until = self.scrollbar_visible_until?;
-		if until > now {
-			Some(until)
-		} else {
-			let end = until + SCROLLBAR_FADE;
-			(end > now).then(|| (now + SCROLLBAR_FRAME).min(end))
-		}
+		self.scrollbar_reveal.deadline(now)
 	}
 
-	/// Expires the document bar's linger, or keeps it alive under a drag.
+	/// Starts the document bar's fade when its linger expires. A drag keeps it
+	/// fully visible instead.
 	pub(super) fn scrollbar_tick(&mut self, now: Instant) {
-		if self.scrollbar_dragging() {
-			self.show_document_scrollbar(now);
-		} else if let Some(until) = self.scrollbar_visible_until {
-			let end = until + SCROLLBAR_FADE;
-			if now >= end {
-				self.scrollbar_visible_until = None;
-				self.refresh_hover();
-				self.redraw();
-			} else if now >= until {
-				self.redraw();
-			}
+		if self.scrollbar_reveal.tick(now, self.scrollbar_dragging()) {
+			self.redraw();
 		}
 	}
 

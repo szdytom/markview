@@ -3,13 +3,13 @@
     "variants": 6
   },
   "structs": {
-    "App": 52,
+    "App": 53,
     "Chrome": 7,
-    "Config": 29,
+    "Config": 28,
     "InteractionState": 8,
-    "Markview": 35,
+    "Markview": 36,
     "ReaderSession": 33,
-    "ReaderSettings": 28
+    "ReaderSettings": 27
   },
   "writers": {
     "controls": {

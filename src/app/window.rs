@@ -694,11 +694,16 @@ impl<P: super::SendEvent> App<P> {
 	) -> bool {
 		match event {
 			WindowEvent::CloseRequested => event_loop.exit(),
-			WindowEvent::Moved(_) => self.frame.last_click = None,
+			WindowEvent::Moved(_) => {
+				self.frame.last_click = None;
+				self.sync_refresh_rate();
+			}
 			WindowEvent::Resized(PhysicalSize { width, height }) => {
+				self.sync_refresh_rate();
 				self.window_resized(*width, *height);
 			}
 			WindowEvent::ScaleFactorChanged { scale_factor, .. } => {
+				self.sync_refresh_rate();
 				self.scale_changed(*scale_factor);
 			}
 			WindowEvent::Occluded(false) => self.redraw(),
@@ -972,7 +977,6 @@ impl<P: super::SendEvent> App<P> {
 		self.show_panel(crate::state::PanelPage::Closed);
 		self.interaction.selection = None;
 		self.interaction.pointer.release();
-		self.interaction.pointer.set_auto_scroll_at(None);
 		self.interaction.pointer.end_scrollbar();
 		self.interaction.panels.set_grab(None);
 		self.folder.grab = None;

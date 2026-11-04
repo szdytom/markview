@@ -46,7 +46,6 @@ use controls::toolbar_controls_at;
 use fonts::draw_fonts;
 use footer::draw_footer;
 use markview_layout::style::{ColorField as C, Condition, TextAppearance};
-use std::time::Instant;
 use styles::{StylesTarget, draw_styles, style_controls, style_rows};
 pub(in crate::app) use views::{
 	FrameView, SessionView, SettingsView, StatusView,
@@ -244,9 +243,10 @@ impl<'a> Chrome<'a> {
 
 	/// The tabs drawer's slide reveal; the tab strip owns the animation.
 	fn tabs_reveal(&self) -> f32 {
-		self.session
-			.strip
-			.reveal(self.interaction.panel == crate::state::PanelPage::Tabs)
+		self.session.strip.reveal(
+			self.interaction.panel == crate::state::PanelPage::Tabs,
+			self.session.now,
+		)
 	}
 
 	/// The active document's absolute path, or `None` when its session has no
@@ -271,7 +271,7 @@ impl<'a> Chrome<'a> {
 	/// The footer's trailing label: a live status, a hover hint, or — when
 	/// enabled — the open document's absolute path.
 	fn secondary(&self) -> std::borrow::Cow<'a, str> {
-		if let Some(status) = self.status.line.current(Instant::now()) {
+		if let Some(status) = self.status.line.current(self.session.now) {
 			status.into()
 		} else if let Some(hint) = self.status.hover_hint {
 			hint.into()
@@ -284,7 +284,7 @@ impl<'a> Chrome<'a> {
 	/// press on the absolute path copies it, so the label is its own hit target.
 	fn path_button(&mut self) -> Option<Button> {
 		if self.session.doc.search.open
-			|| self.status.line.current(Instant::now()).is_some()
+			|| self.status.line.current(self.session.now).is_some()
 			|| self.status.hover_hint.is_some()
 		{
 			return None;
@@ -421,6 +421,7 @@ impl<'a> Chrome<'a> {
 					),
 					width,
 					self.settings.model.lang(),
+					self.session.now,
 				),
 			};
 			tab_drawer::slide_buttons(
@@ -511,7 +512,10 @@ impl<'a> Chrome<'a> {
 	}
 
 	fn folder_drawer(&self) -> Rect {
-		let reveal = self.session.folder.map_or(0., |b| b.reveal());
+		let reveal = self
+			.session
+			.folder
+			.map_or(0., |b| b.reveal(self.session.now));
 		folder::animated_rect(
 			folder::rect(
 				self.frame.width,
@@ -578,6 +582,7 @@ impl<'a> Chrome<'a> {
 				browser,
 				self.folder_drawer(),
 				self.settings.model.lang(),
+				self.session.now,
 			));
 		}
 		if self.session.strip.phone {
@@ -614,11 +619,10 @@ impl<'a> Chrome<'a> {
 		if self.interaction.overlays.outline.open() {
 			let lang = self.settings.model.lang();
 			let entries = self.session.doc.outline_entries();
-			let rows = self
-				.interaction
-				.overlays
-				.outline
-				.rows(&self.session.doc.outline_tree.rows(entries));
+			let rows = self.interaction.overlays.outline.rows(
+				&self.session.doc.outline_tree.rows(entries),
+				self.session.now,
+			);
 			buttons
 				.extend(outline::header_buttons(self.outline_drawer(), lang));
 			buttons.extend(outline::buttons_with_rows(
@@ -796,7 +800,8 @@ impl<'a> Chrome<'a> {
 				Paint::Styled(Condition::Toolbar, C::Color),
 			));
 		} else {
-			out.extend(self.tab_bar().draw_tabs());
+			let now = self.session.now;
+			out.extend(self.tab_bar().draw_tabs_at(now));
 		}
 		// The toolbar controls share the top band with the tabs and follow
 		// them exactly as the flat painter ordered its calls, because the
@@ -828,7 +833,7 @@ impl<'a> Chrome<'a> {
 		let warning = self
 			.status
 			.line
-			.warning(Instant::now())
+			.warning(self.session.now)
 			.or(self.status.warning.as_deref());
 		if !self.session.doc.search.open {
 			let secondary = self.secondary();
@@ -1066,11 +1071,9 @@ impl<'a> Chrome<'a> {
 				),
 			));
 		}
-		if let Some(browser) = self
-			.session
-			.folder
-			.filter(|b| !self.session.strip.phone && b.reveal() > 0.)
-		{
+		if let Some(browser) = self.session.folder.filter(|b| {
+			!self.session.strip.phone && b.reveal(self.session.now) > 0.
+		}) {
 			out.extend(folder::draw(
 				self.ui,
 				browser,
@@ -1079,9 +1082,10 @@ impl<'a> Chrome<'a> {
 				folder::Pane {
 					body: self.folder_drawer(),
 					surface: folder::surface(self.folder_drawer(), height),
-					bar_opacity: browser.scrollbar_opacity(),
+					bar_opacity: browser.scrollbar_opacity_at(self.session.now),
 				},
 				self.settings.model.lang(),
+				self.session.now,
 			));
 		}
 		if let Some(button) = self.folder_toggle() {
@@ -1092,13 +1096,12 @@ impl<'a> Chrome<'a> {
 				true,
 			));
 		}
-		if self.interaction.overlays.outline.reveal() > 0.0 {
+		if self.interaction.overlays.outline.reveal(self.session.now) > 0.0 {
 			let entries = self.session.doc.outline_entries();
-			let rows = self
-				.interaction
-				.overlays
-				.outline
-				.rows(&self.session.doc.outline_tree.rows(entries));
+			let rows = self.interaction.overlays.outline.rows(
+				&self.session.doc.outline_tree.rows(entries),
+				self.session.now,
+			);
 			out.extend(outline::draw_with_rows(
 				self.ui,
 				&self.interaction,
@@ -1133,6 +1136,7 @@ impl<'a> Chrome<'a> {
 					(width, height),
 					tabs_reveal,
 					self.settings.model,
+					self.session.now,
 				),
 			};
 			out.extend(draws);
@@ -1352,8 +1356,9 @@ impl<'a> Chrome<'a> {
 				.outline_width
 				.min(self.frame.width - inset),
 		);
-		drawer.x +=
-			drawer.w * (1.0 - self.interaction.overlays.outline.reveal());
+		drawer.x += drawer.w
+			* (1.0
+				- self.interaction.overlays.outline.reveal(self.session.now));
 		drawer
 	}
 }

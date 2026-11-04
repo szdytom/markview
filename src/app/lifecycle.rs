@@ -14,7 +14,7 @@ use winit::{
 };
 
 use super::window::Loop;
-use super::{App, Event, TOP, dm};
+use super::{App, Event, dm};
 use crate::state::Selection;
 impl<P: super::SendEvent> ApplicationHandler<Event> for App<P> {
 	fn resumed(&mut self, event_loop: &ActiveEventLoop) {
@@ -57,6 +57,7 @@ impl<P: super::SendEvent> ApplicationHandler<Event> for App<P> {
 			);
 			let dm = dm::DirectManipulation::new(&window);
 			self.window = Some(window);
+			self.sync_refresh_rate();
 			self.dm = dm;
 			if self.args.mode == Mode::Window
 				&& self.args.theme.is_none()
@@ -174,6 +175,7 @@ impl<P: super::SendEvent> App<P> {
 			}
 			Event::AndroidBack => self.android_back(),
 			Event::AndroidConfiguration => {
+				self.sync_refresh_rate();
 				self.tab_strip.phone =
 					markview_platform::android::phone_layout();
 				if self.update_media() {
@@ -514,7 +516,6 @@ impl<P: super::SendEvent> App<P> {
 		}
 		self.input_tick(now);
 		self.search_tick();
-		self.auto_scroll_tabs(now);
 		// Direct Manipulation's updates arrive by pumping, before any
 		// synthesis of the reader's own: a stream that starts here cancels
 		// what is running before this tick can carry it a frame further, and
@@ -523,15 +524,11 @@ impl<P: super::SendEvent> App<P> {
 		// `held`: the deltas drop, and the stream they belonged to cannot
 		// resume when the owner lets go.
 		self.pump_native_pan();
-		self.advance_scroll(now);
-		self.advance_control_scroll(now);
-		self.advance_gestures(now);
-		self.scrollbar_tick(now);
-		self.folder_scrollbar_tick(now);
-		if self.advance_drawers(now) {
-			self.refresh_hover();
+		if self.animating() && self.animations.take_due(now) {
 			self.redraw();
 		}
+		self.scrollbar_tick(now);
+		self.folder_scrollbar_tick(now);
 		// The hover preview opens only after its delay, so opening is a tick
 		// rather than a pointer handler: a pointer sliding across tabs never
 		// builds a card.
@@ -548,27 +545,6 @@ impl<P: super::SendEvent> App<P> {
 		if self.preferences.save_deadline().is_some_and(|d| d <= now) {
 			self.flush_settings();
 			self.redraw();
-		}
-		if self
-			.interaction
-			.pointer
-			.auto_scroll_at()
-			.is_some_and(|d| d <= now)
-		{
-			self.interaction.pointer.set_auto_scroll_at(None);
-			if self.interaction.pointer.drag().is_some() {
-				// `scroll_by` re-derives the selection and re-arms this
-				// deadline through `after_scroll`, because the pointer stays
-				// where it is while the text moves under it.
-				self.scroll_by(markview_selection::selection_scroll(
-					self.interaction.pointer.cursor().1,
-					TOP,
-					self.dimensions().1 - self.bottom(),
-					self.readers.session.scrolling.offset,
-					(self.readers.session.snapshot.height - self.viewport())
-						.max(0.0),
-				));
-			}
 		}
 		if self.reflow_at.is_some_and(|d| d <= now) {
 			self.reflow_at = None;
@@ -609,12 +585,8 @@ impl<P: super::SendEvent> App<P> {
 			.chain(self.folder.scrollbar_deadline(now))
 			.chain(self.preferences.save_deadline())
 			.chain(self.persistence.deadline)
-			.chain(self.interaction.pointer.auto_scroll_at())
-			.chain(self.readers.session.scroll_animation_deadline(now))
-			.chain(self.control_scroll_deadline(now))
+			.chain(self.animations.deadline())
 			.chain(self.preview.deadline())
-			.chain(self.gestures.deadline(now))
-			.chain(self.drawer_deadline(now))
 			.chain(self.dm.as_ref().and_then(|dm| dm.deadline(now)))
 			.chain(self.readers.release_deadline())
 			.chain(

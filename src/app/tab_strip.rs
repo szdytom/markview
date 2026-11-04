@@ -1,7 +1,7 @@
 //! Tab strip geometry and transient gestures, independent of document sessions.
 use crate::{
 	layout::Rect,
-	state::{DrawerAnimation, Easing, Tween},
+	state::{Animation, DrawerAnimation, Easing, Tween},
 };
 use markview_selection::Scroll;
 use std::time::{Duration, Instant};
@@ -19,7 +19,6 @@ pub(super) struct TabStrip {
 	pub scroll: Scroll,
 	pub drag: Option<TabDrag>,
 	pub reveal_active: bool,
-	pub scroll_at: Option<Instant>,
 	/// The drawer's slide when the tabs page opens or closes.
 	animation: Option<DrawerAnimation>,
 	/// Tabs sliding to new positions after an open, a close, or a drop.
@@ -40,6 +39,18 @@ struct TabShift {
 	to: Vec<f32>,
 	animation: Option<Tween>,
 }
+impl Animation for TabSlide {
+	fn advance(&mut self, now: Instant) -> bool {
+		self.animation.advance(now)
+	}
+}
+
+impl Animation for TabShift {
+	fn advance(&mut self, now: Instant) -> bool {
+		self.animation.advance(now)
+	}
+}
+
 impl TabShift {
 	fn offsets(&self, now: Instant) -> Vec<f32> {
 		self.animation.as_ref().map_or_else(
@@ -140,8 +151,8 @@ impl TabStrip {
 	}
 
 	/// The tabs drawer's slide reveal at `now`.
-	pub(super) fn reveal(&self, open: bool) -> f32 {
-		DrawerAnimation::reveal(&self.animation, open, Instant::now())
+	pub(super) fn reveal(&self, open: bool, now: Instant) -> f32 {
+		DrawerAnimation::reveal(&self.animation, open, now)
 	}
 
 	pub(super) fn animating(&self) -> bool {
@@ -334,14 +345,28 @@ impl TabStrip {
 	}
 
 	/// The right edge of the tabs, including a slide.
+	#[cfg(test)]
 	pub(super) fn end(&self, end: f32, tabs: usize) -> f32 {
-		self.slide_at(tabs)
+		self.end_at(end, tabs, Instant::now())
+	}
+
+	pub(super) fn end_at(&self, end: f32, tabs: usize, now: Instant) -> f32 {
+		self.slide_at(tabs, now)
 			.map_or(end, |(t, slide)| slide.end + (end - slide.end) * t)
 	}
 
 	/// The tabs' rects with a slide applied, or none at rest.
+	#[cfg(test)]
 	pub(super) fn rects(&self, layout: &TabLayout) -> Option<Vec<Rect>> {
-		let (t, slide) = self.slide_at(layout.rects.len())?;
+		self.rects_at(layout, Instant::now())
+	}
+
+	pub(super) fn rects_at(
+		&self,
+		layout: &TabLayout,
+		now: Instant,
+	) -> Option<Vec<Rect>> {
+		let (t, slide) = self.slide_at(layout.rects.len(), now)?;
 		let mut rects = layout.rects.clone();
 		for (rect, from) in rects.iter_mut().zip(&slide.from) {
 			rect.x = from.x + (rect.x - from.x) * t;
@@ -350,7 +375,7 @@ impl TabStrip {
 		Some(rects)
 	}
 
-	fn slide_at(&self, tabs: usize) -> Option<(f32, &TabSlide)> {
+	fn slide_at(&self, tabs: usize, now: Instant) -> Option<(f32, &TabSlide)> {
 		let slide = self.slide.as_ref()?;
 		if slide.from.len() != tabs {
 			return None;
@@ -358,7 +383,7 @@ impl TabStrip {
 		let t = slide
 			.animation
 			.as_ref()
-			.map_or(1.0, |animation| animation.progress(Instant::now()));
+			.map_or(1.0, |animation| animation.progress(now));
 		Some((t, slide))
 	}
 
@@ -404,7 +429,6 @@ impl TabStrip {
 	pub fn cancel_drag(&mut self) {
 		self.reveal_active |= self.drag.is_some_and(|drag| drag.moving);
 		self.drag = None;
-		self.scroll_at = None;
 		if let Some(shift) = &mut self.shift {
 			shift.retarget(vec![0.0; shift.to.len()], Instant::now());
 		}
@@ -503,13 +527,14 @@ impl TabLayout {
 		};
 		(self.scroll + delta).clamp(0.0, self.max_scroll)
 	}
-	pub fn edge_scroll(&self, x: f32) -> f32 {
+	/// The tab strip's edge scroll speed in logical pixels per second.
+	pub fn edge_scroll_speed(&self, x: f32) -> f32 {
 		if x < self.viewport.x + 24.0 && self.scroll > 0.0 {
-			-10.0
+			-625.0
 		} else if x > self.viewport.x + self.viewport.w - 24.0
 			&& self.scroll < self.max_scroll
 		{
-			10.0
+			625.0
 		} else {
 			0.0
 		}

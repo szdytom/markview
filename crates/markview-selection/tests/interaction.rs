@@ -4,7 +4,7 @@ use markview_layout::scene::{
 };
 use markview_selection::{
 	Cursor, DocumentInteraction, Horizontal, Motion, Point, Scroll,
-	ScrollBounds, WheelMode, horizontal_by, selection_scroll,
+	ScrollBounds, WheelMode, horizontal_by, selection_scroll_speed,
 };
 use std::{sync::Arc, time::Duration};
 use web_time::Instant;
@@ -217,10 +217,19 @@ fn gesture_inertia_and_selection_edges_stop() {
 	assert!(motion.release(start + Duration::from_millis(25)));
 	assert!(motion.advance(start + Duration::from_millis(40)).unwrap().1 > 0.0);
 	assert!(motion.advance(start + Duration::from_secs(1)).is_none());
-	assert_eq!(selection_scroll(5.0, 10.0, 100.0, 0.0, 500.0), 0.0);
-	assert_eq!(selection_scroll(5.0, 10.0, 100.0, 50.0, 500.0), -14.0);
-	assert_eq!(selection_scroll(110.0, 10.0, 100.0, 50.0, 500.0), 14.0);
-	assert_eq!(selection_scroll(110.0, 10.0, 100.0, 500.0, 500.0), 0.0);
+	assert_eq!(selection_scroll_speed(5.0, 10.0, 100.0, 0.0, 500.0), 0.0);
+	assert_eq!(
+		selection_scroll_speed(5.0, 10.0, 100.0, 50.0, 500.0),
+		-875.0
+	);
+	assert_eq!(
+		selection_scroll_speed(110.0, 10.0, 100.0, 50.0, 500.0),
+		875.0
+	);
+	assert_eq!(
+		selection_scroll_speed(110.0, 10.0, 100.0, 500.0, 500.0),
+		0.0
+	);
 }
 
 #[test]
