@@ -417,6 +417,23 @@ impl<P: SendEvent> App<P> {
 			_ => {}
 		}
 	}
+	pub(super) fn point_input_touch(
+		&mut self,
+		id: TextField,
+		point: (f32, f32),
+	) {
+		self.interaction.widgets.focus =
+			Some(Command::Chrome(ChromeCommand::FocusInput(id)).widget_id());
+		self.interaction.widgets.focus_visible = false;
+		self.sync_input();
+		if self.text_input.focused == Some(id)
+			&& let Some((rect, _)) = self.input_geometry(id)
+		{
+			let (input, ui) = self.input(id);
+			input.point(ui, rect, (point.0, rect.y + rect.h / 2.0), false, 1);
+			self.reset_input_blink();
+		}
+	}
 
 	pub(super) fn input_touch(
 		&mut self,

@@ -705,6 +705,21 @@ public class Smoke extends Instrumentation {
         waitFor(s -> s.optString("search_query").equals("中文"));
         commitInput("🙂");
         waitFor(s -> s.optString("search_query").equals("中文🙂"));
+        JSONObject caretLayout = stableLayout();
+        JSONArray caretRect = caretLayout.getJSONArray("search_rect");
+        float caretLeft = (float)caretRect.getDouble(0) + 8;
+        float caretRight = (float)(caretRect.getDouble(0) + caretRect.getDouble(2) - 8);
+        float caretY = (float)(caretRect.getDouble(1) + caretRect.getDouble(3) / 2);
+        swipe(caretLeft, caretY, caretLeft, caretY);
+        commitInput("A");
+        waitFor(s -> s.optString("search_query").equals("A中文🙂"));
+        swipe(caretRight, caretY, caretLeft, caretY);
+        commitInput("B");
+        waitFor(s -> s.optString("search_query").equals("BA中文🙂"));
+        swipe(caretRight, caretY, caretRight, caretY);
+        commitInput("Z");
+        waitFor(s -> s.optString("search_query").equals("BA中文🙂Z") && keyboardVisible());
+        pass("Touch taps and drags reposition the caret without selecting text or closing the keyboard");
         tap("SearchClose");
         tap("SearchOpen");
         waitFor(s -> s.optBoolean("search_open") && keyboardVisible());
@@ -1050,9 +1065,11 @@ public class Smoke extends Instrumentation {
         int[] origin = new int[2];
         runOnMainSync(() -> activity.getWindow().getDecorView().getLocationOnScreen(origin));
         long down = SystemClock.uptimeMillis();
-        for (int i = 0; i <= 10; i++) {
-            float t = i / 10f;
-            int action = i == 0 ? MotionEvent.ACTION_DOWN : i == 10 ? MotionEvent.ACTION_UP : MotionEvent.ACTION_MOVE;
+        // Taps need only `DOWN` and `UP` to avoid long presses on slow emulators.
+        int steps = x1 == x2 && y1 == y2 ? 1 : 10;
+        for (int i = 0; i <= steps; i++) {
+            float t = (float)i / steps;
+            int action = i == 0 ? MotionEvent.ACTION_DOWN : i == steps ? MotionEvent.ACTION_UP : MotionEvent.ACTION_MOVE;
             MotionEvent event = MotionEvent.obtain(down, SystemClock.uptimeMillis(), action, (x1 + (x2 - x1)*t + left)*scale + origin[0], (y1 + (y2 - y1)*t + top)*scale + origin[1], 0);
             event.setSource(InputDevice.SOURCE_TOUCHSCREEN);
             getUiAutomation().injectInputEvent(event, true);

@@ -8,7 +8,7 @@ mod recognizer;
 use recognizer::{Gesture, Motion, Recognizer};
 
 use super::App;
-use crate::state::{Command, PanelPage, WheelAxis, WheelStep};
+use crate::state::{Command, PanelPage, TextField, WheelAxis, WheelStep};
 
 type Point = (f32, f32);
 
@@ -23,6 +23,7 @@ enum Tap {
 	Caption(super::frame::Caption),
 	Command(Command),
 	Widget(markview_ui_core::WidgetId),
+	Input(TextField),
 	Link(String),
 	Image(String),
 	CloseViewer,
@@ -67,6 +68,7 @@ pub(super) struct GestureState {
 	coasting: bool,
 	trackpad: Option<(Surface, Instant)>,
 	swipe_distance: f32,
+	input_drag: bool,
 }
 
 impl GestureState {
@@ -102,6 +104,7 @@ impl<P: super::SendEvent> App<P> {
 		self.gestures.coasting = false;
 		self.gestures.trackpad = None;
 		self.gestures.swipe_distance = 0.0;
+		self.gestures.input_drag = false;
 	}
 
 	fn touch_tap(&mut self) -> Option<Tap> {
@@ -111,6 +114,9 @@ impl<P: super::SendEvent> App<P> {
 		}
 		if self.interaction.overlays.viewer_open() {
 			return Some(Tap::CloseViewer);
+		}
+		if let Some(field) = self.input_at_cursor() {
+			return Some(Tap::Input(field));
 		}
 		if self.interaction.overlays.quick_open.open() {
 			return self.quick_open_tap();
@@ -156,7 +162,11 @@ impl<P: super::SendEvent> App<P> {
 		if let Some(tap) = self.touch_tab() {
 			return Some(tap);
 		}
+		self.touch_document()
+	}
 
+	fn touch_document(&mut self) -> Option<Tap> {
+		let (x, y) = self.interaction.pointer.cursor();
 		if !self.view_geometry().clip().contains(x, y) {
 			return None;
 		}
@@ -322,6 +332,7 @@ impl<P: super::SendEvent> App<P> {
 	) -> Option<TouchAction> {
 		let mut window_action = None;
 		self.gestures.swipe_distance = 0.0;
+		self.gestures.input_drag = false;
 		self.gestures.motion = None;
 		self.gestures.coasting = false;
 		self.gestures.trackpad = None;
@@ -423,6 +434,13 @@ impl<P: super::SendEvent> App<P> {
 			return None;
 		}
 		match capture.tap {
+			Some(Tap::Input(field)) => {
+				self.point_input_touch(
+					field,
+					self.interaction.pointer.cursor(),
+				);
+				None
+			}
 			Some(Tap::Caption(caption)) => Some(TouchAction::Caption(caption)),
 			Some(Tap::Command(command)) => {
 				self.action(command);
@@ -477,6 +495,14 @@ impl<P: super::SendEvent> App<P> {
 		point: Point,
 	) {
 		self.interaction.widgets.captured = None;
+		if let Some(Tap::Input(field)) = capture.tap
+			&& (delta.0 != 0.0 || self.gestures.input_drag)
+		{
+			self.gestures.input_drag = true;
+			self.gestures.motion = None;
+			self.point_input_touch(field, point);
+			return;
+		}
 		if capture.surface == Surface::Viewer {
 			let (width, height, _) = self.dimensions();
 			self.interaction.overlays.viewer.send(

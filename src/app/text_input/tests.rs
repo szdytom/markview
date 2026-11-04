@@ -45,6 +45,135 @@ fn event(app: &mut App<Proxy>, event: WindowEvent) {
 	app.handle_window_event(&TestLoop, WindowId::dummy(), event);
 }
 
+fn touch(
+	app: &mut App<Proxy>,
+	id: u64,
+	phase: winit::event::TouchPhase,
+	point: (f32, f32),
+) {
+	let scale = app.dimensions().2;
+	let insets = app.insets();
+	event(
+		app,
+		WindowEvent::Touch(winit::event::Touch {
+			device_id: DeviceId::dummy(),
+			id,
+			phase,
+			location: winit::dpi::PhysicalPosition::new(
+				((point.0 + insets[0]) * scale) as f64,
+				((point.1 + insets[1]) * scale) as f64,
+			),
+			force: None,
+		}),
+	);
+}
+
+#[test]
+fn touchscreen_taps_position_the_caret_in_every_input() {
+	use winit::event::TouchPhase::{Ended, Started};
+	let dir = tempfile::tempdir().unwrap();
+	for id in [
+		TextField::Url,
+		TextField::Files,
+		TextField::QuickOpen,
+		TextField::Search,
+		TextField::ExportTitle,
+	] {
+		let mut app = app();
+		app.folder_loaded(
+			0,
+			false,
+			crate::app::folder::Tree::read(dir.path().into()),
+		);
+		match id {
+			TextField::Url | TextField::Files => {
+				app.show_panel(PanelPage::Closed)
+			}
+			TextField::QuickOpen => app.open_quick_open(),
+			TextField::Search => {
+				app.show_panel(PanelPage::Closed);
+				app.readers.session.path = Some("search.md".into());
+				app.open_search();
+			}
+			TextField::ExportTitle => {}
+		}
+		let (input, ui) = app.input(id);
+		input.set_text(ui, "a中👩‍💻z");
+		input.select_all(ui);
+		let (rect, _) = app.input_geometry(id).unwrap();
+		let start = (rect.x + 8.0, rect.y + rect.h / 2.0);
+		touch(&mut app, 1, Started, start);
+		touch(&mut app, 1, Ended, start);
+		assert_eq!(app.text_input.focused, Some(id));
+		assert!(app.input(id).0.selected_text().is_none());
+		app.commit_native_input("L".into());
+		assert_eq!(app.input(id).0.text(), "La中👩‍💻z", "{id:?}");
+
+		let end = (rect.x + rect.w - 8.0, start.1);
+		touch(&mut app, 2, Started, end);
+		touch(&mut app, 2, Ended, end);
+		app.commit_native_input("R".into());
+		assert_eq!(app.input(id).0.text(), "La中👩‍💻zR", "{id:?}");
+	}
+}
+
+#[test]
+fn touchscreen_drag_moves_a_collapsed_caret_and_keeps_the_ime_session() {
+	use winit::event::TouchPhase::{Ended, Moved, Started};
+	let mut app = app();
+	let id = TextField::ExportTitle;
+	let (rect, _) = app.input_geometry(id).unwrap();
+	let (input, ui) = app.input(id);
+	input.set_text(ui, "a中👩‍💻z");
+	input.move_cursor(ui, Motion::Start, false);
+	input.move_cursor(ui, Motion::Right, false);
+	input.move_cursor(ui, Motion::Right, false);
+	let Draw::Clipped { draws, .. } =
+		input.draw(ui, rect, true, true, "").pop().unwrap()
+	else {
+		panic!("input text is clipped");
+	};
+	let Draw::Rect(middle, _) = draws.last().unwrap() else {
+		panic!("input draws the caret last");
+	};
+	input.select_all(ui);
+	event(&mut app, WindowEvent::Ime(Ime::Enabled));
+	let start = (rect.x + rect.w - 8.0, rect.y + rect.h / 2.0);
+	let target = (middle.x, start.1 + 10.0);
+	touch(&mut app, 1, Started, start);
+	touch(&mut app, 1, Moved, target);
+	assert!(app.readers.session.export_title.selected_text().is_none());
+	assert!(app.text_input.ime_enabled);
+	assert_eq!(app.panel_scroll_range().unwrap().0, 0.0);
+	touch(&mut app, 1, Ended, target);
+	app.commit_native_input("|".into());
+	assert_eq!(app.readers.session.export_title.text(), "a中|👩‍💻z");
+	assert!(!app.advance_gestures(Instant::now() + Duration::from_secs(1)));
+}
+
+#[test]
+fn cancelled_multitouch_and_vertical_gestures_do_not_reposition_the_caret() {
+	use winit::event::TouchPhase::{Cancelled, Ended, Moved, Started};
+	let mut app = app();
+	app.readers
+		.session
+		.export_title
+		.set_text(&mut app.ui, "original");
+	let (rect, _) = app.input_geometry(TextField::ExportTitle).unwrap();
+	let start = (rect.x + 8.0, rect.y + rect.h / 2.0);
+	touch(&mut app, 1, Started, start);
+	touch(&mut app, 1, Cancelled, start);
+	touch(&mut app, 2, Started, start);
+	touch(&mut app, 3, Started, (start.0 + 40.0, start.1));
+	touch(&mut app, 2, Ended, start);
+	touch(&mut app, 3, Ended, start);
+	touch(&mut app, 4, Started, start);
+	touch(&mut app, 4, Moved, (start.0, start.1 - 40.0));
+	touch(&mut app, 4, Ended, (start.0, start.1 - 40.0));
+	app.commit_native_input("|".into());
+	assert_eq!(app.readers.session.export_title.text(), "original|");
+}
+
 #[test]
 fn slash_is_literal_text_in_export_and_search_inputs() {
 	let mut app = app();
