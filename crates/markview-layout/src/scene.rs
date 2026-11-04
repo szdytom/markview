@@ -54,6 +54,8 @@ pub struct Glyph {
 	pub y: f32,
 	/// The face carries no italic, so the renderer shears the outline.
 	pub synthetic_italic: bool,
+	/// The renderer emboldens the outline of a non-bold face.
+	pub synthetic_bold: bool,
 	pub paint: Paint,
 }
 

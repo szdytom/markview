@@ -160,6 +160,7 @@ fn color_glyphs_preserve_rgb_and_share_paint_order() {
 		x: 2.,
 		y: 2.,
 		synthetic_italic: false,
+		synthetic_bold: false,
 		paint: Paint::Text,
 	};
 	// Inject a synthetic RGBA glyph so this test needs no installed Emoji font.
@@ -172,6 +173,7 @@ fn color_glyphs_preserve_rgb_and_share_paint_order() {
 			phase: 0,
 			coords: fingerprint(&glyph.coords),
 			synthetic: false,
+			synthetic_bold: false,
 		},
 		entry,
 	);
@@ -279,6 +281,7 @@ fn prewarm_prepares_the_next_screenful_before_the_frame_needs_it() {
 						x: (i % 8) as f32 * 14.0,
 						y: (i / 8) as f32 * 14.0,
 						synthetic_italic: false,
+						synthetic_bold: false,
 						paint: Paint::Text,
 					})
 				})
@@ -634,6 +637,7 @@ fn idle_repack_rebuilds_the_current_screen_without_a_scroll_frame() {
 						x: (i % 8) as f32 * 14.0,
 						y: (i / 8) as f32 * 14.0,
 						synthetic_italic: false,
+						synthetic_bold: false,
 						paint: Paint::Text,
 					})
 				})
@@ -692,4 +696,52 @@ fn idle_repack_rebuilds_the_current_screen_without_a_scroll_frame() {
 		after.entries >= before.entries,
 		"idle repack lost the current screen: {before:?} -> {after:?}"
 	);
+}
+
+#[test]
+fn synthetic_bold_and_italic_have_distinct_cached_masks() {
+	use crate::Renderer;
+	use markview_layout::scene::{Glyph, Paint};
+	let mut renderer = pollster::block_on(Renderer::new(None)).unwrap();
+	let font = parley::FontData::new(
+		ratex_katex_fonts::ttf_bytes("KaTeX_Main-Regular.ttf")
+			.unwrap()
+			.into_owned()
+			.into(),
+		0,
+	);
+	let id = swash::FontRef::from_index(font.data.data(), 0)
+		.unwrap()
+		.charmap()
+		.map('A');
+	let mut glyph = Glyph {
+		font,
+		coords: Vec::new().into(),
+		id,
+		size: 32.,
+		x: 0.,
+		y: 0.,
+		synthetic_italic: false,
+		synthetic_bold: false,
+		paint: Paint::Text,
+	};
+	for (bold, italic) in
+		[(false, false), (true, false), (false, true), (true, true)]
+	{
+		glyph.synthetic_bold = bold;
+		glyph.synthetic_italic = italic;
+		let entry = renderer
+			.raster
+			.glyph(
+				&renderer.gpu.device,
+				&renderer.images.pipeline,
+				&renderer.gpu.queue,
+				&glyph,
+				1.,
+				0,
+			)
+			.unwrap();
+		assert!(entry.w > 0 && entry.h > 0);
+	}
+	assert_eq!(renderer.raster.cache.len(), 4);
 }

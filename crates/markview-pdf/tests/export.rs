@@ -1087,3 +1087,27 @@ fn missing_image_pixels_abort_export_with_the_source_and_reason() {
 	assert!(error.contains("version 7"), "{error}");
 	assert!(error.contains("evicted or not loaded"), "{error}");
 }
+
+#[test]
+fn synthetic_bold_export_keeps_searchable_text_and_uses_fill_and_stroke() {
+	let sheet = print();
+	let geometry = PageGeometry::from_style(sheet.page()).unwrap();
+	let mut input = inputs("Bold sample", sheet, geometry);
+	for block in &mut input.snapshot.blocks {
+		for draw in &mut Arc::make_mut(&mut block.layout).draws {
+			if let markview_layout::scene::Draw::Glyph(glyph) = draw {
+				glyph.synthetic_bold = true;
+			}
+		}
+	}
+	let bytes = render(&input, false, Metadata::default(), None);
+	let pdf = lopdf::Document::load_mem(&bytes).unwrap();
+	assert!(pdf.extract_text(&[1]).unwrap().contains("Bold sample"));
+	let page = pdf.get_pages()[&1];
+	let content =
+		String::from_utf8_lossy(&pdf.get_page_content(page)).into_owned();
+	assert!(
+		content.contains("2 Tr"),
+		"missing fill-and-stroke text: {content}"
+	);
+}

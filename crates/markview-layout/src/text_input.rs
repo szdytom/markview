@@ -427,6 +427,7 @@ impl TextInput {
 						x: x + g.x,
 						y: y + g.y,
 						synthetic_italic: false,
+						synthetic_bold: false,
 						paint: color,
 					}));
 				}
