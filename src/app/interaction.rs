@@ -420,7 +420,7 @@ impl<P: super::SendEvent> App<P> {
 	}
 	pub(super) fn text_at_cursor(&self) -> Option<TextPosition> {
 		self.document_interaction()
-			.position(markview_selection::Point::new(
+			.position(markview_interaction::Point::new(
 				self.interaction.pointer.cursor().0,
 				self.interaction.pointer.cursor().1,
 			))
@@ -428,7 +428,7 @@ impl<P: super::SendEvent> App<P> {
 
 	pub(super) fn text_under_cursor(&self) -> bool {
 		self.document_interaction().contains_text(
-			markview_selection::Point::new(
+			markview_interaction::Point::new(
 				self.interaction.pointer.cursor().0,
 				self.interaction.pointer.cursor().1,
 			),

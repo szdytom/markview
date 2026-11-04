@@ -24,11 +24,11 @@ pub(crate) use motion::{Animation, Easing, Fade, Tween};
 pub(crate) use outline::OutlineTree;
 pub(crate) use rows::{Row, RowSlide};
 
-#[cfg(test)]
-pub(crate) use markview_layout::layout::scroll_limit;
-pub(crate) use markview_selection::{
+pub(crate) use markview_interaction::{
 	Drag, Grain, Host, HoveredLink, Modifiers, Point, Selection,
 };
+#[cfg(test)]
+pub(crate) use markview_layout::layout::scroll_limit;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum TextField {
@@ -194,7 +194,7 @@ pub(crate) struct ReaderSession {
 	/// Reader-chosen `<details>` collapse state, keyed by block id, overriding
 	/// what the source declared. It is layout input, and a reload drops it.
 	pub(crate) details_open: Arc<BTreeMap<u64, bool>>,
-	pub(crate) scrolling: markview_selection::Scroll,
+	pub(crate) scrolling: markview_interaction::Scroll,
 	pub(crate) horizontal: HashMap<(usize, usize), f32>,
 	pub(crate) follow_update: bool,
 	pub(crate) layout_pending: bool,
@@ -665,8 +665,11 @@ impl ReaderSession {
 					+ viewport <= reader.layout.height
 			})
 	}
-	fn scroll_bounds(&self, viewport: f32) -> markview_selection::ScrollBounds {
-		markview_selection::ScrollBounds {
+	fn scroll_bounds(
+		&self,
+		viewport: f32,
+	) -> markview_interaction::ScrollBounds {
+		markview_interaction::ScrollBounds {
 			max: if self.layout_pending {
 				(self.snapshot.height - viewport).max(0.0)
 			} else {
@@ -705,7 +708,7 @@ impl ReaderSession {
 		dy: f32,
 		now: Instant,
 		viewport: f32,
-		mode: markview_selection::WheelMode,
+		mode: markview_interaction::WheelMode,
 	) {
 		self.leave_reading_position(dy);
 		self.resolve_scroll(viewport);

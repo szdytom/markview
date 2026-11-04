@@ -1,7 +1,7 @@
 //! Shared window-chrome geometry and client-side gestures.
 use super::{App, TOP};
 use crate::{layout::Rect, settings::WindowLayout};
-use markview_selection::Selection;
+use markview_interaction::Selection;
 use std::time::{Duration, Instant};
 use winit::{
 	event::{ElementState, MouseButton, WindowEvent},

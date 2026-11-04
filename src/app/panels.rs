@@ -5,7 +5,7 @@
 //! the shell shares. `ExportSettings` is persisted configuration, so its
 //! page offset never lives there.
 use super::sidebar;
-use markview_selection::Scroll;
+use markview_interaction::Scroll;
 
 #[derive(Default)]
 pub(crate) struct Model {

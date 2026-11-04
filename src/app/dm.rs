@@ -6,7 +6,7 @@
 
 use winit::event::TouchPhase;
 
-use markview_selection::{PanFeed, PanPhase, PanStatus};
+use markview_interaction::{PanFeed, PanPhase, PanStatus};
 
 /// Folds one pump's worth of viewport news into seam events, in logical
 /// pixels.

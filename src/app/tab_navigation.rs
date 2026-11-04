@@ -40,7 +40,7 @@ impl<P: super::SendEvent> App<P> {
 		self.tab_strip.scroll.wheel(
 			delta,
 			Instant::now(),
-			markview_selection::WheelMode::Detent,
+			markview_interaction::WheelMode::Detent,
 		);
 		// Tabs slide under the resting pointer; the card closes, and the hover
 		// re-arms for whichever tab arrives there without waiting for motion.

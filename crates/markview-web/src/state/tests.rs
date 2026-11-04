@@ -4,10 +4,10 @@
 
 use crate::selection::Pointer;
 use crate::state::{Published, SelectionLength};
+use markview_interaction::Host;
 use markview_layout::layout::LayoutSnapshot;
 use markview_layout::scene::{BlockLayout, PlacedBlock};
 use markview_layout::text::{TextPosition, TextSelection};
-use markview_selection::Host;
 use std::cell::RefCell;
 use std::rc::Rc;
 use std::sync::Arc;

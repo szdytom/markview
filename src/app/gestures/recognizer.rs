@@ -154,4 +154,4 @@ impl<T: Clone> Recognizer<T> {
 	}
 }
 
-pub(super) use markview_selection::Motion;
+pub(super) use markview_interaction::Motion;

@@ -1,10 +1,10 @@
+use markview_interaction::{
+	Cursor, DocumentInteraction, Horizontal, Motion, Point, Scroll,
+	ScrollBounds, WheelMode, horizontal_by, selection_scroll_speed,
+};
 use markview_layout::scene::{
 	BlockLayout, Draw, LayoutSnapshot, LinkId, LinkRect, Overflow, PlacedBlock,
 	Rect, ScrollbarMetrics, Viewport,
-};
-use markview_selection::{
-	Cursor, DocumentInteraction, Horizontal, Motion, Point, Scroll,
-	ScrollBounds, WheelMode, horizontal_by, selection_scroll_speed,
 };
 use std::{sync::Arc, time::Duration};
 use web_time::Instant;

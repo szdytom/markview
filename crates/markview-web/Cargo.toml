@@ -22,7 +22,7 @@ markview-commonmark = { path = "../markview-commonmark" }
 markview-document = { path = "../markview-document" }
 markview-layout = { path = "../markview-layout" }
 markview-render = { path = "../markview-render" }
-markview-selection = { path = "../markview-selection" }
+markview-interaction = { path = "../markview-interaction" }
 anyhow.workspace = true
 log.workspace = true
 serde.workspace = true

@@ -3,7 +3,7 @@ pub(super) mod observe;
 use super::{App, Event, SendEvent};
 use crate::state::ChromeCommand;
 use crate::state::{Command, DrawerAnimation, Row, RowSlide};
-use markview_selection::Scroll;
+use markview_interaction::Scroll;
 use observe::Observer;
 use std::{
 	collections::{BTreeMap, HashMap, HashSet},
@@ -1316,7 +1316,7 @@ impl<P: SendEvent> App<P> {
 		self.folder.scroll.wheel(
 			delta,
 			now,
-			markview_selection::WheelMode::Detent,
+			markview_interaction::WheelMode::Detent,
 		);
 		self.interaction.widgets.captured = None;
 		self.redraw();

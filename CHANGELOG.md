@@ -41,6 +41,7 @@ at the same level, without `[brackets]`.
 - Flush the document scrollbar against the reading area's right edge, show it only briefly after the pointer moves over the reader, and fade it out through one shared timer.
 - Flush the folder sidebar's scrollbar against its right edge, fade it like the document's, and keep the reader's bar limited to the reading area.
 - Add a scrollbar and eased wheel scrolling to the Ctrl+P quick-open picker.
+- Rename `markview-selection` to `markview-interaction`, since the crate also owns scrolling, wheel and pan machinery, and call its pan feed module `pan`.
 - Unify document and chrome scrolling on one time-driven `Scroll` with a cached extent, and give the start page eased wheel travel.
 - Drive every continuous animation from one frame clock, advancing once per presented frame and redrawing only while motion is active.
 - Make selection and tab edge auto-scroll speed-based in logical pixels per second, so travel is identical at any refresh rate.

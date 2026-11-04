@@ -95,8 +95,8 @@ impl ScrollbarReveal {
 impl<P: super::SendEvent> App<P> {
 	pub(super) fn document_interaction(
 		&self,
-	) -> markview_selection::DocumentInteraction<'_> {
-		markview_selection::DocumentInteraction {
+	) -> markview_interaction::DocumentInteraction<'_> {
+		markview_interaction::DocumentInteraction {
 			snapshot: &self.readers.session.snapshot,
 			viewport: self.view_geometry(),
 			horizontal: &self.readers.session.horizontal,
@@ -226,7 +226,7 @@ impl<P: super::SendEvent> App<P> {
 		y: f32,
 	) -> Option<(usize, usize, Scrollbar)> {
 		self.document_interaction().overflow_bar_at(
-			markview_selection::Point::new(x, y),
+			markview_interaction::Point::new(x, y),
 			self.preferences
 				.values
 				.stylesheet

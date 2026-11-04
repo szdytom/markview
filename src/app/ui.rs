@@ -461,7 +461,9 @@ impl<P: super::SendEvent> App<P> {
 		}
 	}
 	/// The offset owner of whichever panel page scrolls.
-	fn panel_scroll_area(&mut self) -> Option<&mut markview_selection::Scroll> {
+	fn panel_scroll_area(
+		&mut self,
+	) -> Option<&mut markview_interaction::Scroll> {
 		if self.phone_folder_open() {
 			Some(&mut self.folder.scroll)
 		} else if self.interaction.panel == crate::state::PanelPage::Tabs {
@@ -520,7 +522,7 @@ impl<P: super::SendEvent> App<P> {
 			area.wheel(
 				delta,
 				Instant::now(),
-				markview_selection::WheelMode::Detent,
+				markview_interaction::WheelMode::Detent,
 			);
 		}
 		self.interaction.widgets.captured = None;

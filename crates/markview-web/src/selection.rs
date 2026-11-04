@@ -1,16 +1,16 @@
 //! The pointer a browser drives: canvas coordinates in, reading text out.
 //!
-//! `markview-selection` owns the gesture machine. This module owns the state
+//! `markview-interaction` owns the gesture machine. This module owns the state
 //! that machine reads and writes, and turns a canvas-local point into a
 //! reading position through the published snapshot.
 
+use markview_interaction::{DocumentInteraction, Horizontal};
+use markview_interaction::{Drag, Grain, Host, Modifiers, Point, Selection};
 use markview_layout::{
 	layout::LayoutSnapshot,
 	scene::Viewport,
 	text::{TextPosition, TextSelection},
 };
-use markview_selection::{DocumentInteraction, Horizontal};
-use markview_selection::{Drag, Grain, Host, Modifiers, Point, Selection};
 use web_time::Instant;
 
 /// A canvas point, and everything needed to read the text under it.

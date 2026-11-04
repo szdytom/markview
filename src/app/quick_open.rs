@@ -1,7 +1,7 @@
 //! The floating file picker owns its workspace search session.
 use super::{App, SendEvent, chrome};
 use crate::state::{ChromeCommand, Command, PanelPage, Selection, TextField};
-use markview_selection::{Scroll, WheelMode};
+use markview_interaction::{Scroll, WheelMode};
 use markview_ui_core::WidgetId;
 use std::time::Instant;
 use winit::keyboard::{Key, NamedKey};
@@ -224,7 +224,7 @@ impl<P: SendEvent> App<P> {
 	pub(super) fn wheel_quick_open(
 		&mut self,
 		delta: f32,
-		mode: markview_selection::WheelMode,
+		mode: markview_interaction::WheelMode,
 	) {
 		self.quick_open_list();
 		self.interaction

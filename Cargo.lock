@@ -2500,11 +2500,11 @@ dependencies = [
  "markview-document",
  "markview-i18n",
  "markview-icon",
+ "markview-interaction",
  "markview-layout",
  "markview-pdf",
  "markview-platform",
  "markview-render",
- "markview-selection",
  "markview-ui-core",
  "mermaid-rs-renderer",
  "nucleo-matcher",
@@ -2570,6 +2570,14 @@ dependencies = [
  "quote",
  "syn 3.0.9",
  "usvg",
+]
+
+[[package]]
+name = "markview-interaction"
+version = "0.4.4"
+dependencies = [
+ "markview-layout",
+ "web-time",
 ]
 
 [[package]]
@@ -2689,14 +2697,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "markview-selection"
-version = "0.4.4"
-dependencies = [
- "markview-layout",
- "web-time",
-]
-
-[[package]]
 name = "markview-ui-core"
 version = "0.4.4"
 dependencies = [
@@ -2713,9 +2713,9 @@ dependencies = [
  "log",
  "markview-commonmark",
  "markview-document",
+ "markview-interaction",
  "markview-layout",
  "markview-render",
- "markview-selection",
  "parley",
  "percent-encoding",
  "serde",

@@ -6,7 +6,7 @@ use crate::{
 	},
 	state::Command,
 };
-use markview_selection::Scroll;
+use markview_interaction::Scroll;
 use markview_ui_core::{Component, Invalidation, Update};
 use std::ops::Deref;
 

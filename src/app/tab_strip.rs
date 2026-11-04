@@ -3,7 +3,7 @@ use crate::{
 	layout::Rect,
 	state::{Animation, DrawerAnimation, Easing, Tween},
 };
-use markview_selection::Scroll;
+use markview_interaction::Scroll;
 use std::time::{Duration, Instant};
 
 pub(super) const GAP: f32 = 2.0;

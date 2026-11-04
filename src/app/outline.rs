@@ -16,7 +16,7 @@ use crate::state::DocumentCommand;
 use crate::state::{
 	Command, DrawerAnimation, InteractionState, OutlineTree, Row, RowSlide,
 };
-use markview_selection::Scroll;
+use markview_interaction::Scroll;
 use markview_ui_core::{Component, Invalidation, Update};
 use std::time::Instant;
 
@@ -175,7 +175,7 @@ impl Model {
 		delta: f32,
 		max: f32,
 		now: Instant,
-		mode: markview_selection::WheelMode,
+		mode: markview_interaction::WheelMode,
 	) {
 		self.scroll.set_max(max);
 		self.scroll.wheel(delta, now, mode);
@@ -423,7 +423,7 @@ impl<P: super::SendEvent> App<P> {
 			delta,
 			max,
 			std::time::Instant::now(),
-			markview_selection::WheelMode::Detent,
+			markview_interaction::WheelMode::Detent,
 		);
 		self.redraw();
 	}

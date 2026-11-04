@@ -3,8 +3,8 @@ use super::{
 	App, Event, SendEvent,
 	file_search::{File, Snippet, find},
 };
+use markview_interaction::Scroll;
 use markview_layout::text_input::TextInput;
-use markview_selection::Scroll;
 use nucleo_matcher::{Config, Matcher};
 use serde::{Deserialize, Serialize};
 use std::{
@@ -522,7 +522,7 @@ impl<P: SendEvent> App<P> {
 	pub(super) fn scroll_start(
 		&mut self,
 		delta: f32,
-		mode: markview_selection::WheelMode,
+		mode: markview_interaction::WheelMode,
 	) -> bool {
 		if self.readers.session.path.is_some()
 			|| !self.readers.session.snapshot.blocks.is_empty()

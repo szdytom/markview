@@ -1,6 +1,6 @@
 //! The DM viewport feed folded into pixel-pan phases: pan in contact, the OS
 //! inertia tail, a release at idle, and a gesture interrupted by abandon.
-use markview_selection::{PanFeed, PanPhase, PanStatus};
+use markview_interaction::{PanFeed, PanPhase, PanStatus};
 
 #[test]
 fn a_pan_in_contact_follows_the_content_transform_exactly() {

@@ -35,13 +35,13 @@ members = [
 	"crates/markview-commonmark",
 	"crates/markview-document",
 	"crates/markview-geometry",
-	"crates/markview-layout",
 	"crates/markview-i18n",
 	"crates/markview-icon",
+	"crates/markview-interaction",
+	"crates/markview-layout",
 	"crates/markview-pdf",
 	"crates/markview-platform",
 	"crates/markview-render",
-	"crates/markview-selection",
 	"crates/markview-ui-core",
 	"crates/markview-web",
 	"xtask",
@@ -156,10 +156,10 @@ parley.workspace = true
 markview-layout = { path = "crates/markview-layout", features = ["font-directories"] }
 markview-i18n = { path = "crates/markview-i18n" }
 markview-icon = { path = "crates/markview-icon" }
+markview-interaction = { path = "crates/markview-interaction" }
 markview-pdf = { path = "crates/markview-pdf" }
 markview-platform = { path = "crates/markview-platform" }
 markview-render = { path = "crates/markview-render", features = ["readback"] }
-markview-selection = { path = "crates/markview-selection" }
 markview-ui-core = { path = "crates/markview-ui-core" }
 anyhow.workspace = true
 env_logger.workspace = true

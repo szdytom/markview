@@ -303,8 +303,8 @@ pub use scroll::{
 mod motion;
 pub use motion::Motion;
 
-mod dm;
-pub use dm::{PanFeed, PanPhase, PanStatus};
+mod pan;
+pub use pan::{PanFeed, PanPhase, PanStatus};
 
 mod document;
 pub use document::{

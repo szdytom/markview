@@ -124,9 +124,9 @@ impl FrameDriver {
 	}
 }
 
-impl Animation for markview_selection::Scroll {
+impl Animation for markview_interaction::Scroll {
 	fn advance(&mut self, now: Instant) -> bool {
-		markview_selection::Scroll::advance(self, now)
+		markview_interaction::Scroll::advance(self, now)
 	}
 }
 
@@ -180,7 +180,7 @@ impl<P: super::SendEvent> super::App<P> {
 			&& self.interaction.pointer.dragged()
 		{
 			let (_, height, _) = self.dimensions();
-			let speed = markview_selection::selection_scroll_speed(
+			let speed = markview_interaction::selection_scroll_speed(
 				self.interaction.pointer.cursor().1,
 				super::TOP,
 				height - self.bottom(),

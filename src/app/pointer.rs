@@ -264,11 +264,11 @@ pub(super) fn high_resolution(delta: MouseScrollDelta) -> bool {
 /// scroll itself upgrades when a stream is still live.
 pub(super) fn wheel_mode(
 	delta: MouseScrollDelta,
-) -> markview_selection::WheelMode {
+) -> markview_interaction::WheelMode {
 	if markview_platform::wheel_packets() && high_resolution(delta) {
-		markview_selection::WheelMode::Packet
+		markview_interaction::WheelMode::Packet
 	} else {
-		markview_selection::WheelMode::Detent
+		markview_interaction::WheelMode::Detent
 	}
 }
 
@@ -708,7 +708,7 @@ impl<P: super::SendEvent> App<P> {
 		LINE_STEP * self.scroll_speed()
 	}
 	pub(super) fn scroll_by(&mut self, dy: f32) {
-		if self.scroll_start(dy, markview_selection::WheelMode::Direct) {
+		if self.scroll_start(dy, markview_interaction::WheelMode::Direct) {
 			return;
 		}
 		self.readers.session.scroll_by(dy, self.viewport());
@@ -717,9 +717,9 @@ impl<P: super::SendEvent> App<P> {
 	/// A discrete scroll step, eased to its destination.
 	pub(super) fn scroll_step(&mut self, dy: f32) {
 		let mode = if eases(dy) {
-			markview_selection::WheelMode::Detent
+			markview_interaction::WheelMode::Detent
 		} else {
-			markview_selection::WheelMode::Direct
+			markview_interaction::WheelMode::Direct
 		};
 		if self.scroll_start(dy, mode) {
 			return;
@@ -736,7 +736,7 @@ impl<P: super::SendEvent> App<P> {
 	pub(super) fn scroll_wheel(
 		&mut self,
 		dy: f32,
-		mode: markview_selection::WheelMode,
+		mode: markview_interaction::WheelMode,
 	) {
 		if self.scroll_start(dy, mode) {
 			return;
@@ -763,7 +763,7 @@ impl<P: super::SendEvent> App<P> {
 			} else {
 				f32::NEG_INFINITY
 			},
-			markview_selection::WheelMode::Direct,
+			markview_interaction::WheelMode::Direct,
 		) {
 			return;
 		}
@@ -830,7 +830,7 @@ impl<P: super::SendEvent> App<P> {
 	/// The link under a window point, using the same origin as the renderer.
 	pub(super) fn link_at(&self, px: f32, py: f32) -> Option<String> {
 		self.document_interaction()
-			.link(markview_selection::Point::new(px, py))
+			.link(markview_interaction::Point::new(px, py))
 			.map(str::to_owned)
 	}
 	pub(super) fn button_at_cursor(&mut self) -> bool {
@@ -893,7 +893,7 @@ impl<P: super::SendEvent> App<P> {
 			&& !over_outline;
 		let document_hover = if idle {
 			self.document_interaction().hover(
-				markview_selection::Point::new(
+				markview_interaction::Point::new(
 					self.interaction.pointer.cursor().0,
 					self.interaction.pointer.cursor().1,
 				),
@@ -901,7 +901,7 @@ impl<P: super::SendEvent> App<P> {
 				true,
 			)
 		} else {
-			markview_selection::Hover::default()
+			markview_interaction::Hover::default()
 		};
 		let cursor = self.hover_cursor(
 			document_hover.cursor,
@@ -929,7 +929,7 @@ impl<P: super::SendEvent> App<P> {
 	}
 	fn hover_cursor(
 		&mut self,
-		document_cursor: markview_selection::Cursor,
+		document_cursor: markview_interaction::Cursor,
 		over_link: bool,
 		over_control: bool,
 		over_outline: bool,
@@ -964,14 +964,14 @@ impl<P: super::SendEvent> App<P> {
 
 	fn document_hover_cursor(
 		&self,
-		document_cursor: markview_selection::Cursor,
+		document_cursor: markview_interaction::Cursor,
 		idle: bool,
 	) -> CursorIcon {
 		let cursor = if idle {
 			document_cursor
 		} else {
 			self.document_interaction().cursor(
-				markview_selection::Point::new(
+				markview_interaction::Point::new(
 					self.interaction.pointer.cursor().0,
 					self.interaction.pointer.cursor().1,
 				),
@@ -980,9 +980,9 @@ impl<P: super::SendEvent> App<P> {
 			)
 		};
 		match cursor {
-			markview_selection::Cursor::Default => CursorIcon::Default,
-			markview_selection::Cursor::Text => CursorIcon::Text,
-			markview_selection::Cursor::Pointer => CursorIcon::Pointer,
+			markview_interaction::Cursor::Default => CursorIcon::Default,
+			markview_interaction::Cursor::Text => CursorIcon::Text,
+			markview_interaction::Cursor::Pointer => CursorIcon::Pointer,
 		}
 	}
 
@@ -992,7 +992,7 @@ impl<P: super::SendEvent> App<P> {
 		&self,
 	) -> Option<(String, markview_layout::scene::Rect)> {
 		self.document_interaction()
-			.image(markview_selection::Point::new(
+			.image(markview_interaction::Point::new(
 				self.interaction.pointer.cursor().0,
 				self.interaction.pointer.cursor().1,
 			))
@@ -1251,11 +1251,11 @@ impl<P: super::SendEvent> App<P> {
 	/// Pans the wide block under the pointer. `false` means no block was
 	/// there, so the caller can scroll the page instead of dropping the event.
 	pub(super) fn horizontal_by(&mut self, dx: f32) -> bool {
-		let consumed = markview_selection::horizontal_by(
+		let consumed = markview_interaction::horizontal_by(
 			&self.readers.session.snapshot,
 			self.view_geometry(),
 			&mut self.readers.session.horizontal,
-			markview_selection::Point::new(
+			markview_interaction::Point::new(
 				self.interaction.pointer.cursor().0,
 				self.interaction.pointer.cursor().1,
 			),

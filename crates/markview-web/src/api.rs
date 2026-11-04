@@ -13,6 +13,10 @@ use crate::{
 };
 use markview_commonmark::{Dialect, parse_with};
 use markview_document::Document;
+use markview_interaction::{
+	DocumentInteraction, Horizontal, Host, Hover, Modifiers, Point, Scroll,
+	ScrollBounds, Selection, WheelMode, selection_scroll_speed,
+};
 use markview_layout::{
 	fonts::FontConfig,
 	image::Pixels,
@@ -22,10 +26,6 @@ use markview_layout::{
 	style::{MediaContext, StyleTarget, Stylesheet},
 };
 use markview_render::{FrameStatus, Renderer, SurfaceSource, Theme, View};
-use markview_selection::{
-	DocumentInteraction, Horizontal, Host, Hover, Modifiers, Point, Scroll,
-	ScrollBounds, Selection, WheelMode, selection_scroll_speed,
-};
 use serde::Deserialize;
 use std::{sync::Arc, time::Duration};
 use wasm_bindgen::prelude::*;
@@ -846,7 +846,7 @@ impl Markview {
 			self.cancel_scroll_animation();
 		}
 		let consumed = self.cursor.is_some_and(|(x, y)| {
-			markview_selection::horizontal_by(
+			markview_interaction::horizontal_by(
 				&self.published.snapshot,
 				self.viewport(),
 				&mut self.horizontal,

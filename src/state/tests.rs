@@ -1,9 +1,9 @@
 use super::*;
 use crate::app::modal::{Message, Modal};
-use markview_layout::text::{Affinity, TextPosition};
-use markview_selection::{
+use markview_interaction::{
 	SCROLL_MAX, SCROLL_MIN, ScrollAnimation, ease_out_cubic,
 };
+use markview_layout::text::{Affinity, TextPosition};
 use winit::event::TouchPhase;
 use winit::keyboard::ModifiersState;
 fn position(offset: usize) -> TextPosition {

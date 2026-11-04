@@ -1452,7 +1452,7 @@ fn scrolling_moves_what_a_held_press_covers() {
 #[test]
 fn an_update_carries_the_selection_into_the_new_layout() {
 	let (mut app, document) = reader(SOURCE, 760.0);
-	let path = PathBuf::from("/tmp/markview-selection-test.md");
+	let path = PathBuf::from("/tmp/markview-interaction-test.md");
 	app.readers.session.path = Some(path.clone());
 	app.readers.session.version = 1;
 	app.interaction.selection = app.readers.session.snapshot.select_all(1);
@@ -2063,7 +2063,7 @@ fn a_native_pixel_stream_reverses_with_the_first_opposite_delta() {
 fn a_native_stream_start_cancels_a_running_wheel_momentum() {
 	let (mut app, _) = reader(&"A scrolling paragraph.\n\n".repeat(100), 760.0);
 	// The packet path owns the offset and coasts under momentum of its own.
-	app.scroll_wheel(30.0, markview_selection::WheelMode::Packet);
+	app.scroll_wheel(30.0, markview_interaction::WheelMode::Packet);
 	app.readers.session.advance_scroll(
 		Instant::now() + Duration::from_millis(100),
 		app.viewport(),
