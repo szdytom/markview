@@ -64,6 +64,9 @@ impl Prepared {
 		(offset < end).then_some(id)
 	}
 
+	/// Maps visual bytes to reading bytes. An atomic start returns its entire segment.
+	/// Unmapped starts return the reading end; unmapped ends extend to that end.
+	/// Ordinary segments preserve byte displacement. Callers supply ordered ranges.
 	pub(super) fn reading_range(&self, range: Range<usize>) -> Range<usize> {
 		let Some((visual, logical, atomic)) = self
 			.mapping
@@ -91,6 +94,9 @@ impl Prepared {
 		start..end
 	}
 }
+/// Expands tabs to the next positive `size` column stop, counting other scalars
+/// as one column. The map has one entry per output byte boundary, including
+/// interior UTF-8 bytes; inserted spaces map to the tab until its final boundary.
 pub(super) fn expand_tabs_mapped(
 	text: &str,
 	size: usize,
@@ -116,3 +122,6 @@ pub(super) fn expand_tabs_mapped(
 	}
 	(out, offsets)
 }
+
+#[cfg(test)]
+mod proptests;
