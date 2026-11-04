@@ -26,6 +26,7 @@ struct Face {
 	weight: u16,
 	/// The family has no italic of its own, so the renderer shears this face.
 	synthetic_italic: bool,
+	synthetic_bold: bool,
 	/// The candidate's font definition names the Emoji face.
 	emoji: bool,
 }
@@ -44,7 +45,7 @@ struct FontSet {
 	wanted_style: FontStyle,
 }
 type FaceChoice = Option<(usize, usize)>;
-type FaceChoices = Vec<(Range<usize>, FaceChoice, bool)>;
+type FaceChoices = Vec<(Range<usize>, FaceChoice, (bool, bool))>;
 impl FontSet {
 	fn choose(&mut self, text: &str) -> Option<usize> {
 		if let Some(choice) = self.choices.get(text) {
@@ -472,6 +473,7 @@ impl TextShaper {
 					};
 					// Keep the family's closest match without asking `parley` to
 					// synthesize bold; variable faces use their available range.
+					let requested_weight = weight;
 					let weight = info
 						.axes()
 						.iter()
@@ -497,6 +499,9 @@ impl TextShaper {
 							},
 							weight,
 							synthetic_italic: synthetic,
+							synthetic_bold: candidate.synthetic_bold
+								&& requested_weight >= 600
+								&& weight < 600,
 							emoji: def.is_some_and(|def| def.emoji),
 						});
 					}
@@ -641,6 +646,7 @@ impl TextShaper {
 							// The scan is not a stylesheet author, so it opts
 							// every upright stand-in into the shear.
 							synthetic_italic: style_gap == 1,
+							synthetic_bold: false,
 							// Not declared by a fontdef, so no emoji slot.
 							emoji: false,
 						},
@@ -724,7 +730,8 @@ impl TextShaper {
 					.collect();
 				(base_fonts, span_fonts)
 			});
-		let mut choices: Vec<(Range<usize>, FaceChoice, bool)> = Vec::new();
+		let mut choices: Vec<(Range<usize>, FaceChoice, (bool, bool))> =
+			Vec::new();
 		crate::profile::span(crate::profile::Stage::FontChoose, || {
 			debug_assert!(
 				spans.windows(2).all(|s| s[0].range.end <= s[1].range.start)
@@ -777,12 +784,20 @@ impl TextShaper {
 					let identity = |choice: FaceChoice| {
 						choice.map(|(set, index)| {
 							let f = &self.font_sets[set].faces[index];
-							(&f.family, f.style, f.weight, f.synthetic_italic)
+							(
+								&f.family,
+								f.style,
+								f.weight,
+								f.synthetic_italic,
+								f.synthetic_bold,
+							)
 						})
 					};
-					let synthetic = face.is_some_and(|(set, index)| {
-						self.font_sets[set].faces[index].synthetic_italic
-					});
+					let synthetic =
+						face.map_or((false, false), |(set, index)| {
+							let f = &self.font_sets[set].faces[index];
+							(f.synthetic_italic, f.synthetic_bold)
+						});
 					if let Some((range, previous, _)) = choices.last_mut()
 						&& range.end == pos
 						&& identity(face) == identity(*previous)
@@ -884,23 +899,27 @@ impl TextShaper {
 		let base = self.appearance.clone();
 		let (mut layout, appearances, choices) =
 			self.build_layout(text, spans, size, &base);
-		let has_synthetic = choices.iter().any(|(_, _, synthetic)| *synthetic);
+		let has_synthetic = choices
+			.iter()
+			.any(|(_, _, synthetic)| synthetic.0 || synthetic.1);
 		// A cluster keeps the choice its first byte resolved to, which is the
 		// face the shaper used for the whole cluster. Documents without a
 		// synthetic candidate skip the lookup entirely.
 		let synthetic_at = |pos: usize| {
-			has_synthetic
-				&& choices
-					.binary_search_by(|(range, _, _)| {
-						if range.end <= pos {
-							std::cmp::Ordering::Less
-						} else if range.start > pos {
-							std::cmp::Ordering::Greater
-						} else {
-							std::cmp::Ordering::Equal
-						}
-					})
-					.is_ok_and(|i| choices[i].2)
+			if !has_synthetic {
+				return (false, false);
+			}
+			choices
+				.binary_search_by(|(range, _, _)| {
+					if range.end <= pos {
+						std::cmp::Ordering::Less
+					} else if range.start > pos {
+						std::cmp::Ordering::Greater
+					} else {
+						std::cmp::Ordering::Equal
+					}
+				})
+				.map_or((false, false), |i| choices[i].2)
 		};
 		let mut clusters: Vec<Cluster> = Vec::new();
 		let needs_bounds = base.uses_bounds()
@@ -964,7 +983,8 @@ impl TextShaper {
 						}
 						continue;
 					}
-					let synthetic_italic = synthetic_at(range.start);
+					let (synthetic_italic, synthetic_bold) =
+						synthetic_at(range.start);
 					let mut x = 0.0;
 					let mut glyphs = Vec::new();
 					let mut bounds: Option<(f32, f32)> = None;
@@ -1003,6 +1023,7 @@ impl TextShaper {
 							x: x + g.x,
 							y: g.y + shift,
 							synthetic_italic,
+							synthetic_bold,
 							paint: appearance.paint,
 						});
 						x += g.advance;

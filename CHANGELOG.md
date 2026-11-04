@@ -21,6 +21,10 @@ at the same level, without `[brackets]`.
 
 ## Unreleased
 
+### Added
+
+- Allow MVSS font candidates to opt into synthetic bold for families without bold faces, including combined bold italic text.
+
 ### Changed
 
 - List up to three recently visited documents on the start page's Quick Access, skipping open tabs and filling the rows from the workspace.

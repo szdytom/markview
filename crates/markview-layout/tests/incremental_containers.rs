@@ -65,8 +65,20 @@ fn same_geometry(a: &LayoutSnapshot, b: &LayoutSnapshot) {
 			match (a, b) {
 				(Draw::Glyph(a), Draw::Glyph(b)) => {
 					assert_eq!(
-						(a.id, &a.coords, a.paint, a.synthetic_italic),
-						(b.id, &b.coords, b.paint, b.synthetic_italic)
+						(
+							a.id,
+							&a.coords,
+							a.paint,
+							a.synthetic_italic,
+							a.synthetic_bold
+						),
+						(
+							b.id,
+							&b.coords,
+							b.paint,
+							b.synthetic_italic,
+							b.synthetic_bold
+						)
 					);
 					close(a.x, b.x);
 					close(a.y, b.y);

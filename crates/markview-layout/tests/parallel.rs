@@ -52,6 +52,7 @@ fn draws(commands: &[Draw]) -> Vec<String> {
 					g.x,
 					g.y,
 					g.synthetic_italic,
+					g.synthetic_bold,
 					g.paint
 				)
 			),

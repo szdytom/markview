@@ -495,6 +495,7 @@ impl Painter<'_> {
 										.cloned()
 										.unwrap_or(0..0),
 									synthetic_italic: glyph.synthetic_italic,
+									synthetic_bold: glyph.synthetic_bold,
 								}),
 								_ => None,
 							})
@@ -617,6 +618,7 @@ impl Painter<'_> {
 					y: frame.y(glyph.y),
 					range: clusters[at].range.clone(),
 					synthetic_italic: glyph.synthetic_italic,
+					synthetic_bold: glyph.synthetic_bold,
 				})
 			})
 			.collect();
@@ -1150,6 +1152,7 @@ impl Painter<'_> {
 						y: glyph.y,
 						range: ranges.next().cloned().unwrap_or(0..0),
 						synthetic_italic: glyph.synthetic_italic,
+						synthetic_bold: glyph.synthetic_bold,
 					}),
 					_ => None,
 				})

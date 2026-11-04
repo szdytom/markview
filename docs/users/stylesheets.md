@@ -447,7 +447,9 @@ when = ["body"]
 font = [{ family = "reading" }]
 ```
 
-Use `variant = "normal"`, `"italic"`, or `"oblique"`, and an optional weight from 1 to 1000. Markview keeps a family that covers the complete grapheme cluster, matching an unavailable weight to its closest available face using CSS weight matching. It skips a candidate when the family, requested style, or complete grapheme cluster is unavailable; it does not synthesize weight. A slanted candidate may set `synthetic_italic = true` to shear an upright face by 14° instead of being skipped, which is what CJK families—they rarely ship an italic—need:
+To opt a font family into synthetic bold, use `{ family = "serif[cjk]", synthetic_bold = true }` in its font list. Preserve this option in replacement lists such as `em` when bold italic text should support both effects. It permits synthesis; the requested text weight still comes from the cascade (for example, `strong`).
+
+Use `variant = "normal"`, `"italic"`, or `"oblique"`, and an optional weight from 1 to 1000. Markview keeps a family that covers the complete grapheme cluster, matching an unavailable weight to its closest available face using CSS weight matching. It skips a candidate when the family, requested style, or complete grapheme cluster is unavailable; it does not synthesize weight unless the candidate sets `synthetic_bold = true`. This opt-in emboldens an outline when the requested weight is at least 600 but the matched face (or clamped variable weight) is below 600. Real semibold and bold faces are not emboldened again. The effect scales with font size, can combine with `synthetic_italic`, and does not change glyph advances. Color and bitmap glyphs are not emboldened. A slanted candidate may set `synthetic_italic = true` to shear an upright face by 14° instead of being skipped, which is what CJK families—they rarely ship an italic—need:
 
 ```toml
 [[rule]]

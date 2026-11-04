@@ -910,6 +910,7 @@ impl Default for TextAppearance {
 				weight: None,
 				min_weight: None,
 				synthetic_italic: false,
+				synthetic_bold: false,
 			}],
 			weight: 400,
 			size: 1.,

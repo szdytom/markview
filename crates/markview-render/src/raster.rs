@@ -61,6 +61,7 @@ enum RasterKey {
 		phase: u8,
 		coords: u64,
 		synthetic: bool,
+		synthetic_bold: bool,
 	},
 	Path {
 		path: u64,
@@ -507,6 +508,7 @@ impl RasterCache {
 			phase,
 			coords: fingerprint(&g.coords),
 			synthetic: g.synthetic_italic,
+			synthetic_bold: g.synthetic_bold,
 		};
 		if let Some(entry) = self.cache.get(&key) {
 			return Some(*entry);
@@ -534,6 +536,9 @@ impl RasterCache {
 		render
 			.format(Format::Alpha)
 			.offset(Vector::new(phase as f32 / 4.0, 0.0));
+		if g.synthetic_bold {
+			render.embolden(size as f32 / 4.0 / 48.0);
+		}
 		if g.synthetic_italic {
 			// Shear about the baseline in font units, where y grows upward.
 			render.transform(Some(Transform::skew(

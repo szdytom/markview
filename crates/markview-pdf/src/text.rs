@@ -28,6 +28,7 @@ pub struct RunGlyph {
 	pub range: Range<usize>,
 	/// The face carries no italic, so the run is sheared about its baseline.
 	pub synthetic_italic: bool,
+	pub synthetic_bold: bool,
 }
 
 /// Font instances, embedded once per export.
@@ -162,6 +163,17 @@ pub fn emit(
 	if let Some(transform) = &shear {
 		surface.push_transform(transform);
 	}
+	let previous_stroke = surface.get_stroke().cloned();
+	if first.synthetic_bold
+		&& let Some(fill) = surface.get_fill().cloned()
+	{
+		surface.set_stroke(Some(krilla::paint::Stroke {
+			paint: fill.paint,
+			opacity: fill.opacity,
+			width: size / 48.0,
+			..Default::default()
+		}));
+	}
 	surface.draw_glyphs(
 		Point::from_xy(first.x, first.y),
 		&out,
@@ -170,6 +182,7 @@ pub fn emit(
 		size,
 		false,
 	);
+	surface.set_stroke(previous_stroke);
 	if shear.is_some() {
 		surface.pop();
 	}
@@ -206,6 +219,7 @@ pub fn same_face(a: &Glyph, b: &Glyph) -> bool {
 		&& a.coords == b.coords
 		&& a.paint == b.paint
 		&& a.synthetic_italic == b.synthetic_italic
+		&& a.synthetic_bold == b.synthetic_bold
 }
 
 #[cfg(test)]

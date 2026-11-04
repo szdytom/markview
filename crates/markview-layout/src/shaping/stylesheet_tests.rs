@@ -113,6 +113,7 @@ fn unavailable_variant_and_family_are_skipped_but_weight_is_matched() {
 				weight: None,
 				min_weight: None,
 				synthetic_italic: false,
+				synthetic_bold: false,
 			},
 			Font {
 				family: "Fallback".into(),
@@ -120,6 +121,7 @@ fn unavailable_variant_and_family_are_skipped_but_weight_is_matched() {
 				weight: None,
 				min_weight: None,
 				synthetic_italic: false,
+				synthetic_bold: false,
 			},
 			Font {
 				family: "Primary".into(),
@@ -127,6 +129,7 @@ fn unavailable_variant_and_family_are_skipped_but_weight_is_matched() {
 				weight: Some(700),
 				min_weight: None,
 				synthetic_italic: false,
+				synthetic_bold: false,
 			},
 			Font {
 				family: "Fallback".into(),
@@ -134,6 +137,7 @@ fn unavailable_variant_and_family_are_skipped_but_weight_is_matched() {
 				weight: Some(400),
 				min_weight: None,
 				synthetic_italic: false,
+				synthetic_bold: false,
 			},
 		],
 		..Default::default()
@@ -167,6 +171,7 @@ fn font_choices_are_scoped_and_invalidated_with_stylesheet() {
 		weight: None,
 		min_weight: None,
 		synthetic_italic: false,
+		synthetic_bold: false,
 	}];
 	assert_ne!(index, s.resolve_fonts(&other));
 	let mut style = (*s.stylesheet).clone();
@@ -264,6 +269,7 @@ fn explicit_regular_fallback_survives_bold_and_missing_primary() {
 				weight: None,
 				min_weight: None,
 				synthetic_italic: false,
+				synthetic_bold: false,
 			},
 			Font {
 				family: "Fallback".into(),
@@ -271,6 +277,7 @@ fn explicit_regular_fallback_survives_bold_and_missing_primary() {
 				weight: None,
 				min_weight: None,
 				synthetic_italic: false,
+				synthetic_bold: false,
 			},
 		],
 		..Default::default()
@@ -309,6 +316,7 @@ fn fallback_warnings_are_bounded_and_allow_new_candidate_sets() {
 				weight: None,
 				min_weight: None,
 				synthetic_italic: false,
+				synthetic_bold: false,
 			}],
 			..Default::default()
 		};
@@ -335,6 +343,7 @@ fn shaping_warns_only_when_configured_candidates_are_exhausted() {
 		weight: Some(400),
 		min_weight: None,
 		synthetic_italic: false,
+		synthetic_bold: false,
 	}];
 	s.shape("A", &[], 18., false);
 	assert!(s.warned_fallbacks.is_empty());
@@ -421,6 +430,7 @@ fn a_synthetic_italic_candidate_keeps_an_upright_face() {
 			weight: None,
 			min_weight: None,
 			synthetic_italic,
+			synthetic_bold: false,
 		}],
 		..Default::default()
 	};
@@ -767,6 +777,7 @@ fn scanned_weight_is_independent_of_previous_clusters() {
 				weight: None,
 				min_weight: None,
 				synthetic_italic: false,
+				synthetic_bold: false,
 			}],
 			weight: 700,
 			..Default::default()
@@ -839,4 +850,57 @@ fn math_fallback_does_not_apply_the_math_size_twice() {
 		})
 		.expect("the pinned CJK face draws the character");
 	assert!((glyph.size - 40.0).abs() < 0.01, "{}", glyph.size);
+}
+
+#[test]
+fn synthetic_bold_is_opt_in_and_preserves_real_bold() {
+	let sheet = Stylesheet::parse("format_version=2\nversion=1\n[[rule]]\nwhen=['body']\nfont=[{family='Fallback',synthetic_bold=true}]\nweight=600").unwrap();
+	let mut s = shaper();
+	let mut appearance = TextAppearance {
+		font: sheet
+			.rule(crate::style::Condition::Body)
+			.font
+			.clone()
+			.unwrap(),
+		weight: 600,
+		..Default::default()
+	};
+	for (weight, enabled, expected) in [
+		(400, true, false),
+		(500, true, false),
+		(600, false, false),
+		(600, true, true),
+		(700, true, true),
+	] {
+		appearance.weight = weight;
+		appearance.font[0].synthetic_bold = enabled;
+		let face = s.choose_font("A", &appearance).unwrap();
+		assert_eq!(face.synthetic_bold, expected);
+	}
+	appearance.font[0].variant = Variant::Italic;
+	appearance.font[0].synthetic_italic = true;
+	s.appearance = appearance.clone();
+	let clusters = s.shape("A", &[], 22., false);
+	let glyphs: Vec<_> = clusters.iter().flat_map(|c| &c.glyphs).collect();
+	assert!(!glyphs.is_empty());
+	assert!(
+		glyphs
+			.iter()
+			.all(|g| g.synthetic_bold && g.synthetic_italic)
+	);
+	s.font_context().collection.register_fonts(
+		ratex_katex_fonts::ttf_bytes("KaTeX_Main-Bold.ttf")
+			.unwrap()
+			.into_owned()
+			.into(),
+		Some(parley::fontique::FontInfoOverride {
+			family_name: Some("RealBold"),
+			..Default::default()
+		}),
+	);
+	appearance.font[0].family = "RealBold".into();
+	appearance.font[0].variant = Variant::Normal;
+	let face = s.choose_font("A", &appearance).unwrap();
+	assert_eq!(face.weight, 700);
+	assert!(!face.synthetic_bold);
 }

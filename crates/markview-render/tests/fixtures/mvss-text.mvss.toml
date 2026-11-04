@@ -7,7 +7,7 @@ lookfor = ["Unavailable Test Font", "Noto Serif"]
 
 [[rule]]
 when = ["body"]
-font = [{ family = "reading", weight = 400 }, { family = "serif[cjk]", min_weight = 500 }, { family = "emoji", weight = 400 }]
+font = [{ family = "reading", weight = 400 }, { family = "serif[cjk]", min_weight = 500, synthetic_bold = true }, { family = "emoji", weight = 400 }]
 top_edge = "bounds"
 bottom_edge = "bounds"
 line_height = 1.8
@@ -15,7 +15,7 @@ letter_spacing = 0.015
 
 [[rule]]
 when = ["em"]
-font = [{ family = "Noto Serif", variant = "italic" }, { family = "serif[cjk]", variant = "oblique", synthetic_italic = true }]
+font = [{ family = "Noto Serif", variant = "italic" }, { family = "serif[cjk]", variant = "oblique", synthetic_italic = true, synthetic_bold = true }]
 color = "#7B2945"
 
 [[rule]]

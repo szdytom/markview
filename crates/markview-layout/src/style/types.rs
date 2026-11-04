@@ -498,6 +498,9 @@ pub struct Font {
 	/// be faked.
 	#[serde(default)]
 	pub synthetic_italic: bool,
+	/// Allow synthetic bold when the matched face is lighter than semibold.
+	#[serde(default)]
+	pub synthetic_bold: bool,
 }
 impl Font {
 	pub fn resolved_weight(&self, inherited: u16) -> u16 {
