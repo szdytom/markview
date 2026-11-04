@@ -33,6 +33,8 @@ impl<M> Widget<M> {
 
 /// Frontmost widgets come first. A disabled widget still blocks hits behind it.
 #[derive(Clone, Debug)]
+/// Each layout must supply unique widget identities. Identity persists across
+/// movement and is independent of the activation message.
 pub struct Layout<M> {
 	pub widgets: Vec<Widget<M>>,
 }
@@ -182,3 +184,6 @@ impl Interaction {
 		None
 	}
 }
+
+#[cfg(test)]
+mod proptests;
