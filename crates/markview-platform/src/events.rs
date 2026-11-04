@@ -5,6 +5,7 @@ use std::{
 };
 
 pub enum NativeEvent {
+	Reopen,
 	Open(PathBuf),
 	Shared(PathBuf),
 	OpenUrl(String),
@@ -33,7 +34,8 @@ impl Bridge {
 			callback(event);
 		} else if matches!(
 			event,
-			NativeEvent::Open(_)
+			NativeEvent::Reopen
+				| NativeEvent::Open(_)
 				| NativeEvent::Shared(_)
 				| NativeEvent::OpenUrl(_)
 		) {
@@ -78,23 +80,30 @@ mod tests {
 		let mut bridge = Bridge::default();
 		let received = Arc::new(Mutex::new(Vec::new()));
 		bridge.send(NativeEvent::Open("first.md".into()));
+		bridge.send(NativeEvent::Reopen);
 		bridge.send(NativeEvent::Back);
 		bridge.send(NativeEvent::Shared("second.md".into()));
 		let sink = received.clone();
 		bridge.install(Arc::new(move |event| {
 			let path = match event {
-				NativeEvent::Open(path) | NativeEvent::Shared(path) => path,
+				NativeEvent::Open(path) | NativeEvent::Shared(path) => {
+					Some(path)
+				}
+				NativeEvent::Reopen => None,
 				_ => panic!(),
 			};
 			sink.lock().unwrap().push(path);
 		}));
 		bridge.send(NativeEvent::Open("third.md".into()));
+		bridge.send(NativeEvent::Reopen);
 		assert_eq!(
 			*received.lock().unwrap(),
 			[
-				PathBuf::from("first.md"),
-				PathBuf::from("second.md"),
-				PathBuf::from("third.md")
+				Some(PathBuf::from("first.md")),
+				None,
+				Some(PathBuf::from("second.md")),
+				Some(PathBuf::from("third.md")),
+				None,
 			]
 		);
 		assert_eq!(Arc::strong_count(&received), 2);

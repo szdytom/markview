@@ -118,6 +118,14 @@ impl Session {
 	pub(super) fn disarm_watch(&mut self) {
 		self.watch = None;
 		self.watch_at = None;
+		self.watch_request = false;
+		if let Some(job) = &mut self.png {
+			job.watch = false;
+		}
+	}
+
+	pub(super) fn needs_frame(&self) -> bool {
+		self.png.is_some()
 	}
 
 	/// Points the live export at a file that was just written.
@@ -445,6 +453,10 @@ impl<P: super::SendEvent> App<P> {
 		watch: bool,
 		rebuild: bool,
 	) {
+		if let Err(error) = self.ensure_export_gpu() {
+			self.fail_png_export(&format!("{error:#}"));
+			return;
+		}
 		let (geometry, max_tile) = match (
 			&self.renderer,
 			markview_layout::paginate::PageGeometry::from_style(
@@ -506,14 +518,24 @@ impl<P: super::SendEvent> App<P> {
 		);
 	}
 
-	/// Draws one strip of a waiting PNG. Called once per frame so the window
-	/// stays responsive and the status line can count the strips.
+	fn ensure_export_gpu(&mut self) -> anyhow::Result<()> {
+		if self.frame.closed && self.renderer.is_none() {
+			self.gpu()?;
+		}
+		Ok(())
+	}
+
+	/// Draws one strip per tick, including while the reader has no window.
 	pub(super) fn advance_png_export(&mut self) {
 		let Some(mut job) = self.export.png.take() else {
 			return;
 		};
 		if job.next >= job.plan.tiles.len() {
 			self.finish_png_export(job);
+			return;
+		}
+		if let Err(error) = self.ensure_export_gpu() {
+			self.fail_png_export(&format!("{error:#}"));
 			return;
 		}
 		let Some(renderer) = &mut self.renderer else {
@@ -749,6 +771,78 @@ fn run(
 #[cfg(test)]
 mod tests {
 	use super::*;
+
+	#[test]
+	fn png_exports_finish_without_reopening_a_closed_window() {
+		if !markview_platform::close_keeps_app_running() {
+			return;
+		}
+		#[derive(Clone)]
+		struct Proxy;
+		impl super::super::SendEvent for Proxy {
+			fn try_send(&self, _: Event) -> bool {
+				true
+			}
+		}
+		struct Loop;
+		impl super::super::window::Loop for Loop {
+			fn exit(&self) {
+				panic!("closing a reader must not quit the app");
+			}
+		}
+		for ready_before_close in [false, true] {
+			let dir = tempfile::tempdir().unwrap();
+			let output = dir.path().join("export.png");
+			let mut app = App::new(
+				crate::cli::LaunchOptions {
+					mode: crate::cli::Mode::Smoke,
+					options: crate::test_support::options(),
+					..Default::default()
+				},
+				Proxy,
+			);
+			app.args.mode = crate::cli::Mode::Window;
+			app.renderer = Some(
+				pollster::block_on(crate::render::Renderer::new(None)).unwrap(),
+			);
+			let height =
+				app.renderer.as_ref().unwrap().max_texture_dimension_2d()
+					as f32 + 200.0;
+			let outcome = ExportOutcome::PngReady {
+				snapshot: Box::new(LayoutSnapshot {
+					width: 300.0,
+					height,
+					..Default::default()
+				}),
+				path: output.clone(),
+				stylesheet: Stylesheet::bundled_print(),
+				scale: 1.0,
+			};
+			app.export.running = true;
+			app.export.rebuild = true;
+			app.export.watch_request = true;
+			if ready_before_close {
+				app.export_finished(outcome);
+				app.close_window(&Loop);
+			} else {
+				app.close_window(&Loop);
+				app.export_finished(outcome);
+			}
+			assert!(app.export.needs_frame());
+			assert!(!app.export.png.as_ref().unwrap().watch);
+			assert!(app.export.png.as_ref().unwrap().plan.tiles.len() > 1);
+			let now = Instant::now();
+			assert_eq!(app.tick(&Loop, now), Some(now));
+			assert!(app.export.is_running());
+			assert_eq!(app.tick(&Loop, Instant::now()), None);
+			assert!(!app.export.is_running());
+			assert!(app.window.is_none());
+			assert!(app.renderer.is_none());
+			assert!(
+				image::image_dimensions(output).unwrap().1 >= height as u32
+			);
+		}
+	}
 
 	#[test]
 	fn panel_size_controls_adjust_across_the_full_export_range() {

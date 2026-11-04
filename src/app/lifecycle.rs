@@ -18,6 +18,66 @@ use super::{App, Event, dm};
 use crate::state::Selection;
 impl<P: super::SendEvent> ApplicationHandler<Event> for App<P> {
 	fn resumed(&mut self, event_loop: &ActiveEventLoop) {
+		self.ensure_window(event_loop);
+	}
+	fn suspended(&mut self, _: &ActiveEventLoop) {
+		if !markview_platform::touch_layout() {
+			return;
+		}
+		self.cancel_gestures();
+		self.flush_settings();
+		self.flush_session();
+		self.renderer.take();
+		self.window.take();
+	}
+	fn user_event(&mut self, event_loop: &ActiveEventLoop, event: Event) {
+		let activate =
+			matches!(&event, Event::Activate(_) | Event::Picked(Some(_)));
+		let open = matches!(&event, Event::Open(Some(_)));
+		self.handle_user_event(event_loop, event);
+		if markview_platform::close_keeps_app_running()
+			&& (activate
+				|| (open
+					&& (!self.readers.entries().is_empty()
+						|| self.folder.root().is_some())))
+		{
+			self.ensure_window(event_loop);
+			if let Some(window) = &self.window {
+				window.set_minimized(false);
+				window.focus_window();
+			}
+		}
+	}
+
+	fn window_event(
+		&mut self,
+		event_loop: &ActiveEventLoop,
+		window: WindowId,
+		event: WindowEvent,
+	) {
+		if self
+			.window
+			.as_ref()
+			.is_some_and(|current| current.id() == window)
+		{
+			self.handle_window_event(event_loop, window, event);
+		}
+	}
+	fn about_to_wait(&mut self, event_loop: &ActiveEventLoop) {
+		let deadline = self.tick(event_loop, Instant::now());
+		event_loop.set_control_flow(
+			deadline.map_or(ControlFlow::Wait, ControlFlow::WaitUntil),
+		);
+	}
+	fn exiting(&mut self, _: &ActiveEventLoop) {
+		self.flush_session();
+		self.instance_path = None;
+		self.instance.take();
+	}
+}
+
+impl<P: super::SendEvent> App<P> {
+	fn ensure_window(&mut self, event_loop: &ActiveEventLoop) {
 		if self.window.is_some() {
 			return;
 		}
@@ -57,6 +117,7 @@ impl<P: super::SendEvent> ApplicationHandler<Event> for App<P> {
 			);
 			let dm = dm::DirectManipulation::new(&window);
 			self.window = Some(window);
+			self.frame.closed = false;
 			self.sync_refresh_rate();
 			self.dm = dm;
 			if self.args.mode == Mode::Window
@@ -92,42 +153,52 @@ impl<P: super::SendEvent> ApplicationHandler<Event> for App<P> {
 			event_loop.exit();
 		}
 	}
-	fn suspended(&mut self, _: &ActiveEventLoop) {
-		if !markview_platform::touch_layout() {
+
+	pub(super) fn close_window(&mut self, event_loop: &impl Loop) {
+		if !markview_platform::close_keeps_app_running()
+			|| self.args.mode != Mode::Window
+		{
+			event_loop.exit();
 			return;
 		}
+		self.clear_input_focus();
 		self.cancel_gestures();
+		self.dismiss_preview();
+		while !self.readers.entries().is_empty() {
+			self.readers
+				.close(self.readers.entries().len() - 1, Instant::now());
+		}
+		self.worker.release();
+		self.search_worker.release();
+		self.watch = None;
+		self.folder.close_workspace();
+		self.folder.start.search.input.set_text(&mut self.ui, "");
+		self.folder.start.scroll.reset();
+		self.url_input.set_text(&mut self.ui, "");
+		self.sync_instance_folder(None);
+		self.refresh_start_files();
+		self.export.disarm_watch();
 		self.flush_settings();
 		self.flush_session();
-		self.renderer.take();
-		self.window.take();
+		self.interaction = Default::default();
+		self.text_input = Default::default();
+		self.tab_strip = Default::default();
+		self.frame = super::frame::State::new(self.frame.layout);
+		self.animations = Default::default();
+		self.frame.closed = true;
+		self.frame.focused = false;
+		self.reflow_at = None;
+		self.retry_at = None;
+		self.prewarm_at = None;
+		self.first_frame = None;
+		self.scrollbar_reveal = Default::default();
+		self.status.clear();
+		self.dm = None;
+		self.touch_frame = None;
+		self.native_frame = None;
+		self.renderer = None;
+		self.window = None;
 	}
-	fn user_event(&mut self, event_loop: &ActiveEventLoop, event: Event) {
-		self.handle_user_event(event_loop, event);
-	}
-
-	fn window_event(
-		&mut self,
-		event_loop: &ActiveEventLoop,
-		window: WindowId,
-		event: WindowEvent,
-	) {
-		self.handle_window_event(event_loop, window, event);
-	}
-	fn about_to_wait(&mut self, event_loop: &ActiveEventLoop) {
-		let deadline = self.tick(event_loop, Instant::now());
-		event_loop.set_control_flow(
-			deadline.map_or(ControlFlow::Wait, ControlFlow::WaitUntil),
-		);
-	}
-	fn exiting(&mut self, _: &ActiveEventLoop) {
-		self.flush_session();
-		self.instance_path = None;
-		self.instance.take();
-	}
-}
-
-impl<P: super::SendEvent> App<P> {
 	fn create_window(
 		&self,
 		event_loop: &ActiveEventLoop,
@@ -448,6 +519,8 @@ impl<P: super::SendEvent> App<P> {
 				self.export_finished(*outcome);
 			}
 			Event::Fonts(message) => self.font_message(message),
+			Event::DeviceLost
+				if self.frame.closed && self.renderer.is_none() => {}
 			Event::DeviceLost => {
 				if let Err(e) = self.gpu() {
 					self.fatal = Some(
@@ -498,6 +571,25 @@ impl<P: super::SendEvent> App<P> {
 		}
 	}
 
+	fn windowless_tick(&mut self, now: Instant) -> Option<Instant> {
+		self.advance_png_export();
+		if !self.export.is_running() {
+			self.renderer = None;
+		}
+		if self
+			.preferences
+			.save_deadline()
+			.is_some_and(|deadline| deadline <= now)
+		{
+			self.flush_settings();
+		}
+		self.preferences
+			.save_deadline()
+			.into_iter()
+			.chain(self.export.needs_frame().then_some(now))
+			.min()
+	}
+
 	/// Runs every deadline that came due and returns the soonest one still
 	/// pending, so the loop can sleep until then. `None` means nothing is
 	/// waiting, or this frame asked the loop to stop.
@@ -506,6 +598,18 @@ impl<P: super::SendEvent> App<P> {
 	/// timers without a window server, and because the only thing asked of
 	/// the loop here is whether to stop.
 	pub(super) fn tick(
+		&mut self,
+		event_loop: &impl Loop,
+		now: Instant,
+	) -> Option<Instant> {
+		if self.frame.closed {
+			self.windowless_tick(now)
+		} else {
+			self.window_tick(event_loop, now)
+		}
+	}
+
+	fn window_tick(
 		&mut self,
 		event_loop: &impl Loop,
 		now: Instant,
@@ -603,3 +707,6 @@ impl<P: super::SendEvent> App<P> {
 			.min()
 	}
 }
+
+#[cfg(test)]
+mod tests;

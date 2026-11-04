@@ -23,6 +23,7 @@ pub(crate) enum Caption {
 }
 
 pub(super) struct State {
+	pub closed: bool,
 	pub layout: WindowLayout,
 	pub focused: bool,
 	pub hover: Option<Caption>,
@@ -39,6 +40,7 @@ impl State {
 		Self {
 			layout: layout.resolved(),
 			focused: true,
+			closed: false,
 			hover: None,
 			pressed: None,
 			last_click: None,
@@ -479,7 +481,7 @@ impl<P: super::SendEvent> App<P> {
 		};
 		let (x, y) = self.interaction.pointer.cursor();
 		if self.frame_layout().caption_at(x, y) == Some(caption) {
-			event_loop.window_action(self.window.as_deref(), caption);
+			self.window_action(event_loop, caption);
 		}
 		self.redraw();
 		true

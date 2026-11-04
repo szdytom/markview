@@ -643,6 +643,7 @@ impl<P: SendEvent> App<P> {
 fn native_event(event: markview_platform::NativeEvent) -> Event {
 	use markview_platform::NativeEvent;
 	match event {
+		NativeEvent::Reopen => Event::Activate(None),
 		NativeEvent::Open(path) => Event::Open(Some(path)),
 		NativeEvent::Shared(path) => Event::AndroidShared(path),
 		NativeEvent::OpenUrl(url) => Event::AndroidOpenUrl(url),

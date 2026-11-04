@@ -66,6 +66,21 @@ impl Loop for ActiveEventLoop {
 }
 
 impl<P: super::SendEvent> App<P> {
+	pub(super) fn window_action(
+		&mut self,
+		event_loop: &impl Loop,
+		caption: Caption,
+	) {
+		if markview_platform::close_keeps_app_running()
+			&& self.args.mode == Mode::Window
+			&& caption == Caption::Close
+		{
+			self.close_window(event_loop);
+		} else {
+			event_loop.window_action(self.window.as_deref(), caption);
+		}
+	}
+
 	pub(super) fn android_back(&mut self) {
 		if self.interaction.overlays.quick_open.open() {
 			self.close_quick_open();
@@ -246,7 +261,7 @@ impl<P: super::SendEvent> App<P> {
 			}
 		}
 		if let Some(super::gestures::TouchAction::Caption(caption)) = action {
-			event_loop.window_action(self.window.as_deref(), caption);
+			self.window_action(event_loop, caption);
 		}
 	}
 
@@ -693,7 +708,7 @@ impl<P: super::SendEvent> App<P> {
 		event: &WindowEvent,
 	) -> bool {
 		match event {
-			WindowEvent::CloseRequested => event_loop.exit(),
+			WindowEvent::CloseRequested => self.close_window(event_loop),
 			WindowEvent::Moved(_) => {
 				self.frame.last_click = None;
 				self.sync_refresh_rate();

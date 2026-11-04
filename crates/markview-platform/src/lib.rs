@@ -2,6 +2,11 @@
 
 pub mod watch;
 
+/// Whether closing the reader's last window leaves its application running.
+pub fn close_keeps_app_running() -> bool {
+	cfg!(target_os = "macos")
+}
+
 #[cfg(target_os = "android")]
 #[path = "android.rs"]
 pub mod android;

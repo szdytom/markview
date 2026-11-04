@@ -1,9 +1,11 @@
-//! macOS launch-time document registration.
+//! macOS document-open and application-reopen events.
 use objc2::AnyThread;
 use objc2::rc::Retained;
 use objc2::runtime::NSObject;
 use objc2::{define_class, msg_send, sel};
-use objc2_core_services::{kAEOpenDocuments, kCoreEventClass, keyDirectObject};
+use objc2_core_services::{
+	kAEOpenDocuments, kAEReopenApplication, kCoreEventClass, keyDirectObject,
+};
 use objc2_foundation::{
 	NSAppleEventDescriptor, NSAppleEventManager, NSNotification,
 	NSNotificationCenter, ns_string,
@@ -45,7 +47,16 @@ define_class!(
 		/// this is the last moment the reader's handler can replace it.
 		#[unsafe(method(applicationWillFinishLaunching:))]
 		fn will_finish_launching(&self, _notification: &NSNotification) {
-			answer_open_documents(self);
+			answer_application_events(self);
+		}
+
+		#[unsafe(method(handleReopen:withReplyEvent:))]
+		fn handle_reopen(
+			&self,
+			_event: &NSAppleEventDescriptor,
+			_reply: &NSAppleEventDescriptor,
+		) {
+			crate::events::send(crate::NativeEvent::Reopen);
 		}
 
 		/// Opens one document per file the desktop sent.
@@ -66,20 +77,24 @@ define_class!(
 	}
 );
 
-/// Makes the reader, rather than AppKit, answer the desktop's open-documents
-/// event.
+/// Makes the reader answer document-open and Dock-reopen events.
 #[allow(unsafe_code)]
-fn answer_open_documents(observer: &OpenDocument) {
+fn answer_application_events(observer: &OpenDocument) {
 	let manager = NSAppleEventManager::sharedAppleEventManager();
-	// SAFETY: `handleOpenDocuments:withReplyEvent:` is the selector the observer
-	// implements with the matching signature, and the two codes name the event
-	// AppKit would otherwise answer itself.
+	// SAFETY: Both selectors are implemented above with matching signatures;
+	// `OBSERVER` keeps the event target alive for the process.
 	unsafe {
 		manager.setEventHandler_andSelector_forEventClass_andEventID(
 			observer,
 			sel!(handleOpenDocuments:withReplyEvent:),
 			kCoreEventClass,
 			kAEOpenDocuments,
+		);
+		manager.setEventHandler_andSelector_forEventClass_andEventID(
+			observer,
+			sel!(handleReopen:withReplyEvent:),
+			kCoreEventClass,
+			kAEReopenApplication,
 		);
 	}
 }
