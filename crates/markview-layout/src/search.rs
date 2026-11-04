@@ -25,6 +25,9 @@ struct Field {
 	block: markview_document::BlockId,
 	enclosing: Arc<[markview_document::BlockId]>,
 }
+/// Literal matches in semantic field order, with field-relative UTF-8 ranges.
+/// Matches never cross fields and do not overlap within a field. Empty queries
+/// produce no matches. Cancellation returns `None` once observed.
 pub struct SearchIndex {
 	revision: markview_document::DocumentRevision,
 	text: Box<str>,
@@ -364,3 +367,6 @@ mod tests {
 		assert_eq!(hits[1].enclosing.len(), 2);
 	}
 }
+
+#[cfg(test)]
+mod proptests;

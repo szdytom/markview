@@ -1099,3 +1099,6 @@ pub fn semantic_key(kind: &BlockKind) -> ContentKey {
 	}
 	ContentKey(hash.finish())
 }
+
+#[cfg(test)]
+mod proptests;

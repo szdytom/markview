@@ -181,6 +181,9 @@ pub(crate) struct Justify {
 /// Word spaces and tracking are spent first, up to a ratio of one; whatever is
 /// left over is then shared evenly over the clusters that can take it. That
 /// second step is what closes a CJK line, which has no word spaces to stretch.
+/// Inputs are bounded finite widths and nonnegative capacities. Shrinking may
+/// require a ratio below `-1`; callers decide whether that is acceptable. With
+/// no shrink or no sharing clusters, an unattainable target remains unfilled.
 pub(crate) fn solve(
 	natural: f32,
 	target: f32,
@@ -966,3 +969,6 @@ mod tests {
 		assert!(quote_edge_break(&clusters, &text, 0, 18.0));
 	}
 }
+
+#[cfg(test)]
+mod proptests;

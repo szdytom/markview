@@ -26,7 +26,8 @@ impl Anchors {
 		self.used.contains(anchor)
 	}
 
-	/// The anchor for one heading.
+	/// The base slug if free, otherwise its first unused positive decimal suffix.
+	/// Explicit reservations and previously assigned names remain taken.
 	pub fn unique(&mut self, text: &str) -> String {
 		let base = heading_slug(text);
 		if self.used.insert(base.clone()) {
@@ -57,3 +58,6 @@ pub fn heading_slug(text: &str) -> String {
 	}
 	slug
 }
+
+#[cfg(test)]
+mod proptests;

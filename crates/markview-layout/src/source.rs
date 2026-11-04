@@ -501,7 +501,8 @@ fn vertical_distance(top: f32, height: f32, y: f32) -> f32 {
 	(top - y).max(y - top - height).max(0.)
 }
 
-/// Converts original-source UTF-8 bytes to JavaScript UTF-16 code units.
+/// Converts original-source UTF-8 bytes to UTF-16 code units. Out-of-range
+/// positions clamp to the end; interior bytes snap to the scalar’s start.
 pub fn byte_to_utf16(source: &str, byte: usize) -> usize {
 	let mut byte = byte.min(source.len());
 	while !source.is_char_boundary(byte) {
@@ -571,3 +572,6 @@ mod tests {
 		assert_eq!(index.fields[0][1].text, [(0..6, 5..11)]);
 	}
 }
+
+#[cfg(test)]
+mod proptests;

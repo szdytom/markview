@@ -90,3 +90,6 @@ impl PanFeed {
 		Some(PanPhase::Cancelled)
 	}
 }
+
+#[cfg(test)]
+mod proptests;
