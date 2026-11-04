@@ -90,6 +90,7 @@ impl GestureState {
 
 impl<P: super::SendEvent> App<P> {
 	pub(super) fn cancel_gestures(&mut self) {
+		self.text_input.hold = None;
 		self.interaction.panels.sidebar_mut().clear();
 		self.interaction.overlays.viewer.cancel_press();
 		self.frame.pressed = None;
@@ -253,6 +254,13 @@ impl<P: super::SendEvent> App<P> {
 			touch.location.x as f32 / scale - insets[0],
 			touch.location.y as f32 / scale - insets[1],
 		);
+		if markview_platform::touch_layout() {
+			self.input_touch(
+				touch,
+				point,
+				self.gestures.gesture.contacts.is_empty(),
+			);
+		}
 		let id = (touch.device_id, touch.id);
 		if touch.phase != TouchPhase::Started
 			&& !self.gestures.gesture.contacts.contains_key(&id)

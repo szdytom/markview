@@ -23,7 +23,16 @@ struct ImeArea {
 	scale: f32,
 }
 
+#[derive(Clone, Copy)]
+pub(super) struct InputHold {
+	pub(super) deadline: Instant,
+	contact: (winit::event::DeviceId, u64),
+	field: TextField,
+	point: (f32, f32),
+}
+
 pub(super) struct InputState {
+	pub(super) hold: Option<InputHold>,
 	focused: Option<TextField>,
 	window_active: bool,
 	window_visible: bool,
@@ -36,6 +45,7 @@ pub(super) struct InputState {
 impl Default for InputState {
 	fn default() -> Self {
 		Self {
+			hold: None,
 			focused: None,
 			window_active: true,
 			window_visible: true,
@@ -365,14 +375,137 @@ impl<P: SendEvent> App<P> {
 			_ => None,
 		})
 	}
+	fn set_input_ime(&self, enabled: bool) {
+		if markview_platform::touch_layout() {
+			if let Err(error) = markview_platform::android::call_string(
+				"inputFocus",
+				if enabled { "on" } else { "" },
+			) {
+				log::warn!("Android input focus: {error}");
+			}
+		} else if let Some(window) = &self.window {
+			window.set_ime_allowed(enabled);
+		}
+	}
+
+	pub(super) fn commit_native_input(&mut self, text: String) {
+		self.sync_input();
+		self.handle_input_ime(&Ime::Commit(text));
+	}
+
+	pub(super) fn delete_native_input(
+		&mut self,
+		before: usize,
+		after: usize,
+		code_points: bool,
+	) {
+		self.sync_input();
+		let Some(id) = self.text_input.focused else {
+			return;
+		};
+		let (input, ui) = self.input(id);
+		input.delete_surrounding(ui, before, after, code_points);
+		self.input_text_changed(id);
+		self.reset_input_blink();
+	}
+
+	fn input_text_changed(&mut self, id: TextField) {
+		match id {
+			TextField::Search => self.search_changed(),
+			TextField::Files => self.start_search_changed(),
+			TextField::QuickOpen => self.quick_open_search_changed(),
+			_ => {}
+		}
+	}
+
+	pub(super) fn input_touch(
+		&mut self,
+		touch: winit::event::Touch,
+		point: (f32, f32),
+		single: bool,
+	) {
+		use winit::event::TouchPhase;
+		let contact = (touch.device_id, touch.id);
+		match touch.phase {
+			TouchPhase::Started => {
+				self.text_input.hold = if single {
+					self.interaction.pointer.move_to(point);
+					self.input_at_cursor().map(|field| InputHold {
+						deadline: Instant::now() + Duration::from_millis(500),
+						contact,
+						field,
+						point,
+					})
+				} else {
+					None
+				};
+			}
+			TouchPhase::Moved => {
+				if self.text_input.hold.is_some_and(|hold| {
+					hold.contact == contact
+						&& (hold.point.0 - point.0)
+							.hypot(hold.point.1 - point.1)
+							> 8.0
+				}) {
+					self.text_input.hold = None;
+				}
+			}
+			TouchPhase::Ended | TouchPhase::Cancelled => {
+				self.text_input.hold = None
+			}
+		}
+	}
+
+	fn input_hold_tick(&mut self, now: Instant) {
+		let Some(hold) =
+			self.text_input.hold.filter(|hold| hold.deadline <= now)
+		else {
+			return;
+		};
+		self.text_input.hold = None;
+		self.interaction.pointer.move_to(hold.point);
+		if self.input_at_cursor() != Some(hold.field) {
+			return;
+		}
+		let focused = self.focused_input() == Some(hold.field);
+		self.cancel_gestures();
+		self.interaction.widgets.focus = Some(
+			Command::Chrome(ChromeCommand::FocusInput(hold.field)).widget_id(),
+		);
+		self.sync_input();
+		let Some((rect, clip)) = self.input_geometry(hold.field) else {
+			return;
+		};
+		if !focused {
+			let (input, ui) = self.input(hold.field);
+			input.point(ui, rect, hold.point, false, 1);
+		}
+		if let Some(rect) = rect.intersect(clip) {
+			let scale = self.dimensions().2;
+			let insets = self.insets();
+			let bounds = format!(
+				"{},{},{},{}",
+				((rect.x + insets[0]) * scale).round() as i32,
+				((rect.y + insets[1]) * scale).round() as i32,
+				((rect.x + rect.w + insets[0]) * scale).round() as i32,
+				((rect.y + rect.h + insets[1]) * scale).round() as i32
+			);
+			if let Err(error) =
+				markview_platform::android::call_string("inputMenu", &bounds)
+			{
+				log::warn!("Android input menu: {error}");
+			}
+		}
+		self.reset_input_blink();
+	}
+
 	pub(super) fn blur_input(&mut self) {
+		self.text_input.hold = None;
 		if let Some(id) = self.text_input.focused.take() {
 			let (input, ui) = self.input(id);
 			input.cancel_compose(ui);
 			input.break_group();
-			if let Some(window) = &self.window {
-				window.set_ime_allowed(false);
-			}
+			self.set_input_ime(false);
 		}
 		self.text_input.ime_enabled = false;
 		self.text_input.last_ime_area = None;
@@ -413,9 +546,7 @@ impl<P: SendEvent> App<P> {
 			self.blur_input();
 			self.text_input.focused = desired;
 			if desired.is_some() {
-				if let Some(window) = &self.window {
-					window.set_ime_allowed(true);
-				}
+				self.set_input_ime(true);
 				self.reset_input_blink();
 			}
 		}
@@ -487,6 +618,7 @@ impl<P: SendEvent> App<P> {
 	}
 
 	pub(super) fn input_tick(&mut self, now: Instant) {
+		self.input_hold_tick(now);
 		self.sync_input();
 		if self.text_input.deadline.is_none_or(|at| at > now) {
 			return;
@@ -625,15 +757,7 @@ impl<P: SendEvent> App<P> {
 				Ime::Commit(text) => {
 					let (input, ui) = self.input(id);
 					input.commit(ui, text);
-					if id == TextField::Search {
-						self.search_changed();
-					}
-					if id == TextField::Files {
-						self.start_search_changed();
-					}
-					if id == TextField::QuickOpen {
-						self.quick_open_search_changed();
-					}
+					self.input_text_changed(id);
 				}
 			}
 			self.reset_input_blink();

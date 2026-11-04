@@ -8,6 +8,12 @@ pub enum NativeEvent {
 	Open(PathBuf),
 	Shared(PathBuf),
 	OpenUrl(String),
+	InputText(String),
+	InputDelete {
+		before: usize,
+		after: usize,
+		code_points: bool,
+	},
 	Back,
 	Configuration,
 	AssetsChanged,

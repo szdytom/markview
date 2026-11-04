@@ -138,6 +138,12 @@ enum Event {
 	AndroidBack,
 	AndroidConfiguration,
 	AndroidOpenUrl(String),
+	AndroidInputText(String),
+	AndroidInputDelete {
+		before: usize,
+		after: usize,
+		code_points: bool,
+	},
 	AndroidShared(PathBuf),
 	#[cfg(debug_assertions)]
 	AndroidInspect(std::sync::mpsc::Sender<String>),
@@ -640,6 +646,16 @@ fn native_event(event: markview_platform::NativeEvent) -> Event {
 		NativeEvent::Open(path) => Event::Open(Some(path)),
 		NativeEvent::Shared(path) => Event::AndroidShared(path),
 		NativeEvent::OpenUrl(url) => Event::AndroidOpenUrl(url),
+		NativeEvent::InputText(text) => Event::AndroidInputText(text),
+		NativeEvent::InputDelete {
+			before,
+			after,
+			code_points,
+		} => Event::AndroidInputDelete {
+			before,
+			after,
+			code_points,
+		},
 		NativeEvent::Back => Event::AndroidBack,
 		NativeEvent::Configuration => Event::AndroidConfiguration,
 		NativeEvent::AssetsChanged => Event::NativeAssetsChanged,

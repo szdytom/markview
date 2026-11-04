@@ -674,3 +674,99 @@ fn search_navigation_preserves_the_input_method_session() {
 	app.action(Command::Search(SearchCommand::SearchClose));
 	assert!(!app.text_input.ime_enabled);
 }
+
+#[test]
+fn native_text_replaces_selection_and_ignores_unfocused_input() {
+	let mut app = app();
+	app.readers
+		.session
+		.export_title
+		.set_text(&mut app.ui, "before");
+	app.readers.session.export_title.select_all(&mut app.ui);
+	app.handle_user_event(
+		&TestLoop,
+		super::super::native_event(markview_platform::NativeEvent::InputText(
+			"中文🙂\ntext".into(),
+		)),
+	);
+	assert_eq!(app.readers.session.export_title.text(), "中文🙂 text");
+	app.readers.session.export_title.undo(&mut app.ui, false);
+	assert_eq!(app.readers.session.export_title.text(), "before");
+	app.clear_input_focus();
+	app.commit_native_input("ignored".into());
+	assert_eq!(app.readers.session.export_title.text(), "before");
+}
+
+#[test]
+fn input_long_press_preserves_selection_and_cancels_on_movement() {
+	use winit::event::{Touch, TouchPhase};
+	let mut app = app();
+	app.readers
+		.session
+		.export_title
+		.set_text(&mut app.ui, "selected");
+	app.readers.session.export_title.select_all(&mut app.ui);
+	let (rect, _) = app.input_geometry(TextField::ExportTitle).unwrap();
+	let point = (rect.x + rect.w / 2.0, rect.y + rect.h / 2.0);
+	let touch = |phase| Touch {
+		device_id: DeviceId::dummy(),
+		id: 1,
+		phase,
+		location: winit::dpi::PhysicalPosition::new(
+			point.0 as f64,
+			point.1 as f64,
+		),
+		force: None,
+	};
+	app.input_touch(touch(TouchPhase::Started), point, true);
+	let deadline = app.text_input.hold.unwrap().deadline;
+	app.input_hold_tick(deadline);
+	assert!(app.text_input.hold.is_none());
+	assert_eq!(
+		app.readers.session.export_title.selected_text(),
+		Some("selected")
+	);
+	app.input_touch(touch(TouchPhase::Started), point, true);
+	app.input_touch(touch(TouchPhase::Moved), (point.0 + 20.0, point.1), false);
+	assert!(app.text_input.hold.is_none());
+	app.input_touch(touch(TouchPhase::Started), point, true);
+	app.input_touch(touch(TouchPhase::Cancelled), point, false);
+	assert!(app.text_input.hold.is_none());
+}
+
+#[test]
+fn native_surrounding_deletion_counts_unicode_preserves_selection_and_undo() {
+	let mut app = app();
+	let input = &mut app.readers.session.export_title;
+	input.set_text(&mut app.ui, "a🙂中bc");
+	input.move_cursor(&mut app.ui, Motion::Start, false);
+	input.move_cursor(&mut app.ui, Motion::Right, false);
+	input.move_cursor(&mut app.ui, Motion::Right, false);
+	input.move_cursor(&mut app.ui, Motion::Right, true);
+	app.handle_user_event(
+		&TestLoop,
+		super::super::native_event(
+			markview_platform::NativeEvent::InputDelete {
+				before: 2,
+				after: 1,
+				code_points: false,
+			},
+		),
+	);
+	assert_eq!(app.readers.session.export_title.text(), "a中c");
+	assert_eq!(app.readers.session.export_title.selected_text(), Some("中"));
+	app.readers.session.export_title.undo(&mut app.ui, false);
+	assert_eq!(app.readers.session.export_title.text(), "a🙂中bc");
+	app.readers.session.export_title.move_cursor(
+		&mut app.ui,
+		Motion::End,
+		false,
+	);
+	app.delete_native_input(3, 0, true);
+	assert_eq!(app.readers.session.export_title.text(), "a🙂");
+	app.delete_native_input(2, 0, false);
+	assert_eq!(app.readers.session.export_title.text(), "a");
+	app.clear_input_focus();
+	app.delete_native_input(1, 0, true);
+	assert_eq!(app.readers.session.export_title.text(), "a");
+}

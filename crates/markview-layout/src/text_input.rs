@@ -186,6 +186,45 @@ impl TextInput {
 		};
 		self.record(before, kind);
 	}
+	/// Deletes UTF-16 units or Unicode scalars around the selection, preserving it.
+	pub fn delete_surrounding(
+		&mut self,
+		ui: &mut TextShaper,
+		before: usize,
+		after: usize,
+		code_points: bool,
+	) {
+		self.cancel_compose(ui);
+		let previous = self.snapshot();
+		let lo = previous.anchor.min(previous.focus);
+		let hi = previous.anchor.max(previous.focus);
+		let bytes = |chars: &mut dyn Iterator<Item = char>,
+		             mut count: usize| {
+			let mut bytes = 0;
+			for c in chars {
+				if count == 0 {
+					break;
+				}
+				count = count.saturating_sub(if code_points {
+					1
+				} else {
+					c.len_utf16()
+				});
+				bytes += c.len_utf8();
+			}
+			bytes
+		};
+		let left = bytes(&mut previous.text[..lo].chars().rev(), before);
+		let right = bytes(&mut previous.text[hi..].chars(), after);
+		let mut next = previous.clone();
+		next.text.replace_range(hi..hi + right, "");
+		next.text.replace_range(lo - left..lo, "");
+		next.anchor -= left;
+		next.focus -= left;
+		self.restore(ui, next);
+		self.record(previous, EditKind::Separate);
+	}
+
 	pub fn move_cursor(
 		&mut self,
 		ui: &mut TextShaper,

@@ -666,14 +666,80 @@ public class Smoke extends Instrumentation {
                     && control.getDouble("y") + control.getDouble("h") <= resized.getJSONArray("dimensions").getDouble(1) - 28,
                     "Web control remains visible above the keyboard: " + action);
             }
-            sendStringSync(url);
+            commitInput(url);
+            waitFor(s -> s.optString("url_query").equals(url));
             tap("OpenUrl");
             waitFor(s -> s.optBoolean("ready") && s.optString("path").equals(path) && !keyboardVisible());
             pass("Empty-page URL input and Open button stay visible and usable with the Android keyboard: " + resized.getJSONArray("dimensions"));
             pass("Shared Markdown preservation and native URL parsing for bracketed queries and IPv6 hosts");
+            checkInputPaste();
             pass("HTTP article extraction, shared URLs, title and URL shares, and link tab reuse" + (cold ? " at cold startup" : ""));
         }
     }
+    private void commitInput(String text) {
+        runOnMainSync(() -> {
+            android.view.View focused = activity.getCurrentFocus();
+            require(focused != null && focused.onCheckIsTextEditor(), "Focused input exposes an IME connection");
+            android.view.inputmethod.InputConnection connection = focused.onCreateInputConnection(new android.view.inputmethod.EditorInfo());
+            require(connection != null && connection.commitText(text, 1), "IME commits clipboard text");
+        });
+    }
+    private void checkInputPaste() throws Exception {
+        tap("SearchOpen");
+        waitFor(s -> s.optBoolean("search_open") && keyboardVisible());
+        commitInput("中文🙂");
+        waitFor(s -> s.optString("search_query").equals("中文🙂"));
+        runOnMainSync(() -> {
+            android.view.inputmethod.InputConnection connection = activity.getCurrentFocus().onCreateInputConnection(new android.view.inputmethod.EditorInfo());
+            connection.sendKeyEvent(new KeyEvent(KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_DEL));
+            connection.sendKeyEvent(new KeyEvent(KeyEvent.ACTION_UP, KeyEvent.KEYCODE_DEL));
+        });
+        waitFor(s -> s.optString("search_query").equals("中文"));
+        commitInput("x");
+        waitFor(s -> s.optString("search_query").equals("中文x"));
+        runOnMainSync(() -> activity.getCurrentFocus().onCreateInputConnection(new android.view.inputmethod.EditorInfo()).deleteSurroundingText(1, 0));
+        waitFor(s -> s.optString("search_query").equals("中文"));
+        commitInput("🙂");
+        waitFor(s -> s.optString("search_query").equals("中文🙂"));
+        runOnMainSync(() -> activity.getCurrentFocus().onCreateInputConnection(new android.view.inputmethod.EditorInfo()).deleteSurroundingTextInCodePoints(1, 0));
+        waitFor(s -> s.optString("search_query").equals("中文"));
+        commitInput("🙂");
+        waitFor(s -> s.optString("search_query").equals("中文🙂"));
+        tap("SearchClose");
+        tap("SearchOpen");
+        waitFor(s -> s.optBoolean("search_open") && keyboardVisible());
+        stableLayout();
+        runOnMainSync(() -> ((android.content.ClipboardManager)activity.getSystemService(Activity.CLIPBOARD_SERVICE))
+            .setPrimaryClip(android.content.ClipData.newPlainText("Markview test", "Native reading")));
+        JSONObject current = state();
+        JSONArray rect = current.getJSONArray("search_rect"), insets = current.getJSONArray("insets");
+        double scale = current.getJSONArray("dimensions").getDouble(2);
+        int[] origin = new int[2];
+        runOnMainSync(() -> activity.getWindow().getDecorView().getLocationOnScreen(origin));
+        float x = (float)((rect.getDouble(0) + rect.getDouble(2) / 2 + insets.getDouble(0)) * scale + origin[0]);
+        float y = (float)((rect.getDouble(1) + rect.getDouble(3) / 2 + insets.getDouble(1)) * scale + origin[1]);
+        long down = SystemClock.uptimeMillis();
+        MotionEvent press = MotionEvent.obtain(down, down, MotionEvent.ACTION_DOWN, x, y, 0);
+        press.setSource(InputDevice.SOURCE_TOUCHSCREEN);
+        getUiAutomation().injectInputEvent(press, true);
+        press.recycle();
+        SystemClock.sleep(800);
+        MotionEvent release = MotionEvent.obtain(down, SystemClock.uptimeMillis(), MotionEvent.ACTION_UP, x, y, 0);
+        release.setSource(InputDevice.SOURCE_TOUCHSCREEN);
+        getUiAutomation().injectInputEvent(release, true);
+        release.recycle();
+        clickText(activity.getString(android.R.string.paste));
+        waitFor(s -> s.optString("search_query").equals("Native reading") && s.optInt("matches") > 0 && keyboardVisible());
+        runOnMainSync(() -> {
+            android.view.inputmethod.InputConnection connection = activity.getCurrentFocus().onCreateInputConnection(new android.view.inputmethod.EditorInfo());
+            for (int i = 0; i < "Native reading".length(); i++) connection.deleteSurroundingText(1, 0);
+        });
+        waitFor(s -> s.optString("search_query").isEmpty() && s.optInt("matches") == 0);
+        tap("SearchClose");
+        waitFor(s -> !s.optBoolean("search_open"));
+        pass("IME clipboard commits and deletion preserve Unicode; long-press Paste replaces the selection and updates search");
+    }
+
     private void checkSession() throws Exception {
         File directory = new File(getTargetContext().getFilesDir(), "markview");
         File session = new File(directory, "session.json");
@@ -882,10 +948,15 @@ public class Smoke extends Instrumentation {
         throw new AssertionError("System window: " + name);
     }
     private void clickText(String text) throws Exception {
+        android.accessibilityservice.AccessibilityServiceInfo service = getUiAutomation().getServiceInfo();
+        service.flags |= android.accessibilityservice.AccessibilityServiceInfo.FLAG_RETRIEVE_INTERACTIVE_WINDOWS;
+        getUiAutomation().setServiceInfo(service);
         long deadline = SystemClock.uptimeMillis() + 10000;
         while (SystemClock.uptimeMillis() < deadline) {
-            AccessibilityNodeInfo root = getUiAutomation().getRootInActiveWindow();
-            if (root != null) for (AccessibilityNodeInfo node : root.findAccessibilityNodeInfosByText(text)) {
+            java.util.List<AccessibilityNodeInfo> roots = new java.util.ArrayList<>();
+            roots.add(getUiAutomation().getRootInActiveWindow());
+            for (android.view.accessibility.AccessibilityWindowInfo window : getUiAutomation().getWindows()) roots.add(window.getRoot());
+            for (AccessibilityNodeInfo root : roots) if (root != null) for (AccessibilityNodeInfo node : root.findAccessibilityNodeInfosByText(text)) {
                 // System sheets can expose label bounds before their layout settles.
                 for (AccessibilityNodeInfo control = node; control != null; control = control.getParent()) {
                     if (control.isVisibleToUser() && control.isEnabled() && control.isClickable()

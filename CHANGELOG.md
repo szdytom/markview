@@ -59,6 +59,7 @@ at the same level, without `[brackets]`.
 ### Fixed
 
 - Reduce fullscreen scrolling stalls on macOS by allowing a third Metal drawable.
+- Support Android keyboard clipboard input, surrounding-text deletion and a long-press Paste menu in search, URL and other text fields.
 - Expand the open folder tree onto a document opened in a new tab.
 - Keep the Ctrl+P quick-open query independent from the start page's quick access search.
 - Keep image-viewer zoom stable as sharper rasters arrive, so wheel and pinch zoom return to the opening size.

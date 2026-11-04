@@ -299,6 +299,12 @@ impl<P: super::SendEvent> App<P> {
 					self.open(path);
 				}
 			}
+			Event::AndroidInputText(text) => self.commit_native_input(text),
+			Event::AndroidInputDelete {
+				before,
+				after,
+				code_points,
+			} => self.delete_native_input(before, after, code_points),
 			Event::AndroidOpenUrl(url) => self.open_web_page(url),
 			Event::AndroidShared(path) => {
 				self.open_document(path, crate::security::Security::default());
@@ -577,6 +583,7 @@ impl<P: super::SendEvent> App<P> {
 		self.reflow_at
 			.into_iter()
 			.chain(self.text_input.deadline)
+			.chain(self.text_input.hold.map(|hold| hold.deadline))
 			.chain(self.retry_at)
 			.chain(self.prewarm_at)
 			.chain(self.export.watch_deadline())

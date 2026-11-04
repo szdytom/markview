@@ -100,6 +100,12 @@ impl<P: super::SendEvent> App<P> {
 			"outline":self.preferences.values.outline_width,
 			"tabs":self.preferences.values.tabs_width
 		});
+		snapshot["search_query"] =
+			self.readers.session.search.input.text().into();
+		snapshot["url_query"] = self.url_input.text().into();
+		let rect = self.search_input_rect();
+		snapshot["search_rect"] =
+			serde_json::json!([rect.x, rect.y, rect.w, rect.h]);
 		snapshot.to_string()
 	}
 }

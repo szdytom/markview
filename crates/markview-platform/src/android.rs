@@ -219,15 +219,7 @@ pub extern "system" fn native_result(
 		}
 	};
 	match kind {
-		0 => {
-			if let Some(done) = REQUESTS.lock().unwrap().picked.take() {
-				done(path.map(PathBuf::from));
-			} else if let Some(path) = path {
-				crate::events::send(crate::NativeEvent::Open(PathBuf::from(
-					path,
-				)));
-			}
-		}
+		0 => picked_document(path.map(PathBuf::from)),
 		1 => {
 			if let Some(send) = REQUESTS.lock().unwrap().output.take() {
 				let _ = send.send(path.map(PathBuf::from));
@@ -248,7 +240,29 @@ pub extern "system" fn native_result(
 				)));
 			}
 		}
+		7 => {
+			if let Some(text) = path {
+				crate::events::send(crate::NativeEvent::InputText(text));
+			}
+		}
+		8 | 9 => {
+			let counts = path.unwrap();
+			let (before, after) = counts.split_once(',').unwrap();
+			crate::events::send(crate::NativeEvent::InputDelete {
+				before: before.parse().unwrap(),
+				after: after.parse().unwrap(),
+				code_points: kind == 9,
+			});
+		}
 		_ => unreachable!(),
+	}
+}
+
+fn picked_document(path: Option<PathBuf>) {
+	if let Some(done) = REQUESTS.lock().unwrap().picked.take() {
+		done(path);
+	} else if let Some(path) = path {
+		crate::events::send(crate::NativeEvent::Open(path));
 	}
 }
 

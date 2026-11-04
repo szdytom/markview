@@ -35,6 +35,9 @@ public class MarkviewActivity extends NativeActivity {
     private static final int OPEN = 10, SAVE = 11, TREE = 12, ASSETS = 13, ALL_FILES = 14;
     private final ExecutorService io = Executors.newSingleThreadExecutor();
     private final Map<String, Uri> exports = new ConcurrentHashMap<>();
+    private android.view.View inputView;
+    private android.view.View readerFocus;
+    private android.view.ActionMode inputMenu;
     private boolean destroyed;
     private String outputName;
     private File assetDirectory;
@@ -57,6 +60,78 @@ public class MarkviewActivity extends NativeActivity {
         });
     }
     public void backgroundTask(String ignored) { runOnUiThread(() -> moveTaskToBack(true)); }
+
+    /** The focused input supplies a connection before bulk text reaches the native key queue. */
+    public void inputFocus(String enabled) {
+        runOnUiThread(() -> {
+            android.view.inputmethod.InputMethodManager ime = (android.view.inputmethod.InputMethodManager)getSystemService(INPUT_METHOD_SERVICE);
+            if (enabled.isEmpty()) {
+                if (inputMenu != null) inputMenu.finish();
+                if (inputView != null) {
+                    ime.hideSoftInputFromWindow(inputView.getWindowToken(), 0);
+                    inputView.clearFocus();
+                    if (readerFocus != null) readerFocus.requestFocus();
+                }
+                return;
+            }
+            if (inputView == null) {
+                inputView = new android.view.View(this) {
+                    @Override public boolean onCheckIsTextEditor() { return true; }
+                    @Override public android.view.inputmethod.InputConnection onCreateInputConnection(android.view.inputmethod.EditorInfo info) {
+                        info.inputType = android.text.InputType.TYPE_CLASS_TEXT;
+                        info.imeOptions = android.view.inputmethod.EditorInfo.IME_FLAG_NO_EXTRACT_UI;
+                        return new android.view.inputmethod.BaseInputConnection(this, false) {
+                            @Override public boolean deleteSurroundingText(int before, int after) {
+                                if (getEditable().length() != 0) return super.deleteSurroundingText(before, after);
+                                deliver(8, Math.max(0, before) + "," + Math.max(0, after));
+                                return true;
+                            }
+                            @Override public boolean deleteSurroundingTextInCodePoints(int before, int after) {
+                                if (getEditable().length() != 0) return super.deleteSurroundingTextInCodePoints(before, after);
+                                deliver(9, Math.max(0, before) + "," + Math.max(0, after));
+                                return true;
+                            }
+                            @Override public boolean sendKeyEvent(android.view.KeyEvent event) {
+                                if (event.getAction() == android.view.KeyEvent.ACTION_MULTIPLE && event.getCharacters() != null) {
+                                    deliver(7, event.getCharacters());
+                                    return true;
+                                }
+                                return super.sendKeyEvent(event);
+                            }
+                        };
+                    }
+                };
+                inputView.setFocusableInTouchMode(true);
+                ((android.view.ViewGroup)getWindow().getDecorView()).addView(inputView, new android.view.ViewGroup.LayoutParams(1, 1));
+            }
+            readerFocus = getWindow().getDecorView().findFocus();
+            inputView.requestFocus();
+            ime.restartInput(inputView);
+            ime.showSoftInput(inputView, 0);
+        });
+    }
+    public void inputMenu(String bounds) {
+        runOnUiThread(() -> {
+            if (inputMenu != null) inputMenu.finish();
+            String[] parts = bounds.split(",");
+            android.graphics.Rect rect = new android.graphics.Rect(Integer.parseInt(parts[0]), Integer.parseInt(parts[1]), Integer.parseInt(parts[2]), Integer.parseInt(parts[3]));
+            inputMenu = getWindow().getDecorView().startActionMode(new android.view.ActionMode.Callback2() {
+                @Override public boolean onCreateActionMode(android.view.ActionMode mode, android.view.Menu menu) {
+                    menu.add(0, android.R.id.paste, 0, android.R.string.paste).setShowAsAction(android.view.MenuItem.SHOW_AS_ACTION_ALWAYS);
+                    return true;
+                }
+                @Override public boolean onPrepareActionMode(android.view.ActionMode mode, android.view.Menu menu) { return false; }
+                @Override public boolean onActionItemClicked(android.view.ActionMode mode, android.view.MenuItem item) {
+                    String text = pasteText();
+                    if (!text.isEmpty()) deliver(7, text);
+                    mode.finish();
+                    return true;
+                }
+                @Override public void onDestroyActionMode(android.view.ActionMode mode) { inputMenu = null; }
+                @Override public void onGetContentRect(android.view.ActionMode mode, android.view.View view, android.graphics.Rect out) { out.set(rect); }
+            }, android.view.ActionMode.TYPE_FLOATING);
+        });
+    }
 
     public int smallestWidthDp() {
         return getResources().getConfiguration().smallestScreenWidthDp;
