@@ -23,6 +23,7 @@ at the same level, without `[brackets]`.
 
 ### Added
 
+- Add internal API property tests with independent models across five crates, a contributor guide, and CI failure-seed artifacts.
 - Add the `markview-webpage` front end, which lowers Readability's processed DOM directly into a semantic document without a body Markdown round trip.
 - Support complex table grids with row groups, captions, block cells, rowspan/colspan and shared borders across the reader and PDF export.
 - Preserve definition lists and figures as semantic blocks, and support HTML list start, reversed and per-item values.
@@ -30,6 +31,7 @@ at the same level, without `[brackets]`.
 
 ### Changed
 
+- Validate intermediate animation, moved widgets, cross-segment reading ranges, normal line breaking, and complete image snapshots with property tests.
 - Move navigation to semantic inlines and keep selection endpoints in revisioned fields, resolving layout geometry for each query.
 - Store images as typed `ResourceRef` references or `Diagram` sources, and build cache keys in the application from the address, base and authorization context.
 - Build block, outline, disclosure and anchor indexes once when a document is sealed, after checking the construction budget.

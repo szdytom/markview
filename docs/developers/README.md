@@ -26,6 +26,7 @@ Start with [contributing](../../CONTRIBUTING.md) and the development guide.
 - [Document search verification](search-verification.md): automated checks and GUI checklist.
 - [Rendering regression tests](rendering-tests.md): visual fixtures, MVSS coverage, pinned fonts and baseline review.
 - [Web font codec measurements](mvaac-font-measurements.md): format coverage and size/startup measurements.
+- [Internal API property testing](property-testing.md): contracts, independent models, shrinking, replay and behavioral review.
 - [Fuzzing](../../fuzz/README.md): targets, oracles and campaigns.
 - [Test fonts](../../tests/fixtures/fonts/README.md) and [Web test fonts](../../crates/markview-web/tests/fonts/README.md): fixture provenance and regeneration.
 
