@@ -3,6 +3,7 @@ import path from "node:path";
 import { readFile } from "node:fs/promises";
 import { FontClient } from "./font-client";
 import { FontIndex } from "./fonts";
+import { explicit, legacyTemplate } from "./compatibility";
 import { TemplateSettings } from "./template-settings";
 import type { Template } from "./types";
 
@@ -34,10 +35,29 @@ export class Services extends FontClient implements vscode.Disposable {
   }
   async template(destination: string, uri?: vscode.Uri): Promise<Template> {
     const inherited = await this.templates.resolve(uri, destination);
-    const config = vscode.workspace.getConfiguration("markview", uri);
+    const scope = uri ? { uri, languageId: "markdown" } : undefined;
+    const config = vscode.workspace.getConfiguration("markview", scope);
     const prefix = destination === "ui" ? "preview" : "export";
     const file = config.get<string>(`${prefix}StyleFile`, "");
     const id = config.get<string>(`${prefix}Template`, "default");
+    const modern =
+      inherited ||
+      explicit(config, `${prefix}StyleFile`) ||
+      explicit(config, `${prefix}Template`);
+    if (!modern) {
+      const old = explicit(config, "template")
+        ? config.get<string>("template")
+        : destination !== "ui"
+          ? vscode.workspace
+              .getConfiguration("markviewExport", scope)
+              .get<string>("template")
+          : undefined;
+      if (old !== undefined) {
+        const template = legacyTemplate(old, uri);
+        if (template.path) this.templates.watch(template.path);
+        return template;
+      }
+    }
     const template =
       inherited ??
       (file

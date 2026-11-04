@@ -12,18 +12,17 @@ export function activate(
   async function exportDocument(
     format?: "pdf" | "png",
     withTemplate = false,
-    editor = vscode.window.activeTextEditor,
+    uri?: vscode.Uri,
   ) {
-    const document = editor?.document;
+    const document = uri
+      ? await vscode.workspace.openTextDocument(uri)
+      : vscode.window.activeTextEditor?.document;
     if (!document || document.languageId !== "markdown") {
       await vscode.window.showWarningMessage("请先打开 Markdown 文档");
       return;
     }
     const text = document.getText();
-    const settings = vscode.workspace.getConfiguration(
-      "markview",
-      document.uri,
-    );
+    const settings = vscode.workspace.getConfiguration("markview", document);
     const template: Template | undefined = withTemplate
       ? await services.pickTemplate()
       : await services.template("pdf", document.uri);
@@ -97,11 +96,14 @@ export function activate(
       }
     });
   }
-  const command = (name: string, action: () => Promise<unknown>) =>
+  const command = (
+    name: string,
+    action: (uri?: vscode.Uri) => Promise<unknown>,
+  ) =>
     context.subscriptions.push(
-      vscode.commands.registerCommand(name, async () => {
+      vscode.commands.registerCommand(name, async (uri?: vscode.Uri) => {
         try {
-          await action();
+          await action(uri);
         } catch (error) {
           if (!(error instanceof Error && error.name === "AbortError")) {
             await vscode.window.showErrorMessage(String(error));
@@ -109,8 +111,10 @@ export function activate(
         }
       }),
     );
-  command("markview.export.pdf", () => exportDocument("pdf"));
-  command("markview.export.png", () => exportDocument("png"));
-  command("markview.export.template", () => exportDocument(undefined, true));
+  command("markview.export.pdf", (uri) => exportDocument("pdf", false, uri));
+  command("markview.export.png", (uri) => exportDocument("png", false, uri));
+  command("markview.export.template", (uri) =>
+    exportDocument(undefined, true, uri),
+  );
   return services;
 }

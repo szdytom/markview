@@ -23,6 +23,7 @@ at the same level, without `[brackets]`.
 
 ### Added
 
+- Prepare Markview Integration upgrades under the existing Marketplace identity, with legacy configuration aliases and six-platform VSIX release automation.
 - Open a new blank window with Ctrl+N (⌘N on macOS), including when single-instance mode is enabled.
 - Support complex tables with row groups, captions, block cells, merged cells and shared borders across the reader and PDF export.
 - Preserve definition lists, figures and custom HTML list numbering when reading web articles.

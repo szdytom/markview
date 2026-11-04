@@ -76,3 +76,26 @@ MARKVIEW_BINARY=/absolute/path/to/markview npm run package
 
 VSIX output is written to `artifacts/vscode`. Build WASM and the native binary
 from the same checkout before packaging.
+
+## Markview Integration delivery
+
+The Marketplace identity is `Stevvven.markview-export` (display name **Markview Integration**).
+The extension version is independent of the native workspace version. Package
+WASM and the native executable from the same checkout. `package.mjs` refuses
+an exporter whose architecture does not match the requested platform.
+
+`extension-packages.yml` tests and packages all six desktop targets on pull
+requests and on manual dispatch. `extension-release.yml` repeats that pipeline
+for `markview-integration-v<extension-version>` tags. The publishing job runs
+only in `Stevvven777/markview`, after the six packages pass verification, using
+the `marketplace` environment and its `VSCE_PAT` secret. Configure the token in
+GitHub settings, never in source or chat; it needs Stevvven Marketplace publish
+permission. Environment reviewers can require a final approval.
+
+After review/merge, tag the exact tested revision with the extension version.
+The workflow creates an extension-specific GitHub Release with all six VSIX
+files and SHA-256 sums, then publishes those exact files to Marketplace. It does
+not change the reader's cargo-dist release. Download the VSIX for your platform
+and use VS Code's **Install from VSIX…** for manual validation before tagging.
+A failed Marketplace upload can be retried with `vsce publish --packagePath`
+using the GitHub Release assets; do not rebuild the version being retried.

@@ -81,7 +81,10 @@ test("export commands snapshot unsaved text, select templates, reveal success an
         commands.set(id, action);
         return disposable;
       },
-      executeCommand: async (...args) => reveals.push(args),
+      executeCommand: async (...args) =>
+        commands.has(args[0])
+          ? commands.get(args[0])(...args.slice(1))
+          : reveals.push(args),
     },
   };
   const module = { exports: {} };
@@ -136,4 +139,20 @@ test("export commands snapshot unsaved text, select templates, reveal success an
   await commands.get("markview.export.pdf")();
   assert.match(messages.at(-1), /native failure/);
   assert.equal(reveals.length, 2);
+  fail = false;
+  document.isUntitled = false;
+  document.uri = uri("/tmp/right-click.md");
+  vscode.workspace.openTextDocument = async (source) => {
+    assert.equal(source, document.uri);
+    return document;
+  };
+  vscode.window.activeTextEditor = undefined;
+  for (const prefix of ["markviewExport", "markview"])
+    for (const name of ["exportPdf", "exportPng", "exportWithTemplate"])
+      await commands.get(`${prefix}.${name}`)(document.uri);
+  assert.equal(
+    calls.length,
+    8,
+    "legacy aliases preserve the context-menu source URI",
+  );
 });

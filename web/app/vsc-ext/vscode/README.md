@@ -1,38 +1,56 @@
-# Markview Preview & Export
+# Markview Integration
 
-This development slice provides **Markview: 字体管理…** in the Command Palette.
+Preview Markdown with Markview's native typography engine and export PDF or PNG without installing Markview separately. Previously published as **Better markdown PDF**, this extension keeps the same Marketplace identity so existing installations upgrade in place.
 
-The manager shows fonts required by reading and export templates, including their
-local paths, licenses, and download sources. Add a font directory, download one
-missing family or all missing families, cancel a transfer, or retry failed items.
-Downloads go to extension storage; they do not install fonts system-wide.
-Availability means a matching font family was found, not that every glyph exists.
+## Preview Markdown
 
-The bundled native CLI handles catalog resolution and validated downloads.
-`markview.fontDirectories` adds local directories and `markview.previewStyleFile`
-selects a custom reading template. The manager runs on the local UI host.
+Open a Markdown file and click the **M** icon at the top right of the editor, or run **Markview: 打开侧边预览**. The preview uses Markview's Rust engine compiled to WebAssembly, drawing text onto a canvas. It supports unsaved edits, selection and copy, images, links, synchronized scrolling and restored reading positions after Reload Window.
 
-Use the M icon in a Markdown editor title to open a side-by-side reading preview.
-The preview renders unsaved edits with MVaaC/WASM, follows the editor color theme,
-supports selection/copy, local and remote images, links and a visible scrollbar.
-Saved reading position is restored when VS Code reloads the window.
+## Export PDF and PNG
 
-Fonts are resolved through the existing native font catalog and local font index.
-Only local trusted workspaces are supported.
+Right-click a Markdown editor and choose **Markview: 导出 PDF…**, **导出 PNG…**, or **使用模板导出…**. Choose a destination; the suggested filename matches the source document. Export uses the current editor buffer, including unsaved changes, and the native engine included in the platform-specific extension.
 
-Right-click a Markdown editor to export PDF or PNG, or choose a built-in or custom MVSS template before exporting.
+The template command lets you select a bundled design or a custom `.mvss.toml` file, then choose PDF or PNG. No template installation is required. Export progress supports cancellation.
 
-The preview keeps the edited source position visible after reflow and wrapped input. It scrolls only when that position leaves the viewport; a new reading gesture cancels the movement.
+## Templates and settings
 
-Choose a reading template with **Markview: 选择阅读模板…**. VS Code settings expose font size, column width, justification, hyphenation, paragraph indentation and code wrapping. Custom `.mvss.toml` files must support the `ui` destination and reload when edited.
-
-Template settings inherit from the nearest `.vscode/settings.json`, starting beside the Markdown file and continuing through parent directories, including outside the opened workspace. A directory without template settings inherits from its parent; reading and export choices inherit independently. `previewTemplate`/`previewStyleFile` and `exportTemplate`/`exportStyleFile` each form one choice, so a child preset replaces an inherited custom file. An explicit `"default"` resets inheritance for that destination. Relative stylesheet paths resolve from the directory containing `.vscode`.
+Choose a reading template with **Markview: 选择阅读模板…**. Reading and export can use independent defaults:
 
 ```jsonc
 {
   "markview.previewTemplate": "celadon",
+  "markview.exportTemplate": "vangogh",
+  "markview.fontSize": 18,
+  "markview.width": 760
+}
+```
+
+For a custom template, set `markview.previewStyleFile` or `markview.exportStyleFile`. In a directory's `.vscode/settings.json`, paths are relative to the directory containing `.vscode`:
+
+```jsonc
+{
+  "markview.previewStyleFile": "styles/reader.mvss.toml",
   "markview.exportStyleFile": "styles/paper.mvss.toml"
 }
 ```
 
-Configuration lookup stops at the filesystem root or an access-denied error, then falls back to VS Code settings and defaults. Untitled documents use VS Code settings. Invalid configurations and missing selected stylesheets are reported rather than skipped. Configuration and stylesheet changes update the preview and font manager automatically.
+Settings inherit from the nearest directory with a template choice, including parent directories outside the open workspace. A child preset replaces an inherited custom file; `"default"` explicitly resets that destination. User settings should use absolute custom-file paths. Selected configuration errors are reported rather than silently ignored.
+
+[Write an MVSS template](https://github.com/szdytom/markview/blob/main/docs/users/stylesheets.md): MVSS is a TOML stylesheet that defines font families, colors, spacing and element rules. Declare the intended destination (`ui` for reading, `pdf` for export); a template used in both places must support both. The engine resolves typography, so CSS is not used for document layout.
+
+## Fonts
+
+Run **Markview: 字体管理…** to inspect the fonts required by a template, add a font directory, or download missing families. Available sources and license information appear in the panel. Downloads stay in extension storage and do not install fonts system-wide. Family availability does not guarantee coverage of every character.
+
+## Upgrading from Better markdown PDF or Markview4vsc
+
+- The extension ID remains `Stevvven.markview-export`; you can keep existing keybindings for `markviewExport.exportPdf`, `markviewExport.exportPng`, and `markviewExport.exportWithTemplate`. The later `markview.exportPdf`, `markview.exportPng`, `markview.exportWithTemplate` and `markview.openPreview` names also remain aliases.
+- `markview.template` remains a shared fallback when new settings are unset; `markviewExport.template` remains an export-only fallback, so older PDF designs do not break the new reading preview. An explicitly empty `markview.template` disables the older fallback. Legacy relative paths retain their document-relative meaning; for untitled files they use the workspace folder.
+- New template settings take priority. No settings are rewritten automatically. Custom reading templates need a `ui` destination supported by the current engine.
+- `markview.columnWidth` and `markview.codeblockWrap` remain fallbacks for `markview.width` and `markview.codeWrap`.
+
+## Requirements
+
+A local, trusted VS Code workspace is required. Choose the extension package matching your operating system and CPU: macOS, Windows or Linux, each in x64 and ARM64 variants. Linux requires glibc 2.35 or newer, fontconfig and a working Vulkan driver for native PNG export. Browser-only VS Code and remote/virtual workspaces are not supported in this release.
+
+[Report an issue](https://github.com/szdytom/markview/issues) · [Markview documentation](https://github.com/szdytom/markview/tree/main/docs)
