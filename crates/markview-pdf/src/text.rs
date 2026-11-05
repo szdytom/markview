@@ -4,6 +4,9 @@
 //! run is a list of glyph ids with advances taken from the layout itself.
 //! krilla turns that into a font subset with a character map, which is what
 //! makes the text in the PDF searchable and copyable.
+#[cfg(test)]
+mod proptests;
+
 use krilla::{
 	Data,
 	geom::{Point, Transform},

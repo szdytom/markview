@@ -4,6 +4,9 @@
 //! text: every glyph, rule, box and image arrives with its final geometry, in
 //! layout pixels measured down from the block's top-left corner. A `Frame`
 //! maps one page fragment of one block into page points.
+#[cfg(test)]
+mod proptests;
+
 use crate::{
 	Export,
 	image::Images,

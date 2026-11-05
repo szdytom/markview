@@ -25,6 +25,7 @@ log.workspace = true
 markview-layout = { path = "../markview-layout", features = ["font-directories"] }
 
 [dev-dependencies]
+proptest.workspace = true
 markview-commonmark = { path = "../markview-commonmark" }
 markview-document = { path = "../markview-document" }
 tempfile.workspace = true

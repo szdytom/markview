@@ -3,6 +3,9 @@
 //! A link that names a heading in the same document becomes an internal
 //! destination, so a table of contents still navigates. Everything else is a
 //! URI the viewer hands to the system.
+#[cfg(test)]
+mod proptests;
+
 use krilla::{
 	action::{Action, LinkAction},
 	annotation::{Annotation, LinkAnnotation, Target},

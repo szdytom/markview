@@ -2635,6 +2635,7 @@ dependencies = [
  "markview-layout",
  "parley",
  "percent-encoding",
+ "proptest",
  "ratex-font",
  "ratex-katex-fonts",
  "ratex-types",
