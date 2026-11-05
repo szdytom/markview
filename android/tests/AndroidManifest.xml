@@ -10,5 +10,20 @@
             </intent-filter>
         </activity>
     </application>
-    <instrumentation android:name="io.github.szdytom.markview.Smoke" android:targetPackage="io.github.szdytom.markview" />
+    <instrumentation android:name="io.github.szdytom.markview.IntentTest" android:targetPackage="io.github.szdytom.markview" />
+    <instrumentation android:name="io.github.szdytom.markview.ReaderTest" android:targetPackage="io.github.szdytom.markview" />
+    <instrumentation android:name="io.github.szdytom.markview.LayoutTest" android:targetPackage="io.github.szdytom.markview" />
+    <instrumentation android:name="io.github.szdytom.markview.TabsTest" android:targetPackage="io.github.szdytom.markview" />
+    <instrumentation android:name="io.github.szdytom.markview.SettingsTest" android:targetPackage="io.github.szdytom.markview" />
+    <instrumentation android:name="io.github.szdytom.markview.SearchTest" android:targetPackage="io.github.szdytom.markview" />
+    <instrumentation android:name="io.github.szdytom.markview.InputTest" android:targetPackage="io.github.szdytom.markview" />
+    <instrumentation android:name="io.github.szdytom.markview.RotationTest" android:targetPackage="io.github.szdytom.markview" />
+    <instrumentation android:name="io.github.szdytom.markview.PickerTest" android:targetPackage="io.github.szdytom.markview" />
+    <instrumentation android:name="io.github.szdytom.markview.FolderTest" android:targetPackage="io.github.szdytom.markview" />
+    <instrumentation android:name="io.github.szdytom.markview.ExportTest" android:targetPackage="io.github.szdytom.markview" />
+    <instrumentation android:name="io.github.szdytom.markview.MermaidTest" android:targetPackage="io.github.szdytom.markview" />
+    <instrumentation android:name="io.github.szdytom.markview.SharingTest" android:targetPackage="io.github.szdytom.markview" />
+    <instrumentation android:name="io.github.szdytom.markview.LinksTest" android:targetPackage="io.github.szdytom.markview" />
+    <instrumentation android:name="io.github.szdytom.markview.LifecycleTest" android:targetPackage="io.github.szdytom.markview" />
+    <instrumentation android:name="io.github.szdytom.markview.SessionTest" android:targetPackage="io.github.szdytom.markview" />
 </manifest>

@@ -73,8 +73,9 @@ integration suite on API 35 AOSP Pixel 6 and Pixel Tablet emulators. Each device
 also checks its side of the `sw599dp` / `sw600dp` boundary. Both run headlessly
 with KVM and Mesa software Vulkan, using the pinned emulator 36.1.8 rather than
 its incompatible SwiftShader backend. The workflow can also be run manually.
-CI allows ten minutes per full instrumentation run for software rendering;
-local runs keep the three-minute default, adjustable with `--timeout`.
+CI allows ten minutes per instrumentation phase for software rendering;
+local runs keep the three-minute default per phase, adjustable with `--timeout`.
+The full suite runs in a reproducibly shuffled order in CI.
 CI emulators use four cores and 4 GiB RAM. AOSP images omit Google services.
 Instrumentation closes ANR dialogs from Quickstep or Pixel Launcher and waits
 for Markview to regain focus before reader touches. The test runner grants the
@@ -169,8 +170,45 @@ Use `--links-only` to verify cold-start web opening, URL sharing and tab reuse
 against a local HTTP article fixture, without public Internet access. Web-link
 tests use `adb root` on the emulator to route a benchmarking address to loopback,
 keeping the reader's private-address restrictions enabled.
-Reports and screenshots are written to `artifacts/android/phone/` and
-`artifacts/android/tablet/` (or the corresponding `*-boundary/` directories).
+
+The suite is split into feature classes under `android/tests`. Each class runs
+in a fresh app process with cleared app data, deterministic settings and its own
+fixtures, so classes can run alone or in any order. `SessionTest` owns both its
+seed and restore phases and preserves app data only across that process restart.
+Cross-process session verification keeps its existing opt-in behavior: use
+`--session-only` or `--filter SessionTest`, or include it with `--filter '*'`.
+`--list` includes this optional case alongside the default smoke cases.
+The existing `--*-only` options are shortcuts for the corresponding classes;
+`--session-only` now also receives `--layout` and produces normal reports.
+
+List, filter or shuffle cases without changing the suite:
+
+```sh
+python3 android/test.py --list
+python3 android/test.py --serial emulator-5554 --filter SearchTest
+python3 android/test.py --serial emulator-5554 --filter '*Settings*' --filter '*Tabs*'
+python3 android/test.py --serial emulator-5554 --shuffle 42
+```
+
+Filters are case-sensitive shell globs over class names. Repeated filters form
+a union; an empty match fails before building or contacting the device.
+Add new cases by extending `AndroidTest` and registering their instrumentation
+in `android/tests/AndroidManifest.xml`; the host discovers that manifest directly.
+Use `openReader()` and fixture helpers to prepare prerequisites within the case.
+Do not rely on another class to change settings, open tabs or create files.
+
+Reports and screenshots are written under `artifacts/android/phone/<ClassName>/`
+and `artifacts/android/tablet/<ClassName>/`, with a suite summary in
+`integration.txt`. Legacy shortcuts use the corresponding `*-boundary`,
+`*-lifecycle`, `*-mermaid`, `*-links` or `*-session` directory. Screenshots are
+collected from each case rather than a fixed list. A failed or timed-out case
+keeps its report and does not prevent the remaining selected cases from running.
+
+Run the host orchestration regression tests without an emulator:
+
+```sh
+python3 -m unittest discover -s android -p 'test_*.py'
+```
 
 By default the test seeds a valid image-cache fixture from the repository logo
 so it remains repeatable without public Internet access. `--online` instead
@@ -179,10 +217,9 @@ validation and offline behaviour are also covered by the shared workspace
 tests. Tests run against a debug APK; the inspection JNI entry point is absent
 from release builds.
 
-For this development environment, emulator 36.1.8 with `-gpu host` boots and
-renders through the Vulkan backend. Emulator 37.2.12 failed before guest boot,
-and 36.1.8's SwiftShader backend failed during shader creation. These host
-emulator limitations do not change the APK's Vulkan/OpenGL fallback.
+CI uses emulator 36.1.8 with `-gpu host` and Mesa Vulkan. Headless local
+verification on NixOS also works with `-gpu swiftshader_indirect` on that emulator
+version. Host backend compatibility depends on the emulator and graphics drivers.
 
 Run the desktop regression and GPU export checks with:
 

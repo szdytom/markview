@@ -166,7 +166,7 @@ CHECKS = (
     ),
     Check(
         "Android orchestration tests",
-        python("-m", "unittest", "discover", "-s", "android", "-p", "test_build.py"),
+        python("-m", "unittest", "discover", "-s", "android", "-p", "test_*.py"),
         "light",
     ),
     Check(

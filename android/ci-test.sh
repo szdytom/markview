@@ -41,7 +41,7 @@ finish() {
 trap finish EXIT
 
 touch "$RUNNER_TEMP/markview-android-tests-started"
-python3 android/test.py --serial "$serial" --layout "$layout" --timeout 600
+python3 android/test.py --serial "$serial" --layout "$layout" --shuffle 42 --timeout 600
 adb -s "$serial" shell am force-stop io.github.szdytom.markview
 boundary_size="${boundary_width}x1600"
 if [[ $layout == tablet ]]; then

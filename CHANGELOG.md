@@ -35,6 +35,7 @@ at the same level, without `[brackets]`.
 ### Changed
 
 - Lint hand-maintained GitHub Actions workflows with actionlint in the default local checks.
+- Split Android integration tests into isolated feature cases with filtering, reproducible shuffling and per-case reports.
 - Run property tests and Linux golden tests in separate CI workflows alongside regular tests, keeping both required for CI and releases.
 - Run previously failed local checks first, storing the failure record in each worktree's Git metadata and clearing it after success.
 - Validate intermediate animation, moved widgets, cross-segment reading ranges, normal line breaking, and complete image snapshots with property tests.
