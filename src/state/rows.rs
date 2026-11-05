@@ -121,6 +121,7 @@ impl RowSlide {
 		rows.sort_by(|a, b| {
 			a.slot
 				.total_cmp(&b.slot)
+				.then_with(|| a.band.total_cmp(&b.band))
 				.then_with(|| a.index.cmp(&b.index))
 		});
 		for i in 0..rows.len() {
@@ -181,6 +182,12 @@ fn merge(current: &[(usize, f32, f32)], target: &[(usize, f32)]) -> Vec<Shift> {
 			}
 			None => {
 				let start = from.map_or(0.0, |slot: f32| slot + 1.0);
+				// New rows start outside the bands already on screen.
+				let start = current
+					.iter()
+					.filter(|(_, slot, _)| *slot < start)
+					.map(|(_, _, end)| *end)
+					.fold(start, f32::max);
 				(start, start)
 			}
 		};

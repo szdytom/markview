@@ -54,6 +54,7 @@ at the same level, without `[brackets]`.
 
 ### Fixed
 
+- Keep retained rows’ visible heights continuous when list animations are rapidly retargeted.
 - Reject reserved Rust keywords in locale keys and parameters before generating methods.
 - Reject unmatched closing braces before locale placeholders with a locale validation error.
 - Keep figure body and caption link occurrences bound to their own fragments on layout cache hits.

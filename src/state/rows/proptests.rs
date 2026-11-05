@@ -21,6 +21,7 @@ proptest! {
 				if target.contains(&previous.index) {
 					let next = rows.iter().find(|row| row.index == previous.index).unwrap();
 					prop_assert!((next.slot - previous.slot).abs() <= 0.0001);
+					prop_assert!((next.band - previous.band).abs() <= 0.0001);
 				}
 			}
 			for at in [now, now + DURATION / 2, now + DURATION] {
@@ -44,7 +45,6 @@ proptest! {
 	}
 
 	#[test]
-	#[ignore = "Known bug PBT-007: rapid row retargeting can clip a retained row's partial band immediately"]
 	fn rapid_retargeting_preserves_a_retained_rows_visible_band(elapsed in 19u64..180) {
 		let start = Instant::now();
 		let mut slide = RowSlide::default();
