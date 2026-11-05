@@ -261,6 +261,9 @@ fn is_identifier(name: &str) -> bool {
 	matches!(characters.next(), Some('a'..='z'))
 		&& characters
 			.all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '_')
+		// Syn also accepts `gen`, which is reserved in Rust 2024.
+		&& name != "gen"
+		&& syn::parse_str::<syn::Ident>(name).is_ok()
 }
 
 #[cfg(test)]

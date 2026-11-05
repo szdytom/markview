@@ -5,3 +5,4 @@
 # It is recommended to check this file in to source control so that
 # everyone who runs the test benefits from these saved cases.
 cc 2ebdb14f2eb2bd12d43d2b02aeb9ef4b2760a034417997154263ba5aa122bbec # shrinks to prefix = "", parameter = "p"
+cc 4f26c083874e82fbed7c60ccc575f87e442e4d30baafa87d5c461613e781f185 # shrinks to keyword = "gen"

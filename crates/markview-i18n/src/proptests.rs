@@ -111,13 +111,14 @@ proptest! {
 	}
 
 	#[test]
-	#[ignore = "Known bug PBT-006: locale keys that are Rust keywords pass identifier validation"]
 	fn rust_keywords_are_rejected_before_generating_locale_methods(
-		keyword in prop::sample::select(vec!["type", "match", "fn", "self"]),
+		keyword in prop::sample::select(vec!["type", "match", "fn", "self", "async", "await", "dyn", "gen", "try", "abstract", "yield", "super", "crate", "true", "false"]),
 	) {
 		let source = format!("{keyword} = \"text\"");
 		let syntax = format!("pub fn {keyword}(self) -> &'static str {{ \"text\" }}");
-		prop_assert!(syn::parse_str::<syn::ImplItemFn>(&syntax).is_err());
+		if keyword != "gen" {
+			prop_assert!(syn::parse_str::<syn::ImplItemFn>(&syntax).is_err());
+		}
 		prop_assert!(parse_entries(&source).is_err(), "accepted reserved key: {keyword}");
 	}
 
