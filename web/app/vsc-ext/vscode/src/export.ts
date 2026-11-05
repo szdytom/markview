@@ -8,11 +8,12 @@ import type { Template } from "./shared/types";
 export function activate(
   context: vscode.ExtensionContext,
   services = new Services(context),
-): Services {
+) {
   async function exportDocument(
     format?: "pdf" | "png",
     withTemplate = false,
     uri?: vscode.Uri,
+    destination?: vscode.Uri,
   ) {
     const document = uri
       ? await vscode.workspace.openTextDocument(uri)
@@ -40,10 +41,12 @@ export function activate(
       const stem = document.isUntitled
         ? "Untitled"
         : path.basename(document.uri.fsPath, path.extname(document.uri.fsPath));
-      const output = await vscode.window.showSaveDialog({
-        defaultUri: vscode.Uri.file(path.join(base, `${stem}.${extension}`)),
-        filters: { [extension.toUpperCase()]: [extension] },
-      });
+      const output =
+        destination ??
+        (await vscode.window.showSaveDialog({
+          defaultUri: vscode.Uri.file(path.join(base, `${stem}.${extension}`)),
+          filters: { [extension.toUpperCase()]: [extension] },
+        }));
       if (!output) return;
       if (output.scheme !== "file") throw new Error("首版只支持保存到本地文件");
       await vscode.window.withProgress(
@@ -86,6 +89,7 @@ export function activate(
           }
         },
       );
+      if (destination) return;
       void vscode.window.showInformationMessage(`已导出 ${output.fsPath}`);
       try {
         await vscode.commands.executeCommand("revealFileInOS", output);
@@ -116,5 +120,5 @@ export function activate(
   command("markview.export.template", (uri) =>
     exportDocument(undefined, true, uri),
   );
-  return services;
+  return exportDocument;
 }

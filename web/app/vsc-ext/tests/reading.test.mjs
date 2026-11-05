@@ -56,6 +56,7 @@ test("reading template selection and font catalog use the same UI template", asy
         }),
         getConfiguration: () => ({
           get: (key, fallback) => config.get(key) ?? fallback,
+          inspect: (key) => ({ workspaceFolderValue: config.get(key) }),
         }),
       },
       window: {

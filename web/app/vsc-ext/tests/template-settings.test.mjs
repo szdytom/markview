@@ -64,6 +64,7 @@ async function fixture(t) {
     workspace: {
       getConfiguration: () => ({
         get: (key, fallback) => config.get(key) ?? fallback,
+        inspect: (key) => ({ workspaceFolderValue: config.get(key) }),
       }),
       createFileSystemWatcher: ({ file }) => {
         const events = {};

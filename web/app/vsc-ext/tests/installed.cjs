@@ -41,7 +41,7 @@ exports.run = async () => {
   await until(()=>api.previewStatus(doc.uri.toString())?.version===doc.version,'unsaved changes reach the preview');
   for(const format of ['pdf','png']) {
     const output=path.join(folder,'legacy.'+format);
-    await api.exportBuffer(doc.getText(),folder,format,output,doc.uri);
+    await api.exportDocument(format,false,doc.uri,vscode.Uri.file(output));
     const bytes=fs.readFileSync(output);
     assert.ok(format==='pdf' ? bytes.subarray(0,5).toString()==='%PDF-'
       : bytes.subarray(0,8).equals(Buffer.from([137,80,78,71,13,10,26,10])));

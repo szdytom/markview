@@ -1,4 +1,3 @@
-import { exportSnapshot } from "./shared/export-snapshot";
 import * as vscode from "vscode";
 import { FontPanel } from "./shared/font-panel";
 import { activate as activatePreview } from "./preview/extension";
@@ -8,7 +7,7 @@ import { Services } from "./shared/service";
 export function activate(context: vscode.ExtensionContext) {
   const services = new Services(context);
   const preview = activatePreview(context, services);
-  activateExport(context, services);
+  const exportDocument = activateExport(context, services);
   const aliases = {
     "markviewExport.exportPdf": "markview.export.pdf",
     "markviewExport.exportPng": "markview.export.png",
@@ -44,27 +43,6 @@ export function activate(context: vscode.ExtensionContext) {
     previewStatus: preview.status,
     configuredTemplate: (destination: string, uri: vscode.Uri) =>
       services.template(destination, uri),
-    exportBuffer: async (
-      text: string,
-      base: string,
-      format: "pdf" | "png",
-      output: string,
-      uri: vscode.Uri,
-    ) => {
-      const template = await services.template("pdf", uri);
-      await services.withTemplate(template, (snapshot) =>
-        exportSnapshot(
-          services,
-          text,
-          base,
-          format,
-          output,
-          snapshot,
-          undefined,
-          undefined,
-          { fontSize: 16, scale: 2, trusted: vscode.workspace.isTrusted },
-        ),
-      );
-    },
+    exportDocument,
   };
 }

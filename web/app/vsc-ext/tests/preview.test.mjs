@@ -85,7 +85,10 @@ test("side preview publishes unsaved edits, changes theme, deduplicates panels a
     ViewColumn: { Beside: 2 },
     ColorThemeKind: { Dark: 2, HighContrast: 3 },
     workspace: {
-      getConfiguration: () => ({ get: (_key, fallback) => fallback }),
+      getConfiguration: () => ({
+        get: (_key, fallback) => fallback,
+        inspect: () => undefined,
+      }),
       onDidChangeTextDocument: (fn) => {
         changed = fn;
         return disposable;

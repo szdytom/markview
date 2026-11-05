@@ -6,17 +6,15 @@ export function explicit(
   config: vscode.WorkspaceConfiguration,
   key: string,
 ): boolean {
-  const value = config.inspect?.(key);
-  return value
-    ? [
-        value.globalValue,
-        value.workspaceValue,
-        value.workspaceFolderValue,
-        value.globalLanguageValue,
-        value.workspaceLanguageValue,
-        value.workspaceFolderLanguageValue,
-      ].some((entry) => entry !== undefined)
-    : config.get(key) !== undefined;
+  const value = config.inspect(key);
+  return [
+    value?.globalValue,
+    value?.workspaceValue,
+    value?.workspaceFolderValue,
+    value?.globalLanguageValue,
+    value?.workspaceLanguageValue,
+    value?.workspaceFolderLanguageValue,
+  ].some((entry) => entry !== undefined);
 }
 
 export function readingSetting<T>(

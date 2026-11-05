@@ -54,7 +54,10 @@ test("export commands snapshot unsaved text, select templates, reveal success an
     isUntitled: false,
     getText: () => text,
   };
-  const config = { get: (_key, fallback) => fallback };
+  const config = {
+    get: (key, fallback) =>
+      ({ exportFontSize: 21, exportScale: 1.5 })[key] ?? fallback,
+  };
   const vscode = {
     Uri: { file: uri },
     ProgressLocation: { Notification: 1 },
@@ -111,7 +114,7 @@ test("export commands snapshot unsaved text, select templates, reveal success an
       calls.push(args);
     },
   });
-  module.exports.activate({ subscriptions: [] });
+  const api = module.exports.activate({ subscriptions: [] });
   assert.ok(
     commands.has("markview.fonts"),
     "Font management remains registered",
@@ -124,6 +127,8 @@ test("export commands snapshot unsaved text, select templates, reveal success an
   assert.equal(calls[0][1], "# unsaved");
   assert.equal(calls[0][3], "pdf");
   assert.equal(calls[0][5].id, "celadon");
+  assert.equal(calls[0][8].fontSize, 21);
+  assert.equal(calls[0][8].scale, 1.5);
   assert.equal(reveals[0][0], "revealFileInOS");
   document.isUntitled = true;
   document.uri = { scheme: "untitled", fsPath: "Untitled-1" };
@@ -154,5 +159,21 @@ test("export commands snapshot unsaved text, select templates, reveal success an
     calls.length,
     8,
     "legacy aliases preserve the context-menu source URI",
+  );
+  cancelSave = true;
+  await api.exportDocument("png", false, document.uri, uri("/tmp/direct.png"));
+  assert.equal(
+    calls.length,
+    9,
+    "an explicit destination bypasses the save dialog",
+  );
+  assert.equal(calls[8][4], "/tmp/direct.png");
+  assert.equal(calls[8][8].fontSize, 21);
+  assert.equal(calls[8][8].scale, 1.5);
+  assert.equal(reveals.length, 8, "programmatic export does not reveal files");
+  fail = true;
+  await assert.rejects(
+    api.exportDocument("pdf", false, document.uri, uri("/tmp/direct.pdf")),
+    /native failure/,
   );
 });

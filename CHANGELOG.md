@@ -30,6 +30,7 @@ at the same level, without `[brackets]`.
 
 ### Changed
 
+- Share the extension's command and programmatic export path, honor document export settings in both, and simplify configuration inspection and publishing documentation.
 - Attach platform-specific VSIX packages to upstream releases and publish the same packages to Marketplace through Trusted Publishing.
 - Render web articles directly from HTML, preserving headings, checklists and formulas without converting the article body to Markdown.
 - Keep web tabs in memory with article titles and session restoration, and use the page URL in PDF metadata and page furniture.

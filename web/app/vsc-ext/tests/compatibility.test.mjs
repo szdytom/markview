@@ -31,7 +31,10 @@ const { readingSetting, legacyTemplate } = module.exports;
 test("legacy reading values never override an explicit modern value, including false", () => {
   const values = { columnWidth: 600, codeblockWrap: true };
   const config = {
-    inspect: (key) => ({ workspaceFolderLanguageValue: values[key] }),
+    inspect: (key) => ({
+      defaultValue: key === "width" ? 760 : false,
+      workspaceFolderLanguageValue: values[key],
+    }),
     get: (key, fallback) => values[key] ?? fallback,
   };
   assert.equal(readingSetting(config, "width", "columnWidth", 760), 600);
