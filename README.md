@@ -40,7 +40,7 @@ Or install the `markview` command:
 **Windows / macOS / Linux — Cargo**
 
 ```sh
-cargo install --git https://github.com/szdytom/markview --locked
+cargo install --git https://github.com/szdytom/markview --tag v0.4.5 --locked
 ```
 
 **Windows — PowerShell**

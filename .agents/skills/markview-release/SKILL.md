@@ -26,6 +26,8 @@ If any of these preconditions are not met, stop and report the problem to the us
    Discover all publishable packages in the `web/` pnpm workspace and set their
    `package.json` versions to the same release version; skip private packages.
    Then run `pnpm --dir web install --lockfile-only --offline` to refresh the pnpm lockfile if needed.
+   Also set the `--tag v<version>` in the `cargo install` instruction of both `README.md`
+   and `README.zh-cn.md` to the release version, so the documented command is pinned.
 2. **Changelog.** Directly under `## Unreleased` in `CHANGELOG.md`, insert
    `## <version> - <YYYY-MM-DD>` (today's date from `date`) followed by a `**Highlights**`
    list in the house style below. Leave `## Unreleased` in place and empty. cargo-dist takes
@@ -89,6 +91,8 @@ Rules:
 - `release.yml`, `wix/main.wxs`, and `[package.metadata.wix]` are dist-owned: never hand-edit
   them, and run `dist generate` after editing `dist-workspace.toml`.
 - `dist` is not on `PATH`; use `~/.cargo/bin/dist`.
+- The `cargo install` instructions in both READMEs are pinned to the latest released tag;
+  they go stale if a release skips them.
 - Release from a clean `main`. Pre-1.0, feature releases have shipped as patch bumps, so use
   the version the user names.
 - Artifact matrix and platform requirements: `docs/developers/packaging.md`.
