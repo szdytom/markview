@@ -158,11 +158,17 @@ proptest! {
 	}
 
 	#[test]
-	#[ignore = "Known bug PBT-008: HTTP dates accept nonexistent calendar days"]
 	fn nonexistent_calendar_dates_are_rejected(year in 1970u16..2401, short_month in 0usize..5) {
 		let month = [1, 3, 5, 8, 10][short_month];
-		let invalid_day = month_lengths(year)[month] + 1;
-		let (date, _) = calendar_date(year, month, invalid_day, [0, 0, 0]);
-		prop_assert_eq!(http_date(&date), None, "{}", date);
+		for invalid_day in month_lengths(year)[month] + 1..=31 {
+			let (date, _) = calendar_date(year, month, invalid_day, [0, 0, 0]);
+			prop_assert_eq!(http_date(&date), None, "{}", date);
+			let mut map = HeaderMap::new();
+			map.insert(reqwest::header::DATE, date.parse().unwrap());
+			map.insert(reqwest::header::EXPIRES, date.parse().unwrap());
+			let parsed = headers(&map);
+			prop_assert_eq!(parsed.date, None);
+			prop_assert_eq!(parsed.expires, None);
+		}
 	}
 }

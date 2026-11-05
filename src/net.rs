@@ -689,7 +689,7 @@ fn http_date(value: &str) -> Option<SystemTime> {
 	}
 	let year: i64 = year.parse().ok()?;
 	let time = http_clock(parts.next()?)?;
-	if !(1..=31).contains(&day) {
+	if !(1..=http_month_days(year, month)).contains(&day) {
 		return None;
 	}
 	let days = days_from_civil(year, month, day);
@@ -698,6 +698,18 @@ fn http_date(value: &str) -> Option<SystemTime> {
 	}
 	let seconds = days as u64 * 86_400 + time;
 	UNIX_EPOCH.checked_add(Duration::from_secs(seconds))
+}
+
+fn http_month_days(year: i64, month: u32) -> u32 {
+	match month {
+		2 => {
+			28 + u32::from(
+				year % 4 == 0 && (year % 100 != 0 || year % 400 == 0),
+			)
+		}
+		4 | 6 | 9 | 11 => 30,
+		_ => 31,
+	}
 }
 
 fn http_month(value: &str) -> Option<u32> {
