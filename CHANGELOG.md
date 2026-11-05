@@ -93,6 +93,7 @@ at the same level, without `[brackets]`.
 
 ### Documentation
 
+- Update property-testing coverage and defect status after enabling ten fixed regressions.
 - Document semantic link and selection boundaries, viewport/RSS benchmark methods, and reproducible refactor validation.
 
 ## 0.4.5 - 2026-11-05
