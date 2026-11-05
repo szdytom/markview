@@ -108,3 +108,6 @@ impl std::ops::Deref for MarkdownParse {
 
 #[cfg(test)]
 mod tests;
+
+#[cfg(test)]
+mod proptests;

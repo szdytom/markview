@@ -14,3 +14,6 @@ percent-encoding = "2"
 
 [lints]
 workspace = true
+
+[dev-dependencies]
+proptest.workspace = true

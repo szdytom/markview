@@ -2539,6 +2539,7 @@ dependencies = [
  "html-escape",
  "markview-document",
  "percent-encoding",
+ "proptest",
 ]
 
 [[package]]
