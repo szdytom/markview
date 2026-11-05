@@ -1,3 +1,6 @@
+#[cfg(test)]
+mod proptests;
+
 use crate::{Renderer, Theme, View, intersect, raster::GlyphOrigin};
 use markview_layout::{
 	scene::{Draw, Glyph, Paint, Rect},

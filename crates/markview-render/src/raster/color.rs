@@ -1,4 +1,7 @@
 //! Lazily allocated color glyph atlas; ordinary text keeps its R8 mask atlas.
+#[cfg(test)]
+mod proptests;
+
 use super::Entry;
 
 pub(super) const SIZE: u32 = 512;

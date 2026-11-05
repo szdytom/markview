@@ -57,6 +57,7 @@ wgpu = { workspace = true, features = ["webgl"] }
 workspace = true
 
 [dev-dependencies]
+proptest.workspace = true
 markview-commonmark = { path = "../markview-commonmark" }
 image = { version = "0.25.9", default-features = false, features = ["png"] }
 tempfile.workspace = true

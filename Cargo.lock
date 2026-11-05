@@ -2694,6 +2694,7 @@ dependencies = [
  "markview-render",
  "parley",
  "pollster 1.0.1",
+ "proptest",
  "ratex-font",
  "ratex-katex-fonts",
  "ratex-types",
