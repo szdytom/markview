@@ -248,7 +248,7 @@ proptest! {
 	}
 
 	#[test]
-	fn colliding_table_spans_fall_back_to_the_first_free_plain_cell(
+	fn colliding_table_spans_clip_to_the_first_free_slot(
 		columns in 1usize..9, height in 1usize..6, start in any::<usize>(), rows in any::<usize>(), span in any::<usize>(), occupied in prop::collection::vec(any::<bool>(), 40),
 	) {
 		let start = start % (columns + 1);
@@ -256,7 +256,12 @@ proptest! {
 		let span = 1 + span % columns;
 		let blocked: HashSet<_> = (0..height).flat_map(|row| (0..columns).map(move |column| (row, column))).filter(|&(row, column)| occupied[row * columns + column]).collect();
 		let free = |column, rows, span| column + span <= columns && (0..rows).all(|row| (column..column + span).all(|column| !blocked.contains(&(row, column))));
-		let expected = if start < columns && free(start, rows, span) { Some((start, rows, span)) } else { (start..columns).find(|&column| !blocked.contains(&(0, column))).map(|column| (column, 1, 1)) };
+		let expected = (start..columns).find(|&column| !blocked.contains(&(0, column))).map(|column| {
+			let width = (column..columns).take_while(|&column| !blocked.contains(&(0, column))).count();
+			let colspan = width.min(span).min(columns - column);
+			let rowspan = (0..rows).take_while(|&row| (column..column + colspan).all(|column| !blocked.contains(&(row, column)))).count();
+			(column, rowspan, colspan)
+		});
 		prop_assert_eq!(fit_span(start, rows, span, columns, free), expected);
 	}
 }
