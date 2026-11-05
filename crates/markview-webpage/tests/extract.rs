@@ -2018,3 +2018,210 @@ fn a_span_is_clipped_to_the_free_columns_at_the_first_free_slot() {
 	};
 	assert_eq!(plain_text(text), "D");
 }
+
+#[test]
+fn block_content_inside_a_heading_stays_a_block() {
+	// A page can leave a heading open over the rest of the article; the
+	// extractor then keeps that heading with block children. They must not be
+	// flattened into the heading's text.
+	let html = article(
+		r#"<p>Lead paragraph with enough prose for the extractor to keep this
+		article and its malformed heading, which is left open over the content
+		that follows it.</p>
+		<h2>Section<div><p>Nested prose inside the heading becomes its own
+		paragraph block instead of joining the heading text.</p>
+		<ul><li>item one</li><li>item two</li></ul></div></h2>
+		<p>Trailing prose keeps the article's candidate score high enough to
+		survive cleanup.</p>"#,
+	);
+	let page = extract(&html, "https://example.org/nested").unwrap();
+	let blocks = page.document.blocks();
+	let heading = blocks
+		.iter()
+		.find_map(|block| match block.kind() {
+			BlockKind::Heading { level: 2, text, .. } => Some(text),
+			_ => None,
+		})
+		.expect("the heading");
+	assert_eq!(plain_text(heading), "Section");
+	assert!(
+		blocks.iter().any(|block| matches!(block.kind(), BlockKind::Paragraph(text) if plain_text(text).starts_with("Nested prose inside the heading"))),
+		"the nested paragraph is not a block: {blocks:?}"
+	);
+	let list = blocks
+		.iter()
+		.find_map(|block| match block.kind() {
+			BlockKind::List { items, .. } => Some(items),
+			_ => None,
+		})
+		.expect("the nested list");
+	assert_eq!(list.len(), 2);
+}
+
+#[test]
+fn heading_text_inside_a_mixed_inline_wrapper_keeps_its_style() {
+	// The heading's text is wrapped in `<em>`, which also contains a block;
+	// the text stays in the heading with its style, the block goes below.
+	let html = article(
+		r#"<p>Lead paragraph with enough prose for the extractor to keep this
+		article and its malformed heading, which is left open over the content
+		that follows it.</p>
+		<h2><em>Section<div><p>Nested prose inside the heading becomes its own
+		paragraph block instead of joining the heading text.</p></div></em></h2>
+		<p>Trailing prose keeps the article's candidate score high enough to
+		survive cleanup.</p>"#,
+	);
+	let page = extract(&html, "https://example.org/mixed").unwrap();
+	let heading = page
+		.document
+		.blocks()
+		.iter()
+		.find_map(|block| match block.kind() {
+			BlockKind::Heading { level: 2, text, .. } => Some(text),
+			_ => None,
+		})
+		.expect("the heading");
+	assert_eq!(plain_text(heading), "Section");
+	assert!(
+		heading.iter().all(|inline| inline.style.italic),
+		"the heading lost its style: {heading:?}"
+	);
+	let nested = page
+		.document
+		.blocks()
+		.iter()
+		.find_map(|block| match block.kind() {
+			BlockKind::Paragraph(text)
+				if plain_text(text)
+					.starts_with("Nested prose inside the heading") =>
+			{
+				Some(text)
+			}
+			_ => None,
+		})
+		.expect("the nested paragraph");
+	assert!(
+		nested.iter().all(|inline| inline.style.italic),
+		"the deferred block lost the wrapper's style: {nested:?}"
+	);
+}
+
+#[test]
+fn a_code_heading_wrapper_keeps_its_content_literal() {
+	// `<code>` makes its content literal, so a block inside it stays part of
+	// the heading rather than letting nested math markup become a formula.
+	let html = article(
+		r#"<p>Lead paragraph with enough prose for the extractor to keep this
+		article and its malformed heading, which is left open over the content
+		that follows it.</p>
+		<h2><code><span class="math">x^2</span><div><p>Code-wrapped body
+		prose stays literal inside the heading.</p></div></code></h2>
+		<p>Trailing prose keeps the article's candidate score high enough to
+		survive cleanup.</p>"#,
+	);
+	let page = extract(&html, "https://example.org/code").unwrap();
+	let heading = page
+		.document
+		.blocks()
+		.iter()
+		.find_map(|block| match block.kind() {
+			BlockKind::Heading { level: 2, text, .. } => Some(text),
+			_ => None,
+		})
+		.expect("the heading");
+	assert!(
+		heading
+			.iter()
+			.any(|inline| matches!(&inline.kind, markview_document::InlineKind::Text(text) if text.contains("x^2"))),
+		"the literal formula text is missing: {heading:?}"
+	);
+	assert!(
+		!heading.iter().any(|inline| matches!(
+			inline.kind,
+			markview_document::InlineKind::Math { .. }
+		)),
+		"code content became a formula: {heading:?}"
+	);
+	assert!(
+		heading.iter().all(|inline| inline.style.code),
+		"the code context was lost: {heading:?}"
+	);
+}
+
+#[test]
+fn a_linked_heading_wrapper_links_its_deferred_blocks() {
+	// The wrapper link must reach the blocks split out of the heading.
+	let html = article(
+		r#"<p>Lead paragraph with enough prose for the extractor to keep this
+		article and its malformed heading, which is left open over the content
+		that follows it.</p>
+		<h2><a href="/target">Section<div><p>Nested prose inside the linked
+		heading becomes its own paragraph block with the wrapper's link.</p>
+		</div></a></h2>
+		<p>Trailing prose keeps the article's candidate score high enough to
+		survive cleanup.</p>"#,
+	);
+	let page = extract(&html, "https://example.org/linked").unwrap();
+	let blocks = page.document.blocks();
+	let heading = blocks
+		.iter()
+		.find_map(|block| match block.kind() {
+			BlockKind::Heading { level: 2, text, .. } => Some(text),
+			_ => None,
+		})
+		.expect("the heading");
+	assert_eq!(plain_text(heading), "Section");
+	let nested = blocks
+		.iter()
+		.find_map(|block| match block.kind() {
+			BlockKind::Paragraph(text)
+				if plain_text(text)
+					.starts_with("Nested prose inside the linked heading") =>
+			{
+				Some(text)
+			}
+			_ => None,
+		})
+		.expect("the nested paragraph");
+	let url = "https://example.org/target";
+	assert!(
+		nested.iter().all(|inline| inline.link_url() == Some(url)),
+		"the deferred block lost the wrapper's link: {nested:?}"
+	);
+	assert!(
+		heading.iter().all(|inline| inline.link_url() == Some(url)),
+		"the heading lost the wrapper's link: {heading:?}"
+	);
+}
+
+#[test]
+fn a_math_wrapper_with_a_block_still_lowers_as_a_formula() {
+	let html = article(
+		r#"<p>Lead paragraph with enough prose for the extractor to keep this
+		article and its malformed heading, which is left open over the content
+		that follows it.</p>
+		<h2><span class="math"><div>x^2</div></span></h2>
+		<p>Trailing prose keeps the article's candidate score high enough to
+		survive cleanup.</p>"#,
+	);
+	let page = extract(&html, "https://example.org/math").unwrap();
+	let heading = page
+		.document
+		.blocks()
+		.iter()
+		.find_map(|block| match block.kind() {
+			BlockKind::Heading { level: 2, text, .. } => Some(text),
+			_ => None,
+		})
+		.expect("the heading");
+	let math: Vec<_> = heading
+		.iter()
+		.filter_map(|inline| match &inline.kind {
+			markview_document::InlineKind::Math { latex, display } => {
+				Some((latex.as_str(), *display))
+			}
+			_ => None,
+		})
+		.collect();
+	assert_eq!(math, [("x^2", false)], "{heading:?}");
+}

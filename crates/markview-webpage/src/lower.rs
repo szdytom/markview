@@ -258,34 +258,14 @@ impl<'a> Lower<'a> {
 				return Ok(());
 			}
 		}
-		let title = node.attr("data-mv-title").is_some()
-			&& matches!(name, "h1" | "h2" | "h3" | "h4" | "h5" | "h6");
+		if matches!(name, "h1" | "h2" | "h3" | "h4" | "h5" | "h6") {
+			return self.heading(node, name, explicit, depth, out);
+		}
 		let kind = match name {
 			"p" | "address" | "figcaption" => {
 				let text =
 					self.inlines(node, &RunStyle::default(), depth + 1)?;
 				BlockKind::Paragraph(trim_rich(text))
-			}
-			"h1" | "h2" | "h3" | "h4" | "h5" | "h6" => {
-				let level = if title {
-					1
-				} else {
-					name[1..].parse::<u8>().expect("hN")
-				};
-				let text = trim_rich(self.inlines(
-					node,
-					&RunStyle::default(),
-					depth + 1,
-				)?);
-				let anchor = match explicit.clone() {
-					Some(id) => id,
-					None => self.anchors.unique(&plain_text(&text)),
-				};
-				BlockKind::Heading {
-					level,
-					text,
-					anchor,
-				}
 			}
 			"hr" => BlockKind::Rule,
 			"pre" => self.code_block(node)?,
@@ -334,18 +314,178 @@ impl<'a> Lower<'a> {
 				});
 			}
 		};
+		let block = self.make(explicit.into_iter().collect(), kind)?;
+		out.push(block);
+		Ok(())
+	}
+
+	/// Lowers a heading, keeping any block content nested inside it (a
+	/// malformed page can leave a heading open over the rest of the article)
+	/// as blocks after the heading instead of flattening it into the text.
+	fn heading(
+		&mut self,
+		node: &NodeRef<'a>,
+		name: &str,
+		explicit: Option<String>,
+		depth: usize,
+		out: &mut Vec<Block>,
+	) -> Result<(), Error> {
+		if depth > self.profile.max_semantic_depth {
+			return Err(Error::DepthExceeded);
+		}
+		let title = node.attr("data-mv-title").is_some();
+		let level = if title {
+			1
+		} else {
+			name[1..].parse::<u8>().expect("hN")
+		};
+		let (text, nested) = self.heading_parts(node, depth)?;
+		let text = trim_rich(text);
 		// A heading's explicit `id` is the heading's own anchor; keeping it
 		// as a block anchor too would declare the same fragment twice.
-		let anchors = match &kind {
-			BlockKind::Heading { .. } => Vec::new(),
-			_ => explicit.into_iter().collect(),
+		let anchor = match explicit {
+			Some(id) => id,
+			None => self.anchors.unique(&plain_text(&text)),
 		};
-		let block = self.make(anchors, kind)?;
+		let block = self.make(
+			Vec::new(),
+			BlockKind::Heading {
+				level,
+				text,
+				anchor,
+			},
+		)?;
 		if title && self.title_block.is_none() {
 			self.title_block = Some(block.id());
 		}
 		out.push(block);
+		for (child, style) in nested {
+			let before = out.len();
+			let child_name = local_name(&child);
+			self.lower_block(&child, &child_name, depth + 1, out)?;
+			// The wrapper's link and style enclose the deferred blocks too.
+			for block in &mut out[before..] {
+				apply_run(block, style.link.as_ref(), Some(&style.visual));
+			}
+		}
 		Ok(())
+	}
+
+	/// Splits a heading's children into its inline text and the block
+	/// elements nested inside it.
+	fn heading_parts(
+		&mut self,
+		node: &NodeRef<'a>,
+		depth: usize,
+	) -> Result<(RichText, Vec<(NodeRef<'a>, RunStyle)>), Error> {
+		let mut text = RichText::new();
+		let mut nested = Vec::new();
+		self.heading_children(
+			node,
+			&RunStyle::default(),
+			depth,
+			&mut text,
+			&mut nested,
+		)?;
+		Ok((text, nested))
+	}
+
+	/// Walks one heading level: inline content joins the heading text, with
+	/// the style of any enclosing inline wrapper, and block children become
+	/// blocks after the heading.
+	fn heading_children(
+		&mut self,
+		node: &NodeRef<'a>,
+		style: &RunStyle,
+		depth: usize,
+		text: &mut RichText,
+		nested: &mut Vec<(NodeRef<'a>, RunStyle)>,
+	) -> Result<(), Error> {
+		if depth > self.profile.max_semantic_depth {
+			return Err(Error::DepthExceeded);
+		}
+		for child in node.children_it(false) {
+			if child.is_text() {
+				self.append_text(text, child.text().as_ref(), style)?;
+			} else if child.is_element() {
+				if presentation_only(&child) {
+					continue;
+				}
+				let name = local_name(&child);
+				if is_block_element(&name) {
+					nested.push((child, style.clone()));
+				} else if has_block_children(&child)
+					&& !delegated_inline(&child, &name)
+					&& !code_context(style, &name)
+				{
+					// A mixed inline wrapper: its text is the heading's,
+					// its blocks belong to the body.
+					self.inline_anchor(&child, text, style);
+					let style = self.run_style(&child, &name, style);
+					self.heading_children(
+						&child,
+						&style,
+						depth + 1,
+						text,
+						nested,
+					)?;
+				} else {
+					self.inline_element(&child, &name, style, text, depth + 1)?;
+				}
+			}
+		}
+		Ok(())
+	}
+
+	/// Records an inline element's `id` as an invisible fragment target.
+	fn inline_anchor(
+		&mut self,
+		node: &NodeRef<'a>,
+		out: &mut RichText,
+		style: &RunStyle,
+	) {
+		let Some(id) = node.attr("id") else {
+			return;
+		};
+		let id = id.to_string();
+		if id.trim().is_empty() {
+			return;
+		}
+		if self.explicit_ids.remove(&id) {
+			self.append_inline(out, InlineKind::Anchor(id), style);
+		} else if !self.anchors.contains(&id) {
+			self.anchors.reserve(id.clone());
+			self.append_inline(out, InlineKind::Anchor(id), style);
+		}
+	}
+
+	/// The run state an inline element passes to its children.
+	fn run_style(
+		&mut self,
+		node: &NodeRef<'a>,
+		name: &str,
+		style: &RunStyle,
+	) -> RunStyle {
+		let mut style = style.clone();
+		match name {
+			"strong" | "b" => style.bold = true,
+			"em" | "i" | "cite" | "dfn" | "var" => style.italic = true,
+			"del" | "s" | "strike" => style.strike = true,
+			"mark" => style.mark = true,
+			"code" | "kbd" | "samp" | "tt" => style.code = true,
+			"sup" => style.superscript = true,
+			"sub" => style.subscript = true,
+			"a" => {
+				if let Some(href) = node.attr("href")
+					&& let Some(url) = self.link_url(&href)
+				{
+					style.link = Some(allocated_link(url, self.next_link));
+					self.next_link += 1;
+				}
+			}
+			_ => {}
+		}
+		style
 	}
 
 	fn attach_anchor(&self, block: &mut Block, id: String) {
@@ -965,17 +1105,7 @@ impl<'a> Lower<'a> {
 		if presentation_only(node) {
 			return Ok(());
 		}
-		if let Some(id) = node.attr("id") {
-			let id = id.to_string();
-			if !id.trim().is_empty() {
-				if self.explicit_ids.remove(&id) {
-					self.append_inline(out, InlineKind::Anchor(id), style);
-				} else if !self.anchors.contains(&id) {
-					self.anchors.reserve(id.clone());
-					self.append_inline(out, InlineKind::Anchor(id), style);
-				}
-			}
-		}
+		self.inline_anchor(node, out, style);
 		match name {
 			"script" => {
 				if !style.code
@@ -992,9 +1122,7 @@ impl<'a> Lower<'a> {
 				}
 				return Ok(());
 			}
-			"style" | "template" | "noscript" | "iframe" | "object"
-			| "embed" | "video" | "audio" | "input" | "button" | "select"
-			| "textarea" => {
+			name if is_skipped_inline(name) => {
 				return Ok(());
 			}
 			"br" => {
@@ -1047,25 +1175,7 @@ impl<'a> Lower<'a> {
 			}
 			return Ok(());
 		}
-		let mut style = style.clone();
-		match name {
-			"strong" | "b" => style.bold = true,
-			"em" | "i" | "cite" | "dfn" | "var" => style.italic = true,
-			"del" | "s" | "strike" => style.strike = true,
-			"mark" => style.mark = true,
-			"code" | "kbd" | "samp" | "tt" => style.code = true,
-			"sup" => style.superscript = true,
-			"sub" => style.subscript = true,
-			"a" => {
-				if let Some(href) = node.attr("href")
-					&& let Some(url) = self.link_url(&href)
-				{
-					style.link = Some(allocated_link(url, self.next_link));
-					self.next_link += 1;
-				}
-			}
-			_ => {}
-		}
+		let style = self.run_style(node, name, style);
 		let children = self.inlines(node, &style, depth + 1)?;
 		for inline in children {
 			self.append_inline(
@@ -1176,66 +1286,106 @@ impl<'a> Lower<'a> {
 }
 
 /// Applies an enclosing block-level HTML link to every rich run.
+/// Applies an enclosing block-level HTML link to every rich run.
 fn apply_link(block: &mut Block, link: &Link) {
-	fn rich(text: &mut RichText, link: &Link) {
+	apply_run(block, Some(link), None);
+}
+
+/// Applies an enclosing link and inherited visual style to every rich run.
+///
+/// A run that already carries a link keeps it; the style flags are merged, so
+/// an enclosing `<em>` or `<code>` reaches the blocks split out of a heading
+/// the way the browser's inheritance would.
+fn apply_run(
+	block: &mut Block,
+	link: Option<&Link>,
+	style: Option<&TextStyle>,
+) {
+	fn merge(target: &mut TextStyle, style: &TextStyle) {
+		target.bold |= style.bold;
+		target.italic |= style.italic;
+		target.strike |= style.strike;
+		target.mark |= style.mark;
+		target.code |= style.code;
+		target.superscript |= style.superscript;
+		target.subscript |= style.subscript;
+	}
+	fn rich(
+		text: &mut RichText,
+		link: Option<&Link>,
+		style: Option<&TextStyle>,
+	) {
 		for inline in text {
-			if inline.link.is_none() {
+			if let Some(link) = link
+				&& inline.link.is_none()
+			{
 				inline.link = Some(link.clone());
+			}
+			if let Some(style) = style {
+				merge(&mut inline.style, style);
 			}
 		}
 	}
-	fn optional(text: &mut Option<RichText>, link: &Link) {
+	fn optional(
+		text: &mut Option<RichText>,
+		link: Option<&Link>,
+		style: Option<&TextStyle>,
+	) {
 		if let Some(text) = text {
-			rich(text, link);
+			rich(text, link, style);
 		}
 	}
-	fn all(blocks: &mut [Block], link: &Link) {
+	fn all(
+		blocks: &mut [Block],
+		link: Option<&Link>,
+		style: Option<&TextStyle>,
+	) {
 		for child in blocks {
-			apply_link(child, link);
+			apply_run(child, link, style);
 		}
 	}
 	match block.kind_mut() {
 		BlockKind::Paragraph(text) | BlockKind::Heading { text, .. } => {
-			rich(text, link)
+			rich(text, link, style)
 		}
 		BlockKind::Quote { blocks, callout } => {
 			if let Some(title) =
 				callout.as_mut().and_then(|callout| callout.title.as_mut())
 			{
-				rich(title, link);
+				rich(title, link, style);
 			}
-			all(blocks, link);
+			all(blocks, link, style);
 		}
 		BlockKind::Footnote { blocks, .. }
-		| BlockKind::FrontMatter { blocks, .. } => all(blocks, link),
+		| BlockKind::FrontMatter { blocks, .. } => all(blocks, link, style),
 		BlockKind::Details {
 			summary, blocks, ..
 		} => {
-			rich(summary, link);
-			all(blocks, link);
+			rich(summary, link, style);
+			all(blocks, link, style);
 		}
 		BlockKind::Figure { blocks, caption } => {
-			optional(caption, link);
-			all(blocks, link);
+			optional(caption, link, style);
+			all(blocks, link, style);
 		}
 		BlockKind::List { items, .. } => {
 			for item in items {
-				all(&mut item.blocks, link);
+				all(&mut item.blocks, link, style);
 			}
 		}
 		BlockKind::Table(table) => {
-			optional(&mut table.caption, link);
+			optional(&mut table.caption, link, style);
 			for child in table.cell_blocks_mut() {
-				apply_link(child, link);
+				apply_run(child, link, style);
 			}
 		}
 		BlockKind::DefinitionList(items) => {
 			for item in items {
 				for terms in &mut item.terms {
-					rich(terms, link);
+					rich(terms, link, style);
 				}
 				for blocks in &mut item.definitions {
-					all(blocks, link);
+					all(blocks, link, style);
 				}
 			}
 		}
@@ -1350,6 +1500,38 @@ fn is_block_element(name: &str) -> bool {
 			| "address"
 			| "center"
 	)
+}
+
+/// Elements whose content the reader never lowers as text.
+fn is_skipped_inline(name: &str) -> bool {
+	matches!(
+		name,
+		"style"
+			| "template"
+			| "noscript"
+			| "iframe"
+			| "object"
+			| "embed" | "video"
+			| "audio" | "input"
+			| "button"
+			| "select"
+			| "textarea"
+	)
+}
+
+/// Whether the wrapper keeps its content literal, as `<code>` does.
+fn code_context(style: &RunStyle, name: &str) -> bool {
+	style.code || matches!(name, "code" | "kbd" | "samp" | "tt")
+}
+
+/// Inline elements with their own semantic lowering that a mixed wrapper
+/// must not replace with a transparent split.
+fn delegated_inline(node: &NodeRef<'_>, name: &str) -> bool {
+	name == "script"
+		|| is_skipped_inline(name)
+		|| name == "math"
+		|| node.has_class("math")
+		|| node.attr("data-mv-math").is_some()
 }
 
 fn has_block_children(node: &NodeRef<'_>) -> bool {

@@ -73,6 +73,41 @@ for a span that genuinely cannot fit under the profile's column cap). The
 seam oracle requires the declared span again, and the table oracle checks
 the interior-hole property.
 
+## W3 — block content inside a heading was flattened
+
+A malformed page can leave a heading open over the rest of the article, and
+the extractor keeps that heading with block children. `lower.rs` lowered a
+heading with `inlines()`, which walked those children as inline text, so the
+body collapsed into one heading with no list or paragraph:
+
+```html
+<article><p>Lead paragraph with enough prose for the extractor to keep this
+article and its malformed heading.</p>
+<h2>Section<div><p>Nested prose inside the heading.</p>
+<ul><li>item one</li><li>item two</li></ul></div></h2>
+<p>Trailing prose keeps the candidate score high enough.</p></article>
+```
+
+```text
+pre-fix:  Heading2 "SectionNested prose inside the heading.item oneitem two"
+post-fix: Heading2 "Section"
+          Paragraph "Nested prose inside the heading."
+          List [item one, item two]
+```
+
+Status: fixed. A heading now lowers its inline content as the heading text and
+its block children as blocks after it. A mixed inline wrapper keeps its text
+and style in the heading while its blocks go below; the deferred blocks
+inherit the wrapper's link and style, and a semantic wrapper (math, script,
+media) keeps its own lowering. A `<code>` wrapper is the deliberate
+exception: its content is literal, so it stays flattened into the heading to
+keep the code context (recorded in `artifacts/webpage-fuzz-known-issues.md`).
+Regression tests: `block_content_inside_a_heading_stays_a_block`,
+`heading_text_inside_a_mixed_inline_wrapper_keeps_its_style`,
+`a_linked_heading_wrapper_links_its_deferred_blocks`,
+`a_math_wrapper_with_a_block_still_lowers_as_a_formula` and
+`a_code_heading_wrapper_keeps_its_content_literal`.
+
 ## Upstream behaviours the harness works around
 
 These are `dom_smoothie` (the pinned fork) and are not Markview defects; the
