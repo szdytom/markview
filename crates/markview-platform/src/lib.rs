@@ -1,4 +1,6 @@
 //! OS effects stay outside the reading core.
+#[cfg(test)]
+mod proptests;
 
 pub mod watch;
 

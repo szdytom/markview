@@ -2665,6 +2665,7 @@ dependencies = [
  "objc2-core-services",
  "objc2-foundation 0.3.2",
  "open",
+ "proptest",
  "rfd",
  "same-file",
  "sys-locale",

@@ -12,6 +12,9 @@ workspace = true
 [features]
 test-support = []
 
+[dev-dependencies]
+proptest.workspace = true
+
 [dependencies]
 anyhow.workspace = true
 log.workspace = true
