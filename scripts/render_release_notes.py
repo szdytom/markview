@@ -10,6 +10,20 @@ MACOS_NOTE = (
     "then run `xattr -d com.apple.quarantine /Applications/Markview.app` in Terminal "
     "to remove the quarantine flag before opening the app."
 )
+VSCODE_NOTE = (
+    "**VS Code:** Install Markview Integration from the "
+    "[Marketplace](https://marketplace.visualstudio.com/items?itemName=Stevvven.markview-export), "
+    "or download the `.vsix` for your platform and choose **Extensions → "
+    "Install from VSIX…** in VS Code. The exporter is included."
+)
+VSCODE_PLATFORMS = (
+    ("darwin-arm64", "VS Code: Apple Silicon macOS"),
+    ("darwin-x64", "VS Code: Intel macOS"),
+    ("win32-x64", "VS Code: x64 Windows"),
+    ("win32-arm64", "VS Code: ARM64 Windows"),
+    ("linux-x64", "VS Code: x64 Linux"),
+    ("linux-arm64", "VS Code: ARM64 Linux"),
+)
 
 
 def render(plan, release):
@@ -39,6 +53,10 @@ def render(plan, release):
             "Android 11+ (ARM64)",
         ),
     ]
+    extension = json.loads((Path(__file__).resolve().parents[1] /
+                            "web/app/vsc-ext/vscode/package.json").read_text())
+    downloads.extend((f"{extension['name']}-{extension['version']}-{target}.vsix", label)
+                     for target, label in VSCODE_PLATFORMS)
     assets = {asset["name"]: asset for asset in release["assets"]}
     table = ["| File | Platform | Checksum (SHA-256) |", "|------|----------|--------------------|"]
     for name, platform in downloads:
@@ -56,7 +74,9 @@ def render(plan, release):
         raise ValueError(f"Release download heading is missing: {heading.strip()}")
     _, _, suffix = after.partition("\n\n")
     suffix = suffix.removeprefix(MACOS_NOTE + "\n\n")
-    return before + heading + "\n".join(table) + "\n\n" + MACOS_NOTE + "\n\n" + suffix
+    suffix = suffix.removeprefix(VSCODE_NOTE + "\n\n")
+    return (before + heading + "\n".join(table) + "\n\n" + MACOS_NOTE + "\n\n" +
+            VSCODE_NOTE + "\n\n" + suffix)
 
 
 if __name__ == "__main__":

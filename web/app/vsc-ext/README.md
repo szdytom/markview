@@ -84,18 +84,14 @@ The extension version is independent of the native workspace version. Package
 WASM and the native executable from the same checkout. `package.mjs` refuses
 an exporter whose architecture does not match the requested platform. Windows targets statically link the C runtime; CI and the final package verifier reject extra VC++ runtime DLL imports.
 
-`extension-packages.yml` tests and packages all six desktop targets on pull
-requests and on manual dispatch. `extension-release.yml` repeats that pipeline
-for `markview-integration-v<extension-version>` tags. The publishing job runs
-only in `Stevvven777/markview`, after the six packages pass verification, using
-the `marketplace` environment and its `VSCE_PAT` secret. Configure the token in
-GitHub settings, never in source or chat; it needs Stevvven Marketplace publish
-permission. Environment reviewers can require a final approval.
+`extension-packages.yml` tests and packages all six desktop targets inside the
+upstream reader's `Packaging` workflow, on PRs and release tags, and also supports
+manual dispatch. cargo-dist attaches the verified VSIX files and
+`SHA256SUMS-vscode` to the same reader Release.
 
-After review/merge, tag the exact tested revision with the extension version.
-The workflow creates an extension-specific GitHub Release with all six VSIX
-files and SHA-256 sums, then publishes those exact files to Marketplace. It does
-not change the reader's cargo-dist release. Download the VSIX for your platform
-and use VS Code's **Install from VSIX…** for manual validation before tagging.
-A failed Marketplace upload can be retried with `vsce publish --packagePath`
-using the GitHub Release assets; do not rebuild the version being retried.
+After a stable release, `extension-release.yml` downloads and verifies those
+exact attachments and publishes them from `szdytom/markview` using OIDC Trusted
+Publishing. Marketplace failure leaves GitHub downloads available; retry the
+published tag without rebuilding. See the [publishing setup and version
+policy](../../../docs/developers/integration-release.md#upstream-release-and-marketplace)
+for one-time publisher authorization, independent extension versions and retries.

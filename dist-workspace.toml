@@ -33,8 +33,12 @@ checksum = "false"
 source-tarball = false
 pr-run-mode = "upload"
 global-artifacts-jobs = ["./packaging"]
-post-announce-jobs = ["./release-notes", "./winget"]
+post-announce-jobs = ["./release-notes", "./winget", "./extension-release"]
 include = ["THIRD_PARTY.md", "licenses/"]
+
+[dist.github-custom-job-permissions.extension-release]
+contents = "read"
+id-token = "write"
 
 [dist.min-glibc-version]
 x86_64-unknown-linux-gnu = "2.35"

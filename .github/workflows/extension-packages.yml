@@ -1,7 +1,5 @@
 name: Markview Integration packages
 on:
-  pull_request:
-    paths: ['web/**', 'crates/**', 'src/**', 'Cargo.*', '.github/workflows/extension-*.yml']
   workflow_dispatch:
   workflow_call:
 permissions:
@@ -84,6 +82,6 @@ jobs:
           MARKVIEW_VSIX="${packages[0]}" xvfb-run -a node tests/installed.mjs
       - uses: actions/upload-artifact@v7
         with:
-          name: markview-integration-${{ matrix.platform }}
+          name: artifacts-extra-vscode-${{ matrix.platform }}
           path: artifacts/vscode/*.vsix
           if-no-files-found: error

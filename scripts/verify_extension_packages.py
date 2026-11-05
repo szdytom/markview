@@ -44,6 +44,8 @@ def main():
         verify_windows_runtime(pathlib.Path(sys.argv[2]).read_bytes())
         return
     manifest = json.loads(pathlib.Path('web/app/vsc-ext/vscode/package.json').read_text())
+    assert manifest['name'] == 'markview-export' and manifest['publisher'] == 'Stevvven', \
+        'Keep the existing Marketplace identity'
     platforms = {'darwin-arm64', 'darwin-x64', 'linux-arm64', 'linux-x64', 'win32-arm64', 'win32-x64'}
     found = set()
     for file in pathlib.Path(sys.argv[1]).glob('*.vsix'):

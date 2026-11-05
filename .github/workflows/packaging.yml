@@ -12,6 +12,32 @@ permissions:
   contents: read
 
 jobs:
+  vscode:
+    uses: ./.github/workflows/extension-packages.yml
+
+  vscode-checksums:
+    needs: vscode
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - uses: actions/download-artifact@v8
+        with:
+          pattern: artifacts-extra-vscode-*
+          path: vsix
+          merge-multiple: true
+      - name: Verify the complete extension release
+        run: |
+          python3 scripts/verify_extension_packages.py vsix
+          cd vsix
+          sha256sum ./*.vsix > SHA256SUMS-vscode
+      - uses: actions/upload-artifact@v7
+        with:
+          name: artifacts-extra-vscode-checksums
+          path: vsix/SHA256SUMS-vscode
+          if-no-files-found: error
+
   checks:
     uses: ./.github/workflows/checks.yml
 

@@ -1,65 +1,61 @@
-name: Release Markview Integration
+name: Publish Markview Integration
 on:
-  push:
-    tags: ['markview-integration-v*']
+  workflow_call:
+    inputs:
+      plan:
+        required: true
+        type: string
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Published stable reader release tag (for example v0.4.5)
+        required: true
+        type: string
 permissions:
   contents: read
 jobs:
-  version:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v6
-      - uses: actions/setup-node@v6
-        with:
-          node-version: 22
-      - name: Validate tag and Marketplace identity
-        env:
-          RELEASE_TAG: ${{ github.ref_name }}
-        run: |
-          # shellcheck disable=SC2016
-          node --input-type=module -e '
-            import fs from "node:fs";
-            const p = JSON.parse(fs.readFileSync("web/app/vsc-ext/vscode/package.json"));
-            if (process.env.RELEASE_TAG !== `markview-integration-v${p.version}` ||
-                p.name !== "markview-export" || p.publisher !== "Stevvven") process.exit(1);
-          '
-  packages:
-    needs: version
-    uses: ./.github/workflows/extension-packages.yml
   publish:
-    needs: packages
-    if: github.repository == 'Stevvven777/markview'
-    runs-on: ubuntu-latest
+    if: github.repository == 'szdytom/markview' && (inputs.plan == '' || !fromJson(inputs.plan).announcement_is_prerelease)
+    runs-on: ubuntu-22.04
     environment: marketplace
     permissions:
-      contents: write
+      contents: read
+      id-token: write
+    concurrency:
+      group: marketplace-markview-export
+      cancel-in-progress: false
+    env:
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      RELEASE_PLAN: ${{ inputs.plan }}
+      RELEASE_TAG: ${{ inputs.tag }}
     steps:
+      - name: Resolve the published stable release
+        id: release
+        run: |
+          tag="$RELEASE_TAG"
+          if [ -n "$RELEASE_PLAN" ]; then
+            tag=$(printf '%s' "$RELEASE_PLAN" | jq -er '.announcement_tag')
+          fi
+          gh api "repos/$GITHUB_REPOSITORY/releases/tags/$tag" > "$RUNNER_TEMP/release.json"
+          jq -e --arg tag "$tag" '.draft == false and .prerelease == false and
+            .tag_name == $tag and (.tag_name | test("^v[0-9]+\\.[0-9]+\\.[0-9]+$"))' \
+            "$RUNNER_TEMP/release.json"
+          printf 'tag=%s\n' "$tag" >> "$GITHUB_OUTPUT"
       - uses: actions/checkout@v6
+        with:
+          ref: ${{ steps.release.outputs.tag }}
+          persist-credentials: false
       - uses: actions/setup-node@v6
         with:
           node-version: 22
-      - uses: actions/download-artifact@v8
-        with:
-          pattern: markview-integration-*
-          path: vsix
-          merge-multiple: true
-      - run: npm ci --prefix web/app/vsc-ext
-      - name: Verify all six immutable packages
-        run: python3 scripts/verify_extension_packages.py vsix
-      - name: Require Marketplace credential
+      - name: Download the exact GitHub release packages
         env:
-          VSCE_PAT: ${{ secrets.VSCE_PAT }}
-        run: test -n "$VSCE_PAT"
-      - name: Create GitHub release with the tested packages
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          RELEASE_TAG: ${{ github.ref_name }}
+          TAG: ${{ steps.release.outputs.tag }}
+        run: gh release download "$TAG" --repo "$GITHUB_REPOSITORY" --pattern '*.vsix' --pattern SHA256SUMS-vscode --dir vsix
+      - name: Verify the released packages before authenticating
         run: |
-          sha256sum vsix/*.vsix > vsix/SHA256SUMS
-          gh release create "$RELEASE_TAG" vsix/*.vsix vsix/SHA256SUMS \
-            --verify-tag --title "Markview Integration ${RELEASE_TAG#markview-integration-v}" \
-            --notes-file web/app/vsc-ext/vscode/CHANGELOG.md
-      - name: Publish the exact GitHub packages to Marketplace
-        env:
-          VSCE_PAT: ${{ secrets.VSCE_PAT }}
-        run: web/app/vsc-ext/node_modules/.bin/vsce publish --packagePath vsix/*.vsix --skip-duplicate
+          (cd vsix && sha256sum --check SHA256SUMS-vscode)
+          python3 scripts/verify_extension_packages.py vsix
+      - run: npm ci --prefix web/app/vsc-ext
+      - name: Publish the released packages with Trusted Publishing
+        run: web/app/vsc-ext/node_modules/.bin/vsce publish --oidc --packagePath vsix/*.vsix --skip-duplicate
