@@ -78,10 +78,25 @@ fn dump(block: &Block, depth: usize) {
 			level,
 			text,
 			anchor,
-		} => eprintln!(
-			"{pad}Heading{level} {:?} anchor={anchor:?}",
-			plain_text(text)
-		),
+		} => {
+			eprintln!(
+				"{pad}Heading{level} {:?} anchor={anchor:?}",
+				plain_text(text)
+			);
+			for inline in text {
+				if inline.style != Default::default()
+					|| inline.link.is_some()
+					|| !matches!(inline.kind, markview_document::InlineKind::Text(_))
+				{
+					eprintln!(
+						"{pad}  inline {:?} style={:?} link={:?}",
+						inline.kind,
+						inline.style,
+						inline.link_url()
+					);
+				}
+			}
+		}
 		BlockKind::Code { language, text } => {
 			eprintln!("{pad}Code {language:?} {text:?}")
 		}

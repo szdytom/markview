@@ -98,11 +98,10 @@ post-fix: Heading2 "Section"
 Status: fixed. A heading now lowers its inline content as the heading text and
 its block children as blocks after it. A mixed inline wrapper keeps its text
 and style in the heading while its blocks go below; the deferred blocks
-inherit the wrapper's link and style, and a semantic wrapper (math, script,
-media) keeps its own lowering. A `<code>` wrapper is the deliberate
-exception: its content is literal, so it stays flattened into the heading to
-keep the code context (recorded in `artifacts/webpage-fuzz-known-issues.md`).
-Regression tests: `block_content_inside_a_heading_stays_a_block`,
+inherit the wrapper's link, formatting and code context (so `<code>` content
+stays literal and nested math markup stays text), and a semantic wrapper
+(math, script, media) keeps its own lowering. Regression tests:
+`block_content_inside_a_heading_stays_a_block`,
 `heading_text_inside_a_mixed_inline_wrapper_keeps_its_style`,
 `a_linked_heading_wrapper_links_its_deferred_blocks`,
 `a_math_wrapper_with_a_block_still_lowers_as_a_formula` and

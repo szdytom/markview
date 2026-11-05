@@ -2108,8 +2108,8 @@ fn heading_text_inside_a_mixed_inline_wrapper_keeps_its_style() {
 
 #[test]
 fn a_code_heading_wrapper_keeps_its_content_literal() {
-	// `<code>` makes its content literal, so a block inside it stays part of
-	// the heading rather than letting nested math markup become a formula.
+	// `<code>` makes its content literal: the block is split out of the
+	// heading, both keep the code context, and math markup stays text.
 	let html = article(
 		r#"<p>Lead paragraph with enough prose for the extractor to keep this
 		article and its malformed heading, which is left open over the content
@@ -2120,31 +2120,41 @@ fn a_code_heading_wrapper_keeps_its_content_literal() {
 		survive cleanup.</p>"#,
 	);
 	let page = extract(&html, "https://example.org/code").unwrap();
-	let heading = page
-		.document
-		.blocks()
+	let blocks = page.document.blocks();
+	let heading = blocks
 		.iter()
 		.find_map(|block| match block.kind() {
 			BlockKind::Heading { level: 2, text, .. } => Some(text),
 			_ => None,
 		})
 		.expect("the heading");
+	assert_eq!(plain_text(heading), "x^2");
 	assert!(
-		heading
-			.iter()
-			.any(|inline| matches!(&inline.kind, markview_document::InlineKind::Text(text) if text.contains("x^2"))),
-		"the literal formula text is missing: {heading:?}"
+		heading.iter().all(|inline| inline.style.code
+			&& !matches!(
+				inline.kind,
+				markview_document::InlineKind::Math { .. }
+			)),
+		"the heading left its code context: {heading:?}"
 	);
+	let nested = blocks
+		.iter()
+		.find_map(|block| match block.kind() {
+			BlockKind::Paragraph(text)
+				if plain_text(text).starts_with("Code-wrapped body prose") =>
+			{
+				Some(text)
+			}
+			_ => None,
+		})
+		.expect("the deferred paragraph");
 	assert!(
-		!heading.iter().any(|inline| matches!(
-			inline.kind,
-			markview_document::InlineKind::Math { .. }
-		)),
-		"code content became a formula: {heading:?}"
-	);
-	assert!(
-		heading.iter().all(|inline| inline.style.code),
-		"the code context was lost: {heading:?}"
+		nested.iter().all(|inline| inline.style.code
+			&& !matches!(
+				inline.kind,
+				markview_document::InlineKind::Math { .. }
+			)),
+		"the deferred block left its code context: {nested:?}"
 	);
 }
 
@@ -2224,4 +2234,102 @@ fn a_math_wrapper_with_a_block_still_lowers_as_a_formula() {
 		})
 		.collect();
 	assert_eq!(math, [("x^2", false)], "{heading:?}");
+}
+
+#[test]
+fn specialized_deferred_blocks_keep_the_wrapper_link() {
+	// A formula and a diagram are built by dedicated constructors; both must
+	// still carry the enclosing wrapper's link.
+	let formula = article(
+		r#"<p>Lead paragraph with enough prose for the extractor to keep this
+		article and its malformed heading, which is left open over the content
+		that follows it.</p>
+		<h2><a href="/target">Section<div class="math">x^2</div></a></h2>
+		<p>Trailing prose keeps the article's candidate score high enough to
+		survive cleanup.</p>"#,
+	);
+	let url = "https://example.org/target";
+	let page = extract(&formula, "https://example.org/formula").unwrap();
+	let math = page
+		.document
+		.blocks()
+		.iter()
+		.find_map(|block| match block.kind() {
+			BlockKind::Paragraph(text)
+				if text.iter().any(|inline| {
+					matches!(
+						inline.kind,
+						markview_document::InlineKind::Math { .. }
+					)
+				}) =>
+			{
+				Some(text)
+			}
+			_ => None,
+		})
+		.expect("the deferred formula");
+	assert!(
+		math.iter().all(|inline| inline.link_url() == Some(url)),
+		"the formula lost the wrapper link: {math:?}"
+	);
+	let diagram = article(
+		r#"<p>Lead paragraph with enough prose for the extractor to keep this
+		article and its malformed heading, which is left open over the content
+		that follows it.</p>
+		<h2><a href="/target">Section<div><pre><code class="language-mermaid">graph TD; A--&gt;B;</code></pre></div></a></h2>
+		<p>Trailing prose keeps the article's candidate score high enough to
+		survive cleanup.</p>"#,
+	);
+	let page = extract(&diagram, "https://example.org/diagram").unwrap();
+	let image = page
+		.document
+		.blocks()
+		.iter()
+		.find_map(|block| match block.kind() {
+			BlockKind::Paragraph(text) => text.iter().find(|inline| {
+				matches!(inline.kind, markview_document::InlineKind::Image(_))
+			}),
+			_ => None,
+		})
+		.expect("the deferred diagram");
+	assert_eq!(
+		image.link_url(),
+		Some(url),
+		"the diagram lost the wrapper link"
+	);
+}
+
+#[test]
+fn a_deferred_mermaid_block_inside_a_code_wrapper_stays_literal() {
+	let html = article(
+		r#"<p>Lead paragraph with enough prose for the extractor to keep this
+		article and its malformed heading, which is left open over the content
+		that follows it.</p>
+		<h2><code>Section<div><pre class="language-mermaid">graph TD;
+		A--&gt;B;</pre></div></code></h2>
+		<p>Trailing prose keeps the article's candidate score high enough to
+		survive cleanup.</p>"#,
+	);
+	let page = extract(&html, "https://example.org/mermaid").unwrap();
+	let code = page
+		.document
+		.blocks()
+		.iter()
+		.find_map(|block| match block.kind() {
+			BlockKind::Code { language, text } => {
+				Some((language.as_str(), text.as_str()))
+			}
+			_ => None,
+		})
+		.expect("the literal code block");
+	assert_eq!(code.0, "mermaid");
+	assert!(code.1.contains("graph TD;"), "{code:?}");
+	let mut images = Vec::new();
+	for block in page.document.blocks() {
+		block.images(&mut images);
+	}
+	assert!(
+		images.is_empty(),
+		"a code-wrapped diagram was rendered: {images:?}"
+	);
 }

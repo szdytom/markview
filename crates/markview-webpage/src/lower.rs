@@ -48,6 +48,8 @@ pub(crate) struct Lower<'a> {
 	anchors: Anchors,
 	explicit_ids: std::collections::HashSet<String>,
 	next_link: usize,
+	/// The run state an enclosing inline wrapper passes to deferred blocks.
+	inherited: RunStyle,
 	title_block: Option<BlockId>,
 	blocks: usize,
 	text_bytes: usize,
@@ -72,6 +74,7 @@ impl<'a> Lower<'a> {
 			anchors: Anchors::default(),
 			explicit_ids: Default::default(),
 			next_link: 0,
+			inherited: RunStyle::default(),
 			title_block: None,
 			blocks: 0,
 			text_bytes: 0,
@@ -155,11 +158,12 @@ impl<'a> Lower<'a> {
 		if presentation_only(parent) {
 			return Ok(());
 		}
+		let style = self.inherited.clone();
 		let mut pending = RichText::new();
 		for child in parent.children_it(false) {
 			if child.is_text() {
 				let text = child.text().to_string();
-				self.append_text(&mut pending, &text, &RunStyle::default())?;
+				self.append_text(&mut pending, &text, &style)?;
 				continue;
 			}
 			if !child.is_element() {
@@ -170,7 +174,7 @@ impl<'a> Lower<'a> {
 				self.append_inline(
 					&mut pending,
 					InlineKind::LineBreak(LineBreak::Forced),
-					&RunStyle::default(),
+					&style,
 				);
 				continue;
 			}
@@ -181,7 +185,7 @@ impl<'a> Lower<'a> {
 				self.inline_element(
 					&child,
 					&name,
-					&RunStyle::default(),
+					&style,
 					&mut pending,
 					depth,
 				)?;
@@ -225,20 +229,22 @@ impl<'a> Lower<'a> {
 		if presentation_only(node) {
 			return Ok(());
 		}
+		let style = self.inherited.clone();
 		let start = out.len();
 		let explicit = self.block_anchor(node);
-		if name == "math"
-			|| node.has_class("math")
-			|| node.attr("data-mv-math").is_some()
+		if !style.code
+			&& (name == "math"
+				|| node.has_class("math")
+				|| node.attr("data-mv-math").is_some())
 		{
 			if let Some(math) = math_from(node, name) {
 				let kind = BlockKind::Paragraph(vec![Inline {
-					link: None,
+					link: style.link.clone(),
 					kind: InlineKind::Math {
 						latex: math.0,
 						display: math.1,
 					},
-					style: TextStyle::default(),
+					style: style.visual.clone(),
 				}]);
 				let block = self.make(explicit.into_iter().collect(), kind)?;
 				out.push(block);
@@ -249,9 +255,9 @@ impl<'a> Lower<'a> {
 				self.diagnostics
 					.push("MathML without TeX annotation kept as text".into());
 				let kind = BlockKind::Paragraph(vec![Inline {
-					link: None,
+					link: style.link.clone(),
 					kind: InlineKind::Text(fallback),
-					style: TextStyle::default(),
+					style: style.visual.clone(),
 				}]);
 				let block = self.make(explicit.into_iter().collect(), kind)?;
 				out.push(block);
@@ -263,8 +269,7 @@ impl<'a> Lower<'a> {
 		}
 		let kind = match name {
 			"p" | "address" | "figcaption" => {
-				let text =
-					self.inlines(node, &RunStyle::default(), depth + 1)?;
+				let text = self.inlines(node, &style, depth + 1)?;
 				BlockKind::Paragraph(trim_rich(text))
 			}
 			"hr" => BlockKind::Rule,
@@ -360,13 +365,12 @@ impl<'a> Lower<'a> {
 		}
 		out.push(block);
 		for (child, style) in nested {
-			let before = out.len();
-			let child_name = local_name(&child);
-			self.lower_block(&child, &child_name, depth + 1, out)?;
 			// The wrapper's link and style enclose the deferred blocks too.
-			for block in &mut out[before..] {
-				apply_run(block, style.link.as_ref(), Some(&style.visual));
-			}
+			let outer = std::mem::replace(&mut self.inherited, style);
+			let child_name = local_name(&child);
+			let result = self.lower_block(&child, &child_name, depth + 1, out);
+			self.inherited = outer;
+			result?;
 		}
 		Ok(())
 	}
@@ -380,13 +384,8 @@ impl<'a> Lower<'a> {
 	) -> Result<(RichText, Vec<(NodeRef<'a>, RunStyle)>), Error> {
 		let mut text = RichText::new();
 		let mut nested = Vec::new();
-		self.heading_children(
-			node,
-			&RunStyle::default(),
-			depth,
-			&mut text,
-			&mut nested,
-		)?;
+		let style = self.inherited.clone();
+		self.heading_children(node, &style, depth, &mut text, &mut nested)?;
 		Ok((text, nested))
 	}
 
@@ -416,7 +415,6 @@ impl<'a> Lower<'a> {
 					nested.push((child, style.clone()));
 				} else if has_block_children(&child)
 					&& !delegated_inline(&child, &name)
-					&& !code_context(style, &name)
 				{
 					// A mixed inline wrapper: its text is the heading's,
 					// its blocks belong to the body.
@@ -518,9 +516,11 @@ impl<'a> Lower<'a> {
 		let language = code_language(&code)
 			.or_else(|| code_language(node))
 			.unwrap_or_default();
-		if language == "mermaid" {
+		// A code wrapper makes its content literal, including a Mermaid block.
+		if language == "mermaid" && !self.inherited.code {
+			let style = self.inherited.clone();
 			return Ok(BlockKind::Paragraph(vec![Inline {
-				link: None,
+				link: style.link,
 				kind: InlineKind::Image(ImageSpec {
 					source: image::ImageSource::Diagram(image::Diagram {
 						language: "mermaid".into(),
@@ -531,7 +531,7 @@ impl<'a> Lower<'a> {
 					width: None,
 					height: None,
 				}),
-				style: TextStyle::default(),
+				style: style.visual,
 			}]));
 		}
 		Ok(BlockKind::Code { language, text })
@@ -606,23 +606,16 @@ impl<'a> Lower<'a> {
 		depth: usize,
 	) -> Result<BlockKind, Error> {
 		let open = node.attr("open").is_some();
+		let style = self.inherited.clone();
 		let mut summary = RichText::new();
 		let mut blocks = Vec::new();
 		let mut pending = RichText::new();
 		for child in node.children_it(false) {
 			if child.is_element() && is_name(&child, "summary") {
 				self.flush(&mut pending, &mut blocks)?;
-				summary = trim_rich(self.inlines(
-					&child,
-					&RunStyle::default(),
-					depth + 1,
-				)?);
+				summary = trim_rich(self.inlines(&child, &style, depth + 1)?);
 			} else if child.is_text() {
-				self.append_text(
-					&mut pending,
-					child.text().as_ref(),
-					&RunStyle::default(),
-				)?;
+				self.append_text(&mut pending, child.text().as_ref(), &style)?;
 			} else if child.is_element() {
 				let name = local_name(&child);
 				if is_block_element(&name) || has_block_children(&child) {
@@ -632,7 +625,7 @@ impl<'a> Lower<'a> {
 					self.inline_element(
 						&child,
 						&name,
-						&RunStyle::default(),
+						&style,
 						&mut pending,
 						depth + 1,
 					)?;
@@ -652,24 +645,18 @@ impl<'a> Lower<'a> {
 		node: &NodeRef<'a>,
 		depth: usize,
 	) -> Result<BlockKind, Error> {
+		let style = self.inherited.clone();
 		let mut blocks = Vec::new();
 		let mut caption = None;
 		let mut pending = RichText::new();
 		for child in node.children_it(false) {
 			if child.is_element() && is_name(&child, "figcaption") {
 				self.flush(&mut pending, &mut blocks)?;
-				let text = trim_rich(self.inlines(
-					&child,
-					&RunStyle::default(),
-					depth + 1,
-				)?);
+				let text =
+					trim_rich(self.inlines(&child, &style, depth + 1)?);
 				caption = (!text.is_empty()).then_some(text);
 			} else if child.is_text() {
-				self.append_text(
-					&mut pending,
-					child.text().as_ref(),
-					&RunStyle::default(),
-				)?;
+				self.append_text(&mut pending, child.text().as_ref(), &style)?;
 			} else if child.is_element() {
 				let name = local_name(&child);
 				if is_block_element(&name) || has_block_children(&child) {
@@ -679,7 +666,7 @@ impl<'a> Lower<'a> {
 					self.inline_element(
 						&child,
 						&name,
-						&RunStyle::default(),
+						&style,
 						&mut pending,
 						depth + 1,
 					)?;
@@ -737,15 +724,15 @@ impl<'a> Lower<'a> {
 			return Ok(());
 		}
 		let anchor = self.block_anchor(child);
-		let mut term =
-			trim_rich(self.inlines(child, &RunStyle::default(), depth + 1)?);
+		let style = self.inherited.clone();
+		let mut term = trim_rich(self.inlines(child, &style, depth + 1)?);
 		if let Some(anchor) = anchor {
 			term.insert(
 				0,
 				Inline {
-					link: None,
+					link: style.link.clone(),
 					kind: InlineKind::Anchor(anchor),
-					style: TextStyle::default(),
+					style: style.visual.clone(),
 				},
 			);
 		}
@@ -807,15 +794,13 @@ impl<'a> Lower<'a> {
 		let mut caption = None;
 		let mut raw_groups: Vec<(TableGroupKind, Vec<NodeRef<'a>>)> =
 			Vec::new();
+		let style = self.inherited.clone();
 		for child in node.children_it(false) {
 			let name = local_name(&child);
 			match name.as_str() {
 				"caption" => {
-					let text = trim_rich(self.inlines(
-						&child,
-						&RunStyle::default(),
-						depth + 1,
-					)?);
+					let text =
+						trim_rich(self.inlines(&child, &style, depth + 1)?);
 					caption = (!text.is_empty()).then_some(text);
 				}
 				"thead" | "tbody" | "tfoot" => {
@@ -1286,106 +1271,66 @@ impl<'a> Lower<'a> {
 }
 
 /// Applies an enclosing block-level HTML link to every rich run.
-/// Applies an enclosing block-level HTML link to every rich run.
 fn apply_link(block: &mut Block, link: &Link) {
-	apply_run(block, Some(link), None);
-}
-
-/// Applies an enclosing link and inherited visual style to every rich run.
-///
-/// A run that already carries a link keeps it; the style flags are merged, so
-/// an enclosing `<em>` or `<code>` reaches the blocks split out of a heading
-/// the way the browser's inheritance would.
-fn apply_run(
-	block: &mut Block,
-	link: Option<&Link>,
-	style: Option<&TextStyle>,
-) {
-	fn merge(target: &mut TextStyle, style: &TextStyle) {
-		target.bold |= style.bold;
-		target.italic |= style.italic;
-		target.strike |= style.strike;
-		target.mark |= style.mark;
-		target.code |= style.code;
-		target.superscript |= style.superscript;
-		target.subscript |= style.subscript;
-	}
-	fn rich(
-		text: &mut RichText,
-		link: Option<&Link>,
-		style: Option<&TextStyle>,
-	) {
+	fn rich(text: &mut RichText, link: &Link) {
 		for inline in text {
-			if let Some(link) = link
-				&& inline.link.is_none()
-			{
+			if inline.link.is_none() {
 				inline.link = Some(link.clone());
 			}
-			if let Some(style) = style {
-				merge(&mut inline.style, style);
-			}
 		}
 	}
-	fn optional(
-		text: &mut Option<RichText>,
-		link: Option<&Link>,
-		style: Option<&TextStyle>,
-	) {
+	fn optional(text: &mut Option<RichText>, link: &Link) {
 		if let Some(text) = text {
-			rich(text, link, style);
+			rich(text, link);
 		}
 	}
-	fn all(
-		blocks: &mut [Block],
-		link: Option<&Link>,
-		style: Option<&TextStyle>,
-	) {
+	fn all(blocks: &mut [Block], link: &Link) {
 		for child in blocks {
-			apply_run(child, link, style);
+			apply_link(child, link);
 		}
 	}
 	match block.kind_mut() {
 		BlockKind::Paragraph(text) | BlockKind::Heading { text, .. } => {
-			rich(text, link, style)
+			rich(text, link)
 		}
 		BlockKind::Quote { blocks, callout } => {
 			if let Some(title) =
 				callout.as_mut().and_then(|callout| callout.title.as_mut())
 			{
-				rich(title, link, style);
+				rich(title, link);
 			}
-			all(blocks, link, style);
+			all(blocks, link);
 		}
 		BlockKind::Footnote { blocks, .. }
-		| BlockKind::FrontMatter { blocks, .. } => all(blocks, link, style),
+		| BlockKind::FrontMatter { blocks, .. } => all(blocks, link),
 		BlockKind::Details {
 			summary, blocks, ..
 		} => {
-			rich(summary, link, style);
-			all(blocks, link, style);
+			rich(summary, link);
+			all(blocks, link);
 		}
 		BlockKind::Figure { blocks, caption } => {
-			optional(caption, link, style);
-			all(blocks, link, style);
+			optional(caption, link);
+			all(blocks, link);
 		}
 		BlockKind::List { items, .. } => {
 			for item in items {
-				all(&mut item.blocks, link, style);
+				all(&mut item.blocks, link);
 			}
 		}
 		BlockKind::Table(table) => {
-			optional(&mut table.caption, link, style);
+			optional(&mut table.caption, link);
 			for child in table.cell_blocks_mut() {
-				apply_run(child, link, style);
+				apply_link(child, link);
 			}
 		}
 		BlockKind::DefinitionList(items) => {
 			for item in items {
 				for terms in &mut item.terms {
-					rich(terms, link, style);
+					rich(terms, link);
 				}
 				for blocks in &mut item.definitions {
-					all(blocks, link, style);
+					all(blocks, link);
 				}
 			}
 		}
@@ -1517,11 +1462,6 @@ fn is_skipped_inline(name: &str) -> bool {
 			| "select"
 			| "textarea"
 	)
-}
-
-/// Whether the wrapper keeps its content literal, as `<code>` does.
-fn code_context(style: &RunStyle, name: &str) -> bool {
-	style.code || matches!(name, "code" | "kbd" | "samp" | "tt")
 }
 
 /// Inline elements with their own semantic lowering that a mixed wrapper
