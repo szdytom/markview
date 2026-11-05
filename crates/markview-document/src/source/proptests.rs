@@ -124,7 +124,6 @@ proptest! {
 	}
 
 	#[test]
-	#[ignore = "Known bug PBT-001: reverse lookup skips an earlier overlapping span"]
 	fn reverse_lookup_finds_an_outer_span_after_an_inner_span_ends(
 		prefix in 1usize..16, inner_len in 1usize..16, tail in 1usize..16,
 	) {

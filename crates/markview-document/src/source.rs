@@ -70,6 +70,8 @@ pub struct SourceTarget {
 #[derive(Clone, Debug)]
 struct Reverse {
 	source: Range<usize>,
+	/// Largest source end in this entry and all preceding entries.
+	max_end: usize,
 	block: usize,
 	field: usize,
 	span: usize,
@@ -99,6 +101,7 @@ impl SourceMap {
 				for (span, entry) in entry.spans.iter().enumerate() {
 					reverse.push(Reverse {
 						source: entry.source.clone(),
+						max_end: 0,
 						block,
 						field,
 						span,
@@ -112,6 +115,11 @@ impl SourceMap {
 				.cmp(&b.source.start)
 				.then(a.source.end.cmp(&b.source.end))
 		});
+		let mut max_end = 0;
+		for entry in &mut reverse {
+			max_end = max_end.max(entry.source.end);
+			entry.max_end = max_end;
+		}
 		Self {
 			revision: Some(revision),
 			blocks,
@@ -220,10 +228,8 @@ impl SourceMap {
 		offset: usize,
 	) -> Option<(BlockId, FieldId, Range<usize>)> {
 		let mut best: Option<&Reverse> = None;
-		let start = self
-			.reverse
-			.partition_point(|entry| entry.source.start < offset)
-			.saturating_sub(1);
+		let start =
+			self.reverse.partition_point(|entry| entry.max_end < offset);
 		for entry in self.reverse.iter().skip(start) {
 			if entry.source.start > offset {
 				break;
