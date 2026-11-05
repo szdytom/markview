@@ -23,12 +23,15 @@ jobs:
           key: pbt
       - name: Install native libraries
         if: runner.os == 'Linux'
-        run: bash scripts/ci_install_packages.sh libfontconfig1-dev
+        run: bash scripts/ci_install_packages.sh libfontconfig1-dev libxkbcommon-dev libwayland-dev
       - name: Run property tests
         run: >-
           cargo test --locked -p markview-geometry -p markview-document
-          -p markview-layout -p markview-ui-core -p markview-interaction
-          --lib proptests::
+          -p markview-layout -p markview-ui-core -p markview-interaction -p markview-commonmark
+          -p markview-i18n -p markview -p markview-web -p markview-webpage
+          -p markview-icon -p markview-render -p markview-pdf -p markview-platform --lib proptests::
+      - name: Run development-tool property tests
+        run: cargo test --locked -p xtask proptests::
       - name: Upload property test regressions
         if: failure()
         uses: actions/upload-artifact@v7
