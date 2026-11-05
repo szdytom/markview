@@ -31,7 +31,7 @@ jobs:
           -p markview-i18n -p markview -p markview-web -p markview-webpage
           -p markview-icon -p markview-render -p markview-pdf -p markview-platform --lib proptests::
       - name: Run development-tool property tests
-        run: cargo test --locked -p xtask proptests::
+        run: 'cargo test --locked -p xtask proptests::'
       - name: Upload property test regressions
         if: failure()
         uses: actions/upload-artifact@v7

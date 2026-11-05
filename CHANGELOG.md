@@ -54,6 +54,7 @@ at the same level, without `[brackets]`.
 
 ### Fixed
 
+- Quote the property-test command so GitHub Actions can parse and start CI.
 - Match font archive wildcards correctly when member names contain literal asterisks.
 - Send PDF footnote return links to the earliest reference by page and vertical position.
 - Preserve stored `max-age` precedence over Expires-only image-cache revalidation responses.
