@@ -397,7 +397,7 @@ struct App<P = EventLoopProxy<Event>> {
 	/// When reading-area scrolling last moved, so idle maintenance waits for a
 	/// genuinely stationary reader.
 	last_scroll_at: Instant,
-	/// The document scrollbar's linger or fade after pointer motion.
+	/// The document scrollbar's linger or fade after scrolling or pointer motion.
 	scrollbar_reveal: viewport::ScrollbarReveal,
 	fatal: Option<String>,
 	/// The one export in flight, the live watch target and the PNG strip loop.

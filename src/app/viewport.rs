@@ -3,15 +3,15 @@ use crate::layout::{Rect, Scrollbar};
 use crate::state::{Animation, Fade};
 use std::time::{Duration, Instant};
 
-/// How long the document scrollbar stays on screen after the pointer moves
-/// over the reading area.
+/// How long the document scrollbar stays on screen after scrolling or pointer
+/// motion over the reading area.
 pub(super) const SCROLLBAR_LINGER: Duration = Duration::from_millis(1200);
 /// How long the document scrollbar takes to fade once its linger expires.
 /// VS Code fades a hidden scrollbar over 800ms.
 pub(super) const SCROLLBAR_FADE: Duration = Duration::from_millis(800);
 
 /// The document or folder scrollbar's reveal state: hidden, lingering after
-/// pointer motion, or fading out.
+/// scrolling or pointer motion, or fading out.
 #[derive(Default)]
 pub(super) enum ScrollbarReveal {
 	#[default]

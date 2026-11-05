@@ -375,7 +375,7 @@ fn document_scrollbar_hugs_the_right_edge_and_keeps_its_width_while_dragging() {
 }
 
 #[test]
-fn document_scrollbar_appears_only_on_motion_over_the_reader() {
+fn pointer_motion_reveals_the_document_scrollbar_only_over_the_reader() {
 	let (mut app, _) = reader(&"Body line.\n\n".repeat(100), 760.0);
 	assert!(app.document_scrollbar().is_none());
 	// Motion in the toolbar leaves it hidden.
@@ -414,6 +414,49 @@ fn pointer_motion_restores_a_faded_document_scrollbar() {
 	assert!(app.scrollbar_opacity_at(halfway) < 1.0);
 	app.pointer_moved(PhysicalPosition::new(500.0, 400.0));
 	assert_eq!(app.scrollbar_opacity(), 1.0);
+}
+
+#[test]
+fn wheel_scrolling_restores_the_document_scrollbar_without_pointer_motion() {
+	use super::super::viewport::{SCROLLBAR_FADE, SCROLLBAR_LINGER};
+	use winit::event::MouseScrollDelta;
+
+	for delta in [
+		MouseScrollDelta::LineDelta(0.0, -1.0),
+		MouseScrollDelta::LineDelta(0.0, 1.0),
+		MouseScrollDelta::PixelDelta(PhysicalPosition::new(0.0, -40.0)),
+		MouseScrollDelta::PixelDelta(PhysicalPosition::new(0.0, 40.0)),
+	] {
+		let (mut app, _) = reader(&"Body line.\n\n".repeat(100), 760.0);
+		app.pointer_moved(PhysicalPosition::new(500.0, 400.0));
+		let cursor = app.interaction.pointer.cursor();
+		let until = app.scrollbar_reveal.linger_until().unwrap();
+		app.scrollbar_tick(until + SCROLLBAR_FADE);
+		assert!(app.document_scrollbar().is_none());
+
+		for fade in [SCROLLBAR_FADE / 2, SCROLLBAR_FADE] {
+			app.handle_window_event(
+				&StubLoop,
+				WindowId::dummy(),
+				WindowEvent::MouseWheel {
+					device_id: DeviceId::dummy(),
+					delta,
+					phase: TouchPhase::Moved,
+				},
+			);
+			assert_eq!(app.interaction.pointer.cursor(), cursor);
+			assert!(app.document_scrollbar().is_some(), "{delta:?}");
+			assert_eq!(app.scrollbar_opacity(), 1.0);
+			let until = app.scrollbar_reveal.linger_until().unwrap();
+			assert!(until > Instant::now());
+			assert!(until <= Instant::now() + SCROLLBAR_LINGER);
+			app.scrollbar_tick(until + fade);
+			assert_eq!(
+				app.document_scrollbar().is_none(),
+				fade == SCROLLBAR_FADE
+			);
+		}
+	}
 }
 
 #[test]

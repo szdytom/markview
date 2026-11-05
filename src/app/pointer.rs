@@ -710,6 +710,9 @@ impl<P: super::SendEvent> App<P> {
 		if self.scroll_start(dy, markview_interaction::WheelMode::Direct) {
 			return;
 		}
+		if dy != 0.0 {
+			self.show_document_scrollbar(Instant::now());
+		}
 		self.readers.session.scroll_by(dy, self.viewport());
 		self.after_scroll();
 	}
@@ -739,6 +742,9 @@ impl<P: super::SendEvent> App<P> {
 	) {
 		if self.scroll_start(dy, mode) {
 			return;
+		}
+		if dy != 0.0 {
+			self.show_document_scrollbar(Instant::now());
 		}
 		if eases(dy) {
 			self.readers.session.wheel(
