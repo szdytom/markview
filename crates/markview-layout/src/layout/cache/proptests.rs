@@ -126,7 +126,6 @@ proptest! {
 	}
 
 	#[test]
-	#[ignore = "Known bug PBT-004: figure cache remapping collects caption occurrences before body occurrences"]
 	fn a_cached_figure_keeps_its_body_and_caption_occurrences(base in 1u32..17) {
 		let mut builder = DocumentBuilder::new(DocumentRevision::new(1));
 		let body = builder.block(Vec::new(), BlockKind::Paragraph(rich(&[id(base)], &[(false, 1, 1)])));

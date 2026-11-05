@@ -177,7 +177,7 @@ pub(super) fn remap_link_ids(
 	Arc::new(layout)
 }
 
-/// The inline link occurrences `block` prepares, in reading order, including
+/// The inline link occurrences `block` prepares, in layout order, including
 /// runs whose content line breaking later discards.
 pub(super) fn block_link_origins(
 	block: &Block,
@@ -250,11 +250,11 @@ pub(super) fn block_link_origins(
 				}
 			}
 			BlockKind::Figure { blocks, caption } => {
-				if let Some(caption) = caption {
-					out.extend(crate::document::inline_link_origins(caption));
-				}
 				for block in blocks {
 					walk(block, limits, out);
+				}
+				if let Some(caption) = caption {
+					out.extend(crate::document::inline_link_origins(caption));
 				}
 			}
 			BlockKind::Details {

@@ -54,6 +54,7 @@ at the same level, without `[brackets]`.
 
 ### Fixed
 
+- Keep figure body and caption link occurrences bound to their own fragments on layout cache hits.
 - Preserve text selections across surrounding deletion when combining marks join the selected grapheme.
 - Find covering source spans during reverse navigation even when later spans overlap them.
 - Reveal the document scrollbar again on wheel and touchpad scrolling, restarting its auto-hide delay without requiring pointer motion.
