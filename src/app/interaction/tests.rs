@@ -59,7 +59,8 @@ fn enabling_a_surviving_independent_window_registers_it_for_later_launches() {
 	}
 	let dir = tempfile::tempdir().unwrap();
 	let lock = dir.path().join("instance.lock");
-	let Start::Primary(primary) = start(&lock, false, None).unwrap() else {
+	let Start::Primary(primary) = start(&lock, false, None, false).unwrap()
+	else {
 		panic!()
 	};
 	let (original_tx, original_rx) = mpsc::channel();
@@ -70,7 +71,7 @@ fn enabling_a_surviving_independent_window_registers_it_for_later_launches() {
 		original_tx.send(path).is_ok()
 	});
 	assert!(matches!(
-		start(&lock, false, None).unwrap(),
+		start(&lock, false, None, false).unwrap(),
 		Start::Independent
 	));
 	let (tx, rx) = mpsc::channel();
@@ -99,7 +100,7 @@ fn enabling_a_surviving_independent_window_registers_it_for_later_launches() {
 	assert!(app.instance.is_some());
 	let path = dir.path().join("second.md");
 	assert!(matches!(
-		start(&lock, true, Some(path.clone())).unwrap(),
+		start(&lock, true, Some(path.clone()), false).unwrap(),
 		Start::Forwarded(_)
 	));
 	assert_eq!(rx.recv_timeout(Duration::from_secs(2)).unwrap(), Some(path));
@@ -2253,7 +2254,7 @@ fn picked_files_stay_here_while_desktop_requests_follow_folder_windows() {
 	let root = dir.path().join("notes");
 	std::fs::create_dir(&root).unwrap();
 	let Start::Primary(primary) =
-		start(&lock, true, Some(root.clone())).unwrap()
+		start(&lock, true, Some(root.clone()), false).unwrap()
 	else {
 		panic!()
 	};
@@ -2287,12 +2288,12 @@ fn picked_files_stay_here_while_desktop_requests_follow_folder_windows() {
 	std::fs::create_dir(&other).unwrap();
 	app.open_folder(other.clone(), false);
 	assert!(matches!(
-		start(&lock, true, Some(other.join("pending.md"))).unwrap(),
+		start(&lock, true, Some(other.join("pending.md")), false).unwrap(),
 		Start::Forwarded(_)
 	));
 	app.folder_loaded(1, false, Err(anyhow::anyhow!("scan failed")));
 	assert!(matches!(
-		start(&lock, true, Some(other)).unwrap(),
+		start(&lock, true, Some(other), false).unwrap(),
 		Start::Primary(_)
 	));
 }

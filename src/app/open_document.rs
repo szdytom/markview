@@ -78,7 +78,8 @@ mod forwarding_tests {
 	fn secondary_forwards_all_desktop_documents_and_reports_delivery_failure() {
 		let dir = tempfile::tempdir().unwrap();
 		let lock = dir.path().join("instance.lock");
-		let Start::Primary(primary) = start(&lock, true, None).unwrap() else {
+		let Start::Primary(primary) = start(&lock, true, None, false).unwrap()
+		else {
 			panic!()
 		};
 		let (tx, rx) = mpsc::channel();
@@ -88,7 +89,8 @@ mod forwarding_tests {
 			};
 			tx.send(path).is_ok()
 		});
-		let Start::Forwarded(remote) = start(&lock, true, None).unwrap() else {
+		let Start::Forwarded(remote) = start(&lock, true, None, false).unwrap()
+		else {
 			panic!()
 		};
 		let timeout = Duration::from_secs(2);

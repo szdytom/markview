@@ -325,6 +325,7 @@ fn run_reader(args: LaunchOptions) -> Result<()> {
 			&config.with_file_name("instance.lock"),
 			store.settings().single_instance,
 			args.path.clone(),
+			args.new_window,
 		)
 		.or_else(|error| {
 			if store.settings().single_instance {

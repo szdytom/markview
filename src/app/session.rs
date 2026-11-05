@@ -597,7 +597,10 @@ impl<P: super::SendEvent> App<P> {
 		}
 		self.persistence.initialized = true;
 		self.persistence.enabled = self.preferences.values.restore_session;
-		if !self.persistence.enabled || !self.owns_session() {
+		if !self.persistence.enabled
+			|| !self.owns_session()
+			|| self.args.new_window
+		{
 			return;
 		}
 		if let Some(path) = &self.persistence.path {

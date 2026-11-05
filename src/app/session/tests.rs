@@ -44,6 +44,24 @@ fn document(dir: &Path, name: &str) -> PathBuf {
 }
 
 #[test]
+fn new_window_starts_blank_even_with_a_saved_session() {
+	let dir = tempfile::tempdir().unwrap();
+	let path = document(dir.path(), "saved.md");
+	{
+		let mut saved = app(dir.path());
+		primary(&mut saved);
+		saved.readers.open(path, Instant::now());
+		saved.flush_session();
+	}
+	let mut fresh = app(dir.path());
+	fresh.args.new_window = true;
+	primary(&mut fresh);
+	assert!(fresh.owns_session());
+	assert!(fresh.readers.entries().is_empty());
+	assert!(fresh.readers.session.path.is_none());
+}
+
+#[test]
 fn roundtrip_tabs_order_active_dedup_close_empty_and_invalid_files() {
 	let dir = tempfile::tempdir().unwrap();
 	let a = document(dir.path(), "a.md");
@@ -167,10 +185,13 @@ fn lock_ownership_setting_linkage_debounce_and_shutdown_save() {
 		.open(document(dir.path(), "b.md"), Instant::now());
 	drop(independent);
 	drop(owner);
-	let Start::Primary(_primary) =
-		single_instance::start(&dir.path().join("instance.lock"), false, None)
-			.unwrap()
-	else {
+	let Start::Primary(_primary) = single_instance::start(
+		&dir.path().join("instance.lock"),
+		false,
+		None,
+		false,
+	)
+	.unwrap() else {
 		panic!()
 	};
 	assert_eq!(Session::read(&path).unwrap().tabs.len(), 2);

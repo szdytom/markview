@@ -17,6 +17,9 @@ use super::modal::Message;
 use super::viewer::Message as ViewerMessage;
 use super::{App, frame::Caption};
 
+#[cfg(test)]
+mod tests;
+
 /// What the app asks of the loop it runs under.
 ///
 /// `ActiveEventLoop` is the only real implementation; a test drives the app
@@ -24,6 +27,9 @@ use super::{App, frame::Caption};
 /// handlers below name this rather than the concrete type.
 pub(super) trait Loop {
 	fn exit(&self);
+	fn new_window(&self) -> anyhow::Result<()> {
+		super::single_instance::spawn(None, true)
+	}
 	fn window_drag(
 		&self,
 		window: Option<&Window>,
@@ -142,7 +148,7 @@ impl<P: super::SendEvent> App<P> {
 			WindowEvent::KeyboardInput { event, .. }
 				if event.state == ElementState::Pressed =>
 			{
-				self.dispatch_key(event_loop, &event);
+				self.dispatch_key(event_loop, &event.logical_key, event.repeat);
 			}
 			_ => {}
 		}
@@ -566,24 +572,25 @@ impl<P: super::SendEvent> App<P> {
 	fn dispatch_key(
 		&mut self,
 		event_loop: &impl Loop,
-		event: &winit::event::KeyEvent,
+		key: &Key,
+		repeat: bool,
 	) {
 		self.cancel_gestures();
 		self.interaction.widgets.focus_visible = true;
-		let command = self.interaction.pointer.modifiers().control_key()
-			|| self.interaction.pointer.modifiers().super_key();
+		let modifiers = self.interaction.pointer.modifiers();
+		let command = modifiers.control_key() || modifiers.super_key();
 		// A confirmation answers to Tab, Enter and Escape only.
 		if self.interaction.overlays.modal_open()
 			&& (command
 				|| !matches!(
-					event.logical_key,
+					key,
 					Key::Named(
 						NamedKey::Tab | NamedKey::Enter | NamedKey::Escape
 					)
 				)) {
 			return;
 		}
-		if self.tab_cycle_chord(&event.logical_key) {
+		if self.tab_cycle_chord(key) {
 			if !self.panel_has_focus() {
 				let backwards =
 					self.interaction.pointer.modifiers().shift_key();
@@ -592,8 +599,16 @@ impl<P: super::SendEvent> App<P> {
 			return;
 		}
 		if command {
-			if let Key::Character(c) = &event.logical_key {
+			if let Key::Character(c) = key {
 				match c.to_lowercase().as_str() {
+					"n" if markview_platform::desktop_cli()
+						&& !repeat && !modifiers.alt_key()
+						&& !modifiers.shift_key() =>
+					{
+						if let Err(error) = event_loop.new_window() {
+							self.notify(&error.to_string(), true, 4);
+						}
+					}
 					"a" if !self.panel_has_focus() => {
 						if self.readers.session.layout_pending {
 							self.interaction.clear_selection();
@@ -666,7 +681,7 @@ impl<P: super::SendEvent> App<P> {
 				}
 			}
 		} else {
-			self.press_unmodified(event_loop, &event.logical_key);
+			self.press_unmodified(event_loop, key);
 		}
 	}
 

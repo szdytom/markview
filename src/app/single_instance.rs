@@ -47,7 +47,7 @@ impl Remote {
 		if let Some(endpoint) = find(&self.lock_path, path)? {
 			forward(&endpoint, path)
 		} else {
-			spawn(path)
+			spawn(path, false)
 		}
 	}
 }
@@ -177,15 +177,17 @@ pub(super) fn start(
 	lock_path: &Path,
 	enabled: bool,
 	path: Option<PathBuf>,
+	new_window: bool,
 ) -> Result<Start> {
 	let deadline = Instant::now() + TIMEOUT;
 	loop {
 		let _guard = registry_guard(lock_path)?;
 		let windows = windows(lock_path)?;
-		if !enabled && !windows.endpoints.is_empty() {
+		if !enabled && !new_window && !windows.endpoints.is_empty() {
 			return Ok(Start::Independent);
 		}
 		if enabled
+			&& !new_window
 			&& let Some(endpoint) = select(&windows.endpoints, path.as_deref())
 		{
 			if forward(&endpoint, path.as_deref()).is_ok() {
@@ -244,9 +246,12 @@ fn create_primary(
 	})
 }
 
-fn spawn(path: Option<&Path>) -> Result<()> {
+pub(super) fn spawn(path: Option<&Path>, new_window: bool) -> Result<()> {
 	let mut child = std::process::Command::new(std::env::current_exe()?);
 	child.arg("--background-child");
+	if new_window {
+		child.arg("--new-window");
+	}
 	if let Some(path) = path {
 		child.arg("--").arg(path);
 	}
@@ -305,7 +310,7 @@ impl<P: super::SendEvent> super::App<P> {
 				}
 				forward(&endpoint, Some(&path))?;
 			} else {
-				spawn(Some(&path))?;
+				spawn(Some(&path), false)?;
 			}
 			Ok(true)
 		};
@@ -491,12 +496,41 @@ mod tests {
 		path: &Path,
 	) -> (Listener, mpsc::Receiver<Option<PathBuf>>) {
 		let Start::Primary(primary) =
-			start(lock, true, Some(path.to_owned())).unwrap()
+			start(lock, true, Some(path.to_owned()), false).unwrap()
 		else {
 			panic!("expected a new window for {}", path.display())
 		};
 		let (tx, rx) = mpsc::channel();
 		(primary.listen(proxy(tx)), rx)
+	}
+
+	#[test]
+	fn explicit_new_window_bypasses_reuse_and_keeps_session_ownership() {
+		let dir = tempfile::tempdir().unwrap();
+		let lock = dir.path().join("instance.lock");
+		let Start::Primary(first) = start(&lock, true, None, false).unwrap()
+		else {
+			panic!("expected the first window");
+		};
+		let (tx, rx) = mpsc::channel();
+		let first = first.listen(proxy(tx));
+		for enabled in [true, false] {
+			let Start::Primary(second) =
+				start(&lock, enabled, None, true).unwrap()
+			else {
+				panic!("expected a new window");
+			};
+			assert!(first.owns_session && !second.owns_session);
+			assert!(matches!(rx.try_recv(), Err(mpsc::TryRecvError::Empty)));
+			let (tx, second_rx) = mpsc::channel();
+			let _second = second.listen(proxy(tx));
+			let path = dir.path().join("note.md");
+			assert!(matches!(
+				start(&lock, true, Some(path.clone()), false).unwrap(),
+				Start::Forwarded(_)
+			));
+			assert_eq!(second_rx.recv_timeout(TIMEOUT).unwrap(), Some(path));
+		}
 	}
 
 	#[test]
@@ -514,7 +548,7 @@ mod tests {
 		assert!(first.owns_session);
 		assert!(!second.owns_session && !third.owns_session);
 		let Start::Forwarded(remote) =
-			start(&lock, true, Some(root.join("."))).unwrap()
+			start(&lock, true, Some(root.join(".")), false).unwrap()
 		else {
 			panic!()
 		};
@@ -540,7 +574,7 @@ mod tests {
 			(root.join("inside.md"), &first_rx),
 		] {
 			assert!(matches!(
-				start(&lock, true, Some(path.clone())).unwrap(),
+				start(&lock, true, Some(path.clone()), false).unwrap(),
 				Start::Forwarded(_)
 			));
 			assert_eq!(rx.recv_timeout(TIMEOUT).unwrap(), Some(path));
@@ -550,7 +584,7 @@ mod tests {
 		drop(first);
 		let path = nested.join("still-open.md");
 		assert!(matches!(
-			start(&lock, true, Some(path.clone())).unwrap(),
+			start(&lock, true, Some(path.clone()), false).unwrap(),
 			Start::Forwarded(_)
 		));
 		assert_eq!(third_rx.recv_timeout(TIMEOUT).unwrap(), Some(path));
@@ -577,7 +611,7 @@ mod tests {
 			alias.join("missing/note.md"),
 		] {
 			assert!(matches!(
-				start(&lock, true, Some(path.clone())).unwrap(),
+				start(&lock, true, Some(path.clone()), false).unwrap(),
 				Start::Forwarded(_)
 			));
 			assert_eq!(rx.recv_timeout(TIMEOUT).unwrap(), Some(path));
@@ -588,18 +622,19 @@ mod tests {
 	fn launches_forward_only_when_enabled_and_recover_after_exit() {
 		let dir = tempfile::tempdir().unwrap();
 		let lock = dir.path().join("instance.lock");
-		let Start::Primary(primary) = start(&lock, false, None).unwrap() else {
+		let Start::Primary(primary) = start(&lock, false, None, false).unwrap()
+		else {
 			panic!()
 		};
 		let (tx, rx) = mpsc::channel();
 		let listener = primary.listen(proxy(tx));
 		assert!(matches!(
-			start(&lock, false, None).unwrap(),
+			start(&lock, false, None, false).unwrap(),
 			Start::Independent
 		));
 		let path = PathBuf::from("tests/fixtures/ordinary-10k.md");
 		assert!(matches!(
-			start(&lock, true, Some(path.clone())).unwrap(),
+			start(&lock, true, Some(path.clone()), false).unwrap(),
 			Start::Forwarded(_)
 		));
 		assert_eq!(
@@ -607,13 +642,13 @@ mod tests {
 			Some(std::path::absolute(path).unwrap())
 		);
 		assert!(matches!(
-			start(&lock, true, None).unwrap(),
+			start(&lock, true, None, false).unwrap(),
 			Start::Forwarded(_)
 		));
 		assert_eq!(rx.recv_timeout(TIMEOUT).unwrap(), None);
 		drop(listener);
 		assert!(matches!(
-			start(&lock, true, None).unwrap(),
+			start(&lock, true, None, false).unwrap(),
 			Start::Primary(_)
 		));
 	}
@@ -622,7 +657,8 @@ mod tests {
 	fn invalid_token_cannot_open_a_file() {
 		let dir = tempfile::tempdir().unwrap();
 		let lock = dir.path().join("instance.lock");
-		let Start::Primary(primary) = start(&lock, true, None).unwrap() else {
+		let Start::Primary(primary) = start(&lock, true, None, false).unwrap()
+		else {
 			panic!()
 		};
 		let (tx, rx) = mpsc::channel();
@@ -658,7 +694,8 @@ mod tests {
 			.unwrap();
 		assert!(watcher.watch_directory(&directory));
 		let lock = alias.join("instance.lock");
-		let Start::Primary(primary) = start(&lock, true, None).unwrap() else {
+		let Start::Primary(primary) = start(&lock, true, None, false).unwrap()
+		else {
 			panic!()
 		};
 		let endpoint_path = lock.with_extension("json").canonicalize().unwrap();
@@ -692,7 +729,8 @@ mod tests {
 	fn trickling_client_cannot_extend_the_request_deadline() {
 		let dir = tempfile::tempdir().unwrap();
 		let lock = dir.path().join("instance.lock");
-		let Start::Primary(primary) = start(&lock, true, None).unwrap() else {
+		let Start::Primary(primary) = start(&lock, true, None, false).unwrap()
+		else {
 			panic!()
 		};
 		let endpoint = primary.endpoint.address;
@@ -711,7 +749,7 @@ mod tests {
 		});
 		thread::sleep(READ_POLL * 2);
 		assert!(matches!(
-			start(&lock, true, None).unwrap(),
+			start(&lock, true, None, false).unwrap(),
 			Start::Forwarded(_)
 		));
 		assert_eq!(rx.recv_timeout(TIMEOUT).unwrap(), None);
@@ -723,7 +761,8 @@ mod tests {
 	fn shutdown_cancels_a_client_without_waiting_for_the_deadline() {
 		let dir = tempfile::tempdir().unwrap();
 		let lock = dir.path().join("instance.lock");
-		let Start::Primary(primary) = start(&lock, false, None).unwrap() else {
+		let Start::Primary(primary) = start(&lock, false, None, false).unwrap()
+		else {
 			panic!()
 		};
 		let endpoint = primary.endpoint.address;
@@ -737,7 +776,7 @@ mod tests {
 		assert!(started.elapsed() < Duration::from_secs(1));
 		assert!(rx.try_recv().is_err());
 		assert!(matches!(
-			start(&lock, true, None).unwrap(),
+			start(&lock, true, None, false).unwrap(),
 			Start::Primary(_)
 		));
 	}
@@ -746,7 +785,8 @@ mod tests {
 	fn closed_event_loop_rejects_forwarding_and_releases_ownership() {
 		let dir = tempfile::tempdir().unwrap();
 		let lock = dir.path().join("instance.lock");
-		let Start::Primary(primary) = start(&lock, true, None).unwrap() else {
+		let Start::Primary(primary) = start(&lock, true, None, false).unwrap()
+		else {
 			panic!()
 		};
 		let endpoint: Endpoint = serde_json::from_slice(
@@ -759,7 +799,7 @@ mod tests {
 		assert!(forward(&endpoint, Some(Path::new("file.md"))).is_err());
 		listener.thread.take().unwrap().join().unwrap();
 		assert!(matches!(
-			start(&lock, true, None).unwrap(),
+			start(&lock, true, None, false).unwrap(),
 			Start::Primary(_)
 		));
 	}

@@ -765,7 +765,7 @@ mod tests {
 		let dir = tempfile::tempdir().unwrap();
 		let lock = dir.path().join("instance.lock");
 		let single_instance::Start::Primary(primary) =
-			single_instance::start(&lock, false, None).unwrap()
+			single_instance::start(&lock, false, None, false).unwrap()
 		else {
 			panic!()
 		};
@@ -782,7 +782,7 @@ mod tests {
 			let deadline = Instant::now() + std::time::Duration::from_secs(2);
 			while Instant::now() < deadline {
 				if matches!(
-					single_instance::start(&lock, false, None).unwrap(),
+					single_instance::start(&lock, false, None, false).unwrap(),
 					single_instance::Start::Primary(_)
 				) {
 					tx.send(true).unwrap();

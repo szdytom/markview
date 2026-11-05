@@ -27,6 +27,7 @@ workspace list and web-reading input; scroll to reach content below the viewport
 | `Enter` / `Shift+Enter`, `F3` / `Shift+F3` | Next or previous search result |
 | `Ctrl+B` | Open the table of contents |
 | `Ctrl+T` | Open a blank page |
+| `Ctrl+N` | Open a new window |
 | `Ctrl+E` | Export the document |
 | `Ctrl+,` | Open settings |
 | `Ctrl++` / `Ctrl+-` | Larger or smaller type |

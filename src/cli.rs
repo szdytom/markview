@@ -102,6 +102,7 @@ pub(crate) struct LaunchOptions {
 	pub(crate) offline: bool,
 	pub(crate) foreground: bool,
 	pub(crate) background_child: bool,
+	pub(crate) new_window: bool,
 	pub(crate) mode: Mode,
 	pub(crate) path: Option<PathBuf>,
 	pub(crate) web_url: Option<String>,
@@ -138,6 +139,7 @@ impl Default for LaunchOptions {
 			offline: false,
 			foreground: false,
 			background_child: false,
+			new_window: false,
 			mode: Mode::Window,
 			path: None,
 			web_url: None,
@@ -501,7 +503,7 @@ struct Selection {
 }
 
 const AFTER_HELP: &str = "\
-Keyboard: Ctrl+O open · Ctrl+P quick open · Ctrl+B outline · Ctrl+T new page · Ctrl+E export
+Keyboard: Ctrl+N new window · Ctrl+O open · Ctrl+P quick open · Ctrl+B outline · Ctrl+T new page · Ctrl+E export
           Ctrl+ , settings · Ctrl+ +/- font size · Ctrl+[ / ] column width
           Ctrl+L alignment · Ctrl+H hyphenation
 
@@ -564,6 +566,15 @@ fn cli_command() -> clap::Command {
 	if markview_platform::desktop_cli() {
 		command = command
 			.arg(
+				clap::Arg::new("new_window")
+					.long("new-window")
+					.global(true)
+					.action(clap::ArgAction::SetTrue)
+					.help(
+						"Open a new window even when single-instance mode is enabled",
+					),
+			)
+			.arg(
 				clap::Arg::new("foreground")
 					.long("foreground")
 					.global(true)
@@ -624,6 +635,8 @@ fn parse_arguments(
 			&& matches.get_flag("foreground"),
 		background_child: markview_platform::desktop_cli()
 			&& matches.get_flag("background_child"),
+		new_window: markview_platform::desktop_cli()
+			&& matches.get_flag("new_window"),
 		..LaunchOptions::default()
 	};
 	out.path = cli.file;
@@ -1191,6 +1204,9 @@ mod tests {
 			let mut child = vec!["--background-child"];
 			child.extend(command);
 			assert!(parse(&child).background_child);
+			child.push("--new-window");
+			let args = parse(&child);
+			assert!(args.new_window && args.background_child);
 		}
 		assert!(
 			parse(&["--foreground", "web", "https://example.org"]).foreground
