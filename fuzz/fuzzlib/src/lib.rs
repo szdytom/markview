@@ -11,3 +11,5 @@ pub mod pdf_oracle;
 pub mod pipeline;
 pub mod probe;
 pub mod seam;
+pub mod webgen;
+pub mod webpage;

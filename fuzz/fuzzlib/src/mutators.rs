@@ -703,3 +703,170 @@ fn perturb(rng: &mut Rng, line: &mut Vec<u8>) {
 		}
 	}
 }
+
+/// Structural HTML the webpage mutator can insert.
+///
+/// Readability only explores a page whose article candidate scores high
+/// enough, so random bytes rarely reach the lowering at all. These lines are
+/// the elements the lowering branches on: a title marker, a table with spans,
+/// a disclosure, a formula, a checklist and a link.
+const HTML_LINES: &[&str] = &[
+	"<h1>Web article</h1>",
+	"<h2 id=\"section\">A section</h2>",
+	"<p>Enough readable words to keep this paragraph in the extracted article body and to give the candidate a score.</p>",
+	"<ul><li>first item</li><li>second item</li></ul>",
+	"<ol start=\"3\" reversed><li value=\"7\">numbered</li></ol>",
+	"<blockquote><p>quoted words that keep their own block</p></blockquote>",
+	"<pre><code class=\"language-rust\">fn main() {}</code></pre>",
+	"<pre><code class=\"language-mermaid\">graph TD; A-->B</code></pre>",
+	"<table><caption>Numbers</caption><thead><tr><th rowspan=\"2\">A</th><th colspan=\"2\">B</th></tr><tr><th>C</th><th>D</th></tr></thead></table>",
+	"<tbody><tr><td rowspan=\"0\">all</td><td align=\"center\">1</td></tr><tr><td>2</td><td>3</td></tr></tbody>",
+	"<details open><summary>More</summary><p>hidden body text</p></details>",
+	"<figure><img src=\"plot.png\" alt=\"Plot\" width=\"320\"><figcaption>A plot</figcaption></figure>",
+	"<dl><dt>Term</dt><dd>Definition</dd><dt>Other</dt><dd>Second</dd></dl>",
+	"<p><span class=\"math inline\">\\(x^2\\)</span> and <script type=\"math/tex; mode=display\">\\[y\\]</script></p>",
+	"<p><a href=\"/relative/post\">a link</a> and <a href=\"#local\">a fragment</a></p>",
+	"<p><input type=\"checkbox\" checked><strong>bold</strong> <em>italic</em> <code>code</code></p>",
+	"<hr>",
+	"<div id=\"wrapper\"><section><p>nested container text</p></section></div>",
+	"<svg width=\"20\" height=\"20\"><path d=\"M0 0\"/></svg>",
+];
+
+/// The webpage target's structure-aware mutator: line edits over an HTML
+/// alphabet, plus element-level attribute rewrites.
+pub fn html(data: &mut [u8], size: usize, max_size: usize, seed: u32) -> usize {
+	let size = size.min(max_size);
+	let mut rng = Rng::new(seed);
+	if size == 0 || rng.chance(1, 4) {
+		return fuzzer_mutate(data, size, max_size);
+	}
+	let buf = &mut data[..size];
+	let mut lines: Vec<Vec<u8>> =
+		buf.split(|b| *b == b'\n').map(Vec::from).collect();
+	if lines.is_empty() {
+		lines.push(Vec::new());
+	}
+	match rng.range(6) {
+		// Insert a structural element.
+		0 => {
+			let new = if rng.chance(2, 3) {
+				HTML_LINES[rng.range(HTML_LINES.len())].as_bytes().to_vec()
+			} else {
+				lines[rng.range(lines.len())].clone()
+			};
+			lines.insert(rng.range(lines.len() + 1), new);
+		}
+		// Delete an element or line.
+		1 => {
+			lines.remove(rng.range(lines.len()));
+		}
+		// Duplicate a line, the cheapest way to grow a table body.
+		2 => {
+			let i = rng.range(lines.len());
+			let line = lines[i].clone();
+			lines.insert(rng.range(lines.len() + 1), line);
+		}
+		// Move a line.
+		3 => {
+			let from = rng.range(lines.len());
+			let line = lines.remove(from);
+			lines.insert(rng.range(lines.len() + 1), line);
+		}
+		// Rewrite one tag's attributes.
+		4 => {
+			let i = rng.range(lines.len());
+			alter_html_line(&mut rng, &mut lines[i]);
+		}
+		// Byte-perturb one line.
+		_ => {
+			let i = rng.range(lines.len());
+			let line = &mut lines[i];
+			perturb(&mut rng, line);
+		}
+	}
+	let mut out: Vec<u8> = Vec::with_capacity(size);
+	for (i, line) in lines.iter().enumerate() {
+		if i > 0 {
+			out.push(b'\n');
+		}
+		out.extend_from_slice(line);
+		if out.len() >= max_size {
+			break;
+		}
+	}
+	out.truncate(max_size);
+	data[..out.len()].copy_from_slice(&out);
+	out.len()
+}
+
+/// Rewrites the attributes of the first tag on one line.
+fn alter_html_line(rng: &mut Rng, line: &mut Vec<u8>) {
+	let Ok(text) = std::str::from_utf8(line) else {
+		perturb(rng, line);
+		return;
+	};
+	let Some(open) = text.find('<') else {
+		perturb(rng, line);
+		return;
+	};
+	let Some(close) = text[open..].find('>').map(|at| at + open) else {
+		perturb(rng, line);
+		return;
+	};
+	let name_end = text[open + 1..close]
+		.find(|c: char| c.is_ascii_whitespace() || c == '/')
+		.map(|at| at + open + 1)
+		.unwrap_or(close);
+	let name = &text[open + 1..name_end];
+	let choices: &[&str] = match name.to_ascii_lowercase().as_str() {
+		"td" | "th" => &[
+			" align=\"center\"",
+			" align=\"right\"",
+			" colspan=\"2\"",
+			" rowspan=\"2\"",
+			" rowspan=\"0\"",
+			"",
+		],
+		"a" => &[
+			" href=\"relative/path\"",
+			" href=\"#fragment\"",
+			" href=\"\"",
+			"",
+		],
+		"img" => &[
+			" src=\"pic.png\" alt=\"Plot\"",
+			" src=\"data:image/png;base64,AA==\"",
+			" width=\"10\" height=\"20\"",
+			"",
+		],
+		"details" => &[" open", ""],
+		"ol" => &[" start=\"2\"", " reversed", " start=\"0\" reversed", ""],
+		"li" => &[" value=\"5\"", ""],
+		"p" | "div" | "section" | "span" => &[
+			" id=\"marker\"",
+			" class=\"math inline\"",
+			" aria-hidden=\"true\"",
+			" role=\"presentation\"",
+			"",
+		],
+		"h1" | "h2" | "h3" => &[" id=\"marker\"", " id=\"\"", ""],
+		"script" => {
+			&[" type=\"math/tex\"", " type=\"math/tex; mode=display\"", ""]
+		}
+		"base" => {
+			&[" href=\"/assets/\"", " href=\"https://other.example/\"", ""]
+		}
+		_ => &["", ""],
+	};
+	let attributes = choices[rng.range(choices.len())];
+	let mut rewritten = String::with_capacity(text.len() + 24);
+	rewritten.push_str(&text[..name_end]);
+	rewritten.push_str(attributes);
+	if let Some(rest) = text[close..].strip_prefix('>') {
+		rewritten.push('>');
+		rewritten.push_str(rest);
+	} else {
+		rewritten.push_str(&text[close..]);
+	}
+	*line = rewritten.into_bytes();
+}

@@ -9,6 +9,10 @@ publish = false
 [dependencies]
 markview-commonmark = { path = "../../crates/markview-commonmark" }
 markview-document = { path = "../../crates/markview-document" }
+markview-webpage = { path = "../../crates/markview-webpage" }
+# The webpage oracles check resolved addresses with the same URL parser the
+# lowering uses, so a link the reader cannot open is caught as such.
+url = "2"
 
 libfuzzer-sys = "0.4"
 # `font-directories` is named here because this crate is the one that reads

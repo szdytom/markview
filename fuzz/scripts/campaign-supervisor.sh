@@ -32,6 +32,8 @@ mkdir -p "$root/artifacts/fuzz-next/.slots"
 rotation=(
 	"parse:1200"
 	"reparse:1200"
+	"webpage_seam:900"
+	"webpage:900"
 	"refdef:1200"
 	"math:1200"
 	"sourcepos_content:900"

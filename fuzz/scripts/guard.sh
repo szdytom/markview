@@ -42,6 +42,7 @@ if [[ ${1:-} == --full ]]; then
 		--bin layout_diff --bin layout_parallel --bin math --bin highlight --bin shaping \
 		--bin fonts --bin pdf --bin geometry --bin refdef \
 		--bin sourcepos_content --bin details_structure --bin anchors \
+		--bin webpage --bin webpage_seam \
 		2>&1 | tail -5
 fi
 

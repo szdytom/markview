@@ -28,6 +28,7 @@ at the same level, without `[brackets]`.
 - Support complex table grids with row groups, captions, block cells, rowspan/colspan and shared borders across the reader and PDF export.
 - Preserve definition lists and figures as semantic blocks, and support HTML list start, reversed and per-item values.
 - Keep web tabs in memory with a stable web identity, metadata title, request generation and session restoration instead of temporary Markdown files.
+- Add the `webpage` and `webpage_seam` fuzz targets, covering web page lowering with document-contract oracles and a generated-article differential.
 
 ### Changed
 

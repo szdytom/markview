@@ -43,7 +43,7 @@ fetch \
 	https://raw.githubusercontent.com/KaTeX/KaTeX/master/test/katex-spec.ts \
 	"$tmp/katex-spec.ts"
 
-python3 - "$tmp" "$out" "$root/crates/markview-layout/styles" <<'PY'
+python3 - "$tmp" "$out" "$root/crates/markview-layout/styles" "$root/tests/fixtures" <<'PY'
 import pathlib, re, sys
 
 tmp, out, styles = (
@@ -89,6 +89,14 @@ for raw, quoted, literal in tex_inputs:
 	(math_dir / f"katex-{count:04}.tex").write_text(example + "\n")
 	count += 1
 
+# The committed web fixtures are local seeds: no download, and they already
+# train the extractor's cleanup passes.
+webpage_dir = out / "webpage"
+webpage_dir.mkdir(parents=True, exist_ok=True)
+fixtures = pathlib.Path(sys.argv[4])
+for page in sorted(fixtures.glob("web-*.html")):
+	(webpage_dir / page.name).write_text(page.read_text(encoding="utf-8"))
+
 mvss_dir = out / "mvss"
 mvss_dir.mkdir(parents=True, exist_ok=True)
 count = 0
@@ -96,5 +104,6 @@ for style in sorted(styles.glob("*.mvss.toml")):
 	(mvss_dir / f"builtin-{style.stem}.mvss").write_text(style.read_text())
 	count += 1
 
-print(f"seeds: parse={sum(1 for _ in parse_dir.iterdir())} math={sum(1 for _ in math_dir.iterdir())} mvss={count}")
+webpage = sum(1 for _ in webpage_dir.iterdir())
+print(f"seeds: parse={sum(1 for _ in parse_dir.iterdir())} math={sum(1 for _ in math_dir.iterdir())} mvss={count} webpage={webpage}")
 PY

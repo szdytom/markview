@@ -1,9 +1,15 @@
 # Fuzzing harness for the Markview libraries
 
-A `cargo-fuzz` + libFuzzer crate (nightly) covering the three library crates —
-`markview-layout`, `markview-pdf`, `markview-render`. This directory is its own
-workspace and is deliberately **not** a member of the root workspace, so
-`cargo test`/`cargo dist` at the root never see it.
+A `cargo-fuzz` + libFuzzer crate (nightly) covering the library crates —
+`markview-commonmark`, `markview-document`, `markview-layout`,
+`markview-pdf`, `markview-render` and `markview-webpage`. This directory is
+its own workspace and is deliberately **not** a member of the root workspace,
+so `cargo test`/`cargo dist` at the root never see it.
+
+The web front end arrives through the same `dom_smoothie` fork the reader
+pins (`[patch.crates-io]` in `fuzz/Cargo.toml`); if the pin drifts, the
+harness would fuzz a different extractor than the app ships, so the two
+manifests must move together.
 
 ## What the targets look for
 
@@ -118,6 +124,38 @@ a tree against an independent scan of the same bytes.
   `f32` bit patterns, and the checks cover intersection, corner/edge fitting and
   viewport transforms.
 
+### G8 — web pages
+
+- **`webpage`** — looks for a conversion that breaks the document contract or
+  answers differently on a second reading. How: arbitrary bytes are an HTML
+  page and a byte picks the base URL; every accepted article must have unique
+  anchors (each filed under the disclosures that frame it), one address per
+  link occurrence, link addresses that parse (or keep their scheme after a
+  failed join) and image resources that parse as absolute or `data:` URLs,
+  whitespace-normalised text with no raw newline or tab, a table whose cells
+  tile the grid without overlap and whose column model covers the widest row,
+  non-empty collapsed metadata with absolute canonical/image URLs, the
+  title/source preamble in its fixed position, every block reachable through
+  the sealed index, and a diagnostic for a duplicate id only when one element
+  kept it. The conversion must also fingerprint equal on a second run, match
+  between `extract` and `extract_with`, and never change a success into a
+  failure when the profile is scaled down to the same limits the reader
+  applies.
+- **`webpage_seam`** — looks for the lowering disagreeing with the page the
+  generator wrote. How: a byte stream becomes a well-formed article with
+  unique markers (headings with and without explicit ids, styled and linked
+  runs, inline formulas, nested lists with checklists, start values and
+  reversed order, quotes, code blocks, definition lists, details, figures,
+  inline images, tables with row and column spans) and a recorded
+  expectation. The extracted document must carry every marker exactly once
+  in order and turn each generated element into the block the generator
+  described: text and style, resolved link address, formula source and
+  display flag, list direction, tightness and item structure, table group
+  order, cell text, kind and span, disclosure state, definition terms, figure
+  caption and image alt. Markers make the comparison unique, and the
+  expectation comes from the generator rather than from the lowering, so a
+  lost or misplaced element cannot agree with itself.
+
 ## How the oracles are built (`fuzzlib`)
 
 - `allocator.rs` — a counting global allocator. **Declared once, here**
@@ -191,6 +229,14 @@ a tree against an independent scan of the same bytes.
   declares with the disclosure chain framing each one (`fragment_targets`).
   They need no second implementation, only an input whose two readings
   disagree.
+- `webpage.rs` — the `G8` invariants over one `markview_webpage` article,
+  the structural fingerprint the differential compares, the budget-profile
+  monotonicity check, and the reading-text projection the seam target uses.
+- `webgen.rs` — the `webpage_seam` generator: it writes a page and records
+  what it wrote, so the comparison has an independent reading. It only emits
+  shapes the pinned extractor preserves: it does not generate a single-cell
+  table, keeps prose around a short body so candidate selection keeps the
+  article, and leaves a page-level `<base>` to the `webpage` target.
 - `pdf_oracle.rs` — the `pdf` target's structural readback: the exported
   bytes are re-parsed and checked against the layout, pagination and geometry
   the export was given (page count, well-formedness, page geometry, per-page
@@ -211,6 +257,8 @@ cargo +nightly fuzz build                       # ASAN (T2), every target
 cargo +nightly fuzz build parse                 # one target
 cargo +nightly fuzz run parse -- -runs=5000     # brief smoke
 cargo +nightly fuzz run layout_parallel -- -runs=5000 -max_len=32768
+cargo +nightly fuzz run webpage -- -runs=5000 -max_len=65536
+cargo +nightly fuzz run webpage_seam -- -runs=5000 -max_len=8192
 ```
 
 Formatting: `cargo +nightly fmt -p markview-fuzz -p mvfuzz` inside
@@ -222,9 +270,11 @@ cross-format.
 Seeds (C1–C4): `fuzz/scripts/prepare_seeds.sh` downloads the CommonMark
 spec examples (652), the GFM spec examples (648 of 672; the missing ones
 nest fenced code inside the example block), KaTeX test-suite LaTeX (764),
-and the built-in MVSS stylesheets into `fuzz/corpus/{parse,math,mvss}/`.
-The script needs network access; corpora are gitignored and rebuilt on
-demand.
+and the built-in MVSS stylesheets into `fuzz/corpus/{parse,math,mvss}/`, and
+copies the committed `tests/fixtures/web-*.html` pages into
+`fuzz/corpus/webpage/` for the same units to replay without a download.
+The script needs network access for the downloaded corpora (the web fixtures
+are local); corpora are gitignored and rebuilt on demand.
 
 ## Adding an oracle
 

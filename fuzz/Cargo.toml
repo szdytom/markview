@@ -16,6 +16,7 @@ members = ["fuzzlib"]
 [dependencies]
 markview-commonmark = { path = "../crates/markview-commonmark" }
 markview-document = { path = "../crates/markview-document" }
+markview-webpage = { path = "../crates/markview-webpage" }
 libfuzzer-sys = "0.4"
 arbitrary = { version = "1", features = ["derive"] }
 lopdf = { version = "0.46", default-features = false }
@@ -178,3 +179,27 @@ path = "fuzz_targets/anchors.rs"
 test = false
 doc = false
 bench = false
+
+# G8: HTML-to-document extraction (Tier 1 + Tier 3).
+[[bin]]
+name = "webpage"
+path = "fuzz_targets/webpage.rs"
+test = false
+doc = false
+bench = false
+
+# G8: a generated article's semantics against the lowering (Tier 3
+# differential).
+[[bin]]
+name = "webpage_seam"
+path = "fuzz_targets/webpage_seam.rs"
+test = false
+doc = false
+bench = false
+
+[patch.crates-io]
+# The webpage target lowers through the same `dom_smoothie` fork the reader
+# pins; upstream 0.19 does not carry the non-serializing extraction API. This
+# must track the root workspace's patch, or the harness would fuzz a different
+# extractor than the app ships.
+dom_smoothie = { git = "https://github.com/szdytom/dom_smoothie", rev = "66efad3292bedb89d4510da057260ffc9f6d83da" }
