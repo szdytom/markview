@@ -1,4 +1,7 @@
 //! Document hit testing and hover, independent of a host's chrome.
+#[cfg(test)]
+mod proptests;
+
 use crate::Point;
 use markview_layout::{
 	layout::LayoutSnapshot,

@@ -7,6 +7,9 @@ pub struct Motion {
 	last_motion: web_time::Instant,
 }
 
+#[cfg(test)]
+mod proptests;
+
 impl Motion {
 	pub fn new(now: web_time::Instant) -> Self {
 		Self {

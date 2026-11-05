@@ -23,6 +23,9 @@ use markview_layout::text::{SemanticPosition, TextSelection};
 use std::time::Duration;
 use web_time::Instant;
 
+#[cfg(test)]
+mod proptests;
+
 /// How long two presses still count as the same click.
 const CLICK_INTERVAL: Duration = Duration::from_millis(500);
 /// How far apart two presses may land and still be one click.
