@@ -22,6 +22,8 @@ use std::{
 };
 
 pub(crate) mod config;
+#[cfg(test)]
+mod proptests;
 pub(crate) use config::Config;
 
 /// The document metadata written into the PDF.

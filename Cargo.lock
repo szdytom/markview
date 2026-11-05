@@ -2510,6 +2510,7 @@ dependencies = [
  "parley",
  "percent-encoding",
  "pollster 1.0.1",
+ "proptest",
  "reqwest",
  "resvg",
  "serde",

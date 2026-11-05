@@ -7,6 +7,9 @@ use std::{
 
 const DURATION: Duration = Duration::from_millis(180);
 
+#[cfg(test)]
+mod proptests;
+
 /// One row the drawer paints while a tree expands or collapses.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub(crate) struct Row {

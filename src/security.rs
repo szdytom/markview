@@ -1,5 +1,8 @@
 //! Document provenance and explicit, session-scoped resource authority.
 
+#[cfg(test)]
+mod proptests;
+
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use std::{

@@ -1,6 +1,9 @@
 //! Time-based motion shared by the chrome's drawers and list rows.
 use std::time::{Duration, Instant};
 
+#[cfg(test)]
+mod proptests;
+
 /// A continuous visual animation advanced by the frame driver.
 ///
 /// `advance` returns whether another frame is needed. The value itself is

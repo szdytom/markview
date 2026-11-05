@@ -1,4 +1,6 @@
 //! Bounded, read-only local file loading.
+#[cfg(test)]
+mod proptests;
 use anyhow::{Context, Result, bail};
 use std::{
 	fs,

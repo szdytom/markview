@@ -4,6 +4,9 @@
 //! cannot re-resolve behind the check; redirects are followed here and every
 //! hop repeats that policy. The raw response headers are returned so the disk
 //! cache can decide freshness without a second client.
+#[cfg(test)]
+mod proptests;
+
 use anyhow::{Context, Result, bail};
 use reqwest::header::HeaderMap;
 use std::{

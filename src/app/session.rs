@@ -1,4 +1,7 @@
 //! Versioned browsing metadata; document contents stay in their source files.
+#[cfg(test)]
+mod proptests;
+
 use super::{App, tabs::Tabs};
 use crate::{layout::LayoutSnapshot, state::ReaderSession};
 use serde::{Deserialize, Serialize};

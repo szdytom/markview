@@ -11,6 +11,9 @@
 //! The key is the absolute URL. The reader sends no user agent or `Accept` of
 //! its own and the client's `Accept: */*` is constant, so no other request
 //! header can select a different body.
+#[cfg(test)]
+mod proptests;
+
 use super::source::bounded;
 use crate::net::{Fetched, Headers, Validators};
 use anyhow::{Context, Result, bail};

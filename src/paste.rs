@@ -1,4 +1,6 @@
 //! Clipboard text detection and titles for pasted Markdown documents.
+#[cfg(test)]
+mod proptests;
 
 /// Returns true when the text is usable as a Markdown document.
 ///

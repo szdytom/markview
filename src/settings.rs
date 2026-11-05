@@ -1,4 +1,7 @@
 //! Reader preferences, isolated from launch flags and document state.
+#[cfg(test)]
+mod proptests;
+
 use crate::{lang::Lang, layout::LayoutOptions, render::Theme};
 use anyhow::{Result, bail};
 use markview_layout::JustificationLimits;

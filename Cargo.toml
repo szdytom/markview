@@ -186,6 +186,7 @@ tempfile.workspace = true
 nucleo-matcher = "0.3.1"
 
 [dev-dependencies]
+proptest.workspace = true
 markview-platform = { path = "crates/markview-platform", features = ["test-support"] }
 lopdf = { version = "0.46", default-features = false }
 # `examples/webpage_bench.rs` replays the old Readability-to-Markdown pipeline;

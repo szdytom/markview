@@ -1,4 +1,6 @@
 //! Allocation-aware eviction for shared image aliases.
+#[cfg(test)]
+mod proptests;
 use markview_layout::image::Pixels;
 use std::{
 	collections::{HashMap, HashSet},

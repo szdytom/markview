@@ -2,6 +2,9 @@
 use crate::document::OutlineEntry;
 use std::collections::BTreeSet;
 
+#[cfg(test)]
+mod proptests;
+
 #[derive(Default, Clone)]
 pub(crate) struct OutlineTree {
 	collapsed: BTreeSet<usize>,

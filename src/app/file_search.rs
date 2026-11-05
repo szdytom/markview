@@ -1,4 +1,6 @@
 //! Pure workspace path matching, ranking and grapheme-safe match snippets.
+#[cfg(test)]
+mod proptests;
 use nucleo_matcher::{
 	Matcher, Utf32String,
 	pattern::{CaseMatching, Normalization, Pattern},

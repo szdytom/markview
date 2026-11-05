@@ -1,4 +1,7 @@
 //! Source resolution and bounded reads; independent of decoding and scheduling.
+#[cfg(test)]
+mod proptests;
+
 use anyhow::{Context, Result, bail};
 use base64::Engine;
 use markview_layout::image::{ImageSource, ResourceBase, ResourceRef};

@@ -91,3 +91,6 @@ markview_i18n::locales!(
 #[cfg(test)]
 #[path = "lang/tests.rs"]
 mod tests;
+
+#[cfg(test)]
+mod proptests;

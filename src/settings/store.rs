@@ -1,4 +1,7 @@
 //! Transactional configuration reads, merging and durable writes.
+#[cfg(test)]
+mod proptests;
+
 use super::{
 	ExportSettings, FontDefOverride, MarkdownFlavor, ReaderSettings, Setting,
 	WindowLayout,

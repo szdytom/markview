@@ -1,4 +1,6 @@
 //! Archive recognition and extraction: zip, tar, gzip and zstd.
+#[cfg(test)]
+mod proptests;
 use anyhow::{Context, Result, bail};
 use sha2::{Digest, Sha256};
 use std::{
