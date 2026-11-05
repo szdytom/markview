@@ -52,6 +52,7 @@ at the same level, without `[brackets]`.
 ### Fixed
 
 - Reveal the document scrollbar again on wheel and touchpad scrolling, restarting its auto-hide delay without requiring pointer motion.
+- Show “Loading document…” in the reading area while a web page loads over the network.
 - Remove a needless borrow in callout title hashing so Clippy passes on Rust 1.99.
 - Set a web tab's origin before refreshing file search so its internal identity never appears among local files.
 - Seal webpage documents once and hash semantic content without cloning text, reducing conversion allocations while preserving link groups and indexes.

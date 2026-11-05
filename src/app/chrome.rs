@@ -74,6 +74,21 @@ fn ui_appearance(shaper: &TextShaper) -> TextAppearance {
 		.text(&TextAppearance::default(), Condition::Ui)
 }
 
+fn document_status_text(
+	doc: &crate::state::ReaderSession,
+	lang: Lang,
+) -> (&str, &str) {
+	if let Some(error) = doc.load_error.as_deref() {
+		(lang.empty_unreadable_title(), error)
+	} else if doc.web_loading {
+		(lang.empty_loading_title(), lang.empty_opening_detail())
+	} else if doc.layout_pending || doc.document.is_none() {
+		(lang.empty_opening_title(), lang.empty_opening_detail())
+	} else {
+		(lang.empty_blank_title(), lang.empty_blank_detail())
+	}
+}
+
 fn banner_buttons(
 	shaper: &mut TextShaper,
 	width: f32,
@@ -1005,17 +1020,10 @@ impl<'a> Chrome<'a> {
 			}
 			let x = ((width - 400.0) / 2.0).max(24.0);
 			let y = (height * 0.4).max(110.0);
-			let t = self.settings.model.lang();
-			let (title, detail) =
-				if let Some(error) = self.session.doc.load_error.as_deref() {
-					(t.empty_unreadable_title(), error)
-				} else if self.session.doc.layout_pending
-					|| self.session.doc.document.is_none()
-				{
-					(t.empty_opening_title(), t.empty_opening_detail())
-				} else {
-					(t.empty_blank_title(), t.empty_blank_detail())
-				};
+			let (title, detail) = document_status_text(
+				self.session.doc,
+				self.settings.model.lang(),
+			);
 			self.ui.appearance = ui_appearance(self.ui);
 			self.ui.appearance.weight = 700;
 			out.extend(self.ui.label(
@@ -1373,6 +1381,24 @@ impl<'a> Chrome<'a> {
 #[cfg(test)]
 mod tests {
 	use super::*;
+	#[test]
+	fn document_status_distinguishes_network_loading_from_opening() {
+		let mut doc = ReaderSession {
+			web_loading: true,
+			layout_pending: true,
+			..Default::default()
+		};
+		assert_eq!(document_status_text(&doc, Lang::ZhHans).0, "正在加载文档…");
+		doc.web_loading = false;
+		assert_eq!(document_status_text(&doc, Lang::ZhHans).0, "正在打开文档…");
+		doc.web_loading = true;
+		doc.load_error = Some("Network error".into());
+		assert_eq!(
+			document_status_text(&doc, Lang::ZhHans),
+			("无法加载文档", "Network error")
+		);
+	}
+
 	#[test]
 	fn layer_order_runs_back_to_front() {
 		assert_eq!(
