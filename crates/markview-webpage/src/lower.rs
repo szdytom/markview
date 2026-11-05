@@ -1,4 +1,6 @@
 //! Direct DOM-to-document lowering.
+#[cfg(test)]
+mod proptests;
 use crate::{Error, Profile};
 use dom_smoothie::dom_query::NodeRef;
 use markview_document::{

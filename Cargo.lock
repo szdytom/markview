@@ -2748,6 +2748,7 @@ dependencies = [
  "dom_smoothie",
  "markview-document",
  "percent-encoding",
+ "proptest",
  "url",
 ]
 
