@@ -270,7 +270,7 @@ export_title_placeholder = "留空使用文档标题"
 
 search_placeholder = "在文档中查找"
 search_word = "整词"
-search_preparing = "准备中…"
+search_searching = "搜索中…"
 search_previous = "上一项"
 search_next = "下一项"
 

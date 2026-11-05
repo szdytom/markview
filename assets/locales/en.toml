@@ -272,7 +272,7 @@ export_title_placeholder = "Leave blank for document title"
 
 search_placeholder = "Find in document"
 search_word = "Word"
-search_preparing = "Preparing…"
+search_searching = "Searching…"
 search_previous = "Previous match"
 search_next = "Next match"
 

@@ -272,7 +272,7 @@ export_title_placeholder = "空欄で文書のタイトルを使用"
 
 search_placeholder = "文書内を検索"
 search_word = "単語"
-search_preparing = "準備中…"
+search_searching = "検索中…"
 search_previous = "前の一致"
 search_next = "次の一致"
 

@@ -511,6 +511,7 @@ impl<P: super::SendEvent> App<P> {
 		}
 		self.input_tick(now);
 		self.search_tick();
+		self.search_progress_tick(now);
 		// Direct Manipulation's updates arrive by pumping, before any
 		// synthesis of the reader's own: a stream that starts here cancels
 		// what is running before this tick can carry it a frame further, and
@@ -572,6 +573,7 @@ impl<P: super::SendEvent> App<P> {
 		self.reflow_at
 			.into_iter()
 			.chain(self.text_input.deadline)
+			.chain(self.readers.session.search.progress_deadline())
 			.chain(self.text_input.hold.map(|hold| hold.deadline))
 			.chain(self.retry_at)
 			.chain(self.prewarm_at)

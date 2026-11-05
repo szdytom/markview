@@ -13,7 +13,7 @@ use markview_layout::{
 use std::{
 	path::PathBuf,
 	sync::{Arc, Condvar, Mutex, atomic::Ordering},
-	time::Instant,
+	time::{Duration, Instant},
 };
 
 pub(super) const HEIGHT: f32 = 44.0;
@@ -36,10 +36,25 @@ pub(crate) struct SearchState {
 	pub content: Option<u64>,
 	pub query: String,
 	pub preparing: bool,
+	progress_at: Option<Instant>,
 	/// The search input had focus when its tab was switched away from.
 	pub focused: bool,
 	/// A restored query still needs to be put into the text editor.
 	pub needs_query: bool,
+}
+impl SearchState {
+	pub(super) fn progress_deadline(&self) -> Option<Instant> {
+		self.progress_at.filter(|_| self.open && self.preparing)
+	}
+	fn status(&self, lang: crate::lang::Lang) -> String {
+		if self.preparing && self.progress_at.is_none() {
+			lang.search_searching().to_owned()
+		} else if let Some(i) = self.current {
+			format!("{} / {}", i + 1, self.matches.len())
+		} else {
+			self.matches.len().to_string()
+		}
+	}
 }
 pub(super) struct Result {
 	path: PathBuf,
@@ -328,11 +343,19 @@ impl<P: SendEvent> App<P> {
 		let search = &mut self.readers.session.search;
 		search.sequence = sequence;
 		search.preparing = true;
+		search.progress_at = Some(Instant::now() + Duration::from_millis(100));
 		search.dirty = true;
 		search.pending_navigation = false;
 		search.queued_navigation = None;
 		self.search_tick();
 		self.redraw();
+	}
+	pub(super) fn search_progress_tick(&mut self, now: Instant) {
+		let search = &mut self.readers.session.search;
+		if search.progress_deadline().is_some_and(|at| at <= now) {
+			search.progress_at = None;
+			self.redraw();
+		}
 	}
 	pub(super) fn search_tick(&mut self) {
 		if !self.readers.session.search.open {
@@ -402,6 +425,7 @@ impl<P: SendEvent> App<P> {
 		});
 		search.matches = result.matches;
 		search.preparing = false;
+		search.progress_at = None;
 		if let Some(backwards) = search.queued_navigation.take() {
 			self.navigate_search(backwards);
 		}
@@ -688,13 +712,7 @@ impl<P: SendEvent> App<P> {
 		let (width, height, _) = self.dimensions();
 		let search = &self.readers.session.search;
 		let lang = self.preferences.values.lang();
-		let count = if search.preparing {
-			lang.search_preparing().to_owned()
-		} else if let Some(i) = search.current {
-			format!("{} / {}", i + 1, search.matches.len())
-		} else {
-			search.matches.len().to_string()
-		};
+		let count = search.status(lang);
 		let mut out = vec![
 			Draw::Rect(
 				Rect {

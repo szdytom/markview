@@ -290,6 +290,70 @@ fn edits_submit_immediately_and_latest_query_wins_without_a_timer() {
 }
 
 #[test]
+fn search_progress_waits_for_100ms_and_restarts_after_each_edit() {
+	use crate::lang::Lang;
+	struct Loop;
+	impl crate::app::window::Loop for Loop {
+		fn exit(&self) {}
+	}
+	let mut h = Harness::new("needle");
+	h.query("needle");
+	h.app.navigate_search(false);
+	h.app.search_changed();
+	let due = h.app.readers.session.search.progress_deadline().unwrap();
+	h.app.reflow_at = None;
+	assert_eq!(h.app.tick(&Loop, due - Duration::from_millis(1)), Some(due));
+	assert_eq!(h.app.readers.session.search.status(Lang::ZhHans), "1 / 1");
+	h.app.tick(&Loop, due);
+	let search = &h.app.readers.session.search;
+	assert_eq!(search.progress_deadline(), None);
+	for (lang, expected) in [
+		(Lang::En, "Searching…"),
+		(Lang::ZhHans, "搜索中…"),
+		(Lang::ZhHant, "搜尋中…"),
+		(Lang::Ja, "検索中…"),
+	] {
+		assert_eq!(search.status(lang), expected);
+	}
+	h.app.search_changed();
+	let due = h.app.readers.session.search.progress_deadline().unwrap();
+	h.app.search_progress_tick(due - Duration::from_millis(1));
+	assert_eq!(h.app.readers.session.search.status(Lang::ZhHans), "1 / 1");
+	h.app.navigate_search(false);
+	assert_eq!(h.app.readers.session.search.queued_navigation, Some(false));
+	h.settle();
+	assert_eq!(h.app.readers.session.search.status(Lang::ZhHans), "1 / 1");
+	assert_eq!(h.app.readers.session.search.progress_deadline(), None);
+}
+
+#[test]
+fn completed_or_closed_search_never_shows_delayed_progress() {
+	use crate::lang::Lang;
+	let mut h = Harness::new("needle");
+	h.query("needle");
+	h.app.search_changed();
+	let due = h.app.readers.session.search.progress_deadline().unwrap();
+	h.app.search_ready(Result {
+		path: h.app.readers.session.path.clone().unwrap(),
+		content: 1,
+		sequence: h.app.readers.session.search.sequence - 1,
+		matches: Arc::default(),
+	});
+	assert_eq!(h.app.readers.session.search.progress_deadline(), Some(due));
+	h.settle();
+	h.app.search_progress_tick(due);
+	assert_eq!(h.app.readers.session.search.status(Lang::ZhHans), "1");
+	assert_eq!(h.app.readers.session.search.progress_deadline(), None);
+	h.app.search_changed();
+	let due = h.app.readers.session.search.progress_deadline().unwrap();
+	h.app.close_search();
+	h.app.search_progress_tick(due);
+	assert_eq!(h.app.readers.session.search.progress_deadline(), None);
+	assert!(h.app.draw_search().is_empty());
+	h.settle();
+}
+
+#[test]
 fn live_query_preserves_scroll_selection_and_disclosures() {
 	let source = format!(
 		"{}\n\n<details>\n<summary>hidden</summary>\n\nneedle\n\n</details>\n",
