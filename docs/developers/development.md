@@ -13,16 +13,19 @@ cargo clippy --workspace --all-targets --locked -- -D warnings
 cargo build --release --locked
 ```
 
-For the fast local checks, run:
+For the fast local checks, install `actionlint` and make it available on `PATH`,
+then run:
 
 ```sh
 python3 scripts/check_local.py
 ```
 
-It runs the formatting, structural and repository-metadata checks that need no
-GPU, emulator, network or packaging tools. Add `--compile` for `cargo check` and
-clippy, `--icons` for the committed icon assets, `--dist` when `dist` is
-installed, and `--full` for the workspace tests and Linux PDF regressions.
+It runs workflow linting, formatting, structural and repository-metadata checks
+that need no GPU, emulator, network or packaging tools. Workflow linting covers
+all hand-maintained workflows; the generated `release.yml` is checked by `dist`.
+Add `--compile` for `cargo check` and clippy, `--icons` for the committed icon
+assets, `--dist` when `dist` is installed, and `--full` for the workspace tests
+and Linux PDF regressions.
 
 Selected checks that failed on the previous run go first; the remaining checks
 keep their standard order. A successful run clears the record and restores the

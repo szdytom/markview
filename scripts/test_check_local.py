@@ -1,8 +1,10 @@
-"""Exercise local check ordering with real commands and temporary Git repositories."""
+"""Exercise local checks with real commands and temporary Git repositories."""
 
-from contextlib import redirect_stdout
+from contextlib import redirect_stderr, redirect_stdout
+from dataclasses import replace
 import io
 from pathlib import Path
+import shutil
 import subprocess
 import sys
 from tempfile import TemporaryDirectory
@@ -10,6 +12,45 @@ import unittest
 from unittest.mock import patch
 
 import check_local
+
+
+class WorkflowLintTest(unittest.TestCase):
+    @unittest.skipUnless(shutil.which("actionlint"), "actionlint not installed")
+    def test_default_check_rejects_invalid_reusable_workflow(self):
+        check = next(check for check in check_local.CHECKS if check.name == "actionlint")
+        with TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            subprocess.run(("git", "init", "--quiet", str(root)), check=True)
+            workflows = root / ".github/workflows"
+            workflows.mkdir(parents=True)
+            (workflows / "ci.yml").write_text(
+                "on: push\njobs:\n  pbt:\n    uses: ./.github/workflows/pbt.yml\n",
+                encoding="utf-8",
+            )
+            reusable = workflows / "pbt.yml"
+            workflow = (
+                "on:\n  workflow_call:\njobs:\n  test:\n"
+                "    runs-on: ubuntu-latest\n    steps:\n"
+                "      - run: 'cargo test --locked -p xtask proptests::'\n"
+            )
+            reusable.write_text(workflow, encoding="utf-8")
+            (workflows / "release.yml").write_text("generated: :\n", encoding="utf-8")
+            output = io.StringIO()
+            with (
+                patch.object(check_local, "ROOT", root),
+                redirect_stdout(output),
+                redirect_stderr(output),
+            ):
+                check = replace(check, command=check_local.actionlint_command())
+                with patch.object(check_local, "CHECKS", (check,)):
+                    self.assertEqual(check_local.main([]), 0, output.getvalue())
+                    reusable.write_text(workflow.replace("'", ""), encoding="utf-8")
+                    self.assertEqual(check_local.main([]), 1, output.getvalue())
+            self.assertIn("pbt.yml", output.getvalue())
+            self.assertIn("could not parse as YAML", output.getvalue())
+            self.assertEqual(
+                (root / ".git/check-local-failures").read_text(), "actionlint\n"
+            )
 
 
 class LocalCheckTest(unittest.TestCase):
