@@ -198,8 +198,8 @@ doc = false
 bench = false
 
 [patch.crates-io]
-# The webpage target lowers through the same `dom_smoothie` fork the reader
-# pins; upstream 0.19 does not carry the non-serializing extraction API. This
-# must track the root workspace's patch, or the harness would fuzz a different
-# extractor than the app ships.
-dom_smoothie = { git = "https://github.com/szdytom/dom_smoothie", rev = "66efad3292bedb89d4510da057260ffc9f6d83da" }
+# The webpage target lowers through the same `dom_smoothie` commit the reader
+# pins; the upstream 0.19 release does not carry the non-serializing extraction
+# API merged in #246. This must track the root workspace's patch, or the harness
+# would fuzz a different extractor than the app ships.
+dom_smoothie = { git = "https://github.com/niklak/dom_smoothie", rev = "0fdbefd324d6ba49b4bbdadc85b2a25cc4367b76" }

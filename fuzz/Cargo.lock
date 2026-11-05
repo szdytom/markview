@@ -567,7 +567,7 @@ dependencies = [
 [[package]]
 name = "dom_smoothie"
 version = "0.19.0"
-source = "git+https://github.com/szdytom/dom_smoothie?rev=66efad3292bedb89d4510da057260ffc9f6d83da#66efad3292bedb89d4510da057260ffc9f6d83da"
+source = "git+https://github.com/niklak/dom_smoothie?rev=0fdbefd324d6ba49b4bbdadc85b2a25cc4367b76#0fdbefd324d6ba49b4bbdadc85b2a25cc4367b76"
 dependencies = [
  "dom_query",
  "flagset",

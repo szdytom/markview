@@ -49,7 +49,7 @@ at the same level, without `[brackets]`.
 - Read a web page's declared canonical link before falling back to the Open Graph URL.
 - Split semantic documents from source text: blocks and inlines now carry stable typed identities, while original text and source ranges live in a separately supplied `SourceMap`.
 - Build documents through a central builder that allocates block identities and derives cache keys, and make `markview-commonmark` return a `MarkdownParse` that owns the text, map and dialect.
-- Pin the `dom_smoothie` fork by commit so the web front end can read Readability's processed DOM without serializing it, replacing the local vendor copy.
+- Pin `dom_smoothie` to the upstream commit with `Readability::extract` (PR #246) so the web front end can read Readability's processed DOM without serializing it, replacing the local vendor copy.
 - Replace source-offset link origins with explicit link occurrence ids derived from where the link was declared, and resolve text source positions through the shared semantic traversal.
 
 ### Fixed

@@ -177,19 +177,20 @@ per-iteration samples and the source fingerprint are included in the evidence.
 
 ## dom_smoothie patch
 
-The MIT-licensed [`dom_smoothie` fork](https://github.com/szdytom/dom_smoothie/tree/66efad3292bedb89d4510da057260ffc9f6d83da)
-is pinned to commit `66efad3292bedb89d4510da057260ffc9f6d83da` through
+The MIT-licensed [`dom_smoothie`](https://github.com/niklak/dom_smoothie/tree/0fdbefd324d6ba49b4bbdadc85b2a25cc4367b76)
+is pinned to upstream commit `0fdbefd324d6ba49b4bbdadc85b2a25cc4367b76` through
 `[patch.crates-io]` in the root `Cargo.toml`. It is based on upstream 0.19.0 and
-adds `Readability::extract`, which returns the processed DOM, content root and
-metadata without serializing the article, plus a `dom_query` re-export. The
-legacy `parse` entry points keep their behavior on the same extraction core.
+adds `Readability::extract` (upstream PR #246), which returns the processed DOM,
+content root and metadata without serializing the article, plus a `dom_query`
+re-export. The legacy `parse` entry points keep their behavior on the same
+extraction core.
 
 The parity tests in `crates/markview-webpage/tests/extract.rs` compare the new
 and legacy entry points' HTML, raw text and metadata, and check the legacy
 policy entry points. Run `cargo test -p markview-webpage --locked --test extract`
-to verify the adapter against the pinned fork. Equivalent compatibility tests
-also live in the fork. Remove the patch once a locked upstream release provides
-an equivalent non-serializing entry point, keeping Markview's parity tests.
+to verify the adapter against the pinned commit. Equivalent compatibility tests
+also live upstream. Remove the patch once a locked upstream release provides an
+equivalent non-serializing entry point, keeping Markview's parity tests.
 
 When upgrading `dom_smoothie`, lock the new version, inspect the adapter types
 and the complete `Config`, run the `markview-webpage` tests, compare the

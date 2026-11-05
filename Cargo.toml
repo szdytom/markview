@@ -222,10 +222,10 @@ name = "markview"
 path = "src/main.rs"
 
 [patch.crates-io]
-# `dom_smoothie` 0.19.0 plus the non-serializing DOM extraction API on the
-# fork's `feat/extract-dom` branch. Remove this patch once a locked upstream
-# release provides the same API; see `docs/developers/webpage-extraction.md`.
-dom_smoothie = { git = "https://github.com/szdytom/dom_smoothie", rev = "66efad3292bedb89d4510da057260ffc9f6d83da" }
+# `dom_smoothie` 0.19.0 plus the non-serializing DOM extraction API merged
+# upstream in #246. Remove this patch once a locked release provides the same
+# API; see `docs/developers/webpage-extraction.md`.
+dom_smoothie = { git = "https://github.com/niklak/dom_smoothie", rev = "0fdbefd324d6ba49b4bbdadc85b2a25cc4367b76" }
 # Android activity destruction must exit the loop and permit its recreation.
 winit = { git = "https://github.com/szdytom/winit", rev = "9299a76998fd8975afb97c5a1d81495845ab8ec8" }
 # Our fork adds `LayoutConfig::metrics`, which lets Markview measure diagram
