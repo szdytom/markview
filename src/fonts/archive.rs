@@ -274,12 +274,12 @@ fn segment_match(pattern: &str, name: &str) -> bool {
 	// Where the last `*` left off, so it can still grow into more characters.
 	let mut star: Option<(usize, usize)> = None;
 	while si < name.len() {
-		if pattern.get(pi).is_some_and(|&c| c == '?' || c == name[si]) {
-			pi += 1;
-			si += 1;
-		} else if pattern.get(pi) == Some(&'*') {
+		if pattern.get(pi) == Some(&'*') {
 			star = Some((pi, si));
 			pi += 1;
+		} else if pattern.get(pi).is_some_and(|&c| c == '?' || c == name[si]) {
+			pi += 1;
+			si += 1;
 		} else if let Some((sp, ss)) = star {
 			pi = sp + 1;
 			si = ss + 1;
