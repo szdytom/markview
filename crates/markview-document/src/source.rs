@@ -355,3 +355,6 @@ fn distance(range: &Range<usize>, offset: usize) -> usize {
 		0
 	}
 }
+
+#[cfg(test)]
+mod proptests;

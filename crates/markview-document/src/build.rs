@@ -302,6 +302,9 @@ fn seal(block: &mut Block, seen: &mut HashSet<BlockId>) {
 	};
 }
 #[cfg(test)]
+mod proptests;
+
+#[cfg(test)]
 mod tests {
 	use super::*;
 	use crate::{BlockKind, Inline, InlineKind, TextStyle};

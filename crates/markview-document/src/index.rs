@@ -1,4 +1,7 @@
 //! Semantic indexes built once when a document is sealed.
+#[cfg(test)]
+mod proptests;
+
 use crate::{
 	AnchorId, Block, BlockId, BlockKind, InlineKind, OutlineEntry, RichText,
 	plain_text,
