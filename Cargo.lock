@@ -6393,6 +6393,7 @@ dependencies = [
  "anyhow",
  "ico",
  "proc-macro2",
+ "proptest",
  "resvg",
  "serde_json",
  "syn 3.0.9",

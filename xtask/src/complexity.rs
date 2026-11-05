@@ -1,3 +1,6 @@
+#[cfg(test)]
+mod proptests;
+
 use std::{
 	collections::BTreeSet,
 	fs,
