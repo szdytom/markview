@@ -24,6 +24,7 @@ at the same level, without `[brackets]`.
 ### Added
 
 - Open a new blank window with Ctrl+N (⌘N on macOS), including when single-instance mode is enabled.
+- Extend property tests across document, layout, rendering, PDF, web, application and development APIs, with recorded defects and opt-in reproducers.
 - Add internal API property tests with independent models across five crates, a contributor guide, and CI failure-seed artifacts.
 - Add the `markview-webpage` front end, which lowers Readability's processed DOM directly into a semantic document without a body Markdown round trip.
 - Support complex table grids with row groups, captions, block cells, rowspan/colspan and shared borders across the reader and PDF export.
