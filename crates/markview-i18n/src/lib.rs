@@ -261,6 +261,9 @@ fn is_identifier(name: &str) -> bool {
 }
 
 #[cfg(test)]
+mod proptests;
+
+#[cfg(test)]
 mod tests {
 	use super::*;
 

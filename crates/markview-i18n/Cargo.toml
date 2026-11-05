@@ -20,3 +20,7 @@ proc-macro2 = "1"
 
 [lints]
 workspace = true
+
+[dev-dependencies]
+proptest.workspace = true
+syn = { version = "3", features = ["full"] }

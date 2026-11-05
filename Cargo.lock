@@ -2562,6 +2562,7 @@ name = "markview-i18n"
 version = "0.4.5"
 dependencies = [
  "proc-macro2",
+ "proptest",
  "quote",
  "syn 3.0.9",
  "toml_edit",
