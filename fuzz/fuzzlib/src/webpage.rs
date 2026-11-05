@@ -903,6 +903,17 @@ fn assert_tables(document: &Document) {
 								table.columns.len()
 							)
 						});
+						// The cell must start at the first free slot: a free
+						// slot before it means the lowering skipped it.
+						for slot in col..start {
+							assert!(
+								grid[row_index]
+									.get(slot)
+									.copied()
+									.unwrap_or(false),
+								"cell {row_index} skipped the free slot {slot}"
+							);
+						}
 						let width = start + colspan;
 						for covering in grid
 							.iter_mut()
@@ -932,7 +943,9 @@ fn assert_tables(document: &Document) {
 					}
 				}
 				// A row with no cells is legal: earlier rowspans may cover
-				// all of its slots.
+				// all of its slots. A ragged row may also leave a free slot
+				// uncovered between its own cells and an inherited span, so
+				// the placement check lives with each cell instead.
 				if alignments.len() < columns {
 					alignments.resize(columns, None);
 				}

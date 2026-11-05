@@ -1469,32 +1469,39 @@ fn span_raw(node: &NodeRef<'_>, attr: &str) -> Option<usize> {
 	node.attr(attr)?.parse().ok()
 }
 
-/// Chooses the first column where a cell fits, shrinking a colliding span to a
-/// plain cell so an overlap never drops the cell.
+/// Places a cell at the first free slot at or after the cursor, clipping its
+/// declared span to the free rectangle that starts there.
 ///
-/// `free` reports whether the span fits at a column. `None` means the row has
-/// no slot left for the cell.
+/// A collision above the cursor therefore no longer demotes the cell to a
+/// plain 1x1: the span is retried at the next free slot, which is where an
+/// HTML table places it, and only the part of the span that does not fit is
+/// dropped. Starting at the first free slot also keeps a row free of interior
+/// holes.
+///
+/// `free` reports whether a span fits at a column. `None` means the row has
+/// no free slot left for the cell.
 fn fit_span(
-	mut col: usize,
-	mut rowspan: usize,
-	mut colspan: usize,
+	col: usize,
+	rowspan: usize,
+	colspan: usize,
 	columns: usize,
 	mut free: impl FnMut(usize, usize, usize) -> bool,
 ) -> Option<(usize, usize, usize)> {
-	loop {
-		if col >= columns {
-			return None;
+	for start in col..columns {
+		if !free(start, 1, 1) {
+			continue;
 		}
-		if free(col, rowspan, colspan) {
-			return Some((col, rowspan, colspan));
+		let mut colspan = colspan.min(columns - start);
+		while colspan > 1 && !free(start, 1, colspan) {
+			colspan -= 1;
 		}
-		if rowspan == 1 && colspan == 1 {
-			col += 1;
-		} else {
-			rowspan = 1;
-			colspan = 1;
+		let mut rowspan = rowspan;
+		while rowspan > 1 && !free(start, rowspan, colspan) {
+			rowspan -= 1;
 		}
+		return Some((start, rowspan, colspan));
 	}
+	None
 }
 
 /// The TeX source a `math/tex` script carries, and whether it is display.

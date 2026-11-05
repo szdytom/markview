@@ -133,7 +133,8 @@ a tree against an independent scan of the same bytes.
   link occurrence, link addresses that parse (or keep their scheme after a
   failed join) and image resources that parse as absolute or `data:` URLs,
   whitespace-normalised text with no raw newline or tab, a table whose cells
-  tile the grid without overlap and whose column model covers the widest row,
+  tile the grid without overlap or an interior hole and whose column model
+  covers the widest row,
   non-empty collapsed metadata with absolute canonical/image URLs, the
   title/source preamble in its fixed position, every block reachable through
   the sealed index, and a diagnostic for a duplicate id only when one element

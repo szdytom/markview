@@ -1163,20 +1163,8 @@ fn match_table(block: &Block, expected: &Table) {
 			);
 			for (cell, expected) in row.cells.iter().zip(&expected.cells) {
 				assert_eq!(cell.kind, expected.kind, "a header became data");
-				// A colliding span may be shrunk instead of retried, so the
-				// lowering may legitimately answer with a smaller span.
-				assert!(
-					cell.rowspan <= expected.rowspan,
-					"a rowspan grew from {} to {}",
-					expected.rowspan,
-					cell.rowspan
-				);
-				assert!(
-					cell.colspan <= expected.colspan,
-					"a colspan grew from {} to {}",
-					expected.colspan,
-					cell.colspan
-				);
+				assert_eq!(cell.rowspan, expected.rowspan, "a rowspan changed");
+				assert_eq!(cell.colspan, expected.colspan, "a colspan changed");
 				assert_eq!(
 					cell.align, expected.align,
 					"a cell alignment changed"

@@ -56,6 +56,7 @@ at the same level, without `[brackets]`.
 - Show “Loading document…” in the reading area while a web page loads over the network.
 - Delay the document search progress label by 100 ms to avoid flicker while typing, and label it “Searching…” instead of “Preparing…”.
 - Declare a web heading's explicit HTML `id` once, as the heading's anchor instead of also as a block anchor.
+- Keep a web table cell's declared span when it collides with a rowspan, placing it at the next free slot instead of shrinking it to a plain cell.
 - Remove a needless borrow in callout title hashing so Clippy passes on Rust 1.99.
 - Set a web tab's origin before refreshing file search so its internal identity never appears among local files.
 - Seal webpage documents once and hash semantic content without cloning text, reducing conversion allocations while preserving link groups and indexes.

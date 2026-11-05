@@ -1952,3 +1952,69 @@ fn an_explicit_heading_id_is_declared_once() {
 		.expect("the targeted paragraph");
 	assert_eq!(target.anchors(), ["target"]);
 }
+
+#[test]
+fn a_colliding_span_is_retried_in_the_next_free_column() {
+	let html = article(
+		r#"<p>Filler prose keeps this page readable enough for the extractor to
+		keep the whole article including the table below.</p>
+		<table><tbody>
+		<tr><td rowspan="2">A</td><td colspan="2">B</td></tr>
+		<tr><td colspan="2">C</td></tr>
+		</tbody></table>"#,
+	);
+	let page = extract(&html, "https://example.org/span").unwrap();
+	let table = page
+		.document
+		.blocks()
+		.iter()
+		.find_map(|block| match block.kind() {
+			BlockKind::Table(table) => Some(table),
+			_ => None,
+		})
+		.expect("a table");
+	assert_eq!(table.columns.len(), 3);
+	let row = &table.groups[0].rows[1];
+	assert_eq!(row.cells.len(), 1);
+	// The cursor column is covered by `A`'s rowspan, so `C` moves one column
+	// right with its declared span instead of shrinking.
+	assert_eq!(row.cells[0].colspan, 2);
+}
+
+#[test]
+fn a_span_is_clipped_to_the_free_columns_at_the_first_free_slot() {
+	let html = article(
+		r#"<p>Filler prose keeps this page readable enough for the extractor to
+		keep the whole article including the table below.</p>
+		<table><tbody>
+		<tr><td rowspan="2">A</td><td rowspan="2">B</td><td colspan="2">C</td></tr>
+		<tr><td colspan="3">D</td></tr>
+		</tbody></table>"#,
+	);
+	let mut profile = markview_webpage::PROFILE_V1.clone();
+	profile.max_table_columns = 4;
+	let page = markview_webpage::extract_with(
+		&html,
+		"https://example.org/fallback",
+		&profile,
+	)
+	.unwrap();
+	let table = page
+		.document
+		.blocks()
+		.iter()
+		.find_map(|block| match block.kind() {
+			BlockKind::Table(table) => Some(table),
+			_ => None,
+		})
+		.expect("a table");
+	let row = &table.groups[0].rows[1];
+	assert_eq!(row.cells.len(), 1);
+	// The four-column cap leaves room for two of `D`'s three columns after
+	// the two rowspans, so the span is clipped instead of dropped.
+	assert_eq!(row.cells[0].colspan, 2);
+	let BlockKind::Paragraph(text) = row.cells[0].blocks[0].kind() else {
+		panic!("a cell paragraph");
+	};
+	assert_eq!(plain_text(text), "D");
+}

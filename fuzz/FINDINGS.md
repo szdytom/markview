@@ -40,6 +40,39 @@ non-heading id still lands on the block it names. Regression test:
 `an_explicit_heading_id_is_declared_once`; the anchor oracle no longer
 collapses a block's own declarations, so a duplicate is a finding again.
 
+## W2 — a colliding span was shrunk instead of retried
+
+`markview-webpage` (`lower.rs::fit_span`) turned any rowspan/colspan that
+collided at the cursor column into a plain 1×1 cell, even when the span fit
+one slot later, so a valid span disappeared and the row could end up with an
+interior hole:
+
+```html
+<article><h1>Span shrink</h1>
+<p>Filler prose keeps this page readable enough for the extractor to keep
+the whole article including the table below.</p>
+<table><tbody>
+<tr><td rowspan="2">A</td><td colspan="2">B</td></tr>
+<tr><td colspan="2">C</td></tr>
+</tbody></table></article>
+```
+
+```text
+A  rs=2 cs=1      B  rs=1 cs=2
+A  (rowspan)      C  rs=1 cs=1   <- declared colspan 2
+                     column 2 uncovered
+```
+
+Status: fixed. The cell now starts at the first free slot and its span is
+clipped to the free rectangle there, which is where an HTML table places it:
+`C` keeps both columns, the table stays three columns wide and no row has an
+interior hole. Regression tests:
+`a_colliding_span_is_retried_in_the_next_free_column` and
+`a_span_is_clipped_to_the_free_columns_at_the_first_free_slot` (the latter
+for a span that genuinely cannot fit under the profile's column cap). The
+seam oracle requires the declared span again, and the table oracle checks
+the interior-hole property.
+
 ## Upstream behaviours the harness works around
 
 These are `dom_smoothie` (the pinned fork) and are not Markview defects; the
