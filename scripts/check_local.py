@@ -136,6 +136,11 @@ CHECKS = (
         "light",
     ),
     Check(
+        "local runner tests",
+        python("-m", "unittest", "discover", "-s", "scripts", "-p", "test_check_local.py"),
+        "light",
+    ),
+    Check(
         "fuzz lock",
         (
             "cargo",
@@ -244,6 +249,17 @@ def command_line(command: tuple[str, ...]) -> str:
     return " ".join(shlex.quote(part) for part in command)
 
 
+def failure_record_path() -> Path:
+    result = subprocess.run(
+        ("git", "rev-parse", "--path-format=absolute", "--git-path", "check-local-failures"),
+        cwd=ROOT,
+        capture_output=True,
+        text=True,
+        check=True,
+    )
+    return Path(result.stdout.strip())
+
+
 def skip_reason(check: Check) -> str | None:
     if check.platform and not sys.platform.startswith(check.platform):
         return f"{check.platform} only"
@@ -340,7 +356,12 @@ def main(argv: list[str] | None = None) -> int:
         help="stream command output instead of capturing it",
     )
     args = parser.parse_args(argv)
+    record = failure_record_path()
+    previous_failures = (
+        set(record.read_text(encoding="utf-8").splitlines()) if record.exists() else set()
+    )
     checks = selected_checks(args)
+    checks.sort(key=lambda check: check.name not in previous_failures)
     if args.list:
         for check in checks:
             print(f"{check.group:8} {check.name:30} {command_line(check.command)}")
@@ -358,8 +379,10 @@ def main(argv: list[str] | None = None) -> int:
                 break
     elapsed = time.monotonic() - started
     if failures:
+        record.write_text("\n".join(failures) + "\n", encoding="utf-8")
         print(f"\nFailed: {', '.join(failures)} ({elapsed:.2f}s total)")
         return 1
+    record.unlink(missing_ok=True)
     print(f"\nAll checks passed ({elapsed:.2f}s total)")
     return 0
 

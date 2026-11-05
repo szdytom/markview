@@ -24,6 +24,13 @@ GPU, emulator, network or packaging tools. Add `--compile` for `cargo check` and
 clippy, `--icons` for the committed icon assets, `--dist` when `dist` is
 installed, and `--full` for the workspace tests and Linux PDF regressions.
 
+Selected checks that failed on the previous run go first; the remaining checks
+keep their standard order. A successful run clears the record and restores the
+standard order. Failures are stored in the current worktree's Git metadata at
+`git rev-parse --git-path check-local-failures`, outside version control and
+unaffected by `cargo clean`. `--list` shows the execution order without changing
+the record.
+
 The `smoke`, `bench` and `latency` subcommands are developer diagnostics behind
 the off-by-default `diagnostics` feature; release builds do not include them.
 Build a binary with them when a task needs one:
