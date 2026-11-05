@@ -1,4 +1,7 @@
 //! Reuse leaf spans from the last published container without duplicating geometry.
+#[cfg(test)]
+mod proptests;
+
 use super::{BlockContext, CacheKey, LayoutOptions, external_key};
 use crate::{
 	document::{Block, BlockKind, fingerprint},

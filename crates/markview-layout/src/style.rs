@@ -1,4 +1,7 @@
 //! Stylesheet cascading and resolved semantic appearance.
+#[cfg(test)]
+mod proptests;
+
 mod media;
 mod numbering;
 mod parse;

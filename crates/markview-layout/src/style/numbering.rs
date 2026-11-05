@@ -120,3 +120,35 @@ impl<'de> Deserialize<'de> for NumberingPattern {
 
 /// The numbering an ordered list uses when a theme says nothing.
 pub(super) const DEFAULT_NUMBERING: &str = "1.";
+
+#[cfg(test)]
+mod proptests {
+	use super::*;
+	use proptest::prelude::*;
+
+	proptest! {
+		#[test]
+		fn decimal_markers_keep_literals_at_every_depth(
+			prefix in prop::sample::select(vec!["", "(", "【", "→"]),
+			suffix in prop::sample::select(vec!["", ")", "】", ". "]),
+			value in any::<i64>(), depth in any::<usize>(),
+		) {
+			let pattern: NumberingPattern = format!("{prefix}1{suffix}").parse().unwrap();
+			for number in [i64::MIN, -1, 0, 1, i64::MAX, value] {
+				prop_assert_eq!(pattern.number(depth, number), format!("{prefix}{number}{suffix}"));
+			}
+		}
+
+		#[test]
+		fn nesting_selects_a_system_and_deeper_levels_repeat_the_last(value in 1u8..11, depth in 2usize..100) {
+			let pattern: NumberingPattern = "(1.a.i)".parse().unwrap();
+			let roman = ["i", "ii", "iii", "iv", "v", "vi", "vii", "viii", "ix", "x"][usize::from(value - 1)];
+			prop_assert_eq!(pattern.number(0, i64::from(value)), format!("({value})"));
+			prop_assert_eq!(pattern.number(1, i64::from(value)), format!("({})", char::from(b'a' + value - 1)));
+			prop_assert_eq!(pattern.number(depth, i64::from(value)), format!("({roman})"));
+			let circled: NumberingPattern = "①.".parse().unwrap();
+			let unsupported = 50 + i64::from(value);
+			prop_assert_eq!(circled.number(depth, unsupported), format!("{unsupported}."));
+		}
+	}
+}

@@ -1,4 +1,7 @@
 //! Retained local geometry and its inexpensive presentation index.
+#[cfg(test)]
+mod proptests;
+
 use super::{BlockLayout, Draw, PlacedBlock, Rect};
 use markview_document::FieldId;
 use std::{

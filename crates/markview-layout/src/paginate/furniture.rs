@@ -12,6 +12,9 @@ use crate::{
 };
 use std::ops::Range;
 
+#[cfg(test)]
+mod proptests;
+
 /// The placeholders a slot may use.
 const PLACEHOLDERS: &[&str] = &["page", "pages", "title", "path"];
 

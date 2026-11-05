@@ -11,6 +11,8 @@
 //! layout pixel unless a name says `pt`.
 mod furniture;
 #[cfg(test)]
+mod proptests;
+#[cfg(test)]
 mod tests;
 use crate::{
 	document::{Block, BlockKind, Document, InlineKind},

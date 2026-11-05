@@ -1,4 +1,7 @@
 //! Text hit testing and clipped selection geometry.
+#[cfg(test)]
+mod proptests;
+
 use crate::layout::{LayoutSnapshot, Rect};
 use std::{collections::HashMap, ops::Range};
 

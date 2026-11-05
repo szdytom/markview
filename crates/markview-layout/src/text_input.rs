@@ -534,3 +534,6 @@ impl TextInput {
 
 #[cfg(test)]
 mod tests;
+
+#[cfg(test)]
+mod proptests;
