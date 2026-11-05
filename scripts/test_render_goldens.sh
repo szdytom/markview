@@ -13,5 +13,5 @@ export VK_DRIVER_FILES
 test -n "$VK_DRIVER_FILES"
 export WGPU_BACKEND=vulkan
 export LP_NUM_THREADS=1
-cargo test -p markview-render --locked --test golden -- --nocapture
-cargo test -p markview --locked match_rendering_baselines -- --nocapture
+cargo test -p markview-render --locked --test golden rendering_baselines -- --nocapture
+cargo test -p markview --locked --lib rendering_baselines -- --nocapture

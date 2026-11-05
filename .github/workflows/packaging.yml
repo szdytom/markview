@@ -15,6 +15,12 @@ jobs:
   checks:
     uses: ./.github/workflows/checks.yml
 
+  pbt:
+    uses: ./.github/workflows/pbt.yml
+
+  golden:
+    uses: ./.github/workflows/golden.yml
+
   android-tests:
     uses: ./.github/workflows/android.yml
 

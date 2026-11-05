@@ -1,4 +1,4 @@
-"""Exercise CI recovery with real shell scripts and fake external tools."""
+"""Exercise CI test runners and recovery with real scripts and fake tools."""
 
 import json
 import os
@@ -29,6 +29,8 @@ if name == "adb":
 trace = Path(os.environ["CI_TEST_TRACE"])
 calls = [json.loads(line) for line in trace.read_text().splitlines()]
 record = dict(key=key, args=args)
+if name == "cargo":
+    record["update_goldens"] = os.environ.get("MARKVIEW_UPDATE_RENDER_GOLDENS")
 if name == "apt-get":
     sources = next(arg.split("=", 1)[1] for arg in args if arg.startswith("Dir::Etc::sourceparts="))
     record["sources"] = {path.name: path.read_text() for path in Path(sources).iterdir()}
@@ -56,7 +58,7 @@ class CiInfrastructureTest(unittest.TestCase):
         stub = tools / "installer"
         stub.write_text(f"#!{sys.executable}\n" + TOOL)
         stub.chmod(0o755)
-        for name in ("sleep", "sudo", "apt-get", "adb", "python3"):
+        for name in ("sleep", "sudo", "apt-get", "adb", "python3", "cargo"):
             (tools / name).symlink_to(stub)
         self.env = dict(os.environ, PATH=str(tools) + os.pathsep + os.environ["PATH"],
                         RUNNER_TEMP=str(self.directory), CI_TEST_TRACE=str(self.trace))
@@ -100,6 +102,27 @@ class CiInfrastructureTest(unittest.TestCase):
         self.assertEqual(result.returncode, 73)
         self.assertEqual(len(self.calls("apt-get:update")), 4)
         self.assertEqual(self.calls("apt-get:install"), [])
+
+    def test_golden_runner_never_updates_in_ci_and_propagates_failures(self):
+        self.env.update(VK_DRIVER_FILES="test-driver", MARKVIEW_UPDATE_RENDER_GOLDENS="1")
+        for args, failures, expected, updates in (
+            ([], {}, 0, ["0", "0"]),
+            (["--update"], {}, 0, ["1", "1"]),
+            ([], {"cargo": 1}, 73, ["0"]),
+            (["--invalid"], {}, 2, []),
+        ):
+            with self.subTest(args=args, failures=failures):
+                self.trace.write_text("")
+                result = self.run_script("scripts/test_render_goldens.sh", *args, failures=failures)
+                self.assertEqual(result.returncode, expected, result.stderr)
+                calls = self.calls("cargo")
+                self.assertEqual([call["update_goldens"] for call in calls], updates)
+                if calls:
+                    self.assertEqual(calls[0]["args"], ["test", "-p", "markview-render", "--locked",
+                                                      "--test", "golden", "rendering_baselines", "--", "--nocapture"])
+                if len(calls) == 2:
+                    self.assertEqual(calls[1]["args"], ["test", "-p", "markview", "--locked",
+                                                      "--lib", "rendering_baselines", "--", "--nocapture"])
 
     def test_emulator_retry_gate_rejects_application_failures(self):
         workflow = (ROOT / ".github/workflows/android.yml").read_text()

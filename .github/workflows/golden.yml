@@ -1,0 +1,41 @@
+name: Golden tests
+on:
+  workflow_call:
+  workflow_dispatch:
+permissions:
+  contents: read
+env:
+  CARGO_INCREMENTAL: "0"
+  CARGO_PROFILE_DEV_DEBUG: "0"
+  CARGO_PROFILE_TEST_DEBUG: "0"
+jobs:
+  test:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v6
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: golden
+      # Keep the baseline renderer identical to the Linux workspace tests.
+      - name: Linux native libraries and software rendering
+        run: |
+          bash scripts/ci_install_packages.sh libfontconfig1-dev libxkbcommon-dev libwayland-dev vulkan-tools \
+            poppler-utils=24.02.0-1ubuntu9.11 libpoppler134=24.02.0-1ubuntu9.11 \
+            mesa-vulkan-drivers=25.2.8-0ubuntu0.24.04.4 libllvm20=1:20.1.2-0ubuntu1~24.04.3
+          driver=$(find /usr/share/vulkan/icd.d -name 'lvp_icd*.json' -print -quit)
+          test -n "$driver"
+          printf '%s\n' "VK_DRIVER_FILES=$driver" "WGPU_BACKEND=vulkan" "LP_NUM_THREADS=1" >> "$GITHUB_ENV"
+          VK_DRIVER_FILES="$driver" vulkaninfo --summary
+      - name: Run rendering baselines
+        run: bash scripts/test_render_goldens.sh
+        env:
+          FONTCONFIG_FILE: ${{ github.workspace }}/tests/fontconfig.conf
+      - name: Upload rendered test frames
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: golden-test-frames-${{ runner.os }}
+          path: artifacts/
+          if-no-files-found: ignore
+          retention-days: 3

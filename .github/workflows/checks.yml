@@ -76,18 +76,15 @@ jobs:
           test -n "$driver"
           printf '%s\n' "VK_DRIVER_FILES=$driver" "WGPU_BACKEND=vulkan" "LP_NUM_THREADS=1" >> "$GITHUB_ENV"
           VK_DRIVER_FILES="$driver" vulkaninfo --summary
-      - run: cargo test --workspace --locked --all-targets
+      # Keep the non-Linux search GPU assertions in the regular suite.
+      - name: Run regular tests
+        run: >-
+          cargo test --workspace --locked --all-targets --
+          --skip proptests::
+          ${{ runner.os == 'Linux' && '--skip rendering_baselines' || '' }}
         env:
           # Linux sees no installed fonts, so missing test configuration fails.
           FONTCONFIG_FILE: ${{ github.workspace }}/tests/fontconfig.conf
-      - name: Upload property test regressions
-        if: failure()
-        uses: actions/upload-artifact@v7
-        with:
-          name: proptest-regressions-${{ runner.os }}
-          path: '**/proptest-regressions/**'
-          if-no-files-found: ignore
-          retention-days: 14
       - name: Upload rendered test frames
         if: failure()
         uses: actions/upload-artifact@v7

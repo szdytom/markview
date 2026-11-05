@@ -1,0 +1,39 @@
+name: Property tests
+on:
+  workflow_call:
+  workflow_dispatch:
+permissions:
+  contents: read
+env:
+  CARGO_INCREMENTAL: "0"
+  CARGO_PROFILE_DEV_DEBUG: "0"
+  CARGO_PROFILE_TEST_DEBUG: "0"
+jobs:
+  test:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-24.04, windows-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v6
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: pbt
+      - name: Install native libraries
+        if: runner.os == 'Linux'
+        run: bash scripts/ci_install_packages.sh libfontconfig1-dev
+      - name: Run property tests
+        run: >-
+          cargo test --locked -p markview-geometry -p markview-document
+          -p markview-layout -p markview-ui-core -p markview-interaction
+          --lib proptests::
+      - name: Upload property test regressions
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: proptest-regressions-${{ runner.os }}
+          path: '**/proptest-regressions/**'
+          if-no-files-found: ignore
+          retention-days: 14

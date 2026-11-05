@@ -150,9 +150,15 @@ the difference image mark every changed pixel. The failure reports the pixel
 count, bounding coordinates and dimensions, and CI uploads these files even on
 failure. Missing baselines fail with the actual frame available for inspection.
 Review the updated PNGs before committing them alongside the visual change.
-CI pins Ubuntu 24.04, Mesa 25.2.8, LLVM 20.1.2 and Poppler 24.02 in `checks.yml`; when changing
-these versions, verify comparisons before considering a baseline update rather
-than widening the tolerance.
+
+CI runs property tests in `pbt.yml` and Linux baseline comparisons in
+`golden.yml`, in parallel with the regular tests in `checks.yml`. Both CI and
+release checks require all three workflows to pass. Local workspace tests still
+include all suites.
+
+CI pins Ubuntu 24.04, Mesa 25.2.8, LLVM 20.1.2 and Poppler 24.02 in `checks.yml`
+and `golden.yml`; when changing these versions, verify comparisons before
+considering a baseline update rather than widening the tolerance.
 
 Release archives, installers, and the platform icons are maintained separately;
 see the [packaging guide](packaging.md). After changing `assets/markview-icon-color.svg` or `assets/callouts/*.svg` (precompiled reader vectors):

@@ -39,7 +39,8 @@ an ordinary concrete regression test for a confirmed production defect; a seed
 alone can change meaning when a generator changes. Seeds from model mistakes
 are useful too, with their diagnosis recorded in the change evidence.
 
-CI runs these with the workspace tests on Linux, Windows and macOS. Failed jobs
+CI runs these separately in `pbt.yml` on Linux, Windows and macOS; regular
+workspace CI tests skip `proptests::` to avoid duplicate runs. Failed jobs
 upload `**/proptest-regressions/**` as `proptest-regressions-OS` for 14 days;
 the Actions log retains assertions and reduced inputs. Download the artifact,
 copy the files back to their crate paths and rerun the focused test. CI does not

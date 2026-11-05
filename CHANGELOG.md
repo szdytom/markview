@@ -31,6 +31,7 @@ at the same level, without `[brackets]`.
 
 ### Changed
 
+- Run property tests and Linux golden tests in separate CI workflows alongside regular tests, keeping both required for CI and releases.
 - Validate intermediate animation, moved widgets, cross-segment reading ranges, normal line breaking, and complete image snapshots with property tests.
 - Move navigation to semantic inlines and keep selection endpoints in revisioned fields, resolving layout geometry for each query.
 - Store images as typed `ResourceRef` references or `Diagram` sources, and build cache keys in the application from the address, base and authorization context.

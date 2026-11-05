@@ -6,6 +6,12 @@ jobs:
   check:
     uses: ./.github/workflows/checks.yml
 
+  pbt:
+    uses: ./.github/workflows/pbt.yml
+
+  golden:
+    uses: ./.github/workflows/golden.yml
+
   fuzz:
     uses: ./.github/workflows/fuzz.yml
 
@@ -34,6 +40,7 @@ jobs:
             .github/workflows/release-notes.yml \
             .github/workflows/winget.yml \
             .github/workflows/checks.yml .github/workflows/fuzz.yml \
+            .github/workflows/pbt.yml .github/workflows/golden.yml \
             .github/workflows/android.yml .github/workflows/android-release.yml
       - name: Generated release files match the configuration
         # `cargo install cargo-dist` installs the bare `dist` binary, which
@@ -138,7 +145,7 @@ jobs:
   # packaging input.
   ci:
     if: always()
-    needs: [check, fuzz, packaging, winget, web-tools, web, android]
+    needs: [check, pbt, golden, fuzz, packaging, winget, web-tools, web, android]
     runs-on: ubuntu-latest
     steps:
       - name: Fail unless every job succeeded

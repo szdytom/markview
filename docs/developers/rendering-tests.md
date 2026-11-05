@@ -7,7 +7,8 @@ bash scripts/test_render_goldens.sh
 ```
 
 It needs Lavapipe and `pdftoppm` (`poppler-utils`). The normal Linux workspace
-tests run the same comparisons in CI. The suite uses the production parser,
+tests skip `rendering_baselines`; the independent `golden.yml` workflow runs
+the comparisons in CI. The suite uses the production parser,
 layout, highlighting, image scheduler, Vulkan renderer and PDF writer.
 Windows and macOS continue to run their existing rendering tests.
 
