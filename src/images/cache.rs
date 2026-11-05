@@ -29,7 +29,8 @@ use std::{
 /// Total bytes the cache keeps. 128 MiB holds hundreds of ordinary diagrams
 /// and photographs while staying modest beside the document it serves.
 pub(super) const MAX_BYTES: u64 = 128 * 1024 * 1024;
-const MAGIC: &[u8] = b"MARKVIEW-CACHE/1\n";
+// Version 1 did not retain freshness provenance, so it must be refetched.
+const MAGIC: &[u8] = b"MARKVIEW-CACHE/2\n";
 /// The JSON header is tiny; anything larger is a corrupt file.
 const MAX_HEADER: usize = 8 * 1024;
 /// A temporary file older than this is debris from a crashed writer.
@@ -51,6 +52,8 @@ pub(super) struct Meta {
 	/// Freshness lifetime in seconds, from `max-age` or `Expires - Date`, so a
 	/// `304` that only replaces `Date` can remeasure it.
 	lifetime: Option<u64>,
+	/// A retained `max-age` takes precedence over an updated `Expires`.
+	lifetime_from_max_age: bool,
 	/// Unix seconds of the response `Date`, the base the lifetime runs from.
 	date: Option<u64>,
 	/// The response said `no-cache`: revalidate before every use.
@@ -109,6 +112,7 @@ fn metadata(
 		etag: headers.etag.clone(),
 		last_modified: headers.last_modified.clone(),
 		lifetime: headers.lifetime(now),
+		lifetime_from_max_age: headers.max_age.is_some(),
 		date: Some(unix(reference)),
 		no_cache: headers.no_cache,
 		bytes: body.len() as u64,
@@ -151,10 +155,13 @@ fn refreshed(
 	// one that omits it keeps them.
 	if !headers.has_cache_control {
 		new.no_cache = old.no_cache;
+		new.lifetime_from_max_age = old.lifetime_from_max_age;
 	}
-	// When the response says nothing about freshness at all, the stored
-	// lifetime carries over and runs from the new `Date`.
-	if !headers.has_cache_control && headers.expires.is_none() {
+	// Keep a retained `max-age` ahead of `Expires`, including redirect caps.
+	// A header-light response also remeasures the stored lifetime.
+	if !headers.has_cache_control
+		&& (old.lifetime_from_max_age || headers.expires.is_none())
+	{
 		new.lifetime = old.lifetime;
 	}
 	new.lifetime = capped(new.lifetime, new.date.unwrap_or(0), cap);

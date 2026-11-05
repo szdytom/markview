@@ -1,6 +1,31 @@
 use super::*;
 use proptest::prelude::*;
 
+#[test]
+fn legacy_entries_without_freshness_provenance_are_refetched() {
+	let directory = tempfile::tempdir().unwrap();
+	let cache = Cache::new(directory.path().to_owned());
+	let url = "https://a.test/image";
+	cache.put(url, Headers::default(), b"old");
+	let path = cache.path(url);
+	let mut data = fs::read(&path).unwrap();
+	data[..MAGIC.len()].copy_from_slice(b"MARKVIEW-CACHE/1\n");
+	fs::write(path, data).unwrap();
+	let body = fetch(&cache, url, false, &mut |validators| {
+		assert!(validators.etag.is_none());
+		Ok(Fetched {
+			status: 200,
+			headers: Headers::default(),
+			body: b"new".to_vec(),
+			final_url: url.to_owned(),
+			redirects_cacheable: true,
+			freshness_cap: None,
+		})
+	})
+	.unwrap();
+	assert_eq!(body, b"new");
+}
+
 proptest! {
 	#[test]
 	fn metadata_freshness_and_redirect_caps_use_explicit_response_times(
@@ -65,7 +90,7 @@ proptest! {
 			let headers = Headers { date: Some(UNIX_EPOCH + Duration::from_secs(date)), max_age: control.then_some(age).flatten(), has_cache_control: control, no_cache: control && no_cache, etag: etag.then(|| format!("etag-{step}")), last_modified: modified.then(|| format!("modified-{step}")), ..Default::default() };
 			if etag { model.etag = Some(format!("etag-{step}")); }
 			if modified { model.last_modified = Some(format!("modified-{step}")); }
-			if control { model.no_cache = no_cache; model.lifetime = age; }
+			if control { model.no_cache = no_cache; model.lifetime = age; model.lifetime_from_max_age = age.is_some(); }
 			if let (Some(lifetime), Some(cap)) = (&mut model.lifetime, cap) { *lifetime = (*lifetime).min(cap.saturating_sub(date)); }
 			model.date = Some(date);
 			current = refreshed(&current, "https://a.test/image", "https://b.test/image", &headers, b"body", UNIX_EPOCH, cap.map(|at| UNIX_EPOCH + Duration::from_secs(at)));
@@ -77,15 +102,26 @@ proptest! {
 	}
 
 	#[test]
-	#[ignore = "Known bug PBT-009: an Expires-only 304 overrides a retained max-age"]
-	fn a_304_expires_update_preserves_the_precedence_of_a_stored_max_age(age in 1u64..301, extra in 1u64..301) {
+	fn a_304_expires_update_preserves_the_precedence_of_a_stored_max_age(age in 1u64..301, expiry in 0u64..601, cap in prop::option::of(0u64..301)) {
+		let url = "https://a.test/image";
 		let old_headers = Headers { max_age: Some(age), has_cache_control: true, date: Some(UNIX_EPOCH), ..Default::default() };
-		let old = metadata("https://a.test/image", "https://a.test/image", &old_headers, b"body", UNIX_EPOCH);
+		let mut old = metadata(url, url, &old_headers, b"body", UNIX_EPOCH);
+		old.lifetime = capped(old.lifetime, 0, cap.map(|n| UNIX_EPOCH + Duration::from_secs(n)));
+		let directory = tempfile::tempdir().unwrap();
+		let cache = Cache::new(directory.path().to_owned());
+		cache.store(url, &old, b"body");
+		let old = cache.load_meta(url).unwrap();
 		let date = UNIX_EPOCH + Duration::from_secs(1000);
-		let update = Headers { date: Some(date), expires: Some(date + Duration::from_secs(age + extra)), ..Default::default() };
-		let refreshed = refreshed(&old, "https://a.test/image", "https://a.test/image", &update, b"body", date, None);
-		prop_assert_eq!(refreshed.lifetime, Some(age));
-		prop_assert!(!refreshed.fresh(1000 + age));
+		let mut update = Headers { date: Some(date), expires: Some(date + Duration::from_secs(expiry)), ..Default::default() };
+		let retained = refreshed(&old, url, url, &update, b"body", date, None);
+		let lifetime = cap.map_or(age, |cap| age.min(cap));
+		prop_assert_eq!(retained.lifetime, Some(lifetime));
+		prop_assert!(!retained.fresh(1000 + lifetime));
+		// An explicit replacement removes the old `max-age` precedence.
+		update.has_cache_control = true;
+		let replaced = refreshed(&retained, url, url, &update, b"body", date, None);
+		prop_assert_eq!(replaced.lifetime, Some(expiry));
+		prop_assert!(!replaced.lifetime_from_max_age);
 	}
 
 	#[test]

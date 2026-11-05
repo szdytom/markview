@@ -54,6 +54,7 @@ at the same level, without `[brackets]`.
 
 ### Fixed
 
+- Preserve stored `max-age` precedence over Expires-only image-cache revalidation responses.
 - Treat nonexistent HTTP calendar dates as absent instead of rolling them into the next month.
 - Keep retained rows’ visible heights continuous when list animations are rapidly retargeted.
 - Reject reserved Rust keywords in locale keys and parameters before generating methods.
