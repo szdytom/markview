@@ -1,4 +1,6 @@
 //! Host-supplied image pixels and the geometry used for scheduling hints.
+#[cfg(test)]
+mod proptests;
 
 use markview_document::Document;
 use markview_layout::{

@@ -1,6 +1,8 @@
 //! Publication bookkeeping and the cached selection length: pure state that
 //! any front end shares, kept out of the `wasm32` gate so native tests cover
 //! it directly.
+#[cfg(test)]
+mod proptests;
 
 use crate::selection::Pointer;
 use markview_interaction::Host;

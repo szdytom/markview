@@ -1,4 +1,6 @@
 //! Text faces supplied by the browser host; only KaTeX remains embedded.
+#[cfg(test)]
+mod proptests;
 
 use markview_layout::fonts::{FontConfig, is_font};
 use parley::fontique::Blob;

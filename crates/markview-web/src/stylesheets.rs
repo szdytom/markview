@@ -1,4 +1,6 @@
 //! Instance-owned parsed MVSS rules and atomic reader selection.
+#[cfg(test)]
+mod proptests;
 
 use anyhow::{Context, Result, ensure};
 use markview_layout::style::{StyleTarget, Stylesheet, StylesheetSource};
