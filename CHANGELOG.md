@@ -54,6 +54,7 @@ at the same level, without `[brackets]`.
 
 ### Fixed
 
+- Reject unmatched closing braces before locale placeholders with a locale validation error.
 - Keep figure body and caption link occurrences bound to their own fragments on layout cache hits.
 - Preserve text selections across surrounding deletion when combining marks join the selected grapheme.
 - Find covering source spans during reverse navigation even when later spans overlap them.

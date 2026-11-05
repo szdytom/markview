@@ -122,7 +122,6 @@ proptest! {
 	}
 
 	#[test]
-	#[ignore = "Known bug PBT-005: an unmatched closing brace before a placeholder is skipped"]
 	fn unmatched_closing_braces_before_placeholders_are_rejected(prefix in "[a-z]{0,8}", parameter in "p[a-z]{0,8}") {
 		let template = format!("{prefix}}}{{{parameter}}}");
 		prop_assert!(placeholders(&template).is_err(), "accepted {template:?}");

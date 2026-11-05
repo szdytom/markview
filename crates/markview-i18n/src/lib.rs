@@ -233,6 +233,9 @@ fn placeholders(value: &str) -> Result<Vec<String>, String> {
 	let mut names: Vec<String> = Vec::new();
 	let mut rest = value;
 	while let Some(open) = rest.find('{') {
+		if rest[..open].contains('}') {
+			return Err("has an unmatched `}`".into());
+		}
 		let after = &rest[open + 1..];
 		let Some(close) = after.find('}') else {
 			return Err("has an unclosed `{`".into());
