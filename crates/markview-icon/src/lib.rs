@@ -10,6 +10,9 @@
 use proc_macro::TokenStream;
 use quote::quote;
 
+#[cfg(test)]
+#[path = "svg/proptests.rs"]
+mod proptests;
 mod svg;
 
 /// Expands to the vector figures of an SVG file, in a unit box.

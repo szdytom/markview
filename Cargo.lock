@@ -2572,6 +2572,7 @@ dependencies = [
 name = "markview-icon"
 version = "0.4.5"
 dependencies = [
+ "proptest",
  "quote",
  "syn 3.0.9",
  "usvg",

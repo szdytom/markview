@@ -19,3 +19,6 @@ quote = "1"
 
 [lints]
 workspace = true
+
+[dev-dependencies]
+proptest.workspace = true
