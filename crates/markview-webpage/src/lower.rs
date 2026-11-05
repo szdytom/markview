@@ -334,7 +334,12 @@ impl<'a> Lower<'a> {
 				});
 			}
 		};
-		let anchors = explicit.into_iter().collect();
+		// A heading's explicit `id` is the heading's own anchor; keeping it
+		// as a block anchor too would declare the same fragment twice.
+		let anchors = match &kind {
+			BlockKind::Heading { .. } => Vec::new(),
+			_ => explicit.into_iter().collect(),
+		};
 		let block = self.make(anchors, kind)?;
 		if title && self.title_block.is_none() {
 			self.title_block = Some(block.id());

@@ -1899,3 +1899,56 @@ fn a_declared_canonical_url_wins_over_open_graph_metadata() {
 		Some("https://example.org/canonical")
 	);
 }
+
+#[test]
+fn an_explicit_heading_id_is_declared_once() {
+	// Readability drops attributes from `<blockquote>` and `<div>` wrappers,
+	// so the non-heading case uses a paragraph, which keeps its `id`.
+	let html = article(
+		r#"<p>Enough readable words to pass the content threshold and keep
+		this paragraph in the extracted article body, which also gives the
+		article candidate a score high enough to survive the cleanup pass.</p>
+		<h2 id="marker">Section</h2>
+		<p id="target">A paragraph with its own id survives as the block a
+		fragment jump reaches, and it carries enough words to stay in the
+		article body.</p>
+		<p>A closing paragraph gives the article more prose so candidate
+		selection keeps every block above it, including the heading.</p>"#,
+	);
+	let page = extract(&html, "https://example.org/ids").unwrap();
+	let heading = page
+		.document
+		.blocks()
+		.iter()
+		.find_map(|block| match block.kind() {
+			BlockKind::Heading {
+				level: 2, anchor, ..
+			} => Some((block.anchors().to_vec(), anchor.clone())),
+			_ => None,
+		})
+		.expect("the heading");
+	assert_eq!(heading.1, "marker");
+	assert!(
+		heading.0.is_empty(),
+		"the explicit id is also a block anchor: {:?}",
+		heading.0
+	);
+	// The anchor still addresses the heading through the outline.
+	assert!(
+		page.document
+			.outline()
+			.iter()
+			.any(|entry| entry.anchor == "marker")
+	);
+	// A non-heading explicit id still lands on the block it names, so a
+	// fragment jump reaches that paragraph.
+	let target = page
+		.document
+		.blocks()
+		.iter()
+		.find(|block| {
+			matches!(block.kind(), BlockKind::Paragraph(text) if plain_text(text).contains("fragment jump reaches"))
+		})
+		.expect("the targeted paragraph");
+	assert_eq!(target.anchors(), ["target"]);
+}

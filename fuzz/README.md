@@ -154,7 +154,9 @@ a tree against an independent scan of the same bytes.
   order, cell text, kind and span, disclosure state, definition terms, figure
   caption and image alt. Markers make the comparison unique, and the
   expectation comes from the generator rather than from the lowering, so a
-  lost or misplaced element cannot agree with itself.
+  lost or misplaced element cannot agree with itself. Defects it reached,
+  with their regression tests, and the upstream behaviours it works around
+  are recorded in [`FINDINGS.md`](FINDINGS.md).
 
 ## How the oracles are built (`fuzzlib`)
 
@@ -236,7 +238,8 @@ a tree against an independent scan of the same bytes.
   what it wrote, so the comparison has an independent reading. It only emits
   shapes the pinned extractor preserves: it does not generate a single-cell
   table, keeps prose around a short body so candidate selection keeps the
-  article, and leaves a page-level `<base>` to the `webpage` target.
+  article, and leaves a page-level `<base>` to the `webpage` target (see
+  `FINDINGS.md` for those upstream behaviours).
 - `pdf_oracle.rs` — the `pdf` target's structural readback: the exported
   bytes are re-parsed and checked against the layout, pagination and geometry
   the export was given (page count, well-formedness, page geometry, per-page

@@ -59,6 +59,7 @@ fn main() {
 
 fn dump(block: &Block, depth: usize) {
 	let pad = "  ".repeat(depth);
+	eprintln!("{pad}anchors={:?} id={}", block.anchors(), block.id());
 	match block.kind() {
 		BlockKind::Paragraph(text) => {
 			eprintln!("{pad}Paragraph {:?}", plain_text(text));

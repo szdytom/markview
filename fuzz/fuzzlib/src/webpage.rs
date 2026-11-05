@@ -632,28 +632,11 @@ fn assert_anchors(document: &Document) {
 	let mut seen: HashSet<String> = HashSet::new();
 	for root in document.blocks() {
 		walk_with_enclosing(root, &mut Vec::new(), &mut |block, open| {
-			// A heading with an explicit `id` may declare the same name as
-			// its block anchor and as its own heading anchor, so one block's
-			// declarations are collapsed before the global uniqueness check.
-			let mut own: HashSet<String> =
-				block.anchors().iter().cloned().collect();
-			let heading = match block.kind() {
-				BlockKind::Heading { anchor, .. } => {
-					own.insert(anchor.clone());
-					Some(anchor.clone())
-				}
-				_ => None,
-			};
-			for anchor in own {
-				// An empty heading has an empty slug; Markdown produces the
-				// same anchor for a heading with no letters or digits, so it
-				// is the shared document model's edge, not a web defect.
-				if heading.as_deref() != Some(anchor.as_str()) {
-					assert!(
-						!anchor.is_empty(),
-						"a block declares an empty anchor: {block:?}"
-					);
-				}
+			for anchor in block.anchors() {
+				assert!(
+					!anchor.is_empty(),
+					"a block declares an empty anchor: {block:?}"
+				);
 				assert!(
 					seen.insert(anchor.clone()),
 					"anchor {anchor:?} is declared twice"
@@ -662,6 +645,19 @@ fn assert_anchors(document: &Document) {
 					document.fragment_enclosing(&anchor),
 					open,
 					"anchor {anchor:?} is filed under the wrong disclosures"
+				);
+			}
+			// A heading's explicit `id` is its heading anchor; an empty
+			// heading has an empty slug, the same edge Markdown produces.
+			if let BlockKind::Heading { anchor, .. } = block.kind() {
+				assert!(
+					seen.insert(anchor.clone()),
+					"anchor {anchor:?} is declared twice"
+				);
+				assert_eq!(
+					document.fragment_enclosing(anchor),
+					open,
+					"heading anchor {anchor:?} is filed under the wrong disclosures"
 				);
 			}
 		});
