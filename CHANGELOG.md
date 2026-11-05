@@ -54,6 +54,7 @@ at the same level, without `[brackets]`.
 
 ### Fixed
 
+- Send PDF footnote return links to the earliest reference by page and vertical position.
 - Preserve stored `max-age` precedence over Expires-only image-cache revalidation responses.
 - Treat nonexistent HTTP calendar dates as absent instead of rolling them into the next month.
 - Keep retained rows’ visible heights continuous when list animations are rapidly retargeted.

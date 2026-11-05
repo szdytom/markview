@@ -36,15 +36,18 @@ pub fn annotation(
 		}
 		LinkTarget::FootnoteReturn(id) => pagination
 			.targets
-			.keys()
-			.find(|anchor| {
+			.iter()
+			.filter(|(anchor, _)| {
 				matches!(
 					anchor,
 					AnchorId::FootnoteReference { definition, .. }
 						if definition == id
 				)
 			})
-			.cloned()
+			.min_by(|(_, (page_a, y_a)), (_, (page_b, y_b))| {
+				page_a.cmp(page_b).then_with(|| y_a.total_cmp(y_b))
+			})
+			.map(|(anchor, _)| anchor.clone())
 			.or_else(|| Some(AnchorId::FootnoteDefinition(id.clone()))),
 		LinkTarget::Disclosure(_) => None,
 	};

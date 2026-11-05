@@ -89,19 +89,19 @@ proptest! {
 	}
 
 	#[test]
-	#[ignore = "Known bug PBT-010: PDF footnote returns choose hash order instead of the first reference"]
-	fn footnote_returns_choose_the_earliest_reference_in_document_order(label in "[a-z]{1,8}", occurrence in 1u32..128, y in 0u16..65) {
+	fn footnote_returns_choose_the_earliest_reference_in_document_order(label in "[a-z]{1,8}", occurrence in 1u32..128, y in 0u16..65, first_page in 0usize..2, same_page in any::<bool>()) {
 		let note = FootnoteId::new(label);
 		let mut pagination = Pagination::default();
-		for occurrence in [occurrence, occurrence + 1] { pagination.targets.insert(AnchorId::FootnoteReference { definition: note.clone(), occurrence: LinkOccurrenceId::new(occurrence).unwrap() }, (0, f32::from(y))); }
-		// The first bucket deliberately names the later page.
+		for occurrence in [occurrence, occurrence + 1] { pagination.targets.insert(AnchorId::FootnoteReference { definition: note.clone(), occurrence: LinkOccurrenceId::new(occurrence).unwrap() }, (first_page, f32::from(y))); }
+		// The first bucket deliberately names the later reference.
 		let first_bucket = pagination.targets.keys().next().unwrap().clone();
-		*pagination.targets.get_mut(&first_bucket).unwrap() = (1, f32::from(y) + 8.0);
+		*pagination.targets.get_mut(&first_bucket).unwrap() = (first_page + usize::from(!same_page), f32::from(y) + 8.0);
 		let geometry = PageGeometry { width_pt: 400.0, height_pt: 600.0, margin_pt: [10.0; 4] };
 		let annotation = annotation(Rect::from_xywh(10.0, 10.0, 20.0, 10.0).unwrap(), &LinkTarget::FootnoteReturn(note), "legacy", &pagination, &geometry).unwrap();
 		let pdf = serialize(vec![annotation], &geometry);
 		let annotations = pdf.get_page_annotations(pdf.get_pages()[&1]).unwrap();
-		let (page, _, _) = destination(&pdf, annotations[0]);
-		prop_assert_eq!(page, pdf.get_pages()[&1]);
+		let (page, _, actual_y) = destination(&pdf, annotations[0]);
+		prop_assert_eq!(page, pdf.get_pages()[&(first_page as u32 + 1)]);
+		prop_assert!((actual_y - (600.0 - 10.0 - f32::from(y) * PT_PER_PX)).abs() <= 0.001);
 	}
 }
