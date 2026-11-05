@@ -145,16 +145,24 @@ proptest! {
 		prop_assert_eq!((selection.anchor().index(), selection.focus().index()), (anchor, focus));
 	}
 	#[test]
-	#[ignore = "Known bug PBT-002: surrounding deletion can collapse a preserved selection at a new grapheme boundary"]
 	fn surrounding_deletion_preserves_selection_when_a_combining_mark_is_exposed(
-		prefix in "[a-z]{1,8}", selected in "[a-z]{1,8}",
+		prefix in "[a-z]{1,8}", selected in "[a-z]{1,8}", reverse in any::<bool>(),
 	) {
 		let mut ui = TextShaper::new();
 		let mut input = TextInput::default();
 		input.set_text(&mut ui, &format!("{prefix}{selected}e\u{301}"));
-		ui.input_driver(&mut input.editor).select_byte_range(prefix.len(), prefix.len() + selected.len());
+		let (a, b) = (prefix.len(), prefix.len() + selected.len());
+		let (anchor, focus) = if reverse { (b, a) } else { (a, b) };
+		ui.input_driver(&mut input.editor).select_byte_range(anchor, focus);
 		input.delete_surrounding(&mut ui, 0, 1, false);
 		prop_assert_eq!(input.text(), format!("{prefix}{selected}\u{301}"));
-		prop_assert!(input.selected_text().is_some(), "a preserved nonempty selection must not collapse");
+		let expanded = format!("{selected}\u{301}");
+		prop_assert_eq!(input.selected_text(), Some(expanded.as_str()));
+		let selection = input.editor.raw_selection();
+		prop_assert_eq!(selection.anchor().index() > selection.focus().index(), reverse);
+		input.undo(&mut ui, false);
+		prop_assert_eq!(input.selected_text(), Some(selected.as_str()));
+		input.undo(&mut ui, true);
+		prop_assert_eq!(input.selected_text(), Some(expanded.as_str()));
 	}
 }

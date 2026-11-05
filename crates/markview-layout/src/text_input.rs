@@ -110,9 +110,18 @@ impl TextInput {
 	}
 	fn restore(&mut self, ui: &mut TextShaper, state: Snapshot) {
 		self.editor.set_text(&state.text);
+		let (anchor, focus) = if state.anchor == state.focus {
+			(state.anchor, state.focus)
+		} else {
+			// Preserve the selected content when an edit joins graphemes.
+			(
+				self.snap(state.anchor, Some(state.anchor > state.focus)),
+				self.snap(state.focus, Some(state.focus > state.anchor)),
+			)
+		};
 		let mut driver = ui.input_driver(&mut self.editor);
 		driver.clear_compose();
-		driver.select_byte_range(state.anchor, state.focus);
+		driver.select_byte_range(anchor, focus);
 	}
 	fn record(&mut self, before: Snapshot, kind: EditKind) {
 		if before.text == self.editor.raw_text() {
