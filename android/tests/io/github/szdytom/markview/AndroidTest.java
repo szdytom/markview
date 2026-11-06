@@ -250,14 +250,18 @@ public abstract class AndroidTest extends Instrumentation {
         return visible[0];
     }
     protected JSONObject stableLayout() throws Exception {
+        return stableLayout(true);
+    }
+    private JSONObject stableLayout(boolean requireReady) throws Exception {
         long deadline = SystemClock.uptimeMillis() + 10000, stable = SystemClock.uptimeMillis();
         JSONObject previous = state();
         while (SystemClock.uptimeMillis() < deadline) {
             SystemClock.sleep(100);
             JSONObject current = state();
-            if (!current.optBoolean("ready") || Math.abs(current.optDouble("height") - previous.optDouble("height")) > 0.1 || Math.abs(current.optDouble("scroll") - previous.optDouble("scroll")) > 0.1
+            if ((requireReady && !current.optBoolean("ready")) || Math.abs(current.optDouble("height") - previous.optDouble("height")) > 0.1 || Math.abs(current.optDouble("scroll") - previous.optDouble("scroll")) > 0.1
                 || Math.abs(current.optDouble("layout_width") - previous.optDouble("layout_width")) > 0.01
-                || !current.optJSONArray("dimensions").toString().equals(previous.optJSONArray("dimensions").toString())) stable = SystemClock.uptimeMillis();
+                || !current.optJSONArray("dimensions").toString().equals(previous.optJSONArray("dimensions").toString())
+                || !current.optJSONArray("insets").toString().equals(previous.optJSONArray("insets").toString())) stable = SystemClock.uptimeMillis();
             if (SystemClock.uptimeMillis() - stable > 750) return current;
             previous = current;
         }
@@ -293,30 +297,41 @@ public abstract class AndroidTest extends Instrumentation {
         return null;
     }
     protected void tap(String action) throws Exception {
-        JSONObject state = waitFor(s -> button(s, action) != null);
+        waitSystem(getTargetContext().getPackageName());
+        waitFor(s -> button(s, action) != null);
+        JSONObject state = stableLayout(false);
         JSONObject b = button(state, action);
+        require(b != null, "Button remains visible after layout settles: " + action);
         float x = (float)(b.getDouble("x") + b.getDouble("w") / 2);
         float y = (float)(b.getDouble("y") + b.getDouble("h") / 2);
-        swipe(x, y, x, y);
+        android.util.Log.i("MarkviewTest", "Tap " + action + " at " + x + "," + y);
+        injectSwipe(x, y, x, y, state);
     }
     protected void swipe(float x1, float y1, float x2, float y2) throws Exception {
         waitSystem(getTargetContext().getPackageName());
-        JSONObject state = state();
+        injectSwipe(x1, y1, x2, y2, state());
+    }
+    private void injectSwipe(float x1, float y1, float x2, float y2, JSONObject state) throws Exception {
         JSONArray dims = state.getJSONArray("dimensions"), insets = state.getJSONArray("insets");
         float scale = (float)dims.getDouble(2);
         float left = (float)insets.getDouble(0), top = (float)insets.getDouble(1);
         int[] origin = new int[2];
         runOnMainSync(() -> activity.getWindow().getDecorView().getLocationOnScreen(origin));
         long down = SystemClock.uptimeMillis();
-        // Taps need only `DOWN` and `UP` to avoid long presses on slow emulators.
+        // Taps use only `DOWN` and `UP`.
         int steps = x1 == x2 && y1 == y2 ? 1 : 10;
         for (int i = 0; i <= steps; i++) {
             float t = (float)i / steps;
             int action = i == 0 ? MotionEvent.ACTION_DOWN : i == steps ? MotionEvent.ACTION_UP : MotionEvent.ACTION_MOVE;
             MotionEvent event = MotionEvent.obtain(down, SystemClock.uptimeMillis(), action, (x1 + (x2 - x1)*t + left)*scale + origin[0], (y1 + (y2 - y1)*t + top)*scale + origin[1], 0);
             event.setSource(InputDevice.SOURCE_TOUCHSCREEN);
-            getUiAutomation().injectInputEvent(event, true);
+            long started = SystemClock.uptimeMillis();
+            boolean accepted = getUiAutomation().injectInputEvent(event, true);
+            String detail = "Touch " + MotionEvent.actionToString(action) + " at " + event.getX() + "," + event.getY()
+                + "; held=" + (event.getEventTime() - down) + "ms; injection=" + (SystemClock.uptimeMillis() - started) + "ms; accepted=" + accepted;
+            if (i == 0 || i == steps || !accepted) android.util.Log.i("MarkviewTest", detail);
             event.recycle();
+            require(accepted, detail);
             SystemClock.sleep(18);
         }
         SystemClock.sleep(160);

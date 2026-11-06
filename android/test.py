@@ -57,9 +57,9 @@ def cache_fixture(build):
     run("rustc", "--crate-name", "cache_key", helper, "-o", build / "cache-key")
     name = subprocess.check_output([str(build / "cache-key"), url, security], text=True).strip()
     body = (ROOT / "assets/markview-icon-color.svg").read_bytes()
-    header = json.dumps(dict(security=security, url=url, final_url=url, etag=None, last_modified=None, lifetime=3600, date=int(time.time()), no_cache=False, bytes=len(body))).encode()
+    header = json.dumps(dict(security=security, url=url, final_url=url, etag=None, last_modified=None, lifetime=3600, lifetime_from_max_age=True, date=int(time.time()), no_cache=False, bytes=len(body))).encode()
     fixture = build / name
-    fixture.write_bytes(b"MARKVIEW-CACHE/1\n" + struct.pack("<I", len(header)) + header + body)
+    fixture.write_bytes(b"MARKVIEW-CACHE/2\n" + struct.pack("<I", len(header)) + header + body)
     return fixture
 
 

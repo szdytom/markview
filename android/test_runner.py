@@ -1,10 +1,13 @@
 """Exercise Android case selection and isolation through a stateful fake device."""
+import ast
 import contextlib
 import io
 import json
 import os
 from pathlib import Path
+import re
 import shutil
+import struct
 import sys
 import tempfile
 import unittest
@@ -57,6 +60,24 @@ elif args[:4] == ["exec-out", "run-as", "io.github.szdytom.markview", "cat"]:
     sys.stdout.buffer.write(b"test screenshot")
 state_file.write_text(json.dumps(state))
 '''
+
+
+class AndroidCacheFixtureTest(unittest.TestCase):
+    def test_seeded_image_matches_the_engine_cache_contract(self):
+        source = (ROOT / "src/images/cache.rs").read_text()
+        magic = ast.literal_eval(re.search(r'const MAGIC:.*?= (b".*?");', source).group(1))
+        metadata = re.search(r'struct Meta \{(.*?)^\}', source, re.S | re.M).group(1)
+        fields = set(re.findall(r'^\s+(\w+):', metadata, re.M))
+        with tempfile.TemporaryDirectory() as directory, patch.object(runner, "run"), patch.object(runner.subprocess, "check_output", return_value="fixture.img\n"):
+            data = runner.cache_fixture(Path(directory)).read_bytes()
+        self.assertEqual(data[:len(magic)], magic)
+        length = struct.unpack("<I", data[len(magic):len(magic) + 4])[0]
+        header = json.loads(data[len(magic) + 4:len(magic) + 4 + length])
+        body = data[len(magic) + 4 + length:]
+        self.assertLessEqual(fields, header.keys())
+        self.assertTrue(header["lifetime_from_max_age"])
+        self.assertEqual(header["bytes"], len(body))
+        self.assertEqual(body, (ROOT / "assets/markview-icon-color.svg").read_bytes())
 
 
 class AndroidRunnerTest(unittest.TestCase):
