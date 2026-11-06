@@ -14,3 +14,6 @@ markview-layout = { path = "../markview-layout", features = ["font-directories"]
 
 [lints]
 workspace = true
+
+[dev-dependencies]
+proptest.workspace = true

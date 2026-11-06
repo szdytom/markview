@@ -1,4 +1,7 @@
 //! Complex table geometry: spans, row groups, widths and shared borders.
+#[cfg(test)]
+mod proptests;
+
 use super::{BlockContext, LayoutOptions};
 use crate::{
 	document::{BlockKind, CellAlign, CellKind, Table, TableCell},

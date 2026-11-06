@@ -20,6 +20,61 @@ fn entry(id: u32, source: Range<usize>, span: SourceSpan) -> BlockSource {
 
 proptest! {
 	#[test]
+	fn overlapping_spans_reverse_lookup_returns_a_declared_cover(
+		ranges in prop::collection::vec(prop::collection::vec((0usize..25, 0usize..25, any::<bool>(), 0usize..25), 1..4), 1..5),
+		reverse in any::<bool>(),
+	) {
+		let revision = DocumentRevision::new(1);
+		let mut builder = DocumentBuilder::new(revision);
+		let mut blocks = Vec::new();
+		let mut entries = Vec::new();
+		for ranges in ranges {
+			let spans: Vec<_> = ranges.into_iter().map(|(a, b, exact, shift)| {
+				let source = a.min(b)..a.max(b);
+				let len = if exact { source.len() } else { 3 };
+				let start = shift % (25 - len);
+				SourceSpan { semantic: start..start + len, source, exact }
+			}).collect();
+			let block = builder.block(Vec::new(), BlockKind::Code {
+				language: String::new(), text: "x".repeat(24),
+			});
+			let cover = spans.iter().map(|span| span.source.start).min().unwrap()..spans.iter().map(|span| span.source.end).max().unwrap();
+			entries.push(BlockSource { block: block.id(), source: Some(cover), fields: vec![FieldSource {
+				field: FieldId::from_index(0), spans, covers: Vec::new(),
+			}] });
+			blocks.push(block);
+		}
+		if reverse { entries.reverse(); }
+		let map = SourceMap::new(revision, entries.clone());
+		let source = "x".repeat(24);
+		prop_assert_eq!(map.validate(&source, &builder.finish(blocks)), Ok(()));
+		for offset in 0..=25 {
+			let mut candidates = Vec::new();
+			for entry in &entries {
+				for span in &entry.fields[0].spans {
+					// Endpoint positions belong to both adjacent spans; ties are unspecified.
+					if (span.source.start..=span.source.end).contains(&offset) {
+						let semantic = if span.exact {
+							let byte = span.semantic.start + offset - span.source.start;
+							byte..byte
+						} else { span.semantic.clone() };
+						candidates.push((entry.block, FieldId::from_index(0), semantic));
+					}
+				}
+			}
+			match map.source_to_semantic(offset) {
+				Some(actual) => prop_assert!(candidates.contains(&actual), "offset={offset}, actual={actual:?}, candidates={candidates:?}"),
+				None => prop_assert!(candidates.is_empty(), "missing cover at {offset}"),
+			}
+			let block_candidates: Vec<_> = entries.iter().filter(|entry| { let range = entry.source.as_ref().unwrap(); (range.start..=range.end).contains(&offset) }).map(|entry| entry.block).collect();
+			match map.source_block(offset) {
+				Some(block) => prop_assert!(block_candidates.contains(&block)),
+				None => prop_assert!(block_candidates.is_empty()),
+			}
+		}
+	}
+
+	#[test]
 	fn disjoint_fields_map_every_byte_and_preserve_lookup_identity(
 		texts in prop::collection::vec(".{0,16}", 0..8),
 		revision in 1u64..100,

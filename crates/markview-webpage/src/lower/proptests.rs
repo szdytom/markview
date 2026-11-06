@@ -34,7 +34,89 @@ fn blank(ch: char) -> bool {
 	matches!(ch, '\t' | '\n' | '\u{c}' | '\r' | ' ')
 }
 
+// Rectangles come from partitioning a complete matrix, independently of HTML placement.
+fn rectangles(
+	height: usize,
+	width: usize,
+	cuts: &[(u8, bool, u8)],
+) -> Vec<(usize, usize, usize, usize)> {
+	let mut cells = vec![(0, 0, height, width)];
+	for &(index, vertical, cut) in cuts {
+		let index = usize::from(index) % cells.len();
+		let (row, col, h, w) = cells[index];
+		let length = if vertical { w } else { h };
+		if length == 1 {
+			continue;
+		}
+		let at = 1 + usize::from(cut) % (length - 1);
+		if vertical {
+			cells[index] = (row, col, h, at);
+			cells.push((row, col + at, h, w - at));
+		} else {
+			cells[index] = (row, col, at, w);
+			cells.push((row + at, col, h - at, w));
+		}
+	}
+	cells.sort_unstable();
+	cells
+}
+
+#[test]
+fn rectangle_model_can_partition_a_staggered_grid() {
+	assert_eq!(
+		rectangles(3, 4, &[(0, true, 1), (0, false, 0), (1, false, 1)]),
+		vec![(0, 0, 1, 2), (0, 2, 2, 2), (1, 0, 2, 2), (2, 2, 1, 2)],
+	);
+}
+
 proptest! {
+	#[test]
+	fn mixed_table_rectangles_preserve_spans_markers_and_group_ownership(
+		width in 1usize..7, heights in prop::array::uniform3(1usize..7),
+		cuts in prop::collection::vec((any::<u8>(), any::<bool>(), any::<u8>()), 0..24),
+		normalize in any::<bool>(),
+	) {
+		let mut html_groups = Vec::new();
+		let mut expected_groups = Vec::new();
+		for (group, &height) in heights.iter().enumerate() {
+			let cells = rectangles(height, width, &cuts);
+			let tag = ["thead", "tbody", "tfoot"][group];
+			let mut html = format!("<{tag}>");
+			for row in 0..height {
+				html.push_str("<tr>");
+				for &(r, c, h, w) in cells.iter().filter(|cell| cell.0 == row) {
+					let raw_h = if normalize && r + h == height { if c % 2 == 0 { 0 } else { h + 10 } } else { h };
+					let raw_w = if normalize && w == 1 { 0 } else { w };
+					html.push_str(&format!("<td rowspan='{raw_h}' colspan='{raw_w}'>g{group}r{r}c{c}</td>"));
+				}
+				html.push_str("</tr>");
+			}
+			html.push_str(&format!("</{tag}>"));
+			html_groups.push(html);
+			expected_groups.push(cells);
+		}
+		let html = format!("<table>{}{}{}</table>", html_groups[2], html_groups[1], html_groups[0]);
+		let capacity = heights.iter().sum::<usize>() * width;
+		let profile = Profile { max_table_columns: width, max_table_rows: heights.iter().sum(), max_table_cells: capacity, ..crate::PROFILE_V1.clone() };
+		let document = lower(&html, &profile).unwrap();
+		let table = document.blocks().iter().find_map(|block| match block.kind() { BlockKind::Table(table) => Some(table), _ => None }).unwrap();
+		prop_assert_eq!(table.columns.len(), width);
+		prop_assert_eq!(table.groups.len(), 3);
+		for (group, expected) in expected_groups.iter().enumerate() {
+			prop_assert_eq!(table.groups[group].kind, [TableGroupKind::Head, TableGroupKind::Body, TableGroupKind::Foot][group]);
+			prop_assert_eq!(table.groups[group].rows.len(), heights[group]);
+			let actual: Vec<_> = table.groups[group].rows.iter().enumerate().flat_map(|(r, row)| row.cells.iter().map(move |cell| {
+				let marker = cell.blocks.iter().map(|block| match block.kind() { BlockKind::Paragraph(text) => plain_text(text), _ => panic!("marker changed kind") }).collect::<String>();
+				(r, cell.rowspan as usize, cell.colspan as usize, marker)
+			})).collect();
+			let expected: Vec<_> = expected.iter().map(|&(r, c, h, w)| (r, h, w, format!("g{group}r{r}c{c}"))).collect();
+			prop_assert_eq!(actual, expected);
+		}
+		for profile in [Profile { max_table_cells: capacity - 1, ..profile.clone() }, Profile { max_table_columns: width - 1, ..profile.clone() }, Profile { max_table_rows: heights.iter().sum::<usize>() - 1, ..profile }] {
+			prop_assert!(matches!(lower(&html, &profile), Err(Error::TableTooLarge)), "table budget must be enforced");
+		}
+	}
+
 	#[test]
 	fn table_rowspans_reserve_columns_and_stop_at_their_group_boundary(
 		columns in 1usize..7, heights in prop::array::uniform3(1usize..6),

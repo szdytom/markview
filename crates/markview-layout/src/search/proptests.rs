@@ -175,6 +175,79 @@ fn expected(
 	}
 	result
 }
+
+#[test]
+fn declared_unicode_equivalence_and_word_boundaries_keep_field_relative_bytes()
+{
+	// Simple case folding does not expand `ß` or normalize combining sequences.
+	for (text, query, ranges) in [
+		("Σσς", "σ", vec![0..2, 2..4, 4..6]),
+		("KkK", "k", vec![0..1, 1..2, 2..5]),
+		("Sſs", "s", vec![0..1, 1..3, 3..4]),
+		("ßẞss", "ß", vec![0..2, 2..5]),
+		("é e\u{301}", "é", std::iter::once(0..2).collect()),
+		("Iİıi", "i", vec![0..1, 5..6]),
+		(".*? a.*?", ".*?", vec![0..3, 5..8]),
+	] {
+		let (document, fields) = fixture(
+			&[(0, text.to_owned()), (2, text.to_owned())],
+			DocumentRevision::new(71),
+		);
+		let index = SearchIndex::new(&document);
+		let revision = document.revision();
+		let expected: Vec<_> = fields
+			.iter()
+			.flat_map(|(block, field, _, _)| {
+				ranges.iter().cloned().map(move |range| SearchMatch {
+					revision,
+					block: *block,
+					field: FieldId::from_index(*field),
+					range,
+					enclosing: Arc::from([]),
+				})
+			})
+			.collect();
+		assert_eq!(
+			index.find(query, SearchOptions::default()),
+			expected,
+			"text={text:?}, query={query:?}"
+		);
+	}
+	for (text, query, ranges) in [
+		("café cafétéria café", "café", vec![0..5, 18..23]),
+		("e\u{301} e\u{301}x e\u{301}", "e\u{301}", vec![0..3, 9..12]),
+		("naïve (naïve)", "naïve", vec![0..6, 8..14]),
+	] {
+		let (document, _) =
+			fixture(&[(0, text.to_owned())], DocumentRevision::new(72));
+		let index = SearchIndex::new(&document);
+		let options = SearchOptions {
+			case_sensitive: true,
+			whole_word: true,
+		};
+		let actual: Vec<_> = index
+			.find(query, options)
+			.into_iter()
+			.map(|m| m.range)
+			.collect();
+		assert_eq!(actual, ranges, "text={text:?}");
+		let cancelled = std::cell::Cell::new(false);
+		assert!(
+			index
+				.find_cancellable(query, options, || {
+					cancelled.set(true);
+					true
+				})
+				.is_none()
+		);
+		assert!(cancelled.get());
+		assert_eq!(
+			index.find(query, options),
+			SearchIndex::new(&document).find(query, options)
+		);
+	}
+}
+
 proptest! {
 	#[test]
 	fn literal_search_matches_independent_fields(values in prop::collection::vec((0u8..8,"[abAB中😀.*? ]{0,40}"),0..10), query in prop_oneof!["[abAB中😀.*? ]{0,4}",Just("summary".to_owned()),Just("inner".to_owned()),Just("caption".to_owned()),Just("term".to_owned())], revision in 1u64..1000) {

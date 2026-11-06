@@ -29,7 +29,8 @@ jobs:
           cargo test --locked -p markview-geometry -p markview-document
           -p markview-layout -p markview-ui-core -p markview-interaction -p markview-commonmark
           -p markview-i18n -p markview -p markview-web -p markview-webpage
-          -p markview-icon -p markview-render -p markview-pdf -p markview-platform --lib proptests::
+          -p markview-icon -p markview-render -p markview-pdf -p markview-platform
+          -p markview-image --lib proptests::
       - name: Run development-tool property tests
         run: 'cargo test --locked -p xtask proptests::'
       - name: Upload property test regressions

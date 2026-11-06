@@ -2602,6 +2602,7 @@ dependencies = [
  "anyhow",
  "image",
  "markview-layout",
+ "proptest",
  "resvg",
 ]
 

@@ -3,7 +3,7 @@
 Property tests run as ordinary Rust unit tests using Proptest. Keep them in a
 `#[cfg(test)] mod proptests` next to their owning API; longer modules use
 `module/proptests.rs`. Private access comes from the test child module, without
-expanding production visibility. The dependency is development-only in all fifteen
+expanding production visibility. The dependency is development-only in sixteen
 workspace packages, with `std` enabled and the default fork, timeout and bit-set features
 disabled. Proptest 1.12 requires Rust 1.88, below the workspace's 1.96 MSRV.
 The icon parser is also included by `xtask`; its property module is attached
@@ -15,8 +15,8 @@ or change test-module resolution in the including crate.
 From the repository root:
 
 ```sh
-cargo test --locked -p markview-geometry -p markview-document -p markview-layout -p markview-ui-core -p markview-interaction -p markview-commonmark -p markview-i18n -p markview -p markview-web -p markview-webpage -p markview-icon -p markview-render -p markview-pdf -p markview-platform --lib proptests::
-PROPTEST_CASES=4096 cargo test --locked -p markview-geometry -p markview-document -p markview-layout -p markview-ui-core -p markview-interaction -p markview-commonmark -p markview-i18n -p markview -p markview-web -p markview-webpage -p markview-icon -p markview-render -p markview-pdf -p markview-platform --lib proptests::
+cargo test --locked -p markview-geometry -p markview-document -p markview-layout -p markview-ui-core -p markview-interaction -p markview-commonmark -p markview-i18n -p markview -p markview-web -p markview-webpage -p markview-icon -p markview-render -p markview-pdf -p markview-platform -p markview-image --lib proptests::
+PROPTEST_CASES=4096 cargo test --locked -p markview-geometry -p markview-document -p markview-layout -p markview-ui-core -p markview-interaction -p markview-commonmark -p markview-i18n -p markview -p markview-web -p markview-webpage -p markview-icon -p markview-render -p markview-pdf -p markview-platform -p markview-image --lib proptests::
 cargo test --locked -p xtask proptests::
 PROPTEST_CASES=4096 cargo test --locked -p xtask proptests::
 ```
@@ -101,9 +101,10 @@ callers to explain the result and locate defects. Resolve clearly established
 bugs directly; leave disputed semantics explicit for a human decision while
 continuing independent work. Never filter a disagreement out of the generator.
 
-The coverage expansion recorded defects before changing production code. The
-follow-up fixes enable ten of the eleven regressions in ordinary CI; only the
-upstream Comrak front-matter defect (PBT-003) remains `#[ignore]`. Keep an
+The original coverage expansion recorded defects before changing production code.
+Its fixes enable ten of the original eleven regressions in ordinary CI; the
+upstream Comrak front-matter defect (PBT-003) and the recorded raw HTML
+entity/whitespace defects (PBT-012/PBT-013) remain unresolved. Keep an
 unresolved defect's reduced input, diagnosis and ignored reproducer with its bug
 ID. An ignored reproducer is an unresolved contract, not passing coverage.
 
@@ -175,6 +176,105 @@ within its domain, not a proof or a requirement to find a bug.
 | [Search snippets](../../src/app/file_search/proptests.rs) | Explicit Unicode grapheme tokens and selected positions constrain truncation, ellipses, exact highlighted bytes, complete cluster boundaries and merged adjacent highlights. Fuzzy scoring and Unicode normalization remain delegated to the matcher library and existing examples. |
 | [Pixel allocation aliases](../../src/images/pixels/proptests.rs) | Independent allocation IDs check byte deduplication, incoming alias replacement, bounded memory, whole-allocation eviction and offscreen-first priority. Victim ordering among equally visible allocations is deliberately unspecified; real decode/concurrent publication remains separate. |
 | [Archive member patterns](../../src/fonts/archive/proptests.rs) | A bounded exhaustive prefix-reachability model checks Unicode literals, `?`, `*` and separators. The enabled model includes member names containing literal `*`. Archive decompression, signatures and resource limits retain their existing integration tests. |
+
+## Plan follow-up (2026-11-06)
+
+The follow-up audited `artifacts/fuzz-pbt-plan.md` against the current tests.
+It adds bounded models for the gaps below, without changing production behavior
+or fixing defects. The plan itself is a local ignored artifact; this section
+preserves the execution evidence in the repository.
+
+| Plan item | Added domain and independent expectation | Remaining boundary |
+| --- | --- | --- |
+| Mixed HTML spans | Up to three 6×6 groups partitioned into disjoint rectangles; unique markers, canonical group order, exact spans, zero/overlong normalization and exact/one-under budgets. Rectangles are split before HTML is constructed, without a first-free-slot oracle. | General malformed/colliding HTML remains with the existing `fit_span` model and fuzz. |
+| Table consumer | Independent column partitions in row stripes check mixed rectangles, occupied slots and group clipping through private `build_grid`, without shaping. Cell/row limits truncate; zero rowspan becomes one, unlike HTML's rest-of-group meaning. | Full table width/height, shared borders, retained disclosures and pagination remain integration/fuzz domains. |
+| Source overlap | One to four blocks, one to three exact/transformed spans per field, and every source position in 24 ASCII bytes; enumerate covering candidates, allowing unspecified ties. Covers include nesting, shared endpoints, adjacency and zero width. | Arbitrary transformed front-end maps and Unicode source transformations remain separate. |
+| Local text geometry | Two to four declared two-grapheme clusters, up to three lines, RTL/atomic flags and horizontal clipping/pan; explicit caret positions and rectangle intervals check nearest-box hits and reversed selections. | No shaping oracle, arbitrary bidi layout or vertical clipping model. |
+| Finite MVSS cascade | Six selectors on body→blockquote→strong, up to four source layers; optional size/weight/color declarations model partial merge, depth, specificity and inheritance through parsing, source resolution and stylesheet merge. | Selectors avoid equal-specificity ties; duplicate selectors per source and size on body-containing selectors are invalid. General cascading/cache invalidation remains separate. |
+| IME | Up to 24 operations with commit/cancel after two preedit updates, legal directed selections, start/end cursor extension and undo/redo; committed snapshots are independent of displayed composition. | Alphabet excludes grapheme merging and bidi movement; elapsed-time grouping remains outside the model. |
+| Unicode search | Explicit sigma/Kelvin/long-s/sharp-s/dotted-I/combining examples, literal metacharacters, repeated fields and known Latin word boundaries; fixed byte ranges, cancellation and subsequent fresh-index equivalence. | Simple folding only; no full Unicode or ICU oracle. |
+| Pagination | Quarter-pixel cases at one/four page heights retain a single image at the quarter-scale floor; impossible widow/orphan constraints advance until the remaining two-band suffix fits. | Minimum-scale overflow may be clipped; arbitrary retained flow remains fuzz. |
+| Footnotes | Up to nine definitions and eleven references over a small ASCII label set, case variants, missing/unused labels and duplicates; last definition and first-reference numbering are recorded before parsing, across three newline forms. | Label whitespace/Unicode normalization, nested note bodies and backlink navigation remain outside this model. |
+| Raw HTML | Known tags, literal Unicode, first duplicate href, decoded attribute entities, ignored CSS, inline anchors and sliceable source ranges. Text entities and literal nonbreaking spaces have recorded unresolved reproducers below. | The two defects are not passing coverage; arbitrary markup remains fuzz. |
+| Decoder logic | ICO directory area/first-tie choice with bounded synthetic payloads and invalid ranges; full-range pixel budgets; exact integer initial-size arithmetic with power-of-two intrinsic widths; tiny uniform PNG target/alpha checks and SVG target edge examples. | Directory-only ICO fixtures do not decode PNGs. EXIF orientation, animation and hostile format combinations remain fuzz. |
+
+Reparse/prefix identity, scroll/pan/inertia, archive globs, PDF/font/coordinate
+algebra and resource source/security/cache items already have the distinct local
+models requested by the plan. In particular, local resource tests already cover
+Unicode and percent-encoded document/vault paths, and cache fixtures already
+reject other security namespaces. They were retained without duplicate models.
+The new decoder properties are included in `pbt.yml`.
+
+The first MVSS generator incorrectly allowed duplicate selectors within a source
+and size declarations on selectors containing body. Schema rejection was a
+generator error, corrected by constructing unique valid declarations. The first
+HTML attribute assertion expected a nested anchor on the block; the contract
+represents it as an inline anchor, so that assertion was corrected. Neither is
+a production defect. Power-of-two bitmap widths keep the rational-size oracle
+exact instead of imposing real-number rounding on arbitrary float division.
+
+### Recorded defect PBT-012: raw HTML text entities
+
+Status: **recorded only, not fixed**. A supported raw HTML text run retains
+`&amp;` rather than reading `&`. This affects reading/copy/search text; attribute
+entities already decode. The reduced ordinary input is:
+
+```html
+<p><em>&amp;</em></p>
+```
+
+Expected text: `&`; actual text: `&amp;`. The token text reaches `push_text` in
+[html.rs](../../crates/markview-commonmark/src/html.rs) without entity decoding.
+The [property and reduced ordinary reproducer](../../crates/markview-commonmark/src/proptests/raw_html.rs)
+are explicitly ignored with PBT-012; the separate supported-attribute property
+stays enabled. The [persisted seed](../../crates/markview-commonmark/proptest-regressions/proptests/raw_html.txt)
+shrinks to `entities = [0], bold = false`. Both opt-in tests were run and failed
+with the expected text mismatch; they do not count as passing tests.
+
+```sh
+cargo test --locked -p markview-commonmark --lib proptests::raw_html:: -- --ignored
+```
+
+### Recorded defect PBT-013: raw HTML nonbreaking spaces
+
+Status: **recorded only, not fixed**. The literal text `a\u{a0}b` inside
+`<p><em>…</em></p>` reads as `a b`. The HTML whitespace set excludes U+00A0;
+collapsing it changes the text and removes its nonbreaking behavior. `push_text`
+uses `char::is_whitespace`, which also includes this character. This is distinct
+from PBT-012: no entity spelling occurs in the input. The ignored reduced
+ordinary test `raw_html_preserves_literal_nonbreaking_spaces` was run and failed
+with exactly that mismatch. Its input is fixed, so it needs no RNG seed.
+
+```sh
+cargo test --locked -p markview-commonmark --lib raw_html_preserves_literal_nonbreaking_spaces -- --ignored
+```
+
+### Follow-up verification
+
+This batch adds **13 randomized properties and three directed tests** that pass,
+and three ignored reproducers for the two newly recorded defects. Tests retain
+the default case count and shrink budget; the extended run uses the environment.
+
+```sh
+PROPTEST_CASES=4096 cargo test --locked -p markview-document -p markview-commonmark -p markview-webpage -p markview-layout -p markview-image --lib proptests::
+cargo test --locked -p markview-document -p markview-commonmark -p markview-webpage -p markview-layout -p markview-image --all-features --lib proptests::
+cargo test --locked -p markview-document -p markview-commonmark -p markview-webpage -p markview-layout -p markview-image --all-features -- --skip proptests::
+cargo clippy --locked -p markview-document -p markview-commonmark -p markview-webpage -p markview-layout -p markview-image --all-targets --all-features -- -D warnings
+```
+
+- The 4096-case run passed **94 tests** across the five packages, including the directed examples. Later strengthening of source semantic offsets and IME display/selection checks was also rerun at 4096 cases.
+- The all-features property-module run passed **94 tests**, with **four ignored reproducers**: PBT-003, two for PBT-012 and one for PBT-013.
+- The all-features unit/integration/documentation run excluding property modules passed **740 tests**, with two existing ignored tests. It includes the existing complex-table and Markdown HTML/details integration suites.
+- Formatting, Clippy with warnings denied, documentation links/tables, changelog validation, all four CI infrastructure tests and the standalone fuzz workspace's locked metadata check passed.
+- Each new ignored reproducer was explicitly executed and failed with its recorded mismatch. Production behavior was left unchanged.
+
+Native commands used the NixOS environment documented in `AGENTS.local.md`:
+`PKG_CONFIG_PATH=/run/current-system/sw/lib/pkgconfig:/run/current-system/sw/share/pkgconfig`,
+`LD_LIBRARY_PATH=/run/current-system/sw/lib:/run/opengl-driver/lib` and
+`FONTCONFIG_FILE=$PWD/tests/fontconfig.conf`. An initial build without these
+variables failed to locate Fontconfig; the configured builds passed. No system
+font, network request, GPU or Android emulator was needed for these models.
+These are local results, not evidence of a remote CI run.
 
 ## Expansion verification (2026-11-05)
 
@@ -340,7 +440,7 @@ outside the declared model domains.
 
 ## Expansion audit
 
-All fifteen workspace packages now participate. The audit covered semantic
+The original audit covered fifteen workspace packages. It covered semantic
 documents, parsing, layout, interaction, rendering preparation, browser delivery,
 HTML extraction, localization, native adapters, PDF serialization, application
 state/persistence and development tooling. The table maps the local contracts
@@ -349,9 +449,11 @@ to their independent models; it does not claim exhaustive line coverage.
 The last audit also covered previously missing compound preferences, Obsidian
 extensions, cross-row table occupancy, export planning, archive patterns, local
 file inputs, clipboard text, search snippets and shared pixel allocations.
-Ten confirmed defects now have production fixes and enabled regressions. The
-upstream Comrak defect PBT-003 retains its ignored failing test and saved seed;
-it does not count as passing coverage.
+Ten confirmed defects have production fixes and enabled regressions. PBT-003
+and the follow-up PBT-012/PBT-013 retain ignored failing tests; randomized
+reproducers also retain saved seeds. They do
+not count as passing coverage. The follow-up adds `markview-image` as a sixteenth
+package with properties.
 
 Further work needs a distinct model or environment: arbitrary shaping and
 Unicode segmentation, general CSS cascading, malformed Markdown/HTML/SVG

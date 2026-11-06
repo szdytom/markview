@@ -19,6 +19,69 @@ fn text() -> impl Strategy<Value = String> {
 
 proptest! {
 	#[test]
+	fn ime_commit_cancel_and_directed_selections_follow_committed_history(
+		operations in prop::collection::vec((0u8..6, 0usize..80, 0usize..80, "[a-z中é😀]{1,5}"), 1..25),
+	) {
+		// These scalars are independent graphemes with stable byte boundaries.
+		let mut ui = TextShaper::new();
+		let mut input = TextInput::default();
+		let mut state = (String::new(), 0, 0);
+		let mut undo = Vec::new();
+		let mut redo = Vec::new();
+		for (op, a, b, value) in operations {
+			match op {
+				0 | 1 => {
+					let before = state.clone();
+					for preedit in ["temporary", value.as_str()] {
+						let boundaries: Vec<_> = preedit.char_indices().map(|(i, _)| i).chain([preedit.len()]).collect();
+						let cursor = (boundaries[a % boundaries.len()], boundaries[b % boundaries.len()]);
+						input.preedit(&mut ui, preedit, Some(cursor));
+						prop_assert_eq!(input.text(), state.0.as_str());
+						prop_assert!(input.is_composing());
+						let start = state.1.min(state.2);
+						let displayed = format!("{}{preedit}{}", &state.0[..start], &state.0[state.1.max(state.2)..]);
+						prop_assert_eq!(input.editor.raw_text(), displayed);
+						let selection = input.editor.raw_selection();
+						prop_assert_eq!((selection.anchor().index(), selection.focus().index()), (start + cursor.0, start + cursor.1));
+					}
+					if op == 0 {
+						input.commit(&mut ui, &value);
+						let (start, end) = (state.1.min(state.2), state.1.max(state.2));
+						state.0.replace_range(start..end, &value);
+						state.1 = start + value.len(); state.2 = state.1;
+						if state.0 != before.0 { undo.push(before); redo.clear(); }
+					} else { input.cancel_compose(&mut ui); }
+				}
+				2 => {
+					let boundaries: Vec<_> = state.0.char_indices().map(|(i, _)| i).chain([state.0.len()]).collect();
+					state.1 = boundaries[a % boundaries.len()]; state.2 = boundaries[b % boundaries.len()];
+					ui.input_driver(&mut input.editor).select_byte_range(state.1, state.2);
+				}
+				3 | 4 => {
+					input.undo(&mut ui, op == 4);
+					let next = if op == 4 { redo.pop() } else { undo.pop() };
+					if let Some(next) = next {
+						if op == 4 { undo.push(state); } else { redo.push(state); }
+						state = next;
+					}
+				}
+				_ => {
+					let end = a % 2 == 0;
+					let extend = b % 2 == 0;
+					input.move_cursor(&mut ui, if end { Motion::End } else { Motion::Start }, extend);
+					state.2 = if end { state.0.len() } else { 0 };
+					if !extend { state.1 = state.2; }
+				}
+			}
+			prop_assert!(!input.is_composing());
+			prop_assert_eq!(input.text(), state.0.as_str());
+			let selection = input.editor.raw_selection();
+			prop_assert_eq!((selection.anchor().index(), selection.focus().index()), (state.1, state.2));
+			prop_assert_eq!(input.selected_text(), (state.1 != state.2).then(|| &state.0[state.1.min(state.2)..state.1.max(state.2)]));
+		}
+	}
+
+	#[test]
 	fn normalization_preserves_text_and_spaces_and_converts_line_controls(
 		parts in prop::collection::vec(prop_oneof![
 			text().prop_map(|text| (text.clone(), text)),

@@ -1,4 +1,7 @@
 //! Raster and vector decoding with pixel limits.
+#[cfg(test)]
+mod proptests;
+
 use anyhow::{Context, Result, bail};
 use image::{AnimationDecoder, ImageDecoder};
 use markview_layout::image::Pixels;

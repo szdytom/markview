@@ -23,6 +23,7 @@ at the same level, without `[brackets]`.
 
 ### Added
 
+- Expand property models for mixed table spans, source overlaps, text geometry, MVSS cascades, IME, pagination, Unicode search, footnotes and image decoding; record raw HTML entity defects without fixes.
 - Add integrated fuzz harnesses for reading and webpage layout, with state histories for layout cache comparisons.
 - Add controlled background-highlight scheduling, real image decoding, pagination, reparse-sequence, interaction and font-archive fuzz harnesses.
 - Reach valid faces, multilingual shaping and valid TeX fragments in the font, shaping and math fuzz targets.

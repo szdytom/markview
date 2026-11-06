@@ -1,3 +1,5 @@
+mod raw_html;
+
 use super::*;
 use markview_document::{
 	BlockSource, LinkOccurrenceId, content_identity, visit_blocks,
@@ -98,6 +100,50 @@ fn render(sections: &[(bool, String)], newline: &str) -> String {
 }
 
 proptest! {
+	#[test]
+	fn footnote_records_use_first_reference_numbers_and_last_case_folded_definitions(
+		definitions in prop::collection::vec((0usize..4, any::<bool>()), 0..10),
+		references in prop::collection::vec((0usize..6, any::<bool>()), 1..12),
+		newline in prop::sample::select(vec!["\n", "\r\n", "\r"]),
+	) {
+		let label = |id, upper| format!("{}{id}", if upper { "N" } else { "n" });
+		let mut bodies = [const { None }; 4];
+		for (index, &(id, _)) in definitions.iter().enumerate() { bodies[id] = Some(format!("definition{index}")); }
+		let mut order = Vec::new();
+		let mut expected_text = Vec::new();
+		let mut expected_refs = Vec::new();
+		let mut source = Vec::new();
+		for (index, &(id, upper)) in references.iter().enumerate() {
+			source.push(format!("r{index}[^{label}]", label = label(id, upper)));
+			if id < bodies.len() && bodies[id].is_some() {
+				if !order.contains(&id) { order.push(id); }
+				let number = order.iter().position(|&entry| entry == id).unwrap() as u32 + 1;
+				expected_text.push(format!("r{index}[{number}]"));
+				expected_refs.push((FootnoteId::new(label(id, false)), number));
+			} else { expected_text.push(format!("r{index}[^{label}]", label = label(id, upper))); }
+		}
+		let mut source = format!("{}{newline}{newline}", source.join(" "));
+		for (index, &(id, upper)) in definitions.iter().enumerate() {
+			source.push_str(&format!("[^{label}]: definition{index}{newline}{newline}", label = label(id, upper)));
+		}
+		let parsed = parse(source.clone());
+		prop_assert_eq!(parsed.map.validate(&source, &parsed.document), Ok(()));
+		let BlockKind::Paragraph(text) = parsed.blocks()[0].kind() else { panic!("reference paragraph missing") };
+		prop_assert_eq!(plain_text(text), expected_text.join(" "));
+		let actual_refs: Vec<_> = text.iter().filter_map(|inline| match &inline.kind { InlineKind::FootnoteRef(reference) => Some((reference.definition.clone(), reference.number)), _ => None }).collect();
+		prop_assert_eq!(actual_refs, expected_refs.clone());
+		let occurrences: std::collections::HashSet<_> = text.iter().filter_map(|inline| match &inline.kind { InlineKind::FootnoteRef(reference) => Some(reference.occurrence), _ => None }).collect();
+		prop_assert_eq!(occurrences.len(), expected_refs.len());
+		let notes: Vec<_> = parsed.blocks().iter().filter_map(|block| match block.kind() {
+			BlockKind::Footnote { id, number, blocks } => {
+				let BlockKind::Paragraph(text) = blocks[0].kind() else { panic!("note body missing") };
+				Some((id.clone(), *number, plain_text(text)))
+			}, _ => None,
+		}).collect();
+		let expected: Vec<_> = order.into_iter().enumerate().map(|(index, id)| (FootnoteId::new(label(id, false)), index as u32 + 1, bodies[id].clone().unwrap())).collect();
+		prop_assert_eq!(notes, expected);
+	}
+
 	#[test]
 	fn wiki_links_preserve_unicode_labels_escape_literal_percents_and_normalize_heading_targets(
 		path in word(), label in word(), suffix in "[0-9A-F]{2}", heading in 0u16..1000,

@@ -54,6 +54,50 @@ fn lines(
 
 proptest! {
 	#[test]
+	fn impossible_widow_and_orphan_constraints_make_progress_until_the_suffix_fits(count in 3usize..9) {
+		let mut builder = DocumentBuilder::new(DocumentRevision::new(1));
+		let block = builder.block(Vec::new(), BlockKind::Code { language: String::new(), text: String::new() });
+		let (mut layout, _) = lines(&vec![(16, 4); count], 0, 0);
+		layout.page_constraints.push(crate::scene::PageConstraint { top: 0.0, bottom: layout.height, orphans: Some(count as u16), widows: Some(count as u16), keep_together: true });
+		let snapshot = LayoutSnapshot { blocks: vec![place(block.id(), layout)], ..Default::default() };
+		let pagination = paginate(&builder.finish(vec![block]), &snapshot, &geometry(36.0));
+		// Two bands fit; an unsatisfiable suffix advances by one band on an empty page.
+		let expected: Vec<_> = (0..count - 2).map(|i| i..i + 1).chain(std::iter::once(count - 2..count)).collect();
+		let actual: Vec<_> = pagination.pages.iter().map(|page| {
+			assert_eq!(page.len(), 1);
+			assert_eq!(page[0].scale, 1.0);
+			assert!(page[0].y + page[0].bottom - page[0].top <= 36.0);
+			page[0].bands.clone()
+		}).collect();
+		prop_assert_eq!(actual, expected);
+	}
+
+	#[test]
+	fn indivisible_images_at_and_beyond_the_scale_floor_keep_one_fragment(
+		height in 80u16..161, delta in -2i16..3, beyond in any::<bool>(),
+	) {
+		let height = f32::from(height);
+		let image_height = height * if beyond { 4.0 } else { 1.0 } + f32::from(delta) / 4.0;
+		let mut builder = DocumentBuilder::new(DocumentRevision::new(1));
+		let image = builder.block(Vec::new(), BlockKind::Paragraph(vec![crate::document::Inline {
+			kind: InlineKind::Image(crate::document::ImageSpec { source: crate::document::ImageSource::Resource(crate::document::ResourceRef::document("image")), alt: String::new(), title: String::new(), width: None, height: None }), style: Default::default(), link: None,
+		}]));
+		let layout = BlockLayout { draws: vec![Draw::Image { src: "image".to_owned(), version: 1, rect: Rect { x: 0.0, y: 0.0, w: 8.0, h: image_height }, title: String::new() }], height: image_height, ..Default::default() };
+		let snapshot = LayoutSnapshot { blocks: vec![place(image.id(), layout)], ..Default::default() };
+		let pagination = paginate(&builder.finish(vec![image]), &snapshot, &geometry(height));
+		prop_assert_eq!(pagination.pages.len(), 1);
+		prop_assert_eq!(pagination.pages[0].len(), 1);
+		let item = &pagination.pages[0][0];
+		prop_assert_eq!(item.bands.clone(), 0..1);
+		prop_assert!(item.first && item.last);
+		prop_assert_eq!((item.y, item.top, item.bottom), (0.0, 0.0, image_height));
+		let expected = (f64::from(height) / f64::from(image_height)).clamp(0.25, 1.0);
+		prop_assert!((f64::from(item.scale) - expected).abs() < 0.000001);
+		// At the floor, an oversized band is retained and the page painter clips it.
+		if image_height > height * 4.0 { prop_assert_eq!(item.scale, 0.25); }
+	}
+
+	#[test]
 	fn lone_images_scale_as_one_band_and_keep_their_anchor_on_the_same_page(
 		height in 80u16..161, raw_image in any::<u16>(), lead in 0u16..8, trail in 0u16..8, filler in 1u16..80, width in 1u16..301,
 	) {

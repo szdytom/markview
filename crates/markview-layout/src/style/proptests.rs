@@ -20,6 +20,72 @@ const MEDIA: &[&str] = &[
 
 proptest! {
 	#[test]
+	fn finite_cascade_preserves_inheritance_specificity_and_ordered_partial_merges(
+		layers in prop::collection::vec(prop::collection::vec((0usize..6,
+			prop::option::of(1u16..17), prop::option::of(100u16..901), prop::option::of(any::<u8>())), 0..10), 1..5),
+	) {
+		// This selector subset has no equal-specificity ties at the same chain depth.
+		let masks = [1u8, 2, 3, 4, 6, 7];
+		let conditions = [Condition::Body, Condition::Blockquote, Condition::Strong];
+		let mut declarations = [[None; 3]; 6];
+		let mut merged = Stylesheet::parse("format_version=2\nversion=0").unwrap();
+		let mut source = StylesheetSource::default();
+		for layer in layers {
+			let mut local = [[None; 3]; 6];
+			for (selector, size, weight, color) in layer {
+				let size = size.filter(|_| masks[selector] & 1 == 0);
+				for (field, value) in [size, weight, color.map(u16::from)].into_iter().enumerate() {
+					if value.is_some() { local[selector][field] = value; }
+				}
+			}
+			let mut toml = "format_version=2\nversion=0\n".to_owned();
+			for (selector, values) in local.into_iter().enumerate() {
+				if values == [None; 3] { continue; }
+				let names: Vec<_> = ["body", "blockquote", "strong"].into_iter().enumerate()
+					.filter(|(index, _)| masks[selector] & (1 << index) != 0)
+					.map(|(_, name)| format!("\"{name}\"")).collect();
+				toml.push_str(&format!("[[rule]]\nwhen=[{}]\n", names.join(",")));
+				for (field, value) in values.into_iter().enumerate() {
+					if let Some(value) = value {
+						declarations[selector][field] = Some(value);
+						let line = match field {
+							0 => format!("size={}\n", f32::from(value) / 4.0),
+							1 => format!("weight={value}\n"),
+							_ => format!("color='#{value:02x}1234'\n"),
+						};
+						toml.push_str(&line);
+					}
+				}
+			}
+			merged.merge(&Stylesheet::parse(&toml).unwrap());
+			source.merge(&StylesheetSource::parse(&toml).unwrap());
+			let resolved = Arc::new(source.clone()).resolve(merged.media());
+			for sheet in [&merged, &resolved] {
+				let mut appearance = TextAppearance::default();
+				let mut expected_size = appearance.size;
+				let mut expected_weight = appearance.weight;
+				for (depth, condition) in conditions.into_iter().enumerate() {
+					let active = (1u8 << (depth + 1)) - 1;
+					let winner = |field: usize| (0..masks.len())
+						.filter(|&i| masks[i] & active == masks[i] && declarations[i][field].is_some())
+						.max_by_key(|&i| (7 - masks[i].leading_zeros(), masks[i].count_ones()));
+					if let Some(i) = winner(0).filter(|&i| masks[i] & (1 << depth) != 0) {
+						expected_size = f32::from(declarations[i][0].unwrap()) / 4.0;
+					}
+					if let Some(i) = winner(1).filter(|&i| masks[i] & (1 << depth) != 0) {
+						expected_weight = declarations[i][1].unwrap();
+					}
+					appearance = sheet.text(&appearance, condition);
+					prop_assert_eq!(appearance.size, expected_size);
+					prop_assert_eq!(appearance.weight, expected_weight);
+					let color = winner(2).map_or(Color(0x262b30ff), |i| Color((u32::from(declarations[i][2].unwrap()) << 24) | 0x1234ff));
+					prop_assert_eq!(sheet.paint(appearance.paint), color.rgba());
+				}
+			}
+		}
+	}
+
+	#[test]
 	fn media_rules_follow_environment_changes_and_or_filters(
 		filter in prop::collection::vec(0usize..MEDIA.len(), 1..8),
 		pdf in any::<bool>(), platform in 0usize..7,
