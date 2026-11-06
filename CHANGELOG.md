@@ -35,6 +35,7 @@ at the same level, without `[brackets]`.
 ### Changed
 
 - Lint hand-maintained GitHub Actions workflows with actionlint in the default local checks.
+- Reuse per-document reading counts when inactive tabs are restored.
 - Publish image dimensions before raster decoding finishes, keeping queued images in the loading state.
 - Split Android integration tests into isolated feature cases with filtering, reproducible shuffling and per-case reports.
 - Run property tests and Linux golden tests in separate CI workflows alongside regular tests, keeping both required for CI and releases.

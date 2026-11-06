@@ -186,6 +186,7 @@ pub(crate) struct ReaderSession {
 	pub(crate) parse_complete: bool,
 	pub(crate) export_title: markview_layout::text_input::TextInput,
 	pub(crate) counts: TextCounts,
+	pub(crate) counts_content_id: Option<u64>,
 	pub(crate) path: Option<PathBuf>,
 	/// Metadata sampled before the last content reload, including missing files.
 	pub(crate) source_stamp: Option<crate::watch::FileStamp>,
@@ -771,7 +772,6 @@ impl ReaderSession {
 	}
 	pub(crate) fn release_heavy(&mut self) {
 		self.saved_reading = Some(crate::app::session::Reading::capture(self));
-		self.counts = TextCounts::default();
 		self.snapshot = LayoutSnapshot::default();
 		self.snapshot_complete = false;
 		if !matches!(self.security.origin, crate::security::Origin::Web(_)) {
@@ -781,7 +781,6 @@ impl ReaderSession {
 		}
 		self.outline = None;
 		self.outline_tree = OutlineTree::default();
-		self.requested_options = None;
 		self.pending_anchor = None;
 		self.jump_origin = None;
 		self.scrolling.cancel();
@@ -881,6 +880,11 @@ impl ReaderSession {
 			!= self.accepted_content_id;
 		if let Some(counts) = counts {
 			self.counts = counts;
+			self.counts_content_id =
+				Some(reader.document.document().content_key().get());
+		} else if changed {
+			self.counts = TextCounts::default();
+			self.counts_content_id = None;
 		}
 		reader.layout.set_disclosures(&self.details_open, false);
 		let extending = self.extends_prefix(&reader);

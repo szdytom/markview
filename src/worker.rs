@@ -103,7 +103,10 @@ impl PrefixPublication {
 	}
 }
 
+type CachedCounts = Option<(u64, markview_layout::text::TextCounts)>;
+
 pub struct Worker {
+	cached_counts: Arc<Mutex<CachedCounts>>,
 	_services: Arc<crate::services::Services>,
 	inbox: Arc<(Mutex<Inbox>, Condvar)>,
 	control: Arc<crate::mailbox::Control>,
@@ -156,6 +159,8 @@ impl Worker {
 			.coverage
 			.store(f32::INFINITY.to_bits(), Ordering::Relaxed);
 		let presented = Arc::new(std::sync::atomic::AtomicU64::new(0));
+		let cached_counts = Arc::new(Mutex::new(None));
+		let restored_counts = cached_counts.clone();
 		let rendered = presented.clone();
 		let current = control.clone();
 		let target = control.clone();
@@ -229,6 +234,9 @@ impl Worker {
 						continue;
 					};
 					let mut request = request;
+					if last.as_ref().is_some_and(|last| last.options != request.options) {
+						counted = None;
+					}
 					last = Some(request.clone());
 					images.set_workspace(request.workspace.clone());
 					images.set_standalone_image(
@@ -543,7 +551,9 @@ impl Worker {
 						// session receives that update gets the counts.
 						let next = match &update.result {
 							Some(Ok(reader)) if reader.complete => {
-								match counted {
+								let restored = *restored_counts.lock().unwrap();
+								let id = reader.document.document().content_key().get();
+								match counted.filter(|(key, _)| *key == id).or(restored) {
 									Some((id, counts))
 										if id == reader.document.document().content_key().get() =>
 									{
@@ -576,12 +586,16 @@ impl Worker {
 			})
 			.expect("start layout worker");
 		Self {
+			cached_counts,
 			_services: services,
 			inbox,
 			control,
 			presented,
 			handle: Some(handle),
 		}
+	}
+	pub(crate) fn reuse_counts(&self, counts: CachedCounts) {
+		*self.cached_counts.lock().unwrap() = counts;
 	}
 	pub fn submit(&self, request: Request) {
 		self.control
@@ -1234,5 +1248,23 @@ mod reflow_tests {
 		let update = complete(2);
 		assert!(update.result.unwrap().is_ok());
 		assert_eq!(update.counts, Some(counts));
+
+		let key = markview_commonmark::parse(source)
+			.document
+			.content_key()
+			.get();
+		let cached = markview_layout::text::TextCounts {
+			words: 123,
+			..counts
+		};
+		worker.release();
+		worker.reuse_counts(Some((key, cached)));
+		submit(3, &first);
+		assert_eq!(complete(3).counts, Some(cached));
+
+		worker.release();
+		fs::write(&second, "Changed input.").unwrap();
+		submit(4, &second);
+		assert_eq!(complete(4).counts.unwrap().words, 2);
 	}
 }

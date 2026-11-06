@@ -84,8 +84,16 @@ impl<P: super::SendEvent> App<P> {
 
 	pub(super) fn request(&mut self, follow: bool) {
 		self.update_media();
-		if let Some(mut request) = self.readers.request(self.options(), follow)
-		{
+		let options = self.options();
+		if self.readers.session.requested_options.as_ref() != Some(&options) {
+			self.readers.session.counts_content_id = None;
+		}
+		let counts = self
+			.readers
+			.session
+			.counts_content_id
+			.map(|id| (id, self.readers.session.counts));
+		if let Some(mut request) = self.readers.request(options, follow) {
 			request.workspace = self.folder.root().cloned();
 			if self.readers.session.accepted_revision != request.content_version
 			{
@@ -108,6 +116,7 @@ impl<P: super::SendEvent> App<P> {
 				false,
 				0,
 			);
+			self.worker.reuse_counts(counts);
 			self.worker.submit(request);
 			self.redraw();
 		}
@@ -137,6 +146,7 @@ impl<P: super::SendEvent> App<P> {
 		self.cancel_gestures();
 		self.abandon_dm();
 		let session = &mut self.readers.session;
+		session.counts_content_id = None;
 		session.content_version += 1;
 		session.security.revoke();
 		session.blocked_images.clear();
