@@ -939,6 +939,7 @@ pub(crate) fn tag_len(source: &str) -> Option<usize> {
 }
 
 fn push_text(spans: &mut Vec<Span>, text: &str, style: &Style) {
+	let text = html_escape::decode_html_entities(text);
 	let mut collapsed = String::with_capacity(text.len());
 	let mut space = false;
 	for c in text.chars() {

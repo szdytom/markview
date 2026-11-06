@@ -104,7 +104,7 @@ continuing independent work. Never filter a disagreement out of the generator.
 The original coverage expansion recorded defects before changing production code.
 Its fixes enable ten of the original eleven regressions in ordinary CI; the
 upstream Comrak front-matter defect (PBT-003) and the recorded raw HTML
-entity/whitespace defects (PBT-012/PBT-013) remain unresolved. Keep an
+whitespace defect (PBT-013) remain unresolved; PBT-012 is fixed. Keep an
 unresolved defect's reduced input, diagnosis and ignored reproducer with its bug
 ID. An ignored reproducer is an unresolved contract, not passing coverage.
 
@@ -215,24 +215,34 @@ exact instead of imposing real-number rounding on arbitrary float division.
 
 ### Recorded defect PBT-012: raw HTML text entities
 
-Status: **recorded only, not fixed**. A supported raw HTML text run retains
-`&amp;` rather than reading `&`. This affects reading/copy/search text; attribute
-entities already decode. The reduced ordinary input is:
+Status: **fixed**. Before the fix, a supported raw HTML text run retained
+`&amp;` rather than reading `&`, affecting reading/copy/search text. Attribute
+entities already decoded. The reduced ordinary input was:
 
 ```html
 <p><em>&amp;</em></p>
 ```
 
-Expected text: `&`; actual text: `&amp;`. The token text reaches `push_text` in
-[html.rs](../../crates/markview-commonmark/src/html.rs) without entity decoding.
-The [property and reduced ordinary reproducer](../../crates/markview-commonmark/src/proptests/raw_html.rs)
-are explicitly ignored with PBT-012; the separate supported-attribute property
-stays enabled. The [persisted seed](../../crates/markview-commonmark/proptest-regressions/proptests/raw_html.txt)
-shrinks to `entities = [0], bold = false`. Both opt-in tests were run and failed
-with the expected text mismatch; they do not count as passing tests.
+Expected text: `&`; previous text: `&amp;`. Text tokens now decode entities
+once before whitespace normalization, after tokenization has recognized markup.
+Encoded tags therefore stay literal text, and double-encoded entities are not
+decoded twice. The [ordinary reproducer](../../crates/markview-commonmark/src/proptests/raw_html.rs)
+is enabled, and [integration cases](../../crates/markview-commonmark/tests/raw_html_text.rs)
+cover named/numeric entities, encoded markup, one-pass decoding, ASCII whitespace,
+unknown names, styles and source-map validity.
+
+The complete entity property retains its [saved seed](../../crates/markview-commonmark/proptest-regressions/proptests/raw_html.txt)
+and input domain. It temporarily remains ignored under **PBT-013**, because its
+`&nbsp;` cases now decode but still hit the independent nonbreaking-space collapse.
+It will be enabled with that fix; no entity cases have been filtered out.
+An explicit opt-in run shrank to `entities = [6], bold = false`, reading an
+empty string instead of U+00A0. The full CommonMark package run passed 228 tests
+with three known reproducers ignored; formatting, Clippy, documentation and
+changelog checks passed.
 
 ```sh
-cargo test --locked -p markview-commonmark --lib proptests::raw_html:: -- --ignored
+cargo test --locked -p markview-commonmark --lib raw_html_ampersand_entity_reads_as_one_character
+cargo test --locked -p markview-commonmark --test raw_html_text
 ```
 
 ### Recorded defect PBT-013: raw HTML nonbreaking spaces
@@ -449,10 +459,9 @@ to their independent models; it does not claim exhaustive line coverage.
 The last audit also covered previously missing compound preferences, Obsidian
 extensions, cross-row table occupancy, export planning, archive patterns, local
 file inputs, clipboard text, search snippets and shared pixel allocations.
-Ten confirmed defects have production fixes and enabled regressions. PBT-003
-and the follow-up PBT-012/PBT-013 retain ignored failing tests; randomized
-reproducers also retain saved seeds. They do
-not count as passing coverage. The follow-up adds `markview-image` as a sixteenth
+The original ten confirmed defects and PBT-012 have production fixes and enabled
+regressions. PBT-003 and PBT-013 retain ignored failing tests; randomized
+reproducers also retain saved seeds. They do not count as passing coverage. The follow-up adds `markview-image` as a sixteenth
 package with properties.
 
 Further work needs a distinct model or environment: arbitrary shaping and

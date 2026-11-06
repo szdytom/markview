@@ -22,7 +22,7 @@ proptest! {
 	}
 
 	#[test]
-	#[ignore = "Known bug PBT-012: raw HTML text retains entity spellings instead of decoded characters"]
+	#[ignore = "Known bug PBT-013: decoded nonbreaking spaces are collapsed; PBT-012 entity decoding is fixed"]
 	fn supported_raw_html_entities_and_first_link_attribute_preserve_reading_text(
 		entities in prop::collection::vec(0usize..7, 1..12),
 		bold in any::<bool>(),
@@ -47,7 +47,6 @@ proptest! {
 }
 
 #[test]
-#[ignore = "Known bug PBT-012: raw HTML text retains &amp; instead of &"]
 fn raw_html_ampersand_entity_reads_as_one_character() {
 	let parsed = parse("<p><em>&amp;</em></p>\n");
 	let BlockKind::Paragraph(text) = parsed.blocks()[0].kind() else {
