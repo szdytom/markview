@@ -254,15 +254,74 @@ impl Tabs {
 			usize::MAX
 		}
 	}
+	fn stash_active(&mut self, now: Instant) {
+		self.entries[self.active].preview =
+			super::preview::Page::capture(&self.session);
+		if self.session.cached_slice.is_some() {
+			self.session.release_heavy();
+		}
+		let mut bytes = 0;
+		for block in &self.session.snapshot.blocks {
+			let base = block.layout.draws.capacity()
+				* std::mem::size_of::<crate::layout::Draw>();
+			bytes += if base > super::preview::CACHE_BUDGET {
+				base
+			} else {
+				block.retained_bytes()
+			};
+			if bytes > super::preview::CACHE_BUDGET {
+				break;
+			}
+		}
+		self.entries[self.active].geometry_bytes = bytes;
+		self.entries[self.active].session = std::mem::take(&mut self.session);
+		self.entries[self.active].last_active = now;
+		self.trim_cache();
+	}
+	fn trim_cache(&mut self) {
+		while self
+			.entries
+			.iter()
+			.map(|tab| {
+				tab.geometry_bytes
+					+ tab
+						.preview
+						.as_ref()
+						.map_or(0, super::preview::Page::bytes)
+			})
+			.sum::<usize>()
+			> super::preview::CACHE_BUDGET
+		{
+			if let Some(tab) = self
+				.entries
+				.iter_mut()
+				.filter(|tab| tab.geometry_bytes > 0)
+				.min_by_key(|tab| tab.last_active)
+			{
+				tab.session.release_heavy();
+				tab.geometry_bytes = 0;
+			} else {
+				let oldest = self
+					.entries
+					.iter_mut()
+					.filter(|tab| tab.preview.is_some())
+					.min_by_key(|tab| tab.last_active)
+					.unwrap();
+				oldest.preview = None;
+			}
+		}
+	}
+	fn restore_cached_page(&mut self) {
+		self.entries[self.active].geometry_bytes = 0;
+		if let Some(page) = self.entries[self.active].preview.take() {
+			page.restore(&mut self.session);
+		}
+	}
 	pub(super) fn new_page(&mut self, now: Instant) {
 		self.cycle = None;
 		self.session.cancel_scroll_animation();
 		if self.session.path.is_some() {
-			self.entries[self.active].preview =
-				super::preview::Page::capture(&self.session);
-			self.entries[self.active].session =
-				std::mem::take(&mut self.session);
-			self.entries[self.active].last_active = now;
+			self.stash_active(now);
 		}
 	}
 	/// Reorder entries without replacing the active session or issuing requests.
@@ -323,11 +382,7 @@ impl Tabs {
 			if self.entries.is_empty() {
 				self.entries.push(ReaderTab::new(current));
 			} else {
-				self.entries[self.active].preview =
-					super::preview::Page::capture(&self.session);
-				self.entries[self.active].session =
-					std::mem::take(&mut self.session);
-				self.entries[self.active].last_active = now;
+				self.stash_active(now);
 			}
 			self.active + 1
 		} else {
@@ -437,16 +492,12 @@ impl Tabs {
 		}
 		self.session.cancel_scroll_animation();
 		if self.session.path.is_some() {
-			self.entries[self.active].preview =
-				super::preview::Page::capture(&self.session);
-			self.entries[self.active].session =
-				std::mem::take(&mut self.session);
-			self.entries[self.active].last_active = now;
+			self.stash_active(now);
 		}
 		self.active = index;
 		self.entries[index].last_active = now;
-		self.entries[index].preview = None;
 		self.session = std::mem::take(&mut self.entries[index].session);
+		self.restore_cached_page();
 		self.session.cancel_scroll_animation();
 		if self.session.path.is_none() {
 			self.session.path = Some(self.entries[index].path.clone());
@@ -485,9 +536,9 @@ impl Tabs {
 				.first()
 				.and_then(|id| self.entry_index(*id))
 				.unwrap_or_else(|| index.min(self.entries.len() - 1));
-			self.entries[self.active].preview = None;
 			self.session =
 				std::mem::take(&mut self.entries[self.active].session);
+			self.restore_cached_page();
 			self.session.cancel_scroll_animation();
 			self.entries[self.active].last_active = now;
 			self.remember(self.entries[self.active].id);
@@ -538,6 +589,7 @@ impl Tabs {
 				) || !tab.session.snapshot.blocks.is_empty())
 			{
 				tab.session.release_heavy();
+				tab.geometry_bytes = 0;
 			}
 		}
 	}

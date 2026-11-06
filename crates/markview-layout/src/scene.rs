@@ -7,6 +7,7 @@ use parley::FontData;
 pub use ratex_types::PathCommand;
 use std::{collections::HashMap, ops::Range, sync::Arc};
 mod flow;
+mod memory;
 pub use flow::{FlowIndex, Scene};
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash)]
 pub enum Paint {

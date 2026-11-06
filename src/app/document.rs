@@ -87,6 +87,7 @@ impl<P: super::SendEvent> App<P> {
 		let options = self.options();
 		if self.readers.session.requested_options.as_ref() != Some(&options) {
 			self.readers.session.counts_content_id = None;
+			self.readers.session.discard_cached_page();
 		}
 		let counts = self
 			.readers
@@ -146,6 +147,7 @@ impl<P: super::SendEvent> App<P> {
 		self.cancel_gestures();
 		self.abandon_dm();
 		let session = &mut self.readers.session;
+		session.discard_cached_page();
 		session.counts_content_id = None;
 		session.content_version += 1;
 		session.security.revoke();
@@ -162,6 +164,12 @@ impl<P: super::SendEvent> App<P> {
 		self.export.schedule_watch_export(path);
 	}
 	fn resume_document(&mut self) {
+		if self.readers.session.cached_slice.is_some()
+			&& self.readers.session.requested_options.as_ref()
+				!= Some(&self.options())
+		{
+			self.readers.session.discard_cached_page();
+		}
 		if let crate::security::Origin::Web(url) =
 			self.readers.session.security.origin.clone()
 		{

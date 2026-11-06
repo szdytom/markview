@@ -1,6 +1,39 @@
 use crate::scene::Draw;
 use crate::scene::LayoutSnapshot;
 use std::collections::HashMap;
+
+/// Maps an offset inside `anchor` onto the matching text in `next`.
+///
+/// Prefers text under the offset over images, so text below a resized picture
+/// keeps its place when the block above it grows.
+pub fn intra_block_anchor(
+	anchor: &crate::scene::PlacedBlock,
+	next: &crate::scene::PlacedBlock,
+	local_y: f32,
+) -> Option<f32> {
+	let (ni, c, rect) = anchor
+		.clusters()
+		.filter(|(_, _, rect)| rect.y + rect.h >= local_y)
+		.min_by(|(_, a, ar), (_, c, cr)| {
+			let image = |c: &crate::text::TextCluster| {
+				matches!(anchor.layout.draws[c.command], Draw::Image { .. })
+			};
+			image(a).cmp(&image(c)).then_with(|| {
+				(ar.y - local_y).abs().total_cmp(&(cr.y - local_y).abs())
+			})
+		})?;
+	let cluster = next
+		.layout
+		.text
+		.get(ni)?
+		.clusters
+		.iter()
+		.find(|n| n.range.contains(&c.range.start))?;
+	next.rect(cluster.command, cluster.rect)
+		.map(|r| r.y + local_y - rect.y)
+		.or_else(|| next.visible_ancestor_y(cluster.command))
+}
+
 pub fn anchored_scroll(
 	old: &LayoutSnapshot,
 	new: &LayoutSnapshot,
@@ -35,42 +68,15 @@ pub fn anchored_scroll(
 			.filter(|b| same(b, anchor))
 			.nth(occurrence)
 		{
-			if old.images.entries.iter().any(|(key, info)| {
+			let relaid = old.images.entries.iter().any(|(key, info)| {
 				new.images.entries.get(key).map(|next| next.size)
 					!= Some(info.size)
-			}) || old.presentation_key != new.presentation_key
+			}) || old.presentation_key != new.presentation_key;
+			if relaid
+				&& let Some(y) =
+					intra_block_anchor(anchor, b, scroll - anchor.y)
 			{
-				let local_y = scroll - anchor.y;
-				let cluster = anchor
-					.clusters()
-					.filter(|(_, _, rect)| rect.y + rect.h >= local_y)
-					.min_by(|(_, a, ar), (_, c, cr)| {
-						let image = |c: &crate::text::TextCluster| {
-							matches!(
-								anchor.layout.draws[c.command],
-								Draw::Image { .. }
-							)
-						};
-						image(a).cmp(&image(c)).then_with(|| {
-							(ar.y - local_y)
-								.abs()
-								.total_cmp(&(cr.y - local_y).abs())
-						})
-					});
-				if let Some((ni, c, rect)) = cluster
-					&& let Some(next) = b.layout.text.get(ni).and_then(|n| {
-						n.clusters
-							.iter()
-							.find(|n| n.range.contains(&c.range.start))
-					}) {
-					if let Some(next_rect) = b.rect(next.command, next.rect) {
-						return (b.y + next_rect.y + local_y - rect.y)
-							.clamp(0., max);
-					}
-					if let Some(y) = b.visible_ancestor_y(next.command) {
-						return (b.y + y).clamp(0., max);
-					}
-				}
+				return (b.y + y).clamp(0., max);
 			}
 			return (b.y + (scroll - anchor.y).min(b.height())).clamp(0.0, max);
 		}

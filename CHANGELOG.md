@@ -35,6 +35,7 @@ at the same level, without `[brackets]`.
 ### Changed
 
 - Lint hand-maintained GitHub Actions workflows with actionlint in the default local checks.
+- Share budgeted three-screen tab snapshots with hover previews, falling back for oversized blocks.
 - Reuse per-document reading counts when inactive tabs are restored.
 - Publish image dimensions before raster decoding finishes, keeping queued images in the loading state.
 - Split Android integration tests into isolated feature cases with filtering, reproducible shuffling and per-case reports.
@@ -69,6 +70,7 @@ at the same level, without `[brackets]`.
 - Keep figure body and caption link occurrences bound to their own fragments on layout cache hits.
 - Preserve text selections across surrounding deletion when combining marks join the selected grapheme.
 - Find covering source spans during reverse navigation even when later spans overlap them.
+- Keep cached tab positions stable as images finish loading and preserve fragment jumps when cached geometry is invalidated.
 - Preserve reading positions inside images and generated captions across session restoration, including delayed image loading.
 - Reveal the document scrollbar again on wheel and touchpad scrolling, restarting its auto-hide delay without requiring pointer motion.
 - Show “Loading document…” in the reading area while a web page loads over the network.

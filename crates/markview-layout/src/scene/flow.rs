@@ -107,6 +107,32 @@ pub struct FlowIndex {
 	pub height: f32,
 }
 
+impl Scene {
+	pub(super) fn heap_bytes(&self) -> usize {
+		use super::memory::vec_bytes;
+		vec_bytes(&self.nodes)
+			+ vec_bytes(&self.spans)
+			+ vec_bytes(&self.footnotes)
+			+ vec_bytes(&self.leaves)
+			+ self
+				.nodes
+				.iter()
+				.map(|n| vec_bytes(&n.children) + vec_bytes(&n.boxes))
+				.sum::<usize>()
+	}
+}
+
+impl FlowIndex {
+	pub(super) fn heap_bytes(&self) -> usize {
+		use super::memory::vec_bytes;
+		vec_bytes(&self.nodes)
+			+ vec_bytes(&self.spans)
+			+ self.draws.len() * (std::mem::size_of::<Draw>() + 128) * 2
+			+ self.draws.values().map(Draw::heap_bytes).sum::<usize>()
+			+ self.marker_offsets.len() * 128
+	}
+}
+
 impl BlockLayout {
 	fn cursor(&self) -> Cursor {
 		Cursor {

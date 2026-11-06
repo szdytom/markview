@@ -1,6 +1,7 @@
 package io.github.szdytom.markview;
 
 import android.content.Intent;
+import android.os.SystemClock;
 import android.view.KeyEvent;
 import org.json.JSONArray;
 import org.json.JSONObject;
@@ -37,6 +38,8 @@ public class TabsTest extends AndroidTest {
             require(button(state(), "Tabs") == null, "Tablet keeps the desktop tab strip");
             swipe(45, 20, 185, 20);
         }
+        // Exercise restoration after the inactive document's 20-second release.
+        SystemClock.sleep(21_000);
         tap("SelectTab(0)");
         JSONObject restored = waitFor(s -> s.optInt("active") == 0 && s.optBoolean("ready") && loadedImages(s) >= 2);
         restored = stableLayout();

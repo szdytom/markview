@@ -314,6 +314,15 @@ pub struct TextNode {
 	boundaries: Vec<usize>,
 }
 impl TextNode {
+	pub(crate) fn heap_bytes(&self) -> usize {
+		self.text.capacity()
+			+ self.clusters.capacity() * std::mem::size_of::<TextCluster>()
+			+ self.search_ranges.capacity()
+				* std::mem::size_of::<(Range<usize>, Range<usize>)>()
+			+ self.source_images.capacity()
+				* std::mem::size_of::<(usize, TextCluster)>()
+			+ self.boundaries.capacity() * std::mem::size_of::<usize>()
+	}
 	pub fn new(text: String, separator: &'static str) -> Self {
 		let mut boundaries: Vec<_> =
 			text.grapheme_indices(true).map(|(i, _)| i).collect();

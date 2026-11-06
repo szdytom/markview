@@ -34,6 +34,9 @@ fn app() -> (App<Proxy>, mpsc::Receiver<Event>) {
 /// Opens a file and runs its layout results through the session.
 fn load(app: &mut App<Proxy>, events: &mpsc::Receiver<Event>, path: PathBuf) {
 	app.open(path);
+	settle(app, events);
+}
+fn settle(app: &mut App<Proxy>, events: &mpsc::Receiver<Event>) {
 	let deadline = Instant::now() + Duration::from_secs(10);
 	while app.readers.session.layout_pending {
 		let event = events
@@ -64,6 +67,37 @@ fn card(tab: u64) -> Open {
 			detail: "/tmp/notes.md".into(),
 			body: true,
 		},
+	}
+}
+
+fn picture_reader(
+	source: &str,
+	width: f32,
+	info: markview_layout::image::ImageInfo,
+) -> crate::worker::ReaderSnapshot {
+	use markview_layout::image::{ImageSnapshot, ImageSource, ResourceRef};
+	let document = crate::loaded::LoadedDocument::markdown(
+		std::sync::Arc::new(markview_commonmark::parse(source)),
+	);
+	let mut images = ImageSnapshot::default();
+	images.keys.insert(
+		ImageSource::Resource(ResourceRef::document("picture.png")),
+		"picture".into(),
+	);
+	images.entries.insert("picture".into(), info);
+	let options = crate::layout::LayoutOptions {
+		width,
+		..crate::test_support::options()
+	};
+	crate::worker::ReaderSnapshot {
+		layout: crate::layout::LayoutEngine::new()
+			.layout_with_images(&document, &options, &images),
+		document,
+		blocked_images: Default::default(),
+		content_version: 1,
+		complete: true,
+		parse_complete: true,
+		remote_deferred: 0,
 	}
 }
 
@@ -262,10 +296,10 @@ fn an_idle_tab_keeps_its_page_preview_after_releasing_its_document() {
 	let dir = tempfile::tempdir().unwrap();
 	let first = dir.path().join("first.md");
 	let second = dir.path().join("second.md");
-	std::fs::write(&first, "Reading paragraph.\n\n".repeat(100)).unwrap();
+	std::fs::write(&first, "Reading paragraph.\n\n".repeat(300)).unwrap();
 	std::fs::write(&second, "# Second\n").unwrap();
 	load(&mut app, &events, first);
-	let block = 12;
+	let block = 80;
 	app.readers.session.scrolling.offset =
 		app.readers.session.snapshot.blocks[block].y + 5.0;
 	app.readers.session.horizontal.insert((block, 0), 24.0);
@@ -294,8 +328,11 @@ fn an_idle_tab_keeps_its_page_preview_after_releasing_its_document() {
 		assert_eq!(scene.scroll, scroll);
 		assert_eq!(scene.snapshot.width, original.width);
 		assert!(scene.snapshot.blocks.len() < original.blocks.len());
-		assert_eq!(scene.snapshot.blocks[0].id, original.blocks[block].id);
-		assert_eq!(scene.horizontal.get(&(0, 0)), Some(&24.0));
+		let first = original.blocks.partition_point(|b| {
+			b.y + b.height() < (scroll - app.viewport()).max(0.)
+		});
+		assert_eq!(scene.snapshot.blocks[0].id, original.blocks[first].id);
+		assert_eq!(scene.horizontal.get(&(block - first, 0)), Some(&24.0));
 		app.dismiss_preview();
 		app.hover_preview(at);
 		app.preview_tick(at + SHOW_DELAY);
@@ -308,6 +345,244 @@ fn an_idle_tab_keeps_its_page_preview_after_releasing_its_document() {
 	assert!(app.readers.session.layout_pending);
 	assert_eq!(app.readers.session.scrolling.offset, scroll);
 	assert!(app.readers.entries()[0].preview.is_none());
+	assert!(app.readers.session.cached_slice.is_some());
+	let cached = &app.readers.session.snapshot;
+	let local = cached
+		.blocks
+		.iter()
+		.position(|b| b.id == original.blocks[block].id)
+		.unwrap();
+	assert!(std::sync::Arc::ptr_eq(
+		&cached.blocks[local].layout,
+		&original.blocks[block].layout
+	));
+	let counts = app.readers.session.counts;
+	app.scroll_by(30.0);
+	settle(&mut app, &events);
+	assert!(app.readers.session.cached_slice.is_none());
+	assert!(app.readers.session.saved_reading.is_none());
+	assert!(
+		(app.readers.session.scrolling.offset - scroll - 30.0).abs() < 0.01
+	);
+	assert_eq!(app.readers.session.counts, counts);
+}
+
+#[test]
+fn scrolling_beyond_the_slice_and_switching_again_preserves_the_new_position() {
+	let (mut app, events) = app();
+	let dir = tempfile::tempdir().unwrap();
+	let first = dir.path().join("first.md");
+	let second = dir.path().join("second.md");
+	std::fs::write(&first, "Repeated paragraph.\n\n".repeat(300)).unwrap();
+	std::fs::write(&second, "# Second\n").unwrap();
+	load(&mut app, &events, first);
+	app.readers.session.scrolling.offset =
+		app.readers.session.snapshot.blocks[80].y;
+	load(&mut app, &events, second);
+	app.readers
+		.release_inactive(Instant::now() + Duration::from_secs(21));
+	app.select_tab(0);
+	assert!(app.readers.session.cached_slice.is_some());
+	app.scroll_by(app.viewport() * 4.0);
+	let expected = app.readers.session.scrolling.offset;
+	app.select_tab(1);
+	assert!(app.readers.entries()[0].preview.is_none());
+	app.select_tab(0);
+	settle(&mut app, &events);
+	assert!((app.readers.session.scrolling.offset - expected).abs() < 0.01);
+}
+
+#[test]
+fn a_slice_tracks_repeated_blocks_when_an_earlier_image_changes_height() {
+	use markview_layout::image::{
+		ImageInfo, ImageSnapshot, ImageSource, ResourceRef,
+	};
+	let source = format!(
+		"![Image](picture.png)\n\n{}",
+		"Repeated paragraph.\n\n".repeat(300)
+	);
+	let layout = |height| {
+		let document = crate::loaded::LoadedDocument::markdown(
+			std::sync::Arc::new(markview_commonmark::parse(source.as_str())),
+		);
+		let mut images = ImageSnapshot::default();
+		images.keys.insert(
+			ImageSource::Resource(ResourceRef::document("picture.png")),
+			"picture".into(),
+		);
+		images.entries.insert(
+			"picture".into(),
+			ImageInfo {
+				size: Some((100, height)),
+				..Default::default()
+			},
+		);
+		crate::worker::ReaderSnapshot {
+			layout: crate::layout::LayoutEngine::new().layout_with_images(
+				&document,
+				&crate::test_support::options(),
+				&images,
+			),
+			document,
+			blocked_images: Default::default(),
+			content_version: 1,
+			complete: true,
+			parse_complete: true,
+			remote_deferred: 0,
+		}
+	};
+	let mut session = ReaderSession::default();
+	session.accept(layout(100), 200., None);
+	session.scrolling.offset = session.snapshot.blocks[80].y + 5.;
+	let page = Page::capture(&session).unwrap();
+	session.release_heavy();
+	page.restore(&mut session);
+	session.scroll_by(30., 200.);
+	let rebuilt = layout(300);
+	let expected = rebuilt.layout.blocks[80].y + 35.;
+	assert!(session.can_display(&rebuilt, 200.));
+	session.accept(rebuilt, 200., None);
+	assert!((session.scrolling.offset - expected).abs() < 0.01);
+}
+
+#[test]
+fn cached_image_loading_state_does_not_move_the_reading_position() {
+	use markview_layout::image::ImageInfo;
+	let source = format!(
+		"# Heading\n\n![Image](picture.png)\n\n{}",
+		"Following paragraph.\n\n".repeat(40)
+	);
+	for width in [371.42856, 760.] {
+		for local in [1., 100.] {
+			let mut session = ReaderSession::default();
+			session.accept(
+				picture_reader(
+					&source,
+					width,
+					ImageInfo {
+						loading: true,
+						size: Some((512, 512)),
+						..Default::default()
+					},
+				),
+				200.,
+				None,
+			);
+			let scroll = session.snapshot.blocks[1].y + local;
+			session.scrolling.offset = scroll;
+			let page = Page::capture(&session).unwrap();
+			// Return before geometry is released, with no saved position to mask a shift.
+			page.restore(&mut session);
+			assert!(session.cached_slice.is_some());
+			assert!(session.saved_reading.is_none());
+			let ready = picture_reader(
+				&source,
+				width,
+				ImageInfo {
+					version: 1,
+					size: Some((512, 512)),
+					..Default::default()
+				},
+			);
+			assert!(session.can_display(&ready, 200.));
+			session.accept(ready, 200., None);
+			assert!(
+				(session.scrolling.offset - scroll).abs() < 0.01,
+				"width={width}, local={local}: {scroll} -> {}",
+				session.scrolling.offset
+			);
+		}
+	}
+}
+
+#[test]
+fn a_slice_follows_text_below_a_picture_resized_inside_one_block() {
+	use markview_layout::image::{
+		ImageInfo, ImageSnapshot, ImageSource, ResourceRef,
+	};
+	let lines = (0..30)
+		.map(|i| format!("Target paragraph {i} below the picture."))
+		.collect::<Vec<_>>()
+		.join("\n>\n> ");
+	let source = format!(
+		"{}> ![Image](picture.png)\n>\n> {lines}\n\n{}",
+		"Filler paragraph.\n\n".repeat(60),
+		"Trailing paragraph.\n\n".repeat(20)
+	);
+	let layout = |height| {
+		let document = crate::loaded::LoadedDocument::markdown(
+			std::sync::Arc::new(markview_commonmark::parse(source.as_str())),
+		);
+		let mut images = ImageSnapshot::default();
+		images.keys.insert(
+			ImageSource::Resource(ResourceRef::document("picture.png")),
+			"picture".into(),
+		);
+		images.entries.insert(
+			"picture".into(),
+			ImageInfo {
+				loading: false,
+				size: Some((100, height)),
+				..Default::default()
+			},
+		);
+		crate::worker::ReaderSnapshot {
+			layout: crate::layout::LayoutEngine::new().layout_with_images(
+				&document,
+				&crate::test_support::options(),
+				&images,
+			),
+			document,
+			blocked_images: Default::default(),
+			content_version: 1,
+			complete: true,
+			parse_complete: true,
+			remote_deferred: 0,
+		}
+	};
+	let mut session = ReaderSession::default();
+	session.accept(layout(100), 200., None);
+	let index = session
+		.snapshot
+		.blocks
+		.iter()
+		.position(|b| {
+			b.layout
+				.draws
+				.iter()
+				.any(|d| matches!(d, Draw::Image { .. }))
+		})
+		.unwrap();
+	let block = &session.snapshot.blocks[index];
+	let (node, cluster, rect) = block
+		.clusters()
+		.filter(|(node, _, _)| block.layout.text[*node].search_field.is_some())
+		.max_by(|(_, _, a), (_, _, b)| a.y.total_cmp(&b.y))
+		.unwrap();
+	let scroll = block.y + rect.y;
+	let start = cluster.range.start;
+	assert!(
+		scroll - block.y > 300.,
+		"the picture sits above the anchored window"
+	);
+	session.scrolling.offset = scroll;
+	let page = Page::capture(&session).unwrap();
+	session.release_heavy();
+	page.restore(&mut session);
+	// A tab restored without a reading position relies on the cached slice.
+	session.saved_reading = None;
+	let rebuilt = layout(500);
+	let after = &rebuilt.layout.blocks[index];
+	let next = after.layout.text[node]
+		.clusters
+		.iter()
+		.find(|c| c.range.start == start)
+		.unwrap();
+	let expected = after.y + after.rect(next.command, next.rect).unwrap().y;
+	assert!(expected > scroll + 10., "the picture pushed the text down");
+	assert!(session.can_display(&rebuilt, 200.));
+	session.accept(rebuilt, 200., None);
+	assert!((session.scrolling.offset - expected).abs() < 0.01);
 }
 
 #[test]
@@ -434,6 +709,370 @@ fn a_centered_picture_keeps_its_block_and_pixels_in_the_tab_preview() {
 	assert_eq!(page.snapshot.blocks.len(), 1);
 	assert!(page.snapshot.images.pixels.get("picture.png", 1).is_some());
 	assert!(!page.snapshot.images.decoded().is_empty());
+}
+
+#[test]
+fn an_offscreen_pending_image_does_not_hold_back_a_restored_tab() {
+	use markview_layout::image::{
+		ImageInfo, ImageSnapshot, ImageSource, ResourceRef,
+	};
+	// Both pictures share one long quote block; only the first is visible.
+	let source = format!(
+		"> ![First](first.png)\n>\n{}> ![Second](second.png)\n",
+		"> Paragraph.\n>\n".repeat(100)
+	);
+	let document = crate::loaded::LoadedDocument::markdown(
+		std::sync::Arc::new(markview_commonmark::parse(source.as_str())),
+	);
+	let mut images = ImageSnapshot::default();
+	for name in ["first.png", "second.png"] {
+		images.keys.insert(
+			ImageSource::Resource(ResourceRef::document(name)),
+			name.into(),
+		);
+		images.entries.insert(
+			name.into(),
+			ImageInfo {
+				loading: false,
+				size: Some((10, 10)),
+				..Default::default()
+			},
+		);
+	}
+	let reader = |images: &ImageSnapshot| crate::worker::ReaderSnapshot {
+		layout: crate::layout::LayoutEngine::new().layout_with_images(
+			&document,
+			&crate::test_support::options(),
+			images,
+		),
+		document: document.clone(),
+		blocked_images: Default::default(),
+		content_version: 1,
+		complete: true,
+		parse_complete: true,
+		remote_deferred: 0,
+	};
+	let mut session = ReaderSession::default();
+	session.accept(reader(&images), 200., None);
+	session.scrolling.offset = 0.;
+	let page = Page::capture(&session).unwrap();
+	assert!(page.snapshot.images.entries.contains_key("first.png"));
+	assert!(!page.snapshot.images.entries.contains_key("second.png"));
+	// The tab returns before its full geometry is released.
+	page.restore(&mut session);
+	let mut pending = images.clone();
+	pending.entries.insert(
+		"second.png".into(),
+		ImageInfo {
+			loading: true,
+			size: None,
+			..Default::default()
+		},
+	);
+	assert!(session.can_display(&reader(&pending), 200.));
+	pending.entries.insert(
+		"first.png".into(),
+		ImageInfo {
+			loading: true,
+			size: None,
+			..Default::default()
+		},
+	);
+	assert!(!session.can_display(&reader(&pending), 200.));
+}
+
+#[test]
+fn a_horizontally_offscreen_pending_image_does_not_hold_back_a_restored_tab() {
+	use markview_layout::image::{
+		ImageInfo, ImageSnapshot, ImageSource, ResourceRef,
+	};
+	let headers = (0..20).map(|_| "Column").collect::<Vec<_>>().join(" | ");
+	let cells = (0..20)
+		.map(|i| format!("![Image](image-{i}.png)"))
+		.collect::<Vec<_>>()
+		.join(" | ");
+	let document = crate::loaded::LoadedDocument::markdown(
+		std::sync::Arc::new(markview_commonmark::parse(format!(
+			"# Images\n\n| {headers} |\n| {} |\n| {cells} |\n",
+			vec!["---"; 20].join(" | ")
+		))),
+	);
+	let mut images = ImageSnapshot::default();
+	for i in 0..20 {
+		let name = format!("image-{i}.png");
+		images.keys.insert(
+			ImageSource::Resource(ResourceRef::document(&name)),
+			name.clone(),
+		);
+		images.entries.insert(
+			name,
+			ImageInfo {
+				loading: false,
+				size: Some((10, 10)),
+				..Default::default()
+			},
+		);
+	}
+	let reader = |images: &ImageSnapshot| crate::worker::ReaderSnapshot {
+		layout: crate::layout::LayoutEngine::new().layout_with_images(
+			&document,
+			&crate::test_support::options(),
+			images,
+		),
+		document: document.clone(),
+		blocked_images: Default::default(),
+		content_version: 1,
+		complete: true,
+		parse_complete: true,
+		remote_deferred: 0,
+	};
+	let mut session = ReaderSession::default();
+	session.accept(reader(&images), 200., None);
+	let table = session
+		.snapshot
+		.blocks
+		.iter()
+		.position(|b| !b.layout.overflow.is_empty())
+		.unwrap();
+	session.scrolling.offset = session.snapshot.blocks[table].y;
+	let page = Page::capture(&session).unwrap();
+	assert!(page.snapshot.images.entries.contains_key("image-0.png"));
+	assert!(!page.snapshot.images.entries.contains_key("image-19.png"));
+	// The tab returns before its full geometry is released.
+	page.restore(&mut session);
+	let mut pending = images.clone();
+	pending.entries.insert(
+		"image-19.png".into(),
+		ImageInfo {
+			loading: true,
+			size: None,
+			..Default::default()
+		},
+	);
+	assert!(session.can_display(&reader(&pending), 200.));
+	pending.entries.insert(
+		"image-0.png".into(),
+		ImageInfo {
+			loading: true,
+			size: None,
+			..Default::default()
+		},
+	);
+	assert!(!session.can_display(&reader(&pending), 200.));
+}
+
+#[test]
+fn a_revived_tab_keeps_its_pinned_range_and_reading_position() {
+	use markview_layout::image::{
+		ImageInfo, ImageSnapshot, ImageSource, ResourceRef,
+	};
+	let source = format!(
+		"{}![Image](picture.png)\n\n{}",
+		"Paragraph.\n\n".repeat(100),
+		"Tail.\n\n".repeat(100)
+	);
+	let document = crate::loaded::LoadedDocument::markdown(
+		std::sync::Arc::new(markview_commonmark::parse(source.as_str())),
+	);
+	let mut images = ImageSnapshot::default();
+	images.keys.insert(
+		ImageSource::Resource(ResourceRef::document("picture.png")),
+		"picture".into(),
+	);
+	images.entries.insert(
+		"picture".into(),
+		ImageInfo {
+			loading: false,
+			size: Some((100, 100)),
+			..Default::default()
+		},
+	);
+	let snapshot = crate::layout::LayoutEngine::new().layout_with_images(
+		&document,
+		&crate::test_support::options(),
+		&images,
+	);
+	let reader = crate::worker::ReaderSnapshot {
+		layout: snapshot,
+		document,
+		blocked_images: Default::default(),
+		content_version: 1,
+		complete: true,
+		parse_complete: true,
+		remote_deferred: 0,
+	};
+	let mut session = ReaderSession::default();
+	session.accept(reader, 200., None);
+	let image = session
+		.snapshot
+		.blocks
+		.iter()
+		.position(|b| {
+			b.layout
+				.draws
+				.iter()
+				.any(|draw| matches!(draw, Draw::Image { .. }))
+		})
+		.unwrap();
+	session.scrolling.offset = session.snapshot.blocks[image].y;
+	let page = Page::capture(&session).unwrap();
+	let pinned = page.slice.range.clone();
+	// The tab returns before its full geometry is released.
+	page.restore(&mut session);
+	let cached = session.cached_slice.as_ref().unwrap();
+	assert_eq!(cached.range, pinned);
+	assert!(pinned.end < session.snapshot.height);
+	assert!(!cached.covers(
+		session.snapshot.height - 200.,
+		200.,
+		session.snapshot.height
+	));
+	// Releasing the geometry still names the source text, not a pixel offset.
+	session.release_heavy();
+	assert!(session.saved_reading.is_some());
+}
+
+#[test]
+fn discarding_a_cached_page_keeps_the_semantic_reading_position() {
+	use markview_layout::image::{
+		ImageInfo, ImageSnapshot, ImageSource, ResourceRef,
+	};
+	let source = format!(
+		"{}![Image](picture.png)\n\nUNIQUE TARGET paragraph.\n\n{}",
+		"Filler paragraph long enough to wrap on a narrow page.\n\n".repeat(80),
+		"Tail.\n\n".repeat(20)
+	);
+	let layout = |width: f32| {
+		let document = crate::loaded::LoadedDocument::markdown(
+			std::sync::Arc::new(markview_commonmark::parse(source.as_str())),
+		);
+		let mut images = ImageSnapshot::default();
+		images.keys.insert(
+			ImageSource::Resource(ResourceRef::document("picture.png")),
+			"picture".into(),
+		);
+		images.entries.insert(
+			"picture".into(),
+			ImageInfo {
+				loading: false,
+				size: Some((100, 100)),
+				..Default::default()
+			},
+		);
+		let options = crate::layout::LayoutOptions {
+			width,
+			..crate::test_support::options()
+		};
+		crate::worker::ReaderSnapshot {
+			layout: crate::layout::LayoutEngine::new()
+				.layout_with_images(&document, &options, &images),
+			document,
+			blocked_images: Default::default(),
+			content_version: 1,
+			complete: true,
+			parse_complete: true,
+			remote_deferred: 0,
+		}
+	};
+	let mut session = ReaderSession::default();
+	session.accept(layout(800.), 200., None);
+	let target = session
+		.snapshot
+		.blocks
+		.iter()
+		.position(|b| {
+			b.layout
+				.text
+				.iter()
+				.any(|n| n.text.contains("UNIQUE TARGET"))
+		})
+		.unwrap();
+	session.scrolling.offset = session.snapshot.blocks[target].y + 5.;
+	let page = Page::capture(&session).unwrap();
+	// The tab returns before its geometry is released, keeping its document.
+	page.restore(&mut session);
+	assert!(session.cached_slice.is_some());
+	session.discard_cached_page();
+	assert!(session.saved_reading.is_some());
+	session.accept(layout(400.), 200., None);
+	let index = session
+		.snapshot
+		.blocks
+		.partition_point(|b| b.y <= session.scrolling.offset)
+		.saturating_sub(1);
+	assert!(
+		session.snapshot.blocks[index]
+			.layout
+			.text
+			.iter()
+			.any(|n| n.text.contains("UNIQUE TARGET"))
+	);
+}
+
+#[test]
+fn discarding_a_cached_page_waits_for_a_fragment_anchor() {
+	use markview_layout::image::ImageInfo;
+	let source = format!(
+		"# Target\n\n{}![Image](picture.png)\n\n{}",
+		"Filler paragraph with enough words to wrap across a narrow reading column.\n\n".repeat(80),
+		"Trailing paragraph keeps the complete document beyond the initial prefix.\n\n".repeat(400),
+	);
+	let reader = |width| {
+		picture_reader(
+			&source,
+			width,
+			ImageInfo {
+				size: Some((100, 100)),
+				..Default::default()
+			},
+		)
+	};
+	for released in [false, true] {
+		let mut session = ReaderSession::default();
+		session.accept(reader(800.), 200., None);
+		session.scrolling.offset = session.snapshot.blocks[81].y + 1.;
+		let page = Page::capture(&session).unwrap();
+		if released {
+			session.release_heavy();
+		}
+		page.restore(&mut session);
+		// A queued link replaces the old reading position before activation.
+		session.saved_reading = None;
+		let anchor = markview_document::AnchorId::Fragment("target".into());
+		session.pending_anchor = Some(crate::state::PendingAnchor {
+			target: anchor.clone(),
+			revision: None,
+		});
+		session.discard_cached_page();
+		assert!(!session.snapshot_complete);
+		assert!(session.resolve_anchor(200.).is_none());
+		let complete = reader(400.);
+		let expected = complete.layout.anchor_target_y(&anchor).unwrap();
+		let mut prefix = complete.clone();
+		let end = prefix
+			.layout
+			.blocks
+			.partition_point(|b| b.y < session.scrolling.offset + 200.);
+		assert!(
+			end < 81,
+			"the first prefix must precede the old reading position"
+		);
+		prefix.layout.blocks.truncate(end);
+		let last = prefix.layout.blocks.last().unwrap();
+		prefix.layout.height = last.y + last.height();
+		prefix.complete = false;
+		assert!(session.can_display(&prefix, 200.));
+		session.accept(prefix, 200., None);
+		assert_eq!(session.resolve_anchor(200.), Some(Ok(())));
+		assert!((session.scrolling.offset - expected).abs() < 0.01);
+		session.accept(complete, 200., None);
+		assert!(
+			(session.scrolling.offset - expected).abs() < 0.01,
+			"released={released}: target={expected}, actual={}",
+			session.scrolling.offset
+		);
+		assert!(session.saved_reading.is_none());
+	}
 }
 
 #[test]
@@ -579,4 +1218,125 @@ fn scrolling_does_not_reopen_the_card_in_an_unfocused_window() {
 	assert!(!app.preview.tracking());
 	app.preview_tick(Instant::now() + Duration::from_secs(2));
 	assert!(app.preview.open().is_none());
+}
+
+#[test]
+fn oversized_geometry_uses_the_slow_path_without_pinning_a_preview() {
+	use std::sync::Arc;
+	let (mut app, _events) = app();
+	let now = Instant::now();
+	app.readers.open("/tmp/large.md".into(), now);
+	let document = crate::loaded::LoadedDocument::markdown(Arc::new(
+		markview_commonmark::parse("Code."),
+	));
+	let mut layout = crate::layout::LayoutEngine::new()
+		.layout(&document, &crate::test_support::options());
+	Arc::make_mut(&mut layout.blocks[0].layout)
+		.draws
+		.reserve(CACHE_BUDGET / std::mem::size_of::<Draw>() + 1);
+	let weak = Arc::downgrade(&layout.blocks[0].layout);
+	app.readers.session.document = Some(document);
+	app.readers.session.snapshot = layout;
+	app.readers.open("/tmp/other.md".into(), now);
+	assert!(app.readers.entries()[0].preview.is_none());
+	assert!(app.readers.entries()[0].session.snapshot.blocks.is_empty());
+	assert!(weak.upgrade().is_none());
+	app.readers.select(0, now);
+	assert!(app.readers.session.snapshot.blocks.is_empty());
+}
+
+#[test]
+fn cache_budget_evicts_the_oldest_preview_and_its_pixels() {
+	use markview_layout::image::{
+		ImageInfo, ImageSnapshot, ImageSource, Pixels, ResourceRef,
+	};
+	use std::sync::Arc;
+	let (mut app, _events) = app();
+	let now = Instant::now();
+	let mut first = None;
+	for i in 0..12 {
+		app.readers.open(
+			format!("/tmp/picture-{i}.md").into(),
+			now + Duration::from_secs(i),
+		);
+		let document = crate::loaded::LoadedDocument::markdown(Arc::new(
+			markview_commonmark::parse("![Picture](picture.png)"),
+		));
+		let pixels = Arc::new(Pixels {
+			width: 1024,
+			height: 1536,
+			rgba: vec![0; 1024 * 1536 * 4].into(),
+		});
+		if i == 0 {
+			first = Some(Arc::downgrade(&pixels));
+		}
+		let mut images = ImageSnapshot::default();
+		images.keys.insert(
+			ImageSource::Resource(ResourceRef::document("picture.png")),
+			"picture.png".into(),
+		);
+		images.entries.insert(
+			"picture.png".into(),
+			ImageInfo {
+				size: Some((1024, 1536)),
+				..Default::default()
+			},
+		);
+		images.pixels.insert("picture.png".into(), 0, pixels);
+		app.readers.session.snapshot = crate::layout::LayoutEngine::new()
+			.layout_with_images(
+				&document,
+				&crate::test_support::options(),
+				&images,
+			);
+		app.readers.session.document = Some(document);
+	}
+	assert!(app.readers.entries()[0].preview.is_none());
+	assert!(first.unwrap().upgrade().is_none());
+	assert!(
+		app.readers
+			.entries()
+			.iter()
+			.filter_map(|t| t.preview.as_ref())
+			.map(Page::bytes)
+			.sum::<usize>()
+			<= CACHE_BUDGET
+	);
+	assert!(app.readers.entries()[10].preview.is_some());
+}
+
+#[test]
+fn changed_content_and_geometry_discard_the_resume_snapshot() {
+	let (mut app, events) = app();
+	let dir = tempfile::tempdir().unwrap();
+	let first = dir.path().join("first.md");
+	let second = dir.path().join("second.md");
+	std::fs::write(&first, "Paragraph.\n\n".repeat(200)).unwrap();
+	std::fs::write(&second, "Other.").unwrap();
+	load(&mut app, &events, first.clone());
+	load(&mut app, &events, second);
+	app.readers
+		.release_inactive(Instant::now() + Duration::from_secs(21));
+	std::fs::write(&first, "Changed content.\n\n".repeat(200)).unwrap();
+	app.select_tab(0);
+	assert!(app.readers.session.cached_slice.is_none());
+	settle(&mut app, &events);
+	assert!(
+		app.readers
+			.session
+			.snapshot
+			.full_reading_text()
+			.contains("Changed content")
+	);
+	assert_eq!(
+		app.readers.session.counts_content_id,
+		Some(app.readers.session.accepted_content_id)
+	);
+	app.select_tab(1);
+	settle(&mut app, &events);
+	app.readers
+		.release_inactive(Instant::now() + Duration::from_secs(21));
+	app.preferences.values.font_size += 2.;
+	app.select_tab(0);
+	assert!(app.readers.session.cached_slice.is_none());
 }

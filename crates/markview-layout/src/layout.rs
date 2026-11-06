@@ -26,7 +26,7 @@ use crate::{
 	document::{Block, BlockKind, Document},
 	math::MathEngine,
 };
-pub use anchor::anchored_scroll;
+pub use anchor::{anchored_scroll, intra_block_anchor};
 use mapping::{Prepared, expand_tabs_mapped};
 use std::{collections::HashMap, ops::Range, sync::Arc, time::Duration};
 

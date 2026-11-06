@@ -7,69 +7,145 @@
 //!
 //! A page preview is not a screenshot: the card reserves a body rectangle, and
 //! the renderer composes the tab's layout instructions into it at device
-//! resolution. Idle tabs retain only the blocks and pixels the card can show.
+//! resolution. Idle tabs share a bounded three-screen cache with tab restoration.
 use super::tabs;
 use super::{
 	App, TOP,
 	chrome::preview::{self as card, Card},
 };
 use crate::{
-	layout::{Draw, LayoutSnapshot, Rect},
+	layout::{Draw, LayoutSnapshot, PlacedBlock, Rect},
 	render::Theme,
 	state::ReaderSession,
 };
 use std::{
-	collections::HashMap,
+	collections::{HashMap, HashSet},
+	ops::Range,
 	time::{Duration, Instant},
 };
 
 /// How long the pointer must rest on a target before its preview opens.
 pub(super) const SHOW_DELAY: Duration = Duration::from_millis(100);
 
-/// The page slice retained while a tab is inactive.
+/// Per-tab and shared budgets for the resume/hover cache.
+pub(super) const PAGE_BUDGET: usize = 8 * 1024 * 1024;
+pub(super) const CACHE_BUDGET: usize = 64 * 1024 * 1024;
+
+#[derive(Clone, Debug)]
+pub(crate) struct CachedSlice {
+	pub first: usize,
+	pub range: Range<f32>,
+	pub bytes: usize,
+}
+
+/// Three screenfuls shared by tab restoration and hover previews.
 pub(crate) struct Page {
 	snapshot: LayoutSnapshot,
 	scroll: f32,
 	horizontal: HashMap<(usize, usize), f32>,
+	slice: CachedSlice,
 }
 
 impl Page {
+	pub(super) fn bytes(&self) -> usize {
+		self.slice.bytes
+	}
 	pub(super) fn capture(session: &ReaderSession) -> Option<Self> {
 		let source = &session.snapshot;
-		if source.blocks.is_empty() {
+		if source.blocks.is_empty()
+			|| (session.layout_pending && session.cached_slice.is_none())
+		{
 			return None;
 		}
-		let body = source.width.max(1.0) * card::BODY_RATIO;
-		// A centered picture sits below the document top, so the card centers
-		// its slice on the picture instead of retaining only the blank above.
-		let scroll = if source.centered {
-			let block = &source.blocks[0];
-			(block.y + block.height() / 2.0 - body / 2.0).max(0.0)
+		let viewport = if session.viewport > 0. {
+			session.viewport
 		} else {
-			session.scrolling.offset.max(0.0)
+			source.width.max(1.) * card::BODY_RATIO
 		};
-		let bottom = scroll + body + 1.0;
+		let scroll = session.scrolling.offset.max(0.0);
+		let mut range = (scroll - viewport).max(0.0)
+			..(scroll + viewport * 2.0).min(source.height);
+		if let Some(cached) = &session.cached_slice {
+			if !cached.covers(scroll, viewport, source.height) {
+				return None;
+			}
+			range.start = range.start.max(cached.range.start);
+			range.end = range.end.min(cached.range.end);
+		}
 		let start = source
 			.blocks
-			.partition_point(|block| block.y + block.height() < scroll);
-		let end = source.blocks.partition_point(|block| block.y <= bottom);
+			.partition_point(|b| b.y + b.height() < range.start);
+		let end = source.blocks.partition_point(|b| b.y <= range.end);
+		let blocks = &source.blocks[start..end];
+		let mut bytes = 1024;
+		for block in blocks {
+			// Reject giant blocks before walking their drawing commands.
+			if block.layout.draws.capacity() * std::mem::size_of::<Draw>()
+				> PAGE_BUDGET
+			{
+				return None;
+			}
+			bytes += block.retained_bytes();
+			if bytes > PAGE_BUDGET {
+				return None;
+			}
+		}
 		let mut snapshot = LayoutSnapshot {
 			presentation_key: source.presentation_key,
 			content_id: source.content_id,
+			revision: source.revision,
+			centered: source.centered,
 			document_box: source.document_box.clone(),
-			blocks: source.blocks[start..end].to_vec(),
+			blocks: blocks.to_vec(),
 			height: source.height,
 			width: source.width,
 			..Default::default()
 		};
 		snapshot.images.generation = source.images.generation;
-		// Pin visible pixels before the worker switches to another document.
+		bytes += Self::capture_images(
+			session,
+			&mut snapshot,
+			start,
+			&range,
+			PAGE_BUDGET - bytes,
+		)?;
+		let horizontal = session
+			.horizontal
+			.iter()
+			.filter(|&(&(block, _), _)| (start..end).contains(&block))
+			.map(|(&(block, command), &offset)| {
+				((block - start, command), offset)
+			})
+			.collect();
+		let first = start
+			+ session.cached_slice.as_ref().map_or(0, |slice| slice.first);
+		Some(Self {
+			snapshot,
+			scroll,
+			horizontal,
+			slice: CachedSlice {
+				first,
+				range,
+				bytes,
+			},
+		})
+	}
+	fn capture_images(
+		session: &ReaderSession,
+		snapshot: &mut LayoutSnapshot,
+		start: usize,
+		range: &Range<f32>,
+		budget: usize,
+	) -> Option<usize> {
+		let source = &session.snapshot;
+		let mut bytes = 0;
+		let mut allocations = HashSet::new();
 		for (block_index, block) in snapshot.blocks.iter().enumerate() {
 			let viewport = Rect {
-				x: 0.0,
-				y: scroll - block.y,
-				w: source.width.max(1.0),
-				h: bottom - scroll,
+				x: 0.,
+				y: range.start - block.y,
+				w: source.width.max(1.),
+				h: range.end - range.start,
 			};
 			for (index, draw, _) in block.draws() {
 				let Draw::Image {
@@ -93,9 +169,21 @@ impl Page {
 					continue;
 				}
 				if let Some(info) = source.images.entries.get(src) {
+					if !snapshot.images.entries.contains_key(src) {
+						bytes += src.len()
+							+ info.error.as_ref().map_or(0, String::capacity)
+							+ 128;
+					}
 					snapshot.images.entries.insert(src.clone(), info.clone());
 				}
 				if let Some(pixels) = source.images.pixels.get(src, *version) {
+					bytes += src.len() + 64;
+					if allocations.insert(std::sync::Arc::as_ptr(&pixels)) {
+						bytes += pixels.rgba.len();
+					}
+					if bytes > budget {
+						return None;
+					}
 					snapshot.images.pixels.insert(
 						src.clone(),
 						*version,
@@ -104,20 +192,87 @@ impl Page {
 				}
 			}
 		}
-		let horizontal = session
-			.horizontal
-			.iter()
-			.filter(|&(&(block, _), _)| (start..end).contains(&block))
-			.map(|(&(block, command), &offset)| {
-				((block - start, command), offset)
-			})
-			.collect();
-		Some(Self {
-			snapshot,
-			scroll,
-			horizontal,
-		})
+		if bytes > budget {
+			return None;
+		}
+		Some(bytes)
 	}
+	pub(super) fn restore(self, session: &mut ReaderSession) {
+		if session.snapshot.blocks.is_empty() {
+			session.snapshot = self.snapshot;
+			session.horizontal = self.horizontal;
+			session.scrolling.offset = self.scroll;
+			session.cached_slice = Some(self.slice);
+			session.layout_pending = true;
+		} else {
+			if !self.snapshot.images.entries.is_empty() {
+				session.cached_slice = Some(CachedSlice {
+					first: 0,
+					// Only the captured slice has pinned pixels, even though
+					// the whole geometry survives.
+					range: self.slice.range,
+					bytes: self.slice.bytes,
+				});
+			}
+			session.snapshot.images.pixels = self.snapshot.images.pixels;
+		}
+	}
+}
+
+impl CachedSlice {
+	pub(crate) fn target(
+		&self,
+		old: &LayoutSnapshot,
+		new: &LayoutSnapshot,
+		scroll: f32,
+		viewport: f32,
+	) -> Option<f32> {
+		if !self.covers(scroll, viewport, old.height) {
+			return Some(scroll);
+		}
+		let index = old
+			.blocks
+			.partition_point(|b| b.y <= scroll)
+			.saturating_sub(1);
+		let before = old.blocks.get(index)?;
+		// Original indices disambiguate identical blocks outside the cached slice.
+		let after = new.blocks.get(self.first + index)?;
+		if before.content != after.content {
+			return None;
+		}
+		let local = scroll - before.y;
+		// Follow the text under the offset: a picture resized while the tab
+		// was idle can move it inside a block whose origin stays put.
+		// Loading labels are transient anchors when the geometry is unchanged.
+		let relaid = before.height() != after.height()
+			|| image_rects(before).ne(image_rects(after));
+		if relaid
+			&& let Some(y) = markview_layout::layout::intra_block_anchor(
+				before, after, local,
+			) {
+			return Some(after.y + y);
+		}
+		Some(after.y + local)
+	}
+
+	pub(crate) fn covers(
+		&self,
+		scroll: f32,
+		viewport: f32,
+		height: f32,
+	) -> bool {
+		scroll >= self.range.start
+			&& (scroll + viewport).min(height) <= self.range.end
+	}
+}
+
+fn image_rects(block: &PlacedBlock) -> impl Iterator<Item = Rect> + '_ {
+	block.draws().filter_map(|(command, draw, _)| {
+		let Draw::Image { rect, .. } = draw else {
+			return None;
+		};
+		block.rect(command, *rect)
+	})
 }
 
 #[derive(Default)]
@@ -247,9 +402,18 @@ impl Preview {
 				};
 				let page = readers.entries()[index].preview.as_ref();
 				let (snapshot, scroll, horizontal) = match page {
-					Some(page) => {
-						(&page.snapshot, page.scroll, &page.horizontal)
-					}
+					Some(page) => (
+						&page.snapshot,
+						if page.snapshot.centered {
+							let b = &page.snapshot.blocks[0];
+							(b.y + b.height() / 2.
+								- page.snapshot.width * card::BODY_RATIO / 2.)
+								.max(0.)
+						} else {
+							page.scroll
+						},
+						&page.horizontal,
+					),
 					None => (
 						&session.snapshot,
 						session.scrolling.offset,
