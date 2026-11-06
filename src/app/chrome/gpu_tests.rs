@@ -1629,7 +1629,10 @@ fn redesigned_chrome_frames() -> Result<()> {
 			);
 			let session = ReaderSession {
 				path: Some("Typography 排版.md".into()),
-				snapshot,
+				display: crate::state::DisplayState {
+					snapshot,
+					..Default::default()
+				},
 				document: Some(crate::loaded::LoadedDocument::markdown(
 					std::sync::Arc::new(document.clone()),
 				)),
@@ -2023,7 +2026,7 @@ fn redesigned_chrome_frames() -> Result<()> {
 					};
 					let target = renderer.offscreen(view.width, view.height);
 					let submission = renderer.render(
-						&session.snapshot,
+						&session.display.snapshot,
 						&view,
 						&overlay,
 						&target.create_view(&Default::default()),

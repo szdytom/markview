@@ -85,7 +85,7 @@ impl<P: super::SendEvent> App<P> {
 			top: geometry.top + insets[1],
 			bottom: geometry.bottom + insets[3],
 			theme: self.preferences.values.theme,
-			horizontal: &self.readers.session.horizontal,
+			horizontal: &self.readers.session.display.horizontal,
 			hovered_link: self
 				.interaction
 				.pointer
@@ -120,7 +120,7 @@ impl<P: super::SendEvent> App<P> {
 		let rasterized_before = renderer.raster_stats().rasterized;
 		let started = Instant::now();
 		let submission = renderer.render_with_preview(
-			&self.readers.session.snapshot,
+			&self.readers.session.display.snapshot,
 			&view,
 			&overlay,
 			preview.as_ref(),
@@ -148,7 +148,7 @@ impl<P: super::SendEvent> App<P> {
 				update.read_ms,
 				update.parse_ms,
 				update.layout_ms,
-				self.readers.session.snapshot.reused,
+				self.readers.session.display.snapshot.reused,
 				renderer.adapter_name
 			);
 			if self.args.mode == Mode::Smoke {
@@ -169,7 +169,7 @@ impl<P: super::SendEvent> App<P> {
 					}
 					let texture = renderer.offscreen(size.width, size.height);
 					let s = renderer.render(
-						&self.readers.session.snapshot,
+						&self.readers.session.display.snapshot,
 						&view,
 						&overlay,
 						&texture.create_view(&Default::default()),
@@ -195,7 +195,7 @@ impl<P: super::SendEvent> App<P> {
 		let stationary = Instant::now().duration_since(self.last_scroll_at)
 			>= MAINTENANCE_QUIET;
 		if idle && stationary {
-			renderer.maintain(&self.readers.session.snapshot, &view);
+			renderer.maintain(&self.readers.session.display.snapshot, &view);
 		} else if !stationary && renderer.needs_maintenance() {
 			// The final scroll frame is still within the quiet window. Wake
 			// once it expires so a high-pressure atlas is repacked even when
@@ -204,7 +204,7 @@ impl<P: super::SendEvent> App<P> {
 		}
 		let more = if idle {
 			renderer.prewarm(
-				&self.readers.session.snapshot,
+				&self.readers.session.display.snapshot,
 				&view,
 				PREWARM_BUDGET,
 			)

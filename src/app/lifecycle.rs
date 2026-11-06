@@ -345,16 +345,21 @@ impl<P: super::SendEvent> App<P> {
 								&& !self
 									.readers
 									.session
+									.display
 									.snapshot
 									.same_reading_text(&reader.layout);
 						let rebased =
 							self.interaction.selection.and_then(|s| {
-								self.readers.session.snapshot.rebase_selection(
-									&reader.layout,
-									s,
-									self.readers.session.accepted_revision,
-									reader.content_version,
-								)
+								self.readers
+									.session
+									.display
+									.snapshot
+									.rebase_selection(
+										&reader.layout,
+										s,
+										self.readers.session.accepted_revision,
+										reader.content_version,
+									)
 							});
 						if self.readers.session.accept(
 							reader,
@@ -373,8 +378,12 @@ impl<P: super::SendEvent> App<P> {
 						self.readers.session.load_error = None;
 						self.readers.session.displayed_version = update.version;
 						if complete && self.readers.session.select_all_pending {
-							self.interaction.selection =
-								self.readers.session.snapshot.select_all(
+							self.interaction.selection = self
+								.readers
+								.session
+								.display
+								.snapshot
+								.select_all(
 									self.readers.session.accepted_revision,
 								);
 							self.readers.session.select_all_pending = false;
@@ -383,10 +392,19 @@ impl<P: super::SendEvent> App<P> {
 						let lang = self.preferences.values.lang();
 						let message = if !complete {
 							lang.footer_loading().to_owned()
-						} else if self.readers.session.snapshot.math_errors > 0
+						} else if self
+							.readers
+							.session
+							.display
+							.snapshot
+							.math_errors > 0
 						{
 							lang.status_math_errors(
-								self.readers.session.snapshot.math_errors,
+								self.readers
+									.session
+									.display
+									.snapshot
+									.math_errors,
 							)
 						} else {
 							String::new()
@@ -405,7 +423,12 @@ impl<P: super::SendEvent> App<P> {
 								"full layout complete: {:.2} ms; {} blocks",
 								update.requested.elapsed().as_secs_f64()
 									* 1000.,
-								self.readers.session.snapshot.blocks.len()
+								self.readers
+									.session
+									.display
+									.snapshot
+									.blocks
+									.len()
 							);
 						}
 						if first {

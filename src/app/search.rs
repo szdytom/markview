@@ -280,6 +280,7 @@ impl<P: SendEvent> App<P> {
 		} else if let Some(selection) = self.interaction.selection {
 			let session = &mut self.readers.session;
 			let text = session
+				.display
 				.snapshot
 				.extract_text(selection, session.accepted_revision);
 			if !text.is_empty() {
@@ -449,12 +450,16 @@ impl<P: SendEvent> App<P> {
 			|| {
 				let y = |m: &SearchMatch| {
 					session
+						.display
 						.snapshot
 						.search_selection(m, session.accepted_revision)
 						.and_then(|s| {
-							let anchor =
-								session.snapshot.resolve_position(s.anchor)?;
-							let b = &session.snapshot.blocks[anchor.block];
+							let anchor = session
+								.display
+								.snapshot
+								.resolve_position(s.anchor)?;
+							let b =
+								&session.display.snapshot.blocks[anchor.block];
 							b.layout.text[anchor.node]
 								.clusters
 								.iter()
@@ -466,6 +471,7 @@ impl<P: SendEvent> App<P> {
 						})
 						.or_else(|| {
 							session
+								.display
 								.snapshot
 								.blocks
 								.iter()
@@ -535,22 +541,25 @@ impl<P: SendEvent> App<P> {
 			return;
 		};
 		let Some(selection) = session
+			.display
 			.snapshot
 			.search_selection(hit, session.accepted_revision)
 		else {
 			self.worker.prioritize(f32::INFINITY);
 			return;
 		};
-		let Some(anchor) = session.snapshot.resolve_position(selection.anchor)
+		let Some(anchor) =
+			session.display.snapshot.resolve_position(selection.anchor)
 		else {
 			return;
 		};
-		let Some(focus) = session.snapshot.resolve_position(selection.focus)
+		let Some(focus) =
+			session.display.snapshot.resolve_position(selection.focus)
 		else {
 			return;
 		};
 		let block_index = anchor.block;
-		let block = &session.snapshot.blocks[block_index];
+		let block = &session.display.snapshot.blocks[block_index];
 		let node = &block.layout.text[anchor.node];
 		let Some(cluster) = node
 			.clusters
@@ -564,8 +573,11 @@ impl<P: SendEvent> App<P> {
 			if overflow.commands.contains(&cluster.command) {
 				let rect = block.overflow_rect(oi).unwrap();
 				let origin = block.command_offset(cluster.command).unwrap()[0];
-				let offset =
-					session.horizontal.entry((block_index, oi)).or_default();
+				let offset = session
+					.display
+					.horizontal
+					.entry((block_index, oi))
+					.or_default();
 				let x = cluster.rect.x + origin;
 				let end = if anchor.node == focus.node {
 					node.clusters
@@ -606,7 +618,7 @@ impl<P: SendEvent> App<P> {
 		};
 		session.cancel_scroll_animation();
 		session.scrolling.offset =
-			to.clamp(0.0, session.snapshot.scroll_limit(viewport));
+			to.clamp(0.0, session.display.snapshot.scroll_limit(viewport));
 		session.search.pending_navigation = false;
 		self.worker.prioritize(session.coverage(viewport));
 	}
@@ -782,8 +794,8 @@ impl<P: SendEvent> App<P> {
 		let visible = session.scrolling.offset
 			..session.scrolling.offset + self.viewport();
 		let mut out = Vec::new();
-		session.snapshot.visit_search_clusters(
-			&session.horizontal,
+		session.display.snapshot.visit_search_clusters(
+			&session.display.horizontal,
 			visible,
 			|bi, field, range, mut rect| {
 				let key = (bi, field);

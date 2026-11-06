@@ -261,7 +261,7 @@ fn reader_with_dialect(
 	// Equal ids mean equal reading positions, which is what lets an update
 	// rebase a selection instead of clearing it.
 	session.accepted_content_id = document.document().content_key().get();
-	session.snapshot = snapshot;
+	session.display.snapshot = snapshot;
 	session.content_version = 1;
 	session.accepted_revision = 1;
 	session.parse_complete = true;
@@ -470,6 +470,7 @@ fn overflow_thumb_hover_repaints_without_thickening() {
 	let blocks: Vec<_> = app
 		.readers
 		.session
+		.display
 		.snapshot
 		.blocks
 		.iter()
@@ -736,7 +737,7 @@ fn scrolled_content_paints_to_both_viewport_edges() -> anyhow::Result<()> {
 					bottom: geometry.bottom,
 					scroll: geometry.scroll,
 					theme,
-					horizontal: &app.readers.session.horizontal,
+					horizontal: &app.readers.session.display.horizontal,
 					selection: None,
 					revision: 1,
 					hovered_link: None,
@@ -744,7 +745,7 @@ fn scrolled_content_paints_to_both_viewport_edges() -> anyhow::Result<()> {
 				};
 				let target = renderer.offscreen(view.width, view.height);
 				let submission = renderer.render(
-					&app.readers.session.snapshot,
+					&app.readers.session.display.snapshot,
 					&view,
 					&[],
 					&target.create_view(&Default::default()),
@@ -818,30 +819,34 @@ fn disclosure_toggles_keep_geometry_and_survive_an_old_worker_publication() {
 	let path = PathBuf::from("/tmp/markview-retained-flow-test.md");
 	app.readers.session.path = Some(path.clone());
 	app.readers.session.version = 1;
-	let stale = app.readers.session.snapshot.clone();
+	let stale = app.readers.session.display.snapshot.clone();
 	let geometry = stale.blocks[0].layout.clone();
 	let id = document.blocks()[0].id();
 	app.toggle_details(id);
 	assert_eq!(app.readers.session.version, 1);
 	assert!(Arc::ptr_eq(
 		&geometry,
-		&app.readers.session.snapshot.blocks[0].layout
+		&app.readers.session.display.snapshot.blocks[0].layout
 	));
-	assert!(app.readers.session.snapshot.height > stale.height);
-	app.interaction.selection = app.readers.session.snapshot.select_all(1);
+	assert!(app.readers.session.display.snapshot.height > stale.height);
+	app.interaction.selection =
+		app.readers.session.display.snapshot.select_all(1);
 	let selected = app.selected_text().unwrap();
 	assert!(selected.contains("Hidden words."));
-	app.readers.session.horizontal.insert((0, 0), 10.0);
+	app.readers.session.display.horizontal.insert((0, 0), 10.0);
 	app.toggle_details(id);
 	assert!(!app.selected_text().unwrap().contains("Hidden words."));
 	app.toggle_details(id);
 	assert_eq!(app.selected_text().unwrap(), selected);
-	assert_eq!(app.readers.session.horizontal.get(&(0, 0)), Some(&10.0));
+	assert_eq!(
+		app.readers.session.display.horizontal.get(&(0, 0)),
+		Some(&10.0)
+	);
 	app.handle_user_event(&StubLoop, update(path, document, stale, 1));
 	assert!(app.selected_text().unwrap().contains("Hidden words."));
 	assert!(Arc::ptr_eq(
 		&geometry,
-		&app.readers.session.snapshot.blocks[0].layout
+		&app.readers.session.display.snapshot.blocks[0].layout
 	));
 	assert_eq!(app.readers.session.details_open.get(&id), Some(&true));
 }
@@ -852,15 +857,15 @@ fn a_copy_takes_the_reading_text_and_a_stale_selection_takes_nothing() {
 	assert_eq!(app.selected_text(), None, "nothing is selected yet");
 
 	app.interaction.selection = Some(selection(
-		position(&app.readers.session.snapshot, 0, 0),
-		position(&app.readers.session.snapshot, 0, 16),
+		position(&app.readers.session.display.snapshot, 0, 0),
+		position(&app.readers.session.display.snapshot, 0, 16),
 	));
 	assert_eq!(app.selected_text().as_deref(), Some("First paragraph."));
 
 	// An empty selection names a position but covers no character.
 	app.interaction.selection = Some(selection(
-		position(&app.readers.session.snapshot, 0, 5),
-		position(&app.readers.session.snapshot, 0, 5),
+		position(&app.readers.session.display.snapshot, 0, 5),
+		position(&app.readers.session.display.snapshot, 0, 5),
 	));
 	assert_eq!(app.selected_text(), None);
 
@@ -869,17 +874,17 @@ fn a_copy_takes_the_reading_text_and_a_stale_selection_takes_nothing() {
 	app.interaction.selection = Some(selection(
 		SemanticPosition {
 			revision: markview_document::DocumentRevision::fresh(),
-			..position(&app.readers.session.snapshot, 0, 0)
+			..position(&app.readers.session.display.snapshot, 0, 0)
 		},
 		SemanticPosition {
 			revision: markview_document::DocumentRevision::fresh(),
-			..position(&app.readers.session.snapshot, 0, 16)
+			..position(&app.readers.session.display.snapshot, 0, 16)
 		},
 	));
 	assert_eq!(app.selected_text(), None);
 
 	// A selection that spans blocks joins them with the separator.
-	let whole = app.readers.session.snapshot.select_all(1).unwrap();
+	let whole = app.readers.session.display.snapshot.select_all(1).unwrap();
 	app.interaction.selection = Some(whole);
 	assert_eq!(
 		app.selected_text().as_deref(),
@@ -895,8 +900,8 @@ fn dragging_into_the_margin_scrolls_at_a_frame_rate_independent_speed() {
 	// travel.
 	app.readers.session.scrolling.offset = 100.0;
 	app.interaction.selection = Some(selection(
-		position(&app.readers.session.snapshot, 0, 0),
-		position(&app.readers.session.snapshot, 0, 4),
+		position(&app.readers.session.display.snapshot, 0, 0),
+		position(&app.readers.session.display.snapshot, 0, 4),
 	));
 	app.interaction.pointer.press(Drag {
 		start: Point::new(100.0, 100.0),
@@ -928,7 +933,7 @@ fn dragging_into_the_margin_scrolls_at_a_frame_rate_independent_speed() {
 /// renderer maps document coordinates onto the window.
 fn point_over(app: &App<StubProxy>, block: usize) -> (f32, f32) {
 	let geometry = app.view_geometry();
-	let placed = &app.readers.session.snapshot.blocks[block];
+	let placed = &app.readers.session.display.snapshot.blocks[block];
 	let cluster = &placed.layout.text[0].clusters[0];
 	(
 		geometry.left + cluster.rect.x + cluster.rect.w * 0.5,
@@ -1393,7 +1398,7 @@ fn a_press_and_a_drag_over_text_select_it() {
 fn a_drag_selects_across_code_tables_math_and_ligatures() {
 	let source = "office and file\n\n```rust\nlet x = 1;\n```\n\n| A | B |\n|---|---|\n| one | two |\n\n$x^2$ and 中文\n\nLast paragraph.";
 	let (mut app, _) = reader(source, 760.0);
-	let blocks = app.readers.session.snapshot.blocks.len();
+	let blocks = app.readers.session.display.snapshot.blocks.len();
 	assert!(blocks >= 5, "the source laid out as {blocks} blocks");
 	let from = point_over(&app, 0);
 	let (x, y) = point_over(&app, blocks - 1);
@@ -1449,7 +1454,7 @@ fn repeated_clicks_toggle_disclosure_titles_but_dragging_selects_them() {
 		};
 		let (mut app, _) = reader_with_dialect(source, 760.0, dialect);
 		let at = point_over(&app, 0);
-		let id = app.readers.session.snapshot.blocks[0]
+		let id = app.readers.session.display.snapshot.blocks[0]
 			.layout
 			.links
 			.iter()
@@ -1484,18 +1489,20 @@ fn a_shift_click_extends_from_where_the_press_landed() {
 	let (mut app, _) = reader("Alpha beta.\n\nGamma delta.", 760.0);
 	let at = point_over(&app, 0);
 	physical_click(&mut app, at);
-	let split = app.readers.session.snapshot.select_all(1).unwrap();
+	let split = app.readers.session.display.snapshot.select_all(1).unwrap();
 	app.interaction.selection = Some(split);
 	app.interaction.pointer.set_modifiers(ModifiersState::SHIFT);
 	let next = point_over(&app, 1);
 	physical_click(&mut app, next);
 	let selection = app.interaction.selection.expect("shift extends");
 	assert_eq!(
-		selection.anchor.block, app.readers.session.snapshot.blocks[0].id,
+		selection.anchor.block,
+		app.readers.session.display.snapshot.blocks[0].id,
 		"the earlier press keeps the anchor"
 	);
 	assert_eq!(
-		selection.focus.block, app.readers.session.snapshot.blocks[1].id,
+		selection.focus.block,
+		app.readers.session.display.snapshot.blocks[1].id,
 		"the shift click moves the focus"
 	);
 }
@@ -1534,7 +1541,8 @@ fn an_update_carries_the_selection_into_the_new_layout() {
 	let path = PathBuf::from("/tmp/markview-interaction-test.md");
 	app.readers.session.path = Some(path.clone());
 	app.readers.session.version = 1;
-	app.interaction.selection = app.readers.session.snapshot.select_all(1);
+	app.interaction.selection =
+		app.readers.session.display.snapshot.select_all(1);
 	let before = app.selected_text().expect("the selection copies");
 
 	// The same reading text laid out at another width moves every block on
@@ -1584,11 +1592,10 @@ fn a_deferred_select_all_resolves_once_the_layout_is_complete() {
 		!app.readers.session.select_all_pending,
 		"the deferred request is consumed"
 	);
-	let expected = app
-		.readers
-		.session
-		.snapshot
-		.extract_text(app.readers.session.snapshot.select_all(1).unwrap(), 1);
+	let expected = app.readers.session.display.snapshot.extract_text(
+		app.readers.session.display.snapshot.select_all(1).unwrap(),
+		1,
+	);
 	assert_eq!(
 		app.selected_text().as_deref(),
 		Some(expected.as_str()),
@@ -2436,7 +2443,7 @@ fn drawer_swipes_reject_short_cancelled_multitouch_and_owned_input() {
 	app.handle_touch(touch(2, TouchPhase::Ended, 800.0, 300.0));
 	assert_eq!(app.interaction.panel, PanelPage::Closed);
 	assert!(!app.interaction.overlays.outline.open());
-	app.readers.session.snapshot.height = 5000.0;
+	app.readers.session.display.snapshot.height = 5000.0;
 	app.handle_touch(touch(1, TouchPhase::Started, 600.0, 400.0));
 	app.handle_touch(touch(1, TouchPhase::Moved, 605.0, 300.0));
 	app.handle_touch(touch(1, TouchPhase::Ended, 720.0, 280.0));
@@ -2900,20 +2907,20 @@ fn only_window_layout_changes_replace_the_saved_hint_until_reverted() {
 #[test]
 fn document_thumb_drag_cancels_restoration_during_reflow() {
 	let (mut app, document) = reader(&"Paragraph.\n\n".repeat(200), 760.0);
-	let full = app.readers.session.snapshot.clone();
+	let full = app.readers.session.display.snapshot.clone();
 	app.show_document_scrollbar(Instant::now());
 	let bar = app.document_scrollbar().unwrap();
 	let (_, thumb) = bar.bars();
 	for loading in [false, true] {
 		let session = &mut app.readers.session;
 		session.saved_reading = None;
-		session.snapshot = full.clone();
+		session.display.snapshot = full.clone();
 		session.scrolling.offset = full.blocks.last().unwrap().y;
 		session.saved_reading =
 			Some(crate::app::session::Reading::capture(session));
-		session.snapshot.blocks.truncate(100);
-		session.snapshot.height = session.snapshot.blocks[99].y
-			+ session.snapshot.blocks[99].height();
+		session.display.snapshot.blocks.truncate(100);
+		session.display.snapshot.height = session.display.snapshot.blocks[99].y
+			+ session.display.snapshot.blocks[99].height();
 		session.snapshot_complete = false;
 		session.layout_pending = loading;
 		session.scrolling.offset = 0.0;

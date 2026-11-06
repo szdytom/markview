@@ -453,7 +453,7 @@ fn text_input_frames() -> anyhow::Result<()> {
 		};
 		let target = renderer.offscreen(view.width, view.height);
 		let submission = renderer.render(
-			&app.readers.session.snapshot,
+			&app.readers.session.display.snapshot,
 			&view,
 			&overlay,
 			&target.create_view(&Default::default()),

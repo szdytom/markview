@@ -3,7 +3,10 @@ use crate::app::modal::{Message, Modal};
 use markview_interaction::{
 	SCROLL_MAX, SCROLL_MIN, ScrollAnimation, ease_out_cubic,
 };
-use markview_layout::text::{Affinity, SemanticPosition};
+use markview_layout::{
+	layout::LayoutSnapshot,
+	text::{Affinity, SemanticPosition},
+};
 use winit::event::TouchPhase;
 use winit::keyboard::ModifiersState;
 fn position(snapshot: &LayoutSnapshot, offset: usize) -> SemanticPosition {
@@ -268,16 +271,16 @@ fn pending_pages_accumulate_reverse_and_resolve_without_blank_frames() {
 		layout_pending: true,
 		..Default::default()
 	};
-	session.snapshot.height = 700.;
+	session.display.snapshot.height = 700.;
 	for _ in 0..3 {
 		session.scroll_by(540., 600.);
 	}
 	assert_eq!(session.scrolling.offset, 0.);
 	assert_eq!(session.scrolling.target, Some(1620.));
-	session.snapshot.height = 1500.;
+	session.display.snapshot.height = 1500.;
 	session.resolve_scroll(600.);
 	assert_eq!(session.scrolling.offset, 0.);
-	session.snapshot.height = 2300.;
+	session.display.snapshot.height = 2300.;
 	session.resolve_scroll(600.);
 	assert_eq!(session.scrolling.offset, 1620.);
 	assert_eq!(session.scrolling.target, None);
@@ -302,18 +305,18 @@ fn pending_pages_accumulate_reverse_and_resolve_without_blank_frames() {
 fn scrolling_past_the_end_keeps_two_thirds_of_a_page_blank() {
 	let page = 600.;
 	let mut session = ReaderSession::default();
-	session.snapshot.height = 2000.;
+	session.display.snapshot.height = 2000.;
 	session.scroll_by(f32::INFINITY, page);
 	assert_eq!(session.scrolling.offset, 2000. - page / 3.);
 	// Scrolling further only repeats the limit.
 	session.scroll_by(400., page);
 	assert_eq!(session.scrolling.offset, 1800.);
 	// A document shorter than the page still lifts its end off the bottom.
-	session.snapshot.height = 500.;
+	session.display.snapshot.height = 500.;
 	session.scroll_by(f32::INFINITY, page);
 	assert_eq!(session.scrolling.offset, 500. - page / 3.);
 	// An end already inside the top third has nowhere to go.
-	session.snapshot.height = 150.;
+	session.display.snapshot.height = 150.;
 	session.scroll_by(f32::INFINITY, page);
 	assert_eq!(session.scrolling.offset, 0.);
 	assert_eq!(session.scrolling.target, None);
@@ -452,7 +455,7 @@ fn a_jump_into_a_collapsed_body_expands_its_containers_first() {
 	assert_eq!(session.resolve_anchor(300.), Some(Ok(())));
 	assert_eq!(
 		session.scrolling.offset,
-		at.clamp(0.0, scroll_limit(session.snapshot.height, 300.0))
+		at.clamp(0.0, scroll_limit(session.display.snapshot.height, 300.0))
 	);
 	// An anchor outside every disclosure needs no reflow, and a second jump
 	// into the same body is a no-op now that it is open.
@@ -497,7 +500,7 @@ fn partial_reload_waits_for_anchor_and_keeps_the_old_snapshot() {
 		remote_deferred: 0,
 	};
 	assert!(!session.can_display(&reader, 600.));
-	assert_eq!(session.snapshot.blocks.len(), 100);
+	assert_eq!(session.display.snapshot.blocks.len(), 100);
 	assert_eq!(session.scrolling.offset, 1800.);
 }
 
@@ -536,8 +539,8 @@ fn completing_a_prefix_preserves_scroll_and_selection_and_finishes_counts() {
 		None,
 	);
 	session.scroll_by(100., 100.);
-	let selection = session.snapshot.select_all(1).unwrap();
-	let text = session.snapshot.extract_text(selection, 1);
+	let selection = session.display.snapshot.select_all(1).unwrap();
+	let text = session.display.snapshot.extract_text(selection, 1);
 	let reader = crate::worker::ReaderSnapshot {
 		blocked_images: Default::default(),
 		document,
@@ -549,6 +552,7 @@ fn completing_a_prefix_preserves_scroll_and_selection_and_finishes_counts() {
 	};
 	assert!(session.extends_prefix(&reader));
 	let rebased = session
+		.display
 		.snapshot
 		.rebase_selection(&reader.layout, selection, 1, 1)
 		.unwrap();
@@ -1410,7 +1414,7 @@ fn an_animation_stops_at_the_clamped_document_end() {
 		snapshot_complete: true,
 		..Default::default()
 	};
-	session.snapshot.height = 1000.0;
+	session.display.snapshot.height = 1000.0;
 	let start = Instant::now();
 	session.animate_scroll_to(99999.0, start);
 	assert!(session.scroll_animating());
@@ -1427,7 +1431,7 @@ fn a_retarget_continues_from_the_displayed_offset() {
 		snapshot_complete: true,
 		..Default::default()
 	};
-	session.snapshot.height = 5000.0;
+	session.display.snapshot.height = 5000.0;
 	let start = Instant::now();
 	session.animate_scroll_to(2000.0, start);
 	session.advance_scroll(start + Duration::from_millis(80), 600.0);
@@ -1446,7 +1450,7 @@ fn a_page_pressed_during_an_animation_still_adds_a_full_page() {
 		snapshot_complete: true,
 		..Default::default()
 	};
-	session.snapshot.height = 5000.0;
+	session.display.snapshot.height = 5000.0;
 	let page = 540.0;
 	let start = Instant::now();
 	session.animate_scroll_by(page, start);
@@ -1465,7 +1469,7 @@ fn an_animation_chases_a_destination_beyond_the_geometry() {
 		layout_pending: true,
 		..Default::default()
 	};
-	session.snapshot.height = 700.0;
+	session.display.snapshot.height = 700.0;
 	let start = Instant::now();
 	for _ in 0..3 {
 		session.animate_scroll_by(540.0, start);
@@ -1478,7 +1482,7 @@ fn an_animation_chases_a_destination_beyond_the_geometry() {
 	assert_eq!(session.scrolling.offset, 100.0);
 	assert_eq!(session.scrolling.target, Some(1620.0));
 	// Once the layout covers the target, it resolves as it always has.
-	session.snapshot.height = 2300.0;
+	session.display.snapshot.height = 2300.0;
 	session.layout_pending = false;
 	session.resolve_scroll(600.0);
 	assert_eq!(session.scrolling.offset, 1620.0);
@@ -1491,7 +1495,7 @@ fn a_direct_scroll_cancels_a_running_animation() {
 		snapshot_complete: true,
 		..Default::default()
 	};
-	session.snapshot.height = 5000.0;
+	session.display.snapshot.height = 5000.0;
 	let start = Instant::now();
 	session.animate_scroll_to(2000.0, start);
 	session.advance_scroll(start + Duration::from_millis(80), 600.0);
@@ -1512,7 +1516,7 @@ fn an_immediate_reversal_never_continues_downward() {
 		snapshot_complete: true,
 		..Default::default()
 	};
-	session.snapshot.height = 5000.0;
+	session.display.snapshot.height = 5000.0;
 	let start = Instant::now();
 	session.animate_scroll_to(2000.0, start);
 	session.advance_scroll(start + Duration::from_millis(80), 600.0);
@@ -1530,7 +1534,7 @@ fn a_wheel_notch_eases_and_continues_from_the_destination() {
 		snapshot_complete: true,
 		..Default::default()
 	};
-	session.snapshot.height = 5000.0;
+	session.display.snapshot.height = 5000.0;
 	let start = Instant::now();
 	// The first notch starts an animation from the offset on screen instead
 	// of moving it at once.
@@ -1556,7 +1560,7 @@ fn an_eased_wheel_reversal_takes_over_from_the_screen() {
 		snapshot_complete: true,
 		..Default::default()
 	};
-	session.snapshot.height = 5000.0;
+	session.display.snapshot.height = 5000.0;
 	let start = Instant::now();
 	session.animate_scroll_to(2000.0, start);
 	session.advance_scroll(start + Duration::from_millis(80), 600.0);
@@ -1578,14 +1582,14 @@ fn repeated_direct_scrolling_with_incomplete_geometry_accumulates() {
 		layout_pending: true,
 		..Default::default()
 	};
-	session.snapshot.height = 700.0;
+	session.display.snapshot.height = 700.0;
 	// Neither request fits the geometry at hand, so both stay pending.
 	session.scroll_by(540.0, 600.0);
 	session.scroll_by(540.0, 600.0);
 	assert_eq!(session.scrolling.offset, 0.0);
 	assert_eq!(session.scrolling.target, Some(1080.0));
 	// Once the layout covers the sum, the page lands on it and forgets it.
-	session.snapshot.height = 2300.0;
+	session.display.snapshot.height = 2300.0;
 	session.layout_pending = false;
 	session.resolve_scroll(600.0);
 	assert_eq!(session.scrolling.offset, 1080.0);
@@ -1598,7 +1602,7 @@ fn cancelling_an_animation_forgets_its_destination() {
 		snapshot_complete: true,
 		..Default::default()
 	};
-	session.snapshot.height = 5000.0;
+	session.display.snapshot.height = 5000.0;
 	let start = Instant::now();
 	session.animate_scroll_to(2000.0, start);
 	session.advance_scroll(start + Duration::from_millis(80), 600.0);
@@ -1622,14 +1626,14 @@ fn a_cancelled_destination_does_not_come_back_with_the_layout() {
 		layout_pending: true,
 		..Default::default()
 	};
-	session.snapshot.height = 700.0;
+	session.display.snapshot.height = 700.0;
 	let start = Instant::now();
 	session.animate_scroll_by(540.0, start);
 	session.advance_scroll(start + Duration::from_millis(40), 600.0);
 	assert_eq!(session.scrolling.offset, 100.0);
 	session.cancel_scroll_animation();
 	// The geometry grows past both the displayed offset and the destination.
-	session.snapshot.height = 2300.0;
+	session.display.snapshot.height = 2300.0;
 	session.layout_pending = false;
 	session.resolve_scroll(600.0);
 	assert_eq!(session.scrolling.offset, 100.0);
@@ -1639,7 +1643,7 @@ fn a_cancelled_destination_does_not_come_back_with_the_layout() {
 #[test]
 fn the_immediate_scroll_path_never_starts_an_animation() {
 	let mut session = ReaderSession::default();
-	session.snapshot.height = 2000.0;
+	session.display.snapshot.height = 2000.0;
 	session.scroll_by(540.0, 600.0);
 	assert_eq!(session.scrolling.offset, 540.0);
 	assert_eq!(session.scrolling.target, None);
@@ -1667,7 +1671,7 @@ fn a_page_toward_a_settled_end_stops_at_once() {
 		snapshot_complete: true,
 		..Default::default()
 	};
-	session.snapshot.height = 1000.0;
+	session.display.snapshot.height = 1000.0;
 	session.scrolling.offset = 800.0;
 	let start = Instant::now();
 	session.animate_scroll_by(540.0, start);
@@ -1685,7 +1689,7 @@ fn a_page_away_from_the_settled_end_still_animates() {
 		snapshot_complete: true,
 		..Default::default()
 	};
-	session.snapshot.height = 1000.0;
+	session.display.snapshot.height = 1000.0;
 	session.scrolling.offset = 800.0;
 	let start = Instant::now();
 	session.animate_scroll_by(-540.0, start);
@@ -1824,7 +1828,7 @@ fn an_anchor_queued_on_another_revision_is_rejected() {
 	session.pending_anchor = Some(PendingAnchor {
 		target: "intro".into(),
 		revision: Some(markview_document::DocumentRevision::new(
-			session.snapshot.revision.get() + 1,
+			session.display.snapshot.revision.get() + 1,
 		)),
 	});
 	assert_eq!(

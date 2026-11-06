@@ -103,7 +103,7 @@ impl<P: super::SendEvent> App<P> {
 			}
 			request.coverage = if follow
 				&& self.readers.session.scrolling.offset
-					>= (self.readers.session.snapshot.height
+					>= (self.readers.session.display.snapshot.height
 						- self.viewport() - 3.)
 						.max(0.)
 			{
@@ -164,7 +164,7 @@ impl<P: super::SendEvent> App<P> {
 		self.export.schedule_watch_export(path);
 	}
 	fn resume_document(&mut self) {
-		if self.readers.session.cached_slice.is_some()
+		if self.readers.session.display.cached_slice.is_some()
 			&& self.readers.session.requested_options.as_ref()
 				!= Some(&self.options())
 		{
@@ -205,8 +205,8 @@ impl<P: super::SendEvent> App<P> {
 		if !session.web_loading
 			&& session.document.is_some()
 			&& (session.layout_pending
-				|| session.snapshot.blocks.is_empty()
-				|| !session.snapshot.images.entries.is_empty()
+				|| session.display.snapshot.blocks.is_empty()
+				|| !session.display.snapshot.images.entries.is_empty()
 				|| session.requested_options.as_ref() != Some(&self.options()))
 		{
 			self.request(false);
@@ -219,7 +219,7 @@ impl<P: super::SendEvent> App<P> {
 		let session = &self.readers.session;
 		session.document.is_none()
 			|| session.layout_pending
-			|| !session.snapshot.images.entries.is_empty()
+			|| !session.display.snapshot.images.entries.is_empty()
 			|| session.requested_options.as_ref() != Some(&self.options())
 	}
 	pub(super) fn open(&mut self, path: PathBuf) {

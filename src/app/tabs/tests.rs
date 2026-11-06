@@ -161,7 +161,7 @@ fn background_open_preserves_active_reading_and_deduplicates_tabs() {
 	));
 	let document = tabs.session.document.clone().unwrap();
 	tabs.session.scrolling.offset = 123.0;
-	tabs.session.horizontal.insert((0, 0), 42.0);
+	tabs.session.display.horizontal.insert((0, 0), 42.0);
 	let request = tabs.request(crate::test_support::options(), true).unwrap();
 	assert!(tabs.open_background(PathBuf::from("b.md"), Some("intro".into())));
 	assert!(tabs.open_background(PathBuf::from("c.md"), None));
@@ -175,7 +175,7 @@ fn background_open_preserves_active_reading_and_deduplicates_tabs() {
 	assert_eq!(tabs.session.path, Some(PathBuf::from("a.md")));
 	assert_eq!(tabs.session.version, request.version);
 	assert_eq!(tabs.session.scrolling.offset, 123.0);
-	assert_eq!(tabs.session.horizontal[&(0, 0)], 42.0);
+	assert_eq!(tabs.session.display.horizontal[&(0, 0)], 42.0);
 	assert!(tabs.session.follow_update);
 	assert!(Arc::ptr_eq(
 		tabs.session.document.as_ref().unwrap(),

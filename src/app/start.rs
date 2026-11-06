@@ -525,7 +525,7 @@ impl<P: SendEvent> App<P> {
 		mode: markview_interaction::WheelMode,
 	) -> bool {
 		if self.readers.session.path.is_some()
-			|| !self.readers.session.snapshot.blocks.is_empty()
+			|| !self.readers.session.display.snapshot.blocks.is_empty()
 		{
 			return false;
 		}

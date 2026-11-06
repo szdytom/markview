@@ -266,7 +266,7 @@ impl<P: SendEvent> App<P> {
 	}
 	fn start_input_geometry(&mut self, id: TextField) -> Option<(Rect, Rect)> {
 		if self.readers.session.path.is_some()
-			|| !self.readers.session.snapshot.blocks.is_empty()
+			|| !self.readers.session.display.snapshot.blocks.is_empty()
 		{
 			return None;
 		}

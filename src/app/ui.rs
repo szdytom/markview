@@ -685,8 +685,8 @@ impl<P: super::SendEvent> App<P> {
 		let session = &self.readers.session;
 		let selection = self.interaction.selection.filter(|s| {
 			!s.is_empty()
-				&& s.anchor.revision == session.snapshot.revision
-				&& s.focus.revision == session.snapshot.revision
+				&& s.anchor.revision == session.display.snapshot.revision
+				&& s.focus.revision == session.display.snapshot.revision
 		});
 		if self.interaction.selection_counts.map(|(s, _)| s) != selection {
 			self.interaction.selection_counts = selection.map(|s| {
@@ -694,6 +694,7 @@ impl<P: super::SendEvent> App<P> {
 					s,
 					markview_layout::text::TextCounts::of(
 						&session
+							.display
 							.snapshot
 							.extract_text(s, session.accepted_revision),
 					),

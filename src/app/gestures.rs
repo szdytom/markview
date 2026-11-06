@@ -240,8 +240,14 @@ impl<P: super::SendEvent> App<P> {
 			return Surface::None;
 		}
 		let (dx, dy) = geometry.document_point(x, y);
-		for (bi, block) in
-			self.readers.session.snapshot.blocks.iter().enumerate()
+		for (bi, block) in self
+			.readers
+			.session
+			.display
+			.snapshot
+			.blocks
+			.iter()
+			.enumerate()
 		{
 			for oi in 0..block.layout.overflow.len() {
 				if block
@@ -695,7 +701,7 @@ impl<P: super::SendEvent> App<P> {
 			Surface::Document => (
 				0.0,
 				if self.readers.session.path.is_none()
-					&& self.readers.session.snapshot.blocks.is_empty()
+					&& self.readers.session.display.snapshot.blocks.is_empty()
 				{
 					self.folder.start.scroll.offset()
 				} else {
@@ -706,6 +712,7 @@ impl<P: super::SendEvent> App<P> {
 				*self
 					.readers
 					.session
+					.display
 					.horizontal
 					.get(&(bi, oi))
 					.unwrap_or(&0.0),
@@ -738,6 +745,7 @@ impl<P: super::SendEvent> App<P> {
 				if let Some(overflow) = self
 					.readers
 					.session
+					.display
 					.snapshot
 					.blocks
 					.get(bi)
@@ -746,6 +754,7 @@ impl<P: super::SendEvent> App<P> {
 					let offset = self
 						.readers
 						.session
+						.display
 						.horizontal
 						.entry((bi, oi))
 						.or_default();

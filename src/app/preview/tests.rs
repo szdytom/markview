@@ -248,8 +248,15 @@ fn the_active_tab_opens_a_text_only_card() {
 	fs::write(&second, "# Second\n\nReading paragraph.\n").unwrap();
 	load(&mut app, &events, first);
 	load(&mut app, &events, second);
-	assert!(!app.readers.session.snapshot.blocks.is_empty());
-	assert!(!app.readers.entries()[0].session.snapshot.blocks.is_empty());
+	assert!(!app.readers.session.display.snapshot.blocks.is_empty());
+	assert!(
+		!app.readers.entries()[0]
+			.session
+			.display
+			.snapshot
+			.blocks
+			.is_empty()
+	);
 
 	// Hovering a tab inside a slot the open slide has not filled yet would
 	// miss it, so read the strip at rest.
@@ -301,9 +308,13 @@ fn an_idle_tab_keeps_its_page_preview_after_releasing_its_document() {
 	load(&mut app, &events, first);
 	let block = 80;
 	app.readers.session.scrolling.offset =
-		app.readers.session.snapshot.blocks[block].y + 5.0;
-	app.readers.session.horizontal.insert((block, 0), 24.0);
-	let original = app.readers.session.snapshot.clone();
+		app.readers.session.display.snapshot.blocks[block].y + 5.0;
+	app.readers
+		.session
+		.display
+		.horizontal
+		.insert((block, 0), 24.0);
+	let original = app.readers.session.display.snapshot.clone();
 	let scroll = app.readers.session.scrolling.offset;
 	load(&mut app, &events, second);
 	let layout = app.tab_layout();
@@ -321,7 +332,7 @@ fn an_idle_tab_keeps_its_page_preview_after_releasing_its_document() {
 		app.readers.release_inactive(at);
 		let session = &app.readers.entries()[0].session;
 		assert!(session.document.is_none());
-		assert!(session.snapshot.blocks.is_empty());
+		assert!(session.display.snapshot.blocks.is_empty());
 		assert!(app.readers.session.document.is_some());
 		app.overlay();
 		let scene = app.preview.scene(&app.readers, Theme::Light).unwrap();
@@ -345,8 +356,8 @@ fn an_idle_tab_keeps_its_page_preview_after_releasing_its_document() {
 	assert!(app.readers.session.layout_pending);
 	assert_eq!(app.readers.session.scrolling.offset, scroll);
 	assert!(app.readers.entries()[0].preview.is_none());
-	assert!(app.readers.session.cached_slice.is_some());
-	let cached = &app.readers.session.snapshot;
+	assert!(app.readers.session.display.cached_slice.is_some());
+	let cached = &app.readers.session.display.snapshot;
 	let local = cached
 		.blocks
 		.iter()
@@ -359,7 +370,7 @@ fn an_idle_tab_keeps_its_page_preview_after_releasing_its_document() {
 	let counts = app.readers.session.counts;
 	app.scroll_by(30.0);
 	settle(&mut app, &events);
-	assert!(app.readers.session.cached_slice.is_none());
+	assert!(app.readers.session.display.cached_slice.is_none());
 	assert!(app.readers.session.saved_reading.is_none());
 	assert!(
 		(app.readers.session.scrolling.offset - scroll - 30.0).abs() < 0.01
@@ -377,12 +388,12 @@ fn scrolling_beyond_the_slice_and_switching_again_preserves_the_new_position() {
 	std::fs::write(&second, "# Second\n").unwrap();
 	load(&mut app, &events, first);
 	app.readers.session.scrolling.offset =
-		app.readers.session.snapshot.blocks[80].y;
+		app.readers.session.display.snapshot.blocks[80].y;
 	load(&mut app, &events, second);
 	app.readers
 		.release_inactive(Instant::now() + Duration::from_secs(21));
 	app.select_tab(0);
-	assert!(app.readers.session.cached_slice.is_some());
+	assert!(app.readers.session.display.cached_slice.is_some());
 	app.scroll_by(app.viewport() * 4.0);
 	let expected = app.readers.session.scrolling.offset;
 	app.select_tab(1);
@@ -433,7 +444,7 @@ fn a_slice_tracks_repeated_blocks_when_an_earlier_image_changes_height() {
 	};
 	let mut session = ReaderSession::default();
 	session.accept(layout(100), 200., None);
-	session.scrolling.offset = session.snapshot.blocks[80].y + 5.;
+	session.scrolling.offset = session.display.snapshot.blocks[80].y + 5.;
 	let page = Page::capture(&session).unwrap();
 	session.release_heavy();
 	page.restore(&mut session);
@@ -468,12 +479,12 @@ fn cached_image_loading_state_does_not_move_the_reading_position() {
 				200.,
 				None,
 			);
-			let scroll = session.snapshot.blocks[1].y + local;
+			let scroll = session.display.snapshot.blocks[1].y + local;
 			session.scrolling.offset = scroll;
 			let page = Page::capture(&session).unwrap();
 			// Return before geometry is released, with no saved position to mask a shift.
 			page.restore(&mut session);
-			assert!(session.cached_slice.is_some());
+			assert!(session.display.cached_slice.is_some());
 			assert!(session.saved_reading.is_none());
 			let ready = picture_reader(
 				&source,
@@ -543,6 +554,7 @@ fn a_slice_follows_text_below_a_picture_resized_inside_one_block() {
 	let mut session = ReaderSession::default();
 	session.accept(layout(100), 200., None);
 	let index = session
+		.display
 		.snapshot
 		.blocks
 		.iter()
@@ -553,7 +565,7 @@ fn a_slice_follows_text_below_a_picture_resized_inside_one_block() {
 				.any(|d| matches!(d, Draw::Image { .. }))
 		})
 		.unwrap();
-	let block = &session.snapshot.blocks[index];
+	let block = &session.display.snapshot.blocks[index];
 	let (node, cluster, rect) = block
 		.clusters()
 		.filter(|(node, _, _)| block.layout.text[*node].search_field.is_some())
@@ -625,7 +637,7 @@ fn an_inactive_tab_pins_only_its_visible_image_pixels() {
 		);
 		images.pixels.insert(alias.into(), 7, pixels.clone());
 	}
-	app.readers.session.snapshot = crate::layout::LayoutEngine::new()
+	app.readers.session.display.snapshot = crate::layout::LayoutEngine::new()
 		.layout_with_images(
 			&document,
 			&crate::test_support::options(),
@@ -699,7 +711,7 @@ fn a_centered_picture_keeps_its_block_and_pixels_in_the_tab_preview() {
 	let (mut app, _events) = app();
 	let now = Instant::now();
 	app.readers.open("/tmp/picture.md".into(), now);
-	app.readers.session.snapshot = snapshot;
+	app.readers.session.display.snapshot = snapshot;
 	app.readers.session.document =
 		Some(crate::loaded::LoadedDocument::markdown(document));
 	app.readers.open("/tmp/second.md".into(), now);
@@ -829,12 +841,13 @@ fn a_horizontally_offscreen_pending_image_does_not_hold_back_a_restored_tab() {
 	let mut session = ReaderSession::default();
 	session.accept(reader(&images), 200., None);
 	let table = session
+		.display
 		.snapshot
 		.blocks
 		.iter()
 		.position(|b| !b.layout.overflow.is_empty())
 		.unwrap();
-	session.scrolling.offset = session.snapshot.blocks[table].y;
+	session.scrolling.offset = session.display.snapshot.blocks[table].y;
 	let page = Page::capture(&session).unwrap();
 	assert!(page.snapshot.images.entries.contains_key("image-0.png"));
 	assert!(!page.snapshot.images.entries.contains_key("image-19.png"));
@@ -904,6 +917,7 @@ fn a_revived_tab_keeps_its_pinned_range_and_reading_position() {
 	let mut session = ReaderSession::default();
 	session.accept(reader, 200., None);
 	let image = session
+		.display
 		.snapshot
 		.blocks
 		.iter()
@@ -914,18 +928,18 @@ fn a_revived_tab_keeps_its_pinned_range_and_reading_position() {
 				.any(|draw| matches!(draw, Draw::Image { .. }))
 		})
 		.unwrap();
-	session.scrolling.offset = session.snapshot.blocks[image].y;
+	session.scrolling.offset = session.display.snapshot.blocks[image].y;
 	let page = Page::capture(&session).unwrap();
 	let pinned = page.slice.range.clone();
 	// The tab returns before its full geometry is released.
 	page.restore(&mut session);
-	let cached = session.cached_slice.as_ref().unwrap();
+	let cached = session.display.cached_slice.as_ref().unwrap();
 	assert_eq!(cached.range, pinned);
-	assert!(pinned.end < session.snapshot.height);
+	assert!(pinned.end < session.display.snapshot.height);
 	assert!(!cached.covers(
-		session.snapshot.height - 200.,
+		session.display.snapshot.height - 200.,
 		200.,
-		session.snapshot.height
+		session.display.snapshot.height
 	));
 	// Releasing the geometry still names the source text, not a pixel offset.
 	session.release_heavy();
@@ -977,6 +991,7 @@ fn discarding_a_cached_page_keeps_the_semantic_reading_position() {
 	let mut session = ReaderSession::default();
 	session.accept(layout(800.), 200., None);
 	let target = session
+		.display
 		.snapshot
 		.blocks
 		.iter()
@@ -987,21 +1002,22 @@ fn discarding_a_cached_page_keeps_the_semantic_reading_position() {
 				.any(|n| n.text.contains("UNIQUE TARGET"))
 		})
 		.unwrap();
-	session.scrolling.offset = session.snapshot.blocks[target].y + 5.;
+	session.scrolling.offset = session.display.snapshot.blocks[target].y + 5.;
 	let page = Page::capture(&session).unwrap();
 	// The tab returns before its geometry is released, keeping its document.
 	page.restore(&mut session);
-	assert!(session.cached_slice.is_some());
+	assert!(session.display.cached_slice.is_some());
 	session.discard_cached_page();
 	assert!(session.saved_reading.is_some());
 	session.accept(layout(400.), 200., None);
 	let index = session
+		.display
 		.snapshot
 		.blocks
 		.partition_point(|b| b.y <= session.scrolling.offset)
 		.saturating_sub(1);
 	assert!(
-		session.snapshot.blocks[index]
+		session.display.snapshot.blocks[index]
 			.layout
 			.text
 			.iter()
@@ -1030,7 +1046,7 @@ fn discarding_a_cached_page_waits_for_a_fragment_anchor() {
 	for released in [false, true] {
 		let mut session = ReaderSession::default();
 		session.accept(reader(800.), 200., None);
-		session.scrolling.offset = session.snapshot.blocks[81].y + 1.;
+		session.scrolling.offset = session.display.snapshot.blocks[81].y + 1.;
 		let page = Page::capture(&session).unwrap();
 		if released {
 			session.release_heavy();
@@ -1086,8 +1102,10 @@ fn overflowing_table_previews_pin_only_images_in_the_scrolled_clip() {
 		.collect::<Vec<_>>()
 		.join(" | ");
 	let document = Arc::new(markview_commonmark::parse(format!(
-		"# Images\n\n| {headers} |\n| {} |\n| {cells} |\n",
-		vec!["---"; 20].join(" | ")
+		"# Images\n\n{}| {headers} |\n| {} |\n| {cells} |\n\n{}",
+		"Filler paragraph.\n\n".repeat(80),
+		vec!["---"; 20].join(" | "),
+		"Tail paragraph.\n\n".repeat(40)
 	)));
 	let mut images = ImageSnapshot::default();
 	for i in 0..20 {
@@ -1136,12 +1154,20 @@ fn overflowing_table_previews_pin_only_images_in_the_scrolled_clip() {
 		let (mut app, _events) = app();
 		let now = Instant::now();
 		app.readers.open("/tmp/table.md".into(), now);
-		app.readers.session.snapshot = snapshot.clone();
-		app.readers.session.document =
-			Some(crate::loaded::LoadedDocument::markdown(document.clone()));
+		let reader = crate::worker::ReaderSnapshot {
+			layout: snapshot.clone(),
+			document: crate::loaded::LoadedDocument::markdown(document.clone()),
+			blocked_images: Default::default(),
+			content_version: 1,
+			complete: true,
+			parse_complete: true,
+			remote_deferred: 0,
+		};
+		app.readers.session.accept(reader.clone(), 200., None);
 		app.readers.session.scrolling.offset = table.y;
 		app.readers
 			.session
+			.display
 			.horizontal
 			.insert((table_index, 0), offset);
 		app.readers.open("/tmp/second.md".into(), now);
@@ -1152,6 +1178,22 @@ fn overflowing_table_previews_pin_only_images_in_the_scrolled_clip() {
 		assert_eq!(page.snapshot.images.entries.len(), retained.len());
 		assert_eq!(retained.contains_key("image-0.png"), offset == 0.0);
 		assert_eq!(retained.contains_key("image-19.png"), offset != 0.0);
+
+		// Restoring the slice and then the full layout keeps the table's offset.
+		assert!(page.slice.first > 0);
+		assert!(app.readers.select(0, now));
+		let session = &mut app.readers.session;
+		let first = session.display.cached_slice.as_ref().unwrap().first;
+		assert_eq!(session.display.viewport, 200.);
+		assert_eq!(
+			session.display.horizontal[&(table_index - first, 0)],
+			offset
+		);
+		assert!(session.can_display(&reader, 200.));
+		session.accept(reader, 200., None);
+		assert!(session.display.cached_slice.is_none());
+		assert_eq!(session.display.horizontal[&(table_index, 0)], offset);
+		assert!((session.scrolling.offset - table.y).abs() < 0.01);
 	}
 }
 
@@ -1236,13 +1278,20 @@ fn oversized_geometry_uses_the_slow_path_without_pinning_a_preview() {
 		.reserve(CACHE_BUDGET / std::mem::size_of::<Draw>() + 1);
 	let weak = Arc::downgrade(&layout.blocks[0].layout);
 	app.readers.session.document = Some(document);
-	app.readers.session.snapshot = layout;
+	app.readers.session.display.snapshot = layout;
 	app.readers.open("/tmp/other.md".into(), now);
 	assert!(app.readers.entries()[0].preview.is_none());
-	assert!(app.readers.entries()[0].session.snapshot.blocks.is_empty());
+	assert!(
+		app.readers.entries()[0]
+			.session
+			.display
+			.snapshot
+			.blocks
+			.is_empty()
+	);
 	assert!(weak.upgrade().is_none());
 	app.readers.select(0, now);
-	assert!(app.readers.session.snapshot.blocks.is_empty());
+	assert!(app.readers.session.display.snapshot.blocks.is_empty());
 }
 
 #[test]
@@ -1283,8 +1332,8 @@ fn cache_budget_evicts_the_oldest_preview_and_its_pixels() {
 			},
 		);
 		images.pixels.insert("picture.png".into(), 0, pixels);
-		app.readers.session.snapshot = crate::layout::LayoutEngine::new()
-			.layout_with_images(
+		app.readers.session.display.snapshot =
+			crate::layout::LayoutEngine::new().layout_with_images(
 				&document,
 				&crate::test_support::options(),
 				&images,
@@ -1319,11 +1368,12 @@ fn changed_content_and_geometry_discard_the_resume_snapshot() {
 		.release_inactive(Instant::now() + Duration::from_secs(21));
 	std::fs::write(&first, "Changed content.\n\n".repeat(200)).unwrap();
 	app.select_tab(0);
-	assert!(app.readers.session.cached_slice.is_none());
+	assert!(app.readers.session.display.cached_slice.is_none());
 	settle(&mut app, &events);
 	assert!(
 		app.readers
 			.session
+			.display
 			.snapshot
 			.full_reading_text()
 			.contains("Changed content")
@@ -1338,5 +1388,5 @@ fn changed_content_and_geometry_discard_the_resume_snapshot() {
 		.release_inactive(Instant::now() + Duration::from_secs(21));
 	app.preferences.values.font_size += 2.;
 	app.select_tab(0);
-	assert!(app.readers.session.cached_slice.is_none());
+	assert!(app.readers.session.display.cached_slice.is_none());
 }

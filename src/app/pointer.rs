@@ -599,8 +599,12 @@ impl<P: super::SendEvent> App<P> {
 				};
 			match click_count {
 				2 => {
-					let selection =
-						self.readers.session.snapshot.select_word_at(position);
+					let selection = self
+						.readers
+						.session
+						.display
+						.snapshot
+						.select_word_at(position);
 					if !self
 						.interaction
 						.begin_grain_selection(selection, Grain::Word)
@@ -610,8 +614,12 @@ impl<P: super::SendEvent> App<P> {
 					}
 				}
 				3 => {
-					let selection =
-						self.readers.session.snapshot.select_block_at(position);
+					let selection = self
+						.readers
+						.session
+						.display
+						.snapshot
+						.select_block_at(position);
 					if !self
 						.interaction
 						.begin_grain_selection(selection, Grain::Block)
@@ -776,7 +784,11 @@ impl<P: super::SendEvent> App<P> {
 			(self.readers.session.snapshot_complete
 				&& !self.readers.session.layout_pending)
 				.then(|| {
-					self.readers.session.snapshot.scroll_limit(self.viewport())
+					self.readers
+						.session
+						.display
+						.snapshot
+						.scroll_limit(self.viewport())
 				})
 		} else {
 			Some(0.0)
@@ -1048,7 +1060,7 @@ impl<P: super::SendEvent> App<P> {
 			return;
 		}
 		// A failed source has no picture to show, so the viewer stays closed.
-		let images = &self.readers.session.snapshot.images;
+		let images = &self.readers.session.display.snapshot.images;
 		if images
 			.entries
 			.get(&src)
@@ -1092,7 +1104,7 @@ impl<P: super::SendEvent> App<P> {
 		else {
 			return;
 		};
-		let images = &self.readers.session.snapshot.images;
+		let images = &self.readers.session.display.snapshot.images;
 		// A picture that failed while open has nothing left to fit.
 		if images
 			.entries
@@ -1270,9 +1282,9 @@ impl<P: super::SendEvent> App<P> {
 	/// there, so the caller can scroll the page instead of dropping the event.
 	pub(super) fn horizontal_by(&mut self, dx: f32) -> bool {
 		let consumed = markview_interaction::horizontal_by(
-			&self.readers.session.snapshot,
+			&self.readers.session.display.snapshot,
 			self.view_geometry(),
-			&mut self.readers.session.horizontal,
+			&mut self.readers.session.display.horizontal,
 			markview_interaction::Point::new(
 				self.interaction.pointer.cursor().0,
 				self.interaction.pointer.cursor().1,

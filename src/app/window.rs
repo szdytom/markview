@@ -617,7 +617,7 @@ impl<P: super::SendEvent> App<P> {
 							return;
 						}
 						self.interaction.selection =
-							self.readers.session.snapshot.select_all(
+							self.readers.session.display.snapshot.select_all(
 								self.readers.session.accepted_revision,
 							);
 						self.redraw();

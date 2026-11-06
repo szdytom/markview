@@ -216,7 +216,7 @@ impl Reading {
 		}
 		Self {
 			position: Position::capture(
-				&session.snapshot,
+				&session.display.snapshot,
 				session.document.as_deref(),
 				session.scrolling.offset,
 			),
@@ -323,44 +323,47 @@ impl ReaderSession {
 		let Some(saved) = &self.saved_reading else {
 			return;
 		};
-		let images_pending = saved
-			.position
-			.block(&self.snapshot, self.document.as_deref())
-			.is_some_and(|block| {
-				block
-					.layout
-					.draws
-					.iter()
-					.enumerate()
-					.any(|(command, draw)| {
-						let Draw::Image { src, .. } = draw else {
-							return false;
-						};
-						block.command_offset(command).is_some()
-							&& self.snapshot.images.entries.get(src).is_none_or(
-								|info| {
-									info.size.is_none() && info.error.is_none()
-								},
-							)
-					})
-			});
+		let images_pending =
+			saved
+				.position
+				.block(&self.display.snapshot, self.document.as_deref())
+				.is_some_and(|block| {
+					block.layout.draws.iter().enumerate().any(
+						|(command, draw)| {
+							let Draw::Image { src, .. } = draw else {
+								return false;
+							};
+							block.command_offset(command).is_some()
+								&& self
+									.display
+									.snapshot
+									.images
+									.entries
+									.get(src)
+									.is_none_or(|info| {
+										info.size.is_none()
+											&& info.error.is_none()
+									})
+						},
+					)
+				});
 		if images_pending {
 			return;
 		}
 		let target = saved
 			.position
-			.resolve(&self.snapshot, self.document.as_deref());
+			.resolve(&self.display.snapshot, self.document.as_deref());
 		let target = match target {
 			Some(y)
 				if self.snapshot_complete
-					|| y + viewport <= self.snapshot.height =>
+					|| y + viewport <= self.display.snapshot.height =>
 			{
 				y
 			}
 			_ if self.snapshot_complete => {
 				if saved.position.fallback_ratio > 0.0 {
 					saved.position.fallback_ratio
-						* self.snapshot.scroll_limit(viewport)
+						* self.display.snapshot.scroll_limit(viewport)
 				} else {
 					saved.position.fallback
 				}
@@ -368,7 +371,7 @@ impl ReaderSession {
 			_ => return,
 		};
 		self.scrolling.offset =
-			target.clamp(0.0, self.snapshot.scroll_limit(viewport));
+			target.clamp(0.0, self.display.snapshot.scroll_limit(viewport));
 		self.scrolling.target = None;
 		self.saved_reading = None;
 	}

@@ -93,7 +93,15 @@ impl Harness {
 	fn wait_images(&mut self, count: usize) {
 		let deadline = Instant::now() + Duration::from_secs(10);
 		while self.app.readers.session.layout_pending
-			|| self.app.readers.session.snapshot.images.decoded().len() != count
+			|| self
+				.app
+				.readers
+				.session
+				.display
+				.snapshot
+				.images
+				.decoded()
+				.len() != count
 		{
 			let event = self
 				.events
@@ -424,7 +432,7 @@ fn web_tabs_open_immediately_and_complete_without_stealing_focus() {
 	assert_eq!(loaded_path, pending_path);
 	assert!(!loaded_path.exists(), "web tabs never create a file");
 	assert!(!h.app.readers.session.web_loading);
-	assert!(!h.app.readers.session.snapshot.blocks.is_empty());
+	assert!(!h.app.readers.session.display.snapshot.blocks.is_empty());
 	drop(h);
 	drop(permit);
 }
@@ -573,13 +581,14 @@ fn cached_tab_refresh_defers_fragment_links_until_new_content_arrives() {
 				assert!(!h.app.status.is_error());
 				let viewport = h.app.viewport();
 				let session = &mut h.app.readers.session;
-				let y = session.snapshot.anchor_y(anchor).unwrap().clamp(
-					0.0,
-					crate::state::scroll_limit(
-						session.snapshot.height,
-						viewport,
-					),
-				);
+				let y =
+					session.display.snapshot.anchor_y(anchor).unwrap().clamp(
+						0.0,
+						crate::state::scroll_limit(
+							session.display.snapshot.height,
+							viewport,
+						),
+					);
 				session.advance_scroll(
 					Instant::now() + Duration::from_secs(1),
 					viewport,
@@ -718,7 +727,7 @@ fn returning_to_cached_tabs_reloads_images_after_switching_or_closing() {
 	for close in [false, true] {
 		let mut h = Harness::new();
 		h.open("README.md", 2);
-		let old_pixels = h.app.readers.session.snapshot.images.clone();
+		let old_pixels = h.app.readers.session.display.snapshot.images.clone();
 		let revision = h.app.readers.session.content_version;
 		h.app.readers.session.scrolling.offset = 300.;
 		h.app.readers.session.load_all_images = true;
@@ -737,7 +746,7 @@ fn returning_to_cached_tabs_reloads_images_after_switching_or_closing() {
 		assert_eq!(session.content_version, revision);
 		assert_eq!(session.scrolling.offset, 300.);
 		assert!(session.load_all_images);
-		let pixels = session.snapshot.images.decoded();
+		let pixels = session.display.snapshot.images.decoded();
 		assert_eq!(&pixels["first.png"].rgba[..4], &[255, 0, 255, 255]);
 		assert_eq!(&pixels["diagram.svg"].rgba[..4], &[0, 255, 255, 255]);
 	}
@@ -778,7 +787,7 @@ fn gpu_restored_tabs_draw_images_after_switching_or_closing()
 				_ => h.open("README.md", 2),
 			}
 			let submission = renderer.render(
-				&h.app.readers.session.snapshot,
+				&h.app.readers.session.display.snapshot,
 				&view,
 				&[],
 				&target.create_view(&Default::default()),
@@ -830,7 +839,7 @@ fn new_page_preserves_tabs_and_opening_or_selecting_resumes_documents() {
 	));
 	assert_eq!(h.app.readers.entries().len(), 1);
 	assert!(h.app.readers.session.path.is_none());
-	assert!(h.app.readers.session.snapshot.blocks.is_empty());
+	assert!(h.app.readers.session.display.snapshot.blocks.is_empty());
 	assert!(h.app.watch.is_none());
 	assert!(!h.app.interaction.overlays.viewer_open());
 	assert_eq!(h.app.interaction.panel, crate::state::PanelPage::Closed);
@@ -1230,7 +1239,17 @@ fn folder_image_entries_open_a_single_image_tab() {
 		h.app.readers.session.path.as_ref(),
 		Some(&root.join("first.png"))
 	);
-	assert_eq!(h.app.readers.session.snapshot.images.decoded().len(), 1);
+	assert_eq!(
+		h.app
+			.readers
+			.session
+			.display
+			.snapshot
+			.images
+			.decoded()
+			.len(),
+		1
+	);
 }
 
 #[test]
@@ -2176,7 +2195,7 @@ fn folder_sidebar_renders_beside_the_document() -> anyhow::Result<()> {
 		};
 		let target = renderer.offscreen(view.width, view.height);
 		let submission = renderer.render(
-			&h.app.readers.session.snapshot,
+			&h.app.readers.session.display.snapshot,
 			&view,
 			&overlay,
 			&target.create_view(&Default::default()),
@@ -2844,6 +2863,7 @@ fn multiple_footnote_references_return_to_the_one_that_was_opened() {
 		.app
 		.readers
 		.session
+		.display
 		.snapshot
 		.blocks
 		.iter()

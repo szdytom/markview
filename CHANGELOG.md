@@ -34,6 +34,7 @@ at the same level, without `[brackets]`.
 
 ### Changed
 
+- Keep reader geometry and preview-cache operations in a dedicated display state to stay within the session coupling limit.
 - Lint hand-maintained GitHub Actions workflows with actionlint in the default local checks.
 - Share budgeted three-screen tab snapshots with hover previews, falling back for oversized blocks.
 - Reuse per-document reading counts when inactive tabs are restored.

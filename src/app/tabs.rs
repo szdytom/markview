@@ -257,11 +257,11 @@ impl Tabs {
 	fn stash_active(&mut self, now: Instant) {
 		self.entries[self.active].preview =
 			super::preview::Page::capture(&self.session);
-		if self.session.cached_slice.is_some() {
+		if self.session.display.cached_slice.is_some() {
 			self.session.release_heavy();
 		}
 		let mut bytes = 0;
-		for block in &self.session.snapshot.blocks {
+		for block in &self.session.display.snapshot.blocks {
 			let base = block.layout.draws.capacity()
 				* std::mem::size_of::<crate::layout::Draw>();
 			bytes += if base > super::preview::CACHE_BUDGET {
@@ -402,7 +402,7 @@ impl Tabs {
 		self.session.scrolling.offset = 0.0;
 		self.session.pending_anchor = None;
 		self.session.jump_origin = None;
-		self.session.horizontal.clear();
+		self.session.display.horizontal.clear();
 	}
 	/// Queue a tab for first use without disturbing the active reader or worker.
 	#[cfg(test)]
@@ -586,7 +586,7 @@ impl Tabs {
 				&& (!matches!(
 					tab.session.security.origin,
 					crate::security::Origin::Web(_)
-				) || !tab.session.snapshot.blocks.is_empty())
+				) || !tab.session.display.snapshot.blocks.is_empty())
 			{
 				tab.session.release_heavy();
 				tab.geometry_bytes = 0;
@@ -601,7 +601,7 @@ impl Tabs {
 					&& (!matches!(
 						tab.session.security.origin,
 						crate::security::Origin::Web(_)
-					) || !tab.session.snapshot.blocks.is_empty())
+					) || !tab.session.display.snapshot.blocks.is_empty())
 			})
 			.map(|tab| tab.last_active + RELEASE_AFTER)
 			.min()

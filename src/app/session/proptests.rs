@@ -48,12 +48,12 @@ proptest! {
 		height in 0u16..4097, viewport in 0u16..1025, fallback in -100i16..8193, ratio in 0u16..513,
 	) {
 		let position = Position { fallback: f32::from(fallback), fallback_ratio: f32::from(ratio) / 256.0, ..Default::default() };
-		let mut session = ReaderSession { saved_reading: Some(Reading { position, details: SavedDetails::default() }), snapshot: LayoutSnapshot { height: f32::from(height), ..Default::default() }, snapshot_complete: false, ..Default::default() };
+		let mut session = ReaderSession { saved_reading: Some(Reading { position, details: SavedDetails::default() }), display: crate::state::DisplayState { snapshot: LayoutSnapshot { height: f32::from(height), ..Default::default() }, ..Default::default() }, snapshot_complete: false, ..Default::default() };
 		session.scrolling.offset = 17.0;
 		session.restore_reading(f32::from(viewport));
 		prop_assert!(session.saved_reading.is_some());
 		prop_assert_eq!(session.scrolling.offset, 17.0);
-		let limit = session.snapshot.scroll_limit(f32::from(viewport));
+		let limit = session.display.snapshot.scroll_limit(f32::from(viewport));
 		let target = if ratio > 0 { f32::from(ratio) * limit / 256.0 } else { f32::from(fallback) };
 		session.snapshot_complete = true;
 		session.restore_reading(f32::from(viewport));

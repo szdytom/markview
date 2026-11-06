@@ -16,7 +16,7 @@ use super::{
 use crate::{
 	layout::{Draw, LayoutSnapshot, PlacedBlock, Rect},
 	render::Theme,
-	state::ReaderSession,
+	state::{DisplayState, ReaderSession},
 };
 use std::{
 	collections::{HashMap, HashSet},
@@ -51,21 +51,35 @@ impl Page {
 		self.slice.bytes
 	}
 	pub(super) fn capture(session: &ReaderSession) -> Option<Self> {
-		let source = &session.snapshot;
+		session
+			.display
+			.capture_page(session.scrolling.offset, session.layout_pending)
+	}
+	pub(super) fn restore(self, session: &mut ReaderSession) {
+		if let Some(scroll) = session.display.restore_page(self) {
+			session.scrolling.offset = scroll;
+			session.layout_pending = true;
+		}
+	}
+}
+
+impl DisplayState {
+	fn capture_page(&self, scroll: f32, layout_pending: bool) -> Option<Page> {
+		let source = &self.snapshot;
 		if source.blocks.is_empty()
-			|| (session.layout_pending && session.cached_slice.is_none())
+			|| (layout_pending && self.cached_slice.is_none())
 		{
 			return None;
 		}
-		let viewport = if session.viewport > 0. {
-			session.viewport
+		let viewport = if self.viewport > 0. {
+			self.viewport
 		} else {
 			source.width.max(1.) * card::BODY_RATIO
 		};
-		let scroll = session.scrolling.offset.max(0.0);
+		let scroll = scroll.max(0.0);
 		let mut range = (scroll - viewport).max(0.0)
 			..(scroll + viewport * 2.0).min(source.height);
-		if let Some(cached) = &session.cached_slice {
+		if let Some(cached) = &self.cached_slice {
 			if !cached.covers(scroll, viewport, source.height) {
 				return None;
 			}
@@ -102,14 +116,13 @@ impl Page {
 			..Default::default()
 		};
 		snapshot.images.generation = source.images.generation;
-		bytes += Self::capture_images(
-			session,
+		bytes += self.capture_images(
 			&mut snapshot,
 			start,
 			&range,
 			PAGE_BUDGET - bytes,
 		)?;
-		let horizontal = session
+		let horizontal = self
 			.horizontal
 			.iter()
 			.filter(|&(&(block, _), _)| (start..end).contains(&block))
@@ -117,9 +130,9 @@ impl Page {
 				((block - start, command), offset)
 			})
 			.collect();
-		let first = start
-			+ session.cached_slice.as_ref().map_or(0, |slice| slice.first);
-		Some(Self {
+		let first =
+			start + self.cached_slice.as_ref().map_or(0, |slice| slice.first);
+		Some(Page {
 			snapshot,
 			scroll,
 			horizontal,
@@ -131,13 +144,13 @@ impl Page {
 		})
 	}
 	fn capture_images(
-		session: &ReaderSession,
+		&self,
 		snapshot: &mut LayoutSnapshot,
 		start: usize,
 		range: &Range<f32>,
 		budget: usize,
 	) -> Option<usize> {
-		let source = &session.snapshot;
+		let source = &self.snapshot;
 		let mut bytes = 0;
 		let mut allocations = HashSet::new();
 		for (block_index, block) in snapshot.blocks.iter().enumerate() {
@@ -160,7 +173,7 @@ impl Page {
 				let (offset, clip) = block.command_view(
 					index,
 					start + block_index,
-					&session.horizontal,
+					&self.horizontal,
 				);
 				rect.x -= offset;
 				let clip = clip
@@ -197,24 +210,24 @@ impl Page {
 		}
 		Some(bytes)
 	}
-	pub(super) fn restore(self, session: &mut ReaderSession) {
-		if session.snapshot.blocks.is_empty() {
-			session.snapshot = self.snapshot;
-			session.horizontal = self.horizontal;
-			session.scrolling.offset = self.scroll;
-			session.cached_slice = Some(self.slice);
-			session.layout_pending = true;
+	fn restore_page(&mut self, page: Page) -> Option<f32> {
+		if self.snapshot.blocks.is_empty() {
+			self.snapshot = page.snapshot;
+			self.horizontal = page.horizontal;
+			self.cached_slice = Some(page.slice);
+			Some(page.scroll)
 		} else {
-			if !self.snapshot.images.entries.is_empty() {
-				session.cached_slice = Some(CachedSlice {
+			if !page.snapshot.images.entries.is_empty() {
+				self.cached_slice = Some(CachedSlice {
 					first: 0,
 					// Only the captured slice has pinned pixels, even though
 					// the whole geometry survives.
-					range: self.slice.range,
-					bytes: self.slice.bytes,
+					range: page.slice.range,
+					bytes: page.slice.bytes,
 				});
 			}
-			session.snapshot.images.pixels = self.snapshot.images.pixels;
+			self.snapshot.images.pixels = page.snapshot.images.pixels;
+			None
 		}
 	}
 }
@@ -415,9 +428,9 @@ impl Preview {
 						&page.horizontal,
 					),
 					None => (
-						&session.snapshot,
+						&session.display.snapshot,
 						session.scrolling.offset,
-						&session.horizontal,
+						&session.display.horizontal,
 					),
 				};
 				if snapshot.blocks.is_empty() && page.is_none() {
@@ -520,7 +533,7 @@ impl<P: super::SendEvent> App<P> {
 		};
 		// The active page already fills the window, so its card names it only.
 		let body = !active
-			&& (!session.snapshot.blocks.is_empty()
+			&& (!session.display.snapshot.blocks.is_empty()
 				|| self.readers.entries()[index].preview.is_some());
 		self.preview.show(Open {
 			target: Target::Tab(tab),

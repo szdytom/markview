@@ -1,12 +1,9 @@
 //! Per-document state and transient read-only interaction state.
-use crate::{
-	document,
-	layout::{Draw, LayoutOptions, LayoutSnapshot, Rect},
-};
+use crate::{document, layout::LayoutOptions};
 use markview_layout::text::{TextCounts, TextSelection};
 use markview_ui_core::Component;
 use std::{
-	collections::{BTreeMap, HashMap, HashSet},
+	collections::{BTreeMap, HashMap},
 	path::PathBuf,
 	sync::Arc,
 	time::{Duration, Instant},
@@ -14,11 +11,13 @@ use std::{
 use winit::event::TouchPhase;
 
 mod command;
+mod display;
 mod drawer;
 mod motion;
 mod outline;
 mod rows;
 pub(crate) use command::*;
+pub(crate) use display::DisplayState;
 pub(crate) use drawer::DrawerAnimation;
 pub(crate) use motion::{Animation, Easing, Fade, Tween};
 pub(crate) use outline::OutlineTree;
@@ -187,12 +186,10 @@ pub(crate) struct ReaderSession {
 	pub(crate) export_title: markview_layout::text_input::TextInput,
 	pub(crate) counts: TextCounts,
 	pub(crate) counts_content_id: Option<u64>,
-	pub(crate) viewport: f32,
-	pub(crate) cached_slice: Option<crate::app::preview::CachedSlice>,
+	pub(crate) display: DisplayState,
 	pub(crate) path: Option<PathBuf>,
 	/// Metadata sampled before the last content reload, including missing files.
 	pub(crate) source_stamp: Option<crate::watch::FileStamp>,
-	pub(crate) snapshot: LayoutSnapshot,
 	pub(crate) accepted_revision: u64,
 	pub(crate) accepted_content_id: u64,
 	pub(crate) version: u64,
@@ -207,7 +204,6 @@ pub(crate) struct ReaderSession {
 	/// what the source declared. It is layout input, and a reload drops it.
 	pub(crate) details_open: Arc<BTreeMap<document::BlockId, bool>>,
 	pub(crate) scrolling: markview_interaction::Scroll,
-	pub(crate) horizontal: HashMap<(usize, usize), f32>,
 	pub(crate) follow_update: bool,
 	pub(crate) layout_pending: bool,
 	pub(crate) web_loading: bool,
@@ -299,7 +295,7 @@ impl ReaderSession {
 		}
 		let mut index = 0;
 		let mut current = None;
-		'blocks: for block in &self.snapshot.blocks {
+		'blocks: for block in &self.display.snapshot.blocks {
 			for (anchor, y) in block.anchor_positions() {
 				// Footnoted anchors are not headings, so treating one as a
 				// heading would advance the scan past every later entry.
@@ -647,8 +643,9 @@ impl ReaderSession {
 		!self.snapshot_complete
 			&& self.accepted_content_id
 				== reader.document.document().content_key().get()
-			&& self.snapshot.blocks.len() <= reader.layout.blocks.len()
+			&& self.display.snapshot.blocks.len() <= reader.layout.blocks.len()
 			&& self
+				.display
 				.snapshot
 				.blocks
 				.iter()
@@ -663,98 +660,7 @@ impl ReaderSession {
 		if self.saved_reading.is_some() && !reader.parse_complete {
 			return false;
 		}
-		if let Some(cached) = &self.cached_slice {
-			let mut retained = HashSet::new();
-			for (index, block) in self.snapshot.blocks.iter().enumerate() {
-				if block.y >= cached.range.end
-					|| block.y + block.height() <= cached.range.start
-				{
-					continue;
-				}
-				let viewport = Rect {
-					x: 0.,
-					y: cached.range.start - block.y,
-					w: self.snapshot.width.max(1.),
-					h: cached.range.end - cached.range.start,
-				};
-				for (command, draw, _) in block.draws() {
-					let Draw::Image { src, rect, .. } = draw else {
-						continue;
-					};
-					let Some(mut rect) = block.rect(command, *rect) else {
-						continue;
-					};
-					let (offset, clip) =
-						block.command_view(command, index, &self.horizontal);
-					rect.x -= offset;
-					let clip = clip.map_or(Some(viewport), |clip| {
-						viewport.intersect(clip)
-					});
-					if clip.and_then(|clip| rect.intersect(clip)).is_none() {
-						continue;
-					}
-					retained.insert(src.as_str());
-				}
-			}
-			// Only a picture in the retained slice can be blanked by the
-			// replacement; an offscreen one must not hold the update back.
-			let images_pending =
-				self.snapshot.images.entries.iter().any(|(key, old)| {
-					retained.contains(key.as_str())
-						&& old.size.is_some()
-						&& reader.layout.images.entries.get(key).is_some_and(
-							|info| {
-								(info.size.is_none() || info.loading)
-									&& info.error.is_none()
-							},
-						)
-				});
-			if images_pending
-				&& cached.covers(
-					self.scrolling.offset,
-					viewport,
-					self.snapshot.height,
-				) {
-				return false;
-			}
-			return reader.complete
-				|| cached
-					.target(
-						&self.snapshot,
-						&reader.layout,
-						self.scrolling.target.unwrap_or(self.scrolling.offset),
-						viewport,
-					)
-					.is_some_and(|target| {
-						reader.layout.height >= target + viewport
-					});
-		}
-		if reader.complete {
-			return true;
-		}
-		if self.snapshot.blocks.is_empty() {
-			return reader.layout.height >= self.scrolling.offset + viewport;
-		}
-		let index = self
-			.snapshot
-			.blocks
-			.partition_point(|b| b.y <= self.scrolling.offset)
-			.saturating_sub(1);
-		let anchor = &self.snapshot.blocks[index];
-		let occurrence = self.snapshot.blocks[..index]
-			.iter()
-			.filter(|b| b.id == anchor.id)
-			.count();
-		reader
-			.layout
-			.blocks
-			.iter()
-			.filter(|b| b.id == anchor.id)
-			.nth(occurrence)
-			.is_some_and(|b| {
-				b.y + (self.scrolling.offset - anchor.y).min(b.height())
-					+ viewport <= reader.layout.height
-			})
+		self.display.can_display(reader, &self.scrolling, viewport)
 	}
 	fn scroll_bounds(
 		&self,
@@ -762,9 +668,9 @@ impl ReaderSession {
 	) -> markview_interaction::ScrollBounds {
 		markview_interaction::ScrollBounds {
 			max: if self.layout_pending {
-				(self.snapshot.height - viewport).max(0.0)
+				(self.display.snapshot.height - viewport).max(0.0)
 			} else {
-				self.snapshot.scroll_limit(viewport)
+				self.display.snapshot.scroll_limit(viewport)
 			},
 			complete: !self.layout_pending,
 		}
@@ -841,16 +747,16 @@ impl ReaderSession {
 			+ viewport * 1.5
 	}
 	pub(crate) fn discard_cached_page(&mut self) {
-		if self.cached_slice.take().is_some() {
+		if self.display.cached_slice.take().is_some() {
 			// The replacement layout reflows, so an absolute offset no longer
 			// names the same text; keep the semantic reading position instead.
 			if self.saved_reading.is_none() && self.pending_anchor.is_none() {
 				self.saved_reading =
 					Some(crate::app::session::Reading::capture(self));
 			}
-			self.snapshot = LayoutSnapshot::default();
+			self.display.release();
 			self.snapshot_complete = false;
-			self.horizontal.clear();
+			self.display.horizontal.clear();
 		}
 	}
 	pub(crate) fn release_heavy(&mut self) {
@@ -859,8 +765,7 @@ impl ReaderSession {
 			self.saved_reading =
 				Some(crate::app::session::Reading::capture(self));
 		}
-		self.cached_slice = None;
-		self.snapshot = LayoutSnapshot::default();
+		self.display.release();
 		self.snapshot_complete = false;
 		if !matches!(self.security.origin, crate::security::Origin::Web(_)) {
 			self.document = None;
@@ -875,11 +780,13 @@ impl ReaderSession {
 	}
 
 	pub(crate) fn present_disclosures(&mut self, viewport: f32) {
-		let old = self.snapshot.clone();
-		self.snapshot.set_disclosures(&self.details_open, false);
+		let old = self.display.snapshot.clone();
+		self.display
+			.snapshot
+			.set_disclosures(&self.details_open, false);
 		self.scrolling.offset = crate::layout::anchored_scroll(
 			&old,
-			&self.snapshot,
+			&self.display.snapshot,
 			self.scrolling.offset,
 			viewport,
 			false,
@@ -925,9 +832,9 @@ impl ReaderSession {
 	/// means the complete layout has no such heading.
 	pub(crate) fn pending_anchor_is_current(&self) -> bool {
 		self.pending_anchor.as_ref().is_none_or(|pending| {
-			pending
-				.revision
-				.is_none_or(|revision| revision == self.snapshot.revision)
+			pending.revision.is_none_or(|revision| {
+				revision == self.display.snapshot.revision
+			})
 		})
 	}
 
@@ -940,12 +847,12 @@ impl ReaderSession {
 			self.pending_anchor = None;
 			return Some(Err(anchor));
 		}
-		if let Some(y) = self.snapshot.anchor_target_y(&anchor) {
+		if let Some(y) = self.display.snapshot.anchor_target_y(&anchor) {
 			self.pending_anchor = None;
 			self.scrolling.target = None;
 			self.follow_update = false;
 			self.scrolling.offset =
-				y.clamp(0.0, self.snapshot.scroll_limit(viewport));
+				y.clamp(0.0, self.display.snapshot.scroll_limit(viewport));
 			return Some(Ok(()));
 		}
 		if self.snapshot_complete {
@@ -966,7 +873,7 @@ impl ReaderSession {
 		// with the update, computed off the event loop.
 		let changed = reader.document.document().content_key().get()
 			!= self.accepted_content_id;
-		self.viewport = viewport;
+		self.display.viewport = viewport;
 		if let Some(counts) = counts {
 			self.counts = counts;
 			self.counts_content_id =
@@ -975,21 +882,12 @@ impl ReaderSession {
 			self.counts = TextCounts::default();
 			self.counts_content_id = None;
 		}
-		let cached = self.cached_slice.take();
-		if let Some(cached) = &cached {
-			self.horizontal = self
-				.horizontal
-				.drain()
-				.map(|((block, overflow), offset)| {
-					((block + cached.first, overflow), offset)
-				})
-				.collect();
-		}
+		let cached = self.display.take_cached_slice();
 		reader.layout.set_disclosures(&self.details_open, false);
 		let extending = self.extends_prefix(&reader);
 		self.scrolling.offset = if extending {
 			self.scrolling.offset
-		} else if self.snapshot.blocks.is_empty() || cached.is_some() {
+		} else if self.display.snapshot.blocks.is_empty() || cached.is_some() {
 			// A released tab has no old layout to anchor against, but its
 			// scroll position is still user state and should survive reloading.
 			// A prefix keeps the content limit, because a position inside the
@@ -1003,7 +901,7 @@ impl ReaderSession {
 				.as_ref()
 				.and_then(|slice| {
 					slice.target(
-						&self.snapshot,
+						&self.display.snapshot,
 						&reader.layout,
 						self.scrolling.offset,
 						viewport,
@@ -1013,7 +911,7 @@ impl ReaderSession {
 				.clamp(0.0, limit)
 		} else {
 			crate::layout::anchored_scroll(
-				&self.snapshot,
+				&self.display.snapshot,
 				&reader.layout,
 				self.scrolling.offset,
 				viewport,
@@ -1028,7 +926,7 @@ impl ReaderSession {
 		self.accepted_content_id =
 			reader.document.document().content_key().get();
 		self.document = Some(reader.document);
-		self.snapshot = reader.layout;
+		self.display.snapshot = reader.layout;
 		self.layout_pending = !reader.complete;
 		self.snapshot_complete = reader.complete;
 		self.parse_complete = reader.parse_complete;
@@ -1038,11 +936,12 @@ impl ReaderSession {
 		self.accepted_revision = reader.content_version;
 		self.follow_update = false;
 		self.restore_reading(viewport);
-		self.horizontal.retain(|(bi, oi), offset| {
+		self.display.horizontal.retain(|(bi, oi), offset| {
 			if changed {
 				return false;
 			}
 			if let Some(o) = self
+				.display
 				.snapshot
 				.blocks
 				.get(*bi)

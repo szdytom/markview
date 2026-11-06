@@ -309,7 +309,7 @@ fn queued_fragments_override_restoration_during_progressive_layout() {
 	let options = crate::test_support::options();
 	let mut original = ReaderSession::default();
 	accept(&mut original, &source, &options, true);
-	original.scrolling.offset = original.snapshot.blocks[80].y;
+	original.scrolling.offset = original.display.snapshot.blocks[80].y;
 	let saved = Reading::capture(&original);
 	for background in [false, true] {
 		let mut app = app(dir.path());
@@ -352,7 +352,7 @@ fn text_position_survives_width_font_changes_progressive_layout_and_release() {
 	let mut original = ReaderSession::default();
 	accept(&mut original, &source, &options, true);
 	original.scrolling.offset =
-		original.snapshot.blocks.last().unwrap().y + 300.0;
+		original.display.snapshot.blocks.last().unwrap().y + 300.0;
 	let saved = Reading::capture(&original);
 	for released in [false, true] {
 		let mut restored = if released {
@@ -373,7 +373,7 @@ fn text_position_survives_width_font_changes_progressive_layout_and_release() {
 		assert!(restored.saved_reading.is_none());
 		let target = saved
 			.position
-			.resolve(&restored.snapshot, restored.document.as_deref())
+			.resolve(&restored.display.snapshot, restored.document.as_deref())
 			.unwrap();
 		assert!((restored.scrolling.offset - target).abs() < 0.01);
 		assert!(restored.scrolling.offset > original.scrolling.offset);
@@ -386,7 +386,10 @@ fn text_position_survives_width_font_changes_progressive_layout_and_release() {
 	assert!(changed.saved_reading.is_none());
 	assert!(
 		changed.scrolling.offset
-			<= crate::state::scroll_limit(changed.snapshot.height, 200.0)
+			<= crate::state::scroll_limit(
+				changed.display.snapshot.height,
+				200.0
+			)
 	);
 }
 
@@ -447,6 +450,7 @@ fn disclosures_apply_before_layout_and_changed_content_discards_overrides() {
 	accept(&mut tabs.session, source, &restored_options, true);
 	assert!(
 		tabs.session
+			.display
 			.snapshot
 			.blocks
 			.iter()
@@ -486,9 +490,9 @@ fn repeated_blocks_restore_the_correct_occurrence() {
 	let options = crate::test_support::options();
 	let mut session = ReaderSession::default();
 	accept(&mut session, source, &options, true);
-	session.scrolling.offset = session.snapshot.blocks[2].y;
+	session.scrolling.offset = session.display.snapshot.blocks[2].y;
 	let position = Position::capture(
-		&session.snapshot,
+		&session.display.snapshot,
 		session.document.as_deref(),
 		session.scrolling.offset,
 	);
@@ -497,14 +501,15 @@ fn repeated_blocks_restore_the_correct_occurrence() {
 		.document
 		.as_deref()
 		.unwrap()
-		.path_of(session.snapshot.blocks[2].id)
+		.path_of(session.display.snapshot.blocks[2].id)
 		.unwrap();
 	assert_eq!(
 		position.path,
 		expected.iter().map(|i| *i as u32).collect::<Vec<_>>()
 	);
 	assert_eq!(
-		position.resolve(&session.snapshot, session.document.as_deref()),
+		position
+			.resolve(&session.display.snapshot, session.document.as_deref()),
 		Some(session.scrolling.offset)
 	);
 }
@@ -584,7 +589,7 @@ fn block_relative_and_text_positions_roundtrip_without_shifting() {
 	let options = crate::test_support::options();
 	let mut session = ReaderSession::default();
 	accept(&mut session, &source, &options, true);
-	let block = &session.snapshot.blocks[0];
+	let block = &session.display.snapshot.blocks[0];
 	let first = &block.layout.text[0].clusters[0];
 	let last_bottom = block
 		.layout
@@ -594,7 +599,7 @@ fn block_relative_and_text_positions_roundtrip_without_shifting() {
 		.map(|c| c.rect.y + c.rect.h)
 		.fold(0.0, f32::max);
 	let below_text =
-		(block.y + last_bottom + session.snapshot.blocks[1].y) * 0.5;
+		(block.y + last_bottom + session.display.snapshot.blocks[1].y) * 0.5;
 	assert!(below_text > block.y + last_bottom);
 	for (scroll, text_anchor) in
 		[(block.y + first.rect.y, true), (below_text, false)]
@@ -669,7 +674,7 @@ fn image_and_caption_positions_survive_serialization_and_image_loading() {
 		};
 		let mut original = ReaderSession::default();
 		original.accept(layout(&images), 200., None);
-		let picture = &original.snapshot.blocks[1];
+		let picture = &original.display.snapshot.blocks[1];
 		let caption = &picture.layout.text[1].clusters[0];
 		let caption_y =
 			picture.y + picture.rect(caption.command, caption.rect).unwrap().y;
@@ -677,7 +682,7 @@ fn image_and_caption_positions_survive_serialization_and_image_loading() {
 			picture.y + 1.,
 			picture.y + picture.height() * 0.75,
 			caption_y,
-			original.snapshot.blocks[2].y + 1.,
+			original.display.snapshot.blocks[2].y + 1.,
 		] {
 			original.scrolling.offset = scroll;
 			let saved: Reading = serde_json::from_slice(
@@ -712,7 +717,8 @@ fn image_and_caption_positions_survive_serialization_and_image_loading() {
 					assert!(restored.scrolling.offset.is_finite());
 					continue;
 				}
-				if state == "pending" && scroll < original.snapshot.blocks[2].y
+				if state == "pending"
+					&& scroll < original.display.snapshot.blocks[2].y
 				{
 					assert!(restored.saved_reading.is_some());
 					assert_eq!(Reading::capture(&restored), saved);

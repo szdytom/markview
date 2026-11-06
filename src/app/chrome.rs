@@ -625,7 +625,7 @@ impl<'a> Chrome<'a> {
 			buttons.push(tab_drawer::toggle(self.settings.model.lang()));
 		}
 		if self.session.doc.path.is_none()
-			&& self.session.doc.snapshot.blocks.is_empty()
+			&& self.session.doc.display.snapshot.blocks.is_empty()
 		{
 			// Each `Open` control has its own identity and geometry.
 			let clip = self.reading_clip();
@@ -917,7 +917,7 @@ impl<'a> Chrome<'a> {
 		if let Some(viewer) = self.interaction.overlays.viewer() {
 			out.extend(viewer::draw_viewer(
 				viewer,
-				&self.session.doc.snapshot,
+				&self.session.doc.display.snapshot,
 				(self.frame.width, self.frame.height),
 			));
 		}
@@ -1001,7 +1001,7 @@ impl<'a> Chrome<'a> {
 				view,
 				self.settings.model.lang(),
 			));
-		} else if self.session.doc.snapshot.blocks.is_empty()
+		} else if self.session.doc.display.snapshot.blocks.is_empty()
 			|| self.session.doc.load_error.is_some()
 		{
 			if self.session.doc.load_error.is_some() {

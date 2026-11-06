@@ -151,8 +151,8 @@ fn native_touch_and_trackpad_route_through_reader_and_chrome() {
 		event_loop.create_proxy(),
 	);
 	app.readers.session.path = Some("touch.md".into());
-	app.readers.session.snapshot.height = 5000.0;
-	app.readers.session.snapshot.width = 800.0;
+	app.readers.session.display.snapshot.height = 5000.0;
+	app.readers.session.display.snapshot.width = 800.0;
 	app.readers.session.snapshot_complete = true;
 	let touch = |id, phase, x, y| Touch {
 		device_id: DeviceId::dummy(),

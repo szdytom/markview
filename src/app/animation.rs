@@ -185,8 +185,9 @@ impl<P: super::SendEvent> super::App<P> {
 				super::TOP,
 				height - self.bottom(),
 				self.readers.session.scrolling.offset,
-				(self.readers.session.snapshot.height - self.viewport())
-					.max(0.0),
+				(self.readers.session.display.snapshot.height
+					- self.viewport())
+				.max(0.0),
 			);
 			if speed != 0.0 {
 				active = true;

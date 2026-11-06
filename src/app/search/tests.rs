@@ -54,7 +54,7 @@ impl Harness {
 		let session = &mut app.readers.session;
 		session.document = Some(document.clone());
 		session.search.document = Some(document);
-		session.snapshot = snapshot;
+		session.display.snapshot = snapshot;
 		session.content_version = 1;
 		session.accepted_revision = 1;
 		session.parse_complete = true;
@@ -142,7 +142,7 @@ fn slash_opens_empty_search_without_using_selection_or_previous_results() {
 		if !already_open {
 			h.app.close_search();
 		}
-		let selection = h.app.readers.session.snapshot.select_all(1);
+		let selection = h.app.readers.session.display.snapshot.select_all(1);
 		h.app.interaction.selection = selection;
 		h.app.readers.session.search.retained =
 			Some(h.app.readers.session.search.matches[0].clone());
@@ -215,8 +215,14 @@ fn opening_search_uses_document_selection_and_submits_it() {
 		if !already_open {
 			h.app.close_search();
 		}
-		let mut selection =
-			h.app.readers.session.snapshot.select_all(1).unwrap();
+		let mut selection = h
+			.app
+			.readers
+			.session
+			.display
+			.snapshot
+			.select_all(1)
+			.unwrap();
 		if already_open {
 			std::mem::swap(&mut selection.anchor, &mut selection.focus);
 		}
@@ -245,8 +251,22 @@ fn opening_search_uses_document_selection_and_submits_it() {
 fn opening_search_without_valid_selected_text_preserves_query() {
 	let mut h = Harness::new("needle");
 	h.query("needle");
-	let stale = h.app.readers.session.snapshot.select_all(0).unwrap();
-	let mut empty = h.app.readers.session.snapshot.select_all(1).unwrap();
+	let stale = h
+		.app
+		.readers
+		.session
+		.display
+		.snapshot
+		.select_all(0)
+		.unwrap();
+	let mut empty = h
+		.app
+		.readers
+		.session
+		.display
+		.snapshot
+		.select_all(1)
+		.unwrap();
 	empty.focus = empty.anchor;
 	for selection in [None, Some(empty), Some(stale)] {
 		h.app.close_search();
@@ -361,9 +381,22 @@ fn live_query_preserves_scroll_selection_and_disclosures() {
 	);
 	let mut h = Harness::new(&source);
 	h.app.readers.session.scrolling.offset = 800.0;
-	let selection = h.app.readers.session.snapshot.select_all(1).unwrap();
+	let selection = h
+		.app
+		.readers
+		.session
+		.display
+		.snapshot
+		.select_all(1)
+		.unwrap();
 	h.app.interaction.selection = Some(selection);
-	let copied = h.app.readers.session.snapshot.extract_text(selection, 1);
+	let copied = h
+		.app
+		.readers
+		.session
+		.display
+		.snapshot
+		.extract_text(selection, 1);
 	h.query("needle");
 	assert_eq!(h.app.readers.session.search.matches.len(), 161);
 	assert_eq!(h.app.readers.session.search.current, None);
@@ -371,7 +404,12 @@ fn live_query_preserves_scroll_selection_and_disclosures() {
 	assert!(h.app.readers.session.details_open.is_empty());
 	assert_eq!(h.app.interaction.selection, Some(selection));
 	assert_eq!(
-		h.app.readers.session.snapshot.extract_text(selection, 1),
+		h.app
+			.readers
+			.session
+			.display
+			.snapshot
+			.extract_text(selection, 1),
 		copied
 	);
 	assert!(!h.app.draw_search_highlights().is_empty());
@@ -408,6 +446,7 @@ fn navigation_starts_near_viewport_wraps_and_opens_only_ancestors() {
 		h.app
 			.readers
 			.session
+			.display
 			.snapshot
 			.search_selection(hit, 1)
 			.is_some()
@@ -430,7 +469,7 @@ fn horizontal_navigation_reveals_code_and_table_targets() {
 	let mut h = Harness::new(&source);
 	h.app.preferences.values.width = 300.0;
 	let options = h.app.options();
-	h.app.readers.session.snapshot = LayoutEngine::new()
+	h.app.readers.session.display.snapshot = LayoutEngine::new()
 		.layout(h.app.readers.session.document.as_ref().unwrap(), &options);
 	h.app.readers.session.requested_options = Some(options);
 	h.query("needle");
@@ -441,20 +480,22 @@ fn horizontal_navigation_reveals_code_and_table_targets() {
 		h.app.navigate_search(false);
 		let session = &h.app.readers.session;
 		let hit = &session.search.matches[index];
-		let selection = session.snapshot.search_selection(hit, 1).unwrap();
-		let rects =
-			session
-				.snapshot
-				.selection_rects(selection, &session.horizontal, 1);
+		let selection =
+			session.display.snapshot.search_selection(hit, 1).unwrap();
+		let rects = session.display.snapshot.selection_rects(
+			selection,
+			&session.display.horizontal,
+			1,
+		);
 		assert!(!rects.is_empty());
 		assert!(
-			session.horizontal.iter().any(|((b, _), offset)| session
-				.snapshot
-				.blocks[*b]
-				.id == selection
-				.anchor
-				.block && *offset
-				> 0.0)
+			session
+				.display
+				.horizontal
+				.iter()
+				.any(|((b, _), offset)| session.display.snapshot.blocks[*b].id
+					== selection.anchor.block
+					&& *offset > 0.0)
 		);
 	}
 }
@@ -465,16 +506,20 @@ fn horizontal_navigation_reveals_rtl_anchor() {
 	let mut h = Harness::new(&source);
 	h.app.preferences.values.width = 300.0;
 	let options = h.app.options();
-	h.app.readers.session.snapshot = LayoutEngine::new()
+	h.app.readers.session.display.snapshot = LayoutEngine::new()
 		.layout(h.app.readers.session.document.as_ref().unwrap(), &options);
 	h.app.readers.session.requested_options = Some(options);
 	h.query("مرحبا");
 	h.app.navigate_search(false);
 	let session = &h.app.readers.session;
 	let hit = &session.search.matches[0];
-	let selection = session.snapshot.search_selection(hit, 1).unwrap();
-	let resolved = session.snapshot.resolve_position(selection.anchor).unwrap();
-	let block = &session.snapshot.blocks[resolved.block];
+	let selection = session.display.snapshot.search_selection(hit, 1).unwrap();
+	let resolved = session
+		.display
+		.snapshot
+		.resolve_position(selection.anchor)
+		.unwrap();
+	let block = &session.display.snapshot.blocks[resolved.block];
 	let node = &block.layout.text[resolved.node];
 	let anchor = node
 		.clusters
@@ -490,6 +535,7 @@ fn horizontal_navigation_reveals_rtl_anchor() {
 		.find(|(_, o)| o.commands.contains(&anchor.command))
 		.unwrap();
 	let offset = session
+		.display
 		.horizontal
 		.get(&(resolved.block, oi))
 		.copied()
@@ -504,7 +550,7 @@ fn horizontal_navigation_reveals_rtl_anchor() {
 #[test]
 fn parsed_full_document_searches_before_layout_and_rejects_stale_results() {
 	let mut h = Harness::new("first\n\nneedle\n");
-	h.app.readers.session.snapshot.blocks.truncate(1);
+	h.app.readers.session.display.snapshot.blocks.truncate(1);
 	h.app.readers.session.snapshot_complete = false;
 	h.query("needle");
 	assert_eq!(h.app.readers.session.search.matches.len(), 1);
@@ -696,7 +742,7 @@ fn search_states_match_rendering_baselines() -> anyhow::Result<()> {
 		h.query("needle");
 		h.app.navigate_search(false);
 		assert!(
-			h.app.readers.session.snapshot.blocks[2].draws().any(
+			h.app.readers.session.display.snapshot.blocks[2].draws().any(
 				|(_, draw, _)| matches!(draw, Draw::Glyph(glyph) if matches!(glyph.paint, Paint::Color(_)))
 			),
 			"Search snapshots must include settled syntax highlighting"
@@ -705,6 +751,7 @@ fn search_states_match_rendering_baselines() -> anyhow::Result<()> {
 			.app
 			.readers
 			.session
+			.display
 			.snapshot
 			.search_selection(&h.app.readers.session.search.matches[1], 1);
 		h.app.interaction.selection = selection;
@@ -722,7 +769,7 @@ fn search_states_match_rendering_baselines() -> anyhow::Result<()> {
 			top: h.app.content_top() + 10.0,
 			bottom: HEIGHT + 10.0,
 			theme: if dark { Theme::Dark } else { Theme::Light },
-			horizontal: &session.horizontal,
+			horizontal: &session.display.horizontal,
 			hovered_link: None,
 			held_overflow: None,
 		};
@@ -730,7 +777,7 @@ fn search_states_match_rendering_baselines() -> anyhow::Result<()> {
 		renderer.set_stylesheet(stylesheet);
 		let texture = renderer.offscreen(view.width, view.height);
 		let submission = renderer.render(
-			&session.snapshot,
+			&session.display.snapshot,
 			&view,
 			&overlay,
 			&texture.create_view(&Default::default()),
@@ -817,17 +864,17 @@ fn search_navigation_cancels_restoration_before_later_layouts_arrive() {
 	);
 	let mut h = Harness::new(&source);
 	h.query("needle");
-	let full = h.app.readers.session.snapshot.clone();
+	let full = h.app.readers.session.display.snapshot.clone();
 	let document = h.app.readers.session.document.clone().unwrap();
 	for hit in [0, 1] {
 		let session = &mut h.app.readers.session;
-		session.snapshot = full.clone();
+		session.display.snapshot = full.clone();
 		session.scrolling.offset = full.blocks.last().unwrap().y;
 		session.saved_reading =
 			Some(crate::app::session::Reading::capture(session));
-		session.snapshot.blocks.truncate(40);
-		session.snapshot.height = session.snapshot.blocks[39].y
-			+ session.snapshot.blocks[39].height();
+		session.display.snapshot.blocks.truncate(40);
+		session.display.snapshot.height = session.display.snapshot.blocks[39].y
+			+ session.display.snapshot.blocks[39].height();
 		session.snapshot_complete = false;
 		session.layout_pending = true;
 		session.scrolling.offset = 0.0;

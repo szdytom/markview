@@ -87,15 +87,13 @@ fn image_reader_like(
 			}),
 		);
 	}
-	app.readers.session.snapshot = LayoutEngine::new().layout_with_images(
-		&document,
-		&app.options(),
-		&images,
-	);
+	app.readers.session.display.snapshot = LayoutEngine::new()
+		.layout_with_images(&document, &app.options(), &images);
 	let geometry = app.view_geometry();
 	let at = app
 		.readers
 		.session
+		.display
 		.snapshot
 		.blocks
 		.iter()
@@ -477,7 +475,7 @@ fn wheel_zoom_ignores_larger_vector_rasters() {
 
 	// The page asked for a sharper raster after the zoom. It must not feed
 	// back into the viewer's fitted size.
-	app.readers.session.snapshot.images.entries.insert(
+	app.readers.session.display.snapshot.images.entries.insert(
 		"a.png".into(),
 		ImageInfo {
 			loading: false,
@@ -487,7 +485,7 @@ fn wheel_zoom_ignores_larger_vector_rasters() {
 			svg: true,
 		},
 	);
-	app.readers.session.snapshot.images.pixels.insert(
+	app.readers.session.display.snapshot.images.pixels.insert(
 		"a.png".into(),
 		2,
 		Arc::new(Pixels {
@@ -532,7 +530,7 @@ fn touch_pinch_ignores_larger_vector_rasters() {
 	assert!((zoomed.w - before.w * 4.0).abs() < 0.01);
 	assert!((zoomed.h - before.h * 4.0).abs() < 0.01);
 
-	app.readers.session.snapshot.images.entries.insert(
+	app.readers.session.display.snapshot.images.entries.insert(
 		"a.png".into(),
 		ImageInfo {
 			loading: false,
@@ -542,7 +540,7 @@ fn touch_pinch_ignores_larger_vector_rasters() {
 			svg: true,
 		},
 	);
-	app.readers.session.snapshot.images.pixels.insert(
+	app.readers.session.display.snapshot.images.pixels.insert(
 		"a.png".into(),
 		2,
 		Arc::new(Pixels {
@@ -576,6 +574,7 @@ fn failed_images_neither_open_nor_keep_the_viewer() {
 	let mut app = image_reader("![](a.png)", "a.png", false);
 	app.readers
 		.session
+		.display
 		.snapshot
 		.images
 		.entries
@@ -589,6 +588,7 @@ fn failed_images_neither_open_nor_keep_the_viewer() {
 	open(&mut app);
 	app.readers
 		.session
+		.display
 		.snapshot
 		.images
 		.entries
@@ -623,10 +623,10 @@ fn an_image_press_that_drags_or_loses_focus_does_not_open() {
 #[test]
 fn viewer_captures_search_input_and_middle_clicks() {
 	let mut app = image_reader("![](a.png)", "a.png", false);
-	let snapshot = app.readers.session.snapshot.clone();
+	let snapshot = app.readers.session.display.snapshot.clone();
 	app.readers
 		.open(PathBuf::from("/tmp/viewer.md"), Instant::now());
-	app.readers.session.snapshot = snapshot;
+	app.readers.session.display.snapshot = snapshot;
 	app.readers.session.search.open = true;
 	app.readers
 		.session
@@ -749,7 +749,7 @@ fn decoding_refreshes_the_viewer_dimensions_and_texture_version() {
 		open(&mut app);
 		let (placeholder, _) = viewer_image(&mut app);
 		assert_ne!(placeholder.w, placeholder.h);
-		app.readers.session.snapshot.images.pixels.insert(
+		app.readers.session.display.snapshot.images.pixels.insert(
 			"a.png".into(),
 			2,
 			Arc::new(Pixels {
@@ -758,7 +758,7 @@ fn decoding_refreshes_the_viewer_dimensions_and_texture_version() {
 				rgba: vec![255; 400 * 400 * 4].into(),
 			}),
 		);
-		app.readers.session.snapshot.images.entries.insert(
+		app.readers.session.display.snapshot.images.entries.insert(
 			"a.png".into(),
 			ImageInfo {
 				loading: false,
@@ -778,7 +778,7 @@ fn decoding_refreshes_the_viewer_dimensions_and_texture_version() {
 fn a_rendered_vector_raster_keeps_its_device_pixel_size() {
 	let mut app = image_reader("![](a.png)", "a.png", false);
 	open(&mut app);
-	app.readers.session.snapshot.images.entries.insert(
+	app.readers.session.display.snapshot.images.entries.insert(
 		"a.png".into(),
 		ImageInfo {
 			loading: false,
@@ -788,7 +788,7 @@ fn a_rendered_vector_raster_keeps_its_device_pixel_size() {
 			svg: true,
 		},
 	);
-	app.readers.session.snapshot.images.pixels.insert(
+	app.readers.session.display.snapshot.images.pixels.insert(
 		"a.png".into(),
 		2,
 		Arc::new(Pixels {
@@ -805,7 +805,7 @@ fn a_rendered_vector_raster_keeps_its_device_pixel_size() {
 fn a_vector_with_explicit_display_proportions_keeps_one_aspect_ratio() {
 	let mut app = image_reader("![](a.png)", "a.png", false);
 	open(&mut app);
-	app.readers.session.snapshot.images.entries.insert(
+	app.readers.session.display.snapshot.images.entries.insert(
 		"a.png".into(),
 		ImageInfo {
 			loading: false,
@@ -815,7 +815,7 @@ fn a_vector_with_explicit_display_proportions_keeps_one_aspect_ratio() {
 			svg: true,
 		},
 	);
-	app.readers.session.snapshot.images.pixels.insert(
+	app.readers.session.display.snapshot.images.pixels.insert(
 		"a.png".into(),
 		2,
 		Arc::new(Pixels {
@@ -832,7 +832,7 @@ fn a_vector_with_explicit_display_proportions_keeps_one_aspect_ratio() {
 fn a_downsampled_page_raster_still_opens_at_the_intrinsic_size() {
 	let mut app = image_reader("![](a.png)", "a.png", false);
 	open(&mut app);
-	app.readers.session.snapshot.images.entries.insert(
+	app.readers.session.display.snapshot.images.entries.insert(
 		"a.png".into(),
 		ImageInfo {
 			loading: false,
@@ -842,7 +842,7 @@ fn a_downsampled_page_raster_still_opens_at_the_intrinsic_size() {
 			svg: false,
 		},
 	);
-	app.readers.session.snapshot.images.pixels.insert(
+	app.readers.session.display.snapshot.images.pixels.insert(
 		"a.png".into(),
 		2,
 		Arc::new(Pixels {

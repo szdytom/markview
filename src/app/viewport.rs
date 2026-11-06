@@ -97,9 +97,9 @@ impl<P: super::SendEvent> App<P> {
 		&self,
 	) -> markview_interaction::DocumentInteraction<'_> {
 		markview_interaction::DocumentInteraction {
-			snapshot: &self.readers.session.snapshot,
+			snapshot: &self.readers.session.display.snapshot,
 			viewport: self.view_geometry(),
-			horizontal: &self.readers.session.horizontal,
+			horizontal: &self.readers.session.display.horizontal,
 			revision: self.readers.session.accepted_revision,
 		}
 	}
@@ -158,7 +158,8 @@ impl<P: super::SendEvent> App<P> {
 		// The bar spans the scrollable range, including the blank kept below
 		// the document, so its thumb and the scroll clamp agree.
 		let content =
-			self.readers.session.snapshot.scroll_limit(viewport) + viewport;
+			self.readers.session.display.snapshot.scroll_limit(viewport)
+				+ viewport;
 		Scrollbar::vertical(
 			track,
 			self.readers.session.scrolling.offset,

@@ -471,6 +471,7 @@ impl<P: super::SendEvent> App<P> {
 				let offset = bar.scroll_for(x, y, 0.0);
 				self.readers
 					.session
+					.display
 					.horizontal
 					.insert((block, overflow), offset);
 				0.0
@@ -505,7 +506,7 @@ impl<P: super::SendEvent> App<P> {
 			}
 			ScrollbarAxis::Overflow { block, overflow } => {
 				if let Some(bar) = self.overflow_scrollbar(block, overflow) {
-					self.readers.session.horizontal.insert(
+					self.readers.session.display.horizontal.insert(
 						(block, overflow),
 						bar.scroll_for(x, y, drag.grab),
 					);
@@ -533,7 +534,7 @@ impl<P: super::SendEvent> App<P> {
 			None
 		};
 		self.interaction
-			.move_selection(position, &self.readers.session.snapshot);
+			.move_selection(position, &self.readers.session.display.snapshot);
 		if self.interaction.pointer.drag().is_some()
 			&& self.interaction.pointer.dragged()
 		{
@@ -546,11 +547,11 @@ impl<P: super::SendEvent> App<P> {
 	/// snapshot has outlived.
 	pub(super) fn selected_text(&self) -> Option<String> {
 		let selection = self.interaction.selection.filter(|s| !s.is_empty())?;
-		let text = self
-			.readers
-			.session
-			.snapshot
-			.extract_text(selection, self.readers.session.accepted_revision);
+		let text =
+			self.readers.session.display.snapshot.extract_text(
+				selection,
+				self.readers.session.accepted_revision,
+			);
 		(!text.is_empty()).then_some(text)
 	}
 

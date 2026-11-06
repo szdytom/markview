@@ -61,7 +61,7 @@ impl<P: super::SendEvent> App<P> {
 		let settled = session.accepted_revision == session.content_version
 			&& session.snapshot_complete
 			&& !session.layout_pending;
-		let revision = settled.then_some(session.snapshot.revision);
+		let revision = settled.then_some(session.display.snapshot.revision);
 		self.readers.session.pending_anchor =
 			Some(crate::state::PendingAnchor { target, revision });
 		self.apply_anchor();
@@ -76,7 +76,11 @@ impl<P: super::SendEvent> App<P> {
 			self.readers.session.follow_update = false;
 			let to = scroll.clamp(
 				0.0,
-				self.readers.session.snapshot.scroll_limit(self.viewport()),
+				self.readers
+					.session
+					.display
+					.snapshot
+					.scroll_limit(self.viewport()),
 			);
 			if (to - self.readers.session.scrolling.offset).abs() > 0.5 {
 				self.readers.session.animate_scroll_to(to, Instant::now());
@@ -88,26 +92,27 @@ impl<P: super::SendEvent> App<P> {
 			return;
 		}
 		// No reference to return to: fall back to the first one.
-		let first =
-			self.readers
-				.session
-				.snapshot
-				.blocks
-				.iter()
-				.find_map(|block| {
-					block.anchor_positions().find_map(
-						|(anchor, _)| match anchor {
-							document::AnchorId::FootnoteReference {
-								definition,
-								occurrence,
-							} if definition == id => Some(document::AnchorId::FootnoteReference {
-								definition: definition.clone(),
-								occurrence: *occurrence,
-							}),
-							_ => None,
-						},
-					)
-				});
+		let first = self
+			.readers
+			.session
+			.display
+			.snapshot
+			.blocks
+			.iter()
+			.find_map(|block| {
+				block
+					.anchor_positions()
+					.find_map(|(anchor, _)| match anchor {
+						document::AnchorId::FootnoteReference {
+							definition,
+							occurrence,
+						} if definition == id => Some(document::AnchorId::FootnoteReference {
+							definition: definition.clone(),
+							occurrence: *occurrence,
+						}),
+						_ => None,
+					})
+			});
 		if let Some(first) = first {
 			self.goto_target(first);
 		} else {
