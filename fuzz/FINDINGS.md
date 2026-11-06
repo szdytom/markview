@@ -224,9 +224,10 @@ The visible cells map inside the table; only the empty body cell's empty
 paragraph takes the newline. The fuzz reproducer is
 `fuzz/artifacts/crashes6/sourcepos_content/crash-401f4301d6614983d6983b9164044da8b060e5dc`.
 
-Status: open. Either the table's range should include its terminating newline,
-or the empty cell block should not claim it. `SourceMap::validate` accepts the
-inconsistent pair, so the source-position oracle is the only current detector.
+Status: fixed. A table cell's source range is clipped to the table's own range,
+so the synthetic empty cell no longer claims the row's line ending. Regression
+test: `an_empty_table_cell_stays_inside_the_table_range`, which also restores
+the containment half of the source-position oracle on this shape.
 
 ## D4 — upstream wiki-link resolution is outside the reference oracle
 

@@ -1067,6 +1067,10 @@ impl Reader<'_> {
 						let mut cells = Vec::new();
 						for cell_node in row.children() {
 							let range = self.range(cell_node);
+							// A synthetic empty cell can take the row's line ending,
+							// which lies past the table's own range.
+							let range = range.start.min(source.end)
+								..range.end.min(source.end);
 							let text = self.rich(cell_node);
 							let (inlines, spans, covers) =
 								text.into_parts(self.source);

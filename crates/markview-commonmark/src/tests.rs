@@ -2251,6 +2251,26 @@ fn a_definition_after_a_leaf_block_still_counts() {
 }
 
 #[test]
+fn an_empty_table_cell_stays_inside_the_table_range() {
+	// Comrak gives the synthetic empty cell the row's line ending, which is
+	// past the table range. The cell must not claim source outside its table.
+	let source: Arc<str> = Arc::from("|-|---:|\n-:|---:|\n z  \n");
+	let doc = parse(source.as_ref());
+	let table = &doc.blocks()[0];
+	let table_range = doc.block_source(table).unwrap();
+	let BlockKind::Table(table) = table.kind() else {
+		panic!("expected a table")
+	};
+	for cell in table.cell_blocks() {
+		let range = doc.block_source(cell).unwrap();
+		assert!(
+			table_range.start <= range.start && range.end <= table_range.end,
+			"cell range {range:?} escapes the table {table_range:?}"
+		);
+	}
+}
+
+#[test]
 fn source_map_validation_reports_invalid_fields() {
 	use markview_document::{
 		BlockSource, FieldSource, SourceMap, SourceMapError, SourceSpan,
