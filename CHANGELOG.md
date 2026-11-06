@@ -60,6 +60,7 @@ at the same level, without `[brackets]`.
 
 ### Fixed
 
+- Exclude package artifact directories from platform boundary checks so standalone experiment probes do not trigger false positives.
 - Quote the property-test command so GitHub Actions can parse and start CI.
 - Match font archive wildcards correctly when member names contain literal asterisks.
 - Send PDF footnote return links to the earliest reference by page and vertical position.

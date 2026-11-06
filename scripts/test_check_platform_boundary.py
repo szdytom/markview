@@ -114,6 +114,20 @@ class WorkspaceBoundaryTests(unittest.TestCase):
         self.write("tests/native.rs", '#[cfg(feature = "parallel-layout")]')
         self.assertEqual(len(check(self.root)), 1)
 
+    def test_package_artifacts_are_not_application_sources(self):
+        self.write("Cargo.toml", '[package]\nname = "reader"\nversion = "0.1.0"\n[workspace]\nmembers = ["crates/*"]\n')
+        self.package("reader")
+        for prefix in ("", "crates/reader/"):
+            self.write(f"{prefix}artifacts/tab-retention/probe.rs", '#[cfg(retention_count)]\n#[cfg(not(retention_count))]')
+        self.assertEqual(check(self.root), [])
+
+        for prefix in ("", "crates/reader/"):
+            self.write(f"{prefix}src/artifacts/live.rs", "cfg!(unix)")
+        failures = check(self.root)
+        self.assertEqual(len(failures), 2, failures)
+        for prefix in ("", "crates/reader/"):
+            self.assertTrue(any(f"{prefix}src/artifacts/live.rs:1:" in failure for failure in failures))
+
     def test_webpage_benchmark_may_report_the_layout_feature(self):
         self.write("Cargo.toml", '[package]\nname = "reader"\nversion = "0.1.0"\n[workspace]\nmembers = []\n[features]\nparallel-layout = []\n')
         self.write("examples/webpage_bench.rs", 'cfg!(feature = "parallel-layout")')

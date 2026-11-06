@@ -114,12 +114,12 @@ def workspace_packages(root):
 
 
 def package_sources(directory):
-    """Include custom source layouts without crossing into nested packages."""
+    """Include custom source layouts, excluding outputs and nested packages."""
     for parent, directories, files in os.walk(directory):
         parent = Path(parent)
         directories[:] = [
             name for name in directories
-            if name != ".git" and parent / name != directory / "target"
+            if name != ".git" and parent / name not in (directory / "target", directory / "artifacts")
             and not (parent / name / "Cargo.toml").is_file()
         ]
         for name in sorted(files):
