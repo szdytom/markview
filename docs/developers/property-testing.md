@@ -102,9 +102,9 @@ bugs directly; leave disputed semantics explicit for a human decision while
 continuing independent work. Never filter a disagreement out of the generator.
 
 The original coverage expansion recorded defects before changing production code.
-Its fixes enable ten of the original eleven regressions in ordinary CI; the
-upstream Comrak front-matter defect (PBT-003) and the recorded raw HTML
-whitespace defect (PBT-013) remain unresolved; PBT-012 is fixed. Keep an
+Its fixes enable ten of the original eleven regressions in ordinary CI. The
+raw HTML defects PBT-012/PBT-013 also have fixes and enabled regressions; only
+the upstream Comrak front-matter defect PBT-003 remains unresolved. Keep an
 unresolved defect's reduced input, diagnosis and ignored reproducer with its bug
 ID. An ignored reproducer is an unresolved contract, not passing coverage.
 
@@ -179,10 +179,10 @@ within its domain, not a proof or a requirement to find a bug.
 
 ## Plan follow-up (2026-11-06)
 
-The follow-up audited `artifacts/fuzz-pbt-plan.md` against the current tests.
-It adds bounded models for the gaps below, without changing production behavior
-or fixing defects. The plan itself is a local ignored artifact; this section
-preserves the execution evidence in the repository.
+The initial test-only follow-up audited `artifacts/fuzz-pbt-plan.md` against the
+existing tests and added bounded models without changing production behavior.
+The defect records below also describe the subsequent fixes. The plan itself is
+a local ignored artifact; this section preserves the evidence in the repository.
 
 | Plan item | Added domain and independent expectation | Remaining boundary |
 | --- | --- | --- |
@@ -195,7 +195,7 @@ preserves the execution evidence in the repository.
 | Unicode search | Explicit sigma/Kelvin/long-s/sharp-s/dotted-I/combining examples, literal metacharacters, repeated fields and known Latin word boundaries; fixed byte ranges, cancellation and subsequent fresh-index equivalence. | Simple folding only; no full Unicode or ICU oracle. |
 | Pagination | Quarter-pixel cases at one/four page heights retain a single image at the quarter-scale floor; impossible widow/orphan constraints advance until the remaining two-band suffix fits. | Minimum-scale overflow may be clipped; arbitrary retained flow remains fuzz. |
 | Footnotes | Up to nine definitions and eleven references over a small ASCII label set, case variants, missing/unused labels and duplicates; last definition and first-reference numbering are recorded before parsing, across three newline forms. | Label whitespace/Unicode normalization, nested note bodies and backlink navigation remain outside this model. |
-| Raw HTML | Known tags, literal Unicode, first duplicate href, decoded attribute entities, ignored CSS, inline anchors and sliceable source ranges. Text entities and literal nonbreaking spaces have recorded unresolved reproducers below. | The two defects are not passing coverage; arbitrary markup remains fuzz. |
+| Raw HTML | Known tags, literal Unicode, first duplicate href, decoded attribute entities, ignored CSS, inline anchors and sliceable source ranges. Text entities and literal nonbreaking spaces have enabled regressions below. | Arbitrary markup remains fuzz. |
 | Decoder logic | ICO directory area/first-tie choice with bounded synthetic payloads and invalid ranges; full-range pixel budgets; exact integer initial-size arithmetic with power-of-two intrinsic widths; tiny uniform PNG target/alpha checks and SVG target edge examples. | Directory-only ICO fixtures do not decode PNGs. EXIF orientation, animation and hostile format combinations remain fuzz. |
 
 Reparse/prefix identity, scroll/pan/inertia, archive globs, PDF/font/coordinate
@@ -232,13 +232,11 @@ cover named/numeric entities, encoded markup, one-pass decoding, ASCII whitespac
 unknown names, styles and source-map validity.
 
 The complete entity property retains its [saved seed](../../crates/markview-commonmark/proptest-regressions/proptests/raw_html.txt)
-and input domain. It temporarily remains ignored under **PBT-013**, because its
-`&nbsp;` cases now decode but still hit the independent nonbreaking-space collapse.
-It will be enabled with that fix; no entity cases have been filtered out.
-An explicit opt-in run shrank to `entities = [6], bold = false`, reading an
-empty string instead of U+00A0. The full CommonMark package run passed 228 tests
-with three known reproducers ignored; formatting, Clippy, documentation and
-changelog checks passed.
+and full input domain and is now enabled. Between the two fixes, an opt-in run
+shrank to `entities = [6], bold = false`: decoding `&nbsp;` exposed PBT-013,
+which removed U+00A0. No entity cases were filtered out. The PBT-012 package run
+passed 228 tests with three known reproducers ignored; formatting, Clippy,
+documentation and changelog checks passed.
 
 ```sh
 cargo test --locked -p markview-commonmark --lib raw_html_ampersand_entity_reads_as_one_character
@@ -247,22 +245,38 @@ cargo test --locked -p markview-commonmark --test raw_html_text
 
 ### Recorded defect PBT-013: raw HTML nonbreaking spaces
 
-Status: **recorded only, not fixed**. The literal text `a\u{a0}b` inside
-`<p><em>…</em></p>` reads as `a b`. The HTML whitespace set excludes U+00A0;
-collapsing it changes the text and removes its nonbreaking behavior. `push_text`
-uses `char::is_whitespace`, which also includes this character. This is distinct
-from PBT-012: no entity spelling occurs in the input. The ignored reduced
-ordinary test `raw_html_preserves_literal_nonbreaking_spaces` was run and failed
-with exactly that mismatch. Its input is fixed, so it needs no RNG seed.
+Status: **fixed**. Previously, literal `a\u{a0}b` inside
+`<p><em>…</em></p>` read as `a b`. The HTML whitespace set excludes U+00A0;
+collapsing it changed the text and removed its nonbreaking behavior. The text
+normalizer used `char::is_whitespace`, which also includes this character.
+This is distinct from PBT-012: no entity spelling occurs in the reduced input.
+
+Text collapse and paragraph-edge trimming now use exactly HTML's five whitespace
+characters: tab, LF, form feed, CR and space. Literal and decoded nonbreaking
+spaces, em spaces and narrow nonbreaking spaces survive both text normalization
+and boundary trimming. Integration cases cover leading/trailing positions,
+adjacent styled runs and inline anchors, alongside unchanged ASCII whitespace
+collapse. The reduced ordinary test and the complete entity property are enabled.
 
 ```sh
-cargo test --locked -p markview-commonmark --lib raw_html_preserves_literal_nonbreaking_spaces -- --ignored
+cargo test --locked -p markview-commonmark --lib raw_html_preserves_literal_nonbreaking_spaces
+PROPTEST_CASES=4096 cargo test --locked -p markview-commonmark --lib proptests::raw_html::
+cargo test --locked -p markview-commonmark --test raw_html_text
 ```
 
-### Follow-up verification
+### HTML fix verification
 
-This batch adds **13 randomized properties and three directed tests** that pass,
-and three ignored reproducers for the two newly recorded defects. Tests retain
+The two defects were fixed in separate commits after the test-only batch:
+
+- `cargo test --locked -p markview-commonmark --all-features`: **231 passed**, with only the existing upstream PBT-003 ignored. Both new defects' regressions are enabled.
+- `PROPTEST_CASES=4096 cargo test --locked -p markview-commonmark --all-features --lib proptests::`: **13 passed**, PBT-003 ignored; the complete entity generator retains its original domain and saved seed.
+- The five-package all-features unit/integration/documentation command below, excluding property modules: **742 passed**, two existing tests ignored.
+- Formatting, Clippy with warnings denied for all targets/features of those five packages, documentation, changelog and diff-whitespace checks passed.
+
+### Follow-up verification before fixes
+
+The test-only batch added **13 randomized properties and three directed tests**
+that passed, and three ignored reproducers for the two newly recorded defects. Tests retain
 the default case count and shrink budget; the extended run uses the environment.
 
 ```sh
@@ -459,9 +473,9 @@ to their independent models; it does not claim exhaustive line coverage.
 The last audit also covered previously missing compound preferences, Obsidian
 extensions, cross-row table occupancy, export planning, archive patterns, local
 file inputs, clipboard text, search snippets and shared pixel allocations.
-The original ten confirmed defects and PBT-012 have production fixes and enabled
-regressions. PBT-003 and PBT-013 retain ignored failing tests; randomized
-reproducers also retain saved seeds. They do not count as passing coverage. The follow-up adds `markview-image` as a sixteenth
+The original ten confirmed defects and PBT-012/PBT-013 have production fixes
+and enabled regressions. Only PBT-003 retains an ignored failing test and saved
+seed; it does not count as passing coverage. The follow-up adds `markview-image` as a sixteenth
 package with properties.
 
 Further work needs a distinct model or environment: arbitrary shaping and

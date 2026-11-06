@@ -938,12 +938,16 @@ pub(crate) fn tag_len(source: &str) -> Option<usize> {
 	None
 }
 
+fn html_whitespace(c: char) -> bool {
+	matches!(c, '\t' | '\n' | '\u{c}' | '\r' | ' ')
+}
+
 fn push_text(spans: &mut Vec<Span>, text: &str, style: &Style) {
 	let text = html_escape::decode_html_entities(text);
 	let mut collapsed = String::with_capacity(text.len());
 	let mut space = false;
 	for c in text.chars() {
-		if c.is_whitespace() {
+		if html_whitespace(c) {
 			space = true;
 			continue;
 		}
@@ -1000,7 +1004,7 @@ fn normalize(spans: Vec<Span>) -> Vec<Span> {
 			continue;
 		}
 		let text = if !content {
-			span.text.trim_start()
+			span.text.trim_start_matches(html_whitespace)
 		} else if space {
 			span.text.trim_start_matches(' ')
 		} else {
@@ -1045,7 +1049,7 @@ fn trim_trailing_whitespace(out: &mut Vec<Span>) {
 		if span.image.is_some() {
 			break;
 		}
-		let len = span.text.trim_end().len();
+		let len = span.text.trim_end_matches(html_whitespace).len();
 		span.text.truncate(len);
 		if len > 0 {
 			break;

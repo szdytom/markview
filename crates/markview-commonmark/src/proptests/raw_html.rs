@@ -22,7 +22,6 @@ proptest! {
 	}
 
 	#[test]
-	#[ignore = "Known bug PBT-013: decoded nonbreaking spaces are collapsed; PBT-012 entity decoding is fixed"]
 	fn supported_raw_html_entities_and_first_link_attribute_preserve_reading_text(
 		entities in prop::collection::vec(0usize..7, 1..12),
 		bold in any::<bool>(),
@@ -56,7 +55,6 @@ fn raw_html_ampersand_entity_reads_as_one_character() {
 }
 
 #[test]
-#[ignore = "Known bug PBT-013: raw HTML collapses literal nonbreaking spaces"]
 fn raw_html_preserves_literal_nonbreaking_spaces() {
 	let parsed = parse("<p><em>a\u{a0}b</em></p>\n");
 	let BlockKind::Paragraph(text) = parsed.blocks()[0].kind() else {
