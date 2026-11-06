@@ -80,7 +80,8 @@ class ReleaseNotesTest(unittest.TestCase):
                     for line in result.stdout.splitlines()
                     if line.startswith("| [")
                 ]
-                self.assertEqual(len(rows), 11)
+                self.assertEqual(len(rows), 10)
+                self.assertNotIn('darwin-x64', result.stdout)
                 for row, name, platform in zip(
                     rows,
                     names,

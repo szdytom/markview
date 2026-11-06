@@ -46,7 +46,7 @@ def main():
     manifest = json.loads(pathlib.Path('web/app/vsc-ext/vscode/package.json').read_text())
     assert manifest['name'] == 'markview-export' and manifest['publisher'] == 'Stevvven', \
         'Keep the existing Marketplace identity'
-    platforms = {'darwin-arm64', 'darwin-x64', 'linux-arm64', 'linux-x64', 'win32-arm64', 'win32-x64'}
+    platforms = {'darwin-arm64', 'linux-arm64', 'linux-x64', 'win32-arm64', 'win32-x64'}
     found = set()
     for file in pathlib.Path(sys.argv[1]).glob('*.vsix'):
         with zipfile.ZipFile(file) as archive:
@@ -68,12 +68,12 @@ def main():
                 verify_windows_runtime(data)
             elif platform.startswith('darwin'):
                 assert struct.unpack_from('<I', data)[0] == 0xfeedfacf
-                assert struct.unpack_from('<I', data, 4)[0] == (0x100000c if arm else 0x1000007)
+                assert struct.unpack_from('<I', data, 4)[0] == 0x100000c
             else:
                 assert data[:6] == b'\x7fELF\x02\x01'
                 assert struct.unpack_from('<H', data, 18)[0] == (183 if arm else 62)
     assert found == platforms, f'Missing platforms: {platforms - found}'
-    print('Verified all six Markview Integration packages')
+    print('Verified all five Markview Integration packages')
 
 
 if __name__ == '__main__':

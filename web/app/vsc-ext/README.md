@@ -84,7 +84,8 @@ The extension version is independent of the native workspace version. Package
 WASM and the native executable from the same checkout. `package.mjs` refuses
 an exporter whose architecture does not match the requested platform. Windows targets statically link the C runtime; CI and the final package verifier reject extra VC++ runtime DLL imports.
 
-`extension-packages.yml` tests and packages all six desktop targets inside the
+`extension-packages.yml` tests and packages five desktop targets (Apple Silicon
+macOS and x64/ARM64 Windows and Linux) inside the
 upstream reader's `Packaging` workflow, on PRs and release tags, and also supports
 manual dispatch. cargo-dist attaches the verified VSIX files and
 `SHA256SUMS-vscode` to the same reader Release.

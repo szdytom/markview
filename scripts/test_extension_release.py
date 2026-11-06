@@ -13,7 +13,7 @@ import unittest
 import zipfile
 
 ROOT = Path(__file__).resolve().parents[1]
-PLATFORMS = ('darwin-arm64', 'darwin-x64', 'win32-x64', 'win32-arm64',
+PLATFORMS = ('darwin-arm64', 'win32-x64', 'win32-arm64',
              'linux-x64', 'linux-arm64')
 
 
@@ -110,7 +110,7 @@ class ExtensionReleaseTest(unittest.TestCase):
     def test_staged_packages_publish_without_rebuilding_or_version_changes(self):
         result = self.run_shell(self.stage)
         self.assertEqual(result.returncode, 0, result.stderr)
-        self.assertEqual(len((self.root / 'vsix/SHA256SUMS-vscode').read_text().splitlines()), 6)
+        self.assertEqual(len((self.root / 'vsix/SHA256SUMS-vscode').read_text().splitlines()), 5)
         result = self.run_shell(self.verify + '\n' + self.publish)
         self.assertEqual(result.returncode, 0, result.stderr)
         args = (self.root / 'published').read_text().splitlines()
@@ -135,6 +135,13 @@ class ExtensionReleaseTest(unittest.TestCase):
                 result = self.run_shell(self.verify + '\n' + self.publish)
                 self.assertNotEqual(result.returncode, 0)
                 self.assertFalse((self.root / 'published').exists())
+
+    def test_intel_macos_package_is_not_part_of_the_release(self):
+        self.package('darwin-x64')
+        result = self.run_shell(self.stage)
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn('darwin-x64', result.stderr)
+        self.assertFalse((self.root / 'vsix/SHA256SUMS-vscode').exists())
 
 
 if __name__ == '__main__':

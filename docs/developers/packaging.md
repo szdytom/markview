@@ -16,7 +16,7 @@ each platform. The build procedure a contributor runs day to day is in the
 | Windows x86_64 | `markview-x86_64-pc-windows-msvc.msi` | cargo-dist |
 | macOS aarch64 | `markview-aarch64-apple-darwin.tar.gz` | cargo-dist |
 | macOS aarch64 | `markview-<version>-aarch64.app.zip` | `scripts/package_macos_app.sh` |
-| VS Code: macOS, Windows, Linux; x64 and ARM64 | `markview-export-<extension-version>-<platform>.vsix`, `SHA256SUMS-vscode` | `extension-packages.yml` and `packaging.yml` |
+| VS Code: Apple Silicon macOS; x64/ARM64 Windows and Linux | `markview-export-<extension-version>-<platform>.vsix`, `SHA256SUMS-vscode` | `extension-packages.yml` and `packaging.yml` |
 | All | `markview-installer.sh`, `markview-installer.ps1` | cargo-dist |
 
 GitHub supplies source archives and asset digests. VSIX packages additionally ship
@@ -54,7 +54,7 @@ Its failure blocks publication; all assets are uploaded together.
 
 After publication, `.github/workflows/release-notes.yml` updates the download
 table to link the macOS `.app.zip`, Windows MSI and portable ZIP, and Linux
-AppImage, Android APK and six platform-specific VSIX files. It checks that each package is attached, and
+AppImage, Android APK and five platform-specific VSIX files. It checks that each package is attached, and
 writes each package’s GitHub SHA-256 digest directly in the checksum column, and
 preserves the changelog and installation commands. It also adds macOS extraction,
 Applications installation and quarantine instructions. This also runs for prereleases.
@@ -134,7 +134,7 @@ requirement to the generated installers.
    packages, then verifies them.
 4. Only after those jobs succeed does it create the GitHub release and upload
    all assets together.
-5. Verify the release page against the artifact matrix above, including six
+5. Verify the release page against the artifact matrix above, including five
    VSIX files and `SHA256SUMS-vscode`; no cargo-dist source tarball or dist manifest is attached.
 
 The tag must equal the manifest version without the `v` prefix; dist rejects a

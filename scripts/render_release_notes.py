@@ -18,7 +18,6 @@ VSCODE_NOTE = (
 )
 VSCODE_PLATFORMS = (
     ("darwin-arm64", "VS Code: Apple Silicon macOS"),
-    ("darwin-x64", "VS Code: Intel macOS"),
     ("win32-x64", "VS Code: x64 Windows"),
     ("win32-arm64", "VS Code: ARM64 Windows"),
     ("linux-x64", "VS Code: x64 Linux"),

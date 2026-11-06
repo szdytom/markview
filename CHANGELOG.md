@@ -23,15 +23,13 @@ at the same level, without `[brackets]`.
 
 ### Added
 
-- Prepare Markview Integration upgrades under the existing Marketplace identity, with legacy configuration aliases and six-platform VSIX release automation.
 - Open a new blank window with Ctrl+N (⌘N on macOS), including when single-instance mode is enabled.
 - Support complex tables with row groups, captions, block cells, merged cells and shared borders across the reader and PDF export.
 - Preserve definition lists, figures and custom HTML list numbering when reading web articles.
+- Deliver Markview Integration for VS Code with preview, font management and PDF/PNG export, preserving existing settings and supporting Apple Silicon macOS and x64/ARM64 Windows and Linux.
 
 ### Changed
 
-- Share the extension's command and programmatic export path, honor document export settings in both, and simplify configuration inspection and publishing documentation.
-- Attach platform-specific VSIX packages to upstream releases and publish the same packages to Marketplace through Trusted Publishing.
 - Render web articles directly from HTML, preserving headings, checklists and formulas without converting the article body to Markdown.
 - Keep web tabs in memory with article titles and session restoration, and use the page URL in PDF metadata and page furniture.
 - Prefer a web page's declared canonical URL over its Open Graph URL.
@@ -114,7 +112,6 @@ at the same level, without `[brackets]`.
 
 - Move the caret by tapping or dragging in text fields on mobile devices and desktop touchscreens.
 - Check platform boundaries across workspace crates, tests and build scripts, with scoped feature and target exceptions.
-- Link the extension’s Windows exporter to the static C runtime so exporting does not require a separate VC++ runtime installation.
 - Reduce fullscreen scrolling stalls on macOS by allowing a third Metal drawable.
 - Support Android keyboard clipboard input, surrounding-text deletion and a long-press Paste menu in search, URL and other text fields.
 - Expand the open folder tree onto a document opened in a new tab.

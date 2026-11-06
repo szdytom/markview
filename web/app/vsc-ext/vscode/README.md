@@ -51,6 +51,6 @@ Run **Markview: 字体管理…** to inspect the fonts required by a template, a
 
 ## Requirements
 
-A local, trusted VS Code workspace is required. Choose the extension package matching your operating system and CPU: macOS, Windows or Linux, each in x64 and ARM64 variants. Linux requires glibc 2.35 or newer, fontconfig and a working Vulkan driver for native PNG export. Browser-only VS Code and remote/virtual workspaces are not supported in this release.
+A local, trusted VS Code workspace is required. Packages are available for Apple Silicon macOS, Windows (x64 and ARM64), and Linux (x64 and ARM64). Intel macOS is not supported in this release. Linux requires glibc 2.35 or newer, fontconfig and a working Vulkan driver for native PNG export. Browser-only VS Code and remote/virtual workspaces are not supported in this release.
 
 [Report an issue](https://github.com/szdytom/markview/issues) · [Markview documentation](https://github.com/szdytom/markview/tree/main/docs)
