@@ -67,7 +67,7 @@ proptest! {
 		for (index, ch) in body.chars().enumerate() {
 			let x = 10.0 + index as f32 * f32::from(size);
 			let command = layout.draws.len();
-			layout.draws.push(Draw::Glyph(Glyph { font: font.clone(), coords: Arc::from([]), id: reference.charmap().map(ch), size: f32::from(size), x, y: 40.0, synthetic_italic: italic, synthetic_bold: bold, paint: Paint::Color(markview_layout::style::Color(if split_paint && index % 2 == 0 { 0x112233ff } else { 0x445566ff })) }));
+			layout.draws.push(Draw::Glyph(Glyph { style: std::sync::Arc::new(markview_layout::scene::GlyphStyle { font: font.clone(), coords: Arc::from([]), size: f32::from(size), synthetic_italic: italic, synthetic_bold: bold, paint: Paint::Color(markview_layout::style::Color(if split_paint && index % 2 == 0 { 0x112233ff } else { 0x445566ff })) }), id: reference.charmap().map(ch), x, y: 40.0, }));
 			node.push(TextCluster { mixed_spacing: (0.0, 0.0), range: index..index + 1, rect: LocalRect { x, y: 8.0, w: f32::from(size), h: 40.0 }, rtl: false, atomic: false, command });
 		}
 		layout.text.push(node);

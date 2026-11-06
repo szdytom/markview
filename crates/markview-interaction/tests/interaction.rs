@@ -67,7 +67,8 @@ fn snapshot() -> LayoutSnapshot {
 					src: "image".into(),
 					version: 1,
 					title: "Image title".into(),
-				}],
+				}]
+				.into(),
 				links: vec![LinkRect {
 					rect: Rect { w: 30.0, ..rect },
 					url: "https://example.com".into(),
@@ -79,13 +80,15 @@ fn snapshot() -> LayoutSnapshot {
 						markview_layout::document::LinkOccurrenceId::new(1)
 							.unwrap(),
 					),
-				}],
+				}]
+				.into(),
 				overflow: vec![Overflow {
 					rect,
 					content_width: 300.0,
 					gutter: 12.0,
 					commands: 0..1,
-				}],
+				}]
+				.into(),
 				..Default::default()
 			}),
 		}],

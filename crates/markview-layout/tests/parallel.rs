@@ -75,7 +75,10 @@ fn equivalent(a: &LayoutSnapshot, b: &LayoutSnapshot) {
 	assert_eq!(a.blocks.len(), b.blocks.len());
 	for (a, b) in a.blocks.iter().zip(&b.blocks) {
 		assert_eq!((a.id, a.y, a.height()), (b.id, b.y, b.height()));
-		assert_eq!(draws(&a.layout.draws), draws(&b.layout.draws));
+		assert_eq!(
+			draws(&a.layout.draws.iter().collect::<Vec<_>>()),
+			draws(&b.layout.draws.iter().collect::<Vec<_>>())
+		);
 		assert_eq!(
 			format!(
 				"{:?}",

@@ -187,13 +187,13 @@ mod builder_fixture {
 	fn image(address: &str) -> Inline {
 		Inline {
 			link: None,
-			kind: InlineKind::Image(ImageSpec {
+			kind: InlineKind::Image(Box::new(ImageSpec {
 				source: ImageSource::Resource(ResourceRef::document(address)),
 				alt: address.into(),
 				title: String::new(),
 				width: None,
 				height: None,
-			}),
+			})),
 			style: TextStyle::default(),
 		}
 	}

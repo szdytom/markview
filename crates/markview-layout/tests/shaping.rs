@@ -268,3 +268,37 @@ fn bundled_themes_shape_cjk_strong_with_a_real_bold_face() {
 		assert_eq!(&weights[1..], &[700; 4], "{theme}");
 	}
 }
+
+#[test]
+fn retained_glyphs_share_styles_without_retaining_released_geometry() {
+	let doc = markview_commonmark::parse(
+		"Many ordinary letters **and bold letters**.",
+	);
+	let mut engine = LayoutEngine::new();
+	let options = LayoutOptions {
+		fonts: fonts(),
+		..Default::default()
+	};
+	let snapshot = engine.layout(&doc, &options);
+	let glyphs: Vec<_> = snapshot.blocks[0]
+		.layout
+		.draws
+		.iter()
+		.filter_map(|d| {
+			if let Draw::Glyph(g) = d {
+				Some(g)
+			} else {
+				None
+			}
+		})
+		.collect();
+	assert!(Arc::ptr_eq(&glyphs[0].style, &glyphs[1].style));
+	let style = Arc::downgrade(&glyphs[0].style);
+	let geometry = Arc::downgrade(&snapshot.blocks[0].layout);
+	drop(glyphs);
+	drop(snapshot);
+	engine.release_document();
+	drop(engine);
+	assert!(geometry.upgrade().is_none());
+	assert!(style.upgrade().is_none());
+}

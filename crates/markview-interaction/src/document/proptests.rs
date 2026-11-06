@@ -22,7 +22,7 @@ fn fixture(y: f32, content_width: f32) -> LayoutSnapshot {
 	};
 	let mut node = TextNode::new("abcdefgh".to_owned(), "\n\n");
 	node.search_field = Some(FieldId::from_index(0));
-	node.search_ranges = vec![(0..8, 0..8)];
+	node.search_ranges = vec![(0..8, 0..8)].into();
 	node.push(TextCluster {
 		mixed_spacing: (0.0, 0.0),
 		range: 0..8,
@@ -40,7 +40,7 @@ fn fixture(y: f32, content_width: f32) -> LayoutSnapshot {
 			layout: Arc::new(BlockLayout {
 				height: 60.0,
 				width: 64.0,
-				text: vec![node],
+				text: vec![node].into(),
 				draws: vec![
 					Draw::Rect(text_rect, Paint::Text),
 					Draw::Image {
@@ -49,7 +49,8 @@ fn fixture(y: f32, content_width: f32) -> LayoutSnapshot {
 						rect: image_rect,
 						title: "Image title".to_owned(),
 					},
-				],
+				]
+				.into(),
 				links: vec![LinkRect {
 					commands: 0..1,
 					id: LinkId::Inline(LinkOccurrenceId::new(7).unwrap()),
@@ -61,7 +62,8 @@ fn fixture(y: f32, content_width: f32) -> LayoutSnapshot {
 					},
 					url: "https://example.test".into(),
 					target: LinkTarget::Url("https://example.test".into()),
-				}],
+				}]
+				.into(),
 				overflow: vec![Overflow {
 					rect: Rect {
 						x: 0.0,
@@ -72,7 +74,8 @@ fn fixture(y: f32, content_width: f32) -> LayoutSnapshot {
 					content_width,
 					commands: 0..2,
 					gutter: 8.0,
-				}],
+				}]
+				.into(),
 				..Default::default()
 			}),
 		}],

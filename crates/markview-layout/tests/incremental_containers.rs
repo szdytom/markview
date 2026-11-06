@@ -61,7 +61,7 @@ fn same_geometry(a: &LayoutSnapshot, b: &LayoutSnapshot) {
 		}
 		assert_eq!(a.draws.len(), b.draws.len());
 		for (a, b) in a.draws.iter().zip(&b.draws) {
-			assert_eq!(std::mem::discriminant(a), std::mem::discriminant(b));
+			assert_eq!(std::mem::discriminant(&a), std::mem::discriminant(&b));
 			match (a, b) {
 				(Draw::Glyph(a), Draw::Glyph(b)) => {
 					assert_eq!(
@@ -91,15 +91,15 @@ fn same_geometry(a: &LayoutSnapshot, b: &LayoutSnapshot) {
 					Draw::Box { rect: b, .. }
 					| Draw::Rect(b, _)
 					| Draw::Image { rect: b, .. },
-				) => rect(*a, *b),
+				) => rect(a, b),
 				(
 					Draw::Math { x: ax, y: ay, .. }
 					| Draw::Icon { x: ax, y: ay, .. },
 					Draw::Math { x: bx, y: by, .. }
 					| Draw::Icon { x: bx, y: by, .. },
 				) => {
-					close(*ax, *bx);
-					close(*ay, *by);
+					close(ax, bx);
+					close(ay, by);
 				}
 				(
 					Draw::Polygon {

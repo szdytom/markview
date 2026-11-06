@@ -89,7 +89,9 @@ pub fn capture(
 ) -> Result<RgbaImage> {
 	assert_glyphs(overlay)?;
 	for block in &snapshot.blocks {
-		assert_glyphs(&block.layout.draws)?;
+		for draw in &block.layout.draws {
+			assert_glyphs(std::slice::from_ref(&draw))?;
+		}
 	}
 	let target = renderer.offscreen(view.width, view.height);
 	let submission = renderer.render(

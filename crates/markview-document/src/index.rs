@@ -11,7 +11,8 @@ use std::collections::HashMap;
 #[derive(Clone, Debug, Default)]
 pub(crate) struct DocumentIndex {
 	/// Structural child-index path from the document root to each block.
-	pub paths: HashMap<BlockId, Vec<usize>>,
+	pub paths: HashMap<BlockId, std::ops::Range<usize>>,
+	pub path_data: Vec<usize>,
 	pub outline: Vec<OutlineEntry>,
 	pub details: HashMap<BlockId, bool>,
 	/// The disclosures enclosing each registered anchor, outermost first.
@@ -27,6 +28,8 @@ pub(crate) fn build(blocks: &[Block]) -> DocumentIndex {
 		walk(block, &mut path, &mut open, &mut index);
 		path.pop();
 	}
+	index.path_data.shrink_to_fit();
+	index.outline.shrink_to_fit();
 	index
 }
 
@@ -36,7 +39,9 @@ fn walk(
 	open: &mut Vec<BlockId>,
 	index: &mut DocumentIndex,
 ) {
-	index.paths.insert(block.id, path.clone());
+	let start = index.path_data.len();
+	index.path_data.extend_from_slice(path);
+	index.paths.insert(block.id, start..index.path_data.len());
 	if let BlockKind::Details { default_open, .. }
 	| BlockKind::FrontMatter { default_open, .. } = &block.kind
 	{

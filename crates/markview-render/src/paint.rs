@@ -287,7 +287,7 @@ impl Renderer {
 					);
 					self.geometry.decorated(
 						rect,
-						*decoration,
+						**decoration,
 						background,
 						border_color,
 						clip,
@@ -420,17 +420,7 @@ impl Renderer {
 									FontRef::from_index(data.data.data(), 0)
 								{
 									let id = font.charmap().map(ch);
-									let g = Glyph {
-										font: data,
-										coords: Arc::from([]),
-										id,
-										size: size * *scale as f32,
-										x: x + *gx as f32 * size,
-										y: y + *gy as f32 * size,
-										synthetic_italic: false,
-										synthetic_bold: false,
-										paint: Paint::Text,
-									};
+									let g = Glyph { style: std::sync::Arc::new(markview_layout::scene::GlyphStyle { font: data, coords: Arc::from([]), size: size * *scale as f32, synthetic_italic: false, synthetic_bold: false, paint: Paint::Text }), id, x: x + *gx as f32 * size, y: y + *gy as f32 * size, };
 									self.glyph_quad(
 										&g, 0.0, 0.0, color, clip, view,
 									);

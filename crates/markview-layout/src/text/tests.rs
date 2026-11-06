@@ -78,8 +78,8 @@ fn hit_testing_only_lands_on_grapheme_boundaries() {
 		for step in 0..=200 {
 			let x = left + (right - left) * (step as f32 / 200.0);
 			let y = block.y
-				+ node.clusters[0].rect.y
-				+ node.clusters[0].rect.h * 0.5;
+				+ node.clusters.at(0).rect.y
+				+ node.clusters.at(0).rect.h * 0.5;
 			let Some(hit) =
 				snapshot.geometry_hit_test_text(x, y, &HashMap::new(), 1)
 			else {
@@ -286,7 +286,7 @@ fn hit_testing_respects_graphemes_tabs_and_overflow_clip() {
 		assert!(boundaries.contains(&cluster.range.start));
 		assert!(boundaries.contains(&cluster.range.end));
 	}
-	let tab = &snapshot.blocks[1].layout.text[0].clusters[0];
+	let tab = &snapshot.blocks[1].layout.text[0].clusters.at(0);
 	assert_eq!(tab.range, 0..1);
 	let mut horizontal = HashMap::new();
 	horizontal.insert((1, 0), 80.0);
@@ -302,7 +302,7 @@ fn hit_testing_respects_graphemes_tabs_and_overflow_clip() {
 				&& rect.x + rect.w <= overflow.rect.x + overflow.rect.w + 0.01
 		);
 	}
-	let c = &node.clusters[0];
+	let c = &node.clusters.at(0);
 	let hit = snapshot
 		.geometry_hit_test_text(
 			c.rect.x + 0.1,
@@ -322,7 +322,7 @@ fn hit_testing_prunes_far_blocks_but_keeps_the_nearest_cluster() {
 	assert!(snapshot.blocks.len() > 300);
 	let none = HashMap::new();
 	let first = &snapshot.blocks[0];
-	let cluster = &first.layout.text[0].clusters[0];
+	let cluster = &first.layout.text[0].clusters.at(0);
 	let hit = snapshot
 		.geometry_hit_test_text(
 			cluster.rect.x + 0.5,
@@ -334,7 +334,7 @@ fn hit_testing_prunes_far_blocks_but_keeps_the_nearest_cluster() {
 	assert_eq!(hit.block, 0);
 	let index = snapshot.blocks.len() - 1;
 	let last = &snapshot.blocks[index];
-	let cluster = &last.layout.text[0].clusters[0];
+	let cluster = &last.layout.text[0].clusters.at(0);
 	let hit = snapshot
 		.geometry_hit_test_text(
 			cluster.rect.x + 0.5,
@@ -361,5 +361,59 @@ fn formula_mapping_does_not_depend_on_success_and_hyphens_are_visual_only() {
 	assert!(node.clusters.iter().any(|c| c.range == (0..3)));
 	for cluster in &node.clusters {
 		assert!(cluster.range.end <= node.text.len());
+	}
+}
+
+#[test]
+fn compact_boundaries_preserve_crlf_and_unicode_graphemes() {
+	for text in ["", "a\r\nb", "Cafe\u{301}", "👩‍💻", "中文\u{00ad}abc", "אבג"]
+	{
+		let boundaries = super::GraphemeBoundaries::new(text);
+		let expected: Vec<_> = text
+			.grapheme_indices(true)
+			.map(|(i, _)| i)
+			.chain(std::iter::once(text.len()))
+			.collect();
+		assert_eq!(
+			(0..boundaries.len())
+				.map(|i| boundaries.at(i))
+				.collect::<Vec<_>>(),
+			expected
+		);
+		assert!(matches!(boundaries, super::GraphemeBoundaries::Compact(_)));
+	}
+	let last = (u32::MAX as usize).saturating_add(1);
+	let wide = super::GraphemeBoundaries::Wide(vec![0, last].into());
+	assert_eq!(wide.at(1), last);
+	assert_eq!(wide.partition_point(|n| n < last), 1);
+}
+
+#[test]
+fn coalesced_search_maps_preserve_affine_and_generated_boundaries() {
+	let mut node = super::TextNode::new("abcdefghijklmnopqrst".into(), "");
+	node.search_ranges = vec![
+		(0..2, 0..2),
+		(2..4, 2..4),
+		(4..4, 4..5),
+		(4..7, 5..7),
+		(7..9, 7..9),
+		(9..11, 9..11),
+	]
+	.into();
+	let before = node.clone();
+	node.seal();
+	assert_eq!(
+		&**node.search_ranges,
+		&[(0..4, 0..4), (4..4, 4..5), (4..7, 5..7), (7..11, 7..11)]
+	);
+	for offset in 0..=20 {
+		assert_eq!(
+			super::semantic_to_reading(&node, offset),
+			super::semantic_to_reading(&before, offset)
+		);
+		assert_eq!(
+			super::reading_to_semantic(&node, offset),
+			super::reading_to_semantic(&before, offset)
+		);
 	}
 }

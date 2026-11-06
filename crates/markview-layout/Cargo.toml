@@ -46,7 +46,7 @@ default = []
 parallel = ["dep:rayon"]
 font-directories = ["dep:memmap2"]
 # Harness-only: relaxes visibility for `fuzz/`; never changes default behavior.
-fuzz = []
+fuzz = ["markview-document/fuzz"]
 
 [lints]
 workspace = true

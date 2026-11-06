@@ -468,15 +468,17 @@ impl TextInput {
 					.collect();
 				for g in glyphs.positioned_glyphs() {
 					text.push(Draw::Glyph(Glyph {
-						font: run.font().clone(),
-						coords: coords.clone(),
+						style: std::sync::Arc::new(crate::scene::GlyphStyle {
+							font: run.font().clone(),
+							coords: coords.clone(),
+							size: run.font_size(),
+							synthetic_italic: false,
+							synthetic_bold: false,
+							paint: color,
+						}),
 						id: g.id as u16,
-						size: run.font_size(),
 						x: x + g.x,
 						y: y + g.y,
-						synthetic_italic: false,
-						synthetic_bold: false,
-						paint: color,
 					}));
 				}
 			}

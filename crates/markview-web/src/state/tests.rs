@@ -29,9 +29,11 @@ fn snapshot(text: &str) -> LayoutSnapshot {
 					);
 					node.search_field =
 						Some(markview_document::FieldId::from_index(0));
-					node.search_ranges = vec![(0..text.len(), 0..text.len())];
+					node.search_ranges =
+						vec![(0..text.len(), 0..text.len())].into();
 					node
-				}],
+				}]
+				.into(),
 				..Default::default()
 			}),
 		}],
@@ -320,7 +322,8 @@ fn two_block_prefix() -> LayoutSnapshot {
 					text: vec![markview_layout::text::TextNode::new(
 						"first".to_string(),
 						"\n",
-					)],
+					)]
+					.into(),
 					..Default::default()
 				}),
 			},
@@ -334,7 +337,8 @@ fn two_block_prefix() -> LayoutSnapshot {
 					text: vec![markview_layout::text::TextNode::new(
 						"second".to_string(),
 						"\n",
-					)],
+					)]
+					.into(),
 					..Default::default()
 				}),
 			},

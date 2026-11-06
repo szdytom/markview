@@ -56,8 +56,7 @@ use markview_document::{
 };
 use markview_layout::layout::{LayoutEngine, LayoutOptions};
 use markview_layout::scene::{
-	BlockLayout, Draw, HeadingAnchor, LinkRect, Overflow, PageConstraint,
-	PlacedBlock,
+	BlockLayout, HeadingAnchor, Overflow, PageConstraint, PlacedBlock,
 };
 use markview_layout::text::TextNode;
 use serde_json::{Value, json};
@@ -676,11 +675,11 @@ fn layout_geometry_estimate(
 			+ layout.page_constraints.capacity()
 				* std::mem::size_of::<PageConstraint>()
 			+ layout.text.capacity() * std::mem::size_of::<TextNode>()
-			+ layout.draws.capacity() * std::mem::size_of::<Draw>()
+			+ layout.draws.storage_bytes()
 			+ layout.inline_decorations.capacity()
 				* std::mem::size_of::<(usize, std::ops::Range<f32>)>()
 			+ layout.overflow.capacity() * std::mem::size_of::<Overflow>()
-			+ layout.links.capacity() * std::mem::size_of::<LinkRect>()
+			+ layout.links.storage_bytes()
 			+ layout.link_occurrences.capacity()
 				* std::mem::size_of::<markview_document::LinkOccurrenceId>()
 			+ layout.anchors.capacity() * std::mem::size_of::<HeadingAnchor>();

@@ -249,7 +249,7 @@ fn compound_rules_reach_the_layout_chain() {
 		.iter()
 		.flat_map(|b| b.layout.draws.iter())
 		.filter_map(|d| match d {
-			Draw::Rect(_, paint) => Some(stylesheet.paint(*paint)),
+			Draw::Rect(_, paint) => Some(stylesheet.paint(paint)),
 			_ => None,
 		})
 		.collect();
@@ -331,8 +331,8 @@ fn box_colors_follow_the_same_context_as_geometry() {
 			Draw::Box {
 				chain, condition, ..
 			} => Some(stylesheet.paint(Paint::Scoped(
-				*chain,
-				*condition,
+				chain,
+				condition,
 				ColorField::Background,
 			))),
 			_ => None,

@@ -43,7 +43,7 @@ fn nested_list_tails_leave_one_gap_before_the_next_block() {
 				.layout
 				.text
 				.iter()
-				.find(|node| node.text == "leaf")
+				.find(|node| node.text.as_str() == "leaf")
 				.unwrap();
 			let bottom = leaf
 				.clusters
@@ -81,9 +81,10 @@ fn phone_list_columns_reflow_cached_layout_and_fit_wide_numbers() {
 			.layout
 			.text
 			.iter()
-			.find(|node| node.text == "leaf")
+			.find(|node| node.text.as_str() == "leaf")
 			.unwrap()
-			.clusters[0]
+			.clusters
+			.at(0)
 			.rect
 			.x
 	};
@@ -95,8 +96,8 @@ fn phone_list_columns_reflow_cached_layout_and_fit_wide_numbers() {
 		.map(|c| c.rect.x + c.rect.w)
 		.reduce(f32::max)
 		.unwrap();
-	assert!(numbered[1].clusters[0].rect.x > number_end);
-	assert!(narrow.blocks[2].layout.text[0].clusters[0].rect.x >= 18.0);
+	assert!(numbered[1].clusters.at(0).rect.x > number_end);
+	assert!(narrow.blocks[2].layout.text[0].clusters.at(0).rect.x >= 18.0);
 }
 
 #[test]
@@ -120,7 +121,7 @@ fn narrow_marker_columns_keep_aligned_markers_before_item_text() {
 				.layout(&markview_commonmark::parse(source), &opts)
 				.flattened();
 			let block = &layout.blocks[0].layout;
-			let text_start = block.text.last().unwrap().clusters[0].rect.x;
+			let text_start = block.text.last().unwrap().clusters.at(0).rect.x;
 			let marker_right = if source.starts_with("1.") {
 				block.text[0]
 					.clusters

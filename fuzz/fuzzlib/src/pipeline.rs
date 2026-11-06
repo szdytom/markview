@@ -225,7 +225,10 @@ fn synthetic_images(snapshot: &LayoutSnapshot) -> ImageSnapshot {
 	let sources: std::collections::HashSet<&str> = snapshot
 		.blocks
 		.iter()
-		.flat_map(|block| block.layout.draws.iter())
+		.flat_map(|block| {
+			(0..block.layout.draws.len())
+				.filter_map(move |command| block.layout.draws.other(command))
+		})
 		.filter_map(|draw| match draw {
 			markview_layout::scene::Draw::Image { src, .. } => {
 				Some(src.as_str())

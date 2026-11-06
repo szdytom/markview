@@ -321,7 +321,7 @@ fn a_collapsed_cell_disclosure_does_not_shift_the_next_cell() {
 			.layout
 			.text
 			.iter()
-			.find(|text| text.text == needle)
+			.find(|text| text.text.as_str() == needle)
 			.and_then(|text| text.clusters.first())
 			.map(|cluster| cluster.rect.y)
 			.unwrap_or_else(|| panic!("missing {needle}"))
@@ -417,7 +417,7 @@ fn nested_tables_in_parallel_cells_stack_inside_the_document_band() {
 			.layout
 			.text
 			.iter()
-			.position(|text| text.text == needle)
+			.position(|text| text.text.as_str() == needle)
 			.unwrap_or_else(|| panic!("missing {needle}"))
 	};
 	let top = text_band(&snapshot, node("Nested top"));
@@ -523,7 +523,7 @@ fn parallel_cell_content_keeps_the_same_row_origin() {
 			.layout
 			.text
 			.iter()
-			.find(|text| text.text == needle)
+			.find(|text| text.text.as_str() == needle)
 			.and_then(|text| text.clusters.first())
 			.map(|cluster| cluster.rect.y)
 			.unwrap_or_else(|| panic!("missing {needle}"))

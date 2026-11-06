@@ -105,6 +105,7 @@ impl DocumentBuilder {
 		for block in &mut blocks {
 			seal(block, &mut seen);
 		}
+		blocks.shrink_to_fit();
 		let index = index::build(&blocks);
 		Ok(Document {
 			revision: self.revision,
@@ -123,6 +124,7 @@ impl DocumentBuilder {
 		for block in &mut blocks {
 			seal(block, &mut seen);
 		}
+		blocks.shrink_to_fit();
 		let index = index::build(&blocks);
 		Document {
 			revision: self.revision,
@@ -248,6 +250,118 @@ fn check_budget(
 	Ok(())
 }
 
+fn seal_capacity(block: &mut Block) {
+	fn rich(r: &mut crate::RichText) {
+		for i in r.iter_mut() {
+			match &mut i.kind {
+				crate::InlineKind::Text(s)
+				| crate::InlineKind::Anchor(s)
+				| crate::InlineKind::Math { latex: s, .. } => s.shrink_to_fit(),
+				crate::InlineKind::Image(image) => {
+					image.alt.shrink_to_fit();
+					image.title.shrink_to_fit();
+					match &mut image.source {
+						crate::ImageSource::Resource(r) => {
+							r.address.shrink_to_fit()
+						}
+						crate::ImageSource::Diagram(d) => {
+							d.language.shrink_to_fit();
+							d.source.shrink_to_fit();
+						}
+					}
+				}
+				crate::InlineKind::FootnoteRef(f) => {
+					f.definition.0.shrink_to_fit()
+				}
+				crate::InlineKind::LineBreak(_) => {}
+			}
+		}
+		r.shrink_to_fit();
+	}
+	fn seal_callout(callout: &mut Option<crate::Callout>) {
+		if let Some(c) = callout {
+			c.name.shrink_to_fit();
+			if let Some(t) = &mut c.title {
+				rich(t);
+			}
+		}
+	}
+	fn seal_table(t: &mut crate::Table) {
+		if let Some(c) = &mut t.caption {
+			rich(c);
+		}
+		t.columns.shrink_to_fit();
+		t.groups.shrink_to_fit();
+		for g in &mut t.groups {
+			g.rows.shrink_to_fit();
+			for r in &mut g.rows {
+				r.cells.shrink_to_fit();
+				for c in &mut r.cells {
+					c.blocks.shrink_to_fit();
+				}
+			}
+		}
+	}
+	fn seal_definitions(items: &mut Vec<crate::DefinitionItem>) {
+		for i in items.iter_mut() {
+			for t in &mut i.terms {
+				rich(t);
+			}
+			i.terms.shrink_to_fit();
+			for b in &mut i.definitions {
+				b.shrink_to_fit();
+			}
+			i.definitions.shrink_to_fit();
+		}
+		items.shrink_to_fit();
+	}
+	block.anchors.shrink_to_fit();
+	for a in &mut block.anchors {
+		a.shrink_to_fit();
+	}
+	match &mut block.kind {
+		BlockKind::Paragraph(r) => rich(r),
+		BlockKind::Heading { text, anchor, .. } => {
+			rich(text);
+			anchor.shrink_to_fit();
+		}
+		BlockKind::Code { language, text } => {
+			language.shrink_to_fit();
+			text.shrink_to_fit();
+		}
+		BlockKind::Quote { callout, blocks } => {
+			seal_callout(callout);
+			blocks.shrink_to_fit();
+		}
+		BlockKind::Details {
+			summary, blocks, ..
+		} => {
+			rich(summary);
+			blocks.shrink_to_fit();
+		}
+		BlockKind::Footnote { id, blocks, .. } => {
+			id.0.shrink_to_fit();
+			blocks.shrink_to_fit();
+		}
+		BlockKind::FrontMatter { blocks, .. } => blocks.shrink_to_fit(),
+		BlockKind::List { items, .. } => {
+			for i in items.iter_mut() {
+				i.blocks.shrink_to_fit();
+			}
+			items.shrink_to_fit();
+		}
+		BlockKind::Table(t) => seal_table(t),
+		BlockKind::DefinitionList(items) => seal_definitions(items),
+		BlockKind::Figure { blocks, caption } => {
+			blocks.shrink_to_fit();
+			if let Some(c) = caption {
+				rich(c);
+			}
+		}
+		BlockKind::Rule => {}
+	}
+}
+
 fn seal(block: &mut Block, seen: &mut HashSet<BlockId>) {
 	assert!(
 		seen.insert(block.id),
@@ -294,6 +408,7 @@ fn seal(block: &mut Block, seen: &mut HashSet<BlockId>) {
 		| BlockKind::Code { .. }
 		| BlockKind::Rule => {}
 	}
+	seal_capacity(block);
 	let key = semantic_key(&block.kind);
 	block.content_key = if block.anchors.is_empty() {
 		key

@@ -44,7 +44,8 @@ fn image_block(
 				h,
 			},
 			title: String::new(),
-		}],
+		}]
+		.into(),
 		height: h,
 		width: w,
 		..Default::default()

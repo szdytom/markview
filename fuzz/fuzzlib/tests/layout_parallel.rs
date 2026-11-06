@@ -49,8 +49,11 @@ fn differential_detects_hidden_geometry_changes() {
 			.then_some(i)
 		})
 		.unwrap();
-	let Draw::Glyph(glyph) =
-		&mut Arc::get_mut(&mut block.layout).unwrap().draws[hidden]
+	let Draw::Glyph(glyph) = Arc::get_mut(&mut block.layout)
+		.unwrap()
+		.draws
+		.get_mut(hidden)
+		.unwrap()
 	else {
 		unreachable!();
 	};

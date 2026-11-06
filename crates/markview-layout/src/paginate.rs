@@ -182,7 +182,7 @@ fn bands(layout: &BlockLayout) -> Vec<Band> {
 	for (span, _, _) in layout.text_draw_spans() {
 		for command in span {
 			mapped_glyphs[command] =
-				matches!(layout.draws[command], Draw::Glyph(_));
+				matches!(layout.draws.at(command), Draw::Glyph(_));
 		}
 	}
 	let vertical = |draw: &Draw| -> Option<(f32, f32)> {
@@ -229,7 +229,7 @@ fn bands(layout: &BlockLayout) -> Vec<Band> {
 			decorations.next();
 			continue;
 		}
-		if let Some((top, bottom)) = vertical(draw) {
+		if let Some((top, bottom)) = vertical(&draw) {
 			join(&mut bands, top, bottom);
 		}
 	}

@@ -133,7 +133,10 @@ impl Images {
 			.enumerate()
 			.skip(self.geometry_blocks)
 		{
-			for (command, draw, position) in block.draws() {
+			for (command, position) in block.draw_commands() {
+				let Some(draw) = block.other_draw(command) else {
+					continue;
+				};
 				collect(
 					draw,
 					[position[0], block.y + position[1]],
@@ -316,13 +319,13 @@ mod tests {
 			},
 			title: String::new(),
 		};
-		let block = |draws| PlacedBlock {
+		let block = |draws: Vec<Draw>| PlacedBlock {
 			flow: Default::default(),
 			id: markview_layout::document::BlockId::new(1).unwrap(),
 			content: Default::default(),
 			y: 0.,
 			layout: Arc::new(BlockLayout {
-				draws,
+				draws: draws.into(),
 				..Default::default()
 			}),
 		};
@@ -394,7 +397,8 @@ mod tests {
 							},
 							draws: vec![image("b", 40.)],
 						},
-					],
+					]
+					.into(),
 					overflow: vec![markview_layout::scene::Overflow {
 						rect: Rect {
 							x: 0.,
@@ -405,7 +409,8 @@ mod tests {
 						content_width: 70.,
 						commands: 0..2,
 						gutter: 0.,
-					}],
+					}]
+					.into(),
 					..Default::default()
 				}),
 			}],

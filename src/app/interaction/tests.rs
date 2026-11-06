@@ -934,7 +934,7 @@ fn dragging_into_the_margin_scrolls_at_a_frame_rate_independent_speed() {
 fn point_over(app: &App<StubProxy>, block: usize) -> (f32, f32) {
 	let geometry = app.view_geometry();
 	let placed = &app.readers.session.display.snapshot.blocks[block];
-	let cluster = &placed.layout.text[0].clusters[0];
+	let cluster = &placed.layout.text[0].clusters.at(0);
 	(
 		geometry.left + cluster.rect.x + cluster.rect.w * 0.5,
 		geometry.top + placed.y + cluster.rect.y + cluster.rect.h * 0.5
@@ -1459,7 +1459,7 @@ fn repeated_clicks_toggle_disclosure_titles_but_dragging_selects_them() {
 			.links
 			.iter()
 			.find_map(|link| match link.target {
-				markview_layout::scene::LinkTarget::Disclosure(id) => Some(id),
+				markview_layout::scene::LinkTarget::Disclosure(id) => Some(*id),
 				_ => None,
 			})
 			.expect("a disclosure target");

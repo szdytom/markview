@@ -364,3 +364,30 @@ fn distance(range: &Range<usize>, offset: usize) -> usize {
 
 #[cfg(test)]
 mod proptests;
+
+#[cfg(feature = "fuzz")]
+impl SourceMap {
+	pub fn visit_storage(&self, visit: &mut crate::memory::StorageVisitor<'_>) {
+		fn array<T>(v: &Vec<T>, visit: &mut crate::memory::StorageVisitor<'_>) {
+			if v.capacity() != 0 {
+				visit(
+					v.as_ptr() as usize,
+					"source_map",
+					v.capacity() * size_of::<T>(),
+					v.len(),
+					v.capacity(),
+				);
+			}
+		}
+		array(&self.blocks, visit);
+		array(&self.by_block, visit);
+		array(&self.reverse, visit);
+		for b in &self.blocks {
+			array(&b.fields, visit);
+			for f in &b.fields {
+				array(&f.spans, visit);
+				array(&f.covers, visit);
+			}
+		}
+	}
+}

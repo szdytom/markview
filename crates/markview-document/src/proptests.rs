@@ -60,10 +60,10 @@ proptest! {
 			let (kind, projection) = match kind {
 				0 => (InlineKind::Text(text.clone()), text),
 				1 => (InlineKind::Math { latex: text.clone(), display: true }, text),
-				2 => (InlineKind::Image(ImageSpec {
+				2 => (InlineKind::Image(Box::new(ImageSpec {
 					source: image::ImageSource::Resource(ResourceRef::document("not reading text")),
 					alt: text.clone(), title: "not reading text".to_owned(), width: None, height: None,
-				}), text),
+				})), text),
 				3 => (InlineKind::FootnoteRef(FootnoteReference {
 					definition: FootnoteId::new(text), number, occurrence: occurrence(1),
 				}), format!("[{number}]")),

@@ -1235,3 +1235,33 @@ fn synthetic_bold_export_keeps_searchable_text_and_uses_fill_and_stroke() {
 		"missing fill-and-stroke text: {content}"
 	);
 }
+
+#[test]
+fn packed_runs_preserve_ligature_text_and_adjacent_link_regions() {
+	let exported = export(
+		"office affine [one](https://example.com/a)[two](https://example.com/b) final.",
+		print(),
+		true,
+	);
+	let reading = without_whitespace(&exported.pdf.extract_text(&[1]).unwrap());
+	assert!(reading.contains("officeaffineonetwofinal."), "{reading}");
+	let annotations = exported
+		.pdf
+		.get_page_annotations(exported.pdf.get_pages()[&1])
+		.unwrap();
+	assert_eq!(annotations.len(), 2);
+	let left: Vec<_> = annotations
+		.iter()
+		.map(|a| {
+			a.get(b"Rect").unwrap().as_array().unwrap()[0]
+				.as_float()
+				.unwrap()
+		})
+		.collect();
+	assert!(left[0] < left[1]);
+	let raw = String::from_utf8_lossy(&exported.bytes);
+	assert!(
+		raw.contains("https://example.com/a")
+			&& raw.contains("https://example.com/b")
+	);
+}

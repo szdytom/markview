@@ -906,6 +906,7 @@ impl TextShaper {
 		size: f32,
 		_sans: bool,
 	) -> Vec<Cluster> {
+		let mut glyph_styles = crate::scene::GlyphStyles::default();
 		if text.is_empty() {
 			return Vec::new();
 		}
@@ -1029,15 +1030,16 @@ impl TextShaper {
 							}));
 						}
 						glyphs.push(Glyph {
-							font: run.font().clone(),
-							coords: coords.clone(),
+							style: glyph_styles.get(
+								run.font(),
+								&coords,
+								run.font_size(),
+								(synthetic_italic, synthetic_bold),
+								appearance.paint,
+							),
 							id: g.id as u16,
-							size: run.font_size(),
 							x: x + g.x,
 							y: g.y + shift,
-							synthetic_italic,
-							synthetic_bold,
-							paint: appearance.paint,
 						});
 						x += g.advance;
 					}
@@ -1290,11 +1292,12 @@ impl TextShaper {
 			));
 		}
 		let shift = clusters.first().map_or(0., |c| c.baseline_shift);
+		let mut styles = crate::scene::GlyphStyles::default();
 		for c in clusters {
 			for mut g in c.glyphs {
 				g.x += cursor;
 				g.y += baseline;
-				g.paint = paint;
+				styles.repaint(&mut g, paint);
 				draws.push(Draw::Glyph(g));
 				ranges.push(c.range.clone());
 			}

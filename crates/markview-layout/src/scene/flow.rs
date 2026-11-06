@@ -11,7 +11,10 @@ use std::{
 };
 
 #[derive(Clone, Debug, Default)]
-pub struct Scene {
+pub struct Scene(Arc<SceneData>);
+#[doc(hidden)]
+#[derive(Clone, Debug, Default)]
+pub struct SceneData {
 	nodes: Vec<Node>,
 	spans: Vec<Span>,
 	footnotes: Vec<Footnote>,
@@ -19,6 +22,18 @@ pub struct Scene {
 	cursor: Cursor,
 	leaves: Vec<Leaf>,
 	pub(crate) reused_leaves: usize,
+}
+
+impl std::ops::Deref for Scene {
+	type Target = SceneData;
+	fn deref(&self) -> &SceneData {
+		&self.0
+	}
+}
+impl std::ops::DerefMut for Scene {
+	fn deref_mut(&mut self) -> &mut SceneData {
+		Arc::make_mut(&mut self.0)
+	}
 }
 
 #[derive(Clone, Debug)]
@@ -30,6 +45,21 @@ struct Leaf {
 	math_errors: usize,
 	field: Option<markview_document::FieldId>,
 	separator: Option<&'static str>,
+}
+
+/// A leaf owns only its geometry, never the enclosing container or scene tree.
+#[derive(Clone, Debug)]
+pub(crate) struct LeafGeometry {
+	leaf: Leaf,
+	origin: Cursor,
+	draws: super::DrawBuffer,
+	text: Box<[crate::text::TextNode]>,
+	links: Box<[super::LinkRect]>,
+	occurrences: Box<[markview_document::LinkOccurrenceId]>,
+	overflow: Box<[super::Overflow]>,
+	anchors: Box<[super::HeadingAnchor]>,
+	constraints: Box<[super::PageConstraint]>,
+	decorations: Box<[(usize, Range<f32>)]>,
 }
 
 #[derive(Clone, Debug)]
@@ -110,7 +140,9 @@ pub struct FlowIndex {
 impl Scene {
 	pub(super) fn heap_bytes(&self) -> usize {
 		use super::memory::vec_bytes;
-		vec_bytes(&self.nodes)
+		size_of::<SceneData>()
+			+ 2 * size_of::<usize>()
+			+ vec_bytes(&self.nodes)
 			+ vec_bytes(&self.spans)
 			+ vec_bytes(&self.footnotes)
 			+ vec_bytes(&self.leaves)
@@ -171,9 +203,10 @@ impl BlockLayout {
 	pub(crate) fn truncate_overflow(&mut self, start: usize) {
 		self.flush_scene();
 		// A leaf with discarded scroll geometry must be measured again on reuse.
-		self.scene
+		let scene = &mut *self.scene;
+		scene
 			.leaves
-			.retain(|leaf| self.scene.spans[leaf.span].overflow.end <= start);
+			.retain(|leaf| scene.spans[leaf.span].overflow.end <= start);
 		for span in &mut self.scene.spans {
 			span.overflow.start = span.overflow.start.min(start);
 			span.overflow.end = span.overflow.end.min(start);
@@ -212,7 +245,8 @@ impl BlockLayout {
 
 	pub(crate) fn end_scene(&mut self, height: f32, minimum: f32) {
 		self.flush_scene();
-		let node = &mut self.scene.nodes[self.scene.active.unwrap()];
+		let active = self.scene.active.unwrap();
+		let node = &mut self.scene.nodes[active];
 		node.height = height;
 		node.minimum = minimum;
 		if let Some(disclosure) = &mut node.disclosure {
@@ -228,25 +262,25 @@ impl BlockLayout {
 		marker: usize,
 		body: f32,
 	) {
-		self.scene.nodes[self.scene.active.unwrap()].disclosure =
-			Some(Disclosure {
-				id,
-				declared,
-				marker,
-				body,
-				closed: 0.,
-			});
+		let active = self.scene.active.unwrap();
+		self.scene.nodes[active].disclosure = Some(Disclosure {
+			id,
+			declared,
+			marker,
+			body,
+			closed: 0.,
+		});
 	}
 
 	/// The first reading box in builder coordinates, including reused leaves.
 	pub(crate) fn first_text_rect(&self, start: usize) -> Option<Rect> {
 		for (text, node) in self.text.iter().enumerate().skip(start) {
 			let mut rect: Option<Rect> = None;
-			for cluster in node
-				.clusters
-				.iter()
-				.chain(node.source_images.iter().map(|(_, cluster)| cluster))
-			{
+			for cluster in node.clusters.iter().chain(
+				node.source_images
+					.iter()
+					.map(|(_, cluster)| cluster.clone()),
+			) {
 				let candidate = cluster.rect;
 				// An image with alt text has a reading cluster whose box is the
 				// image, not its line. The line's own text cluster shares the
@@ -286,45 +320,65 @@ impl BlockLayout {
 		baseline: f32,
 	) {
 		let node = self.scene.active.unwrap();
+		let baseline = baseline - self.scene.nodes[node].offset[1];
 		self.scene.footnotes.push(Footnote {
 			node,
 			body,
 			marker,
-			baseline: baseline - self.scene.nodes[node].offset[1],
+			baseline,
 		});
+	}
+
+	fn seal_buffers(&mut self) {
+		macro_rules! seal {($($field:ident),*)=>{$(if self.$field.capacity()!=self.$field.len() {self.$field.shrink_to_fit();})*};}
+		seal!(
+			text,
+			page_constraints,
+			inline_decorations,
+			overflow,
+			link_occurrences,
+			anchors
+		);
 	}
 
 	/// Convert the builder's temporary coordinates into node-local geometry once.
 	pub(crate) fn seal_scene(&mut self) {
+		fn localize_text(text: &mut crate::text::TextNode, x: f32, y: f32) {
+			for cluster in text.clusters.iter_mut().chain(
+				text.source_images.iter_mut().map(|(_, cluster)| cluster),
+			) {
+				cluster.rect.x -= x;
+				cluster.rect.y -= y;
+			}
+		}
+		self.seal_buffers();
 		if self.scene.nodes.is_empty() {
+			for text in &mut self.text {
+				text.seal();
+			}
+			self.links.seal();
+			self.draws.seal();
 			return;
 		}
 		self.scene.nodes[0].height = self.height;
-		for span in &self.scene.spans {
-			let [x, y] = self.scene.nodes[span.node].offset;
+		let scene = &mut *self.scene;
+		for span in &scene.spans {
+			let [x, y] = scene.nodes[span.node].offset;
 			for command in span.draws.clone() {
-				let draw = &mut self.draws[command];
-				if matches!(draw, Draw::Box { .. }) {
-					self.scene.nodes[span.node].boxes.push(command);
+				if matches!(self.draws.other(command), Some(Draw::Box { .. })) {
+					scene.nodes[span.node].boxes.push(command);
 				}
 				if !span.local {
-					draw.translate(-x, -y);
+					self.draws.get_mut(command).unwrap().translate(-x, -y);
 				}
 			}
 			if span.local {
 				continue;
 			}
 			for text in &mut self.text[span.text.clone()] {
-				for cluster in text
-					.clusters
-					.iter_mut()
-					.chain(text.source_images.iter_mut().map(|(_, c)| c))
-				{
-					cluster.rect.x -= x;
-					cluster.rect.y -= y;
-				}
+				localize_text(text, x, y);
 			}
-			for link in &mut self.links[span.links.clone()] {
+			for link in self.links.range_mut(span.links.clone()) {
 				link.rect.x -= x;
 				link.rect.y -= y;
 			}
@@ -349,6 +403,13 @@ impl BlockLayout {
 			}
 		}
 		self.localize_child_offsets();
+		self.scene.seal_buffers();
+		for text in &mut self.text {
+			text.seal();
+		}
+		self.links.seal();
+		self.draws
+			.seal_spans(self.scene.spans.iter().map(|s| s.draws.clone()));
 	}
 
 	fn localize_child_offsets(&mut self) {
@@ -368,8 +429,43 @@ impl BlockLayout {
 		}
 	}
 
-	pub(crate) fn leaf_keys(&self) -> impl Iterator<Item = u64> + '_ {
-		self.scene.leaves.iter().map(|leaf| leaf.key)
+	pub(crate) fn cached_leaves(
+		&self,
+	) -> impl Iterator<Item = (u64, Arc<LeafGeometry>)> + '_ {
+		self.scene.leaves.iter().map(|leaf| {
+			let span = &self.scene.spans[leaf.span];
+			(
+				leaf.key,
+				Arc::new(LeafGeometry {
+					leaf: leaf.clone(),
+					origin: Cursor {
+						draws: span.draws.start,
+						text: span.text.start,
+						..Default::default()
+					},
+					draws: self.draws.independent_range(span.draws.clone()),
+					text: self.text[span.text.clone()].into(),
+					links: self
+						.links
+						.iter()
+						.skip(span.links.start)
+						.take(span.links.len())
+						.map(super::LinkFragment::owned)
+						.collect(),
+					occurrences: self.link_occurrences
+						[span.occurrences.clone()]
+					.into(),
+					overflow: self.overflow[span.overflow.clone()].into(),
+					anchors: self.anchors[span.anchors.clone()].into(),
+					constraints: self.page_constraints
+						[span.constraints.clone()]
+					.into(),
+					decorations: self.inline_decorations
+						[span.decorations.clone()]
+					.into(),
+				}),
+			)
+		})
 	}
 
 	pub(crate) fn retain_leaf(
@@ -380,60 +476,54 @@ impl BlockLayout {
 		math_errors: usize,
 		field: Option<markview_document::FieldId>,
 	) {
-		self.scene.leaves.push(Leaf {
+		let scene = &mut *self.scene;
+		scene.leaves.push(Leaf {
 			key,
-			span: self.scene.spans.len() - 1,
+			span: scene.spans.len() - 1,
 			height,
 			degraded,
 			math_errors,
 			field,
-			separator: self.text[self.scene.spans.last().unwrap().text.clone()]
+			separator: self.text[scene.spans.last().unwrap().text.clone()]
 				.first()
 				.map(|text| text.separator),
 		});
 	}
 
-	/// Copy a sealed leaf span and rebind indices while retaining local
+	/// Share a sealed leaf span and rebind indices while retaining local
 	/// coordinates. `origins` are the link occurrences the leaf carries now,
 	/// so a reused fragment never keeps an identity that has since moved.
 	pub(crate) fn reuse_leaf(
 		&mut self,
-		previous: &Self,
-		leaf: usize,
+		previous: &LeafGeometry,
 		position: [f32; 2],
 		width: f32,
 		field: Option<markview_document::FieldId>,
 		origins: &[markview_document::LinkOccurrenceId],
 	) -> f32 {
-		let leaf = &previous.scene.leaves[leaf];
-		let span = &previous.scene.spans[leaf.span];
+		let leaf = &previous.leaf;
+		let origin = previous.origin;
 		let [x, y] = position;
 		self.begin_scene(x, y);
 		let start = self.cursor();
-		self.draws
-			.extend_from_slice(&previous.draws[span.draws.clone()]);
-		self.text.extend(
-			previous.text[span.text.clone()]
-				.iter()
-				.cloned()
-				.enumerate()
-				.map(|(index, mut text)| {
+		self.draws.append_shared(&previous.draws);
+		self.text
+			.extend(previous.text.iter().cloned().enumerate().map(
+				|(index, mut text)| {
 					if index == 0
 						&& let Some(separator) = leaf.separator
 					{
 						text.separator = separator;
 					}
-					for cluster in text
-						.clusters
-						.iter_mut()
-						.chain(text.source_images.iter_mut().map(|(_, c)| c))
+					text.clusters.relocate(origin.draws, start.draws);
+					for cluster in text.source_images.iter_mut().map(|(_, c)| c)
 					{
 						cluster.command =
-							start.draws + cluster.command - span.draws.start;
+							start.draws + cluster.command - origin.draws;
 					}
 					text.selection_group = text
 						.selection_group
-						.map(|group| start.text + group - span.text.start);
+						.map(|group| start.text + group - origin.text);
 					if let (Some(old), Some(new), Some(current)) =
 						(leaf.field, field, text.search_field)
 					{
@@ -442,10 +532,10 @@ impl BlockLayout {
 						));
 					}
 					text
-				}),
-		);
-		let links = &previous.links[span.links.clone()];
-		let occurrences = &previous.link_occurrences[span.occurrences.clone()];
+				},
+			));
+		let links = &previous.links;
+		let occurrences = &previous.occurrences;
 		let mut remap = HashMap::new();
 		if occurrences.len() == origins.len() {
 			for (&old, &new) in occurrences.iter().zip(origins) {
@@ -458,9 +548,8 @@ impl BlockLayout {
 			{
 				link.id = super::LinkId::Inline(origin);
 			}
-			link.commands = (start.draws + link.commands.start
-				- span.draws.start)
-				..(start.draws + link.commands.end - span.draws.start);
+			link.commands = (start.draws + link.commands.start - origin.draws)
+				..(start.draws + link.commands.end - origin.draws);
 			link
 		}));
 		for &origin in origins {
@@ -468,43 +557,33 @@ impl BlockLayout {
 				self.link_occurrences.push(origin);
 			}
 		}
-		self.overflow.extend(
-			previous.overflow[span.overflow.clone()]
-				.iter()
-				.cloned()
-				.map(|mut overflow| {
-					overflow.commands = (start.draws + overflow.commands.start
-						- span.draws.start)
-						..(start.draws + overflow.commands.end
-							- span.draws.start);
-					overflow
-				}),
-		);
-		self.anchors.extend(
-			previous.anchors[span.anchors.clone()].iter().cloned().map(
-				|mut anchor| {
-					if let markview_document::AnchorId::FootnoteReference {
-						occurrence,
-						..
-					} = &mut anchor.anchor
-						&& let Some(&origin) = remap.get(occurrence)
-					{
-						*occurrence = origin;
-					}
-					anchor
-				},
-			),
-		);
-		self.page_constraints.extend_from_slice(
-			&previous.page_constraints[span.constraints.clone()],
-		);
-		self.inline_decorations.extend(
-			previous.inline_decorations[span.decorations.clone()]
-				.iter()
-				.map(|(command, rows)| {
-					(start.draws + command - span.draws.start, rows.clone())
-				}),
-		);
+		self.overflow.extend(previous.overflow.iter().cloned().map(
+			|mut overflow| {
+				overflow.commands = (start.draws + overflow.commands.start
+					- origin.draws)
+					..(start.draws + overflow.commands.end - origin.draws);
+				overflow
+			},
+		));
+		self.anchors.extend(previous.anchors.iter().cloned().map(
+			|mut anchor| {
+				if let markview_document::AnchorId::FootnoteReference {
+					occurrence,
+					..
+				} = &mut anchor.anchor
+					&& let Some(&origin) = remap.get(occurrence)
+				{
+					*occurrence = origin;
+				}
+				anchor
+			},
+		));
+		self.page_constraints
+			.extend_from_slice(&previous.constraints);
+		self.inline_decorations
+			.extend(previous.decorations.iter().map(|(command, rows)| {
+				(start.draws + command - origin.draws, rows.clone())
+			}));
 		self.height = self.height.max(y + leaf.height);
 		self.width = self.width.max(x + width);
 		self.degraded += leaf.degraded;
@@ -557,7 +636,7 @@ impl BlockLayout {
 					let start = commands.start.max(footnote.body.start);
 					let end = commands.end.min(footnote.body.end);
 					(start..end).find_map(|command| {
-						match &self.draws[command] {
+						match &self.draws.at(command) {
 							Draw::Glyph(glyph) => {
 								Some(glyph.y + offset[1] - placement.offset[1])
 							}
@@ -579,7 +658,7 @@ impl BlockLayout {
 
 			if placement.height != node.height {
 				for &command in &node.boxes {
-					let mut draw = self.draws[command].clone();
+					let mut draw = self.draws.at(command);
 					if let Draw::Box { rect, .. } = &mut draw {
 						rect.h += placement.height - node.height;
 					}
@@ -589,7 +668,7 @@ impl BlockLayout {
 			if let Some(disclosure) = &node.disclosure
 				&& !placement.expanded
 			{
-				let mut marker = self.draws[disclosure.marker].clone();
+				let mut marker = self.draws.at(disclosure.marker);
 				if let Draw::Polygon { points, .. } = &mut marker {
 					*points = points
 						.iter()
@@ -600,11 +679,24 @@ impl BlockLayout {
 				index.draws.insert(disclosure.marker, marker);
 			}
 		}
+		index.spans.shrink_to_fit();
 		index
 	}
 }
 
 impl Scene {
+	fn seal_buffers(&mut self) {
+		let scene = &mut **self;
+		scene.nodes.shrink_to_fit();
+		scene.spans.shrink_to_fit();
+		scene.footnotes.shrink_to_fit();
+		scene.leaves.shrink_to_fit();
+		for node in &mut scene.nodes {
+			node.children.shrink_to_fit();
+			node.boxes.shrink_to_fit();
+		}
+	}
+
 	fn place(
 		&self,
 		node: usize,
@@ -664,7 +756,9 @@ impl Scene {
 }
 
 impl PlacedBlock {
-	pub fn links(&self) -> impl Iterator<Item = (&super::LinkRect, Rect)> {
+	pub fn links(
+		&self,
+	) -> impl Iterator<Item = (super::LinkFragment<'_>, Rect)> {
 		self.layout
 			.links
 			.iter()
@@ -679,7 +773,7 @@ impl PlacedBlock {
 	}
 	pub fn clusters(
 		&self,
-	) -> impl Iterator<Item = (usize, &crate::text::TextCluster, Rect)> {
+	) -> impl Iterator<Item = (usize, crate::text::TextCluster, Rect)> {
 		self.layout
 			.text
 			.iter()
@@ -712,20 +806,28 @@ impl PlacedBlock {
 			degraded: self.layout.degraded,
 			math_errors: self.layout.math_errors,
 			text: self.layout.text.clone(),
-			draws: self.layout.draws.clone(),
+			draws: super::DrawBuffer::from_paint_iter(
+				self.layout.draws.iter().enumerate().map(
+					|(command, mut draw)| {
+						if let Some([x, y]) = self.command_offset(command) {
+							if let Some(override_draw) =
+								self.flow.draws.get(&command)
+							{
+								draw = override_draw.clone();
+							}
+							draw.translate(x, y);
+							draw
+						} else {
+							Draw::Rect(Rect::default(), super::Paint::Text)
+						}
+					},
+				),
+			),
 			..Default::default()
 		};
-		for (command, draw) in out.draws.iter_mut().enumerate() {
-			if let Some([x, y]) = self.command_offset(command) {
-				*draw = self.draw(command).clone();
-				draw.translate(x, y);
-			} else {
-				*draw = Draw::Rect(Rect::default(), super::Paint::Text);
-			}
-		}
 		for (ni, text) in out.text.iter_mut().enumerate() {
 			if !self.text_visible(ni) {
-				text.text.clear();
+				text.text = Arc::new(String::new());
 				text.clusters.clear();
 				text.source_images.clear();
 				continue;
@@ -743,7 +845,7 @@ impl PlacedBlock {
 			.links()
 			.map(|(link, rect)| super::LinkRect {
 				rect,
-				..link.clone()
+				..link.owned()
 			})
 			.collect();
 		out.overflow = self
@@ -784,6 +886,7 @@ impl PlacedBlock {
 				));
 			}
 		}
+		out.seal_scene();
 		Arc::new(out)
 	}
 	pub fn height(&self) -> f32 {
@@ -811,23 +914,55 @@ impl PlacedBlock {
 			.is_some()
 	}
 
-	pub fn draw(&self, command: usize) -> &Draw {
+	pub fn draw(&self, command: usize) -> Draw {
 		self.flow
 			.draws
 			.get(&command)
-			.unwrap_or(&self.layout.draws[command])
+			.cloned()
+			.unwrap_or_else(|| self.layout.draws.at(command))
 	}
 
-	pub fn draws(&self) -> impl Iterator<Item = (usize, &Draw, [f32; 2])> {
+	pub fn other_draw(&self, command: usize) -> Option<&Draw> {
+		self.flow
+			.draws
+			.get(&command)
+			.or_else(|| self.layout.draws.other(command))
+	}
+	pub fn draw_commands(&self) -> impl Iterator<Item = (usize, [f32; 2])> {
 		let retained =
 			self.flow.spans.iter().flat_map(move |(commands, offset)| {
 				commands.clone().map(move |command| {
-					(
-						command,
-						self.draw(command),
-						self.flow.offset(command, *offset),
-					)
+					(command, self.flow.offset(command, *offset))
 				})
+			});
+		let len = if self.layout.scene.nodes.is_empty() {
+			self.layout.draws.len()
+		} else {
+			0
+		};
+		retained.chain((0..len).map(|command| (command, [0., 0.])))
+	}
+	pub fn draws(&self) -> impl Iterator<Item = (usize, Draw, [f32; 2])> {
+		let retained =
+			self.flow.spans.iter().flat_map(move |(commands, offset)| {
+				let start = commands.start;
+				self.layout
+					.draws
+					.iter_range(commands.clone())
+					.unwrap()
+					.enumerate()
+					.map(move |(i, draw)| {
+						let command = start + i;
+						(
+							command,
+							self.flow
+								.draws
+								.get(&command)
+								.cloned()
+								.unwrap_or(draw),
+							self.flow.offset(command, *offset),
+						)
+					})
 			});
 		let identity = self
 			.layout
@@ -941,5 +1076,96 @@ impl super::LayoutSnapshot {
 		if let Some(Draw::Box { rect, .. }) = &mut self.document_box {
 			rect.h = self.height;
 		}
+	}
+}
+
+#[cfg(feature = "fuzz")]
+impl Scene {
+	pub(super) fn visit_storage(
+		&self,
+		visit: &mut super::memory::StorageVisitor<'_>,
+	) {
+		use super::memory::allocation;
+		visit(
+			Arc::as_ptr(&self.0) as usize,
+			"scene",
+			size_of::<SceneData>() + 2 * size_of::<usize>(),
+			0,
+			0,
+		);
+		allocation(&self.nodes, self.nodes.capacity(), "scene", visit);
+		allocation(&self.spans, self.spans.capacity(), "scene", visit);
+		allocation(&self.leaves, self.leaves.capacity(), "scene", visit);
+		allocation(&self.footnotes, self.footnotes.capacity(), "scene", visit);
+		for node in &self.nodes {
+			allocation(
+				&node.children,
+				node.children.capacity(),
+				"scene",
+				visit,
+			);
+			allocation(&node.boxes, node.boxes.capacity(), "scene", visit);
+		}
+	}
+}
+#[cfg(feature = "fuzz")]
+impl LeafGeometry {
+	pub(crate) fn visit_storage(
+		&self,
+		visit: &mut super::memory::StorageVisitor<'_>,
+	) {
+		use super::memory::allocation;
+		visit(
+			std::ptr::from_ref(self) as usize,
+			"cached_leaves",
+			size_of::<Self>() + 2 * size_of::<usize>(),
+			1,
+			1,
+		);
+		self.draws.visit_storage(visit);
+		allocation(&self.text, self.text.len(), "text_nodes", visit);
+		for node in &self.text {
+			node.visit_storage(visit);
+		}
+		allocation(&self.links, self.links.len(), "link_geometry", visit);
+		allocation(
+			&self.occurrences,
+			self.occurrences.len(),
+			"occurrences",
+			visit,
+		);
+		allocation(&self.overflow, self.overflow.len(), "overflow", visit);
+		allocation(&self.anchors, self.anchors.len(), "anchors", visit);
+		allocation(
+			&self.constraints,
+			self.constraints.len(),
+			"page_constraints",
+			visit,
+		);
+		allocation(
+			&self.decorations,
+			self.decorations.len(),
+			"decorations",
+			visit,
+		);
+	}
+}
+
+#[cfg(feature = "fuzz")]
+impl FlowIndex {
+	pub(super) fn visit_storage(
+		&self,
+		visit: &mut super::memory::StorageVisitor<'_>,
+	) {
+		use super::memory::allocation;
+		visit(
+			std::ptr::from_ref(self) as usize,
+			"flow",
+			size_of::<Self>() + 2 * size_of::<usize>(),
+			0,
+			0,
+		);
+		allocation(&self.nodes, self.nodes.capacity(), "flow", visit);
+		allocation(&self.spans, self.spans.capacity(), "flow", visit);
 	}
 }

@@ -31,8 +31,11 @@ fn layout_fingerprint_tracks_link_commands_and_occurrences() {
 
 	for field in 0..3 {
 		let mut changed = snapshot.flattened();
-		let link =
-			&mut Arc::get_mut(&mut changed.blocks[0].layout).unwrap().links[0];
+		let link = Arc::get_mut(&mut changed.blocks[0].layout)
+			.unwrap()
+			.links
+			.get_mut(0)
+			.unwrap();
 		match field {
 			0 => link.commands.start += 1,
 			1 => link.commands.end += 1,

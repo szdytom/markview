@@ -116,7 +116,7 @@ impl BlockContext<'_> {
 			match &inline.kind {
 				InlineKind::Anchor(_) => unreachable!(),
 				InlineKind::Image(image) => {
-					p.images.insert(start, image.clone());
+					p.images.insert(start, (**image).clone());
 					p.image_indices.insert(start, i);
 					p.text.push('\u{fffc}');
 				}

@@ -593,7 +593,7 @@ impl BlockContext<'_> {
 			radius: rule.radius.unwrap_or(0.),
 			border: rule.border_width.unwrap_or(0.),
 			left_only,
-			decoration,
+			decoration: decoration.clone(),
 		});
 		for anchor in block.anchors() {
 			out.anchors.push(HeadingAnchor {
@@ -653,7 +653,7 @@ impl BlockContext<'_> {
 				),
 			));
 		}
-		out.draws[placeholder] = Draw::Box {
+		*out.draws.get_mut(placeholder).unwrap() = Draw::Box {
 			rect: Rect {
 				x,
 				y: y + before,
@@ -747,7 +747,7 @@ impl BlockContext<'_> {
 				let h = self.code(language, text, x, y, width, size, opts, out);
 				out.text[node].search_field = self.fields.next(block.id());
 				out.text[node].search_ranges =
-					vec![(0..text.len(), 0..text.len())];
+					vec![(0..text.len(), 0..text.len())].into();
 				h
 			}
 			// The body is `yaml` source, so the disclosure below supplies the
@@ -1120,7 +1120,8 @@ impl BlockContext<'_> {
 							h: size * item_appearance.line_height,
 						});
 					let center_y = first_line.y + first_line.h * 0.5;
-					let marker = &mut out.draws[marker_start..marker_end];
+					let marker =
+						&mut out.draws.builder_mut()[marker_start..marker_end];
 					if numbered {
 						self.shaper.center_draws(marker, center_y);
 						for cluster in &mut out.text[first_child - 1].clusters {
@@ -1161,7 +1162,7 @@ impl BlockContext<'_> {
 						out.height = out.height.min(top);
 					}
 					top += padding[2];
-					out.draws[box_index] = Draw::Box {
+					*out.draws.get_mut(box_index).unwrap() = Draw::Box {
 						rect: Rect {
 							x,
 							y: box_y,
@@ -1522,8 +1523,10 @@ impl BlockContext<'_> {
 		// link, so a non-drag release and the hover state are enough.
 		// Its range stops at the first link inside the summary or at the
 		// body, so neither borrows the summary's hover.
-		let summary_end = out.links[links_start..]
+		let summary_end = out
+			.links
 			.iter()
+			.skip(links_start)
 			.map(|link| link.commands.start)
 			.min()
 			.unwrap_or(out.draws.len());

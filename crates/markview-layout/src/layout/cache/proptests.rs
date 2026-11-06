@@ -71,13 +71,17 @@ proptest! {
 		let special = LinkTarget::Disclosure(BlockId::new(99).unwrap());
 		layout.links.push(LinkRect { commands: 0..0, id: LinkId::Special(7), rect: Rect::default(), url: special.display_url(), target: special });
 		layout.anchors.push(HeadingAnchor { anchor: AnchorId::Fragment("stable".to_owned()), y: 42.0 });
+		layout.links.seal();
 		let shared = Arc::new(layout);
-		let remapped = remap_link_ids(shared.clone(), &block, &crate::limits::Limits::default());
+		let remapped = remap_link_ids(shared.clone(), &block, &crate::limits::Limits::default()).unwrap();
 		prop_assert_eq!(&remapped.link_occurrences, &current);
 		prop_assert_eq!(&shared.link_occurrences, &old);
 		prop_assert_eq!((remapped.height, remapped.width, remapped.degraded, remapped.math_errors), (100.0, 200.0, 3, 4));
 		prop_assert_eq!(remapped.links.len(), shared.links.len());
 		prop_assert_eq!(remapped.draws.len(), shared.draws.len());
+		prop_assert_eq!(remapped.draws.as_ptr(), shared.draws.as_ptr());
+		prop_assert_eq!(remapped.links.geometry_id(), shared.links.geometry_id());
+		prop_assert_eq!(remapped.text.as_ptr(), shared.text.as_ptr());
 		for (actual, original) in remapped.draws.iter().zip(&shared.draws) {
 			let (crate::scene::Draw::Rect(a, paint_a), crate::scene::Draw::Rect(b, paint_b)) = (actual, original) else { unreachable!() };
 			prop_assert_eq!((a, paint_a), (b, paint_b));
@@ -95,7 +99,7 @@ proptest! {
 			prop_assert_eq!(&actual.anchor, &expected);
 			prop_assert_eq!(actual.y, original.y);
 		}
-		let again = remap_link_ids(remapped.clone(), &block, &crate::limits::Limits::default());
+		let again = remap_link_ids(remapped.clone(), &block, &crate::limits::Limits::default()).unwrap();
 		prop_assert!(Arc::ptr_eq(&again, &remapped));
 		prop_assert_eq!(Arc::ptr_eq(&shared, &remapped), old == current);
 	}

@@ -23,13 +23,13 @@ fn document(specs: &[(u8, bool)]) -> Document {
 	let text = specs
 		.iter()
 		.map(|&(slot, vault)| Inline {
-			kind: InlineKind::Image(ImageSpec {
+			kind: InlineKind::Image(Box::new(ImageSpec {
 				source: resource(slot, vault),
 				alt: String::new(),
 				title: String::new(),
 				width: None,
 				height: None,
-			}),
+			})),
 			style: TextStyle::default(),
 			link: None,
 		})
@@ -119,7 +119,7 @@ proptest! {
 		for (pass, count, shift) in [(1, split, 0.0), (1, boxes.len(), 0.0), (2, boxes.len(), 128.0)] {
 			let mut snapshot = LayoutSnapshot { images: images.snapshot.clone(), ..Default::default() };
 			for (index, &(slot, x, y, width, height)) in boxes[..count].iter().enumerate() {
-				snapshot.blocks.push(PlacedBlock { id: markview_document::BlockId::new(index as u32 + 1).unwrap(), content: Default::default(), y: shift, layout: Arc::new(BlockLayout { draws: vec![Draw::Image { src: address(slot, false), version: 0, rect: Rect { x: f32::from(x), y: f32::from(y), w: f32::from(width), h: f32::from(height) }, title: String::new() }], ..Default::default() }), flow: Arc::default() });
+				snapshot.blocks.push(PlacedBlock { id: markview_document::BlockId::new(index as u32 + 1).unwrap(), content: Default::default(), y: shift, layout: Arc::new(BlockLayout { draws: vec![Draw::Image { src: address(slot, false), version: 0, rect: Rect { x: f32::from(x), y: f32::from(y), w: f32::from(width), h: f32::from(height) }, title: String::new() }].into(), ..Default::default() }), flow: Arc::default() });
 			}
 			let viewport = Rect { x: -0.5, y: f32::from(top) - 0.5, w: 65.0, h: 41.0 };
 			let priorities = images.priorities(&snapshot, Some(pass), 1, viewport, &HashMap::new());

@@ -1487,12 +1487,9 @@ mod tests {
 	/// neither declares nor resolves them and must not report that it does.
 	#[test]
 	fn wikilink_resolution_is_outside_the_reference_oracle() {
-		for source in [
-			"[[o]]\n",
-			"![[o]]\n",
-			"[[o#H|label]]\n",
-			"![[o#H|label]]\n",
-		] {
+		for source in
+			["[[o]]\n", "![[o]]\n", "[[o#H|label]]\n", "![[o#H|label]]\n"]
+		{
 			assert_reference_resolution(&parse(source));
 		}
 	}

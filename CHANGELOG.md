@@ -30,6 +30,7 @@ at the same level, without `[brackets]`.
 
 ### Changed
 
+- Reduce memory used by documents and reflows through compact text geometry and shared cached layouts.
 - Render web articles directly from HTML, preserving headings, checklists and formulas without converting the article body to Markdown.
 - Keep web tabs in memory with article titles and session restoration, and use the page URL in PDF metadata and page furniture.
 - Prefer a web page's declared canonical URL over its Open Graph URL.
@@ -45,7 +46,7 @@ at the same level, without `[brackets]`.
 - Decode named and numeric entities once in supported raw HTML text, preserving encoded markup as literal reading text.
 - Show an image error for SVGs with extreme text sizes instead of crashing the reader.
 - Resolve reference links consistently during partial document loading when their definitions follow fenced code blocks.
-- Keep retained table scroll-region spans valid when an overflowing table replaces nested scroll regions.
+- Keep cached table links and footnote targets current after source edits, and retain valid scroll-region spans when overflowing tables replace nested scroll regions.
 - Match font archive wildcards correctly when member names contain literal asterisks.
 - Send PDF footnote return links to the earliest reference by page and vertical position.
 - Respect image-cache expiration after revalidation and ignore invalid HTTP calendar dates.

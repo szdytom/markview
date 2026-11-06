@@ -235,7 +235,7 @@ pub enum InlineKind {
 	/// An invisible HTML fragment target at this reading position.
 	Anchor(String),
 	Text(String),
-	Image(crate::image::ImageSpec),
+	Image(Box<crate::image::ImageSpec>),
 	Math {
 		latex: String,
 		display: bool,
@@ -624,13 +624,17 @@ impl Document {
 
 	/// The block with `id`, using the index built when the document was sealed.
 	pub fn block(&self, id: BlockId) -> Option<&Block> {
-		let path = self.index.paths.get(&id)?;
+		let range = self.index.paths.get(&id)?;
+		let path = &self.index.path_data[range.clone()];
 		index::resolve(&self.blocks, path)
 	}
 
 	/// The structural path from the document root to `id`.
 	pub fn path_of(&self, id: BlockId) -> Option<&[usize]> {
-		self.index.paths.get(&id).map(Vec::as_slice)
+		self.index
+			.paths
+			.get(&id)
+			.map(|r| &self.index.path_data[r.clone()])
 	}
 
 	/// The block at a structural path from the document root.
@@ -1102,3 +1106,6 @@ pub fn semantic_key(kind: &BlockKind) -> ContentKey {
 
 #[cfg(test)]
 mod proptests;
+
+#[cfg(feature = "fuzz")]
+pub mod memory;

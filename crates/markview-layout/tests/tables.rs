@@ -44,10 +44,10 @@ fn cells(snapshot: &LayoutSnapshot) -> Vec<(Rect, BoxDecoration)> {
 				decoration,
 				..
 			} => Some((
-				*rect,
-				decoration.unwrap_or(BoxDecoration {
-					edges: [*border; 4],
-					corners: [*radius; 4],
+				rect,
+				decoration.as_deref().copied().unwrap_or(BoxDecoration {
+					edges: [border; 4],
+					corners: [radius; 4],
 				}),
 			)),
 			_ => None,

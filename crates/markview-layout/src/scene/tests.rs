@@ -13,7 +13,7 @@ fn scrolled_links_cannot_be_activated_outside_their_clip() {
 	);
 	let block = &snapshot.blocks[0];
 	let overflow = &block.layout.overflow[0];
-	let link = &block.layout.links[0];
+	let link = &block.layout.links.at(0);
 	let horizontal = HashMap::from([((0, 0), 80.0)]);
 	assert_eq!(
 		snapshot.link_at(

@@ -35,7 +35,7 @@ impl LayoutSnapshot {
 					continue;
 				}
 				for cluster in &node.clusters {
-					let Some(rect) = self.text_rect(bi, cluster, horizontal)
+					let Some(rect) = self.text_rect(bi, &cluster, horizontal)
 					else {
 						continue;
 					};
@@ -64,13 +64,13 @@ impl LayoutSnapshot {
 						};
 						let along =
 							if cluster.rtl { 1.0 - along } else { along };
-						let parts = node.parts(cluster);
+						let parts = node.parts(&cluster);
 						let part = (along * parts as f32).round() as usize;
 						best = Some(GeometryPosition {
 							revision,
 							block: bi,
 							node: ni,
-							offset: node.split_at(cluster, part),
+							offset: node.split_at(&cluster, part),
 							affinity: if part == parts {
 								Affinity::After
 							} else {
@@ -107,7 +107,7 @@ impl LayoutSnapshot {
 				block.layout.text.iter().enumerate().any(|(ni, node)| {
 					block.text_visible(ni)
 						&& node.clusters.iter().any(|cluster| {
-							self.text_rect(bi, cluster, horizontal)
+							self.text_rect(bi, &cluster, horizontal)
 								.is_some_and(|rect| rect.contains(x, y))
 						})
 				})
@@ -154,12 +154,12 @@ impl LayoutSnapshot {
 			f32::NEG_INFINITY..f32::INFINITY,
 		)
 	}
-	/// Capacity of unique retained reading text and hit-test allocations; excludes allocator overhead.
+	/// Estimated retained reading payload; shared leaves may be charged more than once.
 	pub fn text_index_bytes(&self) -> usize {
 		let mut seen = std::collections::HashSet::new();
 		self.blocks
 			.iter()
-			.filter(|b| seen.insert(std::sync::Arc::as_ptr(&b.layout)))
+			.filter(|b| seen.insert(b.layout.text.as_ptr()))
 			.map(|b| {
 				b.layout.text.capacity() * std::mem::size_of::<TextNode>()
 					+ b.layout
@@ -167,10 +167,8 @@ impl LayoutSnapshot {
 						.iter()
 						.map(|n| {
 							n.text.capacity()
-								+ n.boundaries.capacity()
-									* std::mem::size_of::<usize>()
-								+ n.clusters.capacity()
-									* std::mem::size_of::<TextCluster>()
+								+ n.boundaries.heap_bytes()
+								+ n.clusters.storage_bytes()
 								+ n.source_images.capacity()
 									* std::mem::size_of::<(usize, TextCluster)>(
 									)
@@ -211,8 +209,12 @@ impl LayoutSnapshot {
 					// highlighted in part. A cluster of one grapheme has no
 					// part but all of it, which is the whole of a plain letter,
 					// and an atomic formula or image is never split.
-					let parts =
-						node.covered_parts(cluster, (bi, ni), a.key(), b.key());
+					let parts = node.covered_parts(
+						&cluster,
+						(bi, ni),
+						a.key(),
+						b.key(),
+					);
 					if parts.is_empty() {
 						continue;
 					}
@@ -220,7 +222,7 @@ impl LayoutSnapshot {
 					// before the viewport moves and clips it, so a partially
 					// selected ligature keeps the letter it names even when
 					// that letter sits outside the visible range.
-					let mut rect = node.part_rect(cluster, parts);
+					let mut rect = node.part_rect(&cluster, parts);
 					// Automatic spacing belongs between selected characters,
 					// but outside the selection at either endpoint.
 					let at = |offset| (bi, ni, offset);

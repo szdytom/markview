@@ -546,7 +546,7 @@ impl Painter<'_> {
 		let draws = &layout.draws;
 		let mut index = 0;
 		while index < draws.len() {
-			match &draws[index] {
+			match &draws.at(index) {
 				Draw::Glyph(_) => {
 					index = self.text_run(
 						surface, layout, &clusters, index, frame, item,
@@ -555,7 +555,7 @@ impl Painter<'_> {
 				_ => {
 					self.draw(
 						surface,
-						&draws[index],
+						&draws.at(index),
 						frame,
 						item,
 						Some(&clusters[index]),
@@ -578,13 +578,13 @@ impl Painter<'_> {
 		frame: Frame,
 		item: &PageItem,
 	) -> usize {
-		let Draw::Glyph(first) = &layout.draws[start] else {
+		let Draw::Glyph(first) = &layout.draws.at(start) else {
 			return start + 1;
 		};
 		let node = clusters[start].node;
 		let mut end = start + 1;
 		while end < layout.draws.len() {
-			match &layout.draws[end] {
+			match &layout.draws.at(end) {
 				Draw::Glyph(next) => {
 					if clusters[end].node != node
 						|| !text::same_face(first, next)
@@ -609,10 +609,10 @@ impl Painter<'_> {
 			.unwrap_or("");
 		let glyphs: Vec<RunGlyph> = (start..end)
 			.filter(|at| {
-				visible(Some(&clusters[*at]), &layout.draws[*at], item)
+				visible(Some(&clusters[*at]), &layout.draws.at(*at), item)
 			})
 			.filter_map(|at| {
-				let Draw::Glyph(glyph) = &layout.draws[at] else {
+				let Draw::Glyph(glyph) = &layout.draws.at(at) else {
 					return None;
 				};
 				Some(RunGlyph {
@@ -1219,8 +1219,8 @@ impl Painter<'_> {
 			};
 			if let Some(annotation) = link::annotation(
 				page_rect,
-				&link_rect.target,
-				&link_rect.url,
+				link_rect.target,
+				link_rect.url,
 				self.pagination,
 				self.geometry,
 			) {
@@ -1255,7 +1255,7 @@ fn cluster_map(layout: &BlockLayout) -> Vec<Cluster> {
 					cluster.rect.y + cluster.rect.h.max(0.0),
 				)),
 			};
-			if matches!(layout.draws[command], Draw::Rect(..)) {
+			if matches!(layout.draws.at(command), Draw::Rect(..)) {
 				entry.span = None;
 			}
 		}

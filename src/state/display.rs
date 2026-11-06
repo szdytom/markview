@@ -34,7 +34,10 @@ impl DisplayState {
 					w: self.snapshot.width.max(1.),
 					h: cached.range.end - cached.range.start,
 				};
-				for (command, draw, _) in block.draws() {
+				for (command, _) in block.draw_commands() {
+					let Some(draw) = block.other_draw(command) else {
+						continue;
+					};
 					let Draw::Image { src, rect, .. } = draw else {
 						continue;
 					};

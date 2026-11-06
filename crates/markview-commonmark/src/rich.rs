@@ -62,7 +62,7 @@ impl SpannedText {
 			} else {
 				span.image.map_or_else(
 					|| InlineKind::Text(span.text),
-					InlineKind::Image,
+					|image| InlineKind::Image(Box::new(image)),
 				)
 			};
 			out.push(

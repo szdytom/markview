@@ -22,6 +22,7 @@ pub fn check(md: &str) {
 			pipeline::differential_engine(),
 		],
 		worked: AtomicBool::new(false),
+		history: Vec::new(),
 	};
 	let threads = 2 + (seed as usize % 3);
 	assert_eq!(pair.engines[1].set_parallelism(threads).unwrap(), threads);
@@ -84,6 +85,7 @@ pub fn check(md: &str) {
 struct Pair {
 	engines: [LayoutEngine; 2],
 	worked: AtomicBool,
+	history: Vec<(LayoutSnapshot, oracle::Fingerprint)>,
 }
 
 impl Pair {
@@ -95,6 +97,13 @@ impl Pair {
 		sample: usize,
 		cancel: bool,
 	) {
+		for (snapshot, expected) in &self.history {
+			assert_eq!(
+				oracle::layout(snapshot),
+				*expected,
+				"retained snapshot changed after a later pass"
+			);
+		}
 		let mut prefixes = Vec::new();
 		let mut results = Vec::new();
 		let caller = std::thread::current().id();
@@ -141,6 +150,10 @@ impl Pair {
 		);
 		if let (Some(a), Some(b)) = (&results[0], &results[1]) {
 			assert_equivalent(a, b);
+			let mut fresh = pipeline::differential_engine();
+			let fresh = fresh.layout_with_images(document, options, images);
+			assert_equivalent(a, &fresh);
+			self.history.push((a.clone(), oracle::layout(a)));
 			let mut a = a.clone();
 			let mut b = b.clone();
 			for force_open in [false, true] {
@@ -159,7 +172,13 @@ pub fn assert_equivalent(a: &LayoutSnapshot, b: &LayoutSnapshot) {
 	assert_eq!(
 		oracle::layout(a),
 		oracle::layout(b),
-		"visible serial/parallel scene differs"
+		"visible serial/parallel scene differs: {}",
+		crate::behavior::difference(
+			&crate::behavior::snapshot(a),
+			&crate::behavior::snapshot(b),
+			"snapshot"
+		)
+		.unwrap_or_else(|| "snapshot metadata".to_owned())
 	);
 	assert!(
 		a.same_reading_text(b),

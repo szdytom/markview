@@ -261,7 +261,10 @@ impl ImageTextures {
 				if block.y > end {
 					break;
 				}
-				for (_, draw, position) in block.draws() {
+				for (command, position) in block.draw_commands() {
+					let Some(draw) = block.other_draw(command) else {
+						continue;
+					};
 					let Draw::Image {
 						src, version, rect, ..
 					} = draw
@@ -306,7 +309,8 @@ mod tests {
 				version: 1,
 				rect: Rect { x: 0., y: 0., w, h },
 				title: String::new(),
-			}],
+			}]
+			.into(),
 			height: h,
 			width: w,
 			..Default::default()

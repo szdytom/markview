@@ -351,9 +351,12 @@ fn links_are_hit_testable_and_survive_reuse() {
 	let snapshot = engine.layout(&d, &opts);
 	let block = &snapshot.blocks[0];
 	assert_eq!(block.layout.links.len(), 2);
-	assert_eq!(&*block.layout.links[0].url, "https://example.com/manual");
-	assert_eq!(&*block.layout.links[1].url, "mailto:a@b.example");
-	let hit = block.layout.links[0].rect;
+	assert_eq!(
+		block.layout.links.at(0).url.as_ref(),
+		"https://example.com/manual"
+	);
+	assert_eq!(block.layout.links.at(1).url.as_ref(), "mailto:a@b.example");
+	let hit = block.layout.links.at(0).rect;
 	let none = HashMap::new();
 	assert_eq!(
 		snapshot.link_at(hit.x + 1.0, block.y + hit.y + 1.0, &none),
@@ -375,10 +378,10 @@ fn links_are_hit_testable_and_survive_reuse() {
 	);
 	let edited = engine.layout(&edited, &opts);
 	assert_eq!(
-		&*edited.blocks[0].layout.links[0].url,
+		edited.blocks[0].layout.links.at(0).url.as_ref(),
 		"https://example.com/manual/changed"
 	);
-	let rect = edited.blocks[0].layout.links[0].rect;
+	let rect = edited.blocks[0].layout.links.at(0).rect;
 	assert_eq!(
 		(rect.x, rect.y, rect.w, rect.h),
 		(hit.x, hit.y, hit.w, hit.h)
@@ -399,7 +402,7 @@ fn same_address_links_hit_their_own_occurrence() {
 	let block = &snapshot.blocks[0];
 	let links = &block.layout.links;
 	assert_eq!(links.len(), 2);
-	assert_ne!(links[0].id, links[1].id);
+	assert_ne!(links.at(0).id, links.at(1).id);
 	let none = HashMap::new();
 	for link in links {
 		let hit = snapshot
@@ -430,10 +433,10 @@ fn a_link_split_across_paragraphs_keeps_one_occurrence() {
 	let layout = &snapshot.blocks[0].layout;
 	let links = &layout.links;
 	assert_eq!(links.len(), 3);
-	let id = links[0].id;
+	let id = links.at(0).id;
 	assert!(links.iter().all(|link| link.id == id));
 	for link in links {
-		assert!(layout.link_hovered(link.commands.start, &link.url, id));
+		assert!(layout.link_hovered(link.commands.start, link.url, id));
 	}
 }
 
@@ -453,16 +456,16 @@ fn links_in_one_container_keep_distinct_occurrences() {
 	let layout = &snapshot.blocks[0].layout;
 	let links = &layout.links;
 	assert_eq!(links.len(), 2);
-	assert_ne!(links[0].id, links[1].id);
+	assert_ne!(links.at(0).id, links.at(1).id);
 	assert!(layout.link_hovered(
-		links[0].commands.start,
-		&links[0].url,
-		links[0].id
+		links.at(0).commands.start,
+		links.at(0).url,
+		links.at(0).id
 	));
 	assert!(!layout.link_hovered(
-		links[1].commands.start,
-		&links[1].url,
-		links[0].id
+		links.at(1).commands.start,
+		links.at(1).url,
+		links.at(0).id
 	));
 }
 
@@ -503,7 +506,7 @@ fn reused_siblings_keep_their_own_link_occurrences() {
 	);
 	let links = &snapshot.blocks[0].layout.links;
 	assert_eq!(links.len(), 2);
-	assert_ne!(links[0].id, links[1].id);
+	assert_ne!(links.at(0).id, links.at(1).id);
 }
 
 /// RTL text paints link fragments right to left, but the occurrence ids follow
@@ -597,7 +600,7 @@ fn semantic_links_with_shared_address_keep_distinct_origins() {
 	);
 	let links = &snapshot.blocks[0].layout.links;
 	assert_eq!(links.len(), 2);
-	assert_ne!(links[0].id, links[1].id);
+	assert_ne!(links.at(0).id, links.at(1).id);
 }
 
 /// A link run must hit the same box the I-beam hits: the whole line, not the
@@ -615,7 +618,7 @@ fn a_link_run_hits_the_whole_line_like_the_text_does() {
 	};
 	let snapshot = engine.layout(&d, &opts);
 	let block = &snapshot.blocks[0];
-	let link = &block.layout.links[0].rect;
+	let link = &block.layout.links.at(0).rect;
 	let cluster = block
 		.layout
 		.text
@@ -695,7 +698,7 @@ fn a_quote_bar_is_centered_on_the_text_it_frames() {
 					rect,
 					condition: Condition::Blockquote,
 					..
-				} => Some(*rect),
+				} => Some(rect),
 				_ => None,
 			})
 			.expect("blockquote box");
@@ -729,7 +732,7 @@ fn list_items_keep_the_paragraph_space_between_them() {
 		.layout
 		.text
 		.iter()
-		.map(|node| node.clusters[0].rect)
+		.map(|node| node.clusters.at(0).rect)
 		.collect();
 	assert_eq!(items.len(), 2);
 	let gap = items[1].y - items[0].y;
@@ -793,7 +796,7 @@ fn footnote_links_reach_the_note_and_its_number_returns() {
 	let links: Vec<&str> = snapshot
 		.blocks
 		.iter()
-		.flat_map(|b| b.layout.links.iter().map(|l| &*l.url))
+		.flat_map(|b| b.layout.links.iter().map(|l| l.url.as_ref()))
 		.collect();
 	assert_eq!(links.iter().filter(|u| **u == "#fn:a").count(), 2);
 	assert!(links.contains(&"#fn:b"));
@@ -803,7 +806,7 @@ fn footnote_links_reach_the_note_and_its_number_returns() {
 	let empty = HashMap::new();
 	let hit = |url: &str| {
 		snapshot.blocks.iter().enumerate().find_map(|(bi, b)| {
-			let link = b.layout.links.iter().find(|l| &*l.url == url)?;
+			let link = b.layout.links.iter().find(|l| l.url.as_ref() == url)?;
 			let (offset, _) = b.command_view(link.commands.start, bi, &empty);
 			Some((
 				link.rect.x - offset + link.rect.w * 0.5,
@@ -833,7 +836,8 @@ fn consecutive_footnote_references_merge_into_one_clickable_group() {
 	);
 	let block = &snapshot.blocks[0];
 	assert!(block.layout.text[0].text.contains("[1,2]"));
-	let links: Vec<&str> = block.layout.links.iter().map(|l| &*l.url).collect();
+	let links: Vec<&str> =
+		block.layout.links.iter().map(|l| l.url.as_ref()).collect();
 	assert_eq!(links, ["#fn:a", "#fn:b"]);
 	// Both numbers register the anchor a scrolled-to note returns to.
 	let references = |label: &str| {
@@ -970,7 +974,7 @@ fn a_lone_footnote_reference_stays_whole_clickable() {
 	);
 	let block = &snapshot.blocks[0];
 	assert!(block.layout.text[0].text.contains("[1]"));
-	let link = &block.layout.links[0];
+	let link = &block.layout.links.at(0);
 	let reading = &block.layout.text[0].text;
 	let bracket = block.layout.text[0]
 		.clusters
@@ -1060,9 +1064,19 @@ fn wrapped_links_produce_one_rect_per_line() {
 	let snapshot = engine.layout(&d, &opts);
 	let links = &snapshot.blocks[0].layout.links;
 	assert!(links.len() > 1, "expected a wrapped link, got {links:?}");
-	assert!(links.iter().all(|l| &*l.url == "https://example.com"));
-	assert!(links.iter().all(|l| l.id == links[0].id));
-	assert!(links.windows(2).all(|w| w[0].rect.y < w[1].rect.y));
+	assert!(
+		links
+			.iter()
+			.all(|l| l.url.as_ref() == "https://example.com")
+	);
+	assert!(links.iter().all(|l| l.id == links.at(0).id));
+	assert!(
+		links
+			.iter()
+			.collect::<Vec<_>>()
+			.windows(2)
+			.all(|w| w[0].rect.y < w[1].rect.y)
+	);
 }
 #[test]
 fn long_labels_are_trimmed_to_fit() {
@@ -1320,7 +1334,11 @@ fn overflowing_blocks_reserve_the_configured_scrollbar_gutter() {
 #[test]
 fn indent_applies_to_text_leading_paragraphs_and_whole_lists() {
 	fn first_x(snapshot: &LayoutSnapshot, block: usize, node: usize) -> f32 {
-		snapshot.blocks[block].layout.text[node].clusters[0].rect.x
+		snapshot.blocks[block].layout.text[node]
+			.clusters
+			.at(0)
+			.rect
+			.x
 	}
 	fn second_line_x(
 		snapshot: &LayoutSnapshot,
@@ -1328,7 +1346,7 @@ fn indent_applies_to_text_leading_paragraphs_and_whole_lists() {
 		node: usize,
 	) -> f32 {
 		let clusters = &snapshot.blocks[block].layout.text[node].clusters;
-		let first = clusters[0].rect.y;
+		let first = clusters.at(0).rect.y;
 		clusters
 			.iter()
 			.find(|c| (c.rect.y - first).abs() > 1.0)
@@ -1353,7 +1371,7 @@ fn indent_applies_to_text_leading_paragraphs_and_whole_lists() {
 			.draws
 			.iter()
 			.find_map(|d| match d {
-				Draw::Math { x, .. } => Some(*x),
+				Draw::Math { x, .. } => Some(x),
 				_ => None,
 			})
 			.expect("math draw")
@@ -1470,7 +1488,13 @@ fn a_theme_can_inset_bullet_and_ordered_lists_separately() {
 			)
 			.flattened();
 		let x = |block: usize| {
-			s.blocks[block].layout.text.last().unwrap().clusters[0]
+			s.blocks[block]
+				.layout
+				.text
+				.last()
+				.unwrap()
+				.clusters
+				.at(0)
 				.rect
 				.x
 		};
@@ -1598,7 +1622,7 @@ fn list_markers_center_on_the_actual_first_line() {
 				let layout = &snapshot.blocks[0].layout;
 				let numbered = prefix == "1.";
 				let text = &layout.text[usize::from(numbered)];
-				let line = text.clusters[0].rect;
+				let line = text.clusters.at(0).rect;
 				let expected = line.y + line.h * 0.5;
 				if body.starts_with("first $") {
 					assert!(line.h > options.font_size * 2.0);
@@ -1610,7 +1634,8 @@ fn list_markers_center_on_the_actual_first_line() {
 					for cluster in &marker.clusters {
 						assert_eq!(cluster.rect.y, line.y);
 						assert_eq!(cluster.rect.h, line.h);
-						let Draw::Glyph(glyph) = &layout.draws[cluster.command]
+						let Draw::Glyph(glyph) =
+							&layout.draws.at(cluster.command)
 						else {
 							panic!("numbering must be a glyph");
 						};
@@ -1685,10 +1710,10 @@ fn list_markers_center_on_an_image_only_first_line() {
 		let text = &layout.text[usize::from(prefix == "1.")];
 		let image = text.source_images[0].1.rect;
 		let expected = image.y + image.h * 0.5;
-		let continued = text.clusters[0].rect;
+		let continued = text.clusters.at(0).rect;
 		assert!(expected < continued.y + continued.h * 0.5);
 		let center = if prefix == "1." {
-			let marker = &layout.text[0].clusters[0].rect;
+			let marker = &layout.text[0].clusters.at(0).rect;
 			marker.y + marker.h * 0.5
 		} else {
 			layout
@@ -1720,13 +1745,13 @@ fn list_markers_center_on_an_image_only_first_line() {
 			.clusters
 			.iter()
 			.find(|cluster| {
-				matches!(layout.draws[cluster.command], Draw::Glyph(_))
+				matches!(layout.draws.at(cluster.command), Draw::Glyph(_))
 			})
 			.unwrap()
 			.rect;
 		let expected = line.y + line.h * 0.5;
 		let center = if prefix == "1." {
-			let marker = &layout.text[0].clusters[0].rect;
+			let marker = &layout.text[0].clusters.at(0).rect;
 			marker.y + marker.h * 0.5
 		} else {
 			layout
@@ -1811,22 +1836,22 @@ fn a_task_checkbox_is_a_drawn_box_a_theme_styles() {
 			Paint::Scoped(_, _, ColorField::Background) => {
 				surface += 1;
 				assert_eq!(
-					sheet.paint(*paint),
+					sheet.paint(paint),
 					crate::style::Color(0xFFFFFFFF).rgba()
 				);
 			}
 			Paint::Scoped(_, _, ColorField::Accent) => {
 				accents += 1;
-				box_geometry = Some((*center, points.clone()));
+				box_geometry = Some((center, points.clone()));
 				assert_eq!(
-					sheet.paint(*paint),
+					sheet.paint(paint),
 					crate::style::Color(0xC0392BFF).rgba()
 				);
 			}
 			Paint::Scoped(_, _, ColorField::BorderColor) => {
 				rings += 1;
 				assert_eq!(
-					sheet.paint(*paint),
+					sheet.paint(paint),
 					crate::style::Color(0x123456FF).rgba()
 				);
 				// The ring is the outer contour plus the inner one cut into
@@ -1837,7 +1862,7 @@ fn a_task_checkbox_is_a_drawn_box_a_theme_styles() {
 				checks += 1;
 				assert_eq!(points.len(), 6);
 				assert_eq!(
-					sheet.paint(*paint),
+					sheet.paint(paint),
 					crate::style::Color(0xFFFFFFFF).rgba()
 				);
 			}
@@ -1860,7 +1885,7 @@ fn a_task_checkbox_is_a_drawn_box_a_theme_styles() {
 		.iter()
 		.find_map(|draw| match draw {
 			Draw::Polygon { center, points, .. } if points.len() == 6 => {
-				Some((*center, points.clone()))
+				Some((center, points.clone()))
 			}
 			_ => None,
 		})
@@ -2123,7 +2148,7 @@ fn a_wide_numbering_format_widens_the_marker_column() {
 			.flattened()
 	};
 	let text_x = |snapshot: &LayoutSnapshot| {
-		snapshot.blocks[0].layout.text[1].clusters[0].rect.x
+		snapshot.blocks[0].layout.text[1].clusters.at(0).rect.x
 	};
 	let decimal = layout("1.");
 	let roman = layout("I.");
@@ -2137,7 +2162,7 @@ fn a_wide_numbering_format_widens_the_marker_column() {
 	for snapshot in [&decimal, &roman] {
 		for pair in snapshot.blocks[0].layout.text.chunks(2) {
 			let (label, text) =
-				(pair[0].clusters[0].rect, pair[1].clusters[0].rect);
+				(pair[0].clusters.at(0).rect, pair[1].clusters.at(0).rect);
 			assert!(
 				label.x + label.w <= text.x + 0.01,
 				"the number {label:?} overlaps the text {text:?}"
@@ -2232,7 +2257,7 @@ fn inline_code_chip_covers_justified_spaces() {
 			.iter()
 			.rfind(|c| code.contains(&c.range.start))
 			.unwrap_or_else(|| panic!("width={width}: no code clusters"));
-		let chip = match &block.draws[first.command] {
+		let chip = match &block.draws.at(first.command) {
 			crate::scene::Draw::Rect(rect, _) => *rect,
 			other => panic!("width={width}: expected a chip, found {other:?}"),
 		};
@@ -2267,7 +2292,7 @@ fn a_highlight_mark_paints_a_background_only_in_the_dialect() {
 			.draws
 			.iter()
 			.filter_map(|d| match d {
-				Draw::Rect(_, paint) => Some(*paint),
+				Draw::Rect(_, paint) => Some(paint),
 				_ => None,
 			})
 			.collect::<Vec<_>>()
@@ -2327,11 +2352,11 @@ fn an_inline_code_chip_pads_its_text_and_pushes_its_neighbours() {
 		};
 		let first = cluster(2);
 		// The chip is pushed just before the glyphs of the code's first cluster.
-		let chip = match &block.draws[first.command] {
+		let chip = match &block.draws.at(first.command) {
 			Draw::Rect(rect, _) => *rect,
 			other => panic!("expected the chip, found {other:?}"),
 		};
-		let glyph = match &block.draws[first.command + 1] {
+		let glyph = match &block.draws.at(first.command + 1) {
 			Draw::Glyph(glyph) => glyph.x,
 			other => panic!("expected a glyph, found {other:?}"),
 		};
@@ -3561,7 +3586,7 @@ fn details_summary_is_hit_testable_but_the_body_is_not() {
 	let collapsed = engine.layout(&doc, &LayoutOptions::default());
 	let block = &collapsed.blocks[0];
 	assert_eq!(collapsed.blocks[0].layout.links.len(), 1);
-	let hit = block.layout.links[0].rect;
+	let hit = block.layout.links.at(0).rect;
 	assert_eq!(
 		collapsed.link_at(hit.x + 1.0, block.y + hit.y + 1.0, &none),
 		Some(url.as_str())
@@ -3574,7 +3599,7 @@ fn details_summary_is_hit_testable_but_the_body_is_not() {
 	let expanded =
 		engine.layout(&doc, &with_details(LayoutOptions::default(), id, true));
 	let block = &expanded.blocks[0];
-	let hit = block.layout.links[0].rect;
+	let hit = block.layout.links.at(0).rect;
 	assert_eq!(
 		expanded.link_at(hit.x + 1.0, block.y + hit.y + 1.0, &none),
 		Some(url.as_str())
@@ -3695,7 +3720,7 @@ fn identical_details_links_point_at_the_element_that_was_hit() {
 			.iter()
 			.find(|link| link.url.starts_with(DETAILS_SCHEME))
 			.unwrap_or_else(|| panic!("block {i} has no summary link"));
-		assert_eq!(details_id(&link.url), Some(doc.blocks()[i].id()));
+		assert_eq!(details_id(link.url), Some(doc.blocks()[i].id()));
 		let rect = link.rect;
 		let hit = snapshot.link_at(
 			rect.x + rect.w * 0.5,
@@ -3728,7 +3753,7 @@ fn identical_nested_details_bind_their_own_summaries() {
 			.layout
 			.links
 			.iter()
-			.map(|link| &*link.url)
+			.map(|link| link.url.as_ref())
 			.collect();
 		let own = details_url(doc.blocks()[i].id());
 		let inner = details_url(nested(i));
@@ -3799,17 +3824,17 @@ fn disclosure_hover_stops_before_nested_content() {
 		.layout
 		.links
 		.iter()
-		.find(|link| &*link.url == "https://example.com/s")
+		.find(|link| link.url.as_ref() == "https://example.com/s")
 		.unwrap();
 	let body_link = block
 		.layout
 		.links
 		.iter()
-		.find(|link| &*link.url == "https://example.com/b")
+		.find(|link| link.url.as_ref() == "https://example.com/b")
 		.unwrap();
 	let summary = hovered(&block.layout, &summary_url, summary_link.id);
-	let inner = hovered(&block.layout, &inner_link.url, inner_link.id);
-	let body = hovered(&block.layout, &body_link.url, body_link.id);
+	let inner = hovered(&block.layout, inner_link.url, inner_link.id);
+	let body = hovered(&block.layout, body_link.url, body_link.id);
 	assert!(!summary.is_empty());
 	assert!(!inner.is_empty(), "the summary link never highlights");
 	assert!(!body.is_empty(), "the body link never highlights");
@@ -3836,7 +3861,7 @@ fn a_details_body_reference_link_lays_out_as_a_link() {
 		.layout
 		.links
 		.iter()
-		.map(|link| &*link.url)
+		.map(|link| link.url.as_ref())
 		.collect();
 	assert!(urls.contains(&"https://example.com/b"), "{urls:?}");
 }
@@ -4056,7 +4081,7 @@ fn a_callout_draws_its_family_color_and_header() {
 					condition,
 					left_only,
 					..
-				} => Some((*chain, *condition, *left_only)),
+				} => Some((chain, condition, left_only)),
 				_ => None,
 			})
 			.expect("quote box")
@@ -4146,7 +4171,7 @@ fn a_reused_definition_body_takes_the_current_field_id() {
 		.blocks
 		.iter()
 		.flat_map(|block| block.layout.text.iter())
-		.find(|node| node.text == "reused")
+		.find(|node| node.text.as_str() == "reused")
 		.expect("the reused body is laid out");
 	assert_eq!(
 		node.search_field,

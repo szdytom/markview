@@ -232,7 +232,8 @@ impl Reading {
 fn image_rects(
 	block: &PlacedBlock,
 ) -> impl Iterator<Item = crate::layout::Rect> + '_ {
-	block.draws().filter_map(|(command, draw, _)| {
+	block.draw_commands().filter_map(|(command, _)| {
+		let draw = block.other_draw(command)?;
 		let Draw::Image { rect, .. } = draw else {
 			return None;
 		};
@@ -339,7 +340,7 @@ impl ReaderSession {
 									.snapshot
 									.images
 									.entries
-									.get(src)
+									.get(&src)
 									.is_none_or(|info| {
 										info.size.is_none()
 											&& info.error.is_none()

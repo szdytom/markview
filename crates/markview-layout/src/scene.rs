@@ -6,9 +6,17 @@ use crate::{
 use parley::FontData;
 pub use ratex_types::PathCommand;
 use std::{collections::HashMap, ops::Range, sync::Arc};
-mod flow;
-mod memory;
+mod links;
+pub use links::{LinkBuffer, LinkFragment};
+mod draws;
+pub(crate) mod flow;
+pub(crate) mod memory;
+#[cfg(feature = "fuzz")]
+pub use memory::StorageVisitor;
+mod shared;
+pub use draws::{DrawBuffer, DrawIter, GlyphPosition, GlyphStyleId};
 pub use flow::{FlowIndex, Scene};
+pub use shared::GeometryArray;
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash)]
 pub enum Paint {
 	Color(crate::style::Color),
@@ -46,18 +54,31 @@ impl Paint {
 }
 
 #[derive(Clone, Debug)]
-pub struct Glyph {
+pub struct GlyphStyle {
 	pub font: FontData,
 	pub coords: Arc<[i16]>,
-	pub id: u16,
 	pub size: f32,
-	pub x: f32,
-	pub y: f32,
-	/// The face carries no italic, so the renderer shears the outline.
 	pub synthetic_italic: bool,
-	/// The renderer emboldens the outline of a non-bold face.
 	pub synthetic_bold: bool,
 	pub paint: Paint,
+}
+#[derive(Clone, Debug)]
+pub struct Glyph {
+	pub style: Arc<GlyphStyle>,
+	pub id: u16,
+	pub x: f32,
+	pub y: f32,
+}
+impl std::ops::Deref for Glyph {
+	type Target = GlyphStyle;
+	fn deref(&self) -> &GlyphStyle {
+		&self.style
+	}
+}
+impl std::ops::DerefMut for Glyph {
+	fn deref_mut(&mut self) -> &mut GlyphStyle {
+		Arc::make_mut(&mut self.style)
+	}
 }
 
 pub use markview_geometry::Rect;
@@ -107,7 +128,7 @@ pub enum Draw {
 		radius: f32,
 		border: f32,
 		left_only: bool,
-		decoration: Option<BoxDecoration>,
+		decoration: Option<Arc<BoxDecoration>>,
 	},
 	Math {
 		math: Arc<MathBox>,
@@ -144,20 +165,22 @@ impl BoxDecoration {
 	pub fn from_rule(
 		rule: &crate::style::Rule,
 		left_only: bool,
-	) -> Option<Self> {
+	) -> Option<Arc<Self>> {
 		(rule.border_edges.is_some() || rule.corner_radii.is_some()).then(
-			|| Self {
-				edges: rule.border_edges.unwrap_or_else(|| {
-					let width = rule.border_width.unwrap_or(0.0);
-					if left_only {
-						[0.0, 0.0, 0.0, width]
-					} else {
-						[width; 4]
-					}
-				}),
-				corners: rule
-					.corner_radii
-					.unwrap_or([rule.radius.unwrap_or(0.0); 4]),
+			|| {
+				Arc::new(Self {
+					edges: rule.border_edges.unwrap_or_else(|| {
+						let width = rule.border_width.unwrap_or(0.0);
+						if left_only {
+							[0.0, 0.0, 0.0, width]
+						} else {
+							[width; 4]
+						}
+					}),
+					corners: rule
+						.corner_radii
+						.unwrap_or([rule.radius.unwrap_or(0.0); 4]),
+				})
 			},
 		)
 	}
@@ -319,16 +342,16 @@ pub struct HeadingAnchor {
 #[derive(Clone, Debug, Default)]
 pub struct BlockLayout {
 	pub scene: Scene,
-	pub page_constraints: Vec<PageConstraint>,
-	pub text: Vec<TextNode>,
-	pub draws: Vec<Draw>,
+	pub page_constraints: GeometryArray<PageConstraint>,
+	pub text: GeometryArray<TextNode>,
+	pub draws: DrawBuffer,
 	/// Inline decoration draw indices and their owning text rows, in draw order.
-	pub inline_decorations: Vec<(usize, Range<f32>)>,
+	pub inline_decorations: GeometryArray<(usize, Range<f32>)>,
 	/// Height with every disclosure expanded; visible height is `PlacedBlock::height`.
 	pub height: f32,
 	pub width: f32,
-	pub overflow: Vec<Overflow>,
-	pub links: Vec<LinkRect>,
+	pub overflow: GeometryArray<Overflow>,
+	pub links: LinkBuffer,
 	/// Every inline link occurrence prepared in this block, in reading order,
 	/// including runs that line breaking discarded. Cache reuse rebinds its
 	/// ids from this list rather than from the painted fragments alone.
@@ -435,7 +458,10 @@ impl LayoutSnapshot {
 			if y < b.y || y > b.y + b.height() {
 				continue;
 			}
-			for (i, d, _) in b.draws() {
+			for (i, _) in b.draw_commands() {
+				let Some(d) = b.other_draw(i) else {
+					continue;
+				};
 				if let Draw::Image {
 					src,
 					version,
@@ -491,7 +517,7 @@ impl LayoutSnapshot {
 				if rect.contains(x, y) {
 					return Some(LinkRef {
 						url: link.url.as_ref(),
-						target: &link.target,
+						target: link.target,
 						block: block.id,
 						id: link.id,
 					});
@@ -741,7 +767,7 @@ impl BlockLayout {
 	pub fn link_hovered(&self, command: usize, url: &str, id: LinkId) -> bool {
 		self.links.iter().any(|link| {
 			link.id == id
-				&& &*link.url == url
+				&& link.url.as_ref() == url
 				&& link.commands.contains(&command)
 		})
 	}
@@ -749,7 +775,7 @@ impl BlockLayout {
 	/// Draw spans owned by each text cluster, with its node index and row geometry.
 	pub fn text_draw_spans(
 		&self,
-	) -> impl Iterator<Item = (Range<usize>, usize, &TextCluster)> {
+	) -> impl Iterator<Item = (Range<usize>, usize, TextCluster)> {
 		let mut clusters: Vec<_> = self
 			.text
 			.iter()
@@ -773,3 +799,95 @@ mod tests;
 
 #[cfg(test)]
 mod proptests;
+
+type GlyphStyleKey = (u64, u32, Arc<[i16]>, u32, bool, bool, Paint);
+#[derive(Default)]
+pub(crate) struct GlyphStyles {
+	styles: HashMap<GlyphStyleKey, Arc<GlyphStyle>>,
+	last: Option<Arc<GlyphStyle>>,
+}
+impl GlyphStyles {
+	pub(crate) fn get(
+		&mut self,
+		font: &FontData,
+		coords: &Arc<[i16]>,
+		size: f32,
+		synthetic: (bool, bool),
+		paint: Paint,
+	) -> Arc<GlyphStyle> {
+		if let Some(last) = &self.last
+			&& last.font.data.id() == font.data.id()
+			&& last.font.index == font.index
+			&& last.coords == *coords
+			&& last.size.to_bits() == size.to_bits()
+			&& (last.synthetic_italic, last.synthetic_bold) == synthetic
+			&& last.paint == paint
+		{
+			return last.clone();
+		}
+		self.intern(GlyphStyle {
+			font: font.clone(),
+			coords: coords.clone(),
+			size,
+			synthetic_italic: synthetic.0,
+			synthetic_bold: synthetic.1,
+			paint,
+		})
+	}
+	pub(crate) fn repaint(&mut self, glyph: &mut Glyph, paint: Paint) {
+		if glyph.paint != paint {
+			glyph.style = self.get(
+				&glyph.font,
+				&glyph.coords,
+				glyph.size,
+				(glyph.synthetic_italic, glyph.synthetic_bold),
+				paint,
+			);
+		}
+	}
+
+	pub(crate) fn share(&mut self, style: &Arc<GlyphStyle>) -> Arc<GlyphStyle> {
+		let key = (
+			style.font.data.id(),
+			style.font.index,
+			style.coords.clone(),
+			style.size.to_bits(),
+			style.synthetic_italic,
+			style.synthetic_bold,
+			style.paint,
+		);
+		self.styles
+			.entry(key)
+			.or_insert_with(|| style.clone())
+			.clone()
+	}
+	pub(crate) fn intern(&mut self, style: GlyphStyle) -> Arc<GlyphStyle> {
+		if let Some(last) = &self.last
+			&& last.font.data.id() == style.font.data.id()
+			&& last.font.index == style.font.index
+			&& last.coords == style.coords
+			&& last.size.to_bits() == style.size.to_bits()
+			&& last.synthetic_italic == style.synthetic_italic
+			&& last.synthetic_bold == style.synthetic_bold
+			&& last.paint == style.paint
+		{
+			return last.clone();
+		}
+		let key = (
+			style.font.data.id(),
+			style.font.index,
+			style.coords.clone(),
+			style.size.to_bits(),
+			style.synthetic_italic,
+			style.synthetic_bold,
+			style.paint,
+		);
+		let shared = self
+			.styles
+			.entry(key)
+			.or_insert_with(|| Arc::new(style))
+			.clone();
+		self.last = Some(shared.clone());
+		shared
+	}
+}

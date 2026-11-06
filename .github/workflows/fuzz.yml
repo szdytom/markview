@@ -34,6 +34,13 @@ jobs:
       - name: Test differential oracles
         working-directory: fuzz
         run: cargo +nightly test -p mvfuzz --locked
+      - name: Preserve document memory behavior differences
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: document-memory-differences
+          path: artifacts/doc-memory-regression/
+          if-no-files-found: ignore
       # Seeds from the official specs so the smoke covers real documents.
       - name: Prepare seed corpora
         working-directory: fuzz

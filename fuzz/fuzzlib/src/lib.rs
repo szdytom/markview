@@ -24,3 +24,5 @@ pub mod seam;
 pub mod web_layout;
 pub mod webgen;
 pub mod webpage;
+
+pub mod behavior;

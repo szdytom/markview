@@ -206,7 +206,7 @@ impl Renderer {
 		}
 		for staged in &scratch.backgrounds {
 			self.draw(
-				snapshot.blocks[staged.block].draw(staged.command),
+				&snapshot.blocks[staged.block].draw(staged.command),
 				staged.dx,
 				staged.dy,
 				staged.clip,
@@ -217,7 +217,7 @@ impl Renderer {
 		self.draw_selection(snapshot, view, clip);
 		for staged in &scratch.foreground {
 			self.draw(
-				snapshot.blocks[staged.block].draw(staged.command),
+				&snapshot.blocks[staged.block].draw(staged.command),
 				staged.dx,
 				staged.dy,
 				staged.clip,

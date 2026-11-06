@@ -28,10 +28,10 @@ fn shapes(x: f32, y: f32, depth: usize) -> Vec<Draw> {
 			radius: 2.0,
 			border: 1.0,
 			left_only: false,
-			decoration: Some(BoxDecoration {
+			decoration: Some(std::sync::Arc::new(BoxDecoration {
 				edges: [1.0, 2.0, 3.0, 4.0],
 				corners: [2.0; 4],
-			}),
+			})),
 		},
 		Draw::Polygon {
 			center: [x, y],

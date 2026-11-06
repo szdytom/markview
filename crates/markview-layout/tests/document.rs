@@ -86,13 +86,13 @@ fn a_source_free_document_reads_searches_and_selects_without_mapping() {
 	};
 	let image = Inline {
 		link: None,
-		kind: InlineKind::Image(ImageSpec {
+		kind: InlineKind::Image(Box::new(ImageSpec {
 			source: ImageSource::Resource(ResourceRef::document("plot.png")),
 			alt: "Plot".into(),
 			title: String::new(),
 			width: None,
 			height: None,
-		}),
+		})),
 		style: TextStyle::default(),
 	};
 	let paragraph = builder.block(

@@ -338,9 +338,12 @@ impl LayoutEngine {
 			entry.pass = layout.pass.id;
 			entry.layout.clone()
 		});
+		let cached = cached.and_then(|geometry| {
+			cache::remap_link_ids(geometry, block, &layout.pass.options.limits)
+		});
 		let geometry = if let Some(cached) = cached {
 			layout.result.reused += 1;
-			cache::remap_link_ids(cached, block, &layout.pass.options.limits)
+			cached
 		} else {
 			#[cfg(all(feature = "parallel", not(target_arch = "wasm32")))]
 			if _prefetch {

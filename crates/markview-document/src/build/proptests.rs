@@ -109,7 +109,7 @@ fn image(slot: u8) -> crate::ImageSpec {
 
 fn image_text(slot: u8) -> Vec<Inline> {
 	vec![Inline {
-		kind: InlineKind::Image(image(slot)),
+		kind: InlineKind::Image(Box::new(image(slot))),
 		style: TextStyle::default(),
 		link: None,
 	}]

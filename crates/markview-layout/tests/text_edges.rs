@@ -52,7 +52,7 @@ fn code(paint: Paint) -> bool {
 	matches!(paint, Paint::Cascade(chain, _) if chain_set(chain).contains(Condition::Code))
 }
 
-fn glyphs(snapshot: &LayoutSnapshot) -> Vec<&Glyph> {
+fn glyphs(snapshot: &LayoutSnapshot) -> Vec<Glyph> {
 	snapshot.blocks[0]
 		.layout
 		.draws
@@ -73,7 +73,7 @@ fn chips(snapshot: &LayoutSnapshot) -> Vec<Rect> {
 			Draw::Rect(
 				rect,
 				paint @ Paint::Cascade(_, ColorField::Background),
-			) if code(*paint) => Some(*rect),
+			) if code(paint) => Some(rect),
 			_ => None,
 		})
 		.collect()
@@ -123,12 +123,12 @@ fn layout_edges_use_local_em_and_invalidate_cached_geometry() {
 	let mut engine = LayoutEngine::new();
 	let mut opts = options("[[rule]]\nwhen=['body']\nline_height=4", 18., 800.);
 	let cap = engine.layout(&doc, &opts);
-	let g = glyphs(&cap)[0];
+	let g = &glyphs(&cap)[0];
 	let font =
 		skrifa::FontRef::from_index(g.font.data.data(), g.font.index).unwrap();
 	let cap_height =
 		font.metrics(Size::new(g.size), &[][..]).cap_height.unwrap();
-	let row = cap.blocks[0].layout.text[0].clusters[0].rect;
+	let row = cap.blocks[0].layout.text[0].clusters.at(0).rect;
 	assert!((g.y - (row.y + (row.h + cap_height) / 2.)).abs() < 0.01);
 	assert!(Arc::ptr_eq(
 		&cap.blocks[0].layout,
@@ -142,7 +142,7 @@ fn layout_edges_use_local_em_and_invalidate_cached_geometry() {
 		&cap.blocks[0].layout,
 		&numeric.blocks[0].layout
 	));
-	let g = glyphs(&numeric)[0];
+	let g = &glyphs(&numeric)[0];
 	assert!((g.y - (row.y + (row.h + 0.3 * g.size) / 2.)).abs() < 0.01);
 	assert_eq!(glyphs(&numeric).len(), glyphs(&cap).len());
 }
@@ -247,7 +247,7 @@ fn bounds_follow_ink_and_blank_fragments_fall_back_to_font_metrics() {
 	let bounds: Vec<_> = glyphs(&snapshot)
 		.into_iter()
 		.filter(|g| code(g.paint))
-		.filter_map(ink)
+		.filter_map(|g| ink(&g))
 		.collect();
 	let top = bounds.iter().map(|b| b.0).fold(f32::INFINITY, f32::min);
 	let bottom = bounds.iter().map(|b| b.1).fold(f32::NEG_INFINITY, f32::max);
@@ -260,7 +260,7 @@ fn bounds_follow_ink_and_blank_fragments_fall_back_to_font_metrics() {
 	let bounds: Vec<_> = glyphs(&raised_ink)
 		.into_iter()
 		.filter(|g| code(g.paint))
-		.filter_map(ink)
+		.filter_map(|g| ink(&g))
 		.collect();
 	let chip = chips(&raised_ink)[0];
 	assert!(
@@ -274,8 +274,11 @@ fn bounds_follow_ink_and_blank_fragments_fall_back_to_font_metrics() {
 		18.,
 		800.,
 	);
-	let ink: Vec<_> = glyphs(&bounded).into_iter().filter_map(ink).collect();
-	let row = bounded.blocks[0].layout.text[0].clusters[0].rect;
+	let ink: Vec<_> = glyphs(&bounded)
+		.into_iter()
+		.filter_map(|g| ink(&g))
+		.collect();
+	let row = bounded.blocks[0].layout.text[0].clusters.at(0).rect;
 	assert!(
 		ink.iter().all(|&(top, bottom)| top >= row.y - 0.05
 			&& bottom <= row.y + row.h + 0.05)
@@ -307,7 +310,7 @@ fn baseline_moves_glyphs_backgrounds_and_decorations_at_each_size() {
 				.zip(&moved.blocks[0].layout.draws)
 			{
 				if let (Draw::Rect(a, p), Draw::Rect(b, _)) = (a, b)
-					&& code(*p)
+					&& code(p)
 				{
 					assert!((b.y - a.y - delta).abs() < 0.01);
 				}
@@ -398,15 +401,13 @@ fn the_issue_six_example_keeps_raised_ink_near_chinese_text() {
 	};
 	let chinese: Vec<_> = glyphs
 		.iter()
-		.copied()
 		.filter(|g| {
 			!code(g.paint)
 				&& g.font.data.data()
 					== include_bytes!("fonts/NotoSerifCJKsc-Regular-subset.otf")
 		})
 		.collect();
-	let inline: Vec<_> =
-		glyphs.iter().copied().filter(|g| code(g.paint)).collect();
+	let inline: Vec<_> = glyphs.iter().filter(|g| code(g.paint)).collect();
 	assert!(!chinese.is_empty() && !inline.is_empty());
 	// Ascenders extend above the optical center; the ink box sits slightly higher.
 	let raised = center(&chinese) - center(&inline);

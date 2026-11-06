@@ -16,7 +16,7 @@ pub fn intra_block_anchor(
 		.filter(|(_, _, rect)| rect.y + rect.h >= local_y)
 		.min_by(|(_, a, ar), (_, c, cr)| {
 			let image = |c: &crate::text::TextCluster| {
-				matches!(anchor.layout.draws[c.command], Draw::Image { .. })
+				matches!(anchor.layout.draws.at(c.command), Draw::Image { .. })
 			};
 			image(a).cmp(&image(c)).then_with(|| {
 				(ar.y - local_y).abs().total_cmp(&(cr.y - local_y).abs())

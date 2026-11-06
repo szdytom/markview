@@ -91,7 +91,8 @@ impl BlockContext<'_> {
 		}
 		let node = out.text.len();
 		out.text.push(TextNode::new(p.reading.clone(), ""));
-		out.text.last_mut().unwrap().search_ranges = p.search_ranges.clone();
+		out.text.last_mut().unwrap().search_ranges =
+			p.search_ranges.clone().into();
 		// The indent consumes part of the first line's measure, and never enough
 		// to leave the opening line without room for a character.
 		let indent = if indent {
@@ -612,7 +613,8 @@ impl BlockContext<'_> {
 							span.h = bottom - span.y;
 							span.w =
 								(rect.x + rect.w).max(span.x + span.w) - span.x;
-							out.draws[*index] = Draw::Rect(*span, paint);
+							*out.draws.get_mut(*index).unwrap() =
+								Draw::Rect(*span, paint);
 						}
 						_ => {
 							background =

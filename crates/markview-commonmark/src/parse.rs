@@ -229,7 +229,7 @@ impl Reader<'_> {
 					);
 				}
 				out.push(
-					InlineKind::Image(image),
+					InlineKind::Image(Box::new(image)),
 					style.clone(),
 					source.start..end,
 				);
@@ -291,7 +291,7 @@ impl Reader<'_> {
 				NodeValue::HtmlInline(t) => {
 					match html::inline(t, self.dialect.ofm) {
 						html::Inline::Image(image) => {
-							Some(InlineKind::Image(image))
+							Some(InlineKind::Image(Box::new(image)))
 						}
 						html::Inline::Ignore => continue,
 						html::Inline::Break => Some(InlineKind::LineBreak(
@@ -366,17 +366,19 @@ impl Reader<'_> {
 						} else {
 							String::new()
 						};
-						Some(InlineKind::Image(crate::image::ImageSpec {
-							source: crate::image::ImageSource::Resource(
-								crate::image::ResourceRef::vault(
-									wikilink_asset_url(l),
+						Some(InlineKind::Image(Box::new(
+							crate::image::ImageSpec {
+								source: crate::image::ImageSource::Resource(
+									crate::image::ResourceRef::vault(
+										wikilink_asset_url(l),
+									),
 								),
-							),
-							alt,
-							title: String::new(),
-							width: None,
-							height: None,
-						}))
+								alt,
+								title: String::new(),
+								width: None,
+								height: None,
+							},
+						)))
 					} else {
 						let url = wikilink_url(l);
 						child_style.link = Some(source_link(url, source.start));
@@ -402,7 +404,7 @@ impl Reader<'_> {
 					None
 				}
 				NodeValue::Image(link) => {
-					Some(InlineKind::Image(crate::image::ImageSpec {
+					Some(InlineKind::Image(Box::new(crate::image::ImageSpec {
 						source: crate::image::ImageSource::Resource(
 							crate::image::ResourceRef::document(
 								link.url.clone(),
@@ -412,7 +414,7 @@ impl Reader<'_> {
 						title: link.title.clone(),
 						width: None,
 						height: None,
-					}))
+					})))
 				}
 				_ => None,
 			};
@@ -714,7 +716,7 @@ impl Reader<'_> {
 			let source = begin..end;
 			let mut text = SpannedText::new();
 			text.push(
-				InlineKind::Image(image),
+				InlineKind::Image(Box::new(image)),
 				TextStyle::default(),
 				source.clone(),
 			);
@@ -2033,7 +2035,7 @@ fn code_block_kind(
 	if c.info.split_whitespace().next() == Some("mermaid") {
 		BlockKind::Paragraph(vec![Inline {
 			link: None,
-			kind: InlineKind::Image(crate::image::ImageSpec {
+			kind: InlineKind::Image(Box::new(crate::image::ImageSpec {
 				source: crate::image::ImageSource::Diagram(
 					crate::image::Diagram {
 						language: "mermaid".into(),
@@ -2047,7 +2049,7 @@ fn code_block_kind(
 				title: String::new(),
 				width: None,
 				height: None,
-			}),
+			})),
 			style: markview_document::TextStyle::default(),
 		}])
 	} else if c.info.trim() == "math" {

@@ -27,7 +27,7 @@ struct PlacedCell {
 	preferred_width: f32,
 	gap_before: bool,
 	gap_after: bool,
-	decoration: Option<BoxDecoration>,
+	decoration: Option<std::sync::Arc<BoxDecoration>>,
 }
 
 impl BlockContext<'_> {
@@ -281,7 +281,7 @@ impl BlockContext<'_> {
 			let rule = cell_rule(&appearance.chain, opts, cell, table);
 			let before = rule.space_before.unwrap_or(0.) * opts.font_size;
 			let after = rule.space_after.unwrap_or(0.) * opts.font_size;
-			out.draws[cell.draw] = Draw::Box {
+			*out.draws.get_mut(cell.draw).unwrap() = Draw::Box {
 				rect: Rect {
 					x: cell_x,
 					y: cell_top + before,
@@ -293,7 +293,7 @@ impl BlockContext<'_> {
 				radius: rule.radius.unwrap_or(0.),
 				border: rule.border_width.unwrap_or(0.),
 				left_only: false,
-				decoration: cell.decoration,
+				decoration: cell.decoration.clone(),
 			};
 			if cell.rowspan > 1 {
 				out.page_constraints.push(PageConstraint {
@@ -622,10 +622,10 @@ impl BlockContext<'_> {
 				}
 			}
 			cell.decoration = if collapse {
-				Some(BoxDecoration {
+				Some(std::sync::Arc::new(BoxDecoration {
 					edges,
 					corners: [0.0; 4],
-				})
+				}))
 			} else {
 				BoxDecoration::from_rule(&rule, false)
 			};

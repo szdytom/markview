@@ -2,7 +2,10 @@
 use crate::layout::{LayoutSnapshot, Rect};
 use icu_segmenter::{WordSegmenter, WordSegmenterBorrowed};
 pub use markview_document::Affinity;
-use std::{ops::Range, sync::OnceLock};
+use std::{
+	ops::Range,
+	sync::{Arc, OnceLock},
+};
 use unicode_segmentation::UnicodeSegmentation;
 
 /// Word boundaries for pointer gestures and text counts. ICU supplies the
@@ -303,37 +306,85 @@ impl GeometrySelection {
 pub struct TextNode {
 	pub search_field: Option<markview_document::FieldId>,
 	/// Pairs of semantic and reading byte ranges; diagnostics have no pair.
-	pub search_ranges: Vec<(Range<usize>, Range<usize>)>,
+	pub search_ranges:
+		crate::scene::GeometryArray<(Range<usize>, Range<usize>)>,
 	/// Image geometry bound by inline ordinal, independent of reading text.
 	pub(crate) source_images: Vec<(usize, TextCluster)>,
-	pub text: String,
+	pub text: Arc<String>,
 	pub separator: &'static str,
-	pub clusters: Vec<TextCluster>,
+	pub clusters: ClusterBuffer,
 	/// First node of the paragraph or cell; `None` denotes a standalone node.
 	pub(crate) selection_group: Option<usize>,
-	boundaries: Vec<usize>,
+	boundaries: GraphemeBoundaries,
 }
 impl TextNode {
+	/// Reading metadata for representation-independent harness records.
+	#[cfg(feature = "fuzz")]
+	pub fn reading_metadata(
+		&self,
+	) -> (&[(usize, TextCluster)], Option<usize>, Vec<usize>) {
+		(
+			&self.source_images,
+			self.selection_group,
+			(0..self.boundaries.len())
+				.map(|i| self.boundaries.at(i))
+				.collect(),
+		)
+	}
 	pub(crate) fn heap_bytes(&self) -> usize {
 		self.text.capacity()
-			+ self.clusters.capacity() * std::mem::size_of::<TextCluster>()
-			+ self.search_ranges.capacity()
-				* std::mem::size_of::<(Range<usize>, Range<usize>)>()
+			+ size_of::<String>()
+			+ 2 * size_of::<usize>()
+			+ self.clusters.storage_bytes()
+			+ self.search_ranges.heap_bytes()
 			+ self.source_images.capacity()
 				* std::mem::size_of::<(usize, TextCluster)>()
-			+ self.boundaries.capacity() * std::mem::size_of::<usize>()
+			+ self.boundaries.heap_bytes()
 	}
-	pub fn new(text: String, separator: &'static str) -> Self {
-		let mut boundaries: Vec<_> =
-			text.grapheme_indices(true).map(|(i, _)| i).collect();
-		boundaries.push(text.len());
+	pub(crate) fn seal(&mut self) {
+		self.source_images.shrink_to_fit();
+		self.clusters.seal();
+		if self.search_ranges.windows(2).any(|p| {
+			let (a, b) = (&p[0], &p[1]);
+			a.0.start < a.0.end
+				&& b.0.start < b.0.end
+				&& a.0.len() == a.1.len()
+				&& b.0.len() == b.1.len()
+				&& a.0.end == b.0.start
+				&& a.1.end == b.1.start
+		}) {
+			self.search_ranges.dedup_by(
+				|(next_s, next_r), (prev_s, prev_r)| {
+					if prev_s.start < prev_s.end
+						&& next_s.start < next_s.end
+						&& prev_s.len() == prev_r.len()
+						&& next_s.len() == next_r.len()
+						&& prev_s.end == next_s.start
+						&& prev_r.end == next_r.start
+					{
+						prev_s.end = next_s.end;
+						prev_r.end = next_r.end;
+						true
+					} else {
+						false
+					}
+				},
+			);
+		}
+		if self.search_ranges.capacity() != self.search_ranges.len() {
+			self.search_ranges.shrink_to_fit();
+		}
+	}
+	pub fn new(mut text: String, separator: &'static str) -> Self {
+		text.shrink_to_fit();
+		let boundaries = GraphemeBoundaries::new(&text);
 		Self {
 			search_field: None,
-			search_ranges: Vec::new(),
+			search_ranges: Default::default(),
 			source_images: Vec::new(),
-			text,
+			text: Arc::new(text),
 			separator,
-			clusters: Vec::new(),
+			clusters: ClusterBuffer::default(),
 			selection_group: None,
 			boundaries,
 		}
@@ -346,17 +397,17 @@ impl TextNode {
 	}
 	/// Greatest grapheme boundary at or before `offset`.
 	fn grapheme_floor(&self, offset: usize) -> usize {
-		self.boundaries[self
+		self.boundaries.at(self
 			.boundaries
-			.partition_point(|&i| i <= offset)
-			.saturating_sub(1)]
+			.partition_point(|i| i <= offset)
+			.saturating_sub(1))
 	}
 	/// Least grapheme boundary at or after `offset`.
 	fn grapheme_ceil(&self, offset: usize) -> usize {
-		self.boundaries[self
+		self.boundaries.at(self
 			.boundaries
-			.partition_point(|&i| i < offset)
-			.min(self.boundaries.len() - 1)]
+			.partition_point(|i| i < offset)
+			.min(self.boundaries.len() - 1))
 	}
 	/// The offsets a cluster may be split at, its own start first and its end
 	/// last.
@@ -375,13 +426,12 @@ impl TextNode {
 		&'a self,
 		cluster: &'a TextCluster,
 	) -> impl Iterator<Item = usize> + 'a {
-		let start = self
-			.boundaries
-			.partition_point(|&b| b < cluster.range.start);
-		let end = self.boundaries.partition_point(|&b| b <= cluster.range.end);
+		let start =
+			self.boundaries.partition_point(|b| b < cluster.range.start);
+		let end = self.boundaries.partition_point(|b| b <= cluster.range.end);
 		let inside = (start + 1..end - 1)
 			.filter(move |_| !cluster.atomic)
-			.map(move |i| self.boundaries[i]);
+			.map(move |i| self.boundaries.at(i));
 		std::iter::once(cluster.range.start)
 			.chain(inside)
 			.chain(std::iter::once(cluster.range.end))
@@ -471,6 +521,8 @@ pub struct TextCluster {
 	pub command: usize,
 }
 
+mod clusters;
+pub use clusters::ClusterBuffer;
 mod geometry;
 mod selection;
 impl LayoutSnapshot {
@@ -566,4 +618,102 @@ fn field_for_node(
 		.iter()
 		.find_map(|n| n.search_field)
 		.or_else(|| nodes[..index].iter().rev().find_map(|n| n.search_field))
+}
+
+/// Large producer-supplied fields retain native offsets without truncation.
+#[derive(Clone, Debug)]
+enum GraphemeBoundaries {
+	Compact(Arc<[u32]>),
+	Wide(Arc<[usize]>),
+}
+impl GraphemeBoundaries {
+	fn new(text: &str) -> Self {
+		let offsets = text
+			.grapheme_indices(true)
+			.map(|(i, _)| i)
+			.chain(std::iter::once(text.len()));
+		if u32::try_from(text.len()).is_ok() {
+			Self::Compact(
+				offsets
+					.map(|i| {
+						u32::try_from(i)
+							.expect("boundary is within checked text length")
+					})
+					.collect(),
+			)
+		} else {
+			Self::Wide(offsets.collect())
+		}
+	}
+	fn len(&self) -> usize {
+		match self {
+			Self::Compact(v) => v.len(),
+			Self::Wide(v) => v.len(),
+		}
+	}
+	fn at(&self, i: usize) -> usize {
+		match self {
+			Self::Compact(v) => v[i] as usize,
+			Self::Wide(v) => v[i],
+		}
+	}
+	fn partition_point(&self, mut p: impl FnMut(usize) -> bool) -> usize {
+		match self {
+			Self::Compact(v) => v.partition_point(|&i| p(i as usize)),
+			Self::Wide(v) => v.partition_point(|&i| p(i)),
+		}
+	}
+	fn heap_bytes(&self) -> usize {
+		match self {
+			Self::Compact(v) => {
+				std::mem::size_of_val(&**v) + 2 * size_of::<usize>()
+			}
+			Self::Wide(v) => {
+				std::mem::size_of_val(&**v) + 2 * size_of::<usize>()
+			}
+		}
+	}
+}
+
+#[cfg(feature = "fuzz")]
+impl TextNode {
+	pub fn visit_storage(&self, visit: &mut crate::scene::StorageVisitor<'_>) {
+		use crate::scene::memory::allocation;
+		visit(
+			Arc::as_ptr(&self.text) as usize,
+			"reading_text",
+			size_of::<String>() + 2 * size_of::<usize>(),
+			0,
+			0,
+		);
+		allocation(
+			self.text.as_bytes(),
+			self.text.capacity(),
+			"reading_text",
+			visit,
+		);
+		self.clusters.visit_storage(visit);
+		self.search_ranges.visit_storage("search_mappings", visit);
+		allocation(
+			&self.source_images,
+			self.source_images.capacity(),
+			"image_bindings",
+			visit,
+		);
+		let (ptr, bytes, len) = match &self.boundaries {
+			GraphemeBoundaries::Compact(v) => {
+				(v.as_ptr() as usize, size_of_val(&**v), v.len())
+			}
+			GraphemeBoundaries::Wide(v) => {
+				(v.as_ptr() as usize, size_of_val(&**v), v.len())
+			}
+		};
+		visit(
+			ptr,
+			"grapheme_boundaries",
+			bytes + 2 * size_of::<usize>(),
+			len,
+			len,
+		);
+	}
 }

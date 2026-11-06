@@ -49,8 +49,8 @@ fn fixture(
 			y: top,
 			flow: Arc::default(),
 			layout: Arc::new(BlockLayout {
-				text: vec![node],
-				draws: vec![Draw::Rect(rect, Paint::Text)],
+				text: vec![node].into(),
+				draws: vec![Draw::Rect(rect, Paint::Text)].into(),
 				height: 16.0,
 				overflow: vec![Overflow {
 					rect: Rect {
@@ -62,7 +62,8 @@ fn fixture(
 					content_width: width,
 					commands: 0..1,
 					gutter: 0.0,
-				}],
+				}]
+				.into(),
 				..Default::default()
 			}),
 		}],
@@ -92,9 +93,9 @@ proptest! {
 		}
 		let visible = f32::from(visible).min(width);
 		let pan = f32::from(raw_pan).min(width - visible);
-		let mut snapshot = fixture(node.text.clone(), spec.len() * 2, false, false, visible, 0.0, f32::from(top));
+		let mut snapshot = fixture(node.text.to_string(), spec.len() * 2, false, false, visible, 0.0, f32::from(top));
 		let layout = Arc::make_mut(&mut snapshot.blocks[0].layout);
-		layout.text = vec![node];
+		layout.text = vec![node].into();
 		layout.draws = declared.iter().map(|&(rect, _, _)| Draw::Rect(rect, Paint::Text)).collect();
 		layout.height = (line + 1) as f32 * 16.0;
 		layout.overflow[0].rect.h = layout.height;

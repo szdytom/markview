@@ -5,7 +5,7 @@ use markview_layout::{
 	background::Direct,
 	fonts::FontConfig,
 	layout::{LayoutEngine, LayoutOptions, LayoutSnapshot},
-	scene::LinkRef,
+	scene::{Draw, LinkRef},
 	style::Stylesheet,
 };
 use std::{collections::BTreeSet, sync::Arc};
@@ -66,10 +66,10 @@ fn links<'a>(snapshot: &'a LayoutSnapshot, url: &str) -> Vec<LinkRef<'a>> {
 				.layout
 				.links
 				.iter()
-				.filter(|link| &*link.url == url)
+				.filter(|link| link.url.as_ref() == url)
 				.map(|link| LinkRef {
 					url: link.url.as_ref(),
-					target: &link.target,
+					target: link.target,
 					block: block.id,
 					id: link.id,
 				})
@@ -77,32 +77,71 @@ fn links<'a>(snapshot: &'a LayoutSnapshot, url: &str) -> Vec<LinkRef<'a>> {
 		.collect()
 }
 
-/// The `(block, command)` draws the renderer marks for one occurrence.
+type DrawingKey = (
+	markview_layout::document::BlockId,
+	(u64, u32, u16, u32, u32, u32, u64),
+);
+fn drawing_key(
+	block: markview_layout::document::BlockId,
+	draw: &Draw,
+) -> Option<DrawingKey> {
+	let Draw::Glyph(g) = draw else {
+		return None;
+	};
+	Some((
+		block,
+		(
+			markview_document::stable_fingerprint(g.font.data.data()),
+			g.font.index,
+			g.id,
+			g.x.to_bits(),
+			g.y.to_bits(),
+			g.size.to_bits(),
+			markview_document::fingerprint(&(
+				&g.coords,
+				g.paint,
+				g.synthetic_bold,
+				g.synthetic_italic,
+			)),
+		),
+	))
+}
+/// Actual glyphs the renderer marks for one occurrence.
 fn marked(
 	snapshot: &LayoutSnapshot,
 	target: LinkRef<'_>,
-) -> BTreeSet<(markview_layout::document::BlockId, usize)> {
+) -> BTreeSet<DrawingKey> {
 	let mut marked = BTreeSet::new();
 	for block in snapshot.blocks.iter().filter(|b| b.id == target.block) {
 		for command in 0..block.layout.draws.len() {
-			if block.layout.link_hovered(command, target.url, target.id) {
-				marked.insert((block.id, command));
+			if block.layout.link_hovered(command, target.url, target.id)
+				&& let Some(key) =
+					drawing_key(block.id, &block.layout.draws.at(command))
+			{
+				marked.insert(key);
 			}
 		}
 	}
 	marked
 }
 
-/// The draws owned by one occurrence, independent of the hover query.
+/// Link rectangles independently identify the painted glyphs they enclose.
 fn expected(
 	snapshot: &LayoutSnapshot,
 	target: LinkRef<'_>,
-) -> BTreeSet<(markview_layout::document::BlockId, usize)> {
+) -> BTreeSet<DrawingKey> {
 	let mut expected = BTreeSet::new();
 	for block in snapshot.blocks.iter().filter(|b| b.id == target.block) {
 		for link in block.layout.links.iter().filter(|l| l.id == target.id) {
-			for command in link.commands.clone() {
-				expected.insert((block.id, command));
+			for draw in &block.layout.draws {
+				if let Draw::Glyph(g) = &draw
+					&& g.x >= link.rect.x
+					&& g.x < link.rect.x + link.rect.w
+					&& g.y >= link.rect.y
+					&& g.y <= link.rect.y + link.rect.h
+				{
+					expected.insert(drawing_key(block.id, &draw).unwrap());
+				}
 			}
 		}
 	}
@@ -159,8 +198,8 @@ fn same_url_links_on_one_line_hover_independently() {
 	);
 	let first = marked(&snapshot, targets[0]);
 	let second = marked(&snapshot, targets[1]);
-	assert!(!first.is_empty());
-	assert!(!second.is_empty());
+	assert_eq!(first.len(), 3);
+	assert_eq!(second.len(), 3);
 	assert_eq!(first, expected(&snapshot, targets[0]));
 	assert_eq!(second, expected(&snapshot, targets[1]));
 	assert!(
@@ -211,20 +250,80 @@ fn every_fragment_of_a_wrapped_link_shares_an_occurrence() {
 	let links = &snapshot.blocks[0].layout.links;
 	assert!(links.len() > 1, "expected a wrapped link");
 	assert!(
-		links.iter().all(|link| link.id == links[0].id),
+		links.iter().all(|link| link.id == links.at(0).id),
 		"wrapped fragments must share one occurrence"
 	);
 	let target = LinkRef {
-		url: links[0].url.as_ref(),
-		target: &links[0].target,
+		url: links.at(0).url.as_ref(),
+		target: links.at(0).target,
 		block: snapshot.blocks[0].id,
-		id: links[0].id,
+		id: links.at(0).id,
 	};
 	let marked = marked(&snapshot, target);
 	assert_eq!(marked, expected(&snapshot, target));
 	assert!(
-		links.iter().all(|link| marked
-			.contains(&(snapshot.blocks[0].id, link.commands.start))),
+		links.iter().all(|link| snapshot.blocks[0]
+			.layout
+			.draws
+			.iter_range(link.commands.clone())
+			.unwrap()
+			.filter_map(|d| drawing_key(snapshot.blocks[0].id, &d))
+			.any(|key| marked.contains(&key))),
 		"every wrapped fragment must hover together"
+	);
+}
+
+#[test]
+fn two_links_inside_one_packed_run_keep_independent_glyphs() {
+	use markview_document::{BlockId, LinkOccurrenceId};
+	use markview_layout::scene::{
+		BlockLayout, DrawBuffer, LinkId, LinkRect, LinkTarget, PlacedBlock,
+		Rect,
+	};
+	let source = layout("onetwo");
+	let glyphs: Vec<_> = source.blocks[0]
+		.layout
+		.draws
+		.iter()
+		.filter(|d| matches!(d, Draw::Glyph(_)))
+		.collect();
+	assert_eq!(glyphs.len(), 6);
+	let block = BlockId::new(1).unwrap();
+	let wanted: BTreeSet<_> = glyphs[..3]
+		.iter()
+		.filter_map(|d| drawing_key(block, d))
+		.collect();
+	let mut draws: DrawBuffer = glyphs.into();
+	draws.seal();
+	assert_eq!(draws.packed_counts(), Some((1, 6, 1)));
+	let mut geometry = BlockLayout {
+		draws,
+		..Default::default()
+	};
+	for (id, commands) in [(1, 0..3), (2, 3..6)] {
+		geometry.links.push(LinkRect {
+			commands,
+			id: LinkId::Inline(LinkOccurrenceId::new(id).unwrap()),
+			rect: Rect::default(),
+			url: Arc::from("same"),
+			target: LinkTarget::Url(Arc::from("same")),
+		});
+	}
+	let snapshot = LayoutSnapshot {
+		blocks: vec![PlacedBlock {
+			id: block,
+			content: Default::default(),
+			y: 0.,
+			layout: Arc::new(geometry),
+			flow: Default::default(),
+		}],
+		..Default::default()
+	};
+	let targets = links(&snapshot, "same");
+	assert_eq!(marked(&snapshot, targets[0]), wanted);
+	assert_eq!(marked(&snapshot, targets[1]).len(), 3);
+	assert!(
+		marked(&snapshot, targets[0])
+			.is_disjoint(&marked(&snapshot, targets[1]))
 	);
 }

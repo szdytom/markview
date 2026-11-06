@@ -262,8 +262,7 @@ impl Tabs {
 		}
 		let mut bytes = 0;
 		for block in &self.session.display.snapshot.blocks {
-			let base = block.layout.draws.capacity()
-				* std::mem::size_of::<crate::layout::Draw>();
+			let base = block.layout.draws.storage_bytes();
 			bytes += if base > super::preview::CACHE_BUDGET {
 				base
 			} else {

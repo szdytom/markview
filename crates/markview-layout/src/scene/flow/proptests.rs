@@ -275,7 +275,7 @@ proptest! {
 			for &(command, rect) in &expected {
 				prop_assert_eq!(placed.rect(command, rect), Some(Rect { y: table_top, ..rect }));
 			}
-			let Draw::Rect(rect, _) = &layout.draws[footer] else { unreachable!() };
+			let Draw::Rect(rect, _) = &layout.draws.at(footer) else { unreachable!() };
 			prop_assert_eq!(placed.rect(footer, *rect).unwrap().y, table_top + measured_table + f32::from(gap));
 		}
 	}
@@ -326,13 +326,47 @@ proptest! {
 				prop_assert_eq!(placed.command_offset(view.node.command), Some([view.x, view.y]));
 				let Draw::Box { rect, .. } = placed.draw(view.node.box_command) else { unreachable!() };
 				prop_assert_eq!(rect.h, view.height);
-				let Draw::Rect(rect, _) = &flat.layout.draws[view.node.command] else { unreachable!() };
+				let Draw::Rect(rect, _) = &flat.layout.draws.at(view.node.command) else { unreachable!() };
 				prop_assert_eq!(*rect, Rect { x: view.x + 1.0, y: view.y + 1.0, w: 2.0, h: 1.0 });
 				if let Some(marker) = view.node.marker {
 					let Draw::Polygon { points, .. } = placed.draw(marker) else { unreachable!() };
-					prop_assert_eq!(&**points, if view.expanded { &[[1.0, 0.0], [0.0, 1.0], [-1.0, 0.0]] } else { &[[0.0, -1.0], [1.0, 0.0], [0.0, 1.0]] });
+					prop_assert_eq!(&*points, if view.expanded { &[[1.0, 0.0], [0.0, 1.0], [-1.0, 0.0]] } else { &[[0.0, -1.0], [1.0, 0.0], [0.0, 1.0]] });
 				}
 			}
 		}
 	}
+}
+
+#[test]
+fn one_cached_leaf_does_not_retain_its_parent_or_large_sibling() {
+	let source = format!(
+		"<details open>\n<summary>Summary</summary>\n\n{}\n\nSmall leaf.\n\n</details>\n",
+		"Large sibling words. ".repeat(2000)
+	);
+	let document = markview_commonmark::parse(source);
+	let mut engine = crate::layout::LayoutEngine::new();
+	let snapshot =
+		engine.layout(&document, &crate::layout::LayoutOptions::default());
+	let parent = Arc::downgrade(&snapshot.blocks[0].layout);
+	let mut leaves: Vec<_> = snapshot.blocks[0]
+		.layout
+		.cached_leaves()
+		.map(|(_, g)| g)
+		.collect();
+	leaves.sort_by_key(|g| g.draws.len());
+	let small = leaves.remove(0);
+	assert!(small.draws.len() < 100);
+	let large = leaves.pop().unwrap();
+	assert!(large.draws.len() > 1000);
+	let super::super::DrawBuffer::Packed(p) = &large.draws else {
+		panic!("packed leaf")
+	};
+	let old_large = Arc::downgrade(p);
+	drop(large);
+	drop(leaves);
+	drop(snapshot);
+	engine.release_document();
+	assert!(parent.upgrade().is_none());
+	assert!(old_large.upgrade().is_none());
+	assert!(small.text.iter().any(|t| t.text.as_str() == "Small leaf."));
 }

@@ -272,7 +272,7 @@ fn a_formula_descender_does_not_lift_the_text_it_shares_a_line_with() {
 	let baseline = |source: &str| {
 		let snapshot = layout(source);
 		let placed = &snapshot.blocks[0];
-		let row = placed.layout.text[0].clusters[0].rect.y;
+		let row = placed.layout.text[0].clusters.at(0).rect.y;
 		let glyph = placed
 			.layout
 			.draws
@@ -442,7 +442,7 @@ fn lines(
 	snapshot.blocks.iter().flat_map(move |block| {
 		block.layout.text.iter().map(move |node| {
 			(
-				node.text.as_ref(),
+				node.text.as_str(),
 				node.clusters.iter().map(|c| c.range.clone()).collect(),
 				node.clusters.iter().map(|c| c.rect.x).collect(),
 			)

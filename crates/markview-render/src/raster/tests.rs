@@ -153,15 +153,17 @@ fn color_glyphs_preserve_rgb_and_share_paint_order() {
 		0,
 	);
 	let glyph = Glyph {
-		font,
-		coords: Vec::new().into(),
+		style: std::sync::Arc::new(markview_layout::scene::GlyphStyle {
+			font,
+			coords: Vec::new().into(),
+			size: 2.,
+			synthetic_italic: false,
+			synthetic_bold: false,
+			paint: Paint::Text,
+		}),
 		id: 1,
-		size: 2.,
 		x: 2.,
 		y: 2.,
-		synthetic_italic: false,
-		synthetic_bold: false,
-		paint: Paint::Text,
 	};
 	// Inject a synthetic RGBA glyph so this test needs no installed Emoji font.
 	renderer.raster.cache.insert(
@@ -200,7 +202,14 @@ fn color_glyphs_preserve_rgb_and_share_paint_order() {
 			Draw::Glyph(glyph.clone()),
 			Draw::Glyph(Glyph {
 				x: 6.,
-				paint: Paint::Color(markview_layout::style::Color(0xff000000)),
+				style: std::sync::Arc::new(
+					markview_layout::scene::GlyphStyle {
+						paint: Paint::Color(markview_layout::style::Color(
+							0xff000000,
+						)),
+						..(*glyph.style).clone()
+					},
+				),
 				..glyph.clone()
 			}),
 			Draw::Rect(
@@ -274,15 +283,19 @@ fn prewarm_prepares_the_next_screenful_before_the_frame_needs_it() {
 				.enumerate()
 				.map(|(i, ch)| {
 					Draw::Glyph(Glyph {
-						font: font.clone(),
-						coords: Vec::new().into(),
+						style: std::sync::Arc::new(
+							markview_layout::scene::GlyphStyle {
+								font: font.clone(),
+								coords: Vec::new().into(),
+								size: 12.0,
+								synthetic_italic: false,
+								synthetic_bold: false,
+								paint: Paint::Text,
+							},
+						),
 						id: charmap.map(ch),
-						size: 12.0,
 						x: (i % 8) as f32 * 14.0,
 						y: (i / 8) as f32 * 14.0,
-						synthetic_italic: false,
-						synthetic_bold: false,
-						paint: Paint::Text,
 					})
 				})
 				.collect(),
@@ -411,7 +424,8 @@ fn prewarming_leaves_the_visible_image_demand_alone() {
 					h: 40.,
 				},
 				title: String::new(),
-			}],
+			}]
+			.into(),
 			height: 40.,
 			width: 120.,
 			..Default::default()
@@ -631,15 +645,19 @@ fn idle_repack_rebuilds_the_current_screen_without_a_scroll_frame() {
 				.enumerate()
 				.map(|(i, ch)| {
 					Draw::Glyph(Glyph {
-						font: font.clone(),
-						coords: Vec::new().into(),
+						style: std::sync::Arc::new(
+							markview_layout::scene::GlyphStyle {
+								font: font.clone(),
+								coords: Vec::new().into(),
+								size: 12.0,
+								synthetic_italic: false,
+								synthetic_bold: false,
+								paint: Paint::Text,
+							},
+						),
 						id: charmap.map(ch),
-						size: 12.0,
 						x: (i % 8) as f32 * 14.0,
 						y: (i / 8) as f32 * 14.0,
-						synthetic_italic: false,
-						synthetic_bold: false,
-						paint: Paint::Text,
 					})
 				})
 				.collect(),
@@ -716,15 +734,17 @@ fn synthetic_bold_and_italic_have_distinct_cached_masks() {
 		.charmap()
 		.map('A');
 	let mut glyph = Glyph {
-		font,
-		coords: Vec::new().into(),
+		style: std::sync::Arc::new(markview_layout::scene::GlyphStyle {
+			font,
+			coords: Vec::new().into(),
+			size: 32.,
+			synthetic_italic: false,
+			synthetic_bold: false,
+			paint: Paint::Text,
+		}),
 		id,
-		size: 32.,
 		x: 0.,
 		y: 0.,
-		synthetic_italic: false,
-		synthetic_bold: false,
-		paint: Paint::Text,
 	};
 	for (bold, italic) in
 		[(false, false), (true, false), (false, true), (true, true)]

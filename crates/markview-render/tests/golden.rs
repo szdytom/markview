@@ -222,10 +222,10 @@ fn markdown_matches_rendering_baselines() -> Result<()> {
 					.layout
 					.links
 					.iter()
-					.find(|link| &*link.url == "https://example.invalid")
+					.find(|link| link.url.as_ref() == "https://example.invalid")
 					.map(|link| LinkRef {
 						url: link.url.as_ref(),
-						target: &link.target,
+						target: link.target,
 						block: block.id,
 						id: link.id,
 					})

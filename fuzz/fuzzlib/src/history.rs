@@ -133,14 +133,14 @@ pub fn check(data: &[u8]) {
 				a.layout.height, b.layout.height,
 				"block height at {index}, trace={trace:?}"
 			);
+			let left = crate::behavior::block(&a.layout);
+			let right = crate::behavior::block(&b.layout);
 			assert_eq!(
-				format!("{:?}", a.layout.text),
-				format!("{:?}", b.layout.text),
+				left["text"], right["text"],
 				"reading fields at {index}, trace={trace:?}"
 			);
 			assert_eq!(
-				format!("{:?}", a.layout.links),
-				format!("{:?}", b.layout.links),
+				left["links"], right["links"],
 				"links at {index}, trace={trace:?}"
 			);
 		}

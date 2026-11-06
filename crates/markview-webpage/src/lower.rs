@@ -523,7 +523,7 @@ impl<'a> Lower<'a> {
 			let style = self.inherited.clone();
 			return Ok(BlockKind::Paragraph(vec![Inline {
 				link: style.link,
-				kind: InlineKind::Image(ImageSpec {
+				kind: InlineKind::Image(Box::new(ImageSpec {
 					source: image::ImageSource::Diagram(image::Diagram {
 						language: "mermaid".into(),
 						source: text,
@@ -532,7 +532,7 @@ impl<'a> Lower<'a> {
 					title: String::new(),
 					width: None,
 					height: None,
-				}),
+				})),
 				style: style.visual,
 			}]));
 		}
@@ -1124,14 +1124,22 @@ impl<'a> Lower<'a> {
 				if let Some(image) = self.image(node) {
 					self.count_text(&image.alt)?;
 					self.count_text(&image.title)?;
-					self.append_inline(out, InlineKind::Image(image), style);
+					self.append_inline(
+						out,
+						InlineKind::Image(Box::new(image)),
+						style,
+					);
 				}
 				return Ok(());
 			}
 			"svg" => {
 				if let Some(image) = svg_image(node) {
 					self.count_text(image.address())?;
-					self.append_inline(out, InlineKind::Image(image), style);
+					self.append_inline(
+						out,
+						InlineKind::Image(Box::new(image)),
+						style,
+					);
 				}
 				return Ok(());
 			}

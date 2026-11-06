@@ -10,8 +10,7 @@ use crate::{
 use std::{collections::HashMap, sync::Arc};
 
 pub(super) struct NestedEntry {
-	pub layout: Arc<BlockLayout>,
-	pub leaf: usize,
+	pub geometry: Arc<crate::scene::flow::LeafGeometry>,
 	pub pass: u64,
 	pub completed: Option<u64>,
 }
@@ -83,8 +82,7 @@ impl BlockContext<'_> {
 			};
 			let origins = block_link_origins(block, &opts.limits);
 			return out.reuse_leaf(
-				&entry.layout,
-				entry.leaf,
+				&entry.geometry,
 				position,
 				width,
 				field,
@@ -116,14 +114,13 @@ impl super::LayoutEngine {
 		layout: &Arc<BlockLayout>,
 		pass: u64,
 	) {
-		for (leaf, key) in layout.leaf_keys().enumerate() {
+		for (key, geometry) in layout.cached_leaves() {
 			let completed =
 				self.nested_cache.get(&key).and_then(|e| e.completed);
 			self.nested_cache.insert(
 				key,
 				NestedEntry {
-					layout: layout.clone(),
-					leaf,
+					geometry,
 					pass,
 					completed,
 				},
@@ -139,17 +136,25 @@ pub(super) fn remap_link_ids(
 	geometry: Arc<BlockLayout>,
 	block: &Block,
 	limits: &crate::limits::Limits,
-) -> Arc<BlockLayout> {
+) -> Option<Arc<BlockLayout>> {
 	let cached = &geometry.link_occurrences;
 	if cached.is_empty() {
-		return geometry;
+		return Some(geometry);
 	}
 	let current = block_link_origins(block, limits);
 	// The two lists mirror what layout prepares, including runs line breaking
 	// discarded, so equal lengths pair logical occurrences exactly even when
 	// RTL paints them in the opposite order.
-	if cached.len() != current.len() || cached == &current {
-		return geometry;
+	if cached == &current {
+		return Some(geometry);
+	}
+	if cached.len() != current.len() {
+		let current: std::collections::HashSet<_> =
+			current.into_iter().collect();
+		return cached
+			.iter()
+			.all(|id| current.contains(id))
+			.then_some(geometry);
 	}
 	let remap: HashMap<_, _> = cached
 		.iter()
@@ -157,13 +162,12 @@ pub(super) fn remap_link_ids(
 		.zip(current.iter().copied())
 		.collect();
 	let mut layout = (*geometry).clone();
-	for link in &mut layout.links {
-		if let LinkId::Inline(origin) = link.id
-			&& let Some(&origin) = remap.get(&origin)
-		{
-			link.id = LinkId::Inline(origin);
+	layout.links.rebind(|id| match id {
+		LinkId::Inline(origin) => {
+			LinkId::Inline(remap.get(&origin).copied().unwrap_or(origin))
 		}
-	}
+		other => other,
+	});
 	for anchor in &mut layout.anchors {
 		if let markview_document::AnchorId::FootnoteReference {
 			occurrence, ..
@@ -174,7 +178,7 @@ pub(super) fn remap_link_ids(
 		}
 	}
 	layout.link_occurrences = current;
-	Arc::new(layout)
+	Some(Arc::new(layout))
 }
 
 /// The inline link occurrences `block` prepares, in layout order, including
@@ -234,9 +238,14 @@ pub(super) fn block_link_origins(
 					}
 				}
 			}
-			// Tables never enter the single-leaf reuse path, so collecting
-			// their origins would describe geometry that cannot be reused.
-			BlockKind::Table(_) => {}
+			BlockKind::Table(table) => {
+				for child in table.cell_blocks() {
+					walk(child, limits, out);
+				}
+				if let Some(caption) = &table.caption {
+					out.extend(crate::document::inline_link_origins(caption));
+				}
+			}
 			BlockKind::DefinitionList(items) => {
 				for item in items {
 					for terms in &item.terms {

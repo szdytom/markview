@@ -590,7 +590,7 @@ fn block_relative_and_text_positions_roundtrip_without_shifting() {
 	let mut session = ReaderSession::default();
 	accept(&mut session, &source, &options, true);
 	let block = &session.display.snapshot.blocks[0];
-	let first = &block.layout.text[0].clusters[0];
+	let first = &block.layout.text[0].clusters.at(0);
 	let last_bottom = block
 		.layout
 		.text
@@ -675,7 +675,7 @@ fn image_and_caption_positions_survive_serialization_and_image_loading() {
 		let mut original = ReaderSession::default();
 		original.accept(layout(&images), 200., None);
 		let picture = &original.display.snapshot.blocks[1];
-		let caption = &picture.layout.text[1].clusters[0];
+		let caption = &picture.layout.text[1].clusters.at(0);
 		let caption_y =
 			picture.y + picture.rect(caption.command, caption.rect).unwrap().y;
 		for scroll in [

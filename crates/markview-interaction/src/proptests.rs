@@ -85,8 +85,8 @@ proptest! {
 			blocks: (0..3).map(|block| {
 				let mut node = markview_layout::text::TextNode::new("aa bb cc".to_owned(), "\n\n");
 				node.search_field = Some(FieldId::from_index(0));
-				node.search_ranges = vec![(0..8, 0..8)];
-				markview_layout::scene::PlacedBlock { id: at(block, 0, Affinity::Before).block, content: Default::default(), y: block as f32 * 20.0, layout: std::sync::Arc::new(markview_layout::scene::BlockLayout { text: vec![node], ..Default::default() }), flow: Default::default() }
+				node.search_ranges = vec![(0..8, 0..8)].into();
+				markview_layout::scene::PlacedBlock { id: at(block, 0, Affinity::Before).block, content: Default::default(), y: block as f32 * 20.0, layout: std::sync::Arc::new(markview_layout::scene::BlockLayout { text: vec![node].into(), ..Default::default() }), flow: Default::default() }
 			}).collect(),
 			..Default::default()
 		};

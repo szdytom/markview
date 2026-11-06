@@ -582,3 +582,16 @@ impl LayoutEngine {
 		self.shaper.text_width(text, size)
 	}
 }
+
+#[cfg(feature = "fuzz")]
+impl LayoutEngine {
+	/// Geometry reachable from caches; callers deduplicate against held snapshots.
+	pub fn visit_storage(&self, visit: &mut crate::scene::StorageVisitor<'_>) {
+		for entry in self.cache.values() {
+			entry.layout.visit_storage(visit);
+		}
+		for entry in self.nested_cache.values() {
+			entry.geometry.visit_storage(visit);
+		}
+	}
+}

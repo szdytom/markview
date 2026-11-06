@@ -94,9 +94,7 @@ impl DisplayState {
 		let mut bytes = 1024;
 		for block in blocks {
 			// Reject giant blocks before walking their drawing commands.
-			if block.layout.draws.capacity() * std::mem::size_of::<Draw>()
-				> PAGE_BUDGET
-			{
+			if block.layout.draws.storage_bytes() > PAGE_BUDGET {
 				return None;
 			}
 			bytes += block.retained_bytes();
@@ -160,7 +158,10 @@ impl DisplayState {
 				w: source.width.max(1.),
 				h: range.end - range.start,
 			};
-			for (index, draw, _) in block.draws() {
+			for (index, _) in block.draw_commands() {
+				let Some(draw) = block.other_draw(index) else {
+					continue;
+				};
 				let Draw::Image {
 					src, version, rect, ..
 				} = draw
@@ -280,7 +281,8 @@ impl CachedSlice {
 }
 
 fn image_rects(block: &PlacedBlock) -> impl Iterator<Item = Rect> + '_ {
-	block.draws().filter_map(|(command, draw, _)| {
+	block.draw_commands().filter_map(|(command, _)| {
+		let draw = block.other_draw(command)?;
 		let Draw::Image { rect, .. } = draw else {
 			return None;
 		};

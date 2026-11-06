@@ -356,8 +356,8 @@ fn drag_node(
 			.unwrap()
 	};
 	let selection = markview_layout::text::TextSelection {
-		anchor: hit(first, false),
-		focus: hit(last, true),
+		anchor: hit(&first, false),
+		focus: hit(&last, true),
 	};
 	assert_eq!(
 		snapshot.resolve_position(selection.anchor).unwrap().node,
@@ -426,7 +426,7 @@ fn placeholder_text_and_elided_errors_have_character_hit_geometry() {
 		assert_eq!(snapshot.extract_text(selected, 7), reason);
 		assert!(snapshot.blocks[0].layout.text[0].clusters.iter().all(
 			|c| !matches!(
-				snapshot.blocks[0].layout.draws[c.command],
+				snapshot.blocks[0].layout.draws.at(c.command),
 				Draw::Image { .. }
 			)
 		));
@@ -557,7 +557,7 @@ fn rects(snapshot: &LayoutSnapshot) -> Vec<markview_layout::layout::Rect> {
 		.flat_map(|b| {
 			b.layout.draws.iter().filter_map(|d| {
 				if let Draw::Image { rect, .. } = d {
-					Some(*rect)
+					Some(rect)
 				} else {
 					None
 				}
@@ -573,7 +573,7 @@ fn no_overlap(snapshot: &LayoutSnapshot) {
 				for node in &block.layout.text {
 					for c in &node.clusters {
 						if !matches!(
-							block.layout.draws[c.command],
+							block.layout.draws.at(c.command),
 							Draw::Image { .. }
 						) {
 							assert!(

@@ -24,6 +24,7 @@ impl BlockContext<'_> {
 		opts: &LayoutOptions,
 		out: &mut BlockLayout,
 	) -> f32 {
+		let mut styles = crate::scene::GlyphStyles::default();
 		let node = out.text.len();
 		out.text.push(TextNode::new(text.to_owned(), "\n\n"));
 
@@ -162,7 +163,7 @@ impl BlockContext<'_> {
 				});
 				for mut g in c.glyphs {
 					if let Some(color) = color {
-						g.paint = Paint::Color(color);
+						styles.repaint(&mut g, Paint::Color(color));
 					}
 					g.x += left;
 					g.y += baseline;

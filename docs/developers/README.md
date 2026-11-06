@@ -20,6 +20,7 @@ Start with [contributing](../../CONTRIBUTING.md) and the development guide.
 - [Complexity triage](complexity-triage.md): per-function decisions and commits, with explicit exception policy.
 - [Performance model](performance.md): methods, baselines and measurement limits.
 - [Latency and memory analysis](performance-analysis.md): diagnostics and optimization priorities.
+- [Document memory](document-memory.md): compact storage, behavior checks and before/after measurements.
 - [Comparison](comparison.md): typography figures and comparative measurements.
 - [Security and threat model](security.md): policy, trust boundaries and accepted risks.
 - [Security reference](security-reference.md): threats, controls, budgets and historical findings.

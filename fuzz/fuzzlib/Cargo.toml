@@ -7,6 +7,7 @@ publish = false
 
 
 [dependencies]
+serde_json = { version = "1", features = ["float_roundtrip"] }
 markview-commonmark = { path = "../../crates/markview-commonmark" }
 markview-document = { path = "../../crates/markview-document" }
 markview-webpage = { path = "../../crates/markview-webpage" }

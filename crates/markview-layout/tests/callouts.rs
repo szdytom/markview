@@ -90,9 +90,9 @@ fn both_dialects_draw_vector_types_and_keep_icons_out_of_copy() {
 				assert_eq!(icons.len(), 1, "{name}");
 				assert!(!icons[0].0.is_empty());
 				assert!(draws.iter().any(
-					|d| matches!(d, Draw::Box { condition, .. } if *condition == family)
+					|d| matches!(d, Draw::Box { condition, .. } if condition == family)
 				));
-				let color = options.stylesheet.paint(*icons[0].1);
+				let color = options.stylesheet.paint(icons[0].1);
 				assert!(draws.iter().any(|d| matches!(d, Draw::Glyph(g) if options.stylesheet.paint(g.paint) == color)));
 				let selection = snapshot.select_all(1).unwrap();
 				assert_eq!(
@@ -138,7 +138,7 @@ fn folded_headers_wrap_toggle_and_share_the_unfolded_title_style() {
 			.find_map(|draw| match draw {
 				Draw::Icon {
 					paths, paint, size, ..
-				} => Some((paths.as_ptr(), *paint, *size)),
+				} => Some((paths.as_ptr(), paint, size)),
 				_ => None,
 			})
 			.unwrap()
@@ -150,7 +150,7 @@ fn folded_headers_wrap_toggle_and_share_the_unfolded_title_style() {
 		.map(|block| &block.layout.text[0])
 		.collect();
 	for header in &headers {
-		let top = header.clusters[0].rect.y;
+		let top = header.clusters.at(0).rect.y;
 		assert!(
 			header
 				.clusters
@@ -287,7 +287,9 @@ fn callouts_inherit_quote_line_widths_across_themes_and_mvss_overrides() {
 									left_only: true,
 									..
 								} => Some(
-									decoration.map_or(*border, |d| d.edges[3]),
+									decoration
+										.as_deref()
+										.map_or(border, |d| d.edges[3]),
 								),
 								_ => None,
 							})

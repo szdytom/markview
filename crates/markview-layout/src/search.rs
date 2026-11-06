@@ -226,7 +226,7 @@ impl crate::layout::LayoutSnapshot {
 				};
 				// Image placeholders can put later clusters above earlier ones.
 				for cluster in &node.clusters {
-					let Some(rect) = self.text_rect(bi, cluster, horizontal)
+					let Some(rect) = self.text_rect(bi, &cluster, horizontal)
 					else {
 						continue;
 					};

@@ -324,14 +324,48 @@ pub fn block_layout(block: &BlockLayout, h: &mut Hashers) {
 	}
 	for node in &block.text {
 		// Include search bindings, source images, selection groups and boundaries.
-		hash3(h, &format!("{node:?}"));
+		let (images, group, boundaries) = node.reading_metadata();
+		hash3(
+			h,
+			&(node.search_field, &node.search_ranges, group, boundaries),
+		);
+		for (ordinal, cluster) in images {
+			hash3(
+				h,
+				&(
+					ordinal,
+					&cluster.range,
+					hash_rect(cluster.rect),
+					cluster.rtl,
+					cluster.atomic,
+					F::new(cluster.mixed_spacing.0),
+					F::new(cluster.mixed_spacing.1),
+				),
+			);
+			if let Some(draw) = block.draws.get(cluster.command) {
+				hash_draw(&draw, h);
+			}
+		}
 		hash3(h, &(node.text.as_str(), node.separator));
 		for c in &node.clusters {
-			hash3(h, &(&c.range, hash_rect(c.rect), c.rtl, c.command));
+			hash3(
+				h,
+				&(
+					&c.range,
+					hash_rect(c.rect),
+					c.rtl,
+					c.atomic,
+					F::new(c.mixed_spacing.0),
+					F::new(c.mixed_spacing.1),
+				),
+			);
+			if let Some(draw) = block.draws.get(c.command) {
+				hash_draw(&draw, h);
+			}
 		}
 	}
 	for draw in &block.draws {
-		hash_draw(draw, h);
+		hash_draw(&draw, h);
 	}
 	for o in &block.overflow {
 		hash3(
@@ -339,19 +373,49 @@ pub fn block_layout(block: &BlockLayout, h: &mut Hashers) {
 			&(
 				hash_rect(o.rect),
 				F::new(o.content_width),
-				&o.commands,
+				o.commands.len(),
 				F::new(o.gutter),
 			),
 		);
 	}
+	for o in &block.overflow {
+		hash3(h, &block.draws.iter_range(o.commands.clone()).is_some());
+		for draw in block
+			.draws
+			.iter_range(o.commands.clone())
+			.into_iter()
+			.flatten()
+		{
+			hash_draw(&draw, h);
+		}
+	}
 	for l in &block.links {
-		hash3(h, &(&l.commands, l.id, hash_rect(l.rect), &l.url));
+		hash3(
+			h,
+			&(
+				l.commands.len(),
+				l.id,
+				hash_rect(l.rect),
+				&l.url,
+				target_record(l.target),
+			),
+		);
+		hash3(h, &block.draws.iter_range(l.commands.clone()).is_some());
+		for draw in block
+			.draws
+			.iter_range(l.commands.clone())
+			.into_iter()
+			.flatten()
+		{
+			hash_draw(&draw, h);
+		}
 	}
 	for a in &block.anchors {
 		hash3(h, &(&a.anchor, F::new(a.y)));
 	}
 	for (command, rows) in &block.inline_decorations {
-		hash3(h, &(*command, F::new(rows.start), F::new(rows.end)));
+		hash_draw(&block.draws.at(*command), h);
+		hash3(h, &(F::new(rows.start), F::new(rows.end)));
 	}
 }
 
@@ -390,6 +454,7 @@ fn hash_draw(draw: &Draw, h: &mut Hashers) {
 					F::new(g.x),
 					F::new(g.y),
 					g.synthetic_italic,
+					g.synthetic_bold,
 					g.paint,
 				),
 			);
@@ -424,12 +489,13 @@ fn hash_draw(draw: &Draw, h: &mut Hashers) {
 					F::new(*border),
 					*left_only,
 					decoration
+						.as_deref()
 						.map(|d| (d.edges.map(F::new), d.corners.map(F::new))),
 				),
 			);
 		}
 		Draw::Math { math, paint, x, y } => {
-			hash3(h, &format!("{:?}", math.display.items));
+			hash3(h, &serde_json::to_string(&math.display).unwrap());
 			hash3(
 				h,
 				&(
@@ -465,6 +531,16 @@ fn hash_draw(draw: &Draw, h: &mut Hashers) {
 			y,
 			size,
 		} => {
+			for path in *paths {
+				hash3(
+					h,
+					&(
+						path.fill,
+						F::new(path.stroke_width),
+						serde_json::to_string(path.commands).unwrap(),
+					),
+				);
+			}
 			hash3(
 				h,
 				&(
@@ -473,7 +549,7 @@ fn hash_draw(draw: &Draw, h: &mut Hashers) {
 					F::new(*x),
 					F::new(*y),
 					F::new(*size),
-					format!("{paths:?}"),
+					paths.len(),
 				),
 			);
 		}
@@ -512,7 +588,7 @@ fn assert_block_finite(block: &BlockLayout) {
 		}
 	}
 	for draw in &block.draws {
-		assert_draw_finite(draw);
+		assert_draw_finite(&draw);
 	}
 	for o in &block.overflow {
 		assert_rect4("overflow", o.rect);
@@ -664,6 +740,16 @@ pub fn shrunk_limits(seed: u128) -> markview_layout::limits::Limits {
 /// sensible while still varying.
 pub fn f32_unit(v: u32) -> f32 {
 	1.0 + (v % 15_000) as f32 / 1000.0
+}
+
+fn target_record(target: &markview_layout::scene::LinkTarget) -> (u8, String) {
+	use markview_layout::scene::LinkTarget::*;
+	match target {
+		Url(v) => (0, v.to_string()),
+		FootnoteDefinition(v) => (1, v.as_str().to_owned()),
+		FootnoteReturn(v) => (2, v.as_str().to_owned()),
+		Disclosure(v) => (3, v.to_string()),
+	}
 }
 
 #[cfg(test)]

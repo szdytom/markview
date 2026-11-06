@@ -80,9 +80,9 @@ proptest! {
 		let image_height = height * if beyond { 4.0 } else { 1.0 } + f32::from(delta) / 4.0;
 		let mut builder = DocumentBuilder::new(DocumentRevision::new(1));
 		let image = builder.block(Vec::new(), BlockKind::Paragraph(vec![crate::document::Inline {
-			kind: InlineKind::Image(crate::document::ImageSpec { source: crate::document::ImageSource::Resource(crate::document::ResourceRef::document("image")), alt: String::new(), title: String::new(), width: None, height: None }), style: Default::default(), link: None,
+			kind: InlineKind::Image(Box::new(crate::document::ImageSpec { source: crate::document::ImageSource::Resource(crate::document::ResourceRef::document("image")), alt: String::new(), title: String::new(), width: None, height: None })), style: Default::default(), link: None,
 		}]));
-		let layout = BlockLayout { draws: vec![Draw::Image { src: "image".to_owned(), version: 1, rect: Rect { x: 0.0, y: 0.0, w: 8.0, h: image_height }, title: String::new() }], height: image_height, ..Default::default() };
+		let layout = BlockLayout { draws: vec![Draw::Image { src: "image".to_owned(), version: 1, rect: Rect { x: 0.0, y: 0.0, w: 8.0, h: image_height }, title: String::new() }].into(), height: image_height, ..Default::default() };
 		let snapshot = LayoutSnapshot { blocks: vec![place(image.id(), layout)], ..Default::default() };
 		let pagination = paginate(&builder.finish(vec![image]), &snapshot, &geometry(height));
 		prop_assert_eq!(pagination.pages.len(), 1);
@@ -107,10 +107,10 @@ proptest! {
 		let mut builder = DocumentBuilder::new(DocumentRevision::new(1));
 		let first = builder.block(Vec::new(), BlockKind::Rule);
 		let image = builder.block(Vec::new(), BlockKind::Paragraph(vec![crate::document::Inline {
-			kind: InlineKind::Image(crate::document::ImageSpec { source: crate::document::ImageSource::Resource(crate::document::ResourceRef::document("image")), alt: String::new(), title: String::new(), width: None, height: None }), style: Default::default(), link: None,
+			kind: InlineKind::Image(Box::new(crate::document::ImageSpec { source: crate::document::ImageSource::Resource(crate::document::ResourceRef::document("image")), alt: String::new(), title: String::new(), width: None, height: None })), style: Default::default(), link: None,
 		}]));
 		let first_layout = lines(&[(filler, 1)], 0, 0).0;
-		let image_layout = BlockLayout { draws: vec![Draw::Image { src: "image".to_owned(), version: 1, rect: Rect { x: 0.0, y: f32::from(lead), w: f32::from(width), h: f32::from(image_height) }, title: String::new() }], height: bottom + f32::from(trail), anchors: vec![HeadingAnchor { anchor: AnchorId::Fragment("picture".to_owned()), y: f32::from(lead) }], ..Default::default() };
+		let image_layout = BlockLayout { draws: vec![Draw::Image { src: "image".to_owned(), version: 1, rect: Rect { x: 0.0, y: f32::from(lead), w: f32::from(width), h: f32::from(image_height) }, title: String::new() }].into(), height: bottom + f32::from(trail), anchors: vec![HeadingAnchor { anchor: AnchorId::Fragment("picture".to_owned()), y: f32::from(lead) }], ..Default::default() };
 		let snapshot = LayoutSnapshot { blocks: vec![place(first.id(), first_layout), place(image.id(), image_layout)], ..Default::default() };
 		let pagination = paginate(&builder.finish(vec![first, image]), &snapshot, &geometry(f32::from(height)));
 		let items: Vec<_> = pagination.pages.iter().enumerate().flat_map(|(page, items)| items.iter().filter(|item| item.block == 1).map(move |item| (page, item))).collect();

@@ -26,6 +26,8 @@ pub struct CountingAllocator {
 	current: AtomicUsize,
 	peak: AtomicUsize,
 	window_peak: AtomicUsize,
+	allocations: AtomicUsize,
+	live_allocations: AtomicUsize,
 }
 
 impl CountingAllocator {
@@ -34,7 +36,15 @@ impl CountingAllocator {
 			current: AtomicUsize::new(0),
 			peak: AtomicUsize::new(0),
 			window_peak: AtomicUsize::new(0),
+			allocations: AtomicUsize::new(0),
+			live_allocations: AtomicUsize::new(0),
 		}
+	}
+	pub fn allocations(&self) -> usize {
+		self.allocations.load(Ordering::Relaxed)
+	}
+	pub fn live_allocations(&self) -> usize {
+		self.live_allocations.load(Ordering::Relaxed)
 	}
 	/// Live bytes right now.
 	pub fn current(&self) -> u64 {
@@ -60,10 +70,14 @@ impl CountingAllocator {
 		self.window_peak.load(Ordering::Relaxed) as u64
 	}
 }
+// SAFETY: Requests preserve the system allocator's pointer/layout contract; counters only observe sizes.
 unsafe impl GlobalAlloc for CountingAllocator {
 	unsafe fn alloc(&self, layout: Layout) -> *mut u8 {
+		// SAFETY: `layout` is forwarded unchanged to the system allocator.
 		let ptr = unsafe { System.alloc(layout) };
 		if !ptr.is_null() {
+			self.allocations.fetch_add(1, Ordering::Relaxed);
+			self.live_allocations.fetch_add(1, Ordering::Relaxed);
 			let live = self.current.fetch_add(layout.size(), Ordering::Relaxed);
 			self.peak.fetch_max(live + layout.size(), Ordering::Relaxed);
 			self.window_peak
@@ -72,7 +86,9 @@ unsafe impl GlobalAlloc for CountingAllocator {
 		ptr
 	}
 	unsafe fn dealloc(&self, ptr: *mut u8, layout: Layout) {
+		self.live_allocations.fetch_sub(1, Ordering::Relaxed);
 		self.current.fetch_sub(layout.size(), Ordering::Relaxed);
+		// SAFETY: `ptr` and `layout` satisfy the caller's `GlobalAlloc` contract.
 		unsafe { System.dealloc(ptr, layout) }
 	}
 }
