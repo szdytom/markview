@@ -236,6 +236,10 @@ not model Obsidian wikilinks and reported a definition the source did not
 declare. This is a harness correction, not a Markview finding: `[[...]]` is the
 pinned Comrak wikilink extension.
 
+Status: fixed in the harness. The reference oracle now steps over a use whose
+span holds `[[`, leaving wikilink resolution to the parser. Regression test:
+`wikilink_resolution_is_outside_the_reference_oracle`.
+
 
 
 ## Harness corrections made while triaging phase D

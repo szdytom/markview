@@ -1483,6 +1483,20 @@ mod tests {
 		}
 	}
 
+	/// Obsidian wikilinks carry their own destination, so the reference table
+	/// neither declares nor resolves them and must not report that it does.
+	#[test]
+	fn wikilink_resolution_is_outside_the_reference_oracle() {
+		for source in [
+			"[[o]]\n",
+			"![[o]]\n",
+			"[[o#H|label]]\n",
+			"![[o#H|label]]\n",
+		] {
+			assert_reference_resolution(&parse(source));
+		}
+	}
+
 	/// A run inside an inline link belongs to that link, even when an
 	/// enclosing bracket pair also reads as a shortcut reference.
 	#[test]
