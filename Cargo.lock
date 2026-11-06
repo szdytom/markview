@@ -2496,8 +2496,10 @@ dependencies = [
  "lopdf",
  "markview-commonmark",
  "markview-document",
+ "markview-font-archive",
  "markview-i18n",
  "markview-icon",
+ "markview-image",
  "markview-interaction",
  "markview-layout",
  "markview-pdf",
@@ -2552,6 +2554,20 @@ dependencies = [
 ]
 
 [[package]]
+name = "markview-font-archive"
+version = "0.4.5"
+dependencies = [
+ "anyhow",
+ "flate2",
+ "getrandom 0.4.3",
+ "sha2",
+ "tar",
+ "tempfile",
+ "zip",
+ "zstd",
+]
+
+[[package]]
 name = "markview-geometry"
 version = "0.4.5"
 dependencies = [
@@ -2577,6 +2593,16 @@ dependencies = [
  "quote",
  "syn 3.0.9",
  "usvg",
+]
+
+[[package]]
+name = "markview-image"
+version = "0.4.5"
+dependencies = [
+ "anyhow",
+ "image",
+ "markview-layout",
+ "resvg",
 ]
 
 [[package]]

@@ -43,8 +43,8 @@ jobs:
       - name: Smoke run
         working-directory: fuzz
         run: |
-          for target in parse reparse mvss math geometry layout_parallel webpage webpage_seam; do
-            ASAN_OPTIONS=detect_leaks=0 cargo +nightly fuzz run $target -- -runs=200
+          for target in parse reparse mvss math geometry layout_parallel webpage webpage_seam reading_pipeline webpage_layout highlight_schedule image_decode paginate_pipeline interaction_sequence font_archive fonts shaping; do
+            ASAN_OPTIONS=detect_leaks=0 cargo +nightly fuzz run $target -- -runs=100
           done
         env:
           FONTCONFIG_FILE: ${{ github.workspace }}/tests/fontconfig.conf

@@ -86,3 +86,22 @@ fn code_highlights_change_only_paint_and_differentials_start_settled() {
 		assert_eq!(cached.reused, cached.blocks.len());
 	}
 }
+
+#[test]
+fn shrinkable_histories_reach_the_same_complete_state() {
+	pipeline::warmup();
+	let body = "[alpha](https://example.org)\n\n![pixels](image.png)\n\n<details>\n<summary>summary</summary>\n\nhidden alpha\n\n</details>\n";
+	let operations = [
+		0, 0, 0, 3, 0, 0, 2, 5, 2, 0, 5, 73, 3, 1, 9, 0, 4, 1, 6, 0, 7, 0, 8,
+		0, 3, 0,
+	];
+	let mut input = b"LDH1".to_vec();
+	input.push((operations.len() / 2) as u8);
+	input.extend(operations);
+	input.extend(body.as_bytes());
+	mvfuzz::history::check(&input);
+	// Removing an operation preserves the remaining history and its body.
+	input.drain(5..7);
+	input[4] -= 1;
+	mvfuzz::history::check(&input);
+}

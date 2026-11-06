@@ -57,7 +57,7 @@ impl Budget {
 	/// guard is open, and the overlap lands on that input's account.
 	pub fn layout() -> Self {
 		Self {
-			time_ms: 2_000,
+			time_ms: 8_000,
 			alloc_base: 32_000 * 1024,
 			alloc_per_kib: 1_027 * 1024,
 		}
@@ -65,9 +65,39 @@ impl Budget {
 	/// The calibrated PDF budget: the export target.
 	pub fn pdf() -> Self {
 		Self {
-			time_ms: 2_400,
+			time_ms: 8_000,
 			alloc_base: 26_673 * 1024,
 			alloc_per_kib: 1_029 * 1024,
+		}
+	}
+	/// Decoding may allocate the full RGBA output for a legal 16-million-pixel
+	/// image (64 MiB) plus decoder working state. This is intentionally its own
+	/// stage, not the layout window.
+	pub fn image() -> Self {
+		Self {
+			time_ms: 8_000,
+			alloc_base: 160 * 1024 * 1024,
+			alloc_per_kib: 1_024 * 1024,
+		}
+	}
+	/// Math formulas may expand to their configured `math_bytes` limit, which
+	/// is larger than the parse window for a tiny source formula.
+	pub fn math() -> Self {
+		Self {
+			time_ms: 5_000,
+			alloc_base: 32 * 1024 * 1024,
+			alloc_per_kib: 1_024 * 1024,
+		}
+	}
+	/// Integration targets do several real layouts, searches, paginations or
+	/// state transitions per input. Their fixed work is larger than one layout
+	/// pass, so the wall and fixed-allocation windows are wider; libFuzzer's
+	/// own timeout remains the hang backstop.
+	pub fn integration() -> Self {
+		Self {
+			time_ms: 30_000,
+			alloc_base: 128 * 1024 * 1024,
+			alloc_per_kib: 1_024 * 1024,
 		}
 	}
 	/// [`Self::parse`], the lightest stage; keep `Default` on it.

@@ -3,17 +3,27 @@
 //! snapshot for the blocks it contains.
 #![no_main]
 
-use libfuzzer_sys::fuzz_target;
-use mvfuzz::{budget, oracle, pipeline};
+use libfuzzer_sys::{fuzz_mutator, fuzz_target};
+use mvfuzz::{budget, coverage, history, mutators, oracle, pipeline};
+fuzz_mutator! { |data: &mut [u8], size: usize, max_size: usize, seed: u32| {
+	let keep = if data.starts_with(b"LDH1") { 5 } else { 0 };
+	mutators::bytes_after(data, size, max_size, seed, keep)
+}}
 
 fuzz_target!(|data: &[u8]| {
-	let budget = budget::Budget::layout().from_env();
+	let budget = budget::Budget::integration().from_env();
 	let md = String::from_utf8_lossy(data);
 	if md.len() > 64 * 1024 {
 		return;
 	}
 	pipeline::warmup();
 	let guard = budget::InputGuard::new();
+	if data.starts_with(b"LDH1") {
+		history::check(data);
+		guard.finish(&budget, data.len());
+		coverage::tick();
+		return;
+	}
 	let doc = markview_commonmark::parse(md.to_string());
 	let options = pipeline::options_for(&md);
 	let images = markview_layout::image::ImageSnapshot::default();

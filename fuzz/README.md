@@ -2,7 +2,8 @@
 
 A `cargo-fuzz` + libFuzzer crate (nightly) covering the library crates —
 `markview-commonmark`, `markview-document`, `markview-layout`,
-`markview-pdf`, `markview-render` and `markview-webpage`. This directory is
+`markview-pdf`, `markview-render`, `markview-image`,
+`markview-font-archive` and `markview-webpage`. This directory is
 its own workspace and is deliberately **not** a member of the root workspace,
 so `cargo test`/`cargo dist` at the root never see it.
 
@@ -65,6 +66,48 @@ a tree against an independent scan of the same bytes.
   that pagination keeps up. Two readings of one input, no second
   implementation.
 
+### Integrated reading and webpage pipelines
+
+- **`reading_pipeline`** — real Markdown parsing, pinned-font shaping, search
+  navigation through disclosures, copy, selection rectangles with horizontal
+  offsets, reflow, and source-map range validity. Literal search uses an
+  independent non-overlapping scan; ASCII folding is restricted to ASCII input.
+  Ordinary text copies must equal the matched substring; atomic projections
+  only exercise legal selection and geometry. Raw input uses parsed fields as
+  its model; generated input independently records the expected field order and
+  checks that its first plain line maps to source byte zero and back. Input is
+  at most 32 KiB. `RDP1` plus eight control bytes separates mode, query
+  field/word, case, step count and widths from the body. Odd mode generates
+  plain multilingual paragraphs, a disclosure and a table. There are 1–8 reflows
+  and at most four consumed hits per step. Missing generated selections fail;
+  raw inputs may legitimately lose geometry to layout limits. `RDB1` is a
+  directed 64 KiB mode: padding keeps the document near the limit while a plain
+  marker paragraph remains searchable, copyable and source-round-trippable,
+  with one real layout.
+- **`webpage_layout`** — first byte modulo four selects a generated `webgen`
+  article, a direct legal span grid with a nested table and figure, a plain
+  three-column grid, or raw HTML. Extraction, generation and downstream
+  consumption share the input budget. Generated HTML is limited to 128 KiB,
+  input to 8 KiB, and direct grids to 51 cells. Four width/fold states compare
+  cached and fresh scenes, reading text, pagination and anchors. Fully expanded
+  direct grids check ordered unique cell markers; generated articles check
+  marker conservation while allowing captions' reading order. The plain grid
+  checks that short LTR cell text stays in its own column. Pagination fragments
+  must cover each block's bands once, contiguously and in page order, with
+  anchors and targets inside the page list. Raw HTML has no full-preservation
+  assertion. Narrow table overflow is legal.
+
+Prepare local integration seeds without downloading upstream corpora:
+
+```sh
+python3 fuzz/scripts/prepare_pipeline_seeds.py
+```
+
+The integration targets report semantic path hits (`web/span-layout`,
+`web/multipage`, `reading/selection`, `history/state`, and so on) every thousand
+inputs and at the end of a `pipeline_replay` run, so a campaign's effective
+coverage is visible without per-input logging.
+
 ### G2–G5 — stylesheets, layout, text
 
 - **`mvss`** — looks for a panic in stylesheet parsing or validation. How:
@@ -83,7 +126,22 @@ a tree against an independent scan of the same bytes.
   because the fingerprints include paint; background colors arriving between
   passes are an expected change. The document is then laid out progressively,
   with a prefix snapshot checked block by block (id, position, geometry) against
-  the direct layout.
+  the direct layout. A versioned `LDH1` branch additionally accepts a count
+  (0–16), that many two-byte `(opcode, value)` operations, and up to 32 KiB of
+  Markdown. Opcodes modulo ten change width, size, merge valid MVSS, switch
+  documents, force disclosures, replace image versions/pixels, cancel, clear
+  caches, release, or reparse with a new revision. Every checkpoint reconstructs
+  a cold synchronous engine from the complete current state. Text fields,
+  links and block geometry have explicit diagnostics alongside the scene hash.
+  Remove operation pairs and adjust the count to shrink a history. Legacy raw
+  Markdown inputs retain the original cache/progressive checks.
+- **`paginate_pipeline`** — looks for page fragments losing, repeating or
+  reordering a real laid-out block. How: Markdown up to 16 KiB is laid out with
+  pinned fonts and then paginated with a page height derived from the snapshot
+  and two to four desired pages. Fragments must cover each block's bands once,
+  in page order; visible blocks must produce a fragment; page items must be
+  finite, y-ordered and carry correct first/last flags; anchors and targets must
+  point inside the page list.
 - **`layout_parallel`** — looks for serial and native parallel block layout
   disagreeing. Two synchronous-highlight engines use pinned fonts and 2–4
   workers across cold, cached, resized/theme/image, original-source and
@@ -100,25 +158,67 @@ a tree against an independent scan of the same bytes.
 - **`math`** — looks for an uncaught panic, an overflow, or non-finite box
   geometry on the ratex path. How: `MathEngine::layout` under budgets, with a
   LaTeX-aware mutator keeping the corpus inside macro territory, where the
-  expander's work accounting lives.
+  expander's work accounting lives. `MTH1` instead composes valid fragments —
+  macros, groups, scripts, delimiters and matrices — so deep layout and the
+  resource limits are reached by well-formed formulas too.
 - **`highlight`** — looks for a panic in the syntax pass, reached the way the
   reader reaches it (a fenced code block inside a layout pass). How: the unit is
-  `language \0 code`; the uncolored fallback is legal, and the detached worker
-  gets its own allocation headroom.
+  `language \0 code`; the byte selects a language the shipped syntax set knows,
+  and the fence is longer than any backtick run in the code, so the block really
+  carries the input. A `raw` language keeps the old fixed fence for integration
+  behavior. The uncolored fallback is legal, and the detached worker gets its
+  own allocation headroom.
+- **`highlight_schedule`** — looks for stale background work changing the
+  current document or a settled pass disagreeing with a direct engine. How:
+  `HLP1` plus eight control bytes drives a queue that accepts, rejects, runs
+  one task, polls, switches document or theme, clears, releases, and performs an
+  A→B→A sequence. Every input drains its queue before the budget closes, so a
+  withheld task can never block the target. The final document must fingerprint
+  equal to a synchronous `Direct` engine, and no task may remain queued.
 - **`shaping`** — looks for non-finite advances or offsets. How: parley/swash
   shaping over arbitrary text and sizes, plus the stylesheet validation the
   shaper runs on install.
-- **`fonts`** — looks for a panic in font validation. How: arbitrary bytes go
-  through the byte-level checks and the directory scan the shaper performs; a
-  malformed font must degrade to "not a font".
+- **`fonts`** — looks for a panic in font validation or face parsing. How:
+  arbitrary bytes go through the byte-level checks and directory scan; a
+  malformed font must degrade to "not a font". `FNT1` selects a committed face,
+  optionally mutates it, then runs the shaper over it, so valid faces reach
+  face registration and real glyph shaping instead of only the validator.
+- **`shaping`** — also has an `SHP1` structured mode that composes multilingual,
+  combining-mark, emoji and bidi text and checks finite advances, glyph
+  presence, and deterministic repetition. Pure arbitrary text and raw size bit
+  patterns remain.
 
-### G6–G7 — export and geometry
+### G6–G7 — export, images, interaction and archives
+
+- **`interaction_sequence`** — looks for real document geometry disagreeing
+  with a gesture or scroll result. How: `INT1` plus controls drives a real
+  settled snapshot through hit testing, hover, click grains, selection drags,
+  disclosure/reflow changes, horizontal overflow, wheel scroll, pan phases and
+  release inertia. Offsets and deltas must stay finite and within their stored
+  bounds; selections must extract from the current snapshot.
+- **`font_archive`** — looks for an extraction that escapes its directory,
+  keeps a member it handed to the caller, or panics on a damaged container.
+  How: `ARC1` synthesizes valid zip, tar, gzip-tar and zstd-tar packages with
+  filtered members, or feeds the payload as a damaged archive; matching,
+  ownership transfer and cleanup run through the shared
+  `markview-font-archive` core.
+- **`image_decode`** — looks for a decoded image violating its size, alpha or
+  consumer contract. How: `IDC1` plus twelve control bytes (target size,
+  initial width, PDF consumer, explicit-target bit) feeds real bytes to the
+  production decoder now shared through `markview-image`. SVG text receives the
+  committed fixed font database. Successful results must have non-zero sides,
+  at most 16 million pixels, exact RGBA length and a valid intrinsic size;
+  bitmap rasters stay within an 8192 side; a PDF bit sends the pixels through
+  `PreparedImage`. Invalid input is a legal `Err`.
 
 - **`pdf`** — looks for two exports of one input differing, or the exported
   bytes disagreeing structurally with the document they came from. How: export
   twice and compare bytes, then re-parse with `lopdf` and check page count,
   well-formedness, page geometry, per-page content, text round-trip and link
   destinations against the layout, pagination and geometry the export was given.
+  Documents containing images use small non-uniform, partly transparent RGBA
+  images; an image input is also exported through the precompressed
+  `PreparedImage` path and checked against the same structural oracles.
 - **`geometry`** — looks for a renderer primitive returning a non-finite result
   from finite inputs (I7). How: the unit is an `arbitrary`-derived struct of raw
   `f32` bit patterns, and the checks cover intersection, corner/edge fitting and
@@ -190,10 +290,11 @@ a tree against an independent scan of the same bytes.
   block pays fontconfig's cold caches and the syntax-set build, and
   `prewarm_highlight` (a `fuzz`-only markview-layout API) pays each
   syntax's one-time parse-state build, so none of that warm-up cost
-  lands on an input's account. `export_pdf` supplies a synthetic one-pixel
-  snapshot for every image the layout drew, so an input containing an image
-  reaches the exporter instead of stopping at its "cannot embed image"
-  precondition.
+  lands on an input's account. `export_pdf` supplies small non-uniform,
+  partly transparent images for every source the layout drew, so an input
+  containing an image reaches the exporter instead of stopping at its "cannot
+  embed image" precondition; an image input can also take the precompressed
+  `PreparedImage` path.
 - `mutators.rs` — structure-aware markdown and MVSS mutators for the text
   targets (line-level edits of headings, lists, fences, tables, math
   delimiters), with a 1/4 fallback to libFuzzer's own mutation. `math()` is
@@ -201,7 +302,11 @@ a tree against an independent scan of the same bytes.
   `LLVMFuzzerCustomMutator`: it splices macro fragments
   (`MATH_MACRO_FRAGMENTS`), wraps and duplicates spans, and edits at TeX's own
   granularity, because the line-oriented markdown edits read as literal text
-  to the expander. The `geometry` target instead takes an `arbitrary`-derived
+  to the expander. The integration targets commit their versioned headers and
+  control bytes (`RDP1`, `RDB1`, `INT1`, `HLP1`, `ARC1`, `FNT1`, `SHP1`,
+  `MTH1`, `IDC1`, `LDH1`) and mutate only the payload, so a campaign keeps
+  reaching the structured paths instead of spending its time repairing a
+  magic byte. The `geometry` target instead takes an `arbitrary`-derived
   struct (F2): every field is an independent `f32` bit pattern.
 - `oracle.rs` — finiteness/boundedness assertions, the layout snapshot
   fingerprint (three `DefaultHasher` passes over every geometry field;

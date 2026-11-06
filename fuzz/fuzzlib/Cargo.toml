@@ -21,6 +21,15 @@ libfuzzer-sys = "0.4"
 # crate enables a feature is one refactor away from shaping with no faces.
 markview-layout = { path = "../../crates/markview-layout", features = ["fuzz", "font-directories", "parallel"] }
 markview-pdf = { path = "../../crates/markview-pdf", features = ["fuzz"] }
+markview-image = { path = "../../crates/markview-image" }
+markview-interaction = { path = "../../crates/markview-interaction" }
+markview-font-archive = { path = "../../crates/markview-font-archive" }
+web-time = "1"
+zip = { version = "9", default-features = false, features = ["deflate"] }
+tar = "0.4"
+flate2 = "1"
+zstd = { version = "0.14", default-features = false }
+tempfile = "3"
 # The PDF targets re-parse Markview's own output; the reader dependency carries
 # the same version, so the harness checks what a viewer would see.
 lopdf = { version = "0.46", default-features = false }

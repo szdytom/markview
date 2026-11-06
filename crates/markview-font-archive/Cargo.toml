@@ -1,0 +1,22 @@
+[package]
+name = "markview-font-archive"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish = false
+
+[dependencies]
+anyhow.workspace = true
+flate2.workspace = true
+getrandom = { version = "0.4", features = ["std"] }
+sha2.workspace = true
+tar.workspace = true
+zip.workspace = true
+zstd.workspace = true
+
+[dev-dependencies]
+tempfile.workspace = true
+
+[lints]
+workspace = true

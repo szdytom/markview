@@ -121,6 +121,33 @@ pub fn export_pdf(
 	Pagination,
 	PageGeometry,
 ) {
+	export_pdf_with(md, false)
+}
+
+/// The same export with precompressed image resources, so the prepared path
+/// is compared with the decoded-pixel fallback.
+pub fn export_pdf_prepared(
+	md: &str,
+) -> (
+	Vec<u8>,
+	MarkdownParse,
+	LayoutSnapshot,
+	Pagination,
+	PageGeometry,
+) {
+	export_pdf_with(md, true)
+}
+
+fn export_pdf_with(
+	md: &str,
+	prepared: bool,
+) -> (
+	Vec<u8>,
+	MarkdownParse,
+	LayoutSnapshot,
+	Pagination,
+	PageGeometry,
+) {
 	let sheet = {
 		let mut sheet = (*Stylesheet::bundled_print()).clone();
 		sheet.set_cjk_type(CjkType::Sc);
@@ -149,10 +176,22 @@ pub fn export_pdf(
 	let snapshot = snapshot.flattened();
 	let pagination = paginate(&document, &snapshot, &geometry);
 	let images = synthetic_images(&snapshot);
+	let prepared_images = prepared.then(|| {
+		images
+			.entries
+			.iter()
+			.filter_map(|(source, info)| {
+				let pixels = images.pixels.get(source, info.version)?;
+				let prepared = markview_pdf::PreparedImage::new(&pixels)
+					.expect("synthetic pixels become a PDF image");
+				Some(((source.clone(), info.version), prepared))
+			})
+			.collect()
+	});
 	let bytes = markview_pdf::export(Export {
 		snapshot: &snapshot,
 		images: &images,
-		prepared_images: None,
+		prepared_images: prepared_images.as_ref(),
 		stylesheet: &sheet,
 		geometry: &geometry,
 		pagination: &pagination,
@@ -200,12 +239,27 @@ fn synthetic_images(snapshot: &LayoutSnapshot) -> ImageSnapshot {
 	let pixels = Arc::new(ImagePixels::default());
 	let mut entries = std::collections::HashMap::new();
 	for src in sources {
+		// A small, non-uniform, partly transparent image makes the exporter
+		// consume real RGBA instead of a placeholder constant.
+		let seed = derive(src.as_bytes());
+		let width = 1 + (seed % 3) as u32;
+		let height = 1 + ((seed >> 8) % 3) as u32;
+		let mut rgba = Vec::with_capacity((width * height * 4) as usize);
+		for pixel in 0..width * height {
+			let value = (seed >> (16 + (pixel % 64))) as u8;
+			rgba.extend([
+				value,
+				value.wrapping_mul(3),
+				value.wrapping_mul(7),
+				255 - value % 32,
+			]);
+		}
 		entries.insert(
 			src.to_owned(),
 			ImageInfo {
 				loading: false,
 				version: 0,
-				size: Some((1, 1)),
+				size: Some((width, height)),
 				error: None,
 				svg: false,
 			},
@@ -214,9 +268,9 @@ fn synthetic_images(snapshot: &LayoutSnapshot) -> ImageSnapshot {
 			src.to_owned(),
 			0,
 			Arc::new(Pixels {
-				width: 1,
-				height: 1,
-				rgba: Arc::from([0u8, 0, 0, 255].as_slice()),
+				width,
+				height,
+				rgba: rgba.into(),
 			}),
 		);
 	}

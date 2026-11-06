@@ -199,6 +199,15 @@ impl Structure {
 				if !node.text.chars().all(is_comparable) {
 					continue;
 				}
+				// An unresolved image's fallback label is clipped to the
+				// image slot in the page; the reading projection retains the
+				// full label, so extraction cannot be asked to reproduce it.
+				if node.text.contains("Loading image")
+					|| node.text.contains("Image is taking too long")
+					|| node.text.contains("Remote image limit reached")
+				{
+					continue;
+				}
 				// An atomic cluster is a formula or a drawn image: one box
 				// whose text is the LaTeX or the alt text it copies, not a
 				// glyph the page carries. The math path draws it separately.
@@ -358,6 +367,16 @@ impl Structure {
 				// destination was checked above, and its rectangle is checked
 				// by the annotation's own geometry below.
 				if link.url.is_empty() || link.url.starts_with('#') {
+					continue;
+				}
+				// A link outside the horizontally scrolled viewport is not
+				// visible on the page; the exporter can only annotate what it
+				// paints. The initial PDF scroll is zero.
+				if block.layout.overflow.iter().any(|overflow| {
+					link.rect.x + link.rect.w > overflow.rect.w + 0.5
+						&& link.rect.y + link.rect.h > overflow.rect.y
+						&& link.rect.y < overflow.rect.y + overflow.rect.h
+				}) {
 					continue;
 				}
 				let Some(item) = page_item(pagination, bi, link.rect) else {

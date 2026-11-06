@@ -35,14 +35,9 @@ pub use catalog::{
 pub(crate) use catalog::{catalog_faces, describe_one};
 pub use report::{Phase, Progress, Summary};
 
-/// The largest single downloaded font accepted.
-pub const MAX_FILE_BYTES: u64 = 64 * 1024 * 1024;
+pub use markview_font_archive::MAX_FILE_BYTES;
 /// The largest archive a source may download before it is unpacked.
 pub const MAX_ARCHIVE_BYTES: u64 = 2 * 1024 * 1024 * 1024;
-/// The most one archive may unpack into matched members.
-pub const MAX_UNPACKED_BYTES: u64 = 2 * 1024 * 1024 * 1024;
-/// The most members one archive may contribute.
-pub const MAX_MEMBERS: usize = 4096;
 /// Above this the reader warns about the download directory, but never
 /// refuses: the number only exists to explain where the disk went.
 pub const SOFT_TOTAL_BYTES: u64 = 1024 * 1024 * 1024;

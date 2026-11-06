@@ -6,15 +6,72 @@
 use libfuzzer_sys::fuzz_target;
 use markview_layout::limits::Limits;
 use markview_layout::math::MathEngine;
-use mvfuzz::{budget, mutators, oracle};
+use mvfuzz::{budget, coverage, mutators, oracle};
+
+/// `MTH1`: controls and bytes assembled from valid TeX fragments, so the
+/// expander sees real macros, groups, scripts and delimiters instead of only
+/// byte-mutated text.
+fn check_structured(data: &[u8]) -> bool {
+	if !data.starts_with(b"MTH1") || data.len() < 4 {
+		return false;
+	}
+	const FRAGMENTS: &[&str] = &[
+		"x",
+		"y^2",
+		"\\frac{a}{b}",
+		"\\sqrt{x}",
+		"\\sum_{i=0}^{n} i",
+		"\\left( x \\right)",
+		"\\overline{ab}",
+		"\\mathbf{v}",
+		"\\begin{matrix} a & b \\\\ c & d \\end{matrix}",
+		"\\text{hello}",
+		"\\alpha + \\beta",
+		"\\int_0^1 f(x)\\,dx",
+	];
+	let body = &data[4..];
+	let mut latex = String::new();
+	for byte in body.iter().take(512) {
+		latex.push_str(FRAGMENTS[usize::from(*byte) % FRAGMENTS.len()]);
+		if byte % 3 == 0 {
+			latex.push_str(" + ");
+		}
+	}
+	let seed = oracle::derive(data);
+	let limits = markview_layout::limits::Limits {
+		math_formula_bytes: 64 + (seed >> 4) as usize % (256 * 1024),
+		math_bytes: 1024 + (seed >> 16) as usize % (8 * 1024 * 1024),
+		..Default::default()
+	};
+	let mut engine = markview_layout::math::MathEngine::default();
+	engine.set_limits(limits);
+	let size = 12. + f32::from(data[1]) / 4.;
+	if let Ok(box_) = engine.layout(
+		&latex,
+		data[2] % 2 == 0,
+		size,
+		&markview_layout::style::TextAppearance::default(),
+	) {
+		oracle::assert_bounded("math.width", box_.width);
+		oracle::assert_bounded("math.ascent", box_.ascent);
+		oracle::assert_bounded("math.descent", box_.descent);
+	}
+	true
+}
 
 fuzz_target!(|data: &[u8]| {
-	let budget = budget::Budget::parse().from_env();
+	let budget = budget::Budget::math().from_env();
 	let latex = String::from_utf8_lossy(data);
 	if latex.len() > 256 * 1024 {
 		return;
 	}
 	let guard = budget::InputGuard::new();
+	if check_structured(data) {
+		coverage::hit(coverage::Hit::MathStructured);
+		guard.finish(&budget, data.len());
+		coverage::tick();
+		return;
+	}
 	let seed = oracle::derive(data);
 	// Sizes vary normally, and one in eight takes a raw bit pattern: tiny,
 	// huge, or denormal, to stress the metric scaling.
@@ -42,6 +99,7 @@ fuzz_target!(|data: &[u8]| {
 		oracle::assert_bounded("math.descent", box_.descent);
 	}
 	guard.finish(&budget, latex.len());
+	coverage::tick();
 });
 
 /// The `math` corpus reaches the macro expander only incidentally, so the

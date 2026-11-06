@@ -3,9 +3,77 @@
 //! O2, I7): no panic within budgets; advances and offsets finite.
 #![no_main]
 
-use libfuzzer_sys::fuzz_target;
+use libfuzzer_sys::{fuzz_mutator, fuzz_target};
 use markview_layout::{scene::Paint, shaping::TextShaper, style::Stylesheet};
-use mvfuzz::{budget, oracle, pipeline};
+use mvfuzz::{budget, coverage, mutators, oracle, pipeline};
+
+/// `SHP1`: controls followed by bytes mapped onto a multilingual alphabet.
+/// The result shapes real scripts, combining marks, emoji and bidi runs.
+fn check_structured(data: &[u8]) -> bool {
+	if !data.starts_with(b"SHP1") || data.len() < 4 {
+		return false;
+	}
+	const WORDS: &[&str] = &[
+		"alpha",
+		"مرحبا",
+		"中文",
+		"हिन्दी",
+		"e\u{301}",
+		"👩‍💻",
+		"office",
+		"שלום",
+		"ไทย",
+		"한국어",
+		"Zürich",
+		"á",
+	];
+	let body = &data[4..];
+	let mut text = String::new();
+	for byte in body.iter().take(2048) {
+		if !text.is_empty() {
+			text.push(' ');
+		}
+		text.push_str(WORDS[usize::from(*byte) % WORDS.len()]);
+	}
+	let size = 8. + f32::from(data[1]) / 8.;
+	let mut shaper = TextShaper::with_fonts(pipeline::pinned_fonts());
+	let (draws, width) =
+		shaper.label_measured(&text, size, 0., 10., Paint::Text);
+	assert!(width.is_finite() && width >= 0.);
+	let glyphs = draws
+		.iter()
+		.filter(|draw| matches!(draw, markview_layout::scene::Draw::Glyph(_)))
+		.count();
+	assert!(
+		text.is_empty() || glyphs > 0,
+		"structured text shaped no glyphs"
+	);
+	for draw in &draws {
+		if let markview_layout::scene::Draw::Glyph(glyph) = draw {
+			assert!(glyph.x.is_finite() && glyph.y.is_finite());
+		}
+	}
+	// Fixed input and fixed faces must shape identically on a second pass.
+	let (again, width_again) =
+		shaper.label_measured(&text, size, 0., 10., Paint::Text);
+	assert_eq!(
+		glyphs,
+		again
+			.iter()
+			.filter(|draw| matches!(
+				draw,
+				markview_layout::scene::Draw::Glyph(_)
+			))
+			.count()
+	);
+	assert_eq!(width, width_again);
+	true
+}
+
+fuzz_mutator! { |data: &mut [u8], size: usize, max_size: usize, seed: u32| {
+	let keep = if data.starts_with(b"SHP1") { 4 } else { 0 };
+	mutators::bytes_after(data, size, max_size, seed, keep)
+}}
 
 fuzz_target!(|data: &[u8]| {
 	let budget = budget::Budget::parse().from_env();
@@ -14,6 +82,12 @@ fuzz_target!(|data: &[u8]| {
 		return;
 	}
 	let guard = budget::InputGuard::new();
+	if check_structured(data) {
+		coverage::hit(coverage::Hit::ShapingStructured);
+		guard.finish(&budget, data.len());
+		coverage::tick();
+		return;
+	}
 	let seed = oracle::derive(data);
 	// Sizes vary in the plausible range; one in eight takes a raw bit
 	// pattern (tiny, huge, denormal, or `NaN`) to stress the metric scaling.
@@ -83,4 +157,5 @@ fuzz_target!(|data: &[u8]| {
 		bounded,
 	);
 	guard.finish(&budget, text.len());
+	coverage::tick();
 });

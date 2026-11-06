@@ -1001,6 +1001,16 @@ pub fn assert_reference_resolution(doc: &MarkdownParse) {
 		}) else {
 			continue;
 		};
+		// `[[Note]]` and `![[Note]]` are Obsidian wikilinks; the reference
+		// scanner intentionally does not model that extension, so its
+		// resolution is outside this oracle.
+		if doc
+			.source
+			.get(use_.span.clone())
+			.is_some_and(|span| span.contains("[["))
+		{
+			continue;
+		}
 		// Label *spelling* is a known divergence between this scan and comrak,
 		// and the party under investigation is `incremental::definitions` (and
 		// `parse_prefix`), not this oracle. Re-deriving that semantics here

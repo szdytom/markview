@@ -530,3 +530,75 @@ fn parallel_cell_content_keeps_the_same_row_origin() {
 	};
 	assert!((y("Left") - y("Right")).abs() < 1.0);
 }
+
+#[test]
+fn overflowing_table_replaces_nested_scroll_regions_in_retained_scene() {
+	let mut builder = DocumentBuilder::new(DocumentRevision::new(1));
+	let mut rows = Vec::new();
+	for _ in 0..3 {
+		let code = builder.block(
+			Vec::new(),
+			BlockKind::Code {
+				language: String::new(),
+				text: "a long unwrapped code line inside a table cell".into(),
+			},
+		);
+		let sibling = builder.block(
+			Vec::new(),
+			BlockKind::Paragraph(vec![Inline {
+				kind: InlineKind::Text("Sibling".into()),
+				style: Default::default(),
+				link: None,
+			}]),
+		);
+		rows.push(TableRow {
+			cells: vec![
+				TableCell {
+					kind: CellKind::Data,
+					rowspan: 1,
+					colspan: 1,
+					align: None,
+					blocks: vec![code],
+				},
+				TableCell {
+					kind: CellKind::Data,
+					rowspan: 1,
+					colspan: 1,
+					align: None,
+					blocks: vec![sibling],
+				},
+			],
+		});
+	}
+	let table = builder.block(
+		Vec::new(),
+		BlockKind::Table(Table {
+			caption: None,
+			columns: vec![TableColumn { align: None }; 2],
+			groups: vec![TableGroup {
+				kind: TableGroupKind::Body,
+				rows,
+			}],
+		}),
+	);
+	let document = builder.finish(vec![table]);
+	let mut engine = LayoutEngine::new();
+	let mut opts = LayoutOptions {
+		width: 80.,
+		codeblock_wrap: false,
+		..options()
+	};
+	let snapshot = engine.layout(&document, &opts);
+	assert_eq!(snapshot.blocks[0].layout.overflow.len(), 1);
+	let flat = snapshot.flattened();
+	assert_eq!(flat.blocks[0].layout.overflow.len(), 1);
+	let cached = engine.layout(&document, &opts);
+	assert_eq!(cached.full_reading_text(), snapshot.full_reading_text());
+	opts.width = 180.;
+	let warm = engine.layout(&document, &opts).flattened();
+	let cold = LayoutEngine::new().layout(&document, &opts).flattened();
+	assert_eq!(
+		format!("{:?}", warm.blocks[0].layout.overflow),
+		format!("{:?}", cold.blocks[0].layout.overflow)
+	);
+}

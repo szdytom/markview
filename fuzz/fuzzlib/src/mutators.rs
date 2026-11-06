@@ -870,3 +870,71 @@ fn alter_html_line(rng: &mut Rng, line: &mut Vec<u8>) {
 	}
 	*line = rewritten.into_bytes();
 }
+
+/// Mutates the body after a structured header, so a target keeps its mode and
+/// control bytes while the payload follows its own grammar.
+pub fn after(
+	data: &mut [u8],
+	size: usize,
+	max_size: usize,
+	seed: u32,
+	keep: usize,
+	mutate: fn(&mut [u8], usize, usize, u32) -> usize,
+) -> usize {
+	let size = size.min(max_size);
+	let keep = keep.min(size).min(max_size);
+	if keep == 0 {
+		return mutate(data, size, max_size, seed);
+	}
+	let body = mutate(
+		&mut data[keep..],
+		size.saturating_sub(keep),
+		max_size.saturating_sub(keep),
+		seed,
+	);
+	keep + body
+}
+
+/// [`after`] with libFuzzer's byte mutator for the body.
+pub fn bytes_after(
+	data: &mut [u8],
+	size: usize,
+	max_size: usize,
+	seed: u32,
+	keep: usize,
+) -> usize {
+	let size = size.min(max_size);
+	let keep = keep.min(size).min(max_size);
+	if keep == 0 {
+		return fuzzer_mutate(data, size, max_size);
+	}
+	let _ = seed;
+	let body = fuzzer_mutate(
+		&mut data[keep..],
+		size.saturating_sub(keep),
+		max_size.saturating_sub(keep),
+	);
+	keep + body
+}
+
+/// [`after`] with the Markdown mutator.
+pub fn markdown_after(
+	data: &mut [u8],
+	size: usize,
+	max_size: usize,
+	seed: u32,
+	keep: usize,
+) -> usize {
+	after(data, size, max_size, seed, keep, markdown)
+}
+
+/// [`after`] with the TeX mutator.
+pub fn math_after(
+	data: &mut [u8],
+	size: usize,
+	max_size: usize,
+	seed: u32,
+	keep: usize,
+) -> usize {
+	after(data, size, max_size, seed, keep, math)
+}

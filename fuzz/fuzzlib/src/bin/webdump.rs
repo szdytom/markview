@@ -86,8 +86,10 @@ fn dump(block: &Block, depth: usize) {
 			for inline in text {
 				if inline.style != Default::default()
 					|| inline.link.is_some()
-					|| !matches!(inline.kind, markview_document::InlineKind::Text(_))
-				{
+					|| !matches!(
+						inline.kind,
+						markview_document::InlineKind::Text(_)
+					) {
 					eprintln!(
 						"{pad}  inline {:?} style={:?} link={:?}",
 						inline.kind,

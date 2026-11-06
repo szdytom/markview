@@ -17,6 +17,7 @@
 set -euo pipefail
 root=$(cd "$(dirname "$0")/../.." && pwd)
 out="$root/fuzz/corpus"
+python3 "$root/fuzz/scripts/prepare_pipeline_seeds.py"
 tmp=$(mktemp -d)
 trap 'rm -rf "$tmp"' EXIT
 

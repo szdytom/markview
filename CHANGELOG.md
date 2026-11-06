@@ -23,6 +23,10 @@ at the same level, without `[brackets]`.
 
 ### Added
 
+- Add integrated fuzz harnesses for reading and webpage layout, with state histories for layout cache comparisons.
+- Add controlled background-highlight scheduling, real image decoding, pagination, reparse-sequence, interaction and font-archive fuzz harnesses.
+- Reach valid faces, multilingual shaping and valid TeX fragments in the font, shaping and math fuzz targets.
+- Share the production image decoder and font archive extraction through new `markview-image` and `markview-font-archive` crates.
 - Open a new blank window with Ctrl+N (⌘N on macOS), including when single-instance mode is enabled.
 - Extend property tests across document, layout, rendering, PDF, web, application and development APIs, with recorded defects and opt-in reproducers.
 - Add internal API property tests with independent models across five crates, a contributor guide, and CI failure-seed artifacts.
@@ -62,6 +66,7 @@ at the same level, without `[brackets]`.
 
 - Exclude package artifact directories from platform boundary checks so standalone experiment probes do not trigger false positives.
 - Quote the property-test command so GitHub Actions can parse and start CI.
+- Keep retained table scroll-region spans valid when an overflowing table replaces nested scroll regions.
 - Match font archive wildcards correctly when member names contain literal asterisks.
 - Send PDF footnote return links to the earliest reference by page and vertical position.
 - Preserve stored `max-age` precedence over Expires-only image-cache revalidation responses.
@@ -103,6 +108,7 @@ at the same level, without `[brackets]`.
 
 ### Documentation
 
+- Consolidate fuzz expansion plans around integrated pipelines and separate fast local contracts into a PBT plan.
 - Update property-testing coverage and defect status after enabling ten fixed regressions.
 - Document semantic link and selection boundaries, viewport/RSS benchmark methods, and reproducible refactor validation.
 

@@ -34,9 +34,11 @@ eula = false
 members = [
 	"crates/markview-commonmark",
 	"crates/markview-document",
+	"crates/markview-font-archive",
 	"crates/markview-geometry",
 	"crates/markview-i18n",
 	"crates/markview-icon",
+	"crates/markview-image",
 	"crates/markview-interaction",
 	"crates/markview-layout",
 	"crates/markview-pdf",
@@ -161,6 +163,8 @@ markview-layout = { path = "crates/markview-layout", features = ["font-directori
 markview-webpage = { path = "crates/markview-webpage" }
 markview-i18n = { path = "crates/markview-i18n" }
 markview-icon = { path = "crates/markview-icon" }
+markview-image = { path = "crates/markview-image" }
+markview-font-archive = { path = "crates/markview-font-archive" }
 markview-interaction = { path = "crates/markview-interaction" }
 markview-pdf = { path = "crates/markview-pdf" }
 markview-platform = { path = "crates/markview-platform" }

@@ -327,7 +327,7 @@ impl BlockContext<'_> {
 		}
 		if total > width + 0.5 {
 			let gutter = opts.stylesheet.scrollbar_gutter();
-			out.overflow.truncate(overflow_start);
+			out.truncate_overflow(overflow_start);
 			out.overflow.push(Overflow {
 				rect: Rect {
 					x,

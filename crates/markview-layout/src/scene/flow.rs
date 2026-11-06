@@ -167,6 +167,21 @@ impl BlockLayout {
 		self.scene.cursor = end;
 	}
 
+	/// Replace nested scroll regions with their enclosing table's region.
+	pub(crate) fn truncate_overflow(&mut self, start: usize) {
+		self.flush_scene();
+		// A leaf with discarded scroll geometry must be measured again on reuse.
+		self.scene
+			.leaves
+			.retain(|leaf| self.scene.spans[leaf.span].overflow.end <= start);
+		for span in &mut self.scene.spans {
+			span.overflow.start = span.overflow.start.min(start);
+			span.overflow.end = span.overflow.end.min(start);
+		}
+		self.overflow.truncate(start);
+		self.scene.cursor.overflow = start;
+	}
+
 	pub(crate) fn begin_scene(&mut self, x: f32, y: f32) {
 		self.flush_scene();
 		let parent = self.scene.active;

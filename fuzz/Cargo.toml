@@ -16,6 +16,8 @@ members = ["fuzzlib"]
 [dependencies]
 markview-commonmark = { path = "../crates/markview-commonmark" }
 markview-document = { path = "../crates/markview-document" }
+markview-image = { path = "../crates/markview-image" }
+markview-font-archive = { path = "../crates/markview-font-archive" }
 markview-webpage = { path = "../crates/markview-webpage" }
 libfuzzer-sys = "0.4"
 arbitrary = { version = "1", features = ["derive"] }
@@ -203,3 +205,52 @@ bench = false
 # API merged in #246. This must track the root workspace's patch, or the harness
 # would fuzz a different extractor than the app ships.
 dom_smoothie = { git = "https://github.com/niklak/dom_smoothie", rev = "0fdbefd324d6ba49b4bbdadc85b2a25cc4367b76" }
+
+[[bin]]
+name = "reading_pipeline"
+path = "fuzz_targets/reading_pipeline.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "webpage_layout"
+path = "fuzz_targets/webpage_layout.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "highlight_schedule"
+path = "fuzz_targets/highlight_schedule.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "image_decode"
+path = "fuzz_targets/image_decode.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "paginate_pipeline"
+path = "fuzz_targets/paginate_pipeline.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "interaction_sequence"
+path = "fuzz_targets/interaction_sequence.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "font_archive"
+path = "fuzz_targets/font_archive.rs"
+test = false
+doc = false
+bench = false
