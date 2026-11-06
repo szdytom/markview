@@ -210,7 +210,7 @@ pub fn parse_prefix_with(
 			at = open + 4;
 		}
 	}
-	let parsed = prefix_blocks(source, end, dialect);
+	let parsed = prefix_blocks(source, end, dialect)?;
 	let kept: Vec<&Block> = parsed
 		.document
 		.blocks()
@@ -278,28 +278,33 @@ fn unread_footnotes_affect_details(source: &str, end: usize) -> bool {
 
 /// The blocks of `source[..end]`, with every reference or note resolved from
 /// the definitions that follow the cut.
-fn prefix_blocks(source: &str, end: usize, dialect: Dialect) -> MarkdownParse {
+fn prefix_blocks(
+	source: &str,
+	end: usize,
+	dialect: Dialect,
+) -> Option<MarkdownParse> {
 	let bare = &source[..end];
 	if !bare.contains('[') {
-		return super::parse_with(bare.to_owned(), dialect);
+		return Some(super::parse_with(bare.to_owned(), dialect));
 	}
 	let definitions = missing_definitions(source, bare);
 	if definitions.is_empty() {
-		return super::parse_with(bare.to_owned(), dialect);
+		return Some(super::parse_with(bare.to_owned(), dialect));
 	}
 	let mut slice = bare.to_owned();
 	slice.push_str("\n\n");
 	slice.push_str(&definitions);
 	let parsed = super::parse_with(slice, dialect);
-	// An open fence or HTML block can swallow the appended text; then only the
-	// bare prefix parses to what the full parse would put there.
+	// An open fence or HTML block swallows the appended text. Parsing the bare
+	// prefix instead would leave a reference literal where the full parse links
+	// it, so decline rather than return a prefix that cannot match.
 	if parsed.document.blocks().iter().any(|block| {
 		block_range(&parsed.map, block.id())
 			.is_some_and(|range| range.start < end && range.end > end)
 	}) {
-		return super::parse_with(bare.to_owned(), dialect);
+		return None;
 	}
-	parsed
+	Some(parsed)
 }
 
 /// The definitions of `source` that `bare` does not already hold.

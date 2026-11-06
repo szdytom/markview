@@ -202,9 +202,11 @@ prefix parse returns a paragraph whose content key differs and whose inline is
 literal `[baz]`. The fuzz reproducer is
 `fuzz/artifacts/crashes6/prefix/crash-9976153b3992fac63bdb2149a3dc385b1d1ceb3d`.
 
-Status: open. The parser should either prepend the missing definitions before
-the prefix body or refuse the prefix parse when an open fence would swallow
-them; a prefix that cannot match the full parse must not be returned as one.
+Status: fixed. When appending the missing definitions makes a block cross the
+cut, `parse_prefix` now declines instead of returning the bare prefix with a
+literal reference. Regression test:
+`prefix_parse_declines_when_an_open_fence_swallows_definitions`; the prefix
+oracle treats the declined parse as legal.
 
 ## D3 — an empty table cell's source range escapes the table
 

@@ -1097,6 +1097,20 @@ fn prefix_parse_resolves_definitions_that_follow_the_cut() {
 }
 
 #[test]
+fn prefix_parse_declines_when_an_open_fence_swallows_definitions() {
+	// The reference before the stray fence needs the definition after it. The
+	// bare prefix sees an open fence and a literal `[baz]`, which the full
+	// parse turns into a link.
+	let source: Arc<str> = Arc::from("[baz]\n\n```\n\n```\n[baz]: /u\n");
+	let full = parse(source.as_ref());
+	let BlockKind::Paragraph(text) = full.blocks()[0].kind() else {
+		panic!("expected a paragraph")
+	};
+	assert!(text.iter().any(|inline| inline.link_url() == Some("/u")));
+	assert!(parse_prefix(&source, 8).is_none());
+}
+
+#[test]
 fn prefix_parse_resolves_an_indented_definition() {
 	// A definition may sit up to three spaces deep, which the parser reads and
 	// the prefix's own scan used to skip: the prefix block stayed a literal

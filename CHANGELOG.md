@@ -67,6 +67,7 @@ at the same level, without `[brackets]`.
 - Exclude package artifact directories from platform boundary checks so standalone experiment probes do not trigger false positives.
 - Quote the property-test command so GitHub Actions can parse and start CI.
 - Turn an SVG rasterizer panic from an extreme text size into an image error instead of unwinding the decoder.
+- Decline a prefix parse when an open fence would swallow the definitions its references need.
 - Keep retained table scroll-region spans valid when an overflowing table replaces nested scroll regions.
 - Match font archive wildcards correctly when member names contain literal asterisks.
 - Send PDF footnote return links to the earliest reference by page and vertical position.
