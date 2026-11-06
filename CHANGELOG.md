@@ -23,100 +23,41 @@ at the same level, without `[brackets]`.
 
 ### Added
 
-- Expand property models for mixed table spans, source overlaps, text geometry, MVSS cascades, IME, pagination, Unicode search, footnotes and image decoding; record raw HTML entity defects without fixes.
-- Add integrated fuzz harnesses for reading and webpage layout, with state histories for layout cache comparisons.
-- Add controlled background-highlight scheduling, real image decoding, pagination, reparse-sequence, interaction and font-archive fuzz harnesses.
-- Reach valid faces, multilingual shaping and valid TeX fragments in the font, shaping and math fuzz targets.
-- Share the production image decoder and font archive extraction through new `markview-image` and `markview-font-archive` crates.
 - Open a new blank window with Ctrl+N (⌘N on macOS), including when single-instance mode is enabled.
-- Extend property tests across document, layout, rendering, PDF, web, application and development APIs, with recorded defects and opt-in reproducers.
-- Add internal API property tests with independent models across five crates, a contributor guide, and CI failure-seed artifacts.
-- Add the `markview-webpage` front end, which lowers Readability's processed DOM directly into a semantic document without a body Markdown round trip.
-- Support complex table grids with row groups, captions, block cells, rowspan/colspan and shared borders across the reader and PDF export.
-- Preserve definition lists and figures as semantic blocks, and support HTML list start, reversed and per-item values.
-- Keep web tabs in memory with a stable web identity, metadata title, request generation and session restoration instead of temporary Markdown files.
-- Add the `webpage` and `webpage_seam` fuzz targets, covering web page lowering with document-contract oracles and a generated-article differential.
+- Support complex tables with row groups, captions, block cells, merged cells and shared borders across the reader and PDF export.
+- Preserve definition lists, figures and custom HTML list numbering when reading web articles.
 
 ### Changed
 
-- Keep reader geometry and preview-cache operations in a dedicated display state to stay within the session coupling limit.
-- Lint hand-maintained GitHub Actions workflows with actionlint in the default local checks.
-- Share budgeted three-screen tab snapshots with hover previews, falling back for oversized blocks.
-- Reuse per-document reading counts when inactive tabs are restored.
-- Publish image dimensions before raster decoding finishes, keeping queued images in the loading state.
-- Split Android integration tests into isolated feature cases with filtering, reproducible shuffling and per-case reports.
-- Run property tests and Linux golden tests in separate CI workflows alongside regular tests, keeping both required for CI and releases.
-- Run previously failed local checks first, storing the failure record in each worktree's Git metadata and clearing it after success.
-- Validate intermediate animation, moved widgets, cross-segment reading ranges, normal line breaking, and complete image snapshots with property tests.
-- Move navigation to semantic inlines and keep selection endpoints in revisioned fields, resolving layout geometry for each query.
-- Store images as typed `ResourceRef` references or `Diagram` sources, and build cache keys in the application from the address, base and authorization context.
-- Build block, outline, disclosure and anchor indexes once when a document is sealed, after checking the construction budget.
-- Restore saved readings in session schema 4 by input digest, front-end version, structural block path, field offset and scroll-ratio fallback, discarding old layout ordinals and block ids.
-- Type disclosure, footnote-return and URL link targets at the layout boundary, and preserve custom callout type names.
-- Separate link addresses, occurrences and visual styles from footnote definition, number and reference identities, so same-address links and multiple references stay independent.
-- Store source mappings as optional ranges so generated content has no fake `0..0` position.
-- Remove the public `Link::rebase` API and make link occurrence equality independent of allocation sharing.
-- Name a disclosure's source state `default_open` and let a foldable callout's summary own the title, so the reader state never enters the document.
-- Read a web page's declared canonical link before falling back to the Open Graph URL.
-- Split semantic documents from source text: blocks and inlines now carry stable typed identities, while original text and source ranges live in a separately supplied `SourceMap`.
-- Build documents through a central builder that allocates block identities and derives cache keys, and make `markview-commonmark` return a `MarkdownParse` that owns the text, map and dialect.
-- Pin `dom_smoothie` to the upstream commit with `Readability::extract` (PR #246) so the web front end can read Readability's processed DOM without serializing it, replacing the local vendor copy.
-- Replace source-offset link origins with explicit link occurrence ids derived from where the link was declared, and resolve text source positions through the shared semantic traversal.
+- Render web articles directly from HTML, preserving headings, checklists and formulas without converting the article body to Markdown.
+- Keep web tabs in memory with article titles and session restoration, and use the page URL in PDF metadata and page furniture.
+- Prefer a web page's declared canonical URL over its Open Graph URL.
+- Restore reading positions from document structure, including positions inside images and captions; older sessions retain scroll fallbacks but reset saved fold states.
+- Speed up inactive-tab restoration by reusing reading counts and sharing bounded page snapshots with hover previews, preserving scroll positions and fragment navigation.
+- Reserve image space before raster decoding finishes to reduce layout shifts during loading.
+- Show “Loading document…” in the reading area while a web page loads over the network.
+- Delay the document search progress label by 100 ms to avoid flicker while typing, and label it “Searching…” instead of “Preparing…”.
 
 ### Fixed
 
-- Exclude package artifact directories from platform boundary checks so standalone experiment probes do not trigger false positives.
-- Quote the property-test command so GitHub Actions can parse and start CI.
 - Preserve nonbreaking and other Unicode spaces in raw HTML, including paragraph edges and style boundaries, while collapsing only HTML whitespace.
 - Decode named and numeric entities once in supported raw HTML text, preserving encoded markup as literal reading text.
-- Turn an SVG rasterizer panic from an extreme text size into an image error instead of unwinding the decoder.
-- Decline a prefix parse when an open fence would swallow the definitions its references need.
-- Clip an empty table cell's source range to the table instead of letting it claim the row's line ending.
+- Show an image error for SVGs with extreme text sizes instead of crashing the reader.
+- Resolve reference links consistently during partial document loading when their definitions follow fenced code blocks.
 - Keep retained table scroll-region spans valid when an overflowing table replaces nested scroll regions.
 - Match font archive wildcards correctly when member names contain literal asterisks.
 - Send PDF footnote return links to the earliest reference by page and vertical position.
-- Preserve stored `max-age` precedence over Expires-only image-cache revalidation responses.
-- Treat nonexistent HTTP calendar dates as absent instead of rolling them into the next month.
-- Keep retained rows’ visible heights continuous when list animations are rapidly retargeted.
-- Reject reserved Rust keywords in locale keys and parameters before generating methods.
-- Reject unmatched closing braces before locale placeholders with a locale validation error.
-- Keep figure body and caption link occurrences bound to their own fragments on layout cache hits.
+- Respect image-cache expiration after revalidation and ignore invalid HTTP calendar dates.
+- Keep row animations continuous when rapidly retargeted.
 - Preserve text selections across surrounding deletion when combining marks join the selected grapheme.
-- Find covering source spans during reverse navigation even when later spans overlap them.
-- Keep cached tab positions stable as images finish loading and preserve fragment jumps when cached geometry is invalidated.
-- Preserve reading positions inside images and generated captions across session restoration, including delayed image loading.
+- Correct reader-to-source navigation for overlapping source spans, image alt text and empty table cells.
 - Reveal the document scrollbar again on wheel and touchpad scrolling, restarting its auto-hide delay without requiring pointer motion.
-- Show “Loading document…” in the reading area while a web page loads over the network.
-- Delay the document search progress label by 100 ms to avoid flicker while typing, and label it “Searching…” instead of “Preparing…”.
-- Declare a web heading's explicit HTML `id` once, as the heading's anchor instead of also as a block anchor.
-- Keep a web table cell's declared span when it collides with a rowspan, placing it at the next free slot instead of shrinking it to a plain cell.
-- Keep block content nested inside a web heading as blocks after the heading instead of flattening it into the heading text.
-- Inherit a heading wrapper's link, formatting and code context in the blocks split out of it, so literal `<code>` content stays literal.
-- Remove a needless borrow in callout title hashing so Clippy passes on Rust 1.99.
-- Set a web tab's origin before refreshing file search so its internal identity never appears among local files.
-- Seal webpage documents once and hash semantic content without cloning text, reducing conversion allocations while preserving link groups and indexes.
-- Lower each KaTeX or MathJax formula once by skipping `aria-hidden` and `role="presentation"` copies of it.
-- Map an image's alt text back to the whole image source, so editor and reader positions agree on the line an image starts.
-- Keep web checklist state, article title level and block-formula display through Readability's rewritten DOM.
-- Check the element budget before the web adapter's pre-passes and mark checklist state in one walk, so deeply nested lists cannot make extraction quadratic.
-- Keep web `aria-hidden` captions, summaries and terms hidden, later `h1` headings as content, overlapping table spans and TeX formula delimiters intact.
-- Keep hidden web definition wrappers and table row groups out of the article, strip TeX delimiters from MathML `alttext`, and emit table groups as head, then bodies, then foot.
-- Keep a table caption's formula on the coordinator's ordered math budget, and share the layout search field walk with the document traversal.
-- Bind layout fields from the document traversal instead of memory addresses, and reject source, search and outline positions from another revision.
-- Ignore page-supplied internal markers and saved web disclosure state that belongs to other content.
-- Refuse `file:` link destinations from web pages, and count encoded inline SVG and table rows against their document budgets.
-- Include plain callout titles in search and keep a caption on a table that has no cells.
-- Keep an older redirected web load from replacing a newer load for its final URL, and count formula LaTeX and image alternatives toward the text budget.
-- Name a web page's URL in PDF metadata and page furniture instead of its synthetic `web:` session path.
-- Label web tabs in the strip and its cached metrics with the same readable label the drawer uses.
-- Forget a web page's load record when its last tab closes, including after a redirect, and allocate document revisions from one shared counter.
-- Lay out, paginate and write PDF exports through one path for file and in-memory documents.
+- Include plain callout titles in search.
+- Keep an older redirected web load from replacing a newer load for its final URL.
 
-### Documentation
+### Security
 
-- Consolidate fuzz expansion plans around integrated pipelines and separate fast local contracts into a PBT plan.
-- Update property-testing coverage and defect status after enabling ten fixed regressions.
-- Document semantic link and selection boundaries, viewport/RSS benchmark methods, and reproducible refactor validation.
+- Refuse local file links from web pages and enforce web article size and formula limits, including inline SVG and table content.
 
 ## 0.4.5 - 2026-11-05
 

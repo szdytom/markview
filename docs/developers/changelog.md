@@ -1,8 +1,43 @@
 # Changelog conventions
 
-Add entries to [CHANGELOG.md](../../CHANGELOG.md) under `Unreleased` as you make
-changes. CI checks the conventions with
-[check_changelog.py](../../scripts/check_changelog.py).
+Maintain [CHANGELOG.md](../../CHANGELOG.md) for notable release changes under
+`Unreleased`. CI checks formatting with
+[check_changelog.py](../../scripts/check_changelog.py); entry selection and
+consolidation require review.
+
+## Scope
+
+Record notable changes that help users understand the next release: features,
+behavior changes, meaningful fixes, performance improvements, compatibility
+changes, and security fixes.
+
+Routine documentation edits, tests, fuzzing, CI, tooling, refactoring, and
+dependency maintenance do not need entries on their own. Include them only when
+they have a notable effect on users or supported public interfaces, installation,
+or platform requirements. Describe that effect. A `Documentation` category does
+not make every documentation edit worth recording.
+
+A task, commit, or pull request does not automatically need an entry. Skipping a
+changelog update is expected for routine internal work.
+
+## Maintaining Unreleased
+
+- Use the latest published release as the baseline.
+- Before adding an entry, read `Unreleased` for related entries.
+- Update an existing entry when the same feature or behavior changes again. Keep
+  distinct user-visible effects separate when that improves clarity.
+- Describe the final behavior. Omit intermediate implementations and fixes for
+  defects introduced and resolved entirely within `Unreleased`.
+- Remove entries for changes fully reverted before release, unless a notable net
+  effect remains.
+- Keep entries concise and focused on what changes for users.
+- Edit only entries related to the current task unless broader cleanup is
+  requested. Preserve published release entries.
+
+For example, if a released label changes from `foo` to `A` and then to `B` before
+the next release, keep one entry describing `foo` to `B`. If it returns to `foo`,
+remove the entry. Adding a regression test alone needs no entry; fixing a bug in
+the published reader warrants an entry describing the user-visible fix.
 
 ## Entry format
 

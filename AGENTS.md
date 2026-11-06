@@ -41,7 +41,12 @@ To AI Agents: NO editing of this file is allowed. This file is for human editing
 
 ## Changelog
 
-Update the [changelog](CHANGELOG.md) as you go. Never be too detailed. Fit every item in 1-2 lines. Follow [changelog conventions](docs/developers/changelog.md).
+Maintain `CHANGELOG.md` for notable release changes, following
+[the changelog conventions](docs/developers/changelog.md).
+Only update it when the work qualifies under those conventions.
+Treat `Unreleased` as the net change from the latest published release:
+revise or consolidate related entries as behavior evolves.
+Skipping a changelog update is expected for routine internal work.
 
 ## Runtime Specific Instructions
 

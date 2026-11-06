@@ -6,7 +6,7 @@ Start with [contributing](../../CONTRIBUTING.md) and the development guide.
 ## Build and change
 
 - [Development guide](development.md): build, test, choose a layer and change behavior.
-- [Changelog conventions](changelog.md): entry format, release headings and automated checks.
+- [Changelog conventions](changelog.md): scope, consolidation, entry format, release headings and automated checks.
 - [Architecture](architecture.md): pipeline, ownership, snapshots, versions and resource boundaries.
 - [Web page extraction](webpage-extraction.md): HTML-to-document lowering, extraction profile and DOM patch.
 - [Native UI](ui.md): pure component updates, host effects and shared widget geometry.
