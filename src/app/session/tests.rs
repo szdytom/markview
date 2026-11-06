@@ -641,6 +641,8 @@ fn image_and_caption_positions_survive_serialization_and_image_loading() {
 	pending
 		.entries
 		.insert("picture".into(), ImageInfo::default());
+	let mut metadata = images.clone();
+	metadata.entries.get_mut("picture").unwrap().loading = true;
 	let mut failed = pending.clone();
 	failed.entries.get_mut("picture").unwrap().error =
 		Some("Image unavailable".into());
@@ -684,6 +686,7 @@ fn image_and_caption_positions_survive_serialization_and_image_loading() {
 			.unwrap();
 			for (state, initial) in [
 				("ready", &images),
+				("metadata", &metadata),
 				("pending", &pending),
 				("failed", &failed),
 			] {
@@ -692,6 +695,18 @@ fn image_and_caption_positions_survive_serialization_and_image_loading() {
 					..Default::default()
 				};
 				restored.accept(layout(initial), 200., None);
+				if state == "metadata" {
+					let mut reopened = ReaderSession {
+						saved_reading: Some(Reading::capture(&restored)),
+						..Default::default()
+					};
+					reopened.accept(layout(&images), 200., None);
+					assert!(
+						(reopened.scrolling.offset - scroll).abs() < 0.01,
+						"reopening during metadata: {scroll} -> {}",
+						reopened.scrolling.offset
+					);
+				}
 				if state == "failed" {
 					assert!(restored.saved_reading.is_none());
 					assert!(restored.scrolling.offset.is_finite());

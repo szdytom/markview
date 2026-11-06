@@ -21,6 +21,8 @@ pub struct Pixels {
 /// decode, so a layout cache key can detect new pixels without comparing them.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct ImageInfo {
+	/// Dimensions may be available while the first raster is still loading.
+	pub loading: bool,
 	pub version: u64,
 	pub size: Option<(u32, u32)>,
 	pub error: Option<String>,

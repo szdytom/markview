@@ -138,6 +138,7 @@ fn parallel_geometry_matches_serial_through_reflows_edits_and_cache_reuse() {
 		images.entries.insert(
 			"image.png".into(),
 			markview_layout::image::ImageInfo {
+				loading: false,
 				version,
 				size,
 				error: None,

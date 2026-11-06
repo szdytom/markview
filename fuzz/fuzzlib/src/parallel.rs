@@ -50,6 +50,7 @@ pub fn check(md: &str) {
 		images.entries.insert(
 			image.address().to_owned(),
 			ImageInfo {
+				loading: false,
 				version: 1,
 				size: Some((
 					1 + (seed as u32 % 800),

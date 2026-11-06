@@ -270,6 +270,7 @@ fn an_image_taller_than_the_page_is_scaled_to_fit() {
 	images.entries.insert(
 		"big.png".into(),
 		ImageInfo {
+			loading: false,
 			version: 1,
 			size: Some((200, 600)),
 			error: None,

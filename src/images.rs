@@ -10,7 +10,9 @@ mod source;
 #[cfg(test)]
 mod tests;
 use anyhow::Result;
-use decode::{Decoded, decode};
+use decode::Decoded;
+#[cfg(test)]
+use decode::decode;
 use fonts::DiagramFonts;
 use markview_document::Document;
 use markview_layout::{
@@ -86,6 +88,14 @@ impl DiagramRequest {
 		))
 	}
 }
+struct Metadata {
+	ticket: u64,
+	source: Source,
+	generation: u64,
+	size: (u32, u32),
+	svg: bool,
+}
+
 struct Finished {
 	ticket: u64,
 	source: Source,
@@ -314,6 +324,8 @@ pub struct Images {
 	resident: HashMap<String, Arc<markview_layout::image::Pixels>>,
 	demand: HashMap<String, markview_layout::image::ImageDemand>,
 	done: mpsc::Sender<Finished>,
+	metadata: mpsc::Sender<Metadata>,
+	metadata_recv: mpsc::Receiver<Metadata>,
 	services: crate::services::Handle,
 	_owner: Option<Arc<crate::services::Services>>,
 	cache: Option<cache::Cache>,
@@ -421,6 +433,7 @@ impl Images {
 		wake: markview_layout::background::Wake,
 	) -> Self {
 		let (done, recv) = mpsc::channel();
+		let (metadata, metadata_recv) = mpsc::channel();
 		Self {
 			snapshot: ImageSnapshot::default(),
 			blocked: HashMap::new(),
@@ -431,6 +444,8 @@ impl Images {
 			resident: HashMap::new(),
 			demand: HashMap::new(),
 			done,
+			metadata,
+			metadata_recv,
 			services,
 			_owner: owner,
 			cache: cache_root.map(cache::Cache::new),
@@ -821,7 +836,16 @@ impl Images {
 		if key.stale && e.info.error.is_some() {
 			e.info.error = None;
 		}
-		if *running < 4 && e.needs_job(key.stale, resize, requested, resident) {
+		let needs = e.needs_job(key.stale, resize, requested, resident);
+		// A queued first decode is pending too: a restored page keeps its
+		// pixels until the replacement can replace them.
+		if needs && e.raster.is_none() && !e.info.loading {
+			e.info.loading = true;
+			for alias in &e.aliases {
+				self.snapshot.entries.insert(alias.clone(), e.info.clone());
+			}
+		}
+		if *running < 4 && needs {
 			e.ticket = VERSION.fetch_add(1, Ordering::Relaxed);
 			e.busy = true;
 			e.theme = key.theme;
@@ -851,6 +875,12 @@ impl Images {
 	fn start(&self, job: Job) {
 		let services = self.services.clone();
 		let done = self.done.clone();
+		let metadata = self.metadata.clone();
+		let publish_metadata = !job.pdf
+			&& self
+				.entries
+				.get(&job.source)
+				.is_none_or(|entry| entry.info.size.is_none());
 		let wake = self.wake.clone();
 		let cache = self.cache.clone();
 		let offline = self.offline;
@@ -901,6 +931,7 @@ impl Images {
 					Vec::len,
 				);
 				let cancel = job.cancel.clone();
+				let metadata_wake = wake.clone();
 				services
 					.compute(input_bytes, &cancel, move || {
 						if job.cancel.is_cancelled() {
@@ -933,7 +964,7 @@ impl Images {
 						if job.cancel.is_cancelled() {
 							anyhow::bail!("Cancelled");
 						}
-						let decoded = decode(
+						let decoded = decode::decode_with_metadata(
 							&bytes,
 							job.target,
 							job.initial_width,
@@ -943,6 +974,20 @@ impl Images {
 								&theme,
 							),
 							theme.generic_font_families(),
+							|size, svg| {
+								if publish_metadata
+									&& !job.cancel.is_cancelled()
+								{
+									let _ = metadata.send(Metadata {
+										ticket: job.ticket,
+										source: job.source.clone(),
+										generation: job.generation,
+										size,
+										svg,
+									});
+									metadata_wake();
+								}
+							},
 						)?;
 						if job.cancel.is_cancelled() {
 							anyhow::bail!("Cancelled");
@@ -982,9 +1027,35 @@ impl Images {
 
 	pub fn poll(&mut self) -> bool {
 		let mut changed = self.reclaim_finished();
+		while let Ok(metadata) = self.metadata_recv.try_recv() {
+			changed |= self.apply_metadata(metadata);
+		}
 		changed |= self.expire_stale();
 		self.reschedule();
 		changed
+	}
+
+	fn apply_metadata(&mut self, metadata: Metadata) -> bool {
+		if metadata.generation != self.generation {
+			return false;
+		}
+		let Some(entry) = self.entries.get_mut(&metadata.source) else {
+			return false;
+		};
+		if entry.ticket != metadata.ticket || !entry.busy {
+			return false;
+		}
+		entry.info.size = Some(metadata.size);
+		entry.info.svg = metadata.svg;
+		entry.info.loading = true;
+		entry.svg = metadata.svg;
+		entry.info.version = VERSION.fetch_add(1, Ordering::Relaxed);
+		for alias in &entry.aliases {
+			self.snapshot
+				.entries
+				.insert(alias.clone(), entry.info.clone());
+		}
+		true
 	}
 
 	/// Takes every completion the workers have posted for the current
@@ -1013,6 +1084,7 @@ impl Images {
 			return false;
 		}
 		e.busy = false;
+		e.info.loading = false;
 		// A failed job is progress too: it frees its pipeline slot for the
 		// queue behind it, so only a pipeline that reports nothing at all is
 		// jammed.
@@ -1177,6 +1249,7 @@ impl Images {
 				// stale, so `poll` ignores it rather than replacing the reason
 				// with the cancellation it reports on its way out.
 				e.ticket = VERSION.fetch_add(1, Ordering::Relaxed);
+				e.info.loading = false;
 				e.info.error = Some(STALLED.into());
 				e.info.version = VERSION.fetch_add(1, Ordering::Relaxed);
 				changed = true;

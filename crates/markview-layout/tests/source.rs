@@ -59,6 +59,7 @@ fn scroll_anchor_batches_cover_visible_lines_and_complete_atomic_ranges() {
 	resources.entries.insert(
 		images[0].address().to_owned(),
 		markview_layout::image::ImageInfo {
+			loading: false,
 			version: 1,
 			size: Some((80, 1200)),
 			error: None,
@@ -523,6 +524,7 @@ fn empty_alt_images_keep_atomic_source_geometry_across_resource_updates() {
 			resources.entries.insert(
 				images[0].address().to_owned(),
 				markview_layout::image::ImageInfo {
+					loading: false,
 					version: 1,
 					size: state,
 					error: None,
@@ -675,6 +677,7 @@ fn atomic_image_source_geometry_uses_the_table_scroll_offset() {
 	images.entries.insert(
 		"test.png".into(),
 		markview_layout::image::ImageInfo {
+			loading: false,
 			version: 1,
 			size: Some((100, 140)),
 			error: None,

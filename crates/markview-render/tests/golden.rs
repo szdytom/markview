@@ -51,6 +51,7 @@ fn markdown_matches_rendering_baselines() -> Result<()> {
 	images.entries.insert(
 		"tiles.png".into(),
 		ImageInfo {
+			loading: false,
 			version: 1,
 			size: Some(tiles.dimensions()),
 			error: None,
@@ -73,6 +74,7 @@ fn markdown_matches_rendering_baselines() -> Result<()> {
 	images.entries.insert(
 		"failed.png".into(),
 		ImageInfo {
+			loading: false,
 			version: 1,
 			error: Some("Image is unavailable".into()),
 			svg: false,

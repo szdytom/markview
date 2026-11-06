@@ -171,6 +171,7 @@ fn svg_snapshot(
 		snapshot.entries.insert(
 			key.clone(),
 			ImageInfo {
+				loading: false,
 				version: 1,
 				size: Some(decoded.intrinsic),
 				error: None,

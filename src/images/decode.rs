@@ -143,17 +143,42 @@ fn has_svg_text(bytes: &[u8]) -> bool {
 /// Decodes one image. `fonts` is the reader's own face set and the theme's
 /// family list, for an SVG that carries text; `None` resolves fonts the way
 /// an SVG file outside the reader does.
+#[cfg(test)]
 pub(super) fn decode(
+	bytes: &[u8],
+	target: Option<(u32, u32)>,
+	initial_width: Option<f32>,
+	fonts: Option<(&Arc<super::fonts::DiagramFonts>, &str)>,
+	generic_families: &[(String, Vec<String>)],
+) -> Result<Decoded> {
+	decode_with_metadata(
+		bytes,
+		target,
+		initial_width,
+		fonts,
+		generic_families,
+		|_, _| {},
+	)
+}
+
+pub(super) fn decode_with_metadata(
 	bytes: &[u8],
 	target: Option<(u32, u32)>,
 	initial_width: Option<f32>,
 	fonts: Option<(&std::sync::Arc<super::fonts::DiagramFonts>, &str)>,
 	generic_families: &[(String, Vec<String>)],
+	mut metadata: impl FnMut((u32, u32), bool),
 ) -> Result<Decoded> {
 	let Some(format) = image::guess_format(bytes).ok() else {
-		return decode_svg(bytes, target, fonts, generic_families);
+		return decode_svg(
+			bytes,
+			target,
+			fonts,
+			generic_families,
+			&mut metadata,
+		);
 	};
-	decode_bitmap(bytes, format, target, initial_width)
+	decode_bitmap(bytes, format, target, initial_width, &mut metadata)
 }
 
 fn decode_svg(
@@ -161,6 +186,7 @@ fn decode_svg(
 	target: Option<(u32, u32)>,
 	fonts: Option<(&Arc<super::fonts::DiagramFonts>, &str)>,
 	generic_families: &[(String, Vec<String>)],
+	metadata: &mut dyn FnMut((u32, u32), bool),
 ) -> Result<Decoded> {
 	let mut options = resvg::usvg::Options::default();
 	options.image_href_resolver.resolve_string = Box::new(|_, _| None);
@@ -174,6 +200,7 @@ fn decode_svg(
 		.context("Unsupported or invalid image/SVG")?;
 	let intrinsic = tree.size().to_int_size();
 	dimensions(intrinsic.width(), intrinsic.height())?;
+	metadata((intrinsic.width(), intrinsic.height()), true);
 	let (w, h) = target.unwrap_or((intrinsic.width(), intrinsic.height()));
 	dimensions(w, h)?;
 	let mut pixmap =
@@ -213,6 +240,7 @@ fn decode_bitmap(
 	format: image::ImageFormat,
 	target: Option<(u32, u32)>,
 	initial_width: Option<f32>,
+	metadata: &mut dyn FnMut((u32, u32), bool),
 ) -> Result<Decoded> {
 	let mut reader =
 		image::ImageReader::with_format(Cursor::new(bytes), format);
@@ -223,6 +251,8 @@ fn decode_bitmap(
 	let (w, h) = decoder.dimensions();
 	dimensions(w, h)?;
 	let orientation = decoder.orientation()?;
+	let size = bitmap_size(bytes, format, (w, h), orientation, limits.clone())?;
+	metadata(size, false);
 	let mut bitmap = decode_first_frame(bytes, format, limits, decoder)?;
 	bitmap.apply_orientation(orientation);
 	let intrinsic = (bitmap.width(), bitmap.height());
@@ -276,6 +306,41 @@ fn decode_bitmap(
 			rgba: rgba.into_raw().into(),
 		}),
 	})
+}
+
+fn bitmap_size(
+	bytes: &[u8],
+	format: image::ImageFormat,
+	size: (u32, u32),
+	orientation: image::metadata::Orientation,
+	limits: image::Limits,
+) -> Result<(u32, u32)> {
+	let mut size = oriented_size(size, orientation);
+	if format == image::ImageFormat::Ico
+		&& let Some(png) = ico_png(bytes)
+	{
+		size = image::codecs::png::PngDecoder::with_limits(
+			Cursor::new(png),
+			limits.clone(),
+		)?
+		.dimensions();
+		dimensions(size.0, size.1)?;
+	}
+	Ok(size)
+}
+
+fn oriented_size(
+	(w, h): (u32, u32),
+	orientation: image::metadata::Orientation,
+) -> (u32, u32) {
+	use image::metadata::Orientation;
+	match orientation {
+		Orientation::Rotate90
+		| Orientation::Rotate270
+		| Orientation::Rotate90FlipH
+		| Orientation::Rotate270FlipH => (h, w),
+		_ => (w, h),
+	}
 }
 
 fn decode_first_frame(

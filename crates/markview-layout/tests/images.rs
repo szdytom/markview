@@ -19,6 +19,7 @@ fn resources() -> ImageSnapshot {
 	images.entries.insert(
 		"test.png".into(),
 		ImageInfo {
+			loading: false,
 			version: 1,
 			size: Some((100, 140)),
 			error: None,
@@ -126,6 +127,7 @@ fn a_diagram_copies_its_placeholder_message_not_its_source() {
 	resources.entries.insert(
 		src.clone(),
 		ImageInfo {
+			loading: false,
 			version: 1,
 			size: Some((120, 60)),
 			error: None,
@@ -141,6 +143,7 @@ fn a_diagram_copies_its_placeholder_message_not_its_source() {
 	for (info, message) in [
 		(
 			ImageInfo {
+				loading: false,
 				version: 1,
 				size: None,
 				error: None,
@@ -150,6 +153,7 @@ fn a_diagram_copies_its_placeholder_message_not_its_source() {
 		),
 		(
 			ImageInfo {
+				loading: false,
 				version: 2,
 				size: None,
 				error: Some("Mermaid: broken".into()),

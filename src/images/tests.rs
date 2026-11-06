@@ -289,7 +289,20 @@ fn bitmap_and_animation_formats_use_their_first_frame() {
 	ico.extend(&payload);
 	formats.push(ico);
 	for bytes in formats {
-		let decoded = decode(&bytes, None).unwrap();
+		let mut metadata = None;
+		let decoded = super::decode::decode_with_metadata(
+			&bytes,
+			None,
+			None,
+			None,
+			&[],
+			|size, svg| {
+				assert!(!svg);
+				metadata = Some(size);
+			},
+		)
+		.unwrap();
+		assert_eq!(metadata, Some((w, h)));
 		assert_eq!(decoded.intrinsic, (w, h));
 		assert_eq!(decoded.pixels.width, w);
 		assert_eq!(&decoded.pixels.rgba[..4], &[10, 20, 30, 255]);
@@ -1885,8 +1898,10 @@ fn released_image_jobs_cannot_publish_into_a_reopened_document() {
 	images.poll();
 	assert!(images.snapshot.decoded().is_empty());
 	current.run();
-	woke.recv_timeout(Duration::from_secs(5)).unwrap();
-	images.poll();
+	while images.snapshot.decoded().is_empty() {
+		woke.recv_timeout(Duration::from_secs(5)).unwrap();
+		images.poll();
+	}
 	assert_eq!(images.snapshot.decoded()[&key].width, 2);
 	let snapshot = images.snapshot.clone();
 	let released = Arc::downgrade(&snapshot.decoded()[&key]);
@@ -2170,6 +2185,43 @@ fn a_queue_behind_held_pipelines_settles_boundedly() {
 	);
 }
 
+/// A restored document queues first decodes behind the four pipelines. Every
+/// one of them is pending, or a cached page would swap in pixels it lacks.
+#[test]
+fn queued_first_decodes_stay_loading_behind_full_pipelines() {
+	let dir = tempfile::tempdir().unwrap();
+	let path = dir.path().join("note.md");
+	let mut markdown = String::new();
+	for index in 0..8 {
+		let name = format!("img{index}.png");
+		fs::write(dir.path().join(&name), png(4, 3, [1, 2, 3, 255])).unwrap();
+		markdown.push_str(&format!("![{index}]({name})\n\n"));
+	}
+	let doc = markview_commonmark::parse(markdown);
+	let mut images = images(true);
+	let _held: Vec<_> = (0..4)
+		.filter_map(|_| images.pipelines.clone().try_acquire_owned().ok())
+		.collect();
+	assert_eq!(_held.len(), 4, "the pipelines were not full");
+	images.prepare(
+		&doc,
+		&path,
+		1,
+		false,
+		&Stylesheet::default(),
+		&crate::test_support::fonts(),
+	);
+	assert_eq!(
+		images
+			.snapshot
+			.entries
+			.values()
+			.filter(|info| info.loading)
+			.count(),
+		8
+	);
+}
+
 #[test]
 fn standalone_pictures_canonicalize_before_matching_grants() {
 	use crate::security::{Resource, Security, Trust};
@@ -2287,4 +2339,91 @@ fn resource_authority_controls_local_reads_and_cached_bodies_including_offline()
 	let key = key_for(&images, url);
 	assert_eq!(images.snapshot.entries[&key].size, Some((5, 3)));
 	assert_eq!(images.security.origin, Origin::Clipboard);
+}
+
+#[test]
+fn dimensions_arrive_before_pixels_with_correct_orientation() {
+	let mut jpeg = Vec::new();
+	image::DynamicImage::ImageRgb8(RgbImage::from_pixel(
+		6,
+		2,
+		Rgb([20, 30, 40]),
+	))
+	.write_to(&mut Cursor::new(&mut jpeg), image::ImageFormat::Jpeg)
+	.unwrap();
+	let exif=b"Exif\0\0II\x2a\0\x08\0\0\0\x01\0\x12\x01\x03\0\x01\0\0\0\x06\0\0\0\0\0\0\0";
+	let mut rotated = vec![0xff, 0xd8, 0xff, 0xe1];
+	rotated.extend(((exif.len() + 2) as u16).to_be_bytes());
+	rotated.extend(exif);
+	rotated.extend(&jpeg[2..]);
+	let svg=br#"<svg xmlns="http://www.w3.org/2000/svg" width="6" height="2"><rect width="6" height="2"/></svg>"#.to_vec();
+	for (bytes, size, svg) in [
+		(png(6, 2, [1, 2, 3, 255]), (6, 2), false),
+		(rotated, (2, 6), false),
+		(svg, (6, 2), true),
+	] {
+		let (metadata_tx, metadata_rx) = mpsc::channel();
+		let (resume_tx, resume_rx) = mpsc::channel();
+		let job = thread::spawn(move || {
+			super::decode::decode_with_metadata(
+				&bytes,
+				None,
+				None,
+				None,
+				&[],
+				|size, svg| {
+					metadata_tx.send((size, svg)).unwrap();
+					resume_rx.recv().unwrap();
+				},
+			)
+		});
+		assert_eq!(
+			metadata_rx.recv_timeout(Duration::from_secs(5)).unwrap(),
+			(size, svg)
+		);
+		assert!(!job.is_finished());
+		resume_tx.send(()).unwrap();
+		let decoded = job.join().unwrap().unwrap();
+		assert_eq!(decoded.intrinsic, size);
+		assert_eq!(decoded.svg, svg);
+	}
+}
+
+#[test]
+fn metadata_keeps_the_job_busy_and_cannot_overwrite_completed_pixels() {
+	let mut images = images(true);
+	let source = Source::File(PathBuf::from("picture.png"));
+	let mut entry = themed_entry(&["picture.png"], false, 0);
+	entry.busy = true;
+	entry.ticket = 17;
+	images.entries.insert(source.clone(), entry);
+	let event = |ticket, generation| Metadata {
+		ticket,
+		generation,
+		source: source.clone(),
+		size: (4, 2),
+		svg: false,
+	};
+	assert!(!images.apply_metadata(event(16, images.generation)));
+	assert!(images.apply_metadata(event(17, images.generation)));
+	images.schedule();
+	assert_eq!(images.entries[&source].ticket, 17);
+	assert!(!images.entries[&source].cancel.is_cancelled());
+	assert!(images.entries[&source].busy);
+	assert!(images.snapshot.entries["picture.png"].loading);
+	assert_eq!(images.snapshot.entries["picture.png"].size, Some((4, 2)));
+	assert!(images.snapshot.decoded().is_empty());
+	let decoded = decode(&png(4, 2, [10, 20, 30, 255]), None).unwrap();
+	assert!(images.apply_finished(Finished {
+		ticket: 17,
+		generation: images.generation,
+		source: source.clone(),
+		result: Loaded::new(decoded, false)
+	}));
+	assert!(!images.snapshot.entries["picture.png"].loading);
+	images.publish_pixels();
+	assert_eq!(images.snapshot.decoded().len(), 1);
+	assert!(!images.apply_metadata(event(17, images.generation)));
+	images.release();
+	assert!(!images.apply_metadata(event(17, images.generation - 1)));
 }

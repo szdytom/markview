@@ -341,6 +341,7 @@ fn an_inactive_tab_pins_only_its_visible_image_pixels() {
 		images.entries.insert(
 			alias.into(),
 			ImageInfo {
+				loading: false,
 				version: 7,
 				size: Some((1, 1)),
 				error: None,
@@ -395,6 +396,7 @@ fn a_centered_picture_keeps_its_block_and_pixels_in_the_tab_preview() {
 	images.entries.insert(
 		"picture.png".into(),
 		ImageInfo {
+			loading: false,
 			version: 1,
 			size: Some((100, 140)),
 			error: None,
@@ -460,6 +462,7 @@ fn overflowing_table_previews_pin_only_images_in_the_scrolled_clip() {
 		images.entries.insert(
 			alias.clone(),
 			ImageInfo {
+				loading: false,
 				version: 1,
 				size: Some((100, 100)),
 				error: None,

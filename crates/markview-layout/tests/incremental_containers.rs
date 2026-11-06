@@ -223,6 +223,7 @@ fn inherited_child_styles_resources_and_width_invalidate_nested_geometry() {
 		images.entries.insert(
 			"test.png".into(),
 			ImageInfo {
+				loading: false,
 				version: width as u64,
 				size: Some(size),
 				error: None,

@@ -36,7 +36,9 @@ impl BlockContext<'_> {
 			.key(&image.source)
 			.and_then(|key| self.images.entries.get(key));
 		let message = match info {
-			Some(i) if i.size.is_some() && i.error.is_none() => return None,
+			Some(i) if i.size.is_some() && i.error.is_none() && !i.loading => {
+				return None;
+			}
 			Some(i) if i.error.is_some() => i.error.as_deref().unwrap(),
 			_ => "Loading image…",
 		};

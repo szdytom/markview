@@ -96,7 +96,7 @@ fn external_key(
 					&s.source,
 					key,
 					key.and_then(|key| images.entries.get(key))
-						.map(|i| (i.version, i.size, &i.error)),
+						.map(|i| (i.version, i.size, &i.error, i.loading)),
 				)
 			})
 			.collect::<Vec<_>>(),

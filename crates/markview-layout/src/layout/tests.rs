@@ -1665,6 +1665,7 @@ fn list_markers_center_on_an_image_only_first_line() {
 	images.entries.insert(
 		"big.png".into(),
 		ImageInfo {
+			loading: false,
 			version: 1,
 			size: Some((200, 200)),
 			error: None,

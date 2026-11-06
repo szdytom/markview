@@ -386,6 +386,7 @@ fn prewarming_leaves_the_visible_image_demand_alone() {
 			(
 				src.to_string(),
 				ImageInfo {
+					loading: false,
 					version: 1,
 					size: Some((40, 40)),
 					error: None,

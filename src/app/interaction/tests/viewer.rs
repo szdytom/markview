@@ -69,6 +69,7 @@ fn image_reader_like(
 		images.entries.insert(
 			src.into(),
 			ImageInfo {
+				loading: false,
 				version: 1,
 				size: Some(intrinsic),
 				error: None,
@@ -479,6 +480,7 @@ fn wheel_zoom_ignores_larger_vector_rasters() {
 	app.readers.session.snapshot.images.entries.insert(
 		"a.png".into(),
 		ImageInfo {
+			loading: false,
 			version: 2,
 			size: Some((400, 200)),
 			error: None,
@@ -533,6 +535,7 @@ fn touch_pinch_ignores_larger_vector_rasters() {
 	app.readers.session.snapshot.images.entries.insert(
 		"a.png".into(),
 		ImageInfo {
+			loading: false,
 			version: 2,
 			size: Some((400, 200)),
 			error: None,
@@ -564,6 +567,7 @@ fn touch_pinch_ignores_larger_vector_rasters() {
 #[test]
 fn failed_images_neither_open_nor_keep_the_viewer() {
 	let failed = || ImageInfo {
+		loading: false,
 		version: 1,
 		size: Some((400, 400)),
 		error: Some("Cannot open image".into()),
@@ -757,6 +761,7 @@ fn decoding_refreshes_the_viewer_dimensions_and_texture_version() {
 		app.readers.session.snapshot.images.entries.insert(
 			"a.png".into(),
 			ImageInfo {
+				loading: false,
 				version: 2,
 				size: Some((400, 400)),
 				error: None,
@@ -776,6 +781,7 @@ fn a_rendered_vector_raster_keeps_its_device_pixel_size() {
 	app.readers.session.snapshot.images.entries.insert(
 		"a.png".into(),
 		ImageInfo {
+			loading: false,
 			version: 2,
 			size: Some((400, 200)),
 			error: None,
@@ -802,6 +808,7 @@ fn a_vector_with_explicit_display_proportions_keeps_one_aspect_ratio() {
 	app.readers.session.snapshot.images.entries.insert(
 		"a.png".into(),
 		ImageInfo {
+			loading: false,
 			version: 2,
 			size: Some((400, 200)),
 			error: None,
@@ -828,6 +835,7 @@ fn a_downsampled_page_raster_still_opens_at_the_intrinsic_size() {
 	app.readers.session.snapshot.images.entries.insert(
 		"a.png".into(),
 		ImageInfo {
+			loading: false,
 			version: 2,
 			size: Some((400, 200)),
 			error: None,

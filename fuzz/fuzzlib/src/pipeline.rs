@@ -203,6 +203,7 @@ fn synthetic_images(snapshot: &LayoutSnapshot) -> ImageSnapshot {
 		entries.insert(
 			src.to_owned(),
 			ImageInfo {
+				loading: false,
 				version: 0,
 				size: Some((1, 1)),
 				error: None,

@@ -35,8 +35,10 @@ pub fn anchored_scroll(
 			.filter(|b| same(b, anchor))
 			.nth(occurrence)
 		{
-			if old.images.entries != new.images.entries
-				|| old.presentation_key != new.presentation_key
+			if old.images.entries.iter().any(|(key, info)| {
+				new.images.entries.get(key).map(|next| next.size)
+					!= Some(info.size)
+			}) || old.presentation_key != new.presentation_key
 			{
 				let local_y = scroll - anchor.y;
 				let cluster = anchor

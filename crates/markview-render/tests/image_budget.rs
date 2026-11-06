@@ -125,6 +125,7 @@ fn preview_budget_eviction_keeps_the_main_frame_textures() -> anyhow::Result<()>
 		main_entries.insert(
 			alias.clone(),
 			ImageInfo {
+				loading: false,
 				version: 1,
 				size: Some((SIDE, SIDE)),
 				error: None,
@@ -152,6 +153,7 @@ fn preview_budget_eviction_keeps_the_main_frame_textures() -> anyhow::Result<()>
 		preview_entries.insert(
 			alias.clone(),
 			ImageInfo {
+				loading: false,
 				version: 1,
 				size: Some((SIDE, SIDE)),
 				error: None,
@@ -262,6 +264,7 @@ fn preview_reloads_of_the_active_tab_do_not_accumulate_textures()
 			HashMap::from([(
 				alias.to_owned(),
 				ImageInfo {
+					loading: false,
 					version,
 					size: Some((512, 512)),
 					error: None,

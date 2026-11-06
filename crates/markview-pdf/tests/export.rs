@@ -1175,6 +1175,7 @@ fn missing_image_pixels_abort_export_with_the_source_and_reason() {
 	images.entries.insert(
 		"Q07.png".into(),
 		ImageInfo {
+			loading: false,
 			version: 7,
 			size: Some((200, 100)),
 			error: None,

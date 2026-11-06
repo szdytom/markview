@@ -316,6 +316,7 @@ mod tests {
 				entries: HashMap::from([(
 					"mermaid:graph".into(),
 					ImageInfo {
+						loading: false,
 						version: 1,
 						size: Some((800, 600)),
 						error: None,
