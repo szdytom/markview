@@ -615,6 +615,106 @@ fn block_relative_and_text_positions_roundtrip_without_shifting() {
 }
 
 #[test]
+fn image_and_caption_positions_survive_serialization_and_image_loading() {
+	use markview_layout::image::{
+		ImageInfo, ImageSnapshot, ImageSource, ResourceRef,
+	};
+	let source = format!(
+		"# Heading\n\n![Markview](picture.svg)\n\n{}",
+		"Following paragraph.\n\n".repeat(40)
+	);
+	let mut images = ImageSnapshot::default();
+	images.keys.insert(
+		ImageSource::Resource(ResourceRef::document("picture.svg")),
+		"picture".into(),
+	);
+	images.entries.insert(
+		"picture".into(),
+		ImageInfo {
+			version: 1,
+			size: Some((512, 512)),
+			svg: true,
+			..Default::default()
+		},
+	);
+	let mut pending = images.clone();
+	pending
+		.entries
+		.insert("picture".into(), ImageInfo::default());
+	let mut failed = pending.clone();
+	failed.entries.get_mut("picture").unwrap().error =
+		Some("Image unavailable".into());
+	for width in [371.42856, 760.0] {
+		let options = LayoutOptions {
+			width,
+			font_size: 18.,
+			..crate::test_support::options()
+		};
+		let layout = |images: &ImageSnapshot| {
+			let document = crate::loaded::LoadedDocument::markdown(Arc::new(
+				markview_commonmark::parse(source.as_str()),
+			));
+			ReaderSnapshot {
+				layout: LayoutEngine::new()
+					.layout_with_images(&document, &options, images),
+				document,
+				blocked_images: Default::default(),
+				content_version: 1,
+				complete: true,
+				parse_complete: true,
+				remote_deferred: 0,
+			}
+		};
+		let mut original = ReaderSession::default();
+		original.accept(layout(&images), 200., None);
+		let picture = &original.snapshot.blocks[1];
+		let caption = &picture.layout.text[1].clusters[0];
+		let caption_y =
+			picture.y + picture.rect(caption.command, caption.rect).unwrap().y;
+		for scroll in [
+			picture.y + 1.,
+			picture.y + picture.height() * 0.75,
+			caption_y,
+			original.snapshot.blocks[2].y + 1.,
+		] {
+			original.scrolling.offset = scroll;
+			let saved: Reading = serde_json::from_slice(
+				&serde_json::to_vec(&Reading::capture(&original)).unwrap(),
+			)
+			.unwrap();
+			for (state, initial) in [
+				("ready", &images),
+				("pending", &pending),
+				("failed", &failed),
+			] {
+				let mut restored = ReaderSession {
+					saved_reading: Some(saved.clone()),
+					..Default::default()
+				};
+				restored.accept(layout(initial), 200., None);
+				if state == "failed" {
+					assert!(restored.saved_reading.is_none());
+					assert!(restored.scrolling.offset.is_finite());
+					continue;
+				}
+				if state == "pending" && scroll < original.snapshot.blocks[2].y
+				{
+					assert!(restored.saved_reading.is_some());
+					assert_eq!(Reading::capture(&restored), saved);
+				}
+				restored.accept(layout(&images), 200., None);
+				assert!(restored.saved_reading.is_none());
+				assert!(
+					(restored.scrolling.offset - scroll).abs() < 0.01,
+					"state={state}, width={width}, scroll={scroll}, restored={}",
+					restored.scrolling.offset
+				);
+			}
+		}
+	}
+}
+
+#[test]
 fn restoration_keeps_modes_for_the_same_path_and_discards_resource_grants() {
 	use crate::security::{Origin, Resource, Security, Trust};
 	let dir = tempfile::tempdir().unwrap();

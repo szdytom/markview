@@ -3,7 +3,10 @@
 mod proptests;
 
 use super::{App, tabs::Tabs};
-use crate::{layout::LayoutSnapshot, state::ReaderSession};
+use crate::{
+	layout::{Draw, LayoutSnapshot, PlacedBlock},
+	state::ReaderSession,
+};
 use serde::{Deserialize, Serialize};
 use std::{
 	collections::BTreeMap,
@@ -25,7 +28,7 @@ pub(crate) struct Position {
 	/// Structural child-index path from the document root to the block.
 	#[serde(default)]
 	path: Vec<u32>,
-	/// The semantic field inside that block, absent above text.
+	/// The source-text field, absent for block-relative positions.
 	#[serde(default)]
 	field: Option<u32>,
 	/// UTF-8 offset inside the field named by `field`.
@@ -69,33 +72,39 @@ impl Position {
 				position.path = path.iter().map(|i| *i as u32).collect();
 			}
 			position.local = scroll - block.y;
+			let images: Vec<_> = image_rects(block).collect();
 			if let Some((node, cluster, rect)) = block
 				.clusters()
 				.filter(|(_, _, rect)| rect.y + rect.h >= position.local)
+				.filter(|(node, _, rect)| {
+					block.layout.text[*node].search_field.is_some()
+						&& !images
+							.iter()
+							.any(|image| image.intersect(*rect).is_some())
+				})
 				.min_by(|(_, _, a), (_, _, b)| {
 					(a.y - position.local)
 						.abs()
 						.total_cmp(&(b.y - position.local).abs())
-				}) {
-				if let Some(semantic) = snapshot.semantic_at(
-					index,
-					node,
-					cluster.range.start,
-					markview_layout::text::Affinity::Before,
-				) {
-					position.field = Some(semantic.field.get());
-					position.byte = semantic.offset;
-				}
+				}) && let Some(semantic) = snapshot.semantic_at(
+				index,
+				node,
+				cluster.range.start,
+				markview_layout::text::Affinity::Before,
+			) && semantic.projection.is_none()
+			{
+				position.field = Some(semantic.field.get());
+				position.byte = semantic.offset;
 				position.local -= rect.y;
 			}
 		}
 		position
 	}
-	fn resolve(
+	fn block<'a>(
 		&self,
-		snapshot: &LayoutSnapshot,
+		snapshot: &'a LayoutSnapshot,
 		document: Option<&crate::loaded::LoadedDocument>,
-	) -> Option<f32> {
+	) -> Option<&'a PlacedBlock> {
 		let document = document?;
 		if document.input_fingerprint() != self.input
 			|| document.frontend_version() != self.frontend
@@ -105,13 +114,20 @@ impl Position {
 		}
 		let path: Vec<usize> = self.path.iter().map(|i| *i as usize).collect();
 		let block = document.block_at_path(&path)?;
-		let placed = snapshot.blocks.iter().find(|b| b.id == block.id())?;
+		snapshot.blocks.iter().find(|b| b.id == block.id())
+	}
+	fn resolve(
+		&self,
+		snapshot: &LayoutSnapshot,
+		document: Option<&crate::loaded::LoadedDocument>,
+	) -> Option<f32> {
+		let placed = self.block(snapshot, document)?;
 		let y = match self.field {
 			Some(field) => {
 				let semantic = markview_document::SemanticPosition {
 					projection: None,
-					revision: document.document().revision(),
-					block: block.id(),
+					revision: snapshot.revision,
+					block: placed.id,
 					field: markview_document::FieldId::from_index(field),
 					offset: self.byte,
 					affinity: markview_document::Affinity::Before,
@@ -213,6 +229,17 @@ impl Reading {
 	}
 }
 
+fn image_rects(
+	block: &PlacedBlock,
+) -> impl Iterator<Item = crate::layout::Rect> + '_ {
+	block.draws().filter_map(|(command, draw, _)| {
+		let Draw::Image { rect, .. } = draw else {
+			return None;
+		};
+		block.rect(command, *rect)
+	})
+}
+
 /// The collapse state as a saved session stores it.
 fn details_of(
 	document: &crate::loaded::LoadedDocument,
@@ -296,6 +323,30 @@ impl ReaderSession {
 		let Some(saved) = &self.saved_reading else {
 			return;
 		};
+		let images_pending = saved
+			.position
+			.block(&self.snapshot, self.document.as_deref())
+			.is_some_and(|block| {
+				block
+					.layout
+					.draws
+					.iter()
+					.enumerate()
+					.any(|(command, draw)| {
+						let Draw::Image { src, .. } = draw else {
+							return false;
+						};
+						block.command_offset(command).is_some()
+							&& self.snapshot.images.entries.get(src).is_none_or(
+								|info| {
+									info.size.is_none() && info.error.is_none()
+								},
+							)
+					})
+			});
+		if images_pending {
+			return;
+		}
 		let target = saved
 			.position
 			.resolve(&self.snapshot, self.document.as_deref());

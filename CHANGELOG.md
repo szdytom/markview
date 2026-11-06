@@ -67,6 +67,7 @@ at the same level, without `[brackets]`.
 - Keep figure body and caption link occurrences bound to their own fragments on layout cache hits.
 - Preserve text selections across surrounding deletion when combining marks join the selected grapheme.
 - Find covering source spans during reverse navigation even when later spans overlap them.
+- Preserve reading positions inside images and generated captions across session restoration, including delayed image loading.
 - Reveal the document scrollbar again on wheel and touchpad scrolling, restarting its auto-hide delay without requiring pointer motion.
 - Show “Loading document…” in the reading area while a web page loads over the network.
 - Delay the document search progress label by 100 ms to avoid flicker while typing, and label it “Searching…” instead of “Preparing…”.
