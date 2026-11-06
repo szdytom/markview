@@ -174,13 +174,11 @@ IDC1\0\0\0\0\0\0\0\0\0\0\0\0<svg xmlns="http://www.w3.org/2000/svg" width="40" h
 
 Reproducer: `fuzz/corpus/image_decode/svg-huge-font`.
 
-Status: open/upstream. `markview-image::decode` calls `resvg`, whose
-`tiny-skia` rasterizer panics instead of returning an error. The reader's
-background image job catches the panic and turns it into an image failure, so
-this does not terminate the process, but a valid SVG cannot be rendered.
-A regression should either cap/validate text sizes before rasterization or
-recover the panic at the decoder boundary; the finding belongs to the
-`tiny-skia`/`resvg` interaction, not to the harness.
+Status: fixed, upstream interaction contained. `markview-image::decode` now
+recovers a rasterizer panic at the decoder boundary and returns an image error,
+so an extreme SVG fails like any other rejected image instead of unwinding
+through the caller. Regression test:
+`an_extreme_svg_font_size_is_an_error_not_a_panic`.
 
 ## D2 — a prefix cut before a reference definition after a fence loses the link
 

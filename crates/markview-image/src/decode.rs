@@ -209,14 +209,22 @@ fn decode_svg(
 	dimensions(w, h)?;
 	let mut pixmap =
 		resvg::tiny_skia::Pixmap::new(w, h).context("Cannot allocate SVG")?;
-	resvg::render(
-		&tree,
-		resvg::tiny_skia::Transform::from_scale(
-			w as f32 / tree.size().width(),
-			h as f32 / tree.size().height(),
-		),
-		&mut pixmap.as_mut(),
-	);
+	// `tiny-skia` panics on coordinates its fixed-point rasterizer cannot
+	// represent, such as a glyph outline from an extreme `font-size`.
+	let rendered =
+		std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+			resvg::render(
+				&tree,
+				resvg::tiny_skia::Transform::from_scale(
+					w as f32 / tree.size().width(),
+					h as f32 / tree.size().height(),
+				),
+				&mut pixmap.as_mut(),
+			);
+		}));
+	if rendered.is_err() {
+		bail!("SVG rasterization failed");
+	}
 	// tiny-skia stores premultiplied alpha; the image pipeline uses straight alpha.
 	let mut rgba = pixmap.take();
 	for p in rgba.as_chunks_mut::<4>().0 {
@@ -458,33 +466,44 @@ fn test_fonts() -> markview_layout::fonts::FontConfig {
 
 #[cfg(test)]
 mod tests {
+	fn pinned_fonts() -> std::sync::Arc<resvg::usvg::fontdb::Database> {
+		let mut database = resvg::usvg::fontdb::Database::new();
+		database.load_font_data(
+			include_bytes!(
+				"../../markview-layout/tests/fonts/NotoSans-Regular-subset.otf"
+			)
+			.to_vec(),
+		);
+		database.set_sans_serif_family("Noto Sans");
+		database.into()
+	}
+
+	struct Fixed(std::sync::Arc<resvg::usvg::fontdb::Database>);
+	impl super::SvgFonts for Fixed {
+		fn apply(&self, options: &mut resvg::usvg::Options<'_>, _: &str) {
+			options.fontdb = self.0.clone();
+		}
+	}
+
 	#[test]
 	fn standalone_svg_text_uses_only_pinned_faces() {
 		let mappings = [("sans-serif".into(), vec!["Noto Sans".into()])];
-		struct Fixed(std::sync::Arc<resvg::usvg::fontdb::Database>);
-		impl super::SvgFonts for Fixed {
-			fn apply(&self, options: &mut resvg::usvg::Options<'_>, _: &str) {
-				options.fontdb = self.0.clone();
-			}
-		}
-		let mut database = resvg::usvg::fontdb::Database::new();
-		database.load_fonts_dir(
-			std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-				.join("../markview-layout/tests/fonts"),
-		);
-		let family = database
-			.faces()
-			.next()
-			.and_then(|face| face.families.first())
-			.map(|(family, _)| family.clone())
-			.expect("pinned faces");
-		database.set_sans_serif_family(family);
-		let fixed = Fixed(database.into());
+		let fixed = Fixed(pinned_fonts());
 		const SVG: &[u8] = br#"<svg xmlns="http://www.w3.org/2000/svg" width="60" height="24"><text x="2" y="18" font-family="sans-serif" font-size="16">Ab</text></svg>"#;
 		let decoded =
 			super::decode(SVG, None, None, Some((&fixed, "")), &mappings)
 				.unwrap();
 		assert!(decoded.pixels.rgba.chunks(4).any(|pixel| pixel[3] > 0));
+	}
+
+	#[test]
+	fn an_extreme_svg_font_size_is_an_error_not_a_panic() {
+		// `tiny-skia` panics on the glyph outline such a size produces.
+		let fixed = Fixed(pinned_fonts());
+		const SVG: &[u8] = br#"<svg xmlns="http://www.w3.org/2000/svg" width="40" height="20"><text x="1" y="15" font-family="sans-serif" font-size="188888888888">Ab</text><rect width="40" height="20" fill="none"/></svg>"#;
+		assert!(
+			super::decode(SVG, None, None, Some((&fixed, "")), &[]).is_err()
+		);
 	}
 
 	#[test]
