@@ -4,18 +4,21 @@ on:
   workflow_dispatch:
 permissions:
   contents: read
-# F6: prove the harness compiles and the library's `fuzz` feature builds,
-# then one brief smoke per a couple of targets. No campaigns in CI: the
-# corpora and long runs are local, recorded under artifacts/ (R2, R3).
+# F6: check the libraries and oracles alongside sharded ASAN smoke runs.
+# Campaigns stay local, recorded under artifacts/ (R2, R3).
 jobs:
-  fuzz:
+  check:
+    name: Libraries and oracles
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
       - uses: dtolnay/rust-toolchain@nightly
       - uses: Swatinem/rust-cache@v2
         with:
-          key: ${{ github.ref }}-fuzz
+          key: fuzz-check
+          workspaces: |
+            . -> target
+            fuzz -> target
       - name: Linux native development libraries
         run: bash scripts/ci_install_packages.sh libfontconfig1-dev libxkbcommon-dev libwayland-dev
       # The fuzz crate is its own workspace with its own lockfile, so a stale
@@ -26,11 +29,6 @@ jobs:
       # The `fuzz` feature must stay a visibility relaxation only: it
       # compiles in every configuration the libraries support (F5).
       - run: cargo check -p markview-commonmark -p markview-document -p markview-layout -p markview-pdf -p markview-render --features fuzz --locked
-      - name: Install cargo-fuzz
-        run: cargo +nightly install cargo-fuzz --locked
-      - name: Build all harness targets (ASAN)
-        working-directory: fuzz
-        run: cargo +nightly fuzz build
       - name: Test differential oracles
         working-directory: fuzz
         run: cargo +nightly test -p mvfuzz --locked
@@ -41,17 +39,50 @@ jobs:
           name: document-memory-differences
           path: artifacts/doc-memory-regression/
           if-no-files-found: ignore
+
+  smoke:
+    name: ASAN smoke (${{ matrix.group }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - group: syntax
+            targets: parse prefix reparse refdef sourcepos_content details_structure anchors mvss reading_pipeline
+          - group: layout
+            targets: layout layout_diff layout_parallel geometry shaping
+          - group: web
+            targets: webpage webpage_seam webpage_layout image_decode fonts font_archive
+          - group: output
+            targets: math highlight highlight_schedule pdf paginate_pipeline interaction_sequence
+    steps:
+      - uses: actions/checkout@v6
+      - uses: dtolnay/rust-toolchain@nightly
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: fuzz-smoke-${{ matrix.group }}
+          workspaces: fuzz -> target
+      - name: Linux native development libraries
+        run: bash scripts/ci_install_packages.sh libfontconfig1-dev libxkbcommon-dev libwayland-dev
+      - name: Verify the fuzz lockfile
+        working-directory: fuzz
+        run: cargo +nightly metadata --locked --format-version 1 > /dev/null
+      - name: Install cargo-fuzz
+        run: cargo +nightly install cargo-fuzz --locked
       # Seeds from the official specs so the smoke covers real documents.
       - name: Prepare seed corpora
         working-directory: fuzz
         run: ./scripts/prepare_seeds.sh
-      # Smoke: a handful of inputs per target against the seed corpus.
+      # `fuzz run` builds each selected target with ASAN before running it.
       # Leak detection stays off: fontconfig's C caches outlive the process.
-      - name: Smoke run
+      - name: Build and smoke selected targets (ASAN)
         working-directory: fuzz
         run: |
-          for target in parse prefix reparse refdef sourcepos_content details_structure anchors mvss layout layout_diff layout_parallel math highlight highlight_schedule shaping fonts geometry pdf reading_pipeline webpage webpage_seam webpage_layout paginate_pipeline image_decode interaction_sequence font_archive; do
-            ASAN_OPTIONS=detect_leaks=0 cargo +nightly fuzz run $target -- -runs=100
+          read -r -a targets <<< "$FUZZ_TARGETS"
+          for target in "${targets[@]}"; do
+            cargo +nightly fuzz run "$target" -- -runs=100
           done
         env:
+          FUZZ_TARGETS: ${{ matrix.targets }}
+          ASAN_OPTIONS: detect_leaks=0
           FONTCONFIG_FILE: ${{ github.workspace }}/tests/fontconfig.conf

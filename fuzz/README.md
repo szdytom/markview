@@ -378,6 +378,13 @@ cargo +nightly fuzz run webpage -- -runs=5000 -max_len=65536
 cargo +nightly fuzz run webpage_seam -- -runs=5000 -max_len=8192
 ```
 
+CI runs library feature checks and differential-oracle tests in one job,
+parallel with four ASAN smoke shards (`syntax`, `layout`, `web`, `output`).
+Each shard builds and runs only its assigned targets, with the same seed
+preparation and `-runs=100` budget. The shards together cover every harness
+in `Cargo.toml`; the CI infrastructure test checks that none are skipped or
+repeated. Each shard caches the standalone fuzz workspace separately.
+
 Formatting: `cargo +nightly fmt -p markview-fuzz -p mvfuzz` inside
 `fuzz/`. A bare `cargo fmt --all` here climbs to the *root* workspace and
 reformats the app with the wrong toolchain, so keep the root on stable

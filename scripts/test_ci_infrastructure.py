@@ -8,6 +8,7 @@ import subprocess
 import sys
 import tempfile
 import textwrap
+import tomllib
 import unittest
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -123,6 +124,29 @@ class CiInfrastructureTest(unittest.TestCase):
                 if len(calls) == 2:
                     self.assertEqual(calls[1]["args"], ["test", "-p", "markview", "--locked",
                                                       "--lib", "rendering_baselines", "--", "--nocapture"])
+
+    def test_fuzz_shards_cover_every_harness_and_propagate_failures(self):
+        workflow = (ROOT / ".github/workflows/fuzz.yml").read_text()
+        shards = re.findall(r"^            targets: (.+)$", workflow, re.MULTILINE)
+        manifest = tomllib.loads((ROOT / "fuzz/Cargo.toml").read_text())
+        self.assertCountEqual([target for shard in shards for target in shard.split()],
+                              [target["name"] for target in manifest["bin"]])
+        smoke = re.search(r"- name: Build and smoke selected targets \(ASAN\)\n"
+                          r"        working-directory: fuzz\n"
+                          r"        run: \|\n((?:          .+\n)+)", workflow).group(1)
+        for shard in shards:
+            for failures, expected in (({}, 0), ({"cargo": 1}, 73)):
+                with self.subTest(shard=shard, failures=failures):
+                    self.trace.write_text("")
+                    self.env.update(FUZZ_TARGETS=shard, CI_TEST_FAILURES=json.dumps(failures))
+                    result = subprocess.run(["bash", "-e", "-c", textwrap.dedent(smoke)],
+                                            env=self.env, cwd=self.directory,
+                                            capture_output=True, text=True, timeout=10)
+                    self.assertEqual(result.returncode, expected, result.stderr)
+                    targets = shard.split() if expected == 0 else shard.split()[:1]
+                    self.assertEqual([call["args"] for call in self.calls("cargo")],
+                                     [["+nightly", "fuzz", "run", target, "--", "-runs=100"]
+                                      for target in targets])
 
     def test_emulator_retry_gate_rejects_application_failures(self):
         workflow = (ROOT / ".github/workflows/android.yml").read_text()
