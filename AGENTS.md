@@ -1,13 +1,12 @@
 # AGENTS.md
 
-Markview is a native Markdown reader. It renders Markdown end-to-end, directly from the source text to the screen, without a browser, WebView, JavaScript, or an external TeX process. Its main goals are fast, low-memory, and publication-quality typography. It is a read-only reader, not an editor.
+Markview is a fast, native Markdown reader. Its main goals are fast, low-memory, and publication-quality typography. It is a read-only reader, not an editor.
 
 To AI Agents: NO editing of this file is allowed. This file is for human editing exclusively.
 
 ## General Instructions
 
-- Always run tests after making changes.
-- Write tests, not too many, mostly integration.
+- Write tests. Integration, PBT and sometimes fuzzing. Prove the correctness of your changes by testing.
 - No error handling for impossible scenarios.
 - Simplicity is a virtue: If you write 200 lines and it could be 50, rewrite it.
 
@@ -48,7 +47,7 @@ Treat `Unreleased` as the net change from the latest published release:
 revise or consolidate related entries as behavior evolves.
 Skipping a changelog update is expected for routine internal work.
 
-## Runtime Specific Instructions
+## Local Overrides
 
-- Use headless Android emulator for Android tests, unless otherwise requested.
+Read [local instructions](AGENTS.local.md) if present.
 
