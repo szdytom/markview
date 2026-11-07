@@ -201,20 +201,27 @@ public abstract class AndroidTest extends Instrumentation {
         require(button(current, "Narrower") != null && button(current, "Wider") != null, "Column width controls are offered only on tablets");
     }
     protected void waitSystem(String name) throws Exception {
-        long deadline = SystemClock.uptimeMillis() + 15000;
-        while (SystemClock.uptimeMillis() < deadline) {
-            AccessibilityNodeInfo root = getUiAutomation().getRootInActiveWindow();
-            if (root != null && "android".contentEquals(root.getPackageName())
-                && (!root.findAccessibilityNodeInfosByText("Quickstep isn't responding").isEmpty()
-                    || !root.findAccessibilityNodeInfosByText("Pixel Launcher isn't responding").isEmpty())) {
+        SystemWindowWait.await(new SystemWindowWait.Probe() {
+            public long now() { return SystemClock.uptimeMillis(); }
+            public void sleep() { SystemClock.sleep(100); }
+            public boolean closeLauncherAnr() throws Exception {
+                AccessibilityNodeInfo root = getUiAutomation().getRootInActiveWindow();
+                if (root == null || !"android".contentEquals(root.getPackageName())
+                    || (root.findAccessibilityNodeInfosByText("Quickstep isn't responding").isEmpty()
+                        && root.findAccessibilityNodeInfosByText("Pixel Launcher isn't responding").isEmpty())) return false;
+                android.util.Log.i("MarkviewTest", "Closing launcher ANR; waiting for system recovery");
                 clickText("Close app");
-                continue;
+                return true;
             }
-            boolean reader = name.equals(getTargetContext().getPackageName());
-            if (root != null && root.getPackageName().toString().contains(name) && activity.hasWindowFocus() == reader) return;
-            SystemClock.sleep(100);
-        }
-        throw new AssertionError("System window: " + name);
+            public boolean focused() {
+                AccessibilityNodeInfo root = getUiAutomation().getRootInActiveWindow();
+                boolean reader = name.equals(getTargetContext().getPackageName());
+                return root != null && root.getPackageName().toString().contains(name) && activity.hasWindowFocus() == reader;
+            }
+            public void idle(long timeout) throws Exception {
+                getUiAutomation().waitForIdle(1000, timeout);
+            }
+        }, name);
     }
     protected void clickText(String text) throws Exception {
         android.accessibilityservice.AccessibilityServiceInfo service = getUiAutomation().getServiceInfo();

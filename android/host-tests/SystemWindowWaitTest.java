@@ -1,0 +1,91 @@
+package io.github.szdytom.markview;
+
+import java.util.concurrent.TimeoutException;
+
+/** Virtual time covers launcher recovery without an emulator. */
+public final class SystemWindowWaitTest {
+    private static final class Probe implements SystemWindowWait.Probe {
+        long time;
+        long anrAt = -1;
+        long secondAnrAt = -1;
+        long focusAt;
+        long busyUntil;
+        boolean loseFocusOnIdle;
+        int closed;
+        int idled;
+
+        public long now() { return time; }
+        public void sleep() { time += 100; }
+        public boolean focused() { return time >= focusAt; }
+        public boolean closeLauncherAnr() {
+            if (anrAt < 0 || time < anrAt) return false;
+            closed++;
+            anrAt = secondAnrAt;
+            secondAnrAt = -1;
+            return true;
+        }
+        public void idle(long timeout) throws TimeoutException {
+            idled++;
+            long until = Math.max(time, busyUntil) + 1000;
+            if (until - time > timeout) throw new TimeoutException("System stayed busy");
+            time = until;
+            if (loseFocusOnIdle) focusAt = time + 500;
+        }
+    }
+
+    public static void main(String[] args) throws Exception {
+        Probe normal = new Probe();
+        SystemWindowWait.await(normal, "reader");
+        assert normal.time == 0 && normal.idled == 0 : "Normal taps need no recovery delay";
+
+        Probe restart = new Probe();
+        restart.anrAt = 0;
+        restart.busyUntil = 2500;
+        SystemWindowWait.await(restart, "reader");
+        assert restart.time == 3500 && restart.closed == 1 && restart.idled == 1
+            : "Reader focus must not bypass delayed launcher startup and system activity";
+
+        Probe repeated = new Probe();
+        repeated.anrAt = 0;
+        repeated.secondAnrAt = 1500;
+        SystemWindowWait.await(repeated, "reader");
+        assert repeated.time == 4500 && repeated.closed == 2 : "A second ANR restarts recovery";
+
+        Probe changedWindow = new Probe();
+        changedWindow.anrAt = 0;
+        changedWindow.loseFocusOnIdle = true;
+        SystemWindowWait.await(changedWindow, "documentsui");
+        assert changedWindow.time == 3500 : "Recheck target focus after system idle";
+
+        Probe lateAnr = new Probe();
+        lateAnr.focusAt = 14900;
+        lateAnr.anrAt = 14900;
+        try {
+            SystemWindowWait.await(lateAnr, "reader");
+            throw new AssertionError("A late ANR must not extend the deadline");
+        } catch (AssertionError error) {
+            assert error.getMessage().equals("System window: reader") : error;
+            assert lateAnr.time == 15000;
+        }
+
+        Probe busy = new Probe();
+        busy.anrAt = 0;
+        busy.busyUntil = 15000;
+        try {
+            SystemWindowWait.await(busy, "reader");
+            throw new AssertionError("System idle timeout must fail the test");
+        } catch (TimeoutException expected) {
+            assert busy.idled == 1;
+        }
+
+        Probe missingWindow = new Probe();
+        missingWindow.focusAt = Long.MAX_VALUE;
+        try {
+            SystemWindowWait.await(missingWindow, "documentsui");
+            throw new AssertionError("A missing target must time out");
+        } catch (AssertionError error) {
+            assert error.getMessage().equals("System window: documentsui") : error;
+            assert missingWindow.time == 15000;
+        }
+    }
+}
