@@ -49,3 +49,5 @@ web/app/vsc-ext/playwright-report/
 .config/wt.toml
 .worktreeinclude
 
+
+/web/app/vsc-ext/.vscode-test/

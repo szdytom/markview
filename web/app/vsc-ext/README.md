@@ -76,3 +76,23 @@ MARKVIEW_BINARY=/absolute/path/to/markview npm run package
 
 VSIX output is written to `artifacts/vscode`. Build WASM and the native binary
 from the same checkout before packaging.
+
+## Markview Integration delivery
+
+The Marketplace identity is `Stevvven.markview-export` (display name **Markview Integration**).
+The extension version is independent of the native workspace version. Package
+WASM and the native executable from the same checkout. `package.mjs` refuses
+an exporter whose architecture does not match the requested platform. Windows targets statically link the C runtime; CI and the final package verifier reject extra VC++ runtime DLL imports.
+
+`extension-packages.yml` tests and packages five desktop targets (Apple Silicon
+macOS and x64/ARM64 Windows and Linux) inside the
+upstream reader's `Packaging` workflow, on PRs and release tags, and also supports
+manual dispatch. cargo-dist attaches the verified VSIX files and
+`SHA256SUMS-vscode` to the same reader Release.
+
+After a stable release, `extension-release.yml` downloads and verifies those
+exact attachments and publishes them from `szdytom/markview` using OIDC Trusted
+Publishing. Marketplace failure leaves GitHub downloads available; retry the
+published tag without rebuilding. See the [publishing setup and version
+policy](../../../docs/developers/integration-release.md#upstream-release-and-marketplace)
+for one-time publisher authorization, independent extension versions and retries.

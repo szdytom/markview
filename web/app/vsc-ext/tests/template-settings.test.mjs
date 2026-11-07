@@ -64,6 +64,7 @@ async function fixture(t) {
     workspace: {
       getConfiguration: () => ({
         get: (key, fallback) => config.get(key) ?? fallback,
+        inspect: (key) => ({ workspaceFolderValue: config.get(key) }),
       }),
       createFileSystemWatcher: ({ file }) => {
         const events = {};
@@ -266,4 +267,23 @@ test("untitled documents use VS Code settings and upward lookup terminates at th
     "celadon",
   );
   assert.deepEqual(reads, [settings(root)]);
+});
+
+test("legacy templates retain document-relative paths and explicit modern choices win", async (t) => {
+  const { root, services, config, write, watchers } = await fixture(t);
+  const document = uri(path.join(root, "notes", "draft.md"));
+  config.set("template", "styles/paper.mvss.toml");
+  assert.equal(
+    (await services.template("pdf", document)).path,
+    path.join(root, "notes", "styles/paper.mvss.toml"),
+  );
+  config.set("exportTemplate", "default");
+  assert.equal((await services.template("pdf", document)).id, "default");
+  assert.equal((await services.readingTemplate(document)).id, "custom");
+  const modern = await write(root, { "markview.previewTemplate": "celadon" });
+  watchers.get(modern).events.change();
+  assert.equal((await services.readingTemplate(document)).id, "celadon");
+  config.delete("exportTemplate");
+  config.set("template", "");
+  assert.equal((await services.template("pdf", document)).id, "default");
 });

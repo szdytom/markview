@@ -16,10 +16,12 @@ each platform. The build procedure a contributor runs day to day is in the
 | Windows x86_64 | `markview-x86_64-pc-windows-msvc.msi` | cargo-dist |
 | macOS aarch64 | `markview-aarch64-apple-darwin.tar.gz` | cargo-dist |
 | macOS aarch64 | `markview-<version>-aarch64.app.zip` | `scripts/package_macos_app.sh` |
+| VS Code: Apple Silicon macOS; x64/ARM64 Windows and Linux | `markview-export-<extension-version>-<platform>.vsix`, `SHA256SUMS-vscode` | `extension-packages.yml` and `packaging.yml` |
 | All | `markview-installer.sh`, `markview-installer.ps1` | cargo-dist |
 
-GitHub supplies source archives and asset digests. Releases do not attach separate
-checksum files or a cargo-dist source tarball. The release-notes workflow removes
+GitHub supplies source archives and asset digests. VSIX packages additionally ship
+`SHA256SUMS-vscode` for the Marketplace handoff; reader packages have no separate
+checksum files or cargo-dist source tarball. The release-notes workflow removes
 `dist-manifest.json` after publication; internal workflow manifests remain available
 for the build jobs.
 
@@ -52,10 +54,17 @@ Its failure blocks publication; all assets are uploaded together.
 
 After publication, `.github/workflows/release-notes.yml` updates the download
 table to link the macOS `.app.zip`, Windows MSI and portable ZIP, and Linux
-AppImage and Android APK. It checks that each package is attached, and
+AppImage, Android APK and five platform-specific VSIX files. It checks that each package is attached, and
 writes each package’s GitHub SHA-256 digest directly in the checksum column, and
 preserves the changelog and installation commands. It also adds macOS extraction,
 Applications installation and quarantine instructions. This also runs for prereleases.
+
+The VS Code builds run inside `Packaging`, including complete-set verification
+and checksums, so missing or mismatched packages block the GitHub release.
+After a stable upstream release, `extension-release.yml` downloads those exact
+attachments, checks their hashes and metadata, and publishes them using OIDC.
+Marketplace authorization or upload failures leave the GitHub assets available.
+See [extension publishing setup and retries](integration-release.md#upstream-release-and-marketplace).
 
 ## Packaging inputs build every package
 
@@ -125,8 +134,8 @@ requirement to the generated installers.
    packages, then verifies them.
 4. Only after those jobs succeed does it create the GitHub release and upload
    all assets together.
-5. Verify the release page against the artifact matrix above and confirm that
-   no checksum files, cargo-dist source tarball or dist manifest are attached.
+5. Verify the release page against the artifact matrix above, including five
+   VSIX files and `SHA256SUMS-vscode`; no cargo-dist source tarball or dist manifest is attached.
 
 The tag must equal the manifest version without the `v` prefix; dist rejects a
 mismatch during the plan step, before anything is built.

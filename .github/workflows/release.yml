@@ -326,3 +326,15 @@ jobs:
     with:
       plan: ${{ needs.plan.outputs.val }}
     secrets: inherit
+
+  custom-extension-release:
+    needs:
+      - plan
+      - announce
+    uses: ./.github/workflows/extension-release.yml
+    with:
+      plan: ${{ needs.plan.outputs.val }}
+    secrets: inherit
+    permissions:
+      "contents": "read"
+      "id-token": "write"

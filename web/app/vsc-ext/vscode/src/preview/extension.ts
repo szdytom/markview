@@ -1,3 +1,4 @@
+import { readingSetting } from "../shared/compatibility";
 import * as vscode from "vscode";
 import path from "node:path";
 import { randomBytes } from "node:crypto";
@@ -11,8 +12,11 @@ export function activate(
   services = new Services(context),
 ) {
   const panels = new Map<string, vscode.WebviewPanel>();
-  const report = (error: unknown) =>
+  const rendered = new Map<string, { version: number; blocks: number }>();
+  const report = (error: unknown) => {
+    console.error("Markview preview:", error);
     void vscode.window.showErrorMessage(`Markview：${String(error)}`);
+  };
   async function open(
     document: vscode.TextDocument,
     restored?: vscode.WebviewPanel,
@@ -59,10 +63,7 @@ export function activate(
       const ticket = ++generation;
       const markdown = document.getText(),
         version = document.version;
-      const config = vscode.workspace.getConfiguration(
-        "markview",
-        document.uri,
-      );
+      const config = vscode.workspace.getConfiguration("markview", document);
       const template = await services.readingTemplate(document.uri);
       if (disposed || ticket !== generation) return;
       const emoji = needsEmojiFont(markdown);
@@ -104,10 +105,10 @@ export function activate(
         edit: edit?.version === version ? edit : undefined,
         template: template.id,
         stylesheet,
-        codeWrap: config.get("codeWrap", false),
+        codeWrap: readingSetting(config, "codeWrap", "codeblockWrap", false),
         options: {
           fontSize: config.get("fontSize", 18),
-          width: config.get("width", 760),
+          width: readingSetting(config, "width", "columnWidth", 760),
           justify: config.get("justify", true),
           hyphenate: config.get("hyphenate", true),
           paragraphIndent: config.get("paragraphIndent", 0),
@@ -143,8 +144,13 @@ export function activate(
           }
           if (message.uri !== identity || message.version !== document.version)
             return;
-          if (message.type === "rendered" && message.version === edit?.version)
-            edit = undefined;
+          if (message.type === "rendered") {
+            rendered.set(identity, {
+              version: message.version,
+              blocks: message.blocks,
+            });
+            if (message.version === edit?.version) edit = undefined;
+          }
           if (scrollSync.receive(message)) return;
           if (message.type === "link" && typeof message.target === "string") {
             if (message.target.startsWith("#")) return;
@@ -227,9 +233,14 @@ export function activate(
       }),
       vscode.window.onDidChangeActiveColorTheme(update),
       vscode.workspace.onDidChangeConfiguration((event) => {
-        if (event.affectsConfiguration("markview")) {
+        if (
+          event.affectsConfiguration("markview") ||
+          event.affectsConfiguration("markviewExport")
+        ) {
           if (
             [
+              "markview.template",
+              "markviewExport.template",
               "markview.previewTemplate",
               "markview.previewStyleFile",
               "markview.fontDirectories",
@@ -248,6 +259,7 @@ export function activate(
         disposed = true;
         generation++;
         panels.delete(identity);
+        rendered.delete(identity);
         if (services.previewDocument === document.uri)
           services.previewDocument = undefined;
         resources.forEach((controller) => controller.abort());
@@ -280,11 +292,16 @@ export function activate(
         report(error);
       }
     }),
-    vscode.commands.registerCommand("markview.preview.open", async () => {
-      const document = vscode.window.activeTextEditor?.document;
-      if (document?.languageId === "markdown")
-        await open(document).catch(report);
-    }),
+    vscode.commands.registerCommand(
+      "markview.preview.open",
+      async (uri?: vscode.Uri) => {
+        const document = uri
+          ? await vscode.workspace.openTextDocument(uri)
+          : vscode.window.activeTextEditor?.document;
+        if (document?.languageId === "markdown")
+          await open(document).catch(report);
+      },
+    ),
     vscode.window.registerWebviewPanelSerializer("markview.preview", {
       async deserializeWebviewPanel(panel, raw) {
         const saved = raw as
@@ -312,4 +329,5 @@ export function activate(
       },
     },
   );
+  return { status: (uri: string) => rendered.get(uri) };
 }

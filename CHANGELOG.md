@@ -26,6 +26,7 @@ at the same level, without `[brackets]`.
 - Open a new blank window with Ctrl+N (⌘N on macOS), including when single-instance mode is enabled.
 - Support complex tables with row groups, captions, block cells, merged cells and shared borders across the reader and PDF export.
 - Preserve definition lists, figures and custom HTML list numbering when reading web articles.
+- Deliver Markview Integration for VS Code with preview, font management and PDF/PNG export, preserving existing settings and supporting Apple Silicon macOS and x64/ARM64 Windows and Linux.
 
 ### Changed
 

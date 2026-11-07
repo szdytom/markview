@@ -471,6 +471,14 @@ test("editing after a long code block follows the wrapped caret only when it lea
   await expect
     .poll(async () => Number(await bar.getAttribute("aria-valuenow")))
     .toBeLessThan(100);
+  // Wait for the preceding edit's animation before checking the next edit.
+  await expect
+    .poll(async () => {
+      const start = Number(await bar.getAttribute("aria-valuenow"));
+      await page.waitForTimeout(150);
+      return Number(await bar.getAttribute("aria-valuenow")) - start;
+    })
+    .toBe(0);
   const before = Number(await bar.getAttribute("aria-valuenow"));
   await publish(page, {
     ...message,

@@ -1,0 +1,84 @@
+name: Markview Integration packages
+on:
+  workflow_dispatch:
+  workflow_call:
+permissions:
+  contents: read
+jobs:
+  package:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-latest
+            target: aarch64-apple-darwin
+            platform: darwin-arm64
+          - os: windows-2022
+            target: x86_64-pc-windows-msvc
+            platform: win32-x64
+          - os: windows-2022
+            target: aarch64-pc-windows-msvc
+            platform: win32-arm64
+          - os: ubuntu-22.04
+            target: x86_64-unknown-linux-gnu
+            platform: linux-x64
+          - os: ubuntu-22.04-arm
+            target: aarch64-unknown-linux-gnu
+            platform: linux-arm64
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 60
+    env:
+      CARGO_TARGET_X86_64_PC_WINDOWS_MSVC_RUSTFLAGS: ${{ matrix.os == 'windows-2022' && '-C target-feature=+crt-static' || '' }}
+      CARGO_TARGET_AARCH64_PC_WINDOWS_MSVC_RUSTFLAGS: ${{ matrix.os == 'windows-2022' && '-C target-feature=+crt-static' || '' }}
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 22
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-unknown,${{ matrix.target }}
+      - uses: Swatinem/rust-cache@v2
+        with:
+          cache-directories: .tools
+      - if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y libfontconfig1-dev libxkbcommon-dev libwayland-dev xvfb libasound2 libgtk-3-0 libnss3 mesa-vulkan-drivers libvulkan1
+      - run: npm ci --prefix web/app/vsc-ext
+      - run: node web/scripts/wasm.mjs --setup
+      - run: node web/scripts/wasm.mjs
+      - run: npm --prefix web/app/vsc-ext run lint
+      - run: npm --prefix web/app/vsc-ext test
+      - if: matrix.platform == 'linux-x64'
+        run: npx --prefix web/app/vsc-ext playwright install --with-deps chromium
+      - if: matrix.platform == 'linux-x64'
+        run: npm --prefix web/app/vsc-ext run test:browser
+      - run: cargo build --release --locked --bin markview --target ${{ matrix.target }}
+      - name: Verify Windows runtime independence
+        if: runner.os == 'Windows'
+        run: python scripts/verify_extension_packages.py --windows-runtime target/${{ matrix.target }}/release/markview.exe
+      - name: Test native services
+        if: matrix.platform != 'win32-arm64'
+        shell: bash
+        working-directory: web/app/vsc-ext
+        env:
+          MARKVIEW_BINARY: ${{ github.workspace }}/target/${{ matrix.target }}/release/markview${{ runner.os == 'Windows' && '.exe' || '' }}
+        run: node --test tests/native-fonts.mjs tests/native-export.mjs
+      - name: Package matched engine
+        working-directory: web/app/vsc-ext
+        env:
+          MARKVIEW_BINARY: ${{ github.workspace }}/target/${{ matrix.target }}/release/markview${{ runner.os == 'Windows' && '.exe' || '' }}
+        run: npm run package -- ${{ matrix.platform }}
+      - name: Install and exercise the packaged extension in VS Code
+        if: matrix.platform == 'linux-x64'
+        working-directory: web/app/vsc-ext
+        run: |
+          packages=(../../../artifacts/vscode/*-linux-x64.vsix)
+          MARKVIEW_VSIX="${packages[0]}" xvfb-run -a node tests/installed.mjs
+      - uses: actions/upload-artifact@v7
+        with:
+          name: artifacts-extra-vscode-${{ matrix.platform }}
+          path: artifacts/vscode/*.vsix
+          if-no-files-found: error

@@ -38,6 +38,7 @@ jobs:
           ./actionlint -color .github/workflows/ci.yml \
             .github/workflows/packages.yml .github/workflows/packaging.yml \
             .github/workflows/release-notes.yml \
+            .github/workflows/extension-packages.yml .github/workflows/extension-release.yml \
             .github/workflows/winget.yml \
             .github/workflows/checks.yml .github/workflows/fuzz.yml \
             .github/workflows/pbt.yml .github/workflows/golden.yml \
@@ -57,7 +58,9 @@ jobs:
           python3 scripts/check_changelog.py
           python3 -m unittest discover -s scripts -p 'test_check_changelog.py'
       - name: Release notes use the installable packages
-        run: python3 -m unittest discover -s scripts -p 'test_render_release_notes.py'
+        run: |
+          python3 -m unittest discover -s scripts -p 'test_render_release_notes.py'
+          python3 -m unittest discover -s scripts -p 'test_extension_release.py'
       - name: Android build orchestration
         run: python3 -m unittest discover -s android -p 'test_build.py'
       - name: CI infrastructure recovery

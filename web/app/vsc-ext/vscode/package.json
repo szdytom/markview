@@ -1,6 +1,6 @@
 {
-  "version": "0.3.0",
-  "publisher": "szdytom",
+  "version": "0.4.0",
+  "publisher": "Stevvven",
   "engines": {
     "vscode": "^1.95.0"
   },
@@ -27,19 +27,19 @@
       "description": "Markview reads local fonts and launches its packaged exporter."
     }
   },
-  "name": "markview",
-  "displayName": "Markview Preview & Export",
+  "name": "markview-export",
+  "displayName": "Markview Integration",
   "description": "Markview font management, Markdown preview and export.",
   "contributes": {
     "commands": [
       {
         "command": "markview.fonts",
-        "title": "\u5b57\u4f53\u7ba1\u7406\u2026",
+        "title": "字体管理…",
         "category": "Markview"
       },
       {
         "command": "markview.preview.open",
-        "title": "\u6253\u5f00\u4fa7\u8fb9\u9884\u89c8",
+        "title": "打开侧边预览",
         "category": "Markview",
         "icon": {
           "light": "media/preview-light.svg",
@@ -48,27 +48,62 @@
       },
       {
         "command": "markview.export.pdf",
-        "title": "\u5bfc\u51fa PDF\u2026",
+        "title": "导出 PDF…",
         "category": "Markview"
       },
       {
         "command": "markview.export.png",
-        "title": "\u5bfc\u51fa PNG\u2026",
+        "title": "导出 PNG…",
         "category": "Markview"
       },
       {
         "command": "markview.export.template",
-        "title": "\u4f7f\u7528\u6a21\u677f\u5bfc\u51fa\u2026",
+        "title": "使用模板导出…",
         "category": "Markview"
       },
       {
         "command": "markview.preview.template",
-        "title": "\u9009\u62e9\u9605\u8bfb\u6a21\u677f\u2026",
+        "title": "选择阅读模板…",
+        "category": "Markview"
+      },
+      {
+        "command": "markviewExport.exportPdf",
+        "title": "导出 PDF…",
+        "category": "Markview"
+      },
+      {
+        "command": "markviewExport.exportPng",
+        "title": "导出 PNG…",
+        "category": "Markview"
+      },
+      {
+        "command": "markviewExport.exportWithTemplate",
+        "title": "使用模板导出…",
+        "category": "Markview"
+      },
+      {
+        "command": "markview.exportPdf",
+        "title": "导出 PDF…",
+        "category": "Markview"
+      },
+      {
+        "command": "markview.exportPng",
+        "title": "导出 PNG…",
+        "category": "Markview"
+      },
+      {
+        "command": "markview.exportWithTemplate",
+        "title": "使用模板导出…",
+        "category": "Markview"
+      },
+      {
+        "command": "markview.openPreview",
+        "title": "打开侧边预览",
         "category": "Markview"
       }
     ],
     "configuration": {
-      "title": "Markview",
+      "title": "Markview Integration",
       "properties": {
         "markview.fontDirectories": {
           "type": "array",
@@ -122,42 +157,76 @@
           "default": 18,
           "minimum": 1,
           "maximum": 200,
-          "description": "Reading font size in pixels."
+          "description": "Reading font size in pixels.",
+          "scope": "language-overridable"
         },
         "markview.width": {
           "type": "number",
           "default": 760,
           "minimum": 100,
           "maximum": 8192,
-          "description": "Maximum reading column width in pixels."
+          "description": "Maximum reading column width in pixels.",
+          "scope": "language-overridable"
         },
         "markview.justify": {
           "type": "boolean",
           "default": true,
-          "description": "Justify reading paragraphs."
+          "description": "Justify reading paragraphs.",
+          "scope": "language-overridable"
         },
         "markview.hyphenate": {
           "type": "boolean",
           "default": true,
-          "description": "Hyphenate words at line breaks."
+          "description": "Hyphenate words at line breaks.",
+          "scope": "language-overridable"
         },
         "markview.paragraphIndent": {
           "type": "number",
           "default": 0,
           "minimum": 0,
           "maximum": 10,
-          "description": "First-line reading paragraph indent in em."
+          "description": "First-line reading paragraph indent in em.",
+          "scope": "language-overridable"
         },
         "markview.codeWrap": {
           "type": "boolean",
           "default": false,
-          "description": "Wrap long code-block lines in the preview."
+          "description": "Wrap long code-block lines in the preview.",
+          "scope": "language-overridable"
         },
         "markview.exportStyleFile": {
           "type": "string",
           "default": "",
           "scope": "resource",
           "description": "Custom MVSS export stylesheet. In directory settings, relative paths resolve from the directory containing .vscode. Takes precedence over exportTemplate. Use an absolute path in user settings."
+        },
+        "markview.template": {
+          "type": "string",
+          "default": "",
+          "scope": "language-overridable",
+          "description": "Compatibility with earlier Markview releases.",
+          "deprecationMessage": "Use markview.previewTemplate / exportTemplate. Explicit new settings take precedence."
+        },
+        "markviewExport.template": {
+          "type": "string",
+          "default": "",
+          "scope": "language-overridable",
+          "description": "Compatibility with earlier Markview releases.",
+          "deprecationMessage": "Use markview.exportTemplate. Explicit new settings take precedence."
+        },
+        "markview.columnWidth": {
+          "type": "number",
+          "default": 760,
+          "scope": "language-overridable",
+          "description": "Compatibility with earlier Markview releases.",
+          "deprecationMessage": "Use markview.width. Explicit new settings take precedence."
+        },
+        "markview.codeblockWrap": {
+          "type": "boolean",
+          "default": false,
+          "scope": "language-overridable",
+          "description": "Compatibility with earlier Markview releases.",
+          "deprecationMessage": "Use markview.codeWrap. Explicit new settings take precedence."
         }
       }
     },
@@ -184,6 +253,36 @@
           "command": "markview.export.template",
           "when": "editorLangId == markdown",
           "group": "markview"
+        }
+      ],
+      "commandPalette": [
+        {
+          "command": "markviewExport.exportPdf",
+          "when": "false"
+        },
+        {
+          "command": "markviewExport.exportPng",
+          "when": "false"
+        },
+        {
+          "command": "markviewExport.exportWithTemplate",
+          "when": "false"
+        },
+        {
+          "command": "markview.exportPdf",
+          "when": "false"
+        },
+        {
+          "command": "markview.exportPng",
+          "when": "false"
+        },
+        {
+          "command": "markview.exportWithTemplate",
+          "when": "false"
+        },
+        {
+          "command": "markview.openPreview",
+          "when": "false"
         }
       ]
     }

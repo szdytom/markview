@@ -7,6 +7,7 @@ import sys
 import tempfile
 import unittest
 from pathlib import Path
+from render_release_notes import VSCODE_NOTE, VSCODE_PLATFORMS
 
 SCRIPT = Path(__file__).with_name("render_release_notes.py")
 
@@ -35,6 +36,10 @@ class ReleaseNotesTest(unittest.TestCase):
             f"markview-{version}-x86_64.AppImage",
             f"markview-{version}-android.apk",
         ]
+        extension = json.loads((SCRIPT.parents[1] /
+                                "web/app/vsc-ext/vscode/package.json").read_text())
+        names.extend(f"{extension['name']}-{extension['version']}-{target}.vsix"
+                     for target, _ in VSCODE_PLATFORMS)
         prefix = "## Release Notes\n\nChanges.\n\n## Install markview\n\n```sh\ninstall\n```\n\n"
         suffix = "## Verifying GitHub Artifact Attestations\n\nVerification.\n"
         release = {
@@ -75,7 +80,8 @@ class ReleaseNotesTest(unittest.TestCase):
                     for line in result.stdout.splitlines()
                     if line.startswith("| [")
                 ]
-                self.assertEqual(len(rows), 5)
+                self.assertEqual(len(rows), 10)
+                self.assertNotIn('darwin-x64', result.stdout)
                 for row, name, platform in zip(
                     rows,
                     names,
@@ -85,6 +91,7 @@ class ReleaseNotesTest(unittest.TestCase):
                         "x64 Windows (Portable)",
                         "x64 Linux",
                         "Android 11+ (ARM64)",
+                        *(label for _, label in VSCODE_PLATFORMS),
                     ),
                 ):
                     self.assertEqual(
@@ -99,15 +106,19 @@ class ReleaseNotesTest(unittest.TestCase):
                     "then run `xattr -d com.apple.quarantine /Applications/Markview.app` in Terminal "
                     "to remove the quarantine flag before opening the app."
                 )
-                self.assertIn(rows[-1] + "\n\n" + note + "\n\n" + suffix, result.stdout)
+                self.assertIn(rows[-1] + "\n\n" + note + "\n\n" + VSCODE_NOTE +
+                              "\n\n" + suffix, result.stdout)
                 repeated, *_ = self.run_renderer(version, body=result.stdout)
                 self.assertEqual(repeated.returncode, 0, repeated.stderr)
                 self.assertEqual(repeated.stdout, result.stdout)
 
     def test_missing_package_prevents_update(self):
+        extension = json.loads((SCRIPT.parents[1] /
+                                "web/app/vsc-ext/vscode/package.json").read_text())
         for name in (
             "markview-0.1.10-x86_64.AppImage",
             "markview-0.1.10-android.apk",
+            f"{extension['name']}-{extension['version']}-win32-arm64.vsix",
         ):
             with self.subTest(name=name):
                 result, *_ = self.run_renderer("0.1.10", missing=name)

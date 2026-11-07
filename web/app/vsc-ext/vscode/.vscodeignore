@@ -6,3 +6,4 @@
 !dist/extension.cjs
 !media/**
 !bin/**
+!CHANGELOG.md
