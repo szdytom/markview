@@ -152,7 +152,13 @@ const LINKS: &[&str] = &[
 	"item?q=1#frag",
 ];
 
-const CODE_LANGUAGES: &[&str] = &["rust", "python", "yaml", ""];
+/// HTML language hints and their expected canonical names.
+const CODE_LANGUAGES: &[(&str, &str)] = &[
+	("rust", "rust"),
+	("python", "py"),
+	("yaml", "yaml"),
+	("", ""),
+];
 
 /// Padding keeps the article above Readability's length threshold.
 const PADDING: &str = "The generated article keeps enough readable words in \
@@ -443,18 +449,20 @@ impl<'a> Gen<'a> {
 	}
 
 	fn code(&mut self) -> Expected {
-		let language = CODE_LANGUAGES
-			[usize::from(self.byte()) % CODE_LANGUAGES.len()]
-		.to_owned();
+		let (hint, language) =
+			CODE_LANGUAGES[usize::from(self.byte()) % CODE_LANGUAGES.len()];
 		let text = format!("{} = {};", self.marker(), self.word());
-		let class = if language.is_empty() {
+		let class = if hint.is_empty() {
 			String::new()
 		} else {
-			format!(" class=\"language-{language}\"")
+			format!(" class=\"language-{hint}\"")
 		};
 		self.html
 			.push_str(&format!("<pre><code{class}>{text}</code></pre>"));
-		Expected::Code { language, text }
+		Expected::Code {
+			language: language.to_owned(),
+			text,
+		}
 	}
 
 	fn math(&mut self) -> Expected {

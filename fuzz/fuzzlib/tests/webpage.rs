@@ -97,7 +97,10 @@ fn the_committed_web_fixtures_pass_every_invariant() {
 
 #[test]
 fn generated_articles_match_their_own_record() {
-	for unit in units() {
+	// Cover the fixed `webpage_seam` pipeline seeds as well as random shapes.
+	let pipeline_seeds =
+		(0..12).map(|kind| [vec![0, kind], (0..16).collect()].concat());
+	for unit in units().into_iter().chain(pipeline_seeds) {
 		let generated = webgen::generate(&unit);
 		webgen::assert_markers(&generated);
 		let url = webpage::base_for(&unit);

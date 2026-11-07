@@ -2333,3 +2333,176 @@ fn a_deferred_mermaid_block_inside_a_code_wrapper_stays_literal() {
 		"a code-wrapped diagram was rendered: {images:?}"
 	);
 }
+
+#[test]
+fn common_highlighter_markup_preserves_code_languages_and_text() {
+	// Representative formats from Prism, highlight.js, Jekyll/Rouge,
+	// GitHub, Prettify and rehype-pretty-code; token spans stay literal text.
+	let cases = [
+		(
+			r#"<div class="language-javascript"><div><pre><code><span class="token keyword">const</span> x = 1;</code></pre></div></div>"#,
+			"js",
+			"const x = 1;",
+		),
+		(
+			r#"<pre><code class="hljs python"><span class="hljs-built_in">print</span>(1)</code></pre>"#,
+			"py",
+			"print(1)",
+		),
+		(
+			r#"<figure class="highlight"><pre><code class="language-c--" data-lang="c++">int x = 1;</code></pre></figure>"#,
+			"cpp",
+			"int x = 1;",
+		),
+		(
+			r#"<div class="highlight highlight-source-ruby"><pre>puts 1</pre></div>"#,
+			"rb",
+			"puts 1",
+		),
+		(
+			r#"<pre class="prettyprint lang-js">const x = 1;</pre>"#,
+			"js",
+			"const x = 1;",
+		),
+		(
+			r#"<pre data-language="typescript"><code><span data-line>const x: number = 1;</span></code></pre>"#,
+			"ts",
+			"const x: number = 1;",
+		),
+		(
+			r#"<div data-lang=" Bash "><pre>echo 1</pre></div>"#,
+			"sh",
+			"echo 1",
+		),
+		(
+			r#"<pre class="language-python"><code class="language-rust">fn main() {}</code></pre>"#,
+			"rust",
+			"fn main() {}",
+		),
+		(
+			r#"<pre class="language-"><code data-language="">untyped</code></pre>"#,
+			"",
+			"untyped",
+		),
+		(
+			r#"<pre><code class="python">print(1)</code></pre>"#,
+			"py",
+			"print(1)",
+		),
+		(
+			r#"<div class="python"><pre>print(1)</pre></div>"#,
+			"",
+			"print(1)",
+		),
+	];
+	for (markup, expected_language, expected_text) in cases {
+		let page =
+			extract(&article(markup), "https://example.org/article").unwrap();
+		let mut codes = Vec::new();
+		for block in page.document.blocks() {
+			markview_document::visit_blocks(block, &mut |block| {
+				if let BlockKind::Code { language, text } = block.kind() {
+					codes.push((language.clone(), text.clone()));
+				}
+			});
+		}
+		assert_eq!(
+			codes,
+			[(expected_language.into(), expected_text.into())],
+			"{markup}"
+		);
+	}
+}
+
+#[test]
+fn language_inheritance_opt_out_and_shebang_fallback_are_conservative() {
+	let page = extract(&article(r#"
+		<p>This article compares code examples across languages, including inherited declarations, explicit plain text and interpreter directives. Each example belongs to this tutorial.</p>
+		<div class="language-rust">
+			<p>Examples in this section use Rust by default, with individual examples overriding that language when needed.</p>
+			<pre><code>fn main() {}</code></pre>
+			<div class="language-none"><pre>#!/usr/bin/python3
+print(1)</pre></div>
+			<pre><code class="nohighlight language-python">print(1)</code></pre>
+			<pre class="no-highlight">output</pre>
+			<pre><code class="language-plaintext">output</code></pre>
+			<pre class="language-unknown">#!/bin/bash
+echo 1</pre>
+		</div>
+		<pre>#!/usr/bin/env -S python3 -u
+print(1)</pre>
+		<pre>#!/bin/bash
+echo 1</pre>
+		<pre>print(1)</pre>
+		<pre class="shiki"><code><span style="color: red">const</span> x = 1;</code></pre>
+		<pre>#!/usr/bin/not-python
+print(1)</pre>
+	"#), "https://example.org/article").unwrap();
+	let mut languages = Vec::new();
+	for block in page.document.blocks() {
+		markview_document::visit_blocks(block, &mut |block| {
+			if let BlockKind::Code { language, .. } = block.kind() {
+				languages.push(language.clone());
+			}
+		});
+	}
+	assert_eq!(
+		languages,
+		[
+			"rust", "text", "text", "text", "text", "unknown", "py", "sh", "",
+			"", ""
+		]
+	);
+}
+
+#[test]
+fn web_language_aliases_select_native_highlighting_syntaxes() {
+	let syntaxes = two_face::syntax::extra_newlines();
+	let themes =
+		syntect::highlighting::ThemeSet::from(&two_face::theme::extra());
+	for (alias, code) in [
+		("javascript", "const x = 1;"),
+		("typescript", "const x: number = 1;"),
+		("python3", "print('hello')"),
+		("ruby", "puts 'hello'"),
+		("bash", "echo 'hello'"),
+		("c++", "int x = 1;"),
+		("csharp", "int x = 1;"),
+		("markup", "&lt;p&gt;hello&lt;/p&gt;"),
+		("yml", "key: true"),
+	] {
+		let html =
+			article(&format!("<pre data-language=\"{alias}\">{code}</pre>"));
+		let page = extract(&html, "https://example.org/article").unwrap();
+		let (language, text) = page
+			.document
+			.blocks()
+			.iter()
+			.find_map(|block| {
+				if let BlockKind::Code { language, text } = block.kind() {
+					Some((language, text))
+				} else {
+					None
+				}
+			})
+			.expect("the extracted code block");
+		let syntax = syntaxes
+			.find_syntax_by_token(language)
+			.or_else(|| syntaxes.find_syntax_by_name(language))
+			.unwrap_or_else(|| {
+				panic!("no native syntax for {alias}: {language}")
+			});
+		let mut highlighter = syntect::easy::HighlightLines::new(
+			syntax,
+			&themes.themes["InspiredGitHub"],
+		);
+		let line = format!("{text}\n");
+		let regions = highlighter.highlight_line(&line, &syntaxes).unwrap();
+		assert!(
+			regions
+				.windows(2)
+				.any(|pair| pair[0].0.foreground != pair[1].0.foreground),
+			"{alias} has no syntax colors"
+		);
+	}
+}

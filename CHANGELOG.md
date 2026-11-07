@@ -23,6 +23,7 @@ at the same level, without `[brackets]`.
 
 ### Fixed
 
+- Recognize web code block languages from common highlighter markup and enclosing containers, with language aliases, explicit highlighting opt-outs and shebang fallback.
 - Show recent workspaces on blank pages whenever no folder is open, including when document tabs are open.
 
 ## 0.5.0 - 2026-11-07

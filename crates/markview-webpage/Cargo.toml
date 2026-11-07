@@ -17,3 +17,5 @@ workspace = true
 
 [dev-dependencies]
 proptest.workspace = true
+syntect.workspace = true
+two-face.workspace = true

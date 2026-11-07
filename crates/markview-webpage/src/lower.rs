@@ -517,6 +517,7 @@ impl<'a> Lower<'a> {
 			.unwrap_or(*node);
 		let language = code_language(&code)
 			.or_else(|| code_language(node))
+			.or_else(|| crate::language::shebang(&text).map(str::to_owned))
 			.unwrap_or_default();
 		// A code wrapper makes its content literal, including a Mermaid block.
 		if language == "mermaid" && !self.inherited.code {
@@ -1530,18 +1531,7 @@ fn trim_rich(mut text: RichText) -> RichText {
 }
 
 fn code_language(node: &NodeRef<'_>) -> Option<String> {
-	node.attr("data-mv-language")
-		.map(|value| value.to_string())
-		.or_else(|| {
-			node.attr("class").and_then(|classes| {
-				classes.split_whitespace().find_map(|class| {
-					class
-						.strip_prefix("language-")
-						.or_else(|| class.strip_prefix("lang-"))
-						.map(str::to_owned)
-				})
-			})
-		})
+	node.attr("data-mv-language").map(|value| value.to_string())
 }
 
 fn html_blank(text: &str) -> bool {

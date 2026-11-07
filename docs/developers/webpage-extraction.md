@@ -47,6 +47,30 @@ and `keep_classes` are false, `readable_min_score` is 20.0,
 `readable_min_content_length` is 140 and `text_mode` is `Raw`. Only
 `max_elements_to_parse` and `classes_to_preserve` come from the profile.
 
+## Code block languages
+
+Language declarations are resolved before Readability removes containers. The
+nearest declaration wins; `code` overrides `pre`, which overrides its ancestors.
+On the same element, `nohighlight`/`no-highlight` wins, followed by
+`data-language`, `data-lang`, and language classes. Empty declarations are ignored.
+
+Representative source formats covered by extraction tests:
+
+| Source | Language metadata |
+| --- | --- |
+| [Prism](https://prismjs.com/#language-inheritance) | `language-*` / `lang-*`, including ancestor inheritance and `language-none` |
+| [highlight.js](https://highlightjs.readthedocs.io/en/latest/readme.html) | `language-*`, common bare language names on `pre` / `code`, `nohighlight` |
+| [Jekyll/Rouge](https://github.com/jekyll/jekyll/blob/master/lib/jekyll/tags/highlight.rb) | `code.language-*` and `data-lang` (including `c++`) |
+| [GitHub](https://github.com/rouge-ruby/rouge) | `highlight-source-*` on the enclosing container |
+| [Prettify](https://github.com/googlearchive/code-prettify) | `pre.prettyprint.lang-*` |
+| [rehype-pretty-code](https://github.com/rehype-pretty/rehype-pretty-code/blob/master/packages/core/src/index.ts) | `data-language` on `pre` and `code` |
+
+Common language aliases are normalized to native syntax tokens. Explicit plain
+text and unsupported declarations stop inheritance and content detection. Without
+a declaration, only recognized shebang interpreters supply a language; ambiguous
+snippets and Shiki output containing only inline colors remain unclassified.
+Token spans contribute their text, while Markview supplies its own syntax colors.
+
 ## Semantic preservation
 
 Before Readability runs, the adapter copies language classes into

@@ -3,6 +3,7 @@
 //! The DOM is lowered directly into [`markview_document::Document`]; no
 //! intermediate HTML, Markdown or plain-text serialization is produced for the
 //! article body.
+mod language;
 mod lower;
 mod metadata;
 use markview_document::Document;
@@ -34,7 +35,7 @@ pub struct Profile {
 }
 
 /// Version of the extraction profile and lowering semantics.
-pub const PROFILE_VERSION: u64 = 1;
+pub const PROFILE_VERSION: u64 = 2;
 
 /// The settings this reader's HTML whitespace, tables and formulas assume.
 pub static PROFILE_V1: Profile = Profile {
@@ -171,6 +172,7 @@ pub fn extract_with(
 	check_dom_node_budget(&document, profile.max_dom_nodes)?;
 	clear_internal_attributes(&document);
 	mark_title_headings(&document);
+	language::preserve(&document);
 	preserve_semantics(&document);
 	let extracted = dom_smoothie::Readability::with_document(
 		document,
@@ -321,13 +323,6 @@ fn preserve_classes(
 	name: &str,
 	classes: &str,
 ) {
-	if let Some(language) = classes.split_whitespace().find_map(|class| {
-		class
-			.strip_prefix("language-")
-			.or_else(|| class.strip_prefix("lang-"))
-	}) {
-		node.set_attr("data-mv-language", language);
-	}
 	let math = classes.split_whitespace().any(|class| class == "math");
 	if math {
 		node.set_attr("data-mv-math", "1");
