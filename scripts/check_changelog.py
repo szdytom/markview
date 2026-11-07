@@ -1,10 +1,12 @@
 #!/usr/bin/env python3
-"""Check release headings and the dense, single-line Unreleased entries."""
+"""Check changelog formatting and protect entries published in the latest release."""
 
 import argparse
 import re
+import subprocess
 import sys
 from datetime import date
+from difflib import SequenceMatcher
 from pathlib import Path
 
 CHANGELOG = Path(__file__).resolve().parents[1] / "CHANGELOG.md"
@@ -111,13 +113,111 @@ def check(text):
     return errors
 
 
+def git(directory, *args):
+    return subprocess.run(
+        ["git", "-C", str(directory), *args],
+        capture_output=True,
+        text=True,
+        check=True,
+    ).stdout
+
+
+def published(text, baseline, start):
+    lines = text.splitlines(keepends=True)
+    heading = baseline[start].rstrip("\r\n")
+    for index, line in enumerate(lines):
+        if line.rstrip("\r\n") == heading:
+            return "".join(lines[index:])
+    # Follow the boundary when a dedicated correction renames or removes a heading.
+    matcher = SequenceMatcher(None, baseline, lines, autojunk=False)
+    for operation, old_start, old_end, new_start, _ in matcher.get_opcodes():
+        if old_start <= start < old_end:
+            offset = start - old_start if operation == "equal" else 0
+            return "".join(lines[new_start + offset:])
+    return ""
+
+
+def check_history(path, text):
+    try:
+        root = Path(git(path.parent, "rev-parse", "--show-toplevel").strip())
+    except subprocess.CalledProcessError:
+        return []  # Standalone files only receive formatting checks.
+    relative = path.relative_to(root).as_posix()
+    if git(root, "rev-parse", "--is-shallow-repository").strip() == "true":
+        return [(1, "history checks require a full clone with release tags (fetch-depth: 0)")]
+    tags = [
+        tag
+        for tag in git(root, "tag", "--merged", "HEAD").splitlines()
+        if re.fullmatch(rf"v{VERSION}", tag)
+    ]
+    if not tags:
+        return []  # There is no published release to protect yet.
+    tag = git(
+        root,
+        "describe",
+        "--tags",
+        "--abbrev=0",
+        *(argument for tag in tags for argument in ("--match", tag)),
+        "HEAD",
+    ).strip()
+    if not git(root, "ls-tree", "--name-only", tag, "--", relative).strip():
+        return []
+    baseline = git(root, "show", f"{tag}:{relative}")
+    baseline = baseline.splitlines(keepends=True)
+    start = next(
+        (
+            index
+            for index, line in enumerate(baseline)
+            if RELEASE.fullmatch(line.rstrip("\r\n"))
+        ),
+        None,
+    )
+    if start is None:
+        return []
+    errors = []
+    commits = git(
+        root, "rev-list", "--reverse", "--full-history", f"{tag}..HEAD", "--", relative
+    )
+    for commit in commits.splitlines():
+        parents = git(root, "rev-list", "--parents", "-n", "1", commit).split()[1:]
+        for parent in parents:
+            before = git(root, "show", f"{parent}:{relative}")
+            after = git(root, "show", f"{commit}:{relative}")
+            if published(before, baseline, start) == published(after, baseline, start):
+                continue
+            files = git(
+                root, "diff", "--no-renames", "--name-only", "-z", parent, commit
+            ).strip("\0").split("\0")
+            if files != [relative]:
+                errors.append(
+                    (
+                        1,
+                        f"{commit[:12]} changes entries published in {tag}; "
+                        "such commits must change only the changelog file",
+                    )
+                )
+                break
+    head = git(root, "show", f"HEAD:{relative}")
+    if published(head, baseline, start) != published(text, baseline, start):
+        errors.append(
+            (
+                1,
+                f"uncommitted changes modify entries published in {tag}; "
+                "commit these corrections separately, changing only the changelog file",
+            )
+        )
+    return errors
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("path", nargs="?", type=Path, default=CHANGELOG)
-    path = parser.parse_args().path
+    path = parser.parse_args().path.resolve()
     try:
-        errors = check(path.read_text(encoding="utf-8"))
-    except (OSError, UnicodeError) as error:
+        text = path.read_text(encoding="utf-8")
+        errors = check(text)
+        errors.extend(check_history(path, text))
+    except (OSError, UnicodeError, subprocess.CalledProcessError) as error:
         print(f"{path}: {error}", file=sys.stderr)
         return 1
     for number, message in errors:

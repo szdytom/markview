@@ -1,7 +1,7 @@
 # Changelog conventions
 
 Maintain [CHANGELOG.md](../../CHANGELOG.md) for notable release changes under
-`Unreleased`. CI checks formatting with
+`Unreleased`. CI checks formatting and published history with
 [check_changelog.py](../../scripts/check_changelog.py); entry selection and
 consolidation require review.
 
@@ -38,6 +38,23 @@ For example, if a released label changes from `foo` to `A` and then to `B` befor
 the next release, keep one entry describing `foo` to `B`. If it returns to `foo`,
 remove the entry. Adding a regression test alone needs no entry; fixing a bug in
 the published reader warrants an entry describing the user-visible fix.
+
+## Published history
+
+The checker compares against the nearest reachable release tag (`vVERSION`).
+Sections published at that tag and all earlier release sections are protected;
+new entries and ongoing revisions belong in `Unreleased`. Cutting a new release
+above the protected sections is allowed.
+
+For typo corrections and similar maintenance, every commit that changes published
+content must modify only `CHANGELOG.md`. Other commits in the same branch may
+change code and `Unreleased`. A later correction or revert does not exempt an
+earlier mixed commit. Uncommitted edits to published content fail until committed
+separately.
+
+History checks require a full clone with release tags. CI uses `fetch-depth: 0`.
+Repositories without a release tag and standalone files outside Git receive only
+formatting checks.
 
 ## Entry format
 
