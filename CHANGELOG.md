@@ -21,6 +21,16 @@ at the same level, without `[brackets]`.
 
 ## Unreleased
 
+## 0.5.0 - 2026-11-07
+
+**Highlights**:
+
+- Read web articles directly from HTML with headings, checklists, formulas and complex tables intact.
+- Preview documents, manage fonts and export PDF or PNG from Markview Integration for VS Code.
+- Restore reading positions more precisely and switch back to inactive tabs faster.
+- Read with lower memory use and fewer layout shifts while images load.
+- Open a new blank window with Ctrl+N or ⌘N, including in single-instance mode.
+
 ### Added
 
 - Open a new blank window with Ctrl+N (⌘N on macOS), including when single-instance mode is enabled.

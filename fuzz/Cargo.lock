@@ -1483,7 +1483,7 @@ dependencies = [
 
 [[package]]
 name = "markview-commonmark"
-version = "0.4.5"
+version = "0.5.0"
 dependencies = [
  "comrak",
  "html-escape",
@@ -1493,14 +1493,14 @@ dependencies = [
 
 [[package]]
 name = "markview-document"
-version = "0.4.5"
+version = "0.5.0"
 dependencies = [
  "serde",
 ]
 
 [[package]]
 name = "markview-font-archive"
-version = "0.4.5"
+version = "0.5.0"
 dependencies = [
  "anyhow",
  "flate2",
@@ -1532,11 +1532,11 @@ dependencies = [
 
 [[package]]
 name = "markview-geometry"
-version = "0.4.5"
+version = "0.5.0"
 
 [[package]]
 name = "markview-image"
-version = "0.4.5"
+version = "0.5.0"
 dependencies = [
  "anyhow",
  "image",
@@ -1546,7 +1546,7 @@ dependencies = [
 
 [[package]]
 name = "markview-interaction"
-version = "0.4.5"
+version = "0.5.0"
 dependencies = [
  "markview-layout",
  "web-time",
@@ -1554,7 +1554,7 @@ dependencies = [
 
 [[package]]
 name = "markview-layout"
-version = "0.4.5"
+version = "0.5.0"
 dependencies = [
  "anyhow",
  "codex",
@@ -1584,7 +1584,7 @@ dependencies = [
 
 [[package]]
 name = "markview-pdf"
-version = "0.4.5"
+version = "0.5.0"
 dependencies = [
  "anyhow",
  "krilla",
@@ -1602,7 +1602,7 @@ dependencies = [
 
 [[package]]
 name = "markview-render"
-version = "0.4.5"
+version = "0.5.0"
 dependencies = [
  "anyhow",
  "bytemuck",
@@ -1622,7 +1622,7 @@ dependencies = [
 
 [[package]]
 name = "markview-webpage"
-version = "0.4.5"
+version = "0.5.0"
 dependencies = [
  "dom_smoothie",
  "markview-document",

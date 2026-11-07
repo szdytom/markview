@@ -41,7 +41,7 @@
 **Windows / macOS / Linux — Cargo**
 
 ```sh
-cargo install --git https://github.com/szdytom/markview --tag v0.4.5 --locked
+cargo install --git https://github.com/szdytom/markview --tag v0.5.0 --locked
 ```
 
 **Windows — PowerShell**
