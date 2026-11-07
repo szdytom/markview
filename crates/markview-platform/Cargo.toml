@@ -95,6 +95,7 @@ objc2-foundation = { version = "0.3", default-features = false, features = [
 objc2-core-services = { version = "0.3", default-features = false, features = [
 	"AE",
 	"AEDataModel",
+	"AERegistry",
 	"AppleEvents",
 ] }
 objc2-app-kit = { version = "0.3", default-features = false, features = ["std", "NSButton", "NSControl", "NSResponder", "NSView", "NSWindow"] }

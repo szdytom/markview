@@ -112,6 +112,7 @@ at the same level, without `[brackets]`.
 
 - Move the caret by tapping or dragging in text fields on mobile devices and desktop touchscreens.
 - Check platform boundaries across workspace crates, tests and build scripts, with scoped feature and target exceptions.
+- Keep Markview running after closing its macOS window, and reopen a fresh reader from the Dock or Finder.
 - Reduce fullscreen scrolling stalls on macOS by allowing a third Metal drawable.
 - Support Android keyboard clipboard input, surrounding-text deletion and a long-press Paste menu in search, URL and other text fields.
 - Expand the open folder tree onto a document opened in a new tab.
