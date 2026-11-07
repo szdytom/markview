@@ -21,6 +21,10 @@ at the same level, without `[brackets]`.
 
 ## Unreleased
 
+### Fixed
+
+- Show recent workspaces on blank pages whenever no folder is open, including when document tabs are open.
+
 ## 0.5.0 - 2026-11-07
 
 **Highlights**:

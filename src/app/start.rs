@@ -751,7 +751,23 @@ mod tests {
 		app.open(root.join("another.md"));
 		app.action(Command::Document(DocumentCommand::NewPage));
 		assert!(app.folder.root().is_none());
-		assert!(app.input_geometry(TextField::Files).is_some());
+		assert!(app.folder.file_search_available());
+		assert!(app.input_geometry(TextField::Files).is_none());
+		app.folder.start.recent = vec![Recent {
+			path: root.join("workspace"),
+			name: "workspace".into(),
+			opened: now(),
+		}];
+		let buttons = app.chrome().buttons();
+		assert!(buttons.iter().any(|button| {
+			button.action == Command::Chrome(ChromeCommand::RecentWorkspace(0))
+		}));
+		assert!(!buttons.iter().any(|button| {
+			matches!(
+				button.action,
+				Command::Chrome(ChromeCommand::StartFile(_))
+			)
+		}));
 		app.open_quick_open();
 		settle(&mut app, &events, |app| {
 			!app.interaction.overlays.quick_open.search.pending

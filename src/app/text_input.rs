@@ -270,7 +270,7 @@ impl<P: SendEvent> App<P> {
 		{
 			return None;
 		}
-		if id == TextField::Files && !self.folder.file_search_available() {
+		if id == TextField::Files && self.folder.root().is_none() {
 			return None;
 		}
 		let mut g = self.chrome().start_geometry();

@@ -17,8 +17,7 @@ pub(in crate::app) struct View<'a> {
 }
 impl View<'_> {
 	fn workspace(self) -> bool {
-		self.browser
-			.is_some_and(|browser| browser.file_search_available())
+		self.browser.is_some_and(|browser| browser.root().is_some())
 	}
 	fn rows(self) -> usize {
 		self.browser.map_or(0, |browser| {
@@ -387,12 +386,9 @@ fn draw_workspace(
 	lang: Lang,
 ) {
 	if let Some(browser) = view.browser
-		&& browser.file_search_available()
+		&& browser.root().is_some()
 	{
-		let name = browser
-			.tree
-			.as_ref()
-			.map_or(lang.quick_open_tabs(), |tree| tree.name.as_str());
+		let name = browser.tree.as_ref().map_or("", |tree| tree.name.as_str());
 		label(
 			ui,
 			out,
