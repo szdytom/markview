@@ -50,7 +50,7 @@ jobs:
       - name: Smoke run
         working-directory: fuzz
         run: |
-          for target in parse reparse mvss math geometry layout_parallel webpage webpage_seam reading_pipeline webpage_layout highlight_schedule image_decode paginate_pipeline interaction_sequence font_archive fonts shaping; do
+          for target in parse prefix reparse refdef sourcepos_content details_structure anchors mvss layout layout_diff layout_parallel math highlight highlight_schedule shaping fonts geometry pdf reading_pipeline webpage webpage_seam webpage_layout paginate_pipeline image_decode interaction_sequence font_archive; do
             ASAN_OPTIONS=detect_leaks=0 cargo +nightly fuzz run $target -- -runs=100
           done
         env:

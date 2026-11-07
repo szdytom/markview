@@ -33,18 +33,18 @@ fn faces() -> Vec<PathBuf> {
 /// mutation tail keeps the face untouched, so face parsing and shaping run on
 /// a valid font.
 fn check_committed(data: &[u8]) -> bool {
-	if !data.starts_with(b"FNT1") || data.len() < 3 {
+	if !data.starts_with(b"FNT1") || data.len() < 6 {
 		return false;
 	}
 	let faces = faces();
 	if faces.is_empty() {
 		return true;
 	}
-	let face = std::fs::read(&faces[usize::from(data[1]) % faces.len()])
+	let face = std::fs::read(&faces[usize::from(data[4]) % faces.len()])
 		.expect("a committed face");
 	let mut bytes = face;
-	let mutations = usize::from(data[2]).min(64);
-	for (index, byte) in data[3..].iter().take(mutations).enumerate() {
+	let mutations = usize::from(data[5]).min(64);
+	for (index, byte) in data[6..].iter().take(mutations).enumerate() {
 		if bytes.is_empty() {
 			break;
 		}
@@ -67,7 +67,7 @@ fn check_committed(data: &[u8]) -> bool {
 		assert!(!families.is_empty(), "a committed face lost its family");
 	}
 	let mut shaper = TextShaper::with_fonts(config);
-	let text = String::from_utf8_lossy(&data[3..]).into_owned();
+	let text = String::from_utf8_lossy(&data[6..]).into_owned();
 	let (draws, width) =
 		shaper.label_measured(&text, 16., 0., 10., Paint::Text);
 	assert!(
@@ -83,7 +83,7 @@ fn check_committed(data: &[u8]) -> bool {
 }
 
 fuzz_mutator! { |data: &mut [u8], size: usize, max_size: usize, seed: u32| {
-	let keep = if data.starts_with(b"FNT1") { 3 } else { 0 };
+	let keep = if data.starts_with(b"FNT1") { 6 } else { 0 };
 	mutators::bytes_after(data, size, max_size, seed, keep)
 }}
 

@@ -343,6 +343,17 @@ pub fn definition_scan(source: &str) -> DefinitionScan {
 		}
 		let (content, in_list) = strip_containers(line);
 		if !(content.starts_with('[') && content.contains("]:")) {
+			// A definition label may span lines. When a later non-blank line
+			// closes this one, the scan cannot place the definition, so the
+			// table is no longer a complete inventory.
+			if content.starts_with('[')
+				&& all[index + 1..]
+					.iter()
+					.take_while(|(line, _)| !line.trim().is_empty())
+					.any(|(line, _)| line.contains("]:"))
+			{
+				scan.complete = false;
+			}
 			// A marker the reduction above could not consume (`> \t> [x]`)
 			// may still hold a definition this scan cannot see, so the table
 			// is no longer proven complete by the line's absence from it.
@@ -702,6 +713,12 @@ pub fn reference_scan(source: &str) -> ReferenceScan {
 		uses: Vec::new(),
 		inline_links: inline_link_spans(source),
 	};
+	// An autolink is one run whose text may hold brackets. This scan does not
+	// model that, and a bracket inside `<...>` would otherwise pair with one
+	// outside it, so a document with an autolink is outside the oracle.
+	if has_autolink(source) {
+		return scan;
+	}
 	let bytes = source.as_bytes();
 	let mut i = 0usize;
 	while i < bytes.len() {
@@ -773,6 +790,22 @@ pub fn reference_scan(source: &str) -> ReferenceScan {
 		i += 1;
 	}
 	scan
+}
+
+/// Whether `source` holds a URI or email autolink.
+fn has_autolink(source: &str) -> bool {
+	for (at, _) in source.match_indices('<') {
+		let Some(close) = source[at + 1..].find('>') else {
+			continue;
+		};
+		let inner = &source[at + 1..at + 1 + close];
+		if !inner.chars().any(char::is_whitespace)
+			&& (inner.contains(':') || inner.contains('@'))
+		{
+			return true;
+		}
+	}
+	false
 }
 
 /// Every `[text](dest)` span in `source`, found by a pass that does not skip
@@ -952,22 +985,22 @@ pub fn assert_reference_resolution(doc: &MarkdownParse) {
 	let definitions = &scan.definitions;
 	// A definition is `value` (possibly `url "title"`); the URL is its first
 	// whitespace-delimited word, unless the whole value is angle-bracketed.
-	let url_of = |value: &str| -> String {
+	let url_of = |value: &str| -> Option<String> {
 		let value = value.trim();
 		if let Some(rest) = value.strip_prefix('<') {
-			return rest.split('>').next().unwrap_or("").to_string();
+			return Some(rest.split('>').next().unwrap_or("").to_string());
 		}
 		// A value that is only a quoted string is a title with no URL, which
 		// the parser rejects; keep it out of the table.
 		if value.starts_with('"') || value.starts_with('\'') {
-			return String::new();
+			return None;
 		}
-		value.split_whitespace().next().unwrap_or("").to_string()
+		let url = value.split_whitespace().next().unwrap_or("");
+		(!url.is_empty()).then(|| url.to_string())
 	};
 	let table: Vec<(String, String)> = definitions
 		.iter()
-		.map(|d| (d.label.clone(), url_of(&d.value)))
-		.filter(|(_, url)| !url.is_empty())
+		.filter_map(|d| Some((d.label.clone(), url_of(&d.value)?)))
 		.collect();
 
 	// Every place the tree applied a link destination to a run of text that
@@ -992,22 +1025,32 @@ pub fn assert_reference_resolution(doc: &MarkdownParse) {
 		{
 			continue;
 		}
-		// The reference whose span holds this run, provided the run's range
-		// actually holds the run's text. Containment, not the opener offset,
-		// because a label run starts inside the brackets.
-		let Some(use_) = references.uses.iter().find(|u| {
-			reference_contains(u, &range)
-				&& run_text_in_source(&doc.source, &range, text)
-		}) else {
+		let containing: Vec<_> = references
+			.uses
+			.iter()
+			.filter(|u| {
+				reference_contains(u, &range)
+					&& run_text_in_source(&doc.source, &range, text)
+			})
+			.collect();
+		if containing.is_empty() {
 			continue;
-		};
+		}
 		// `[[Note]]` and `![[Note]]` are Obsidian wikilinks; the reference
 		// scanner intentionally does not model that extension, so its
 		// resolution is outside this oracle.
-		if doc
-			.source
-			.get(use_.span.clone())
-			.is_some_and(|span| span.contains("[["))
+		if containing.iter().any(|u| {
+			doc.source
+				.get(u.span.clone())
+				.is_some_and(|span| span.contains("[["))
+		}) {
+			continue;
+		}
+		// An entity-escaped destination is decoded by the parser (`&ouml;` ->
+		// `ö`) while this scan keeps the source spelling.
+		if definitions
+			.iter()
+			.any(|d| d.value.contains('&') && d.value.contains(';'))
 		{
 			continue;
 		}
@@ -1026,34 +1069,55 @@ pub fn assert_reference_resolution(doc: &MarkdownParse) {
 		//   normalization this scan does not model (a Cyrillic label holding
 		//   an interior `\0`);
 		// - a label that normalizes to empty, which means the scan and the
-		//   parser disagree about where the label ends.
+		//   parser disagree about where the label ends;
+		// - a non-ASCII label, because comrak compares full Unicode case folds
+		//   (`ẞ`/`ß`/`SS`) while this scan uses simple lowercasing.
 		let labels_ambiguous = doc.source.contains('\\')
 			|| definitions.iter().any(|d| {
-				d.label.chars().any(|c| c.is_control()) || d.label.is_empty()
+				d.label.chars().any(|c| c.is_control() || !c.is_ascii())
+					|| d.label.is_empty()
+			})
+			|| references.uses.iter().any(|u| {
+				u.label.chars().any(|c| c.is_control() || !c.is_ascii())
+					|| u.label.is_empty()
 			});
 		if labels_ambiguous && !definitions.is_empty() {
 			continue;
 		}
-		let Some((_, defined)) =
-			table.iter().find(|(label, _)| *label == use_.label)
-		else {
+		let defined: Vec<&String> = containing
+			.iter()
+			.filter_map(|u| {
+				table
+					.iter()
+					.find(|(label, _)| *label == u.label)
+					.map(|(_, url)| url)
+			})
+			.collect();
+		let Some(first) = defined.first() else {
 			// The table is only an inventory when the scan did not pass over a
 			// construct that could hold a definition (a list item). Otherwise
 			// the miss says nothing about the parser.
 			if !scan.complete {
 				continue;
 			}
+			let labels: Vec<&str> =
+				containing.iter().map(|u| u.label.as_str()).collect();
 			panic!(
-				"the parser resolved {:?} from the label {:?}, which no \
+				"the parser resolved {:?} from the labels {labels:?}, which no \
 				 definition in the source declares (definitions: {definitions:?})",
-				text, use_.label
+				text
 			);
 		};
+		// Adjacent bracket pairs can pair more than one way; if the scan's
+		// candidate labels agree, check them, and otherwise stand down.
+		if defined.iter().any(|url| url != first) {
+			continue;
+		}
 		assert_eq!(
-			url, defined,
-			"the label {:?} resolved to {url:?}, but its definition says \
-			 {defined:?}",
-			use_.label
+			url,
+			first.as_str(),
+			"the labels {defined:?} resolved to {url:?}, but the definition \
+			 says {first:?}"
 		);
 	}
 }
@@ -1442,6 +1506,44 @@ mod tests {
 	fn multi_line_reference_spans_are_not_uses() {
 		assert!(reference_uses("[foo\nbar]\n").is_empty());
 		assert_eq!(reference_uses("[foo bar]\n").len(), 1);
+	}
+
+	/// `<>` is a valid empty destination, so the definition must stay in the
+	/// table even though its URL is the empty string.
+	#[test]
+	fn an_empty_destination_is_a_real_definition() {
+		assert_reference_resolution(&parse("[foo]: <>\n\n[foo]\n"));
+	}
+
+	/// comrak compares full Unicode case folds; the scan's simple lowercasing
+	/// cannot model that, so a non-ASCII label stands the oracle down.
+	#[test]
+	fn unicode_label_case_folding_is_outside_the_oracle() {
+		assert_reference_resolution(&parse("[ẞ]\n\n[SS]: /url\n"));
+	}
+
+	/// A definition label may span lines; the scan cannot place it, so it must
+	/// not claim the table proves the parser invented a destination.
+	#[test]
+	fn a_multi_line_definition_label_is_not_a_missing_definition() {
+		assert_reference_resolution(&parse(
+			"[Foo\n  bar]: /url\n\n[Baz][Foo bar]\n",
+		));
+	}
+
+	/// The parser decodes entities in a destination; the scan compares the raw
+	/// source spelling, so an entity-escaped URL is outside the oracle.
+	#[test]
+	fn an_entity_escaped_destination_is_outside_the_oracle() {
+		assert_reference_resolution(&parse("[foo]: /f&ouml;&ouml;\n\n[foo]\n"));
+	}
+
+	/// A bracket inside an autolink must not be read as a reference use.
+	#[test]
+	fn a_bracket_inside_an_autolink_is_outside_the_oracle() {
+		assert_reference_resolution(&parse(
+			"[foo<http://example.com/?search=][ref]>\n\n[ref]: /uri\n",
+		));
 	}
 
 	/// The first run the tree attributed a destination to, text or image.

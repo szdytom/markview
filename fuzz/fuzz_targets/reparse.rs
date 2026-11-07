@@ -10,7 +10,7 @@ use libfuzzer_sys::{fuzz_mutator, fuzz_target};
 use mvfuzz::{budget, mutators, oracle};
 
 fuzz_mutator! { |data: &mut [u8], size: usize, max_size: usize, seed: u32| {
-	mutators::markdown(data, size, max_size, seed)
+	mutators::reparse(data, size, max_size, seed)
 }}
 
 fuzz_target!(|data: &[u8]| {

@@ -97,11 +97,17 @@ a tree against an independent scan of the same bytes.
   anchors and targets inside the page list. Raw HTML has no full-preservation
   assertion. Narrow table overflow is legal.
 
-Prepare local integration seeds without downloading upstream corpora:
+Prepare local seeds without downloading upstream corpora. This writes the
+integration, highlight, seam and project-dialect seeds, and copies a shared
+Markdown pool (committed fixtures plus dialect/reference cases) into every
+target whose unit is a document:
 
 ```sh
 python3 fuzz/scripts/prepare_pipeline_seeds.py
 ```
+
+`prepare_seeds.sh` adds the spec examples fetched from shallow clones to the
+same pool after the fetch.
 
 The integration targets report semantic path hits (`web/span-layout`,
 `web/multipage`, `reading/selection`, `history/state`, and so on) every thousand
@@ -304,10 +310,12 @@ coverage is visible without per-input logging.
   granularity, because the line-oriented markdown edits read as literal text
   to the expander. The integration targets commit their versioned headers and
   control bytes (`RDP1`, `RDB1`, `INT1`, `HLP1`, `ARC1`, `FNT1`, `SHP1`,
-  `MTH1`, `IDC1`, `LDH1`) and mutate only the payload, so a campaign keeps
-  reaching the structured paths instead of spending its time repairing a
-  magic byte. The `geometry` target instead takes an `arbitrary`-derived
-  struct (F2): every field is an independent `f32` bit pattern.
+  `MTH1`, `RPS1`, `IDC1`, `LDH1`) and mutate only the payload, so a campaign
+  keeps reaching the structured paths instead of spending its time repairing a
+  magic byte. `MTH1` and `RPS1` keep their control words too, so the structured
+  math and reparse sequences stay valid across mutations. The `geometry` target
+  instead takes an `arbitrary`-derived struct (F2): every field is an
+  independent `f32` bit pattern.
 - `oracle.rs` — finiteness/boundedness assertions, the layout snapshot
   fingerprint (three `DefaultHasher` passes over every geometry field;
   f32s hashed by bit pattern), and the deterministic input-hash helpers
@@ -376,14 +384,24 @@ reformats the app with the wrong toolchain, so keep the root on stable
 (`cargo fmt --all` at the root) and the harness on nightly, and never
 cross-format.
 
-Seeds (C1–C4): `fuzz/scripts/prepare_seeds.sh` downloads the CommonMark
-spec examples (652), the GFM spec examples (648 of 672; the missing ones
-nest fenced code inside the example block), KaTeX test-suite LaTeX (764),
-and the built-in MVSS stylesheets into `fuzz/corpus/{parse,math,mvss}/`, and
-copies the committed `tests/fixtures/web-*.html` pages into
-`fuzz/corpus/webpage/` for the same units to replay without a download.
-The script needs network access for the downloaded corpora (the web fixtures
-are local); corpora are gitignored and rebuilt on demand.
+Seeds (C1–C4): `fuzz/scripts/prepare_seeds.sh` shallow-clones the CommonMark
+and GFM repositories and KaTeX, takes the spec/test files, and extracts the
+CommonMark spec examples (652), the GFM spec examples (648 of 672; the missing
+ones nest fenced code inside the example block), KaTeX test-suite LaTeX (764)
+and the built-in MVSS stylesheets. It also writes the committed
+`tests/fixtures/*.md` documents and hand-written dialect/reference seeds into a
+shared Markdown pool, then distributes the spec and project examples to
+`parse`, `prefix`, `refdef`, `sourcepos_content`, `details_structure`,
+`anchors`, `layout`, `layout_parallel` and `pdf` (each under its own size cap;
+the layout family and the other slower targets get an evenly sampled subset
+rather than all 1300 spec examples, `layout_parallel` skips the 10 KiB
+fixtures because one input costs tens of seconds, and `pdf` skips the
+colour-emoji fixture until the text oracle can account for the fallback). The local `prepare_pipeline_seeds.py` additionally
+seeds the reading, web, history, queue, image, archive, font, shaping, math,
+highlight and webpage-seam targets, and copies `tests/fixtures/web-*.html` into
+`fuzz/corpus/webpage/` plus raw mode 3 variants into `webpage_layout`. The
+script needs network access for the cloned corpora (the fixtures are local);
+corpora are gitignored and rebuilt on demand.
 
 ## Adding an oracle
 

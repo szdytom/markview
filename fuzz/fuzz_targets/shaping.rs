@@ -7,10 +7,11 @@ use libfuzzer_sys::{fuzz_mutator, fuzz_target};
 use markview_layout::{scene::Paint, shaping::TextShaper, style::Stylesheet};
 use mvfuzz::{budget, coverage, mutators, oracle, pipeline};
 
-/// `SHP1`: controls followed by bytes mapped onto a multilingual alphabet.
-/// The result shapes real scripts, combining marks, emoji and bidi runs.
+/// `SHP1`, a size byte, a second control byte, then bytes mapped onto a
+/// multilingual alphabet. The result shapes real scripts, combining marks,
+/// emoji and bidi runs.
 fn check_structured(data: &[u8]) -> bool {
-	if !data.starts_with(b"SHP1") || data.len() < 4 {
+	if !data.starts_with(b"SHP1") || data.len() < 6 {
 		return false;
 	}
 	const WORDS: &[&str] = &[
@@ -27,7 +28,7 @@ fn check_structured(data: &[u8]) -> bool {
 		"Zürich",
 		"á",
 	];
-	let body = &data[4..];
+	let body = &data[6..];
 	let mut text = String::new();
 	for byte in body.iter().take(2048) {
 		if !text.is_empty() {
@@ -35,7 +36,7 @@ fn check_structured(data: &[u8]) -> bool {
 		}
 		text.push_str(WORDS[usize::from(*byte) % WORDS.len()]);
 	}
-	let size = 8. + f32::from(data[1]) / 8.;
+	let size = 8. + f32::from(data[4]) / 8.;
 	let mut shaper = TextShaper::with_fonts(pipeline::pinned_fonts());
 	let (draws, width) =
 		shaper.label_measured(&text, size, 0., 10., Paint::Text);
@@ -71,7 +72,7 @@ fn check_structured(data: &[u8]) -> bool {
 }
 
 fuzz_mutator! { |data: &mut [u8], size: usize, max_size: usize, seed: u32| {
-	let keep = if data.starts_with(b"SHP1") { 4 } else { 0 };
+	let keep = if data.starts_with(b"SHP1") { 6 } else { 0 };
 	mutators::bytes_after(data, size, max_size, seed, keep)
 }}
 

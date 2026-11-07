@@ -1,11 +1,255 @@
 #!/usr/bin/env python3
-"""Prepare deterministic integration seeds without downloads."""
+"""Prepare deterministic fuzz seeds without downloads.
+
+A shared Markdown pool is copied into every target whose unit is a document.
+Without one, the structural oracles start from an empty corpus and spend their
+first blocks rediscovering headings and lists.
+"""
+import re
+import sys
 from pathlib import Path
 
 root = Path(__file__).resolve().parents[1]
 repo = root.parent
-for target in ("reading_pipeline", "webpage_layout", "layout_diff", "highlight_schedule", "image_decode", "reparse", "paginate_pipeline", "fonts", "shaping", "math", "interaction_sequence", "font_archive"):
-    (root / "corpus" / target).mkdir(parents=True, exist_ok=True)
+corpus = root / "corpus"
+fixtures = repo / "tests" / "fixtures"
+
+TARGETS = (
+    "parse",
+    "prefix",
+    "refdef",
+    "sourcepos_content",
+    "details_structure",
+    "anchors",
+    "layout",
+    "layout_parallel",
+    "pdf",
+    "reading_pipeline",
+    "webpage_layout",
+    "layout_diff",
+    "highlight",
+    "highlight_schedule",
+    "image_decode",
+    "reparse",
+    "paginate_pipeline",
+    "fonts",
+    "shaping",
+    "math",
+    "interaction_sequence",
+    "font_archive",
+    "webpage",
+    "webpage_seam",
+)
+for target in TARGETS:
+    (corpus / target).mkdir(parents=True, exist_ok=True)
+
+# Target unit is Markdown; the value caps the files these targets accept.
+MARKDOWN_TARGETS = {
+    "parse": 512 * 1024,
+    "prefix": 256 * 1024,
+    "refdef": 256 * 1024,
+    "sourcepos_content": 256 * 1024,
+    "details_structure": 256 * 1024,
+    "anchors": 64 * 1024,
+    "layout": 128 * 1024,
+    "layout_parallel": 32 * 1024,
+    "pdf": 48 * 1024,
+}
+
+# Replaying every spec example costs seconds for the parser and minutes for the
+# layout family. Keep the full corpus for `parse`, sample the rest evenly.
+SPEC_LIMIT = {
+    "prefix": 512,
+    "refdef": 512,
+    "sourcepos_content": 512,
+    "details_structure": 512,
+    "anchors": 256,
+    "layout": 256,
+    "layout_parallel": 64,
+    "pdf": 256,
+}
+
+# `layout_parallel` pays five paired passes; a 10 KiB document takes tens of
+# seconds per input, which starves the rest of the corpus. The PDF text oracle
+# cannot yet account for the colour-emoji fallback, so that fixture would fail
+# on a legal export.
+MARKDOWN_EXCLUDE = {
+    "layout_parallel": {
+        "fixture-code-10k.md",
+        "fixture-details-10k.md",
+        "fixture-long-code-10k.md",
+        "fixture-math-10k.md",
+        "fixture-ordinary-10k.md",
+        "fixture-math-cjk-100k.md",
+        "fixture-text-cjk-100k.md",
+    },
+    "pdf": {"fixture-emoji-fallback.md"},
+}
+
+FIXTURE_SEEDS = (
+    "details-10k.md",
+    "footnote.md",
+    "math-10k.md",
+    "ordinary-10k.md",
+    "emoji-fallback.md",
+    "code-10k.md",
+    "long-code-10k.md",
+    "math-cjk-100k.md",
+    "text-cjk-100k.md",
+)
+
+DIALECT = """---
+title: Dialect coverage
+tags: [fuzz, seeds]
+---
+
+# Heading one
+
+## A heading with an explicit id <a id="explicit-anchor"></a>
+
+Paragraph with **bold**, *italic*, ==mark==, `code`, ~~strike~~,
+[link](https://example.org), [ref][ref-one], [^note], ![image](image.png),
+$x^2$, and a wikilink [[target]].
+
+<a id="inline-anchor"></a>
+
+<details open>
+<summary>Open summary</summary>
+
+Body text with <a name="named-anchor"></a> and ![inner](inner.png).
+
+### Nested heading
+
+</details>
+
+<details>
+<summary>Closed summary</summary>
+
+Hidden **body** and [^note].
+
+<details open>
+<summary>Nested open</summary>
+
+Deep body.
+
+</details>
+
+</details>
+
+> [!note] Callout title
+> Callout body.
+
+<figure>
+<img src="figure.png" alt="Figure alt">
+<figcaption>Figure caption</figcaption>
+</figure>
+
+<dl>
+<dt>Term</dt>
+<dd>Definition with **bold**.</dd>
+<dt>Other term</dt>
+<dd>Second definition.</dd>
+</dl>
+
+| left | center | right |
+| :--- | :----: | ----: |
+| one | two | three |
+
+```rust
+fn main() { let value = 1; }
+```
+
+$$
+\\int_0^1 x^2\\,dx
+$$
+
+[ref-one]: https://example.org/reference
+
+[^note]: Footnote body with <a id="footnote-anchor"></a>.
+"""
+
+REFERENCES = """[alpha]: https://example.org/alpha
+[beta]: <https://example.org/beta> "title"
+
+[A][alpha] [B][beta] [alpha]
+
+<details open>
+<summary>Summary</summary>
+
+[gamma]: /inside
+[G][gamma]
+
+</details>
+
+[^one]: first note
+[^one]: shadowed note
+
+Text [^one].
+"""
+
+
+def spec_examples(path: Path):
+    """The markdown side of the spec's fenced examples: content up to the
+    line holding only the separator period."""
+    text = path.read_text(encoding="utf-8", errors="replace")
+    return [
+        match.group(1)
+        for match in re.finditer(
+            r"`{20} example\n(.*?)\n\.\n.*?`{20}", text, re.S
+        )
+    ]
+
+
+def fit(content: bytes, cap: int) -> bytes:
+    """Keep a long document under `cap` by cutting at a line boundary."""
+    if len(content) <= cap:
+        return content
+    cut = content[:cap]
+    newline = cut.rfind(b"\n")
+    if newline > 0:
+        return cut[: newline + 1]
+    while cut and (cut[-1] & 0xC0) == 0x80:
+        cut = cut[:-1]
+    return cut
+
+
+def write_markdown_seeds(spec_dir: Path | None) -> None:
+    seeds: list[tuple[str, bytes]] = []
+    for name in FIXTURE_SEEDS:
+        path = fixtures / name
+        if path.exists():
+            seeds.append((f"fixture-{name}", path.read_bytes()))
+    seeds.append(("dialect.md", DIALECT.encode()))
+    seeds.append(("references.md", REFERENCES.encode()))
+    if spec_dir is not None:
+        for label, name in (
+            ("cmark", "cmark-spec.txt"),
+            ("gfm", "gfm-spec.txt"),
+        ):
+            path = spec_dir / name
+            if not path.exists():
+                continue
+            for index, example in enumerate(spec_examples(path)):
+                body = (example + "\n").encode()
+                if body.strip():
+                    seeds.append((f"spec-{label}-{index:04}.md", body))
+    for target, cap in MARKDOWN_TARGETS.items():
+        directory = corpus / target
+        excluded = MARKDOWN_EXCLUDE.get(target, set())
+        for name in excluded:
+            directory.joinpath(name).unlink(missing_ok=True)
+        if spec_dir is not None:
+            for old in directory.glob("spec-*"):
+                old.unlink()
+        spec = [seed for seed in seeds if seed[0].startswith("spec-")]
+        other = [seed for seed in seeds if not seed[0].startswith("spec-")]
+        if (limit := SPEC_LIMIT.get(target)) is not None and len(spec) > limit:
+            step = (len(spec) + limit - 1) // limit
+            spec = spec[::step][:limit]
+        for name, content in other + spec:
+            if content and name not in excluded:
+                directory.joinpath(name).write_bytes(fit(content, cap))
+
 
 reading = root / "corpus" / "reading_pipeline"
 reading.joinpath("unicode.md").write_text("alpha 中文 مرحبا e\u0301 👩‍💻 office\nsecond line alpha\n\n[alpha](https://example.org)\n")
@@ -21,9 +265,16 @@ web = root / "corpus" / "webpage_layout"
 web.joinpath("span-disclosures-multipage").write_bytes(bytes([1]) + bytes(range(24)))
 web.joinpath("span-empty-grid").write_bytes(bytes([1]))
 web.joinpath("plain-cell-geometry").write_bytes(bytes([2, 0, 1, 2, 3]))
-web.joinpath("malformed-html").write_bytes(b"\x02<table><tr><td rowspan=0><details><summary>broken")
+web.joinpath("malformed-html").write_bytes(b"\x03<table><tr><td rowspan=0><details><summary>broken")
+for name in ("web-plain-article.html", "web-complex-table.html"):
+    page = fixtures / name
+    web.joinpath(f"raw-{page.stem}").write_bytes(b"\x03" + page.read_bytes())
 for seed in range(16):
     web.joinpath(f"article-{seed}").write_bytes(bytes([0]) + bytes((seed * 17 + at * 31) % 256 for at in range(64)))
+
+web_pages = root / "corpus" / "webpage"
+for page in sorted(fixtures.glob("web-*.html")):
+    web_pages.joinpath(page.name).write_bytes(page.read_bytes())
 
 highlight = root / "corpus" / "highlight_schedule"
 for index, controls in enumerate([
@@ -34,6 +285,26 @@ for index, controls in enumerate([
     highlight.joinpath(f"queue-{index}").write_bytes(
         b"HLP1" + controls + b"fn main() { let value = 1; }\n"
     )
+
+highlight = root / "corpus" / "highlight"
+for language, code in {
+    "rust": "fn main() {\n    let value = 1;\n}\n",
+    "python": "def main():\n    return {1: 2}\n",
+    "javascript": "const value = {key: 1};\n",
+    "json": '{"key": [1, true, null]}\n',
+    "yaml": "key:\n  - one\n  - two\n",
+    "toml": "[section]\nkey = 1\n",
+    "c": "int main(void) { return 0; }\n",
+    "cpp": "template <class T> T id(T v) { return v; }\n",
+    "css": "body { color: #fff; }\n",
+    "html": "<article><p>text</p></article>\n",
+    "shell": "for value in one two; do echo $value; done\n",
+    "markdown": "# Heading\n\n- item\n",
+}.items():
+    highlight.joinpath(language).write_bytes(
+        (language + "\0" + code).encode()
+    )
+highlight.joinpath("raw").write_bytes(b"rawtext\0plain code body\n")
 
 images = root / "corpus" / "image_decode"
 controls = bytes(12)
@@ -107,3 +378,22 @@ ops = bytes([0, 0, 0, 3, 0, 0, 2, 5, 2, 0, 5, 73, 3, 1, 9, 0, 4, 1, 6, 0, 7, 0, 
 history.joinpath("state-history").write_bytes(b"LDH1" + bytes([len(ops) // 2]) + ops + body)
 for op in range(10):
     history.joinpath(f"operation-{op}").write_bytes(b"LDH1\x01" + bytes([op, 73]) + body)
+
+seam = root / "corpus" / "webpage_seam"
+for kind in range(12):
+    seam.joinpath(f"block-{kind:02}").write_bytes(
+        bytes([0, kind]) + bytes(range(16))
+    )
+seam.joinpath("mixed").write_bytes(bytes([4]) + bytes(range(1, 65)))
+
+spec_dir = None
+if "--spec-dir" in sys.argv:
+    spec_dir = Path(sys.argv[sys.argv.index("--spec-dir") + 1])
+write_markdown_seeds(spec_dir)
+print(
+    "seeds: "
+    + " ".join(
+        f"{target}={sum(1 for _ in (corpus / target).iterdir())}"
+        for target in TARGETS
+    )
+)

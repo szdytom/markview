@@ -8,11 +8,11 @@ use markview_layout::limits::Limits;
 use markview_layout::math::MathEngine;
 use mvfuzz::{budget, coverage, mutators, oracle};
 
-/// `MTH1`: controls and bytes assembled from valid TeX fragments, so the
-/// expander sees real macros, groups, scripts and delimiters instead of only
-/// byte-mutated text.
+/// `MTH1`, a size byte, a display byte, then bytes assembled from valid TeX
+/// fragments, so the expander sees real macros, groups, scripts and delimiters
+/// instead of only byte-mutated text.
 fn check_structured(data: &[u8]) -> bool {
-	if !data.starts_with(b"MTH1") || data.len() < 4 {
+	if !data.starts_with(b"MTH1") || data.len() < 6 {
 		return false;
 	}
 	const FRAGMENTS: &[&str] = &[
@@ -29,7 +29,7 @@ fn check_structured(data: &[u8]) -> bool {
 		"\\alpha + \\beta",
 		"\\int_0^1 f(x)\\,dx",
 	];
-	let body = &data[4..];
+	let body = &data[6..];
 	let mut latex = String::new();
 	for byte in body.iter().take(512) {
 		latex.push_str(FRAGMENTS[usize::from(*byte) % FRAGMENTS.len()]);
@@ -45,10 +45,10 @@ fn check_structured(data: &[u8]) -> bool {
 	};
 	let mut engine = markview_layout::math::MathEngine::default();
 	engine.set_limits(limits);
-	let size = 12. + f32::from(data[1]) / 4.;
+	let size = 12. + f32::from(data[4]) / 4.;
 	if let Ok(box_) = engine.layout(
 		&latex,
-		data[2] % 2 == 0,
+		data[5] % 2 == 0,
 		size,
 		&markview_layout::style::TextAppearance::default(),
 	) {
@@ -122,5 +122,9 @@ pub extern "C" fn LLVMFuzzerCustomMutator(
 	// SAFETY: libFuzzer owns the buffer, passes its initialized length, and
 	// the returned length is what it will read next.
 	let slice = unsafe { std::slice::from_raw_parts_mut(data, max_size) };
-	mutators::math(slice, size, max_size, seed)
+	if slice.starts_with(b"MTH1") {
+		mutators::math_after(slice, size, max_size, seed, 6)
+	} else {
+		mutators::math(slice, size, max_size, seed)
+	}
 }

@@ -3,7 +3,11 @@
 use libfuzzer_sys::{fuzz_mutator, fuzz_target};
 use mvfuzz::{budget, coverage, mutators, pipeline, web_layout};
 fuzz_mutator! { |data: &mut [u8], size: usize, max_size: usize, seed: u32| {
-	mutators::markdown_after(data, size, max_size, seed, 1)
+	if data.first().is_some_and(|byte| byte % 4 == 3) {
+		mutators::after(data, size, max_size, seed, 1, mutators::html)
+	} else {
+		mutators::bytes_after(data, size, max_size, seed, 1)
+	}
 }}
 fuzz_target!(|data: &[u8]| {
 	if data.len() > 8192 {

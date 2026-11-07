@@ -938,3 +938,42 @@ pub fn math_after(
 ) -> usize {
 	after(data, size, max_size, seed, keep, math)
 }
+
+/// The minimum buffer length the `RPS1` header, records, pool and body need.
+pub fn reparse_required(data: &[u8]) -> Option<usize> {
+	if !data.starts_with(b"RPS1") || data.len() < 13 {
+		return None;
+	}
+	let word = |at: usize| {
+		u32::from_le_bytes([data[at], data[at + 1], data[at + 2], data[at + 3]])
+			as usize
+	};
+	Some(13 + usize::from(data[4]).min(16) * 9 + word(9) + word(5))
+}
+
+/// Keeps the `RPS1` header, count and length words while mutating the records,
+/// pool and body. The body slice is only valid when the buffer still holds
+/// `body_at + body_len` bytes, so a shrunken mutation is padded back out.
+pub fn reparse(
+	data: &mut [u8],
+	size: usize,
+	max_size: usize,
+	seed: u32,
+) -> usize {
+	let size = size.min(max_size);
+	let Some(required) = reparse_required(&data[..size]) else {
+		return markdown(data, size, max_size, seed);
+	};
+	// Keep the raw-edit path in reach: a header-preserving mutation alone
+	// would never exercise `apply_deterministic_edit` again.
+	if Rng::new(seed).chance(1, 2) {
+		return markdown(data, size, max_size, seed);
+	}
+	let len = bytes_after(data, size, max_size, seed, 13);
+	if len < required && required <= max_size {
+		data[len..required].fill(b' ');
+		required
+	} else {
+		len
+	}
+}
