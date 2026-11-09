@@ -1023,7 +1023,10 @@ pub fn unescape(text: &str) -> String {
 /// the scan reads differently from the parser:
 ///
 /// - a link the tree resolved to `url` must have a definition whose value
-///   begins with exactly that `url` (a link cannot invent a destination);
+///   begins with exactly that `url` (a link cannot invent a destination),
+///   and any definition the scan holds for that label will do: one label can
+///   carry more than one definition-shaped line, and the parser's first-wins
+///   rule need not agree with this scan's line order;
 /// - a link the tree resolved from a label the scan's table does not hold is
 ///   a finding, but only while the table is known to be complete — an
 ///   incomplete table proves nothing by absence.
@@ -1133,16 +1136,22 @@ pub fn assert_reference_resolution(doc: &MarkdownParse) {
 		if labels_ambiguous && !definitions.is_empty() {
 			continue;
 		}
+		// A label can appear in the table more than once: the scan keeps every
+		// definition-shaped line, one of which may not be a definition at all
+		// (a list continuation), and the parser's first-wins rule can land on a
+		// different row than this scan's line order. The tree's destination
+		// therefore has to be one of the label's candidates, not the scan's
+		// first row.
 		let defined: Vec<&String> = containing
 			.iter()
-			.filter_map(|u| {
+			.flat_map(|u| {
 				table
 					.iter()
-					.find(|(label, _)| *label == u.label)
+					.filter(|(label, _)| *label == u.label)
 					.map(|(_, url)| url)
 			})
 			.collect();
-		let Some(first) = defined.first() else {
+		if defined.is_empty() {
 			// The table is only an inventory when the scan did not pass over a
 			// construct that could hold a definition (a list item). Otherwise
 			// the miss says nothing about the parser.
@@ -1156,17 +1165,13 @@ pub fn assert_reference_resolution(doc: &MarkdownParse) {
 				 definition in the source declares (definitions: {definitions:?})",
 				text
 			);
-		};
-		// Adjacent bracket pairs can pair more than one way; if the scan's
-		// candidate labels agree, check them, and otherwise stand down.
-		if defined.iter().any(|url| url != first) {
-			continue;
 		}
-		assert_eq!(
-			url,
-			first.as_str(),
-			"the labels {defined:?} resolved to {url:?}, but the definition \
-			 says {first:?}"
+		let labels: Vec<&str> =
+			containing.iter().map(|u| u.label.as_str()).collect();
+		assert!(
+			defined.iter().any(|candidate| candidate.as_str() == url),
+			"the labels {labels:?} resolved to {url:?}, but the definitions \
+			 say {defined:?}"
 		);
 	}
 }
@@ -1932,5 +1937,24 @@ mod tests {
 		assert_eq!(definition_scan(short_closer).definitions.len(), 0);
 		let ordinary = "```\ncode\n```\n\n[a]: /u\n";
 		assert_eq!(definition_scan(ordinary).definitions.len(), 1);
+	}
+
+	/// A label may appear in the scan's table twice: a definition-shaped line
+	/// that is really a list continuation, then the real definition. The
+	/// parser resolves from the real one, so the equality arm must not pin the
+	/// scan's first row (a recorded `refdef` finding).
+	#[test]
+	fn a_duplicate_label_does_not_pin_the_first_definition() {
+		let source = "- nested\n[a]: rl\n\n[a]: url\n\n[x][a]\n";
+		let doc = parse(source);
+		let links: Vec<String> = inlines(&doc)
+			.iter()
+			.filter_map(|(inline, _)| {
+				inline.link.as_ref().map(|l| l.as_str().to_owned())
+			})
+			.collect();
+		assert!(!links.is_empty());
+		assert!(links.iter().all(|link| link == "url"), "{links:?}");
+		assert_reference_resolution(&doc);
 	}
 }
