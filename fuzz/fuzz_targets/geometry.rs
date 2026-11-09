@@ -110,19 +110,27 @@ fuzz_target!(|input: GeometryInput| {
 	// The fitter scales a pair down to the extent, so where the arithmetic is
 	// representable the scaled sum may miss the extent by rounding but never
 	// exceed it by more; a non-representable sum (overflow, `NaN`) is
-	// accepted as the input's own fault.
+	// accepted as the input's own fault. The tolerance is the operands'
+	// rounding, not a fraction of the extent: opposite edges that nearly
+	// cancel lose the extent's precision entirely.
 	if a.h.is_finite() && a.h > 0.0 {
-		let sum = fitted_edges[0] + fitted_edges[2];
 		assert!(
-			!sum.is_finite() || sum <= a.h + a.h * 1e-4 + 1e-3,
-			"vertical edges exceed the rect: {sum} > {a:?}"
+			mvfuzz::oracle::fitted_edges_within(
+				a.h,
+				[fitted_edges[0], fitted_edges[2]]
+			),
+			"vertical edges exceed the rect: {} > {a:?}",
+			fitted_edges[0] + fitted_edges[2]
 		);
 	}
 	if a.w.is_finite() && a.w > 0.0 {
-		let sum = fitted_edges[1] + fitted_edges[3];
 		assert!(
-			!sum.is_finite() || sum <= a.w + a.w * 1e-4 + 1e-3,
-			"horizontal edges exceed the rect: {sum} > {a:?}"
+			mvfuzz::oracle::fitted_edges_within(
+				a.w,
+				[fitted_edges[1], fitted_edges[3]]
+			),
+			"horizontal edges exceed the rect: {} > {a:?}",
+			fitted_edges[1] + fitted_edges[3]
 		);
 	}
 

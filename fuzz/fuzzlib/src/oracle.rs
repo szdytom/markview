@@ -676,6 +676,23 @@ pub fn no_overflow(v: &[f32]) -> bool {
 	v.iter().all(|x| x.abs() <= 1e38)
 }
 
+/// Whether two fitted edges still fit their extent.
+///
+/// `fit_edges` scales a pair so that `a + b <= extent`, but each scaled
+/// operand rounds first: the sum can miss the extent by a few ulp of the
+/// *scaled operands*, not of the extent. Opposite edges that nearly cancel
+/// make that rounding arbitrarily large relative to a small extent, so the
+/// tolerance carries the operands' magnitude.
+pub fn fitted_edges_within(extent: f32, pair: [f32; 2]) -> bool {
+	let sum = pair[0] + pair[1];
+	if !sum.is_finite() {
+		return true;
+	}
+	let rounding =
+		4.0 * f32::EPSILON * (pair[0].abs() + pair[1].abs()).max(extent.abs());
+	sum <= extent + rounding
+}
+
 /// The pure-geometry helpers propagate non-finite input, so a result only
 /// owes its finiteness to one: when the inputs were finite, a non-finite
 /// result is a bug, but a `NaN` in may legally give a `NaN` out.
@@ -844,5 +861,71 @@ mod tests {
 			caught.is_err(),
 			"a prefix with a shifted source range must be caught"
 		);
+	}
+
+	/// Fitted edges owe the extent only the rounding of the scaled operands.
+	/// Both recorded `geometry` findings were opposite edges of `1e38`
+	/// magnitude that nearly cancel, so the sum missed a tiny extent by a
+	/// fraction of a percent — several ulp of the operands, and far beyond the
+	/// pre-fix tolerance of `extent * 1e-4`.
+	#[test]
+	fn fitted_edges_allow_cancellation_rounding() {
+		let cases = [
+			(
+				Rect {
+					x: 1.0158336341824417e-34,
+					y: 1.0158336341824417e-34,
+					w: 1.0158336341824417e-34,
+					h: 1.0350538014394208e30,
+				},
+				[
+					-3.3961256062618747e38,
+					2.4936932569232397e38,
+					3.3961513649220713e38,
+					1.1707410063014513e-38,
+				],
+			),
+			(
+				Rect {
+					x: 7.275957180502557e-12,
+					y: 9.403954246058914e-38,
+					w: 133955584.0,
+					h: 8547335680.0,
+				},
+				[
+					3.3961513649220713e38,
+					1.701415688262517e38,
+					2.9176167113455474e38,
+					-1.7014118346046923e38,
+				],
+			),
+		];
+		let old = |extent: f32, pair: [f32; 2]| {
+			pair[0] + pair[1] <= extent + extent * 1e-4 + 1e-3
+		};
+		for (rect, edges) in cases {
+			let fitted = markview_layout::scene::fit_edges(rect, edges);
+			let vertical = [fitted[0], fitted[2]];
+			let horizontal = [fitted[1], fitted[3]];
+			assert!(
+				fitted_edges_within(rect.h, vertical),
+				"{vertical:?} must fit {rect:?}"
+			);
+			assert!(
+				fitted_edges_within(rect.w, horizontal),
+				"{horizontal:?} must fit {rect:?}"
+			);
+			assert!(
+				!old(rect.h, vertical) || !old(rect.w, horizontal),
+				"the recorded finding must fail the pre-fix tolerance"
+			);
+		}
+	}
+
+	/// The tolerance must not swallow a fitter that failed to scale at all.
+	#[test]
+	fn unscaled_edges_are_still_a_finding() {
+		assert!(!fitted_edges_within(100.0, [1e6, 1e6]));
+		assert!(fitted_edges_within(100.0, [40.0, 60.0]));
 	}
 }
