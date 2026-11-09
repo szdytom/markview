@@ -77,8 +77,17 @@ export ASAN_OPTIONS="${ASAN_OPTIONS:-detect_leaks=0:allocator_may_return_null=1}
 export UBSAN_OPTIONS="${UBSAN_OPTIONS:-print_stacktrace=1}"
 export LLVM_SYMBOLIZER_PATH="${LLVM_SYMBOLIZER_PATH:-$(command -v llvm-symbolizer || true)}"
 
+# GNU `time -v` supplies the peak RSS; the shell keyword cannot. The binary is
+# not always at `/usr/bin/time` (NixOS ships it in the system profile), and a
+# plain `time` rejects `-v`, so resolve it and drop the timer if it is missing.
+timer=()
+if time_bin=$(type -P time || true) &&
+	[[ -n $time_bin ]] && "$time_bin" -v true 2>&1 | grep -q 'Maximum resident'; then
+	timer=("$time_bin" -v)
+fi
+
 set +e
-/usr/bin/time -v "$root/fuzz/scripts/slot.sh" --wait \
+"${timer[@]}" "$root/fuzz/scripts/slot.sh" --wait \
 	"$bin" "${flags[@]}" "$corpus" >>"$log" 2>&1
 status=$?
 set -e
@@ -88,6 +97,6 @@ set -e
 } >>"$log"
 
 # Keep the interesting tail in one place for the campaign log.
-grep -E '^(#|==|stat::|statistics|SUMMARY|ERROR|WARNING|.*peak RSS)' "$log" |
+grep -E '^(#|==|stat::|statistics|SUMMARY|ERROR|WARNING|.*peak RSS|\s*Maximum resident)' "$log" |
 	tail -40 >"$run_dir/summary.txt" || true
 echo "$run_dir"
