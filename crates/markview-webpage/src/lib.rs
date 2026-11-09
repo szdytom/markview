@@ -344,6 +344,10 @@ fn preserve_classes(
 
 /// Copies semantic information into attributes Readability keeps.
 fn preserve_semantics(document: &dom_smoothie::dom_query::Document) {
+	// Preserve code line breaks before Readability rewrites consecutive `br`s.
+	for br in document.select("pre br").nodes() {
+		br.replace_with(&document.tree.new_text("\n"));
+	}
 	for node in document.root().descendants() {
 		if !node.is_element() {
 			continue;

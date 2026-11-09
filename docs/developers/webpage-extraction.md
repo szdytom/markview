@@ -70,6 +70,8 @@ text and unsupported declarations stop inheritance and content detection. Withou
 a declaration, only recognized shebang interpreters supply a language; ambiguous
 snippets and Shiki output containing only inline colors remain unclassified.
 Token spans contribute their text, while Markview supplies its own syntax colors.
+Line breaks written as `br` elements inside `pre` are converted to literal
+newlines before Readability runs, preserving code indentation and blank lines.
 
 ## Semantic preservation
 
