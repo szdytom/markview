@@ -109,8 +109,9 @@ stays literal and nested math markup stays text), and a semantic wrapper
 
 ## Upstream behaviours the harness works around
 
-These are `dom_smoothie` (the pinned fork) and are not Markview defects; the
-targets avoid or accommodate them so they do not drown real findings.
+These are `dom_smoothie` (the pinned fork) and comrak, and are not Markview
+defects; the targets avoid or accommodate them so they do not drown real
+findings.
 
 - A single-cell table is unwrapped (`fix_single_cell_tables`), so the
   generator never asks for a one-cell grid.
@@ -121,6 +122,29 @@ targets avoid or accommodate them so they do not drown real findings.
 - With a page-level `<base>`, the extractor rewrites even fragment links to
   absolute URLs. The seam target leaves `<base>` to the `webpage` target's
   mutator, whose oracle accepts the resolved address.
+
+### comrak: inline source positions after a definition line
+
+A block that opens with reference definitions starts at its first definition
+line, but comrak leaves every inline's `sourcepos` line unshifted, so the
+recorded range addresses a different construct than the text it carries:
+
+```markdown
+[BAR]: /url
+![foo][bai]
+![foo][bar]
+```
+
+`parse_document` reports `Paragraph 1:1-3:11`, then `Text "![foo][bai]"` at
+`1:1` (its real line is 2) and the resolved `Image url="/url"` at `2:1` (line
+3). Markview maps those positions to bytes, so the tree holds an image over the
+second line's text with the third line's destination. A definition with a
+title, a destination on the next line, and a footnote definition show the same
+shift; a blank line between the definition and the text does not.
+
+The `refdef` oracle cannot attribute a destination to a label inside such a
+block, so it stands down there (`seam::blocks_opening_with_definitions`); the
+position handling itself has to be fixed upstream.
 
 ## Campaign record
 

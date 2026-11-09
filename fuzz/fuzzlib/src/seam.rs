@@ -1020,6 +1020,40 @@ pub fn unescape(text: &str) -> String {
 	out
 }
 
+/// The source ranges of every block that opens with a definition line.
+///
+/// Comrak's inline source positions inside such a block are one line low per
+/// leading definition, so ranges there cannot be attributed to a construct.
+fn blocks_opening_with_definitions(
+	doc: &MarkdownParse,
+) -> Vec<std::ops::Range<usize>> {
+	let mut out = Vec::new();
+	for block in doc.document.blocks() {
+		markview_document::visit_blocks(block, &mut |block| {
+			if let Some(range) = doc.block_source(block)
+				&& opens_with_definition(&doc.source[range.clone()])
+			{
+				out.push(range);
+			}
+		});
+	}
+	out
+}
+
+/// Whether `text` starts with a reference or footnote definition prefix.
+fn opens_with_definition(text: &str) -> bool {
+	let line = match text.find(['\n', '\r']) {
+		Some(end) => &text[..end],
+		None => text,
+	};
+	let (indent, rest) = split_indent(strip_quote_markers(line));
+	indent <= 3
+		&& rest.starts_with('[')
+		&& rest
+			.find("]:")
+			.is_some_and(|close| !rest[1..close].is_empty())
+}
+
 /// Checks how a document resolved every reference link the source holds
 /// against the definition table an independent scan derives from the same
 /// source.
@@ -1039,6 +1073,13 @@ pub fn unescape(text: &str) -> String {
 /// Passing the document's own source keeps both sides on the same text.
 pub fn assert_reference_resolution(doc: &MarkdownParse) {
 	let scan = definition_scan(&doc.source);
+	// Comrak starts a block that opens with reference definitions at its first
+	// definition line but leaves every inline's line number unshifted, so a
+	// recorded range in such a block addresses the wrong construct (`U1` in
+	// `fuzz/FINDINGS.md`; the raw AST shows it, so it is upstream). Which
+	// definition a recorded destination belongs to cannot then be attributed
+	// to a label, so the oracle stands down for those blocks.
+	let shifted = blocks_opening_with_definitions(doc);
 	let definitions = &scan.definitions;
 	// A definition is `value` (possibly `url "title"`); the URL is its first
 	// whitespace-delimited word, unless the whole value is angle-bracketed.
@@ -1080,6 +1121,9 @@ pub fn assert_reference_resolution(doc: &MarkdownParse) {
 			.iter()
 			.any(|link| span_contains(&range, link))
 		{
+			continue;
+		}
+		if shifted.iter().any(|block| block.contains(&range.start)) {
 			continue;
 		}
 		let containing: Vec<_> = references
@@ -1973,5 +2017,15 @@ mod tests {
 		assert_eq!(definition_scan(declined).definitions.len(), 1);
 		let tilde = "~~~rust `code`\n[a]: /u\n~~~\n";
 		assert_eq!(definition_scan(tilde).definitions.len(), 0);
+	}
+
+	/// A block that opens with a definition has comrak-shifted inline source
+	/// positions (`U1`): the range the tree records for `![foo][bai]` is the
+	/// following resolved image's text, so the oracle stands down instead of
+	/// reporting an invented destination.
+	#[test]
+	fn a_block_that_opens_with_a_definition_stands_down() {
+		let source = "[BAR]: /url\n![foo][bai]\n![foo][bar]\n";
+		assert_reference_resolution(&parse(source));
 	}
 }
