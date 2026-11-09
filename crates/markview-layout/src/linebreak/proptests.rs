@@ -43,6 +43,36 @@ fn check(units: &[Unit], solution: &Solution) {
 }
 proptest! {
 	#[test]
+	fn forced_line_endings_preserve_natural_width(
+		widths in prop::collection::vec(1u8..64, 1..24),
+		target in 64u16..2000,
+	) {
+		let units: Vec<_> = widths.iter().enumerate().map(|(i, &width)| Unit {
+			source: i..i + 1,
+			width: width as f32,
+			stretch: 2.0,
+			shrink: 1.0,
+			justifiable: true,
+			discard: false,
+			after: Some(Break::FORCED),
+		}).collect();
+		let limits = Limits::default();
+		for solution in [
+			greedy(&units, target as f32, &limits),
+			break_lines(&units, target as f32, 12.0, true, &limits),
+		] {
+			check(&units, &solution);
+			prop_assert_eq!(solution.lines.len(), widths.len());
+			for line in &solution.lines {
+				prop_assert!(line.last);
+				prop_assert_eq!(line.ratio, 0.0);
+			}
+		}
+	}
+}
+
+proptest! {
+	#[test]
 	fn all_entries_conserve_content(data in prop::collection::vec((0u8..32,any::<bool>(),0u8..4),0..24), target in 1u16..100, first in 1u16..100, budget in prop_oneof![Just(0usize),Just(1),Just(10000)], justified in any::<bool>()) {
 		let units: Vec<_> = data
 			.into_iter()

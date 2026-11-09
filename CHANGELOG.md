@@ -27,6 +27,7 @@ at the same level, without `[brackets]`.
 
 ### Fixed
 
+- Keep natural spacing on lines ending with an HTML `<br>` instead of stretching them to the full text width.
 - Smooth consecutive mouse-wheel steps by preserving scroll velocity and avoiding accumulated travel at document boundaries.
 - Recognize web code block languages from common highlighter markup and enclosing containers, with language aliases, explicit highlighting opt-outs and shebang fallback.
 - Preserve code block line breaks and blank lines on Docusaurus and other web pages that use HTML line break elements.

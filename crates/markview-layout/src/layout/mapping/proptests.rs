@@ -29,7 +29,6 @@ fn prepared() -> Prepared {
 		math: BTreeMap::new(),
 		notes: BTreeMap::new(),
 		note_spans: BTreeMap::new(),
-		breaks: BTreeSet::new(),
 	}
 }
 proptest! {

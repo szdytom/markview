@@ -225,8 +225,7 @@ impl PartialEq<&str> for AnchorId {
 pub enum LineBreak {
 	/// A Markdown hard break: it ends the line without asking for flush text.
 	Hard,
-	/// An explicit HTML `<br>`, which asks for the line it ends to be set
-	/// flush like any other.
+	/// An explicit HTML `<br>`: it ends the line without asking for flush text.
 	Forced,
 }
 

@@ -2629,6 +2629,7 @@ dependencies = [
  "markview-document",
  "markview-geometry",
  "markview-layout",
+ "markview-webpage",
  "memmap2",
  "parley",
  "proptest",

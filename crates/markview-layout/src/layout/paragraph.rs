@@ -145,7 +145,7 @@ impl ParagraphLayout<'_> {
 				break;
 			}
 			line.hyphen = br.hyphen_width > 0.;
-			line.last = br.forced && !br.justify;
+			line.last = br.forced;
 			shaped = self.shape(context, units, line);
 			let tail = if self.opts.greedy {
 				linebreak::greedy(&units[end..], self.width, &self.opts.limits)
