@@ -281,7 +281,7 @@ pub fn definition_scan(source: &str) -> DefinitionScan {
 		definitions: Vec::new(),
 		complete: true,
 	};
-	let mut fence: Option<u8> = None;
+	let mut fence: Option<(u8, usize)> = None;
 	let mut html: Option<HtmlEnd> = None;
 	// YAML front matter is not Markdown: a fence inside it is literal text and
 	// a `[label]:` line inside it declares nothing. Without this skip the
@@ -319,10 +319,21 @@ pub fn definition_scan(source: &str) -> DefinitionScan {
 		}
 		if indent <= 3 && (rest.starts_with("```") || rest.starts_with("~~~")) {
 			let marker = rest.as_bytes()[0];
-			if fence == Some(marker) {
-				fence = None;
-			} else if fence.is_none() {
-				fence = Some(marker);
+			let run = rest.bytes().take_while(|b| *b == marker).count();
+			match fence {
+				None => fence = Some((marker, run)),
+				// A closing fence carries no info string and is at least as
+				// long as its opener. ```` ```rust ```` inside an open fence is
+				// literal text; reading it as a closer hid every definition
+				// after the block.
+				Some((open, len))
+					if marker == open
+						&& run >= len
+						&& rest[run..].trim().is_empty() =>
+				{
+					fence = None;
+				}
+				Some(_) => {}
 			}
 			continue;
 		}
@@ -1906,5 +1917,20 @@ mod tests {
 	fn a_thematic_break_is_not_front_matter() {
 		let source = "text\n\n---\n\n```\ncode\n```\n\n[a]: /u\n";
 		assert_eq!(definition_scan(source).definitions.len(), 1);
+	}
+
+	/// A fence line with an info string is content while a fence is open, and a
+	/// closer shorter than its opener closes nothing. Reading either as a
+	/// closer hid every definition after the block (a recorded `refdef`
+	/// finding).
+	#[test]
+	fn only_a_bare_fence_run_closes_a_fence() {
+		let info_string =
+			"```rust\nlet x = 1;\n```rust\nmore\n```\n\n[a]: /u\n";
+		assert_eq!(definition_scan(info_string).definitions.len(), 1);
+		let short_closer = "````\ncode\n```\n\n[a]: /u\n";
+		assert_eq!(definition_scan(short_closer).definitions.len(), 0);
+		let ordinary = "```\ncode\n```\n\n[a]: /u\n";
+		assert_eq!(definition_scan(ordinary).definitions.len(), 1);
 	}
 }
