@@ -1,5 +1,6 @@
+mod list;
+
 use super::{BlockContext, LayoutOptions};
-use crate::text::{TextCluster, TextNode};
 use crate::{
 	document::{
 		Block, BlockKind, CalloutKind, CellAlign, Inline, InlineKind, RichText,
@@ -677,12 +678,6 @@ impl BlockContext<'_> {
 		out.width = out.width.max(x + width);
 		total
 	}
-	#[cfg_attr(
-		any(),
-		markview::allow_complexity(
-			reason = "Keep block-kind dispatch with balanced list depths and scene ownership; marker, footnote and reading indices share the same output streams."
-		)
-	)]
 	pub(super) fn block_inner(
 		&mut self,
 		block: &Block,
@@ -762,595 +757,65 @@ impl BlockContext<'_> {
 					block, None, &label, blocks, None, x, y, width, opts, out,
 				)
 			}
-			BlockKind::Quote { callout, blocks } => {
-				let Some(callout) = callout else {
-					return self
-						.framed_children(blocks, x, y, width, opts, out);
-				};
-				if callout.fold.is_some() {
-					let disclosure = &blocks[0];
-					let BlockKind::Details {
-						summary, blocks, ..
-					} = disclosure.kind()
-					else {
-						unreachable!("foldable callouts contain a disclosure");
-					};
-					return self.disclosure(
-						disclosure,
-						Some(disclosure.id()),
-						summary,
-						blocks,
-						Some(callout.kind),
-						x,
-						y,
-						width,
-						opts,
-						out,
-					);
-				}
-				let header = self.callout_header(
-					Some(block.id()),
+			BlockKind::Quote {
+				callout: None,
+				blocks,
+			} => {
+				return self.framed_children(blocks, x, y, width, opts, out);
+			}
+			BlockKind::Quote {
+				callout: Some(callout),
+				blocks,
+			} if callout.fold.is_some() => {
+				return self.folded_callout(
 					callout.kind,
-					callout
-						.title
-						.as_ref()
-						.expect("a plain callout has a title"),
-					x,
-					y,
+					blocks,
+					[x, y],
 					width,
 					opts,
 					out,
 				);
-				let gap = if blocks.is_empty() {
-					0.0
-				} else {
-					size * DETAILS_GAP
-				};
-				header
-					+ gap + self.framed_children(
-					blocks,
-					x,
-					y + header + gap,
-					width,
-					opts,
-					out,
-				)
 			}
+			BlockKind::Quote {
+				callout: Some(callout),
+				blocks,
+			} => self.callout(
+				block.id(),
+				callout,
+				blocks,
+				[x, y],
+				width,
+				opts,
+				out,
+			),
 			BlockKind::List {
 				start,
 				reversed,
-				tight: _,
 				items,
-			} => {
-				// A list indents as a whole, markers included, so its items line
-				// up with the indented opening lines of paragraphs. The item
-				// text does not indent again, and nested blocks inherit this
-				// single shift. A theme may inset bullet and ordered lists by
-				// different amounts on top of the reader's paragraph indent.
-				let indent = (opts.indent(size, width)
-					+ opts.stylesheet.list_indent(start.is_some())
-						* opts.font_size)
-					.min((width - size).max(0.0));
-				let x = x + indent;
-				let width = (width - indent).max(1.0);
-				let item_opts = LayoutOptions {
-					paragraph_indent: 0.0,
-					..opts.clone()
-				};
-				let mut top = y;
-				let list_appearance = self.shaper.appearance.clone();
-				let item_appearance =
-					opts.stylesheet.text(&list_appearance, Condition::ListItem);
-				let item_rule = opts
-					.stylesheet
-					.element_rule(item_appearance.chain, Condition::ListItem);
-				let padding = item_rule
-					.padding
-					.as_ref()
-					.map(|p| p.sides().map(|v| v * opts.font_size))
-					.unwrap_or([0.; 4]);
-				// Every item in the list draws the same bullet graphic. Its
-				// shape is the cycle entry for this list's nesting depth.
-				let bullet =
-					opts.stylesheet.text(&item_appearance, Condition::Marker);
-				let bullet_side = opts.font_size * bullet.size * BULLET_SIDE;
-				let shapes = opts.stylesheet.marker_shapes();
-				let bullet_points = marker_points(
-					shapes[self.marker_depth % shapes.len()],
-					bullet_side,
-				);
-				let task = opts
-					.stylesheet
-					.text(&item_appearance, Condition::TaskMarker);
-				let task_rule = opts
-					.stylesheet
-					.element_rule(task.chain, Condition::TaskMarker);
-				let task_side = opts.font_size * task.size * TASK_BOX;
-				let task_align = opts.stylesheet.marker_align(true);
-				let task_border = task_rule.border_width.unwrap_or(TASK_BORDER);
-				let task_radius = task_rule.radius.unwrap_or(0.);
-				// Every checkbox in the list shares one shape, so each of its
-				// polygons is built once and drawn like a list marker: through
-				// the antialiased vector rasterizer, cached for the document.
-				let task_fill: Arc<[[f32; 2]]> =
-					Arc::from(rounded_square(task_side, task_radius));
-				let task_ring: Arc<[[f32; 2]]> = Arc::from(
-					rounded_square_ring(task_side, task_radius, task_border),
-				);
-				let task_check = items
-					.iter()
-					.any(|item| item.checked == Some(true))
-					.then(|| check_points(task_side));
-				// A nested list inside an item is one bullet level deeper, and
-				// one ordered level takes the next counting symbol. This list's
-				// own items number at the depth it was entered at.
-				let enum_depth = self.enum_depth;
-				if start.is_none() {
-					self.marker_depth += 1;
-				} else {
-					self.enum_depth += 1;
-				}
-				let numbering = opts.stylesheet.enum_numbering();
-				let number_align = opts.stylesheet.enum_align();
-				// One column holds every marker of the list, so the item text
-				// starts at one x. An ordered list widens it to its own numbers.
-				let gap = MARKER_GAP * opts.font_size * bullet.size;
-				let mut column = opts
-					.stylesheet
-					.element_rule(list_appearance.chain, block_role(block))
-					.marker_width
-					.map_or(MARKER_COLUMN, |v| v * opts.font_size);
-				if items.iter().any(|item| item.checked.is_some()) {
-					column = column
-						.max(marker_min_width(task_align, task_side, gap));
-				}
-				if items.iter().any(|item| item.checked.is_none()) {
-					column = column.max(marker_min_width(
-						opts.stylesheet.marker_align(false),
-						bullet_side,
-						gap,
-					));
-				}
-				let values: Vec<isize> = if let Some(start) = *start {
-					let mut value = start;
-					items
-						.iter()
-						.map(|item| {
-							if let Some(number) = item.number {
-								value = number;
-							}
-							let current = value;
-							value = if *reversed {
-								value.saturating_sub(1)
-							} else {
-								value.saturating_add(1)
-							};
-							current
-						})
-						.collect()
-				} else {
-					Vec::new()
-				};
-				if start.is_some() {
-					for (i, item) in items.iter().enumerate() {
-						if item.checked.is_some() {
-							continue;
-						}
-						let label =
-							numbering.number(enum_depth, values[i] as i64);
-						let (_, width) = self.shaper.label_with(
-							&label,
-							opts.font_size,
-							0.,
-							0.,
-							&bullet,
-							bullet.paint,
-							None,
-						);
-						column = column.max(marker_min_width(
-							number_align,
-							width,
-							gap,
-						));
-					}
-				}
-				for (i, item) in items.iter().enumerate() {
-					if (self.cancelled)() {
-						break;
-					}
-					let item_top = top;
-					out.begin_scene(x, item_top);
-					self.shaper.appearance = item_appearance.clone();
-					top +=
-						item_rule.space_before.unwrap_or(0.) * opts.font_size;
-					let box_y = top;
-					let box_index = out.draws.len();
-					out.draws.push(Draw::Rect(Rect::default(), Paint::Text));
-					top += padding[0];
-					let item_x = x + padding[3];
-					let item_width = (width - padding[1] - padding[3]).max(1.);
-
-					// Only an ordered number is reading text. Bullets and task
-					// checkboxes are drawn, so nothing about them is selectable.
-					let numbered = item.checked.is_none() && start.is_some();
-					let marker_start = out.draws.len();
-					if numbered {
-						let label =
-							numbering.number(enum_depth, values[i] as i64);
-						let (mut draws, ranges, width) =
-							self.shaper.label_runs(
-								&label,
-								opts.font_size,
-								item_x,
-								0.,
-								&bullet,
-								bullet.paint,
-								Some(Paint::Scoped(
-									bullet.chain,
-									Condition::Marker,
-									ColorField::Background,
-								)),
-							);
-						// Shaping starts at the column's left edge; alignment
-						// moves the finished label without reshaping it.
-						let dx = marker_offset(number_align, column, width);
-						for draw in &mut draws {
-							draw.translate(dx, 0.);
-						}
-						// The number copies as its own word before the item,
-						// so the trailing space rides on its last glyph. Each
-						// glyph keeps its own range, which is what lets a PDF
-						// name every character instead of one span that leaves
-						// the later glyphs unnamed.
-						let text = format!("{label} ");
-						let mut node = TextNode::new(text.clone(), "\n");
-						let height = size * self.shaper.appearance.line_height;
-						let command = out.draws.len();
-						let glyphs: Vec<f32> = draws
-							.iter()
-							.filter_map(|draw| match draw {
-								Draw::Glyph(glyph) => Some(glyph.x),
-								_ => None,
-							})
-							.collect();
-						let mut ranges = ranges.into_iter();
-						let mut glyph = 0;
-						for (offset, draw) in draws.iter().enumerate() {
-							if !matches!(draw, Draw::Glyph(_)) {
-								continue;
-							}
-							let mut range = ranges.next().unwrap_or(0..0);
-							if glyph + 1 == glyphs.len() {
-								range.end = text.len();
-							}
-							let x = glyphs[glyph];
-							let end = glyphs
-								.get(glyph + 1)
-								.copied()
-								.unwrap_or(item_x + dx + width);
-							node.push(TextCluster {
-								mixed_spacing: (0.0, 0.0),
-								range,
-								rect: Rect {
-									x,
-									y: top,
-									w: (end - x).max(1.0),
-									h: height,
-								},
-								rtl: false,
-								atomic: false,
-								command: command + offset,
-							});
-							glyph += 1;
-						}
-						out.draws.extend(draws);
-						out.text.push(node);
-					}
-					let first_child = out.text.len();
-					if let Some(checked) = item.checked {
-						let center = [
-							item_x
-								+ marker_offset(task_align, column, task_side)
-								+ task_side * 0.5,
-							0.,
-						];
-						// The box keeps the surface fill; a completed one
-						// paints the accent over it and draws its check in
-						// `color`, so a theme without an accent still shows a
-						// filled box behind the mark.
-						let fill = |field| Draw::Polygon {
-							center,
-							points: task_fill.clone(),
-							paint: Paint::Scoped(
-								task.chain,
-								Condition::TaskMarker,
-								field,
-							),
-						};
-						out.draws.push(fill(ColorField::Background));
-						if checked {
-							out.draws.push(fill(ColorField::Accent));
-						}
-						if task_border > 0.0 {
-							out.draws.push(Draw::Polygon {
-								center,
-								points: task_ring.clone(),
-								paint: Paint::Scoped(
-									task.chain,
-									Condition::TaskMarker,
-									ColorField::BorderColor,
-								),
-							});
-						}
-						if checked && let Some(points) = &task_check {
-							out.draws.push(Draw::Polygon {
-								center,
-								points: points.clone(),
-								paint: task.paint,
-							});
-						}
-					} else if !numbered {
-						let left = item_x
-							+ marker_offset(
-								opts.stylesheet.marker_align(false),
-								column,
-								bullet_side,
-							);
-						out.draws.push(Draw::Polygon {
-							center: [left + bullet_side / 2., 0.],
-							points: bullet_points.clone(),
-							paint: bullet.paint,
-						});
-					}
-					let marker_end = out.draws.len();
-					let child_height = self.children(
-						&item.blocks,
-						item_x + column,
-						top,
-						(item_width - column).max(1.),
-						&item_opts,
-						size * 0.6,
-						out,
-					);
-					let first_line =
-						out.first_text_rect(first_child).unwrap_or(Rect {
-							x: item_x + column,
-							y: top,
-							w: 0.,
-							h: size * item_appearance.line_height,
-						});
-					let center_y = first_line.y + first_line.h * 0.5;
-					let marker =
-						&mut out.draws.builder_mut()[marker_start..marker_end];
-					if numbered {
-						self.shaper.center_draws(marker, center_y);
-						for cluster in &mut out.text[first_child - 1].clusters {
-							cluster.rect.y = first_line.y;
-							cluster.rect.h = first_line.h;
-						}
-					} else {
-						for draw in marker {
-							if let Draw::Polygon { center, .. } = draw {
-								center[1] = center_y;
-							}
-						}
-					}
-					// The list owns its closing space; retain child spacing only
-					// between items, so nested tails do not accumulate.
-					let trailing = if i + 1 == items.len()
-						&& let Some(last) =
-							item.blocks.iter().rfind(|b| !anchor_only(b))
-					{
-						let parent = opts.stylesheet.child(
-							&item_appearance,
-							item.blocks
-								.iter()
-								.filter(|b| !anchor_only(b))
-								.count() - 1,
-							item.blocks
-								.iter()
-								.filter(|b| !anchor_only(b))
-								.count(),
-						);
-						outer_spacing(last, &parent, opts).1
-					} else {
-						0.0
-					};
-					top += (child_height - trailing)
-						.max(size * self.shaper.appearance.line_height);
-					if trailing > 0.0 {
-						out.height = out.height.min(top);
-					}
-					top += padding[2];
-					*out.draws.get_mut(box_index).unwrap() = Draw::Box {
-						rect: Rect {
-							x,
-							y: box_y,
-							w: width,
-							h: top - box_y,
-						},
-						chain: item_appearance.chain,
-						condition: Condition::ListItem,
-						radius: item_rule.radius.unwrap_or(0.),
-						border: item_rule.border_width.unwrap_or(0.),
-						left_only: false,
-						decoration: crate::scene::BoxDecoration::from_rule(
-							&item_rule, false,
-						),
-					};
-					top += item_rule.space_after.unwrap_or(0.) * opts.font_size;
-					if let Some(node) = out.text.get_mut(first_child) {
-						// A number shares its line with the item text; an item
-						// without one starts its own line.
-						node.separator = if numbered { "" } else { "\n" };
-					}
-					if numbered && first_child < out.text.len() {
-						out.text[first_child - 1].selection_group = Some(
-							out.text[first_child]
-								.selection_group
-								.unwrap_or(first_child),
-						);
-					}
-					out.end_scene(
-						top - item_top,
-						(box_y - item_top)
-							+ padding[0] + padding[2]
-							+ size * self.shaper.appearance.line_height
-							+ item_rule.space_after.unwrap_or(0.)
-								* opts.font_size,
-					);
-				}
-				if start.is_none() {
-					self.marker_depth -= 1;
-				} else {
-					self.enum_depth -= 1;
-				}
-				self.shaper.appearance = list_appearance;
-				top - y
-			}
+				..
+			} => self.list(*start, *reversed, items, [x, y], width, opts, out),
 			BlockKind::Table(table) => {
 				self.table(block.id(), table, [x, y], width, opts, out)
 			}
-			BlockKind::DefinitionList(items) => {
-				let indent = (opts.font_size * 1.5).min(width * 0.5);
-				let mut top = y;
-				for item in items {
-					for terms in &item.terms {
-						top += self.rich(
-							Some(block.id()),
-							terms,
-							x,
-							top,
-							width,
-							size,
-							false,
-							CellAlign::Left,
-							false,
-							false,
-							opts,
-							out,
-						);
-					}
-					for blocks in &item.definitions {
-						top += self.children(
-							blocks,
-							x + indent,
-							top,
-							(width - indent).max(1.0),
-							opts,
-							0.,
-							out,
-						);
-					}
-				}
-				top - y
-			}
-			BlockKind::Figure { blocks, caption } => {
-				let parent = self.shaper.appearance.clone();
-				let mut top = y;
-				for block in blocks {
-					top += self.cached_child(block, [x, top], width, opts, out);
-				}
-				if let Some(caption) = caption {
-					self.shaper.appearance =
-						opts.stylesheet.text(&parent, Condition::Caption);
-					let caption_size =
-						opts.font_size * self.shaper.appearance.size;
-					let gap = caption_size * 0.5;
-					top += gap;
-					top += self.rich(
-						Some(block.id()),
-						caption,
-						x,
-						top,
-						width,
-						caption_size,
-						false,
-						CellAlign::Center,
-						false,
-						false,
-						opts,
-						out,
-					);
-					self.shaper.appearance = parent;
-				}
-				top - y
-			}
-			BlockKind::Footnote {
-				id: note_id,
-				number,
+			BlockKind::DefinitionList(items) => self.definition_list(
+				block.id(),
+				items,
+				[x, y],
+				width,
+				opts,
+				out,
+			),
+			BlockKind::Figure { blocks, caption } => self.figure(
+				block.id(),
 				blocks,
-			} => {
-				let text = format!("[{number}]");
-				let paint =
-					Paint::Styled(Condition::FootnoteRef, ColorField::Color);
-				// Every note reserves the same marker column, so their bodies
-				// start at one x even when the numbers differ in width. The
-				// number itself is shaped at the origin and moved onto the
-				// body's first baseline below.
-				let (mut draws, label_width) = self.shaper.label_measured(
-					&text,
-					opts.font_size,
-					x,
-					0.0,
-					paint,
-				);
-				let reserved =
-					format!("[{}]", "0".repeat(self.footnote_column as usize));
-				let (_, column_width) = self.shaper.label_measured(
-					&reserved,
-					opts.font_size,
-					x,
-					0.0,
-					paint,
-				);
-				// The label leads the block, so its paragraphs stay flush.
-				let body_opts = LayoutOptions {
-					paragraph_indent: 0.0,
-					..opts.clone()
-				};
-				let body_x = x + column_width.max(label_width) + size * 0.5;
-				let body_start = out.draws.len();
-				let body = self.children(
-					blocks,
-					body_x,
-					y,
-					width - (body_x - x),
-					&body_opts,
-					size * 0.5,
-					out,
-				);
-				// Visible flow resolves the baseline after disclosure placement.
-				let baseline = y + size * 1.15;
-				for draw in &mut draws {
-					draw.translate(0.0, baseline);
-				}
-				let command = out.draws.len();
-				out.draws.extend(draws);
-				let commands = command..out.draws.len();
-				out.retain_footnote(
-					body_start..command,
-					commands.clone(),
-					baseline,
-				);
-				// The number is the way back to the reference that opened the
-				// note, so it is a link with the note's own identity.
-				let id = LinkId::Special(out.links.len());
-				let target =
-					crate::scene::LinkTarget::FootnoteReturn(note_id.clone());
-				out.links.push(LinkRect {
-					commands,
-					id,
-					rect: Rect {
-						x,
-						y: baseline - size,
-						w: label_width.max(1.0),
-						h: size * 1.4,
-					},
-					url: target.display_url(),
-					target,
-				});
-				body
+				caption.as_ref(),
+				[x, y],
+				width,
+				opts,
+				out,
+			),
+			BlockKind::Footnote { id, number, blocks } => {
+				self.footnote(id, *number, blocks, [x, y], width, opts, out)
 			}
 			BlockKind::Details {
 				summary, blocks, ..
@@ -1370,6 +835,242 @@ impl BlockContext<'_> {
 		out.height = out.height.max(y + height);
 		out.width = out.width.max(x + width);
 		height
+	}
+
+	#[expect(
+		clippy::too_many_arguments,
+		reason = "Callout content and geometry"
+	)]
+	fn callout(
+		&mut self,
+		owner: crate::document::BlockId,
+		callout: &crate::document::Callout,
+		blocks: &[Block],
+		[x, y]: [f32; 2],
+		width: f32,
+		opts: &LayoutOptions,
+		out: &mut BlockLayout,
+	) -> f32 {
+		let size = opts.font_size * self.shaper.appearance.size;
+		let header = self.callout_header(
+			Some(owner),
+			callout.kind,
+			callout.title.as_ref().expect("a plain callout has a title"),
+			x,
+			y,
+			width,
+			opts,
+			out,
+		);
+		let gap = if blocks.is_empty() {
+			0.0
+		} else {
+			size * DETAILS_GAP
+		};
+		header
+			+ gap + self.framed_children(
+			blocks,
+			x,
+			y + header + gap,
+			width,
+			opts,
+			out,
+		)
+	}
+
+	fn folded_callout(
+		&mut self,
+		kind: CalloutKind,
+		blocks: &[Block],
+		[x, y]: [f32; 2],
+		width: f32,
+		opts: &LayoutOptions,
+		out: &mut BlockLayout,
+	) -> f32 {
+		let disclosure = &blocks[0];
+		let BlockKind::Details {
+			summary, blocks, ..
+		} = disclosure.kind()
+		else {
+			unreachable!("foldable callouts contain a disclosure");
+		};
+		self.disclosure(
+			disclosure,
+			Some(disclosure.id()),
+			summary,
+			blocks,
+			Some(kind),
+			x,
+			y,
+			width,
+			opts,
+			out,
+		)
+	}
+
+	fn definition_list(
+		&mut self,
+		owner: crate::document::BlockId,
+		items: &[crate::document::DefinitionItem],
+		[x, y]: [f32; 2],
+		width: f32,
+		opts: &LayoutOptions,
+		out: &mut BlockLayout,
+	) -> f32 {
+		let size = opts.font_size * self.shaper.appearance.size;
+		let indent = (opts.font_size * 1.5).min(width * 0.5);
+		let mut top = y;
+		for item in items {
+			for terms in &item.terms {
+				top += self.rich(
+					Some(owner),
+					terms,
+					x,
+					top,
+					width,
+					size,
+					false,
+					CellAlign::Left,
+					false,
+					false,
+					opts,
+					out,
+				);
+			}
+			for blocks in &item.definitions {
+				top += self.children(
+					blocks,
+					x + indent,
+					top,
+					(width - indent).max(1.0),
+					opts,
+					0.,
+					out,
+				);
+			}
+		}
+		top - y
+	}
+
+	#[expect(
+		clippy::too_many_arguments,
+		reason = "Figure content and geometry"
+	)]
+	fn figure(
+		&mut self,
+		owner: crate::document::BlockId,
+		blocks: &[Block],
+		caption: Option<&RichText>,
+		[x, y]: [f32; 2],
+		width: f32,
+		opts: &LayoutOptions,
+		out: &mut BlockLayout,
+	) -> f32 {
+		let parent = self.shaper.appearance.clone();
+		let mut top = y;
+		for block in blocks {
+			top += self.cached_child(block, [x, top], width, opts, out);
+		}
+		if let Some(caption) = caption {
+			self.shaper.appearance =
+				opts.stylesheet.text(&parent, Condition::Caption);
+			let caption_size = opts.font_size * self.shaper.appearance.size;
+			let gap = caption_size * 0.5;
+			top += gap;
+			top += self.rich(
+				Some(owner),
+				caption,
+				x,
+				top,
+				width,
+				caption_size,
+				false,
+				CellAlign::Center,
+				false,
+				false,
+				opts,
+				out,
+			);
+			self.shaper.appearance = parent;
+		}
+		top - y
+	}
+
+	#[expect(
+		clippy::too_many_arguments,
+		reason = "Footnote identity, content and geometry"
+	)]
+	fn footnote(
+		&mut self,
+		note_id: &crate::document::FootnoteId,
+		number: u32,
+		blocks: &[Block],
+		[x, y]: [f32; 2],
+		width: f32,
+		opts: &LayoutOptions,
+		out: &mut BlockLayout,
+	) -> f32 {
+		let size = opts.font_size * self.shaper.appearance.size;
+		let text = format!("[{number}]");
+		let paint = Paint::Styled(Condition::FootnoteRef, ColorField::Color);
+		// Every note reserves the same marker column, so their bodies
+		// start at one x even when the numbers differ in width. The
+		// number itself is shaped at the origin and moved onto the
+		// body's first baseline below.
+		let (mut draws, label_width) =
+			self.shaper
+				.label_measured(&text, opts.font_size, x, 0.0, paint);
+		let reserved =
+			format!("[{}]", "0".repeat(self.footnote_column as usize));
+		let (_, column_width) = self.shaper.label_measured(
+			&reserved,
+			opts.font_size,
+			x,
+			0.0,
+			paint,
+		);
+		// The label leads the block, so its paragraphs stay flush.
+		let body_opts = LayoutOptions {
+			paragraph_indent: 0.0,
+			..opts.clone()
+		};
+		let body_x = x + column_width.max(label_width) + size * 0.5;
+		let body_start = out.draws.len();
+		let body = self.children(
+			blocks,
+			body_x,
+			y,
+			width - (body_x - x),
+			&body_opts,
+			size * 0.5,
+			out,
+		);
+		// Visible flow resolves the baseline after disclosure placement.
+		let baseline = y + size * 1.15;
+		for draw in &mut draws {
+			draw.translate(0.0, baseline);
+		}
+		let command = out.draws.len();
+		out.draws.extend(draws);
+		let commands = command..out.draws.len();
+		out.retain_footnote(body_start..command, commands.clone(), baseline);
+		// The number is the way back to the reference that opened the
+		// note, so it is a link with the note's own identity.
+		let id = LinkId::Special(out.links.len());
+		let target = crate::scene::LinkTarget::FootnoteReturn(note_id.clone());
+		out.links.push(LinkRect {
+			commands,
+			id,
+			rect: Rect {
+				x,
+				y: baseline - size,
+				w: label_width.max(1.0),
+				h: size * 1.4,
+			},
+			url: target.display_url(),
+			target,
+		});
+		body
 	}
 
 	#[expect(

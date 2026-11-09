@@ -237,3 +237,46 @@ fn inherited_child_styles_resources_and_width_invalidate_nested_geometry() {
 		same_geometry(&reused, &fresh);
 	}
 }
+
+#[test]
+fn mixed_list_disclosures_keep_cached_geometry_search_and_selection() {
+	let source = "- Before needle.\n\n  <details>\n  <summary>Summary</summary>\n\n  1. Ordered needle.\n     - [x] Task needle.\n     - Bullet needle.\n\n  2. Second needle.\n\n  </details>\n\n- After needle.\n\nFollowing needle.\n";
+	let mut opts = options();
+	let mut engine = LayoutEngine::new();
+	for (width, replacement) in [
+		(340., "Ordered needle.".to_owned()),
+		(
+			340.,
+			format!("{} needle.", "Longer ordered content ".repeat(12)),
+		),
+		(220., "Ordered needle.".to_owned()),
+		(340., "Ordered needle.".to_owned()),
+	] {
+		opts.width = width;
+		let document = markview_commonmark::parse(
+			source.replace("Ordered needle.", &replacement),
+		);
+		engine.layout(&document, &opts);
+		let mut reused = engine.layout(&document, &opts);
+		assert_eq!(reused.reused, document.blocks().len());
+		let mut fresh = LayoutEngine::new().layout(&document, &opts);
+		let hits = SearchIndex::new(&document)
+			.find("needle", SearchOptions::default());
+		assert_eq!(hits.len(), 7);
+		for force in [false, true, false] {
+			reused.set_disclosures(&BTreeMap::new(), force);
+			fresh.set_disclosures(&BTreeMap::new(), force);
+			same_geometry(&reused, &fresh);
+			let mut visible = 0;
+			for hit in &hits {
+				let selection = reused.search_selection(hit, 1);
+				assert_eq!(selection, fresh.search_selection(hit, 1));
+				if let Some(selection) = selection {
+					assert_eq!(reused.extract_text(selection, 1), "needle");
+					visible += 1;
+				}
+			}
+			assert_eq!(visible, if force { 7 } else { 3 });
+		}
+	}
+}
