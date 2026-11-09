@@ -1,9 +1,5 @@
 use crate::{math::MathBox, scene::LinkId, shaping::Span};
-use std::{
-	collections::{BTreeMap, BTreeSet},
-	ops::Range,
-	sync::Arc,
-};
+use std::{collections::BTreeMap, ops::Range, sync::Arc};
 pub(super) struct Prepared {
 	pub(super) anchors: Vec<(usize, String)>,
 	pub(super) images: BTreeMap<usize, crate::image::ImageSpec>,
@@ -30,8 +26,6 @@ pub(super) struct Prepared {
 	/// A lone reference's whole `[n]` span, keyed by its start.
 	pub(super) note_spans:
 		BTreeMap<usize, markview_document::FootnoteReference>,
-	/// The text offsets of the forced breaks that asked to be justified.
-	pub(super) breaks: BTreeSet<usize>,
 }
 
 impl Prepared {

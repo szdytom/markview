@@ -3388,24 +3388,40 @@ fn typst_a_closing_mark_hangs_into_the_end_margin() {
 }
 
 #[test]
-fn an_explicit_html_break_justifies_the_line_it_ends() {
-	// Typst has both a plain manual break and `linebreak(justify: true)`: an
-	// author who asks for a break may still want the line flush. Markdown's own
-	// hard break says the opposite, so the two are told apart — `<br>` is the
-	// explicit request, two trailing spaces are not.
-	let width = 100.0;
-	let plain = lines_of("A B C D  \nE F G H  \nI\n", width, true);
-	let explicit = lines_of("A B C D<br>E F G H<br>I\n", width, true);
-	assert_eq!(plain.len(), 3, "{plain:?}");
-	assert_eq!(explicit.len(), 3, "{explicit:?}");
-	for row in &plain[..2] {
-		assert!(right_of(row) < width - 20.0, "{row:?}");
+fn explicit_html_breaks_keep_the_same_spacing_as_hard_breaks() {
+	for width in [100.0, 200.0, 600.0] {
+		for greedy in [false, true] {
+			for source in [
+				"A B C D<br>E F G H<br>I\n".to_owned(),
+				format!(
+					"{}<br>Timestamp\n",
+					"A few words of ordinary prose. ".repeat(8)
+				),
+			] {
+				let options = LayoutOptions {
+					width,
+					greedy,
+					..Default::default()
+				};
+				let layout =
+					|text: &str| {
+						drawn_lines(&LayoutEngine::new().layout(
+							&markview_commonmark::parse(text),
+							&options,
+						))
+					};
+				let hard = layout(&source.replace("<br>", "  \n"));
+				let html = layout(&source);
+				assert_eq!(html, hard, "width {width}, greedy {greedy}");
+				if source.starts_with("A B C D") {
+					assert_eq!(html.len(), 3);
+					assert!(
+						html.iter().all(|row| right_of(row) < width - 20.0)
+					);
+				}
+			}
+		}
 	}
-	for row in &explicit[..2] {
-		assert!((right_of(row) - width).abs() < 1.0, "{row:?}");
-	}
-	// The closing line is the end of the paragraph, so it stays as it is.
-	assert!(right_of(&explicit[2]) < width - 20.0, "{explicit:?}");
 }
 
 #[test]

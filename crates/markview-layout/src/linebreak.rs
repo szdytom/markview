@@ -8,16 +8,12 @@ pub struct Break {
 	pub penalty: f64,
 	pub hyphen_width: f32,
 	pub forced: bool,
-	/// Whether the line ending here is still set flush. Only a break the
-	/// author asked for does that.
-	pub justify: bool,
 }
 impl Break {
 	pub const NORMAL: Self = Self {
 		penalty: 0.0,
 		hyphen_width: 0.0,
 		forced: false,
-		justify: false,
 	};
 	pub const FORCED: Self = Self {
 		forced: true,
@@ -222,7 +218,7 @@ fn optimize(
 	for j in 1..points.len() {
 		let end = points[j];
 		let br = units[end - 1].after.unwrap_or(Break::FORCED);
-		let last = end == units.len() || (br.forced && !br.justify);
+		let last = end == units.len() || br.forced;
 		for i in (earliest..j).rev() {
 			*budget += 1;
 			if *budget > limit {
@@ -305,7 +301,7 @@ fn optimize(
 	while j > 0 {
 		let (i, previous_f) = states[j][f].previous;
 		let br = units[points[j] - 1].after.unwrap_or(Break::FORCED);
-		let last = points[j] == units.len() || (br.forced && !br.justify);
+		let last = points[j] == units.len() || br.forced;
 		let (range, width, stretch, shrink, justifiables) =
 			p.metrics(units, points[i], points[j]);
 		let hyphen = !last && br.hyphen_width > 0.0;

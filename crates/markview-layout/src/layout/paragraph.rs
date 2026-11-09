@@ -238,7 +238,7 @@ impl BlockContext<'_> {
 					break;
 				}
 				line.hyphen = br.hyphen_width > 0.0;
-				line.last = br.forced && !br.justify;
+				line.last = br.forced;
 				let range = units[line.units.start].source.start
 					..units[line.units.end - 1].source.end;
 				clusters = self.line_clusters(

@@ -65,7 +65,6 @@ impl BlockContext<'_> {
 			math: BTreeMap::new(),
 			notes: BTreeMap::new(),
 			note_spans: BTreeMap::new(),
-			breaks: std::collections::BTreeSet::new(),
 		};
 		let mut semantic_offset = 0;
 		let mut previous_text = false;
@@ -134,12 +133,7 @@ impl BlockContext<'_> {
 					p.text.push_str(&label);
 					p.text.push(']');
 				}
-				InlineKind::LineBreak(kind) => {
-					if *kind == crate::document::LineBreak::Forced {
-						p.breaks.insert(start);
-					}
-					p.text.push('\n');
-				}
+				InlineKind::LineBreak(_) => p.text.push('\n'),
 				InlineKind::Math { latex, display } => {
 					let formula = self.shaper.stylesheet.inline_run(
 						&self.shaper.appearance,
@@ -380,12 +374,7 @@ impl BlockContext<'_> {
 			// is never left to start the next line.
 			let in_code = code[i] && code.get(i + 1).copied().unwrap_or(false);
 			let after = if hard {
-				// A break the author asked to justify still ends a line, but
-				// the line it ends is set flush like any other.
-				Some(Break {
-					justify: p.breaks.contains(&c.range.start),
-					..Break::FORCED
-				})
+				Some(Break::FORCED)
 			} else if soft_hyphen {
 				// The document asked for this break, so it carries only the
 				// base cost of a hyphen.
