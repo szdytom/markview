@@ -117,6 +117,7 @@ impl ParagraphLayout<'_> {
 		line_width: f32,
 	) -> ShapedLine {
 		let mut shaped = self.shape(context, units, line);
+		let mut tail_start = None;
 		loop {
 			let target = line_width + shaped.overhang;
 			let shrink: f32 =
@@ -147,6 +148,10 @@ impl ParagraphLayout<'_> {
 			line.hyphen = br.hyphen_width > 0.;
 			line.last = br.forced;
 			shaped = self.shape(context, units, line);
+			tail_start = Some(end);
+		}
+		// Intermediate tails are discarded while the current boundary still moves.
+		if let Some(end) = tail_start {
 			let tail = if self.opts.greedy {
 				linebreak::greedy(&units[end..], self.width, &self.opts.limits)
 			} else {

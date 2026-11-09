@@ -27,7 +27,7 @@ at the same level, without `[brackets]`.
 
 ### Changed
 
-- Speed up styled paragraphs and highlighted code with indexed reading, style and syntax-color ranges, and avoid repeated whitespace scans during line breaking, preserving typography, selection and copying.
+- Speed up styled paragraphs and highlighted code with indexed reading, style and syntax-color ranges, and avoid repeated whitespace scans and discarded tail solutions during line breaking, preserving typography, selection and copying.
 
 ### Fixed
 
