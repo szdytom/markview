@@ -72,7 +72,12 @@ fn resource_headers(what: &str, browser: &HeaderMap) -> HeaderMap {
 	}
 	let mut headers = browser.clone();
 	if what == "Web page" {
-		headers.insert(ACCEPT, HeaderValue::from_static("text/html"));
+		headers.insert(
+			ACCEPT,
+			HeaderValue::from_static(
+				"text/markdown, text/html;q=0.9, text/plain;q=0.8",
+			),
+		);
 	}
 	headers
 }
@@ -95,9 +100,10 @@ impl Validators {
 	}
 }
 
-/// The response headers that decide freshness, parsed once.
+/// Response metadata for content detection and cache freshness, parsed once.
 #[derive(Clone, Debug, Default)]
 pub(crate) struct Headers {
+	pub(crate) content_type: Option<String>,
 	pub(crate) etag: Option<String>,
 	pub(crate) last_modified: Option<String>,
 	/// The `Vary` field values joined. A `*` anywhere means external factors
@@ -629,6 +635,7 @@ pub(crate) fn headers(map: &HeaderMap) -> Headers {
 	let (max_age, no_store, no_cache) =
 		directives.as_deref().map(cache_control).unwrap_or_default();
 	Headers {
+		content_type: text(reqwest::header::CONTENT_TYPE),
 		etag: text(reqwest::header::ETAG),
 		last_modified: text(reqwest::header::LAST_MODIFIED),
 		vary: text(reqwest::header::VARY),
@@ -839,7 +846,9 @@ mod tests {
 				assert!(received.contains("accept-language: fr-ca,fr;q=0.9"));
 			}
 			assert_eq!(
-				received.contains("accept: text/html"),
+				received.contains(
+					"accept: text/markdown, text/html;q=0.9, text/plain;q=0.8"
+				),
 				what == "Web page"
 			);
 		}

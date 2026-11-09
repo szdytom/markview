@@ -1,8 +1,6 @@
 //! Background loading and in-memory tabs for web reading.
 use super::{App, Event};
-use crate::loaded::LoadedDocument;
 use std::path::PathBuf;
-use std::sync::Arc;
 
 /// A readable label for a web page: its host when the URL parses, else the URL.
 pub(super) fn web_label(url: &str) -> String {
@@ -77,6 +75,13 @@ impl<P: super::SendEvent> App<P> {
 			return;
 		}
 		let security = self.readers.session.security.clone();
+		let dialect = self.preferences.values.effective_dialect();
+		let dialect = markview_commonmark::Dialect {
+			hard_breaks: dialect.hard_breaks,
+			highlight_marks: dialect.highlight_marks,
+			ofm: dialect.ofm,
+		};
+		let lang = self.preferences.values.lang();
 		let proxy = self.proxy.clone();
 		let handle = self.services.handle.clone();
 		let cancel = handle.cancel.clone();
@@ -90,6 +95,8 @@ impl<P: super::SendEvent> App<P> {
 					false,
 					&handle.http_headers(),
 					security,
+					dialect,
+					lang,
 				)
 				.await
 			};
@@ -122,15 +129,10 @@ impl<P: super::SendEvent> App<P> {
 			return;
 		};
 		let result = result.map(|article| {
-			let input = article.article.input_fingerprint;
-			let frontend = 100 + markview_webpage::PROFILE_VERSION;
-			let loaded = LoadedDocument::semantic_with_versions(
-				Arc::new(article.article.document),
-				input,
-				frontend,
-			);
-			self.readers
-				.set_title(index, article.article.metadata.title.clone());
+			let loaded = article.document;
+			let input = loaded.input_fingerprint();
+			let frontend = loaded.frontend_version();
+			self.readers.set_title(index, article.title);
 			let final_url = match &article.security.origin {
 				crate::security::Origin::Web(url) => Some(url.clone()),
 				_ => None,

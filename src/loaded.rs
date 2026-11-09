@@ -20,6 +20,22 @@ pub enum LoadedDocument {
 }
 
 impl LoadedDocument {
+	/// Reuses the document unless its Markdown dialect changed.
+	pub fn with_dialect(
+		self: &Arc<Self>,
+		dialect: markview_commonmark::Dialect,
+	) -> Arc<Self> {
+		if let Self::Markdown(parse) = self.as_ref()
+			&& parse.dialect != dialect
+		{
+			return Self::markdown(Arc::new(markview_commonmark::parse_with(
+				parse.source.clone(),
+				dialect,
+			)));
+		}
+		self.clone()
+	}
+
 	pub fn markdown(parse: Arc<MarkdownParse>) -> Arc<Self> {
 		Arc::new(Self::Markdown(parse))
 	}

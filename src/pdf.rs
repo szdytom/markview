@@ -65,7 +65,13 @@ pub(crate) fn export_with_services(
 ) -> Result<ExportStats> {
 	if let Some(loaded) = &args.loaded {
 		let exporter = Exporter::with_services(args, services)?;
-		return exporter.export_loaded(loaded.clone());
+		return exporter.export_loaded(loaded.with_dialect(
+			markview_commonmark::Dialect {
+				hard_breaks: args.options.hard_breaks,
+				highlight_marks: args.options.highlight_marks,
+				ofm: args.options.ofm,
+			},
+		));
 	}
 	let text = read_markdown(&args.path)?;
 	export_text(args, &text, services, || Ok(()))

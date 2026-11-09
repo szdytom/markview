@@ -270,7 +270,7 @@ impl Worker {
 							let document = if let Some(loaded) =
 								&request.loaded
 							{
-								loaded.clone()
+								loaded.with_dialect(dialect)
 							} else if let Some((
 								path,
 								revision,

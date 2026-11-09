@@ -21,6 +21,10 @@ at the same level, without `[brackets]`.
 
 ## Unreleased
 
+### Added
+
+- Open raw Markdown URLs directly with normal Markdown rendering, preserving untrusted resource permissions and resolving relative links against the source URL.
+
 ### Fixed
 
 - Smooth consecutive mouse-wheel steps by preserving scroll velocity and avoiding accumulated travel at document boundaries.

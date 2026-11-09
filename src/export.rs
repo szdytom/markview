@@ -186,6 +186,11 @@ pub(crate) fn png_snapshot_loaded(
 	security: crate::security::Security,
 	workspace: Option<PathBuf>,
 ) -> Result<LayoutSnapshot> {
+	let loaded = loaded.with_dialect(markview_commonmark::Dialect {
+		hard_breaks: options.hard_breaks,
+		highlight_marks: options.highlight_marks,
+		ofm: options.ofm,
+	});
 	png_snapshot_document(
 		&loaded, path, options, offline, services, security, workspace,
 	)

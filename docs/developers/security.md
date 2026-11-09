@@ -27,6 +27,8 @@ Physical access, kernel or driver defects in themselves, dependency supply-chain
 
 Classification follows how content enters the reader, not where its bytes happen to be stored. The reader assigns the mode; document text and response headers cannot select it. Clipboard text staged into a temporary `.md` file and extracted articles held in a reading session remain Untrusted. Being on disk alone, residing in a familiar directory, or having a friendly link label grants no extra authority.
 
+Raw Markdown fetched from a URL also remains Untrusted. Its final response URL supplies the base for relative links and images; Markdown parsing grants no local file access or additional network authority. Redirects use the same per-hop destination checks as web articles.
+
 | Entry or navigation | Resulting mode |
 | --- | --- |
 | User directly opens a local file | Trusted |

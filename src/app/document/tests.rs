@@ -23,6 +23,10 @@ struct Harness {
 }
 impl Harness {
 	fn new() -> Self {
+		Self::with_offline(true)
+	}
+
+	fn with_offline(offline: bool) -> Self {
 		let dir = tempfile::tempdir().unwrap();
 		for (name, color) in [
 			("first.png", [255, 0, 255, 255]),
@@ -51,7 +55,7 @@ impl Harness {
 		let mut app = App::new(
 			LaunchOptions {
 				mode: Mode::Smoke,
-				offline: true,
+				offline,
 				width: 400,
 				height: 300,
 				options: crate::test_support::options(),
@@ -137,13 +141,12 @@ impl crate::app::window::Loop for StubLoop {
 
 fn web_article(url: &str, markdown: &str) -> crate::web_page::Article {
 	crate::web_page::Article {
-		article: markview_webpage::WebArticle {
-			document: markview_commonmark::parse(markdown).document,
-			metadata: Default::default(),
-			input_fingerprint: markview_document::stable_fingerprint(
-				markdown.as_bytes(),
-			),
-		},
+		document: crate::loaded::LoadedDocument::semantic_with_versions(
+			std::sync::Arc::new(markview_commonmark::parse(markdown).document),
+			markview_document::stable_fingerprint(markdown.as_bytes()),
+			100 + markview_webpage::PROFILE_VERSION,
+		),
+		title: String::new(),
 		security: crate::security::Security::web(url.to_owned()),
 	}
 }
@@ -219,7 +222,7 @@ fn reopening_a_loaded_web_page_keeps_its_title() {
 	let path = h.app.readers.session.path.clone().unwrap();
 	let generation = h.app.web_pages.generation(&url).unwrap();
 	let mut article = web_article(&url, "# Web article\n\nBody text.\n");
-	article.article.metadata.title = "A better title".to_owned();
+	article.title = "A better title".to_owned();
 	h.app
 		.web_page_loaded(url.clone(), path, generation, Ok(article));
 	let index = h.app.readers.active();
@@ -228,6 +231,174 @@ fn reopening_a_loaded_web_page_keeps_its_title() {
 	h.app.open_web_page(url);
 	assert_eq!(h.app.readers.active(), index);
 	assert_eq!(h.app.readers.label(index), "A better title");
+	drop(h);
+	drop(permit);
+}
+
+#[test]
+fn raw_markdown_loads_through_real_app_events_and_matches_pasted_content() {
+	use std::io::{Read, Write};
+	let mut h = Harness::with_offline(false);
+	let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+	let origin = format!("http://{}", listener.local_addr().unwrap());
+	let url = format!("{origin}/start");
+	let final_url = format!("{origin}/docs/file.md");
+	let source = "# Raw Markdown\n\nA **bold** paragraph.\n\n![relative](image.png)\n\n```rust\nfn main() {}\n```\n";
+	let image = fs::read(h.dir.path().join("first.png")).unwrap();
+	let server = std::thread::spawn(move || {
+		for expected in ["/start", "/docs/file.md", "/docs/image.png"] {
+			let (mut socket, _) = listener.accept().unwrap();
+			socket
+				.set_read_timeout(Some(Duration::from_secs(10)))
+				.unwrap();
+			let mut request = [0; 8192];
+			let count = socket.read(&mut request).unwrap();
+			assert!(
+				String::from_utf8_lossy(&request[..count])
+					.starts_with(&format!("GET {expected} HTTP/1.1\r\n"))
+			);
+			if expected == "/start" {
+				socket.write_all(b"HTTP/1.1 302 Found\r\nLocation: /docs/file.md\r\nContent-Length: 0\r\nConnection: close\r\n\r\n").unwrap();
+			} else {
+				let (mime, body) = if expected.ends_with(".png") {
+					("image/png", image.as_slice())
+				} else {
+					("application/octet-stream", source.as_bytes())
+				};
+				write!(socket, "HTTP/1.1 200 OK\r\nContent-Type: {mime}\r\nContent-Length: {}\r\nConnection: close\r\n\r\n", body.len()).unwrap();
+				socket.write_all(body).unwrap();
+			}
+		}
+	});
+	h.app.url_input.set_text(&mut h.app.ui, &url);
+	h.app.document_command(DocumentCommand::OpenUrl);
+	let deadline = Instant::now() + Duration::from_secs(10);
+	while h.app.readers.session.layout_pending
+		|| h.app
+			.readers
+			.session
+			.display
+			.snapshot
+			.images
+			.decoded()
+			.len() != 1
+	{
+		let event = h
+			.events
+			.recv_timeout(deadline.saturating_duration_since(Instant::now()))
+			.expect("remote Markdown did not finish loading");
+		h.app.handle_user_event(&StubLoop, event);
+		assert!(h.app.readers.session.load_error.is_none());
+	}
+	server.join().unwrap();
+	let remote = h.app.readers.session.document.clone().unwrap();
+	assert_eq!(remote.source(), Some(source));
+	assert_eq!(
+		h.app.readers.session.security.origin,
+		crate::security::Origin::Web(final_url.clone())
+	);
+	assert_eq!(
+		h.app.readers.session.security.origin.trust(),
+		crate::security::Trust::Untrusted
+	);
+	assert_eq!(
+		h.app.readers.session.path,
+		Some(crate::app::web_page::web_path(&final_url))
+	);
+	assert!(
+		h.app
+			.readers
+			.session
+			.display
+			.snapshot
+			.full_reading_text()
+			.contains("A bold paragraph.")
+	);
+	assert!(h.app.watch.is_none());
+	h.app.open_text(source).unwrap();
+	h.wait_images(0);
+	let pasted = h.app.readers.session.document.as_ref().unwrap();
+	assert_eq!(remote.content_key(), pasted.content_key());
+	assert_eq!(remote.input_fingerprint(), pasted.input_fingerprint());
+	assert_eq!(remote.frontend_version(), pasted.frontend_version());
+	let crate::loaded::LoadedDocument::Markdown(remote) = remote.as_ref()
+	else {
+		panic!("expected Markdown");
+	};
+	let crate::loaded::LoadedDocument::Markdown(pasted) = pasted.as_ref()
+	else {
+		panic!("expected Markdown");
+	};
+	assert_eq!(remote.blocks().len(), pasted.blocks().len());
+	for (remote_block, pasted_block) in
+		remote.blocks().iter().zip(pasted.blocks())
+	{
+		assert_eq!(
+			remote.block_source(remote_block),
+			pasted.block_source(pasted_block)
+		);
+	}
+}
+
+#[test]
+fn remote_markdown_keeps_its_source_and_reparses_when_the_dialect_changes() {
+	let mut h = Harness::new();
+	h.app.args.offline = false;
+	let permit = h
+		.app
+		.services
+		.handle
+		.transfers
+		.clone()
+		.try_acquire_many_owned(4)
+		.unwrap();
+	let url = "https://example.org/raw.md".to_owned();
+	h.app.url_input.set_text(&mut h.app.ui, &url);
+	h.app.document_command(DocumentCommand::OpenUrl);
+	let path = h.app.readers.session.path.clone().unwrap();
+	let generation = h.app.web_pages.generation(&url).unwrap();
+	let source = "# Raw Markdown\n\nfirst line\nsecond line\n\n==highlight==\n";
+	let loaded = crate::loaded::LoadedDocument::markdown(std::sync::Arc::new(
+		markview_commonmark::parse(source),
+	));
+	h.app.web_page_loaded(
+		url.clone(),
+		path.clone(),
+		generation,
+		Ok(crate::web_page::Article {
+			document: loaded,
+			title: "Raw Markdown".to_owned(),
+			security: crate::security::Security::web(url.clone()),
+		}),
+	);
+	h.wait_images(0);
+	for hard_breaks in [true, false] {
+		h.app.preferences.values.hard_breaks = hard_breaks;
+		h.app
+			.setting_changed(Some(crate::settings::Setting::Dialect));
+		h.app.request(false);
+		h.wait_images(0);
+		let loaded = h.app.readers.session.document.as_ref().unwrap();
+		let crate::loaded::LoadedDocument::Markdown(parse) = loaded.as_ref()
+		else {
+			panic!("raw Markdown must retain its parse and source map");
+		};
+		assert_eq!(parse.source.as_ref(), source);
+		assert_eq!(parse.dialect.hard_breaks, hard_breaks);
+		assert_eq!(
+			parse.dialect.ofm,
+			h.app.preferences.values.effective_dialect().ofm
+		);
+		assert_eq!(
+			h.app.readers.session.security.origin.trust(),
+			crate::security::Trust::Untrusted
+		);
+	}
+	assert!(!path.exists());
+	assert!(h.app.watch.is_none());
+	h.app.open_web_page(url);
+	assert_eq!(h.app.readers.entries().len(), 1);
+	assert_eq!(h.app.readers.label(0), "Raw Markdown");
 	drop(h);
 	drop(permit);
 }

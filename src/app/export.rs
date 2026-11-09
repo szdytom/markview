@@ -1119,7 +1119,7 @@ mod tests {
 		for (
 			index,
 			(flavor, hard_breaks, highlight, format, join, marked, callout),
-		) in cases.into_iter().enumerate()
+		) in cases.into_iter().chain(cases).enumerate()
 		{
 			let (send, receive) = std::sync::mpsc::channel();
 			let mut app = App::new(
@@ -1130,12 +1130,30 @@ mod tests {
 				},
 				Proxy(send),
 			);
-			app.open_document(
-				source.clone(),
-				crate::security::Security::local(
-					crate::security::Trust::Trusted,
-				),
-			);
+			let source = if index >= cases.len() {
+				let url = "https://example.org/raw.md";
+				let path = crate::app::web_page::web_path(url);
+				app.open_pending(
+					path.clone(),
+					crate::security::Security::web(url.to_owned()),
+				);
+				app.readers.session.document =
+					Some(crate::loaded::LoadedDocument::markdown(Arc::new(
+						markview_commonmark::parse(
+							std::fs::read_to_string(&source).unwrap(),
+						),
+					)));
+				app.readers.session.web_loading = false;
+				path
+			} else {
+				app.open_document(
+					source.clone(),
+					crate::security::Security::local(
+						crate::security::Trust::Trusted,
+					),
+				);
+				source.clone()
+			};
 			app.preferences.values.markdown_flavor = flavor;
 			app.preferences.values.hard_breaks = hard_breaks;
 			app.preferences.values.highlight_marks = highlight;

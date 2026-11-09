@@ -1,6 +1,11 @@
-//! Experimental web article extraction into the semantic document pipeline.
+//! Remote Markdown loading and web article extraction.
 use anyhow::{Context, Result, bail};
-use std::time::Duration;
+use std::{sync::Arc, time::Duration};
+
+use crate::loaded::LoadedDocument;
+
+#[cfg(test)]
+mod markdown_tests;
 
 pub(crate) fn validate_url(value: &str) -> Result<url::Url> {
 	let url = url::Url::parse(value).context("Invalid web page URL")?;
@@ -57,11 +62,40 @@ fn plain_share_title(title: &str) -> bool {
 		})
 }
 
-/// A converted page and the permissions its input granted.
+/// A remote document and the permissions its input granted.
 #[derive(Debug)]
 pub(crate) struct Article {
-	pub(crate) article: markview_webpage::WebArticle,
+	pub(crate) document: Arc<LoadedDocument>,
+	pub(crate) title: String,
 	pub(crate) security: crate::security::Security,
+}
+
+fn is_markdown(url: &str, content_type: Option<&str>) -> bool {
+	let mime = content_type.unwrap_or("").split(';').next().unwrap().trim();
+	if ["text/markdown", "text/x-markdown", "text/plain"]
+		.iter()
+		.any(|known| mime.eq_ignore_ascii_case(known))
+	{
+		return true;
+	}
+	if ["text/html", "application/xhtml+xml"]
+		.iter()
+		.any(|known| mime.eq_ignore_ascii_case(known))
+	{
+		return false;
+	}
+	url::Url::parse(url).ok().is_some_and(|url| {
+		let path = percent_encoding::percent_decode_str(url.path())
+			.decode_utf8_lossy();
+		std::path::Path::new(path.as_ref())
+			.extension()
+			.and_then(|extension| extension.to_str())
+			.is_some_and(|extension| {
+				["md", "markdown", "mdown"]
+					.iter()
+					.any(|known| extension.eq_ignore_ascii_case(known))
+			})
+	})
 }
 
 pub(crate) async fn load(
@@ -69,6 +103,8 @@ pub(crate) async fn load(
 	offline: bool,
 	headers: &reqwest::header::HeaderMap,
 	mut security: crate::security::Security,
+	dialect: markview_commonmark::Dialect,
+	lang: crate::lang::Lang,
 ) -> Result<Article> {
 	if offline {
 		bail!("Web pages are unavailable with --offline");
@@ -88,16 +124,45 @@ pub(crate) async fn load(
 	)
 	.await
 	.context("Web page download timed out")??;
-	let html = String::from_utf8(fetched.body)
-		.context("Experimental web reading currently requires UTF-8 HTML")?;
+	let markdown =
+		is_markdown(
+			&fetched.final_url,
+			fetched.headers.content_type.as_deref(),
+		) || is_markdown(url, fetched.headers.content_type.as_deref());
+	let source = String::from_utf8(fetched.body)
+		.context("Remote documents require UTF-8 text")?;
+	let source = match source.strip_prefix('\u{feff}') {
+		Some(source) => source.to_owned(),
+		None => source,
+	};
 	security.origin = crate::security::Origin::Web(fetched.final_url.clone());
-	security.bind(&html);
-	let final_url = fetched.final_url.clone();
-	let article = tokio::task::spawn_blocking(move || {
-		markview_webpage::extract(&html, &final_url)
+	security.bind(&source);
+	let (document, title) = tokio::task::spawn_blocking(move || {
+		if markdown {
+			let title = crate::paste::title_for(&source, lang);
+			return Ok((
+				LoadedDocument::markdown(Arc::new(
+					markview_commonmark::parse_with(source, dialect),
+				)),
+				title,
+			));
+		}
+		let article = markview_webpage::extract(&source, &fetched.final_url)?;
+		Ok::<_, anyhow::Error>((
+			LoadedDocument::semantic_with_versions(
+				Arc::new(article.document),
+				article.input_fingerprint,
+				100 + markview_webpage::PROFILE_VERSION,
+			),
+			article.metadata.title,
+		))
 	})
 	.await??;
-	Ok(Article { article, security })
+	Ok(Article {
+		document,
+		title,
+		security,
+	})
 }
 
 #[cfg(test)]
@@ -191,6 +256,8 @@ mod tests {
 				true,
 				&reqwest::header::HeaderMap::new(),
 				crate::security::Security::default(),
+				Default::default(),
+				crate::lang::Lang::En,
 			)
 			.await
 			.unwrap_err()
@@ -203,6 +270,8 @@ mod tests {
 				false,
 				&reqwest::header::HeaderMap::new(),
 				crate::security::Security::default(),
+				Default::default(),
+				crate::lang::Lang::En,
 			)
 			.await
 			.is_err()
@@ -228,18 +297,18 @@ mod tests {
 			false,
 			&reqwest::header::HeaderMap::new(),
 			Security::web(url.clone()),
+			Default::default(),
+			crate::lang::Lang::En,
 		)
 		.await
 		.unwrap();
 		response.await.unwrap();
-		assert!(article.article.document.blocks().iter().any(
-			|block| matches!(
-				block.kind(),
-				crate::document::BlockKind::Heading { text, .. }
-					if crate::document::plain_text(text)
-						.contains("Native web reading")
-			)
-		));
+		assert!(article.document.blocks().iter().any(|block| matches!(
+			block.kind(),
+			crate::document::BlockKind::Heading { text, .. }
+				if crate::document::plain_text(text)
+					.contains("Native web reading")
+		)));
 		assert_eq!(article.security.origin, Origin::Web(url.clone()));
 		assert_eq!(article.security.origin.trust(), Trust::Untrusted);
 		assert!(
