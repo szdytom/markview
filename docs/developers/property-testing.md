@@ -21,7 +21,7 @@ cargo test --locked -p xtask proptests::
 PROPTEST_CASES=4096 cargo test --locked -p xtask proptests::
 ```
 
-`xtask` is a binary package and runs separately from the fourteen libraries.
+`xtask` is a binary package and runs separately from the fifteen libraries.
 Use a longer test name or one `-p` argument to isolate a failure. Native build
 prerequisites are in the [development guide](development.md). These local API
 fixtures need no system fonts, GPU device, OS events, network or sleeps.
@@ -127,14 +127,14 @@ within its domain, not a proof or a requirement to find a bug.
 | [Reading mapping](../../crates/markview-layout/src/layout/mapping/proptests.rs) | Declared ordinary/atomic segments with all ordered start/end pairs, byte origins, typed footnote definitions/numbers/occurrences, half-open notes and span-link priority. Fixtures bypass shaping; note ranges are nonoverlapping. |
 | [Image resources](../../crates/markview-layout/src/image/proptests.rs) | Complete versioned maps (including snapshot key sets), shared snapshot views and one consumable latest frame, demand joins, bounded sizes and independent attribute precedence. Sequential behavior only. |
 | [Widgets](../../crates/markview-ui-core/src/widget/proptests.rs) | Ordered hit candidates, minimum touch distance, cyclic eligible identities, capture across removal/disable/movement/message changes, and release at the moved position. Unique IDs are required; equal-distance touch ordering is deliberately unspecified. |
-| [Scroll](../../crates/markview-interaction/src/scroll/proptests.rs) | Requested destination versus displayed offset under partial/complete bounds, actual intermediate `Scroll` frames and active state, pending-target animation restart, endpoints and cancellation. Continuous wheel momentum/prediction is outside this phase. |
+| [Scroll](../../crates/markview-interaction/src/scroll/proptests.rs) | Requested destination versus displayed offset under partial/complete bounds, actual intermediate `Scroll` frames and active state, pending-target animation restart, endpoints and cancellation. Discrete wheel springs check carried velocity, bounded overshoot, signed distance conservation and render-cadence independence. Continuous wheel packet momentum/prediction remains outside this model. |
 | [Microtype](../../crates/markview-layout/src/microtype/proptests.rs) | Capacity and direction constraints plus independently summed gains, including unfillable requests. No claim that every target is feasible. |
 | [Line breaking](../../crates/markview-layout/src/linebreak/proptests.rs) | Ordered content conservation, trimmed glue, visible widths/hyphens, budget fallback and exhaustive short legal partitions that must take the normal path. No general optimality proof; fallback may advance at nonoptional boundaries. |
 | [Semantic search](../../crates/markview-layout/src/search/proptests.rs) | Builder-created paragraph/heading/code/block-cell table/list/nested-disclosure/definition-list/figure fields with an independent field list, revision and typed identity checks, nonoverlapping literal scans, ASCII folding, chunk boundaries and cancellation. Whole-word checks cover stability/subset behavior; full ICU segmentation and Unicode case folding proofs are deferred. |
 | [Document construction](../../crates/markview-document/src/build/proptests.rs) | Exact and one-under block/text/depth/table-cell budgets, structural paths, block visits and disclosure ancestry across eight container variants, with a separately accumulated field list. Fixtures are bounded chains and grouped table rows; branching and heading indexes have a separate model below. |
 | [Semantic source maps](../../crates/markview-document/src/source/proptests.rs) | Disjoint field tables check all byte positions and semantic ranges, transformed spans return full covers, and validation checks source bounds and UTF-8 boundaries in blocks, spans and inline covers. An enabled regression checks reverse lookups after an overlapping inner span ends. |
 | [Text input](../../crates/markview-layout/src/text_input/proptests.rs) | Known text/control token pairs, snapshot history after each append/replace/undo/redo/reset/select/IME-cancel operation, and prefix-sum scalar/UTF-16 surrounding deletion. Uses committed font subsets. Timing-based edit grouping, arbitrary cursor motion and pointer geometry are outside these properties; exposed combining marks check grapheme expansion, selection direction and undo/redo. |
-| [Inertia](../../crates/markview-interaction/src/motion/proptests.rs) | Frame partition invariance, integrated travel versus velocity loss, speed caps, zero-time samples and release expiry. Bounded velocities and at most 100 ms of coasting avoid overflow and the low-speed stop branch. |
+| [Inertia](../../crates/markview-interaction/src/motion/proptests.rs) | Frame partition invariance, integrated travel versus velocity loss, speed caps, zero-time samples and release expiry. Separate directed partitions cover the speed floor and frame-time cutoff. These are finger-gesture inertia properties, independent of the discrete wheel spring. |
 | [Style rules](../../crates/markview-layout/src/style/proptests.rs) | Explicit media-name membership checks OR filters after device/orientation changes through parsing and resolution; ordered lists and membership lists check condition chains and sets within `MAX_CHAIN`. Arbitrary cascading and chains beyond capacity are outside this model. |
 | [Colors](../../crates/markview-document/src/color.rs) and [numbering](../../crates/markview-layout/src/style/numbering.rs) | Byte channels and normalized error bounds, malformed hex spellings, full-range signed decimal values, explicit small Roman/alphabetic tables and circled-number fallback. Other numeral systems remain delegated to the numeral library. |
 | [Markdown parsing](../../crates/markview-commonmark/src/proptests.rs) | Shrinkable Unicode edit sequences compare reparse with a full parse, including normalized source maps, semantic keys and explicit link/reference occurrences. Directed leaf edits require the fast path and retain unaffected block ids; prefix cuts visit every interior byte, including UTF-8 interiors, under all three line endings. Reference/note definitions after a cut and verbatim front-matter payloads have directed generators. Obsidian wiki links check Unicode labels, percent escaping, code exclusion and heading fragments; callout aliases check folding, titles, body styles and reparsing across three line endings. EOF front matter with a delimiter-like payload has an unresolved reproducer. |
@@ -176,6 +176,48 @@ within its domain, not a proof or a requirement to find a bug.
 | [Search snippets](../../src/app/file_search/proptests.rs) | Explicit Unicode grapheme tokens and selected positions constrain truncation, ellipses, exact highlighted bytes, complete cluster boundaries and merged adjacent highlights. Fuzzy scoring and Unicode normalization remain delegated to the matcher library and existing examples. |
 | [Pixel allocation aliases](../../src/images/pixels/proptests.rs) | Independent allocation IDs check byte deduplication, incoming alias replacement, bounded memory, whole-allocation eviction and offscreen-first priority. Victim ordering among equally visible allocations is deliberately unspecified; real decode/concurrent publication remains separate. |
 | [Archive member patterns](../../src/fonts/archive/proptests.rs) | A bounded exhaustive prefix-reachability model checks Unicode literals, `?`, `*` and separators. The enabled model includes member names containing literal `*`. Archive decompression, signatures and resource limits retain their existing integration tests. |
+
+## Focused local follow-up (2026-11-09)
+
+Six properties extend small local contracts rather than the full-pipeline fuzz
+domains. They use the default case/shrink budgets, construct valid inputs without
+rejection filters, and include directed threshold probes in every generated case.
+
+| Contract and tests | Domain and independent expectation | Boundary left to other tests |
+| --- | --- | --- |
+| [Media cascade](../../crates/markview-layout/src/style/proptests.rs) | One paragraph selector, one to four layers, up to five unique filters per layer and optional weight/color values. A declaration inventory selects each field's winner by layer, filtered status and source position in four explicit environments. Both source merging and resolved-sheet merging must produce those values through rule lookup and text appearance. | Arbitrary selector conflicts, shaping and layout-cache invalidation remain separate. |
+| [Runtime media overrides](../../crates/markview-layout/src/style/proptests.rs) | UI/PDF switches preserve generated font names and four page margins, retain source sharing and leave earlier views unchanged. Disjoint weight ranges independently identify the active environment; every case includes a return switch and a repeated context. | No document, font loading or reader/export pipeline is constructed. |
+| [Inertia cutoffs](../../crates/markview-interaction/src/motion/proptests.rs) | Bounded axis speeds and elapsed times check the inclusive 10 px/s coast floor and 100 ms frame limit. Release checks the inclusive 60 px/s floor and exclusive 80 ms age, including a 36/48 diagonal and stationary samples that must not renew motion. Exact boundary neighbors occur in every case. | Native gestures, wheel prediction and arbitrary frame schedules remain separate. |
+| [Prefix publication](../../src/worker/proptests.rs) | Bounded block counts, half-pixel coverage probes and explicit microseconds partition the 32 KiB/32 ms first-publication policy. A doubling schedule checks both batch gates, rejected probes, repeated publication and covered versus uncovered changed demand. | No worker thread, mailbox, I/O, cancellation race or parse/layout pipeline is exercised. |
+
+The contracts come from the existing [media precedence documentation](../users/stylesheets.md#media-filters),
+the `Stylesheet::for_media` guarantee and the existing motion/publication policies
+and concrete tests. Numeric domains keep all counts and timestamps bounded; the
+cutoff assertions compare exact integer times and axis speeds rather than an
+approximation to exponential decay. The cascade oracle ranks declarations; it
+does not use production rule overlay or media matching to compute expectations.
+The initial generator emitted invalid empty MVSS rules when both optional fields
+were absent. Those candidates now emit no declaration; this was a generator
+error, not a production defect.
+
+```sh
+PROPTEST_CASES=4096 cargo test --locked -p markview -p markview-layout -p markview-interaction --lib proptests::
+```
+
+After rebasing onto `main`'s discrete wheel spring change (`68bb3d0`), the command
+above passed **118 tests**, including all six new properties and the existing
+wheel spring tests, with no ignored tests. The 22 interaction integration tests,
+four media integration tests and application wheel-notch regression passed.
+Both existing small/large publication examples passed before the rebase. Clippy
+with warnings denied for all targets of the three affected packages, formatting,
+documentation checks and diff-whitespace checks passed. The spring change leaves
+`Motion` unchanged, so its new finger-inertia assertions need no adjustment.
+No production behavior changed in this follow-up.
+
+Complex retained-flow/table/pagination combinations, arbitrary Unicode shaping,
+malformed grammars and full pipeline differentials remain with the existing fuzz
+harnesses. Increasing the local sample budget does not expand these generators
+into those domains.
 
 ## Plan follow-up (2026-11-06)
 
