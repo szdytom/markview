@@ -47,6 +47,114 @@ pub struct Dialect {
 	pub ofm: bool,
 }
 
+enum InlineStep {
+	Emit(InlineKind, TextStyle),
+	Descend(TextStyle),
+	Skip,
+}
+
+/// Style scopes and comment spacing belong to one sibling sequence.
+struct InlineFrame {
+	style: TextStyle,
+	scopes: Vec<(String, TextStyle)>,
+	after_comment: bool,
+}
+
+impl InlineFrame {
+	fn new(style: &TextStyle) -> Self {
+		Self {
+			style: style.clone(),
+			scopes: Vec::new(),
+			after_comment: false,
+		}
+	}
+
+	fn html(
+		&mut self,
+		text: &str,
+		at: usize,
+		ofm: bool,
+		limit: usize,
+		mut style: TextStyle,
+	) -> InlineStep {
+		let kind = match html::inline(text, ofm) {
+			html::Inline::Image(image) => InlineKind::Image(Box::new(image)),
+			html::Inline::Ignore => return InlineStep::Skip,
+			html::Inline::Break => {
+				InlineKind::LineBreak(super::LineBreak::Forced)
+			}
+			html::Inline::Open { name, patch } => {
+				if self.scopes.len() < limit {
+					self.scopes.push((name, self.style.clone()));
+					apply_patch(&patch, &mut self.style, at);
+					return InlineStep::Skip;
+				}
+				// Past the scope budget, tags stay visible source.
+				style.code = true;
+				InlineKind::Text(text.to_string())
+			}
+			html::Inline::Close { name } => {
+				if let Some(i) =
+					self.scopes.iter().rposition(|(open, _)| *open == name)
+				{
+					self.style = self.scopes[i].1.clone();
+					self.scopes.truncate(i);
+				}
+				return InlineStep::Skip;
+			}
+			html::Inline::Literal => {
+				style.code = true;
+				InlineKind::Text(text.to_string())
+			}
+		};
+		InlineStep::Emit(kind, style)
+	}
+
+	fn emit(
+		&mut self,
+		mut kind: InlineKind,
+		style: TextStyle,
+		source: Range<usize>,
+		out: &mut SpannedText,
+	) {
+		// A hidden comment consumes one space from a doubled gap.
+		if self.after_comment
+			&& let InlineKind::Text(text) = &mut kind
+			&& matches!(text.as_bytes().first(), Some(b' ' | b'\t'))
+			&& Self::comment_gap_collapses(out)
+		{
+			text.remove(0);
+		}
+		self.after_comment = false;
+		out.push(kind, style, source);
+	}
+
+	fn finish(&self, depth: usize, out: &mut SpannedText) {
+		if self.after_comment
+			&& depth == 0
+			&& let Some((
+				Inline {
+					kind: InlineKind::Text(text),
+					..
+				},
+				_,
+			)) = out.last_mut()
+			&& matches!(text.as_bytes().last(), Some(b' ' | b'\t'))
+		{
+			text.pop();
+		}
+	}
+
+	/// Whether a leading space after a hidden comment collapses: the run
+	/// stands at the paragraph's start or follows another space.
+	fn comment_gap_collapses(out: &SpannedText) -> bool {
+		out.inlines.last().is_none_or(|inline| {
+			matches!(&inline.kind, InlineKind::Text(text)
+				if matches!(text.as_bytes().last(), Some(b' ' | b'\t')))
+		})
+	}
+}
+
 struct Reader<'s> {
 	/// Opaque HTML content intervals in this source, shared across blocks.
 	opaque: RefCell<BTreeMap<usize, usize>>,
@@ -168,12 +276,6 @@ impl Reader<'_> {
 		start..end
 	}
 
-	#[cfg_attr(
-		any(),
-		markview::allow_complexity(
-			reason = "Keep recursion, source and opaque cursors, and HTML style scopes in one source-ordered walk; the same boundaries control SVG consumption and anchor emission."
-		)
-	)]
 	fn inlines<'a>(
 		&self,
 		node: &'a AstNode<'a>,
@@ -197,262 +299,265 @@ impl Reader<'_> {
 			}
 			return;
 		}
-		// Raw HTML tags are siblings, so a supported tag opens a style scope
-		// that the matching closing tag ends; unsupported markup stays source.
-		let mut style = style.clone();
-		let mut scopes: Vec<(String, TextStyle)> = Vec::new();
-		// Set while the previous sibling was a hidden `%%` comment, so the
-		// doubled whitespace it leaves behind collapses like Obsidian's.
-		let mut after_comment = false;
+		let mut frame = InlineFrame::new(style);
+		let end = self.range(node).end;
 		for child in node.children() {
 			let source = self.range(child);
 			if from > 0 && source.end <= from {
 				continue;
 			}
-			if matches!(child.data.borrow().value, NodeValue::HtmlInline(_))
-				&& let Some(len) = html::svg_len(&self.source[source.start..])
-				&& source.start + len <= self.range(node).end
-			{
-				let end = source.start + len;
-				let markers = container_markers(child);
-				let raw =
-					HtmlSource::new(&self.source[source.start..end], &markers);
-				let (_, image) = html::svg(&raw.text).unwrap();
-				for anchor in html::block_anchors(&raw.text)
-					.into_iter()
-					.filter(|_| source.start >= *opaque_until)
-				{
-					out.push(
-						InlineKind::Anchor(anchor),
-						style.clone(),
-						source.clone(),
-					);
-				}
-				out.push(
-					InlineKind::Image(Box::new(image)),
-					style.clone(),
-					source.start..end,
-				);
+			if let Some(end) = self.inline_svg(
+				child,
+				&source,
+				end,
+				&frame.style,
+				out,
+				*opaque_until,
+			) {
 				from = end;
 				continue;
 			}
-			if source.start >= *opaque_until
-				&& let NodeValue::HtmlInline(t) = &child.data.borrow().value
-			{
-				for anchor in html::anchors(t) {
-					out.push(
-						InlineKind::Anchor(anchor),
-						style.clone(),
-						source.clone(),
-					);
-				}
-				if let Some(tag_len) = html::tag_len(t)
-					&& let Some(end) = self.open_opaque(source.start, tag_len)
-				{
-					*opaque_until = end;
-				}
-			}
-			let mut child_style = style.clone();
-			let value = child.data.borrow();
-			let kind = match &value.value {
-				NodeValue::Text(t) => Some(InlineKind::Text(self.text_after(
-					t,
-					source.clone(),
-					from,
-				))),
-				NodeValue::SoftBreak => Some(if self.dialect.hard_breaks {
-					InlineKind::LineBreak(super::LineBreak::Hard)
-				} else {
-					InlineKind::Text(" ".into())
-				}),
-				NodeValue::LineBreak => {
-					Some(InlineKind::LineBreak(super::LineBreak::Hard))
-				}
-				NodeValue::Code(c) => {
-					child_style.code = true;
-					Some(InlineKind::Text(self.text_after(
-						&c.literal,
-						source.clone(),
-						from,
-					)))
-				}
-				NodeValue::Raw(t) => {
-					child_style.code = true;
-					Some(InlineKind::Text(self.text_after(
-						t,
-						source.clone(),
-						from,
-					)))
-				}
-				// Comrak reads an indented callout title as a code block.
-				NodeValue::CodeBlock(c) => Some(InlineKind::Text(
-					self.text_after(&c.literal, source.clone(), from),
-				)),
-				NodeValue::HtmlInline(t) => {
-					match html::inline(t, self.dialect.ofm) {
-						html::Inline::Image(image) => {
-							Some(InlineKind::Image(Box::new(image)))
-						}
-						html::Inline::Ignore => continue,
-						html::Inline::Break => Some(InlineKind::LineBreak(
-							super::LineBreak::Forced,
-						)),
-						html::Inline::Open { name, patch } => {
-							if scopes.len() >= self.limits.html_scopes {
-								// Past the budget the tag stays source, like any
-								// unsupported markup, so a run of sibling tags
-								// cannot grow the scope stack without bound.
-								child_style.code = true;
-								Some(InlineKind::Text(t.clone()))
-							} else {
-								scopes.push((name, style.clone()));
-								apply_patch(&patch, &mut style, source.start);
-								continue;
-							}
-						}
-						html::Inline::Close { name } => {
-							if let Some(i) = scopes
-								.iter()
-								.rposition(|(open, _)| *open == name)
-							{
-								style = scopes[i].1.clone();
-								scopes.truncate(i);
-							}
-							continue;
-						}
-						html::Inline::Literal => {
-							child_style.code = true;
-							Some(InlineKind::Text(t.clone()))
-						}
-					}
-				}
-				NodeValue::Math(m) => Some(InlineKind::Math {
-					latex: self.text_after(&m.literal, source.clone(), from),
-					display: m.display_math,
-				}),
-				NodeValue::FootnoteReference(f) => {
-					child_style.superscript = true;
-					Some(InlineKind::FootnoteRef(FootnoteReference {
-						definition: FootnoteId::new(note_key(&f.name)),
-						number: f.ix,
-						occurrence: source_occurrence(source.start),
-					}))
-				}
-				NodeValue::Strong => {
-					child_style.bold = true;
-					None
-				}
-				NodeValue::Emph => {
-					child_style.italic = true;
-					None
-				}
-				NodeValue::Strikethrough => {
-					child_style.strike = true;
-					None
-				}
-				NodeValue::WikiLink(l) => {
-					if self.dialect.ofm && l.embed && wikilink_image(l) {
-						let in_table = child.ancestors().any(|parent| {
-							matches!(
-								parent.data.borrow().value,
-								NodeValue::TableCell
-							)
-						});
-						let alt = if wikilink_has_label(
-							&self.source[source.clone()],
-							in_table,
-						) {
-							self.alt_text(child, depth + 1, from)
-						} else {
-							String::new()
-						};
-						Some(InlineKind::Image(Box::new(
-							crate::image::ImageSpec {
-								source: crate::image::ImageSource::Resource(
-									crate::image::ResourceRef::vault(
-										wikilink_asset_url(l),
-									),
-								),
-								alt,
-								title: String::new(),
-								width: None,
-								height: None,
-							},
-						)))
-					} else {
-						let url = wikilink_url(l);
-						child_style.link = Some(source_link(url, source.start));
-						None
-					}
-				}
-				NodeValue::Highlight => {
-					child_style.mark = true;
-					None
-				}
-				// A hidden `%%inline%%` comment contributes no run; inside a
-				// code scope it stays visible source instead.
-				NodeValue::CommentInline(comment) => {
-					if !style.code {
-						after_comment = true;
-						continue;
-					}
-					Some(InlineKind::Text(format!("%%{}%%", comment.literal)))
-				}
-				NodeValue::Link(l) => {
-					child_style.link =
-						Some(source_link(l.url.clone(), source.start));
-					None
-				}
-				NodeValue::Image(link) => {
-					Some(InlineKind::Image(Box::new(crate::image::ImageSpec {
-						source: crate::image::ImageSource::Resource(
-							crate::image::ResourceRef::document(
-								link.url.clone(),
-							),
-						),
-						alt: self.alt_text(child, depth + 1, from),
-						title: link.title.clone(),
-						width: None,
-						height: None,
-					})))
-				}
-				_ => None,
-			};
-			if let Some(mut kind) = kind {
-				// Obsidian collapses the doubled whitespace a hidden comment
-				// leaves: one space of the pair goes with the comment.
-				if after_comment
-					&& let InlineKind::Text(text) = &mut kind
-					&& matches!(text.as_bytes().first(), Some(b' ' | b'\t'))
-					&& Self::comment_gap_collapses(out)
-				{
-					text.remove(0);
-				}
-				after_comment = false;
-				out.push(kind, child_style, source.start.max(from)..source.end);
-			} else {
-				self.inlines(
+			self.inline_anchors(
+				child,
+				&source,
+				&frame.style,
+				out,
+				opaque_until,
+			);
+			match self.inline_step(
+				child,
+				source.clone(),
+				&mut frame,
+				depth,
+				from,
+			) {
+				InlineStep::Emit(kind, style) => frame.emit(
+					kind,
+					style,
+					source.start.max(from)..source.end,
+					out,
+				),
+				InlineStep::Descend(style) => self.inlines(
 					child,
-					&child_style,
+					&style,
 					out,
 					depth + 1,
 					from,
 					opaque_until,
-				);
+				),
+				InlineStep::Skip => {}
 			}
 		}
-		if after_comment
-			&& depth == 0
-			&& let Some((
-				Inline {
-					kind: InlineKind::Text(text),
-					..
-				},
-				_,
-			)) = out.last_mut()
-			&& matches!(text.as_bytes().last(), Some(b' ' | b'\t'))
+		frame.finish(depth, out);
+	}
+
+	/// An inline SVG consumes source that can overlap several AST siblings.
+	fn inline_svg<'a>(
+		&self,
+		child: &'a AstNode<'a>,
+		source: &Range<usize>,
+		parent_end: usize,
+		style: &TextStyle,
+		out: &mut SpannedText,
+		opaque_until: usize,
+	) -> Option<usize> {
+		if !matches!(child.data.borrow().value, NodeValue::HtmlInline(_)) {
+			return None;
+		}
+		let len = html::svg_len(&self.source[source.start..])?;
+		let end = source.start + len;
+		if end > parent_end {
+			return None;
+		}
+		let markers = container_markers(child);
+		let raw = HtmlSource::new(&self.source[source.start..end], &markers);
+		let (_, image) = html::svg(&raw.text).unwrap();
+		for anchor in html::block_anchors(&raw.text)
+			.into_iter()
+			.filter(|_| source.start >= opaque_until)
 		{
-			text.pop();
+			out.push(InlineKind::Anchor(anchor), style.clone(), source.clone());
+		}
+		out.push(
+			InlineKind::Image(Box::new(image)),
+			style.clone(),
+			source.start..end,
+		);
+		Some(end)
+	}
+
+	fn inline_anchors<'a>(
+		&self,
+		child: &'a AstNode<'a>,
+		source: &Range<usize>,
+		style: &TextStyle,
+		out: &mut SpannedText,
+		opaque_until: &mut usize,
+	) {
+		if source.start >= *opaque_until
+			&& let NodeValue::HtmlInline(t) = &child.data.borrow().value
+		{
+			for anchor in html::anchors(t) {
+				out.push(
+					InlineKind::Anchor(anchor),
+					style.clone(),
+					source.clone(),
+				);
+			}
+			if let Some(tag_len) = html::tag_len(t)
+				&& let Some(end) = self.open_opaque(source.start, tag_len)
+			{
+				*opaque_until = end;
+			}
+		}
+	}
+
+	#[cfg_attr(
+		any(),
+		markview::allow_complexity(
+			reason = "Keep the Comrak node-to-inline mapping in one dispatch table; source consumption and HTML scopes are handled separately."
+		)
+	)]
+	fn inline_step<'a>(
+		&self,
+		child: &'a AstNode<'a>,
+		source: Range<usize>,
+		frame: &mut InlineFrame,
+		depth: usize,
+		from: usize,
+	) -> InlineStep {
+		let mut child_style = frame.style.clone();
+		let value = child.data.borrow();
+		let kind = match &value.value {
+			NodeValue::Text(t) => {
+				Some(InlineKind::Text(self.text_after(t, source.clone(), from)))
+			}
+			NodeValue::SoftBreak => Some(if self.dialect.hard_breaks {
+				InlineKind::LineBreak(super::LineBreak::Hard)
+			} else {
+				InlineKind::Text(" ".into())
+			}),
+			NodeValue::LineBreak => {
+				Some(InlineKind::LineBreak(super::LineBreak::Hard))
+			}
+			NodeValue::Code(c) => {
+				child_style.code = true;
+				Some(InlineKind::Text(self.text_after(
+					&c.literal,
+					source.clone(),
+					from,
+				)))
+			}
+			NodeValue::Raw(t) => {
+				child_style.code = true;
+				Some(InlineKind::Text(self.text_after(t, source.clone(), from)))
+			}
+			// Comrak reads an indented callout title as a code block.
+			NodeValue::CodeBlock(c) => Some(InlineKind::Text(self.text_after(
+				&c.literal,
+				source.clone(),
+				from,
+			))),
+			NodeValue::HtmlInline(t) => {
+				return frame.html(
+					t,
+					source.start,
+					self.dialect.ofm,
+					self.limits.html_scopes,
+					child_style,
+				);
+			}
+			NodeValue::Math(m) => Some(InlineKind::Math {
+				latex: self.text_after(&m.literal, source.clone(), from),
+				display: m.display_math,
+			}),
+			NodeValue::FootnoteReference(f) => {
+				child_style.superscript = true;
+				Some(InlineKind::FootnoteRef(FootnoteReference {
+					definition: FootnoteId::new(note_key(&f.name)),
+					number: f.ix,
+					occurrence: source_occurrence(source.start),
+				}))
+			}
+			NodeValue::Strong => {
+				child_style.bold = true;
+				None
+			}
+			NodeValue::Emph => {
+				child_style.italic = true;
+				None
+			}
+			NodeValue::Strikethrough => {
+				child_style.strike = true;
+				None
+			}
+			NodeValue::WikiLink(l) => {
+				if self.dialect.ofm && l.embed && wikilink_image(l) {
+					let in_table = child.ancestors().any(|parent| {
+						matches!(
+							parent.data.borrow().value,
+							NodeValue::TableCell
+						)
+					});
+					let alt = if wikilink_has_label(
+						&self.source[source.clone()],
+						in_table,
+					) {
+						self.alt_text(child, depth + 1, from)
+					} else {
+						String::new()
+					};
+					Some(InlineKind::Image(Box::new(crate::image::ImageSpec {
+						source: crate::image::ImageSource::Resource(
+							crate::image::ResourceRef::vault(
+								wikilink_asset_url(l),
+							),
+						),
+						alt,
+						title: String::new(),
+						width: None,
+						height: None,
+					})))
+				} else {
+					let url = wikilink_url(l);
+					child_style.link = Some(source_link(url, source.start));
+					None
+				}
+			}
+			NodeValue::Highlight => {
+				child_style.mark = true;
+				None
+			}
+			// A hidden `%%inline%%` comment contributes no run; inside a
+			// code scope it stays visible source instead.
+			NodeValue::CommentInline(comment) => {
+				if !frame.style.code {
+					frame.after_comment = true;
+					return InlineStep::Skip;
+				}
+				Some(InlineKind::Text(format!("%%{}%%", comment.literal)))
+			}
+			NodeValue::Link(l) => {
+				child_style.link =
+					Some(source_link(l.url.clone(), source.start));
+				None
+			}
+			NodeValue::Image(link) => {
+				Some(InlineKind::Image(Box::new(crate::image::ImageSpec {
+					source: crate::image::ImageSource::Resource(
+						crate::image::ResourceRef::document(link.url.clone()),
+					),
+					alt: self.alt_text(child, depth + 1, from),
+					title: link.title.clone(),
+					width: None,
+					height: None,
+				})))
+			}
+			_ => None,
+		};
+		match kind {
+			Some(kind) => InlineStep::Emit(kind, child_style),
+			None => InlineStep::Descend(child_style),
 		}
 	}
 
@@ -474,15 +579,6 @@ impl Reader<'_> {
 			&mut opaque_until,
 		);
 		plain_text(&alt.inlines)
-	}
-
-	/// Whether a leading space after a hidden comment collapses: the run
-	/// stands at the paragraph's start or follows another space.
-	fn comment_gap_collapses(out: &SpannedText) -> bool {
-		out.inlines.last().is_none_or(|inline| {
-			matches!(&inline.kind, InlineKind::Text(text)
-				if matches!(text.as_bytes().last(), Some(b' ' | b'\t')))
-		})
 	}
 
 	/// The node's source with hidden `%%` comment spans cut out, for the
