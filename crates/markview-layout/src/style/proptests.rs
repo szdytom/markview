@@ -20,6 +20,25 @@ const MEDIA: &[&str] = &[
 
 proptest! {
 	#[test]
+	fn text_edge_fields_share_font_permissions(
+		indices in prop::collection::vec(0usize..Condition::ALL.len(), 1..8),
+	) {
+		let conditions = indices.into_iter().fold(ConditionSet::EMPTY, |set, index| {
+			set.with(Condition::ALL[index].0)
+		});
+		let names = conditions.names().iter().map(|name| format!("'{name}'"))
+			.collect::<Vec<_>>().join(",");
+		let source = format!("format_version=2\nversion=0\n[[rule]]\nwhen=[{names}]\n");
+		let font_allowed = StylesheetSource::parse(&format!(
+			"{source}font=[{{family='serif'}}]"
+		)).is_ok();
+		for key in ["top_edge", "bottom_edge", "background_top_edge", "background_bottom_edge", "baseline"] {
+			let result = StylesheetSource::parse(&format!("{source}{key}=0"));
+			prop_assert_eq!(result.is_ok(), font_allowed, "when=[{}], {}: {:?}", names, key, result);
+		}
+	}
+
+	#[test]
 	fn media_cascade_selects_the_last_applicable_value_for_each_field(
 		layers in prop::collection::vec(prop::collection::vec((any::<u8>(), prop::option::of(100u16..901), prop::option::of(any::<u8>())), 5), 1..5),
 	) {

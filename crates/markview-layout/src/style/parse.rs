@@ -535,141 +535,19 @@ fn validate_numbers(name: &str, rule: &Rule) -> Result<()> {
 	}
 	Ok(())
 }
-#[cfg_attr(
-	any(),
-	markview::allow_complexity(
-		reason = "Keep the ordered selector-specific field whitelist together; condition precedence and generic fallthrough define the stylesheet schema."
-	)
-)]
 fn validate_field(conditions: ConditionSet, key: &str) -> Result<()> {
 	let requested = key;
-	let key = if matches!(
-		key,
+	let key = match key {
 		"top_edge"
-			| "bottom_edge"
-			| "background_top_edge"
-			| "background_bottom_edge"
-			| "baseline"
-	) {
-		"font"
-	} else {
-		key
+		| "bottom_edge"
+		| "background_top_edge"
+		| "background_bottom_edge"
+		| "baseline" => "font",
+		_ => key,
 	};
-	use Condition as K;
-	let has = |condition| conditions.contains(condition);
-	let allowed = if has(K::Preview) {
-		key == "radius"
-	} else if has(K::Scrollbar) {
-		matches!(
-			key,
-			"track"
-				| "thumb" | "thumb_hover"
-				| "thickness"
-				| "overflow_thickness"
-				| "gutter"
-		)
-	} else if has(K::Selection) {
-		key == "background"
-	} else if has(K::Caption) {
-		matches!(
-			key,
-			"source"
-				| "align" | "color"
-				| "font" | "weight"
-				| "size" | "decoration"
-				| "background"
-				| "line_height"
-				| "space_before"
-				| "space_after"
-		)
-	} else if has(K::Placeholder) {
-		matches!(
-			key,
-			"color" | "font" | "weight" | "size" | "decoration" | "background"
-		)
-	} else if has(K::Image) {
-		matches!(
-			key,
-			"background"
-				| "border_color"
-				| "border_width"
-				| "padding" | "align"
-		)
-	} else if has(K::Hr) {
-		matches!(
-			key,
-			"color" | "border_width" | "space_before" | "space_after"
-		)
-	} else if has(K::Math) && !has(K::Error) {
-		matches!(key, "color" | "font" | "weight" | "size")
-	} else if has(K::Page)
-		&& !has(K::PageHeader)
-		&& !has(K::PageFooter)
-		&& !has(K::PageNumber)
-	{
-		key == "background"
-	} else if has(K::PageHeader) || has(K::PageFooter) || has(K::PageNumber) {
-		matches!(key, "color" | "font" | "weight" | "size" | "decoration")
-	} else if has(K::Error) {
-		matches!(
-			key,
-			"show"
-				| "color" | "font"
-				| "weight" | "size"
-				| "decoration"
-				| "background"
-				| "line_height"
-		)
-	} else {
-		match key {
-			"border_collapse" => {
-				has(K::Table) && !has(K::Cell) && !has(K::Header)
-			}
-			"wrap" => has(K::CodeBlock) && !has(K::Label),
-			"show" => {
-				has(K::Label) || conditions == ConditionSet::of(K::FrontMatter)
-			}
-			"letter_spacing" => true,
-			"border_edges" | "corner_radii" => conditions.container(),
-			"heading_marker" | "marker_color" => {
-				[K::H1, K::H2, K::H3, K::H4, K::H5, K::H6]
-					.into_iter()
-					.any(has)
-			}
-			"orphans" | "widows" | "keep_together" => conditions.container(),
-			"color" | "font" | "weight" | "decoration" => true,
-			"size" => !has(K::Body),
-			"background" => true,
-			"line_height" | "space_before" | "space_after" => {
-				conditions.has_block() || has(K::Caption)
-			}
-			"indent" | "marker_width" => has(K::List) || has(K::Enum),
-			"align" => {
-				has(K::Marker)
-					|| has(K::TaskMarker)
-					|| conditions == ConditionSet::of(K::Enum)
-			}
-			"shape" => has(K::Marker),
-			"numbering" => conditions == ConditionSet::of(K::Enum),
-			// A container pads its content; an inline code run pads its chip.
-			"padding" => conditions.container() || has(K::Code),
-			// A task checkbox is a small box, so a theme may round it and set
-			// its outline width, but it still reserves no padding.
-			"border_width" | "radius" => {
-				conditions.container() || has(K::TaskMarker)
-			}
-			"border_color" => {
-				conditions.container() || conditions.ui() || has(K::TaskMarker)
-			}
-			"muted" | "warning" | "error" => conditions.ui(),
-			// A task marker's accent fills a completed checkbox.
-			"accent" => conditions.ui() || has(K::TaskMarker),
-			"shadow" | "scrim" => has(K::Ui),
-			"hover_background" | "active_background" | "disabled_color"
-			| "focus_color" => has(K::Button),
-			"theme" => conditions == ConditionSet::of(K::CodeBlock),
-			_ => false,
-		}
+	let allowed = match restricted_fields(conditions) {
+		Some(fields) => fields.contains(&key),
+		None => generic_field_allowed(conditions, key),
 	};
 	if !allowed {
 		bail!(
@@ -678,4 +556,151 @@ fn validate_field(conditions: ConditionSet, key: &str) -> Result<()> {
 		);
 	}
 	Ok(())
+}
+
+/// The first matching condition restricts the rule without generic fallback.
+fn restricted_fields(
+	conditions: ConditionSet,
+) -> Option<&'static [&'static str]> {
+	use Condition as K;
+	let has = |condition| conditions.contains(condition);
+	let page_furniture =
+		has(K::PageHeader) || has(K::PageFooter) || has(K::PageNumber);
+	let restrictions: &[(bool, &'static [&'static str])] = &[
+		(has(K::Preview), &["radius"]),
+		(
+			has(K::Scrollbar),
+			&[
+				"track",
+				"thumb",
+				"thumb_hover",
+				"thickness",
+				"overflow_thickness",
+				"gutter",
+			],
+		),
+		(has(K::Selection), &["background"]),
+		(
+			has(K::Caption),
+			&[
+				"source",
+				"align",
+				"color",
+				"font",
+				"weight",
+				"size",
+				"decoration",
+				"background",
+				"line_height",
+				"space_before",
+				"space_after",
+			],
+		),
+		(
+			has(K::Placeholder),
+			&[
+				"color",
+				"font",
+				"weight",
+				"size",
+				"decoration",
+				"background",
+			],
+		),
+		(
+			has(K::Image),
+			&[
+				"background",
+				"border_color",
+				"border_width",
+				"padding",
+				"align",
+			],
+		),
+		(
+			has(K::Hr),
+			&["color", "border_width", "space_before", "space_after"],
+		),
+		(
+			has(K::Math) && !has(K::Error),
+			&["color", "font", "weight", "size"],
+		),
+		(has(K::Page) && !page_furniture, &["background"]),
+		(
+			page_furniture,
+			&["color", "font", "weight", "size", "decoration"],
+		),
+		(
+			has(K::Error),
+			&[
+				"show",
+				"color",
+				"font",
+				"weight",
+				"size",
+				"decoration",
+				"background",
+				"line_height",
+			],
+		),
+	];
+	restrictions
+		.iter()
+		.find_map(|&(matches, fields)| matches.then_some(fields))
+}
+
+#[cfg_attr(
+	any(),
+	markview::allow_complexity(
+		reason = "Keep the generic field-to-condition schema in one match; each field's scope must remain visible for review."
+	)
+)]
+fn generic_field_allowed(conditions: ConditionSet, key: &str) -> bool {
+	use Condition as K;
+	let has = |condition| conditions.contains(condition);
+	match key {
+		"border_collapse" => has(K::Table) && !has(K::Cell) && !has(K::Header),
+		"wrap" => has(K::CodeBlock) && !has(K::Label),
+		"show" => {
+			has(K::Label) || conditions == ConditionSet::of(K::FrontMatter)
+		}
+		"letter_spacing" | "color" | "font" | "weight" | "decoration"
+		| "background" => true,
+		"border_edges" | "corner_radii" | "orphans" | "widows"
+		| "keep_together" => conditions.container(),
+		"heading_marker" | "marker_color" => {
+			[K::H1, K::H2, K::H3, K::H4, K::H5, K::H6]
+				.into_iter()
+				.any(has)
+		}
+		"size" => !has(K::Body),
+		"line_height" | "space_before" | "space_after" => {
+			conditions.has_block() || has(K::Caption)
+		}
+		"indent" | "marker_width" => has(K::List) || has(K::Enum),
+		"align" => {
+			has(K::Marker)
+				|| has(K::TaskMarker)
+				|| conditions == ConditionSet::of(K::Enum)
+		}
+		"shape" => has(K::Marker),
+		"numbering" => conditions == ConditionSet::of(K::Enum),
+		// A container pads its content; an inline code run pads its chip.
+		"padding" => conditions.container() || has(K::Code),
+		// A task checkbox reserves no padding but supports rounded outlines.
+		"border_width" | "radius" => {
+			conditions.container() || has(K::TaskMarker)
+		}
+		"border_color" => {
+			conditions.container() || conditions.ui() || has(K::TaskMarker)
+		}
+		"muted" | "warning" | "error" => conditions.ui(),
+		// A task marker's accent fills a completed checkbox.
+		"accent" => conditions.ui() || has(K::TaskMarker),
+		"shadow" | "scrim" => has(K::Ui),
+		"hover_background" | "active_background" | "disabled_color"
+		| "focus_color" => has(K::Button),
+		"theme" => conditions == ConditionSet::of(K::CodeBlock),
+		_ => false,
+	}
 }
