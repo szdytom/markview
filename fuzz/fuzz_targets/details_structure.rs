@@ -23,7 +23,7 @@
 
 use libfuzzer_sys::{fuzz_mutator, fuzz_target};
 use markview_commonmark::MarkdownParse;
-use markview_document::{AnchorId, Block, BlockId, BlockKind};
+use markview_document::{AnchorId, BlockId};
 use mvfuzz::{budget, mutators, oracle, seam};
 use std::sync::Arc;
 
@@ -31,54 +31,23 @@ fuzz_mutator! { |data: &mut [u8], size: usize, max_size: usize, seed: u32| {
 	mutators::markdown(data, size, max_size, seed)
 }}
 
-/// The `<details>` element chain a block lives under, by block id, outermost
-/// first — recomputed from the tree independently of `Document`'s own walk.
+/// The `<details>` element chain each anchor the tree declares lives under,
+/// as the document's own jump semantics define it: the *first* declaration
+/// wins, and a declaration may be a reference occurrence rather than the
+/// heading that spells the same name.
+///
+/// [`seam::fragment_targets`] walks the tree for exactly the names layout
+/// turns into anchors and frames each with its disclosure chain, so this
+/// expectation is independent of `Document`'s index while agreeing with the
+/// rule that index applies.
 fn enclosing_by_id(doc: &MarkdownParse) -> Vec<(AnchorId, Vec<BlockId>)> {
-	// Every heading anchor and footnote label the tree registers, with the
-	// disclosure chain it sits under.
-	let mut out = Vec::new();
-	fn walk(
-		blocks: &[Block],
-		open: &mut Vec<BlockId>,
-		out: &mut Vec<(AnchorId, Vec<BlockId>)>,
-	) {
-		for block in blocks {
-			match &block.kind() {
-				BlockKind::Heading { anchor, .. } => {
-					out.push((
-						AnchorId::Fragment(anchor.clone()),
-						open.clone(),
-					));
-				}
-				BlockKind::Footnote { id, .. } => {
-					out.push((
-						AnchorId::FootnoteDefinition(id.clone()),
-						open.clone(),
-					));
-				}
-				_ => {}
-			}
-			let disclosure = matches!(block.kind(), BlockKind::Details { .. });
-			if disclosure {
-				open.push(block.id());
-			}
-			match &block.kind() {
-				BlockKind::Details { blocks, .. }
-				| BlockKind::Quote { blocks, .. }
-				| BlockKind::Footnote { blocks, .. } => walk(blocks, open, out),
-				BlockKind::List { items, .. } => {
-					for item in items {
-						walk(&item.blocks, open, out);
-					}
-				}
-				_ => {}
-			}
-			if disclosure {
-				open.pop();
-			}
+	let mut out: Vec<(AnchorId, Vec<BlockId>)> = Vec::new();
+	for target in seam::fragment_targets(doc) {
+		if out.iter().any(|(anchor, _)| *anchor == target.anchor) {
+			continue;
 		}
+		out.push((target.anchor, target.chain));
 	}
-	walk(doc.document.blocks(), &mut Vec::new(), &mut out);
 	out
 }
 
