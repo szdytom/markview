@@ -19,7 +19,13 @@ fn main() {
 		doc0.document.blocks().len()
 	);
 	for b in doc0.document.blocks() {
-		eprintln!("  src={:?} id={:016x}", doc0.block_source(b), b.id().get());
+		let kind = format!("{:?}", b.kind());
+		eprintln!(
+			"  src={:?} id={:016x} {}",
+			doc0.block_source(b),
+			b.id().get(),
+			kind.chars().take(100).collect::<String>()
+		);
 	}
 
 	// Same source through reparse (no edit): must be identical.
