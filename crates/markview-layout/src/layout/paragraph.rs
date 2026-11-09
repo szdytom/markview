@@ -1,15 +1,294 @@
-use super::{BlockContext, LayoutOptions, fitted_range};
+mod paint;
+#[cfg(test)]
+mod tests;
+
+use super::{BlockContext, LayoutOptions, Prepared, fitted_range};
 use crate::{
-	document::{CellAlign, Inline, InlineKind, TextStyle},
-	linebreak::{self},
-	microtype,
-	scene::{
-		BlockLayout, Draw, HeadingAnchor, LinkId, LinkRect, LinkTarget,
-		Overflow, Paint, Rect,
-	},
-	style::{ColorField, Condition, Decoration},
-	text::{TextCluster, TextNode},
+	document::{CellAlign, Inline, InlineKind},
+	linebreak, microtype,
+	scene::{BlockLayout, HeadingAnchor, Rect},
+	shaping::Cluster,
+	style::Condition,
+	text::TextNode,
 };
+use std::collections::VecDeque;
+
+struct ShapedLine {
+	clusters: Vec<Cluster>,
+	fits: Vec<microtype::Fit>,
+	natural: f32,
+	overhang: f32,
+}
+
+impl ShapedLine {
+	fn new(
+		clusters: Vec<Cluster>,
+		p: &Prepared,
+		size: f32,
+		typography: microtype::Typography,
+	) -> Self {
+		let fits = microtype::fit(&clusters, &p.text, size, typography);
+		let overhang = microtype::overhang(&clusters, &p.text, &p.spans);
+		let natural = clusters.iter().map(|c| c.width).sum();
+		Self {
+			clusters,
+			fits,
+			natural,
+			overhang,
+		}
+	}
+
+	fn source_end(
+		&self,
+		p: &Prepared,
+		units: &[linebreak::Unit],
+		discarded: std::ops::Range<usize>,
+	) -> usize {
+		let mut end = self
+			.clusters
+			.iter()
+			.map(|c| c.range.end)
+			.max()
+			.unwrap_or(p.text.len());
+		// Consumed whitespace separates targets on either side of a break.
+		for unit in units[discarded].iter().take_while(|u| u.discard) {
+			end = end.max(unit.source.end);
+			if &p.text[unit.source.clone()] == "\n" {
+				break;
+			}
+		}
+		end
+	}
+}
+
+#[derive(Clone, Copy)]
+struct LineGeometry {
+	rect: Rect,
+	baseline: f32,
+	offset: f32,
+	actual: f32,
+	target: f32,
+	solve: microtype::Justify,
+}
+
+struct ParagraphLayout<'a> {
+	prepared: &'a Prepared,
+	size: f32,
+	sans: bool,
+	width: f32,
+	justify: bool,
+	opts: &'a LayoutOptions,
+}
+
+impl ParagraphLayout<'_> {
+	fn shape(
+		&self,
+		context: &mut BlockContext<'_>,
+		units: &[linebreak::Unit],
+		line: &linebreak::Line,
+	) -> ShapedLine {
+		let range = units[line.units.start].source.start
+			..units[line.units.end - 1].source.end;
+		let clusters = context.line_clusters(
+			self.prepared,
+			range,
+			line.hyphen,
+			self.size,
+			self.sans,
+			self.width,
+			self.opts.typography(),
+		);
+		ShapedLine::new(
+			clusters,
+			self.prepared,
+			self.size,
+			self.opts.typography(),
+		)
+	}
+
+	/// An earlier break after boundary reshaping also reoptimizes the
+	/// remaining paragraph.
+	fn reshape_to_fit(
+		&self,
+		context: &mut BlockContext<'_>,
+		units: &[linebreak::Unit],
+		line: &mut linebreak::Line,
+		lines: &mut VecDeque<linebreak::Line>,
+		line_width: f32,
+	) -> ShapedLine {
+		let mut shaped = self.shape(context, units, line);
+		loop {
+			let target = line_width + shaped.overhang;
+			let shrink: f32 =
+				if shaped.natural > target || (self.justify && !line.last) {
+					shaped.fits.iter().map(|f| f.shrink()).sum()
+				} else {
+					0.
+				};
+			if shaped.natural - shrink <= target + 0.1 {
+				break;
+			}
+			let Some(end) = (line.units.start + 1..line.units.end)
+				.rev()
+				.find(|&end| units[end - 1].after.is_some())
+			else {
+				break;
+			};
+			let br = units[end - 1].after.unwrap();
+			line.units.end = end;
+			while line.units.end > line.units.start
+				&& units[line.units.end - 1].discard
+			{
+				line.units.end -= 1;
+			}
+			if line.units.is_empty() {
+				break;
+			}
+			line.hyphen = br.hyphen_width > 0.;
+			line.last = br.forced && !br.justify;
+			shaped = self.shape(context, units, line);
+			let tail = if self.opts.greedy {
+				linebreak::greedy(&units[end..], self.width, &self.opts.limits)
+			} else {
+				linebreak::break_lines(
+					&units[end..],
+					self.width,
+					self.size,
+					self.justify,
+					&self.opts.limits,
+				)
+			};
+			*lines = tail
+				.lines
+				.into_iter()
+				.map(|mut l| {
+					l.units.start += end;
+					l.units.end += end;
+					l
+				})
+				.collect();
+		}
+		shaped
+	}
+
+	/// The final visible line maps its elided ranges back to the full source.
+	fn elide(
+		&self,
+		context: &mut BlockContext<'_>,
+		start: usize,
+	) -> ShapedLine {
+		let full = &self.prepared.text[start..];
+		let shown = context.shaper.fit(
+			full,
+			self.size / context.shaper.appearance.size,
+			self.width,
+		);
+		let mut clusters =
+			context.shaper.shape(&shown, &[], self.size, self.sans);
+		for c in &mut clusters {
+			let elided = fitted_range(full, &shown, c.range.clone());
+			c.range = start + elided.start..start + elided.end;
+		}
+		ShapedLine::new(
+			clusters,
+			self.prepared,
+			self.size,
+			self.opts.typography(),
+		)
+	}
+
+	fn geometry(
+		&self,
+		context: &mut BlockContext<'_>,
+		shaped: &ShapedLine,
+		mut rect: Rect,
+		last: bool,
+		align: CellAlign,
+	) -> LineGeometry {
+		let Self {
+			prepared: p,
+			size,
+			justify,
+			..
+		} = *self;
+		let ShapedLine {
+			clusters,
+			fits,
+			natural,
+			overhang,
+		} = shaped;
+		let (natural, overhang) = (*natural, *overhang);
+		let ink = if clusters.is_empty() {
+			context.shaper.empty_metrics(size)
+		} else {
+			(
+				clusters.iter().map(|c| c.ascent).fold(0., f32::max),
+				clusters.iter().map(|c| c.descent).fold(0., f32::max),
+			)
+		};
+		// A formula or picture can reach below the text it shares a line
+		// with. Center the text when it fits, so that depth does not lift
+		// every other glyph; only a box taller than the line owns the
+		// baseline.
+		let mut text_metrics: Option<(f32, f32)> = None;
+		for cluster in clusters.iter().filter(|c| {
+			!p.math.contains_key(&c.range.start)
+				&& !p.images.contains_key(&c.range.start)
+		}) {
+			let (a, d) = text_metrics.get_or_insert((0., 0.));
+			*a = (*a).max(cluster.ascent);
+			*d = (*d).max(cluster.descent);
+		}
+		let height = (size * context.shaper.appearance.line_height)
+			.max(ink.0 + ink.1 + size * 0.18);
+		let (ascent, descent) = text_metrics.unwrap_or(ink);
+		let mut baseline = rect.y + (height - ascent - descent) * 0.5 + ascent;
+		// A box that reaches past the line still centers the ink it
+		// shares it with.
+		if baseline - ink.0 < rect.y || baseline + ink.1 > rect.y + height {
+			baseline = rect.y + (height - ink.0 - ink.1) * 0.5 + ink.0;
+		}
+		// Justification spends the word spaces and the tracking first, then
+		// shares whatever is left over between the clusters that can take
+		// it. Solving it here from the same totals the break search used
+		// keeps the drawn line the width that was chosen for it.
+		let stretch: f32 = fits.iter().map(|f| f.stretch).sum();
+		let shrink: f32 = fits.iter().map(|f| f.shrink()).sum();
+		let shares = fits.iter().filter(|f| f.share).count();
+		// A closing mark hangs into the end margin, so the line is solved
+		// against the measure plus that much.
+		let target = rect.w + overhang;
+		// An overfull line is compressed wherever it sits in the
+		// paragraph; only stretching is limited to justified lines.
+		let solve = if natural > target || (justify && !last) {
+			microtype::solve(natural, target, stretch, shrink, shares)
+		} else {
+			microtype::Justify::default()
+		};
+		let solve = microtype::Justify {
+			ratio: solve.ratio.clamp(-1.0, 1.0),
+			extra: solve.extra,
+		};
+		let actual =
+			natural + microtype::gained(stretch, shrink, shares, solve);
+		let offset = match align {
+			CellAlign::Left => 0.0,
+			CellAlign::Center => ((target - actual) * 0.5).max(0.0),
+			CellAlign::Right => (target - actual).max(0.0),
+		};
+
+		rect.h = height;
+		LineGeometry {
+			rect,
+			baseline,
+			offset,
+			actual,
+			target,
+			solve,
+		}
+	}
+}
+
 impl BlockContext<'_> {
 	#[expect(
 		clippy::too_many_arguments,
@@ -42,12 +321,6 @@ impl BlockContext<'_> {
 		clippy::too_many_arguments,
 		reason = "Text style and block geometry are independent layout inputs"
 	)]
-	#[cfg_attr(
-		any(),
-		markview::allow_complexity(
-			reason = "Keep line breaking, boundary reshaping and geometry emission in one ordered paragraph pipeline; shared clusters and decoration ranges must stay synchronized."
-		)
-	)]
 	pub(super) fn paragraph_bounded(
 		&mut self,
 		rich: &[Inline],
@@ -66,13 +339,7 @@ impl BlockContext<'_> {
 		let p = crate::profile::span(crate::profile::Stage::Prepare, || {
 			self.prepare(rich, size, out)
 		});
-		// Record occurrences before line breaking; a run it discards still has
-		// to hold its place so cached ids match the runs painted after it.
-		for &origin in &p.link_occurrences {
-			if out.link_occurrences.last() != Some(&origin) {
-				out.link_occurrences.push(origin);
-			}
-		}
+		register_link_occurrences(&p, out);
 		if p.text.is_empty() {
 			for (_, anchor) in p.anchors {
 				out.anchors.push(HeadingAnchor {
@@ -150,23 +417,16 @@ impl BlockContext<'_> {
 				}
 				anchor_index += count;
 			};
-		// An image alone in its block is a centered figure; mixed with text it
-		// is an ordinary atomic inline box in the line flow.
-		let only_images = !rich.is_empty()
-			&& rich.iter().all(|i| {
-				matches!(&i.kind, InlineKind::Image(_) | InlineKind::Anchor(_))
-					|| matches!(&i.kind, InlineKind::Text(t) if t.trim().is_empty())
-			});
-		let align = if only_images && align == CellAlign::Left {
-			opts.stylesheet
-				.rule(Condition::Image)
-				.align
-				.map(Into::into)
-				.unwrap_or(CellAlign::Center)
-		} else {
-			align
+		let (only_images, align) = figure_alignment(rich, align, opts);
+		let paragraph = ParagraphLayout {
+			prepared: &p,
+			size,
+			sans,
+			width,
+			justify,
+			opts,
 		};
-		let mut lines: std::collections::VecDeque<_> = solution.lines.into();
+		let mut lines: VecDeque<_> = solution.lines.into();
 		let mut first_line = true;
 		let mut drawn = 0;
 		while let Some(mut line) = lines.pop_front() {
@@ -188,587 +448,83 @@ impl BlockContext<'_> {
 			};
 			first_line = false;
 			let line_start = units[line.units.start].source.start;
-			let range = line_start..units[line.units.end - 1].source.end;
-			let mut clusters = self.line_clusters(
-				&p,
-				range,
-				line.hyphen,
-				size,
-				sans,
-				width,
-				opts.typography(),
+			let mut shaped = paragraph.reshape_to_fit(
+				self, &units, &mut line, &mut lines, line_width,
 			);
-			let mut fits =
-				microtype::fit(&clusters, &p.text, size, opts.typography());
-			let mut overhang =
-				microtype::overhang(&clusters, &p.text, &p.spans);
-			let mut natural: f32 = clusters.iter().map(|c| c.width).sum();
-			// Boundary reshaping (ligatures, kerning, inserted hyphens) can alter
-			// the measured advance. Move to an earlier legal break and reoptimize
-			// the remaining paragraph, rather than horizontally scrolling ordinary text.
-			loop {
-				// A closing mark hangs into the end margin, so the line has
-				// that much more room to reach.
-				let target = line_width + overhang;
-				// The same rule the line was solved under: an overfull line is
-				// compressed whatever its place in the paragraph.
-				let shrink: f32 = if natural > target || (justify && !line.last)
-				{
-					fits.iter().map(|f| f.shrink()).sum()
-				} else {
-					0.0
-				};
-				if natural - shrink <= target + 0.1 {
-					break;
-				}
-				let Some(end) = (line.units.start + 1..line.units.end)
-					.rev()
-					.find(|&end| units[end - 1].after.is_some())
-				else {
-					break;
-				};
-				let br = units[end - 1].after.unwrap();
-				line.units.end = end;
-				while line.units.end > line.units.start
-					&& units[line.units.end - 1].discard
-				{
-					line.units.end -= 1;
-				}
-				if line.units.is_empty() {
-					break;
-				}
-				line.hyphen = br.hyphen_width > 0.0;
-				line.last = br.forced && !br.justify;
-				let range = units[line.units.start].source.start
-					..units[line.units.end - 1].source.end;
-				clusters = self.line_clusters(
-					&p,
-					range,
-					line.hyphen,
-					size,
-					sans,
-					width,
-					opts.typography(),
-				);
-				fits =
-					microtype::fit(&clusters, &p.text, size, opts.typography());
-				overhang = microtype::overhang(&clusters, &p.text, &p.spans);
-				natural = clusters.iter().map(|c| c.width).sum();
-				let tail = if opts.greedy {
-					linebreak::greedy(&units[end..], width, &opts.limits)
-				} else {
-					linebreak::break_lines(
-						&units[end..],
-						width,
-						size,
-						justify,
-						&opts.limits,
-					)
-				};
-				lines = tail
-					.lines
-					.into_iter()
-					.map(|mut l| {
-						l.units.start += end;
-						l.units.end += end;
-						l
-					})
-					.collect();
-			}
 			if let Some(max_lines) = max_lines
 				&& drawn + 1 == max_lines
 				&& !line.last
 			{
-				// Out of lines: one elided line stands in for the remainder, so
-				// the reader still sees how the message starts and ends.
-				let full = line_start..p.text.len();
-				let shown = self.shaper.fit(
-					&p.text[full.clone()],
-					size / self.shaper.appearance.size,
-					width,
-				);
-				clusters = self.shaper.shape(&shown, &[], size, sans);
-				for c in &mut clusters {
-					let elided = fitted_range(
-						&p.text[full.clone()],
-						&shown,
-						c.range.clone(),
-					);
-					c.range =
-						full.start + elided.start..full.start + elided.end;
-				}
-				natural = clusters.iter().map(|c| c.width).sum();
-				fits =
-					microtype::fit(&clusters, &p.text, size, opts.typography());
-				overhang = microtype::overhang(&clusters, &p.text, &p.spans);
+				shaped = paragraph.elide(self, line_start);
 				line.last = true;
 				line.hyphen = false;
 				lines.clear();
 			}
-			let ink = if clusters.is_empty() {
-				self.shaper.empty_metrics(size)
-			} else {
-				(
-					clusters.iter().map(|c| c.ascent).fold(0., f32::max),
-					clusters.iter().map(|c| c.descent).fold(0., f32::max),
-				)
-			};
-			// A formula or picture can reach below the text it shares a line
-			// with. Center the text when it fits, so that depth does not lift
-			// every other glyph; only a box taller than the line owns the
-			// baseline.
-			let mut text_metrics: Option<(f32, f32)> = None;
-			for cluster in clusters.iter().filter(|c| {
-				!p.math.contains_key(&c.range.start)
-					&& !p.images.contains_key(&c.range.start)
-			}) {
-				let (a, d) = text_metrics.get_or_insert((0., 0.));
-				*a = (*a).max(cluster.ascent);
-				*d = (*d).max(cluster.descent);
-			}
-			let mut height = (size * self.shaper.appearance.line_height)
-				.max(ink.0 + ink.1 + size * 0.18);
-			let (ascent, descent) = text_metrics.unwrap_or(ink);
-			let mut baseline =
-				y_cursor + (height - ascent - descent) * 0.5 + ascent;
-			// A box that reaches past the line still centers the ink it
-			// shares it with.
-			if baseline - ink.0 < y_cursor
-				|| baseline + ink.1 > y_cursor + height
-			{
-				baseline = y_cursor + (height - ink.0 - ink.1) * 0.5 + ink.0;
-			}
-			// Justification spends the word spaces and the tracking first, then
-			// shares whatever is left over between the clusters that can take
-			// it. Solving it here from the same totals the break search used
-			// keeps the drawn line the width that was chosen for it.
-			let stretch: f32 = fits.iter().map(|f| f.stretch).sum();
-			let shrink: f32 = fits.iter().map(|f| f.shrink()).sum();
-			let shares = fits.iter().filter(|f| f.share).count();
-			// A closing mark hangs into the end margin, so the line is solved
-			// against the measure plus that much.
-			let target = line_width + overhang;
-			// An overfull line is compressed wherever it sits in the
-			// paragraph; only stretching is limited to justified lines.
-			let solve = if natural > target || (justify && !line.last) {
-				microtype::solve(natural, target, stretch, shrink, shares)
-			} else {
-				microtype::Justify::default()
-			};
-			let solve = microtype::Justify {
-				ratio: solve.ratio.clamp(-1.0, 1.0),
-				extra: solve.extra,
-			};
-			let actual =
-				natural + microtype::gained(stretch, shrink, shares, solve);
-			let offset = match align {
-				CellAlign::Left => 0.0,
-				CellAlign::Center => ((target - actual) * 0.5).max(0.0),
-				CellAlign::Right => (target - actual).max(0.0),
-			};
-			let mut end = clusters
-				.iter()
-				.map(|c| c.range.end)
-				.max()
-				.unwrap_or(p.text.len());
-			// Consumed whitespace separates targets on either side of a break.
+			let geometry = paragraph.geometry(
+				self,
+				&shaped,
+				Rect {
+					x: line_x,
+					y: y_cursor,
+					w: line_width,
+					h: 0.,
+				},
+				line.last,
+				align,
+			);
 			let consumed_end =
 				lines.front().map_or(units.len(), |l| l.units.start);
-			for unit in units[line.units.end..consumed_end]
-				.iter()
-				.take_while(|u| u.discard)
-			{
-				end = end.max(unit.source.end);
-				if &p.text[unit.source.clone()] == "\n" {
-					break;
-				}
-			}
+			let end =
+				shaped.source_end(&p, &units, line.units.end..consumed_end);
 			let last = lines.is_empty();
 			register_anchors(end, last, y_cursor, out);
-			let start_draw = out.draws.len();
-			let mut cursor = line_x + offset;
-			// The third and fourth fields are the run's first draw and its
-			// occurrence; the range closes at the URL change, so it never
-			// borrows a neighbor's draws.
-			let mut link: Option<(LinkTarget, f32, usize, LinkId)> = None;
-			// Consecutive clusters that share a background paint it as one
-			// rectangle. Pushing one per cluster made the export emit a
-			// rectangle per glyph and, because a rectangle interrupts a run,
-			// a text object per glyph as well.
-			let mut background: Option<(
-				usize,
-				Paint,
-				Option<std::ops::Range<usize>>,
-				Rect,
-			)> = None;
-			for (c, fit) in clusters.into_iter().zip(fits) {
-				let range = p.reading_range(c.range.clone());
-				// A footnote reference registers the anchor its number returns
-				// to when the reader reached the footnote by scrolling. Only
-				// its first digit does, and the first one in reading order
-				// wins, because that is what `anchor_y` finds first.
-				let note = p.note_at(c.range.start);
-				if let Some((reference, true)) = note {
-					out.anchors.push(HeadingAnchor {
-						anchor: crate::document::AnchorId::FootnoteReference {
-							definition: reference.definition.clone(),
-							occurrence: reference.occurrence,
-						},
-						y: y_cursor,
-					});
-				}
-				if let Some(image) = p.images.get(&c.range.start) {
-					let rect = Rect {
-						x: cursor,
-						y: baseline - c.ascent,
-						w: c.width,
-						h: c.ascent,
-					};
-					let command = out.draws.len();
-					out.text[node].source_images.push((
-						p.image_indices[&c.range.start],
-						TextCluster {
-							mixed_spacing: (0.0, 0.0),
-							range: range.clone(),
-							rect,
-							rtl: false,
-							atomic: true,
-							command,
-						},
-					));
-					// A drawn image's whole box is selectable for its `alt`.
-					// A placeholder is instead selected character by
-					// character, so its visible message copies as shown.
-					if !range.is_empty()
-						&& self.image_placeholder(image).is_none()
-					{
-						out.text[node].push(TextCluster {
-							mixed_spacing: (0.0, 0.0),
-							range: range.clone(),
-							rect,
-							rtl: false,
-							atomic: true,
-							command,
-						});
-					}
-					let span = p
-						.spans
-						.iter()
-						.position(|s| s.range.contains(&c.range.start));
-					let link_id = p.link_id(c.range.start, span);
-					let link_url = span
-						.and_then(|index| p.spans[index].link.as_ref())
-						.map(|link| LinkTarget::Url(link.shared().clone()));
-					for mut cluster in
-						self.draw_image(image, rect, size, width, opts, out)
-					{
-						cluster.range.start += range.start;
-						cluster.range.end += range.start;
-						out.text[node].push(cluster);
-					}
-					if let (Some(target), Some(id)) = (link_url, link_id) {
-						out.links.push(LinkRect {
-							commands: command..out.draws.len(),
-							id,
-							rect,
-							url: target.display_url(),
-							target,
-						});
-					}
-					cursor += c.width;
-					continue;
-				}
-				// The cluster's real advance: justification stretches spaces and
-				// CJK glue, and backgrounds and decorations must cover it too.
-				// Compression moves the ink with the blank half it spends on the
-				// left, so an opening mark is pulled against what precedes it
-				// instead of being overlapped by what follows.
-				let pulled = if solve.ratio < 0.0 {
-					fit.shrink.0 * -solve.ratio
-				} else {
-					0.0
-				};
-				let advance = if solve.ratio < 0.0 {
-					c.width - fit.shrink() * -solve.ratio
-				} else {
-					c.width
-						+ fit.stretch * solve.ratio
-						+ if fit.share { solve.extra } else { 0.0 }
-				};
-				if !range.is_empty() {
-					out.text[node].push(TextCluster {
-						mixed_spacing: (
-							if c.mixed.0 {
-								size * microtype::MIXED_GAP - pulled
-							} else {
-								0.0
-							},
-							if c.mixed.1 {
-								size * microtype::MIXED_GAP
-									+ fit.shrink.1 * solve.ratio.min(0.0)
-							} else {
-								0.0
-							},
-						),
-						range,
-						rect: Rect {
-							x: cursor,
-							y: y_cursor,
-							w: advance.max(1.0),
-							h: height,
-						},
-						rtl: c.rtl,
-						// A formula is a single drawn box, like an image.
-						atomic: p.math.contains_key(&c.range.start),
-						command: out.draws.len(),
-					});
-				}
-
-				let span = p
-					.spans
-					.iter()
-					.position(|s| s.range.contains(&c.range.start));
-				let mut link_id = p.link_id(c.range.start, span);
-				// A lone reference keeps its brackets in the hit target; every
-				// number of a merged group resolves through `notes` instead.
-				let span_note = span.and_then(|index| {
-					p.note_spans.get(&p.spans[index].range.start)
-				});
-				let link_target = span
-					.and_then(|index| p.spans[index].link.as_ref())
-					.map(|link| LinkTarget::Url(link.shared().clone()))
-					.or_else(|| {
-						note.map(|(reference, _)| reference).or(span_note).map(
-							|reference| {
-								LinkTarget::FootnoteDefinition(
-									reference.definition.clone(),
-								)
-							},
-						)
-					});
-				if link_id.is_none()
-					&& let Some(reference) = span_note
-				{
-					link_id = Some(LinkId::Inline(reference.occurrence));
-				}
-				// A link wraps as one run per line, so hit testing stays tight.
-				let link_pair = link_target.as_ref().zip(link_id);
-				if link.as_ref().map(|(target, _, _, id)| (target, *id))
-					!= link_pair
-				{
-					if let Some((target, x0, command, id)) = link.take() {
-						out.links.push(LinkRect {
-							commands: command..out.draws.len(),
-							id,
-							// The whole line box, like the cluster rects the
-							// I-beam hits, so leading never leaves the link.
-							rect: Rect {
-								x: x0,
-								y: y_cursor,
-								w: cursor - x0,
-								h: height,
-							},
-							url: target.display_url(),
-							target,
-						});
-					}
-					if let (Some(target), Some(id)) = (link_target, link_id) {
-						link = Some((target, cursor, out.draws.len(), id));
-					}
-				}
-				let appearance = span
-					.map(|index| {
-						let span = &p.spans[index];
-						self.shaper.stylesheet.inline_run(
-							&self.shaper.appearance,
-							&span.style,
-							span.math_error,
-							span.footnote_ref,
-							span.link.is_some(),
-						)
-					})
-					.unwrap_or_else(|| self.shaper.appearance.clone());
-				if let Some(paint) = appearance.background {
-					let rect = Rect {
-						x: cursor,
-						y: baseline - c.background.0,
-						w: advance,
-						h: (c.background.0 + c.background.1).max(0.),
-					};
-					// A fragment owns one background even when font fallback
-					// gives its clusters different vertical edges.
-					let fragment =
-						span.map(|index| p.spans[index].range.clone());
-					let joins = background.as_ref().is_some_and(
-						|(_, previous, previous_fragment, span)| {
-							*previous == paint
-								&& *previous_fragment == fragment
-								&& rect.x <= span.x + span.w + 0.01
-						},
-					);
-					match background.as_mut() {
-						Some((index, _, _, span)) if joins => {
-							let bottom = (span.y + span.h).max(rect.y + rect.h);
-							span.y = span.y.min(rect.y);
-							span.h = bottom - span.y;
-							span.w =
-								(rect.x + rect.w).max(span.x + span.w) - span.x;
-							*out.draws.get_mut(*index).unwrap() =
-								Draw::Rect(*span, paint);
-						}
-						_ => {
-							background =
-								Some((out.draws.len(), paint, fragment, rect));
-							out.inline_decorations.push((
-								out.draws.len(),
-								y_cursor..y_cursor + height,
-							));
-							out.draws.push(Draw::Rect(rect, paint));
-						}
-					}
-				} else {
-					background = None;
-				}
-				if let Some(math) = p.math.get(&c.range.start) {
-					out.draws.push(Draw::Math {
-						math: math.clone(),
-						paint: appearance
-							.paint
-							.cascade(Condition::Math, ColorField::Color),
-						x: cursor,
-						y: baseline - math.ascent,
-					});
-				} else {
-					for mut g in c.glyphs {
-						g.x += cursor - pulled;
-						g.y += baseline;
-						out.draws.push(Draw::Glyph(g));
-					}
-				}
-				for decoration in &appearance.decoration {
-					out.inline_decorations
-						.push((out.draws.len(), y_cursor..y_cursor + height));
-					out.draws.push(Draw::Rect(
-						Rect {
-							x: cursor,
-							y: if *decoration == Decoration::Strike {
-								baseline + c.baseline_shift
-									- size * appearance.size * 0.3
-							} else {
-								baseline
-									+ c.baseline_shift + size
-									* appearance.size * 0.12
-							},
-							w: advance,
-							h: 1.0,
-						},
-						appearance.paint,
-					));
-				}
-				cursor += advance;
-			}
-			if let Some((target, x0, command, id)) = link {
-				out.links.push(LinkRect {
-					commands: command..out.draws.len(),
-					id,
-					// The whole line box, like the cluster rects the
-					// I-beam hits, so leading never leaves the link.
-					rect: Rect {
-						x: x0,
-						y: y_cursor,
-						w: cursor - x0,
-						h: height,
-					},
-					url: target.display_url(),
-					target,
-				});
-			}
-			if actual > target + 0.5 {
-				let gutter = opts.stylesheet.scrollbar_gutter();
-				out.overflow.push(Overflow {
-					rect: Rect {
-						x: line_x,
-						y: y_cursor,
-						w: line_width,
-						h: height,
-					},
-					content_width: actual,
-					commands: start_draw..out.draws.len(),
-					gutter,
-				});
-				height += gutter;
-			}
-			out.width = out.width.max(line_x + actual.min(line_width));
-			y_cursor += height;
+			y_cursor += self.emit_line(&paragraph, node, shaped, geometry, out);
 			drawn += 1;
 		}
 		if only_images && p.images.len() == 1 {
-			let image = p.images.values().next().unwrap();
-			let captioned = opts
-				.stylesheet
-				.text(&self.shaper.appearance, Condition::Image);
-			let captioned =
-				opts.stylesheet.text(&captioned, Condition::Caption);
-			let rule = opts
-				.stylesheet
-				.element_rule(captioned.chain, Condition::Caption);
-			if let Some(caption) = rule.source.unwrap_or_default().text(image) {
-				let old = self.shaper.appearance.clone();
-				self.shaper.appearance = opts.stylesheet.text(
-					&opts.stylesheet.text(&old, Condition::Image),
-					Condition::Caption,
-				);
-				let caption_size = opts.font_size * self.shaper.appearance.size;
-				y_cursor += rule.space_before.unwrap_or(0.) * opts.font_size;
-				let mut decoration = BlockLayout::default();
-				y_cursor += self.paragraph(
-					&[Inline {
-						link: None,
-						kind: InlineKind::Text(caption.to_owned()),
-						style: TextStyle::default(),
-					}],
-					x,
-					y_cursor,
-					width,
-					caption_size,
-					false,
-					rule.align.map(Into::into).unwrap_or(CellAlign::Center),
-					false,
-					false,
-					opts,
-					&mut decoration,
-				);
-				let offset = out.draws.len();
-				out.inline_decorations.extend(
-					decoration
-						.inline_decorations
-						.into_iter()
-						.map(|(command, row)| (command + offset, row)),
-				);
-				for mut node in decoration.text {
-					node.separator = "\n";
-					for cluster in &mut node.clusters {
-						cluster.command += offset;
-					}
-					out.text.push(node);
-				}
-				out.draws.extend(decoration.draws);
-				out.overflow.extend(decoration.overflow.into_iter().map(
-					|mut o| {
-						o.commands.start += offset;
-						o.commands.end += offset;
-						o
-					},
-				));
-				out.degraded += decoration.degraded;
-				y_cursor += rule.space_after.unwrap_or(0.) * opts.font_size;
-				self.shaper.appearance = old;
-			} else {
-				// Reserve the caption's ordinal so toggling it cannot renumber
-				// subsequent paragraphs or table cells in this cached block.
-				out.text.push(TextNode::new(String::new(), "\n"));
-			}
+			y_cursor += self.image_caption(
+				p.images.values().next().unwrap(),
+				x,
+				y_cursor,
+				width,
+				opts,
+				out,
+			);
 		}
 		y_cursor - y
 	}
+}
+
+fn register_link_occurrences(p: &Prepared, out: &mut BlockLayout) {
+	// Record occurrences before line breaking; a run it discards still has
+	// to hold its place so cached ids match the runs painted after it.
+	for &origin in &p.link_occurrences {
+		if out.link_occurrences.last() != Some(&origin) {
+			out.link_occurrences.push(origin);
+		}
+	}
+}
+
+fn figure_alignment(
+	rich: &[Inline],
+	align: CellAlign,
+	opts: &LayoutOptions,
+) -> (bool, CellAlign) {
+	// An image alone in its block is a centered figure; mixed with text it
+	// is an ordinary atomic inline box in the line flow.
+	let only_images = !rich.is_empty()
+		&& rich.iter().all(|i| {
+			matches!(&i.kind, InlineKind::Image(_) | InlineKind::Anchor(_))
+				|| matches!(&i.kind, InlineKind::Text(t) if t.trim().is_empty())
+		});
+	let align = if only_images && align == CellAlign::Left {
+		opts.stylesheet
+			.rule(Condition::Image)
+			.align
+			.map(Into::into)
+			.unwrap_or(CellAlign::Center)
+	} else {
+		align
+	};
+	(only_images, align)
 }

@@ -1,0 +1,243 @@
+use super::*;
+use crate::{
+	document::{LineBreak, TextStyle},
+	fonts::FontConfig,
+	layout::LayoutEngine,
+};
+use proptest::prelude::*;
+
+fn inline(kind: InlineKind) -> Inline {
+	Inline {
+		kind,
+		link: None,
+		style: TextStyle::default(),
+	}
+}
+
+fn options() -> LayoutOptions {
+	LayoutOptions {
+		width: 160.,
+		paragraph_indent: 1.,
+		fonts: FontConfig {
+			ignore_system_fonts: true,
+			directories: vec![
+				std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+					.join("tests/fonts"),
+			],
+			..Default::default()
+		},
+		..Default::default()
+	}
+}
+
+fn with_context<T>(
+	opts: &LayoutOptions,
+	run: impl FnOnce(&mut BlockContext<'_>) -> T,
+) -> T {
+	let mut engine = LayoutEngine::new();
+	engine.shaper.set_fonts(&opts.fonts);
+	engine.shaper.set_stylesheet(opts.stylesheet.clone());
+	let images = Default::default();
+	let mut context = BlockContext {
+		nested: None,
+		cancelled: &|| false,
+		fields: Default::default(),
+		shaper: &mut engine.shaper,
+		math: &mut engine.math,
+		images: &images,
+		highlight_cache: engine.highlights.results(),
+		marker_depth: 0,
+		enum_depth: 0,
+		footnote_column: 1,
+	};
+	run(&mut context)
+}
+
+fn layout(
+	rich: &[Inline],
+	opts: &LayoutOptions,
+	max_lines: Option<usize>,
+) -> (f32, BlockLayout) {
+	with_context(opts, |context| {
+		let mut out = BlockLayout::default();
+		let height = context.paragraph_bounded(
+			rich,
+			11.,
+			13.,
+			opts.width,
+			18.,
+			false,
+			CellAlign::Left,
+			opts.justify,
+			true,
+			max_lines,
+			opts,
+			&mut out,
+		);
+		(height, out)
+	})
+}
+
+#[test]
+fn leading_empty_line_keeps_the_indent_and_anchors_follow_their_line() {
+	let rich = [
+		inline(InlineKind::Anchor("empty".into())),
+		inline(InlineKind::LineBreak(LineBreak::Hard)),
+		inline(InlineKind::Anchor("text".into())),
+		inline(InlineKind::Text(
+			"Opening words wrap across several lines in this narrow paragraph."
+				.into(),
+		)),
+		inline(InlineKind::Anchor("end".into())),
+	];
+	for greedy in [false, true] {
+		let opts = LayoutOptions {
+			greedy,
+			..options()
+		};
+		let (_, out) = layout(&rich, &opts, None);
+		let clusters = &out.text[0].clusters;
+		let first = clusters.at(0).rect;
+		assert_eq!(first.x, 11. + opts.indent(18., opts.width));
+		assert!(first.y > 13.);
+		let second = clusters
+			.iter()
+			.find(|c| c.rect.y > first.y + 1.)
+			.unwrap()
+			.rect;
+		assert_eq!(second.x, 11.);
+		assert_eq!(out.anchors[0].y, 13.);
+		assert_eq!(out.anchors[1].y, first.y);
+		assert_eq!(out.anchors[2].y, clusters.iter().last().unwrap().rect.y);
+	}
+}
+
+#[test]
+fn bounded_elision_counts_empty_lines_and_preserves_source_endpoints() {
+	let text = "Cannot open image: /a/very/long/中文/directory/missing.png";
+	for greedy in [false, true] {
+		for leading_empty in [false, true] {
+			let mut rich = Vec::new();
+			if leading_empty {
+				rich.push(inline(InlineKind::LineBreak(LineBreak::Hard)));
+			}
+			rich.push(inline(InlineKind::Text(text.into())));
+			rich.push(inline(InlineKind::Anchor("end".into())));
+			let opts = LayoutOptions {
+				greedy,
+				..options()
+			};
+			let (full_height, _) = layout(&rich, &opts, None);
+			let (height, out) =
+				layout(&rich, &opts, Some(1 + usize::from(leading_empty)));
+			assert!(height < full_height);
+			let node = &out.text[0];
+			let first = node.clusters.at(0);
+			assert!(node.clusters.iter().all(|c| c.rect.y == first.rect.y));
+			assert_eq!(first.range.start, usize::from(leading_empty));
+			assert_eq!(
+				node.clusters.iter().last().unwrap().range.end,
+				node.text.len()
+			);
+			assert_eq!(out.anchors[0].y, first.rect.y);
+			assert!(node.clusters.iter().all(|c| c.command < out.draws.len()));
+		}
+	}
+}
+
+proptest! {
+	#![proptest_config(ProptestConfig::with_cases(24))]
+	#[test]
+	fn an_unrestrictive_bound_preserves_paragraph_geometry(
+		words in prop::collection::vec(prop::sample::select(vec!["office", "extraordinary", "中文", "（排版），", "link", " "]), 1..30),
+		width in 60u16..400,
+		greedy in any::<bool>(),
+		justify in any::<bool>(),
+		indent in 0u8..3,
+	) {
+		let rich = [inline(InlineKind::Text(words.join(" ")))];
+		let opts = LayoutOptions { width: f32::from(width), greedy, justify, paragraph_indent: f32::from(indent), ..options() };
+		let (height, full) = layout(&rich, &opts, None);
+		let (bounded_height, bounded) = layout(&rich, &opts, Some(1000));
+		prop_assert_eq!(height, bounded_height);
+		prop_assert_eq!(format!("{full:?}"), format!("{bounded:?}"));
+	}
+}
+
+#[test]
+fn boundary_reshaping_replaces_the_tail_using_the_full_measure() {
+	for greedy in [false, true] {
+		let opts = LayoutOptions {
+			greedy,
+			..options()
+		};
+		with_context(&opts, |context| {
+			let rich = [inline(InlineKind::Text("office words need several lines after reshaping their boundaries and inserting hyphens".into()))];
+			let p = context.prepare(&rich, 18., &mut BlockLayout::default());
+			let units = context.units(
+				&p,
+				18.,
+				false,
+				true,
+				opts.width,
+				opts.typography(),
+			);
+			let paragraph = ParagraphLayout {
+				prepared: &p,
+				size: 18.,
+				sans: false,
+				width: opts.width,
+				justify: true,
+				opts: &opts,
+			};
+			// Model a break search that underestimated the boundary-shaped advances.
+			let mut line = linebreak::Line {
+				units: 0..units.len(),
+				width: 0.,
+				ratio: 0.,
+				hyphen: false,
+				last: true,
+			};
+			let mut tail = VecDeque::new();
+			let first_width = opts.width - 54.;
+			let shaped = paragraph.reshape_to_fit(
+				context,
+				&units,
+				&mut line,
+				&mut tail,
+				first_width,
+			);
+			assert!(line.units.end < units.len());
+			assert!(!line.last);
+			let shrink: f32 = shaped.fits.iter().map(|f| f.shrink()).sum();
+			assert!(
+				shaped.natural - shrink <= first_width + shaped.overhang + 0.1
+			);
+			assert!(!tail.is_empty());
+			// A discarded break space belongs between the current line and the tail.
+			let end = line.units.end;
+			let consumed = end + usize::from(units[end].discard);
+			let expected = if greedy {
+				linebreak::greedy(&units[consumed..], opts.width, &opts.limits)
+			} else {
+				linebreak::break_lines(
+					&units[consumed..],
+					opts.width,
+					18.,
+					true,
+					&opts.limits,
+				)
+			};
+			for (actual, expected) in tail.iter().zip(&expected.lines) {
+				assert_eq!(
+					actual.units,
+					expected.units.start + consumed
+						..expected.units.end + consumed
+				);
+				assert_eq!(actual.hyphen, expected.hyphen);
+				assert_eq!(actual.last, expected.last);
+			}
+			assert_eq!(tail.len(), expected.lines.len());
+		});
+	}
+}

@@ -3,7 +3,7 @@ use crate::{
 	document::{CellAlign, Inline, InlineKind, TextStyle},
 	scene::{BlockLayout, Draw, Paint, Rect},
 	style::{ColorField, Condition},
-	text::TextCluster,
+	text::{TextCluster, TextNode},
 };
 
 impl BlockContext<'_> {
@@ -177,5 +177,81 @@ impl BlockContext<'_> {
 		}
 		out.width = out.width.max(rect.x + rect.w);
 		text_clusters
+	}
+
+	pub(super) fn image_caption(
+		&mut self,
+		image: &crate::image::ImageSpec,
+		x: f32,
+		y: f32,
+		width: f32,
+		opts: &LayoutOptions,
+		out: &mut BlockLayout,
+	) -> f32 {
+		let mut y_cursor = y;
+		let captioned = opts
+			.stylesheet
+			.text(&self.shaper.appearance, Condition::Image);
+		let captioned = opts.stylesheet.text(&captioned, Condition::Caption);
+		let rule = opts
+			.stylesheet
+			.element_rule(captioned.chain, Condition::Caption);
+		if let Some(caption) = rule.source.unwrap_or_default().text(image) {
+			let old = self.shaper.appearance.clone();
+			self.shaper.appearance = opts.stylesheet.text(
+				&opts.stylesheet.text(&old, Condition::Image),
+				Condition::Caption,
+			);
+			let caption_size = opts.font_size * self.shaper.appearance.size;
+			y_cursor += rule.space_before.unwrap_or(0.) * opts.font_size;
+			let mut decoration = BlockLayout::default();
+			y_cursor += self.paragraph(
+				&[Inline {
+					link: None,
+					kind: InlineKind::Text(caption.to_owned()),
+					style: TextStyle::default(),
+				}],
+				x,
+				y_cursor,
+				width,
+				caption_size,
+				false,
+				rule.align.map(Into::into).unwrap_or(CellAlign::Center),
+				false,
+				false,
+				opts,
+				&mut decoration,
+			);
+			let offset = out.draws.len();
+			out.inline_decorations.extend(
+				decoration
+					.inline_decorations
+					.into_iter()
+					.map(|(command, row)| (command + offset, row)),
+			);
+			for mut node in decoration.text {
+				node.separator = "\n";
+				for cluster in &mut node.clusters {
+					cluster.command += offset;
+				}
+				out.text.push(node);
+			}
+			out.draws.extend(decoration.draws);
+			out.overflow.extend(decoration.overflow.into_iter().map(
+				|mut o| {
+					o.commands.start += offset;
+					o.commands.end += offset;
+					o
+				},
+			));
+			out.degraded += decoration.degraded;
+			y_cursor += rule.space_after.unwrap_or(0.) * opts.font_size;
+			self.shaper.appearance = old;
+		} else {
+			// Reserve the caption's ordinal so toggling it cannot renumber
+			// subsequent paragraphs or table cells in this cached block.
+			out.text.push(TextNode::new(String::new(), "\n"));
+		}
+		y_cursor - y
 	}
 }
