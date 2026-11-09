@@ -8,6 +8,10 @@ pub const SCROLL_MAX: Duration = Duration::from_millis(400);
 const SCROLL_FULL: f32 = 2400.0;
 /// How often a running animation asks the event loop for a frame.
 const SCROLL_FRAME: Duration = Duration::from_millis(8);
+/// Natural frequency of a critically damped wheel spring, in radians/second.
+/// Close to Firefox's regular MSD spring frequency, `sqrt(1000)`.
+/// See <https://searchfox.org/mozilla-central/source/layout/generic/ScrollAnimationMSDPhysics.cpp>.
+const WHEEL_FREQUENCY: f64 = 32.0;
 
 /// How long a high-resolution wheel stream's momentum takes to die away while
 /// its packets still arrive, in seconds.
@@ -67,15 +71,16 @@ pub enum WheelMode {
 
 /// A time-driven scroll from one offset to another.
 ///
-/// The offset depends only on elapsed time, so the motion is identical at any
-/// frame rate; the duration grows with the distance between a floor and a
-/// ceiling, which keeps a one-line step responsive and a whole-page jump calm.
+/// The offset depends only on elapsed time. Navigation uses a distance-scaled
+/// cubic; wheel steps use a critically damped spring with carried velocity.
 #[derive(Clone, Copy, Debug)]
 pub struct ScrollAnimation {
 	from: f32,
 	to: f32,
 	started: Instant,
 	pub duration: Duration,
+	/// Initial velocity for a wheel spring; absolute navigation uses the cubic.
+	wheel_velocity: Option<f64>,
 }
 
 impl ScrollAnimation {
@@ -90,23 +95,80 @@ impl ScrollAnimation {
 			to,
 			started: now,
 			duration: Duration::from_nanos(nanos as u64),
+			wheel_velocity: None,
 		}
+	}
+	fn wheel(from: f32, to: f32, velocity: f64, now: Instant) -> Self {
+		let distance = f64::from(to) - f64::from(from);
+		let limit = WHEEL_FREQUENCY * distance.abs();
+		// Bound the carried velocity to keep the spring from overshooting.
+		let velocity = velocity.clamp(-limit, limit);
+		// `(1 + u) exp(-u) <= 2 exp(-u / 2)` bounds both residuals.
+		let duration = (2.0 * (1.0 + WHEEL_FREQUENCY) * distance.abs() / 0.01)
+			.max(1.0)
+			.ln() * 2.0
+			/ WHEEL_FREQUENCY;
+		Self {
+			from,
+			to,
+			started: now,
+			duration: Duration::from_secs_f64(duration),
+			wheel_velocity: Some(velocity),
+		}
+	}
+	/// Closed-form spring solution, independent of the render cadence.
+	fn spring_at(&self, now: Instant) -> (f64, f64) {
+		let elapsed = now.saturating_duration_since(self.started).as_secs_f64();
+		let displacement = f64::from(self.from) - f64::from(self.to);
+		let velocity = self.wheel_velocity.unwrap();
+		let coefficient = velocity + WHEEL_FREQUENCY * displacement;
+		let decay = (-WHEEL_FREQUENCY * elapsed).exp();
+		(
+			(displacement + coefficient * elapsed) * decay,
+			(velocity - WHEEL_FREQUENCY * coefficient * elapsed) * decay,
+		)
+	}
+	fn velocity_at(&self, now: Instant) -> f64 {
+		if self.finished(now) {
+			return 0.0;
+		}
+		if self.wheel_velocity.is_some() {
+			return self.spring_at(now).1;
+		}
+		let remaining = 1.0
+			- now.saturating_duration_since(self.started).as_secs_f64()
+				/ self.duration.as_secs_f64();
+		3.0 * (f64::from(self.to) - f64::from(self.from))
+			* remaining
+			* remaining
+			/ self.duration.as_secs_f64()
 	}
 
 	/// The eased offset at `now`, clamped to the two ends.
 	pub fn offset_at(&self, now: Instant) -> f32 {
+		if self.wheel_velocity.is_some() {
+			return if self.finished(now) {
+				self.to
+			} else {
+				(f64::from(self.to) + self.spring_at(now).0) as f32
+			};
+		}
 		let elapsed = now.saturating_duration_since(self.started).as_secs_f32();
 		let progress = (elapsed / self.duration.as_secs_f32()).clamp(0.0, 1.0);
 		self.from + (self.to - self.from) * ease_out_cubic(progress)
 	}
 
-	/// When the last frame is due.
+	/// Latest time the animation can need a frame; a spring may settle earlier.
 	pub fn end(&self) -> Instant {
 		self.started + self.duration
 	}
 
 	pub fn finished(&self, now: Instant) -> bool {
 		now >= self.end()
+			|| (self.wheel_velocity.is_some() && {
+				let (distance, velocity) = self.spring_at(now);
+				distance.abs() <= 0.01 && velocity.abs() <= 0.1
+			})
 	}
 }
 
@@ -264,10 +326,43 @@ impl Scroll {
 		);
 	}
 	pub fn wheel_by(&mut self, delta: f32, now: Instant) {
-		if (self.target.unwrap_or(self.offset) - self.offset) * delta < 0.0 {
-			self.target = None;
+		if delta == 0.0 {
+			return;
 		}
-		self.animate_by(delta, now);
+		let velocity = self.animation.map_or(0.0, |a| a.velocity_at(now));
+		// Sample at input time so events between frames never discard travel.
+		self.advance(now);
+		let reversing =
+			(self.target.unwrap_or(self.offset) - self.offset) * delta < 0.0;
+		let base = if reversing {
+			self.offset
+		} else {
+			self.target.filter(|v| v.is_finite()).unwrap_or(self.offset)
+		};
+		let max = if self.bounds.complete {
+			self.bounds.max
+		} else {
+			f32::MAX
+		};
+		let target = (f64::from(base) + f64::from(delta))
+			.clamp(0.0, f64::from(max)) as f32;
+		if self.animation.is_some() && self.target == Some(target) {
+			return;
+		}
+		self.animate_to(target, now);
+		if self.animation.is_some() {
+			let velocity = if reversing || velocity * f64::from(delta) < 0.0 {
+				0.0
+			} else {
+				velocity
+			};
+			self.animation = Some(ScrollAnimation::wheel(
+				self.offset,
+				target,
+				velocity,
+				now,
+			));
+		}
 	}
 	/// One wheel event, in the mode the host read from the device.
 	pub fn wheel(&mut self, delta: f32, now: Instant, mode: WheelMode) {
@@ -466,7 +561,11 @@ impl Scroll {
 		self.offset = animation.offset_at(now).clamp(0.0, self.bounds.max);
 		let at_end = self.bounds.complete
 			&& animation.to >= self.bounds.max - 0.5
-			&& self.offset >= self.bounds.max - 0.5;
+			&& if animation.wheel_velocity.is_some() {
+				self.offset >= self.bounds.max
+			} else {
+				self.offset >= self.bounds.max - 0.5
+			};
 		if !animation.finished(now) && !at_end {
 			return true;
 		}

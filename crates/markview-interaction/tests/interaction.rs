@@ -165,6 +165,7 @@ fn external_input_takes_over_and_pending_targets_survive_layout() {
 		complete: true,
 	};
 	let mut scroll = ScrollState::default();
+	scroll.fit(bounds);
 	scroll.wheel_by(300.0, start);
 	scroll.wheel_by(300.0, start);
 	assert_eq!(scroll.target, Some(600.0));
@@ -216,6 +217,101 @@ fn direct_wheel_follows_the_finger_and_a_detent_eases() {
 	edge.set_max(1000.0);
 	edge.wheel(-80.0, start, WheelMode::Detent);
 	assert!(!edge.animating());
+}
+
+#[test]
+fn detents_between_frames_preserve_travel_and_velocity() {
+	let start = Instant::now();
+	for direction in [-1.0, 1.0] {
+		let mut scroll = Scroll::default();
+		scroll.set_max(4000.0);
+		scroll.set(2000.0);
+		scroll.wheel(120.0 * direction, start, WheelMode::Detent);
+		let arrival = start + Duration::from_millis(45);
+		let old = scroll.animation.unwrap();
+		let position = old.offset_at(arrival);
+		let epsilon = Duration::from_micros(100);
+		let before = (position - old.offset_at(arrival - epsilon))
+			/ epsilon.as_secs_f32();
+		scroll.wheel(120.0 * direction, arrival, WheelMode::Detent);
+		assert_eq!(scroll.offset, position);
+		assert_eq!(scroll.target, Some(2000.0 + 240.0 * direction));
+		let new = scroll.animation.unwrap();
+		let after = (new.offset_at(arrival + epsilon) - position)
+			/ epsilon.as_secs_f32();
+		assert!((after - before).abs() < 10.0, "{before} -> {after}");
+		scroll.advance(start + Duration::from_secs(1));
+		assert_eq!(scroll.offset, 2000.0 + 240.0 * direction);
+		assert!(!scroll.animating());
+	}
+}
+
+#[test]
+fn detents_at_the_boundary_do_not_restart_or_accumulate_travel() {
+	let start = Instant::now();
+	let mut scroll = Scroll::default();
+	scroll.set_max(100.0);
+	scroll.wheel(120.0, start, WheelMode::Detent);
+	let end = scroll.animation.unwrap().end();
+	for ms in (10..300).step_by(10) {
+		scroll.wheel(
+			120.0,
+			start + Duration::from_millis(ms),
+			WheelMode::Detent,
+		);
+		assert_eq!(scroll.target, Some(100.0));
+		assert_eq!(scroll.animation.unwrap().end(), end);
+	}
+	scroll.advance(start + Duration::from_secs(1));
+	assert_eq!(scroll.offset, 100.0);
+	scroll.wheel(120.0, start + Duration::from_secs(1), WheelMode::Detent);
+	assert!(!scroll.animating());
+	scroll.set_max(1000.0);
+	assert_eq!(scroll.offset, 100.0);
+}
+
+#[test]
+fn detent_reversal_samples_the_old_motion_then_turns_immediately() {
+	let start = Instant::now();
+	let mut scroll = Scroll::default();
+	scroll.set_max(2000.0);
+	scroll.set(1000.0);
+	scroll.wheel(120.0, start, WheelMode::Detent);
+	let arrival = start + Duration::from_millis(45);
+	let position = scroll.animation.unwrap().offset_at(arrival);
+	scroll.wheel(-20.0, arrival, WheelMode::Detent);
+	assert_eq!(scroll.offset, position);
+	assert_eq!(scroll.target, Some(position - 20.0));
+	scroll.advance(arrival + Duration::from_millis(8));
+	assert!(scroll.offset < position);
+	scroll.advance(arrival + Duration::from_secs(1));
+	assert_eq!(scroll.offset, position - 20.0);
+}
+
+#[test]
+fn detent_destinations_survive_incomplete_layout_and_direct_input_cancels() {
+	let start = Instant::now();
+	let mut scroll = Scroll::default();
+	scroll.fit(ScrollBounds {
+		max: 100.0,
+		complete: false,
+	});
+	scroll.wheel(300.0, start, WheelMode::Detent);
+	scroll.advance(start + Duration::from_secs(1));
+	assert_eq!(scroll.offset, 100.0);
+	assert_eq!(scroll.target, Some(300.0));
+	scroll.set_max(1000.0);
+	assert_eq!(scroll.offset, 300.0);
+	scroll.wheel(120.0, start + Duration::from_secs(1), WheelMode::Detent);
+	scroll.advance(start + Duration::from_millis(1040));
+	let position = scroll.offset;
+	scroll.wheel(
+		-10.0,
+		start + Duration::from_millis(1040),
+		WheelMode::Direct,
+	);
+	assert_eq!(scroll.offset, position - 10.0);
+	assert!(!scroll.animating());
 }
 
 #[test]

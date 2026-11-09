@@ -1535,6 +1535,7 @@ fn a_wheel_notch_eases_and_continues_from_the_destination() {
 		..Default::default()
 	};
 	session.display.snapshot.height = 5000.0;
+	session.resolve_scroll(600.0);
 	let start = Instant::now();
 	// The first notch starts an animation from the offset on screen instead
 	// of moving it at once.
