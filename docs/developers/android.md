@@ -40,6 +40,12 @@ and passes the phone and tablet Activity integration tests.
 ## Build and install
 
 Use a recent Rust toolchain, Python 3.11 or newer, JDK 17 or newer, and the Android SDK.
+Application Java sources, instrumentation tests and host JVM tests target Java 17.
+The minimum Android version remains Android 11 (API 30). Java APIs must be
+available on API 30 or guarded by a platform version check; `--release 17`
+does not enforce Android API availability. The build invokes D8 directly and
+does not configure core library desugaring to backport newer Java APIs.
+
 The current script supports Linux and macOS build hosts. Install SDK command
 line tools, accept the SDK licences, then install:
 

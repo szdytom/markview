@@ -32,7 +32,7 @@ def build_tests(sdk, build):
     classes = build / "test-classes"
     shutil.rmtree(classes, ignore_errors=True)
     classes.mkdir()
-    run("javac", "--release", "8", "-Xlint:all", "-Werror", "-classpath", str(android) + os.pathsep + str(build / "classes"), "-d", classes, *sorted((ROOT / "android/tests").rglob("*.java")))
+    run("javac", "--release", "17", "-Xlint:all", "-Werror", "-classpath", str(android) + os.pathsep + str(build / "classes"), "-d", classes, *sorted((ROOT / "android/tests").rglob("*.java")))
     dex = build / "test-dex"
     dex.mkdir(exist_ok=True)
     run(tools / "d8", "--min-api", "30", "--lib", android, "--classpath", build / "classes", "--output", dex, *sorted(classes.rglob("*.class")))

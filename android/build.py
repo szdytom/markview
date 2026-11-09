@@ -65,7 +65,7 @@ def main():
     classes = build / "classes"
     shutil.rmtree(classes, ignore_errors=True)
     classes.mkdir()
-    run("javac", "--release", "8", "-Xlint:deprecation", "-classpath", android, "-d", classes, *sorted((ROOT / "android/java").rglob("*.java")))
+    run("javac", "--release", "17", "-Xlint:deprecation", "-classpath", android, "-d", classes, *sorted((ROOT / "android/java").rglob("*.java")))
     dex = build / "dex"
     dex.mkdir(exist_ok=True)
     run(tools / "d8", "--min-api", "30", "--lib", android, "--output", dex, *sorted(classes.rglob("*.class")))
