@@ -9,10 +9,12 @@ use mvfuzz::{budget, coverage, mutators, oracle, pipeline};
 
 /// `SHP1`, a size byte, a second control byte, then bytes mapped onto a
 /// multilingual alphabet. The result shapes real scripts, combining marks,
-/// emoji and bidi runs.
-fn check_structured(data: &[u8]) -> bool {
+/// emoji and bidi runs. Returns the shaped text length: one input byte
+/// expands to a whole word, so the shaped text — not the fuzz input — is what
+/// the allocation budget has to cover.
+fn check_structured(data: &[u8]) -> Option<usize> {
 	if !data.starts_with(b"SHP1") || data.len() < 6 {
-		return false;
+		return None;
 	}
 	const WORDS: &[&str] = &[
 		"alpha",
@@ -36,6 +38,7 @@ fn check_structured(data: &[u8]) -> bool {
 		}
 		text.push_str(WORDS[usize::from(*byte) % WORDS.len()]);
 	}
+	let shaped = text.len();
 	let size = 8. + f32::from(data[4]) / 8.;
 	let mut shaper = TextShaper::with_fonts(pipeline::pinned_fonts());
 	let (draws, width) =
@@ -68,7 +71,7 @@ fn check_structured(data: &[u8]) -> bool {
 			.count()
 	);
 	assert_eq!(width, width_again);
-	true
+	Some(shaped)
 }
 
 fuzz_mutator! { |data: &mut [u8], size: usize, max_size: usize, seed: u32| {
@@ -83,9 +86,12 @@ fuzz_target!(|data: &[u8]| {
 		return;
 	}
 	let guard = budget::InputGuard::new();
-	if check_structured(data) {
+	if let Some(shaped) = check_structured(data) {
 		coverage::hit(coverage::Hit::ShapingStructured);
-		guard.finish(&budget, data.len());
+		// The budget scales with the shaped text: a 2 KiB input expands to
+		// ~10 KiB of words, and shaping allocates per glyph, so metering the
+		// fuzz bytes alone undercounted the work by the expansion factor.
+		guard.finish(&budget, shaped.max(data.len()));
 		coverage::tick();
 		return;
 	}
