@@ -105,9 +105,9 @@ fn maps_a_character(font: &swash::FontRef<'_>) -> bool {
 
 /// Whether a file name is one the shaper's own scan would look at.
 ///
-/// A downloaded body is validated by [`is_font`] instead, but a directory is
-/// filtered by name first: reading every file to find out it is not a face
-/// would cost more than the check is worth.
+/// A downloaded body is validated by [`is_font`] instead, and so is every file
+/// a directory scan reads: a damaged body must never reach the shaper, which
+/// would return non-finite geometry for it.
 pub fn is_font_file(path: &Path) -> bool {
 	path.extension()
 		.and_then(|extension| extension.to_str())

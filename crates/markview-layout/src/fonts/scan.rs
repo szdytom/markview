@@ -1,4 +1,5 @@
 //! Reading faces from a directory on a host that has one.
+use super::is_font;
 use super::is_font_file;
 use parley::fontique::{Blob, Collection, FamilyId, FontInfo};
 use std::{
@@ -34,6 +35,17 @@ pub(super) fn register(
 		}
 		match map_font(&path) {
 			Ok(Some(bytes)) => {
+				// A directory may hold a face this process did not download:
+				// the same check the download path uses refuses a damaged
+				// file here instead of letting the shaper return non-finite
+				// geometry for it.
+				if !is_font(&bytes) {
+					log::warn!(
+						"Font: skipping {} (not a usable face)",
+						path.display()
+					);
+					continue;
+				}
 				added.extend(
 					collection.register_fonts(Blob::new(Arc::new(bytes)), None),
 				);
@@ -108,6 +120,44 @@ mod tests {
 		};
 		let mut context = context(&config);
 		assert!(context.collection.family_by_name("Noto Serif").is_some());
+	}
+	/// A directory entry that is not a usable face must not reach the shaper
+	/// beside a real one: a table tag damaged into another name still parses
+	/// as a directory, and the shaper then returned non-finite advances for it
+	/// (a recorded `fonts` finding).
+	#[test]
+	fn a_damaged_face_is_skipped_beside_a_real_one() {
+		let dir = tempfile::tempdir().unwrap();
+		let mut bytes = std::fs::read(
+			Path::new(env!("CARGO_MANIFEST_DIR"))
+				.join("tests/fonts/NotoSans-Regular-subset.otf"),
+		)
+		.unwrap();
+		let count = u16::from_be_bytes([bytes[4], bytes[5]]) as usize;
+		let mut renamed = false;
+		for index in 0..count {
+			let record = 12 + index * 16;
+			if &bytes[record..record + 4] == b"name" {
+				bytes[record..record + 4].copy_from_slice(b"nAme");
+				renamed = true;
+			}
+		}
+		assert!(renamed, "the fixture keeps its `name` table");
+		std::fs::write(dir.path().join("damaged.otf"), &bytes).unwrap();
+		std::fs::copy(
+			Path::new(env!("CARGO_MANIFEST_DIR"))
+				.join("tests/fonts/NotoSerif-Regular-subset.otf"),
+			dir.path().join("face.otf"),
+		)
+		.unwrap();
+		let config = FontConfig {
+			ignore_system_fonts: true,
+			directories: vec![dir.path().to_owned()],
+			..Default::default()
+		};
+		let mut context = context(&config);
+		assert!(context.collection.family_by_name("Noto Serif").is_some());
+		assert!(context.collection.family_by_name("Noto Sans").is_none());
 	}
 	#[test]
 	fn an_unknown_directory_is_ignored_rather_than_fatal() {
