@@ -33,6 +33,36 @@ fn prepared() -> Prepared {
 }
 proptest! {
 	#[test]
+	fn reading_lookup_matches_linear_segments_with_gaps(
+		segments in prop::collection::vec((0usize..6, 0usize..9, any::<bool>(), 0usize..3), 0..24),
+		queries in prop::collection::vec((0usize..256, 0usize..256), 1..64),
+	) {
+		let mut p = prepared();
+		let (mut visual, mut logical) = (0, 0);
+		for (length, reading_length, atomic, gap) in segments {
+			visual += gap;
+			let reading_length = if atomic { reading_length } else { length };
+			p.mapping.push((visual..visual + length, logical..logical + reading_length, atomic));
+			visual += length;
+			logical += reading_length;
+		}
+		p.reading = "r".repeat(logical);
+		for (a, b) in queries {
+			let range = a.min(b)..a.max(b);
+			let expected = p.mapping.iter().find(|(v, _, _)| v.contains(&range.start)).map_or(
+				logical..logical,
+				|(v, l, atomic)| {
+					if *atomic { return l.clone(); }
+					let end = p.mapping.iter().find(|(v, _, _)| v.start < range.end && range.end <= v.end)
+						.map_or(logical, |(v, l, atomic)| if *atomic { l.end } else { l.start + range.end - v.start });
+					l.start + range.start - v.start..end
+				},
+			);
+			prop_assert_eq!(p.reading_range(range), expected);
+		}
+	}
+
+	#[test]
 	fn tabs_preserve_byte_origins(tokens in prop::collection::vec(prop::sample::select(vec!["a","中","😀","\t","\n"]),0..48), size in 1usize..17) {
 		let text = tokens.concat();
 		let (out, offsets) = expand_tabs_mapped(&text, size);
@@ -134,4 +164,28 @@ fn empty_atomic_and_unmapped_ranges() {
 	assert_eq!(p.reading_range(2..4), 6..6);
 	assert_eq!(p.reading_range(1..3), 1..6);
 	assert_eq!(p.reading_range(1..5), 1..6);
+}
+
+#[test]
+fn empty_segments_and_reverse_queries_preserve_endpoints() {
+	let mut p = prepared();
+	p.reading = "abcdefgh".into();
+	p.mapping = vec![
+		(0..0, 0..0, false),
+		(0..2, 0..2, false),
+		(2..2, 2..2, false),
+		(4..5, 2..6, true),
+		(5..5, 6..6, false),
+		(5..7, 6..8, false),
+	];
+	for (query, expected) in [
+		(5..6, 6..7),
+		(4..4, 2..6),
+		(1..5, 1..6),
+		(0..2, 0..2),
+		(2..4, 8..8),
+		(0..0, 0..8),
+	] {
+		assert_eq!(p.reading_range(query), expected);
+	}
 }

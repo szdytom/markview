@@ -62,10 +62,13 @@ impl Prepared {
 	/// Unmapped starts return the reading end; unmapped ends extend to that end.
 	/// Ordinary segments preserve byte displacement. Callers supply ordered ranges.
 	pub(super) fn reading_range(&self, range: Range<usize>) -> Range<usize> {
+		let first = self
+			.mapping
+			.partition_point(|(visual, _, _)| visual.end <= range.start);
 		let Some((visual, logical, atomic)) = self
 			.mapping
-			.iter()
-			.find(|(v, _, _)| v.contains(&range.start))
+			.get(first)
+			.filter(|(visual, _, _)| visual.contains(&range.start))
 		else {
 			return self.reading.len()..self.reading.len();
 		};
@@ -73,10 +76,15 @@ impl Prepared {
 			return logical.clone();
 		}
 		let start = logical.start + range.start - visual.start;
+		let last = self
+			.mapping
+			.partition_point(|(visual, _, _)| visual.end < range.end);
 		let end = self
 			.mapping
-			.iter()
-			.find(|(v, _, _)| v.start < range.end && v.end >= range.end)
+			.get(last)
+			.filter(|(visual, _, _)| {
+				visual.start < range.end && visual.end >= range.end
+			})
 			.map(|(v, l, atomic)| {
 				if *atomic {
 					l.end

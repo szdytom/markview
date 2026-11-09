@@ -25,6 +25,10 @@ at the same level, without `[brackets]`.
 
 - Open raw Markdown URLs directly with normal Markdown rendering, preserving untrusted resource permissions and resolving relative links against the source URL.
 
+### Changed
+
+- Speed up layout of paragraphs with many inline styles while preserving reading, selection and copy ranges.
+
 ### Fixed
 
 - Avoid Android startup failures when falling back from Vulkan to OpenGL ES, including on screens larger than 2048 pixels.
