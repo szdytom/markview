@@ -1,6 +1,7 @@
 use super::{BlockContext, Prepared};
 use crate::{
 	document::{Inline, InlineKind, TextStyle},
+	interval,
 	linebreak::{Break, Unit},
 	microtype,
 	scene::{BlockLayout, LinkId},
@@ -479,9 +480,10 @@ impl BlockContext<'_> {
 		if hyphen {
 			text.push('-');
 		}
-		let mut spans: Vec<Span> = p
-			.spans
+		let first = p.spans.partition_point(|s| s.range.end <= range.start);
+		let mut spans: Vec<Span> = p.spans[first..]
 			.iter()
+			.take_while(|s| s.range.start < range.end)
 			.filter_map(|s| {
 				let start = s.range.start.max(range.start);
 				let end = s.range.end.min(range.end);
@@ -728,10 +730,10 @@ fn hyphenation_candidates(
 				// The run is ASCII, so byte and character counts agree.
 				let word = &p.text[start..i];
 				if word.len() >= 6
-					&& !p.spans.iter().any(|s| {
-						s.range.contains(&start)
-							&& (s.style.code || s.link.is_some())
-					}) {
+					&& !interval::containing(&p.spans, start, |s| &s.range)
+						.is_some_and(|i| {
+							p.spans[i].style.code || p.spans[i].link.is_some()
+						}) {
 					let mut offset = start;
 					for syllable in
 						hypher::hyphenate(word, hypher::Lang::English)

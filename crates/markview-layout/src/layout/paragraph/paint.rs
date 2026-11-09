@@ -2,7 +2,7 @@ use super::{BlockContext, LineGeometry, ParagraphLayout, ShapedLine};
 use crate::{
 	document::{AnchorId, FootnoteReference},
 	image::ImageSpec,
-	microtype,
+	interval, microtype,
 	scene::{
 		BlockLayout, Draw, HeadingAnchor, LinkId, LinkRect, LinkTarget,
 		Overflow, Paint, Rect,
@@ -201,10 +201,7 @@ impl LinePainter<'_, '_> {
 				command,
 			});
 		}
-		let span = p
-			.spans
-			.iter()
-			.position(|s| s.range.contains(&c.range.start));
+		let span = interval::containing(&p.spans, c.range.start, |s| &s.range);
 		let link_id = p.link_id(c.range.start, span);
 		let link_url = span
 			.and_then(|index| p.spans[index].link.as_ref())
@@ -289,10 +286,7 @@ impl LinePainter<'_, '_> {
 			});
 		}
 
-		let span = p
-			.spans
-			.iter()
-			.position(|s| s.range.contains(&c.range.start));
+		let span = interval::containing(&p.spans, c.range.start, |s| &s.range);
 		self.update_link(c.range.start, span, note);
 		self.paint_cluster(context, c, advance, pulled, span);
 		self.cursor += advance;

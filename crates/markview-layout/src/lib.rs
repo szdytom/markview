@@ -6,6 +6,7 @@ mod highlight;
 #[cfg(feature = "fuzz")]
 pub use highlight::prewarm_highlight;
 pub mod image;
+mod interval;
 pub mod layout;
 pub mod limits;
 pub mod linebreak;

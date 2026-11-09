@@ -1,4 +1,4 @@
-use crate::{math::MathBox, scene::LinkId, shaping::Span};
+use crate::{interval, math::MathBox, scene::LinkId, shaping::Span};
 use std::{collections::BTreeMap, ops::Range, sync::Arc};
 pub(super) struct Prepared {
 	pub(super) anchors: Vec<(usize, String)>,
@@ -62,16 +62,14 @@ impl Prepared {
 	/// Unmapped starts return the reading end; unmapped ends extend to that end.
 	/// Ordinary segments preserve byte displacement. Callers supply ordered ranges.
 	pub(super) fn reading_range(&self, range: Range<usize>) -> Range<usize> {
-		let first = self
-			.mapping
-			.partition_point(|(visual, _, _)| visual.end <= range.start);
-		let Some((visual, logical, atomic)) = self
-			.mapping
-			.get(first)
-			.filter(|(visual, _, _)| visual.contains(&range.start))
-		else {
+		let Some(first) = interval::containing(
+			&self.mapping,
+			range.start,
+			|(visual, _, _)| visual,
+		) else {
 			return self.reading.len()..self.reading.len();
 		};
+		let (visual, logical, atomic) = &self.mapping[first];
 		if *atomic {
 			return logical.clone();
 		}

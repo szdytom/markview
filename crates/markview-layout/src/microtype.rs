@@ -7,6 +7,7 @@
 //! cluster, spent by a single ratio, with the leftover slack shared evenly over
 //! the justifiable clusters — is the one Typst uses.
 use crate::{
+	interval,
 	shaping::{Cluster, Span},
 	style::CjkType,
 };
@@ -578,9 +579,8 @@ pub(crate) fn overhang(
 	else {
 		return 0.0;
 	};
-	let code = spans.iter().any(|span| {
-		span.range.contains(&cluster.range.start) && span.style.code
-	});
+	let code = interval::containing(spans, cluster.range.start, |s| &s.range)
+		.is_some_and(|i| spans[i].style.code);
 	if c == '\u{fffc}' || code {
 		return 0.0;
 	}

@@ -200,6 +200,33 @@ fn rtl_ligature_continuations_keep_their_text_and_advance() {
 }
 
 #[test]
+fn styled_rtl_clusters_keep_their_own_link_ranges() {
+	let snapshot = layout("\u{202e}[ab](first) **[cd](second)**\u{202c}");
+	let placed = &snapshot.blocks[0];
+	let node = &placed.layout.text[0];
+	let ranges: Vec<_> = node.clusters.iter().map(|c| c.range.start).collect();
+	assert!(ranges.windows(2).any(|p| p[0] > p[1]));
+	let mut checked = 0;
+	for cluster in &node.clusters {
+		let expected = match node.text.get(cluster.range.clone()) {
+			Some("a" | "b") => "first",
+			Some("c" | "d") => "second",
+			_ => continue,
+		};
+		assert!(cluster.rtl);
+		let link = placed
+			.layout
+			.links
+			.iter()
+			.find(|link| link.commands.contains(&cluster.command))
+			.expect("each linked cluster keeps its visual command range");
+		assert_eq!(link.url.as_ref(), expected);
+		checked += 1;
+	}
+	assert_eq!(checked, 4);
+}
+
+#[test]
 fn a_ligature_is_picked_apart_at_its_letters() {
 	let snapshot = layout("The file");
 	let node = &snapshot.blocks[0].layout.text[0];

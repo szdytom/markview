@@ -27,7 +27,7 @@ at the same level, without `[brackets]`.
 
 ### Changed
 
-- Speed up layout of paragraphs with many inline styles while preserving reading, selection and copy ranges.
+- Speed up styled paragraphs and highlighted code with indexed reading, style and syntax-color ranges, preserving typography, selection and copying.
 
 ### Fixed
 

@@ -2,6 +2,7 @@
 use super::{BlockContext, LayoutOptions, expand_tabs_mapped};
 use crate::{
 	document::TextStyle,
+	interval,
 	scene::{BlockLayout, Draw, Overflow, Paint, Rect},
 	shaping::Span,
 	style::{ColorField, Condition},
@@ -130,13 +131,13 @@ impl BlockContext<'_> {
 					left = x;
 					baseline = baseline_at(y + height);
 				}
-				let color = highlighted[line_index]
-					.iter()
-					.find(|(range, _)| {
-						range.start <= c.range.start
-							&& c.range.start < range.end
-					})
-					.and_then(|(_, color)| *color);
+				let colors = &highlighted[line_index];
+				let color = interval::containing(
+					colors,
+					c.range.start,
+					|(range, _)| range,
+				)
+				.and_then(|i| colors[i].1);
 				let start = offsets[c.range.start];
 				let end = offsets[c.range.end];
 				let end = if start == end {
