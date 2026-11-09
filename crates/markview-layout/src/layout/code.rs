@@ -28,7 +28,7 @@ impl BlockContext<'_> {
 		let node = out.text.len();
 		out.text.push(TextNode::new(text.to_owned(), "\n\n"));
 
-		let mut cursor = y;
+		let mut height = 0.;
 		let label_appearance = opts
 			.stylesheet
 			.text(&self.shaper.appearance, Condition::Label);
@@ -48,7 +48,7 @@ impl BlockContext<'_> {
 				.text(&self.shaper.appearance, Condition::Label);
 			let rule =
 				opts.stylesheet.element_rule(label.chain, Condition::Label);
-			cursor += rule.space_before.unwrap_or(0.) * opts.font_size;
+			height += rule.space_before.unwrap_or(0.) * opts.font_size;
 			let label_size = opts.font_size * label.size;
 			let label_height = label_size * label.line_height;
 			out.draws.extend(
@@ -57,7 +57,7 @@ impl BlockContext<'_> {
 						language,
 						opts.font_size,
 						x,
-						cursor + label_size,
+						y + height + label_size,
 						&label,
 						label.paint,
 						Some(Paint::Scoped(
@@ -68,7 +68,7 @@ impl BlockContext<'_> {
 					)
 					.0,
 			);
-			cursor +=
+			height +=
 				label_height + rule.space_after.unwrap_or(0.) * opts.font_size;
 		}
 		let content_start = out.draws.len();
@@ -121,14 +121,14 @@ impl BlockContext<'_> {
 					+ line_ascent
 			};
 			let mut left = x;
-			let mut baseline = baseline_at(cursor);
+			let mut baseline = baseline_at(y + height);
 			for c in clusters {
 				// Clusters wider than the whole column stay on their own line
 				// rather than wrapping forever.
 				if wrap && left > x && left + c.width > x + width {
-					cursor += line_height;
+					height += line_height;
 					left = x;
-					baseline = baseline_at(cursor);
+					baseline = baseline_at(y + height);
 				}
 				let color = highlighted[line_index]
 					.iter()
@@ -153,7 +153,7 @@ impl BlockContext<'_> {
 					range: line_offset + start..line_offset + end,
 					rect: Rect {
 						x: left,
-						y: cursor,
+						y: y + height,
 						w: c.width.max(1.0),
 						h: line_height,
 					},
@@ -172,9 +172,9 @@ impl BlockContext<'_> {
 				left += c.width;
 			}
 			natural = natural.max(left - x);
-			cursor += line_height;
+			height += line_height;
 		}
-		let mut h = cursor - y;
+		let mut h = height;
 		if natural > width {
 			let gutter = opts.stylesheet.scrollbar_gutter();
 			out.overflow.push(Overflow {

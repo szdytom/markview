@@ -380,7 +380,7 @@ impl BlockContext<'_> {
 		let field = owner.and_then(|owner| self.fields.next(owner));
 		let first_node = out.text.len();
 		let mut start = 0;
-		let mut cursor = y;
+		let mut height = 0.;
 		for (i, inline) in rich.iter().enumerate() {
 			if let InlineKind::Math { display: true, .. } = inline.kind {
 				if i > start {
@@ -388,7 +388,7 @@ impl BlockContext<'_> {
 					let h = self.paragraph(
 						&rich[start..i],
 						x,
-						cursor,
+						y + height,
 						width,
 						size,
 						sans,
@@ -399,14 +399,14 @@ impl BlockContext<'_> {
 						out,
 					);
 					bind_rich_source(out, search_node, rich, start, field);
-					cursor += h;
+					height += h;
 				}
-				cursor += size * 0.5;
+				height += size * 0.5;
 				let search_node = out.text.len();
 				let h = self.paragraph(
 					&rich[i..i + 1],
 					x,
-					cursor,
+					y + height,
 					width,
 					size,
 					false,
@@ -417,8 +417,8 @@ impl BlockContext<'_> {
 					out,
 				);
 				bind_rich_source(out, search_node, rich, i, field);
-				cursor += h;
-				cursor += size * 0.5;
+				height += h;
+				height += size * 0.5;
 				start = i + 1;
 			}
 		}
@@ -427,7 +427,7 @@ impl BlockContext<'_> {
 			let h = self.paragraph(
 				&rich[start..],
 				x,
-				cursor,
+				y + height,
 				width,
 				size,
 				sans,
@@ -438,7 +438,7 @@ impl BlockContext<'_> {
 				out,
 			);
 			bind_rich_source(out, search_node, rich, start, field);
-			cursor += h;
+			height += h;
 		}
 		if let Some(node) = out.text.get_mut(first_node) {
 			node.separator = "\n\n";
@@ -446,7 +446,7 @@ impl BlockContext<'_> {
 		for node in &mut out.text[first_node..] {
 			node.selection_group = Some(first_node);
 		}
-		cursor - y
+		height
 	}
 
 	#[expect(
@@ -463,7 +463,7 @@ impl BlockContext<'_> {
 		_gap: f32,
 		out: &mut BlockLayout,
 	) -> f32 {
-		let mut cursor = y;
+		let mut height = 0.;
 		let parent = self.shaper.appearance.clone();
 		let count = blocks.iter().filter(|b| !anchor_only(b)).count();
 		let mut index = 0;
@@ -473,17 +473,18 @@ impl BlockContext<'_> {
 			}
 			if anchor_only(block) {
 				self.shaper.appearance = parent.clone();
-				cursor +=
-					self.cached_child(block, [x, cursor], width, opts, out);
+				height +=
+					self.cached_child(block, [x, y + height], width, opts, out);
 				continue;
 			}
 			self.shaper.appearance =
 				opts.stylesheet.child(&parent, index, count);
-			cursor += self.cached_child(block, [x, cursor], width, opts, out);
+			height +=
+				self.cached_child(block, [x, y + height], width, opts, out);
 			index += 1;
 		}
 		self.shaper.appearance = parent;
-		cursor - y
+		height
 	}
 
 	/// Lay out children that a box with visible edges frames. The opening space
@@ -919,14 +920,14 @@ impl BlockContext<'_> {
 	) -> f32 {
 		let size = opts.font_size * self.shaper.appearance.size;
 		let indent = (opts.font_size * 1.5).min(width * 0.5);
-		let mut top = y;
+		let mut height = 0.;
 		for item in items {
 			for terms in &item.terms {
-				top += self.rich(
+				height += self.rich(
 					Some(owner),
 					terms,
 					x,
-					top,
+					y + height,
 					width,
 					size,
 					false,
@@ -938,10 +939,10 @@ impl BlockContext<'_> {
 				);
 			}
 			for blocks in &item.definitions {
-				top += self.children(
+				height += self.children(
 					blocks,
 					x + indent,
-					top,
+					y + height,
 					(width - indent).max(1.0),
 					opts,
 					0.,
@@ -949,7 +950,7 @@ impl BlockContext<'_> {
 				);
 			}
 		}
-		top - y
+		height
 	}
 
 	#[expect(
@@ -967,21 +968,22 @@ impl BlockContext<'_> {
 		out: &mut BlockLayout,
 	) -> f32 {
 		let parent = self.shaper.appearance.clone();
-		let mut top = y;
+		let mut height = 0.;
 		for block in blocks {
-			top += self.cached_child(block, [x, top], width, opts, out);
+			height +=
+				self.cached_child(block, [x, y + height], width, opts, out);
 		}
 		if let Some(caption) = caption {
 			self.shaper.appearance =
 				opts.stylesheet.text(&parent, Condition::Caption);
 			let caption_size = opts.font_size * self.shaper.appearance.size;
 			let gap = caption_size * 0.5;
-			top += gap;
-			top += self.rich(
+			height += gap;
+			height += self.rich(
 				Some(owner),
 				caption,
 				x,
-				top,
+				y + height,
 				width,
 				caption_size,
 				false,
@@ -993,7 +995,7 @@ impl BlockContext<'_> {
 			);
 			self.shaper.appearance = parent;
 		}
-		top - y
+		height
 	}
 
 	#[expect(

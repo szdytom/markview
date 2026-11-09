@@ -274,7 +274,7 @@ impl BlockContext<'_> {
 		}
 		let values = list_values(start, reversed, items);
 		style.measure_numbers(self.shaper, items, &values, enum_depth, opts);
-		let mut top = y;
+		let mut height = 0.;
 		for (i, item) in items.iter().enumerate() {
 			if (self.cancelled)() {
 				break;
@@ -285,11 +285,11 @@ impl BlockContext<'_> {
 						.enum_numbering()
 						.number(enum_depth, values[i] as i64)
 				});
-			top = self.list_item(
+			height += self.list_item(
 				item,
 				label.as_deref(),
 				i + 1 == items.len(),
-				[x, top],
+				[x, y + height],
 				width,
 				&style,
 				&item_opts,
@@ -302,7 +302,7 @@ impl BlockContext<'_> {
 			self.enum_depth -= 1;
 		}
 		self.shaper.appearance = parent;
-		top - y
+		height
 	}
 
 	#[expect(
@@ -320,15 +320,14 @@ impl BlockContext<'_> {
 		opts: &LayoutOptions,
 		out: &mut BlockLayout,
 	) -> f32 {
-		let mut top = y;
-		let item_top = top;
-		out.begin_scene(x, item_top);
+		out.begin_scene(x, y);
 		self.shaper.appearance = style.appearance.clone();
-		top += style.rule.space_before.unwrap_or(0.) * opts.font_size;
-		let box_y = top;
+		let before = style.rule.space_before.unwrap_or(0.) * opts.font_size;
+		let after = style.rule.space_after.unwrap_or(0.) * opts.font_size;
+		let box_y = y + before;
 		let box_index = out.draws.len();
 		out.draws.push(Draw::Rect(Rect::default(), Paint::Text));
-		top += style.padding[0];
+		let content_y = box_y + style.padding[0];
 		let item_x = x + style.padding[3];
 		let item_width = (width - style.padding[1] - style.padding[3]).max(1.);
 
@@ -336,7 +335,7 @@ impl BlockContext<'_> {
 		let numbered = label.is_some();
 		let marker_start = out.draws.len();
 		if let Some(label) = label {
-			self.list_number(label, item_x, top, style, opts, out);
+			self.list_number(label, item_x, content_y, style, opts, out);
 		}
 		let first_child = out.text.len();
 		if let Some(checked) = item.checked {
@@ -370,7 +369,7 @@ impl BlockContext<'_> {
 		let child_height = self.children(
 			&item.blocks,
 			item_x + style.column,
-			top,
+			content_y,
 			(item_width - style.column).max(1.),
 			opts,
 			style.size * 0.6,
@@ -378,7 +377,7 @@ impl BlockContext<'_> {
 		);
 		let first_line = out.first_text_rect(first_child).unwrap_or(Rect {
 			x: item_x + style.column,
-			y: top,
+			y: content_y,
 			w: 0.,
 			h: style.size * style.appearance.line_height,
 		});
@@ -396,18 +395,18 @@ impl BlockContext<'_> {
 		} else {
 			0.
 		};
-		top += (child_height - trailing)
+		let content_height = (child_height - trailing)
 			.max(style.size * self.shaper.appearance.line_height);
 		if trailing > 0.0 {
-			out.height = out.height.min(top);
+			out.height = out.height.min(content_y + content_height);
 		}
-		top += style.padding[2];
+		let box_height = style.padding[0] + content_height + style.padding[2];
 		*out.draws.get_mut(box_index).unwrap() = Draw::Box {
 			rect: Rect {
 				x,
 				y: box_y,
 				w: width,
-				h: top - box_y,
+				h: box_height,
 			},
 			chain: style.appearance.chain,
 			condition: Condition::ListItem,
@@ -416,7 +415,7 @@ impl BlockContext<'_> {
 			left_only: false,
 			decoration: BoxDecoration::from_rule(&style.rule, false),
 		};
-		top += style.rule.space_after.unwrap_or(0.) * opts.font_size;
+		let item_height = before + box_height + after;
 		if let Some(node) = out.text.get_mut(first_child) {
 			// A number shares its line with the item text; an item
 			// without one starts its own line.
@@ -428,14 +427,14 @@ impl BlockContext<'_> {
 			);
 		}
 		out.end_scene(
-			top - item_top,
-			(box_y - item_top)
+			item_height,
+			before
 				+ style.padding[0]
 				+ style.padding[2]
 				+ style.size * self.shaper.appearance.line_height
-				+ style.rule.space_after.unwrap_or(0.) * opts.font_size,
+				+ after,
 		);
-		top
+		item_height
 	}
 
 	fn list_number(

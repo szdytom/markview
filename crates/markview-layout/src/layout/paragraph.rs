@@ -399,7 +399,8 @@ impl BlockContext<'_> {
 				}
 			});
 		out.degraded += usize::from(solution.degraded && !opts.greedy);
-		let mut y_cursor = y;
+		// Height stays local so cached paragraphs can move without changing it.
+		let mut paragraph_height = 0.;
 		let mut anchor_index = 0;
 		let mut register_anchors =
 			|end: usize, last: bool, y: f32, out: &mut BlockLayout| {
@@ -430,12 +431,13 @@ impl BlockContext<'_> {
 		let mut first_line = true;
 		let mut drawn = 0;
 		while let Some(mut line) = lines.pop_front() {
+			let y_cursor = y + paragraph_height;
 			if line.units.is_empty() {
 				let end = units
 					.get(line.units.start)
 					.map_or(p.text.len(), |unit| unit.source.start);
 				register_anchors(end, lines.is_empty(), y_cursor, out);
-				y_cursor += size * self.shaper.appearance.line_height;
+				paragraph_height += size * self.shaper.appearance.line_height;
 				drawn += 1;
 				continue;
 			}
@@ -478,20 +480,21 @@ impl BlockContext<'_> {
 				shaped.source_end(&p, &units, line.units.end..consumed_end);
 			let last = lines.is_empty();
 			register_anchors(end, last, y_cursor, out);
-			y_cursor += self.emit_line(&paragraph, node, shaped, geometry, out);
+			paragraph_height +=
+				self.emit_line(&paragraph, node, shaped, geometry, out);
 			drawn += 1;
 		}
 		if only_images && p.images.len() == 1 {
-			y_cursor += self.image_caption(
+			paragraph_height = self.image_caption(
 				p.images.values().next().unwrap(),
-				x,
-				y_cursor,
+				[x, y],
+				paragraph_height,
 				width,
 				opts,
 				out,
 			);
 		}
-		y_cursor - y
+		paragraph_height
 	}
 }
 

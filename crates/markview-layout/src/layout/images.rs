@@ -182,13 +182,12 @@ impl BlockContext<'_> {
 	pub(super) fn image_caption(
 		&mut self,
 		image: &crate::image::ImageSpec,
-		x: f32,
-		y: f32,
+		[x, y]: [f32; 2],
+		mut height: f32,
 		width: f32,
 		opts: &LayoutOptions,
 		out: &mut BlockLayout,
 	) -> f32 {
-		let mut y_cursor = y;
 		let captioned = opts
 			.stylesheet
 			.text(&self.shaper.appearance, Condition::Image);
@@ -203,16 +202,16 @@ impl BlockContext<'_> {
 				Condition::Caption,
 			);
 			let caption_size = opts.font_size * self.shaper.appearance.size;
-			y_cursor += rule.space_before.unwrap_or(0.) * opts.font_size;
+			height += rule.space_before.unwrap_or(0.) * opts.font_size;
 			let mut decoration = BlockLayout::default();
-			y_cursor += self.paragraph(
+			height += self.paragraph(
 				&[Inline {
 					link: None,
 					kind: InlineKind::Text(caption.to_owned()),
 					style: TextStyle::default(),
 				}],
 				x,
-				y_cursor,
+				y + height,
 				width,
 				caption_size,
 				false,
@@ -245,13 +244,13 @@ impl BlockContext<'_> {
 				},
 			));
 			out.degraded += decoration.degraded;
-			y_cursor += rule.space_after.unwrap_or(0.) * opts.font_size;
+			height += rule.space_after.unwrap_or(0.) * opts.font_size;
 			self.shaper.appearance = old;
 		} else {
 			// Reserve the caption's ordinal so toggling it cannot renumber
 			// subsequent paragraphs or table cells in this cached block.
 			out.text.push(TextNode::new(String::new(), "\n"));
 		}
-		y_cursor - y
+		height
 	}
 }

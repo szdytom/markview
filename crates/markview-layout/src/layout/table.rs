@@ -156,10 +156,11 @@ impl BlockContext<'_> {
 		for (index, cell) in placed.iter().enumerate() {
 			row_cells[cell.row_start].push(index);
 		}
-		let mut top = y;
+		let mut grid_height = 0.;
 		let start_draws = out.draws.len();
 		let overflow_start = out.overflow.len();
 		for row in 0..rows {
+			let top = y + grid_height;
 			self.shaper.appearance = table_appearance.clone();
 			let mut base = 0_f32;
 			let mut spans: Vec<(usize, f32)> = Vec::new();
@@ -260,7 +261,7 @@ impl BlockContext<'_> {
 			let height = base.max(row_min[row]);
 			row_heights[row] = height;
 			row_tops[row] = top;
-			top += height;
+			grid_height += height;
 		}
 		// Fill the cell boxes now that every row height is final.
 		for cell in &placed {
@@ -305,7 +306,7 @@ impl BlockContext<'_> {
 				});
 			}
 		}
-		let mut height = top - y;
+		let mut height = grid_height;
 		let overflow_end = out.draws.len();
 		if let Some(caption) = &table.caption {
 			self.shaper.appearance =
@@ -316,7 +317,7 @@ impl BlockContext<'_> {
 				Some(owner),
 				caption,
 				x,
-				top + gap,
+				y + grid_height + gap,
 				width,
 				size,
 				false,
@@ -326,7 +327,7 @@ impl BlockContext<'_> {
 				opts,
 				out,
 			);
-			height = top - y + gap + h;
+			height = grid_height + gap + h;
 		}
 		if total > width + 0.5 {
 			let gutter = opts.stylesheet.scrollbar_gutter();
@@ -336,7 +337,7 @@ impl BlockContext<'_> {
 					x,
 					y,
 					w: width,
-					h: top - y,
+					h: grid_height,
 				},
 				content_width: total,
 				commands: start_draws..overflow_end,
@@ -363,11 +364,12 @@ impl BlockContext<'_> {
 		opts: &LayoutOptions,
 		out: &mut BlockLayout,
 	) -> f32 {
-		let mut cursor = y;
+		let mut height = 0.;
 		for block in &cell.blocks {
 			if (self.cancelled)() {
 				break;
 			}
+			let cursor = y + height;
 			for anchor in block.anchors() {
 				out.anchors.push(HeadingAnchor {
 					anchor: crate::document::AnchorId::Fragment(anchor.clone()),
@@ -397,9 +399,9 @@ impl BlockContext<'_> {
 				),
 				_ => self.cached_child(block, [x, cursor], width, opts, out),
 			};
-			cursor += h;
+			height += h;
 		}
-		cursor - y
+		height
 	}
 
 	fn cell_intrinsic(

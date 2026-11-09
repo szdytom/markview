@@ -9,6 +9,8 @@ mod images;
 mod inline;
 mod mapping;
 mod paragraph;
+#[cfg(test)]
+mod position_tests;
 mod progressive;
 #[cfg(test)]
 mod stylesheet_tests;

@@ -108,3 +108,10 @@ fn shrinkable_histories_reach_the_same_complete_state() {
 	input[4] -= 1;
 	mvfuzz::history::check(&input);
 }
+
+#[test]
+fn moving_cached_paragraphs_between_disclosures_preserves_layout() {
+	let mut input = b"LDH1\x01\x03\x49".to_vec();
+	input.extend_from_slice(b"<details>hidden alpha\n\n<\n<details></details>>\n\nhidden alpha\n</details>");
+	mvfuzz::history::check(&input);
+}

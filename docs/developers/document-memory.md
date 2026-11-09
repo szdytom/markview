@@ -39,8 +39,9 @@ nested cache/snapshot reuse needs it.
 
 ## Independent behavior baseline
 
-The baseline is production commit `6439953422d6acc659fea196f05e7c6aa7f45908`, the
-unchanged checkout immediately before this optimization. The plan's older
+The baseline was captured from production commit
+`6439953422d6acc659fea196f05e7c6aa7f45908`, the unchanged checkout immediately
+before this optimization. The plan's older
 `cc4fc12` revision predates separate parser/table fixes; the optimization does not
 undo those fixes. The preparation script adds only the harness, its dependencies
 and diagnostic accessors to the independent checkout.
@@ -58,6 +59,12 @@ PDF text order, link regions and actual page operators, including furniture.
 Addresses, run/style IDs, capacities and transient process identities are excluded.
 Equivalent affine search segmentation is canonicalized in the exporter, first
 validated on the old build before production coalescing.
+
+The local-height accumulation fix updates geometry expectations in 11 records.
+An exhaustive field comparison found only floating-point geometry corrections,
+at most `0.00048828125` layout units; text, identities, source mappings, command
+ownership, line breaks and pagination structure remain unchanged. These reviewed
+corrections are frozen in the records; comparisons still require exact float bits.
 
 Tests compare float bit patterns and emit actual JSON plus the first differing
 field under `artifacts/doc-memory-regression`. Sensitivity checks deliberately

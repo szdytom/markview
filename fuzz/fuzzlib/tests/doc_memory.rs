@@ -1,8 +1,8 @@
-//! Frozen output from the independent pre-optimization build.
+//! Frozen reader output, including reviewed geometry corrections.
 use mvfuzz::behavior;
 use std::{fs::File, io::Read, path::Path};
 #[test]
-fn reader_output_matches_before_storage_optimization() {
+fn reader_output_matches_frozen_baselines() {
 	for (name, actual) in behavior::records() {
 		let path = Path::new(env!("CARGO_MANIFEST_DIR"))
 			.join("tests/baselines/doc-memory")
