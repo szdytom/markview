@@ -20,6 +20,88 @@ const MEDIA: &[&str] = &[
 
 proptest! {
 	#[test]
+	fn media_cascade_selects_the_last_applicable_value_for_each_field(
+		layers in prop::collection::vec(prop::collection::vec((any::<u8>(), prop::option::of(100u16..901), prop::option::of(any::<u8>())), 5), 1..5),
+	) {
+		let filters = ["", "ui", "pdf", "desktop", "landscape"];
+		let mut declarations = Vec::new();
+		let mut source = StylesheetSource::default();
+		let mut merged = Stylesheet::default();
+		for (layer, values) in layers.iter().enumerate() {
+			let mut order: Vec<_> = (0..filters.len()).collect();
+			order.sort_by_key(|&i| values[i].0);
+			let mut toml = "format_version=2\nversion=0\n".to_owned();
+			for (position, &filter) in order.iter().enumerate() {
+				let (_, weight, color) = values[filter];
+				// An absent declaration emits no rule; empty rules are invalid MVSS.
+				if weight.is_none() && color.is_none() { continue; }
+				toml.push_str("[[rule]]\nwhen=['p']\n");
+				if filter != 0 { toml.push_str(&format!("media=['{}']\n", filters[filter])); }
+				if let Some(weight) = weight { toml.push_str(&format!("weight={weight}\n")); }
+				if let Some(color) = color { toml.push_str(&format!("color='#{color:02x}1234'\n")); }
+				declarations.push(((layer, filter != 0, position), filter, weight, color));
+			}
+			source.merge(&StylesheetSource::parse(&toml).unwrap());
+			merged.merge(&Stylesheet::parse(&toml).unwrap());
+		}
+		let source = Arc::new(source);
+		for (target, device, width, height, active) in [
+			(StyleTarget::Ui, Media::Desktop, 800., 600., [true, true, false, true, true]),
+			(StyleTarget::Ui, Media::Phone, 600., 800., [true, true, false, false, false]),
+			(StyleTarget::Pdf, Media::Desktop, 600., 800., [true, false, true, true, false]),
+			(StyleTarget::Pdf, Media::Phone, 800., 600., [true, false, true, false, true]),
+		] {
+			let context = MediaContext::new(target, device, None).with_size(width, height);
+			// Priority is layer, filtered over unfiltered, then declaration order.
+			let weight = declarations.iter().filter(|d| active[d.1] && d.2.is_some()).max_by_key(|d| d.0).and_then(|d| d.2);
+			let color = declarations.iter().filter(|d| active[d.1] && d.3.is_some()).max_by_key(|d| d.0).and_then(|d| d.3)
+				.map(|v| Color((u32::from(v) << 24) | 0x1234ff));
+			for sheet in [source.resolve(context), merged.for_media(context)] {
+				prop_assert_eq!(sheet.rule(Condition::P).weight, weight);
+				prop_assert_eq!(sheet.rule(Condition::P).color, color);
+				let appearance = sheet.text(&TextAppearance::default(), Condition::P);
+				prop_assert_eq!(appearance.weight, weight.unwrap_or(TextAppearance::default().weight));
+				prop_assert_eq!(sheet.paint(appearance.paint), color.unwrap_or(Color(0x262b30ff)).rgba());
+			}
+		}
+	}
+
+	#[test]
+	fn media_switches_preserve_runtime_overrides_and_previously_shared_views(
+		font in "[a-zA-Z中]{1,16}", margins in prop::collection::vec(0u16..101, 4),
+		ui_weight in 100u16..501, pdf_weight in 501u16..901,
+		changes in prop::collection::vec(any::<bool>(), 0..24),
+	) {
+		let source = Arc::new(StylesheetSource::parse(&format!(
+			"format_version=2\nversion=0\n[[fontdef]]\nid='reading'\nlookfor=['Original']\n[[rule]]\nwhen=['p']\nmedia=['ui']\nweight={ui_weight}\n[[rule]]\nwhen=['p']\nmedia=['pdf']\nweight={pdf_weight}\n"
+		)).unwrap());
+		let context = |pdf| MediaContext::new(if pdf { StyleTarget::Pdf } else { StyleTarget::Ui }, Media::Desktop, None);
+		let original = source.resolve(context(false));
+		let mut sheet = original.clone();
+		sheet.apply_font_overrides(&[("reading".into(), font.clone())]).unwrap();
+		let margins: Vec<_> = margins.into_iter().map(f32::from).collect();
+		sheet.page.margin = Some(margins.clone());
+		let mut previous = false;
+		for pdf in [true, false, false].into_iter().chain(changes) {
+			let retained = sheet.clone();
+			let variant = sheet.for_media(context(pdf));
+			prop_assert_eq!(sheet.set_media(context(pdf)), pdf != previous);
+			for view in [&sheet, &variant] {
+				prop_assert_eq!(view.rule(Condition::P).weight, Some(if pdf { pdf_weight } else { ui_weight }));
+				prop_assert_eq!(view.fontdefs["reading"].lookfor.as_slice(), std::slice::from_ref(&font));
+				prop_assert_eq!(view.page.margin.as_deref(), Some(margins.as_slice()));
+				prop_assert!(Arc::ptr_eq(&view.source(), &source));
+			}
+			prop_assert_eq!(retained.rule(Condition::P).weight, Some(if previous { pdf_weight } else { ui_weight }));
+			prop_assert_eq!(retained.page.margin.as_deref(), Some(margins.as_slice()));
+			prop_assert_eq!(&original.fontdefs["reading"].lookfor, &["Original"]);
+			prop_assert_eq!(original.page.margin.as_ref(), None);
+			prop_assert_eq!(original.rule(Condition::P).weight, Some(ui_weight));
+			previous = pdf;
+		}
+	}
+
+	#[test]
 	fn finite_cascade_preserves_inheritance_specificity_and_ordered_partial_merges(
 		layers in prop::collection::vec(prop::collection::vec((0usize..6,
 			prop::option::of(1u16..17), prop::option::of(100u16..901), prop::option::of(any::<u8>())), 0..10), 1..5),
