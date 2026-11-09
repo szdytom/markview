@@ -1,6 +1,63 @@
 use super::*;
 use proptest::prelude::*;
 
+fn scanned_metrics(
+	prefix: &Prefix,
+	units: &[Unit],
+	mut start: usize,
+	mut end: usize,
+) -> (Range<usize>, u32, u32, u32, usize) {
+	while start < end && units[start].discard {
+		start += 1;
+	}
+	while end > start && units[end - 1].discard {
+		end -= 1;
+	}
+	let mut stretch = prefix.stretch[end] - prefix.stretch[start];
+	let mut shrink = prefix.shrink[end] - prefix.shrink[start];
+	let mut justifiables =
+		prefix.justifiables[end] - prefix.justifiables[start];
+	if end > start && !units[end - 1].discard {
+		stretch -= units[end - 1].stretch;
+		shrink -= units[end - 1].shrink;
+		justifiables -= units[end - 1].justifiable as usize;
+	}
+	(
+		start..end,
+		(prefix.width[end] - prefix.width[start]).to_bits(),
+		stretch.max(0.0).to_bits(),
+		shrink.max(0.0).to_bits(),
+		justifiables,
+	)
+}
+
+proptest! {
+	#[test]
+	fn boundary_metrics_match_scanning_for_every_subrange(
+		data in prop::collection::vec((any::<bool>(), 0u16..1000, any::<bool>()), 0..48),
+	) {
+		let units: Vec<_> = data.into_iter().enumerate().map(|(i, (discard, width, justifiable))| Unit {
+			source: i..i + 1,
+			width: f32::from(width) / 13.,
+			stretch: f32::from(width) / 37.,
+			shrink: f32::from(width) / 61.,
+			justifiable,
+			discard,
+			after: Some(Break::NORMAL),
+		}).collect();
+		let prefix = Prefix::new(&units);
+		for start in 0..=units.len() {
+			for end in start..=units.len() {
+				let (range, width, stretch, shrink, count) = prefix.metrics(&units, start, end);
+				prop_assert_eq!(
+					(range, width.to_bits(), stretch.to_bits(), shrink.to_bits(), count),
+					scanned_metrics(&prefix, &units, start, end),
+				);
+			}
+		}
+	}
+}
+
 fn check(units: &[Unit], solution: &Solution) {
 	let mut kept = Vec::new();
 	let mut previous = 0;

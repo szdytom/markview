@@ -72,6 +72,7 @@ struct Prefix {
 	stretch: Vec<f32>,
 	shrink: Vec<f32>,
 	justifiables: Vec<usize>,
+	discard_boundaries: Option<Vec<Range<usize>>>,
 }
 impl Prefix {
 	fn new(units: &[Unit]) -> Self {
@@ -80,6 +81,7 @@ impl Prefix {
 			stretch: vec![0.0],
 			shrink: vec![0.0],
 			justifiables: vec![0],
+			discard_boundaries: Self::discard_boundaries(units),
 		};
 		for u in units {
 			p.width.push(p.width.last().unwrap() + u.width);
@@ -90,17 +92,46 @@ impl Prefix {
 		}
 		p
 	}
+	fn discard_boundaries(units: &[Unit]) -> Option<Vec<Range<usize>>> {
+		// Isolated spaces need only one check at either edge, without an index.
+		if !units
+			.windows(2)
+			.any(|pair| pair[0].discard && pair[1].discard)
+		{
+			return None;
+		}
+		let mut boundaries: Vec<_> = (0..=units.len()).map(|i| i..i).collect();
+		let mut start = 0;
+		while start < units.len() {
+			if !units[start].discard {
+				start += 1;
+				continue;
+			}
+			let mut end = start + 1;
+			while end < units.len() && units[end].discard {
+				end += 1;
+			}
+			boundaries[start..=end].fill(start..end);
+			start = end;
+		}
+		Some(boundaries)
+	}
 	fn metrics(
 		&self,
 		units: &[Unit],
 		mut start: usize,
 		mut end: usize,
 	) -> (Range<usize>, f32, f32, f32, usize) {
-		while start < end && units[start].discard {
-			start += 1;
-		}
-		while end > start && units[end - 1].discard {
-			end -= 1;
+		if let Some(boundaries) = &self.discard_boundaries {
+			start = boundaries[start].end.min(end);
+			end = boundaries[end].start.max(start);
+		} else {
+			if start < end && units[start].discard {
+				start += 1;
+			}
+			if end > start && units[end - 1].discard {
+				end -= 1;
+			}
 		}
 		let mut stretch = self.stretch[end] - self.stretch[start];
 		let mut shrink = self.shrink[end] - self.shrink[start];
@@ -475,6 +506,31 @@ pub fn break_lines_with_first(
 #[cfg(test)]
 mod tests {
 	use super::*;
+	#[test]
+	fn whitespace_index_is_only_allocated_for_consecutive_discarded_units() {
+		assert!(Prefix::new(&[]).discard_boundaries.is_none());
+		let mut units = words(&[12.; 128]);
+		assert!(Prefix::new(&units).discard_boundaries.is_none());
+		units[2].discard = true;
+		assert!(Prefix::new(&units).discard_boundaries.is_some());
+	}
+	#[test]
+	fn long_whitespace_runs_trim_from_interior_and_empty_boundaries() {
+		let mut units = words(&[12.; 1024]);
+		for unit in &mut units[1..2047] {
+			unit.discard = true;
+		}
+		let prefix = Prefix::new(&units);
+		for (start, end, expected) in [
+			(0, 2048, 0..1),
+			(1, 2048, 2048..2048),
+			(0, 1024, 0..1),
+			(500, 1500, 1500..1500),
+			(1024, 1024, 1024..1024),
+		] {
+			assert_eq!(prefix.metrics(&units, start, end).0, expected);
+		}
+	}
 	fn words(widths: &[f32]) -> Vec<Unit> {
 		let mut units = Vec::new();
 		for &width in widths {
