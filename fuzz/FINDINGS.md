@@ -146,6 +146,26 @@ The `refdef` oracle cannot attribute a destination to a label inside such a
 block, so it stands down there (`seam::blocks_opening_with_definitions`); the
 position handling itself has to be fixed upstream.
 
+### comrak: appending a definition can flip an earlier paragraph's references
+
+In three recorded inputs, appending the inert definition
+`\n[fuzz-inert-N]: /inert-N\n` makes `[foo]` inside an *earlier* paragraph turn
+from literal text into a `Link` to an existing definition, while that
+paragraph's bytes and the document's block count stay unchanged. Comrak's own
+AST differs before and after (raw `parse_document` compared on the same
+strings; first difference always at a paragraph line that starts with an
+unconsumed `[foo]: …`), so the `refdef` inert-suffix differential is reading an
+upstream change, not a Markview one. The inputs are
+
+- `crash-4e3e998037b0e74dc45e95dd7deb39f83040315f`
+- `crash-ec71e9746e22271d8ccf72be7c7a750e8cada03c`
+- `crash-16c4b162d0b5b34459cb46d278352ec8a08213ca`
+
+(Saved under `artifacts/fuzz-next/runs/`; the exact precondition that makes the
+earlier reference literal until a line follows is not yet reduced to a minimal
+document.) The differential stays strict, so these three remain known findings
+until the parser's behaviour is settled upstream.
+
 ## Campaign record
 
 All runs are `cargo +nightly fuzz build` builds (ASAN) on one 16-core Linux
