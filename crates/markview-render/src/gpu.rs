@@ -29,19 +29,44 @@ impl Surface {
 	}
 }
 
-/// The limits the device is created with.
-///
-/// WebGL2 has no compute or storage buffers at all, so the desktop defaults
-/// fail the device request outright: the Wasm build links and then never
-/// draws. The renderer uses neither, so the downlevel set costs it nothing —
-/// but only the backend that needs it gets it, because the other backends
-/// keep the texture-size limit that export tiling reads.
-fn device_limits(backend: wgpu::Backend) -> wgpu::Limits {
+/// GL needs WebGL2 resource limits, but windows can exceed WebGL2's minimum size.
+fn device_limits(
+	backend: wgpu::Backend,
+	adapter_limits: wgpu::Limits,
+) -> wgpu::Limits {
 	if backend == wgpu::Backend::Gl {
 		wgpu::Limits::downlevel_webgl2_defaults()
+			.using_resolution(adapter_limits)
 	} else {
 		wgpu::Limits::default()
 	}
+}
+
+fn backend_attempts(
+	requested: wgpu::Backends,
+	exclusive: bool,
+) -> Vec<wgpu::Backends> {
+	if exclusive {
+		(requested & wgpu::Instance::enabled_backend_features())
+			.iter()
+			.collect()
+	} else {
+		vec![requested]
+	}
+}
+
+async fn try_backends<T>(
+	attempts: impl IntoIterator<Item = wgpu::Backends>,
+	mut create: impl AsyncFnMut(wgpu::Backends) -> Result<T>,
+) -> Result<T> {
+	let mut errors = Vec::new();
+	for backend in attempts {
+		match create(backend).await {
+			Ok(context) => return Ok(context),
+			Err(error) => errors.push(format!("{backend:?}: {error:#}")),
+		}
+	}
+	bail!("No compatible GPU backend: {}", errors.join("; "))
 }
 
 pub(super) struct Gpu {
@@ -100,37 +125,56 @@ impl Gpu {
 	pub async fn new(
 		surface_source: Option<Box<dyn SurfaceSource>>,
 	) -> Result<Self> {
-		let descriptor = surface_source.as_ref().map_or_else(
-			wgpu::InstanceDescriptor::new_without_display_handle_from_env,
-			|source| source.instance_descriptor(),
-		);
-		let instance = wgpu::Instance::new(descriptor);
-		let handle = surface_source
+		let descriptor = || {
+			surface_source.as_ref().map_or_else(
+				wgpu::InstanceDescriptor::new_without_display_handle_from_env,
+				|source| source.instance_descriptor(),
+			)
+		};
+		let exclusive = surface_source
 			.as_ref()
-			.map(|source| source.create_surface(&instance))
-			.transpose()?;
-		let adapter = instance
-			.request_adapter(&wgpu::RequestAdapterOptions {
-				power_preference: wgpu::PowerPreference::LowPower,
-				compatible_surface: handle.as_ref(),
-				force_fallback_adapter: false,
-				apply_limit_buckets: false,
-			})
-			.await
-			.context("No compatible GPU adapter (try WGPU_BACKEND=gl)")?;
+			.is_some_and(|source| source.exclusive_backends());
+		let (instance, handle, adapter, device, queue) = try_backends(
+			backend_attempts(descriptor().backends, exclusive),
+			async |backends| {
+				let mut descriptor = descriptor();
+				descriptor.backends = backends;
+				let instance = wgpu::Instance::new(descriptor);
+				let handle = surface_source
+					.as_ref()
+					.map(|source| source.create_surface(&instance))
+					.transpose()?;
+				let adapter = instance
+					.request_adapter(&wgpu::RequestAdapterOptions {
+						power_preference: wgpu::PowerPreference::LowPower,
+						compatible_surface: handle.as_ref(),
+						force_fallback_adapter: false,
+						apply_limit_buckets: false,
+					})
+					.await
+					.context("No compatible GPU adapter")?;
+				let (device, queue) = adapter
+					.request_device(&wgpu::DeviceDescriptor {
+						label: Some("Markview"),
+						required_limits: device_limits(
+							adapter.get_info().backend,
+							adapter.limits(),
+						),
+						memory_hints: wgpu::MemoryHints::MemoryUsage,
+						..Default::default()
+					})
+					.await?;
+				Ok::<_, anyhow::Error>((
+					instance, handle, adapter, device, queue,
+				))
+			},
+		)
+		.await?;
 		let info = adapter.get_info();
 		let adapter_name = format!(
 			"{} ({:?}, {:?})",
 			info.name, info.backend, info.device_type
 		);
-		let (device, queue) = adapter
-			.request_device(&wgpu::DeviceDescriptor {
-				label: Some("Markview"),
-				required_limits: device_limits(info.backend),
-				memory_hints: wgpu::MemoryHints::MemoryUsage,
-				..Default::default()
-			})
-			.await?;
 		let lost = Arc::new(AtomicBool::new(false));
 		let flag = lost.clone();
 		device.set_device_lost_callback(move |_, _| {
@@ -279,7 +323,55 @@ impl Gpu {
 
 #[cfg(test)]
 mod tests {
-	use super::device_limits;
+	use super::{backend_attempts, device_limits, try_backends};
+	use proptest::prelude::*;
+	use std::{cell::Cell, rc::Rc};
+
+	#[test]
+	fn failed_backend_releases_its_window_before_fallback() {
+		struct Connection(Rc<Cell<bool>>);
+		impl Drop for Connection {
+			fn drop(&mut self) {
+				self.0.set(false);
+			}
+		}
+		let connected = Rc::new(Cell::new(false));
+		let mut attempted = Vec::new();
+		let connection = pollster::block_on(try_backends(
+			[wgpu::Backends::VULKAN, wgpu::Backends::GL],
+			async |backend| {
+				assert!(
+					!connected.replace(true),
+					"Previous backend still owns the window"
+				);
+				let connection = Connection(connected.clone());
+				attempted.push(backend);
+				if backend == wgpu::Backends::VULKAN {
+					anyhow::bail!("No compatible adapter");
+				}
+				Ok(connection)
+			},
+		))
+		.unwrap();
+		assert_eq!(attempted, [wgpu::Backends::VULKAN, wgpu::Backends::GL]);
+		assert!(connected.get());
+		drop(connection);
+		assert!(!connected.get());
+	}
+
+	#[test]
+	fn failed_backends_retain_each_error() {
+		let error = pollster::block_on(try_backends(
+			[wgpu::Backends::VULKAN, wgpu::Backends::GL],
+			async |backend| -> anyhow::Result<()> {
+				anyhow::bail!("Failed {backend:?}");
+			},
+		))
+		.unwrap_err()
+		.to_string();
+		assert!(error.contains("Failed Backends(VULKAN)"), "{error}");
+		assert!(error.contains("Failed Backends(GL)"), "{error}");
+	}
 
 	/// A WebGL2 device has no compute or storage buffers, so the desktop
 	/// defaults make `request_device` fail before a browser can draw anything.
@@ -287,7 +379,10 @@ mod tests {
 	/// and only the requested limits decide it.
 	#[test]
 	fn the_browser_backend_asks_only_for_what_webgl2_has() {
-		let limits = device_limits(wgpu::Backend::Gl);
+		let limits = device_limits(
+			wgpu::Backend::Gl,
+			wgpu::Limits::downlevel_webgl2_defaults(),
+		);
 		assert_eq!(limits.max_storage_buffers_per_shader_stage, 0);
 		assert_eq!(limits.max_compute_invocations_per_workgroup, 0);
 		assert!(limits.max_texture_dimension_2d >= crate::raster::ATLAS_SIZE);
@@ -298,9 +393,46 @@ mod tests {
 	#[test]
 	fn the_desktop_backends_keep_their_own_texture_limit() {
 		assert!(
-			device_limits(wgpu::Backend::Vulkan).max_texture_dimension_2d
+			device_limits(wgpu::Backend::Vulkan, wgpu::Limits::default())
+				.max_texture_dimension_2d
 				> wgpu::Limits::downlevel_webgl2_defaults()
 					.max_texture_dimension_2d
 		);
+	}
+
+	proptest! {
+		#[test]
+		fn gl_preserves_supported_texture_dimensions(
+			width in 2048u32..=32768,
+			depth in 256u32..=2048,
+		) {
+			let supported = wgpu::Limits {
+				max_texture_dimension_1d: width,
+				max_texture_dimension_2d: width,
+				max_texture_dimension_3d: depth,
+				..wgpu::Limits::default()
+			};
+			let limits = device_limits(wgpu::Backend::Gl, supported);
+			prop_assert_eq!(limits.max_texture_dimension_1d, width);
+			prop_assert_eq!(limits.max_texture_dimension_2d, width);
+			prop_assert_eq!(limits.max_texture_dimension_3d, depth);
+			prop_assert_eq!(limits.max_storage_buffers_per_shader_stage, 0);
+			prop_assert_eq!(limits.max_compute_invocations_per_workgroup, 0);
+		}
+
+		#[test]
+		fn exclusive_attempts_never_share_or_enable_unrequested_backends(bits in any::<u32>()) {
+			let requested = wgpu::Backends::from_bits_truncate(bits);
+			let attempts = backend_attempts(requested, true);
+			let mut tried = wgpu::Backends::empty();
+			for backend in attempts {
+				prop_assert_eq!(backend.bits().count_ones(), 1);
+				prop_assert!(requested.contains(backend));
+				prop_assert!(!tried.intersects(backend));
+				tried |= backend;
+			}
+			prop_assert_eq!(tried, requested & wgpu::Instance::enabled_backend_features());
+			prop_assert_eq!(backend_attempts(requested, false), vec![requested]);
+		}
 	}
 }

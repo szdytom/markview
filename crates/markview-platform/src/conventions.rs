@@ -23,6 +23,10 @@ pub const fn touch_layout() -> bool {
 pub const fn touch_inset() -> bool {
 	cfg!(any(target_os = "android", target_os = "ios"))
 }
+/// A native window connection cannot be shared by GPU backends.
+pub const fn exclusive_gpu_surface() -> bool {
+	cfg!(target_os = "android")
+}
 pub const fn folder_reveal() -> bool {
 	!cfg!(target_os = "android")
 }

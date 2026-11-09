@@ -33,6 +33,10 @@ pub trait SurfaceSource: 'static {
 	fn instance_descriptor(&self) -> wgpu::InstanceDescriptor {
 		wgpu::InstanceDescriptor::new_without_display_handle_from_env()
 	}
+	/// Whether GPU backends must be tried one at a time.
+	fn exclusive_backends(&self) -> bool {
+		false
+	}
 	/// Builds the surface. Called once at startup, and again after a loss.
 	fn create_surface(
 		&self,
