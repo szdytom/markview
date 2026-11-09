@@ -189,9 +189,15 @@ pub fn inline_source(
 
 /// A prefix parse must be the opening of the full parse: every block it
 /// returns but the last must equal the one a full parse puts at that index,
-/// field for field (id, source range, content key, kind). The last may differ
+/// field for field (source range, content key, kind). The last may differ
 /// because it is the block the cut lands inside, which a prefix is allowed to
 /// show up to the cut.
+///
+/// `BlockId` is deliberately not compared. Ids are allocated per parse, and a
+/// block lowered from a raw HTML snippet takes its id from that snippet's own
+/// producer, so the same block legitimately carries different ids in the two
+/// parses. The reader never matches prefix blocks by id: it shows the prefix,
+/// then replaces it with the full document and reuses layout by content key.
 pub fn assert_prefix_consistent(full: &MarkdownParse, prefix: &MarkdownParse) {
 	assert!(
 		prefix.document.blocks().len() <= full.document.blocks().len(),
@@ -211,11 +217,6 @@ pub fn assert_prefix_consistent(full: &MarkdownParse, prefix: &MarkdownParse) {
 			full.block_source(from_full),
 			"prefix block {i} of {keep} has a different source range than the \
 			 full parse"
-		);
-		assert_eq!(
-			from_prefix.id(),
-			from_full.id(),
-			"prefix block {i} of {keep} has a different id than the full parse"
 		);
 		assert_eq!(
 			from_prefix.content_key(),
