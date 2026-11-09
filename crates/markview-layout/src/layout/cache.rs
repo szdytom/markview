@@ -49,7 +49,7 @@ impl BlockContext<'_> {
 			_ => return self.block(block, x, y, width, opts, out),
 		}
 		let Some(cache) = &self.nested else {
-			return self.block(block, x, y, width, opts, out);
+			return self.leaf_block(block, x, y, width, opts, out);
 		};
 		if (self.cancelled)() {
 			return 0.;
@@ -92,7 +92,7 @@ impl BlockContext<'_> {
 		let degraded = out.degraded;
 		let math_errors = out.math_errors;
 		let first_text = out.text.len();
-		let height = self.block(block, x, y, width, opts, out);
+		let height = self.leaf_block(block, x, y, width, opts, out);
 		if !(self.cancelled)() {
 			let field =
 				out.text.get(first_text).and_then(|node| node.search_field);

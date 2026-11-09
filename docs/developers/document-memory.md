@@ -66,6 +66,11 @@ at most `0.00048828125` layout units; text, identities, source mappings, command
 ownership, line breaks and pagination structure remain unchanged. These reviewed
 corrections are frozen in the records; comparisons still require exact float bits.
 
+Laying out a cached leaf at its own origin updates 8 of those records. The
+corrections are again only draw, cluster, link and overflow positions, at most
+`0.000244140625` layout units; PDF text extraction is unchanged, and only the
+exporter's run grouping follows the corrected positions.
+
 Tests compare float bit patterns and emit actual JSON plus the first differing
 field under `artifacts/doc-memory-regression`. Sensitivity checks deliberately
 change glyph geometry/bold, typed link targets, command ownership, clipping and

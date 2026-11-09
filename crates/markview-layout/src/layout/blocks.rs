@@ -514,6 +514,34 @@ impl BlockContext<'_> {
 		self.children(blocks, x, y - lead, width, opts, 0., out) - lead - trail
 	}
 
+	/// Lays out a cacheable leaf at its own origin and places the node at `position`.
+	///
+	/// Cached geometry must be exactly what a cold pass measures, but sealing an
+	/// absolute layout subtracts the offset and placing it adds it back, which can
+	/// round a coordinate by one unit in the last place.
+	pub(super) fn leaf_block(
+		&mut self,
+		block: &Block,
+		x: f32,
+		y: f32,
+		width: f32,
+		opts: &LayoutOptions,
+		out: &mut BlockLayout,
+	) -> f32 {
+		if (self.cancelled)() {
+			return 0.;
+		}
+		out.begin_scene(x, y);
+		// Local measurement must not leak its untranslated extents into the
+		// parent, which may place this leaf above its own origin.
+		let (parent_height, parent_width) = (out.height, out.width);
+		let height = self.measured_block(block, 0., 0., width, opts, out);
+		out.end_local_scene(height);
+		out.height = parent_height.max(y + height);
+		out.width = parent_width.max(x + width);
+		height
+	}
+
 	pub(super) fn block(
 		&mut self,
 		block: &Block,

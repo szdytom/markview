@@ -2,8 +2,9 @@ use std::sync::{Arc, Mutex};
 
 use markview_layout::{
 	background::{Executor, Task},
-	layout::LayoutEngine,
+	layout::{LayoutEngine, LayoutOptions},
 	scene::{Draw, LinkId},
+	style::Stylesheet,
 };
 use mvfuzz::{oracle, pipeline};
 
@@ -114,4 +115,47 @@ fn moving_cached_paragraphs_between_disclosures_preserves_layout() {
 	let mut input = b"LDH1\x01\x03\x49".to_vec();
 	input.extend_from_slice(b"<details>hidden alpha\n\n<\n<details></details>>\n\nhidden alpha\n</details>");
 	mvfuzz::history::check(&input);
+}
+
+// `crash-653ba585e31da44c5215d94587efb109c6ba994f` laid out a disclosure
+// inside a figure that was re-parsed from the same source; the reused
+// paragraphs kept a baseline rounded through the old absolute origin.
+#[test]
+fn reused_nested_leaf_keeps_a_cold_pass_baseline() {
+	let mut input = b"LDH1\x01\x03\x01".to_vec();
+	input.extend_from_slice(b"<details>a\n\na\n</details>");
+	mvfuzz::history::check(&input);
+}
+
+// A framed child can sit above its parent's origin to trim its leading
+// spacing; a local leaf measurement must not raise the parent's height.
+#[test]
+fn trimmed_leading_spacing_keeps_translated_extents() {
+	let mut sheet = (*Stylesheet::bundled(false)).clone();
+	sheet.merge(
+		&Stylesheet::parse(
+			"format_version = 2\nversion = 1\n[[rule]]\nwhen = ['blockquote']\npadding = 0\nborder_width = 0\nspace_after = 0\n",
+		)
+		.unwrap(),
+	);
+	let options = LayoutOptions {
+		stylesheet: Arc::new(sheet),
+		fonts: pipeline::pinned_fonts(),
+		..Default::default()
+	};
+	let mut engine = pipeline::differential_engine();
+	for source in [
+		"> ## Heading\n",
+		"> ## Heading\n>\n> <a id=\"a\"></a>\n",
+	] {
+		let doc = markview_commonmark::parse(source);
+		engine.layout(&doc, &options);
+		let warm = engine.layout(&doc, &options);
+		let cold = pipeline::differential_engine().layout(&doc, &options);
+		assert_eq!(
+			oracle::layout(&warm),
+			oracle::layout(&cold),
+			"{source}"
+		);
+	}
 }

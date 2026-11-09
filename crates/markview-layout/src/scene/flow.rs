@@ -255,6 +255,17 @@ impl BlockLayout {
 		self.scene.active = node.parent;
 	}
 
+	/// Closes a region whose content was built at its own origin, so sealing
+	/// must not subtract the placement again.
+	pub(crate) fn end_local_scene(&mut self, height: f32) {
+		self.end_scene(height, f32::NEG_INFINITY);
+		self.scene
+			.spans
+			.last_mut()
+			.expect("a scene was just closed")
+			.local = true;
+	}
+
 	pub(crate) fn retain_disclosure(
 		&mut self,
 		id: crate::document::BlockId,
