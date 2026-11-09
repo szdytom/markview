@@ -321,6 +321,11 @@ pub fn definition_scan(source: &str) -> DefinitionScan {
 			let marker = rest.as_bytes()[0];
 			let run = rest.bytes().take_while(|b| *b == marker).count();
 			match fence {
+				// A backtick fence's info string may not contain a backtick;
+				// that is how the parser declines ```` ``` `code` ```` as an
+				// opener. Opening it here would hide every definition after
+				// the line.
+				None if marker == b'`' && rest[run..].contains('`') => {}
 				None => fence = Some((marker, run)),
 				// A closing fence carries no info string and is at least as
 				// long as its opener. ```` ```rust ```` inside an open fence is
@@ -1956,5 +1961,17 @@ mod tests {
 		assert!(!links.is_empty());
 		assert!(links.iter().all(|link| link == "url"), "{links:?}");
 		assert_reference_resolution(&doc);
+	}
+
+	/// A backtick fence whose info string holds a backtick opens nothing, while
+	/// a tilde fence may carry one. A scan that ignored the rule opened a fence
+	/// the parser had declined and hid every definition after it (a recorded
+	/// `refdef` finding).
+	#[test]
+	fn a_backtick_in_a_backtick_fence_info_string_opens_nothing() {
+		let declined = "text\n```rust `code`\nstill text\n\n[a]: /u\n";
+		assert_eq!(definition_scan(declined).definitions.len(), 1);
+		let tilde = "~~~rust `code`\n[a]: /u\n~~~\n";
+		assert_eq!(definition_scan(tilde).definitions.len(), 0);
 	}
 }
