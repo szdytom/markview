@@ -925,72 +925,90 @@ test("the selection length tracks the selection and clears with it", async ({ pa
 
 // --- 24. Initial sizing and resize stay inside the device's limits -----------
 
-test("initial sizing and a high-DPR resize stay inside the device limits", async ({ browser }) => {
-  // The WebGL2 device is created with downlevel defaults, whose texture edge is
-  // 2048; a DPR-2 context is what makes a 1200-px canvas exceed it.
-  const context = await browser.newContext({
-    deviceScaleFactor: 2,
-    viewport: { width: 1200, height: 900 },
-  });
-  const page = await context.newPage();
-  const diag = { console: [], pageErrors: [] };
-  page.on("console", (msg) => {
-    if (msg.type() === "error" || msg.type() === "warning") {
-      diag.console.push(`[${msg.type()}] ${msg.text()}`);
-    }
-  });
-  page.on("pageerror", (err) => diag.pageErrors.push(String(err)));
-  const baseURL = test.info().project.use.baseURL ?? "http://127.0.0.1:4173";
-  await page.goto(`${baseURL}/test-reader.html`);
-  await page.waitForFunction(() => window.__markviewReady === true, null, { timeout: 90_000 });
+test.describe("device texture limits", () => {
+  test.use({ deviceScaleFactor: 2, viewport: { width: 1200, height: 900 } });
 
-  const result = await page.evaluate(async () => {
-    const Markview = window.mv.constructor;
-    const canvas = document.createElement("canvas");
-    canvas.style.cssText = "width:1200px;height:900px";
-    document.body.append(canvas);
-    const dpr = window.devicePixelRatio;
-    const section = (n) => `## Section ${n}\n\nBody text for section ${n}.\n`;
-    const markdown = Array.from({ length: 120 }, (_, i) => section(i)).join("\n");
+  for (const textureLimit of [null, 2048]) {
+    test(`initial sizing and a high-DPR resize stay inside the device limits (${textureLimit ?? "native"})`, async ({
+      page,
+    }) => {
+      if (textureLimit !== null) {
+        // Emulate a smaller adapter so clamping is exercised on any host GPU.
+        await page.addInitScript((limit) => {
+          const getParameter = WebGL2RenderingContext.prototype.getParameter;
+          WebGL2RenderingContext.prototype.getParameter = function (parameter) {
+            const value = getParameter.call(this, parameter);
+            return parameter === this.MAX_TEXTURE_SIZE ? Math.min(value, limit) : value;
+          };
+        }, textureLimit);
+      }
+      const diag = await openDemo(page);
+      await waitForReady(page, diag);
 
-    let created = null;
-    let createError = null;
-    let mv = null;
-    try {
-      mv = await Markview.create(canvas, {});
-      mv.setMarkdown(markdown);
-      created = { width: canvas.width, height: canvas.height, dpr, blocks: mv.stats().blocks };
-    } catch (error) {
-      createError = String(error);
-    }
-    if (!created) return { created, createError, resized: null };
+      const result = await page.evaluate(async () => {
+        const Markview = window.mv.constructor;
+        const canvas = document.createElement("canvas");
+        canvas.style.cssText = "width:1200px;height:900px";
+        document.body.append(canvas);
+        const dpr = window.devicePixelRatio;
+        const section = (n) => `## Section ${n}\n\nBody text for section ${n}.\n`;
+        const markdown = Array.from({ length: 120 }, (_, i) => section(i)).join("\n");
 
-    const resized = { narrowed: mv.resize(1200, 900, 2), width: canvas.width, height: canvas.height };
-    let guard = 0;
-    while (mv.stepPending(8) && guard < 5000) guard += 1;
-    resized.pending = mv.stats().pending;
-    return { created, createError, resized };
-  });
+        let limit = null;
+        let created = null;
+        let createError = null;
+        let mv = null;
+        try {
+          mv = await Markview.create(canvas, {});
+          const gl = canvas.getContext("webgl2");
+          limit = gl.getParameter(gl.MAX_TEXTURE_SIZE);
+          mv.setMarkdown(markdown);
+          const stats = mv.frame();
+          created = {
+            width: canvas.width,
+            height: canvas.height,
+            dpr,
+            blocks: stats.blocks,
+            frames: stats.frames,
+          };
+        } catch (error) {
+          createError = String(error);
+        }
+        if (!created) return { limit, created, createError, resized: null };
 
-  await context.close();
-  console.log(`[device-limits] ${JSON.stringify(result)}`);
-  expect(
-    result.createError,
-    `create() must survive a DPR-2 canvas wider than the device texture limit\n${report(diag)}`,
-  ).toBeNull();
-  expect(result.created, "the handle must be created and lay the document out").not.toBeNull();
-  expect(result.created.dpr, "the context must really run at DPR 2").toBe(2);
-  expect(result.created.width, "the initial backing store must fit the device").toBeLessThanOrEqual(2048);
-  expect(result.created.height, "the initial backing store must fit the device").toBeLessThanOrEqual(2048);
-  expect(result.created.blocks, "the handle must still lay the document out").toBeGreaterThan(0);
-  expect(result.resized.width, "a resize must cap the backing store at the device limit").toBeLessThanOrEqual(2048);
-  expect(result.resized.height, "a resize must cap the backing store at the device limit").toBeLessThanOrEqual(2048);
-  expect(
-    Math.abs(result.resized.width / result.resized.height - 1200 / 900),
-    "capping one edge independently distorts the backing store and desyncs the renderer's scale",
-  ).toBeLessThan(0.02);
-  expect(result.resized.pending, "the reflow must finish").toBe(false);
-  expect(diag.pageErrors, `a high-DPR canvas must not fault the device\n${report(diag)}`).toEqual([]);
+        const resized = {
+          narrowed: mv.resize(900, 1200, 2),
+          width: canvas.width,
+          height: canvas.height,
+        };
+        let guard = 0;
+        while (mv.stepPending(8) && guard < 5000) guard += 1;
+        resized.pending = mv.stats().pending;
+        resized.frames = mv.frame().frames;
+        mv.destroy();
+        canvas.remove();
+        return { limit, created, createError, resized };
+      });
+
+      console.log(`[device-limits] ${JSON.stringify(result)}`);
+      expect(result.createError, `create() must survive a DPR-2 canvas\n${report(diag)}`).toBeNull();
+      expect(result.created, "the handle must be created and lay the document out").not.toBeNull();
+      expect(result.created.dpr, "the context must really run at DPR 2").toBe(2);
+      expect(result.limit, "the adapter must expose a WebGL2 texture limit").toBeGreaterThanOrEqual(2048);
+      if (textureLimit !== null) expect(result.limit).toBe(textureLimit);
+      const width = Math.min(2400, result.limit);
+      const height = Math.round((width * 900) / 1200);
+      expect(result.created.width, "initial sizing must use the adapter's available resolution").toBe(width);
+      expect(result.created.height, "initial sizing must preserve the aspect ratio").toBe(height);
+      expect(result.created.frames, "the initial backing store must render").toBeGreaterThan(0);
+      expect(result.created.blocks, "the handle must still lay the document out").toBeGreaterThan(0);
+      expect(result.resized.width, "a tall resize must preserve the aspect ratio").toBe(height);
+      expect(result.resized.height, "a resize must use the adapter's available resolution").toBe(width);
+      expect(result.resized.frames, "the resized backing store must render").toBeGreaterThan(result.created.frames);
+      expect(result.resized.pending, "the reflow must finish").toBe(false);
+      expect(diag.pageErrors, `a high-DPR canvas must not fault the device\n${report(diag)}`).toEqual([]);
+    });
+  }
 });
 
 // --- 25. A pending replacement keeps the requested scroll through input ------
