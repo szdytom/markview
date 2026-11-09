@@ -283,7 +283,17 @@ pub fn definition_scan(source: &str) -> DefinitionScan {
 	};
 	let mut fence: Option<u8> = None;
 	let mut html: Option<HtmlEnd> = None;
-	let all = lines(source);
+	// YAML front matter is not Markdown: a fence inside it is literal text and
+	// a `[label]:` line inside it declares nothing. Without this skip the
+	// fence tracker would take a ```` ``` ```` in the YAML for an opener and
+	// hide every definition that follows the block — measured as a spurious
+	// "the parser invented a destination" on the `dialect` seed and its
+	// mutants.
+	let front_matter = front_matter_end(source);
+	let all: Vec<_> = lines(source)
+		.into_iter()
+		.filter(|(_, at)| front_matter.is_none_or(|end| *at >= end))
+		.collect();
 	for (index, (line, at)) in all.iter().enumerate() {
 		let (line, at) = (*line, *at);
 		let rest = line.trim_start_matches(' ');
@@ -567,6 +577,34 @@ pub fn normalize_label(label: &str) -> String {
 		out.extend(c.to_lowercase());
 	}
 	out
+}
+
+/// The byte offset just past the line that closes the front matter `source`
+/// opens, or `None` when the document opens none.
+///
+/// The parser's rule: the first line is exactly `---`, and the closer is the
+/// next `---` line after at least one body line. A document whose only later
+/// `---` sits right below the opener holds no front matter.
+fn front_matter_end(source: &str) -> Option<usize> {
+	let all = lines(source);
+	if all.first().map(|(line, _)| *line) != Some("---") {
+		return None;
+	}
+	all.iter()
+		.skip(2)
+		.find(|(line, _)| *line == "---")
+		.map(|(_, at)| {
+			at + 3
+				+ match source.as_bytes().get(at + 3) {
+					Some(b'\r') => {
+						1 + usize::from(
+							source.as_bytes().get(at + 4) == Some(&b'\n'),
+						)
+					}
+					Some(b'\n') => 1,
+					_ => 0,
+				}
+		})
 }
 
 /// Every line of `source` as `(content, byte offset)`, where a line ends at
@@ -1838,5 +1876,35 @@ mod tests {
 			))
 			.is_empty()
 		);
+	}
+
+	/// A fence inside YAML front matter is literal text, not a code fence: the
+	/// scan must still see the definition that follows the block. Without the
+	/// skip, the recorded `dialect`-mutant findings read `definitions: []`
+	/// while the parser legitimately resolved the link.
+	#[test]
+	fn a_definition_after_front_matter_is_found() {
+		let source =
+			"---\ntitle: t\n```rust\nfn main() {}\n---\n\n[a]: /u\n\n[x][a]\n";
+		let scan = definition_scan(source);
+		assert_eq!(scan.definitions.len(), 1, "{:?}", scan.definitions);
+		assert_eq!(scan.definitions[0].label, "a");
+		assert!(scan.complete);
+	}
+
+	/// An opener without a closer holds no front matter: everything after it
+	/// is ordinary Markdown, so a definition below it still counts.
+	#[test]
+	fn an_unclosed_front_matter_line_is_not_skipped() {
+		let source = "---\ntitle: t\n\n[a]: /u\n";
+		assert_eq!(definition_scan(source).definitions.len(), 1);
+	}
+
+	/// A document that opens with a thematic break is not front matter, even
+	/// when a later `---` line exists.
+	#[test]
+	fn a_thematic_break_is_not_front_matter() {
+		let source = "text\n\n---\n\n```\ncode\n```\n\n[a]: /u\n";
+		assert_eq!(definition_scan(source).definitions.len(), 1);
 	}
 }
