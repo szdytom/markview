@@ -3,6 +3,9 @@
 #
 #   campaign-supervisor.sh [hours]
 #
+# `hours` may be fractional, so an overnight window can end on a wall-clock
+# deadline instead of the nearest whole hour.
+#
 # The Lead runs this for the overnight window. It is a *fill* loop, not a
 # scheduler: each tick it counts the free slots, starts exactly that many
 # blocks, and returns. Blocks go through `campaign.sh`, so pinning, the RSS
@@ -20,7 +23,7 @@ set -uo pipefail
 root=$(cd "$(dirname "$0")/../.." && pwd)
 cd "$root"
 hours=${1:-6}
-deadline=$(( $(date +%s) + hours * 3600 ))
+deadline=$(( $(date +%s) + $(awk -v h="$hours" 'BEGIN { printf "%d", h * 3600 }') ))
 log="$root/artifacts/fuzz-next/supervisor.log"
 # `.slots` is gitignored, so a fresh checkout lacks it and every lock open in
 # `free_slots` would fail, reporting zero free slots for the whole window.
