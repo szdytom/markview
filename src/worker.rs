@@ -60,6 +60,9 @@ pub struct Update {
 
 type Inbox = crate::mailbox::Inbox<Request>;
 
+#[cfg(test)]
+mod proptests;
+
 /// Publication decisions use elapsed layout time, so small but expensive
 /// documents can show completed blocks without waiting for a full viewport.
 struct PrefixPublication {
