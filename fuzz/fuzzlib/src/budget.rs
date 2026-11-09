@@ -81,11 +81,16 @@ impl Budget {
 		}
 	}
 	/// Math formulas may expand to their configured `math_bytes` limit, which
-	/// is larger than the parse window for a tiny source formula.
+	/// is larger than the parse window for a tiny source formula. The engine's
+	/// working set is bounded by that limit, not by the source: a 394-byte
+	/// self-recursive macro at the default 8 MiB limit peaks at 41 MiB and,
+	/// under ASAN, takes 5-10 s, so the figures cover the limit rather than a
+	/// measured input. The wall figure keeps the factor of two over the
+	/// measured maximum.
 	pub fn math() -> Self {
 		Self {
-			time_ms: 5_000,
-			alloc_base: 32 * 1024 * 1024,
+			time_ms: 20_000,
+			alloc_base: 64 * 1024 * 1024,
 			alloc_per_kib: 1_024 * 1024,
 		}
 	}
