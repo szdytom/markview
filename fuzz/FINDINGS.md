@@ -166,6 +166,21 @@ earlier reference literal until a line follows is not yet reduced to a minimal
 document.) The differential stays strict, so these three remain known findings
 until the parser's behaviour is settled upstream.
 
+### comrak: inline columns expand tabs, block columns do not
+
+Comrak documents sourcepos columns as UTF-8 byte offsets, and its block
+positions follow that. Its *inline* positions count a tab as the columns it
+advances (to the next multiple of four), so a range after a tab overshoots by
+the difference. On the recorded `sourcepos_content` input
+(`crash-3a71ac1b…`) the list item and its paragraph end at `4:18` — byte
+correct — while the paragraph's last `Text` is reported at `4:4-4:20` for a
+line that starts with one tab followed by `tab-indented line`. Markview maps
+comrak's columns to bytes, so that inline's range runs two bytes past its
+block.
+
+The target has no stand-down for this, so its two recorded inputs stay open
+until the positions are fixed upstream.
+
 ## Campaign record
 
 All runs are `cargo +nightly fuzz build` builds (ASAN) on one 16-core Linux
