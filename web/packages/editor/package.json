@@ -1,6 +1,6 @@
 {
   "name": "@markview/editor",
-  "version": "0.5.0",
+  "version": "0.5.1",
   "description": "Framework-independent CodeMirror and Markview split editor",
   "license": "MIT",
   "type": "module",

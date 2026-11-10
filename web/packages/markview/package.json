@@ -1,6 +1,6 @@
 {
   "name": "@markview/viewer",
-  "version": "0.5.0",
+  "version": "0.5.1",
   "description": "Markdown rendered onto a canvas through the Markview engine compiled to WebAssembly",
   "license": "MIT",
   "type": "module",

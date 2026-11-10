@@ -21,6 +21,10 @@ at the same level, without `[brackets]`.
 
 ## Unreleased
 
+## 0.5.1 - 2026-11-10
+
+This is a minor update focused on performance and everyday usability, with faster startup, smoother scrolling, and more reliable rendering.
+
 ### Added
 
 - Open raw Markdown URLs directly with normal Markdown rendering, preserving untrusted resource permissions and resolving relative links against the source URL.
