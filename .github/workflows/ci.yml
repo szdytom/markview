@@ -117,6 +117,9 @@ jobs:
     timeout-minutes: 45
     steps:
       - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '22'
       - uses: dtolnay/rust-toolchain@stable
         with:
           targets: wasm32-unknown-unknown
@@ -134,15 +137,18 @@ jobs:
       - name: Build WASM, packages and the demo site
         working-directory: web
         run: pnpm build
-      - name: Type-check the TypeScript
+      - name: Lint the web workspace
         working-directory: web
-        run: pnpm typecheck
+        run: pnpm lint
       - name: Install the browser the suite drives
         working-directory: web
         run: pnpm exec playwright install --with-deps chromium
       - name: Run the acceptance suite
         working-directory: web
         run: pnpm test
+      - name: Test the package tarballs in a downstream consumer
+        working-directory: web
+        run: pnpm test:packages
 
   # A single required status check for branch protection. Package builds live in
   # `packages.yml`, which is path-filtered: a skipped workflow reports no status

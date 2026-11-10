@@ -148,6 +148,25 @@ class CiInfrastructureTest(unittest.TestCase):
                                      [["+nightly", "fuzz", "run", target, "--", "-runs=100"]
                                       for target in targets])
 
+    def test_web_ci_covers_lint_and_package_consumers(self):
+        workflow = (ROOT / ".github/workflows/ci.yml").read_text()
+        web = re.search(r"^  web:\n(.*?)(?=^  [a-z][\w-]*:)",
+                        workflow, re.MULTILINE | re.DOTALL).group(1)
+        commands = re.findall(r"working-directory: web\n        run: (.+)", web)
+        required = ["pnpm install --frozen-lockfile", "pnpm build", "pnpm lint",
+                    "pnpm exec playwright install --with-deps chromium",
+                    "pnpm test", "pnpm test:packages"]
+        for command in required:
+            self.assertIn(command, commands)
+        self.assertEqual([command for command in commands if command in required], required)
+        self.assertNotIn("continue-on-error:", web)
+        self.assertNotIn("if:", web)
+        gate = workflow.split("\n  ci:\n", 1)[1]
+        self.assertIn("web", re.search(r"needs: \[(.+)\]", gate).group(1).split(", "))
+        scripts = json.loads((ROOT / "web/package.json").read_text())["scripts"]
+        self.assertIn("pnpm typecheck", scripts["lint"])
+        self.assertIn("prettier --check", scripts["lint"])
+
     def test_emulator_retry_gate_rejects_application_failures(self):
         workflow = (ROOT / ".github/workflows/android.yml").read_text()
         gate = re.search(r"- name: Allow a retry only before application tests start\n"
