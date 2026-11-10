@@ -125,6 +125,13 @@ class CiInfrastructureTest(unittest.TestCase):
                     self.assertEqual(calls[1]["args"], ["test", "-p", "markview", "--locked",
                                                       "--lib", "rendering_baselines", "--", "--nocapture"])
 
+    def test_fuzz_check_formats_and_lints_the_standalone_workspace(self):
+        workflow = (ROOT / ".github/workflows/fuzz.yml").read_text()
+        check = workflow.split("\n  smoke:", 1)[0]
+        for command in ("cargo +stable fmt -p markview-fuzz -p mvfuzz -- --check",
+                        "cargo +stable clippy --workspace --all-targets --locked -- -D warnings"):
+            self.assertIn(f"        working-directory: fuzz\n        run: {command}\n", check)
+
     def test_fuzz_shards_cover_every_harness_and_propagate_failures(self):
         workflow = (ROOT / ".github/workflows/fuzz.yml").read_text()
         shards = re.findall(r"^            targets: (.+)$", workflow, re.MULTILINE)

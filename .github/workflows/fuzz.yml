@@ -12,6 +12,11 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
+      # The harness's formatting and lint gates run on stable, like the root
+      # workspace's, so a new nightly lint cannot turn this job red overnight.
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
       - uses: dtolnay/rust-toolchain@nightly
       - uses: Swatinem/rust-cache@v2
         with:
@@ -26,6 +31,15 @@ jobs:
       - name: Verify the fuzz lockfile
         working-directory: fuzz
         run: cargo +nightly metadata --locked --format-version 1 > /dev/null
+      # The root workspace's `cargo fmt` and `cargo clippy` never see this
+      # crate, so the standalone workspace carries its own gate. Name both
+      # packages: a bare `--all` from `fuzz/` reaches the root workspace.
+      - name: Format the harness
+        working-directory: fuzz
+        run: cargo +stable fmt -p markview-fuzz -p mvfuzz -- --check
+      - name: Lint the harness
+        working-directory: fuzz
+        run: cargo +stable clippy --workspace --all-targets --locked -- -D warnings
       # The `fuzz` feature must stay a visibility relaxation only: it
       # compiles in every configuration the libraries support (F5).
       - run: cargo check -p markview-commonmark -p markview-document -p markview-layout -p markview-pdf -p markview-render --features fuzz --locked

@@ -385,11 +385,12 @@ preparation and `-runs=100` budget. The shards together cover every harness
 in `Cargo.toml`; the CI infrastructure test checks that none are skipped or
 repeated. Each shard caches the standalone fuzz workspace separately.
 
-Formatting: `cargo +nightly fmt -p markview-fuzz -p mvfuzz` inside
-`fuzz/`. A bare `cargo fmt --all` here climbs to the *root* workspace and
-reformats the app with the wrong toolchain, so keep the root on stable
-(`cargo fmt --all` at the root) and the harness on nightly, and never
-cross-format.
+Formatting: `cargo +stable fmt -p markview-fuzz -p mvfuzz` inside
+`fuzz/`. A bare `cargo fmt --all` there reaches the *root* workspace and
+reformats the app too, so name the two packages and keep one stable
+toolchain for the whole tree. The `check` job runs that command with
+`-- --check`, and Clippy over the harness with warnings denied, before the
+shards start.
 
 Seeds (C1–C4): `fuzz/scripts/prepare_seeds.sh` shallow-clones the CommonMark
 and GFM repositories and KaTeX, takes the spec/test files, and extracts the
