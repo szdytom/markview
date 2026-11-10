@@ -21,7 +21,7 @@
     "@types/node": "^22.0.0",
     "@types/vscode": "^1.95.0",
     "@vscode/test-electron": "^2.5.2",
-    "@vscode/vsce": "^4.0.0",
+    "@vscode/vsce": "^4.1.0",
     "esbuild": "^0.28.0",
     "prettier": "^3.9.9",
     "typescript": "^5.9.0"
