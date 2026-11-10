@@ -144,18 +144,11 @@ fn trimmed_leading_spacing_keeps_translated_extents() {
 		..Default::default()
 	};
 	let mut engine = pipeline::differential_engine();
-	for source in [
-		"> ## Heading\n",
-		"> ## Heading\n>\n> <a id=\"a\"></a>\n",
-	] {
+	for source in ["> ## Heading\n", "> ## Heading\n>\n> <a id=\"a\"></a>\n"] {
 		let doc = markview_commonmark::parse(source);
 		engine.layout(&doc, &options);
 		let warm = engine.layout(&doc, &options);
 		let cold = pipeline::differential_engine().layout(&doc, &options);
-		assert_eq!(
-			oracle::layout(&warm),
-			oracle::layout(&cold),
-			"{source}"
-		);
+		assert_eq!(oracle::layout(&warm), oracle::layout(&cold), "{source}");
 	}
 }

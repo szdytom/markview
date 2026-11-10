@@ -869,6 +869,9 @@ mod tests {
 	/// magnitude that nearly cancel, so the sum missed a tiny extent by a
 	/// fraction of a percent — several ulp of the operands, and far beyond the
 	/// pre-fix tolerance of `extent * 1e-4`.
+	// The literals keep the decimal form the finding printed, not the shortest
+	// form that round-trips, so the case still reads as recorded.
+	#[allow(clippy::excessive_precision)]
 	#[test]
 	fn fitted_edges_allow_cancellation_rounding() {
 		let cases = [

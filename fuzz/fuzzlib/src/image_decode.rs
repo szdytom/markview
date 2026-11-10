@@ -42,10 +42,10 @@ fn dims(bytes: &[u8]) -> (Option<(u32, u32)>, Option<f32>, bool) {
 		|at: usize| u32::from_le_bytes(bytes[at..at + 4].try_into().unwrap());
 	let width = word(0);
 	let height = word(4);
-	let target = (bytes[11] % 2 != 0).then_some((width, height));
+	let target = (!bytes[11].is_multiple_of(2)).then_some((width, height));
 	let initial = u16::from_le_bytes(bytes[8..10].try_into().unwrap());
 	let initial = (initial != 0).then(|| f32::from(initial) / 4.);
-	(target, initial, bytes[10] % 2 != 0)
+	(target, initial, !bytes[10].is_multiple_of(2))
 }
 
 fn assert_decoded(decoded: &Decoded) {

@@ -299,14 +299,14 @@ impl<'a> Gen<'a> {
 				},
 				_ => TextStyle::default(),
 			};
-			let href = (self.byte() % 5 == 0).then(|| {
+			let href = self.byte().is_multiple_of(5).then(|| {
 				LINKS[usize::from(self.byte()) % LINKS.len()].to_owned()
 			});
 			// An inline formula is a run like any other: its TeX is the
 			// paragraph's reading text at that position.
 			// A formula inside `code` is literal text, so the generator only
 			// asks for math on a non-code run.
-			let math = (!style.code && self.byte() % 8 == 0)
+			let math = (!style.code && self.byte().is_multiple_of(8))
 				.then(|| format!("{} + {}", self.marker(), self.word()));
 			let text = match &math {
 				Some(latex) => latex.clone(),
@@ -370,7 +370,7 @@ impl<'a> Gen<'a> {
 	fn heading(&mut self) -> Expected {
 		let level = 2 + self.byte() % 3;
 		let text = self.sentence();
-		let id = (self.byte() % 3 == 0).then(|| self.id());
+		let id = self.byte().is_multiple_of(3).then(|| self.id());
 		let attr = match &id {
 			Some(id) => format!(" id=\"{id}\""),
 			None => String::new(),
@@ -386,11 +386,11 @@ impl<'a> Gen<'a> {
 	}
 
 	fn list(&mut self, depth: usize) -> Expected {
-		let ordered = self.byte() % 2 == 0;
-		let reversed = ordered && self.byte() % 3 == 0;
-		let start = (ordered && self.byte() % 3 == 0)
+		let ordered = self.byte().is_multiple_of(2);
+		let reversed = ordered && self.byte().is_multiple_of(3);
+		let start = (ordered && self.byte().is_multiple_of(3))
 			.then(|| 1 + isize::from(self.byte() % 5));
-		let loose = self.byte() % 3 == 0;
+		let loose = self.byte().is_multiple_of(3);
 		let count = 1 + usize::from(self.byte()) % 3;
 		let tag = if ordered { "ol" } else { "ul" };
 		let reversed_attr = if reversed { " reversed" } else { "" };
@@ -403,7 +403,10 @@ impl<'a> Gen<'a> {
 		let mut items = Vec::new();
 		for _ in 0..count {
 			self.html.push_str("<li>");
-			let checked = (self.byte() % 4 == 0).then(|| self.byte() % 2 == 0);
+			let checked = self
+				.byte()
+				.is_multiple_of(4)
+				.then(|| self.byte().is_multiple_of(2));
 			if let Some(checked) = checked {
 				self.html.push_str(&format!(
 					"<input type=\"checkbox\"{}>",
@@ -418,7 +421,7 @@ impl<'a> Gen<'a> {
 				self.html.push_str(&html);
 			}
 			let mut blocks = vec![Expected::Paragraph(paragraph)];
-			if depth < 2 && self.byte() % 3 == 0 {
+			if depth < 2 && self.byte().is_multiple_of(3) {
 				let nested = self.list(depth + 1);
 				blocks.push(nested);
 			}
@@ -466,7 +469,7 @@ impl<'a> Gen<'a> {
 	}
 
 	fn math(&mut self) -> Expected {
-		let display = self.byte() % 3 == 0;
+		let display = self.byte().is_multiple_of(3);
 		let latex = format!("{} + {}", self.marker(), self.word());
 		if display {
 			self.html.push_str(&format!(
@@ -481,7 +484,7 @@ impl<'a> Gen<'a> {
 	}
 
 	fn details(&mut self, depth: usize) -> Expected {
-		let open = self.byte() % 2 == 0;
+		let open = self.byte().is_multiple_of(2);
 		let summary = self.sentence();
 		self.html.push_str(&format!(
 			"<details{}><summary>{summary}</summary>",
@@ -556,12 +559,12 @@ impl<'a> Gen<'a> {
 	}
 
 	fn table(&mut self) -> Expected {
-		let with_caption = self.byte() % 3 == 0;
+		let with_caption = self.byte().is_multiple_of(3);
 		let head = usize::from(self.byte() % 2);
 		// `dom_smoothie` unwraps a single-cell table, so the grid needs at
 		// least two rows.
 		let body = 2 + usize::from(self.byte() % 2);
-		let foot = usize::from(self.byte() % 3 == 0);
+		let foot = usize::from(self.byte().is_multiple_of(3));
 		let columns = 2 + usize::from(self.byte() % 3);
 		let mut groups_html = String::new();
 		let mut groups = Vec::new();

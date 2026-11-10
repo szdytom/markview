@@ -38,8 +38,8 @@ fn member_name(index: usize, data: &[u8]) -> String {
 	} else {
 		base
 	};
-	if index % 3 == 0 {
-		format!("{base}")
+	if index.is_multiple_of(3) {
+		base.to_owned()
 	} else {
 		format!("nested/{base}")
 	}
@@ -153,7 +153,7 @@ pub fn check(data: &[u8]) {
 			let out = dir.path().join("out");
 			let _ = std::fs::create_dir(&out);
 			let Ok(mut members) =
-				unpack(container, &path, &[pattern.clone()], &out)
+				unpack(container, &path, std::slice::from_ref(&pattern), &out)
 			else {
 				continue;
 			};

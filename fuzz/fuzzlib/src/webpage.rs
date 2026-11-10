@@ -642,7 +642,7 @@ fn assert_anchors(document: &Document) {
 					"anchor {anchor:?} is declared twice"
 				);
 				assert_eq!(
-					document.fragment_enclosing(&anchor),
+					document.fragment_enclosing(anchor),
 					open,
 					"anchor {anchor:?} is filed under the wrong disclosures"
 				);

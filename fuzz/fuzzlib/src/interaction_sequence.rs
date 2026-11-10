@@ -102,12 +102,12 @@ pub fn check(data: &[u8]) {
 	let mut pan = PanFeed::default();
 	let steps = 1 + usize::from(byte(controls, 1) % 12);
 	for step in 0..steps {
-		if step == steps / 2 && byte(controls, 2) % 3 == 0 {
+		if step == steps / 2 && byte(controls, 2).is_multiple_of(3) {
 			let mut options = base.clone();
 			options.width = 80. + f32::from(byte(controls, 3)) * 6.;
 			snapshot = engine.layout(&document, &options).flattened();
 		}
-		if byte(controls, 2) % 2 == 0 {
+		if byte(controls, 2).is_multiple_of(2) {
 			let open: BTreeMap<_, _> = snapshot
 				.blocks
 				.iter()
@@ -137,7 +137,7 @@ pub fn check(data: &[u8]) {
 		);
 		state.cursor = point;
 		state.modifiers = Modifiers {
-			shift: byte(controls, 11) % 2 != 0,
+			shift: !byte(controls, 11).is_multiple_of(2),
 			..Default::default()
 		};
 		if let Some(position) = interaction.position(point) {

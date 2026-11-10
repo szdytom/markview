@@ -357,8 +357,7 @@ pub fn check_document(
 								(
 									(b, n),
 									(overflow.content_width - overflow.rect.w)
-										.max(0.)
-										* 0.5,
+										.max(0.) * 0.5,
 								)
 							},
 						)
@@ -368,10 +367,8 @@ pub fn check_document(
 				{
 					assert!(
 						rect.x.is_finite()
-							&& rect.y.is_finite()
-							&& rect.w.is_finite()
-							&& rect.h.is_finite()
-							&& rect.w >= 0.
+							&& rect.y.is_finite() && rect.w.is_finite()
+							&& rect.h.is_finite() && rect.w >= 0.
 							&& rect.h >= 0.,
 						"query={query:?} hit={hit:?} rect={rect:?}"
 					);

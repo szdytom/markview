@@ -48,7 +48,7 @@ fn check_structured(data: &[u8]) -> bool {
 	let size = 12. + f32::from(data[4]) / 4.;
 	if let Ok(box_) = engine.layout(
 		&latex,
-		data[5] % 2 == 0,
+		data[5].is_multiple_of(2),
 		size,
 		&markview_layout::style::TextAppearance::default(),
 	) {

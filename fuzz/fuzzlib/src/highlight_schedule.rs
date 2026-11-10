@@ -101,7 +101,7 @@ pub fn check(data: &[u8]) {
 		..Default::default()
 	};
 	let mut options = base.clone();
-	let executor = Arc::new(Controlled::new(controls[0] % 2 == 0));
+	let executor = Arc::new(Controlled::new(controls[0].is_multiple_of(2)));
 	let mut engine =
 		LayoutEngine::with_executor(executor.clone(), Arc::new(|| {}));
 	let mut current = &doc_a;
