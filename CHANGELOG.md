@@ -27,11 +27,12 @@ at the same level, without `[brackets]`.
 
 ### Changed
 
-- Reduce Windows startup work by skipping unused indirect-draw validation and redundant GPU surface reconfiguration.
+- Reduce Windows startup work by skipping unused indirect-draw validation and redundant GPU surface reconfiguration (#39).
 - Speed up styled paragraphs and highlighted code with indexed reading, style and syntax-color ranges, and avoid repeated whitespace scans and discarded tail solutions during line breaking, preserving typography, selection and copying.
 
 ### Fixed
 
+- Open the window already showing its first frame on Windows instead of a blank one for the whole startup (#39).
 - Avoid Android startup failures when falling back from Vulkan to OpenGL ES, including on screens larger than 2048 pixels.
 - Keep natural spacing on lines ending with an HTML `<br>` instead of stretching them to the full text width.
 - Smooth consecutive mouse-wheel steps by preserving scroll velocity and avoiding accumulated travel at document boundaries.
