@@ -84,9 +84,9 @@ local runs keep the three-minute default per phase, adjustable with `--timeout`.
 The full suite runs in a reproducibly shuffled order in CI.
 CI emulators use four cores and 4 GiB RAM. AOSP images omit Google services.
 Instrumentation closes ANR dialogs from Quickstep or Pixel Launcher and waits
-for Markview to regain focus before reader touches. The test runner grants the
-app All files access with `appops` and writes its folder fixture under shared
-storage.
+for the target window to regain focus before touches and key input. The test
+runner grants the app All files access with `appops` and writes its folder
+fixture under shared storage.
 CI explicitly selects gesture navigation on both devices.
 Device tests wait for viewport and reading-width layout to settle before assertions.
 Native inspection retries empty replies while rendering or resuming; system-bar
@@ -201,6 +201,8 @@ a union; an empty match fails before building or contacting the device.
 Add new cases by extending `AndroidTest` and registering their instrumentation
 in `android/tests/AndroidManifest.xml`; the host discovers that manifest directly.
 Use `openReader()` and fixture helpers to prepare prerequisites within the case.
+Send keys with `pressKey()` so launcher ANR recovery runs before input;
+pass `"documentsui"` as the second argument when cancelling a system picker.
 Do not rely on another class to change settings, open tabs or create files.
 
 Reports and screenshots are written under `artifacts/android/phone/<ClassName>/`

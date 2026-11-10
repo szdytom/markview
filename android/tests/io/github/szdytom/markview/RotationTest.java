@@ -15,7 +15,7 @@ public class RotationTest extends AndroidTest {
             JSONArray size = rotated.getJSONArray("dimensions");
             require(size.getDouble(0) < size.getDouble(1) && rotated.getBoolean("phone_layout"), "Phone remains portrait when the device rotates");
             tap("Tabs");
-            sendKeyDownUpSync(KeyEvent.KEYCODE_BACK);
+            pressKey(KeyEvent.KEYCODE_BACK);
             waitFor(s -> s.optString("panel").equals("Closed"));
             pass("Phone portrait lock and Back dismissal of the tab drawer");
         } else {
@@ -29,7 +29,7 @@ public class RotationTest extends AndroidTest {
             for (int i = 0; i < 9; i++) tap("Wider");
             waitFor(s -> s.optDouble("column_width") >= 760);
             screenshot("landscape-settings");
-            sendKeyDownUpSync(KeyEvent.KEYCODE_BACK);
+            pressKey(KeyEvent.KEYCODE_BACK);
             waitFor(s -> s.optString("panel").equals("Closed"));
             stableLayout();
             screenshot("tablet-tabs");

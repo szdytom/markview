@@ -10,6 +10,11 @@ final class SystemWindowWait {
         void idle(long timeout) throws Exception;
     }
 
+    static void send(Probe probe, String name, Runnable input) throws Exception {
+        await(probe, name);
+        input.run();
+    }
+
     static void await(Probe probe, String name) throws Exception {
         long deadline = probe.now() + 15000;
         long recoverAfter = 0;

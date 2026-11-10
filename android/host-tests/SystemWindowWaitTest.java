@@ -38,6 +38,27 @@ public final class SystemWindowWaitTest {
         SystemWindowWait.await(normal, "reader");
         assert normal.time == 0 && normal.idled == 0 : "Normal taps need no recovery delay";
 
+        int[] keys = {0};
+        SystemWindowWait.send(normal, "reader", () -> keys[0]++);
+        assert keys[0] == 1 && normal.time == 0 : "Focused input is sent once without a delay";
+
+        Probe blockedBack = new Probe();
+        blockedBack.anrAt = 0;
+        blockedBack.busyUntil = 2500;
+        SystemWindowWait.send(blockedBack, "reader", () -> {
+            assert blockedBack.closed == 1 && blockedBack.idled == 1 && blockedBack.time == 3500
+                : "Back must wait for the launcher ANR to close and the system to recover";
+            keys[0]++;
+        });
+        assert keys[0] == 2 : "Recovery sends Back exactly once";
+
+        Probe picker = new Probe();
+        picker.focusAt = 500;
+        SystemWindowWait.send(picker, "documentsui", () -> {
+            assert picker.time == 500 : "Picker cancellation waits for the picker window";
+            keys[0]++;
+        });
+
         Probe restart = new Probe();
         restart.anrAt = 0;
         restart.busyUntil = 2500;
@@ -78,6 +99,16 @@ public final class SystemWindowWaitTest {
             assert busy.idled == 1;
         }
 
+        Probe blocked = new Probe();
+        blocked.anrAt = 0;
+        blocked.busyUntil = 15000;
+        try {
+            SystemWindowWait.send(blocked, "reader", () -> keys[0]++);
+            throw new AssertionError("A busy system must prevent key injection");
+        } catch (TimeoutException expected) {
+            assert keys[0] == 3 : "An idle timeout must not send input";
+        }
+
         Probe missingWindow = new Probe();
         missingWindow.focusAt = Long.MAX_VALUE;
         try {
@@ -86,6 +117,14 @@ public final class SystemWindowWaitTest {
         } catch (AssertionError error) {
             assert error.getMessage().equals("System window: documentsui") : error;
             assert missingWindow.time == 15000;
+        }
+
+        try {
+            SystemWindowWait.send(missingWindow, "reader", () -> keys[0]++);
+            throw new AssertionError("A missing window must prevent key injection");
+        } catch (AssertionError error) {
+            assert error.getMessage().equals("System window: reader") : error;
+            assert keys[0] == 3 : "Failed recovery must not send input to another window";
         }
     }
 }

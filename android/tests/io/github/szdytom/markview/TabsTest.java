@@ -61,8 +61,7 @@ public class TabsTest extends AndroidTest {
             waitFor(s -> s.optString("panel").equals("Closed"));
             tap("Tabs");
             tap("Open");
-            waitSystem("documentsui");
-            sendKeyDownUpSync(KeyEvent.KEYCODE_BACK);
+            pressKey(KeyEvent.KEYCODE_BACK, "documentsui");
             waitFor(s -> s.optString("panel").equals("Closed"));
             pass("Phone drawer closes active/inactive tabs, dismisses on scrim and opens the system picker");
         }

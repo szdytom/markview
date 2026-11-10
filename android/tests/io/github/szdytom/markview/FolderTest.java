@@ -50,7 +50,7 @@ public class FolderTest extends FolderTestSupport {
             tap("SidebarTab(Tabs)");
             require(button(state(), "SelectTab(") != null && button(state(), "FolderEntry(") == null, "Tab page hides folder rows");
             tap("SidebarTab(Folder)");
-            sendKeyDownUpSync(KeyEvent.KEYCODE_BACK);
+            pressKey(KeyEvent.KEYCODE_BACK);
             waitFor(s -> s.optString("panel").equals("Closed"));
             tap("Tabs");
             waitFor(s -> s.optString("sidebar_tab").equals("Folder") && s.optBoolean("folder_open"));
@@ -86,7 +86,7 @@ public class FolderTest extends FolderTestSupport {
         try { activity.getContentResolver().openFileDescriptor(grant, "w"); } catch (java.io.FileNotFoundException expected) { refused = true; }
         require(refused, "Provider rejects writes");
         pass("Folder browsing, relative SVG resources and read-only file grants");
-        if (!state().optString("panel").equals("Closed")) sendKeyDownUpSync(KeyEvent.KEYCODE_BACK);
+        if (!state().optString("panel").equals("Closed")) pressKey(KeyEvent.KEYCODE_BACK);
         if (phone) { tap("Tabs"); tap("SidebarTab(Tabs)"); }
         tap("NewPage");
         waitFor(s -> button(s, "FocusInput(Files)") != null && !s.optBoolean("file_search_pending"));

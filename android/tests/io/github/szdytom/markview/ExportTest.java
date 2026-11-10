@@ -21,7 +21,7 @@ public class ExportTest extends FolderTestSupport {
         runOnMainSync(() -> ((MarkviewActivity)activity).onActivityResult(12, Activity.RESULT_OK, new Intent().setData(tree)));
         waitFor(s -> s.optBoolean("ready") && s.optString("path").endsWith("README.md") && loadedImages(s) == 1);
         if (phone) {
-            sendKeyDownUpSync(KeyEvent.KEYCODE_BACK);
+            pressKey(KeyEvent.KEYCODE_BACK);
             waitFor(s -> s.optString("panel").equals("Closed"));
         }
         // Intercept export previews so third-party viewers cannot steal test input.

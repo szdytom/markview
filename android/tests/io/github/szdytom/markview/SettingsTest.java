@@ -56,7 +56,7 @@ public class SettingsTest extends AndroidTest {
         checkLayoutDiagnostics(activity.getResources().getConfiguration().smallestScreenWidthDp);
         tap("SettingsTab(Styles)");
         waitFor(s -> s.optString("panel").equals("Settings(Styles)"));
-        sendKeyDownUpSync(KeyEvent.KEYCODE_BACK);
+        pressKey(KeyEvent.KEYCODE_BACK);
         waitFor(s -> s.optString("panel").equals("Closed"));
         require(!state().getBoolean("instance_listener"), "Android does not register the desktop instance listener");
         screenshot("dark-reader");
@@ -65,12 +65,12 @@ public class SettingsTest extends AndroidTest {
             tap("Tabs");
             waitFor(s -> s.optString("panel").equals("Tabs"));
             screenshot("tab-drawer");
-            sendKeyDownUpSync(KeyEvent.KEYCODE_BACK);
+            pressKey(KeyEvent.KEYCODE_BACK);
             waitFor(s -> s.optString("panel").equals("Closed"));
         }
         pass("Shared settings, typography, font catalogue and styles without desktop file controls");
 
-        sendKeyDownUpSync(KeyEvent.KEYCODE_HOME);
+        pressKey(KeyEvent.KEYCODE_HOME);
         SystemClock.sleep(600);
         getTargetContext().startActivity(new Intent(getTargetContext(), MarkviewActivity.class).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK));
         JSONObject resumed = waitFor(s -> s.optString("backend").length() > 0 && s.optBoolean("ready") && s.optJSONArray("tabs").length() == 1);

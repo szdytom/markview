@@ -22,7 +22,7 @@ public class LifecycleTest extends AndroidTest {
         double fontSize = state().getDouble("font_size");
         tap("Larger");
         waitFor(s -> s.optDouble("font_size") > fontSize);
-        sendKeyDownUpSync(android.view.KeyEvent.KEYCODE_BACK);
+        pressKey(android.view.KeyEvent.KEYCODE_BACK);
         waitFor(s -> s.optString("panel").equals("Closed"));
         selectDarkStyle();
         checkLifecycle();

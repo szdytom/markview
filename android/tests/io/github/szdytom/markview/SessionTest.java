@@ -33,7 +33,7 @@ public class SessionTest extends AndroidTest {
             require(activity == previous && !previous.isDestroyed() && expected.getJSONArray("tabs").length() == 2, "External opens reuse the singleTask Activity");
             require(expected.getBoolean("restore_session") && expected.getBoolean("single_instance") && !expected.getBoolean("instance_listener"), "Android defaults enable session restore without desktop IPC");
             Files.write(expectedFile.toPath(), expected.toString().getBytes(StandardCharsets.UTF_8));
-            sendKeyDownUpSync(KeyEvent.KEYCODE_HOME);
+            pressKey(KeyEvent.KEYCODE_HOME);
             long deadline = SystemClock.uptimeMillis() + 5000;
             while ((!session.exists() || new JSONObject(new String(Files.readAllBytes(session.toPath()), StandardCharsets.UTF_8)).getJSONArray("tabs").length() != 2) && SystemClock.uptimeMillis() < deadline) SystemClock.sleep(50);
             require(session.exists(), "Background saves the session");

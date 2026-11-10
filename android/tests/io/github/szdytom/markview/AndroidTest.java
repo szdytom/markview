@@ -112,7 +112,7 @@ public abstract class AndroidTest extends Instrumentation {
             if ("dark".equals(styles.getString(i)) && !current.optString("selected_styles").contains("dark")) tap("StyleToggle(" + i + ")");
         }
         waitFor(s -> s.optString("selected_styles").contains("dark"));
-        sendKeyDownUpSync(KeyEvent.KEYCODE_BACK);
+        pressKey(KeyEvent.KEYCODE_BACK);
         waitFor(s -> s.optString("panel").equals("Closed") && s.optBoolean("ready"));
     }
     protected void checkLayoutDiagnostics(int width) throws Exception {
@@ -201,7 +201,19 @@ public abstract class AndroidTest extends Instrumentation {
         require(button(current, "Narrower") != null && button(current, "Wider") != null, "Column width controls are offered only on tablets");
     }
     protected void waitSystem(String name) throws Exception {
-        SystemWindowWait.await(new SystemWindowWait.Probe() {
+        SystemWindowWait.await(systemWindow(name), name);
+    }
+    protected void pressKey(int key) throws Exception {
+        pressKey(key, getTargetContext().getPackageName());
+    }
+    protected void pressKey(int key, String window) throws Exception {
+        SystemWindowWait.send(systemWindow(window), window, () -> {
+            android.util.Log.i("MarkviewTest", "Key " + KeyEvent.keyCodeToString(key) + " in " + window);
+            sendKeyDownUpSync(key);
+        });
+    }
+    private SystemWindowWait.Probe systemWindow(String name) {
+        return new SystemWindowWait.Probe() {
             public long now() { return SystemClock.uptimeMillis(); }
             public void sleep() { SystemClock.sleep(100); }
             public boolean closeLauncherAnr() throws Exception {
@@ -221,7 +233,7 @@ public abstract class AndroidTest extends Instrumentation {
             public void idle(long timeout) throws Exception {
                 getUiAutomation().waitForIdle(1000, timeout);
             }
-        }, name);
+        };
     }
     protected void clickText(String text) throws Exception {
         android.accessibilityservice.AccessibilityServiceInfo service = getUiAutomation().getServiceInfo();

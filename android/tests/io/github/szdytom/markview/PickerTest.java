@@ -15,15 +15,13 @@ public class PickerTest extends AndroidTest {
             runOnMainSync(() -> ((MarkviewActivity)activity).pickDocument(""));
         }
         SystemClock.sleep(350);
-        waitSystem("documentsui");
-        sendKeyDownUpSync(KeyEvent.KEYCODE_BACK);
+        pressKey(KeyEvent.KEYCODE_BACK, "documentsui");
         waitFor(s -> s.optString("backend").length() > 0 && s.optJSONArray("tabs").length() == 1 && s.optString("panel").equals("Closed"));
         waitSystem(getTargetContext().getPackageName());
         stableLayout();
         pass("Android Storage Access Framework picker and cancellation");
         runOnMainSync(() -> ((MarkviewActivity)activity).pickFolder(""));
-        waitSystem("documentsui");
-        sendKeyDownUpSync(KeyEvent.KEYCODE_BACK);
+        pressKey(KeyEvent.KEYCODE_BACK, "documentsui");
         waitFor(s -> s.optString("backend").length() > 0);
         waitSystem(getTargetContext().getPackageName());
         stableLayout();
