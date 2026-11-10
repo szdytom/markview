@@ -9,12 +9,35 @@ A release request authorizes the version commit, the tag, and the push that trig
 
 ## Before you start
 
-1. **Start with a clean `main`.** The user's workspace must be up to date with `main` and have no uncommitted changes.
-2. **The latest CI must be green.** The current `main` must have a passing CI run. Use `gh` to check the latest run for `main` and confirm it is green.
+1. **Start with a clean, synchronized `main`.** The user's workspace must be on `main`
+   with no uncommitted changes. Fetch the remote `main` and confirm its HEAD equals the
+   local HEAD.
+2. **All CI checks for that HEAD must pass.** Use `gh` to inspect the latest attempts of
+   all CI checks and their jobs for that exact commit. Do not limit the
+   check to the workflow named `CI` or accept a passing run for an older commit.
+   If local and remote HEAD are synchronized and checks are queued or running with no
+   failed check or job, wait by default until they finish, without a timeout. Inspect
+   intermediate job results too: stop and report immediately if any check or job fails,
+   even while others are still running. Pending checks alone do not mean a failed
+   precondition; do not ask the user whether to wait. Keep the user informed and use
+   short polling intervals so the release-opening discussion below can continue.
+   After waiting, fetch again and recheck the clean workspace, synchronized HEAD and
+   checks before proceeding, so a stale green commit cannot authorize the release.
 3. **Check the changelog.** The "Unreleased" section of `CHANGELOG.md` must be present and in good shape. For minor errors, fix them in the release commit; for larger issues, stop and report.
 4. **Check the version.** The user must explicitly name the version to release. The new specified version must be reasonable (greater than the current version, not skipping a version, etc.). E.g., if the current version is `0.1.1`, the user may release `0.1.2` or `0.2.0`, but not `0.1.3` or `0.1.0`.
 
-If any of these preconditions are not met, stop and report the problem to the user. Do not proceed with the release.
+If a precondition fails, stop and report the problem to the user. While CI is pending
+under the conditions above, keep waiting and discuss the release opening with the user.
+Do not begin the release steps until all preconditions pass and the user has confirmed
+the opening paragraph.
+
+## Discuss the release opening
+
+Draft an opening paragraph from the release's changelog entries, then discuss its
+emphasis and wording with the user. Obtain explicit confirmation of the final text
+before proceeding with the release. A release request alone does not approve this text.
+Start this discussion while waiting for CI when possible; CI passing does not replace
+the user's confirmation, and confirmation does not replace passing CI.
 
 ## Steps
 
@@ -29,8 +52,9 @@ If any of these preconditions are not met, stop and report the problem to the us
    Also set the `--tag v<version>` in the `cargo install` instruction of both `README.md`
    and `README.zh-cn.md` to the release version, so the documented command is pinned.
 2. **Changelog.** Directly under `## Unreleased` in `CHANGELOG.md`, insert
-   `## <version> - <YYYY-MM-DD>` (today's date from `date`) followed by a `**Highlights**`
-   list in the house style below. Leave `## Unreleased` in place and empty. cargo-dist takes
+   `## <version> - <YYYY-MM-DD>` (today's date from `date`) followed by the opening paragraph
+   confirmed by the user, then the release's category headings and entries. Leave
+   `## Unreleased` in place and empty. cargo-dist takes
    the H2 whose version matches the tag as the GitHub Release title and body, so keep it
    bracket-free and unique. Reflow the release's own entries, being careful not to move the
    entries the `## Unreleased` section keeps: on the way in, `## Unreleased` stays directly
@@ -50,37 +74,22 @@ If any of these preconditions are not met, stop and report the problem to the us
 
 ## Release notes style
 
-Every release section from `0.1.11` on opens with a `**Highlights**` bullet list instead of a
-summary paragraph. Entries before `0.1.11` keep their existing prose openers; do not rewrite them.
-
-```markdown
-## 0.1.11 - 2026-10-03
-
-**Highlights**:
-
-- Start a search with `/` and jump straight to the next match.
-- Refined touchpad and wheel scrolling.
-- New setting for singleton mode.
-
-### Added
-```
+New releases open with the prose paragraph confirmed by the user, directly below the
+version heading and before the first `###` category. Do not add a Highlights list.
+Keep all published release sections unchanged, including their existing openers.
 
 Rules:
 
 - Write for users, not developers. Name what a reader can now do or no longer suffers, not the
   module, oracle, target or script that changed. Fuzzing, campaign tooling, packaging and CI work
   belongs in the body: mention it only when it changes what a user can install or run.
-- Keep 4 to 6 bullets, one line each. More than that means the body should carry the rest.
-- Use one consistent voice across the list. Telegraphic noun phrases (`Refined ...`) and
-  imperatives (`Start ...`) both work, but do not mix them with third-person `Fixes ...` lines.
 - Drop filler such as "experience" and "improvements"; state the change or its payoff.
-- Cite issue numbers in the body, not in the highlights.
+- Cite issue numbers in the category entries, not in the opening paragraph.
 - Do not advertise distribution or features that are not live yet. A pending upstream submission
-  (e.g. a first-time WinGet registration) is not a highlight.
+  (e.g. a first-time WinGet registration) does not belong in the opening paragraph.
 - Avoid the bare word "security" unless the release fixes a genuine vulnerability; use
   "robustness and security hardening" when it covers both.
-- Keep the colon on `**Highlights**:`, one blank line before the first bullet, and one blank line
-  after the list before the next `###` heading, so GitHub and the release body render the list.
+- Leave a blank line before and after the opening paragraph.
 
 ## Invariants
 
@@ -96,3 +105,10 @@ Rules:
 - Release from a clean `main`. Pre-1.0, feature releases have shipped as patch bumps, so use
   the version the user names.
 - Artifact matrix and platform requirements: `docs/developers/packaging.md`.
+
+## Additional hints
+
+- If CI waiting seems abnormal, especially a prolonged queue, check
+  [GitHub Status](https://www.githubstatus.com/) for an active incident affecting
+  GitHub Actions. If one is reported, tell the user, link the incident and stop the
+  release process. Otherwise, continue the normal waiting policy.
