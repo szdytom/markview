@@ -391,6 +391,9 @@ public abstract class AndroidTest extends Instrumentation {
     }
     protected void screenshot(String name) throws Exception {
         waitSystem(getTargetContext().getPackageName());
+        captureScreenshot(name);
+    }
+    protected void captureScreenshot(String name) throws Exception {
         SystemClock.sleep(250);
         Bitmap screenshot = getUiAutomation().takeScreenshot();
         require(screenshot != null, "Screenshot");

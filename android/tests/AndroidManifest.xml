@@ -12,6 +12,10 @@
     </application>
     <instrumentation android:name="io.github.szdytom.markview.IntentTest" android:targetPackage="io.github.szdytom.markview" />
     <instrumentation android:name="io.github.szdytom.markview.ReaderTest" android:targetPackage="io.github.szdytom.markview" />
+    <instrumentation android:name="io.github.szdytom.markview.BridgeTest" android:targetPackage="io.github.szdytom.markview" />
+    <instrumentation android:name="io.github.szdytom.markview.JniPanicTest" android:targetPackage="io.github.szdytom.markview" />
+    <instrumentation android:name="io.github.szdytom.markview.ReaderFailureTest" android:targetPackage="io.github.szdytom.markview" />
+    <instrumentation android:name="io.github.szdytom.markview.ReaderPanicTest" android:targetPackage="io.github.szdytom.markview" />
     <instrumentation android:name="io.github.szdytom.markview.LayoutTest" android:targetPackage="io.github.szdytom.markview" />
     <instrumentation android:name="io.github.szdytom.markview.TabsTest" android:targetPackage="io.github.szdytom.markview" />
     <instrumentation android:name="io.github.szdytom.markview.SettingsTest" android:targetPackage="io.github.szdytom.markview" />

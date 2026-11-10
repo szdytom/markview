@@ -234,3 +234,23 @@ cargo test --workspace --locked
 cargo test --lib a_whole_document_png_export_stitches_its_tiles
 cargo clippy --workspace --all-targets --locked -- -D warnings
 ```
+
+## JNI errors
+
+JNI entry points use `EnvUnowned::with_env` to contain Rust panics. Recoverable
+errors become contextual Java exceptions; a caught Rust panic becomes a
+`NativePanic` exception, which ends the reader. Rust-to-Java calls retain the Java
+exception message and stack trace. UI tasks catch errors inside their runnable,
+including picker failures that must cancel the outstanding native request.
+
+Errors appear in system `AlertDialog` widgets with selectable, scrollable
+details, app version, device model, Android version and ABI. Fatal errors use a
+Java-only `ErrorActivity`, so the message remains after `NativeActivity` closes.
+Users can send a screenshot; full details also go to logcat under `Markview`.
+Reports are not persisted or uploaded. Process termination by a native signal,
+driver crash or the OS cannot reliably display a dialog.
+
+Run `BridgeTest`, `JniPanicTest`, `ReaderFailureTest` and `ReaderPanicTest` to
+exercise injected JNI errors, Java exceptions, failed string returns, request
+cancellation, caught panics and fatal error presentation. The failure-injection native export is
+absent from release builds.

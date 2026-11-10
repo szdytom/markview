@@ -41,6 +41,7 @@
                 <data android:mimeType="application/octet-stream" />
             </intent-filter>
         </activity-alias>
+        <activity android:name=".ErrorActivity" android:exported="false" android:theme="@android:style/Theme.Material.Light.Dialog.NoActionBar" />
         <provider android:name=".ReaderProvider" android:authorities="io.github.szdytom.markview.files" android:exported="false" android:grantUriPermissions="true" />
     </application>
 </manifest>

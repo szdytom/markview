@@ -32,21 +32,31 @@ import java.util.concurrent.Executors;
 /** Android permissions and document handoff; Rust owns the complete reader UI. */
 public class MarkviewActivity extends NativeActivity {
     static { System.loadLibrary("markview"); }
+    /** A caught Rust panic must end the current reader run. */
+    public static final class NativePanic extends RuntimeException {
+        private static final long serialVersionUID = 1L;
+        public NativePanic(String details) { super(details); }
+    }
     private static final int OPEN = 10, SAVE = 11, TREE = 12, ASSETS = 13, ALL_FILES = 14;
     private final ExecutorService io = Executors.newSingleThreadExecutor();
     private final Map<String, Uri> exports = new ConcurrentHashMap<>();
     private android.view.View inputView;
     private android.view.View readerFocus;
     private android.view.ActionMode inputMenu;
-    private boolean destroyed;
+    private volatile boolean destroyed;
+    private volatile boolean fatalError;
+    private android.app.AlertDialog errorDialog;
+    private String errorDetails;
     private String outputName;
     private File assetDirectory;
     private static native void nativeResult(int kind, String path);
+    private static native void nativeDelete(int before, int after, boolean codePoints);
     static native String nativeSharedUrl(String text);
     static native String nativeSnapshot();
     static native boolean nativeBridgeReferencesReleased();
+    static native void nativeTestFailure(int kind);
     public void systemBars(String mode) {
-        runOnUiThread(() -> {
+        onUi("Update system bars", -1, () -> {
             boolean light = "light".equals(mode);
             if (android.os.Build.VERSION.SDK_INT >= 30) {
                 android.view.WindowInsetsController controller = getWindow().getInsetsController();
@@ -59,11 +69,11 @@ public class MarkviewActivity extends NativeActivity {
             }
         });
     }
-    public void backgroundTask(String ignored) { runOnUiThread(() -> moveTaskToBack(true)); }
+    public void backgroundTask(String ignored) { onUi("Background reader", -1, () -> moveTaskToBack(true)); }
 
     /** The focused input supplies a connection before bulk text reaches the native key queue. */
     public void inputFocus(String enabled) {
-        runOnUiThread(() -> {
+        onUi("Focus input", -1, () -> {
             android.view.inputmethod.InputMethodManager ime = (android.view.inputmethod.InputMethodManager)getSystemService(INPUT_METHOD_SERVICE);
             if (enabled.isEmpty()) {
                 if (inputMenu != null) inputMenu.finish();
@@ -83,12 +93,12 @@ public class MarkviewActivity extends NativeActivity {
                         return new android.view.inputmethod.BaseInputConnection(this, false) {
                             @Override public boolean deleteSurroundingText(int before, int after) {
                                 if (getEditable().length() != 0) return super.deleteSurroundingText(before, after);
-                                deliver(8, Math.max(0, before) + "," + Math.max(0, after));
+                                deleteInput(before, after, false);
                                 return true;
                             }
                             @Override public boolean deleteSurroundingTextInCodePoints(int before, int after) {
                                 if (getEditable().length() != 0) return super.deleteSurroundingTextInCodePoints(before, after);
-                                deliver(9, Math.max(0, before) + "," + Math.max(0, after));
+                                deleteInput(before, after, true);
                                 return true;
                             }
                             @Override public boolean sendKeyEvent(android.view.KeyEvent event) {
@@ -111,7 +121,7 @@ public class MarkviewActivity extends NativeActivity {
         });
     }
     public void inputMenu(String bounds) {
-        runOnUiThread(() -> {
+        onUi("Show input menu", -1, () -> {
             if (inputMenu != null) inputMenu.finish();
             String[] parts = bounds.split(",");
             android.graphics.Rect rect = new android.graphics.Rect(Integer.parseInt(parts[0]), Integer.parseInt(parts[1]), Integer.parseInt(parts[2]), Integer.parseInt(parts[3]));
@@ -122,8 +132,10 @@ public class MarkviewActivity extends NativeActivity {
                 }
                 @Override public boolean onPrepareActionMode(android.view.ActionMode mode, android.view.Menu menu) { return false; }
                 @Override public boolean onActionItemClicked(android.view.ActionMode mode, android.view.MenuItem item) {
-                    String text = pasteText();
-                    if (!text.isEmpty()) deliver(7, text);
+                    attempt("Paste text", -1, () -> {
+                        String text = pasteText();
+                        if (!text.isEmpty()) deliver(7, text);
+                    });
                     mode.finish();
                     return true;
                 }
@@ -145,22 +157,29 @@ public class MarkviewActivity extends NativeActivity {
     }
     @Override public void onConfigurationChanged(android.content.res.Configuration configuration) {
         super.onConfigurationChanged(configuration);
-        applyOrientation();
-        deliver(4, null);
+        onUi("Update configuration", -1, () -> {
+            applyOrientation();
+            deliver(4, null);
+        });
     }
     @Override public void onCreate(Bundle state) {
-        applyOrientation();
-        super.onCreate(state);
-        if (android.os.Build.VERSION.SDK_INT >= 33) getOnBackInvokedDispatcher().registerOnBackInvokedCallback(
-            android.window.OnBackInvokedDispatcher.PRIORITY_DEFAULT, () -> deliver(3, null));
+        try {
+            super.onCreate(state);
+            applyOrientation();
+            if (android.os.Build.VERSION.SDK_INT >= 33) getOnBackInvokedDispatcher().registerOnBackInvokedCallback(
+                android.window.OnBackInvokedDispatcher.PRIORITY_DEFAULT, () -> deliver(3, null));
+        } catch (RuntimeException | LinkageError error) {
+            showError("Start Android activity\n" + android.util.Log.getStackTraceString(error), true);
+            return;
+        }
         // `NativeActivity` loads the library before intent delivery.
-        receive(getIntent());
+        attempt("Receive document", -1, () -> receive(getIntent()));
     }
     @Override public void onBackPressed() { deliver(3, null); }
     @Override public void onNewIntent(Intent intent) {
         super.onNewIntent(intent);
         setIntent(intent);
-        receive(intent);
+        attempt("Receive document", -1, () -> receive(intent));
     }
     private void receive(Intent intent) {
         Uri uri = intent.getData();
@@ -185,7 +204,7 @@ public class MarkviewActivity extends NativeActivity {
                         file.getParentFile().mkdirs();
                         Files.write(file.toPath(), text.getBytes(StandardCharsets.UTF_8));
                         deliver(6, file.getAbsolutePath());
-                    } catch (Exception error) { fail(error, 6); }
+                    } catch (Exception error) { fail("Import shared text", error, 6); }
                 });
                 return;
             }
@@ -205,7 +224,7 @@ public class MarkviewActivity extends NativeActivity {
         pick(true);
     }
     private void pick(boolean folder) {
-        runOnUiThread(() -> {
+        onUi("Open file picker", 0, () -> {
             if (folder && !Environment.isExternalStorageManager()) {
                 Intent intent = new Intent(Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION, Uri.parse("package:" + getPackageName()));
                 try { startActivityForResult(intent, ALL_FILES); }
@@ -230,7 +249,7 @@ public class MarkviewActivity extends NativeActivity {
         startActivityForResult(intent, ASSETS);
     }
     public void chooseOutput(String name) {
-        runOnUiThread(() -> {
+        onUi("Choose export destination", 1, () -> {
             outputName = new File(name).getName();
             Intent intent = new Intent(Intent.ACTION_CREATE_DOCUMENT);
             intent.addCategory(Intent.CATEGORY_OPENABLE);
@@ -241,6 +260,9 @@ public class MarkviewActivity extends NativeActivity {
     }
     @Override public void onActivityResult(int request, int result, Intent data) {
         super.onActivityResult(request, result, data);
+        attempt("Receive picker result", request == SAVE ? 1 : 0, () -> receiveResult(request, result, data));
+    }
+    private void receiveResult(int request, int result, Intent data) {
         if (request == ALL_FILES) {
             if (Environment.isExternalStorageManager()) launchPicker(true);
             else {
@@ -269,7 +291,7 @@ public class MarkviewActivity extends NativeActivity {
                             copyDocument(uri, new File(directory, name));
                         }
                         deliver(2, null);
-                    } catch (Exception error) { fail(error, -1); }
+                    } catch (Exception error) { fail("Import assets", error, -1); }
                 });
             }
             return;
@@ -297,7 +319,7 @@ public class MarkviewActivity extends NativeActivity {
                 File file = new File(documentDirectory(uri), displayName(uri));
                 copyDocument(uri, file);
                 deliver(0, file.getAbsolutePath());
-            } catch (Exception error) { fail(error, 0); }
+            } catch (Exception error) { fail("Import document", error, 0); }
         });
     }
     private String displayName(Uri uri) throws Exception {
@@ -326,7 +348,7 @@ public class MarkviewActivity extends NativeActivity {
     private void openTree(Uri tree) {
         io.execute(() -> {
             try { deliver(0, treePath(tree).getAbsolutePath()); }
-            catch (Exception error) { fail(error, 0); }
+            catch (Exception error) { fail("Open folder", error, 0); }
         });
     }
     private File treePath(Uri tree) throws Exception {
@@ -396,7 +418,7 @@ public class MarkviewActivity extends NativeActivity {
     public void publishExport(String target) {
         io.execute(() -> {
             try { publish(target); }
-            catch (Exception error) { fail(error, -1); }
+            catch (Exception error) { fail("Publish export", error, -1); }
         });
     }
     private Uri publish(String target) throws Exception {
@@ -409,7 +431,7 @@ public class MarkviewActivity extends NativeActivity {
         return uri;
     }
     public void copyText(String text) {
-        runOnUiThread(() -> ((ClipboardManager)getSystemService(CLIPBOARD_SERVICE)).setPrimaryClip(ClipData.newPlainText("Markview", text)));
+        onUi("Copy text", -1, () -> ((ClipboardManager)getSystemService(CLIPBOARD_SERVICE)).setPrimaryClip(ClipData.newPlainText("Markview", text)));
     }
     public String pasteText() {
         ClipboardManager clipboard = (ClipboardManager)getSystemService(CLIPBOARD_SERVICE);
@@ -422,7 +444,7 @@ public class MarkviewActivity extends NativeActivity {
                 runOnUiThread(() -> Toast.makeText(this, "Only Markview's own asset folders accept imports", Toast.LENGTH_LONG).show());
                 return;
             }
-            runOnUiThread(() -> importAssets(new File(target)));
+            onUi("Import assets", -1, () -> importAssets(new File(target)));
             return;
         }
         io.execute(() -> {
@@ -438,24 +460,66 @@ public class MarkviewActivity extends NativeActivity {
                 if (type != null) intent.setDataAndType(uri, type);
                 intent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
                 Intent launch = intent;
-                runOnUiThread(() -> {
-                    try { startActivity(launch); }
-                    catch (Exception error) { Toast.makeText(this, error.getMessage(), Toast.LENGTH_LONG).show(); }
-                });
-            } catch (Exception error) { fail(error, -1); }
+                onUi("Open external viewer", -1, () -> startActivity(launch));
+            } catch (Exception error) { fail("Open external document", error, -1); }
         });
     }
-    private void fail(Exception error, int kind) {
-        android.util.Log.e("Markview", "Android document I/O", error);
-        runOnUiThread(() -> Toast.makeText(this, error.getMessage(), Toast.LENGTH_LONG).show());
+    private void onUi(String operation, int kind, Runnable action) {
+        runOnUiThread(() -> attempt(operation, kind, action));
+    }
+    private void attempt(String operation, int kind, Runnable action) {
+        if (destroyed || fatalError) return;
+        try { action.run(); }
+        catch (NativePanic | AssertionError | LinkageError error) {
+            showError(operation + "\n" + android.util.Log.getStackTraceString(error), true);
+        } catch (Exception error) { fail(operation, error, kind); }
+    }
+    private void fail(String operation, Exception error, int kind) {
+        showError(operation + "\n" + android.util.Log.getStackTraceString(error), false);
         if (kind >= 0) deliver(kind, null);
     }
+    /** Errors from Rust and asynchronous Java work share the same UI. */
+    public void showError(String details, boolean fatal) {
+        android.util.Log.e("Markview", details);
+        synchronized (this) {
+            if (fatalError) return;
+            if (fatal) fatalError = true;
+        }
+        runOnUiThread(() -> {
+            if (destroyed || (!fatal && fatalError)) return;
+            try {
+                if (fatal) {
+                    if (errorDialog != null) errorDialog.dismiss();
+                    startActivity(new Intent(this, ErrorActivity.class).putExtra("details", details));
+                    finish();
+                } else if (!isFinishing()) {
+                    if (errorDialog != null && errorDialog.isShowing()) {
+                        if (!errorDetails.contains(details)) {
+                            errorDetails += "\n\n" + details;
+                            android.widget.TextView message = errorDialog.findViewById(android.R.id.message);
+                            errorDialog.setMessage(message.getText() + "\n\n" + details);
+                        }
+                    } else {
+                        errorDetails = details;
+                        errorDialog = ErrorDialog.show(this, details, false);
+                    }
+                }
+            } catch (RuntimeException error) {
+                android.util.Log.e("Markview", "Cannot display Android error", error);
+                if (fatal) finish();
+            }
+        });
+    }
     private synchronized void deliver(int kind, String path) {
-        if (!destroyed) nativeResult(kind, path);
+        attempt("Deliver Android event " + kind, -1, () -> nativeResult(kind, path));
+    }
+    private synchronized void deleteInput(int before, int after, boolean codePoints) {
+        attempt("Delete input text", -1, () -> nativeDelete(before, after, codePoints));
     }
     @Override public void onDestroy() {
         synchronized (this) { destroyed = true; }
         io.shutdownNow();
+        if (errorDialog != null) errorDialog.dismiss();
         super.onDestroy();
     }
 }

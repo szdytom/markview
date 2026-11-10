@@ -1,6 +1,11 @@
 //! Android OS services; all reader state stays in the shared application.
 #![allow(unsafe_code)]
-use anyhow::{Result, anyhow};
+use anyhow::{Context, Result, anyhow};
+#[path = "android/errors.rs"]
+mod errors;
+#[cfg(debug_assertions)]
+#[path = "android/testing.rs"]
+pub mod testing;
 pub use jni;
 use jni::{
 	Env, EnvUnowned, JavaVM, jni_sig, jni_str,
@@ -19,8 +24,16 @@ static REQUESTS: Mutex<crate::requests::Requests> =
 		output: None,
 	});
 
-pub fn initialize(app: AndroidApp) {
+#[derive(Clone, Copy)]
+struct Layout {
+	smallest_width: i32,
+	phone: bool,
+}
+static LAYOUT: Mutex<Option<Layout>> = Mutex::new(None);
+
+pub fn initialize(app: AndroidApp) -> Result<()> {
 	*APP.lock().unwrap() = Some(app);
+	refresh_layout()
 }
 pub fn shutdown() {
 	REQUESTS.lock().unwrap().clear();
@@ -63,9 +76,11 @@ pub fn call_string(method: &str, text: &str) -> Result<()> {
 		)?;
 		Ok(())
 	})
+	.with_context(|| format!("Android {method}(String)"))
+	.inspect_err(|error| report_error(&errors::describe(error), false))
 }
-pub fn smallest_width_dp() -> i32 {
-	with_env(|env, activity| {
+fn refresh_layout() -> Result<()> {
+	let smallest_width = with_env(|env, activity| {
 		Ok(env
 			.call_method(
 				activity,
@@ -75,10 +90,8 @@ pub fn smallest_width_dp() -> i32 {
 			)?
 			.i()?)
 	})
-	.unwrap()
-}
-pub fn phone_layout() -> bool {
-	with_env(|env, activity| {
+	.context("Android smallestWidthDp()I")?;
+	let phone = with_env(|env, activity| {
 		Ok(env
 			.call_method(
 				activity,
@@ -88,7 +101,26 @@ pub fn phone_layout() -> bool {
 			)?
 			.z()?)
 	})
-	.unwrap()
+	.context("Android phoneLayout()Z")?;
+	*LAYOUT.lock().unwrap() = Some(Layout {
+		smallest_width,
+		phone,
+	});
+	Ok(())
+}
+pub fn smallest_width_dp() -> i32 {
+	LAYOUT
+		.lock()
+		.unwrap()
+		.expect("layout is initialized before the reader starts")
+		.smallest_width
+}
+pub fn phone_layout() -> bool {
+	LAYOUT
+		.lock()
+		.unwrap()
+		.expect("layout is initialized before the reader starts")
+		.phone
 }
 pub fn clipboard_read() -> Result<String> {
 	with_env(|env, activity| {
@@ -102,6 +134,8 @@ pub fn clipboard_read() -> Result<String> {
 			.l()?;
 		Ok(JString::cast_local(env, text)?.try_to_string(env)?)
 	})
+	.context("Android pasteText()String")
+	.inspect_err(|error| report_error(&errors::describe(error), false))
 }
 
 // SAFETY: The VM supplies a valid `EnvUnowned` and class for this debug-only test.
@@ -110,11 +144,7 @@ pub extern "system" fn bridge_references_released(
 	unowned: EnvUnowned,
 	_: JClass,
 ) -> jni::sys::jboolean {
-	// SAFETY: Java owns the current thread attachment for this invocation.
-	let mut attachment =
-		unsafe { jni::AttachGuard::from_unowned(unowned.as_raw()) };
-	let env = attachment.borrow_env_mut();
-	let mut check = || -> Result<()> {
+	errors::boundary(unowned, "JNI reference test", |env| {
 		let mut references = Vec::new();
 		for fail in [false, true] {
 			for _ in 0..32 {
@@ -141,15 +171,8 @@ pub extern "system" fn bridge_references_released(
 				"JNI local reference retained"
 			);
 		}
-		Ok(())
-	};
-	match check() {
-		Ok(()) => true,
-		Err(error) => {
-			log::error!("JNI reference test: {error:#}");
-			false
-		}
-	}
+		Ok(true)
+	})
 }
 pub fn pick_document(done: impl FnOnce(Option<PathBuf>) + Send + 'static) {
 	pick("pickDocument", done);
@@ -161,7 +184,8 @@ fn pick(method: &str, done: impl FnOnce(Option<PathBuf>) + Send + 'static) {
 	REQUESTS.lock().unwrap().picked = Some(Box::new(done));
 	if let Err(error) = call_string(method, "") {
 		log::error!("File picker: {error:#}");
-		if let Some(done) = REQUESTS.lock().unwrap().picked.take() {
+		let done = REQUESTS.lock().unwrap().picked.take();
+		if let Some(done) = done {
 			done(None);
 		}
 	}
@@ -178,88 +202,114 @@ pub fn choose_output(
 	async move { receive.await.ok().flatten() }
 }
 
-// SAFETY: Java passes a non-null `String`; the environment and references
-// remain valid throughout this native call.
 pub fn shared_url(
 	unowned: EnvUnowned,
 	_: JClass,
 	text: JString,
 	parse: fn(&str) -> Option<String>,
 ) -> jni::sys::jstring {
-	// SAFETY: Java owns the current thread attachment for this invocation.
-	let mut attachment =
-		unsafe { jni::AttachGuard::from_unowned(unowned.as_raw()) };
-	let env = attachment.borrow_env_mut();
-	let text = text.try_to_string(env).unwrap();
-	parse(&text).map_or(std::ptr::null_mut(), |url| {
-		env.new_string(url).unwrap().into_raw()
+	errors::boundary(unowned, "Parse shared URL", |env| {
+		let text = text.try_to_string(env).context("Read shared text")?;
+		match parse(&text) {
+			Some(url) => {
+				Ok(env.new_string(url).context("Return shared URL")?.into_raw())
+			}
+			None => Ok(std::ptr::null_mut()),
+		}
 	})
 }
 
 // SAFETY: The VM resolves this symbol for the declared Java native method;
 // `EnvUnowned` and the local references are valid for this invocation.
-pub extern "system" fn native_result(
+pub fn native_result(
 	unowned: EnvUnowned,
 	_: JClass,
 	kind: jint,
 	path: JString,
 ) {
-	// SAFETY: Java owns the current thread attachment for this invocation.
-	let mut attachment =
-		unsafe { jni::AttachGuard::from_unowned(unowned.as_raw()) };
-	let env = attachment.borrow_env_mut();
-	let path = (!path.is_null())
-		.then(|| path.try_to_string(env))
-		.transpose();
-	let path = match path {
-		Ok(path) => path,
-		Err(error) => {
-			log::error!("Document handoff: {error}");
-			return;
+	errors::boundary(unowned, "Android event", |env| {
+		let path = (!path.is_null())
+			.then(|| path.try_to_string(env))
+			.transpose();
+		let path = match path {
+			Ok(path) => path,
+			Err(error) => {
+				cancel_request(kind);
+				return Err(error)
+					.with_context(|| format!("Read event {kind} payload"));
+			}
+		};
+		match kind {
+			0 => picked_document(path.map(PathBuf::from)),
+			1 => {
+				let send = REQUESTS.lock().unwrap().output.take();
+				if let Some(send) = send {
+					let _ = send.send(path.map(PathBuf::from));
+				}
+			}
+			2 => crate::events::send(crate::NativeEvent::AssetsChanged),
+			3 => crate::events::send(crate::NativeEvent::Back),
+			4 => {
+				refresh_layout()?;
+				crate::events::send(crate::NativeEvent::Configuration);
+			}
+			5 => {
+				if let Some(url) = path {
+					crate::events::send(crate::NativeEvent::OpenUrl(url));
+				}
+			}
+			6 => {
+				if let Some(path) = path {
+					crate::events::send(crate::NativeEvent::Shared(
+						PathBuf::from(path),
+					));
+				}
+			}
+			7 => {
+				if let Some(text) = path {
+					crate::events::send(crate::NativeEvent::InputText(text));
+				}
+			}
+			_ => anyhow::bail!("Unknown Android event kind {kind}"),
 		}
-	};
+		Ok(())
+	});
+}
+
+fn cancel_request(kind: jint) {
 	match kind {
-		0 => picked_document(path.map(PathBuf::from)),
+		0 => {
+			let done = REQUESTS.lock().unwrap().picked.take();
+			if let Some(done) = done {
+				done(None);
+			}
+		}
 		1 => {
-			if let Some(send) = REQUESTS.lock().unwrap().output.take() {
-				let _ = send.send(path.map(PathBuf::from));
-			}
+			REQUESTS.lock().unwrap().output.take();
 		}
-		2 => crate::events::send(crate::NativeEvent::AssetsChanged),
-		3 => crate::events::send(crate::NativeEvent::Back),
-		4 => crate::events::send(crate::NativeEvent::Configuration),
-		5 => {
-			if let Some(url) = path {
-				crate::events::send(crate::NativeEvent::OpenUrl(url));
-			}
-		}
-		6 => {
-			if let Some(path) = path {
-				crate::events::send(crate::NativeEvent::Shared(PathBuf::from(
-					path,
-				)));
-			}
-		}
-		7 => {
-			if let Some(text) = path {
-				crate::events::send(crate::NativeEvent::InputText(text));
-			}
-		}
-		8 | 9 => {
-			let counts = path.unwrap();
-			let (before, after) = counts.split_once(',').unwrap();
-			crate::events::send(crate::NativeEvent::InputDelete {
-				before: before.parse().unwrap(),
-				after: after.parse().unwrap(),
-				code_points: kind == 9,
-			});
-		}
-		_ => unreachable!(),
+		_ => {}
 	}
 }
 
+pub fn native_delete(
+	unowned: EnvUnowned,
+	before: jint,
+	after: jint,
+	code_points: jni::sys::jboolean,
+) {
+	errors::boundary(unowned, "Delete input text", |_| {
+		crate::events::send(crate::NativeEvent::InputDelete {
+			before: before.max(0) as usize,
+			after: after.max(0) as usize,
+			code_points,
+		});
+		Ok(())
+	});
+}
+
 fn picked_document(path: Option<PathBuf>) {
-	if let Some(done) = REQUESTS.lock().unwrap().picked.take() {
+	let done = REQUESTS.lock().unwrap().picked.take();
+	if let Some(done) = done {
 		done(path);
 	} else if let Some(path) = path {
 		crate::events::send(crate::NativeEvent::Open(path));
@@ -268,7 +318,10 @@ fn picked_document(path: Option<PathBuf>) {
 
 pub fn insets(width: u32, height: u32, scale: f32) -> [f32; 4] {
 	let app = APP.lock().unwrap();
-	let rect = app.as_ref().unwrap().content_rect();
+	let rect = app
+		.as_ref()
+		.expect("the reader owns an initialized Android activity")
+		.content_rect();
 	if rect.right <= rect.left || rect.bottom <= rect.top {
 		return [0.0; 4];
 	}
@@ -288,35 +341,55 @@ pub fn event_loop<T: 'static>(
 		.with_android_app(android)
 		.build()?)
 }
+fn report_error(details: &str, fatal: bool) {
+	log::error!("{details}");
+	let result = with_env(|env, activity| {
+		let text = env.new_string(details)?;
+		env.call_method(
+			activity,
+			jni_str!("showError"),
+			jni_sig!("(Ljava/lang/String;Z)V"),
+			&[JValue::Object(&text), JValue::Bool(fatal)],
+		)?;
+		Ok(())
+	});
+	if let Err(error) = result {
+		log::error!("Cannot display Android error: {error:#}");
+	}
+}
+
 pub fn start(
 	android: AndroidApp,
 	mark_start: fn(),
 	run: fn(AndroidApp) -> Result<()>,
 ) {
-	mark_start();
-	android_logger::init_once(
-		android_logger::Config::default()
-			.with_tag("Markview")
-			.with_max_level(log::LevelFilter::Info),
-	);
-	initialize(android.clone());
-	if let Err(error) = run(android) {
-		log::error!("Markview: {error:#}");
-	}
+	errors::initialize();
+	run_guarded(|| {
+		mark_start();
+		initialize(android.clone()).context("Initialize Android layout")?;
+		run(android).context("Run Android reader")
+	});
 	shutdown();
+}
+
+fn run_guarded(run: impl FnOnce() -> Result<()>) {
+	let outcome = std::panic::catch_unwind(std::panic::AssertUnwindSafe(run));
+	match outcome {
+		Ok(Err(error)) => report_error(&errors::describe(&error), true),
+		Err(payload) => report_error(&errors::panic_details(&*payload), true),
+		Ok(Ok(())) => {}
+	}
 }
 #[cfg(debug_assertions)]
 pub fn snapshot(unowned: EnvUnowned) -> jni::sys::jstring {
-	// SAFETY: Java owns the current thread attachment for this invocation.
-	let mut attachment =
-		unsafe { jni::AttachGuard::from_unowned(unowned.as_raw()) };
-	let env = attachment.borrow_env_mut();
-	let (send, receive) = std::sync::mpsc::channel();
-	crate::events::send(crate::NativeEvent::Inspect(send));
-	let state = receive
-		.recv_timeout(std::time::Duration::from_secs(3))
-		.unwrap_or_else(|_| "{}".into());
-	env.new_string(state).unwrap().into_raw()
+	errors::boundary(unowned, "Inspect reader", |env| {
+		let (send, receive) = std::sync::mpsc::channel();
+		crate::events::send(crate::NativeEvent::Inspect(send));
+		let state = receive
+			.recv_timeout(std::time::Duration::from_secs(3))
+			.unwrap_or_else(|_| "{}".into());
+		Ok(env.new_string(state)?.into_raw())
+	})
 }
 
 /// Expand exports in the final library so Android's loader retains their ABI.
@@ -332,6 +405,9 @@ macro_rules! android_entry {
         #[allow(unsafe_code)]
         #[unsafe(no_mangle)]
         pub extern "system" fn Java_io_github_szdytom_markview_MarkviewActivity_nativeSharedUrl(env: $crate::android::jni::EnvUnowned, class: $crate::android::jni::objects::JClass, text: $crate::android::jni::objects::JString) -> $crate::android::jni::sys::jstring { $crate::android::shared_url(env, class, text, $url) }
+        #[allow(unsafe_code)]
+        #[unsafe(no_mangle)]
+        pub extern "system" fn Java_io_github_szdytom_markview_MarkviewActivity_nativeDelete(env: $crate::android::jni::EnvUnowned, _: $crate::android::jni::objects::JClass, before: $crate::android::jni::sys::jint, after: $crate::android::jni::sys::jint, code_points: $crate::android::jni::sys::jboolean) { $crate::android::native_delete(env, before, after, code_points); }
         #[cfg(debug_assertions)]
         #[allow(unsafe_code)]
         #[unsafe(no_mangle)]
@@ -340,5 +416,9 @@ macro_rules! android_entry {
         #[allow(unsafe_code)]
         #[unsafe(no_mangle)]
         pub extern "system" fn Java_io_github_szdytom_markview_MarkviewActivity_nativeBridgeReferencesReleased(env: $crate::android::jni::EnvUnowned, class: $crate::android::jni::objects::JClass) -> $crate::android::jni::sys::jboolean { $crate::android::bridge_references_released(env, class) }
+        #[cfg(debug_assertions)]
+        #[allow(unsafe_code)]
+        #[unsafe(no_mangle)]
+        pub extern "system" fn Java_io_github_szdytom_markview_MarkviewActivity_nativeTestFailure(env: $crate::android::jni::EnvUnowned, _: $crate::android::jni::objects::JClass, kind: $crate::android::jni::sys::jint) { $crate::android::testing::failure(env, kind); }
     };
 }

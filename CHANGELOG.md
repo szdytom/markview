@@ -33,6 +33,7 @@ at the same level, without `[brackets]`.
 ### Fixed
 
 - Open the window already showing its first frame on Windows instead of a blank one for the whole startup (#39).
+- Show Android JNI and system-operation failures in native Android dialogs with error details, and keep fatal error messages visible after the reader closes.
 - Avoid Android startup failures when falling back from Vulkan to OpenGL ES, including on screens larger than 2048 pixels.
 - Keep natural spacing on lines ending with an HTML `<br>` instead of stretching them to the full text width.
 - Smooth consecutive mouse-wheel steps by preserving scroll velocity and avoiding accumulated travel at document boundaries.
