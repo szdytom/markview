@@ -267,7 +267,14 @@ impl<P: super::SendEvent> App<P> {
 			dm.resize(width, height, scale);
 		}
 		if let Some(r) = &mut self.renderer {
-			r.resize(width, height);
+			// Queued resize events can describe sizes the window has already left.
+			let size = self
+				.window
+				.as_ref()
+				.map_or(PhysicalSize::new(width, height), |window| {
+					window.inner_size()
+				});
+			r.resize(size.width, size.height);
 		}
 		if width > 0 && height > 0 {
 			let insets = self.insets();

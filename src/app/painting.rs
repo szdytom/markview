@@ -138,7 +138,7 @@ impl<P: super::SendEvent> App<P> {
 			window.request_redraw();
 		}
 		if suboptimal {
-			renderer.resize(size.width, size.height);
+			renderer.reconfigure();
 		}
 		if let Some(update) = self.first_frame.take() {
 			renderer.wait(Some(submission.clone()))?;

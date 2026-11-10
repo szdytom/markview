@@ -27,6 +27,7 @@ at the same level, without `[brackets]`.
 
 ### Changed
 
+- Reduce Windows startup work by skipping unused indirect-draw validation and redundant GPU surface reconfiguration.
 - Speed up styled paragraphs and highlighted code with indexed reading, style and syntax-color ranges, and avoid repeated whitespace scans and discarded tail solutions during line breaking, preserving typography, selection and copying.
 
 ### Fixed

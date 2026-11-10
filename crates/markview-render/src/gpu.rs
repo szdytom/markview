@@ -19,14 +19,40 @@ struct Surface {
 	config: wgpu::SurfaceConfiguration,
 }
 impl Surface {
-	fn resize(&mut self, device: &wgpu::Device, width: u32, height: u32) {
-		if width == 0 || height == 0 {
-			return;
+	fn resize(
+		&mut self,
+		device: &wgpu::Device,
+		width: u32,
+		height: u32,
+		force: bool,
+	) {
+		if update_surface_size(&mut self.config, width, height, force) {
+			self.handle.configure(device, &self.config);
 		}
-		self.config.width = width;
-		self.config.height = height;
-		self.handle.configure(device, &self.config);
 	}
+}
+
+// The renderer only issues direct draws; indirect validation creates unused pipelines.
+fn direct_draw_flags(mut flags: wgpu::InstanceFlags) -> wgpu::InstanceFlags {
+	flags.remove(wgpu::InstanceFlags::VALIDATION_INDIRECT_CALL);
+	flags
+}
+
+fn update_surface_size(
+	config: &mut wgpu::SurfaceConfiguration,
+	width: u32,
+	height: u32,
+	force: bool,
+) -> bool {
+	if width == 0
+		|| height == 0
+		|| (!force && (config.width, config.height) == (width, height))
+	{
+		return false;
+	}
+	config.width = width;
+	config.height = height;
+	true
 }
 
 /// GL needs WebGL2 resource limits, but windows can exceed WebGL2's minimum size.
@@ -86,6 +112,9 @@ impl Gpu {
 		// Read before the match: the recovering arms replace the handle this
 		// borrow points at, and all of them want the size the host reports.
 		let (width, height) = surface.source.size();
+		if width == 0 || height == 0 {
+			return Ok(FrameStatus::Occluded);
+		}
 		Ok(match surface.handle.get_current_texture() {
 			wgpu::CurrentSurfaceTexture::Success(frame) => {
 				FrameStatus::Ready(frame, false)
@@ -96,11 +125,11 @@ impl Gpu {
 			wgpu::CurrentSurfaceTexture::Lost => {
 				surface.handle =
 					surface.source.create_surface(&self.instance)?;
-				surface.resize(&self.device, width, height);
+				surface.resize(&self.device, width, height, true);
 				FrameStatus::Retry(Duration::from_millis(16))
 			}
 			wgpu::CurrentSurfaceTexture::Outdated => {
-				surface.resize(&self.device, width, height);
+				surface.resize(&self.device, width, height, true);
 				FrameStatus::Retry(Duration::from_millis(16))
 			}
 			wgpu::CurrentSurfaceTexture::Timeout => {
@@ -139,6 +168,9 @@ impl Gpu {
 			async |backends| {
 				let mut descriptor = descriptor();
 				descriptor.backends = backends;
+				// Keep explicit `WGPU_*` diagnostic overrides.
+				descriptor.flags =
+					direct_draw_flags(descriptor.flags).with_env();
 				let instance = wgpu::Instance::new(descriptor);
 				let handle = surface_source
 					.as_ref()
@@ -232,7 +264,14 @@ impl Gpu {
 	}
 	pub fn resize(&mut self, width: u32, height: u32) {
 		if let Some(surface) = &mut self.surface {
-			surface.resize(&self.device, width, height);
+			surface.resize(&self.device, width, height, false);
+		}
+	}
+
+	pub fn reconfigure(&mut self) {
+		if let Some(surface) = &mut self.surface {
+			let (width, height) = surface.source.size();
+			surface.resize(&self.device, width, height, true);
 		}
 	}
 
@@ -323,9 +362,70 @@ impl Gpu {
 
 #[cfg(test)]
 mod tests {
-	use super::{backend_attempts, device_limits, try_backends};
+	use super::{
+		backend_attempts, device_limits, direct_draw_flags, try_backends,
+		update_surface_size,
+	};
 	use proptest::prelude::*;
 	use std::{cell::Cell, rc::Rc};
+
+	fn surface_config(width: u32, height: u32) -> wgpu::SurfaceConfiguration {
+		wgpu::SurfaceConfiguration {
+			usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
+			format: wgpu::TextureFormat::Bgra8UnormSrgb,
+			width,
+			height,
+			present_mode: wgpu::PresentMode::AutoVsync,
+			desired_maximum_frame_latency: 1,
+			alpha_mode: wgpu::CompositeAlphaMode::Auto,
+			view_formats: vec![],
+			color_space: wgpu::SurfaceColorSpace::Auto,
+		}
+	}
+
+	#[test]
+	fn direct_draws_preserve_other_validation_flags() {
+		let all = wgpu::InstanceFlags::all();
+		assert_eq!(
+			direct_draw_flags(all),
+			all - wgpu::InstanceFlags::VALIDATION_INDIRECT_CALL
+		);
+		assert_eq!(
+			direct_draw_flags(wgpu::InstanceFlags::empty()),
+			wgpu::InstanceFlags::empty()
+		);
+	}
+
+	#[test]
+	fn surface_recovery_reconfigures_unchanged_dimensions() {
+		let mut config = surface_config(1200, 800);
+		assert!(!update_surface_size(&mut config, 1200, 800, false));
+		assert!(update_surface_size(&mut config, 1200, 800, true));
+		assert!(update_surface_size(&mut config, 1600, 900, false));
+		assert!(!update_surface_size(&mut config, 1600, 900, false));
+		for force in [false, true] {
+			assert!(!update_surface_size(&mut config, 0, 900, force));
+			assert!(!update_surface_size(&mut config, 1600, 0, force));
+			assert_eq!((config.width, config.height), (1600, 900));
+			assert!(update_surface_size(&mut config, 1600, 900, true));
+		}
+	}
+
+	proptest! {
+		#[test]
+		fn resize_only_configures_changed_nonzero_sizes(
+			old_width in 1u32..=16384, old_height in 1u32..=16384,
+			width in 0u32..=16384, height in 0u32..=16384,
+			force in any::<bool>(),
+		) {
+			let mut config = surface_config(old_width, old_height);
+			let changed = update_surface_size(&mut config, width, height, force);
+			prop_assert_eq!(changed, width != 0 && height != 0
+				&& (force || (width, height) != (old_width, old_height)));
+			let expected = if changed { (width, height) } else { (old_width, old_height) };
+			prop_assert_eq!((config.width, config.height), expected);
+		}
+	}
 
 	#[test]
 	fn failed_backend_releases_its_window_before_fallback() {

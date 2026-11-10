@@ -253,6 +253,10 @@ impl Renderer {
 	pub fn resize(&mut self, width: u32, height: u32) {
 		self.gpu.resize(width, height);
 	}
+	/// Reconfigures a suboptimal surface even when its dimensions are unchanged.
+	pub fn reconfigure(&mut self) {
+		self.gpu.reconfigure();
+	}
 	pub fn on_device_lost(&self, callback: impl Fn() + Send + 'static) {
 		self.gpu.on_device_lost(callback);
 	}
