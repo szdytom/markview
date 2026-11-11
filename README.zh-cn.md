@@ -52,7 +52,7 @@ winget install --id szdytom.Markview --exact --source winget
 **Windows / macOS / Linux — Cargo**
 
 ```sh
-cargo install --git https://github.com/szdytom/markview --tag v0.5.1 --locked
+cargo install --git https://github.com/szdytom/markview --tag v0.5.1 --locked markview
 ```
 
 **Arch Linux — [AUR](https://aur.archlinux.org/packages/markview-bin)**
