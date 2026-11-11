@@ -2,7 +2,7 @@ use super::*;
 use crate::settings::Sidebar;
 use proptest::prelude::*;
 
-const FIELDS: [Setting; 11] = [
+const FIELDS: [Setting; 12] = [
 	Setting::FontSize,
 	Setting::Width,
 	Setting::SidebarWidth(Sidebar::Folder),
@@ -14,8 +14,9 @@ const FIELDS: [Setting; 11] = [
 	Setting::Hyphenate,
 	Setting::CodeblockWrap,
 	Setting::FooterPath,
+	Setting::CodeblockCopy,
 ];
-const KEYS: [&str; 11] = [
+const KEYS: [&str; 12] = [
 	"font_size",
 	"width",
 	"folder-width",
@@ -27,9 +28,10 @@ const KEYS: [&str; 11] = [
 	"hyphenate",
 	"codeblock-wrap",
 	"footer-path",
+	"codeblock-copy",
 ];
 
-fn values(seed: u16) -> [f32; 11] {
+fn values(seed: u16) -> [f32; 12] {
 	let flag = |bit: u32| f32::from(u8::from(seed & (1u16 << bit) != 0u16));
 	[
 		10.0 + f32::from(seed % 31),
@@ -43,10 +45,11 @@ fn values(seed: u16) -> [f32; 11] {
 		flag(1),
 		flag(2),
 		flag(3),
+		flag(4),
 	]
 }
 
-fn reader(values: [f32; 11]) -> ReaderSettings {
+fn reader(values: [f32; 12]) -> ReaderSettings {
 	ReaderSettings {
 		font_size: values[0],
 		width: values[1],
@@ -59,11 +62,12 @@ fn reader(values: [f32; 11]) -> ReaderSettings {
 		hyphenate: values[8] != 0.0,
 		codeblock_wrap: values[9] != 0.0,
 		footer_path: values[10] != 0.0,
+		codeblock_copy: values[11] != 0.0,
 		..Default::default()
 	}
 }
 
-fn observed(settings: &ReaderSettings) -> [f32; 11] {
+fn observed(settings: &ReaderSettings) -> [f32; 12] {
 	[
 		settings.font_size,
 		settings.width,
@@ -76,6 +80,7 @@ fn observed(settings: &ReaderSettings) -> [f32; 11] {
 		f32::from(u8::from(settings.hyphenate)),
 		f32::from(u8::from(settings.codeblock_wrap)),
 		f32::from(u8::from(settings.footer_path)),
+		f32::from(u8::from(settings.codeblock_copy)),
 	]
 }
 
@@ -89,12 +94,12 @@ fn export(seed: u16) -> ExportSettings {
 
 #[derive(Clone)]
 enum Disk {
-	Valid([f32; 11], ExportSettings, u32),
+	Valid([f32; 12], ExportSettings, u32),
 	Invalid,
 	Missing,
 }
 
-fn write(path: &Path, values: [f32; 11], export: &ExportSettings, marker: u32) {
+fn write(path: &Path, values: [f32; 12], export: &ExportSettings, marker: u32) {
 	let mut text =
 		format!("# owner-note-{marker}\ncustom = {marker} # unrelated\n");
 	for (index, key) in KEYS.iter().enumerate() {
@@ -274,7 +279,7 @@ proptest! {
 
 	#[test]
 	fn settings_transactions_merge_only_unedited_fields_and_preserve_the_last_good_state(
-		operations in prop::collection::vec((0u8..8, 0usize..11, any::<u16>()), 0..16),
+		operations in prop::collection::vec((0u8..8, 0usize..12, any::<u16>()), 0..16),
 	) {
 		let directory = tempfile::tempdir().unwrap();
 		let path = directory.path().join("settings.toml");
@@ -286,7 +291,7 @@ proptest! {
 		let mut seen = fs::read(&path).unwrap();
 		let mut disk = Disk::Valid(current, current_export.clone(), 0);
 		let mut marker = 0;
-		let mut pending = [false; 11];
+		let mut pending = [false; 12];
 		let mut pending_export = false;
 		let mut dirty = false;
 		for (step, (operation, index, seed)) in [(0, 0, 3), (2, 0, 5), (4, 0, 0), (5, 0, 0)].into_iter().chain(operations).chain([(2, 0, 7), (5, 0, 0)]).enumerate() {
@@ -301,7 +306,7 @@ proptest! {
 						let bytes = fs::read(&path).unwrap();
 						prop_assert_eq!(result.unwrap(), bytes != seen);
 						if bytes != seen {
-							for index in 0..11 { if !pending[index] { current[index] = values[index]; } }
+							for index in 0..12 { if !pending[index] { current[index] = values[index]; } }
 							if !pending_export { current_export = export.clone(); }
 							marker = *next_marker; seen = bytes;
 						}
@@ -315,7 +320,7 @@ proptest! {
 						if dirty {
 							if let Disk::Valid(values, export, next_marker) = &disk
 								&& fs::read(&path).unwrap() != seen {
-									for index in 0..11 { if !pending[index] { current[index] = values[index]; } }
+									for index in 0..12 { if !pending[index] { current[index] = values[index]; } }
 									if !pending_export { current_export = export.clone(); }
 									marker = *next_marker;
 							}

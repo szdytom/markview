@@ -4195,3 +4195,55 @@ fn a_reused_definition_body_takes_the_current_field_id() {
 		"the reused leaf binds the current document's field id"
 	);
 }
+
+#[test]
+fn codeblock_bounds_follow_nested_flow_flattening_and_leaf_reuse() {
+	let source =
+		"> - before\n>\n>   ```sh\n>   \techo 中文\n>   ```\n>\n> - tail\n";
+	let edited = markview_commonmark::parse(
+		source.replace("before", "before\n>\n>   extra paragraph"),
+	);
+	let options = LayoutOptions::default();
+	let mut engine = LayoutEngine::new();
+	engine.layout(&markview_commonmark::parse(source), &options);
+	let cached = engine.layout(&edited, &options);
+	assert!(cached.blocks[0].layout.scene.reused_leaves > 0);
+	let fresh = LayoutEngine::new().layout(&edited, &options);
+	let bounds = |snapshot: &LayoutSnapshot| {
+		snapshot
+			.blocks
+			.iter()
+			.flat_map(|block| {
+				block.layout.text.iter().enumerate().filter_map(
+					|(index, text)| {
+						block.codeblock_rect(index).map(|rect| {
+							(
+								text.text.clone(),
+								Rect {
+									y: rect.y + block.y,
+									..rect
+								},
+							)
+						})
+					},
+				)
+			})
+			.collect::<Vec<_>>()
+	};
+	let expected = bounds(&fresh);
+	assert_eq!(expected.len(), 1);
+	assert_eq!(expected[0].0.as_str(), "\techo 中文\n");
+	assert_eq!(bounds(&cached), expected);
+	assert_eq!(bounds(&cached.flattened()), expected);
+	let block = &cached.blocks[0];
+	for (ni, text) in block.layout.text.iter().enumerate() {
+		let Some(rect) = block.codeblock_rect(ni) else {
+			continue;
+		};
+		for cluster in text.clusters.iter() {
+			let cluster = block.rect(cluster.command, cluster.rect).unwrap();
+			assert!(cluster.y >= rect.y && cluster.y < rect.y + rect.h);
+			assert!(cluster.x >= rect.x);
+		}
+	}
+}

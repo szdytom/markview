@@ -336,3 +336,7 @@ empty_local_workspace = "本機工作區"
 quick_open_hint = "選擇 · Enter 開啟 · Esc 關閉"
 quick_open_no_workspace = "開啟資料夾以搜尋其中的檔案。"
 quick_open_tabs = "已開啟的檔案"
+
+settings_codeblock_copy = "程式碼區塊複製按鈕"
+copy_code = "複製程式碼到剪貼簿"
+status_copied_code = "已複製程式碼"

@@ -7,6 +7,12 @@
 
 完整的设置说明见英文版 [Settings](settings.md)。本节说明 **Markdown 变体**。
 
+## 代码块复制
+
+代码块右上角的复制按钮会复制整段代码，包括可视区域外的内容，并保留制表符、缩进和换行。
+**设置 → 通用 → 语言与代码 → 代码块复制按钮** 默认开启，也可在 `settings.toml` 中设置
+`codeblock-copy = false` 隐藏按钮。此选项不影响选择复制或导出。
+
 ## Markdown dialect
 
 **设置 → 通用 → 语言与代码** 决定 Markview 如何解析 Markdown。

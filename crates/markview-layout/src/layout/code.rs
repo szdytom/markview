@@ -175,6 +175,12 @@ impl BlockContext<'_> {
 			natural = natural.max(left - x);
 			height += line_height;
 		}
+		out.text[node].codeblock = Some(Rect {
+			x,
+			y,
+			w: width,
+			h: height,
+		});
 		let mut h = height;
 		if natural > width {
 			let gutter = opts.stylesheet.scrollbar_gutter();

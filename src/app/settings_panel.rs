@@ -55,6 +55,7 @@ pub(super) enum Message {
 	Align,
 	Hyphens,
 	CodeWrap,
+	CodeCopy,
 	MarkdownFlavor(MarkdownFlavor),
 	HardBreaks,
 	HighlightMarks,
@@ -88,6 +89,7 @@ impl Message {
 			Command::Settings(SettingsCommand::Align) => Self::Align,
 			Command::Settings(SettingsCommand::Hyphens) => Self::Hyphens,
 			Command::Settings(SettingsCommand::CodeWrap) => Self::CodeWrap,
+			Command::Settings(SettingsCommand::CodeCopy) => Self::CodeCopy,
 			Command::Settings(SettingsCommand::MarkdownFlavor(value)) => {
 				Self::MarkdownFlavor(value)
 			}
@@ -198,6 +200,10 @@ impl Component for Model {
 				self.values.codeblock_wrap = !self.values.codeblock_wrap;
 				Setting::CodeblockWrap
 			}
+			Message::CodeCopy => {
+				self.values.codeblock_copy = !self.values.codeblock_copy;
+				Setting::CodeblockCopy
+			}
 			Message::FooterPath => {
 				self.values.footer_path = !self.values.footer_path;
 				Setting::FooterPath
@@ -284,7 +290,9 @@ impl Component for Model {
 			Setting::SidebarWidth(sidebar) => {
 				update.effects.push(Effect::SidebarResize(sidebar));
 			}
-			Setting::ScrollSpeed | Setting::FooterPath => {}
+			Setting::ScrollSpeed
+			| Setting::FooterPath
+			| Setting::CodeblockCopy => {}
 			_ => update.effects.push(Effect::Reflow),
 		}
 		update

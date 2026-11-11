@@ -117,6 +117,8 @@ pub struct ReaderSettings {
 	pub codeblock_theme_override: Option<String>,
 	/// Hard-wrap code block lines at the reading column instead of scrolling.
 	pub codeblock_wrap: bool,
+	/// Show a copy-to-clipboard button on code blocks.
+	pub codeblock_copy: bool,
 	/// Multiplies every scroll request. The desktop's own speed is the
 	/// baseline; this is the only handle where the platform reports none.
 	pub scroll_speed: f32,
@@ -152,6 +154,7 @@ impl Default for ReaderSettings {
 			highlight_marks: false,
 			codeblock_theme_override: None,
 			codeblock_wrap: false,
+			codeblock_copy: true,
 			scroll_speed: 1.0,
 			single_instance: markview_platform::mobile_session(),
 			restore_session: markview_platform::mobile_session(),
@@ -218,6 +221,7 @@ pub enum Setting {
 	CjkType,
 	Language,
 	CodeblockWrap,
+	CodeblockCopy,
 	/// The whole reading dialect: the flavor preset and the GFM-only toggles.
 	Dialect,
 	ScrollSpeed,

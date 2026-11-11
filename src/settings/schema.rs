@@ -82,11 +82,11 @@ macro_rules! settings_schema {
 	) => {
 		impl Setting {
 			/// Every persisted setting, in the order the settings page resets.
-			pub const ALL: [Self; 19] =
+			pub const ALL: [Self; 20] =
 				[ $( Setting::$variant $(($arg))? ),* ];
 			/// The number of `Setting` variants.
 			#[allow(dead_code, reason = "The settings tests assert this count.")]
-			pub const COUNT: usize = 17;
+			pub const COUNT: usize = 18;
 		}
 		impl ReaderSettings {
 			pub fn copy_field(&mut self, other: &Self, field: Setting) {
@@ -160,6 +160,7 @@ settings_schema! {
 		CjkType => cjk_type : cjk_type, copy, special: copy_cjk_type;
 		Language => lang : language, copy;
 		CodeblockWrap => codeblock_wrap : codeblock_wrap, copy;
+		CodeblockCopy => codeblock_copy : codeblock_copy, copy;
 		Dialect => markdown_flavor : markdown_flavor, copy, special: copy_dialect;
 		ScrollSpeed => scroll_speed : scroll_speed, copy;
 		SingleInstance => single_instance : single_instance, copy,

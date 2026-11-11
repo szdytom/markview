@@ -324,6 +324,18 @@ fn rows(settings: &ReaderSettings, phone: bool) -> Vec<Row> {
 				Command::Settings(SettingsCommand::CodeWrap),
 			)],
 		),
+		Row::new(
+			t.settings_codeblock_copy(),
+			vec![action(
+				if settings.codeblock_copy {
+					t.settings_on()
+				} else {
+					t.settings_off()
+				},
+				settings.codeblock_copy,
+				Command::Settings(SettingsCommand::CodeCopy),
+			)],
+		),
 		Row::new(t.settings_markdown_dialect(), vec![]).menu(
 			DropdownId::MarkdownFlavor,
 			choices(

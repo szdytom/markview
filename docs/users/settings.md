@@ -68,6 +68,14 @@ Android stores settings in its private app files directory; see
   **Settings** pins it to English, Simplified or Traditional Chinese, or Japanese instead.
 
 
+## Code block copying
+
+Code blocks have a copy icon in their upper-right corner. It copies the whole
+block, preserving tabs, indentation and line breaks, including text outside the
+visible area. **Settings → Generic → Language & code → Code block copy button**
+controls these buttons and is on by default. Set `codeblock-copy = false` in
+`settings.toml` to hide them. This does not affect selection copying or exports.
+
 ## Markdown dialect
 
 **Settings → Generic → Language & code** chooses how Markview reads Markdown.

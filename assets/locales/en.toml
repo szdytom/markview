@@ -336,3 +336,7 @@ empty_local_workspace = "Local workspace"
 quick_open_hint = "Select · Enter to open · Esc to close"
 quick_open_no_workspace = "Open a folder to search its files."
 quick_open_tabs = "Open files"
+
+settings_codeblock_copy = "Code block copy button"
+copy_code = "Copy code to clipboard"
+status_copied_code = "Copied code"

@@ -1,5 +1,6 @@
 //! Reader chrome built from borrowed display state, with no window or worker access.
 use crate::state::{ChromeCommand, DocumentCommand, SettingsCommand};
+mod codeblock;
 pub(super) mod components;
 mod controls;
 pub(in crate::app) mod empty;
@@ -645,6 +646,7 @@ impl<'a> Chrome<'a> {
 			);
 		}
 
+		buttons.extend(self.codeblock_buttons());
 		if self.frame.remote_notice.is_some() {
 			buttons.extend(banner_buttons(
 				self.ui,
@@ -750,7 +752,10 @@ impl<'a> Chrome<'a> {
 			Layer::Tabs => self.draw_tabs(out),
 			Layer::Banner => self.draw_banner(out),
 			Layer::Footer => self.draw_footer(out),
-			Layer::Status => self.draw_document_status(out),
+			Layer::Status => {
+				self.draw_document_status(out);
+				self.draw_codeblock_buttons(out);
+			}
 			Layer::Drawers => self.draw_drawers(out),
 			Layer::Preview => return self.draw_preview(out),
 			Layer::Panel => {

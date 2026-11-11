@@ -37,6 +37,11 @@ impl<P: super::SendEvent> App<P> {
 				});
 			}
 			DocumentCommand::CopyPath => self.copy_path(),
+			DocumentCommand::CopyCode {
+				revision,
+				block,
+				node,
+			} => self.copy_code(revision, block, node),
 			DocumentCommand::RemoteDismiss => {
 				// Both answers belong to this tab and this content revision.
 				self.readers.session.remote_notice_dismissed = true;
@@ -55,6 +60,31 @@ impl<P: super::SendEvent> App<P> {
 			DocumentCommand::OutlineExpandAll
 			| DocumentCommand::OutlineCollapseAll => self.set_outline_collapsed(
 				command == DocumentCommand::OutlineCollapseAll,
+			),
+		}
+	}
+
+	fn copy_code(&mut self, revision: u64, block: usize, node: usize) {
+		let snapshot = &self.readers.session.display.snapshot;
+		if !self.preferences.values.codeblock_copy
+			|| snapshot.revision.get() != revision
+		{
+			return;
+		}
+		let Some(block) = snapshot.blocks.get(block) else {
+			return;
+		};
+		if block.codeblock_rect(node).is_none() {
+			return;
+		}
+		let text = block.layout.text[node].text.as_str().to_owned();
+		let lang = self.preferences.values.lang();
+		match self.clipboard.write(text) {
+			Ok(()) => self.notify(lang.status_copied_code(), false, 3),
+			Err(error) => self.notify(
+				&lang.status_copy_failed(error.to_string()),
+				true,
+				4,
 			),
 		}
 	}

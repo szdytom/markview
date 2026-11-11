@@ -355,6 +355,10 @@ impl BlockLayout {
 	/// Convert the builder's temporary coordinates into node-local geometry once.
 	pub(crate) fn seal_scene(&mut self) {
 		fn localize_text(text: &mut crate::text::TextNode, x: f32, y: f32) {
+			if let Some(rect) = &mut text.codeblock {
+				rect.x -= x;
+				rect.y -= y;
+			}
 			for cluster in text.clusters.iter_mut().chain(
 				text.source_images.iter_mut().map(|(_, cluster)| cluster),
 			) {
@@ -837,6 +841,7 @@ impl PlacedBlock {
 			..Default::default()
 		};
 		for (ni, text) in out.text.iter_mut().enumerate() {
+			text.codeblock = self.codeblock_rect(ni);
 			if !self.text_visible(ni) {
 				text.text = Arc::new(String::new());
 				text.clusters.clear();
@@ -918,6 +923,18 @@ impl PlacedBlock {
 	pub fn command_offset(&self, command: usize) -> Option<[f32; 2]> {
 		self.placement(self.layout.scene.owner(command, |span| &span.draws))
 			.map(|offset| self.flow.offset(command, offset))
+	}
+
+	/// A code block's visible bounds, including disclosure placement.
+	pub fn codeblock_rect(&self, text: usize) -> Option<Rect> {
+		let rect = self.layout.text.get(text)?.codeblock?;
+		let [x, y] =
+			self.placement(self.layout.scene.owner(text, |span| &span.text))?;
+		Some(Rect {
+			x: rect.x + x,
+			y: rect.y + y,
+			..rect
+		})
 	}
 
 	pub fn text_visible(&self, text: usize) -> bool {

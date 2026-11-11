@@ -2998,3 +2998,147 @@ fn opening_a_panel_cancels_the_press_and_hover() {
 	assert!(app.interaction.pointer.hover().is_none());
 	assert!(app.interaction.pointer.hover_image().is_none());
 }
+
+fn code_buttons(app: &mut App<StubProxy>) -> Vec<super::super::Button> {
+	app.buttons()
+		.into_iter()
+		.filter(|button| {
+			matches!(
+				button.action,
+				Command::Document(DocumentCommand::CopyCode { .. })
+			)
+		})
+		.collect()
+}
+
+#[test]
+fn codeblock_copy_button_uses_original_text_and_shared_click_geometry() {
+	let code = "\tSELECT '中文🙂';  \n\n  SELECT 2;\n";
+	let source =
+		format!("```sql\n{code}```\n\nInline `code`.\n\n    indented\n");
+	let (mut app, _) = reader(&source, 300.);
+	let buttons = code_buttons(&mut app);
+	assert_eq!(buttons.len(), 2);
+	assert_ne!(buttons[0].id, buttons[1].id);
+	assert!(buttons[0].icon.is_some());
+	let Command::Document(DocumentCommand::CopyCode {
+		revision,
+		block,
+		node,
+	}) = buttons[0].action
+	else {
+		panic!()
+	};
+	let placed = &app.readers.session.display.snapshot.blocks[block];
+	assert_eq!(placed.layout.text[node].text.as_str(), code);
+	let bounds = placed.codeblock_rect(node).unwrap();
+	let view = app.view_geometry();
+	assert!(
+		(buttons[0].rect.x - (view.left + bounds.x + bounds.w - 28.)).abs()
+			< 0.01
+	);
+	assert!(
+		(buttons[0].rect.y - (view.top + placed.y + bounds.y - view.scroll))
+			.abs() < 0.01
+	);
+	let point = (buttons[0].rect.x + 14., buttons[0].rect.y + 14.);
+	app.interaction.pointer.move_to(point);
+	app.refresh_hover();
+	assert_eq!(
+		app.interaction.pointer.hover_control(),
+		Some(app.preferences.values.lang().copy_code())
+	);
+	app.pointer_pressed();
+	assert!(app.interaction.pointer.drag().is_none());
+	assert_eq!(app.release_widget(), Some(buttons[0].action));
+
+	// A release outside the control cancels the copy.
+	app.press_widget(&buttons);
+	app.interaction.pointer.move_to((0., 0.));
+	assert_eq!(app.release_widget(), None);
+
+	// Old revisions and ordinary prose never reach the clipboard.
+	app.action(Command::Document(DocumentCommand::CopyCode {
+		revision: revision + 1,
+		block,
+		node,
+	}));
+	assert!(app.status.message().is_empty());
+	let prose = app
+		.readers
+		.session
+		.display
+		.snapshot
+		.blocks
+		.iter()
+		.enumerate()
+		.find(|(_, b)| b.layout.text.iter().any(|n| n.codeblock.is_none()))
+		.unwrap()
+		.0;
+	app.action(Command::Document(DocumentCommand::CopyCode {
+		revision,
+		block: prose,
+		node: 0,
+	}));
+	assert!(app.status.message().is_empty());
+
+	let version = app.readers.session.version;
+	app.action(Command::Settings(SettingsCommand::CodeCopy));
+	assert!(!app.preferences.values.codeblock_copy);
+	assert_eq!(app.readers.session.version, version);
+	assert!(code_buttons(&mut app).is_empty());
+	app.action(buttons[0].action);
+	assert!(app.status.message().is_empty());
+	app.action(Command::Settings(SettingsCommand::CodeCopy));
+	assert_eq!(code_buttons(&mut app).len(), 2);
+}
+
+#[test]
+fn codeblock_copy_tracks_scroll_disclosures_and_horizontal_overflow() {
+	let source = format!("```\n{}\n```\n", "\tlong line 中文 ".repeat(80));
+	let (mut app, document) = reader(&source, 240.);
+	let first = code_buttons(&mut app).remove(0);
+	app.readers.session.display.horizontal.insert((0, 0), 90.);
+	assert_eq!(code_buttons(&mut app)[0].rect, first.rect);
+	let wrapped = LayoutEngine::new().layout(
+		&document,
+		&LayoutOptions {
+			width: 240.,
+			codeblock_wrap: true,
+			..app.options()
+		},
+	);
+	let before = app.readers.session.display.snapshot.blocks[0].layout.text[0]
+		.text
+		.clone();
+	app.readers.session.display.snapshot = wrapped;
+	assert_eq!(
+		app.readers.session.display.snapshot.blocks[0].layout.text[0].text,
+		before
+	);
+	assert_eq!(code_buttons(&mut app).len(), 1);
+	app.readers.session.scrolling.offset = 2000.;
+	assert!(code_buttons(&mut app).is_empty());
+
+	let (mut app, _) = reader(
+		"<details>\n<summary>Example</summary>\n\n```sh\n\techo hello\n```\n\n</details>\n",
+		300.,
+	);
+	assert!(code_buttons(&mut app).is_empty());
+	let id = app.readers.session.display.snapshot.blocks[0].id;
+	app.toggle_details(id);
+	let buttons = code_buttons(&mut app);
+	assert_eq!(buttons.len(), 1);
+	let Command::Document(DocumentCommand::CopyCode { block, node, .. }) =
+		buttons[0].action
+	else {
+		panic!()
+	};
+	let placed = &app.readers.session.display.snapshot.blocks[block];
+	let rect = placed.codeblock_rect(node).unwrap();
+	let cluster = placed.layout.text[node].clusters.iter().next().unwrap();
+	let cluster_rect = placed.rect(cluster.command, cluster.rect).unwrap();
+	assert!(cluster_rect.y >= rect.y && cluster_rect.y < rect.y + rect.h);
+	app.toggle_details(id);
+	assert!(code_buttons(&mut app).is_empty());
+}

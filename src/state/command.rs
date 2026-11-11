@@ -22,6 +22,11 @@ pub(crate) enum DocumentCommand {
 	Open,
 	/// Copy the active document's absolute path to the clipboard.
 	CopyPath,
+	CopyCode {
+		revision: u64,
+		block: usize,
+		node: usize,
+	},
 	/// Hide the remote-image banner, keeping the current fetch limit.
 	RemoteDismiss,
 	/// Lift the remote-image limit for the current document revision.
@@ -46,6 +51,7 @@ pub(crate) enum SettingsCommand {
 	Align,
 	Hyphens,
 	CodeWrap,
+	CodeCopy,
 	MarkdownFlavor(crate::settings::MarkdownFlavor),
 	HardBreaks,
 	HighlightMarks,

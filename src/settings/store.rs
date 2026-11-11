@@ -124,6 +124,8 @@ pub(super) struct Config {
 	pub(super) codeblock_theme_override: Option<String>,
 	#[serde(rename = "codeblock-wrap")]
 	pub(super) codeblock_wrap: bool,
+	#[serde(rename = "codeblock-copy")]
+	pub(super) codeblock_copy: bool,
 	#[serde(rename = "scroll-speed")]
 	pub(super) scroll_speed: f32,
 	#[serde(rename = "single-instance")]

@@ -49,10 +49,10 @@ proptest! {
 	#[test]
 	fn persisted_preferences_preserve_values_and_produce_the_requested_layout_dialect(
 		width in 240u16..1601, size in 10u8..41, viewport in -40i16..1801, flags in prop::array::uniform8(any::<bool>()), cjk in 0usize..4,
-		family in prop::collection::vec(any::<char>(), 0..24),
+		copy in any::<bool>(), family in prop::collection::vec(any::<char>(), 0..24),
 	) {
 		let [obsidian, hard_breaks, highlight_marks, justify, hyphenate, wrap, restore, single] = flags;
-		let mut settings = ReaderSettings { width: f32::from(width), font_size: f32::from(size), markdown_flavor: if obsidian { MarkdownFlavor::Obsidian } else { MarkdownFlavor::Gfm }, hard_breaks, highlight_marks, justify, hyphenate, codeblock_wrap: wrap, restore_session: restore, single_instance: single, cjk_type: [CjkType::Sc, CjkType::Tc, CjkType::Jp, CjkType::None][cjk], ..Default::default() };
+		let mut settings = ReaderSettings { width: f32::from(width), font_size: f32::from(size), markdown_flavor: if obsidian { MarkdownFlavor::Obsidian } else { MarkdownFlavor::Gfm }, hard_breaks, highlight_marks, justify, hyphenate, codeblock_wrap: wrap, codeblock_copy: copy, restore_session: restore, single_instance: single, cjk_type: [CjkType::Sc, CjkType::Tc, CjkType::Jp, CjkType::None][cjk], ..Default::default() };
 		settings.set_font_family(FontRole::Serif, Some(family.into_iter().collect()));
 		let config = store::Config::from_settings(&settings, ExportSettings::default());
 		let encoded = toml_edit::ser::to_document(&config).unwrap().to_string();

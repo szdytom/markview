@@ -964,6 +964,7 @@ fn settings_differing_from_default() -> ReaderSettings {
 		cjk_type: CjkType::None,
 		codeblock_theme_override: Some("fixture".into()),
 		codeblock_wrap: !default.codeblock_wrap,
+		codeblock_copy: !default.codeblock_copy,
 		markdown_flavor: MarkdownFlavor::Gfm,
 		hard_breaks: !default.hard_breaks,
 		highlight_marks: !default.highlight_marks,
@@ -1010,6 +1011,7 @@ fn changed_fields(
 		cjk_type,
 		codeblock_theme_override,
 		codeblock_wrap,
+		codeblock_copy,
 		markdown_flavor,
 		hard_breaks,
 		highlight_marks,
@@ -1038,6 +1040,7 @@ fn expected_changes(field: Setting) -> Vec<&'static str> {
 		Setting::CjkType => vec!["cjk_type"],
 		Setting::Language => vec!["lang"],
 		Setting::CodeblockWrap => vec!["codeblock_wrap"],
+		Setting::CodeblockCopy => vec!["codeblock_copy"],
 		Setting::Dialect => {
 			vec!["markdown_flavor", "hard_breaks", "highlight_marks"]
 		}
@@ -1073,6 +1076,9 @@ fn assert_copied(from: &ReaderSettings, to: &ReaderSettings, field: Setting) {
 		Setting::CodeblockWrap => {
 			assert_eq!(to.codeblock_wrap, from.codeblock_wrap);
 		}
+		Setting::CodeblockCopy => {
+			assert_eq!(to.codeblock_copy, from.codeblock_copy)
+		}
 		Setting::Dialect => {
 			assert_eq!(to.markdown_flavor, from.markdown_flavor);
 			assert_eq!(to.hard_breaks, from.hard_breaks);
@@ -1094,7 +1100,7 @@ fn assert_copied(from: &ReaderSettings, to: &ReaderSettings, field: Setting) {
 
 #[test]
 fn setting_all_keeps_the_persisted_order_and_count() {
-	assert_eq!(Setting::COUNT, 17);
+	assert_eq!(Setting::COUNT, 18);
 	assert_eq!(
 		Setting::ALL,
 		[
@@ -1111,6 +1117,7 @@ fn setting_all_keeps_the_persisted_order_and_count() {
 			Setting::CjkType,
 			Setting::Language,
 			Setting::CodeblockWrap,
+			Setting::CodeblockCopy,
 			Setting::Dialect,
 			Setting::ScrollSpeed,
 			Setting::SingleInstance,
@@ -1165,6 +1172,7 @@ fn reader_settings_round_trip_through_config_for_non_option_fields() {
 	assert_eq!(back.paragraph_indent, settings.paragraph_indent);
 	assert_eq!(back.cjk_type, settings.cjk_type);
 	assert_eq!(back.codeblock_wrap, settings.codeblock_wrap);
+	assert_eq!(back.codeblock_copy, settings.codeblock_copy);
 	assert_eq!(back.scroll_speed, settings.scroll_speed);
 	assert_eq!(back.single_instance, settings.single_instance);
 	assert_eq!(back.restore_session, settings.restore_session);
@@ -1237,4 +1245,30 @@ fn legacy_linux_window_layout_loads_as_breeze() {
 	let (store, warning) = SettingsStore::load(Some(path));
 	assert!(warning.is_none());
 	assert_eq!(store.settings().window_layout, WindowLayout::Breeze);
+}
+
+#[test]
+fn codeblock_copy_defaults_on_and_persists_explicit_off_and_reset() {
+	let dir = tempfile::tempdir().unwrap();
+	let path = dir.path().join("settings.toml");
+	fs::write(&path, "codeblock-wrap = true\n# keep this note\n").unwrap();
+	let (mut store, warning) = SettingsStore::load(Some(path.clone()));
+	assert!(warning.is_none());
+	let mut settings = store.settings();
+	assert!(settings.codeblock_copy);
+	settings.codeblock_copy = false;
+	store.changed(&settings, Some(Setting::CodeblockCopy));
+	store.flush().unwrap();
+	let contents = fs::read_to_string(&path).unwrap();
+	assert!(contents.contains("codeblock-copy = false"));
+	assert!(contents.contains("# keep this note"));
+	let (mut loaded, warning) = SettingsStore::load(Some(path.clone()));
+	assert!(warning.is_none());
+	assert!(!loaded.settings().codeblock_copy);
+	loaded.changed(&ReaderSettings::default(), Some(Setting::CodeblockCopy));
+	loaded.flush().unwrap();
+	let (loaded, warning) = SettingsStore::load(Some(path));
+	assert!(warning.is_none());
+	assert!(loaded.settings().codeblock_copy);
+	assert!(loaded.settings().codeblock_wrap);
 }

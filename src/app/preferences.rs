@@ -114,6 +114,7 @@ impl Preferences {
 			highlight_marks: settings.highlight_marks,
 			codeblock_theme_override: settings.codeblock_theme_override.clone(),
 			codeblock_wrap: settings.codeblock_wrap,
+			codeblock_copy: settings.codeblock_copy,
 			scroll_speed: settings.scroll_speed,
 			single_instance: settings.single_instance,
 			restore_session: settings.restore_session,

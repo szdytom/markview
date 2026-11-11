@@ -336,3 +336,7 @@ empty_local_workspace = "ローカルワークスペース"
 quick_open_hint = "選択 · Enter 開く · Esc 閉じる"
 quick_open_no_workspace = "フォルダーを開いてファイルを検索します。"
 quick_open_tabs = "開いているファイル"
+
+settings_codeblock_copy = "コードブロックのコピーボタン"
+copy_code = "コードをクリップボードにコピー"
+status_copied_code = "コードをコピーしました"

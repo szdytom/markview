@@ -24,6 +24,7 @@ at the same level, without `[brackets]`.
 ### Added
 
 - Include hierarchical heading bookmarks in exported PDFs for navigation in PDF readers (#92).
+- Copy code blocks to the clipboard with an icon button; enabled by default and configurable in settings (#91).
 
 ## 0.5.1 - 2026-11-10
 

@@ -304,6 +304,8 @@ impl GeometrySelection {
 }
 #[derive(Clone, Debug)]
 pub struct TextNode {
+	/// Code block bounds in retained node-local coordinates.
+	pub codeblock: Option<Rect>,
 	pub search_field: Option<markview_document::FieldId>,
 	/// Pairs of semantic and reading byte ranges; diagnostics have no pair.
 	pub search_ranges:
@@ -379,6 +381,7 @@ impl TextNode {
 		text.shrink_to_fit();
 		let boundaries = GraphemeBoundaries::new(&text);
 		Self {
+			codeblock: None,
 			search_field: None,
 			search_ranges: Default::default(),
 			source_images: Vec::new(),
