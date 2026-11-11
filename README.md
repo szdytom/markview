@@ -35,18 +35,23 @@ Choose your platform from the [latest release](https://github.com/szdytom/markvi
 | Linux | `.deb`, AppImage or `.tar.gz` | See the [runtime requirements](docs/users/installation.md#runtime-requirements) |
 | Android | `.apk` | Android 11+; ARM64 phones and tablets |
 
-Or install the `markview` command:
+Or install from the command line:
+
+**Windows — PowerShell / WinGet**
+
+Run either command below:
+
+```powershell
+irm https://github.com/szdytom/markview/releases/latest/download/markview-installer.ps1 | iex
+winget install --id szdytom.Markview --exact --source winget
+```
+
+To update, run `winget upgrade --id szdytom.Markview --exact --source winget`.
 
 **Windows / macOS / Linux — Cargo**
 
 ```sh
 cargo install --git https://github.com/szdytom/markview --tag v0.5.1 --locked
-```
-
-**Windows — PowerShell**
-
-```powershell
-irm https://github.com/szdytom/markview/releases/latest/download/markview-installer.ps1 | iex
 ```
 
 **Arch Linux — [AUR](https://aur.archlinux.org/packages/markview-bin)**

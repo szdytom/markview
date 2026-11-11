@@ -72,6 +72,24 @@ the user's confirmation, and confirmation does not replace passing CI.
    `Packages`. Watch with `gh run watch <id> --exit-status` and check the release page exists.
    The workflow verifies the assets, so do not download them to re-check checksums.
 
+## WinGet submission
+
+For stable releases, `Release` automatically runs the WinGet job and uploads
+`winget-<version>`. Download that artifact from the Release run with `gh run download`;
+do not trigger `winget.yml` again. Only for backfilling an existing release without
+an artifact, run `gh workflow run winget.yml --repo szdytom/markview -f tag=v<version>`.
+Prereleases skip WinGet.
+
+Use the local `gh` login to submit the generated manifests; no `WINGET_TOKEN` is needed
+in Actions. Check for an existing upstream version or update PR before submitting.
+Verify the version, MSI URL and SHA-256 against the release asset metadata. On a new
+branch in the publisher's `winget-pkgs` fork, add only the three generated YAML files
+under `manifests/s/szdytom/Markview/<version>/`, preserving older versions. Review the
+diff, then use `gh pr create --repo microsoft/winget-pkgs --base master` with the fork
+branch and title `New version: szdytom.Markview version <version>`. Return the PR URL
+and check status; submission is complete while upstream review and source sync remain
+pending.
+
 ## Release notes style
 
 New releases open with the prose paragraph confirmed by the user, directly below the

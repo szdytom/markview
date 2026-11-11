@@ -36,18 +36,23 @@
 | Linux | `.deb`、AppImage 或 `.tar.gz` | 请查看[运行要求](docs/users/installation.md#runtime-requirements) |
 | Android | `.apk` | Android 11+；ARM64 手机与平板 |
 
-也可以安装 `markview` 命令：
+也可以通过命令行安装：
+
+**Windows — PowerShell / WinGet**
+
+以下安装命令二选一：
+
+```powershell
+irm https://github.com/szdytom/markview/releases/latest/download/markview-installer.ps1 | iex
+winget install --id szdytom.Markview --exact --source winget
+```
+
+更新时运行 `winget upgrade --id szdytom.Markview --exact --source winget`。
 
 **Windows / macOS / Linux — Cargo**
 
 ```sh
 cargo install --git https://github.com/szdytom/markview --tag v0.5.1 --locked
-```
-
-**Windows — PowerShell**
-
-```powershell
-irm https://github.com/szdytom/markview/releases/latest/download/markview-installer.ps1 | iex
 ```
 
 **Arch Linux — [AUR](https://aur.archlinux.org/packages/markview-bin)**
