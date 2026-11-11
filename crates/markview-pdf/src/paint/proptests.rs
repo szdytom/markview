@@ -77,7 +77,7 @@ proptest! {
 		let mut sheet = Stylesheet::default();
 		sheet.page.footer_center = Some(String::new());
 		let images = ImageSnapshot::default();
-		let input = Export { snapshot: &snapshot, images: &images, prepared_images: None, stylesheet: &sheet, geometry: &geometry, pagination: &pagination, metadata: metadata.clone(), path: String::new(), body_size_px: f32::from(size), links: false, fonts: FontConfig::from_faces(0x7062_7470_6466_0001, vec![font.data.clone()]) };
+		let input = Export { outline: &[], snapshot: &snapshot, images: &images, prepared_images: None, stylesheet: &sheet, geometry: &geometry, pagination: &pagination, metadata: metadata.clone(), path: String::new(), body_size_px: f32::from(size), links: false, fonts: FontConfig::from_faces(0x7062_7470_6466_0001, vec![font.data.clone()]) };
 		let mut renderer = Renderer::default();
 		let bytes = renderer.export(&input).unwrap();
 		prop_assert_eq!(renderer.export(&input).unwrap(), bytes.clone());

@@ -57,6 +57,7 @@ pub fn frames(
 	let pagination = paginate(&doc, &snapshot, &geometry);
 	ensure!(pagination.pages.len() > 1, "Paper fixture must paginate");
 	let bytes = markview_pdf::export(Export {
+		outline: doc.outline_entries(),
 		snapshot: &snapshot,
 		images,
 		prepared_images: None,

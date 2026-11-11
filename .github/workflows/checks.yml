@@ -70,7 +70,7 @@ jobs:
         if: runner.os == 'Linux'
         run: |
           bash scripts/ci_install_packages.sh libfontconfig1-dev libxkbcommon-dev libwayland-dev vulkan-tools \
-            poppler-utils=24.02.0-1ubuntu9.11 libpoppler134=24.02.0-1ubuntu9.11 \
+            poppler-utils=24.02.0-1ubuntu9.11 libpoppler134=24.02.0-1ubuntu9.11 mupdf-tools \
             mesa-vulkan-drivers=25.2.8-0ubuntu0.24.04.4 libllvm20=1:20.1.2-0ubuntu1~24.04.3
           driver=$(find /usr/share/vulkan/icd.d -name 'lvp_icd*.json' -print -quit)
           test -n "$driver"

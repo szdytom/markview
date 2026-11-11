@@ -21,6 +21,10 @@ at the same level, without `[brackets]`.
 
 ## Unreleased
 
+### Added
+
+- Include hierarchical heading bookmarks in exported PDFs for navigation in PDF readers (#92).
+
 ## 0.5.1 - 2026-11-10
 
 This is a minor update focused on performance and everyday usability, with faster startup, smoother scrolling, and more reliable rendering.

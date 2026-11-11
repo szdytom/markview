@@ -334,6 +334,7 @@ impl Exporter {
 		let pagination = paginate(document, &snapshot, &self.geometry);
 		let metadata = self.metadata_of(document);
 		let bytes = self.renderer.export(&Export {
+			outline: document.outline_entries(),
 			snapshot: &snapshot,
 			images: &self.images.snapshot,
 			prepared_images: Some(&self.images.pdf_images()),

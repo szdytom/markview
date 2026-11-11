@@ -38,6 +38,7 @@ fn math_fonts_are_embedded_in_debug_builds() {
 /// One document's laid-out inputs, kept so a test can export them more than
 /// once, with and without a reused renderer.
 struct Inputs {
+	outline: Vec<markview_layout::document::OutlineEntry>,
 	sheet: Arc<Stylesheet>,
 	snapshot: LayoutSnapshot,
 	geometry: PageGeometry,
@@ -122,6 +123,7 @@ fn inputs(
 	}
 	let pagination = paginate(&document, &snapshot, &geometry);
 	Inputs {
+		outline: document.outline(),
 		sheet,
 		snapshot,
 		geometry,
@@ -138,6 +140,7 @@ fn render(
 	renderer: Option<&mut Renderer>,
 ) -> Vec<u8> {
 	let export = Export {
+		outline: &inputs.outline,
 		snapshot: &inputs.snapshot,
 		images: &ImageSnapshot::default(),
 		prepared_images: None,
@@ -1192,6 +1195,7 @@ fn missing_image_pixels_abort_export_with_the_source_and_reason() {
 		LayoutEngine::new().layout_with_images(&document, &options, &images);
 	let pagination = paginate(&document, &snapshot, &geometry);
 	let error = markview_pdf::export(Export {
+		outline: document.outline_entries(),
 		snapshot: &snapshot,
 		images: &images,
 		prepared_images: None,
@@ -1264,4 +1268,82 @@ fn packed_runs_preserve_ligature_text_and_adjacent_link_regions() {
 		raw.contains("https://example.com/a")
 			&& raw.contains("https://example.com/b")
 	);
+}
+
+#[test]
+#[ignore = "requires MuPDF's mutool"]
+fn mupdf_reads_heading_bookmarks_with_correct_hierarchy_and_page_positions() {
+	let source = format!(
+		"### 开始 *章节*\n\n###### Deep\n\n## Repeat\n\n{}\n## Repeat\n\n### Child `code`\n\n# End\n",
+		"A paragraph to force page breaks.\n\n".repeat(80),
+	);
+	let geometry = PageGeometry {
+		width_pt: 350.0,
+		height_pt: 300.0,
+		margin_pt: [30.0, 25.0, 40.0, 35.0],
+	};
+	let headings = markview_commonmark::parse(source.clone()).outline();
+	for links in [false, true] {
+		let exported =
+			export_at(&source, print(), links, Metadata::default(), geometry);
+		assert!(exported.pages > 1);
+		let dir = tempfile::tempdir().unwrap();
+		let pdf = dir.path().join("bookmarks.pdf");
+		std::fs::write(&pdf, &exported.bytes).unwrap();
+		let script = dir.path().join("outline.js");
+		std::fs::write(
+			&script,
+			r#"
+var doc = Document.openDocument(scriptArgs[0]);
+function walk(nodes, depth) {
+    for (var i = 0; i < nodes.length; i++) {
+        var node = nodes[i];
+        print(depth + "\t" + node.title + "\t" + node.uri);
+        if (node.down) walk(node.down, depth + 1);
+    }
+}
+walk(doc.loadOutline(), 1);
+"#,
+		)
+		.unwrap();
+		let output = std::process::Command::new("mutool")
+			.arg("run")
+			.arg(&script)
+			.arg(&pdf)
+			.output()
+			.expect("install MuPDF to run the bookmark viewer regression");
+		assert!(output.status.success(), "{output:?}");
+		let text = String::from_utf8(output.stdout).unwrap();
+		let rows: Vec<_> = text.lines().collect();
+		assert_eq!(rows.len(), headings.len(), "{text}");
+		for ((row, heading), depth) in
+			rows.iter().zip(&headings).zip([1, 2, 1, 1, 2, 1])
+		{
+			let fields: Vec<_> = row.split('\t').collect();
+			assert_eq!(fields[0].parse::<usize>().unwrap(), depth, "{text}");
+			assert_eq!(fields[1], heading.text);
+			let &(page, y) = exported.anchors.get(&heading.anchor).unwrap();
+			let uri = fields[2];
+			assert!(
+				uri.starts_with(&format!("#page={}&zoom=", page + 1)),
+				"{uri}"
+			);
+			let coords: Vec<f32> = uri
+				.split_once("zoom=")
+				.unwrap()
+				.1
+				.split(',')
+				.map(|number| number.parse().unwrap())
+				.collect();
+			assert!((coords[1] - 35.0).abs() < 0.01, "{uri}");
+			assert!((coords[2] - (30.0 + y * PT_PER_PX)).abs() < 0.01, "{uri}");
+		}
+	}
+}
+
+#[test]
+fn documents_without_headings_have_no_bookmarks() {
+	let exported =
+		export("Plain text\n\n[Link](https://example.com)", print(), true);
+	assert!(exported.pdf.catalog().unwrap().get(b"Outlines").is_err());
 }

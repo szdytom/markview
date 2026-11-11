@@ -189,6 +189,7 @@ fn export_pdf_with(
 			.collect()
 	});
 	let bytes = markview_pdf::export(Export {
+		outline: document.outline_entries(),
 		snapshot: &snapshot,
 		images: &images,
 		prepared_images: prepared_images.as_ref(),

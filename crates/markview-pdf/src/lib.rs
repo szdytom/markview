@@ -1,6 +1,7 @@
 //! PDF export for a laid-out Markview document.
 mod image;
 mod link;
+mod outline;
 mod paint;
 mod text;
 use anyhow::Result;
@@ -33,6 +34,8 @@ pub struct Metadata {
 /// Everything one export needs: the settled layout, the decoded images, the
 /// resolved print stylesheet, and the pages the document breaks into.
 pub struct Export<'a> {
+	/// Headings in reading order; only those present in the pagination are exported.
+	pub outline: &'a [markview_layout::document::OutlineEntry],
 	pub snapshot: &'a LayoutSnapshot,
 	pub images: &'a ImageSnapshot,
 	/// Precompressed resources keyed by source and version. Standalone callers

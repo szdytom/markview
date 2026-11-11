@@ -186,6 +186,13 @@ impl Renderer {
 		}
 		let mut document = Document::new();
 		document.set_metadata(information(&input.metadata));
+		if let Some(outline) = crate::outline::build(
+			input.outline,
+			input.pagination,
+			input.geometry,
+		) {
+			document.set_outline(outline);
+		}
 		let snapshot = input.snapshot.flattened();
 		let mut painter = Painter {
 			stylesheet: input.stylesheet,

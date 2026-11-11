@@ -83,6 +83,35 @@ fn stdin_pdf_keeps_all_text_pagination_and_relative_images() {
 	));
 	assert!(result["pages"].as_u64().unwrap() > 1);
 	let pdf = lopdf::Document::load(output).unwrap();
+	let outlines = pdf
+		.catalog()
+		.unwrap()
+		.get(b"Outlines")
+		.unwrap()
+		.as_reference()
+		.unwrap();
+	let root = pdf.get_dictionary(outlines).unwrap();
+	let first = pdf
+		.get_dictionary(root.get(b"First").unwrap().as_reference().unwrap())
+		.unwrap();
+	assert_eq!(
+		lopdf::decode_text_string(first.get(b"Title").unwrap()).unwrap(),
+		"First snapshot"
+	);
+	let last = pdf
+		.get_dictionary(root.get(b"Last").unwrap().as_reference().unwrap())
+		.unwrap();
+	assert_eq!(
+		lopdf::decode_text_string(last.get(b"Title").unwrap()).unwrap(),
+		"Last snapshot"
+	);
+	let destination = pdf
+		.dereference(last.get(b"Dest").unwrap())
+		.unwrap()
+		.1
+		.as_array()
+		.unwrap();
+	assert_ne!(destination[0].as_reference().unwrap(), pdf.get_pages()[&1]);
 	let pages: Vec<_> = pdf.get_pages().keys().copied().collect();
 	let text = pdf.extract_text(&pages).unwrap();
 	assert!(
