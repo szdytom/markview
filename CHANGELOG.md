@@ -26,6 +26,10 @@ at the same level, without `[brackets]`.
 - Include hierarchical heading bookmarks in exported PDFs for navigation in PDF readers (#92).
 - Copy code blocks to the clipboard with an icon button; enabled by default and configurable in settings (#91).
 
+### Security
+
+- Update the Linux desktop portal executor to fix a use-after-free during executor shutdown.
+
 ## 0.5.1 - 2026-11-10
 
 This is a minor update focused on performance and everyday usability, with faster startup, smoother scrolling, and more reliable rendering.

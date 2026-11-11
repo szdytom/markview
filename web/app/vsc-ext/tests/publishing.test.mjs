@@ -1,6 +1,40 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import path from "node:path";
 import { getOIDCCredential } from "@vscode/vsce/out/oidc.js";
+import { listFiles } from "@vscode/vsce/out/package.js";
+
+test("installed vsce preserves the package allowlist with the patched glob matcher", async (t) => {
+  const cwd = await mkdtemp(path.join(tmpdir(), "markview-vsce-"));
+  t.after(() => rm(cwd, { recursive: true, force: true }));
+  const included = [
+    "package.json",
+    "README.md",
+    "LICENSE",
+    "CHANGELOG.md",
+    "icon.png",
+    "dist/extension.cjs",
+    "media/nested/viewer.js",
+    "media/.hidden.css",
+    "bin/markview",
+  ];
+  const excluded = ["src/extension.ts", "dist/extension.cjs.map", ".env"];
+  await Promise.all(
+    [...included, ...excluded].map(async (file) => {
+      const target = path.join(cwd, file);
+      await mkdir(path.dirname(target), { recursive: true });
+      await writeFile(target, file === "package.json" ? "{}" : "fixture");
+    }),
+  );
+  await writeFile(
+    path.join(cwd, ".vscodeignore"),
+    await readFile(new URL("../vscode/.vscodeignore", import.meta.url)),
+  );
+  const files = await listFiles({ cwd, dependencies: false, manifest: {} });
+  assert.deepEqual(files.sort(), included.sort());
+});
 
 test("installed vsce exchanges GitHub OIDC tokens using the Marketplace contract", async () => {
   const requests = [];

@@ -16,7 +16,7 @@
     "jsonc-parser": "3.3.1"
   },
   "devDependencies": {
-    "@playwright/test": "^1.56.0",
+    "@playwright/test": "^1.65.0",
     "@types/fontkit": "^2.0.8",
     "@types/node": "^22.0.0",
     "@types/vscode": "^1.95.0",
@@ -25,5 +25,10 @@
     "esbuild": "^0.28.0",
     "prettier": "^3.9.9",
     "typescript": "^5.9.0"
+  },
+  "overrides": {
+    "@vscode/vsce": {
+      "minimatch": "^11.0.8"
+    }
   }
 }

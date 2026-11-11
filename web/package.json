@@ -16,9 +16,9 @@
 		"test:scroll-sync": "pnpm --dir packages/scroll-sync test"
 	},
 	"devDependencies": {
-		"@playwright/test": "1.63.0-alpha-2026-08-31",
-		"esbuild": "^0.28.0",
-		"prettier": "^3.9.9",
-		"typescript": "^5.9.0"
+		"@playwright/test": "1.65.0",
+		"esbuild": "^0.28.2",
+		"prettier": "^3.9.10",
+		"typescript": "^5.9.3"
 	}
 }
