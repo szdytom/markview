@@ -103,10 +103,11 @@ continuing independent work. Never filter a disagreement out of the generator.
 
 The original coverage expansion recorded defects before changing production code.
 Its fixes enable ten of the original eleven regressions in ordinary CI. The
-raw HTML defects PBT-012/PBT-013 also have fixes and enabled regressions; only
-the upstream Comrak front-matter defect PBT-003 remains unresolved. Keep an
-unresolved defect's reduced input, diagnosis and ignored reproducer with its bug
-ID. An ignored reproducer is an unresolved contract, not passing coverage.
+raw HTML defects PBT-012/PBT-013 also have fixes and enabled regressions.
+Comrak 1.0.0-rc.1 fixes the remaining front-matter defect PBT-003, whose
+property test is now enabled. Keep an unresolved defect's reduced input,
+diagnosis and ignored reproducer with its bug ID. An ignored reproducer is an
+unresolved contract, not passing coverage.
 
 Record the behavior hypothesis, domain, oracle, command, result and limitations
 in the change evidence. Optional fault injection belongs in an isolated temporary
@@ -345,8 +346,9 @@ These are local results, not evidence of a remote CI run.
 ## Expansion verification (2026-11-05)
 
 These historical results precede the production fixes. Counts below use the
-package set included at each batch. Ten defect regressions are now enabled;
-PBT-003 remains ignored. The commands above describe the current expanded suite.
+package set included at each batch. Ten defect regressions were enabled by
+local fixes; the remaining PBT-003 is enabled with Comrak 1.0.0-rc.1. The
+commands above describe the current expanded suite.
 
 The first expansion batch added 17 enabled properties and two ignored defect
 reproducers. Local checks on Linux with Rust 1.99.1:
@@ -516,8 +518,8 @@ The last audit also covered previously missing compound preferences, Obsidian
 extensions, cross-row table occupancy, export planning, archive patterns, local
 file inputs, clipboard text, search snippets and shared pixel allocations.
 The original ten confirmed defects and PBT-012/PBT-013 have production fixes
-and enabled regressions. Only PBT-003 retains an ignored failing test and saved
-seed; it does not count as passing coverage. The follow-up adds `markview-image` as a sixteenth
+and enabled regressions. PBT-003 also has an enabled regression after the
+Comrak 1.0.0-rc.1 upgrade. The follow-up adds `markview-image` as a sixteenth
 package with properties.
 
 Further work needs a distinct model or environment: arbitrary shaping and

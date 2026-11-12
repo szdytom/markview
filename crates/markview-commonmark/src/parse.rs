@@ -252,18 +252,12 @@ impl Reader<'_> {
 			.copied()
 			.unwrap_or(0);
 		let start = line_start + p.start.column.saturating_sub(1);
-		let end = if matches!(data.value, NodeValue::ThematicBreak) {
-			// Comrak can leave a break open through trailing blank lines at
-			// EOF. Its source range belongs only to the marker's line.
-			let line = &self.source[line_start..];
-			line_start + line.find(['\r', '\n']).unwrap_or(line.len())
-		} else {
-			self.lines
-				.get(p.end.line.saturating_sub(1))
-				.copied()
-				.unwrap_or(0)
-				+ p.end.column
-		};
+		let end = self
+			.lines
+			.get(p.end.line.saturating_sub(1))
+			.copied()
+			.unwrap_or(0)
+			+ p.end.column;
 		// Comrak columns are byte offsets unless sourcepos_chars is enabled.
 		let mut start = start.min(self.source.len());
 		let mut end = end.min(self.source.len()).max(start);

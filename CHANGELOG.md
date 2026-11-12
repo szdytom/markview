@@ -28,6 +28,8 @@ at the same level, without `[brackets]`.
 
 ### Fixed
 
+- Correct reader-to-source positions after reference definitions, escaped table pipes, tabs and multiline footnotes, and preserve front matter with delimiter-like payload lines when its closing delimiter is at EOF.
+- Normalize CRLF and CR line endings in Markdown code content and resolve repeated reference links beyond the source text's length.
 - Open files dropped onto the reader on KDE Wayland using asynchronous native drag and drop (#16).
 - Pace Android scrolling with display VSync instead of an additional fixed 60 Hz timer, avoiding uneven animation frames and allowing high-refresh-rate displays to scroll at their native rate.
 - Restore external-keyboard shortcuts on Android, including Ctrl+B for Contents and Ctrl+C/Ctrl+V for copying and pasting.

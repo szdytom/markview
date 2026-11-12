@@ -310,10 +310,14 @@ proptest! {
 	}
 
 	#[test]
-	#[ignore = "Known bug PBT-003: a delimiter-like payload line prevents an EOF front-matter closer from being recognized"]
 	fn front_matter_with_a_delimiter_like_line_can_close_at_eof(value in word()) {
-		let source = format!("---\nkey: {value}\n---extra\n---");
-		let parsed = parse(source);
-		prop_assert!(matches!(parsed.blocks()[0].kind(), BlockKind::FrontMatter { .. }), "EOF front matter was lost");
+		let payload = format!("key: {value}\n---extra");
+		let source = format!("---\n{payload}\n---");
+		let parsed = parse(source.clone());
+		prop_assert_eq!(parsed.map.validate(&source, &parsed.document), Ok(()));
+		let BlockKind::FrontMatter { blocks, .. } = parsed.blocks()[0].kind() else {
+			return Err(TestCaseError::fail("EOF front matter was lost"));
+		};
+		prop_assert_eq!(blocks[0].kind(), &BlockKind::Code { language: "yaml".to_owned(), text: payload });
 	}
 }

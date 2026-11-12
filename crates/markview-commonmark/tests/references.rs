@@ -1,6 +1,23 @@
 use markview_document::BlockKind;
 
 #[test]
+fn repeated_references_expand_beyond_the_source_length() {
+	let destination = format!("/{}", "x".repeat(1024));
+	let source = format!("[r]: {destination}\n\n{}", "[r] ".repeat(64));
+	let doc = markview_commonmark::parse(source.clone());
+	let BlockKind::Paragraph(rich) = doc.blocks()[0].kind() else {
+		panic!("expected paragraph");
+	};
+	assert_eq!(
+		rich.iter()
+			.filter(|inline| inline.link_url() == Some(destination.as_str()))
+			.count(),
+		64
+	);
+	assert_eq!(doc.map.validate(&source, &doc.document), Ok(()));
+}
+
+#[test]
 fn an_unused_reference_definition_keeps_preceding_details_unchanged() {
 	for newline in ["\n", "\r\n", "\r"] {
 		for body in [

@@ -125,9 +125,15 @@ findings.
 
 ### comrak: inline source positions after a definition line
 
-A block that opens with reference definitions starts at its first definition
-line, but comrak leaves every inline's `sourcepos` line unshifted, so the
-recorded range addresses a different construct than the text it carries:
+**Resolved in Comrak 1.0.0-rc.1.** The reduced image example below and Unicode
+text after single-line and multiline definitions now have exact byte ranges in
+`crates/markview-commonmark/tests/sourcepos.rs`. The reference oracle no longer
+skips blocks opening with definitions.
+
+In Comrak 0.59, a block that opens with reference definitions starts at its
+first definition line, but comrak leaves every inline's `sourcepos` line
+unshifted, so the recorded range addresses a different construct than the text
+it carries:
 
 ```markdown
 [BAR]: /url
@@ -142,11 +148,15 @@ second line's text with the third line's destination. A definition with a
 title, a destination on the next line, and a footnote definition show the same
 shift; a blank line between the definition and the text does not.
 
-The `refdef` oracle cannot attribute a destination to a label inside such a
-block, so it stands down there (`seam::blocks_opening_with_definitions`); the
-position handling itself has to be fixed upstream.
+The `refdef` oracle previously stood down in such blocks because it could not
+attribute a destination to a label there.
 
 ### comrak: appending a definition can flip an earlier paragraph's references
+
+The three original campaign artifacts are not checked in and have not been
+replayed against Comrak 1.0.0-rc.1. The new `repeated_references_expand_beyond_the_source_length`
+regression verifies the upgraded reference-expansion budget, without claiming
+these original inputs are resolved.
 
 In three recorded inputs, appending the inert definition
 `\n[fuzz-inert-N]: /inert-N\n` makes `[foo]` inside an *earlier* paragraph turn
@@ -168,6 +178,12 @@ until the parser's behaviour is settled upstream.
 
 ### comrak: inline columns expand tabs, block columns do not
 
+**Upgrade verification:** Comrak 1.0.0-rc.1 passes the exact-byte regression for
+a partially consumed tab in a nested quote in
+`crates/markview-commonmark/tests/sourcepos.rs`. The original campaign artifacts
+are not in the repository, so the two recorded inputs below have not been
+replayed as part of this upgrade.
+
 Comrak documents sourcepos columns as UTF-8 byte offsets, and its block
 positions follow that. Its *inline* positions count a tab as the columns it
 advances (to the next multiple of four), so a range after a tab overshoots by
@@ -178,8 +194,17 @@ line that starts with one tab followed by `tab-indented line`. Markview maps
 comrak's columns to bytes, so that inline's range runs two bytes past its
 block.
 
-The target has no stand-down for this, so its two recorded inputs stay open
-until the positions are fixed upstream.
+The target has no stand-down for this. The two original recorded inputs remain
+unverified until they can be replayed against the upgraded parser.
+
+### Comrak 1.0.0-rc.1 frozen baseline review
+
+The `nested` fixture's `A \| escaped pipe` cell previously ended its source
+range at byte 137, omitting the final `e`. The upgraded parser ends it at 138.
+The frozen `nested.json.gz` record changes only that cell's source cover and
+spans, recorded both under the table and its cell paragraph. Semantic content,
+reader layout and print output are identical. The regression in
+`crates/markview-commonmark/tests/sourcepos.rs` checks all three line endings.
 
 ## Campaign record
 

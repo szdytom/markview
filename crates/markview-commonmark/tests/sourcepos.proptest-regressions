@@ -1,0 +1,8 @@
+# Seeds for failure cases proptest has generated in the past. It is
+# automatically read and these particular cases re-run before any
+# novel cases are generated.
+#
+# It is recommended to check this file in to source control so that
+# everyone who runs the test benefits from these saved cases.
+# Oracle regression: distinguish the last styled `r` from the preceding reference's `r`.
+cc 46530e13954d916d3816886a80eb3c7444349f8475d10ba364d329288b15b8aa # shrinks to text = "r", newline = "\n", definition = "[r]: /url", prefix = ""
