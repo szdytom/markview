@@ -795,6 +795,23 @@ impl Painter<'_> {
 					self.decorated_box(
 						surface, box_rect, corners, edges, *chain, *condition,
 					);
+					let paint = Paint::Scoped(
+						*chain,
+						*condition,
+						ColorField::BorderColor,
+					);
+					for edge in &decoration.border_rects {
+						let edge = LocalRect {
+							x: rect.x + edge.x,
+							y: rect.y + edge.y,
+							..*edge
+						};
+						if let Some(edge) =
+							edge.intersect(clipped).and_then(|r| frame.rect(r))
+						{
+							self.solid(surface, edge, paint);
+						}
+					}
 					return;
 				}
 				let background =

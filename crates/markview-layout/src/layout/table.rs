@@ -1,6 +1,9 @@
 //! Complex table geometry: spans, row groups, widths and shared borders.
+mod borders;
 #[cfg(test)]
 mod proptests;
+
+use borders::{BorderRun, collapse_borders};
 
 use super::{BlockContext, LayoutOptions};
 use crate::{
@@ -25,8 +28,7 @@ struct PlacedCell {
 	draw: usize,
 	min_width: f32,
 	preferred_width: f32,
-	gap_before: bool,
-	gap_after: bool,
+	border_runs: Vec<BorderRun>,
 	decoration: Option<std::sync::Arc<BoxDecoration>>,
 }
 
@@ -146,10 +148,9 @@ impl BlockContext<'_> {
 					}
 			})
 			.collect();
-		let starts: Vec<f32> = (0..columns)
+		let starts: Vec<f32> = (0..=columns)
 			.map(|i| x + widths[..i].iter().sum::<f32>())
 			.collect();
-		let mut row_heights = vec![0_f32; rows];
 		let mut row_min = vec![0_f32; rows];
 		let mut row_tops = vec![0_f32; rows];
 		let mut row_cells = vec![Vec::new(); rows];
@@ -176,8 +177,7 @@ impl BlockContext<'_> {
 				let after = rule.space_after.unwrap_or(0.) * opts.font_size;
 				let size = opts.font_size * self.shaper.appearance.size;
 				let cell_x = starts[cell.col];
-				let cell_w: f32 =
-					widths[cell.col..cell.col + cell.colspan].iter().sum();
+				let cell_w = starts[cell.col + cell.colspan] - cell_x;
 				let content_x = cell_x + pad[3];
 				let content_y = top + before + pad[0];
 				let inner = (cell_w - pad[1] - pad[3]).max(1.);
@@ -259,19 +259,17 @@ impl BlockContext<'_> {
 				}
 			}
 			let height = base.max(row_min[row]);
-			row_heights[row] = height;
 			row_tops[row] = top;
 			grid_height += height;
 		}
+		row_tops.push(y + grid_height);
 		// Fill the cell boxes now that every row height is final.
 		for cell in &placed {
 			let cell_top = row_tops[cell.row_start];
-			let cell_height: f32 = row_heights
-				[cell.row_start..cell.row_start + cell.rowspan]
-				.iter()
-				.sum();
+			let cell_height =
+				row_tops[cell.row_start + cell.rowspan] - cell_top;
 			let cell_x = starts[cell.col];
-			let cell_w = widths[cell.col..cell.col + cell.colspan].iter().sum();
+			let cell_w = starts[cell.col + cell.colspan] - cell_x;
 			let condition = if cell_data(table, cell).kind == CellKind::Header {
 				Condition::Header
 			} else {
@@ -282,19 +280,38 @@ impl BlockContext<'_> {
 			let rule = cell_rule(&appearance.chain, opts, cell, table);
 			let before = rule.space_before.unwrap_or(0.) * opts.font_size;
 			let after = rule.space_after.unwrap_or(0.) * opts.font_size;
+			let rect = Rect {
+				x: cell_x,
+				y: cell_top + before,
+				w: cell_w,
+				h: (cell_height - before - after).max(0.),
+			};
+			let mut decoration = cell.decoration.clone();
+			if !cell.border_runs.is_empty() {
+				let rects = borders::rectangles(
+					&cell.border_runs,
+					rect,
+					&starts,
+					&row_tops,
+				)
+				.into_iter()
+				.map(|edge| Rect {
+					x: edge.x - rect.x,
+					y: edge.y - rect.y,
+					..edge
+				})
+				.collect();
+				std::sync::Arc::make_mut(decoration.as_mut().unwrap())
+					.border_rects = rects;
+			}
 			*out.draws.get_mut(cell.draw).unwrap() = Draw::Box {
-				rect: Rect {
-					x: cell_x,
-					y: cell_top + before,
-					w: cell_w,
-					h: (cell_height - before - after).max(0.),
-				},
+				rect,
 				chain: appearance.chain,
 				condition,
 				radius: rule.radius.unwrap_or(0.),
 				border: rule.border_width.unwrap_or(0.),
 				left_only: false,
-				decoration: cell.decoration.clone(),
+				decoration,
 			};
 			if cell.rowspan > 1 {
 				out.page_constraints.push(PageConstraint {
@@ -534,8 +551,7 @@ impl BlockContext<'_> {
 						draw: 0,
 						min_width: 0.,
 						preferred_width: 0.,
-						gap_before: false,
-						gap_after: false,
+						border_runs: Vec::new(),
 						decoration: None,
 					});
 					for row in grid
@@ -554,8 +570,8 @@ impl BlockContext<'_> {
 			total_rows += rows;
 		}
 		let mut base_edges = vec![[0_f32; 4]; cells.len()];
-		let mut gap_before = vec![false; cells.len()];
-		let mut gap_after = vec![false; cells.len()];
+		let mut gap_before = vec![0.; cells.len()];
+		let mut gap_after = vec![0.; cells.len()];
 		for (id, cell) in cells.iter().enumerate() {
 			let appearance =
 				cell_appearance(table_appearance, table, cell, opts);
@@ -563,75 +579,33 @@ impl BlockContext<'_> {
 			base_edges[id] = rule
 				.border_edges
 				.unwrap_or([rule.border_width.unwrap_or(0.); 4]);
-			gap_before[id] = rule.space_before.unwrap_or(0.) > 0.;
-			gap_after[id] = rule.space_after.unwrap_or(0.) > 0.;
+			gap_before[id] = rule.space_before.unwrap_or(0.) * opts.font_size;
+			gap_after[id] = rule.space_after.unwrap_or(0.) * opts.font_size;
 		}
-		for (id, cell) in cells.iter_mut().enumerate() {
+		for id in 0..cells.len() {
+			let cell = &cells[id];
 			let appearance =
 				cell_appearance(table_appearance, table, cell, opts);
 			let rule = cell_rule(&appearance.chain, opts, cell, table);
-			cell.gap_before = gap_before[id];
-			cell.gap_after = gap_after[id];
-			let own = base_edges[id];
-			let mut edges = own;
-			if collapse {
-				let neighbor = |r: usize, c: usize| -> Option<usize> {
-					grid.get(r).and_then(|row| row.get(c)).copied().flatten()
-				};
-				let side =
-					|range: std::ops::Range<usize>,
-					 f: &dyn Fn(usize) -> Option<usize>| {
-						range.map(f).collect::<Option<Vec<_>>>()
-					};
-				if cell.row_start > 0
-					&& let Some(ids) =
-						side(cell.col..cell.col + cell.colspan, &|c| {
-							neighbor(cell.row_start - 1, c)
-						})
-					&& ids.iter().all(|id| *id == ids[0])
-					&& !cell.gap_before
-					&& !gap_after[ids[0]]
-					&& base_edges[ids[0]][2] >= own[0]
-				{
-					edges[0] = 0.;
-				}
-				if cell.row_start + cell.rowspan < total_rows
-					&& let Some(ids) =
-						side(cell.col..cell.col + cell.colspan, &|c| {
-							neighbor(cell.row_start + cell.rowspan, c)
-						})
-					&& ids.iter().all(|id| *id == ids[0])
-					&& !cell.gap_after
-					&& !gap_before[ids[0]]
-					&& base_edges[ids[0]][0] > own[2]
-				{
-					edges[2] = 0.;
-				}
-				if cell.col > 0
-					&& let Some(ids) = side(
-						cell.row_start..cell.row_start + cell.rowspan,
-						&|r| neighbor(r, cell.col - 1),
-					)
-					&& ids.iter().all(|id| *id == ids[0])
-					&& base_edges[ids[0]][1] >= own[3]
-				{
-					edges[3] = 0.;
-				}
-				if cell.col + cell.colspan < columns
-					&& let Some(ids) = side(
-						cell.row_start..cell.row_start + cell.rowspan,
-						&|r| neighbor(r, cell.col + cell.colspan),
-					)
-					&& ids.iter().all(|id| *id == ids[0])
-					&& base_edges[ids[0]][3] > own[1]
-				{
-					edges[1] = 0.;
-				}
-			}
+			let (edges, runs) = if collapse {
+				collapse_borders(
+					&cells,
+					&grid[..total_rows],
+					&base_edges,
+					&gap_before,
+					&gap_after,
+					id,
+				)
+			} else {
+				(base_edges[id], Vec::new())
+			};
+			let cell = &mut cells[id];
+			cell.border_runs = runs;
 			cell.decoration = if collapse {
 				Some(std::sync::Arc::new(BoxDecoration {
 					edges,
 					corners: [0.0; 4],
+					border_rects: Box::default(),
 				}))
 			} else {
 				BoxDecoration::from_rule(&rule, false)

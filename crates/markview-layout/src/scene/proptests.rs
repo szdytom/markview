@@ -31,6 +31,12 @@ fn shapes(x: f32, y: f32, depth: usize) -> Vec<Draw> {
 			decoration: Some(std::sync::Arc::new(BoxDecoration {
 				edges: [1.0, 2.0, 3.0, 4.0],
 				corners: [2.0; 4],
+				border_rects: Box::from([Rect {
+					x: 1.,
+					y: 1.,
+					w: 2.,
+					h: 1.,
+				}]),
 			})),
 		},
 		Draw::Polygon {

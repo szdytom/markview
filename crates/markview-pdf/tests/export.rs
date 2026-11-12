@@ -648,6 +648,133 @@ fn a_table_exports_every_cell_text_once_across_pages() {
 	}
 }
 
+#[test]
+fn segmented_rowspan_borders_preserve_page_bands_and_copyable_text() {
+	for count in [3, 20] {
+		let mut source = String::from("+-------+-------+\n");
+		for row in 0..count {
+			source.push_str(&format!(
+				"| {:5} | r{row:02}   |\n",
+				if row == 0 { "Tall" } else { "" }
+			));
+			source.push_str(if row + 1 == count {
+				"+-------+-------+\n"
+			} else {
+				"+       +-------+\n"
+			});
+		}
+		let geometry = PageGeometry {
+			width_pt: 300.,
+			height_pt: 120.,
+			margin_pt: [12.; 4],
+		};
+		let sheet = |borders| {
+			let mut sheet = (*print()).clone();
+			let (normal, first, last) =
+				if borders { (1, 2, 3) } else { (0, 0, 0) };
+			sheet.merge(
+				&Stylesheet::parse(&format!(
+					concat!(
+						"format_version=2\nversion=1\n",
+						"[[rule]]\nwhen=['table','cell']\nborder_width={}\n",
+						"[[rule]]\nwhen=['table','first_child','cell']\nborder_width={}\n",
+						"[[rule]]\nwhen=['table','last_child','cell']\nborder_width={}\n",
+					),
+					normal, first, last
+				))
+				.unwrap(),
+			);
+			Arc::new(sheet)
+		};
+		let plain = inputs(&source, sheet(false), geometry);
+		let bordered = inputs(&source, sheet(true), geometry);
+		assert_eq!(plain.pagination.pages.len() > 1, count > 3);
+		assert_eq!(
+			bordered.pagination.pages, plain.pagination.pages,
+			"borders must not become pagination content"
+		);
+		let bytes = render(&bordered, false, Metadata::default(), None);
+		let pdf = lopdf::Document::load_mem(&bytes).unwrap();
+		let (clip, borders) = bordered.snapshot.blocks[0]
+			.layout
+			.draws
+			.iter()
+			.find_map(|draw| match draw {
+				markview_layout::scene::Draw::Box {
+					rect,
+					decoration: Some(decoration),
+					..
+				} if !decoration.border_rects.is_empty() => {
+					Some((rect, decoration.border_rects.clone()))
+				}
+				_ => None,
+			})
+			.expect("the spanning cell has segmented box borders");
+		let mut checked_edges = 0;
+		for (page, id) in pdf.get_pages() {
+			let item = &bordered.pagination.pages[page as usize - 1][0];
+			let top = if item.first {
+				clip.y
+			} else {
+				item.top.max(clip.y)
+			};
+			let bottom = if item.last {
+				clip.y + clip.h
+			} else {
+				item.bottom.min(clip.y + clip.h)
+			};
+			let factor = item.scale * PT_PER_PX;
+			let (fills, _) = horizontal_fills_and_text(
+				&String::from_utf8_lossy(&pdf.get_page_content(id)),
+			);
+			for edge in &borders {
+				let rect = markview_layout::scene::Rect {
+					x: clip.x + edge.x,
+					y: clip.y + edge.y,
+					..*edge
+				};
+				let edge_top = rect.y.max(top);
+				let edge_bottom = (rect.y + rect.h).min(bottom);
+				if rect.w <= rect.h || edge_bottom <= edge_top {
+					continue;
+				}
+				let edge = [
+					geometry.margin_pt[3] + rect.x * factor,
+					geometry.margin_pt[0]
+						+ item.y * PT_PER_PX
+						+ (edge_top - item.top) * factor,
+					geometry.margin_pt[3] + (rect.x + rect.w) * factor,
+					geometry.margin_pt[0]
+						+ item.y * PT_PER_PX
+						+ (edge_bottom - item.top) * factor,
+				];
+				assert!(
+					fills.iter().any(|&(a, b, c, d)| [a, b, c, d]
+						.iter()
+						.zip(edge)
+						.all(|(actual, expected)| (actual - expected).abs()
+							< 0.001)),
+					"page {page}: missing border fill {edge:?}; got {fills:?}"
+				);
+				checked_edges += 1;
+			}
+		}
+		assert_eq!(
+			checked_edges, 2,
+			"the spanning cell keeps both outer horizontal borders"
+		);
+		let all: String = pdf
+			.get_pages()
+			.keys()
+			.map(|&page| pdf.extract_text(&[page]).unwrap())
+			.collect();
+		assert_eq!(all.matches("Tall").count(), 1);
+		for row in 0..count {
+			assert_eq!(all.matches(&format!("r{row:02}")).count(), 1);
+		}
+	}
+}
+
 /// A filled rectangle's left, bottom, width and height.
 type Fill = (f32, f32, f32, f32);
 /// A text baseline's x, y and size.
@@ -687,6 +814,7 @@ fn horizontal_fills_and_text(content: &str) -> (Vec<Fill>, Vec<Baseline>) {
 				}
 				points.clear();
 			}
+			"n" => points.clear(),
 			"Tf" => {
 				if let Some(value) = numbers.last() {
 					size = *value;

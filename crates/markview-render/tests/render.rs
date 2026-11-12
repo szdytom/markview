@@ -112,6 +112,202 @@ fn markdown_renders_visible_and_identical_cached_frames() -> anyhow::Result<()>
 	Ok(())
 }
 
+#[test]
+fn merged_table_borders_have_single_stroke_coverage_at_every_scale()
+-> anyhow::Result<()> {
+	use markview_layout::{scene::Draw, style::Condition};
+	let doc = markview_commonmark::parse(concat!(
+		"+-------+-------+-------+\n",
+		"| Wide          | Tall  |\n",
+		"+-------+-------+       +\n",
+		"| Left  | Mid   | cell  |\n",
+		"+       +-------+-------+\n",
+		"| cell  | Wide again    |\n",
+		"+-------+-------+-------+\n",
+	));
+	let mut sheet = (*Stylesheet::bundled(false)).clone();
+	sheet.merge(&Stylesheet::parse(concat!(
+		"format_version=2\nversion=1\n",
+		"[[rule]]\nwhen=['body']\nbackground='#FFFFFF'\n",
+		"[[rule]]\nwhen=['table','cell']\nborder_width=2\n",
+		"border_color='#00000080'\nbackground='#FFFFFF'\n",
+	))?);
+	let sheet = Arc::new(sheet);
+	let mut renderer = pollster::block_on(Renderer::new(None))?;
+	renderer.set_stylesheet(sheet.clone());
+	let options = LayoutOptions {
+		width: 360.,
+		fonts: fonts(),
+		stylesheet: sheet,
+		..Default::default()
+	};
+	let snapshot = LayoutEngine::new().layout(&doc, &options).flattened();
+	let cells: Vec<_> = snapshot.blocks[0]
+		.layout
+		.draws
+		.iter()
+		.filter_map(|draw| match draw {
+			Draw::Box {
+				rect,
+				condition: Condition::Cell,
+				..
+			} => Some(rect),
+			_ => None,
+		})
+		.collect();
+	assert_eq!(cells.len(), 5);
+	let horizontal = HashMap::new();
+	for scale in [1., 1.25, 1.5, 2.] {
+		let view = view(Theme::Light, scale, &horizontal);
+		let target = renderer.offscreen(view.width, view.height);
+		let submission = renderer.render(
+			&snapshot,
+			&view,
+			&[],
+			&target.create_view(&Default::default()),
+		)?;
+		renderer.wait(Some(submission))?;
+		let pixels = renderer.read_pixels(&target)?;
+		let x = ((cells[0].x + cells[0].w / 2. + view.left) * scale) as u32;
+		let y = ((cells[0].y + 0.5 + view.top) * scale) as u32;
+		// The outer edge provides one stroke's sRGB intensity.
+		let single = pixels.rgba[(y * pixels.width + x) as usize * 4];
+		assert!(single > 0 && single < 255);
+		let darkness = f32::from(255 - single);
+		let mut checked = 0;
+		for a in &cells {
+			for b in &cells {
+				let overlap_x = (a.x + a.w).min(b.x + b.w) - a.x.max(b.x);
+				let overlap_y = (a.y + a.h).min(b.y + b.h) - a.y.max(b.y);
+				let sample = if (a.y + a.h - b.y).abs() < 0.001
+					&& overlap_x > 0.001
+				{
+					Some((a.x.max(b.x) + overlap_x / 2., b.y, true))
+				} else if (a.x + a.w - b.x).abs() < 0.001 && overlap_y > 0.001 {
+					Some((b.x, a.y.max(b.y) + overlap_y / 2., false))
+				} else {
+					None
+				};
+				let Some((x, y, horizontal)) = sample else {
+					continue;
+				};
+				let x = ((x + view.left) * scale).floor() as u32;
+				let y = ((y + view.top) * scale).floor() as u32;
+				let mut coverage = 0;
+				for offset in -8..=8 {
+					let (x, y) = if horizontal {
+						(x, y.checked_add_signed(offset).unwrap())
+					} else {
+						(x.checked_add_signed(offset).unwrap(), y)
+					};
+					let at = (y * pixels.width + x) as usize * 4;
+					let pixel = &pixels.rgba[at..at + 4];
+					// A translucent stroke exposes any accidental second paint.
+					assert!(
+						pixel[0] >= single.saturating_sub(1),
+						"border painted twice: {pixel:?}"
+					);
+					coverage += 255 - u32::from(pixel[0]);
+				}
+				assert!(
+					(coverage as f32 - darkness * 2. * scale).abs() <= darkness,
+					"scale={scale}: border coverage {coverage} at ({x}, {y})"
+				);
+				checked += 1;
+			}
+		}
+		assert_eq!(checked, 8);
+	}
+	Ok(())
+}
+
+#[test]
+fn segmented_borders_stay_below_cell_text_with_zero_padding()
+-> anyhow::Result<()> {
+	let doc = markview_commonmark::parse(concat!(
+		"+-------+-------+\n",
+		"| HHHH  | Top   |\n",
+		"+       +-------+\n",
+		"|       | Mid   |\n",
+		"+       +-------+\n",
+		"|       | Last  |\n",
+		"+-------+-------+\n",
+	));
+	let mut renderer = pollster::block_on(Renderer::new(None))?;
+	let mut frames = Vec::new();
+	let horizontal = HashMap::new();
+	let view = view(Theme::Light, 1., &horizontal);
+	let mut tall = Default::default();
+	for widths in [[0, 0, 0], [8, 12, 16]] {
+		let mut sheet = (*Stylesheet::bundled(false)).clone();
+		sheet.merge(&Stylesheet::parse(&format!(concat!(
+			"format_version=2\nversion=1\n",
+			"[[rule]]\nwhen=['body']\ncolor='#000000'\nbackground='#FFFFFF'\n",
+			"[[rule]]\nwhen=['table','cell']\npadding=0\nborder_width={}\nborder_color='#FF0000'\n",
+			"[[rule]]\nwhen=['table','first_child','cell']\nborder_width={}\n",
+			"[[rule]]\nwhen=['table','last_child','cell']\nborder_width={}\n",
+		), widths[0], widths[1], widths[2]))?);
+		let sheet = Arc::new(sheet);
+		renderer.set_stylesheet(sheet.clone());
+		let snapshot = LayoutEngine::new()
+			.layout(
+				&doc,
+				&LayoutOptions {
+					width: 360.,
+					font_size: 36.,
+					fonts: fonts(),
+					stylesheet: sheet,
+					..Default::default()
+				},
+			)
+			.flattened();
+		tall = snapshot.blocks[0]
+			.layout
+			.draws
+			.iter()
+			.find_map(|draw| match draw {
+				markview_layout::scene::Draw::Box {
+					rect,
+					condition: markview_layout::style::Condition::Cell,
+					..
+				} => Some(rect),
+				_ => None,
+			})
+			.unwrap();
+		let target = renderer.offscreen(view.width, view.height);
+		let submission = renderer.render(
+			&snapshot,
+			&view,
+			&[],
+			&target.create_view(&Default::default()),
+		)?;
+		renderer.wait(Some(submission))?;
+		frames.push(renderer.read_pixels(&target)?.rgba);
+	}
+	let mut checked = 0;
+	for y in (tall.y + view.top).ceil() as u32
+		..(tall.y + tall.h + view.top).floor() as u32
+	{
+		for x in (tall.x + view.left).ceil() as u32
+			..(tall.x + view.left + 12.).floor() as u32
+		{
+			let at = (y * view.width + x) as usize * 4;
+			if frames[0][at..at + 3].iter().all(|&c| c < 20) {
+				assert!(
+					frames[1][at] <= frames[0][at].saturating_add(2),
+					"a border covered text at ({x}, {y})"
+				);
+				checked += 1;
+			}
+		}
+	}
+	assert!(
+		checked > 10,
+		"the glyph must overlap the border strip: {checked}, {tall:?}"
+	);
+	Ok(())
+}
+
 /// A prewarm pass prepares the screenful below, which the reader is not
 /// looking at. It must still fill the atlases, and it must leave both the
 /// frame and the paint order of the next one exactly as they were.

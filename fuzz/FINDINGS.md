@@ -352,3 +352,20 @@ recorded so the tightened oracles are not mistaken for silent product fixes.
 - The PDF link oracle compared a link rectangle inside a horizontally
   overflowing block without the viewport clip. Links outside the visible
   overflow window are now skipped, matching what the exporter can paint.
+
+## Table border-collapse frozen baseline review
+
+`b98ad0b` rewrote shared-border collapse for merged cells. `cell_w` now comes
+from `starts[col + colspan] - starts[col]` instead of summing the column widths,
+and `cell_height` from the difference of final row tops instead of summing the
+row heights. Both are exact only in real arithmetic, so table geometry moved by
+at most `0.00006103515625` layout units (2⁻¹⁴).
+
+An exhaustive field comparison over all 24 records found the change in 5 of them
+(`code_math_table`, `code_math_table-full`, `nested`, `nested-flow`, `webpage`)
+and 606 leaves in total. Every difference is a draw rect, text cluster, binding
+or PDF operator position, or an operator's decimal length; semantic content,
+identities, source mappings, line breaks, pagination and drawn/retained
+structure are unchanged, and the refreshed records were reviewed before
+freezing. Regenerate with `doc_memory --records-only`; the test still compares
+exact float bits.

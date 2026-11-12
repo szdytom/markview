@@ -15,9 +15,13 @@ impl Draw {
 			Self::Image { src, title, .. } => src.capacity() + title.capacity(),
 			Self::Glyph(g) => size_of_val(g.coords.as_ref()),
 			Self::Box {
-				decoration: Some(_),
+				decoration: Some(decoration),
 				..
-			} => size_of::<BoxDecoration>() + 16,
+			} => {
+				size_of::<BoxDecoration>()
+					+ 16
+					+ size_of_val(decoration.border_rects.as_ref())
+			}
 			Self::Polygon { points, .. } => size_of_val(points.as_ref()),
 			Self::Math { math, .. } => {
 				use ratex_types::DisplayItem;

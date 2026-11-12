@@ -287,7 +287,7 @@ impl Renderer {
 					);
 					self.geometry.decorated(
 						rect,
-						**decoration,
+						decoration,
 						background,
 						border_color,
 						clip,

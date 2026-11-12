@@ -71,6 +71,12 @@ corrections are again only draw, cluster, link and overflow positions, at most
 `0.000244140625` layout units; PDF text extraction is unchanged, and only the
 exporter's run grouping follows the corrected positions.
 
+The table border-collapse rewrite updates 5 records, again only geometry: draw,
+cluster, binding and PDF operator positions move by at most `0.00006103515625`
+layout units because cell extents are now differences of prefix sums rather than
+sums of widths and row heights. Semantic content, identities, source mappings,
+line breaks and drawn/retained structure are unchanged.
+
 Tests compare float bit patterns and emit actual JSON plus the first differing
 field under `artifacts/doc-memory-regression`. Sensitivity checks deliberately
 change glyph geometry/bold, typed link targets, command ownership, clipping and

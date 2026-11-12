@@ -155,10 +155,12 @@ pub enum Draw {
 }
 
 /// Explicit box edges and corners, in logical pixels. Legacy boxes keep their fast path.
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Debug, Default)]
 pub struct BoxDecoration {
 	pub edges: [f32; 4],
 	pub corners: [f32; 4],
+	/// Disjoint border rectangles, relative to the box's top-left corner.
+	pub border_rects: Box<[Rect]>,
 }
 
 impl BoxDecoration {
@@ -180,6 +182,7 @@ impl BoxDecoration {
 					corners: rule
 						.corner_radii
 						.unwrap_or([rule.radius.unwrap_or(0.0); 4]),
+					border_rects: Box::default(),
 				})
 			},
 		)

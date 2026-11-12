@@ -24,7 +24,7 @@ impl Geometry {
 	pub(super) fn decorated(
 		&mut self,
 		r: Rect,
-		decoration: markview_layout::scene::BoxDecoration,
+		decoration: &markview_layout::scene::BoxDecoration,
 		background: [f32; 4],
 		border: [f32; 4],
 		clip: Rect,
@@ -33,6 +33,30 @@ impl Geometry {
 		if !self.emitting {
 			return;
 		}
+		self.decorated_base(r, decoration, background, border, clip, view);
+		for edge in &decoration.border_rects {
+			self.solid(
+				Rect {
+					x: r.x + edge.x,
+					y: r.y + edge.y,
+					..*edge
+				},
+				border,
+				clip,
+				view,
+			);
+		}
+	}
+
+	fn decorated_base(
+		&mut self,
+		r: Rect,
+		decoration: &markview_layout::scene::BoxDecoration,
+		background: [f32; 4],
+		border: [f32; 4],
+		clip: Rect,
+		view: &View<'_>,
+	) {
 		let Some(visible) = r.intersect(clip) else {
 			return;
 		};
