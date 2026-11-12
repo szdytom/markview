@@ -27,6 +27,10 @@ pub const fn touch_inset() -> bool {
 pub const fn exclusive_gpu_surface() -> bool {
 	cfg!(target_os = "android")
 }
+/// Android's VSync swapchain paces buffer acquisition at the display's rate.
+pub const fn native_frame_pacing() -> bool {
+	cfg!(target_os = "android")
+}
 pub const fn folder_reveal() -> bool {
 	!cfg!(target_os = "android")
 }

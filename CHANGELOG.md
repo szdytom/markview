@@ -29,6 +29,7 @@ at the same level, without `[brackets]`.
 ### Fixed
 
 - Open files dropped onto the reader on KDE Wayland using asynchronous native drag and drop (#16).
+- Pace Android scrolling with display VSync instead of an additional fixed 60 Hz timer, avoiding uneven animation frames and allowing high-refresh-rate displays to scroll at their native rate.
 
 ### Security
 

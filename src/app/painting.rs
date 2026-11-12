@@ -48,6 +48,7 @@ impl<P: super::SendEvent> App<P> {
 		// A pass only survives a frame that completes; an occluded or retried
 		// frame must not leave a deadline that wakes the loop forever.
 		self.prewarm_at = None;
+		let acquire_started = Instant::now();
 		let (frame, suboptimal) = {
 			let Some(renderer) = &mut self.renderer else {
 				return Ok(());
@@ -130,7 +131,8 @@ impl<P: super::SendEvent> App<P> {
 		let rasterized = renderer.raster_stats().rasterized - rasterized_before;
 		window.pre_present_notify();
 		renderer.present(frame);
-		if self.animations.presented(Instant::now()) {
+
+		if self.animations.presented(acquire_started, Instant::now()) {
 			window.request_redraw();
 		}
 		// Publish a ready body only after the first loading frame has been presented.

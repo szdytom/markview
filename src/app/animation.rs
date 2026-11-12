@@ -10,12 +10,13 @@ const MAX_FRAME_DT: Duration = Duration::from_millis(100);
 
 /// Drives animation frames from the surface's presentation.
 ///
-/// `AutoVsync` already paces presentation. The refresh interval is only a
-/// floor for backends whose present does not block, so a running animation
-/// still asks for at most one frame per physical refresh.
+/// Android's `AutoVsync` swapchain supplies the clock, including on displays
+/// whose refresh rate `winit` cannot report. Other hosts also use a refresh
+/// interval floor for backends whose presentation does not block.
 pub(super) struct FrameDriver {
 	now: Instant,
 	interval: Duration,
+	native_pacing: bool,
 	dt: Duration,
 	active: bool,
 	advancing: bool,
@@ -28,6 +29,7 @@ impl Default for FrameDriver {
 		Self {
 			now: Instant::now(),
 			interval: Duration::from_secs_f64(1.0 / 60.0),
+			native_pacing: markview_platform::native_frame_pacing(),
 			dt: Duration::ZERO,
 			active: false,
 			advancing: false,
@@ -93,14 +95,18 @@ impl FrameDriver {
 		self.dt
 	}
 
-	/// Records a presentation. Returns whether the next animation frame is
-	/// due immediately instead of at `deadline`.
-	pub(super) fn presented(&mut self, now: Instant) -> bool {
+	/// Records a presentation, including time spent acquiring its buffer in
+	/// the refresh budget. Returns whether the next animation frame is due.
+	pub(super) fn presented(&mut self, started: Instant, now: Instant) -> bool {
 		if !self.active {
 			self.next_at = None;
 			return false;
 		}
-		let due = self.now + self.interval;
+		if self.native_pacing {
+			self.next_at = None;
+			return true;
+		}
+		let due = started + self.interval;
 		if now >= due {
 			self.next_at = None;
 			true
@@ -223,7 +229,10 @@ mod tests {
 	use super::*;
 
 	fn driver(millihertz: u32) -> FrameDriver {
-		let mut driver = FrameDriver::default();
+		let mut driver = FrameDriver {
+			native_pacing: false,
+			..FrameDriver::default()
+		};
 		driver.set_refresh_rate(Some(millihertz));
 		driver
 	}
@@ -241,7 +250,31 @@ mod tests {
 		let now = Instant::now();
 		driver.begin(now);
 		driver.set_active(false);
-		assert!(!driver.presented(now + Duration::from_millis(100)));
+		assert!(!driver.presented(now, now + Duration::from_millis(100)));
+		assert_eq!(driver.deadline(), None);
+	}
+
+	#[test]
+	fn native_pacing_follows_the_display_without_a_sixty_hertz_timer() {
+		let mut driver = FrameDriver {
+			native_pacing: true,
+			..FrameDriver::default()
+		};
+		let start = Instant::now();
+		for hz in [60.0, 90.0, 120.0, 144.0] {
+			let interval = Duration::from_secs_f64(1.0 / hz);
+			for frame in 1..=120 {
+				let requested = start + interval * (frame - 1);
+				let acquired = start + interval * frame;
+				driver.begin(acquired);
+				driver.set_active(true);
+				assert!(driver.presented(requested, acquired));
+				assert_eq!(driver.deadline(), None);
+			}
+		}
+		driver.begin(start);
+		driver.set_active(false);
+		assert!(!driver.presented(start, start));
 		assert_eq!(driver.deadline(), None);
 	}
 
@@ -251,7 +284,7 @@ mod tests {
 		let start = Instant::now();
 		driver.begin(start);
 		driver.set_active(true);
-		assert!(!driver.presented(start + Duration::from_millis(5)));
+		assert!(!driver.presented(start, start + Duration::from_millis(5)));
 		assert!(driver.deadline().is_some());
 		let due = driver.deadline().unwrap();
 		assert!(!driver.take_due(due - Duration::from_millis(1)));
@@ -259,8 +292,59 @@ mod tests {
 
 		driver.begin(start + Duration::from_millis(20));
 		driver.set_active(true);
-		assert!(driver.presented(start + Duration::from_millis(40)));
+		assert!(driver.presented(
+			start + Duration::from_millis(20),
+			start + Duration::from_millis(40)
+		));
 		assert_eq!(driver.deadline(), None);
+	}
+
+	#[test]
+	fn acquiring_a_vsync_buffer_does_not_add_another_refresh_wait() {
+		for rate in [60_000, 90_000, 120_000, 144_000] {
+			let mut driver = driver(rate);
+			let start = Instant::now();
+			let mut requested = start;
+			for frame in 1..=120 {
+				let acquired = start + driver.interval * frame;
+				assert!(
+					requested < acquired,
+					"Missed refresh {frame} at {rate}"
+				);
+				driver.begin(acquired);
+				driver.set_active(true);
+				let presented = acquired
+					+ Duration::from_micros(500 * (frame % 4 + 1) as u64);
+				requested = if driver.presented(requested, presented) {
+					presented
+				} else {
+					let due = driver.deadline().unwrap();
+					assert!(driver.take_due(due));
+					due
+				};
+				assert_eq!(driver.now(), acquired);
+			}
+		}
+	}
+
+	proptest::proptest! {
+		#[test]
+		fn the_refresh_budget_includes_acquisition_and_rendering(
+			rate in 30_000u32..240_001,
+			acquire_us in 0u64..50_001,
+			render_us in 0u64..50_001,
+		) {
+			let mut driver = driver(rate);
+			let start = Instant::now();
+			let acquired = start + Duration::from_micros(acquire_us);
+			let presented = acquired + Duration::from_micros(render_us);
+			driver.begin(acquired);
+			driver.set_active(true);
+			let due = start + driver.interval;
+			proptest::prop_assert_eq!(driver.presented(start, presented), presented >= due);
+			proptest::prop_assert_eq!(driver.deadline(), (presented < due).then_some(due));
+			proptest::prop_assert_eq!(driver.now(), acquired);
+		}
 	}
 
 	#[test]
