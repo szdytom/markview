@@ -4,6 +4,149 @@ use super::*;
 use winit::event::{
 	ButtonSource, FingerId, PointerKind, PointerSource, WindowEvent as E,
 };
+use winit::keyboard::{
+	Key, KeyCode, KeyLocation, ModifiersState, NamedKey, PhysicalKey,
+};
+
+fn key(code: KeyCode, logical_key: Key, state: ElementState) -> E {
+	E::KeyboardInput {
+		device_id: None,
+		event: KeyEvent {
+			physical_key: PhysicalKey::Code(code),
+			key_without_modifiers: logical_key.clone(),
+			text: logical_key.to_text().map(Into::into),
+			text_with_all_modifiers: logical_key.to_text().map(Into::into),
+			logical_key,
+			location: KeyLocation::Standard,
+			state,
+			repeat: false,
+		},
+		is_synthetic: false,
+	}
+}
+
+#[test]
+fn android_control_chords_report_modifiers_before_keys_and_restore_letters() {
+	let mut input = NativeInput::default();
+	for code in [KeyCode::ControlLeft, KeyCode::ControlRight] {
+		let events = input.input_with_keyboard(
+			key(code, Key::Named(NamedKey::Control), ElementState::Pressed),
+			true,
+		);
+		assert!(
+			matches!(&events[..], [WindowEvent::ModifiersChanged(m), WindowEvent::KeyboardInput { .. }] if m.state() == ModifiersState::CONTROL)
+		);
+		for (byte, expected) in
+			(0..=31).zip(" abcdefghijklmnopqrstuvwxyz[\\]^_".chars())
+		{
+			let text = char::from(byte).to_string();
+			let events = input.input_with_keyboard(
+				key(
+					KeyCode::KeyB,
+					Key::Character(text.clone().into()),
+					ElementState::Pressed,
+				),
+				true,
+			);
+			let [WindowEvent::KeyboardInput { event, .. }] = &events[..] else {
+				panic!(
+					"a held modifier must not emit duplicate modifier events"
+				)
+			};
+			assert_eq!(
+				event.logical_key,
+				Key::Character(expected.to_string().into())
+			);
+			assert_eq!(event.text.as_deref(), Some(text.as_str()));
+		}
+		let events = input.input_with_keyboard(
+			key(code, Key::Named(NamedKey::Control), ElementState::Released),
+			true,
+		);
+		assert!(
+			matches!(&events[..], [WindowEvent::ModifiersChanged(m), WindowEvent::KeyboardInput { .. }] if m.state().is_empty())
+		);
+	}
+	let events = input.input_with_keyboard(
+		key(
+			KeyCode::PageUp,
+			Key::Named(NamedKey::PageUp),
+			ElementState::Pressed,
+		),
+		true,
+	);
+	assert!(
+		matches!(&events[..], [WindowEvent::KeyboardInput { event, .. }] if event.logical_key == Key::Named(NamedKey::PageUp))
+	);
+}
+
+#[test]
+fn desktop_keys_and_android_unmodified_text_are_unchanged() {
+	let mut input = NativeInput::default();
+	let control = key(
+		KeyCode::ControlLeft,
+		Key::Named(NamedKey::Control),
+		ElementState::Pressed,
+	);
+	assert!(matches!(
+		&input.input_with_keyboard(control, false)[..],
+		[WindowEvent::KeyboardInput { .. }]
+	));
+	for android in [false, true] {
+		for text in ["b", "B", "中文", "🙂", "\u{2}"] {
+			let events = input.input_with_keyboard(
+				key(
+					KeyCode::KeyB,
+					Key::Character(text.into()),
+					ElementState::Pressed,
+				),
+				android,
+			);
+			assert!(
+				matches!(&events[..], [WindowEvent::KeyboardInput { event, .. }]
+				if event.logical_key == Key::Character(text.into()) && event.text.as_deref() == Some(text))
+			);
+		}
+	}
+}
+
+proptest::proptest! {
+	#[test]
+	fn android_modifier_sequences_preserve_both_sides_and_reset_on_blur(
+		ops in proptest::collection::vec((0usize..9, proptest::bool::ANY), 0..100)
+	) {
+		let codes = [KeyCode::ControlLeft, KeyCode::ControlRight, KeyCode::ShiftLeft, KeyCode::ShiftRight,
+			KeyCode::AltLeft, KeyCode::AltRight, KeyCode::MetaLeft, KeyCode::MetaRight];
+		let mut pressed = [false; 8];
+		let mut input = NativeInput::default();
+		let mut observed = ModifiersState::empty();
+		for (index, down) in ops {
+			let event = if index == 8 {
+				pressed.fill(false);
+				E::Focused(false)
+			} else {
+				pressed[index] = down;
+				key(codes[index], Key::Unidentified(winit::keyboard::NativeKey::Unidentified),
+					if down { ElementState::Pressed } else { ElementState::Released })
+			};
+			let mut expected = ModifiersState::empty();
+			for (sides, flag) in pressed.as_chunks::<2>().0.iter().zip([
+				ModifiersState::CONTROL, ModifiersState::SHIFT, ModifiersState::ALT, ModifiersState::META
+			]) {
+				expected.set(flag, sides.iter().any(|side| *side));
+			}
+			let before = observed;
+			let events = input.input_with_keyboard(event, true);
+			for event in &events {
+				if let WindowEvent::ModifiersChanged(modifiers) = event {
+					observed = modifiers.state();
+				}
+			}
+			proptest::prop_assert_eq!(observed, expected);
+			proptest::prop_assert_eq!(events.len(), if before != expected { 2 } else { 1 });
+		}
+	}
+}
 fn button(id: usize, state: ElementState) -> E {
 	E::PointerButton {
 		device_id: None,

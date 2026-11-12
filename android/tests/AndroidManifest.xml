@@ -22,6 +22,7 @@
     <instrumentation android:name="io.github.szdytom.markview.SettingsTest" android:targetPackage="io.github.szdytom.markview" />
     <instrumentation android:name="io.github.szdytom.markview.SearchTest" android:targetPackage="io.github.szdytom.markview" />
     <instrumentation android:name="io.github.szdytom.markview.InputTest" android:targetPackage="io.github.szdytom.markview" />
+    <instrumentation android:name="io.github.szdytom.markview.KeyboardTest" android:targetPackage="io.github.szdytom.markview" />
     <instrumentation android:name="io.github.szdytom.markview.RotationTest" android:targetPackage="io.github.szdytom.markview" />
     <instrumentation android:name="io.github.szdytom.markview.PickerTest" android:targetPackage="io.github.szdytom.markview" />
     <instrumentation android:name="io.github.szdytom.markview.FolderTest" android:targetPackage="io.github.szdytom.markview" />

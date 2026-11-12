@@ -7,6 +7,8 @@ pub use winit::event::{
 	MouseScrollDelta, TouchPhase,
 };
 use winit::window::Theme;
+#[cfg(any(target_os = "android", test))]
+mod android_keyboard;
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub struct DeviceId(Option<winit::event::DeviceId>);
 impl DeviceId {
@@ -88,6 +90,8 @@ pub enum WindowEvent {
 pub struct NativeInput {
 	touches: std::collections::HashMap<(DeviceId, u64), PhysicalPosition<f64>>,
 	drops: std::collections::HashSet<winit::event_loop::AsyncRequestSerial>,
+	#[cfg(any(target_os = "android", test))]
+	keyboard: android_keyboard::Keyboard,
 }
 impl NativeInput {
 	pub fn convert(
@@ -148,11 +152,24 @@ impl NativeInput {
 		out
 	}
 	fn input(&mut self, event: winit::event::WindowEvent) -> Vec<WindowEvent> {
+		self.input_with_keyboard(event, cfg!(target_os = "android"))
+	}
+	fn input_with_keyboard(
+		&mut self,
+		event: winit::event::WindowEvent,
+		_android: bool,
+	) -> Vec<WindowEvent> {
 		use WindowEvent as O;
 		use winit::event::{
 			ButtonSource, PointerKind, PointerSource, WindowEvent as E,
 		};
 		let mut out = Vec::new();
+		#[cfg(any(target_os = "android", test))]
+		let mut event = event;
+		#[cfg(any(target_os = "android", test))]
+		if _android && let Some(modifiers) = self.keyboard.update(&mut event) {
+			out.push(O::ModifiersChanged(modifiers));
+		}
 		if matches!(event, E::Focused(false)) {
 			self.touches.clear();
 		}
