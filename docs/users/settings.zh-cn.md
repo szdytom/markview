@@ -26,6 +26,10 @@
 **单个换行视为硬换行** 独立于 Markdown 变体，默认关闭。在设置中切换到 Obsidian 时会将其关闭，
 之后可在任一变体下手动开启。保存的 `hard-breaks` 选项在重新打开应用和导出文档时同样生效。
 
+**网格表格** 独立于 Markdown 变体，默认开启。支持 `+---+` 网格边框、跨行跨列，
+以及单元格内的块内容。可在同一设置分组中关闭，或在 `settings.toml` 中设置
+`grid-tables = false`。此选项同样适用于导出。
+
 配置值为 `markdown-flavor = "obsidian"`，旧值 `"ofm-lite"` 仍兼容；已明确选择 `"gfm"` 的配置保持不变。
 
 ### Obsidian 支持的范围

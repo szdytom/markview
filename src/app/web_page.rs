@@ -80,6 +80,7 @@ impl<P: super::SendEvent> App<P> {
 			hard_breaks: dialect.hard_breaks,
 			highlight_marks: dialect.highlight_marks,
 			ofm: dialect.ofm,
+			grid_tables: dialect.grid_tables,
 		};
 		let lang = self.preferences.values.lang();
 		let proxy = self.proxy.clone();

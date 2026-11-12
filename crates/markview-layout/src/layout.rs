@@ -190,6 +190,8 @@ pub struct LayoutOptions {
 	/// Parse `==text==` as a highlight mark instead of literal text; threaded
 	/// to the parse exactly like `hard_breaks`.
 	pub highlight_marks: bool,
+	/// Parse grid tables independently of the Markdown preset.
+	pub grid_tables: bool,
 	/// Read Obsidian callouts and the extra inline HTML tags; threaded to
 	/// the parse exactly like `hard_breaks`.
 	pub ofm: bool,
@@ -229,6 +231,7 @@ impl Default for LayoutOptions {
 			codeblock_wrap: false,
 			hard_breaks: false,
 			highlight_marks: false,
+			grid_tables: true,
 			ofm: false,
 			details_open: Arc::default(),
 			force_open: false,
@@ -254,8 +257,8 @@ impl PartialEq for LayoutOptions {
 			&& self.codeblock_wrap == other.codeblock_wrap
 			// A different dialect is a different document parse, so equality
 			// without it would skip the reparse a tab resume owes.
-			&& (self.hard_breaks, self.highlight_marks, self.ofm)
-				== (other.hard_breaks, other.highlight_marks, other.ofm)
+			&& (self.hard_breaks, self.highlight_marks, self.ofm, self.grid_tables)
+				== (other.hard_breaks, other.highlight_marks, other.ofm, other.grid_tables)
 			&& self.front_matter_label == other.front_matter_label
 			&& self.hide_front_matter == other.hide_front_matter
 			// A diagram theme is pixels, not geometry, but a new one must

@@ -92,6 +92,11 @@ by default. Switching to Obsidian in Settings turns it off; you can enable it
 again in either preset. A saved `hard-breaks` choice also applies when reopening
 the app or exporting a document.
 
+**Grid tables** is independent of the preset and on by default. It supports
+`+---+` grid borders, spanning cells and block content inside cells. Toggle it
+in the same settings section, or set `grid-tables = false` in `settings.toml`.
+The choice also applies to exports.
+
 Settings store this preset as `markdown-flavor = "obsidian"`; the former
 `"ofm-lite"` value is still accepted. An explicit `"gfm"` choice is preserved.
 
@@ -135,7 +140,8 @@ upstream OFM extension.
 Exports follow the reader: in-app PDF and PNG export parse with the selected
 dialect and unfold callout bodies. Command-line `markview export` defaults to GFM and does not load the reader's
 dialect settings; use `--markdown-flavor`, `--hard-breaks` and
-`--highlight-marks` to select them explicitly.
+`--highlight-marks` to select them explicitly. Grid tables are enabled by default;
+use `--grid-tables false` to disable them.
 
 ## Network and image cache
 

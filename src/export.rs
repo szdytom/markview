@@ -168,6 +168,7 @@ pub(crate) fn png_snapshot_text_with_workspace(
 			hard_breaks: options.hard_breaks,
 			highlight_marks: options.highlight_marks,
 			ofm: options.ofm,
+			grid_tables: options.grid_tables,
 		},
 	);
 	let security = security.for_content(&document.source);
@@ -190,6 +191,7 @@ pub(crate) fn png_snapshot_loaded(
 		hard_breaks: options.hard_breaks,
 		highlight_marks: options.highlight_marks,
 		ofm: options.ofm,
+		grid_tables: options.grid_tables,
 	});
 	png_snapshot_document(
 		&loaded, path, options, offline, services, security, workspace,

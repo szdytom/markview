@@ -28,6 +28,9 @@ pub(crate) struct Command {
 	/// Enable highlight marks in GFM; Obsidian always enables them.
 	#[arg(long)]
 	highlight_marks: bool,
+	/// Parse grid tables independently of the Markdown preset.
+	#[arg(long, default_value_t = true, action = clap::ArgAction::Set)]
+	grid_tables: bool,
 	#[arg(short, long)]
 	output: Option<PathBuf>,
 	#[arg(long)]
@@ -56,6 +59,7 @@ impl Command {
 			hard_breaks: self.hard_breaks,
 			highlight_marks: self.highlight_marks || ofm,
 			ofm,
+			grid_tables: self.grid_tables,
 		}
 	}
 

@@ -59,6 +59,7 @@ pub(super) enum Message {
 	MarkdownFlavor(MarkdownFlavor),
 	HardBreaks,
 	HighlightMarks,
+	GridTables,
 	Indent(u8),
 	CjkType(markview_layout::style::CjkType),
 	Language(Option<crate::lang::Lang>),
@@ -94,6 +95,7 @@ impl Message {
 				Self::MarkdownFlavor(value)
 			}
 			Command::Settings(SettingsCommand::HardBreaks) => Self::HardBreaks,
+			Command::Settings(SettingsCommand::GridTables) => Self::GridTables,
 			Command::Settings(SettingsCommand::HighlightMarks) => {
 				Self::HighlightMarks
 			}
@@ -221,6 +223,10 @@ impl Component for Model {
 				self.values.hard_breaks = !self.values.hard_breaks;
 				Setting::Dialect
 			}
+			Message::GridTables => {
+				self.values.grid_tables = !self.values.grid_tables;
+				Setting::Dialect
+			}
 			Message::HighlightMarks => {
 				self.values.highlight_marks = !self.values.highlight_marks;
 				Setting::Dialect
@@ -341,6 +347,25 @@ mod tests {
 		assert!(update.effects.iter().any(|effect| {
 			matches!(effect, Effect::Persist(Some(Setting::Dialect)))
 		}));
+
+		assert!(model.values.effective_dialect().grid_tables);
+		let update = model.update(Message::GridTables);
+		assert!(!model.values.effective_dialect().grid_tables);
+		assert!(update.effects.iter().any(|effect| matches!(
+			effect,
+			Effect::Persist(Some(Setting::Dialect))
+		)));
+		assert!(
+			update
+				.effects
+				.iter()
+				.any(|effect| matches!(effect, Effect::Reflow))
+		);
+		model.update(Message::MarkdownFlavor(MarkdownFlavor::Gfm));
+		assert!(!model.values.effective_dialect().grid_tables);
+		model.update(Message::MarkdownFlavor(MarkdownFlavor::Obsidian));
+		assert!(!model.values.effective_dialect().grid_tables);
+		model.update(Message::HardBreaks);
 
 		let update = model.update(Message::HighlightMarks);
 		assert!(model.values.highlight_marks);

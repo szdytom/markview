@@ -222,6 +222,7 @@ async fn remote_markdown_uses_the_selected_dialect_on_its_first_parse() {
 	let dialect = markview_commonmark::Dialect {
 		hard_breaks: true,
 		highlight_marks: true,
+		grid_tables: false,
 		ofm: true,
 	};
 	let article = load(

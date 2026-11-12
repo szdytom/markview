@@ -144,6 +144,7 @@ fn compound(seed: u16, family: &str) -> ReaderSettings {
 		},
 		hard_breaks: seed & 8 != 0,
 		highlight_marks: seed & 16 != 0,
+		grid_tables: seed & 2048 != 0,
 		lang: [
 			None,
 			Some(Lang::En),
@@ -187,6 +188,7 @@ fn merge_compound(
 		target.markdown_flavor = source.markdown_flavor;
 		target.hard_breaks = source.hard_breaks;
 		target.highlight_marks = source.highlight_marks;
+		target.grid_tables = source.grid_tables;
 	}
 	if fields[2] {
 		target.fontdef_overrides = source.fontdef_overrides.clone();

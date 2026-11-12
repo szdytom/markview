@@ -602,3 +602,127 @@ fn overflowing_table_replaces_nested_scroll_regions_in_retained_scene() {
 		format!("{:?}", cold.blocks[0].layout.overflow)
 	);
 }
+
+#[test]
+fn parsed_grid_spans_keep_reading_order_selection_and_search() {
+	let parsed = markview_commonmark::parse(concat!(
+		"+-------+-------+-------+\n",
+		"| alpha         | bravo |\n",
+		"+-------+-------+       +\n",
+		"| delta | echo  |       |\n",
+		"+       +-------+-------+\n",
+		"|       | charlie       |\n",
+		"+-------+-------+-------+\n",
+	));
+	let snapshot = LayoutEngine::new().layout(&parsed.document, &options());
+	assert!(snapshot.height.is_finite());
+	let text = snapshot.full_reading_text();
+	let selected = snapshot.extract_text(snapshot.select_all(1).unwrap(), 1);
+	let index = SearchIndex::new(&parsed.document);
+	let mut last = 0;
+	for word in ["alpha", "bravo", "delta", "echo", "charlie"] {
+		assert_eq!(text.matches(word).count(), 1, "{text:?}");
+		assert_eq!(selected.matches(word).count(), 1, "{selected:?}");
+		let at = text.find(word).unwrap();
+		assert!(at >= last, "{text:?}");
+		last = at;
+		assert_eq!(index.find(word, SearchOptions::default()).len(), 1);
+	}
+	assert!(!text.contains("+---"), "{text:?}");
+}
+
+#[test]
+fn grid_footnote_navigation_math_selection_and_reflow_share_the_visible_layout()
+{
+	use markview_document::{AnchorId, FieldText, visit_fields};
+	use markview_layout::scene::Draw;
+
+	let parsed = markview_commonmark::parse(include_str!(
+		"../../markview-render/tests/fixtures/grid-tables-math-footnotes.md"
+	));
+	assert_eq!(
+		parsed.map.validate(&parsed.source, &parsed.document),
+		Ok(())
+	);
+	let mut references = Vec::new();
+	for block in parsed.blocks() {
+		visit_fields(
+			block,
+			&mut Vec::new(),
+			&|| false,
+			&mut |_, _, field, _| {
+				if let FieldText::Rich(text) = field {
+					references.extend(text.iter().filter_map(|inline| {
+						match &inline.kind {
+							InlineKind::FootnoteRef(reference) => {
+								Some(reference.clone())
+							}
+							_ => None,
+						}
+					}));
+				}
+			},
+		);
+	}
+	assert_eq!(references.len(), 2);
+	let mut engine = LayoutEngine::new();
+	for width in [560., 260., 560.] {
+		let snapshot = engine
+			.layout(&parsed.document, &LayoutOptions { width, ..options() });
+		assert!(snapshot.height.is_finite());
+		assert_eq!(snapshot.math_errors, 0);
+		let flat = snapshot.flattened();
+		let math: Vec<_> = flat
+			.blocks
+			.iter()
+			.flat_map(|block| &block.layout.draws)
+			.filter_map(|draw| match draw {
+				Draw::Math { math, x, y, .. } => Some((math, x, y)),
+				_ => None,
+			})
+			.collect();
+		assert_eq!(math.len(), 7);
+		assert!(math.iter().all(|(math, x, y)| math.width > 0.
+			&& math.ascent.is_finite()
+			&& x.is_finite()
+			&& y.is_finite()));
+		for reference in &references {
+			let from = snapshot
+				.anchor_target_y(&AnchorId::FootnoteReference {
+					definition: reference.definition.clone(),
+					occurrence: reference.occurrence,
+				})
+				.unwrap();
+			let to = snapshot
+				.anchor_target_y(&AnchorId::FootnoteDefinition(
+					reference.definition.clone(),
+				))
+				.unwrap();
+			assert!(to > from, "the definition follows its table reference");
+		}
+		let selected =
+			snapshot.extract_text(snapshot.select_all(1).unwrap(), 1);
+		for expected in [
+			"a+b",
+			"a-b",
+			"xy",
+			r"\sum_{i=1}^{n}",
+			r"\int_0^1",
+			r"\begin{pmatrix}",
+			"Defined inside a cell.",
+			"Defined outside the table",
+		] {
+			assert_eq!(
+				selected.matches(expected).count(),
+				1,
+				"{width}: {expected}: {selected:?}"
+			);
+		}
+		let index = SearchIndex::new(&parsed.document);
+		for query in ["a+b", r"\sum_{i=1}^{n}", "Defined inside a cell."] {
+			let hits = index.find(query, SearchOptions::default());
+			assert_eq!(hits.len(), 1);
+			assert!(snapshot.search_selection(&hits[0], 1).is_some());
+		}
+	}
+}

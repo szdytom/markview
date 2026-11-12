@@ -316,6 +316,7 @@ fn markdown_dialect_defaults_and_hard_breaks_are_independent() {
 	assert_eq!(settings.markdown_flavor, MarkdownFlavor::Obsidian);
 	let dialect = settings.effective_dialect();
 	assert!(!dialect.hard_breaks);
+	assert!(dialect.grid_tables);
 	assert!(dialect.highlight_marks);
 	assert!(dialect.ofm);
 	let mut settings = settings;
@@ -366,6 +367,7 @@ fn dialect_fixture_matrix_covers_independent_hard_breaks() {
 				hard_breaks: dialect.hard_breaks,
 				highlight_marks: dialect.highlight_marks,
 				ofm: dialect.ofm,
+				grid_tables: dialect.grid_tables,
 			},
 		)
 		.document
@@ -442,6 +444,30 @@ fn dialect_fixture_matrix_covers_independent_hard_breaks() {
 	assert!(!dialect.highlight_marks);
 }
 
+#[test]
+fn grid_tables_remain_independent_of_the_preset_and_reach_layout_options() {
+	for markdown_flavor in [MarkdownFlavor::Gfm, MarkdownFlavor::Obsidian] {
+		for grid_tables in [false, true] {
+			let settings = ReaderSettings {
+				markdown_flavor,
+				grid_tables,
+				..Default::default()
+			};
+			assert_eq!(settings.effective_dialect().grid_tables, grid_tables);
+			let options =
+				settings.layout_options(1200.0, false, &Default::default());
+			assert_eq!(options.grid_tables, grid_tables);
+			assert_ne!(
+				options,
+				markview_layout::layout::LayoutOptions {
+					grid_tables: !grid_tables,
+					..options.clone()
+				}
+			);
+		}
+	}
+}
+
 /// Layout options preserve hard breaks in both presets.
 #[test]
 fn layout_options_carry_the_effective_dialect() {
@@ -475,22 +501,26 @@ fn markdown_dialect_round_trips_and_old_files_still_load() {
 	assert_eq!(store.settings().markdown_flavor, MarkdownFlavor::Obsidian);
 	let dialect = store.settings().effective_dialect();
 	assert!(!dialect.hard_breaks);
+	assert!(dialect.grid_tables);
 	assert!(dialect.highlight_marks);
 
 	let mut ui = store.settings();
 	ui.markdown_flavor = MarkdownFlavor::Obsidian;
 	// Hard breaks remain enabled after reloading an Obsidian configuration.
 	ui.hard_breaks = true;
+	ui.grid_tables = false;
 	store.changed(&ui, Some(Setting::Dialect));
 	store.flush().unwrap();
 	let text = fs::read_to_string(&path).unwrap();
 	assert!(text.contains("markdown-flavor = \"obsidian\""), "{text}");
 	assert!(text.contains("hard-breaks = true"), "{text}");
+	assert!(text.contains("grid-tables = false"), "{text}");
 	let (loaded, warning) = SettingsStore::load(Some(path.clone()));
 	assert!(warning.is_none());
 	let settings = loaded.settings();
 	assert_eq!(settings.markdown_flavor, MarkdownFlavor::Obsidian);
 	assert!(settings.hard_breaks);
+	assert!(!settings.grid_tables);
 	let dialect = settings.effective_dialect();
 	assert!(dialect.hard_breaks);
 	assert!(dialect.highlight_marks);
@@ -968,6 +998,7 @@ fn settings_differing_from_default() -> ReaderSettings {
 		markdown_flavor: MarkdownFlavor::Gfm,
 		hard_breaks: !default.hard_breaks,
 		highlight_marks: !default.highlight_marks,
+		grid_tables: !default.grid_tables,
 		scroll_speed: 1.5,
 		single_instance: !default.single_instance,
 		restore_session: !default.restore_session,
@@ -1015,6 +1046,7 @@ fn changed_fields(
 		markdown_flavor,
 		hard_breaks,
 		highlight_marks,
+		grid_tables,
 		scroll_speed,
 		single_instance,
 		restore_session,
@@ -1042,7 +1074,12 @@ fn expected_changes(field: Setting) -> Vec<&'static str> {
 		Setting::CodeblockWrap => vec!["codeblock_wrap"],
 		Setting::CodeblockCopy => vec!["codeblock_copy"],
 		Setting::Dialect => {
-			vec!["markdown_flavor", "hard_breaks", "highlight_marks"]
+			vec![
+				"markdown_flavor",
+				"hard_breaks",
+				"highlight_marks",
+				"grid_tables",
+			]
 		}
 		Setting::ScrollSpeed => vec!["scroll_speed"],
 		Setting::SingleInstance => vec!["single_instance"],
@@ -1083,6 +1120,7 @@ fn assert_copied(from: &ReaderSettings, to: &ReaderSettings, field: Setting) {
 			assert_eq!(to.markdown_flavor, from.markdown_flavor);
 			assert_eq!(to.hard_breaks, from.hard_breaks);
 			assert_eq!(to.highlight_marks, from.highlight_marks);
+			assert_eq!(to.grid_tables, from.grid_tables);
 		}
 		Setting::ScrollSpeed => assert_eq!(to.scroll_speed, from.scroll_speed),
 		Setting::SingleInstance => {

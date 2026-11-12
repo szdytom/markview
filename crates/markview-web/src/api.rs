@@ -1540,6 +1540,7 @@ struct Config {
 	markdown_flavor: MarkdownFlavor,
 	hard_breaks: bool,
 	highlight_marks: bool,
+	grid_tables: bool,
 }
 impl Default for Config {
 	fn default() -> Self {
@@ -1556,6 +1557,7 @@ impl Default for Config {
 			markdown_flavor: MarkdownFlavor::Gfm,
 			hard_breaks: false,
 			highlight_marks: false,
+			grid_tables: true,
 		}
 	}
 }
@@ -1573,6 +1575,7 @@ impl Config {
 			hard_breaks: self.hard_breaks,
 			highlight_marks: self.highlight_marks || ofm,
 			ofm,
+			grid_tables: self.grid_tables,
 		}
 	}
 

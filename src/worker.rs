@@ -266,6 +266,7 @@ impl Worker {
 								hard_breaks: request.options.hard_breaks,
 								highlight_marks: request.options.highlight_marks,
 								ofm: request.options.ofm,
+								grid_tables: request.options.grid_tables,
 							};
 							let document = if let Some(loaded) =
 								&request.loaded
@@ -1042,6 +1043,67 @@ mod tests {
 		worker.submit(request(3, true));
 		let reused = complete(3);
 		assert!(same_document(&highlighted.document, &reused.document));
+	}
+
+	#[test]
+	fn grid_table_toggle_reparses_retained_documents() {
+		let dir = tempfile::tempdir().unwrap();
+		let path = dir.path().join("grid.md");
+		fs::write(&path, "+---+\n| a |\n+---+\n").unwrap();
+		let (tx, rx) = mpsc::channel();
+		let worker = Worker::new(move |u| {
+			let _ = tx.send(u);
+		});
+		let mut previous = None;
+		for (version, grid_tables) in
+			[(1, true), (2, false), (3, true), (4, true)]
+		{
+			worker.submit(Request {
+				security: crate::security::Security::local(
+					crate::security::Trust::Trusted,
+				),
+				version,
+				content_version: 1,
+				path: path.clone(),
+				loaded: None,
+				workspace: None,
+				options: LayoutOptions {
+					grid_tables,
+					..crate::test_support::options()
+				},
+				requested: Instant::now(),
+				coverage: f32::INFINITY,
+				load_all_images: false,
+			});
+			let reader = loop {
+				let update = rx.recv_timeout(Duration::from_secs(10)).unwrap();
+				if update.version == version
+					&& update
+						.result
+						.as_ref()
+						.unwrap()
+						.as_ref()
+						.unwrap()
+						.complete
+				{
+					break update.result.unwrap().unwrap();
+				}
+			};
+			assert_eq!(
+				matches!(
+					reader.document.blocks()[0].kind(),
+					markview_document::BlockKind::Table(_)
+				),
+				grid_tables
+			);
+			if let Some(previous) = &previous {
+				assert_eq!(
+					same_document(previous, &reader.document),
+					version == 4
+				);
+			}
+			previous = Some(reader.document.clone());
+		}
 	}
 
 	#[test]

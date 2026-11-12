@@ -85,7 +85,7 @@ memmap2 = "0.9"
 bytemuck = { version = "1", features = ["derive"] }
 codex = { version = "0.3", default-features = false, features = ["numeral-systems"] }
 # Validate source-map compatibility before advancing to another prerelease.
-comrak = { version = "=1.0.0-rc.1", default-features = false }
+comrak = { version = "=1.0.0-rc.1", default-features = false, features = ["grid_table"] }
 syntect = { version = "5.3", default-features = false, features = ["parsing", "regex-fancy"] }
 two-face = { version = "0.5.1", default-features = false, features = ["syntect-fancy"] }
 hypher = { version = "0.1.7", default-features = false, features = ["english", "alloc"] }

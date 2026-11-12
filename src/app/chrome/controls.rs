@@ -397,6 +397,18 @@ fn rows(settings: &ReaderSettings, phone: bool) -> Vec<Row> {
 				Command::Settings(crate::state::SettingsCommand::HardBreaks),
 			)],
 		),
+		Row::new(
+			t.settings_grid_tables(),
+			vec![action(
+				if dialect.grid_tables {
+					t.settings_on()
+				} else {
+					t.settings_off()
+				},
+				dialect.grid_tables,
+				Command::Settings(crate::state::SettingsCommand::GridTables),
+			)],
+		),
 	]);
 	rows
 }

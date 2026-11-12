@@ -10,8 +10,8 @@ use crate::{
 use comrak::{
 	Arena, Options,
 	nodes::{
-		AstNode, CalloutFold, ListType, NodeCallout, NodeValue, NodeWikiLink,
-		TableAlignment,
+		AstNode, CalloutFold, GridTableSection, ListType, NodeCallout,
+		NodeGridTable, NodeValue, NodeWikiLink, TableAlignment,
 	},
 	parse_document,
 };
@@ -34,17 +34,30 @@ use markview_document::{DocumentRevision, SourceSpan};
 
 /// The reading dialect a parse uses: which Markdown extensions are on and
 /// how ambiguous source reads.
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct Dialect {
 	/// Single newlines inside a paragraph end their line as a hard break
 	/// rather than a space.
 	pub hard_breaks: bool,
 	/// `==text==` parses as a highlight mark rather than literal text.
 	pub highlight_marks: bool,
+	/// Grid tables with block content and spanning cells.
+	pub grid_tables: bool,
 	/// Obsidian extensions: `> [!type]` callouts read as callouts rather than
 	/// GitHub alerts, and raw HTML admits `<sub>`, `<mark>`, `<u>`, `<ins>`
 	/// and `<small>`.
 	pub ofm: bool,
+}
+
+impl Default for Dialect {
+	fn default() -> Self {
+		Self {
+			hard_breaks: false,
+			highlight_marks: false,
+			grid_tables: true,
+			ofm: false,
+		}
+	}
 }
 
 enum InlineStep {
@@ -676,7 +689,15 @@ impl Reader<'_> {
 			0,
 			&mut opaque_until,
 		);
-		text.merged()
+		// Grid-cell lines are separated by other columns in the source.
+		// Keep runs separate so their spans cannot match a neighboring cell.
+		if node.ancestors().any(|parent| {
+			matches!(parent.data.borrow().value, NodeValue::GridTableCell(_))
+		}) {
+			text
+		} else {
+			text.merged()
+		}
 	}
 
 	fn blocks<'a>(
@@ -883,6 +904,74 @@ impl Reader<'_> {
 				uniform_spans(title, source.clone())
 			}),
 			_ => Vec::new(),
+		}
+	}
+
+	/// Grid tables share the semantic model used by pipe and HTML tables.
+	fn grid_table<'a>(
+		&mut self,
+		node: &'a AstNode<'a>,
+		table: &NodeGridTable,
+		depth: usize,
+	) -> Table {
+		let columns = table
+			.columns
+			.iter()
+			.map(|column| TableColumn {
+				align: Some(match column.alignment {
+					TableAlignment::Center => CellAlign::Center,
+					TableAlignment::Right => CellAlign::Right,
+					_ => CellAlign::Left,
+				}),
+			})
+			.collect();
+		let mut groups: Vec<TableGroup> = Vec::new();
+		for row in node.children() {
+			let NodeValue::GridTableRow(section) = row.data.borrow().value
+			else {
+				unreachable!()
+			};
+			let kind = match section {
+				GridTableSection::Head => TableGroupKind::Head,
+				GridTableSection::Body => TableGroupKind::Body,
+				GridTableSection::Foot => TableGroupKind::Foot,
+			};
+			let cells = row
+				.children()
+				.map(|cell| {
+					let NodeValue::GridTableCell(value) =
+						cell.data.borrow().value
+					else {
+						unreachable!()
+					};
+					TableCell {
+						kind: if kind == TableGroupKind::Head {
+							CellKind::Header
+						} else {
+							CellKind::Data
+						},
+						rowspan: value.rowspan as u32,
+						colspan: value.colspan as u32,
+						align: None,
+						blocks: self.blocks(cell, depth + 1),
+					}
+				})
+				.collect();
+			if let Some(group) = groups.last_mut()
+				&& group.kind == kind
+			{
+				group.rows.push(TableRow { cells });
+			} else {
+				groups.push(TableGroup {
+					kind,
+					rows: vec![TableRow { cells }],
+				});
+			}
+		}
+		Table {
+			caption: None,
+			columns,
+			groups,
 		}
 	}
 
@@ -1206,6 +1295,11 @@ impl Reader<'_> {
 						Vec::new(),
 					)
 				}
+				NodeValue::GridTable(table) => (
+					BlockKind::Table(self.grid_table(child, table, depth)),
+					Vec::new(),
+					Vec::new(),
+				),
 				NodeValue::FootnoteDefinition(f) => {
 					if self.unused_footnote(
 						&f.name,
@@ -1863,6 +1957,7 @@ pub(crate) fn parse_with_seed(
 fn markdown_options(dialect: Dialect) -> Options<'static> {
 	let mut options = Options::default();
 	options.extension.table = true;
+	options.extension.grid_table = dialect.grid_tables;
 	options.extension.wikilinks_title_after_pipe = true;
 	// A document may open with `---` fenced YAML metadata. Comrak only splits
 	// it off: it hands the block back verbatim, delimiters included, and the

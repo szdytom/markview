@@ -9,6 +9,8 @@ export interface MarkviewOptions {
 	hardBreaks?: boolean;
 	/** Enable `==highlight==`; Obsidian always enables it. (false) */
 	highlightMarks?: boolean;
+	/** Enable grid tables independently of the preset. (true) */
+	gridTables?: boolean;
 	/** Layout column width, logical px. (760) */
 	width?: number;
 	/** Base body size, logical px. (18) */

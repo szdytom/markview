@@ -173,6 +173,7 @@ settings_schema! {
 	config {
 		hard_breaks, copy;
 		highlight_marks, copy;
+		grid_tables, copy;
 		style, clone;
 		user_agent, clone;
 		accept_language, clone;
@@ -240,4 +241,5 @@ fn copy_dialect(to: &mut ReaderSettings, from: &ReaderSettings) {
 	to.markdown_flavor = from.markdown_flavor;
 	to.hard_breaks = from.hard_breaks;
 	to.highlight_marks = from.highlight_marks;
+	to.grid_tables = from.grid_tables;
 }

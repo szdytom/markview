@@ -168,6 +168,8 @@ pub fn cases() -> Vec<Case> {
 		("code-forms", 1200.),
 		("list-forms", 1500.),
 		("table-forms", 900.),
+		("grid-tables", 1000.),
+		("grid-tables-math-footnotes", 1000.),
 		("typography-en", 960.),
 		("typography-zh", 960.),
 		("overflow", 800.),

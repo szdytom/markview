@@ -112,3 +112,22 @@ test("dialect changes reparse pending source and invalidate its old layout witho
 	expect(result.selected).not.toContain("SECRET");
 	expect(result.geometry?.documentVersion).toBe(result.parsed);
 });
+
+test("grid tables default on and switch independently of the preset", async ({
+	page,
+}) => {
+	await host(page, "+-------+\n| alpha |\n+-------+\n");
+	expect(await text(page)).toContain("alpha");
+	expect(await text(page)).not.toContain("+-------+");
+	for (const markdownFlavor of ["gfm", "obsidian"]) {
+		for (const gridTables of [false, true]) {
+			await page.evaluate((options) => viewer.setOptions(options), {
+				markdownFlavor,
+				gridTables,
+			});
+			const selected = await text(page);
+			expect(selected).toContain("alpha");
+			expect(selected.includes("+-------+")).toBe(!gridTables);
+		}
+	}
+});

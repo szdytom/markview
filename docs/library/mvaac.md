@@ -380,6 +380,8 @@ API lives in this guide and [source navigation and TOC](mvaac-source-api.md).
 `MarkviewOptions.markdownFlavor` selects `"gfm"` (the compatibility default) or
 `"obsidian"`. `hardBreaks` controls single-newline hard breaks independently;
 `highlightMarks` enables `==highlight==` in GFM and is forced on in Obsidian.
+`gridTables` enables Grid tables independently of the preset and defaults to
+`true`. Set it to `false` to read grid borders as ordinary Markdown.
 The Obsidian preset uses the core reader's supported callouts, comments and
 inline HTML extensions; it does not implement full vault semantics.
 

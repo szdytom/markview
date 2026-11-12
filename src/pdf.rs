@@ -70,6 +70,7 @@ pub(crate) fn export_with_services(
 				hard_breaks: args.options.hard_breaks,
 				highlight_marks: args.options.highlight_marks,
 				ofm: args.options.ofm,
+				grid_tables: args.options.grid_tables,
 			},
 		));
 	}
@@ -242,6 +243,7 @@ impl Exporter {
 				hard_breaks: self.options.hard_breaks,
 				highlight_marks: self.options.highlight_marks,
 				ofm: self.options.ofm,
+				grid_tables: self.options.grid_tables,
 			};
 			let document = match &self.document {
 				Some(previous) => Arc::new(markview_commonmark::reparse_with(

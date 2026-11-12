@@ -108,4 +108,6 @@ a temporary output, wait for successful completion, and then replace it.
 supported Obsidian syntax. The default remains `gfm`; this command does not load
 saved reader settings. `--highlight-marks` enables `==highlight==` in GFM, while
 Obsidian always enables it. `--hard-breaks` treats single newlines as hard breaks
-in either preset and is off by default. These options apply to both PDF and PNG.
+in either preset and is off by default. Grid tables are enabled by default in
+both presets; use `--grid-tables false` to disable them. These options apply to
+both PDF and PNG.

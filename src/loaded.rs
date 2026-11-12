@@ -103,6 +103,7 @@ impl LoadedDocument {
 				2 + u64::from(parse.dialect.hard_breaks)
 					+ (u64::from(parse.dialect.highlight_marks) << 1)
 					+ (u64::from(parse.dialect.ofm) << 2)
+					+ (u64::from(parse.dialect.grid_tables) << 3)
 			}
 			Self::Semantic { frontend, .. } => *frontend,
 		}

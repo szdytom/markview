@@ -58,7 +58,7 @@ impl WindowLayout {
 /// The Markdown dialect a document is read in.
 ///
 /// Obsidian always reads with highlight marks, while GFM leaves them to the
-/// reader's choice. Hard breaks are independent of the preset.
+/// reader's choice. Hard breaks and grid tables are independent of the preset.
 /// See [`ReaderSettings::effective_dialect`].
 #[derive(
 	Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize,
@@ -78,6 +78,8 @@ pub struct EffectiveDialect {
 	pub hard_breaks: bool,
 	/// `==highlight==` marks are parsed and rendered.
 	pub highlight_marks: bool,
+	/// Enable grid tables independently of the Markdown preset.
+	pub grid_tables: bool,
 	/// Obsidian callouts, comments and extra inline HTML tags.
 	pub ofm: bool,
 }
@@ -114,6 +116,8 @@ pub struct ReaderSettings {
 	pub hard_breaks: bool,
 	/// Parse and render `==highlight==`; stored, but in force only under GFM.
 	pub highlight_marks: bool,
+	/// Enable grid tables independently of the Markdown preset.
+	pub grid_tables: bool,
 	pub codeblock_theme_override: Option<String>,
 	/// Hard-wrap code block lines at the reading column instead of scrolling.
 	pub codeblock_wrap: bool,
@@ -152,6 +156,7 @@ impl Default for ReaderSettings {
 			markdown_flavor: MarkdownFlavor::default(),
 			hard_breaks: false,
 			highlight_marks: false,
+			grid_tables: true,
 			codeblock_theme_override: None,
 			codeblock_wrap: false,
 			codeblock_copy: true,
@@ -222,7 +227,7 @@ pub enum Setting {
 	Language,
 	CodeblockWrap,
 	CodeblockCopy,
-	/// The whole reading dialect: the flavor preset and the GFM-only toggles.
+	/// The whole reading dialect: the flavor preset and extension toggles.
 	Dialect,
 	ScrollSpeed,
 	SingleInstance,
@@ -306,18 +311,20 @@ impl ReaderSettings {
 	}
 
 	/// The dialect a parse uses: Obsidian always enables highlight marks,
-	/// while hard breaks follow the stored choice in either preset.
+	/// while hard breaks and grid tables follow the stored choice in either preset.
 	pub fn effective_dialect(&self) -> EffectiveDialect {
 		match self.markdown_flavor {
 			MarkdownFlavor::Gfm => EffectiveDialect {
 				hard_breaks: self.hard_breaks,
 				highlight_marks: self.highlight_marks,
 				ofm: false,
+				grid_tables: self.grid_tables,
 			},
 			MarkdownFlavor::Obsidian => EffectiveDialect {
 				hard_breaks: self.hard_breaks,
 				highlight_marks: true,
 				ofm: true,
+				grid_tables: self.grid_tables,
 			},
 		}
 	}
@@ -362,6 +369,7 @@ impl ReaderSettings {
 			hard_breaks: dialect.hard_breaks,
 			highlight_marks: dialect.highlight_marks,
 			ofm: dialect.ofm,
+			grid_tables: dialect.grid_tables,
 			details_open: Default::default(),
 			force_open: false,
 			front_matter_label: self.lang().front_matter().into(),

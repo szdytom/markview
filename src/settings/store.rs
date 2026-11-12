@@ -117,6 +117,8 @@ pub(super) struct Config {
 	pub(super) hard_breaks: bool,
 	#[serde(rename = "highlight-marks")]
 	pub(super) highlight_marks: bool,
+	#[serde(rename = "grid-tables")]
+	pub(super) grid_tables: bool,
 	#[serde(
 		rename = "codeblock-theme-override",
 		skip_serializing_if = "Option::is_none"

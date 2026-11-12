@@ -112,6 +112,7 @@ impl Preferences {
 			markdown_flavor: settings.markdown_flavor,
 			hard_breaks: settings.hard_breaks,
 			highlight_marks: settings.highlight_marks,
+			grid_tables: settings.grid_tables,
 			codeblock_theme_override: settings.codeblock_theme_override.clone(),
 			codeblock_wrap: settings.codeblock_wrap,
 			codeblock_copy: settings.codeblock_copy,
