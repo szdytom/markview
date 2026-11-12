@@ -392,7 +392,8 @@ impl ReaderSettings {
 				.into_iter()
 				.any(|width| {
 					!(SIDEBAR_WIDTH_MIN..=SIDEBAR_WIDTH_MAX).contains(&width)
-				}) || !self.paragraph_indent.is_finite()
+				})
+			|| !self.paragraph_indent.is_finite()
 			|| !(0.0..=4.0).contains(&self.paragraph_indent)
 			|| !(SCROLL_SPEED_MIN..=SCROLL_SPEED_MAX)
 				.contains(&self.scroll_speed)

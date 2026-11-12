@@ -587,7 +587,8 @@ mod tests {
 							(layout.tabs.x
 								- (closed.tabs.x
 									+ (open.tabs.x - closed.tabs.x) * reveal))
-								.abs() < 0.001
+								.abs()
+								< 0.001
 						);
 						assert!(
 							!layout

@@ -106,7 +106,8 @@ impl ScrollAnimation {
 		// `(1 + u) exp(-u) <= 2 exp(-u / 2)` bounds both residuals.
 		let duration = (2.0 * (1.0 + WHEEL_FREQUENCY) * distance.abs() / 0.01)
 			.max(1.0)
-			.ln() * 2.0
+			.ln()
+			* 2.0
 			/ WHEEL_FREQUENCY;
 		Self {
 			from,

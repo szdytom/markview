@@ -242,15 +242,20 @@ pub(in crate::app) fn normalize(
 		(id.scope
 			== Command::Document(DocumentCommand::OutlineGoto(0))
 				.widget_id()
-				.scope || id.scope
-			== Command::Document(DocumentCommand::OutlineToggle(0))
-				.widget_id()
-				.scope) && !rows.iter().any(|index| {
-			id == Command::Document(DocumentCommand::OutlineGoto(*index))
-				.widget_id() || id
-				== Command::Document(DocumentCommand::OutlineToggle(*index))
+				.scope
+			|| id.scope
+				== Command::Document(DocumentCommand::OutlineToggle(0))
 					.widget_id()
-		})
+					.scope)
+			&& !rows.iter().any(|index| {
+				id == Command::Document(DocumentCommand::OutlineGoto(*index))
+					.widget_id()
+					|| id
+						== Command::Document(DocumentCommand::OutlineToggle(
+							*index,
+						))
+						.widget_id()
+			})
 	}) {
 		interaction.widgets.focus = interaction
 			.overlays

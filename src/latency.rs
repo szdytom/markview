@@ -746,7 +746,8 @@ mod report_tests {
 		assert!(
 			report["memory"]["reading_text_index_bytes"]
 				.as_u64()
-				.unwrap() > 0
+				.unwrap()
+				> 0
 		);
 		Ok(())
 	}

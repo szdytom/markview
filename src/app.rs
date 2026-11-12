@@ -666,7 +666,8 @@ impl<P: SendEvent> App<P> {
 			height,
 			left: inset
 				+ ((width
-					- inset - self.readers.session.display.snapshot.width)
+					- inset
+					- self.readers.session.display.snapshot.width)
 					/ 2.0)
 					.max(20.0),
 			top: self.content_top(),

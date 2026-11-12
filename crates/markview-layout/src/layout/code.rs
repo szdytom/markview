@@ -214,7 +214,8 @@ pub(crate) fn code_lines(text: &str) -> Vec<&str> {
 			lines.push(&text[start..i]);
 			i += 1;
 			if bytes[i.saturating_sub(1)] == b'\r'
-				&& i < end && bytes[i] == b'\n'
+				&& i < end
+				&& bytes[i] == b'\n'
 			{
 				i += 1;
 			}

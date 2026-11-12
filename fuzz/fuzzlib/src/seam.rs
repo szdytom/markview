@@ -333,7 +333,8 @@ pub fn definition_scan(source: &str) -> DefinitionScan {
 				// after the block.
 				Some((open, len))
 					if marker == open
-						&& run >= len && rest[run..].trim().is_empty() =>
+						&& run >= len
+						&& rest[run..].trim().is_empty() =>
 				{
 					fence = None;
 				}
@@ -1132,10 +1133,11 @@ pub fn assert_reference_resolution(doc: &MarkdownParse) {
 			|| definitions.iter().any(|d| {
 				d.label.chars().any(|c| c.is_control() || !c.is_ascii())
 					|| d.label.is_empty()
-			}) || references.uses.iter().any(|u| {
-			u.label.chars().any(|c| c.is_control() || !c.is_ascii())
-				|| u.label.is_empty()
-		});
+			})
+			|| references.uses.iter().any(|u| {
+				u.label.chars().any(|c| c.is_control() || !c.is_ascii())
+					|| u.label.is_empty()
+			});
 		if labels_ambiguous && !definitions.is_empty() {
 			continue;
 		}

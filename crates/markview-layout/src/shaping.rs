@@ -771,7 +771,8 @@ impl TextShaper {
 						.map(|_| span_index);
 					if joining
 						&& let Some((previous, part, previous_span)) =
-							parts.last_mut() && *previous_span == span
+							parts.last_mut()
+						&& *previous_span == span
 					{
 						*part = &word[*previous..offset + cluster.len()];
 					} else {
@@ -957,9 +958,14 @@ impl TextShaper {
 							if appearances
 								.get(index)
 								.unwrap_or(&base)
-								.uses_bounds() && self
-								.glyph_bounds(run.font(), &coords, g.id as u16)
-								.is_some()
+								.uses_bounds()
+								&& self
+									.glyph_bounds(
+										run.font(),
+										&coords,
+										g.id as u16,
+									)
+									.is_some()
 							{
 								inked_styles.insert(index);
 							}

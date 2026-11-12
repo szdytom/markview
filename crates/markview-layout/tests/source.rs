@@ -419,7 +419,8 @@ fn disclosure_ranges_cover_original_nested_and_quoted_headings() {
 				.source
 				.as_ref()
 				.unwrap()
-				.start + if heading.level == 3 { 4 } else { 3 };
+				.start
+				+ if heading.level == 3 { 4 } else { 3 };
 			let mapped = index
 				.source_to_preview(&snapshot, &Default::default(), offset)
 				.unwrap();
@@ -483,7 +484,8 @@ fn adjacent_quoted_disclosures_map_unicode_bodies_and_trailing_text() {
 				.source
 				.as_ref()
 				.unwrap()
-				.start + 2;
+				.start
+				+ 2;
 			let mapped = index
 				.source_to_preview(&snapshot, &Default::default(), offset)
 				.unwrap();

@@ -93,7 +93,8 @@ impl Worker {
 						let (lock, wake) = &*shared;
 						let mut inbox = Inbox::lock(lock);
 						while inbox.pending.is_none()
-							&& !inbox.stopped && !inbox.release
+							&& !inbox.stopped
+							&& !inbox.release
 						{
 							inbox = Inbox::recover(lock, wake.wait(inbox));
 						}
@@ -129,7 +130,8 @@ impl Worker {
 								|| {
 									index_serial
 										.generation
-										.load(Ordering::Relaxed) != index_version
+										.load(Ordering::Relaxed)
+										!= index_version
 								},
 							) {
 								Some(index) => index,
@@ -142,7 +144,8 @@ impl Worker {
 							&request.query,
 							request.options,
 							cancelled,
-						) && !cancelled()
+						)
+						&& !cancelled()
 					{
 						done(Result {
 							path: request.path,

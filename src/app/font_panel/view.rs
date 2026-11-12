@@ -1137,7 +1137,8 @@ mod tests {
 				.filter_map(|d| match d {
 					Draw::Rect(r, Paint::Styled(Condition::Button, color))
 						if r.y == filters[0].rect.y
-							&& r.h == CONTROL && r.w == 1. =>
+							&& r.h == CONTROL
+							&& r.w == 1. =>
 					{
 						Some(color)
 					}

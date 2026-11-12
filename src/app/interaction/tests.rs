@@ -3049,7 +3049,8 @@ fn codeblock_copy_button_uses_original_text_and_shared_click_geometry() {
 	);
 	assert!(
 		(buttons[0].rect.y - (view.top + placed.y + bounds.y - view.scroll))
-			.abs() < 0.01
+			.abs()
+			< 0.01
 	);
 	let point = (buttons[0].rect.x + 14., buttons[0].rect.y + 14.);
 	app.interaction.pointer.move_to(point);

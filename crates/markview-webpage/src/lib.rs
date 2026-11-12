@@ -368,9 +368,12 @@ fn preserve_semantics(document: &dom_smoothie::dom_query::Document) {
 				child.is_element()
 					&& child.node_name().is_some_and(|name| {
 						name.eq_ignore_ascii_case("annotation")
-					}) && child.attr("encoding").is_some_and(|encoding| {
-					encoding.to_ascii_lowercase().contains("application/x-tex")
-				})
+					})
+					&& child.attr("encoding").is_some_and(|encoding| {
+						encoding
+							.to_ascii_lowercase()
+							.contains("application/x-tex")
+					})
 			});
 			if let Some(latex) = latex {
 				node.set_attr("data-mv-latex", &latex.text());

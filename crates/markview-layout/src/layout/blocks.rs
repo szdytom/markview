@@ -897,14 +897,15 @@ impl BlockContext<'_> {
 			size * DETAILS_GAP
 		};
 		header
-			+ gap + self.framed_children(
-			blocks,
-			x,
-			y + header + gap,
-			width,
-			opts,
-			out,
-		)
+			+ gap
+			+ self.framed_children(
+				blocks,
+				x,
+				y + header + gap,
+				width,
+				opts,
+				out,
+			)
 	}
 
 	fn folded_callout(

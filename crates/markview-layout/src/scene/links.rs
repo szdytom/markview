@@ -162,7 +162,8 @@ impl LinkBuffer {
 			Self::Building(v) => v.capacity() * size_of::<LinkRect>(),
 			Self::Sealed(s) => {
 				size_of_val(&*s.geometry)
-					+ 16 + s.ids.capacity() * size_of::<LinkId>()
+					+ 16
+					+ s.ids.capacity() * size_of::<LinkId>()
 					+ size_of::<Vec<LinkId>>()
 					+ 16
 			}

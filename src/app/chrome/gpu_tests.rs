@@ -1495,9 +1495,11 @@ fn dismissed_pages_stop_drawing_and_answering_pointers() {
 				Command::Settings(SettingsCommand::StylesFolder)
 					| Command::Fonts(
 						crate::app::font_panel::Command::OpenFolder
-					) | Command::Fonts(
-					crate::app::font_panel::Command::DownloadMissing
-				) | Command::Export(ExportCommand::ExportRun)
+					)
+					| Command::Fonts(
+						crate::app::font_panel::Command::DownloadMissing
+					)
+					| Command::Export(ExportCommand::ExportRun)
 			)),
 			"{page} stayed active without the panel"
 		);
@@ -1745,7 +1747,8 @@ fn redesigned_chrome_frames() -> Result<()> {
 					settings_page.settings_preview = matches!(
 						page,
 						"preview"
-							| "fonts-preview" | "styles-loading-preview"
+							| "fonts-preview"
+							| "styles-loading-preview"
 							| "styles-failed-preview"
 							| "fonts-loading-preview"
 							| "fonts-failed-preview"

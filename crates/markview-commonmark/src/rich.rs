@@ -105,7 +105,8 @@ impl SpannedText {
 					&out.inlines[index].link,
 					&span.style,
 					&span.link,
-				) && let InlineKind::Text(prev) = &out.inlines[index].kind
+				)
+				&& let InlineKind::Text(prev) = &out.inlines[index].kind
 				&& prev.ends_with(char::is_whitespace)
 				&& t.starts_with(char::is_whitespace)
 			{
@@ -122,7 +123,8 @@ impl SpannedText {
 					&last.link,
 					&span.style,
 					&span.link,
-				) && let InlineKind::Text(prev) = &mut last.kind
+				)
+				&& let InlineKind::Text(prev) = &mut last.kind
 			{
 				append_merged_text(prev, t);
 				let last = out.sources.last_mut().expect("parallel source");

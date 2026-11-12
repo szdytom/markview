@@ -175,8 +175,8 @@ impl Entry {
 			&& (stale
 				|| self.info.size.is_none()
 				|| self.raster.is_none()
-				|| resize || (requested.is_some_and(|d| d.needs_pixels)
-				&& !resident))
+				|| resize
+				|| (requested.is_some_and(|d| d.needs_pixels) && !resident))
 	}
 }
 

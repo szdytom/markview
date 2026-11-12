@@ -1018,7 +1018,8 @@ fn hard_breaks_stay_enabled_under_obsidian() {
 			.any(|b| b.action
 				== Command::Settings(
 					crate::state::SettingsCommand::HardBreaks
-				) && b.enabled)
+				)
+				&& b.enabled)
 	);
 	// The preset control remains, labelled as Obsidian.
 	let scroll = ofm_form.reveal(

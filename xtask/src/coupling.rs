@@ -543,9 +543,8 @@ impl Analyzer<'_> {
 		let allowed = (self.impl_type.as_deref() == Some(owner) && start == 0)
 			|| writer_bridge(field).is_some_and(|(container, bridge)| {
 				self.impl_type.as_deref() == Some(container)
-					&& start >= 1 && chain
-					.first()
-					.is_some_and(|first| first == bridge)
+					&& start >= 1
+					&& chain.first().is_some_and(|first| first == bridge)
 			});
 		if !allowed {
 			return;

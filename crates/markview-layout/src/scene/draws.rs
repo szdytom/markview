@@ -415,14 +415,12 @@ impl DrawBuffer {
 					p.styles
 						.iter()
 						.map(|s| std::mem::size_of_val(&*s.coords))
-						.sum::<usize>() + p
-						.others
-						.iter()
-						.map(Draw::heap_bytes)
-						.sum::<usize>() + super::memory::style_bytes(
-						&p.others,
-						&mut Default::default(),
-					)
+						.sum::<usize>()
+						+ p.others.iter().map(Draw::heap_bytes).sum::<usize>()
+						+ super::memory::style_bytes(
+							&p.others,
+							&mut Default::default(),
+						)
 				}
 			}
 	}
@@ -440,7 +438,8 @@ impl DrawBuffer {
 			}
 			Self::Packed(p) => {
 				size_of::<Packed>()
-					+ 16 + std::mem::size_of_val(&*p.runs)
+					+ 16
+					+ std::mem::size_of_val(&*p.runs)
 					+ std::mem::size_of_val(&*p.glyphs)
 					+ std::mem::size_of_val(&*p.styles)
 					+ p.styles.len() * (size_of::<GlyphStyle>() + 16)

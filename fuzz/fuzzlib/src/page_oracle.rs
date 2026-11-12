@@ -23,7 +23,8 @@ pub fn assert_pagination(pagination: &Pagination) {
 		for item in page {
 			assert!(
 				item.y.is_finite()
-					&& item.y >= 0. && item.scale.is_finite()
+					&& item.y >= 0.
+					&& item.scale.is_finite()
 					&& item.scale > 0.
 					&& item.top.is_finite()
 					&& item.bottom.is_finite()

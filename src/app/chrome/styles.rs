@@ -847,7 +847,8 @@ mod stylesheet_tests {
 			b.action
 				== Command::Chrome(ChromeCommand::SettingsTab(
 					crate::state::PanelTab::Styles,
-				)) && b.active
+				))
+				&& b.active
 		}));
 		// Every tab stays on the panel it belongs to.
 		let panel = panel_rect(w, h);

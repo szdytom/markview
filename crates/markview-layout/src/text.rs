@@ -159,7 +159,8 @@ impl GeometryPosition {
 						field_for_node(&block.layout.text, *i) == Some(field)
 					})
 					.map(|(_, n)| n.text.len())
-					.sum::<usize>() + self.offset,
+					.sum::<usize>()
+					+ self.offset,
 			);
 		}
 		Some(position)

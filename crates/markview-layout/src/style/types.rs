@@ -234,10 +234,13 @@ impl Condition {
 			self,
 			Self::Em
 				| Self::Strong
-				| Self::Link | Self::Del
-				| Self::Sup | Self::Sub
+				| Self::Link
+				| Self::Del
+				| Self::Sup
+				| Self::Sub
 				| Self::FootnoteRef
-				| Self::Code | Self::Math
+				| Self::Code
+				| Self::Math
 				| Self::Mark
 		)
 	}
@@ -267,10 +270,14 @@ impl Condition {
 		matches!(
 			self,
 			Self::Body
-				| Self::P | Self::H1
-				| Self::H2 | Self::H3
-				| Self::H4 | Self::H5
-				| Self::H6 | Self::Blockquote
+				| Self::P
+				| Self::H1
+				| Self::H2
+				| Self::H3
+				| Self::H4
+				| Self::H5
+				| Self::H6
+				| Self::Blockquote
 				| Self::Callout
 				| Self::CalloutNote
 				| Self::CalloutTip
@@ -279,7 +286,8 @@ impl Condition {
 				| Self::CalloutDanger
 				| Self::CalloutExample
 				| Self::CalloutQuote
-				| Self::List | Self::Enum
+				| Self::List
+				| Self::Enum
 				| Self::ListItem
 				| Self::Footnote
 				| Self::Details

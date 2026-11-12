@@ -123,7 +123,8 @@ pub(super) fn layout(card: &Card, anchor: Rect, window: (f32, f32)) -> Layout {
 		+ title
 		+ TITLE_GAP
 		+ DETAIL_LINE
-		+ gap + body.unwrap_or(0.0);
+		+ gap
+		+ body.unwrap_or(0.0);
 	let max_x = (window.0 - WIDTH - MARGIN).max(MARGIN);
 	let x = (anchor.x + anchor.w / 2.0 - WIDTH / 2.0).clamp(MARGIN, max_x);
 	let top = anchor.y + anchor.h + TOP_GAP;

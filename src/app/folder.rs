@@ -856,8 +856,9 @@ impl<P: SendEvent> App<P> {
 			id.scope
 				== Command::Chrome(ChromeCommand::FolderEntry(0))
 					.widget_id()
-					.scope && ((self.folder.open && !self.interaction.panel_open())
-				|| self.phone_folder_open())
+					.scope
+				&& ((self.folder.open && !self.interaction.panel_open())
+					|| self.phone_folder_open())
 				&& !self.interaction.overlays.modal_open()
 		});
 		self.refresh_hover();
@@ -950,8 +951,9 @@ impl<P: SendEvent> App<P> {
 							.components()
 							.any(|part| {
 								excluded(Path::new(part.as_os_str()), true)
-							}) && (!tree.show_excluded
-						|| !tree.expanded.contains(*path))
+							})
+						&& (!tree.show_excluded
+							|| !tree.expanded.contains(*path))
 				})
 				.cloned()
 				.collect();
@@ -1055,7 +1057,8 @@ impl<P: SendEvent> App<P> {
 				&& !self.folder.tree.as_ref().unwrap().rows().iter().any(
 					|row| {
 						Command::Chrome(ChromeCommand::FolderEntry(*row))
-							.widget_id() == id
+							.widget_id()
+							== id
 					},
 				)
 		}) {

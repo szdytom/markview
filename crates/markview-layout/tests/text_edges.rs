@@ -266,7 +266,8 @@ fn bounds_follow_ink_and_blank_fragments_fall_back_to_font_metrics() {
 	assert!(
 		(chip.y + chip.h
 			- bounds.iter().map(|b| b.1).fold(f32::NEG_INFINITY, f32::max))
-		.abs() < 0.05
+		.abs()
+			< 0.05
 	);
 	let bounded = layout(
 		"Ag\u{301}",
@@ -366,12 +367,14 @@ fn labels_share_the_background_edges_and_baseline_policy() {
 		.collect();
 	assert!(
 		(rect.y - bounds.iter().map(|b| b.0).fold(f32::INFINITY, f32::min))
-			.abs() < 0.05
+			.abs()
+			< 0.05
 	);
 	assert!(
 		(rect.y + rect.h
 			- bounds.iter().map(|b| b.1).fold(f32::NEG_INFINITY, f32::max))
-		.abs() < 0.05
+		.abs()
+			< 0.05
 	);
 	assert!(
 		shaper

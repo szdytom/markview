@@ -206,7 +206,8 @@ impl ClusterBuffer {
 			};
 			// Tiny image and formula nodes can cost less in their native representation.
 			if size_of::<PackedClusters>()
-				+ 16 + size_of_val(&*packed.clusters)
+				+ 16
+				+ size_of_val(&*packed.clusters)
 				+ size_of_val(&*packed.rows)
 				+ size_of_val(&*packed.spacing)
 				< self.len() * size_of::<TextCluster>()
@@ -232,7 +233,8 @@ impl ClusterBuffer {
 			}
 			Storage::Packed(p) => {
 				size_of::<PackedClusters>()
-					+ 16 + size_of_val(&*p.clusters)
+					+ 16
+					+ size_of_val(&*p.clusters)
 					+ size_of_val(&*p.rows)
 					+ size_of_val(&*p.spacing)
 			}

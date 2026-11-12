@@ -57,7 +57,9 @@ impl LayoutSnapshot {
 							((x - (block
 								.rect(cluster.command, cluster.rect)
 								.unwrap()
-								.x - offset)) / width)
+								.x
+								- offset))
+								/ width)
 								.clamp(0.0, 1.0)
 						} else {
 							0.5

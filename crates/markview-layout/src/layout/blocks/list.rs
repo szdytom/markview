@@ -346,7 +346,8 @@ impl BlockContext<'_> {
 							style.task.align,
 							style.column,
 							style.task.side,
-						) + style.task.side * 0.5,
+						)
+						+ style.task.side * 0.5,
 					0.,
 				],
 				checked,

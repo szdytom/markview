@@ -1464,7 +1464,8 @@ impl Reader<'_> {
 				};
 				literal
 					&& position(data.sourcepos.start).saturating_sub(1)
-						< bare.len() && position(data.sourcepos.end) > bare.len()
+						< bare.len()
+					&& position(data.sourcepos.end) > bare.len()
 			}) {
 			return self.snippet(bare, depth, None, opaque_until);
 		}

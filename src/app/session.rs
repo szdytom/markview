@@ -86,12 +86,14 @@ impl Position {
 					(a.y - position.local)
 						.abs()
 						.total_cmp(&(b.y - position.local).abs())
-				}) && let Some(semantic) = snapshot.semantic_at(
-				index,
-				node,
-				cluster.range.start,
-				markview_layout::text::Affinity::Before,
-			) && semantic.projection.is_none()
+				})
+				&& let Some(semantic) = snapshot.semantic_at(
+					index,
+					node,
+					cluster.range.start,
+					markview_layout::text::Affinity::Before,
+				)
+				&& semantic.projection.is_none()
 			{
 				position.field = Some(semantic.field.get());
 				position.byte = semantic.offset;

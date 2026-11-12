@@ -360,7 +360,11 @@ impl LayoutEngine {
 						highlights: self.highlights.results(),
 						cancelled,
 					}
-					.measure(&job, &mut self.shaper, &mut self.math)
+					.measure(
+						&job,
+						&mut self.shaper,
+						&mut self.math,
+					)
 				});
 			if cancelled() {
 				return;

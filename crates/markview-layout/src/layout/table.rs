@@ -578,15 +578,17 @@ impl BlockContext<'_> {
 				let neighbor = |r: usize, c: usize| -> Option<usize> {
 					grid.get(r).and_then(|row| row.get(c)).copied().flatten()
 				};
-				let side = |range: std::ops::Range<usize>,
-				            f: &dyn Fn(usize) -> Option<usize>| {
-					range.map(f).collect::<Option<Vec<_>>>()
-				};
+				let side =
+					|range: std::ops::Range<usize>,
+					 f: &dyn Fn(usize) -> Option<usize>| {
+						range.map(f).collect::<Option<Vec<_>>>()
+					};
 				if cell.row_start > 0
 					&& let Some(ids) =
 						side(cell.col..cell.col + cell.colspan, &|c| {
 							neighbor(cell.row_start - 1, c)
-						}) && ids.iter().all(|id| *id == ids[0])
+						})
+					&& ids.iter().all(|id| *id == ids[0])
 					&& !cell.gap_before
 					&& !gap_after[ids[0]]
 					&& base_edges[ids[0]][2] >= own[0]
@@ -597,7 +599,8 @@ impl BlockContext<'_> {
 					&& let Some(ids) =
 						side(cell.col..cell.col + cell.colspan, &|c| {
 							neighbor(cell.row_start + cell.rowspan, c)
-						}) && ids.iter().all(|id| *id == ids[0])
+						})
+					&& ids.iter().all(|id| *id == ids[0])
 					&& !cell.gap_after
 					&& !gap_before[ids[0]]
 					&& base_edges[ids[0]][0] > own[2]
@@ -608,7 +611,8 @@ impl BlockContext<'_> {
 					&& let Some(ids) = side(
 						cell.row_start..cell.row_start + cell.rowspan,
 						&|r| neighbor(r, cell.col - 1),
-					) && ids.iter().all(|id| *id == ids[0])
+					)
+					&& ids.iter().all(|id| *id == ids[0])
 					&& base_edges[ids[0]][1] >= own[3]
 				{
 					edges[3] = 0.;
@@ -617,7 +621,8 @@ impl BlockContext<'_> {
 					&& let Some(ids) = side(
 						cell.row_start..cell.row_start + cell.rowspan,
 						&|r| neighbor(r, cell.col + cell.colspan),
-					) && ids.iter().all(|id| *id == ids[0])
+					)
+					&& ids.iter().all(|id| *id == ids[0])
 					&& base_edges[ids[0]][3] > own[1]
 				{
 					edges[1] = 0.;

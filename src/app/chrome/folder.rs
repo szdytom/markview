@@ -229,7 +229,8 @@ pub(super) fn buttons(
 			action,
 			Rect {
 				x: drawer.x + drawer.w
-					- RIGHT_INSET - (3 - i) as f32 * HEADER_BUTTON,
+					- RIGHT_INSET
+					- (3 - i) as f32 * HEADER_BUTTON,
 				y: drawer.y + (38. - HEADER_BUTTON) / 2.,
 				w: HEADER_BUTTON,
 				h: HEADER_BUTTON,

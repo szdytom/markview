@@ -419,7 +419,8 @@ impl<P: super::SendEvent> App<P> {
 							.session
 							.display
 							.snapshot
-							.math_errors > 0
+							.math_errors
+							> 0
 						{
 							lang.status_math_errors(
 								self.readers
@@ -509,7 +510,8 @@ impl<P: super::SendEvent> App<P> {
 		// always has.
 		let offered = dm::DirectManipulation::take_offered_pointers();
 		if !offered.is_empty()
-			&& !held && !self.interaction.overlays.modal_open()
+			&& !held
+			&& !self.interaction.overlays.modal_open()
 			&& !self.interaction.overlays.dropdown_open()
 			&& !self.interaction.overlays.viewer_open()
 			&& let Some(viewport) = self.dm.as_mut()

@@ -668,7 +668,8 @@ fn separators_only_divide_neighboring_inactive_tabs() {
 					.enumerate()
 					.filter(|(i, _)| {
 						*i != active
-							&& *i + 1 != active && hovered != Some(*i)
+							&& *i + 1 != active
+							&& hovered != Some(*i)
 							&& hovered != Some(*i + 1)
 					})
 					.map(|(_, pair)| (pair[0].x + pair[0].w + pair[1].x) / 2.0)

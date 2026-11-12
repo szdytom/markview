@@ -43,7 +43,8 @@ impl Mode {
 			Self::Window
 				| Self::Render
 				| Self::Smoke
-				| Self::Pdf | Self::Export
+				| Self::Pdf
+				| Self::Export
 		)
 	}
 }

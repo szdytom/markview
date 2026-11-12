@@ -164,7 +164,8 @@ fn full_png_keeps_first_and_last_images_across_tiles() {
 		png.enumerate_pixels()
 			.any(|(_, y, p)| y > png.height() - 500
 				&& p[0] > 220
-				&& p[1] < 30 && p[2] > 220)
+				&& p[1] < 30
+				&& p[2] > 220)
 	);
 }
 #[test]

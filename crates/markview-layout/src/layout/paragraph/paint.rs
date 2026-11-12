@@ -411,7 +411,8 @@ impl LinePainter<'_, '_> {
 							- size * appearance.size * 0.3
 					} else {
 						baseline
-							+ c.baseline_shift + size * appearance.size * 0.12
+							+ c.baseline_shift
+							+ size * appearance.size * 0.12
 					},
 					w: advance,
 					h: 1.0,

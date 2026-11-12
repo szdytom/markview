@@ -1332,7 +1332,8 @@ fn a_changed_svg_aspect_updates_the_viewers_raster() {
 			.stamp
 			.unwrap()
 			.1
-			.unwrap() + Duration::from_secs(1);
+			.unwrap()
+			+ Duration::from_secs(1);
 		fs::File::options()
 			.write(true)
 			.open(&file)
@@ -1854,7 +1855,8 @@ fn released_image_jobs_cannot_publish_into_a_reopened_document() {
 		fn try_submit(
 			&self,
 			task: markview_layout::background::Task,
-		) -> std::result::Result<(), markview_layout::background::Task> {
+		) -> std::result::Result<(), markview_layout::background::Task>
+		{
 			self.0.send(task).map_err(|error| error.0)
 		}
 	}

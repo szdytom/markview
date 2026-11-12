@@ -105,7 +105,8 @@ impl Harness {
 				.snapshot
 				.images
 				.decoded()
-				.len() != count
+				.len()
+				!= count
 		{
 			let event = self
 				.events
@@ -281,7 +282,8 @@ fn raw_markdown_loads_through_real_app_events_and_matches_pasted_content() {
 			.snapshot
 			.images
 			.decoded()
-			.len() != 1
+			.len()
+			!= 1
 	{
 		let event = h
 			.events

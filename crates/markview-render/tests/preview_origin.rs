@@ -330,9 +330,9 @@ fn the_preview_lands_in_the_translated_card_rect() -> anyhow::Result<()> {
 		for y in 0..composed.height as usize {
 			for x in 0..composed.width as usize {
 				let inside = (px(case.rect.x)..px(case.rect.x + case.rect.w))
-					.contains(&x) && (px(case.rect.y)
-					..px(case.rect.y + case.rect.h))
-					.contains(&y);
+					.contains(&x)
+					&& (px(case.rect.y)..px(case.rect.y + case.rect.h))
+						.contains(&y);
 				if inside {
 					continue;
 				}

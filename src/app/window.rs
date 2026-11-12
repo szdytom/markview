@@ -529,7 +529,8 @@ impl<P: super::SendEvent> App<P> {
 				Key::Named(
 					NamedKey::Shift
 						| NamedKey::Control
-						| NamedKey::Alt | NamedKey::Meta
+						| NamedKey::Alt
+						| NamedKey::Meta
 				)
 			)
 	}
@@ -614,7 +615,8 @@ impl<P: super::SendEvent> App<P> {
 			if let Key::Character(c) = key {
 				match c.to_lowercase().as_str() {
 					"n" if markview_platform::desktop_cli()
-						&& !repeat && !modifiers.alt_key()
+						&& !repeat
+						&& !modifiers.alt_key()
 						&& !modifiers.shift_key() =>
 					{
 						if let Err(error) = event_loop.new_window() {
@@ -661,7 +663,8 @@ impl<P: super::SendEvent> App<P> {
 							.interaction
 							.pointer
 							.modifiers()
-							.shift_key() && !self.panel_has_focus() =>
+							.shift_key()
+						&& !self.panel_has_focus() =>
 					{
 						self.action(Command::Chrome(
 							ChromeCommand::RevealFolder,
@@ -976,7 +979,8 @@ impl<P: super::SendEvent> App<P> {
 		let backward = self.interaction.pointer.modifiers().shift_key();
 		if let Some(action) = self.navigate_widgets(backward) {
 			if let Command::Document(DocumentCommand::OutlineGoto(index))
-			| Command::Document(DocumentCommand::OutlineToggle(index)) = action
+			| Command::Document(DocumentCommand::OutlineToggle(index)) =
+				action
 			{
 				self.reveal_outline(index);
 			}

@@ -206,7 +206,8 @@ fn tags(source: &str) -> impl Iterator<Item = (usize, usize)> + '_ {
 				Some(len) => {
 					if let Some((name, attrs, closing)) =
 						tag_parts(&rest[..len])
-						&& !closing && !attrs.trim_end().ends_with('/')
+						&& !closing
+						&& !attrs.trim_end().ends_with('/')
 						&& let Some(end) = opaque_end(source, open + len, &name)
 					{
 						at = end;

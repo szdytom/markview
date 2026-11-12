@@ -620,26 +620,27 @@ fn semantic_index_estimate(
 				+ entry.anchor.capacity()
 		})
 		.sum();
-	let anchors: usize =
-		blocks
-			.iter()
-			.map(|block| {
-				block
-					.anchors()
-					.iter()
-					.map(|anchor| {
-						std::mem::size_of::<String>()
-							+ anchor.capacity() + std::mem::size_of::<Vec<BlockId>>(
-						) + std::mem::size_of::<BlockId>()
-					})
-					.sum::<usize>() + match block.kind() {
+	let anchors: usize = blocks
+		.iter()
+		.map(|block| {
+			block
+				.anchors()
+				.iter()
+				.map(|anchor| {
+					std::mem::size_of::<String>()
+						+ anchor.capacity()
+						+ std::mem::size_of::<Vec<BlockId>>()
+						+ std::mem::size_of::<BlockId>()
+				})
+				.sum::<usize>()
+				+ match block.kind() {
 					BlockKind::Heading { anchor, .. } => {
 						std::mem::size_of::<String>() + anchor.capacity()
 					}
 					_ => 0,
 				}
-			})
-			.sum();
+		})
+		.sum();
 	let details = blocks
 		.iter()
 		.filter(|block| {

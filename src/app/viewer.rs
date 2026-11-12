@@ -162,9 +162,11 @@ impl Viewer {
 			let centre = (window.0 / 2., window.1 / 2.);
 			self.pan = (
 				pointer.0
-					- centre.0 - (pointer.0 - centre.0 - self.pan.0) * ratio,
+					- centre.0
+					- (pointer.0 - centre.0 - self.pan.0) * ratio,
 				pointer.1
-					- centre.1 - (pointer.1 - centre.1 - self.pan.1) * ratio,
+					- centre.1
+					- (pointer.1 - centre.1 - self.pan.1) * ratio,
 			);
 		}
 		self.pan.0 += delta.0;

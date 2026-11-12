@@ -70,7 +70,8 @@ pub(in crate::app) fn geometry(view: View<'_>) -> Geometry {
 			((view.rect.h - content_h) / 2.0).max(24.0)
 		} else {
 			24.0
-		} - scroll;
+		}
+		- scroll;
 	let quick = Rect {
 		x: if columns { x + local_w + 64.0 } else { x },
 		y: if columns { y } else { y + 180.0 },

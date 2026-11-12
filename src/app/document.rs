@@ -134,7 +134,8 @@ impl<P: super::SendEvent> App<P> {
 			request.coverage = if follow
 				&& self.readers.session.scrolling.offset
 					>= (self.readers.session.display.snapshot.height
-						- self.viewport() - 3.)
+						- self.viewport()
+						- 3.)
 						.max(0.)
 			{
 				self.readers.session.scrolling.target = Some(f32::INFINITY);
