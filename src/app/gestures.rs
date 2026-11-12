@@ -1,7 +1,7 @@
 //! Route captured touch and touchpad gestures through shared scrolling and zoom.
 use crate::state::{ChromeCommand, DocumentCommand, ExportCommand};
+use markview_platform::event::{Touch, TouchPhase};
 use std::time::{Duration, Instant};
-use winit::event::{Touch, TouchPhase};
 
 use crate::state::Selection;
 mod recognizer;

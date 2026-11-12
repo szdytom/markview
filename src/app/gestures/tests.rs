@@ -1,10 +1,10 @@
 use super::recognizer::Contact;
 use super::*;
 use crate::state::ChromeCommand;
-use winit::event::DeviceId;
+use markview_platform::event::DeviceId;
 
 fn contact(id: u64) -> Contact {
-	(DeviceId::dummy(), id)
+	(DeviceId::from_raw(0), id)
 }
 
 #[test]
@@ -137,10 +137,8 @@ fn native_touch_and_trackpad_route_through_reader_and_chrome() {
 		return;
 	}
 	use winit::dpi::PhysicalPosition;
-	let event_loop = markview_platform::test_support::input_event_loop::<
-		super::super::Event,
-	>()
-	.unwrap();
+	let event_loop =
+		markview_platform::test_support::input_event_loop().unwrap();
 	let mut app = App::new(
 		crate::cli::LaunchOptions {
 			offline: true,
@@ -148,14 +146,17 @@ fn native_touch_and_trackpad_route_through_reader_and_chrome() {
 			options: crate::test_support::options(),
 			..Default::default()
 		},
-		event_loop.create_proxy(),
+		super::super::EventProxy {
+			sender: std::sync::mpsc::channel().0,
+			wake: event_loop.create_proxy(),
+		},
 	);
 	app.readers.session.path = Some("touch.md".into());
 	app.readers.session.display.snapshot.height = 5000.0;
 	app.readers.session.display.snapshot.width = 800.0;
 	app.readers.session.snapshot_complete = true;
 	let touch = |id, phase, x, y| Touch {
-		device_id: DeviceId::dummy(),
+		device_id: DeviceId::from_raw(0),
 		id,
 		phase,
 		location: PhysicalPosition::new(x, y),

@@ -1,23 +1,31 @@
 //! Android reader setup and application debug state.
-use super::{App, Event};
+use super::App;
 use winit::event_loop::ControlFlow;
+use winit::event_loop::run_on_demand::EventLoopExtRunOnDemand;
 pub(crate) fn run(
 	android: markview_platform::android::AndroidApp,
 ) -> anyhow::Result<()> {
-	let event_loop = markview_platform::android::event_loop::<Event>(android)?;
+	let mut event_loop = markview_platform::android::event_loop(android)?;
 	event_loop.set_control_flow(ControlFlow::Wait);
-	let proxy = event_loop.create_proxy();
+	let (sender, receiver) = std::sync::mpsc::channel();
+	let proxy = super::EventProxy {
+		sender,
+		wake: event_loop.create_proxy(),
+	};
 	let mut args = crate::cli::LaunchOptions::default();
 	crate::fonts::join_download_directory(
 		&mut args.options.fonts,
 		crate::fonts::directory(),
 	);
 	let mut app = App::new(args, proxy.clone());
+	app.native_events.pending = Some(receiver);
 	app.tab_strip.phone = markview_platform::android::phone_layout();
 	super::open_document::install(proxy);
-	let result = event_loop.run_app(&mut app);
+	let result = event_loop.run_app_on_demand(&mut app);
+	app.native_events.pending.take();
 	markview_platform::shutdown_events();
 	app.flush_settings();
+	app.flush_session();
 	result?;
 	if let Some(error) = app.fatal.take() {
 		anyhow::bail!(error);

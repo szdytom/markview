@@ -40,7 +40,7 @@ fn new_window_shortcut_keeps_the_current_document_and_ignores_repeats() {
 	app.readers.open(path.clone(), Instant::now());
 	let event_loop = WindowLoop::default();
 	let key = Key::Character("n".into());
-	for modifiers in [ModifiersState::CONTROL, ModifiersState::SUPER] {
+	for modifiers in [ModifiersState::CONTROL, ModifiersState::META] {
 		app.interaction.pointer.set_modifiers(modifiers);
 		let count = event_loop.0.get();
 		app.dispatch_key(&event_loop, &key, false);

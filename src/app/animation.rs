@@ -210,7 +210,10 @@ impl<P: super::SendEvent> super::App<P> {
 			.window
 			.as_ref()
 			.and_then(|window| window.current_monitor())
-			.and_then(|monitor| monitor.refresh_rate_millihertz());
+			.and_then(|monitor| monitor.current_video_mode())
+			.and_then(|mode| {
+				mode.refresh_rate_millihertz().map(|rate| rate.get())
+			});
 		self.animations.set_refresh_rate(rate);
 	}
 }

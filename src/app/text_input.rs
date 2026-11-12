@@ -6,10 +6,10 @@ use crate::{
 	state::{Command, TextField},
 };
 use markview_layout::text_input::{EditKind, Motion, TextInput};
+use markview_platform::event::{ElementState, Ime, MouseButton, WindowEvent};
 use std::time::{Duration, Instant};
 use winit::{
 	dpi::{LogicalPosition, LogicalSize},
-	event::{ElementState, Ime, MouseButton, WindowEvent},
 	keyboard::{Key, ModifiersState, NamedKey},
 };
 
@@ -26,7 +26,7 @@ struct ImeArea {
 #[derive(Clone, Copy)]
 pub(super) struct InputHold {
 	pub(super) deadline: Instant,
-	contact: (winit::event::DeviceId, u64),
+	contact: (markview_platform::event::DeviceId, u64),
 	field: TextField,
 	point: (f32, f32),
 }
@@ -105,7 +105,7 @@ fn key(
 ) -> Outcome {
 	let mac = markview_platform::command_key();
 	let primary = if mac {
-		mods.super_key()
+		mods.meta_key()
 	} else {
 		mods.control_key() && !mods.alt_key()
 	};
@@ -237,7 +237,7 @@ fn edit_key(
 			}
 			input.delete(ui, backwards, word);
 		}
-		_ if !primary && !mods.super_key() => {
+		_ if !primary && !mods.meta_key() => {
 			if let Some(text) = text {
 				input.insert(ui, text, EditKind::Typing);
 			}
@@ -384,7 +384,26 @@ impl<P: SendEvent> App<P> {
 				log::warn!("Android input focus: {error}");
 			}
 		} else if let Some(window) = &self.window {
-			window.set_ime_allowed(enabled);
+			use winit::window::{
+				ImeCapabilities, ImeEnableRequest, ImeRequest, ImeRequestData,
+			};
+			let request = if enabled {
+				ImeRequest::Enable(
+					ImeEnableRequest::new(
+						ImeCapabilities::new().with_cursor_area(),
+						ImeRequestData::default().with_cursor_area(
+							winit::dpi::LogicalPosition::new(0, 0).into(),
+							winit::dpi::LogicalSize::new(0, 0).into(),
+						),
+					)
+					.unwrap(),
+				)
+			} else {
+				ImeRequest::Disable
+			};
+			if let Err(error) = window.request_ime_update(request) {
+				log::debug!("Cannot update input method: {error}");
+			}
 		}
 	}
 
@@ -437,11 +456,11 @@ impl<P: SendEvent> App<P> {
 
 	pub(super) fn input_touch(
 		&mut self,
-		touch: winit::event::Touch,
+		touch: markview_platform::event::Touch,
 		point: (f32, f32),
 		single: bool,
 	) {
-		use winit::event::TouchPhase;
+		use markview_platform::event::TouchPhase;
 		let contact = (touch.device_id, touch.id);
 		match touch.phase {
 			TouchPhase::Started => {
@@ -629,8 +648,14 @@ impl<P: SendEvent> App<P> {
 		self.sync_input();
 		if let Some(area) = self.take_ime_area()
 			&& let Some(window) = &self.window
-		{
-			window.set_ime_cursor_area(area.position, area.size);
+			&& let Err(error) =
+				window.request_ime_update(winit::window::ImeRequest::Update(
+					winit::window::ImeRequestData::default().with_cursor_area(
+						area.position.into(),
+						area.size.into(),
+					),
+				)) {
+			log::debug!("Cannot position input method: {error}");
 		}
 	}
 
@@ -776,6 +801,8 @@ impl<P: SendEvent> App<P> {
 					input.commit(ui, text);
 					self.input_text_changed(id);
 				}
+				// Surrounding text is not advertised in our IME capabilities.
+				Ime::DeleteSurrounding { .. } => {}
 			}
 			self.reset_input_blink();
 			self.sync_input();

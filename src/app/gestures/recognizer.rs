@@ -1,6 +1,6 @@
 use super::Point;
+use markview_platform::event::{DeviceId, TouchPhase};
 use std::collections::HashMap;
-use winit::event::{DeviceId, TouchPhase};
 pub(super) type Contact = (DeviceId, u64);
 const SLOP: f32 = 8.0;
 

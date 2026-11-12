@@ -16,6 +16,7 @@ test-support = []
 proptest.workspace = true
 
 [dependencies]
+url = "2"
 anyhow.workspace = true
 log.workspace = true
 notify.workspace = true
@@ -71,12 +72,7 @@ windows-sys = { version = "0.61", features = [
 
 [target.'cfg(target_os = "linux")'.dependencies]
 ashpd = { version = "0.13", default-features = false, features = ["async-io", "settings"] }
-wayland-client = { version = "0.31", features = ["system", "dlopen"] }
-wayland-protocols = { version = "0.32", features = ["client"] }
 
-[target.'cfg(target_os = "linux")'.dev-dependencies]
-wayland-server = "0.31"
-wayland-protocols = { version = "0.32", features = ["server"] }
 
 [target.'cfg(target_os = "macos")'.dependencies]
 # A double-clicked document arrives as an Apple Event, which only the Objective-C

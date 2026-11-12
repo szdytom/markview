@@ -11,12 +11,12 @@ use winit::window::Window;
 
 /// A window named as the target its surface presents through.
 ///
-/// The trait is defined in another crate and `Arc<Window>` is not local
+/// The trait is defined in another crate and `Arc<dyn Window>` is not local
 /// either, so the implementation needs a name of its own to hang on.
-pub(super) struct WindowTarget(Arc<Window>);
+pub(super) struct WindowTarget(Arc<dyn Window>);
 
 /// The render target a desktop window presents through.
-pub(super) fn target(window: Arc<Window>) -> Box<dyn SurfaceSource> {
+pub(super) fn target(window: Arc<dyn Window>) -> Box<dyn SurfaceSource> {
 	Box::new(WindowTarget(window))
 }
 
@@ -36,7 +36,7 @@ impl SurfaceSource for WindowTarget {
 		Ok(instance.create_surface(self.0.clone())?)
 	}
 	fn size(&self) -> (u32, u32) {
-		let size = self.0.inner_size();
+		let size = self.0.surface_size();
 		(size.width, size.height)
 	}
 }

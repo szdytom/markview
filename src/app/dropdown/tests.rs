@@ -14,12 +14,12 @@ use crate::layout::Rect;
 use crate::settings::FontRole;
 use crate::state::{ChromeCommand, SettingsCommand};
 use crate::state::{Command, DropdownId, PanelPage, PanelTab};
-use std::cell::Cell;
-use winit::dpi::PhysicalPosition;
-use winit::event::{
+use markview_platform::event::{
 	DeviceId, ElementState, MouseButton, MouseScrollDelta, Touch, TouchPhase,
 	WindowEvent,
 };
+use std::cell::Cell;
+use winit::dpi::PhysicalPosition;
 use winit::keyboard::{Key, ModifiersState, NamedKey};
 use winit::window::WindowId;
 
@@ -68,9 +68,9 @@ fn app_with_panel() -> App<StubProxy> {
 fn move_to(app: &mut App<StubProxy>, x: f32, y: f32) {
 	app.handle_window_event(
 		&StubLoop,
-		WindowId::dummy(),
+		WindowId::from_raw(0),
 		WindowEvent::CursorMoved {
-			device_id: DeviceId::dummy(),
+			device_id: DeviceId::from_raw(0),
 			position: PhysicalPosition::new(f64::from(x), f64::from(y)),
 		},
 	);
@@ -85,9 +85,9 @@ fn click(app: &mut App<StubProxy>, x: f32, y: f32) {
 	for state in [ElementState::Pressed, ElementState::Released] {
 		app.handle_window_event(
 			&StubLoop,
-			WindowId::dummy(),
+			WindowId::from_raw(0),
 			WindowEvent::MouseInput {
-				device_id: DeviceId::dummy(),
+				device_id: DeviceId::from_raw(0),
 				button: MouseButton::Left,
 				state,
 			},
@@ -120,7 +120,7 @@ fn highlighted(app: &mut App<StubProxy>) -> Command {
 /// A tap at a window point: down, then up in place.
 fn touch(app: &mut App<StubProxy>, x: f32, y: f32) {
 	let event = |phase: TouchPhase| Touch {
-		device_id: DeviceId::dummy(),
+		device_id: DeviceId::from_raw(0),
 		id: 1,
 		phase,
 		location: PhysicalPosition::new(f64::from(x), f64::from(y)),
@@ -139,9 +139,9 @@ fn press(app: &mut App<StubProxy>, quit: &QuitLoop, key: Key) {
 fn wheel(app: &mut App<StubProxy>, delta: MouseScrollDelta) {
 	app.handle_window_event(
 		&StubLoop,
-		WindowId::dummy(),
+		WindowId::from_raw(0),
 		WindowEvent::MouseWheel {
-			device_id: DeviceId::dummy(),
+			device_id: DeviceId::from_raw(0),
 			delta,
 			phase: TouchPhase::Moved,
 		},
@@ -672,9 +672,9 @@ fn the_wheel_does_not_scroll_the_page_behind_an_open_list() {
 
 	app.handle_window_event(
 		&StubLoop,
-		WindowId::dummy(),
+		WindowId::from_raw(0),
 		WindowEvent::MouseWheel {
-			device_id: DeviceId::dummy(),
+			device_id: DeviceId::from_raw(0),
 			delta: MouseScrollDelta::LineDelta(0.0, -5.0),
 			phase: TouchPhase::Moved,
 		},
@@ -877,7 +877,7 @@ fn a_modified_wheel_over_an_open_list_leaves_the_highlight() {
 		DropdownId::Language,
 		0,
 	)));
-	app.interaction.pointer.set_modifiers(ModifiersState::SUPER);
+	app.interaction.pointer.set_modifiers(ModifiersState::META);
 	let before = app.preferences.settings_scroll().offset();
 
 	wheel(&mut app, MouseScrollDelta::LineDelta(0.0, -1.0));

@@ -1,6 +1,4 @@
 //! Uniform window adapters and native event-loop configuration.
-#[cfg(not(target_os = "linux"))]
-use std::sync::Arc;
 use winit::{
 	event_loop::{EventLoop, EventLoopBuilder},
 	window::{ResizeDirection, Window, WindowAttributes},
@@ -27,7 +25,7 @@ pub struct NativeFrame;
 #[cfg(not(windows))]
 impl NativeFrame {
 	pub fn new(
-		_: &Window,
+		_: &dyn Window,
 		_: impl Fn(FrameMetrics, f32, f32) -> HitTest + 'static,
 		_: impl Fn() + 'static,
 	) -> anyhow::Result<Option<Self>> {
@@ -40,57 +38,47 @@ impl NativeFrame {
 	pub fn cancel(&self) {}
 }
 
-#[cfg(not(target_os = "linux"))]
-pub struct TouchFrame;
-#[cfg(not(target_os = "linux"))]
-impl TouchFrame {
-	pub fn new(_: Arc<Window>) -> anyhow::Result<Option<Self>> {
-		Ok(None)
-	}
-	pub fn touch(
-		&mut self,
-		_: winit::event::Touch,
-		_: Option<Option<ResizeDirection>>,
-	) {
-	}
-	pub fn dispatch(&mut self) {}
-}
-
 pub fn window_attributes(
 	attributes: WindowAttributes,
 	native_buttons: bool,
 ) -> WindowAttributes {
 	#[cfg(target_os = "macos")]
 	let attributes = {
-		use winit::platform::macos::WindowAttributesExtMacOS;
-		attributes
-			.with_titlebar_transparent(true)
-			.with_title_hidden(true)
-			.with_fullsize_content_view(true)
-			.with_titlebar_buttons_hidden(!native_buttons)
-			.with_movable_by_window_background(false)
+		use winit::platform::macos::WindowAttributesMacOS;
+		attributes.with_platform_attributes(Box::new(
+			WindowAttributesMacOS::default()
+				.with_titlebar_transparent(true)
+				.with_title_hidden(true)
+				.with_fullsize_content_view(true)
+				.with_titlebar_buttons_hidden(!native_buttons)
+				.with_movable_by_window_background(false),
+		))
 	};
 	#[cfg(windows)]
 	let attributes = {
 		use winit::platform::windows::{
-			CornerPreference, WindowAttributesExtWindows,
+			CornerPreference, WindowAttributesWindows,
 		};
+		// Reveal only after the first frame is ready.
 		attributes
 			.with_decorations(false)
-			.with_undecorated_shadow(true)
-			.with_corner_preference(CornerPreference::Round)
-			// A window that is visible while `CreateWindowEx` runs is composed
-			// and painted by the shell before the reader can present a frame,
-			// so startup shows a blank window until the first frame arrives.
-			// `reveal` shows it once that frame is ready instead.
 			.with_visible(false)
+			.with_platform_attributes(Box::new(
+				WindowAttributesWindows::default()
+					.with_undecorated_shadow(true)
+					.with_corner_preference(CornerPreference::Round)
+					.with_taskbar_icon(crate::icon::window_icon()),
+			))
 	};
 	#[cfg(target_os = "linux")]
 	let attributes = {
-		use winit::platform::wayland::WindowAttributesExtWayland;
+		use winit::platform::wayland::WindowAttributesWayland;
 		attributes
 			.with_decorations(false)
-			.with_name("markview", "markview")
+			.with_platform_attributes(Box::new(
+				WindowAttributesWayland::default()
+					.with_name("markview", "markview"),
+			))
 	};
 	let _ = native_buttons;
 	crate::icon::with_icon(attributes)
@@ -102,16 +90,16 @@ pub fn starts_hidden() -> bool {
 }
 
 /// Shows a window this platform created hidden; a no-op elsewhere.
-pub fn reveal(window: &Window) {
+pub fn reveal(window: &dyn Window) {
 	#[cfg(windows)]
 	window.set_visible(true);
 	#[cfg(not(windows))]
 	let _ = window;
 }
 
-pub fn pending_documents_loop<T: 'static>(
-	mut builder: EventLoopBuilder<T>,
-) -> Result<Option<EventLoop<T>>, winit::error::EventLoopError> {
+pub fn pending_documents_loop(
+	mut builder: EventLoopBuilder,
+) -> Result<Option<EventLoop>, winit::error::EventLoopError> {
 	#[cfg(target_os = "macos")]
 	{
 		use winit::platform::macos::{

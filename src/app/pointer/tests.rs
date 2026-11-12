@@ -1,9 +1,7 @@
 use super::wheel_pixels;
+use markview_platform::event::MouseScrollDelta::{LineDelta, PixelDelta};
 use markview_platform::{WheelAmount, WheelNotch};
-use winit::{
-	dpi::PhysicalPosition,
-	event::MouseScrollDelta::{LineDelta, PixelDelta},
-};
+use winit::dpi::PhysicalPosition;
 
 /// Both axes driven by the same desktop value.
 fn even(lines: f32) -> WheelNotch {

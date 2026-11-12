@@ -333,11 +333,9 @@ pub fn insets(width: u32, height: u32, scale: f32) -> [f32; 4] {
 	]
 }
 
-pub fn event_loop<T: 'static>(
-	android: AndroidApp,
-) -> Result<winit::event_loop::EventLoop<T>> {
+pub fn event_loop(android: AndroidApp) -> Result<winit::event_loop::EventLoop> {
 	use winit::platform::android::EventLoopBuilderExtAndroid;
-	Ok(winit::event_loop::EventLoop::<T>::with_user_event()
+	Ok(winit::event_loop::EventLoop::builder()
 		.with_android_app(android)
 		.build()?)
 }

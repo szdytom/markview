@@ -3,9 +3,10 @@
 //! Every platform embeds the same committed byte assets, so the reader never
 //! depends on a system theme to find its own icon.
 use std::sync::OnceLock;
-#[cfg(target_os = "windows")]
-use winit::platform::windows::WindowAttributesExtWindows;
-use winit::window::{Icon, WindowAttributes};
+use winit::{
+	icon::{Icon, RgbaIcon},
+	window::WindowAttributes,
+};
 
 #[cfg(target_os = "windows")]
 const WINDOWS_ICON: &[u8] =
@@ -24,8 +25,6 @@ pub(crate) fn with_icon(attributes: WindowAttributes) -> WindowAttributes {
 	let Some(icon) = window_icon() else {
 		return attributes;
 	};
-	#[cfg(target_os = "windows")]
-	let attributes = attributes.with_taskbar_icon(Some(icon.clone()));
 	attributes.with_window_icon(Some(icon))
 }
 
@@ -33,11 +32,13 @@ pub(crate) fn with_icon(attributes: WindowAttributes) -> WindowAttributes {
 ///
 /// winit wants an owned [`Icon`], so the decoded RGBA buffer is cached and a
 /// fresh icon is built from it.
-fn window_icon() -> Option<Icon> {
+pub(crate) fn window_icon() -> Option<Icon> {
 	type Pixels = (u32, u32, Vec<u8>);
 	static PIXELS: OnceLock<Option<Pixels>> = OnceLock::new();
 	let (width, height, data) = PIXELS.get_or_init(decode).as_ref()?;
-	Icon::from_rgba(data.clone(), *width, *height).ok()
+	RgbaIcon::new(data.clone(), *width, *height)
+		.ok()
+		.map(Into::into)
 }
 
 #[cfg(target_os = "windows")]

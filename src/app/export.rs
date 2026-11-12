@@ -716,7 +716,7 @@ fn choose_output(
 	stem: &str,
 	settings: &ExportSettings,
 	directory: Option<&Path>,
-	window: Option<&winit::window::Window>,
+	window: Option<&dyn winit::window::Window>,
 ) -> impl Future<Output = Option<PathBuf>> + Send + use<> {
 	let lang = crate::lang::Lang::default();
 	let (extension, label) = match settings.format {

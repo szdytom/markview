@@ -1473,7 +1473,7 @@ fn folder_scan_completion_preserves_newer_navigation() {
 #[test]
 fn folder_scan_completion_preserves_newer_input_and_capture() {
 	use crate::state::{Command, TextField};
-	use winit::event::{Ime, WindowEvent};
+	use markview_platform::event::{Ime, WindowEvent};
 	for field in [TextField::Search, TextField::ExportTitle] {
 		let mut h = Harness::new();
 		let root = h.dir.path().to_path_buf();
@@ -1994,7 +1994,8 @@ fn folder_sidebar_geometry_keyboard_and_pointer_ownership() {
 #[test]
 fn folder_overlay_resize_keeps_search_and_its_focus() {
 	use crate::state::{Command, TextField};
-	use winit::{dpi::PhysicalSize, event::WindowEvent, window::WindowId};
+	use markview_platform::event::WindowEvent;
+	use winit::{dpi::PhysicalSize, window::WindowId};
 	let mut h = Harness::new();
 	h.app.folder_loaded(
 		0,
@@ -2007,7 +2008,7 @@ fn folder_overlay_resize_keeps_search_and_its_focus() {
 	for (width, folder_open) in [(760, true), (536, false), (900, false)] {
 		h.app.handle_window_event(
 			&StubLoop,
-			WindowId::dummy(),
+			WindowId::from_raw(0),
 			WindowEvent::Resized(PhysicalSize::new(width, 800)),
 		);
 		assert_eq!(h.app.folder.open, folder_open);
@@ -2026,7 +2027,8 @@ fn folder_overlay_resize_keeps_search_and_its_focus() {
 #[test]
 fn folder_drawers_reconcile_on_resize_to_an_overlay() {
 	use crate::state::Command;
-	use winit::{dpi::PhysicalSize, event::WindowEvent, window::WindowId};
+	use markview_platform::event::WindowEvent;
+	use winit::{dpi::PhysicalSize, window::WindowId};
 	let mut h = Harness::new();
 	h.app.folder_loaded(
 		0,
@@ -2047,7 +2049,7 @@ fn folder_drawers_reconcile_on_resize_to_an_overlay() {
 	for (width, folder_open) in [(760, true), (536, false), (900, false)] {
 		h.app.handle_window_event(
 			&StubLoop,
-			WindowId::dummy(),
+			WindowId::from_raw(0),
 			WindowEvent::Resized(PhysicalSize::new(width, 800)),
 		);
 		assert_eq!(h.app.folder.open, folder_open);

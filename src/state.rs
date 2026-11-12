@@ -1,6 +1,7 @@
 //! Per-document state and transient read-only interaction state.
 use crate::{document, layout::LayoutOptions};
 use markview_layout::text::{TextCounts, TextSelection};
+use markview_platform::event::TouchPhase;
 use markview_ui_core::Component;
 use std::{
 	collections::{BTreeMap, HashMap},
@@ -8,7 +9,6 @@ use std::{
 	sync::Arc,
 	time::{Duration, Instant},
 };
-use winit::event::TouchPhase;
 
 mod command;
 mod display;
@@ -973,7 +973,7 @@ impl Host for InteractionState {
 			shift: modifiers.shift_key(),
 			control: modifiers.control_key(),
 			alt: modifiers.alt_key(),
-			meta: modifiers.super_key(),
+			meta: modifiers.meta_key(),
 		}
 	}
 	fn selection(&self) -> Option<TextSelection> {

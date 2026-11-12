@@ -4,12 +4,9 @@ use crate::state::{
 	WheelStep,
 };
 use crate::{link, state};
+use markview_platform::event::{MouseScrollDelta, TouchPhase};
 use std::{path::PathBuf, time::Instant};
-use winit::{
-	event::{MouseScrollDelta, TouchPhase},
-	keyboard::ModifiersState,
-	window::CursorIcon,
-};
+use winit::{cursor::CursorIcon, keyboard::ModifiersState};
 
 use super::modal::{Message, Modal, PermissionAction};
 use super::viewer::Message as ViewerMessage;
@@ -238,6 +235,7 @@ pub(super) fn wheel_pixels(
 			let step = speed / scale;
 			(p.x as f32 * step, p.y as f32 * step)
 		}
+		_ => (0.0, 0.0),
 	}
 }
 
@@ -253,7 +251,7 @@ pub(super) fn high_resolution(delta: MouseScrollDelta) -> bool {
 		MouseScrollDelta::LineDelta(x, y) => {
 			x.fract() != 0.0 || y.fract() != 0.0
 		}
-		MouseScrollDelta::PixelDelta(_) => false,
+		_ => false,
 	}
 }
 
@@ -411,7 +409,7 @@ impl<P: super::SendEvent> App<P> {
 		self.interaction.pointer.clear_document_hover();
 		self.dismiss_preview();
 		if let Some(w) = &self.window {
-			w.set_cursor(CursorIcon::Default);
+			w.set_cursor(CursorIcon::Default.into());
 		}
 		self.redraw();
 	}
@@ -878,9 +876,9 @@ impl<P: super::SendEvent> App<P> {
 			self.interaction.pointer.clear_hover();
 			if let Some(w) = &self.window {
 				w.set_cursor(if grabbing {
-					CursorIcon::Grabbing
+					CursorIcon::Grabbing.into()
 				} else {
-					self.frame_cursor().unwrap_or(CursorIcon::Default)
+					self.frame_cursor().unwrap_or(CursorIcon::Default).into()
 				});
 			}
 			return;
@@ -944,7 +942,7 @@ impl<P: super::SendEvent> App<P> {
 		self.interaction.pointer.set_hover_control(hover_control);
 		self.interaction.pointer.set_hover(hover, hover_image);
 		if let Some(w) = &self.window {
-			w.set_cursor(cursor);
+			w.set_cursor(cursor.into());
 		}
 		if hover_changed {
 			self.redraw();

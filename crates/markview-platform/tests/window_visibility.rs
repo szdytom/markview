@@ -10,9 +10,10 @@
 #![cfg(windows)]
 #![allow(deprecated)]
 
+mod support;
+
 use winit::{
 	event_loop::EventLoop, platform::windows::EventLoopBuilderExtWindows,
-	window::Window,
 };
 
 #[test]
@@ -22,7 +23,7 @@ fn the_window_is_created_hidden_and_revealed_on_request() {
 		"the platform should hide a window until it has a frame"
 	);
 	let attributes = markview_platform::window_attributes(
-		Window::default_attributes(),
+		winit::window::WindowAttributes::default(),
 		false,
 	);
 	assert!(
@@ -30,16 +31,16 @@ fn the_window_is_created_hidden_and_revealed_on_request() {
 		"the window attributes must keep the window hidden"
 	);
 
-	let event_loop =
+	let mut event_loop =
 		EventLoop::builder().with_any_thread(true).build().unwrap();
-	let window = event_loop.create_window(attributes).unwrap();
+	let window = support::create_window(&mut event_loop, attributes);
 	assert_eq!(
 		window.is_visible(),
 		Some(false),
 		"the created window must stay hidden"
 	);
 
-	markview_platform::reveal(&window);
+	markview_platform::reveal(window.as_ref());
 	assert_eq!(
 		window.is_visible(),
 		Some(true),

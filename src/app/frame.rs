@@ -2,11 +2,10 @@
 use super::{App, TOP};
 use crate::{layout::Rect, settings::WindowLayout};
 use markview_interaction::Selection;
+use markview_platform::event::{ElementState, MouseButton, WindowEvent};
 use std::time::{Duration, Instant};
-use winit::{
-	event::{ElementState, MouseButton, WindowEvent},
-	window::{CursorIcon, ResizeDirection},
-};
+use winit::cursor::CursorIcon;
+use winit::window::ResizeDirection;
 
 pub(super) const CONTROL_SIZE: f32 = 32.0;
 pub(super) const CONTROL_GAP: f32 = 4.0;
@@ -400,7 +399,7 @@ impl<P: super::SendEvent> App<P> {
 				if self.frame_layout().draggable(x, y) {
 					if let Some(window) = &self.window {
 						window.show_window_menu(
-							winit::dpi::LogicalPosition::new(x, y),
+							winit::dpi::LogicalPosition::new(x, y).into(),
 						);
 					}
 					return true;
@@ -460,7 +459,7 @@ impl<P: super::SendEvent> App<P> {
 			});
 		if let Some(w) = &self.window {
 			if double {
-				markview_platform::titlebar_double_click(w);
+				markview_platform::titlebar_double_click(w.as_ref());
 			} else {
 				self.frame.last_click = Some((now, (x, y)));
 				if let Err(error) = w.drag_window() {

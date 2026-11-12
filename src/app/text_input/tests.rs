@@ -7,7 +7,8 @@ use crate::{
 	cli::{LaunchOptions, Mode},
 	state::PanelPage,
 };
-use winit::{event::DeviceId, window::WindowId};
+use markview_platform::event::DeviceId;
+use winit::window::WindowId;
 
 #[derive(Clone)]
 struct Proxy;
@@ -42,21 +43,21 @@ fn app() -> App<Proxy> {
 	app
 }
 fn event(app: &mut App<Proxy>, event: WindowEvent) {
-	app.handle_window_event(&TestLoop, WindowId::dummy(), event);
+	app.handle_window_event(&TestLoop, WindowId::from_raw(0), event);
 }
 
 fn touch(
 	app: &mut App<Proxy>,
 	id: u64,
-	phase: winit::event::TouchPhase,
+	phase: markview_platform::event::TouchPhase,
 	point: (f32, f32),
 ) {
 	let scale = app.dimensions().2;
 	let insets = app.insets();
 	event(
 		app,
-		WindowEvent::Touch(winit::event::Touch {
-			device_id: DeviceId::dummy(),
+		WindowEvent::Touch(markview_platform::event::Touch {
+			device_id: DeviceId::from_raw(0),
 			id,
 			phase,
 			location: winit::dpi::PhysicalPosition::new(
@@ -70,7 +71,7 @@ fn touch(
 
 #[test]
 fn touchscreen_taps_position_the_caret_in_every_input() {
-	use winit::event::TouchPhase::{Ended, Started};
+	use markview_platform::event::TouchPhase::{Ended, Started};
 	let dir = tempfile::tempdir().unwrap();
 	for id in [
 		TextField::Url,
@@ -119,7 +120,7 @@ fn touchscreen_taps_position_the_caret_in_every_input() {
 
 #[test]
 fn touchscreen_drag_moves_a_collapsed_caret_and_keeps_the_ime_session() {
-	use winit::event::TouchPhase::{Ended, Moved, Started};
+	use markview_platform::event::TouchPhase::{Ended, Moved, Started};
 	let mut app = app();
 	let id = TextField::ExportTitle;
 	let (rect, _) = app.input_geometry(id).unwrap();
@@ -153,7 +154,9 @@ fn touchscreen_drag_moves_a_collapsed_caret_and_keeps_the_ime_session() {
 
 #[test]
 fn cancelled_multitouch_and_vertical_gestures_do_not_reposition_the_caret() {
-	use winit::event::TouchPhase::{Cancelled, Ended, Moved, Started};
+	use markview_platform::event::TouchPhase::{
+		Cancelled, Ended, Moved, Started,
+	};
 	let mut app = app();
 	app.readers
 		.session
@@ -283,7 +286,7 @@ fn pointer_drag_and_focus_loss_cancel_composition_without_losing_committed_text(
 	event(
 		&mut app,
 		WindowEvent::MouseInput {
-			device_id: DeviceId::dummy(),
+			device_id: DeviceId::from_raw(0),
 			state: ElementState::Pressed,
 			button: MouseButton::Left,
 		},
@@ -296,7 +299,7 @@ fn pointer_drag_and_focus_loss_cancel_composition_without_losing_committed_text(
 	event(
 		&mut app,
 		WindowEvent::MouseInput {
-			device_id: DeviceId::dummy(),
+			device_id: DeviceId::from_raw(0),
 			state: ElementState::Released,
 			button: MouseButton::Left,
 		},
@@ -354,7 +357,7 @@ fn clipboard_shortcuts_replace_selection_and_undo_without_a_desktop_clipboard()
 	let mut input = TextInput::default();
 	let mut clipboard = Clipboard::default();
 	let primary = if markview_platform::command_key() {
-		ModifiersState::SUPER
+		ModifiersState::META
 	} else {
 		ModifiersState::CONTROL
 	};
@@ -828,7 +831,7 @@ fn native_text_replaces_selection_and_ignores_unfocused_input() {
 
 #[test]
 fn input_long_press_preserves_selection_and_cancels_on_movement() {
-	use winit::event::{Touch, TouchPhase};
+	use markview_platform::event::{Touch, TouchPhase};
 	let mut app = app();
 	app.readers
 		.session
@@ -838,7 +841,7 @@ fn input_long_press_preserves_selection_and_cancels_on_movement() {
 	let (rect, _) = app.input_geometry(TextField::ExportTitle).unwrap();
 	let point = (rect.x + rect.w / 2.0, rect.y + rect.h / 2.0);
 	let touch = |phase| Touch {
-		device_id: DeviceId::dummy(),
+		device_id: DeviceId::from_raw(0),
 		id: 1,
 		phase,
 		location: winit::dpi::PhysicalPosition::new(

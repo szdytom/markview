@@ -39,7 +39,7 @@ pub struct NativeFrame {
 }
 impl NativeFrame {
 	pub fn new(
-		window: &Window,
+		window: &dyn Window,
 		hit_test: impl Fn(FrameMetrics, f32, f32) -> HitTest + 'static,
 		redraw: impl Fn() + 'static,
 	) -> Result<Option<Self>> {
@@ -269,17 +269,16 @@ mod tests {
 	#[test]
 	#[allow(deprecated)]
 	fn native_hit_test_uses_the_application_callback() {
-		let event_loop =
+		let mut event_loop =
 			EventLoop::builder().with_any_thread(true).build().unwrap();
-		let window = event_loop
-			.create_window(
-				Window::default_attributes()
-					.with_visible(false)
-					.with_decorations(false),
-			)
-			.unwrap();
+		let window = crate::test_support::create_window(
+			&mut event_loop,
+			winit::window::WindowAttributes::default()
+				.with_visible(false)
+				.with_decorations(false),
+		);
 		let native = NativeFrame::new(
-			&window,
+			window.as_ref(),
 			|metrics, _, _| {
 				assert!(
 					metrics.width > 0.0

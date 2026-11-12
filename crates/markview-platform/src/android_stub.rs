@@ -16,10 +16,10 @@ pub fn insets(_: u32, _: u32, _: f32) -> [f32; 4] {
 pub fn data_path() -> Option<PathBuf> {
 	None
 }
-pub fn event_loop<T: 'static>(
+pub fn event_loop(
 	_: AndroidApp,
-) -> anyhow::Result<winit::event_loop::EventLoop<T>> {
-	Ok(winit::event_loop::EventLoop::<T>::with_user_event().build()?)
+) -> anyhow::Result<winit::event_loop::EventLoop> {
+	Ok(winit::event_loop::EventLoop::builder().build()?)
 }
 #[macro_export]
 macro_rules! android_entry {

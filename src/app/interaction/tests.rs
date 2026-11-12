@@ -19,12 +19,12 @@ use crate::state::{Drag, Grain, HoveredLink, Point};
 use crate::worker::{ReaderSnapshot, Update};
 use markview_layout::scene::LinkId;
 use markview_layout::text::{Affinity, TextSelection};
+use markview_platform::event::{
+	DeviceId, ElementState, MouseButton, Touch, TouchPhase, WindowEvent,
+};
 use std::path::PathBuf;
 use std::sync::Arc;
 use winit::dpi::PhysicalPosition;
-use winit::event::{
-	DeviceId, ElementState, MouseButton, Touch, TouchPhase, WindowEvent,
-};
 use winit::keyboard::ModifiersState;
 use winit::window::WindowId;
 
@@ -420,7 +420,7 @@ fn pointer_motion_restores_a_faded_document_scrollbar() {
 #[test]
 fn wheel_scrolling_restores_the_document_scrollbar_without_pointer_motion() {
 	use super::super::viewport::{SCROLLBAR_FADE, SCROLLBAR_LINGER};
-	use winit::event::MouseScrollDelta;
+	use markview_platform::event::MouseScrollDelta;
 
 	for delta in [
 		MouseScrollDelta::LineDelta(0.0, -1.0),
@@ -438,9 +438,9 @@ fn wheel_scrolling_restores_the_document_scrollbar_without_pointer_motion() {
 		for fade in [SCROLLBAR_FADE / 2, SCROLLBAR_FADE] {
 			app.handle_window_event(
 				&StubLoop,
-				WindowId::dummy(),
+				WindowId::from_raw(0),
 				WindowEvent::MouseWheel {
-					device_id: DeviceId::dummy(),
+					device_id: DeviceId::from_raw(0),
 					delta,
 					phase: TouchPhase::Moved,
 				},
@@ -514,7 +514,7 @@ fn scrollbar_visibility_keeps_the_window_edge_cursor_current() {
 	assert!(app.document_scrollbar().is_some());
 	assert_ne!(
 		app.frame_cursor(),
-		Some(winit::window::CursorIcon::EwResize),
+		Some(winit::cursor::CursorIcon::EwResize),
 		"the visible bar owns the edge"
 	);
 	let until = app.scrollbar_reveal.linger_until().unwrap();
@@ -522,7 +522,7 @@ fn scrollbar_visibility_keeps_the_window_edge_cursor_current() {
 	assert!(app.document_scrollbar().is_none());
 	assert_eq!(
 		app.frame_cursor(),
-		Some(winit::window::CursorIcon::EwResize),
+		Some(winit::cursor::CursorIcon::EwResize),
 		"the hidden bar gives the edge back"
 	);
 }
@@ -947,11 +947,11 @@ fn physical_drag(app: &mut App<StubProxy>, from: (f32, f32), to: (f32, f32)) {
 	// A tap holds mouse input back for a moment; this drives the mouse path.
 	app.gestures.allow_mouse();
 	let moved = |at: (f32, f32)| WindowEvent::CursorMoved {
-		device_id: DeviceId::dummy(),
+		device_id: DeviceId::from_raw(0),
 		position: PhysicalPosition::new(f64::from(at.0), f64::from(at.1)),
 	};
 	let button = |state| WindowEvent::MouseInput {
-		device_id: DeviceId::dummy(),
+		device_id: DeviceId::from_raw(0),
 		button: MouseButton::Left,
 		state,
 	};
@@ -961,7 +961,7 @@ fn physical_drag(app: &mut App<StubProxy>, from: (f32, f32), to: (f32, f32)) {
 		moved(to),
 		button(ElementState::Released),
 	] {
-		app.handle_window_event(&StubLoop, WindowId::dummy(), event);
+		app.handle_window_event(&StubLoop, WindowId::from_raw(0), event);
 	}
 }
 
@@ -1345,15 +1345,15 @@ fn sidebar_edges_yield_to_overlays_and_cancel_on_focus_loss() {
 	assert!(app.begin_sidebar_resize());
 	app.handle_window_event(
 		&StubLoop,
-		WindowId::dummy(),
+		WindowId::from_raw(0),
 		WindowEvent::CursorLeft {
-			device_id: DeviceId::dummy(),
+			device_id: DeviceId::from_raw(0),
 		},
 	);
 	assert!(app.interaction.panels.sidebar().drag().is_some());
 	app.handle_window_event(
 		&StubLoop,
-		WindowId::dummy(),
+		WindowId::from_raw(0),
 		WindowEvent::Focused(false),
 	);
 	assert!(app.interaction.panels.sidebar().drag().is_none());
@@ -1608,10 +1608,12 @@ fn wheel_travel_eases_the_settings_panel_and_tab_strip() {
 	let wheel = |app: &mut App<StubProxy>| {
 		app.handle_window_event(
 			&StubLoop,
-			WindowId::dummy(),
+			WindowId::from_raw(0),
 			WindowEvent::MouseWheel {
-				device_id: DeviceId::dummy(),
-				delta: winit::event::MouseScrollDelta::LineDelta(0.0, -1.0),
+				device_id: DeviceId::from_raw(0),
+				delta: markview_platform::event::MouseScrollDelta::LineDelta(
+					0.0, -1.0,
+				),
 				phase: TouchPhase::Moved,
 			},
 		);
@@ -1715,10 +1717,12 @@ fn grabbing_the_panel_thumb_stops_its_ease() {
 	app.interaction.pointer.move_to((700.0, 400.0));
 	app.handle_window_event(
 		&StubLoop,
-		WindowId::dummy(),
+		WindowId::from_raw(0),
 		WindowEvent::MouseWheel {
-			device_id: DeviceId::dummy(),
-			delta: winit::event::MouseScrollDelta::LineDelta(0.0, -1.0),
+			device_id: DeviceId::from_raw(0),
+			delta: markview_platform::event::MouseScrollDelta::LineDelta(
+				0.0, -1.0,
+			),
 			phase: TouchPhase::Moved,
 		},
 	);
@@ -1757,17 +1761,19 @@ fn touching_a_panel_stops_its_ease() {
 	app.interaction.pointer.move_to((700.0, 400.0));
 	app.handle_window_event(
 		&StubLoop,
-		WindowId::dummy(),
+		WindowId::from_raw(0),
 		WindowEvent::MouseWheel {
-			device_id: DeviceId::dummy(),
-			delta: winit::event::MouseScrollDelta::LineDelta(0.0, -1.0),
+			device_id: DeviceId::from_raw(0),
+			delta: markview_platform::event::MouseScrollDelta::LineDelta(
+				0.0, -1.0,
+			),
 			phase: TouchPhase::Moved,
 		},
 	);
 	assert!(app.preferences.settings_scroll().animating());
 	let at = (700.0, 400.0);
 	app.handle_touch(Touch {
-		device_id: DeviceId::dummy(),
+		device_id: DeviceId::from_raw(0),
 		id: 1,
 		phase: TouchPhase::Started,
 		location: PhysicalPosition::new(at.0, at.1),
@@ -2016,12 +2022,14 @@ fn a_scrolling_strip_moves_the_drop_slot_with_it() {
 
 	app.handle_window_event(
 		&StubLoop,
-		WindowId::dummy(),
+		WindowId::from_raw(0),
 		WindowEvent::MouseWheel {
-			device_id: DeviceId::dummy(),
+			device_id: DeviceId::from_raw(0),
 			// Three detents clear a whole tab on every platform: macOS reports
 			// one line per detent where X11 and Wayland report three.
-			delta: winit::event::MouseScrollDelta::LineDelta(0.0, -3.0),
+			delta: markview_platform::event::MouseScrollDelta::LineDelta(
+				0.0, -3.0,
+			),
 			phase: TouchPhase::Moved,
 		},
 	);
@@ -2068,11 +2076,13 @@ fn a_fractional_line_wheel_coasts_on_windows_and_eases_elsewhere() {
 	let feed = |app: &mut App<StubProxy>, lines| {
 		app.handle_window_event(
 			&StubLoop,
-			WindowId::dummy(),
+			WindowId::from_raw(0),
 			WindowEvent::MouseWheel {
-				device_id: DeviceId::dummy(),
-				delta: winit::event::MouseScrollDelta::LineDelta(0.0, lines),
-				phase: winit::event::TouchPhase::Moved,
+				device_id: DeviceId::from_raw(0),
+				delta: markview_platform::event::MouseScrollDelta::LineDelta(
+					0.0, lines,
+				),
+				phase: markview_platform::event::TouchPhase::Moved,
 			},
 		);
 	};
@@ -2308,7 +2318,7 @@ fn picked_files_stay_here_while_desktop_requests_follow_folder_windows() {
 #[test]
 fn touch_swipes_open_drawers_without_toggling_them_closed() {
 	use crate::state::PanelPage;
-	use winit::event::Touch;
+	use markview_platform::event::Touch;
 	let (mut app, _) = reader("# Heading\n\nText.", 400.0);
 	let swipe = |app: &mut App<StubProxy>, start: f64, end: f64| {
 		for (phase, x) in [
@@ -2317,7 +2327,7 @@ fn touch_swipes_open_drawers_without_toggling_them_closed() {
 			(TouchPhase::Ended, end),
 		] {
 			app.handle_touch(Touch {
-				device_id: DeviceId::dummy(),
+				device_id: DeviceId::from_raw(0),
 				id: 1,
 				phase,
 				location: PhysicalPosition::new(x, 300.0),
@@ -2414,11 +2424,11 @@ fn drawer_animations_keep_outgoing_content_until_the_final_frame() {
 #[test]
 fn drawer_swipes_reject_short_cancelled_multitouch_and_owned_input() {
 	use crate::state::{PanelPage, PanelTab};
-	use winit::event::Touch;
+	use markview_platform::event::Touch;
 	let (mut app, _) = reader(SOURCE, 400.0);
 	app.tab_strip.phone = true;
 	let touch = |id, phase, x, y| Touch {
-		device_id: DeviceId::dummy(),
+		device_id: DeviceId::from_raw(0),
 		id,
 		phase,
 		location: PhysicalPosition::new(x, y),
@@ -2736,7 +2746,7 @@ fn each_domain_observes_the_shared_preamble_while_a_confirmation_owns_input() {
 fn touch_drawer_distinguishes_same_path_tabs_and_keeps_ids_when_reordered() {
 	use crate::security::{Security, Trust};
 	use crate::state::PanelPage;
-	use winit::event::Touch;
+	use markview_platform::event::Touch;
 	let dir = tempfile::tempdir().unwrap();
 	let path = dir.path().join("shared.md");
 	std::fs::write(&path, SOURCE).unwrap();
@@ -2796,7 +2806,7 @@ fn touch_drawer_distinguishes_same_path_tabs_and_keeps_ids_when_reordered() {
 			.unwrap();
 		for phase in [TouchPhase::Started, TouchPhase::Ended] {
 			app.handle_touch(Touch {
-				device_id: DeviceId::dummy(),
+				device_id: DeviceId::from_raw(0),
 				phase,
 				id: 1,
 				force: None,

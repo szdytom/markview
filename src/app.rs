@@ -66,11 +66,11 @@ use std::{
 	sync::Arc,
 	time::Instant,
 };
-use winit::{event_loop::EventLoopProxy, window::Window};
+use winit::window::Window;
 
 /// How the reader hands an event to its own loop.
 ///
-/// `EventLoopProxy` is what the application uses; a test drives the same
+/// `EventProxy` is what the application uses; a test drives the same
 /// handlers without a window server by handing them a stub, which is why the
 /// application names this rather than the concrete type. Internal wake-ups
 /// can ignore a closed loop; IPC uses `try_send` to acknowledge delivery.
@@ -80,9 +80,18 @@ trait SendEvent: Clone + Send + 'static {
 		self.try_send(event);
 	}
 }
-impl SendEvent for EventLoopProxy<Event> {
+#[derive(Clone)]
+struct EventProxy {
+	sender: std::sync::mpsc::Sender<Event>,
+	wake: winit::event_loop::EventLoopProxy,
+}
+impl SendEvent for EventProxy {
 	fn try_send(&self, event: Event) -> bool {
-		self.send_event(event).is_ok()
+		if self.sender.send(event).is_err() {
+			return false;
+		}
+		self.wake.wake_up();
+		true
 	}
 }
 
@@ -333,14 +342,20 @@ impl WebPages {
 	}
 }
 
-struct App<P = EventLoopProxy<Event>> {
+#[derive(Default)]
+struct WindowEvents {
+	pending: Option<std::sync::mpsc::Receiver<Event>>,
+	input: markview_platform::event::NativeInput,
+}
+
+struct App<P = EventProxy> {
+	native_events: WindowEvents,
 	surface_insets: [f32; 4],
 	frame: frame::State,
 	animations: animation::FrameDriver,
 	native_frame: Option<markview_platform::NativeFrame>,
 	native_tab_end: std::rc::Rc<std::cell::Cell<Option<(f32, f32)>>>,
 	native_scrollbar: std::rc::Rc<std::cell::Cell<Option<Rect>>>,
-	touch_frame: Option<markview_platform::TouchFrame>,
 	interaction: InteractionState,
 	/// The placed control geometry from the last layout: a paint product, not
 	/// interaction state.
@@ -360,7 +375,7 @@ struct App<P = EventLoopProxy<Event>> {
 	persistence: session::Persistence,
 	instance_path: Option<PathBuf>,
 	instance: Option<single_instance::Listener>,
-	window: Option<Arc<Window>>,
+	window: Option<Arc<dyn Window>>,
 	desktop_theme: Option<Theme>,
 	renderer: Option<Renderer>,
 	worker: Worker,
@@ -487,13 +502,13 @@ impl<P: SendEvent> App<P> {
 				.map(|path| path.with_file_name("workspaces.json")),
 		);
 		Self {
+			native_events: Default::default(),
 			surface_insets: [0.0; 4],
 			frame: frame::State::new(preferences.values.window_layout),
 			animations: Default::default(),
 			native_frame: None,
 			native_tab_end: Default::default(),
 			native_scrollbar: Default::default(),
-			touch_frame: None,
 			interaction: InteractionState::default(),
 			controls: None,
 			gestures: gestures::GestureState::default(),
@@ -591,7 +606,7 @@ impl<P: SendEvent> App<P> {
 	pub(super) fn dimensions(&self) -> (f32, f32, f32) {
 		self.window.as_ref().map_or((1200.0, 800.0, 1.0), |w| {
 			let s = w.scale_factor() as f32;
-			let size = w.inner_size();
+			let size = w.surface_size();
 			let insets = self.insets();
 			(
 				(size.width as f32 / s - insets[0] - insets[2]).max(1.0),
@@ -604,7 +619,7 @@ impl<P: SendEvent> App<P> {
 		use markview_layout::style::{Condition, StyleTarget, TextAppearance};
 		let (width, height) =
 			self.window.as_ref().map_or((1200.0, 800.0), |window| {
-				let size = window.inner_size();
+				let size = window.surface_size();
 				(size.width as f32, size.height as f32)
 			});
 		let media = crate::stylesheet::media_context(StyleTarget::Ui)
@@ -630,7 +645,7 @@ impl<P: SendEvent> App<P> {
 		if markview_platform::touch_layout()
 			&& let Some(window) = &self.window
 		{
-			let size = window.inner_size();
+			let size = window.surface_size();
 			return markview_platform::android::insets(
 				size.width,
 				size.height,
@@ -831,5 +846,51 @@ mod tests {
 		pages.rekey(requested, final_url.into(), final_path.clone());
 		assert_eq!(pages.generation(final_url), Some(direct));
 		assert_eq!(pages.alias(requested).as_deref(), Some(final_url));
+	}
+}
+
+#[cfg(test)]
+mod event_proxy_tests {
+	use super::*;
+	use std::sync::atomic::{AtomicUsize, Ordering};
+	#[derive(Debug, Default)]
+	struct Wake(AtomicUsize);
+	impl winit::event_loop::EventLoopProxyProvider for Wake {
+		fn wake_up(&self) {
+			self.0.fetch_add(1, Ordering::Relaxed);
+		}
+	}
+	#[test]
+	fn a_burst_retains_every_event_and_a_closed_receiver_rejects_ipc() {
+		let wake = Arc::new(Wake::default());
+		let (sender, receiver) = std::sync::mpsc::channel();
+		let proxy = EventProxy {
+			sender,
+			wake: winit::event_loop::EventLoopProxy::new(wake.clone()),
+		};
+		for name in ["first.md", "second.md", "third.md"] {
+			assert!(proxy.try_send(Event::Open(Some(name.into()))));
+		}
+		let paths: Vec<_> = receiver
+			.try_iter()
+			.map(|event| {
+				let Event::Open(Some(path)) = event else {
+					panic!("expected document")
+				};
+				path
+			})
+			.collect();
+		assert_eq!(
+			paths,
+			vec![
+				PathBuf::from("first.md"),
+				PathBuf::from("second.md"),
+				PathBuf::from("third.md")
+			]
+		);
+		assert_eq!(wake.0.load(Ordering::Relaxed), 3);
+		drop(receiver);
+		assert!(!proxy.try_send(Event::Open(None)));
+		assert_eq!(wake.0.load(Ordering::Relaxed), 3);
 	}
 }

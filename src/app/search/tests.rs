@@ -169,7 +169,7 @@ fn slash_respects_panels_modals_and_modifier_chords() {
 	let slash = Key::Character("/".into());
 	for modifiers in [
 		ModifiersState::CONTROL,
-		ModifiersState::SUPER,
+		ModifiersState::META,
 		ModifiersState::ALT,
 	] {
 		h.app.interaction.pointer.set_modifiers(modifiers);
@@ -934,7 +934,7 @@ fn ctrl_tab_cycles_a_fixed_recent_snapshot_and_commits_only_the_end() {
 	assert!(h.app.tab_cycle_chord(&tab));
 	for modifiers in [
 		ModifiersState::CONTROL | ModifiersState::ALT,
-		ModifiersState::SUPER,
+		ModifiersState::META,
 		ModifiersState::SHIFT,
 	] {
 		h.app.interaction.pointer.set_modifiers(modifiers);
@@ -958,11 +958,10 @@ fn ctrl_tab_cycles_a_fixed_recent_snapshot_and_commits_only_the_end() {
 #[test]
 fn clicking_tabs_preserves_the_focused_search_box() {
 	use crate::state::TextField;
-	use winit::{
-		dpi::PhysicalPosition,
-		event::{DeviceId, ElementState, MouseButton, WindowEvent},
-		window::WindowId,
+	use markview_platform::event::{
+		DeviceId, ElementState, MouseButton, WindowEvent,
 	};
+	use winit::{dpi::PhysicalPosition, window::WindowId};
 	struct Loop;
 	impl crate::app::window::Loop for Loop {
 		fn exit(&self) {}
@@ -987,22 +986,23 @@ fn clicking_tabs_preserves_the_focused_search_box() {
 		);
 		for event in [
 			WindowEvent::CursorMoved {
-				device_id: DeviceId::dummy(),
+				device_id: DeviceId::from_raw(0),
 				position: at,
 			},
 			WindowEvent::MouseInput {
-				device_id: DeviceId::dummy(),
+				device_id: DeviceId::from_raw(0),
 				state: ElementState::Pressed,
 				button: MouseButton::Left,
 			},
 		] {
-			h.app.handle_window_event(&Loop, WindowId::dummy(), event);
+			h.app
+				.handle_window_event(&Loop, WindowId::from_raw(0), event);
 		}
 		h.app.handle_window_event(
 			&Loop,
-			WindowId::dummy(),
+			WindowId::from_raw(0),
 			WindowEvent::MouseInput {
-				device_id: DeviceId::dummy(),
+				device_id: DeviceId::from_raw(0),
 				state: ElementState::Released,
 				button: MouseButton::Left,
 			},

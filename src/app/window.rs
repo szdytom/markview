@@ -4,13 +4,16 @@ use crate::state::{
 };
 use crate::state::{Command, Selection, WheelAxis, WheelStep};
 use log::{error, info};
+use markview_platform::event::{
+	ElementState, MouseButton, MouseScrollDelta, WindowEvent,
+};
 use std::time::{Duration, Instant};
+use winit::monitor::Fullscreen;
 use winit::{
 	dpi::PhysicalSize,
-	event::{ElementState, MouseButton, MouseScrollDelta, WindowEvent},
 	event_loop::ActiveEventLoop,
 	keyboard::{Key, NamedKey},
-	window::{Fullscreen, Window, WindowId},
+	window::{Window, WindowId},
 };
 
 use super::modal::Message;
@@ -32,7 +35,7 @@ pub(super) trait Loop {
 	}
 	fn window_drag(
 		&self,
-		window: Option<&Window>,
+		window: Option<&dyn Window>,
 		direction: Option<winit::window::ResizeDirection>,
 	) {
 		if let Some(window) = window {
@@ -45,7 +48,7 @@ pub(super) trait Loop {
 			}
 		}
 	}
-	fn window_action(&self, window: Option<&Window>, caption: Caption) {
+	fn window_action(&self, window: Option<&dyn Window>, caption: Caption) {
 		if caption == Caption::Close {
 			self.exit();
 		} else if let Some(window) = window {
@@ -65,9 +68,9 @@ pub(super) trait Loop {
 		}
 	}
 }
-impl Loop for ActiveEventLoop {
+impl Loop for &dyn ActiveEventLoop {
 	fn exit(&self) {
-		ActiveEventLoop::exit(self);
+		ActiveEventLoop::exit(*self);
 	}
 }
 
@@ -161,7 +164,7 @@ impl<P: super::SendEvent> App<P> {
 				state: ElementState::Pressed,
 				..
 			} | WindowEvent::KeyboardInput {
-				event: winit::event::KeyEvent {
+				event: markview_platform::event::KeyEvent {
 					state: ElementState::Pressed,
 					..
 				},
@@ -202,9 +205,12 @@ impl<P: super::SendEvent> App<P> {
 		self.input_event(event)
 	}
 
-	fn search_window_key(&mut self, event: &winit::event::KeyEvent) -> bool {
+	fn search_window_key(
+		&mut self,
+		event: &markview_platform::event::KeyEvent,
+	) -> bool {
 		let primary = if markview_platform::command_key() {
-			self.interaction.pointer.modifiers().super_key()
+			self.interaction.pointer.modifiers().meta_key()
 		} else {
 			self.interaction.pointer.modifiers().control_key()
 				&& !self.interaction.pointer.modifiers().alt_key()
@@ -235,7 +241,7 @@ impl<P: super::SendEvent> App<P> {
 	fn dispatch_touch(
 		&mut self,
 		event_loop: &impl Loop,
-		touch: winit::event::Touch,
+		touch: markview_platform::event::Touch,
 	) {
 		let action = self.handle_touch(touch);
 		if markview_platform::client_resize() {
@@ -245,9 +251,7 @@ impl<P: super::SendEvent> App<P> {
 				}
 				_ => None,
 			};
-			if let Some(frame) = &mut self.touch_frame {
-				frame.touch(touch, drag);
-			} else if let Some(direction) = drag {
+			if let Some(direction) = drag {
 				event_loop.window_drag(self.window.as_deref(), direction);
 			}
 		}
@@ -272,7 +276,7 @@ impl<P: super::SendEvent> App<P> {
 				.window
 				.as_ref()
 				.map_or(PhysicalSize::new(width, height), |window| {
-					window.inner_size()
+					window.surface_size()
 				});
 			r.resize(size.width, size.height);
 		}
@@ -298,7 +302,7 @@ impl<P: super::SendEvent> App<P> {
 			(self.dm.as_mut(), self.window.as_ref())
 		{
 			dm.abandon();
-			let size = window.inner_size();
+			let size = window.surface_size();
 			dm.resize(size.width, size.height, scale_factor as f32);
 		}
 		if let Some(r) = &mut self.renderer {
@@ -361,7 +365,7 @@ impl<P: super::SendEvent> App<P> {
 	fn scroll_event(
 		&mut self,
 		delta: MouseScrollDelta,
-		phase: winit::event::TouchPhase,
+		phase: markview_platform::event::TouchPhase,
 	) {
 		if self.interaction.overlays.quick_open.open() {
 			let (_, dy) = super::pointer::wheel_pixels(
@@ -398,7 +402,7 @@ impl<P: super::SendEvent> App<P> {
 		// page gesture instead of waking a stale one.
 		if self.interaction.overlays.dropdown_open()
 			&& !self.interaction.pointer.modifiers().control_key()
-			&& !self.interaction.pointer.modifiers().super_key()
+			&& !self.interaction.pointer.modifiers().meta_key()
 		{
 			self.interaction.pointer.reset_wheel();
 			// One detent is one option, so a line delta counts
@@ -419,6 +423,7 @@ impl<P: super::SendEvent> App<P> {
 					)
 					.1
 				}
+				_ => 0.0,
 			};
 			self.wheel_dropdown(-travel);
 			return;
@@ -432,7 +437,7 @@ impl<P: super::SendEvent> App<P> {
 		);
 		if matches!(delta, MouseScrollDelta::PixelDelta(_)) {
 			if self.interaction.pointer.modifiers().control_key()
-				|| self.interaction.pointer.modifiers().super_key()
+				|| self.interaction.pointer.modifiers().meta_key()
 			{
 				// TODO: implement viewport zoom without changing the document layout.
 			} else {
@@ -467,7 +472,7 @@ impl<P: super::SendEvent> App<P> {
 			return;
 		}
 		if self.interaction.pointer.modifiers().control_key()
-			|| self.interaction.pointer.modifiers().super_key()
+			|| self.interaction.pointer.modifiers().meta_key()
 		{
 			self.action(if dy > 0.0 {
 				Command::Settings(SettingsCommand::Larger)
@@ -513,7 +518,7 @@ impl<P: super::SendEvent> App<P> {
 		let modifiers = self.interaction.pointer.modifiers();
 		modifiers.control_key()
 			&& !modifiers.alt_key()
-			&& !modifiers.super_key()
+			&& !modifiers.meta_key()
 			&& *key == Key::Named(NamedKey::Tab)
 	}
 
@@ -524,7 +529,7 @@ impl<P: super::SendEvent> App<P> {
 				Key::Named(
 					NamedKey::Shift
 						| NamedKey::Control
-						| NamedKey::Alt | NamedKey::Super
+						| NamedKey::Alt | NamedKey::Meta
 				)
 			)
 	}
@@ -585,7 +590,7 @@ impl<P: super::SendEvent> App<P> {
 		self.cancel_gestures();
 		self.interaction.widgets.focus_visible = true;
 		let modifiers = self.interaction.pointer.modifiers();
-		let command = modifiers.control_key() || modifiers.super_key();
+		let command = modifiers.control_key() || modifiers.meta_key();
 		// A confirmation answers to Tab, Enter and Escape only.
 		if self.interaction.overlays.modal_open()
 			&& (command
@@ -822,6 +827,7 @@ impl<P: super::SendEvent> App<P> {
 					MouseScrollDelta::PixelDelta(p) => {
 						(p.y as f32 / 240.).exp()
 					}
+					_ => 1.0,
 				};
 				let pointer = self.interaction.pointer.cursor();
 				self.interaction.overlays.viewer.send(ViewerMessage::Zoom {
@@ -868,7 +874,7 @@ impl<P: super::SendEvent> App<P> {
 			Key::Character(c)
 				if c == "/"
 					&& !self.interaction.pointer.modifiers().control_key()
-					&& !self.interaction.pointer.modifiers().super_key()
+					&& !self.interaction.pointer.modifiers().meta_key()
 					&& !self.interaction.pointer.modifiers().alt_key() =>
 			{
 				self.open_new_search();
@@ -944,7 +950,10 @@ impl<P: super::SendEvent> App<P> {
 			Key::Named(NamedKey::ArrowUp) => {
 				self.scroll_step(-self.line_step())
 			}
-			Key::Named(NamedKey::PageDown | NamedKey::Space) => {
+			Key::Named(NamedKey::PageDown) => {
+				self.scroll_step(self.viewport() * 0.9)
+			}
+			Key::Character(text) if text == " " => {
 				self.scroll_step(self.viewport() * 0.9)
 			}
 			Key::Named(NamedKey::PageUp) => {

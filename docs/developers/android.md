@@ -25,8 +25,8 @@ to distinguish this Android subproject from the Markview desktop app and MVaaC.
 The APK contains the root `markview` crate as `libmarkview.so`. The Android
 entry registration is in `src/lib.rs`, with reader setup in `src/app/android.rs`;
 JNI and OS calls live in `crates/markview-platform/src/android.rs` and
-`android/java`. The [pinned `winit` fork](https://github.com/szdytom/winit/commit/9299a76998fd8975afb97c5a1d81495845ab8ec8)
-handles Activity destruction and allows event-loop recreation. This shares the
+`android/java`. The [pinned `winit` fork](https://github.com/szdytom/winit/commit/3f8aa0f0c18e88e416e86d842226c8fe46884894)
+is based on `v0.31.0-beta.4` and handles Activity destruction and allows event-loop recreation. This shares the
 application above `core`, including its state and UI. See the [Android user guide](../users/android.md) for phone/tablet behavior and screenshots.
 
 Android reuses the `singleTask` activity.

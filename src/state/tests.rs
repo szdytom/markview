@@ -7,7 +7,7 @@ use markview_layout::{
 	layout::LayoutSnapshot,
 	text::{Affinity, SemanticPosition},
 };
-use winit::event::TouchPhase;
+use markview_platform::event::TouchPhase;
 use winit::keyboard::ModifiersState;
 fn position(snapshot: &LayoutSnapshot, offset: usize) -> SemanticPosition {
 	snapshot

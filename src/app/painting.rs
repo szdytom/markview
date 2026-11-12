@@ -33,7 +33,7 @@ impl<P: super::SendEvent> App<P> {
 		let Some(window) = self.window.clone() else {
 			return Ok(());
 		};
-		let size = window.inner_size();
+		let size = window.surface_size();
 		if size.width == 0 || size.height == 0 {
 			return Ok(());
 		}
@@ -41,7 +41,7 @@ impl<P: super::SendEvent> App<P> {
 			&& window.fullscreen().is_none()
 		{
 			markview_platform::align_traffic_lights(
-				&window,
+				window.as_ref(),
 				f64::from(super::TOP),
 			);
 		}

@@ -8,7 +8,6 @@ use std::{
 use winit::{
 	application::ApplicationHandler,
 	dpi::LogicalSize,
-	event::WindowEvent,
 	event_loop::{ActiveEventLoop, ControlFlow},
 	window::{Window, WindowId},
 };
@@ -16,21 +15,19 @@ use winit::{
 use super::window::Loop;
 use super::{App, Event, dm};
 use crate::state::Selection;
-impl<P: super::SendEvent> ApplicationHandler<Event> for App<P> {
-	fn resumed(&mut self, event_loop: &ActiveEventLoop) {
+impl<P: super::SendEvent> ApplicationHandler for App<P> {
+	fn can_create_surfaces(&mut self, event_loop: &dyn ActiveEventLoop) {
 		if self.window.is_some() {
 			return;
 		}
 		let result = (|| -> Result<()> {
 			let window = self.create_window(event_loop)?;
-			self.touch_frame =
-				markview_platform::TouchFrame::new(window.clone())?;
 			let proxy = self.proxy.clone();
 			let style = self.frame.layout;
 			let tab_end = self.native_tab_end.clone();
 			let scrollbar = self.native_scrollbar.clone();
 			self.native_frame = markview_platform::NativeFrame::new(
-				&window,
+				window.as_ref(),
 				move |metrics, x, y| {
 					super::frame::native_hit_test(
 						style,
@@ -46,7 +43,7 @@ impl<P: super::SendEvent> ApplicationHandler<Event> for App<P> {
 				},
 			)?;
 			self.frame.focused = window.has_focus();
-			let size = window.inner_size();
+			let size = window.surface_size();
 			let scale = window.scale_factor();
 			info!(
 				"Display scale (DPR): {scale:.3}; framebuffer: {}×{} physical px; window: {:.1}×{:.1} logical px",
@@ -55,7 +52,7 @@ impl<P: super::SendEvent> ApplicationHandler<Event> for App<P> {
 				size.width as f64 / scale,
 				size.height as f64 / scale,
 			);
-			let dm = dm::DirectManipulation::new(&window);
+			let dm = dm::DirectManipulation::new(window.as_ref());
 			self.window = Some(window);
 			self.sync_refresh_rate();
 			self.dm = dm;
@@ -85,7 +82,7 @@ impl<P: super::SendEvent> ApplicationHandler<Event> for App<P> {
 				self.open_web_page(url);
 			}
 			self.redraw();
-			self.reveal_first_frame(event_loop);
+			self.reveal_first_frame(&event_loop);
 			Ok(())
 		})();
 		if let Err(e) = result {
@@ -93,38 +90,49 @@ impl<P: super::SendEvent> ApplicationHandler<Event> for App<P> {
 			event_loop.exit();
 		}
 	}
-	fn suspended(&mut self, _: &ActiveEventLoop) {
+	fn suspended(&mut self, _: &dyn ActiveEventLoop) {
+		self.cancel_gestures();
+		self.flush_settings();
+		self.flush_session();
+	}
+	fn destroy_surfaces(&mut self, _: &dyn ActiveEventLoop) {
 		if !markview_platform::touch_layout() {
 			return;
 		}
 		self.cancel_gestures();
+		self.native_events.input = Default::default();
 		self.flush_settings();
 		self.flush_session();
 		self.renderer.take();
 		self.window.take();
 	}
-	fn user_event(&mut self, event_loop: &ActiveEventLoop, event: Event) {
-		self.handle_user_event(event_loop, event);
+	fn proxy_wake_up(&mut self, event_loop: &dyn ActiveEventLoop) {
+		while let Some(event) = self
+			.native_events
+			.pending
+			.as_ref()
+			.and_then(|events| events.try_recv().ok())
+		{
+			self.handle_user_event(&event_loop, event);
+		}
 	}
 
 	fn window_event(
 		&mut self,
-		event_loop: &ActiveEventLoop,
+		event_loop: &dyn ActiveEventLoop,
 		window: WindowId,
-		event: WindowEvent,
+		event: winit::event::WindowEvent,
 	) {
-		self.handle_window_event(event_loop, window, event);
+		let events = self.native_events.input.convert(event_loop, event);
+		for event in events {
+			self.handle_window_event(&event_loop, window, event);
+		}
 	}
-	fn about_to_wait(&mut self, event_loop: &ActiveEventLoop) {
-		let deadline = self.tick(event_loop, Instant::now());
+	fn about_to_wait(&mut self, event_loop: &dyn ActiveEventLoop) {
+		let deadline = self.tick(&event_loop, Instant::now());
 		event_loop.set_control_flow(
 			deadline.map_or(ControlFlow::Wait, ControlFlow::WaitUntil),
 		);
-	}
-	fn exiting(&mut self, _: &ActiveEventLoop) {
-		self.flush_session();
-		self.instance_path = None;
-		self.instance.take();
 	}
 }
 
@@ -138,26 +146,26 @@ impl<P: super::SendEvent> App<P> {
 		}
 		self.redraw_event(event_loop);
 		if let Some(window) = &self.window {
-			markview_platform::reveal(window);
+			markview_platform::reveal(window.as_ref());
 		}
 	}
 
 	fn create_window(
 		&self,
-		event_loop: &ActiveEventLoop,
-	) -> Result<Arc<Window>> {
-		let mut attributes = Window::default_attributes()
+		event_loop: &dyn ActiveEventLoop,
+	) -> Result<Arc<dyn Window>> {
+		let mut attributes = winit::window::WindowAttributes::default()
 			.with_title("Markview")
-			.with_inner_size(LogicalSize::new(
+			.with_surface_size(LogicalSize::new(
 				self.args.width,
 				self.args.height,
 			))
-			.with_min_inner_size(LogicalSize::new(536, 300));
+			.with_min_surface_size(LogicalSize::new(536, 300));
 		attributes = markview_platform::window_attributes(
 			attributes,
 			self.frame.layout == crate::settings::WindowLayout::Macos,
 		);
-		Ok(Arc::new(event_loop.create_window(attributes)?))
+		Ok(Arc::from(event_loop.create_window(attributes)?))
 	}
 
 	/// The loop's own events, handled without naming winit's loop type so a
@@ -536,9 +544,6 @@ impl<P: super::SendEvent> App<P> {
 		event_loop: &impl Loop,
 		now: Instant,
 	) -> Option<Instant> {
-		if let Some(frame) = &mut self.touch_frame {
-			frame.dispatch();
-		}
 		let insets = self.insets();
 		if self.surface_insets != insets {
 			self.surface_insets = insets;

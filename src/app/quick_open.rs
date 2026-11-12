@@ -114,7 +114,7 @@ impl<P: SendEvent> App<P> {
 	pub(super) fn quick_open_shortcut(&mut self, key: &Key) -> bool {
 		let mods = self.interaction.pointer.modifiers();
 		let primary = if markview_platform::command_key() {
-			mods.super_key()
+			mods.meta_key()
 		} else {
 			mods.control_key()
 		};

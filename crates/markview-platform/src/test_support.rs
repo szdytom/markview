@@ -104,9 +104,9 @@ pub fn fifo(path: impl AsRef<Path>) {
 }
 
 /// Build a native test loop on a worker thread where the backend permits it.
-pub fn input_event_loop<T: 'static>()
--> Result<winit::event_loop::EventLoop<T>, winit::error::EventLoopError> {
-	let mut builder = winit::event_loop::EventLoop::<T>::with_user_event();
+pub fn input_event_loop()
+-> Result<winit::event_loop::EventLoop, winit::error::EventLoopError> {
+	let mut builder = winit::event_loop::EventLoop::builder();
 	#[cfg(target_os = "linux")]
 	{
 		use winit::platform::x11::EventLoopBuilderExtX11;
@@ -114,3 +114,9 @@ pub fn input_event_loop<T: 'static>()
 	}
 	builder.build()
 }
+
+#[cfg(windows)]
+#[path = "../tests/support/mod.rs"]
+mod native_window;
+#[cfg(windows)]
+pub use native_window::create_window;

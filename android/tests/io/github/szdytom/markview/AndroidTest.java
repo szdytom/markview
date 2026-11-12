@@ -330,6 +330,20 @@ public abstract class AndroidTest extends Instrumentation {
         waitSystem(getTargetContext().getPackageName());
         injectSwipe(x1, y1, x2, y2, state());
     }
+    protected static MotionEvent fingerEvent(long down, int action, float x, float y) {
+        MotionEvent.PointerProperties pointer = new MotionEvent.PointerProperties();
+        pointer.id = 0;
+        pointer.toolType = MotionEvent.TOOL_TYPE_FINGER;
+        MotionEvent.PointerCoords coords = new MotionEvent.PointerCoords();
+        coords.x = x;
+        coords.y = y;
+        coords.pressure = action == MotionEvent.ACTION_UP ? 0 : 1;
+        coords.size = 1;
+        // The short `obtain` overload leaves the tool type unknown to `winit`.
+        return MotionEvent.obtain(down, SystemClock.uptimeMillis(), action, 1,
+            new MotionEvent.PointerProperties[]{pointer}, new MotionEvent.PointerCoords[]{coords},
+            0, 0, 1, 1, 0, 0, InputDevice.SOURCE_TOUCHSCREEN, 0);
+    }
     private void injectSwipe(float x1, float y1, float x2, float y2, JSONObject state) throws Exception {
         JSONArray dims = state.getJSONArray("dimensions"), insets = state.getJSONArray("insets");
         float scale = (float)dims.getDouble(2);
@@ -342,8 +356,7 @@ public abstract class AndroidTest extends Instrumentation {
         for (int i = 0; i <= steps; i++) {
             float t = (float)i / steps;
             int action = i == 0 ? MotionEvent.ACTION_DOWN : i == steps ? MotionEvent.ACTION_UP : MotionEvent.ACTION_MOVE;
-            MotionEvent event = MotionEvent.obtain(down, SystemClock.uptimeMillis(), action, (x1 + (x2 - x1)*t + left)*scale + origin[0], (y1 + (y2 - y1)*t + top)*scale + origin[1], 0);
-            event.setSource(InputDevice.SOURCE_TOUCHSCREEN);
+            MotionEvent event = fingerEvent(down, action, (x1 + (x2 - x1)*t + left)*scale + origin[0], (y1 + (y2 - y1)*t + top)*scale + origin[1]);
             long started = SystemClock.uptimeMillis();
             boolean accepted = getUiAutomation().injectInputEvent(event, true);
             String detail = "Touch " + MotionEvent.actionToString(action) + " at " + event.getX() + "," + event.getY()

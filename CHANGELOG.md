@@ -26,6 +26,10 @@ at the same level, without `[brackets]`.
 - Include hierarchical heading bookmarks in exported PDFs for navigation in PDF readers (#92).
 - Copy code blocks to the clipboard with an icon button; enabled by default and configurable in settings (#91).
 
+### Fixed
+
+- Open files dropped onto the reader on KDE Wayland using asynchronous native drag and drop (#16).
+
 ### Security
 
 - Update the Linux desktop portal executor to fix a use-after-free during executor shutdown.

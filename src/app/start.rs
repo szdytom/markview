@@ -1239,7 +1239,7 @@ mod tests {
 		app.open_start_file(matches[0].id);
 		app.interaction.pointer.set_modifiers(
 			if markview_platform::command_key() {
-				ModifiersState::SUPER
+				ModifiersState::META
 			} else {
 				ModifiersState::CONTROL
 			},

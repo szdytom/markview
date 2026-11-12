@@ -5,6 +5,8 @@
 #![cfg(windows)]
 #![allow(unsafe_code, deprecated)]
 
+mod support;
+
 use windows_sys::Win32::UI::WindowsAndMessaging::{
 	ICON_BIG, ICON_SMALL, SendMessageW, WM_GETICON,
 };
@@ -12,20 +14,19 @@ use winit::{
 	event_loop::EventLoop,
 	platform::windows::EventLoopBuilderExtWindows,
 	raw_window_handle::{HasWindowHandle, RawWindowHandle},
-	window::Window,
 };
 
 /// Windows paints a taskbar button from `ICON_BIG`; a window that advertises
 /// only `ICON_SMALL` leaves the button blank until the shell re-reads it.
 #[test]
 fn the_window_advertises_both_icon_sizes() {
-	let event_loop =
+	let mut event_loop =
 		EventLoop::builder().with_any_thread(true).build().unwrap();
 	let attributes = markview_platform::window_attributes(
-		Window::default_attributes().with_visible(false),
+		winit::window::WindowAttributes::default().with_visible(false),
 		false,
 	);
-	let window = event_loop.create_window(attributes).unwrap();
+	let window = support::create_window(&mut event_loop, attributes);
 	let RawWindowHandle::Win32(handle) =
 		window.window_handle().unwrap().as_raw()
 	else {

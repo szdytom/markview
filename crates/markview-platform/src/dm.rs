@@ -255,7 +255,7 @@ mod win {
 	impl DirectManipulation {
 		/// Opts `window` into precision-touchpad panning, or returns `None`
 		/// to keep today's wheel handling; every failure is silent.
-		pub fn new(window: &winit::window::Window) -> Option<Self> {
+		pub fn new(window: &dyn winit::window::Window) -> Option<Self> {
 			if std::env::var_os("MARKVIEW_NO_DM").is_some() {
 				log::debug!(
 					"touchpad panning stays on the wheel paths: \
@@ -270,7 +270,7 @@ mod win {
 				return None;
 			};
 			let hwnd = HWND(handle.hwnd.get() as *mut core::ffi::c_void);
-			let size = window.inner_size();
+			let size = window.surface_size();
 			let rect = RECT {
 				left: 0,
 				top: 0,
@@ -492,7 +492,7 @@ pub use win::DirectManipulation;
 pub struct DirectManipulation;
 #[cfg(not(windows))]
 impl DirectManipulation {
-	pub fn new(_: &winit::window::Window) -> Option<Self> {
+	pub fn new(_: &dyn winit::window::Window) -> Option<Self> {
 		None
 	}
 	pub fn contact(&mut self, _: u32) {}

@@ -10,6 +10,18 @@ import org.json.JSONObject;
 
 public class InputTest extends AndroidTest {
     @Override protected void test() throws Exception {
+        for (int action : new int[]{MotionEvent.ACTION_DOWN, MotionEvent.ACTION_MOVE, MotionEvent.ACTION_UP}) {
+            MotionEvent event = fingerEvent(SystemClock.uptimeMillis(), action, 12, 34);
+            try {
+                require(event.getSource() == InputDevice.SOURCE_TOUCHSCREEN
+                    && event.getPointerCount() == 1 && event.getPointerId(0) == 0
+                    && event.getToolType(0) == MotionEvent.TOOL_TYPE_FINGER
+                    && event.getActionMasked() == action && event.getX() == 12 && event.getY() == 34,
+                    "Injected touch events identify a finger throughout the gesture");
+            } finally {
+                event.recycle();
+            }
+        }
         openReader();
         tap("SearchOpen");
         waitFor(s -> s.optBoolean("search_open") && keyboardVisible());
@@ -60,13 +72,11 @@ public class InputTest extends AndroidTest {
         float x = (float)((rect.getDouble(0) + rect.getDouble(2) / 2 + insets.getDouble(0)) * scale + origin[0]);
         float y = (float)((rect.getDouble(1) + rect.getDouble(3) / 2 + insets.getDouble(1)) * scale + origin[1]);
         long down = SystemClock.uptimeMillis();
-        MotionEvent press = MotionEvent.obtain(down, down, MotionEvent.ACTION_DOWN, x, y, 0);
-        press.setSource(InputDevice.SOURCE_TOUCHSCREEN);
+        MotionEvent press = fingerEvent(down, MotionEvent.ACTION_DOWN, x, y);
         getUiAutomation().injectInputEvent(press, true);
         press.recycle();
         SystemClock.sleep(800);
-        MotionEvent release = MotionEvent.obtain(down, SystemClock.uptimeMillis(), MotionEvent.ACTION_UP, x, y, 0);
-        release.setSource(InputDevice.SOURCE_TOUCHSCREEN);
+        MotionEvent release = fingerEvent(down, MotionEvent.ACTION_UP, x, y);
         getUiAutomation().injectInputEvent(release, true);
         release.recycle();
         clickText(activity.getString(android.R.string.paste));

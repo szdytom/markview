@@ -1,4 +1,5 @@
 //! OS effects stay outside the reading core.
+pub mod event;
 #[cfg(test)]
 mod proptests;
 
@@ -16,12 +17,6 @@ pub mod android;
 mod native_window_frame;
 #[cfg(windows)]
 pub use native_window_frame::NativeFrame;
-
-#[cfg(target_os = "linux")]
-#[path = "touch_frame.rs"]
-mod native_touch_frame;
-#[cfg(target_os = "linux")]
-pub use native_touch_frame::TouchFrame;
 
 #[cfg(target_os = "linux")]
 #[path = "appearance.rs"]
@@ -42,7 +37,7 @@ pub fn show_error(message: &str) {
 #[cfg(target_os = "macos")]
 #[allow(unsafe_code)]
 pub fn align_traffic_lights(
-	window: &winit::window::Window,
+	window: &dyn winit::window::Window,
 	titlebar_height: f64,
 ) {
 	use objc2_app_kit::{NSView, NSWindowButton};
@@ -97,7 +92,7 @@ pub fn align_traffic_lights(
 
 /// Honor the desktop's titlebar double-click preference.
 #[cfg(target_os = "macos")]
-pub fn titlebar_double_click(window: &winit::window::Window) {
+pub fn titlebar_double_click(window: &dyn winit::window::Window) {
 	use objc2_foundation::{NSUserDefaults, ns_string};
 	let action = NSUserDefaults::standardUserDefaults()
 		.stringForKey(ns_string!("AppleActionOnDoubleClick"))
@@ -343,15 +338,15 @@ pub use events::{NativeEvent, install_events, shutdown_events};
 pub mod dm;
 #[cfg(target_os = "macos")]
 mod open_document;
-#[cfg(feature = "test-support")]
+#[cfg(any(test, feature = "test-support"))]
 pub mod test_support;
 
 #[cfg(target_os = "android")]
 pub fn show_error(_: &str) {}
 #[cfg(not(target_os = "macos"))]
-pub fn align_traffic_lights(_: &winit::window::Window, _: f64) {}
+pub fn align_traffic_lights(_: &dyn winit::window::Window, _: f64) {}
 #[cfg(not(target_os = "macos"))]
-pub fn titlebar_double_click(window: &winit::window::Window) {
+pub fn titlebar_double_click(window: &dyn winit::window::Window) {
 	window.set_maximized(!window.is_maximized());
 }
 
@@ -386,7 +381,7 @@ pub fn choose_output(
 	extension: &str,
 	label: &str,
 	directory: Option<&std::path::Path>,
-	window: Option<&winit::window::Window>,
+	window: Option<&dyn winit::window::Window>,
 ) -> impl Future<Output = Option<std::path::PathBuf>> + Send + use<> {
 	let mut dialog = rfd::AsyncFileDialog::new()
 		.set_file_name(name)
@@ -406,7 +401,7 @@ pub fn choose_output(
 	_: &str,
 	_: &str,
 	_: Option<&std::path::Path>,
-	_: Option<&winit::window::Window>,
+	_: Option<&dyn winit::window::Window>,
 ) -> impl Future<Output = Option<std::path::PathBuf>> + Send + use<> {
 	android::choose_output(name)
 }

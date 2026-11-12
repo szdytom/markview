@@ -3,18 +3,18 @@ use crate::app::frame::Caption;
 use crate::app::modal::Message;
 use crate::layout::{Draw, Rect};
 use markview_layout::image::{ImageInfo, ImageSnapshot, Pixels};
-use winit::event::{Ime, MouseScrollDelta, TouchPhase};
+use markview_platform::event::{Ime, MouseScrollDelta, TouchPhase};
 use winit::keyboard::{Key, NamedKey};
 
 fn event(app: &mut App<StubProxy>, event: WindowEvent) {
-	app.handle_window_event(&StubLoop, WindowId::dummy(), event);
+	app.handle_window_event(&StubLoop, WindowId::from_raw(0), event);
 }
 
 fn button(app: &mut App<StubProxy>, button: MouseButton, state: ElementState) {
 	event(
 		app,
 		WindowEvent::MouseInput {
-			device_id: DeviceId::dummy(),
+			device_id: DeviceId::from_raw(0),
 			button,
 			state,
 		},
@@ -25,7 +25,7 @@ fn move_to(app: &mut App<StubProxy>, at: (f32, f32)) {
 	event(
 		app,
 		WindowEvent::CursorMoved {
-			device_id: DeviceId::dummy(),
+			device_id: DeviceId::from_raw(0),
 			position: PhysicalPosition::new(f64::from(at.0), f64::from(at.1)),
 		},
 	);
@@ -34,8 +34,8 @@ fn move_to(app: &mut App<StubProxy>, at: (f32, f32)) {
 fn touch(app: &mut App<StubProxy>, id: u64, phase: TouchPhase, at: (f32, f32)) {
 	event(
 		app,
-		WindowEvent::Touch(winit::event::Touch {
-			device_id: DeviceId::dummy(),
+		WindowEvent::Touch(markview_platform::event::Touch {
+			device_id: DeviceId::from_raw(0),
 			id,
 			phase,
 			force: None,
@@ -141,7 +141,7 @@ impl Loop for CaptionLoop {
 	}
 	fn window_action(
 		&self,
-		_: Option<&winit::window::Window>,
+		_: Option<&dyn winit::window::Window>,
 		caption: Caption,
 	) {
 		self.1.borrow_mut().push(caption);
@@ -167,9 +167,9 @@ fn window_controls_remain_above_the_image_viewer() {
 		let release = |app: &mut App<StubProxy>| {
 			app.handle_window_event(
 				&actions,
-				WindowId::dummy(),
+				WindowId::from_raw(0),
 				WindowEvent::MouseInput {
-					device_id: DeviceId::dummy(),
+					device_id: DeviceId::from_raw(0),
 					button: MouseButton::Left,
 					state: ElementState::Released,
 				},
@@ -185,7 +185,7 @@ fn window_controls_remain_above_the_image_viewer() {
 			assert_eq!(app.frame.hover, Some(caption));
 			assert_eq!(
 				app.frame_cursor(),
-				Some(winit::window::CursorIcon::Pointer)
+				Some(winit::cursor::CursorIcon::Pointer)
 			);
 			button(&mut app, MouseButton::Left, ElementState::Pressed);
 			assert_eq!(app.frame.pressed, Some(caption));
@@ -216,7 +216,7 @@ fn window_controls_remain_above_the_image_viewer() {
 #[test]
 fn caption_taps_do_not_reach_covered_controls_or_activate_after_a_drag() {
 	use crate::{app::frame::Caption, settings::WindowLayout};
-	use winit::event::Touch;
+	use markview_platform::event::Touch;
 	for style in [
 		WindowLayout::Macos,
 		WindowLayout::Windows,
@@ -232,9 +232,9 @@ fn caption_taps_do_not_reach_covered_controls_or_activate_after_a_drag() {
 			let send = |app: &mut App<StubProxy>, phase, at: (f32, f32)| {
 				app.handle_window_event(
 					&exit,
-					WindowId::dummy(),
+					WindowId::from_raw(0),
 					WindowEvent::Touch(Touch {
-						device_id: DeviceId::dummy(),
+						device_id: DeviceId::from_raw(0),
 						id: 1,
 						phase,
 						force: None,
@@ -286,7 +286,8 @@ fn touch_window_drags_start_on_contact_and_never_pan_the_reader_or_viewer() {
 		return;
 	}
 	use crate::settings::WindowLayout;
-	use winit::{event::Touch, window::ResizeDirection};
+	use markview_platform::event::Touch;
+	use winit::window::ResizeDirection;
 	#[derive(Default)]
 	struct DragLoop(std::cell::RefCell<Vec<Option<ResizeDirection>>>);
 	impl Loop for DragLoop {
@@ -295,7 +296,7 @@ fn touch_window_drags_start_on_contact_and_never_pan_the_reader_or_viewer() {
 		}
 		fn window_drag(
 			&self,
-			_: Option<&winit::window::Window>,
+			_: Option<&dyn winit::window::Window>,
 			direction: Option<ResizeDirection>,
 		) {
 			self.0.borrow_mut().push(direction);
@@ -316,9 +317,9 @@ fn touch_window_drags_start_on_contact_and_never_pan_the_reader_or_viewer() {
 			let send = |app: &mut App<StubProxy>, id, phase, at: (f32, f32)| {
 				app.handle_window_event(
 					&actions,
-					WindowId::dummy(),
+					WindowId::from_raw(0),
 					WindowEvent::Touch(Touch {
-						device_id: DeviceId::dummy(),
+						device_id: DeviceId::from_raw(0),
 						id,
 						phase,
 						force: None,
@@ -464,7 +465,7 @@ fn wheel_zoom_ignores_larger_vector_rasters() {
 	event(
 		&mut app,
 		WindowEvent::MouseWheel {
-			device_id: DeviceId::dummy(),
+			device_id: DeviceId::from_raw(0),
 			delta: MouseScrollDelta::LineDelta(0., 7.),
 			phase: TouchPhase::Moved,
 		},
@@ -500,7 +501,7 @@ fn wheel_zoom_ignores_larger_vector_rasters() {
 	event(
 		&mut app,
 		WindowEvent::MouseWheel {
-			device_id: DeviceId::dummy(),
+			device_id: DeviceId::from_raw(0),
 			delta: MouseScrollDelta::LineDelta(0., -7.),
 			phase: TouchPhase::Moved,
 		},
@@ -702,7 +703,7 @@ fn viewer_focus_loss_cancels_the_drag_and_ignores_an_orphan_release() {
 	event(
 		&mut app,
 		WindowEvent::MouseWheel {
-			device_id: DeviceId::dummy(),
+			device_id: DeviceId::from_raw(0),
 			delta: MouseScrollDelta::LineDelta(0., 20.),
 			phase: TouchPhase::Moved,
 		},

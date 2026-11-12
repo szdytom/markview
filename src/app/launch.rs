@@ -1,4 +1,5 @@
 //! Window and deterministic diagnostic entry points.
+use super::SendEvent;
 #[cfg(feature = "diagnostics")]
 use crate::benchmark;
 use crate::cli::{LaunchOptions, Mode, arguments};
@@ -11,9 +12,10 @@ use anyhow::{Result, bail};
 use log::{info, warn};
 use markview_layout::style::CjkType;
 use std::collections::HashMap;
+use winit::event_loop::run_on_demand::EventLoopExtRunOnDemand;
 use winit::event_loop::{ControlFlow, EventLoop};
 
-use super::{App, Event};
+use super::App;
 
 pub(super) fn run() -> Result<()> {
 	// Only a run with a command line reports on the console it came from. The
@@ -345,17 +347,22 @@ fn run_reader(args: LaunchOptions) -> Result<()> {
 	}
 	// Parse already folded the personal font directory into `args.options.fonts`
 	// for the drawing modes, so a window export and a CLI one still agree.
-	let event_loop = EventLoop::<Event>::with_user_event().build()?;
+	let mut event_loop = EventLoop::builder().build()?;
 	event_loop.set_control_flow(ControlFlow::Wait);
 	// A window has to exist before the desktop can hand it a document, so the
 	// listener is armed while the launch event is still pending.
-	let proxy = event_loop.create_proxy();
+	let (sender, receiver) = std::sync::mpsc::channel();
+	let proxy = super::EventProxy {
+		sender,
+		wake: event_loop.create_proxy(),
+	};
 	super::open_document::install(proxy.clone());
 	let mut app = App::new(args, proxy.clone());
-	app.instance = instance.map(|primary| {
-		primary.listen(move |event| proxy.send_event(event).is_ok())
-	});
-	let result = event_loop.run_app(&mut app);
+	app.native_events.pending = Some(receiver);
+	app.instance = instance
+		.map(|primary| primary.listen(move |event| proxy.try_send(event)));
+	let result = event_loop.run_app_on_demand(&mut app);
+	app.native_events.pending.take();
 	markview_platform::shutdown_events();
 	app.flush_session();
 	app.instance_path = None;

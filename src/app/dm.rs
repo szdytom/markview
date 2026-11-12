@@ -4,7 +4,7 @@
 //! pixel-pan phases and deltas — is platform-neutral so it tests everywhere;
 //! the COM assembly supplies batches from `markview-platform`.
 
-use winit::event::TouchPhase;
+use markview_platform::event::TouchPhase;
 
 use markview_interaction::{PanFeed, PanPhase, PanStatus};
 
@@ -96,7 +96,7 @@ pub(super) struct DirectManipulation {
 	carry: (f32, f32),
 }
 impl DirectManipulation {
-	pub fn new(window: &winit::window::Window) -> Option<Self> {
+	pub fn new(window: &dyn winit::window::Window) -> Option<Self> {
 		Some(Self {
 			native: markview_platform::dm::DirectManipulation::new(window)?,
 			feed: PanFeed::default(),
