@@ -112,13 +112,21 @@ jobs:
 
 
   windows-installers:
-    runs-on: windows-2022
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-2022
+            target: x86_64-pc-windows-msvc
+          - os: windows-11-arm
+            target: aarch64-pc-windows-msvc
+    runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v6
       - uses: actions/download-artifact@v8
         with:
-          name: artifacts-build-local-x86_64-pc-windows-msvc
+          name: artifacts-build-local-${{ matrix.target }}
           path: dist
       - name: Verify the MSI and portable archive
         shell: pwsh
-        run: ./scripts/verify_windows_packages.ps1 dist
+        run: ./scripts/verify_windows_packages.ps1 dist -Target ${{ matrix.target }}

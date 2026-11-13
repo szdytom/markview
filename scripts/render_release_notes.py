@@ -44,6 +44,14 @@ def render(plan, release):
             "x64 Windows (Portable)",
         ),
         (
+            "markview-aarch64-pc-windows-msvc.msi",
+            "ARM64 Windows",
+        ),
+        (
+            "markview-aarch64-pc-windows-msvc.zip",
+            "ARM64 Windows (Portable)",
+        ),
+        (
             f"markview-{version}-x86_64.AppImage",
             "x64 Linux",
         ),

@@ -92,6 +92,9 @@ jobs:
     runs-on: windows-2025
     steps:
       - uses: actions/checkout@v6
+      - name: Check executable architecture and subsystem
+        shell: pwsh
+        run: ./scripts/test_windows_image.ps1
       - name: Check first-submission and API failure handling
         shell: pwsh
         run: ./scripts/test_winget_registration.ps1

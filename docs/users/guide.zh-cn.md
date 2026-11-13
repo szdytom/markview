@@ -9,7 +9,7 @@
 | 平台 | 安装包 |
 |:--|:--|
 | Linux | `.deb`、AppImage、`.tar.gz` |
-| Windows | `.msi`、`.zip` |
+| Windows（x64、ARM64） | `.msi`、`.zip` |
 | macOS | 打包好的 `.app`（zip） |
 
 [WinGet 社区收录 PR](https://github.com/microsoft/winget-pkgs/pull/445697) 合并后，Windows 用户可以用以下命令安装和更新：
@@ -31,6 +31,8 @@ Windows 也可以通过 PowerShell 脚本安装 `markview` 命令：
 ```powershell
 irm https://github.com/szdytom/markview/releases/latest/download/markview-installer.ps1 | iex
 ```
+
+Windows on Arm 请下载文件名包含 `aarch64-pc-windows-msvc` 的 MSI 或便携 ZIP。使用 PowerShell 7.3+ 或 Windows 11 22H2+ 自带的 Windows PowerShell 时，安装脚本会自动选择 ARM64。
 
 Arch Linux 可以安装 [AUR 预编译包](https://aur.archlinux.org/packages/markview-bin)：
 
