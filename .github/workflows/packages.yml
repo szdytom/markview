@@ -19,6 +19,7 @@ on:
       - .github/**
       - scripts/package_*.sh
       - scripts/ci_*.sh
+      - scripts/*winget*
       - scripts/verify_*
       - packaging/**
       - wix/**
@@ -33,6 +34,7 @@ on:
       - .github/**
       - scripts/package_*.sh
       - scripts/ci_*.sh
+      - scripts/*winget*
       - scripts/verify_*
       - packaging/**
       - wix/**
@@ -121,6 +123,12 @@ jobs:
             target/distrib/*.zip
           if-no-files-found: error
 
+  winget:
+    needs: packages-windows
+    uses: ./.github/workflows/winget-check.yml
+    with:
+      msi-artifact-pattern: markview-windows-packages-*
+
   packages-macos:
     runs-on: macos-latest
     steps:
@@ -154,7 +162,7 @@ jobs:
   # One status for the whole workflow. Not a required check: see the header.
   packages:
     if: always()
-    needs: [packages-linux, packages-windows, packages-macos]
+    needs: [packages-linux, packages-windows, packages-macos, winget]
     runs-on: ubuntu-latest
     steps:
       - name: Fail unless every package job succeeded

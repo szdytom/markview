@@ -1,0 +1,83 @@
+name: Check WinGet installers
+
+on:
+  workflow_call:
+    inputs:
+      manifest-artifact:
+        type: string
+        default: ''
+      msi-artifact-pattern:
+        type: string
+        default: ''
+
+permissions:
+  contents: read
+
+jobs:
+  install:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-2025
+            target: x86_64-pc-windows-msvc
+          - os: windows-11-arm
+            target: aarch64-pc-windows-msvc
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+      - name: Install manifest tooling
+        run: python -m pip install PyYAML==6.0.3
+      - uses: actions/download-artifact@v8
+        if: inputs.msi-artifact-pattern != ''
+        with:
+          pattern: ${{ inputs.msi-artifact-pattern }}
+          path: msi
+          merge-multiple: true
+      - uses: actions/download-artifact@v8
+        if: inputs.manifest-artifact != ''
+        with:
+          name: ${{ inputs.manifest-artifact }}
+          path: manifests
+      - name: Generate a manifest for unpublished packages
+        if: inputs.manifest-artifact == ''
+        shell: pwsh
+        run: |
+          $version = python -c "import tomllib; print(tomllib.load(open('Cargo.toml', 'rb'))['workspace']['package']['version'])"
+          ./scripts/generate_winget_manifest.ps1 -MsiDir msi -BaseUrl http://127.0.0.1:8765 -ReleaseUrl "https://github.com/$env:GITHUB_REPOSITORY/releases/tag/v$version" -Version $version
+      - name: Install WinGet
+        shell: pwsh
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          Install-Module Microsoft.WinGet.Client -Repository PSGallery -Force -Scope CurrentUser
+          Repair-WinGetPackageManager -Latest -Verbose
+          winget --version
+      - name: Validate, install and uninstall the native package
+        shell: pwsh
+        env:
+          LOCAL_PACKAGES: ${{ inputs.manifest-artifact == '' }}
+        run: |
+          $server = $null
+          try {
+            if ($env:LOCAL_PACKAGES -eq 'true') {
+              $server = Start-Process python -ArgumentList '-m http.server 8765 --bind 127.0.0.1 --directory msi' -PassThru
+              $ready = $false
+              for ($attempt = 0; $attempt -lt 30; $attempt++) {
+                try {
+                  Invoke-WebRequest http://127.0.0.1:8765/ -TimeoutSec 1 | Out-Null
+                  $ready = $true
+                  break
+                } catch { Start-Sleep -Milliseconds 200 }
+              }
+              if (-not $ready) { throw 'local MSI server did not start' }
+            }
+            $manifest = @(Get-ChildItem manifests -Recurse -Filter szdytom.Markview.installer.yaml)
+            if ($manifest.Count -ne 1) { throw 'expected one manifest version' }
+            ./scripts/verify_winget_package.ps1 -Manifest $manifest[0].DirectoryName -Target '${{ matrix.target }}'
+          } finally {
+            if ($server) { Stop-Process -Id $server.Id -ErrorAction SilentlyContinue }
+          }

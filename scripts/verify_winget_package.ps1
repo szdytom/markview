@@ -1,5 +1,8 @@
 # Exercise the submitted manifest with a real WinGet install.
-param([string]$Manifest = "packaging/winget/0.1.10")
+param(
+    [string]$Manifest = "packaging/winget/0.1.10",
+    [ValidateSet("x86_64-pc-windows-msvc", "aarch64-pc-windows-msvc")][string]$Target = "x86_64-pc-windows-msvc"
+)
 $ErrorActionPreference = "Stop"
 
 winget validate --manifest $Manifest
@@ -14,7 +17,9 @@ try {
         Where-Object { $_.DisplayName -eq "markview" }
     if ($product.Count -ne 1) { throw "expected one installed Markview product" }
     if ($product.Publisher -ne "szdytom") { throw "unexpected MSI publisher" }
-    $process = Start-Process "$env:ProgramFiles\markview\bin\markview.exe" -ArgumentList "--help" -Wait -PassThru
+    $executable = "$env:ProgramFiles\markview\bin\markview.exe"
+    & "$PSScriptRoot/verify_windows_image.ps1" $executable $Target
+    $process = Start-Process $executable -ArgumentList "--help" -Wait -PassThru
     if ($process.ExitCode -ne 0) { throw "installed executable failed: $($process.ExitCode)" }
 } finally {
     Get-ItemProperty "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\*" |

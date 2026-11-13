@@ -130,3 +130,9 @@ jobs:
       - name: Verify the MSI and portable archive
         shell: pwsh
         run: ./scripts/verify_windows_packages.ps1 dist -Target ${{ matrix.target }}
+
+  winget:
+    needs: windows-installers
+    uses: ./.github/workflows/winget-check.yml
+    with:
+      msi-artifact-pattern: artifacts-build-local-*-pc-windows-msvc
