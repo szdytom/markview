@@ -33,6 +33,8 @@ class ReleaseNotesTest(unittest.TestCase):
             f"markview-{version}-aarch64.app.zip",
             "markview-x86_64-pc-windows-msvc.msi",
             "markview-x86_64-pc-windows-msvc.zip",
+            "markview-aarch64-pc-windows-msvc.msi",
+            "markview-aarch64-pc-windows-msvc.zip",
             f"markview-{version}-x86_64.AppImage",
             f"markview-{version}-android.apk",
         ]
@@ -80,7 +82,7 @@ class ReleaseNotesTest(unittest.TestCase):
                     for line in result.stdout.splitlines()
                     if line.startswith("| [")
                 ]
-                self.assertEqual(len(rows), 10)
+                self.assertEqual(len(rows), 12)
                 self.assertNotIn('darwin-x64', result.stdout)
                 for row, name, platform in zip(
                     rows,
@@ -89,6 +91,8 @@ class ReleaseNotesTest(unittest.TestCase):
                         "Apple Silicon macOS",
                         "x64 Windows",
                         "x64 Windows (Portable)",
+                        "ARM64 Windows",
+                        "ARM64 Windows (Portable)",
                         "x64 Linux",
                         "Android 11+ (ARM64)",
                         *(label for _, label in VSCODE_PLATFORMS),
@@ -118,6 +122,8 @@ class ReleaseNotesTest(unittest.TestCase):
         for name in (
             "markview-0.1.10-x86_64.AppImage",
             "markview-0.1.10-android.apk",
+            "markview-aarch64-pc-windows-msvc.msi",
+            "markview-aarch64-pc-windows-msvc.zip",
             f"{extension['name']}-{extension['version']}-win32-arm64.vsix",
         ):
             with self.subTest(name=name):

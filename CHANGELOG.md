@@ -23,6 +23,7 @@ at the same level, without `[brackets]`.
 
 ### Added
 
+- Support Windows on Arm with native ARM64 MSI and portable ZIP packages.
 - Read Grid tables with spanning cells and block content; enabled by default with an independent Markdown dialect toggle for GFM and Obsidian.
 - Include hierarchical heading bookmarks in exported PDFs for navigation in PDF readers (#92).
 - Copy code blocks to the clipboard with an icon button; enabled by default and configurable in settings (#91).

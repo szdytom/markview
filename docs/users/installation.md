@@ -7,7 +7,7 @@ Download the latest build from [Releases](https://github.com/szdytom/markview/re
 | Platform | Packages |
 |:--|:--|
 | Linux | `.deb`, AppImage, `.tar.gz` |
-| Windows | `.msi`, `.zip` |
+| Windows (x64, ARM64) | `.msi`, `.zip` |
 | macOS | zipped `.app` bundle |
 
 Once the [WinGet community submission](https://github.com/microsoft/winget-pkgs/pull/445697) is accepted, Windows users can install and update it with:
@@ -29,6 +29,10 @@ On Windows, install the `markview` command with PowerShell:
 ```powershell
 irm https://github.com/szdytom/markview/releases/latest/download/markview-installer.ps1 | iex
 ```
+
+For Windows on Arm, choose the `aarch64-pc-windows-msvc` MSI or portable ZIP.
+The PowerShell installer selects ARM64 automatically with PowerShell 7.3+ or
+Windows PowerShell on Windows 11 22H2+.
 
 Arch Linux users can install the prebuilt [AUR package](https://aur.archlinux.org/packages/markview-bin):
 

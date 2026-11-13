@@ -71,7 +71,7 @@
             Keywords='Installer'
             Description='A fast, native Markdown reader with publication-quality typography'
             Manufacturer='szdytom'
-            InstallerVersion='450'
+            InstallerVersion='500'
             Languages='1033'
             Compressed='yes'
             InstallScope='perMachine'

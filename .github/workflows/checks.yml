@@ -42,7 +42,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-24.04, windows-latest, macos-latest]
+        os: [ubuntu-24.04, windows-latest, windows-11-arm, macos-latest]
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v6
@@ -59,7 +59,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-24.04, windows-latest, macos-latest]
+        os: [ubuntu-24.04, windows-latest, windows-11-arm, macos-latest]
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v6
@@ -89,7 +89,7 @@ jobs:
         if: failure()
         uses: actions/upload-artifact@v7
         with:
-          name: rendered-test-frames-${{ runner.os }}
+          name: rendered-test-frames-${{ runner.os }}-${{ runner.arch }}
           path: artifacts/
           if-no-files-found: ignore
           retention-days: 3

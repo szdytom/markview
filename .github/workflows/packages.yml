@@ -90,23 +90,32 @@ jobs:
           if-no-files-found: error
 
   packages-windows:
-    runs-on: windows-2022
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-2022
+            target: x86_64-pc-windows-msvc
+          - os: windows-11-arm
+            target: aarch64-pc-windows-msvc
+    runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v6
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
       - uses: ./.github/actions/install-dist
+      - uses: ./.github/actions/setup-wix
       - name: Build the archive and the MSI
         shell: bash
         run: |
-          dist build --artifacts=local --target x86_64-pc-windows-msvc
+          dist build --artifacts=local --target ${{ matrix.target }}
       - name: Verify the MSI and portable archive
         shell: pwsh
-        run: ./scripts/verify_windows_packages.ps1 target/distrib
+        run: ./scripts/verify_windows_packages.ps1 target/distrib -Target ${{ matrix.target }}
       - name: Upload the packages
         uses: actions/upload-artifact@v7
         with:
-          name: markview-windows-packages
+          name: markview-windows-packages-${{ matrix.target }}
           path: |
             target/distrib/*.msi
             target/distrib/*.zip

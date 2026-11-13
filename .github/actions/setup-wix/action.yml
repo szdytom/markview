@@ -1,0 +1,13 @@
+name: Set up WiX
+description: Install WiX 3.14.1 for Windows MSI packaging
+runs:
+  using: composite
+  steps:
+    - shell: pwsh
+      run: |
+        $archive = Join-Path $env:RUNNER_TEMP "wix314-binaries.zip"
+        $wix = Join-Path $env:RUNNER_TEMP "wix3"
+        Invoke-WebRequest https://github.com/wixtoolset/wix3/releases/download/wix3141rtm/wix314-binaries.zip -OutFile $archive
+        Expand-Archive $archive "$wix/bin"
+        "WIX=$wix" >> $env:GITHUB_ENV
+        "$wix/bin" >> $env:GITHUB_PATH
