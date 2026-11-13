@@ -1,164 +1,67 @@
-# Native UI message flow
+# Change the native UI
 
-The reader keeps its native vector and glyph drawing. `markview-ui-core` depends
-only on `markview-geometry` and does not access windows, fonts, GPU objects, files,
-clocks or workers. It contains the `Component` protocol, FIFO message scheduling
-and widget interaction, and re-exports the shared `Rect` type.
+Use this guide for controls, settings and panels. The reader draws native vectors
+and glyphs; `markview-ui-core` supplies pure state updates and interaction.
 
-```text
-input → widget layout → typed page message → update → effect descriptions
-                                              ↓             ↓
-                                            model       host services
-                                              ↓             ↓
-                                         borrowed view ← completion message
-                                              ↓
-                                    layout → native drawing
-```
-
-`Component::update` mutates its model and returns `Update<Effect>`. The update
-contains ordered effects and an invalidation level: `None`, `Paint` or `Layout`.
-Layout invalidation includes painting. `Runtime::send` queues messages;
-`Runtime::flush` processes them in order and combines invalidation. The host
-executes effects only after updates return, then sends completions through the
-same queue. `Component::view` uses a lifetime-bound associated type so views can
-borrow model data.
-
-`app/ui_model.rs` is the parent component. It routes Settings, Export and Fonts
-messages into independent models. Settings owns its preview flag and reader
-preferences; preview updates only invalidate painting. Page offsets live with
-the page model: the settings page's list offset sits on `settings_panel::Model`,
-and the export and stylesheet page offsets and the scrollbar drag sit on
-`interaction.panels`. Reader settings return persistence, session
-and document-reflow effects. Export settings return persistence effects without
-changing reader settings. Both use the same style-priority reducer. Preferences
-owns the runtime and the native settings store; the store remains a host service.
-
-Fonts returns download, cancellation and folder-opening effects. The component
-holds catalogue and progress data; `app/font_service.rs` owns cancellation tokens
-and executes downloads through the shared services. Every progress and settlement
-message carries a run version. The component rejects old messages after retry.
-Catalogue and chooser completions also retain the existing resource-version
-checks before entering the component. Document workers keep their document and
-content-revision checks in their existing host adapters.
-
-`app/widgets.rs` adapts Button/Form/List to the core protocol. A button is a
-description with a stable `WidgetId`, message, rectangle and optional clip.
-Catalogue rows use family or stylesheet IDs; tab-drawer rows use lifetime tab IDs
-that distinguish origins sharing a path and survive renames and reordering.
-Dropdown anchors omit their changing highlighted option from their identity.
-Identity is local to the running UI and is not a persistence format.
-Drawer and toolbar controls use separate identities because both remain painted
-during drawer dismissal.
-
-Commands are a sum of domain enums. The top-level `state::command::Command`
-names only the domain; each domain enum holds the variants its owner handles.
-
-| Domain | Enum | Variants |
-|---|---|---:|
-| Document | `DocumentCommand` | 11 |
-| Settings | `SettingsCommand` | 28 |
-| Export | `ExportCommand` | 14 |
-| Chrome | `ChromeCommand` | 20 |
-| Search | `SearchCommand` | 6 |
-| Fonts | `font_panel::Command` | 8 |
-
-`Command::widget_id` dispatches to the domain enum and hashes the outer domain
-discriminant, the domain variant's discriminant and a `Debug` key. Hashing both
-discriminants keeps `scope` unique across the flat command surface; some call
-sites compare scopes alone. Identity is only stable within one run: nesting a
-command in its domain changes the key's text, never the press-to-release
-mapping. `settings_dependent` is the domain-level precheck that keeps a command
-off a settings catalogue that is still loading.
-
-`app/interaction.rs::action` is the only router. Keyboard shortcuts in
-`dispatch_key`, widget messages and pointer gestures all call it, so every host
-command observes the same preamble before any domain sees it:
+## Message and effect boundary
 
 ```text
-action(command)
-├── settings_action_enabled?      reject while the settings catalogue loads
-├── FocusInput?                   focus the text field and stop
-├── prepare_command               close search, blur input, end gestures
-└── match command
-     ├── Document → document_command   src/app/document.rs
-     ├── Settings → settings_command   src/app/ui.rs
-     ├── Export   → export_command     src/app/export_panel.rs
-     ├── Chrome   → chrome_command     src/app/interaction.rs
-     ├── Search   → search_command     src/app/search.rs
-     └── Fonts    → fonts_command      src/app/interaction.rs
+input → placed widget → typed message → model update → effect description
+                                           ↓                ↓
+                                      borrowed view     host service
+                                           ↑                ↓
+                                           └── completion message
 ```
 
-Each handler matches only its own domain enum and touches only that domain's
-state; shared cleanup happens once, before the match. Settings and export page
-commands still go through `page_command` first, which routes them as component
-messages, so a page setting never reflows the reader. Chrome's folder, tab,
-panel, dropdown and confirmation arms are separate helpers in the same module;
-cross-domain effects such as ending a pointer gesture before an export call the
-owner's method instead of writing its field. Routing is direct calls with `Copy`
-commands, so the 120 Hz input path gains no queue or allocation.
+An update mutates its model and returns ordered effects plus `None`, `Paint` or
+`Layout` invalidation. The runtime processes messages in FIFO order. The host
+executes effects after updates return and sends completions through the same
+boundary. Pure components do not read files, start downloads or consult clocks.
 
-Hover previews are transient chrome state, not a component: pointer motion arms
-a fixed delay, the event loop's tick opens a shared card with the target's
-wrapped title, detail line and optional page body, and the renderer composes
-that page from the snapshot the tab already holds, at device resolution, through
-a scaled render pass. The page already on screen is never repeated in its card,
-so the active tab previews its title and path only. No screenshot or texture is
-cached between frames. Before a tab becomes inactive, it retains the layout
-blocks intersecting the card's page slice and pins only that slice's decoded
-images. Idle document release leaves this slice available; activating or closing
-the tab drops it. A new target only adds a `Target` arm and its card content.
+Settings, export and fonts own independent models. Reader changes can persist
+preferences and request reflow; paper settings must not alter reader geometry.
+Font jobs carry a run version so retry or cancellation can reject old progress.
+Keep native resources and cancellation tokens in host services.
 
-`app/chrome.rs` groups the painter's borrowed inputs into four read-only views —
-`FrameView`, `SessionView`, `SettingsView` and `StatusView` — plus the drawn
-interaction state, the shaper and the text input's pending draws. `Chrome::layers`
-declares the paint order once and `overlay_with_form` walks it, so each band
-draws only itself and never repeats a Z-order condition:
+## Add or change a control
 
-| Layer | Paints |
-| --- | --- |
-| `Toolbar` | Top and bottom window bands |
-| `Tabs` | Tab strip or phone title, then the toolbar controls in the same band |
-| `Banner` | Remote-image notice strip |
-| `Footer` | Counts, status line, hover hint and copyable path |
-| `Status` | Empty, opening and load-error document states |
-| `Drawers` | Scrollbar, folder tree, outline and tab drawer |
-| `Preview` | Hover preview card and its reserved body |
-| `Panel` | Settings, export, styles and fonts pages, load feedback and text input |
-| `Dropdown` | Open option list above its page |
-| `Modal` | Confirmation dialog |
-| `Viewer` | Image viewer above the modal |
-| `Frame` | Window caption buttons |
+1. Add the message to its owning domain and handle it in that model/handler.
+2. Return the necessary host effects and the least invalidation that is correct.
+3. Give the widget an identity tied to its logical object, not its row index or
+   current display text. Filtering and reordering must not redirect a pending click.
+4. Place it through shared form/widget geometry so painting and pointer input
+   use the same clipped rectangle.
+5. Test the update, effect, focus and press/release behavior; inspect visual states.
 
-Adding an overlay means one `Layer` variant, one line in `layers` and one arm in
-`draw_layer`; the `layer_order_runs_back_to_front` test pins the sequence. The
-toolbar controls stay in the `Tabs` band after the tab strip because both share
-the top band and the shaper state they leave carries into the bands below.
+Route commands through the common application action path. Keyboard and pointer
+activation must receive the same modal, focus and gesture cleanup. Cross-domain
+changes call the owner's operation instead of mutating its fields.
 
-The transient status line is owned by `app/status.rs::Status`, which holds the
-message, the error bit and the expiry deadline. The footer asks it for both
-lines: `current` returns the trailing message while its deadline is live, and
-`warning` returns a failure that outlived its deadline. A message-only write
-keeps the deadline it found, so replacing a live line does not shorten it.
-Other modules write only through the owner's methods; none of them touches the
-fields.
+## Input and drawing invariants
 
-The confirmation is a component, not an `InteractionState` field. `app/modal.rs`
-owns the pending question in `modal::Model`; its `current` question is private,
-the host opens or dismisses it with `Message::Open` and `Message::Dismiss`, and
-drawing and input ownership read it through `interaction.overlays.modal()` and
-`interaction.overlays.modal_open()`. Navigation paths dismiss it by sending a
-message, so no host module writes the field.
+A release activates only the captured widget when the release still matches it.
+Disabled controls block hits behind them and are excluded from keyboard traversal.
+Offscreen form controls remain in keyboard order; focusing one reveals it.
+Touch prefers exact hits before expanded nearby targets, respecting clipping.
 
-`UiLayout` supplies visible controls, keyboard traversal and the measured form.
-Painting uses these placed control rectangles; the same clipped rectangles answer
-pointer input. A scrolling form keeps offscreen controls in keyboard order and
-reveals a focused control before painting. `Interaction` owns focus, hover and
-pointer capture by widget identity. A release activates the current message only
-if it still hits the captured widget. Disabled controls block controls behind them
-and are skipped by keyboard navigation. Touch first prefers an exact hit, then
-the nearest expanded target, constrained by its clip. Menus, text input, document
-selection and native window gestures retain their specialized state.
+Draw overlays in the declared chrome layer order. An overlay must not paint a
+second copy of underlying controls or accept input through a modal surface.
+Document selection, text input, menus and native window gestures have specialized
+state; adding a widget should not create a competing gesture owner.
 
-Run the pure protocol tests with `cargo test -p markview-ui-core`. Run reader UI
-tests with `cargo test -p markview --lib app::`; on Linux, select Lavapipe as
-described in [Rendering tests](rendering-tests.md) for the GPU and baseline tests.
+A paint-only preview should not restart document layout. Geometry-affecting
+changes must invalidate layout; closing or replacing a page must settle its
+transient focus, capture and pending effects.
+
+## Verify
+
+```sh
+cargo test -p markview-ui-core --locked
+cargo test -p markview --locked --lib app::
+```
+
+Reader integration tests include GPU cases: use [native test setup](testing.md).
+Run [visual baselines](rendering-tests.md) for changes to appearance. Check narrow
+and wide forms, fractional DPI, disabled/hover/pressed/focused states, clipping,
+keyboard reveal, modal priority and touch targets. A screenshot does not prove
+that the painted control and its hit region agree.

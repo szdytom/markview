@@ -1,6 +1,6 @@
 # Reader themes / 阅读主题
 
-[User guides](README.md) · [MVSS theme guide](stylesheets.md)
+[User guides](README.md) · [Use themes](appearance.md) · [MVSS reference](stylesheets.md)
 
 Each view below shows the same document in a bundled reader theme, including
 its own fonts, spacing and colors. Open **Settings → Styles** to select a theme
@@ -58,5 +58,5 @@ Pixel type and green accents. 像素字体与绿色点缀。
 
 [中文示例](../screenshots/readme/zh-8-bit.png)
 
-For your own palette or typography, see the [MVSS theme guide](stylesheets.md).
+For your own palette or typography, see the [Use themes](appearance.md) · [MVSS reference](stylesheets.md).
 想定制配色或排版，可以从 [MVSS 主题指南](stylesheets.md)开始。

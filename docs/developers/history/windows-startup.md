@@ -1,5 +1,11 @@
 # Windows startup investigation (#39)
 
+> Historical evidence, archived from repository revision `37f22d622d41d5409321b8db7cf9f36b38b0d5a1`.
+> Measurements and implementation descriptions apply to the investigations below,
+> not necessarily to the current release. Original measurement dates are retained;
+> the archive revision is not a claim that those measurements were rerun.
+
+
 Measured on 2026-11-09 at commit
 `1377e1a27642d44980c699972a49888a42572490`. The initial investigation below
 used an isolated instrumented copy. The subsequent implementation and
@@ -109,11 +115,11 @@ this additional work and still reproduces the startup bottleneck.
 
 ## Native cause and causal control
 
-The startup sequence in [lifecycle.rs](../../src/app/lifecycle.rs) creates a
+The startup sequence in [lifecycle.rs](../../../src/app/lifecycle.rs) creates a
 visible window and synchronously calls the GPU initializer in
-[painting.rs](../../src/app/painting.rs). This keeps the UI thread occupied
-until [renderer initialization](../../crates/markview-render/src/lib.rs) and
-[pipeline creation](../../crates/markview-render/src/pipeline.rs) finish.
+[painting.rs](../../../src/app/painting.rs). This keeps the UI thread occupied
+until [renderer initialization](../../../crates/markview-render/src/lib.rs) and
+[pipeline creation](../../../crates/markview-render/src/pipeline.rs) finish.
 
 wgpu's release defaults include `VALIDATION_INDIRECT_CALL`. In wgpu-core this
 creates two validation compute pipelines and adds `INDIRECT_BUILTIN_UPDATE`
@@ -157,7 +163,7 @@ the approximately 60 ms basic signatures remained. This is a reduction of
 startup work with the original window visibility, rather than a later reveal.
 
 The reader submits direct `RenderPass::draw` calls in
-[frame.rs](../../crates/markview-render/src/frame.rs); the renderer and host
+[frame.rs](../../../crates/markview-render/src/frame.rs); the renderer and host
 contain no indirect draw or dispatch calls. This finding suggests two concrete
 implementation targets: scope out indirect validation for this direct-draw
 renderer, and make the backend's remaining indirect-command signatures lazy.

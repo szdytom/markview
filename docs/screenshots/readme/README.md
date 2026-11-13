@@ -47,7 +47,7 @@ python3 scripts/test_readme_images.py
 
 The localized `*-performance-comparison.png` charts read first-readable-frame
 time and total process-group RSS directly from the recorded tables in the
-[comparison report](../../developers/comparison.md). They use linear axes starting
+[comparison report](../../developers/history/comparison.md). They use linear axes starting
 at zero and show all four fixtures, measured over three runs on September 22–23,
 2026. With Matplotlib, FontTools, Fontconfig, Noto Sans and Noto Sans CJK SC
 installed, regenerate with:

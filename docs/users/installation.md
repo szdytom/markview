@@ -10,7 +10,7 @@ Download the latest build from [Releases](https://github.com/szdytom/markview/re
 | Windows (x64, ARM64) | `.msi`, `.zip` |
 | macOS | zipped `.app` bundle |
 
-Once the [WinGet community submission](https://github.com/microsoft/winget-pkgs/pull/445697) is accepted, Windows users can install and update it with:
+Windows users can check the community package with `winget search --id szdytom.Markview --exact`. When available, install or update with:
 
 ```powershell
 winget install --id szdytom.Markview --exact --source winget
@@ -48,11 +48,19 @@ yay -S markview
 
 Linux builds need glibc 2.35 or newer, `libfontconfig1`, a working Vulkan
 driver, a desktop portal for file dialogs, and Zenity for error dialogs.
-The macOS bundle is unsigned, so
-clear the quarantine flag once after downloading it:
+The macOS bundle is ad-hoc signed but not notarized. Move it to Applications;
+if Gatekeeper blocks it, allow it in System Settings → Privacy & Security, or
+clear its quarantine flag:
 
 ```sh
 xattr -d com.apple.quarantine /Applications/Markview.app
+```
+
+The community-maintained [Homebrew tap](https://github.com/Stevvven777/homebrew-tap)
+offers the Apple Silicon bundle:
+
+```sh
+brew install --cask Stevvven777/tap/markview
 ```
 
 The Windows MSI adds Markview to the **Open with** list for `.md`, `.markdown`

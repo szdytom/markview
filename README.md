@@ -92,7 +92,7 @@ browser's default left-aligned layout and Markview's justified layout.
   <img src="docs/screenshots/en-comparison.png" alt="The same English passage: browser default left alignment on the left, Markview's paragraph layout with an even right edge on the right" width="900">
 </p>
 
-[How this comparison is rendered](docs/developers/comparison.md#the-figure)
+[How this comparison is rendered](docs/developers/history/comparison.md#the-figure)
 · Text: [A Declaration of the Independence of Cyberspace](https://www.eff.org/cyberspace-independence), John Perry Barlow.
 
 Careful CJK punctuation and native LaTeX keep text and mathematics readable,
@@ -191,15 +191,15 @@ and dependable, down to the fonts and formulas on the page.
 | Resident memory | About **50 MiB** for an ordinary note |
 
 <p align="center">
-  <a href="docs/developers/comparison.md"><img src="docs/screenshots/readme/en-performance-comparison.png" alt="Four measured documents: Markview opens in 0.101–0.115 seconds and uses 50.7–53.8 MiB RSS; MarkText 0.19.1 opens in 0.957–2.863 seconds and uses 693.2–1147.6 MiB" width="900"></a>
+  <a href="docs/developers/history/comparison.md"><img src="docs/screenshots/readme/en-performance-comparison.png" alt="Four measured documents: Markview opens in 0.101–0.115 seconds and uses 50.7–53.8 MiB RSS; MarkText 0.19.1 opens in 0.957–2.863 seconds and uses 693.2–1147.6 MiB" width="900"></a>
 </p>
 
 Spend your attention on the page. Markview opens quickly and keeps its memory
 footprint small, even as your documents grow. The chart compares opening time
 and memory across four document sizes, measured on the same Linux laptop.
 
-[Measurement method and baselines](docs/developers/performance.md#native-baseline-on-the-performance-profile) ·
-[Reader and PDF comparisons](docs/developers/comparison.md) ·
+[Measurement method and baselines](docs/developers/history/performance-baselines.md#native-baseline-on-the-performance-profile) ·
+[Reader and PDF comparisons](docs/developers/history/comparison.md) ·
 [Latest downloads](https://github.com/szdytom/markview/releases/latest)
 
 ## Documentation and contributing

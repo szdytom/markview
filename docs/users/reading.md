@@ -1,20 +1,37 @@
-# Reading documents
+# Read documents
 
-[User documentation](README.md) · [Documentation](../README.md)
+Open a UTF-8 Markdown file with **Open file**, drag it into the window, or run:
 
-The start page has separate **Open file…** and **Open folder…** actions. When no
-workspace is open, **Recent workspaces** reopens a previously used folder in one
-click. With a workspace open, **Quick access** lists the three most recently
-visited documents that are not open in a tab, completed by other workspace files
-when there are fewer, and finds its files by name or relative
-path using fuzzy matching once you type; press Enter to open the first result.
-Search results show a nearby filename or path fragment with matching characters
-in bold. The search reuses
-the folder tree and follows its exclusions. Recent workspace history is retained
-even when restoring the last browsing session is disabled.
+```sh
+markview notes.md
+markview path/to/notes
+```
 
-Wide windows use two columns. Phones and narrow windows stack the opening actions,
-workspace list and web-reading input; scroll to reach content below the viewport.
+Markview is read-only. Keep editing in your own editor; saved changes refresh the
+reader while preserving your position. Paste Markdown with `Ctrl+V` to read it
+in a new tab. See [Android](android.md) for shared files and folders on mobile.
+
+## Navigate and copy
+
+Use Contents (`Ctrl+B`) for headings and Find (`Ctrl+F`) for text. `/` starts an
+empty query; Ctrl+F uses selected text or restores the previous query. Search is
+literal, case-insensitive by default, with case and whole-word options. Typing
+keeps your position; navigating a result opens enclosing collapsed sections.
+
+Select and copy reading text with Ctrl+C. Code-block copy buttons copy the whole
+block, including offscreen text and original whitespace. Wide code blocks and
+tables scroll horizontally within the page.
+
+Links to Markdown open reader tabs; middle-click opens them in the background.
+Heading links use GitHub-style anchors; HTML `id` and legacy named anchors also
+work. Other supported links go to the operating system. Unfamiliar local file
+types ask for confirmation and offer to open the containing folder.
+
+Drag tabs to reorder, use × or middle-click to close, and Ctrl+Tab to switch in
+recent-use order. Each tab retains its search state. Session restoration saves
+search visibility, query and options, but does not restore search input focus.
+
+## Keyboard shortcuts
 
 | Keys | Action |
 |:--|:--|
@@ -39,152 +56,68 @@ workspace list and web-reading input; scroll to reach content below the viewport
 | Wheel, arrows, `Page Up`/`Page Down`, `Space`, `Home`/`End` | Scroll |
 
 macOS uses Command in place of Ctrl, except for `Ctrl+Tab` and `Ctrl+Shift+Tab`,
-which stay on Control so they do not collide with the system app switcher. Each
-tab keeps its own search bar, query, match options and input focus; the session
-restores them on startup. The reading column defaults to 760 logical pixels and
-the type to 18.
-
-`markview`, `markview FILE`, and `markview web URL` open the reader in the
-background and return control to the shell immediately. Use `--foreground`
-to keep the reader attached to the terminal and see its logs, for example
-`markview --foreground notes.md` or `markview web URL --foreground`.
-Export, stylesheet, font and diagnostic commands run synchronously.
-If the background reader fails to start, a native error dialog shows the cause,
-including stylesheet, window and GPU initialization failures. `--foreground`
-reports these errors in the terminal instead.
-
-- **Opening is flexible.** Launch with no file for an empty window, drop a
-  Markdown file onto it, or paste Markdown from the clipboard; the file is read
-  as UTF-8, a BOM included.
-
-- **Tabs behave.** Drag a tab to reorder it, close one with its × button or
-  the middle mouse button, and scroll an overflowing strip with the wheel.
-  Closing the active tab returns to the one you used before it. Hold Ctrl and
-  press Tab repeatedly to walk the recent order without committing until Ctrl
-  is released; Ctrl+Shift+Tab walks the other way. Choose the tab appearance in
-  [settings](settings.md).
-
-- **Links open where they should.** Web, mail and local files go to the
-  operating system's default handler; links to other `.md` files open in a new
-  tab, and middle-click opens them in the background. A `#heading` fragment
-  moves to that heading, in this document or in the file it names.
-
-- **The file is watched.** Edit it in your own editor and Markview repaints in
-  place, keeping your position unless you were already at the end.
-
-- **Scrolling is eased.** Page Up/Down, `Space`, `Home`/`End`, the arrow steps,
-  the wheel, a click on the scrollbar track and a `#heading` jump ease over
-  120–400 ms; a wheel turned against the motion still in flight takes over from
-  where the page is rather than finishing it first. A thumb drag and every other
-  scroll stay immediate.
-
-- **A hard break stays hard.** Two trailing spaces leave the line at its natural
-  width; an explicit `<br>` asks for the line it ends to be set flush.
-
-Markview is deliberately read-only: it does not edit or save Markdown. Its
-multi-document workspace consists of reader tabs. Use the table of contents and
-search to navigate within a document. Printing uses the export panel or
-`markview pdf`. Links address headings by their GitHub slug and HTML elements by their `id`
-(or legacy `<a name="…">`). Empty anchors take no space; jumps into collapsed
-`<details>` expand the enclosing sections. Duplicate targets resolve to the
-first occurrence.
+which stay on Control so they do not collide with the system app switcher.
 
 ## Folders and Obsidian vaults
 
-Use **Ctrl+Shift+O** or click the top-left sidebar button before loading a folder
-to choose one; you can also pass a directory to `markview`. The toolbar's **Reveal**
-button opens the current document's folder in the system file manager.
-Markview lists `.md`, `.markdown` and
-`.mdown` files in a left sidebar, preserving subfolders. Click a directory to
-expand or collapse it and a file to read it in a tab. Subfolders start
-collapsed; automatic updates and **Refresh** preserve expansion, scroll position
-and keyboard focus while their paths exist. Existing tabs are
-reused. With the sidebar open, opening a document in a new tab or picking a tab
-expands the folders around its document and scrolls that row into view. The
-sidebar scrolls independently; Tab focuses its controls, arrow keys move between
-file rows, and Enter opens the selected row. Its header shows the open folder's
-name and can collapse all folders, refresh the tree, or toggle **Hide excluded
-entries**. Files added, moved or deleted externally update automatically,
-normally in a 100 ms batch plus disk reading time. Missed events are recovered by
-background checks; **Refresh** requests an immediate check.
-**Collapse all** also clears nested expansion and returns the tree to the open
-folder's top-level entries, which stay visible; use **Ctrl+Shift+O** to choose
-another folder.
-Hidden entries such as `.obsidian` and `.git`, and directories named
-`node_modules`, `target`, `vendor`, and `__pycache__`, are excluded by default.
-The settings-minus button is highlighted while **Hide excluded entries** is enabled.
-Turn it off to reveal them with an excluded label. Excluded directories
-load one level only when explicitly expanded, and release their loaded descendants
-and watches when collapsed. The toggle resets when choosing a folder; it does not
-add other file types or follow symbolic links. These name-based rules do not read
-`.gitignore`.
-Inaccessible subfolders are skipped; an unreadable, moved or deleted root reports
-an error and clears stale entries. The original root path is checked for recovery;
-use **Ctrl+Shift+O** to follow a folder moved elsewhere. On Android these checks
-observe the real shared-storage folder, so external changes arrive as they happen.
+Open a folder with **Open folder**, Ctrl+Shift+O, or a directory argument. The
+sidebar lists `.md`, `.markdown` and `.mdown` files. The start page reopens recent
+workspaces; Quick access and Ctrl+P find files by name or relative path.
 
-The file sidebar spans the full left edge on desktop and tablets; tabs and
-the main toolbar start to its right, while the outline keeps its right-side
-position. Wide windows reserve space for the sidebar. In narrow windows it overlays the
-page and closes after choosing a document. Phones put the file tree and tab
-list in one sidebar with a Tabs/Folders switch. On desktop and tablets, the
-top-left sidebar button expands or collapses the file tree and stays to the
-left of all tabs when collapsed. Session restoration retains the folder as
-well as open documents
-and reading positions.
-An empty folder stays open and updates when documents are added.
-When both drawers are open, narrowing the window keeps the outline and closes
-the file sidebar.
+Click folders to expand them and files to open tabs. External changes update the
+tree; **Refresh** requests an immediate check. **Hide excluded entries** hides
+hidden names and common build/dependency directories. Turning it off reveals
+those entries, but does not follow symbolic links or read `.gitignore` rules.
+If the root moved, open its new location. In narrow windows the sidebar overlays
+the page and closes when you choose a document.
 
-Select an Obsidian vault's root folder to browse its notes. Basic internal
-links support `[[Note]]`, `[[Note|Label]]`, `[[Note#Heading]]` and
-`[[#Heading]]`, along with Markdown links with or without `.md`. Folder paths
-are resolved from the current document's directory before falling back to the
-vault root. A bare note name is looked up in the current directory, at the root,
-then throughout the tree when its suffix identifies a single note. Use a folder
-path for duplicate names.
-Markview remains read-only: it does not change notes or Obsidian configuration.
-Image embeds such as `![[image.png]]` read as images from the open folder's
-root. A `|` label becomes alt text; without one the image keeps an empty alt
-text and no caption. Obsidian block references, note transclusion
-(`![[Note]]`), plugins and graph views are not supported.
+For an Obsidian vault, open its root. Supported links include `[[Note]]`,
+`[[Note|Label]]`, `[[Note#Heading]]` and `[[#Heading]]`. Relative folder paths
+resolve from the current document before the vault root. Bare names search the
+current directory, root, then an unambiguous suffix in the tree; use a folder path
+when names collide. `![[image.png]]` resolves from the open folder root, and a
+pipe label is alt text, not an image width.
+
+Note transclusion, block references, plugins and graph views are unsupported.
+Markview does not modify notes or vault configuration. See
+[Markdown dialect](settings.md#markdown-dialect) for parsing choices.
 
 ## Resource permissions
 
-Local files you open directly use Trusted resource permissions: supported relative images and ordinary intranet, VPN, or localhost images load automatically. Clipboard text and web articles use Untrusted permissions. Public images load in either mode; click a blocked image to approve its specific file or network destination. A relative image in pasted text asks you to choose the actual image file, because pasted text has no local directory.
+Directly opened local files use Trusted resource permissions: relative images
+and ordinary intranet/VPN/localhost images can load automatically. Clipboard
+and web content use Untrusted permissions. Public images can load in either mode.
+Click a blocked image to approve its particular file or network target; pasted
+relative images require selecting the actual file because pasted text has no folder.
 
-Opening a local Markdown link from Untrusted content asks for that document and keeps its Untrusted permissions. Authorizing a resource never changes the document's mode. Grants end when its content changes or its tab closes and are not saved in restored sessions. Load all lifts the image count limit and does not grant resource access.
-
-Opening a local web URL authorizes that origin for the page and its images; other local origins need separate approval. HTTP requests use direct connections and ignore system proxies. Both modes retain the same processing limits and OS-handler confirmations.
+An Untrusted link to local Markdown asks for that file and keeps it Untrusted.
+Grants end when content changes or the tab closes and are not restored later.
+**Load all** lifts the image-count cap, not resource permissions.
+Use `--offline` to prevent network requests. See [network settings](settings.md#network-and-image-cache).
 
 ## Supported content
 
-Tables keep their alignment, fenced code is highlighted, footnotes are numbered
-and clickable, GitHub alerts keep their meaning, and images — PNG, JPEG, GIF,
-WebP, BMP, ICO or SVG, with an animated image showing its first frame — sit
-inline or centred. `---` fenced YAML front matter is kept as metadata: it starts
-collapsed under a `Frontmatter` label, and opening it shows the source as a
-highlighted `yaml` block. A `mermaid` fenced block becomes a diagram: flowcharts,
-sequence diagrams and the other supported types are laid out and rasterized in
-Rust, so they need no browser, network or external process. Links to other
-Markdown files open in new tabs, so a folder of documents behaves like one.
-Everything can be selected and copied, and any block too wide for the column
-scrolls on its own.
+Markview reads tables, highlighted code, footnotes, alerts, math, images and a
+restricted HTML subset. YAML front matter starts collapsed. Mermaid fences render
+natively without a browser or external process. Animated images show a static
+frame. Unsupported browser behavior, scripts and arbitrary HTML/CSS are outside
+the reader's scope. The [examples](../../examples) show representative content.
 
 ## Web articles
 
-Experimental web reading is available with `markview web https://example.org/article`
-(or paste an HTTP(S) URL with Ctrl+V). It downloads static UTF-8 HTML in the
-background, converts the article into the reader's semantic document, and
-opens it in a temporary native reader tab created immediately with a loading
-message.
-Loading errors stay in the tab’s reading area; background completions update
-their original tabs without changing focus or reopening closed tabs.
-Links and images resolve against the final
-page URL. Reopening the same URL selects its existing tab; repeated requests
-while it is loading share the download. These tabs last for the current session. JavaScript pages, authenticated content and offline page loading are
-not supported. Web launches open their own window; other links still open in the
-system browser. Existing network address restrictions and download limits apply.
+```sh
+markview web https://example.org/article
+```
 
-For preferences and network behavior, see [settings](settings.md).
-For output files, see [export](export.md).
+You can also paste an HTTP(S) URL. Web reading extracts static articles into
+session-only tabs; links and images resolve against the final page URL. It does
+not support JavaScript-dependent pages, authenticated browsing or offline page
+loading. Failures appear in the tab. Opening a local web origin authorizes that
+origin; unrelated local origins still need permission.
+
+## Terminal behavior
+
+Window launches detach by default. Add `--foreground` to keep the reader attached
+and see startup errors/logs. Export, font and stylesheet commands run synchronously.
+For output files, use [Export](export.md); for appearance, use
+[settings](settings.md), [themes](appearance.md) and [fonts](fonts.md).

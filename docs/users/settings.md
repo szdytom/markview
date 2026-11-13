@@ -1,13 +1,10 @@
-# Settings
+# Configure reading
 
-[User documentation](README.md) · [Documentation](../README.md)
-
-Open **Settings** with `Ctrl+,` (Command on macOS). Reading preferences belong
-in `settings.toml`; visual themes belong in [stylesheets](stylesheets.md).
+Open **Settings** with Ctrl+, (Command on macOS). Use settings for personal reading
+preferences, [themes](appearance.md) for visual design and [Fonts](fonts.md) to
+choose or download families. Export has its [own settings](export.md).
 
 ## Settings file
-
-Desktop settings live at:
 
 | Platform | File |
 | --- | --- |
@@ -15,66 +12,28 @@ Desktop settings live at:
 | macOS | `~/Library/Application Support/markview/settings.toml` |
 | Windows | `%APPDATA%/markview/settings.toml` |
 
-Android stores settings in its private app files directory; see
-[Android reading](android.md).
+Android keeps settings in private app storage. Prefer the UI for ordinary changes.
+Saved settings override defaults; explicit command-line options override the
+session. Diagnostic and buffer-export commands do not inherit personal reader
+preferences. Use the command's `--help` for its exact options and defaults.
 
 ## Reading and interface preferences
 
-- **Sidebar widths are independent.** Desktop and tablet Settings offer separate
-  folder and outline widths; phones offer one shared sidebar width for Tabs and
-  Folders, plus an independent outline width (200–600 logical pixels). Desktop users
-  can also drag each sidebar’s inner edge. Widths persist as `folder-width`,
-  `outline-width` and `tabs-width` in `settings.toml` (defaults: 260, 300 and 320).
-  `tabs-width` controls the combined phone sidebar. Narrow windows limit the
-  displayed width without changing the saved preference.
+| To change… | Use… |
+| --- | --- |
+| Type size or reading measure | Settings, or Ctrl++/Ctrl+- and Ctrl+[/Ctrl+] |
+| Justification, hyphenation or paragraph indent | Reading preferences; advanced bounds live under `[justification]` |
+| Chinese/Japanese fonts and punctuation conventions | `cjk-type`: `SC`, `TC`, `JP` or `none` |
+| Folder, outline or phone sidebar width | Sidebar controls; desktop sidebars also have draggable edges |
+| Wheel/arrow speed | Scroll speed; touch scrolling is independent |
+| Window controls | Window layout; takes effect on the next launch |
+| Interface language | Follow the system or select English, Simplified/Traditional Chinese or Japanese |
+| Reuse an existing desktop window | Enable Single instance; later opens select or add tabs |
+| Code-block copy buttons | Generic → Language & code → Code block copy button |
 
-- **Window layout follows your preference.** General settings offer a dropdown
-  with System, macOS, Windows and Breeze layouts, applied next launch.
-  The `window-layout` setting in `settings.toml` accepts `"system"`, `"macos"`,
-  `"windows"` or `"breeze"`. System uses native
-  traffic lights on macOS, square window controls on Windows and chevrons on Linux.
-  Right-side window controls share the toolbar's button size and spacing. A reserved strip beside
-  the toolbar drags the window; controls keep the host system's behavior.
-  Escape exits fullscreen after closing any open panel or confirmation.
-
-- **Justification has limits.** A word space may shrink to two thirds or grow to
-  one and a half of its own width, and letterfit may move by a hundredth of an
-  em. Change them under `[justification]` in `settings.toml`, or set both
-  tracking bounds to `0.0` to turn character-level justification off. Hyphenation
-  is on by default.
-
-- **Paragraph indent is off by default.** Choose it under **Settings**, or set
-  `paragraph_indent` in `settings.toml`: prose indents its opening line while
-  lists indent as a whole, and table cells and footnotes stay flush.
-
-- **CJK is first-class.** The `cjk-type` setting (`SC`, `TC`, `JP` or `none`)
-  picks the face and the punctuation convention together: a comma-like mark
-  gives back its blank half at a line end on the mainland and in Japan, and is
-  centred in Taiwan.
-
-- **Scroll speed follows the desktop as far as it can.** Windows reports the
-  system's lines and characters per notch, each applied to its own axis, and
-  macOS scales its own deltas, so both are honored; a Linux detent carries no
-  value and counts as three lines, and **Scroll speed** in **Settings**
-  (`scroll-speed` in `settings.toml`, 0.5× to 2×) multiplies every wheel notch
-  and arrow step.
-
-- **Single instance is optional.** Enable **Single instance** in **Settings**, or set
-  `single-instance = true` in `settings.toml`, to open files from subsequent
-  launches in tabs of the existing window. It is off by default; files already
-  open select their existing tab. Existing windows stay open when you enable it.
-
-- **The interface follows the system language.** **Interface language** in
-  **Settings** pins it to English, Simplified or Traditional Chinese, or Japanese instead.
-
-
-## Code block copying
-
-Code blocks have a copy icon in their upper-right corner. It copies the whole
-block, preserving tabs, indentation and line breaks, including text outside the
-visible area. **Settings → Generic → Language & code → Code block copy button**
-controls these buttons and is on by default. Set `codeblock-copy = false` in
-`settings.toml` to hide them. This does not affect selection copying or exports.
+Code-block copying preserves the entire block's whitespace, including offscreen
+content. Hiding its button (`codeblock-copy = false`) does not affect selection
+copying or export. Phone/tablet-specific options are described in [Android](android.md).
 
 ## Markdown dialect
 
@@ -128,8 +87,6 @@ comment parsing.
 
 Callout titles are plain text, and an escaped, coded or styled `[!type]`
 marker leaves the quote an ordinary quote.
-Callout recognition, type normalization and default titles follow Comrak's
-upstream OFM extension.
 
 ```markdown
 > [!warning]- Folded by default

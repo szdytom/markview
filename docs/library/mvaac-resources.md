@@ -9,41 +9,12 @@ forwards the same configuration. Neither entry point fetches images by default.
 `@markview/viewer` exports the resource types; `@markview/resources` exports
 the decoding and transport helpers:
 
-```ts
-interface ResourceOptions {
-  onResources?: (events: readonly ImageResourceEvent[]) => void;
-  onError?: (error: unknown) => void;
-}
-interface ImagePixels {
-  width: number;
-  height: number;
-  rgba: Uint8Array; // Straight-alpha sRGB RGBA8.
-}
-interface ImagePriority {
-  region: "visible" | "near" | "offscreen" | "unknown";
-  distance: number | null; // CSS px; null means position is unknown.
-}
-interface ImageRequest {
-  readonly id: string;
-  readonly src: string;
-  readonly signal: AbortSignal;
-  readonly priority: ImagePriority;
-  resolve(pixels: ImagePixels): void;
-  reject(message: string): void;
-}
-type ImageResourceEvent =
-  | { kind: "request"; request: ImageRequest }
-  | { kind: "priority"; request: ImageRequest };
-
-function decodeImage(
-  source: Blob | ArrayBuffer | Uint8Array,
-  signal?: AbortSignal,
-): Promise<ImagePixels>;
-function loadImageUrl(
-  request: ImageRequest,
-  options?: { baseUrl?: string | URL; requestInit?: RequestInit },
-): Promise<void>;
-```
+Use the exported TypeScript types for exact signatures:
+[resource types](../../web/packages/markview/src/resources.ts) and
+[transport helpers](../../web/packages/resources/src).
+An `ImageRequest` supplies an ID, source string, abort signal, current priority
+and `resolve`/`reject` completion methods. Pixel data is straight-alpha sRGB RGBA8;
+priority distances use CSS pixels. The event discriminant is `request` or `priority`.
 
 Each document replacement emits its full set of Markdown/HTML image sources,
 including closed details, in a microtask. Identical original `src` strings are

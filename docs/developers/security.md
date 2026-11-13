@@ -110,7 +110,10 @@ Explicit web fetches and font download jobs also cross B3. Web extraction then s
 
 Input in either mode should not crash, hang, or exhaust the reader. Trust does not relax parser, layout, decoder, or cache budgets. Input-dependent recursion and expensive rendering work use explicit budgets; the reader degrades presentation or reports a resource error when a limit is reached. Decoded images, concurrent image work, and cache residency are bounded. These controls do not establish a universal bound on total process memory or execution time.
 
-Local document and image reads open without waiting and then accept only a regular file, so a FIFO or device beside the document cannot block a read that no token can cancel. Shutdown is bounded too: application-owned threads are waited for with a deadline and then abandoned, and the I/O service stops with a grace period instead of joining blocked work forever. Abandoning a thread cannot corrupt a destination, because every write goes through an exclusive temporary file and an atomic replace. A headless export also gives up on an image pipeline that reports nothing at all for its deadline, which sits above the transport's own per-hop request budgets so only work no other layer bounds is caught: a completed job counts as progress whether it succeeded or failed, so a run of ordinary failures never accumulates into a deadline that discards healthy images. Past the deadline the unfinished entries report a failure, though a job already inside a blocking call may keep a pipeline slot until the process exits.
+Local document and image reads accept regular files; Unix opens avoid waiting on
+special files. Shutdown and headless resource waits have deadlines, but cannot
+interrupt every blocking OS call. Writes use temporary files and atomic replacement.
+See residual risks below for blocked mounts, Windows opens and abandoned jobs.
 
 Document rendering does not grant content authority to alter reader controls. Link confirmations identify the resolved target rather than trusting the document's label. Copied text remains document-controlled data; copying does not make it safe to execute elsewhere.
 
@@ -164,7 +167,7 @@ Image requests have byte and time limits. Cached image bodies and their URLs per
 
 ### Font downloads
 
-Stylesheet-declared fonts download only through an explicit Fonts-page action or `markview fonts download`, never just by opening or installing a stylesheet. Under the target policy this is an explicit download job whose authority covers its identified mirrors, not arbitrary local requests by the document. Currently downloads share the public-address restriction and are refused under `--offline`.
+Stylesheet-declared fonts download only through an explicit Fonts-page action or `markview fonts download`, never just by opening or installing a stylesheet. Under the target policy this is an explicit download job whose authority covers its identified mirrors, not arbitrary local requests by the document. Downloads and mirror probes authorize their explicit target without granting unrelated local redirect destinations. Offline mode refuses downloads.
 
 Downloads and archive extraction are bounded. Extraction cannot escape the download directory or install symlinks or hard links. Declared hashes must match, and font contents are validated before installation. HTTPS is preferred; HTTP mirrors are accepted with the corresponding transport privacy and integrity risk. Installed fonts are personal resources; measurement modes and explicitly isolated font configurations retain their configured font set.
 

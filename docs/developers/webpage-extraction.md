@@ -27,25 +27,12 @@ have original Markdown bytes.
 uses `PROFILE_V1`; `Profile` has no defaults, so a new field must be set there.
 Change the profile, its tests and the fixture expectations together.
 
-| field | value |
-| --- | --- |
-| `max_input_bytes` | 32 MiB |
-| `max_elements` | 100,000 |
-| `max_dom_nodes` | 400,000 |
-| `max_semantic_depth` | 256 |
-| `max_text_bytes` | 32 MiB |
-| `max_blocks` | 100,000 |
-| `max_table_rows` | 16,384 |
-| `max_table_columns` | 256 |
-| `max_table_cells` | 131,072 |
-| `preserved_classes` | `math`, `inline`, `display`, `katex`, `MathJax`, `mathjax` |
-
-Readability's remaining settings are fixed in `extract_with` and are not part
-of the profile: `candidate_select_mode` is `Readability`, `char_threshold` is
-500, `n_top_candidates` is 5, `min_score_to_adjust` is 5.0, `disable_json_ld`
-and `keep_classes` are false, `readable_min_score` is 20.0,
-`readable_min_content_length` is 140 and `text_mode` is `Raw`. Only
-`max_elements_to_parse` and `classes_to_preserve` come from the profile.
+The exact limits and preserved classes live in `PROFILE_V1` in
+[the extraction entry point](../../crates/markview-webpage/src/lib.rs).
+The profile bounds input, DOM growth, semantic depth, text, blocks and table
+occupancy. Tests must check failures before excessive allocation. Changing a
+limit or preservation rule requires updating fixtures and the front-end version
+when persisted semantics change.
 
 ## Code block languages
 
@@ -143,80 +130,19 @@ code or formula field, or an image. Anchors, empty containers, whitespace and
 rules alone do not count. The artificial title and source line are added only
 after this check.
 
-## Consumer migration
-
-- Read navigation from `Inline::link` or `Inline::link_url()`. Compare
-  `TextStyle` for appearance, and compare link occurrences separately when
-  joining runs. `Link::new` accepts a `LinkOccurrenceId`; source-coordinate
-  allocation belongs to the front end.
-- Store `TextSelection` endpoints as `SemanticPosition`. Obtain them through
-  hit testing, search selection or `LayoutSnapshot::semantic_at`; resolve them
-  through the current snapshot for immediate geometry work. Presentation
-  counters never replace `SemanticPosition::revision`.
-- `SemanticPosition::projection` preserves generated reading text relative to
-  a semantic field. Source navigation uses `offset`; it does not invent source
-  ranges for diagnostics, list markers or placeholders.
-- A persisted reading continues to use session schema 4: input fingerprint,
-  structural path and semantic field offset. A process-local `BlockId`, a
-  borrowed geometry adapter and a reading projection are not persisted.
-
-## Benchmark
-
-`examples/webpage_bench.rs` replays the retired Readability-to-Markdown round
-trip beside direct lowering, using the current model for both. Its
-`replay.json` isolates extraction changes. `scripts/webpage_baseline.rs` and
-`scripts/webpage_baseline_rss.rs` measure the actual extraction, model and layout
-at `4328b6246ac6deed0243bff3869fef1dcbc74d2b`. They are measurement adapters,
-not production dependencies. Create a detached worktree and copy only the
-adapters, shared probe helpers and fixtures into it:
-
-```sh
-git worktree add --detach /tmp/markview-wp-baseline 4328b6246ac6deed0243bff3869fef1dcbc74d2b
-mkdir -p /tmp/markview-wp-baseline/examples/webpage_bench
-cp scripts/webpage_baseline{,_rss}.rs /tmp/markview-wp-baseline/examples/
-cp examples/webpage_bench/{fonts,rss}.rs /tmp/markview-wp-baseline/examples/webpage_bench/
-cp tests/fixtures/web-*.html /tmp/markview-wp-baseline/tests/fixtures/
-cargo build --manifest-path /tmp/markview-wp-baseline/Cargo.toml --release --locked --example webpage_baseline --example webpage_baseline_rss
-cargo build --release --locked --example webpage_bench --example webpage_rss --example webpage_replay_rss
-python3 scripts/webpage_refactor_evidence.py
-python3 scripts/benchmark_webpage_refactor.py new-run --baseline-checkout /tmp/markview-wp-baseline --cpu 2
-python3 scripts/compare_webpage_bench.py artifacts/webpage-refactor/baseline.json artifacts/webpage-refactor/after.json
-```
-
-Both versions use a fixed 640×800 viewport, three warmups and twenty samples.
-The first viewport metric stops when published height covers the viewport or
-the whole document is complete. It measures CPU layout readiness. The short
-title regression ensures the harness continues into the body. Previous
-iteration results are dropped before extraction; lifecycle assertions reject
-overlapping results. The independent minimal RSS executables load one input,
-run three warmups and one measured pass, and report Linux `VmHWM`, including
-warmup and allocator retention. Payload estimates remain separate from RSS.
-
-The runner copies all five executables onto the same filesystem and pins both
-implementations and their children to the selected CPU. This avoids tmpfs versus
-Btrfs executable mapping differences and reduces scheduling variance. It checks
-that the old checkout's model, layout and manifests are unchanged, records
-commands, environment and exit codes, and retains each run. The comparison
-checks fixture hashes and normalized body semantics before applying thresholds;
-complex tables are a separate capability comparison. Fonts, input digests,
-per-iteration samples and the source fingerprint are included in the evidence.
-
 ## dom_smoothie patch
 
-The MIT-licensed [`dom_smoothie`](https://github.com/niklak/dom_smoothie/tree/0fdbefd324d6ba49b4bbdadc85b2a25cc4367b76)
-is pinned to upstream commit `0fdbefd324d6ba49b4bbdadc85b2a25cc4367b76` through
-`[patch.crates-io]` in the root `Cargo.toml`. It is based on upstream 0.19.0 and
-adds `Readability::extract` (upstream PR #246), which returns the processed DOM,
-content root and metadata without serializing the article, plus a `dom_query`
-re-export. The legacy `parse` entry points keep their behavior on the same
-extraction core.
+Cargo configuration owns the pinned extractor revision. The adapter requires a
+processed-DOM entry point so lowering can avoid HTML/Markdown serialization.
+Remove a patch only when the locked upstream release provides equivalent behavior.
 
-The parity tests in `crates/markview-webpage/tests/extract.rs` compare the new
-and legacy entry points' HTML, raw text and metadata, and check the legacy
-policy entry points. Run `cargo test -p markview-webpage --locked --test extract`
-to verify the adapter against the pinned commit. Equivalent compatibility tests
-also live upstream. Remove the patch once a locked upstream release provides an
-equivalent non-serializing entry point, keeping Markview's parity tests.
+```sh
+cargo test -p markview-webpage --locked --test extract
+```
+
+The parity tests compare processed output and metadata against legacy extraction.
+The [historical benchmark](history/webpage-extraction.md) records the direct-lowering
+migration; use [paired measurements](performance.md) for new performance changes.
 
 When upgrading `dom_smoothie`, lock the new version, inspect the adapter types
 and the complete `Config`, run the `markview-webpage` tests, compare the

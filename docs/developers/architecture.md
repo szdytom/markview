@@ -1,530 +1,126 @@
 # Architecture
 
-This document explains what the major parts of Markview own and why the boundaries exist. It is intended for someone reading the implementation, not for someone trying to add a feature; procedural guidance lives in [the development guide](development.md).
+Use this page to choose where a change belongs and identify the contracts it must
+preserve. Build and test instructions are in [Development](development.md).
 
 ## Document processing and rendering
 
-Markview separates source parsing, semantic representation and layout:
-
 ```text
-Markdown/editor text → markview-commonmark → MarkdownParse
-                                               ├─ Document
-                                               ├─ SourceMap + original text
-                                               └─ dialect + incremental state
-
-HTTP response → markview-webpage → WebArticle
-                                    ├─ Document
-                                    └─ ArticleMetadata
-
-Document ─→ markview-layout → LayoutSnapshot → markview-render / markview-pdf
-SourceMap + original text ─→ source navigation adapter (optional)
+Markdown → markview-commonmark → Document + optional source map
+HTML     → markview-webpage    → Document + article metadata
+                                  ↓
+                           markview-layout
+                                  ↓
+                           LayoutSnapshot
+                            ↙           ↘
+                  markview-render    markview-pdf
 ```
 
-`markview-document` owns semantic blocks, inline content, links, image source
-specifications, colors, table geometry, definition lists, figures and stable
-reading identities. A `DocumentBuilder` allocates typed `BlockId` values,
-derives semantic content keys and seals the tree. `FieldId` values are numbered
-by the document's own field traversal, and a `LinkOccurrenceId` comes from where
-the link was declared: the Markdown source offset, or a counter in the HTML
-lowering.
-`SourceMap` is a separate module: a front end supplies it when original text
-exists, and a document never points back at it. The crate contains no source
-parser, font engine or drawing geometry.
+The native application and Web adapter supply scheduling, configuration and
+resources. They share the semantic document and layout engine. The native reader
+is read-only; editing is a Web host capability.
 
-An image's `ImageSpec.source` is either
-`ImageSource::Resource(ResourceRef { address, base })` or
-`ImageSource::Diagram(Diagram { language, source })`. `ResourceBase` is
-`Document` or `Vault`; a Mermaid fence is a `Diagram`, not a fake image URL.
-The document does not resolve addresses, authorize reads or build cache keys.
-The application does that in `src/images/source.rs`: `key` combines the
-address and base with the document or workspace path and the receiving
-`Security` context, so equal relative addresses on different pages or under
-different authority do not share an entry. Layout consumes that mapping through
-`ImageSnapshot::keys`; it never derives a resource key itself.
+| Owner | Responsibility | Keep outside it |
+| --- | --- | --- |
+| `markview-document` | Semantic content, identities and document traversal | Parsing, fonts, I/O and geometry |
+| `markview-commonmark` | Markdown dialects, parsing, source mapping and incremental reparsing | Window state and resource authorization |
+| `markview-webpage` | Article extraction and HTML lowering | Markdown round trips and HTTP transport |
+| `markview-layout` | Shaping, line breaking, reading text, geometry, selection mapping and pagination | Windows, GPU objects and application settings |
+| `markview-render` | GPU resources, rasterization and painting snapshots | Reinterpreting document syntax or deciding line breaks |
+| `markview-pdf` | Vector PDF output from paper layout | Window/GPU dependencies |
+| `markview-interaction` | Pointer-driven selection state | Document storage and platform events |
+| `markview-ui-core` | Pure component updates, widget identity and interaction | Files, clocks, workers and native services |
+| `markview-platform` | Native dialogs, clipboard, opening, input and window adapters | Reader policy and document layout |
+| Root application | Sessions, settings, resource policy, workers and UI orchestration | A second parser or layout engine |
 
-`markview-commonmark` converts CommonMark, Markview's extensions and the
-supported embedded HTML subset into that document. It returns `MarkdownParse`,
-which owns the `Document`, the original text, the `SourceMap` and the dialect.
-It owns full, prefix and incremental parsing, front matter and heading anchor
-assignment. Within it, `html.rs` only lexes tags, `container.rs` owns the
-raw-HTML container stack, and `parse.rs` keeps the source coordinates and the
-reader cursor.
-
-`markview-webpage` lowers Readability's processed DOM directly into a
-`Document`. It never produces body HTML, Markdown or plain text as an
-intermediate, and its public API does not expose `dom_query` types. See
-[web page extraction](webpage-extraction.md).
-
-`markview-layout` consumes a document with layout options and resource metadata.
-It shapes text, lays out paragraphs, measures math and images, and exposes
-reading text, selection geometry, links, search, source navigation, pagination
-and drawing instructions. Its bundled themes, fonts and immutable snapshots
-remain window- and GPU-independent.
-
-The Cargo production dependency graph is `markview-commonmark →
-markview-document ← markview-layout` and `markview-webpage → markview-document`.
-Both front ends produce the same representation; neither depends on the other. Layout tests use CommonMark as a
-development dependency. The renderer, PDF backend and selection engine have no
-production dependency on the CommonMark parser.
-
-`markview-render` consumes those instructions. It owns the wgpu device and surface, glyph and image resources, clipping, colors that can be changed without reflow, headless output, and the second document scene a hover preview composes into its card. It does not contain a second document layout engine.
-
-`markview-pdf` consumes the same snapshot for paper. The application's exporter lays the document out at the page's text measure and uses `markview-layout::paginate` to break the column into pages. The PDF backend writes vector content through `krilla`: text as glyph runs with subset fonts and a character map, math, rules, boxes, images, and link annotations. It owns no window, no GPU, and no source parsing.
-
-`markview-geometry` owns the dependency-free `Rect` type and its intersection and
-containment operations. Layout and UI core both depend on it and re-export `Rect`,
-so reader geometry and widget geometry share one type without depending on each other.
-
-`markview-ui-core` owns component scheduling, widget identity, clipped geometry
-and interaction. It depends only on `markview-geometry`. The native chrome uses
-typed page messages and host-executed effects, as described in [Native UI](ui.md).
-
-The root package owns reader policy: launch parsing, settings persistence, file content validation, file watching, image loading, single-instance communication, UI geometry and asynchronous scheduling. The UI translates gestures into commands; it does not define document semantics.
-
-`markview-platform` owns native services for Windows, macOS, Linux and Android:
-clipboard, file and export dialogs, external opening, error dialogs, system
-appearance, wheel settings, process detachment, configuration directories,
-system locale, file-open flags and permissions, icons, window attributes and
-native window/input adapters. It depends on `winit` and system libraries, with
-no dependency on the application, document pipeline, renderer or selection engine. GPU
-backend features and final executable/library build settings stay with their
-existing owners.
-
-The application calls concrete functions and types on every target and queries
-capabilities and conventions for layout and control visibility. Unsupported
-native hooks return `None` or do nothing. Windows caption hit testing calls an
-application callback with window dimensions, scale and state, keeping reader
-geometry in the application. Direct Manipulation supplies status batches and
-physical transforms; the application retains `PanFeed`, subpixel accumulation,
-cancellation and input ownership. Native document, share, back and configuration
-events use a platform event type and a callback. Android's entry registration
-macro emits the final library's ABI exports, while platform code owns JNI,
-startup event queuing and shutdown cleanup. CI checks Rust sources, tests,
-examples, benchmarks and build scripts across workspace members. Outside
-`markview-platform`, conditions may use test/debug flags and the package's
-declared features; the root application only permits `diagnostics`. GPU policy
-uses the actual backend rather than OS conditions. File-specific exceptions in
-the checker cover Wasm entry points and threading, native MVSS defaults, Linux
-pixel baselines and executable build/link settings. Exceptions name complete
-conditions, so additional platform branches still fail. CI enforces this with
-[`check_platform_boundary.py`](../../scripts/check_platform_boundary.py).
-
-The separation matters because the same document layout is used by the interactive window, the renderer tests, and the offscreen render and benchmark modes.
-
-## Pipeline scheduling
-
-The host owns input selection and orchestration. The native application's
-`Worker` reads source, calls `markview_commonmark::parse`, `parse_prefix` or
-`reparse`, prepares image resources, and calls the layout engine. It retains an
-`Arc<Document>` across reflows, maintains content and request versions, cancels
-superseded work, and publishes only current snapshots. Layout options or
-resource changes reuse the document instead of parsing again.
-
-`markview-web` owns the browser adapter's document and pending layout state.
-JavaScript drives its existing `beginUpdate` / `stepUpdate` interfaces and
-animation frames; the adapter calls `begin_layout` / `advance` and publishes
-completed prefixes. The host supplies image results. Synchronous updates keep
-the existing `setMarkdown` path.
-
-The native PNG and PDF export flows drive parsing, resource preparation and
-layout themselves, waiting for images and syntax highlighting before rendering
-or writing output. External Rust consumers can compose the same functions and
-engine with their own scheduling.
-
-`LayoutEngine` owns geometry caches and resumable layout state. Its background
-highlight tasks use the existing injected `Executor`, or its default executor
-when none is supplied. Source parsing remains an ordinary function call, and
-the document representation schedules no work.
-
-Block measurement produces immutable local geometry; publication resolves
-disclosure flow and places that geometry in source order. Native Rust hosts can
-opt into block workers through the layout crate's `parallel` Cargo feature
-(forwarded as `parallel-layout`, enabled by default in the root package):
-
-```rust
-let mut engine = markview_layout::layout::LayoutEngine::new();
-let effective_threads = engine.set_parallelism(4)?;
-let snapshot = engine.layout(&document, &options);
-```
-
-Library engines remain serial until configured. The native GUI calls
-`set_auto_parallelism()`: half the available logical CPUs, clamped to 1–8. `set_parallelism(0)` or `(1)` disables
-the pool. Without the feature, or on WASM even when the feature is enabled, the
-same call succeeds and returns one. Rayon is a native-only optional dependency;
-browser hosts need no threads, shared memory or cross-origin isolation.
-
-The full and progressive layout calls prefetch at most four blocks per configured
-thread after publishing the first visible block. Thread and shaping-context creation
-waits for eligible work. Each worker retains its own shaping context and shares
-the coordinator's font-data cache, preserving glyph-cache identities and avoiding
-repeated file loads; the coordinator owns geometry caches and publishes every continuous
-prefix in source order. Cache hits and duplicate content stay on the coordinator.
-Unpublished geometry is discarded on cancellation. The cancellation callback
-must implement `Sync`, since workers also check it inside nested containers;
-the progress callback runs only on the calling thread.
-
-Blocks containing formulas, including formulas in summaries, tables and nested
-containers, stay serial to preserve the ordered math cache and whole-pass byte
-budget. Other containers are each one job, with serial children. Workers read
-the image and syntax-highlight inputs of the current pass. This pool is separate
-from the injected background executor, so hosts should account for both when
-choosing concurrency. Stage profiler totals accumulate worker time and must not
-be interpreted as parallel wall-clock latency.
-
-`begin_layout` / `advance` keep their serial block loop and time budget even on
-an engine configured with workers. Web animation-frame scheduling is unchanged.
-The native GUI sets `set_parallel_start(coverage)` and `set_parallel_ready`
-to keep workers idle until the first readable GPU frame of that request has
-completed. The bounded opening parse stays serial. Documents under 32 KiB
-stay serial because they normally publish only on completion. `latency` uses
-the same GPU acknowledgement as the GUI; a diagnostic that never acknowledges
-a frame keeps its worker serial. `--no-default-features` disables native block
-workers at build time.
-
-Parallel batches can reduce full-layout latency but wait for their slowest
-block before publication; measure first-prefix latency and memory as well as
-throughput before enabling them in a reader.
-
-A future input crate can produce the same `Document` for the host to pass into
-layout. The experimental web article reader already does: `markview-webpage`
-lowers extracted content straight into a `Document`, and the reader lays it out
-without an intermediate Markdown text or source coordinate model.
-
-## Application feature boundaries
-
-Panel navigation uses one `PanelPage` for closed, settings (general, styles or
-fonts), export and export styles. `InteractionState` owns transitions, clears
-transient input and preserves parent form offsets on page round trips.
-`app::outline` owns the table-of-contents drawer as a component: its open flag,
-list offset, selected entry and slide animation. It remembers the offset and
-selection while closed, so reopening it shows the rows the reader left. The
-confirmation remains an independent overlay, and the tab strip and folder
-browser own their drawer animations. A shared tween drives every drawer, while
-the folder tree and outline list use one row-slide model: rows leave toward
-their parent, arrive out of it, and settle on the same expo-out curve.
-
-The native reader advances every continuous animation from one `FrameDriver`: `render` samples one frame time after acquiring the surface, advances each `Animation` exactly once, and requests the next redraw only while motion remains. The monitor refresh interval is a floor for backends whose presentation does not block.
-
-The native folder browser owns a directory snapshot worker separately from
-`FileWatch` and document reloads. `markview-platform` owns the native watch
-strategy: Windows uses one recursive watch on the root so an open tree does not
-block renaming its directories, while other platforms cover participating
-directories and the root's parent non-recursively and leave excluded subtrees
-unwatched until explicitly opened. Fixed 100 ms event batches reconcile direct
-children, scan new normal subtrees, and publish directory deltas tagged with
-root generation, view revision, and scan revision. Stable row IDs preserve unrelated nodes and
-filename caches; the UI splices visible ranges and replays pending tab reveals
-after an update. Manual Refresh uses the same reconciliation.
-Two-second metadata checks detect missed events; directories without working
-watches use two-second child snapshots. Thirty-second snapshot audits cover
-unchanged timestamps, with five-second watch retries and root recovery checks.
-These intervals exclude filesystem work. A bounded event queue falls back to an
-audit on overflow. Hidden entries and `node_modules`, `target`, `vendor`, and
-`__pycache__` are excluded by name; the session-only visibility toggle enables
-one-level, explicitly expanded browsing inside them. Android observes imported
-copies rather than the source document provider.
-
-`app/font_panel` owns the font catalogue, filters, scroll, download progress,
-cancellation and notices, plus its view and typed commands. Chrome borrows one
-`View`; the application routes `Command::Fonts` and adapts download messages to
-the event loop. The feature receives stylesheet entries, font configuration and
-an offline flag instead of borrowing `App`. Font installation still belongs to
-`fonts`; only the application updates the reader's font revision after a job
-stores files. The CLI adapter uses the same installation service independently.
-
-`net` owns bounded HTTP transport, address validation, redirects and transfer
-cancellation. Images own their response-cache and decoding policies; fonts own
-archive limits and installation transactions. Neither service obtains transport
-through the other.
-
-`export::Config` prepares reader, file and buffer exports through one path:
-print-template layering, CJK and font overrides, validated font inputs and
-personal font discovery, page geometry and export layout defaults.
-`export::PdfRequest` carries the resulting layout and geometry together with
-source, destination, metadata, links and resource policy. PDF processing
-consumes that request without launch or window state; its watch session retains
-the existing caches. PNG adapters share snapshot preparation, strip planning,
-drawing and atomic output; the desktop adapter schedules its strips on frames
-and retains the job's captured geometry and scale.
+The dependency boundary permits the same layout to serve native reading, Web,
+headless export and regression tests. [Platform boundary checks](../../scripts/check_platform_boundary.py)
+enforce platform isolation; changes to exceptions need a concrete platform reason.
 
 ## Semantic identity and immutable snapshots
 
-Parsing produces a `Document` made of blocks and rich inline content. A block keeps its source range for diagnostics and a semantic identity for cache reuse. Source positions are not used as identity: inserting text above a block must not make every later block appear to be a different kind of content.
+Source coordinates, semantic identity and drawing indices answer different
+questions. An insertion above a paragraph changes its source offset without
+changing its content. Reflow changes its drawing geometry without changing the
+reader's selection. Do not persist a geometry index or use a source offset as a
+content-cache identity.
 
-A `Link` deliberately has no `Eq`. `same_address` compares navigation targets,
-while `same_occurrence` compares the shared `LinkOccurrenceId` and the address;
-each run and open scope of one link carries the same occurrence, and adjacent
-links stay distinct even when their addresses match. A footnote definition has
-a `FootnoteId`; `FootnoteReference { definition, number, occurrence }` keeps a
-reference's display number and occurrence separate. `AnchorId` distinguishes
-`Fragment`, `FootnoteDefinition` and `FootnoteReference`, so HTML ids do not
-share a namespace with internal footnote targets. Navigation lives in
-`Inline::link`; `TextStyle` contains visual properties only. Inline equality
-compares addresses separately, run merging also compares occurrences, and
-semantic cache keys normalize link groups. CommonMark owns source-offset
-allocation; HTML lowering allocates explicit occurrence ids. Legacy `fn:`,
-`fnref:` and `fnback:` spelling lives in `markview_layout::footnote` for display
-and external-fragment compatibility. Internal actions use typed targets.
+A semantic position identifies a document revision, block, field and text
+boundary. Generated reading text may require a projection into that field.
+Positions resolve against the current snapshot; rebasing across a source change
+is explicit and can fail when the selected text changed. Link occurrences remain
+distinct even when they point to the same address.
 
-A reading position is one `SemanticPosition { revision, block, field, offset,
-affinity, projection }`. `block` is a `BlockId`, `field` is the `FieldId` numbered
-by the document's `visit_fields` traversal, and `offset` names a UTF-8 boundary
-in that field. `projection` optionally names a byte boundary in the field's
-reading text when generated labels, captions, placeholders or diagnostics have
-no exact semantic byte boundary. It never stores layout indices. Generated
-labels belong to the following field, or the preceding field at a block's end.
+`LayoutSnapshot` is immutable and carries both drawing geometry and logical
+reading text. Selection, copy, search and painting must agree on that text.
+Glyphs alone cannot represent it: ligatures, tabs, inserted hyphens, formulas and
+image placeholders break a one-character/one-glyph assumption.
 
-`TextSelection`, hit results, drag bases, native state and Web state all use
-these positions. Layout resolves them on each query against the current
-snapshot. Geometry positions and selections are crate-private. The borrowed
-`ResolvedPosition<'_>` adapter exists for immediate source/scroll queries; its
-indices belong only to the borrowed snapshot and must not be saved across
-events. Comparisons resolve reading order rather than sorting allocated ids.
-Width, font, theme and disclosure changes retain semantic revisions. A different
-revision is rejected; `rebase_selection` explicitly maps surviving reading text
-between revisions and rejects a changed selected span. Publication counters are
-separate from semantic revisions and never retag a selection.
-
-When the builder seals the tree it also builds `index::build`: structural
-`paths` for every `BlockId`, the outline, each disclosure's `default_open`, and
-the disclosures enclosing every registered `AnchorId`. `Document::path_of`,
-`block_at_path`, `details_declared`, `details_enclosing` and
-`outline_entries` read that index. `BlockKind::Details` and
-`BlockKind::FrontMatter` store only the source's `default_open`; the reader's
-actual open state lives in the session.
-
-Layout produces an immutable `LayoutSnapshot`. A snapshot contains final geometry, logical reading text, text clusters, link hit regions, overflow information, and drawing instructions. The renderer and interaction code can therefore read the same result without mutating the layout engine or rebuilding text for copying.
-
-The reading index is deliberately separate from glyphs. Grapheme boundaries, shaping clusters, formula ranges, image fallback text, and code whitespace all need a stable logical mapping even when visual layout inserts hyphens, expands tabs, or replaces an unavailable asset with a placeholder. Selection and copying operate on that logical mapping, so reflow changes rectangles but not the meaning of a selection.
-
-## Session persistence
-
-`src/app/session.rs` owns the browsing session. Its current schema is version
-4. A `SavedTab` records the document origin, path, `Reading` and search state;
-resource grants are never saved. `Reading` contains a `Position` and
-`SavedDetails`.
-
-A `Position` stores the input digest, the front-end version, the structural
-child-index path to the block, an optional field index, the UTF-8 offset inside
-that field, a local pixel offset, an absolute scroll fallback and a scroll
-ratio. The input digest is `stable_fingerprint` of the source bytes, or the
-input identity a semantic front end supplies; the front-end version includes
-the Markdown dialect flags or the web `PROFILE_VERSION`. `SavedDetails` stores
-`(path, open)` pairs for reader overrides, again as structural paths.
-
-Restoration resolves a position only when the input digest and front-end
-version match and the path still names a block. It constructs a
-`SemanticPosition` with the current revision and resolves it through
-`LayoutSnapshot::resolve_position`; a missing path, changed input or changed front-end version
-falls back to the scroll ratio and then the absolute offset. Disclosure
-overrides are applied only for matching input and front end. On the first
-changed parse or web load they are dropped, so an old reader choice cannot
-attach to another block.
-
-`Session::read` accepts versions 1 through 4. A version older than 4 stored
-layout text-node ordinals, raw block ids and allocated disclosure ids; the
-migration keeps the tab, its search state and its absolute/ratio scroll
-fallback, discards the structural position and closes the disclosures, then
-writes schema 4. A session file whose version is outside that range, or whose
-data is damaged, is ignored by the application rather than restored.
+A source map is optional. HTML articles have semantic reading positions without
+pretending to possess original Markdown coordinates. The Web API translates
+source coordinates to UTF-16 at its boundary; see [source navigation](../library/mvaac-source-api.md).
 
 ## Versions and asynchronous work
 
-The application distinguishes a content version from a request version. A file open or reload changes content; a type-size, column, alignment, or hyphenation change changes only the requested layout. The worker retains the last parsed document and publishes snapshots tagged with both versions.
+Content changes and layout requests are separate versions. Width, font and image
+changes can reuse a parsed document; source changes cannot. A completion must
+match the receiving session and current request before it becomes visible.
+Cancellation reduces wasted work but does not replace this acceptance check.
 
-Only the newest request may be accepted. A late result cannot replace a newer layout, while a reload cannot be lost merely because a reflow request occupied the worker's single pending slot. Failed reads keep the last usable snapshot, because a transient editor save should not blank the reader.
+The reader publishes usable prefixes while longer work continues. Publication
+must cover the current reading anchor and visible area before replacing a usable
+snapshot. Failed reads preserve the last usable document. Pending scroll intent
+is separate from the displayed offset, so navigation can wait for geometry
+without exposing blank, unfinished content.
 
-For sources of at least 32 KiB, the window worker publishes completed prefixes after they cover the current
-viewport plus half a viewport of prefetch. Parsing still covers the entire source,
-so references and other document-wide semantics are resolved before layout starts.
-Prefixes and the final snapshot share immutable block geometry; publishing does
-not restart layout. Without a new viewport target, subsequent publications need
-both twice as many blocks and at least 32 ms since the previous publication, so
-copying snapshot metadata does not grow quadratically with document length.
-Smaller documents publish once to avoid extra snapshot and redraw overhead;
-they still check cancellation between blocks.
+Hosts schedule work differently: the native reader uses workers, Web advances
+layout from its frame loop, and export waits for settled resources. Layout owns
+geometry and caches; it does not decide when a host should accept or display a
+result. A time budget cannot preempt every shaping operation, so a very large
+atomic block can still delay publication.
 
-Every prefix carries the same request and content versions as the final result.
-Cancellation is checked between top-level blocks; changing the file or layout
-settings supersedes the old work. The UI checks the version again before accepting
-an event. Reload prefixes replace the old snapshot only when they cover its
-reading anchor and visible area (and any existing selection); otherwise the old
-snapshot remains visible until a sufficient prefix or the final result arrives.
-An appended prefix preserves the active selection gesture and scroll position.
-
-Scroll intent is separate from displayed scroll. Repeated PageDown presses
-accumulate a target even beyond completed geometry; the worker prioritizes
-publishing a prefix that covers that target. The current page stays visible until
-the target is available. PageUp reverses the pending target and Home cancels it;
-End waits for the final height. The document scrolls until its last line can
-sit one third of a page below the top, leaving the rest blank; an end already
-higher than that does not scroll. While geometry is incomplete, the footer
-shows loading, the document scrollbar is hidden, and Select All waits for
-completion.
-The implementation does not estimate total height or skip preceding blocks.
-One very large top-level paragraph, table, list, or code block can still delay
-publication until that block finishes. Native cancellation is checked between
-nested blocks and list items; shaping a single paragraph or table remains atomic.
-Web time budgets still yield only between top-level blocks.
-
-Images follow the same model. Loading and decoding happen outside layout. A decoded image changes the version of the affected source, causing only dependent blocks to reflow; the document's semantic reading identity, selection, and reading position remain stable.
-
-A remote body is kept in a bounded on-disk cache beside the user configuration, keyed by its absolute URL: it is reused while fresh, revalidated with a conditional request when stale, and served under `--offline` when present. Stored bytes are the fetched bytes, so a cached image decodes exactly like a network one, and the existing byte and pixel caps still apply. The store, the freshness policy, and the single pinned HTTP client are separate modules, all on the image workers.
-
-A stylesheet may also list the font files its families are published as. That is a separate, explicit user action rather than part of reading: `fonts` owns the user font directory, checks each body as a font, renames it into place, and leaves an already-present file alone. The concern is split by module: `fonts::catalog` reads what each file declares, builds the catalogue, selects families and installs them; `fonts::download` probes hosts, retries mirrors and orchestrates the transfers; `fonts::archive` recognizes and unpacks containers; and `fonts::report` owns the progress model, merges its events and summarizes the run. When a job stores a file, the application adds the directory to the reader's `FontConfig` and bumps its revision; a job that stored nothing leaves both alone, so a retry of an entirely failed download does not cache another identical collection. Because the revision is part of the layout key and of the collection cache key, the ordinary reflow picks the new faces up without a restart, and that cache keeps only the most recently used configurations rather than one collection per revision forever. Exports shape with the same configuration as the reader's display, so a personal download reaches them too; the measurement runs and `--ignore-system-fonts` keep the set the command line named, so a personal download cannot change reproducible output.
-
-A Mermaid fence is one more source on that path rather than a second pipeline. Parsing turns it into an image whose source carries the diagram text, an image worker renders that text to SVG once per source, and the existing SVG rasterizer decodes it like any other vector image. Layout only ever sees a placeholder or a decoded box, so a malformed diagram becomes the ordinary image error and a document with many diagrams still publishes geometry without waiting for them.
-
-A raw `<details>` block becomes one collapsible block. The parser walks the raw HTML tags in order and keeps a stack of open containers, so a body spans the Markdown siblings Comrak already parsed between the opening and closing tags and is reused in place rather than re-parsed; content on the opening tag's own line is raw HTML and renders through the supported subset. The summary does the same, because GFM does not parse Markdown inside `<summary>`. Nested elements and several closing tags in one block are handled by the same stack, and an unmatched opening or a stray closing tag keeps the literal fallback without rescanning. The first layout shapes the summary and the entire body, including nested collapsed disclosures. Each block and list item contributes a retained scene node; text, draws, links, anchors and overflow rectangles are local to that node. Children store their horizontal offset and their gap after the preceding sibling. Geometry stays immutable behind an `Arc`, and array indices remain stable for selections and horizontal scrolling.
-
-A separate flow index resolves visible node positions and heights from the reader's disclosure map. Closing a node excludes its descendants; ancestors and following siblings move by the resulting height change. Only container boxes and disclosure markers need derived drawing commands. Native and web toggles update this index immediately without restarting the worker or the progressive pass. Incoming worker snapshots adopt the latest interaction state before publication. Visible hit testing, selection, anchors and painting share this projection; full-document counts use retained reading text including hidden bodies. PDF pagination materializes projected coordinates at the paper boundary and forces disclosures open.
-
-Eager shaping trades more initial work and retained memory for predictable toggles: a large closed disclosure costs as much typography work as an open one. Width, font, source and image changes still invalidate dependent geometry. Flow rebuilding scales with scene nodes and spans, rather than glyph count; it does not repeat shaping or line breaking.
-
-Grouping tags such as `<div>`, `<section>` and `<p>` become transparent containers on the same stack. Comrak has already parsed the Markdown siblings between the tags, so the container reuses them in place and adds nothing to the block tree; references and footnotes resolve document-wide as at the top level. Inline content between the tags is raw HTML and renders through the supported subset, not as Markdown. The contents of raw-text and foreign elements (`script`, `style`, `textarea`, `title`, `svg`, `math`) and of `<pre>` are opaque to container matching, since the reader never interprets them as markup. Invalid or unbalanced raw HTML keeps the literal fallback: Markview is a reader, not a browser, and repairs no markup. Outside the supported subset rendering is undefined, bounded only by the reader's invariants — no lost content, no unbounded work, no crash.
+Images follow the same version discipline. The host resolves and authorizes a
+source, loads pixels, and supplies metadata to layout. Late results cannot attach
+to a replacement document. Cache identity must include the receiving authority;
+an identical URL or relative path alone does not establish permission to reuse it.
 
 ## Why layout is separate from painting
 
-Paragraphs are shaped before painting because line breaking needs real glyph advances, language-aware break opportunities, hyphenation, inline formulas, and atomic image boxes. Inline code adds its own rule on top: since it carries no hyphenation dictionary, every character boundary inside a code run is offered as a break — free at a word edge, and at a small penalty inside a word — so a long identifier wraps rather than overflowing. Markview uses a bounded Knuth–Plass-style optimizer for ordinary paragraphs and falls back to legal greedy breaks when a paragraph exceeds the candidate budget or has no valid optimized solution. The fallback protects responsiveness without making invalid breaks. Glyph fallback is frugal the same way: a cluster no configured face covers is drawn from a scan of the font collection's character maps, stopped at the closest style and weight and remembered per cluster, so a rare symbol costs one scan per document; the platform's per-script fallback only hears about clusters nothing installed can draw.
+Line breaking needs actual glyph advances, language-aware opportunities and the
+sizes of inline objects. Measurement and painting must use the same typographic
+model. The paragraph optimizer has a work budget and a legal greedy fallback;
+responsiveness must not depend on finding an optimal solution for every input.
 
-Justification and line breaking share one microtypographic model, in `microtype`. Each shaped cluster carries how far its advance may stretch or shrink, which the optimizer sums into line metrics and the painter spends through a single ratio. Word spaces and a bounded amount of letter spacing are used first; whatever slack is left is then shared evenly over the clusters that can take it, which is what closes a CJK line that has no word spaces. Both bounds are reader settings, so a narrow column can trade even spacing against tighter or looser words.
+Scrolling and selection normally reuse geometry. Font, measure, spacing and
+intrinsic image-size changes require reflow. Color-only changes can often repaint.
+PDF uses the same layout at the paper's text measure, followed by pagination;
+it is not a screenshot of the reader window.
 
-East Asian punctuation gives back the blank half of its em box at a line start or end, and Han text is spaced a quarter em from Latin, both following the W3C Requirements for Chinese Text Layout. Which half a mark gives up depends on the reader's `cjk-type`, since the mainland, Taiwanese and Japanese conventions place the comma-like marks differently. A closing mark also hangs part of its advance into the end margin, which is what makes a justified line read as flush, and a CJK quotation mark may take the line edge its convention asks for even though UAX #14 forbids a break on either side of one. Because the same numbers drive measurement and painting, a drawn line is the line the optimizer chose.
+Disclosures retain body geometry and project it through their current open state.
+This makes toggles predictable without reshaping, at the cost of initial work and
+memory even for closed content. Painting, hit testing and navigation share that
+projection. Export opens disclosures for the paper rendition.
 
-Page breaking is the one layout step that exists only for paper. `markview-layout::paginate` collects each block's drawn lines into bands, records the space each band needs together with the lines widow and orphan control refuses to separate from it, and distributes the bands over fixed-height regions, following the model Typst uses for flow layout. A block owns its whole vertical extent, so a fragment that opens a page starts at the block's top edge while a continuation starts at its first line. The reader never runs this pass.
+## Session persistence
 
-Math is laid out as an atomic display list and images as atomic inline boxes. This keeps their baseline and height in the line model. Images do not create a float band: text never wraps around their sides. An image-only paragraph is centered and may receive a caption; mixed content remains an inline paragraph.
-
-Painting is consequently a projection of an already-decided layout. Scrolling and selection only change which geometry is visible and which overlays are painted. Theme colors can often be late-bound; font, width, spacing, and other geometry changes require reflow.
-
-## Interaction and platform effects
-
-`pointer::State` owns the pointer subsystem's input state — the press in flight, the hover targets, the modifiers, the scrollbar grab and the wheel gesture — and its methods are the only direct access to those fields. The application owns focus, selection gestures, scrolling and modal input: the settings, stylesheet and export panels and the local-file confirmation. Core owns hit testing and selection geometry so those operations remain testable without a window or GPU.
-
-A document reaches the reader from the command line on every desktop. macOS adds the desktop's own handoff: the bundle declares its Markdown document types, so a double-click in Finder, an "Open with" choice, or a file dropped on the app's icon launches it with an open-documents Apple Event that carries one file URL per document. `crates/markview-platform/src/open_document.rs` answers that event and delivers each file through the application callback to the event loop as the `Event::Open` a command-line argument already produces, so a document the desktop opens and one typed on the command line reach the same tab-opening path, and every file of one event becomes its own tab. The handler is taken from the launch notification rather than from the application delegate, which `winit` owns, and it has to be taken at that moment: AppKit installs its own document handler while launching, so a registration made earlier is replaced and one made later never sees the event that is already pending.
-
-A wheel gesture's axis is decided once, from its first few moments of motion, and held until the gesture ends: sideways pans the wide block under the pointer, vertical scrolls the document. Deciding per event instead would make a diagonal gesture stutter, because an event that leans sideways pans or, over no wide block, does nothing at all while the page stops following the hand. The motion that decides the axis is held and applied with the deciding event, and a gesture inherits nothing from the one before it: a boundary the platform reports, or a pause where it reports none, ends the gesture. A sideways gesture over no wide block still scrolls the page by the vertical motion it carries, rather than being dropped; one that is purely sideways has no target and no vertical motion to apply.
-
-A wheel event arrives as either a line delta or a pixel delta, and each desktop scales differently. A line is one wheel detent on X11 and Wayland, where the desktop's own speed setting never reaches the event, so it counts as the conventional three lines; on Windows the desktop's lines- and characters-per-notch choices are read once with `SystemParametersInfoW` and multiply their own axis, with "a page at a time" becoming the viewport along that axis. macOS bakes its speed and acceleration into the deltas it delivers, and reports the resulting lines, so nothing there is multiplied. A pixel delta — a touchpad on macOS or Wayland — is physical and is turned back into logical pixels with the display scale. The reader's own scroll-speed multiplier, 0.5× to 2× in quarter steps, then scales every wheel request and arrow step; it is the only handle where the platform reports no system value at all.
-
-A discrete scroll request — Page Up/Down or Space, Home/End, the arrow steps, a click on the scrollbar track, and an anchor jump — eases to its destination. The motion is ease-out cubic over 120–400 ms scaled by distance and driven by elapsed time, so it does not depend on the frame rate. The animation's destination is the session's pending scroll, so the worker still chases it and a press that arrives before the geometry does accumulates from the destination rather than the displayed offset; the displayed offset is clamped to the geometry at hand, so an unreachable destination never shows blank space and resolves when layout catches up. Wheel and touchpad motion eases the same way and joins the pending destination while it continues the motion, while a gesture that runs against it takes over from the displayed offset instead, so reversing it answers the hand at once rather than finishing the old destination first. A wheel that reports fractional detents is a high-resolution device instead, and Windows gives a touchpad's motion to such a reader in batches: dense packets while the hand cruises, and after any silence a flush carrying what the OS accumulated meanwhile — sometimes detents of it, and sometimes a whole detent rounded out of the fractional stream, which the stream adopts while it lives. Easing every packet from a standstill would make a fast two-finger scroll crawl and then lurch, so the stream carries a speed taken from the spacing of its packets and the page rides it across the gaps; a packet in the stream's own direction continues it, even after a silence, while a packet against it is a new gesture whose first distance is pure. A silence-long distance names no speed any hand moved at, so a late flush keeps the speed the stream decayed to, and no packet's own rate is believed faster than the reader is willing to chase, for a flush often arrives as a dense burst of large packets whose rates name speeds no finger reached; its distance is paid by the capped chase, landing as a glide rather than a lunge and a freeze. The lead the page may run ahead adapts to the packets' own spacing: a dense stream keeps the page on its heels, a sparse one bridges its gaps. When the packets go quiet — a hand halted on the pad, or lifted; nothing announces which — the lead is lifted and the speed dies at a faster quiet rate, so the page stills within a beat while a lift's flush, arriving later, still finds speed to continue. A thumb drag is never eased, and ends a running animation, as do tab switches, reloads, panels and confirmations. A request with no distance to travel creates no animation state, no timer is armed and the event loop waits as before.
-
-While the reader stays put, the renderer rasterizes the glyphs of the screenful below in slices of a couple of milliseconds, so the frame that scrolls into them does not pay for them. A pass yields to any frame that is itself slow, declines once the glyph atlas is three quarters full rather than evicting what is on screen, and stops once the screenful is prepared. It leaves image demand and image textures to the frame that is actually presented: the frame it builds is thrown away, so publishing its demand would drop the request for an image the reader can see.
-
-Links are activated only on a matching, non-drag release. `src/link.rs` is the single policy for what a document-controlled link may do: Markdown opens as a reader tab, an inert allowlist of files and any directory goes to the system handler, and everything else is shown in a confirmation first, whose default action opens the containing folder. [Security and threat model](security.md#links-and-os-handlers) owns the policy and residual risks; the [security reference](security-reference.md#local-link-classification) lists the exact extensions. A document that names more remote images than the per-revision cap allows shows a notice strip below the tab bar with Dismiss and Load all; the strip reserves its own band rather than covering text. A heading fragment moves the reader to that heading: `#anchor` inside the current document, or `file.md#anchor` after the target tab opens. Anchors are the GitHub slugs of heading text, and a link that uses a different slug rule is reported as a missing heading rather than guessed at. Markdown is never opened for writing. Clipboard output is reading text: code preserves meaningful whitespace, tables use tabs, formulas contribute LaTeX, and Markdown markers are omitted.
-
-A table-of-contents drawer lists a document's headings in reading order, built once per accepted document and cached with the session. It is an overlay rather than a modal panel: `PanelPage` remains closed, so the document keeps scrolling and selecting behind it, while the wheel over the drawer, the drawer's own rows, and Up/Down while it is open belong to the list. An entry jumps through the same fragment path as a `#anchor` link, and the entry holding the reading position is highlighted from the snapshot's heading anchors, resolved only while the drawer is open.
-
-Settings are layered as defaults, user TOML, then explicit command-line overrides. Interactive changes may persist user preferences; render, benchmark, and smoke modes never read the user's TOML, so a preference set in the window does not reach their output. Each persisted reader field is declared once in the settings field table (`src/settings/schema.rs`), which derives the default, the TOML mapping and `copy_field` together. Stylesheets are parsed and merged transactionally: an invalid update leaves the last effective stylesheet in place.
+Persist reading intent, not allocated IDs. Saved positions are tied to input
+identity and front-end semantics; when those no longer match, restoration uses
+scroll fallbacks instead of attaching an old position to unrelated text.
+Disclosure overrides follow the same rule. Resource grants are never restored.
+The session implementation owns schema versions and migration details.
 
 ## Resource and performance boundaries
 
-The practical performance boundary is not a promise about every Markdown file. Ordinary paragraphs have a line-break budget, image decoding has byte and pixel caps, and CPU image pixels and GPU textures have independent budgets. Caches are bounded or scoped to the current document where possible.
+The host owns filesystem/network authority, image decoding, font downloads and
+cache lifetimes. The document only describes resources; layout only consumes
+prepared inputs. All entry points must preserve the [security policy](security.md),
+including export and clipboard staging.
 
-Measured baselines and their environment live in the [performance model](performance.md). Compare like-for-like runs: fonts, drivers, DPI, pathological paragraphs and large assets all affect the result.
+Bounds apply to specific resources and operations, not to an unconditional
+promise about every document's total memory or latency. Measure changes using
+[paired performance comparisons](performance.md), including first readable frame,
+complete layout and retained memory. A throughput improvement can still delay
+first publication or increase memory.
 
-## Internal ownership
-
-The package boundaries also apply inside each crate. Entry points compose concrete
-components; helpers receive borrowed inputs instead of an application-wide context.
-
-| Component | Owns | Boundary |
-| --- | --- | --- |
-| Application `Tabs` | Active session, inactive tabs, request serial | Tab transitions return to the window adapter for watching, redraws and requests. |
-| Application `Preferences` | Effective settings, persistence store, stylesheet catalog, save deadline | Stylesheet validation finishes before the effective sheet and UI appearance change. The application applies successful changes to the renderer. Export preferences live beside the reader's, never inside them. |
-| Application export | `export::Session` owns the bookkeeping: the running job, its source and background thread, the PNG strip loop and the watch target | Reads and lays the document out itself at the export's own options, so it never requests a reader layout; only PNG strips touch the shared GPU device, one per frame, with the export's own stylesheet. |
-| Application tab strip | Scroll offset, drag gesture and cached filename widths | Pure strip geometry drives both painting and hit testing. Reordering moves sessions without submitting layout requests; clipped draw groups contain overflow. |
-| Application chrome | Borrowed display state grouped into four read-only views, plus compiled icon buffers | `FrameView`, `SessionView`, `SettingsView` and `StatusView` group the painter's inputs, so `Chrome` keeps seven fields instead of a flat borrowed list. Controls, footer, tabs and styles produce geometry without window, worker or configuration I/O access. `Chrome::layers` declares the toolbar-to-frame paint order once; `overlay_with_form` walks it and each band draws only itself, so a new overlay is one `Layer` variant, one ordered line and one drawing arm. Shared buttons and grouped forms own drawing, clipped pointer regions and focus geometry; font scroll and filters stay in the font feature; other panel offsets stay in interaction state. Selection-count caching remains in the application adapter; icons stay editable SVG files that the `markview-icon` macro parses into vector buffers at compile time, so no SVG parser reaches the binary. |
-| Window frame | Shared logical geometry and platform effects | `app::frame` reserves caption, tab, toolbar and drag regions independently of MVSS. The dropdown choice is frozen at launch. Custom frame input precedes viewer and reader input. macOS retains an `NSWindow` titlebar with native corners and, by default, traffic lights. Windows and Linux share one button size and spacing across their right-side controls; their SVG shapes differ. Windows keeps winit's native sizing and adds a scoped nonclient hit-test hook for resizing, dragging and maximize-hover Snap Layouts, synchronized explicitly during painting; nonclient touch messages continue to the system. Linux starts compositor move/resize from a mouse press or touchscreen contact. On Wayland, winit supplies the matching touch serial for native move/resize requests. Native pointer events are normalized by `markview_platform::event` into the reader's mouse and touch streams; file drops use asynchronous URI transfers and open through the same document route as other local paths. |
-| Image scheduler | Versioned entries, jobs and published snapshot | Source reads, the pinned HTTP client, the bounded disk cache, bounded decoding and allocation-aware pixel eviction are separate modules. A poll reclaims completions, expires changed source stamps and reschedules in that order; a pure schedule key keeps demand priority apart from theme-generation invalidation. |
-| `LayoutEngine` | Document block cache, shaping/math resources, highlight owner | Snapshot assembly and invalidation stay at this entry point; immutable stylesheet identity is computed once per document pass. |
-| `paginate` | Band segmentation, page distribution, page furniture | Pure geometry over a settled snapshot: no fonts, no I/O, and no effect on the reader's layout. |
-| PDF painter | Font subsets, glyph runs, page content, annotations | One export owns its krilla document; nothing it embeds outlives the call. |
-| Block layout context | Borrowed shaper, math engine, image snapshot and completed highlights | Inline preparation, paragraphs, code, images, tables and containers cannot start jobs or invalidate document caches. |
-| Renderer `Gpu` | Device, queue, surface and device-loss state | Owns acquisition, resize/recovery, completion and offscreen readback. |
-| Renderer raster cache | Atlas, raster keys, scaler and math fonts | Glyph/path preparation borrows the queue; paths write to the shared geometry buffer. |
-| Renderer image textures | Texture cache, image runs and current-frame demand | Owns budget checks, version pruning and atomic demand publication. |
-| Renderer geometry | Vertices and reusable GPU vertex storage | Produces clipped quads; the frame adapter preserves paint order and submission. |
-
-Parsing and representation have separate source modules: Markdown translation
-owns the comrak reader, settings persistence owns the serialized configuration,
-and stylesheet parsing owns validation. Reading selection and visual hit testing
-share the immutable text nodes without rebuilding their logical content.
-
-Module extraction does not change line-break budgets, cache keys, worker counts,
-image budgets, request acceptance, or ordering of draw commands. Hot paths use
-concrete types and borrowed resources, with no dispatch registry or additional
-synchronization. A source-file target of about 500 production lines is a review
-heuristic, not a reason to split an otherwise cohesive algorithm. Tests live next
-to their owning modules in separate sources when they obscure production code.
-`scene.rs` remains a small exception at about 530 lines: it keeps the shared
-immutable drawing, viewport and scrollbar geometry vocabulary together.
-
-### Touch and touchpad gestures
-
-`app::gestures` owns gesture capture and routes motion to the document, a wide
-block, Contents, a settings panel or the tab strip. The pure `recognizer` handles
-contact identity, tap slop, direction locking and velocity decay;
-it does not depend on window creation, layout workers or renderer state. A tap
-activates only on release over its original target. A drag or additional finger
-cancels that activation. Touch controls accept at least a 44-logical-pixel hit
-area where space permits, with exact hits taking priority over nearby controls.
-
-Touch motion follows the finger without wheel-speed scaling. Pixel-based
-trackpad motion uses the configured scroll multiplier but bypasses wheel easing.
-Both inputs capture their scrolling surface and share exponential coasting,
-stopping at bounds or on new input, navigation, focus loss, resize and reload.
-macOS pixel events include the platform's native inertia, so Markview does
-not synthesize a second coast. Other pixel streams can coast when the backend
-supplies an `Ended` phase. Streams without an end phase retain their delivered
-motion. Line events take the wheel path, where the momentum branch opens on
-the shape of the report rather than the device's name: a whole detent only
-ever eases, while fractional packets — what a high-resolution or free-spinning
-wheel mouse produces, and a Windows touchpad produces on the fallback path —
-carry a speed taken from their spacing that rides the silences between them.
-
-Every scrolling input reaches the page by one of four channels, told apart by
-what each carries. A discrete request — a key, an anchor jump, a scrollbar
-click — carries a destination and nothing of the motion. The wheel channel
-carries deltas alone: no statement of contact ever arrives, and a stream can
-batch up with silences inside it, its inertia flushes landing seconds after
-the lift. The pixel channel carries the motion itself — on macOS together
-with the platform's finished momentum and its phases, on Wayland as bare
-deltas with no end phase. The Direct Manipulation channel, Windows only,
-carries the fullest set: contact state, per-frame deltas and the OS's own
-inertia engine.
-
-| Input | Channel | The platform supplies | The reader does |
-| --- | --- | --- | --- |
-| macOS trackpad, Magic Mouse | Pixel | Deltas, phases, finished momentum | Carries the motion across as delivered |
-| macOS wheel mouse | Wheel | Whole detents | Eases each step |
-| Windows touchpad, Direct Manipulation | Direct Manipulation | Contact, deltas, inertia | Carries the motion across as delivered |
-| Windows touchpad, fallback | Wheel | Fractional packets, batched and late | Rides the packet momentum |
-| Windows wheel mouse | Wheel | Whole detents, or fractional packets | Eases, or rides the packet momentum |
-| Linux touchpad | Pixel | Deltas only, no end phase | Coasts on its own when the stream ends |
-| Linux wheel mouse | Wheel | Whole detents, or fractional packets | Eases, or rides the packet momentum |
-
-On Windows, a precision touchpad pans through Direct Manipulation when the
-platform offers it: the document window opts in once at creation, and the OS
-then drives the offset itself, with its own gesture recognition and inertia
-engine, pumped from the frame deadline the reader already keeps. A touchpad
-contact offered to the viewport hands the pan to the OS, away from the wheel
-channel, and what the viewport reports folds onto the same pixel-pan seam the
-macOS trackpad feeds: a status run speaks the gesture's start and end, each
-content transform's motion since the last frame becomes a delta in logical
-pixels, and the motion after the lift is the OS's own native inertia, so the
-reader synthesizes no coast of its own. The OS never touches the page itself —
-a self-drawn renderer has no child surface for it to push — so the motion is
-transcribed rather than delegated: the physics stays with the OS, and the
-reader's whole work is carrying the displacement across. While a scrollbar,
-selection or viewer
-drag owns the input the deltas drop, and focus loss, resize, reload, a panel
-opening or a tab switch abandons the viewport, so the OS cancels the gesture
-in flight. When the API is absent, initialization fails, or `MARKVIEW_NO_DM`
-is set, the reader silently keeps the wheel handling above; Chromium opts its
-windows into Direct Manipulation for the same reason, and its implementation
-is the prior art for the [choreography](https://codereview.chromium.org/1283913002).
-
-Touch and native `PinchGesture` zoom are pending viewport-based zoom support;
-pinching does not currently change document settings. Generated mouse events
-are suppressed while touching and briefly after release.
+For UI changes, read [Native UI](ui.md). For a new input or semantic construct,
+follow [Add a document node](development.md#add-a-document-node).

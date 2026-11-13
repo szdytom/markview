@@ -1,491 +1,113 @@
-# Development guide
+# Develop Markview
 
-This page is for contributors changing Markview. It is procedural: the design rationale is in [architecture](architecture.md), and the MVSS format is in [the stylesheet guide](../users/stylesheets.md).
+This guide takes a contributor from a checkout to a validated change. Read
+[CONTRIBUTING](../../CONTRIBUTING.md) for contribution policy and
+[AGENTS.md](../../AGENTS.md) for repository conventions.
 
 ## Build and verify
 
-Use the locked workspace commands from the repository root:
-
-```sh
-cargo fmt --all --check
-cargo test --workspace --all-targets --locked
-cargo clippy --workspace --all-targets --locked -- -D warnings
-cargo build --release --locked
-```
-
-For the fast local checks, install `actionlint` and make it available on `PATH`,
-then run:
-
-```sh
-python3 scripts/check_local.py
-```
-
-It runs workflow linting, formatting, structural and repository-metadata checks
-that need no GPU, emulator, network or packaging tools. Workflow linting covers
-all hand-maintained workflows; the generated `release.yml` is checked by `dist`.
-Add `--compile` for `cargo check` and clippy, `--icons` for the committed icon
-assets, `--dist` when `dist` is installed, and `--full` for the workspace tests
-and Linux PDF regressions.
-
-Selected checks that failed on the previous run go first; the remaining checks
-keep their standard order. A successful run clears the record and restores the
-standard order. Failures are stored in the current worktree's Git metadata at
-`git rev-parse --git-path check-local-failures`, outside version control and
-unaffected by `cargo clean`. `--list` shows the execution order without changing
-the record.
-
-The `smoke`, `bench` and `latency` subcommands are developer diagnostics behind
-the off-by-default `diagnostics` feature; release builds do not include them.
-Build a binary with them when a task needs one:
-
-```sh
-cargo build --release --locked --features diagnostics
-```
-
-CI runs MSRV checks, source audits, three-platform Clippy and three-platform
-tests as independent jobs. CI disables incremental compilation and debug info
-for development and test builds to keep artifacts small; local profiles are
-unchanged.
-
-Run the Rust cyclomatic complexity audit before every push; CI runs it once on
-Linux, inspecting all platform branches, and fails on an unmarked violation:
-
-```sh
-cargo run -p xtask --locked -- complexity
-```
-
-The maximum is 15, configured under `[workspace.metadata.lint]` in
-`Cargo.toml`. The command prints every function or closure above the limit,
-followed by the report count, and exits with status 1 if any exceed it.
-It scans workspace library, binary and build-script module trees, including
-all platform branches. Test, benchmark and example targets, `#[test]`,
-`#[cfg(test)]` code and the `test-support` feature are excluded.
-
-Each function or closure starts at 1. `if`, `while`, `for`, `?`, `&&` and `||`
-add 1; a `match` adds its arm count minus 1, plus 1 for each guard. Nested
-functions and closures are measured separately. This is a source AST check:
-macro bodies and expansions are not analyzed. Clippy's `cognitive_complexity`
-uses a different metric. CI runs the audit unconditionally in the source-audit
-job; an unmarked violation or malformed exception fails the aggregate
-`ci` check. The [triage record](complexity-triage.md) links each existing violation
-to its refactor or explicit exception.
-
-An intentional exception must be marked on the function itself, with a
-nonempty reason:
-
-```rust
-#[cfg_attr(any(), markview::allow_complexity(reason = "Keep the exhaustive mapping together"))]
-fn map_kind(kind: Kind) -> Value {
-    // ...
-}
-```
-
-`any()` is always false, so stable Rust ignores this source-only attribute;
-the complexity checker reads it. The same marker works on methods and trait
-methods with a default body. It exempts only that body: nested functions and
-closures keep their own checks. Module, `impl` and crate annotations do not
-grant exemptions. Missing or blank reasons fail the audit. Exempt functions
-still have their complexity measured and printed with the reason, and the
-summary includes their count; they do not contribute to the failure count.
-
-For a closure, put its annotated expression inside a block, since attributes
-directly on an initializer expression require unstable Rust:
-
-```rust
-let handler = {
-    #[cfg_attr(any(), markview::allow_complexity(reason = "Keep the worker state transitions together"))]
-    move || {
-        // ...
-    }
-};
-```
-
-Debian and Ubuntu additionally need the native development packages:
+Use a Rust toolchain satisfying `workspace.package.rust-version` in
+[Cargo.toml](../../Cargo.toml). On Debian/Ubuntu, install native build dependencies:
 
 ```sh
 sudo apt-get install libfontconfig1-dev libxkbcommon-dev libwayland-dev mesa-vulkan-drivers vulkan-tools
+cargo build --locked
+cargo run --locked -- --foreground examples/welcome.md
 ```
 
-Automated tests use the committed subsets in `crates/markview-layout/tests/fonts`
-with system fonts disabled, including SVG, Mermaid and GPU tests. Running the
-reader itself needs fonts covering Latin and CJK, such as `fonts-noto-core` and
-`fonts-noto-cjk`. Regenerate subsets with `scripts/generate_test_fonts.py` when
-adding characters or faces; that step requires the source Noto fonts and
-Python `fontTools`.
+The reader needs fonts covering the document's scripts. Tests use committed font
+subsets. For Web-only or Android development, use the separate
+[Web](web.md) or [Android](android.md) setup instead.
 
-Offscreen rendering tests run with the normal test suite and need no window or
-physical GPU. Linux CI selects Mesa Lavapipe, which executes the Vulkan pipeline
-on the CPU, and uses `tests/fontconfig.conf` to hide all installed fonts. On
-Arch Linux, install `vulkan-swrast` and `vulkan-tools`. Reproduce Linux CI with:
+Before submitting a change:
 
 ```sh
-driver=$(find /usr/share/vulkan/icd.d -name 'lvp_icd*.json' -print -quit)
-test -n "$driver"
-VK_DRIVER_FILES="$driver" WGPU_BACKEND=vulkan vulkaninfo --summary
-VK_DRIVER_FILES="$driver" WGPU_BACKEND=vulkan \
-  FONTCONFIG_FILE="$PWD/tests/fontconfig.conf" \
-  cargo test --workspace --all-targets --locked
+cargo fmt --all --check
+python3 scripts/check_local.py --compile
+cargo test --workspace --all-targets --locked
+cargo run -p xtask --locked -- complexity
 ```
 
-`VK_DRIVER_FILES` restricts Vulkan to Lavapipe even when a hardware adapter is
-available. A missing adapter fails the tests rather than skipping them. Windows
-can use the Direct3D software adapter (WARP); macOS uses Metal. CI uploads the
-generated frames in `artifacts/` for inspection.
-
-On Linux, `crates/markview-render/tests/golden.rs` also compares document frames
-against committed PNGs in `crates/markview-render/tests/goldens`. It requires
-Lavapipe and compares decoded RGBA pixels with a tolerance of two levels per
-channel for cross-driver rounding. Every pixel must meet that limit; there is
-no permitted percentage of larger differences. Image dimensions must match
-exactly.
-The [rendering coverage guide](rendering-tests.md) lists the Markdown syntax,
-combinations, all bundled themes, MVSS fields, Chinese/English typography,
-PDF pages, diagrams, UI and search states exercised by the suite. It needs
-`pdftoppm` for the PDF captures. Fonts and images are loaded before rendering,
-and highlighting is settled before the capture. Windows and macOS run the
-existing rendering tests without comparing to the Linux baselines.
-
-Run just the baseline comparisons, or explicitly update them after an intended
-visual change:
-
-```sh
-bash scripts/test_render_goldens.sh
-bash scripts/test_render_goldens.sh --update
-```
-
-The script accepts an existing `VK_DRIVER_FILES` override. Normal tests never
-create missing baselines or overwrite existing ones. A mismatch writes actual,
-expected and difference PNGs to `artifacts/render-goldens/`; magenta pixels in
-the difference image mark every changed pixel. The failure reports the pixel
-count, bounding coordinates and dimensions, and CI uploads these files even on
-failure. Missing baselines fail with the actual frame available for inspection.
-Review the updated PNGs before committing them alongside the visual change.
-
-CI runs property tests in `pbt.yml` and Linux baseline comparisons in
-`golden.yml`, in parallel with the regular tests in `checks.yml`. Both CI and
-release checks require all three workflows to pass. Local workspace tests still
-include all suites.
-
-CI pins Ubuntu 24.04, Mesa 25.2.8, LLVM 20.1.2 and Poppler 24.02 in `checks.yml`
-and `golden.yml`; when changing these versions, verify comparisons before
-considering a baseline update rather than widening the tolerance.
-
-Release archives, installers, and the platform icons are maintained separately;
-see the [packaging guide](packaging.md). After changing `assets/markview-icon-color.svg` or `assets/callouts/*.svg` (precompiled reader vectors):
-
-```sh
-cargo run -p xtask -- icons
-```
-
-For visual or timing changes, also use the real diagnostics build
-(`--features diagnostics`):
-
-```sh
-target/release/markview render examples/welcome.md --output artifacts/welcome.png
-target/release/markview render examples/mermaid.md --output artifacts/mermaid.png
-target/release/markview pdf examples/welcome.md --output artifacts/welcome.pdf
-target/release/markview smoke examples/welcome.md --output artifacts/window.png
-target/release/markview bench tests/fixtures/ordinary-10k.md --output artifacts/ordinary.json
-target/release/markview latency tests/fixtures/ordinary-10k.md --output artifacts/latency.json
-python3 scripts/smoke_watch.py target/release/markview
-```
-
-the `pdf` subcommand writes the paper edition: the document is laid out again at the page's
-text measure, broken into pages, and written as vector text with subset fonts.
-Check an export in a viewer (`pdftotext`, `pdfinfo`, `qpdf --qdf`) for page
-count, page furniture, link annotations, text selection and embedded fonts.
-A block that had to shrink to fit the page, or a band taller than the page, is
-reported on stderr. The export never depends on the GPU, so it runs headless.
-Add `--watch` to iterate on a document: the session rebuilds the PDF on every
-save, reusing the unchanged parse, layout and images, and logs how many blocks
-each rebuild reused.
-
-The GPU renderer and the PDF writer share the layout and the `print` sheet, so
-the same document at the same measure must place the same content in the same
-place. `scripts/compare_pdf_render.py` holds them to that: it exports one
-fixture both ways, rasterizes the PDF page with Ghostscript, and reports each
-content band's best alignment, profile overlap, ink ratio and a windowed SSIM,
-then fails on a shift, a missing band, or a low overlap. It needs python3 with
-numpy and Pillow, plus `gs`:
-
-```sh
-python3 scripts/compare_pdf_render.py examples/welcome.md --out /tmp/pdf-cmp
-```
-
-At the default two device pixels per layout pixel the two images overlap by
-86–97% per band with no shift; the remaining difference is glyph rasterization
-weight, because the GPU bakes subpixel coverage into bitmaps while Ghostscript
-antialiases vector outlines. `--out` keeps a side-by-side image and a diff heat
-map for eyeballing.
-
-`latency` measures the two latency targets and the reload memory trend
-through the real layout worker and prefix publication: process entry to the
-first readable GPU frame, a small on-disk edit to the first refreshed frame and
-to the complete re-layout, and per-edit RSS. Aggregate independent processes
-with `python3 scripts/bench_latency.py`. The shipped large fixtures repeat
-paragraph bodies, which flatters any content-keyed cache; generate
-unique-content and cache-stressing fixtures with
-`python3 scripts/generate_stress_fixtures.py` before drawing scaling
-conclusions. First-frame samples are noisy across processes, so alternate the
-baseline and candidate binaries rather than running one set after the other.
-The [latency and memory analysis](performance-analysis.md) records
-the baseline those commands produced.
-
-The README screenshots are reproducible on a KDE/Wayland desktop. They show the
-real window, so the capture asks Spectacle for the active window and then crops
-it to the window frame:
-
-```sh
-scripts/capture_screenshots.sh                 # every image
-scripts/capture_screenshots.sh en-typography   # one image
-```
-
-Their sources are under `docs/screenshots/source/`. The latency and memory
-figure is drawn from the baselines in [the performance model](performance.md):
-
-```sh
-python3 scripts/generate_readme_charts.py
-```
-
-`scripts/generate_large_fixture.py` writes 100 KiB `math-cjk-100k.md` and
-`text-cjk-100k.md` fixtures for large-document timing. Set `MARKVIEW_PROFILE=1`
-when running `bench` to add inclusive per-sub-stage layout timings to the
-report under `profile_ms`; leave it unset for production-comparable numbers,
-because the probes add roughly 5 % to layout.
-
-`tests/fixtures/emoji-fallback.md` exercises bold check/cross Emoji, keycaps,
-headings, emphasis and mixed scripts. Include it in cold-process comparisons:
-warm reflows alone hide font fallback initialization costs. For a stage breakdown:
-
-```sh
-MARKVIEW_PROFILE=1 target/release/markview bench tests/fixtures/emoji-fallback.md --iterations 3 --output artifacts/emoji-profile.json
-
-Use `--scale 2` on `bench` or `latency` to measure the native high-DPI path; the scroll report lists the offsets whose frames crossed an atlas reset.
-```
-
-`layout.font_resolve_ms` measures configured candidate resolution/loading;
-`layout.font_choose_ms` measures cluster coverage selection and fallback warnings;
-`layout.shape_build_ms` measures Parley's build, including its own font fallback
-and shaping. These are inclusive diagnostic spans, not additive pipeline stages.
-Render this fixture in both themes as well as measuring it. Default Emoji
-candidates explicitly use weight 400 because many Emoji fonts have no bold face.
-
-The bundled Emoji definitions set `emoji = true`, so a cluster Unicode presents
-as Emoji (`Emoji_Presentation`, or a `U+FE0F` selector) takes that face even when
-a text candidate covers it too. The pinned test fonts reproduce the case: the
-Noto Serif and Noto Sans CJK subsets both hold U+26A0, so `⚠️` must resolve to
-Noto Color Emoji while `⚠` stays with the CJK face. `U+FE0E` keeps the text
-presentation. The classification follows Unicode defaults, so bare warning
-signs, hearts, © and ™ stay with the reading font; if no text candidate covers
-one of those, the Emoji face is still the last resort.
-
-When no configured face covers a cluster/word, a `WARN` line on stderr reports its
-Unicode codes, requested candidates and available faces before handing it to
-Parley. Normal selection of a later configured candidate is silent. Warnings are
-limited to one per candidate set (including requested weight), at most 64 per text
-shaper, and survive reflow/stylesheet resets. Internal object placeholders are
-excluded. To exercise warnings, use a temporary custom style with unavailable font
-families and a character those fonts cannot draw; verify repeated reflows stay
-quiet.
-
-The reader and layout engine log through the `log` facade, and the binary writes
-`LEVEL message` lines to stderr. A plain window run defaults to `warn`, so the
-lifecycle and timing lines stay quiet; `render`, `bench` and `smoke`
-default their own targets to `debug` so the diagnostics below are visible. Set
-`RUST_LOG` to override either, for example `RUST_LOG=info` for the display metrics
-or `RUST_LOG=debug` to include dependency logs.
-
-Window launches detach from the terminal by default. Add `--foreground` when
-debugging or supervising the reader, for example
-`RUST_LOG=debug target/debug/markview --foreground examples/welcome.md`.
-
-The render and benchmark modes use the GPU offscreen and do not load personal settings. The watch smoke test writes only temporary documents and closes the window it starts.
-
-Window layout publishes a readable prefix before completion. Native `smoke`
-logs `process entry→readable GPU frame` (true process entry) and
-`process app entry→readable GPU frame` (after command-line and stylesheet setup)
-for that first frame and `full layout complete` separately, then waits for the
-complete snapshot to render before exiting. Its PNG captures the first readable
-frame. Offscreen `bench` and `render` continue to use complete geometry;
-their timings must not be reported as progressive window first-frame timings.
-
-Run individual rendering tests for settings, selection, and image-frame regressions:
-
-```sh
-cargo test --workspace --locked button_feedback_frames
-cargo test --workspace --locked redesigned_chrome_frames
-cargo test --workspace --locked settings_and_selection_frame
-cargo test --workspace --locked outline_drawer_frames
-cargo test --workspace --locked tab_strip_frames_clip_overflow_at_fractional_dpi
-cargo test --workspace --locked gpu_frame_draws_decoded_images
-cargo test --workspace --locked color_glyphs_preserve_rgb_and_share_paint_order
-```
-
-The redesigned chrome matrix writes `artifacts/ui-redesign/` frames for both
-palettes, 500×300, 820×600 and 1200×800 windows, and 1×, 1.25× and 2× form
-rendering. Inspect the settings and export clips, fixed footers, focus outlines,
-stylesheet list, empty/loading/error states, image notice and confirmation.
-Button state sheets in `artifacts/ui-feedback/` compare resting, hover, pressed,
-keyboard focus and disabled states at the same scales. Pointer activation occurs
-on a matching release; keyboard navigation alone displays the focus outline.
-Shared form geometry supplies unclipped controls for keyboard navigation and
-clipped controls for pointer input; Tab reveals the focused control. Closing a
-panel resets its position on the next open, while a stylesheet round trip keeps
-the parent form's scroll position. Settings' eye control fades the form to 25%
-opacity without dimming the document; its exit icon stays opaque. Preview is
-transient and resets when settings reopen. The toolbar remains drawn behind
-all panels. UI colors remain MVSS rules under `ui`;
-document and print typography are independent.
+`check_local.py` requires `actionlint`; it runs repository checks, formatting and,
+with `--compile`, Cargo check and Clippy. `--list` lists the selected checks.
+Use `--icons` for icon assets, `--dist` for cargo-dist configuration and `--full`
+for workspace/PDF tests. See [testing](testing.md) for GPU setup and specialized
+suites. A missing GPU adapter is a test setup failure, not a skipped test.
 
 ## Choose the layer
 
-1. Put source conversion in `markview-commonmark`, HTML article extraction in `markview-webpage` (it lowers a page to the same semantic nodes without a source map), semantic nodes and identities in `markview-document`, and reading text, geometry, hit testing and selection mapping in `markview-layout`.
-2. Put the pointer-driven selection machine, which holds no reading text and no events of its own, in `crates/markview-interaction`.
-3. Put GPU resources, clipping, rasterization, and frame assembly in `crates/markview-render`.
-4. Put files, settings, watching, image I/O, platform effects, commands, and window interaction in the root crate.
+Use the [architecture map](architecture.md#document-processing-and-rendering).
+Put a change at the owner of its behavior: source interpretation in a front end,
+reading geometry in layout, drawing in a backend, and user policy in the host.
+Native services belong in `markview-platform`.
 
-Keep document processing free of window, GPU, clipboard and application configuration dependencies; native callers opt into font-directory access. Prefer immutable snapshots and explicit version tags at asynchronous boundaries. Reuse the retained `Document` when only layout settings change.
-
-## Change a feature
-
-For a font filter or row action, edit `src/app/font_panel/mod.rs` and its
-`view.rs`; the root command routes the feature as one category and chrome
-borrows its display model. Add a behavior test there for the filtered row's
-identity, cancellation or progress. Shared button and list geometry stays in
-`app/chrome`. Change panel navigation through `InteractionState` operations,
-keeping the outline and confirmations independent.
-
-For export options, compose reader settings and CLI flags into `export::Config`.
-Keep template, font, numeric validation and page resolution in its preparation
-path, shared by UI, `pdf` and `export`. Update `export::PdfRequest` only when the
-PDF service needs new information. Keep entry-point defaults explicit and test
-the resulting request and export, including agreement between file and buffer
-commands.
-Transport policy belongs in `net`; image caching and font installation stay
-with their respective services.
-
-## Add a UI icon
-
-1. Put a square, geometry-only SVG in `assets/ui`. Its colors are ignored: the button's theme color paints it, stroked figures are drawn round-capped, and a filled figure must set `fill` on the element. Keep `width`, `height` and `viewBox` consistent so the stroke weight normalizes correctly.
-2. Add a constant to `src/app/chrome/icons.rs`, such as `pub(super) const SAVE: &[IconPath] = markview_icon::icon!("assets/ui/save.svg");`. The macro parses the file at compile time into a unit-box buffer and registers it for rebuild tracking, so no SVG parser reaches the binary.
-3. Set `icon: Some(...)` on the button's `Button` literal. The chrome centers it with `button_icon` in place of the label.
-4. Keep the button's `label` even when it draws an icon; tests and hit testing use it as the button's name.
+Start with a focused regression that fails for the reported behavior. Test the
+observable result rather than the implementation's own intermediate calculation.
+Then run the relevant integration suite and the repository checks above.
 
 ## Add a document node
 
-Use this sequence when adding a Markdown or HTML construct:
+1. Define the construct's meaning, reading order and copy/search behavior.
+2. Add its semantic representation in `markview-document` and conversion in the
+   appropriate front end. Preserve source mapping where source text exists.
+3. Produce reading text and geometry together in `markview-layout`. Decide how
+   the construct behaves in selection, disclosures, overflow and pagination.
+4. Extend paint instructions only when the existing vocabulary cannot express
+   it. Renderers must not reinterpret source syntax.
+5. Test parsing, identity, source ranges, copy/search, reflow and export. Add
+   visual fixtures for visible changes and GPU tests for GPU-specific behavior.
 
-1. Identify the semantic input and its intended reading-text and copy behavior. Do not begin with a renderer primitive.
-2. Extend `BlockKind`, `InlineKind`, or the relevant style data in `crates/markview-document/src/lib.rs` (and `markview-commonmark`'s `html.rs` for supported raw HTML).
-3. Parse the construct into that semantic representation, preserving a source range and stable reading order. Keep unsupported syntax as literal text rather than silently dropping it.
-4. Add layout behavior in `layout.rs`. Decide whether the node is text, a block, or an atomic inline box; produce text nodes and geometry together so hit testing and copying use the same mapping.
-5. Add only the semantic paint instructions needed by the renderer. Do not make the renderer reinterpret Markdown.
-6. Add a stylesheet condition only if the node has a visual role that no existing condition expresses. Validate it through the same MVSS parser as bundled and user styles.
-7. Add focused unit tests for parsing, source ranges, reading text, selection/copying, layout, and cache identity. Add a renderer test only for GPU-specific behavior.
-8. Add a fixture or example when the feature is difficult to understand visually, then run the full workspace checks.
-
-Common mistakes are treating source offsets as persistent identity, putting display-only text into copied reading text, using glyphs as the selection model, and creating a second layout path for a special inline object. These produce subtle bugs in reflow, repeated blocks, CJK selection, and asynchronous reloads.
+Do not use source offsets as persistent identities, glyphs as the copy model,
+or a separate layout path for a special inline object.
 
 ## Change asynchronous behavior safely
 
-When a worker or loader changes, test stale-result rejection, replacement of pending requests, failed reads, and versioned image completion. Preserve the last valid snapshot on recoverable errors. When a change affects only colors or interaction overlays, avoid invalidating geometry; when it affects fonts, width, spacing, or intrinsic asset size, invalidate the relevant layout.
+Test replacement while work is pending, stale completion, cancellation and failed
+reads. Acceptance must check the current session/content/request even when the
+worker cooperates with cancellation. Preserve the last usable snapshot on a
+recoverable read failure. Reuse parsing for layout-only changes.
+
+For settings and panels, follow [Native UI](ui.md). Reader and export preferences
+have separate effects: changing paper settings must not reflow the reader.
+For resource work, preserve the [security boundary](security.md).
+
+## Add a UI icon
+
+1. Add a square geometry-only SVG under `assets/ui`, with consistent dimensions
+   and viewBox. Set `fill` explicitly on filled figures; theme colors paint it.
+2. Register it with `markview_icon::icon!` in `src/app/chrome/icons.rs`.
+3. Assign it to the button and retain the button label for identity/tests.
+
+For generated application and callout assets, run `cargo run -p xtask -- icons`
+and check the result with `cargo run -p xtask -- icons --check`.
 
 ## Bundled themes and visual verification
 
-Start with the [MVSS authoring workflow](../users/stylesheets.md#authoring-workflow).
+Follow the [MVSS authoring workflow](../users/stylesheets.md#authoring-workflow).
+Register bundled themes in the reader/PDF registry in
+`crates/markview-layout/src/style.rs`, according to their output destination.
+A theme normally needs no parser or renderer changes. New MVSS fields need parser
+and rendering coverage plus a format-reference update.
 
-For a repository-bundled theme, add the file to `Stylesheet::named_rules` and its ID to `Stylesheet::READER_THEMES` or `Stylesheet::PDF_THEMES` according to its destination in `crates/markview-layout/src/style.rs`; discovery and reserved-ID checks use that registry. Run `cargo fmt --all` and `cargo test --workspace`, then render the fixture. A new theme usually needs no parser or renderer changes. Extend MVSS only for a concrete visual requirement that existing fields cannot express, with parser and rendering tests plus documentation.
+Run the [visual suite](rendering-tests.md), inspect the images, and test the theme
+with both pinned test fonts and its intended fonts. Pinned-font coverage does not
+establish how an optional downloaded face looks.
 
-The rendering comparison uses the committed test fonts and draws requested weights 400, 450 and 500 at 12/14/16 logical pixels on light/dark panels and at 1×, 1.25× and 2× scale:
+## Debug a running reader
+
+Window launches normally detach. Keep logs in the terminal with:
 
 ```sh
-cargo test -p markview cjk_ui_weight_comparison -- --nocapture
+RUST_LOG=debug target/debug/markview --foreground examples/welcome.md
 ```
 
-Images are written to `artifacts/cjk-weight/`. With static Noto Sans CJK SC Regular and Medium faces, both 450 and 500 select Medium. Other families and operating systems need their own check; the screenshot's Traditional/Japanese sample still uses the SC font convention for this controlled comparison.
+For timing or native screenshots, build with `--features diagnostics` and follow
+[performance measurement](performance.md). For reproducible README captures, use
+`scripts/capture_screenshots.sh` on its supported KDE/Wayland desktop; source
+fixtures live under `docs/screenshots/source/`.
 
 ## Keep documentation maintainable
 
-Put native-reader usage in `docs/users/`, Web/TypeScript consumer APIs in
-`docs/library/`, and implementation, build, test and release material in
-`docs/developers/`. Add each page to its audience index; historical contracts
-belong in `docs/developers/history/`. Keep root READMEs focused on installation
-and product presentation. Run `python3 scripts/test_documentation.py` after
-documentation changes to check links, images, anchors and index coverage.
-
-Document guarantees and reasons in architecture pages, procedures and examples in guides, and measured facts in the performance page. Remove a stale statement instead of adding a contradictory exception. Link to the owning page rather than copying the same rule into several documents.
-
-## Refactor with a preserved baseline
-
-Before changing a performance-sensitive path, build the current release and copy
-its binary outside `target/release`. Keep its source revision with it. After the
-change, build the candidate with the same lockfile, toolchain and release profile.
-Compare the preserved and candidate binaries on the same machine with hardware
-GPU access, under the same power mode and operating conditions. Battery power
-and `power-saver` are valid for regression checks; AC power and the `performance`
-profile are not prerequisites. Alternate the binaries across repeated process
-groups, keeping power mode, CPU affinity, fonts, DPI and driver consistent.
-Avoid competing workloads and record changes in thermal or power conditions.
-On this host, `power-saver` slowed both binaries by 1.6–2×, which illustrates why
-current results must be compared with a contemporaneous baseline rather than
-historical absolute timings. Power mode alone neither establishes nor excuses
-a regression; investigate differences using paired measurements and A/A controls.
-
-Refresh the absolute performance figures in the README only during a release,
-using a recorded, reproducible measurement environment. Ordinary refactors
-validate relative performance against their preserved baseline and do not need
-to reproduce or update the README's absolute numbers.
-
-```sh
-python3 scripts/compare_performance.py \
-  --baseline artifacts/refactor/baseline/markview \
-  --baseline-revision BASELINE_COMMIT \
-  --candidate target/release/markview \
-  --output artifacts/refactor/comparison
-```
-
-The output directory must be new. By default the script alternates baseline and
-candidate order across five groups, using 100 full-layout samples and 100 cached
-samples per process, on all four 10 KiB fixtures, the local image example and
-the small Emoji fallback fixture.
-It preserves individual JSON reports, binary hashes, font inventory hash,
-platform/backend metadata, CPU affinity, and a Markdown/JSON comparison. An incompatible
-adapter, input, viewport or semantic result fails the comparison.
-
-First-open medians come from independent processes; they are not warm-reflow P95s
-and do not flush the OS file cache. The acceptance metrics are first open, full
-and cached P50/P95, post-scroll RSS/peak RSS, and tracked GPU bytes. Each uses the
-median of its per-process measurements; an increase over 5% fails. Initialization
-and individual stage medians remain diagnostic alongside raw samples because
-very small stage durations are sensitive to timer and scheduling noise. Missing
-memory measurements are reported as unavailable, not a pass. Repeat an unstable
-comparison and investigate outliers rather than changing the threshold.
-The benchmark also separates `gpu_prepare_and_submit_ms` from `gpu_wait_ms`;
-the latter includes blocking driver completion and host scheduling, not just
-GPU execution. Both remain included in the original end-to-end timing.
-
-For unexplained P95 failures, first run an A/A control by supplying the same
-preserved binary as both sides. A failed A/A gate demonstrates measurement
-variability, not a code regression. On hybrid CPUs, compare both versions with
-the same affinity (for example, `taskset -c CPU_LIST python3 scripts/compare_performance.py …`
-on Linux, after identifying the local core topology). Use `--iterations 500`
-or more to increase tail samples. Preserve these runs separately when affinity
-or iteration counts differ; do not merge incompatible experiments or relax the
-5% gate. A controlled pass does not erase an earlier failed measurement.
-
-Keep visual checks alongside timing checks. Compare deterministic offscreen
-exports with the preserved binary, then run the rendering tests and native
-window/watch smoke tests. Native Windows/macOS CI checks remain necessary;
-Linux GPU measurements do not establish runtime behavior on those platforms.
-
-When a noisy fixture needs additional groups, retain the original groups and
-merge them with the follow-up instead of selecting the more favorable run:
-
-```sh
-python3 scripts/compare_performance.py \
-  --merge artifacts/refactor/acceptance artifacts/refactor/long-code-followup \
-  --output artifacts/refactor/combined
-```
-
-Merging verifies identical binary hashes, toolchain, fonts, CPU affinity, backend,
-profile and iteration counts; it reports the number of groups for each fixture.
+Follow the [documentation rules](documentation.md). Update the page that owns a
+changed user behavior or public contract. Internal refactoring alone should not
+require rewriting guides. Run `python3 scripts/test_documentation.py` after edits.

@@ -1,17 +1,16 @@
-# Documentation
+# Markview documentation
 
-Choose the documentation for what you want to do:
-
-| Reader | Start here |
+| What do you want to do? | Start here |
 | --- | --- |
-| End users | [Use Markview](users/README.md): install the native reader, read documents, customize and export |
-| Library users | [Integrate Web components](library/README.md): use the Web/TypeScript viewer and editor in your application |
-| Markview developers | [Develop Markview](developers/README.md): understand, build, test and release the implementation |
+| Read, customize or export a document | [User guide](users/README.md) · [中文快速入门](users/guide.zh-cn.md) |
+| Embed a reader/editor or call the native exporter | [Integration guide](library/README.md) |
+| Build, change, test or release Markview | [Developer guide](developers/README.md) |
 
-The root [README](../README.md) ([简体中文](../README.zh-cn.md)) introduces the
-product and downloads. Each guide owns its detailed instructions; other pages
-link to it rather than repeating them. Historical design contracts live under
-`developers/history/` and do not define the current library API.
+Guides describe the checked-out code. For a released binary, use documentation
+from its matching tag and that command's `--help`. [Release notes](../CHANGELOG.md)
+record user-visible changes; [historical investigations](developers/history/README.md)
+retain measurements and earlier designs without claiming to describe today's build.
 
-Examples remain under `examples/`; screenshots and their source documents remain
-under `docs/screenshots/`; test fixtures stay beside the tests that use them.
+The [root README](../README.md) introduces the product.
+[Examples](../examples) supply sample documents; screenshots and test fixtures
+remain with their owning workflows.

@@ -15,9 +15,9 @@ options, and restores them on startup; input focus is not restored after a resta
 ## Automated checks
 
 ```sh
-cargo test --workspace
+cargo test --workspace --locked
 cargo fmt --all -- --check
-cargo clippy --workspace --all-targets -- -D warnings
+cargo clippy --workspace --all-targets --locked -- -D warnings
 cargo test -p markview app::search::tests::search_bar_and_highlight_gpu_frames -- --nocapture
 cargo test --release -p markview-layout --test search large_document_search_measurement -- --ignored --nocapture
 ```
@@ -29,21 +29,6 @@ content, query cancellation, stale results, file revisions, per-tab state,
 wrapping navigation, horizontal positioning and selection independence.
 Input tests cover preedit, candidate-confirming Enter, layered Escape and
 unchanged Wayland candidate-window geometry.
-
-A 5.5 MB document with 100,000 paragraphs now reports approximately 12.9 MB
-of index allocations, down from 18.3 MB before optimization (about 30%). A
-local release build measured 12 ms to build, 8 ms to return 100,000 matches
-and 1 ms for a query with no matches. First-use whole-word segmentation for
-a frequent one-letter query took 60 ms; subsequent queries reuse boundaries.
-Timing is diagnostic, not a performance guarantee.
-
-Search scans contiguous semantic text with field boundaries preserved and
-checks cancellation between bounded chunks and matches. Query edits preserve
-an index build for the same document version while cancelling stale matching;
-a different document/version invalidates that build. Results arrive as a
-shared ordered array, so the UI neither copies all matches nor allocates a
-separate per-field highlight index. Visible blocks use binary search; clusters
-within them are filtered individually to accommodate multiline image placeholders.
 
 ## Native GUI checklist
 
@@ -72,8 +57,8 @@ Complete these checks on the target desktop, particularly Wayland and macOS:
 - [ ] Select and copy text while search highlights are visible. Copied content
   must match the selection, and closing search must leave that selection intact.
 - [ ] Switch between two documents with different queries/options/results.
-  Each switch must close the bar; reopening must restore that document’s query
-  and options. Closing the active tab must leave the next document’s bar closed.
+  Each switch must restore that document’s bar visibility, query, options and
+  input focus. Restarting restores saved search state without restoring input focus.
   Reload one from disk while typing; results must follow the new file only.
 - [ ] Open Settings or Export while searching, then Ctrl/Cmd+F. The ordinary
   panel closes and the preserved query is selected. A confirmation dialog

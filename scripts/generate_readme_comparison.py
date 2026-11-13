@@ -11,7 +11,7 @@ import matplotlib.pyplot as plt
 from matplotlib.patches import Patch
 
 ROOT = Path(__file__).resolve().parents[1]
-SOURCE = ROOT / "docs/developers/comparison.md"
+SOURCE = ROOT / "docs/developers/history/comparison.md"
 OUTPUT = ROOT / "docs/screenshots/readme"
 PAPER, INK, MUTED = "#fafaf8", "#262b30", "#69747e"
 COLORS = ("#315d86", "#b8bfc5")
@@ -100,10 +100,10 @@ def draw(language, output=OUTPUT):
     )
     note = (
         "同一台 Linux 笔记本 · 三次测量的中位数 · 越低越好\n"
-        "2026-09-22 / 23 · 完整方法与限制：docs/developers/comparison.md"
+        "2026-09-22 / 23 · 完整方法与限制：docs/developers/history/comparison.md"
         if chinese
         else "Same Linux laptop · Median of three runs · Lower is better\n"
-        "2026-09-22 / 23 · Method and limitations: docs/developers/comparison.md"
+        "2026-09-22 / 23 · Method and limitations: docs/developers/history/comparison.md"
     )
     fig.text(0.035, 0.055, note, color=MUTED, fontsize=12, linespacing=1.7)
     output.mkdir(parents=True, exist_ok=True)

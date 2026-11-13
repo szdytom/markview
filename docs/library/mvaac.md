@@ -27,29 +27,7 @@ the mount container a height; text fonts are explicit host assets, never bundled
 in the viewer. The official WASM accepts OTF/TTF/TTC and WOFF/WOFF2
 files, and only KaTeX fonts are embedded.
 
-```ts
-import { Editor } from "@markview/editor";
-import { browserResources } from "@markview/resources";
-import { loadFontSet } from "@markview/fonts";
-import wasmUrl from "@markview/viewer/wasm?url"; // Vite asset import
-
-const fonts = await loadFontSet(
-  { sources: ["/fonts/body.woff2", "/fonts/mono.ttf"] }, { wasmUrl },
-);
-const editor = await Editor.mount(document.getElementById("editor")!, {
-  markdown: "# Hello\n\nStart writing here.",
-  viewer: {
-    fonts,
-    resources: browserResources({ baseUrl: new URL("/documents/", location.href) }),
-  },
-  onChange: ({ markdown, documentVersion }) => console.log(documentVersion, markdown),
-});
-// Call when the host removes the component.
-editor.destroy();
-fonts.destroy();
-```
-
-An independent preview uses the same explicitly loaded set and resources:
+Mount a reader into a container with an explicit height:
 
 ```ts
 import { Viewer } from "@markview/viewer";
@@ -63,8 +41,9 @@ const viewer = await Viewer.mount(document.getElementById("preview")!, {
   onSectionChange: heading => console.log(heading?.anchor),
 });
 viewer.navigateHeading(viewer.outline().entries[0]!.anchor);
-viewer.destroy();
-fonts.destroy();
+// Run when unmounting, after the user is done reading.
+// viewer.destroy();
+// fonts.destroy();
 ```
 
 No CodeMirror or frontend framework is involved.
@@ -77,106 +56,10 @@ example, not a required global or asset convention. esbuild users can use a
 
 ## Editing and automatic following
 
-The editor defaults to Markdown highlighting, line numbers, wrapping, standard
-editing shortcuts, history, indentation and Markdown list/quote continuation.
-`view` exposes the CodeMirror view, and `extensions` accepts CodeMirror
-extensions. [CodeMirror's reference](https://codemirror.net/docs/ref/) documents
-its state, extension, measurement and keymap interfaces.
-
-`getMarkdown()` returns the current source; `setMarkdown(source)` applies an
-editor transaction, updates the preview progressively and sends `onChange`.
-CodeMirror normalizes incoming LF/CRLF/CR line endings to LF. Viewer offsets in
-an editor refer to that normalized string, matching CodeMirror's UTF-16 document
-positions. Independent viewers preserve their exact input string and CRLF
-coordinates. Unicode and IME composition use CodeMirror's normal editing path.
-
-`setOptions({ theme, orientation, split, toc, extensions, onChange })` updates
-configuration and preserves the editor/history. `theme` is `light` or `dark`;
-`orientation` is `horizontal`, `vertical` or `auto`; `split` is the source-pane
-fraction (`0.15..0.85`); `toc: false` hides the default directory. Auto layout
-stacks narrow containers and hides the TOC on small screens. The separator is
-draggable and keyboard accessible. Component styles are scoped to its root;
-`--mv-*` CSS variables provide host color overrides.
-
-Following interpolates between matching source-line and preview positions using
-one monotonic map in both directions, with shared document-top and scroll-bottom
-endpoints. Blank lines and preview margins interpolate between adjacent anchors;
-images, inline SVG and math span their complete source extent, including wraps.
-Rust batches source-line extents using precomputed UTF-16 line offsets. The editor
-retains anchor batches for a progressive layout pass and queries only newly
-published blocks; edits and reflows start a new pass. The map is cached until
-source geometry or preview layout changes. Input in
-either pane takes ownership, cancels pending motion from the other, and prevents
-programmatic follow events feeding back. Following
-never focuses the other pane or changes its selection. Editor changes map the
-previous reading reference through CodeMirror changes. See the
-[source, version and TOC reference](mvaac-source-api.md) for pending geometry,
-reflow preservation, atomic content and collapsed-content behavior.
-
-The editor delegates projection and synchronization policy to
-`@markview/scroll-sync`; its CodeMirror adapter measures source ranges and applies
-scroll coordinates. The core has no runtime dependencies, DOM, editor APIs or
-WASM initialization. Other editors can reuse the same logic:
-
-```ts
-import { ScrollSync, ScrollMap, type ScrollPoint } from "@markview/scroll-sync";
-import type { ReadingPosition } from "@markview/viewer";
-
-// Supply these operations from the host editor.
-declare const source: {
-  scrollTop(): number;
-  maxScroll(): number;
-  matchingPositions(): ScrollPoint[];
-  scrollTo(top: number): void;
-};
-const sync = new ScrollSync(viewer.outline().documentVersion);
-// Rebuild after source, pane size, font, image or layout changes.
-let map = new ScrollMap(
-  source.matchingPositions(), source.maxScroll(), viewer.reader.markview.maxScroll(),
-);
-
-function sourceMoved() {
-  const request = sync.begin("source");
-  if (!request) return;
-  const top = map.map("source", source.scrollTop());
-  if (sync.isCurrent(request)) viewer.scrollTo(top);
-}
-
-function previewMoved(position: ReadingPosition) {
-  const request = sync.begin("preview", position.documentVersion);
-  if (!request) return;
-  const top = map.map("preview", viewer.reader.markview.scroll());
-  if (sync.isCurrent(request)) source.scrollTo(top);
-}
-```
-
-On source input, call `sync.takeControl("source")` and
-`viewer.cancelNavigation()`. On preview input or explicit TOC navigation, call
-`sync.takeControl("preview")`. Do not take control for a programmatic follow
-event: `begin` rejects events from the follower. After replacing Markdown, call
-`sync.setDocumentVersion(viewer.outline().documentVersion)` before following.
-
-Pass `ScrollMap` matching positions in document order, using each pane's document
-coordinates. `scrollAnchors` excludes relocated footnotes before filtering so
-their document-end geometry cannot displace the main prose's anchors.
-Duplicate or backwards positions from hidden content or table cells
-are skipped, and positions past either scroll limit give way to the shared bottom
-endpoint. `sourceToAnchor` and `anchorToSource` remain available for hosts that
-exchange source offsets and fractional progress instead of scroll coordinates;
-their measurer must cover the entire range, including all wrapped lines.
-
-For asynchronous measurements or extension/webview messaging, send the plain
-`SyncRequest` ticket with the work and call `isCurrent` immediately before
-applying its result. A newer request, user takeover, document replacement or
-`cancel()` invalidates it. Call `cancel()` when removing the host or invalidating
-an in-flight geometry snapshot, then schedule a new request if still mounted.
-The core supplies no event listeners, timers or transport. Layout publication
-and reading-anchor preservation remain owned by the viewer.
-
-The default TOC uses the complete parsed heading list. Hosts can read
-`editor.viewer.outline()` and own their own UI, or disable the component's panel.
-Heading navigation opens containing disclosures; ordinary source following keeps
-them collapsed. New document versions retire prior targets and resource requests.
+Use `@markview/editor` for CodeMirror composition, or `@markview/scroll-sync`
+for an independent editor adapter. See [editor integration](editor.md) for input
+ownership, asynchronous tickets and source/preview mapping. Source queries and
+TOC navigation are specified in [the navigation contract](mvaac-source-api.md).
 
 ## Font ownership and loading
 
@@ -213,7 +96,7 @@ Official `pnpm --dir web build:wasm` enables Rust's optional `woff` feature. A c
 --no-default-features` excludes the decoder; WOFF inputs then reject with a
 feature-specific message while OTF/TTF/TTC remain valid. A JavaScript option
 cannot shrink an already built WASM. Decode and invalid-font failures identify
-the input index. [Codec measurements and coverage](../developers/mvaac-font-measurements.md)
+the input index. [Codec measurements and coverage](../developers/history/mvaac-font-measurements.md)
 record the tested formats, dependency licenses and measured overhead.
 
 ## Stylesheet registration and selection
@@ -333,33 +216,26 @@ and stops listeners, frame loops and resources. No filesystem, file manager,
 PDF export, framework wrappers, VS Code plugin or Mermaid rendering is supplied
 by these packages.
 
-`apps/demo` consumes built public entries and presents one SPA at `/index.html`.
-Read and Edit share the same document, editor history and viewer; it demonstrates
-source following, TOC, themes, a draggable split, file opening and Markdown
-downloads. `/editor.html` redirects to `/index.html#edit`. Sample drafts remain
-in memory while switching documents; download changes before reloading. The
-legacy low-level reader regression host lives under `tests/fixtures/reader` and
-is built only for tests. The SPA composes the font and resource helpers with
-version-pinned Noto font files. Fontsource WOFF2 downloads use npmmirror,
-falling back to jsDelivr on HTTP or network failure. Latin Serif and Sans cover
-100–900 weights in upright and italic variable faces; Latin Mono covers the
-same upright weights. Simplified Chinese Serif supplies 400/500/600/700 and
-Sans supplies 400/500/700 static faces. The 600 Serif face keeps disclosure
-summaries from falling through to unrelated fonts and Emoji spaces. Full CJK
-monospace OTF and bitmap color emoji TTF remain upstream jsDelivr files.
-Its UI serif face reuses the same WOFF2 bytes through
-the browser's `FontFace` API, avoiding a separate CSS download. The demo
-requires network access on first load and stores successful font responses in
-Cache Storage (`markview-demo-fonts-v1`), keyed by their version-pinned URLs.
-Reloads reuse these bytes without contacting the CDN; changed URLs fetch new
-files. Recovered fallback bytes are cached under the primary URL as well.
-Storage failures fall back to downloading, and failed HTTP responses are
-never cached. A fully downloaded batch that fails validation is evicted before
-reporting the startup error, allowing retries to fetch recovered CDN files,
-including when malformed bytes came from an existing cache entry.
-This persistence belongs to the demo; `FontLoader` itself caches
-only in memory. Tiny pinned subsets stay under `tests/fixtures` for deterministic
-regression tests. No text fonts ship in the demo or libraries.
+The [demo](../../web/apps/demo) consumes public built packages and demonstrates
+reading, editing, source following, TOC, themes and file opening. Draft edits stay
+in memory; download them before reloading. The demo loads its own fonts and caches
+successful downloads in browser storage. This persistence is demo behavior;
+`FontLoader` caches only in memory. No text fonts ship in the libraries.
+
+## Markdown dialect
+
+`MarkviewOptions.markdownFlavor` selects `"gfm"` (the compatibility default) or
+`"obsidian"`. `hardBreaks` controls single-newline hard breaks independently;
+`highlightMarks` enables `==highlight==` in GFM and is forced on in Obsidian.
+`gridTables` enables Grid tables independently of the preset and defaults to
+`true`. Set it to `false` to read grid borders as ordinary Markdown.
+The Obsidian preset uses the core reader's supported callouts, comments and
+inline HTML extensions; it does not implement full vault semantics.
+
+Changing these options with `setOptions()` reparses the current source, including
+the newest source in an unfinished layout. Existing layout handles become stale
+and source geometry receives a new document version. Layout-only changes do not
+reparse the document.
 
 ## Migration
 
@@ -374,18 +250,3 @@ per-reader `fonts` for independent instances.
 compatibility directory. The old demo contract is historical and its exclusions
 of editing/outlines do not constrain this iteration. Public source/navigation
 API lives in this guide and [source navigation and TOC](mvaac-source-api.md).
-
-### Markdown dialect
-
-`MarkviewOptions.markdownFlavor` selects `"gfm"` (the compatibility default) or
-`"obsidian"`. `hardBreaks` controls single-newline hard breaks independently;
-`highlightMarks` enables `==highlight==` in GFM and is forced on in Obsidian.
-`gridTables` enables Grid tables independently of the preset and defaults to
-`true`. Set it to `false` to read grid borders as ordinary Markdown.
-The Obsidian preset uses the core reader's supported callouts, comments and
-inline HTML extensions; it does not implement full vault semantics.
-
-Changing these options with `setOptions()` reparses the current source, including
-the newest source in an unfinished layout. Existing layout handles become stale
-and source geometry receives a new document version. Layout-only changes do not
-reparse the document.

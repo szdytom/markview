@@ -1,5 +1,11 @@
 # Document memory evidence
 
+> Historical evidence, archived from repository revision `37f22d622d41d5409321b8db7cf9f36b38b0d5a1`.
+> Measurements and implementation descriptions apply to the investigations below,
+> not necessarily to the current release. Original measurement dates are retained;
+> the archive revision is not a claim that those measurements were rerun.
+
+
 The document/layout storage plan is implemented with its differential and
 allocation harness. The benchmark compares independent pre-optimization
 production code with the current representation; it does not use cache budget

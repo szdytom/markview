@@ -1,85 +1,52 @@
-# Android reading
+# Read on Android
 
-[User documentation](README.md) · [Documentation](../README.md)
+Install the APK from [Releases](https://github.com/szdytom/markview/releases) on
+Android 11 or newer. The release APK targets ARM64. Settings, fonts, themes,
+search and export use the shared native reader.
 
-Markview for Android supports Android 11 (API 30) and newer. Download the APK
-from [Releases](https://github.com/szdytom/markview/releases). The app uses the
-same native typography, settings, fonts, themes and image cache as the desktop reader.
+## Open a file or folder
 
-## Read and customize
+Use **Open file** for a single document, or **Open folder** for a collection.
+Folder access asks for Android's **All files access** permission, then reads the
+chosen shared-storage directory in place. External edits, relative images and
+neighboring Markdown links work there. See [folder navigation](reading.md#folders-and-obsidian-vaults).
 
-On the start page, tap **Open file…** or **Open folder…** to go directly to the
-corresponding system picker. Opening a folder first asks for **All files
-access**, then reads the chosen directory on internal storage or an SD card in
-place. Recent workspaces reopen that real folder; with a workspace open, Quick
-access searches its files by name or relative path. Relative images and
-Markdown links keep working, and `README.md` is preferred as the first
-document.
-The left file tree shows every Markdown document and its subfolders. Tap a
-file to switch documents, and use the folder icon to reopen the tree on a
-phone. The same [folder and Obsidian link support](reading.md#folders-and-obsidian-vaults)
-is available on Android.
-Android's **Open with** and **Share** offer **Read in Markview** (localized to
-**在 Markview 中阅读** in Simplified Chinese), opening the supplied file directly
-without first saving it or finding it in the picker. Markdown MIME types, plain
-text and generic `application/octet-stream` attachments are supported, including
-providers whose content URIs do not contain a filename. Generic attachments can
-also list Markview for non-Markdown files because Android cannot filter shares
-by their display filename. Shared HTTP(S) URLs open in the native web reader;
-a plain title followed immediately by a URL as the only two lines is also supported. Other shared text
-opens as a Markdown document, and file attachments take precedence over text.
-HTTP(S) **Open with** links use the same web reader. Android 12 and newer
-usually send unverified web links to the default browser; use the browser's
-**Share** menu and select **Read in Markview** to read them here.
-Tabs, touch scrolling, outline, search,
-settings and styles use the same controllers as the desktop reader. Phones open
-the tab drawer with the top-left menu button or a right swipe across the reader.
-Selecting a tab, tapping the outside scrim or pressing Back dismisses the tab
-drawer. A left swipe opens right-side Contents on phones and tablets, including
-while the tab drawer is open. Back closes
-the open search or panel before returning the task to the background.
+A separately opened file is an imported copy because its grant does not include
+the parent directory. Reopen it to refresh it, or open its folder to follow edits
+and access sibling resources. Recent workspaces reopen previously chosen folders.
 
-Settings, downloaded fonts, styles and image cache live under the private app
-files directory in `markview/`. Android settings omit the desktop buttons for
-opening `settings.toml`, the fonts folder and the styles folder, and the toolbar
-omits the desktop Reveal button because no file manager browses that directory.
-Downloaded fonts use the existing catalogue and font-family selectors.
-Export uses Android's system save dialog and passes the written result to an
-installed viewer. Repeated watched exports update the selected destination.
+## Receive shared content
 
-Folders are read directly from shared storage, so changes made by other apps,
-including MGit and Syncthing, appear in the open tree as they happen. Files
-opened one at a time are still imported copies because Android grants access to
-a single document rather than its directory; reopen such a file to refresh it.
-Tabs survive rotations and activity suspension; saved tabs and reading
-positions are restored after activity destruction or a process restart. Android
-limits access to sibling files when only one file is granted; open its folder
-for local images and neighbouring Markdown files.
+Choose **Read in Markview** from Android's Open with or Share menu. File attachments
+open as documents; shared text opens as Markdown and HTTP(S) URLs use web reading.
+When both a file and text are supplied, the attachment wins. Some generic file
+providers offer Markview for non-Markdown attachments because Android cannot
+filter them by display filename.
 
-## Phone and tablet controls
+On Android versions that send web links straight to the default browser, use
+that browser's Share menu. Web reading supports static articles, not login or
+JavaScript-dependent pages.
 
-Below 640 logical pixels,
-settings occupy the entire app content area; wider screens retain the centered dialog. Narrow forms stack labels above
-controls. The device's smallest width selects phone or tablet mode:
+## Navigate on a phone or tablet
 
-| Device configuration | Tab management | Orientation |
-|---|---|---|
-| Smallest width below 600 dp | One sidebar with Tabs and Folders pages | Portrait |
-| Smallest width at least 600 dp | Shared desktop tab strip | Portrait or landscape |
+Phones use one left sidebar with Tabs and Folders pages. Open it from the top-left
+button or swipe right; choose a document, tap outside or press Back to dismiss.
+Swipe left for Contents. Back closes search or a panel before backgrounding the app.
 
-Phone mode fills the available reading width with 20 logical pixels of margin
-on each side and hides the column-width setting; tablets retain adjustable
-columns. Scroll speed is hidden on all Android devices because it does not
-change touch scrolling.
+Devices with smallest width below 600 dp use phone mode and portrait orientation;
+larger devices retain the desktop tab strip and support landscape. Phone reading
+uses available width; tablets keep adjustable columns. Narrow settings pages fill
+the content area. **Copy diagnostics** reports the selected mode.
 
-**About** and **Copy diagnostics** include one mobile-mode line, such as
-`Mobile Mode: Phone (411 dp)` or `Mobile Mode: Tablet (800 dp)`.
+Tabs and positions survive rotation and Activity recreation. Settings and fonts
+live in private app storage, so desktop “open settings/fonts folder” controls are
+absent. Scroll speed is hidden because it does not affect touch scrolling.
 
-The device mode follows the smallest width, independent of rotation and keyboard
-visibility; configuration changes update it without discarding reader sessions. Desktop window-layout and single-instance settings are hidden and
-ignored on Android. Browsing sessions are
-retained by default, and the desktop session-restore setting is hidden. System bars and
-the keyboard are excluded from the reader's content area.
+## Export
+
+The export panel uses Android's save dialog, then opens the result in an installed
+viewer. Watched exports update the selected destination. Reader and export
+preferences remain independent; see [Export](export.md).
 
 ## Screenshots
 

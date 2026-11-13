@@ -1,15 +1,18 @@
 # Use Markview
 
-Markview is a native, read-only Markdown reader. Start with installation, then
-choose a guide for your task. [简体中文使用指南](guide.zh-cn.md).
+Start with [installation](installation.md), then [open and read a document](reading.md).
+Markview does not edit Markdown; changes saved in another editor refresh the reader.
+[中文快速入门](guide.zh-cn.md).
 
-- [Installation](installation.md): downloads, desktop integration and runtime requirements.
-- [Reading documents](reading.md): opening files, tabs, search, contents, supported content and web articles.
-- [Settings](settings.md) / [设置（简体中文 · 方言）](settings.zh-cn.md): reading preferences, interface options, networking and image cache.
-- [Export](export.md): PDF and PNG output, paper layout and watched exports.
-- [Fonts](fonts.md): explicit downloads and font-family selection.
-- [Stylesheets](stylesheets.md): installing, layering and authoring MVSS themes.
-- [Theme gallery / 主题展示](themes.md): full-page examples with each theme's own typography.
-- [Android reading](android.md): APK installation, document imports, phone/tablet controls and screenshots.
+| Task | Guide |
+| --- | --- |
+| Navigate files, folders, search, links or web articles | [Reading](reading.md) |
+| Change personal reading preferences | [Settings](settings.md) |
+| Select or install a theme | [Use themes](appearance.md) · [Gallery](themes.md) |
+| Choose or download typefaces | [Fonts](fonts.md) |
+| Write PDF or PNG files | [Export](export.md) |
+| Read shared files and folders on a phone/tablet | [Android](android.md) |
+| Author a theme | [MVSS reference](stylesheets.md) |
+| Read Chinese notes on dialects and copy controls | [方言与代码复制](settings.zh-cn.md) |
 
-[Documentation](../README.md) · [Product overview](../../README.md)
+[All documentation](../README.md)

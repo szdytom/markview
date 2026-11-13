@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Draw the performance figures used by the READMEs.
 
-The numbers are the measured baselines recorded in `docs/developers/performance.md`; this
+The numbers are the measured baselines recorded in `docs/developers/history/performance-baselines.md`; this
 script only draws them, so that page stays the source of truth. They come from
 one ordinary laptop, an Intel Core Ultra 5 125H with integrated Intel Arc
 through Vulkan, on the `performance` power profile.

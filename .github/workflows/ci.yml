@@ -151,6 +151,8 @@ jobs:
       - name: Build WASM, packages and the demo site
         working-directory: web
         run: pnpm build
+      - name: Typecheck the documentation examples
+        run: python3 scripts/test_web_documentation.py
       - name: Lint the web workspace
         working-directory: web
         run: pnpm lint

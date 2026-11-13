@@ -14,14 +14,10 @@
 - `/editor.html` redirects to `/index.html#edit` for existing links.
 - `tests/fixtures/reader`: legacy renderer regression host, built only by `pnpm test`.
 
-Official WASM enables WOFF/WOFF2; hosts explicitly supply per-instance font sets.
-The SPA loads version-pinned Noto Latin, Simplified Chinese and emoji fonts from
-jsDelivr, using Fontsource WOFF2 for Latin and common Simplified Chinese text.
-Full CJK monospace OTF and bitmap emoji TTF remain upstream files. The first
-load needs network access; successful font downloads persist in Cache Storage
-for subsequent reloads, with ordinary downloads if storage is unavailable.
-Test font subsets are used only
-by the regression harness.
+Package paths above are relative to `web/`. Public consumer contracts live in
+[the library guides](../library/README.md). The demo supplies its own network fonts;
+tests use pinned subsets. Keep CDN selection and cache policy in the demo, not
+in the reusable viewer.
 
 ## Build and test
 
@@ -77,14 +73,9 @@ image or font asset. The build has three outputs:
    sibling WASM binary.
 3. `web/dist/`: the static demo site, ready to serve or deploy.
 
-`scripts/build-web.py` owns Rust compilation and binding generation;
-`web/scripts/wasm.mjs` finds Python on Windows, macOS and Linux. Both locate the
-repository from their own file paths, so spaces, Unicode and a different
-working directory are supported. The build reads Cargo's actual output
-directory, including `CARGO_TARGET_DIR` and `.cargo/config.toml` settings.
-Advanced users can set `WASM_BINDGEN` to an executable path; its version must
-match the crate. Running `python3 scripts/build-web.py` directly builds only
-WASM (`py -3 scripts/build-web.py` on Windows).
+The build scripts locate the repository and Cargo output directory automatically.
+If overriding `WASM_BINDGEN`, its version must match the Rust binding dependency.
+Use the package scripts unless diagnosing the build itself.
 
 ### Validation
 
@@ -92,6 +83,7 @@ Build first, then run:
 
 ```sh
 pnpm --dir web typecheck
+python3 scripts/test_web_documentation.py
 pnpm --dir web exec playwright install chromium
 pnpm --dir web test
 pnpm --dir web test:packages

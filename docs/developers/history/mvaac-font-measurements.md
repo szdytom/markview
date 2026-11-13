@@ -1,5 +1,11 @@
 # MVaaC font codec verification
 
+> Historical evidence, archived from repository revision `37f22d622d41d5409321b8db7cf9f36b38b0d5a1`.
+> Measurements and implementation descriptions apply to the investigations below,
+> not necessarily to the current release. Original measurement dates are retained;
+> the archive revision is not a claim that those measurements were rerun.
+
+
 Measured on 2026-10-02 with release WASM, wasm-bindgen 0.2.129 and headless
 Chromium on Linux, Intel Core Ultra 5 125H, Rust 1.98.1. These are diagnostic observations,
 not performance promises for other devices or network connections.

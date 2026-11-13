@@ -87,7 +87,7 @@ xattr -d com.apple.quarantine /Applications/Markview.app
   <img src="docs/screenshots/zh-comparison.png" alt="同一段英文：左侧为浏览器默认左对齐，右侧为 Markview 段落排版，呈现齐整的右边缘" width="900">
 </p>
 
-[对比图的渲染方法](docs/developers/comparison.md#the-figure) · 选文：[《网络空间独立宣言》](https://www.eff.org/cyberspace-independence)，John Perry Barlow。
+[对比图的渲染方法](docs/developers/history/comparison.md#the-figure) · 选文：[《网络空间独立宣言》](https://www.eff.org/cyberspace-independence)，John Perry Barlow。
 
 细致的中文标点处理与原生 LaTeX，让正文和公式自然融为一体，无须另行安装 TeX。表格、语法高亮代码、脚注、GitHub 提示块、图片与 Mermaid 图表，都在同一页上清晰呈现。专心享受阅读，Markdown 源文件始终保持原样。
 
@@ -159,12 +159,12 @@ Markview 在原生阅读器中呈现文档，完整保留你的源文件。文�
 | 常驻内存 | 普通笔记约 **50 MiB** |
 
 <p align="center">
-  <a href="docs/developers/comparison.md"><img src="docs/screenshots/readme/zh-performance-comparison.png" alt="四份实测文档：Markview 打开耗时 0.101–0.115 秒、常驻内存 50.7–53.8 MiB；MarkText 0.19.1 打开耗时 0.957–2.863 秒、常驻内存 693.2–1147.6 MiB" width="900"></a>
+  <a href="docs/developers/history/comparison.md"><img src="docs/screenshots/readme/zh-performance-comparison.png" alt="四份实测文档：Markview 打开耗时 0.101–0.115 秒、常驻内存 50.7–53.8 MiB；MarkText 0.19.1 打开耗时 0.957–2.863 秒、常驻内存 693.2–1147.6 MiB" width="900"></a>
 </p>
 
 把时间留给内容。Markview 轻快打开，低内存常驻，长文也能从容读。上图展示在同一台 Linux 笔记本上，四种文档大小的打开速度与内存占用对比。
 
-[测量方法与完整基线](docs/developers/performance.md#native-baseline-on-the-performance-profile) · [阅读器与 PDF 导出对比](docs/developers/comparison.md) · [下载最新版本](https://github.com/szdytom/markview/releases/latest)
+[测量方法与完整基线](docs/developers/history/performance-baselines.md#native-baseline-on-the-performance-profile) · [阅读器与 PDF 导出对比](docs/developers/history/comparison.md) · [下载最新版本](https://github.com/szdytom/markview/releases/latest)
 
 ## 文档与贡献
 

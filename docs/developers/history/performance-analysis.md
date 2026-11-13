@@ -1,5 +1,11 @@
 # Latency and memory analysis
 
+> Historical evidence, archived from repository revision `37f22d622d41d5409321b8db7cf9f36b38b0d5a1`.
+> Measurements and implementation descriptions apply to the investigations below,
+> not necessarily to the current release. Original measurement dates are retained;
+> the archive revision is not a claim that those measurements were rerun.
+
+
 This page is a diagnostic analysis, not a guarantee or a change log. It answers
 three questions for the reader's own targets, locates the code responsible, and
 ranks the optimization points. The measured facts are recorded here; the

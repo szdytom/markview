@@ -1,18 +1,24 @@
 # Comparison
 
-The [README](../../README.md) charts cold-start reading time and resident memory
+> Historical evidence, archived from repository revision `37f22d622d41d5409321b8db7cf9f36b38b0d5a1`.
+> Measurements and implementation descriptions apply to the investigations below,
+> not necessarily to the current release. Original measurement dates are retained;
+> the archive revision is not a claim that those measurements were rerun.
+
+
+The [README](../../../README.md) charts cold-start reading time and resident memory
 from the tables below. `scripts/generate_readme_comparison.py` reads those tables
 directly to generate both localized charts; axes start at zero and lower is better.
 This page also records the typography comparison and PDF pipeline measurements,
 how they are produced and what they do and do not claim. Markview's own numbers, measured against its
 targets rather than against other programs, live in the [performance
-model](performance.md).
+model](../performance.md).
 
 ## The figure
 
 `docs/screenshots/en-comparison.png` is produced by
 `scripts/render_typography_comparison.py` from the plain-text file
-[`docs/screenshots/source/typography.txt`](../screenshots/source/typography.txt), set as:
+[`docs/screenshots/source/typography.txt`](../../screenshots/source/typography.txt), set as:
 
 | Setting | Both panels |
 | --- | --- |

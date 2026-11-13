@@ -2,6 +2,7 @@
 
 import re
 import sys
+import tomllib
 import unittest
 from pathlib import Path
 from urllib.parse import unquote, urlsplit
@@ -60,6 +61,16 @@ def anchors(path):
 
 
 class DocumentationTest(unittest.TestCase):
+    def test_toml_examples_parse(self):
+        for page in sorted(GUIDES):
+            if "history" in page.parts:
+                continue
+            for number, snippet in enumerate(re.findall(
+                r"^```toml\n(.*?)^```", page.read_text(), re.M | re.S
+            ), 1):
+                with self.subTest(page=str(page.relative_to(ROOT)), example=number):
+                    tomllib.loads(snippet)
+
     def test_local_links_images_and_anchors(self):
         for page in sorted(PAGES):
             for link in links(page):
@@ -109,12 +120,17 @@ class DocumentationTest(unittest.TestCase):
         indexes = [ROOT / "docs" / audience / "README.md" for audience in (
             "users", "library", "developers",
         )]
+        history = ROOT / "docs/developers/history/README.md"
         linked = {
             (page.parent / urlsplit(link).path).resolve()
-            for page in indexes for link in links(page)
+            for page in [*indexes, history] for link in links(page)
             if not urlsplit(link).scheme
         }
         self.assertFalse(GUIDES - linked - set(indexes), "Guide missing from audience indexes")
+        self.assertIn(history, {
+            (indexes[2].parent / urlsplit(link).path).resolve()
+            for link in links(indexes[2]) if not urlsplit(link).scheme
+        }, "History index missing from developer navigation")
         for index in indexes:
             self.assertIn(index, {
                 (ROOT / "docs" / urlsplit(link).path).resolve()

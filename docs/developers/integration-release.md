@@ -1,38 +1,17 @@
-# Markview Integration delivery
+# Release the editor integration
 
-Markview Integration reuses main's WASM preview, font manager and native exporter.
-The Marketplace identity remains `Stevvven.markview-export`; existing Better
-markdown PDF installations upgrade in place. Implementation and publishing
-acceptance are tracked here; detailed review history belongs in
-[PR #89](https://github.com/szdytom/markview/pull/89).
+The extension keeps the Marketplace identity `Stevvven.markview-export` so existing
+installations can upgrade. Its version is independent of the reader version.
+This guide describes the repository's delivery procedure; check actual workflow
+runs and store state before declaring a publication successful.
 
 ## Acceptance
 
-Astra medium approved REL-1..8 for `c4d0020` and the subsequent shared-export
-and configuration cleanup. Astra also approved the five-target release scope.
-Actual GitHub Release/OIDC publication remains deferred.
-
-| ID | Requirement | Established evidence |
-| --- | --- | --- |
-| REL-1 | Markview Integration branding with the existing extension ID | Manifest 0.4.0; installed upgrade from Marketplace 0.1.2 passes. |
-| REL-2 | Legacy commands/settings and document-scoped template resolution | Node and real VS Code tests cover language overrides, explicit new settings, empty values and relative paths. Export-only legacy styles do not affect preview. |
-| REL-3 | Store README, icon, license and changelog ship in the VSIX | Packaged store assets verified. |
-| REL-4 | Five matched native packages and gated publication: `darwin-arm64`, `win32-x64`, `win32-arm64`, `linux-x64`, `linux-arm64` | **Approve, implementation.** Five-target staging and real-package verification pass; Intel macOS packages are rejected. Hosted builds of the revised matrix remain pending. |
-| REL-5 | Installed preview handles unsaved edits, PDF/PNG and cleanup | Real VS Code upgrade, dirty-buffer preview/export and clean exit pass. |
-| REL-6 | Reader releases attach verified VSIX files and checksums | Five-target complete-set staging and checksum handoff pass; actual release attachment remains unverified. |
-| REL-7 | Publish exact release attachments using OIDC, with independent retries | Stable-release validation, checksums and retry commands pass tests; actual token exchange/upload remains unverified. |
-| REL-8 | Correct version/platform downloads and publishing policy | Release-notes tests and documentation checks pass. |
-
-## State of play
-
-The latest existing revision `383f1fa` passed [CI](https://github.com/szdytom/markview/actions/runs/42160393904),
-[Editor](https://github.com/szdytom/markview/actions/runs/42160393674),
-[Packages](https://github.com/szdytom/markview/actions/runs/42160393712) and
-[Release packaging](https://github.com/szdytom/markview/actions/runs/42160393673).
-Those builds used the prior six-target matrix; hosted verification of the new
-five-target matrix remains pending. No release tag or Marketplace upload was made.
-Windows ARM64 is cross-built; these checks do not establish physical GPU behavior
-on every platform. Publication requires the authorization below.
+Before release, verify packaged metadata, legacy commands/settings, installed
+upgrade behavior, unsaved-buffer preview/export and cleanup in real VS Code.
+Verify the complete platform set and its hashes, not only a source build.
+The [extension workspace](../../web/app/vsc-ext/README.md) owns build/test commands.
+Windows ARM64 cross-compilation does not establish physical GPU behavior.
 
 ## Upstream Release and Marketplace
 

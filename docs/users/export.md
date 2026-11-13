@@ -1,19 +1,14 @@
-# Export
+# Export PDF or PNG
 
-[User documentation](README.md) · [Documentation](../README.md)
+Press Ctrl+E or use the toolbar's export button. Choose PDF or a single PNG of
+the whole document, select a destination, then open the result in its system
+viewer. **Export and Watch** updates that same destination when the source changes.
 
-Markview exports without a browser or a print dialog. In the reader, `Ctrl+E` or
-the toolbar's export button opens an export panel: it writes the document to
-PDF, or to one PNG of the whole document, and opens the result with the
-operating system. **Export and Watch…**, beside it, keeps rewriting the same
-file whenever the document is saved. The panel carries its own text size
-(12 pt by default), first-line
-indent, paper, orientation, margins, PNG scale and stylesheet sequence — the
-bundled `print` sheet is layered with whatever the panel selects — all kept
-under `[export]` in `settings.toml`. Changing them never reflows the reading
-view.
+Export has its own paper, margins, font size, paragraph indent, PNG scale and
+stylesheet selection, saved under `[export]`. Changing these does not alter the
+reading view. Both formats use paper styles; see the [theme gallery](themes.md).
 
-The same exports are on the command line, for scripts and batch runs:
+## Command line
 
 ```sh
 markview pdf document.md --output document.pdf
@@ -22,39 +17,22 @@ markview pdf document.md -o paper.pdf --footer "{title} — {page}/{pages}"
 markview pdf document.md -o document.pdf --watch
 ```
 
-The bundled `print` stylesheet supplies the paper: A4 with 20 mm side margins,
-black on white, and a centred page number. Body text is 12 pt unless
-`--font-size` says otherwise. `--paper` takes `a3`, `a4`, `a5`, `a6`, `b5`,
-`letter`, `legal`, `tabloid`, or `WIDTHxHEIGHT` in millimetres; `--margin` takes
-one, two, or four millimetres; `--landscape` swaps the sides.
-The six header and footer slots are set with `--header`, `--footer` and the
-`-left`/`-right` variants, and their templates may use `{page}`, `{pages}`,
-`{title}` and `{path}`. PDF commands use `--paper` and `--margin` to override template page geometry
-and `--style` to layer templates; window dimensions, reading column and reader theme
-flags do not apply. Put command options after the subcommand; only `--offline`
-is global. The `render` command alone accepts `--scroll`, in logical pixels.
+The default paper style uses A4 and a centered page number. Use `--paper`,
+`--landscape` and `--margin` to override geometry, and repeat `--style` with the
+highest-priority style first. Header/footer templates accept `{page}`, `{pages}`,
+`{title}` and `{path}`. Run `markview pdf --help` for all options and units;
+command options follow the subcommand, while `--offline` is global.
 
-`--watch` keeps the command running after the first export and rebuilds the PDF
-whenever the document, or a local image it references, changes; Ctrl+C ends the
-session. Every rebuild reuses the unchanged parse, block layout and decoded
-images, so an unchanged save is skipped and a small edit pays only for the part
-that changed.
-
-A paragraph keeps two lines on each side of a page break, a heading travels with
-the block it introduces, code blocks wrap, and a table too wide for the page is
-scaled down with a warning on stderr. Web and mail links become clickable
-annotations, and a `#heading` link becomes an internal jump.
-
-The PDF information dictionary takes `--title`, `--author` (repeat it for
-several authors), `--subject`, `--keywords`, `--language` and `--creator`.
-Nothing else is invented, and no creation or modification date is ever written,
-which is what keeps two exports of one document byte for byte identical.
+`--watch` remains running and observes the document and local images. Ctrl+C
+ends it. Disclosures expand for export; links become PDF annotations. Oversized
+content can be scaled or reported on stderr. Inspect the output when changing
+paper size or exporting unusually wide tables.
 
 ## Resource permissions
 
-Exports from the reader preserve the document's resource permissions. Directly opened local files use Trusted defaults; clipboard and web exports keep their Untrusted mode and current grants. PDF export fails when an image cannot be read, leaving any previous output intact; PNG keeps a placeholder for the blocked image.
-
-CLI PDF inputs default to Trusted. For an Untrusted local input, select its mode and authorize only the required resources:
+Reader exports preserve the document's mode and current grants. PDF fails when
+an image cannot be read and preserves an existing output; PNG can retain an image
+placeholder. Direct CLI file inputs default to Trusted. For an Untrusted file:
 
 ```sh
 markview pdf article.md -o article.pdf --document-trust untrusted
@@ -62,52 +40,14 @@ markview pdf article.md -o article.pdf --document-trust untrusted --allow-local-
 markview pdf article.md -o article.pdf --document-trust untrusted --allow-network loopback=http://localhost:8080
 ```
 
-Both grant options repeat. A network grant names an origin (scheme, host, effective port) and a class: `private`, `loopback`, or `link-local`. It does not authorize other origins or address classes. `--offline` opens no network connections and grants no additional cache access. Grants apply to the initial document content; a changed source in `--watch` revokes them, so an Untrusted job needing them must be restarted with explicit grants.
+Grant options repeat. Network grants name an origin and address class (`private`,
+`loopback` or `link-local`), not all destinations. Offline mode makes no network
+connections and does not bypass cache authority. A content change revokes grants;
+an Untrusted watch job needing them must restart with explicit authorization.
 
 ## Exporting an editor buffer
 
-`markview export` accepts Markdown on stdin, so an editor can export unsaved
-changes without creating a Markdown file:
-
-```sh
-markview export --stdin --format pdf --output snapshot.pdf --base-dir . < document.md
-markview export --stdin --format png --output whole.png --scale 2 < document.md
-```
-
-Buffers default to Untrusted. The host must preserve the document's trust using
-`--document-trust trusted|untrusted` and may supply the same `--allow-local-image`
-and `--allow-network` grants described above. A resource directory does not grant
-trust.
-
-`--base-dir` resolves relative images (default: the current directory).
-The `pdf` and `export` commands share their template and reading options.
-Repeat `--style` for bundled or installed PDF templates, highest priority first;
-`--style-file` layers a custom MVSS file targeting `pdf` above them. Both output
-formats use the template's page geometry. `--cjk-type SC|TC|JP|none` selects the
-CJK convention (default: SC); `--paragraph-indent`, `--left` and `--no-hyphens`
-control paragraph layout. `--font-size` is in logical pixels (default: 16,
-range: 1–200); PNG `--scale` ranges from 0.1 to 8.
-
-Repeat `--fonts` for font directories or `--font-file` for explicit font files.
-Reader, file and buffer exports all use downloaded fonts by default.
-`--ignore-system-fonts` excludes system and downloaded fonts; explicit files
-also exclude both, while retaining any directories named with `--fonts`.
-An invalid explicit font file or one over 64 MiB fails the job before replacing
-an existing output.
-
-Stdout contains one JSON object per line: `progress` events with a `phase` and
-`fraction`, followed by a `done` event with PDF page/byte counts or PNG dimensions.
-Errors go to stderr and return a nonzero exit status. A host can create the
-path supplied by `--cancel-file` to request cancellation at export checkpoints.
-Hosts that require cancellation to preserve the destination should export to
-a temporary output, wait for successful completion, and then replace it.
-
-### Markdown dialect for buffer exports
-
-`markview export --stdin --markdown-flavor obsidian` uses the core reader's
-supported Obsidian syntax. The default remains `gfm`; this command does not load
-saved reader settings. `--highlight-marks` enables `==highlight==` in GFM, while
-Obsidian always enables it. `--hard-breaks` treats single newlines as hard breaks
-in either preset and is off by default. Grid tables are enabled by default in
-both presets; use `--grid-tables false` to disable them. These options apply to
-both PDF and PNG.
+For unsaved editor content, JSON progress, cancellation, font assets and explicit
+Markdown dialects, use the [native integration protocol](../library/native-export.md).
+Buffer commands do not load personal reader settings; in-app exports use the
+reader's selected dialect.

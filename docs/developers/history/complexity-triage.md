@@ -1,5 +1,11 @@
 # Cyclomatic complexity triage
 
+> Historical evidence, archived from repository revision `37f22d622d41d5409321b8db7cf9f36b38b0d5a1`.
+> Measurements and implementation descriptions apply to the investigations below,
+> not necessarily to the current release. Original measurement dates are retained;
+> the archive revision is not a claim that those measurements were rerun.
+
+
 The original `artifacts/complexity-triage.csv` lists 83 functions and closures above the maximum of 15. The table records their disposition in commit order, from low-risk local changes to larger coupled pipelines. Each item has its own formatted, linted and tested commit.
 
 64 entries were refactored and 19 retain explicit function-level exceptions. The window-event extraction later marked two more stateful input handlers (`scroll_event`, `dispatch_key`), and `pointer_pressed` and `copy_field` were exceptions added during review. `pointer_pressed` (C3, pointer ownership), `copy_field` (C9, the derived settings table) and `action` (C11, domain command routing) have since been refactored away, leaving 20 measured exceptions in the completed source tree: 18 of the table's exceptions plus the two input handlers. Reasons live beside the functions and are printed by the audit; neither modules nor nested functions inherit an exception.

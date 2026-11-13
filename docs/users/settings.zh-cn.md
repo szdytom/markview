@@ -1,11 +1,11 @@
-# 设置
+# Markdown 方言与代码复制
 
 [终端用户文档](README.md) · [文档导航](../README.md) · [English](settings.md)
 
 打开 **设置** 用 `Ctrl+,`（macOS 上为 Command）。阅读偏好写在
 `settings.toml`；视觉主题写在 [样式表](stylesheets.md)。
 
-完整的设置说明见英文版 [Settings](settings.md)。本节说明 **Markdown 变体**。
+完整的设置说明见英文版 [Settings](settings.md)。本页只说明 **Markdown 方言与代码复制**，不是完整设置页的翻译。
 
 ## 代码块复制
 
