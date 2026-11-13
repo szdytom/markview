@@ -1,6 +1,6 @@
 {
   "name": "@markview/fonts",
-  "version": "0.5.1",
+  "version": "0.5.2",
   "description": "Explicit font loading, caching and CDN file descriptors",
   "license": "MIT",
   "type": "module",

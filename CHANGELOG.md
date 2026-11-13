@@ -21,6 +21,10 @@ at the same level, without `[brackets]`.
 
 ## Unreleased
 
+## 0.5.2 - 2026-11-13
+
+This release adds Grid tables, PDF heading bookmarks, one-click code copying, and native Windows on Arm packages, with smoother Android scrolling and fixes for rendering and navigation.
+
 ### Added
 
 - Support Windows on Arm with native ARM64 MSI and portable ZIP packages.

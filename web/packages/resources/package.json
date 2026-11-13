@@ -1,6 +1,6 @@
 {
   "name": "@markview/resources",
-  "version": "0.5.1",
+  "version": "0.5.2",
   "description": "Opt-in browser image transport and decoding",
   "license": "MIT",
   "type": "module",
