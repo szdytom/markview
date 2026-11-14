@@ -1318,12 +1318,10 @@ impl Markview {
 		}
 	}
 
-	/// How far the document scrolls: its height past the page that is actually
-	/// visible, which the two viewport insets shrink. Subtracting the whole
-	/// canvas would leave the last `2 * INSET` pixels unreachable.
+	/// The last line may reach the top of the reading area inside the insets.
 	fn scroll_range(&self) -> f32 {
 		let page = (self.logical.1 - 2.0 * INSET).max(0.0);
-		(self.published.snapshot.height - page).max(0.0)
+		self.published.snapshot.scroll_limit(page)
 	}
 
 	fn clamp_scroll(&mut self) {

@@ -155,16 +155,13 @@ impl<P: super::SendEvent> App<P> {
 			h: (height - top - self.bottom()).max(0.0),
 		};
 		let viewport = self.viewport();
-		// The bar spans the scrollable range, including the blank kept below
-		// the document, so its thumb and the scroll clamp agree.
-		let content =
-			self.readers.session.display.snapshot.scroll_limit(viewport)
-				+ viewport;
-		markview_interaction::DocumentView::vertical_scrollbar(
+		let snapshot = &self.readers.session.display.snapshot;
+		Scrollbar::document(
 			track,
 			self.readers.session.scrolling.offset,
-			content,
+			snapshot.height,
 			viewport,
+			snapshot.scroll_limit(viewport),
 			metrics,
 		)
 	}

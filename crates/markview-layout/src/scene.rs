@@ -407,15 +407,32 @@ pub struct LayoutSnapshot {
 }
 
 impl LayoutSnapshot {
-	/// The furthest this snapshot scrolls in `viewport`. A centered picture
-	/// fits by construction, so it never scrolls into the blank tail. If the
-	/// reading area has since shrunk, the picture must scroll again.
+	/// The furthest this snapshot scrolls, keeping its last visible line at the
+	/// top. A centered picture that still fits has no scrollable tail.
 	pub fn scroll_limit(&self, viewport: f32) -> f32 {
 		if self.centered && self.height <= viewport {
-			0.0
-		} else {
-			crate::layout::scroll_limit(self.height, viewport)
+			return 0.0;
 		}
+		let bottom = crate::layout::scroll_limit(self.height, viewport);
+		let Some(block) = self.blocks.last() else {
+			return bottom;
+		};
+		let last_line = block
+			.layout
+			.text
+			.iter()
+			.enumerate()
+			.filter_map(|(i, node)| {
+				if !block.text_visible(i) {
+					return None;
+				}
+				let cluster = node.clusters.last()?;
+				block.rect(cluster.command, cluster.rect)
+			})
+			.max_by(|a, b| a.y.total_cmp(&b.y));
+		last_line.map_or(block.y.max(bottom), |rect| {
+			block.y + rect.y + (rect.h - viewport).max(0.0)
+		})
 	}
 	/// The document y a typed anchor should scroll to, once it has been laid
 	/// out. A prefix snapshot only answers for anchors it already contains.
@@ -536,8 +553,7 @@ pub const SCROLLBAR_THICKNESS: f32 = 8.0;
 /// Default space an overflowing block reserves below its content for its
 /// horizontal scrollbar, keeping the bar clear of the last line of text.
 pub const SCROLLBAR_GUTTER: f32 = 8.0;
-/// Shortest thumb a very long document may shrink to, so the bar stays
-/// grabbable.
+/// Minimum thumb length for overflow blocks and UI surfaces.
 pub const SCROLLBAR_MIN_THUMB: f32 = 24.0;
 
 /// The thickness one scrollbar is painted at.
@@ -582,7 +598,7 @@ pub struct Scrollbar {
 	vertical: bool,
 	/// Scroll offset at the end of the thumb's travel.
 	max_scroll: f32,
-	/// Thumb travel along the track.
+	/// Distance along the track corresponding to `max_scroll`.
 	travel: f32,
 	/// Thumb length along the track.
 	thumb_len: f32,
@@ -608,6 +624,39 @@ fn thumb_span(
 }
 
 impl Scrollbar {
+	/// A document bar whose thumb covers the visible fraction of the content.
+	/// `max_scroll` may include a blank tail, which shortens the thumb instead
+	/// of contributing to the content height.
+	pub fn document(
+		track: Rect,
+		scroll: f32,
+		content: f32,
+		viewport: f32,
+		max_scroll: f32,
+		metrics: ScrollbarMetrics,
+	) -> Option<Self> {
+		if max_scroll <= 0.0 || content <= 0.0 || track.h <= 0.0 {
+			return None;
+		}
+		let scroll = scroll.clamp(0.0, max_scroll);
+		let at = (scroll / content).clamp(0.0, 1.0) * track.h;
+		let end = ((scroll + viewport) / content).clamp(0.0, 1.0) * track.h;
+		let thumb_len = end - at;
+		Some(Self {
+			track,
+			thumb: Rect {
+				y: track.y + at,
+				h: thumb_len,
+				..track
+			},
+			vertical: true,
+			max_scroll,
+			travel: track.h * (max_scroll / content),
+			thumb_len,
+			metrics,
+		})
+	}
+
 	/// A vertical bar in `track`, or `None` when nothing scrolls.
 	pub fn vertical(
 		track: Rect,

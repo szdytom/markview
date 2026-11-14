@@ -330,13 +330,25 @@ fn queued_fragments_override_restoration_during_progressive_layout() {
 			app.readers.select(index, Instant::now());
 		}
 		accept(&mut app.readers.session, &source, &options, false);
+		let top = app
+			.readers
+			.session
+			.display
+			.snapshot
+			.anchor_y("top")
+			.unwrap();
 		app.apply_anchor();
 		assert!(app.readers.session.pending_anchor.is_none());
-		assert!(app.readers.session.scrolling.target.is_none());
+		assert_eq!(app.readers.session.scrolling.target, Some(top));
 		assert_eq!(app.readers.session.scrolling.offset, 0.0);
 		accept(&mut app.readers.session, &source, &options, true);
+		let viewport = app.viewport();
+		app.readers
+			.session
+			.advance_scroll(Instant::now() + Duration::from_secs(1), viewport);
 		assert!(app.readers.session.saved_reading.is_none());
-		assert_eq!(app.readers.session.scrolling.offset, 0.0);
+		assert_eq!(app.readers.session.scrolling.offset, top);
+		assert!(app.readers.session.scrolling.target.is_none());
 	}
 }
 
@@ -386,11 +398,39 @@ fn text_position_survives_width_font_changes_progressive_layout_and_release() {
 	assert!(changed.saved_reading.is_none());
 	assert!(
 		changed.scrolling.offset
-			<= crate::state::scroll_limit(
-				changed.display.snapshot.height,
-				200.0
-			)
+			<= changed.display.snapshot.scroll_limit(200.0)
 	);
+}
+
+#[test]
+fn last_line_reading_position_survives_release_and_progressive_restoration() {
+	let source = format!("{}Last line.", "Reading paragraph.\n\n".repeat(60));
+	let options = crate::test_support::options();
+	let mut original = ReaderSession::default();
+	accept(&mut original, &source, &options, true);
+	original.scroll_by(f32::INFINITY, 200.0);
+	let end = original.display.snapshot.scroll_limit(200.0);
+	assert_eq!(original.scrolling.offset, end);
+	assert!(end > original.display.snapshot.height - 200.0);
+	let saved = Reading::capture(&original);
+	for released in [false, true] {
+		let mut restored = if released {
+			original.clone()
+		} else {
+			ReaderSession::default()
+		};
+		if released {
+			restored.release_heavy();
+		} else {
+			restored.saved_reading = Some(saved.clone());
+		}
+		accept(&mut restored, &source, &options, false);
+		assert!(restored.saved_reading.is_some());
+		accept(&mut restored, &source, &options, true);
+		assert!(restored.saved_reading.is_none());
+		assert!((restored.scrolling.offset - end).abs() < 0.01);
+		assert!(restored.scrolling.target.is_none());
+	}
 }
 
 #[test]

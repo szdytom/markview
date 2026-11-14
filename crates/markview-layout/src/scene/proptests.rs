@@ -63,6 +63,67 @@ fn shapes(x: f32, y: f32, depth: usize) -> Vec<Draw> {
 
 proptest! {
 	#[test]
+	fn scroll_limit_follows_the_last_line_independently_of_viewport_height(
+		lines in 1usize..16, font_size in 12u16..33, viewport in 100u16..1001,
+	) {
+		let source = "Reading line.  \n".repeat(lines);
+		let snapshot = crate::layout::LayoutEngine::new().layout(
+			&markview_commonmark::parse(source),
+			&crate::layout::LayoutOptions { width: 260.0, font_size: f32::from(font_size), ..Default::default() },
+		);
+		let last = snapshot.blocks.last().unwrap();
+		let last_line = last.clusters().map(|(_, _, rect)| last.y + rect.y).max_by(f32::total_cmp).unwrap();
+		let limit = snapshot.scroll_limit(f32::from(viewport));
+		prop_assert_eq!(limit, last_line);
+		prop_assert!(snapshot.height - limit > 0.0);
+		prop_assert!(snapshot.height - limit < f32::from(viewport));
+	}
+
+	#[test]
+	fn document_scrollbar_maps_visible_content_and_dragging_through_the_tail(
+		content in 1u32..1_000_001, viewport in 1u16..2049,
+		length in 1u16..2049, start in -100i16..101,
+		fraction in 0u16..257, grab_fraction in 0u16..257,
+	) {
+		let (content, viewport, length, start) = (content as f32, f32::from(viewport), f32::from(length), f32::from(start));
+		let max = (content - viewport.min(20.0)).max(0.0);
+		let track = Rect { x: 0.0, y: start, w: 8.0, h: length };
+		let create = |scroll| Scrollbar::document(track, scroll, content, viewport, max, ScrollbarMetrics::DOCUMENT);
+		if max == 0.0 {
+			prop_assert!(create(0.0).is_none());
+			return Ok(());
+		}
+		let scroll = max * f32::from(fraction) / 256.0;
+		let bar = create(scroll).unwrap();
+		let tolerance = 0.0005;
+		prop_assert!((bar.thumb.y - start - length * scroll / content).abs() < tolerance);
+		let visible = viewport.min(content - scroll);
+		prop_assert!((bar.thumb.h - length * visible / content).abs() < tolerance);
+		prop_assert!(bar.thumb.h >= 0.0 && bar.thumb.y + bar.thumb.h <= start + length + tolerance);
+		let after = create((scroll + max) * 0.5).unwrap();
+		prop_assert!(after.thumb.y >= bar.thumb.y - tolerance);
+		prop_assert!(after.thumb.h <= bar.thumb.h + tolerance);
+		let before = create(-content).unwrap();
+		let end = create(max + content).unwrap();
+		prop_assert_eq!(before.thumb, create(0.0).unwrap().thumb);
+		prop_assert_eq!(end.thumb, create(max).unwrap().thumb);
+		let local_grab = bar.thumb.h * f32::from(grab_fraction) / 256.0;
+		let pointer = bar.thumb.y + local_grab;
+		let actual_grab = bar.grab(4.0, pointer);
+		prop_assert!((bar.scroll_for(4.0, pointer, actual_grab) - scroll).abs() <= 0.001 + tolerance * content / length);
+		let top = create(0.0).unwrap();
+		let grab = top.thumb.h * f32::from(grab_fraction) / 256.0;
+		let pointer = bar.thumb.y + grab;
+		let scroll_tolerance = 0.001 + tolerance * content / length;
+		// Rebuilding the geometry while the thumb shrinks must not change a drag.
+		for geometry in [top, bar] {
+			prop_assert!((geometry.scroll_for(4.0, pointer, grab) - scroll).abs() <= scroll_tolerance);
+			prop_assert_eq!(geometry.scroll_for(4.0, start - 10_000.0, grab), 0.0);
+			prop_assert_eq!(geometry.scroll_for(4.0, start + length + grab + 10_000.0, grab), max);
+		}
+	}
+
+	#[test]
 	fn scrollbar_drag_positions_match_scroll_fractions_on_both_axes(
 		start in -100i16..101, length in 32u16..513, band in 1u16..25,
 		viewport in 16u16..513, extra in 8u16..2049, fraction in 0u16..257, grab_fraction in 1u16..256,

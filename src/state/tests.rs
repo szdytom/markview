@@ -297,25 +297,41 @@ fn pending_pages_accumulate_reverse_and_resolve_without_blank_frames() {
 	assert_eq!(session.scrolling.target, Some(f32::INFINITY));
 	session.layout_pending = false;
 	session.resolve_scroll(600.);
-	// The document ends two thirds of a page above the viewport bottom.
-	assert_eq!(session.scrolling.offset, 2300. - 200.);
+	assert_eq!(session.scrolling.offset, 1700.);
 }
 
 #[test]
-fn scrolling_past_the_end_keeps_two_thirds_of_a_page_blank() {
+fn scrolling_to_the_end_keeps_only_the_last_text_line_visible() {
+	let snapshot = snapshot_of("First line.  \nSecond line.  \nLast line.");
+	let block = snapshot.blocks.last().unwrap();
+	let last_line = block
+		.clusters()
+		.map(|(_, _, rect)| block.y + rect.y)
+		.max_by(f32::total_cmp)
+		.unwrap();
+	let mut session = ReaderSession::default();
+	session.display.snapshot = snapshot;
+	for viewport in [300.0, 900.0] {
+		session.scroll_by(f32::INFINITY, viewport);
+		assert_eq!(session.scrolling.offset, last_line);
+		session.scroll_by(400.0, viewport);
+		assert_eq!(session.scrolling.offset, last_line);
+	}
+}
+
+#[test]
+fn scrolling_without_line_geometry_stops_at_the_content_bottom() {
 	let page = 600.;
 	let mut session = ReaderSession::default();
 	session.display.snapshot.height = 2000.;
 	session.scroll_by(f32::INFINITY, page);
-	assert_eq!(session.scrolling.offset, 2000. - page / 3.);
+	assert_eq!(session.scrolling.offset, 1400.);
 	// Scrolling further only repeats the limit.
 	session.scroll_by(400., page);
-	assert_eq!(session.scrolling.offset, 1800.);
-	// A document shorter than the page still lifts its end off the bottom.
+	assert_eq!(session.scrolling.offset, 1400.);
 	session.display.snapshot.height = 500.;
 	session.scroll_by(f32::INFINITY, page);
-	assert_eq!(session.scrolling.offset, 500. - page / 3.);
-	// An end already inside the top third has nowhere to go.
+	assert_eq!(session.scrolling.offset, 0.);
 	session.display.snapshot.height = 150.;
 	session.scroll_by(f32::INFINITY, page);
 	assert_eq!(session.scrolling.offset, 0.);
@@ -353,7 +369,7 @@ fn heading_anchors_queue_until_their_heading_is_laid_out() {
 	});
 	assert_eq!(session.resolve_anchor(300.), Some(Ok(())));
 	assert!(session.pending_anchor.is_none());
-	let max = scroll_limit(layout.height, 300.);
+	let max = layout.scroll_limit(300.);
 	assert_eq!(session.scrolling.offset, details.clamp(0., max));
 	// A heading the finished document lacks is reported once.
 	session.pending_anchor = Some(PendingAnchor {
@@ -455,7 +471,7 @@ fn a_jump_into_a_collapsed_body_expands_its_containers_first() {
 	assert_eq!(session.resolve_anchor(300.), Some(Ok(())));
 	assert_eq!(
 		session.scrolling.offset,
-		at.clamp(0.0, scroll_limit(session.display.snapshot.height, 300.0))
+		at.clamp(0.0, session.display.snapshot.scroll_limit(300.0))
 	);
 	// An anchor outside every disclosure needs no reflow, and a second jump
 	// into the same body is a no-op now that it is open.
@@ -698,7 +714,7 @@ fn the_outline_caches_per_document_and_its_entries_queue_heading_anchors() {
 	let three = layout.anchor_y("three").unwrap();
 	assert_eq!(
 		session.scrolling.offset,
-		three.clamp(0.0, scroll_limit(layout.height, 300.0))
+		three.clamp(0.0, layout.scroll_limit(300.0))
 	);
 }
 
@@ -724,7 +740,7 @@ fn an_outline_jump_into_the_reserved_blank_lifts_the_heading() {
 			crate::layout::LayoutEngine::new().layout(&document, &options);
 		let y = layout.anchor_y("last").unwrap();
 		let height = layout.height;
-		(y > height - viewport && y <= scroll_limit(height, viewport))
+		(y > height - viewport && y <= layout.scroll_limit(viewport))
 			.then_some((document, layout, y))
 	});
 	let (document, layout, y) =
@@ -1420,7 +1436,7 @@ fn an_animation_stops_at_the_clamped_document_end() {
 	assert!(session.scroll_animating());
 	// One frame past the deadline settles on the clamped limit, not the target.
 	session.advance_scroll(start + Duration::from_secs(1), 600.0);
-	assert_eq!(session.scrolling.offset, 800.0);
+	assert_eq!(session.scrolling.offset, 400.0);
 	assert!(!session.scroll_animating());
 	assert_eq!(session.scrolling.target, None);
 }
@@ -1673,14 +1689,14 @@ fn a_page_toward_a_settled_end_stops_at_once() {
 		..Default::default()
 	};
 	session.display.snapshot.height = 1000.0;
-	session.scrolling.offset = 800.0;
+	session.scrolling.offset = 400.0;
 	let start = Instant::now();
 	session.animate_scroll_by(540.0, start);
 	assert!(session.scroll_animating());
 	// The first frame already sits on the clamp, so nothing waits out the clock.
 	assert!(!session.advance_scroll(start, 600.0));
 	assert!(!session.scroll_animating());
-	assert_eq!(session.scrolling.offset, 800.0);
+	assert_eq!(session.scrolling.offset, 400.0);
 	assert_eq!(session.scrolling.target, None);
 }
 
@@ -1691,7 +1707,7 @@ fn a_page_away_from_the_settled_end_still_animates() {
 		..Default::default()
 	};
 	session.display.snapshot.height = 1000.0;
-	session.scrolling.offset = 800.0;
+	session.scrolling.offset = 400.0;
 	let start = Instant::now();
 	session.animate_scroll_by(-540.0, start);
 	assert!(session.advance_scroll(start, 600.0));

@@ -757,10 +757,7 @@ fn cached_tab_refresh_defers_fragment_links_until_new_content_arrives() {
 				let y =
 					session.display.snapshot.anchor_y(anchor).unwrap().clamp(
 						0.0,
-						crate::state::scroll_limit(
-							session.display.snapshot.height,
-							viewport,
-						),
+						session.display.snapshot.scroll_limit(viewport),
 					);
 				session.advance_scroll(
 					Instant::now() + Duration::from_secs(1),

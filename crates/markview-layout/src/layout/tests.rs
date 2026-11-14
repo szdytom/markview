@@ -1238,14 +1238,12 @@ fn anchor_follows_content_and_only_follows_bottom_when_requested() {
 	let new = snapshot(&[0, 1, 2, 3, 4, 5, 6]);
 	assert_eq!(anchored_scroll(&old, &new, 310.0, 200.0, true), 430.0);
 	let appended = snapshot(&[1, 2, 3, 4, 5, 6, 7, 8]);
-	// The old limit is 653.33, so 700 sits in the tail it reserves: following
-	// holds the bottom there, while not following keeps the block under the
-	// reader, which the appended block leaves where it was.
+	let end = old.scroll_limit(200.0);
 	assert_eq!(
-		anchored_scroll(&old, &appended, 700.0, 200.0, true),
-		scroll_limit(appended.height, 200.0)
+		anchored_scroll(&old, &appended, end, 200.0, true),
+		appended.scroll_limit(200.0)
 	);
-	assert_eq!(anchored_scroll(&old, &appended, 700.0, 200.0, false), 700.0);
+	assert_eq!(anchored_scroll(&old, &appended, end, 200.0, false), end);
 }
 #[test]
 fn wide_blocks_are_scrollable_and_formulas_grow_line_height() {

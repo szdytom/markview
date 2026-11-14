@@ -102,8 +102,35 @@ test("real MVaaC renders edits, keeps balanced margins and supports scrollbar/th
     theme: "dark",
   });
   await rendered(page, 2);
-  await expect(page.getByRole("scrollbar")).toBeHidden();
+  await expect(page.getByRole("scrollbar")).toBeVisible();
   await page.screenshot({ path: "test-results/preview-dark.png" });
+});
+test("scrolling to the end leaves the last text line at the top at any viewport height", async ({
+  page,
+}) => {
+  const message = await open(page);
+  await rendered(page, 1);
+  const bar = page.getByRole("scrollbar");
+  let limit;
+  for (const height of [600, 900]) {
+    await page.setViewportSize({ width: 1000, height });
+    await bar.focus();
+    await page.keyboard.press("End");
+    await expect
+      .poll(() => page.evaluate(() => saved.offset))
+      .toBeGreaterThanOrEqual(message.markdown.lastIndexOf("A paragraph"));
+    const max = Number(await bar.getAttribute("aria-valuemax"));
+    if (limit !== undefined) expect(max).toBe(limit);
+    limit = max;
+    const fraction = await bar.evaluate((track) => {
+      return (
+        track.firstElementChild.getBoundingClientRect().height /
+        track.getBoundingClientRect().height
+      );
+    });
+    expect(fraction).toBeGreaterThan(0);
+    expect(fraction).toBeLessThan(0.02);
+  }
 });
 test("latest update wins during initialization and saved reading position restores", async ({
   page,
@@ -431,15 +458,16 @@ test("editing after a long code block follows the wrapped caret only when it lea
     edit: { version: 3, offset: markdown.length, inputTime: Date.now() },
   });
   await rendered(page, 3);
-  await expect
-    .poll(async () =>
+  const lastLineVisible = () =>
+    bar.evaluate((track) =>
       Math.abs(
-        Number(await bar.getAttribute("aria-valuenow")) -
-          Number(await bar.getAttribute("aria-valuemax")),
+        track.firstElementChild.getBoundingClientRect().bottom -
+          track.getBoundingClientRect().bottom,
       ),
-    )
-    .toBeLessThanOrEqual(1);
+    );
+  await expect.poll(lastLineVisible).toBeLessThanOrEqual(1);
   const current = Number(await bar.getAttribute("aria-valuenow"));
+  expect(current).toBeGreaterThan(100);
   const updated = markdown + " a";
   await publish(page, {
     ...message,
@@ -448,14 +476,7 @@ test("editing after a long code block follows the wrapped caret only when it lea
     edit: { version: 4, offset: updated.length, inputTime: Date.now() },
   });
   await rendered(page, 4);
-  await expect
-    .poll(async () =>
-      Math.abs(
-        Number(await bar.getAttribute("aria-valuenow")) -
-          Number(await bar.getAttribute("aria-valuemax")),
-      ),
-    )
-    .toBeLessThanOrEqual(1);
+  await expect.poll(lastLineVisible).toBeLessThanOrEqual(1);
   expect(
     Number(await bar.getAttribute("aria-valuenow")) - current,
   ).toBeLessThan(100);
