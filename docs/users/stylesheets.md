@@ -25,7 +25,7 @@ targets = ["ui", "pdf"]
 
 Omitting `targets` defaults to `["ui", "pdf"]` for existing files. Empty arrays, duplicates, unknown names and non-array values are rejected. Destinations describe the whole file, not individual rules, and are checked separately on every selected stylesheet before merging. They do not cascade.
 
-Bundled reader themes declare `["ui"]`, bundled paper themes declare `["pdf"]`, and the hidden `builtin` supports both. Selectors hide incompatible themes. A previously selected theme that changes destinations remains visible with an error so it can be removed; invalid reader updates retain the last valid appearance. Explicitly loading an incompatible theme reports its ID and the required destination.
+Light, Dark, Celadon, Blueprint, Rosewood and 8-bit declare `["ui"]`; Print and Monochrome declare `["pdf"]`; the three artist themes and hidden `builtin` support both. Selectors hide incompatible themes. A previously selected theme that changes destinations remains visible with an error so it can be removed; invalid reader updates retain the last valid appearance. Explicitly loading an incompatible theme reports its ID and the required destination.
 
 The export panel shares paper layout and stylesheet selection between PDF and PNG, so both use the `pdf` destination. The diagnostic `render` subcommand can preview either destination, including `--style print`; it does not select a theme for the reader window. `ss validate` reports the declared targets.
 
@@ -208,7 +208,7 @@ Special properties include `theme` on `["code_block"]` alone (`theme = "none"` d
 
 ### Reader tabs
 
-Tabs use the Connected silhouette: rounded tabs joined to the page. Colors come from MVSS; an active tab uses the page background. The shape is independent of the selected themes and window-control layout, and does not affect PDF or PNG exports.
+Tabs use the Connected silhouette: rounded tabs joined to the page. Colors come from MVSS; an active tab uses the page background. A 2 × 12 logical-pixel bar, using `ui` + `toolbar` `accent`, sits 6 pixels before each filename. The shape is independent of the selected themes and window-control layout, and does not affect PDF or PNG exports.
 
 MVSS does not accept `tab_style`. Remove it from toolbar rules and from selected styles.
 

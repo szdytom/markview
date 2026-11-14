@@ -266,6 +266,7 @@ fn markdown_matches_rendering_baselines() -> Result<()> {
 		);
 		baselines.record(name, &actual)?;
 		if markview_layout::style::Stylesheet::PDF_THEMES.contains(&case.theme)
+			&& case.output != Some(markview_layout::style::StyleTarget::Ui)
 			&& case.device == markview_layout::style::Media::Desktop
 			&& case.variant != "mvss-media"
 		{

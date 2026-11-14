@@ -6,7 +6,7 @@ Each view below shows the same document in a bundled reader theme, including
 its own fonts, spacing and colors. Open **Settings → Styles** to select a theme
 on desktop or Android. See [fonts](fonts.md) to download the declared families.
 
-下面分别展示同一篇文档在六种内置阅读主题下的完整页面，保留各自的字体、间距与配色。
+下面分别展示同一篇文档在部分内置阅读主题下的完整页面，保留各自的字体、间距与配色。
 桌面与 Android 都可以在**设置 → 样式**中选择主题；主题所需字体可以在[字体页面](fonts.md)下载。
 每张图后附有中文示例入口。
 
@@ -60,3 +60,9 @@ Pixel type and green accents. 像素字体与绿色点缀。
 
 For your own palette or typography, see the [Use themes](appearance.md) · [MVSS reference](stylesheets.md).
 想定制配色或排版，可以从 [MVSS 主题指南](stylesheets.md)开始。
+
+## Artist themes / 艺术家主题
+
+Qi Baishi (`qibaishi`), Mondrian (`mondrian`) and Van Gogh (`vangogh`) work in both the reader and PDF/PNG exports. They pair white reading pages with ivory chrome: ink and vermilion for Qi Baishi, blue/red/yellow geometry for Mondrian, and indigo with wheat gold for Van Gogh. Van Gogh's current outline entry uses a wheat-yellow background.
+
+齐白石、蒙德里安和梵高主题现同时支持阅读和 PDF/PNG 导出。三个主题都采用白色正文与暖白界面；梵高的目录当前项使用麦黄色底色。标签文件名前的小竖杠跟随工具栏主题强调色。

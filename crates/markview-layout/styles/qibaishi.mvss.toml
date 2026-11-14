@@ -1,10 +1,10 @@
 format_version = 2
-version = 8
-targets = ["pdf"]
+version = 9
+targets = ["ui", "pdf"]
 
 [meta]
 name = "Qi Baishi"
-description = "Qi Baishi-inspired document layout"
+description = "Ink and vermilion for reading and export"
 
 [[fontdef]]
 id = "serif"
@@ -245,3 +245,118 @@ border_color = "#343C35"
 [[rule]]
 when = ["link", "hover"]
 color = "#A23C35"
+
+[[rule]]
+when = ["ui"]
+media = ["ui"]
+shadow = "#00000000"
+scrim = "#272B3052"
+warning = "#855800"
+
+[[rule]]
+when = ["ui", "panel"]
+media = ["ui"]
+background = "#F7F5EF"
+color = "#343C35"
+muted = "#555D55"
+border_color = "#DED9C9"
+
+[[rule]]
+when = ["ui", "toolbar"]
+media = ["ui"]
+background = "#F7F5EF"
+color = "#343C35"
+muted = "#555D55"
+accent = "#A23C35"
+border_color = "#DED9C9"
+
+[[rule]]
+when = ["ui", "statusbar"]
+media = ["ui"]
+background = "#F7F5EF"
+color = "#343C35"
+muted = "#555D55"
+border_color = "#DED9C9"
+
+[[rule]]
+when = ["ui", "button"]
+media = ["ui"]
+background = "#FFFFFF"
+color = "#343C35"
+accent = "#A23C35"
+hover_background = "#E9E7DE"
+active_background = "#D5DACB"
+disabled_color = "#555D55"
+focus_color = "#A23C35"
+
+[[rule]]
+when = ["scrollbar"]
+media = ["ui"]
+track = "#F2F1ED"
+thumb = "#555D55"
+thumb_hover = "#A23C35"
+
+[[rule]]
+when = ["details"]
+media = ["ui"]
+background = "#F2F1ED"
+border_color = "#DED9C9"
+
+[[rule]]
+when = ["summary"]
+media = ["ui"]
+color = "#343C35"
+
+[[rule]]
+when = ["summary", "hover"]
+media = ["ui"]
+color = "#A23C35"
+
+[[rule]]
+when = ["marker"]
+media = ["ui"]
+color = "#A23C35"
+
+[[rule]]
+when = ["task_marker"]
+media = ["ui"]
+color = "#FFFFFF"
+background = "#FFFFFF"
+accent = "#A23C35"
+border_color = "#A23C35"
+
+[[rule]]
+when = ["code_block", "label"]
+media = ["ui"]
+color = "#555D55"
+
+[[rule]]
+when = ["img"]
+media = ["ui"]
+border_color = "#DED9C9"
+
+[[rule]]
+when = ["img", "caption"]
+media = ["ui"]
+color = "#555D55"
+
+[[rule]]
+when = ["img", "placeholder"]
+media = ["ui"]
+color = "#555D55"
+background = "#F2F1ED"
+
+[[rule]]
+when = ["selection"]
+media = ["ui"]
+background = "#343C3540"
+
+[[rule]]
+when = ["h2"]
+media = ["ui"]
+weight = 700
+
+[[rule]]
+when = ["h3"]
+media = ["ui"]
+weight = 700

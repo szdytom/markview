@@ -21,6 +21,10 @@ at the same level, without `[brackets]`.
 
 ## Unreleased
 
+### Added
+
+- Use Qi Baishi, Mondrian and Van Gogh in the reader as well as exports, with coordinated interface colors, wheat-yellow Van Gogh outline highlights and small theme-color markers before tab filenames.
+
 ## 0.5.2 - 2026-11-13
 
 This release adds Grid tables, PDF heading bookmarks, one-click code copying, and native Windows on Arm packages, with smoother Android scrolling and fixes for rendering and navigation.

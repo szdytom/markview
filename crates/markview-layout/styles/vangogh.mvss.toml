@@ -1,10 +1,10 @@
 format_version = 2
-version = 8
-targets = ["pdf"]
+version = 9
+targets = ["ui", "pdf"]
 
 [meta]
 name = "Van Gogh"
-description = "Van Gogh-inspired document layout"
+description = "Indigo and wheat gold for reading and export"
 
 [[fontdef]]
 id = "serif"
@@ -244,3 +244,118 @@ border_color = "#244C80"
 [[rule]]
 when = ["link", "hover"]
 color = "#AF7921"
+
+[[rule]]
+when = ["ui"]
+media = ["ui"]
+shadow = "#00000000"
+scrim = "#272B3052"
+warning = "#855800"
+
+[[rule]]
+when = ["ui", "panel"]
+media = ["ui"]
+background = "#F7F5EF"
+color = "#244C80"
+muted = "#625F55"
+border_color = "#EAD8A6"
+
+[[rule]]
+when = ["ui", "toolbar"]
+media = ["ui"]
+background = "#F7F5EF"
+color = "#244C80"
+muted = "#625F55"
+accent = "#244C80"
+border_color = "#EAD8A6"
+
+[[rule]]
+when = ["ui", "statusbar"]
+media = ["ui"]
+background = "#F7F5EF"
+color = "#244C80"
+muted = "#625F55"
+border_color = "#EAD8A6"
+
+[[rule]]
+when = ["ui", "button"]
+media = ["ui"]
+background = "#FFFFFF"
+color = "#244C80"
+accent = "#AF7921"
+hover_background = "#F7EBCB"
+active_background = "#F4D985"
+disabled_color = "#625F55"
+focus_color = "#AF7921"
+
+[[rule]]
+when = ["scrollbar"]
+media = ["ui"]
+track = "#F2F1ED"
+thumb = "#625F55"
+thumb_hover = "#AF7921"
+
+[[rule]]
+when = ["details"]
+media = ["ui"]
+background = "#F6F0DF"
+border_color = "#EAD8A6"
+
+[[rule]]
+when = ["summary"]
+media = ["ui"]
+color = "#244C80"
+
+[[rule]]
+when = ["summary", "hover"]
+media = ["ui"]
+color = "#AF7921"
+
+[[rule]]
+when = ["marker"]
+media = ["ui"]
+color = "#AF7921"
+
+[[rule]]
+when = ["task_marker"]
+media = ["ui"]
+color = "#FFFFFF"
+background = "#FFFFFF"
+accent = "#244C80"
+border_color = "#244C80"
+
+[[rule]]
+when = ["code_block", "label"]
+media = ["ui"]
+color = "#625F55"
+
+[[rule]]
+when = ["img"]
+media = ["ui"]
+border_color = "#EAD8A6"
+
+[[rule]]
+when = ["img", "caption"]
+media = ["ui"]
+color = "#625F55"
+
+[[rule]]
+when = ["img", "placeholder"]
+media = ["ui"]
+color = "#625F55"
+background = "#F6F0DF"
+
+[[rule]]
+when = ["selection"]
+media = ["ui"]
+background = "#244C8040"
+
+[[rule]]
+when = ["h2"]
+media = ["ui"]
+weight = 700
+
+[[rule]]
+when = ["h3"]
+media = ["ui"]
+weight = 700
