@@ -121,6 +121,40 @@ jobs:
         shell: pwsh
         run: ./scripts/verify_winget_package.ps1
 
+  scoop:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-2025, windows-11-arm]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v6
+      - name: Test Scoop verification and failure cleanup
+        shell: pwsh
+        run: ./scripts/test_verify_scoop_package.ps1
+      - name: Validate the manifest against the Scoop schema
+        shell: pwsh
+        run: |
+          Invoke-WebRequest https://raw.githubusercontent.com/ScoopInstaller/Scoop/master/schema.json -OutFile "$env:RUNNER_TEMP/scoop-schema.json"
+          if (!(Get-Content packaging/scoop/markview.json -Raw | Test-Json -SchemaFile "$env:RUNNER_TEMP/scoop-schema.json")) {
+            throw 'Invalid Scoop manifest'
+          }
+      - name: Install Scoop
+        shell: pwsh
+        run: |
+          if (!(Get-Command scoop.ps1 -ErrorAction SilentlyContinue)) {
+            Invoke-WebRequest https://get.scoop.sh -OutFile "$env:RUNNER_TEMP/install-scoop.ps1"
+            & "$env:RUNNER_TEMP/install-scoop.ps1" -RunAsAdmin
+            if ($LASTEXITCODE -ne 0) { throw 'Scoop setup failed' }
+          }
+          "$env:USERPROFILE/scoop/shims" >> $env:GITHUB_PATH
+      - name: Verify Scoop installation and uninstallation
+        shell: pwsh
+        run: |
+          $env:PATH += ";$env:ProgramFiles/7-Zip"
+          $architecture = if ($env:PROCESSOR_ARCHITECTURE -eq 'ARM64') { 'arm64' } else { '64bit' }
+          ./scripts/verify_scoop_package.ps1 -Architecture $architecture
+
   # The browser front end shares the engine but not its build: a `wasm32`
   # compile, the pinned `wasm-bindgen` CLI, the pnpm monorepo under `web/` and
   # the Playwright suite that drives the built demo. Nothing here is filtered by
@@ -172,7 +206,7 @@ jobs:
   # packaging input.
   ci:
     if: always()
-    needs: [check, pbt, golden, fuzz, packaging, winget, web-tools, web, android]
+    needs: [check, pbt, golden, fuzz, packaging, winget, scoop, web-tools, web, android]
     runs-on: ubuntu-latest
     steps:
       - name: Fail unless every job succeeded
