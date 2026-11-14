@@ -6,6 +6,7 @@ pub mod budget;
 pub mod coverage;
 pub mod edit;
 pub mod font_archive;
+pub mod highlight;
 pub mod highlight_schedule;
 pub mod history;
 pub mod image_decode;
