@@ -26,9 +26,6 @@ pub(crate) use rows::{Row, RowSlide};
 pub(crate) use markview_interaction::{
 	Drag, Host, HoveredLink, Modifiers, Point, Selection,
 };
-#[cfg(test)]
-pub(crate) use markview_layout::layout::scroll_limit;
-
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum TextField {
 	Url,

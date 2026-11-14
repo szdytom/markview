@@ -9,7 +9,7 @@
 use markview_layout::{
 	background::Direct,
 	fonts::FontConfig,
-	layout::{LayoutEngine, LayoutOptions, scroll_limit},
+	layout::{LayoutEngine, LayoutOptions},
 	scene::{LayoutSnapshot, Rect},
 	style::Stylesheet,
 };
@@ -302,8 +302,8 @@ fn oversized_preview_is_rejected_once_and_leaves_the_frame_alone()
 	Ok(())
 }
 
-/// The reader may scroll a document until its last line sits a third of a
-/// viewport below the top, so a saved offset can be past `height - slice` for
+/// The reader may scroll a document until its last line reaches the top,
+/// so a saved offset can be past `height - slice` for
 /// a card. The preview must show that offset, not jump back to earlier text.
 #[test]
 fn preview_keeps_a_valid_trailing_space_scroll() -> anyhow::Result<()> {
@@ -326,8 +326,7 @@ fn preview_keeps_a_valid_trailing_space_scroll() -> anyhow::Result<()> {
 	let page = snapshot.width.max(1.0);
 	let slice = (rect.h * page / rect.w).max(1.0);
 	let clamped = (snapshot.height - slice).max(0.0);
-	// The reader's own limit: `height - viewport / 3`.
-	let valid = scroll_limit(snapshot.height, 500.0);
+	let valid = snapshot.scroll_limit(500.0);
 	assert!(
 		valid > clamped && valid < snapshot.height,
 		"fixture does not reach past the old clamp: height {} slice {slice} clamped {clamped} valid {valid}",

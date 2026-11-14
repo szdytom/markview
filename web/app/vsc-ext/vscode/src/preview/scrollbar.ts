@@ -7,6 +7,7 @@ export class PreviewScrollbar {
   private dragOffset: number | undefined;
   private height = 0;
   private thumbHeight = 0;
+  private contentHeight = 0;
   private max = 0;
   private last = "";
 
@@ -33,7 +34,7 @@ export class PreviewScrollbar {
           0,
           Math.min(
             this.max,
-            (y * this.max) / Math.max(1, this.height - this.thumbHeight),
+            (y * this.contentHeight) / Math.max(1, this.height),
           ),
         ),
       );
@@ -88,20 +89,20 @@ export class PreviewScrollbar {
     const engine = this.viewer.reader.markview;
     this.height = this.viewer.element.clientHeight;
     this.max = engine.maxScroll();
+    this.contentHeight = engine.contentHeight();
     const y = engine.scroll();
-    const key = `${this.height}:${this.max}:${y}`;
+    const key = `${this.height}:${this.max}:${this.contentHeight}:${y}`;
     if (key === this.last) return;
     this.last = key;
-    this.track.hidden = this.max <= 0;
-    this.thumbHeight = Math.min(
-      this.height,
-      Math.max(
-        24,
-        (this.height * this.height) / Math.max(1, engine.contentHeight()),
-      ),
+    this.track.hidden = this.max <= 0 || this.contentHeight <= 0;
+    const start = Math.min(1, y / Math.max(1, this.contentHeight));
+    const end = Math.min(
+      1,
+      (y + this.height) / Math.max(1, this.contentHeight),
     );
+    this.thumbHeight = (end - start) * this.height;
     this.thumb.style.height = `${this.thumbHeight}px`;
-    this.thumb.style.transform = `translateY(${this.max ? (y / this.max) * (this.height - this.thumbHeight) : 0}px)`;
+    this.thumb.style.transform = `translateY(${start * this.height}px)`;
     this.track.setAttribute("aria-valuemax", String(Math.round(this.max)));
     this.track.setAttribute("aria-valuenow", String(Math.round(y)));
   }

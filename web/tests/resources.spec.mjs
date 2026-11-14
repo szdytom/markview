@@ -78,7 +78,9 @@ test("all sources are emitted without fetching, with priority updates after requ
     update.finish();
     window.mv.frame();
     const complete = window.requests.map((request) => ({ src: request.src, ...request.priority }));
-    window.mv.setScroll(window.mv.maxScroll());
+    // The final line can reach the viewport top, past this image.
+    const last = window.mv.sourceToPreview(source.indexOf('![last]'));
+    window.mv.setScroll(last.rect.y);
     window.mv.frame();
     const scrolled = window.requests.map((request) => ({ src: request.src, ...request.priority }));
     return { beforeDelivery, initial, prefix, complete, scrolled, count: window.requests.length };

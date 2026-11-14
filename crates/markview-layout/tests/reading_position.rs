@@ -1,5 +1,5 @@
 use markview_layout::layout::{
-	BlockLayout, LayoutSnapshot, PlacedBlock, anchored_scroll, scroll_limit,
+	BlockLayout, LayoutSnapshot, PlacedBlock, anchored_scroll,
 };
 use std::sync::Arc;
 
@@ -50,7 +50,7 @@ fn missing_anchor_uses_the_nearest_neighbor_and_its_first_occurrence() {
 		(vec![0, 0, 0, 5, 0], 130.0),
 		// Neighbor offsets still clamp to the new document's scroll bounds.
 		(vec![4, 0, 0], 0.0),
-		(vec![0, 0, 1], scroll_limit(360.0, 200.0)),
+		(vec![0, 0, 1], snapshot([0, 0, 1]).scroll_limit(200.0)),
 		(vec![], 0.0),
 	] {
 		let new = snapshot(ids.clone());
@@ -71,6 +71,6 @@ fn large_replacements_without_shared_blocks_preserve_or_clamp_scroll() {
 	let shorter = snapshot(50_000..70_000);
 	assert_eq!(
 		anchored_scroll(&old, &shorter, scroll, 200.0, false),
-		scroll_limit(shorter.height, 200.0)
+		shorter.scroll_limit(200.0)
 	);
 }

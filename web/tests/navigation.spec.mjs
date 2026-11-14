@@ -108,6 +108,8 @@ test("text-free collapsed container anchors exclude hidden lines across expansio
     const hidden = source.indexOf("hidden");
     for (const expanded of [true, false]) {
       const result = await page.evaluate(() => {
+        // Source navigation may scroll the disclosure header above the viewport.
+        window.viewer.scrollTo(0);
         const mv = window.viewer.reader.markview;
         let point;
         for (let y = 1; y < 100 && !point; y += 2)

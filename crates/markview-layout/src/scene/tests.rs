@@ -81,6 +81,147 @@ fn scrollbar_thumb_spans_the_track_and_maps_to_the_scroll_range() {
 	assert_eq!(top.scroll_for(800.0, 40.0 + travel, 0.0), 1500.0);
 }
 #[test]
+fn empty_documents_have_no_scrollable_tail() {
+	let snapshot = crate::layout::LayoutEngine::new().layout(
+		&markview_commonmark::parse(""),
+		&crate::layout::LayoutOptions::default(),
+	);
+	assert_eq!(snapshot.scroll_limit(600.0), 0.0);
+}
+
+#[test]
+fn scroll_limit_keeps_the_last_visible_line_at_the_top() {
+	for source in [
+		"First line.  \nSecond line.  \nLast line.",
+		"```text\nFirst line.\nSecond line.\nLast line.\n```",
+		"| First | Second |\n|---|---|\n| Short | A long final cell that wraps across several lines. |",
+		"<details>\n<summary>Last visible line</summary>\n\nHidden text.\n\n</details>",
+		"<details open>\n<summary>Summary</summary>\n\nFirst line.  \nLast line.\n\n</details>",
+	] {
+		let document = markview_commonmark::parse(source);
+		for font_size in [12.0, 28.0] {
+			let snapshot = crate::layout::LayoutEngine::new().layout(
+				&document,
+				&crate::layout::LayoutOptions {
+					width: 180.0,
+					font_size,
+					..Default::default()
+				},
+			);
+			let last_line = snapshot
+				.blocks
+				.iter()
+				.flat_map(|block| {
+					block.clusters().map(|(_, _, mut rect)| {
+						rect.y += block.y;
+						rect
+					})
+				})
+				.max_by(|a, b| a.y.total_cmp(&b.y))
+				.unwrap();
+			for viewport in [300.0, 900.0] {
+				assert_eq!(
+					snapshot.scroll_limit(viewport),
+					last_line.y,
+					"{source}"
+				);
+			}
+			assert!(snapshot.height - last_line.y < 100.0);
+			// A viewport shorter than the last row must still reach its bottom.
+			assert_eq!(
+				snapshot.scroll_limit(1.0),
+				last_line.y + (last_line.h - 1.0)
+			);
+		}
+	}
+}
+
+#[test]
+fn scroll_limit_tracks_the_last_line_when_trailing_details_toggle() {
+	let document = markview_commonmark::parse(
+		"Opening paragraph.\n\n<details>\n<summary>Summary</summary>\n\nFirst hidden line.  \nLast hidden line.\n\n</details>",
+	);
+	let mut snapshot = crate::layout::LayoutEngine::new()
+		.layout(&document, &crate::layout::LayoutOptions::default());
+	let last = snapshot.blocks.last().unwrap();
+	let id = last.id;
+	let retained = last.layout.clone();
+	let closed = snapshot.scroll_limit(600.0);
+	for open in [true, false, true, false] {
+		snapshot.set_disclosures(
+			&std::collections::BTreeMap::from([(id, open)]),
+			false,
+		);
+		let last = snapshot.blocks.last().unwrap();
+		assert!(Arc::ptr_eq(&retained, &last.layout));
+		let final_row = last
+			.clusters()
+			.map(|(_, _, rect)| last.y + rect.y)
+			.max_by(f32::total_cmp)
+			.unwrap();
+		assert_eq!(snapshot.scroll_limit(600.0), final_row);
+		if open {
+			assert!(final_row > closed);
+		} else {
+			assert_eq!(final_row, closed);
+		}
+	}
+}
+
+#[test]
+fn document_scrollbar_shrinks_in_the_blank_tail() {
+	let track = Rect {
+		x: 0.0,
+		y: 40.0,
+		w: 8.0,
+		h: 600.0,
+	};
+	let bar = |scroll, content| {
+		Scrollbar::document(
+			track,
+			scroll,
+			content,
+			600.0,
+			(content - 20.0).max(0.0),
+			ScrollbarMetrics::DOCUMENT,
+		)
+		.unwrap()
+	};
+	for (scroll, y, h) in [
+		(0.0, 40.0, 180.0),
+		(1400.0, 460.0, 180.0),
+		(1600.0, 520.0, 120.0),
+		(1800.0, 580.0, 60.0),
+		(1980.0, 634.0, 6.0),
+	] {
+		let bar = bar(scroll, 2000.0);
+		assert_eq!((bar.thumb.y, bar.thumb.h), (y, h));
+		assert_eq!(bar.max_scroll(), 1980.0);
+	}
+	// A short document starts fully visible and still scrolls into its tail.
+	assert_eq!(bar(0.0, 400.0).thumb.h, 600.0);
+	assert_eq!(
+		(bar(200.0, 400.0).thumb.y, bar(200.0, 400.0).thumb.h),
+		(340.0, 300.0)
+	);
+	// The represented fraction stays exact even for a very long document.
+	assert!((bar(0.0, 1_000_000.0).thumb.h - 0.36).abs() < 0.001);
+	for (content, max_scroll) in [(0.0, 0.0), (100.0, 0.0), (600.0, 0.0)] {
+		assert!(
+			Scrollbar::document(
+				track,
+				0.0,
+				content,
+				600.0,
+				max_scroll,
+				ScrollbarMetrics::DOCUMENT
+			)
+			.is_none()
+		);
+	}
+}
+
+#[test]
 fn scrollbar_grab_zone_is_the_band_and_the_thumb_keeps_its_thickness() {
 	let metrics = ScrollbarMetrics::DOCUMENT;
 	let band = Rect {

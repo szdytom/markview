@@ -334,6 +334,60 @@ fn reading_viewport_meets_chrome_and_scrollbar_edges() {
 }
 
 #[test]
+fn document_scrollbar_represents_content_and_drags_through_the_blank_tail() {
+	for paragraphs in [1, 15, 100] {
+		let (mut app, _) = reader(&"Body line.\n\n".repeat(paragraphs), 760.0);
+		app.show_document_scrollbar(Instant::now());
+		let viewport = app.viewport();
+		let snapshot = &app.readers.session.display.snapshot;
+		let content = snapshot.height;
+		let max = snapshot.scroll_limit(viewport);
+		let Some(bar) = app.document_scrollbar() else {
+			assert_eq!(max, 0.0);
+			continue;
+		};
+		assert_eq!(bar.max_scroll(), max);
+		assert!(
+			(bar.thumb.h / bar.track.h - (viewport / content).min(1.0)).abs()
+				< 0.0001
+		);
+		let grab = bar.thumb.h * 0.25;
+		let x = bar.track.x + bar.track.w / 2.0;
+		app.interaction.pointer.move_to((x, bar.thumb.y + grab));
+		assert!(app.begin_scrollbar_drag());
+		let normal_end = (content - viewport).max(0.0);
+		for target in
+			[normal_end, (normal_end + max) / 2.0, max, max * 0.95, 0.0]
+		{
+			app.interaction.pointer.move_to((
+				x,
+				bar.track.y + bar.track.h * target / content + grab,
+			));
+			app.drag_scrollbar();
+			assert!(
+				(app.readers.session.scrolling.offset - target).abs() < 0.01
+			);
+			let moved = app.document_scrollbar().unwrap();
+			assert!(
+				(moved.thumb.y - bar.track.y - bar.track.h * target / content)
+					.abs()
+					< 0.001
+			);
+			assert!(
+				(moved.thumb.h / bar.track.h
+					- viewport.min(content - target) / content)
+					.abs()
+					< 0.0001
+			);
+			app.drag_scrollbar();
+			assert!(
+				(app.readers.session.scrolling.offset - target).abs() < 0.01
+			);
+		}
+	}
+}
+
+#[test]
 fn document_scrollbar_hugs_the_right_edge_and_keeps_its_width_while_dragging() {
 	use markview_layout::style::Stylesheet;
 	let (mut app, _) = reader(&"Body line.\n\n".repeat(100), 760.0);
@@ -2425,7 +2479,8 @@ fn drawer_animations_keep_outgoing_content_until_the_final_frame() {
 fn drawer_swipes_reject_short_cancelled_multitouch_and_owned_input() {
 	use crate::state::{PanelPage, PanelTab};
 	use markview_platform::event::Touch;
-	let (mut app, _) = reader(SOURCE, 400.0);
+	let source = format!("{SOURCE}\n\n{}", "Body line.\n\n".repeat(100));
+	let (mut app, _) = reader(&source, 400.0);
 	app.tab_strip.phone = true;
 	let touch = |id, phase, x, y| Touch {
 		device_id: DeviceId::from_raw(0),
@@ -2453,7 +2508,6 @@ fn drawer_swipes_reject_short_cancelled_multitouch_and_owned_input() {
 	app.handle_touch(touch(2, TouchPhase::Ended, 800.0, 300.0));
 	assert_eq!(app.interaction.panel, PanelPage::Closed);
 	assert!(!app.interaction.overlays.outline.open());
-	app.readers.session.display.snapshot.height = 5000.0;
 	app.handle_touch(touch(1, TouchPhase::Started, 600.0, 400.0));
 	app.handle_touch(touch(1, TouchPhase::Moved, 605.0, 300.0));
 	app.handle_touch(touch(1, TouchPhase::Ended, 720.0, 280.0));
