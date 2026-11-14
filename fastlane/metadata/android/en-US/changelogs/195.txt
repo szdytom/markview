@@ -1,0 +1,1 @@
+Read Grid tables, export PDFs with heading bookmarks, and copy code blocks with one click. Android scrolling follows display VSync, with restored external-keyboard shortcuts.

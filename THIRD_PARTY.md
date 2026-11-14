@@ -2,12 +2,14 @@
 
 The application depends on the versions pinned in `Cargo.lock`. Dependency
 source and original license texts are available in Cargo's registry packages
-or the pinned Git repositories. Comrak currently uses an upstream commit for
-OFM callouts pending the next release.
+or the pinned Git repositories. The Android reader builds its native library
+from these sources; it does not package downloaded precompiled native libraries
+or proprietary Android SDK libraries.
 
 | Component | Role | License |
 | --- | --- | --- |
-| winit, wgpu | Native windows and GPU rendering | Apache-2.0 OR MIT |
+| winit | Native windows and Android activity | Apache-2.0 |
+| wgpu | GPU rendering | Apache-2.0 OR MIT |
 | Comrak | CommonMark and GFM parser | BSD-2-Clause |
 | dom_smoothie / dom_query | Web article extraction and HTML queries | MIT |
 | cssparser / cssparser-macros / selectors / dtoa-short | CSS parsing and selector matching for web articles | MPL-2.0 |
@@ -29,6 +31,7 @@ OFM callouts pending the next release.
 | jni | Android Java interoperability | MIT OR Apache-2.0 |
 | windows-sys | Attaching to the console that launched the reader | MIT OR Apache-2.0 |
 | clap | Command-line parsing and help | MIT OR Apache-2.0 |
+| nucleo-matcher | Quick-open fuzzy matching | MPL-2.0 |
 | zip / tar / flate2 / zstd | Reading the archives a font mirror publishes | MIT (zip), BSD-3-Clause (zstd), MIT OR Apache-2.0 (tar, flate2) |
 | sha2 | Verifying a declared font digest | MIT OR Apache-2.0 |
 | tokio / tokio-socks | Streaming downloads with a stall timeout, through SOCKS when asked | MIT |
@@ -56,6 +59,11 @@ Font License is reproduced in `licenses/RobotoFlex-OFL.txt`.
 Before packaging a release, include notices for the complete dependency tree,
 not only this architectural summary. `cargo metadata --locked` records that
 tree and each crate's declared license.
+Android APK builds generate notices for the selected Android targets, exclude
+build-only and test-only dependencies, and package the result alongside this
+summary, Markview's MIT license and resource license texts in `assets/licenses/`.
+Supplementary dependency `NOTICE*` and `COPYRIGHT*` files are retained under
+`assets/licenses/dependencies/<name>-<version>/`.
 
 The MPL-2.0 components above are used without modifications. Generated
 third-party notices include the MPL-2.0 text and download links to the exact

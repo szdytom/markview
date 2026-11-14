@@ -4,27 +4,45 @@ inputs:
   cache-key:
     description: Separate debug and release Rust caches
     default: android-debug
+outputs:
+  build-tools:
+    description: Android build tools version
+    value: ${{ steps.config.outputs.build-tools }}
 runs:
   using: composite
   steps:
     - uses: actions/setup-python@v6
       with:
         python-version: '3.11'
+    - name: Read Android build configuration
+      id: config
+      shell: bash
+      run: python3 android/config.py >> "$GITHUB_OUTPUT"
     - uses: actions/setup-java@v5
       with:
         distribution: temurin
-        java-version: '17'
-    - uses: dtolnay/rust-toolchain@stable
+        java-version: ${{ steps.config.outputs.java-version }}
+    - uses: dtolnay/rust-toolchain@master
       with:
+        toolchain: ${{ steps.config.outputs.rust-version }}
         targets: aarch64-linux-android,x86_64-linux-android
     - uses: Swatinem/rust-cache@v2
       with:
         key: ${{ inputs.cache-key }}
+    - name: Install the pinned license collector
+      shell: bash
+      env:
+        ABOUT_VERSION: ${{ steps.config.outputs.cargo-about }}
+      run: cargo install cargo-about --version "$ABOUT_VERSION" --locked --features cli
     - uses: android-actions/setup-android@v3
       with:
         packages: platform-tools
     - name: Install the pinned Android build tools
       shell: bash
+      env:
+        TARGET_SDK: ${{ steps.config.outputs.target-sdk }}
+        BUILD_TOOLS: ${{ steps.config.outputs.build-tools }}
+        NDK_VERSION: ${{ steps.config.outputs.ndk }}
       run: |
-        bash scripts/ci_retry.sh sdkmanager 'platform-tools' 'platforms;android-35' 'build-tools;35.0.0' 'ndk;29.0.14206865'
-        echo "ANDROID_NDK_HOME=$ANDROID_HOME/ndk/29.0.14206865" >> "$GITHUB_ENV"
+        bash scripts/ci_retry.sh sdkmanager 'platform-tools' "platforms;android-$TARGET_SDK" "build-tools;$BUILD_TOOLS" "ndk;$NDK_VERSION"
+        echo "ANDROID_NDK_HOME=$ANDROID_HOME/ndk/$NDK_VERSION" >> "$GITHUB_ENV"

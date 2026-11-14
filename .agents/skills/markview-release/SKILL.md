@@ -51,6 +51,13 @@ the user's confirmation, and confirmation does not replace passing CI.
    Then run `pnpm --dir web install --lockfile-only --offline` to refresh the pnpm lockfile if needed.
    Also set the `--tag v<version>` in the `cargo install` instruction of both `README.md`
    and `README.zh-cn.md` to the release version, so the documented command is pinned.
+   Increment `[workspace.metadata.android].version-code` in `Cargo.toml` for every
+   tagged release, including prereleases. Keep it greater than all previously
+   published Android version codes; GitHub and F-Droid read the same value.
+   Add a concise update summary in both locales under
+   `fastlane/metadata/android/<locale>/changelogs/<version-code>.txt` (at most
+   500 characters each); follow `docs/developers/fdroid.md` for the first
+   F-Droid submission and any build recipe changes.
 2. **Changelog.** Directly under `## Unreleased` in `CHANGELOG.md`, insert
    `## <version> - <YYYY-MM-DD>` (today's date from `date`) followed by the opening paragraph
    confirmed by the user, then the release's category headings and entries. Leave

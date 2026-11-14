@@ -14,6 +14,7 @@ import time
 import xml.etree.ElementTree as ET
 import zipfile
 from build import ROOT, run
+from config import load, sdk_directory
 
 PACKAGE = "io.github.szdytom.markview"
 TEST_PACKAGE = PACKAGE + ".test"
@@ -27,15 +28,16 @@ def test_classes():
 
 
 def build_tests(sdk, build):
-    tools = sdk / "build-tools/35.0.0"
-    android = sdk / "platforms/android-35/android.jar"
+    config = load(ROOT)
+    tools = sdk / "build-tools" / config["build-tools"]
+    android = sdk / f"platforms/android-{config['target-sdk']}/android.jar"
     classes = build / "test-classes"
     shutil.rmtree(classes, ignore_errors=True)
     classes.mkdir()
-    run("javac", "--release", "17", "-Xlint:all", "-Werror", "-classpath", str(android) + os.pathsep + str(build / "classes"), "-d", classes, *sorted((ROOT / "android/tests").rglob("*.java")))
+    run("javac", "--release", config["java-version"], "-Xlint:all", "-Werror", "-classpath", str(android) + os.pathsep + str(build / "classes"), "-d", classes, *sorted((ROOT / "android/tests").rglob("*.java")))
     dex = build / "test-dex"
     dex.mkdir(exist_ok=True)
-    run(tools / "d8", "--min-api", "30", "--lib", android, "--classpath", build / "classes", "--output", dex, *sorted(classes.rglob("*.class")))
+    run(tools / "d8", "--min-api", config["min-sdk"], "--lib", android, "--classpath", build / "classes", "--output", dex, *sorted(classes.rglob("*.class")))
     unsigned = build / "markview-android-tests-unaligned.apk"
     run(tools / "aapt2", "link", "-I", android, "--manifest", ROOT / "android/tests/AndroidManifest.xml", "-o", unsigned)
     with zipfile.ZipFile(unsigned, "a", compression=zipfile.ZIP_DEFLATED) as apk:
@@ -54,7 +56,7 @@ def cache_fixture(build):
     security = hashlib.sha256(b'{"origin":{"Local":"Trusted"},"grants":[],"content":null}').hexdigest()
     helper = build / "cache-key.rs"
     helper.write_text('use std::hash::{Hash,Hasher}; fn main(){ let mut h=std::collections::hash_map::DefaultHasher::new(); let mut args=std::env::args().skip(1); args.next().unwrap().hash(&mut h); Some(args.next().unwrap()).hash(&mut h); println!("{:016x}.img",h.finish()); }')
-    run("rustc", "--crate-name", "cache_key", helper, "-o", build / "cache-key")
+    run("rustc", f"+{load(ROOT)['rust-version']}", "--crate-name", "cache_key", helper, "-o", build / "cache-key")
     name = subprocess.check_output([str(build / "cache-key"), url, security], text=True).strip()
     body = (ROOT / "assets/markview-icon-color.svg").read_bytes()
     header = json.dumps(dict(security=security, url=url, final_url=url, etag=None, last_modified=None, lifetime=3600, lifetime_from_max_age=True, date=int(time.time()), no_cache=False, bytes=len(body))).encode()
@@ -160,7 +162,7 @@ def main(argv=None):
         print("\n".join(name.rsplit(".", 1)[-1] for name in cases))
         return 0
 
-    sdk = Path(os.environ.get("ANDROID_HOME", ROOT / ".tools/android-sdk"))
+    sdk = sdk_directory()
     build = ROOT / "target/android"
     suffix = {"LinksTest": "-links", "MermaidTest": "-mermaid", "LifecycleTest": "-lifecycle", "LayoutTest": "-boundary", "SessionTest": "-session"}.get(args.only, "")
     artifacts = ROOT / "artifacts/android" / (args.layout + suffix)

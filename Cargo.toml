@@ -63,6 +63,15 @@ repository = "https://github.com/szdytom/markview"
 homepage = "https://github.com/szdytom/markview"
 documentation = "https://github.com/szdytom/markview/tree/main/docs"
 
+[workspace.metadata.android]
+# Increment for every tagged release; the published `v0.5.2` APK used 195.
+version-code = 195
+rust-version = "1.100.0"
+java-version = "17"
+build-tools = "35.0.0"
+ndk = "29.0.14206865"
+cargo-about = "0.9.2"
+
 [workspace.lints.rust]
 # `deny`, not `forbid`: platform adapters use audited native calls, and a
 # `forbid` cannot be lifted by a local `#[allow]`.

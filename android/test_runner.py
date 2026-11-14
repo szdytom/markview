@@ -90,7 +90,8 @@ class AndroidRunnerTest(unittest.TestCase):
         shutil.copyfile(ROOT / "android/tests/AndroidManifest.xml", manifest)
         self.trace = self.root / "trace.jsonl"
         self.trace.touch()
-        adb = self.root / ".tools/android-sdk/platform-tools/adb"
+        sdk = self.root / "sdk"
+        adb = sdk / "platform-tools/adb"
         adb.parent.mkdir(parents=True)
         adb.write_text(f"#!{sys.executable}\n" + ADB)
         adb.chmod(0o755)
@@ -100,7 +101,7 @@ class AndroidRunnerTest(unittest.TestCase):
             patch.object(runner, "ROOT", self.root),
             patch.object(runner, "build_tests"),
             patch.object(runner, "cache_fixture", return_value=fixture),
-            patch.dict(os.environ, {"ANDROID_TEST_TRACE": str(self.trace)}, clear=True),
+            patch.dict(os.environ, {"ANDROID_TEST_TRACE": str(self.trace), "ANDROID_HOME": str(sdk)}, clear=True),
         ):
             replacement.start()
             self.addCleanup(replacement.stop)

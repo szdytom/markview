@@ -1,0 +1,16 @@
+Read Markdown documents on your phone or tablet with carefully set text, mathematics and code. Markview is a native, read-only reader.
+
+<ul>
+<li>Read CommonMark, GitHub Flavored Markdown and supported Obsidian extensions.</li>
+<li>Display mathematical formulas, syntax-highlighted code, tables and Mermaid diagrams.</li>
+<li>Search documents, follow headings and keep several documents open.</li>
+<li>Choose fonts, light or dark themes, and separate reading and export styles.</li>
+<li>Export documents to PDF or PNG, including heading bookmarks in PDFs.</li>
+<li>Open shared files, text and web links from other Android apps.</li>
+</ul>
+
+Open a single file to import a copy, or open a folder to read files in place with relative images and links to neighboring documents. Folder reading follows external file changes.
+
+Internet access supports web reading, remote images and optional font downloads. Reading a document or selecting a theme does not automatically download fonts. Opening a folder requests Android's All files access permission so Markview can read the chosen directory directly.
+
+Requires Android 11 or newer and an ARM64 device. Phone and tablet layouts are supported.

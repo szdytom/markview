@@ -10,6 +10,7 @@ Use [Architecture](architecture.md) to choose the owner of the behavior.
 | Change HTML article extraction | [Web extraction](webpage-extraction.md) |
 | Build Web packages | [Web development](web.md) |
 | Build or test Android | [Android development](android.md) |
+| Prepare official F-Droid distribution | [F-Droid packaging](fdroid.md) |
 | Review visual changes | [Rendering tests](rendering-tests.md) |
 | Write general behavioral properties | [Property tests](property-testing.md) |
 | Verify search and native IME | [Search verification](search-verification.md) |

@@ -5,6 +5,8 @@ import subprocess
 import tempfile
 import unittest
 
+from config import load
+
 ROOT = Path(__file__).resolve().parent
 
 
@@ -13,7 +15,7 @@ class SystemWindowTest(unittest.TestCase):
     def test_launcher_recovery_and_deadlines(self):
         with tempfile.TemporaryDirectory() as directory:
             subprocess.run([
-                "javac", "--release", "17", "-Xlint:all", "-Werror", "-d", directory,
+                "javac", "--release", load(ROOT.parent)["java-version"], "-Xlint:all", "-Werror", "-d", directory,
                 str(ROOT / "tests/io/github/szdytom/markview/SystemWindowWait.java"),
                 str(ROOT / "host-tests/SystemWindowWaitTest.java"),
             ], check=True)

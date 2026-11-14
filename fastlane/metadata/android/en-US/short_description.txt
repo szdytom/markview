@@ -1,0 +1,1 @@
+Native Markdown reading with clear typography, math and PDF export

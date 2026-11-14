@@ -16,17 +16,17 @@ jobs:
     timeout-minutes: 90
     env:
       RELEASE_PLAN: ${{ inputs.plan }}
-      VERSION_CODE: ${{ github.run_number }}
     steps:
       - uses: actions/checkout@v6
         with:
           persist-credentials: false
       - uses: ./.github/actions/setup-android
+        id: android
         with:
           cache-key: android-release
       - name: Build a release APK for pull requests
         if: github.event_name == 'pull_request'
-        run: python3 android/build.py --release --abi arm64-v8a --version-code "$VERSION_CODE"
+        run: python3 android/build.py --release --abi arm64-v8a
       - name: Build and sign the release APK
         if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/')
         env:
@@ -43,13 +43,15 @@ jobs:
           trap 'rm -f "$keystore"' EXIT
           umask 077
           printf '%s' "$ANDROID_KEYSTORE_BASE64" | base64 --decode > "$keystore"
-          python3 android/build.py --release --abi arm64-v8a --version-code "$VERSION_CODE" \
+          python3 android/build.py --release --abi arm64-v8a \
             --keystore "$keystore" --key-alias "$ANDROID_KEY_ALIAS"
       - name: Verify and stage the APK
+        env:
+          BUILD_TOOLS: ${{ steps.android.outputs.build-tools }}
         run: |
           version=$(printf '%s' "$RELEASE_PLAN" | jq -r '.releases[] | select(.app_name == "markview") | .app_version')
-          "$ANDROID_HOME/build-tools/35.0.0/apksigner" verify --verbose --print-certs target/android/markview-android-release.apk
-          "$ANDROID_HOME/build-tools/35.0.0/zipalign" -c -P 16 4 target/android/markview-android-release.apk
+          "$ANDROID_HOME/build-tools/$BUILD_TOOLS/apksigner" verify --verbose --print-certs target/android/markview-android-release.apk
+          "$ANDROID_HOME/build-tools/$BUILD_TOOLS/zipalign" -c -P 16 4 target/android/markview-android-release.apk
           mkdir -p out
           cp target/android/markview-android-release.apk "out/markview-${version}-android.apk"
       # cargo-dist downloads `artifacts-*` and attaches them to the same Release.

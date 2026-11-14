@@ -1,0 +1,42 @@
+Categories:
+  - Reading
+License: MIT
+AuthorName: szdytom
+SourceCode: https://github.com/szdytom/markview
+IssueTracker: https://github.com/szdytom/markview/issues
+Changelog: https://github.com/szdytom/markview/blob/main/CHANGELOG.md
+
+AutoName: Markview
+
+RepoType: git
+Repo: https://github.com/szdytom/markview.git
+
+Builds:
+  - versionName: 0.5.2
+    versionCode: 195
+    disable: Awaiting a tagged release containing the F-Droid build support
+    commit: v0.5.2
+    sudo:
+      - apt-get update
+      - apt-get install -y rustup gcc libc6-dev
+    output: target/android/markview-android-release-unsigned.apk
+    prebuild:
+      - sdkmanager 'platforms;android-35' 'build-tools;35.0.0'
+      - rustup toolchain install 1.100.0 --profile minimal
+      - rustup target add --toolchain 1.100.0 aarch64-linux-android
+      - export PATH="$HOME/.cargo/bin:$PATH"
+      - cargo +1.100.0 install cargo-about@0.9.2 --locked --features=cli
+      - cargo +1.100.0 fetch --locked
+    scandelete:
+      - fuzz/fuzzlib/tests/baselines/doc-memory/*.json.gz
+    build:
+      - export PATH="$HOME/.cargo/bin:$PATH"
+      - export ANDROID_HOME=$$SDK$$
+      - python3 android/build.py --release --unsigned --abi arm64-v8a
+    ndk: 29.0.14206865
+
+AutoUpdateMode: Version
+UpdateCheckMode: Tags ^v[0-9]+\.[0-9]+\.[0-9]+$
+UpdateCheckData: Cargo.toml|(?m)^version-code = (\d+)$||v(.+)
+CurrentVersion: 0.5.2
+CurrentVersionCode: 195

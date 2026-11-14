@@ -101,6 +101,7 @@ CHECKS = (
         "light",
     ),
     Check("documentation", python("scripts/test_documentation.py"), "light"),
+    Check("F-Droid metadata tests", python("scripts/test_fdroid.py"), "light"),
     Check(
         "rendering coverage",
         python("scripts/check_render_coverage.py"),

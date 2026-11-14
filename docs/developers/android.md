@@ -11,7 +11,12 @@ tests, including repeated destruction/recreation in one process.
 
 ## Build and install
 
-Use a recent Rust toolchain, Python 3.11 or newer, JDK 17 or newer, and the Android SDK.
+Use Python 3.11 or newer, JDK 17 or newer, and the Android SDK. Android builds
+select Rust 1.100.0 explicitly. `[workspace.metadata.android]` in
+[`Cargo.toml`](../../Cargo.toml) pins Rust, the Java language level, Build Tools,
+NDK and `cargo-about`; the SDK levels come from `android/AndroidManifest.xml`.
+Local builds, instrumentation builds and CI read these values through
+`python3 android/config.py`. CI uses OpenJDK 17 (Temurin).
 Application Java sources, instrumentation tests and host JVM tests target Java 17.
 The minimum Android version remains Android 11 (API 30). Java APIs must be
 available on API 30 or guarded by a platform version check; `--release 17`
@@ -22,26 +27,69 @@ The current script supports Linux and macOS build hosts. Install SDK command
 line tools, accept the SDK licences, then install:
 
 ```sh
-sdkmanager 'platform-tools' 'platforms;android-35' 'build-tools;35.0.0' 'ndk;29.0.14206865'
-rustup target add aarch64-linux-android x86_64-linux-android
-export ANDROID_HOME=/path/to/android-sdk
+export ANDROID_HOME="$HOME/Android/Sdk"
+sdkmanager --sdk_root="$ANDROID_HOME" 'platform-tools' 'platforms;android-35' 'build-tools;35.0.0' 'ndk;29.0.14206865'
+rustup toolchain install 1.100.0 --profile minimal --target aarch64-linux-android --target x86_64-linux-android
+cargo +1.100.0 install cargo-about --version 0.9.2 --locked --features cli
 python3 android/build.py
 adb install -r target/android/markview-android-debug.apk
 ```
 
 `ANDROID_NDK_HOME` overrides the NDK location. If `ANDROID_HOME` is absent, the
-script uses `.tools/android-sdk` in the repository. `--abi arm64-v8a` and
+script uses `~/Android/Sdk`, shared across repository checkouts. `--abi arm64-v8a` and
 `--abi x86_64` build one architecture; debug APKs contain both by default, while
 release APKs default to ARM64 (`arm64-v8a`, aarch64). `--abi all` includes both
 architectures in either build profile for testing. Native
 libraries and APK entries are aligned for 16 KiB pages.
 
+On NixOS, run the official NDK in an FHS environment or patch its host executable
+interpreter and library paths for Nix. This host setup is separate from the APK
+build; the official F-Droid build environment uses Debian.
+
 `--release` enables Rust optimizations, disables Android debugging and writes
-`target/android/markview-android-release.apk`. Without `--keystore`, both build
-variants are signed with a local development key in `target/android`.
-The APK version name follows the workspace version in `Cargo.toml`;
-`--version-code` sets the Android update counter (default: `1`). SDK files,
+`target/android/markview-android-release.apk`. Unless `--unsigned` is set, builds
+without `--keystore` use a local development key in `target/android`.
+The APK version name follows the workspace version in `Cargo.toml`.
+The Android update counter defaults to `[workspace.metadata.android].version-code`
+in `Cargo.toml`; increment it for every tagged release, including prereleases.
+The initial value `195` matches the published `v0.5.2` APK. GitHub and F-Droid
+must use this same source value; `--version-code` is an explicit override for
+packaging and tests. The source manifest omits version attributes because the
+build writes both from Cargo configuration. SDK files,
 keys, native libraries and APKs are excluded from Git.
+
+For external signing, including F-Droid's own signing service, run:
+
+```sh
+python3 android/build.py --release --unsigned
+```
+
+This writes `target/android/markview-android-release-unsigned.apk`, aligned for
+16 KiB pages, without creating or using a keystore. `--unsigned` requires
+`--release` and cannot be combined with `--keystore`. It is a build preparation
+option; Markview is not yet listed in the official F-Droid repository.
+
+## Dependency licenses
+
+Every APK includes `assets/licenses/LICENSE`, `THIRD_PARTY.md`, the resource
+licenses under `licenses/`, and generated `third-party-notices.html`.
+Upstream `NOTICE*` and `COPYRIGHT*` files from the selected dependencies are
+preserved under `assets/licenses/dependencies/<name>-<version>/`.
+`cargo-about` checks the selected Android targets and default reader features,
+excluding dependencies used only for building or tests. The existing
+[`about.toml`](../../about.toml) acceptance policy applies; an unsupported or
+unresolved license fails the APK build. The notices reproduce dependency license
+texts and link to exact source packages for the unmodified MPL-2.0 components.
+
+The KaTeX math fonts embedded by `ratex-katex-fonts` use OFL-1.1; the Lucide icon
+geometry uses ISC. Noto and Roboto Flex subsets are test fixtures, not APK assets.
+User-triggered stylesheet font downloads are separate from APK packaging.
+See [third-party components](../../THIRD_PARTY.md) for the component summary.
+
+Dependencies are pinned by `Cargo.lock`; the `winit`, `dom_smoothie` and Mermaid
+forks use exact Git revisions in `Cargo.toml`. New dependencies and fork updates
+still need source and license review. Passing `cargo-about` does not replace
+F-Droid's source/binary scan or inclusion review.
 
 ## Emulator verification
 
@@ -141,7 +189,7 @@ For a local distribution build, set `ANDROID_KEYSTORE_PASSWORD` and
 `ANDROID_KEY_PASSWORD` in the environment, then run:
 
 ```sh
-python3 android/build.py --release --version-code 42 \
+python3 android/build.py --release \
   --keystore /path/to/markview-release.keystore --key-alias markview
 ```
 

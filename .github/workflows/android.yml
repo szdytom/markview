@@ -48,15 +48,27 @@ jobs:
       LIBGL_ALWAYS_SOFTWARE: 'true'
     steps:
       - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.11'
+      - name: Read Android build configuration
+        id: config
+        run: python3 android/config.py >> "$GITHUB_OUTPUT"
       - uses: actions/setup-java@v5
         with:
           distribution: temurin
-          java-version: '17'
-      - uses: dtolnay/rust-toolchain@stable
+          java-version: ${{ steps.config.outputs.java-version }}
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: ${{ steps.config.outputs.rust-version }}
       - uses: android-actions/setup-android@v3
         with:
           packages: platform-tools
-      - run: bash scripts/ci_retry.sh sdkmanager 'platforms;android-35' 'build-tools;35.0.0'
+      - name: Install instrumentation build tools
+        env:
+          TARGET_SDK: ${{ steps.config.outputs.target-sdk }}
+          BUILD_TOOLS: ${{ steps.config.outputs.build-tools }}
+        run: bash scripts/ci_retry.sh sdkmanager "platforms;android-$TARGET_SDK" "build-tools;$BUILD_TOOLS"
       - uses: actions/download-artifact@v8
         with:
           name: markview-android-debug

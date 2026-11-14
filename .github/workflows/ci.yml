@@ -52,7 +52,9 @@ jobs:
           dist generate --check
           dist plan
       - name: Documentation links and audience indexes
-        run: python3 scripts/test_documentation.py
+        run: |
+          python3 scripts/test_documentation.py
+          python3 scripts/test_fdroid.py
       - name: Rendering configuration coverage
         run: python3 scripts/check_render_coverage.py
       - name: Changelog conventions
