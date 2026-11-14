@@ -53,8 +53,20 @@ pub fn check(data: &[u8]) -> bool {
 			insert: usize::from(u16::from_le_bytes(insert.try_into().unwrap())),
 		});
 	}
+	for dialect in crate::pipeline::dialects() {
+		check_records(body, pool, &records, dialect);
+	}
+	true
+}
+
+fn check_records(
+	body: &[u8],
+	pool: &[u8],
+	records: &[Record],
+	dialect: markview_commonmark::Dialect,
+) {
 	let mut source = String::from_utf8_lossy(body).into_owned();
-	let mut previous = markview_commonmark::parse(source.clone());
+	let mut previous = markview_commonmark::parse_with(source.clone(), dialect);
 	let mut pool_at = 0;
 	for record in records {
 		if source.len() > 64 * 1024 {
@@ -88,9 +100,12 @@ pub fn check(data: &[u8]) -> bool {
 			std::str::from_utf8(&pool[from..to]).unwrap()
 		};
 		source.replace_range(start..end, insert);
-		let full = markview_commonmark::parse(source.clone());
-		let incr =
-			markview_commonmark::reparse(&previous, Arc::from(source.as_str()));
+		let full = markview_commonmark::parse_with(source.clone(), dialect);
+		let incr = markview_commonmark::reparse_with(
+			&previous,
+			Arc::from(source.as_str()),
+			dialect,
+		);
 		assert_eq!(
 			oracle::document(&full),
 			oracle::document(&incr),
@@ -99,5 +114,4 @@ pub fn check(data: &[u8]) -> bool {
 		previous = incr;
 		coverage::hit(coverage::Hit::ReparseStep);
 	}
-	true
 }

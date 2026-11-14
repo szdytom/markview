@@ -11,7 +11,7 @@ use std::{
 	sync::{Arc, Once},
 };
 
-use markview_commonmark::MarkdownParse;
+use markview_commonmark::{Dialect, MarkdownParse};
 use markview_layout::{
 	fonts::FontConfig,
 	image::ImageSnapshot,
@@ -22,6 +22,23 @@ use markview_layout::{
 use markview_pdf::{Export, Metadata};
 
 use crate::oracle::derive;
+
+/// Parser targets check each input in both reading presets.
+pub fn dialects() -> [Dialect; 2] {
+	[
+		Dialect::default(),
+		Dialect {
+			ofm: true,
+			highlight_marks: true,
+			..Default::default()
+		},
+	]
+}
+
+/// Layout and export targets alternate presets deterministically per input.
+pub fn dialect_for(md: &str) -> Dialect {
+	dialects()[derive(md.as_bytes()) as usize & 1]
+}
 
 /// The committed test faces; exports and layouts must not depend on what the
 /// machine happens to have installed.
@@ -42,8 +59,11 @@ pub fn pinned_fonts() -> FontConfig {
 /// paths are reachable, and the reader toggles exercise the option bits.
 pub fn options_for(md: &str) -> LayoutOptions {
 	let seed = derive(md.as_bytes());
+	let dialect = dialect_for(md);
 	let pick = |shift: u32, n: u128| (seed >> shift) % n;
 	LayoutOptions {
+		ofm: dialect.ofm,
+		highlight_marks: dialect.highlight_marks,
 		width: 120.0 + pick(32, 2600) as f32,
 		font_size: 10.0 + pick(40, 40) as f32,
 		justify: pick(48, 2) != 0,
@@ -100,7 +120,7 @@ pub fn warmup() {
 pub fn parse_layout(
 	md: &str,
 ) -> (MarkdownParse, LayoutOptions, LayoutSnapshot) {
-	let doc = markview_commonmark::parse(md.to_string());
+	let doc = markview_commonmark::parse_with(md.to_string(), dialect_for(md));
 	let options = options_for(md);
 	let mut engine = LayoutEngine::new();
 	let mut snapshot = engine.layout(&doc, &options);
@@ -153,12 +173,15 @@ fn export_pdf_with(
 		sheet.set_cjk_type(CjkType::Sc);
 		Arc::new(sheet)
 	};
-	let document = markview_commonmark::parse(md.to_string());
+	let dialect = dialect_for(md);
+	let document = markview_commonmark::parse_with(md.to_string(), dialect);
 	let geometry =
 		PageGeometry::from_style(sheet.page()).expect("print page is valid");
 	// The derived `Limits` keep the export's degradation paths reachable;
 	// the page geometry stays the stylesheet's, like the reader's export.
 	let options = LayoutOptions {
+		ofm: dialect.ofm,
+		highlight_marks: dialect.highlight_marks,
 		width: geometry.text_px().0,
 		codeblock_wrap: true,
 		force_open: true,

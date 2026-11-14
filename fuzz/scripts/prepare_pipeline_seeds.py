@@ -47,12 +47,14 @@ for target in TARGETS:
 MARKDOWN_TARGETS = {
     "parse": 512 * 1024,
     "prefix": 256 * 1024,
+    "reparse": 256 * 1024,
     "refdef": 256 * 1024,
     "sourcepos_content": 256 * 1024,
     "details_structure": 256 * 1024,
     "anchors": 64 * 1024,
     "layout": 128 * 1024,
     "layout_parallel": 32 * 1024,
+    "layout_diff": 64 * 1024,
     "pdf": 48 * 1024,
 }
 
@@ -60,12 +62,14 @@ MARKDOWN_TARGETS = {
 # layout family. Keep the full corpus for `parse`, sample the rest evenly.
 SPEC_LIMIT = {
     "prefix": 512,
+    "reparse": 512,
     "refdef": 512,
     "sourcepos_content": 512,
     "details_structure": 512,
     "anchors": 256,
     "layout": 256,
     "layout_parallel": 64,
+    "layout_diff": 256,
     "pdf": 256,
 }
 
@@ -187,6 +191,58 @@ REFERENCES = """[alpha]: https://example.org/alpha
 Text [^one].
 """
 
+OFM_BLOCK_IDS = {
+    "links": """Target paragraph ^Block-ID
+
+[[#^Block-ID|wiki]] [plain](#^Block-ID) [encoded](#%5EBlock-ID)
+[[note.md#^Block-ID|other note]] [[#^block-id|wrong case]]
+""",
+    "containers": """# Heading ^Heading-ID
+
+> [!note]- Folded
+> Body ^Callout-ID
+
+- First
+
+  Last ^Item-ID
+- [ ] Task ^Task-ID
+
+| A | B |
+| - | - |
+| x | y ^Table-ID |
+
+[[#^Heading-ID]] [[#^Callout-ID]] [[#^Item-ID]] [[#^Task-ID]] [[#^Table-ID]]
+""",
+    "hidden-duplicate": """<details><summary>Outer</summary>
+
+<details><summary>Inner</summary>
+
+Hidden paragraph ^Duplicate-ID
+
+</details>
+
+</details>
+
+Visible paragraph ^Duplicate-ID
+
+[[#^Duplicate-ID|first target]]
+""",
+    "literal": """Escaped \\^escaped
+
+Invalid ^bad_id
+
+Trailing whitespace ^literal\x20\x20
+
+`code ^code-id`
+
+^standalone
+
+%%hidden%% ^Empty-ID
+
+[[#^Empty-ID|empty target]]
+""",
+}
+
 
 def spec_examples(path: Path):
     """The markdown side of the spec's fenced examples: content up to the
@@ -221,6 +277,9 @@ def write_markdown_seeds(spec_dir: Path | None) -> None:
             seeds.append((f"fixture-{name}", path.read_bytes()))
     seeds.append(("dialect.md", DIALECT.encode()))
     seeds.append(("references.md", REFERENCES.encode()))
+    for name, body in OFM_BLOCK_IDS.items():
+        for ending, newline in (("lf", "\n"), ("crlf", "\r\n"), ("cr", "\r")):
+            seeds.append((f"ofm-block-ids-{name}-{ending}.md", body.replace("\n", newline).encode()))
     if spec_dir is not None:
         for label, name in (
             ("cmark", "cmark-spec.txt"),
@@ -254,6 +313,10 @@ def write_markdown_seeds(spec_dir: Path | None) -> None:
 reading = root / "corpus" / "reading_pipeline"
 reading.joinpath("unicode.md").write_text("alpha 中文 مرحبا e\u0301 👩‍💻 office\nsecond line alpha\n\n[alpha](https://example.org)\n")
 reading.joinpath("atoms.md").write_text("alpha &amp; alpha\n\n$x + y$ ![alt](image.png)\n")
+for name, body in OFM_BLOCK_IDS.items():
+    reading.joinpath(f"ofm-block-ids-{name}").write_bytes(
+        b"RDP1" + bytes([0, 0, 0, 7, 0, 1, 2, 1]) + body.encode()
+    )
 for field in range(7):
     controls = bytes([field * 2 + 1, 0, 0, 7, 0, 1, 2, 3])
     reading.joinpath(f"generated-{field}").write_bytes(b"RDP1" + controls + bytes(range(48)))

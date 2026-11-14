@@ -27,7 +27,7 @@ a tree against an independent scan of the same bytes.
   range that is unordered, out of bounds or off a character boundary. How: one
   input goes through the full parse, `assert_source_ranges`, the outline /
   `details_enclosing` / image walks, four prefix cuts, `parse_incremental` and
-  `reparse`, all under one `InputGuard`.
+  `reparse`, all under one `InputGuard` per preset.
 - **`reparse`** — looks for the incremental fast path disagreeing with a full
   parse after a deterministic edit. How: both documents are fingerprinted
   *recursively* — every nested block's range and every inline's kind, style and
@@ -105,6 +105,18 @@ target whose unit is a document:
 ```sh
 python3 fuzz/scripts/prepare_pipeline_seeds.py
 ```
+
+`parse`, `prefix`, `reparse`, `sourcepos_content`, `details_structure` and
+`anchors` check each input in both GFM and Obsidian mode, keeping the same
+dialect across full, prefix and incremental parses. Raw layout, parallel-layout
+and PDF inputs select a preset deterministically from their content hash.
+The Markdown mutation alphabet includes trailing block IDs, paired block
+links, escaped markers and standalone IDs. The shared pool includes OFM block
+IDs in paragraphs, headings, lists, callouts and tables, nested disclosures,
+duplicates, encoded links and literal markers, with LF, CRLF and CR variants.
+The reading generator uses control byte 7's low bit for Obsidian mode and adds
+a hidden block ID while retaining independently expected plain field text;
+dedicated raw OFM seeds use the same control bit.
 
 `prepare_seeds.sh` adds the spec examples fetched from shallow clones to the
 same pool after the fetch.

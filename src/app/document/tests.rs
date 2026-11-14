@@ -140,6 +140,116 @@ impl crate::app::window::Loop for StubLoop {
 	fn exit(&self) {}
 }
 
+#[test]
+fn obsidian_block_links_navigate_within_and_across_documents() {
+	let mut h = Harness::new();
+	let links = "[[target.md#^Block-ID|Target]] [encoded](target.md#%5EBlock-ID) [[#^Block-ID|Here]]";
+	fs::write(h.dir.path().join("source.md"), links).unwrap();
+	fs::write(
+		h.dir.path().join("target.md"),
+		format!(
+			"{}\n\nTarget ^Block-ID\n\n{}",
+			"Before.\n\n".repeat(30),
+			"After.\n\n".repeat(30)
+		),
+	)
+	.unwrap();
+	h.open("source.md", 0);
+	let parsed = markview_commonmark::parse_with(
+		links,
+		markview_commonmark::Dialect {
+			ofm: true,
+			..Default::default()
+		},
+	);
+	let crate::document::BlockKind::Paragraph(text) = parsed.blocks()[0].kind()
+	else {
+		panic!("expected links");
+	};
+	for url in text.iter().filter_map(|inline| inline.link_url()) {
+		h.app.open_link(url, false);
+		h.wait_images(0);
+		h.app.apply_anchor();
+		assert!(h.app.readers.session.pending_anchor.is_none());
+		assert!(!h.app.status.is_error(), "{url}");
+		assert_eq!(
+			h.app.readers.session.path,
+			Some(h.dir.path().join("target.md").canonicalize().unwrap())
+		);
+		let viewport = h.app.viewport();
+		let session = &mut h.app.readers.session;
+		let expected = session
+			.display
+			.snapshot
+			.anchor_y("^Block-ID")
+			.unwrap()
+			.clamp(0., session.display.snapshot.scroll_limit(viewport));
+		assert!(expected > 0.);
+		session
+			.advance_scroll(Instant::now() + Duration::from_secs(1), viewport);
+		assert!((session.scrolling.offset - expected).abs() < 0.01);
+		assert!(
+			!session
+				.display
+				.snapshot
+				.full_reading_text()
+				.contains("^Block-ID")
+		);
+	}
+	h.app.open_link("#^block-id", false);
+	h.app.apply_anchor();
+	assert!(h.app.status.is_error());
+}
+
+#[test]
+fn obsidian_block_links_reveal_nested_disclosures_before_scrolling() {
+	let mut h = Harness::new();
+	fs::write(
+		h.dir.path().join("folded.md"),
+		format!(
+			"<details><summary>Outer</summary>\n\n<details><summary>Inner</summary>\n\n{}Target ^Hidden-ID\n\n{}\n\n</details>\n\n</details>",
+			"Before.\n\n".repeat(20),
+			"After.\n\n".repeat(20),
+		),
+	)
+	.unwrap();
+	h.open("folded.md", 0);
+	let session = &h.app.readers.session;
+	let enclosing = session
+		.document
+		.as_ref()
+		.unwrap()
+		.details_enclosing("^Hidden-ID");
+	assert_eq!(enclosing.len(), 2);
+	assert!(session.display.snapshot.anchor_y("^Hidden-ID").is_none());
+	h.app.open_link("#^Hidden-ID", false);
+	assert!(!h.app.status.is_error());
+	let viewport = h.app.viewport();
+	let session = &mut h.app.readers.session;
+	assert!(session.pending_anchor.is_none());
+	assert!(
+		enclosing
+			.iter()
+			.all(|id| session.details_open.get(id) == Some(&true))
+	);
+	let expected = session
+		.display
+		.snapshot
+		.anchor_y("^Hidden-ID")
+		.unwrap()
+		.clamp(0., session.display.snapshot.scroll_limit(viewport));
+	assert!(expected > 0.);
+	session.advance_scroll(Instant::now() + Duration::from_secs(1), viewport);
+	assert!((session.scrolling.offset - expected).abs() < 0.01);
+	assert!(
+		session
+			.display
+			.snapshot
+			.full_reading_text()
+			.contains("Target")
+	);
+}
+
 fn web_article(url: &str, markdown: &str) -> crate::web_page::Article {
 	crate::web_page::Article {
 		document: crate::loaded::LoadedDocument::semantic_with_versions(

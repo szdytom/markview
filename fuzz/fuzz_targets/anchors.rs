@@ -66,7 +66,7 @@ fn page_geometry() -> PageGeometry {
 	}
 }
 
-fuzz_target!(|data: &[u8]| {
+fn check(data: &[u8], dialect: markview_commonmark::Dialect) {
 	let budget = budget::Budget::layout().from_env();
 	let md = String::from_utf8_lossy(data);
 	if md.len() > 64 * 1024 {
@@ -74,7 +74,7 @@ fuzz_target!(|data: &[u8]| {
 	}
 	pipeline::warmup();
 	let guard = budget::InputGuard::new();
-	let doc = markview_commonmark::parse(md.to_string());
+	let doc = markview_commonmark::parse_with(md.to_string(), dialect);
 	oracle::assert_source_ranges(&doc);
 
 	let targets = seam::fragment_targets(&doc);
@@ -93,6 +93,8 @@ fuzz_target!(|data: &[u8]| {
 	// the state its source declared; `force_open` would erase the disclosure
 	// tracking this target exists to check.
 	let mut options = pipeline::options_for(&md);
+	options.ofm = dialect.ofm;
+	options.highlight_marks = dialect.highlight_marks;
 	options.force_open = false;
 	let mut expanded = options.clone();
 	expanded.details_open = Arc::new(
@@ -228,4 +230,10 @@ fuzz_target!(|data: &[u8]| {
 	}
 
 	guard.finish(&budget, md.len());
+}
+
+fuzz_target!(|data: &[u8]| {
+	for dialect in pipeline::dialects() {
+		check(data, dialect);
+	}
 });

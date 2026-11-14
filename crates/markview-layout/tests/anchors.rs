@@ -51,6 +51,127 @@ fn test_options() -> LayoutOptions {
 }
 
 #[test]
+fn obsidian_block_ids_land_at_block_starts_without_affecting_reading() {
+	let dialect = markview_commonmark::Dialect {
+		ofm: true,
+		..Default::default()
+	};
+	let long = "word ".repeat(100);
+	let options = LayoutOptions {
+		width: 240.,
+		..test_options()
+	};
+	let mut engine = LayoutEngine::new();
+	for body in [
+		format!("{long}end ^Block-ID"),
+		"# Heading ^Block-ID".into(),
+		format!("> {long}end ^Block-ID"),
+		"- first\n\n  last ^Block-ID\n- second".into(),
+		"| A |\n| - |\n| y ^Block-ID |".into(),
+	] {
+		let source = format!("<div id='start'>\n\n{body}\n\n</div>");
+		let doc = markview_commonmark::parse_with(source.as_str(), dialect);
+		let baseline = markview_commonmark::parse_with(
+			source.replace(" ^Block-ID", ""),
+			dialect,
+		);
+		let layout = engine.layout(&doc, &options);
+		let plain = engine.layout(&baseline, &options);
+		assert_eq!(
+			layout.anchor_y("^Block-ID"),
+			layout.anchor_y("start"),
+			"{body}"
+		);
+		assert!(layout.anchor_y("^Block-ID").is_some(), "{body}");
+		assert_eq!(layout.anchor_y("^block-id"), None);
+		assert!(layout.same_reading_text(&plain), "{body}");
+		assert_eq!(layout.height, plain.height, "{body}");
+		assert!(
+			markview_layout::search::SearchIndex::new(&doc)
+				.find("Block-ID", Default::default())
+				.is_empty()
+		);
+		if body.starts_with('#') {
+			assert_eq!(
+				layout.anchor_y("heading"),
+				layout.anchor_y("^Block-ID")
+			);
+		}
+	}
+}
+
+#[test]
+fn obsidian_block_targets_follow_disclosures_and_pagination() {
+	let doc = markview_commonmark::parse_with(
+		"> [!note]- Title\n> First ^inside\n>\n> Last\n\n<details><summary>Outer</summary>\n\nBody ^nested\n\n</details>",
+		markview_commonmark::Dialect {
+			ofm: true,
+			..Default::default()
+		},
+	);
+	let mut engine = LayoutEngine::new();
+	let collapsed = engine.layout(&doc, &test_options());
+	for target in ["^inside", "^nested"] {
+		let enclosing = doc.details_enclosing(target);
+		assert_eq!(enclosing.len(), 1);
+		assert!(collapsed.anchor_y(target).is_none());
+		let options = LayoutOptions {
+			details_open: Arc::new(
+				enclosing.into_iter().map(|id| (id, true)).collect(),
+			),
+			..test_options()
+		};
+		let expanded = engine.layout(&doc, &options);
+		assert!(expanded.anchor_y(target).is_some());
+		let geometry = markview_layout::paginate::PageGeometry {
+			width_pt: 595.,
+			height_pt: 842.,
+			margin_pt: [40.; 4],
+		};
+		let pages =
+			markview_layout::paginate::paginate(&doc, &expanded, &geometry);
+		assert!(pages.anchors.contains_key(target));
+	}
+}
+
+#[test]
+fn obsidian_targets_appear_in_prefixes_and_cached_reflows_keep_new_ids() {
+	let dialect = markview_commonmark::Dialect {
+		ofm: true,
+		..Default::default()
+	};
+	let source = "Before\n\nTarget ^First-ID\n\nAfter\n\nDuplicate ^First-ID";
+	let doc = markview_commonmark::parse_with(source, dialect);
+	let mut engine = LayoutEngine::new();
+	let options = test_options();
+	let layout = engine
+		.layout_progressive(&doc, &options, &Default::default(), |prefix| {
+			assert_eq!(
+				prefix.anchor_y("^First-ID").is_some(),
+				prefix.blocks.len() >= 2
+			);
+			true
+		})
+		.unwrap();
+	let first = layout.blocks[1].y
+		+ layout.blocks[1]
+			.anchor_positions()
+			.find(|(id, _)| *id == "^First-ID")
+			.unwrap()
+			.1;
+	assert_eq!(layout.anchor_y("^First-ID"), Some(first));
+	let changed = markview_commonmark::reparse_with(
+		&doc,
+		source.replace("First-ID", "Second-ID").into(),
+		dialect,
+	);
+	let updated = engine.layout(&changed, &options);
+	assert!(updated.anchor_y("^First-ID").is_none());
+	assert_eq!(updated.anchor_y("^Second-ID"), layout.anchor_y("^First-ID"));
+	assert!(updated.same_reading_text(&layout));
+}
+
+#[test]
 fn target_after_an_image_and_newline_resolves() {
 	use markview_document::{BlockKind, InlineKind};
 	use markview_layout::image::{ImageInfo, ImageSnapshot};

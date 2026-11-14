@@ -65,12 +65,22 @@ Settings store this preset as `markdown-flavor = "obsidian"`; the former
 | --- | --- |
 | Callouts `> [!type] Title` with the built-in types and aliases, nesting, and foldable `+`/`-` bodies | Obsidian note transclusion `![[note]]` and full vault semantics |
 | Wikilink image embeds `![[file.png]]` from the open folder root, with a pipe label read as alt text | Obsidian image width syntax and other non-image embeds |
-| `==highlight==` marks (forced on) | `#tags` and block references `^id` |
+| `==highlight==` marks (forced on) | `#tags` |
+| Trailing block IDs `text ^id` and links `[[#^id]]`, `[[note#^id]]`, `[label](#^id)` | Standalone `^id` lines after structured blocks |
 | Inline HTML `sub` and `mark` styling, and `u`, `ins`, `small` read as plain text, besides the usual `sup`, `b`, `i`, `code`, … | Other OFM-only syntax |
 | Hidden `%%inline comments%%` and line-start `%%` block comments | Callout title formatting (titles stay plain text) |
 
 Wikilinks such as `[[note|label]]` and heading targets are supported by the core
 reader in both presets. An open folder also resolves relative note links.
+
+Block IDs are hidden from reading, selection/copy, search and exports. IDs use
+ASCII letters, digits and hyphens, are case-sensitive, and must follow whitespace
+at the end of the block's content, with no trailing spaces. Links land at the
+block's start; headings also keep their normal heading links. Duplicate IDs use
+the first target. Only the Obsidian preset recognizes block IDs; GFM keeps them
+literal. Supported positions follow the bundled Comrak parser: paragraph and
+heading ends, list items, and trailing content in quotes, callouts and tables.
+Standalone ID lines and block transclusion remain unsupported.
 
 Comments disappear from reading, selection/copy, search and reader exports.
 Paired markers on one content line hide inline text; a marker at the start of a

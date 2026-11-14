@@ -28,7 +28,9 @@ pub fn check(md: &str) {
 	assert_eq!(pair.engines[1].set_parallelism(threads).unwrap(), threads);
 	let mut options = pipeline::options_for(md);
 	let mut images = ImageSnapshot::default();
-	let document = markview_commonmark::parse(format!("{OPENING}{md}"));
+	let dialect = pipeline::dialect_for(md);
+	let document =
+		markview_commonmark::parse_with(format!("{OPENING}{md}"), dialect);
 	let sample = 1 + seed as usize % (document.blocks().len() - 1);
 	pair.pass(&document, &options, &images, sample, false);
 	assert!(
@@ -66,14 +68,15 @@ pub fn check(md: &str) {
 	pair.pass(&document, &options, &images, sample, false);
 
 	// Preserve front matter and other constructs changed by the probe prefix.
-	let original = markview_commonmark::parse(md.to_owned());
+	let original = markview_commonmark::parse_with(md.to_owned(), dialect);
 	pair.pass(&original, &options, &images, sample, false);
 	let edited = if md.is_empty() {
 		String::new()
 	} else {
 		edit::apply_deterministic_edit(md.as_bytes()).md1
 	};
-	let edited = markview_commonmark::parse(format!("{OPENING}{edited}"));
+	let edited =
+		markview_commonmark::parse_with(format!("{OPENING}{edited}"), dialect);
 	for engine in &mut pair.engines {
 		engine.clear_document_cache();
 	}

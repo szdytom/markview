@@ -132,7 +132,7 @@ fn code_span_line_endings_normalize_without_shifting_following_text() {
 }
 
 #[test]
-fn block_ids_remain_literal_in_both_dialects() {
+fn block_ids_preserve_source_positions_in_both_dialects() {
 	for ofm in [false, true] {
 		let doc = parse_with(
 			"hello ^block-id",
@@ -141,7 +141,14 @@ fn block_ids_remain_literal_in_both_dialects() {
 				..Dialect::default()
 			},
 		);
-		assert_last_text_source(&doc, "hello ^block-id");
+		assert_last_text_source(
+			&doc,
+			if ofm { "hello" } else { "hello ^block-id" },
+		);
+		assert_eq!(
+			doc.block_source(&doc.blocks()[0]),
+			Some(0.."hello ^block-id".len())
+		);
 	}
 }
 

@@ -12,10 +12,17 @@ fn main() {
 	let edit = mvfuzz::edit::apply_deterministic_edit(&data);
 	let md1 = edit.md1;
 	eprintln!("edit: {}", edit.description);
+	for dialect in mvfuzz::pipeline::dialects() {
+		eprintln!("ofm={}", dialect.ofm);
+		compare(&md0, &md1, dialect);
+	}
+}
 
-	let doc0 = markview_commonmark::parse(md0);
-	let full = markview_commonmark::parse(md1.clone());
-	let incr = markview_commonmark::reparse(&doc0, Arc::from(md1));
+fn compare(md0: &str, md1: &str, dialect: markview_commonmark::Dialect) {
+	let doc0 = markview_commonmark::parse_with(md0, dialect);
+	let full = markview_commonmark::parse_with(md1, dialect);
+	let incr =
+		markview_commonmark::reparse_with(&doc0, Arc::from(md1), dialect);
 
 	println!(
 		"content_id full={:#x} incr={:#x}",

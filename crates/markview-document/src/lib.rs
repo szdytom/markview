@@ -534,7 +534,7 @@ pub struct Block {
 }
 
 impl Block {
-	/// HTML targets attached to the top of this block.
+	/// Fragment targets attached to the top of this block.
 	pub fn anchors(&self) -> &[String] {
 		&self.anchors
 	}

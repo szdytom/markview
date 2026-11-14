@@ -298,7 +298,7 @@ fn span(rng: &mut Rng, boundaries: &[usize]) -> (usize, usize) {
 	if a <= b { (a, b) } else { (b, a) }
 }
 
-/// Structural one-liners the Markdown mutator can insert at any position.
+/// Structural Markdown fragments the mutator can insert at any position.
 const MD_LINES: &[&str] = &[
 	"---",
 	"### Heading three",
@@ -319,6 +319,16 @@ const MD_LINES: &[&str] = &[
 	"$$\\int_0^1 x^2\\,dx$$",
 	"![alt](https://example.com/a.png){width=120}",
 	"[link](https://example.com/doc#sec)",
+	"paragraph ^Block-ID",
+	"# Heading ^Heading-ID",
+	"- item ^Item-ID",
+	"> quoted paragraph ^Quote-ID",
+	"> [!note]- Folded callout",
+	"[[#^Block-ID|block]] [[note.md#^Block-ID|other note]]",
+	"[block](#^Block-ID) [encoded](#%5EBlock-ID)",
+	"target ^Block-ID\n\n[[#^Block-ID|jump]]",
+	"literal \\^escaped ^bad_id",
+	"^standalone",
 	"[^1]: a footnote body",
 	"see [^1] and the text",
 	"<details open>",
@@ -975,5 +985,62 @@ pub fn reparse(
 		required
 	} else {
 		len
+	}
+}
+
+#[cfg(test)]
+mod markdown_tests {
+	use super::MD_LINES;
+	use markview_document::{
+		FieldText, plain_text, visit_blocks, visit_fields,
+	};
+	use std::collections::HashSet;
+
+	#[test]
+	fn structural_fragments_reach_block_ids_and_paired_links() {
+		let dialect = crate::pipeline::dialects()[1];
+		let mut anchors = HashSet::new();
+		let mut paired = false;
+		for fragment in MD_LINES {
+			let doc = markview_commonmark::parse_with(*fragment, dialect);
+			let mut links = Vec::new();
+			for root in doc.blocks() {
+				visit_blocks(root, &mut |block| {
+					anchors.extend(block.anchors().iter().cloned())
+				});
+				visit_fields(
+					root,
+					&mut Vec::new(),
+					&|| false,
+					&mut |_, _, value, _| {
+						if let FieldText::Rich(rich) = value {
+							links.extend(
+								rich.iter()
+									.filter_map(|inline| inline.link_url())
+									.map(str::to_owned),
+							);
+							if fragment.contains("target ^Block-ID") {
+								assert!(
+									!plain_text(rich).contains("^Block-ID")
+								);
+							}
+						}
+					},
+				);
+			}
+			paired |= doc.blocks().iter().any(|block| {
+				block.anchors().iter().any(|id| id == "^Block-ID")
+			}) && links.iter().any(|url| url == "#^Block-ID");
+		}
+		for expected in ["^Block-ID", "^Heading-ID", "^Item-ID", "^Quote-ID"] {
+			assert!(
+				anchors.contains(expected),
+				"missing structural fragment {expected}"
+			);
+		}
+		assert!(
+			paired,
+			"a generated fragment must contain both a target and its link"
+		);
 	}
 }

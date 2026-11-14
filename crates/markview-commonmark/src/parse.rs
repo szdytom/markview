@@ -28,7 +28,7 @@ use super::{
 	Block, BlockKind, Callout, CalloutKind, CellAlign, CellKind, FootnoteId,
 	FootnoteReference, Inline, InlineKind, ListItem, MarkdownParse, RichText,
 	Table, TableCell, TableColumn, TableGroup, TableGroupKind, TableRow,
-	front_matter, incremental, plain_text,
+	block_ids, front_matter, incremental, plain_text,
 };
 use markview_document::{DocumentRevision, SourceSpan};
 
@@ -43,9 +43,8 @@ pub struct Dialect {
 	pub highlight_marks: bool,
 	/// Grid tables with block content and spanning cells.
 	pub grid_tables: bool,
-	/// Obsidian extensions: `> [!type]` callouts read as callouts rather than
-	/// GitHub alerts, and raw HTML admits `<sub>`, `<mark>`, `<u>`, `<ins>`
-	/// and `<small>`.
+	/// Obsidian callouts, hidden comments and block IDs, plus the inline HTML
+	/// tags `<sub>`, `<mark>`, `<u>`, `<ins>` and `<small>`.
 	pub ofm: bool,
 }
 
@@ -436,6 +435,7 @@ impl Reader<'_> {
 		let mut child_style = frame.style.clone();
 		let value = child.data.borrow();
 		let kind = match &value.value {
+			NodeValue::BlockId(_) => return InlineStep::Skip,
 			NodeValue::Text(t) => {
 				Some(InlineKind::Text(self.text_after(t, source.clone(), from)))
 			}
@@ -588,7 +588,7 @@ impl Reader<'_> {
 		plain_text(&alt.inlines)
 	}
 
-	/// The node's source with hidden `%%` comment spans cut out, for the
+	/// The node's source with hidden comments and block IDs cut out, for the
 	/// depth-limit fallback that embeds raw Markdown.
 	fn visible_source<'a>(&self, node: &'a AstNode<'a>) -> String {
 		let whole = self.range(node);
@@ -599,6 +599,7 @@ impl Reader<'_> {
 					descendant.data.borrow().value,
 					NodeValue::CommentInline(_)
 						| NodeValue::MultilineComment(_)
+						| NodeValue::BlockId(_)
 				)
 			})
 			.map(|descendant| self.range(descendant))
@@ -689,6 +690,11 @@ impl Reader<'_> {
 			0,
 			&mut opaque_until,
 		);
+		let text = if block_ids::has_marker(node) {
+			text.without_marker_gap(self.source)
+		} else {
+			text
+		};
 		// Grid-cell lines are separated by other columns in the source.
 		// Keep runs separate so their spans cannot match a neighboring cell.
 		if node.ancestors().any(|parent| {
@@ -1040,6 +1046,7 @@ impl Reader<'_> {
 		depth: usize,
 	) -> Child {
 		let source = self.range(child);
+		let anchors: Vec<_> = block_ids::anchor(child).into_iter().collect();
 		let data = child.data.borrow();
 		if matches!(data.value, NodeValue::CalloutTitle) {
 			return Child::Skip;
@@ -1104,7 +1111,10 @@ impl Reader<'_> {
 					let text = self.rich(child);
 					// A paragraph can hold only a hidden `%%` comment; the
 					// source line then reads as no paragraph at all.
-					if text.is_empty() && self.dialect.ofm {
+					if text.is_empty()
+						&& self.dialect.ofm
+						&& !block_ids::has_marker(child)
+					{
 						return Child::Skip;
 					}
 					let (inlines, spans, covers) = text.into_parts(self.source);
@@ -1215,10 +1225,16 @@ impl Reader<'_> {
 									}
 									_ => None,
 								};
+								let mut blocks = self.blocks(item, depth + 1);
+								if let Some(anchor) = block_ids::anchor(item)
+									&& let Some(first) = blocks.first_mut()
+								{
+									first.add_anchor(anchor);
+								}
 								ListItem {
 									checked,
 									number: None,
-									blocks: self.blocks(item, depth + 1),
+									blocks,
 								}
 							})
 							.collect(),
@@ -1256,7 +1272,9 @@ impl Reader<'_> {
 							let (inlines, spans, covers) =
 								text.into_parts(self.source);
 							let block = self.make(
-								Vec::new(),
+								block_ids::anchor(cell_node)
+									.into_iter()
+									.collect(),
 								BlockKind::Paragraph(inlines),
 								range,
 								vec![spans],
@@ -1328,7 +1346,7 @@ impl Reader<'_> {
 				}
 			}
 		};
-		let block = self.make(Vec::new(), kind, source, fields, covers);
+		let block = self.make(anchors, kind, source, fields, covers);
 		if let NodeValue::FootnoteDefinition(f) = &data.value {
 			// Snippet-only definitions also belong at the document's end.
 			self.footnote_blocks.insert(note_key(&f.name), block);
@@ -1976,6 +1994,7 @@ fn markdown_options(dialect: Dialect) -> Options<'static> {
 	options.extension.ofm_callouts = dialect.ofm;
 	// `%%` comments parse as skipped nodes with original source positions.
 	options.extension.ofm_comments = dialect.ofm;
+	options.extension.ofm_block_ids = dialect.ofm;
 	options.extension.math_dollars = true;
 	options.extension.math_latex = true;
 	options.extension.math_code = true;
@@ -1996,12 +2015,13 @@ fn wikilink_url(link: &NodeWikiLink) -> String {
 		|| link.url.replace('%', "%25"),
 		|(path, heading)| {
 			let path = path.replace('%', "%25");
-			format!(
-				"{path}#{}",
-				crate::heading_slug(
-					heading.rsplit('#').next().unwrap_or(heading)
-				)
-			)
+			let fragment = heading.rsplit('#').next().unwrap_or(heading);
+			let fragment = if fragment.starts_with('^') {
+				fragment.replace('%', "%25")
+			} else {
+				crate::heading_slug(fragment)
+			};
+			format!("{path}#{fragment}")
 		},
 	)
 }

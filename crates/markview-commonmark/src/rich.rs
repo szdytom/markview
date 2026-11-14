@@ -144,6 +144,23 @@ impl SpannedText {
 		self.sources.push(source);
 	}
 
+	/// Removes a trailing marker's separator without trimming code content.
+	pub(crate) fn without_marker_gap(mut self, source: &str) -> Self {
+		while let Some((inline, range)) = self.last_mut()
+			&& !inline.style.code
+			&& let InlineKind::Text(text) = &mut inline.kind
+		{
+			text.truncate(text.trim_end().len());
+			range.end = range.start + source[range.clone()].trim_end().len();
+			if !text.is_empty() {
+				break;
+			}
+			self.inlines.pop();
+			self.sources.pop();
+		}
+		self
+	}
+
 	pub(crate) fn trimmed(mut self) -> Self {
 		fn trim_edge(text: &mut SpannedText, end: bool) {
 			let mut leading = true;

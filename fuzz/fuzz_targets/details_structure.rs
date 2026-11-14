@@ -24,7 +24,7 @@
 use libfuzzer_sys::{fuzz_mutator, fuzz_target};
 use markview_commonmark::MarkdownParse;
 use markview_document::{AnchorId, BlockId};
-use mvfuzz::{budget, mutators, oracle, seam};
+use mvfuzz::{budget, mutators, oracle, pipeline, seam};
 use std::sync::Arc;
 
 fuzz_mutator! { |data: &mut [u8], size: usize, max_size: usize, seed: u32| {
@@ -51,7 +51,7 @@ fn enclosing_by_id(doc: &MarkdownParse) -> Vec<(AnchorId, Vec<BlockId>)> {
 	out
 }
 
-fuzz_target!(|data: &[u8]| {
+fn check(data: &[u8], dialect: markview_commonmark::Dialect) {
 	let budget = budget::Budget::parse().from_env();
 	let md = String::from_utf8_lossy(data).into_owned();
 	let len = md.len();
@@ -63,7 +63,7 @@ fuzz_target!(|data: &[u8]| {
 	// oracle below is only meaningful when one is present.
 	let guard = budget::InputGuard::new();
 	let source: Arc<str> = Arc::from(md.as_str());
-	let doc = markview_commonmark::parse(source.clone());
+	let doc = markview_commonmark::parse_with(source.clone(), dialect);
 	oracle::assert_source_ranges(&doc);
 	seam::assert_details_structure(&doc, &md);
 
@@ -108,4 +108,10 @@ fuzz_target!(|data: &[u8]| {
 		);
 	}
 	guard.finish(&budget, len);
+}
+
+fuzz_target!(|data: &[u8]| {
+	for dialect in pipeline::dialects() {
+		check(data, dialect);
+	}
 });

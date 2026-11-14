@@ -80,7 +80,7 @@ pub struct EffectiveDialect {
 	pub highlight_marks: bool,
 	/// Enable grid tables independently of the Markdown preset.
 	pub grid_tables: bool,
-	/// Obsidian callouts, comments and extra inline HTML tags.
+	/// Obsidian callouts, comments, block IDs and extra inline HTML tags.
 	pub ofm: bool,
 }
 

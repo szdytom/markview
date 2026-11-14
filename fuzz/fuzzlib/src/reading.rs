@@ -51,6 +51,7 @@ pub fn check(data: &[u8]) {
 		(&[0; 8][..], data)
 	};
 	let payload = String::from_utf8_lossy(body);
+	let ofm = controls[7] & 1 != 0;
 	let mut generated_fields = None;
 	let md = if controls[0] % 2 == 0 {
 		payload.into_owned()
@@ -71,11 +72,36 @@ pub fn check(data: &[u8]) {
 			line.clone(),
 			"alpha".into(),
 		]);
+		let marker = if ofm && !line.is_empty() {
+			" ^Reading-ID"
+		} else {
+			""
+		};
 		format!(
-			"{line}\n\n<details>\n<summary>summary alpha</summary>\n\n{line}\n\n</details>\n\n| left | right |\n| --- | --- |\n| {line} | alpha |\n"
+			"{line}{marker}\n\n<details>\n<summary>summary alpha</summary>\n\n{line}\n\n</details>\n\n| left | right |\n| --- | --- |\n| {line} | alpha |\n"
 		)
 	};
-	let parsed = markview_commonmark::parse(md);
+	let parsed = markview_commonmark::parse_with(
+		md,
+		markview_commonmark::Dialect {
+			ofm,
+			highlight_marks: ofm,
+			..Default::default()
+		},
+	);
+	if ofm
+		&& generated_fields
+			.as_ref()
+			.is_some_and(|fields| !fields[0].is_empty())
+	{
+		assert!(
+			parsed.blocks()[0]
+				.anchors()
+				.iter()
+				.any(|id| id == "^Reading-ID"),
+			"the generated paragraph lost its block ID"
+		);
+	}
 	if let Some(expected) = &generated_fields {
 		let expected: Vec<_> = expected
 			.iter()

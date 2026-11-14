@@ -106,7 +106,16 @@ fn inputs(
 	sheet: Arc<Stylesheet>,
 	geometry: PageGeometry,
 ) -> Inputs {
-	let document = markview_commonmark::parse(source.to_owned());
+	inputs_with_dialect(source, sheet, geometry, Default::default())
+}
+
+fn inputs_with_dialect(
+	source: &str,
+	sheet: Arc<Stylesheet>,
+	geometry: PageGeometry,
+	dialect: markview_commonmark::Dialect,
+) -> Inputs {
+	let document = markview_commonmark::parse_with(source.to_owned(), dialect);
 	let options = LayoutOptions {
 		width: geometry.text_px().0,
 		codeblock_wrap: true,
@@ -1257,6 +1266,56 @@ fn percent_encoded_heading_links_keep_their_destinations() {
 	let annotations = exported.pdf.get_page_annotations(first).unwrap();
 	assert_eq!(annotations.len(), 2);
 	assert!(annotations.iter().all(|annotation| annotation.has(b"Dest")));
+}
+
+#[test]
+fn obsidian_block_links_export_as_internal_pdf_destinations() {
+	let sheet = print();
+	let geometry = PageGeometry {
+		width_pt: 400.,
+		height_pt: 240.,
+		margin_pt: [24.; 4],
+	};
+	let inputs = inputs_with_dialect(
+		&format!(
+			"[[#^Block-ID|wiki]] [plain](#^Block-ID) [encoded](#%5EBlock-ID) [missing](#^block-id)\n\n{}Target ^Block-ID\n",
+			"Before target.\n\n".repeat(20),
+		),
+		sheet,
+		geometry,
+		markview_commonmark::Dialect {
+			ofm: true,
+			..Default::default()
+		},
+	);
+	let (page, y) = inputs.pagination.anchors["^Block-ID"];
+	assert!(page > 0, "the target must be on a later page");
+	let bytes = render(&inputs, true, Metadata::default(), None);
+	let pdf = lopdf::Document::load_mem(&bytes).unwrap();
+	let pages = pdf.get_pages();
+	let first = pages[&1];
+	let annotations = pdf.get_page_annotations(first).unwrap();
+	assert_eq!(annotations.len(), 3);
+	let [left, top, _, _] = geometry.text_pt();
+	let expected = [left, geometry.height_pt - top - y * PT_PER_PX];
+	for annotation in annotations {
+		assert!(!annotation.has(b"A"));
+		let destination = pdf
+			.get_object(
+				annotation.get(b"Dest").unwrap().as_reference().unwrap(),
+			)
+			.unwrap();
+		let array = destination.as_array().unwrap();
+		assert_eq!(array[0].as_reference().unwrap(), pages[&(page as u32 + 1)]);
+		assert_eq!(array[1].as_name().unwrap(), b"XYZ");
+		let actual =
+			[array[2].as_float().unwrap(), array[3].as_float().unwrap()];
+		assert!(
+			(actual[0] - expected[0]).abs() < 0.01
+				&& (actual[1] - expected[1]).abs() < 0.01,
+			"destination {actual:?} should be {expected:?}"
+		);
+	}
 }
 
 #[test]

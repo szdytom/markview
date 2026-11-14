@@ -24,7 +24,10 @@ fuzz_target!(|data: &[u8]| {
 		coverage::tick();
 		return;
 	}
-	let doc = markview_commonmark::parse(md.to_string());
+	let doc = markview_commonmark::parse_with(
+		md.to_string(),
+		pipeline::dialect_for(&md),
+	);
 	let options = pipeline::options_for(&md);
 	let images = markview_layout::image::ImageSnapshot::default();
 

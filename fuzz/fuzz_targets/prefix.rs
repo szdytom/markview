@@ -12,13 +12,13 @@
 use std::sync::Arc;
 
 use libfuzzer_sys::{fuzz_mutator, fuzz_target};
-use mvfuzz::{budget, mutators, oracle};
+use mvfuzz::{budget, mutators, oracle, pipeline};
 
 fuzz_mutator! { |data: &mut [u8], size: usize, max_size: usize, seed: u32| {
 	mutators::markdown(data, size, max_size, seed)
 }}
 
-fuzz_target!(|data: &[u8]| {
+fn check(data: &[u8], dialect: markview_commonmark::Dialect) {
 	let budget = budget::Budget::parse().from_env();
 	let md = String::from_utf8_lossy(data).into_owned();
 	let len = md.len();
@@ -27,7 +27,7 @@ fuzz_target!(|data: &[u8]| {
 	}
 	let guard = budget::InputGuard::new();
 	let source: Arc<str> = Arc::from(md.as_str());
-	let full = markview_commonmark::parse(source.clone());
+	let full = markview_commonmark::parse_with(source.clone(), dialect);
 	oracle::assert_source_ranges(&full);
 	// Several cuts, fixed and derived: the fixed ones straddle block
 	// boundaries in ordinary documents, the derived one moves with the input.
@@ -44,10 +44,18 @@ fuzz_target!(|data: &[u8]| {
 	cuts.sort_unstable();
 	cuts.dedup();
 	for cut in cuts {
-		if let Some(prefix) = markview_commonmark::parse_prefix(&source, cut) {
+		if let Some(prefix) =
+			markview_commonmark::parse_prefix_with(&source, cut, dialect)
+		{
 			oracle::assert_prefix_consistent(&full, &prefix);
 			oracle::assert_source_ranges(&prefix);
 		}
 	}
 	guard.finish(&budget, len);
+}
+
+fuzz_target!(|data: &[u8]| {
+	for dialect in pipeline::dialects() {
+		check(data, dialect);
+	}
 });

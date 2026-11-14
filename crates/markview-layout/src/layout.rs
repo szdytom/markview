@@ -188,8 +188,8 @@ pub struct LayoutOptions {
 	pub highlight_marks: bool,
 	/// Parse grid tables independently of the Markdown preset.
 	pub grid_tables: bool,
-	/// Read Obsidian callouts and the extra inline HTML tags; threaded to
-	/// the parse exactly like `hard_breaks`.
+	/// Read Obsidian callouts, comments, block IDs and extra inline HTML tags;
+	/// threaded to the parse exactly like `hard_breaks`.
 	pub ofm: bool,
 	/// Reader-chosen collapse state of each `<details>`, keyed by the block's
 	/// semantic id. A block absent from the map uses the state its source
