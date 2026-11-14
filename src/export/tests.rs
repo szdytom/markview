@@ -193,7 +193,7 @@ fn a_panel_export_preserves_its_settings_in_the_pdf_request() {
 
 	let dir = tempfile::tempdir().unwrap();
 	let style = dir.path().join("landscape.mvss.toml");
-	std::fs::write(&style, "format_version=2\nversion=1\ntargets=['pdf']\n[page]\nsize='a5'\nlandscape=true\n").unwrap();
+	std::fs::write(&style, "format_version=3\nversion=1\ntargets=['pdf']\n[page]\nsize='a5'\nlandscape=true\n").unwrap();
 	s.landscape = false;
 	let mut config = Config::from_settings(
 		&s,

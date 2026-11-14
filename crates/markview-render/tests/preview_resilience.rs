@@ -221,6 +221,7 @@ fn oversized_preview_is_rejected_once_and_leaves_the_frame_alone()
 	// The card aspect fixes the slice the scene shows. A tall card keeps every
 	// heading block inside that slice.
 	let preview = Preview {
+		interaction: None,
 		snapshot: &oversized,
 		scroll: 0.0,
 		rect: Rect {
@@ -344,6 +345,7 @@ fn preview_keeps_a_valid_trailing_space_scroll() -> anyhow::Result<()> {
 	let empty = LayoutSnapshot::default();
 	let mut compose = |scroll: f32| -> anyhow::Result<Vec<u8>> {
 		let preview = Preview {
+			interaction: None,
 			snapshot: &snapshot,
 			scroll,
 			rect,
@@ -403,6 +405,7 @@ fn render_with_preview_returns_the_last_submission() -> anyhow::Result<()> {
 		h: 125.0,
 	};
 	let preview = Preview {
+		interaction: None,
 		snapshot: &snapshot,
 		scroll: 0.0,
 		rect,

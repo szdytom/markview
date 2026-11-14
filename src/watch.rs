@@ -240,13 +240,13 @@ mod stylesheet_tests {
 		});
 		fs::create_dir(&dir).unwrap();
 		let path = dir.join("a.mvss.toml");
-		fs::write(&path, "format_version=2\nversion=1").unwrap();
+		fs::write(&path, "format_version=3\nversion=1").unwrap();
 		rx.recv_timeout(Duration::from_secs(3)).unwrap();
 		while rx.try_recv().is_ok() {}
 		let replacement = dir.join("a.tmp");
 		fs::write(
 			&replacement,
-			"format_version=2\nversion=1\n[[rule]]\nwhen=['em']\ncolor='#ffffff'",
+			"format_version=3\nversion=1\n[[rule]]\nwhen=['em']\ncolor='#ffffff'",
 		)
 		.unwrap();
 		fs::rename(replacement, &path).unwrap();

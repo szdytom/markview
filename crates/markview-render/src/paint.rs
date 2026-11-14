@@ -265,7 +265,7 @@ impl Renderer {
 					..*rect
 				};
 				let background = if *condition
-					== markview_layout::style::Condition::Preview
+					== markview_layout::style::Condition::TabPreview
 				{
 					Paint::Background
 				} else {

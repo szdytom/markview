@@ -8,7 +8,7 @@ use std::sync::Arc;
 fn parsed_declarations_resolve_independently_and_preserve_runtime_overrides() {
 	let mut source = StylesheetSource::parse(
 		r#"
-format_version = 2
+format_version = 3
 version = 1
 [[fontdef]]
 id = "reading"
@@ -34,7 +34,7 @@ weight = 700
 	.unwrap();
 	source.merge(
 		&StylesheetSource::parse(
-			"format_version=2\nversion=1\n[[rule]]\nwhen=['p']\nsize=2.0",
+			"format_version=3\nversion=1\n[[rule]]\nwhen=['p']\nsize=2.0",
 		)
 		.unwrap(),
 	);
@@ -80,7 +80,7 @@ weight = 700
 fn media_matches_any_entry_and_updates_text_geometry_and_paint() {
 	let mut sheet = Stylesheet::parse(
 		r##"
-format_version = 2
+format_version = 3
 version = 1
 [[rule]]
 when = ["body"]
@@ -145,7 +145,7 @@ size = 0.9
 fn media_cascade_keeps_layer_priority_and_source_order_after_context_changes() {
 	let mut sheet = Stylesheet::parse(
 		r#"
-format_version = 2
+format_version = 3
 version = 1
 [[rule]]
 when = ["p"]
@@ -179,7 +179,7 @@ weight = 700
 		assert_eq!(sheet.rule(Condition::P).weight, Some(700));
 	}
 	let higher = Stylesheet::parse(
-		"format_version=2\nversion=1\n[[rule]]\nwhen=['p']\nsize=2.0",
+		"format_version=3\nversion=1\n[[rule]]\nwhen=['p']\nsize=2.0",
 	)
 	.unwrap();
 	sheet.merge(&higher);
@@ -216,7 +216,7 @@ fn media_selectors_validate_and_canonicalize_independently_of_when() {
 		"ios",
 		"web",
 	] {
-		assert!(Stylesheet::parse(&format!("format_version=2\nversion=1\n[[rule]]\nwhen=['p']\nmedia=['{media}']\nsize=1.0")).is_ok());
+		assert!(Stylesheet::parse(&format!("format_version=3\nversion=1\n[[rule]]\nwhen=['p']\nmedia=['{media}']\nsize=1.0")).is_ok());
 	}
 	for media in [
 		"[]",
@@ -227,7 +227,7 @@ fn media_selectors_validate_and_canonicalize_independently_of_when() {
 		"['ui', false]",
 	] {
 		let error = Stylesheet::parse(&format!(
-			"format_version=2\nversion=1\n[[rule]]\nwhen=['p']\nmedia={media}\nsize=1.0"
+			"format_version=3\nversion=1\n[[rule]]\nwhen=['p']\nmedia={media}\nsize=1.0"
 		))
 		.unwrap_err();
 		assert!(
@@ -235,7 +235,7 @@ fn media_selectors_validate_and_canonicalize_independently_of_when() {
 			"{media}: {error:#}"
 		);
 	}
-	let duplicate = Stylesheet::parse("format_version=2\nversion=1\n[[rule]]\nwhen=['strong','code']\nmedia=['ui','pdf']\nsize=1.0\n[[rule]]\nwhen=['code','strong']\nmedia=['pdf','ui']\nsize=2.0").unwrap_err();
+	let duplicate = Stylesheet::parse("format_version=3\nversion=1\n[[rule]]\nwhen=['strong','code']\nmedia=['ui','pdf']\nsize=1.0\n[[rule]]\nwhen=['code','strong']\nmedia=['pdf','ui']\nsize=2.0").unwrap_err();
 	assert!(
 		duplicate
 			.to_string()

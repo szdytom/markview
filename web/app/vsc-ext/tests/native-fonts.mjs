@@ -34,7 +34,7 @@ test("native catalog and downloads feed the editor cache and font status", async
     const file = path.join(dir, "custom.mvss.toml");
     await writeFile(
       file,
-      `format_version=2
+      `format_version=3
 version=1
 targets=['ui','pdf']
 [[fontdef]]

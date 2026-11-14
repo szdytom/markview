@@ -7,7 +7,7 @@ use markview_layout::{
 use proptest::prelude::*;
 use std::sync::Arc;
 
-fn fixture(y: f32, content_width: f32) -> LayoutSnapshot {
+pub(crate) fn fixture(y: f32, content_width: f32) -> LayoutSnapshot {
 	let text_rect = Rect {
 		x: 0.0,
 		y: 5.0,
@@ -107,6 +107,12 @@ proptest! {
 			prop_assert_eq!(context.contains(point), window);
 			prop_assert_eq!(context.contains_text(point), text);
 			prop_assert_eq!(context.link(point), link.then_some("https://example.test"));
+			prop_assert_eq!(context.link_rect(point).is_some(), link);
+			if let Some(rect) = context.link_rect(point) {
+				prop_assert!(rect.contains(point.x, point.y));
+				prop_assert!(rect.x >= 0.0 && rect.y >= f32::from(top));
+				prop_assert!(rect.x + rect.w <= 200.0 && rect.y + rect.h <= 224.0);
+			}
 			prop_assert_eq!(context.image(point), image.then_some(("image", Rect { x: 50.0, y: 5.0, w: 50.0, h: 20.0 }, "Image title")));
 			for links_clickable in [false, true] {
 				for images_clickable in [false, true] {

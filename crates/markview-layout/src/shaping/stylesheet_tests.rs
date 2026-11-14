@@ -27,7 +27,7 @@ fn shaper() -> TextShaper {
 		);
 	}
 	let mut style = (*Stylesheet::bundled(false)).clone();
-	style.merge(&Stylesheet::parse("format_version=2\nversion=1\n[[rule]]\nwhen=['em']\nfont=[{family='Primary',variant='italic'},{family='Fallback'}]").unwrap());
+	style.merge(&Stylesheet::parse("format_version=3\nversion=1\n[[rule]]\nwhen=['em']\nfont=[{family='Primary',variant='italic'},{family='Fallback'}]").unwrap());
 	s.set_stylesheet(Arc::new(style));
 	s
 }
@@ -180,7 +180,7 @@ fn font_choices_are_scoped_and_invalidated_with_stylesheet() {
 	let mut style = (*s.stylesheet).clone();
 	style.merge(
 		&Stylesheet::parse(
-			"format_version=2\nversion=1\n[[fontdef]]\nid='Primary'\nlookfor=['Missing']",
+			"format_version=3\nversion=1\n[[fontdef]]\nid='Primary'\nlookfor=['Missing']",
 		)
 		.unwrap(),
 	);
@@ -623,7 +623,7 @@ fn the_marked_emoji_face_wins_only_for_emoji_clusters() {
 	// text cluster that still takes a later candidate.
 	sheet.merge(
 		&Stylesheet::parse(concat!(
-			"format_version=2\nversion=1\n",
+			"format_version=3\nversion=1\n",
 			"[[fontdef]]\nid='first'\nemoji=true\nlookfor=['Noto Color Emoji']\n",
 			"[[rule]]\nwhen=['body']\n",
 			"font=[{family='first',weight=400},{family='serif'},{family='serif[cjk]'}]",
@@ -685,7 +685,7 @@ fn cjk_medium_matches_regular_in_the_same_candidate_when_unavailable() {
 		}
 		let mut sheet = (*Stylesheet::bundled(false)).clone();
 		sheet.set_cjk_type(crate::style::CjkType::Sc);
-		sheet.merge(&Stylesheet::parse("format_version=2\nversion=1\n[[rule]]\nwhen=['ui']\nfont=[{family='sans-serif'},{family='sans-serif[cjk]',min_weight=500},{family='emoji',weight=400}]").unwrap());
+		sheet.merge(&Stylesheet::parse("format_version=3\nversion=1\n[[rule]]\nwhen=['ui']\nfont=[{family='sans-serif'},{family='sans-serif[cjk]',min_weight=500},{family='emoji',weight=400}]").unwrap());
 		shaper.set_stylesheet(Arc::new(sheet));
 		let appearance = shaper
 			.stylesheet
@@ -740,7 +740,7 @@ fn a_scanned_face_matches_the_wanted_weight() {
 	register_distant_face(&mut shaper, "DistantBold", "KaTeX_Main-Bold.ttf");
 	register_distant_face(&mut shaper, "Distant", "KaTeX_Main-Regular.ttf");
 	let mut sheet = (*Stylesheet::bundled(false)).clone();
-	sheet.merge(&Stylesheet::parse("format_version=2\nversion=1\n[[rule]]\nwhen=['strong']\nfont=[{family='Primary'}]\nweight=700").unwrap());
+	sheet.merge(&Stylesheet::parse("format_version=3\nversion=1\n[[rule]]\nwhen=['strong']\nfont=[{family='Primary'}]\nweight=700").unwrap());
 	shaper.set_stylesheet(Arc::new(sheet));
 	let appearance = shaper.stylesheet.inline(
 		&shaper.appearance,
@@ -840,7 +840,7 @@ fn math_fallback_does_not_apply_the_math_size_twice() {
 	let mut style = (*Stylesheet::bundled(false)).clone();
 	style.merge(
 		&Stylesheet::parse(
-			"format_version=2\nversion=1\n[[rule]]\nwhen=['math']\nsize=2",
+			"format_version=3\nversion=1\n[[rule]]\nwhen=['math']\nsize=2",
 		)
 		.unwrap(),
 	);
@@ -860,7 +860,7 @@ fn math_fallback_does_not_apply_the_math_size_twice() {
 
 #[test]
 fn synthetic_bold_is_opt_in_and_preserves_real_bold() {
-	let sheet = Stylesheet::parse("format_version=2\nversion=1\n[[rule]]\nwhen=['body']\nfont=[{family='Fallback',synthetic_bold=true}]\nweight=600").unwrap();
+	let sheet = Stylesheet::parse("format_version=3\nversion=1\n[[rule]]\nwhen=['body']\nfont=[{family='Fallback',synthetic_bold=true}]\nweight=600").unwrap();
 	let mut s = shaper();
 	let mut appearance = TextAppearance {
 		font: sheet

@@ -101,6 +101,7 @@ fn compose(
 	let target = texture.create_view(&Default::default());
 	renderer.set_ui_origin(origin);
 	let preview = Preview {
+		interaction: None,
 		snapshot: preview_snapshot,
 		scroll: 0.0,
 		rect,
@@ -344,6 +345,126 @@ fn the_preview_lands_in_the_translated_card_rect() -> anyhow::Result<()> {
 				);
 			}
 		}
+	}
+	Ok(())
+}
+
+#[test]
+fn independent_document_scenes_paint_selection_and_hover_inside_their_clips()
+-> anyhow::Result<()> {
+	use markview_render::{DocumentScene, SceneInteraction};
+	let sheet = Stylesheet::bundled(false);
+	let document = markview_commonmark::parse(
+		"[A linked passage](https://example.test) and more text.\n",
+	);
+	let snapshot = LayoutEngine::new().layout(
+		&document,
+		&LayoutOptions {
+			width: 300.0,
+			fonts: fonts(),
+			stylesheet: sheet.clone(),
+			..Default::default()
+		},
+	);
+	let selection = snapshot.select_all(document.revision().get()).unwrap();
+	let link = snapshot
+		.blocks
+		.iter()
+		.find_map(|block| {
+			block.links().next().map(|(link, _)| {
+				markview_layout::scene::LinkRef {
+					url: link.url.as_ref(),
+					target: link.target,
+					id: link.id,
+					block: block.id,
+				}
+			})
+		})
+		.unwrap();
+	let horizontal = HashMap::new();
+	let main = LayoutSnapshot::default();
+	let mut renderer = pollster::block_on(Renderer::new(None))?;
+	renderer.set_stylesheet(sheet);
+	let rects = [
+		Rect {
+			x: 25.0,
+			y: 40.0,
+			w: 300.0,
+			h: 80.0,
+		},
+		Rect {
+			x: 50.0,
+			y: 240.0,
+			w: 150.0,
+			h: 80.0,
+		},
+	];
+	for scale in [1.0, 1.5, 2.0] {
+		let frame = view(scale, &horizontal);
+		let texture = renderer.offscreen(frame.width, frame.height);
+		let target = texture.create_view(&Default::default());
+		let mut scenes = rects.map(|rect| DocumentScene {
+			snapshot: &snapshot,
+			rect,
+			scroll: 0.0,
+			theme: Theme::Light,
+			horizontal: &horizontal,
+			interaction: None,
+		});
+		renderer.render_document_scenes(
+			&main,
+			&frame,
+			&[],
+			&scenes,
+			&target,
+		)?;
+		let plain = renderer.read_pixels(&texture)?;
+		scenes[0].interaction = Some(SceneInteraction {
+			selection: Some(selection),
+			revision: document.revision().get(),
+			hovered_link: None,
+			held_overflow: None,
+		});
+		scenes[1].interaction = Some(SceneInteraction {
+			selection: None,
+			revision: document.revision().get(),
+			hovered_link: Some(link),
+			held_overflow: None,
+		});
+		renderer.render_document_scenes(
+			&main,
+			&frame,
+			&[],
+			&scenes,
+			&target,
+		)?;
+		let interactive = renderer.read_pixels(&texture)?;
+		let mut changed = [0, 0];
+		for y in 0..frame.height {
+			for x in 0..frame.width {
+				let index = ((y * frame.width + x) * 4) as usize;
+				if plain.rgba[index..index + 4]
+					== interactive.rgba[index..index + 4]
+				{
+					continue;
+				}
+				let owner = rects
+					.iter()
+					.position(|rect| {
+						rect.contains(
+							(x as f32 + 0.5) / scale,
+							(y as f32 + 0.5) / scale,
+						)
+					})
+					.expect("interactive ink must stay inside a scene");
+				changed[owner] += 1;
+			}
+		}
+		assert!(changed[0] > 100, "selection must be visible");
+		assert!(
+			changed[1] > 10,
+			"hover must be visible in a separately scaled surface"
+		);
 	}
 	Ok(())
 }

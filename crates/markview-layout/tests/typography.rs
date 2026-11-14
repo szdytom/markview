@@ -107,7 +107,7 @@ fn narrow_marker_columns_keep_aligned_markers_before_item_text() {
 	{
 		for align in ["left", "center", "right"] {
 			let custom = Stylesheet::parse(&format!(
-				"format_version=2\nversion=1\n\
+				"format_version=3\nversion=1\n\
 			[[rule]]\nwhen=['list']\nmarker_width=0\n\
 			[[rule]]\nwhen=['enum']\nmarker_width=0\nalign='{align}'\n\
 			[[rule]]\nwhen=['marker']\nsize={marker_size}\nalign='{align}'\n\
@@ -162,7 +162,7 @@ fn marker_width_validates_scope_and_invalidates_layout() {
 		("enum", "nan", false),
 	] {
 		let parsed = Stylesheet::parse(&format!(
-			"format_version=2\nversion=1\n[[rule]]\nwhen=['{role}']\nmarker_width={value}"
+			"format_version=3\nversion=1\n[[rule]]\nwhen=['{role}']\nmarker_width={value}"
 		));
 		assert_eq!(parsed.is_ok(), valid, "{role}: {value}");
 		if let Ok(sheet) = parsed {

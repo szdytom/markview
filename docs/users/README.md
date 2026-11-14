@@ -12,7 +12,7 @@ Markview does not edit Markdown; changes saved in another editor refresh the rea
 | Choose or download typefaces | [Fonts](fonts.md) |
 | Write PDF or PNG files | [Export](export.md) |
 | Read shared files and folders on a phone/tablet | [Android](android.md) |
-| Author a theme | [MVSS reference](stylesheets.md) |
+| Author a theme | [MVSS reference](stylesheets.md) · [Upgrade to MVSS 3](mvss-v3-upgrade.md) |
 | Read Chinese notes on dialects and copy controls | [方言与代码复制](settings.zh-cn.md) |
 
 [All documentation](../README.md)

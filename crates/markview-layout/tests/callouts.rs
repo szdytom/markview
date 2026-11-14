@@ -201,7 +201,7 @@ fn callout_corners_default_to_square_and_follow_mvss() {
 			if !rule.is_empty() {
 				sheet.merge(
 					&Stylesheet::parse(&format!(
-						"format_version=2\nversion=1\n[[rule]]\nwhen=['callout']\n{rule}"
+						"format_version=3\nversion=1\n[[rule]]\nwhen=['callout']\n{rule}"
 					))
 					.unwrap(),
 				);
@@ -250,7 +250,7 @@ fn callouts_inherit_quote_line_widths_across_themes_and_mvss_overrides() {
 			if !rule.is_empty() {
 				sheet.merge(
 					&Stylesheet::parse(&format!(
-						"format_version=2\nversion=1\n[[rule]]\nwhen=['blockquote']\n{rule}"
+						"format_version=3\nversion=1\n[[rule]]\nwhen=['blockquote']\n{rule}"
 					))
 					.unwrap(),
 				);

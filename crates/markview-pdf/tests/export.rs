@@ -192,8 +192,8 @@ fn top_bands_repeat_without_moving_text_or_page_furniture() {
 		sheet.page.margin = Some(vec![margin]);
 		let source = long_source();
 		let plain = export(&source, Arc::new(sheet.clone()), true);
-		sheet.merge(&Stylesheet::parse(&format!("format_version=2\nversion=1\n[page]\nheader.rule_width={height}\nheader.rule_color='#FF0000'")).unwrap());
-		sheet.merge(&Stylesheet::parse(&format!("format_version=2\nversion=1\n[page.footer]\nrule_width={height}\nrule_color='#0000FF'")).unwrap());
+		sheet.merge(&Stylesheet::parse(&format!("format_version=3\nversion=1\n[page]\nheader.rule_width={height}\nheader.rule_color='#FF0000'")).unwrap());
+		sheet.merge(&Stylesheet::parse(&format!("format_version=3\nversion=1\n[page.footer]\nrule_width={height}\nrule_color='#0000FF'")).unwrap());
 		let banded = export(&source, Arc::new(sheet.clone()), true);
 		assert_eq!(plain.pages, banded.pages);
 		assert!(banded.pages > 1);
@@ -282,7 +282,7 @@ fn an_ordered_list_embeds_its_numbering_format() {
 	let mut sheet = (*print()).clone();
 	sheet.merge(
 		&Stylesheet::parse(
-			"format_version=2\nversion=1\n[[rule]]\nwhen=['enum']\nnumbering='a)'",
+			"format_version=3\nversion=1\n[[rule]]\nwhen=['enum']\nnumbering='a)'",
 		)
 		.unwrap(),
 	);
@@ -344,7 +344,7 @@ fn a_reused_renderer_matches_a_fresh_export_and_rebuilds_on_a_new_stylesheet() {
 	let mut defined = (*plain).clone();
 	defined.merge(
 		&Stylesheet::parse(
-			"format_version=2\nversion=1\n\
+			"format_version=3\nversion=1\n\
 			 [[fontdef]]\nid='sans-serif'\nlookfor=['Noto Sans Mono']",
 		)
 		.unwrap(),
@@ -566,7 +566,7 @@ fn compact_text_rows_export_once_across_page_breaks() {
 	};
 	let mut sheet = (*print()).clone();
 	sheet.page.footer_center = Some(String::new());
-	sheet.merge(&Stylesheet::parse("format_version=2\nversion=1\n[[rule]]\nwhen=['p']\nline_height=1.0\n[[rule]]\nwhen=['code_block']\nline_height=1.0").unwrap());
+	sheet.merge(&Stylesheet::parse("format_version=3\nversion=1\n[[rule]]\nwhen=['p']\nline_height=1.0\n[[rule]]\nwhen=['code_block']\nline_height=1.0").unwrap());
 	let lines: Vec<_> = ('a'..='l').map(|c| c.to_string()).collect();
 	for source in [
 		lines.join("  \n"),
@@ -675,7 +675,7 @@ fn segmented_rowspan_borders_preserve_page_bands_and_copyable_text() {
 			sheet.merge(
 				&Stylesheet::parse(&format!(
 					concat!(
-						"format_version=2\nversion=1\n",
+						"format_version=3\nversion=1\n",
 						"[[rule]]\nwhen=['table','cell']\nborder_width={}\n",
 						"[[rule]]\nwhen=['table','first_child','cell']\nborder_width={}\n",
 						"[[rule]]\nwhen=['table','last_child','cell']\nborder_width={}\n",
@@ -844,7 +844,7 @@ fn inline_background_padding_keeps_text_and_decorations_on_their_page() {
 	let render = |source: &str, padding| {
 		let mut sheet = (*print()).clone();
 		sheet.page.footer_center = Some(String::new());
-		sheet.merge(&Stylesheet::parse(&format!("format_version=2\nversion=1\n[[rule]]\nwhen=['code']\npadding=[{padding},0,{padding},0]\nbackground='#FF0000'")).unwrap());
+		sheet.merge(&Stylesheet::parse(&format!("format_version=3\nversion=1\n[[rule]]\nwhen=['code']\npadding=[{padding},0,{padding},0]\nbackground='#FF0000'")).unwrap());
 		export_at(
 			source,
 			Arc::new(sheet),
@@ -894,7 +894,7 @@ fn inline_code_edges_and_baseline_keep_selectable_pdf_text() {
 	let render = |baseline| {
 		let mut sheet = (*print()).clone();
 		sheet.set_cjk_type(CjkType::Sc);
-		sheet.merge(&Stylesheet::parse(&format!("format_version=2\nversion=1\n[[rule]]\nwhen=['body']\ntop_edge=2\nbottom_edge=-2\n[[rule]]\nwhen=['code']\ncolor='#FF0000'\nbackground_top_edge='bounds'\nbackground_bottom_edge='bounds'\nbaseline={baseline}")).unwrap());
+		sheet.merge(&Stylesheet::parse(&format!("format_version=3\nversion=1\n[[rule]]\nwhen=['body']\ntop_edge=2\nbottom_edge=-2\n[[rule]]\nwhen=['code']\ncolor='#FF0000'\nbackground_top_edge='bounds'\nbackground_bottom_edge='bounds'\nbaseline={baseline}")).unwrap());
 		export(source, Arc::new(sheet), true)
 	};
 	let zero = render(0.);
@@ -1209,7 +1209,7 @@ fn math_rule_selects_the_formula_fallback_face() {
 	let mut sheet = (*print()).clone();
 	sheet.merge(
 		&Stylesheet::parse(
-			"format_version=2\nversion=1\n[[rule]]\nwhen=['math']\nfont=[{family='serif[cjk]'}]"
+			"format_version=3\nversion=1\n[[rule]]\nwhen=['math']\nfont=[{family='serif[cjk]'}]"
 		)
 		.unwrap(),
 	);
@@ -1230,7 +1230,7 @@ fn scoped_math_keeps_the_formula_block_context() {
 	let mut sheet = (*print()).clone();
 	sheet.merge(
 		&Stylesheet::parse(
-			"format_version=2\nversion=1\n[[rule]]\nwhen=['blockquote','math']\nfont=[{family='serif[cjk]'}]"
+			"format_version=3\nversion=1\n[[rule]]\nwhen=['blockquote','math']\nfont=[{family='serif[cjk]'}]"
 		)
 		.unwrap(),
 	);

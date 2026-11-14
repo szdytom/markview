@@ -1,6 +1,10 @@
 use super::*;
 use crate::app::chrome::preview::Card;
 
+fn place(anchor: Rect, size: (f32, f32), bounds: Rect) -> Rect {
+	super::place(anchor, size, bounds, [PADDING; 4])
+}
+
 fn card(title: &str, body: bool) -> Card {
 	Card {
 		title: title_lines(&mut crate::test_support::shaper(), title),
@@ -117,7 +121,7 @@ fn preview_cards_use_the_theme_radius_without_a_body_frame() {
 			if radius > 0.0 {
 				stylesheet.merge(
 					&markview_layout::style::Stylesheet::parse(
-						"format_version=2\nversion=1\n[[rule]]\nwhen=['ui','preview']\nradius=12",
+						"format_version=3\nversion=1\n[[rule]]\nwhen=['ui','tab_preview']\nradius=12",
 					)
 					.unwrap(),
 				);
@@ -129,7 +133,7 @@ fn preview_cards_use_the_theme_radius_without_a_body_frame() {
 					draws.first(),
 					Some(Draw::Box {
 						rect,
-						condition: Condition::Preview,
+						condition: Condition::TabPreview,
 						radius: actual,
 						border: 1.0,
 						..
@@ -146,4 +150,145 @@ fn preview_cards_use_the_theme_radius_without_a_body_frame() {
 			assert!(draws.len() > 1);
 		}
 	}
+}
+
+#[test]
+fn floating_scenes_flip_above_and_use_side_space() {
+	let bounds = Rect {
+		x: 30.0,
+		y: 48.0,
+		w: 740.0,
+		h: 500.0,
+	};
+	let bottom = Rect {
+		x: 700.0,
+		y: 510.0,
+		w: 10.0,
+		h: 18.0,
+	};
+	let rect = place(bottom, (300.0, 180.0), bounds);
+	assert!(rect.y + rect.h < bottom.y);
+	let middle = Rect {
+		x: 350.0,
+		y: 290.0,
+		..bottom
+	};
+	let rect = place(middle, (250.0, 400.0), bounds);
+	assert!(rect.intersect(middle).is_none());
+	assert!(rect.x > middle.x + middle.w || rect.x + rect.w < middle.x);
+}
+
+proptest::proptest! {
+	#[test]
+	fn floating_placement_stays_within_offset_viewports(
+		width in 40.0f32..1800.0, height in 40.0f32..1200.0,
+		x in 0.0f32..1.0, y in 0.0f32..1.0,
+		w in 1.0f32..900.0, h in 1.0f32..900.0,
+	) {
+		let bounds = Rect { x: 37.0, y: 48.0, w: width, h: height };
+		let anchor = Rect { x: bounds.x + x * (width - 10.0), y: bounds.y + y * (height - 10.0), w: 10.0, h: 10.0 };
+		let rect = place(anchor, (w, h), bounds);
+		proptest::prop_assert!(rect.x >= bounds.x && rect.y >= bounds.y);
+		proptest::prop_assert!(rect.x + rect.w <= bounds.x + width + 0.001);
+		proptest::prop_assert!(rect.y + rect.h <= bounds.y + height + 0.001);
+		proptest::prop_assert!(rect.w > 0.0 && rect.h > 0.0);
+		proptest::prop_assert_eq!(rect, place(anchor, (w, h), bounds));
+	}
+}
+
+#[test]
+fn tall_floating_scenes_shorten_instead_of_covering_the_reference() {
+	let bounds = Rect {
+		x: 0.0,
+		y: 40.0,
+		w: 600.0,
+		h: 400.0,
+	};
+	let anchor = Rect {
+		x: 300.0,
+		y: 240.0,
+		w: 12.0,
+		h: 18.0,
+	};
+	let rect = place(anchor, (440.0, 340.0), bounds);
+	assert!(rect.intersect(anchor).is_none());
+	assert!(rect.h < 340.0);
+}
+
+#[test]
+fn floating_scenes_align_the_reading_start_with_the_reference() {
+	let bounds = Rect {
+		x: 0.0,
+		y: 40.0,
+		w: 1000.0,
+		h: 700.0,
+	};
+	let anchor = Rect {
+		x: 100.0,
+		y: 200.0,
+		w: 100.0,
+		h: 20.0,
+	};
+	let origin = (anchor.x, anchor.y + anchor.h / 2.0);
+	for width in [160.0, 420.0] {
+		let rect = place(anchor, (width, 120.0), bounds);
+		assert!(rect.intersect(anchor).is_none());
+		assert!((rect.x + PADDING - origin.0).abs() < 0.01);
+		assert!(
+			(rect.x + PADDING - origin.0).hypot(rect.y + PADDING - origin.1)
+				< 30.0
+		);
+	}
+}
+
+#[test]
+fn a_side_preview_aligns_its_first_line_with_the_reference() {
+	let bounds = Rect {
+		x: 0.0,
+		y: 40.0,
+		w: 1000.0,
+		h: 700.0,
+	};
+	let anchor = Rect {
+		x: 400.0,
+		y: 300.0,
+		w: 12.0,
+		h: 30.0,
+	};
+	let origin = (anchor.x, anchor.y + anchor.h / 2.0);
+	let rect = place(anchor, (250.0, 180.0), bounds);
+	assert!(rect.x > anchor.x + anchor.w);
+	assert!((rect.y + PADDING - origin.1).abs() < 0.01);
+}
+
+#[test]
+fn reflowed_preview_surfaces_and_tab_cards_have_separate_styles() {
+	let mut ui = crate::test_support::shaper();
+	ui.set_stylesheet(std::sync::Arc::new(markview_layout::style::Stylesheet::parse("format_version=3\nversion=1\n[[rule]]\nwhen=['preview']\nbackground='#ffeecc'\nborder_width=3\nradius=9\npadding=1\n[[rule]]\nwhen=['ui','tab_preview']\nradius=4").unwrap()));
+	let rect = Rect {
+		x: 0.0,
+		y: 0.0,
+		w: 200.0,
+		h: 100.0,
+	};
+	assert!(matches!(
+		&surface(&ui, rect)[0],
+		Draw::Box {
+			condition: Condition::Preview,
+			radius: 9.0,
+			border: 3.0,
+			..
+		}
+	));
+	let card = card("A tab", false);
+	let layout = layout(&card, rect, (800.0, 600.0));
+	assert!(matches!(
+		&draw(&mut ui, &card, &layout)[0],
+		Draw::Box {
+			condition: Condition::TabPreview,
+			radius: 4.0,
+			border: 1.0,
+			..
+		}
+	));
 }

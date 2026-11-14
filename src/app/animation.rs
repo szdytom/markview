@@ -166,7 +166,7 @@ impl<P: super::SendEvent> super::App<P> {
 	/// Follows the tab strip's edge and the selection's viewport edge while a
 	/// drag holds them there. Both are speed integrations, not fixed steps.
 	fn advance_edge_autoscroll(&mut self, dt: Duration) -> bool {
-		let mut active = false;
+		let mut active = self.advance_preview_selection(dt.as_secs_f32());
 		if self.tab_strip.drag.is_some_and(|drag| drag.moving) {
 			let layout = self.tab_layout();
 			let speed =

@@ -5,14 +5,14 @@ fn parse_rule(
 	declaration: &str,
 ) -> anyhow::Result<StylesheetSource> {
 	StylesheetSource::parse(&format!(
-		"format_version=2\nversion=0\n[[rule]]\nwhen=[{when}]\n{declaration}"
+		"format_version=3\nversion=0\n[[rule]]\nwhen=[{when}]\n{declaration}"
 	))
 }
 
 #[test]
 fn restricted_rule_fields_do_not_fall_back() {
 	for (when, allowed, rejected) in [
-		("'preview'", "radius=2", "color='#123456'"),
+		("'tab_preview'", "radius=2", "color='#123456'"),
 		("'scrollbar'", "thickness=2", "radius=2"),
 		("'selection'", "background='#123456'", "color='#123456'"),
 		("'caption'", "source='alt'", "letter_spacing=0.1"),
@@ -35,7 +35,7 @@ fn restricted_rule_fields_do_not_fall_back() {
 #[test]
 fn restricted_rule_fields_follow_condition_precedence() {
 	for (when, allowed, rejected) in [
-		("'preview','scrollbar'", "radius=2", "thickness=2"),
+		("'tab_preview','scrollbar'", "radius=2", "thickness=2"),
 		(
 			"'scrollbar','selection'",
 			"thumb='#123456'",
@@ -84,6 +84,10 @@ fn generic_rule_fields_preserve_scope() {
 		("'code_block','label'", "wrap=true", false),
 		("'body'", "size=12", false),
 		("'p'", "size=12", true),
+		("'preview'", "background='#ffeecc'", true),
+		("'preview'", "padding=0.75", true),
+		("'preview','p'", "line_height=1.5", true),
+		("'preview','p'", "color='#123456'", true),
 		("'p'", "padding=2", true),
 		("'code'", "padding=2", true),
 		("'em'", "padding=2", false),
@@ -103,7 +107,8 @@ fn generic_rule_fields_preserve_scope() {
 
 #[test]
 fn unsupported_rule_fields_report_the_requested_name() {
-	for condition in ["preview", "scrollbar", "selection", "img", "hr", "page"]
+	for condition in
+		["tab_preview", "scrollbar", "selection", "img", "hr", "page"]
 	{
 		for key in [
 			"top_edge",

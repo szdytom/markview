@@ -199,7 +199,7 @@ fn inherited_child_styles_resources_and_width_invalidate_nested_geometry() {
 	let source = "<details open>\n<summary>Summary</summary>\n\n> First paragraph with enough text to wrap.\n>\n> Second paragraph.\n\n![image](test.png)\n\nFinal paragraph.\n\n</details>\n";
 	let mut opts = options();
 	let mut sheet = (*opts.stylesheet).clone();
-	sheet.merge(&Stylesheet::parse("format_version=2\nversion=1\n[[rule]]\nwhen=['details','first_child']\nsize=1.4\n[[rule]]\nwhen=['blockquote','p','last_child']\nletter_spacing=0.05\n[[rule]]\nwhen=['p']\norphans=2\nwidows=2\n").unwrap());
+	sheet.merge(&Stylesheet::parse("format_version=3\nversion=1\n[[rule]]\nwhen=['details','first_child']\nsize=1.4\n[[rule]]\nwhen=['blockquote','p','last_child']\nletter_spacing=0.05\n[[rule]]\nwhen=['p']\norphans=2\nwidows=2\n").unwrap());
 	opts.stylesheet = Arc::new(sheet);
 	let mut engine = LayoutEngine::new();
 	let mut images = ImageSnapshot::default();

@@ -157,7 +157,7 @@ fn startup_errors_use_dialogs_for_background_and_stderr_for_foreground() {
 		.unwrap();
 	std::fs::write(
 		styles.join("incompatible.mvss.toml"),
-		"format_version=2\nversion=1\ntargets=['pdf']\n[[rule]]\nwhen=['body']\ncolor='#123456'",
+		"format_version=3\nversion=1\ntargets=['pdf']\n[[rule]]\nwhen=['body']\ncolor='#123456'",
 	)
 	.unwrap();
 	let path = std::env::join_paths(

@@ -12,7 +12,7 @@ fn text_edges_validate_inherit_and_invalidate_layout() {
 	] {
 		assert!(
 			Stylesheet::parse(&format!(
-				"format_version=2\nversion=1\n[[rule]]\nwhen=['body']\n{declaration}"
+				"format_version=3\nversion=1\n[[rule]]\nwhen=['body']\n{declaration}"
 			))
 			.is_err(),
 			"{declaration}"
@@ -29,7 +29,7 @@ fn text_edges_validate_inherit_and_invalidate_layout() {
 		let previous = sheet.layout_key();
 		sheet.merge(
 			&Stylesheet::parse(&format!(
-				"format_version=2\nversion=1\n[[rule]]\nwhen=['body']\n{declaration}"
+				"format_version=3\nversion=1\n[[rule]]\nwhen=['body']\n{declaration}"
 			))
 			.unwrap(),
 		);
@@ -55,7 +55,7 @@ fn text_edges_validate_inherit_and_invalidate_layout() {
 fn tab_style_is_a_reader_preference_not_an_mvss_property() {
 	for style in ["underline", "connected", "classic"] {
 		assert!(Stylesheet::parse(&format!(
-			"format_version=2\nversion=1\n[[rule]]\nwhen=['ui','toolbar']\ntab_style='{style}'"
+			"format_version=3\nversion=1\n[[rule]]\nwhen=['ui','toolbar']\ntab_style='{style}'"
 		)).is_err());
 	}
 }
@@ -71,7 +71,7 @@ fn border_collapse_validates_values_and_table_scope() {
 		("'table','header'", "collapse", false),
 	] {
 		assert_eq!(Stylesheet::parse(&format!(
-			"format_version=2\nversion=1\n[[rule]]\nwhen=[{conditions}]\nborder_collapse='{value}'"
+			"format_version=3\nversion=1\n[[rule]]\nwhen=[{conditions}]\nborder_collapse='{value}'"
 		)).is_ok(), valid);
 	}
 }
@@ -88,7 +88,7 @@ fn decoration_fields_are_strict() {
 	] {
 		assert!(
 			Stylesheet::parse(&format!(
-				"format_version=2\nversion=1\n[[rule]]\nwhen=['h2']\n{declaration}"
+				"format_version=3\nversion=1\n[[rule]]\nwhen=['h2']\n{declaration}"
 			))
 			.is_err(),
 			"{declaration}"
@@ -96,7 +96,7 @@ fn decoration_fields_are_strict() {
 	}
 	assert!(
 		Stylesheet::parse(
-			"format_version=2\nversion=1\n[[rule]]\nwhen=['p']\nheading_marker=[1,1,1]"
+			"format_version=3\nversion=1\n[[rule]]\nwhen=['p']\nheading_marker=[1,1,1]"
 		)
 		.is_err()
 	);
@@ -108,14 +108,14 @@ fn page_bands_validate_cascade_and_leave_layout_unchanged() {
 	let layout = sheet.layout_key();
 	let geometry =
 		crate::paginate::PageGeometry::from_style(sheet.page()).unwrap();
-	sheet.merge(&Stylesheet::parse("format_version=2\nversion=1\n[page.footer]\nrule_width=2\nrule_color='#112233'").unwrap());
+	sheet.merge(&Stylesheet::parse("format_version=3\nversion=1\n[page.footer]\nrule_width=2\nrule_color='#112233'").unwrap());
 	for source in [
 		"header.rule_width=3.0\nheader.rule_color='#244C8080'",
 		"header.rule_width=4.5",
 	] {
 		sheet.merge(
 			&Stylesheet::parse(&format!(
-				"format_version=2\nversion=1\n[page]\n{source}"
+				"format_version=3\nversion=1\n[page]\n{source}"
 			))
 			.unwrap(),
 		);
@@ -143,7 +143,7 @@ fn page_bands_validate_cascade_and_leave_layout_unchanged() {
 		] {
 			assert!(
 				Stylesheet::parse(&format!(
-					"format_version=2\nversion=1\n[page.{section}]\n{field}"
+					"format_version=3\nversion=1\n[page.{section}]\n{field}"
 				))
 				.is_err()
 			);
@@ -161,14 +161,14 @@ fn page_bands_validate_cascade_and_leave_layout_unchanged() {
 	] {
 		assert!(
 			Stylesheet::parse(&format!(
-				"format_version=2\nversion=1\n[page]\n{source}"
+				"format_version=3\nversion=1\n[page]\n{source}"
 			))
 			.is_err()
 		);
 	}
 	sheet.merge(
 		&Stylesheet::parse(
-			"format_version=2\nversion=1\n[page]\nheader.rule_width=0",
+			"format_version=3\nversion=1\n[page]\nheader.rule_width=0",
 		)
 		.unwrap(),
 	);
@@ -266,7 +266,7 @@ fn math_sets_the_formula_fallback_font() {
 	let mut sheet = (*Stylesheet::builtin()).clone();
 	sheet.merge(
 		&Stylesheet::parse(
-			"format_version=2\nversion=1\n[[rule]]\nwhen=['math']\nfont=[{family='monospace'}]"
+			"format_version=3\nversion=1\n[[rule]]\nwhen=['math']\nfont=[{family='monospace'}]"
 		)
 		.unwrap(),
 	);
@@ -294,48 +294,48 @@ fn strict_schema() {
 	for bad in [
 		"[body]\ncolor='#ffffff'",
 		"format_version=1\nversion=1",
-		"format_version=2\nversion=1\n[[rule]]\nwhen=['nope']\ncolor='#ffffff'",
-		"format_version=2\nversion=1\n[[rule]]\nwhen=[]\ncolor='#ffffff'",
-		"format_version=2\nversion=1\n[[rule]]\nwhen=['em']\ncolor='#ffffff'\n[[rule]]\nwhen=['em']\nsize=1.2",
-		"format_version=2",
-		"format_version=2\nversion=1\n[[rule]]\nwhen=['em']\nfont=[]",
-		"format_version=2\nversion=1\n[[rule]]\nwhen=['p']\nsize=nan",
-		"format_version=2\nversion=1\n[[rule]]\nwhen=['body']\nbackground='#ffffff00'",
-		"format_version=2\nversion=1\n[[rule]]\nwhen=['em']\ncolorz='#ffffff'",
-		"format_version=2\nversion=1\n[[rule]]\nwhen=['ui']\npadding=2",
-		"format_version=2\nversion=1\n[[rule]]\nwhen=['math']\nline_height=2.0",
-		"format_version=2\nversion=1\n[em]\ncolor='#ffffff'",
-		"format_version=2\nversion=1\n[[rule]]\nwhen=['em']",
-		"format_version=2\nversion=1\n[[rule]]\ncolor='#ffffff'",
-		"format_version=2\nversion=1\n[[fontdef]]\nid='cjk'\ntype='none'\nlookfor=['serif']",
-		"format_version=2\nversion=1\n[mermaid]\nprimarycolor='#ffffff'",
-		"format_version=2\nversion=1\n[mermaid]\ntheme='solarized'",
-		"format_version=2\nversion=1\n[mermaid]\nbackground='white'",
-		"format_version=2\nversion=1\n[mermaid]\nfont_size=0.0",
-		"format_version=2\nversion=1\n[mermaid]\nfont_family=[]",
-		"format_version=2\nversion=1\n[mermaid]\nfont_family=['  ']",
-		"format_version=2\nversion=1\n[mermaid]\nfont_family=['a,b']",
-		"format_version=2\nversion=1\n[mermaid]\nfont_family='serif'",
-		"format_version=2\nversion=1\n[mermaid]\ngit_colors=['#000000']",
-		"format_version=2\nversion=1\n[mermaid]\npie_opacity=2.0",
-		"format_version=2\nversion=1\n[svg.generic_font_family]\nunknown=['serif']",
-		"format_version=2\nversion=1\n[svg.generic_font_family]\nserif=[]",
-		"format_version=2\nversion=1\n[svg.generic_font_family]\nserif=['a,b']",
+		"format_version=3\nversion=1\n[[rule]]\nwhen=['nope']\ncolor='#ffffff'",
+		"format_version=3\nversion=1\n[[rule]]\nwhen=[]\ncolor='#ffffff'",
+		"format_version=3\nversion=1\n[[rule]]\nwhen=['em']\ncolor='#ffffff'\n[[rule]]\nwhen=['em']\nsize=1.2",
+		"format_version=3",
+		"format_version=3\nversion=1\n[[rule]]\nwhen=['em']\nfont=[]",
+		"format_version=3\nversion=1\n[[rule]]\nwhen=['p']\nsize=nan",
+		"format_version=3\nversion=1\n[[rule]]\nwhen=['body']\nbackground='#ffffff00'",
+		"format_version=3\nversion=1\n[[rule]]\nwhen=['em']\ncolorz='#ffffff'",
+		"format_version=3\nversion=1\n[[rule]]\nwhen=['ui']\npadding=2",
+		"format_version=3\nversion=1\n[[rule]]\nwhen=['math']\nline_height=2.0",
+		"format_version=3\nversion=1\n[em]\ncolor='#ffffff'",
+		"format_version=3\nversion=1\n[[rule]]\nwhen=['em']",
+		"format_version=3\nversion=1\n[[rule]]\ncolor='#ffffff'",
+		"format_version=3\nversion=1\n[[fontdef]]\nid='cjk'\ntype='none'\nlookfor=['serif']",
+		"format_version=3\nversion=1\n[mermaid]\nprimarycolor='#ffffff'",
+		"format_version=3\nversion=1\n[mermaid]\ntheme='solarized'",
+		"format_version=3\nversion=1\n[mermaid]\nbackground='white'",
+		"format_version=3\nversion=1\n[mermaid]\nfont_size=0.0",
+		"format_version=3\nversion=1\n[mermaid]\nfont_family=[]",
+		"format_version=3\nversion=1\n[mermaid]\nfont_family=['  ']",
+		"format_version=3\nversion=1\n[mermaid]\nfont_family=['a,b']",
+		"format_version=3\nversion=1\n[mermaid]\nfont_family='serif'",
+		"format_version=3\nversion=1\n[mermaid]\ngit_colors=['#000000']",
+		"format_version=3\nversion=1\n[mermaid]\npie_opacity=2.0",
+		"format_version=3\nversion=1\n[svg.generic_font_family]\nunknown=['serif']",
+		"format_version=3\nversion=1\n[svg.generic_font_family]\nserif=[]",
+		"format_version=3\nversion=1\n[svg.generic_font_family]\nserif=['a,b']",
 	] {
 		assert!(Stylesheet::parse(bad).is_err(), "{bad}");
 	}
 }
 #[test]
 fn mermaid_table_names_a_preset_and_merges_field_by_field() {
-	let bare = Stylesheet::parse("format_version=2\nversion=1").unwrap();
+	let bare = Stylesheet::parse("format_version=3\nversion=1").unwrap();
 	assert_eq!(bare.mermaid.preset(), "modern");
 	assert_eq!(bare.mermaid.background, None);
 	let low = Stylesheet::parse(
-		"format_version=2\nversion=1\n[mermaid]\ntheme='dark'\nbackground='#202630'\nprimary_text_color='#dce3ed'",
+		"format_version=3\nversion=1\n[mermaid]\ntheme='dark'\nbackground='#202630'\nprimary_text_color='#dce3ed'",
 	)
 	.unwrap();
 	let high = Stylesheet::parse(
-		"format_version=2\nversion=1\n[mermaid]\nbackground='#101418'",
+		"format_version=3\nversion=1\n[mermaid]\nbackground='#101418'",
 	)
 	.unwrap();
 	let mut sheet = (*Stylesheet::builtin()).clone();
@@ -348,7 +348,7 @@ fn mermaid_table_names_a_preset_and_merges_field_by_field() {
 	assert_ne!(low.mermaid, high.mermaid);
 	assert_eq!(
 		Stylesheet::parse(
-			"format_version=2\nversion=1\n[mermaid]\ntheme='DARK'"
+			"format_version=3\nversion=1\n[mermaid]\ntheme='DARK'"
 		)
 		.unwrap()
 		.mermaid
@@ -360,11 +360,11 @@ fn mermaid_table_names_a_preset_and_merges_field_by_field() {
 #[test]
 fn svg_generic_families_parse_resolve_and_merge_by_name() {
 	let low = Stylesheet::parse(
-		"format_version=2\nversion=1\n[svg.generic_font_family]\nserif=['serif']\nsans-serif=['sans-serif']",
+		"format_version=3\nversion=1\n[svg.generic_font_family]\nserif=['serif']\nsans-serif=['sans-serif']",
 	)
 	.unwrap();
 	let high = Stylesheet::parse(
-		"format_version=2\nversion=1\n[svg.generic_font_family]\nserif=['sans-serif']",
+		"format_version=3\nversion=1\n[svg.generic_font_family]\nserif=['sans-serif']",
 	)
 	.unwrap();
 	let mut sheet = low.clone();
@@ -383,7 +383,7 @@ fn svg_generic_families_parse_resolve_and_merge_by_name() {
 fn han_faces_follow_the_body_text_cjk_candidate() {
 	let sheet = |body: &str, defs: &str| {
 		let mut sheet = Stylesheet::parse(&format!(
-			"format_version=2\nversion=1\n{defs}\n\
+			"format_version=3\nversion=1\n{defs}\n\
 			 [[rule]]\nwhen=['body']\nfont=[{body}]"
 		))
 		.unwrap();
@@ -414,7 +414,7 @@ fn han_faces_follow_the_body_text_cjk_candidate() {
 fn diagram_identity_follows_the_font_definitions_it_names() {
 	let sheet = |reading: &str, aside: &str, mermaid: &str| {
 		Stylesheet::parse(&format!(
-			"format_version=2\nversion=1\n\
+			"format_version=3\nversion=1\n\
 			 [[fontdef]]\nid='reading'\nlookfor=[{reading}]\n\
 			 [[fontdef]]\nid='aside'\nlookfor=[{aside}]\n\
 			 [mermaid]\n{mermaid}"
@@ -453,7 +453,7 @@ fn diagram_identity_follows_the_font_definitions_it_names() {
 	// A definition declared but not selected contributes nothing, as it does
 	// for a rule.
 	let variant = Stylesheet::parse(
-		"format_version=2\nversion=1\n\
+		"format_version=3\nversion=1\n\
 		 [[fontdef]]\nid='cjk'\ntype='TC'\nlookfor=['Songti TC']\n\
 		 [mermaid]\nfont_family=['cjk', 'sans-serif']",
 	)
@@ -466,7 +466,7 @@ fn scrollbar_sizes_are_configurable_and_validated() {
 	// A stylesheet without a scrollbar rule falls back to the built-in
 	// defaults; the bundled theme is free to pick its own sizes.
 	let bare = Stylesheet::parse(
-		"format_version=2\nversion=1\n[[rule]]\nwhen=['p']\ncolor='#000000'",
+		"format_version=3\nversion=1\n[[rule]]\nwhen=['p']\ncolor='#000000'",
 	)
 	.unwrap();
 	assert_eq!(bare.scrollbar_metrics(), ScrollbarMetrics::DOCUMENT);
@@ -478,7 +478,7 @@ fn scrollbar_sizes_are_configurable_and_validated() {
 	let mut sheet = (*Stylesheet::bundled(false)).clone();
 	sheet.merge(
 		&Stylesheet::parse(
-			"format_version=2\nversion=1\n[[rule]]\nwhen=['scrollbar']\nthickness=3.0\noverflow_thickness=4.0\ngutter=12.0",
+			"format_version=3\nversion=1\n[[rule]]\nwhen=['scrollbar']\nthickness=3.0\noverflow_thickness=4.0\ngutter=12.0",
 		)
 		.unwrap(),
 	);
@@ -494,25 +494,25 @@ fn scrollbar_sizes_are_configurable_and_validated() {
 	// A theme that only overrides colors keeps the bundled sizes.
 	sheet.merge(
 		&Stylesheet::parse(
-			"format_version=2\nversion=1\n[[rule]]\nwhen=['scrollbar']\nthumb='#000000'",
+			"format_version=3\nversion=1\n[[rule]]\nwhen=['scrollbar']\nthumb='#000000'",
 		)
 		.unwrap(),
 	);
 	assert_eq!(sheet.scrollbar_metrics().thickness, 3.0);
 	assert_eq!(sheet.scrollbar_gutter(), 12.0);
 	for bad in [
-		"format_version=2\nversion=1\n[[rule]]\nwhen=['scrollbar']\nthickness=0.0",
-		"format_version=2\nversion=1\n[[rule]]\nwhen=['scrollbar']\noverflow_thickness=0.0",
-		"format_version=2\nversion=1\n[[rule]]\nwhen=['scrollbar']\ngutter=-1.0",
-		"format_version=2\nversion=1\n[[rule]]\nwhen=['scrollbar']\ngutter=nan",
-		"format_version=2\nversion=1\n[[rule]]\nwhen=['p']\nthickness=4.0",
+		"format_version=3\nversion=1\n[[rule]]\nwhen=['scrollbar']\nthickness=0.0",
+		"format_version=3\nversion=1\n[[rule]]\nwhen=['scrollbar']\noverflow_thickness=0.0",
+		"format_version=3\nversion=1\n[[rule]]\nwhen=['scrollbar']\ngutter=-1.0",
+		"format_version=3\nversion=1\n[[rule]]\nwhen=['scrollbar']\ngutter=nan",
+		"format_version=3\nversion=1\n[[rule]]\nwhen=['p']\nthickness=4.0",
 	] {
 		assert!(Stylesheet::parse(bad).is_err(), "{bad}");
 	}
 }
 #[test]
 fn fontdefs_are_selected_by_cjk_type() {
-	let source = "format_version=2\nversion=1\n[[fontdef]]\nid='cjk'\ntype='SC'\nlookfor=['SC']\n[[fontdef]]\nid='cjk'\ntype='TC'\nlookfor=['TC']";
+	let source = "format_version=3\nversion=1\n[[fontdef]]\nid='cjk'\ntype='SC'\nlookfor=['SC']\n[[fontdef]]\nid='cjk'\ntype='TC'\nlookfor=['TC']";
 	let mut sheet = Stylesheet::parse(source).unwrap();
 	assert!(!sheet.fontdefs.contains_key("cjk"));
 	sheet.set_cjk_type(CjkType::Sc);
@@ -552,7 +552,7 @@ fn font_families_parse_metadata_and_mirrors() {
 	let digest =
 		"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
 	let source = format!(
-		"format_version=2\nversion=1\n\
+		"format_version=3\nversion=1\n\
 		 [[font-family]]\n\
 		 id='noto'\n\
 		 lookfor=['Noto Serif SC','Source Han Serif SC']\n\
@@ -613,7 +613,7 @@ fn font_families_parse_metadata_and_mirrors() {
 #[test]
 fn font_families_cascade_by_replacing_a_whole_entry() {
 	let mut low = Stylesheet::parse(
-		"format_version=2\nversion=1\n\
+		"format_version=3\nversion=1\n\
 		 [[font-family]]\nid='a'\nlookfor=['A']\ndescription='low'\n\
 		 [[font-family.source]]\nfiles=['https://example.invalid/1.otf','https://example.invalid/2.otf']\n\
 		 [[font-family]]\nid='b'\nlookfor=['B']\n\
@@ -621,7 +621,7 @@ fn font_families_cascade_by_replacing_a_whole_entry() {
 	)
 	.unwrap();
 	let high = Stylesheet::parse(
-		"format_version=2\nversion=1\n\
+		"format_version=3\nversion=1\n\
 		 [[font-family]]\nid='a'\nlookfor=['A2']\n\
 		 [[font-family.source]]\nfiles=['https://example.invalid/3.otf']",
 	)
@@ -644,7 +644,7 @@ fn font_families_cascade_by_replacing_a_whole_entry() {
 
 #[test]
 fn a_font_family_is_validated_where_it_is_declared() {
-	let head = "format_version=2\nversion=1\n";
+	let head = "format_version=3\nversion=1\n";
 	let digest =
 		"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
 	for bad in [
@@ -873,9 +873,9 @@ fn builtin_downloads_every_static_weight_from_every_mirror() {
 
 #[test]
 fn cascade_arrays_and_font_defaults() {
-	let mut low=Stylesheet::parse("format_version=2\nversion=1\n[[rule]]\nwhen=['em']\ncolor='#123456'\nfont=[{family='Noto Serif',variant='italic'},{family='落霞文楷'}]").unwrap();
+	let mut low=Stylesheet::parse("format_version=3\nversion=1\n[[rule]]\nwhen=['em']\ncolor='#123456'\nfont=[{family='Noto Serif',variant='italic'},{family='落霞文楷'}]").unwrap();
 	let high = Stylesheet::parse(
-		"format_version=2\nversion=2\n[[rule]]\nwhen=['em']\ncolor='#abcdef'",
+		"format_version=3\nversion=2\n[[rule]]\nwhen=['em']\ncolor='#abcdef'",
 	)
 	.unwrap();
 	low.merge(&high);
@@ -889,7 +889,7 @@ fn cascade_arrays_and_font_defaults() {
 	);
 	low.merge(
 		&Stylesheet::parse(
-			"format_version=2\nversion=3\n[[rule]]\nwhen=['em']\nfont=[{family='serif'}]",
+			"format_version=3\nversion=3\n[[rule]]\nwhen=['em']\nfont=[{family='serif'}]",
 		)
 		.unwrap(),
 	);
@@ -898,15 +898,15 @@ fn cascade_arrays_and_font_defaults() {
 #[test]
 fn synthetic_italic_requires_a_slanted_variant() {
 	let ok = Stylesheet::parse(
-		"format_version=2\nversion=1\n[[rule]]\nwhen=['em']\nfont=[{family='serif[cjk]',variant='italic',synthetic_italic=true}]",
+		"format_version=3\nversion=1\n[[rule]]\nwhen=['em']\nfont=[{family='serif[cjk]',variant='italic',synthetic_italic=true}]",
 	)
 	.unwrap();
 	assert!(ok.rule(Condition::Em).font.as_ref().unwrap()[0].synthetic_italic);
 	// The flag only makes sense for a slanted request; a plain candidate that
 	// set it would silently do nothing.
 	for bad in [
-		"format_version=2\nversion=1\n[[rule]]\nwhen=['em']\nfont=[{family='serif',synthetic_italic=true}]",
-		"format_version=2\nversion=1\n[[rule]]\nwhen=['em']\nfont=[{family='serif',variant='normal',synthetic_italic=true}]",
+		"format_version=3\nversion=1\n[[rule]]\nwhen=['em']\nfont=[{family='serif',synthetic_italic=true}]",
+		"format_version=3\nversion=1\n[[rule]]\nwhen=['em']\nfont=[{family='serif',variant='normal',synthetic_italic=true}]",
 	] {
 		assert!(Stylesheet::parse(bad).is_err(), "{bad}");
 	}
@@ -914,14 +914,14 @@ fn synthetic_italic_requires_a_slanted_variant() {
 #[test]
 fn list_indents_are_theme_controlled_per_list_role() {
 	let sheet = Stylesheet::parse(
-		"format_version=2\nversion=1\n[[rule]]\nwhen=['list']\nindent=0.25\n[[rule]]\nwhen=['enum']\nindent=0.75",
+		"format_version=3\nversion=1\n[[rule]]\nwhen=['list']\nindent=0.25\n[[rule]]\nwhen=['enum']\nindent=0.75",
 	)
 	.unwrap();
 	assert_eq!(sheet.list_indent(false), 0.25);
 	assert_eq!(sheet.list_indent(true), 0.75);
 	// The roles are independent: `[list]` alone leaves ordered lists flush.
 	let bullets = Stylesheet::parse(
-		"format_version=2\nversion=1\n[[rule]]\nwhen=['list']\nindent=0.25",
+		"format_version=3\nversion=1\n[[rule]]\nwhen=['list']\nindent=0.25",
 	)
 	.unwrap();
 	assert_eq!(bullets.list_indent(false), 0.25);
@@ -930,11 +930,11 @@ fn list_indents_are_theme_controlled_per_list_role() {
 	assert_eq!(bundled.list_indent(false), 0.5);
 	assert_eq!(bundled.list_indent(true), 0.5);
 	for bad in [
-		"format_version=2\nversion=1\n[[rule]]\nwhen=['list']\nindent=-1.0",
-		"format_version=2\nversion=1\n[[rule]]\nwhen=['enum']\nindent=nan",
-		"format_version=2\nversion=1\n[[rule]]\nwhen=['p']\nindent=1.0",
-		"format_version=2\nversion=1\n[[rule]]\nwhen=['list']\nindentz=1.0",
-		"format_version=2\nversion=1\n[[rule]]\nwhen=['list']\nordered_indent=1.0",
+		"format_version=3\nversion=1\n[[rule]]\nwhen=['list']\nindent=-1.0",
+		"format_version=3\nversion=1\n[[rule]]\nwhen=['enum']\nindent=nan",
+		"format_version=3\nversion=1\n[[rule]]\nwhen=['p']\nindent=1.0",
+		"format_version=3\nversion=1\n[[rule]]\nwhen=['list']\nindentz=1.0",
+		"format_version=3\nversion=1\n[[rule]]\nwhen=['list']\nordered_indent=1.0",
 	] {
 		assert!(Stylesheet::parse(bad).is_err(), "{bad}");
 	}
@@ -942,14 +942,14 @@ fn list_indents_are_theme_controlled_per_list_role() {
 #[test]
 fn marker_alignment_is_theme_controlled_per_marker_role() {
 	let sheet = Stylesheet::parse(
-		"format_version=2\nversion=1\n[[rule]]\nwhen=['marker']\nalign='right'\n[[rule]]\nwhen=['task_marker']\nalign='left'",
+		"format_version=3\nversion=1\n[[rule]]\nwhen=['marker']\nalign='right'\n[[rule]]\nwhen=['task_marker']\nalign='left'",
 	)
 	.unwrap();
 	assert_eq!(sheet.marker_align(false), TextAlign::Right);
 	assert_eq!(sheet.marker_align(true), TextAlign::Left);
 	// A sheet that says nothing keeps the historical left alignment, while the
 	// bundled themes center markers in their column.
-	let bare = Stylesheet::parse("format_version=2\nversion=1").unwrap();
+	let bare = Stylesheet::parse("format_version=3\nversion=1").unwrap();
 	assert_eq!(bare.marker_align(false), TextAlign::Left);
 	for dark in [false, true] {
 		let bundled = Stylesheet::bundled(dark);
@@ -961,8 +961,8 @@ fn marker_alignment_is_theme_controlled_per_marker_role() {
 		TextAlign::Center
 	);
 	for bad in [
-		"format_version=2\nversion=1\n[[rule]]\nwhen=['p']\nalign='center'",
-		"format_version=2\nversion=1\n[[rule]]\nwhen=['marker']\nalign='middle'",
+		"format_version=3\nversion=1\n[[rule]]\nwhen=['p']\nalign='center'",
+		"format_version=3\nversion=1\n[[rule]]\nwhen=['marker']\nalign='middle'",
 	] {
 		assert!(Stylesheet::parse(bad).is_err(), "{bad}");
 	}
@@ -970,13 +970,13 @@ fn marker_alignment_is_theme_controlled_per_marker_role() {
 #[test]
 fn marker_shape_is_theme_controlled() {
 	let one = Stylesheet::parse(
-		"format_version=2\nversion=1\n[[rule]]\nwhen=['marker']\nshape='triangle'",
+		"format_version=3\nversion=1\n[[rule]]\nwhen=['marker']\nshape='triangle'",
 	)
 	.unwrap();
 	assert_eq!(one.marker_shapes(), [MarkerShape::Triangle].as_slice());
 	// A list cycles by nesting depth.
 	let cycle = Stylesheet::parse(
-		"format_version=2\nversion=1\n[[rule]]\nwhen=['marker']\nshape=['plus','minus']",
+		"format_version=3\nversion=1\n[[rule]]\nwhen=['marker']\nshape=['plus','minus']",
 	)
 	.unwrap();
 	assert_eq!(
@@ -992,7 +992,7 @@ fn marker_shape_is_theme_controlled() {
 		("minus", MarkerShape::Minus),
 	] {
 		let sheet = Stylesheet::parse(&format!(
-			"format_version=2\nversion=1\n[[rule]]\nwhen=['marker']\nshape='{name}'"
+			"format_version=3\nversion=1\n[[rule]]\nwhen=['marker']\nshape='{name}'"
 		))
 		.unwrap();
 		assert_eq!(sheet.marker_shapes(), [shape].as_slice(), "{name}");
@@ -1006,9 +1006,9 @@ fn marker_shape_is_theme_controlled() {
 		[MarkerShape::Disc].as_slice()
 	);
 	for bad in [
-		"format_version=2\nversion=1\n[[rule]]\nwhen=['task_marker']\nshape='square'",
-		"format_version=2\nversion=1\n[[rule]]\nwhen=['marker']\nshape='star'",
-		"format_version=2\nversion=1\n[[rule]]\nwhen=['marker']\nshape=[]",
+		"format_version=3\nversion=1\n[[rule]]\nwhen=['task_marker']\nshape='square'",
+		"format_version=3\nversion=1\n[[rule]]\nwhen=['marker']\nshape='star'",
+		"format_version=3\nversion=1\n[[rule]]\nwhen=['marker']\nshape=[]",
 	] {
 		assert!(Stylesheet::parse(bad).is_err(), "{bad}");
 	}
@@ -1016,7 +1016,7 @@ fn marker_shape_is_theme_controlled() {
 #[test]
 fn a_task_checkbox_takes_box_geometry_from_the_theme() {
 	let sheet = Stylesheet::parse(
-		"format_version=2\nversion=1\n[[rule]]\nwhen=['task_marker']\nborder_width=2.0\nradius=3.0\naccent='#C0392B'",
+		"format_version=3\nversion=1\n[[rule]]\nwhen=['task_marker']\nborder_width=2.0\nradius=3.0\naccent='#C0392B'",
 	)
 	.unwrap();
 	let chain = chain_of(&[Condition::ListItem, Condition::TaskMarker]);
@@ -1035,7 +1035,7 @@ fn a_task_checkbox_takes_box_geometry_from_the_theme() {
 	// A checkbox is not a container: it still reserves no padding.
 	assert!(
 		Stylesheet::parse(
-			"format_version=2\nversion=1\n[[rule]]\nwhen=['task_marker']\npadding=1.0",
+			"format_version=3\nversion=1\n[[rule]]\nwhen=['task_marker']\npadding=1.0",
 		)
 		.is_err()
 	);
@@ -1045,7 +1045,7 @@ fn only_code_and_containers_take_padding() {
 	// A code chip is the one inline run with a box of its own, so `padding`
 	// names it; another inline run has no box to pad.
 	let sheet = Stylesheet::parse(
-		"format_version=2\nversion=1\n[[rule]]\nwhen=['code']\npadding=[0.1,0.2,0.1,0.2]",
+		"format_version=3\nversion=1\n[[rule]]\nwhen=['code']\npadding=[0.1,0.2,0.1,0.2]",
 	)
 	.unwrap();
 	let chain = chain_of(&[Condition::Body, Condition::P, Condition::Code]);
@@ -1059,7 +1059,7 @@ fn only_code_and_containers_take_padding() {
 	);
 	assert!(
 		Stylesheet::parse(
-			"format_version=2\nversion=1\n[[rule]]\nwhen=['em']\npadding=0.2",
+			"format_version=3\nversion=1\n[[rule]]\nwhen=['em']\npadding=0.2",
 		)
 		.is_err()
 	);
@@ -1067,18 +1067,18 @@ fn only_code_and_containers_take_padding() {
 #[test]
 fn ordered_lists_take_a_theme_numbering_pattern() {
 	// A sheet that says nothing numbers items "1.", "2.", ...
-	let bare = Stylesheet::parse("format_version=2\nversion=1").unwrap();
+	let bare = Stylesheet::parse("format_version=3\nversion=1").unwrap();
 	assert_eq!(bare.enum_numbering().number(0, 3), "3.");
 	// One counting symbol repeats at every nesting depth.
 	let alpha = Stylesheet::parse(
-		"format_version=2\nversion=1\n[[rule]]\nwhen=['enum']\nnumbering='a)'",
+		"format_version=3\nversion=1\n[[rule]]\nwhen=['enum']\nnumbering='a)'",
 	)
 	.unwrap();
 	assert_eq!(alpha.enum_numbering().number(0, 3), "c)");
 	assert_eq!(alpha.enum_numbering().number(2, 3), "c)");
 	// Each level takes its own counting symbol, and the last one repeats.
 	let nested = Stylesheet::parse(
-		"format_version=2\nversion=1\n[[rule]]\nwhen=['enum']\nnumbering='(1.a.*)'",
+		"format_version=3\nversion=1\n[[rule]]\nwhen=['enum']\nnumbering='(1.a.*)'",
 	)
 	.unwrap();
 	assert_eq!(nested.enum_numbering().number(0, 3), "(3)");
@@ -1087,12 +1087,12 @@ fn ordered_lists_take_a_theme_numbering_pattern() {
 	assert_eq!(nested.enum_numbering().number(3, 3), "(‡)");
 	// The same notation reaches the numeral systems Typst knows.
 	let roman = Stylesheet::parse(
-		"format_version=2\nversion=1\n[[rule]]\nwhen=['enum']\nnumbering='I.'",
+		"format_version=3\nversion=1\n[[rule]]\nwhen=['enum']\nnumbering='I.'",
 	)
 	.unwrap();
 	assert_eq!(roman.enum_numbering().number(0, 4), "IV.");
 	let circled = Stylesheet::parse(
-		"format_version=2\nversion=1\n[[rule]]\nwhen=['enum']\nnumbering='①'",
+		"format_version=3\nversion=1\n[[rule]]\nwhen=['enum']\nnumbering='①'",
 	)
 	.unwrap();
 	assert_eq!(circled.enum_numbering().number(0, 50), "㊿");
@@ -1100,10 +1100,10 @@ fn ordered_lists_take_a_theme_numbering_pattern() {
 	assert_eq!(circled.enum_numbering().number(0, 51), "51");
 	assert_eq!(alpha.enum_numbering().number(0, 0), "0)");
 	for bad in [
-		"format_version=2\nversion=1\n[[rule]]\nwhen=['enum']\nnumbering=''",
-		"format_version=2\nversion=1\n[[rule]]\nwhen=['enum']\nnumbering='(())'",
-		"format_version=2\nversion=1\n[[rule]]\nwhen=['marker']\nnumbering='1.'",
-		"format_version=2\nversion=1\n[[rule]]\nwhen=['enum','marker']\nnumbering='1.'",
+		"format_version=3\nversion=1\n[[rule]]\nwhen=['enum']\nnumbering=''",
+		"format_version=3\nversion=1\n[[rule]]\nwhen=['enum']\nnumbering='(())'",
+		"format_version=3\nversion=1\n[[rule]]\nwhen=['marker']\nnumbering='1.'",
+		"format_version=3\nversion=1\n[[rule]]\nwhen=['enum','marker']\nnumbering='1.'",
 	] {
 		assert!(Stylesheet::parse(bad).is_err(), "{bad}");
 	}
@@ -1114,7 +1114,7 @@ fn a_numbering_that_grows_with_the_number_stops_at_a_marker() {
 	// every six items, so the marker must fall back to decimal rather than
 	// spell out a label hundreds of megabytes long.
 	let symbols = Stylesheet::parse(
-		"format_version=2\nversion=1\n[[rule]]\nwhen=['enum']\nnumbering='*'",
+		"format_version=3\nversion=1\n[[rule]]\nwhen=['enum']\nnumbering='*'",
 	)
 	.unwrap();
 	assert_eq!(symbols.enum_numbering().number(0, 7), "**");
@@ -1122,12 +1122,12 @@ fn a_numbering_that_grows_with_the_number_stops_at_a_marker() {
 	// Additive systems repeat their largest numeral, so Hebrew and Roman grow
 	// the same way and must stop at the same bound.
 	let hebrew = Stylesheet::parse(
-		"format_version=2\nversion=1\n[[rule]]\nwhen=['enum']\nnumbering='א'",
+		"format_version=3\nversion=1\n[[rule]]\nwhen=['enum']\nnumbering='א'",
 	)
 	.unwrap();
 	assert_eq!(hebrew.enum_numbering().number(0, 3), "ג");
 	let roman = Stylesheet::parse(
-		"format_version=2\nversion=1\n[[rule]]\nwhen=['enum']\nnumbering='i.'",
+		"format_version=3\nversion=1\n[[rule]]\nwhen=['enum']\nnumbering='i.'",
 	)
 	.unwrap();
 	assert_eq!(roman.enum_numbering().number(0, 4), "iv.");
@@ -1142,19 +1142,19 @@ fn a_numbering_that_grows_with_the_number_stops_at_a_marker() {
 #[test]
 fn ordered_numbers_align_independently_of_bullets() {
 	let sheet = Stylesheet::parse(
-		"format_version=2\nversion=1\n[[rule]]\nwhen=['marker']\nalign='center'\n[[rule]]\nwhen=['enum']\nalign='right'",
+		"format_version=3\nversion=1\n[[rule]]\nwhen=['marker']\nalign='center'\n[[rule]]\nwhen=['enum']\nalign='right'",
 	)
 	.unwrap();
 	assert_eq!(sheet.enum_align(), TextAlign::Right);
 	assert_eq!(sheet.marker_align(false), TextAlign::Center);
 	// Without an `enum` alignment the number follows the shared marker one.
 	let shared = Stylesheet::parse(
-		"format_version=2\nversion=1\n[[rule]]\nwhen=['marker']\nalign='center'",
+		"format_version=3\nversion=1\n[[rule]]\nwhen=['marker']\nalign='center'",
 	)
 	.unwrap();
 	assert_eq!(shared.enum_align(), TextAlign::Center);
 	assert_eq!(
-		Stylesheet::parse("format_version=2\nversion=1")
+		Stylesheet::parse("format_version=3\nversion=1")
 			.unwrap()
 			.enum_align(),
 		TextAlign::Left
@@ -1164,8 +1164,8 @@ fn ordered_numbers_align_independently_of_bullets() {
 	}
 	assert_eq!(Stylesheet::bundled_print().enum_align(), TextAlign::Center);
 	for bad in [
-		"format_version=2\nversion=1\n[[rule]]\nwhen=['enum']\nalign='middle'",
-		"format_version=2\nversion=1\n[[rule]]\nwhen=['p']\nalign='center'",
+		"format_version=3\nversion=1\n[[rule]]\nwhen=['enum']\nalign='middle'",
+		"format_version=3\nversion=1\n[[rule]]\nwhen=['p']\nalign='center'",
 	] {
 		assert!(Stylesheet::parse(bad).is_err(), "{bad}");
 	}
@@ -1176,7 +1176,7 @@ fn a_numbering_pattern_changes_layout_identity() {
 	let key = sheet.layout_key();
 	sheet.merge(
 		&Stylesheet::parse(
-			"format_version=2\nversion=2\n[[rule]]\nwhen=['enum']\nnumbering='a)'",
+			"format_version=3\nversion=2\n[[rule]]\nwhen=['enum']\nnumbering='a)'",
 		)
 		.unwrap(),
 	);
@@ -1187,7 +1187,7 @@ fn conditions_compose_without_new_vocabulary() {
 	let mut sheet = (*Stylesheet::bundled(false)).clone();
 	sheet.merge(
 		&Stylesheet::parse(
-			"format_version=2\nversion=1\n[[rule]]\nwhen=['strong']\ncolor='#ff0000'\n[[rule]]\nwhen=['code']\nsize=0.9\n[[rule]]\nwhen=['strong','code']\nsize=1.3\ncolor='#00ff00'\nbackground='#010203'\n[[rule]]\nwhen=['h1','code']\nsize=1.4",
+			"format_version=3\nversion=1\n[[rule]]\nwhen=['strong']\ncolor='#ff0000'\n[[rule]]\nwhen=['code']\nsize=0.9\n[[rule]]\nwhen=['strong','code']\nsize=1.3\ncolor='#00ff00'\nbackground='#010203'\n[[rule]]\nwhen=['h1','code']\nsize=1.4",
 		)
 		.unwrap(),
 	);
@@ -1236,12 +1236,12 @@ fn conditions_compose_without_new_vocabulary() {
 	);
 	// The order inside `when` is not part of the rule's identity.
 	let mut a = Stylesheet::parse(
-		"format_version=2\nversion=1\n[[rule]]\nwhen=['em','strong']\ncolor='#111111'",
+		"format_version=3\nversion=1\n[[rule]]\nwhen=['em','strong']\ncolor='#111111'",
 	)
 	.unwrap();
 	a.merge(
 		&Stylesheet::parse(
-			"format_version=2\nversion=2\n[[rule]]\nwhen=['strong','em']\nsize=1.2",
+			"format_version=3\nversion=2\n[[rule]]\nwhen=['strong','em']\nsize=1.2",
 		)
 		.unwrap(),
 	);
@@ -1274,14 +1274,14 @@ fn colors_do_not_change_layout_identity() {
 	let k = s.layout_key();
 	s.merge(
 		&Stylesheet::parse(
-			"format_version=2\nversion=2\n[[rule]]\nwhen=['em']\ncolor='#ffffff'",
+			"format_version=3\nversion=2\n[[rule]]\nwhen=['em']\ncolor='#ffffff'",
 		)
 		.unwrap(),
 	);
 	assert_eq!(k, s.layout_key());
 	s.merge(
 		&Stylesheet::parse(
-			"format_version=2\nversion=2\n[[rule]]\nwhen=['em']\nsize=1.2",
+			"format_version=3\nversion=2\n[[rule]]\nwhen=['em']\nsize=1.2",
 		)
 		.unwrap(),
 	);
@@ -1293,7 +1293,7 @@ fn colors_do_not_change_layout_identity() {
 			.is_some()
 	);
 	let hover = Stylesheet::parse(
-		"format_version=2\nversion=1\n[[rule]]\nwhen=['link']\ncolor='#123456'\n[[rule]]\nwhen=['link','hover']\ncolor='#abcdef'",
+		"format_version=3\nversion=1\n[[rule]]\nwhen=['link']\ncolor='#123456'\n[[rule]]\nwhen=['link','hover']\ncolor='#abcdef'",
 	)
 	.unwrap();
 	assert_eq!(
@@ -1305,7 +1305,7 @@ fn colors_do_not_change_layout_identity() {
 #[test]
 fn container_geometry_does_not_inherit() {
 	let sheet = Stylesheet::parse(
-		"format_version=2\nversion=1\n[[rule]]\nwhen=['list']\npadding=1.0\n[[rule]]\nwhen=['list_item']\npadding=0.5\n[[rule]]\nwhen=['p']\nspace_after=0.25",
+		"format_version=3\nversion=1\n[[rule]]\nwhen=['list']\npadding=1.0\n[[rule]]\nwhen=['list_item']\npadding=0.5\n[[rule]]\nwhen=['p']\nspace_after=0.25",
 	)
 	.unwrap();
 	let chain = chain_of(&[
@@ -1331,7 +1331,7 @@ fn container_geometry_does_not_inherit() {
 #[test]
 fn inline_backgrounds_stay_within_the_inline_run() {
 	let sheet = Stylesheet::parse(
-		"format_version=2\nversion=1\n[[rule]]\nwhen=['body']\nbackground='#00ff00'\n[[rule]]\nwhen=['blockquote']\nbackground='#eeeeee'\n[[rule]]\nwhen=['blockquote','code']\nbackground='#0000ff'",
+		"format_version=3\nversion=1\n[[rule]]\nwhen=['body']\nbackground='#00ff00'\n[[rule]]\nwhen=['blockquote']\nbackground='#eeeeee'\n[[rule]]\nwhen=['blockquote','code']\nbackground='#0000ff'",
 	)
 	.unwrap();
 	let mut body = sheet.text(&TextAppearance::default(), Condition::Body);
@@ -1365,7 +1365,7 @@ fn inline_backgrounds_stay_within_the_inline_run() {
 #[test]
 fn math_error_text_carries_both_conditions() {
 	let sheet = Stylesheet::parse(
-		"format_version=2\nversion=1\n[[rule]]\nwhen=['math','error']\ncolor='#ff0000'",
+		"format_version=3\nversion=1\n[[rule]]\nwhen=['math','error']\ncolor='#ff0000'",
 	)
 	.unwrap();
 	let body = sheet.text(&TextAppearance::default(), Condition::Body);
@@ -1405,13 +1405,13 @@ fn bundled_table_cells_keep_their_grid() {
 fn theme_belongs_to_the_plain_code_block_condition() {
 	assert!(
 		Stylesheet::parse(
-			"format_version=2\nversion=1\n[[rule]]\nwhen=['code_block']\ntheme='InspiredGitHub'"
+			"format_version=3\nversion=1\n[[rule]]\nwhen=['code_block']\ntheme='InspiredGitHub'"
 		)
 		.is_ok()
 	);
 	for bad in [
-		"format_version=2\nversion=1\n[[rule]]\nwhen=['blockquote','code_block']\ntheme='InspiredGitHub'",
-		"format_version=2\nversion=1\n[[rule]]\nwhen=['code_block','label']\ntheme='InspiredGitHub'",
+		"format_version=3\nversion=1\n[[rule]]\nwhen=['blockquote','code_block']\ntheme='InspiredGitHub'",
+		"format_version=3\nversion=1\n[[rule]]\nwhen=['code_block','label']\ntheme='InspiredGitHub'",
 	] {
 		assert!(Stylesheet::parse(bad).is_err(), "{bad}");
 	}
@@ -1451,7 +1451,7 @@ fn the_page_table_overlays_field_by_field_and_validates_placeholders() {
 	let mut base = (*Stylesheet::bundled_print()).clone();
 	base.merge(
 		&Stylesheet::parse(
-			"format_version=2\nversion=1\n[page]\nlandscape=true\nfooter_left=\"h\"",
+			"format_version=3\nversion=1\n[page]\nlandscape=true\nfooter_left=\"h\"",
 		)
 		.unwrap(),
 	);
@@ -1462,18 +1462,18 @@ fn the_page_table_overlays_field_by_field_and_validates_placeholders() {
 	assert_eq!(page.margin_mm(), Some([22.0, 20.0, 22.0, 20.0]));
 	assert_eq!(page.slots(false), ["h", "{page} / {pages}", ""]);
 	for bad in [
-		"format_version=2\nversion=1\n[page]\nsize=\"tabloidish\"",
-		"format_version=2\nversion=1\n[page]\nsize=\"nonsense\"",
-		"format_version=2\nversion=1\n[page]\nmargin=[1,2,3]",
-		"format_version=2\nversion=1\n[page]\nmargin=[-4]",
-		"format_version=2\nversion=1\n[page]\nfooter_center=\"{date}\"",
-		"format_version=2\nversion=1\n[page]\nheader_left=\"{page\"",
+		"format_version=3\nversion=1\n[page]\nsize=\"tabloidish\"",
+		"format_version=3\nversion=1\n[page]\nsize=\"nonsense\"",
+		"format_version=3\nversion=1\n[page]\nmargin=[1,2,3]",
+		"format_version=3\nversion=1\n[page]\nmargin=[-4]",
+		"format_version=3\nversion=1\n[page]\nfooter_center=\"{date}\"",
+		"format_version=3\nversion=1\n[page]\nheader_left=\"{page\"",
 	] {
 		assert!(Stylesheet::parse(bad).is_err(), "{bad}");
 	}
 	assert!(
 		Stylesheet::parse(
-			"format_version=2\nversion=1\n[page]\nsize=\"letter\"\nmargin=[10,12]"
+			"format_version=3\nversion=1\n[page]\nsize=\"letter\"\nmargin=[10,12]"
 		)
 		.is_ok()
 	);
@@ -1483,13 +1483,13 @@ fn the_page_table_overlays_field_by_field_and_validates_placeholders() {
 fn page_furniture_rules_accept_only_text_fields() {
 	assert!(
 		Stylesheet::parse(
-			"format_version=2\nversion=1\n[[rule]]\nwhen=['page']\nbackground='#FFFFFF'\n[[rule]]\nwhen=['page_number']\nsize=0.5\ncolor='#000000'"
+			"format_version=3\nversion=1\n[[rule]]\nwhen=['page']\nbackground='#FFFFFF'\n[[rule]]\nwhen=['page_number']\nsize=0.5\ncolor='#000000'"
 		)
 		.is_ok()
 	);
 	for bad in [
-		"format_version=2\nversion=1\n[[rule]]\nwhen=['page']\ncolor='#000000'",
-		"format_version=2\nversion=1\n[[rule]]\nwhen=['page_footer']\nbackground='#000000'",
+		"format_version=3\nversion=1\n[[rule]]\nwhen=['page']\ncolor='#000000'",
+		"format_version=3\nversion=1\n[[rule]]\nwhen=['page_footer']\nbackground='#000000'",
 	] {
 		assert!(Stylesheet::parse(bad).is_err(), "{bad}");
 	}
@@ -1523,7 +1523,7 @@ fn the_print_sheet_survives_a_merge_over_the_reader_sheet() {
 
 #[test]
 fn targets_are_an_optional_nonempty_set_of_known_destinations() {
-	let prefix = "format_version=2\nversion=1\n";
+	let prefix = "format_version=3\nversion=1\n";
 	for (declaration, expected) in [
 		("", vec![StyleTarget::Ui, StyleTarget::Pdf]),
 		("targets=['ui']", vec![StyleTarget::Ui]),
@@ -1559,7 +1559,7 @@ fn targets_are_an_optional_nonempty_set_of_known_destinations() {
 #[test]
 fn details_and_summary_conditions_are_styleable() {
 	let sheet = Stylesheet::parse(
-		"format_version=2\nversion=1\n\
+		"format_version=3\nversion=1\n\
 		 [[rule]]\nwhen=['details']\nbackground='#f0f0f0'\npadding=0.5\nborder_width=1.0\nradius=4.0\nspace_before=0.4\nspace_after=0.4\n\
 		 [[rule]]\nwhen=['summary']\ncolor='#333333'\nweight=600\nsize=0.95\n\
 		 [[rule]]\nwhen=['summary','hover']\ncolor='#000000'",
@@ -1581,11 +1581,11 @@ fn details_and_summary_conditions_are_styleable() {
 	);
 	// Unknown or container-only fields stay errors under both conditions.
 	for bad in [
-		"format_version=2\nversion=1\n[[rule]]\nwhen=['details']\ntrack='#000000'",
-		"format_version=2\nversion=1\n[[rule]]\nwhen=['details']\nshape='disc'",
-		"format_version=2\nversion=1\n[[rule]]\nwhen=['summary']\npadding=1.0",
-		"format_version=2\nversion=1\n[[rule]]\nwhen=['summary']\ntrack='#000000'",
-		"format_version=2\nversion=1\n[[rule]]\nwhen=['summary']\nnumbering='1.'",
+		"format_version=3\nversion=1\n[[rule]]\nwhen=['details']\ntrack='#000000'",
+		"format_version=3\nversion=1\n[[rule]]\nwhen=['details']\nshape='disc'",
+		"format_version=3\nversion=1\n[[rule]]\nwhen=['summary']\npadding=1.0",
+		"format_version=3\nversion=1\n[[rule]]\nwhen=['summary']\ntrack='#000000'",
+		"format_version=3\nversion=1\n[[rule]]\nwhen=['summary']\nnumbering='1.'",
 	] {
 		assert!(Stylesheet::parse(bad).is_err(), "{bad}");
 	}
@@ -1594,7 +1594,7 @@ fn details_and_summary_conditions_are_styleable() {
 #[test]
 fn front_matter_frames_its_disclosure() {
 	let sheet = Stylesheet::parse(
-		"format_version=2\nversion=1\n\
+		"format_version=3\nversion=1\n\
 		 [[rule]]\nwhen=['front_matter']\nbackground='#eef1f5'\npadding=0.5\nradius=4.0\nspace_after=0.8\nshow=false\n\
 		 [[rule]]\nwhen=['front_matter','summary']\nweight=600\n\
 		 [[rule]]\nwhen=['front_matter','code_block']\nsize=0.9",
@@ -1618,8 +1618,8 @@ fn front_matter_frames_its_disclosure() {
 	);
 	// `show` belongs to the frame, not to the body it holds.
 	for bad in [
-		"format_version=2\nversion=1\n[[rule]]\nwhen=['front_matter','code_block']\nshow=false",
-		"format_version=2\nversion=1\n[[rule]]\nwhen=['front_matter']\nshape='disc'",
+		"format_version=3\nversion=1\n[[rule]]\nwhen=['front_matter','code_block']\nshow=false",
+		"format_version=3\nversion=1\n[[rule]]\nwhen=['front_matter']\nshape='disc'",
 	] {
 		assert!(Stylesheet::parse(bad).is_err(), "{bad}");
 	}
@@ -1629,7 +1629,7 @@ fn front_matter_frames_its_disclosure() {
 fn font_minimum_weight_is_validated_and_preserves_inherited_bold() {
 	let sheet = |fields| {
 		Stylesheet::parse(&format!(
-			"format_version=2\nversion=1\n[[rule]]\nwhen=['body']\nfont=[{{family='serif', {fields}}}]"
+			"format_version=3\nversion=1\n[[rule]]\nwhen=['body']\nfont=[{{family='serif', {fields}}}]"
 		))
 	};
 	let valid = sheet("min_weight=500").unwrap();
@@ -1656,7 +1656,7 @@ fn warning_colors_cascade_to_panels_and_stay_out_of_document_rules() {
 	let mut sheet = (*Stylesheet::bundled(false)).clone();
 	let layout = sheet.layout_key();
 	sheet.merge(&Stylesheet::parse(
-		"format_version=2\nversion=1\n[[rule]]\nwhen=['ui']\nwarning='#765432'\n[[rule]]\nwhen=['ui','panel']\nwarning='#987654'",
+		"format_version=3\nversion=1\n[[rule]]\nwhen=['ui']\nwarning='#765432'\n[[rule]]\nwhen=['ui','panel']\nwarning='#987654'",
 	).unwrap());
 	assert_eq!(
 		sheet.color(Condition::Ui, ColorField::Warning),
@@ -1669,7 +1669,7 @@ fn warning_colors_cascade_to_panels_and_stay_out_of_document_rules() {
 	assert_eq!(sheet.layout_key(), layout);
 	assert!(
 		Stylesheet::parse(
-			"format_version=2\nversion=1\n[[rule]]\nwhen=['body']\nwarning='#765432'"
+			"format_version=3\nversion=1\n[[rule]]\nwhen=['body']\nwarning='#765432'"
 		)
 		.is_err()
 	);
@@ -1740,7 +1740,7 @@ fn paper_sizes_keep_names_separators_and_dimension_limits() {
 		("100*150", (100.0, 150.0)),
 	] {
 		let sheet = Stylesheet::parse(&format!(
-			"format_version=2\nversion=1\n[page]\nsize={size:?}"
+			"format_version=3\nversion=1\n[page]\nsize={size:?}"
 		))
 		.unwrap();
 		assert_eq!(sheet.page().paper_mm(), Some(expected), "{size}");
@@ -1756,10 +1756,57 @@ fn paper_sizes_keep_names_separators_and_dimension_limits() {
 	] {
 		assert!(
 			Stylesheet::parse(&format!(
-				"format_version=2\nversion=1\n[page]\nsize={size:?}"
+				"format_version=3\nversion=1\n[page]\nsize={size:?}"
 			))
 			.is_err(),
 			"{size}"
+		);
+	}
+}
+
+#[test]
+fn mvss_v3_requires_explicit_migration_of_legacy_preview_rules() {
+	assert_eq!(super::FORMAT_VERSION, 3);
+	let old = "format_version=2\nversion=1\n[[rule]]\nwhen=['ui','preview']\nradius=10";
+	let error = Stylesheet::parse(old).unwrap_err().to_string();
+	assert!(
+		error.contains("version = 3") && error.contains("mvss-v3-upgrade.md"),
+		"{error}"
+	);
+	let migrated = old
+		.replace("format_version=2", "format_version=3")
+		.replace("'preview'", "'tab_preview'");
+	let sheet = Stylesheet::parse(&migrated).unwrap();
+	assert_eq!(
+		sheet
+			.element_rule(Condition::TabPreview.chain(), Condition::TabPreview)
+			.radius,
+		Some(10.0)
+	);
+	assert_eq!(
+		sheet
+			.element_rule(Condition::Preview.chain(), Condition::Preview)
+			.radius,
+		None
+	);
+}
+
+#[test]
+fn every_condition_fits_a_packed_chain_without_corrupting_its_parent() {
+	for &(condition, _) in Condition::ALL {
+		let chain =
+			super::chain_of(&[Condition::Body, Condition::Strong, condition]);
+		let set = super::chain_set(chain);
+		assert!(set.contains(Condition::Body));
+		assert!(set.contains(Condition::Strong));
+		assert!(set.contains(condition));
+		assert_eq!(
+			set.len(),
+			if matches!(condition, Condition::Body | Condition::Strong) {
+				2
+			} else {
+				3
+			}
 		);
 	}
 }

@@ -521,7 +521,7 @@ test("reading options and templates update the existing viewer, including code w
     return Array.from(png.data.subarray(offset, offset + 3));
   }
   const custom =
-    'format_version=2\nversion=1\ntargets=["ui"]\n[[rule]]\nwhen=["body"]\nbackground="#123456"\ncolor="#ffffff"\nline_height=2.0';
+    'format_version=3\nversion=1\ntargets=["ui"]\n[[rule]]\nwhen=["body"]\nbackground="#123456"\ncolor="#ffffff"\nline_height=2.0';
   await publish(page, {
     ...message,
     version: 3,

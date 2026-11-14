@@ -87,17 +87,32 @@ pub fn capture(
 	view: &markview_render::View<'_>,
 	overlay: &[Draw],
 ) -> Result<RgbaImage> {
+	capture_scenes(renderer, snapshot, view, overlay, &[])
+}
+
+pub fn capture_scenes(
+	renderer: &mut markview_render::Renderer,
+	snapshot: &markview_layout::scene::LayoutSnapshot,
+	view: &markview_render::View<'_>,
+	overlay: &[Draw],
+	scenes: &[markview_render::DocumentScene<'_>],
+) -> Result<RgbaImage> {
 	assert_glyphs(overlay)?;
-	for block in &snapshot.blocks {
-		for draw in &block.layout.draws {
-			assert_glyphs(std::slice::from_ref(&draw))?;
+	for snapshot in std::iter::once(snapshot)
+		.chain(scenes.iter().map(|scene| scene.snapshot))
+	{
+		for block in &snapshot.blocks {
+			for draw in &block.layout.draws {
+				assert_glyphs(std::slice::from_ref(&draw))?;
+			}
 		}
 	}
 	let target = renderer.offscreen(view.width, view.height);
-	let submission = renderer.render(
+	let submission = renderer.render_document_scenes(
 		snapshot,
 		view,
 		overlay,
+		scenes,
 		&target.create_view(&Default::default()),
 	)?;
 	renderer.wait(Some(submission))?;

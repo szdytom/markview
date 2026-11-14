@@ -9,9 +9,9 @@ const assets = readdirSync(
 const font = `/assets/${assets.find((name) => name.startsWith("NotoSerif-Regular-subset-"))}`;
 const monoFont = `/assets/${assets.find((name) => name.startsWith("NotoSansMono-Regular-subset-"))}`;
 const compact =
-	"format_version = 2\nversion = 1\n[[rule]]\nwhen = ['body']\nbackground = '#123456'\ncolor = '#ffffff'\nline_height = 1.3";
+	"format_version = 3\nversion = 1\n[[rule]]\nwhen = ['body']\nbackground = '#123456'\ncolor = '#ffffff'\nline_height = 1.3";
 const spacious =
-	"format_version = 2\nversion = 1\n[meta]\nname = ''\n[[rule]]\nwhen = ['body']\nbackground = '#654321'\ncolor = '#ffffff'\nline_height = 2.1";
+	"format_version = 3\nversion = 1\n[meta]\nname = ''\n[[rule]]\nwhen = ['body']\nbackground = '#654321'\ncolor = '#ffffff'\nline_height = 2.1";
 
 async function host(page, sources = [font]) {
 	await page.route("**/stylesheets.html", (route) =>
@@ -142,7 +142,7 @@ test("registration and selection are atomic, namespaced and owned by each engine
 				() =>
 					window.a.registerStylesheet(
 						"override",
-						"format_version = 2\nversion = 1\ntargets = ['pdf']",
+						"format_version = 3\nversion = 1\ntargets = ['pdf']",
 					),
 				() => window.a.setStylesheets(["missing", "bundled:dark"]),
 				() => window.a.setStylesheets(["bundled:print"]),
@@ -228,11 +228,11 @@ test("fontdef-only selections reshape cached blocks and clearing restores defaul
 		);
 		window.a.registerStylesheet(
 			"mono",
-			"format_version = 2\nversion = 1\n[[fontdef]]\nid = 'serif'\nlookfor = ['Noto Sans Mono']",
+			"format_version = 3\nversion = 1\n[[fontdef]]\nid = 'serif'\nlookfor = ['Noto Sans Mono']",
 		);
 		window.a.registerStylesheet(
 			"color",
-			"format_version = 2\nversion = 1\n[[rule]]\nwhen = ['body']\ncolor = '#123456'",
+			"format_version = 3\nversion = 1\n[[rule]]\nwhen = ['body']\ncolor = '#123456'",
 		);
 	});
 	await settled(page);

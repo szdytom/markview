@@ -339,7 +339,7 @@ fn document_scrollbar_hugs_the_right_edge_and_keeps_its_width_while_dragging() {
 	let (mut app, _) = reader(&"Body line.\n\n".repeat(100), 760.0);
 	app.preferences.values.stylesheet = Arc::new(
 		Stylesheet::parse(
-			"format_version=2\nversion=1\n[[rule]]\nwhen=['scrollbar']\nthickness=6.0",
+			"format_version=3\nversion=1\n[[rule]]\nwhen=['scrollbar']\nthickness=6.0",
 		)
 		.unwrap(),
 	);
@@ -622,7 +622,7 @@ fn a_wide_document_scrollbar_repaints_from_its_whole_track() {
 	let (mut app, _) = reader(&"Body line.\n\n".repeat(100), 760.0);
 	app.preferences.values.stylesheet = Arc::new(
 		Stylesheet::parse(
-			"format_version=2\nversion=1\n[[rule]]\nwhen=['scrollbar']\nthickness=30.0",
+			"format_version=3\nversion=1\n[[rule]]\nwhen=['scrollbar']\nthickness=30.0",
 		)
 		.unwrap(),
 	);

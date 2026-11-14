@@ -24,7 +24,7 @@ pub(crate) use outline::OutlineTree;
 pub(crate) use rows::{Row, RowSlide};
 
 pub(crate) use markview_interaction::{
-	Drag, Grain, Host, HoveredLink, Modifiers, Point, Selection,
+	Drag, Host, HoveredLink, Modifiers, Point, Selection,
 };
 #[cfg(test)]
 pub(crate) use markview_layout::layout::scroll_limit;
@@ -1019,6 +1019,9 @@ impl Host for InteractionState {
 		self.pointer.end_scrollbar();
 	}
 }
+
+#[cfg(test)]
+pub(crate) use markview_interaction::Grain;
 
 #[cfg(test)]
 mod tests;

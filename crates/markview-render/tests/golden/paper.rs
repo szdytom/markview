@@ -23,7 +23,7 @@ pub fn frames(
 	let mut options = case.options(root)?;
 	let mut sheet = (*options.stylesheet).clone();
 	sheet.merge(&Stylesheet::parse(
-		"format_version=2\nversion=1\n[page]\nsize='A5'\nmargin=[15,12,15,12]\n\
+		"format_version=3\nversion=1\n[page]\nsize='A5'\nmargin=[15,12,15,12]\n\
 		header_left='{title}'\nheader_right='{page}/{pages}'\nfooter_center='阅读 {page}'\n\
 		[page.header]\nrule_width=0.5\nrule_color='#315D86'\n\
 		[page.footer]\nrule_width=1.0\nrule_color='#69747E'",

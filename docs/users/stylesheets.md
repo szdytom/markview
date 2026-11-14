@@ -14,7 +14,7 @@ small override; omitted properties come from the cascade described below.
 Declare the destinations at the top level, before any TOML table:
 
 ```toml
-format_version = 2
+format_version = 3
 version = 1
 targets = ["ui", "pdf"]
 ```
@@ -32,7 +32,7 @@ The export panel shares paper layout and stylesheet selection between PDF and PN
 ## A minimal valid file
 
 ```toml
-format_version = 2
+format_version = 3
 version = 1
 
 [meta]
@@ -52,7 +52,7 @@ color = "#315D86"
 decoration = ["underline"]
 ```
 
-`format_version` describes the file format and must be `2`. `version` is the installed theme's revision, a non-negative integer. `meta` is optional and does not participate in styling.
+`format_version` describes the file format and must be `3`. See the [MVSS 3 upgrade guide](mvss-v3-upgrade.md) for existing themes. `version` is the installed theme's revision, a non-negative integer. `meta` is optional and does not participate in styling.
 
 ## Rules and conditions
 
@@ -77,8 +77,8 @@ A condition is one fact about a rendered run: the blocks that contain it, the pa
 | Blocks | `body`, `p`, `h1`–`h6`, `blockquote`, `callout`, `callout_note`, `callout_tip`, `callout_success`, `callout_warning`, `callout_danger`, `callout_example`, `callout_quote`, `list`, `enum`, `list_item`, `footnote`, `details`, `front_matter`, `code_block`, `table`, `hr` |
 | Block parts | `label`, `cell`, `header`, `marker`, `task_marker`, `caption`, `placeholder`, `summary` |
 | Inline | `em`, `strong`, `link`, `del`, `sup`, `sub`, `footnote_ref`, `code`, `math` |
-| State | `hover`, `error` |
-| Surfaces and UI | `img`, `selection`, `search`, `search_current`, `scrollbar`, `ui`, `toolbar`, `statusbar`, `panel`, `preview`, `button` |
+| State | `hover`, `error`, `preview` |
+| Surfaces and UI | `img`, `selection`, `search`, `search_current`, `scrollbar`, `ui`, `toolbar`, `statusbar`, `panel`, `tab_preview`, `button` |
 | Paper | `page`, `page_header`, `page_footer`, `page_number` |
 
 `font` on `["math"]` styles the characters a formula draws with a document face because its KaTeX fonts lack them, such as CJK inside `\text{…}` and emoji. Bundled themes use `sans-serif`, `sans-serif[cjk]`, then the emoji face. It does not change the KaTeX faces that draw mathematical symbols.
@@ -166,13 +166,32 @@ A block's own box is the exception. Its background, border, padding, spacing, an
 
 ## Fields
 
-The tab hover card accepts `radius` on `["ui", "preview"]`, in logical pixels. The bundled fallback uses `0.0` (square corners) for all reader themes, including Light, Dark and 8-bit. Its title, detail, divider and outer outline inherit the panel colors; the whole card always uses `body.background`, and its page preview has no border.
+The tab hover card accepts `radius` on `["ui", "tab_preview"]`, in logical pixels. The bundled fallback uses `0.0` (square corners) for all reader themes, including Light, Dark and 8-bit. Its title, detail, divider and outer outline inherit the panel colors; the whole card always uses `body.background`, and its page preview has no border.
 
 ```toml
 [[rule]]
-when = ["ui", "preview"]
+when = ["ui", "tab_preview"]
 radius = 10.0
 ```
+
+`preview` styles the reflowed hover popup, such as a footnote preview. It accepts `background`, `border_color`, `border_width`, `radius`, `padding` and text appearance fields. Padding uses base-font-size units, as for other MVSS containers; when omitted, the popup retains its 10 logical pixel inset. Without explicit colors it uses the body background and panel border. Compound rules such as `["preview", "p"]` affect only the popup's content.
+
+```toml
+[[rule]]
+when = ["preview"]
+background = "#FFF8E7"
+border_color = "#B99852"
+border_width = 1.0
+radius = 8.0
+padding = 0.75
+
+[[rule]]
+when = ["preview", "p"]
+color = "#483C27"
+line_height = 1.5
+```
+
+`tab_preview` is separate: the tab card displays an existing page layout without reflowing it. Its page content does not acquire the `preview` condition. Existing tab-card radius rules using `["ui", "preview"]` must be changed to `["ui", "tab_preview"]`.
 
 Text conditions accept `color`, `font`, `weight`, `size`, `decoration`, and `background`. `padding` on `code` insets its chip: the left and right sides widen the run and push its neighbours along, and the top and bottom sides make the chip taller without changing the line height, so code beside CJK or punctuation is not cramped. Block conditions additionally accept `line_height`, `space_before`, `space_after`, and the container fields `padding`, `border_color`, `border_width`, and `radius`. Parts that are not containers—`label`, `marker`, `caption`, `placeholder`, and `summary`—reject container geometry. A `task_marker` is a drawn box rather than a text part, so it also takes `background`, `accent`, `border_color`, `border_width`, and `radius`. `indent` styles `list` and `enum`; `align` places an image, positions a `marker` or `task_marker` in its column, and places an ordered list's numbers; `numbering` formats those numbers; `shape` picks a bullet's graphic; `source` belongs to image conditions; `show` belongs to `error`.
 
@@ -260,7 +279,7 @@ baseline = -0.08
 padding = [0.15, 0.3, 0.15, 0.3]
 ```
 
-These defaults replace the previous ascent/descent text layout frame without changing MVSS format version 2. Existing themes may therefore have different baselines, line heights and page breaks. Set `top_edge = "ascender"` and `bottom_edge = "descender"` on `body` to restore the earlier text-edge policy; override `baseline = 0.0` on `code` to retain a shared unshifted baseline. Vertical code padding no longer affects line height.
+These defaults replace the previous ascent/descent text layout frame independently of the MVSS file format. Existing themes may therefore have different baselines, line heights and page breaks. Set `top_edge = "ascender"` and `bottom_edge = "descender"` on `body` to restore the earlier text-edge policy; override `baseline = 0.0` on `code` to retain a shared unshifted baseline. Vertical code padding no longer affects line height.
 
 `first_child` and `last_child` describe the immediate block's position among its siblings; on table cells they describe the row's position. They do not describe arbitrary descendants or individual characters. Position is replaced when entering another child container. A one-child container has both conditions. Add a block condition when targeting a particular element:
 

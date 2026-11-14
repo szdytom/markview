@@ -5,6 +5,7 @@ mod background;
 mod chrome;
 mod dm;
 mod document;
+mod document_view;
 pub(crate) mod dropdown;
 mod export;
 mod export_panel;
@@ -122,6 +123,7 @@ enum Event {
 		result: Box<anyhow::Result<crate::web_page::Article>>,
 	},
 	FrameFeedback,
+	PreviewReady,
 	Ready(Box<Update>),
 	SearchReady(search::Result),
 	FilesReady(start::Result),

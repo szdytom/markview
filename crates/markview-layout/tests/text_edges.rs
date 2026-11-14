@@ -15,7 +15,7 @@ fn options(rules: &str, size: f32, width: f32) -> LayoutOptions {
 	let mut sheet = (*Stylesheet::bundled(false)).clone();
 	sheet.set_cjk_type(CjkType::Sc);
 	sheet.merge(
-		&Stylesheet::parse(&format!("format_version=2\nversion=1\n{rules}"))
+		&Stylesheet::parse(&format!("format_version=3\nversion=1\n{rules}"))
 			.unwrap(),
 	);
 	LayoutOptions {
@@ -135,7 +135,7 @@ fn layout_edges_use_local_em_and_invalidate_cached_geometry() {
 		&engine.layout(&doc, &opts).blocks[0].layout
 	));
 	let mut sheet = (*opts.stylesheet).clone();
-	sheet.merge(&Stylesheet::parse("format_version=2\nversion=1\n[[rule]]\nwhen=['body']\ntop_edge=0.4\nbottom_edge=-0.1").unwrap());
+	sheet.merge(&Stylesheet::parse("format_version=3\nversion=1\n[[rule]]\nwhen=['body']\ntop_edge=0.4\nbottom_edge=-0.1").unwrap());
 	opts.stylesheet = Arc::new(sheet);
 	let numeric = engine.layout(&doc, &opts);
 	assert!(!Arc::ptr_eq(

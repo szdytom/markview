@@ -46,6 +46,7 @@ pub struct ProgressiveLayout {
 	visible_count: usize,
 	/// The revision this pass belongs to; the pass must be advanced with it.
 	revision: markview_document::DocumentRevision,
+	root: Option<markview_document::BlockId>,
 	#[cfg(all(feature = "parallel", not(target_arch = "wasm32")))]
 	pending: std::collections::VecDeque<(CacheKey, Arc<BlockLayout>)>,
 }
@@ -120,11 +121,48 @@ impl LayoutEngine {
 		options: &LayoutOptions,
 		images: &ImageSnapshot,
 	) -> ProgressiveLayout {
+		self.begin_layout_root(document, None, options, images)
+	}
+
+	pub(super) fn begin_layout_root(
+		&mut self,
+		document: &Document,
+		root: Option<&Block>,
+		options: &LayoutOptions,
+		images: &ImageSnapshot,
+	) -> ProgressiveLayout {
+		let blocks =
+			root.map_or_else(|| document.blocks(), std::slice::from_ref);
 		self.shaper.set_stylesheet(options.stylesheet.clone());
 		self.shaper.set_fonts(&options.fonts);
 		self.math.set_limits(options.limits);
 		self.poll_highlights();
-		let body = options.stylesheet.rule(Condition::Body);
+		if options.preview {
+			self.shaper.appearance = options
+				.stylesheet
+				.text(&self.shaper.appearance, Condition::Preview);
+		}
+		let (appearance, position) = root.map_or_else(
+			|| {
+				(
+					self.shaper.appearance.clone(),
+					(0, blocks.iter().filter(|b| !anchor_only(b)).count()),
+				)
+			},
+			|root| {
+				super::subtree::context(
+					document,
+					root,
+					&self.shaper.appearance,
+					options,
+				)
+			},
+		);
+		let body = if options.preview {
+			&crate::style::Rule::default()
+		} else {
+			options.stylesheet.rule(Condition::Body)
+		};
 		let pad = body
 			.padding
 			.as_ref()
@@ -133,8 +171,11 @@ impl LayoutEngine {
 		let content_width = (options.width - pad[1] - pad[3]).max(1.);
 		crate::profile::span(crate::profile::Stage::Highlights, || {
 			self.highlights.prepare(
-				document.content_key().get(),
-				document.blocks(),
+				crate::document::fingerprint(&(
+					document.content_key(),
+					root.map(Block::id),
+				)),
+				blocks,
 				options,
 			)
 		});
@@ -173,8 +214,12 @@ impl LayoutEngine {
 				w: options.width,
 				h: opening,
 			},
-			chain: Condition::Body.chain(),
-			condition: Condition::Body,
+			chain: self.shaper.appearance.chain,
+			condition: if options.preview {
+				Condition::Preview
+			} else {
+				Condition::Body
+			},
 			radius: body.radius.unwrap_or(0.),
 			border: body.border_width.unwrap_or(0.),
 			left_only: false,
@@ -211,18 +256,28 @@ impl LayoutEngine {
 			codeblock_theme,
 			codeblock_theme_key,
 			style_key,
-			appearance: self.shaper.appearance.clone(),
+			appearance,
 			trailing: pad[2]
 				+ body.space_after.unwrap_or(0.) * options.font_size,
 			box_template,
 			id: self.pass,
 			footnote_column: footnote_column(document),
 		};
+		let presentation = crate::document::fingerprint(&(
+			&options.details_open,
+			options.force_open,
+		));
 		let mut result = LayoutSnapshot {
-			presentation_key: crate::document::fingerprint(&(
-				&options.details_open,
-				options.force_open,
-			)),
+			presentation_key: if root.is_some() || options.preview {
+				crate::document::fingerprint(&(
+					presentation,
+					document.revision(),
+					root.map(Block::id),
+					options.preview,
+				))
+			} else {
+				presentation
+			},
 			content_id: document.content_key(),
 			revision: document.revision(),
 			images: images.clone(),
@@ -235,15 +290,12 @@ impl LayoutEngine {
 			result,
 			pass,
 			index: 0,
-			count: document.blocks().len(),
-			picture_only: single_picture(document),
-			visible_index: 0,
-			visible_count: document
-				.blocks()
-				.iter()
-				.filter(|b| !anchor_only(b))
-				.count(),
+			count: blocks.len(),
+			picture_only: root.is_none() && single_picture(document),
+			visible_index: position.0,
+			visible_count: position.1,
 			revision: document.revision(),
+			root: root.map(Block::id),
 			#[cfg(all(feature = "parallel", not(target_arch = "wasm32")))]
 			pending: Default::default(),
 		};
@@ -288,7 +340,7 @@ impl LayoutEngine {
 		);
 		assert_eq!(
 			layout.count,
-			document.blocks().len(),
+			layout.selected_blocks(document).len(),
 			"a pass must be advanced with the document it began on"
 		);
 		// The pass also carries the stylesheet, fonts and math limits that were
@@ -327,7 +379,7 @@ impl LayoutEngine {
 		cancelled: &(dyn Fn() -> bool + Sync),
 		_prefetch: bool,
 	) {
-		let block = &document.blocks()[layout.index];
+		let block = &layout.selected_blocks(document)[layout.index];
 		let job = layout.pass.job(
 			block,
 			layout.visible_index,
@@ -409,6 +461,9 @@ impl LayoutEngine {
 		// A complete pass visited every block, so an entry it did not touch
 		// belongs to a superseded document, option set, or highlight state.
 		// Dropping those keeps the cache at one document's worth of geometry.
+		if layout.root.is_some() {
+			return;
+		}
 		let id = layout.pass.id;
 		self.cache.retain(|_, entry| entry.pass == id);
 		// Every survivor is part of this completing pass, so stamp that
@@ -492,6 +547,7 @@ impl Pass {
 		let visible = !anchor_only(block);
 		let options = &self.options;
 		let key = CacheKey {
+			context: self.appearance.key(),
 			position: if visible && options.stylesheet.has_child_rules() {
 				u8::from(child_index == 0)
 					| (u8::from(child_index + 1 == child_count) << 1)
@@ -583,6 +639,17 @@ impl Measurement<'_> {
 }
 
 impl ProgressiveLayout {
+	fn selected_blocks<'a>(&self, document: &'a Document) -> &'a [Block] {
+		self.root.map_or_else(
+			|| document.blocks(),
+			|id| {
+				std::slice::from_ref(document.block(id).expect(
+					"the selected block belongs to the source document",
+				))
+			},
+		)
+	}
+
 	fn take_prefetched(&mut self, key: &CacheKey) -> Option<Arc<BlockLayout>> {
 		#[cfg(all(feature = "parallel", not(target_arch = "wasm32")))]
 		{

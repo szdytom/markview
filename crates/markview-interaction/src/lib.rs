@@ -13,10 +13,10 @@
 //! dragged may still activate the link it started on. All of that behaviour is
 //! here. What is not here is where the state lives, and which events feed it.
 //!
-//! The host keeps the state and reaches it through [`Host`], so the same
-//! machine drives the native window and any other front end. Core owns the
-//! reading text and its geometry, this crate owns the pointer that walks it,
-//! and a front end owns the events.
+//! Hosts can keep state through [`Host`] or use the independent [`ViewState`]
+//! controller. [`DocumentView`] supplies a surface's coordinate transform and
+//! clip, so native readers and embedded documents share the same machine.
+//! Core owns reading geometry; front ends own events and platform actions.
 
 use markview_layout::layout::LayoutSnapshot;
 use markview_layout::text::{SemanticPosition, TextSelection};
@@ -321,3 +321,6 @@ mod document;
 pub use document::{
 	Cursor, DocumentInteraction, Horizontal, Hover, HoveredLink, horizontal_by,
 };
+
+mod view;
+pub use view::{DocumentView, ViewAction, ViewInput, ViewState, ViewUpdate};

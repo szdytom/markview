@@ -93,7 +93,7 @@ fn mixed_lists_keep_marker_depths_copy_text_and_number_selection_groups() {
 	);
 	let mut opts = options();
 	let mut sheet = (*opts.stylesheet).clone();
-	sheet.merge(&Stylesheet::parse("format_version=2\nversion=1\n[[rule]]\nwhen=['marker']\nshape=['square','triangle']\n[[rule]]\nwhen=['enum']\nnumbering='1.a.'\n[[rule]]\nwhen=['task_marker']\nradius=0\nborder_width=1\n").unwrap());
+	sheet.merge(&Stylesheet::parse("format_version=3\nversion=1\n[[rule]]\nwhen=['marker']\nshape=['square','triangle']\n[[rule]]\nwhen=['enum']\nnumbering='1.a.'\n[[rule]]\nwhen=['task_marker']\nradius=0\nborder_width=1\n").unwrap());
 	opts.stylesheet = Arc::new(sheet);
 	let snapshot = LayoutEngine::new().layout(&document, &opts);
 	assert_eq!(

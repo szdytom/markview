@@ -335,7 +335,7 @@ const MD_LINES: &[&str] = &[
 
 /// Structural one-liners the MVSS mutator can insert.
 const MVSS_LINES: &[&str] = &[
-	"format_version = 2",
+	"format_version = 3",
 	"version = 3",
 	"targets = [\"ui\"]",
 	"[fontdef]",

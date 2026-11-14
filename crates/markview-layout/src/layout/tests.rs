@@ -1138,7 +1138,7 @@ fn math_errors_are_visible_and_copyable_when_enabled() {
 	let mut stylesheet = (*crate::style::Stylesheet::bundled(false)).clone();
 	stylesheet.merge(
 		&crate::style::Stylesheet::parse(
-			"format_version=2\nversion=1\n[[rule]]\nwhen=['error']\nshow=false",
+			"format_version=3\nversion=1\n[[rule]]\nwhen=['error']\nshow=false",
 		)
 		.unwrap(),
 	);
@@ -1315,7 +1315,7 @@ fn overflowing_blocks_reserve_the_configured_scrollbar_gutter() {
 	let mut sheet = (*crate::style::Stylesheet::bundled(false)).clone();
 	sheet.merge(
 		&crate::style::Stylesheet::parse(
-			"format_version=2\nversion=1\n[[rule]]\nwhen=['scrollbar']\ngutter=30.0",
+			"format_version=3\nversion=1\n[[rule]]\nwhen=['scrollbar']\ngutter=30.0",
 		)
 		.unwrap(),
 	);
@@ -1501,11 +1501,11 @@ fn a_theme_can_inset_bullet_and_ordered_lists_separately() {
 		(x(0), x(1))
 	}
 	let base = Arc::new(
-		crate::style::Stylesheet::parse("format_version=2\nversion=1").unwrap(),
+		crate::style::Stylesheet::parse("format_version=3\nversion=1").unwrap(),
 	);
 	let theme = Arc::new(
 		crate::style::Stylesheet::parse(
-			"format_version=2\nversion=1\n[[rule]]\nwhen=['list']\nindent=0.5\n[[rule]]\nwhen=['enum']\nindent=1.5",
+			"format_version=3\nversion=1\n[[rule]]\nwhen=['list']\nindent=0.5\n[[rule]]\nwhen=['enum']\nindent=1.5",
 		)
 		.unwrap(),
 	);
@@ -1516,7 +1516,7 @@ fn a_theme_can_inset_bullet_and_ordered_lists_separately() {
 	// The roles are independent: `[list]` alone leaves ordered lists flush.
 	let bullets = Arc::new(
 		crate::style::Stylesheet::parse(
-			"format_version=2\nversion=1\n[[rule]]\nwhen=['list']\nindent=1.0",
+			"format_version=3\nversion=1\n[[rule]]\nwhen=['list']\nindent=1.0",
 		)
 		.unwrap(),
 	);
@@ -1566,7 +1566,7 @@ fn a_theme_aligns_list_markers_in_their_column() {
 		let mut sheet = (*crate::style::Stylesheet::bundled(false)).clone();
 		sheet.merge(
 			&crate::style::Stylesheet::parse(&format!(
-				"format_version=2\nversion=1\n[[rule]]\nwhen=['{condition}']\nalign=\"{align}\""
+				"format_version=3\nversion=1\n[[rule]]\nwhen=['{condition}']\nalign=\"{align}\""
 			))
 			.unwrap(),
 		);
@@ -1603,7 +1603,7 @@ fn list_markers_center_on_the_actual_first_line() {
 			let mut options = LayoutOptions::default();
 			Arc::make_mut(&mut options.stylesheet).merge(
 				&crate::style::Stylesheet::parse(
-					"format_version=2\nversion=1\n[[rule]]\nwhen=['list_item']\npadding=0.3\n[[rule]]\nwhen=['p']\nspace_before=0.4",
+					"format_version=3\nversion=1\n[[rule]]\nwhen=['list_item']\npadding=0.3\n[[rule]]\nwhen=['p']\nspace_before=0.4",
 				).unwrap(),
 			);
 			engine
@@ -1795,7 +1795,7 @@ fn a_task_checkbox_is_a_drawn_box_a_theme_styles() {
 	let mut sheet = (*crate::style::Stylesheet::bundled(false)).clone();
 	sheet.merge(
 		&crate::style::Stylesheet::parse(
-			"format_version=2\nversion=1\n[[rule]]\nwhen=['task_marker']\nsize=1.5\nborder_width=3.0\nradius=5.0\ncolor=\"#FFFFFF\"\nbackground=\"#FFFFFF\"\naccent=\"#C0392B\"\nborder_color=\"#123456\"",
+			"format_version=3\nversion=1\n[[rule]]\nwhen=['task_marker']\nsize=1.5\nborder_width=3.0\nradius=5.0\ncolor=\"#FFFFFF\"\nbackground=\"#FFFFFF\"\naccent=\"#C0392B\"\nborder_color=\"#123456\"",
 		)
 		.unwrap(),
 	);
@@ -1976,7 +1976,7 @@ fn a_theme_picks_the_bullet_shape() {
 		let mut sheet = (*crate::style::Stylesheet::bundled(false)).clone();
 		sheet.merge(
 			&crate::style::Stylesheet::parse(&format!(
-				"format_version=2\nversion=1\n[[rule]]\nwhen=['marker']\nshape=\"{shape}\""
+				"format_version=3\nversion=1\n[[rule]]\nwhen=['marker']\nshape=\"{shape}\""
 			))
 			.unwrap(),
 		);
@@ -2019,7 +2019,7 @@ fn a_shape_cycle_follows_the_bullet_nesting_depth() {
 		let mut sheet = (*crate::style::Stylesheet::bundled(false)).clone();
 		sheet.merge(
 			&crate::style::Stylesheet::parse(
-				"format_version=2\nversion=1\n[[rule]]\nwhen=['marker']\nshape=['plus','minus']",
+				"format_version=3\nversion=1\n[[rule]]\nwhen=['marker']\nshape=['plus','minus']",
 			)
 			.unwrap(),
 		);
@@ -2056,7 +2056,7 @@ fn ordered_sheet(rule: &str) -> Arc<crate::style::Stylesheet> {
 	let mut sheet = (*crate::style::Stylesheet::bundled(false)).clone();
 	sheet.merge(
 		&crate::style::Stylesheet::parse(&format!(
-			"format_version=2\nversion=1\n[[rule]]\nwhen=['enum']\n{rule}"
+			"format_version=3\nversion=1\n[[rule]]\nwhen=['enum']\n{rule}"
 		))
 		.unwrap(),
 	);
@@ -2365,10 +2365,10 @@ fn an_inline_code_chip_pads_its_text_and_pushes_its_neighbours() {
 
 	// The bundled styles pad the chip, so the baseline zeroes it again.
 	let bare = layout(
-		"format_version=2\nversion=1\n[[rule]]\nwhen=['code']\npadding=[0.0,0.0,0.0,0.0]",
+		"format_version=3\nversion=1\n[[rule]]\nwhen=['code']\npadding=[0.0,0.0,0.0,0.0]",
 	);
 	let (first, last, glyph, after, chip) = layout(
-		"format_version=2\nversion=1\n[[rule]]\nwhen=['code']\npadding=[0.1,0.3,0.1,0.3]",
+		"format_version=3\nversion=1\n[[rule]]\nwhen=['code']\npadding=[0.1,0.3,0.1,0.3]",
 	);
 	let side = 0.3 * 18.0;
 	// The chip keeps its left edge, widens by one side's padding, insets its
@@ -3785,7 +3785,7 @@ fn a_details_body_does_not_inherit_the_summary_appearance() {
 	let mut sheet = (*crate::style::Stylesheet::bundled(false)).clone();
 	sheet.merge(
 		&crate::style::Stylesheet::parse(
-			"format_version=2\nversion=1\n[[rule]]\nwhen=['summary']\nsize=2.0",
+			"format_version=3\nversion=1\n[[rule]]\nwhen=['summary']\nsize=2.0",
 		)
 		.unwrap(),
 	);
@@ -3887,7 +3887,7 @@ fn a_diagram_theme_change_is_a_new_layout_request() {
 	let options = |mermaid: &str| LayoutOptions {
 		stylesheet: Arc::new(
 			crate::style::Stylesheet::parse(&format!(
-				"format_version=2\nversion=1\n[mermaid]\n{mermaid}"
+				"format_version=3\nversion=1\n[mermaid]\n{mermaid}"
 			))
 			.unwrap(),
 		),
@@ -3905,7 +3905,7 @@ fn a_named_font_definition_is_part_of_the_diagram_request() {
 	let options = |lookfor: &str| LayoutOptions {
 		stylesheet: Arc::new(
 			crate::style::Stylesheet::parse(&format!(
-				"format_version=2\nversion=1\n\
+				"format_version=3\nversion=1\n\
 				 [[fontdef]]\nid='reading'\nlookfor=[{lookfor}]\n\
 				 [mermaid]\nfont_family=['reading']"
 			))

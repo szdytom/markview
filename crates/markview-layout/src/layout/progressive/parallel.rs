@@ -63,7 +63,7 @@ impl LayoutEngine {
 		};
 		let mut jobs: Vec<BlockJob<'_>> = Vec::new();
 		let mut visible_index = layout.visible_index;
-		for block in document.blocks()[layout.index..]
+		for block in layout.selected_blocks(document)[layout.index..]
 			.iter()
 			.take(parallel.threads() * 4)
 		{

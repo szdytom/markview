@@ -39,6 +39,7 @@ enum Surface {
 	None,
 	Document,
 	Overflow(usize, usize),
+	Floating(u64, Option<(usize, usize)>),
 	Panel,
 	Outline,
 	Folder,
@@ -235,6 +236,17 @@ impl<P: super::SendEvent> App<P> {
 		if self.tab_layout().viewport.contains(x, y) {
 			return Surface::Tabs;
 		}
+		if let Some(floating) =
+			self.preview.floating().filter(|f| f.rect.contains(x, y))
+		{
+			let view = floating.view();
+			return Surface::Floating(
+				floating.snapshot.presentation_key,
+				view.context.overflow_at(
+					view.local(markview_interaction::Point::new(x, y)),
+				),
+			);
+		}
 		let geometry = self.view_geometry();
 		if !geometry.clip().contains(x, y) {
 			return Surface::None;
@@ -327,7 +339,10 @@ impl<P: super::SendEvent> App<P> {
 			}
 			Surface::Tabs => self.tab_strip.scroll.cancel(),
 			Surface::Document => self.folder.start.scroll.cancel(),
-			Surface::None | Surface::Overflow(..) | Surface::Viewer => {}
+			Surface::None
+			| Surface::Overflow(..)
+			| Surface::Floating(..)
+			| Surface::Viewer => {}
 		}
 	}
 
@@ -629,7 +644,12 @@ impl<P: super::SendEvent> App<P> {
 			}
 			WheelStep::Travel(WheelAxis::Horizontal, dx, dy) => {
 				let pan = if dx.abs() >= dy.abs() { dx } else { dy };
-				if matches!(surface, Surface::Tabs | Surface::Overflow(..)) {
+				if matches!(
+					surface,
+					Surface::Tabs
+						| Surface::Overflow(..)
+						| Surface::Floating(_, Some(_))
+				) {
 					(pan, 0.0)
 				} else {
 					(0.0, dy)
@@ -656,7 +676,8 @@ impl<P: super::SendEvent> App<P> {
 	/// Manipulation's stream yields to it: two inputs must never fight over
 	/// the offset.
 	pub(super) fn pointer_owns_input(&self) -> bool {
-		self.interaction.pointer.scrollbar().is_some()
+		self.preview_captured()
+			|| self.interaction.pointer.scrollbar().is_some()
 			|| self.interaction.panels.sidebar().drag().is_some()
 			|| (self.interaction.pointer.drag().is_some()
 				&& self.interaction.pointer.dragged())
@@ -698,6 +719,19 @@ impl<P: super::SendEvent> App<P> {
 	fn touch_offset(&mut self, surface: Surface) -> Point {
 		match surface {
 			Surface::None | Surface::Viewer => (0.0, 0.0),
+			Surface::Floating(key, overflow) => self
+				.preview
+				.floating()
+				.filter(|f| f.snapshot.presentation_key == key)
+				.map_or((0.0, 0.0), |f| {
+					(
+						overflow
+							.and_then(|key| f.horizontal.get(&key))
+							.copied()
+							.unwrap_or(0.0),
+						f.scroll,
+					)
+				}),
 			Surface::Document => (
 				0.0,
 				if self.readers.session.path.is_none()
@@ -733,6 +767,15 @@ impl<P: super::SendEvent> App<P> {
 	fn pan_gesture(&mut self, surface: Surface, (dx, dy): Point) {
 		match surface {
 			Surface::None | Surface::Viewer => {}
+			Surface::Floating(key, overflow) => {
+				if let Some(floating) = self
+					.preview
+					.floating_mut()
+					.filter(|f| f.snapshot.presentation_key == key)
+				{
+					floating.pan(overflow, -dx, -dy);
+				}
+			}
 			Surface::Panel => self.scroll_panel(-dy),
 			Surface::Outline => self.scroll_outline(-dy),
 			Surface::Folder => self.scroll_folder(-dy),

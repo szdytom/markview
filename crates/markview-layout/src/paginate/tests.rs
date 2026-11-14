@@ -9,7 +9,7 @@ fn explicit_widows_and_keep_together_survive_nested_layout() {
 	);
 	let document = markview_commonmark::parse(source);
 	let mut sheet = (*Stylesheet::bundled(false)).clone();
-	sheet.merge(&Stylesheet::parse("format_version=2\nversion=1\n[[rule]]\nwhen=['p']\norphans=3\nwidows=3\n[[rule]]\nwhen=['blockquote']\nkeep_together=true").unwrap());
+	sheet.merge(&Stylesheet::parse("format_version=3\nversion=1\n[[rule]]\nwhen=['p']\norphans=3\nwidows=3\n[[rule]]\nwhen=['blockquote']\nkeep_together=true").unwrap());
 	let options = LayoutOptions {
 		width: 350.0,
 		stylesheet: std::sync::Arc::new(sheet),
@@ -178,7 +178,7 @@ fn a_padded_heading_keeps_its_anchor() {
 	let mut sheet = (*Stylesheet::bundled_print()).clone();
 	sheet.merge(
 		&Stylesheet::parse(
-			"format_version=2\nversion=1\n[[rule]]\nwhen=['h2']\npadding=2.0",
+			"format_version=3\nversion=1\n[[rule]]\nwhen=['h2']\npadding=2.0",
 		)
 		.unwrap(),
 	);

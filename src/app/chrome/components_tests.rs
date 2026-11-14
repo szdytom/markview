@@ -58,7 +58,7 @@ fn settings_labels_and_buttons_center_visible_text_in_their_bands() {
 			(*markview_layout::style::Stylesheet::bundled(false)).clone();
 		style.merge(
 			&markview_layout::style::Stylesheet::parse(&format!(
-				"format_version=2\nversion=1\n{rules}"
+				"format_version=3\nversion=1\n{rules}"
 			))
 			.unwrap(),
 		);

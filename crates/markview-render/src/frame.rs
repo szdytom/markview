@@ -423,16 +423,38 @@ impl Renderer {
 		preview: Option<&crate::Preview<'_>>,
 		target: &wgpu::TextureView,
 	) -> Result<wgpu::SubmissionIndex> {
-		let Some(preview) = preview else {
+		self.render_document_scenes(
+			snapshot,
+			view,
+			overlay,
+			preview.map_or(&[], std::slice::from_ref),
+			target,
+		)
+	}
+
+	/// Composes independent document surfaces in back-to-front order.
+	pub fn render_document_scenes(
+		&mut self,
+		snapshot: &LayoutSnapshot,
+		view: &View<'_>,
+		overlay: &[Draw],
+		scenes: &[crate::DocumentScene<'_>],
+		target: &wgpu::TextureView,
+	) -> Result<wgpu::SubmissionIndex> {
+		if scenes.is_empty() {
 			self.preview_rejected = None;
 			self.images.release_guest();
-			return self.render_layers(snapshot, view, &[], overlay, target);
-		};
-		let submission =
+		}
+		let mut submission =
 			self.render_layers(snapshot, view, &[], overlay, target)?;
-		Ok(self
-			.render_preview(preview, view.scale, target)?
-			.unwrap_or(submission))
+		for scene in scenes {
+			if let Some(next) =
+				self.render_document_scene(scene, view.scale, target)?
+			{
+				submission = next;
+			}
+		}
+		Ok(submission)
 	}
 
 	/// Composes a second scene into `rect`, on top of the frame just submitted.
@@ -441,7 +463,7 @@ impl Renderer {
 	/// glyphs come from full-resolution atlas entries; the pass viewport is
 	/// what scales that rendering down into the card. Returns the submission
 	/// that completes the pass, or `None` when the atlas could not hold it.
-	fn render_preview(
+	pub fn render_document_scene(
 		&mut self,
 		preview: &crate::Preview<'_>,
 		dpi: f32,
@@ -453,9 +475,18 @@ impl Renderer {
 			return Ok(None);
 		}
 		let (view, viewport) = preview_view(preview, dpi, self.ui_origin);
+		let pointer = self.pointer;
+		let ratio = preview.snapshot.width.max(1.0) / preview.rect.w.max(1.0);
+		self.pointer = pointer.map(|(x, y)| {
+			(
+				(x - preview.rect.x - self.ui_origin.0) * ratio,
+				(y - preview.rect.y - self.ui_origin.1) * ratio,
+			)
+		});
 		self.guest = true;
 		self.prepare(preview.snapshot, &view, &[], &[]);
 		self.guest = false;
+		self.pointer = pointer;
 		if self.raster.full() {
 			// The preview cannot displace the frame the reader is looking at.
 			// An unchanged scene would fill the atlas again next frame, so
@@ -574,8 +605,8 @@ fn preview_view<'a>(
 	let width = (page * dpi).round().max(1.0) as u32;
 	let height = (slice * dpi).round().max(1.0) as u32;
 	let view = View {
-		selection: None,
-		revision: 0,
+		selection: preview.interaction.and_then(|state| state.selection),
+		revision: preview.interaction.map_or(0, |state| state.revision),
 		width,
 		height,
 		scale: dpi,
@@ -585,8 +616,10 @@ fn preview_view<'a>(
 		bottom: 0.0,
 		theme: preview.theme,
 		horizontal: preview.horizontal,
-		hovered_link: None,
-		held_overflow: None,
+		hovered_link: preview.interaction.and_then(|state| state.hovered_link),
+		held_overflow: preview
+			.interaction
+			.and_then(|state| state.held_overflow),
 	};
 	let viewport = [
 		(rect.x + origin.0) * dpi,
@@ -614,6 +647,7 @@ mod tests {
 			..Default::default()
 		};
 		let preview = crate::Preview {
+			interaction: None,
 			snapshot: &snapshot,
 			scroll: 2_500.0,
 			rect: Rect {
@@ -641,6 +675,7 @@ mod tests {
 			..Default::default()
 		};
 		let preview = crate::Preview {
+			interaction: None,
 			snapshot: &snapshot,
 			scroll: 0.0,
 			rect: Rect {

@@ -25,7 +25,7 @@ fn hovered_labels_mix_current_theme_colors_and_keep_the_background_highlight() {
 		.map(|i| ReaderTab::new(format!("{i}.md").into()))
 		.collect();
 	let widths = vec![(100.0, 50.0); tabs.len()];
-	let custom = Stylesheet::parse("format_version=2\nversion=1\n[[rule]]\nwhen=['ui','toolbar']\nmuted='#20406080'\ncolor='#80A0C0FF'\n").unwrap();
+	let custom = Stylesheet::parse("format_version=3\nversion=1\n[[rule]]\nwhen=['ui','toolbar']\nmuted='#20406080'\ncolor='#80A0C0FF'\n").unwrap();
 	for sheet in [
 		Stylesheet::bundled(false),
 		Stylesheet::bundled(true),
@@ -476,7 +476,7 @@ fn cached_tab_end_follows_scroll_theme_and_document_changes() {
 		tabs.truncate(count);
 		for size in [1.0, 1.5] {
 			let sheet = markview_layout::style::Stylesheet::parse(&format!(
-				"format_version=2\nversion=1\n[[rule]]\nwhen=['ui','toolbar']\nsize={size}"
+				"format_version=3\nversion=1\n[[rule]]\nwhen=['ui','toolbar']\nsize={size}"
 			))
 			.unwrap();
 			ui.set_stylesheet(std::sync::Arc::new(sheet));
@@ -611,7 +611,7 @@ fn measured_tabs_fit_minimum_window_and_styles_invalidate_widths() {
 		assert!((rect.w - minimum).abs() < 0.001);
 	}
 	let sheet = markview_layout::style::Stylesheet::parse(
-		"format_version=2\nversion=1\n[[rule]]\nwhen=['ui','toolbar']\nsize = 1.5\n",
+		"format_version=3\nversion=1\n[[rule]]\nwhen=['ui','toolbar']\nsize = 1.5\n",
 	)
 	.unwrap();
 	ui.set_stylesheet(std::sync::Arc::new(sheet));

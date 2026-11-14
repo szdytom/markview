@@ -14,6 +14,7 @@ mod position_tests;
 mod progressive;
 #[cfg(test)]
 mod stylesheet_tests;
+mod subtree;
 mod table;
 pub use progressive::ProgressiveLayout;
 #[cfg(test)]
@@ -168,6 +169,8 @@ fn disclosures(blocks: &[Block], out: &mut Vec<(u64, bool)>) {
 #[derive(Clone, Debug)]
 pub struct LayoutOptions {
 	pub width: f32,
+	/// Apply the MVSS `preview` context to this layout.
+	pub preview: bool,
 	/// The reading area's height, used to center a singly displayed picture.
 	/// Zero leaves the document top-aligned.
 	pub viewport_height: f32,
@@ -220,6 +223,7 @@ impl Default for LayoutOptions {
 	fn default() -> Self {
 		Self {
 			width: 760.0,
+			preview: false,
 			viewport_height: 0.0,
 			font_size: 18.0,
 			justify: true,
@@ -246,7 +250,7 @@ impl Default for LayoutOptions {
 
 impl PartialEq for LayoutOptions {
 	fn eq(&self, other: &Self) -> bool {
-		(self.width, self.viewport_height) == (other.width, other.viewport_height)
+		(self.width, self.viewport_height, self.preview) == (other.width, other.viewport_height, other.preview)
 			&& self.font_size == other.font_size
 			&& self.justify == other.justify
 			&& self.hyphenate == other.hyphenate
@@ -340,6 +344,7 @@ struct CacheEntry {
 
 #[derive(Clone, Hash, PartialEq, Eq)]
 struct CacheKey {
+	context: u64,
 	position: u8,
 	external: u64,
 	content: markview_document::ContentKey,
@@ -531,10 +536,20 @@ impl LayoutEngine {
 		document: &Document,
 		options: &LayoutOptions,
 		images: &crate::image::ImageSnapshot,
+		progress: impl FnMut(&LayoutSnapshot) -> bool,
+		cancelled: impl Fn() -> bool + Sync,
+	) -> Option<LayoutSnapshot> {
+		let layout = self.begin_layout(document, options, images);
+		self.complete_layout(document, layout, progress, cancelled)
+	}
+
+	fn complete_layout(
+		&mut self,
+		document: &Document,
+		mut layout: ProgressiveLayout,
 		mut progress: impl FnMut(&LayoutSnapshot) -> bool,
 		cancelled: impl Fn() -> bool + Sync,
 	) -> Option<LayoutSnapshot> {
-		let mut layout = self.begin_layout(document, options, images);
 		while !layout.is_complete() {
 			if cancelled() || !progress(layout.snapshot()) {
 				return None;

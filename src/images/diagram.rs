@@ -394,7 +394,7 @@ mod tests {
 	fn theme(table: &str) -> DiagramTheme {
 		resolve(
 			&Stylesheet::parse(&format!(
-				"format_version=2\nversion=1\n[mermaid]\n{table}"
+				"format_version=3\nversion=1\n[mermaid]\n{table}"
 			))
 			.unwrap(),
 			None,
@@ -452,7 +452,7 @@ mod tests {
 	#[test]
 	fn a_font_family_resolves_font_definitions_like_a_rule() {
 		let sheet = Stylesheet::parse(
-			"format_version=2\nversion=1\n\
+			"format_version=3\nversion=1\n\
 			 [[fontdef]]\nid='reading'\nlookfor=['Noto Serif CJK SC', 'serif']\n\
 			 [[fontdef]]\nid='emoji'\nemoji=true\nlookfor=['Noto Color Emoji']\n\
 			 [mermaid]\nfont_family=['reading', 'emoji', 'monospace']",
@@ -466,7 +466,7 @@ mod tests {
 		// A `fontdef` the sheet declares but did not select resolves to
 		// nothing, as it does for a rule.
 		let sheet = Stylesheet::parse(
-			"format_version=2\nversion=1\n\
+			"format_version=3\nversion=1\n\
 			 [[fontdef]]\nid='serif[cjk]'\ntype='TC'\nlookfor=['Songti TC']\n\
 			 [mermaid]\nfont_family=['serif[cjk]', 'monospace']",
 		)

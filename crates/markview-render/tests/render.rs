@@ -127,7 +127,7 @@ fn merged_table_borders_have_single_stroke_coverage_at_every_scale()
 	));
 	let mut sheet = (*Stylesheet::bundled(false)).clone();
 	sheet.merge(&Stylesheet::parse(concat!(
-		"format_version=2\nversion=1\n",
+		"format_version=3\nversion=1\n",
 		"[[rule]]\nwhen=['body']\nbackground='#FFFFFF'\n",
 		"[[rule]]\nwhen=['table','cell']\nborder_width=2\n",
 		"border_color='#00000080'\nbackground='#FFFFFF'\n",
@@ -241,7 +241,7 @@ fn segmented_borders_stay_below_cell_text_with_zero_padding()
 	for widths in [[0, 0, 0], [8, 12, 16]] {
 		let mut sheet = (*Stylesheet::bundled(false)).clone();
 		sheet.merge(&Stylesheet::parse(&format!(concat!(
-			"format_version=2\nversion=1\n",
+			"format_version=3\nversion=1\n",
 			"[[rule]]\nwhen=['body']\ncolor='#000000'\nbackground='#FFFFFF'\n",
 			"[[rule]]\nwhen=['table','cell']\npadding=0\nborder_width={}\nborder_color='#FF0000'\n",
 			"[[rule]]\nwhen=['table','first_child','cell']\nborder_width={}\n",
@@ -399,6 +399,7 @@ fn preview_scene_composes_above_the_frame_only_in_its_rect()
 		h: 125.0,
 	};
 	let preview = markview_render::Preview {
+		interaction: None,
 		snapshot: &snapshot,
 		scroll: 0.0,
 		rect,

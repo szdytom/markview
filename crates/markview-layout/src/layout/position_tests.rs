@@ -19,7 +19,7 @@ const SOURCES: &[&str] = &[
 fn options() -> LayoutOptions {
 	let mut stylesheet = (*crate::style::Stylesheet::bundled(false)).clone();
 	stylesheet.merge(&crate::style::Stylesheet::parse(
-		"format_version = 2\nversion = 1\n[[rule]]\nwhen = ['img', 'caption']\nsource = 'title'\nspace_before = 0.35\nspace_after = 0.45\n[[rule]]\nwhen = ['list_item']\nspace_before = 0.35\nspace_after = 0.45\npadding = 0.3\n",
+		"format_version = 3\nversion = 1\n[[rule]]\nwhen = ['img', 'caption']\nsource = 'title'\nspace_before = 0.35\nspace_after = 0.45\n[[rule]]\nwhen = ['list_item']\nspace_before = 0.35\nspace_after = 0.45\npadding = 0.3\n",
 	).unwrap());
 	LayoutOptions {
 		stylesheet: Arc::new(stylesheet),

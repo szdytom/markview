@@ -40,7 +40,7 @@ pub fn check(data: &[u8]) {
 			}
 			1 => options.font_size = 10. + f32::from(value % 32),
 			2 => {
-				let patch = Stylesheet::parse(&format!("format_version = 2\nversion = 1\ntargets = [\"ui\"]\n[[rule]]\nwhen = [\"p\"]\nspace_after = {}\nline_height = {}\n", f32::from(value % 8) / 4., 1. + f32::from(value % 5) / 4.)).unwrap();
+				let patch = Stylesheet::parse(&format!("format_version = 3\nversion = 1\ntargets = [\"ui\"]\n[[rule]]\nwhen = [\"p\"]\nspace_after = {}\nline_height = {}\n", f32::from(value % 8) / 4., 1. + f32::from(value % 5) / 4.)).unwrap();
 				let mut sheet = if value % 2 == 0 {
 					(*Stylesheet::bundled(false)).clone()
 				} else {

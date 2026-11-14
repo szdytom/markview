@@ -412,7 +412,7 @@ mod tests {
 		let source = tmp.path().join("a.mvss.toml");
 		fs::write(
 			&source,
-			"format_version=2\nversion=1\n[[rule]]\nwhen=['body']\ncolor='#abcdef'",
+			"format_version=3\nversion=1\n[[rule]]\nwhen=['body']\ncolor='#abcdef'",
 		)
 		.unwrap();
 		let sheet = validate(&source).unwrap();
@@ -431,7 +431,7 @@ mod tests {
 		let source = tmp.path().join("noto.mvss.toml");
 		fs::write(
 			&source,
-			"format_version=2\nversion=1\n[[font-family]]\nid='reading'\nlookfor=['Noto Serif']\n[[font-family.source]]\nfiles=['https://example.invalid/NotoSerif-Regular.ttf']\n[[rule]]\nwhen=['body']\nfont=[{family='serif'}]",
+			"format_version=3\nversion=1\n[[font-family]]\nid='reading'\nlookfor=['Noto Serif']\n[[font-family.source]]\nfiles=['https://example.invalid/NotoSerif-Regular.ttf']\n[[rule]]\nwhen=['body']\nfont=[{family='serif'}]",
 		)
 		.unwrap();
 		let sheet = validate(&source).unwrap();
@@ -458,14 +458,14 @@ mod tests {
 		let source = tmp.path().join("a.mvss.toml");
 		fs::write(
 			&source,
-			"format_version=2\nversion=1\n[[rule]]\nwhen=['body']\ncolor='#abcdef'",
+			"format_version=3\nversion=1\n[[rule]]\nwhen=['body']\ncolor='#abcdef'",
 		)
 		.unwrap();
 		install(&source, &dir, false).unwrap();
 		assert!(install(&source, &dir, false).is_err());
 		fs::write(
 			&source,
-			"format_version=2\nversion=2\n[[rule]]\nwhen=['body']\ncolor='#123456'",
+			"format_version=3\nversion=2\n[[rule]]\nwhen=['body']\ncolor='#123456'",
 		)
 		.unwrap();
 		install(&source, &dir, false).unwrap();
@@ -479,7 +479,7 @@ mod tests {
 		);
 		fs::write(
 			&source,
-			"format_version=2\nversion=3\n[[rule]]\nwhen=['body']\ncolor='#123456'",
+			"format_version=3\nversion=3\n[[rule]]\nwhen=['body']\ncolor='#123456'",
 		)
 		.unwrap();
 		install(&source, &dir, true).unwrap();
@@ -493,7 +493,7 @@ mod tests {
 		let tmp = tempfile::tempdir().unwrap();
 		fs::write(
 			tmp.path().join("a.mvss.toml"),
-			"format_version=2\nversion=1\n[[rule]]\nwhen=['body']\ncolor='#123456'",
+			"format_version=3\nversion=1\n[[rule]]\nwhen=['body']\ncolor='#123456'",
 		)
 		.unwrap();
 		let s = load(&["a".into(), "dark".into()], Some(tmp.path())).unwrap();
@@ -516,7 +516,7 @@ mod cascade_tests {
 		let tmp = tempfile::tempdir().unwrap();
 		fs::write(
 			tmp.path().join("fonts.mvss.toml"),
-			"format_version=2\nversion=1\n[[rule]]\nwhen=['em']\nfont=[{family='Custom'}]",
+			"format_version=3\nversion=1\n[[rule]]\nwhen=['em']\nfont=[{family='Custom'}]",
 		)
 		.unwrap();
 		let sheet =
@@ -556,7 +556,7 @@ mod theme_tests {
 	fn fallback_is_hidden_reserved_and_beneath_explicit_rules() {
 		let dir = tempfile::tempdir().unwrap();
 		let source = dir.path().join("builtin.mvss.toml");
-		fs::write(&source, "format_version=2\nversion=1\n").unwrap();
+		fs::write(&source, "format_version=3\nversion=1\n").unwrap();
 		assert!(install(&source, dir.path(), true).is_err());
 		assert!(
 			load_with_cjk_type(&["builtin".into()], None, CjkType::Sc).is_err()
@@ -573,7 +573,7 @@ mod theme_tests {
 		);
 		fs::write(
 			dir.path().join("custom.mvss.toml"),
-			"format_version=2\nversion=1\n[[rule]]\nwhen=['p']\nspace_after=1.23\n",
+			"format_version=3\nversion=1\n[[rule]]\nwhen=['p']\nspace_after=1.23\n",
 		)
 		.unwrap();
 		for id in ["light", "dark"] {
@@ -650,7 +650,7 @@ mod target_tests {
 	fn write_style(dir: &Path, id: &str, targets: &str) {
 		fs::write(
 			dir.join(format!("{id}{SUFFIX}")),
-			format!("format_version=2\nversion=1\n{targets}\n[[rule]]\nwhen=['body']\ncolor='#123456'"),
+			format!("format_version=3\nversion=1\n{targets}\n[[rule]]\nwhen=['body']\ncolor='#123456'"),
 		).unwrap();
 	}
 
@@ -876,7 +876,7 @@ mod media_tests {
 		fs::write(
 			dir.path().join("adaptive.mvss.toml"),
 			r#"
-format_version = 2
+format_version = 3
 version = 1
 [[rule]]
 when = ["p"]

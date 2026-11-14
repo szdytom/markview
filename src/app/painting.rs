@@ -120,11 +120,11 @@ impl<P: super::SendEvent> App<P> {
 		let target = frame.texture.create_view(&Default::default());
 		let rasterized_before = renderer.raster_stats().rasterized;
 		let started = Instant::now();
-		let submission = renderer.render_with_preview(
+		let submission = renderer.render_document_scenes(
 			&self.readers.session.display.snapshot,
 			&view,
 			&overlay,
-			preview.as_ref(),
+			preview.as_slice(),
 			&target,
 		)?;
 		let prepared_ms = started.elapsed().as_secs_f64() * 1000.0;

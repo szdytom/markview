@@ -62,7 +62,7 @@ impl Case {
 		}
 		if !self.rules.is_empty() {
 			sheet.merge(&Stylesheet::parse(&format!(
-				"format_version=2\nversion=1\n{}",
+				"format_version=3\nversion=1\n{}",
 				self.rules
 			))?);
 		}

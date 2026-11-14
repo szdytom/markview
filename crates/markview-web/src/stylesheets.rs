@@ -68,8 +68,8 @@ mod tests {
 	use super::*;
 	use markview_layout::style::{Color, Condition, MediaContext};
 
-	const FIRST: &str = "format_version = 2\nversion = 1\n[[rule]]\nwhen = ['body']\ncolor = '#112233'";
-	const SECOND: &str = "format_version = 2\nversion = 1\n[[rule]]\nwhen = ['body']\ncolor = '#445566'";
+	const FIRST: &str = "format_version = 3\nversion = 1\n[[rule]]\nwhen = ['body']\ncolor = '#112233'";
+	const SECOND: &str = "format_version = 3\nversion = 1\n[[rule]]\nwhen = ['body']\ncolor = '#445566'";
 
 	#[test]
 	fn registration_caches_rules_and_replaces_only_after_validation() {
@@ -82,7 +82,7 @@ mod tests {
 			("light", "invalid TOML"),
 			(
 				"light",
-				"format_version = 2\nversion = 1\ntargets = ['pdf']",
+				"format_version = 3\nversion = 1\ntargets = ['pdf']",
 			),
 			("bundled:light", FIRST),
 			("bundled:custom", FIRST),

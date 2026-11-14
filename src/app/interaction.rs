@@ -546,6 +546,13 @@ impl<P: super::SendEvent> App<P> {
 	/// nothing to copy: no selection, an empty one, or one whose revision the
 	/// snapshot has outlived.
 	pub(super) fn selected_text(&self) -> Option<String> {
+		if let Some(floating) = self
+			.preview
+			.floating()
+			.filter(|floating| floating.focused())
+		{
+			return floating.selected_text();
+		}
 		let selection = self.interaction.selection.filter(|s| !s.is_empty())?;
 		let text =
 			self.readers.session.display.snapshot.extract_text(

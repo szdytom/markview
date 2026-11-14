@@ -23,7 +23,7 @@ fn engine(threads: usize) -> LayoutEngine {
 
 fn options() -> LayoutOptions {
 	let mut stylesheet = (*Stylesheet::bundled(false)).clone();
-	stylesheet.merge(&Stylesheet::parse("format_version=2\nversion=1\n[[rule]]\nwhen=['p','first_child']\nsize=1.3\n[[rule]]\nwhen=['p','last_child']\nspace_after=2").unwrap());
+	stylesheet.merge(&Stylesheet::parse("format_version=3\nversion=1\n[[rule]]\nwhen=['p','first_child']\nsize=1.3\n[[rule]]\nwhen=['p','last_child']\nspace_after=2").unwrap());
 	LayoutOptions {
 		width: 320.,
 		stylesheet: Arc::new(stylesheet),

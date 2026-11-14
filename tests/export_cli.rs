@@ -226,7 +226,7 @@ fn buffer_exports_preserve_resource_trust_and_explicit_image_grants() {
 fn custom_templates_errors_and_cancellation_preserve_target() {
 	let dir = tempfile::tempdir().unwrap();
 	let style = dir.path().join("custom.mvss.toml");
-	std::fs::write(&style, "format_version=2\nversion=1\ntargets=['pdf']\n[page]\nsize='a5'\n[mermaid]\nfont_family=['Diagram Literal']\n[[rule]]\nwhen=['code_block']\nfont=[{family='Code Literal'}]\n[[fontdef]]\nid='serif'\nlookfor=['Noto Serif']\n").unwrap();
+	std::fs::write(&style, "format_version=3\nversion=1\ntargets=['pdf']\n[page]\nsize='a5'\n[mermaid]\nfont_family=['Diagram Literal']\n[[rule]]\nwhen=['code_block']\nfont=[{family='Code Literal'}]\n[[fontdef]]\nid='serif'\nlookfor=['Noto Serif']\n").unwrap();
 	let output = dir.path().join("custom.pdf");
 	success(run(
 		&[
@@ -320,7 +320,7 @@ fn file_and_buffer_pdf_exports_share_templates_fonts_and_reading_options() {
 	let text = "# Snapshot\n\nBody paragraph.\n\n中文\n";
 	std::fs::write(&source, text).unwrap();
 	let style = dir.path().join("custom.mvss.toml");
-	std::fs::write(&style, "format_version=2\nversion=1\ntargets=['pdf']\n[page]\nsize='a5'\nlandscape=true\n[[rule]]\nwhen=['p']\nmedia=['landscape','pdf']\nline_height=1.8\n").unwrap();
+	std::fs::write(&style, "format_version=3\nversion=1\ntargets=['pdf']\n[page]\nsize='a5'\nlandscape=true\n[[rule]]\nwhen=['p']\nmedia=['landscape','pdf']\nline_height=1.8\n").unwrap();
 	let cjk = Path::new(env!("CARGO_MANIFEST_DIR")).join(
 		"crates/markview-render/tests/fonts/NotoSerifCJKtc-Regular-subset.otf",
 	);

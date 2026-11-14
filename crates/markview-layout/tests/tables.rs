@@ -24,7 +24,7 @@ fn fonts() -> FontConfig {
 fn sheet(extra: &str) -> Arc<Stylesheet> {
 	let mut sheet = (*Stylesheet::bundled(false)).clone();
 	sheet.merge(
-		&Stylesheet::parse(&format!("format_version=2\nversion=1\n{extra}"))
+		&Stylesheet::parse(&format!("format_version=3\nversion=1\n{extra}"))
 			.unwrap(),
 	);
 	Arc::new(sheet)
@@ -95,7 +95,7 @@ fn table_grid_has_single_borders_and_mode_changes_invalidate_reuse() {
 		}
 		let mut separate = (*sheet).clone();
 		separate.merge(&Stylesheet::parse(
-			"format_version=2\nversion=1\n[[rule]]\nwhen=['table']\nborder_collapse='separate'"
+			"format_version=3\nversion=1\n[[rule]]\nwhen=['table']\nborder_collapse='separate'"
 		).unwrap());
 		assert_ne!(separate.layout_key(), opts.stylesheet.layout_key());
 		let separate = engine.layout(
@@ -146,7 +146,7 @@ fn collapsed_borders_keep_the_wider_cells_style_and_respect_row_gaps() {
 		let mut stylesheet = sheet(rules);
 		Arc::make_mut(&mut stylesheet).merge(
 			&Stylesheet::parse(&format!(
-				"format_version=2\nversion=1\n{extra}"
+				"format_version=3\nversion=1\n{extra}"
 			))
 			.unwrap(),
 		);

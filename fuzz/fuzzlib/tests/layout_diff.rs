@@ -134,7 +134,7 @@ fn trimmed_leading_spacing_keeps_translated_extents() {
 	let mut sheet = (*Stylesheet::bundled(false)).clone();
 	sheet.merge(
 		&Stylesheet::parse(
-			"format_version = 2\nversion = 1\n[[rule]]\nwhen = ['blockquote']\npadding = 0\nborder_width = 0\nspace_after = 0\n",
+			"format_version = 3\nversion = 1\n[[rule]]\nwhen = ['blockquote']\npadding = 0\nborder_width = 0\nspace_after = 0\n",
 		)
 		.unwrap(),
 	);

@@ -1,4 +1,4 @@
-//! Markview Stylesheet v2: strict parsing, field-wise cascading and semantic text styles.
+//! Markview Stylesheet v3: strict parsing, field-wise cascading and semantic text styles.
 use anyhow::{Context, Result, bail};
 use serde::Deserialize;
 use serde::de::IntoDeserializer;
@@ -17,9 +17,9 @@ impl StylesheetSource {
 		let mut doc = source.parse::<toml_edit::DocumentMut>()?;
 		let format_version =
 			doc.remove("format_version").and_then(|v| v.as_integer());
-		if format_version != Some(2) {
+		if format_version != Some(super::FORMAT_VERSION) {
 			bail!(
-				"format_version: expected stylesheet format version = 2 (format 1 is no longer read)"
+				"format_version: expected stylesheet format version = 3; formats 1 and 2 are no longer read. Upgrade guide: https://github.com/szdytom/markview/blob/main/docs/users/mvss-v3-upgrade.md"
 			);
 		}
 		let version = doc
@@ -567,7 +567,7 @@ fn restricted_fields(
 	let page_furniture =
 		has(K::PageHeader) || has(K::PageFooter) || has(K::PageNumber);
 	let restrictions: &[(bool, &'static [&'static str])] = &[
-		(has(K::Preview), &["radius"]),
+		(has(K::TabPreview), &["radius"]),
 		(
 			has(K::Scrollbar),
 			&[

@@ -1,6 +1,6 @@
 use crate::state::{ChromeCommand, DocumentCommand};
 use crate::state::{
-	Command, Drag, Grain, HoveredLink, ScrollbarDrag, Selection, WheelGesture,
+	Command, Drag, HoveredLink, ScrollbarDrag, Selection, WheelGesture,
 	WheelStep,
 };
 use crate::{link, state};
@@ -304,6 +304,11 @@ impl<P: super::SendEvent> App<P> {
 			let was_scrollbar = self.document_scrollbar().is_some();
 			let was_scrollbar_opacity = self.scrollbar_opacity();
 			self.interaction.pointer.move_to(point);
+			if self.preview_input(markview_interaction::ViewInput::Move(
+				markview_interaction::Point::new(point.0, point.1),
+			)) {
+				return;
+			}
 			if let Some((_, (px, py))) =
 				self.interaction.pointer.pressed_image()
 				&& (point.0 - px).hypot(point.1 - py) > 3.
@@ -407,7 +412,9 @@ impl<P: super::SendEvent> App<P> {
 		self.interaction.pointer.release();
 		self.interaction.pointer.clear_pressed_image();
 		self.interaction.pointer.clear_document_hover();
-		self.dismiss_preview();
+		if !self.preview_captured() {
+			self.dismiss_preview();
+		}
 		if let Some(w) = &self.window {
 			w.set_cursor(CursorIcon::Default.into());
 		}
@@ -415,6 +422,20 @@ impl<P: super::SendEvent> App<P> {
 	}
 
 	pub(super) fn pointer_pressed(&mut self) {
+		let point = self.interaction.pointer.cursor();
+		let mods = self.interaction.pointer.modifiers();
+		if self.preview_input(markview_interaction::ViewInput::Press {
+			point: markview_interaction::Point::new(point.0, point.1),
+			modifiers: markview_interaction::Modifiers {
+				shift: mods.shift_key(),
+				control: mods.control_key(),
+				alt: mods.alt_key(),
+				meta: mods.meta_key(),
+			},
+			at: Instant::now(),
+		}) {
+			return;
+		}
 		self.prepare_press();
 		if self.press_modal()
 			|| self.press_quick_open()
@@ -576,67 +597,29 @@ impl<P: super::SendEvent> App<P> {
 		{
 			return;
 		}
-		let link = self.link_target_at(x, y);
 		self.interaction.pointer.set_pressed_image(
 			self.image_at_cursor().map(|(src, _)| (src, (x, y))),
 		);
 		self.interaction.pointer.set_dragged(false);
-		if let Some(position) = self.text_at_cursor() {
-			let click_count =
-				if self.interaction.pointer.modifiers().shift_key() {
-					self.interaction.reset_clicks();
-					1
-				} else {
-					self.interaction.click_count(Instant::now())
-				};
-			let click_count =
-				if matches!(link.as_ref(), Some(LinkTarget::Disclosure(_))) {
-					1
-				} else {
-					click_count
-				};
-			match click_count {
-				2 => {
-					let selection = self
-						.readers
-						.session
-						.display
-						.snapshot
-						.select_word_at(position);
-					if !self
-						.interaction
-						.begin_grain_selection(selection, Grain::Word)
-					{
-						self.interaction
-							.begin_selection(position, link.clone());
-					}
-				}
-				3 => {
-					let selection = self
-						.readers
-						.session
-						.display
-						.snapshot
-						.select_block_at(position);
-					if !self
-						.interaction
-						.begin_grain_selection(selection, Grain::Block)
-					{
-						self.interaction
-							.begin_selection(position, link.clone());
-					}
-				}
-				_ => self.interaction.begin_selection(position, link.clone()),
-			}
-		} else if let Some(link) = link {
-			// A summary line's marker carries no text, but the whole line is
-			// still its control.
-			self.interaction.begin_link_press(link);
-		}
+		let geometry = self.view_geometry();
+		let context = markview_interaction::DocumentInteraction {
+			snapshot: &self.readers.session.display.snapshot,
+			viewport: geometry,
+			horizontal: &self.readers.session.display.horizontal,
+			revision: self.readers.session.accepted_revision,
+		};
+		markview_interaction::DocumentView::from(context)
+			.press_selection(&mut self.interaction, Instant::now());
 		self.redraw();
 	}
 
 	pub(super) fn pointer_released(&mut self) {
+		let point = self.interaction.pointer.cursor();
+		if self.preview_input(markview_interaction::ViewInput::Release(
+			markview_interaction::Point::new(point.0, point.1),
+		)) {
+			return;
+		}
 		if self.interaction.panels.sidebar_mut().take().is_some() {
 			self.refresh_hover();
 			self.redraw();
@@ -746,6 +729,10 @@ impl<P: super::SendEvent> App<P> {
 		dy: f32,
 		mode: markview_interaction::WheelMode,
 	) {
+		if self.preview.scroll(self.interaction.pointer.cursor(), dy) {
+			self.redraw();
+			return;
+		}
 		if self.scroll_start(dy, mode) {
 			return;
 		}
@@ -944,7 +931,8 @@ impl<P: super::SendEvent> App<P> {
 		if let Some(w) = &self.window {
 			w.set_cursor(cursor.into());
 		}
-		if hover_changed {
+		let preview_changed = self.refresh_open_preview();
+		if hover_changed || preview_changed {
 			self.redraw();
 		}
 	}
@@ -1048,12 +1036,19 @@ impl<P: super::SendEvent> App<P> {
 
 	/// Opens the full-size viewer over the image under the cursor, if any.
 	pub(super) fn open_viewer_at_cursor(&mut self) {
+		if let Some((source, rect)) = self.image_at_cursor() {
+			self.open_viewer_image(source, rect);
+		}
+	}
+
+	pub(super) fn open_viewer_image(
+		&mut self,
+		src: String,
+		rect: markview_layout::scene::Rect,
+	) {
 		if self.interaction.overlays.viewer_open() {
 			return;
 		}
-		let Some((src, rect)) = self.image_at_cursor() else {
-			return;
-		};
 		if let Some(resource) =
 			self.readers.session.blocked_images.get(&src).cloned()
 		{
@@ -1282,6 +1277,9 @@ impl<P: super::SendEvent> App<P> {
 	/// Pans the wide block under the pointer. `false` means no block was
 	/// there, so the caller can scroll the page instead of dropping the event.
 	pub(super) fn horizontal_by(&mut self, dx: f32) -> bool {
+		if self.preview_horizontal_by(dx) {
+			return true;
+		}
 		let consumed = markview_interaction::horizontal_by(
 			&self.readers.session.display.snapshot,
 			self.view_geometry(),

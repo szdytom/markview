@@ -1,6 +1,6 @@
 //! Document hit testing and hover, independent of a host's chrome.
 #[cfg(test)]
-mod proptests;
+pub(crate) mod proptests;
 
 use crate::Point;
 use markview_layout::{
@@ -96,6 +96,35 @@ impl DocumentInteraction<'_> {
 		}
 		let (x, y) = self.viewport.document_point(point.x, point.y);
 		self.snapshot.link_ref_at(x, y, self.horizontal)
+	}
+	/// The visible link fragment under `point`, in window coordinates.
+	pub fn link_rect(&self, point: Point) -> Option<Rect> {
+		let reference = self.link_ref(point)?;
+		let (x, y) = self.viewport.document_point(point.x, point.y);
+		let (bi, block) = self
+			.snapshot
+			.blocks
+			.iter()
+			.enumerate()
+			.find(|(_, b)| b.id == reference.block)?;
+		block.links().find_map(|(link, mut rect)| {
+			if link.id != reference.id {
+				return None;
+			}
+			let (offset, clip) =
+				block.command_view(link.commands.start, bi, self.horizontal);
+			rect.x -= offset;
+			if let Some(clip) = clip {
+				rect = rect.intersect(clip)?;
+			}
+			if !rect.contains(x, y - block.y) {
+				return None;
+			}
+			rect.y += block.y;
+			self.viewport
+				.window_rect(rect)
+				.intersect(self.viewport.clip())
+		})
 	}
 	pub fn image(&self, point: Point) -> Option<(&str, Rect, &str)> {
 		if !self.contains(point) {

@@ -944,6 +944,27 @@ impl<'a> Chrome<'a> {
 		{
 			return None;
 		}
+		if let Some(floating) = preview.floating.as_ref() {
+			out.extend(preview::surface(self.ui, floating.rect));
+			if let Some(bar) = floating.scrollbar() {
+				let (track, thumb) = bar.bars();
+				out.push(Draw::Rect(
+					track,
+					crate::layout::Paint::Styled(
+						markview_layout::style::Condition::Scrollbar,
+						markview_layout::style::ColorField::Track,
+					),
+				));
+				out.push(Draw::Rect(
+					thumb,
+					crate::layout::Paint::Styled(
+						markview_layout::style::Condition::Scrollbar,
+						markview_layout::style::ColorField::Thumb,
+					),
+				));
+			}
+			return Some(floating.body());
+		}
 		let anchor = self.preview_anchor(preview.target)?;
 		let layout = preview::layout(
 			&preview.card,
@@ -961,6 +982,7 @@ impl<'a> Chrome<'a> {
 		target: super::preview::Target,
 	) -> Option<Rect> {
 		match target {
+			super::preview::Target::Footnote { .. } => None,
 			super::preview::Target::Tab(id) => {
 				let index =
 					self.session.tabs.iter().position(|tab| tab.id == id)?;

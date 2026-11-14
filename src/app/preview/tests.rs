@@ -1,3 +1,7 @@
+mod asynchronous;
+mod golden;
+mod interaction_tests;
+mod profile;
 use super::*;
 use crate::{
 	app::{Event, SendEvent},
@@ -59,9 +63,21 @@ fn settle(app: &mut App<Proxy>, events: &mpsc::Receiver<Event>) {
 	}
 }
 
+fn finish_footnote(app: &mut App<Proxy>, now: Instant) {
+	app.preview_tick(now + PREPARE_DELAY);
+	let completion = app
+		.preview
+		.worker
+		.wait(Duration::from_secs(10))
+		.expect("the preview task did not finish");
+	app.preview.accept(completion);
+	app.preview_tick(now + SHOW_DELAY);
+}
+
 fn card(tab: u64) -> Open {
 	Open {
 		target: Target::Tab(tab),
+		floating: None,
 		card: Card {
 			title: vec!["notes.md".into()],
 			detail: "/tmp/notes.md".into(),
@@ -213,7 +229,7 @@ fn a_resting_pointer_opens_the_card_after_the_delay() {
 	assert!(draws.iter().any(|draw| matches!(
 		draw,
 		crate::layout::Draw::Box {
-			condition: markview_layout::style::Condition::Preview,
+			condition: markview_layout::style::Condition::TabPreview,
 			radius: 0.0,
 			..
 		}
@@ -1389,4 +1405,501 @@ fn changed_content_and_geometry_discard_the_resume_snapshot() {
 	app.preferences.values.font_size += 2.;
 	app.select_tab(0);
 	assert!(app.readers.session.display.cached_slice.is_none());
+}
+
+#[test]
+fn footnotes_share_delayed_cards_and_render_only_the_note() -> anyhow::Result<()>
+{
+	render_footnote_preview(false)
+}
+
+#[test]
+fn footnote_preview_styles_its_surface_and_content_without_styling_the_page()
+-> anyhow::Result<()> {
+	render_footnote_preview(true)
+}
+
+fn render_footnote_preview(styled: bool) -> anyhow::Result<()> {
+	let (mut app, events) = app();
+	if styled {
+		let mut stylesheet = (*app.preferences.values.stylesheet).clone();
+		stylesheet.merge(&markview_layout::style::Stylesheet::parse("format_version=3\nversion=1\n[[rule]]\nwhen=['preview']\nbackground='#fff8e7'\nborder_color='#b99852'\nborder_width=2\nradius=8\npadding=0.75\n[[rule]]\nwhen=['preview','p']\ncolor='#483c27'\nline_height=1.5")?);
+		app.preferences.values.stylesheet = std::sync::Arc::new(stylesheet);
+		app.ui
+			.set_stylesheet(app.preferences.values.stylesheet.clone());
+	}
+	let dir = tempfile::tempdir().unwrap();
+	let path = dir.path().join("footnotes.md");
+	std::fs::write(&path, "Surrounding prose[^note].\n\n[^note]: A **formatted** note with $x^2$.\n\n    - A list item\n").unwrap();
+	load(&mut app, &events, path);
+	let snapshot = &app.readers.session.display.snapshot;
+	let anchor = snapshot
+		.blocks
+		.iter()
+		.find_map(|block| {
+			block.links().find_map(|(link, mut rect)| {
+				if !matches!(
+					link.target,
+					markview_layout::scene::LinkTarget::FootnoteDefinition(_)
+				) {
+					return None;
+				}
+				rect.y += block.y;
+				Some(app.view_geometry().window_rect(rect))
+			})
+		})
+		.unwrap();
+	app.interaction
+		.pointer
+		.move_to((anchor.x + anchor.w / 2.0, anchor.y + anchor.h / 2.0));
+	let now = Instant::now();
+	app.hover_preview(now);
+	assert!(app.preview.open().is_none());
+	finish_footnote(&mut app, now);
+	let floating = app.preview.floating().expect("footnote preview");
+	assert!(
+		(floating.anchor.x - anchor.x).abs() < 0.001
+			&& (floating.anchor.y - anchor.y).abs() < 0.001
+	);
+	assert!(floating.rect.intersect(anchor).is_none());
+	assert_eq!(floating.snapshot.blocks.len(), 1);
+	let text: String = floating
+		.snapshot
+		.blocks
+		.iter()
+		.flat_map(|block| block.layout.text.iter())
+		.map(|node| node.text.as_str())
+		.collect();
+	assert!(
+		text.contains("formatted") && text.contains("A list item"),
+		"{text}"
+	);
+	assert!(!text.contains("Surrounding prose"));
+	assert!(
+		floating.snapshot.width < app.readers.session.display.snapshot.width
+	);
+	let rect = floating.rect;
+	assert_eq!(
+		floating.snapshot.content_id,
+		app.readers.session.document.as_ref().unwrap().content_key()
+	);
+	assert_ne!(
+		floating.snapshot.presentation_key,
+		app.readers.session.display.snapshot.presentation_key
+	);
+	if styled {
+		assert_eq!(floating.padding, [app.options().font_size * 0.75; 4]);
+	}
+	for (dx, dy) in [(0.2, 0.2), (0.8, 0.8), (0.5, 0.5)] {
+		app.dismiss_preview();
+		app.interaction
+			.pointer
+			.move_to((anchor.x + anchor.w * dx, anchor.y + anchor.h * dy));
+		app.hover_preview(now);
+		finish_footnote(&mut app, now);
+		assert_eq!(
+			app.preview.floating().unwrap().rect,
+			rect,
+			"placement must be independent of the hovered point within the reference"
+		);
+	}
+	let overlay = app.overlay();
+	let scene = app
+		.preview
+		.scene(&app.readers, crate::render::Theme::Light)
+		.unwrap();
+	assert!(scene.rect.w > 0.0 && scene.rect.h > 0.0);
+	let mut renderer = pollster::block_on(crate::render::Renderer::new(None))?;
+	renderer.set_stylesheet(app.options().stylesheet);
+	let geometry = app.view_geometry();
+	let frame = crate::render::View {
+		width: geometry.width as u32,
+		height: geometry.height as u32,
+		scale: 1.0,
+		left: geometry.left,
+		top: geometry.top,
+		bottom: geometry.bottom,
+		scroll: geometry.scroll,
+		theme: crate::render::Theme::Light,
+		horizontal: &app.readers.session.display.horizontal,
+		selection: None,
+		revision: 0,
+		hovered_link: None,
+		held_overflow: None,
+	};
+	let target = renderer.offscreen(frame.width, frame.height);
+	let target_view = target.create_view(&Default::default());
+	renderer.render_with_preview(
+		&app.readers.session.display.snapshot,
+		&frame,
+		&overlay,
+		None,
+		&target_view,
+	)?;
+	let before = renderer.read_pixels(&target)?;
+	renderer.render_with_preview(
+		&app.readers.session.display.snapshot,
+		&frame,
+		&overlay,
+		Some(&scene),
+		&target_view,
+	)?;
+	let after = renderer.read_pixels(&target)?;
+	let mut changed = 0;
+	for y in 0..frame.height {
+		for x in 0..frame.width {
+			let i = ((y * frame.width + x) * 4) as usize;
+			if before.rgba[i..i + 4] != after.rgba[i..i + 4] {
+				assert!(scene.rect.contains(x as f32 + 0.5, y as f32 + 0.5));
+				changed += 1;
+			}
+		}
+	}
+	assert!(
+		changed > 100,
+		"the rendered footnote must contain visible ink"
+	);
+	let directory = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+		.join("artifacts/preview");
+	std::fs::create_dir_all(&directory)?;
+	let name = if styled {
+		"footnote-hover-styled.png"
+	} else {
+		"footnote-hover.png"
+	};
+	renderer.save_png(&target, &directory.join(name))?;
+	if styled {
+		let body = scene.rect;
+		let pixel = |x: u32, y: u32| {
+			let i = ((y * after.width + x) * 4) as usize;
+			&after.rgba[i..i + 4]
+		};
+		let expected = markview_layout::style::Color(0xfff8e7ff)
+			.rgba()
+			.map(|channel| (channel * 255.0).round() as u8);
+		assert_eq!(
+			pixel((rect.x + 4.0) as u32, (rect.y + rect.h / 2.0) as u32),
+			expected
+		);
+		assert_eq!(
+			pixel(
+				(body.x + body.w - 3.0) as u32,
+				(body.y + body.h - 3.0) as u32
+			),
+			expected
+		);
+		assert_ne!(pixel(100, 300), expected);
+	}
+
+	app.interaction
+		.pointer
+		.move_to((rect.x + rect.w / 2.0, rect.y + rect.h / 2.0));
+	assert!(!app.hover_preview(now + SHOW_DELAY));
+	assert!(app.preview.open().is_some());
+	app.readers.session.scrolling.offset += 50.0;
+	app.refresh_hover();
+	assert!(
+		app.preview.open().is_none(),
+		"scrolling invalidates the anchor"
+	);
+	Ok(())
+}
+
+#[test]
+fn shared_floating_scenes_scroll_and_consume_wheel_at_their_limits() {
+	let (mut app, _events) = app();
+	let source = "A long paragraph in a reusable hover scene.\n\n".repeat(40);
+	let document = markview_commonmark::parse(source.as_str());
+	let options = crate::layout::LayoutOptions {
+		width: 420.0,
+		..crate::test_support::options()
+	};
+	let snapshot =
+		crate::layout::LayoutEngine::new().layout(&document, &options);
+	let mut preview = Preview::default();
+	preview.show_scene(
+		Target::Tab(999),
+		Rect {
+			x: 300.0,
+			y: 250.0,
+			w: 10.0,
+			h: 18.0,
+		},
+		Rect {
+			x: 0.0,
+			y: 40.0,
+			w: 800.0,
+			h: 500.0,
+		},
+		snapshot,
+		document.revision(),
+		FrameStyle {
+			padding: [10.0; 4],
+			..Default::default()
+		},
+	);
+	let rect = preview.floating().unwrap().rect;
+	preview.set_body(Some(Rect {
+		x: rect.x + 10.0,
+		y: rect.y + 10.0,
+		w: rect.w - 20.0,
+		h: rect.h - 20.0,
+	}));
+	let point = (rect.x + 20.0, rect.y + 20.0);
+	assert!(preview.scroll(point, 100.0));
+	assert_eq!(
+		preview
+			.scene(&app.readers, crate::render::Theme::Light)
+			.unwrap()
+			.scroll,
+		100.0
+	);
+	assert!(preview.scroll(point, f32::MAX));
+	let bottom = preview.floating().unwrap().scroll;
+	assert!(bottom > 100.0);
+	assert!(preview.scroll(point, 100.0));
+	assert_eq!(preview.floating().unwrap().scroll, bottom);
+	assert!(!preview.scroll((rect.x - 1.0, rect.y), 100.0));
+	assert!(preview.scroll(point, -f32::MAX));
+	assert_eq!(preview.floating().unwrap().scroll, 0.0);
+	app.preview = preview;
+	app.interaction.pointer.move_to(point);
+	let page_scroll = app.readers.session.scrolling.offset;
+	app.scroll_wheel(100.0, markview_interaction::WheelMode::Direct);
+	assert_eq!(app.preview.floating().unwrap().scroll, 100.0);
+	assert_eq!(app.readers.session.scrolling.offset, page_scroll);
+	app.pointer_pressed();
+	assert!(app.preview.floating().unwrap().focused());
+	assert_eq!(app.readers.session.scrolling.offset, page_scroll);
+	assert!(
+		app.interaction.pointer.drag().is_none(),
+		"a popup press must not select the page underneath"
+	);
+}
+
+#[test]
+fn floating_scene_width_fits_content_up_to_the_maximum() {
+	let options = crate::layout::LayoutOptions {
+		width: 420.0,
+		..crate::test_support::options()
+	};
+	let mut widths = Vec::new();
+	for content in [
+		"Tiny.",
+		"A **formatted** note with $x^2$.",
+		&"A longer footnote that needs several lines of text. ".repeat(20),
+	] {
+		let document = markview_commonmark::parse(format!(
+			"Text[^note].\n\n[^note]: {content}\n"
+		));
+		let note = document
+			.blocks()
+			.iter()
+			.find(|b| {
+				matches!(
+					b.kind(),
+					markview_document::BlockKind::Footnote { .. }
+				)
+			})
+			.unwrap();
+		let document =
+			markview_document::DocumentBuilder::new(document.revision())
+				.finish(vec![note.clone()]);
+		let scene = layout_scene(
+			&document,
+			&document.blocks()[0],
+			&options,
+			&Default::default(),
+		);
+		assert!(scene.width <= options.width);
+		for block in &scene.blocks {
+			for (node, cluster, rect) in block.clusters() {
+				if block.layout.text[node].text[cluster.range.clone()]
+					.trim()
+					.is_empty()
+				{
+					continue;
+				}
+				assert!(
+					scene.width == options.width
+						|| rect.x + rect.w <= scene.width + 1.0,
+					"the cropped viewport must contain its content: {content:?}, width {}, rect {rect:?}",
+					scene.width
+				);
+			}
+		}
+		widths.push(scene.width);
+	}
+	assert!(widths[0] < widths[1] && widths[1] < widths[2], "{widths:?}");
+	assert!(
+		widths[0] < 120.0,
+		"short notes must shrink to fit: {widths:?}"
+	);
+	assert!(
+		widths[2] > 380.0,
+		"long notes should use the available measure: {widths:?}"
+	);
+
+	let document = markview_commonmark::parse(
+		"A note that is longer than a narrow viewport allows.",
+	);
+	let narrow = crate::layout::LayoutOptions {
+		width: 140.0,
+		..options
+	};
+	assert!(
+		layout_scene(
+			&document,
+			&document.blocks()[0],
+			&narrow,
+			&Default::default()
+		)
+		.width
+			<= 140.0
+	);
+}
+
+fn preview_footnote(definition: &str) -> markview_document::Document {
+	let parsed = markview_commonmark::parse(format!(
+		"Reference[^note].\n\n{definition}"
+	));
+	let notes = parsed
+		.blocks()
+		.iter()
+		.filter(|block| {
+			matches!(
+				block.kind(),
+				markview_document::BlockKind::Footnote { .. }
+			)
+		})
+		.cloned()
+		.collect();
+	markview_document::DocumentBuilder::new(parsed.revision()).finish(notes)
+}
+
+#[test]
+fn floating_scene_height_trims_nested_trailing_spacing() {
+	let document =
+		preview_footnote("[^note]: A paragraph.\n\n    - A list item\n");
+	let options = crate::layout::LayoutOptions {
+		width: 420.0,
+		..crate::test_support::options()
+	};
+	let scene = layout_scene(
+		&document,
+		&document.blocks()[0],
+		&options,
+		&Default::default(),
+	);
+	let full = crate::layout::LayoutEngine::new().layout(&document, &options);
+	let last_line = scene
+		.blocks
+		.iter()
+		.flat_map(|block| {
+			block
+				.clusters()
+				.map(move |(_, _, rect)| block.y + rect.y + rect.h)
+		})
+		.fold(0.0_f32, f32::max);
+	assert!((scene.height - last_line).abs() < 1.0);
+	assert!(
+		full.height - scene.height > options.font_size,
+		"the stacked paragraph, list and footnote spacing must stay outside the popup"
+	);
+	let positions = |snapshot: &LayoutSnapshot| {
+		snapshot
+			.blocks
+			.iter()
+			.flat_map(|block| {
+				block.clusters().map(move |(_, _, rect)| (block.y, rect))
+			})
+			.collect::<Vec<_>>()
+	};
+	assert_eq!(
+		positions(&scene),
+		positions(&full),
+		"trimming must preserve content spacing"
+	);
+}
+
+#[test]
+fn floating_scene_height_preserves_code_block_padding() {
+	let document = preview_footnote(
+		"[^note]:\n\n    ```rust\n    let answer = 42;\n    ```\n",
+	);
+	let options = crate::test_support::options();
+	let scene = layout_scene(
+		&document,
+		&document.blocks()[0],
+		&options,
+		&Default::default(),
+	);
+	let code_bottom = scene
+		.blocks
+		.iter()
+		.flat_map(|block| {
+			block.draw_commands().filter_map(move |(command, [_, dy])| {
+				match block.other_draw(command)? {
+					Draw::Box {
+						rect,
+						condition: markview_layout::style::Condition::CodeBlock,
+						..
+					} => Some(block.y + dy + rect.y + rect.h),
+					_ => None,
+				}
+			})
+		})
+		.max_by(f32::total_cmp)
+		.expect("the footnote has a code block");
+	assert!(scene.height >= code_bottom);
+	assert!(scene.height - code_bottom < 1.0);
+}
+
+#[test]
+fn cropping_floating_scenes_preserves_the_original_layout() {
+	let options = crate::layout::LayoutOptions {
+		width: 420.0,
+		..crate::test_support::options()
+	};
+	for definition in [
+		"[^note]: A **formatted** note with $x^2$.\n\n    - A list item\n",
+		"[^note]: A paragraph with enough words to wrap over several lines while preserving the line breaks computed at the maximum width.\n",
+		"[^note]:\n\n    ```rust\n    let answer = 42;\n    ```\n",
+	] {
+		let document = preview_footnote(definition);
+		let original =
+			crate::layout::LayoutEngine::new().layout(&document, &options);
+		let cropped = layout_scene(
+			&document,
+			&document.blocks()[0],
+			&options,
+			&Default::default(),
+		);
+		let positions = |scene: &LayoutSnapshot| {
+			scene
+				.blocks
+				.iter()
+				.flat_map(|block| {
+					block.clusters().map(move |(_, cluster, rect)| {
+						(block.y, cluster.range, rect)
+					})
+				})
+				.collect::<Vec<_>>()
+		};
+		assert_eq!(positions(&cropped), positions(&original));
+		for block in &cropped.blocks {
+			for (command, _) in block.draw_commands() {
+				if let Some(draw @ Draw::Box { rect, .. }) =
+					block.other_draw(command)
+					&& draw_bottom(draw, &options.stylesheet).is_some()
+					&& let Some(rect) = block.rect(command, *rect)
+				{
+					assert!(
+						rect.x + rect.w <= cropped.width + 0.01,
+						"visible borders must not be cropped"
+					);
+				}
+			}
+		}
+	}
 }

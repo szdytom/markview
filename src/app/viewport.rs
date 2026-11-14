@@ -160,7 +160,7 @@ impl<P: super::SendEvent> App<P> {
 		let content =
 			self.readers.session.display.snapshot.scroll_limit(viewport)
 				+ viewport;
-		Scrollbar::vertical(
+		markview_interaction::DocumentView::vertical_scrollbar(
 			track,
 			self.readers.session.scrolling.offset,
 			content,

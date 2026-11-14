@@ -64,7 +64,7 @@ fn diagrams_match_rendering_baselines() -> Result<()> {
 			)?
 		} else {
 			format!(
-				"format_version=2\nversion=1\n[mermaid]\ntheme='{preset}'\nfont_family=['serif']"
+				"format_version=3\nversion=1\n[mermaid]\ntheme='{preset}'\nfont_family=['serif']"
 			)
 		};
 		sheet.merge(&Stylesheet::parse(&rules)?);

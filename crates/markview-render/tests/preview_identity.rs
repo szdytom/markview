@@ -221,6 +221,7 @@ fn a_different_preview_with_the_same_shape_is_tried_again() -> anyhow::Result<()
 		h: 1000.0,
 	};
 	let oversized_preview = Preview {
+		interaction: None,
 		snapshot: &oversized,
 		scroll: 0.0,
 		rect,
@@ -266,6 +267,7 @@ fn a_different_preview_with_the_same_shape_is_tried_again() -> anyhow::Result<()
 
 	// Same block count, same height, different text: the card must compose.
 	let fitted_preview = Preview {
+		interaction: None,
 		snapshot: &fitted,
 		scroll: 0.0,
 		rect,

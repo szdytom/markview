@@ -22,13 +22,14 @@ observed Mesa rounding difference without allowing a percentage of bad pixels.
 | Markdown, MVSS and PDF pages | `crates/markview-render/tests/goldens/` | `artifacts/render-goldens/` |
 | Native settings and button states | `tests/goldens/ui/` | `artifacts/ui-goldens/` |
 | Connected tabs: hover symmetry and active-tab drag overlap at 100%, 125% and 200% DPI | `tests/goldens/tabs/` | `artifacts/tab-goldens/` |
+| Footnote hover previews: short/long content, selection, images, scrolling, light/dark and fractional DPI | `tests/goldens/hover-preview/` | `artifacts/hover-preview-goldens/` |
 | Mermaid and inline SVG | `tests/goldens/diagrams/` | `artifacts/diagram-goldens/` |
 | Search and text selection | `tests/goldens/search/` | `artifacts/search/` |
 
 Failures retain actual, expected and magenta difference PNGs. PDF cases also
 retain the exported PDFs. CI uploads the artifacts only when tests fail and
 retains them for three days.
-Unused baselines fail the Markdown, UI and diagram suites, so removing a case
+Unused baselines fail the Markdown, UI, hover preview and diagram suites, so removing a case
 cannot silently leave an untested PNG. Every Markdown fixture must be registered.
 
 ## Add a visual case
@@ -75,3 +76,31 @@ Keep the two-level tolerance fixed. Driver or Poppler changes need a controlled
 comparison before updating images. Pinning the test fonts prevents host font
 installation from changing the baseline; it does not assert that every user's
 downloaded/system font produces identical pixels.
+
+## Measure hover previews
+
+The ignored `measure_hover_preview` test measures a loaded document through the
+real 30 ms preparation deadline, 100 ms display gate, asynchronous subtree layout,
+chrome and offscreen GPU completion. It records
+the first hover and 30 reopenings. It also records background build time and the
+longest UI tick; build time overlaps the display delay and is not added to it. Run each case in a fresh process, with the
+Linux software-rendering environment above:
+
+```sh
+MARKVIEW_HOVER_CASE=long MARKVIEW_HOVER_OUTPUT=/tmp/hover-latency.json \
+  cargo test --release --locked --lib measure_hover_preview -- \
+  --ignored --nocapture --test-threads=1
+```
+
+Cases are `short`, `long`, `image`, `tall-image` and a generated approximately 25 KiB `stress`
+note. Repeat with `--features diagnostics` for process-wide Rust allocation
+counts, cumulative requested bytes, peak extra live bytes and retained bytes
+across scheduling, background construction, display gating and the first frame. Allocation counting is test-only and
+changes timing; use the uninstrumented run for latency. Requested bytes include
+the full new size of reallocations and exclude native driver allocations.
+
+RSS and process high-water RSS come from `/proc/self/status`; the high-water
+mark includes document loading and renderer initialization. Images are already
+decoded. GPU completion excludes window events, compositor presentation, display
+refresh and screenshot readback. These are diagnostic measurements, not timing
+assertions in CI.

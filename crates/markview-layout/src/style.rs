@@ -31,6 +31,9 @@ pub use types::{
 };
 use types::{CHAIN_BITS, CHAIN_MASK};
 
+/// The supported MVSS file format version.
+pub const FORMAT_VERSION: i64 = 3;
+
 /// The inline conditions this style activates, in application order.
 pub fn text_conditions(
 	style: &TextStyle,
@@ -292,6 +295,18 @@ impl Stylesheet {
 				color = Some(value);
 			}
 		});
+		if condition == Condition::Preview
+			&& field == ColorField::Background
+			&& color.is_none()
+		{
+			return self.color(Condition::Body, field);
+		}
+		if condition == Condition::Preview
+			&& field == ColorField::BorderColor
+			&& color.is_none()
+		{
+			return self.color(Condition::Panel, field);
+		}
 		color.unwrap_or(Color(0)).rgba()
 	}
 	/// Resolve one color field for an ordered chain: the most recently applied
@@ -938,7 +953,7 @@ pub struct TextAppearance {
 	pub paint: Paint,
 	pub background: Option<Paint>,
 	pub decoration: Vec<Decoration>,
-	/// Conditions entered so far, oldest first, packed six bits each.
+	/// Conditions entered so far, oldest first, packed seven bits each.
 	pub chain: u128,
 }
 impl Default for TextAppearance {

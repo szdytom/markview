@@ -102,11 +102,12 @@ impl View<'_> {
 /// A second document scene composed into part of the frame.
 ///
 /// The source is the scene itself, not a captured image: the host keeps the
-/// snapshot it already holds, and the renderer lays the visible slice out
-/// again at device resolution. The GPU viewport transform then maps that
+/// snapshot it already holds, and the renderer paints the visible slice
+/// at device resolution. The GPU viewport transform then maps that
 /// rendering into `rect`, so glyphs stay sharp while the thumbnail stays
 /// small, and no pixels are copied or cached between frames.
-pub struct Preview<'a> {
+pub struct DocumentScene<'a> {
+	pub interaction: Option<SceneInteraction<'a>>,
 	pub snapshot: &'a markview_layout::scene::LayoutSnapshot,
 	/// The document y the preview's top edge shows.
 	pub scroll: f32,
@@ -116,6 +117,18 @@ pub struct Preview<'a> {
 	/// Horizontal block offsets, so wide code and tables keep their position.
 	pub horizontal: &'a HashMap<(usize, usize), f32>,
 }
+
+/// Interactive state is supplied by the view owner, independently of the renderer.
+#[derive(Clone, Copy)]
+pub struct SceneInteraction<'a> {
+	pub held_overflow: Option<(usize, usize)>,
+	pub selection: Option<markview_layout::text::TextSelection>,
+	pub revision: u64,
+	pub hovered_link: Option<markview_layout::scene::LinkRef<'a>>,
+}
+
+/// Compatibility name for hosts that compose a single thumbnail.
+pub type Preview<'a> = DocumentScene<'a>;
 
 pub struct Renderer {
 	ui_origin: (f32, f32),

@@ -8,6 +8,10 @@
 //! A page preview is not a screenshot: the card reserves a body rectangle, and
 //! the renderer composes the tab's layout instructions into it at device
 //! resolution. Idle tabs share a bounded three-screen cache with tab restoration.
+mod input;
+mod work;
+use super::document_view::{FloatingDocument as Floating, FrameStyle};
+
 use super::tabs;
 use super::{
 	App, TOP,
@@ -24,7 +28,9 @@ use std::{
 	time::{Duration, Instant},
 };
 
-/// How long the pointer must rest on a target before its preview opens.
+/// Speculative layout starts after a short stable hover.
+pub(super) const PREPARE_DELAY: Duration = Duration::from_millis(30);
+/// The display gate stays independent of background completion.
 pub(super) const SHOW_DELAY: Duration = Duration::from_millis(100);
 
 /// Per-tab and shared budgets for the resume/hover cache.
@@ -290,10 +296,180 @@ fn image_rects(block: &PlacedBlock) -> impl Iterator<Item = Rect> + '_ {
 	})
 }
 
+/// Fits a rendered scene to its content, bounded by `options.width`.
+#[cfg(test)]
+fn layout_scene(
+	document: &markview_document::Document,
+	node: &markview_document::Block,
+	options: &crate::layout::LayoutOptions,
+	images: &markview_layout::image::ImageSnapshot,
+) -> LayoutSnapshot {
+	layout_scene_cancellable(document, node, options, images, &|| false)
+		.expect("uninterrupted preview")
+}
+
+fn layout_scene_cancellable(
+	document: &markview_document::Document,
+	node: &markview_document::Block,
+	options: &crate::layout::LayoutOptions,
+	images: &markview_layout::image::ImageSnapshot,
+	cancelled: &(dyn Fn() -> bool + Sync),
+) -> Option<LayoutSnapshot> {
+	use markview_layout::style::Condition;
+	let mut engine = crate::layout::LayoutEngine::new();
+	let mut snapshot = engine.layout_subtree_cancellable(
+		document, node, options, images, cancelled,
+	)?;
+	if cancelled() {
+		return None;
+	}
+	let mut right = 0.0_f32;
+	let mut padding = 0.0_f32;
+	for block in &snapshot.blocks {
+		for (_, _, rect) in block.clusters() {
+			right = right.max(rect.x + rect.w);
+		}
+		for (_, rect) in block.links() {
+			right = right.max(rect.x + rect.w);
+		}
+		for (command, _) in block.draw_commands() {
+			match block.other_draw(command) {
+				Some(
+					Draw::Image { rect, .. }
+					| Draw::Rect(rect, _)
+					| Draw::FadedRect { rect, .. }
+					| Draw::Clipped { rect, .. },
+				) => {
+					if let Some(rect) = block.rect(command, *rect) {
+						right = right.max(rect.x + rect.w);
+					}
+				}
+				Some(Draw::Math { math, x, .. }) => {
+					if let Some([dx, _]) = block.command_offset(command) {
+						right = right.max(x + dx + math.width);
+					}
+				}
+				Some(
+					draw @ Draw::Box {
+						rect,
+						chain,
+						condition,
+						..
+					},
+				) => {
+					if draw_bottom(draw, &options.stylesheet).is_some()
+						&& let Some(rect) = block.rect(command, *rect)
+					{
+						right = right.max(rect.x + rect.w);
+					}
+					let rule =
+						options.stylesheet.element_rule(*chain, *condition);
+					padding = padding.max(
+						rule.padding
+							.as_ref()
+							.map_or(0.0, |p| p.sides()[1] * options.font_size),
+					);
+				}
+				_ => {}
+			}
+		}
+	}
+	let body = options.stylesheet.rule(Condition::Body);
+	let body_padding = if options.preview {
+		0.0
+	} else {
+		body.padding
+			.as_ref()
+			.map_or(0.0, |p| p.sides()[1] * options.font_size)
+	};
+	// Keep the original line breaks and glyph positions; only crop the viewport.
+	snapshot.width = (right + padding + body_padding)
+		.ceil()
+		.clamp(1.0, options.width);
+	// Outer paragraph and container spacing is not popup padding.
+	snapshot.height = scene_content_bottom(&snapshot, &options.stylesheet)
+		.ceil()
+		.max(1.0)
+		.min(snapshot.height);
+	(!cancelled()).then_some(snapshot)
+}
+
+/// The last visible mark or decorated box, excluding invisible flow wrappers.
+fn scene_content_bottom(
+	snapshot: &LayoutSnapshot,
+	stylesheet: &markview_layout::style::Stylesheet,
+) -> f32 {
+	let mut bottom = 0.0_f32;
+	for block in &snapshot.blocks {
+		for rect in block
+			.clusters()
+			.map(|(_, _, rect)| rect)
+			.chain(block.links().map(|(_, rect)| rect))
+		{
+			bottom = bottom.max(block.y + rect.y + rect.h);
+		}
+		for (command, [_, dy]) in block.draw_commands() {
+			if let Some(draw) = block.other_draw(command)
+				&& let Some(edge) = draw_bottom(draw, stylesheet)
+			{
+				bottom = bottom.max(block.y + dy + edge);
+			}
+		}
+	}
+	bottom
+}
+
+fn draw_bottom(
+	draw: &Draw,
+	stylesheet: &markview_layout::style::Stylesheet,
+) -> Option<f32> {
+	let rect = match draw {
+		Draw::Box {
+			rect,
+			chain,
+			condition,
+			border,
+			decoration,
+			..
+		} => {
+			let background = stylesheet
+				.element_rule(*chain, *condition)
+				.background
+				.is_some_and(|color| color.rgba()[3] > 0.0);
+			let edges = decoration
+				.as_ref()
+				.is_some_and(|d| d.edges.iter().any(|edge| *edge > 0.0));
+			return (background || *border > 0.0 || edges)
+				.then_some(rect.y + rect.h);
+		}
+		Draw::Image { rect, .. }
+		| Draw::Rect(rect, _)
+		| Draw::FadedRect { rect, .. }
+		| Draw::Clipped { rect, .. } => rect,
+		Draw::Math { math, y, .. } => {
+			return Some(y + math.ascent + math.descent);
+		}
+		Draw::Polygon { center, points, .. } => {
+			return points
+				.iter()
+				.map(|point| center[1] + point[1])
+				.max_by(f32::total_cmp);
+		}
+		Draw::Icon { y, size, .. } => return Some(y + size),
+		Draw::Glyph(_) => return None,
+	};
+	Some(rect.y + rect.h)
+}
+
 #[derive(Default)]
 pub(super) struct Preview {
 	hover: Option<Hover>,
 	open: Option<Open>,
+	serial: u64,
+	pending: Option<Pending>,
+	worker: work::Worker,
+	#[cfg(test)]
+	last_build: Duration,
 	/// The body rectangle the chrome reserved this frame, if the card has one.
 	body: Option<Rect>,
 }
@@ -303,20 +479,69 @@ pub(super) struct Preview {
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(super) enum Target {
 	Tab(u64),
+	Footnote {
+		block: markview_document::BlockId,
+		link: markview_layout::scene::LinkId,
+	},
 }
 
 struct Hover {
 	target: Target,
 	at: Instant,
+	elapsed: bool,
+	attempted: bool,
+}
+
+struct Pending {
+	source: std::sync::Arc<work::Source>,
+	ready: Option<work::Completion>,
 }
 
 /// The open card's content. The chrome paints it; the application owns it.
 pub(super) struct Open {
 	pub(super) target: Target,
 	pub(super) card: Card,
+	pub(super) floating: Option<Floating>,
 }
 
 impl Preview {
+	fn cancel_work(&mut self) {
+		self.serial = self.serial.wrapping_add(1);
+		self.worker.cancel();
+		self.pending = None;
+	}
+
+	fn accept(&mut self, completion: work::Completion) {
+		if completion.serial == self.serial
+			&& let Some(pending) = &mut self.pending
+		{
+			pending.ready = Some(completion);
+		}
+	}
+	pub(super) fn floating_mut(&mut self) -> Option<&mut Floating> {
+		self.open.as_mut()?.floating.as_mut()
+	}
+	pub(super) fn floating(&self) -> Option<&Floating> {
+		self.open.as_ref()?.floating.as_ref()
+	}
+
+	/// Consumes wheel motion over a scene, including at its scroll limits.
+	pub(super) fn scroll(&mut self, point: (f32, f32), delta: f32) -> bool {
+		let Some(floating) =
+			self.open.as_mut().and_then(|open| open.floating.as_mut())
+		else {
+			return false;
+		};
+		if !floating.rect.contains(point.0, point.1) {
+			return false;
+		}
+		floating.input(markview_interaction::ViewInput::Wheel {
+			point: markview_interaction::Point::new(point.0, point.1),
+			delta,
+		});
+		true
+	}
+
 	pub(super) fn open(&self) -> Option<&Open> {
 		self.open.as_ref()
 	}
@@ -344,15 +569,19 @@ impl Preview {
 			changed = true;
 		}
 		if self.hover.as_ref().map(|hover| hover.target) != target {
+			self.cancel_work();
 			self.hover = target.map(|target| Hover {
 				target,
 				at: now + SHOW_DELAY,
+				elapsed: false,
+				attempted: false,
 			});
 		}
 		changed
 	}
 
 	/// The target whose hover delay has elapsed, while no card is open.
+	#[cfg(test)]
 	pub(super) fn due(&self, now: Instant) -> Option<Target> {
 		if self.open.is_some() {
 			return None;
@@ -368,12 +597,45 @@ impl Preview {
 		if self.open.is_some() {
 			return None;
 		}
-		self.hover.as_ref().map(|hover| hover.at)
+		let hover = self.hover.as_ref()?;
+		if matches!(hover.target, Target::Footnote { .. }) {
+			if self.pending.is_none() && !hover.attempted {
+				return Some(hover.at - SHOW_DELAY + PREPARE_DELAY);
+			}
+			if hover.elapsed {
+				return None;
+			}
+		}
+		Some(hover.at)
 	}
 
 	pub(super) fn show(&mut self, open: Open) {
+		self.cancel_work();
 		self.open = Some(open);
 		self.body = None;
+	}
+
+	/// Opens a rendered hover scene; sources supply content and an anchor only.
+	fn show_scene(
+		&mut self,
+		target: Target,
+		anchor: Rect,
+		bounds: Rect,
+		snapshot: LayoutSnapshot,
+		revision: markview_document::DocumentRevision,
+		frame: FrameStyle,
+	) {
+		self.show(Open {
+			target,
+			card: Card {
+				title: Vec::new(),
+				detail: String::new(),
+				body: true,
+			},
+			floating: Some(Floating::new(
+				snapshot, revision, anchor, bounds, frame,
+			)),
+		});
 	}
 
 	/// The rectangle the chrome left for the card's preview body this frame.
@@ -389,6 +651,7 @@ impl Preview {
 	/// Closes the card and forgets the hover, reporting whether a card was
 	/// painted.
 	pub(super) fn dismiss(&mut self) -> bool {
+		self.cancel_work();
 		self.hover = None;
 		self.body = None;
 		self.open.take().is_some()
@@ -404,49 +667,68 @@ impl Preview {
 	) -> Option<crate::render::Preview<'a>> {
 		let open = self.open()?;
 		let rect = self.body()?;
-		match open.target {
-			Target::Tab(tab) => {
-				let index = readers
-					.entries()
-					.iter()
-					.position(|entry| entry.id == tab)?;
-				let session = if index == readers.active() {
-					&readers.session
-				} else {
-					&readers.entries()[index].session
-				};
-				let page = readers.entries()[index].preview.as_ref();
-				let (snapshot, scroll, horizontal) = match page {
-					Some(page) => (
-						&page.snapshot,
-						if page.snapshot.centered {
-							let b = &page.snapshot.blocks[0];
-							(b.y + b.height() / 2.
-								- page.snapshot.width * card::BODY_RATIO / 2.)
-								.max(0.)
-						} else {
-							page.scroll
-						},
-						&page.horizontal,
-					),
-					None => (
-						&session.display.snapshot,
-						session.scrolling.offset,
-						&session.display.horizontal,
-					),
-				};
-				if snapshot.blocks.is_empty() && page.is_none() {
-					return None;
-				}
-				Some(crate::render::Preview {
-					snapshot,
-					scroll,
-					rect,
-					theme,
-					horizontal,
-				})
-			}
+		if let Some(floating) = open.floating.as_ref() {
+			return Some(crate::render::Preview {
+				interaction: Some(crate::render::SceneInteraction {
+					held_overflow: floating.state.held_overflow(),
+					selection: floating.state.selection,
+					revision: floating.revision.get(),
+					hovered_link: floating
+						.state
+						.hover
+						.link
+						.as_ref()
+						.map(|link| link.link_ref()),
+				}),
+				snapshot: &floating.snapshot,
+				scroll: floating.scroll,
+				rect,
+				theme,
+				horizontal: &floating.horizontal,
+			});
 		}
+		let Target::Tab(tab) = open.target else {
+			return None;
+		};
+
+		let index =
+			readers.entries().iter().position(|entry| entry.id == tab)?;
+		let session = if index == readers.active() {
+			&readers.session
+		} else {
+			&readers.entries()[index].session
+		};
+		let page = readers.entries()[index].preview.as_ref();
+		let (snapshot, scroll, horizontal) = match page {
+			Some(page) => (
+				&page.snapshot,
+				if page.snapshot.centered {
+					let b = &page.snapshot.blocks[0];
+					(b.y + b.height() / 2.
+						- page.snapshot.width * card::BODY_RATIO / 2.)
+						.max(0.)
+				} else {
+					page.scroll
+				},
+				&page.horizontal,
+			),
+			None => (
+				&session.display.snapshot,
+				session.scrolling.offset,
+				&session.display.horizontal,
+			),
+		};
+		if snapshot.blocks.is_empty() && page.is_none() {
+			return None;
+		}
+		Some(crate::render::Preview {
+			interaction: None,
+			snapshot,
+			scroll,
+			rect,
+			theme,
+			horizontal,
+		})
 	}
 }
 
@@ -454,11 +736,26 @@ impl<P: super::SendEvent> App<P> {
 	/// The hover target under the pointer after it moved, so its card can open
 	/// once the delay elapses. Returns whether the painted card changed.
 	pub(super) fn hover_preview(&mut self, now: Instant) -> bool {
-		// Pointer motion in the document never reaches hover targets.
-		if !self.preview.tracking()
-			&& self.interaction.pointer.cursor().1 >= TOP
+		if self
+			.preview
+			.pending
+			.as_ref()
+			.is_some_and(|pending| !pending.source.matches(self))
 		{
-			return false;
+			self.preview.cancel_work();
+		}
+		if let Some(floating) = self.preview.floating() {
+			let anchor = floating.anchor;
+			let context = self.document_interaction();
+			let point = markview_interaction::Point::new(
+				anchor.x + anchor.w / 2.0,
+				anchor.y + anchor.h / 2.0,
+			);
+			if context.snapshot.revision != floating.revision
+				|| context.link_rect(point) != Some(anchor)
+			{
+				return self.dismiss_preview();
+			}
 		}
 		let target = if self.preview_allowed() {
 			self.target_at_cursor()
@@ -468,22 +765,109 @@ impl<P: super::SendEvent> App<P> {
 		self.preview.hover(target, now)
 	}
 
-	/// Opens the card whose hover delay elapsed.
+	/// Starts speculative layout at 30 ms and presents no earlier than 100 ms.
 	pub(super) fn preview_tick(&mut self, now: Instant) {
-		if !self.preview_allowed() {
-			if self.dismiss_preview() {
-				self.redraw();
-			}
+		if !self.preview.tracking() {
 			return;
 		}
-		let Some(target) = self.preview.due(now) else {
+		if self.hover_preview(now) {
+			self.redraw();
+		}
+		if !self.preview_allowed() {
+			self.dismiss_preview();
+			return;
+		}
+		while let Some(completion) = self.preview.worker.try_recv() {
+			self.preview.accept(completion);
+		}
+		let Some(hover) = self
+			.preview
+			.hover
+			.as_mut()
+			.filter(|_| self.preview.open.is_none())
+		else {
 			return;
 		};
-		if self.open_preview(target) {
-			self.redraw();
-		} else {
-			self.preview.dismiss();
+		hover.elapsed = now >= hover.at;
+		let target = hover.target;
+		match target {
+			Target::Tab(tab) if hover.elapsed => {
+				if !self.open_tab_card(tab) {
+					self.preview.dismiss();
+				}
+				self.redraw();
+			}
+			Target::Footnote { .. }
+				if self.preview.pending.is_none()
+					&& now >= hover.at - SHOW_DELAY + PREPARE_DELAY =>
+			{
+				hover.attempted = true;
+				self.start_footnote(target);
+			}
+			_ => {}
 		}
+		self.present_footnote();
+	}
+
+	fn present_footnote(&mut self) {
+		if !self.preview.hover.as_ref().is_some_and(|h| h.elapsed) {
+			return;
+		}
+		let Some(pending) =
+			self.preview.pending.as_mut().filter(|p| p.ready.is_some())
+		else {
+			return;
+		};
+		let ready = pending.ready.take().unwrap();
+		let Some(snapshot) = ready.snapshot else {
+			self.dismiss_preview();
+			return;
+		};
+		let source = pending.source.clone();
+		log::trace!("Hover layout completed in {:?}", ready.build);
+		#[cfg(test)]
+		{
+			self.preview.last_build = ready.build;
+		}
+		self.preview.show_scene(
+			source.target,
+			source.anchor,
+			source.bounds,
+			snapshot,
+			source.revision,
+			source.frame,
+		);
+		self.redraw();
+	}
+
+	fn start_footnote(&mut self, target: Target) {
+		let Some(source) = self.footnote_source(target) else {
+			if self
+				.preview
+				.hover
+				.as_ref()
+				.is_some_and(|hover| hover.elapsed)
+			{
+				self.preview.dismiss();
+			}
+			return;
+		};
+		let source = std::sync::Arc::new(source);
+		let wake = self.proxy.clone();
+		self.preview.worker.submit(
+			&self.services.handle,
+			self.preview.serial,
+			source.clone(),
+			move || wake.send(super::Event::PreviewReady),
+		);
+		self.preview.pending = Some(Pending {
+			source,
+			ready: None,
+		});
+	}
+
+	pub(super) fn refresh_open_preview(&mut self) -> bool {
+		self.preview.tracking() && self.hover_preview(Instant::now())
 	}
 
 	pub(super) fn dismiss_preview(&mut self) -> bool {
@@ -504,17 +888,93 @@ impl<P: super::SendEvent> App<P> {
 	}
 
 	fn target_at_cursor(&mut self) -> Option<Target> {
-		if self.interaction.pointer.cursor().1 >= TOP {
-			return None;
+		let (x, y) = self.interaction.pointer.cursor();
+		if self.preview.floating().is_some_and(|floating| {
+			floating.focused() || floating.state.captured()
+		}) {
+			return self.preview.open().map(|open| open.target);
+		}
+		if y >= TOP {
+			if self.pointer_in_outline() || self.pointer_in_folder() {
+				return None;
+			}
+			if let Some(floating) = self.preview.floating() {
+				let r = floating.rect;
+				let near = Rect {
+					x: r.x - 6.0,
+					y: r.y - 6.0,
+					w: r.w + 12.0,
+					h: r.h + 12.0,
+				};
+				if near.contains(x, y) {
+					return self.preview.open().map(|open| open.target);
+				}
+			}
+			let context = self.document_interaction();
+			let link =
+				context.link_ref(markview_interaction::Point::new(x, y))?;
+			return matches!(
+				link.target,
+				markview_layout::scene::LinkTarget::FootnoteDefinition(_)
+			)
+			.then_some(Target::Footnote {
+				block: link.block,
+				link: link.id,
+			});
 		}
 		self.tab_at_cursor()
 			.map(|index| Target::Tab(self.readers.entries()[index].id))
 	}
 
-	fn open_preview(&mut self, target: Target) -> bool {
-		match target {
-			Target::Tab(tab) => self.open_tab_card(tab),
+	fn footnote_source(&self, target: Target) -> Option<work::Source> {
+		let Target::Footnote { block, link } = target else {
+			return None;
+		};
+		let context = self.document_interaction();
+		let (x, y) = self.interaction.pointer.cursor();
+		let point = markview_interaction::Point::new(x, y);
+		let reference = context.link_ref(point)?;
+		if reference.block != block || reference.id != link {
+			return None;
 		}
+		let markview_layout::scene::LinkTarget::FootnoteDefinition(id) =
+			reference.target
+		else {
+			return None;
+		};
+		let anchor = context.link_rect(point)?;
+		let bounds = context.viewport.clip();
+		let revision = context.snapshot.revision;
+		let document = self.readers.session.document.as_ref()?;
+		let original_options = self.options();
+		let mut options = original_options.clone();
+		options.preview = true;
+		let style = options.stylesheet.element_rule(
+			markview_layout::style::Condition::Preview.chain(),
+			markview_layout::style::Condition::Preview,
+		);
+		let padding = style.padding.as_ref().map_or([10.0; 4], |p| {
+			p.sides().map(|side| side * options.font_size)
+		});
+		let metrics = options.stylesheet.scrollbar_metrics();
+		options.width = 420.0_f32.min(
+			(bounds.w - 16.0 - padding[1] - padding[3] - metrics.thickness)
+				.max(1.0),
+		);
+		options.viewport_height = 0.0;
+		Some(work::Source {
+			target,
+			anchor,
+			bounds,
+			revision,
+			frame: FrameStyle { padding, metrics },
+			document: document.clone(),
+			definition: id.clone(),
+			original_options,
+			options,
+			images: self.readers.session.display.snapshot.images.clone(),
+			version: self.readers.session.version,
+		})
 	}
 
 	/// Fills the card from a tab that is still open. Returns whether it could.
@@ -539,6 +999,7 @@ impl<P: super::SendEvent> App<P> {
 				|| self.readers.entries()[index].preview.is_some());
 		self.preview.show(Open {
 			target: Target::Tab(tab),
+			floating: None,
 			card: Card {
 				title,
 				detail,

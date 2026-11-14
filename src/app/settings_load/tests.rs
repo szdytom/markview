@@ -423,7 +423,7 @@ fn symlinked_fonts_and_styles_follow_target_changes() {
 	);
 	std::fs::write(
 		&style,
-		"format_version=2\nversion=1\n[meta]\nname='First'\n",
+		"format_version=3\nversion=1\n[meta]\nname='First'\n",
 	)
 	.unwrap();
 	symlink(&style, resources.path().join("linked.mvss.toml")).unwrap();
@@ -438,7 +438,7 @@ fn symlinked_fonts_and_styles_follow_target_changes() {
 	);
 	std::fs::write(
 		&style,
-		"format_version=2\nversion=1\n[meta]\nname='Changed stylesheet'\n",
+		"format_version=3\nversion=1\n[meta]\nname='Changed stylesheet'\n",
 	)
 	.unwrap();
 	let entries = styles.read(dir, None, StyleTarget::Ui);

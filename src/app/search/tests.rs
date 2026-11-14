@@ -734,7 +734,7 @@ fn search_states_match_rendering_baselines() -> anyhow::Result<()> {
 		let mut stylesheet =
 			(*markview_layout::style::Stylesheet::bundled(dark)).clone();
 		stylesheet.set_cjk_type(markview_layout::style::CjkType::Sc);
-		stylesheet.merge(&markview_layout::style::Stylesheet::parse("format_version=2\nversion=1\n[[rule]]\nwhen=['search']\nbackground='#E9BA4550'\n[[rule]]\nwhen=['search_current']\nbackground='#E49B2390'\n[[rule]]\nwhen=['selection']\nbackground='#315D8650'")?);
+		stylesheet.merge(&markview_layout::style::Stylesheet::parse("format_version=3\nversion=1\n[[rule]]\nwhen=['search']\nbackground='#E9BA4550'\n[[rule]]\nwhen=['search_current']\nbackground='#E49B2390'\n[[rule]]\nwhen=['selection']\nbackground='#315D8650'")?);
 		let stylesheet = Arc::new(stylesheet);
 		h.app.preferences.values.stylesheet = stylesheet.clone();
 		h.app.preferences.values.lang = Some(lang);

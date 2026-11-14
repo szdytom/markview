@@ -588,6 +588,9 @@ impl<P: super::SendEvent> App<P> {
 		key: &Key,
 		repeat: bool,
 	) {
+		if self.preview_key(key) {
+			return;
+		}
 		self.cancel_gestures();
 		self.interaction.widgets.focus_visible = true;
 		let modifiers = self.interaction.pointer.modifiers();

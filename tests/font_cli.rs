@@ -45,7 +45,7 @@ fn catalog_resolves_targets_literal_families_and_sources_without_stdin() {
 	}
 	let dir = tempfile::tempdir().unwrap();
 	let style = dir.path().join("template.mvss.toml");
-	std::fs::write(&style, "format_version=2\nversion=1\ntargets=['pdf']\n[mermaid]\nfont_family=['Diagram Literal']\n[[rule]]\nwhen=['code_block']\nfont=[{family='Code Literal'}]\n").unwrap();
+	std::fs::write(&style, "format_version=3\nversion=1\ntargets=['pdf']\n[mermaid]\nfont_family=['Diagram Literal']\n[[rule]]\nwhen=['code_block']\nfont=[{family='Code Literal'}]\n").unwrap();
 	let catalog = json(
 		command()
 			.args(["catalog", "--style", "monochrome"])
@@ -104,7 +104,7 @@ fn downloads_validate_bytes_retry_and_observe_cancellation() {
 	let listener = TcpListener::bind("127.0.0.1:0").unwrap();
 	listener.set_nonblocking(true).unwrap();
 	let proxy = format!("http://{}", listener.local_addr().unwrap());
-	std::fs::write(&style, format!("format_version=2\nversion=1\ntargets=['pdf','ui']\n[[fontdef]]\nid='serif'\nlookfor=['Noto Serif']\n[[font-family]]\nid='fixture'\nlookfor=['Noto Serif']\nlicense='OFL-1.1'\n[[font-family.source]]\nfiles=['{proxy}/fixture.otf']\n")).unwrap();
+	std::fs::write(&style, format!("format_version=3\nversion=1\ntargets=['pdf','ui']\n[[fontdef]]\nid='serif'\nlookfor=['Noto Serif']\n[[font-family]]\nid='fixture'\nlookfor=['Noto Serif']\nlicense='OFL-1.1'\n[[font-family.source]]\nfiles=['{proxy}/fixture.otf']\n")).unwrap();
 	let mode = Arc::new(AtomicU8::new(0));
 	let (server_mode, server_bytes, server_marker) =
 		(mode.clone(), bytes.clone(), marker.clone());

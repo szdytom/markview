@@ -7,7 +7,7 @@ fn decorations_preserve_text_and_cascade_without_color_reflow() {
 		"# ATTENTION\n\n## Heading\n\n> **First**\n>\n> **Second**\n\n| A | B |\n|---|---|\n| C | D |\n| E | F |\n",
 	);
 	let source = r##"
-format_version = 2
+format_version = 3
 version = 1
 [[rule]]
 when = ["h1"]
@@ -43,7 +43,7 @@ border_edges = [0, 0, 2, 0]
 	let mut rules = (*options.stylesheet).clone();
 	rules.merge(
 		&crate::style::Stylesheet::parse(
-			"format_version=2\nversion=1\n[[rule]]\nwhen=['h2']\nmarker_color='#00FF00'",
+			"format_version=3\nversion=1\n[[rule]]\nwhen=['h2']\nmarker_color='#00FF00'",
 		)
 		.unwrap(),
 	);
@@ -148,7 +148,7 @@ fn live_colors_follow_semantics_without_reflow() {
 	let mut engine = LayoutEngine::new();
 	let first = engine.layout(&doc, &LayoutOptions::default());
 	let stylesheet = sheet(
-		"format_version=2\nversion=1\n[[rule]]\nwhen=['blockquote']\ncolor='#123456'\n[[rule]]\nwhen=['em']\ncolor='#abcdef'\n[[rule]]\nwhen=['em','strong']\ncolor='#654321'\n[[rule]]\nwhen=['link']\ncolor='#102030'",
+		"format_version=3\nversion=1\n[[rule]]\nwhen=['blockquote']\ncolor='#123456'\n[[rule]]\nwhen=['em']\ncolor='#abcdef'\n[[rule]]\nwhen=['em','strong']\ncolor='#654321'\n[[rule]]\nwhen=['link']\ncolor='#102030'",
 	);
 	let second = engine.layout(
 		&doc,
@@ -199,7 +199,7 @@ fn geometry_changes_invalidate_cache_and_keep_reading_text() {
 	let first = engine.layout(&doc, &LayoutOptions::default());
 	let options = LayoutOptions {
 		stylesheet: sheet(
-			"format_version=2\nversion=1\n[[rule]]\nwhen=['body']\npadding=1.0\n[[rule]]\nwhen=['h1']\nsize=2.5\n[[rule]]\nwhen=['p']\nline_height=2.0\n[[rule]]\nwhen=['list_item']\npadding=0.5\n[[rule]]\nwhen=['table','cell']\npadding=1.0",
+			"format_version=3\nversion=1\n[[rule]]\nwhen=['body']\npadding=1.0\n[[rule]]\nwhen=['h1']\nsize=2.5\n[[rule]]\nwhen=['p']\nline_height=2.0\n[[rule]]\nwhen=['list_item']\npadding=0.5\n[[rule]]\nwhen=['table','cell']\npadding=1.0",
 		),
 		..Default::default()
 	};
@@ -235,7 +235,7 @@ fn geometry_changes_invalidate_cache_and_keep_reading_text() {
 fn compound_rules_reach_the_layout_chain() {
 	let doc = markview_commonmark::parse("# 标题 `code`\n\n正文 `code`\n");
 	let stylesheet = sheet(
-		"format_version=2\nversion=1\n[[rule]]\nwhen=['code']\nbackground='#111111'\n[[rule]]\nwhen=['h1','code']\nbackground='#222222'",
+		"format_version=3\nversion=1\n[[rule]]\nwhen=['code']\nbackground='#111111'\n[[rule]]\nwhen=['h1','code']\nbackground='#222222'",
 	);
 	let snapshot = LayoutEngine::new().layout(
 		&doc,
@@ -314,7 +314,7 @@ fn box_colors_follow_the_same_context_as_geometry() {
 	use crate::style::ColorField;
 	let doc = markview_commonmark::parse("> quoted\n");
 	let stylesheet = sheet(
-		"format_version=2\nversion=1\n[[rule]]\nwhen=['p']\nbackground='#111111'\n[[rule]]\nwhen=['blockquote','p']\nbackground='#123456'",
+		"format_version=3\nversion=1\n[[rule]]\nwhen=['p']\nbackground='#111111'\n[[rule]]\nwhen=['blockquote','p']\nbackground='#123456'",
 	);
 	let snapshot = LayoutEngine::new().layout(
 		&doc,

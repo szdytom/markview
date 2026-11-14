@@ -277,6 +277,7 @@ impl<P: super::SendEvent> App<P> {
 				self.redraw();
 			}
 			Event::FrameFeedback => self.redraw(),
+			Event::PreviewReady => self.preview_tick(Instant::now()),
 			Event::StylesChanged => {
 				self.reload_styles();
 				self.redraw();

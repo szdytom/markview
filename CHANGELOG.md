@@ -24,6 +24,11 @@ at the same level, without `[brackets]`.
 ### Added
 
 - Use Qi Baishi, Mondrian and Van Gogh in the reader as well as exports, with coordinated interface colors, wheat-yellow Van Gogh outline highlights and small theme-color markers before tab filenames.
+- Hover over footnote references to preview their formatted content in a content-sized popup near the reference, with cancellable background layout, dedicated MVSS `preview` styling, text selection and copying, scrollbars, link navigation and the image viewer.
+
+### Changed
+
+- Upgrade themes to MVSS format 3: tab hover card styling uses `tab_preview`, while `preview` styles reflowed hover popups and their content; see the [upgrade guide](docs/users/mvss-v3-upgrade.md).
 
 ## 0.5.2 - 2026-11-13
 

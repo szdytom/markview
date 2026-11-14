@@ -1,4 +1,4 @@
-//! Markview Stylesheet v2: conditions, field-wise cascading and semantic text styles.
+//! Markview Stylesheet v3: conditions, field-wise cascading and semantic text styles.
 //!
 //! A rule is keyed by a *set* of conditions rather than by one hierarchical
 //! role name. A condition is one thing that is true of a rendered run: the
@@ -60,6 +60,7 @@ pub enum Condition {
 	Toolbar,
 	Statusbar,
 	Panel,
+	TabPreview,
 	Preview,
 	Button,
 	Math,
@@ -129,6 +130,7 @@ impl Condition {
 		(Self::Toolbar, "toolbar"),
 		(Self::Statusbar, "statusbar"),
 		(Self::Panel, "panel"),
+		(Self::TabPreview, "tab_preview"),
 		(Self::Preview, "preview"),
 		(Self::Button, "button"),
 		(Self::Math, "math"),
@@ -196,7 +198,8 @@ impl Condition {
 			Image => chain_of(&[Body, Image]),
 			Ui => chain_of(&[Body, Ui]),
 			Toolbar | Statusbar | Panel | Button => chain_of(&[Body, Ui, self]),
-			Preview => chain_of(&[Body, Ui, Panel, Preview]),
+			TabPreview => chain_of(&[Body, Ui, Panel, TabPreview]),
+			Preview => chain_of(&[Body, Preview]),
 			Cell => chain_of(&[Body, Table, Cell]),
 			Header => chain_of(&[Body, Table, Cell, Header]),
 			Label => chain_of(&[Body, CodeBlock, Label]),
@@ -224,7 +227,7 @@ impl Condition {
 				| Self::Toolbar
 				| Self::Statusbar
 				| Self::Panel
-				| Self::Preview
+				| Self::TabPreview
 				| Self::Button
 		)
 	}
@@ -254,7 +257,7 @@ impl Condition {
 			Toolbar | Statusbar | Panel | Button => {
 				ConditionSet::of(Ui).with(self)
 			}
-			Preview => ConditionSet::of(Ui).with(Panel).with(Preview),
+			TabPreview => ConditionSet::of(Ui).with(Panel).with(TabPreview),
 			Hover => ConditionSet::of(Link).with(Hover),
 			// A callout's box is a block quote's, refined by its family.
 			Callout => ConditionSet::of(Blockquote).with(Callout),
@@ -270,6 +273,7 @@ impl Condition {
 		matches!(
 			self,
 			Self::Body
+				| Self::Preview
 				| Self::P
 				| Self::H1
 				| Self::H2
@@ -388,12 +392,17 @@ impl From<Condition> for ConditionSet {
 	}
 }
 
-/// Bits per condition slot in a packed chain. Six bits hold every nonzero
-/// id, leaving 21 slots in a `u128`.
-pub(crate) const CHAIN_BITS: u32 = 6;
+/// Bits per condition slot in a packed chain. Seven bits hold all 64
+/// nonzero ids, leaving 18 slots in a `u128`.
+pub(crate) const CHAIN_BITS: u32 = 7;
 pub(crate) const CHAIN_MASK: u128 = (1 << CHAIN_BITS) - 1;
-/// A condition chain packs six bits per slot into a `u128`.
+/// A condition chain packs seven bits per slot into a `u128`.
 pub const MAX_CHAIN: usize = 128 / CHAIN_BITS as usize;
+
+const _: () = assert!(
+	Condition::COUNT < (1 << CHAIN_BITS)
+		&& Condition::COUNT <= u64::BITS as usize
+);
 
 /// Append a condition to an ordered chain. A repeated condition replaces its
 /// earlier occurrence, which keeps deeply nested containers compact.

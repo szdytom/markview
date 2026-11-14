@@ -106,7 +106,7 @@ fn unavailable_weights_keep_the_covering_family_in_document_layout() {
 			};
 			let mut sheet = (*Stylesheet::bundled(false)).clone();
 			sheet.merge(&Stylesheet::parse(&format!(
-				"format_version=2\nversion=1\n[[fontdef]]\nid='reading'\nlookfor=['Noto Serif','Noto Sans']\n[[rule]]\nwhen=['body']\nweight={inherited}\nfont=[{{family='reading'{candidate}}},{{family='sans-serif',weight=400}}]"
+				"format_version=3\nversion=1\n[[fontdef]]\nid='reading'\nlookfor=['Noto Serif','Noto Sans']\n[[rule]]\nwhen=['body']\nweight={inherited}\nfont=[{{family='reading'{candidate}}},{{family='sans-serif',weight=400}}]"
 			)).unwrap());
 			let snapshot = engine.layout(
 				&doc,
@@ -192,7 +192,7 @@ fn a_valid_extreme_stylesheet_does_not_stall_document_shaping() {
 		let mut stylesheet = (*Stylesheet::bundled(false)).clone();
 		stylesheet.merge(
 			&Stylesheet::parse(&format!(
-				"format_version=2\nversion=1\n[[rule]]\nwhen=['{condition}']\nsize=1.716e37"
+				"format_version=3\nversion=1\n[[rule]]\nwhen=['{condition}']\nsize=1.716e37"
 			))
 			.unwrap(),
 		);

@@ -49,3 +49,6 @@ pub(crate) fn poison<T: Send>(lock: &std::sync::Mutex<T>) {
 		);
 	});
 }
+
+#[cfg(feature = "diagnostics")]
+pub(crate) mod allocations;

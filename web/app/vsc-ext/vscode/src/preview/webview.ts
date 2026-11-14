@@ -165,7 +165,7 @@ async function update(message: DocumentMessage, ticket: number) {
   ) {
     viewer.registerStylesheet(
       "vscode-config",
-      `format_version=2\nversion=1\n[[rule]]\nwhen=["code_block"]\nwrap=${message.codeWrap ?? false}`,
+      `format_version=3\nversion=1\n[[rule]]\nwhen=["code_block"]\nwrap=${message.codeWrap ?? false}`,
     );
     if (message.stylesheet)
       viewer.registerStylesheet("vscode-custom", message.stylesheet);

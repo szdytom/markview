@@ -460,7 +460,7 @@ fn invisible_targets_preserve_styled_run_geometry() {
 	let mut stylesheet = (*Stylesheet::bundled(false)).clone();
 	stylesheet.merge(
 		&Stylesheet::parse(
-			"format_version=2\nversion=1\n[[rule]]\nwhen=['code']\npadding=[0,1,0,1]",
+			"format_version=3\nversion=1\n[[rule]]\nwhen=['code']\npadding=[0,1,0,1]",
 		)
 		.unwrap(),
 	);
@@ -552,7 +552,7 @@ fn invisible_container_edges_preserve_visible_child_spacing() {
 	for custom in [false, true] {
 		let mut sheet = (*Stylesheet::bundled(false)).clone();
 		if custom {
-			sheet.merge(&Stylesheet::parse("format_version=2\nversion=1\n[[rule]]\nwhen=['p']\nspace_before=1\nspace_after=1").unwrap());
+			sheet.merge(&Stylesheet::parse("format_version=3\nversion=1\n[[rule]]\nwhen=['p']\nspace_before=1\nspace_after=1").unwrap());
 		}
 		for source in [
 			"> <a id='before'></a>\n>\n> # Heading\n>\n> Text\n>\n> <a id='after'></a>",
@@ -778,7 +778,7 @@ fn targets_on_both_sides_of_breaks_keep_their_lines() {
 fn root_child_styles_ignore_invisible_targets_and_reuse_geometry() {
 	use markview_layout::style::Stylesheet;
 	let mut sheet = (*Stylesheet::bundled(false)).clone();
-	sheet.merge(&Stylesheet::parse("format_version=2\nversion=1\n[[rule]]\nwhen=['p','first_child']\nsize=2\n[[rule]]\nwhen=['p','last_child']\nspace_after=2").unwrap());
+	sheet.merge(&Stylesheet::parse("format_version=3\nversion=1\n[[rule]]\nwhen=['p','first_child']\nsize=2\n[[rule]]\nwhen=['p','last_child']\nspace_after=2").unwrap());
 	let options = LayoutOptions {
 		stylesheet: Arc::new(sheet),
 		..test_options()

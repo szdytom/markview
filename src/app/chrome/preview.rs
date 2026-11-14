@@ -168,22 +168,83 @@ pub(super) fn layout(card: &Card, anchor: Rect, window: (f32, f32)) -> Layout {
 	}
 }
 
+/// Keeps the reading start near a stable point on the reference.
+/// Lost reading height costs space; shorter vertical candidates remain available
+/// when no side can fit the full scene.
+pub(in crate::app) fn place(
+	anchor: Rect,
+	size: (f32, f32),
+	bounds: Rect,
+	padding: [f32; 4],
+) -> Rect {
+	let margin = 8.0_f32.min(bounds.w / 2.0).min(bounds.h / 2.0);
+	let area = Rect {
+		x: bounds.x + margin,
+		y: bounds.y + margin,
+		w: (bounds.w - 2.0 * margin).max(1.0),
+		h: (bounds.h - 2.0 * margin).max(1.0),
+	};
+	let (w, h) = (size.0.min(area.w), size.1.min(area.h));
+	let origin = (anchor.x, anchor.y + anchor.h / 2.0);
+	let cx = origin.0 - padding[3];
+	let cy = origin.1 - padding[0];
+	let below = anchor.y + anchor.h + 6.0;
+	let below_h = h.min((area.y + area.h - below).max(1.0));
+	let above_h = h.min((anchor.y - 6.0 - area.y).max(1.0));
+	let candidates = [
+		(cx, below, below_h),
+		(cx, anchor.y - above_h - 6.0, above_h),
+		(anchor.x + anchor.w + 6.0, cy, h),
+		(anchor.x - w - 6.0, cy, h),
+	];
+	candidates
+		.into_iter()
+		.map(|(x, y, height)| {
+			let rect = Rect {
+				x: x.clamp(area.x, area.x + (area.w - w)),
+				y: y.clamp(area.y, area.y + (area.h - height)),
+				w,
+				h: height,
+			};
+			let overlap = rect.intersect(anchor).map_or(0.0, |r| r.w * r.h);
+			let score = overlap * 1000.0
+				+ (rect.x + padding[3] - origin.0)
+					.hypot(rect.y + padding[0] - origin.1)
+				+ (h - height) * 2.0;
+			(rect, score)
+		})
+		.min_by(|a, b| a.1.total_cmp(&b.1))
+		.unwrap()
+		.0
+}
+
+/// The shared themed surface behind any floating scene.
+pub(in crate::app) fn surface(ui: &TextShaper, rect: Rect) -> Vec<Draw> {
+	surface_for(ui, rect, Condition::Preview)
+}
+
+fn surface_for(ui: &TextShaper, rect: Rect, condition: Condition) -> Vec<Draw> {
+	let chain = condition.chain();
+	let style = ui.stylesheet.element_rule(chain, condition);
+	vec![Draw::Box {
+		rect,
+		chain,
+		condition,
+		radius: style.radius.unwrap_or(0.0),
+		border: style.border_width.unwrap_or(1.0),
+		left_only: false,
+		decoration: markview_layout::scene::BoxDecoration::from_rule(
+			&style, false,
+		),
+	}]
+}
+
 pub(super) fn draw(
 	ui: &mut TextShaper,
 	card: &Card,
 	layout: &Layout,
 ) -> Vec<Draw> {
-	let chain = Condition::Preview.chain();
-	let style = ui.stylesheet.element_rule(chain, Condition::Preview);
-	let mut out = vec![Draw::Box {
-		rect: layout.rect,
-		chain,
-		condition: Condition::Preview,
-		radius: style.radius.unwrap_or(0.0),
-		border: 1.0,
-		left_only: false,
-		decoration: None,
-	}];
+	let mut out = surface_for(ui, layout.rect, Condition::TabPreview);
 	let appearance = title_appearance(ui);
 	for (index, line) in card.title.iter().enumerate() {
 		let baseline = layout.title.y + TITLE_SIZE + index as f32 * TITLE_LINE;

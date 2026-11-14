@@ -1752,7 +1752,7 @@ mod tests {
 		sheet.set_cjk_type(CjkType::Sc);
 		let mut custom = sheet.clone();
 		custom.merge(&markview_layout::style::Stylesheet::parse(
-			"format_version=2\nversion=1\n[[fontdef]]\nid='monospace[cjk]'\ntype='JP'\nlookfor=['Custom Han Mono']",
+			"format_version=3\nversion=1\n[[fontdef]]\nid='monospace[cjk]'\ntype='JP'\nlookfor=['Custom Han Mono']",
 		).unwrap());
 		for (sheet, cjk_type, han_mono) in [
 			(&sheet, CjkType::None, false),

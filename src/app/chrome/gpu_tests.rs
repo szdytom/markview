@@ -2223,7 +2223,7 @@ fn cjk_ui_weight_comparison() -> Result<()> {
 			for (column, weight) in [400, 450, 500].into_iter().enumerate() {
 				let mut trial = (*sheet).clone();
 				trial.merge(&Stylesheet::parse(&format!(
-					"format_version=2\nversion=1\n[[rule]]\nwhen=['ui']\nfont=[{{family='sans-serif'}},{{family='sans-serif[cjk]',weight={weight}}},{{family='sans-serif[cjk]'}},{{family='emoji',weight=400}}]"
+					"format_version=3\nversion=1\n[[rule]]\nwhen=['ui']\nfont=[{{family='sans-serif'}},{{family='sans-serif[cjk]',weight={weight}}},{{family='sans-serif[cjk]'}},{{family='emoji',weight=400}}]"
 				))?);
 				let mut ui = crate::test_support::shaper();
 				ui.set_stylesheet(std::sync::Arc::new(trial));
@@ -2418,7 +2418,7 @@ fn preview_card_frame() -> Result<()> {
 					.unwrap(),
 			);
 			stylesheet.merge(&markview_layout::style::Stylesheet::parse(&format!(
-				"format_version=2\nversion=1\n[[rule]]\nwhen=['ui','preview']\nradius={radius}"
+				"format_version=3\nversion=1\n[[rule]]\nwhen=['ui','tab_preview']\nradius={radius}"
 			))?);
 			let settings = ReaderSettings {
 				theme: if theme == "dark" {
@@ -2497,6 +2497,7 @@ fn preview_card_frame() -> Result<()> {
 			let mut overlay = vec![background];
 			overlay.extend(card_ui::draw(&mut ui, &card, &layout));
 			let preview = markview_render::Preview {
+				interaction: None,
 				snapshot: &preview_snapshot,
 				scroll: 0.0,
 				rect: body,

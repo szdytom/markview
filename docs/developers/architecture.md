@@ -20,6 +20,8 @@ The native application and Web adapter supply scheduling, configuration and
 resources. They share the semantic document and layout engine. The native reader
 is read-only; editing is a Web host capability.
 
+`LayoutEngine::layout_subtree(document, node, options)` and its image-aware variant borrow a node from the original document and use the same layout pass, measurement and cache machinery as whole-document layout. The selected subtree retains source identities, document-wide footnote numbering context, inherited ancestor text styles and original sibling conditions; ancestor boxes are excluded. The node must belong to the supplied document. Results have local geometry and a presentation identity that distinguishes selected roots. Subtree passes retain the last whole-document cache rather than replacing it. `LayoutOptions::preview` adds the MVSS `preview` context for reflowed hover scenes; tab thumbnails keep their original page layout and use `tab_preview` only for their card chrome.
+
 | Owner | Responsibility | Keep outside it |
 | --- | --- | --- |
 | `markview-document` | Semantic content, identities and document traversal | Parsing, fonts, I/O and geometry |
@@ -28,7 +30,7 @@ is read-only; editing is a Web host capability.
 | `markview-layout` | Shaping, line breaking, reading text, geometry, selection mapping and pagination | Windows, GPU objects and application settings |
 | `markview-render` | GPU resources, rasterization and painting snapshots | Reinterpreting document syntax or deciding line breaks |
 | `markview-pdf` | Vector PDF output from paper layout | Window/GPU dependencies |
-| `markview-interaction` | Pointer-driven selection state | Document storage and platform events |
+| `markview-interaction` | Document view coordinates, hit testing, selection and independent input state | Document storage and platform events |
 | `markview-ui-core` | Pure component updates, widget identity and interaction | Files, clocks, workers and native services |
 | `markview-platform` | Native dialogs, clipboard, opening, input and window adapters | Reader policy and document layout |
 | Root application | Sessions, settings, resource policy, workers and UI orchestration | A second parser or layout engine |
@@ -36,6 +38,43 @@ is read-only; editing is a Web host capability.
 The dependency boundary permits the same layout to serve native reading, Web,
 headless export and regression tests. [Platform boundary checks](../../scripts/check_platform_boundary.py)
 enforce platform isolation; changes to exceptions need a concrete platform reason.
+
+## Embedded document views
+
+`markview-interaction::DocumentView` borrows a snapshot and maps host coordinates
+into a clipped, scrolled document. It shares selection gestures and scrollbar
+geometry with the main reader. `ViewState` keeps one embedded view's selection,
+hover, focus and pointer capture. Input produces local scroll changes or link and
+image actions; the host owns clipboard access, navigation and resource policy.
+Each view has independent state even when several views borrow the same document.
+
+`markview-render::DocumentScene` describes an independently placed scene with
+optional selection and hover state. `render_document_scenes` composes these scenes
+with the main reader through the same painting pipeline, preserving clipping and
+DPI transforms. Passive tab thumbnails supply no interaction state and retain
+their existing page layout.
+
+The native `app::document_view::FloatingDocument` owns the floating viewport and
+its input state. Preview sources supply a layout snapshot, source revision and
+anchor; `app::preview` manages the hover delay and lifetime. Reflowed previews
+reserve a gutter when their content exceeds the available height, and keep
+content coordinates aligned with rendering. Focus or a captured drag keeps a
+popup open; an outside click, Escape, source change or invalidated anchor closes
+it. Footnote references inside a popup navigate in the source document when
+clicked; they do not open nested previews.
+
+Footnote preparation starts after a stable 30 ms hover on the bounded CPU service;
+the 100 ms display gate remains relative to the original hover. One computation
+and one cancellable waiter are permitted per preview owner. Leaving or changing
+the target cancels work, clears retained results and advances a request serial.
+Document identity, request version, options, image metadata and anchor geometry
+are checked before accepting a result; changed inputs restart preparation while
+the same reference remains hovered. Ready results wait for the display gate,
+and late results wake the event loop without restarting that delay.
+`layout_subtree_cancellable` uses the same layout pass and cancellation checkpoints
+as whole-document layout. Cancellation is cooperative between nested blocks;
+font initialization and individual long paragraphs or formulas are not preempted.
+
 
 ## Semantic identity and immutable snapshots
 

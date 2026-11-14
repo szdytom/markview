@@ -46,7 +46,7 @@ fn styled(rules: &str, width: f32) -> LayoutOptions {
 		(*markview_layout::style::Stylesheet::bundled(false)).clone();
 	sheet.merge(
 		&markview_layout::style::Stylesheet::parse(&format!(
-			"format_version=2\nversion=1\n{rules}"
+			"format_version=3\nversion=1\n{rules}"
 		))
 		.unwrap(),
 	);
@@ -199,7 +199,7 @@ fn caption_sources_and_image_fields_are_strict_and_cascade() {
 		"[[rule]]\nwhen=['img','caption']\nalign='justify'",
 	] {
 		assert!(
-			Stylesheet::parse(&format!("format_version=2\nversion=1\n{rule}"))
+			Stylesheet::parse(&format!("format_version=3\nversion=1\n{rule}"))
 				.is_err(),
 			"{rule}"
 		);

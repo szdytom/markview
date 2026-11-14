@@ -192,6 +192,7 @@ fn preview_budget_eviction_keeps_the_main_frame_textures() -> anyhow::Result<()>
 	);
 
 	let preview = Preview {
+		interaction: None,
 		snapshot: &preview_snapshot,
 		scroll: 0.0,
 		rect: Rect {
@@ -278,6 +279,7 @@ fn preview_reloads_of_the_active_tab_do_not_accumulate_textures()
 		// Hovering the active tab: the preview draws the same snapshot, so the
 		// guest generation equals the main generation.
 		let preview = Preview {
+			interaction: None,
 			snapshot: &snapshot,
 			scroll: 0.0,
 			rect: Rect {

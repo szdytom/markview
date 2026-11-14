@@ -517,7 +517,7 @@ fn a_private_font_directory_draws_a_diagram() {
 	// shared with the renderer and the rasterizer for.
 	let config = crate::test_support::fonts();
 	let sheet = Stylesheet::parse(
-		"format_version=2\nversion=1\n\
+		"format_version=3\nversion=1\n\
 		 [mermaid]\ntheme='default'\nfont_family=['Noto Serif']",
 	)
 	.unwrap();
@@ -570,7 +570,7 @@ fn android_variable_font_draws_mermaid_labels() {
 		..Default::default()
 	};
 	let sheet = Stylesheet::parse(
-		"format_version=2\nversion=1\n\
+		"format_version=3\nversion=1\n\
 		 [svg.generic_font_family]\nsans-serif=['Roboto Flex']\n\
 		 [mermaid]\ntheme='dark'\nprimary_text_color='#ff0000'",
 	)
@@ -686,7 +686,7 @@ fn a_new_diagram_theme_redraws_the_diagram() {
 	let light = painted(&images);
 	// The same revision and the same source, only the stylesheet differs.
 	let dark = Stylesheet::parse(
-		"format_version=2\nversion=1\n[mermaid]\ntheme='dark'\nbackground='#101820'",
+		"format_version=3\nversion=1\n[mermaid]\ntheme='dark'\nbackground='#101820'",
 	)
 	.unwrap();
 	images.prepare(
@@ -794,7 +794,7 @@ fn a_diagram_failure_does_not_outlive_its_theme() {
 	let src = resource_key(specs[0], Path::new("note.md"));
 	let mut images = images(true);
 	let huge = Stylesheet::parse(
-		"format_version=2\nversion=1\n[mermaid]\nfont_size=4000",
+		"format_version=3\nversion=1\n[mermaid]\nfont_size=4000",
 	)
 	.unwrap();
 	images.prepare(
@@ -809,7 +809,7 @@ fn a_diagram_failure_does_not_outlive_its_theme() {
 	assert!(images.snapshot.entries[&src].error.is_some());
 	// The next theme draws a size that fits, and must get its own chance.
 	let dark = Stylesheet::parse(
-		"format_version=2\nversion=1\n[mermaid]\ntheme='dark'",
+		"format_version=3\nversion=1\n[mermaid]\ntheme='dark'",
 	)
 	.unwrap();
 	images.prepare(
@@ -862,7 +862,7 @@ fn a_failure_from_the_previous_theme_is_retried() {
 		e.ticket
 	};
 	let dark = Stylesheet::parse(
-		"format_version=2\nversion=1\n[mermaid]\ntheme='dark'",
+		"format_version=3\nversion=1\n[mermaid]\ntheme='dark'",
 	)
 	.unwrap();
 	images.prepare(&doc, path, 1, false, &dark, &crate::test_support::fonts());

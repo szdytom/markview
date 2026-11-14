@@ -28,7 +28,7 @@ proptest! {
 		});
 		let names = conditions.names().iter().map(|name| format!("'{name}'"))
 			.collect::<Vec<_>>().join(",");
-		let source = format!("format_version=2\nversion=0\n[[rule]]\nwhen=[{names}]\n");
+		let source = format!("format_version=3\nversion=0\n[[rule]]\nwhen=[{names}]\n");
 		let font_allowed = StylesheetSource::parse(&format!(
 			"{source}font=[{{family='serif'}}]"
 		)).is_ok();
@@ -49,7 +49,7 @@ proptest! {
 		for (layer, values) in layers.iter().enumerate() {
 			let mut order: Vec<_> = (0..filters.len()).collect();
 			order.sort_by_key(|&i| values[i].0);
-			let mut toml = "format_version=2\nversion=0\n".to_owned();
+			let mut toml = "format_version=3\nversion=0\n".to_owned();
 			for (position, &filter) in order.iter().enumerate() {
 				let (_, weight, color) = values[filter];
 				// An absent declaration emits no rule; empty rules are invalid MVSS.
@@ -92,7 +92,7 @@ proptest! {
 		changes in prop::collection::vec(any::<bool>(), 0..24),
 	) {
 		let source = Arc::new(StylesheetSource::parse(&format!(
-			"format_version=2\nversion=0\n[[fontdef]]\nid='reading'\nlookfor=['Original']\n[[rule]]\nwhen=['p']\nmedia=['ui']\nweight={ui_weight}\n[[rule]]\nwhen=['p']\nmedia=['pdf']\nweight={pdf_weight}\n"
+			"format_version=3\nversion=0\n[[fontdef]]\nid='reading'\nlookfor=['Original']\n[[rule]]\nwhen=['p']\nmedia=['ui']\nweight={ui_weight}\n[[rule]]\nwhen=['p']\nmedia=['pdf']\nweight={pdf_weight}\n"
 		)).unwrap());
 		let context = |pdf| MediaContext::new(if pdf { StyleTarget::Pdf } else { StyleTarget::Ui }, Media::Desktop, None);
 		let original = source.resolve(context(false));
@@ -129,7 +129,7 @@ proptest! {
 		let masks = [1u8, 2, 3, 4, 6, 7];
 		let conditions = [Condition::Body, Condition::Blockquote, Condition::Strong];
 		let mut declarations = [[None; 3]; 6];
-		let mut merged = Stylesheet::parse("format_version=2\nversion=0").unwrap();
+		let mut merged = Stylesheet::parse("format_version=3\nversion=0").unwrap();
 		let mut source = StylesheetSource::default();
 		for layer in layers {
 			let mut local = [[None; 3]; 6];
@@ -139,7 +139,7 @@ proptest! {
 					if value.is_some() { local[selector][field] = value; }
 				}
 			}
-			let mut toml = "format_version=2\nversion=0\n".to_owned();
+			let mut toml = "format_version=3\nversion=0\n".to_owned();
 			for (selector, values) in local.into_iter().enumerate() {
 				if values == [None; 3] { continue; }
 				let names: Vec<_> = ["body", "blockquote", "strong"].into_iter().enumerate()
@@ -197,7 +197,7 @@ proptest! {
 		names.dedup();
 		let media = names.iter().map(|s| format!("\"{s}\"")).collect::<Vec<_>>().join(",");
 		let source = Arc::new(StylesheetSource::parse(&format!(
-			"format_version = 2\nversion = 0\ntargets = [\"ui\", \"pdf\"]\n[[rule]]\nwhen = [\"body\"]\nmedia = [{media}]\ncolor = \"#123456\"\n"
+			"format_version = 3\nversion = 0\ntargets = [\"ui\", \"pdf\"]\n[[rule]]\nwhen = [\"body\"]\nmedia = [{media}]\ncolor = \"#123456\"\n"
 		)).unwrap());
 		let target = if pdf { StyleTarget::Pdf } else { StyleTarget::Ui };
 		let platforms = [None, Some(Media::Android), Some(Media::Linux), Some(Media::Windows), Some(Media::Macos), Some(Media::Ios), Some(Media::Web)];

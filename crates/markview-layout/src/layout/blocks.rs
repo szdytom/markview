@@ -239,7 +239,7 @@ pub(crate) fn callout_family(kind: CalloutKind) -> Condition {
 }
 
 /// The element a block's box belongs to.
-fn block_role(block: &Block) -> Condition {
+pub(super) fn block_role(block: &Block) -> Condition {
 	match &block.kind() {
 		BlockKind::Paragraph(_) => Condition::P,
 		BlockKind::Heading { level, .. } => Condition::heading(*level),

@@ -30,7 +30,7 @@ test("reading template selection and font catalog use the same UI template", asy
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "markview-reading-"));
   try {
     const custom = path.join(root, "custom.mvss.toml");
-    await fs.writeFile(custom, 'format_version=2\nversion=1\ntargets=["ui"]');
+    await fs.writeFile(custom, 'format_version=3\nversion=1\ntargets=["ui"]');
     const config = new Map([
       ["previewTemplate", "celadon"],
       ["previewStyleFile", ""],

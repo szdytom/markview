@@ -14,10 +14,10 @@ proptest! {
 		for (operation, slot, rgba, selection) in operations {
 			let id = format!("custom-{slot}");
 			match operation {
-				0 => { styles.register(&id, &format!("format_version = 2\nversion = 1\n[[rule]]\nwhen = ['body']\ncolor = '#{rgba:08x}'")).unwrap(); registered[slot] = Some(rgba); }
+				0 => { styles.register(&id, &format!("format_version = 3\nversion = 1\n[[rule]]\nwhen = ['body']\ncolor = '#{rgba:08x}'")).unwrap(); registered[slot] = Some(rgba); }
 				1 => { prop_assert!(styles.register(&id, "invalid TOML").is_err()); }
-				2 => { prop_assert!(styles.register(&id, "format_version = 2\nversion = 1\ntargets = ['pdf']").is_err()); }
-				3 => { prop_assert!(styles.register("bundled:custom", "format_version = 2\nversion = 1").is_err()); }
+				2 => { prop_assert!(styles.register(&id, "format_version = 3\nversion = 1\ntargets = ['pdf']").is_err()); }
+				3 => { prop_assert!(styles.register("bundled:custom", "format_version = 3\nversion = 1").is_err()); }
 				_ => {
 					let valid = selection.iter().all(|&index| index < 4 && registered[index].is_some());
 					let ids: Vec<_> = selection.iter().map(|index| format!("custom-{index}")).collect();
