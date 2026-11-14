@@ -154,6 +154,15 @@ impl TabBar<'_, '_> {
 		} else {
 			Paint::Styled(Condition::Toolbar, C::Muted)
 		};
+		target.push(Draw::Rect(
+			Rect {
+				x: rect.x + LABEL_START - 8.0,
+				y: rect.y + (rect.h - 12.0) / 2.0,
+				w: 2.0,
+				h: 12.0,
+			},
+			Paint::Styled(Condition::Toolbar, C::Accent),
+		));
 		target.extend(self.ui.label(
 			&fitted,
 			12.0,

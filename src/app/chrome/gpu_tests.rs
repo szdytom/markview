@@ -2552,3 +2552,157 @@ fn strip_labels(tabs: &[ReaderTab]) -> Vec<String> {
 		})
 		.collect()
 }
+
+#[test]
+#[ignore = "uses the host GPU and fonts; writes artifacts/artist-themes/*-reader-*.png"]
+fn artist_reader_frames() -> Result<()> {
+	use crate::app::{tab_metrics::TabMetrics, tab_strip::TabStrip};
+	use markview_layout::style::CjkType;
+	let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"));
+	let directory = root.join("artifacts/artist-themes");
+	std::fs::create_dir_all(&directory)?;
+	let document = markview_commonmark::parse(include_str!(
+		"../../../tests/fixtures/artist-themes.md"
+	));
+	let mut renderer = pollster::block_on(Renderer::new(None))?;
+	let fonts = markview_layout::fonts::FontConfig::default();
+	for id in ["qibaishi", "mondrian", "vangogh"] {
+		let sheet = crate::stylesheet::load_with_cjk_type(
+			&[id.into()],
+			None,
+			CjkType::Sc,
+		)?;
+		renderer.set_stylesheet(sheet.clone());
+		renderer.set_fonts(fonts.clone());
+		for width in [500.0, 1100.0] {
+			let height = 1300.0;
+			let drawer = outline::rect(width, height, TOP);
+			let show_outline = width > 600.0;
+			let column = if show_outline {
+				drawer.x - 64.0
+			} else {
+				width - 64.0
+			};
+			let options = crate::layout::LayoutOptions {
+				width: column,
+				font_size: 17.0,
+				justify: false,
+				hyphenate: false,
+				stylesheet: sheet.clone(),
+				fonts: fonts.clone(),
+				..Default::default()
+			};
+			let mut engine = LayoutEngine::new();
+			let mut snapshot = engine.layout(&document, &options);
+			if engine.wait_highlights() {
+				snapshot = engine.layout(&document, &options);
+			}
+			assert!(snapshot.height < height - TOP - BOTTOM - 20.0);
+			let mut ui = TextShaper::with_fonts(fonts.clone());
+			ui.set_stylesheet(sheet.clone());
+			let settings = ReaderSettings {
+				stylesheet: sheet.clone(),
+				lang: Some(Lang::ZhHans),
+				..Default::default()
+			};
+			let mut interaction = InteractionState::default();
+			interaction
+				.toggle_outline(document.outline_entries().len(), Some(1));
+			let drawn = crate::app::widgets::Drawn::new(&interaction, None);
+			let mut overlay = vec![Draw::Rect(
+				Rect {
+					x: 0.0,
+					y: 0.0,
+					w: width,
+					h: TOP,
+				},
+				Paint::Styled(Condition::Toolbar, C::Background),
+			)];
+			overlay.extend(draw_controls(
+				&mut ui,
+				&drawn,
+				&crate::app::settings_panel::Model::new(settings),
+				(width, height),
+				None,
+				false,
+				false,
+			));
+			let labels = vec!["reading.md".into()];
+			let mut metrics = TabMetrics::default();
+			metrics.sync(&mut ui, &labels);
+			let strip = TabStrip::default();
+			let frame = crate::app::frame::Layout::new(
+				crate::settings::WindowLayout::Windows,
+				false,
+				width,
+				height,
+				false,
+				false,
+			);
+			overlay.extend(
+				super::tabs::TabBar {
+					ui: &mut ui,
+					strip: &strip,
+					widths: &metrics.widths,
+					labels: &labels,
+					active_tab: 0,
+					cursor: (-1.0, -1.0),
+					viewport: frame.tabs,
+				}
+				.draw_tabs(),
+			);
+			if show_outline {
+				overlay.extend(outline::draw(
+					&mut ui,
+					&drawn,
+					document.outline_entries(),
+					&Default::default(),
+					Some(1),
+					drawer,
+					Lang::ZhHans,
+				));
+			}
+			let counts = markview_layout::text::TextCounts::of(
+				&snapshot.extract_text(snapshot.select_all(1).unwrap(), 1),
+			);
+			overlay.extend(draw_footer(
+				&mut ui,
+				(Some(counts), None),
+				None,
+				"reading.md",
+				(width, height),
+				0.0,
+				Lang::ZhHans,
+			));
+			let horizontal = HashMap::new();
+			let view = View {
+				width: width as u32,
+				height: height as u32,
+				scale: 1.0,
+				left: 32.0,
+				top: TOP + 12.0,
+				bottom: BOTTOM,
+				scroll: 0.0,
+				theme: Theme::Light,
+				horizontal: &horizontal,
+				selection: None,
+				revision: 1,
+				hovered_link: None,
+				held_overflow: None,
+			};
+			let target = renderer.offscreen(view.width, view.height);
+			let submission = renderer.render(
+				&snapshot,
+				&view,
+				&overlay,
+				&target.create_view(&Default::default()),
+			)?;
+			renderer.wait(Some(submission))?;
+			renderer.save_png(
+				&target,
+				&directory.join(format!("{id}-reader-{}.png", width as u32)),
+			)?;
+		}
+	}
+	Ok(())
+}

@@ -229,12 +229,9 @@ fn bundled_themes_shape_cjk_strong_with_a_real_bold_face() {
 	let doc = markview_commonmark::parse(
 		"中\n\n**中**\n\n***中***\n\n# **中**\n\n**`中`**",
 	);
-	for theme in Stylesheet::READER_THEMES
-		.iter()
-		.chain(Stylesheet::PDF_THEMES)
-	{
+	for theme in Stylesheet::bundled_ids() {
 		let mut sheet = (*Stylesheet::builtin()).clone();
-		if Stylesheet::PDF_THEMES.contains(theme) {
+		if Stylesheet::PDF_THEMES.contains(&theme) {
 			sheet.merge(&Stylesheet::named_rules("print").unwrap());
 		}
 		sheet.merge(&Stylesheet::named_rules(theme).unwrap());

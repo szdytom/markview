@@ -4,6 +4,8 @@ Open **Settings → Styles** to enable, disable and reorder reader themes. The
 leftmost selection has highest priority. Export selects paper themes separately.
 Browse the [theme gallery](themes.md) before choosing a starting point.
 
+Qi Baishi (`qibaishi`), Mondrian (`mondrian`) and Van Gogh (`vangogh`) support both the reader and PDF/PNG export. They coordinate document and interface colors; Van Gogh uses wheat-yellow outline highlights while keeping indigo text selection. Screen headings are stronger, with sans-serif CJK headings in Mondrian; the paper designs keep their existing typography.
+
 Use [reading settings](settings.md) for size, measure and paragraph preferences,
 and [Fonts](fonts.md) to select families. An MVSS theme controls visual roles,
 colors, spacing and decorations.

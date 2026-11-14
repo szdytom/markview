@@ -11,6 +11,7 @@ pub struct Case {
 	pub height: f32,
 	pub scale: f32,
 	pub theme: &'static str,
+	pub output: Option<StyleTarget>,
 	pub cjk: CjkType,
 	pub device: Media,
 	pub platform: Media,
@@ -28,6 +29,7 @@ impl Case {
 			height,
 			scale: 1.,
 			theme: "light",
+			output: None,
 			cjk: CjkType::Sc,
 			device: Media::Desktop,
 			platform: Media::Linux,
@@ -38,12 +40,14 @@ impl Case {
 	}
 
 	pub fn options(&self, root: &Path) -> anyhow::Result<LayoutOptions> {
-		let pdf = Stylesheet::PDF_THEMES.contains(&self.theme);
-		let target = if pdf {
-			StyleTarget::Pdf
-		} else {
-			StyleTarget::Ui
-		};
+		let target = self.output.unwrap_or_else(|| {
+			if Stylesheet::PDF_THEMES.contains(&self.theme) {
+				StyleTarget::Pdf
+			} else {
+				StyleTarget::Ui
+			}
+		});
+		let pdf = target == StyleTarget::Pdf;
 		let mut sheet = (*Stylesheet::builtin()).clone();
 		if pdf {
 			sheet.merge(&Stylesheet::named_rules("print").unwrap());
@@ -181,10 +185,7 @@ pub fn cases() -> Vec<Case> {
 			cases.push(case);
 		}
 	}
-	for theme in std::iter::once("builtin")
-		.chain(Stylesheet::READER_THEMES.iter().copied())
-		.chain(Stylesheet::PDF_THEMES.iter().copied())
-	{
+	for theme in std::iter::once("builtin").chain(Stylesheet::bundled_ids()) {
 		for (device, width, height) in
 			[(Media::Desktop, 560., 2000.), (Media::Phone, 320., 2600.)]
 		{
@@ -201,6 +202,24 @@ pub fn cases() -> Vec<Case> {
 			case.device = device;
 			case.width = width;
 			cases.push(case);
+			if Stylesheet::READER_THEMES.contains(&theme)
+				&& Stylesheet::PDF_THEMES.contains(&theme)
+			{
+				let mut reader = Case::new("theme-sampler", height);
+				reader.name = format!(
+					"theme-{theme}-reader-{}",
+					if device == Media::Phone {
+						"phone"
+					} else {
+						"desktop"
+					}
+				);
+				reader.theme = theme;
+				reader.device = device;
+				reader.width = width;
+				reader.output = Some(StyleTarget::Ui);
+				cases.push(reader);
+			}
 		}
 	}
 	for (fixture, variants) in [

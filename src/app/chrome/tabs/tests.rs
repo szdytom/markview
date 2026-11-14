@@ -544,12 +544,17 @@ fn tab_layout_preserves_widths_scroll_and_hit_targets() {
 	let Draw::Clipped { draws, .. } = &draws[0] else {
 		panic!("tab clip missing")
 	};
-	assert!(!draws.iter().any(|draw| {
-		matches!(
-			draw,
-			Draw::Rect(_, Paint::Styled(Condition::Toolbar, C::Accent))
-		)
-	}));
+	let markers: Vec<_> = draws
+		.iter()
+		.filter_map(|draw| match draw {
+			Draw::Rect(rect, Paint::Styled(Condition::Toolbar, C::Accent)) => {
+				Some(rect)
+			}
+			_ => None,
+		})
+		.collect();
+	assert!(!markers.is_empty());
+	assert!(markers.iter().all(|rect| rect.w == 2.0 && rect.h == 12.0));
 	metrics.sync(bar.ui, &labels(&tabs));
 	assert_eq!(metrics.widths, widths);
 }
@@ -921,4 +926,69 @@ fn dragging_paints_the_tabs_where_the_drop_will_put_them() {
 			preview.rects[2].x - GAP / 2.0 + RADIUS - 1.0
 		]
 	);
+}
+
+#[test]
+fn theme_markers_fit_before_filenames_in_active_and_inactive_tabs() {
+	let mut ui = crate::test_support::shaper();
+	let strip = TabStrip::default();
+	let names = vec!["reading.md".into(), "中文笔记.md".into()];
+	for (id, accent) in [
+		("qibaishi", 0xA23C35FF),
+		("mondrian", 0x1647A6FF),
+		("vangogh", 0x244C80FF),
+	] {
+		let sheet = crate::stylesheet::load_with_cjk_type(
+			&[id.into()],
+			None,
+			markview_layout::style::CjkType::Sc,
+		)
+		.unwrap();
+		ui.set_stylesheet(sheet);
+		let mut metrics = TabMetrics::default();
+		metrics.sync(&mut ui, &names);
+		let mut bar = TabBar {
+			ui: &mut ui,
+			strip: &strip,
+			labels: &names,
+			widths: &metrics.widths,
+			active_tab: 0,
+			cursor: (-1.0, -1.0),
+			viewport: Rect {
+				x: 10.0,
+				y: 4.0,
+				w: 600.0,
+				h: 36.0,
+			},
+		};
+		let rects = bar.layout().rects;
+		let draws = bar.draw_tabs();
+		let Draw::Clipped { draws, .. } = &draws[0] else {
+			panic!("tab clip missing")
+		};
+		let markers: Vec<_> = draws
+			.iter()
+			.filter_map(|draw| match draw {
+				Draw::Rect(
+					rect,
+					paint @ Paint::Styled(Condition::Toolbar, C::Accent),
+				) => Some((rect, *paint)),
+				_ => None,
+			})
+			.collect();
+		assert_eq!(markers.len(), names.len());
+		for (rect, paint) in markers {
+			let tab = rects
+				.iter()
+				.find(|tab| tab.contains(rect.x, rect.y))
+				.unwrap();
+			assert_eq!((rect.w, rect.h), (2.0, 12.0));
+			assert_eq!(rect.x + rect.w + 6.0, tab.x + LABEL_START);
+			assert_eq!(rect.y + rect.h / 2.0, tab.y + tab.h / 2.0);
+			assert_eq!(
+				bar.ui.stylesheet.paint(paint),
+				markview_layout::style::Color(accent).rgba()
+			);
+		}
+	}
 }

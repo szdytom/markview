@@ -1,10 +1,10 @@
 format_version = 2
-version = 8
-targets = ["pdf"]
+version = 9
+targets = ["ui", "pdf"]
 
 [meta]
 name = "Mondrian"
-description = "Mondrian-inspired document layout"
+description = "Primary colors and crisp geometry for reading and export"
 
 [[fontdef]]
 id = "serif"
@@ -275,3 +275,144 @@ border_color = "#1647A6"
 [[rule]]
 when = ["link", "hover"]
 color = "#C7352C"
+
+[[rule]]
+when = ["ui"]
+media = ["ui"]
+shadow = "#00000000"
+scrim = "#272B3052"
+warning = "#855800"
+
+[[rule]]
+when = ["ui", "panel"]
+media = ["ui"]
+background = "#F7F5EF"
+color = "#1647A6"
+muted = "#555D55"
+border_color = "#D9D8D2"
+
+[[rule]]
+when = ["ui", "toolbar"]
+media = ["ui"]
+background = "#F7F5EF"
+color = "#1647A6"
+muted = "#555D55"
+accent = "#1647A6"
+border_color = "#D9D8D2"
+
+[[rule]]
+when = ["ui", "statusbar"]
+media = ["ui"]
+background = "#F7F5EF"
+color = "#1647A6"
+muted = "#555D55"
+border_color = "#D9D8D2"
+
+[[rule]]
+when = ["ui", "button"]
+media = ["ui"]
+background = "#FFFFFF"
+color = "#1647A6"
+accent = "#1647A6"
+hover_background = "#E5EBF8"
+active_background = "#D7E1F6"
+disabled_color = "#555D55"
+focus_color = "#1647A6"
+
+[[rule]]
+when = ["scrollbar"]
+media = ["ui"]
+track = "#F2F1ED"
+thumb = "#555D55"
+thumb_hover = "#1647A6"
+
+[[rule]]
+when = ["details"]
+media = ["ui"]
+background = "#F4F5F7"
+border_color = "#D9D8D2"
+
+[[rule]]
+when = ["summary"]
+media = ["ui"]
+color = "#1647A6"
+
+[[rule]]
+when = ["summary", "hover"]
+media = ["ui"]
+color = "#1647A6"
+
+[[rule]]
+when = ["marker"]
+media = ["ui"]
+color = "#1647A6"
+
+[[rule]]
+when = ["task_marker"]
+media = ["ui"]
+color = "#FFFFFF"
+background = "#FFFFFF"
+accent = "#1647A6"
+border_color = "#1647A6"
+
+[[rule]]
+when = ["code_block", "label"]
+media = ["ui"]
+color = "#555D55"
+
+[[rule]]
+when = ["img"]
+media = ["ui"]
+border_color = "#D9D8D2"
+
+[[rule]]
+when = ["img", "caption"]
+media = ["ui"]
+color = "#555D55"
+
+[[rule]]
+when = ["img", "placeholder"]
+media = ["ui"]
+color = "#555D55"
+background = "#F4F5F7"
+
+[[rule]]
+when = ["selection"]
+media = ["ui"]
+background = "#F1CE4666"
+
+[[rule]]
+when = ["h1"]
+media = ["ui"]
+font = [{ family = "assignment-heading" }, { family = "assignment-heading", weight = 700 }, { family = "sans-serif[cjk]", min_weight = 500 }, { family = "sans-serif[cjk]" }, { family = "emoji", weight = 400 }]
+weight = 700
+
+[[rule]]
+when = ["h2"]
+media = ["ui"]
+font = [{ family = "assignment-heading" }, { family = "assignment-heading", weight = 700 }, { family = "sans-serif[cjk]", min_weight = 500 }, { family = "sans-serif[cjk]" }, { family = "emoji", weight = 400 }]
+weight = 700
+
+[[rule]]
+when = ["h3"]
+media = ["ui"]
+font = [{ family = "assignment-heading" }, { family = "assignment-heading", weight = 700 }, { family = "sans-serif[cjk]", min_weight = 500 }, { family = "sans-serif[cjk]" }, { family = "emoji", weight = 400 }]
+weight = 700
+
+[[rule]]
+when = ["h4"]
+media = ["ui"]
+font = [{ family = "assignment-heading" }, { family = "assignment-heading", weight = 700 }, { family = "sans-serif[cjk]", min_weight = 500 }, { family = "sans-serif[cjk]" }, { family = "emoji", weight = 400 }]
+weight = 700
+
+[[rule]]
+when = ["h5"]
+media = ["ui"]
+font = [{ family = "assignment-heading" }, { family = "assignment-heading", weight = 700 }, { family = "sans-serif[cjk]", min_weight = 500 }, { family = "sans-serif[cjk]" }, { family = "emoji", weight = 400 }]
+weight = 700
+
+[[rule]]
+when = ["h6"]
+media = ["ui"]
+font = [{ family = "assignment-heading" }, { family = "assignment-heading", weight = 700 }, { family = "sans-serif[cjk]", min_weight = 500 }, { family = "sans-serif[cjk]" }, { family = "emoji", weight = 400 }]
+weight = 700

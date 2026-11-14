@@ -44,10 +44,8 @@ pub fn directory() -> Option<PathBuf> {
 		.and_then(|p| p.parent().map(|p| p.join("styles")))
 }
 fn reserved(id: &str) -> bool {
-	Stylesheet::READER_THEMES
-		.iter()
-		.chain(Stylesheet::PDF_THEMES)
-		.chain([&"builtin"])
+	Stylesheet::bundled_ids()
+		.chain(["builtin"])
 		.any(|name| id.eq_ignore_ascii_case(name))
 }
 pub fn validate_id(id: &str) -> Result<()> {
@@ -234,10 +232,15 @@ pub fn catalog_for(
 	selected: Option<&[String]>,
 	target: StyleTarget,
 ) -> Vec<Entry> {
-	let mut ids: Vec<String> = Stylesheet::READER_THEMES
+	let preferred = match target {
+		StyleTarget::Ui => Stylesheet::READER_THEMES,
+		StyleTarget::Pdf => Stylesheet::PDF_THEMES,
+	};
+	let mut ids: Vec<String> = preferred
 		.iter()
-		.chain(Stylesheet::PDF_THEMES)
-		.map(|id| (*id).into())
+		.copied()
+		.chain(Stylesheet::bundled_ids().filter(|id| !preferred.contains(id)))
+		.map(str::to_owned)
 		.collect();
 	let bundled_count = ids.len();
 	if let Some(dir) = dir
@@ -755,7 +758,73 @@ mod paper_theme_tests {
 	use markview_layout::style::{Color, Condition};
 
 	#[test]
-	fn bundled_paper_themes_are_export_only_and_inherit_readable_furniture() {
+	fn artist_themes_are_unique_in_both_catalogs_and_match_reader_colors() {
+		use markview_layout::style::ColorField as C;
+		for target in [StyleTarget::Ui, StyleTarget::Pdf] {
+			let catalog = catalog_for(None, None, target);
+			let expected = if target == StyleTarget::Ui {
+				Stylesheet::READER_THEMES
+			} else {
+				Stylesheet::PDF_THEMES
+			};
+			assert_eq!(
+				catalog
+					.iter()
+					.map(|entry| entry.id.as_str())
+					.collect::<Vec<_>>(),
+				expected
+			);
+			let ids: std::collections::HashSet<_> =
+				catalog.iter().map(|entry| &entry.id).collect();
+			assert_eq!(ids.len(), catalog.len());
+			for id in ["qibaishi", "mondrian", "vangogh"] {
+				assert!(
+					catalog
+						.iter()
+						.any(|entry| entry.id == id && entry.error.is_none())
+				);
+			}
+		}
+		for (id, tab, active, selection) in [
+			("qibaishi", 0xA23C35FF, 0xD5DACBFF, 0x343C3540),
+			("mondrian", 0x1647A6FF, 0xD7E1F6FF, 0xF1CE4666),
+			("vangogh", 0x244C80FF, 0xF4D985FF, 0x244C8040),
+		] {
+			let ids = [id.into()];
+			let reader = load_with_cjk_type(&ids, None, CjkType::Sc).unwrap();
+			let paper =
+				load_for_pdf(Some(&ids), None, CjkType::Sc, None).unwrap();
+			assert_eq!(
+				reader.rule(Condition::Body).background,
+				Some(Color(0xFFFFFFFF))
+			);
+			assert_eq!(
+				reader.color(Condition::Toolbar, C::Accent),
+				Color(tab).rgba()
+			);
+			assert_eq!(
+				reader.color(Condition::Button, C::ActiveBackground),
+				Color(active).rgba()
+			);
+			assert_eq!(
+				reader.rule(Condition::Selection).background,
+				Some(Color(selection))
+			);
+			assert_ne!(
+				reader.color(Condition::Button, C::ActiveBackground),
+				paper.color(Condition::Button, C::ActiveBackground)
+			);
+			assert_eq!(
+				reader.rule(Condition::H1).color,
+				paper.rule(Condition::H1).color
+			);
+			assert_eq!(reader.rule(Condition::H2).weight, Some(700));
+			assert_eq!(paper.page().paper_mm(), Some((210.0, 297.0)));
+		}
+	}
+
+	#[test]
+	fn paper_themes_keep_targets_and_readable_furniture() {
 		let paper = catalog_for(None, None, StyleTarget::Pdf);
 		let reader = catalog(None, None);
 		for &id in Stylesheet::PDF_THEMES {
@@ -764,7 +833,10 @@ mod paper_theme_tests {
 					.iter()
 					.any(|entry| entry.id == id && entry.error.is_none())
 			);
-			assert!(!reader.iter().any(|entry| entry.id == id));
+			assert_eq!(
+				reader.iter().any(|entry| entry.id == id),
+				Stylesheet::READER_THEMES.contains(&id)
+			);
 			assert!(reserved(id));
 			assert!(validate_id(&id.to_uppercase()).is_err());
 			let sheet =

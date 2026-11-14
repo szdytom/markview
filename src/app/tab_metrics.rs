@@ -5,7 +5,7 @@ use std::{collections::HashMap, sync::Arc};
 use unicode_segmentation::UnicodeSegmentation;
 
 /// The `x` inset from a tab's left edge to its label.
-pub(super) const LABEL_START: f32 = 12.0;
+pub(super) const LABEL_START: f32 = 20.0;
 /// The offset from a tab's right edge to its close control's leading edge.
 pub(super) const CLOSE_INSET: f32 = 22.0;
 /// The distance from a tab's right edge at which the close hover target

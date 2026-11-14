@@ -494,11 +494,30 @@ impl Stylesheet {
 		Ok(())
 	}
 	/// Selectable reader themes. `builtin` is always implicit and never listed.
-	pub const READER_THEMES: &[&str] =
-		&["light", "dark", "celadon", "blueprint", "rosewood", "8-bit"];
+	pub const READER_THEMES: &[&str] = &[
+		"light",
+		"dark",
+		"celadon",
+		"blueprint",
+		"rosewood",
+		"8-bit",
+		"qibaishi",
+		"mondrian",
+		"vangogh",
+	];
 
 	pub const PDF_THEMES: &[&str] =
 		&["print", "monochrome", "qibaishi", "vangogh", "mondrian"];
+
+	/// Bundled IDs in display order, with shared themes listed once.
+	pub fn bundled_ids() -> impl Iterator<Item = &'static str> {
+		Self::READER_THEMES.iter().copied().chain(
+			Self::PDF_THEMES
+				.iter()
+				.copied()
+				.filter(|id| !Self::READER_THEMES.contains(id)),
+		)
+	}
 
 	/// Shared declarations beneath every reader and export stylesheet.
 	pub fn builtin() -> Arc<Self> {
@@ -515,10 +534,8 @@ impl Stylesheet {
 		static SHEETS: OnceLock<Vec<(&str, Arc<Stylesheet>)>> = OnceLock::new();
 		SHEETS
 			.get_or_init(|| {
-				Self::READER_THEMES
-					.iter()
-					.chain(Self::PDF_THEMES)
-					.map(|&id| {
+				Self::bundled_ids()
+					.map(|id| {
 						(
 							id,
 							Arc::new(
