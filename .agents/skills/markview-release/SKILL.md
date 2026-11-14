@@ -90,6 +90,13 @@ branch and title `New version: szdytom.Markview version <version>`. Return the P
 and check status; submission is complete while upstream review and source sync remain
 pending.
 
+Keep the WinGet PR body to this single line, substituting the tool used to submit
+the PR and the release version; omit checklists and validation narratives:
+
+```markdown
+Automated PR by <tool>. [Release <version>](https://github.com/szdytom/markview/releases/tag/v<version>).
+```
+
 ## Release notes style
 
 New releases open with the prose paragraph confirmed by the user, directly below the
