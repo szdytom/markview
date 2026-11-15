@@ -686,8 +686,8 @@ mod tests {
 			browser: Some(browser),
 		}
 	}
-	fn browser() -> (tempfile::TempDir, Browser) {
-		let dir = tempfile::tempdir().unwrap();
+	fn browser() -> (crate::test_support::TestDir, Browser) {
+		let dir = crate::test_support::TestDir::new();
 		for name in ["README.md", "CHANGELOG.md", "notes.md"] {
 			std::fs::write(dir.path().join(name), "# A document").unwrap();
 		}

@@ -1535,9 +1535,9 @@ dependencies = [
  "markview-layout",
  "markview-pdf",
  "markview-render",
+ "markview-test-support",
  "markview-webpage",
  "mvfuzz",
- "tempfile",
 ]
 
 [[package]]
@@ -1628,6 +1628,13 @@ dependencies = [
  "tiny-skia",
  "web-time",
  "wgpu",
+]
+
+[[package]]
+name = "markview-test-support"
+version = "0.5.2"
+dependencies = [
+ "tempfile",
 ]
 
 [[package]]
@@ -1741,6 +1748,7 @@ dependencies = [
  "markview-interaction",
  "markview-layout",
  "markview-pdf",
+ "markview-test-support",
  "markview-webpage",
  "percent-encoding",
  "ratex-layout",
@@ -1749,7 +1757,6 @@ dependencies = [
  "serde_json",
  "swash",
  "tar",
- "tempfile",
  "url",
  "web-time",
  "zip",

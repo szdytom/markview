@@ -17,8 +17,8 @@ serde_json.workspace = true
 syn = { version = "3", features = ["full", "visit"] }
 
 [dev-dependencies]
+markview-test-support.workspace = true
 proptest.workspace = true
-tempfile.workspace = true
 
 [lints]
 workspace = true

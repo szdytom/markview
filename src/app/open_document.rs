@@ -89,7 +89,7 @@ mod forwarding_tests {
 
 	#[test]
 	fn secondary_forwards_all_desktop_documents_and_reports_delivery_failure() {
-		let dir = tempfile::tempdir().unwrap();
+		let dir = crate::test_support::TestDir::new();
 		let lock = dir.path().join("instance.lock");
 		let Start::Primary(primary) = start(&lock, true, None, false).unwrap()
 		else {

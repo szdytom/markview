@@ -1401,8 +1401,8 @@ mod tests {
 
 	#[test]
 	fn existing_directories_take_precedence_over_suffixed_notes() {
-		let dir = tempfile::tempdir().unwrap();
-		let root = dir.path().canonicalize().unwrap();
+		let dir = crate::test_support::TestDir::new();
+		let root = dir.path().to_owned();
 		for name in
 			["assets", "docs/assets", "docs/asset files", "vault-assets"]
 		{
@@ -1435,8 +1435,8 @@ mod tests {
 		if !markview_platform::test_support::special_files() {
 			return;
 		}
-		let dir = tempfile::tempdir().unwrap();
-		let root = dir.path().canonicalize().unwrap();
+		let dir = crate::test_support::TestDir::new();
+		let root = dir.path().to_owned();
 		let locked = root.join("locked");
 		fs::create_dir(&locked).unwrap();
 		fs::write(root.join("README.md"), "# Readable").unwrap();
@@ -1464,7 +1464,7 @@ mod tests {
 
 	#[test]
 	fn folded_subtrees_preserve_nested_expansion_and_neighboring_rows() {
-		let dir = tempfile::tempdir().unwrap();
+		let dir = crate::test_support::TestDir::new();
 		for path in ["a/nested", "a/empty", "b/nested", "empty"] {
 			fs::create_dir_all(dir.path().join(path)).unwrap();
 		}
@@ -1524,7 +1524,7 @@ mod tests {
 
 	#[test]
 	fn superseded_scans_stop_during_a_directory_read() {
-		let dir = tempfile::tempdir().unwrap();
+		let dir = crate::test_support::TestDir::new();
 		for index in 0..20 {
 			fs::write(dir.path().join(format!("{index}.md")), "note").unwrap();
 		}
@@ -1539,8 +1539,8 @@ mod tests {
 
 	#[test]
 	fn tree_preserves_hierarchy_collapse_and_unambiguous_vault_paths() {
-		let dir = tempfile::tempdir().unwrap();
-		let root = dir.path().canonicalize().unwrap();
+		let dir = crate::test_support::TestDir::new();
+		let root = dir.path().to_owned();
 		for name in ["a", "b", ".obsidian", "empty"] {
 			fs::create_dir(root.join(name)).unwrap();
 		}
@@ -1592,8 +1592,8 @@ mod tests {
 
 	#[test]
 	fn expand_to_opens_only_the_branch_above_a_path() {
-		let dir = tempfile::tempdir().unwrap();
-		let root = dir.path().canonicalize().unwrap();
+		let dir = crate::test_support::TestDir::new();
+		let root = dir.path().to_owned();
 		for name in ["a/nested", "b/nested"] {
 			fs::create_dir_all(root.join(name)).unwrap();
 		}

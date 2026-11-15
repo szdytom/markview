@@ -6,13 +6,13 @@ use std::{fs, path::Path, sync::Arc};
 struct Case {
 	app: App<Proxy>,
 	events: mpsc::Receiver<Event>,
-	dir: tempfile::TempDir,
+	dir: crate::test_support::TestDir,
 	target: PathBuf,
 }
 
 impl Case {
 	fn new(body: &str, existing: bool) -> Self {
-		let dir = tempfile::tempdir().unwrap();
+		let dir = crate::test_support::TestDir::new();
 		let target = dir.path().join("other.md");
 		fs::write(
 			&target,

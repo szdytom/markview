@@ -7,7 +7,7 @@ proptest! {
 		characters in prop::collection::vec(any::<char>(), 0..128), bom in any::<bool>(), upper in any::<bool>(),
 		kind in prop::sample::select(vec![("md", 0), ("markdown", 0), ("mdown", 0), ("png", 1), ("jpg", 1), ("jpeg", 1), ("gif", 1), ("webp", 1), ("bmp", 1), ("ico", 1), ("svg", 1), ("pdf", 2), ("txt", 2), ("exe", 3), ("sh", 3), ("unknown", 3)]),
 	) {
-		let directory = tempfile::tempdir().unwrap();
+		let directory = crate::test_support::TestDir::new();
 		let extension = if upper { kind.0.to_uppercase() } else { kind.0.to_owned() };
 		let path = directory.path().join(format!("note.exe.{extension}"));
 		let body: String = characters.into_iter().collect();

@@ -595,7 +595,7 @@ mod tests {
 
 	#[test]
 	fn marked_rust_compiles_and_exempts_only_the_annotated_body() {
-		let directory = tempfile::tempdir().unwrap();
+		let directory = markview_test_support::TestDir::new();
 		let source = directory.path().join("fixture.rs");
 		let decisions = "if flag {}".repeat(15);
 		let marker = r#"#[cfg_attr(any(), markview::allow_complexity(reason = "Keep the mapping together"))]"#;

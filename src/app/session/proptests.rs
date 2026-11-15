@@ -10,7 +10,7 @@ proptest! {
 		details in prop::collection::vec((prop::collection::vec(0u32..8, 0..5), any::<bool>()), 0..8),
 		query in prop::collection::vec(any::<char>(), 0..24), flags in prop::array::uniform4(any::<bool>()),
 	) {
-		let directory = tempfile::tempdir().unwrap();
+		let directory = crate::test_support::TestDir::new();
 		let file = directory.path().join("session.json");
 		let reading = Reading { position: Position { input, frontend: u64::from(frontend), path, field, byte, local: f32::from(local) / 4.0, fallback: f32::from(fallback) / 4.0, fallback_ratio: f32::from(ratio) / 256.0 }, details: details.into() };
 		let search = SavedSearch { open: flags[0], query: query.into_iter().collect(), case_sensitive: flags[1], whole_word: flags[2] };

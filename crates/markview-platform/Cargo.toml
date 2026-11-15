@@ -13,6 +13,7 @@ workspace = true
 test-support = []
 
 [dev-dependencies]
+markview-test-support.workspace = true
 proptest.workspace = true
 
 [dependencies]

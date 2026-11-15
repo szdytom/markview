@@ -35,6 +35,11 @@ jobs:
       # These source audits inspect all platform branches on a single runner.
       - name: Rust cyclomatic complexity
         run: cargo run -p xtask --locked -- complexity
+      - name: Real-file test paths
+        run: |
+          cargo run -p xtask --locked -- test-paths
+          cargo test -p xtask --locked test_paths::
+          python3 -m unittest discover -s scripts -p test_test_paths.py
       - name: Application coupling
         run: cargo run -p xtask --locked -- coupling --check
 
@@ -87,6 +92,11 @@ jobs:
           ${{ runner.os == 'Linux' && '--skip rendering_baselines' || '' }}
         env:
           # Linux sees no installed fonts, so missing test configuration fails.
+          FONTCONFIG_FILE: ${{ github.workspace }}/tests/fontconfig.conf
+      - name: Symlink temporary-root regressions
+        if: runner.os == 'Linux' && runner.arch == 'X64'
+        run: python3 scripts/test_paths.py --symlink-only
+        env:
           FONTCONFIG_FILE: ${{ github.workspace }}/tests/fontconfig.conf
       - name: ARM Linux GLES rendering
         if: runner.os == 'Linux' && runner.arch == 'ARM64'

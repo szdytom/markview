@@ -287,7 +287,7 @@ fn markdown_matches_rendering_baselines() -> Result<()> {
 #[test]
 fn comparisons_reject_pixel_changes_dimensions_and_missing_baselines()
 -> Result<()> {
-	let dir = tempfile::tempdir()?;
+	let dir = markview_test_support::TestDir::new();
 	let baseline = dir.path().join("baseline.png");
 	let expected = RgbaImage::from_pixel(2, 2, Rgba([40, 50, 60, 255]));
 	expected.save(&baseline)?;

@@ -51,7 +51,7 @@ fn check_committed(data: &[u8]) -> bool {
 		let at = (usize::from(*byte) * 31 + index * 97) % bytes.len();
 		bytes[at] ^= byte.wrapping_add(index as u8).max(1);
 	}
-	let dir = tempfile::tempdir().expect("tempdir");
+	let dir = markview_test_support::TestDir::new();
 	let path = dir.path().join("face.otf");
 	std::fs::write(&path, &bytes).expect("write face");
 	let config = FontConfig {
@@ -103,7 +103,7 @@ fuzz_target!(|data: &[u8]| {
 	let _ = fonts::is_postscript_outline(data);
 	// The directory scan: derived file names and contents, so a hostile
 	// header and a hostile name meet in the same scan.
-	let dir = tempfile::tempdir().expect("tempdir");
+	let dir = markview_test_support::TestDir::new();
 	let seed = oracle::derive(data);
 	let n = 1 + (seed as usize % 4);
 	for i in 0..n {

@@ -16,7 +16,7 @@ fn configuration_directory_is_fixed_for_the_process() {
 		assert_eq!(markview_platform::config_directory(), expected);
 		return;
 	}
-	let root = tempfile::tempdir().unwrap();
+	let root = markview_test_support::TestDir::new();
 	let copied = root.path().join(executable.file_name().unwrap());
 	fs::copy(executable, &copied).unwrap();
 	fs::write(root.path().join("markview-portable-marker.txt"), "").unwrap();

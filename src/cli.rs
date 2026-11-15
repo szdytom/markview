@@ -1607,7 +1607,7 @@ mod tests {
 
 	#[test]
 	fn watch_re_exports_a_pdf_but_never_over_its_own_document() {
-		let dir = tempfile::tempdir().unwrap();
+		let dir = crate::test_support::TestDir::new();
 		let document = dir.path().join("a.md");
 		std::fs::write(&document, "# a\n").unwrap();
 		let args = parse(&[
@@ -1788,7 +1788,7 @@ mod tests {
 
 	#[test]
 	fn same_target_resolves_equivalent_paths_to_one_file() {
-		let dir = tempfile::tempdir().unwrap();
+		let dir = crate::test_support::TestDir::new();
 		let file = dir.path().join("a.md");
 		std::fs::write(&file, "# a\n").unwrap();
 		assert!(same_target(&file, &dir.path().join("./a.md")));
@@ -1798,7 +1798,7 @@ mod tests {
 	#[test]
 	fn pdf_trust_and_grants_are_explicit_and_do_not_promote_mode() {
 		use crate::security::{Origin, Trust};
-		let dir = tempfile::tempdir().unwrap();
+		let dir = crate::test_support::TestDir::new();
 		let image = dir.path().join("image.png");
 		std::fs::write(&image, b"image").unwrap();
 		let args = parse(&[

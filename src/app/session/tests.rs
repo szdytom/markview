@@ -45,7 +45,7 @@ fn document(dir: &Path, name: &str) -> PathBuf {
 
 #[test]
 fn new_window_starts_blank_even_with_a_saved_session() {
-	let dir = tempfile::tempdir().unwrap();
+	let dir = crate::test_support::TestDir::new();
 	let path = document(dir.path(), "saved.md");
 	{
 		let mut saved = app(dir.path());
@@ -63,7 +63,7 @@ fn new_window_starts_blank_even_with_a_saved_session() {
 
 #[test]
 fn roundtrip_tabs_order_active_dedup_close_empty_and_invalid_files() {
-	let dir = tempfile::tempdir().unwrap();
+	let dir = crate::test_support::TestDir::new();
 	let a = document(dir.path(), "a.md");
 	let b = document(dir.path(), "b.md");
 	let gone = document(dir.path(), "gone.md");
@@ -129,7 +129,7 @@ fn roundtrip_tabs_order_active_dedup_close_empty_and_invalid_files() {
 
 #[test]
 fn missing_active_falls_back_to_recent_and_clipboard_tabs_are_excluded() {
-	let dir = tempfile::tempdir().unwrap();
+	let dir = crate::test_support::TestDir::new();
 	let mut tabs = Tabs::default();
 	for name in ["a.md", "gone.md", "b.md"] {
 		tabs.open(document(dir.path(), name), Instant::now());
@@ -141,7 +141,7 @@ fn missing_active_falls_back_to_recent_and_clipboard_tabs_are_excluded() {
 	restored.restore_session(saved);
 	assert_eq!(restored.active(), 1);
 	assert_eq!(restored.session.path, Some(document(dir.path(), "b.md")));
-	let paste = tempfile::tempdir().unwrap();
+	let paste = crate::test_support::TestDir::new();
 	restored.open(document(paste.path(), "clipboard.md"), Instant::now());
 	let saved = restored.capture_session(paste.path());
 	assert_eq!(saved.tabs.len(), 2);
@@ -150,7 +150,7 @@ fn missing_active_falls_back_to_recent_and_clipboard_tabs_are_excluded() {
 
 #[test]
 fn lock_ownership_setting_linkage_debounce_and_shutdown_save() {
-	let dir = tempfile::tempdir().unwrap();
+	let dir = crate::test_support::TestDir::new();
 	let path = dir.path().join("session.json");
 	let mut owner = app(dir.path());
 	primary(&mut owner);
@@ -199,7 +199,7 @@ fn lock_ownership_setting_linkage_debounce_and_shutdown_save() {
 
 #[test]
 fn damaged_and_future_sessions_are_ignored_and_reset_clears_session() {
-	let dir = tempfile::tempdir().unwrap();
+	let dir = crate::test_support::TestDir::new();
 	let path = dir.path().join("session.json");
 	for bytes in ["broken", r#"{"version":3,"active":0,"tabs":[]}"#] {
 		fs::write(&path, bytes).unwrap();
@@ -214,7 +214,7 @@ fn damaged_and_future_sessions_are_ignored_and_reset_clears_session() {
 
 #[test]
 fn a_version_one_session_keeps_its_tab_and_scroll_fallback() {
-	let dir = tempfile::tempdir().unwrap();
+	let dir = crate::test_support::TestDir::new();
 	let path = document(dir.path(), "legacy.md");
 	let session_path = dir.path().join("session.json");
 	fs::write(
@@ -303,7 +303,7 @@ fn accept(
 use std::sync::Arc;
 #[test]
 fn queued_fragments_override_restoration_during_progressive_layout() {
-	let dir = tempfile::tempdir().unwrap();
+	let dir = crate::test_support::TestDir::new();
 	let path = document(dir.path(), "reader.md");
 	let source = format!("# Top\n\n{}", "Reading paragraph.\n\n".repeat(100));
 	let options = crate::test_support::options();
@@ -462,7 +462,7 @@ fn disclosures_apply_before_layout_and_changed_content_discards_overrides() {
 	options.details_open = original.details_open.clone();
 	accept(&mut original, source, &options, true);
 	let saved = Reading::capture(&original);
-	let dir = tempfile::tempdir().unwrap();
+	let dir = crate::test_support::TestDir::new();
 	let path = document(dir.path(), "details.md");
 	fs::write(&path, source).unwrap();
 	let mut tabs = Tabs::default();
@@ -570,7 +570,7 @@ fn pending_positions_keep_current_disclosure_choices() {
 #[test]
 fn external_open_before_window_creation_restores_then_selects_the_requested_tab()
  {
-	let dir = tempfile::tempdir().unwrap();
+	let dir = crate::test_support::TestDir::new();
 	let a = document(dir.path(), "a.md");
 	let b = document(dir.path(), "b.md");
 	Session {
@@ -611,8 +611,8 @@ fn clipboard_exclusion_uses_the_canonical_temporary_directory() {
 	if !markview_platform::test_support::special_files() {
 		return;
 	}
-	let dir = tempfile::tempdir().unwrap();
-	let paste = tempfile::tempdir().unwrap();
+	let dir = crate::test_support::TestDir::new();
+	let paste = crate::test_support::TestDir::new();
 	let link = dir.path().join("paste");
 	markview_platform::test_support::symlink(paste.path(), &link).unwrap();
 	let mut tabs = Tabs::default();
@@ -778,7 +778,7 @@ fn image_and_caption_positions_survive_serialization_and_image_loading() {
 #[test]
 fn restoration_keeps_modes_for_the_same_path_and_discards_resource_grants() {
 	use crate::security::{Origin, Resource, Security, Trust};
-	let dir = tempfile::tempdir().unwrap();
+	let dir = crate::test_support::TestDir::new();
 	let path = document(dir.path(), "local.md");
 	let image = dir.path().join("image.png");
 	let mut tabs = Tabs::default();
@@ -808,8 +808,8 @@ fn restoration_keeps_modes_for_the_same_path_and_discards_resource_grants() {
 
 #[test]
 fn pending_folder_restoration_survives_autosave_and_exit() {
-	let dir = tempfile::tempdir().unwrap();
-	let root = dir.path().canonicalize().unwrap();
+	let dir = crate::test_support::TestDir::new();
+	let root = dir.path().to_owned();
 	let path = root.join("session.json");
 	for open in [false, true] {
 		Session {
@@ -854,7 +854,7 @@ fn pending_folder_restoration_survives_autosave_and_exit() {
 
 #[test]
 fn pending_folder_root_ignores_stale_results_and_clears_on_failure() {
-	let dir = tempfile::tempdir().unwrap();
+	let dir = crate::test_support::TestDir::new();
 	let mut app = app(dir.path());
 	primary(&mut app);
 	let root = dir.path().join("missing");
@@ -875,8 +875,8 @@ fn pending_folder_root_ignores_stale_results_and_clears_on_failure() {
 
 #[test]
 fn folder_root_is_saved_with_the_browsing_session() {
-	let dir = tempfile::tempdir().unwrap();
-	let root = dir.path().canonicalize().unwrap();
+	let dir = crate::test_support::TestDir::new();
+	let root = dir.path().to_owned();
 	let path = document(&root, "note.md");
 	let mut app = app(&root);
 	primary(&mut app);
@@ -898,7 +898,7 @@ fn folder_root_is_saved_with_the_browsing_session() {
 
 #[test]
 fn recent_order_and_each_tabs_search_state_roundtrip() {
-	let dir = tempfile::tempdir().unwrap();
+	let dir = crate::test_support::TestDir::new();
 	let a = document(dir.path(), "a.md");
 	let b = document(dir.path(), "b.md");
 	{
@@ -956,7 +956,7 @@ fn recent_order_and_each_tabs_search_state_roundtrip() {
 fn restored_web_tabs_carry_a_readable_label() {
 	// The strip and its metrics read `page_title`, so a restored web tab that
 	// is not fetched until selected must already have one.
-	let dir = tempfile::tempdir().unwrap();
+	let dir = crate::test_support::TestDir::new();
 	let mut app = app(dir.path());
 	let urls = [
 		"https://example.org/blog/post",

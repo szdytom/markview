@@ -597,7 +597,7 @@ mod tests {
 	/// would hide the rest from the download catalogue.
 	#[test]
 	fn a_collection_reports_every_family() {
-		let dir = tempfile::tempdir().unwrap();
+		let dir = crate::test_support::TestDir::new();
 		let read = |name: &str| {
 			std::fs::read(
 				Path::new(env!("CARGO_MANIFEST_DIR"))
@@ -630,7 +630,7 @@ mod tests {
 
 	#[test]
 	fn a_face_is_described_from_its_own_tables() {
-		let dir = tempfile::tempdir().unwrap();
+		let dir = crate::test_support::TestDir::new();
 		let bytes = std::fs::read(Path::new(env!("CARGO_MANIFEST_DIR")).join(
 			"crates/markview-layout/tests/fonts/NotoSerif-Regular-subset.otf",
 		))
@@ -658,7 +658,7 @@ mod tests {
 
 	#[test]
 	fn a_download_directory_joins_the_font_set_once() {
-		let dir = tempfile::tempdir().unwrap();
+		let dir = crate::test_support::TestDir::new();
 		// A drawing run gains the directory, like another `--fonts` one.
 		let mut fonts = FontConfig::default();
 		join_download_directory(&mut fonts, Some(dir.path().to_path_buf()));
@@ -685,7 +685,7 @@ mod tests {
 	/// A refresh that succeeds replaces the old copy and keeps no leftover.
 	#[test]
 	fn a_successful_refresh_replaces_the_installed_copy() {
-		let dir = tempfile::tempdir().unwrap();
+		let dir = crate::test_support::TestDir::new();
 		let font = font_bytes();
 		let family = fan("noto", &["https://x.example/a.otf"]);
 		let installed = local_name("noto", "a.otf", &font);
@@ -716,7 +716,7 @@ mod tests {
 	/// replaced exactly where they were.
 	#[test]
 	fn a_failed_refresh_keeps_the_files_it_would_have_replaced() {
-		let dir = tempfile::tempdir().unwrap();
+		let dir = crate::test_support::TestDir::new();
 		let font = font_bytes();
 		let mut family = fan(
 			"noto",
@@ -756,7 +756,7 @@ mod tests {
 
 	#[test]
 	fn the_catalogue_follows_the_layers_and_the_disk() {
-		let dir = tempfile::tempdir().unwrap();
+		let dir = crate::test_support::TestDir::new();
 		let font = font_bytes();
 		let low = family("noto", &["https://x.example/a.otf"]);
 		let high = FontFamily {
@@ -834,7 +834,7 @@ mod tests {
 
 	#[test]
 	fn a_selection_leaves_out_what_is_already_downloaded() {
-		let dir = tempfile::tempdir().unwrap();
+		let dir = crate::test_support::TestDir::new();
 		let font = font_bytes();
 		let family = family("noto", &["https://x.example/a.otf"]);
 		let mut named = family.clone();

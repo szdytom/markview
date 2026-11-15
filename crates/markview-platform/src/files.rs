@@ -2,6 +2,12 @@
 use std::{fs, io, path::Path};
 
 /// Create temporary storage writable by the application on this platform.
+#[cfg_attr(
+	any(),
+	markview::allow_raw_paths(
+		reason = "Production temporary storage follows the platform writable-directory policy"
+	)
+)]
 pub fn tempdir() -> io::Result<tempfile::TempDir> {
 	#[cfg(target_os = "android")]
 	{
@@ -164,7 +170,7 @@ mod tests {
 	#[cfg(any(target_os = "windows", target_os = "linux"))]
 	#[test]
 	fn portable_storage_depends_only_on_marker_presence() {
-		let directory = tempfile::tempdir().unwrap();
+		let directory = markview_test_support::TestDir::new();
 		let root = directory.path().join("portable 中文 reader");
 		fs::create_dir(&root).unwrap();
 		let executable = root.join("markview");
@@ -184,7 +190,7 @@ mod tests {
 
 	#[test]
 	fn folder_display_name_follows_native_conventions() {
-		let dir = tempfile::tempdir().unwrap();
+		let dir = markview_test_support::TestDir::new();
 		let root = dir.path().join("local-folder");
 		fs::create_dir(&root).unwrap();
 		assert_eq!(folder_name(&root), "local-folder");

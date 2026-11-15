@@ -2441,6 +2441,7 @@ dependencies = [
  "markview-pdf",
  "markview-platform",
  "markview-render",
+ "markview-test-support",
  "markview-ui-core",
  "markview-webpage",
  "mermaid-rs-renderer",
@@ -2496,9 +2497,9 @@ dependencies = [
  "anyhow",
  "flate2",
  "getrandom 0.4.3",
+ "markview-test-support",
  "sha2",
  "tar",
- "tempfile",
  "zip",
  "zstd",
 ]
@@ -2565,6 +2566,7 @@ dependencies = [
  "markview-document",
  "markview-geometry",
  "markview-layout",
+ "markview-test-support",
  "markview-webpage",
  "memmap2",
  "parley",
@@ -2580,7 +2582,6 @@ dependencies = [
  "skrifa 0.42.1",
  "swash",
  "syntect",
- "tempfile",
  "toml_edit",
  "two-face",
  "unicode-segmentation",
@@ -2598,6 +2599,7 @@ dependencies = [
  "markview-commonmark",
  "markview-document",
  "markview-layout",
+ "markview-test-support",
  "parley",
  "percent-encoding",
  "proptest",
@@ -2624,6 +2626,7 @@ dependencies = [
  "jni",
  "libc",
  "log",
+ "markview-test-support",
  "notify",
  "objc2",
  "objc2-app-kit",
@@ -2655,6 +2658,7 @@ dependencies = [
  "markview-layout",
  "markview-pdf",
  "markview-render",
+ "markview-test-support",
  "parley",
  "pollster 1.0.1",
  "proptest",
@@ -2664,10 +2668,16 @@ dependencies = [
  "rust-embed",
  "serde",
  "swash",
- "tempfile",
  "tiny-skia",
  "web-time",
  "wgpu",
+]
+
+[[package]]
+name = "markview-test-support"
+version = "0.5.2"
+dependencies = [
+ "tempfile",
 ]
 
 [[package]]
@@ -6366,12 +6376,12 @@ version = "0.5.2"
 dependencies = [
  "anyhow",
  "ico",
+ "markview-test-support",
  "proc-macro2",
  "proptest",
  "resvg",
  "serde_json",
  "syn 3.0.10",
- "tempfile",
  "tiny-skia",
  "usvg",
 ]

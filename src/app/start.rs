@@ -653,8 +653,8 @@ mod tests {
 	#[test]
 	fn quick_access_middle_click_preserves_the_page_and_search() {
 		use crate::state::{DocumentCommand, TextField};
-		let dir = tempfile::tempdir().unwrap();
-		let root = dir.path().canonicalize().unwrap();
+		let dir = crate::test_support::TestDir::new();
+		let root = dir.path().to_owned();
 		for name in ["note-a.md", "note-b.md", "note-c.md"] {
 			fs::write(root.join(name), "# Note").unwrap();
 		}
@@ -775,8 +775,8 @@ mod tests {
 	fn quick_access_middle_click_ignores_covered_pending_and_existing_rows() {
 		use crate::app::modal::{Message, Modal};
 		use crate::state::TextField;
-		let dir = tempfile::tempdir().unwrap();
-		let root = dir.path().canonicalize().unwrap();
+		let dir = crate::test_support::TestDir::new();
+		let root = dir.path().to_owned();
 		fs::write(root.join("note.md"), "# Note").unwrap();
 		for picker in [false, true] {
 			let (tx, events) = mpsc::channel();
@@ -860,8 +860,8 @@ mod tests {
 
 	#[test]
 	fn start_page_and_quick_open_prefer_markdown_in_search_results() {
-		let dir = tempfile::tempdir().unwrap();
-		let root = dir.path().canonicalize().unwrap();
+		let dir = crate::test_support::TestDir::new();
+		let root = dir.path().to_owned();
 		for name in ["guide-a.png", "guide-b.md"] {
 			fs::write(root.join(name), "# Guide").unwrap();
 		}
@@ -903,8 +903,8 @@ mod tests {
 	#[test]
 	fn workspace_search_cancels_old_queries_updates_from_the_tree_and_opens_files()
 	 {
-		let dir = tempfile::tempdir().unwrap();
-		let root = dir.path().canonicalize().unwrap();
+		let dir = crate::test_support::TestDir::new();
+		let root = dir.path().to_owned();
 		fs::create_dir_all(root.join("docs/笔记")).unwrap();
 		fs::create_dir(root.join("node_modules")).unwrap();
 		for name in ["README.md", "docs/笔记/阅读.md", "node_modules/hidden.md"]
@@ -1005,8 +1005,8 @@ mod tests {
 	fn quick_open_searches_open_tabs_with_and_without_a_workspace() {
 		use crate::state::{DocumentCommand, TextField};
 		use winit::keyboard::{Key, NamedKey};
-		let dir = tempfile::tempdir().unwrap();
-		let root = dir.path().canonicalize().unwrap();
+		let dir = crate::test_support::TestDir::new();
+		let root = dir.path().to_owned();
 		fs::create_dir(root.join("workspace")).unwrap();
 		for name in ["outside.md", "another.md", "workspace/inside.md"] {
 			fs::write(root.join(name), "# Note").unwrap();
@@ -1120,8 +1120,8 @@ mod tests {
 
 	#[test]
 	fn a_web_tab_is_never_a_start_page_or_quick_open_row() {
-		let dir = tempfile::tempdir().unwrap();
-		let root = dir.path().canonicalize().unwrap();
+		let dir = crate::test_support::TestDir::new();
+		let root = dir.path().to_owned();
 		fs::write(root.join("local.md"), "# Local").unwrap();
 		fs::write(root.join("open.md"), "# Open").unwrap();
 		let (tx, events) = mpsc::channel();
@@ -1202,8 +1202,8 @@ mod tests {
 	#[test]
 	fn quick_open_opens_a_file_absent_from_the_start_page_results() {
 		use winit::keyboard::{Key, NamedKey};
-		let dir = tempfile::tempdir().unwrap();
-		let root = dir.path().canonicalize().unwrap();
+		let dir = crate::test_support::TestDir::new();
+		let root = dir.path().to_owned();
 		for index in 0..20 {
 			fs::write(root.join(format!("note-{index:02}.md")), "# Note")
 				.unwrap();
@@ -1249,8 +1249,8 @@ mod tests {
 	fn start_page_lists_recent_visits_before_unused_files_and_skips_open_tabs()
 	{
 		use crate::state::DocumentCommand;
-		let dir = tempfile::tempdir().unwrap();
-		let root = dir.path().canonicalize().unwrap();
+		let dir = crate::test_support::TestDir::new();
+		let root = dir.path().to_owned();
 		for index in 0..6 {
 			fs::write(root.join(format!("note-{index}.md")), "# Note").unwrap();
 		}
@@ -1296,8 +1296,8 @@ mod tests {
 
 	#[test]
 	fn start_page_records_visits_from_tab_switches() {
-		let dir = tempfile::tempdir().unwrap();
-		let root = dir.path().canonicalize().unwrap();
+		let dir = crate::test_support::TestDir::new();
+		let root = dir.path().to_owned();
 		for index in 0..3 {
 			fs::write(root.join(format!("note-{index}.md")), "# Note").unwrap();
 		}
@@ -1333,8 +1333,8 @@ mod tests {
 	#[test]
 	fn start_page_matches_a_visit_opened_with_dotdot() {
 		use crate::state::DocumentCommand;
-		let dir = tempfile::tempdir().unwrap();
-		let root = dir.path().canonicalize().unwrap();
+		let dir = crate::test_support::TestDir::new();
+		let root = dir.path().to_owned();
 		fs::create_dir(root.join("docs")).unwrap();
 		fs::write(root.join("notes.md"), "# Note").unwrap();
 		let (tx, events) = mpsc::channel();
@@ -1363,8 +1363,8 @@ mod tests {
 
 	#[test]
 	fn start_page_records_the_document_a_close_activates() {
-		let dir = tempfile::tempdir().unwrap();
-		let root = dir.path().canonicalize().unwrap();
+		let dir = crate::test_support::TestDir::new();
+		let root = dir.path().to_owned();
 		for index in 0..3 {
 			fs::write(root.join(format!("note-{index}.md")), "# Note").unwrap();
 		}
@@ -1401,8 +1401,8 @@ mod tests {
 			security::{Security, Trust},
 			state::DocumentCommand,
 		};
-		let dir = tempfile::tempdir().unwrap();
-		let root = dir.path().canonicalize().unwrap();
+		let dir = crate::test_support::TestDir::new();
+		let root = dir.path().to_owned();
 		fs::write(root.join("shared.md"), "# Note").unwrap();
 		let (tx, events) = mpsc::channel();
 		let mut app = App::new(
@@ -1449,7 +1449,7 @@ mod tests {
 
 	#[test]
 	fn history_keeps_a_bounded_unique_recent_order_and_survives_restart() {
-		let dir = tempfile::tempdir().unwrap();
+		let dir = crate::test_support::TestDir::new();
 		let path = dir.path().join("workspaces.json");
 		let mut state = State::load(Some(path.clone()));
 		for index in 0..12 {
@@ -1488,8 +1488,8 @@ mod tests {
 	fn quick_open_searches_independently_scrolls_selection_and_opens_a_file() {
 		use crate::state::TextField;
 		use winit::keyboard::{Key, ModifiersState, NamedKey};
-		let dir = tempfile::tempdir().unwrap();
-		let root = dir.path().canonicalize().unwrap();
+		let dir = crate::test_support::TestDir::new();
+		let root = dir.path().to_owned();
 		for index in 0..20 {
 			fs::write(root.join(format!("note-{index:02}.md")), "# Note")
 				.unwrap();

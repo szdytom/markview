@@ -63,7 +63,7 @@ fn image(dir: &Path, name: &str, color: [u8; 4]) {
 }
 #[test]
 fn stdin_pdf_keeps_all_text_pagination_and_relative_images() {
-	let dir = tempfile::tempdir().unwrap();
+	let dir = markview_test_support::TestDir::new();
 	image(dir.path(), "local.png", [255, 0, 0, 255]);
 	let source = format!(
 		"# First snapshot\r\n\r\n![relative](local.png)\r\n\r\n{}\r\n# Last snapshot\r\n",
@@ -131,7 +131,7 @@ fn stdin_pdf_keeps_all_text_pagination_and_relative_images() {
 }
 #[test]
 fn full_png_keeps_first_and_last_images_across_tiles() {
-	let dir = tempfile::tempdir().unwrap();
+	let dir = markview_test_support::TestDir::new();
 	image(dir.path(), "first.png", [255, 0, 0, 255]);
 	image(dir.path(), "last.png", [255, 0, 255, 255]);
 	let source = format!(
@@ -170,7 +170,7 @@ fn full_png_keeps_first_and_last_images_across_tiles() {
 }
 #[test]
 fn buffer_exports_preserve_resource_trust_and_explicit_image_grants() {
-	let dir = tempfile::tempdir().unwrap();
+	let dir = markview_test_support::TestDir::new();
 	image(dir.path(), "local.png", [255, 0, 255, 255]);
 	let local = dir.path().join("local.png");
 	for format in ["pdf", "png"] {
@@ -224,7 +224,7 @@ fn buffer_exports_preserve_resource_trust_and_explicit_image_grants() {
 
 #[test]
 fn custom_templates_errors_and_cancellation_preserve_target() {
-	let dir = tempfile::tempdir().unwrap();
+	let dir = markview_test_support::TestDir::new();
 	let style = dir.path().join("custom.mvss.toml");
 	std::fs::write(&style, "format_version=3\nversion=1\ntargets=['pdf']\n[page]\nsize='a5'\n[mermaid]\nfont_family=['Diagram Literal']\n[[rule]]\nwhen=['code_block']\nfont=[{family='Code Literal'}]\n[[fontdef]]\nid='serif'\nlookfor=['Noto Serif']\n").unwrap();
 	let output = dir.path().join("custom.pdf");
@@ -279,7 +279,7 @@ fn custom_templates_errors_and_cancellation_preserve_target() {
 
 #[test]
 fn invalid_explicit_fonts_fail_before_replacing_any_export() {
-	let dir = tempfile::tempdir().unwrap();
+	let dir = markview_test_support::TestDir::new();
 	let bad = dir.path().join("error-page.ttf");
 	std::fs::write(&bad, b"<html>Not a font</html>").unwrap();
 	let source = dir.path().join("source.md");
@@ -315,7 +315,7 @@ fn invalid_explicit_fonts_fail_before_replacing_any_export() {
 
 #[test]
 fn file_and_buffer_pdf_exports_share_templates_fonts_and_reading_options() {
-	let dir = tempfile::tempdir().unwrap();
+	let dir = markview_test_support::TestDir::new();
 	let source = dir.path().join("source.md");
 	let text = "# Snapshot\n\nBody paragraph.\n\n中文\n";
 	std::fs::write(&source, text).unwrap();
@@ -390,7 +390,7 @@ fn file_and_buffer_exports_use_downloaded_fonts_unless_pinned() {
 	if !markview_platform::test_support::isolated_fontconfig() {
 		return;
 	}
-	let dir = tempfile::tempdir().unwrap();
+	let dir = markview_test_support::TestDir::new();
 	let root = Path::new(env!("CARGO_MANIFEST_DIR"));
 	let system = dir.path().join("system");
 	std::fs::create_dir(&system).unwrap();
@@ -470,7 +470,7 @@ fn file_and_buffer_exports_use_downloaded_fonts_unless_pinned() {
 
 #[test]
 fn buffer_dialects_share_pdf_and_png_parsing_without_reader_settings() {
-	let dir = tempfile::tempdir().unwrap();
+	let dir = markview_test_support::TestDir::new();
 	let source = "# Dialect\n\nVisible %%SECRET%% text and ==marked==.\n\n```text\n%%CODE%%\n```\n\n> [!warning] Title\n> Body.\n";
 	for (flavor, secret, marks) in
 		[("gfm", true, true), ("obsidian", false, false)]
@@ -534,7 +534,7 @@ fn buffer_dialects_share_pdf_and_png_parsing_without_reader_settings() {
 
 #[test]
 fn grid_tables_default_on_and_can_be_disabled_in_both_export_presets() {
-	let dir = tempfile::tempdir().unwrap();
+	let dir = markview_test_support::TestDir::new();
 	for flavor in ["gfm", "obsidian"] {
 		for enabled in [true, false] {
 			let output =

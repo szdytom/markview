@@ -38,8 +38,8 @@ fn point_on(app: &mut App<StubProxy>, command: ChromeCommand) -> (f32, f32) {
 
 #[test]
 fn folder_middle_click_opens_background_tabs_and_preserves_the_current_page() {
-	let dir = tempfile::tempdir().unwrap();
-	let root = dir.path().canonicalize().unwrap();
+	let dir = crate::test_support::TestDir::new();
+	let root = dir.path().to_owned();
 	let current = root.join("a.md");
 	let note = root.join("b.md");
 	let image = root.join("image.png");
@@ -117,7 +117,7 @@ fn folder_middle_click_opens_background_tabs_and_preserves_the_current_page() {
 #[test]
 fn folder_middle_click_ignores_directories_controls_and_covered_rows() {
 	use crate::app::modal::{Message, Modal};
-	let dir = tempfile::tempdir().unwrap();
+	let dir = crate::test_support::TestDir::new();
 	std::fs::create_dir(dir.path().join("notes")).unwrap();
 	std::fs::write(dir.path().join("note.md"), SOURCE).unwrap();
 	let (mut app, _) = reader(SOURCE, 760.);

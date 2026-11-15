@@ -504,7 +504,7 @@ mod tests {
 
 	#[test]
 	fn web_exports_name_the_url_and_never_the_session_path() {
-		let dir = tempfile::tempdir().unwrap();
+		let dir = crate::test_support::TestDir::new();
 		let url = "https://example.org/article";
 		let (request, output, _) = web_request(dir.path(), url);
 		export_with_services(
@@ -535,7 +535,7 @@ mod tests {
 
 	#[test]
 	fn exports_unsaved_text_and_checks_cancellation_before_replacing_output() {
-		let dir = tempfile::tempdir().unwrap();
+		let dir = crate::test_support::TestDir::new();
 		let path = dir.path().join("unsaved.md");
 		let output = dir.path().join("out.pdf");
 		let request = options(&path, &output);
@@ -562,7 +562,7 @@ mod tests {
 
 	#[test]
 	fn exports_every_image_beyond_the_reader_pixel_budget() {
-		let dir = tempfile::tempdir().unwrap();
+		let dir = crate::test_support::TestDir::new();
 		let mut source = String::new();
 		// Five decodes total 280 MB, exceeding the reader's 256 MiB cache.
 		for i in 0..5 {
@@ -599,7 +599,7 @@ mod tests {
 
 	#[test]
 	fn compressed_images_preserve_alpha_and_share_aliases() {
-		let dir = tempfile::tempdir().unwrap();
+		let dir = crate::test_support::TestDir::new();
 		image::RgbaImage::from_raw(2, 1, vec![255, 0, 0, 255, 0, 255, 0, 128])
 			.unwrap()
 			.save(dir.path().join("a.png"))
@@ -643,7 +643,7 @@ mod tests {
 
 	#[test]
 	fn an_unchanged_save_is_skipped_and_an_edit_reuses_untouched_blocks() {
-		let dir = tempfile::tempdir().unwrap();
+		let dir = crate::test_support::TestDir::new();
 		let (path, output, mut exporter) = start(
 			dir.path(),
 			"# Title\n\nFirst paragraph.\n\nSecond paragraph.\n",
@@ -662,7 +662,7 @@ mod tests {
 
 	#[test]
 	fn a_forced_rebuild_refreshes_an_unchanged_document() {
-		let dir = tempfile::tempdir().unwrap();
+		let dir = crate::test_support::TestDir::new();
 		let (_, _, mut exporter) =
 			start(dir.path(), "# Title\n\nA paragraph.\n");
 		let first = exporter.export(false).unwrap().unwrap();
@@ -674,7 +674,7 @@ mod tests {
 
 	#[test]
 	fn a_failed_rebuild_keeps_the_last_good_pdf() {
-		let dir = tempfile::tempdir().unwrap();
+		let dir = crate::test_support::TestDir::new();
 		let (path, output, mut exporter) =
 			start(dir.path(), "# Title\n\nA paragraph.\n");
 		exporter.export(false).unwrap().unwrap();
@@ -688,7 +688,7 @@ mod tests {
 
 	#[test]
 	fn an_event_queued_before_the_loop_starts_is_not_lost() {
-		let dir = tempfile::tempdir().unwrap();
+		let dir = crate::test_support::TestDir::new();
 		let (_, output, mut exporter) =
 			start(dir.path(), "# Title\n\nA paragraph.\n");
 		let (tx, rx) = mpsc::channel();
@@ -701,7 +701,7 @@ mod tests {
 
 	#[test]
 	fn a_failed_write_leaves_the_save_eligible_for_a_retry() {
-		let dir = tempfile::tempdir().unwrap();
+		let dir = crate::test_support::TestDir::new();
 		let (_, output, mut exporter) =
 			start(dir.path(), "# Title\n\nA paragraph.\n");
 		// An existing directory cannot be replaced by the output rename.
@@ -718,7 +718,7 @@ mod tests {
 		if !markview_platform::test_support::symlinks() {
 			return;
 		}
-		let dir = tempfile::tempdir().unwrap();
+		let dir = crate::test_support::TestDir::new();
 		let first = dir.path().join("first.png");
 		let second = dir.path().join("second.png");
 		image::RgbaImage::from_pixel(3, 2, image::Rgba([255, 0, 0, 255]))
@@ -746,7 +746,7 @@ mod tests {
 
 	#[test]
 	fn a_failed_forced_rebuild_retries_an_unchanged_save() {
-		let dir = tempfile::tempdir().unwrap();
+		let dir = crate::test_support::TestDir::new();
 		let (_, output, mut exporter) =
 			start(dir.path(), "# Title\n\nA paragraph.\n");
 		exporter.export(false).unwrap().unwrap();

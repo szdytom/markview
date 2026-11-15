@@ -363,7 +363,7 @@ mod tests {
 
 	#[test]
 	fn report_separates_submission_from_completed_gpu_wait() -> Result<()> {
-		let dir = tempfile::tempdir()?;
+		let dir = crate::test_support::TestDir::new();
 		let input = dir.path().join("sample.md");
 		let output = dir.path().join("timing.json");
 		fs::write(
@@ -405,7 +405,7 @@ mod tests {
 	#[test]
 	fn a_document_with_no_geometry_still_measures_its_opening_frame()
 	-> Result<()> {
-		let dir = tempfile::tempdir()?;
+		let dir = crate::test_support::TestDir::new();
 		let input = dir.path().join("empty.md");
 		let output = dir.path().join("timing.json");
 		fs::write(&input, "")?;

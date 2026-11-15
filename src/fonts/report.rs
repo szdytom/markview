@@ -320,8 +320,8 @@ mod tests {
 			release: tokio::sync::Semaphore::new(0),
 			bytes: font_bytes(),
 		};
-		let a = tempfile::tempdir().unwrap();
-		let b = tempfile::tempdir().unwrap();
+		let a = crate::test_support::TestDir::new();
+		let b = crate::test_support::TestDir::new();
 		let first = [family(
 			"first",
 			&["https://example.com/a.otf", "https://example.com/b.otf"],
@@ -404,7 +404,7 @@ mod tests {
 				self.fake.probe(url).await
 			}
 		}
-		let dir = tempfile::tempdir().unwrap();
+		let dir = crate::test_support::TestDir::new();
 		let font = font_bytes();
 		let urls = [
 			"https://good.example/slow.otf",
@@ -483,7 +483,7 @@ mod tests {
 				Ok(Duration::ZERO)
 			}
 		}
-		let dir = tempfile::tempdir().unwrap();
+		let dir = crate::test_support::TestDir::new();
 		let font = font_bytes();
 		let armed = Arc::new(std::sync::atomic::AtomicBool::new(false));
 		let transport = Racing {

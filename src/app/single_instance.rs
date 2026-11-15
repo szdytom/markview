@@ -506,7 +506,7 @@ mod tests {
 
 	#[test]
 	fn explicit_new_window_bypasses_reuse_and_keeps_session_ownership() {
-		let dir = tempfile::tempdir().unwrap();
+		let dir = crate::test_support::TestDir::new();
 		let lock = dir.path().join("instance.lock");
 		let Start::Primary(first) = start(&lock, true, None, false).unwrap()
 		else {
@@ -535,7 +535,7 @@ mod tests {
 
 	#[test]
 	fn folders_get_separate_windows_and_files_follow_their_folder() {
-		let dir = tempfile::tempdir().unwrap();
+		let dir = crate::test_support::TestDir::new();
 		let lock = dir.path().join("instance.lock");
 		let root = dir.path().join("notes");
 		let nested = root.join("nested");
@@ -596,7 +596,7 @@ mod tests {
 		if !markview_platform::test_support::special_files() {
 			return;
 		}
-		let dir = tempfile::tempdir().unwrap();
+		let dir = crate::test_support::TestDir::new();
 		let lock = dir.path().join("instance.lock");
 		let root = dir.path().join("notes");
 		let alias = dir.path().join("alias");
@@ -620,7 +620,7 @@ mod tests {
 
 	#[test]
 	fn launches_forward_only_when_enabled_and_recover_after_exit() {
-		let dir = tempfile::tempdir().unwrap();
+		let dir = crate::test_support::TestDir::new();
 		let lock = dir.path().join("instance.lock");
 		let Start::Primary(primary) = start(&lock, false, None, false).unwrap()
 		else {
@@ -655,7 +655,7 @@ mod tests {
 
 	#[test]
 	fn invalid_token_cannot_open_a_file() {
-		let dir = tempfile::tempdir().unwrap();
+		let dir = crate::test_support::TestDir::new();
 		let lock = dir.path().join("instance.lock");
 		let Start::Primary(primary) = start(&lock, true, None, false).unwrap()
 		else {
@@ -679,7 +679,7 @@ mod tests {
 		}
 		use markview_platform::test_support::symlink;
 
-		let tmp = tempfile::tempdir().unwrap();
+		let tmp = crate::test_support::TestDir::new();
 		let directory = tmp.path().join("settings");
 		std::fs::create_dir(&directory).unwrap();
 		let directory = directory.canonicalize().unwrap();
@@ -727,7 +727,7 @@ mod tests {
 
 	#[test]
 	fn trickling_client_cannot_extend_the_request_deadline() {
-		let dir = tempfile::tempdir().unwrap();
+		let dir = crate::test_support::TestDir::new();
 		let lock = dir.path().join("instance.lock");
 		let Start::Primary(primary) = start(&lock, true, None, false).unwrap()
 		else {
@@ -759,7 +759,7 @@ mod tests {
 
 	#[test]
 	fn shutdown_cancels_a_client_without_waiting_for_the_deadline() {
-		let dir = tempfile::tempdir().unwrap();
+		let dir = crate::test_support::TestDir::new();
 		let lock = dir.path().join("instance.lock");
 		let Start::Primary(primary) = start(&lock, false, None, false).unwrap()
 		else {
@@ -783,7 +783,7 @@ mod tests {
 
 	#[test]
 	fn closed_event_loop_rejects_forwarding_and_releases_ownership() {
-		let dir = tempfile::tempdir().unwrap();
+		let dir = crate::test_support::TestDir::new();
 		let lock = dir.path().join("instance.lock");
 		let Start::Primary(primary) = start(&lock, true, None, false).unwrap()
 		else {

@@ -205,7 +205,7 @@ proptest! {
 		operations in prop::collection::vec((0usize..4, any::<u16>()), 0..16),
 		family in prop::collection::vec(any::<char>(), 0..16), reload_before_flush in any::<bool>(),
 	) {
-		let directory = tempfile::tempdir().unwrap();
+		let directory = crate::test_support::TestDir::new();
 		let path = directory.path().join("settings.toml");
 		let family: String = family.into_iter().collect();
 		let save = |settings: &ReaderSettings| fs::write(&path, toml_edit::ser::to_document(&Config::from_settings(settings, ExportSettings::default())).unwrap().to_string()).unwrap();
@@ -255,7 +255,7 @@ proptest! {
 	fn replacing_an_initially_invalid_settings_file_preserves_its_exact_bytes_once(
 		payload in prop::collection::vec(any::<u8>(), 0..128), seed in any::<u16>(),
 	) {
-		let directory = tempfile::tempdir().unwrap();
+		let directory = crate::test_support::TestDir::new();
 		let path = directory.path().join("settings.toml");
 		let mut invalid = vec![0xff];
 		invalid.extend(payload);
@@ -283,7 +283,7 @@ proptest! {
 	fn settings_transactions_merge_only_unedited_fields_and_preserve_the_last_good_state(
 		operations in prop::collection::vec((0u8..8, 0usize..12, any::<u16>()), 0..16),
 	) {
-		let directory = tempfile::tempdir().unwrap();
+		let directory = crate::test_support::TestDir::new();
 		let path = directory.path().join("settings.toml");
 		let mut current = values(1);
 		let mut current_export = export(1);

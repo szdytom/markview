@@ -61,10 +61,10 @@ wgpu = { workspace = true, features = ["webgl"] }
 workspace = true
 
 [dev-dependencies]
+markview-test-support.workspace = true
 proptest.workspace = true
 markview-commonmark = { path = "../markview-commonmark" }
 image = { version = "0.25.9", default-features = false, features = ["png"] }
-tempfile.workspace = true
 markview-pdf = { path = "../markview-pdf" }
 # `Renderer::new` is async, and a test has no runtime to drive it. The library
 # never blocks: a host that has a loop drives it from there.

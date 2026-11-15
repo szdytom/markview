@@ -877,7 +877,7 @@ mod tests {
 				)
 				.unwrap();
 			});
-			let dir = tempfile::tempdir().unwrap();
+			let dir = crate::test_support::TestDir::new();
 			let path = dir.path().join("download");
 			let mut events = Vec::new();
 			{
@@ -939,7 +939,7 @@ mod tests {
 				.send()
 				.await
 				.unwrap();
-			let directory = tempfile::tempdir().unwrap();
+			let directory = crate::test_support::TestDir::new();
 			let cleanup = tempfile::NamedTempFile::new_in(directory.path())
 				.unwrap()
 				.into_temp_path();
@@ -1023,7 +1023,7 @@ mod tests {
 				.send()
 				.await
 				.unwrap();
-			let dir = tempfile::tempdir().unwrap();
+			let dir = crate::test_support::TestDir::new();
 			let victim = dir.path().join("victim");
 			std::fs::write(&victim, b"safe").unwrap();
 			let path = dir.path().join("download");

@@ -623,8 +623,8 @@ mod tests {
 	#[test]
 	fn snapshots_read_only_affected_directories_and_expand_exclusions_one_level_at_a_time()
 	 {
-		let dir = tempfile::tempdir().unwrap();
-		let root = dir.path().canonicalize().unwrap();
+		let dir = crate::test_support::TestDir::new();
+		let root = dir.path().to_owned();
 		for path in ["a/deep", "b", "node_modules/pkg/deep", ".git/objects"] {
 			fs::create_dir_all(root.join(path)).unwrap();
 		}
@@ -676,7 +676,7 @@ mod tests {
 
 	#[test]
 	fn cancelling_an_observer_does_not_wait_for_blocked_worker_calls() {
-		let dir = tempfile::tempdir().unwrap();
+		let dir = crate::test_support::TestDir::new();
 		let (started, ready) = mpsc::channel();
 		let (release, gate) = mpsc::channel::<()>();
 		let (finished, done) = mpsc::channel();
@@ -725,8 +725,8 @@ mod tests {
 
 	#[test]
 	fn replaced_directories_restore_native_watches_for_surviving_paths() {
-		let dir = tempfile::tempdir().unwrap();
-		let root = dir.path().canonicalize().unwrap();
+		let dir = crate::test_support::TestDir::new();
+		let root = dir.path().to_owned();
 		let branch = root.join("branch");
 		let nested = branch.join("nested");
 		fs::create_dir_all(&nested).unwrap();
@@ -775,8 +775,8 @@ mod tests {
 
 	#[test]
 	fn recreated_excluded_subtrees_require_explicit_expansion_again() {
-		let dir = tempfile::tempdir().unwrap();
-		let root = dir.path().canonicalize().unwrap();
+		let dir = crate::test_support::TestDir::new();
+		let root = dir.path().to_owned();
 		let excluded = root.join("node_modules");
 		let package = excluded.join("pkg");
 		fs::create_dir_all(&package).unwrap();
@@ -831,8 +831,8 @@ mod tests {
 	#[test]
 	fn native_events_coalesce_atomic_saves_and_continuous_changes_make_progress()
 	 {
-		let dir = tempfile::tempdir().unwrap();
-		let root = dir.path().canonicalize().unwrap();
+		let dir = crate::test_support::TestDir::new();
+		let root = dir.path().to_owned();
 		fs::write(root.join("Note.md"), "old").unwrap();
 		let (tx, rx) = mpsc::channel();
 		let _observer = Observer::new(root.clone(), move |update| {
@@ -868,7 +868,7 @@ mod tests {
 	#[test]
 	fn polling_recovers_without_native_events_and_reports_root_loss_and_recreation()
 	 {
-		let dir = tempfile::tempdir().unwrap();
+		let dir = crate::test_support::TestDir::new();
 		let root = dir.path().join("root");
 		fs::create_dir(&root).unwrap();
 		fs::create_dir(root.join("deep")).unwrap();
@@ -912,8 +912,8 @@ mod profile {
 	#[test]
 	#[ignore = "profiles synthetic local scans and excluded dependency directories"]
 	fn folder_incremental_scan_profile() {
-		let dir = tempfile::tempdir().unwrap();
-		let root = dir.path().canonicalize().unwrap();
+		let dir = crate::test_support::TestDir::new();
+		let root = dir.path().to_owned();
 		for directory in 0..100 {
 			let path = root.join(format!("dir-{directory:03}"));
 			std::fs::create_dir(&path).unwrap();
@@ -964,8 +964,8 @@ mod schedule_tests {
 	#[test]
 	fn batches_have_a_fixed_deadline_and_audits_find_changes_with_unchanged_stamps()
 	 {
-		let dir = tempfile::tempdir().unwrap();
-		let root = dir.path().canonicalize().unwrap();
+		let dir = crate::test_support::TestDir::new();
+		let root = dir.path().to_owned();
 		let mut state = tests::state(root.clone());
 		state.refresh(HashSet::from([root.clone()]));
 		let mut schedule = Schedule::new(root.clone());

@@ -280,7 +280,7 @@ fn the_active_tab_opens_a_text_only_card() {
 	use std::fs;
 
 	let (mut app, events) = app();
-	let dir = tempfile::tempdir().unwrap();
+	let dir = crate::test_support::TestDir::new();
 	let first = dir.path().join("first.md");
 	let second = dir.path().join("second.md");
 	fs::write(&first, "# First\n\nReading paragraph.\n").unwrap();
@@ -339,7 +339,7 @@ fn the_active_tab_opens_a_text_only_card() {
 #[test]
 fn an_idle_tab_keeps_its_page_preview_after_releasing_its_document() {
 	let (mut app, events) = app();
-	let dir = tempfile::tempdir().unwrap();
+	let dir = crate::test_support::TestDir::new();
 	let first = dir.path().join("first.md");
 	let second = dir.path().join("second.md");
 	std::fs::write(&first, "Reading paragraph.\n\n".repeat(300)).unwrap();
@@ -420,7 +420,7 @@ fn an_idle_tab_keeps_its_page_preview_after_releasing_its_document() {
 #[test]
 fn scrolling_beyond_the_slice_and_switching_again_preserves_the_new_position() {
 	let (mut app, events) = app();
-	let dir = tempfile::tempdir().unwrap();
+	let dir = crate::test_support::TestDir::new();
 	let first = dir.path().join("first.md");
 	let second = dir.path().join("second.md");
 	std::fs::write(&first, "Repeated paragraph.\n\n".repeat(300)).unwrap();
@@ -1396,7 +1396,7 @@ fn cache_budget_evicts_the_oldest_preview_and_its_pixels() {
 #[test]
 fn changed_content_and_geometry_discard_the_resume_snapshot() {
 	let (mut app, events) = app();
-	let dir = tempfile::tempdir().unwrap();
+	let dir = crate::test_support::TestDir::new();
 	let first = dir.path().join("first.md");
 	let second = dir.path().join("second.md");
 	std::fs::write(&first, "Paragraph.\n\n".repeat(200)).unwrap();
@@ -1451,7 +1451,7 @@ fn render_footnote_preview(styled: bool) -> anyhow::Result<()> {
 		app.ui
 			.set_stylesheet(app.preferences.values.stylesheet.clone());
 	}
-	let dir = tempfile::tempdir().unwrap();
+	let dir = crate::test_support::TestDir::new();
 	let path = dir.path().join("footnotes.md");
 	std::fs::write(&path, "Surrounding prose[^note].\n\n[^note]: A **formatted** note with $x^2$.\n\n    - A list item\n").unwrap();
 	load(&mut app, &events, path);

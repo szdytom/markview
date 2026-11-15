@@ -901,7 +901,7 @@ mod tests {
 				true
 			}
 		}
-		let dir = tempfile::tempdir().unwrap();
+		let dir = crate::test_support::TestDir::new();
 		let source = dir.path().join("source.md");
 		std::fs::write(&source, "# Snapshot\n\nBody paragraph.").unwrap();
 		let settings = ExportSettings {
@@ -1065,7 +1065,7 @@ mod tests {
 				self.0.send(event).is_ok()
 			}
 		}
-		let dir = tempfile::tempdir().unwrap();
+		let dir = crate::test_support::TestDir::new();
 		let source = dir.path().join("dialect.md");
 		// `[!example]` is no GitHub alert type, so only Obsidian reads it as a
 		// callout; GFM keeps the marker literal. `+` puts its title in reading text.
@@ -1232,7 +1232,7 @@ mod tests {
 
 	#[test]
 	fn desktop_pdf_jobs_use_custom_titles_and_empty_titles_fall_back() {
-		let dir = tempfile::tempdir().unwrap();
+		let dir = crate::test_support::TestDir::new();
 		let source = dir.path().join("source.md");
 		std::fs::write(&source, "# Document heading\n\nBody").unwrap();
 		for (title, expected) in [
@@ -1282,7 +1282,7 @@ mod tests {
 
 	#[test]
 	fn an_unloaded_web_page_exports_without_naming_its_synthetic_path() {
-		let dir = tempfile::tempdir().unwrap();
+		let dir = crate::test_support::TestDir::new();
 		let url = "https://example.org/article";
 		let outcome = run(
 			&crate::app::web_page::web_path(url),
@@ -1338,7 +1338,7 @@ mod tests {
 
 	#[test]
 	fn exports_refuse_to_replace_their_source() {
-		let dir = tempfile::tempdir().unwrap();
+		let dir = crate::test_support::TestDir::new();
 		let source = dir.path().join("picture.png");
 		image::RgbaImage::from_pixel(3, 2, image::Rgba([12, 34, 56, 255]))
 			.save(&source)
@@ -1375,7 +1375,7 @@ mod security_tests {
 
 	#[test]
 	fn desktop_exports_preserve_untrusted_resource_permissions() {
-		let dir = tempfile::tempdir().unwrap();
+		let dir = crate::test_support::TestDir::new();
 		let source = dir.path().join("document.md");
 		let image_path = dir.path().join("picture.png");
 		image::RgbaImage::from_pixel(3, 2, image::Rgba([12, 34, 56, 255]))
@@ -1455,8 +1455,8 @@ mod security_tests {
 	}
 	#[test]
 	fn exports_resolve_vault_images_from_the_open_folder() {
-		let dir = tempfile::tempdir().unwrap();
-		let root = std::fs::canonicalize(dir.path()).unwrap();
+		let dir = crate::test_support::TestDir::new();
+		let root = dir.path().to_owned();
 		std::fs::create_dir_all(root.join("assets")).unwrap();
 		std::fs::create_dir_all(root.join("notes")).unwrap();
 		image::RgbaImage::from_pixel(3, 2, image::Rgba([12, 34, 56, 255]))
@@ -1506,7 +1506,7 @@ mod security_tests {
 
 	#[test]
 	fn mermaid_diagrams_export_as_pictures() {
-		let dir = tempfile::tempdir().unwrap();
+		let dir = crate::test_support::TestDir::new();
 		let source = dir.path().join("diagram.md");
 		std::fs::write(
 			&source,
@@ -1547,7 +1547,7 @@ mod security_tests {
 
 	#[test]
 	fn standalone_pictures_export_as_pictures() {
-		let dir = tempfile::tempdir().unwrap();
+		let dir = crate::test_support::TestDir::new();
 		let image_path = dir.path().join("picture.png");
 		image::RgbaImage::from_pixel(3, 2, image::Rgba([12, 34, 56, 255]))
 			.save(&image_path)
@@ -1589,7 +1589,7 @@ mod security_tests {
 				self.0.send(event).is_ok()
 			}
 		}
-		let dir = tempfile::tempdir().unwrap();
+		let dir = crate::test_support::TestDir::new();
 		let source = dir.path().join("document.md");
 		std::fs::write(&source, "# Document").unwrap();
 		let source = std::fs::canonicalize(source).unwrap();
@@ -1664,7 +1664,7 @@ mod security_tests {
 	}
 	#[test]
 	fn extracted_web_articles_export_to_pdf_and_png() {
-		let dir = tempfile::tempdir().unwrap();
+		let dir = crate::test_support::TestDir::new();
 		let url = "https://example.org/article";
 		let article = markview_webpage::extract(
 			include_str!("../../tests/fixtures/web-plain-article.html"),

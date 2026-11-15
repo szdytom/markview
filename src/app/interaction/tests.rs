@@ -58,7 +58,7 @@ fn enabling_a_surviving_independent_window_registers_it_for_later_launches() {
 			}
 		}
 	}
-	let dir = tempfile::tempdir().unwrap();
+	let dir = crate::test_support::TestDir::new();
 	let lock = dir.path().join("instance.lock");
 	let Start::Primary(primary) = start(&lock, false, None, false).unwrap()
 	else {
@@ -585,7 +585,7 @@ fn scrollbar_visibility_keeps_the_window_edge_cursor_current() {
 #[test]
 fn leaving_a_folder_sidebar_repaints_its_hover() {
 	use crate::app::folder::Tree;
-	let dir = tempfile::tempdir().unwrap();
+	let dir = crate::test_support::TestDir::new();
 	for i in 0..40 {
 		std::fs::write(dir.path().join(format!("note-{i:02}.md")), SOURCE)
 			.unwrap();
@@ -621,7 +621,7 @@ fn leaving_a_folder_sidebar_repaints_its_hover() {
 #[test]
 fn folder_scrollbar_hugs_the_right_edge_and_fades_apart_from_the_reader_bar() {
 	use crate::app::folder::Tree;
-	let dir = tempfile::tempdir().unwrap();
+	let dir = crate::test_support::TestDir::new();
 	for i in 0..40 {
 		std::fs::write(dir.path().join(format!("note-{i:02}.md")), SOURCE)
 			.unwrap();
@@ -1027,7 +1027,7 @@ fn physical_click(app: &mut App<StubProxy>, at: (f32, f32)) {
 
 #[test]
 fn desktop_sidebar_toggle_requires_an_open_folder_independently_of_files() {
-	let dir = tempfile::tempdir().unwrap();
+	let dir = crate::test_support::TestDir::new();
 	for file_open in [false, true] {
 		let (mut app, _) = reader("", 320.);
 		app.tab_strip.phone = false;
@@ -1080,7 +1080,7 @@ fn desktop_sidebar_toggle_requires_an_open_folder_independently_of_files() {
 #[test]
 fn folder_collapse_all_clears_nested_expansion_and_scroll_on_both_layouts() {
 	use crate::app::folder::Tree;
-	let dir = tempfile::tempdir().unwrap();
+	let dir = crate::test_support::TestDir::new();
 	std::fs::create_dir_all(dir.path().join("notes/nested")).unwrap();
 	std::fs::write(dir.path().join("notes/nested/Note.md"), SOURCE).unwrap();
 	for phone in [false, true] {
@@ -1135,7 +1135,7 @@ fn folder_collapse_all_clears_nested_expansion_and_scroll_on_both_layouts() {
 #[test]
 fn folder_toggles_keep_a_visible_parent_in_place() {
 	use crate::app::folder::Tree;
-	let dir = tempfile::tempdir().unwrap();
+	let dir = crate::test_support::TestDir::new();
 	for i in 0..30 {
 		std::fs::create_dir(dir.path().join(format!("folder-{i:02}"))).unwrap();
 	}
@@ -1214,8 +1214,8 @@ fn folder_toggles_keep_a_visible_parent_in_place() {
 #[test]
 fn folder_reveal_survives_the_expanding_scroll_range() {
 	use crate::app::folder::Tree;
-	let dir = tempfile::tempdir().unwrap();
-	let root = dir.path().canonicalize().unwrap();
+	let dir = crate::test_support::TestDir::new();
+	let root = dir.path().to_owned();
 	std::fs::create_dir(root.join("notes")).unwrap();
 	for i in 0..60 {
 		std::fs::write(root.join(format!("notes/note-{i:02}.md")), SOURCE)
@@ -1259,7 +1259,7 @@ fn phone_sidebar_shares_one_shell_and_keeps_each_list_and_selected_page() {
 	app.tab_strip.phone = true;
 	app.preferences.values.tabs_width = 360.;
 	app.preferences.values.folder_width = 240.;
-	let dir = tempfile::tempdir().unwrap();
+	let dir = crate::test_support::TestDir::new();
 	for i in 0..80 {
 		std::fs::write(dir.path().join(format!("note-{i:02}.md")), "# Note")
 			.unwrap();
@@ -1439,7 +1439,7 @@ fn phone_sidebar_offers_folder_selection_before_a_tree_exists_and_stays_phone_on
 fn desktop_sidebar_drags_resize_independently_and_capture_the_release() {
 	use crate::{app::folder::Tree, settings::Sidebar, state::PanelPage};
 	let (mut app, _) = reader("# Heading\n\nReading text.", 760.);
-	let dir = tempfile::tempdir().unwrap();
+	let dir = crate::test_support::TestDir::new();
 	std::fs::write(dir.path().join("note.md"), "# Note").unwrap();
 	app.folder.tree = Some(Tree::read(dir.path().into()).unwrap());
 	app.folder.open = true;
@@ -1986,7 +1986,7 @@ fn tab_hits_follow_the_close_slide() {
 fn opening_a_tab_grows_its_card_from_the_slot() {
 	use crate::security::{Security, Trust};
 	use crate::state::TabPlacement;
-	let dir = tempfile::tempdir().unwrap();
+	let dir = crate::test_support::TestDir::new();
 	let (mut app, _) = reader(SOURCE, 900.0);
 	let now = Instant::now();
 	for index in 0..3 {
@@ -2043,7 +2043,7 @@ fn opening_a_tab_grows_its_card_from_the_slot() {
 #[test]
 fn starting_a_tab_drag_clears_the_open_slide() {
 	use crate::security::{Security, Trust};
-	let dir = tempfile::tempdir().unwrap();
+	let dir = crate::test_support::TestDir::new();
 	let (mut app, _) = reader(SOURCE, 900.0);
 	let now = Instant::now();
 	for index in 0..3 {
@@ -2438,7 +2438,7 @@ fn picked_files_stay_here_while_desktop_requests_follow_folder_windows() {
 	use std::sync::mpsc;
 	use std::time::Duration;
 
-	let dir = tempfile::tempdir().unwrap();
+	let dir = crate::test_support::TestDir::new();
 	let lock = dir.path().join("instance.lock");
 	let root = dir.path().join("notes");
 	std::fs::create_dir(&root).unwrap();
@@ -2919,7 +2919,7 @@ fn touch_drawer_distinguishes_same_path_tabs_and_keeps_ids_when_reordered() {
 	use crate::security::{Security, Trust};
 	use crate::state::PanelPage;
 	use markview_platform::event::Touch;
-	let dir = tempfile::tempdir().unwrap();
+	let dir = crate::test_support::TestDir::new();
 	let path = dir.path().join("shared.md");
 	std::fs::write(&path, SOURCE).unwrap();
 	let (mut app, _) = reader(SOURCE, 320.);

@@ -20,11 +20,11 @@ impl SendEvent for Proxy {
 struct Harness {
 	app: App<Proxy>,
 	events: mpsc::Receiver<Event>,
-	dir: tempfile::TempDir,
+	dir: crate::test_support::TestDir,
 }
 impl Harness {
 	fn new(source: &str) -> Self {
-		let dir = tempfile::tempdir().unwrap();
+		let dir = crate::test_support::TestDir::new();
 		let path = dir.path().join("one.md");
 		std::fs::write(&path, source).unwrap();
 		// Match the canonical tab identity used by `App::open`.

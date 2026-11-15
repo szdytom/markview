@@ -250,7 +250,7 @@ fn interactive_popup_renders_selection_and_a_visible_scrollbar()
 		"Further explanation stays inside the floating document. ".repeat(40)
 	);
 	let (mut app, events) = app();
-	let directory = tempfile::tempdir()?;
+	let directory = crate::test_support::TestDir::new();
 	let path = directory.path().join("hover-previews.md");
 	std::fs::write(&path, source)?;
 	load(&mut app, &events, path);

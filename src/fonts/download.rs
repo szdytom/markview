@@ -607,7 +607,7 @@ mod tests {
 	/// the reader draws it, so a download must store it like any other face.
 	#[test]
 	fn a_bitmap_color_emoji_is_a_downloadable_font() {
-		let dir = tempfile::tempdir().unwrap();
+		let dir = crate::test_support::TestDir::new();
 		let emoji = fs::read(Path::new(env!("CARGO_MANIFEST_DIR")).join(
 			"crates/markview-layout/tests/fonts/NotoColorEmoji-subset.ttf",
 		))
@@ -663,7 +663,7 @@ mod tests {
 
 	#[test]
 	fn a_failing_mirror_is_replaced_by_the_next_one() {
-		let dir = tempfile::tempdir().unwrap();
+		let dir = crate::test_support::TestDir::new();
 		let font = font_bytes();
 		let mut fake = Fake::default();
 		// The first source fails, the second serves every file.
@@ -709,7 +709,7 @@ mod tests {
 	/// file must not let another file's success escape the source rollback.
 	#[test]
 	fn one_failed_file_rolls_back_the_ones_that_succeeded() {
-		let dir = tempfile::tempdir().unwrap();
+		let dir = crate::test_support::TestDir::new();
 		let font = font_bytes();
 		let mut family = fan(
 			"noto",
@@ -748,7 +748,7 @@ mod tests {
 
 	#[test]
 	fn a_directory_that_cannot_be_created_fails_every_family() {
-		let dir = tempfile::tempdir().unwrap();
+		let dir = crate::test_support::TestDir::new();
 		// A file where the directory should be, so creation cannot succeed.
 		let blocked = dir.path().join("fonts");
 		fs::write(&blocked, b"not a directory").unwrap();
@@ -774,7 +774,7 @@ mod tests {
 
 	#[test]
 	fn a_bad_digest_fails_the_source_rather_than_storing_it() {
-		let dir = tempfile::tempdir().unwrap();
+		let dir = crate::test_support::TestDir::new();
 		let font = font_bytes();
 		let mut fake = Fake::default();
 		fake.bodies
@@ -804,7 +804,7 @@ mod tests {
 
 	#[test]
 	fn a_cancelled_family_stores_nothing() {
-		let dir = tempfile::tempdir().unwrap();
+		let dir = crate::test_support::TestDir::new();
 		let font = font_bytes();
 		let mut fake = Fake::default();
 		fake.bodies.insert("https://x.example/a.otf".into(), font);
@@ -823,7 +823,7 @@ mod tests {
 
 	#[test]
 	fn a_body_that_is_not_a_font_is_refused() {
-		let dir = tempfile::tempdir().unwrap();
+		let dir = crate::test_support::TestDir::new();
 		let mut fake = Fake::default();
 		fake.bodies
 			.insert("https://x.example/a.otf".into(), b"<html>".to_vec());

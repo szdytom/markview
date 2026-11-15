@@ -222,7 +222,7 @@ fn phone_sidebar_match_rendering_baselines() -> Result<()> {
 			&& renderer.adapter_name.ends_with("(Vulkan, Cpu)"),
 		"Phone sidebar baselines require Lavapipe"
 	);
-	let dir = tempfile::tempdir()?;
+	let dir = crate::test_support::TestDir::new();
 	let folder = dir.path().join("Research notes");
 	fs::create_dir_all(folder.join("Projects"))?;
 	for i in 0..24 {

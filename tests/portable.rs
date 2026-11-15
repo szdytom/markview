@@ -11,14 +11,14 @@ use std::{
 const MARKER: &str = "markview-portable-marker.txt";
 
 struct Installation {
-	_root: tempfile::TempDir,
+	_root: markview_test_support::TestDir,
 	directory: PathBuf,
 	system: PathBuf,
 	working: PathBuf,
 }
 impl Installation {
 	fn new() -> Self {
-		let root = tempfile::tempdir().unwrap();
+		let root = markview_test_support::TestDir::new();
 		let directory = root.path().join("portable 中文 reader");
 		let system = root.path().join("system");
 		let working = root.path().join("working");

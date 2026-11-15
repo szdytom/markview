@@ -75,6 +75,77 @@ The marker applies only to that body, not nested closures or an entire module.
 For a closure, annotate its expression inside a block. The checker is a source
 AST audit; it does not expand macros. Its implementation owns the scoring rules.
 
+## Real-file test paths
+
+Use `markview_test_support::TestDir` for real storage in tests and fuzz harnesses.
+Application unit tests re-export it as `crate::test_support::TestDir`. The small
+`markview-test-support` crate is a development dependency of fixture consumers;
+it does not add platform services to the reading core or the shipped reader.
+
+The fixture owns the temporary directory and exposes a canonical root through
+`path()`. Create files and derive expected paths from that root when constructing
+session state or matching directory-tree entries. Canonicalize an existing target
+separately when its path contains symlinks or `..`. Canonical path equality is a
+state representation contract; use the production file-identity helper when
+testing identity through hard links.
+
+Keep virtual paths for display and URI-conversion tests. Paths to missing files
+cannot be canonicalized; derive them from the fixture root. Tests of raw user
+input should pass raw paths through the application entry point and assert the
+resulting state, rather than normalizing the input in advance. Test helpers must
+keep the fixture alive while its files are in use; do not leak directories with
+`TempDir::keep()` to return a bare path.
+
+```sh
+cargo run -p xtask --locked -- test-paths
+cargo test -p xtask --locked test_paths::
+```
+
+The audit discovers all tracked and untracked, nonignored Rust source files
+through Git, including new crates, integration tests, tools and fuzz harnesses.
+It parses every platform branch without expanding macros. It rejects direct
+`tempfile::tempdir*` and `tempfile::TempDir` constructor expressions, directory
+API imports with aliases, and builder `.tempdir*()` calls. Fully qualified storage types and named
+file operations remain available for production storage and caller-chosen roots.
+
+Functions whose contract explicitly requires raw paths need a reason:
+
+```rust
+#[test]
+#[cfg_attr(any(), markview::allow_raw_paths(reason = "Exercise raw paths at the application entry point"))]
+fn raw_path_regression() {
+    // Raw user input reaches the production entry point.
+}
+```
+
+The exception applies to that function body, including closures, but not nested
+or sibling functions. Imports needed by an exception belong inside its body.
+The production platform directory factory and the canonical fixture constructor
+also document their raw-storage contracts with this marker. The audit ignores
+comments, strings and attributes, and inspects literal directory API references
+in macro arguments. It does not trace re-exports, helper calls or assignments
+into `session.path`.
+
+For a Unix regression run, use the normal font and graphics environment described
+above, then run:
+
+```sh
+python3 scripts/test_paths.py
+python3 scripts/test_paths.py --diagnostics
+```
+
+The runner builds all workspace test binaries once and runs them in separate
+processes with ordinary and symlinked `TMPDIR` roots. It includes property tests;
+ignored tests and `rendering_baselines` retain their dedicated runners. It counts
+only runnable tests, allows empty individual targets, rejects an empty overall
+run, and prints counts and timings. Pass `--binary /absolute/path/to/test-binary`
+(repeatable) to reuse existing binaries. The runner never changes the parent
+process environment.
+
+Linux x64 CI uses `--symlink-only` after its ordinary native suite. Other native
+jobs retain Windows and macOS coverage; Unix symlinks exercise local canonical
+path mismatches without simulating Windows-specific path behavior.
+
 ## Regression evidence
 
 Keep minimized failing inputs and assertions about behavior. Use independent

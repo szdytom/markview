@@ -198,8 +198,8 @@ mod tests {
 
 	#[test]
 	fn a_tree_watcher_reinstalls_its_root() {
-		let dir = tempfile::tempdir().unwrap();
-		let root = dir.path().canonicalize().unwrap();
+		let dir = markview_test_support::TestDir::new();
+		let root = dir.path().to_owned();
 		let (tx, rx) = mpsc::channel();
 		let mut watcher = TreeWatcher::new(root.clone(), move |event| {
 			let _ = tx.send(event);

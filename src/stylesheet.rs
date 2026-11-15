@@ -408,7 +408,7 @@ mod tests {
 	}
 	#[test]
 	fn validate_reads_a_sheet_without_installing_it() {
-		let tmp = tempfile::tempdir().unwrap();
+		let tmp = crate::test_support::TestDir::new();
 		let source = tmp.path().join("a.mvss.toml");
 		fs::write(
 			&source,
@@ -427,7 +427,7 @@ mod tests {
 	}
 	#[test]
 	fn a_sheet_with_font_families_validates_and_installs_without_fetching() {
-		let tmp = tempfile::tempdir().unwrap();
+		let tmp = crate::test_support::TestDir::new();
 		let source = tmp.path().join("noto.mvss.toml");
 		fs::write(
 			&source,
@@ -453,7 +453,7 @@ mod tests {
 	}
 	#[test]
 	fn install_is_validated_atomic_and_not_enabled() {
-		let tmp = tempfile::tempdir().unwrap();
+		let tmp = crate::test_support::TestDir::new();
 		let dir = tmp.path().join("styles");
 		let source = tmp.path().join("a.mvss.toml");
 		fs::write(
@@ -490,7 +490,7 @@ mod tests {
 	}
 	#[test]
 	fn leftmost_wins() {
-		let tmp = tempfile::tempdir().unwrap();
+		let tmp = crate::test_support::TestDir::new();
 		fs::write(
 			tmp.path().join("a.mvss.toml"),
 			"format_version=3\nversion=1\n[[rule]]\nwhen=['body']\ncolor='#123456'",
@@ -513,7 +513,7 @@ mod cascade_tests {
 	}
 	#[test]
 	fn bundled_dark_only_overrides_its_explicit_fields() {
-		let tmp = tempfile::tempdir().unwrap();
+		let tmp = crate::test_support::TestDir::new();
 		fs::write(
 			tmp.path().join("fonts.mvss.toml"),
 			"format_version=3\nversion=1\n[[rule]]\nwhen=['em']\nfont=[{family='Custom'}]",
@@ -533,7 +533,7 @@ mod cascade_tests {
 	}
 	#[test]
 	fn missing_selected_styles_remain_removable_and_ids_are_portable() {
-		let tmp = tempfile::tempdir().unwrap();
+		let tmp = crate::test_support::TestDir::new();
 		let entries = catalog(Some(tmp.path()), Some(&["missing".into()]));
 		assert!(
 			entries
@@ -554,7 +554,7 @@ mod theme_tests {
 
 	#[test]
 	fn fallback_is_hidden_reserved_and_beneath_explicit_rules() {
-		let dir = tempfile::tempdir().unwrap();
+		let dir = crate::test_support::TestDir::new();
 		let source = dir.path().join("builtin.mvss.toml");
 		fs::write(&source, "format_version=3\nversion=1\n").unwrap();
 		assert!(install(&source, dir.path(), true).is_err());
@@ -656,7 +656,7 @@ mod target_tests {
 
 	#[test]
 	fn destinations_filter_discovery_and_reject_incompatible_layers() {
-		let dir = tempfile::tempdir().unwrap();
+		let dir = crate::test_support::TestDir::new();
 		for (id, targets) in [
 			("screen", "targets=['ui']"),
 			("paper", "targets=['pdf']"),
@@ -714,7 +714,7 @@ mod target_tests {
 
 	#[test]
 	fn changed_targets_leave_selected_styles_removable_and_previewable() {
-		let dir = tempfile::tempdir().unwrap();
+		let dir = crate::test_support::TestDir::new();
 		write_style(dir.path(), "draft", "targets=['ui']");
 		let ids = ["draft".into()];
 		assert!(
@@ -872,7 +872,7 @@ mod media_tests {
 
 	#[test]
 	fn reader_and_pdf_load_media_and_reselect_after_paper_overrides() {
-		let dir = tempfile::tempdir().unwrap();
+		let dir = crate::test_support::TestDir::new();
 		fs::write(
 			dir.path().join("adaptive.mvss.toml"),
 			r#"

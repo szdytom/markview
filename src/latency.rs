@@ -691,7 +691,7 @@ mod tests {
 
 	#[test]
 	fn a_benchmark_copy_stays_beside_its_document() {
-		let dir = tempfile::tempdir().unwrap();
+		let dir = crate::test_support::TestDir::new();
 		let original = dir.path().join("document.md");
 		let source = "# Heading\n\n![x](images/pic.png)\n";
 		fs::write(&original, source).unwrap();
@@ -708,7 +708,7 @@ mod report_tests {
 	#[test]
 	fn a_latency_run_preserves_cold_edit_and_memory_report_fields() -> Result<()>
 	{
-		let dir = tempfile::tempdir()?;
+		let dir = crate::test_support::TestDir::new();
 		let input = dir.path().join("latency.md");
 		let output = dir.path().join("latency.json");
 		fs::write(

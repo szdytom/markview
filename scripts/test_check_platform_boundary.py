@@ -42,12 +42,13 @@ const PAREN: char = ')';
         ])
 
 
-    def test_source_only_complexity_markers_do_not_introduce_platform_conditions(self):
-        for reason in ('Keep the mapping together', 'Keep a ) literal', 'Keep #[cfg(windows)] as literal text'):
-            source = f'#[cfg_attr(any(), markview::allow_complexity(reason = "{reason}"))]'
-            self.assertEqual(list(violations(source)), [], source)
+    def test_source_only_audit_markers_do_not_introduce_platform_conditions(self):
+        for marker in ("allow_complexity", "allow_raw_paths"):
+            for reason in ('Keep the mapping together', 'Keep a ) literal', 'Keep #[cfg(windows)] as literal text'):
+                source = f'#[cfg_attr(any(), markview::{marker}(reason = "{reason}"))]'
+                self.assertEqual(list(violations(source)), [], source)
 
-    def test_complexity_markers_cannot_hide_other_attributes_or_live_conditions(self):
+    def test_audit_markers_cannot_hide_other_attributes_or_live_conditions(self):
         for source in (
             '#[cfg_attr(windows, markview::allow_complexity(reason = "mapping"))]',
             '#[cfg_attr(any(windows), markview::allow_complexity(reason = "mapping"))]',
@@ -56,7 +57,9 @@ const PAREN: char = ')';
             '#[cfg_attr(any(), markview::allow_complexity(reason = ""))]',
             'cfg!(any(), markview::allow_complexity(reason = "mapping"))',
         ):
-            self.assertTrue(list(violations(source)), source)
+            for marker in ("allow_complexity", "allow_raw_paths"):
+                marked = source.replace("allow_complexity", marker)
+                self.assertTrue(list(violations(marked)), marked)
 
 
 class WorkspaceBoundaryTests(unittest.TestCase):

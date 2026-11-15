@@ -52,9 +52,8 @@ mod tests {
 
 	/// Builds a zip holding the given members, so extraction is tested against
 	/// a writer rather than a checked-in binary.
-	fn zip_of(members: &[(&str, &[u8])]) -> PathBuf {
-		let dir = tempfile::tempdir().unwrap();
-		let path = dir.keep().join("a.zip");
+	fn zip_of(root: &Path, members: &[(&str, &[u8])]) -> PathBuf {
+		let path = root.join("a.zip");
 		let mut writer = zip::ZipWriter::new(fs::File::create(&path).unwrap());
 		let options: zip::write::FileOptions<'_, '_, ()> =
 			zip::write::FileOptions::default();
@@ -68,14 +67,18 @@ mod tests {
 
 	#[test]
 	fn an_archive_contributes_only_its_matching_regular_files() {
+		let archive_dir = crate::test_support::TestDir::new();
 		let font = font_bytes();
-		let archive = zip_of(&[
-			("Sans/SubsetOTF/SC/NotoSansSC-Regular.otf", &font),
-			("Sans/SubsetOTF/SC/NotoSansSC-Bold.otf", &font),
-			("Sans/OTF/Japanese/NotoSansJP-Regular.otf", &font),
-			("Sans/README.md", b"not a font"),
-		]);
-		let dir = tempfile::tempdir().unwrap();
+		let archive = zip_of(
+			archive_dir.path(),
+			&[
+				("Sans/SubsetOTF/SC/NotoSansSC-Regular.otf", &font),
+				("Sans/SubsetOTF/SC/NotoSansSC-Bold.otf", &font),
+				("Sans/OTF/Japanese/NotoSansJP-Regular.otf", &font),
+				("Sans/README.md", b"not a font"),
+			],
+		);
+		let dir = crate::test_support::TestDir::new();
 		let patterns = vec!["Sans/SubsetOTF/SC/*.otf".to_string()];
 		let mut members =
 			unpack(Container::Zip, &archive, &patterns, dir.path()).unwrap();
@@ -122,10 +125,13 @@ mod tests {
 	/// the archive that produced it.
 	#[test]
 	fn an_abandoned_extraction_removes_its_temporary_files() {
+		let archive_dir = crate::test_support::TestDir::new();
 		let font = font_bytes();
-		let archive =
-			zip_of(&[("a/Regular.otf", &font), ("a/Bold.otf", &font)]);
-		let dir = tempfile::tempdir().unwrap();
+		let archive = zip_of(
+			archive_dir.path(),
+			&[("a/Regular.otf", &font), ("a/Bold.otf", &font)],
+		);
+		let dir = crate::test_support::TestDir::new();
 		let extracted =
 			unpack(Container::Zip, &archive, &["a/*.otf".into()], dir.path())
 				.unwrap();
@@ -137,7 +143,7 @@ mod tests {
 	#[test]
 	fn a_tarball_unpacks_the_same_way() {
 		let font = font_bytes();
-		let dir = tempfile::tempdir().unwrap();
+		let dir = crate::test_support::TestDir::new();
 		let path = dir.path().join("a.tar.gz");
 		{
 			let file = fs::File::create(&path).unwrap();
@@ -179,7 +185,7 @@ mod tests {
 	#[test]
 	fn a_zstd_package_unpacks_the_same_way() {
 		let font = font_bytes();
-		let dir = tempfile::tempdir().unwrap();
+		let dir = crate::test_support::TestDir::new();
 		let path = dir.path().join("ttf-fira-code-6.2-4-any.pkg.tar.zst");
 		{
 			let file = fs::File::create(&path).unwrap();
@@ -217,7 +223,7 @@ mod tests {
 	/// readers of it rely on, and never be a name the callers may clobber.
 	#[test]
 	fn a_temporary_font_name_is_random_and_scannable() {
-		let dir = tempfile::tempdir().unwrap();
+		let dir = crate::test_support::TestDir::new();
 		let first = temp_path(dir.path()).unwrap();
 		let second = temp_path(dir.path()).unwrap();
 		assert_ne!(first, second, "two names must not collide");
@@ -256,7 +262,8 @@ mod tests {
 	/// mirror must replace the copy it already has, not add a second one.
 	#[test]
 	fn a_refresh_from_another_mirror_replaces_the_installed_copy() {
-		let dir = tempfile::tempdir().unwrap();
+		let archive_dir = crate::test_support::TestDir::new();
+		let dir = crate::test_support::TestDir::new();
 		let font = font_bytes();
 		let mut family =
 			fan("noto", &["https://cdn.example/NotoSerif-Regular.ttf"]);
@@ -275,10 +282,10 @@ mod tests {
 				],
 			}],
 		});
-		let archive = fs::read(zip_of(&[(
-			"NotoSerif/hinted/ttf/NotoSerif-Regular.ttf",
-			&font,
-		)]))
+		let archive = fs::read(zip_of(
+			archive_dir.path(),
+			&[("NotoSerif/hinted/ttf/NotoSerif-Regular.ttf", &font)],
+		))
 		.unwrap();
 		let mut fake = Fake::default();
 		fake.bodies.insert(
@@ -322,7 +329,7 @@ mod tests {
 	/// retired by a refresh.
 	#[test]
 	fn a_refresh_leaves_foreign_files_alone() {
-		let dir = tempfile::tempdir().unwrap();
+		let dir = crate::test_support::TestDir::new();
 		let font = font_bytes();
 		let mut family =
 			fan("noto", &["https://cdn.example/NotoSerif-Regular.ttf"]);
@@ -357,7 +364,7 @@ mod tests {
 	/// The family names a font file declares, read through the same scanner the
 	/// catalogue uses.
 	fn declared_names(font: &[u8]) -> Vec<String> {
-		let dir = tempfile::tempdir().unwrap();
+		let dir = crate::test_support::TestDir::new();
 		fs::write(dir.path().join("probe.ttf"), font).unwrap();
 		describe(dir.path())[0].families.clone()
 	}
@@ -378,13 +385,17 @@ mod tests {
 	/// temporary file into the download directory.
 	#[test]
 	fn a_failed_member_removes_the_members_staged_before_it() {
-		let dir = tempfile::tempdir().unwrap();
+		let archive_dir = crate::test_support::TestDir::new();
+		let dir = crate::test_support::TestDir::new();
 		let font = font_bytes();
-		let archive = fs::read(zip_of(&[
-			("a/Good.otf", &font),
-			("a/Broken.otf", b"<html>"),
-			("a/Never.otf", &font),
-		]))
+		let archive = fs::read(zip_of(
+			archive_dir.path(),
+			&[
+				("a/Good.otf", &font),
+				("a/Broken.otf", b"<html>"),
+				("a/Never.otf", &font),
+			],
+		))
 		.unwrap();
 		let mut fake = Fake::default();
 		fake.bodies
@@ -424,12 +435,13 @@ mod tests {
 	/// the installation too, not only the transfer.
 	#[test]
 	fn a_cancelled_extraction_installs_nothing() {
-		let dir = tempfile::tempdir().unwrap();
+		let archive_dir = crate::test_support::TestDir::new();
+		let dir = crate::test_support::TestDir::new();
 		let font = font_bytes();
-		let archive = fs::read(zip_of(&[
-			("a/Regular.otf", &font),
-			("a/Bold.otf", &font),
-		]))
+		let archive = fs::read(zip_of(
+			archive_dir.path(),
+			&[("a/Regular.otf", &font), ("a/Bold.otf", &font)],
+		))
 		.unwrap();
 		let cancelled = Arc::new(std::sync::atomic::AtomicBool::new(false));
 		let mut fake = Fake {

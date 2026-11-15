@@ -1,9 +1,11 @@
-//! Pinned fonts for tests.
+//! Shared test storage and pinned fonts.
 //!
 //! Layout asserts exact geometry, so it must not shape with whatever fonts the
 //! machine happens to have installed. These are the committed subsets in
 //! `crates/markview-layout/tests/fonts`, registered with the system set off, so
 //! every platform shapes the same faces.
+pub(crate) use markview_test_support::TestDir;
+
 use markview_layout::fonts::FontConfig;
 use markview_layout::layout::{LayoutOptions, TextShaper};
 

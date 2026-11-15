@@ -72,7 +72,7 @@ fn touch(
 #[test]
 fn touchscreen_taps_position_the_caret_in_every_input() {
 	use markview_platform::event::TouchPhase::{Ended, Started};
-	let dir = tempfile::tempdir().unwrap();
+	let dir = crate::test_support::TestDir::new();
 	for id in [
 		TextField::Url,
 		TextField::Files,
@@ -571,7 +571,7 @@ fn search_ime_defers_queries_enter_and_escape_until_composition_ends() {
 
 #[test]
 fn quick_open_routes_text_and_ime_to_its_own_search_while_reading() {
-	let dir = tempfile::tempdir().unwrap();
+	let dir = crate::test_support::TestDir::new();
 	std::fs::write(dir.path().join("阅读.md"), "# Note").unwrap();
 	let mut app = app();
 	app.folder_loaded(
@@ -680,7 +680,7 @@ fn empty_page_url_input_accepts_text_and_submits_with_enter() {
 #[test]
 fn focused_start_inputs_stop_revealing_at_the_scroll_limit() {
 	use crate::app::{chrome::empty, folder};
-	let dir = tempfile::tempdir().unwrap();
+	let dir = crate::test_support::TestDir::new();
 	std::fs::write(dir.path().join("README.md"), "# Reading").unwrap();
 	let mut browser = folder::Browser::default();
 	browser.tree = Some(folder::Tree::read(dir.path().into()).unwrap());
@@ -729,8 +729,8 @@ fn focused_start_inputs_stop_revealing_at_the_scroll_limit() {
 
 #[test]
 fn workspace_search_ime_commit_filters_and_enter_opens_a_local_file() {
-	let dir = tempfile::tempdir().unwrap();
-	let root = dir.path().canonicalize().unwrap();
+	let dir = crate::test_support::TestDir::new();
+	let root = dir.path().to_owned();
 	let path = root.join("阅读.md");
 	std::fs::write(&path, "# 阅读").unwrap();
 	let mut app = app();

@@ -246,7 +246,7 @@ fn failed_requests_leave_feedback_and_can_be_retried() {
 #[test]
 fn downloaded_face_cache_tracks_changed_and_removed_files() {
 	// A local cache uses the same scan and identity rules without global user files.
-	let dir = tempfile::tempdir().unwrap();
+	let dir = crate::test_support::TestDir::new();
 	let path = dir.path().join("font.otf");
 	let bytes = include_bytes!(
 		"../../../crates/markview-layout/tests/fonts/NotoSerif-Regular-subset.otf"
@@ -384,8 +384,8 @@ fn symlinked_fonts_and_styles_follow_target_changes() {
 		return;
 	}
 	use markview_platform::test_support::symlink;
-	let resources = tempfile::tempdir().unwrap();
-	let targets = tempfile::tempdir().unwrap();
+	let resources = crate::test_support::TestDir::new();
+	let targets = crate::test_support::TestDir::new();
 	let dir = Some(resources.path());
 	let font = targets.path().join("font.otf");
 	std::fs::write(

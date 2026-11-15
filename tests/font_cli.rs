@@ -43,7 +43,7 @@ fn catalog_resolves_targets_literal_families_and_sources_without_stdin() {
 		assert!(!catalog["templates"].as_array().unwrap().is_empty());
 		assert!(!catalog["definitions"].as_array().unwrap().is_empty());
 	}
-	let dir = tempfile::tempdir().unwrap();
+	let dir = markview_test_support::TestDir::new();
 	let style = dir.path().join("template.mvss.toml");
 	std::fs::write(&style, "format_version=3\nversion=1\ntargets=['pdf']\n[mermaid]\nfont_family=['Diagram Literal']\n[[rule]]\nwhen=['code_block']\nfont=[{family='Code Literal'}]\n").unwrap();
 	let catalog = json(
@@ -92,7 +92,7 @@ fn catalog_resolves_targets_literal_families_and_sources_without_stdin() {
 
 #[test]
 fn downloads_validate_bytes_retry_and_observe_cancellation() {
-	let dir = tempfile::tempdir().unwrap();
+	let dir = markview_test_support::TestDir::new();
 	let style = dir.path().join("template.mvss.toml");
 	let marker = dir.path().join("cancel");
 	let cache = dir.path().join("fonts");

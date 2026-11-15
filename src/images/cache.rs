@@ -639,7 +639,7 @@ mod tests {
 			return;
 		}
 		use markview_platform::test_support::symlink;
-		let dir = tempfile::tempdir().unwrap();
+		let dir = crate::test_support::TestDir::new();
 		let cache = Cache::new(dir.path().to_owned());
 		let victim = dir.path().join("victim");
 		fs::write(&victim, b"safe").unwrap();
@@ -666,7 +666,7 @@ mod tests {
 			.build()
 			.unwrap();
 		let scenario = async {
-			let dir = tempfile::tempdir().unwrap();
+			let dir = crate::test_support::TestDir::new();
 			let cache = Cache::new(dir.path().to_owned());
 			let url = "https://example.com/a.png";
 			let (entered, started) = tokio::sync::oneshot::channel();
@@ -719,7 +719,7 @@ mod tests {
 
 	#[test]
 	fn fresh_hit_does_not_refetch() {
-		let dir = tempfile::tempdir().unwrap();
+		let dir = crate::test_support::TestDir::new();
 		let cache = Cache::new(dir.path().to_owned());
 		let url = "https://example.com/a.png";
 		cache.put(url, hit(Some("\"v1\""), Some(600)), b"stored");
@@ -735,7 +735,7 @@ mod tests {
 
 	#[test]
 	fn stale_hit_revalidates_and_reuses_on_304() {
-		let dir = tempfile::tempdir().unwrap();
+		let dir = crate::test_support::TestDir::new();
 		let cache = Cache::new(dir.path().to_owned());
 		let url = "https://example.com/a.png";
 		// `max-age=0` makes the entry immediately stale.
@@ -762,7 +762,7 @@ mod tests {
 
 	#[test]
 	fn a_304_without_headers_keeps_the_stored_validator() {
-		let dir = tempfile::tempdir().unwrap();
+		let dir = crate::test_support::TestDir::new();
 		let cache = Cache::new(dir.path().to_owned());
 		let url = "https://example.com/a.png";
 		cache.put(url, hit(Some("\"v1\""), Some(0)), b"stored");
@@ -782,7 +782,7 @@ mod tests {
 
 	#[test]
 	fn a_header_light_304_remeasures_the_stored_lifetime() {
-		let dir = tempfile::tempdir().unwrap();
+		let dir = crate::test_support::TestDir::new();
 		let cache = Cache::new(dir.path().to_owned());
 		let url = "https://example.com/a.png";
 		// Fresh for 600 seconds from a `Date` that is long past.
@@ -849,7 +849,7 @@ mod tests {
 
 	#[test]
 	fn a_304_that_says_no_store_drops_the_entry() {
-		let dir = tempfile::tempdir().unwrap();
+		let dir = crate::test_support::TestDir::new();
 		let cache = Cache::new(dir.path().to_owned());
 		let url = "https://example.com/a.png";
 		cache.put(url, hit(Some("\"v1\""), Some(0)), b"stored");
@@ -875,7 +875,7 @@ mod tests {
 
 	#[test]
 	fn a_304_that_repeats_cache_control_replaces_the_stored_directives() {
-		let dir = tempfile::tempdir().unwrap();
+		let dir = crate::test_support::TestDir::new();
 		let cache = Cache::new(dir.path().to_owned());
 		let url = "https://example.com/a.png";
 		let no_cache = Headers {
@@ -906,7 +906,7 @@ mod tests {
 
 	#[test]
 	fn changed_etag_refetches() {
-		let dir = tempfile::tempdir().unwrap();
+		let dir = crate::test_support::TestDir::new();
 		let cache = Cache::new(dir.path().to_owned());
 		let url = "https://example.com/a.png";
 		cache.put(url, hit(Some("\"v1\""), Some(0)), b"old");
@@ -931,7 +931,7 @@ mod tests {
 
 	#[test]
 	fn no_cache_headers_are_revalidated_every_time() {
-		let dir = tempfile::tempdir().unwrap();
+		let dir = crate::test_support::TestDir::new();
 		let cache = Cache::new(dir.path().to_owned());
 		let url = "https://example.com/a.png";
 		let headers = Headers {
@@ -952,7 +952,7 @@ mod tests {
 
 	#[test]
 	fn no_store_is_never_written() {
-		let dir = tempfile::tempdir().unwrap();
+		let dir = crate::test_support::TestDir::new();
 		let cache = Cache::new(dir.path().to_owned());
 		let url = "https://example.com/a.png";
 		let headers = Headers {
@@ -979,7 +979,7 @@ mod tests {
 		assert!(headers.no_store, "a later field still forbids storage");
 		// A response that both grants a lifetime and forbids storage is never
 		// written, even though the first field alone would have allowed it.
-		let dir = tempfile::tempdir().unwrap();
+		let dir = crate::test_support::TestDir::new();
 		let cache = Cache::new(dir.path().to_owned());
 		let url = "https://example.com/a.png";
 		let body = fetch(&cache, url, false, &mut |_| {
@@ -992,7 +992,7 @@ mod tests {
 
 	#[test]
 	fn an_uncacheable_redirect_is_not_stored_under_the_original_url() {
-		let dir = tempfile::tempdir().unwrap();
+		let dir = crate::test_support::TestDir::new();
 		let cache = Cache::new(dir.path().to_owned());
 		let url = "https://example.com/latest.png";
 		// A stale entry from an earlier open must not survive either.
@@ -1026,7 +1026,7 @@ mod tests {
 
 	#[test]
 	fn a_redirect_hop_with_a_shorter_lifetime_caps_the_stored_freshness() {
-		let dir = tempfile::tempdir().unwrap();
+		let dir = crate::test_support::TestDir::new();
 		let cache = Cache::new(dir.path().to_owned());
 		let url = "https://example.com/latest.png";
 		let date = UNIX_EPOCH + Duration::from_secs(1_000_000);
@@ -1057,7 +1057,7 @@ mod tests {
 
 	#[test]
 	fn a_redirect_hop_dated_earlier_caps_the_stored_expiry() {
-		let dir = tempfile::tempdir().unwrap();
+		let dir = crate::test_support::TestDir::new();
 		let cache = Cache::new(dir.path().to_owned());
 		let url = "https://example.com/latest.png";
 		// The redirect hop was dated fifty seconds ago with `max-age=60`, so
@@ -1097,7 +1097,7 @@ mod tests {
 		map.append(VARY, HeaderValue::from_static("*"));
 		let headers = crate::net::headers(&map);
 		assert!(headers.varies_wildcard());
-		let dir = tempfile::tempdir().unwrap();
+		let dir = crate::test_support::TestDir::new();
 		let cache = Cache::new(dir.path().to_owned());
 		let url = "https://example.com/a.png";
 		// A stale entry from an earlier open must not survive either.
@@ -1124,7 +1124,7 @@ mod tests {
 
 	#[test]
 	fn a_304_for_a_changed_redirect_target_does_not_serve_the_old_body() {
-		let dir = tempfile::tempdir().unwrap();
+		let dir = crate::test_support::TestDir::new();
 		let cache = Cache::new(dir.path().to_owned());
 		let url = "https://example.com/latest.png";
 		let first = "https://cdn.example.com/a.png";
@@ -1162,7 +1162,7 @@ mod tests {
 
 	#[test]
 	fn a_replacement_during_a_conditional_request_is_not_refreshed() {
-		let dir = tempfile::tempdir().unwrap();
+		let dir = crate::test_support::TestDir::new();
 		let cache = Cache::new(dir.path().to_owned());
 		let url = "https://example.com/a.png";
 		cache.put(url, hit(Some("\"v1\""), Some(0)), b"old");
@@ -1185,7 +1185,7 @@ mod tests {
 
 	#[test]
 	fn lru_eviction_respects_the_byte_bound() {
-		let dir = tempfile::tempdir().unwrap();
+		let dir = crate::test_support::TestDir::new();
 		let cache = Cache::new(dir.path().to_owned());
 		let base = UNIX_EPOCH + Duration::from_secs(1_000_000);
 		let store = |url: &str, at: SystemTime| {
@@ -1221,7 +1221,7 @@ mod tests {
 
 	#[test]
 	fn partial_or_truncated_entry_is_never_served() {
-		let dir = tempfile::tempdir().unwrap();
+		let dir = crate::test_support::TestDir::new();
 		let cache = Cache::new(dir.path().to_owned());
 		let url = "https://example.com/a.png";
 		cache.put(url, Headers::default(), b"complete body");
@@ -1242,7 +1242,7 @@ mod tests {
 
 	#[test]
 	fn a_colliding_key_does_not_serve_another_url() {
-		let dir = tempfile::tempdir().unwrap();
+		let dir = crate::test_support::TestDir::new();
 		let cache = Cache::new(dir.path().to_owned());
 		cache.put("https://example.com/a", Headers::default(), b"a body");
 		let path = cache.path("https://example.com/a");
@@ -1265,7 +1265,7 @@ mod tests {
 
 	#[test]
 	fn offline_serves_stale_and_fails_without_an_entry() {
-		let dir = tempfile::tempdir().unwrap();
+		let dir = crate::test_support::TestDir::new();
 		let cache = Cache::new(dir.path().to_owned());
 		let url = "https://example.com/a.png";
 		cache.put(url, hit(None, Some(0)), b"stale body");

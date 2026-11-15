@@ -785,7 +785,7 @@ mod tests {
 			}
 		}
 
-		let dir = tempfile::tempdir().unwrap();
+		let dir = crate::test_support::TestDir::new();
 		let lock = dir.path().join("instance.lock");
 		let single_instance::Start::Primary(primary) =
 			single_instance::start(&lock, false, None, false).unwrap()

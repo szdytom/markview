@@ -530,7 +530,7 @@ mod tests {
 
 	#[test]
 	fn cached_filenames_pick_up_fonts_installed_in_an_existing_source() {
-		let fonts = tempfile::tempdir().unwrap();
+		let fonts = crate::test_support::TestDir::new();
 		let fixtures = Path::new(env!("CARGO_MANIFEST_DIR"))
 			.join("crates/markview-layout/tests/fonts");
 		let install = |name: &str| {
@@ -544,7 +544,7 @@ mod tests {
 			..Default::default()
 		};
 		let mut ui = TextShaper::with_fonts(config.clone());
-		let dir = tempfile::tempdir().unwrap();
+		let dir = crate::test_support::TestDir::new();
 		std::fs::write(dir.path().join("Example.md"), "# Note").unwrap();
 		let mut browser = Browser::default();
 		browser.tree = Some(Tree::read(dir.path().into()).unwrap());
@@ -672,7 +672,7 @@ mod tests {
 
 	#[test]
 	fn header_and_row_icons_keep_their_alignment_while_the_drawer_moves() {
-		let dir = tempfile::tempdir().unwrap();
+		let dir = crate::test_support::TestDir::new();
 		std::fs::write(dir.path().join("Note.md"), "# Note").unwrap();
 		let mut browser = Browser::default();
 		browser.tree = Some(Tree::read(dir.path().into()).unwrap());

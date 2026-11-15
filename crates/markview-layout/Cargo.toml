@@ -52,6 +52,7 @@ fuzz = ["markview-document/fuzz"]
 workspace = true
 
 [dev-dependencies]
+markview-test-support.workspace = true
 markview-webpage = { path = "../markview-webpage" }
 proptest.workspace = true
 markview-commonmark = { path = "../markview-commonmark" }
@@ -59,4 +60,3 @@ markview-commonmark = { path = "../markview-commonmark" }
 # directory scanning that production builds leave to the caller.
 markview-layout = { path = ".", features = ["font-directories"] }
 ratex-katex-fonts.workspace = true
-tempfile.workspace = true

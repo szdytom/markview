@@ -15,14 +15,16 @@ IGNORED = re.compile(
     r'|(?:b|c)?"(?:\\.|[^"\\])*"|(?:b)?\'(?:\\.|[^\'\\\n])\'',
     re.S,
 )
-COMPLEXITY_MARKER = re.compile(
-    r'any\s*\(\s*\)\s*,\s*markview\s*::\s*allow_complexity\s*\('
+AUDIT_MARKER = re.compile(
+    r'any\s*\(\s*\)\s*,\s*markview\s*::\s*(?:allow_complexity|allow_raw_paths)\s*\('
     r'\s*reason\s*=\s*"(?:\\.|[^"\\])+"\s*,?\s*\)\s*,?'
 )
 LINK_ATTRIBUTE = 'not(debug_assertions), windows_subsystem = "windows"'
 WASM = {'target_arch = "wasm32"', 'not(target_arch = "wasm32")'}
 PARALLEL = 'all(feature = "parallel", not(target_arch = "wasm32"))'
 EXCEPTIONS = {
+    # Test-fixture regression uses a Unix symlink in an isolated subprocess.
+    "crates/markview-test-support/tests/paths.rs": {"unix"},
     # The final build script embeds the native executable icon.
     "build.rs": {"windows", "not(windows)"},
     # Browser callbacks cannot use native worker threads.
@@ -88,14 +90,14 @@ def violations(source, main=False, features=("diagnostics",), exceptions=()):
             end += 1
         consumed = end
         condition = re.sub(r"\s+", " ", source[start:end - 1]).strip()
-        complexity_marker = "cfg_attr" in match.group() and COMPLEXITY_MARKER.fullmatch(condition)
+        audit_marker = "cfg_attr" in match.group() and AUDIT_MARKER.fullmatch(condition)
         feature_condition = FEATURE.sub(
             lambda match: "test" if match[1] in features else match[0], condition
         )
         if (
             set(tokens(feature_condition)) <= ALLOWED
             or (main and tokens(condition) == tokens(LINK_ATTRIBUTE))
-            or complexity_marker
+            or audit_marker
             or tokens(condition) in exceptions
         ):
             continue

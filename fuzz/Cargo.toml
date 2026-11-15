@@ -14,6 +14,7 @@ cargo-fuzz = true
 members = ["fuzzlib"]
 
 [dependencies]
+markview-test-support = { path = "../crates/markview-test-support" }
 markview-commonmark = { path = "../crates/markview-commonmark" }
 markview-document = { path = "../crates/markview-document" }
 markview-image = { path = "../crates/markview-image" }
@@ -26,7 +27,6 @@ markview-layout = { path = "../crates/markview-layout", features = ["fuzz"] }
 markview-pdf = { path = "../crates/markview-pdf", features = ["fuzz"] }
 markview-render = { path = "../crates/markview-render", features = ["fuzz"] }
 mvfuzz = { path = "fuzzlib" }
-tempfile = "3"
 
 # Overflow checks stay on (the `dev` default): an integer overflow in a
 # fuzzed path panics and becomes a regression test (O1).

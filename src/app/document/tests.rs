@@ -16,10 +16,39 @@ impl SendEvent for Proxy {
 	}
 }
 
+#[test]
+#[cfg_attr(
+	any(),
+	markview::allow_raw_paths(
+		reason = "Exercise raw symlink paths at the application entry point"
+	)
+)]
+fn opening_a_raw_symlink_path_matches_the_tree_and_reuses_the_tab() {
+	if !markview_platform::test_support::symlinks() {
+		return;
+	}
+	let mut h = Harness::new();
+	let alias = h.dir.path().join("alias");
+	markview_platform::test_support::symlink(h.dir.path(), &alias).unwrap();
+	let directory = tempfile::tempdir_in(&alias).unwrap();
+	let raw = directory.path().join("note 中文.md");
+	fs::write(&raw, "A note.").unwrap();
+	let expected = raw.canonicalize().unwrap();
+	assert_ne!(raw, expected);
+	let tree = crate::app::folder::Tree::read(directory.path().into()).unwrap();
+	h.app.open(raw);
+	h.wait_images(0);
+	assert_eq!(h.app.readers.session.path.as_ref(), Some(&expected));
+	assert!(tree.entries.iter().any(|entry| entry.path == expected));
+	h.app.open(expected);
+	h.wait_images(0);
+	assert_eq!(h.app.readers.entries().len(), 1);
+}
+
 struct Harness {
 	app: App<Proxy>,
 	events: mpsc::Receiver<Event>,
-	dir: tempfile::TempDir,
+	dir: crate::test_support::TestDir,
 }
 impl Harness {
 	fn new() -> Self {
@@ -27,7 +56,7 @@ impl Harness {
 	}
 
 	fn with_offline(offline: bool) -> Self {
-		let dir = tempfile::tempdir().unwrap();
+		let dir = crate::test_support::TestDir::new();
 		for (name, color) in [
 			("first.png", [255, 0, 255, 255]),
 			("second.png", [0, 255, 0, 255]),
@@ -1429,7 +1458,7 @@ fn folder_open_navigation_links_and_refresh_use_the_native_reader() {
 	use crate::state::Command;
 	let mut h = Harness::new();
 	h.app.tab_strip.phone = true;
-	let root = h.dir.path().canonicalize().unwrap();
+	let root = h.dir.path().to_owned();
 	fs::create_dir(root.join("notes")).unwrap();
 	fs::create_dir(root.join(".obsidian")).unwrap();
 	fs::write(root.join(".obsidian/private.md"), "hidden").unwrap();
@@ -1542,7 +1571,7 @@ fn closing_a_folder_tab_returns_to_its_opener_with_a_right_neighbor() {
 	for phone in [false, true] {
 		let mut h = Harness::new();
 		h.app.tab_strip.phone = phone;
-		let root = h.dir.path().canonicalize().unwrap();
+		let root = h.dir.path().to_owned();
 		fs::write(root.join("chapter.md"), "# Chapter").unwrap();
 		h.open("README.md", 2);
 		h.open("README.zh-cn.md", 1);
@@ -1584,7 +1613,7 @@ fn folder_image_entries_open_a_single_image_tab() {
 	use crate::state::Command;
 	let mut h = Harness::new();
 	h.app.tab_strip.phone = true;
-	let root = h.dir.path().canonicalize().unwrap();
+	let root = h.dir.path().to_owned();
 	h.app.open(root.clone());
 	let event = h.events.recv_timeout(Duration::from_secs(10)).unwrap();
 	h.app.handle_user_event(&StubLoop, event);
@@ -1630,7 +1659,7 @@ fn folder_scan_completion_preserves_newer_navigation() {
 			h.app.tab_strip.phone = phone;
 			h.open("README.md", 2);
 			h.open("README.zh-cn.md", 1);
-			let root = h.dir.path().canonicalize().unwrap();
+			let root = h.dir.path().to_owned();
 			fs::write(root.join("new.md"), "# New").unwrap();
 			h.app.open(root.clone());
 			let completion = loop {
@@ -1758,7 +1787,7 @@ fn folder_scan_completion_keeps_the_outline_when_the_folder_was_hidden() {
 #[test]
 fn folder_links_prefer_existing_document_relative_paths() {
 	let mut h = Harness::new();
-	let root = h.dir.path().canonicalize().unwrap();
+	let root = h.dir.path().to_owned();
 	for directory in ["docs/guide", "guide"] {
 		fs::create_dir_all(root.join(directory)).unwrap();
 	}
@@ -1862,7 +1891,7 @@ fn folder_links_preserve_native_paths_with_url_delimiters() {
 #[test]
 fn folder_wikilinks_open_literal_percent_names_even_with_a_decoded_match() {
 	let mut h = Harness::new();
-	let root = h.dir.path().canonicalize().unwrap();
+	let root = h.dir.path().to_owned();
 	for name in ["Note %41.md", "Note A.md", "Note %2541.md"] {
 		fs::write(root.join(name), "# A heading\n\nA note.").unwrap();
 	}
@@ -1902,7 +1931,7 @@ fn reveal_folder_opens_the_active_document_directory_externally() {
 	}
 	let capture = "MARKVIEW_TEST_REVEAL_FOLDER";
 	let Ok(output) = std::env::var(capture) else {
-		let dir = tempfile::tempdir().unwrap();
+		let dir = crate::test_support::TestDir::new();
 		let opener = dir.path().join("xdg-open");
 		fs::write(
 			&opener,
@@ -2587,7 +2616,7 @@ fn folder_sidebar_renders_beside_the_document() -> anyhow::Result<()> {
 #[test]
 fn folder_session_restores_the_root_visibility_and_selected_document() {
 	let mut h = Harness::new();
-	let root = h.dir.path().canonicalize().unwrap();
+	let root = h.dir.path().to_owned();
 	fs::write(root.join("Last read.md"), "# Last read\n\nSaved reading.")
 		.unwrap();
 	h.app.instance_path = Some(root.join("instance.lock"));
@@ -2663,7 +2692,7 @@ fn folder_sidebar_repository_scroll_profile() {
 fn selecting_a_tab_opens_the_folder_onto_its_document() {
 	use crate::state::Command;
 	let mut h = Harness::new();
-	let root = h.dir.path().canonicalize().unwrap();
+	let root = h.dir.path().to_owned();
 	fs::create_dir_all(root.join("zoo/deep")).unwrap();
 	fs::write(root.join("zoo/deep/Zeta.md"), "# Zeta").unwrap();
 	// Enough siblings that the note sits below the list's clip.
@@ -2740,7 +2769,7 @@ fn selecting_a_tab_opens_the_folder_onto_its_document() {
 fn opening_a_linked_document_expands_the_folder_onto_its_row() {
 	use crate::state::Command;
 	let mut h = Harness::new();
-	let root = h.dir.path().canonicalize().unwrap();
+	let root = h.dir.path().to_owned();
 	fs::create_dir_all(root.join("deep/nested")).unwrap();
 	fs::write(root.join("deep/nested/Note.md"), "# Note").unwrap();
 	h.open("README.md", 2);
@@ -2828,7 +2857,7 @@ fn folder_changes_and_manual_refresh_preserve_identity_scroll_focus_and_expansio
  {
 	use crate::state::Command;
 	let mut h = Harness::new();
-	let root = h.dir.path().canonicalize().unwrap();
+	let root = h.dir.path().to_owned();
 	fs::create_dir_all(root.join("branch/deep")).unwrap();
 	fs::write(root.join("branch/deep/Note.md"), "note").unwrap();
 	for index in 0..60 {
@@ -2954,7 +2983,7 @@ fn excluded_folder_button_loads_on_demand_on_desktop_and_phone() {
 	use crate::state::Command;
 	for phone in [false, true] {
 		let mut h = Harness::new();
-		let root = h.dir.path().canonicalize().unwrap();
+		let root = h.dir.path().to_owned();
 		fs::create_dir_all(root.join("node_modules/pkg/deep")).unwrap();
 		fs::write(root.join("node_modules/pkg/Note.md"), "note").unwrap();
 		h.app.tab_strip.phone = phone;
@@ -3022,7 +3051,7 @@ fn excluded_folder_button_loads_on_demand_on_desktop_and_phone() {
 fn folder_refresh_replays_tab_reveal_and_rejects_stale_deltas() {
 	use crate::state::Command;
 	let mut h = Harness::new();
-	let root = h.dir.path().canonicalize().unwrap();
+	let root = h.dir.path().to_owned();
 	fs::create_dir_all(root.join("deep/nested")).unwrap();
 	fs::write(root.join("deep/nested/Note.md"), "note").unwrap();
 	h.open("README.md", 2);
@@ -3113,7 +3142,7 @@ fn folder_refresh_replays_tab_reveal_and_rejects_stale_deltas() {
 fn folder_collapse_all_prunes_running_parent_animation() {
 	use crate::state::Command;
 	let mut h = Harness::new();
-	let root = h.dir.path().canonicalize().unwrap();
+	let root = h.dir.path().to_owned();
 	fs::create_dir_all(root.join("branch/node_modules")).unwrap();
 	fs::write(root.join("branch/node_modules/Note.md"), "note").unwrap();
 	h.app
@@ -3148,7 +3177,7 @@ fn folder_collapse_all_prunes_running_parent_animation() {
 #[test]
 fn folder_visibility_change_during_scan_keeps_observer_working() {
 	let mut h = Harness::new();
-	let root = h.dir.path().canonicalize().unwrap();
+	let root = h.dir.path().to_owned();
 	h.app
 		.folder_loaded(0, false, crate::app::folder::Tree::read(root.clone()));
 	h.app.set_folder_open(true);
@@ -3180,7 +3209,7 @@ fn folder_visibility_change_during_scan_keeps_observer_working() {
 fn folder_same_root_replacement_clears_reused_row_capture() {
 	use crate::state::Command;
 	let mut h = Harness::new();
-	let root = h.dir.path().canonicalize().unwrap();
+	let root = h.dir.path().to_owned();
 	fs::remove_file(root.join("README.md")).unwrap();
 	fs::remove_file(root.join("README.zh-cn.md")).unwrap();
 	h.app

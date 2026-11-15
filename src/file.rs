@@ -158,7 +158,7 @@ mod tests {
 		if !markview_platform::test_support::special_files() {
 			return;
 		}
-		let dir = tempfile::tempdir().unwrap();
+		let dir = crate::test_support::TestDir::new();
 		let path = dir.path().join("note.md");
 		fifo(&path);
 		within_a_second(move || read_document(&path));
@@ -166,7 +166,7 @@ mod tests {
 
 	#[test]
 	fn a_directory_is_refused_as_a_document() {
-		let dir = tempfile::tempdir().unwrap();
+		let dir = crate::test_support::TestDir::new();
 		let path = dir.path().join("folder.md");
 		std::fs::create_dir(&path).unwrap();
 		// Windows cannot open a directory without `FILE_FLAG_BACKUP_SEMANTICS`,
@@ -176,7 +176,7 @@ mod tests {
 
 	#[test]
 	fn an_image_path_becomes_one_standalone_picture() {
-		let dir = tempfile::tempdir().unwrap();
+		let dir = crate::test_support::TestDir::new();
 		let path = dir.path().join("Picture one.png");
 		fs::write(&path, b"picture").unwrap();
 		assert_eq!(
@@ -189,7 +189,7 @@ mod tests {
 
 	#[test]
 	fn an_extensionless_picture_target_is_detected() {
-		let dir = tempfile::tempdir().unwrap();
+		let dir = crate::test_support::TestDir::new();
 		let named = dir.path().join("picture.png");
 		image::RgbImage::from_pixel(3, 2, image::Rgb([12, 34, 56]))
 			.save(&named)
@@ -205,7 +205,7 @@ mod tests {
 
 	#[test]
 	fn markdown_prefixes_are_not_mistaken_for_pictures() {
-		let dir = tempfile::tempdir().unwrap();
+		let dir = crate::test_support::TestDir::new();
 		for (name, source) in [
 			("issues.md", "P1 issues\n\nText.\n"),
 			("bmp.md", "BMP documentation\n\nText.\n"),
@@ -219,7 +219,7 @@ mod tests {
 
 	#[test]
 	fn markdown_with_leading_inline_svg_stays_text() {
-		let dir = tempfile::tempdir().unwrap();
+		let dir = crate::test_support::TestDir::new();
 		let path = dir.path().join("inline.md");
 		let source = "<svg width=\"4\" height=\"4\"></svg>\n\n# Heading\n";
 		fs::write(&path, source).unwrap();
@@ -229,7 +229,7 @@ mod tests {
 
 	#[test]
 	fn a_picture_with_metadata_beyond_the_first_prefix_is_detected() {
-		let dir = tempfile::tempdir().unwrap();
+		let dir = crate::test_support::TestDir::new();
 		let named = dir.path().join("photo.jpg");
 		image::RgbImage::from_pixel(3, 2, image::Rgb([12, 34, 56]))
 			.save(&named)
@@ -247,7 +247,7 @@ mod tests {
 		if !markview_platform::test_support::special_files() {
 			return;
 		}
-		let dir = tempfile::tempdir().unwrap();
+		let dir = crate::test_support::TestDir::new();
 		let pipe = dir.path().join("picture.pipe");
 		fifo(&pipe);
 		let path = dir.path().join("probe.md");
@@ -269,7 +269,7 @@ mod tests {
 
 	#[test]
 	fn hard_linked_paths_name_the_same_file() {
-		let dir = tempfile::tempdir().unwrap();
+		let dir = crate::test_support::TestDir::new();
 		let first = dir.path().join("source.png");
 		let second = dir.path().join("output.png");
 		fs::write(&first, b"picture").unwrap();
@@ -286,7 +286,7 @@ mod tests {
 
 	#[test]
 	fn a_regular_document_still_reads() {
-		let dir = tempfile::tempdir().unwrap();
+		let dir = crate::test_support::TestDir::new();
 		let path = dir.path().join("note.md");
 		fs::write(&path, "\u{feff}# Title\n").unwrap();
 		assert_eq!(read_document(&path).unwrap(), "# Title\n");

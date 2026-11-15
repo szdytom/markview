@@ -7,6 +7,7 @@ publish = false
 
 
 [dependencies]
+markview-test-support = { path = "../../crates/markview-test-support" }
 serde_json = { version = "1", features = ["float_roundtrip"] }
 markview-commonmark = { path = "../../crates/markview-commonmark" }
 markview-document = { path = "../../crates/markview-document" }
@@ -30,7 +31,6 @@ zip = { version = "9", default-features = false, features = ["deflate"] }
 tar = "0.4"
 flate2 = "1"
 zstd = { version = "0.14", default-features = false }
-tempfile = "3"
 # The PDF targets re-parse Markview's own output; the reader dependency carries
 # the same version, so the harness checks what a viewer would see.
 lopdf = { version = "0.46", default-features = false }

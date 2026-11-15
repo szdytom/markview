@@ -3,7 +3,7 @@ use proptest::prelude::*;
 
 #[test]
 fn legacy_entries_without_freshness_provenance_are_refetched() {
-	let directory = tempfile::tempdir().unwrap();
+	let directory = crate::test_support::TestDir::new();
 	let cache = Cache::new(directory.path().to_owned());
 	let url = "https://a.test/image";
 	cache.put(url, Headers::default(), b"old");
@@ -59,7 +59,7 @@ proptest! {
 	fn disk_entries_keep_exact_bytes_and_reject_truncation_and_security_mismatches(
 		body in prop::collection::vec(any::<u8>(), 0..256), remove in any::<usize>(), key in "[a-z]{1,12}",
 	) {
-		let directory = tempfile::tempdir().unwrap();
+		let directory = crate::test_support::TestDir::new();
 		let cache = Cache::new(directory.path().to_owned());
 		let url = format!("https://a.test/{key}");
 		let meta = Meta { url: url.clone(), final_url: "https://b.test/final".to_owned(), bytes: body.len() as u64, ..Default::default() };
@@ -107,7 +107,7 @@ proptest! {
 		let old_headers = Headers { max_age: Some(age), has_cache_control: true, date: Some(UNIX_EPOCH), ..Default::default() };
 		let mut old = metadata(url, url, &old_headers, b"body", UNIX_EPOCH);
 		old.lifetime = capped(old.lifetime, 0, cap.map(|n| UNIX_EPOCH + Duration::from_secs(n)));
-		let directory = tempfile::tempdir().unwrap();
+		let directory = crate::test_support::TestDir::new();
 		let cache = Cache::new(directory.path().to_owned());
 		cache.store(url, &old, b"body");
 		let old = cache.load_meta(url).unwrap();
@@ -128,7 +128,7 @@ proptest! {
 	fn cached_fetch_sequences_model_offline_revalidation_and_replacement(
 		operations in prop::collection::vec(0u8..9, 0..10), seed in prop::collection::vec(any::<u8>(), 0..32),
 	) {
-		let directory = tempfile::tempdir().unwrap();
+		let directory = crate::test_support::TestDir::new();
 		let cache = Cache::new(directory.path().to_owned());
 		let runtime = tokio::runtime::Builder::new_current_thread().enable_all().build().unwrap();
 		let url = "https://a.test/image";
@@ -174,7 +174,7 @@ proptest! {
 	fn eviction_removes_the_oldest_prefix_until_the_byte_budget_is_met(
 		lengths in prop::collection::vec(0usize..129, 0..7), raw_budget in any::<u16>(), touch in prop::option::of(any::<usize>()),
 	) {
-		let directory = tempfile::tempdir().unwrap();
+		let directory = crate::test_support::TestDir::new();
 		let cache = Cache::new(directory.path().to_owned());
 		let mut entries = Vec::new();
 		for (index, &length) in lengths.iter().enumerate() {

@@ -100,6 +100,16 @@ CHECKS = (
         "light",
     ),
     Check(
+        "test paths",
+        ("cargo", "run", "-p", "xtask", "--locked", "--", "test-paths"),
+        "light",
+    ),
+    Check(
+        "path runner tests",
+        python("-m", "unittest", "discover", "-s", "scripts", "-p", "test_test_paths.py"),
+        "light",
+    ),
+    Check(
         "platform boundary",
         python("scripts/check_platform_boundary.py"),
         "light",

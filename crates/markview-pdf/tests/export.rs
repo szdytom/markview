@@ -990,7 +990,8 @@ fn without_whitespace(text: &str) -> String {
 }
 
 fn poppler_text(exported: &Exported, mode: &str) -> String {
-	let file = tempfile::NamedTempFile::new().unwrap();
+	let directory = markview_test_support::TestDir::new();
+	let file = tempfile::NamedTempFile::new_in(directory.path()).unwrap();
 	std::fs::write(file.path(), &exported.bytes).unwrap();
 	let output = std::process::Command::new("pdftotext")
 		.args([mode, "-nopgbrk"])
@@ -1514,7 +1515,7 @@ fn mupdf_reads_heading_bookmarks_with_correct_hierarchy_and_page_positions() {
 		let exported =
 			export_at(&source, print(), links, Metadata::default(), geometry);
 		assert!(exported.pages > 1);
-		let dir = tempfile::tempdir().unwrap();
+		let dir = markview_test_support::TestDir::new();
 		let pdf = dir.path().join("bookmarks.pdf");
 		std::fs::write(&pdf, &exported.bytes).unwrap();
 		let script = dir.path().join("outline.js");

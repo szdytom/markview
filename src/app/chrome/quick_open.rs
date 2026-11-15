@@ -211,7 +211,7 @@ mod tests {
 
 	#[test]
 	fn quick_open_frames() -> anyhow::Result<()> {
-		let dir = tempfile::tempdir()?;
+		let dir = crate::test_support::TestDir::new();
 		std::fs::create_dir(dir.path().join("docs"))?;
 		for name in ["README.md", "docs/reading.md", "docs/阅读.md"] {
 			std::fs::write(dir.path().join(name), "# Reading")?;

@@ -105,7 +105,7 @@ mod tests {
 	/// face must not cost it.
 	#[test]
 	fn an_empty_font_file_is_skipped_beside_a_real_one() {
-		let dir = tempfile::tempdir().unwrap();
+		let dir = markview_test_support::TestDir::new();
 		std::fs::write(dir.path().join("empty.ttf"), b"").unwrap();
 		std::fs::copy(
 			Path::new(env!("CARGO_MANIFEST_DIR"))
@@ -127,7 +127,7 @@ mod tests {
 	/// (a recorded `fonts` finding).
 	#[test]
 	fn a_damaged_face_is_skipped_beside_a_real_one() {
-		let dir = tempfile::tempdir().unwrap();
+		let dir = markview_test_support::TestDir::new();
 		let mut bytes = std::fs::read(
 			Path::new(env!("CARGO_MANIFEST_DIR"))
 				.join("tests/fonts/NotoSans-Regular-subset.otf"),
@@ -174,7 +174,7 @@ mod tests {
 	/// new collection.
 	#[test]
 	fn a_download_into_a_registered_directory_changes_the_collection() {
-		let dir = tempfile::tempdir().unwrap();
+		let dir = markview_test_support::TestDir::new();
 		let download = |name: &str| {
 			std::fs::copy(
 				Path::new(env!("CARGO_MANIFEST_DIR"))

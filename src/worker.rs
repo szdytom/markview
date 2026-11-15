@@ -723,7 +723,7 @@ mod tests {
 	};
 	#[test]
 	fn poisoned_inbox_accepts_a_new_layout_and_shuts_down() {
-		let dir = tempfile::tempdir().unwrap();
+		let dir = crate::test_support::TestDir::new();
 		let path = dir.path().join("read.md");
 		fs::write(&path, "Readable after recovery.").unwrap();
 		let (tx, rx) = mpsc::channel();
@@ -800,7 +800,7 @@ mod tests {
 	}
 	#[test]
 	fn progressive_worker_chases_target_and_cancels_changed_file() {
-		let dir = tempfile::tempdir().unwrap();
+		let dir = crate::test_support::TestDir::new();
 		let path = dir.path().join("read.md");
 		fs::write(&path, "A paragraph 中文 with **text**.\n\n".repeat(1000))
 			.unwrap();
@@ -877,7 +877,7 @@ mod tests {
 
 	#[test]
 	fn progressive_worker_finishes_with_shared_prefix() {
-		let dir = tempfile::tempdir().unwrap();
+		let dir = crate::test_support::TestDir::new();
 		let path = dir.path().join("read.md");
 		fs::write(
 			&path,
@@ -928,7 +928,7 @@ mod tests {
 	}
 	#[test]
 	fn a_changed_hard_break_dialect_reparses_the_same_content() {
-		let dir = tempfile::tempdir().unwrap();
+		let dir = crate::test_support::TestDir::new();
 		let path = dir.path().join("read.md");
 		fs::write(&path, "one\ntwo\n\nthree\n").unwrap();
 		let (tx, rx) = mpsc::channel();
@@ -989,7 +989,7 @@ mod tests {
 
 	#[test]
 	fn a_changed_highlight_dialect_reparses_the_same_content() {
-		let dir = tempfile::tempdir().unwrap();
+		let dir = crate::test_support::TestDir::new();
 		let path = dir.path().join("read.md");
 		fs::write(&path, "a ==marked== b\n").unwrap();
 		let (tx, rx) = mpsc::channel();
@@ -1047,7 +1047,7 @@ mod tests {
 
 	#[test]
 	fn grid_table_toggle_reparses_retained_documents() {
-		let dir = tempfile::tempdir().unwrap();
+		let dir = crate::test_support::TestDir::new();
 		let path = dir.path().join("grid.md");
 		fs::write(&path, "+---+\n| a |\n+---+\n").unwrap();
 		let (tx, rx) = mpsc::channel();
@@ -1108,7 +1108,7 @@ mod tests {
 
 	#[test]
 	fn worker_publishes_latest_request() {
-		let dir = tempfile::tempdir().unwrap();
+		let dir = crate::test_support::TestDir::new();
 		let path = dir.path().join("read.md");
 		fs::write(&path, "A paragraph.").unwrap();
 		let (tx, rx) = mpsc::channel();
@@ -1152,7 +1152,7 @@ mod reflow_tests {
 	use std::{fs, sync::mpsc, time::Duration};
 	#[test]
 	fn reflow_reuses_document_without_reading_and_reload_is_not_lost() {
-		let dir = tempfile::tempdir().unwrap();
+		let dir = crate::test_support::TestDir::new();
 		let path = dir.path().join("read.md");
 		fs::write(&path, "First").unwrap();
 		let (tx, rx) = mpsc::channel();
@@ -1217,7 +1217,7 @@ mod reflow_tests {
 
 	#[test]
 	fn release_drops_the_retained_document() {
-		let dir = tempfile::tempdir().unwrap();
+		let dir = crate::test_support::TestDir::new();
 		let path = dir.path().join("read.md");
 		fs::write(&path, "First").unwrap();
 		let (tx, rx) = mpsc::channel();
@@ -1270,7 +1270,7 @@ mod reflow_tests {
 
 	#[test]
 	fn complete_updates_carry_counts_to_each_document() {
-		let dir = tempfile::tempdir().unwrap();
+		let dir = crate::test_support::TestDir::new();
 		let first = dir.path().join("a.md");
 		let second = dir.path().join("b.md");
 		// Identical content in two files: the second open shares the cached

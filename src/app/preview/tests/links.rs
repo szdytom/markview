@@ -59,7 +59,7 @@ fn file_reader(
 
 #[test]
 fn heading_paths_preview_the_selected_child_within_and_across_documents() {
-	let dir = tempfile::tempdir().unwrap();
+	let dir = crate::test_support::TestDir::new();
 	let sections = format!(
 		"# First\n\n## Child\n\nWrong branch.\n\n{}# Second\n\n## Child\n\nSelected branch.\n\n## Next\n\nExcluded.\n",
 		"Earlier content.\n\n".repeat(40),
@@ -126,7 +126,7 @@ fn offscreen_section_reuses_delays_and_contains_only_its_section() {
 
 #[test]
 fn visible_sections_do_not_schedule_a_preview_even_with_a_file_alias() {
-	let dir = tempfile::tempdir().unwrap();
+	let dir = crate::test_support::TestDir::new();
 	for url in ["#target", "source.md#target"] {
 		let (mut app, _events) = file_reader(dir.path(), url);
 		let snapshot = picture_reader(
@@ -145,7 +145,7 @@ fn visible_sections_do_not_schedule_a_preview_even_with_a_file_alias() {
 #[test]
 fn file_previews_resolve_encoded_paths_and_fragments_and_keep_the_source_open()
 {
-	let dir = tempfile::tempdir().unwrap();
+	let dir = crate::test_support::TestDir::new();
 	std::fs::write(dir.path().join("other note.md"), "# Before\n\nExcluded.\n\n## 目标\n\nFile **content**.\n\n## After\n\nExcluded too.\n").unwrap();
 	let url = "other%20note.md#%E7%9B%AE%E6%A0%87";
 	let (mut app, _events) = file_reader(dir.path(), url);
@@ -169,7 +169,7 @@ fn file_previews_resolve_encoded_paths_and_fragments_and_keep_the_source_open()
 
 #[test]
 fn file_without_a_fragment_previews_its_opening_paragraphs() {
-	let dir = tempfile::tempdir().unwrap();
+	let dir = crate::test_support::TestDir::new();
 	std::fs::write(
 		dir.path().join("other.md"),
 		"Opening paragraph.\n\nSecond paragraph.\n",
@@ -186,7 +186,7 @@ fn file_without_a_fragment_previews_its_opening_paragraphs() {
 
 #[test]
 fn missing_files_and_anchors_finish_without_a_popup_or_busy_deadline() {
-	let dir = tempfile::tempdir().unwrap();
+	let dir = crate::test_support::TestDir::new();
 	std::fs::write(dir.path().join("other.md"), "# Existing\n").unwrap();
 	for url in ["missing.md", "other.md#missing", "#missing"] {
 		let (mut app, _events) = file_reader(dir.path(), url);
@@ -199,7 +199,7 @@ fn missing_files_and_anchors_finish_without_a_popup_or_busy_deadline() {
 
 #[test]
 fn remote_and_unapproved_file_links_do_not_start_background_work() {
-	let dir = tempfile::tempdir().unwrap();
+	let dir = crate::test_support::TestDir::new();
 	for url in [
 		"https://example.com/other.md",
 		"other.md",
@@ -240,7 +240,7 @@ pub(super) fn click_first_preview_link(app: &mut App<Proxy>) {
 
 #[test]
 fn links_in_a_file_preview_navigate_relative_to_the_previewed_file() {
-	let dir = tempfile::tempdir().unwrap();
+	let dir = crate::test_support::TestDir::new();
 	let sub = dir.path().join("sub");
 	std::fs::create_dir(&sub).unwrap();
 	std::fs::write(sub.join("other.md"), "# Other\n\n[Next](next.md#target)\n")
@@ -264,7 +264,7 @@ fn links_in_a_file_preview_navigate_relative_to_the_previewed_file() {
 
 #[test]
 fn footnote_references_in_file_previews_keep_their_typed_destination() {
-	let dir = tempfile::tempdir().unwrap();
+	let dir = crate::test_support::TestDir::new();
 	let path = dir.path().join("other.md");
 	std::fs::write(&path, "# Other\n\nRead[^note].\n\n[^note]: A note.\n")
 		.unwrap();
@@ -286,7 +286,7 @@ fn footnote_references_in_file_previews_keep_their_typed_destination() {
 
 #[test]
 fn file_block_ids_use_the_current_markdown_dialect() {
-	let dir = tempfile::tempdir().unwrap();
+	let dir = crate::test_support::TestDir::new();
 	std::fs::write(
 		dir.path().join("other.md"),
 		"Before.\n\nSelected block. ^Block-ID\n\nAfter.\n",
@@ -307,7 +307,7 @@ fn file_block_ids_use_the_current_markdown_dialect() {
 
 #[test]
 fn revoking_file_access_cancels_pending_preview_work() {
-	let dir = tempfile::tempdir().unwrap();
+	let dir = crate::test_support::TestDir::new();
 	std::fs::write(dir.path().join("other.md"), "Content.\n").unwrap();
 	let (mut app, _events) = file_reader(dir.path(), "other.md");
 	let now = hover(&mut app, "other.md");
@@ -321,7 +321,7 @@ fn revoking_file_access_cancels_pending_preview_work() {
 
 #[test]
 fn file_previews_use_their_own_disclosure_defaults() {
-	let dir = tempfile::tempdir().unwrap();
+	let dir = crate::test_support::TestDir::new();
 	let source = "# Other\n\n<details open><summary>Summary</summary>\n\nVisible content.\n\n</details>\n";
 	std::fs::write(dir.path().join("other.md"), source).unwrap();
 	let document = markview_commonmark::parse(source);

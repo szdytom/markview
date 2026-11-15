@@ -313,7 +313,7 @@ mod tests {
 
 	#[test]
 	fn zip_members_are_filtered_and_owned_until_taken() {
-		let dir = tempfile::tempdir().unwrap();
+		let dir = markview_test_support::TestDir::new();
 		let path = dir.path().join("faces.zip");
 		{
 			let mut writer =
@@ -344,7 +344,7 @@ mod tests {
 
 	#[test]
 	fn unmatched_members_fail_instead_of_writing_outside() {
-		let dir = tempfile::tempdir().unwrap();
+		let dir = markview_test_support::TestDir::new();
 		let path = dir.path().join("faces.tar");
 		{
 			let mut builder =

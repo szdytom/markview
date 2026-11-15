@@ -5,7 +5,7 @@ use std::fs;
 
 #[test]
 fn sidebar_widths_default_merge_reload_validate_and_reset_independently() {
-	let dir = tempfile::tempdir().unwrap();
+	let dir = crate::test_support::TestDir::new();
 	let path = dir.path().join("settings.toml");
 	fs::write(&path, "# Reader\nfont_size = 20\n").unwrap();
 	let (mut store, warning) = SettingsStore::load(Some(path.clone()));
@@ -61,7 +61,7 @@ fn sidebar_widths_default_merge_reload_validate_and_reset_independently() {
 
 #[test]
 fn external_edits_merge_pending_ui_fields_and_preserve_comments() {
-	let dir = tempfile::tempdir().unwrap();
+	let dir = crate::test_support::TestDir::new();
 	let path = dir.path().join("settings.toml");
 	fs::write(&path, "# Reading\nfont_size = 20.0 # comfortable\nwidth = 800.0\n[extra]\nvalue = 42\n").unwrap();
 	let (mut store, warning) = SettingsStore::load(Some(path.clone()));
@@ -84,7 +84,7 @@ fn external_edits_merge_pending_ui_fields_and_preserve_comments() {
 
 #[test]
 fn window_border_round_trips_and_merges_without_pinning_the_theme() {
-	let dir = tempfile::tempdir().unwrap();
+	let dir = crate::test_support::TestDir::new();
 	let path = dir.path().join("settings.toml");
 	fs::write(&path, "# Reader\nfont_size = 20\n").unwrap();
 	let (mut store, warning) = SettingsStore::load(Some(path.clone()));
@@ -125,7 +125,7 @@ fn window_border_round_trips_and_merges_without_pinning_the_theme() {
 }
 #[test]
 fn window_border_reads_both_keys_and_saves_only_the_new_key() {
-	let dir = tempfile::tempdir().unwrap();
+	let dir = crate::test_support::TestDir::new();
 	let path = dir.path().join("settings.toml");
 	for key in ["window-layout", "window-border"] {
 		for (value, expected) in [
@@ -174,7 +174,7 @@ fn window_border_reads_both_keys_and_saves_only_the_new_key() {
 
 #[test]
 fn invalid_reload_and_deletion_retain_last_good_settings() {
-	let dir = tempfile::tempdir().unwrap();
+	let dir = crate::test_support::TestDir::new();
 	let path = dir.path().join("settings.toml");
 	fs::write(&path, "font_size = 22\n").unwrap();
 	let (mut store, warning) = SettingsStore::load(Some(path.clone()));
@@ -207,7 +207,7 @@ fn invalid_reload_and_deletion_retain_last_good_settings() {
 }
 #[test]
 fn legacy_json_is_migrated_without_modifying_original() {
-	let dir = tempfile::tempdir().unwrap();
+	let dir = crate::test_support::TestDir::new();
 	let legacy = dir.path().join("settings.json");
 	let original = r#"{"version":1,"font_size":23,"theme":"dark","window-layout":"linux"}"#;
 	fs::write(&legacy, original).unwrap();
@@ -228,7 +228,7 @@ fn legacy_json_is_migrated_without_modifying_original() {
 }
 #[test]
 fn toml_atomic_save_is_watched_and_applied() {
-	let dir = tempfile::tempdir().unwrap();
+	let dir = crate::test_support::TestDir::new();
 	let path = dir.path().join("settings.toml");
 	let (mut store, _) = SettingsStore::load(Some(path.clone()));
 	store.ensure_file().unwrap();
@@ -246,7 +246,7 @@ fn toml_atomic_save_is_watched_and_applied() {
 }
 #[test]
 fn overrides_do_not_leak_into_saved_fields() {
-	let dir = tempfile::tempdir().unwrap();
+	let dir = crate::test_support::TestDir::new();
 	let path = dir.path().join("settings.json");
 	let (mut store, _) = SettingsStore::load(Some(path.clone()));
 	let effective = ReaderSettings {
@@ -263,7 +263,7 @@ fn overrides_do_not_leak_into_saved_fields() {
 }
 #[test]
 fn theme_preference_is_optional_and_only_a_choice_pins_it() {
-	let dir = tempfile::tempdir().unwrap();
+	let dir = crate::test_support::TestDir::new();
 	let path = dir.path().join("settings.json");
 	let (store, _) = SettingsStore::load(Some(path.clone()));
 	assert_eq!(store.theme_preference(), None);
@@ -303,7 +303,7 @@ fn theme_preference_is_optional_and_only_a_choice_pins_it() {
 }
 #[test]
 fn paragraph_indent_round_trips_layout_and_bounds() {
-	let dir = tempfile::tempdir().unwrap();
+	let dir = crate::test_support::TestDir::new();
 	let path = dir.path().join("settings.toml");
 	fs::write(&path, "paragraph_indent = 2.0\n").unwrap();
 	let (mut store, warning) = SettingsStore::load(Some(path.clone()));
@@ -334,7 +334,7 @@ fn paragraph_indent_round_trips_layout_and_bounds() {
 
 #[test]
 fn codeblock_wrap_round_trips_settings_and_layout() {
-	let dir = tempfile::tempdir().unwrap();
+	let dir = crate::test_support::TestDir::new();
 	let path = dir.path().join("settings.toml");
 	fs::write(&path, "codeblock-wrap = true\n").unwrap();
 	let (mut store, warning) = SettingsStore::load(Some(path.clone()));
@@ -549,7 +549,7 @@ fn layout_options_carry_the_effective_dialect() {
 
 #[test]
 fn markdown_dialect_round_trips_and_old_files_still_load() {
-	let dir = tempfile::tempdir().unwrap();
+	let dir = crate::test_support::TestDir::new();
 	let path = dir.path().join("settings.toml");
 	// A file without a dialect uses the default Obsidian preset.
 	fs::write(&path, "font_size = 20\n").unwrap();
@@ -604,7 +604,7 @@ fn markdown_dialect_round_trips_and_old_files_still_load() {
 
 #[test]
 fn footer_path_defaults_off_and_round_trips() {
-	let dir = tempfile::tempdir().unwrap();
+	let dir = crate::test_support::TestDir::new();
 	let path = dir.path().join("settings.toml");
 	let (mut store, warning) = SettingsStore::load(Some(path.clone()));
 	assert!(warning.is_none());
@@ -628,7 +628,7 @@ fn footer_path_defaults_off_and_round_trips() {
 
 #[test]
 fn corrupt_configuration_is_preserved_and_defaults_recover() {
-	let dir = tempfile::tempdir().unwrap();
+	let dir = crate::test_support::TestDir::new();
 	let path = dir.path().join("settings.json");
 	fs::write(&path, b"broken json").unwrap();
 	let (mut store, warning) = SettingsStore::load(Some(path.clone()));
@@ -646,7 +646,7 @@ fn corrupt_configuration_is_preserved_and_defaults_recover() {
 
 #[test]
 fn justification_limits_round_trip_layout_and_bound() {
-	let dir = tempfile::tempdir().unwrap();
+	let dir = crate::test_support::TestDir::new();
 	let path = dir.path().join("settings.toml");
 	fs::write(
 		&path,
@@ -710,7 +710,7 @@ fn justification_limits_round_trip_layout_and_bound() {
 
 #[test]
 fn export_settings_round_trip_and_leave_the_reader_alone() {
-	let dir = tempfile::tempdir().unwrap();
+	let dir = crate::test_support::TestDir::new();
 	let path = dir.path().join("settings.toml");
 	fs::write(&path, "font_size = 20.0\n").unwrap();
 	let (mut store, warning) = SettingsStore::load(Some(path.clone()));
@@ -738,7 +738,7 @@ fn export_settings_round_trip_and_leave_the_reader_alone() {
 
 #[test]
 fn a_bad_export_table_only_resets_the_export() {
-	let dir = tempfile::tempdir().unwrap();
+	let dir = crate::test_support::TestDir::new();
 	let path = dir.path().join("settings.toml");
 	fs::write(&path, "font_size = 21.0\n[export]\nfont_size = 201.0\n")
 		.unwrap();
@@ -763,7 +763,7 @@ fn a_bad_export_table_only_resets_the_export() {
 
 #[test]
 fn a_pending_export_edit_survives_an_external_reload() {
-	let dir = tempfile::tempdir().unwrap();
+	let dir = crate::test_support::TestDir::new();
 	let path = dir.path().join("settings.toml");
 	fs::write(&path, "font_size = 20.0\n").unwrap();
 	let (mut store, _) = SettingsStore::load(Some(path.clone()));
@@ -803,7 +803,7 @@ fn scroll_speed_round_trips_and_stays_in_range() {
 	}
 	assert_eq!(settings.scroll_speed, SCROLL_SPEED_MIN);
 
-	let dir = tempfile::tempdir().unwrap();
+	let dir = crate::test_support::TestDir::new();
 	let path = dir.path().join("settings.toml");
 	let mut settings = ReaderSettings::default();
 	settings.step_scroll_speed(2);
@@ -830,7 +830,7 @@ fn scroll_speed_round_trips_and_stays_in_range() {
 /// restart, and picking the default entry takes it back out.
 #[test]
 fn a_font_family_round_trips_and_the_default_removes_the_override() {
-	let dir = tempfile::tempdir().unwrap();
+	let dir = crate::test_support::TestDir::new();
 	let path = dir.path().join("settings.toml");
 	let (mut store, warning) = SettingsStore::load(Some(path.clone()));
 	assert!(warning.is_none());
@@ -918,7 +918,7 @@ fn a_han_family_follows_a_change_of_cjk_variant() {
 
 #[test]
 fn single_instance_platform_default_and_settings_merge() {
-	let dir = tempfile::tempdir().unwrap();
+	let dir = crate::test_support::TestDir::new();
 	let path = dir.path().join("settings.toml");
 	let (mut store, warning) = SettingsStore::load(Some(path.clone()));
 	assert!(warning.is_none());
@@ -949,7 +949,7 @@ fn restore_session_defaults_legacy_conflicts_reload_and_save() {
 	let defaults = ReaderSettings::default();
 	assert_eq!(defaults.restore_session, markview_platform::touch_layout());
 	assert_eq!(defaults.single_instance, markview_platform::touch_layout());
-	let dir = tempfile::tempdir().unwrap();
+	let dir = crate::test_support::TestDir::new();
 	let path = dir.path().join("settings.toml");
 	std::fs::write(
 		&path,
@@ -988,7 +988,7 @@ fn restore_session_defaults_legacy_conflicts_reload_and_save() {
 
 #[test]
 fn http_overrides_survive_ui_saves_and_external_reload() {
-	let dir = tempfile::tempdir().unwrap();
+	let dir = crate::test_support::TestDir::new();
 	let path = dir.path().join("settings.toml");
 	let config = "user-agent = 'Custom/1' # browser\naccept-language = 'de,en;q=0.8'\nlanguage = 'ja'\n";
 	fs::write(&path, config).unwrap();
@@ -1334,7 +1334,7 @@ fn version_one_fixture_honours_every_persisted_key() {
 
 #[test]
 fn legacy_linux_window_border_loads_as_breeze() {
-	let dir = tempfile::tempdir().unwrap();
+	let dir = crate::test_support::TestDir::new();
 	let path = dir.path().join("settings.toml");
 	fs::write(&path, "window-layout = \"linux\"\n").unwrap();
 	let (store, warning) = SettingsStore::load(Some(path));
@@ -1344,7 +1344,7 @@ fn legacy_linux_window_border_loads_as_breeze() {
 
 #[test]
 fn codeblock_copy_defaults_on_and_persists_explicit_off_and_reset() {
-	let dir = tempfile::tempdir().unwrap();
+	let dir = crate::test_support::TestDir::new();
 	let path = dir.path().join("settings.toml");
 	fs::write(&path, "codeblock-wrap = true\n# keep this note\n").unwrap();
 	let (mut store, warning) = SettingsStore::load(Some(path.clone()));

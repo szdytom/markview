@@ -173,8 +173,8 @@ mod tests {
 		// A file URL is a local path, so it goes through the same classes.
 		// The URL is built from a path so it carries a Windows drive, which
 		// `to_file_path` requires.
-		let missing =
-			std::env::temp_dir().join("markview-no-such-file.unknown");
+		let directory = crate::test_support::TestDir::new();
+		let missing = directory.path().join("markview-no-such-file.unknown");
 		let url = url::Url::from_file_path(&missing).unwrap();
 		assert!(matches!(
 			resolve(url.as_str(), None),
@@ -187,8 +187,8 @@ mod tests {
 		let security = crate::security::Security::web(
 			"https://example.org/article".to_owned(),
 		);
-		let missing =
-			std::env::temp_dir().join("markview-web-no-such-file.pdf");
+		let directory = crate::test_support::TestDir::new();
+		let missing = directory.path().join("markview-web-no-such-file.pdf");
 		let url = url::Url::from_file_path(&missing).unwrap().to_string();
 		assert_eq!(resolve_for(&url, None, &security), None);
 		assert_eq!(resolve_for("file:///etc/passwd", None, &security), None);
@@ -201,7 +201,7 @@ mod tests {
 
 	#[test]
 	fn local_files_are_classified_by_extension() {
-		let dir = tempfile::tempdir().unwrap();
+		let dir = crate::test_support::TestDir::new();
 		let docs = dir.path().join("docs");
 		std::fs::create_dir_all(&docs).unwrap();
 		let path = write(&docs, "note.md");
@@ -231,7 +231,7 @@ mod tests {
 
 	#[test]
 	fn directories_and_file_urls_open_directly() {
-		let dir = tempfile::tempdir().unwrap();
+		let dir = crate::test_support::TestDir::new();
 		let sub = dir.path().join("sub");
 		std::fs::create_dir(&sub).unwrap();
 		let expected = Some(Target::OsDirect(real(&sub)));
@@ -243,7 +243,7 @@ mod tests {
 
 	#[test]
 	fn dot_dot_still_names_a_relative_location() {
-		let dir = tempfile::tempdir().unwrap();
+		let dir = crate::test_support::TestDir::new();
 		let docs = dir.path().join("docs");
 		std::fs::create_dir_all(&docs).unwrap();
 		std::fs::write(dir.path().join("up.md"), b"x").unwrap();

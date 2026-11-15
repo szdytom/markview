@@ -191,7 +191,7 @@ mod tests {
 	}
 	#[test]
 	fn atomic_replace_and_recreate_are_observed() {
-		let dir = tempfile::tempdir().unwrap();
+		let dir = crate::test_support::TestDir::new();
 		let path = dir.path().join("read.md");
 		fs::write(&path, "first").unwrap();
 		let (tx, rx) = mpsc::channel();
@@ -211,7 +211,7 @@ mod tests {
 	}
 	#[test]
 	fn empty_and_partial_utf8_reads_have_explicit_results() {
-		let dir = tempfile::tempdir().unwrap();
+		let dir = crate::test_support::TestDir::new();
 		let path = dir.path().join("read.md");
 		fs::write(&path, [0xe4, 0xb8]).unwrap();
 		assert!(read_document(&path).is_err());
@@ -227,7 +227,7 @@ mod stylesheet_tests {
 	use super::*;
 	#[test]
 	fn directory_created_after_watch_and_atomic_edits_are_seen() {
-		let tmp = tempfile::tempdir().unwrap();
+		let tmp = crate::test_support::TestDir::new();
 		let dir = tmp.path().join("styles");
 		let (tx, rx) = mpsc::channel();
 		let _watch = FileWatch::directory(dir.clone(), move || {

@@ -231,13 +231,10 @@ fn color_glyphs_preserve_rgb_and_share_paint_order() {
 			)
 			.unwrap();
 		renderer.wait(Some(submission)).unwrap();
-		let path = std::env::temp_dir().join(format!(
-			"markview-color-glyph-{}-{dark}.png",
-			std::process::id()
-		));
+		let directory = markview_test_support::TestDir::new();
+		let path = directory.path().join("color-glyph.png");
 		renderer.save_png(&target, &path).unwrap();
 		let pixels = tiny_skia::Pixmap::load_png(&path).unwrap();
-		std::fs::remove_file(path).unwrap();
 		let pixel = |x: usize, y: usize| {
 			&pixels.data()[(y * 8 + x) * 4..(y * 8 + x + 1) * 4]
 		};

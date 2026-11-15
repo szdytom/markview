@@ -7,8 +7,8 @@ proptest! {
 	fn local_resource_bases_resolve_percent_encoded_paths_to_the_selected_root(
 		name in "[a-z]{1,12}", encoded in any::<bool>(), vault in any::<bool>(), workspace in any::<bool>(),
 	) {
-		let directory = tempfile::tempdir().unwrap();
-		let root = directory.path().canonicalize().unwrap();
+		let directory = crate::test_support::TestDir::new();
+		let root = directory.path().to_owned();
 		let document = root.join("documents/article.md");
 		let workspace_path = root.join("vault");
 		let relative = format!("figures/{name} 空.png");

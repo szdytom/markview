@@ -6,7 +6,7 @@ use markview_layout::style::CjkType;
 #[test]
 fn in_memory_exports_keep_permissions_bound_to_the_supplied_text() {
 	use crate::security::{Resource, Security, Trust};
-	let dir = tempfile::tempdir().unwrap();
+	let dir = crate::test_support::TestDir::new();
 	let path = dir.path().join("unsaved.md");
 	let image = dir.path().join("picture.png");
 	image::RgbaImage::from_pixel(3, 2, image::Rgba([12, 34, 56, 255]))
@@ -191,7 +191,7 @@ fn a_panel_export_preserves_its_settings_in_the_pdf_request() {
 	assert!(args.options.codeblock_wrap);
 	assert!(args.links);
 
-	let dir = tempfile::tempdir().unwrap();
+	let dir = crate::test_support::TestDir::new();
 	let style = dir.path().join("landscape.mvss.toml");
 	std::fs::write(&style, "format_version=3\nversion=1\ntargets=['pdf']\n[page]\nsize='a5'\nlandscape=true\n").unwrap();
 	s.landscape = false;
@@ -213,7 +213,7 @@ fn a_panel_export_preserves_its_settings_in_the_pdf_request() {
 
 #[test]
 fn a_write_replaces_the_destination_atomically() {
-	let dir = tempfile::tempdir().unwrap();
+	let dir = crate::test_support::TestDir::new();
 	let path = dir.path().join("out.pdf");
 	write_atomic(&path, b"first").unwrap();
 	write_atomic(&path, b"second").unwrap();
@@ -231,7 +231,7 @@ fn a_planted_temporary_symlink_is_never_written_through() {
 		return;
 	}
 	use markview_platform::test_support::symlink;
-	let dir = tempfile::tempdir().unwrap();
+	let dir = crate::test_support::TestDir::new();
 	let victim = dir.path().join("victim");
 	std::fs::write(&victim, b"safe").unwrap();
 	// The name the helper used before it took a random one, so the planting
@@ -269,7 +269,7 @@ fn a_symlinked_destination_is_replaced_rather_than_followed() {
 		return;
 	}
 	use markview_platform::test_support::symlink;
-	let dir = tempfile::tempdir().unwrap();
+	let dir = crate::test_support::TestDir::new();
 	let victim = dir.path().join("victim");
 	std::fs::write(&victim, b"safe").unwrap();
 	let destination = dir.path().join("out.pdf");
@@ -288,7 +288,7 @@ fn a_symlinked_destination_is_replaced_rather_than_followed() {
 
 #[test]
 fn reader_dialects_reach_the_exported_layout() {
-	let dir = tempfile::tempdir().unwrap();
+	let dir = crate::test_support::TestDir::new();
 	let path = dir.path().join("dialect.md");
 	// `[!example]` is no GitHub alert type, so only Obsidian reads it as a
 	// callout; GFM keeps the marker literal. The `+` fold sign makes the
@@ -352,7 +352,7 @@ fn reader_dialects_reach_the_exported_layout() {
 
 #[test]
 fn a_mapped_export_writes_a_real_pdf() {
-	let dir = tempfile::tempdir().unwrap();
+	let dir = crate::test_support::TestDir::new();
 	let path = dir.path().join("doc.md");
 	let output = dir.path().join("doc.pdf");
 	std::fs::write(&path, "# Title\n\nA paragraph.\n").unwrap();
@@ -385,7 +385,7 @@ fn a_page_wider_than_the_gpu_limit_is_refused() {
 
 #[test]
 fn an_export_shows_every_details_body() {
-	let dir = tempfile::tempdir().unwrap();
+	let dir = crate::test_support::TestDir::new();
 	let path = dir.path().join("doc.md");
 	std::fs::write(
 		&path,
@@ -419,7 +419,7 @@ fn an_export_shows_every_details_body() {
 
 #[test]
 fn a_pdf_shows_every_details_body() {
-	let dir = tempfile::tempdir().unwrap();
+	let dir = crate::test_support::TestDir::new();
 	let path = dir.path().join("doc.md");
 	let output = dir.path().join("doc.pdf");
 	let mut source = String::from("<details>\n<summary>Long</summary>\n\n");

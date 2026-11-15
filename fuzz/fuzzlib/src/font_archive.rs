@@ -123,7 +123,7 @@ pub fn check(data: &[u8]) {
 	if data.len() > 64 * 1024 {
 		return;
 	}
-	let dir = tempfile::tempdir().expect("tempdir");
+	let dir = markview_test_support::TestDir::new();
 	let path = dir.path().join("archive.bin");
 	let pattern = pattern(data);
 	let container = data.get(16).copied().unwrap_or(0) % 4;

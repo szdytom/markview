@@ -16,7 +16,7 @@ fn reader_releases_the_shell_while_the_background_process_is_running() {
 	for arguments in
 		[vec![], vec!["notes.md"], vec!["--foreground", "notes.md"]]
 	{
-		let directory = tempfile::tempdir().unwrap();
+		let directory = markview_test_support::TestDir::new();
 		let config = directory.path().join("markview");
 		std::fs::create_dir(&config).unwrap();
 		std::fs::write(
@@ -102,7 +102,7 @@ fn help_errors_and_stylesheet_commands_stay_synchronous() {
 	if !markview_platform::test_support::shell_launch() {
 		return;
 	}
-	let directory = tempfile::tempdir().unwrap();
+	let directory = markview_test_support::TestDir::new();
 	for (arguments, success, expected) in [
 		(vec!["--help"], true, "--foreground"),
 		(vec!["web"], false, "<URL>"),
@@ -140,7 +140,7 @@ fn startup_errors_use_dialogs_for_background_and_stderr_for_foreground() {
 		return;
 	}
 
-	let directory = tempfile::tempdir().unwrap();
+	let directory = markview_test_support::TestDir::new();
 	let bin = directory.path().join("bin");
 	std::fs::create_dir(&bin).unwrap();
 	let zenity = bin.join("zenity");

@@ -9,10 +9,20 @@ mod coupling;
 mod icons;
 #[path = "../../crates/markview-icon/src/svg.rs"]
 mod svg;
+mod test_paths;
 
 fn main() -> ExitCode {
 	let mut args = std::env::args().skip(1);
 	match args.next().as_deref() {
+		Some("test-paths") if args.next().is_none() => {
+			match test_paths::run() {
+				Ok(()) => ExitCode::SUCCESS,
+				Err(error) => {
+					eprintln!("{error:#}");
+					ExitCode::FAILURE
+				}
+			}
+		}
 		Some("complexity") if args.next().is_none() => {
 			match complexity::run() {
 				Ok(()) => ExitCode::SUCCESS,
@@ -51,7 +61,7 @@ fn main() -> ExitCode {
 		}
 		_ => {
 			eprintln!(
-				"Usage: cargo run -p xtask -- icons [--check] | complexity | coupling [--check] [--update] [--json]"
+				"Usage: cargo run -p xtask -- icons [--check] | complexity | test-paths | coupling [--check] [--update] [--json]"
 			);
 			ExitCode::FAILURE
 		}

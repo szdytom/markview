@@ -2,7 +2,7 @@ use super::*;
 use std::fs;
 #[test]
 fn stylesheet_lists_migrate_merge_and_preserve_personal_preferences() {
-	let tmp = tempfile::tempdir().unwrap();
+	let tmp = crate::test_support::TestDir::new();
 	let path = tmp.path().join("settings.toml");
 	fs::write(
 		&path,
@@ -32,7 +32,7 @@ fn stylesheet_lists_migrate_merge_and_preserve_personal_preferences() {
 }
 #[test]
 fn empty_style_overrides_legacy_theme_and_survives_save() {
-	let tmp = tempfile::tempdir().unwrap();
+	let tmp = crate::test_support::TestDir::new();
 	let path = tmp.path().join("settings.toml");
 	fs::write(&path, "theme='dark'\nstyle=[]").unwrap();
 	let (mut store, _) = SettingsStore::load(Some(path.clone()));

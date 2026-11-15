@@ -120,7 +120,7 @@ fn fence_images(code: &str) -> (Images, String) {
 
 #[test]
 fn sources_cover_local_network_and_inline_images() {
-	let dir = tempfile::tempdir().unwrap();
+	let dir = crate::test_support::TestDir::new();
 	let document = dir.path().join("docs/note.md");
 	let document_dir = document.parent().unwrap();
 	let at = |src: &str| source(src, &document).unwrap();
@@ -160,8 +160,8 @@ fn sources_cover_local_network_and_inline_images() {
 
 #[test]
 fn obsidian_image_embeds_resolve_from_the_open_folder() {
-	let dir = tempfile::tempdir().unwrap();
-	let root = fs::canonicalize(dir.path()).unwrap();
+	let dir = crate::test_support::TestDir::new();
+	let root = dir.path().to_owned();
 	fs::create_dir_all(root.join("assets")).unwrap();
 	fs::create_dir_all(root.join("notes")).unwrap();
 	let bytes = png(3, 2, [1, 2, 3, 255]);
@@ -192,8 +192,8 @@ fn obsidian_image_embeds_resolve_from_the_open_folder() {
 
 #[test]
 fn document_and_vault_images_with_the_same_source_stay_separate() {
-	let dir = tempfile::tempdir().unwrap();
-	let root = fs::canonicalize(dir.path()).unwrap();
+	let dir = crate::test_support::TestDir::new();
+	let root = dir.path().to_owned();
 	fs::create_dir_all(root.join("notes")).unwrap();
 	fs::write(root.join("picture.png"), png(3, 2, [1, 2, 3, 255])).unwrap();
 	fs::write(root.join("notes/picture.png"), png(5, 4, [4, 3, 2, 255]))
@@ -1079,7 +1079,7 @@ fn gpu_frame_draws_decoded_images() -> Result<()> {
 		layout::{LayoutEngine, LayoutOptions},
 		render::{Renderer, View},
 	};
-	let dir = tempfile::tempdir()?;
+	let dir = crate::test_support::TestDir::new();
 	let path = dir.path().join("note.md");
 	let source =
 		"![png](a.png)\n\n<img src=\"b.svg\" width=\"80\">\n\n![svg](b.svg)\n";
@@ -1182,7 +1182,7 @@ fn gpu_frame_draws_decoded_images() -> Result<()> {
 
 #[test]
 fn loader_publishes_pixels_and_reports_failures() {
-	let dir = tempfile::tempdir().unwrap();
+	let dir = crate::test_support::TestDir::new();
 	let path = dir.path().join("note.md");
 	let source = "![a](a.png) ![b](missing.png)";
 	fs::write(&path, source).unwrap();
@@ -1212,7 +1212,7 @@ fn a_fifo_image_is_refused_without_blocking_the_scheduler() {
 	if !markview_platform::test_support::special_files() {
 		return;
 	}
-	let dir = tempfile::tempdir().unwrap();
+	let dir = crate::test_support::TestDir::new();
 	let path = dir.path().join("note.md");
 	let source = "![a](pipe.png) ![b](b.png)";
 	fs::write(&path, source).unwrap();
@@ -1243,7 +1243,7 @@ fn a_fifo_image_is_refused_without_blocking_the_scheduler() {
 
 #[test]
 fn a_changed_local_image_reloads_without_pixel_demand() {
-	let dir = tempfile::tempdir().unwrap();
+	let dir = crate::test_support::TestDir::new();
 	let path = dir.path().join("note.md");
 	let file = dir.path().join("a.png");
 	fs::write(&file, png(2, 2, [1, 2, 3, 255])).unwrap();
@@ -1289,7 +1289,7 @@ fn a_changed_local_image_reloads_without_pixel_demand() {
 
 #[test]
 fn a_changed_svg_aspect_updates_the_viewers_raster() {
-	let dir = tempfile::tempdir().unwrap();
+	let dir = crate::test_support::TestDir::new();
 	let path = dir.path().join("note.md");
 	let file = dir.path().join("a.svg");
 	let svg = |w, h| {
@@ -1353,7 +1353,7 @@ fn a_changed_svg_aspect_updates_the_viewers_raster() {
 
 #[test]
 fn renamed_alias_reuses_pixels_and_removed_aliases_are_released() {
-	let dir = tempfile::tempdir().unwrap();
+	let dir = crate::test_support::TestDir::new();
 	let path = dir.path().join("note.md");
 	fs::write(dir.path().join("a.png"), png(6, 4, [1, 2, 3, 255])).unwrap();
 	let mut images = images(true);
@@ -1462,7 +1462,7 @@ fn pixel_budget_counts_allocations_and_evicts_even_when_all_are_visible() {
 #[test]
 fn vector_demand_merges_alias_sizes_and_gpu_residency_avoids_refetch() {
 	use markview_layout::image::ImageDemand;
-	let dir = tempfile::tempdir().unwrap();
+	let dir = crate::test_support::TestDir::new();
 	let path = dir.path().join("note.md");
 	fs::write(
 		dir.path().join("a.svg"),
@@ -1654,7 +1654,7 @@ fn remote_images_are_capped_per_document_and_revision() {
 
 #[test]
 fn offline_serves_a_cached_remote_image_and_fails_without_one() {
-	let dir = tempfile::tempdir().unwrap();
+	let dir = crate::test_support::TestDir::new();
 	let root = dir.path().join("cache");
 	let url = "https://example.com/cached.png";
 	let bytes = png(5, 3, [4, 5, 6, 255]);
@@ -1710,7 +1710,7 @@ fn non_utf8_grants_preserve_remote_image_loading_and_cache_isolation() {
 	}
 	use crate::security::{Resource, Security};
 
-	let dir = tempfile::tempdir().unwrap();
+	let dir = crate::test_support::TestDir::new();
 	let root = dir.path().join("cache");
 	let file = dir
 		.path()
@@ -2148,7 +2148,7 @@ fn abandoning_a_stalled_job_keeps_queued_images_loadable() {
 /// on the queue when those slots never come back.
 #[test]
 fn a_queue_behind_held_pipelines_settles_boundedly() {
-	let dir = tempfile::tempdir().unwrap();
+	let dir = crate::test_support::TestDir::new();
 	let path = dir.path().join("note.md");
 	let mut markdown = String::new();
 	for index in 0..8 {
@@ -2191,7 +2191,7 @@ fn a_queue_behind_held_pipelines_settles_boundedly() {
 /// one of them is pending, or a cached page would swap in pixels it lacks.
 #[test]
 fn queued_first_decodes_stay_loading_behind_full_pipelines() {
-	let dir = tempfile::tempdir().unwrap();
+	let dir = crate::test_support::TestDir::new();
 	let path = dir.path().join("note.md");
 	let mut markdown = String::new();
 	for index in 0..8 {
@@ -2227,7 +2227,7 @@ fn queued_first_decodes_stay_loading_behind_full_pipelines() {
 #[test]
 fn standalone_pictures_canonicalize_before_matching_grants() {
 	use crate::security::{Resource, Security, Trust};
-	let dir = tempfile::tempdir().unwrap();
+	let dir = crate::test_support::TestDir::new();
 	let file = dir.path().join("picture.png");
 	fs::write(&file, png(5, 3, [1, 2, 3, 255])).unwrap();
 	let file = fs::canonicalize(&file).unwrap();
@@ -2261,7 +2261,7 @@ fn standalone_pictures_canonicalize_before_matching_grants() {
 fn resource_authority_controls_local_reads_and_cached_bodies_including_offline()
 {
 	use crate::security::{Origin, Resource, Security, Trust};
-	let dir = tempfile::tempdir().unwrap();
+	let dir = crate::test_support::TestDir::new();
 	let path = dir.path().join("staged.md");
 	let file = dir.path().join("picture.png");
 	let bytes = png(5, 3, [1, 2, 3, 255]);

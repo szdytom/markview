@@ -43,6 +43,7 @@ members = [
 	"crates/markview-layout",
 	"crates/markview-pdf",
 	"crates/markview-platform",
+	"crates/markview-test-support",
 	"crates/markview-render",
 	"crates/markview-ui-core",
 	"crates/markview-webpage",
@@ -81,6 +82,7 @@ unsafe_code = "deny"
 cyclomatic-complexity-threshold = 15
 
 [workspace.dependencies]
+markview-test-support = { path = "crates/markview-test-support" }
 proptest = { version = "1.12", default-features = false, features = ["std"] }
 regex = "1"
 regex-automata = "0.4"
@@ -200,6 +202,7 @@ tempfile.workspace = true
 nucleo-matcher = "0.3.1"
 
 [dev-dependencies]
+markview-test-support.workspace = true
 proptest.workspace = true
 markview-platform = { path = "crates/markview-platform", features = ["test-support"] }
 lopdf = { version = "0.46", default-features = false }
