@@ -91,3 +91,11 @@ The Debian package declares these as `Depends`, so `apt` resolves them. The
 AppImage declares nothing and shows a wgpu backend error when no Vulkan driver
 is present. `fonts-noto-cjk` is a recommendation rather than a requirement,
 because Markview falls back to whatever CJK faces the system provides.
+
+When multiple GPU backends are compiled in, Markview tries them one at a time
+until surface, adapter and device initialization succeeds. The default order
+is Vulkan, Metal, Direct3D 12, WebGPU, then OpenGL/GLES. Set `WGPU_BACKEND` to
+a comma-separated list to restrict the backends and choose their order, for
+example `WGPU_BACKEND=gl,vulkan` tries OpenGL/GLES before Vulkan. Backends
+absent from the build are skipped; the variable cannot enable them. If every
+attempt fails, the error includes each backend's failure.

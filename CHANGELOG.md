@@ -23,6 +23,7 @@ at the same level, without `[brackets]`.
 
 ### Added
 
+- Try enabled GPU backends one at a time until initialization succeeds, honoring the order in `WGPU_BACKEND` when set.
 - Middle-click files in the file sidebar to open them in background tabs without switching away from the current page.
 - Support Obsidian block IDs recognized by the Markdown parser, with hidden markers and links to blocks within and across notes.
 - Use Qi Baishi, Mondrian and Van Gogh in the reader as well as exports, with coordinated interface colors, wheat-yellow Van Gogh outline highlights and small theme-color markers before tab filenames.

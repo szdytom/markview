@@ -28,16 +28,15 @@ use web_time::Instant;
 pub trait SurfaceSource: 'static {
 	/// How the GPU instance is created.
 	///
+	/// Enabled backends are tried individually, in `WGPU_BACKEND` order when
+	/// set, otherwise Vulkan, Metal, DX12, WebGPU, GL, then noop.
+	///
 	/// A host that has a display handle overrides this to hand it over; one
 	/// that has none, such as a browser, keeps the default.
 	fn instance_descriptor(&self) -> wgpu::InstanceDescriptor {
 		wgpu::InstanceDescriptor::new_without_display_handle_from_env()
 	}
-	/// Whether GPU backends must be tried one at a time.
-	fn exclusive_backends(&self) -> bool {
-		false
-	}
-	/// Builds the surface. Called once at startup, and again after a loss.
+	/// Builds the surface. Called for each backend attempt, and after a loss.
 	fn create_surface(
 		&self,
 		instance: &wgpu::Instance,

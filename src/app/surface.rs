@@ -21,9 +21,6 @@ pub(super) fn target(window: Arc<dyn Window>) -> Box<dyn SurfaceSource> {
 }
 
 impl SurfaceSource for WindowTarget {
-	fn exclusive_backends(&self) -> bool {
-		markview_platform::exclusive_gpu_surface()
-	}
 	fn instance_descriptor(&self) -> wgpu::InstanceDescriptor {
 		wgpu::InstanceDescriptor::new_with_display_handle_from_env(Box::new(
 			self.0.clone(),

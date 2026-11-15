@@ -70,15 +70,30 @@ fn device_limits(
 
 fn backend_attempts(
 	requested: wgpu::Backends,
-	exclusive: bool,
+	order: Option<&str>,
 ) -> Vec<wgpu::Backends> {
-	if exclusive {
-		(requested & wgpu::Instance::enabled_backend_features())
-			.iter()
-			.collect()
-	} else {
-		vec![requested]
-	}
+	use wgpu::Backends as B;
+	let preferred = order
+		.into_iter()
+		.flat_map(|list| list.split(','))
+		.filter(|name| !name.trim().is_empty())
+		.flat_map(|name| B::from_comma_list(name).iter());
+	let mut remaining = requested & wgpu::Instance::enabled_backend_features();
+	preferred
+		.chain([
+			B::VULKAN,
+			B::METAL,
+			B::DX12,
+			B::BROWSER_WEBGPU,
+			B::GL,
+			B::NOOP,
+		])
+		.filter(|backend| {
+			let enabled = remaining.contains(*backend);
+			remaining.remove(*backend);
+			enabled
+		})
+		.collect()
 }
 
 async fn try_backends<T>(
@@ -91,6 +106,9 @@ async fn try_backends<T>(
 			Ok(context) => return Ok(context),
 			Err(error) => errors.push(format!("{backend:?}: {error:#}")),
 		}
+	}
+	if errors.is_empty() {
+		bail!("No requested GPU backend is enabled in this build");
 	}
 	bail!("No compatible GPU backend: {}", errors.join("; "))
 }
@@ -160,11 +178,9 @@ impl Gpu {
 				|source| source.instance_descriptor(),
 			)
 		};
-		let exclusive = surface_source
-			.as_ref()
-			.is_some_and(|source| source.exclusive_backends());
+		let order = std::env::var("WGPU_BACKEND").ok();
 		let (instance, handle, adapter, device, queue) = try_backends(
-			backend_attempts(descriptor().backends, exclusive),
+			backend_attempts(descriptor().backends, order.as_deref()),
 			async |backends| {
 				let mut descriptor = descriptor();
 				descriptor.backends = backends;
@@ -195,7 +211,8 @@ impl Gpu {
 						memory_hints: wgpu::MemoryHints::MemoryUsage,
 						..Default::default()
 					})
-					.await?;
+					.await
+					.context("Failed to create GPU device")?;
 				Ok::<_, anyhow::Error>((
 					instance, handle, adapter, device, queue,
 				))
@@ -438,7 +455,11 @@ mod tests {
 		let connected = Rc::new(Cell::new(false));
 		let mut attempted = Vec::new();
 		let connection = pollster::block_on(try_backends(
-			[wgpu::Backends::VULKAN, wgpu::Backends::GL],
+			[
+				wgpu::Backends::VULKAN,
+				wgpu::Backends::GL,
+				wgpu::Backends::DX12,
+			],
 			async |backend| {
 				assert!(
 					!connected.replace(true),
@@ -457,6 +478,58 @@ mod tests {
 		assert!(connected.get());
 		drop(connection);
 		assert!(!connected.get());
+	}
+
+	#[test]
+	fn backend_order_preserves_preferences_and_deduplicates_aliases() {
+		use wgpu::Backends as B;
+		let enabled = wgpu::Instance::enabled_backend_features();
+		let expected = |backends: &[B]| {
+			backends
+				.iter()
+				.copied()
+				.filter(|backend| enabled.contains(*backend))
+				.collect::<Vec<_>>()
+		};
+		assert_eq!(
+			backend_attempts(B::all(), None),
+			expected(&[
+				B::VULKAN,
+				B::METAL,
+				B::DX12,
+				B::BROWSER_WEBGPU,
+				B::GL,
+				B::NOOP
+			]),
+		);
+		assert_eq!(
+			backend_attempts(
+				B::all(),
+				Some(" GL, vk, gles, VULKAN, , d3d12, mtl, webgpu, noop")
+			),
+			expected(&[
+				B::GL,
+				B::VULKAN,
+				B::DX12,
+				B::METAL,
+				B::BROWSER_WEBGPU,
+				B::NOOP
+			]),
+		);
+		assert_eq!(backend_attempts(B::empty(), None), []);
+	}
+
+	#[test]
+	fn no_enabled_backend_has_a_clear_error() {
+		let error = pollster::block_on(try_backends(
+			[],
+			async |_| -> anyhow::Result<()> { panic!("No backend to try") },
+		))
+		.unwrap_err();
+		assert_eq!(
+			error.to_string(),
+			"No requested GPU backend is enabled in this build"
+		);
 	}
 
 	#[test]
@@ -521,9 +594,14 @@ mod tests {
 		}
 
 		#[test]
-		fn exclusive_attempts_never_share_or_enable_unrequested_backends(bits in any::<u32>()) {
+		fn attempts_never_share_or_enable_unrequested_backends(
+			bits in any::<u32>(),
+			order in proptest::collection::vec(0usize..6, 0..20),
+		) {
 			let requested = wgpu::Backends::from_bits_truncate(bits);
-			let attempts = backend_attempts(requested, true);
+			let names = ["vulkan", "metal", "dx12", "webgpu", "gl", "noop"];
+			let order = order.into_iter().map(|i| names[i]).collect::<Vec<_>>().join(",");
+			let attempts = backend_attempts(requested, Some(&order));
 			let mut tried = wgpu::Backends::empty();
 			for backend in attempts {
 				prop_assert_eq!(backend.bits().count_ones(), 1);
@@ -532,7 +610,27 @@ mod tests {
 				tried |= backend;
 			}
 			prop_assert_eq!(tried, requested & wgpu::Instance::enabled_backend_features());
-			prop_assert_eq!(backend_attempts(requested, false), vec![requested]);
+		}
+
+		#[test]
+		fn fallback_stops_at_the_first_success(
+			success in proptest::collection::vec(any::<bool>(), 0..=6),
+		) {
+			let backends: Vec<_> = wgpu::Backend::ALL.into_iter().map(wgpu::Backends::from).collect();
+			let mut attempted = Vec::new();
+			let result = pollster::block_on(try_backends(
+				backends.iter().copied().take(success.len()),
+				async |backend| {
+					let index = attempted.len();
+					attempted.push(backend);
+					anyhow::ensure!(success[index], "Initialization failed");
+					Ok(backend)
+				},
+			));
+			let first_success = success.iter().position(|&s| s);
+			prop_assert_eq!(result.ok(), first_success.map(|i| backends[i]));
+			let count = first_success.map_or(success.len(), |i| i + 1);
+			prop_assert_eq!(attempted, backends[..count].to_vec());
 		}
 	}
 }
