@@ -299,6 +299,7 @@ impl<P: super::SendEvent> App<P> {
 		// must not claim the highlight back from the wheel the
 		// report precedes.
 		if point != self.interaction.pointer.cursor() {
+			self.interaction.overlays.tooltip.pointer();
 			let old = self.interaction.pointer.cursor();
 			let was_button = self.button_at_cursor();
 			let was_scrollbar = self.document_scrollbar().is_some();
@@ -395,6 +396,7 @@ impl<P: super::SendEvent> App<P> {
 	}
 
 	pub(super) fn pointer_left(&mut self) {
+		self.dismiss_tooltip();
 		if self.tab_strip.drag.is_none()
 			&& self.interaction.pointer.scrollbar().is_none()
 			&& self.interaction.panels.grab().is_none()
@@ -422,6 +424,7 @@ impl<P: super::SendEvent> App<P> {
 	}
 
 	pub(super) fn pointer_pressed(&mut self) {
+		self.dismiss_tooltip();
 		let point = self.interaction.pointer.cursor();
 		let mods = self.interaction.pointer.modifiers();
 		if self.preview_input(markview_interaction::ViewInput::Press {
@@ -845,7 +848,7 @@ impl<P: super::SendEvent> App<P> {
 			.is_some()
 	}
 
-	fn holding_pointer(&self) -> bool {
+	pub(super) fn holding_pointer(&self) -> bool {
 		self.interaction.pointer.drag().is_some()
 			|| self.interaction.pointer.scrollbar().is_some()
 			|| self.tab_strip.drag.is_some()
@@ -871,6 +874,7 @@ impl<P: super::SendEvent> App<P> {
 			return;
 		}
 		let controls = self.ui_layout();
+		self.update_tooltip(&controls, Instant::now());
 		self.interaction.widgets.handle(
 			&controls.hit,
 			markview_ui_core::Input::Move(self.interaction.pointer.cursor()),

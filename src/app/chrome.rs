@@ -22,6 +22,7 @@ pub(in crate::app) mod quick_open;
 pub(in crate::app) mod styles;
 pub(in crate::app) mod tab_drawer;
 mod tabs;
+pub(super) mod tooltip;
 mod viewer;
 mod views;
 use super::{BOTTOM, Button, TOP};
@@ -109,6 +110,7 @@ fn banner_buttons(
 			clip: None,
 			label: (lang.notice_dismiss()).into(),
 			icon: None,
+			tooltip: None,
 			marker: None,
 			active: false,
 			kind: Default::default(),
@@ -128,6 +130,7 @@ fn banner_buttons(
 			clip: None,
 			label: (lang.notice_load_all()).into(),
 			icon: None,
+			tooltip: None,
 			marker: None,
 			active: false,
 			kind: Default::default(),

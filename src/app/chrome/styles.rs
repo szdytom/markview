@@ -208,6 +208,7 @@ pub(super) fn style_controls(
 			clip: None,
 			label: label.into(),
 			icon,
+			tooltip: None,
 			marker: None,
 			active: action == Command::Settings(SettingsCommand::SystemTheme)
 				&& selected.is_none(),
@@ -267,6 +268,7 @@ pub(super) fn style_rows(
 				})
 				.into(),
 				icon: None,
+				tooltip: None,
 				marker: None,
 				active: pos.is_some(),
 				kind: Default::default(),
@@ -322,6 +324,7 @@ pub(super) fn style_rows(
 					clip: None,
 					label: label.into(),
 					icon: Some(icon),
+					tooltip: None,
 					marker: None,
 					active: false,
 					kind: Default::default(),

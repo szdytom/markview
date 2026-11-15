@@ -57,7 +57,7 @@ impl Chrome<'_> {
 					continue;
 				}
 				let mut button = components::button(
-					"",
+					self.settings.model.lang().copy_code(),
 					Command::Document(DocumentCommand::CopyCode {
 						revision: snapshot.revision.get(),
 						block: bi,

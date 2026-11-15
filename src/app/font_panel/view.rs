@@ -182,6 +182,7 @@ fn chooser_button(
 		clip: None,
 		label: chosen.map_or_else(|| "".into(), |entry| entry.label.clone()),
 		icon: None,
+		tooltip: None,
 		marker: Some(crate::app::chrome::icons::CHEVRON),
 		active: false,
 		kind: Default::default(),
@@ -402,6 +403,7 @@ fn fonts_controls(
 			clip: None,
 			label: (lang.fonts_open_folder()).into(),
 			icon: None,
+			tooltip: None,
 			marker: None,
 			active: false,
 			kind: Default::default(),
@@ -456,6 +458,7 @@ fn fonts_controls(
 				clip: None,
 				label: label.into(),
 				icon: None,
+				tooltip: None,
 				marker: None,
 				active: if set {
 					choosers
@@ -500,6 +503,7 @@ fn fonts_controls(
 			clip: None,
 			label: label.into(),
 			icon: None,
+			tooltip: None,
 			marker: None,
 			active: false,
 			kind: if missing_only {
@@ -566,6 +570,7 @@ fn font_rows(
 			} else {
 				Some(crate::app::chrome::icons::DOWNLOAD)
 			},
+			tooltip: None,
 			marker: None,
 			active: false,
 			kind: if running || family.state != crate::fonts::State::Missing {

@@ -575,6 +575,7 @@ impl<P: super::SendEvent> App<P> {
 		// rather than a pointer handler: a pointer sliding across tabs never
 		// builds a card.
 		self.preview_tick(now);
+		self.tooltip_tick(now);
 		self.readers.release_inactive(now);
 		self.session_tick(now);
 		// One PNG strip per frame keeps the window responsive and the status
@@ -631,6 +632,7 @@ impl<P: super::SendEvent> App<P> {
 			.chain(self.persistence.deadline)
 			.chain(self.animations.deadline())
 			.chain(self.preview.deadline())
+			.chain(self.interaction.overlays.tooltip.hint.deadline())
 			.chain(self.dm.as_ref().and_then(|dm| dm.deadline(now)))
 			.chain(self.readers.release_deadline())
 			.chain(

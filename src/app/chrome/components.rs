@@ -66,6 +66,7 @@ pub(super) fn button(
 			| Command::Export(ExportCommand::ExportSize(1)) => Some(icons::PLUS),
 			_ => None,
 		},
+		tooltip: None,
 		marker: None,
 		active: false,
 		kind: ButtonKind::Standard,

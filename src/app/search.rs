@@ -681,6 +681,7 @@ impl<P: SendEvent> App<P> {
 			rect: self.search_input_rect(),
 			label: (lang.search_placeholder()).into(),
 			icon: None,
+			tooltip: None,
 			marker: None,
 			active: false,
 			action: Command::Chrome(ChromeCommand::FocusInput(
@@ -712,6 +713,7 @@ impl<P: SendEvent> App<P> {
 					}
 					_ => None,
 				},
+				tooltip: None,
 				marker: None,
 				active,
 				action,

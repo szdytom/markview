@@ -189,7 +189,10 @@ impl<P: super::SendEvent> App<P> {
 			self.android_back();
 			return true;
 		}
-		if self.frame_event(event_loop, event) || self.viewer_event(event) {
+		if self.tooltip_event(event)
+			|| self.frame_event(event_loop, event)
+			|| self.viewer_event(event)
+		{
 			return true;
 		}
 		if !self.interaction.overlays.modal_open()
@@ -381,6 +384,7 @@ impl<P: super::SendEvent> App<P> {
 		delta: MouseScrollDelta,
 		phase: markview_platform::event::TouchPhase,
 	) {
+		self.dismiss_tooltip();
 		if self.interaction.overlays.quick_open.open() {
 			let (_, dy) = super::pointer::wheel_pixels(
 				delta,

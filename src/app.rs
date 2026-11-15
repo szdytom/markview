@@ -45,6 +45,7 @@ mod tab_navigation;
 mod tab_strip;
 mod tabs;
 mod text_input;
+mod tooltip;
 mod ui;
 mod ui_model;
 pub(crate) mod viewer;
@@ -238,6 +239,8 @@ struct Button {
 	rect: Rect,
 	/// Names the button; drawn only when it has no icon.
 	label: Label,
+	/// Overrides the hint; icon buttons otherwise use their label.
+	tooltip: Option<Label>,
 	/// Drawn centered in place of the label when set.
 	icon: Option<&'static [markview_layout::scene::IconPath]>,
 	/// Drawn after the label, which makes room for it. It marks what the

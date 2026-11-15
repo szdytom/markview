@@ -91,6 +91,24 @@ fn card(tab: u64) -> Open {
 	}
 }
 
+#[test]
+fn an_open_preview_suppresses_tooltips_for_the_controls_behind_it() {
+	let (mut app, _) = app();
+	let now = Instant::now();
+	let layout = app.ui_layout();
+	let button = layout.buttons.iter().find(|b| b.icon.is_some()).unwrap();
+	app.interaction.pointer.move_to((
+		button.rect.x + button.rect.w / 2.,
+		button.rect.y + button.rect.h / 2.,
+	));
+	app.update_tooltip(&layout, now);
+	assert!(app.interaction.overlays.tooltip.hint.deadline().is_some());
+	app.preview.show(card(7));
+	app.update_tooltip(&layout, now + Duration::from_secs(1));
+	assert!(app.interaction.overlays.tooltip.hint.visible().is_none());
+	assert!(app.interaction.overlays.tooltip.hint.deadline().is_none());
+}
+
 fn picture_reader(
 	source: &str,
 	width: f32,

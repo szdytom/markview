@@ -24,6 +24,7 @@ at the same level, without `[brackets]`.
 ### Added
 
 - Support ARM64 Linux with native archives, Debian packages and AppImages, using Vulkan by default with automatic GLES fallback.
+- Show localized tooltips for icon buttons on hover and keyboard focus.
 - Try enabled GPU backends one at a time until initialization succeeds, honoring the order in `WGPU_BACKEND` when set.
 - Middle-click files in the file sidebar, Ctrl+P picker or new-page quick access to open them in background tabs without switching away from the current page.
 - Support Obsidian block IDs recognized by the Markdown parser, with hidden markers and links to blocks within and across notes.

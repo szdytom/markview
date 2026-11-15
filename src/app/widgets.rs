@@ -124,6 +124,7 @@ impl<P: super::SendEvent> App<P> {
 		&mut self,
 		backward: bool,
 	) -> Option<Command> {
+		self.interaction.overlays.tooltip.keyboard();
 		let buttons = self.focus_buttons();
 		let layout = layout(&buttons);
 		self.interaction.tab_focus(&layout, backward)

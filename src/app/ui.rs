@@ -699,6 +699,7 @@ impl<P: super::SendEvent> App<P> {
 			});
 		}
 		let layout = self.ui_layout();
+		self.update_tooltip(&layout, self.frame_now());
 		self.controls = Some(layout.hit);
 		let mut inputs = self.draw_inputs_with_form(layout.form.as_ref());
 		if self.readers.session.search.open {
@@ -711,6 +712,15 @@ impl<P: super::SendEvent> App<P> {
 		let (draws, body) = chrome.overlay_with_form(layout.form.as_ref());
 		out.extend(draws);
 		self.preview.set_body(body);
+		if let Some(target) = self.interaction.overlays.tooltip.hint.visible() {
+			let (width, height, _) = self.dimensions();
+			out.extend(chrome::tooltip::draw(
+				&mut self.ui,
+				&target.text,
+				target.rect,
+				(width, height),
+			));
+		}
 		if markview_platform::touch_layout() {
 			use crate::layout::{Paint, Rect};
 			use markview_layout::style::{ColorField, Condition};

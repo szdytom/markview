@@ -17,6 +17,7 @@ pub(crate) struct Model {
 	pub(crate) modal: super::modal::Model,
 	pub(crate) dropdown: super::dropdown::Model,
 	pub(crate) viewer: super::viewer::Model,
+	pub(crate) tooltip: super::tooltip::Model,
 }
 
 impl Model {

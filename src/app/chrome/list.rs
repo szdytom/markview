@@ -241,6 +241,7 @@ mod tests {
 					clip: None,
 					label: ("Row").into(),
 					icon: None,
+					tooltip: None,
 					marker: None,
 					active: false,
 					kind: Default::default(),

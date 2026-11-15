@@ -93,6 +93,7 @@ impl GestureState {
 
 impl<P: super::SendEvent> App<P> {
 	pub(super) fn cancel_gestures(&mut self) {
+		self.dismiss_tooltip();
 		self.text_input.hold = None;
 		self.interaction.panels.sidebar_mut().clear();
 		self.interaction.overlays.viewer.cancel_press();

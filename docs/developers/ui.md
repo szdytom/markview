@@ -53,6 +53,23 @@ A paint-only preview should not restart document layout. Geometry-affecting
 changes must invalidate layout; closing or replacing a page must settle its
 transient focus, capture and pending effects.
 
+## Tooltips
+
+Icon buttons use their localized `label` as a tooltip. Set `Button::tooltip`
+to override it or to add a hint to a text button; an empty override suppresses
+the hint. Keep the text concise and describe the action.
+
+`markview-ui-core::Tooltip` owns the delay and dismissal state, with time supplied
+by the host. The native host waits 600 ms on hover and shows keyboard focus hints
+immediately. Targets include widget identity, clipped bounds and text, so changes
+invalidate old hints. Clicks, scrolling, Escape, focus loss and touch dismiss them.
+An open dropdown suppresses hints until it closes.
+The passive overlay adds no hit targets, uses panel colors and UI typography,
+wraps long labels and aligns the text start with the control's horizontal center
+(the center of an icon button's icon).
+Window edges clamp that alignment; controls near the bottom flip the hint above
+without changing its horizontal reading origin.
+
 ## Verify
 
 ```sh
