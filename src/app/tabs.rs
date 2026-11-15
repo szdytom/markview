@@ -415,17 +415,16 @@ impl Tabs {
 			anchor,
 			crate::security::Security::local(crate::security::Trust::Trusted),
 		)
+		.is_some()
 	}
 	pub(super) fn open_background_secure(
 		&mut self,
 		path: PathBuf,
 		anchor: Option<String>,
 		security: crate::security::Security,
-	) -> bool {
-		if self.session.path.is_none()
-			|| self.find_origin(&path, &security.origin).is_some()
-		{
-			return false;
+	) -> Option<usize> {
+		if self.find_origin(&path, &security.origin).is_some() {
+			return None;
 		}
 		let mut tab = ReaderTab::new(path.clone());
 		tab.session.path = Some(path);
@@ -437,9 +436,13 @@ impl Tabs {
 			revision: None,
 		});
 		tab.session.security = security;
-		let index = self.active + 1;
+		let index = if self.session.path.is_some() {
+			self.active + 1
+		} else {
+			self.entries.len()
+		};
 		self.entries.insert(index, tab);
-		true
+		Some(index)
 	}
 	/// Points one tab, and the session that owns it, at a path it was moved to.
 	pub(super) fn rename(&mut self, index: usize, path: PathBuf) {

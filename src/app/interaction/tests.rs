@@ -28,6 +28,7 @@ use winit::dpi::PhysicalPosition;
 use winit::keyboard::ModifiersState;
 use winit::window::WindowId;
 
+mod folder;
 mod viewer;
 
 const SOURCE: &str = "First paragraph.\n\nSecond paragraph.";
@@ -2923,11 +2924,15 @@ fn touch_drawer_distinguishes_same_path_tabs_and_keeps_ids_when_reordered() {
 	std::fs::write(&path, SOURCE).unwrap();
 	let (mut app, _) = reader(SOURCE, 320.);
 	app.readers.open(path.clone(), Instant::now());
-	assert!(app.readers.open_background_secure(
-		path,
-		None,
-		Security::local(Trust::Untrusted)
-	));
+	assert!(
+		app.readers
+			.open_background_secure(
+				path,
+				None,
+				Security::local(Trust::Untrusted)
+			)
+			.is_some()
+	);
 	app.tab_strip.phone = true;
 	app.show_panel(PanelPage::Tabs);
 	app.tab_strip.stop_animation();

@@ -95,15 +95,14 @@ impl<P: super::SendEvent> App<P> {
 					}
 				} else {
 					let before = self.tab_layout();
-					if self
+					if let Some(index) = self
 						.readers
 						.open_background_secure(path, anchor, security)
 					{
-						// The dragged index is stale once the tab lands at
-						// `active + 1`; `begin_open` consumes the gap offsets.
+						// Insertion invalidates the dragged index;
+						// `begin_open` consumes the gap offsets.
 						self.tab_strip.cancel_drag();
-						self.tab_strip
-							.begin_open(&before, self.readers.active() + 1);
+						self.tab_strip.begin_open(&before, index);
 					}
 					self.refresh_start_files();
 				}

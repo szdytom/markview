@@ -23,6 +23,7 @@ at the same level, without `[brackets]`.
 
 ### Added
 
+- Middle-click files in the file sidebar to open them in background tabs without switching away from the current page.
 - Support Obsidian block IDs recognized by the Markdown parser, with hidden markers and links to blocks within and across notes.
 - Use Qi Baishi, Mondrian and Van Gogh in the reader as well as exports, with coordinated interface colors, wheat-yellow Van Gogh outline highlights and small theme-color markers before tab filenames.
 - Hover over footnote references to preview their formatted content in a content-sized popup near the reference, with cancellable background layout, dedicated MVSS `preview` styling, text selection and copying, scrollbars, link navigation and the image viewer.

@@ -1147,11 +1147,15 @@ mod tests {
 		);
 		settle(&mut app, &events, |app| !app.folder.start.pending);
 		app.open(root.join("shared.md"));
-		assert!(app.readers.open_background_secure(
-			root.join("shared.md"),
-			None,
-			Security::local(Trust::Untrusted),
-		));
+		assert!(
+			app.readers
+				.open_background_secure(
+					root.join("shared.md"),
+					None,
+					Security::local(Trust::Untrusted),
+				)
+				.is_some()
+		);
 		app.action(Command::Document(DocumentCommand::NewPage));
 		app.open_quick_open();
 		let search = &app.interaction.overlays.quick_open.search;

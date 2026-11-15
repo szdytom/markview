@@ -315,6 +315,17 @@ impl<P: super::SendEvent> App<P> {
 
 	fn middle_pressed(&mut self) {
 		self.dismiss_preview();
+		if self.pointer_in_folder() || self.phone_folder_open() {
+			let controls = self.ui_layout();
+			if let Some(widget) =
+				controls.hit.hit(self.interaction.pointer.cursor())
+				&& let Command::Chrome(ChromeCommand::FolderEntry(index)) =
+					widget.message
+			{
+				self.open_folder_entry_background(index);
+			}
+			return;
+		}
 		if !self.interaction.panel_open()
 			&& !self.interaction.overlays.modal_open()
 			&& !self.pointer_in_outline()

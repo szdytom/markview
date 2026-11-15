@@ -1327,6 +1327,24 @@ impl<P: SendEvent> App<P> {
 		self.redraw();
 	}
 
+	pub(super) fn open_folder_entry_background(&mut self, index: usize) {
+		let Some(entry) = self
+			.folder
+			.tree
+			.as_ref()
+			.and_then(|tree| tree.entries.get(index))
+			.filter(|entry| !entry.directory)
+		else {
+			return;
+		};
+		self.open_markdown(
+			entry.path.clone(),
+			None,
+			crate::state::TabPlacement::Background,
+			crate::security::Security::local(crate::security::Trust::Trusted),
+		);
+	}
+
 	pub(super) fn activate_folder_entry(&mut self, index: usize) {
 		let Some(tree) = &mut self.folder.tree else {
 			return;
