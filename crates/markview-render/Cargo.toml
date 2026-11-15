@@ -41,6 +41,10 @@ wgpu = { workspace = true, features = ["dx12"] }
 [target.'cfg(target_os = "linux")'.dependencies]
 wgpu = { workspace = true, features = ["vulkan"] }
 
+# Keep standalone renderer builds consistent with the native reader.
+[target.'cfg(all(target_os = "linux", any(target_arch = "arm", target_arch = "aarch64")))'.dependencies]
+wgpu = { workspace = true, features = ["gles"] }
+
 [target.'cfg(target_os = "android")'.dependencies]
 wgpu = { workspace = true, features = ["vulkan", "gles"] }
 

@@ -152,6 +152,12 @@ CHECKS = (
         "light",
     ),
     Check(
+        "Linux package tests",
+        python("-m", "unittest", "discover", "-s", "scripts", "-p", "test_linux_packages.py"),
+        "light",
+        platform="linux",
+    ),
+    Check(
         "CI infrastructure tests",
         python(
             "-m",

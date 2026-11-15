@@ -37,9 +37,13 @@ if [[ -n "$notices" ]]; then
 	install -Dm644 "$notices" "$docs/third-party-notices.html"
 fi
 
-# `libvulkan1` is the loader wgpu needs; the X11 and Wayland libraries come
+# `libvulkan1` is the loader `wgpu` needs; the X11 and Wayland libraries come
 # from winit's runtime dlopen. `rfd` uses the desktop portal for file dialogs
 # and `zenity` for fatal reader errors.
+gles_dependencies=
+case "$arch" in
+	arm64|armhf) gles_dependencies=", libegl1, libgles2" ;;
+esac
 mkdir -p "$pkg/DEBIAN"
 cat >"$pkg/DEBIAN/control" <<EOF
 Package: markview
@@ -50,7 +54,7 @@ Installed-Size: $(du -sk "$pkg" | cut -f1)
 Homepage: https://github.com/szdytom/markview
 Section: editors
 Priority: optional
-Depends: libc6 (>= 2.35), libfontconfig1, libvulkan1, libx11-6, libxcursor1, libxi6, libxkbcommon0, libwayland-client0, xdg-desktop-portal, zenity
+Depends: libc6 (>= 2.35), libfontconfig1, libvulkan1, libx11-6, libxcursor1, libxi6, libxkbcommon0, libwayland-client0, xdg-desktop-portal, zenity$gles_dependencies
 Recommends: fonts-noto-cjk
 Description: Fast, native Markdown reader with publication-quality typography
  Markview renders Markdown, math, code, tables, links, and images in a

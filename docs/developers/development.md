@@ -15,6 +15,11 @@ cargo build --locked
 cargo run --locked -- --foreground examples/welcome.md
 ```
 
+On ARM Linux (including ARM64), the default build enables Vulkan with GLES
+fallback. Install `libegl1`, `libgles2` and a GLES driver as well to use fallback;
+Mesa systems provide the driver in `libgl1-mesa-dri`. Build natively with the
+same Cargo commands above. Prebuilt Linux releases cover x64 and ARM64.
+
 The reader needs fonts covering the document's scripts. Tests use committed font
 subsets. For Web-only or Android development, use the separate
 [Web](web.md) or [Android](android.md) setup instead.

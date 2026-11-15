@@ -42,7 +42,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-24.04, windows-latest, windows-11-arm, macos-latest]
+        os: [ubuntu-24.04, ubuntu-24.04-arm, windows-latest, windows-11-arm, macos-latest]
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v6
@@ -59,7 +59,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-24.04, windows-latest, windows-11-arm, macos-latest]
+        os: [ubuntu-24.04, ubuntu-24.04-arm, windows-latest, windows-11-arm, macos-latest]
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v6
@@ -76,6 +76,9 @@ jobs:
           test -n "$driver"
           printf '%s\n' "VK_DRIVER_FILES=$driver" "WGPU_BACKEND=vulkan" "LP_NUM_THREADS=1" >> "$GITHUB_ENV"
           VK_DRIVER_FILES="$driver" vulkaninfo --summary
+      - name: ARM Linux GLES software driver
+        if: runner.os == 'Linux' && runner.arch == 'ARM64'
+        run: bash scripts/ci_install_packages.sh libegl1 libgles2 libgl1-mesa-dri
       # Keep the non-Linux search GPU assertions in the regular suite.
       - name: Run regular tests
         run: >-
@@ -84,6 +87,22 @@ jobs:
           ${{ runner.os == 'Linux' && '--skip rendering_baselines' || '' }}
         env:
           # Linux sees no installed fonts, so missing test configuration fails.
+          FONTCONFIG_FILE: ${{ github.workspace }}/tests/fontconfig.conf
+      - name: ARM Linux GLES rendering
+        if: runner.os == 'Linux' && runner.arch == 'ARM64'
+        run: cargo test -p markview-render --locked --test render gles_renders_markdown -- --ignored --exact --nocapture
+        env:
+          WGPU_BACKEND: gl
+          EGL_PLATFORM: surfaceless
+          LIBGL_ALWAYS_SOFTWARE: "1"
+          FONTCONFIG_FILE: ${{ github.workspace }}/tests/fontconfig.conf
+      - name: ARM Linux fallback without a Vulkan driver
+        if: runner.os == 'Linux' && runner.arch == 'ARM64'
+        run: env -u WGPU_BACKEND cargo test -p markview-render --locked --test render gles_renders_markdown -- --ignored --exact --nocapture
+        env:
+          VK_DRIVER_FILES: /nonexistent-vulkan-icd.json
+          EGL_PLATFORM: surfaceless
+          LIBGL_ALWAYS_SOFTWARE: "1"
           FONTCONFIG_FILE: ${{ github.workspace }}/tests/fontconfig.conf
       - name: Upload rendered test frames
         if: failure()

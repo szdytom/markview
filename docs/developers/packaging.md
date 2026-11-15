@@ -11,6 +11,9 @@ The configuration and workflows own exact targets, runner pins and filenames.
 | Linux x86_64 | `markview-x86_64-unknown-linux-gnu.tar.gz` | cargo-dist |
 | Linux x86_64 | `markview_<version>_amd64.deb` | `scripts/package_deb.sh` |
 | Linux x86_64 | `markview-<version>-x86_64.AppImage` | `scripts/package_appimage.sh` |
+| Linux aarch64 | `markview-aarch64-unknown-linux-gnu.tar.gz` | cargo-dist |
+| Linux aarch64 | `markview_<version>_arm64.deb` | `scripts/package_deb.sh` |
+| Linux aarch64 | `markview-<version>-aarch64.AppImage` | `scripts/package_appimage.sh` |
 | Windows x86_64 | `markview-x86_64-pc-windows-msvc.zip` | cargo-dist |
 | Windows x86_64 | `markview-x86_64-pc-windows-msvc.msi` | cargo-dist |
 | macOS aarch64 | `markview-aarch64-apple-darwin.tar.gz` | cargo-dist |
@@ -55,8 +58,8 @@ they drift.
 Its failure blocks publication; all assets are uploaded together.
 
 After publication, `.github/workflows/release-notes.yml` updates the download
-table to link the macOS `.app.zip`, Windows MSI and portable ZIP, and Linux
-AppImage, Android APK and five platform-specific VSIX files. It checks that each package is attached, and
+table to link the macOS `.app.zip`, Windows MSI and portable ZIP, x64 and ARM64 Linux
+AppImages, Android APK and five platform-specific VSIX files. It checks that each package is attached, and
 writes each package’s GitHub SHA-256 digest directly in the checksum column, and
 preserves the changelog and installation commands. It also adds macOS extraction,
 Applications installation and quarantine instructions. This also runs for prereleases.
@@ -92,6 +95,13 @@ After changing dist configuration, run `dist generate` and review the generated
 changes. Linux releases build against the declared glibc floor; building on a
 newer development host can silently raise runtime requirements. Packaging checks
 must reject newer required symbols.
+
+Linux x64 and ARM64 packages build and run on native Ubuntu 22.04 runners,
+preserving the same glibc 2.35 floor. The AppImage script accepts an optional
+fourth architecture argument (`x86_64` or `aarch64`), defaulting to the host,
+and downloads the corresponding `appimagetool`. ARM Debian packages include
+the EGL and GLES loaders alongside Vulkan. Both package workflows validate the
+extracted executables and resources on the matching architecture.
 
 ## Cut a release
 

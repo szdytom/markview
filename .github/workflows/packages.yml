@@ -50,7 +50,19 @@ permissions:
 jobs:
   packages-linux:
     # 22.04 keeps the archive usable on glibc 2.35, matching dist-workspace.toml.
-    runs-on: ubuntu-22.04
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-22.04
+            target: x86_64-unknown-linux-gnu
+            deb_arch: amd64
+            appimage_arch: x86_64
+          - os: ubuntu-22.04-arm
+            target: aarch64-unknown-linux-gnu
+            deb_arch: arm64
+            appimage_arch: aarch64
+    runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v6
       - uses: dtolnay/rust-toolchain@stable
@@ -62,11 +74,11 @@ jobs:
       - uses: ./.github/actions/install-dist
       - name: Build the local archive
         run: |
-          dist build --artifacts=local --target x86_64-unknown-linux-gnu
+          dist build --artifacts=local --target ${{ matrix.target }}
       - name: Extract the archive
         run: |
           mkdir -p dist
-          tar -xzf target/distrib/markview-x86_64-unknown-linux-gnu.tar.gz \
+          tar -xzf target/distrib/markview-${{ matrix.target }}.tar.gz \
             -C dist --strip-components=1
           ./dist/markview --help | head -1
       - name: Generate third-party notices
@@ -79,15 +91,15 @@ jobs:
         run: |
           version=$(sed -n 's/^version = "\(.*\)"/\1/p' Cargo.toml | head -1)
           mkdir -p out
-          cp target/distrib/markview-x86_64-unknown-linux-gnu.tar.gz* out/
-          scripts/package_deb.sh ./dist/markview "$version" amd64 out
-          scripts/package_appimage.sh ./dist/markview "$version" out
+          cp target/distrib/markview-${{ matrix.target }}.tar.gz* out/
+          scripts/package_deb.sh ./dist/markview "$version" ${{ matrix.deb_arch }} out
+          scripts/package_appimage.sh ./dist/markview "$version" out ${{ matrix.appimage_arch }}
           scripts/verify_linux_packages.sh out
           (cd out && sha256sum ./* >SHA256SUMS)
       - name: Upload the packages
         uses: actions/upload-artifact@v7
         with:
-          name: markview-linux-packages
+          name: markview-linux-packages-${{ matrix.target }}
           path: out/*
           if-no-files-found: error
 

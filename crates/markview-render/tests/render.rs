@@ -55,6 +55,18 @@ fn view<'a>(
 #[test]
 fn markdown_renders_visible_and_identical_cached_frames() -> anyhow::Result<()>
 {
+	markdown_frames(None)
+}
+
+#[test]
+#[ignore = "Requires a GLES driver and Vulkan disabled; run explicitly in ARM Linux CI"]
+fn gles_renders_markdown() -> anyhow::Result<()> {
+	markdown_frames(Some(wgpu::Backend::Gl))
+}
+
+fn markdown_frames(
+	expected_backend: Option<wgpu::Backend>,
+) -> anyhow::Result<()> {
 	let doc = markview_commonmark::parse(
 		"# Rendering\n\nA paragraph with $x^2$.\n\n- first\n- second\n\n```rust\nlet answer = 42;\n```\n",
 	);
@@ -62,6 +74,9 @@ fn markdown_renders_visible_and_identical_cached_frames() -> anyhow::Result<()>
 		LayoutEngine::with_executor(Arc::new(Direct), Arc::new(|| {}));
 	let mut renderer = pollster::block_on(Renderer::new(None))?;
 	eprintln!("Render test adapter: {}", renderer.adapter_name);
+	if let Some(expected) = expected_backend {
+		assert_eq!(renderer.backend, expected);
+	}
 	let horizontal = HashMap::new();
 	for (theme, scale) in [(Theme::Light, 1.0), (Theme::Dark, 1.25)] {
 		let sheet = Stylesheet::bundled(theme == Theme::Dark);

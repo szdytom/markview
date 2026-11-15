@@ -56,6 +56,10 @@ def render(plan, release):
             "x64 Linux",
         ),
         (
+            f"markview-{version}-aarch64.AppImage",
+            "ARM64 Linux",
+        ),
+        (
             f"markview-{version}-android.apk",
             "Android 11+ (ARM64)",
         ),

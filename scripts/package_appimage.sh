@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
 # Builds a portable AppImage around an already compiled `markview` binary.
 #
-# Usage: scripts/package_appimage.sh BINARY VERSION OUTDIR
+# Usage: scripts/package_appimage.sh BINARY VERSION OUTDIR [ARCH]
 #
-# Only the application is bundled. The Vulkan loader and driver, system fonts,
+# Only the application is bundled. The Vulkan/GLES loaders and drivers, system fonts,
 # the X11/Wayland client libraries, the desktop portal and Zenity come from the
 # host, so no glibc and no GTK stack is embedded. This keeps the image small
 # and avoids the classic AppImage glibc mismatch.
@@ -12,6 +12,11 @@ set -euo pipefail
 binary=${1:?usage: package_appimage.sh BINARY VERSION OUTDIR}
 version=${2:?usage: package_appimage.sh BINARY VERSION OUTDIR}
 outdir=${3:?usage: package_appimage.sh BINARY VERSION OUTDIR}
+arch=${4:-$(uname -m)}
+case "$arch" in
+	x86_64|aarch64) ;;
+	*) echo "Unsupported AppImage architecture: $arch" >&2; exit 1 ;;
+esac
 
 root=$(cd "$(dirname "$0")/.." && pwd)
 binary=$(realpath "$binary")
@@ -49,13 +54,13 @@ fi
 
 tool=${APPIMAGETOOL:-$work/appimagetool}
 if [[ -z "${APPIMAGETOOL:-}" ]]; then
-	url=https://github.com/AppImage/appimagetool/releases/download/continuous/appimagetool-x86_64.AppImage
+	url=https://github.com/AppImage/appimagetool/releases/download/continuous/appimagetool-${arch}.AppImage
 	curl --fail --silent --show-error --location \
 		--output "$tool" "$url"
 	chmod 755 "$tool"
 fi
 
 # `--appimage-extract-and-run` avoids the libfuse2 dependency of the tool.
-ARCH=x86_64 VERSION="$version" \
+ARCH="$arch" VERSION="$version" \
 	"$tool" --appimage-extract-and-run "$appdir" \
-	"$outdir/markview-${version}-x86_64.AppImage"
+	"$outdir/markview-${version}-${arch}.AppImage"

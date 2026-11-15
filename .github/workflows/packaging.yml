@@ -57,18 +57,30 @@ jobs:
     secrets: inherit
 
   linux-extra:
-    runs-on: ubuntu-22.04
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-22.04
+            target: x86_64-unknown-linux-gnu
+            deb_arch: amd64
+            appimage_arch: x86_64
+          - os: ubuntu-22.04-arm
+            target: aarch64-unknown-linux-gnu
+            deb_arch: arm64
+            appimage_arch: aarch64
+    runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v6
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
       - uses: actions/download-artifact@v8
         with:
-          name: artifacts-build-local-x86_64-unknown-linux-gnu
+          name: artifacts-build-local-${{ matrix.target }}
           path: dist
       - name: Extract and validate the archive
         run: |
-          tar -xzf dist/markview-x86_64-unknown-linux-gnu.tar.gz -C dist --strip-components=1
+          tar -xzf dist/markview-${{ matrix.target }}.tar.gz -C dist --strip-components=1
           ./dist/markview --help
       - name: Generate third-party notices
         run: |
@@ -79,13 +91,13 @@ jobs:
           MARKVIEW_NOTICES: ${{ github.workspace }}/third-party-notices.html
         run: |
           version=$(sed -n 's/^version = "\(.*\)"/\1/p' Cargo.toml | head -1)
-          scripts/package_deb.sh ./dist/markview "$version" amd64 out
-          scripts/package_appimage.sh ./dist/markview "$version" out
+          scripts/package_deb.sh ./dist/markview "$version" ${{ matrix.deb_arch }} out
+          scripts/package_appimage.sh ./dist/markview "$version" out ${{ matrix.appimage_arch }}
           scripts/verify_linux_packages.sh out
-          cp third-party-notices.html out/
+          if [ "${{ matrix.deb_arch }}" = amd64 ]; then cp third-party-notices.html out/; fi
       - uses: actions/upload-artifact@v7
         with:
-          name: artifacts-extra-linux
+          name: artifacts-extra-linux-${{ matrix.target }}
           path: out/*
           if-no-files-found: error
 

@@ -6,7 +6,7 @@ Download the latest build from [Releases](https://github.com/szdytom/markview/re
 
 | Platform | Packages |
 |:--|:--|
-| Linux | `.deb`, AppImage, `.tar.gz` |
+| Linux (x64, ARM64) | `.deb`, AppImage, `.tar.gz` |
 | Windows (x64, ARM64) | `.msi`, `.zip` |
 | macOS | zipped `.app` bundle |
 
@@ -34,6 +34,11 @@ For Windows on Arm, choose the `aarch64-pc-windows-msvc` MSI or portable ZIP.
 The PowerShell installer selects ARM64 automatically with PowerShell 7.3+ or
 Windows PowerShell on Windows 11 22H2+.
 
+For ARM64 Linux, choose the `arm64.deb`, `aarch64.AppImage` or
+`aarch64-unknown-linux-gnu.tar.gz` package. The Shell installer selects ARM64
+automatically. Prebuilt Linux packages cover x64 and ARM64; 32-bit ARM requires
+a source build.
+
 Arch Linux users can install the prebuilt [AUR package](https://aur.archlinux.org/packages/markview-bin):
 
 ```sh
@@ -46,8 +51,10 @@ The [source package](https://aur.archlinux.org/packages/markview) builds locally
 yay -S markview
 ```
 
-Linux builds need glibc 2.35 or newer, `libfontconfig1`, a working Vulkan
+Linux builds need glibc 2.35 or newer, `libfontconfig1`, a working graphics
 driver, a desktop portal for file dialogs, and Zenity for error dialogs.
+ARM Linux builds enable Vulkan and GLES by default: Vulkan is tried first,
+with GLES as a fallback. Linux x64 builds require Vulkan.
 The macOS bundle is ad-hoc signed but not notarized. Move it to Applications;
 if Gatekeeper blocks it, allow it in System Settings → Privacy & Security, or
 clear its quarantine flag:
@@ -78,18 +85,19 @@ See [Android reading](android.md) for document handling and mobile controls.
 ## Runtime requirements
 
 The Linux artifacts rely on host components on purpose: bundling glibc is the
-usual source of AppImage breakage, and the Vulkan driver and system fonts
+usual source of AppImage breakage, and graphics drivers and system fonts
 cannot be shipped meaningfully.
 
 | Platform | Required |
 | --- | --- |
-| Linux | glibc 2.35+, `libfontconfig1`, `libvulkan1` (loader plus any working Vulkan driver), X11 or Wayland client libraries, `xdg-desktop-portal` with a backend, `zenity` for error dialogs, and system fonts |
+| Linux | glibc 2.35+, `libfontconfig1`, Vulkan (`libvulkan1` and a working driver) or, on ARM, GLES 3.0+ (`libegl1`, `libgles2` and a working driver); X11 or Wayland client libraries, `xdg-desktop-portal` with a backend, `zenity` for error dialogs, and system fonts |
 | Windows | Windows 10 or newer with a Direct3D 12 driver; the MSVC runtime is linked statically |
 | macOS | macOS 11 or newer on Apple Silicon |
 
 The Debian package declares these as `Depends`, so `apt` resolves them. The
-AppImage declares nothing and shows a wgpu backend error when no Vulkan driver
-is present. `fonts-noto-cjk` is a recommendation rather than a requirement,
+AppImage declares nothing and shows a wgpu backend error when no compatible
+graphics driver is present. ARM Debian packages also install the EGL and GLES
+loaders for fallback. `fonts-noto-cjk` is a recommendation rather than a requirement,
 because Markview falls back to whatever CJK faces the system provides.
 
 When multiple GPU backends are compiled in, Markview tries them one at a time

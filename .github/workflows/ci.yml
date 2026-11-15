@@ -69,6 +69,8 @@ jobs:
         run: python3 -m unittest discover -s android -p 'test_build.py'
       - name: CI infrastructure recovery
         run: python3 -m unittest discover -s scripts -p 'test_ci_infrastructure.py'
+      - name: Linux package architectures
+        run: python3 -m unittest discover -s scripts -p 'test_linux_packages.py'
       - name: Committed icons match the source SVG
         run: cargo run -p xtask -- icons --check
       - name: Shell scripts are sound

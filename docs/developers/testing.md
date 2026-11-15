@@ -44,6 +44,16 @@ CI separates regular tests, property tests and Linux visual baselines. See the
 copy those pins into this guide. Visual comparisons are run explicitly through
 `scripts/test_render_goldens.sh`.
 
+The regular CI suite and Clippy also run on native ARM64 Linux. Its renderer
+checks cover Vulkan, forced GLES, and automatic GLES fallback with the Vulkan
+driver unavailable. To reproduce the fallback check on ARM Linux with Mesa:
+
+```sh
+env -u WGPU_BACKEND VK_DRIVER_FILES=/nonexistent-vulkan-icd.json \
+  EGL_PLATFORM=surfaceless LIBGL_ALWAYS_SOFTWARE=1 \
+  cargo test -p markview-render --locked --test render gles_renders_markdown -- --ignored --exact --nocapture
+```
+
 ## Complexity audit
 
 ```sh

@@ -25,6 +25,7 @@ targets = [
     "x86_64-pc-windows-msvc",
     "aarch64-pc-windows-msvc",
     "x86_64-unknown-linux-gnu",
+    "aarch64-unknown-linux-gnu",
     "aarch64-apple-darwin",
 ]
 installers = ["shell", "powershell", "msi"]
@@ -44,6 +45,7 @@ id-token = "write"
 
 [dist.min-glibc-version]
 x86_64-unknown-linux-gnu = "2.35"
+aarch64-unknown-linux-gnu = "2.35"
 
 # Build-only system libraries for the Linux archive.
 [dist.dependencies.apt]
@@ -54,6 +56,10 @@ libwayland-dev = "*"
 [dist.github-custom-runners]
 x86_64-unknown-linux-gnu = "ubuntu-22.04"
 aarch64-apple-darwin = "macos-latest"
+
+[dist.github-custom-runners.aarch64-unknown-linux-gnu]
+runner = "ubuntu-22.04-arm"
+host = "aarch64-unknown-linux-gnu"
 
 [dist.github-custom-runners.aarch64-pc-windows-msvc]
 runner = "windows-11-arm"
