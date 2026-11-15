@@ -21,6 +21,11 @@ the plan: T1 runs the property in an ordinary build, T2 adds ASAN, T3 compares
 two readings — a fast path against a full one, a cache against a fresh engine,
 a tree against an independent scan of the same bytes.
 
+Routine tests compare current execution paths and assert reader behavior; they
+do not compare against historical compressed JSON snapshots. Visual regression
+coverage remains in the [PNG golden suites](../docs/developers/rendering-tests.md).
+The `doc_memory` tool can export JSON records for manual before/after analysis.
+
 ### G1 — parsing and document structure
 
 - **`parse`** — looks for a panic, an overflow, a budget overrun, or a source

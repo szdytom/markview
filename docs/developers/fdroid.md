@@ -53,10 +53,6 @@ tags are checked automatically; prerelease tags are excluded. `UpdateCheckData`
 reads the version code directly from `Cargo.toml` and the version name from the
 tag. The tag must match the workspace version, as required by cargo-dist.
 
-The source scanner removes the compressed JSON memory-test baselines under
-`fuzz/fuzzlib/tests/baselines/doc-memory/`. They are test data, unused by the
-Android build. Other source files and the resulting APK remain subject to scans.
-
 For validation, use the official build image and a separate `fdroiddata` checkout:
 
 ```sh

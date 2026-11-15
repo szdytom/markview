@@ -43,56 +43,30 @@ API changes. Sealing existing vectors/strings removes spare capacity without
 those changes. Shared reading storage is used where
 nested cache/snapshot reuse needs it.
 
-## Independent behavior baseline
+## Independent behavior comparison
 
-The baseline was captured from production commit
+During the storage optimization, output was compared against production commit
 `6439953422d6acc659fea196f05e7c6aa7f45908`, the unchanged checkout immediately
-before this optimization. The plan's older
-`cc4fc12` revision predates separate parser/table fixes; the optimization does not
-undo those fixes. The preparation script adds only the harness, its dependencies
-and diagnostic accessors to the independent checkout.
+before the optimization. The preparation script adds the harness, dependencies
+and diagnostic accessors to an independent checkout. The comparison covered
+24 records: full benchmark inputs at 720 px and 660 px, reader/print excerpts,
+Unicode and nested structures, and source-free direct/webpage inputs.
 
-Version 2 gzip JSON records live in
-`fuzz/fuzzlib/tests/baselines/doc-memory`. The 24 records cover all nine full
-benchmark inputs at both 720 px and 660 px,
-reader/print excerpts, full Unicode/complex-table/nested-flow probes and
-source-free direct/webpage inputs. Records include semantic identity/path/source
-relationships, explicit block attributes, exact glyph
-and cluster geometry, Unicode boundaries, selection/search/image metadata,
-interaction bindings to actual drawings, and visible plus retained content.
-Print records include page geometry, pagination fragments and destinations,
-PDF text order, link regions and actual page operators, including furniture.
-Addresses, run/style IDs, capacities and transient process identities are excluded.
-Equivalent affine search segmentation is canonicalized in the exporter, first
-validated on the old build before production coalescing.
+Those compressed records were temporary refactoring evidence and are no longer
+committed or compared in routine CI. They froze font bytes, glyph numbering,
+floating-point bits and PDF instruction grouping, making implementation changes
+require baseline updates without necessarily changing reader behavior.
+`doc_memory` retains on-demand JSON exports and comparisons for controlled
+before/after investigations.
 
-The local-height accumulation fix updates geometry expectations in 11 records.
-An exhaustive field comparison found only floating-point geometry corrections,
-at most `0.00048828125` layout units; text, identities, source mappings, command
-ownership, line breaks and pagination structure remain unchanged. These reviewed
-corrections are frozen in the records; comparisons still require exact float bits.
-
-Laying out a cached leaf at its own origin updates 8 of those records. The
-corrections are again only draw, cluster, link and overflow positions, at most
-`0.000244140625` layout units; PDF text extraction is unchanged, and only the
-exporter's run grouping follows the corrected positions.
-
-The table border-collapse rewrite updates 5 records, again only geometry: draw,
-cluster, binding and PDF operator positions move by at most `0.00006103515625`
-layout units because cell extents are now differences of prefix sums rather than
-sums of widths and row heights. Semantic content, identities, source mappings,
-line breaks and drawn/retained structure are unchanged.
-
-Tests compare float bit patterns and emit actual JSON plus the first differing
-field under `artifacts/doc-memory-regression`. Sensitivity checks deliberately
-change glyph geometry/bold, typed link targets, command ownership, clipping and
-invalid ranges. Existing state histories compare fresh engines, serial/parallel
-paths and held old snapshots. Ownership tests check geometry sharing, mutation
-isolation, reclamation and that a small leaf does not keep a large sibling alive.
-Fresh-engine checks also exposed stale occurrence rebinding in cached tables;
-cells/captions now participate, and ambiguous truncated mappings remeasure.
-The existing fuzz CI runs the frozen-record integration test and uploads failures.
-Screen/PDF pixel baselines and the per-channel tolerance of 2 are unchanged.
+Routine coverage uses explicit parser, reading, interaction and PDF assertions,
+plus runtime comparisons of fresh/cached engines, serial/parallel paths and held
+old snapshots. The Unicode and nested-structure probes also run through parallel
+reflows. Ownership tests check geometry sharing, mutation isolation, reclamation
+and that a small leaf does not keep a large sibling alive. Diagnostic sensitivity
+checks cover glyph geometry/bold, typed link targets, command ownership, clipping,
+invalid ranges and undrawn block attributes. Screen/PDF PNG baselines and their
+per-channel tolerance of 2 remain in place.
 
 ## Measurement boundaries
 
@@ -186,7 +160,7 @@ Use the same toolchain, native libraries and font configuration for both runs.
 The optional plot requires Matplotlib; the comparison otherwise uses Python's
 standard library. The baseline installer was checked on a fresh independent
 checkout. Use `doc_memory --records-only <output> [expected]` for a thin behavior-only
-export/comparison. Records stream one case at a time to bound test memory.
+export/comparison. Records stream one case at a time to bound diagnostic memory.
 Golden tests never use `--update` for this storage change.
 
 ## Validation

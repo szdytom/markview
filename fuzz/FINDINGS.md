@@ -201,8 +201,8 @@ unverified until they can be replayed against the upgraded parser.
 
 The `nested` fixture's `A \| escaped pipe` cell previously ended its source
 range at byte 137, omitting the final `e`. The upgraded parser ends it at 138.
-The frozen `nested.json.gz` record changes only that cell's source cover and
-spans, recorded both under the table and its cell paragraph. Semantic content,
+The frozen-record comparison used during that upgrade changed only the cell's
+source cover and spans, under both the table and its cell paragraph. Semantic content,
 reader layout and print output are identical. The regression in
 `crates/markview-commonmark/tests/sourcepos.rs` checks all three line endings.
 

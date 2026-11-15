@@ -1,4 +1,4 @@
-//! Versioned reader-output records, independent of allocation and cache identities.
+//! Reader-output diagnostics for runtime differentials and manual comparisons.
 use markview_layout::{
 	scene::*,
 	text::{TextCluster, TextNode},
@@ -270,7 +270,7 @@ pub fn document(p: &markview_commonmark::MarkdownParse) -> Value {
 	json!({"blocks":blocks,"fields":fields,"outline":p.document.outline_entries().iter().map(|o|json!([o.block.get(),o.level,o.text,o.anchor])).collect::<Vec<_>>(),"sources":p.map.blocks().iter().map(|b|json!({"block":b.block.get(),"source":b.source.as_ref().map(|r|[r.start,r.end]),"fields":b.fields.iter().map(|f|json!({"field":f.field.get(),"spans":f.spans.iter().map(span).collect::<Vec<_>>(),"covers":f.covers.iter().map(span).collect::<Vec<_>>()})).collect::<Vec<_>>() })).collect::<Vec<_>>()})
 }
 
-/// Fixed measurement corpus shared with the frozen-output regression test.
+/// Fixed corpus for document memory measurements and manual output comparisons.
 pub fn corpora() -> Vec<(&'static str, String)> {
 	let corpora=[
  ("ordinary_10k", include_str!("../../../tests/fixtures/ordinary-10k.md").to_owned()),
@@ -450,6 +450,36 @@ pub fn records() -> impl Iterator<Item = (String, Value)> {
 #[cfg(test)]
 mod tests {
 	use super::*;
+
+	#[test]
+	fn semantic_records_distinguish_undrawn_block_attributes() {
+		fn list(start: isize) -> markview_commonmark::MarkdownParse {
+			use markview_document::{
+				BlockKind, DocumentBuilder, DocumentRevision,
+			};
+			let mut builder = DocumentBuilder::new(DocumentRevision::new(1));
+			let block = builder.block(
+				Vec::new(),
+				BlockKind::List {
+					start: Some(start),
+					reversed: false,
+					tight: true,
+					items: Vec::new(),
+				},
+			);
+			markview_commonmark::MarkdownParse {
+				document: builder.finish(vec![block]),
+				source: "".into(),
+				map: Default::default(),
+				dialect: Default::default(),
+			}
+		}
+		let before = document(&list(3));
+		let after = document(&list(4));
+		let difference = difference(&before, &after, "document").unwrap();
+		assert!(difference.contains("attributes.start"), "{difference}");
+	}
+
 	#[test]
 	fn records_detect_paint_binding_and_clip_changes() {
 		let doc = markview_commonmark::parse("[one](u)[two](u) **bold**");

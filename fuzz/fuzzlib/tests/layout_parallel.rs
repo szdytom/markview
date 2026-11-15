@@ -4,6 +4,13 @@ use markview_layout::scene::Draw;
 use mvfuzz::{parallel, pipeline};
 
 #[test]
+fn unicode_and_nested_documents_survive_parallel_reflows() {
+	for (_, source) in mvfuzz::behavior::regression_sources() {
+		parallel::check(&source);
+	}
+}
+
+#[test]
 fn differential_exercises_workers_cache_reflows_and_cancelled_edits() {
 	for md in [
 		"",
