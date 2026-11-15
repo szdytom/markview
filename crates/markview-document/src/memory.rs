@@ -159,7 +159,7 @@ impl Document {
 			text(&o.text, visit);
 			text(&o.anchor, visit);
 		}
-		for path in self.index.enclosing.values() {
+		for (_, path) in self.index.enclosing.values() {
 			array(path, "semantic_paths", visit);
 		}
 	}

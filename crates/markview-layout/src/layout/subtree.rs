@@ -61,10 +61,75 @@ impl LayoutEngine {
 		if cancelled() {
 			return None;
 		}
-		let layout =
-			self.begin_layout_root(document, Some(node), options, images);
+		let layout = self.begin_layout_root(
+			document,
+			Some(std::slice::from_ref(node)),
+			options,
+			images,
+		);
 		self.complete_layout(document, layout, |_| true, cancelled)
 	}
+
+	/// Lays out a section from `node`, stopping after a viewport-sized prefix.
+	/// The source document supplies sibling spacing, styles and identities.
+	pub fn layout_excerpt_cancellable(
+		&mut self,
+		document: &Document,
+		node: &Block,
+		options: &LayoutOptions,
+		images: &ImageSnapshot,
+		height: f32,
+		cancelled: impl Fn() -> bool + Sync,
+	) -> Option<LayoutSnapshot> {
+		if cancelled() {
+			return None;
+		}
+		let siblings = siblings(document, node);
+		let start = siblings
+			.iter()
+			.position(|block| std::ptr::eq(block, node))
+			.expect("the layout root must belong to the source document");
+		let level = match node.kind() {
+			BlockKind::Heading { level, .. } => *level,
+			_ => 0,
+		};
+		let count = 1 + siblings[start + 1..].iter().take(63).take_while(|block| {
+			!cancelled() && !matches!(block.kind(), BlockKind::Heading { level: next, .. } if *next <= level)
+		}).count();
+		let mut layout = self.begin_layout_root(
+			document,
+			Some(&siblings[start..start + count]),
+			options,
+			images,
+		);
+		while !layout.is_complete() && layout.snapshot().height < height {
+			if cancelled() {
+				return None;
+			}
+			self.advance_cancellable(
+				&mut layout,
+				document,
+				std::time::Duration::ZERO,
+				&cancelled,
+				false,
+			);
+		}
+		(!cancelled()).then(|| layout.into_snapshot())
+	}
+}
+
+pub(super) fn siblings<'a>(
+	document: &'a Document,
+	node: &Block,
+) -> &'a [Block] {
+	let path = document
+		.path_of(node.id())
+		.expect("a source node has a structural path");
+	if path.len() == 1 {
+		return document.blocks();
+	}
+	let parent = document.block_at_path(&path[..path.len() - 1]).unwrap();
+	child_context(parent, node).0
 }
 
 /// Original ancestor appearance and the selected node's visible sibling position.

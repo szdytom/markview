@@ -982,7 +982,8 @@ impl<'a> Chrome<'a> {
 		target: super::preview::Target,
 	) -> Option<Rect> {
 		match target {
-			super::preview::Target::Footnote { .. } => None,
+			super::preview::Target::Footnote { .. }
+			| super::preview::Target::Link { .. } => None,
 			super::preview::Target::Tab(id) => {
 				let index =
 					self.session.tabs.iter().position(|tab| tab.id == id)?;

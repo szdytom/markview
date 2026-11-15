@@ -139,7 +139,7 @@ impl Executor for Held {
 fn cancellation_discards_queued_computation_and_keeps_only_the_latest_waiter() {
 	let (app, _) = begin();
 	let source = Arc::new(
-		app.footnote_source(app.preview.hover.as_ref().unwrap().target)
+		app.link_preview_source(app.preview.hover.as_ref().unwrap().target)
 			.unwrap(),
 	);
 	let services = crate::services::Services::new(1);
@@ -171,7 +171,7 @@ fn cancellation_discards_queued_computation_and_keeps_only_the_latest_waiter() {
 fn shared_documents_larger_than_the_queue_budget_can_preview_small_notes() {
 	let (app, _) = begin();
 	let mut source = app
-		.footnote_source(app.preview.hover.as_ref().unwrap().target)
+		.link_preview_source(app.preview.hover.as_ref().unwrap().target)
 		.unwrap();
 	source.document = Arc::new(crate::loaded::LoadedDocument::Semantic {
 		document: Arc::new(source.document.document().clone()),

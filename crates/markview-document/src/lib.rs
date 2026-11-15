@@ -628,6 +628,11 @@ impl Document {
 		index::resolve(&self.blocks, path)
 	}
 
+	/// The first block registering a typed anchor.
+	pub fn anchor_block(&self, anchor: impl ToAnchor) -> Option<&Block> {
+		self.block(self.index.enclosing.get(&anchor.to_anchor())?.0)
+	}
+
 	/// The structural path from the document root to `id`.
 	pub fn path_of(&self, id: BlockId) -> Option<&[usize]> {
 		self.index
@@ -652,7 +657,7 @@ impl Document {
 		self.index
 			.enclosing
 			.get(&anchor.to_anchor())
-			.cloned()
+			.map(|(_, enclosing)| enclosing.clone())
 			.unwrap_or_default()
 	}
 

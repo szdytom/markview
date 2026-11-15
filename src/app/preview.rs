@@ -9,6 +9,9 @@
 //! the renderer composes the tab's layout instructions into it at device
 //! resolution. Idle tabs share a bounded three-screen cache with tab restoration.
 mod input;
+mod navigation;
+mod observe;
+pub(crate) use navigation::PendingAction;
 mod work;
 use super::document_view::{FloatingDocument as Floating, FrameStyle};
 
@@ -304,7 +307,7 @@ fn layout_scene(
 	options: &crate::layout::LayoutOptions,
 	images: &markview_layout::image::ImageSnapshot,
 ) -> LayoutSnapshot {
-	layout_scene_cancellable(document, node, options, images, &|| false)
+	layout_scene_cancellable(document, node, options, images, false, &|| false)
 		.expect("uninterrupted preview")
 }
 
@@ -313,16 +316,31 @@ fn layout_scene_cancellable(
 	node: &markview_document::Block,
 	options: &crate::layout::LayoutOptions,
 	images: &markview_layout::image::ImageSnapshot,
+	following: bool,
 	cancelled: &(dyn Fn() -> bool + Sync),
 ) -> Option<LayoutSnapshot> {
-	use markview_layout::style::Condition;
 	let mut engine = crate::layout::LayoutEngine::new();
-	let mut snapshot = engine.layout_subtree_cancellable(
-		document, node, options, images, cancelled,
-	)?;
+	let snapshot = if following {
+		engine.layout_excerpt_cancellable(
+			document, node, options, images, 960.0, cancelled,
+		)
+	} else {
+		engine.layout_subtree_cancellable(
+			document, node, options, images, cancelled,
+		)
+	}?;
 	if cancelled() {
 		return None;
 	}
+	fit_scene(snapshot, options, cancelled)
+}
+
+fn fit_scene(
+	mut snapshot: LayoutSnapshot,
+	options: &crate::layout::LayoutOptions,
+	cancelled: &(dyn Fn() -> bool + Sync),
+) -> Option<LayoutSnapshot> {
+	use markview_layout::style::Condition;
 	let mut right = 0.0_f32;
 	let mut padding = 0.0_f32;
 	for block in &snapshot.blocks {
@@ -468,6 +486,7 @@ pub(super) struct Preview {
 	serial: u64,
 	pending: Option<Pending>,
 	worker: work::Worker,
+	observed: Option<observe::Observed>,
 	#[cfg(test)]
 	last_build: Duration,
 	/// The body rectangle the chrome reserved this frame, if the card has one.
@@ -479,6 +498,10 @@ pub(super) struct Preview {
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(super) enum Target {
 	Tab(u64),
+	Link {
+		block: markview_document::BlockId,
+		link: markview_layout::scene::LinkId,
+	},
 	Footnote {
 		block: markview_document::BlockId,
 		link: markview_layout::scene::LinkId,
@@ -502,6 +525,8 @@ pub(super) struct Open {
 	pub(super) target: Target,
 	pub(super) card: Card,
 	pub(super) floating: Option<Floating>,
+	pub(super) path: Option<std::path::PathBuf>,
+	origins: navigation::Origins,
 }
 
 impl Preview {
@@ -569,6 +594,7 @@ impl Preview {
 			changed = true;
 		}
 		if self.hover.as_ref().map(|hover| hover.target) != target {
+			self.observed = None;
 			self.cancel_work();
 			self.hover = target.map(|target| Hover {
 				target,
@@ -598,7 +624,8 @@ impl Preview {
 			return None;
 		}
 		let hover = self.hover.as_ref()?;
-		if matches!(hover.target, Target::Footnote { .. }) {
+		if matches!(hover.target, Target::Footnote { .. } | Target::Link { .. })
+		{
 			if self.pending.is_none() && !hover.attempted {
 				return Some(hover.at - SHOW_DELAY + PREPARE_DELAY);
 			}
@@ -632,6 +659,8 @@ impl Preview {
 				detail: String::new(),
 				body: true,
 			},
+			path: None,
+			origins: navigation::Origins::default(),
 			floating: Some(Floating::new(
 				snapshot, revision, anchor, bounds, frame,
 			)),
@@ -651,6 +680,7 @@ impl Preview {
 	/// Closes the card and forgets the hover, reporting whether a card was
 	/// painted.
 	pub(super) fn dismiss(&mut self) -> bool {
+		self.observed = None;
 		self.cancel_work();
 		self.hover = None;
 		self.body = None;
@@ -770,6 +800,7 @@ impl<P: super::SendEvent> App<P> {
 		if !self.preview.tracking() {
 			return;
 		}
+		self.refresh_preview_file();
 		if self.hover_preview(now) {
 			self.redraw();
 		}
@@ -780,12 +811,9 @@ impl<P: super::SendEvent> App<P> {
 		while let Some(completion) = self.preview.worker.try_recv() {
 			self.preview.accept(completion);
 		}
-		let Some(hover) = self
-			.preview
-			.hover
-			.as_mut()
-			.filter(|_| self.preview.open.is_none())
-		else {
+		let Some(hover) = self.preview.hover.as_mut().filter(|_| {
+			self.preview.open.is_none() || self.preview.pending.is_some()
+		}) else {
 			return;
 		};
 		hover.elapsed = now >= hover.at;
@@ -797,19 +825,19 @@ impl<P: super::SendEvent> App<P> {
 				}
 				self.redraw();
 			}
-			Target::Footnote { .. }
+			Target::Footnote { .. } | Target::Link { .. }
 				if self.preview.pending.is_none()
 					&& now >= hover.at - SHOW_DELAY + PREPARE_DELAY =>
 			{
 				hover.attempted = true;
-				self.start_footnote(target);
+				self.start_link_preview(target);
 			}
 			_ => {}
 		}
-		self.present_footnote();
+		self.present_link_preview();
 	}
 
-	fn present_footnote(&mut self) {
+	fn present_link_preview(&mut self) {
 		if !self.preview.hover.as_ref().is_some_and(|h| h.elapsed) {
 			return;
 		}
@@ -819,11 +847,24 @@ impl<P: super::SendEvent> App<P> {
 			return;
 		};
 		let ready = pending.ready.take().unwrap();
+		let source = pending.source.clone();
+		if self
+			.preview
+			.observed
+			.as_ref()
+			.is_some_and(observe::Observed::invalidate_if_outdated)
+		{
+			self.refresh_preview_file();
+			return;
+		}
 		let Some(snapshot) = ready.snapshot else {
 			self.dismiss_preview();
 			return;
 		};
-		let source = pending.source.clone();
+		let position = self
+			.preview
+			.floating()
+			.map(|floating| (floating.scroll, floating.focused()));
 		log::trace!("Hover layout completed in {:?}", ready.build);
 		#[cfg(test)]
 		{
@@ -837,11 +878,19 @@ impl<P: super::SendEvent> App<P> {
 			source.revision,
 			source.frame,
 		);
+		self.preview.open.as_mut().unwrap().path =
+			source.destination.path.clone();
+		self.preview.open.as_mut().unwrap().origins = ready.origins;
+		if let Some((scroll, focused)) = position {
+			let floating = self.preview.floating_mut().unwrap();
+			floating.scroll = scroll.min(floating.view().max_scroll());
+			floating.state.focused = focused;
+		}
 		self.redraw();
 	}
 
-	fn start_footnote(&mut self, target: Target) {
-		let Some(source) = self.footnote_source(target) else {
+	fn start_link_preview(&mut self, target: Target) {
+		let Some(mut source) = self.link_preview_source(target) else {
 			if self
 				.preview
 				.hover
@@ -852,6 +901,21 @@ impl<P: super::SendEvent> App<P> {
 			}
 			return;
 		};
+		if let Some(path) = &source.destination.path {
+			if self
+				.preview
+				.observed
+				.as_ref()
+				.is_none_or(|observed| observed.path != *path)
+			{
+				let wake = self.proxy.clone();
+				self.preview.observed =
+					Some(observe::Observed::new(path.clone(), move || {
+						wake.send(super::Event::PreviewReady)
+					}));
+			}
+			source.stamp = self.preview.observed.as_ref().unwrap().stamp;
+		}
 		let source = std::sync::Arc::new(source);
 		let wake = self.proxy.clone();
 		self.preview.worker.submit(
@@ -913,34 +977,122 @@ impl<P: super::SendEvent> App<P> {
 			let context = self.document_interaction();
 			let link =
 				context.link_ref(markview_interaction::Point::new(x, y))?;
-			return matches!(
-				link.target,
-				markview_layout::scene::LinkTarget::FootnoteDefinition(_)
-			)
-			.then_some(Target::Footnote {
-				block: link.block,
-				link: link.id,
-			});
+			return match link.target {
+				markview_layout::scene::LinkTarget::FootnoteDefinition(_) => {
+					Some(Target::Footnote {
+						block: link.block,
+						link: link.id,
+					})
+				}
+				markview_layout::scene::LinkTarget::Url(url) => {
+					let destination = self.preview_destination(url)?;
+					(!self.preview_destination_visible(&destination)).then_some(
+						Target::Link {
+							block: link.block,
+							link: link.id,
+						},
+					)
+				}
+				_ => None,
+			};
 		}
 		self.tab_at_cursor()
 			.map(|index| Target::Tab(self.readers.entries()[index].id))
 	}
 
-	fn footnote_source(&self, target: Target) -> Option<work::Source> {
-		let Target::Footnote { block, link } = target else {
+	fn preview_destination(&self, url: &str) -> Option<work::Destination> {
+		let fragment = super::anchor::link_fragment(url);
+		let anchor = fragment.map(markview_document::AnchorId::Fragment);
+		if super::anchor::link_target(url).is_empty() {
+			return anchor.map(|anchor| work::Destination {
+				path: None,
+				anchor: Some(anchor),
+			});
+		}
+		let session = &self.readers.session;
+		let directory =
+			session.path.as_deref().and_then(std::path::Path::parent);
+		let resolved = self
+			.folder_link(super::anchor::link_target(url), directory)
+			.map(|path| crate::link::classify(&path))
+			.or_else(|| {
+				crate::link::resolve_for(url, directory, &session.security)
+			});
+		let Some(crate::link::Target::Markdown(path)) = resolved else {
+			return None;
+		};
+		if session.path.as_ref().is_some_and(|current| {
+			*current == path
+				|| std::fs::canonicalize(current)
+					.is_ok_and(|current| current == path)
+		}) {
+			return Some(work::Destination { path: None, anchor });
+		}
+		session.security.check_file(&path).ok()?;
+		Some(work::Destination {
+			path: Some(path),
+			anchor,
+		})
+	}
+
+	fn preview_destination_visible(
+		&self,
+		destination: &work::Destination,
+	) -> bool {
+		if destination.path.is_some() {
+			return false;
+		}
+		let context = self.document_interaction();
+		let y = match &destination.anchor {
+			Some(anchor) => context.snapshot.anchor_target_y(anchor),
+			None => Some(0.0),
+		};
+		y.is_some_and(|y| {
+			y >= context.viewport.scroll
+				&& y < context.viewport.scroll + context.viewport.clip().h
+		})
+	}
+
+	fn link_preview_source(&self, target: Target) -> Option<work::Source> {
+		let (Target::Footnote { block, link } | Target::Link { block, link }) =
+			target
+		else {
 			return None;
 		};
 		let context = self.document_interaction();
-		let (x, y) = self.interaction.pointer.cursor();
+		let (x, y) = self.preview.floating().map_or_else(
+			|| self.interaction.pointer.cursor(),
+			|floating| {
+				(
+					floating.anchor.x + floating.anchor.w / 2.0,
+					floating.anchor.y + floating.anchor.h / 2.0,
+				)
+			},
+		);
 		let point = markview_interaction::Point::new(x, y);
 		let reference = context.link_ref(point)?;
 		if reference.block != block || reference.id != link {
 			return None;
 		}
-		let markview_layout::scene::LinkTarget::FootnoteDefinition(id) =
-			reference.target
-		else {
-			return None;
+		let destination = match reference.target {
+			markview_layout::scene::LinkTarget::FootnoteDefinition(id) => {
+				work::Destination {
+					path: None,
+					anchor: Some(
+						markview_document::AnchorId::FootnoteDefinition(
+							id.clone(),
+						),
+					),
+				}
+			}
+			markview_layout::scene::LinkTarget::Url(url) => {
+				let destination = self.preview_destination(url)?;
+				if self.preview_destination_visible(&destination) {
+					return None;
+				}
+				destination
+			}
+			_ => return None,
 		};
 		let anchor = context.link_rect(point)?;
 		let bounds = context.viewport.clip();
@@ -948,6 +1100,9 @@ impl<P: super::SendEvent> App<P> {
 		let document = self.readers.session.document.as_ref()?;
 		let original_options = self.options();
 		let mut options = original_options.clone();
+		if destination.path.is_some() {
+			options.details_open = Default::default();
+		}
 		options.preview = true;
 		let style = options.stylesheet.element_rule(
 			markview_layout::style::Condition::Preview.chain(),
@@ -969,7 +1124,8 @@ impl<P: super::SendEvent> App<P> {
 			revision,
 			frame: FrameStyle { padding, metrics },
 			document: document.clone(),
-			definition: id.clone(),
+			destination,
+			stamp: None,
 			original_options,
 			options,
 			images: self.readers.session.display.snapshot.images.clone(),
@@ -999,6 +1155,8 @@ impl<P: super::SendEvent> App<P> {
 				|| self.readers.entries()[index].preview.is_some());
 		self.preview.show(Open {
 			target: Target::Tab(tab),
+			path: None,
+			origins: navigation::Origins::default(),
 			floating: None,
 			card: Card {
 				title,

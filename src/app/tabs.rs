@@ -400,6 +400,7 @@ impl Tabs {
 		self.session.remote_notice_dismissed = false;
 		self.session.scrolling.offset = 0.0;
 		self.session.pending_anchor = None;
+		self.session.pending_preview_action = None;
 		self.session.jump_origin = None;
 		self.session.display.horizontal.clear();
 	}

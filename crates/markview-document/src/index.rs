@@ -15,8 +15,8 @@ pub(crate) struct DocumentIndex {
 	pub path_data: Vec<usize>,
 	pub outline: Vec<OutlineEntry>,
 	pub details: HashMap<BlockId, bool>,
-	/// The disclosures enclosing each registered anchor, outermost first.
-	pub enclosing: HashMap<AnchorId, Vec<BlockId>>,
+	/// The owning block and disclosures enclosing each anchor, outermost first.
+	pub enclosing: HashMap<AnchorId, (BlockId, Vec<BlockId>)>,
 }
 
 pub(crate) fn build(blocks: &[Block]) -> DocumentIndex {
@@ -61,22 +61,15 @@ fn walk(
 		});
 	}
 	for anchor in block.anchors() {
-		register(
-			&mut index.enclosing,
-			AnchorId::Fragment(anchor.clone()),
-			open,
-		);
+		register(index, block.id, AnchorId::Fragment(anchor.clone()), open);
 	}
 	if let BlockKind::Heading { anchor, .. } = &block.kind {
-		register(
-			&mut index.enclosing,
-			AnchorId::Fragment(anchor.clone()),
-			open,
-		);
+		register(index, block.id, AnchorId::Fragment(anchor.clone()), open);
 	}
 	if let BlockKind::Footnote { id, .. } = &block.kind {
 		register(
-			&mut index.enclosing,
+			index,
+			block.id,
 			AnchorId::FootnoteDefinition(id.clone()),
 			open,
 		);
@@ -86,14 +79,16 @@ fn walk(
 			match &inline.kind {
 				InlineKind::Anchor(anchor) => {
 					register(
-						&mut index.enclosing,
+						index,
+						block.id,
 						AnchorId::Fragment(anchor.clone()),
 						open,
 					);
 				}
 				InlineKind::FootnoteRef(reference) => {
 					register(
-						&mut index.enclosing,
+						index,
+						block.id,
 						AnchorId::FootnoteReference {
 							definition: reference.definition.clone(),
 							occurrence: reference.occurrence,
@@ -125,11 +120,15 @@ fn walk(
 }
 
 fn register(
-	map: &mut HashMap<AnchorId, Vec<BlockId>>,
+	index: &mut DocumentIndex,
+	block: BlockId,
 	anchor: AnchorId,
 	open: &[BlockId],
 ) {
-	map.entry(anchor).or_insert_with(|| open.to_vec());
+	index
+		.enclosing
+		.entry(anchor)
+		.or_insert_with(|| (block, open.to_vec()));
 }
 
 /// Fields owned by one block, in reading order.

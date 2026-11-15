@@ -46,6 +46,7 @@ impl Debounce {
 pub struct FileWatch {
 	_watcher: Option<PlatformWatcher>,
 	stop: Arc<AtomicBool>,
+	wake: mpsc::SyncSender<()>,
 	thread: Option<thread::JoinHandle<()>>,
 }
 impl FileWatch {
@@ -65,6 +66,7 @@ impl FileWatch {
 	) -> Self {
 		let stop = Arc::new(AtomicBool::new(false));
 		let (tx, rx) = mpsc::sync_channel(64);
+		let wake = tx.clone();
 		let target = path.clone();
 		let mut watcher = PlatformWatcher::new(move |event| {
 			if let Ok(event) = event {
@@ -97,7 +99,6 @@ impl FileWatch {
 				watcher = None;
 			}
 		}
-		let polling = watcher.is_none();
 		let mut stamp = observed_stamp(&path, directory);
 		let flag = stop.clone();
 		let handle = thread::spawn(move || {
@@ -111,16 +112,8 @@ impl FileWatch {
 					.min(poll_at)
 					.saturating_duration_since(now)
 					.min(Duration::from_millis(100));
-				match rx.recv_timeout(timeout) {
-					Ok(()) => pending.push(Instant::now()),
-					Err(mpsc::RecvTimeoutError::Disconnected) if !polling => {
-						break;
-					}
-					Err(_) => {
-						if polling {
-							thread::sleep(timeout);
-						}
-					}
+				if rx.recv_timeout(timeout).is_ok() {
+					pending.push(Instant::now());
 				}
 				let now = Instant::now();
 				// A cheap metadata poll also recovers lost events on native watchers.
@@ -141,6 +134,7 @@ impl FileWatch {
 		Self {
 			_watcher: watcher,
 			stop,
+			wake,
 			thread: Some(handle),
 		}
 	}
@@ -148,6 +142,7 @@ impl FileWatch {
 impl Drop for FileWatch {
 	fn drop(&mut self) {
 		self.stop.store(true, Ordering::Relaxed);
+		let _ = self.wake.try_send(());
 		if let Some(t) = self.thread.take() {
 			let _ = t.join();
 		}

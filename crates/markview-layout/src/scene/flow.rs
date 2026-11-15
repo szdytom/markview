@@ -771,6 +771,22 @@ impl Scene {
 }
 
 impl PlacedBlock {
+	/// The presented state of a visible disclosure in this block.
+	pub fn disclosure_open(
+		&self,
+		id: crate::document::BlockId,
+	) -> Option<bool> {
+		let index = self.layout.scene.nodes.iter().position(|node| {
+			node.disclosure
+				.as_ref()
+				.is_some_and(|disclosure| disclosure.id == id)
+		})?;
+		self.flow
+			.nodes
+			.get(index)?
+			.map(|placement| placement.expanded)
+	}
+
 	pub fn links(
 		&self,
 	) -> impl Iterator<Item = (super::LinkFragment<'_>, Rect)> {

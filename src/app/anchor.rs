@@ -47,6 +47,7 @@ impl<P: super::SendEvent> App<P> {
 
 	/// Queues a typed document target and applies it as soon as it is laid out.
 	pub(super) fn goto_target(&mut self, target: document::AnchorId) {
+		self.readers.session.pending_preview_action = None;
 		self.readers.session.saved_reading = None;
 		// A jump is direct input, so any easing for the previous destination
 		// ends here.
@@ -130,6 +131,7 @@ impl<P: super::SendEvent> App<P> {
 
 	/// Applies a queued anchor, reporting a heading the finished layout lacks.
 	pub(super) fn apply_anchor(&mut self) {
+		self.apply_preview_action();
 		// A reload keeps the previous revision visible until new content arrives.
 		if self.readers.session.accepted_revision
 			!= self.readers.session.content_version

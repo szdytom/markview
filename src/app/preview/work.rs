@@ -4,6 +4,12 @@ use std::sync::{Arc, Condvar, Mutex};
 use tokio::sync::Semaphore;
 use tokio_util::sync::CancellationToken;
 
+#[derive(Clone, Debug)]
+pub(super) struct Destination {
+	pub path: Option<std::path::PathBuf>,
+	pub anchor: Option<markview_document::AnchorId>,
+}
+
 pub(super) struct Source {
 	pub version: u64,
 	pub target: Target,
@@ -12,7 +18,8 @@ pub(super) struct Source {
 	pub revision: markview_document::DocumentRevision,
 	pub frame: FrameStyle,
 	pub document: Arc<crate::loaded::LoadedDocument>,
-	pub definition: markview_document::FootnoteId,
+	pub destination: Destination,
+	pub stamp: crate::watch::FileStamp,
 	pub original_options: crate::layout::LayoutOptions,
 	pub options: crate::layout::LayoutOptions,
 	pub images: markview_layout::image::ImageSnapshot,
@@ -24,7 +31,9 @@ impl Source {
 		};
 		let context = app.document_interaction();
 		let images = &context.snapshot.images;
-		self.version == app.readers.session.version
+		self.destination.path.as_ref().is_none_or(|path| {
+			app.readers.session.security.check_file(path).is_ok()
+		}) && self.version == app.readers.session.version
 			&& Arc::ptr_eq(document, &self.document)
 			&& context.snapshot.revision == self.revision
 			&& app.options() == self.original_options
@@ -37,25 +46,69 @@ impl Source {
 			&& images.entries == self.images.entries
 			&& images.keys == self.images.keys
 	}
-	fn layout(&self, cancelled: &CancellationToken) -> Option<LayoutSnapshot> {
-		let node = self.document.blocks().iter()
-			.take_while(|_| !cancelled.is_cancelled())
-			.find(|block| {
-				matches!(block.kind(), markview_document::BlockKind::Footnote { id, .. } if *id == self.definition)
-			})?;
-		super::layout_scene_cancellable(
-			&self.document,
+	fn layout(
+		&self,
+		cancelled: &CancellationToken,
+	) -> Option<(LayoutSnapshot, navigation::Origins)> {
+		let loaded;
+		let document = if let Some(path) = &self.destination.path {
+			let source = crate::file::read_markdown(path).ok()?;
+			if cancelled.is_cancelled() {
+				return None;
+			}
+			loaded = markview_commonmark::parse_with(
+				source,
+				markview_commonmark::Dialect {
+					hard_breaks: self.options.hard_breaks,
+					highlight_marks: self.options.highlight_marks,
+					ofm: self.options.ofm,
+					grid_tables: self.options.grid_tables,
+				},
+			);
+			&loaded.document
+		} else {
+			self.document.document()
+		};
+		let node = match &self.destination.anchor {
+			Some(anchor) => document.anchor_block(anchor)?,
+			None => document.blocks().first()?,
+		};
+		let images = if self.destination.path.is_some() {
+			&markview_layout::image::ImageSnapshot::default()
+		} else {
+			&self.images
+		};
+		let snapshot = super::layout_scene_cancellable(
+			document,
 			node,
 			&self.options,
-			&self.images,
+			images,
+			self.destination.anchor.is_none()
+				|| matches!(
+					node.kind(),
+					markview_document::BlockKind::Heading { .. }
+				),
 			&|| cancelled.is_cancelled(),
-		)
+		)?;
+		self.destination
+			.path
+			.as_ref()
+			.is_none_or(|path| crate::watch::file_stamp(path) == self.stamp)
+			.then(|| {
+				let origins = if self.destination.path.is_some() {
+					navigation::Origins::new(document, &snapshot)
+				} else {
+					navigation::Origins::default()
+				};
+				(snapshot, origins)
+			})
 	}
 }
 
 pub(super) struct Completion {
 	pub serial: u64,
 	pub snapshot: Option<LayoutSnapshot>,
+	pub origins: navigation::Origins,
 	pub build: Duration,
 }
 
@@ -129,9 +182,14 @@ impl Worker {
 			if !cancel.is_cancelled() {
 				let (snapshot, build) =
 					result.unwrap_or((None, Duration::ZERO));
+				let (snapshot, origins) = snapshot.map_or_else(
+					|| (None, navigation::Origins::default()),
+					|(snapshot, origins)| (Some(snapshot), origins),
+				);
 				*slot = Some(Completion {
 					serial,
 					snapshot,
+					origins,
 					build,
 				});
 				drop(slot);

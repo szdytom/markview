@@ -14,6 +14,76 @@ fn positions(block: &PlacedBlock) -> Vec<Rect> {
 }
 
 #[test]
+fn excerpts_keep_sibling_geometry_and_stop_at_the_next_peer_heading() {
+	let document = markview_commonmark::parse(
+		"# Before\n\nBefore.\n\n## Target\n\nContent.\n\n### Child\n\nNested.\n\n## After\n\nAfter.\n",
+	);
+	let options = LayoutOptions::default();
+	let mut engine = LayoutEngine::new();
+	let full = engine.layout(&document, &options);
+	let node = document.anchor_block("target").unwrap();
+	let excerpt = engine
+		.layout_excerpt_cancellable(
+			&document,
+			node,
+			&options,
+			&Default::default(),
+			960.0,
+			|| false,
+		)
+		.unwrap();
+	let selected: Vec<_> = full
+		.blocks
+		.iter()
+		.filter(|block| excerpt.blocks.iter().any(|other| other.id == block.id))
+		.collect();
+	assert_eq!(excerpt.blocks.len(), 4);
+	for (part, whole) in excerpt.blocks.iter().zip(&selected) {
+		assert_eq!(positions(part), positions(whole));
+		assert!(
+			((part.y - excerpt.blocks[0].y) - (whole.y - selected[0].y)).abs()
+				< 0.01
+		);
+	}
+}
+
+#[test]
+fn nested_excerpts_keep_original_styles_and_a_bounded_prefix() {
+	let document = markview_commonmark::parse(format!(
+		"> ## Target\n>\n{}",
+		"> Paragraph.\n>\n".repeat(100)
+	));
+	let options = LayoutOptions::default();
+	let node = document.anchor_block("target").unwrap();
+	let mut engine = LayoutEngine::new();
+	let excerpt = engine
+		.layout_excerpt_cancellable(
+			&document,
+			node,
+			&options,
+			&Default::default(),
+			120.0,
+			|| false,
+		)
+		.unwrap();
+	let subtree = engine.layout_subtree(&document, node, &options);
+	assert!(excerpt.blocks.len() > 1 && excerpt.blocks.len() < 100);
+	assert_eq!(positions(&excerpt.blocks[0]), positions(&subtree.blocks[0]));
+	assert!(
+		engine
+			.layout_excerpt_cancellable(
+				&document,
+				node,
+				&options,
+				&Default::default(),
+				120.0,
+				|| true
+			)
+			.is_none()
+	);
+}
+
+#[test]
 fn subtree_uses_original_number_columns_and_keeps_the_whole_document_cache() {
 	let mut source = String::new();
 	for i in 1..=12 {

@@ -127,12 +127,11 @@ impl LayoutEngine {
 	pub(super) fn begin_layout_root(
 		&mut self,
 		document: &Document,
-		root: Option<&Block>,
+		root: Option<&[Block]>,
 		options: &LayoutOptions,
 		images: &ImageSnapshot,
 	) -> ProgressiveLayout {
-		let blocks =
-			root.map_or_else(|| document.blocks(), std::slice::from_ref);
+		let blocks = root.unwrap_or_else(|| document.blocks());
 		self.shaper.set_stylesheet(options.stylesheet.clone());
 		self.shaper.set_fonts(&options.fonts);
 		self.math.set_limits(options.limits);
@@ -152,7 +151,7 @@ impl LayoutEngine {
 			|root| {
 				super::subtree::context(
 					document,
-					root,
+					&root[0],
 					&self.shaper.appearance,
 					options,
 				)
@@ -173,7 +172,7 @@ impl LayoutEngine {
 			self.highlights.prepare(
 				crate::document::fingerprint(&(
 					document.content_key(),
-					root.map(Block::id),
+					root.map(|blocks| blocks[0].id()),
 				)),
 				blocks,
 				options,
@@ -272,7 +271,7 @@ impl LayoutEngine {
 				crate::document::fingerprint(&(
 					presentation,
 					document.revision(),
-					root.map(Block::id),
+					root.map(|blocks| blocks[0].id()),
 					options.preview,
 				))
 			} else {
@@ -295,7 +294,7 @@ impl LayoutEngine {
 			visible_index: position.0,
 			visible_count: position.1,
 			revision: document.revision(),
-			root: root.map(Block::id),
+			root: root.map(|blocks| blocks[0].id()),
 			#[cfg(all(feature = "parallel", not(target_arch = "wasm32")))]
 			pending: Default::default(),
 		};
@@ -643,9 +642,16 @@ impl ProgressiveLayout {
 		self.root.map_or_else(
 			|| document.blocks(),
 			|id| {
-				std::slice::from_ref(document.block(id).expect(
+				let node = document.block(id).expect(
 					"the selected block belongs to the source document",
-				))
+				);
+				if self.count == 1 {
+					return std::slice::from_ref(node);
+				}
+				let siblings = super::subtree::siblings(document, node);
+				let start =
+					siblings.iter().position(|block| block.id() == id).unwrap();
+				&siblings[start..start + self.count]
 			},
 		)
 	}

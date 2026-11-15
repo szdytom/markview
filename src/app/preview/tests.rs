@@ -1,6 +1,8 @@
 mod asynchronous;
 mod golden;
+mod handoff;
 mod interaction_tests;
+mod links;
 mod profile;
 use super::*;
 use crate::{
@@ -58,6 +60,7 @@ fn settle(app: &mut App<Proxy>, events: &mpsc::Receiver<Event>) {
 			if app.readers.session.can_display(&reader, viewport) {
 				app.readers.session.accept(reader, viewport, update.counts);
 				app.readers.session.displayed_version = update.version;
+				app.apply_anchor();
 			}
 		}
 	}
@@ -77,6 +80,8 @@ fn finish_footnote(app: &mut App<Proxy>, now: Instant) {
 fn card(tab: u64) -> Open {
 	Open {
 		target: Target::Tab(tab),
+		path: None,
+		origins: navigation::Origins::default(),
 		floating: None,
 		card: Card {
 			title: vec!["notes.md".into()],

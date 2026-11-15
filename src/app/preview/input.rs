@@ -20,6 +20,7 @@ impl<P: super::super::SendEvent> App<P> {
 			| ViewInput::Wheel { point: p, .. } => Some(p),
 			_ => None,
 		};
+
 		let Some(floating) = self.preview.floating() else {
 			return false;
 		};
@@ -28,6 +29,10 @@ impl<P: super::super::SendEvent> App<P> {
 		{
 			return false;
 		}
+		if self.defer_file_preview_input(input) {
+			return true;
+		}
+
 		if matches!(input, ViewInput::Press { .. }) {
 			self.cancel_gestures();
 			self.readers.session.cancel_scroll_animation();
@@ -61,6 +66,18 @@ impl<P: super::super::SendEvent> App<P> {
 		true
 	}
 
+	fn defer_file_preview_input(&mut self, input: ViewInput) -> bool {
+		if !matches!(input, ViewInput::Press { .. } | ViewInput::Release(_)) {
+			return false;
+		}
+		if let Some(observed) = &self.preview.observed {
+			observed.invalidate_if_outdated();
+		}
+		self.refresh_preview_file()
+			|| (self.preview.open().is_some_and(|open| open.path.is_some())
+				&& self.preview.pending.is_some())
+	}
+
 	pub(in crate::app) fn preview_horizontal_by(&mut self, delta: f32) -> bool {
 		let point = self.interaction.pointer.cursor();
 		let Some(floating) = self.preview.floating_mut() else {
@@ -77,8 +94,12 @@ impl<P: super::super::SendEvent> App<P> {
 	fn preview_action(&mut self, action: ViewAction) {
 		match action {
 			ViewAction::Link(target) => {
-				self.dismiss_preview();
-				self.open_link_target(&target, false);
+				if self.preview.open().is_some_and(|open| open.path.is_some()) {
+					self.activate_file_preview(target);
+				} else {
+					self.dismiss_preview();
+					self.open_link_target(&target, false);
+				}
 			}
 			ViewAction::Image { source, rect } => {
 				self.dismiss_preview();

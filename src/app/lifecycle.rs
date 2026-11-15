@@ -464,6 +464,7 @@ impl<P: super::SendEvent> App<P> {
 						self.readers.session.load_error = Some(error.clone());
 						self.readers.session.scrolling.target = None;
 						self.readers.session.pending_anchor = None;
+						self.readers.session.pending_preview_action = None;
 						self.readers.session.select_all_pending = false;
 						self.readers.session.cancel_scroll_animation();
 						let smoke = self.args.mode == Mode::Smoke;

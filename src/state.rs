@@ -207,6 +207,9 @@ pub(crate) struct ReaderSession {
 	pub(crate) load_error: Option<String>,
 	/// A document anchor waiting for its target to be laid out.
 	pub(crate) pending_anchor: Option<PendingAnchor>,
+	/// An activation waiting for the previewed file's full layout.
+	pub(crate) pending_preview_action:
+		Option<crate::app::preview::PendingAction>,
 	pub(crate) saved_reading: Option<crate::app::session::Reading>,
 	/// The typed target the reader last jumped to, with the scroll offset it
 	/// left, so a footnote's number can return to its reference.
@@ -676,6 +679,7 @@ impl ReaderSession {
 	fn clear_reading_position(&mut self) {
 		self.saved_reading = None;
 		self.pending_anchor = None;
+		self.pending_preview_action = None;
 		self.follow_update = false;
 	}
 	fn leave_reading_position(&mut self, dy: f32) {
@@ -772,6 +776,7 @@ impl ReaderSession {
 		self.outline = None;
 		self.outline_tree = OutlineTree::default();
 		self.pending_anchor = None;
+		self.pending_preview_action = None;
 		self.jump_origin = None;
 		self.scrolling.cancel();
 	}

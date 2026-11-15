@@ -181,6 +181,7 @@ impl<P: super::SendEvent> App<P> {
 		session.discard_cached_page();
 		session.counts_content_id = None;
 		session.content_version += 1;
+		session.pending_preview_action = None;
 		session.security.revoke();
 		session.blocked_images.clear();
 		self.interaction.overlays.modal.send(Message::Dismiss);
@@ -381,6 +382,7 @@ impl<P: super::SendEvent> App<P> {
 		self.select_tab_with(index, false)
 	}
 	fn select_tab_with(&mut self, index: usize, track: bool) -> bool {
+		self.readers.session.pending_preview_action = None;
 		self.folder.navigation_revision += 1;
 		if self.folder_inset() == 0. {
 			self.set_folder_open(false);

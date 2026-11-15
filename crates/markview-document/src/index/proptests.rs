@@ -134,6 +134,7 @@ proptest! {
 		let mut builder = DocumentBuilder::new(DocumentRevision::new(1));
 		let mut blocks = Vec::new();
 		let mut expected = HashMap::new();
+		let mut targets = HashMap::new();
 		for (kind, slot, occurrence, depth) in [(0, 0, 1, 1), (1, 0, 1, 2), (2, 0, 1, 3), (2, 0, 2, 4)].into_iter().chain(entries) {
 			let wrappers: Vec<_> = (0..depth).map(|_| builder.block(Vec::new(), BlockKind::Rule)).collect();
 			let ancestry: Vec<_> = wrappers.iter().map(Block::id).collect();
@@ -141,7 +142,7 @@ proptest! {
 			let definition = FootnoteId::new(name.clone());
 			let occurrence = LinkOccurrenceId::new(occurrence).unwrap();
 			let anchor = match kind { 1 => AnchorId::FootnoteDefinition(definition.clone()), 2 => AnchorId::FootnoteReference { definition: definition.clone(), occurrence }, _ => AnchorId::Fragment(name.clone()) };
-			expected.entry(anchor).or_insert_with(|| ancestry.clone());
+			expected.entry(anchor.clone()).or_insert_with(|| ancestry.clone());
 			let text = vec![Inline { kind: if kind == 2 { InlineKind::FootnoteRef(FootnoteReference { definition: definition.clone(), occurrence, number: 1 }) } else { InlineKind::Anchor(name.clone()) }, style: TextStyle::default(), link: None }];
 			let leaf = match kind {
 				1 => BlockKind::Footnote { id: definition, number: 1, blocks: Vec::new() },
@@ -153,9 +154,11 @@ proptest! {
 				_ => BlockKind::Paragraph(if kind == 3 { Vec::new() } else { text }),
 			};
 			let mut root = builder.block(if kind == 3 { vec![name] } else { Vec::new() }, leaf);
+			targets.entry(anchor).or_insert(root.id());
 			for (layer, wrapper) in wrappers.into_iter().enumerate().rev() {
 				let kind = if layer % 2 == 0 {
 					let summary = format!("summary-{}", wrapper.id());
+					targets.insert(AnchorId::Fragment(summary.clone()), wrapper.id());
 					expected.insert(AnchorId::Fragment(summary.clone()), ancestry[..layer].to_vec());
 					BlockKind::Details { default_open: false, summary: vec![Inline { kind: InlineKind::Anchor(summary), style: TextStyle::default(), link: None }], blocks: vec![root] }
 				} else { BlockKind::FrontMatter { default_open: false, blocks: vec![root] } };
@@ -165,6 +168,8 @@ proptest! {
 		}
 		let document = builder.finish(blocks);
 		for (anchor, ancestry) in expected { prop_assert_eq!(document.details_enclosing(&anchor), ancestry); }
+		for (anchor, id) in targets { prop_assert_eq!(document.anchor_block(&anchor).map(Block::id), Some(id)); }
+		prop_assert!(document.anchor_block("missing").is_none());
 		prop_assert!(document.details_enclosing(AnchorId::FootnoteReference { definition: FootnoteId::new("slot-0"), occurrence: LinkOccurrenceId::new(999).unwrap() }).is_empty(), "unknown occurrence must not resolve");
 		prop_assert!(document.fragment_enclosing("missing").is_empty());
 	}
