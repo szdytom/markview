@@ -58,6 +58,50 @@ fn file_reader(
 }
 
 #[test]
+fn heading_paths_preview_the_selected_child_within_and_across_documents() {
+	let dir = tempfile::tempdir().unwrap();
+	let sections = format!(
+		"# First\n\n## Child\n\nWrong branch.\n\n{}# Second\n\n## Child\n\nSelected branch.\n\n## Next\n\nExcluded.\n",
+		"Earlier content.\n\n".repeat(40),
+	);
+	for same_file in [true, false] {
+		let url = if same_file {
+			"#Second#Child"
+		} else {
+			"other.md#Second#Child"
+		};
+		let source = format!(
+			"[[{url}|Preview]]\n\n{}",
+			if same_file { sections.as_str() } else { "" }
+		);
+		std::fs::write(dir.path().join("source.md"), source).unwrap();
+		std::fs::write(dir.path().join("other.md"), &sections).unwrap();
+		let (mut app, events) = app();
+		load(&mut app, &events, dir.path().join("source.md"));
+		let original = app.readers.session.path.clone();
+		let now = hover(&mut app, url);
+		finish_footnote(&mut app, now);
+		let content = text(&app);
+		assert!(content.contains("Selected branch"), "{content}");
+		assert!(
+			!content.contains("Wrong branch") && !content.contains("Excluded")
+		);
+		assert_eq!(app.readers.session.path, original);
+	}
+}
+
+#[test]
+fn visible_heading_paths_do_not_schedule_a_preview() {
+	let mut app = reader(
+		"[[#Parent#Child|Preview]]\n\n# Parent\n\n## Child\n\nContent.\n",
+	);
+	let now = hover(&mut app, "#Parent#Child");
+	app.preview_tick(now + SHOW_DELAY);
+	assert!(!app.preview.tracking());
+	assert!(app.preview.pending.is_none());
+}
+
+#[test]
 fn offscreen_section_reuses_delays_and_contains_only_its_section() {
 	let source = format!(
 		"[Preview](#target)\n\n{}## Target\n\n**Target content**.\n\n### Child\n\nNested content.\n\n## Next\n\nExcluded content.\n",

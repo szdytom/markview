@@ -1230,7 +1230,8 @@ impl Markview {
 			) {
 			return;
 		}
-		if let Some(y) = self.published.snapshot.anchor_target_y(&anchor) {
+		let resolved = self.document.resolve_anchor(&anchor);
+		if let Some(y) = self.published.snapshot.anchor_target_y(&resolved) {
 			self.scrolling.fit(self.scroll_bounds());
 			self.scrolling.set(y);
 			self.pending_anchor = None;

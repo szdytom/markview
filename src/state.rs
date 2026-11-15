@@ -849,7 +849,11 @@ impl ReaderSession {
 			self.pending_anchor = None;
 			return Some(Err(anchor));
 		}
-		if let Some(y) = self.display.snapshot.anchor_target_y(&anchor) {
+		let resolved = self.document.as_ref().map_or_else(
+			|| anchor.clone(),
+			|document| document.resolve_anchor(&anchor),
+		);
+		if let Some(y) = self.display.snapshot.anchor_target_y(&resolved) {
 			self.pending_anchor = None;
 			self.scrolling.target = None;
 			self.follow_update = false;

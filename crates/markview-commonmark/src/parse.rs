@@ -2018,6 +2018,8 @@ fn wikilink_url(link: &NodeWikiLink) -> String {
 			let fragment = heading.rsplit('#').next().unwrap_or(heading);
 			let fragment = if fragment.starts_with('^') {
 				fragment.replace('%', "%25")
+			} else if heading.contains('#') {
+				heading.replace('%', "%25")
 			} else {
 				crate::heading_slug(fragment)
 			};

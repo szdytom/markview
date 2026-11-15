@@ -141,6 +141,94 @@ impl crate::app::window::Loop for StubLoop {
 }
 
 #[test]
+fn obsidian_heading_paths_navigate_within_and_across_documents() {
+	let mut h = Harness::new();
+	let links = "[[target.md#Second#Child|Cross file]] [[#First#Child]] [[#Second#Child]] [[#Second#Child#Leaf]] [[#Second#Leaf]]";
+	fs::write(h.dir.path().join("source.md"), links).unwrap();
+	fs::write(
+		h.dir.path().join("target.md"),
+		format!(
+			"# First\n\n## Child\n\n{}# Second\n\n## Child\n\nTarget\n\n### Leaf\n\n{}",
+			"Before.\n\n".repeat(30),
+			"After.\n\n".repeat(30),
+		),
+	)
+	.unwrap();
+	h.open("source.md", 0);
+	let parsed = markview_commonmark::parse(links);
+	let crate::document::BlockKind::Paragraph(text) = parsed.blocks()[0].kind()
+	else {
+		panic!("expected links");
+	};
+	for (url, expected) in text
+		.iter()
+		.filter_map(|span| span.link_url())
+		.zip(["child-1", "child", "child-1", "leaf", "leaf"])
+	{
+		h.app.open_link(url, false);
+		h.wait_images(0);
+		h.app.apply_anchor();
+		assert!(h.app.readers.session.pending_anchor.is_none());
+		assert!(!h.app.status.is_error(), "{url}");
+		assert_eq!(
+			h.app.readers.session.path,
+			Some(h.dir.path().join("target.md").canonicalize().unwrap())
+		);
+		let viewport = h.app.viewport();
+		let session = &mut h.app.readers.session;
+		let y = session
+			.display
+			.snapshot
+			.anchor_y(expected)
+			.unwrap()
+			.clamp(0., session.display.snapshot.scroll_limit(viewport));
+		session
+			.advance_scroll(Instant::now() + Duration::from_secs(1), viewport);
+		assert!((session.scrolling.offset - y).abs() < 0.01, "{url}");
+	}
+	h.app.open_link("#Missing#Child", false);
+	h.app.apply_anchor();
+	assert!(h.app.status.is_error());
+}
+
+#[test]
+fn obsidian_heading_paths_reveal_the_selected_child_in_a_disclosure() {
+	let mut h = Harness::new();
+	fs::write(h.dir.path().join("folded.md"),
+		"# First\n\n## Child\n\n# Second\n\n<details><summary>Folded</summary>\n\n## Child\n\nTarget\n\n</details>"
+	).unwrap();
+	h.open("folded.md", 0);
+	assert!(
+		h.app
+			.readers
+			.session
+			.display
+			.snapshot
+			.anchor_y("child-1")
+			.is_none()
+	);
+	h.app.open_link("#Second#Child", false);
+	assert!(h.app.readers.session.pending_anchor.is_none());
+	assert!(!h.app.status.is_error());
+	assert!(
+		h.app
+			.readers
+			.session
+			.display
+			.snapshot
+			.anchor_y("child-1")
+			.is_some()
+	);
+	let document = h.app.readers.session.document.as_ref().unwrap();
+	let enclosing = document.details_enclosing("Second#Child");
+	assert_eq!(enclosing.len(), 1);
+	assert_eq!(
+		h.app.readers.session.details_open.get(&enclosing[0]),
+		Some(&true)
+	);
+}
+
+#[test]
 fn obsidian_block_links_navigate_within_and_across_documents() {
 	let mut h = Harness::new();
 	let links = "[[target.md#^Block-ID|Target]] [encoded](target.md#%5EBlock-ID) [[#^Block-ID|Here]]";

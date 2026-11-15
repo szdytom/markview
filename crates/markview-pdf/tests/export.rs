@@ -1269,6 +1269,46 @@ fn percent_encoded_heading_links_keep_their_destinations() {
 }
 
 #[test]
+fn obsidian_heading_paths_export_to_the_correct_page_and_heading() {
+	let exported = export(
+		&format!(
+			"[[#Second#Child|wiki]] [encoded](#Second%23Child) [[#Missing#Child|missing]]\n\n# First\n\n## Child\n\n{}# Second\n\n## Child\n\nSelected branch.\n",
+			"Before target.\n\n".repeat(100),
+		),
+		print(),
+		true,
+	);
+	let (page, y) = exported.anchors["child-1"];
+	assert!(page > exported.anchors["child"].0);
+	let pdf = &exported.pdf;
+	let pages = pdf.get_pages();
+	let annotations = pdf.get_page_annotations(pages[&1]).unwrap();
+	assert_eq!(annotations.len(), 2);
+	let [left, top, _, _] = exported.geometry.text_pt();
+	for annotation in annotations {
+		assert!(!annotation.has(b"A"));
+		let destination = pdf
+			.get_object(
+				annotation.get(b"Dest").unwrap().as_reference().unwrap(),
+			)
+			.unwrap();
+		let destination = destination.as_array().unwrap();
+		assert_eq!(
+			destination[0].as_reference().unwrap(),
+			pages[&(page as u32 + 1)]
+		);
+		assert_eq!(destination[1].as_name().unwrap(), b"XYZ");
+		assert!((destination[2].as_float().unwrap() - left).abs() < 0.01);
+		assert!(
+			(destination[3].as_float().unwrap()
+				- (exported.geometry.height_pt - top - y * PT_PER_PX))
+				.abs()
+				< 0.01
+		);
+	}
+}
+
+#[test]
 fn obsidian_block_links_export_as_internal_pdf_destinations() {
 	let sheet = print();
 	let geometry = PageGeometry {

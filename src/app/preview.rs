@@ -1044,7 +1044,14 @@ impl<P: super::SendEvent> App<P> {
 		}
 		let context = self.document_interaction();
 		let y = match &destination.anchor {
-			Some(anchor) => context.snapshot.anchor_target_y(anchor),
+			Some(anchor) => {
+				let document = self.readers.session.document.as_ref();
+				let resolved = document.map_or_else(
+					|| anchor.clone(),
+					|document| document.resolve_anchor(anchor),
+				);
+				context.snapshot.anchor_target_y(&resolved)
+			}
 			None => Some(0.0),
 		};
 		y.is_some_and(|y| {

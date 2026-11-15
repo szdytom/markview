@@ -24,6 +24,7 @@ pub fn annotation(
 	rect: Rect,
 	target: &LinkTarget,
 	url: &str,
+	outline: &[markview_layout::document::OutlineEntry],
 	pagination: &Pagination,
 	geometry: &PageGeometry,
 ) -> Option<Annotation> {
@@ -56,7 +57,16 @@ pub fn annotation(
 			AnchorId::Fragment(fragment) => {
 				let fragment = percent_encoding::percent_decode_str(fragment)
 					.decode_utf8_lossy();
-				pagination.anchors.get(fragment.as_ref())?
+				pagination.anchors.get(fragment.as_ref()).or_else(|| {
+					if !fragment.contains('#') {
+						return None;
+					}
+					let anchor =
+						markview_layout::document::heading_path_anchor(
+							outline, &fragment,
+						)?;
+					pagination.anchors.get(anchor)
+				})?
 			}
 			_ => pagination.targets.get(&anchor)?,
 		};

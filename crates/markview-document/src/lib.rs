@@ -9,7 +9,9 @@ pub mod image;
 pub use color::Color;
 pub use image::{Diagram, ImageSource, ImageSpec, ResourceBase, ResourceRef};
 mod build;
+mod heading_path;
 mod ids;
+pub use heading_path::heading_path_anchor;
 mod index;
 mod slug;
 mod source;
@@ -630,7 +632,22 @@ impl Document {
 
 	/// The first block registering a typed anchor.
 	pub fn anchor_block(&self, anchor: impl ToAnchor) -> Option<&Block> {
-		self.block(self.index.enclosing.get(&anchor.to_anchor())?.0)
+		self.block(self.index.enclosing.get(&self.resolve_anchor(anchor))?.0)
+	}
+
+	/// Maps a heading path to its unique fragment, preserving explicit targets
+	/// and ordinary fragments. Unresolved paths retain their original address.
+	pub fn resolve_anchor(&self, anchor: impl ToAnchor) -> AnchorId {
+		let anchor = anchor.to_anchor();
+		if let AnchorId::Fragment(path) = &anchor
+			&& path.contains('#')
+			&& !self.index.enclosing.contains_key(&anchor)
+			&& let Some(fragment) =
+				heading_path_anchor(&self.index.outline, path)
+		{
+			return AnchorId::Fragment(fragment.to_owned());
+		}
+		anchor
 	}
 
 	/// The structural path from the document root to `id`.
@@ -656,7 +673,7 @@ impl Document {
 	pub fn details_enclosing(&self, anchor: impl ToAnchor) -> Vec<BlockId> {
 		self.index
 			.enclosing
-			.get(&anchor.to_anchor())
+			.get(&self.resolve_anchor(anchor))
 			.map(|(_, enclosing)| enclosing.clone())
 			.unwrap_or_default()
 	}

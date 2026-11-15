@@ -37,6 +37,35 @@ async function settled(page) {
     && window.viewer.readingPosition() !== null);
 }
 
+test("Obsidian heading paths select repeated children and expand folded targets", async ({ page }) => {
+  await host(page);
+  for (const [path, anchor] of [["Second#Child", "child-1"], ["Second#Child#Leaf", "leaf"]]) {
+    const source = `[[#${path}|Jump]]\n\n# First\n\n## Child\n\n`
+      + "Earlier content.\n\n".repeat(80)
+      + "# Second\n\n<details><summary>Folded</summary>\n\n## Child\n\nSelected branch.\n\n### Leaf\n\nNested content.\n\n</details>\n\n"
+      + "After.\n\n".repeat(40);
+    await mount(page, source);
+    await settled(page);
+    const point = await page.evaluate(() => {
+      const mv = window.viewer.reader.markview;
+      for (let y = 1; y < 100; y += 2)
+        for (let x = 1; x < 300; x += 2) {
+          mv.pointerMove(x, y);
+          if (mv.cursor() !== "pointer") continue;
+          mv.cancelPointer();
+          return { x, y };
+        }
+      throw new Error("Missing heading path link");
+    });
+    const canvas = await page.locator("canvas").boundingBox();
+    await page.mouse.click(canvas.x + point.x, canvas.y + point.y);
+    await settled(page);
+    await expect.poll(() => page.evaluate(() => window.viewer.currentSection()?.anchor)).toBe(anchor);
+    expect(await page.evaluate(() => window.errors)).toEqual([]);
+    await page.evaluate(() => window.viewer.destroy());
+  }
+});
+
 test("public mapping and complete TOC use UTF-16 and isolate replacement versions", async ({ page }) => {
   await host(page);
   await mount(page, "# old\n\n" + "old text\n\n".repeat(100));

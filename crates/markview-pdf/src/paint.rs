@@ -144,6 +144,7 @@ impl MathRun {
 }
 
 struct Painter<'a> {
+	outline: &'a [markview_layout::document::OutlineEntry],
 	stylesheet: &'a Stylesheet,
 	snapshot: &'a LayoutSnapshot,
 	images: Images<'a>,
@@ -195,6 +196,7 @@ impl Renderer {
 		}
 		let snapshot = input.snapshot.flattened();
 		let mut painter = Painter {
+			outline: input.outline,
 			stylesheet: input.stylesheet,
 			snapshot: &snapshot,
 			images: Images::new(input.images, input.prepared_images),
@@ -1245,6 +1247,7 @@ impl Painter<'_> {
 				page_rect,
 				link_rect.target,
 				link_rect.url,
+				self.outline,
 				self.pagination,
 				self.geometry,
 			) {

@@ -49,6 +49,70 @@ fn destination(
 	)
 }
 
+#[test]
+fn serialized_heading_paths_target_the_selected_child_and_preserve_explicit_ids()
+ {
+	let parsed = markview_commonmark::parse(
+		"# First\n\n## Child\n\n# Second 100%\n\n## Child\n\n### Leaf\n",
+	);
+	let geometry = PageGeometry {
+		width_pt: 400.0,
+		height_pt: 600.0,
+		margin_pt: [10.0; 4],
+	};
+	let mut pagination = Pagination::default();
+	pagination.anchors.insert("child".into(), (0, 20.0));
+	pagination.anchors.insert("child-1".into(), (1, 40.0));
+	pagination.anchors.insert("leaf".into(), (2, 60.0));
+	pagination
+		.anchors
+		.insert("Explicit#Child".into(), (2, 80.0));
+	let urls = [
+		"#First#Child",
+		"#Second 100%25#Child",
+		"#Second%20100%25#Child#Leaf",
+		"#Explicit#Child",
+	];
+	let rect = Rect::from_xywh(10.0, 10.0, 20.0, 10.0).unwrap();
+	let annotations = urls
+		.iter()
+		.map(|url| {
+			annotation(
+				rect,
+				&LinkTarget::Url((*url).into()),
+				url,
+				parsed.outline_entries(),
+				&pagination,
+				&geometry,
+			)
+			.unwrap()
+		})
+		.collect();
+	let pdf = serialize(annotations, &geometry);
+	let annotations = pdf.get_page_annotations(pdf.get_pages()[&1]).unwrap();
+	assert_eq!(annotations.len(), 4);
+	for (annotation, (page, y)) in
+		annotations
+			.iter()
+			.zip([(1, 20.0), (2, 40.0), (3, 60.0), (3, 80.0)])
+	{
+		let (actual_page, _, actual_y) = destination(&pdf, annotation);
+		assert_eq!(actual_page, pdf.get_pages()[&page]);
+		assert!((actual_y - (600.0 - 10.0 - y * PT_PER_PX)).abs() < 0.001);
+	}
+	assert!(
+		annotation(
+			rect,
+			&LinkTarget::Url("#Missing#Child".into()),
+			"missing",
+			parsed.outline_entries(),
+			&pagination,
+			&geometry
+		)
+		.is_none()
+	);
+}
+
 proptest! {
 	#[test]
 	fn serialized_link_annotations_preserve_typed_destinations_page_units_and_external_uris(
@@ -66,7 +130,7 @@ proptest! {
 		let rect = Rect::from_xywh(f32::from(x), f32::from(rect_y), f32::from(width), f32::from(height)).unwrap();
 		let external = format!("https://a.test/{encoded}?q=(x)");
 		let targets = [LinkTarget::Url(format!("#{encoded}").into()), LinkTarget::FootnoteDefinition(note.clone()), LinkTarget::FootnoteReturn(note), LinkTarget::Url(external.clone().into())];
-		let annotations = targets.iter().enumerate().map(|(index, target)| annotation(rect, target, if index == 3 { &external } else { "source-label" }, &pagination, &geometry).unwrap()).collect();
+		let annotations = targets.iter().enumerate().map(|(index, target)| annotation(rect, target, if index == 3 { &external } else { "source-label" }, &[], &pagination, &geometry).unwrap()).collect();
 		let pdf = serialize(annotations, &geometry);
 		let annotations = pdf.get_page_annotations(pdf.get_pages()[&1]).unwrap();
 		prop_assert_eq!(annotations.len(), 4);
@@ -84,7 +148,7 @@ proptest! {
 			prop_assert_eq!(coordinates, vec![f32::from(x), 600.0 - f32::from(rect_y + height), f32::from(x + width), 600.0 - f32::from(rect_y)]);
 		}
 		for (target, display) in [(LinkTarget::Url("#missing".into()), "#missing"), (LinkTarget::FootnoteDefinition(FootnoteId::new("missing")), "legacy"), (LinkTarget::Disclosure(BlockId::new(1).unwrap()), ""), (LinkTarget::Url("".into()), "")] {
-			prop_assert!(annotation(rect, &target, display, &pagination, &geometry).is_none());
+			prop_assert!(annotation(rect, &target, display, &[], &pagination, &geometry).is_none());
 		}
 	}
 
@@ -97,7 +161,7 @@ proptest! {
 		let first_bucket = pagination.targets.keys().next().unwrap().clone();
 		*pagination.targets.get_mut(&first_bucket).unwrap() = (first_page + usize::from(!same_page), f32::from(y) + 8.0);
 		let geometry = PageGeometry { width_pt: 400.0, height_pt: 600.0, margin_pt: [10.0; 4] };
-		let annotation = annotation(Rect::from_xywh(10.0, 10.0, 20.0, 10.0).unwrap(), &LinkTarget::FootnoteReturn(note), "legacy", &pagination, &geometry).unwrap();
+		let annotation = annotation(Rect::from_xywh(10.0, 10.0, 20.0, 10.0).unwrap(), &LinkTarget::FootnoteReturn(note), "legacy", &[], &pagination, &geometry).unwrap();
 		let pdf = serialize(vec![annotation], &geometry);
 		let annotations = pdf.get_page_annotations(pdf.get_pages()[&1]).unwrap();
 		let (page, _, actual_y) = destination(&pdf, annotations[0]);
