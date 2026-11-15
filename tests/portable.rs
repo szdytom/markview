@@ -10,6 +10,15 @@ use std::{
 
 const MARKER: &str = "markview-portable-marker.txt";
 
+// Missing paths retain their suffix beneath a canonical existing ancestor.
+fn canonical_location(path: &Path) -> PathBuf {
+	let ancestor = path.ancestors().find(|path| path.exists()).unwrap();
+	ancestor
+		.canonicalize()
+		.unwrap()
+		.join(path.strip_prefix(ancestor).unwrap())
+}
+
 struct Installation {
 	_root: markview_test_support::TestDir,
 	directory: PathBuf,
@@ -58,8 +67,10 @@ impl Installation {
 		let output = self.run(&["fonts", "path"]);
 		assert!(output.status.success(), "{output:?}");
 		assert_eq!(
-			Path::new(String::from_utf8(output.stdout).unwrap().trim()),
-			expected
+			canonical_location(Path::new(
+				String::from_utf8(output.stdout).unwrap().trim()
+			)),
+			canonical_location(expected)
 		);
 	}
 }
@@ -91,6 +102,8 @@ fn portable_data_follows_the_executable_and_never_falls_back_on_write_failure()
 	assert!(output.status.success(), "{output:?}");
 	let style = data.join("styles/ui-cjk-medium.mvss.toml");
 	assert_eq!(fs::read(&style).unwrap(), fs::read(&source).unwrap());
+	installation.fonts_path(&data.join("fonts"));
+	assert!(!data.join("fonts").exists());
 	let moved = installation.directory.with_file_name("moved 中文 reader");
 	fs::rename(&installation.directory, &moved).unwrap();
 	installation.directory = moved;
@@ -182,12 +195,11 @@ impl Peer {
 		let request: serde_json::Value =
 			serde_json::from_slice(&request).unwrap();
 		assert_eq!(request["token"], self.token);
+		let path: std::ffi::OsString =
+			serde_json::from_value(request["path"].clone()).unwrap();
 		assert_eq!(
-			request["path"],
-			serde_json::to_value(
-				installation.working.join("notes.md").into_os_string()
-			)
-			.unwrap()
+			canonical_location(Path::new(&path)),
+			canonical_location(&installation.working.join("notes.md"))
 		);
 		stream.write_all(&[1]).unwrap();
 		assert!(child.wait().unwrap().success());

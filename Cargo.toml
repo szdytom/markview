@@ -8,7 +8,6 @@ authors.workspace = true
 license.workspace = true
 readme.workspace = true
 repository.workspace = true
-homepage.workspace = true
 documentation.workspace = true
 keywords = ["markdown", "reader", "desktop", "typography", "wgpu"]
 categories = ["text-processing", "gui"]
@@ -61,7 +60,6 @@ license = "MIT"
 readme = "README.md"
 authors = ["szdytom"]
 repository = "https://github.com/szdytom/markview"
-homepage = "https://github.com/szdytom/markview"
 documentation = "https://github.com/szdytom/markview/tree/main/docs"
 
 [workspace.metadata.android]
