@@ -315,6 +315,9 @@ impl<P: super::SendEvent> App<P> {
 
 	fn middle_pressed(&mut self) {
 		self.dismiss_preview();
+		if self.middle_press_quick_access() {
+			return;
+		}
 		if self.pointer_in_folder() || self.phone_folder_open() {
 			let controls = self.ui_layout();
 			if let Some(widget) =

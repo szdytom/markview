@@ -3,6 +3,7 @@ use super::{
 	App, Event, SendEvent,
 	file_search::{File, Snippet, find},
 };
+use crate::state::{ChromeCommand, Command, TabPlacement};
 use markview_interaction::Scroll;
 use markview_layout::text_input::TextInput;
 use nucleo_matcher::{Config, Matcher};
@@ -467,7 +468,30 @@ impl<P: SendEvent> App<P> {
 			self.open_folder(recent.path.clone(), true);
 		}
 	}
-	pub(super) fn open_start_file(&mut self, id: usize) {
+	pub(super) fn middle_press_quick_access(&mut self) -> bool {
+		let controls = self.ui_layout();
+		match controls
+			.hit
+			.hit(self.interaction.pointer.cursor())
+			.filter(|widget| widget.enabled)
+			.map(|widget| widget.message)
+		{
+			Some(Command::Chrome(ChromeCommand::StartFile(id))) => {
+				self.open_start_file(id, TabPlacement::Background);
+				true
+			}
+			Some(Command::Chrome(ChromeCommand::QuickOpenFile(id))) => {
+				self.open_quick_open_file(id, TabPlacement::Background);
+				true
+			}
+			_ => self.interaction.overlays.quick_open.open(),
+		}
+	}
+	pub(super) fn open_start_file(
+		&mut self,
+		id: usize,
+		placement: TabPlacement,
+	) {
 		let Some(path) = self
 			.folder
 			.start
@@ -478,9 +502,13 @@ impl<P: SendEvent> App<P> {
 		else {
 			return;
 		};
-		self.open_start_path(path);
+		self.open_start_path(path, placement);
 	}
-	pub(super) fn open_quick_open_file(&mut self, id: usize) {
+	pub(super) fn open_quick_open_file(
+		&mut self,
+		id: usize,
+		placement: TabPlacement,
+	) {
 		if let Some(index) = self
 			.interaction
 			.overlays
@@ -490,7 +518,9 @@ impl<P: SendEvent> App<P> {
 			.get(&id)
 			.copied()
 		{
-			self.select_tab(index);
+			if placement == TabPlacement::Foreground {
+				self.select_tab(index);
+			}
 			return;
 		}
 		let Some(path) = self
@@ -505,18 +535,27 @@ impl<P: SendEvent> App<P> {
 		else {
 			return;
 		};
-		self.open_start_path(path);
+		self.open_start_path(path, placement);
 	}
-	fn open_start_path(&mut self, path: PathBuf) {
+	fn open_start_path(&mut self, path: PathBuf, placement: TabPlacement) {
 		if let Some(index) = self
 			.readers
 			.entries()
 			.iter()
 			.position(|tab| tab.path == path)
 		{
-			self.select_tab(index);
+			if placement == TabPlacement::Foreground {
+				self.select_tab(index);
+			}
 		} else {
-			self.open(path);
+			self.open_markdown(
+				path,
+				None,
+				placement,
+				crate::security::Security::local(
+					crate::security::Trust::Trusted,
+				),
+			);
 		}
 	}
 	pub(super) fn scroll_start(
@@ -581,6 +620,241 @@ mod tests {
 				)
 				.expect("start page did not settle");
 			app.handle_user_event(&Loop, event);
+		}
+	}
+	fn middle_click(app: &mut App<Proxy>, at: (f32, f32)) {
+		use markview_platform::event::{
+			DeviceId, ElementState, MouseButton, WindowEvent,
+		};
+		app.gestures.allow_mouse();
+		for state in [ElementState::Pressed, ElementState::Released] {
+			app.interaction.pointer.move_to(at);
+			app.handle_window_event(
+				&Loop,
+				winit::window::WindowId::from_raw(0),
+				WindowEvent::MouseInput {
+					device_id: DeviceId::from_raw(0),
+					button: MouseButton::Middle,
+					state,
+				},
+			);
+		}
+	}
+	fn file_point(app: &mut App<Proxy>, command: ChromeCommand) -> (f32, f32) {
+		let button = app
+			.buttons()
+			.into_iter()
+			.find(|button| button.action == Command::Chrome(command))
+			.unwrap();
+		let rect = button.widget().hit_rect().unwrap();
+		(rect.x + rect.w / 2.0, rect.y + rect.h / 2.0)
+	}
+
+	#[test]
+	fn quick_access_middle_click_preserves_the_page_and_search() {
+		use crate::state::{DocumentCommand, TextField};
+		let dir = tempfile::tempdir().unwrap();
+		let root = dir.path().canonicalize().unwrap();
+		for name in ["note-a.md", "note-b.md", "note-c.md"] {
+			fs::write(root.join(name), "# Note").unwrap();
+		}
+		for (picker, page, query) in [
+			(false, 0, ""),
+			(false, 2, ""),
+			(false, 0, "note"),
+			(false, 2, "note"),
+			(true, 0, "note"),
+			(true, 1, "note"),
+			(true, 2, "note"),
+		] {
+			let (tx, events) = mpsc::channel();
+			let mut app = App::new(
+				LaunchOptions {
+					mode: Mode::Smoke,
+					options: crate::test_support::options(),
+					..Default::default()
+				},
+				Proxy(tx),
+			);
+			app.ui = crate::test_support::shaper();
+			app.folder_loaded(
+				0,
+				false,
+				super::super::folder::Tree::read(root.clone()),
+			);
+			if page > 0 {
+				app.open(root.join("note-a.md"));
+				settle(&mut app, &events, |app| {
+					app.readers.session.document.is_some()
+				});
+			}
+			if page == 2 {
+				app.action(Command::Document(DocumentCommand::NewPage));
+			}
+			let field = if picker {
+				TextField::QuickOpen
+			} else {
+				TextField::Files
+			};
+			if picker {
+				app.open_quick_open();
+				app.interaction
+					.overlays
+					.quick_open
+					.search
+					.input
+					.set_text(&mut app.ui, query);
+				app.quick_open_search_changed();
+			} else {
+				app.folder.start.input.set_text(&mut app.ui, query);
+				app.start_search_changed();
+				app.action(Command::Chrome(ChromeCommand::FocusInput(field)));
+			}
+			settle(&mut app, &events, |app| {
+				!app.folder.start.pending
+					&& !app.interaction.overlays.quick_open.search.pending
+			});
+			let active = app.readers.active();
+			let path = app.readers.session.path.clone();
+			let version = app.readers.session.version;
+			let revision = app.readers.session.content_version;
+			let document = app.readers.session.document.clone();
+			app.readers.session.scrolling.offset = 31.0;
+			let count = app.readers.entries().len();
+			for name in ["note-b.md", "note-c.md"] {
+				let search = if picker {
+					&app.interaction.overlays.quick_open.search
+				} else {
+					&app.folder.start.search
+				};
+				let id = search
+					.matches
+					.iter()
+					.find(|file| file.path == root.join(name))
+					.unwrap()
+					.id;
+				let command = if picker {
+					ChromeCommand::QuickOpenFile(id)
+				} else {
+					ChromeCommand::StartFile(id)
+				};
+				let at = file_point(&mut app, command);
+				middle_click(&mut app, at);
+				if !query.is_empty() {
+					middle_click(&mut app, at);
+				}
+			}
+			assert_eq!(app.readers.entries().len(), count + 2);
+			assert_eq!(app.readers.active(), active);
+			assert_eq!(app.readers.session.path, path);
+			assert_eq!(app.readers.session.version, version);
+			assert_eq!(app.readers.session.content_version, revision);
+			if let Some(document) = document {
+				assert!(Arc::ptr_eq(
+					&document,
+					app.readers.session.document.as_ref().unwrap()
+				));
+			}
+			assert_eq!(app.readers.session.scrolling.offset, 31.0);
+			assert_eq!(app.focused_input(), Some(field));
+			assert_eq!(app.interaction.overlays.quick_open.open(), picker);
+			let search = if picker {
+				&app.interaction.overlays.quick_open.search
+			} else {
+				&app.folder.start.search
+			};
+			assert_eq!(search.input.text(), query);
+			let index = app.readers.find(&root.join("note-b.md")).unwrap();
+			assert!(app.readers.entries()[index].session.document.is_none());
+			app.select_tab(index);
+			assert_eq!(app.readers.session.path, Some(root.join("note-b.md")));
+		}
+	}
+
+	#[test]
+	fn quick_access_middle_click_ignores_covered_pending_and_existing_rows() {
+		use crate::app::modal::{Message, Modal};
+		use crate::state::TextField;
+		let dir = tempfile::tempdir().unwrap();
+		let root = dir.path().canonicalize().unwrap();
+		fs::write(root.join("note.md"), "# Note").unwrap();
+		for picker in [false, true] {
+			let (tx, events) = mpsc::channel();
+			let mut app = App::new(
+				LaunchOptions {
+					mode: Mode::Smoke,
+					options: crate::test_support::options(),
+					..Default::default()
+				},
+				Proxy(tx),
+			);
+			app.ui = crate::test_support::shaper();
+			app.folder_loaded(
+				0,
+				false,
+				super::super::folder::Tree::read(root.clone()),
+			);
+			if picker {
+				app.readers.open(root.join("note.md"), Instant::now());
+				app.open_quick_open();
+			}
+			settle(&mut app, &events, |app| !app.folder.start.pending);
+			let id = if picker {
+				app.interaction.overlays.quick_open.search.matches[0].id
+			} else {
+				app.folder.start.matches[0].id
+			};
+			let command = if picker {
+				ChromeCommand::QuickOpenFile(id)
+			} else {
+				ChromeCommand::StartFile(id)
+			};
+			let at = file_point(&mut app, command);
+			let count = app.readers.entries().len();
+			let field = if picker {
+				TextField::QuickOpen
+			} else {
+				TextField::Files
+			};
+			let input = file_point(&mut app, ChromeCommand::FocusInput(field));
+			middle_click(&mut app, input);
+			if picker {
+				app.interaction.overlays.quick_open.search.pending = true;
+			} else {
+				app.folder.start.pending = true;
+			}
+			middle_click(&mut app, at);
+			if picker {
+				app.interaction.overlays.quick_open.search.pending = false;
+			} else {
+				app.folder.start.pending = false;
+			}
+			app.interaction.overlays.modal.send(Message::Open(
+				Modal::OpenLocal {
+					path: "other.bin".into(),
+					dir: root.clone(),
+					document_dir: None,
+				},
+			));
+			middle_click(&mut app, at);
+			app.interaction.overlays.modal.send(Message::Dismiss);
+			assert_eq!(app.readers.entries().len(), count);
+			if picker {
+				// The picker shields the tab strip, and existing rows do not activate tabs.
+				let tab = app.tab_layout().rects[0];
+				middle_click(
+					&mut app,
+					(tab.x + tab.w / 2.0, tab.y + tab.h / 2.0),
+				);
+				middle_click(&mut app, at);
+				assert_eq!(app.readers.entries().len(), count);
+				assert!(app.interaction.overlays.quick_open.open());
+				app.readers.new_page(Instant::now());
+				middle_click(&mut app, at);
+				assert_eq!(app.readers.active(), usize::MAX);
+				assert!(app.readers.session.path.is_none());
+				assert_eq!(app.readers.entries().len(), count);
+			}
 		}
 	}
 
@@ -1166,7 +1440,7 @@ mod tests {
 			.iter()
 			.find_map(|(id, index)| (*index == 1).then_some(*id))
 			.expect("the second tab needs its own row");
-		app.open_quick_open_file(untrusted);
+		app.open_quick_open_file(untrusted, TabPlacement::Foreground);
 		assert_eq!(
 			app.readers.session.security.origin,
 			Security::local(Trust::Untrusted).origin
@@ -1240,7 +1514,7 @@ mod tests {
 		app.start_search_changed();
 		settle(&mut app, &events, |app| !app.folder.start.pending);
 		let matches = app.folder.start.matches.clone();
-		app.open_start_file(matches[0].id);
+		app.open_start_file(matches[0].id, TabPlacement::Foreground);
 		app.interaction.pointer.set_modifiers(
 			if markview_platform::command_key() {
 				ModifiersState::META
