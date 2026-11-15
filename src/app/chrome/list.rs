@@ -26,6 +26,10 @@ pub(in crate::app) struct List {
 	row: f32,
 	/// How many rows the page has.
 	rows: usize,
+	/// Content height, fractional while rows slide.
+	pub(in crate::app) content_height: f32,
+	/// The trailing blank space keeps the last row at the top.
+	tail: bool,
 	/// How far the list has scrolled, already clamped.
 	pub(in crate::app) scroll: f32,
 }
@@ -45,15 +49,34 @@ impl List {
 			lead,
 			row,
 			rows,
+			content_height: lead + rows as f32 * row,
+			tail: false,
 			scroll: 0.0,
 		};
 		list.scroll = scroll.clamp(0.0, list.max_scroll());
 		list
 	}
 
-	/// How far the list scrolls before its last row reaches the clip's bottom.
+	/// Adds a blank tail after `rows`, including fractional animated rows.
+	pub(in crate::app) fn with_scroll_tail(
+		mut self,
+		rows: f32,
+		scroll: f32,
+	) -> Self {
+		self.content_height = self.lead + rows * self.row;
+		self.tail = true;
+		self.scroll = scroll.clamp(0.0, self.max_scroll());
+		self
+	}
+
+	/// How far the list scrolls, keeping its last row visible.
 	pub(in crate::app) fn max_scroll(&self) -> f32 {
-		(self.lead + self.rows as f32 * self.row - self.viewport.h).max(0.0)
+		let visible = if self.tail {
+			self.viewport.h.min(self.row)
+		} else {
+			self.viewport.h
+		};
+		(self.content_height - visible).max(0.0)
 	}
 
 	/// Whether a whole row fits. A shorter clip shows a sliver of one, which a

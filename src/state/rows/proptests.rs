@@ -26,6 +26,8 @@ proptest! {
 			}
 			for at in [now, now + DURATION / 2, now + DURATION] {
 				let rows = slide.animated(&target, at).unwrap_or_else(|| Row::sequential(&target));
+				let extent = rows.iter().map(|row| row.slot + row.band).fold(0.0, f32::max);
+				prop_assert!((slide.extent(&target, at) - extent).abs() <= 0.0001, "extent {} != {extent}, rows {rows:?}", slide.extent(&target, at));
 				let identities: BTreeSet<_> = rows.iter().map(|row| row.index).collect();
 				prop_assert_eq!(identities.len(), rows.len());
 				for row in &rows {

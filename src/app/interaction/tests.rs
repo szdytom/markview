@@ -1132,6 +1132,123 @@ fn folder_collapse_all_clears_nested_expansion_and_scroll_on_both_layouts() {
 }
 
 #[test]
+fn folder_toggles_keep_a_visible_parent_in_place() {
+	use crate::app::folder::Tree;
+	let dir = tempfile::tempdir().unwrap();
+	for i in 0..30 {
+		std::fs::create_dir(dir.path().join(format!("folder-{i:02}"))).unwrap();
+	}
+	for i in 0..3 {
+		std::fs::write(
+			dir.path().join(format!("folder-29/note-{i}.md")),
+			SOURCE,
+		)
+		.unwrap();
+	}
+	for phone in [false, true] {
+		let (mut app, _) = reader(SOURCE, 320.);
+		app.tab_strip.phone = phone;
+		let mut tree = Tree::read(dir.path().into()).unwrap();
+		let parent = tree
+			.entries
+			.iter()
+			.position(|e| e.path.ends_with("folder-29"))
+			.unwrap();
+		tree.toggle(parent);
+		app.folder.tree = Some(tree);
+		app.set_folder_open(true);
+		app.advance_drawers(Instant::now() + Duration::from_secs(1));
+		let list = app.folder.list(app.folder_rect(), Instant::now());
+		let offset = list.content_height - list.viewport.h;
+		assert!(offset > 0.);
+		app.scroll_folder(offset);
+		let parent_rect = |app: &App<StubProxy>| {
+			let now = Instant::now();
+			let list = app.folder.list(app.folder_rect(), now);
+			let row = app
+				.folder
+				.list_rows(&list, now)
+				.into_iter()
+				.find(|row| row.index == parent)
+				.unwrap();
+			list.slot_rect(row.slot)
+		};
+		let original = parent_rect(&app);
+		for elapsed in [0, 40, 0, 80, 0, 180] {
+			app.action(Command::Chrome(ChromeCommand::FolderEntry(parent)));
+			app.folder.freeze_rows(Duration::from_millis(elapsed));
+			app.advance_drawers(Instant::now());
+			assert_eq!(app.folder.scroll.offset(), offset);
+			assert_eq!(parent_rect(&app), original);
+			let button = app
+				.buttons()
+				.into_iter()
+				.find(|b| {
+					b.action
+						== Command::Chrome(ChromeCommand::FolderEntry(parent))
+				})
+				.unwrap();
+			assert_eq!(button.rect.y, original.y);
+		}
+		app.advance_drawers(Instant::now() + Duration::from_secs(1));
+		assert_eq!(parent_rect(&app), original);
+
+		app.scroll_folder(10_000.);
+		let bottom = app.folder.scroll.offset();
+		app.action(Command::Chrome(ChromeCommand::FolderCollapseAll));
+		assert!((app.folder.scroll.offset() - bottom).abs() < 1.);
+		let mut previous = bottom;
+		for elapsed in [40, 80] {
+			app.folder.freeze_rows(Duration::from_millis(elapsed));
+			app.advance_drawers(Instant::now());
+			let offset = app.folder.scroll.offset();
+			assert!(offset < previous && offset > 29. * 28.);
+			previous = offset;
+		}
+		app.advance_drawers(Instant::now() + Duration::from_secs(1));
+		assert_eq!(app.folder.scroll.offset(), 29. * 28.);
+	}
+}
+
+#[test]
+fn folder_reveal_survives_the_expanding_scroll_range() {
+	use crate::app::folder::Tree;
+	let dir = tempfile::tempdir().unwrap();
+	let root = dir.path().canonicalize().unwrap();
+	std::fs::create_dir(root.join("notes")).unwrap();
+	for i in 0..60 {
+		std::fs::write(root.join(format!("notes/note-{i:02}.md")), SOURCE)
+			.unwrap();
+	}
+	for phone in [false, true] {
+		let (mut app, _) = reader(SOURCE, 320.);
+		app.tab_strip.phone = phone;
+		app.folder.tree = Some(Tree::read(root.clone()).unwrap());
+		app.set_folder_open(true);
+		app.advance_drawers(Instant::now() + Duration::from_secs(1));
+		app.readers.session.path = Some(root.join("notes/note-59.md"));
+		app.expand_folder_to_tab();
+		assert_eq!(app.folder.tree.as_ref().unwrap().rows().len(), 61);
+		app.folder.freeze_rows(Duration::from_millis(1));
+		app.advance_drawers(Instant::now());
+		app.folder.freeze_rows(Duration::from_millis(40));
+		app.advance_drawers(Instant::now());
+		app.advance_drawers(Instant::now() + Duration::from_secs(1));
+		let tree = app.folder.tree.as_ref().unwrap();
+		let target = tree
+			.entries
+			.iter()
+			.position(|e| e.path.ends_with("note-59.md"))
+			.unwrap();
+		assert!(app.folder.scroll.offset() > 0.);
+		assert!(
+			app.buttons().iter().any(|b| b.action
+				== Command::Chrome(ChromeCommand::FolderEntry(target)))
+		);
+	}
+}
+
+#[test]
 fn phone_sidebar_shares_one_shell_and_keeps_each_list_and_selected_page() {
 	use crate::{
 		app::folder::Tree,

@@ -127,8 +127,9 @@ pub(in crate::app) fn list(drawer: Rect, rows: usize, scroll: f32) -> List {
 		0.,
 		28.,
 		rows,
-		scroll,
+		0.,
 	)
+	.with_scroll_tail(rows as f32, scroll)
 }
 
 pub(in crate::app) fn animated_rect(mut drawer: Rect, reveal: f32) -> Rect {
@@ -142,15 +143,16 @@ pub(in crate::app) fn scrollbar(
 	ui: &TextShaper,
 ) -> Option<Scrollbar> {
 	let metrics = ui.stylesheet.scrollbar_metrics();
-	Scrollbar::vertical(
+	Scrollbar::document(
 		Rect {
 			x: list.panel.x + list.panel.w - metrics.thickness,
 			w: metrics.thickness,
 			..list.viewport
 		},
 		list.scroll,
-		list.viewport.h + list.max_scroll(),
+		list.content_height,
 		list.viewport.h,
+		list.max_scroll(),
 		metrics,
 	)
 }
@@ -244,7 +246,7 @@ pub(super) fn buttons(
 		b.clip = Some(drawer);
 		buttons.push(b);
 	}
-	let list = list(drawer, tree.rows().len(), browser.scroll.offset());
+	let list = browser.list(drawer, now);
 	let row_buttons = browser
 		.list_rows(&list, now)
 		.into_iter()
@@ -337,7 +339,7 @@ pub(super) fn draw(
 	}) {
 		out.extend(components::draw_button(ui, interaction, &b, true));
 	}
-	let list = list(drawer, tree.rows().len(), browser.scroll.offset());
+	let list = browser.list(drawer, now);
 	let mut body = Vec::new();
 	if tree.entries.is_empty() || tree.error.is_some() {
 		body.extend(components::label(
@@ -580,6 +582,71 @@ mod tests {
 			std::fs::read(fixtures.join("NotoSans-Regular-subset.otf"))
 				.unwrap();
 		assert!(render_font(&mut ui).as_ref() == expected);
+	}
+
+	#[test]
+	fn the_scrollbar_drags_through_the_blank_tail() {
+		let ui = crate::test_support::shaper();
+		let drawer = rect(1200., 400., 40., 24., 260.);
+		let top = list(drawer, 30, 0.);
+		let bottom = list(drawer, 30, f32::MAX);
+		let top_bar = scrollbar(&top, &ui).unwrap();
+		let bar = scrollbar(&bottom, &ui).unwrap();
+		assert_eq!(bar.max_scroll(), bottom.max_scroll());
+		assert!(bar.thumb.h < top_bar.thumb.h);
+		assert!(
+			(bar.thumb.y + bar.thumb.h - bar.track.y - bar.track.h).abs()
+				< 0.001
+		);
+		let grab = bar.grab(bar.thumb.x, bar.thumb.y + bar.thumb.h / 2.);
+		for offset in [0., 123., bottom.max_scroll()] {
+			let list = list(drawer, 30, offset);
+			let bar = scrollbar(&list, &ui).unwrap();
+			let offset = bar.scroll_for(bar.thumb.x, bar.thumb.y + grab, grab);
+			assert!((offset - list.scroll).abs() < 0.001);
+		}
+	}
+
+	proptest::proptest! {
+		#[test]
+		fn collapsing_children_keeps_the_visible_parent_in_place(
+			parents in 1usize..100,
+			children in 1usize..100,
+			height in 39u32..2000,
+		) {
+			let drawer = Rect { x: 0., y: 0., w: 260., h: height as f32 };
+			let before: Vec<_> = (0..parents + children).collect();
+			let after = &before[..parents];
+			let start = std::time::Instant::now();
+			let mut slide = crate::state::RowSlide::default();
+			slide.retarget(&before, after, start);
+			let initial = list(drawer, before.len(), 0.);
+			let scroll = ((parents - 1) as f32 * 28. - initial.viewport.h / 2.).max(0.);
+			let original = list(drawer, before.len(), scroll).row_rect(parents - 1);
+			for elapsed in [0, 40, 80, 180] {
+				let now = start + std::time::Duration::from_millis(elapsed);
+				let list = list(drawer, after.len(), 0.).with_scroll_tail(slide.extent(after, now), scroll);
+				proptest::prop_assert_eq!(list.scroll, scroll);
+				proptest::prop_assert_eq!(list.row_rect(parents - 1), original);
+			}
+		}
+
+		#[test]
+		fn the_last_file_row_can_reach_the_top(
+			rows in 0usize..2000,
+			height in 39u32..2000,
+		) {
+			let list = list(Rect { x: 0., y: 0., w: 260., h: height as f32 }, rows, f32::MAX);
+			if rows == 0 {
+				proptest::prop_assert_eq!(list.max_scroll(), 0.);
+				proptest::prop_assert!(list.visible().is_empty());
+			} else {
+				let last = list.row_rect(rows - 1);
+				proptest::prop_assert_eq!(last.y + last.h, list.viewport.y + list.viewport.h.min(last.h));
+				proptest::prop_assert!(last.intersect(list.viewport).is_some());
+				proptest::prop_assert!(list.visible().contains(&(rows - 1)));
+			}
+		}
 	}
 
 	#[test]

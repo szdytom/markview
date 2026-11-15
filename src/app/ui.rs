@@ -334,11 +334,7 @@ impl<P: super::SendEvent> App<P> {
 	fn panel_list(&self) -> Option<chrome::list::List> {
 		let (width, height, _) = self.dimensions();
 		if self.phone_folder_open() {
-			Some(chrome::folder::list(
-				self.folder_rect(),
-				self.folder.tree.as_ref().map_or(0, |t| t.rows().len()),
-				self.folder.scroll.offset(),
-			))
+			Some(self.folder.list(self.folder_rect(), self.frame_now()))
 		} else if self.interaction.panel == crate::state::PanelPage::Tabs {
 			let mut list = chrome::tab_drawer::list(
 				width,
@@ -431,6 +427,7 @@ impl<P: super::SendEvent> App<P> {
 		self.tab_strip.advance_animation(now);
 		self.interaction.overlays.outline.advance_animation(now);
 		self.folder.advance_animation(now);
+		self.folder.fit_scroll(self.folder_rect(), now);
 		self.tab_strip.animating()
 			|| self.interaction.overlays.outline.animating()
 			|| self.folder.animating()

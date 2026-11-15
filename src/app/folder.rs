@@ -555,6 +555,29 @@ impl Browser {
 			.reset(self.tree.as_ref().map_or(&[], |tree| tree.rows()));
 	}
 
+	/// Shared animated geometry for painting, hit testing and scrolling.
+	pub(super) fn list(
+		&self,
+		drawer: crate::layout::Rect,
+		now: Instant,
+	) -> super::chrome::list::List {
+		let rows = self.tree.as_ref().map_or(&[][..], |tree| tree.rows());
+		super::chrome::folder::list(drawer, rows.len(), 0.)
+			.with_scroll_tail(self.rows.extent(rows, now), self.scroll.offset())
+	}
+
+	/// Retains a requested file position while expanding rows approach it.
+	pub(super) fn fit_scroll(
+		&mut self,
+		drawer: crate::layout::Rect,
+		now: Instant,
+	) {
+		self.scroll.fit(markview_interaction::ScrollBounds {
+			max: self.list(drawer, now).max_scroll(),
+			complete: !self.rows.animating(),
+		});
+	}
+
 	/// The rows the list paints: the visible slice at rest, or every moving row.
 	pub(super) fn list_rows(
 		&self,
@@ -725,7 +748,7 @@ impl<P: SendEvent> App<P> {
 			self.folder.scroll.offset(),
 		);
 		let top = row as f32 * 28.;
-		self.folder.scroll.set_max(list.max_scroll());
+		self.folder.fit_scroll(self.folder_rect(), self.frame_now());
 		self.folder.scroll.set(
 			list.scroll
 				.min(top)
@@ -1228,13 +1251,9 @@ impl<P: SendEvent> App<P> {
 		{
 			return None;
 		}
-		let rows = self.folder.tree.as_ref()?.rows().len();
+		self.folder.tree.as_ref()?;
 		super::chrome::folder::scrollbar(
-			&super::chrome::folder::list(
-				self.folder_rect(),
-				rows,
-				self.folder.scroll.offset(),
-			),
+			&self.folder.list(self.folder_rect(), self.frame_now()),
 			&self.ui,
 		)
 	}
@@ -1256,17 +1275,10 @@ impl<P: SendEvent> App<P> {
 		}
 		// The thumb follows the pointer now, not the ease it interrupted.
 		self.folder.scroll.cancel();
-		let rows = self
+		let max = self
 			.folder
-			.tree
-			.as_ref()
-			.map_or(0, |tree| tree.rows().len());
-		let max = super::chrome::folder::list(
-			self.folder_rect(),
-			rows,
-			self.folder.scroll.offset(),
-		)
-		.max_scroll();
+			.list(self.folder_rect(), self.frame_now())
+			.max_scroll();
 		self.folder.scroll.set_max(max);
 		let grab = if bar.on_thumb(x, y) {
 			bar.grab(x, y)
@@ -1291,12 +1303,7 @@ impl<P: SendEvent> App<P> {
 
 	pub(super) fn scroll_folder(&mut self, delta: f32) {
 		self.folder.show_scrollbar(Instant::now());
-		let count = self.folder.tree.as_ref().map_or(0, |t| t.rows().len());
-		let list = super::chrome::folder::list(
-			self.folder_rect(),
-			count,
-			self.folder.scroll.offset(),
-		);
+		let list = self.folder.list(self.folder_rect(), self.frame_now());
 		self.folder.scroll.set_max(list.max_scroll());
 		self.folder
 			.scroll
@@ -1309,12 +1316,7 @@ impl<P: SendEvent> App<P> {
 	pub(super) fn wheel_folder(&mut self, delta: f32) {
 		let now = Instant::now();
 		self.folder.show_scrollbar(now);
-		let count = self.folder.tree.as_ref().map_or(0, |t| t.rows().len());
-		let list = super::chrome::folder::list(
-			self.folder_rect(),
-			count,
-			self.folder.scroll.offset(),
-		);
+		let list = self.folder.list(self.folder_rect(), self.frame_now());
 		self.folder.scroll.set_max(list.max_scroll());
 		self.folder.scroll.wheel(
 			delta,

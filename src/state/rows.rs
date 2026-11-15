@@ -86,6 +86,29 @@ impl RowSlide {
 		self.tween.is_some()
 	}
 
+	/// The bottom of the moving rows, measured in row heights.
+	pub(crate) fn extent(&self, current: &[usize], now: Instant) -> f32 {
+		let Some(tween) = self
+			.tween
+			.as_ref()
+			.filter(|tween| self.target == current && !tween.is_finished(now))
+		else {
+			return current.len() as f32;
+		};
+		let t = tween.progress(now);
+		self.shifts
+			.iter()
+			.map(|shift| {
+				let slot = shift.from + (shift.to - shift.from) * t;
+				let end = shift.from_end + (shift.to_end - shift.from_end) * t;
+				(slot, end)
+			})
+			.max_by(|a, b| {
+				a.0.total_cmp(&b.0).then_with(|| a.1.total_cmp(&b.1))
+			})
+			.map_or(0.0, |(slot, end)| end.clamp(slot, slot + 1.0))
+	}
+
 	pub(crate) fn advance(&mut self, now: Instant) {
 		if self
 			.tween
