@@ -28,8 +28,9 @@ cargo test --workspace --all-targets --locked
 cargo run -p xtask --locked -- complexity
 ```
 
-`check_local.py` requires `actionlint`; it runs repository checks, formatting and,
-with `--compile`, Cargo check and Clippy. `--list` lists the selected checks.
+`check_local.py` requires `actionlint`; it runs repository checks and formatting
+for both the root and standalone fuzz workspaces. With `--compile`, it also runs
+Cargo check and Clippy for both workspaces. `--list` lists the selected checks.
 Use `--icons` for icon assets, `--dist` for cargo-dist configuration and `--full`
 for workspace/PDF tests. See [testing](testing.md) for GPU setup and specialized
 suites. A missing GPU adapter is a test setup failure, not a skipped test.

@@ -404,6 +404,10 @@ toolchain for the whole tree. The `check` job runs that command with
 `-- --check`, and Clippy over the harness with warnings denied, before the
 shards start.
 
+From the repository root, `python3 scripts/check_local.py` includes the fuzz
+format and lockfile checks; add `--compile` for Cargo check and Clippy over all
+fuzz workspace targets on stable.
+
 Seeds (C1–C4): `fuzz/scripts/prepare_seeds.sh` shallow-clones the CommonMark
 and GFM repositories and KaTeX, takes the spec/test files, and extracts the
 CommonMark spec examples (652), the GFM spec examples (648 of 672; the missing

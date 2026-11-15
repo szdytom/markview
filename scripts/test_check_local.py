@@ -1,5 +1,6 @@
 """Exercise local checks with real commands and temporary Git repositories."""
 
+from argparse import Namespace
 from contextlib import redirect_stderr, redirect_stdout
 from dataclasses import replace
 import io
@@ -12,6 +13,104 @@ import unittest
 from unittest.mock import patch
 
 import check_local
+
+
+class FuzzCheckTest(unittest.TestCase):
+    def setUp(self):
+        temporary = TemporaryDirectory()
+        self.addCleanup(temporary.cleanup)
+        self.root = Path(temporary.name)
+        files = {
+            "Cargo.toml": (
+                '[package]\nname = "app"\nversion = "0.0.0"\nedition = "2024"\n'
+                '[workspace]\nmembers = ["shared"]\nexclude = ["fuzz"]\n'
+            ),
+            "src/lib.rs": "pub fn app( ) {}\n",
+            "shared/Cargo.toml": (
+                '[package]\nname = "shared"\nversion = "0.0.0"\nedition = "2024"\n'
+            ),
+            "shared/src/lib.rs": "pub fn shared( ) {}\n",
+            "fuzz/Cargo.toml": (
+                '[package]\nname = "markview-fuzz"\nversion = "0.0.0"\nedition = "2024"\n'
+                '[workspace]\nmembers = ["fuzzlib"]\n'
+                '[dependencies]\nshared = { path = "../shared" }\n'
+                '[[bin]]\nname = "harness"\npath = "src/main.rs"\ntest = false\n'
+            ),
+            "fuzz/src/main.rs": "fn main() {}\n",
+            "fuzz/fuzzlib/Cargo.toml": (
+                '[package]\nname = "mvfuzz"\nversion = "0.0.0"\nedition = "2024"\n'
+            ),
+            "fuzz/fuzzlib/src/lib.rs": "pub fn oracle() {}\n",
+            "fuzz/fuzzlib/tests/oracle.rs": "#[test]\nfn oracle() {}\n",
+        }
+        for name, content in files.items():
+            path = self.root / name
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text(content, encoding="utf-8")
+        subprocess.run(
+            ("cargo", "generate-lockfile", "--offline", "--manifest-path", "fuzz/Cargo.toml"),
+            cwd=self.root,
+            check=True,
+            capture_output=True,
+        )
+
+    def run_check(self, name, *args):
+        options = Namespace(
+            all=False,
+            icons=False,
+            compile="--compile" in args,
+            dist=False,
+            shell=False,
+            full=False,
+        )
+        check = next(
+            check for check in check_local.selected_checks(options) if check.name == name
+        )
+        output = io.StringIO()
+        with (
+            patch.object(check_local, "ROOT", self.root),
+            redirect_stdout(output),
+            redirect_stderr(output),
+        ):
+            ok, _ = check_local.run(check, verbose=False)
+        return ok, output.getvalue()
+
+    def test_default_format_checks_both_fuzz_packages_without_formatting_path_dependencies(self):
+        ok, output = self.run_check("fuzz format")
+        self.assertTrue(ok, output)
+        for name in ("fuzz/src/main.rs", "fuzz/fuzzlib/src/lib.rs"):
+            with self.subTest(file=name):
+                path = self.root / name
+                original = path.read_text(encoding="utf-8")
+                path.write_text(original.replace("()", "( )"), encoding="utf-8")
+                ok, output = self.run_check("fuzz format")
+                self.assertFalse(ok, output)
+                self.assertIn(str(path), output)
+                self.assertIn("( )", path.read_text(encoding="utf-8"))
+                path.write_text(original, encoding="utf-8")
+
+    def test_compile_checks_reject_harness_and_oracle_errors(self):
+        for check, body, diagnostic in (
+            ("fuzz cargo check", "missing();", "cannot find function"),
+            ("fuzz clippy", "let _ = 1_i32.clone();", "clone_on_copy"),
+        ):
+            ok, output = self.run_check(check, "--compile")
+            self.assertTrue(ok, output)
+            for name in (
+                "fuzz/src/main.rs",
+                "fuzz/fuzzlib/src/lib.rs",
+                "fuzz/fuzzlib/tests/oracle.rs",
+            ):
+                with self.subTest(check=check, file=name):
+                    path = self.root / name
+                    original = path.read_text(encoding="utf-8")
+                    path.write_text(
+                        original.replace("{}", "{ " + body + " }"), encoding="utf-8"
+                    )
+                    ok, output = self.run_check(check, "--compile")
+                    self.assertFalse(ok, output)
+                    self.assertIn(diagnostic, output)
+                    path.write_text(original, encoding="utf-8")
 
 
 class WorkflowLintTest(unittest.TestCase):
