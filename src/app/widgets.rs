@@ -152,7 +152,7 @@ mod tests {
 	use super::*;
 	use crate::{
 		app::font_panel,
-		settings::{ExportFormat, FontRole, Sidebar, WindowLayout},
+		settings::{ExportFormat, FontRole, Sidebar, WindowBorder},
 		state::{
 			DropdownId, ExportCommand, PanelTab, SearchCommand,
 			SettingsCommand, SidebarTab, TextField,
@@ -172,8 +172,8 @@ mod tests {
 			Command::Search(SearchCommand::SearchNext),
 			Command::Search(SearchCommand::SearchClose),
 			Command::Chrome(ChromeCommand::FocusInput(TextField::Search)),
-			Command::Settings(SettingsCommand::WindowLayout(
-				WindowLayout::System,
+			Command::Settings(SettingsCommand::WindowBorder(
+				WindowBorder::System,
 			)),
 			Command::Document(DocumentCommand::OpenUrl),
 			Command::Document(DocumentCommand::NewPage),

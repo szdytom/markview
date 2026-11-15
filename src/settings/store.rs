@@ -4,7 +4,7 @@ mod proptests;
 
 use super::{
 	ExportSettings, FontDefOverride, MarkdownFlavor, ReaderSettings, Setting,
-	WindowLayout,
+	WindowBorder,
 };
 use crate::lang::Lang;
 use crate::render::Theme;
@@ -73,8 +73,8 @@ impl SettingsWarning {
 #[serde(default)]
 pub(super) struct Config {
 	pub(super) version: u32,
-	#[serde(rename = "window-layout")]
-	pub(super) window_layout: WindowLayout,
+	#[serde(rename = "window-border", alias = "window-layout")]
+	pub(super) window_border: WindowBorder,
 	/// Absent means "follow the system theme"; only a user choice is stored.
 	#[serde(skip_serializing_if = "Option::is_none")]
 	pub(super) style: Option<Vec<String>>,
@@ -406,6 +406,13 @@ impl SettingsStore {
 			.and_then(|b| std::str::from_utf8(b).ok())
 			.and_then(|s| s.parse::<toml_edit::DocumentMut>().ok())
 			.unwrap_or_default();
+		if let Some((old_key, value)) =
+			document.as_table_mut().remove_entry("window-layout")
+		{
+			let mut key = toml_edit::Key::new("window-border");
+			*key.leaf_decor_mut() = old_key.leaf_decor().clone();
+			document.as_table_mut().insert_formatted(&key, value);
+		}
 		for (key, value) in values.iter() {
 			let mut value = value.clone();
 			if let (Some(old), Some(new)) = (

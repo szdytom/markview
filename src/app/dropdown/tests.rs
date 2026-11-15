@@ -242,47 +242,47 @@ fn an_open_option_is_a_button_the_pointer_can_hit() {
 }
 
 #[test]
-fn window_layout_commits_from_keyboard_and_pointer_for_next_launch() {
-	use crate::settings::WindowLayout;
+fn window_border_commits_from_keyboard_and_pointer_for_next_launch() {
+	use crate::settings::WindowBorder;
 	let mut app = app_with_panel();
-	let initial = app.frame.layout;
+	let initial = app.frame.border;
 	app.readers.session.path = Some("/tmp/layout.md".into());
 	app.action(Command::Chrome(ChromeCommand::ToggleDropdown(
-		DropdownId::WindowLayout,
+		DropdownId::WindowBorder,
 		0,
 	)));
 	app.key_pressed(&Key::Named(NamedKey::ArrowDown));
 	assert_eq!(
 		highlighted(&mut app),
-		Command::Settings(SettingsCommand::WindowLayout(WindowLayout::Macos))
+		Command::Settings(SettingsCommand::WindowBorder(WindowBorder::Macos))
 	);
 	app.key_pressed(&Key::Named(NamedKey::Enter));
-	assert_eq!(app.preferences.values.window_layout, WindowLayout::Macos);
-	assert_eq!(app.frame.layout, initial);
+	assert_eq!(app.preferences.values.window_border, WindowBorder::Macos);
+	assert_eq!(app.frame.border, initial);
 	assert!(app.readers.session.requested_options.is_none());
 	assert!(!app.interaction.overlays.dropdown.is_open());
 	assert_eq!(
 		app.interaction.widgets.focus,
 		Some(
 			Command::Chrome(ChromeCommand::ToggleDropdown(
-				DropdownId::WindowLayout,
+				DropdownId::WindowBorder,
 				1
 			))
 			.widget_id()
 		)
 	);
 	app.action(Command::Chrome(ChromeCommand::ToggleDropdown(
-		DropdownId::WindowLayout,
+		DropdownId::WindowBorder,
 		1,
 	)));
 	let at = option_centre(
 		&mut app,
-		Command::Settings(SettingsCommand::WindowLayout(WindowLayout::Breeze)),
+		Command::Settings(SettingsCommand::WindowBorder(WindowBorder::Breeze)),
 	);
 	click(&mut app, at.0, at.1);
-	assert_eq!(app.preferences.values.window_layout, WindowLayout::Breeze);
+	assert_eq!(app.preferences.values.window_border, WindowBorder::Breeze);
 	assert!(!app.interaction.overlays.dropdown.is_open());
-	assert_eq!(app.frame.layout, initial);
+	assert_eq!(app.frame.border, initial);
 }
 
 #[test]

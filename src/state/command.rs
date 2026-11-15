@@ -43,7 +43,7 @@ pub(crate) enum DocumentCommand {
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum SettingsCommand {
 	RetrySettingsLoad,
-	WindowLayout(crate::settings::WindowLayout),
+	WindowBorder(crate::settings::WindowBorder),
 	Smaller,
 	Larger,
 	Narrower,
@@ -295,11 +295,11 @@ mod tests {
 		);
 		assert_eq!(
 			Command::Chrome(ChromeCommand::ToggleDropdown(
-				DropdownId::WindowLayout,
+				DropdownId::WindowBorder,
 				2
 			))
 			.debug_name(),
-			"ToggleDropdown(WindowLayout, 2)"
+			"ToggleDropdown(WindowBorder, 2)"
 		);
 		assert_eq!(
 			Command::Search(SearchCommand::SearchNext).debug_name(),
@@ -317,7 +317,7 @@ mod tests {
 			Command::Fonts(font_panel::Command::OpenFolder).debug_name(),
 			"Fonts(OpenFolder)"
 		);
-		let id = DropdownId::WindowLayout;
+		let id = DropdownId::WindowBorder;
 		assert_eq!(
 			Command::Chrome(ChromeCommand::ToggleDropdown(id, 2)).debug_name(),
 			format!("ToggleDropdown({id:?}, 2)")

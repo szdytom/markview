@@ -23,7 +23,7 @@ impl<P: super::SendEvent> ApplicationHandler for App<P> {
 		let result = (|| -> Result<()> {
 			let window = self.create_window(event_loop)?;
 			let proxy = self.proxy.clone();
-			let style = self.frame.layout;
+			let style = self.frame.border;
 			let tab_end = self.native_tab_end.clone();
 			let scrollbar = self.native_scrollbar.clone();
 			self.native_frame = markview_platform::NativeFrame::new(
@@ -163,7 +163,7 @@ impl<P: super::SendEvent> App<P> {
 			.with_min_surface_size(LogicalSize::new(536, 300));
 		attributes = markview_platform::window_attributes(
 			attributes,
-			self.frame.layout == crate::settings::WindowLayout::Macos,
+			self.frame.border == crate::settings::WindowBorder::Macos,
 		);
 		Ok(Arc::from(event_loop.create_window(attributes)?))
 	}

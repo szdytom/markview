@@ -282,7 +282,7 @@ panel_refreshing = "重新整理中…"
 panel_load_failed = "載入失敗：{error}"
 panel_retry = "重試"
 
-settings_window_layout = "視窗配置"
+settings_window_border = "視窗邊框"
 
 settings_restore_session = "保留上次瀏覽狀態"
 

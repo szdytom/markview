@@ -1708,7 +1708,7 @@ fn folder_links_prefer_existing_document_relative_paths() {
 
 #[test]
 fn desktop_folder_toggle_is_hidden_before_loading_a_tree() {
-	use crate::{settings::WindowLayout, state::Command};
+	use crate::{settings::WindowBorder, state::Command};
 	let mut h = Harness::new();
 	h.app.tab_strip.phone = false;
 	for reading in [false, true] {
@@ -1716,11 +1716,11 @@ fn desktop_folder_toggle_is_hidden_before_loading_a_tree() {
 			h.open("README.md", 2);
 		}
 		for style in [
-			WindowLayout::Breeze,
-			WindowLayout::Windows,
-			WindowLayout::Macos,
+			WindowBorder::Breeze,
+			WindowBorder::Windows,
+			WindowBorder::Macos,
 		] {
-			h.app.frame.layout = style;
+			h.app.frame.border = style;
 			let buttons = h.app.buttons();
 			assert!(
 				!buttons

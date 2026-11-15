@@ -1,6 +1,6 @@
 //! Shared window-chrome geometry and client-side gestures.
 use super::{App, TOP};
-use crate::{layout::Rect, settings::WindowLayout};
+use crate::{layout::Rect, settings::WindowBorder};
 use markview_interaction::Selection;
 use markview_platform::event::{ElementState, MouseButton, WindowEvent};
 use std::time::{Duration, Instant};
@@ -22,21 +22,21 @@ pub(crate) enum Caption {
 }
 
 pub(super) struct State {
-	pub layout: WindowLayout,
+	pub border: WindowBorder,
 	pub focused: bool,
 	pub hover: Option<Caption>,
 	pub pressed: Option<Caption>,
 	pub last_click: Option<(Instant, (f32, f32))>,
 }
 impl State {
-	pub fn new(layout: WindowLayout) -> Self {
-		let layout = if markview_platform::touch_layout() {
-			WindowLayout::System
+	pub fn new(border: WindowBorder) -> Self {
+		let border = if markview_platform::touch_layout() {
+			WindowBorder::System
 		} else {
-			layout
+			border
 		};
 		Self {
-			layout: layout.resolved(),
+			border: border.resolved(),
 			focused: true,
 			hover: None,
 			pressed: None,
@@ -47,7 +47,7 @@ impl State {
 
 #[derive(Clone, Copy, Debug)]
 pub(crate) struct Layout {
-	pub style: WindowLayout,
+	pub style: WindowBorder,
 	pub native_buttons: bool,
 	pub fullscreen: bool,
 	pub maximized: bool,
@@ -69,7 +69,7 @@ pub(crate) struct Layout {
 }
 impl Layout {
 	pub fn new(
-		style: WindowLayout,
+		style: WindowBorder,
 		native_buttons: bool,
 		width: f32,
 		height: f32,
@@ -77,19 +77,19 @@ impl Layout {
 		maximized: bool,
 	) -> Self {
 		let style = style.resolved();
-		let left = if style == WindowLayout::Macos
+		let left = if style == WindowBorder::Macos
 			&& (!fullscreen || native_buttons)
 		{
 			86.0
 		} else {
 			10.0
 		};
-		let right = if style != WindowLayout::Macos && !fullscreen {
+		let right = if style != WindowBorder::Macos && !fullscreen {
 			width - RIGHT_INSET - CAPTION_WIDTH - CONTROL_GAP
 		} else {
 			width - 16.0
 		};
-		let toolbar_button_size = if style == WindowLayout::Macos {
+		let toolbar_button_size = if style == WindowBorder::Macos {
 			28.0
 		} else {
 			CONTROL_SIZE
@@ -101,7 +101,7 @@ impl Layout {
 			right - (count * toolbar_button_size + (count - 1.0) * CONTROL_GAP);
 		let drag_width = if markview_platform::touch_layout() {
 			0.0
-		} else if style == WindowLayout::Macos {
+		} else if style == WindowBorder::Macos {
 			48.0
 		} else {
 			40.0
@@ -158,7 +158,7 @@ impl Layout {
 		let right = left + self.tabs.w;
 		self.left_inset = width * reveal;
 		let mut x = left + (width - 36. - left) * reveal;
-		if self.style != WindowLayout::Macos && !self.fullscreen {
+		if self.style != WindowBorder::Macos && !self.fullscreen {
 			x = x.min(self.captions()[0].1.x - CONTROL_GAP - 28.);
 		}
 		self.sidebar_toggle = Some(Rect {
@@ -173,7 +173,7 @@ impl Layout {
 	}
 	pub fn captions(self) -> [(Caption, Rect); 3] {
 		let (order, start, width, gap, height) =
-			if self.style == WindowLayout::Macos {
+			if self.style == WindowBorder::Macos {
 				(
 					[Caption::Close, Caption::Minimize, Caption::Expand],
 					8.0,
@@ -296,9 +296,9 @@ impl<P: super::SendEvent> App<P> {
 				.is_some_and(|w| w.fullscreen().is_some());
 		let maximized = self.window.as_ref().is_some_and(|w| w.is_maximized());
 		let mut layout = Layout::new(
-			self.frame.layout,
+			self.frame.border,
 			markview_platform::native_buttons()
-				&& self.frame.layout == WindowLayout::Macos,
+				&& self.frame.border == WindowBorder::Macos,
 			width,
 			height,
 			fullscreen,
@@ -493,7 +493,7 @@ impl<P: super::SendEvent> App<P> {
 
 /// Translate the reader's actual chrome geometry at the native callback boundary.
 pub(super) fn native_hit_test(
-	style: WindowLayout,
+	style: WindowBorder,
 	tabs: Option<(f32, f32)>,
 	scrollbar: Option<Rect>,
 	metrics: markview_platform::FrameMetrics,
@@ -529,7 +529,7 @@ mod tests {
 	use super::*;
 	#[test]
 	fn wide_sidebar_toggle_reserves_caption_space_throughout_its_animation() {
-		for style in [WindowLayout::Windows, WindowLayout::Breeze] {
+		for style in [WindowBorder::Windows, WindowBorder::Breeze] {
 			for window_width in [536., 600., 759.] {
 				let width = super::super::chrome::folder::rect(
 					window_width,
@@ -563,9 +563,9 @@ mod tests {
 	#[test]
 	fn sidebar_toggle_and_tabs_share_continuous_motion_on_every_frame_style() {
 		for style in [
-			WindowLayout::Macos,
-			WindowLayout::Windows,
-			WindowLayout::Breeze,
+			WindowBorder::Macos,
+			WindowBorder::Windows,
+			WindowBorder::Breeze,
 		] {
 			for fullscreen in [false, true] {
 				let base =
@@ -605,9 +605,9 @@ mod tests {
 	fn file_column_keeps_tabs_controls_and_native_caption_hits_on_the_right() {
 		use markview_platform::{FrameMetrics, HitTest};
 		for style in [
-			WindowLayout::Macos,
-			WindowLayout::Windows,
-			WindowLayout::Breeze,
+			WindowBorder::Macos,
+			WindowBorder::Windows,
+			WindowBorder::Breeze,
 		] {
 			for inset in [260., 400., 600.] {
 				let layout =
@@ -654,9 +654,9 @@ mod tests {
 	fn native_callback_matches_caption_drag_and_resize_geometry() {
 		use markview_platform::{FrameMetrics, HitTest};
 		for style in [
-			WindowLayout::Windows,
-			WindowLayout::Macos,
-			WindowLayout::Breeze,
+			WindowBorder::Windows,
+			WindowBorder::Macos,
+			WindowBorder::Breeze,
 		] {
 			for scale in [1.0, 1.5, 2.0] {
 				let metrics = FrameMetrics {
@@ -765,9 +765,9 @@ mod tests {
 	#[test]
 	fn caption_buttons_use_a_hand_and_dragging_keeps_the_default_cursor() {
 		for style in [
-			WindowLayout::Macos,
-			WindowLayout::Windows,
-			WindowLayout::Breeze,
+			WindowBorder::Macos,
+			WindowBorder::Windows,
+			WindowBorder::Breeze,
 		] {
 			let layout = Layout::new(style, false, 800.0, 500.0, false, false);
 			for (_, rect) in layout.captions() {
@@ -788,9 +788,9 @@ mod tests {
 	#[test]
 	fn unused_tab_strip_is_draggable_without_stealing_tabs_or_controls() {
 		for style in [
-			WindowLayout::Macos,
-			WindowLayout::Windows,
-			WindowLayout::Breeze,
+			WindowBorder::Macos,
+			WindowBorder::Windows,
+			WindowBorder::Breeze,
 		] {
 			for width in [536.0, 800.0, 1200.0] {
 				let base =
@@ -864,9 +864,9 @@ mod tests {
 	#[test]
 	fn chrome_keeps_controls_and_dragging_outside_overflowing_tabs() {
 		for style in [
-			WindowLayout::Macos,
-			WindowLayout::Windows,
-			WindowLayout::Breeze,
+			WindowBorder::Macos,
+			WindowBorder::Windows,
+			WindowBorder::Breeze,
 		] {
 			for native in [false, true] {
 				for width in [536.0, 800.0, 1200.0] {
@@ -889,9 +889,9 @@ mod tests {
 	#[test]
 	fn fullscreen_hides_captions_and_maximization_disables_resize_edges() {
 		for style in [
-			WindowLayout::Macos,
-			WindowLayout::Windows,
-			WindowLayout::Breeze,
+			WindowBorder::Macos,
+			WindowBorder::Windows,
+			WindowBorder::Breeze,
 		] {
 			let normal = Layout::new(style, false, 500.0, 300.0, false, false);
 			assert_eq!(

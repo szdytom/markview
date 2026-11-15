@@ -6,7 +6,7 @@ use crate::{
 	render::Theme,
 	settings::{
 		ExportSettings, ReaderSettings, Setting, SettingsStore,
-		SettingsWarning, WindowLayout,
+		SettingsWarning, WindowBorder,
 	},
 };
 use std::{
@@ -53,7 +53,7 @@ pub(super) struct Preferences {
 	pub(super) style_warning: Option<StyleWarning>,
 	pub(super) settings_warning: Option<SettingsWarning>,
 	save_at: Option<Instant>,
-	launch_window_layout: WindowLayout,
+	launch_window_border: WindowBorder,
 }
 impl std::ops::Deref for Preferences {
 	type Target = super::ui_model::Model;
@@ -87,7 +87,7 @@ impl Preferences {
 			settings.codeblock_wrap = true;
 		}
 		let explicit = ReaderSettings {
-			window_layout: settings.window_layout,
+			window_border: settings.window_border,
 			fontdef_overrides: settings.fontdef_overrides.clone(),
 			style: args.style.clone().or_else(|| {
 				args.theme.map(|t| {
@@ -166,7 +166,7 @@ impl Preferences {
 		);
 		let export = settings_store.export();
 		Self {
-			launch_window_layout: settings.window_layout,
+			launch_window_border: settings.window_border,
 			ui: markview_ui_core::Runtime::new(super::ui_model::Model {
 				settings: super::settings_panel::Model::new(settings),
 				export,
@@ -250,7 +250,7 @@ impl Preferences {
 	}
 
 	pub(super) fn restart_pending(&self) -> bool {
-		self.ui.component.values.window_layout != self.launch_window_layout
+		self.ui.component.values.window_border != self.launch_window_border
 	}
 	pub(super) fn path(&self) -> Option<&Path> {
 		self.store.path()

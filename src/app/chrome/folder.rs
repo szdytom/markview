@@ -525,7 +525,7 @@ mod tests {
 	}
 	use crate::{
 		app::{folder::Tree, frame::Layout},
-		settings::WindowLayout,
+		settings::WindowBorder,
 	};
 
 	#[test]
@@ -702,7 +702,7 @@ mod tests {
 				);
 				if reveal == 1. {
 					let frame = Layout::new(
-						WindowLayout::Macos,
+						WindowBorder::Macos,
 						false,
 						1200.,
 						800.,

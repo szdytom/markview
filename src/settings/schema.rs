@@ -144,7 +144,7 @@ macro_rules! settings_schema {
 
 settings_schema! {
 	settings {
-		WindowLayout => window_layout : window_layout, copy;
+		WindowBorder => window_border : window_border, copy;
 		Theme => theme : theme, copy, special: copy_theme;
 		FontSize => font_size : font_size, copy;
 		Width => width : width, copy;

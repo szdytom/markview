@@ -524,7 +524,7 @@ fn tab_layout_preserves_widths_scroll_and_hit_targets() {
 		active_tab: 1,
 		cursor: (0.0, 0.0),
 		viewport: crate::app::frame::Layout::new(
-			crate::settings::WindowLayout::Windows,
+			crate::settings::WindowBorder::Windows,
 			false,
 			500.0,
 			300.0,
@@ -596,7 +596,7 @@ fn measured_tabs_fit_minimum_window_and_styles_invalidate_widths() {
 		active_tab: 0,
 		cursor: (0.0, 0.0),
 		viewport: crate::app::frame::Layout::new(
-			crate::settings::WindowLayout::Windows,
+			crate::settings::WindowBorder::Windows,
 			false,
 			500.0,
 			300.0,

@@ -506,7 +506,7 @@ impl<P: SendEvent> App<P> {
 		Self {
 			native_events: Default::default(),
 			surface_insets: [0.0; 4],
-			frame: frame::State::new(preferences.values.window_layout),
+			frame: frame::State::new(preferences.values.window_border),
 			animations: Default::default(),
 			native_frame: None,
 			native_tab_end: Default::default(),

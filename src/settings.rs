@@ -34,7 +34,7 @@ pub enum Sidebar {
 	Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize,
 )]
 #[serde(rename_all = "lowercase")]
-pub enum WindowLayout {
+pub enum WindowBorder {
 	#[default]
 	System,
 	Macos,
@@ -42,7 +42,7 @@ pub enum WindowLayout {
 	#[serde(alias = "linux")]
 	Breeze,
 }
-impl WindowLayout {
+impl WindowBorder {
 	pub fn resolved(self) -> Self {
 		if self != Self::System {
 			return self;
@@ -86,7 +86,7 @@ pub struct EffectiveDialect {
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct ReaderSettings {
-	pub window_layout: WindowLayout,
+	pub window_border: WindowBorder,
 	pub theme: Theme,
 	pub style: Option<Vec<String>>,
 	/// The interface language; absent means "follow the system", so a locale
@@ -135,7 +135,7 @@ pub struct ReaderSettings {
 impl Default for ReaderSettings {
 	fn default() -> Self {
 		Self {
-			window_layout: WindowLayout::System,
+			window_border: WindowBorder::System,
 			theme: Theme::default(),
 			style: None,
 			lang: None,
@@ -215,7 +215,7 @@ impl FontRole {
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Setting {
-	WindowLayout,
+	WindowBorder,
 	Theme,
 	FontSize,
 	Width,

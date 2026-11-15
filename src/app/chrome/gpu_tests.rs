@@ -564,7 +564,7 @@ fn tab_strip_frames_clip_overflow_at_fractional_dpi() -> Result<()> {
 			active_tab,
 			cursor: if dragging { (150.0, 20.0) } else { (0.0, 0.0) },
 			viewport: crate::app::frame::Layout::new(
-				crate::settings::WindowLayout::Windows,
+				crate::settings::WindowBorder::Windows,
 				false,
 				width,
 				300.0,
@@ -1154,7 +1154,7 @@ fn previewing_recedes_the_styles_and_fonts_pages() {
 				let mut chrome = Chrome {
 					frame: FrameView::new(
 						crate::app::frame::Layout::new(
-							crate::settings::WindowLayout::Macos,
+							crate::settings::WindowBorder::Macos,
 							true,
 							width,
 							height,
@@ -1324,7 +1324,7 @@ fn the_fonts_page_draws_its_open_option_list() {
 	let mut chrome = Chrome {
 		frame: FrameView::new(
 			crate::app::frame::Layout::new(
-				crate::settings::WindowLayout::Macos,
+				crate::settings::WindowBorder::Macos,
 				true,
 				width,
 				height,
@@ -1437,7 +1437,7 @@ fn dismissed_pages_stop_drawing_and_answering_pointers() {
 		let mut chrome = Chrome {
 			frame: FrameView::new(
 				crate::app::frame::Layout::new(
-					crate::settings::WindowLayout::Macos,
+					crate::settings::WindowBorder::Macos,
 					true,
 					width,
 					height,
@@ -1850,13 +1850,13 @@ fn redesigned_chrome_frames() -> Result<()> {
 					};
 					let mut frame = crate::app::frame::Layout::new(
 						if page.starts_with("window-breeze") {
-							crate::settings::WindowLayout::Breeze
+							crate::settings::WindowBorder::Breeze
 						} else if page.starts_with("window-")
 							&& page != "window-macos"
 						{
-							crate::settings::WindowLayout::Windows
+							crate::settings::WindowBorder::Windows
 						} else {
-							crate::settings::WindowLayout::Macos
+							crate::settings::WindowBorder::Macos
 						},
 						!page.starts_with("window-"),
 						width,
@@ -2633,7 +2633,7 @@ fn artist_reader_frames() -> Result<()> {
 			metrics.sync(&mut ui, &labels);
 			let strip = TabStrip::default();
 			let frame = crate::app::frame::Layout::new(
-				crate::settings::WindowLayout::Windows,
+				crate::settings::WindowBorder::Windows,
 				false,
 				width,
 				height,

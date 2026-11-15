@@ -5,8 +5,8 @@ import org.json.JSONObject;
 public class LayoutTest extends AndroidTest {
     @Override protected void test() throws Exception {
         JSONObject initial = openReader();
-        require(initial.getString("window_layout").equals("Macos") && initial.getBoolean("single_instance"), "Saved desktop options loaded");
-        require(!initial.getString("frame_layout").equals("Macos") && !initial.getBoolean("instance_listener"), "Saved desktop options do not affect Android");
+        require(initial.getString("window_border").equals("Macos") && initial.getBoolean("single_instance"), "Saved desktop options loaded");
+        require(!initial.getString("frame_border").equals("Macos") && !initial.getBoolean("instance_listener"), "Saved desktop options do not affect Android");
         double availableWidth = initial.getJSONArray("dimensions").getDouble(0) - 40;
         double expectedWidth = phone ? availableWidth : Math.min(initial.getDouble("column_width"), availableWidth);
         require(Math.abs(initial.getDouble("layout_width") - expectedWidth) < 0.01, "Reading width: " + initial.getDouble("layout_width") + "; expected: " + expectedWidth + "; dimensions: " + initial.getJSONArray("dimensions"));

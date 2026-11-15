@@ -3,7 +3,7 @@ use super::icons;
 use crate::{
 	app::frame::{Caption, Layout},
 	layout::{Draw, Paint},
-	settings::WindowLayout,
+	settings::WindowBorder,
 };
 use markview_layout::{
 	scene::IconPath,
@@ -35,7 +35,7 @@ pub(super) fn draw(layout: Layout) -> Vec<Draw> {
 		let hover = layout.hover == Some(caption);
 		let pressed = layout.pressed == Some(caption) && hover;
 		let paths = caption_paths(layout, caption);
-		let mac = layout.style == WindowLayout::Macos;
+		let mac = layout.style == WindowBorder::Macos;
 		let Some(paint) =
 			caption_paint(&mut out, layout, caption, rect, hover, pressed)
 		else {
@@ -55,17 +55,17 @@ pub(super) fn draw(layout: Layout) -> Vec<Draw> {
 
 fn caption_paths(layout: Layout, caption: Caption) -> &'static [IconPath] {
 	match caption {
-		Caption::Close if layout.style == WindowLayout::Breeze => BREEZE_CLOSE,
+		Caption::Close if layout.style == WindowBorder::Breeze => BREEZE_CLOSE,
 		Caption::Close => icons::CLOSE,
-		Caption::Minimize if layout.style == WindowLayout::Breeze => {
+		Caption::Minimize if layout.style == WindowBorder::Breeze => {
 			BREEZE_MINIMIZE
 		}
 		Caption::Expand
-			if layout.style == WindowLayout::Breeze && layout.maximized =>
+			if layout.style == WindowBorder::Breeze && layout.maximized =>
 		{
 			BREEZE_RESTORE
 		}
-		Caption::Expand if layout.style == WindowLayout::Breeze => {
+		Caption::Expand if layout.style == WindowBorder::Breeze => {
 			BREEZE_MAXIMIZE
 		}
 		Caption::Minimize => MINIMIZE,
@@ -82,7 +82,7 @@ fn caption_paint(
 	hover: bool,
 	pressed: bool,
 ) -> Option<Paint> {
-	let mac = layout.style == WindowLayout::Macos;
+	let mac = layout.style == WindowBorder::Macos;
 	Some(if mac {
 		let color = if !layout.focused {
 			0xa6a6a6ff

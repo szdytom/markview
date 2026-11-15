@@ -83,43 +83,95 @@ fn external_edits_merge_pending_ui_fields_and_preserve_comments() {
 }
 
 #[test]
-fn window_layout_round_trips_and_merges_without_pinning_the_theme() {
+fn window_border_round_trips_and_merges_without_pinning_the_theme() {
 	let dir = tempfile::tempdir().unwrap();
 	let path = dir.path().join("settings.toml");
 	fs::write(&path, "# Reader\nfont_size = 20\n").unwrap();
 	let (mut store, warning) = SettingsStore::load(Some(path.clone()));
 	assert!(warning.is_none());
-	assert_eq!(store.settings().window_layout, WindowLayout::System);
-	for layout in [
-		WindowLayout::Macos,
-		WindowLayout::Windows,
-		WindowLayout::Breeze,
-		WindowLayout::System,
+	assert_eq!(store.settings().window_border, WindowBorder::System);
+	for border in [
+		WindowBorder::Macos,
+		WindowBorder::Windows,
+		WindowBorder::Breeze,
+		WindowBorder::System,
 	] {
 		let mut settings = store.settings();
-		settings.window_layout = layout;
-		store.changed(&settings, Some(Setting::WindowLayout));
-		fs::write(&path, "# Reader\nfont_size = 24\n[extra]\nvalue = 42\n")
-			.unwrap();
+		settings.window_border = border;
+		store.changed(&settings, Some(Setting::WindowBorder));
+		fs::write(
+			&path,
+			"# Reader\nwindow-layout = 'linux'\nfont_size = 24\n[extra]\nvalue = 42\n",
+		)
+		.unwrap();
 		store.flush().unwrap();
 		let (loaded, warning) = SettingsStore::load(Some(path.clone()));
 		assert!(warning.is_none());
-		assert_eq!(loaded.settings().window_layout, layout);
+		assert_eq!(loaded.settings().window_border, border);
 		assert_eq!(loaded.settings().font_size, 24.0);
 		assert_eq!(loaded.theme_preference(), None);
 		assert!(fs::read_to_string(&path).unwrap().contains("# Reader"));
 	}
 	let mut settings = store.settings();
-	settings.window_layout = WindowLayout::Windows;
-	store.changed(&settings, Some(Setting::WindowLayout));
+	settings.window_border = WindowBorder::Windows;
+	store.changed(&settings, Some(Setting::WindowBorder));
 	store.flush().unwrap();
 	store.changed(&ReaderSettings::default(), None);
 	store.flush().unwrap();
 	assert_eq!(
-		SettingsStore::load(Some(path)).0.settings().window_layout,
-		WindowLayout::System
+		SettingsStore::load(Some(path)).0.settings().window_border,
+		WindowBorder::System
 	);
 }
+#[test]
+fn window_border_reads_both_keys_and_saves_only_the_new_key() {
+	let dir = tempfile::tempdir().unwrap();
+	let path = dir.path().join("settings.toml");
+	for key in ["window-layout", "window-border"] {
+		for (value, expected) in [
+			("system", WindowBorder::System),
+			("macos", WindowBorder::Macos),
+			("windows", WindowBorder::Windows),
+			("breeze", WindowBorder::Breeze),
+			("linux", WindowBorder::Breeze),
+		] {
+			let source = format!(
+				"# Border preference\n{key} = '{value}' # next launch\ncustom = 42\n"
+			);
+			fs::write(&path, &source).unwrap();
+			let (mut store, warning) = SettingsStore::load(Some(path.clone()));
+			assert!(warning.is_none(), "{warning:?}");
+			assert_eq!(store.settings().window_border, expected);
+			assert_eq!(fs::read_to_string(&path).unwrap(), source);
+			let mut settings = store.settings();
+			settings.font_size = 24.0;
+			store.changed(&settings, Some(Setting::FontSize));
+			store.flush().unwrap();
+			let text = fs::read_to_string(&path).unwrap();
+			let document = text.parse::<toml_edit::DocumentMut>().unwrap();
+			assert!(!document.contains_key("window-layout"));
+			assert_eq!(
+				document["window-border"].as_str(),
+				Some(if value == "linux" { "breeze" } else { value })
+			);
+			assert_eq!(document["custom"].as_integer(), Some(42));
+			assert!(text.contains("# Border preference"));
+			assert!(text.contains("# next launch"));
+			let (loaded, warning) = SettingsStore::load(Some(path.clone()));
+			assert!(warning.is_none(), "{warning:?}");
+			assert_eq!(loaded.settings().window_border, expected);
+			assert_eq!(loaded.settings().font_size, 24.0);
+			fs::write(&path, source).unwrap();
+			assert!(store.reload().unwrap());
+			assert_eq!(store.settings().window_border, expected);
+			assert_eq!(
+				store.settings().font_size,
+				ReaderSettings::default().font_size
+			);
+		}
+	}
+}
+
 #[test]
 fn invalid_reload_and_deletion_retain_last_good_settings() {
 	let dir = tempfile::tempdir().unwrap();
@@ -133,6 +185,7 @@ fn invalid_reload_and_deletion_retain_last_good_settings() {
 		"width = nan",
 		"paragraph_indent = 5",
 		"theme = 'unknown'",
+		"window-border = 'unknown'",
 		"window-layout = 'unknown'",
 		"version = 2",
 	] {
@@ -156,13 +209,17 @@ fn invalid_reload_and_deletion_retain_last_good_settings() {
 fn legacy_json_is_migrated_without_modifying_original() {
 	let dir = tempfile::tempdir().unwrap();
 	let legacy = dir.path().join("settings.json");
-	let original = r#"{"version":1,"font_size":23,"theme":"dark"}"#;
+	let original = r#"{"version":1,"font_size":23,"theme":"dark","window-layout":"linux"}"#;
 	fs::write(&legacy, original).unwrap();
 	let path = dir.path().join("settings.toml");
 	let (mut store, _) = SettingsStore::load(Some(path.clone()));
 	store.ensure_file().unwrap();
 	assert_eq!(fs::read_to_string(legacy).unwrap(), original);
 	assert_eq!(store.settings().font_size, 23.0);
+	assert_eq!(store.settings().window_border, WindowBorder::Breeze);
+	let text = fs::read_to_string(&path).unwrap();
+	assert!(text.contains("window-border = \"breeze\""));
+	assert!(!text.contains("window-layout"));
 	assert_eq!(store.theme_preference(), Some(Theme::Dark));
 	assert!(SettingsStore::load(Some(path)).1.is_none());
 	store.follow_system();
@@ -967,7 +1024,7 @@ fn http_overrides_survive_ui_saves_and_external_reload() {
 fn settings_differing_from_default() -> ReaderSettings {
 	let default = ReaderSettings::default();
 	ReaderSettings {
-		window_layout: WindowLayout::Breeze,
+		window_border: WindowBorder::Breeze,
 		theme: Theme::Dark,
 		style: Some(vec!["dark".into()]),
 		lang: Some(Lang::Ja),
@@ -1022,7 +1079,7 @@ fn changed_fields(
 		};
 	}
 	changed!(
-		window_layout,
+		window_border,
 		theme,
 		style,
 		lang,
@@ -1057,7 +1114,7 @@ fn changed_fields(
 
 fn expected_changes(field: Setting) -> Vec<&'static str> {
 	match field {
-		Setting::WindowLayout => vec!["window_layout"],
+		Setting::WindowBorder => vec!["window_border"],
 		Setting::Theme => vec!["theme", "style"],
 		Setting::FontSize => vec!["font_size"],
 		Setting::Width => vec!["width"],
@@ -1091,8 +1148,8 @@ fn expected_changes(field: Setting) -> Vec<&'static str> {
 
 fn assert_copied(from: &ReaderSettings, to: &ReaderSettings, field: Setting) {
 	match field {
-		Setting::WindowLayout => {
-			assert_eq!(to.window_layout, from.window_layout)
+		Setting::WindowBorder => {
+			assert_eq!(to.window_border, from.window_border)
 		}
 		Setting::Theme => {
 			assert_eq!(to.theme, from.theme);
@@ -1142,7 +1199,7 @@ fn setting_all_keeps_the_persisted_order_and_count() {
 	assert_eq!(
 		Setting::ALL,
 		[
-			Setting::WindowLayout,
+			Setting::WindowBorder,
 			Setting::Theme,
 			Setting::FontSize,
 			Setting::Width,
@@ -1195,7 +1252,7 @@ fn reader_settings_round_trip_through_config_for_non_option_fields() {
 	let settings = settings_differing_from_default();
 	let back = Config::from_settings(&settings, ExportSettings::default())
 		.reader_settings();
-	assert_eq!(back.window_layout, settings.window_layout);
+	assert_eq!(back.window_border, settings.window_border);
 	assert_eq!(back.theme, settings.theme);
 	assert_eq!(back.fontdef_overrides, settings.fontdef_overrides);
 	assert_eq!(back.stylesheet, settings.stylesheet);
@@ -1227,7 +1284,7 @@ fn version_one_fixture_honours_every_persisted_key() {
 	let (store, warning) = SettingsStore::load(Some(path));
 	assert!(warning.is_none(), "{warning:?}");
 	let settings = store.settings();
-	assert_eq!(settings.window_layout, WindowLayout::Macos);
+	assert_eq!(settings.window_border, WindowBorder::Macos);
 	assert_eq!(settings.theme, Theme::Dark);
 	assert_eq!(settings.style, Some(vec!["dark".into()]));
 	assert_eq!(store.theme_preference(), Some(Theme::Dark));
@@ -1276,13 +1333,13 @@ fn version_one_fixture_honours_every_persisted_key() {
 }
 
 #[test]
-fn legacy_linux_window_layout_loads_as_breeze() {
+fn legacy_linux_window_border_loads_as_breeze() {
 	let dir = tempfile::tempdir().unwrap();
 	let path = dir.path().join("settings.toml");
 	fs::write(&path, "window-layout = \"linux\"\n").unwrap();
 	let (store, warning) = SettingsStore::load(Some(path));
 	assert!(warning.is_none());
-	assert_eq!(store.settings().window_layout, WindowLayout::Breeze);
+	assert_eq!(store.settings().window_border, WindowBorder::Breeze);
 }
 
 #[test]

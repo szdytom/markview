@@ -51,9 +51,9 @@ fn platform_toolbars_keep_hover_targets_and_caption_groups_separate() {
 	let mut ui = crate::test_support::shaper();
 	for width in [500.0, 820.0, 1200.0] {
 		for style in [
-			WindowLayout::Macos,
-			WindowLayout::Windows,
-			WindowLayout::Breeze,
+			WindowBorder::Macos,
+			WindowBorder::Windows,
+			WindowBorder::Breeze,
 		] {
 			for fullscreen in [false, true] {
 				let frame =
@@ -79,7 +79,7 @@ fn platform_toolbars_keep_hover_targets_and_caption_groups_separate() {
 				};
 				let rest =
 					draw_toolbar_at(&mut ui, &drawn(&idle), frame, Lang::En);
-				let icon_size = if style == WindowLayout::Macos {
+				let icon_size = if style == WindowBorder::Macos {
 					20.0
 				} else {
 					18.0
@@ -124,7 +124,7 @@ fn platform_toolbars_keep_hover_targets_and_caption_groups_separate() {
 						.iter()
 						.any(|draw| matches!(draw, Draw::Rect(_, _)))
 				);
-				if style != WindowLayout::Macos && !fullscreen {
+				if style != WindowBorder::Macos && !fullscreen {
 					let mut controls: Vec<_> = buttons
 						.iter()
 						.filter(|b| {
@@ -151,22 +151,22 @@ fn platform_toolbars_keep_hover_targets_and_caption_groups_separate() {
 }
 
 #[test]
-fn window_layout_dropdown_exposes_all_layouts_and_marks_the_saved_choice() {
+fn window_border_dropdown_exposes_all_borders_and_marks_the_saved_choice() {
 	let mut shaper = crate::test_support::shaper();
-	let layouts = [
-		WindowLayout::System,
-		WindowLayout::Macos,
-		WindowLayout::Windows,
-		WindowLayout::Breeze,
+	let borders = [
+		WindowBorder::System,
+		WindowBorder::Macos,
+		WindowBorder::Windows,
+		WindowBorder::Breeze,
 	];
-	for (index, selected) in layouts.into_iter().enumerate() {
+	for (index, selected) in borders.into_iter().enumerate() {
 		let settings = ReaderSettings {
-			window_layout: selected,
+			window_border: selected,
 			..Default::default()
 		};
 		let scroll = form(&mut shaper, &settings, 0.0, 500.0, 300.0).reveal(
 			Command::Chrome(ChromeCommand::ToggleDropdown(
-				DropdownId::WindowLayout,
+				DropdownId::WindowBorder,
 				index,
 			))
 			.widget_id(),
@@ -175,31 +175,31 @@ fn window_layout_dropdown_exposes_all_layouts_and_marks_the_saved_choice() {
 		assert!(form.buttons.iter().any(|button| {
 			button.action
 				== Command::Chrome(ChromeCommand::ToggleDropdown(
-					DropdownId::WindowLayout,
+					DropdownId::WindowBorder,
 					index,
 				))
 		}));
 		let menu = form
 			.menu(
 				&mut crate::app::dropdown::Dropdown::new(
-					DropdownId::WindowLayout,
+					DropdownId::WindowBorder,
 					index,
 				),
 				(500.0, 300.0),
 			)
 			.unwrap();
-		assert_eq!(menu.options, layouts.len());
+		assert_eq!(menu.options, borders.len());
 		assert_eq!(
 			menu.chosen(),
-			Some(Command::Settings(SettingsCommand::WindowLayout(selected)))
+			Some(Command::Settings(SettingsCommand::WindowBorder(selected)))
 		);
-		for (button, layout) in menu.buttons.iter().zip(&layouts[menu.offset..])
+		for (button, border) in menu.buttons.iter().zip(&borders[menu.offset..])
 		{
 			assert_eq!(
 				button.action,
-				Command::Settings(SettingsCommand::WindowLayout(*layout))
+				Command::Settings(SettingsCommand::WindowBorder(*border))
 			);
-			assert_eq!(button.active, selected == *layout);
+			assert_eq!(button.active, selected == *border);
 		}
 	}
 }
@@ -880,7 +880,7 @@ fn launch_options_belong_to_the_interface_section() {
 	for row in rows(&settings, false) {
 		section = row.section.or(section);
 		if [
-			settings.lang().settings_window_layout(),
+			settings.lang().settings_window_border(),
 			settings.lang().settings_single_instance(),
 		]
 		.contains(&row.label.as_str())

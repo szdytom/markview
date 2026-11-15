@@ -26,10 +26,14 @@ preferences. Use the command's `--help` for its exact options and defaults.
 | Chinese/Japanese fonts and punctuation conventions | `cjk-type`: `SC`, `TC`, `JP` or `none` |
 | Folder, outline or phone sidebar width | Sidebar controls; desktop sidebars also have draggable edges |
 | Wheel/arrow speed | Scroll speed; touch scrolling is independent |
-| Window controls | Window layout; takes effect on the next launch |
+| Window controls | Window border; takes effect on the next launch |
 | Interface language | Follow the system or select English, Simplified/Traditional Chinese or Japanese |
 | Reuse an existing desktop window | Enable Single instance; later opens select or add tabs |
 | Code-block copy buttons | Generic → Language & code → Code block copy button |
+
+The window border preference uses `window-border = "system"`, `"macos"`,
+`"windows"` or `"breeze"`. The legacy key `window-layout` and value `"linux"`
+remain readable; saving writes `window-border` and uses `"breeze"` for `"linux"`.
 
 Code-block copying preserves the entire block's whitespace, including offscreen
 content. Hiding its button (`codeblock-copy = false`) does not affect selection

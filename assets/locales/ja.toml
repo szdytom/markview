@@ -282,7 +282,7 @@ panel_refreshing = "更新中…"
 panel_load_failed = "読み込めません：{error}"
 panel_retry = "再試行"
 
-settings_window_layout = "ウィンドウ配置"
+settings_window_border = "ウィンドウの枠"
 
 settings_restore_session = "前回の閲覧状態を保持"
 

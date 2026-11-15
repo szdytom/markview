@@ -28,6 +28,27 @@ fn text_comes_from_the_locale_files() {
 }
 
 #[test]
+fn window_border_labels_have_pinned_glyphs() {
+	use markview_layout::{
+		scene::Paint,
+		style::{ColorField, Condition},
+	};
+
+	let mut shaper = crate::test_support::shaper();
+	for lang in [Lang::En, Lang::ZhHans, Lang::ZhHant, Lang::Ja] {
+		let draws = shaper.label(
+			lang.settings_window_border(),
+			16.,
+			0.,
+			0.,
+			Paint::Styled(Condition::Ui, ColorField::Color),
+		);
+		crate::test_support::render_goldens::assert_glyphs(&draws)
+			.unwrap_or_else(|error| panic!("{lang:?}: {error}"));
+	}
+}
+
+#[test]
 fn a_placeholder_becomes_a_parameter() {
 	assert_eq!(
 		Lang::En.diagnostics_row("Version", "0.1.7"),

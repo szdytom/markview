@@ -37,7 +37,7 @@ impl<P: super::SendEvent> App<P> {
 		if size.width == 0 || size.height == 0 {
 			return Ok(());
 		}
-		if self.frame.layout == crate::settings::WindowLayout::Macos
+		if self.frame.border == crate::settings::WindowBorder::Macos
 			&& window.fullscreen().is_none()
 		{
 			markview_platform::align_traffic_lights(

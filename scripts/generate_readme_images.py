@@ -37,6 +37,8 @@ def override_settings(source, overrides):
         head, tail = source[: section.start()], source[section.start() :]
     else:
         head, tail = source, ""
+    if "window-border" in overrides:
+        head = re.sub(r"(?m)^window-layout\s*=.*\n?", "", head)
     head = re.sub(rf"(?m)^({'|'.join(overrides)})\s*=.*\n?", "", head)
     return (
         "".join(f"{key} = {value}\n" for key, value in overrides.items())
@@ -55,7 +57,7 @@ def capture_profile(directory, language, folder=False):
     overrides = {
         "single-instance": str(folder).lower(),
         "restore-session": str(folder).lower(),
-        "window-layout": '"windows"',
+        "window-border": '"windows"',
         "language": '"en"' if language == "en" else '"zh-hans"',
         "markdown-flavor": '"obsidian"',
         "footer-path": "false",

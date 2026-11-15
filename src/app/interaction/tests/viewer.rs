@@ -153,14 +153,14 @@ impl Loop for CaptionLoop {
 
 #[test]
 fn window_controls_remain_above_the_image_viewer() {
-	use crate::settings::WindowLayout;
+	use crate::settings::WindowBorder;
 	for style in [
-		WindowLayout::Macos,
-		WindowLayout::Windows,
-		WindowLayout::Breeze,
+		WindowBorder::Macos,
+		WindowBorder::Windows,
+		WindowBorder::Breeze,
 	] {
 		let mut app = image_reader("![](a.png)", "a.png", false);
-		app.frame.layout = style;
+		app.frame.border = style;
 		open(&mut app);
 		let layout = app.frame_layout();
 		let actions = CaptionLoop::default();
@@ -215,16 +215,16 @@ fn window_controls_remain_above_the_image_viewer() {
 
 #[test]
 fn caption_taps_do_not_reach_covered_controls_or_activate_after_a_drag() {
-	use crate::{app::frame::Caption, settings::WindowLayout};
+	use crate::{app::frame::Caption, settings::WindowBorder};
 	use markview_platform::event::Touch;
 	for style in [
-		WindowLayout::Macos,
-		WindowLayout::Windows,
-		WindowLayout::Breeze,
+		WindowBorder::Macos,
+		WindowBorder::Windows,
+		WindowBorder::Breeze,
 	] {
 		for viewer in [false, true] {
 			let mut app = image_reader("![](a.png)", "a.png", false);
-			app.frame.layout = style;
+			app.frame.border = style;
 			if viewer {
 				open(&mut app);
 			}
@@ -285,7 +285,7 @@ fn touch_window_drags_start_on_contact_and_never_pan_the_reader_or_viewer() {
 	if !markview_platform::client_resize() {
 		return;
 	}
-	use crate::settings::WindowLayout;
+	use crate::settings::WindowBorder;
 	use markview_platform::event::Touch;
 	use winit::window::ResizeDirection;
 	#[derive(Default)]
@@ -303,13 +303,13 @@ fn touch_window_drags_start_on_contact_and_never_pan_the_reader_or_viewer() {
 		}
 	}
 	for style in [
-		WindowLayout::Breeze,
-		WindowLayout::Windows,
-		WindowLayout::Macos,
+		WindowBorder::Breeze,
+		WindowBorder::Windows,
+		WindowBorder::Macos,
 	] {
 		for viewer in [false, true] {
 			let mut app = image_reader("![](a.png)", "a.png", false);
-			app.frame.layout = style;
+			app.frame.border = style;
 			if viewer {
 				open(&mut app);
 			}
@@ -741,12 +741,12 @@ fn cancelling_touch_gestures_releases_the_viewer_drag() {
 #[test]
 fn decoding_refreshes_the_viewer_dimensions_and_texture_version() {
 	for layout in [
-		crate::settings::WindowLayout::Macos,
-		crate::settings::WindowLayout::Windows,
-		crate::settings::WindowLayout::Breeze,
+		crate::settings::WindowBorder::Macos,
+		crate::settings::WindowBorder::Windows,
+		crate::settings::WindowBorder::Breeze,
 	] {
 		let mut app = image_reader("![](a.png)", "a.png", false);
-		app.frame.layout = layout;
+		app.frame.border = layout;
 		open(&mut app);
 		let (placeholder, _) = viewer_image(&mut app);
 		assert_ne!(placeholder.w, placeholder.h);

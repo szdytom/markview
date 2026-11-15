@@ -32,6 +32,7 @@ at the same level, without `[brackets]`.
 
 ### Changed
 
+- Rename Window layout to Window border across interface languages; save the preference as `window-border` while continuing to read `window-layout`.
 - Upgrade themes to MVSS format 3: tab hover card styling uses `tab_preview`, while `preview` styles reflowed hover popups and their content; see the [upgrade guide](docs/users/mvss-v3-upgrade.md).
 - Allow scrolling until only the last line or file row remains visible in the reader, Web previews and file sidebar; scrollbar thumbs represent the visible content range and shrink over the trailing blank space.
 

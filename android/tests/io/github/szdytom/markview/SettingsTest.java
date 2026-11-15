@@ -16,7 +16,7 @@ public class SettingsTest extends AndroidTest {
         waitFor(s -> s.optString("panel").equals("Settings(Generic)"));
         requireSettingsLayout();
         JSONObject settingsState = state();
-        require(button(settingsState, "ToggleDropdown(WindowLayout") == null && button(settingsState, "SingleInstance") == null && button(settingsState, "RestoreSession") == null,
+        require(button(settingsState, "ToggleDropdown(WindowBorder") == null && button(settingsState, "SingleInstance") == null && button(settingsState, "RestoreSession") == null,
             "Desktop-only window and instance controls are absent");
         screenshot("settings");
         for (String sidebar : new String[] {phone ? "Tabs" : "Folder", "Outline"}) {

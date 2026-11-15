@@ -2840,7 +2840,7 @@ fn each_domain_observes_the_shared_preamble_while_a_confirmation_owns_input() {
 		),
 		(
 			Command::Chrome(ChromeCommand::ToggleDropdown(
-				DropdownId::WindowLayout,
+				DropdownId::WindowBorder,
 				0,
 			)),
 			"chrome",
@@ -3012,9 +3012,9 @@ fn touch_drawer_distinguishes_same_path_tabs_and_keeps_ids_when_reordered() {
 }
 
 #[test]
-fn only_window_layout_changes_replace_the_saved_hint_until_reverted() {
+fn only_window_border_changes_replace_the_saved_hint_until_reverted() {
 	use crate::layout::{Draw, Paint};
-	use crate::settings::WindowLayout;
+	use crate::settings::WindowBorder;
 	use markview_layout::style::{ColorField, Condition};
 
 	let mut app = App::new(
@@ -3025,11 +3025,11 @@ fn only_window_layout_changes_replace_the_saved_hint_until_reverted() {
 		},
 		StubProxy,
 	);
-	let initial = app.preferences.values.window_layout;
-	let changed = if initial == WindowLayout::Breeze {
-		WindowLayout::Windows
+	let initial = app.preferences.values.window_border;
+	let changed = if initial == WindowBorder::Breeze {
+		WindowBorder::Windows
 	} else {
-		WindowLayout::Breeze
+		WindowBorder::Breeze
 	};
 	app.action(Command::Chrome(ChromeCommand::Settings));
 	assert!(!app.chrome().settings.restart_pending);
@@ -3039,9 +3039,9 @@ fn only_window_layout_changes_replace_the_saved_hint_until_reverted() {
 	assert!(!app.chrome().settings.restart_pending);
 	app.action(Command::Settings(SettingsCommand::ScrollSpeed(1)));
 	assert!(!app.chrome().settings.restart_pending);
-	app.action(Command::Settings(SettingsCommand::WindowLayout(initial)));
+	app.action(Command::Settings(SettingsCommand::WindowBorder(initial)));
 	assert!(!app.chrome().settings.restart_pending);
-	app.action(Command::Settings(SettingsCommand::WindowLayout(changed)));
+	app.action(Command::Settings(SettingsCommand::WindowBorder(changed)));
 	app.action(Command::Settings(SettingsCommand::Language(Some(
 		crate::lang::Lang::ZhHans,
 	))));
@@ -3082,7 +3082,7 @@ fn only_window_layout_changes_replace_the_saved_hint_until_reverted() {
 	app.action(Command::Chrome(ChromeCommand::Settings));
 	app.action(Command::Chrome(ChromeCommand::Settings));
 	assert!(app.chrome().settings.restart_pending);
-	app.action(Command::Settings(SettingsCommand::WindowLayout(initial)));
+	app.action(Command::Settings(SettingsCommand::WindowBorder(initial)));
 	assert!(!app.chrome().settings.restart_pending);
 	app.action(Command::Settings(SettingsCommand::SingleInstance));
 	assert!(!app.chrome().settings.restart_pending);

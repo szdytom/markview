@@ -280,7 +280,7 @@ panel_refreshing = "刷新中…"
 panel_load_failed = "加载失败：{error}"
 panel_retry = "重试"
 
-settings_window_layout = "窗口布局"
+settings_window_border = "窗口边框"
 
 settings_restore_session = "保留上次浏览状态"
 

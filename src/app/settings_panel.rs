@@ -2,7 +2,7 @@
 use crate::state::SettingsCommand;
 use crate::{
 	settings::{
-		FontRole, MarkdownFlavor, ReaderSettings, Setting, WindowLayout,
+		FontRole, MarkdownFlavor, ReaderSettings, Setting, WindowBorder,
 	},
 	state::Command,
 };
@@ -64,7 +64,7 @@ pub(super) enum Message {
 	CjkType(markview_layout::style::CjkType),
 	Language(Option<crate::lang::Lang>),
 	FontFamily(FontRole, Option<String>),
-	WindowLayout(WindowLayout),
+	WindowBorder(WindowBorder),
 	SingleInstance,
 	RestoreSession,
 	FooterPath,
@@ -106,8 +106,8 @@ impl Message {
 			Command::Settings(SettingsCommand::Language(value)) => {
 				Self::Language(value)
 			}
-			Command::Settings(SettingsCommand::WindowLayout(value)) => {
-				Self::WindowLayout(value)
+			Command::Settings(SettingsCommand::WindowBorder(value)) => {
+				Self::WindowBorder(value)
 			}
 			Command::Settings(SettingsCommand::SingleInstance) => {
 				Self::SingleInstance
@@ -247,9 +247,9 @@ impl Component for Model {
 				self.values.set_font_family(role, family);
 				Setting::FontFamily
 			}
-			Message::WindowLayout(value) => {
-				self.values.window_layout = value;
-				Setting::WindowLayout
+			Message::WindowBorder(value) => {
+				self.values.window_border = value;
+				Setting::WindowBorder
 			}
 			Message::ScrollSpeed(delta) => {
 				self.values.step_scroll_speed(delta);
@@ -285,7 +285,7 @@ impl Component for Model {
 					.effects
 					.extend([Effect::ReloadStyles, Effect::CloseDropdown]);
 			}
-			Setting::WindowLayout => {
+			Setting::WindowBorder => {
 				update.effects.push(Effect::CloseDropdown);
 			}
 			Setting::Language | Setting::Dialect => {

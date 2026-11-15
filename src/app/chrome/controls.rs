@@ -11,7 +11,7 @@ use crate::{
 	app::frame::{CONTROL_GAP, Layout},
 	lang::Lang,
 	layout::{Draw, Rect, TextShaper},
-	settings::{MarkdownFlavor, ReaderSettings, Sidebar, WindowLayout},
+	settings::{MarkdownFlavor, ReaderSettings, Sidebar, WindowBorder},
 	state::{Command, DropdownId, InteractionState, PanelPage, PanelTab},
 };
 pub(super) use components::{draw_button, panel_rect};
@@ -130,37 +130,37 @@ fn rows(settings: &ReaderSettings, phone: bool) -> Vec<Row> {
 	}
 	if !markview_platform::touch_layout() {
 		rows.extend([
-			Row::new(t.settings_window_layout(), vec![]).menu(
-				DropdownId::WindowLayout,
+			Row::new(t.settings_window_border(), vec![]).menu(
+				DropdownId::WindowBorder,
 				choices(
 					&[
 						(
 							t.settings_language_system(),
-							Command::Settings(SettingsCommand::WindowLayout(
-								WindowLayout::System,
+							Command::Settings(SettingsCommand::WindowBorder(
+								WindowBorder::System,
 							)),
 						),
 						(
 							"macOS",
-							Command::Settings(SettingsCommand::WindowLayout(
-								WindowLayout::Macos,
+							Command::Settings(SettingsCommand::WindowBorder(
+								WindowBorder::Macos,
 							)),
 						),
 						(
 							"Windows",
-							Command::Settings(SettingsCommand::WindowLayout(
-								WindowLayout::Windows,
+							Command::Settings(SettingsCommand::WindowBorder(
+								WindowBorder::Windows,
 							)),
 						),
 						(
 							"Breeze",
-							Command::Settings(SettingsCommand::WindowLayout(
-								WindowLayout::Breeze,
+							Command::Settings(SettingsCommand::WindowBorder(
+								WindowBorder::Breeze,
 							)),
 						),
 					],
-					Some(Command::Settings(SettingsCommand::WindowLayout(
-						settings.window_layout,
+					Some(Command::Settings(SettingsCommand::WindowBorder(
+						settings.window_border,
 					))),
 				),
 			),
@@ -533,7 +533,7 @@ pub(super) fn toolbar_controls(
 	lang: Lang,
 ) -> Vec<Button> {
 	toolbar_controls_at(
-		Layout::new(WindowLayout::Macos, true, width, 0.0, false, false),
+		Layout::new(WindowBorder::Macos, true, width, 0.0, false, false),
 		outline_open,
 		lang,
 	)
@@ -769,7 +769,7 @@ pub(super) fn draw_toolbar(
 	draw_toolbar_at(
 		ui,
 		interaction,
-		Layout::new(WindowLayout::Macos, true, width, 0.0, false, false),
+		Layout::new(WindowBorder::Macos, true, width, 0.0, false, false),
 		lang,
 	)
 }
@@ -788,7 +788,7 @@ pub(super) fn draw_toolbar_at(
 	} else {
 		interaction
 	};
-	let icon_size = if frame.style == WindowLayout::Macos {
+	let icon_size = if frame.style == WindowBorder::Macos {
 		20.0
 	} else {
 		18.0
