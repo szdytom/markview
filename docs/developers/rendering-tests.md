@@ -77,6 +77,33 @@ comparison before updating images. Pinning the test fonts prevents host font
 installation from changing the baseline; it does not assert that every user's
 downloaded/system font produces identical pixels.
 
+For reviewed rounding differences between rendering environments, a shared
+reference can preserve the two-level tolerance. Use actual frames from each
+environment, rather than assuming the old baseline equals an actual frame:
+
+```sh
+python3 scripts/reconcile_render_golden.py \
+  tests/goldens/hover-preview/image-fit-dark-125.png \
+  artifacts/local-actual.png artifacts/ci-actual.png
+```
+
+The script requires Pillow and updates the baseline in place. For each RGBA
+channel it intersects the actual values' tolerance intervals, preserves the
+existing value when possible, and otherwise moves it to the nearest valid
+value. It refuses mismatched dimensions or a channel spread greater than four,
+without writing the baseline. Supply at least two frames; additional frames
+constrain the same intersection. This is a manual maintenance step after visual
+review, never an automatic response to a golden failure.
+
+For `image-fit-dark-125`, the original local baseline (`ea2f7476`) matched the
+local render exactly, and the CI-derived baseline (`4ebdd986`) came from the
+actual frame in
+[CI run 43613210551](https://github.com/szdytom/markview/actions/runs/43613210551).
+Reconciling those frames changed 30 channels across 14 pixels by one level each;
+the reference remains within two levels of both outputs. Re-run the golden
+suite and compare against the saved CI actual after reconciliation. Test the
+script with `python3 -m unittest discover -s scripts -p 'test_reconcile_render_golden.py'`.
+
 ## Measure hover previews
 
 The ignored `measure_hover_preview` test measures a loaded document through the
