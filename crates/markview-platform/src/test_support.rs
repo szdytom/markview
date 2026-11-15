@@ -17,6 +17,9 @@ pub const fn desktop_goldens() -> bool {
 pub const fn shell_launch() -> bool {
 	cfg!(target_os = "linux")
 }
+pub const fn portable_mode() -> bool {
+	cfg!(any(target_os = "windows", target_os = "linux"))
+}
 pub fn symlink(
 	source: impl AsRef<Path>,
 	destination: impl AsRef<Path>,

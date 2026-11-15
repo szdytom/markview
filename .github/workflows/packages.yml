@@ -18,6 +18,7 @@ on:
       - dist-workspace.toml
       - .github/**
       - scripts/package_*.sh
+      - scripts/*windows_archive*
       - scripts/ci_*.sh
       - scripts/*winget*
       - scripts/verify_*
@@ -33,6 +34,7 @@ on:
       - dist-workspace.toml
       - .github/**
       - scripts/package_*.sh
+      - scripts/*windows_archive*
       - scripts/ci_*.sh
       - scripts/*winget*
       - scripts/verify_*
@@ -119,6 +121,11 @@ jobs:
       - uses: Swatinem/rust-cache@v2
       - uses: ./.github/actions/install-dist
       - uses: ./.github/actions/setup-wix
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+      - name: Include the Windows portable-mode helper
+        run: python scripts/prepare_windows_archive.py
       - name: Build the archive and the MSI
         shell: bash
         run: |

@@ -23,6 +23,7 @@ at the same level, without `[brackets]`.
 
 ### Added
 
+- Support portable mode on Windows and Linux with `markview-portable-marker.txt` beside the executable, keeping settings and application data in a sibling `data/` directory; Windows ZIPs include `enable-portable.bat` to create the marker (#98).
 - Support ARM64 Linux with native archives, Debian packages and AppImages, using Vulkan by default with automatic GLES fallback.
 - Show localized tooltips for icon buttons on hover and keyboard focus.
 - Try enabled GPU backends one at a time until initialization succeeds, honoring the order in `WGPU_BACKEND` when set.

@@ -82,6 +82,31 @@ and so does one dropped on the app's icon.
 The Android APK is available from [Releases](https://github.com/szdytom/markview/releases).
 See [Android reading](android.md) for document handling and mobile controls.
 
+## Portable mode
+
+Windows ZIP and Linux extracted builds can keep their data beside the executable.
+Close Markview, then create `markview-portable-marker.txt` next to `markview.exe`
+or `markview`. On Windows, run the ZIP's `enable-portable.bat` to create it.
+The marker's contents do not matter. The BAT only creates the marker; it does
+not launch Markview or copy existing settings.
+
+On the next launch, Markview uses a `data/` directory beside the executable for
+settings, sessions, history, styles, downloaded fonts, image cache and instance
+communication files. The directory must be writable; a write failure does not
+switch back to system configuration. Each portable copy has its own data and
+window discovery. Temporary files still use the operating system's temporary
+directory. macOS and Android do not support this mode.
+
+Existing settings are not migrated automatically. To keep them, close Markview
+and copy the contents of the [system settings directory](settings.md#settings-file)
+into `data/`. Move the executable, marker and `data/` together to carry your
+configuration. Paths to documents or external resources retain their existing
+meaning; moving the reader does not rewrite them.
+
+To stop using portable mode, close Markview and remove the marker. The next
+launch uses system configuration again; the portable data remains available.
+ZIPs do not enable portable mode until you create the marker.
+
 ## Runtime requirements
 
 The Linux artifacts rely on host components on purpose: bundling glibc is the

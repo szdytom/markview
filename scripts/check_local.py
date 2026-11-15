@@ -171,6 +171,11 @@ CHECKS = (
         "light",
     ),
     Check(
+        "Windows archive preparation tests",
+        python("-m", "unittest", "discover", "-s", "scripts", "-p", "test_prepare_windows_archive.py"),
+        "light",
+    ),
+    Check(
         "local runner tests",
         python("-m", "unittest", "discover", "-s", "scripts", "-p", "test_check_local.py"),
         "light",

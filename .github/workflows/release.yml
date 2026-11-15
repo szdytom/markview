@@ -130,6 +130,15 @@ jobs:
       - name: "Set up Windows MSI tools"
         uses: "./.github/actions/setup-wix"
         if: "runner.os == 'Windows'"
+      - name: "Set up Python for Windows archive preparation"
+        uses: "actions/setup-python@v6"
+        if: "runner.os == 'Windows'"
+        with:
+          "python-version": "3.12"
+      - name: "Include the Windows portable-mode helper"
+        if: "runner.os == 'Windows'"
+        run: "python scripts/prepare_windows_archive.py"
+        shell: "pwsh"
       - uses: swatinem/rust-cache@v2
         with:
           key: ${{ join(matrix.targets, '-') }}

@@ -32,6 +32,13 @@ Every portable archive carries `LICENSE`, `README.md`, `THIRD_PARTY.md`, and
 `licenses/KaTeX-OFL.txt`. The Linux packages additionally carry `third-party-notices.html`, which lists the complete dependency tree and
 reproduces each dependency license; see
 [third-party components](../../THIRD_PARTY.md).
+Windows ZIPs additionally carry `enable-portable.bat` beside the executable;
+they do not contain a portable marker or pre-created `data/` directory.
+`scripts/prepare_windows_archive.py` adds the BAT to the build checkout's dist
+include list only on Windows, before archive generation. The generated Release
+workflow uses `.github/build-setup.yml`; Packages calls the same script. Other
+platforms keep the unmodified include list, and the MSI installs only the
+executable. See [portable mode](../users/installation.md#portable-mode).
 Android APKs include the project license, resource licenses and generated notices
 under `assets/licenses/`; see [Android packaging](android.md#dependency-licenses).
 

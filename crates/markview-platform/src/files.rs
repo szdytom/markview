@@ -96,6 +96,32 @@ pub fn export_tempfile(parent: &Path) -> io::Result<tempfile::NamedTempFile> {
 	}
 }
 
+/// The application data directory, fixed for the lifetime of the process.
+pub fn config_directory() -> Option<std::path::PathBuf> {
+	static DIRECTORY: std::sync::OnceLock<Option<std::path::PathBuf>> =
+		std::sync::OnceLock::new();
+	DIRECTORY
+		.get_or_init(|| {
+			#[cfg(any(target_os = "windows", target_os = "linux"))]
+			if let Ok(executable) = std::env::current_exe()
+				&& let Some(directory) = portable_directory(&executable)
+			{
+				return Some(directory);
+			}
+			config_base().map(|base| base.join("markview"))
+		})
+		.clone()
+}
+
+#[cfg(any(target_os = "windows", target_os = "linux"))]
+fn portable_directory(executable: &Path) -> Option<std::path::PathBuf> {
+	let directory = executable.parent()?;
+	directory
+		.join("markview-portable-marker.txt")
+		.exists()
+		.then(|| directory.join("data"))
+}
+
 pub fn config_base() -> Option<std::path::PathBuf> {
 	#[cfg(not(target_os = "android"))]
 	use std::path::PathBuf;
@@ -134,6 +160,27 @@ pub fn system_locale() -> Option<String> {
 #[cfg(test)]
 mod tests {
 	use super::*;
+
+	#[cfg(any(target_os = "windows", target_os = "linux"))]
+	#[test]
+	fn portable_storage_depends_only_on_marker_presence() {
+		let directory = tempfile::tempdir().unwrap();
+		let root = directory.path().join("portable 中文 reader");
+		fs::create_dir(&root).unwrap();
+		let executable = root.join("markview");
+		let marker = root.join("markview-portable-marker.txt");
+		assert_eq!(portable_directory(&executable), None);
+		for contents in [b"".as_slice(), b"enabled", &[0xff, 0x00]] {
+			fs::write(&marker, contents).unwrap();
+			assert_eq!(
+				portable_directory(&executable),
+				Some(root.join("data"))
+			);
+			assert!(!root.join("data").exists());
+		}
+		fs::remove_file(marker).unwrap();
+		assert_eq!(portable_directory(&executable), None);
+	}
 
 	#[test]
 	fn folder_display_name_follows_native_conventions() {

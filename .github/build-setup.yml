@@ -1,3 +1,12 @@
 - name: Set up Windows MSI tools
   if: runner.os == 'Windows'
   uses: ./.github/actions/setup-wix
+- name: Set up Python for Windows archive preparation
+  if: runner.os == 'Windows'
+  uses: actions/setup-python@v6
+  with:
+    python-version: '3.12'
+- name: Include the Windows portable-mode helper
+  if: runner.os == 'Windows'
+  shell: pwsh
+  run: python scripts/prepare_windows_archive.py

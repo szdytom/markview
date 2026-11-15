@@ -466,7 +466,7 @@ fn default_cjk_type() -> CjkType {
 	}
 }
 pub fn config_path() -> Option<PathBuf> {
-	markview_platform::config_base().map(|p| p.join("markview/settings.toml"))
+	markview_platform::config_directory().map(|p| p.join("settings.toml"))
 }
 
 #[cfg(test)]

@@ -12,6 +12,11 @@ choose or download families. Export has its [own settings](export.md).
 | macOS | `~/Library/Application Support/markview/settings.toml` |
 | Windows | `%APPDATA%/markview/settings.toml` |
 
+On Windows and Linux, [portable mode](installation.md#portable-mode) uses
+`data/settings.toml` beside the executable. Styles, downloaded fonts, image
+cache, sessions, history and instance communication files also stay under
+`data/`, independently of the installed reader's configuration.
+
 Android keeps settings in private app storage. Prefer the UI for ordinary changes.
 Saved settings override defaults; explicit command-line options override the
 session. Diagnostic and buffer-export commands do not inherit personal reader

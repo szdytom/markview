@@ -19,9 +19,37 @@ try {
     Expand-Archive $zip.FullName "$work/portable"
     $portable = Get-ChildItem "$work/portable" -Recurse -Filter markview.exe
     if ($portable.Count -ne 1) { throw "expected one portable executable" }
+    $portableDirectory = $portable.DirectoryName
+    $helper = Join-Path $portableDirectory 'enable-portable.bat'
+    $marker = Join-Path $portableDirectory 'markview-portable-marker.txt'
+    $data = Join-Path $portableDirectory 'data'
+    if (!(Test-Path $helper -PathType Leaf)) { throw 'ZIP is missing enable-portable.bat' }
+    if ((Test-Path $marker) -or (Test-Path $data)) { throw 'ZIP must not enable portable mode by default' }
     & "$PSScriptRoot/verify_windows_image.ps1" $portable.FullName $Target
     $process = Start-Process $portable.FullName -ArgumentList "--help" -Wait -PassThru
     if ($process.ExitCode -ne 0) { throw "portable executable failed: $($process.ExitCode)" }
+
+    # The helper must use its own directory even when called from elsewhere.
+    Push-Location $work
+    try {
+        & $env:ComSpec /d /c "`"$helper`""
+        if ($LASTEXITCODE -ne 0 -or !(Test-Path $marker -PathType Leaf)) { throw 'BAT did not enable portable mode' }
+        $contents = [byte[]](255, 0, 42)
+        [IO.File]::WriteAllBytes($marker, $contents)
+        & $env:ComSpec /d /c "`"$helper`""
+        if ($LASTEXITCODE -ne 0 -or [Convert]::ToBase64String([IO.File]::ReadAllBytes($marker)) -ne [Convert]::ToBase64String($contents)) {
+            throw 'BAT changed an existing marker'
+        }
+        $output = Join-Path $work 'fonts-path.txt'
+        foreach ($expected in (Join-Path $data 'fonts'), (Join-Path (Join-Path $env:APPDATA 'markview') 'fonts')) {
+            $process = Start-Process $portable.FullName -ArgumentList 'fonts path' -WorkingDirectory $work -RedirectStandardOutput $output -Wait -PassThru
+            if ($process.ExitCode -ne 0 -or (Get-Content $output -Raw).Trim() -ne $expected) { throw "Unexpected font directory; expected $expected" }
+            Remove-Item $marker -ErrorAction SilentlyContinue
+        }
+        if (Test-Path $data) { throw 'Path queries must not create data storage' }
+    } finally {
+        Pop-Location
+    }
 
     $msi = Get-Item "$out/markview-$Target.msi"
     $installer = New-Object -ComObject WindowsInstaller.Installer
@@ -37,6 +65,9 @@ try {
     }
     $installed = Get-ChildItem "$installDir" -Recurse -Filter markview.exe
     if ($installed.Count -ne 1) { throw "expected one MSI executable" }
+    if (Get-ChildItem $installDir -Recurse -File | Where-Object { $_.Name -in 'enable-portable.bat', 'markview-portable-marker.txt' }) {
+        throw 'MSI must not contain portable-mode helpers or markers'
+    }
     & "$PSScriptRoot/verify_windows_image.ps1" $installed.FullName $Target
     $process = Start-Process $installed.FullName -ArgumentList "--help" -Wait -PassThru
     if ($process.ExitCode -ne 0) { throw "MSI executable failed: $($process.ExitCode)" }
