@@ -4,6 +4,40 @@ use markview_interaction::{Point, ViewAction, ViewInput};
 use winit::keyboard::{Key, NamedKey};
 
 impl<P: super::super::SendEvent> App<P> {
+	pub(in crate::app) fn refresh_preview_hover(
+		&mut self,
+	) -> Option<winit::cursor::CursorIcon> {
+		if !self.preview_allowed() {
+			return None;
+		}
+		let (x, y) = self.interaction.pointer.cursor();
+		let floating = self.preview.floating_mut()?;
+		if !floating.rect.contains(x, y) && !floating.state.captured() {
+			return None;
+		}
+		let hover = floating
+			.view()
+			.hover(Point::new(x, y), floating.state.captured());
+		let changed = hover != floating.state.hover
+			|| self.interaction.pointer.hover().is_some()
+			|| self.interaction.pointer.hover_image().is_some()
+			|| self.interaction.pointer.hover_control().is_some()
+			|| self.interaction.widgets.hovered.is_some();
+		let cursor = hover.cursor;
+		floating.state.hover = hover;
+		self.interaction.pointer.clear_hover();
+		self.interaction.widgets.hovered = None;
+		if changed {
+			self.redraw();
+		}
+		use winit::cursor::CursorIcon;
+		Some(match cursor {
+			markview_interaction::Cursor::Default => CursorIcon::Default,
+			markview_interaction::Cursor::Text => CursorIcon::Text,
+			markview_interaction::Cursor::Pointer => CursorIcon::Pointer,
+		})
+	}
+
 	pub(in crate::app) fn preview_captured(&self) -> bool {
 		self.preview
 			.floating()
@@ -41,7 +75,6 @@ impl<P: super::super::SendEvent> App<P> {
 		}
 		let floating = self.preview.floating_mut().unwrap();
 		let update = floating.input(input);
-		let hover = floating.state.hover.cursor;
 		if matches!(input, ViewInput::Press { .. }) {
 			floating.state.focused = true;
 			self.interaction.widgets.focus = None;
@@ -49,18 +82,10 @@ impl<P: super::super::SendEvent> App<P> {
 		if let Some(action) = update.action {
 			self.preview_action(action);
 		}
-		if let Some(window) = &self.window {
-			use winit::cursor::CursorIcon;
-			window.set_cursor(
-				match hover {
-					markview_interaction::Cursor::Pointer => {
-						CursorIcon::Pointer
-					}
-					markview_interaction::Cursor::Text => CursorIcon::Text,
-					_ => CursorIcon::Default,
-				}
-				.into(),
-			);
+		if let Some(cursor) = self.refresh_preview_hover()
+			&& let Some(window) = &self.window
+		{
+			window.set_cursor(cursor.into());
 		}
 		self.redraw();
 		true

@@ -59,6 +59,101 @@ fn content_point(app: &App<Proxy>) -> Point {
 }
 
 #[test]
+fn popup_cursor_and_hover_survive_frame_refreshes_over_background_content() {
+	use markview_interaction::Cursor;
+	use winit::cursor::CursorIcon;
+	let source = format!(
+		"Main[^n]. {}\n\n[^n]: Note prose with a [popup link](https://popup.test).\n",
+		"[Background link](https://background.test) background prose. "
+			.repeat(100)
+	);
+	let mut app = note_app(&source);
+	for (popup, background, expected) in [
+		(Cursor::Text, Cursor::Pointer, CursorIcon::Text),
+		(Cursor::Pointer, Cursor::Text, CursorIcon::Pointer),
+		(Cursor::Default, Cursor::Pointer, CursorIcon::Default),
+	] {
+		let floating = app.preview.floating().unwrap();
+		let rect = floating.rect;
+		let point = (rect.y.ceil() as i32..(rect.y + rect.h) as i32)
+			.step_by(2)
+			.find_map(|y| {
+				(rect.x.ceil() as i32..(rect.x + rect.w) as i32)
+					.step_by(2)
+					.map(|x| Point::new(x as f32, y as f32))
+					.find(|point| {
+						floating.view().hover(*point, false).cursor == popup
+							&& app
+								.document_interaction()
+								.hover(*point, false, true)
+								.cursor
+								== background
+					})
+			})
+			.expect(
+				"the popup and background must offer contrasting cursor targets",
+			);
+		let background_hover =
+			app.document_interaction().hover(point, false, true);
+		app.interaction
+			.pointer
+			.set_hover(background_hover.link, background_hover.image_title);
+		app.pointer_moved(winit::dpi::PhysicalPosition::new(
+			point.x as f64,
+			point.y as f64,
+		));
+		for frame in 0..3 {
+			app.advance_animations(Instant::now(), Duration::from_millis(16));
+			assert_eq!(app.refresh_hover(), expected, "frame {frame}");
+			assert_eq!(
+				app.preview.floating().unwrap().state.hover.cursor,
+				popup
+			);
+			assert!(app.interaction.pointer.hover().is_none());
+			assert!(app.interaction.pointer.hover_image().is_none());
+			assert!(app.interaction.pointer.hover_control().is_none());
+		}
+	}
+	let point = reference_point(&app);
+	app.pointer_moved(winit::dpi::PhysicalPosition::new(
+		point.x as f64,
+		point.y as f64,
+	));
+	assert_eq!(app.refresh_hover(), CursorIcon::Pointer);
+	assert!(app.interaction.pointer.hover().is_some());
+}
+
+#[test]
+fn captured_popup_keeps_cursor_ownership_outside_its_bounds() {
+	use winit::cursor::CursorIcon;
+	let source = format!("Main[^n].\n\n[^n]: {}\n", "Long note. ".repeat(300));
+	let mut app = note_app(&source);
+	let bar = app.preview.floating().unwrap().scrollbar().unwrap();
+	let point = Point::new(bar.thumb.x + 2.0, bar.thumb.y + 2.0);
+	app.interaction.pointer.move_to((point.x, point.y));
+	app.pointer_pressed();
+	assert!(app.preview_captured());
+	assert_eq!(app.refresh_hover(), CursorIcon::Default);
+	let point = reference_point(&app);
+	app.pointer_moved(winit::dpi::PhysicalPosition::new(
+		point.x as f64,
+		point.y as f64,
+	));
+	assert!(
+		app.document_interaction()
+			.hover(point, false, true)
+			.link
+			.is_some()
+	);
+	app.advance_animations(Instant::now(), Duration::from_millis(16));
+	assert_eq!(app.refresh_hover(), CursorIcon::Default);
+	assert!(app.interaction.pointer.hover().is_none());
+	app.pointer_released();
+	assert!(!app.preview_captured());
+	assert_eq!(app.refresh_hover(), CursorIcon::Pointer);
+}
+
+#[test]
 fn focused_popup_select_all_copies_only_the_note_and_escape_closes_it() {
 	let mut app = note_app("Main prose[^n].\n\n[^n]: Note **content**.\n");
 	let main_selection = app
@@ -398,6 +493,8 @@ fn scrolling_refreshes_the_link_under_a_stationary_pointer() {
 	app.interaction.pointer.move_to((point.x, point.y));
 	app.preview_input(ViewInput::Move(point));
 	assert!(app.preview.floating().unwrap().state.hover.link.is_some());
+	assert_eq!(app.refresh_hover(), winit::cursor::CursorIcon::Pointer);
 	app.scroll_wheel(100.0, markview_interaction::WheelMode::Direct);
 	assert!(app.preview.floating().unwrap().state.hover.link.is_none());
+	assert_ne!(app.refresh_hover(), winit::cursor::CursorIcon::Pointer);
 }

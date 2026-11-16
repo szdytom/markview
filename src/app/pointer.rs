@@ -856,7 +856,15 @@ impl<P: super::SendEvent> App<P> {
 	}
 
 	/// Hover state follows scrolling and reflow, not only pointer motion.
-	pub(super) fn refresh_hover(&mut self) {
+	pub(super) fn refresh_hover(&mut self) -> CursorIcon {
+		let cursor = self.refresh_hover_cursor();
+		if let Some(window) = &self.window {
+			window.set_cursor(cursor.into());
+		}
+		cursor
+	}
+
+	fn refresh_hover_cursor(&mut self) -> CursorIcon {
 		if self.interaction.overlays.viewer_open() {
 			let grabbing = self
 				.interaction
@@ -864,17 +872,20 @@ impl<P: super::SendEvent> App<P> {
 				.viewer()
 				.is_some_and(|viewer| viewer.grabbing());
 			self.interaction.pointer.clear_hover();
-			if let Some(w) = &self.window {
-				w.set_cursor(if grabbing {
-					CursorIcon::Grabbing.into()
-				} else {
-					self.frame_cursor().unwrap_or(CursorIcon::Default).into()
-				});
-			}
-			return;
+			return if grabbing {
+				CursorIcon::Grabbing
+			} else {
+				self.frame_cursor().unwrap_or(CursorIcon::Default)
+			};
+		}
+		if self.refresh_open_preview() {
+			self.redraw();
 		}
 		let controls = self.ui_layout();
 		self.update_tooltip(&controls, Instant::now());
+		if let Some(cursor) = self.refresh_preview_hover() {
+			return cursor;
+		}
 		self.interaction.widgets.handle(
 			&controls.hit,
 			markview_ui_core::Input::Move(self.interaction.pointer.cursor()),
@@ -932,13 +943,10 @@ impl<P: super::SendEvent> App<P> {
 			|| hover_control != self.interaction.pointer.hover_control();
 		self.interaction.pointer.set_hover_control(hover_control);
 		self.interaction.pointer.set_hover(hover, hover_image);
-		if let Some(w) = &self.window {
-			w.set_cursor(cursor.into());
-		}
-		let preview_changed = self.refresh_open_preview();
-		if hover_changed || preview_changed {
+		if hover_changed {
 			self.redraw();
 		}
+		cursor
 	}
 	fn hover_cursor(
 		&mut self,
