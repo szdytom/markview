@@ -938,7 +938,7 @@ impl Stylesheet {
 		out
 	}
 }
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct TextAppearance {
 	pub letter_spacing: f32,
 	pub font: Vec<Font>,

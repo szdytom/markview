@@ -26,6 +26,8 @@ impl Draw {
 			Self::Math { math, .. } => {
 				use ratex_types::DisplayItem;
 				size_of_val(math.as_ref())
+					+ size_of_val(math.appearance.as_ref())
+					+ 2 * size_of::<usize>()
 					+ vec_bytes(&math.display.items)
 					+ math
 						.display

@@ -10,13 +10,14 @@ pub struct MathBox {
 	pub size: f32,
 	pub display: DisplayList,
 	/// The resolved `[math]` appearance for a missing KaTeX face.
-	pub appearance: TextAppearance,
+	pub appearance: Arc<TextAppearance>,
 }
 
 type CacheKey = (String, bool, u32, u64);
 
 #[derive(Default)]
 pub struct MathEngine {
+	appearances: Vec<(u64, Arc<TextAppearance>)>,
 	cache: HashMap<CacheKey, Result<Arc<MathBox>, String>>,
 	limits: Limits,
 	/// Formula bytes laid out since `set_limits`, which resets per pass.
@@ -29,6 +30,26 @@ impl MathEngine {
 	pub fn set_limits(&mut self, limits: Limits) {
 		self.limits = limits;
 		self.used = 0;
+	}
+
+	fn shared_appearance(
+		&mut self,
+		appearance: &TextAppearance,
+	) -> Arc<TextAppearance> {
+		let key = appearance.key();
+		if let Some((_, shared)) = self
+			.appearances
+			.iter()
+			.find(|(id, shared)| *id == key && shared.as_ref() == appearance)
+		{
+			return shared.clone();
+		}
+		if self.appearances.len() >= 256 {
+			self.appearances.clear();
+		}
+		let shared = Arc::new(appearance.clone());
+		self.appearances.push((key, shared.clone()));
+		shared
 	}
 
 	pub fn layout(
@@ -46,6 +67,7 @@ impl MathEngine {
 		// Bound caches and hostile/accidentally enormous AI-generated formulas.
 		if self.cache.len() >= 256 {
 			self.cache.clear();
+			self.appearances.clear();
 		}
 		let over_budget =
 			self.used.saturating_add(latex.len()) > self.limits.math_bytes;
@@ -56,6 +78,7 @@ impl MathEngine {
 		} else if over_budget {
 			Err("Document formula budget exceeded".into())
 		} else {
+			let shared_appearance = self.shared_appearance(appearance);
 			std::panic::catch_unwind(|| {
 				let ast =
 					ratex_parser::parse(latex).map_err(|e| e.to_string())?;
@@ -68,7 +91,8 @@ impl MathEngine {
 					..Default::default()
 				};
 				let layout = ratex_layout::layout(&ast, &opts);
-				let commands = ratex_layout::to_display_list(&layout);
+				let mut commands = ratex_layout::to_display_list(&layout);
+				commands.items.shrink_to_fit();
 				let width = commands.width as f32 * size;
 				let ascent = commands.height as f32 * size;
 				let descent = commands.depth as f32 * size;
@@ -84,7 +108,7 @@ impl MathEngine {
 					descent,
 					size,
 					display: commands,
-					appearance: appearance.clone(),
+					appearance: shared_appearance.clone(),
 				}))
 			})
 			.unwrap_or_else(|_| Err("Formula could not be laid out".into()))
@@ -166,6 +190,7 @@ mod tests {
 			e.layout("x", false, 18.0, &TextAppearance::default())
 				.is_err()
 		);
+		assert!(e.appearances.is_empty());
 		// A new pass gets a fresh allowance, so a resize can still succeed.
 		e.set_limits(Limits::default());
 		assert!(
@@ -199,5 +224,63 @@ mod tests {
 			)
 			.is_err()
 		);
+	}
+	#[test]
+	fn formulas_share_equal_appearance_and_seal_commands() {
+		let mut engine = MathEngine::default();
+		let appearance = TextAppearance::default();
+		let x = engine.layout("x", false, 16., &appearance).unwrap();
+		let y = engine.layout("y", false, 16., &appearance).unwrap();
+		assert!(Arc::ptr_eq(&x.appearance, &y.appearance));
+		assert_eq!(x.display.items.len(), x.display.items.capacity());
+		let changed = TextAppearance {
+			weight: 700,
+			..appearance
+		};
+		let z = engine.layout("z", false, 16., &changed).unwrap();
+		assert!(!Arc::ptr_eq(&x.appearance, &z.appearance));
+		assert_eq!(x.appearance.weight, 400);
+	}
+	#[test]
+	fn appearance_pool_is_bounded_and_old_formulas_remain_valid() {
+		let mut engine = MathEngine::default();
+		let first = engine
+			.layout("x", false, 16., &TextAppearance::default())
+			.unwrap();
+		let weak = Arc::downgrade(&first.appearance);
+		for weight in 1..=600 {
+			let appearance = TextAppearance {
+				weight,
+				..Default::default()
+			};
+			engine.shared_appearance(&appearance);
+			assert!(engine.appearances.len() <= 256);
+		}
+		assert_eq!(first.appearance.weight, 400);
+		drop(engine);
+		assert!(weak.upgrade().is_some());
+		drop(first);
+		assert!(weak.upgrade().is_none());
+	}
+
+	#[test]
+	fn sharing_keeps_distinct_float_bits_and_compares_hash_matches() {
+		let mut engine = MathEngine::default();
+		let appearance = TextAppearance::default();
+		let first = engine.shared_appearance(&appearance);
+		let changed = TextAppearance {
+			letter_spacing: -0.,
+			..appearance.clone()
+		};
+		let other = engine.shared_appearance(&changed);
+		assert_eq!(other.letter_spacing.to_bits(), (-0_f32).to_bits());
+		assert!(!Arc::ptr_eq(&first, &other));
+		let changed = TextAppearance {
+			weight: 700,
+			..appearance
+		};
+		engine.appearances = vec![(changed.key(), first.clone())];
+		assert_eq!(engine.shared_appearance(&changed).weight, 700);
+		assert_eq!(first.weight, 400);
 	}
 }
