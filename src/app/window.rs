@@ -114,7 +114,7 @@ impl<P: super::SendEvent> App<P> {
 			WindowEvent::PinchGesture { .. } => {
 				// TODO: implement viewport zoom without changing the document layout.
 			}
-			WindowEvent::DroppedFile(path) => self.route_open(path),
+			WindowEvent::DroppedFile(path) => self.open(path),
 			WindowEvent::ModifiersChanged(m) => {
 				self.interaction.pointer.set_modifiers(m.state());
 			}

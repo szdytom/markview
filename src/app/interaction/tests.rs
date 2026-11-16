@@ -2433,7 +2433,8 @@ fn forwarded_files_open_tabs_and_reuse_existing_tabs() {
 }
 
 #[test]
-fn picked_files_stay_here_while_desktop_requests_follow_folder_windows() {
+fn picked_and_dropped_files_stay_here_while_desktop_requests_follow_folder_windows()
+ {
 	use crate::app::single_instance::{Start, start};
 	use std::sync::mpsc;
 	use std::time::Duration;
@@ -2459,23 +2460,35 @@ fn picked_files_stay_here_while_desktop_requests_follow_folder_windows() {
 	app.preferences.values.single_instance = true;
 	app.register_instance();
 	let inside = root.join("inside.md");
-	app.handle_user_event(&StubLoop, Event::Picked(Some(inside.clone())));
-	assert_eq!(app.readers.session.path.as_ref(), Some(&inside));
-	assert!(rx.try_recv().is_err());
 	let outside = dir.path().join("outside.md");
-	app.handle_user_event(&StubLoop, Event::Picked(Some(outside.clone())));
-	assert_eq!(app.readers.session.path.as_ref(), Some(&outside));
-	assert!(rx.try_recv().is_err());
+	for path in [&inside, &outside, &inside] {
+		app.handle_window_event(
+			&StubLoop,
+			WindowId::from_raw(0),
+			WindowEvent::DroppedFile(path.clone()),
+		);
+		assert_eq!(app.readers.session.path.as_ref(), Some(path));
+		assert!(rx.try_recv().is_err());
+		app.handle_user_event(&StubLoop, Event::Picked(Some(path.clone())));
+		assert_eq!(app.readers.session.path.as_ref(), Some(path));
+		assert!(rx.try_recv().is_err());
+	}
+	assert_eq!(app.readers.entries().len(), 2);
 	let desktop = root.join("desktop.md");
 	app.handle_user_event(&StubLoop, Event::Open(Some(desktop.clone())));
 	assert_eq!(
 		rx.recv_timeout(Duration::from_secs(2)).unwrap(),
 		Some(desktop)
 	);
-	assert_eq!(app.readers.session.path.as_ref(), Some(&outside));
+	assert_eq!(app.readers.session.path.as_ref(), Some(&inside));
 	let other = dir.path().join("other");
 	std::fs::create_dir(&other).unwrap();
-	app.open_folder(other.clone(), false);
+	app.handle_window_event(
+		&StubLoop,
+		WindowId::from_raw(0),
+		WindowEvent::DroppedFile(other.clone()),
+	);
+	assert_eq!(app.folder.root(), Some(&other));
 	assert!(matches!(
 		start(&lock, true, Some(other.join("pending.md")), false).unwrap(),
 		Start::Forwarded(_)

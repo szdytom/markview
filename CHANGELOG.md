@@ -40,6 +40,7 @@ at the same level, without `[brackets]`.
 
 ### Fixed
 
+- Always open dropped files and folders in the window receiving the drop, bypassing automatic window selection.
 - Resolve Obsidian heading paths such as `[[note#Parent#Child]]` to the correct repeated subheading in navigation, hover previews and PDF links.
 - Keep file sidebar rows and scroll limits in sync while folders expand or collapse, avoiding abrupt jumps in short windows.
 
