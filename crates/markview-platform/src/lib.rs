@@ -1,5 +1,7 @@
 //! OS effects stay outside the reading core.
 pub mod event;
+#[cfg(target_os = "macos")]
+mod open_panel;
 #[cfg(test)]
 mod proptests;
 
@@ -270,7 +272,9 @@ pub fn pick_image(
 pub fn pick_folder(
 	done: impl FnOnce(Option<std::path::PathBuf>) + Send + 'static,
 ) {
-	#[cfg(not(target_os = "android"))]
+	#[cfg(target_os = "macos")]
+	open_panel::pick(false, done);
+	#[cfg(not(any(target_os = "android", target_os = "macos")))]
 	std::thread::spawn(move || done(rfd::FileDialog::new().pick_folder()));
 	#[cfg(target_os = "android")]
 	android::pick_folder(done);
@@ -279,7 +283,9 @@ pub fn pick_folder(
 pub fn pick_document(
 	done: impl FnOnce(Option<std::path::PathBuf>) + Send + 'static,
 ) {
-	#[cfg(not(target_os = "android"))]
+	#[cfg(target_os = "macos")]
+	open_panel::pick(true, done);
+	#[cfg(not(any(target_os = "android", target_os = "macos")))]
 	std::thread::spawn(move || {
 		done(
 			rfd::FileDialog::new()

@@ -76,6 +76,8 @@ ashpd = { version = "0.13", default-features = false, features = ["async-io", "s
 
 
 [target.'cfg(target_os = "macos")'.dependencies]
+block2 = "0.6"
+objc2-uniform-type-identifiers = { version = "0.3", default-features = false, features = ["std", "UTType"] }
 # A double-clicked document arrives as an Apple Event, which only the Objective-C
 # runtime can answer; `winit` drives it for us but does not expose the hook.
 objc2 = { version = "0.6", default-features = false, features = ["std"] }
@@ -94,4 +96,4 @@ objc2-core-services = { version = "0.3", default-features = false, features = [
 	"AEDataModel",
 	"AppleEvents",
 ] }
-objc2-app-kit = { version = "0.3", default-features = false, features = ["std", "NSButton", "NSControl", "NSResponder", "NSView", "NSWindow"] }
+objc2-app-kit = { version = "0.3", default-features = false, features = ["std", "NSApplication", "NSButton", "NSControl", "NSOpenPanel", "NSPanel", "NSResponder", "NSSavePanel", "NSView", "NSWindow", "block2", "objc2-uniform-type-identifiers"] }

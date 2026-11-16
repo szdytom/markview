@@ -34,6 +34,7 @@ at the same level, without `[brackets]`.
 
 ### Changed
 
+- Use one native macOS open panel and ⌘O for files and folders, with a single start-page action; remove the separate ⇧⌘O shortcut.
 - Raise the minimum supported Rust version to 1.100.0.
 - Reduce text layout allocations, retained geometry memory, and document reflow time.
 - Reduce retained memory for Markdown source maps by deferring reverse indexes and sealing storage.

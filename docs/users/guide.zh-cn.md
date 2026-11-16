@@ -9,7 +9,8 @@ Markview 是只读 Markdown 阅读器。用自己的编辑器修改文件，Mark
 Windows 优先使用 MSI，macOS 使用应用包，Linux 可选 Debian 包或 AppImage；
 Android 使用 APK。平台要求与首次启动问题见[安装指南](installation.md)。
 
-在首页选择“打开文件”或“打开文件夹”，也可以从终端启动：
+macOS 在首页选择“打开…”或按 ⌘O，在同一面板中选择文件或文件夹。
+其他平台在首页选择“打开文件”或“打开文件夹”。也可以从终端启动：
 
 ```sh
 markview notes.md
@@ -33,7 +34,8 @@ markview path/to/notes
 | Ctrl+Tab / Ctrl+Shift+Tab | 按最近使用顺序切换标签页 |
 | Ctrl+W | 关闭标签页 |
 
-macOS 使用 Command 代替 Ctrl，但标签页切换仍用 Control。
+macOS 用 ⌘O 统一打开文件和文件夹，不再提供 ⇧⌘O。
+其他快捷键使用 Command 代替 Ctrl，但标签页切换仍用 Control。
 代码块右上角按钮会复制整块代码；选择复制保留阅读内容。
 完整快捷键与链接行为见[阅读指南](reading.md)。
 

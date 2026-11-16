@@ -55,12 +55,16 @@ search visibility, query and options, but does not restore search input focus.
 | `Ctrl+A` / `Ctrl+C` | Select the document, or copy the selection |
 | Wheel, arrows, `Page Up`/`Page Down`, `Space`, `Home`/`End` | Scroll |
 
-macOS uses Command in place of Ctrl, except for `Ctrl+Tab` and `Ctrl+Shift+Tab`,
+On macOS, **Open…** and `Command+O` select either a file or a folder in one
+native panel; there is no separate `Command+Shift+O` shortcut. The start page
+shows this single open action. Other shortcuts use Command in place of Ctrl,
+except for `Ctrl+Tab` and `Ctrl+Shift+Tab`,
 which stay on Control so they do not collide with the system app switcher.
 
 ## Folders and Obsidian vaults
 
-Open a folder with **Open folder**, Ctrl+Shift+O, or a directory argument. The
+Open a folder with **Open…** or Command+O on macOS; use **Open folder** or
+Ctrl+Shift+O on other desktop platforms. A directory argument also works. The
 sidebar lists `.md`, `.markdown` and `.mdown` files. The start page reopens recent
 workspaces; Quick access and Ctrl+P find files by name or relative path.
 

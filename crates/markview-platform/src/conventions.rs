@@ -17,6 +17,10 @@ pub const fn window_buttons() -> WindowButtons {
 pub const fn command_key() -> bool {
 	cfg!(target_os = "macos")
 }
+/// One open action can select either a document or a workspace directory.
+pub const fn unified_open() -> bool {
+	cfg!(target_os = "macos")
+}
 pub const fn touch_layout() -> bool {
 	cfg!(target_os = "android")
 }

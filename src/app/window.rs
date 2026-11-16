@@ -683,12 +683,15 @@ impl<P: super::SendEvent> App<P> {
 					"b" if !self.panel_has_focus() => {
 						self.action(Command::Document(DocumentCommand::Outline))
 					}
-					"o" if self.interaction.pointer.modifiers().shift_key()
+					"o" if modifiers.shift_key()
+						&& !markview_platform::unified_open()
 						&& !self.panel_has_focus() =>
 					{
 						self.action(Command::Chrome(ChromeCommand::OpenFolder))
 					}
-					"o" if !self.panel_has_focus() => {
+					"o" if !modifiers.shift_key()
+						&& !self.panel_has_focus() =>
+					{
 						self.action(Command::Document(DocumentCommand::Open))
 					}
 					"r" if markview_platform::folder_reveal()
