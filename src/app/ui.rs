@@ -594,7 +594,7 @@ impl<P: super::SendEvent> App<P> {
 				// slot before the next frame is drawn.
 				self.move_tab_drag();
 			}
-			// The resting pointer now names a different tab.
+			// Keep the card open until its tab leaves the resting pointer.
 			self.hover_preview(now);
 		}
 		self.preferences.fonts.scroll_area().advance(now);

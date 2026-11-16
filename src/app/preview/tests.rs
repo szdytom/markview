@@ -1245,8 +1245,123 @@ fn overflowing_table_previews_pin_only_images_in_the_scrolled_clip() {
 	}
 }
 
-/// The wheel slides tabs under a resting pointer, so the card closes and its
-/// hover follows the tab that arrives without waiting for pointer motion.
+#[test]
+fn ineffective_tab_scrolling_keeps_the_preview_and_hover_deadline() {
+	for (tabs, at_end, delta) in [
+		(2, false, -200.0),
+		(2, false, 200.0),
+		(30, false, -200.0),
+		(30, true, 200.0),
+		(30, false, 0.0),
+	] {
+		let (mut app, _events) = app();
+		let now = Instant::now();
+		for index in 0..tabs {
+			app.readers.open(
+				PathBuf::from(format!("/tmp/scroll-tab-{index}.md")),
+				now,
+			);
+		}
+		let layout = app.tab_layout();
+		app.tab_strip.scroll.set_max(layout.max_scroll);
+		let offset = if at_end { layout.max_scroll } else { 0.0 };
+		app.tab_strip.scroll.set(offset);
+		app.interaction
+			.pointer
+			.move_to((layout.viewport.x + 20.0, 20.0));
+		app.hover_preview(now);
+		let deadline = app.preview.deadline().expect("hover is armed");
+		assert!(app.scroll_tabs(delta));
+		assert_eq!(app.preview.deadline(), Some(deadline));
+
+		app.preview_tick(deadline);
+		let target = app.preview.open().expect("the card did not open").target;
+		for _ in 0..3 {
+			assert!(app.scroll_tabs(delta));
+			assert_eq!(app.tab_strip.scroll.offset(), offset);
+			assert!(!app.tab_strip.scroll.animating());
+			assert_eq!(
+				app.preview.open().map(|open| open.target),
+				Some(target)
+			);
+			assert_eq!(app.preview.deadline(), None);
+		}
+	}
+}
+
+#[test]
+fn a_preview_follows_its_scrolling_tab_while_the_pointer_stays_inside() {
+	fn rect(app: &mut App<Proxy>) -> Rect {
+		app.overlay()
+			.into_iter()
+			.find_map(|draw| match draw {
+				Draw::Box {
+					rect,
+					condition: markview_layout::style::Condition::TabPreview,
+					..
+				} => Some(rect),
+				_ => None,
+			})
+			.expect("the preview is painted")
+	}
+
+	for direction in [-1.0, 1.0] {
+		let (mut app, _events) = app();
+		let now = Instant::now();
+		for index in 0..30 {
+			app.readers.open(
+				PathBuf::from(format!("/tmp/scroll-tab-{index}.md")),
+				now,
+			);
+		}
+		let layout = app.tab_layout();
+		app.tab_strip.scroll.set_max(layout.max_scroll);
+		app.tab_strip.scroll.set(layout.max_scroll / 2.0);
+		let layout = app.tab_layout();
+		let middle = layout.viewport.x + layout.viewport.w / 2.0;
+		let (index, _) = layout
+			.rects
+			.iter()
+			.enumerate()
+			.min_by(|(_, a), (_, b)| {
+				let distance = |r: &Rect| (r.x + r.w / 2.0 - middle).abs();
+				distance(a).total_cmp(&distance(b))
+			})
+			.unwrap();
+		let tab = layout.rects[index];
+		app.interaction.pointer.move_to((tab.x + tab.w / 2.0, 20.0));
+		app.hover_preview(now);
+		app.preview_tick(now + SHOW_DELAY);
+		let target = Target::Tab(app.readers.entries()[index].id);
+		let serial = app.preview.serial;
+		let before = rect(&mut app);
+		assert!(app.scroll_tabs(direction * tab.w / 4.0));
+		assert_eq!(app.preview.open().map(|open| open.target), Some(target));
+
+		let now = Instant::now();
+		let mut previous = before.x;
+		for millis in [16, 32, 64, 1000] {
+			app.advance_control_scroll(now + Duration::from_millis(millis));
+			assert_eq!(app.target_at_cursor(), Some(target));
+			assert_eq!(
+				app.preview.open().map(|open| open.target),
+				Some(target)
+			);
+			assert_eq!(app.preview.serial, serial, "the card stays open");
+			let shown = rect(&mut app);
+			let travel = app.tab_strip.scroll.offset() - layout.scroll;
+			assert!((shown.x - before.x + travel).abs() < 0.01);
+			assert!((shown.x - previous) * direction < 0.0);
+			previous = shown.x;
+		}
+		assert!(!app.tab_strip.scroll.animating());
+		app.interaction.pointer.move_to((tab.x, super::TOP + 20.0));
+		assert!(app.hover_preview(now + Duration::from_secs(2)));
+		assert!(app.preview.open().is_none());
+	}
+}
+
+/// The hover follows the tab that arrives without waiting for pointer motion.
 #[test]
 fn scrolling_the_tab_strip_rearms_the_hover() {
 	let (mut app, _events) = app();
@@ -1265,20 +1380,18 @@ fn scrolling_the_tab_strip_rearms_the_hover() {
 	let before = app.preview.open().expect("the card did not open").target;
 
 	assert!(app.scroll_tabs(200.0));
-	assert!(
-		app.preview.open().is_none(),
-		"the card must close while tabs slide under it"
-	);
-	assert!(
-		app.preview.deadline().is_some(),
-		"the strip must re-arm the hover without motion"
-	);
+	assert_eq!(app.preview.open().map(|open| open.target), Some(before));
 	app.advance_control_scroll(Instant::now() + Duration::from_secs(1));
 	assert!(!app.control_scroll_animating());
 	let target = app
 		.target_at_cursor()
 		.expect("a tab rests under the pointer");
 	assert_ne!(target, before, "the strip scrolled to another tab");
+	assert!(app.preview.open().is_none());
+	assert!(
+		app.preview.deadline().is_some(),
+		"the strip must re-arm the hover without motion"
+	);
 	app.preview_tick(Instant::now() + Duration::from_secs(2));
 	assert_eq!(app.preview.open().map(|open| open.target), Some(target));
 }

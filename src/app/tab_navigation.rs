@@ -42,9 +42,6 @@ impl<P: super::SendEvent> App<P> {
 			Instant::now(),
 			markview_interaction::WheelMode::Detent,
 		);
-		// Tabs slide under the resting pointer; the card closes, and the hover
-		// re-arms for whichever tab arrives there without waiting for motion.
-		self.dismiss_preview();
 		self.move_tab_drag();
 		self.hover_preview(Instant::now());
 		self.redraw();
