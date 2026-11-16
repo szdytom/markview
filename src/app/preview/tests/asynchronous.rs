@@ -54,6 +54,40 @@ fn late_results_show_without_another_delay_or_a_busy_deadline() {
 }
 
 #[test]
+fn settling_presents_an_already_accepted_completion() {
+	let (mut app, now) = begin();
+	app.preview_tick(now + PREPARE_DELAY);
+	let completion = ready(&mut app);
+	app.preview.accept(completion);
+	finish_footnote(&mut app, now);
+	assert!(super::links::text(&app).contains("short"));
+}
+
+#[test]
+fn settling_waits_for_a_file_refreshed_before_presentation() {
+	let dir = crate::test_support::TestDir::new();
+	let path = dir.path().join("other.md");
+	std::fs::write(&path, "Original content.\n").unwrap();
+	let (mut app, _) = super::links::file_reader(dir.path(), "other.md");
+	let now = super::links::hover(&mut app, "other.md");
+	app.preview_tick(now + PREPARE_DELAY);
+	let completion = ready(&mut app);
+	app.preview.accept(completion);
+	let serial = app.preview.serial;
+	std::fs::write(&path, "Updated preview content.\n").unwrap();
+	assert!(
+		app.preview
+			.observed
+			.as_ref()
+			.unwrap()
+			.invalidate_if_outdated()
+	);
+	finish_footnote(&mut app, now);
+	assert_ne!(app.preview.serial, serial);
+	assert!(super::links::text(&app).contains("Updated preview content"));
+}
+
+#[test]
 fn leaving_before_or_after_submission_cancels_without_opening() {
 	for submitted in [false, true] {
 		let (mut app, now) = begin();

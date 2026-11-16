@@ -77,13 +77,31 @@ fn accept_ready(app: &mut App<Proxy>, event: Event) {
 
 fn finish_footnote(app: &mut App<Proxy>, now: Instant) {
 	app.preview_tick(now + PREPARE_DELAY);
-	let completion = app
-		.preview
-		.worker
-		.wait(Duration::from_secs(10))
-		.expect("the preview task did not finish");
-	app.preview.accept(completion);
-	app.preview_tick(now + SHOW_DELAY);
+	settle_preview(app, now, |_| true);
+}
+
+fn settle_preview(
+	app: &mut App<Proxy>,
+	now: Instant,
+	ready: impl Fn(&Floating) -> bool,
+) {
+	let deadline = Instant::now() + Duration::from_secs(10);
+	loop {
+		assert!(Instant::now() < deadline, "the preview did not settle");
+		app.preview_tick(now + SHOW_DELAY);
+		if !app.preview.tracking()
+			|| (app.preview.pending.as_ref().is_some_and(|p| p.presented)
+				&& app.preview.floating().is_some_and(&ready))
+		{
+			return;
+		}
+		let completion = app
+			.preview
+			.worker
+			.wait(deadline.saturating_duration_since(Instant::now()))
+			.expect("the preview did not reach the expected state");
+		app.preview.accept(completion);
+	}
 }
 
 fn card(tab: u64) -> Open {

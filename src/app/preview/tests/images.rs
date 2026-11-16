@@ -2,22 +2,12 @@ use super::*;
 use markview_layout::image::{ImageSnapshot, ImageSource, ResourceRef};
 
 fn settle_images(app: &mut App<Proxy>, now: Instant) -> ImageSnapshot {
-	let deadline = Instant::now() + Duration::from_secs(10);
-	loop {
-		let snapshot = &app.preview.floating().unwrap().snapshot.images;
-		if snapshot.entries.values().all(|info| {
+	settle_preview(app, now, |floating| {
+		floating.snapshot.images.entries.values().all(|info| {
 			!info.loading && (info.size.is_some() || info.error.is_some())
-		}) {
-			return snapshot.clone();
-		}
-		let completion = app
-			.preview
-			.worker
-			.wait(deadline.saturating_duration_since(Instant::now()))
-			.expect("preview images did not finish");
-		app.preview.accept(completion);
-		app.preview_tick(now + SHOW_DELAY);
-	}
+		})
+	});
+	app.preview.floating().unwrap().snapshot.images.clone()
 }
 
 #[test]
@@ -112,10 +102,6 @@ fn file_preview_images_respect_resource_grants_and_report_missing_sources() {
 	assert!(images.entries.values().all(|info| info.error.is_some()));
 	app.readers.session.security =
 		crate::security::Security::local(crate::security::Trust::Trusted);
-	app.preview_tick(now + SHOW_DELAY);
-	let completion = app.preview.worker.wait(Duration::from_secs(10)).unwrap();
-	app.preview.accept(completion);
-	app.preview_tick(now + SHOW_DELAY);
 	let images = settle_images(&mut app, now);
 	assert_eq!(images.decoded().len(), 1);
 	assert_eq!(
