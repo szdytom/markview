@@ -5,7 +5,7 @@
 //! [`crate::Document`]: a document can be built from HTML, where no original
 //! text exists.
 use crate::{BlockId, Document, DocumentRevision, FieldId, visit_fields};
-use std::ops::Range;
+use std::{ops::Range, sync::OnceLock};
 
 /// One span of a semantic field and the source interval it came from.
 ///
@@ -83,49 +83,69 @@ pub struct SourceMap {
 	revision: Option<DocumentRevision>,
 	blocks: Vec<BlockSource>,
 	by_block: Vec<(BlockId, usize)>,
-	/// Spans ordered by their source start, for reverse lookups.
-	reverse: Vec<Reverse>,
+	/// Spans ordered by source start, built on the first reverse lookup.
+	reverse: OnceLock<Vec<Reverse>>,
 }
 
 impl SourceMap {
-	pub fn new(revision: DocumentRevision, blocks: Vec<BlockSource>) -> Self {
+	pub fn new(
+		revision: DocumentRevision,
+		mut blocks: Vec<BlockSource>,
+	) -> Self {
 		let mut by_block: Vec<(BlockId, usize)> = blocks
 			.iter()
 			.enumerate()
 			.map(|(index, block)| (block.block, index))
 			.collect();
 		by_block.sort_unstable_by_key(|(id, _)| *id);
-		let mut reverse: Vec<Reverse> = Vec::new();
-		for (block, entry) in blocks.iter().enumerate() {
-			for (field, entry) in entry.fields.iter().enumerate() {
-				for (span, entry) in entry.spans.iter().enumerate() {
-					reverse.push(Reverse {
-						source: entry.source.clone(),
-						max_end: 0,
-						block,
-						field,
-						span,
-					});
-				}
+
+		blocks.shrink_to_fit();
+		by_block.shrink_to_fit();
+		for block in &mut blocks {
+			block.fields.shrink_to_fit();
+			for field in &mut block.fields {
+				field.spans.shrink_to_fit();
+				field.covers.shrink_to_fit();
 			}
-		}
-		reverse.sort_unstable_by(|a, b| {
-			a.source
-				.start
-				.cmp(&b.source.start)
-				.then(a.source.end.cmp(&b.source.end))
-		});
-		let mut max_end = 0;
-		for entry in &mut reverse {
-			max_end = max_end.max(entry.source.end);
-			entry.max_end = max_end;
 		}
 		Self {
 			revision: Some(revision),
 			blocks,
 			by_block,
-			reverse,
+			reverse: Default::default(),
 		}
+	}
+
+	fn reverse(&self) -> &[Reverse] {
+		self.reverse.get_or_init(|| {
+			let mut reverse: Vec<Reverse> = Vec::new();
+			for (block, entry) in self.blocks.iter().enumerate() {
+				for (field, entry) in entry.fields.iter().enumerate() {
+					for (span, entry) in entry.spans.iter().enumerate() {
+						reverse.push(Reverse {
+							source: entry.source.clone(),
+							max_end: 0,
+							block,
+							field,
+							span,
+						});
+					}
+				}
+			}
+			reverse.sort_unstable_by(|a, b| {
+				a.source
+					.start
+					.cmp(&b.source.start)
+					.then(a.source.end.cmp(&b.source.end))
+			});
+			let mut max_end = 0;
+			for entry in &mut reverse {
+				max_end = max_end.max(entry.source.end);
+				entry.max_end = max_end;
+			}
+			reverse.shrink_to_fit();
+			reverse
+		})
 	}
 
 	pub fn revision(&self) -> Option<DocumentRevision> {
@@ -228,9 +248,9 @@ impl SourceMap {
 		offset: usize,
 	) -> Option<(BlockId, FieldId, Range<usize>)> {
 		let mut best: Option<&Reverse> = None;
-		let start =
-			self.reverse.partition_point(|entry| entry.max_end < offset);
-		for entry in self.reverse.iter().skip(start) {
+		let reverse = self.reverse();
+		let start = reverse.partition_point(|entry| entry.max_end < offset);
+		for entry in reverse.iter().skip(start) {
 			if entry.source.start > offset {
 				break;
 			}
@@ -381,12 +401,68 @@ impl SourceMap {
 		}
 		array(&self.blocks, visit);
 		array(&self.by_block, visit);
-		array(&self.reverse, visit);
+		if let Some(reverse) = self.reverse.get() {
+			array(reverse, visit);
+		}
 		for b in &self.blocks {
 			array(&b.fields, visit);
 			for f in &b.fields {
 				array(&f.spans, visit);
 				array(&f.covers, visit);
+			}
+		}
+	}
+}
+
+#[cfg(test)]
+mod tests {
+	use super::*;
+	#[test]
+	fn reverse_is_lazy_and_source_mapping_stays_exact() {
+		let id = BlockId::new(1).unwrap();
+		let field = FieldId::from_index(0);
+		let span = SourceSpan {
+			semantic: 0..3,
+			source: 0..3,
+			exact: true,
+		};
+
+		let mut spans = Vec::with_capacity(32);
+		spans.push(span.clone());
+		let mut covers = Vec::with_capacity(32);
+		covers.push(span);
+		let mut fields = Vec::with_capacity(16);
+		fields.push(FieldSource {
+			field,
+			spans,
+			covers,
+		});
+		let mut blocks = Vec::with_capacity(16);
+		blocks.push(BlockSource {
+			block: id,
+			source: Some(0..3),
+			fields,
+		});
+		let map = SourceMap::new(DocumentRevision::new(1), blocks);
+
+		assert!(map.reverse.get().is_none());
+		assert_eq!(
+			map.semantic_to_source(id, field, 1..2).unwrap().source,
+			1..2
+		);
+		assert!(map.reverse.get().is_none());
+		let clone = map.clone();
+		assert_eq!(map.source_to_semantic(2), Some((id, field, 2..2)));
+		assert!(map.reverse.get().is_some());
+		assert!(clone.reverse.get().is_none());
+		assert_eq!(clone.source_to_semantic(2), map.source_to_semantic(2));
+		assert_eq!(map.clone().source_to_semantic(3), Some((id, field, 3..3)));
+		assert_eq!(map.blocks.capacity(), map.blocks.len());
+		for block in &map.blocks {
+			assert_eq!(block.fields.capacity(), block.fields.len());
+			for field in &block.fields {
+				assert_eq!(field.spans.capacity(), field.spans.len());
+				assert_eq!(field.covers.capacity(), field.covers.len());
 			}
 		}
 	}
