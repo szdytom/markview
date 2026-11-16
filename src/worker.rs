@@ -42,6 +42,7 @@ pub struct Request {
 	pub coverage: f32,
 	/// This tab's reader lifted the remote-image cap for this revision.
 	pub load_all_images: bool,
+	pub requested_image: Option<markview_layout::image::ImageSource>,
 }
 #[derive(Clone)]
 pub struct Update {
@@ -344,6 +345,7 @@ impl Worker {
 											images.set_security(
 												request.security.clone(),
 											);
+											images.set_requested_image(request.requested_image.clone());
 											images.set_initial_width(
 												request.options.width,
 											);
@@ -457,6 +459,7 @@ impl Worker {
 								)
 								.map_err(|e| format!("Fonts: {e:#}"))?;
 							images.set_security(request.security.clone());
+							images.set_requested_image(request.requested_image.clone());
 							images.set_initial_width(request.options.width);
 							images.prepare(
 								&document,
@@ -744,6 +747,7 @@ mod tests {
 			requested: Instant::now(),
 			coverage: 600.0,
 			load_all_images: false,
+			requested_image: None,
 		});
 		let update = rx.recv_timeout(Duration::from_secs(10)).unwrap();
 		assert!(update.result.unwrap().is_ok());
@@ -832,6 +836,7 @@ mod tests {
 			requested: Instant::now(),
 			coverage: 600.,
 			load_all_images: false,
+			requested_image: None,
 		};
 		worker.submit(request.clone());
 		let first = rx
@@ -901,6 +906,7 @@ mod tests {
 			requested: Instant::now(),
 			coverage: 600.,
 			load_all_images: false,
+			requested_image: None,
 		});
 		let first = rx
 			.recv_timeout(Duration::from_secs(10))
@@ -951,6 +957,7 @@ mod tests {
 			requested: Instant::now(),
 			coverage: f32::INFINITY,
 			load_all_images: false,
+			requested_image: None,
 		};
 		let complete = |version: u64| loop {
 			let update = rx.recv_timeout(Duration::from_secs(10)).unwrap();
@@ -1012,6 +1019,7 @@ mod tests {
 			requested: Instant::now(),
 			coverage: f32::INFINITY,
 			load_all_images: false,
+			requested_image: None,
 		};
 		let complete = |version: u64| loop {
 			let update = rx.recv_timeout(Duration::from_secs(10)).unwrap();
@@ -1074,6 +1082,7 @@ mod tests {
 				requested: Instant::now(),
 				coverage: f32::INFINITY,
 				load_all_images: false,
+				requested_image: None,
 			});
 			let reader = loop {
 				let update = rx.recv_timeout(Duration::from_secs(10)).unwrap();
@@ -1133,6 +1142,7 @@ mod tests {
 				requested: Instant::now(),
 				coverage: f32::INFINITY,
 				load_all_images: false,
+				requested_image: None,
 			});
 		}
 		loop {
@@ -1173,6 +1183,7 @@ mod reflow_tests {
 				requested: Instant::now(),
 				coverage: f32::INFINITY,
 				load_all_images: false,
+				requested_image: None,
 			})
 		};
 		submit(1, 1);
@@ -1237,6 +1248,7 @@ mod reflow_tests {
 			requested: Instant::now(),
 			coverage: f32::INFINITY,
 			load_all_images: false,
+			requested_image: None,
 		};
 		worker.submit(request(1));
 		let first = rx
@@ -1296,6 +1308,7 @@ mod reflow_tests {
 				requested: Instant::now(),
 				coverage: f32::INFINITY,
 				load_all_images: false,
+				requested_image: None,
 			})
 		};
 		let complete = |version| loop {

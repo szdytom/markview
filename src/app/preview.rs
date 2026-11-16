@@ -518,6 +518,8 @@ struct Hover {
 struct Pending {
 	source: std::sync::Arc<work::Source>,
 	ready: Option<work::Completion>,
+	/// Whether this request has supplied the displayed scene.
+	presented: bool,
 }
 
 /// The open card's content. The chrome paints it; the application owns it.
@@ -652,7 +654,8 @@ impl Preview {
 		revision: markview_document::DocumentRevision,
 		frame: FrameStyle,
 	) {
-		self.show(Open {
+		// Keep image updates alive while the scene is open.
+		self.open = Some(Open {
 			target,
 			card: Card {
 				title: Vec::new(),
@@ -772,7 +775,11 @@ impl<P: super::SendEvent> App<P> {
 			.as_ref()
 			.is_some_and(|pending| !pending.source.matches(self))
 		{
+			let target = self.preview.open().map(|open| open.target);
 			self.preview.cancel_work();
+			if let Some(target) = target {
+				self.start_link_preview(target);
+			}
 		}
 		if let Some(floating) = self.preview.floating() {
 			let anchor = floating.anchor;
@@ -846,6 +853,7 @@ impl<P: super::SendEvent> App<P> {
 		else {
 			return;
 		};
+		pending.presented = true;
 		let ready = pending.ready.take().unwrap();
 		let source = pending.source.clone();
 		if self
@@ -861,10 +869,14 @@ impl<P: super::SendEvent> App<P> {
 			self.dismiss_preview();
 			return;
 		};
-		let position = self
-			.preview
-			.floating()
-			.map(|floating| (floating.scroll, floating.focused()));
+		let position = self.preview.floating_mut().map(|floating| {
+			(
+				floating.scroll,
+				floating.snapshot.revision,
+				std::mem::take(&mut floating.state),
+				std::mem::take(&mut floating.horizontal),
+			)
+		});
 		log::trace!("Hover layout completed in {:?}", ready.build);
 		#[cfg(test)]
 		{
@@ -881,10 +893,15 @@ impl<P: super::SendEvent> App<P> {
 		self.preview.open.as_mut().unwrap().path =
 			source.destination.path.clone();
 		self.preview.open.as_mut().unwrap().origins = ready.origins;
-		if let Some((scroll, focused)) = position {
+		if let Some((scroll, revision, state, horizontal)) = position {
 			let floating = self.preview.floating_mut().unwrap();
 			floating.scroll = scroll.min(floating.view().max_scroll());
-			floating.state.focused = focused;
+			if revision == floating.snapshot.revision {
+				floating.state = state;
+				floating.horizontal = horizontal;
+			} else {
+				floating.state.focused = state.focused;
+			}
 		}
 		self.redraw();
 	}
@@ -927,6 +944,7 @@ impl<P: super::SendEvent> App<P> {
 		self.preview.pending = Some(Pending {
 			source,
 			ready: None,
+			presented: false,
 		});
 	}
 
@@ -1125,6 +1143,9 @@ impl<P: super::SendEvent> App<P> {
 		);
 		options.viewport_height = 0.0;
 		Some(work::Source {
+			security: self.readers.session.security.clone(),
+			workspace: self.folder.root().cloned(),
+			offline: self.args.offline,
 			target,
 			anchor,
 			bounds,

@@ -1016,7 +1016,13 @@ fn cached_text_tabs_refresh_background_edits_on_every_activation_path() {
 			h.app.readers.session.document.as_ref().unwrap(),
 			&document,
 		));
-		h.app.readers.session.load_all_images = true;
+		h.app.readers.session.image_loading.all = true;
+		h.app.readers.session.image_loading.requested =
+			Some(markview_layout::image::ImageSource::Resource(
+				markview_layout::image::ResourceRef::document(
+					"https://example.com/chosen.png",
+				),
+			));
 		h.app.readers.session.remote_notice_dismissed = true;
 		h.app.readers.session.details_open = std::sync::Arc::new(
 			[(markview_document::BlockId::new(1).unwrap(), true)].into(),
@@ -1058,7 +1064,8 @@ fn cached_text_tabs_refresh_background_edits_on_every_activation_path() {
 		}
 		assert!(h.app.readers.session.layout_pending);
 		assert_eq!(h.app.readers.session.content_version, revision + 1);
-		assert!(!h.app.readers.session.load_all_images);
+		assert!(!h.app.readers.session.image_loading.all);
+		assert!(h.app.readers.session.image_loading.requested.is_none());
 		assert!(!h.app.readers.session.remote_notice_dismissed);
 		assert!(h.app.readers.session.details_open.is_empty());
 		assert!(
@@ -1127,7 +1134,7 @@ fn returning_to_cached_tabs_reloads_images_after_switching_or_closing() {
 		let old_pixels = h.app.readers.session.display.snapshot.images.clone();
 		let revision = h.app.readers.session.content_version;
 		h.app.readers.session.scrolling.offset = 300.;
-		h.app.readers.session.load_all_images = true;
+		h.app.readers.session.image_loading.all = true;
 		h.open("README.zh-cn.md", 1);
 		assert!(
 			old_pixels.decoded().is_empty(),
@@ -1142,7 +1149,7 @@ fn returning_to_cached_tabs_reloads_images_after_switching_or_closing() {
 		let session = &h.app.readers.session;
 		assert_eq!(session.content_version, revision);
 		assert_eq!(session.scrolling.offset, 300.);
-		assert!(session.load_all_images);
+		assert!(session.image_loading.all);
 		let pixels = session.display.snapshot.images.decoded();
 		assert_eq!(&pixels["first.png"].rgba[..4], &[255, 0, 255, 255]);
 		assert_eq!(&pixels["diagram.svg"].rgba[..4], &[0, 255, 255, 255]);

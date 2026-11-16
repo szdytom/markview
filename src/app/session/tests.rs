@@ -497,7 +497,7 @@ fn disclosures_apply_before_layout_and_changed_content_discards_overrides() {
 			.flat_map(|b| &b.layout.text)
 			.any(|n| n.text.contains("Hidden paragraph"))
 	);
-	assert!(!tabs.session.load_all_images);
+	assert!(!tabs.session.image_loading.all);
 	let mut app = app(dir.path());
 	app.readers = tabs;
 	app.readers.session.release_heavy();

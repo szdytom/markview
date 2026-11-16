@@ -180,7 +180,14 @@ impl FloatingDocument {
 		dy: f32,
 	) {
 		if let Some((block, overflow)) = overflow {
-			let item = &self.snapshot.blocks[block].layout.overflow[overflow];
+			let Some(item) = self
+				.snapshot
+				.blocks
+				.get(block)
+				.and_then(|block| block.layout.overflow.get(overflow))
+			else {
+				return;
+			};
 			let offset = self.horizontal.entry((block, overflow)).or_default();
 			*offset = (*offset + dx)
 				.clamp(0.0, (item.content_width - item.rect.w).max(0.0));

@@ -190,6 +190,7 @@ fn submit(
 		requested,
 		coverage,
 		load_all_images: false,
+		requested_image: None,
 	});
 }
 

@@ -2429,3 +2429,47 @@ fn metadata_keeps_the_job_busy_and_cannot_overwrite_completed_pixels() {
 	images.release();
 	assert!(!images.apply_metadata(event(17, images.generation - 1)));
 }
+
+#[test]
+fn requesting_one_capped_image_preserves_the_cap_for_other_sources() {
+	use markview_layout::image::{ImageSource, ResourceRef};
+	let mut text = String::new();
+	for index in 0..130 {
+		text.push_str(&format!("![Image](http://192.0.2.1/{index}.png)\n\n"));
+	}
+	text.push_str("![Alias](http://192.0.2.1/./128.png)\n");
+	let document = markview_commonmark::parse(text);
+	let mut images = images(true);
+	let prepare = |images: &mut Images| {
+		images.prepare(
+			&document,
+			Path::new("note.md"),
+			1,
+			false,
+			&Stylesheet::default(),
+			&crate::test_support::fonts(),
+		)
+	};
+	prepare(&mut images);
+	assert_eq!(images.deferred_remote(), 2);
+	images.set_requested_image(Some(ImageSource::Resource(
+		ResourceRef::document("http://192.0.2.1/128.png"),
+	)));
+	prepare(&mut images);
+	assert_eq!(images.deferred_remote(), 1);
+	assert_ne!(
+		images.snapshot.entries["http://192.0.2.1/128.png"]
+			.error
+			.as_deref(),
+		Some(REMOTE_LIMIT)
+	);
+	assert_eq!(
+		images.snapshot.entries["http://192.0.2.1/129.png"]
+			.error
+			.as_deref(),
+		Some(REMOTE_LIMIT)
+	);
+	images.set_requested_image(None);
+	prepare(&mut images);
+	assert_eq!(images.deferred_remote(), 2);
+}

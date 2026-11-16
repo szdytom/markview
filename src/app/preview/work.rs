@@ -1,4 +1,4 @@
-//! One running hover computation and one cancellable waiter on bounded CPU capacity.
+//! Cancellable hover layout and image updates on bounded CPU capacity.
 use super::*;
 use std::sync::{Arc, Condvar, Mutex};
 use tokio::sync::Semaphore;
@@ -12,6 +12,9 @@ pub(super) struct Destination {
 
 pub(super) struct Source {
 	pub version: u64,
+	pub security: crate::security::Security,
+	pub workspace: Option<std::path::PathBuf>,
+	pub offline: bool,
 	pub target: Target,
 	pub anchor: Rect,
 	pub bounds: Rect,
@@ -33,7 +36,9 @@ impl Source {
 		let images = &context.snapshot.images;
 		self.destination.path.as_ref().is_none_or(|path| {
 			app.readers.session.security.check_file(path).is_ok()
-		}) && self.version == app.readers.session.version
+		}) && self.security == app.readers.session.security
+			&& self.workspace == app.folder.root().cloned()
+			&& self.version == app.readers.session.version
 			&& Arc::ptr_eq(document, &self.document)
 			&& context.snapshot.revision == self.revision
 			&& app.options() == self.original_options
@@ -46,62 +51,135 @@ impl Source {
 			&& images.entries == self.images.entries
 			&& images.keys == self.images.keys
 	}
+}
+
+struct Scene {
+	source: Arc<Source>,
+	document: Arc<crate::loaded::LoadedDocument>,
+	images: Option<crate::images::Images>,
+	blocks: Vec<markview_document::BlockId>,
+}
+impl Scene {
+	fn new(source: Arc<Source>, cancelled: &CancellationToken) -> Option<Self> {
+		let document = if let Some(path) = &source.destination.path {
+			let text = crate::file::read_markdown(path).ok()?;
+			if cancelled.is_cancelled() {
+				return None;
+			}
+			crate::loaded::LoadedDocument::markdown(Arc::new(
+				markview_commonmark::parse_with(
+					text,
+					markview_commonmark::Dialect {
+						hard_breaks: source.options.hard_breaks,
+						highlight_marks: source.options.highlight_marks,
+						ofm: source.options.ofm,
+						grid_tables: source.options.grid_tables,
+					},
+				),
+			))
+		} else {
+			source.document.clone()
+		};
+		Some(Self {
+			source,
+			document,
+			images: None,
+			blocks: Vec::new(),
+		})
+	}
+
 	fn layout(
 		&self,
 		cancelled: &CancellationToken,
 	) -> Option<(LayoutSnapshot, navigation::Origins)> {
-		let loaded;
-		let document = if let Some(path) = &self.destination.path {
-			let source = crate::file::read_markdown(path).ok()?;
-			if cancelled.is_cancelled() {
-				return None;
-			}
-			loaded = markview_commonmark::parse_with(
-				source,
-				markview_commonmark::Dialect {
-					hard_breaks: self.options.hard_breaks,
-					highlight_marks: self.options.highlight_marks,
-					ofm: self.options.ofm,
-					grid_tables: self.options.grid_tables,
-				},
-			);
-			&loaded.document
-		} else {
-			self.document.document()
-		};
-		let node = match &self.destination.anchor {
+		let source = &self.source;
+		let document = self.document.document();
+		let node = match &source.destination.anchor {
 			Some(anchor) => document.anchor_block(anchor)?,
 			None => document.blocks().first()?,
 		};
-		let images = if self.destination.path.is_some() {
-			&markview_layout::image::ImageSnapshot::default()
-		} else {
-			&self.images
-		};
+		let empty = markview_layout::image::ImageSnapshot::default();
+		let images = self.images.as_ref().map_or_else(
+			|| {
+				if source.destination.path.is_some() {
+					&empty
+				} else {
+					&source.images
+				}
+			},
+			|images| &images.snapshot,
+		);
 		let snapshot = super::layout_scene_cancellable(
 			document,
 			node,
-			&self.options,
+			&source.options,
 			images,
-			self.destination.anchor.is_none()
+			source.destination.anchor.is_none()
 				|| matches!(
 					node.kind(),
 					markview_document::BlockKind::Heading { .. }
 				),
 			&|| cancelled.is_cancelled(),
 		)?;
-		self.destination
+		source
+			.destination
 			.path
 			.as_ref()
-			.is_none_or(|path| crate::watch::file_stamp(path) == self.stamp)
+			.is_none_or(|path| crate::watch::file_stamp(path) == source.stamp)
 			.then(|| {
-				let origins = if self.destination.path.is_some() {
+				let origins = if source.destination.path.is_some() {
 					navigation::Origins::new(document, &snapshot)
 				} else {
 					navigation::Origins::default()
 				};
 				(snapshot, origins)
 			})
+	}
+
+	fn refresh(
+		&mut self,
+		services: crate::services::Handle,
+		wake: markview_layout::background::Wake,
+		cancelled: &CancellationToken,
+	) -> Option<(LayoutSnapshot, navigation::Origins)> {
+		let snapshot = self.layout(cancelled)?;
+		let Some(path) = &self.source.destination.path else {
+			return Some(snapshot);
+		};
+		let blocks: Vec<_> =
+			snapshot.0.blocks.iter().map(|block| block.id).collect();
+		if blocks == self.blocks {
+			return Some(snapshot);
+		}
+		self.blocks = blocks;
+		let images = self.images.get_or_insert_with(|| {
+			let mut images = crate::images::Images::with_services(
+				self.source.offline,
+				crate::images::cache_directory(),
+				self.source.options.fonts.clone(),
+				services,
+				None,
+				wake,
+			);
+			images.set_security(self.document.source().map_or_else(
+				|| self.source.security.clone(),
+				|text| self.source.security.for_content(text),
+			));
+			images.set_workspace(self.source.workspace.clone());
+			images.set_initial_width(self.source.options.width);
+			images
+		});
+		images.prepare_blocks(
+			self.blocks
+				.iter()
+				.map(|id| self.document.document().block(*id).unwrap()),
+			path,
+			1,
+			false,
+			&self.source.options.stylesheet,
+			&self.source.options.fonts,
+		);
+		self.layout(cancelled)
 	}
 }
 
@@ -155,7 +233,7 @@ impl Worker {
 		services: &crate::services::Handle,
 		serial: u64,
 		source: Arc<Source>,
-		wake: impl FnOnce() + Send + 'static,
+		wake: impl Fn() + Send + 'static,
 	) {
 		self.cancel();
 		let cancel = services.cancel.child_token();
@@ -169,32 +247,105 @@ impl Worker {
 				_ = cancel.cancelled() => return,
 				permit = gate.acquire_owned() => permit.expect("hover gate stays open"),
 			};
+			let changed = Arc::new(tokio::sync::Notify::new());
+			let image_wake: markview_layout::background::Wake = Arc::new({
+				let changed = changed.clone();
+				move || changed.notify_one()
+			});
 			let stopped = cancel.clone();
-			// The document is shared; queuing does not copy its bytes.
-			let result = handle
+			let io = handle.clone();
+			let first_wake = image_wake.clone();
+			let initial = handle
 				.compute(std::mem::size_of::<Source>(), &cancel, move || {
 					let start = Instant::now();
-					let snapshot = source.layout(&stopped);
-					Ok((snapshot, start.elapsed()))
+					let Some(mut scene) = Scene::new(source, &stopped) else {
+						return Ok(None);
+					};
+					let Some(snapshot) =
+						scene.refresh(io, first_wake, &stopped)
+					else {
+						return Ok(None);
+					};
+					Ok(Some((scene, snapshot, start.elapsed())))
 				})
-				.await;
-			let mut slot = ready.0.lock().unwrap();
-			if !cancel.is_cancelled() {
-				let (snapshot, build) =
-					result.unwrap_or((None, Duration::ZERO));
-				let (snapshot, origins) = snapshot.map_or_else(
-					|| (None, navigation::Origins::default()),
-					|(snapshot, origins)| (Some(snapshot), origins),
-				);
-				*slot = Some(Completion {
-					serial,
-					snapshot,
-					origins,
-					build,
-				});
-				drop(slot);
-				ready.1.notify_one();
-				wake();
+				.await
+				.ok()
+				.flatten();
+			let (mut scene, mut result, mut build) = initial.map_or_else(
+				|| (None, None, Duration::ZERO),
+				|(scene, snapshot, build)| (Some(scene), Some(snapshot), build),
+			);
+			loop {
+				if cancel.is_cancelled() {
+					return;
+				}
+				if let Some(snapshot) = result.take() {
+					let mut slot = ready.0.lock().unwrap();
+					if cancel.is_cancelled() {
+						return;
+					}
+					*slot = Some(Completion {
+						serial,
+						snapshot: Some(snapshot.0),
+						origins: snapshot.1,
+						build,
+					});
+					drop(slot);
+					ready.1.notify_one();
+					wake();
+				} else if scene.is_none() {
+					let mut slot = ready.0.lock().unwrap();
+					if cancel.is_cancelled() {
+						return;
+					}
+					*slot = Some(Completion {
+						serial,
+						snapshot: None,
+						origins: navigation::Origins::default(),
+						build,
+					});
+					drop(slot);
+					ready.1.notify_one();
+					wake();
+					return;
+				}
+				let Some(current) = scene.take().filter(|scene| {
+					scene.images.as_ref().is_some_and(|images| {
+						!images.snapshot.entries.is_empty()
+					})
+				}) else {
+					return;
+				};
+				let deadline = current.images.as_ref().unwrap().poll_deadline();
+				tokio::select! {
+					biased;
+					_ = cancel.cancelled() => return,
+					_ = changed.notified() => {},
+					_ = tokio::time::sleep_until(deadline.into()) => {},
+				}
+				let stopped = cancel.clone();
+				let io = handle.clone();
+				let image_wake = image_wake.clone();
+				let update = handle
+					.compute(std::mem::size_of::<Scene>(), &cancel, move || {
+						let start = Instant::now();
+						let mut current = current;
+						let snapshot = current
+							.images
+							.as_mut()
+							.unwrap()
+							.poll()
+							.then(|| current.refresh(io, image_wake, &stopped))
+							.flatten();
+						Ok((current, snapshot, start.elapsed()))
+					})
+					.await;
+				let Ok((current, snapshot, elapsed)) = update else {
+					return;
+				};
+				scene = Some(current);
+				result = snapshot;
+				build = elapsed;
 			}
 		});
 	}

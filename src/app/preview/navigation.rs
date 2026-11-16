@@ -128,18 +128,27 @@ impl Location {
 pub(crate) struct PendingAction {
 	pub content: ContentKey,
 	pub revision: u64,
-	location: Location,
-	pub target: LinkTarget,
-	pub expanded: Option<bool>,
+	action: Activation,
+}
+
+#[derive(Clone)]
+enum Activation {
+	Link {
+		location: Location,
+		target: LinkTarget,
+		expanded: Option<bool>,
+	},
+	Image {
+		source: markview_layout::image::ImageSource,
+		rect: Rect,
+	},
 }
 
 impl<P: super::super::SendEvent> App<P> {
 	pub(super) fn activate_file_preview(&mut self, target: LinkTarget) {
 		let open = self.preview.open().unwrap();
-		let path = open.path.clone().unwrap();
 		let floating = open.floating.as_ref().unwrap();
 		let link = floating.state.hover.link.as_ref().unwrap().id;
-		let content = floating.snapshot.content_id;
 		let location = open.origins.location(link, &target);
 		let expanded = if let LinkTarget::Disclosure(id) = target {
 			floating
@@ -151,6 +160,32 @@ impl<P: super::super::SendEvent> App<P> {
 		} else {
 			None
 		};
+		self.activate_file_preview_action(Activation::Link {
+			location,
+			target,
+			expanded,
+		});
+	}
+
+	pub(super) fn activate_file_preview_image(
+		&mut self,
+		alias: &str,
+		rect: Rect,
+	) {
+		let images = &self.preview.floating().unwrap().snapshot.images;
+		let source = images
+			.keys
+			.iter()
+			.find(|(_, key)| key.as_str() == alias)
+			.map(|(source, _)| source.clone())
+			.expect("preview images have resource keys");
+		self.activate_file_preview_action(Activation::Image { source, rect });
+	}
+
+	fn activate_file_preview_action(&mut self, action: Activation) {
+		let open = self.preview.open().unwrap();
+		let path = open.path.clone().unwrap();
+		let content = open.floating.as_ref().unwrap().snapshot.content_id;
 		let security = crate::security::Security::local(
 			self.readers.session.security.origin.trust(),
 		);
@@ -160,14 +195,16 @@ impl<P: super::super::SendEvent> App<P> {
 		}
 		self.dismiss_preview();
 		self.open_document(path, security);
+		if let Activation::Image { source, .. } = &action {
+			self.readers.session.image_loading.requested = Some(source.clone());
+			self.request(false);
+		}
 		self.readers.session.saved_reading = None;
 		self.readers.session.pending_anchor = None;
 		self.readers.session.pending_preview_action = Some(PendingAction {
 			content,
 			revision: self.readers.session.content_version,
-			location,
-			target,
-			expanded,
+			action,
 		});
 		self.apply_anchor();
 	}
@@ -185,17 +222,47 @@ impl<P: super::super::SendEvent> App<P> {
 		}
 		if session.accepted_revision != session.content_version
 			|| !session.snapshot_complete
+			|| session.layout_pending
 		{
 			return;
 		}
-		let mut pending =
+		let pending =
 			self.readers.session.pending_preview_action.take().unwrap();
 		if self.readers.session.accepted_content_id != pending.content.get() {
 			return;
 		}
+		match pending.action {
+			Activation::Link {
+				location,
+				target,
+				expanded,
+			} => {
+				self.apply_preview_link(location, target, expanded);
+			}
+			Activation::Image { source, rect } => {
+				let key = self
+					.readers
+					.session
+					.display
+					.snapshot
+					.images
+					.key(&source)
+					.expect("matching content retains the clicked image")
+					.to_owned();
+				self.open_viewer_image(key, rect);
+			}
+		}
+	}
+
+	fn apply_preview_link(
+		&mut self,
+		location: Location,
+		mut target: LinkTarget,
+		expanded: Option<bool>,
+	) {
 		let document = self.readers.session.document.as_ref().unwrap();
-		let link = pending.location.resolve(document, &mut pending.target);
-		let enclosing = enclosing(document, link, &pending.target);
+		let link = location.resolve(document, &mut target);
+		let enclosing = enclosing(document, link, &target);
 		for id in enclosing {
 			std::sync::Arc::make_mut(&mut self.readers.session.details_open)
 				.insert(id, true);
@@ -213,7 +280,7 @@ impl<P: super::super::SendEvent> App<P> {
 					.links()
 					.find(|(fragment, _)| {
 						link.is_none_or(|id| fragment.id == id)
-							&& *fragment.target == pending.target
+							&& *fragment.target == target
 					})
 					.map(|(_, rect)| block.y + rect.y)
 			});
@@ -229,12 +296,12 @@ impl<P: super::super::SendEvent> App<P> {
 				.snapshot
 				.scroll_limit(self.viewport()),
 		);
-		if let LinkTarget::Disclosure(id) = pending.target {
+		if let LinkTarget::Disclosure(id) = target {
 			std::sync::Arc::make_mut(&mut self.readers.session.details_open)
-				.insert(id, pending.expanded.unwrap());
+				.insert(id, expanded.unwrap());
 			self.present_disclosures();
 		} else {
-			self.open_link_target(&pending.target, false);
+			self.open_link_target(&target, false);
 		}
 		self.after_scroll();
 	}

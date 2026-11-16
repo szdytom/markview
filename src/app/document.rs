@@ -49,7 +49,7 @@ impl<P: super::SendEvent> App<P> {
 			}
 			DocumentCommand::RemoteLoadAll => {
 				self.readers.session.remote_notice_dismissed = true;
-				self.readers.session.load_all_images = true;
+				self.readers.session.image_loading.all = true;
 				self.request(false);
 			}
 			DocumentCommand::Outline => self.toggle_outline(),
@@ -187,7 +187,7 @@ impl<P: super::SendEvent> App<P> {
 		self.interaction.overlays.modal.send(Message::Dismiss);
 		session.load_error = None;
 		// New content resets remote-image choices and `<details>` overrides.
-		session.load_all_images = false;
+		session.image_loading = Default::default();
 		session.remote_notice_dismissed = false;
 		session.details_open = Default::default();
 		session.cancel_scroll_animation();

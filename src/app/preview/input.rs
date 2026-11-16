@@ -75,7 +75,11 @@ impl<P: super::super::SendEvent> App<P> {
 		}
 		self.refresh_preview_file()
 			|| (self.preview.open().is_some_and(|open| open.path.is_some())
-				&& self.preview.pending.is_some())
+				&& self
+					.preview
+					.pending
+					.as_ref()
+					.is_some_and(|pending| !pending.presented))
 	}
 
 	pub(in crate::app) fn preview_horizontal_by(&mut self, delta: f32) -> bool {
@@ -102,8 +106,12 @@ impl<P: super::super::SendEvent> App<P> {
 				}
 			}
 			ViewAction::Image { source, rect } => {
-				self.dismiss_preview();
-				self.open_viewer_image(source, rect);
+				if self.preview.open().is_some_and(|open| open.path.is_some()) {
+					self.activate_file_preview_image(&source, rect);
+				} else {
+					self.dismiss_preview();
+					self.open_viewer_image(source, rect);
+				}
 			}
 			ViewAction::ScrollTo(_) | ViewAction::HorizontalTo { .. } => {
 				unreachable!(

@@ -1,6 +1,7 @@
 mod asynchronous;
 mod golden;
 mod handoff;
+mod images;
 mod interaction_tests;
 mod links;
 mod profile;
@@ -21,11 +22,15 @@ impl SendEvent for Proxy {
 }
 
 fn app() -> (App<Proxy>, mpsc::Receiver<Event>) {
+	app_with_offline(true)
+}
+
+fn app_with_offline(offline: bool) -> (App<Proxy>, mpsc::Receiver<Event>) {
 	let (tx, events) = mpsc::channel();
 	let mut app = App::new(
 		LaunchOptions {
 			mode: Mode::Smoke,
-			offline: true,
+			offline,
 			width: 800,
 			height: 600,
 			options: crate::test_support::options(),
@@ -48,20 +53,24 @@ fn settle(app: &mut App<Proxy>, events: &mpsc::Receiver<Event>) {
 		let event = events
 			.recv_timeout(deadline.saturating_duration_since(Instant::now()))
 			.expect("the document did not render");
-		let Event::Ready(update) = event else {
-			continue;
-		};
-		if update.version == app.readers.session.version
-			&& Some(&update.path) == app.readers.session.path.as_ref()
-			&& let Some(result) = update.result
-		{
-			let reader = result.unwrap();
-			let viewport = app.viewport();
-			if app.readers.session.can_display(&reader, viewport) {
-				app.readers.session.accept(reader, viewport, update.counts);
-				app.readers.session.displayed_version = update.version;
-				app.apply_anchor();
-			}
+		accept_ready(app, event);
+	}
+}
+
+fn accept_ready(app: &mut App<Proxy>, event: Event) {
+	let Event::Ready(update) = event else {
+		return;
+	};
+	if update.version == app.readers.session.version
+		&& Some(&update.path) == app.readers.session.path.as_ref()
+		&& let Some(result) = update.result
+	{
+		let reader = result.unwrap();
+		let viewport = app.viewport();
+		if app.readers.session.can_display(&reader, viewport) {
+			app.readers.session.accept(reader, viewport, update.counts);
+			app.readers.session.displayed_version = update.version;
+			app.apply_anchor();
 		}
 	}
 }

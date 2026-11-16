@@ -35,7 +35,13 @@ fn lifting_the_image_cap_is_per_tab_and_per_revision() {
 			.load_all_images
 	);
 	// The reader lifts the cap while reading `a.md`.
-	tabs.session.load_all_images = true;
+	tabs.session.image_loading.all = true;
+	let requested = markview_layout::image::ImageSource::Resource(
+		markview_layout::image::ResourceRef::document(
+			"https://example.com/chosen.png",
+		),
+	);
+	tabs.session.image_loading.requested = Some(requested.clone());
 	assert!(
 		tabs.request(crate::test_support::options(), false)
 			.unwrap()
@@ -44,6 +50,12 @@ fn lifting_the_image_cap_is_per_tab_and_per_revision() {
 	// A newly opened document starts capped, whatever `a.md` asked for.
 	tabs.open(PathBuf::from("b.md"), now);
 	assert!(
+		tabs.request(crate::test_support::options(), false)
+			.unwrap()
+			.requested_image
+			.is_none()
+	);
+	assert!(
 		!tabs
 			.request(crate::test_support::options(), false)
 			.unwrap()
@@ -51,6 +63,12 @@ fn lifting_the_image_cap_is_per_tab_and_per_revision() {
 	);
 	// Switching back keeps each tab's own answer.
 	assert!(tabs.select(0, now));
+	assert_eq!(
+		tabs.request(crate::test_support::options(), false)
+			.unwrap()
+			.requested_image,
+		Some(requested)
+	);
 	assert!(
 		tabs.request(crate::test_support::options(), false)
 			.unwrap()
@@ -58,7 +76,7 @@ fn lifting_the_image_cap_is_per_tab_and_per_revision() {
 	);
 	// New content in `a.md` asks again.
 	tabs.session.content_version += 1;
-	tabs.session.load_all_images = false;
+	tabs.session.image_loading.all = false;
 	assert!(
 		!tabs
 			.request(crate::test_support::options(), false)

@@ -52,6 +52,8 @@ const REMOTE_LIMIT: &str = "Remote image limit reached (Load all)";
 const WAIT_DEADLINE: Duration = Duration::from_secs(120);
 const STALLED: &str = "Image is taking too long; skipped";
 static VERSION: AtomicU64 = AtomicU64::new(1);
+/// Distinct GPU texture namespaces across concurrent image loaders.
+static GENERATION: AtomicU64 = AtomicU64::new(1);
 
 struct Job {
 	cancel: CancellationToken,
@@ -186,6 +188,18 @@ impl Drop for Entry {
 	}
 }
 
+fn remote_capped(
+	source: &Source,
+	remote_seen: usize,
+	load_all: bool,
+	requested: Option<&Source>,
+) -> bool {
+	matches!(source, Source::Http(_))
+		&& !load_all
+		&& remote_seen > MAX_REMOTE_SOURCES
+		&& requested != Some(source)
+}
+
 /// The initial raster for a bitmap before a frame publishes its display
 /// demand. The column width is the largest place the document can show it;
 /// twice that covers a 2x display without decoding a full camera image.
@@ -312,6 +326,12 @@ pub(crate) fn cache_directory() -> Option<PathBuf> {
 
 type Intrinsic = (Source, Option<(u64, Option<SystemTime>)>, (u32, u32));
 
+#[derive(Clone, Default)]
+pub(crate) struct LoadPolicy {
+	pub all: bool,
+	pub requested: Option<ImageSource>,
+}
+
 pub struct Images {
 	pub snapshot: ImageSnapshot,
 	pub(crate) blocked: HashMap<String, crate::security::Resource>,
@@ -339,6 +359,7 @@ pub struct Images {
 	/// The exact file a synthesized one-picture document shows.
 	standalone: Option<PathBuf>,
 	revision: u64,
+	requested_image: Option<ImageSource>,
 	poll_at: Instant,
 	/// Jobs that have reported a result, success or failure. A headless wait
 	/// uses it to tell a pipeline that is working through failures from one
@@ -434,8 +455,12 @@ impl Images {
 	) -> Self {
 		let (done, recv) = mpsc::channel();
 		let (metadata, metadata_recv) = mpsc::channel();
+		let generation = GENERATION.fetch_add(1, Ordering::Relaxed);
 		Self {
-			snapshot: ImageSnapshot::default(),
+			snapshot: ImageSnapshot {
+				generation,
+				..Default::default()
+			},
 			blocked: HashMap::new(),
 			security: crate::security::Security::default(),
 			pdf: false,
@@ -453,11 +478,12 @@ impl Images {
 			wake,
 			pipelines: Arc::new(tokio::sync::Semaphore::new(4)),
 			recv,
-			generation: 0,
+			generation,
 			document: PathBuf::new(),
 			workspace: None,
 			standalone: None,
 			revision: 0,
+			requested_image: None,
 			poll_at: Instant::now(),
 			completed: 0,
 			theme_key: 0,
@@ -474,6 +500,10 @@ impl Images {
 			self.release();
 			self.security = security;
 		}
+	}
+
+	pub(crate) fn set_requested_image(&mut self, source: Option<ImageSource>) {
+		self.requested_image = source;
 	}
 
 	/// The open folder root through which Obsidian vault embeds resolve.
@@ -519,12 +549,32 @@ impl Images {
 		sheet: &Stylesheet,
 		fonts: &FontConfig,
 	) {
+		self.prepare_blocks(
+			doc.blocks().iter(),
+			path,
+			revision,
+			load_all,
+			sheet,
+			fonts,
+		);
+	}
+
+	/// Prepares only the blocks belonging to a rendered excerpt.
+	pub(crate) fn prepare_blocks<'a>(
+		&mut self,
+		blocks: impl Iterator<Item = &'a markview_document::Block>,
+		path: &Path,
+		revision: u64,
+		load_all: bool,
+		sheet: &Stylesheet,
+		fonts: &FontConfig,
+	) {
 		if self.fonts != *fonts {
 			self.fonts = fonts.clone();
 		}
 		let mut specs = Vec::new();
-		for b in doc.blocks() {
-			b.images(&mut specs);
+		for block in blocks {
+			block.images(&mut specs);
 		}
 		// A document without a diagram never pays for the reader's font
 		// collection, which a diagram's measurement and drawing need.
@@ -630,7 +680,7 @@ impl Images {
 			self.snapshot = Default::default();
 			self.resident.clear();
 			self.demand.clear();
-			self.generation += 1;
+			self.generation = GENERATION.fetch_add(1, Ordering::Relaxed);
 			self.snapshot.generation = self.generation;
 			self.document = path.into();
 		}
@@ -645,6 +695,15 @@ impl Images {
 		theme: u64,
 	) -> HashSet<Source> {
 		let mut wanted = HashSet::new();
+		let requested = self.requested_image.as_ref().and_then(|image| {
+			source::resolve(
+				image,
+				path,
+				self.workspace.as_deref(),
+				&self.security,
+			)
+			.ok()
+		});
 		// Distinct remote sources past the cap stay placeholders; in document
 		// order, so the same document always defers the same images.
 		let mut remote_seen = 0usize;
@@ -679,8 +738,12 @@ impl Images {
 					if remote && first {
 						remote_seen += 1;
 					}
-					let capped =
-						remote && !load_all && remote_seen > MAX_REMOTE_SOURCES;
+					let capped = remote_capped(
+						&source,
+						remote_seen,
+						load_all,
+						requested.as_ref(),
+					);
 					let stamp = stamp(&source);
 					let size = self
 						.intrinsic
@@ -711,7 +774,10 @@ impl Images {
 					if !e.aliases.contains(&key) {
 						e.aliases.push(key.clone());
 					}
-					if reload && e.info.error.is_some() {
+					if (reload && e.info.error.is_some())
+						|| (!capped
+							&& e.info.error.as_deref() == Some(REMOTE_LIMIT))
+					{
 						e.info.error = None;
 						e.info.size = None;
 					}
@@ -1275,6 +1341,7 @@ impl Images {
 	/// Drops every decoded result of the closed document. `generation` moves so
 	/// a load already in flight for it cannot reappear as a current entry.
 	pub fn release(&mut self) {
+		self.requested_image = None;
 		self.blocked.clear();
 		self.entries.clear();
 		self.intrinsic.clear();
@@ -1282,7 +1349,7 @@ impl Images {
 		self.snapshot = Default::default();
 		self.resident.clear();
 		self.demand.clear();
-		self.generation += 1;
+		self.generation = GENERATION.fetch_add(1, Ordering::Relaxed);
 		self.snapshot.generation = self.generation;
 	}
 }

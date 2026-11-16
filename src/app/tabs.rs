@@ -396,7 +396,7 @@ impl Tabs {
 			crate::security::Security::local(crate::security::Trust::Trusted);
 		self.session.content_version += 1;
 		// A different document starts capped again.
-		self.session.load_all_images = false;
+		self.session.image_loading = Default::default();
 		self.session.remote_notice_dismissed = false;
 		self.session.scrolling.offset = 0.0;
 		self.session.pending_anchor = None;
@@ -430,7 +430,7 @@ impl Tabs {
 		let mut tab = ReaderTab::new(path.clone());
 		tab.session.path = Some(path);
 		tab.session.content_version = 1;
-		tab.session.load_all_images = false;
+		tab.session.image_loading = Default::default();
 		tab.session.remote_notice_dismissed = false;
 		tab.session.pending_anchor = anchor.map(|anchor| PendingAnchor {
 			target: markview_document::AnchorId::Fragment(anchor),
@@ -577,7 +577,8 @@ impl Tabs {
 			options,
 			requested: Instant::now(),
 			coverage: f32::INFINITY,
-			load_all_images: self.session.load_all_images,
+			load_all_images: self.session.image_loading.all,
+			requested_image: self.session.image_loading.requested.clone(),
 		})
 	}
 	pub(super) fn release_inactive(&mut self, now: Instant) {

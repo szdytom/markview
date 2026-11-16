@@ -219,9 +219,9 @@ pub(crate) struct ReaderSession {
 	pub(crate) snapshot_complete: bool,
 	/// Remote image sources the loader left unrequested past the cap.
 	pub(crate) remote_deferred: usize,
-	/// Whether this tab's reader lifted the remote-image cap for this content.
+	/// This tab's explicit image-loading choices for this content.
 	/// It lives with the session, so it is per tab and per revision.
-	pub(crate) load_all_images: bool,
+	pub(crate) image_loading: crate::images::LoadPolicy,
 	/// Whether this tab's reader hid the remote-image notice for this content.
 	/// It must live with the session too: every freshly opened tab starts at
 	/// revision 1, so a shared flag would suppress the notice in new documents.

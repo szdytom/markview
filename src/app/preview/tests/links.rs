@@ -46,7 +46,7 @@ pub(super) fn text(app: &App<Proxy>) -> String {
 		.extract_text(floating.snapshot.select_all(revision).unwrap(), revision)
 }
 
-fn file_reader(
+pub(super) fn file_reader(
 	directory: &Path,
 	url: &str,
 ) -> (App<Proxy>, mpsc::Receiver<Event>) {
