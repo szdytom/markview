@@ -173,7 +173,7 @@ impl ScrollAnimation {
 	}
 }
 
-/// Scroll geometry currently available to a host.
+/// ScrollPhysics geometry currently available to a host.
 #[derive(Clone, Copy, Debug)]
 pub struct ScrollBounds {
 	pub max: f32,
@@ -210,13 +210,13 @@ struct Momentum {
 	gap_ema: f32,
 }
 
-/// One scrollable surface: offset, extent, deferred destination and animation.
+/// Low-level scroll physics: offset, extent, deferred destination and animation.
+/// Native UI controls use [`crate::ScrollSurface`] to register motion automatically.
 ///
-/// The extent is stored rather than passed on every call, so every surface —
-/// the document, a drawer or a list — advances through one clock, one wheel
-/// path and one set of bounds.
+/// Stores available geometry and retains navigation requests beyond incomplete
+/// document bounds. Hosts that use the physics directly advance it explicitly.
 #[derive(Clone, Debug, Default)]
-pub struct Scroll {
+pub struct ScrollPhysics {
 	/// Absolute requests may exceed incomplete bounds; `offset` clamps them.
 	pub offset: f32,
 	pub target: Option<f32>,
@@ -225,7 +225,11 @@ pub struct Scroll {
 	momentum: Option<Momentum>,
 }
 
-impl Scroll {
+impl ScrollPhysics {
+	pub(crate) fn bounds_max(&self) -> f32 {
+		self.bounds.max
+	}
+
 	/// Replaces the available geometry, clamping a resting offset to it.
 	pub fn fit(&mut self, bounds: ScrollBounds) {
 		self.bounds = ScrollBounds {
@@ -582,7 +586,7 @@ impl Scroll {
 	}
 }
 
-impl From<f32> for Scroll {
+impl From<f32> for ScrollPhysics {
 	fn from(offset: f32) -> Self {
 		let mut scroll = Self::default();
 		scroll.fit(ScrollBounds {

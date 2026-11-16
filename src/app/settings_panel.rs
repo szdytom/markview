@@ -6,7 +6,7 @@ use crate::{
 	},
 	state::Command,
 };
-use markview_interaction::Scroll;
+use markview_interaction::ScrollSurface;
 use markview_ui_core::{Component, Invalidation, Update};
 use std::ops::Deref;
 
@@ -15,7 +15,7 @@ pub(super) struct Model {
 	pub values: ReaderSettings,
 	pub settings_preview: bool,
 	/// The settings page's own list offset.
-	settings_scroll: Scroll,
+	settings_scroll: ScrollSurface,
 }
 impl Model {
 	pub(super) fn new(values: ReaderSettings) -> Self {
@@ -25,11 +25,11 @@ impl Model {
 		}
 	}
 
-	pub(super) fn settings_scroll(&self) -> &Scroll {
+	pub(super) fn settings_scroll(&self) -> &ScrollSurface {
 		&self.settings_scroll
 	}
 
-	pub(super) fn settings_scroll_mut(&mut self) -> &mut Scroll {
+	pub(super) fn settings_scroll_mut(&mut self) -> &mut ScrollSurface {
 		&mut self.settings_scroll
 	}
 

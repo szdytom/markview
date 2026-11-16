@@ -24,10 +24,13 @@ impl<P: super::SendEvent> App<P> {
 			self.tab_strip.reveal_active = false;
 			self.tab_strip
 				.scroll
-				.set(layout.reveal(self.readers.active()));
+				.jump_to(layout.reveal(self.readers.active()));
 		}
 	}
-	pub(super) fn scroll_tabs(&mut self, delta: f32) -> bool {
+	pub(super) fn scroll_tabs(
+		&mut self,
+		request: markview_interaction::ScrollRequest,
+	) -> bool {
 		let layout = self.tab_layout();
 		let (x, y) = self.interaction.pointer.cursor();
 		if x < layout.viewport.x
@@ -37,11 +40,7 @@ impl<P: super::SendEvent> App<P> {
 			return false;
 		}
 		self.tab_strip.scroll.set_max(layout.max_scroll);
-		self.tab_strip.scroll.wheel(
-			delta,
-			Instant::now(),
-			markview_interaction::WheelMode::Detent,
-		);
+		self.tab_strip.scroll.apply(request);
 		self.move_tab_drag();
 		self.hover_preview(Instant::now());
 		self.redraw();

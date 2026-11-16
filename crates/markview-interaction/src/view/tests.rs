@@ -1,5 +1,8 @@
 use super::*;
-use crate::{Horizontal, document::proptests::fixture};
+use crate::{
+	Horizontal, ScrollClock, ScrollSurface, WheelMode,
+	document::proptests::fixture,
+};
 use markview_layout::text::{TextCluster, TextNode};
 use proptest::prelude::*;
 use std::sync::Arc;
@@ -151,7 +154,7 @@ fn scrollbar_drag_captures_outside_and_never_selects_text() {
 	assert!(matches!(
 		event(&mut state, &view, ViewInput::Move(Point::new(500.0, 500.0)))
 			.action,
-		Some(ViewAction::ScrollTo(900.0))
+		Some(ViewAction::JumpTo(900.0))
 	));
 	assert!(
 		event(
@@ -229,10 +232,17 @@ proptest! {
 		let horizontal = Horizontal::new();
 		let view = DocumentView::embedded(&snapshot, bounds(), 1.0, f32::from(scroll), &horizontal, 1);
 		let mut state = ViewState::default();
-		let update = event(&mut state, &view, ViewInput::Wheel { point: Point::new(110.0, 210.0), delta: f32::from(delta) });
+		let clock = ScrollClock::new(|| {});
+		let request = clock.wheel(f32::from(delta), Instant::now(), WheelMode::Direct);
+		let update = event(&mut state, &view, ViewInput::Scroll { point: Point::new(110.0, 210.0), request: request.clone() });
 		prop_assert!(update.consumed);
-		prop_assert!(matches!(update.action, Some(ViewAction::ScrollTo(offset)) if offset == (f32::from(scroll) + f32::from(delta)).clamp(0.0, 900.0)));
-		prop_assert!(!event(&mut state, &view, ViewInput::Wheel { point: Point::new(50.0, 50.0), delta: f32::from(delta) }).consumed, "outside wheel input must pass through");
+		let Some(ViewAction::Scroll(request)) = update.action else { prop_assert!(false, "wheel intent must survive routing"); return Ok(()); };
+		let mut surface = ScrollSurface::default();
+		surface.set_max(view.max_scroll());
+		surface.jump_to(f32::from(scroll));
+		surface.apply(request);
+		prop_assert_eq!(surface.offset(), (f32::from(scroll) + f32::from(delta)).clamp(0.0, 900.0));
+		prop_assert!(!event(&mut state, &view, ViewInput::Scroll { point: Point::new(50.0, 50.0), request: clock.wheel(f32::from(delta), Instant::now(), WheelMode::Detent) }).consumed, "outside wheel input must pass through");
 	}
 }
 
@@ -260,7 +270,7 @@ fn external_scrollbar_tracks_capture_in_the_padding_and_use_content_extents() {
 	assert!(matches!(
 		event(&mut state, &view, ViewInput::Move(Point::new(314.0, 310.0)))
 			.action,
-		Some(ViewAction::ScrollTo(900.0))
+		Some(ViewAction::JumpTo(900.0))
 	));
 	assert!(state.selection.is_none());
 }

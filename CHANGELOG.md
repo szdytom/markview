@@ -30,7 +30,7 @@ at the same level, without `[brackets]`.
 - Middle-click files in the file sidebar, Ctrl+P picker or new-page quick access to open them in background tabs without switching away from the current page.
 - Support Obsidian block IDs recognized by the Markdown parser, with hidden markers and links to blocks within and across notes.
 - Use Qi Baishi, Mondrian and Van Gogh in the reader as well as exports, with coordinated interface colors, wheat-yellow Van Gogh outline highlights and small theme-color markers before tab filenames.
-- Hover over footnote references to preview their formatted content in a content-sized popup near the reference, with cancellable background layout, dedicated MVSS `preview` styling, text selection and copying, scrollbars, asynchronously loaded images, link navigation and the image viewer; the same popup also previews offscreen sections and local Markdown file links, refreshes when the target file changes, and transfers link, image and disclosure actions to the corresponding document tab.
+- Hover over footnote references to preview their formatted content in a content-sized popup near the reference, with cancellable background layout, dedicated MVSS `preview` styling, text selection and copying, smooth scrolling, scrollbars, asynchronously loaded images, link navigation and the image viewer; the same popup also previews offscreen sections and local Markdown file links, refreshes when the target file changes, and transfers link, image and disclosure actions to the corresponding document tab.
 
 ### Changed
 

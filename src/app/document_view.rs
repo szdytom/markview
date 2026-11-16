@@ -16,7 +16,7 @@ pub(super) struct FloatingDocument {
 	pub(super) snapshot: LayoutSnapshot,
 	pub(super) padding: [f32; 4],
 	pub(super) revision: markview_document::DocumentRevision,
-	pub(super) scroll: f32,
+	pub(super) scroll: markview_interaction::ScrollSurface,
 	pub(super) horizontal: HashMap<(usize, usize), f32>,
 	pub(super) state: markview_interaction::ViewState,
 	pub(super) metrics: markview_layout::scene::ScrollbarMetrics,
@@ -58,18 +58,20 @@ impl FloatingDocument {
 			);
 		}
 
-		Self {
+		let mut floating = Self {
 			anchor,
 			rect,
 			snapshot,
 			padding,
 			revision,
-			scroll: 0.0,
+			scroll: Default::default(),
 			horizontal: HashMap::new(),
 			state: Default::default(),
 			metrics,
 			gutter,
-		}
+		};
+		floating.scroll.set_max(floating.view().max_scroll());
+		floating
 	}
 
 	pub(super) fn focused(&self) -> bool {
@@ -97,7 +99,7 @@ impl FloatingDocument {
 			&self.snapshot,
 			self.body(),
 			1.0,
-			self.scroll,
+			self.scroll.offset(),
 			&self.horizontal,
 			self.revision.get(),
 		)
@@ -118,22 +120,32 @@ impl FloatingDocument {
 			&self.snapshot,
 			bounds,
 			1.0,
-			self.scroll,
+			self.scroll.offset(),
 			&self.horizontal,
 			self.revision.get(),
 		)
 		.with_scrollbar_track(self.scrollbar_track());
+		let max_scroll = view.max_scroll();
+		self.scroll.set_max(max_scroll);
+		if matches!(input, markview_interaction::ViewInput::Press { point, .. } if view.contains(point))
+		{
+			self.scroll.cancel();
+		}
 		let mut update = self.state.handle(&view, input, self.metrics);
 		let scrolling = matches!(
 			update.action,
 			Some(
-				markview_interaction::ViewAction::ScrollTo(_)
+				markview_interaction::ViewAction::Scroll(_)
+					| markview_interaction::ViewAction::JumpTo(_)
 					| markview_interaction::ViewAction::HorizontalTo { .. }
 			)
 		);
-		match update.action {
-			Some(markview_interaction::ViewAction::ScrollTo(scroll)) => {
-				self.scroll = scroll;
+		match update.action.take() {
+			Some(markview_interaction::ViewAction::Scroll(request)) => {
+				self.scroll.apply(request);
+			}
+			Some(markview_interaction::ViewAction::JumpTo(scroll)) => {
+				self.scroll.jump_to(scroll);
 				update.action = None;
 			}
 			Some(markview_interaction::ViewAction::HorizontalTo {
@@ -144,14 +156,14 @@ impl FloatingDocument {
 				self.horizontal.insert((block, overflow), offset);
 				update.action = None;
 			}
-			_ => {}
+			other => update.action = other,
 		}
 		if scrolling {
 			self.refresh_hover();
 		}
 		update
 	}
-	fn refresh_hover(&mut self) {
+	pub(super) fn refresh_hover(&mut self) {
 		self.state.hover = self
 			.view()
 			.hover(self.state.cursor(), self.state.captured());
@@ -192,7 +204,8 @@ impl FloatingDocument {
 			*offset = (*offset + dx)
 				.clamp(0.0, (item.content_width - item.rect.w).max(0.0));
 		}
-		self.scroll = (self.scroll + dy).clamp(0.0, self.view().max_scroll());
+		self.scroll.set_max(self.view().max_scroll());
+		self.scroll.pan_by(dy);
 		self.refresh_hover();
 	}
 	pub(super) fn selected_text(&self) -> Option<String> {
@@ -203,7 +216,7 @@ impl FloatingDocument {
 		let Some(scroll) = self.state.auto_scroll(&self.view(), seconds) else {
 			return false;
 		};
-		self.scroll = scroll;
+		self.scroll.jump_to(scroll);
 		self.input(ViewInput::Move(self.state.cursor()));
 		true
 	}

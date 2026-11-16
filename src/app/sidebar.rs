@@ -85,7 +85,7 @@ impl<P: super::SendEvent> App<P> {
 				);
 				let row = list.row_rect(self.readers.active());
 				self.tab_strip.drawer_scroll.set_max(list.max_scroll());
-				self.tab_strip.drawer_scroll.set(
+				self.tab_strip.drawer_scroll.jump_to(
 					(list.scroll
 						+ (row.y - list.viewport.y).min(0.)
 						+ (row.y + row.h - list.viewport.y - list.viewport.h)

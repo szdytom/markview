@@ -1,6 +1,6 @@
 use markview_interaction::{
-	Cursor, DocumentInteraction, Horizontal, Motion, Point, Scroll,
-	ScrollBounds, WheelMode, horizontal_by, selection_scroll_speed,
+	Cursor, DocumentInteraction, Horizontal, Motion, Point, ScrollBounds,
+	ScrollPhysics, WheelMode, horizontal_by, selection_scroll_speed,
 };
 use markview_layout::scene::{
 	BlockLayout, Draw, LayoutSnapshot, LinkId, LinkRect, Overflow, PlacedBlock,
@@ -9,18 +9,18 @@ use markview_layout::scene::{
 use std::{sync::Arc, time::Duration};
 use web_time::Instant;
 
-/// Test syntax for the old bounds-at-every-call API, now that [`Scroll`]
+/// Test syntax for the old bounds-at-every-call API, now that [`ScrollPhysics`]
 /// stores its own extent.
 #[derive(Default)]
-struct ScrollState(Scroll);
+struct ScrollState(ScrollPhysics);
 impl std::ops::Deref for ScrollState {
-	type Target = Scroll;
-	fn deref(&self) -> &Scroll {
+	type Target = ScrollPhysics;
+	fn deref(&self) -> &ScrollPhysics {
 		&self.0
 	}
 }
 impl std::ops::DerefMut for ScrollState {
-	fn deref_mut(&mut self) -> &mut Scroll {
+	fn deref_mut(&mut self) -> &mut ScrollPhysics {
 		&mut self.0
 	}
 }
@@ -202,18 +202,18 @@ fn external_input_takes_over_and_pending_targets_survive_layout() {
 #[test]
 fn direct_wheel_follows_the_finger_and_a_detent_eases() {
 	let start = Instant::now();
-	let mut direct = Scroll::default();
+	let mut direct = ScrollPhysics::default();
 	direct.set_max(1000.0);
 	direct.wheel(80.0, start, WheelMode::Direct);
 	assert_eq!(direct.offset, 80.0);
 	assert!(!direct.animating());
-	let mut detent = Scroll::default();
+	let mut detent = ScrollPhysics::default();
 	detent.set_max(1000.0);
 	detent.wheel(80.0, start, WheelMode::Detent);
 	assert_eq!(detent.offset, 0.0);
 	assert!(detent.animating());
 	// A wheel outward at the top asks for the place it is already at.
-	let mut edge = Scroll::default();
+	let mut edge = ScrollPhysics::default();
 	edge.set_max(1000.0);
 	edge.wheel(-80.0, start, WheelMode::Detent);
 	assert!(!edge.animating());
@@ -223,7 +223,7 @@ fn direct_wheel_follows_the_finger_and_a_detent_eases() {
 fn detents_between_frames_preserve_travel_and_velocity() {
 	let start = Instant::now();
 	for direction in [-1.0, 1.0] {
-		let mut scroll = Scroll::default();
+		let mut scroll = ScrollPhysics::default();
 		scroll.set_max(4000.0);
 		scroll.set(2000.0);
 		scroll.wheel(120.0 * direction, start, WheelMode::Detent);
@@ -249,7 +249,7 @@ fn detents_between_frames_preserve_travel_and_velocity() {
 #[test]
 fn detents_at_the_boundary_do_not_restart_or_accumulate_travel() {
 	let start = Instant::now();
-	let mut scroll = Scroll::default();
+	let mut scroll = ScrollPhysics::default();
 	scroll.set_max(100.0);
 	scroll.wheel(120.0, start, WheelMode::Detent);
 	let end = scroll.animation.unwrap().end();
@@ -273,7 +273,7 @@ fn detents_at_the_boundary_do_not_restart_or_accumulate_travel() {
 #[test]
 fn detent_reversal_samples_the_old_motion_then_turns_immediately() {
 	let start = Instant::now();
-	let mut scroll = Scroll::default();
+	let mut scroll = ScrollPhysics::default();
 	scroll.set_max(2000.0);
 	scroll.set(1000.0);
 	scroll.wheel(120.0, start, WheelMode::Detent);
@@ -291,7 +291,7 @@ fn detent_reversal_samples_the_old_motion_then_turns_immediately() {
 #[test]
 fn detent_destinations_survive_incomplete_layout_and_direct_input_cancels() {
 	let start = Instant::now();
-	let mut scroll = Scroll::default();
+	let mut scroll = ScrollPhysics::default();
 	scroll.fit(ScrollBounds {
 		max: 100.0,
 		complete: false,

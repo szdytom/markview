@@ -464,7 +464,7 @@ impl<P: super::SendEvent> App<P> {
 	/// The offset owner of whichever panel page scrolls.
 	fn panel_scroll_area(
 		&mut self,
-	) -> Option<&mut markview_interaction::Scroll> {
+	) -> Option<&mut markview_interaction::ScrollSurface> {
 		if self.phone_folder_open() {
 			Some(&mut self.folder.scroll)
 		} else if self.interaction.panel == crate::state::PanelPage::Tabs {
@@ -488,7 +488,7 @@ impl<P: super::SendEvent> App<P> {
 	pub(super) fn set_panel_scroll(&mut self, scroll: f32, max: f32) {
 		if let Some(area) = self.panel_scroll_area() {
 			area.set_max(max);
-			area.set(scroll);
+			area.jump_to(scroll);
 		}
 	}
 	/// Stops the open page's easing where it is, for a new input owner.
@@ -511,7 +511,10 @@ impl<P: super::SendEvent> App<P> {
 		self.redraw();
 	}
 	/// A wheel step over the open panel page, eased like the document's own.
-	pub(super) fn wheel_panel(&mut self, delta: f32) {
+	pub(super) fn wheel_panel(
+		&mut self,
+		request: markview_interaction::ScrollRequest,
+	) {
 		if self.interaction.overlays.dropdown_open() {
 			return;
 		}
@@ -520,11 +523,7 @@ impl<P: super::SendEvent> App<P> {
 		};
 		if let Some(area) = self.panel_scroll_area() {
 			area.set_max(max);
-			area.wheel(
-				delta,
-				Instant::now(),
-				markview_interaction::WheelMode::Detent,
-			);
+			area.apply(request);
 		}
 		self.interaction.widgets.captured = None;
 		self.redraw();
@@ -576,18 +575,11 @@ impl<P: super::SendEvent> App<P> {
 		if !self.control_scroll_animating() {
 			return false;
 		}
-		self.interaction.advance_scrolls(now);
-		self.interaction
-			.overlays
-			.quick_open
-			.scroll_mut()
-			.advance(now);
-		self.preferences.settings_scroll_mut().advance(now);
-		self.folder.scroll.advance(now);
-		self.folder.start.scroll.advance(now);
 		let strip_moving = self.tab_strip.scroll.animating();
-		self.tab_strip.scroll.advance(now);
-		self.tab_strip.drawer_scroll.advance(now);
+		self.animations.scrolls.advance(now);
+		if let Some(floating) = self.preview.floating_mut() {
+			floating.refresh_hover();
+		}
 		if strip_moving {
 			if self.tab_strip.drag.is_some() {
 				// Tabs have moved under the held pointer; recompute the drop
@@ -597,25 +589,12 @@ impl<P: super::SendEvent> App<P> {
 			// Keep the card open until its tab leaves the resting pointer.
 			self.hover_preview(now);
 		}
-		self.preferences.fonts.scroll_area().advance(now);
 		self.refresh_hover();
 		self.redraw();
 		self.control_scroll_animating()
 	}
 	pub(super) fn control_scroll_animating(&self) -> bool {
-		self.interaction.scroll_animating()
-			|| self.preferences.settings_scroll().animating()
-			|| self.folder.scroll.animating()
-			|| self.folder.start.scroll.animating()
-			|| self.tab_strip.scroll.animating()
-			|| self.tab_strip.drawer_scroll.animating()
-			|| self.preferences.fonts.scroll_area_ref().animating()
-			|| self
-				.interaction
-				.overlays
-				.quick_open
-				.scroll_ref()
-				.animating()
+		self.animations.scrolls.animating()
 	}
 	pub(super) fn ui_layout(&mut self) -> super::widgets::UiLayout {
 		self.ensure_outline();

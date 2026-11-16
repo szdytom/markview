@@ -5,14 +5,14 @@
 //! the shell shares. `ExportSettings` is persisted configuration, so its
 //! page offset never lives there.
 use super::sidebar;
-use markview_interaction::Scroll;
+use markview_interaction::ScrollSurface;
 
 #[derive(Default)]
 pub(crate) struct Model {
-	export_scroll: Scroll,
+	export_scroll: ScrollSurface,
 	/// The Styles page's list offset. The export's stylesheet chooser shares
 	/// it: no two pages of the panel are ever open at once.
-	styles_scroll: Scroll,
+	styles_scroll: ScrollSurface,
 	/// Offset from the centre of the panel scrollbar thumb while dragging.
 	grab: Option<f32>,
 	/// The resize drag on a sidebar's edge.
@@ -20,19 +20,19 @@ pub(crate) struct Model {
 }
 
 impl Model {
-	pub(crate) fn export_scroll(&self) -> &Scroll {
+	pub(crate) fn export_scroll(&self) -> &ScrollSurface {
 		&self.export_scroll
 	}
 
-	pub(crate) fn export_scroll_mut(&mut self) -> &mut Scroll {
+	pub(crate) fn export_scroll_mut(&mut self) -> &mut ScrollSurface {
 		&mut self.export_scroll
 	}
 
-	pub(crate) fn styles_scroll(&self) -> &Scroll {
+	pub(crate) fn styles_scroll(&self) -> &ScrollSurface {
 		&self.styles_scroll
 	}
 
-	pub(crate) fn styles_scroll_mut(&mut self) -> &mut Scroll {
+	pub(crate) fn styles_scroll_mut(&mut self) -> &mut ScrollSurface {
 		&mut self.styles_scroll
 	}
 

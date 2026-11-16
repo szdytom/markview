@@ -4,7 +4,7 @@ use super::{
 	file_search::{File, Snippet, find},
 };
 use crate::state::{ChromeCommand, Command, TabPlacement};
-use markview_interaction::Scroll;
+use markview_interaction::ScrollSurface;
 use markview_layout::text_input::TextInput;
 use nucleo_matcher::{Config, Matcher};
 use serde::{Deserialize, Serialize};
@@ -17,7 +17,7 @@ use std::{
 		Arc, Condvar, Mutex,
 		atomic::{AtomicU64, Ordering},
 	},
-	time::{Instant, SystemTime, UNIX_EPOCH},
+	time::{SystemTime, UNIX_EPOCH},
 };
 
 const RECENTS: usize = 8;
@@ -40,7 +40,7 @@ pub(super) struct Search {
 	pub matches: Arc<[Arc<File>]>,
 	pub snippets: HashMap<usize, Snippet>,
 	pub pending: bool,
-	pub scroll: Scroll,
+	pub scroll: ScrollSurface,
 	/// Rows that open one specific tab, keyed by their file id.
 	tabs: HashMap<usize, usize>,
 	catalog: Arc<[Arc<File>]>,
@@ -560,8 +560,7 @@ impl<P: SendEvent> App<P> {
 	}
 	pub(super) fn scroll_start(
 		&mut self,
-		delta: f32,
-		mode: markview_interaction::WheelMode,
+		request: markview_interaction::ScrollRequest,
 	) -> bool {
 		if self.readers.session.path.is_some()
 			|| !self.readers.session.display.snapshot.blocks.is_empty()
@@ -572,7 +571,7 @@ impl<P: SendEvent> App<P> {
 		let scroll = &mut self.folder.start.scroll;
 		scroll.set_max(g.max_scroll);
 		let before = scroll.offset();
-		scroll.wheel(delta, Instant::now(), mode);
+		scroll.apply(request);
 		if !scroll.animating() && scroll.offset() == before {
 			return true;
 		}

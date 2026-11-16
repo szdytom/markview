@@ -62,7 +62,7 @@ pub(in crate::app) fn geometry(view: View<'_>) -> Geometry {
 	let max_scroll = (content_h + 48.0 - view.rect.h).max(0.0);
 	let scroll = view
 		.browser
-		.map_or(0.0, |browser| browser.start.scroll.offset)
+		.map_or(0.0, |browser| browser.start.scroll.offset())
 		.clamp(0.0, max_scroll);
 	let x = view.rect.x + (view.rect.w - w) / 2.0;
 	let y = view.rect.y
@@ -735,7 +735,7 @@ mod tests {
 					let mut reached = Vec::new();
 					browser.start.scroll.set_max(max);
 					for offset in [0.0, max / 2.0, max] {
-						browser.start.scroll.set(offset);
+						browser.start.scroll.jump_to(offset);
 						let v = view(width, height, &browser);
 						let controls = buttons(&mut ui, v, lang);
 						let layout = crate::app::widgets::layout(&controls);

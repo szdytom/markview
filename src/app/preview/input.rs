@@ -51,7 +51,7 @@ impl<P: super::super::SendEvent> App<P> {
 			ViewInput::Move(p)
 			| ViewInput::Release(p)
 			| ViewInput::Press { point: p, .. }
-			| ViewInput::Wheel { point: p, .. } => Some(p),
+			| ViewInput::Scroll { point: p, .. } => Some(p),
 			_ => None,
 		};
 
@@ -63,19 +63,20 @@ impl<P: super::super::SendEvent> App<P> {
 		{
 			return false;
 		}
-		if self.defer_file_preview_input(input) {
-			return true;
-		}
-
-		if matches!(input, ViewInput::Press { .. }) {
+		let pressed = matches!(input, ViewInput::Press { .. });
+		if pressed {
 			self.cancel_gestures();
 			self.readers.session.cancel_scroll_animation();
 			self.interaction.pointer.reset_wheel();
 			self.abandon_dm();
+			self.preview.floating_mut().unwrap().scroll.cancel();
+		}
+		if self.defer_file_preview_input(&input) {
+			return true;
 		}
 		let floating = self.preview.floating_mut().unwrap();
 		let update = floating.input(input);
-		if matches!(input, ViewInput::Press { .. }) {
+		if pressed {
 			floating.state.focused = true;
 			self.interaction.widgets.focus = None;
 		}
@@ -91,7 +92,7 @@ impl<P: super::super::SendEvent> App<P> {
 		true
 	}
 
-	fn defer_file_preview_input(&mut self, input: ViewInput) -> bool {
+	fn defer_file_preview_input(&mut self, input: &ViewInput) -> bool {
 		if !matches!(input, ViewInput::Press { .. } | ViewInput::Release(_)) {
 			return false;
 		}
@@ -138,7 +139,9 @@ impl<P: super::super::SendEvent> App<P> {
 					self.open_viewer_image(source, rect);
 				}
 			}
-			ViewAction::ScrollTo(_) | ViewAction::HorizontalTo { .. } => {
+			ViewAction::Scroll(_)
+			| ViewAction::JumpTo(_)
+			| ViewAction::HorizontalTo { .. } => {
 				unreachable!(
 					"the view applies local scrolling before producing host actions"
 				)
@@ -195,23 +198,25 @@ impl<P: super::super::SendEvent> App<P> {
 		if modifiers.control_key() || modifiers.meta_key() {
 			return self.preview_command(key);
 		}
+		let clock = self.animations.scrolls.clone();
 		let Some(floating) = self.preview.floating_mut() else {
 			return false;
 		};
 		let body = floating.body();
-		let delta = match key {
-			Key::Named(NamedKey::ArrowUp) => -40.0,
-			Key::Named(NamedKey::ArrowDown) => 40.0,
-			Key::Named(NamedKey::PageUp) => -body.h,
-			Key::Named(NamedKey::PageDown) => body.h,
-			Key::Character(text) if text == " " => body.h,
-			Key::Named(NamedKey::Home) => -f32::MAX,
-			Key::Named(NamedKey::End) => f32::MAX,
+		let now = Instant::now();
+		let request = match key {
+			Key::Named(NamedKey::ArrowUp) => clock.step(-40.0, now),
+			Key::Named(NamedKey::ArrowDown) => clock.step(40.0, now),
+			Key::Named(NamedKey::PageUp) => clock.step(-body.h, now),
+			Key::Named(NamedKey::PageDown) => clock.step(body.h, now),
+			Key::Character(text) if text == " " => clock.step(body.h, now),
+			Key::Named(NamedKey::Home) => clock.to(0.0, now),
+			Key::Named(NamedKey::End) => clock.to(f32::MAX, now),
 			_ => return false,
 		};
-		floating.input(ViewInput::Wheel {
+		floating.input(ViewInput::Scroll {
 			point: Point::new(body.x + 1.0, body.y + 1.0),
-			delta,
+			request,
 		});
 		self.redraw();
 		true

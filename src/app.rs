@@ -125,6 +125,7 @@ enum Event {
 	},
 	FrameFeedback,
 	PreviewReady,
+	Redraw,
 	Ready(Box<Update>),
 	SearchReady(search::Result),
 	FilesReady(start::Result),
@@ -506,11 +507,14 @@ impl<P: SendEvent> App<P> {
 				.path()
 				.map(|path| path.with_file_name("workspaces.json")),
 		);
+		let scroll_wake = proxy.clone();
 		Self {
 			native_events: Default::default(),
 			surface_insets: [0.0; 4],
 			frame: frame::State::new(preferences.values.window_border),
-			animations: Default::default(),
+			animations: animation::FrameDriver::with_scroll_wake(move || {
+				scroll_wake.send(Event::Redraw)
+			}),
 			native_frame: None,
 			native_tab_end: Default::default(),
 			native_scrollbar: Default::default(),

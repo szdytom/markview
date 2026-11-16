@@ -14,8 +14,8 @@ use crate::{
 use markview_commonmark::MarkdownParse;
 use markview_commonmark::{Dialect, parse_with};
 use markview_interaction::{
-	DocumentInteraction, Horizontal, Host, Hover, Modifiers, Point, Scroll,
-	ScrollBounds, Selection, WheelMode, selection_scroll_speed,
+	DocumentInteraction, Horizontal, Host, Hover, Modifiers, Point,
+	ScrollBounds, ScrollPhysics, Selection, WheelMode, selection_scroll_speed,
 };
 use markview_layout::{
 	fonts::FontConfig,
@@ -162,7 +162,7 @@ pub async fn create(
 		logical,
 		dpr,
 		scale,
-		scrolling: Scroll::default(),
+		scrolling: ScrollPhysics::default(),
 		horizontal: Horizontal::default(),
 		internal_scroll: true,
 		images_clickable: false,
@@ -214,7 +214,7 @@ pub struct Markview {
 	/// lowered until both logical edges fit the device limit. Sharing it with
 	/// the drawn view keeps rendering and hit testing on one viewport.
 	scale: f32,
-	scrolling: Scroll,
+	scrolling: ScrollPhysics,
 	horizontal: Horizontal,
 	internal_scroll: bool,
 	images_clickable: bool,

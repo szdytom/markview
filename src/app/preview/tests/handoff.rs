@@ -64,7 +64,7 @@ impl Case {
 		let body = floating.body();
 		let point = Point::new(
 			body.x + rect.x + rect.w / 2.0,
-			body.y + rect.y - floating.scroll + rect.h / 2.0,
+			body.y + rect.y - floating.scroll.offset() + rect.h / 2.0,
 		);
 		assert!(body.contains(point.x, point.y));
 		point
@@ -300,31 +300,37 @@ fn changed_content_or_a_new_navigation_discards_a_waiting_activation() {
 
 #[test]
 fn a_stationary_focused_file_preview_refreshes_after_a_write_and_atomic_save() {
-	let mut case = Case::new("Original content.\n", false);
+	let tail =
+		"\n\nA long paragraph that keeps the preview scrollable.".repeat(40);
+	let mut case = Case::new(&format!("Original content.{tail}"), false);
 	case.show();
 	let body = case.app.preview.floating().unwrap().body();
 	case.app
 		.interaction
 		.pointer
 		.move_to((body.x + 3.0, body.y + 3.0));
-	case.app.preview.floating_mut().unwrap().state.focused = true;
+	let floating = case.app.preview.floating_mut().unwrap();
+	floating.state.focused = true;
+	floating.scroll.jump_to(100.0);
+	assert_eq!(floating.scroll.offset(), 100.0);
 	for (atomic, content) in [
 		(false, "Updated content."),
 		(true, "Atomically saved content."),
 	] {
+		let body = format!("{content}{tail}");
 		if atomic {
 			let replacement = case.dir.path().join("save.tmp");
-			fs::write(&replacement, format!("## Target\n\n{content}\n"))
-				.unwrap();
+			fs::write(&replacement, format!("## Target\n\n{body}\n")).unwrap();
 			fs::rename(replacement, &case.target).unwrap();
 		} else {
-			case.update(content);
+			case.update(&body);
 		}
 		case.until(|app| {
 			app.preview.floating().is_some()
 				&& links::text(app).contains(content)
 		});
 		assert!(case.app.preview.floating().unwrap().focused());
+		assert_eq!(case.app.preview.floating().unwrap().scroll.offset(), 100.0);
 		assert!(
 			case.app
 				.readers
@@ -551,5 +557,138 @@ fn disclosure_ids_are_mapped_by_structure_instead_of_reused_across_documents() {
 	assert_eq!(
 		case.app.readers.session.details_open.get(&remapped_id),
 		Some(&true)
+	);
+}
+
+#[test]
+fn pressing_a_refreshing_file_preview_stops_its_retained_motion() {
+	use markview_interaction::WheelMode;
+	let tail =
+		"A long paragraph that keeps the preview scrollable. ".repeat(300);
+	let mut case = Case::new(&format!("Original content. {tail}"), false);
+	case.show();
+	let floating = case.app.preview.floating().unwrap();
+	let scene = floating.snapshot.presentation_key;
+	let body = floating.body();
+	let point = (body.x + body.w / 2.0, body.y + body.h / 2.0);
+	case.app.interaction.pointer.move_to(point);
+	let start = Instant::now();
+	assert!(
+		case.app.preview.scroll(
+			point,
+			case.app
+				.animations
+				.scrolls
+				.wheel(120.0, start, WheelMode::Detent)
+		)
+	);
+	case.app
+		.advance_animations(start + Duration::from_millis(40), Duration::ZERO);
+	let floating = case.app.preview.floating().unwrap();
+	let before = floating.scroll.offset();
+	assert!(floating.scroll.animating() && before > 0.0 && before < 120.0);
+
+	case.update(&format!(
+		"Updated file content awaiting presentation. {tail}"
+	));
+	case.app.pointer_pressed();
+	assert!(
+		case.app.preview.pending.is_some(),
+		"the press must defer to a file refresh"
+	);
+	let floating = case.app.preview.floating().unwrap();
+	assert_eq!(
+		floating.snapshot.presentation_key, scene,
+		"the old scene must remain visible"
+	);
+	let moving_at_press = floating.scroll.animating();
+	// Worker completions stay queued until the host's next `preview_tick`.
+	case.app
+		.advance_animations(start + Duration::from_millis(80), Duration::ZERO);
+	assert!(case.app.preview.pending.is_some());
+	let floating = case.app.preview.floating().unwrap();
+	assert_eq!(floating.snapshot.presentation_key, scene);
+	let after = floating.scroll.offset();
+	println!(
+		"refresh pending: offset {before:.3} -> {after:.3}, moving_at_press={moving_at_press}"
+	);
+	assert!(
+		!moving_at_press,
+		"a deferred press must still stop popup motion immediately"
+	);
+	assert_eq!(
+		before, after,
+		"the retained scene must remain still after the press"
+	);
+}
+
+#[test]
+fn pressing_a_refreshing_file_preview_stops_synthesized_trackpad_coast() {
+	use crate::app::gestures::Inertia;
+	use markview_platform::event::TouchPhase;
+	let tail =
+		"A long paragraph that keeps the preview scrollable. ".repeat(300);
+	let mut case = Case::new(&format!("Original content. {tail}"), false);
+	case.show();
+	let floating = case.app.preview.floating().unwrap();
+	let scene = floating.snapshot.presentation_key;
+	let body = floating.body();
+	let point = (body.x + body.w / 2.0, body.y + body.h / 2.0);
+	case.app.interaction.pointer.move_to(point);
+	case.app.trackpad_scroll(
+		0.0,
+		-50.0,
+		TouchPhase::Started,
+		Inertia::Synthesized,
+	);
+	case.app.trackpad_scroll(
+		0.0,
+		-30.0,
+		TouchPhase::Moved,
+		Inertia::Synthesized,
+	);
+
+	case.app
+		.trackpad_scroll(0.0, 0.0, TouchPhase::Ended, Inertia::Synthesized);
+	let released = Instant::now();
+	assert!(case.app.gestures.deadline(released).is_some());
+	let floating = case.app.preview.floating().unwrap();
+	let before = floating.scroll.offset();
+	assert!(before > 0.0 && floating.view().max_scroll() - before > 100.0);
+
+	case.update(&format!(
+		"Updated file content awaiting presentation. {tail}"
+	));
+	case.app.pointer_pressed();
+	assert!(case.app.preview.pending.is_some());
+	assert_eq!(
+		case.app
+			.preview
+			.floating()
+			.unwrap()
+			.snapshot
+			.presentation_key,
+		scene
+	);
+	let coasting_at_press = case.app.gestures.deadline(released).is_some();
+	// The queued file layout cannot replace the scene before `preview_tick`.
+	case.app.advance_animations(
+		released + Duration::from_millis(16),
+		Duration::ZERO,
+	);
+	assert!(case.app.preview.pending.is_some());
+	let floating = case.app.preview.floating().unwrap();
+	assert_eq!(floating.snapshot.presentation_key, scene);
+	let after = floating.scroll.offset();
+	println!(
+		"refresh pending: offset {before:.3} -> {after:.3}, coasting_at_press={coasting_at_press}"
+	);
+	assert!(
+		!coasting_at_press,
+		"a deferred press must also stop gesture inertia"
+	);
+	assert_eq!(
+		before, after,
+		"the retained scene must not coast after the press"
 	);
 }

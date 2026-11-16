@@ -2163,7 +2163,7 @@ fn a_stationary_tab_press_does_not_edge_scroll() {
 	let layout = app.tab_layout();
 	let viewport = app.frame_layout().tabs;
 	app.tab_strip.scroll.set_max(layout.max_scroll);
-	app.tab_strip.scroll.set(100.0);
+	app.tab_strip.scroll.jump_to(100.0);
 	app.interaction
 		.pointer
 		.move_to((viewport.x + 5.0, viewport.y + viewport.h / 2.0));

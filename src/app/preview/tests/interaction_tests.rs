@@ -210,14 +210,23 @@ fn scrollbar_drag_and_keyboard_scrolling_leave_the_main_page_in_place() {
 	app.pointer_pressed();
 	assert!(app.preview_captured());
 	app.preview_input(ViewInput::Move(Point::new(900.0, 900.0)));
-	assert!(app.preview.floating().unwrap().scroll > 100.0);
+	assert!(app.preview.floating().unwrap().scroll.offset() > 100.0);
 	app.interaction.pointer.move_to((900.0, 900.0));
 	app.pointer_released();
 	assert!(!app.preview_captured());
 	assert!(app.preview_key(&Key::Named(NamedKey::Home)));
-	assert_eq!(app.preview.floating().unwrap().scroll, 0.0);
+	assert!(app.control_scroll_animating());
+	app.advance_animations(
+		Instant::now() + Duration::from_secs(1),
+		Duration::ZERO,
+	);
+	assert_eq!(app.preview.floating().unwrap().scroll.offset(), 0.0);
 	assert!(app.preview_key(&Key::Named(NamedKey::End)));
-	assert!(app.preview.floating().unwrap().scroll > 100.0);
+	app.advance_animations(
+		Instant::now() + Duration::from_secs(1),
+		Duration::ZERO,
+	);
+	assert!(app.preview.floating().unwrap().scroll.offset() > 100.0);
 	assert_eq!(app.readers.session.scrolling.offset, page);
 	assert!(app.interaction.selection.is_none());
 }
@@ -455,7 +464,7 @@ fn trackpad_streams_stay_on_the_popup_even_after_it_closes() {
 	let page = app.readers.session.scrolling.offset;
 	app.trackpad_scroll(0.0, -80.0, TouchPhase::Started, Inertia::Native);
 	app.trackpad_scroll(0.0, -80.0, TouchPhase::Moved, Inertia::Native);
-	assert!(app.preview.floating().unwrap().scroll >= 80.0);
+	assert!(app.preview.floating().unwrap().scroll.offset() >= 80.0);
 	assert_eq!(app.readers.session.scrolling.offset, page);
 	app.dismiss_preview();
 	app.trackpad_scroll(0.0, -80.0, TouchPhase::Moved, Inertia::Native);
@@ -497,4 +506,143 @@ fn scrolling_refreshes_the_link_under_a_stationary_pointer() {
 	app.scroll_wheel(100.0, markview_interaction::WheelMode::Direct);
 	assert!(app.preview.floating().unwrap().state.hover.link.is_none());
 	assert_ne!(app.refresh_hover(), winit::cursor::CursorIcon::Pointer);
+}
+
+#[test]
+fn popup_wheel_motion_uses_the_shared_frame_clock_and_dies_on_dismissal() {
+	use markview_interaction::WheelMode;
+	let source =
+		format!("Main[^n].\n\n[^n]: {}\n", "A long note. ".repeat(300));
+	for mode in [WheelMode::Detent, WheelMode::Packet] {
+		let mut app = note_app(&source);
+		let point = content_point(&app);
+		app.interaction.pointer.move_to((point.x, point.y));
+		let page = app.readers.session.scrolling.offset;
+		let start = Instant::now();
+		app.scroll_wheel(120.0, mode);
+		assert_eq!(app.preview.floating().unwrap().scroll.offset(), 0.0);
+		assert!(app.control_scroll_animating());
+		assert!(app.advance_animations(
+			start + Duration::from_millis(40),
+			Duration::ZERO
+		));
+		let offset = app.preview.floating().unwrap().scroll.offset();
+		assert!(offset > 0.0 && offset < 120.0);
+		assert_eq!(app.readers.session.scrolling.offset, page);
+		assert!(app.dismiss_preview());
+		assert!(!app.control_scroll_animating());
+		app.advance_animations(start + Duration::from_secs(2), Duration::ZERO);
+		assert!(app.preview.open().is_none());
+		assert_eq!(app.readers.session.scrolling.offset, page);
+	}
+}
+
+#[test]
+fn grabbing_the_popup_scrollbar_stops_its_wheel_animation_immediately() {
+	let source =
+		format!("Main[^n].\n\n[^n]: {}\n", "A long note. ".repeat(300));
+	let mut app = note_app(&source);
+	let point = content_point(&app);
+	app.interaction.pointer.move_to((point.x, point.y));
+	let start = Instant::now();
+	app.scroll_wheel(120.0, markview_interaction::WheelMode::Detent);
+	app.advance_animations(start + Duration::from_millis(40), Duration::ZERO);
+	let bar = app.preview.floating().unwrap().scrollbar().unwrap();
+	let point = Point::new(bar.thumb.x + bar.thumb.w / 2.0, bar.thumb.y + 2.0);
+	app.interaction.pointer.move_to((point.x, point.y));
+	app.pointer_pressed();
+	assert!(app.preview_captured());
+	assert!(!app.control_scroll_animating());
+	let offset = app.preview.floating().unwrap().scroll.offset();
+	app.advance_animations(start + Duration::from_secs(2), Duration::ZERO);
+	assert_eq!(app.preview.floating().unwrap().scroll.offset(), offset);
+}
+
+#[test]
+fn pressing_a_popup_link_stops_motion_and_preserves_its_activation() {
+	use markview_interaction::WheelMode;
+	let source = format!(
+		"Main[^n].\n\n# Destination\n\n[^n]: A paragraph before the link.\n\n    Another paragraph before the link.\n\n    [Jump](#destination).\n\n    {}\n",
+		"More note text. ".repeat(300)
+	);
+	let mut observations = Vec::new();
+	for mode in [WheelMode::Direct, WheelMode::Detent, WheelMode::Packet] {
+		let mut app = note_app(&source);
+		let point = content_point(&app);
+		let start = Instant::now();
+		let delta = if mode == WheelMode::Direct {
+			40.0
+		} else {
+			120.0
+		};
+		assert!(app.preview.scroll(
+			(point.x, point.y),
+			app.animations.scrolls.wheel(delta, start, mode)
+		));
+		app.advance_animations(
+			start + Duration::from_millis(40),
+			Duration::ZERO,
+		);
+		let floating = app.preview.floating().unwrap();
+		assert_eq!(floating.scroll.animating(), mode != WheelMode::Direct);
+		let before = floating.scroll.offset();
+		let rect = floating
+			.snapshot
+			.blocks
+			.iter()
+			.find_map(|block| {
+				block.links().find_map(|(link, mut rect)| {
+					if !matches!(link.target, LinkTarget::Url(url) if url.as_ref() == "#destination")
+					{
+						return None;
+					}
+					rect.y += block.y;
+					Some(rect)
+				})
+			})
+			.unwrap();
+		if mode != WheelMode::Direct {
+			assert!(
+				120.0 - before > rect.h,
+				"unfinished travel must exceed the link height"
+			);
+		}
+		let mut visible = rect;
+		visible.y -= before;
+		let rect = floating.view().window_rect(visible);
+		let point = Point::new(rect.x + rect.w / 2.0, rect.y + rect.h / 2.0);
+		assert!(floating.body().contains(point.x, point.y));
+		assert_eq!(
+			floating.view().link(point),
+			Some(LinkTarget::Url("#destination".into()))
+		);
+		app.interaction.pointer.move_to((point.x, point.y));
+		app.pointer_pressed();
+		assert!(app.preview_captured());
+		app.advance_animations(
+			start + Duration::from_millis(300),
+			Duration::ZERO,
+		);
+		assert!(
+			app.preview_captured(),
+			"the held click must remain captured"
+		);
+		let after = app.preview.floating().unwrap().scroll.offset();
+		app.pointer_released();
+		let activated = matches!(app.readers.session.jump_origin.as_ref(), Some((markview_document::AnchorId::Fragment(anchor), _)) if anchor == "destination");
+		println!(
+			"{mode:?}: offset {before:.3} -> {after:.3}, activated={activated}"
+		);
+		observations.push((mode, before, after, activated));
+	}
+	for (mode, before, after, activated) in observations {
+		assert_eq!(
+			before, after,
+			"{mode:?}: pressing popup content must stop its motion"
+		);
+		assert!(
+			activated,
+			"{mode:?}: a stationary click must activate its link"
+		);
+	}
 }

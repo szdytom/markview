@@ -53,6 +53,25 @@ A paint-only preview should not restart document layout. Geometry-affecting
 changes must invalidate layout; closing or replacing a page must settle its
 transient focus, capture and pending effects.
 
+## Scrolling
+
+New native controls own a `markview-interaction::ScrollSurface`. Set its geometry
+with `set_max` or `fit`, paint with `offset()`, and pass `ScrollRequest` through
+input routing to `apply`. Create requests from the window's
+`animations.scrolls`: `wheel` preserves the device's `WheelMode`, while `step`
+and `to` ease keyboard and navigation requests. Embedded views carry the same
+request in `ViewInput::Scroll`; the host applies `ViewAction::Scroll` to its
+surface. Do not convert wheel input to an absolute position.
+
+Applying a request registers motion with the shared clock and wakes the first
+frame. The frame driver advances all registered surfaces; controls never add
+individual animation hooks or maintain an animation list. The clock holds weak
+references, so closing a popup or replacing a model releases its motion.
+`jump_to` is reserved for restoration and dragged scrollbar positions;
+`pan_by` follows pointer or native gesture motion that already supplies frames.
+Both interrupt pending easing. The low-level `ScrollPhysics` engine remains available
+for document sessions with incomplete layout bounds and the Web host's own clock.
+
 ## Tooltips
 
 Icon buttons use their localized `label` as a tooltip. Set `Button::tooltip`

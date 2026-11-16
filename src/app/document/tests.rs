@@ -2115,7 +2115,11 @@ fn folder_sidebar_geometry_keyboard_and_pointer_ownership() {
 	h.app.interaction.pointer.move_to((20., 150.));
 	assert!(h.app.pointer_in_folder());
 	h.app.folder.scroll.reset();
-	h.app.wheel_folder(100.);
+	h.app.wheel_folder(h.app.animations.scrolls.wheel(
+		100.0,
+		Instant::now(),
+		markview_interaction::WheelMode::Detent,
+	));
 	assert_eq!(
 		h.app.folder.scroll.offset(),
 		0.,
@@ -2142,7 +2146,11 @@ fn folder_sidebar_geometry_keyboard_and_pointer_ownership() {
 	);
 	h.app.folder.grab = None;
 	h.app.interaction.pointer.move_to((20., 150.));
-	h.app.wheel_folder(100.);
+	h.app.wheel_folder(h.app.animations.scrolls.wheel(
+		100.0,
+		Instant::now(),
+		markview_interaction::WheelMode::Detent,
+	));
 	assert!(h.app.folder.scroll.animating());
 	h.app
 		.advance_control_scroll(Instant::now() + Duration::from_secs(1));

@@ -200,7 +200,7 @@ pub(crate) struct ReaderSession {
 	/// Reader-chosen `<details>` collapse state, keyed by block id, overriding
 	/// what the source declared. It is layout input, and a reload drops it.
 	pub(crate) details_open: Arc<BTreeMap<document::BlockId, bool>>,
-	pub(crate) scrolling: markview_interaction::Scroll,
+	pub(crate) scrolling: markview_interaction::ScrollPhysics,
 	pub(crate) follow_update: bool,
 	pub(crate) layout_pending: bool,
 	pub(crate) web_loading: bool,
@@ -593,20 +593,6 @@ impl InteractionState {
 	#[cfg(test)]
 	pub(crate) fn scroll_outline(&mut self, delta: f32, max: f32) {
 		self.overlays.outline.scroll_by(delta, max);
-	}
-
-	/// Advances eased scrolling on the shell's pages and the outline.
-	pub(crate) fn advance_scrolls(&mut self, now: Instant) {
-		self.panels.export_scroll_mut().advance(now);
-		self.panels.styles_scroll_mut().advance(now);
-		self.overlays.outline.scroll_mut().advance(now);
-	}
-
-	/// Whether the shell's pages or the outline still have motion in flight.
-	pub(crate) fn scroll_animating(&self) -> bool {
-		self.panels.export_scroll().animating()
-			|| self.panels.styles_scroll().animating()
-			|| self.overlays.outline.scroll_ref().animating()
 	}
 
 	/// Advances keyboard focus to the next (or previous) button, wrapping at

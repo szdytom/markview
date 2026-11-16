@@ -1,6 +1,7 @@
 //! An embeddable document viewport and its independent input state.
 use crate::{
-	DocumentInteraction, Drag, Grain, Host, Hover, Modifiers, Point, Selection,
+	DocumentInteraction, Drag, Grain, Host, Hover, Modifiers, Point,
+	ScrollRequest, Selection,
 };
 use markview_layout::{
 	scene::{
@@ -226,14 +227,16 @@ pub enum ViewAction {
 		source: String,
 		rect: Rect,
 	},
-	ScrollTo(f32),
+	/// Tracks a dragged scrollbar immediately.
+	JumpTo(f32),
+	Scroll(ScrollRequest),
 	HorizontalTo {
 		block: usize,
 		overflow: usize,
 		offset: f32,
 	},
 }
-#[derive(Clone, Copy)]
+#[derive(Clone)]
 pub enum ViewInput {
 	Move(Point),
 	Press {
@@ -242,9 +245,9 @@ pub enum ViewInput {
 		at: Instant,
 	},
 	Release(Point),
-	Wheel {
+	Scroll {
 		point: Point,
-		delta: f32,
+		request: ScrollRequest,
 	},
 	Cancel,
 	SelectAll,
@@ -280,7 +283,7 @@ impl BarDrag {
 				overflow,
 				offset,
 			},
-			None => ViewAction::ScrollTo(offset),
+			None => ViewAction::JumpTo(offset),
 		}
 	}
 }
@@ -334,15 +337,12 @@ impl ViewState {
 			} => self.press(view, point, modifiers, at, metrics),
 			ViewInput::Move(point) => self.pointer_move(view, point),
 			ViewInput::Release(point) => self.release(view, point),
-			ViewInput::Wheel { point, delta } => {
+			ViewInput::Scroll { point, request } => {
 				if !view.contains(point) {
 					return ViewUpdate::default();
 				}
 				self.cursor = point;
-				ViewUpdate::handled(Some(ViewAction::ScrollTo(
-					(view.context.viewport.scroll + delta)
-						.clamp(0.0, view.max_scroll()),
-				)))
+				ViewUpdate::handled(Some(ViewAction::Scroll(request)))
 			}
 			ViewInput::Cancel => {
 				self.pressed = false;

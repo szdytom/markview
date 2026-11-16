@@ -3,7 +3,7 @@ pub(super) mod observe;
 use super::{App, Event, SendEvent};
 use crate::state::ChromeCommand;
 use crate::state::{Command, DrawerAnimation, Row, RowSlide};
-use markview_interaction::Scroll;
+use markview_interaction::ScrollSurface;
 use observe::Observer;
 use std::{
 	collections::{BTreeMap, HashMap, HashSet},
@@ -435,7 +435,7 @@ pub(super) struct Browser {
 	pub start: super::start::State,
 	pub tree: Option<Tree>,
 	pub open: bool,
-	pub scroll: Scroll,
+	pub scroll: ScrollSurface,
 	pub grab: Option<f32>,
 	/// The tree scrollbar's linger or fade after pointer motion.
 	scrollbar_reveal: super::viewport::ScrollbarReveal,
@@ -749,7 +749,7 @@ impl<P: SendEvent> App<P> {
 		);
 		let top = row as f32 * 28.;
 		self.folder.fit_scroll(self.folder_rect(), self.frame_now());
-		self.folder.scroll.set(
+		self.folder.scroll.jump_to(
 			list.scroll
 				.min(top)
 				.max(top + 28. - list.viewport.h)
@@ -1283,7 +1283,7 @@ impl<P: SendEvent> App<P> {
 		let grab = if bar.on_thumb(x, y) {
 			bar.grab(x, y)
 		} else {
-			self.folder.scroll.set(bar.scroll_for(x, y, 0.));
+			self.folder.scroll.jump_to(bar.scroll_for(x, y, 0.));
 			0.
 		};
 		self.folder.grab = Some(grab);
@@ -1296,7 +1296,7 @@ impl<P: SendEvent> App<P> {
 			&& let Some(bar) = self.folder_bar()
 		{
 			let (x, y) = self.interaction.pointer.cursor();
-			self.folder.scroll.set(bar.scroll_for(x, y, grab));
+			self.folder.scroll.jump_to(bar.scroll_for(x, y, grab));
 			self.redraw();
 		}
 	}
@@ -1307,22 +1307,21 @@ impl<P: SendEvent> App<P> {
 		self.folder.scroll.set_max(list.max_scroll());
 		self.folder
 			.scroll
-			.set((list.scroll + delta).clamp(0., list.max_scroll()));
+			.jump_to((list.scroll + delta).clamp(0., list.max_scroll()));
 		self.interaction.widgets.captured = None;
 		self.redraw();
 	}
 
 	/// A wheel step over the tree, eased like the document's own.
-	pub(super) fn wheel_folder(&mut self, delta: f32) {
+	pub(super) fn wheel_folder(
+		&mut self,
+		request: markview_interaction::ScrollRequest,
+	) {
 		let now = Instant::now();
 		self.folder.show_scrollbar(now);
 		let list = self.folder.list(self.folder_rect(), self.frame_now());
 		self.folder.scroll.set_max(list.max_scroll());
-		self.folder.scroll.wheel(
-			delta,
-			now,
-			markview_interaction::WheelMode::Detent,
-		);
+		self.folder.scroll.apply(request);
 		self.interaction.widgets.captured = None;
 		self.redraw();
 	}

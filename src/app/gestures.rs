@@ -340,10 +340,16 @@ impl<P: super::SendEvent> App<P> {
 			}
 			Surface::Tabs => self.tab_strip.scroll.cancel(),
 			Surface::Document => self.folder.start.scroll.cancel(),
-			Surface::None
-			| Surface::Overflow(..)
-			| Surface::Floating(..)
-			| Surface::Viewer => {}
+			Surface::Floating(key, _) => {
+				if let Some(floating) = self
+					.preview
+					.floating_mut()
+					.filter(|f| f.snapshot.presentation_key == key)
+				{
+					floating.scroll.cancel();
+				}
+			}
+			Surface::None | Surface::Overflow(..) | Surface::Viewer => {}
 		}
 	}
 
@@ -730,7 +736,7 @@ impl<P: super::SendEvent> App<P> {
 							.and_then(|key| f.horizontal.get(&key))
 							.copied()
 							.unwrap_or(0.0),
-						f.scroll,
+						f.scroll.offset(),
 					)
 				}),
 			Surface::Document => (
@@ -783,7 +789,7 @@ impl<P: super::SendEvent> App<P> {
 			Surface::Tabs => {
 				let layout = self.tab_layout();
 				self.tab_strip.scroll.set_max(layout.max_scroll);
-				self.tab_strip.scroll.by(-dx);
+				self.tab_strip.scroll.pan_by(-dx);
 			}
 			Surface::Overflow(bi, oi) if dx != 0.0 => {
 				if let Some(overflow) = self

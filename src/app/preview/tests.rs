@@ -1265,19 +1265,27 @@ fn ineffective_tab_scrolling_keeps_the_preview_and_hover_deadline() {
 		let layout = app.tab_layout();
 		app.tab_strip.scroll.set_max(layout.max_scroll);
 		let offset = if at_end { layout.max_scroll } else { 0.0 };
-		app.tab_strip.scroll.set(offset);
+		app.tab_strip.scroll.jump_to(offset);
 		app.interaction
 			.pointer
 			.move_to((layout.viewport.x + 20.0, 20.0));
 		app.hover_preview(now);
 		let deadline = app.preview.deadline().expect("hover is armed");
-		assert!(app.scroll_tabs(delta));
+		assert!(app.scroll_tabs(app.animations.scrolls.wheel(
+			delta,
+			Instant::now(),
+			markview_interaction::WheelMode::Detent
+		)));
 		assert_eq!(app.preview.deadline(), Some(deadline));
 
 		app.preview_tick(deadline);
 		let target = app.preview.open().expect("the card did not open").target;
 		for _ in 0..3 {
-			assert!(app.scroll_tabs(delta));
+			assert!(app.scroll_tabs(app.animations.scrolls.wheel(
+				delta,
+				Instant::now(),
+				markview_interaction::WheelMode::Detent
+			)));
 			assert_eq!(app.tab_strip.scroll.offset(), offset);
 			assert!(!app.tab_strip.scroll.animating());
 			assert_eq!(
@@ -1316,7 +1324,7 @@ fn a_preview_follows_its_scrolling_tab_while_the_pointer_stays_inside() {
 		}
 		let layout = app.tab_layout();
 		app.tab_strip.scroll.set_max(layout.max_scroll);
-		app.tab_strip.scroll.set(layout.max_scroll / 2.0);
+		app.tab_strip.scroll.jump_to(layout.max_scroll / 2.0);
 		let layout = app.tab_layout();
 		let middle = layout.viewport.x + layout.viewport.w / 2.0;
 		let (index, _) = layout
@@ -1335,7 +1343,11 @@ fn a_preview_follows_its_scrolling_tab_while_the_pointer_stays_inside() {
 		let target = Target::Tab(app.readers.entries()[index].id);
 		let serial = app.preview.serial;
 		let before = rect(&mut app);
-		assert!(app.scroll_tabs(direction * tab.w / 4.0));
+		assert!(app.scroll_tabs(app.animations.scrolls.wheel(
+			direction * tab.w / 4.0,
+			Instant::now(),
+			markview_interaction::WheelMode::Detent
+		)));
 		assert_eq!(app.preview.open().map(|open| open.target), Some(target));
 
 		let now = Instant::now();
@@ -1379,7 +1391,11 @@ fn scrolling_the_tab_strip_rearms_the_hover() {
 	app.preview_tick(now + SHOW_DELAY);
 	let before = app.preview.open().expect("the card did not open").target;
 
-	assert!(app.scroll_tabs(200.0));
+	assert!(app.scroll_tabs(app.animations.scrolls.wheel(
+		200.0,
+		Instant::now(),
+		markview_interaction::WheelMode::Detent
+	)));
 	assert_eq!(app.preview.open().map(|open| open.target), Some(before));
 	app.advance_control_scroll(Instant::now() + Duration::from_secs(1));
 	assert!(!app.control_scroll_animating());
@@ -1414,7 +1430,11 @@ fn scrolling_does_not_reopen_the_card_in_an_unfocused_window() {
 	app.preview_tick(now + SHOW_DELAY);
 	assert!(app.preview.open().is_some());
 
-	app.scroll_tabs(200.0);
+	app.scroll_tabs(app.animations.scrolls.wheel(
+		200.0,
+		Instant::now(),
+		markview_interaction::WheelMode::Detent,
+	));
 	app.frame.focused = false;
 	app.dismiss_preview();
 	app.advance_control_scroll(Instant::now() + Duration::from_secs(1));
@@ -1791,7 +1811,14 @@ fn shared_floating_scenes_scroll_and_consume_wheel_at_their_limits() {
 		h: rect.h - 20.0,
 	}));
 	let point = (rect.x + 20.0, rect.y + 20.0);
-	assert!(preview.scroll(point, 100.0));
+	let direct = |delta| {
+		app.animations.scrolls.wheel(
+			delta,
+			Instant::now(),
+			markview_interaction::WheelMode::Direct,
+		)
+	};
+	assert!(preview.scroll(point, direct(100.0)));
 	assert_eq!(
 		preview
 			.scene(&app.readers, crate::render::Theme::Light)
@@ -1799,19 +1826,19 @@ fn shared_floating_scenes_scroll_and_consume_wheel_at_their_limits() {
 			.scroll,
 		100.0
 	);
-	assert!(preview.scroll(point, f32::MAX));
-	let bottom = preview.floating().unwrap().scroll;
+	assert!(preview.scroll(point, direct(f32::MAX)));
+	let bottom = preview.floating().unwrap().scroll.offset();
 	assert!(bottom > 100.0);
-	assert!(preview.scroll(point, 100.0));
-	assert_eq!(preview.floating().unwrap().scroll, bottom);
-	assert!(!preview.scroll((rect.x - 1.0, rect.y), 100.0));
-	assert!(preview.scroll(point, -f32::MAX));
-	assert_eq!(preview.floating().unwrap().scroll, 0.0);
+	assert!(preview.scroll(point, direct(100.0)));
+	assert_eq!(preview.floating().unwrap().scroll.offset(), bottom);
+	assert!(!preview.scroll((rect.x - 1.0, rect.y), direct(100.0)));
+	assert!(preview.scroll(point, direct(-f32::MAX)));
+	assert_eq!(preview.floating().unwrap().scroll.offset(), 0.0);
 	app.preview = preview;
 	app.interaction.pointer.move_to(point);
 	let page_scroll = app.readers.session.scrolling.offset;
 	app.scroll_wheel(100.0, markview_interaction::WheelMode::Direct);
-	assert_eq!(app.preview.floating().unwrap().scroll, 100.0);
+	assert_eq!(app.preview.floating().unwrap().scroll.offset(), 100.0);
 	assert_eq!(app.readers.session.scrolling.offset, page_scroll);
 	app.pointer_pressed();
 	assert!(app.preview.floating().unwrap().focused());
@@ -2047,4 +2074,35 @@ fn cropping_floating_scenes_preserves_the_original_layout() {
 			}
 		}
 	}
+}
+
+#[test]
+fn a_new_surface_wakes_and_animates_without_an_application_field_or_hook() {
+	use markview_interaction::{ScrollSurface, WheelMode};
+	let (mut app, events) = app();
+	let start = Instant::now();
+	let mut surface = ScrollSurface::default();
+	surface.set_max(500.0);
+	surface.apply(app.animations.scrolls.wheel(
+		120.0,
+		start,
+		WheelMode::Detent,
+	));
+	assert!(
+		events
+			.try_iter()
+			.any(|event| matches!(event, Event::Redraw))
+	);
+	assert_eq!(surface.offset(), 0.0);
+	assert!(
+		app.advance_animations(
+			start + Duration::from_millis(40),
+			Duration::ZERO
+		)
+	);
+	assert!(surface.offset() > 0.0 && surface.offset() < 120.0);
+	assert!(
+		!app.advance_animations(start + Duration::from_secs(2), Duration::ZERO)
+	);
+	assert_eq!(surface.offset(), 120.0);
 }

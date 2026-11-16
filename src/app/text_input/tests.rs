@@ -716,10 +716,9 @@ fn focused_start_inputs_stop_revealing_at_the_scroll_limit() {
 			};
 			let before = geometry(&browser);
 			browser.start.scroll.set_max(before.max_scroll);
-			browser
-				.start
-				.scroll
-				.set(start_input_scroll(&before, input(&before), id).unwrap());
+			browser.start.scroll.jump_to(
+				start_input_scroll(&before, input(&before), id).unwrap(),
+			);
 			let after = geometry(&browser);
 			assert_eq!(start_input_scroll(&after, input(&after), id), None);
 			assert!(after.scroll <= after.max_scroll);

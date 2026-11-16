@@ -16,7 +16,7 @@ use crate::state::DocumentCommand;
 use crate::state::{
 	Command, DrawerAnimation, InteractionState, OutlineTree, Row, RowSlide,
 };
-use markview_interaction::Scroll;
+use markview_interaction::ScrollSurface;
 use markview_ui_core::{Component, Invalidation, Update};
 use std::time::Instant;
 
@@ -30,7 +30,7 @@ use std::time::Instant;
 #[derive(Default)]
 pub(crate) struct Model {
 	open: bool,
-	scroll: Scroll,
+	scroll: ScrollSurface,
 	selection: Option<usize>,
 	animation: Option<DrawerAnimation>,
 	rows: RowSlide,
@@ -87,12 +87,9 @@ impl Model {
 		self.scroll.offset()
 	}
 
-	pub(crate) fn scroll_mut(&mut self) -> &mut Scroll {
+	#[cfg(test)]
+	pub(crate) fn scroll_mut(&mut self) -> &mut ScrollSurface {
 		&mut self.scroll
-	}
-
-	pub(crate) fn scroll_ref(&self) -> &Scroll {
-		&self.scroll
 	}
 
 	fn toggle(&mut self, entries: usize, current: Option<usize>) -> bool {
@@ -157,7 +154,7 @@ impl Model {
 		};
 		let max = super::chrome::outline::max_scroll(drawer, rows.len());
 		self.scroll.set_max(max);
-		self.scroll.set(super::chrome::outline::reveal(
+		self.scroll.jump_to(super::chrome::outline::reveal(
 			drawer,
 			rows.len(),
 			self.scroll.offset(),
@@ -167,18 +164,16 @@ impl Model {
 
 	pub(crate) fn scroll_by(&mut self, delta: f32, max: f32) {
 		self.scroll.set_max(max);
-		self.scroll.by(delta);
+		self.scroll.pan_by(delta);
 	}
 
 	pub(crate) fn wheel(
 		&mut self,
-		delta: f32,
+		request: markview_interaction::ScrollRequest,
 		max: f32,
-		now: Instant,
-		mode: markview_interaction::WheelMode,
 	) {
 		self.scroll.set_max(max);
-		self.scroll.wheel(delta, now, mode);
+		self.scroll.apply(request);
 	}
 
 	pub(crate) fn cancel_scroll(&mut self) {
@@ -414,17 +409,15 @@ impl<P: super::SendEvent> App<P> {
 	}
 
 	/// A wheel step over the drawer, eased like the document's own.
-	pub(super) fn wheel_outline(&mut self, delta: f32) {
+	pub(super) fn wheel_outline(
+		&mut self,
+		request: markview_interaction::ScrollRequest,
+	) {
 		self.readers.session.ensure_outline();
 		let entries = self.outline_rows().len();
 		let max =
 			super::chrome::outline::max_scroll(self.outline_drawer(), entries);
-		self.interaction.overlays.outline.wheel(
-			delta,
-			max,
-			std::time::Instant::now(),
-			markview_interaction::WheelMode::Detent,
-		);
+		self.interaction.overlays.outline.wheel(request, max);
 		self.redraw();
 	}
 

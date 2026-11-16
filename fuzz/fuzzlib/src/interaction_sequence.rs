@@ -2,7 +2,7 @@
 use crate::{coverage, oracle, pipeline};
 use markview_interaction::{
 	DocumentInteraction, Drag, Host, Modifiers, Motion, PanFeed, PanStatus,
-	Point, Scroll, Selection,
+	Point, ScrollPhysics, Selection,
 };
 use markview_layout::{
 	layout::{LayoutEngine, LayoutOptions},
@@ -95,7 +95,7 @@ pub fn check(data: &[u8]) {
 	);
 	let mut snapshot = engine.layout(&document, &base).flattened();
 	let mut horizontal: HashMap<(usize, usize), f32> = HashMap::new();
-	let mut scroll = Scroll::default();
+	let mut scroll = ScrollPhysics::default();
 	scroll.set_max((snapshot.height - 400.).max(0.));
 	let mut state = State::default();
 	let mut motion = Motion::new(Instant::now());

@@ -553,7 +553,11 @@ impl Preview {
 	}
 
 	/// Consumes wheel motion over a scene, including at its scroll limits.
-	pub(super) fn scroll(&mut self, point: (f32, f32), delta: f32) -> bool {
+	pub(super) fn scroll(
+		&mut self,
+		point: (f32, f32),
+		request: markview_interaction::ScrollRequest,
+	) -> bool {
 		let Some(floating) =
 			self.open.as_mut().and_then(|open| open.floating.as_mut())
 		else {
@@ -562,9 +566,9 @@ impl Preview {
 		if !floating.rect.contains(point.0, point.1) {
 			return false;
 		}
-		floating.input(markview_interaction::ViewInput::Wheel {
+		floating.input(markview_interaction::ViewInput::Scroll {
 			point: markview_interaction::Point::new(point.0, point.1),
-			delta,
+			request,
 		});
 		true
 	}
@@ -714,7 +718,7 @@ impl Preview {
 						.map(|link| link.link_ref()),
 				}),
 				snapshot: &floating.snapshot,
-				scroll: floating.scroll,
+				scroll: floating.scroll.offset(),
 				rect,
 				theme,
 				horizontal: &floating.horizontal,
@@ -871,7 +875,7 @@ impl<P: super::SendEvent> App<P> {
 		};
 		let position = self.preview.floating_mut().map(|floating| {
 			(
-				floating.scroll,
+				floating.scroll.offset(),
 				floating.snapshot.revision,
 				std::mem::take(&mut floating.state),
 				std::mem::take(&mut floating.horizontal),
@@ -895,7 +899,9 @@ impl<P: super::SendEvent> App<P> {
 		self.preview.open.as_mut().unwrap().origins = ready.origins;
 		if let Some((scroll, revision, state, horizontal)) = position {
 			let floating = self.preview.floating_mut().unwrap();
-			floating.scroll = scroll.min(floating.view().max_scroll());
+			floating
+				.scroll
+				.jump_to(scroll.min(floating.view().max_scroll()));
 			if revision == floating.snapshot.revision {
 				floating.state = state;
 				floating.horizontal = horizontal;

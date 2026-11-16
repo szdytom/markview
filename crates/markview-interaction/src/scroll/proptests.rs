@@ -12,7 +12,7 @@ fn wheel_retarget_comparison_reports_discontinuity_and_response_time() {
 	let lost = baseline.offset_at(arrival) - stale;
 	let old_jump =
 		restarted.velocity_at(arrival) - baseline.velocity_at(arrival);
-	let mut scroll = Scroll::default();
+	let mut scroll = ScrollPhysics::default();
 	scroll.set_max(2000.0);
 	scroll.wheel_by(120.0, start);
 	let spring = scroll.animation.unwrap();
@@ -72,7 +72,7 @@ proptest! {
 		reverse in any::<bool>(),
 	) {
 		let direction = if reverse { -1.0 } else { 1.0 };
-		let mut scroll = Scroll::default();
+		let mut scroll = ScrollPhysics::default();
 		scroll.set_max(40000.0);
 		scroll.set(20000.0);
 		let mut at = Instant::now();
@@ -119,7 +119,7 @@ proptest! {
 	fn wheel_event_traces_are_independent_of_frame_partition(
 		packets in prop::collection::vec((1u16..120, -200i16..200), 1..40),
 	) {
-		let mut dense = Scroll::default();
+		let mut dense = ScrollPhysics::default();
 		dense.set_max(2000.0);
 		dense.set(1000.0);
 		let mut sparse = dense.clone();
@@ -146,7 +146,7 @@ proptest! {
 
 	#[test]
 	fn pending_absolute_requests_survive_partial_layout(ops in prop::collection::vec((0u8..7,-200i16..200,any::<bool>()),0..64)) {
-		let mut scroll = Scroll::default();
+		let mut scroll = ScrollPhysics::default();
 		let mut max = 0.;
 		let mut complete = true;
 		let mut requested = 0f32;
@@ -215,7 +215,7 @@ proptest! {
 	#[test]
 	fn discrete_animation_settles_or_cancels(from in 0u16..1000,to in 0u16..1500,max in 0u16..1200, cancel in any::<bool>()) {
 		let now = Instant::now();
-		let mut scroll = Scroll::default();
+		let mut scroll = ScrollPhysics::default();
 		scroll.set_max(2000.);
 		scroll.set(from as f32);
 		scroll.animate_to(to as f32, now);
@@ -268,7 +268,7 @@ proptest! {
 
 #[test]
 fn partial_relative_request_waits_without_moving() {
-	let mut scroll = Scroll::default();
+	let mut scroll = ScrollPhysics::default();
 	scroll.fit(ScrollBounds {
 		max: 1.,
 		complete: false,
@@ -289,7 +289,7 @@ proptest! {
 		let now = Instant::now();
 		let (prefix, goal, delta) =
 			(prefix as f32, (prefix + gap) as f32, delta as f32);
-		let mut scroll = Scroll::default();
+		let mut scroll = ScrollPhysics::default();
 		scroll.fit(ScrollBounds {
 			max: prefix,
 			complete: false,

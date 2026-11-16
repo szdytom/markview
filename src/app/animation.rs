@@ -14,6 +14,7 @@ const MAX_FRAME_DT: Duration = Duration::from_millis(100);
 /// whose refresh rate `winit` cannot report. Other hosts also use a refresh
 /// interval floor for backends whose presentation does not block.
 pub(super) struct FrameDriver {
+	pub(super) scrolls: markview_interaction::ScrollClock,
 	now: Instant,
 	interval: Duration,
 	native_pacing: bool,
@@ -27,6 +28,7 @@ pub(super) struct FrameDriver {
 impl Default for FrameDriver {
 	fn default() -> Self {
 		Self {
+			scrolls: markview_interaction::ScrollClock::new(|| {}),
 			now: Instant::now(),
 			interval: Duration::from_secs_f64(1.0 / 60.0),
 			native_pacing: markview_platform::native_frame_pacing(),
@@ -40,6 +42,13 @@ impl Default for FrameDriver {
 }
 
 impl FrameDriver {
+	pub(super) fn with_scroll_wake(wake: impl Fn() + 'static) -> Self {
+		Self {
+			scrolls: markview_interaction::ScrollClock::new(wake),
+			..Self::default()
+		}
+	}
+
 	pub(super) fn set_refresh_rate(&mut self, millihertz: Option<u32>) {
 		if let Some(millihertz) = millihertz.filter(|mhz| *mhz > 0) {
 			self.interval =
@@ -130,9 +139,9 @@ impl FrameDriver {
 	}
 }
 
-impl Animation for markview_interaction::Scroll {
+impl Animation for markview_interaction::ScrollPhysics {
 	fn advance(&mut self, now: Instant) -> bool {
-		markview_interaction::Scroll::advance(self, now)
+		markview_interaction::ScrollPhysics::advance(self, now)
 	}
 }
 
@@ -177,7 +186,7 @@ impl<P: super::SendEvent> super::App<P> {
 				self.tab_strip.scroll.set_max(layout.max_scroll);
 				self.tab_strip
 					.scroll
-					.set(offset.clamp(0.0, layout.max_scroll));
+					.jump_to(offset.clamp(0.0, layout.max_scroll));
 				self.move_tab_drag();
 				self.redraw();
 			}

@@ -1,8 +1,9 @@
 //! The floating file picker owns its workspace search session.
 use super::{App, SendEvent, chrome};
 use crate::state::{ChromeCommand, Command, PanelPage, Selection, TextField};
-use markview_interaction::{Scroll, WheelMode};
+use markview_interaction::{ScrollRequest, ScrollSurface};
 use markview_ui_core::WidgetId;
+#[cfg(test)]
 use std::time::Instant;
 use winit::keyboard::{Key, NamedKey};
 
@@ -10,7 +11,7 @@ use winit::keyboard::{Key, NamedKey};
 pub(crate) struct Model {
 	open: bool,
 	selected: usize,
-	scroll: Scroll,
+	scroll: ScrollSurface,
 	previous_focus: Option<WidgetId>,
 	pub(in crate::app) search: super::start::Search,
 }
@@ -24,29 +25,19 @@ impl Model {
 	pub(in crate::app) fn scroll(&self) -> f32 {
 		self.scroll.offset()
 	}
-	pub(in crate::app) fn scroll_mut(&mut self) -> &mut Scroll {
-		&mut self.scroll
-	}
-	pub(in crate::app) fn scroll_ref(&self) -> &Scroll {
-		&self.scroll
-	}
 	pub(in crate::app) fn set_scroll_max(&mut self, max: f32) {
 		self.scroll.set_max(max);
 	}
 	pub(in crate::app) fn set_scroll(&mut self, offset: f32) {
-		self.scroll.set(offset);
+		self.scroll.jump_to(offset);
 	}
 	pub(in crate::app) fn cancel_scroll(&mut self) {
 		self.scroll.cancel();
 	}
-	pub(in crate::app) fn wheel(
-		&mut self,
-		delta: f32,
-		now: Instant,
-		mode: WheelMode,
-	) {
-		self.scroll.wheel(delta, now, mode);
+	pub(in crate::app) fn wheel(&mut self, request: ScrollRequest) {
+		self.scroll.apply(request);
 	}
+
 	pub(in crate::app) fn reset(&mut self) {
 		self.selected = 0;
 		self.scroll.reset();
@@ -221,16 +212,9 @@ impl<P: SendEvent> App<P> {
 		self.quick_open_list().scrollbar(&self.ui)
 	}
 
-	pub(super) fn wheel_quick_open(
-		&mut self,
-		delta: f32,
-		mode: markview_interaction::WheelMode,
-	) {
+	pub(super) fn wheel_quick_open(&mut self, request: ScrollRequest) {
 		self.quick_open_list();
-		self.interaction
-			.overlays
-			.quick_open
-			.wheel(delta, Instant::now(), mode);
+		self.interaction.overlays.quick_open.wheel(request);
 		self.interaction.widgets.captured = None;
 		self.refresh_hover();
 		self.redraw();
@@ -285,41 +269,38 @@ impl<P: SendEvent> App<P> {
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use markview_interaction::{ScrollClock, WheelMode};
 	use std::time::Duration;
 
 	#[test]
 	fn wheel_scrolling_eases_and_stops_at_the_bound() {
 		let start = Instant::now();
+		let clock = ScrollClock::new(|| {});
 		let mut picker = Model::default();
 		picker.set_scroll_max(600.0);
-		picker.wheel(120.0, start, WheelMode::Detent);
-		assert!(picker.scroll_ref().animating());
+		picker.wheel(clock.wheel(120.0, start, WheelMode::Detent));
+		assert!(picker.scroll.animating());
 		assert_eq!(picker.scroll(), 0.0);
-		assert!(
-			picker
-				.scroll_mut()
-				.advance(start + Duration::from_millis(60))
-		);
+		assert!(clock.advance(start + Duration::from_millis(60)));
 		assert!(picker.scroll() > 0.0 && picker.scroll() < 120.0);
-		assert!(!picker.scroll_mut().advance(start + Duration::from_secs(1)));
+		assert!(!clock.advance(start + Duration::from_secs(1)));
 		assert!((picker.scroll() - 120.0).abs() < 0.01);
 
-		picker.wheel(10_000.0, start, WheelMode::Detent);
-		picker.scroll_mut().advance(start + Duration::from_secs(1));
+		picker.wheel(clock.wheel(10_000.0, start, WheelMode::Detent));
+		clock.advance(start + Duration::from_secs(1));
 		assert!((picker.scroll() - 600.0).abs() < 0.01);
 	}
 
 	#[test]
 	fn resetting_the_picker_stops_motion_and_returns_to_the_top() {
 		let start = Instant::now();
+		let clock = ScrollClock::new(|| {});
 		let mut picker = Model::default();
 		picker.set_scroll_max(600.0);
-		picker.wheel(120.0, start, WheelMode::Detent);
-		picker
-			.scroll_mut()
-			.advance(start + Duration::from_millis(40));
+		picker.wheel(clock.wheel(120.0, start, WheelMode::Detent));
+		clock.advance(start + Duration::from_millis(40));
 		picker.reset();
 		assert_eq!(picker.scroll(), 0.0);
-		assert!(!picker.scroll_ref().animating());
+		assert!(!picker.scroll.animating());
 	}
 }

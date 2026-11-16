@@ -17,7 +17,7 @@ impl DisplayState {
 	pub(crate) fn can_display(
 		&self,
 		reader: &ReaderSnapshot,
-		scrolling: &markview_interaction::Scroll,
+		scrolling: &markview_interaction::ScrollPhysics,
 		viewport: f32,
 	) -> bool {
 		if let Some(cached) = &self.cached_slice {

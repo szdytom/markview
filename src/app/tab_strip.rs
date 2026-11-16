@@ -3,7 +3,7 @@ use crate::{
 	layout::Rect,
 	state::{Animation, DrawerAnimation, Easing, Tween},
 };
-use markview_interaction::Scroll;
+use markview_interaction::ScrollSurface;
 use std::time::{Duration, Instant};
 
 pub(super) const GAP: f32 = 2.0;
@@ -15,8 +15,8 @@ const TAB_MOTION: Duration = Duration::from_millis(220);
 #[derive(Default)]
 pub(super) struct TabStrip {
 	pub phone: bool,
-	pub drawer_scroll: Scroll,
-	pub scroll: Scroll,
+	pub drawer_scroll: ScrollSurface,
+	pub scroll: ScrollSurface,
 	pub drag: Option<TabDrag>,
 	pub reveal_active: bool,
 	/// The drawer's slide when the tabs page opens or closes.

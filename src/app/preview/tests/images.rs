@@ -336,7 +336,9 @@ fn an_overflow_gesture_cannot_reuse_a_block_removed_by_image_reflow() {
 		source.frame,
 	);
 	let floating = app.preview.floating_mut().unwrap();
-	floating.scroll = rect.y.min(floating.view().max_scroll());
+	floating
+		.scroll
+		.jump_to(rect.y.min(floating.view().max_scroll()));
 	floating.state.focused = true;
 	let point = floating
 		.view()

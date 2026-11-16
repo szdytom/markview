@@ -97,7 +97,7 @@ pub(super) struct FontPanel {
 	font_status_filter: Option<crate::fonts::State>,
 	/// Whether the page shows its chooser rows rather than the catalogue.
 	font_choosers: bool,
-	scroll: markview_interaction::Scroll,
+	scroll: markview_interaction::ScrollSurface,
 }
 
 pub(super) struct View<'a> {
@@ -143,14 +143,14 @@ impl FontPanel {
 	}
 	#[cfg(test)]
 	pub(super) fn set_scroll(&mut self, scroll: f32) {
-		self.scroll.set(scroll);
+		self.scroll.jump_to(scroll);
 	}
-	pub(super) fn scroll_area(&mut self) -> &mut markview_interaction::Scroll {
+	pub(super) fn scroll_area(
+		&mut self,
+	) -> &mut markview_interaction::ScrollSurface {
 		&mut self.scroll
 	}
-	pub(super) fn scroll_area_ref(&self) -> &markview_interaction::Scroll {
-		&self.scroll
-	}
+
 	pub(super) fn progress(&mut self, progress: crate::fonts::Progress) {
 		self.font_jobs.insert(progress.id.clone(), progress);
 	}

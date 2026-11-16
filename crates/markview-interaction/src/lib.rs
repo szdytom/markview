@@ -1,7 +1,8 @@
 //! Document interaction, with no windowing toolkit in the way.
 //!
 //! [`DocumentInteraction`] shares hit testing, hover and cursor decisions;
-//! [`Scroll`] shares eased offsets, extents and pending layout destinations;
+//! [`ScrollSurface`] binds UI motion to [`ScrollClock`] through opaque requests;
+//! [`ScrollPhysics`] supplies offsets, extents and pending layout destinations;
 //! [`Motion`] shares gesture release inertia; [`PanFeed`] folds a Direct
 //! Manipulation viewport's feed into pan phases and deltas. Hosts own platform
 //! events, motion-source policy, repainting and document activation side
@@ -305,10 +306,13 @@ pub trait Selection: Host {
 }
 impl<T: Host> Selection for T {}
 
+mod surface;
+pub use surface::{ScrollClock, ScrollRequest, ScrollSurface};
+
 mod scroll;
 pub use scroll::{
-	SCROLL_MAX, SCROLL_MIN, Scroll, ScrollAnimation, ScrollBounds, WheelMode,
-	ease_out_cubic, selection_scroll_speed,
+	SCROLL_MAX, SCROLL_MIN, ScrollAnimation, ScrollBounds, ScrollPhysics,
+	WheelMode, ease_out_cubic, selection_scroll_speed,
 };
 
 mod motion;

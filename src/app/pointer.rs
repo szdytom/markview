@@ -699,7 +699,11 @@ impl<P: super::SendEvent> App<P> {
 		LINE_STEP * self.scroll_speed()
 	}
 	pub(super) fn scroll_by(&mut self, dy: f32) {
-		if self.scroll_start(dy, markview_interaction::WheelMode::Direct) {
+		if self.scroll_start(self.animations.scrolls.wheel(
+			dy,
+			Instant::now(),
+			markview_interaction::WheelMode::Direct,
+		)) {
 			return;
 		}
 		if dy != 0.0 {
@@ -715,7 +719,11 @@ impl<P: super::SendEvent> App<P> {
 		} else {
 			markview_interaction::WheelMode::Direct
 		};
-		if self.scroll_start(dy, mode) {
+		if self.scroll_start(self.animations.scrolls.wheel(
+			dy,
+			Instant::now(),
+			mode,
+		)) {
 			return;
 		}
 		if eases(dy) {
@@ -732,11 +740,18 @@ impl<P: super::SendEvent> App<P> {
 		dy: f32,
 		mode: markview_interaction::WheelMode,
 	) {
-		if self.preview.scroll(self.interaction.pointer.cursor(), dy) {
+		if self.preview.scroll(
+			self.interaction.pointer.cursor(),
+			self.animations.scrolls.wheel(dy, Instant::now(), mode),
+		) {
 			self.redraw();
 			return;
 		}
-		if self.scroll_start(dy, mode) {
+		if self.scroll_start(self.animations.scrolls.wheel(
+			dy,
+			Instant::now(),
+			mode,
+		)) {
 			return;
 		}
 		if dy != 0.0 {
@@ -759,12 +774,9 @@ impl<P: super::SendEvent> App<P> {
 	/// then the existing infinite target waits for the final height.
 	pub(super) fn scroll_bound(&mut self, to_end: bool) {
 		if self.scroll_start(
-			if to_end {
-				f32::INFINITY
-			} else {
-				f32::NEG_INFINITY
-			},
-			markview_interaction::WheelMode::Direct,
+			self.animations
+				.scrolls
+				.to(if to_end { f32::MAX } else { 0.0 }, Instant::now()),
 		) {
 			return;
 		}

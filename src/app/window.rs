@@ -395,7 +395,11 @@ impl<P: super::SendEvent> App<P> {
 			);
 			// The list takes whole detents as eased steps and a high-resolution
 			// stream as momentum, as every other scrolling surface does.
-			self.wheel_quick_open(-dy, super::pointer::wheel_mode(delta));
+			self.wheel_quick_open(self.animations.scrolls.wheel(
+				-dy,
+				Instant::now(),
+				super::pointer::wheel_mode(delta),
+			));
 			return;
 		}
 		if self.readers.session.search.open
@@ -472,21 +476,30 @@ impl<P: super::SendEvent> App<P> {
 			return;
 		}
 		self.cancel_gestures();
+		let request = self.animations.scrolls.wheel(
+			-dy,
+			Instant::now(),
+			super::pointer::wheel_mode(delta),
+		);
 		if self.interaction.panel_open() {
 			if self.pointer_in_panel() {
-				self.wheel_panel(-dy);
+				self.wheel_panel(request);
 			}
 			return;
 		}
 		if self.pointer_in_folder() {
-			self.wheel_folder(-dy);
+			self.wheel_folder(request);
 			return;
 		}
 		if self.pointer_in_outline() {
-			self.wheel_outline(-dy);
+			self.wheel_outline(request);
 			return;
 		}
-		if self.scroll_tabs(if dx.abs() > dy.abs() { -dx } else { -dy }) {
+		if self.scroll_tabs(self.animations.scrolls.wheel(
+			if dx.abs() > dy.abs() { -dx } else { -dy },
+			Instant::now(),
+			super::pointer::wheel_mode(delta),
+		)) {
 			return;
 		}
 		if self.interaction.pointer.modifiers().control_key()
