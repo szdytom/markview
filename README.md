@@ -37,16 +37,14 @@ Choose your platform from the [latest release](https://github.com/szdytom/markvi
 
 Or install from the command line:
 
-**Windows — PowerShell / WinGet**
+**Windows — WinGet / Scoop**
 
-Run either command below:
+You can use [WinGet](https://learn.microsoft.com/en-us/windows/package-manager/) or [Scoop](https://scoop.sh/) to install and manage Markview on Windows.
 
 ```powershell
-irm https://github.com/szdytom/markview/releases/latest/download/markview-installer.ps1 | iex
-winget install --id szdytom.Markview --exact --source winget
+winget install --id szdytom.Markview --exact --source winget # WinGet, or
+scoop install extras/markview # Scoop
 ```
-
-To update, run `winget upgrade --id szdytom.Markview --exact --source winget`.
 
 **Windows / macOS / Linux — Cargo**
 

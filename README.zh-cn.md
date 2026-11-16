@@ -38,16 +38,14 @@
 
 也可以通过命令行安装：
 
-**Windows — PowerShell / WinGet**
+**Windows — WinGet / Scoop**
 
-以下安装命令二选一：
+可以使用 [WinGet](https://learn.microsoft.com/en-us/windows/package-manager/) 或 [Scoop](https://scoop.sh/) 在 Windows 上安装和管理 Markview。
 
 ```powershell
-irm https://github.com/szdytom/markview/releases/latest/download/markview-installer.ps1 | iex
-winget install --id szdytom.Markview --exact --source winget
+winget install --id szdytom.Markview --exact --source winget # WinGet
+scoop install extras/markview # Scoop
 ```
-
-更新时运行 `winget upgrade --id szdytom.Markview --exact --source winget`。
 
 **Windows / macOS / Linux — Cargo**
 

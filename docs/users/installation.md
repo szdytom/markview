@@ -17,6 +17,23 @@ winget install --id szdytom.Markview --exact --source winget
 winget upgrade --id szdytom.Markview --exact --source winget
 ```
 
+With [Scoop](https://scoop.sh/), add the official
+[Extras bucket](https://github.com/ScoopInstaller/Extras) once, then install:
+
+```powershell
+scoop bucket add extras
+scoop install extras/markview
+```
+
+To update:
+
+```powershell
+scoop update markview
+```
+
+Scoop selects the native x64 or ARM64 package and creates a `markview` command
+and a Start menu shortcut.
+
 On Linux and macOS, install the `markview` command with the Shell script:
 
 ```sh
