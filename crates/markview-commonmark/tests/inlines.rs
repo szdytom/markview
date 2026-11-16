@@ -148,3 +148,39 @@ proptest! {
 		prop_assert_ne!(links[0].occurrence(), links[1].occurrence());
 	}
 }
+
+#[test]
+fn mismatched_strikethrough_does_not_stop_following_emphasis() {
+	let parsed = parse("~~a~ *b*");
+	let rich = paragraph(&parsed);
+	assert_eq!(plain_text(rich), "~~a~ b");
+	assert!(rich.iter().any(|inline| inline.style.italic
+		&& matches!(&inline.kind, InlineKind::Text(text) if text == "b")));
+	assert!(rich.iter().all(|inline| !inline.style.strike));
+}
+
+#[test]
+fn email_entities_stay_text_and_wrapped_domains_autolink() {
+	let parsed = parse("foo&#x40;bar.com _www.example.com_");
+	let rich = paragraph(&parsed);
+	assert_eq!(plain_text(rich), "foo@bar.com www.example.com");
+	let links: Vec<_> = rich.iter().filter_map(Inline::link_url).collect();
+	assert_eq!(links, ["http://www.example.com"]);
+	assert!(rich.iter().any(|inline| inline.style.italic
+		&& inline.link_url() == Some("http://www.example.com")));
+}
+
+#[test]
+fn task_markers_require_literal_brackets_and_following_whitespace() {
+	let parsed = parse("- [x]*a*\n- &#91;x] b\n- [x]\t*c*\n- [ ]\n");
+	let BlockKind::List { items, .. } = parsed.blocks()[0].kind() else {
+		panic!("expected list");
+	};
+	let checked: Vec<_> = items.iter().map(|item| item.checked).collect();
+	assert_eq!(checked, [None, None, Some(true), Some(false)]);
+	let BlockKind::Paragraph(rich) = items[0].blocks[0].kind() else {
+		panic!("expected paragraph");
+	};
+	assert_eq!(plain_text(rich), "[x]a");
+	assert!(rich.iter().any(|inline| inline.style.italic));
+}

@@ -206,6 +206,32 @@ source cover and spans, under both the table and its cell paragraph. Semantic co
 reader layout and print output are identical. The regression in
 `crates/markview-commonmark/tests/sourcepos.rs` checks all three line endings.
 
+### Comrak 1.0.0-rc.2 mitigation audit
+
+The application and fuzz lockfiles both use the exact `1.0.0-rc.2` release.
+The [upstream diff](https://github.com/kivikakk/comrak/compare/v1.0.0-rc.1...v1.0.0-rc.2)
+fixes autocompleted table-cell source positions (D3); the other parser changes
+concern table escaping/padding, literal task markers, autolinks and mismatched
+strikethrough. Regression tests cover those changes through Markview.
+
+Only the D3 clipping is removed by this upgrade. These controls remain:
+
+- D2's prefix-parse rejection prevents appended definitions from being swallowed
+  by an open fence. This concerns the prefix wrapper, not table source positions.
+- Inline/block depth limits protect Markview's recursive lowering and consumers;
+  Comrak's iterative AST construction does not bound the resulting tree depth.
+- Source range unions, UTF-8 boundary conversion and HTML snippet remapping
+  still implement Markview's source-map semantics for merged and synthetic runs.
+- The reference oracle's text-attribution check and its exclusions for wikilinks
+  (D4), multiline/escaped labels, Unicode case folding and decoded entities
+  remain: rc2 does not make the independent reference scan model these cases.
+- The list-item containment exception in `sourcepos_content` remains; the rc2
+  source-position fix applies to autocompleted table cells, not list items.
+
+The original untracked reference-budget and tab-position campaign artifacts
+listed above are still unavailable; this audit does not claim to have replayed
+or resolved them.
+
 ## Campaign record
 
 All runs are `cargo +nightly fuzz build` builds (ASAN) on one 16-core Linux
@@ -308,10 +334,13 @@ The visible cells map inside the table; only the empty body cell's empty
 paragraph takes the newline. The fuzz reproducer is
 `fuzz/artifacts/crashes6/sourcepos_content/crash-401f4301d6614983d6983b9164044da8b060e5dc`.
 
-Status: fixed. A table cell's source range is clipped to the table's own range,
-so the synthetic empty cell no longer claims the row's line ending. Regression
-test: `an_empty_table_cell_stays_inside_the_table_range`, which also restores
-the containment half of the source-position oracle on this shape.
+Status: resolved upstream in [Comrak 1.0.0-rc.2](https://github.com/kivikakk/comrak/pull/922).
+Autocompleted cells now have zero-width source positions at the row's end.
+The local table-range clipping has been removed. The original regression
+`an_empty_table_cell_stays_inside_the_table_range` remains, and
+`autocompleted_table_cells_have_zero_width_sources` checks both the raw Comrak
+positions and Markview's byte ranges across Unicode, missing columns, trailing
+padding, all three line endings and EOF without a newline.
 
 ## D4 — upstream wiki-link resolution is outside the reference oracle
 

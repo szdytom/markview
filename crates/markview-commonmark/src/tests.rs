@@ -2252,8 +2252,8 @@ fn a_definition_after_a_leaf_block_still_counts() {
 
 #[test]
 fn an_empty_table_cell_stays_inside_the_table_range() {
-	// Comrak gives the synthetic empty cell the row's line ending, which is
-	// past the table range. The cell must not claim source outside its table.
+	// Regression for fuzz D3: synthetic cells have zero-width source ranges
+	// inside the table, without local clipping.
 	let source: Arc<str> = Arc::from("|-|---:|\n-:|---:|\n z  \n");
 	let doc = parse(source.as_ref());
 	let table = &doc.blocks()[0];

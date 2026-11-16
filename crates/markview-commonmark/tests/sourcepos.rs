@@ -169,3 +169,73 @@ proptest! {
 		assert_last_text_source(&parse(source), &text);
 	}
 }
+
+proptest! {
+	#[test]
+	fn autocompleted_table_cells_have_zero_width_sources(
+		text in "[a-z中é😀]{1,20}",
+		columns in 2usize..8,
+		padding in 0usize..4,
+		newline in prop::sample::select(vec!["\n", "\r\n", "\r"]),
+		trailing_newline in any::<bool>(),
+	) {
+		let header = format!("|{}", " h |".repeat(columns));
+		let delimiter = format!("|{}", "---:|".repeat(columns));
+		let source = format!("{header}{newline}{delimiter}{newline} {text}{}{ending}",
+			" ".repeat(padding), ending = if trailing_newline { newline } else { "" });
+
+		// Check upstream positions before Markview's conversion can clamp them.
+		let arena = comrak::Arena::new();
+		let mut options = comrak::Options::default();
+		options.extension.table = true;
+		let root = comrak::parse_document(&arena, &source, &options);
+		let row = root.first_child().unwrap().last_child().unwrap();
+		let row_end = row.data.borrow().sourcepos.end;
+		prop_assert_eq!(row.children().count(), columns);
+		for cell in row.children().skip(1) {
+			let pos = cell.data.borrow().sourcepos;
+			prop_assert_eq!(pos.start.line, row_end.line);
+			prop_assert_eq!(pos.end, row_end);
+			prop_assert_eq!(pos.start.column, pos.end.column + 1);
+		}
+
+		let doc = parse(source.clone());
+		prop_assert_eq!(doc.map.validate(&source, &doc.document), Ok(()));
+		let block = &doc.blocks()[0];
+		let table_range = doc.block_source(block).unwrap();
+		let BlockKind::Table(table) = block.kind() else {
+			panic!("expected table");
+		};
+		let cells = &table.groups[1].rows[0].cells;
+		prop_assert_eq!(cells.len(), columns);
+		for cell in cells.iter().skip(1) {
+			let range = doc.block_source(&cell.blocks[0]).unwrap();
+			prop_assert_eq!(&range, &(table_range.end..table_range.end));
+		}
+	}
+}
+
+proptest! {
+	#[test]
+	fn table_pipes_respect_backslash_parity(
+		backslashes in 1usize..9,
+		newline in prop::sample::select(vec!["\n", "\r\n", "\r"]),
+	) {
+		let source = format!("| left | right |{newline}| --- | --- |{newline}| a{}|b | c |{newline}", "\\".repeat(backslashes));
+		let doc = parse(source.clone());
+		prop_assert_eq!(doc.map.validate(&source, &doc.document), Ok(()));
+		let BlockKind::Table(table) = doc.blocks()[0].kind() else {
+			panic!("expected table");
+		};
+		let cells = &table.groups[1].rows[0].cells;
+		let text = |index: usize| {
+			let BlockKind::Paragraph(rich) = cells[index].blocks[0].kind() else {
+				panic!("expected cell paragraph");
+			};
+			markview_document::plain_text(rich)
+		};
+		let suffix = if backslashes % 2 == 0 { "" } else { "|b" };
+		prop_assert_eq!(text(0), format!("a{}{suffix}", "\\".repeat(backslashes / 2)));
+		prop_assert_eq!(text(1), if backslashes % 2 == 0 { "b" } else { "c" });
+	}
+}
