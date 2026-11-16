@@ -105,7 +105,11 @@ fn portable_data_follows_the_executable_and_never_falls_back_on_write_failure()
 	installation.fonts_path(&data.join("fonts"));
 	assert!(!data.join("fonts").exists());
 	let moved = installation.directory.with_file_name("moved 中文 reader");
-	fs::rename(&installation.directory, &moved).unwrap();
+	markview_platform::test_support::rename_directory(
+		&installation.directory,
+		&moved,
+	)
+	.expect("move the portable installation after CLI processes exit");
 	installation.directory = moved;
 	installation.fonts_path(&installation.directory.join("data/fonts"));
 	assert_eq!(
