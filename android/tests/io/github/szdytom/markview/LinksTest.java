@@ -74,14 +74,16 @@ public class LinksTest extends AndroidTest {
             waitFor(s -> button(s, "FocusInput(Url)") != null);
             double fullHeight = state().getJSONArray("dimensions").getDouble(1);
             tap("FocusInput(Url)");
-            JSONObject resized = waitFor(s -> keyboardVisible()
-                && s.getJSONArray("dimensions").getDouble(1) < fullHeight - 50);
-            for (String action : new String[]{"FocusInput(Url)", "OpenUrl"}) {
-                JSONObject control = button(resized, action);
-                require(control != null && control.getDouble("y") >= 40
-                    && control.getDouble("y") + control.getDouble("h") <= resized.getJSONArray("dimensions").getDouble(1) - 28,
-                    "Web control remains visible above the keyboard: " + action);
-            }
+            JSONObject resized = waitFor(s -> {
+                if (!keyboardVisible() || s.getJSONArray("dimensions").getDouble(1) >= fullHeight - 50) return false;
+                // Keyboard insets can arrive before focused-input scrolling.
+                for (String action : new String[]{"FocusInput(Url)", "OpenUrl"}) {
+                    JSONObject control = button(s, action);
+                    if (control == null || control.getDouble("y") < 40
+                        || control.getDouble("y") + control.getDouble("h") > s.getJSONArray("dimensions").getDouble(1) - 28) return false;
+                }
+                return true;
+            });
             commitInput(url);
             waitFor(s -> s.optString("url_query").equals(url));
             tap("OpenUrl");
