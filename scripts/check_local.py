@@ -20,6 +20,8 @@ SHELL_PATTERNS = (
     "scripts/verify_*.sh",
     "scripts/ci_*.sh",
     "scripts/test_render_goldens.sh",
+    "scripts/render-env.sh",
+    "ci/render/run.sh",
     "android/ci-test.sh",
 )
 

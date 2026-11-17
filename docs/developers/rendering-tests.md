@@ -3,16 +3,22 @@
 Run the committed Linux visual suite with no physical GPU:
 
 ```sh
-bash scripts/test_render_goldens.sh
+bash scripts/render-env.sh
 ```
 
-It needs Lavapipe and `pdftoppm` (`poppler-utils`). The normal Linux workspace
-tests skip `rendering_baselines`; the independent `golden.yml` workflow runs
-the comparisons in CI. The suite uses the production parser,
+The wrapper needs Podman or Docker and runs the Linux amd64 image pinned by
+digest in [`ci/render/image`](../../ci/render/image). It automatically selects
+Podman when installed; set `MARKVIEW_CONTAINER_ENGINE=docker` to select Docker.
+The GHCR package is public, so local users and downstream forks can pull the
+pinned image without registry credentials or package permissions in CI.
+The image supplies Rust, Lavapipe, LLVM, Fontconfig, FreeType and Poppler;
+host graphics drivers and libraries are not mounted. The normal Linux workspace
+tests skip `rendering_baselines`; the independent `golden.yml` workflow calls
+the same wrapper in CI. The suite uses the production parser,
 layout, highlighting, image scheduler, Vulkan renderer and PDF writer.
 Windows and macOS continue to run their existing rendering tests.
 
-Use `--update` only after reviewing an intended change. Normal runs never
+Use `bash scripts/render-env.sh --update` only after reviewing an intended change. Normal runs never
 create or replace baselines. Every RGBA channel of every pixel must be within
 two levels of its baseline, and dimensions must match. This accommodates the
 observed Mesa rounding difference without allowing a percentage of bad pixels.
@@ -62,7 +68,49 @@ Missing glyphs and unintended clipping should fail, not silently become a new ba
 Use real regional faces for SC/TC/JP and test emoji versus text presentation,
 combining marks, ligatures, punctuation, formulas and code when changing shaping.
 Pinned fonts make comparisons useful; they do not promise identical output with
-arbitrary system/downloaded fonts. Driver and Poppler pins belong in CI workflows.
+arbitrary system/downloaded fonts. Driver and Poppler pins belong in
+[`ci/render/Dockerfile`](../../ci/render/Dockerfile), alongside the base image
+digest, Ubuntu archive snapshot and Rust archive checksum.
+
+The wrapper mounts the checkout at `/workspace`, with the caller's user and
+group IDs so generated files remain editable. Cargo downloads and build outputs
+live under `${XDG_CACHE_HOME:-$HOME/.cache}/markview/render/<image-digest>/`,
+separate from native builds and other rendering images. Host networking lets
+Cargo use local proxy settings; no GPU devices or host libraries are shared.
+The image prints its CPU model, Rust, native-library and Vulkan driver versions
+on each run.
+Both local and CI baseline runs use amd64. LLVM's runtime code generation still
+depends on the host CPU, so the two-level channel tolerance remains in force.
+
+`scripts/test_render_goldens.sh` is the runner inside the image. Direct native
+runs are useful for debugging, but committed baseline updates use the wrapper.
+
+## Update the rendering environment
+
+Change the Dockerfile's pinned inputs together, then build and inspect the image:
+
+```sh
+podman build --network=host --platform linux/amd64 \
+  -t ghcr.io/szdytom/markview-render:reviewed ci/render
+```
+
+Publish with a GitHub token that has `write:packages`, without including the
+token in shell arguments:
+
+```sh
+gh auth token | podman login ghcr.io --username "$(gh api user --jq .login)" --password-stdin
+podman push --digestfile /tmp/markview-render.digest \
+  ghcr.io/szdytom/markview-render:reviewed
+printf 'ghcr.io/szdytom/markview-render@%s\n' \
+  "$(cat /tmp/markview-render.digest)" > ci/render/image
+```
+
+Keep the GHCR package public so downstream forks retain anonymous pull access.
+Run `bash scripts/render-env.sh` against the published
+digest, review differences, then update only the affected baselines. Re-run
+without `--update`, including once with an empty cache. Keep environment and
+baseline changes together for review. Ordinary test runs never rebuild the image
+or resolve a mutable image tag.
 
 ## Reviewing a baseline change
 

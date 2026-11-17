@@ -76,7 +76,7 @@ jobs:
       - name: Committed icons match the source SVG
         run: cargo run -p xtask -- icons --check
       - name: Shell scripts are sound
-        run: shellcheck scripts/package_*.sh scripts/verify_*.sh scripts/ci_*.sh scripts/test_render_goldens.sh android/ci-test.sh
+        run: shellcheck scripts/package_*.sh scripts/verify_*.sh scripts/ci_*.sh scripts/test_render_goldens.sh scripts/render-env.sh ci/render/run.sh android/ci-test.sh
 
   web-tools:
     strategy:

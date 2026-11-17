@@ -42,7 +42,7 @@ present, for machine-specific paths. Windows tests can use WARP; macOS uses Meta
 CI separates regular tests, property tests and Linux visual baselines. See the
 [workflows](../../.github/workflows) for runner and dependency pins. Do not
 copy those pins into this guide. Visual comparisons are run explicitly through
-`scripts/test_render_goldens.sh`.
+`bash scripts/render-env.sh`, which uses the same pinned container as CI.
 
 The regular CI suite and Clippy also run on native ARM64 Linux. Its renderer
 checks cover Vulkan, forced GLES, and automatic GLES fallback with the Vulkan

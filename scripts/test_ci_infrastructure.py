@@ -4,6 +4,7 @@ import json
 import os
 from pathlib import Path
 import re
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -59,7 +60,7 @@ class CiInfrastructureTest(unittest.TestCase):
         stub = tools / "installer"
         stub.write_text(f"#!{sys.executable}\n" + TOOL)
         stub.chmod(0o755)
-        for name in ("sleep", "sudo", "apt-get", "adb", "python3", "cargo"):
+        for name in ("sleep", "sudo", "apt-get", "adb", "python3", "cargo", "docker", "podman"):
             (tools / name).symlink_to(stub)
         self.env = dict(os.environ, PATH=str(tools) + os.pathsep + os.environ["PATH"],
                         RUNNER_TEMP=str(self.directory), CI_TEST_TRACE=str(self.trace))
@@ -124,6 +125,69 @@ class CiInfrastructureTest(unittest.TestCase):
                 if len(calls) == 2:
                     self.assertEqual(calls[1]["args"], ["test", "-p", "markview", "--locked",
                                                       "--lib", "rendering_baselines", "--", "--nocapture"])
+
+    def test_render_container_preserves_update_intent_ownership_and_failures(self):
+        root = self.directory / "reader source"
+        (root / "scripts").mkdir(parents=True)
+        (root / "ci/render").mkdir(parents=True)
+        script = root / "scripts/render-env.sh"
+        shutil.copyfile(ROOT / "scripts/render-env.sh", script)
+        image = "ghcr.io/szdytom/markview-render@sha256:" + "a" * 64
+        (root / "ci/render/image").write_text(image + "\n")
+        cache = self.directory / "build cache"
+        self.env["XDG_CACHE_HOME"] = str(cache)
+        for engine in ("docker", "podman"):
+            self.env["MARKVIEW_CONTAINER_ENGINE"] = str(self.directory / "bin" / engine)
+            for args, failures, expected in (([], {}, 0), (["--update"], {}, 0),
+                                             ([], {engine: 1}, 73), (["--invalid"], {}, 2),
+                                             (["--update", "extra"], {}, 2)):
+                with self.subTest(engine=engine, args=args, failures=failures):
+                    self.trace.write_text("")
+                    result = self.run_script(script, *args, failures=failures)
+                    self.assertEqual(result.returncode, expected, result.stderr)
+                    calls = self.calls(engine)
+                    if expected == 2:
+                        self.assertEqual(calls, [])
+                        continue
+                    self.assertEqual(len(calls), 1)
+                    command = calls[0]["args"]
+                    self.assertEqual(command[command.index(image):], [image, *args])
+                    self.assertEqual(command[command.index("--platform") + 1], "linux/amd64")
+                    self.assertEqual(command[command.index("--user") + 1], f"{os.getuid()}:{os.getgid()}")
+                    self.assertEqual("--userns=keep-id" in command, engine == "podman")
+                    forwarded = [command[i + 1] for i, value in enumerate(command) if value == "--env"]
+                    self.assertCountEqual(forwarded, ["HTTP_PROXY", "HTTPS_PROXY", "ALL_PROXY", "NO_PROXY",
+                                                      "http_proxy", "https_proxy", "all_proxy", "no_proxy"])
+                    mounts = [command[i + 1] for i, value in enumerate(command) if value == "--volume"]
+                    self.assertTrue(all(mount.count(":") == 1 for mount in mounts))
+                    image_cache = cache / "markview/render" / image.split("@sha256:")[1]
+                    self.assertCountEqual(mounts, [f"{root}:/workspace", f"{image_cache}/cargo:/cargo",
+                                                  f"{image_cache}/target:/target"])
+                    self.assertTrue((image_cache / "cargo").is_dir())
+                    self.assertTrue((image_cache / "target").is_dir())
+
+    def test_golden_ci_uses_the_shared_immutable_environment(self):
+        image = (ROOT / "ci/render/image").read_text().strip()
+        self.assertRegex(image, r"^ghcr\.io/szdytom/markview-render@sha256:[0-9a-f]{64}$")
+        workflow = (ROOT / ".github/workflows/golden.yml").read_text()
+        self.assertIn("run: bash scripts/render-env.sh", workflow)
+        self.assertNotIn("ci_install_packages.sh", workflow)
+        self.assertNotIn("rust-toolchain@", workflow)
+        dockerfile = (ROOT / "ci/render/Dockerfile").read_text()
+        version = tomllib.loads((ROOT / "rust-toolchain.toml").read_text())["toolchain"]["channel"]
+        self.assertIn(f"rust-{version}-x86_64-unknown-linux-gnu.tar.xz", dockerfile)
+
+    def test_downstream_golden_ci_needs_no_registry_credentials(self):
+        workflow = (ROOT / ".github/workflows/golden.yml").read_text()
+        self.assertNotIn("packages:", workflow)
+        self.assertNotIn("secrets.", workflow)
+        self.assertNotIn("docker login", workflow)
+        self.assertNotIn("docker/login-action", workflow)
+        caller = re.search(r"^  golden:\n(.*?)(?=^  [a-z][\w-]*:)",
+                           (ROOT / ".github/workflows/ci.yml").read_text(),
+                           re.MULTILINE | re.DOTALL).group(1)
+        self.assertNotIn("packages:", caller)
+        self.assertNotIn("secrets:", caller)
 
     def test_fuzz_check_formats_and_lints_the_standalone_workspace(self):
         workflow = (ROOT / ".github/workflows/fuzz.yml").read_text()
