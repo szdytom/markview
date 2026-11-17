@@ -2770,6 +2770,28 @@ fn callouts_nest_and_keep_inline_markup_in_the_body() {
 }
 
 #[test]
+fn gfm_alert_types_keep_their_distinct_kinds_and_titles() {
+	for (title, kind) in [
+		("Note", CalloutKind::Note),
+		("Tip", CalloutKind::Tip),
+		("Important", CalloutKind::Important),
+		("Warning", CalloutKind::Warning),
+		("Caution", CalloutKind::Caution),
+	] {
+		let source =
+			format!("> [!{}]\n> **body**\n", title.to_ascii_uppercase());
+		let doc = parse(source.clone());
+		assert_eq!(doc.map.validate(&source, &doc.document), Ok(()));
+		let (callout, blocks) = callout_of(&doc.blocks()[0]);
+		assert_eq!(callout.kind, kind);
+		assert_eq!(callout.name, title.to_ascii_lowercase());
+		assert_eq!(plain_text(callout_title(callout, blocks)), title);
+		assert!(matches!(blocks[0].kind(), BlockKind::Paragraph(text)
+			if plain_text(text) == "body" && text[0].style.bold));
+	}
+}
+
+#[test]
 fn gfm_keeps_github_alerts_and_plain_quotes() {
 	let doc = parse("> [!NOTE]\n> Alert.\n\n> [!faq] Not an alert\n> Quote.\n");
 	assert!(matches!(

@@ -154,6 +154,41 @@ fn block_ids_preserve_source_positions_in_both_dialects() {
 
 proptest! {
 	#[test]
+	fn styled_text_and_rules_preserve_styles_and_byte_ranges(
+		text in "[a-z中é😀]{1,20}",
+		(open, close, bold, italic, strike) in prop::sample::select(vec![
+			("*", "*", false, true, false),
+			("**", "**", true, false, false),
+			("~~", "~~", false, false, true),
+			("***", "***", true, true, false),
+			("**~~", "~~**", true, false, true),
+			("*~~", "~~*", false, true, true),
+			("***~~", "~~***", true, true, true),
+		]),
+		newline in prop::sample::select(vec!["\n", "\r\n", "\r"]),
+	) {
+		let source = format!("lead {open}{text}{close} tail{newline}{newline}---{newline}{newline}after");
+		let doc = parse(source.clone());
+		prop_assert_eq!(doc.map.validate(&source, &doc.document), Ok(()));
+		prop_assert_eq!(doc.blocks().len(), 3);
+		let block = &doc.blocks()[0];
+		let BlockKind::Paragraph(rich) = block.kind() else {
+			panic!("expected paragraph");
+		};
+		prop_assert_eq!(markview_document::plain_text(rich), format!("lead {text} tail"));
+		let inline = &rich[1];
+		prop_assert_eq!(&inline.kind, &InlineKind::Text(text.clone()));
+		prop_assert_eq!((inline.style.bold, inline.style.italic, inline.style.strike), (bold, italic, strike));
+		let start = "lead ".len() + open.len();
+		prop_assert_eq!(doc.inline_source(block, inline), Some(start..start + text.len()));
+		prop_assert!(!rich[2].style.bold && !rich[2].style.italic && !rich[2].style.strike);
+		let rule = &doc.blocks()[1];
+		assert!(matches!(rule.kind(), BlockKind::Rule));
+		let start = source.find("---").unwrap();
+		prop_assert_eq!(doc.block_source(rule), Some(start..start + 3));
+	}
+
+	#[test]
 	fn definitions_preserve_unicode_inline_byte_ranges(
 		text in "[a-z中é😀]{1,20}",
 		newline in prop::sample::select(vec!["\n", "\r\n", "\r"]),

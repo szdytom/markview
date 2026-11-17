@@ -486,15 +486,15 @@ impl Reader<'_> {
 					occurrence: source_occurrence(source.start),
 				}))
 			}
-			NodeValue::Strong => {
+			NodeValue::Strong(_) => {
 				child_style.bold = true;
 				None
 			}
-			NodeValue::Emph => {
+			NodeValue::Emph(_) => {
 				child_style.italic = true;
 				None
 			}
-			NodeValue::Strikethrough => {
+			NodeValue::Strikethrough(_) => {
 				child_style.strike = true;
 				None
 			}
@@ -946,7 +946,7 @@ impl Reader<'_> {
 				.children()
 				.map(|cell| {
 					let NodeValue::GridTableCell(value) =
-						cell.data.borrow().value
+						&cell.data.borrow().value
 					else {
 						unreachable!()
 					};
@@ -1157,7 +1157,7 @@ impl Reader<'_> {
 					let fields = own_spans(&kind, &source);
 					(kind, fields.clone(), fields)
 				}
-				NodeValue::ThematicBreak => {
+				NodeValue::ThematicBreak(_) => {
 					(BlockKind::Rule, Vec::new(), Vec::new())
 				}
 				NodeValue::BlockQuote => (
@@ -1195,6 +1195,7 @@ impl Reader<'_> {
 								comrak::nodes::AlertType::Caution => {
 									CalloutKind::Caution
 								}
+								_ => CalloutKind::Note,
 							},
 							title: Some(
 								plain_rich(

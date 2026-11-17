@@ -45,7 +45,7 @@ at the same level, without `[brackets]`.
 
 ### Fixed
 
-- Correct Markdown table pipe escaping, recognize emphasis after mismatched strikethrough, and tighten task-marker and automatic-link parsing with Comrak 1.0.0-rc.2.
+- Correct Markdown table pipe escaping, recognize emphasis after mismatched strikethrough, and tighten task-marker and automatic-link parsing with Comrak 1.0.0.
 - Keep tab hover previews open and moving with their tabs while scrolling, closing only when the pointer leaves the tab; wheel input at scroll limits no longer makes previews flicker.
 - Always open dropped files and folders in the window receiving the drop, bypassing automatic window selection.
 - Resolve Obsidian heading paths such as `[[note#Parent#Child]]` to the correct repeated subheading in navigation, hover previews and PDF links.

@@ -208,7 +208,7 @@ reader layout and print output are identical. The regression in
 
 ### Comrak 1.0.0-rc.2 mitigation audit
 
-The application and fuzz lockfiles both use the exact `1.0.0-rc.2` release.
+The application and fuzz lockfiles both used the exact `1.0.0-rc.2` release for this audit.
 The [upstream diff](https://github.com/kivikakk/comrak/compare/v1.0.0-rc.1...v1.0.0-rc.2)
 fixes autocompleted table-cell source positions (D3); the other parser changes
 concern table escaping/padding, literal task markers, autolinks and mismatched
@@ -231,6 +231,15 @@ Only the D3 clipping is removed by this upgrade. These controls remain:
 The original untracked reference-budget and tab-position campaign artifacts
 listed above are still unavailable; this audit does not claim to have replayed
 or resolved them.
+
+### Comrak 1.0.0 stable upgrade
+
+The application and fuzz lockfiles both pin `1.0.0`. The
+[upstream diff](https://github.com/kivikakk/comrak/compare/v1.0.0-rc.2...v1.0.0)
+changes public AST APIs and adds opt-in block math. The upgrade adapts the AST
+matches without enabling new extensions or removing any of the controls above.
+Regression tests cover nested inline styles and source ranges, thematic breaks,
+and all five GFM alert kinds; the existing grid-table tests cover cell spans.
 
 ## Campaign record
 
