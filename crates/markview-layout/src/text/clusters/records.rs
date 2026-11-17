@@ -24,14 +24,14 @@ impl Records {
 		clusters: Vec<CompactCluster>,
 		spacing_count: usize,
 	) -> Self {
-		let row_shift =
-			2 + usize::BITS - spacing_count.saturating_sub(1).leading_zeros();
+		let row_shift = 2 + spacing_count.saturating_sub(1).bit_width();
 		if row_shift > u16::BITS
 			|| !clusters.iter().all(|c| {
 				c.row <= u32::from(u16::MAX) >> row_shift
 					&& c.flags_spacing < 1 << row_shift
-					&& c.range[1]
-						.checked_sub(c.range[0])
+					&& c.range
+						.end
+						.checked_sub(c.range.start)
 						.is_some_and(|len| u16::try_from(len).is_ok())
 			}) {
 			return Self::Wide(clusters.into_boxed_slice());
@@ -40,11 +40,11 @@ impl Records {
 			clusters: clusters
 				.into_iter()
 				.map(|c| NarrowCluster {
-					start: c.range[0],
+					start: c.range.start,
 					command: c.command,
 					x: c.x,
 					width: c.width,
-					len: (c.range[1] - c.range[0]) as u16,
+					len: (c.range.end - c.range.start) as u16,
 					row_flags: ((c.row << row_shift) | c.flags_spacing) as u16,
 				})
 				.collect(),
@@ -66,7 +66,7 @@ impl Records {
 			} => {
 				let c = clusters.get(index)?;
 				Some(CompactCluster {
-					range: [c.start, c.start + u32::from(c.len)],
+					range: (c.start..c.start + u32::from(c.len)).into(),
 					command: c.command,
 					row: u32::from(c.row_flags) >> row_shift,
 					x: c.x,

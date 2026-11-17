@@ -100,7 +100,7 @@ impl Prefix {
 		{
 			return None;
 		}
-		let mut boundaries: Vec<_> = (0..=units.len()).map(|i| i..i).collect();
+		let mut boundaries = Vec::from_fn(units.len() + 1, |i| i..i);
 		let mut start = 0;
 		while start < units.len() {
 			if !units[start].discard {

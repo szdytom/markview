@@ -128,9 +128,34 @@ class CiInfrastructureTest(unittest.TestCase):
     def test_fuzz_check_formats_and_lints_the_standalone_workspace(self):
         workflow = (ROOT / ".github/workflows/fuzz.yml").read_text()
         check = workflow.split("\n  smoke:", 1)[0]
-        for command in ("cargo +stable fmt -p markview-fuzz -p mvfuzz -- --check",
-                        "cargo +stable clippy --workspace --all-targets --locked -- -D warnings"):
+        for command in ("cargo +1.100.0 fmt -p markview-fuzz -p mvfuzz -- --check",
+                        "cargo +1.100.0 clippy --workspace --all-targets --locked -- -D warnings"):
             self.assertIn(f"        working-directory: fuzz\n        run: {command}\n", check)
+
+    def test_rust_toolchain_and_ci_match_the_workspace_msrv(self):
+        manifest = tomllib.loads((ROOT / "Cargo.toml").read_text())
+        version = manifest["workspace"]["package"]["rust-version"]
+        toolchain = tomllib.loads((ROOT / "rust-toolchain.toml").read_text())["toolchain"]
+        self.assertRegex(version, r"^\d+\.\d+\.\d+$")
+        self.assertEqual(toolchain["channel"], version)
+        self.assertTrue({"rustfmt", "clippy"} <= set(toolchain["components"]))
+        self.assertEqual(manifest["workspace"]["metadata"]["android"]["rust-version"], version)
+        for name in ("fuzz/Cargo.toml", "fuzz/fuzzlib/Cargo.toml"):
+            with self.subTest(manifest=name):
+                package = tomllib.loads((ROOT / name).read_text())["package"]
+                self.assertEqual(package["rust-version"], version)
+        for path in (ROOT / ".github/workflows").glob("*.yml"):
+            with self.subTest(workflow=path.name):
+                workflow = path.read_text()
+                for channel in re.findall(r"uses: dtolnay/rust-toolchain@(\S+)", workflow):
+                    if channel == "nightly":
+                        self.assertEqual(path.name, "fuzz.yml")
+                    elif channel == "master":
+                        self.assertIn("toolchain: ${{ steps.config.outputs.rust-version }}", workflow)
+                    else:
+                        self.assertEqual(channel, version)
+                for channel in re.findall(r"cargo \+([\w.-]+)", workflow):
+                    self.assertIn(channel, (version, "nightly"))
 
     def test_fuzz_shards_cover_every_harness_and_propagate_failures(self):
         workflow = (ROOT / ".github/workflows/fuzz.yml").read_text()

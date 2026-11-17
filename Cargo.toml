@@ -55,7 +55,7 @@ resolver = "3"
 version = "0.5.2"
 edition = "2024"
 # Minimum supported toolchain for the workspace.
-rust-version = "1.96"
+rust-version = "1.100.0"
 license = "MIT"
 readme = "README.md"
 authors = ["szdytom"]

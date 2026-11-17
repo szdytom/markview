@@ -402,16 +402,16 @@ preparation and `-runs=100` budget. The shards together cover every harness
 in `Cargo.toml`; the CI infrastructure test checks that none are skipped or
 repeated. Each shard caches the standalone fuzz workspace separately.
 
-Formatting: `cargo +stable fmt -p markview-fuzz -p mvfuzz` inside
+Formatting: `cargo fmt -p markview-fuzz -p mvfuzz` inside
 `fuzz/`. A bare `cargo fmt --all` there reaches the *root* workspace and
-reformats the app too, so name the two packages and keep one stable
-toolchain for the whole tree. The `check` job runs that command with
+reformats the app too, so name the two packages. Both workspaces use
+Rust 1.100.0 from the root `rust-toolchain.toml`. The `check` job runs that command with
 `-- --check`, and Clippy over the harness with warnings denied, before the
 shards start.
 
 From the repository root, `python3 scripts/check_local.py` includes the fuzz
 format and lockfile checks; add `--compile` for Cargo check and Clippy over all
-fuzz workspace targets on stable.
+fuzz workspace targets on the pinned toolchain.
 
 Seeds (C1–C4): `fuzz/scripts/prepare_seeds.sh` shallow-clones the CommonMark
 and GFM repositories and KaTeX, takes the spec/test files, and extracts the

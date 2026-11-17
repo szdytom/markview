@@ -161,7 +161,7 @@ pub enum Block {
 
 /// The name, remaining attributes and closing flag of one `<...>` tag.
 pub(crate) fn tag_parts(tag: &str) -> Option<(String, &str, bool)> {
-	let body = tag.strip_prefix('<')?.strip_suffix('>')?.trim();
+	let body = tag.strip_circumfix('<', '>')?.trim();
 	let closing = body.starts_with('/');
 	let body = if closing {
 		body[1..].trim_start()
@@ -595,8 +595,7 @@ fn classify(fragment: &str, ofm: bool) -> Tag {
 	if text.starts_with("<!") || text.starts_with("<?") {
 		return Tag::Comment;
 	}
-	let Some(body) = text.strip_prefix('<').and_then(|t| t.strip_suffix('>'))
-	else {
+	let Some(body) = text.strip_circumfix('<', '>') else {
 		return Tag::Unknown;
 	};
 	let body = body.trim();

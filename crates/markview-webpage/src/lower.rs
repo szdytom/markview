@@ -108,9 +108,7 @@ impl<'a> Lower<'a> {
 		let title_heading = self.title_block.is_some_and(|id| {
 			blocks.first().is_some_and(|block| block.id() == id)
 		});
-		if !has_readable_content(&blocks) {
-			return Err(Error::NoReadableContent);
-		}
+		has_readable_content(&blocks).ok_or(Error::NoReadableContent)?;
 		let document = with_title_and_source(
 			blocks,
 			self.builder,
@@ -1712,9 +1710,7 @@ fn strip_delimiters(text: &str) -> &str {
 	for (open, close) in
 		[(r"\(", r"\)"), (r"\[", r"\]"), ("$$", "$$"), ("$", "$")]
 	{
-		if let Some(inner) =
-			text.strip_prefix(open).and_then(|s| s.strip_suffix(close))
-		{
+		if let Some(inner) = text.strip_circumfix(open, close) {
 			return inner;
 		}
 	}

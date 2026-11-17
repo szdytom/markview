@@ -360,16 +360,14 @@ pub enum SourceMapError {
 }
 
 fn check(range: &Range<usize>, source: &str) -> Result<(), SourceMapError> {
-	if range.end > source.len() || range.start > range.end {
-		return Err(SourceMapError::OutOfBounds(range.clone()));
-	}
-	if !source.is_char_boundary(range.start) {
-		return Err(SourceMapError::NotCharBoundary(range.start));
-	}
-	if !source.is_char_boundary(range.end) {
-		return Err(SourceMapError::NotCharBoundary(range.end));
-	}
-	Ok(())
+	(range.start <= range.end && range.end <= source.len())
+		.ok_or_else(|| SourceMapError::OutOfBounds(range.clone()))?;
+	source
+		.is_char_boundary(range.start)
+		.ok_or(SourceMapError::NotCharBoundary(range.start))?;
+	source
+		.is_char_boundary(range.end)
+		.ok_or(SourceMapError::NotCharBoundary(range.end))
 }
 
 fn distance(range: &Range<usize>, offset: usize) -> usize {

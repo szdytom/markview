@@ -34,6 +34,25 @@ fn blank(ch: char) -> bool {
 	matches!(ch, '\t' | '\n' | '\u{c}' | '\r' | ' ')
 }
 
+#[test]
+fn math_delimiters_require_two_non_overlapping_ends_and_strip_only_once() {
+	for (source, expected) in [
+		("$", "$"),
+		("$$", ""),
+		("$$$", "$"),
+		("$$$$", ""),
+		("$中$", "中"),
+		(r"\(é\)", "é"),
+		(r"\[x\]", "x"),
+		(r"\(x\]", r"\(x\]"),
+		(r"\[", r"\["),
+		("$$x$", "$x"),
+		("$$$x$$$", "$x$"),
+	] {
+		assert_eq!(strip_delimiters(source), expected, "{source:?}");
+	}
+}
+
 // Rectangles come from partitioning a complete matrix, independently of HTML placement.
 fn rectangles(
 	height: usize,

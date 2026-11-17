@@ -6,8 +6,10 @@ This guide takes a contributor from a checkout to a validated change. Read
 
 ## Build and verify
 
-Use a Rust toolchain satisfying `workspace.package.rust-version` in
-[Cargo.toml](../../Cargo.toml). On Debian/Ubuntu, install native build dependencies:
+Rust 1.100.0 is pinned in [rust-toolchain.toml](../../rust-toolchain.toml) and is
+also the minimum supported version in [Cargo.toml](../../Cargo.toml). Rustup
+selects it automatically, including Rustfmt and Clippy.
+On Debian/Ubuntu, install native build dependencies:
 
 ```sh
 sudo apt-get install libfontconfig1-dev libxkbcommon-dev libwayland-dev mesa-vulkan-drivers vulkan-tools

@@ -93,8 +93,7 @@ impl BlockContext<'_> {
 			.unwrap_or_else(|| Arc::new(vec![Vec::new(); lines.len()]));
 		for (line_index, line) in lines.iter().enumerate() {
 			let original = line;
-			let line_offset =
-				original.as_ptr() as usize - text.as_ptr() as usize;
+			let line_offset = text.substr_range(original).unwrap().start;
 			let (line, offsets) = expand_tabs_mapped(line, 4);
 			// Syntax colors are applied after shaping. Keeping the shaper input
 			// plain means highlighting cannot affect font selection, shaping,

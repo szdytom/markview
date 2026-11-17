@@ -135,7 +135,7 @@ impl LayoutSnapshot {
 		selection: TextSelection,
 		_presentation_revision: u64,
 	) -> String {
-		selection.resolve(self).map_or_else(String::new, |s| {
+		selection.resolve(self).map_or_default(|s| {
 			self.geometry_extract_text(s, self.revision.get())
 		})
 	}
@@ -159,7 +159,7 @@ impl LayoutSnapshot {
 		_presentation_revision: u64,
 		visible: Range<f32>,
 	) -> Vec<Rect> {
-		selection.resolve(self).map_or_else(Vec::new, |s| {
+		selection.resolve(self).map_or_default(|s| {
 			self.geometry_selection_rects_in(
 				s,
 				horizontal,

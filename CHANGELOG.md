@@ -34,6 +34,7 @@ at the same level, without `[brackets]`.
 
 ### Changed
 
+- Raise the minimum supported Rust version to 1.100.0.
 - Reduce text layout allocations, retained geometry memory, and document reflow time.
 - Reduce retained memory for Markdown source maps by deferring reverse indexes and sealing storage.
 - Reduce retained memory for formula-heavy documents by sealing drawing commands and sharing formula styles.

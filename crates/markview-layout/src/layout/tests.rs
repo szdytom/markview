@@ -4061,6 +4061,34 @@ fn a_lone_cr_in_a_code_block_cannot_break_the_shaper() {
 	assert_eq!(vec!["~\u{0}\u{0}\u{0}M", "\u{8e0d}f2I"], lines);
 }
 
+#[test]
+fn code_byte_ranges_survive_repeated_lines_tabs_and_crlf() {
+	let mut builder =
+		document::DocumentBuilder::new(document::DocumentRevision::new(1));
+	let block = builder.block(
+		Vec::new(),
+		BlockKind::Code {
+			language: String::new(),
+			text: "\t中\r\n\r\n\t中\ré\n".into(),
+		},
+	);
+	let snapshot = LayoutEngine::new()
+		.layout(&builder.finish(vec![block]), &LayoutOptions::default());
+	let ranges: Vec<_> = snapshot.blocks[0].layout.text[0]
+		.clusters
+		.iter()
+		.map(|c| c.range)
+		.collect();
+	for expected in [0..1, 1..4, 8..9, 9..12, 13..15] {
+		assert!(ranges.contains(&expected), "{expected:?}: {ranges:?}");
+	}
+	assert!(
+		ranges
+			.iter()
+			.all(|range| ![4, 5, 6, 7, 12, 15].contains(&range.start))
+	);
+}
+
 /// An Obsidian callout is a block quote refined by its color family: the box
 /// takes the family's border and the header line its color, and a quote rule
 /// from the theme still shapes it.

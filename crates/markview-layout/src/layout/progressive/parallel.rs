@@ -25,7 +25,7 @@ impl Parallel {
 	pub(crate) fn new(threads: usize) -> Self {
 		Self {
 			pool: None,
-			workers: (0..threads).map(|_| Mutex::new(None)).collect(),
+			workers: Vec::from_fn(threads, |_| Mutex::new(None)),
 		}
 	}
 

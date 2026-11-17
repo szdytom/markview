@@ -6,7 +6,7 @@ mod records;
 
 #[derive(Clone, Copy, Debug)]
 struct CompactCluster {
-	range: [u32; 2],
+	range: std::range::Range<u32>,
 	command: u32,
 	row: u32,
 	x: f32,
@@ -74,7 +74,7 @@ impl ClusterBuffer {
 				let [y, h] = p.rows[c.row as usize];
 				let [left, right] = p.spacing[(c.flags_spacing >> 2) as usize];
 				TextCluster {
-					range: c.range[0] as usize..c.range[1] as usize,
+					range: c.range.start as usize..c.range.end as usize,
 					command: c.command as usize,
 					rect: Rect {
 						x: c.x,
@@ -183,10 +183,10 @@ impl ClusterBuffer {
 				index
 			};
 			clusters.push(CompactCluster {
-				range: [
-					u32::try_from(c.range.start).ok()?,
-					u32::try_from(c.range.end).ok()?,
-				],
+				range: std::range::Range {
+					start: u32::try_from(c.range.start).ok()?,
+					end: u32::try_from(c.range.end).ok()?,
+				},
 				command: u32::try_from(c.command).ok()?,
 				row: u32::try_from(row).ok()?,
 				x: c.rect.x,

@@ -76,7 +76,6 @@ CHECKS = (
         "fuzz format",
         (
             "cargo",
-            "+stable",
             "fmt",
             "--manifest-path",
             "fuzz/Cargo.toml",
@@ -241,7 +240,6 @@ CHECKS = (
         "fuzz cargo check",
         (
             "cargo",
-            "+stable",
             "check",
             "--manifest-path",
             "fuzz/Cargo.toml",
@@ -255,7 +253,6 @@ CHECKS = (
         "fuzz clippy",
         (
             "cargo",
-            "+stable",
             "clippy",
             "--manifest-path",
             "fuzz/Cargo.toml",

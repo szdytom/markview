@@ -6,6 +6,7 @@ use markview_layout::style::{FontArchive, FontFamily, FontFile, FontSource};
 use std::{
 	collections::{BTreeMap, HashMap},
 	fs,
+	mem::DropGuard,
 	path::{Path, PathBuf},
 	sync::atomic::{AtomicUsize, Ordering},
 	time::Duration,
@@ -434,13 +435,8 @@ async fn install_source(
 		.await
 }
 
-struct DownloadTemp(PathBuf, bool);
-impl Drop for DownloadTemp {
-	fn drop(&mut self) {
-		if self.1 {
-			let _ = fs::remove_file(&self.0);
-		}
-	}
+fn remove_temp(path: PathBuf) {
+	let _ = fs::remove_file(path);
 }
 
 async fn fetch_file<T: Transport>(
@@ -455,13 +451,13 @@ async fn fetch_file<T: Transport>(
 		services, cancel, ..
 	} = *download;
 	let basename = url_basename(file.url());
-	let temp = DownloadTemp(temp_path(dir)?, true);
+	let temp = DropGuard::new(temp_path(dir)?, remove_temp);
 	let bytes = reporter
 		.fetch(
 			index,
 			&basename,
 			file.url(),
-			&temp.0,
+			&temp,
 			MAX_FILE_BYTES,
 			download,
 		)
@@ -475,9 +471,8 @@ async fn fetch_file<T: Transport>(
 			if cancelled.is_cancelled() {
 				bail!("Cancelled");
 			}
-			let mut temp = temp;
-			let staged = stage(&family, &temp.0, &basename, file.sha256())?;
-			temp.1 = false;
+			let staged = stage(&family, &temp, &basename, file.sha256())?;
+			DropGuard::dismiss(temp);
 			Ok(staged)
 		})
 		.await?;
@@ -505,13 +500,13 @@ async fn fetch_archive<T: Transport>(
 		services, cancel, ..
 	} = *download;
 	let basename = url_basename(&archive.url);
-	let temp = DownloadTemp(temp_path(dir)?, true);
+	let temp = DropGuard::new(temp_path(dir)?, remove_temp);
 	let bytes = reporter
 		.fetch(
 			index,
 			&basename,
 			&archive.url,
-			&temp.0,
+			&temp,
 			MAX_ARCHIVE_BYTES,
 			download,
 		)
@@ -536,7 +531,7 @@ async fn fetch_archive<T: Transport>(
 			if cancelled.is_cancelled() {
 				bail!("Cancelled");
 			}
-			extract_archive(&family, &archive, &temp.0, &dir, &cancelled)
+			extract_archive(&family, &archive, &temp, &dir, &cancelled)
 		})
 		.await?;
 	reporter
@@ -576,9 +571,9 @@ fn extract_archive(
 		let Some((member_temp, member_name)) = extracted.next_file() else {
 			break;
 		};
-		let mut member = DownloadTemp(member_temp, true);
-		staged.push(stage(family, &member.0, &member_name, None)?);
-		member.1 = false;
+		let member = DropGuard::new(member_temp, remove_temp);
+		staged.push(stage(family, &member, &member_name, None)?);
+		DropGuard::dismiss(member);
 	}
 	Ok(staged)
 }
@@ -602,6 +597,39 @@ mod tests {
 	};
 	use super::*;
 	use std::sync::Arc;
+
+	#[test]
+	fn a_panicking_transfer_removes_its_partial_file() {
+		struct Panics;
+		impl Transport for Panics {
+			async fn fetch(
+				&self,
+				_: &str,
+				path: &Path,
+				_: u64,
+				_: &mut (dyn FnMut(u64, Option<u64>) + Send),
+				_: &CancellationToken,
+			) -> Result<()> {
+				fs::write(path, b"partial font")?;
+				panic!("transfer interrupted");
+			}
+			async fn probe(&self, _: &str) -> Result<Duration> {
+				Ok(Duration::ZERO)
+			}
+		}
+		let dir = crate::test_support::TestDir::new();
+		let summary = run(
+			&[fan("noto", &["https://x.example/a.otf"])],
+			dir.path(),
+			&Panics,
+			1,
+			Arc::new(|_| false),
+			&mut |_| {},
+		);
+		assert_eq!(summary.stored, 0);
+		assert_eq!(summary.failed.len(), 1);
+		assert_eq!(fs::read_dir(dir.path()).unwrap().count(), 0);
+	}
 
 	/// A color emoji face carries no outline table, only `CBDT` strikes, and
 	/// the reader draws it, so a download must store it like any other face.

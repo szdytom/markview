@@ -1,7 +1,7 @@
 name: Editor fonts
 on:
   pull_request:
-    paths: ['web/packages/**', 'crates/**', 'Cargo.lock', 'web/app/vsc-ext/**', 'crates/markview-web/tests/fonts/**', '.github/workflows/editor-fonts.yml']
+    paths: ['web/packages/**', 'crates/**', 'Cargo.lock', 'rust-toolchain.toml', 'web/app/vsc-ext/**', 'crates/markview-web/tests/fonts/**', '.github/workflows/editor-fonts.yml']
   workflow_dispatch:
 permissions:
   contents: read
@@ -17,7 +17,7 @@ jobs:
       - uses: actions/setup-node@v6
         with:
           node-version: 22
-      - uses: dtolnay/rust-toolchain@stable
+      - uses: dtolnay/rust-toolchain@1.100.0
         with:
           targets: wasm32-unknown-unknown
       - uses: Swatinem/rust-cache@v2

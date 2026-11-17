@@ -3,6 +3,7 @@
 use serde::Serialize;
 use std::{
 	alloc::{GlobalAlloc, Layout, System},
+	mem::DropGuard,
 	sync::atomic::{AtomicBool, AtomicUsize, Ordering::Relaxed},
 };
 
@@ -73,13 +74,6 @@ unsafe impl GlobalAlloc for Counting {
 #[global_allocator]
 static ALLOCATOR: Counting = Counting;
 
-struct Guard;
-impl Drop for Guard {
-	fn drop(&mut self) {
-		ENABLED.store(false, Relaxed);
-	}
-}
-
 /// Includes every Rust thread; run a single test with `--test-threads=1`.
 pub(crate) fn measure<T>(run: impl FnOnce() -> T) -> (T, Stats) {
 	assert!(!ENABLED.load(Relaxed), "allocation scopes cannot nest");
@@ -88,7 +82,7 @@ pub(crate) fn measure<T>(run: impl FnOnce() -> T) -> (T, Stats) {
 	CALLS.store(0, Relaxed);
 	BYTES.store(0, Relaxed);
 	ENABLED.store(true, Relaxed);
-	let guard = Guard;
+	let guard = DropGuard::new((), |()| ENABLED.store(false, Relaxed));
 	let result = run();
 	drop(guard);
 	(
