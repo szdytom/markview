@@ -167,6 +167,48 @@ fn disclosure_click_opens_or_reuses_the_target_tab_and_executes_once() {
 }
 
 #[test]
+fn untrusted_link_preview_actions_preserve_trust_and_honor_revocation() {
+	use crate::security::{Resource, Security, Trust};
+	for revoked in [false, true] {
+		let mut case = Case::new(
+			"<details><summary>Details</summary>\n\nBody.\n\n</details>\n",
+			false,
+		);
+		case.app.readers.session.security = Security::local(Trust::Untrusted);
+		case.app
+			.readers
+			.session
+			.security
+			.grant(Resource::File(case.target.clone()));
+		case.show();
+		let source = case.app.readers.session.path.clone();
+		if revoked {
+			case.app.readers.session.security.revoke();
+		}
+		case.click(|target| matches!(target, LinkTarget::Disclosure(_)), 0);
+		if revoked {
+			assert_eq!(case.app.readers.session.path, source);
+			assert!(case.app.preview.open().is_none());
+		} else {
+			assert_eq!(
+				case.app.readers.session.path.as_ref(),
+				Some(&case.target)
+			);
+			case.settle();
+			let id = disclosure(&case.app, "Details");
+			assert_eq!(
+				case.app.readers.session.details_open.get(&id),
+				Some(&true)
+			);
+			assert_eq!(
+				case.app.readers.session.security.origin.trust(),
+				Trust::Untrusted
+			);
+		}
+	}
+}
+
+#[test]
 fn an_open_disclosure_collapses_after_transferring_to_its_file() {
 	let mut case = Case::new(
 		"<details open><summary>Details</summary>\n\nBody.\n\n</details>\n",

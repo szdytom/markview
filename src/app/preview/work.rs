@@ -20,7 +20,7 @@ pub(super) struct Source {
 	pub bounds: Rect,
 	pub revision: markview_document::DocumentRevision,
 	pub frame: FrameStyle,
-	pub document: Arc<crate::loaded::LoadedDocument>,
+	pub document: Option<Arc<crate::loaded::LoadedDocument>>,
 	pub destination: Destination,
 	pub stamp: crate::watch::FileStamp,
 	pub original_options: crate::layout::LayoutOptions,
@@ -29,27 +29,45 @@ pub(super) struct Source {
 }
 impl Source {
 	pub fn matches<P: super::super::SendEvent>(&self, app: &App<P>) -> bool {
-		let Some(document) = &app.readers.session.document else {
-			return false;
-		};
+		let same_document =
+			match (&app.readers.session.document, &self.document) {
+				(Some(current), Some(original)) => {
+					Arc::ptr_eq(current, original)
+				}
+				(None, None) => true,
+				_ => false,
+			};
+
 		let context = app.document_interaction();
 		let images = &context.snapshot.images;
-		self.destination.path.as_ref().is_none_or(|path| {
-			app.readers.session.security.check_file(path).is_ok()
-		}) && self.security == app.readers.session.security
-			&& self.workspace == app.folder.root().cloned()
+		self.matches_destination(app)
 			&& self.version == app.readers.session.version
-			&& Arc::ptr_eq(document, &self.document)
+			&& same_document
 			&& context.snapshot.revision == self.revision
 			&& app.options() == self.original_options
-			&& context.viewport.clip() == self.bounds
-			&& context.link_rect(markview_interaction::Point::new(
-				self.anchor.x + self.anchor.w / 2.0,
-				self.anchor.y + self.anchor.h / 2.0,
-			)) == Some(self.anchor)
+			&& app.scene_preview_bounds(self.target) == self.bounds
+			&& app.scene_preview_anchor(self.target) == Some(self.anchor)
 			&& images.generation == self.images.generation
 			&& images.entries == self.images.entries
 			&& images.keys == self.images.keys
+	}
+
+	fn matches_destination<P: super::super::SendEvent>(
+		&self,
+		app: &App<P>,
+	) -> bool {
+		let same_file = match self.target {
+			Target::File(id) => {
+				app.folder_preview_path(id) == self.destination.path.as_deref()
+			}
+			_ => true,
+		};
+		same_file
+			&& self.destination.path.as_ref().is_none_or(|path| {
+				app.preview_security(self.target).check_file(path).is_ok()
+			})
+			&& self.security == app.preview_security(self.target)
+			&& self.workspace == app.folder.root().cloned()
 	}
 }
 
@@ -78,7 +96,7 @@ impl Scene {
 				),
 			))
 		} else {
-			source.document.clone()
+			source.document.clone()?
 		};
 		Some(Self {
 			source,
@@ -166,6 +184,9 @@ impl Scene {
 				|text| self.source.security.for_content(text),
 			));
 			images.set_workspace(self.source.workspace.clone());
+			images.set_standalone_image(
+				crate::file::is_picture(path).then(|| path.clone()),
+			);
 			images.set_initial_width(self.source.options.width);
 			images
 		});

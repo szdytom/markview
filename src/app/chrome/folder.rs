@@ -252,7 +252,7 @@ pub(super) fn buttons(
 		.into_iter()
 		.filter_map(|row| {
 			let e = &tree.entries[row.index];
-			let rect = band_rect(&list, row);
+			let rect = entry_rect(&list, row);
 			rect.intersect(list.viewport)?;
 			let mut b = components::button(
 				std::sync::Arc::<str>::from(
@@ -261,9 +261,6 @@ pub(super) fn buttons(
 				Command::Chrome(ChromeCommand::FolderEntry(row.index)),
 				rect,
 			);
-			if list.max_scroll() > 0. {
-				b.rect.w = (b.rect.w - 16.).max(0.);
-			}
 			b.kind = components::ButtonKind::Quiet;
 			Some(b)
 		})
@@ -386,6 +383,15 @@ pub(super) fn draw(
 	out.push(list.clip(body));
 	draw_scrollbar(&mut out, &list, ui, interaction, bar_opacity);
 	out
+}
+
+/// The file row's input band leaves room for the sidebar scrollbar.
+pub(in crate::app) fn entry_rect(list: &List, row: Row) -> Rect {
+	let mut rect = band_rect(list, row);
+	if list.max_scroll() > 0.0 {
+		rect.w = (rect.w - 16.0).max(0.0);
+	}
+	rect
 }
 
 fn band_rect(list: &crate::app::chrome::list::List, row: Row) -> Rect {

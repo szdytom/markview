@@ -985,7 +985,8 @@ impl<'a> Chrome<'a> {
 		target: super::preview::Target,
 	) -> Option<Rect> {
 		match target {
-			super::preview::Target::Footnote { .. }
+			super::preview::Target::File(_)
+			| super::preview::Target::Footnote { .. }
 			| super::preview::Target::Link { .. } => None,
 			super::preview::Target::Tab(id) => {
 				let index =

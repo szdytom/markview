@@ -5,6 +5,7 @@ use std::collections::HashMap;
 
 #[derive(Clone, Copy, Default)]
 pub(super) struct FrameStyle {
+	pub(super) right_centered: bool,
 	pub(super) padding: [f32; 4],
 	pub(super) metrics: markview_layout::scene::ScrollbarMetrics,
 }
@@ -31,8 +32,19 @@ impl FloatingDocument {
 		bounds: Rect,
 		frame: FrameStyle,
 	) -> Self {
-		let FrameStyle { padding, metrics } = frame;
-		let mut rect = super::chrome::preview::place(
+		let FrameStyle {
+			padding,
+			metrics,
+			right_centered,
+		} = frame;
+		let place = |anchor, size, bounds, padding| {
+			if right_centered {
+				super::chrome::preview::place_right(anchor, size, bounds)
+			} else {
+				super::chrome::preview::place(anchor, size, bounds, padding)
+			}
+		};
+		let mut rect = place(
 			anchor,
 			(
 				snapshot.width + padding[1] + padding[3],
@@ -47,7 +59,7 @@ impl FloatingDocument {
 			0.0
 		};
 		if gutter > 0.0 {
-			rect = super::chrome::preview::place(
+			rect = place(
 				anchor,
 				(
 					snapshot.width + padding[1] + padding[3] + gutter,

@@ -207,12 +207,14 @@ fn shared_documents_larger_than_the_queue_budget_can_preview_small_notes() {
 	let mut source = app
 		.link_preview_source(app.preview.hover.as_ref().unwrap().target)
 		.unwrap();
-	source.document = Arc::new(crate::loaded::LoadedDocument::Semantic {
-		document: Arc::new(source.document.document().clone()),
+	source.document = Some(Arc::new(crate::loaded::LoadedDocument::Semantic {
+		document: Arc::new(
+			source.document.as_ref().unwrap().document().clone(),
+		),
 		size: 128 * 1024 * 1024,
 		input: 1,
 		frontend: 2,
-	});
+	}));
 	let services = crate::services::Services::new(1);
 	let mut worker = work::Worker::default();
 	worker.submit(&services.handle, 1, Arc::new(source), || {});

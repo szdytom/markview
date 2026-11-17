@@ -128,7 +128,7 @@ pub(super) fn reader_app(
 	app
 }
 
-fn capture_popup(
+pub(super) fn capture_frame(
 	renderer: &mut Renderer,
 	app: &mut App<Proxy>,
 	scale: f32,
@@ -136,20 +136,6 @@ fn capture_popup(
 	let overlay = app.overlay();
 	let theme = app.preferences.values.theme;
 	let scene = app.preview.scene(&app.readers, theme).unwrap();
-	let crop = Rect {
-		x: 200.0,
-		y: 40.0,
-		w: 720.0,
-		h: 540.0,
-	};
-	let floating = app.preview.floating().unwrap();
-	for rect in [floating.anchor, floating.rect] {
-		ensure!(
-			crop.contains(rect.x, rect.y)
-				&& crop.contains(rect.x + rect.w, rect.y + rect.h),
-			"the reference and full popup must stay inside the golden frame"
-		);
-	}
 	let geometry = app.view_geometry();
 	let view = View {
 		width: (geometry.width * scale).round() as u32,
@@ -168,13 +154,35 @@ fn capture_popup(
 	};
 	renderer.set_stylesheet(app.preferences.values.stylesheet.clone());
 	renderer.set_fonts(app.options().fonts);
-	let actual = capture_scenes(
+	capture_scenes(
 		renderer,
 		&app.readers.session.display.snapshot,
 		&view,
 		&overlay,
 		std::slice::from_ref(&scene),
-	)?;
+	)
+}
+
+fn capture_popup(
+	renderer: &mut Renderer,
+	app: &mut App<Proxy>,
+	scale: f32,
+) -> Result<image::RgbaImage> {
+	let crop = Rect {
+		x: 200.0,
+		y: 40.0,
+		w: 720.0,
+		h: 540.0,
+	};
+	let floating = app.preview.floating().unwrap();
+	for rect in [floating.anchor, floating.rect] {
+		ensure!(
+			crop.contains(rect.x, rect.y)
+				&& crop.contains(rect.x + rect.w, rect.y + rect.h),
+			"the reference and full popup must stay inside the golden frame"
+		);
+	}
+	let actual = capture_frame(renderer, app, scale)?;
 	// Exclude unrelated chrome and paths while keeping the reference and full popup.
 	Ok(image::imageops::crop_imm(
 		&actual,

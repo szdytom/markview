@@ -218,6 +218,27 @@ pub(in crate::app) fn place(
 		.0
 }
 
+/// Centers a sidebar preview on its file row within the space to its right.
+pub(in crate::app) fn place_right(
+	anchor: Rect,
+	size: (f32, f32),
+	bounds: Rect,
+) -> Rect {
+	let margin = 8.0_f32.min(bounds.w / 2.0).min(bounds.h / 2.0);
+	let w = size.0.min((bounds.w - margin * 2.0).max(1.0));
+	let available_height = (bounds.h - margin * 2.0).max(1.0);
+	let h = size.1.min(available_height);
+	Rect {
+		x: bounds.x + margin,
+		y: (anchor.y + anchor.h / 2.0 - h / 2.0).clamp(
+			bounds.y + margin,
+			bounds.y + margin + (available_height - h),
+		),
+		w,
+		h,
+	}
+}
+
 /// The shared themed surface behind any floating scene.
 pub(in crate::app) fn surface(ui: &TextShaper, rect: Rect) -> Vec<Draw> {
 	surface_for(ui, rect, Condition::Preview)

@@ -1,4 +1,5 @@
 mod asynchronous;
+mod folder;
 mod golden;
 mod handoff;
 mod images;

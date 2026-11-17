@@ -8,6 +8,7 @@
 //! A page preview is not a screenshot: the card reserves a body rectangle, and
 //! the renderer composes the tab's layout instructions into it at device
 //! resolution. Idle tabs share a bounded three-screen cache with tab restoration.
+mod folder;
 mod input;
 mod navigation;
 mod observe;
@@ -498,6 +499,7 @@ pub(super) struct Preview {
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(super) enum Target {
 	Tab(u64),
+	File(usize),
 	Link {
 		block: markview_document::BlockId,
 		link: markview_layout::scene::LinkId,
@@ -630,8 +632,10 @@ impl Preview {
 			return None;
 		}
 		let hover = self.hover.as_ref()?;
-		if matches!(hover.target, Target::Footnote { .. } | Target::Link { .. })
-		{
+		if matches!(
+			hover.target,
+			Target::Footnote { .. } | Target::Link { .. } | Target::File(_)
+		) {
 			if self.pending.is_none() && !hover.attempted {
 				return Some(hover.at - SHOW_DELAY + PREPARE_DELAY);
 			}
@@ -785,18 +789,14 @@ impl<P: super::SendEvent> App<P> {
 				self.start_link_preview(target);
 			}
 		}
-		if let Some(floating) = self.preview.floating() {
-			let anchor = floating.anchor;
-			let context = self.document_interaction();
-			let point = markview_interaction::Point::new(
-				anchor.x + anchor.w / 2.0,
-				anchor.y + anchor.h / 2.0,
-			);
-			if context.snapshot.revision != floating.revision
-				|| context.link_rect(point) != Some(anchor)
-			{
-				return self.dismiss_preview();
-			}
+		if let Some(open) = self.preview.open()
+			&& let Some(floating) = open.floating.as_ref()
+			&& (self.document_interaction().snapshot.revision
+				!= floating.revision
+				|| self.scene_preview_anchor(open.target)
+					!= Some(floating.anchor))
+		{
+			return self.dismiss_preview();
 		}
 		let target = if self.preview_allowed() {
 			self.target_at_cursor()
@@ -836,7 +836,7 @@ impl<P: super::SendEvent> App<P> {
 				}
 				self.redraw();
 			}
-			Target::Footnote { .. } | Target::Link { .. }
+			Target::Footnote { .. } | Target::Link { .. } | Target::File(_)
 				if self.preview.pending.is_none()
 					&& now >= hover.at - SHOW_DELAY + PREPARE_DELAY =>
 			{
@@ -973,6 +973,8 @@ impl<P: super::SendEvent> App<P> {
 			&& !self.interaction.overlays.viewer_open()
 			&& self.tab_strip.drag.is_none()
 			&& self.interaction.pointer.drag().is_none()
+			&& self.interaction.panels.sidebar().drag().is_none()
+			&& self.folder.grab.is_none()
 	}
 
 	fn target_at_cursor(&mut self) -> Option<Target> {
@@ -983,7 +985,13 @@ impl<P: super::SendEvent> App<P> {
 			return self.preview.open().map(|open| open.target);
 		}
 		if y >= TOP {
-			if self.pointer_in_outline() || self.pointer_in_folder() {
+			if let Some(target) = self.folder_preview_bridge(x, y) {
+				return Some(target);
+			}
+			if self.pointer_in_folder() {
+				return self.folder_preview_at_cursor();
+			}
+			if self.pointer_in_outline() {
 				return None;
 			}
 			if let Some(floating) = self.preview.floating() {
@@ -1085,6 +1093,9 @@ impl<P: super::SendEvent> App<P> {
 	}
 
 	fn link_preview_source(&self, target: Target) -> Option<work::Source> {
+		if let Target::File(id) = target {
+			return self.folder_preview_source(id);
+		}
 		let (Target::Footnote { block, link } | Target::Link { block, link }) =
 			target
 		else {
@@ -1128,7 +1139,19 @@ impl<P: super::SendEvent> App<P> {
 		let anchor = context.link_rect(point)?;
 		let bounds = context.viewport.clip();
 		let revision = context.snapshot.revision;
-		let document = self.readers.session.document.as_ref()?;
+		self.readers.session.document.as_ref()?;
+		self.scene_preview_source(target, anchor, bounds, revision, destination)
+	}
+
+	fn scene_preview_source(
+		&self,
+		target: Target,
+		anchor: Rect,
+		bounds: Rect,
+		revision: markview_document::DocumentRevision,
+		destination: work::Destination,
+	) -> Option<work::Source> {
+		let document = self.readers.session.document.clone();
 		let original_options = self.options();
 		let mut options = original_options.clone();
 		if destination.path.is_some() {
@@ -1149,15 +1172,19 @@ impl<P: super::SendEvent> App<P> {
 		);
 		options.viewport_height = 0.0;
 		Some(work::Source {
-			security: self.readers.session.security.clone(),
+			security: self.preview_security(target),
 			workspace: self.folder.root().cloned(),
 			offline: self.args.offline,
 			target,
 			anchor,
 			bounds,
 			revision,
-			frame: FrameStyle { padding, metrics },
-			document: document.clone(),
+			frame: FrameStyle {
+				padding,
+				metrics,
+				right_centered: matches!(target, Target::File(_)),
+			},
+			document,
 			destination,
 			stamp: None,
 			original_options,

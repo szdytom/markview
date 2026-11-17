@@ -186,10 +186,10 @@ impl<P: super::super::SendEvent> App<P> {
 		let open = self.preview.open().unwrap();
 		let path = open.path.clone().unwrap();
 		let content = open.floating.as_ref().unwrap().snapshot.content_id;
-		let security = crate::security::Security::local(
-			self.readers.session.security.origin.trust(),
-		);
-		if self.readers.session.security.check_file(&path).is_err() {
+		let authority = self.preview_security(open.target);
+		let security =
+			crate::security::Security::local(authority.origin.trust());
+		if authority.check_file(&path).is_err() {
 			self.dismiss_preview();
 			return;
 		}
