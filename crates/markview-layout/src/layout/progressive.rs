@@ -110,6 +110,44 @@ impl ProgressiveLayout {
 }
 
 impl LayoutEngine {
+	/// Lays out a document prefix covering `height`, with nested cancellation.
+	pub fn layout_prefix_cancellable(
+		&mut self,
+		document: &Document,
+		options: &LayoutOptions,
+		images: &ImageSnapshot,
+		height: f32,
+		cancelled: impl Fn() -> bool + Sync,
+	) -> Option<LayoutSnapshot> {
+		if cancelled() {
+			return None;
+		}
+		let layout = self.begin_layout(document, options, images);
+		self.complete_prefix(document, layout, height, &cancelled)
+	}
+
+	pub(super) fn complete_prefix(
+		&mut self,
+		document: &Document,
+		mut layout: ProgressiveLayout,
+		height: f32,
+		cancelled: &(dyn Fn() -> bool + Sync),
+	) -> Option<LayoutSnapshot> {
+		while !layout.is_complete() && layout.snapshot().height < height {
+			if cancelled() {
+				return None;
+			}
+			self.advance_cancellable(
+				&mut layout,
+				document,
+				Duration::ZERO,
+				cancelled,
+				false,
+			);
+		}
+		(!cancelled()).then(|| layout.into_snapshot())
+	}
+
 	/// Starts a pass on `document` without laying out any block.
 	///
 	/// The document is passed to every [`Self::advance`] rather than stored, so

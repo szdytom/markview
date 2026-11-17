@@ -6,6 +6,7 @@ use markview_ui_core::WidgetId;
 #[cfg(test)]
 use std::time::Instant;
 use winit::keyboard::{Key, NamedKey};
+mod preview;
 
 #[derive(Default)]
 pub(crate) struct Model {
@@ -14,6 +15,7 @@ pub(crate) struct Model {
 	scroll: ScrollSurface,
 	previous_focus: Option<WidgetId>,
 	pub(in crate::app) search: super::start::Search,
+	pub(in crate::app) preview: preview::Preview,
 }
 impl Model {
 	pub(in crate::app) fn open(&self) -> bool {
@@ -21,6 +23,12 @@ impl Model {
 	}
 	pub(in crate::app) fn selected(&self) -> usize {
 		self.selected
+	}
+	pub(in crate::app) fn file(&self) -> Option<&super::file_search::File> {
+		(!self.search.pending)
+			.then(|| self.search.matches.get(self.selected))
+			.flatten()
+			.map(AsRef::as_ref)
 	}
 	pub(in crate::app) fn scroll(&self) -> f32 {
 		self.scroll.offset()
@@ -41,6 +49,7 @@ impl Model {
 	pub(in crate::app) fn reset(&mut self) {
 		self.selected = 0;
 		self.scroll.reset();
+		self.preview.clear();
 	}
 }
 
@@ -77,6 +86,7 @@ impl<P: SendEvent> App<P> {
 			.search
 			.input
 			.select_all(&mut self.ui);
+		self.refresh_quick_open_preview();
 		self.refresh_hover();
 		self.redraw();
 	}
@@ -89,6 +99,7 @@ impl<P: SendEvent> App<P> {
 		let picker = &mut self.interaction.overlays.quick_open;
 		picker.open = false;
 		picker.cancel_scroll();
+		picker.preview.clear();
 		let previous = picker.previous_focus.take();
 		self.interaction.widgets.captured = None;
 		self.interaction.widgets.focus = previous.filter(|id| {
@@ -165,6 +176,7 @@ impl<P: SendEvent> App<P> {
 		picker.set_scroll(
 			(list.scroll + correction).clamp(0.0, list.max_scroll()),
 		);
+		self.refresh_quick_open_preview();
 		self.redraw();
 	}
 
@@ -213,6 +225,14 @@ impl<P: SendEvent> App<P> {
 	}
 
 	pub(super) fn wheel_quick_open(&mut self, request: ScrollRequest) {
+		let (x, y) = self.interaction.pointer.cursor();
+		if self
+			.quick_open_geometry()
+			.preview
+			.is_some_and(|rect| rect.contains(x, y))
+		{
+			return;
+		}
 		self.quick_open_list();
 		self.interaction.overlays.quick_open.wheel(request);
 		self.interaction.widgets.captured = None;

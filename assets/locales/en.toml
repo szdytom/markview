@@ -337,6 +337,7 @@ empty_local_workspace = "Local workspace"
 
 # The floating workspace file picker.
 quick_open_hint = "Select · Enter to open · Esc to close"
+quick_open_preview_unavailable = "Preview unavailable"
 quick_open_no_workspace = "Open a folder to search its files."
 quick_open_tabs = "Open files"
 

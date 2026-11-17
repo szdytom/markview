@@ -107,7 +107,7 @@ impl Tabs {
 		&self.entries
 	}
 	/// The session that owns the tab at `index`, including the active one.
-	fn session_at(&self, index: usize) -> Option<&ReaderSession> {
+	pub(super) fn session_at(&self, index: usize) -> Option<&ReaderSession> {
 		self.entries.get(index).map(|tab| {
 			if index == self.active() {
 				&self.session

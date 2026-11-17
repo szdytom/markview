@@ -70,6 +70,7 @@ impl<P: super::SendEvent> App<P> {
 		let active = self.advance_animations(now, self.animations.dt());
 		self.animations.set_advancing(false);
 		self.animations.set_active(active);
+		self.refresh_quick_open_preview();
 		let overlay = self.overlay();
 		self.sync_native_frame();
 		let (_, _, scale) = self.dimensions();
@@ -102,9 +103,25 @@ impl<P: super::SendEvent> App<P> {
 			),
 		};
 		let settings_kind = self.settings_kind();
+		let quick_open_body = self
+			.interaction
+			.overlays
+			.quick_open
+			.open()
+			.then(|| self.quick_open_geometry().body)
+			.flatten();
 		let preview = self
 			.preview
-			.scene(&self.readers, self.preferences.values.theme);
+			.scene(&self.readers, self.preferences.values.theme)
+			.or_else(|| {
+				quick_open_body.and_then(|body| {
+					self.interaction
+						.overlays
+						.quick_open
+						.preview
+						.scene(body, self.preferences.values.theme)
+				})
+			});
 		let Some(renderer) = &mut self.renderer else {
 			return Ok(());
 		};

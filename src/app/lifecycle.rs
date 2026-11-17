@@ -279,6 +279,7 @@ impl<P: super::SendEvent> App<P> {
 			Event::FrameFeedback => self.redraw(),
 			Event::Redraw => self.redraw(),
 			Event::PreviewReady => self.preview_tick(Instant::now()),
+			Event::QuickOpenPreviewReady => self.refresh_quick_open_preview(),
 			Event::StylesChanged => {
 				self.reload_styles();
 				self.redraw();
@@ -576,6 +577,7 @@ impl<P: super::SendEvent> App<P> {
 		// rather than a pointer handler: a pointer sliding across tabs never
 		// builds a card.
 		self.preview_tick(now);
+		self.refresh_quick_open_preview();
 		self.tooltip_tick(now);
 		self.readers.release_inactive(now);
 		self.session_tick(now);

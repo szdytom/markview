@@ -13,7 +13,8 @@ mod input;
 mod navigation;
 mod observe;
 pub(crate) use navigation::PendingAction;
-mod work;
+pub(in crate::app) use observe::Observed;
+pub(in crate::app) mod work;
 use super::document_view::{FloatingDocument as Floating, FrameStyle};
 
 use super::tabs;

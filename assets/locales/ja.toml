@@ -337,6 +337,7 @@ empty_local_workspace = "ローカルワークスペース"
 
 # The floating workspace file picker.
 quick_open_hint = "選択 · Enter 開く · Esc 閉じる"
+quick_open_preview_unavailable = "プレビューできません"
 quick_open_no_workspace = "フォルダーを開いてファイルを検索します。"
 quick_open_tabs = "開いているファイル"
 

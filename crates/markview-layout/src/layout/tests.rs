@@ -5,6 +5,53 @@ use crate::style::Condition;
 
 const DETAILS_SCHEME: &str = "details:";
 
+mod proptests {
+	use super::*;
+	use proptest::prelude::*;
+
+	proptest! {
+		#[test]
+		fn viewport_prefix_matches_the_start_of_the_full_document(
+			paragraphs in prop::collection::vec(1usize..24, 0..10),
+			width in 160.0f32..800.0,
+			height in 0u16..1600,
+		) {
+			let source = paragraphs.iter().enumerate().map(|(index, words)| {
+				format!("# Section {index}\n\n{}\n\n", "word ".repeat(*words))
+			}).collect::<String>();
+			let document = markview_commonmark::parse(source);
+			let options = LayoutOptions { width, preview: true, ..Default::default() };
+			let height = f32::from(height);
+			let full = LayoutEngine::new().layout(&document, &options);
+			let prefix = LayoutEngine::new().layout_prefix_cancellable(
+				&document, &options, &Default::default(), height, || false,
+			).unwrap();
+			let count = if height == 0.0 {
+				0
+			} else {
+				full.blocks.iter().position(|block| block.y + block.height() >= height)
+					.map_or(full.blocks.len(), |index| index + 1)
+			};
+			prop_assert_eq!(prefix.blocks.len(), count);
+			prop_assert_eq!(prefix.width, full.width);
+			prop_assert_eq!(prefix.revision, full.revision);
+			for (part, whole) in prefix.blocks.iter().zip(&full.blocks) {
+				prop_assert_eq!((part.id, part.y, part.height()), (whole.id, whole.y, whole.height()));
+				let positions = |block: &PlacedBlock| block.clusters().map(|(_, _, rect)| rect).collect::<Vec<_>>();
+				prop_assert_eq!(positions(part), positions(whole));
+			}
+			if count == full.blocks.len() {
+				prop_assert_eq!(prefix.height, full.height);
+			} else if height > 0.0 {
+				prop_assert!(prefix.height >= height);
+			}
+			prop_assert!(LayoutEngine::new().layout_prefix_cancellable(
+				&document, &options, &Default::default(), height, || true,
+			).is_none());
+		}
+	}
+}
+
 fn details_url(id: markview_document::BlockId) -> String {
 	format!("{DETAILS_SCHEME}{id}")
 }

@@ -96,25 +96,13 @@ impl LayoutEngine {
 		let count = 1 + siblings[start + 1..].iter().take(63).take_while(|block| {
 			!cancelled() && !matches!(block.kind(), BlockKind::Heading { level: next, .. } if *next <= level)
 		}).count();
-		let mut layout = self.begin_layout_root(
+		let layout = self.begin_layout_root(
 			document,
 			Some(&siblings[start..start + count]),
 			options,
 			images,
 		);
-		while !layout.is_complete() && layout.snapshot().height < height {
-			if cancelled() {
-				return None;
-			}
-			self.advance_cancellable(
-				&mut layout,
-				document,
-				std::time::Duration::ZERO,
-				&cancelled,
-				false,
-			);
-		}
-		(!cancelled()).then(|| layout.into_snapshot())
+		self.complete_prefix(document, layout, height, &cancelled)
 	}
 }
 

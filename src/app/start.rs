@@ -49,6 +49,9 @@ pub(super) struct Search {
 	worker: Option<Worker>,
 }
 impl Search {
+	pub(super) fn tab(&self, id: usize) -> Option<usize> {
+		self.tabs.get(&id).copied()
+	}
 	pub fn has_files(&self) -> bool {
 		!self.catalog.is_empty()
 	}
@@ -408,6 +411,7 @@ impl<P: SendEvent> App<P> {
 				.search
 				.set_list(rows, tabs);
 			self.interaction.overlays.quick_open.reset();
+			self.refresh_quick_open_preview();
 			self.redraw();
 			return;
 		}
@@ -436,6 +440,7 @@ impl<P: SendEvent> App<P> {
 		self.interaction.overlays.quick_open.search.tabs.clear();
 		self.interaction.overlays.quick_open.reset();
 		self.clear_file_capture(true);
+		self.refresh_quick_open_preview();
 		self.refresh_hover();
 		self.redraw();
 	}

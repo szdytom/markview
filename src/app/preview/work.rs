@@ -4,10 +4,27 @@ use std::sync::{Arc, Condvar, Mutex};
 use tokio::sync::Semaphore;
 use tokio_util::sync::CancellationToken;
 
+#[cfg(test)]
+mod tests;
+
 #[derive(Clone, Debug)]
-pub(super) struct Destination {
+pub(in crate::app) struct Destination {
 	pub path: Option<std::path::PathBuf>,
 	pub anchor: Option<markview_document::AnchorId>,
+}
+
+/// Content and layout shared by hover cards and the file picker.
+pub(in crate::app) struct Content {
+	pub security: crate::security::Security,
+	pub workspace: Option<std::path::PathBuf>,
+	pub offline: bool,
+	pub document: Option<Arc<crate::loaded::LoadedDocument>>,
+	pub destination: Destination,
+	pub stamp: crate::watch::FileStamp,
+	pub options: crate::layout::LayoutOptions,
+	pub images: markview_layout::image::ImageSnapshot,
+	/// Hover cards fit the content; picker previews keep their reading width.
+	pub fit: bool,
 }
 
 pub(super) struct Source {
@@ -72,13 +89,13 @@ impl Source {
 }
 
 struct Scene {
-	source: Arc<Source>,
+	source: Content,
 	document: Arc<crate::loaded::LoadedDocument>,
 	images: Option<crate::images::Images>,
 	blocks: Vec<markview_document::BlockId>,
 }
 impl Scene {
-	fn new(source: Arc<Source>, cancelled: &CancellationToken) -> Option<Self> {
+	fn new(source: Content, cancelled: &CancellationToken) -> Option<Self> {
 		let document = if let Some(path) = &source.destination.path {
 			let text = crate::file::read_markdown(path).ok()?;
 			if cancelled.is_cancelled() {
@@ -109,14 +126,10 @@ impl Scene {
 
 	fn layout(
 		&self,
-		cancelled: &CancellationToken,
+		cancelled: &(dyn Fn() -> bool + Sync),
 	) -> Option<(LayoutSnapshot, navigation::Origins)> {
 		let source = &self.source;
 		let document = self.document.document();
-		let node = match &source.destination.anchor {
-			Some(anchor) => document.anchor_block(anchor)?,
-			None => document.blocks().first()?,
-		};
 		let empty = markview_layout::image::ImageSnapshot::default();
 		let images = self.images.as_ref().map_or_else(
 			|| {
@@ -128,25 +141,40 @@ impl Scene {
 			},
 			|images| &images.snapshot,
 		);
-		let snapshot = super::layout_scene_cancellable(
-			document,
-			node,
-			&source.options,
-			images,
-			source.destination.anchor.is_none()
-				|| matches!(
-					node.kind(),
-					markview_document::BlockKind::Heading { .. }
-				),
-			&|| cancelled.is_cancelled(),
-		)?;
+		let snapshot = if source.fit {
+			let node = match &source.destination.anchor {
+				Some(anchor) => document.anchor_block(anchor)?,
+				None => document.blocks().first()?,
+			};
+			super::layout_scene_cancellable(
+				document,
+				node,
+				&source.options,
+				images,
+				source.destination.anchor.is_none()
+					|| matches!(
+						node.kind(),
+						markview_document::BlockKind::Heading { .. }
+					),
+				cancelled,
+			)?
+		} else {
+			crate::layout::LayoutEngine::new().layout_prefix_cancellable(
+				document,
+				&source.options,
+				images,
+				source.options.viewport_height,
+				cancelled,
+			)?
+		};
 		source
 			.destination
 			.path
 			.as_ref()
 			.is_none_or(|path| crate::watch::file_stamp(path) == source.stamp)
 			.then(|| {
-				let origins = if source.destination.path.is_some() {
+				let origins = if source.fit && source.destination.path.is_some()
+				{
 					navigation::Origins::new(document, &snapshot)
 				} else {
 					navigation::Origins::default()
@@ -161,7 +189,7 @@ impl Scene {
 		wake: markview_layout::background::Wake,
 		cancelled: &CancellationToken,
 	) -> Option<(LayoutSnapshot, navigation::Origins)> {
-		let snapshot = self.layout(cancelled)?;
+		let snapshot = self.layout(&|| cancelled.is_cancelled())?;
 		let Some(path) = &self.source.destination.path else {
 			return Some(snapshot);
 		};
@@ -201,18 +229,18 @@ impl Scene {
 			&self.source.options.stylesheet,
 			&self.source.options.fonts,
 		);
-		self.layout(cancelled)
+		self.layout(&|| cancelled.is_cancelled())
 	}
 }
 
-pub(super) struct Completion {
+pub(in crate::app) struct Completion {
 	pub serial: u64,
 	pub snapshot: Option<LayoutSnapshot>,
-	pub origins: navigation::Origins,
+	pub(super) origins: navigation::Origins,
 	pub build: Duration,
 }
 
-pub(super) struct Worker {
+pub(in crate::app) struct Worker {
 	gate: Arc<Semaphore>,
 	cancel: Option<CancellationToken>,
 	ready: Arc<(Mutex<Option<Completion>>, Condvar)>,
@@ -250,11 +278,35 @@ impl Worker {
 			.unwrap();
 		slot.take()
 	}
-	pub fn submit(
+	pub(super) fn submit(
 		&mut self,
 		services: &crate::services::Handle,
 		serial: u64,
 		source: Arc<Source>,
+		wake: impl Fn() + Send + 'static,
+	) {
+		self.submit_content(
+			services,
+			serial,
+			Content {
+				security: source.security.clone(),
+				workspace: source.workspace.clone(),
+				offline: source.offline,
+				document: source.document.clone(),
+				destination: source.destination.clone(),
+				stamp: source.stamp,
+				options: source.options.clone(),
+				images: source.images.clone(),
+				fit: true,
+			},
+			wake,
+		);
+	}
+	pub fn submit_content(
+		&mut self,
+		services: &crate::services::Handle,
+		serial: u64,
+		source: Content,
 		wake: impl Fn() + Send + 'static,
 	) {
 		self.cancel();

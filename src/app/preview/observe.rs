@@ -8,7 +8,7 @@ use std::{
 	},
 };
 
-pub(super) struct Observed {
+pub(in crate::app) struct Observed {
 	pub path: PathBuf,
 	pub stamp: crate::watch::FileStamp,
 	dirty: Arc<AtomicBool>,
