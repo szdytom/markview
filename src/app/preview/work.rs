@@ -92,6 +92,7 @@ impl Scene {
 						highlight_marks: source.options.highlight_marks,
 						ofm: source.options.ofm,
 						grid_tables: source.options.grid_tables,
+						math_dollars_block: source.options.math_dollars_block,
 					},
 				),
 			))

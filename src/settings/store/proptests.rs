@@ -145,6 +145,7 @@ fn compound(seed: u16, family: &str) -> ReaderSettings {
 		hard_breaks: seed & 8 != 0,
 		highlight_marks: seed & 16 != 0,
 		grid_tables: seed & 2048 != 0,
+		math_dollars_block: seed & 4096 != 0,
 		lang: [
 			None,
 			Some(Lang::En),
@@ -189,6 +190,7 @@ fn merge_compound(
 		target.hard_breaks = source.hard_breaks;
 		target.highlight_marks = source.highlight_marks;
 		target.grid_tables = source.grid_tables;
+		target.math_dollars_block = source.math_dollars_block;
 	}
 	if fields[2] {
 		target.fontdef_overrides = source.fontdef_overrides.clone();

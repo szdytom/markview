@@ -26,7 +26,7 @@ pub fn parse_incremental(
 ) -> Option<MarkdownParse> {
 	if [&*previous.source, &*source]
 		.into_iter()
-		.any(|text| comments_need_full_parse(text, dialect))
+		.any(|text| needs_full_parse(text, dialect))
 	{
 		return None;
 	}
@@ -172,7 +172,7 @@ pub fn parse_prefix_with(
 	bytes: usize,
 	dialect: Dialect,
 ) -> Option<MarkdownParse> {
-	if comments_need_full_parse(source, dialect) {
+	if needs_full_parse(source, dialect) {
 		return None;
 	}
 	if bytes == 0 || bytes >= source.len() {
@@ -264,8 +264,12 @@ fn changed_range(previous: &str, source: &str) -> Range<usize> {
 	prefix..old.len() - suffix
 }
 
-fn comments_need_full_parse(source: &str, dialect: Dialect) -> bool {
+fn needs_full_parse(source: &str, dialect: Dialect) -> bool {
+	// Reference extraction does not track math blocks or their literal contents.
 	dialect.ofm && source.contains("%%")
+		|| dialect.math_dollars_block
+			&& source.contains("$$")
+			&& !definition_free(source)
 }
 
 fn unread_footnotes_affect_details(source: &str, end: usize) -> bool {
@@ -285,16 +289,16 @@ fn prefix_blocks(
 ) -> Option<MarkdownParse> {
 	let bare = &source[..end];
 	if !bare.contains('[') {
-		return Some(super::parse_with(bare.to_owned(), dialect));
+		return super::parse::parse_complete_prefix(bare.to_owned(), dialect);
 	}
 	let definitions = missing_definitions(source, bare);
 	if definitions.is_empty() {
-		return Some(super::parse_with(bare.to_owned(), dialect));
+		return super::parse::parse_complete_prefix(bare.to_owned(), dialect);
 	}
 	let mut slice = bare.to_owned();
 	slice.push_str("\n\n");
 	slice.push_str(&definitions);
-	let parsed = super::parse_with(slice, dialect);
+	let parsed = super::parse::parse_complete_prefix(slice, dialect)?;
 	// An open fence or HTML block swallows the appended text. Parsing the bare
 	// prefix instead would leave a reference literal where the full parse links
 	// it, so decline rather than return a prefix that cannot match.
@@ -480,6 +484,7 @@ pub(super) fn definition_free(source: &str) -> bool {
 /// so a marker hidden after a mid-line carriage return still counts as a
 /// list line and takes the document off the fast path.
 fn leaf_only(source: &str) -> bool {
+	let source = source.strip_prefix('\u{feff}').unwrap_or(source);
 	// Opaque inline HTML can carry anchor-discovery state across blocks.
 	if !definition_free(source)
 		|| source.contains('|')
@@ -502,6 +507,8 @@ fn is_leaf_line(line: &str) -> bool {
 		&& !rest.starts_with('<')
 		&& !rest.starts_with("```")
 		&& !rest.starts_with("~~~")
+		// A math block can span blank lines beyond the edit window.
+		&& rest.trim_end() != "$$"
 		&& !list_marker(rest)
 		// Front matter is one block however many blank lines it holds, so
 		// the window this path cuts cannot contain it.

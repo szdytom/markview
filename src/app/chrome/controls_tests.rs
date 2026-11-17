@@ -1056,6 +1056,7 @@ fn hard_breaks_are_independent_and_only_highlights_are_nested() {
 		if [
 			settings.lang().settings_hard_breaks(),
 			settings.lang().settings_grid_tables(),
+			settings.lang().settings_math_dollars_block(),
 			settings.lang().settings_highlight_marks(),
 		]
 		.contains(&row.label.as_str())
@@ -1069,7 +1070,7 @@ fn hard_breaks_are_independent_and_only_highlights_are_nested() {
 			found += 1;
 		}
 	}
-	assert_eq!(found, 3);
+	assert_eq!(found, 4);
 
 	let ofm = ReaderSettings {
 		markdown_flavor: MarkdownFlavor::Obsidian,
@@ -1080,6 +1081,7 @@ fn hard_breaks_are_independent_and_only_highlights_are_nested() {
 		if [
 			ofm.lang().settings_hard_breaks(),
 			ofm.lang().settings_grid_tables(),
+			ofm.lang().settings_math_dollars_block(),
 			ofm.lang().settings_highlight_marks(),
 		]
 		.contains(&row.label.as_str())
@@ -1091,7 +1093,7 @@ fn hard_breaks_are_independent_and_only_highlights_are_nested() {
 			found += 1;
 		}
 	}
-	assert_eq!(found, 3);
+	assert_eq!(found, 4);
 }
 
 #[test]

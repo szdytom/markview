@@ -43,6 +43,8 @@ pub struct Dialect {
 	pub highlight_marks: bool,
 	/// Grid tables with block content and spanning cells.
 	pub grid_tables: bool,
+	/// Parse standalone `$$` fences as literal display math blocks.
+	pub math_dollars_block: bool,
 	/// Obsidian callouts, hidden comments and block IDs, plus the inline HTML
 	/// tags `<sub>`, `<mark>`, `<u>`, `<ins>` and `<small>`.
 	pub ofm: bool,
@@ -54,6 +56,7 @@ impl Default for Dialect {
 			hard_breaks: false,
 			highlight_marks: false,
 			grid_tables: true,
+			math_dollars_block: true,
 			ofm: false,
 		}
 	}
@@ -666,6 +669,7 @@ impl Reader<'_> {
 					text.push_str(&self.text_after(&c.literal, source, from))
 				}
 				NodeValue::CodeBlock(c) => text.push_str(&c.literal),
+				NodeValue::MathBlock(m) => text.push_str(&m.literal),
 				NodeValue::Math(m) => {
 					text.push_str(&self.text_after(&m.literal, source, from))
 				}
@@ -1143,6 +1147,18 @@ impl Reader<'_> {
 						}
 						_ => own_spans(&kind, &source),
 					};
+					(kind, fields.clone(), fields)
+				}
+				NodeValue::MathBlock(m) => {
+					let kind = BlockKind::Paragraph(vec![Inline {
+						link: None,
+						kind: InlineKind::Math {
+							latex: m.literal.clone(),
+							display: true,
+						},
+						style: markview_document::TextStyle::default(),
+					}]);
+					let fields = own_spans(&kind, &source);
 					(kind, fields.clone(), fields)
 				}
 				NodeValue::HtmlBlock(h) => {
@@ -1868,10 +1884,47 @@ pub(crate) fn parse_with_seed(
 	after: Option<markview_document::BlockId>,
 ) -> MarkdownParse {
 	let source = source.into();
-	let revision = revision.unwrap_or_else(DocumentRevision::fresh);
+	let arena = Arena::new();
+	let root = parse_document(&arena, &source, &markdown_options(dialect));
+	from_tree(
+		source,
+		dialect,
+		revision.unwrap_or_else(DocumentRevision::fresh),
+		after,
+		root,
+	)
+}
+
+/// A bounded prefix must not publish an incomplete formula.
+pub(super) fn parse_complete_prefix(
+	source: impl Into<Arc<str>>,
+	dialect: Dialect,
+) -> Option<MarkdownParse> {
+	let source = source.into();
+	let arena = Arena::new();
+	let root = parse_document(&arena, &source, &markdown_options(dialect));
+	if root.descendants().any(|node| {
+		matches!(&node.data.borrow().value, NodeValue::MathBlock(math) if !math.closed)
+	}) {
+		return None;
+	}
+	Some(from_tree(
+		source,
+		dialect,
+		DocumentRevision::fresh(),
+		None,
+		root,
+	))
+}
+
+fn from_tree<'a>(
+	source: Arc<str>,
+	dialect: Dialect,
+	revision: DocumentRevision,
+	after: Option<markview_document::BlockId>,
+	root: &'a AstNode<'a>,
+) -> MarkdownParse {
 	let (blocks, producer) = {
-		let arena = Arena::new();
-		let root = parse_document(&arena, &source, &markdown_options(dialect));
 		let lines = line_starts(&source);
 		let footnotes: HashMap<String, u32> = root
 			.descendants()
@@ -1895,11 +1948,7 @@ pub(crate) fn parse_with_seed(
 				}
 			})
 			.collect();
-		let definitions = if incremental::definition_free(&source) {
-			String::new()
-		} else {
-			incremental::definitions(&source)
-		};
+		let definitions = document_definitions(&source, root, &lines);
 		let mut reader = Reader {
 			opaque: RefCell::new(BTreeMap::new()),
 			source: &source,
@@ -1967,6 +2016,66 @@ pub(crate) fn parse_with_seed(
 	}
 }
 
+/// Reference definitions outside the literal math blocks recognized by Comrak.
+fn document_definitions<'a>(
+	source: &str,
+	root: &'a AstNode<'a>,
+	lines: &[usize],
+) -> String {
+	if incremental::definition_free(source) {
+		return String::new();
+	}
+	let mut math: Vec<_> = root
+		.descendants()
+		.filter_map(|node| {
+			let data = node.data.borrow();
+			if !matches!(data.value, NodeValue::MathBlock(_)) {
+				return None;
+			}
+			let start = lines[data.sourcepos.start.line - 1];
+			let end = lines
+				.get(data.sourcepos.end.line)
+				.copied()
+				.unwrap_or(source.len());
+			let footnote = node
+				.ancestors()
+				.any(|parent| {
+					let parent = parent.data.borrow();
+					matches!(parent.value, NodeValue::FootnoteDefinition(_))
+						&& parent.sourcepos.start.line
+							== data.sourcepos.start.line
+				})
+				.then(|| {
+					let line_end = lines
+						.get(data.sourcepos.start.line)
+						.copied()
+						.unwrap_or(source.len());
+					let (header, _) =
+						source[start..line_end].rsplit_once("$$").unwrap();
+					format!("{header}x\n")
+				});
+			Some((start..end, footnote))
+		})
+		.collect();
+	math.sort_by_key(|(range, _)| range.start);
+	let mut definitions = String::new();
+	let mut start = 0;
+	for (range, footnote) in math {
+		if start < range.start {
+			definitions.push_str(&incremental::definitions(
+				&source[start..range.start],
+			));
+		}
+		if let Some(header) = footnote {
+			definitions.push_str(&incremental::definitions(&header));
+		}
+		definitions.push('\n');
+		start = start.max(range.end);
+	}
+	definitions.push_str(&incremental::definitions(&source[start..]));
+	definitions
+}
+
 /// The comrak configuration every Markdown parse shares, including the body
 /// of a `<details>` element. The dialect's extensions are on; the defaults
 /// every dialect shares are declared here once.
@@ -1993,6 +2102,7 @@ fn markdown_options(dialect: Dialect) -> Options<'static> {
 	options.extension.ofm_comments = dialect.ofm;
 	options.extension.ofm_block_ids = dialect.ofm;
 	options.extension.math_dollars = true;
+	options.extension.math_dollars_block = dialect.math_dollars_block;
 	options.extension.math_latex = true;
 	options.extension.math_code = true;
 	// CommonMark's flanking rules miss emphasis that ends next to CJK text,

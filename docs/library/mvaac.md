@@ -229,6 +229,9 @@ successful downloads in browser storage. This persistence is demo behavior;
 `highlightMarks` enables `==highlight==` in GFM and is forced on in Obsidian.
 `gridTables` enables Grid tables independently of the preset and defaults to
 `true`. Set it to `false` to read grid borders as ordinary Markdown.
+`mathDollarsBlock` defaults to `true` in both presets: standalone `$$` fences
+contain literal display math, including Markdown-like lines and blank lines.
+Set it to `false` to use paragraph-based dollar math parsing.
 The Obsidian preset uses the core reader's supported callouts, comments and
 inline HTML extensions; it does not implement full vault semantics.
 

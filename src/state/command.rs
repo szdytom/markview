@@ -56,6 +56,7 @@ pub(crate) enum SettingsCommand {
 	HardBreaks,
 	HighlightMarks,
 	GridTables,
+	MathDollarsBlock,
 	SingleInstance,
 	RestoreSession,
 	/// Show the open document's path in the idle footer and copy it on click.

@@ -556,3 +556,31 @@ fn grid_tables_default_on_and_can_be_disabled_in_both_export_presets() {
 		}
 	}
 }
+
+#[test]
+fn block_math_defaults_on_and_can_be_disabled_in_both_export_presets() {
+	let dir = markview_test_support::TestDir::new();
+	for flavor in ["gfm", "obsidian"] {
+		for enabled in [true, false] {
+			let output =
+				dir.path().join(format!("math-{flavor}-{enabled}.pdf"));
+			let mut args = vec![
+				"--output",
+				output.to_str().unwrap(),
+				"--markdown-flavor",
+				flavor,
+			];
+			if !enabled {
+				args.extend(["--math-dollars-block", "false"]);
+			}
+			success(run(&args, "before\n\n$$\n1\n=\n2\n$$\n\nafter\n"));
+			let pdf = lopdf::Document::load(output).unwrap();
+			let text = pdf.extract_text(&[1]).unwrap();
+			assert!(
+				text.contains("before") && text.contains("after"),
+				"{text}"
+			);
+			assert_eq!(text.contains("$$"), !enabled, "{text}");
+		}
+	}
+}

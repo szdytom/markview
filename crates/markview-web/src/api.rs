@@ -1540,6 +1540,7 @@ struct Config {
 	hard_breaks: bool,
 	highlight_marks: bool,
 	grid_tables: bool,
+	math_dollars_block: bool,
 }
 impl Default for Config {
 	fn default() -> Self {
@@ -1557,6 +1558,7 @@ impl Default for Config {
 			hard_breaks: false,
 			highlight_marks: false,
 			grid_tables: true,
+			math_dollars_block: true,
 		}
 	}
 }
@@ -1575,6 +1577,7 @@ impl Config {
 			highlight_marks: self.highlight_marks || ofm,
 			ofm,
 			grid_tables: self.grid_tables,
+			math_dollars_block: self.math_dollars_block,
 		}
 	}
 

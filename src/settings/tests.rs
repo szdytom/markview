@@ -374,6 +374,7 @@ fn markdown_dialect_defaults_and_hard_breaks_are_independent() {
 	let dialect = settings.effective_dialect();
 	assert!(!dialect.hard_breaks);
 	assert!(dialect.grid_tables);
+	assert!(dialect.math_dollars_block);
 	assert!(dialect.highlight_marks);
 	assert!(dialect.ofm);
 	let mut settings = settings;
@@ -425,6 +426,7 @@ fn dialect_fixture_matrix_covers_independent_hard_breaks() {
 				highlight_marks: dialect.highlight_marks,
 				ofm: dialect.ofm,
 				grid_tables: dialect.grid_tables,
+				math_dollars_block: dialect.math_dollars_block,
 			},
 		)
 		.document
@@ -525,6 +527,33 @@ fn grid_tables_remain_independent_of_the_preset_and_reach_layout_options() {
 	}
 }
 
+#[test]
+fn block_math_is_independent_and_reaches_layout_options() {
+	for markdown_flavor in [MarkdownFlavor::Gfm, MarkdownFlavor::Obsidian] {
+		for math_dollars_block in [false, true] {
+			let settings = ReaderSettings {
+				markdown_flavor,
+				math_dollars_block,
+				..Default::default()
+			};
+			assert_eq!(
+				settings.effective_dialect().math_dollars_block,
+				math_dollars_block
+			);
+			let options =
+				settings.layout_options(1200.0, false, &Default::default());
+			assert_eq!(options.math_dollars_block, math_dollars_block);
+			assert_ne!(
+				options,
+				markview_layout::layout::LayoutOptions {
+					math_dollars_block: !math_dollars_block,
+					..options.clone()
+				}
+			);
+		}
+	}
+}
+
 /// Layout options preserve hard breaks in both presets.
 #[test]
 fn layout_options_carry_the_effective_dialect() {
@@ -559,6 +588,7 @@ fn markdown_dialect_round_trips_and_old_files_still_load() {
 	let dialect = store.settings().effective_dialect();
 	assert!(!dialect.hard_breaks);
 	assert!(dialect.grid_tables);
+	assert!(dialect.math_dollars_block);
 	assert!(dialect.highlight_marks);
 
 	let mut ui = store.settings();
@@ -566,18 +596,21 @@ fn markdown_dialect_round_trips_and_old_files_still_load() {
 	// Hard breaks remain enabled after reloading an Obsidian configuration.
 	ui.hard_breaks = true;
 	ui.grid_tables = false;
+	ui.math_dollars_block = false;
 	store.changed(&ui, Some(Setting::Dialect));
 	store.flush().unwrap();
 	let text = fs::read_to_string(&path).unwrap();
 	assert!(text.contains("markdown-flavor = \"obsidian\""), "{text}");
 	assert!(text.contains("hard-breaks = true"), "{text}");
 	assert!(text.contains("grid-tables = false"), "{text}");
+	assert!(text.contains("math-dollars-block = false"), "{text}");
 	let (loaded, warning) = SettingsStore::load(Some(path.clone()));
 	assert!(warning.is_none());
 	let settings = loaded.settings();
 	assert_eq!(settings.markdown_flavor, MarkdownFlavor::Obsidian);
 	assert!(settings.hard_breaks);
 	assert!(!settings.grid_tables);
+	assert!(!settings.math_dollars_block);
 	let dialect = settings.effective_dialect();
 	assert!(dialect.hard_breaks);
 	assert!(dialect.highlight_marks);
@@ -1056,6 +1089,7 @@ fn settings_differing_from_default() -> ReaderSettings {
 		hard_breaks: !default.hard_breaks,
 		highlight_marks: !default.highlight_marks,
 		grid_tables: !default.grid_tables,
+		math_dollars_block: !default.math_dollars_block,
 		scroll_speed: 1.5,
 		single_instance: !default.single_instance,
 		restore_session: !default.restore_session,
@@ -1104,6 +1138,7 @@ fn changed_fields(
 		hard_breaks,
 		highlight_marks,
 		grid_tables,
+		math_dollars_block,
 		scroll_speed,
 		single_instance,
 		restore_session,
@@ -1136,6 +1171,7 @@ fn expected_changes(field: Setting) -> Vec<&'static str> {
 				"hard_breaks",
 				"highlight_marks",
 				"grid_tables",
+				"math_dollars_block",
 			]
 		}
 		Setting::ScrollSpeed => vec!["scroll_speed"],
@@ -1178,6 +1214,7 @@ fn assert_copied(from: &ReaderSettings, to: &ReaderSettings, field: Setting) {
 			assert_eq!(to.hard_breaks, from.hard_breaks);
 			assert_eq!(to.highlight_marks, from.highlight_marks);
 			assert_eq!(to.grid_tables, from.grid_tables);
+			assert_eq!(to.math_dollars_block, from.math_dollars_block);
 		}
 		Setting::ScrollSpeed => assert_eq!(to.scroll_speed, from.scroll_speed),
 		Setting::SingleInstance => {

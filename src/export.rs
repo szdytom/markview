@@ -169,6 +169,7 @@ pub(crate) fn png_snapshot_text_with_workspace(
 			highlight_marks: options.highlight_marks,
 			ofm: options.ofm,
 			grid_tables: options.grid_tables,
+			math_dollars_block: options.math_dollars_block,
 		},
 	);
 	let security = security.for_content(&document.source);
@@ -192,6 +193,7 @@ pub(crate) fn png_snapshot_loaded(
 		highlight_marks: options.highlight_marks,
 		ofm: options.ofm,
 		grid_tables: options.grid_tables,
+		math_dollars_block: options.math_dollars_block,
 	});
 	png_snapshot_document(
 		&loaded, path, options, offline, services, security, workspace,

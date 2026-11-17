@@ -81,6 +81,7 @@ impl<P: super::SendEvent> App<P> {
 			highlight_marks: dialect.highlight_marks,
 			ofm: dialect.ofm,
 			grid_tables: dialect.grid_tables,
+			math_dollars_block: dialect.math_dollars_block,
 		};
 		let lang = self.preferences.values.lang();
 		let proxy = self.proxy.clone();

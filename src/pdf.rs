@@ -71,6 +71,7 @@ pub(crate) fn export_with_services(
 				highlight_marks: args.options.highlight_marks,
 				ofm: args.options.ofm,
 				grid_tables: args.options.grid_tables,
+				math_dollars_block: args.options.math_dollars_block,
 			},
 		));
 	}
@@ -244,6 +245,7 @@ impl Exporter {
 				highlight_marks: self.options.highlight_marks,
 				ofm: self.options.ofm,
 				grid_tables: self.options.grid_tables,
+				math_dollars_block: self.options.math_dollars_block,
 			};
 			let document = match &self.document {
 				Some(previous) => Arc::new(markview_commonmark::reparse_with(

@@ -89,6 +89,7 @@ impl Config {
 		self.options.highlight_marks = dialect.highlight_marks;
 		self.options.ofm = dialect.ofm;
 		self.options.grid_tables = dialect.grid_tables;
+		self.options.math_dollars_block = dialect.math_dollars_block;
 		self
 	}
 

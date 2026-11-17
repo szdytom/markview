@@ -268,6 +268,7 @@ impl Worker {
 								highlight_marks: request.options.highlight_marks,
 								ofm: request.options.ofm,
 								grid_tables: request.options.grid_tables,
+								math_dollars_block: request.options.math_dollars_block,
 							};
 							let document = if let Some(loaded) =
 								&request.loaded
@@ -1104,6 +1105,71 @@ mod tests {
 					markview_document::BlockKind::Table(_)
 				),
 				grid_tables
+			);
+			if let Some(previous) = &previous {
+				assert_eq!(
+					same_document(previous, &reader.document),
+					version == 4
+				);
+			}
+			previous = Some(reader.document.clone());
+		}
+	}
+
+	#[test]
+	fn block_math_toggle_reparses_retained_documents() {
+		let dir = crate::test_support::TestDir::new();
+		let path = dir.path().join("math.md");
+		fs::write(&path, "$$\nx\n$$\n").unwrap();
+		let (tx, rx) = mpsc::channel();
+		let worker = Worker::new(move |u| {
+			let _ = tx.send(u);
+		});
+		let mut previous = None;
+		for (version, math_dollars_block) in
+			[(1, true), (2, false), (3, true), (4, true)]
+		{
+			worker.submit(Request {
+				security: crate::security::Security::local(
+					crate::security::Trust::Trusted,
+				),
+				version,
+				content_version: 1,
+				path: path.clone(),
+				loaded: None,
+				workspace: None,
+				options: LayoutOptions {
+					math_dollars_block,
+					..crate::test_support::options()
+				},
+				requested: Instant::now(),
+				coverage: f32::INFINITY,
+				load_all_images: false,
+				requested_image: None,
+			});
+			let reader = loop {
+				let update = rx.recv_timeout(Duration::from_secs(10)).unwrap();
+				if update.version == version
+					&& update
+						.result
+						.as_ref()
+						.unwrap()
+						.as_ref()
+						.unwrap()
+						.complete
+				{
+					break update.result.unwrap().unwrap();
+				}
+			};
+			assert_eq!(
+				matches!(
+					reader.document.blocks()[0].kind(),
+					markview_document::BlockKind::Paragraph(text)
+						if matches!(text.as_slice(), [markview_document::Inline {
+							kind: markview_document::InlineKind::Math { latex, display: true }, ..
+						}] if latex == "x\n")
+				),
+				math_dollars_block
 			);
 			if let Some(previous) = &previous {
 				assert_eq!(

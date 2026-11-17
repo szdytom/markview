@@ -45,6 +45,7 @@ at the same level, without `[brackets]`.
 
 ### Fixed
 
+- Parse standalone `$$` formulas as literal display math blocks by default, preserving list-like lines and blank lines inside formulas; add an independent Markdown dialect toggle for GFM and Obsidian, also supported in previews and exports (#40).
 - Correct Markdown table pipe escaping, recognize emphasis after mismatched strikethrough, and tighten task-marker and automatic-link parsing with Comrak 1.0.0.
 - Keep tab hover previews open and moving with their tabs while scrolling, closing only when the pointer leaves the tab; wheel input at scroll limits no longer makes previews flicker.
 - Always open dropped files and folders in the window receiving the drop, bypassing automatic window selection.

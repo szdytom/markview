@@ -104,6 +104,7 @@ impl LoadedDocument {
 					+ (u64::from(parse.dialect.highlight_marks) << 1)
 					+ (u64::from(parse.dialect.ofm) << 2)
 					+ (u64::from(parse.dialect.grid_tables) << 3)
+					+ (u64::from(parse.dialect.math_dollars_block) << 4)
 			}
 			Self::Semantic { frontend, .. } => *frontend,
 		}

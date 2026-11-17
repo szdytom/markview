@@ -60,6 +60,7 @@ pub(super) enum Message {
 	HardBreaks,
 	HighlightMarks,
 	GridTables,
+	MathDollarsBlock,
 	Indent(u8),
 	CjkType(markview_layout::style::CjkType),
 	Language(Option<crate::lang::Lang>),
@@ -96,6 +97,9 @@ impl Message {
 			}
 			Command::Settings(SettingsCommand::HardBreaks) => Self::HardBreaks,
 			Command::Settings(SettingsCommand::GridTables) => Self::GridTables,
+			Command::Settings(SettingsCommand::MathDollarsBlock) => {
+				Self::MathDollarsBlock
+			}
 			Command::Settings(SettingsCommand::HighlightMarks) => {
 				Self::HighlightMarks
 			}
@@ -225,6 +229,11 @@ impl Component for Model {
 			}
 			Message::GridTables => {
 				self.values.grid_tables = !self.values.grid_tables;
+				Setting::Dialect
+			}
+			Message::MathDollarsBlock => {
+				self.values.math_dollars_block =
+					!self.values.math_dollars_block;
 				Setting::Dialect
 			}
 			Message::HighlightMarks => {
@@ -365,6 +374,23 @@ mod tests {
 		assert!(!model.values.effective_dialect().grid_tables);
 		model.update(Message::MarkdownFlavor(MarkdownFlavor::Obsidian));
 		assert!(!model.values.effective_dialect().grid_tables);
+		assert!(model.values.effective_dialect().math_dollars_block);
+		let update = model.update(Message::MathDollarsBlock);
+		assert!(!model.values.effective_dialect().math_dollars_block);
+		assert!(update.effects.iter().any(|effect| matches!(
+			effect,
+			Effect::Persist(Some(Setting::Dialect))
+		)));
+		assert!(
+			update
+				.effects
+				.iter()
+				.any(|effect| matches!(effect, Effect::Reflow))
+		);
+		model.update(Message::MarkdownFlavor(MarkdownFlavor::Gfm));
+		assert!(!model.values.effective_dialect().math_dollars_block);
+		model.update(Message::MarkdownFlavor(MarkdownFlavor::Obsidian));
+		assert!(!model.values.effective_dialect().math_dollars_block);
 		model.update(Message::HardBreaks);
 
 		let update = model.update(Message::HighlightMarks);

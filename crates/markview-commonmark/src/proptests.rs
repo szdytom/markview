@@ -16,14 +16,28 @@ fn word() -> impl Strategy<Value = String> {
 }
 
 fn dialect() -> impl Strategy<Value = Dialect> {
-	(any::<bool>(), any::<bool>(), any::<bool>(), any::<bool>()).prop_map(
-		|(hard_breaks, highlight_marks, ofm, grid_tables)| Dialect {
-			hard_breaks,
-			highlight_marks,
-			ofm,
-			grid_tables,
-		},
+	(
+		any::<bool>(),
+		any::<bool>(),
+		any::<bool>(),
+		any::<bool>(),
+		any::<bool>(),
 	)
+		.prop_map(
+			|(
+				hard_breaks,
+				highlight_marks,
+				ofm,
+				grid_tables,
+				math_dollars_block,
+			)| Dialect {
+				hard_breaks,
+				highlight_marks,
+				ofm,
+				grid_tables,
+				math_dollars_block,
+			},
+		)
 }
 
 fn origins(

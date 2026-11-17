@@ -11,6 +11,8 @@ export interface MarkviewOptions {
 	highlightMarks?: boolean;
 	/** Enable grid tables independently of the preset. (true) */
 	gridTables?: boolean;
+	/** Parse standalone `$$` fences as display math blocks; defaults to true. */
+	mathDollarsBlock?: boolean;
 	/** Layout column width, logical px. (760) */
 	width?: number;
 	/** Base body size, logical px. (18) */

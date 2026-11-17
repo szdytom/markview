@@ -65,6 +65,13 @@ the app or exporting a document.
 in the same settings section, or set `grid-tables = false` in `settings.toml`.
 The choice also applies to exports.
 
+**Block math ($$)** is independent of the preset and on by default. Standalone
+`$$` lines delimit a literal display math block: list markers, headings and blank
+lines inside stay part of the formula. Turn it off in the same settings section
+or set `math-dollars-block = false` in `settings.toml` to use the previous
+paragraph-based dollar math parsing. Inline math and other math delimiters remain
+available. The choice also applies to exports.
+
 Settings store this preset as `markdown-flavor = "obsidian"`; the former
 `"ofm-lite"` value is still accepted. An explicit `"gfm"` choice is preserved.
 
@@ -117,7 +124,8 @@ Exports follow the reader: in-app PDF and PNG export parse with the selected
 dialect and unfold callout bodies. Command-line `markview export` defaults to GFM and does not load the reader's
 dialect settings; use `--markdown-flavor`, `--hard-breaks` and
 `--highlight-marks` to select them explicitly. Grid tables are enabled by default;
-use `--grid-tables false` to disable them.
+use `--grid-tables false` to disable them. Block math is also enabled by default;
+use `--math-dollars-block false` to restore paragraph-based dollar math parsing.
 
 ## Network and image cache
 

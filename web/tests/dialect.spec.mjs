@@ -131,3 +131,23 @@ test("grid tables default on and switch independently of the preset", async ({
 		}
 	}
 });
+
+test("block math defaults on and switches independently of the preset", async ({
+	page,
+}) => {
+	await host(page, "before\n\n$$\n1\n=\n2\n$$\n\nafter\n");
+	expect(await text(page)).toContain("before");
+	expect(await text(page)).not.toContain("$$");
+	for (const markdownFlavor of ["gfm", "obsidian"]) {
+		for (const mathDollarsBlock of [false, true]) {
+			await page.evaluate((options) => viewer.setOptions(options), {
+				markdownFlavor,
+				mathDollarsBlock,
+			});
+			const selected = await text(page);
+			expect(selected).toContain("before");
+			expect(selected).toContain("after");
+			expect(selected.includes("$$")).toBe(!mathDollarsBlock);
+		}
+	}
+});

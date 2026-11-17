@@ -174,6 +174,7 @@ settings_schema! {
 		hard_breaks, copy;
 		highlight_marks, copy;
 		grid_tables, copy;
+		math_dollars_block, copy;
 		style, clone;
 		user_agent, clone;
 		accept_language, clone;
@@ -242,4 +243,5 @@ fn copy_dialect(to: &mut ReaderSettings, from: &ReaderSettings) {
 	to.hard_breaks = from.hard_breaks;
 	to.highlight_marks = from.highlight_marks;
 	to.grid_tables = from.grid_tables;
+	to.math_dollars_block = from.math_dollars_block;
 }

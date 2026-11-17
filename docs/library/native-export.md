@@ -59,7 +59,9 @@ saved reader settings. `--highlight-marks` enables `==highlight==` in GFM, while
 Obsidian always enables it. `--hard-breaks` treats single newlines as hard breaks
 in either preset and is off by default. Grid tables are enabled by default in
 both presets; use `--grid-tables false` to disable them. These options apply to
-both PDF and PNG.
+both PDF and PNG. Standalone `$$` math blocks are enabled by default in both
+presets; use `--math-dollars-block false` to restore paragraph-based dollar math
+parsing.
 
 ## Editor integrations
 

@@ -409,6 +409,20 @@ fn rows(settings: &ReaderSettings, phone: bool) -> Vec<Row> {
 				Command::Settings(crate::state::SettingsCommand::GridTables),
 			)],
 		),
+		Row::new(
+			t.settings_math_dollars_block(),
+			vec![action(
+				if dialect.math_dollars_block {
+					t.settings_on()
+				} else {
+					t.settings_off()
+				},
+				dialect.math_dollars_block,
+				Command::Settings(
+					crate::state::SettingsCommand::MathDollarsBlock,
+				),
+			)],
+		),
 	]);
 	rows
 }

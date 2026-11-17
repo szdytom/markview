@@ -113,6 +113,7 @@ impl Preferences {
 			hard_breaks: settings.hard_breaks,
 			highlight_marks: settings.highlight_marks,
 			grid_tables: settings.grid_tables,
+			math_dollars_block: settings.math_dollars_block,
 			codeblock_theme_override: settings.codeblock_theme_override.clone(),
 			codeblock_wrap: settings.codeblock_wrap,
 			codeblock_copy: settings.codeblock_copy,

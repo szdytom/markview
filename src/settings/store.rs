@@ -119,6 +119,8 @@ pub(super) struct Config {
 	pub(super) highlight_marks: bool,
 	#[serde(rename = "grid-tables")]
 	pub(super) grid_tables: bool,
+	#[serde(rename = "math-dollars-block")]
+	pub(super) math_dollars_block: bool,
 	#[serde(
 		rename = "codeblock-theme-override",
 		skip_serializing_if = "Option::is_none"

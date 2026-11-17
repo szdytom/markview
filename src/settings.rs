@@ -58,7 +58,7 @@ impl WindowBorder {
 /// The Markdown dialect a document is read in.
 ///
 /// Obsidian always reads with highlight marks, while GFM leaves them to the
-/// reader's choice. Hard breaks and grid tables are independent of the preset.
+/// reader's choice. Hard breaks, grid tables and block math are independent of the preset.
 /// See [`ReaderSettings::effective_dialect`].
 #[derive(
 	Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize,
@@ -80,6 +80,8 @@ pub struct EffectiveDialect {
 	pub highlight_marks: bool,
 	/// Enable grid tables independently of the Markdown preset.
 	pub grid_tables: bool,
+	/// Parse standalone `$$` fences as literal display math blocks.
+	pub math_dollars_block: bool,
 	/// Obsidian callouts, comments, block IDs and extra inline HTML tags.
 	pub ofm: bool,
 }
@@ -118,6 +120,8 @@ pub struct ReaderSettings {
 	pub highlight_marks: bool,
 	/// Enable grid tables independently of the Markdown preset.
 	pub grid_tables: bool,
+	/// Parse standalone `$$` fences as literal display math blocks.
+	pub math_dollars_block: bool,
 	pub codeblock_theme_override: Option<String>,
 	/// Hard-wrap code block lines at the reading column instead of scrolling.
 	pub codeblock_wrap: bool,
@@ -157,6 +161,7 @@ impl Default for ReaderSettings {
 			hard_breaks: false,
 			highlight_marks: false,
 			grid_tables: true,
+			math_dollars_block: true,
 			codeblock_theme_override: None,
 			codeblock_wrap: false,
 			codeblock_copy: true,
@@ -311,7 +316,7 @@ impl ReaderSettings {
 	}
 
 	/// The dialect a parse uses: Obsidian always enables highlight marks,
-	/// while hard breaks and grid tables follow the stored choice in either preset.
+	/// while the other toggles follow the stored choice in either preset.
 	pub fn effective_dialect(&self) -> EffectiveDialect {
 		match self.markdown_flavor {
 			MarkdownFlavor::Gfm => EffectiveDialect {
@@ -319,12 +324,14 @@ impl ReaderSettings {
 				highlight_marks: self.highlight_marks,
 				ofm: false,
 				grid_tables: self.grid_tables,
+				math_dollars_block: self.math_dollars_block,
 			},
 			MarkdownFlavor::Obsidian => EffectiveDialect {
 				hard_breaks: self.hard_breaks,
 				highlight_marks: true,
 				ofm: true,
 				grid_tables: self.grid_tables,
+				math_dollars_block: self.math_dollars_block,
 			},
 		}
 	}
@@ -371,6 +378,7 @@ impl ReaderSettings {
 			highlight_marks: dialect.highlight_marks,
 			ofm: dialect.ofm,
 			grid_tables: dialect.grid_tables,
+			math_dollars_block: dialect.math_dollars_block,
 			details_open: Default::default(),
 			force_open: false,
 			front_matter_label: self.lang().front_matter().into(),

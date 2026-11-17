@@ -31,6 +31,9 @@ pub(crate) struct Command {
 	/// Parse grid tables independently of the Markdown preset.
 	#[arg(long, default_value_t = true, action = clap::ArgAction::Set)]
 	grid_tables: bool,
+	/// Parse standalone `$$` fences as literal display math blocks.
+	#[arg(long, default_value_t = true, action = clap::ArgAction::Set)]
+	math_dollars_block: bool,
 	#[arg(short, long)]
 	output: Option<PathBuf>,
 	#[arg(long)]
@@ -60,6 +63,7 @@ impl Command {
 			highlight_marks: self.highlight_marks || ofm,
 			ofm,
 			grid_tables: self.grid_tables,
+			math_dollars_block: self.math_dollars_block,
 		}
 	}
 

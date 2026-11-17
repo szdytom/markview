@@ -223,6 +223,7 @@ async fn remote_markdown_uses_the_selected_dialect_on_its_first_parse() {
 		hard_breaks: true,
 		highlight_marks: true,
 		grid_tables: false,
+		math_dollars_block: false,
 		ofm: true,
 	};
 	let article = load(
