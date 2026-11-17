@@ -5,7 +5,7 @@ use crate::{
 	linebreak::{Break, Unit},
 	microtype,
 	scene::{BlockLayout, LinkId},
-	shaping::{Cluster, Span},
+	shaping::{ClusterMetrics, ShapedText, Span},
 	style::Condition,
 };
 use std::collections::{BTreeMap, HashMap, HashSet};
@@ -335,14 +335,14 @@ impl BlockContext<'_> {
 		&mut self,
 		p: &Prepared,
 		size: f32,
-		sans: bool,
+		_sans: bool,
 		hyphenate: bool,
 		available: f32,
 		typo: microtype::Typography,
 	) -> Vec<Unit> {
 		let mut clusters =
 			crate::profile::span(crate::profile::Stage::ShapeClusters, || {
-				self.shaper.shape(&p.text, &p.spans, size, sans)
+				self.shaper.measure(&p.text, &p.spans, size)
 			});
 		clusters.sort_by_key(|c| c.range.start);
 		let segmenter =
@@ -353,11 +353,16 @@ impl BlockContext<'_> {
 		let hyphens = hyphenation_candidates(p, hyphenate);
 		let hyphen_width: f32 = self
 			.shaper
-			.shape("-", &[], size, sans)
+			.measure("-", &[], size)
 			.iter()
 			.map(|c| c.width)
 			.sum();
-		microtype::space_mixed_scripts(&mut clusters, &p.text, &p.spans, size);
+		microtype::space_mixed_measurements(
+			&mut clusters,
+			&p.text,
+			&p.spans,
+			size,
+		);
 		let code = code_clusters(&clusters, &p.spans);
 		let chip = chip_padding(&clusters, &p.spans, &p.padding);
 		let mut units = Vec::new();
@@ -417,14 +422,8 @@ impl BlockContext<'_> {
 			};
 			// Measure the advance the line really draws, which is zero for a
 			// soft hyphen and the box's own width for an image or formula.
-			let (adjust, justifiable) = microtype::adjust(
-				t,
-				width,
-				size,
-				c.mixed,
-				c.glyphs.len(),
-				typo,
-			);
+			let (adjust, justifiable) =
+				microtype::adjust(t, width, size, c.mixed, c.glyph_count, typo);
 			// A code chip's horizontal padding is part of the advance the line
 			// breaks against, but it is rigid, so `adjust` sees only the glyphs.
 			let pad = chip[i];
@@ -454,7 +453,7 @@ impl BlockContext<'_> {
 		sans: bool,
 		available: f32,
 		typo: microtype::Typography,
-	) -> Vec<Cluster> {
+	) -> ShapedText {
 		crate::profile::span(crate::profile::Stage::LineClusters, || {
 			self.line_clusters_inner(
 				p, range, hyphen, size, sans, available, typo,
@@ -475,7 +474,7 @@ impl BlockContext<'_> {
 		sans: bool,
 		available: f32,
 		typo: microtype::Typography,
-	) -> Vec<Cluster> {
+	) -> ShapedText {
 		let mut text = p.text[range.clone()].to_string();
 		if hyphen {
 			text.push('-');
@@ -513,7 +512,7 @@ impl BlockContext<'_> {
 				c.descent = 0.;
 				c.background = (h, 0.);
 				c.baseline_shift = 0.;
-				c.glyphs.clear();
+				c.glyphs.end = c.glyphs.start;
 			}
 			if let Some(m) = p.math.get(&c.range.start) {
 				c.width = m.width;
@@ -521,11 +520,11 @@ impl BlockContext<'_> {
 				c.descent = m.descent;
 				c.background = (m.ascent, m.descent);
 				c.baseline_shift = 0.;
-				c.glyphs.clear();
+				c.glyphs.end = c.glyphs.start;
 			}
 			if p.text.get(c.range.clone()) == Some("\u{ad}") {
 				c.width = 0.0;
-				c.glyphs.clear();
+				c.glyphs.end = c.glyphs.start;
 			}
 		}
 		// Mixed CJK and Latin spacing needs both neighbours, so a gap that a
@@ -536,16 +535,14 @@ impl BlockContext<'_> {
 		// The chip's horizontal padding widens the run and insets its glyphs,
 		// while its vertical padding only expands the decoration.
 		let chip = chip_padding(&clusters, &p.spans, &p.padding);
-		for (c, pad) in clusters.iter_mut().zip(chip) {
+		for (c, pad) in clusters.clusters.iter_mut().zip(chip) {
 			if pad == [0.0; 4] {
 				continue;
 			}
 			c.width += pad[1] + pad[3];
 			c.background.0 += pad[0];
 			c.background.1 += pad[2];
-			for glyph in &mut c.glyphs {
-				glyph.x += pad[3];
-			}
+			clusters.glyphs.shift(c.glyphs.clone(), pad[3]);
 		}
 		clusters
 	}
@@ -567,10 +564,14 @@ fn collect_link_ids(spans: &[Span]) -> Vec<Option<LinkId>> {
 
 /// Whether each cluster belongs to an inline code run, found by walking the
 /// spans alongside the clusters, both of which are in reading order.
-fn code_clusters(clusters: &[Cluster], spans: &[Span]) -> Vec<bool> {
+fn code_clusters(
+	clusters: &[impl AsRef<ClusterMetrics>],
+	spans: &[Span],
+) -> Vec<bool> {
 	let mut code = Vec::with_capacity(clusters.len());
 	let mut cursor = 0;
 	for cluster in clusters {
+		let cluster = cluster.as_ref();
 		while cursor < spans.len()
 			&& spans[cursor].range.end <= cluster.range.start
 		{
@@ -588,13 +589,14 @@ fn code_clusters(clusters: &[Cluster], spans: &[Span]) -> Vec<bool> {
 /// that edge, so a run broken across lines keeps a flush fragment; the vertical
 /// padding lands on every cluster, so the chip stays one rectangle.
 fn chip_padding(
-	clusters: &[Cluster],
+	clusters: &[impl AsRef<ClusterMetrics>],
 	spans: &[Span],
 	padding: &[[f32; 4]],
 ) -> Vec<[f32; 4]> {
 	let mut chip = vec![[0.0; 4]; clusters.len()];
 	let mut cursor = 0;
 	for (i, cluster) in clusters.iter().enumerate() {
+		let cluster = cluster.as_ref();
 		while cursor < spans.len()
 			&& spans[cursor].range.end <= cluster.range.start
 		{

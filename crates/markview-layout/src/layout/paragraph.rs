@@ -7,14 +7,14 @@ use crate::{
 	document::{CellAlign, Inline, InlineKind},
 	linebreak, microtype,
 	scene::{BlockLayout, HeadingAnchor, Rect},
-	shaping::Cluster,
+	shaping::ShapedText,
 	style::Condition,
 	text::TextNode,
 };
 use std::collections::VecDeque;
 
 struct ShapedLine {
-	clusters: Vec<Cluster>,
+	clusters: ShapedText,
 	fits: Vec<microtype::Fit>,
 	natural: f32,
 	overhang: f32,
@@ -22,7 +22,7 @@ struct ShapedLine {
 
 impl ShapedLine {
 	fn new(
-		clusters: Vec<Cluster>,
+		clusters: ShapedText,
 		p: &Prepared,
 		size: f32,
 		typography: microtype::Typography,

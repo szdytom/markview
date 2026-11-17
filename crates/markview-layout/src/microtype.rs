@@ -8,7 +8,7 @@
 //! the justifiable clusters — is the one Typst uses.
 use crate::{
 	interval,
-	shaping::{Cluster, Span},
+	shaping::{Cluster, ClusterMetrics, ShapedText, Span},
 	style::CjkType,
 };
 
@@ -466,10 +466,30 @@ pub(crate) fn cjk_punct(
 /// its script. The blank belongs to the CJK cluster, so a line break drops it.
 /// Superscripts are already set apart and do not gain a gap.
 pub(crate) fn space_mixed_scripts(
-	clusters: &mut [Cluster],
+	clusters: &mut ShapedText,
 	text: &str,
 	spans: &[Span],
 	size: f32,
+) {
+	let ShapedText { clusters, glyphs } = clusters;
+	space_mixed(clusters, text, spans, size, |c, amount| {
+		glyphs.shift(c.glyphs.clone(), amount)
+	});
+}
+pub(crate) fn space_mixed_measurements(
+	clusters: &mut [ClusterMetrics],
+	text: &str,
+	spans: &[Span],
+	size: f32,
+) {
+	space_mixed(clusters, text, spans, size, |_, _| {});
+}
+fn space_mixed<C: AsRef<ClusterMetrics> + AsMut<ClusterMetrics>>(
+	clusters: &mut [C],
+	text: &str,
+	spans: &[Span],
+	size: f32,
+	mut shift: impl FnMut(&mut C, f32),
 ) {
 	let gap = size * MIXED_GAP;
 	let styles = spacing_styles(clusters, spans);
@@ -485,26 +505,30 @@ pub(crate) fn space_mixed_scripts(
 			};
 			let left = i > 0 && adjacent(i - 1);
 			let right = i + 1 < clusters.len() && adjacent(i + 1);
-			let cluster = &mut clusters[i];
+			let cluster = clusters[i].as_mut();
 			cluster.mixed = (left, right);
 			if left {
 				cluster.width += gap;
-				for glyph in &mut cluster.glyphs {
-					glyph.x += gap;
-				}
 			}
 			if right {
 				cluster.width += gap;
+			}
+			if left {
+				shift(&mut clusters[i], gap);
 			}
 		}
 	}
 }
 
 /// Superscript and inline-code status, found by walking spans in reading order.
-fn spacing_styles(clusters: &[Cluster], spans: &[Span]) -> Vec<(bool, bool)> {
+fn spacing_styles(
+	clusters: &[impl AsRef<ClusterMetrics>],
+	spans: &[Span],
+) -> Vec<(bool, bool)> {
 	let mut styles = Vec::with_capacity(clusters.len());
 	let mut cursor = 0;
 	for cluster in clusters {
+		let cluster = cluster.as_ref();
 		while cursor < spans.len()
 			&& spans[cursor].range.end <= cluster.range.start
 		{
@@ -526,20 +550,19 @@ fn spacing_styles(clusters: &[Cluster], spans: &[Span]) -> Vec<(bool, bool)> {
 /// 3.1.6.3. A mark whose ink sits right hangs into the line start; one whose ink
 /// sits left hugs the line end.
 pub(crate) fn compress_line_edges(
-	clusters: &mut [Cluster],
+	shaped: &mut ShapedText,
 	text: &str,
 	size: f32,
 	cjk: CjkType,
 ) {
+	let ShapedText { clusters, glyphs } = shaped;
 	if let Some(first) = clusters.first_mut()
 		&& cjk_punct(first_char(text, first), first.width, size, cjk.into())
 			== Some(CjkPunct::Right)
 	{
 		let amount = first.width * 0.5;
 		first.width -= amount;
-		for glyph in &mut first.glyphs {
-			glyph.x -= amount;
-		}
+		glyphs.shift(first.glyphs.clone(), -amount);
 	}
 	if let Some(last) = clusters.last_mut()
 		&& cjk_punct(first_char(text, last), last.width, size, cjk.into())
@@ -615,7 +638,7 @@ pub(crate) fn overhang(
 /// edge, so a closing quote never strands a full stop and an opening quote never
 /// strands an opening bracket.
 pub(crate) fn quote_edge_break(
-	clusters: &[Cluster],
+	clusters: &[impl AsRef<ClusterMetrics>],
 	text: &str,
 	i: usize,
 	size: f32,
@@ -660,8 +683,8 @@ fn forbids_line_end(c: char, size: f32) -> bool {
 }
 
 /// The first character `cluster` covers.
-fn first_char(text: &str, cluster: &Cluster) -> char {
-	text.get(cluster.range.clone())
+fn first_char(text: &str, cluster: &impl AsRef<ClusterMetrics>) -> char {
+	text.get(cluster.as_ref().range.clone())
 		.and_then(|t| t.chars().next())
 		.unwrap_or(' ')
 }
@@ -676,24 +699,33 @@ mod tests {
 	fn cluster(range: Range<usize>, width: f32) -> Cluster {
 		Cluster {
 			rtl: false,
-			range,
-			width,
-			mixed: (false, false),
+			metrics: ClusterMetrics {
+				range,
+				width,
+				mixed: (false, false),
+				glyph_count: 0,
+			},
 			ascent: 0.0,
 			descent: 0.0,
 			background: (0., 0.),
 			baseline_shift: 0.,
-			glyphs: Vec::new(),
+			glyphs: 0..0,
 		}
 	}
 
 	/// The clusters of `text`, one per character, each an em wide.
-	fn per_char(text: &str, size: f32) -> (String, Vec<Cluster>) {
+	fn per_char(text: &str, size: f32) -> (String, ShapedText) {
 		let mut clusters = Vec::new();
 		for (i, c) in text.char_indices() {
 			clusters.push(cluster(i..i + c.len_utf8(), size));
 		}
-		(text.to_owned(), clusters)
+		(
+			text.to_owned(),
+			ShapedText {
+				clusters,
+				..Default::default()
+			},
+		)
 	}
 
 	/// The default choices with a given CJK convention.

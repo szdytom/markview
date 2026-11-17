@@ -1,6 +1,7 @@
 //! Packed retained drawing geometry with stable expanded command positions.
 use super::{Draw, GeometryArray, Glyph, GlyphStyle, GlyphStyles, Paint, Rect};
 use std::{collections::HashMap, ops::Range, sync::Arc};
+mod positions;
 
 /// Index into the style table owned by one packed drawing buffer.
 #[derive(Clone, Copy, Debug)]
@@ -40,7 +41,7 @@ struct Run {
 #[derive(Debug)]
 pub struct Packed {
 	runs: Box<[Run]>,
-	glyphs: Box<[GlyphPosition]>,
+	glyphs: positions::Positions,
 	styles: Box<[Arc<GlyphStyle>]>,
 	others: Box<[Draw]>,
 	len: usize,
@@ -311,7 +312,7 @@ impl DrawBuffer {
 			return draws.map(|d| d.borrow().clone()).collect();
 		}
 		let mut runs: Vec<Run> = Vec::new();
-		let mut glyphs = Vec::new();
+		let mut glyphs = positions::Builder::default();
 		let mut others = Vec::new();
 		let mut styles = Vec::new();
 		let mut ids = HashMap::new();
@@ -394,7 +395,7 @@ impl DrawBuffer {
 		}
 		Self::Packed(Arc::new(Packed {
 			runs: runs.into_boxed_slice(),
-			glyphs: glyphs.into_boxed_slice(),
+			glyphs: glyphs.finish(),
 			styles: styles.into_boxed_slice(),
 			others: others.into_boxed_slice(),
 			len,
@@ -440,7 +441,7 @@ impl DrawBuffer {
 				size_of::<Packed>()
 					+ 16
 					+ std::mem::size_of_val(&*p.runs)
-					+ std::mem::size_of_val(&*p.glyphs)
+					+ p.glyphs.storage_bytes()
 					+ std::mem::size_of_val(&*p.styles)
 					+ p.styles.len() * (size_of::<GlyphStyle>() + 16)
 					+ std::mem::size_of_val(&*p.others)
@@ -498,8 +499,9 @@ fn expand(p: &Packed, run: &Run, index: usize) -> Draw {
 		Command::Other(i) => p.others[*i as usize].clone(),
 		Command::Empty => EMPTY.clone(),
 		Command::Glyphs { style, glyphs } => {
-			let g =
-				p.glyphs[glyphs.start as usize + index - run.start as usize];
+			let g = p
+				.glyphs
+				.get(glyphs.start as usize + index - run.start as usize);
 			Draw::Glyph(Glyph {
 				style: p.styles[style.0 as usize].clone(),
 				id: g.id,
@@ -606,7 +608,7 @@ impl DrawBuffer {
 					0,
 				);
 				allocation(&p.runs, p.runs.len(), "draw_runs", visit);
-				allocation(&p.glyphs, p.glyphs.len(), "glyph_positions", visit);
+				p.glyphs.visit_storage(visit);
 				allocation(
 					&p.styles,
 					p.styles.len(),

@@ -327,7 +327,7 @@ fn assert_same_shaping(actual: &ShapedLine, expected: &ShapedLine) {
 	assert_eq!(actual.clusters.len(), expected.clusters.len());
 	for (a, b) in actual.clusters.iter().zip(&expected.clusters) {
 		assert_eq!((&a.range, a.rtl, a.mixed), (&b.range, b.rtl, b.mixed));
-		let metrics = |c: &Cluster| {
+		let metrics = |c: &crate::shaping::Cluster| {
 			[
 				c.width,
 				c.ascent,
@@ -340,7 +340,12 @@ fn assert_same_shaping(actual: &ShapedLine, expected: &ShapedLine) {
 		};
 		assert_eq!(metrics(a), metrics(b));
 		assert_eq!(a.glyphs.len(), b.glyphs.len());
-		for (a, b) in a.glyphs.iter().zip(&b.glyphs) {
+		for (a, b) in actual
+			.clusters
+			.glyphs
+			.iter(a.glyphs.clone())
+			.zip(expected.clusters.glyphs.iter(b.glyphs.clone()))
+		{
 			assert_eq!(a.id, b.id);
 			assert_eq!(
 				[a.x, a.y, a.size].map(f32::to_bits),

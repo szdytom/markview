@@ -7,8 +7,8 @@ use crate::{
 		BlockLayout, Draw, HeadingAnchor, LinkId, LinkRect, LinkTarget,
 		Overflow, Paint, Rect,
 	},
-	shaping::Cluster,
-	style::{ColorField, Condition, Decoration},
+	shaping::{Cluster, GlyphStorage},
+	style::{ColorField, Condition, Decoration, TextAppearance},
 	text::TextCluster,
 };
 use std::ops::Range;
@@ -83,12 +83,14 @@ impl BackgroundRun {
 }
 
 struct LinePainter<'a, 'p> {
+	glyphs: &'a GlyphStorage,
 	paragraph: &'a ParagraphLayout<'p>,
 	node: usize,
 	geometry: LineGeometry,
 	cursor: f32,
 	link: Option<LinkRun>,
 	background: Option<BackgroundRun>,
+	appearance: Option<(Option<usize>, TextAppearance)>,
 	out: &'a mut BlockLayout,
 }
 
@@ -103,15 +105,17 @@ impl BlockContext<'_> {
 	) -> f32 {
 		let start_draw = out.draws.len();
 		let mut painter = LinePainter {
+			glyphs: &shaped.clusters.glyphs,
 			paragraph,
 			node,
 			cursor: geometry.rect.x + geometry.offset,
 			geometry,
 			link: None,
 			background: None,
+			appearance: None,
 			out,
 		};
-		for (cluster, fit) in shaped.clusters.into_iter().zip(shaped.fits) {
+		for (cluster, fit) in shaped.clusters.iter().zip(shaped.fits) {
 			painter.cluster(self, cluster, fit);
 		}
 		painter.finish(start_draw)
@@ -122,7 +126,7 @@ impl LinePainter<'_, '_> {
 	fn cluster(
 		&mut self,
 		context: &mut BlockContext<'_>,
-		c: Cluster,
+		c: &Cluster,
 		fit: microtype::Fit,
 	) {
 		let p = self.paragraph.prepared;
@@ -139,7 +143,7 @@ impl LinePainter<'_, '_> {
 			});
 		}
 		if let Some(image) = p.images.get(&c.range.start) {
-			self.image_cluster(context, &c, image, range);
+			self.image_cluster(context, c, image, range);
 			self.cursor += c.width;
 		} else {
 			self.text_cluster(
@@ -227,7 +231,7 @@ impl LinePainter<'_, '_> {
 	fn text_cluster(
 		&mut self,
 		context: &mut BlockContext<'_>,
-		c: Cluster,
+		c: &Cluster,
 		fit: microtype::Fit,
 		range: Range<usize>,
 		note: Option<&FootnoteReference>,
@@ -337,7 +341,7 @@ impl LinePainter<'_, '_> {
 	fn paint_cluster(
 		&mut self,
 		context: &mut BlockContext<'_>,
-		c: Cluster,
+		c: &Cluster,
 		advance: f32,
 		pulled: f32,
 		span: Option<usize>,
@@ -353,18 +357,26 @@ impl LinePainter<'_, '_> {
 		let (y_cursor, height) = (row.y, row.h);
 		let cursor = self.cursor;
 		let out = &mut *self.out;
-		let appearance = span
-			.map(|index| {
-				let span = &p.spans[index];
-				context.shaper.stylesheet.inline_run(
-					&context.shaper.appearance,
-					&span.style,
-					span.math_error,
-					span.footnote_ref,
-					span.link.is_some(),
-				)
-			})
-			.unwrap_or_else(|| context.shaper.appearance.clone());
+		if self
+			.appearance
+			.as_ref()
+			.is_none_or(|(previous, _)| *previous != span)
+		{
+			let appearance = span
+				.map(|index| {
+					let span = &p.spans[index];
+					context.shaper.stylesheet.inline_run(
+						&context.shaper.appearance,
+						&span.style,
+						span.math_error,
+						span.footnote_ref,
+						span.link.is_some(),
+					)
+				})
+				.unwrap_or_else(|| context.shaper.appearance.clone());
+			self.appearance = Some((span, appearance));
+		}
+		let appearance = &self.appearance.as_ref().unwrap().1;
 		if let Some(paint) = appearance.background {
 			let rect = Rect {
 				x: cursor,
@@ -394,7 +406,7 @@ impl LinePainter<'_, '_> {
 				y: baseline - math.ascent,
 			});
 		} else {
-			for mut g in c.glyphs {
+			for mut g in self.glyphs.iter(c.glyphs.clone()) {
 				g.x += cursor - pulled;
 				g.y += baseline;
 				out.draws.push(Draw::Glyph(g));

@@ -123,7 +123,7 @@ impl BlockContext<'_> {
 			};
 			let mut left = x;
 			let mut baseline = baseline_at(y + height);
-			for c in clusters {
+			for c in &clusters {
 				// Clusters wider than the whole column stay on their own line
 				// rather than wrapping forever.
 				if wrap && left > x && left + c.width > x + width {
@@ -162,7 +162,7 @@ impl BlockContext<'_> {
 					atomic: false,
 					command: out.draws.len(),
 				});
-				for mut g in c.glyphs {
+				for mut g in clusters.glyphs.iter(c.glyphs.clone()) {
 					if let Some(color) = color {
 						styles.repaint(&mut g, Paint::Color(color));
 					}
@@ -170,7 +170,7 @@ impl BlockContext<'_> {
 					g.y += baseline;
 					out.draws.push(Draw::Glyph(g));
 				}
-				left += c.width;
+				left += c.metrics.width;
 			}
 			natural = natural.max(left - x);
 			height += line_height;

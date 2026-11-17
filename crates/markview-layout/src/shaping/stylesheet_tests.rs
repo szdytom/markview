@@ -81,17 +81,16 @@ fn candidates_have_independent_real_faces_and_cluster_coverage() {
 		false,
 	);
 	assert!(
-		clusters[0]
-			.glyphs
-			.iter()
-			.all(|g| g.font.data.id() == latin.font.data.id())
+		clusters.glyphs.iter(clusters[0].glyphs.clone()).all(|g| g
+			.font
+			.data
+			.id()
+			== latin.font.data.id())
 	);
 	assert!(
 		clusters
-			.last()
-			.unwrap()
 			.glyphs
-			.iter()
+			.iter(clusters.last().unwrap().glyphs.clone())
 			.all(|g| g.font.data.id() == fallback.font.data.id())
 	);
 	// A candidate must cover the entire combining cluster, never just its base.
@@ -237,7 +236,11 @@ fn cached_choices_preserve_contextual_shaping() {
 				(&b.range, b.rtl, b.width, b.ascent, b.descent)
 			);
 			assert_eq!(a.glyphs.len(), b.glyphs.len());
-			for (a, b) in a.glyphs.iter().zip(&b.glyphs) {
+			for (a, b) in cold
+				.glyphs
+				.iter(a.glyphs.clone())
+				.zip(warm.glyphs.iter(b.glyphs.clone()))
+			{
 				assert_eq!(
 					(
 						a.font.data.id(),
@@ -452,7 +455,10 @@ fn a_synthetic_italic_candidate_keeps_an_upright_face() {
 	assert!(face.synthetic_italic);
 	s.appearance.font = appearance(true).font;
 	let clusters = s.shape("A", &[], 18., false);
-	let glyphs: Vec<_> = clusters.iter().flat_map(|c| &c.glyphs).collect();
+	let glyphs: Vec<_> = clusters
+		.iter()
+		.flat_map(|c| clusters.glyphs.iter(c.glyphs.clone()))
+		.collect();
 	assert!(!glyphs.is_empty());
 	assert!(glyphs.iter().all(|g| g.synthetic_italic));
 }
@@ -887,7 +893,10 @@ fn synthetic_bold_is_opt_in_and_preserves_real_bold() {
 	appearance.font[0].synthetic_italic = true;
 	s.appearance = appearance.clone();
 	let clusters = s.shape("A", &[], 22., false);
-	let glyphs: Vec<_> = clusters.iter().flat_map(|c| &c.glyphs).collect();
+	let glyphs: Vec<_> = clusters
+		.iter()
+		.flat_map(|c| clusters.glyphs.iter(c.glyphs.clone()))
+		.collect();
 	assert!(!glyphs.is_empty());
 	assert!(
 		glyphs

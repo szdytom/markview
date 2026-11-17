@@ -2,6 +2,7 @@
 use super::TextCluster;
 use crate::{layout::Rect, scene::GeometryArray};
 use std::{collections::HashMap, sync::Arc};
+mod records;
 
 #[derive(Clone, Copy, Debug)]
 struct CompactCluster {
@@ -14,7 +15,7 @@ struct CompactCluster {
 }
 #[derive(Debug)]
 pub struct PackedClusters {
-	clusters: Box<[CompactCluster]>,
+	clusters: records::Records,
 	rows: Box<[[f32; 2]]>,
 	spacing: Box<[[f32; 2]]>,
 }
@@ -200,14 +201,14 @@ impl ClusterBuffer {
 		});
 		if packed.is_some() {
 			let packed = PackedClusters {
-				clusters: clusters.into_boxed_slice(),
+				clusters: records::Records::new(clusters, spacing.len()),
 				rows: rows.into_boxed_slice(),
 				spacing: spacing.into_boxed_slice(),
 			};
 			// Tiny image and formula nodes can cost less in their native representation.
 			if size_of::<PackedClusters>()
 				+ 16
-				+ size_of_val(&*packed.clusters)
+				+ packed.clusters.storage_bytes()
 				+ size_of_val(&*packed.rows)
 				+ size_of_val(&*packed.spacing)
 				< self.len() * size_of::<TextCluster>()
@@ -234,7 +235,7 @@ impl ClusterBuffer {
 			Storage::Packed(p) => {
 				size_of::<PackedClusters>()
 					+ 16
-					+ size_of_val(&*p.clusters)
+					+ p.clusters.storage_bytes()
 					+ size_of_val(&*p.rows)
 					+ size_of_val(&*p.spacing)
 			}
@@ -308,7 +309,7 @@ impl ClusterBuffer {
 					0,
 					0,
 				);
-				allocation(&p.clusters, p.clusters.len(), "clusters", visit);
+				p.clusters.visit_storage(visit);
 				allocation(&p.rows, p.rows.len(), "cluster_rows", visit);
 				allocation(
 					&p.spacing,

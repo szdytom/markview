@@ -1,13 +1,15 @@
 //! Shared font shaping for document text, labels and renderer fallbacks.
+mod measure;
 mod metrics;
 use crate::fonts::FontConfig;
 use crate::style::{Condition, Font, Stylesheet, TextAppearance, Variant};
 use crate::{
 	document::TextStyle,
-	scene::{Draw, Glyph, Paint},
+	scene::{Draw, GlyphPosition, Paint},
 };
 use anyhow::Result;
 use log::warn;
+mod storage;
 use parley::{
 	FontContext, FontStyle, FontWeight, LayoutContext, StyleProperty,
 };
@@ -16,6 +18,7 @@ use std::{
 	ops::Range,
 	sync::Arc,
 };
+pub(crate) use storage::{GlyphStorage, ShapedText};
 use unicode_segmentation::UnicodeSegmentation;
 #[derive(Clone)]
 struct Face {
@@ -130,20 +133,25 @@ pub(crate) struct Span {
 	/// Layout derives this from a footnote reference node, not from `style`.
 	pub(crate) footnote_ref: bool,
 }
-#[derive(Clone)]
-pub(crate) struct Cluster {
-	pub(crate) rtl: bool,
+#[derive(Clone, Debug)]
+pub(crate) struct ClusterMetrics {
 	pub(crate) range: Range<usize>,
 	pub(crate) width: f32,
+	pub(crate) glyph_count: usize,
 	/// Which sides face Latin across a mixed CJK and Latin gap, which
 	/// [`crate::microtype::space_mixed_scripts`] fills in.
 	pub(crate) mixed: (bool, bool),
+}
+#[derive(Clone)]
+pub(crate) struct Cluster {
+	pub(crate) metrics: ClusterMetrics,
+	pub(crate) rtl: bool,
 	pub(crate) ascent: f32,
 	pub(crate) descent: f32,
 	/// Background extents, independent of layout edges and possibly signed.
 	pub(crate) background: (f32, f32),
 	pub(crate) baseline_shift: f32,
-	pub(crate) glyphs: Vec<Glyph>,
+	pub(crate) glyphs: Range<usize>,
 }
 /// Reusable shaping context for UI labels and document text.
 pub struct TextShaper {
@@ -158,7 +166,7 @@ pub struct TextShaper {
 	layout: parley::Layout<usize>,
 	pub stylesheet: Arc<Stylesheet>,
 	pub appearance: TextAppearance,
-	faces: HashMap<(Vec<Font>, u16), usize>,
+	faces: HashMap<Vec<Font>, HashMap<u16, usize>>,
 	font_sets: Vec<FontSet>,
 	// Retained across reflows and stylesheet resets; no document text is stored.
 	warned_fallbacks: HashSet<u64>,
@@ -166,7 +174,7 @@ pub struct TextShaper {
 	/// configured stacks miss, keyed by the wanted style, weight and cluster
 	/// text. Coverage belongs to the collection, so every font set shares one
 	/// memo.
-	fallbacks: HashMap<(u8, u16, String), Option<Face>>,
+	fallbacks: HashMap<(u8, u16), HashMap<String, Option<Face>>>,
 	bounds: HashMap<metrics::BoundsKey, Option<(f32, f32)>>,
 }
 impl Default for TextShaper {
@@ -405,158 +413,167 @@ impl TextShaper {
 		}
 	}
 	fn resolve_fonts(&mut self, appearance: &TextAppearance) -> usize {
-		let key = (appearance.font.clone(), appearance.weight);
-		if !self.faces.contains_key(&key) {
-			// The first appearance builds the configured collection; later
-			// shapers with the same configuration only clone it.
-			let config = self.font_config.clone();
-			let fonts =
-				self.fonts.get_or_insert_with(|| default_fonts(&config));
-			let mut faces = Vec::new();
-			for candidate in &appearance.font {
-				let style = match candidate.variant {
+		if let Some(index) = self
+			.faces
+			.get(appearance.font.as_slice())
+			.and_then(|weights| weights.get(&appearance.weight))
+		{
+			return *index;
+		}
+		let key = (&appearance.font, appearance.weight);
+		let index = self.font_sets.len();
+		// The first appearance builds the configured collection; later
+		// shapers with the same configuration only clone it.
+		let config = self.font_config.clone();
+		let fonts = self.fonts.get_or_insert_with(|| default_fonts(&config));
+		let mut faces = Vec::new();
+		for candidate in &appearance.font {
+			let style = match candidate.variant {
+				Variant::Normal => FontStyle::Normal,
+				Variant::Italic => FontStyle::Italic,
+				Variant::Oblique => FontStyle::Oblique(None),
+			};
+			let weight = candidate.resolved_weight(appearance.weight);
+			let def = self.stylesheet.fontdefs.get(&candidate.family);
+			let families: Vec<_> = if let Some(def) = def {
+				def.lookfor
+					.iter()
+					.find_map(|name| {
+						let generic = match name.as_str() {
+							"serif" => Some(parley::GenericFamily::Serif),
+							"sans-serif" => {
+								Some(parley::GenericFamily::SansSerif)
+							}
+							"monospace" => {
+								Some(parley::GenericFamily::Monospace)
+							}
+							_ => None,
+						};
+						if let Some(generic) = generic {
+							let ids: Vec<_> = fonts
+								.collection
+								.generic_families(generic)
+								.collect();
+							ids.into_iter()
+								.find_map(|id| fonts.collection.family(id))
+						} else {
+							fonts.collection.family_by_name(name)
+						}
+					})
+					.into_iter()
+					.collect()
+			} else {
+				// Partial stylesheets used by low-level callers may omit the
+				// fontdef table entirely. A declared-but-unselected variant,
+				// however, is intentionally unavailable.
+				if self.stylesheet.has_fontdef_variant(&candidate.family) {
+					Vec::new()
+				} else {
+					fonts
+						.collection
+						.family_by_name(&candidate.family)
+						.into_iter()
+						.collect()
+				}
+			};
+			for family in families {
+				let Some(info) = family.match_font(
+					Default::default(),
+					style,
+					FontWeight::new(weight as f32),
+					false,
+				) else {
+					continue;
+				};
+				let Some(synthetic) =
+					matching_synthetic_style(info, candidate, style)
+				else {
+					continue;
+				};
+				// Keep the family's closest match without asking `parley` to
+				// synthesize bold; variable faces use their available range.
+				let requested_weight = weight;
+				let weight = info
+					.axes()
+					.iter()
+					.find(|axis| axis.tag.to_be_bytes() == *b"wght")
+					.map_or(info.weight().value() as u16, |axis| {
+						(weight as f32).clamp(axis.min, axis.max) as u16
+					});
+				if let Some(data) = info.load(Some(&mut fonts.source_cache)) {
+					faces.push(Face {
+						family: family.name().into(),
+						source_id: info.source().id(),
+						font: parley::FontData::new(data, info.index()),
+						style: if synthetic
+							|| (matches!(info.style(), FontStyle::Oblique(_))
+								&& candidate.variant == Variant::Oblique)
+						{
+							info.style()
+						} else {
+							style
+						},
+						weight,
+						synthetic_italic: synthetic,
+						synthetic_bold: candidate.synthetic_bold
+							&& requested_weight >= 600
+							&& weight < 600,
+						emoji: def.is_some_and(|def| def.emoji),
+					});
+				}
+			}
+		}
+		self.faces
+			.entry(appearance.font.clone())
+			.or_default()
+			.insert(appearance.weight, index);
+		self.font_sets.push(FontSet {
+			configured_face_count: faces.len(),
+			diagnostic_key: crate::document::fingerprint(&key),
+			diagnostic_fonts: appearance.font.clone(),
+			diagnostic_weight: appearance.weight,
+			wanted_style: appearance
+				.font
+				.first()
+				.map(|candidate| match candidate.variant {
 					Variant::Normal => FontStyle::Normal,
 					Variant::Italic => FontStyle::Italic,
 					Variant::Oblique => FontStyle::Oblique(None),
-				};
-				let weight = candidate.resolved_weight(appearance.weight);
-				let def = self.stylesheet.fontdefs.get(&candidate.family);
-				let families: Vec<_> = if let Some(def) = def {
-					def.lookfor
-						.iter()
-						.find_map(|name| {
-							let generic = match name.as_str() {
-								"serif" => Some(parley::GenericFamily::Serif),
-								"sans-serif" => {
-									Some(parley::GenericFamily::SansSerif)
-								}
-								"monospace" => {
-									Some(parley::GenericFamily::Monospace)
-								}
-								_ => None,
-							};
-							if let Some(generic) = generic {
-								let ids: Vec<_> = fonts
-									.collection
-									.generic_families(generic)
-									.collect();
-								ids.into_iter()
-									.find_map(|id| fonts.collection.family(id))
-							} else {
-								fonts.collection.family_by_name(name)
-							}
-						})
-						.into_iter()
-						.collect()
-				} else {
-					// Partial stylesheets used by low-level callers may omit the
-					// fontdef table entirely. A declared-but-unselected variant,
-					// however, is intentionally unavailable.
-					if self.stylesheet.has_fontdef_variant(&candidate.family) {
-						Vec::new()
-					} else {
-						fonts
-							.collection
-							.family_by_name(&candidate.family)
-							.into_iter()
-							.collect()
-					}
-				};
-				for family in families {
-					let Some(info) = family.match_font(
-						Default::default(),
-						style,
-						FontWeight::new(weight as f32),
-						false,
-					) else {
-						continue;
-					};
-					let Some(synthetic) =
-						matching_synthetic_style(info, candidate, style)
-					else {
-						continue;
-					};
-					// Keep the family's closest match without asking `parley` to
-					// synthesize bold; variable faces use their available range.
-					let requested_weight = weight;
-					let weight = info
-						.axes()
-						.iter()
-						.find(|axis| axis.tag.to_be_bytes() == *b"wght")
-						.map_or(info.weight().value() as u16, |axis| {
-							(weight as f32).clamp(axis.min, axis.max) as u16
-						});
-					if let Some(data) = info.load(Some(&mut fonts.source_cache))
-					{
-						faces.push(Face {
-							family: family.name().into(),
-							source_id: info.source().id(),
-							font: parley::FontData::new(data, info.index()),
-							style: if synthetic
-								|| (matches!(
-									info.style(),
-									FontStyle::Oblique(_)
-								) && candidate.variant == Variant::Oblique)
-							{
-								info.style()
-							} else {
-								style
-							},
-							weight,
-							synthetic_italic: synthetic,
-							synthetic_bold: candidate.synthetic_bold
-								&& requested_weight >= 600
-								&& weight < 600,
-							emoji: def.is_some_and(|def| def.emoji),
-						});
-					}
-				}
-			}
-			self.faces.insert(key.clone(), self.font_sets.len());
-			self.font_sets.push(FontSet {
-				configured_face_count: faces.len(),
-				diagnostic_key: crate::document::fingerprint(&key),
-				diagnostic_fonts: appearance.font.clone(),
-				diagnostic_weight: appearance.weight,
-				wanted_style: appearance
-					.font
-					.first()
-					.map(|candidate| match candidate.variant {
-						Variant::Normal => FontStyle::Normal,
-						Variant::Italic => FontStyle::Italic,
-						Variant::Oblique => FontStyle::Oblique(None),
-					})
-					.unwrap_or(FontStyle::Normal),
-				faces,
-				..Default::default()
-			});
-		}
-		self.faces[&key]
+				})
+				.unwrap_or(FontStyle::Normal),
+			faces,
+			..Default::default()
+		});
+		index
 	}
 	/// A face for a cluster the configured stacks all miss, from scanning the
 	/// whole collection's character maps. The platform's per-script fallback
 	/// knows no family for the Common script — most symbol blocks — so a rare
 	/// symbol would otherwise draw `.notdef` whatever fonts are installed.
 	fn collection_fallback(&mut self, set: usize, text: &str) -> Option<usize> {
-		let key = {
-			let set = &self.font_sets[set];
-			(
-				style_tag(set.wanted_style),
-				set.diagnostic_weight,
-				text.to_owned(),
-			)
-		};
-		let found = if let Some(found) = self.fallbacks.get(&key) {
+		let fonts = &self.font_sets[set];
+		let key = (style_tag(fonts.wanted_style), fonts.diagnostic_weight);
+		let found = if let Some(found) = self
+			.fallbacks
+			.get(&key)
+			.and_then(|choices| choices.get(text))
+		{
 			found.clone()
 		} else {
 			let found = self.scan_collection(
-				self.font_sets[set].wanted_style,
-				FontWeight::new(self.font_sets[set].diagnostic_weight as f32),
+				fonts.wanted_style,
+				FontWeight::new(fonts.diagnostic_weight as f32),
 				text,
 			);
-			// Bound retained keys exactly like the per-set choice cache.
-			if text.len() <= 128 && self.fallbacks.len() < 4096 {
-				self.fallbacks.insert(key, found.clone());
+			// Bound retained keys across every style and weight.
+			if text.len() <= 128
+				&& self.fallbacks.values().map(HashMap::len).sum::<usize>()
+					< 4096
+			{
+				self.fallbacks
+					.entry(key)
+					.or_default()
+					.insert(text.to_owned(), found.clone());
 			}
 			found
 		};
@@ -906,10 +923,10 @@ impl TextShaper {
 		spans: &[Span],
 		size: f32,
 		_sans: bool,
-	) -> Vec<Cluster> {
+	) -> ShapedText {
 		let mut glyph_styles = crate::scene::GlyphStyles::default();
 		if text.is_empty() {
-			return Vec::new();
+			return ShapedText::default();
 		}
 		let base = self.appearance.clone();
 		let (mut layout, appearances, choices) =
@@ -937,6 +954,7 @@ impl TextShaper {
 				.map_or((false, false), |i| choices[i].2)
 		};
 		let mut clusters: Vec<Cluster> = Vec::new();
+		let mut glyph_storage = GlyphStorage::default();
 		let needs_bounds = base.uses_bounds()
 			|| appearances.iter().any(TextAppearance::uses_bounds);
 		let mut inked_styles = HashSet::new();
@@ -1006,7 +1024,7 @@ impl TextShaper {
 					let (synthetic_italic, synthetic_bold) =
 						synthetic_at(range.start);
 					let mut x = 0.0;
-					let mut glyphs = Vec::new();
+					let glyph_start = glyph_storage.len();
 					let mut bounds: Option<(f32, f32)> = None;
 					let blank =
 						needs_bounds && metrics::blank(&text[range.clone()]);
@@ -1021,34 +1039,39 @@ impl TextShaper {
 						} else {
 							0.
 						};
-					for g in c.glyphs() {
-						if !blank
-							&& appearance.uses_bounds()
-							&& let Some((lo, hi)) = self.glyph_bounds(
-								run.font(),
-								&coords,
-								g.id as u16,
-							) {
-							let lo = lo * run.font_size() - g.y;
-							let hi = hi * run.font_size() - g.y;
-							bounds = Some(bounds.map_or((lo, hi), |(a, b)| {
-								(a.min(lo), b.max(hi))
-							}));
-						}
-						glyphs.push(Glyph {
-							style: glyph_styles.get(
-								run.font(),
-								&coords,
-								run.font_size(),
-								(synthetic_italic, synthetic_bold),
-								appearance.paint,
-							),
-							id: g.id as u16,
-							x: x + g.x,
-							y: g.y + shift,
-						});
-						x += g.advance;
-					}
+					let glyph_style = glyph_styles.get(
+						run.font(),
+						&coords,
+						run.font_size(),
+						(synthetic_italic, synthetic_bold),
+						appearance.paint,
+					);
+					glyph_storage.extend(
+						glyph_style,
+						c.glyphs().map(|g| {
+							if !blank
+								&& appearance.uses_bounds()
+								&& let Some((lo, hi)) = self.glyph_bounds(
+									run.font(),
+									&coords,
+									g.id as u16,
+								) {
+								let lo = lo * run.font_size() - g.y;
+								let hi = hi * run.font_size() - g.y;
+								bounds =
+									Some(bounds.map_or((lo, hi), |(a, b)| {
+										(a.min(lo), b.max(hi))
+									}));
+							}
+							let glyph = GlyphPosition {
+								id: g.id as u16,
+								x: x + g.x,
+								y: g.y + shift,
+							};
+							x += g.advance;
+							glyph
+						}),
+					);
 					inked = Some(clusters.len());
 					let metrics = run.font_metrics();
 					let bounds = bounds.unwrap_or(
@@ -1063,9 +1086,12 @@ impl TextShaper {
 					};
 					clusters.push(Cluster {
 						rtl: c.is_rtl(),
-						range,
-						width: c.advance(),
-						mixed: (false, false),
+						metrics: ClusterMetrics {
+							range,
+							width: c.advance(),
+							mixed: (false, false),
+							glyph_count: glyph_storage.len() - glyph_start,
+						},
 						ascent: (edge(appearance.top_edge, true) - shift)
 							.max(0.),
 						descent: (shift - edge(appearance.bottom_edge, false))
@@ -1079,7 +1105,7 @@ impl TextShaper {
 								),
 						),
 						baseline_shift: shift,
-						glyphs,
+						glyphs: glyph_start..glyph_storage.len(),
 					});
 					if needs_bounds {
 						bound_styles.push(index);
@@ -1112,7 +1138,10 @@ impl TextShaper {
 		}
 		layout.clear();
 		self.layout = layout;
-		clusters
+		ShapedText {
+			clusters,
+			glyphs: glyph_storage,
+		}
 	}
 
 	/// A reader-chrome label. The appearance comes from `paint`'s condition,
@@ -1299,15 +1328,15 @@ impl TextShaper {
 		}
 		let shift = clusters.first().map_or(0., |c| c.baseline_shift);
 		let mut styles = crate::scene::GlyphStyles::default();
-		for c in clusters {
-			for mut g in c.glyphs {
+		for c in &clusters {
+			for mut g in clusters.glyphs.iter(c.glyphs.clone()) {
 				g.x += cursor;
 				g.y += baseline;
 				styles.repaint(&mut g, paint);
 				draws.push(Draw::Glyph(g));
-				ranges.push(c.range.clone());
+				ranges.push(c.metrics.range.clone());
 			}
-			cursor += c.width;
+			cursor += c.metrics.width;
 		}
 		for d in decoration {
 			draws.push(Draw::Rect(
@@ -1440,3 +1469,6 @@ fn matching_synthetic_style(
 	}
 	Some(synthetic)
 }
+
+#[cfg(test)]
+mod cache_tests;
