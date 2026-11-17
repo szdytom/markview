@@ -3,6 +3,66 @@ use crate::app::folder::Tree;
 use crate::security::{Origin, Trust};
 use crate::state::{PanelPage, PanelTab};
 
+#[test]
+fn picked_paths_open_documents_or_folder_trees_and_cancel_releases_the_dialog()
+{
+	use std::sync::mpsc;
+	#[derive(Clone)]
+	struct Proxy(mpsc::Sender<Event>);
+	impl SendEvent for Proxy {
+		fn try_send(&self, event: Event) -> bool {
+			self.0.send(event).is_ok()
+		}
+	}
+	let dir = crate::test_support::TestDir::new();
+	let file = dir.path().join("standalone.md");
+	std::fs::write(&file, SOURCE).unwrap();
+	let (send, receive) = mpsc::channel();
+	let mut app = App::new(
+		crate::cli::LaunchOptions {
+			mode: crate::cli::Mode::Smoke,
+			offline: true,
+			options: crate::test_support::options(),
+			..Default::default()
+		},
+		Proxy(send),
+	);
+	app.persistence.initialized = true;
+	app.dialog_open = true;
+	app.handle_user_event(&StubLoop, Event::Picked(None));
+	assert!(!app.dialog_open);
+	assert!(app.readers.entries().is_empty());
+	app.dialog_open = true;
+	app.handle_user_event(&StubLoop, Event::Picked(Some(file.clone())));
+	assert!(!app.dialog_open);
+	assert_eq!(app.readers.session.path.as_ref(), Some(&file));
+	assert!(app.folder.root().is_none());
+	for name in ["first", "second"] {
+		let root = dir.path().join(name);
+		std::fs::create_dir(&root).unwrap();
+		let readme = root.join("README.md");
+		std::fs::write(&readme, SOURCE).unwrap();
+		app.dialog_open = true;
+		app.handle_user_event(&StubLoop, Event::Picked(Some(root.clone())));
+		assert!(!app.dialog_open);
+		loop {
+			let event = receive.recv_timeout(Duration::from_secs(5)).unwrap();
+			if matches!(&event, Event::FolderLoaded { .. }) {
+				app.handle_user_event(&StubLoop, event);
+				break;
+			}
+		}
+		assert_eq!(app.folder.root(), Some(&root));
+		assert_eq!(app.readers.session.path.as_ref(), Some(&readme));
+		assert!(app.folder.open || app.phone_folder_open());
+		app.dialog_open = true;
+		app.handle_user_event(&StubLoop, Event::Picked(None));
+		assert!(!app.dialog_open);
+		assert_eq!(app.folder.root(), Some(&root));
+		assert_eq!(app.readers.session.path.as_ref(), Some(&readme));
+	}
+}
+
 fn middle_click(app: &mut App<StubProxy>, at: (f32, f32)) {
 	app.gestures.allow_mouse();
 	app.handle_window_event(

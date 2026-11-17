@@ -45,6 +45,11 @@ pub(in crate::app) struct Geometry {
 }
 pub(in crate::app) fn geometry(view: View<'_>) -> Geometry {
 	let columns = view.rect.w >= 760.0 && !view.phone;
+	let compact: f32 = if markview_platform::unified_open() && !view.phone {
+		28.0
+	} else {
+		0.0
+	};
 	let w = (view.rect.w - 48.0).clamp(0.0, 900.0);
 	let local_w = if columns { (w - 64.0) * 0.43 } else { w };
 	let quick_w = if columns { w - local_w - 64.0 } else { w };
@@ -55,7 +60,7 @@ pub(in crate::app) fn geometry(view: View<'_>) -> Geometry {
 		0.0
 	};
 	let content_h = if columns {
-		320.0_f32.max(quick_h)
+		(320.0 - compact).max(quick_h)
 	} else {
 		180.0 + quick_h + 112.0
 	};
@@ -81,7 +86,7 @@ pub(in crate::app) fn geometry(view: View<'_>) -> Geometry {
 	let web = Rect {
 		x,
 		y: if columns {
-			y + 236.0
+			y + 236.0 - compact
 		} else {
 			quick.y + quick.h + 32.0
 		},
@@ -96,7 +101,7 @@ pub(in crate::app) fn geometry(view: View<'_>) -> Geometry {
 			x,
 			y,
 			w: local_w,
-			h: 204.0,
+			h: 204.0 - compact,
 		},
 		web,
 		url: Rect {
@@ -130,11 +135,16 @@ pub(super) fn buttons(
 	lang: Lang,
 ) -> Vec<Button> {
 	let g = geometry(view);
+	let unified = markview_platform::unified_open() && !view.phone;
 	let mut out = Vec::new();
 	for (index, label, action) in [
 		(
 			1,
-			lang.empty_open_file(),
+			if unified {
+				lang.empty_open()
+			} else {
+				lang.empty_open_file()
+			},
 			Command::Document(DocumentCommand::Open),
 		),
 		(
@@ -143,7 +153,10 @@ pub(super) fn buttons(
 			Command::Chrome(ChromeCommand::OpenFolder),
 		),
 	] {
-		let rect = if g.columns {
+		if unified && index == 2 {
+			continue;
+		}
+		let rect = if g.columns || unified {
 			Rect {
 				x: g.local.x,
 				y: g.local.y + 88.0 + (index - 1) as f32 * 56.0,
@@ -272,6 +285,7 @@ pub(super) fn draw(
 	lang: Lang,
 ) -> Vec<Draw> {
 	let g = geometry(view);
+	let unified = markview_platform::unified_open() && !view.phone;
 	ui.appearance = ui_appearance(ui);
 	let mut out = Vec::new();
 	let mut heading = ui_appearance(ui);
@@ -296,18 +310,32 @@ pub(super) fn draw(
 	label(
 		ui,
 		&mut out,
-		hint.trim(),
+		if unified {
+			lang.empty_open_detail_combined()
+		} else {
+			hint.trim()
+		},
 		13.0,
 		(g.local.x, g.local.y + 60.0, g.local.w),
 		C::Muted,
 	);
+	if unified {
+		label(
+			ui,
+			&mut out,
+			hint.trim(),
+			13.0,
+			(g.local.x, g.local.y + 164.0, g.local.w),
+			C::Muted,
+		);
+	}
 	if g.columns {
 		out.push(components::line(
 			Rect {
 				x: g.quick.x - 32.0,
 				y: g.local.y,
 				w: 1.0,
-				h: g.local.h.max(g.quick.h).max(308.0),
+				h: g.local.h.max(g.quick.h).max(g.local.h + 104.0),
 			},
 			Condition::Panel,
 			C::BorderColor,
@@ -357,7 +385,7 @@ pub(super) fn draw(
 			Command::Chrome(ChromeCommand::FocusInput(_)) => {}
 			Command::Document(DocumentCommand::Open)
 			| Command::Chrome(ChromeCommand::OpenFolder) => {
-				draw_open(ui, &mut out, interaction, &b, g.columns)
+				draw_open(ui, &mut out, interaction, &b, g.columns || unified)
 			}
 			Command::Chrome(
 				ChromeCommand::StartFile(_) | ChromeCommand::RecentWorkspace(_),
@@ -439,7 +467,7 @@ fn draw_open(
 	let shortcut = if !columns {
 		""
 	} else if markview_platform::command_key() {
-		if folder { "⇧⌘O" } else { "⌘O" }
+		"⌘O"
 	} else if folder {
 		"Ctrl+Shift+O"
 	} else {
@@ -772,14 +800,20 @@ mod tests {
 							));
 						}
 					}
-					for action in [
+					let mut expected = vec![
 						Command::Document(DocumentCommand::Open),
-						Command::Chrome(ChromeCommand::OpenFolder),
 						Command::Chrome(ChromeCommand::FocusInput(
 							TextField::Url,
 						)),
 						Command::Document(DocumentCommand::OpenUrl),
-					] {
+					];
+					if !markview_platform::unified_open()
+						|| view(width, height, &browser).phone
+					{
+						expected
+							.push(Command::Chrome(ChromeCommand::OpenFolder));
+					}
+					for action in expected {
 						assert!(
 							reached.contains(&action),
 							"{width}×{height}: {action:?}"
@@ -803,6 +837,44 @@ mod tests {
 						)
 					}));
 				}
+			}
+		}
+	}
+
+	#[test]
+	fn unified_open_uses_one_full_width_action_in_desktop_layouts() {
+		if !markview_platform::unified_open() {
+			return;
+		}
+		let mut ui = crate::test_support::shaper();
+		let (_, browser) = browser();
+		for lang in [Lang::En, Lang::ZhHans, Lang::ZhHant, Lang::Ja] {
+			for width in [1200.0, 800.0, 536.0, 320.0] {
+				let v = View {
+					phone: false,
+					..view(width, 800.0, &browser)
+				};
+				let g = geometry(v);
+				let controls = buttons(&mut ui, v, lang);
+				let open: Vec<_> = controls
+					.iter()
+					.filter(|b| {
+						matches!(
+							b.action,
+							Command::Document(DocumentCommand::Open)
+								| Command::Chrome(ChromeCommand::OpenFolder)
+						)
+					})
+					.collect();
+				assert_eq!(open.len(), 1);
+				let open = open[0];
+				assert_eq!(
+					open.action,
+					Command::Document(DocumentCommand::Open)
+				);
+				assert_eq!(open.label, lang.empty_open());
+				assert_eq!(open.rect.w, g.local.w);
+				assert!(g.web.y > open.rect.y + open.rect.h);
 			}
 		}
 	}
