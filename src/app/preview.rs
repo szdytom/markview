@@ -893,7 +893,10 @@ impl<P: super::SendEvent> App<P> {
 			source.bounds,
 			snapshot,
 			source.revision,
-			source.frame,
+			FrameStyle {
+				picture: ready.picture,
+				..source.frame
+			},
 		);
 		self.preview.open.as_mut().unwrap().path =
 			source.destination.path.clone();
@@ -1051,8 +1054,14 @@ impl<P: super::SendEvent> App<P> {
 			.or_else(|| {
 				crate::link::resolve_for(url, directory, &session.security)
 			});
-		let Some(crate::link::Target::Markdown(path)) = resolved else {
-			return None;
+		let path = match resolved? {
+			crate::link::Target::Markdown(path) => path,
+			crate::link::Target::OsDirect(path)
+				if crate::file::is_image(&path) =>
+			{
+				path
+			}
+			_ => return None,
 		};
 		if session.path.as_ref().is_some_and(|current| {
 			*current == path
@@ -1184,6 +1193,7 @@ impl<P: super::SendEvent> App<P> {
 				padding,
 				metrics,
 				right_centered: matches!(target, Target::File(_)),
+				picture: false,
 			},
 			document,
 			destination,

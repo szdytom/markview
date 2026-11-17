@@ -96,6 +96,55 @@ fn themed_entry(aliases: &[&str], svg: bool, theme: u64) -> Entry {
 	}
 }
 
+impl Images {
+	pub(crate) fn failure_after_metadata_for_test(
+		bytes: &[u8],
+	) -> ImageSnapshot {
+		let mut images = images(true);
+		let source = Source::File(PathBuf::from("picture.bmp"));
+		let mut entry = themed_entry(&["picture"], false, 0);
+		entry.busy = true;
+		entry.ticket = 17;
+		images.entries.insert(source.clone(), entry);
+		images.snapshot.keys.insert(
+			markview_layout::image::ImageSource::Resource(
+				markview_layout::image::ResourceRef::document(
+					crate::file::STANDALONE_IMAGE_SOURCE,
+				),
+			),
+			"picture".into(),
+		);
+		let result = super::decode::decode_with_metadata(
+			bytes,
+			None,
+			None,
+			None,
+			&[],
+			|size, svg| {
+				assert!(images.apply_metadata(Metadata {
+					ticket: 17,
+					generation: images.generation,
+					source: source.clone(),
+					size,
+					svg
+				}));
+			},
+		);
+		assert!(images.snapshot.entries["picture"].loading);
+		assert!(
+			result.is_err(),
+			"the fixture must fail after publishing dimensions"
+		);
+		assert!(images.apply_finished(Finished {
+			ticket: 17,
+			generation: images.generation,
+			source,
+			result: result.and_then(|decoded| Loaded::new(decoded, false)),
+		}));
+		images.snapshot.clone()
+	}
+}
+
 /// Renders one Mermaid fence through the image scheduler and returns the
 /// scheduler with the fence's image source key.
 fn fence_images(code: &str) -> (Images, String) {

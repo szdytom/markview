@@ -177,6 +177,25 @@ pub(in crate::app) fn place(
 	bounds: Rect,
 	padding: [f32; 4],
 ) -> Rect {
+	place_scene(anchor, size, bounds, padding, true)
+}
+
+/// Places a complete picture without shortening its viewport.
+pub(in crate::app) fn place_image(
+	anchor: Rect,
+	size: (f32, f32),
+	bounds: Rect,
+) -> Rect {
+	place_scene(anchor, size, bounds, [0.0; 4], false)
+}
+
+fn place_scene(
+	anchor: Rect,
+	size: (f32, f32),
+	bounds: Rect,
+	padding: [f32; 4],
+	shorten: bool,
+) -> Rect {
 	let margin = 8.0_f32.min(bounds.w / 2.0).min(bounds.h / 2.0);
 	let area = Rect {
 		x: bounds.x + margin,
@@ -189,8 +208,16 @@ pub(in crate::app) fn place(
 	let cx = origin.0 - padding[3];
 	let cy = origin.1 - padding[0];
 	let below = anchor.y + anchor.h + 6.0;
-	let below_h = h.min((area.y + area.h - below).max(1.0));
-	let above_h = h.min((anchor.y - 6.0 - area.y).max(1.0));
+	let below_h = if shorten {
+		h.min((area.y + area.h - below).max(1.0))
+	} else {
+		h
+	};
+	let above_h = if shorten {
+		h.min((anchor.y - 6.0 - area.y).max(1.0))
+	} else {
+		h
+	};
 	let candidates = [
 		(cx, below, below_h),
 		(cx, anchor.y - above_h - 6.0, above_h),

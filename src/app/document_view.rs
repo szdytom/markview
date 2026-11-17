@@ -3,9 +3,12 @@ use crate::layout::{LayoutSnapshot, Rect};
 use markview_interaction::Host;
 use std::collections::HashMap;
 
+mod image;
+
 #[derive(Clone, Copy, Default)]
 pub(super) struct FrameStyle {
 	pub(super) right_centered: bool,
+	pub(super) picture: bool,
 	pub(super) padding: [f32; 4],
 	pub(super) metrics: markview_layout::scene::ScrollbarMetrics,
 }
@@ -22,24 +25,32 @@ pub(super) struct FloatingDocument {
 	pub(super) state: markview_interaction::ViewState,
 	pub(super) metrics: markview_layout::scene::ScrollbarMetrics,
 	gutter: f32,
+	picture: bool,
 }
 
 impl FloatingDocument {
 	pub(super) fn new(
-		snapshot: LayoutSnapshot,
+		mut snapshot: LayoutSnapshot,
 		revision: markview_document::DocumentRevision,
 		anchor: Rect,
 		bounds: Rect,
 		frame: FrameStyle,
 	) -> Self {
 		let FrameStyle {
-			padding,
+			mut padding,
 			metrics,
 			right_centered,
+			picture,
 		} = frame;
+		let picture = picture && image::fit(&mut snapshot, bounds);
+		if picture {
+			padding = [0.0; 4];
+		}
 		let place = |anchor, size, bounds, padding| {
 			if right_centered {
 				super::chrome::preview::place_right(anchor, size, bounds)
+			} else if picture {
+				super::chrome::preview::place_image(anchor, size, bounds)
 			} else {
 				super::chrome::preview::place(anchor, size, bounds, padding)
 			}
@@ -81,6 +92,7 @@ impl FloatingDocument {
 			state: Default::default(),
 			metrics,
 			gutter,
+			picture,
 		};
 		floating.scroll.set_max(floating.view().max_scroll());
 		floating
@@ -90,6 +102,9 @@ impl FloatingDocument {
 		self.state.focused
 	}
 	pub(super) fn body(&self) -> Rect {
+		if self.picture {
+			return self.rect;
+		}
 		let [top, right, bottom, left] = self.padding;
 		Rect {
 			x: self.rect.x + left,
@@ -120,6 +135,9 @@ impl FloatingDocument {
 	pub(super) fn scrollbar(
 		&self,
 	) -> Option<markview_layout::scene::Scrollbar> {
+		if self.picture {
+			return None;
+		}
 		self.view().scrollbar(self.metrics)
 	}
 

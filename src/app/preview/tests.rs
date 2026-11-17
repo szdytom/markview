@@ -5,6 +5,7 @@ mod handoff;
 mod images;
 mod interaction_tests;
 mod links;
+mod pictures;
 mod profile;
 use super::*;
 use crate::{

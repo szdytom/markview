@@ -93,6 +93,7 @@ struct Scene {
 	document: Arc<crate::loaded::LoadedDocument>,
 	images: Option<crate::images::Images>,
 	blocks: Vec<markview_document::BlockId>,
+	picture: bool,
 }
 impl Scene {
 	fn new(source: Content, cancelled: &CancellationToken) -> Option<Self> {
@@ -121,6 +122,7 @@ impl Scene {
 			document,
 			images: None,
 			blocks: Vec::new(),
+			picture: false,
 		})
 	}
 
@@ -199,6 +201,9 @@ impl Scene {
 			return Some(snapshot);
 		}
 		self.blocks = blocks;
+		if self.images.is_none() {
+			self.picture = crate::file::is_picture(path);
+		}
 		let images = self.images.get_or_insert_with(|| {
 			let mut images = crate::images::Images::with_services(
 				self.source.offline,
@@ -213,9 +218,7 @@ impl Scene {
 				|text| self.source.security.for_content(text),
 			));
 			images.set_workspace(self.source.workspace.clone());
-			images.set_standalone_image(
-				crate::file::is_picture(path).then(|| path.clone()),
-			);
+			images.set_standalone_image(self.picture.then(|| path.clone()));
 			images.set_initial_width(self.source.options.width);
 			images
 		});
@@ -238,6 +241,7 @@ pub(in crate::app) struct Completion {
 	pub snapshot: Option<LayoutSnapshot>,
 	pub(super) origins: navigation::Origins,
 	pub build: Duration,
+	pub picture: bool,
 }
 
 pub(in crate::app) struct Worker {
@@ -363,6 +367,7 @@ impl Worker {
 						snapshot: Some(snapshot.0),
 						origins: snapshot.1,
 						build,
+						picture: scene.as_ref().unwrap().picture,
 					});
 					drop(slot);
 					ready.1.notify_one();
@@ -377,6 +382,7 @@ impl Worker {
 						snapshot: None,
 						origins: navigation::Origins::default(),
 						build,
+						picture: false,
 					});
 					drop(slot);
 					ready.1.notify_one();
