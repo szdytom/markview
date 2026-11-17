@@ -163,6 +163,7 @@ test("side preview publishes unsaved edits, changes theme, deduplicates panels a
   assert.ok(commands.has("markview.export.pdf"), "Export remains registered");
   await commands.get("markview.preview.open")();
   assert.match(panel.webview.html, /wasm-unsafe-eval/);
+  assert.match(panel.webview.html, /<span id="status" role="status"><\/span>/);
   await receive({ type: "ready" });
   await new Promise((resolve) => setImmediate(resolve));
   assert.equal(messages.at(-1).markdown, "# version 1");

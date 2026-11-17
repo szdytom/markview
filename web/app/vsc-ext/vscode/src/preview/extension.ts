@@ -271,7 +271,7 @@ export function activate(
       localResourceRoots: [media],
     };
     const nonce = randomBytes(18).toString("base64");
-    panel.webview.html = `<!doctype html><html><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1"><meta http-equiv="Content-Security-Policy" content="default-src 'none'; connect-src ${panel.webview.cspSource} data:; img-src blob: data:; script-src 'nonce-${nonce}' 'wasm-unsafe-eval'; style-src ${panel.webview.cspSource} 'unsafe-inline';"><link rel="stylesheet" href="${uri("preview.css")}"></head><body><span id="status" role="status">正在加载…</span><main id="reader"></main><script nonce="${nonce}">window.markviewHost=acquireVsCodeApi();</script><script nonce="${nonce}" type="module" src="${uri("preview.js")}" data-wasm="${uri("markview_web_bg.wasm")}"></script></body></html>`;
+    panel.webview.html = `<!doctype html><html><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1"><meta http-equiv="Content-Security-Policy" content="default-src 'none'; connect-src ${panel.webview.cspSource} data:; img-src blob: data:; script-src 'nonce-${nonce}' 'wasm-unsafe-eval'; style-src ${panel.webview.cspSource} 'unsafe-inline';"><link rel="stylesheet" href="${uri("preview.css")}"></head><body><span id="status" role="status"></span><main id="reader"></main><script nonce="${nonce}">window.markviewHost=acquireVsCodeApi();</script><script nonce="${nonce}" type="module" src="${uri("preview.js")}" data-wasm="${uri("markview_web_bg.wasm")}"></script></body></html>`;
   }
   context.subscriptions.push(
     vscode.commands.registerCommand("markview.preview.template", async () => {
