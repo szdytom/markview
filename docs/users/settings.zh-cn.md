@@ -13,6 +13,24 @@
 **设置 → 通用 → 语言与代码 → 代码块复制按钮** 默认开启，也可在 `settings.toml` 中设置
 `codeblock-copy = false` 隐藏按钮。此选项不影响选择复制或导出。
 
+## 悬停预览
+
+桌面版的**设置 → 通用 → 界面**可以分别设置脚注引用、文件夹内文件和链接悬停的预览尺寸，
+每项均可选择**关闭、小、中、大**。脚注引用默认为小，文件夹内文件和链接悬停默认为中。
+
+小保留原有的 420 × 320 px 内容区域上限；中为 525 × 400 px，大为 630 × 480 px。
+短内容会自动收缩，窗口空间不足时也会缩小。Tab 悬停卡片和 Ctrl+P 预览不受这些设置影响。
+
+`settings.toml` 中对应的顶层配置项为：
+
+```toml
+footnote-preview = "small"
+folder-preview = "medium"
+link-preview = "medium"
+```
+
+每项均可使用 `"off"`、`"small"`、`"medium"` 或 `"large"`。
+
 ## Markdown dialect
 
 **设置 → 通用 → 语言与代码** 决定 Markview 如何解析 Markdown。

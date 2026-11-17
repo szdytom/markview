@@ -3,8 +3,8 @@
 mod proptests;
 
 use super::{
-	ExportSettings, FontDefOverride, MarkdownFlavor, ReaderSettings, Setting,
-	WindowBorder,
+	ExportSettings, FontDefOverride, MarkdownFlavor, PreviewSize,
+	ReaderSettings, Setting, WindowBorder,
 };
 use crate::lang::Lang;
 use crate::render::Theme;
@@ -138,6 +138,12 @@ pub(super) struct Config {
 	pub(super) restore_session: bool,
 	#[serde(rename = "footer-path")]
 	pub(super) footer_path: bool,
+	#[serde(rename = "footnote-preview")]
+	pub(super) footnote_preview: PreviewSize,
+	#[serde(rename = "folder-preview")]
+	pub(super) folder_preview: PreviewSize,
+	#[serde(rename = "link-preview")]
+	pub(super) link_preview: PreviewSize,
 	/// The reader's export preferences, kept apart from the reading view.
 	pub(super) export: ExportSettings,
 }

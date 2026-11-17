@@ -383,7 +383,7 @@ fn sidebar_previews_match_rendering_baselines() -> anyhow::Result<()> {
 		(Theme::Light, "light", 1.0),
 		(Theme::Dark, "dark-125", 1.25),
 	] {
-		for (index, position) in [(0, "top"), (7, "center"), (24, "bottom")] {
+		for (index, position) in [(0, "top"), (11, "center"), (24, "bottom")] {
 			let mut app = sidebar(dir.path(), theme);
 			// Stable labels keep temporary paths out of the rendered chrome.
 			app.folder.tree.as_mut().unwrap().name = "Reading library".into();

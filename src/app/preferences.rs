@@ -121,6 +121,9 @@ impl Preferences {
 			single_instance: settings.single_instance,
 			restore_session: settings.restore_session,
 			footer_path: settings.footer_path,
+			footnote_preview: settings.footnote_preview,
+			folder_preview: settings.folder_preview,
+			link_preview: settings.link_preview,
 		};
 		for field in &args.overrides {
 			settings.copy_field(&explicit, *field);

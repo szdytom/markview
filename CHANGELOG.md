@@ -30,7 +30,9 @@ at the same level, without `[brackets]`.
 - Middle-click files in the file sidebar, Ctrl+P picker or new-page quick access to open them in background tabs without switching away from the current page.
 - Support Obsidian block IDs recognized by the Markdown parser, with hidden markers and links to blocks within and across notes.
 - Use Qi Baishi, Mondrian and Van Gogh in the reader as well as exports, with coordinated interface colors, wheat-yellow Van Gogh outline highlights and small theme-color markers before tab filenames.
-- Hover over footnote references to preview their formatted content in a content-sized popup near the reference, with cancellable background layout, dedicated MVSS `preview` styling, text selection and copying, smooth scrolling, scrollbars, asynchronously loaded images, link navigation and the image viewer; the same popup also previews offscreen sections, local Markdown file links and files hovered in the sidebar (to its right, vertically centered on the row), shows standalone pictures in an image-sized popup without scrolling, refreshes when the target file changes, and transfers link, image and disclosure actions to the corresponding document tab.
+- Preview a footnote, an offscreen section of the current document or a linked local Markdown file by hovering over its reference or link, without leaving the page. Move into the popup to scroll, select and copy text, follow links or open images.
+- Preview files by hovering over them in the file sidebar, including Markdown documents and images. The popup opens beside the sidebar and refreshes when the file changes; standalone pictures open in an image-sized popup without scrolling.
+- Choose Off, Small, Medium or Large independently for footnote, file sidebar and link hover previews in Settings. Footnotes default to Small; file sidebar and link previews default to Medium. Tab hover cards and Ctrl+P previews keep their existing sizes.
 
 ### Changed
 

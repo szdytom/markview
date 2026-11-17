@@ -61,6 +61,7 @@ pub(crate) enum SettingsCommand {
 	RestoreSession,
 	/// Show the open document's path in the idle footer and copy it on click.
 	FooterPath,
+	PreviewSize(crate::settings::PreviewKind, crate::settings::PreviewSize),
 	/// Step the reader's scroll-speed multiplier by whole steps.
 	ScrollSpeed(i8),
 	SidebarWidth(crate::settings::Sidebar, i8),

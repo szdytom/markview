@@ -25,6 +25,7 @@ use super::{
 use crate::{
 	layout::{Draw, LayoutSnapshot, PlacedBlock, Rect},
 	render::Theme,
+	settings::{PreviewKind, PreviewSize},
 	state::{DisplayState, ReaderSession},
 };
 use std::{
@@ -511,6 +512,17 @@ pub(super) enum Target {
 	},
 }
 
+impl Target {
+	fn preview_kind(self) -> Option<PreviewKind> {
+		match self {
+			Self::Tab(_) => None,
+			Self::Footnote { .. } => Some(PreviewKind::Footnote),
+			Self::File(_) => Some(PreviewKind::Folder),
+			Self::Link { .. } => Some(PreviewKind::Link),
+		}
+	}
+}
+
 struct Hover {
 	target: Target,
 	at: Instant,
@@ -804,6 +816,11 @@ impl<P: super::SendEvent> App<P> {
 		} else {
 			None
 		};
+		let target = target.filter(|target| {
+			target.preview_kind().is_none_or(|kind| {
+				self.preferences.preview_size(kind) != PreviewSize::Off
+			})
+		});
 		self.preview.hover(target, now)
 	}
 
@@ -1161,6 +1178,8 @@ impl<P: super::SendEvent> App<P> {
 		revision: markview_document::DocumentRevision,
 		destination: work::Destination,
 	) -> Option<work::Source> {
+		let size = self.preferences.preview_size(target.preview_kind()?);
+		let (width, max_height) = size.dimensions()?;
 		let document = self.readers.session.document.clone();
 		let original_options = self.options();
 		let mut options = original_options.clone();
@@ -1176,12 +1195,13 @@ impl<P: super::SendEvent> App<P> {
 			p.sides().map(|side| side * options.font_size)
 		});
 		let metrics = options.stylesheet.scrollbar_metrics();
-		options.width = 420.0_f32.min(
+		options.width = width.min(
 			(bounds.w - 16.0 - padding[1] - padding[3] - metrics.thickness)
 				.max(1.0),
 		);
 		options.viewport_height = 0.0;
 		Some(work::Source {
+			size,
 			security: self.preview_security(target),
 			workspace: self.folder.root().cloned(),
 			offline: self.args.offline,
@@ -1190,6 +1210,7 @@ impl<P: super::SendEvent> App<P> {
 			bounds,
 			revision,
 			frame: FrameStyle {
+				max_height,
 				padding,
 				metrics,
 				right_centered: matches!(target, Target::File(_)),

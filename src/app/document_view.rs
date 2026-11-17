@@ -5,12 +5,25 @@ use std::collections::HashMap;
 
 mod image;
 
-#[derive(Clone, Copy, Default)]
+#[derive(Clone, Copy)]
 pub(super) struct FrameStyle {
+	pub(super) max_height: f32,
 	pub(super) right_centered: bool,
 	pub(super) picture: bool,
 	pub(super) padding: [f32; 4],
 	pub(super) metrics: markview_layout::scene::ScrollbarMetrics,
+}
+
+impl Default for FrameStyle {
+	fn default() -> Self {
+		Self {
+			max_height: 320.0,
+			right_centered: false,
+			picture: false,
+			padding: Default::default(),
+			metrics: Default::default(),
+		}
+	}
 }
 
 /// A reusable rendered scene anchored to document geometry.
@@ -37,6 +50,7 @@ impl FloatingDocument {
 		frame: FrameStyle,
 	) -> Self {
 		let FrameStyle {
+			max_height,
 			mut padding,
 			metrics,
 			right_centered,
@@ -59,7 +73,7 @@ impl FloatingDocument {
 			anchor,
 			(
 				snapshot.width + padding[1] + padding[3],
-				snapshot.height.min(320.0) + padding[0] + padding[2],
+				snapshot.height.min(max_height) + padding[0] + padding[2],
 			),
 			bounds,
 			padding,
@@ -74,7 +88,7 @@ impl FloatingDocument {
 				anchor,
 				(
 					snapshot.width + padding[1] + padding[3] + gutter,
-					snapshot.height.min(320.0) + padding[0] + padding[2],
+					snapshot.height.min(max_height) + padding[0] + padding[2],
 				),
 				bounds,
 				padding,

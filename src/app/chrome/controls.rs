@@ -11,7 +11,10 @@ use crate::{
 	app::frame::{CONTROL_GAP, Layout},
 	lang::Lang,
 	layout::{Draw, Rect, TextShaper},
-	settings::{MarkdownFlavor, ReaderSettings, Sidebar, WindowBorder},
+	settings::{
+		MarkdownFlavor, PreviewKind, PreviewSize, ReaderSettings, Sidebar,
+		WindowBorder,
+	},
 	state::{Command, DropdownId, InteractionState, PanelPage, PanelTab},
 };
 pub(super) use components::{draw_button, panel_rect};
@@ -129,6 +132,36 @@ fn rows(settings: &ReaderSettings, phone: bool) -> Vec<Row> {
 		);
 	}
 	if !markview_platform::touch_layout() {
+		for (kind, label) in [
+			(PreviewKind::Footnote, t.settings_footnote_preview()),
+			(PreviewKind::Folder, t.settings_folder_preview()),
+			(PreviewKind::Link, t.settings_link_preview()),
+		] {
+			let command = |size| {
+				Command::Settings(SettingsCommand::PreviewSize(kind, size))
+			};
+			rows.push(Row::new(
+				label,
+				choices(
+					&[
+						(t.settings_off(), command(PreviewSize::Off)),
+						(
+							t.settings_preview_small(),
+							command(PreviewSize::Small),
+						),
+						(
+							t.settings_preview_medium(),
+							command(PreviewSize::Medium),
+						),
+						(
+							t.settings_preview_large(),
+							command(PreviewSize::Large),
+						),
+					],
+					Some(command(settings.preview_size(kind))),
+				),
+			));
+		}
 		rows.extend([
 			Row::new(t.settings_window_border(), vec![]).menu(
 				DropdownId::WindowBorder,

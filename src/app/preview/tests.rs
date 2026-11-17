@@ -7,6 +7,7 @@ mod interaction_tests;
 mod links;
 mod pictures;
 mod profile;
+mod sizes;
 use super::*;
 use crate::{
 	app::{Event, SendEvent},
@@ -368,6 +369,15 @@ fn the_active_tab_opens_a_text_only_card() {
 #[test]
 fn an_idle_tab_keeps_its_page_preview_after_releasing_its_document() {
 	let (mut app, events) = app();
+	for kind in [
+		PreviewKind::Footnote,
+		PreviewKind::Folder,
+		PreviewKind::Link,
+	] {
+		app.preferences
+			.values
+			.set_preview_size(kind, PreviewSize::Off);
+	}
 	let dir = crate::test_support::TestDir::new();
 	let first = dir.path().join("first.md");
 	let second = dir.path().join("second.md");

@@ -854,7 +854,11 @@ fn single_instance_control_reflects_the_saved_choice() {
 			restore_session: enabled,
 			..Default::default()
 		};
-		let buttons = controls(&mut shaper, &settings, true, 1200.0, 800.0);
+		let scroll = form(&mut shaper, &settings, 0.0, 1200.0, 800.0).reveal(
+			Command::Settings(SettingsCommand::SingleInstance).widget_id(),
+		);
+		let buttons = form(&mut shaper, &settings, scroll, 1200.0, 800.0)
+			.visible_buttons();
 		let button = buttons
 			.iter()
 			.find(|b| {
@@ -1130,5 +1134,81 @@ fn dialect_preset_uses_the_full_control_width_without_a_help_button() {
 				.count(),
 			1
 		);
+	}
+}
+
+#[test]
+fn panel_offers_independent_segmented_preview_sizes() {
+	use crate::settings::{PreviewKind, PreviewSize};
+	let mut shaper = crate::test_support::shaper();
+	let sizes = [
+		PreviewSize::Off,
+		PreviewSize::Small,
+		PreviewSize::Medium,
+		PreviewSize::Large,
+	];
+	for &lang in Lang::ALL {
+		for width in [360.0, 420.0, 500.0, 1200.0] {
+			for kind in [
+				PreviewKind::Footnote,
+				PreviewKind::Folder,
+				PreviewKind::Link,
+			] {
+				for selected in sizes {
+					let mut settings = ReaderSettings {
+						lang: Some(lang),
+						..Default::default()
+					};
+					settings.set_preview_size(kind, selected);
+					let command = |size| {
+						Command::Settings(SettingsCommand::PreviewSize(
+							kind, size,
+						))
+					};
+					let scroll =
+						form(&mut shaper, &settings, 0.0, width, 800.0)
+							.reveal(command(PreviewSize::Off).widget_id());
+					let form =
+						form(&mut shaper, &settings, scroll, width, 800.0);
+					let buttons: Vec<_> = sizes
+						.iter()
+						.map(|size| {
+							form.buttons
+								.iter()
+								.find(|button| button.action == command(*size))
+								.unwrap()
+						})
+						.collect();
+					for (button, (size, label)) in
+						buttons.iter().zip(sizes.into_iter().zip([
+							lang.settings_off(),
+							lang.settings_preview_small(),
+							lang.settings_preview_medium(),
+							lang.settings_preview_large(),
+						])) {
+						assert_eq!(button.label, label);
+						assert_eq!(button.active, selected == size);
+						assert!(button.marker.is_none());
+						components::appearance(&mut shaper);
+						shaper.appearance = shaper
+							.stylesheet
+							.text(&shaper.appearance, Condition::Button);
+						assert!(
+							shaper.text_width(label, 13.0)
+								<= button.rect.w - 8.0,
+							"{lang:?} {width} {label}"
+						);
+					}
+					for pair in buttons.windows(2) {
+						assert_eq!(pair[0].rect.y, pair[1].rect.y);
+						assert!(
+							(pair[0].rect.x + pair[0].rect.w - pair[1].rect.x)
+								.abs()
+								< 0.001
+						);
+					}
+				}
+			}
+		}
 	}
 }

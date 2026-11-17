@@ -2,7 +2,8 @@
 use crate::state::SettingsCommand;
 use crate::{
 	settings::{
-		FontRole, MarkdownFlavor, ReaderSettings, Setting, WindowBorder,
+		FontRole, MarkdownFlavor, PreviewKind, PreviewSize, ReaderSettings,
+		Setting, WindowBorder,
 	},
 	state::Command,
 };
@@ -69,6 +70,7 @@ pub(super) enum Message {
 	SingleInstance,
 	RestoreSession,
 	FooterPath,
+	PreviewSize(PreviewKind, PreviewSize),
 	ScrollSpeed(i8),
 	Reset(Box<ReaderSettings>),
 }
@@ -118,6 +120,9 @@ impl Message {
 			}
 			Command::Settings(SettingsCommand::RestoreSession) => {
 				Self::RestoreSession
+			}
+			Command::Settings(SettingsCommand::PreviewSize(kind, size)) => {
+				Self::PreviewSize(kind, size)
 			}
 			Command::Settings(SettingsCommand::FooterPath) => Self::FooterPath,
 			Command::Settings(SettingsCommand::ScrollSpeed(delta)) => {
@@ -209,6 +214,10 @@ impl Component for Model {
 			Message::CodeCopy => {
 				self.values.codeblock_copy = !self.values.codeblock_copy;
 				Setting::CodeblockCopy
+			}
+			Message::PreviewSize(kind, size) => {
+				self.values.set_preview_size(kind, size);
+				Setting::PreviewSize(kind)
 			}
 			Message::FooterPath => {
 				self.values.footer_path = !self.values.footer_path;
@@ -305,7 +314,8 @@ impl Component for Model {
 			Setting::SidebarWidth(sidebar) => {
 				update.effects.push(Effect::SidebarResize(sidebar));
 			}
-			Setting::ScrollSpeed
+			Setting::PreviewSize(_)
+			| Setting::ScrollSpeed
 			| Setting::FooterPath
 			| Setting::CodeblockCopy => {}
 			_ => update.effects.push(Effect::Reflow),
@@ -318,6 +328,32 @@ impl Component for Model {
 mod tests {
 	use super::*;
 	use markview_ui_core::Component;
+
+	#[test]
+	fn preview_size_commands_persist_without_reflowing_the_reader() {
+		for kind in [
+			PreviewKind::Footnote,
+			PreviewKind::Folder,
+			PreviewKind::Link,
+		] {
+			let mut model = Model::default();
+			for size in [
+				PreviewSize::Off,
+				PreviewSize::Small,
+				PreviewSize::Medium,
+				PreviewSize::Large,
+			] {
+				let command =
+					Command::Settings(SettingsCommand::PreviewSize(kind, size));
+				let update =
+					model.update(Message::from_command(command).unwrap());
+				assert_eq!(model.values.preview_size(kind), size);
+				assert!(
+					matches!(update.effects.as_slice(), [Effect::Persist(Some(Setting::PreviewSize(changed)))] if *changed == kind)
+				);
+			}
+		}
+	}
 
 	#[test]
 	fn dialect_messages_persist_as_one_setting_and_reflow() {

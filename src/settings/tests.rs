@@ -4,6 +4,50 @@ use crate::lang::Lang;
 use std::fs;
 
 #[test]
+fn preview_sizes_default_merge_reload_and_reset() {
+	let dir = crate::test_support::TestDir::new();
+	let path = dir.path().join("settings.toml");
+	fs::write(&path, "# Existing settings\nfont_size = 20\n").unwrap();
+	let (mut store, warning) = SettingsStore::load(Some(path.clone()));
+	assert!(warning.is_none());
+	let defaults = store.settings();
+	assert_eq!(defaults.footnote_preview, PreviewSize::Small);
+	assert_eq!(defaults.folder_preview, PreviewSize::Medium);
+	assert_eq!(defaults.link_preview, PreviewSize::Medium);
+	let mut settings = defaults.clone();
+	settings.footnote_preview = PreviewSize::Off;
+	store.changed(&settings, Some(Setting::PreviewSize(PreviewKind::Footnote)));
+	fs::write(
+		&path,
+		"# Existing settings\nfolder-preview = \"large\"\nlink-preview = \"small\"\n",
+	)
+	.unwrap();
+	store.flush().unwrap();
+	let saved = store.settings();
+	assert_eq!(saved.footnote_preview, PreviewSize::Off);
+	assert_eq!(saved.folder_preview, PreviewSize::Large);
+	assert_eq!(saved.link_preview, PreviewSize::Small);
+	assert!(
+		fs::read_to_string(&path)
+			.unwrap()
+			.contains("# Existing settings")
+	);
+	assert_eq!(SettingsStore::load(Some(path.clone())).0.settings(), saved);
+	for key in ["footnote-preview", "folder-preview", "link-preview"] {
+		fs::write(&path, format!("{key} = \"huge\"\n")).unwrap();
+		assert!(store.reload().is_err());
+		assert_eq!(store.settings(), saved);
+	}
+	fs::write(&path, "").unwrap();
+	store.changed(&ReaderSettings::default(), None);
+	store.flush().unwrap();
+	assert_eq!(
+		SettingsStore::load(Some(path)).0.settings(),
+		ReaderSettings::default()
+	);
+}
+
+#[test]
 fn sidebar_widths_default_merge_reload_validate_and_reset_independently() {
 	let dir = crate::test_support::TestDir::new();
 	let path = dir.path().join("settings.toml");
@@ -1094,6 +1138,9 @@ fn settings_differing_from_default() -> ReaderSettings {
 		single_instance: !default.single_instance,
 		restore_session: !default.restore_session,
 		footer_path: !default.footer_path,
+		footnote_preview: PreviewSize::Off,
+		folder_preview: PreviewSize::Large,
+		link_preview: PreviewSize::Small,
 		..default
 	}
 }
@@ -1143,6 +1190,9 @@ fn changed_fields(
 		single_instance,
 		restore_session,
 		footer_path,
+		footnote_preview,
+		folder_preview,
+		link_preview,
 	);
 	changed
 }
@@ -1178,6 +1228,11 @@ fn expected_changes(field: Setting) -> Vec<&'static str> {
 		Setting::SingleInstance => vec!["single_instance"],
 		Setting::RestoreSession => vec!["restore_session"],
 		Setting::FooterPath => vec!["footer_path"],
+		Setting::PreviewSize(kind) => vec![match kind {
+			PreviewKind::Footnote => "footnote_preview",
+			PreviewKind::Folder => "folder_preview",
+			PreviewKind::Link => "link_preview",
+		}],
 		Setting::FontFamily => vec!["fontdef_overrides"],
 	}
 }
@@ -1224,6 +1279,9 @@ fn assert_copied(from: &ReaderSettings, to: &ReaderSettings, field: Setting) {
 			assert_eq!(to.restore_session, from.restore_session);
 		}
 		Setting::FooterPath => assert_eq!(to.footer_path, from.footer_path),
+		Setting::PreviewSize(kind) => {
+			assert_eq!(to.preview_size(kind), from.preview_size(kind))
+		}
 		Setting::FontFamily => {
 			assert_eq!(to.fontdef_overrides, from.fontdef_overrides);
 		}
@@ -1232,7 +1290,7 @@ fn assert_copied(from: &ReaderSettings, to: &ReaderSettings, field: Setting) {
 
 #[test]
 fn setting_all_keeps_the_persisted_order_and_count() {
-	assert_eq!(Setting::COUNT, 18);
+	assert_eq!(Setting::COUNT, 19);
 	assert_eq!(
 		Setting::ALL,
 		[
@@ -1255,6 +1313,9 @@ fn setting_all_keeps_the_persisted_order_and_count() {
 			Setting::SingleInstance,
 			Setting::RestoreSession,
 			Setting::FooterPath,
+			Setting::PreviewSize(PreviewKind::Footnote),
+			Setting::PreviewSize(PreviewKind::Folder),
+			Setting::PreviewSize(PreviewKind::Link),
 			Setting::FontFamily,
 		]
 	);

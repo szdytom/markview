@@ -28,6 +28,7 @@ pub(in crate::app) struct Content {
 }
 
 pub(super) struct Source {
+	pub size: PreviewSize,
 	pub version: u64,
 	pub security: crate::security::Security,
 	pub workspace: Option<std::path::PathBuf>,
@@ -58,6 +59,9 @@ impl Source {
 		let context = app.document_interaction();
 		let images = &context.snapshot.images;
 		self.matches_destination(app)
+			&& self.target.preview_kind().is_some_and(|kind| {
+				app.preferences.preview_size(kind) == self.size
+			})
 			&& self.version == app.readers.session.version
 			&& same_document
 			&& context.snapshot.revision == self.revision

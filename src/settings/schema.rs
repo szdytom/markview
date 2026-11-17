@@ -7,8 +7,8 @@
 //! `Config` shape differs from the reader shape.
 
 use super::{
-	ExportSettings, ReaderSettings, Setting, Sidebar, default_cjk_type,
-	store::Config,
+	ExportSettings, PreviewKind, ReaderSettings, Setting, Sidebar,
+	default_cjk_type, store::Config,
 };
 use crate::render::Theme;
 
@@ -82,11 +82,11 @@ macro_rules! settings_schema {
 	) => {
 		impl Setting {
 			/// Every persisted setting, in the order the settings page resets.
-			pub const ALL: [Self; 20] =
+			pub const ALL: [Self; 23] =
 				[ $( Setting::$variant $(($arg))? ),* ];
 			/// The number of `Setting` variants.
 			#[allow(dead_code, reason = "The settings tests assert this count.")]
-			pub const COUNT: usize = 18;
+			pub const COUNT: usize = 19;
 		}
 		impl ReaderSettings {
 			pub fn copy_field(&mut self, other: &Self, field: Setting) {
@@ -167,6 +167,12 @@ settings_schema! {
 			special: copy_single_instance;
 		RestoreSession => restore_session : restore_session, copy;
 		FooterPath => footer_path : footer_path, copy;
+		PreviewSize(PreviewKind::Footnote) => footnote_preview : footnote_preview, copy,
+			special: copy_preview;
+		PreviewSize(PreviewKind::Folder) => folder_preview : folder_preview, copy,
+			special: copy_preview;
+		PreviewSize(PreviewKind::Link) => link_preview : link_preview, copy,
+			special: copy_preview;
 		FontFamily => fontdef_overrides : fontdef_overrides, clone,
 			special: copy_font_family;
 	}
@@ -244,4 +250,12 @@ fn copy_dialect(to: &mut ReaderSettings, from: &ReaderSettings) {
 	to.highlight_marks = from.highlight_marks;
 	to.grid_tables = from.grid_tables;
 	to.math_dollars_block = from.math_dollars_block;
+}
+
+fn copy_preview(
+	to: &mut ReaderSettings,
+	from: &ReaderSettings,
+	kind: PreviewKind,
+) {
+	to.set_preview_size(kind, from.preview_size(kind));
 }

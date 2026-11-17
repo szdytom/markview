@@ -358,3 +358,43 @@ fn empty_invalid_and_unsupported_files_have_stable_preview_states() {
 			.is_some()
 	);
 }
+
+#[test]
+fn picker_preview_uses_its_column_with_all_hover_previews_off() {
+	use crate::settings::{PreviewKind, PreviewSize};
+	let dir = TestDir::new();
+	fs::write(
+		dir.path().join("target.md"),
+		"# Picker content\n\nLong preview. ".repeat(200),
+	)
+	.unwrap();
+	let (mut app, events) = setup(dir.path());
+	for kind in [
+		PreviewKind::Footnote,
+		PreviewKind::Folder,
+		PreviewKind::Link,
+	] {
+		app.preferences
+			.values
+			.set_preview_size(kind, PreviewSize::Off);
+	}
+	query(&mut app, &events, "target");
+	settle(&mut app, &events, |app| {
+		app.interaction
+			.overlays
+			.quick_open
+			.preview
+			.snapshot
+			.is_some()
+	});
+	let body = app.quick_open_geometry().body.unwrap();
+	let preview = &app.interaction.overlays.quick_open.preview;
+	assert_eq!(preview.request.as_ref().unwrap().options.width, body.w);
+	assert_eq!(
+		preview.request.as_ref().unwrap().options.viewport_height,
+		body.h
+	);
+	assert_eq!(preview.snapshot.as_ref().unwrap().width, body.w);
+	assert!(text(&app).contains("Picker content"));
+	assert!(app.readers.session.path.is_none());
+}

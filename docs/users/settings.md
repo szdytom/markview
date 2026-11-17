@@ -44,6 +44,28 @@ Code-block copying preserves the entire block's whitespace, including offscreen
 content. Hiding its button (`codeblock-copy = false`) does not affect selection
 copying or export. Phone/tablet-specific options are described in [Android](android.md).
 
+## Hover previews
+
+On desktop, **Settings → Generic → Interface** offers separate preview sizes
+for footnote references, files in the folder sidebar and links. Each can be
+**Off**, **Small**, **Medium** or **Large**. Footnotes default to Small;
+file sidebar and link previews default to Medium.
+
+Small keeps the original 420 × 320 px content limit; Medium uses 525 × 400 px
+and Large uses 630 × 480 px. Popups shrink to fit short content and the available
+window space. Tab hover cards and Ctrl+P previews keep their existing behavior
+regardless of these settings.
+
+The corresponding top-level keys in `settings.toml` are:
+
+```toml
+footnote-preview = "small"
+folder-preview = "medium"
+link-preview = "medium"
+```
+
+Each accepts `"off"`, `"small"`, `"medium"` or `"large"`.
+
 ## Markdown dialect
 
 **Settings → Generic → Language & code** chooses how Markview reads Markdown.

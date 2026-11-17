@@ -12,6 +12,27 @@ const ROLES: [FontRole; 6] = [
 
 proptest! {
 	#[test]
+	fn preview_choices_round_trip_and_copy_independently(indices in prop::array::uniform3(0usize..4)) {
+		let sizes = [PreviewSize::Off, PreviewSize::Small, PreviewSize::Medium, PreviewSize::Large];
+		let kinds = [PreviewKind::Footnote, PreviewKind::Folder, PreviewKind::Link];
+		let defaults = ReaderSettings::default();
+		let mut settings = defaults.clone();
+		for (kind, index) in kinds.into_iter().zip(indices) {
+			settings.set_preview_size(kind, sizes[index]);
+		}
+		let encoded = toml_edit::ser::to_document(&store::Config::from_settings(&settings, ExportSettings::default())).unwrap().to_string();
+		let decoded: store::Config = toml_edit::de::from_str(&encoded).unwrap();
+		prop_assert_eq!(decoded.reader_settings(), settings.clone());
+		for kind in kinds {
+			let mut copied = defaults.clone();
+			copied.copy_field(&settings, Setting::PreviewSize(kind));
+			for other in kinds {
+				prop_assert_eq!(copied.preview_size(other), if kind == other { settings.preview_size(other) } else { defaults.preview_size(other) });
+			}
+		}
+	}
+
+	#[test]
 	fn preference_sequences_keep_independent_sidebar_font_and_scroll_values(
 		operations in prop::collection::vec((0u8..3, 0usize..6, -127i16..128, prop::option::of(prop::collection::vec(any::<char>(), 0..16))), 0..32),
 	) {

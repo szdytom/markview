@@ -29,6 +29,37 @@ pub enum Sidebar {
 	Tabs,
 }
 
+/// The hover source whose preview size is configured independently.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum PreviewKind {
+	Footnote,
+	Folder,
+	Link,
+}
+
+/// Maximum content dimensions for a hover preview, in layout pixels.
+#[derive(
+	Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize,
+)]
+#[serde(rename_all = "lowercase")]
+pub enum PreviewSize {
+	Off,
+	#[default]
+	Small,
+	Medium,
+	Large,
+}
+impl PreviewSize {
+	pub fn dimensions(self) -> Option<(f32, f32)> {
+		match self {
+			Self::Off => None,
+			Self::Small => Some((420.0, 320.0)),
+			Self::Medium => Some((525.0, 400.0)),
+			Self::Large => Some((630.0, 480.0)),
+		}
+	}
+}
+
 /// Window chrome preference, applied when the next window is created.
 #[derive(
 	Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize,
@@ -135,6 +166,9 @@ pub struct ReaderSettings {
 	/// Whether the idle footer shows the open document's absolute path and
 	/// copies it when clicked. Off by default.
 	pub footer_path: bool,
+	pub footnote_preview: PreviewSize,
+	pub folder_preview: PreviewSize,
+	pub link_preview: PreviewSize,
 }
 impl Default for ReaderSettings {
 	fn default() -> Self {
@@ -169,6 +203,9 @@ impl Default for ReaderSettings {
 			single_instance: markview_platform::mobile_session(),
 			restore_session: markview_platform::mobile_session(),
 			footer_path: false,
+			footnote_preview: PreviewSize::Small,
+			folder_preview: PreviewSize::Medium,
+			link_preview: PreviewSize::Medium,
 		}
 	}
 }
@@ -238,6 +275,7 @@ pub enum Setting {
 	SingleInstance,
 	RestoreSession,
 	FooterPath,
+	PreviewSize(PreviewKind),
 	/// Every per-role font family, which is one list of overrides.
 	FontFamily,
 }
@@ -413,6 +451,21 @@ impl ReaderSettings {
 			bail!("Justification limits are out of range");
 		}
 		Ok(())
+	}
+	pub fn preview_size(&self, kind: PreviewKind) -> PreviewSize {
+		match kind {
+			PreviewKind::Footnote => self.footnote_preview,
+			PreviewKind::Folder => self.folder_preview,
+			PreviewKind::Link => self.link_preview,
+		}
+	}
+	pub fn set_preview_size(&mut self, kind: PreviewKind, size: PreviewSize) {
+		let value = match kind {
+			PreviewKind::Footnote => &mut self.footnote_preview,
+			PreviewKind::Folder => &mut self.folder_preview,
+			PreviewKind::Link => &mut self.link_preview,
+		};
+		*value = size;
 	}
 	pub fn sidebar_width(&self, sidebar: Sidebar) -> f32 {
 		match sidebar {
