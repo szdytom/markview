@@ -562,7 +562,7 @@ fn draw_style_row(
 	let detail = e
 		.error
 		.clone()
-		.unwrap_or_else(|| format!("{} · {}", e.id, e.source));
+		.unwrap_or_else(|| format!("{} · {}", e.id, e.source.label("Bundled")));
 	let detail = shaper.fit(&detail, 12., r.x + r.w - 24. - text_x);
 	body.extend(shaper.label(
 		&detail,
@@ -588,7 +588,7 @@ mod stylesheet_tests {
 		crate::stylesheet::Entry {
 			id: id.into(),
 			name: id.into(),
-			source: "test".into(),
+			source: crate::stylesheet::Source::File("test".into()),
 			error: error.map(str::to_owned),
 			font_families: Vec::new(),
 		}

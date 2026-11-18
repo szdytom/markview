@@ -82,21 +82,64 @@ test("reading template selection and font catalog use the same UI template", asy
       asAbsolutePath: (file) => path.join(root, file),
       globalStorageUri: { fsPath: root },
     });
+    const readerTemplates = [
+      { id: "celadon", name: "Celadon" },
+      { id: "qibaishi", name: "Qi Baishi" },
+      { id: "mondrian", name: "Mondrian" },
+      { id: "vangogh", name: "Van Gogh" },
+      { id: "future-theme", name: "Future Theme" },
+      { id: "installed-theme", name: "Installed Theme", path: custom },
+    ];
+    const exportTemplates = [
+      { id: "print", name: "Print" },
+      { id: "vangogh", name: "Van Gogh" },
+    ];
     services.catalog = async (_template, destination) => {
       target = destination;
       return {
-        templates: [
-          { id: "celadon", name: "Celadon" },
-          { id: "vangogh", name: "PDF only" },
-        ],
+        templates: destination === "ui" ? readerTemplates : exportTemplates,
       };
     };
     assert.equal((await services.readingTemplate()).id, "celadon");
     assert.equal((await services.pickTemplate("ui")).id, "celadon");
     assert.equal(target, "ui");
+    assert.deepEqual(
+      Array.from(items.slice(1, -1), (item) => ({
+        id: item.template.id,
+        name: item.label,
+        ...(item.template.path ? { path: item.template.path } : {}),
+      })),
+      readerTemplates,
+    );
+    assert.equal(items[0].template.id, "default");
+    for (const template of readerTemplates) {
+      choice = template.id;
+      const selected = await services.pickTemplate("ui");
+      assert.equal(selected.id, template.id);
+      assert.equal(selected.path, template.path);
+      if (selected.path)
+        assert.match(
+          await services.previewStylesheet(selected),
+          /targets=\["ui"\]/,
+        );
+    }
+    assert.match(
+      await services.previewStylesheet(
+        { id: "installed-theme", name: "Installed Theme" },
+        readerTemplates,
+      ),
+      /targets=\["ui"\]/,
+    );
+    const installedDefault = { id: "default", name: "Installed", path: custom };
     assert.equal(
-      items.some((item) => item.template?.id === "vangogh"),
-      false,
+      await services.previewStylesheet({ id: "default", name: "Default" }, [
+        installedDefault,
+      ]),
+      undefined,
+    );
+    assert.match(
+      await services.previewStylesheet(installedDefault),
+      /targets=\["ui"\]/,
     );
     choice = "custom";
     assert.equal((await services.pickTemplate("ui")).path, custom);
@@ -106,13 +149,31 @@ test("reading template selection and font catalog use the same UI template", asy
       await services.previewStylesheet(await services.readingTemplate()),
       /targets=\["ui"\]/,
     );
-    await services.pickTemplate();
+    choice = "print";
+    assert.equal((await services.pickTemplate()).id, "print");
     assert.equal(target, "pdf");
-    assert.equal(
-      items.some((item) => item.template?.id === "vangogh"),
-      true,
+    assert.deepEqual(
+      Array.from(items.slice(1, -1), (item) => ({
+        id: item.template.id,
+        name: item.label,
+      })),
+      exportTemplates,
     );
   } finally {
     await fs.rm(root, { recursive: true, force: true });
   }
+});
+
+test("reading template settings accept IDs from the engine catalog", async () => {
+  const manifest = JSON.parse(
+    await fs.readFile(
+      new URL("../vscode/package.json", import.meta.url),
+      "utf8",
+    ),
+  );
+  const setting =
+    manifest.contributes.configuration.properties["markview.previewTemplate"];
+  assert.equal(setting.type, "string");
+  assert.equal(setting.default, "default");
+  assert.equal(setting.enum, undefined);
 });

@@ -61,6 +61,9 @@ jobs:
       - run: cargo clippy --workspace --locked --all-targets -- -D warnings
 
   test:
+    env:
+      # Match the Ubuntu archive used by the rendering baseline image.
+      MARKVIEW_APT_SNAPSHOT: 20261116T000000Z
     strategy:
       fail-fast: false
       matrix:
