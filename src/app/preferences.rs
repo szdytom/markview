@@ -124,6 +124,7 @@ impl Preferences {
 			footnote_preview: settings.footnote_preview,
 			folder_preview: settings.folder_preview,
 			link_preview: settings.link_preview,
+			preview_delay_ms: settings.preview_delay_ms,
 		};
 		for field in &args.overrides {
 			settings.copy_field(&explicit, *field);

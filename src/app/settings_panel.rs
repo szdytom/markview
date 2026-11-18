@@ -2,8 +2,8 @@
 use crate::state::SettingsCommand;
 use crate::{
 	settings::{
-		FontRole, MarkdownFlavor, PreviewKind, PreviewSize, ReaderSettings,
-		Setting, WindowBorder,
+		FontRole, MarkdownFlavor, PreviewDelay, PreviewKind, PreviewSize,
+		ReaderSettings, Setting, WindowBorder,
 	},
 	state::Command,
 };
@@ -71,6 +71,7 @@ pub(super) enum Message {
 	RestoreSession,
 	FooterPath,
 	PreviewSize(PreviewKind, PreviewSize),
+	PreviewDelay(PreviewDelay),
 	ScrollSpeed(i8),
 	Reset(Box<ReaderSettings>),
 }
@@ -123,6 +124,9 @@ impl Message {
 			}
 			Command::Settings(SettingsCommand::PreviewSize(kind, size)) => {
 				Self::PreviewSize(kind, size)
+			}
+			Command::Settings(SettingsCommand::PreviewDelay(delay)) => {
+				Self::PreviewDelay(delay)
 			}
 			Command::Settings(SettingsCommand::FooterPath) => Self::FooterPath,
 			Command::Settings(SettingsCommand::ScrollSpeed(delta)) => {
@@ -218,6 +222,10 @@ impl Component for Model {
 			Message::PreviewSize(kind, size) => {
 				self.values.set_preview_size(kind, size);
 				Setting::PreviewSize(kind)
+			}
+			Message::PreviewDelay(delay) => {
+				self.values.preview_delay_ms = delay as u64;
+				Setting::PreviewDelay
 			}
 			Message::FooterPath => {
 				self.values.footer_path = !self.values.footer_path;
@@ -315,6 +323,7 @@ impl Component for Model {
 				update.effects.push(Effect::SidebarResize(sidebar));
 			}
 			Setting::PreviewSize(_)
+			| Setting::PreviewDelay
 			| Setting::ScrollSpeed
 			| Setting::FooterPath
 			| Setting::CodeblockCopy => {}
@@ -352,6 +361,25 @@ mod tests {
 					matches!(update.effects.as_slice(), [Effect::Persist(Some(Setting::PreviewSize(changed)))] if *changed == kind)
 				);
 			}
+		}
+	}
+
+	#[test]
+	fn preview_delay_commands_persist_without_reflowing_the_reader() {
+		let mut model = Model::default();
+		for (preset, delay_ms) in [
+			(PreviewDelay::Fast, 100),
+			(PreviewDelay::Medium, 250),
+			(PreviewDelay::Slow, 500),
+		] {
+			let command =
+				Command::Settings(SettingsCommand::PreviewDelay(preset));
+			let update = model.update(Message::from_command(command).unwrap());
+			assert_eq!(model.values.preview_delay_ms, delay_ms);
+			assert!(matches!(
+				update.effects.as_slice(),
+				[Effect::Persist(Some(Setting::PreviewDelay))]
+			));
 		}
 	}
 

@@ -155,11 +155,11 @@ script with `python3 -m unittest discover -s scripts -p 'test_reconcile_render_g
 ## Measure hover previews
 
 The ignored `measure_hover_preview` test measures a loaded document through the
-real 30 ms preparation deadline, 100 ms display gate, asynchronous subtree layout,
-chrome and offscreen GPU completion. It records
-the first hover and 30 reopenings. It also records background build time and the
-longest UI tick; build time overlaps the display delay and is not added to it. Run each case in a fresh process, with the
-Linux software-rendering environment above:
+30 ms preparation deadline, the default 250 ms display delay, asynchronous
+subtree layout, chrome and offscreen GPU completion. It records the first hover
+and 30 reopenings, including background build time and the longest UI tick.
+Build time overlaps the display delay. Run each case in a fresh process with
+the Linux software-rendering environment above:
 
 ```sh
 MARKVIEW_HOVER_CASE=long MARKVIEW_HOVER_OUTPUT=/tmp/hover-latency.json \

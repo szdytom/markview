@@ -12,8 +12,8 @@ use crate::{
 	lang::Lang,
 	layout::{Draw, Rect, TextShaper},
 	settings::{
-		MarkdownFlavor, PreviewKind, PreviewSize, ReaderSettings, Sidebar,
-		WindowBorder,
+		MarkdownFlavor, PreviewDelay, PreviewKind, PreviewSize, ReaderSettings,
+		Sidebar, WindowBorder,
 	},
 	state::{Command, DropdownId, InteractionState, PanelPage, PanelTab},
 };
@@ -163,6 +163,23 @@ fn rows(settings: &ReaderSettings, phone: bool) -> Vec<Row> {
 			));
 		}
 		rows.extend([
+			Row::new(
+				t.settings_preview_delay(),
+				[
+					(t.settings_preview_delay_fast(), PreviewDelay::Fast),
+					(t.settings_preview_delay_medium(), PreviewDelay::Medium),
+					(t.settings_preview_delay_slow(), PreviewDelay::Slow),
+				]
+				.into_iter()
+				.map(|(label, delay)| {
+					action(
+						label,
+						settings.preview_delay_ms == delay as u64,
+						Command::Settings(SettingsCommand::PreviewDelay(delay)),
+					)
+				})
+				.collect(),
+			),
 			Row::new(t.settings_window_border(), vec![]).menu(
 				DropdownId::WindowBorder,
 				choices(

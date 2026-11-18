@@ -1138,6 +1138,56 @@ fn dialect_preset_uses_the_full_control_width_without_a_help_button() {
 }
 
 #[test]
+fn panel_offers_only_preview_delay_presets() {
+	let mut shaper = crate::test_support::shaper();
+	for &lang in Lang::ALL {
+		for preview_delay_ms in [100, 250, 375, 500] {
+			let settings = ReaderSettings {
+				lang: Some(lang),
+				preview_delay_ms,
+				..Default::default()
+			};
+			let command = Command::Settings(SettingsCommand::PreviewDelay(
+				PreviewDelay::Fast,
+			));
+			let scroll = form(&mut shaper, &settings, 0.0, 360.0, 500.0)
+				.reveal(command.widget_id());
+			let form = form(&mut shaper, &settings, scroll, 360.0, 500.0);
+			let visible = form.visible_buttons();
+			let buttons: Vec<_> = visible
+				.iter()
+				.filter_map(|button| match button.action {
+					Command::Settings(SettingsCommand::PreviewDelay(
+						preset,
+					)) => Some((preset, button.label.as_ref(), button.active)),
+					_ => None,
+				})
+				.collect();
+			assert_eq!(
+				buttons,
+				[
+					(
+						PreviewDelay::Fast,
+						lang.settings_preview_delay_fast(),
+						preview_delay_ms == 100
+					),
+					(
+						PreviewDelay::Medium,
+						lang.settings_preview_delay_medium(),
+						preview_delay_ms == 250
+					),
+					(
+						PreviewDelay::Slow,
+						lang.settings_preview_delay_slow(),
+						preview_delay_ms == 500
+					),
+				]
+			);
+		}
+	}
+}
+
+#[test]
 fn panel_offers_independent_segmented_preview_sizes() {
 	use crate::settings::{PreviewKind, PreviewSize};
 	let mut shaper = crate::test_support::shaper();

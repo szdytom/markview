@@ -82,11 +82,11 @@ macro_rules! settings_schema {
 	) => {
 		impl Setting {
 			/// Every persisted setting, in the order the settings page resets.
-			pub const ALL: [Self; 23] =
+			pub const ALL: [Self; 24] =
 				[ $( Setting::$variant $(($arg))? ),* ];
 			/// The number of `Setting` variants.
 			#[allow(dead_code, reason = "The settings tests assert this count.")]
-			pub const COUNT: usize = 19;
+			pub const COUNT: usize = 20;
 		}
 		impl ReaderSettings {
 			pub fn copy_field(&mut self, other: &Self, field: Setting) {
@@ -173,6 +173,7 @@ settings_schema! {
 			special: copy_preview;
 		PreviewSize(PreviewKind::Link) => link_preview : link_preview, copy,
 			special: copy_preview;
+		PreviewDelay => preview_delay_ms : preview_delay_ms, copy;
 		FontFamily => fontdef_overrides : fontdef_overrides, clone,
 			special: copy_font_family;
 	}

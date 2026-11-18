@@ -53,8 +53,11 @@ file sidebar and link previews default to Medium.
 
 Small keeps the original 420 × 320 px content limit; Medium uses 525 × 400 px
 and Large uses 630 × 480 px. Popups shrink to fit short content and the available
-window space. Tab hover cards and Ctrl+P previews keep their existing behavior
-regardless of these settings.
+window space.
+
+**Hover preview delay** applies to footnote, file sidebar and link previews as
+well as tab hover cards. Choose **Fast** (100 ms), **Medium** (250 ms, the
+default) or **Slow** (500 ms) in the same settings section.
 
 The corresponding top-level keys in `settings.toml` are:
 
@@ -62,9 +65,14 @@ The corresponding top-level keys in `settings.toml` are:
 footnote-preview = "small"
 folder-preview = "medium"
 link-preview = "medium"
+preview-delay-ms = 250
 ```
 
-Each accepts `"off"`, `"small"`, `"medium"` or `"large"`.
+The size keys accept `"off"`, `"small"`, `"medium"` or `"large"`.
+For a custom delay, set `preview-delay-ms` to a nonnegative TOML integer in
+milliseconds. For example, `0` skips the wait before previewing. The delay is
+set when each hover begins. When the value differs from all three presets, the
+settings panel leaves them unselected until you choose one.
 
 ## Markdown dialect
 

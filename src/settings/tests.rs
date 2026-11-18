@@ -4,6 +4,73 @@ use crate::lang::Lang;
 use std::fs;
 
 #[test]
+fn preview_delay_accepts_large_toml_integers() {
+	let dir = crate::test_support::TestDir::new();
+	let path = dir.path().join("settings.toml");
+	for delay_ms in [4_294_967_295u64, 4_294_967_296, i64::MAX as u64] {
+		fs::write(
+			&path,
+			format!("preview-delay-ms = {delay_ms}\nfont_size = 20\n"),
+		)
+		.unwrap();
+		let (mut store, warning) = SettingsStore::load(Some(path.clone()));
+		assert!(warning.is_none(), "{delay_ms}: {warning:?}");
+		assert_eq!(store.settings().preview_delay_ms, delay_ms);
+		assert_eq!(store.settings().font_size, 20.0);
+		let mut settings = store.settings();
+		settings.font_size = 22.0;
+		store.changed(&settings, Some(Setting::FontSize));
+		store.flush().unwrap();
+		let (store, warning) = SettingsStore::load(Some(path.clone()));
+		assert!(warning.is_none(), "{delay_ms}: {warning:?}");
+		assert_eq!(store.settings().preview_delay_ms, delay_ms);
+		assert_eq!(store.settings().font_size, 22.0);
+	}
+}
+
+#[test]
+fn preview_delay_defaults_merges_and_persists_presets() {
+	let dir = crate::test_support::TestDir::new();
+	let path = dir.path().join("settings.toml");
+	fs::write(&path, "font_size = 20\n").unwrap();
+	let (mut store, warning) = SettingsStore::load(Some(path.clone()));
+	assert!(warning.is_none());
+	let mut settings = store.settings();
+	assert_eq!(settings.preview_delay_ms, 250);
+
+	settings.font_size = 22.0;
+	store.changed(&settings, Some(Setting::FontSize));
+	fs::write(&path, "preview-delay-ms = 375\n").unwrap();
+	store.flush().unwrap();
+	assert_eq!(store.settings().preview_delay_ms, 375);
+	assert_eq!(store.settings().font_size, 22.0);
+	assert_eq!(
+		SettingsStore::load(Some(path.clone())).0.settings(),
+		store.settings()
+	);
+
+	for (preset, delay_ms) in [
+		(PreviewDelay::Fast, 100),
+		(PreviewDelay::Medium, 250),
+		(PreviewDelay::Slow, 500),
+	] {
+		settings.preview_delay_ms = preset as u64;
+		store.changed(&settings, Some(Setting::PreviewDelay));
+		store.flush().unwrap();
+		let (reopened, warning) = SettingsStore::load(Some(path.clone()));
+		assert!(warning.is_none());
+		assert_eq!(reopened.settings().preview_delay_ms, delay_ms);
+	}
+
+	fs::write(&path, "preview-delay-ms = 0\n").unwrap();
+	assert!(store.reload().unwrap());
+	assert_eq!(store.settings().preview_delay_ms, 0);
+	fs::write(&path, "preview-delay-ms = -1\n").unwrap();
+	assert!(store.reload().is_err());
+	assert_eq!(store.settings().preview_delay_ms, 0);
+}
+
+#[test]
 fn preview_sizes_default_merge_reload_and_reset() {
 	let dir = crate::test_support::TestDir::new();
 	let path = dir.path().join("settings.toml");
@@ -1141,6 +1208,7 @@ fn settings_differing_from_default() -> ReaderSettings {
 		footnote_preview: PreviewSize::Off,
 		folder_preview: PreviewSize::Large,
 		link_preview: PreviewSize::Small,
+		preview_delay_ms: 375,
 		..default
 	}
 }
@@ -1193,6 +1261,7 @@ fn changed_fields(
 		footnote_preview,
 		folder_preview,
 		link_preview,
+		preview_delay_ms,
 	);
 	changed
 }
@@ -1233,6 +1302,7 @@ fn expected_changes(field: Setting) -> Vec<&'static str> {
 			PreviewKind::Folder => "folder_preview",
 			PreviewKind::Link => "link_preview",
 		}],
+		Setting::PreviewDelay => vec!["preview_delay_ms"],
 		Setting::FontFamily => vec!["fontdef_overrides"],
 	}
 }
@@ -1282,6 +1352,9 @@ fn assert_copied(from: &ReaderSettings, to: &ReaderSettings, field: Setting) {
 		Setting::PreviewSize(kind) => {
 			assert_eq!(to.preview_size(kind), from.preview_size(kind))
 		}
+		Setting::PreviewDelay => {
+			assert_eq!(to.preview_delay_ms, from.preview_delay_ms)
+		}
 		Setting::FontFamily => {
 			assert_eq!(to.fontdef_overrides, from.fontdef_overrides);
 		}
@@ -1290,7 +1363,7 @@ fn assert_copied(from: &ReaderSettings, to: &ReaderSettings, field: Setting) {
 
 #[test]
 fn setting_all_keeps_the_persisted_order_and_count() {
-	assert_eq!(Setting::COUNT, 19);
+	assert_eq!(Setting::COUNT, 20);
 	assert_eq!(
 		Setting::ALL,
 		[
@@ -1316,6 +1389,7 @@ fn setting_all_keeps_the_persisted_order_and_count() {
 			Setting::PreviewSize(PreviewKind::Footnote),
 			Setting::PreviewSize(PreviewKind::Folder),
 			Setting::PreviewSize(PreviewKind::Link),
+			Setting::PreviewDelay,
 			Setting::FontFamily,
 		]
 	);
@@ -1370,6 +1444,7 @@ fn reader_settings_round_trip_through_config_for_non_option_fields() {
 	assert_eq!(back.single_instance, settings.single_instance);
 	assert_eq!(back.restore_session, settings.restore_session);
 	assert_eq!(back.footer_path, settings.footer_path);
+	assert_eq!(back.preview_delay_ms, settings.preview_delay_ms);
 }
 
 #[test]

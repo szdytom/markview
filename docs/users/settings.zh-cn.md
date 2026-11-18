@@ -5,7 +5,7 @@
 打开 **设置** 用 `Ctrl+,`（macOS 上为 Command）。阅读偏好写在
 `settings.toml`；视觉主题写在 [样式表](stylesheets.md)。
 
-完整的设置说明见英文版 [Settings](settings.md)。本页只说明 **Markdown 方言与代码复制**，不是完整设置页的翻译。
+本页说明悬停预览、Markdown 方言与代码复制。完整的设置说明见英文版 [Settings](settings.md)。
 
 ## 代码块复制
 
@@ -19,7 +19,10 @@
 每项均可选择**关闭、小、中、大**。脚注引用默认为小，文件夹内文件和链接悬停默认为中。
 
 小保留原有的 420 × 320 px 内容区域上限；中为 525 × 400 px，大为 630 × 480 px。
-短内容会自动收缩，窗口空间不足时也会缩小。Tab 悬停卡片和 Ctrl+P 预览不受这些设置影响。
+短内容会自动收缩，窗口空间不足时也会缩小。
+
+同一分组下的**悬停预览延时**适用于脚注、文件侧栏、链接预览及标签页悬停卡片，可选
+**快**（100 毫秒）、**中**（250 毫秒，默认）或**慢**（500 毫秒）。
 
 `settings.toml` 中对应的顶层配置项为：
 
@@ -27,9 +30,13 @@
 footnote-preview = "small"
 folder-preview = "medium"
 link-preview = "medium"
+preview-delay-ms = 250
 ```
 
-每项均可使用 `"off"`、`"small"`、`"medium"` 或 `"large"`。
+尺寸配置项可使用 `"off"`、`"small"`、`"medium"` 或 `"large"`。
+也可将 `preview-delay-ms` 设为 TOML 支持的非负整数，单位为毫秒。设为 `0` 时直接开始预览。
+每次悬停开始时读取当前延时。
+自定义值与三个预设均不同时，界面上的三个选项都不高亮，直到手动选择一个预设。
 
 ## Markdown dialect
 

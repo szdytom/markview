@@ -169,13 +169,14 @@ fn measure_hover_preview() -> Result<()> {
 	for _ in 0..30 {
 		repeated.push(sample(&mut app, &mut gpu)?);
 	}
+	let delay = Duration::from_millis(app.preferences.preview_delay_ms);
 	let measurement = Measurement {
 		case,
 		instrumented: cfg!(feature = "diagnostics"),
 		definition_bytes: definition.len(),
 		adapter,
-		intentional_delay_ms: milliseconds(SHOW_DELAY),
-		prepare_delay_ms: milliseconds(PREPARE_DELAY),
+		intentional_delay_ms: milliseconds(delay),
+		prepare_delay_ms: milliseconds(PREPARE_DELAY.min(delay)),
 		baseline,
 		first,
 		repeated,

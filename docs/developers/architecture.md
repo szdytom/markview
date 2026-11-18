@@ -65,14 +65,19 @@ clicked; they do not open nested previews.
 
 Local-file hover previews watch their target independently of the active reader, including atomic replacement saves. Changes cancel obsolete work and replace the scene while retaining focus and a clamped scroll offset; file-stamp checks gate presentation and activation. Confirmed link and disclosure activations open or select the owning file's tab. The session holds one pending preview action until its full layout is accepted, checks content identity, maps structural paths and field-relative link occurrences onto the loaded document, reveals enclosing disclosures and executes the action at its source position. A newer navigation, reload, failed load or content mismatch discards the pending action. Disclosure activations preserve the open/close intent shown in the preview.
 
-Footnote preparation starts after a stable 30 ms hover on the bounded CPU service;
-the 100 ms display gate remains relative to the original hover. One computation
-and one cancellable waiter are permitted per preview owner. Leaving or changing
-the target cancels work, clears retained results and advances a request serial.
+Footnote preparation starts on the bounded CPU service after a stable 30 ms
+hover or when the configured display delay expires, whichever comes first.
+The display delay defaults to 250 ms and is measured from the start of the
+hover. Each preview owner can have one computation and one cancellable waiter.
+Leaving or changing the target cancels work, clears retained results and advances
+a request serial.
 Document identity, request version, options, image metadata and anchor geometry
 are checked before accepting a result; changed inputs restart preparation while
 the same reference remains hovered. Ready results wait for the display gate,
 and late results wake the event loop without restarting that delay.
+Hovering a reference on a restored tab can use its cached geometry while the
+document loads. Once the document arrives, the preview can open under the
+stationary pointer.
 `layout_subtree_cancellable` uses the same layout pass and cancellation checkpoints
 as whole-document layout. Cancellation is cooperative between nested blocks;
 font initialization and individual long paragraphs or formulas are not preempted.

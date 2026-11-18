@@ -144,6 +144,8 @@ pub(super) struct Config {
 	pub(super) folder_preview: PreviewSize,
 	#[serde(rename = "link-preview")]
 	pub(super) link_preview: PreviewSize,
+	#[serde(rename = "preview-delay-ms")]
+	pub(super) preview_delay_ms: u64,
 	/// The reader's export preferences, kept apart from the reading view.
 	pub(super) export: ExportSettings,
 }

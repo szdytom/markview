@@ -36,8 +36,6 @@ use std::{
 
 /// Speculative layout starts after a short stable hover.
 pub(super) const PREPARE_DELAY: Duration = Duration::from_millis(30);
-/// The display gate stays independent of background completion.
-pub(super) const SHOW_DELAY: Duration = Duration::from_millis(100);
 
 /// Per-tab and shared budgets for the resume/hover cache.
 pub(super) const PAGE_BUDGET: usize = 8 * 1024 * 1024;
@@ -525,7 +523,8 @@ impl Target {
 
 struct Hover {
 	target: Target,
-	at: Instant,
+	prepare_at: Instant,
+	show_at: Option<Instant>,
 	elapsed: bool,
 	attempted: bool,
 }
@@ -598,11 +597,13 @@ impl Preview {
 	}
 
 	/// Records the target under the pointer and, when the pointer left the
-	/// target whose card is open, closes that card.
+	/// target whose card is open, closes that card. A new hover uses the
+	/// delay in force when it begins.
 	pub(super) fn hover(
 		&mut self,
 		target: Option<Target>,
 		now: Instant,
+		delay: Duration,
 	) -> bool {
 		let mut changed = false;
 		if self
@@ -619,7 +620,8 @@ impl Preview {
 			self.cancel_work();
 			self.hover = target.map(|target| Hover {
 				target,
-				at: now + SHOW_DELAY,
+				prepare_at: now + PREPARE_DELAY.min(delay),
+				show_at: now.checked_add(delay),
 				elapsed: false,
 				attempted: false,
 			});
@@ -635,7 +637,7 @@ impl Preview {
 		}
 		self.hover
 			.as_ref()
-			.filter(|hover| hover.at <= now)
+			.filter(|hover| hover.show_at.is_some_and(|at| at <= now))
 			.map(|hover| hover.target)
 	}
 
@@ -650,13 +652,13 @@ impl Preview {
 			Target::Footnote { .. } | Target::Link { .. } | Target::File(_)
 		) {
 			if self.pending.is_none() && !hover.attempted {
-				return Some(hover.at - SHOW_DELAY + PREPARE_DELAY);
+				return Some(hover.prepare_at);
 			}
 			if hover.elapsed {
 				return None;
 			}
 		}
-		Some(hover.at)
+		hover.show_at
 	}
 
 	pub(super) fn show(&mut self, open: Open) {
@@ -821,10 +823,11 @@ impl<P: super::SendEvent> App<P> {
 				self.preferences.preview_size(kind) != PreviewSize::Off
 			})
 		});
-		self.preview.hover(target, now)
+		let delay = Duration::from_millis(self.preferences.preview_delay_ms);
+		self.preview.hover(target, now, delay)
 	}
 
-	/// Starts speculative layout at 30 ms and presents no earlier than 100 ms.
+	/// Starts layout at its preparation deadline and waits for the show deadline.
 	pub(super) fn preview_tick(&mut self, now: Instant) {
 		if !self.preview.tracking() {
 			return;
@@ -845,7 +848,7 @@ impl<P: super::SendEvent> App<P> {
 		}) else {
 			return;
 		};
-		hover.elapsed = now >= hover.at;
+		hover.elapsed = hover.show_at.is_some_and(|at| now >= at);
 		let target = hover.target;
 		match target {
 			Target::Tab(tab) if hover.elapsed => {
@@ -856,7 +859,7 @@ impl<P: super::SendEvent> App<P> {
 			}
 			Target::Footnote { .. } | Target::Link { .. } | Target::File(_)
 				if self.preview.pending.is_none()
-					&& now >= hover.at - SHOW_DELAY + PREPARE_DELAY =>
+					&& now >= hover.prepare_at =>
 			{
 				hover.attempted = true;
 				self.start_link_preview(target);
@@ -935,11 +938,18 @@ impl<P: super::SendEvent> App<P> {
 
 	fn start_link_preview(&mut self, target: Target) {
 		let Some(mut source) = self.link_preview_source(target) else {
-			if self
-				.preview
-				.hover
-				.as_ref()
-				.is_some_and(|hover| hover.elapsed)
+			let session = &self.readers.session;
+			let restoring_document =
+				matches!(target, Target::Footnote { .. } | Target::Link { .. })
+					&& session.document.is_none()
+					&& session.display.cached_slice.is_some()
+					&& session.layout_pending;
+			if !restoring_document
+				&& self
+					.preview
+					.hover
+					.as_ref()
+					.is_some_and(|hover| hover.elapsed)
 			{
 				self.preview.dismiss();
 			}

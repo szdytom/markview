@@ -22,22 +22,35 @@ fn ready(app: &mut App<Proxy>) -> work::Completion {
 }
 
 #[test]
-fn layout_starts_at_thirty_ms_and_ready_results_wait_until_one_hundred() {
+fn layout_starts_by_the_show_deadline_and_ready_results_wait_for_it() {
 	let (mut app, now) = begin();
-	assert_eq!(app.preview.deadline(), Some(now + PREPARE_DELAY));
-	app.preview_tick(now + PREPARE_DELAY - Duration::from_nanos(1));
-	assert!(app.preview.pending.is_none());
-	app.preview_tick(now + PREPARE_DELAY);
-	assert!(app.preview.pending.is_some());
-	assert!(app.preview.open().is_none());
-	assert_eq!(app.preview.deadline(), Some(now + SHOW_DELAY));
-	let completion = ready(&mut app);
-	app.preview.accept(completion);
-	app.preview_tick(now + SHOW_DELAY - Duration::from_nanos(1));
-	assert!(app.preview.open().is_none());
-	app.preview_tick(now + SHOW_DELAY);
-	assert!(app.preview.floating().is_some());
-	assert_eq!(app.preview.deadline(), None);
+	for delay_ms in [0, 15, 30, 100, 250, 375, 500] {
+		app.dismiss_preview();
+		app.preferences.values.preview_delay_ms = delay_ms;
+		app.hover_preview(now);
+		let delay = Duration::from_millis(delay_ms);
+		let prepare_at = now + PREPARE_DELAY.min(delay);
+		let show_at = now + delay;
+		assert_eq!(app.preview.deadline(), Some(prepare_at));
+		app.preview_tick(prepare_at - Duration::from_nanos(1));
+		assert!(app.preview.pending.is_none());
+		app.preview_tick(prepare_at);
+		assert!(app.preview.pending.is_some());
+		assert!(app.preview.open().is_none());
+		assert_eq!(
+			app.preview.deadline(),
+			(prepare_at < show_at).then_some(show_at)
+		);
+		let completion = ready(&mut app);
+		app.preview.accept(completion);
+		if prepare_at < show_at {
+			app.preview_tick(show_at - Duration::from_nanos(1));
+			assert!(app.preview.open().is_none());
+		}
+		app.preview_tick(show_at);
+		assert!(app.preview.floating().is_some());
+		assert_eq!(app.preview.deadline(), None);
+	}
 }
 
 #[test]
@@ -111,8 +124,11 @@ fn returning_to_the_same_reference_rejects_its_previous_completion() {
 	let (mut app, now) = begin();
 	app.preview_tick(now + PREPARE_DELAY);
 	let old = ready(&mut app);
-	app.preview
-		.hover(Some(Target::Tab(77)), now + Duration::from_millis(31));
+	app.preview.hover(
+		Some(Target::Tab(77)),
+		now + Duration::from_millis(31),
+		SHOW_DELAY,
+	);
 	app.hover_preview(now + Duration::from_millis(32));
 	app.preview_tick(now + Duration::from_millis(32) + PREPARE_DELAY);
 	assert_ne!(old.serial, app.preview.serial);
@@ -241,8 +257,12 @@ fn cancellation_releases_an_already_completed_snapshot() {
 
 proptest::proptest! {
 	#[test]
-	fn motion_inside_a_target_preserves_its_original_deadlines(trace in proptest::collection::vec((0u8..3, 0u16..100), 0..60)) {
+	fn motion_inside_a_target_preserves_its_original_deadlines(
+		delay_ms in 0u64..1000,
+		trace in proptest::collection::vec((0u8..3, 0u16..100), 0..60),
+	) {
 		let mut preview = Preview::default();
+		let delay = Duration::from_millis(delay_ms);
 		let mut now = Instant::now();
 		let mut previous = None;
 		let mut started = now;
@@ -254,8 +274,10 @@ proptest::proptest! {
 				_ => Some(Target::Footnote { block: markview_document::BlockId::new(1).unwrap(), link: markview_layout::scene::LinkId::Inline(markview_document::LinkOccurrenceId::new(1).unwrap()) }),
 			};
 			if target != previous { started = now; }
-			preview.hover(target, now);
-			proptest::prop_assert_eq!(preview.deadline(), target.map(|target| started + if matches!(target, Target::Footnote { .. }) { PREPARE_DELAY } else { SHOW_DELAY }));
+			preview.hover(target, now, delay);
+			proptest::prop_assert_eq!(preview.deadline(), target.map(|target| started + if matches!(target, Target::Footnote { .. }) { PREPARE_DELAY.min(delay) } else { delay }));
+			proptest::prop_assert_eq!(preview.due(started + delay - Duration::from_nanos(1)), None);
+			proptest::prop_assert_eq!(preview.due(started + delay), target);
 			previous = target;
 		}
 	}
@@ -300,6 +322,55 @@ fn a_cached_page_can_restore_its_document_before_the_display_gate() {
 	app.preview.accept(completion);
 	app.preview_tick(now + SHOW_DELAY);
 	assert!(app.preview.floating().is_some());
+}
+
+#[test]
+fn cached_footnote_opens_after_document_restore_at_short_delays() {
+	let dir = crate::test_support::TestDir::new();
+	let first = dir.path().join("first.md");
+	let second = dir.path().join("second.md");
+	std::fs::write(&first, "Reference[^n].\n\n[^n]: Note.\n").unwrap();
+	std::fs::write(&second, "# Second\n").unwrap();
+	for delay_ms in [100, 0, 15] {
+		let (mut app, events) = app();
+		app.preferences.values.preview_delay_ms = delay_ms;
+		load(&mut app, &events, first.clone());
+		load(&mut app, &events, second.clone());
+		app.readers
+			.release_inactive(Instant::now() + Duration::from_secs(21));
+		app.select_tab(0);
+		assert!(app.readers.session.layout_pending);
+		assert!(app.readers.session.display.cached_slice.is_some());
+		assert!(app.readers.session.document.is_none());
+		let point = super::interaction_tests::reference_point(&app);
+		app.interaction.pointer.move_to((point.x, point.y));
+		assert!(matches!(
+			app.target_at_cursor(),
+			Some(Target::Footnote { .. })
+		));
+
+		let now = Instant::now();
+		let delay = Duration::from_millis(delay_ms);
+		app.hover_preview(now);
+		app.preview_tick(now + PREPARE_DELAY.min(delay));
+		assert!(app.preview.pending.is_none());
+		assert!(app.preview.open().is_none());
+
+		settle(&mut app, &events);
+		assert!(app.readers.session.document.is_some());
+		assert!(matches!(
+			app.target_at_cursor(),
+			Some(Target::Footnote { .. })
+		));
+		let restored_at = now + Duration::from_millis(50);
+		app.preview_tick(restored_at);
+		if app.preview.pending.is_some() {
+			let completion = ready(&mut app);
+			app.preview.accept(completion);
+		}
+		app.preview_tick(restored_at.max(now + delay));
+		assert!(app.preview.floating().is_some(), "{delay_ms} ms delay");
+	}
 }
 
 #[test]

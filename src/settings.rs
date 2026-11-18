@@ -60,6 +60,15 @@ impl PreviewSize {
 	}
 }
 
+/// Presets offered for the hover preview delay, in milliseconds.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[repr(u64)]
+pub enum PreviewDelay {
+	Fast = 100,
+	Medium = 250,
+	Slow = 500,
+}
+
 /// Window chrome preference, applied when the next window is created.
 #[derive(
 	Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize,
@@ -169,6 +178,7 @@ pub struct ReaderSettings {
 	pub footnote_preview: PreviewSize,
 	pub folder_preview: PreviewSize,
 	pub link_preview: PreviewSize,
+	pub preview_delay_ms: u64,
 }
 impl Default for ReaderSettings {
 	fn default() -> Self {
@@ -206,6 +216,7 @@ impl Default for ReaderSettings {
 			footnote_preview: PreviewSize::Small,
 			folder_preview: PreviewSize::Medium,
 			link_preview: PreviewSize::Medium,
+			preview_delay_ms: PreviewDelay::Medium as u64,
 		}
 	}
 }
@@ -276,6 +287,7 @@ pub enum Setting {
 	RestoreSession,
 	FooterPath,
 	PreviewSize(PreviewKind),
+	PreviewDelay,
 	/// Every per-role font family, which is one list of overrides.
 	FontFamily,
 }

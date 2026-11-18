@@ -12,8 +12,11 @@ use super::*;
 use crate::{
 	app::{Event, SendEvent},
 	cli::{LaunchOptions, Mode},
+	settings::PreviewDelay,
 };
 use std::{path::PathBuf, sync::mpsc};
+
+const SHOW_DELAY: Duration = Duration::from_millis(PreviewDelay::Medium as u64);
 
 /// Captures the app's events so a test can feed layout results back.
 #[derive(Clone)]
@@ -177,7 +180,7 @@ fn a_held_hover_opens_only_after_the_delay() {
 	assert!(!preview.tracking());
 	assert_eq!(preview.due(now + SHOW_DELAY), None);
 
-	assert!(!preview.hover(Some(Target::Tab(7)), now));
+	assert!(!preview.hover(Some(Target::Tab(7)), now, SHOW_DELAY));
 	assert!(preview.tracking());
 	assert_eq!(preview.deadline(), Some(now + SHOW_DELAY));
 	assert_eq!(preview.due(now), None);
@@ -197,36 +200,44 @@ fn a_held_hover_opens_only_after_the_delay() {
 fn crossing_targets_restarts_the_delay_and_clears_the_old_card() {
 	let mut preview = Preview::default();
 	let now = Instant::now();
-	preview.hover(Some(Target::Tab(1)), now);
+	preview.hover(Some(Target::Tab(1)), now, SHOW_DELAY);
 	preview.show(card(1));
 	assert!(preview.open().is_some());
 
 	// Moving to another target closes the card at once and holds the new delay.
-	assert!(
-		preview.hover(Some(Target::Tab(2)), now + Duration::from_millis(20))
-	);
+	assert!(preview.hover(
+		Some(Target::Tab(2)),
+		now + Duration::from_millis(20),
+		SHOW_DELAY
+	));
 	assert!(preview.open().is_none());
 	let due = now + Duration::from_millis(20) + SHOW_DELAY;
 	assert_eq!(preview.due(due - Duration::from_millis(1)), None);
 	assert_eq!(preview.due(due), Some(Target::Tab(2)));
 
-	// Motion inside the same target keeps the original deadline.
-	preview.hover(Some(Target::Tab(2)), now + Duration::from_millis(60));
+	// Motion inside the same target keeps the deadline even if the delay changes.
+	preview.hover(
+		Some(Target::Tab(2)),
+		now + Duration::from_millis(60),
+		Duration::ZERO,
+	);
 	assert_eq!(preview.deadline(), Some(due));
+	preview.hover(Some(Target::Tab(3)), due, Duration::ZERO);
+	assert_eq!(preview.due(due), Some(Target::Tab(3)));
 }
 
 #[test]
 fn leaving_every_target_forgets_the_hover() {
 	let mut preview = Preview::default();
 	let now = Instant::now();
-	preview.hover(Some(Target::Tab(3)), now);
-	assert!(!preview.hover(None, now + Duration::from_millis(10)));
+	preview.hover(Some(Target::Tab(3)), now, SHOW_DELAY);
+	assert!(!preview.hover(None, now + Duration::from_millis(10), SHOW_DELAY));
 	assert!(!preview.tracking());
 	assert_eq!(preview.deadline(), None);
 
-	preview.hover(Some(Target::Tab(3)), now);
+	preview.hover(Some(Target::Tab(3)), now, SHOW_DELAY);
 	preview.show(card(3));
-	assert!(preview.hover(None, now + Duration::from_millis(20)));
+	assert!(preview.hover(None, now + Duration::from_millis(20), SHOW_DELAY));
 	assert!(preview.open().is_none());
 	assert!(!preview.tracking());
 }
@@ -242,7 +253,7 @@ fn the_chrome_body_rect_belongs_to_the_open_card() {
 	};
 	preview.set_body(Some(rect));
 	assert_eq!(preview.body(), None);
-	preview.hover(Some(Target::Tab(1)), Instant::now());
+	preview.hover(Some(Target::Tab(1)), Instant::now(), SHOW_DELAY);
 	preview.show(card(1));
 	assert_eq!(preview.body(), None);
 	preview.set_body(Some(rect));

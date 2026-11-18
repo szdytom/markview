@@ -5,11 +5,11 @@
   "structs": {
     "App": 53,
     "Chrome": 7,
-    "Config": 34,
+    "Config": 35,
     "InteractionState": 8,
     "Markview": 36,
     "ReaderSession": 34,
-    "ReaderSettings": 33
+    "ReaderSettings": 34
   },
   "writers": {
     "controls": {
